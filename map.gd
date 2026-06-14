@@ -29,6 +29,13 @@ extends StaticBody3D
 
 @export var chunk_size: int = 16
 
+## Depth of the vertical "skirt" wall dropped below every chunk border. The wall
+## sits under the terrain and is normally invisible, but it backs any residual
+## T-junction gap between neighbouring chunks at different LODs, so seams never
+## show through to the void below — independent of streaming/stitching timing.
+## Set to 0 to disable. Increase if cracks still show through on very steep terrain.
+@export_range(0.0, 64.0, 1.0) var skirt_depth: float = 16.0
+
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
 @export var enable_lod: bool = true
@@ -967,6 +974,42 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 				continue
 			indices.append_array([i00, i10, i11])
 			indices.append_array([i00, i11, i01])
+
+	# ── Skirt ──────────────────────────────────────────────────────────────────
+	# Drop a vertical wall below each chunk border. It is hidden under the terrain
+	# but plugs any T-junction gap between chunks at different LODs, so the seam
+	# never reveals the void beneath. Emitted double-sided so it works regardless
+	# of which way the wall happens to face. Added AFTER the AABB is computed above,
+	# so culling still uses the real terrain-surface bounds.
+	if skirt_depth > 0.0 and not vertices.is_empty():
+		var edges := [PackedInt32Array(), PackedInt32Array(),
+					  PackedInt32Array(), PackedInt32Array()]
+		for x in xs:
+			edges[0].append(z0 * w + x)   # north (z == z0)
+			edges[1].append(z1 * w + x)   # south (z == z1)
+		for z in zs:
+			edges[2].append(z * w + x0)   # west  (x == x0)
+			edges[3].append(z * w + x1)   # east  (x == x1)
+		for edge_keys in edges:
+			var prev_top  := -1
+			var prev_skirt := -1
+			for key in edge_keys:
+				var ti: int = local_idx.get(key, -1)
+				if ti < 0:
+					prev_top  = -1
+					prev_skirt = -1
+					continue
+				var tp: Vector3 = vertices[ti]
+				var si := vertices.size()
+				vertices.append(Vector3(tp.x, tp.y - skirt_depth, tp.z))
+				normals.append(normals[ti])
+				uvs.append(uvs[ti])
+				if prev_top >= 0:
+					# Wall quad (prev_top → ti on top, si → prev_skirt below), both windings.
+					indices.append_array([prev_top, ti, si,  prev_top, si, prev_skirt])
+					indices.append_array([prev_top, si, ti,  prev_top, prev_skirt, si])
+				prev_top  = ti
+				prev_skirt = si
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
