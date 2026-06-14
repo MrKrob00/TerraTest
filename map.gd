@@ -29,12 +29,6 @@ extends StaticBody3D
 
 @export var chunk_size: int = 16
 
-## Optional fallback: depth of a vertical "skirt" wall dropped below every chunk
-## border to hide T-junction gaps at LOD seams. DISABLED by default (0) because
-## streamed chunks are now seam-stitched on arrival, which costs no extra geometry.
-## Enable (e.g. 16) only if cracks still show through on very steep terrain.
-@export_range(0.0, 64.0, 1.0) var skirt_depth: float = 0.0
-
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
 @export var enable_lod: bool = true
@@ -81,6 +75,13 @@ var _chunk_meshes:   Array = []
 
 # Current LOD level that is actually displayed for each chunk
 var _chunk_lod:      Array[int] = []
+
+# Per-chunk "stitch signature": encodes the chunk's LOD step plus the snap step
+# on each of its 4 borders (see _stitch_signature). _update_lod rebuilds a chunk
+# whenever its current required signature differs from the one last applied, which
+# makes seam stitching self-healing regardless of event order (LOD change, neighbour
+# LOD change, macro toggle, streamed-in chunk). 0 = no mesh applied yet.
+var _chunk_stitch_sig: Array[int] = []
 
 var _chunks_x:      int = 0
 var _visible_chunks: Dictionary = {}
@@ -354,6 +355,7 @@ func _build_chunks_from_map_data() -> void:
 	# Every system that iterates these arrays guards against null (see below).
 	_chunk_instances.resize(total)
 	_chunk_lod.resize(total)
+	_chunk_stitch_sig.resize(total)   # 0 = no mesh applied yet → forced rebuild on first LOD pass
 	_chunk_meshes.resize(total)
 	_chunk_aabbs.resize(total)
 	_stream_results.resize(total)
@@ -464,6 +466,7 @@ func _apply_built_results(indices: Array, mat: Material) -> void:
 		add_child(inst)
 		_chunk_instances[ci] = inst   # fill the pre-allocated slot
 		_chunk_lod[ci]       = 0
+		_chunk_stitch_sig[ci] = 1     # plain LOD-0, no border snap (= _stitch_signature for that state)
 		_chunk_meshes[ci]    = lod_meshes
 		# Note: _chunk_aabbs[ci] was already filled by Phase 0 with an identical
 		# value (same heightmap scan); we skip the redundant write to avoid any
@@ -510,10 +513,8 @@ func _update_lod() -> void:
 
 	var cam_pos := camera.global_position
 	var mat     := _get_material()
-	var cxl     := ceili(float(w - 1) / chunk_size)
 
 	# ── Step 1: macro vs individual per group ─────────────────────────────────
-	var macro_changed: Array[int] = []
 	for mi in _macro_instances.size():
 		var center     := global_transform * _macro_aabbs[mi].get_center()
 		var dx         := cam_pos.x - center.x
@@ -522,75 +523,38 @@ func _update_lod() -> void:
 		var want_macro := dist >= lod_distance_1
 		if want_macro != _macro_active[mi]:
 			_set_macro_mode(mi, want_macro)
-			macro_changed.append(mi)
 
-	# ── Step 2: per-chunk LOD — collect what changed ──────────────────────────
-	# NOTE: do NOT skip frustum-culled (invisible) chunks here. Keeping their LOD
-	# and seam stitching up to date even while off-screen means a chunk re-entering
-	# the frustum during camera movement is already correct. If we deferred its LOD
-	# until it became visible, it would render a stale, un-stitched mesh for up to
-	# LOD_UPDATE_INTERVAL — a T-junction crack flickering along the screen edge.
-	# Cost is negligible: far chunks are already excluded by the active-macro check
-	# above, and meshes are only rebuilt on an actual LOD change.
-	var lod_changed: Array[int] = []
+	# ── Step 2: per-chunk target LOD ──────────────────────────────────────────
+	# Update every built, non-macro chunk's LOD (do NOT skip frustum-culled chunks —
+	# off-screen state must stay correct so a chunk re-entering the view never shows a
+	# stale, un-stitched mesh). Step 3's signature pass below picks up these LOD changes
+	# and re-stitches every affected seam, including macro-group boundaries.
 	for i in _chunk_instances.size():
 		if not _chunk_instances[i]:   # not yet streamed in
 			continue
 		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
 			continue
-
 		var center     := global_transform * _chunk_aabbs[i].get_center()
 		var dx         := cam_pos.x - center.x
 		var dz         := cam_pos.z - center.z
 		var dist       := sqrt(dx * dx + dz * dz)
-		var target_lod := 1 if dist >= lod_distance_0 else 0
+		_chunk_lod[i] = 1 if dist >= lod_distance_0 else 0
 
-		if target_lod == _chunk_lod[i]:
+	# ── Step 3: rebuild every chunk whose stitch signature is now stale ────────
+	# Self-healing seam stitching: a chunk's mesh is fully determined by its LOD plus
+	# the snap step on each of its 4 borders (_stitch_signature). Rebuild whenever the
+	# required signature differs from the one last applied. This catches EVERY cause of
+	# a stale seam — the chunk's own LOD change, a neighbour's LOD change, a macro group
+	# toggling, or a chunk newly streamed in — no matter the order events happened in,
+	# so a T-junction crack can never persist. After things settle the signatures match
+	# and nothing is rebuilt, so the steady-state cost is just the cheap comparison.
+	for i in _chunk_instances.size():
+		if not _chunk_instances[i]:
 			continue
-		_chunk_lod[i] = target_lod
-		lod_changed.append(i)
-
-	if lod_changed.is_empty() and macro_changed.is_empty():
-		return
-
-	# ── Step 3: rebuild meshes with border stitching ──────────────────────────
-	# Any chunk whose LOD changes, plus its LOD-0 neighbours (their seam with
-	# this chunk may now need snapping added or removed).
-	# Also include LOD-0 chunks on the boundary of any changed macro group.
-	var to_rebuild: Dictionary = {}
-
-	for i in lod_changed:
-		to_rebuild[i] = true
-		var cx := i % cxl
-		var cz := i / cxl
-		for off in [[0,-1],[0,1],[-1,0],[1,0]]:
-			var ni := _get_chunk_idx(cx + off[0], cz + off[1])
-			if ni >= 0 and ni < _chunk_lod.size() and _chunk_lod[ni] == 0:
-				to_rebuild[ni] = true
-
-	for mi in macro_changed:
-		# When a group DEACTIVATES, its sub-chunks render individually again. Their
-		# meshes were frozen while the macro was active (Step 2 skips macro chunks),
-		# so an edge sub-chunk may still lack the seam snapping it now needs against a
-		# coarser neighbour (e.g. an adjacent macro group still at step 4). Re-stitch
-		# the sub-chunks themselves, not just the group's outer neighbours — otherwise
-		# T-junction cracks appear along the boundary of the just-collapsed group.
-		var deactivated: bool = not _macro_active[mi]
-		for ci in _macro_to_chunks[mi]:
-			if deactivated:
-				to_rebuild[ci] = true
-			var cx: int = ci % cxl
-			var cz: int = ci / cxl
-			for off in [[0,-1],[0,1],[-1,0],[1,0]]:
-				var ni := _get_chunk_idx(cx + off[0], cz + off[1])
-				# Rebuild neighbours of ANY individual LOD (not just LOD-0) — a LOD-1
-				# chunk adjacent to a macro group also needs seam stitching (step 2 vs 4).
-				if ni >= 0 and ni < _chunk_lod.size() \
-						and not (_chunk_macro_idx.size() > ni and _macro_active[_chunk_macro_idx[ni]]):
-					to_rebuild[ni] = true
-
-	for ci in to_rebuild:
-		_apply_lod_mesh(ci, mat)
+		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
+			continue   # individual mesh is hidden; the macro instance renders this region
+		if _chunk_stitch_sig[i] != _stitch_signature(i):
+			_apply_lod_mesh(i, mat)
 
 
 # Applies the correct mesh to chunk ci, rebuilding with border snapping when
@@ -608,37 +572,69 @@ func _apply_lod_mesh(ci: int, mat: Material) -> void:
 
 	# Stitching applies to ANY LOD level, not just LOD-0.
 	# A LOD-1 (step=2) chunk adjacent to an active macro group (step=4) also
-	# produces T-junction cracks without seam snapping.
-	var ns := _neighbour_step(cx, cz,  0, -1)
-	var ss := _neighbour_step(cx, cz,  0,  1)
-	var ws := _neighbour_step(cx, cz, -1,  0)
-	var es := _neighbour_step(cx, cz,  1,  0)
+	# produces T-junction cracks without seam snapping. Snap only toward COARSER
+	# neighbours (step > my_step); pass 0 for the rest.
+	var n_snap := _border_snap(cx, cz,  0, -1, my_step)
+	var s_snap := _border_snap(cx, cz,  0,  1, my_step)
+	var w_snap := _border_snap(cx, cz, -1,  0, my_step)
+	var e_snap := _border_snap(cx, cz,  1,  0, my_step)
 
-	if ns > my_step or ss > my_step or ws > my_step or es > my_step:
+	# Record the signature of the mesh we are about to apply, so _update_lod can tell
+	# when this chunk needs rebuilding again (its LOD or any neighbour's step changed).
+	if ci < _chunk_stitch_sig.size():
+		_chunk_stitch_sig[ci] = _encode_sig(my_step, n_snap, s_snap, w_snap, e_snap)
+
+	var lod_mat := (_mat_lod0 if target_lod == 0 else _mat_lod_high) if _mat_lod0 else mat
+
+	if n_snap != 0 or s_snap != 0 or w_snap != 0 or e_snap != 0:
 		# Rebuild this chunk's mesh with seam-snapped border vertices
 		var x0 := cx * chunk_size
 		var z0 := cz * chunk_size
 		var x1 := mini(x0 + chunk_size, w - 1)
 		var z1 := mini(z0 + chunk_size, d - 1)
 		var data := _compute_chunk_data(x0, z0, x1, z1, my_step,
-				ns if ns > my_step else 0,
-				ss if ss > my_step else 0,
-				ws if ws > my_step else 0,
-				es if es > my_step else 0)
+				n_snap, s_snap, w_snap, e_snap)
 		if not data.is_empty():
 			var am := ArrayMesh.new()
 			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
 			_chunk_instances[ci].mesh = am
-			var lod_mat := (_mat_lod0 if target_lod == 0 else _mat_lod_high) if _mat_lod0 else mat
 			_chunk_instances[ci].set_surface_override_material(0, lod_mat)
 			return
 
 	# No stitching needed — use the pre-built LOD mesh
-	var lod_mat := (_mat_lod0 if target_lod == 0 else _mat_lod_high) if _mat_lod0 else mat
 	var display_mesh := _best_available_mesh(_chunk_meshes[ci], target_lod)
 	if display_mesh:
 		_chunk_instances[ci].mesh = display_mesh
 	_chunk_instances[ci].set_surface_override_material(0, lod_mat)
+
+
+# Returns the neighbour's LOD step if it is COARSER than my_step (so this chunk's
+# shared border must snap to it), otherwise 0 (no snapping needed on that edge).
+func _border_snap(cx: int, cz: int, dcx: int, dcz: int, my_step: int) -> int:
+	var s := _neighbour_step(cx, cz, dcx, dcz)
+	return s if s > my_step else 0
+
+
+# Packs a chunk's LOD step and its 4 border snap steps into one int. Two chunks with
+# the same signature produce byte-identical meshes, so _update_lod only rebuilds when
+# the signature actually changes. Each value is ≤ 8, so 4 bits per field is plenty.
+func _encode_sig(my_step: int, n_snap: int, s_snap: int, w_snap: int, e_snap: int) -> int:
+	return my_step | (n_snap << 4) | (s_snap << 8) | (w_snap << 12) | (e_snap << 16)
+
+
+# Current required signature for chunk ci (its LOD step + the snap step each border
+# needs given its neighbours right now). Compared against _chunk_stitch_sig to decide
+# whether the chunk's mesh is stale and must be rebuilt.
+func _stitch_signature(ci: int) -> int:
+	var cxl := ceili(float(w - 1) / chunk_size)
+	var cx := ci % cxl
+	var cz := ci / cxl
+	var my_step := LOD_STEPS[_chunk_lod[ci]]
+	return _encode_sig(my_step,
+			_border_snap(cx, cz,  0, -1, my_step),
+			_border_snap(cx, cz,  0,  1, my_step),
+			_border_snap(cx, cz, -1,  0, my_step),
+			_border_snap(cx, cz,  1,  0, my_step))
 
 
 # Returns the flat chunk index for grid position (cx, cz), or -1 if out of bounds.
@@ -987,42 +983,6 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 				continue
 			indices.append_array([i00, i10, i11])
 			indices.append_array([i00, i11, i01])
-
-	# ── Skirt ──────────────────────────────────────────────────────────────────
-	# Drop a vertical wall below each chunk border. It is hidden under the terrain
-	# but plugs any T-junction gap between chunks at different LODs, so the seam
-	# never reveals the void beneath. Emitted double-sided so it works regardless
-	# of which way the wall happens to face. Added AFTER the AABB is computed above,
-	# so culling still uses the real terrain-surface bounds.
-	if skirt_depth > 0.0 and not vertices.is_empty():
-		var edges := [PackedInt32Array(), PackedInt32Array(),
-					  PackedInt32Array(), PackedInt32Array()]
-		for x in xs:
-			edges[0].append(z0 * w + x)   # north (z == z0)
-			edges[1].append(z1 * w + x)   # south (z == z1)
-		for z in zs:
-			edges[2].append(z * w + x0)   # west  (x == x0)
-			edges[3].append(z * w + x1)   # east  (x == x1)
-		for edge_keys in edges:
-			var prev_top  := -1
-			var prev_skirt := -1
-			for key in edge_keys:
-				var ti: int = local_idx.get(key, -1)
-				if ti < 0:
-					prev_top  = -1
-					prev_skirt = -1
-					continue
-				var tp: Vector3 = vertices[ti]
-				var si := vertices.size()
-				vertices.append(Vector3(tp.x, tp.y - skirt_depth, tp.z))
-				normals.append(normals[ti])
-				uvs.append(uvs[ti])
-				if prev_top >= 0:
-					# Wall quad (prev_top → ti on top, si → prev_skirt below), both windings.
-					indices.append_array([prev_top, ti, si,  prev_top, si, prev_skirt])
-					indices.append_array([prev_top, si, ti,  prev_top, prev_skirt, si])
-				prev_top  = ti
-				prev_skirt = si
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
