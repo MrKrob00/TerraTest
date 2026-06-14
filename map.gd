@@ -558,7 +558,16 @@ func _update_lod() -> void:
 				to_rebuild[ni] = true
 
 	for mi in macro_changed:
+		# When a group DEACTIVATES, its sub-chunks render individually again. Their
+		# meshes were frozen while the macro was active (Step 2 skips macro chunks),
+		# so an edge sub-chunk may still lack the seam snapping it now needs against a
+		# coarser neighbour (e.g. an adjacent macro group still at step 4). Re-stitch
+		# the sub-chunks themselves, not just the group's outer neighbours — otherwise
+		# T-junction cracks appear along the boundary of the just-collapsed group.
+		var deactivated: bool = not _macro_active[mi]
 		for ci in _macro_to_chunks[mi]:
+			if deactivated:
+				to_rebuild[ci] = true
 			var cx: int = ci % cxl
 			var cz: int = ci / cxl
 			for off in [[0,-1],[0,1],[-1,0],[1,0]]:
