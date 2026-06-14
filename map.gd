@@ -519,13 +519,18 @@ func _update_lod() -> void:
 			macro_changed.append(mi)
 
 	# ── Step 2: per-chunk LOD — collect what changed ──────────────────────────
+	# NOTE: do NOT skip frustum-culled (invisible) chunks here. Keeping their LOD
+	# and seam stitching up to date even while off-screen means a chunk re-entering
+	# the frustum during camera movement is already correct. If we deferred its LOD
+	# until it became visible, it would render a stale, un-stitched mesh for up to
+	# LOD_UPDATE_INTERVAL — a T-junction crack flickering along the screen edge.
+	# Cost is negligible: far chunks are already excluded by the active-macro check
+	# above, and meshes are only rebuilt on an actual LOD change.
 	var lod_changed: Array[int] = []
 	for i in _chunk_instances.size():
 		if not _chunk_instances[i]:   # not yet streamed in
 			continue
 		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
-			continue
-		if not _chunk_instances[i].visible:
 			continue
 
 		var center     := global_transform * _chunk_aabbs[i].get_center()
