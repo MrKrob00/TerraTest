@@ -1,0 +1,72 @@
+[gd_scene load_steps=10 format=3 uid="uid://u0tdxsa46btj"]
+
+[ext_resource type="Script" uid="uid://bs5u4ea03wtv2" path="res://shop.gd" id="1_e7rdd"]
+[ext_resource type="Script" uid="uid://bajj37y8ulr5g" path="res://black_hole.gd" id="3_blqjs"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_e7rdd"]
+size = Vector3(3, 4, 3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_blqjs"]
+transparency = 1
+
+[sub_resource type="BoxMesh" id="BoxMesh_fgaav"]
+material = SubResource("StandardMaterial3D_blqjs")
+size = Vector3(3, 4, 3)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_e7rdd"]
+radius = 5.0
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_blqjs"]
+radius = 0.6
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fgaav"]
+albedo_color = Color(0, 0, 0, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_blqjs"]
+material = SubResource("StandardMaterial3D_fgaav")
+
+[node name="Shop" type="Node3D"]
+script = ExtResource("1_e7rdd")
+
+[node name="Shop" type="StaticBody3D" parent="."]
+collision_layer = 3
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Shop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+shape = SubResource("BoxShape3D_e7rdd")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Shop"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
+mesh = SubResource("BoxMesh_fgaav")
+
+[node name="black hole" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.50394535, 2.7802403, -2.2516396)
+script = ExtResource("3_blqjs")
+
+[node name="gravity" type="Area3D" parent="black hole"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3)
+collision_layer = 0
+collision_mask = 2
+gravity_space_override = 3
+gravity_point = true
+gravity_point_center = Vector3(0, 0, 3)
+gravity_direction = Vector3(0, 0, 3)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="black hole/gravity"]
+shape = SubResource("SphereShape3D_e7rdd")
+debug_color = Color(1.0527041, 0, 1.2635698, 0.94509804)
+
+[node name="hole" type="Area3D" parent="black hole"]
+collision_layer = 0
+collision_mask = 2
+gravity_point = true
+gravity = 30.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="black hole/hole"]
+shape = SubResource("SphereShape3D_blqjs")
+debug_color = Color(1.9187722, 2.0596302, 2.552633, 1)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="black hole"]
+mesh = SubResource("SphereMesh_blqjs")
+
+[connection signal="body_entered" from="black hole/hole" to="black hole" method="_on_hole_body_entered"]

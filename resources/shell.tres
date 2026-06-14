@@ -1,0 +1,13 @@
+[gd_resource type="CylinderMesh" format=3 uid="uid://lw3eg0xctqfx"]
+
+[sub_resource type="ORMMaterial3D" id="ORMMaterial3D_1t6fe"]
+shading_mode = 0
+proximity_fade_distance = 60.72
+stencil_flags = 1
+stencil_compare = 1
+stencil_outline_thickness = 0.0
+
+[resource]
+material = SubResource("ORMMaterial3D_1t6fe")
+flip_faces = true
+radial_segments = 4

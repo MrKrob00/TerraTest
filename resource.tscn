@@ -1,0 +1,44 @@
+[gd_scene load_steps=8 format=3 uid="uid://c2t7vgexb38wm"]
+
+[ext_resource type="Script" uid="uid://bkvw6gs8r6c05" path="res://resource.gd" id="1_txoar"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_psx28"]
+albedo_color = Color(1, 1, 0, 1)
+rim_enabled = true
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cpix3"]
+albedo_color = Color(0.84313726, 0.34509805, 0, 1)
+rim_enabled = true
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_3jy6n"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_txoar"]
+blend_mode = 1
+cull_mode = 1
+albedo_color = Color(0, 1, 0, 1)
+
+[sub_resource type="SphereMesh" id="SphereMesh_cpix3"]
+material = SubResource("StandardMaterial3D_txoar")
+
+[sub_resource type="SphereMesh" id="SphereMesh_psx28"]
+radial_segments = 4
+rings = 1
+
+[node name="Resource" type="RigidBody3D"]
+collision_layer = 8
+collision_mask = 5
+script = ExtResource("1_txoar")
+ore_material = SubResource("StandardMaterial3D_psx28")
+ingot_material = SubResource("StandardMaterial3D_cpix3")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_3jy6n")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+cast_shadow = 0
+mesh = SubResource("SphereMesh_cpix3")
+skeleton = NodePath("../..")
+
+[node name="ResourceMesh" type="MeshInstance3D" parent="MeshInstance3D"]
+mesh = SubResource("SphereMesh_psx28")
+skeleton = NodePath("../../..")

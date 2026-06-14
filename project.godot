@@ -1,0 +1,78 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[animation]
+
+compatibility/default_parent_skeleton_in_mesh_instance_3d=true
+
+[application]
+
+config/name="Terratest"
+run/main_scene="res://node_3d.tscn"
+config/features=PackedStringArray("4.6", "Mobile")
+config/icon="res://icon.svg"
+config/specular_occlusion/enabled=true
+config/reflection_atlas/reflection_size=256
+
+[autoload]
+
+G="*res://G.gd"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/terrain_sculpt/plugin.cfg")
+
+[input]
+
+Take={
+"deadzone": 0.2,
+"events": []
+}
+TakeOff={
+"deadzone": 0.2,
+"events": []
+}
+Attack={
+"deadzone": 0.2,
+"events": []
+}
+Movement={
+"deadzone": 0.2,
+"events": []
+}
+Building={
+"deadzone": 0.2,
+"events": []
+}
+
+[input_devices]
+
+pointing/android/enable_long_press_as_right_click=true
+
+[layer_names]
+
+3d_physics/layer_1="world"
+3d_physics/layer_2="blocks"
+3d_physics/layer_3="ResourceNodes"
+3d_physics/layer_4="resources"
+3d_physics/layer_5="machine"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+lights_and_shadows/use_physical_light_units=true
+shading/overrides/force_vertex_shading=true
+textures/default_filters/use_nearest_mipmap_filter=true
+occlusion_culling/occlusion_rays_per_thread=216

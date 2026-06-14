@@ -1,0 +1,12 @@
+[gd_resource type="CylinderMesh" format=3 uid="uid://b373o85jlixj5"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xg62s"]
+shading_mode = 0
+albedo_color = Color(0.52335095, 0.5675754, 0.54926884, 1)
+
+[resource]
+material = SubResource("StandardMaterial3D_xg62s")
+bottom_radius = 0.7
+height = 0.25
+radial_segments = 4
+cap_bottom = false

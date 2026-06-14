@@ -1,0 +1,108 @@
+[gd_scene format=3 uid="uid://mxhnqn0i2m1s"]
+
+[ext_resource type="Script" uid="uid://0ip7gd6i3a7l" path="res://WeaponBlock.gd" id="1_vk1bi"]
+[ext_resource type="Script" uid="uid://b4io8r1rqborh" path="res://bullet.gd" id="2_dk5gl"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6vqwg"]
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_g6b45"]
+top_radius = 0.1
+bottom_radius = 0.1
+height = 0.5
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_vk1bi"]
+radius = 10.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_7vci3"]
+size = Vector3(1, 0.3, 0.3)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vk1bi"]
+shading_mode = 0
+disable_ambient_light = true
+disable_fog = true
+disable_specular_occlusion = true
+albedo_color = Color(0, 1, 0, 1)
+
+[sub_resource type="BoxMesh" id="BoxMesh_dk5gl"]
+material = SubResource("StandardMaterial3D_vk1bi")
+size = Vector3(0.206, 0.222, 0.091)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_vk1bi"]
+size = Vector3(0.2, 0.2, 0.2)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dk5gl"]
+shading_mode = 0
+billboard_mode = 1
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_8iju2"]
+material = SubResource("StandardMaterial3D_dk5gl")
+size = Vector2(0.2, 0.2)
+orientation = 2
+
+[node name="Gun" type="RigidBody3D" unique_id=1682592488 node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
+collision_layer = 2
+collision_mask = 21
+freeze = true
+script = ExtResource("1_vk1bi")
+raycast = NodePath("Pivot/RayCast3D")
+pivot = NodePath("Pivot")
+Area_Range = NodePath("Area3D")
+block = 11
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=2131480656]
+visible = false
+shape = SubResource("BoxShape3D_6vqwg")
+
+[node name="DrillBody" type="MeshInstance3D" parent="." unique_id=940248434]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, -0.15206993, 0.15)
+mesh = SubResource("CylinderMesh_g6b45")
+skeleton = NodePath("../..")
+
+[node name="Area3D" type="Area3D" parent="." unique_id=1754317397]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Area3D" unique_id=1502957600]
+shape = SubResource("SphereShape3D_vk1bi")
+debug_color = Color(11.215399, 0, 13.469126, 1)
+
+[node name="Pivot" type="Node3D" parent="." unique_id=1389589612]
+
+[node name="DrillBody2" type="MeshInstance3D" parent="Pivot" unique_id=1371315270]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0.21221787, 0)
+mesh = SubResource("BoxMesh_7vci3")
+skeleton = NodePath("../../..")
+
+[node name="Marker3D" type="Marker3D" parent="Pivot" unique_id=275422850]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -0.519)
+
+[node name="RayCast3D" type="RayCast3D" parent="Pivot" unique_id=1767409556]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2202931, 0)
+target_position = Vector3(0, 0, -10)
+collision_mask = 2
+debug_shape_custom_color = Color(0, 1, 0, 1)
+debug_shape_thickness = 5
+
+[node name="track_visual" type="MeshInstance3D" parent="Pivot/RayCast3D" unique_id=745219242]
+transform = Transform3D(-3.7855173e-08, 2.1855694e-08, 1, 0.5, 0.8660254, 0, -0.8660254, 0.5, -4.371139e-08, 1.8061959e-09, 0.08211151, -0.35067907)
+mesh = SubResource("BoxMesh_dk5gl")
+skeleton = NodePath("../..")
+
+[node name="Ammo" type="Node3D" parent="." unique_id=1771221976]
+
+[node name="Bullet" type="Area3D" parent="Ammo" unique_id=1876836052]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+top_level = true
+collision_layer = 0
+collision_mask = 3
+script = ExtResource("2_dk5gl")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ammo/Bullet" unique_id=731660699]
+shape = SubResource("BoxShape3D_vk1bi")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=1109012443]
+mesh = SubResource("PlaneMesh_8iju2")
+
+[connection signal="body_entered" from="Area3D" to="." method="_on_area_3d_body_entered"]
+[connection signal="body_exited" from="Area3D" to="." method="_on_area_3d_body_exited"]
+[connection signal="body_entered" from="Ammo/Bullet" to="." method="_on_bullet_body_entered" flags=18]
