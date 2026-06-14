@@ -472,11 +472,20 @@ func _apply_built_results(indices: Array, mat: Material) -> void:
 		if camera and enable_frustum_culling:
 			var frustum := camera.get_frustum()
 			var margin  := frustum_margin * (camera.position * Vector3(1, 0, 1)).length() + chunk_size
+			# A chunk inside an already-active macro group must stay hidden — the merged
+			# macro MeshInstance3D owns rendering for that region. This case happens for
+			# far chunks streamed in AFTER their group collapsed into a macro. Showing the
+			# individual instance here would double-render it AND strand it: _ft_apply's
+			# newly-hidden path skips the .visible write for macro chunks, so once it left
+			# the frustum it could never be hidden again. Track frustum state regardless,
+			# so visibility is restored correctly if the macro later deactivates.
+			var in_active_macro := _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]
 			if _aabb_in_frustum(global_transform * first_aabb, frustum, margin):
-				inst.visible = true
 				_visible_chunks[ci] = true
+				inst.visible = not in_active_macro and not _occluded_chunks.has(ci)
 			else:
 				_frontier[ci] = true
+				inst.visible = false
 		else:
 			inst.visible = false
 
@@ -1167,9 +1176,11 @@ func _ft_apply() -> void:
 	for i in newly_hidden:
 		_visible_chunks.erase(i)
 		_frontier[i] = true
-		if _chunk_macro_idx.size() <= i or not _macro_active[_chunk_macro_idx[i]]:
-			if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
-				_chunk_instances[i].visible = false
+		# Always hide — safe in both individual and macro modes (mirrors the sync
+		# path in _update_chunk_visibility). Guarding this behind the macro check
+		# could strand a chunk visible if it was ever shown while its macro was active.
+		if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
+			_chunk_instances[i].visible = false
 		for nb in _get_neighbors(i):
 			if not _visible_chunks.has(nb):
 				var has_vis := false
