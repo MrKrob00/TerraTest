@@ -479,7 +479,7 @@ func _apply_built_results(indices: Array, mat: Material) -> void:
 			# newly-hidden path skips the .visible write for macro chunks, so once it left
 			# the frustum it could never be hidden again. Track frustum state regardless,
 			# so visibility is restored correctly if the macro later deactivates.
-			var in_active_macro := _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]
+			var in_active_macro: bool = _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]
 			if _aabb_in_frustum(global_transform * first_aabb, frustum, margin):
 				_visible_chunks[ci] = true
 				inst.visible = not in_active_macro and not _occluded_chunks.has(ci)
