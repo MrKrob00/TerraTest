@@ -29,12 +29,11 @@ extends StaticBody3D
 
 @export var chunk_size: int = 16
 
-## Depth of the vertical "skirt" wall dropped below every chunk border. The wall
-## sits under the terrain and is normally invisible, but it backs any residual
-## T-junction gap between neighbouring chunks at different LODs, so seams never
-## show through to the void below — independent of streaming/stitching timing.
-## Set to 0 to disable. Increase if cracks still show through on very steep terrain.
-@export_range(0.0, 64.0, 1.0) var skirt_depth: float = 16.0
+## Optional fallback: depth of a vertical "skirt" wall dropped below every chunk
+## border to hide T-junction gaps at LOD seams. DISABLED by default (0) because
+## streamed chunks are now seam-stitched on arrival, which costs no extra geometry.
+## Enable (e.g. 16) only if cracks still show through on very steep terrain.
+@export_range(0.0, 64.0, 1.0) var skirt_depth: float = 0.0
 
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
@@ -849,6 +848,20 @@ func _stream_apply_batch() -> void:
 		if macro_mesh:
 			_macro_instances[mi].mesh = macro_mesh
 			_macro_instances[mi].set_surface_override_material(0, mat)
+
+	# Seam-stitch each freshly-streamed chunk against its already-present neighbours.
+	# The stream queue is distance-sorted only once at startup, so as the player moves
+	# a fine (close) chunk can arrive AFTER its coarse (far) neighbour has already
+	# settled at a higher LOD. _update_lod stitches only on LOD transitions, so it would
+	# miss this fine chunk (it never changes LOD), leaving a permanent T-junction crack.
+	# _apply_lod_mesh snaps it now toward any coarser neighbour; it's a no-op otherwise
+	# and adds no geometry.
+	for ci in _stream_batch:
+		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
+			continue
+		if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
+			continue
+		_apply_lod_mesh(ci, mat)
 
 	if _stream_queue.is_empty():
 		_is_streaming = false
