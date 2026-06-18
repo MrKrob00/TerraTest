@@ -62,6 +62,29 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 # 4×4 = 16 chunks → 1 draw call instead of 16 (+ saves ~16 shadow passes).
 const MACRO_SIZE: int = 4
 
+# ── Heightmap data source ─────────────────────────────────────────────────────
+## Master heightmap (R32F Image saved as .res), the single source of truth for both
+## the visual chunks and the streaming collision. Bake it from the editor terrain via
+## the plugin's "Bake heightmap → image" button. If missing, falls back at runtime to
+## the embedded CollisionShape3D HeightMapShape3D data (so nothing breaks pre-bake).
+@export_file("*.res", "*.exr", "*.png") var heightmap_path: String = "res://terrain_height.res"
+
+# ── Streaming collision settings ──────────────────────────────────────────────
+## Master switch. OFF (default) = current behaviour: the embedded HeightMapShape3D is
+## both the data and the collision (whole map). ON = data comes from the R32F image and
+## collision becomes a small window that follows the player — required for huge maps.
+## NOTE while ON: only terrain inside the window has collision, so bodies far from the
+## active vehicle (other parked vehicles, spread-out objects) sit on no ground. Size the
+## window to cover your play area, or keep OFF until the map is genuinely large.
+@export var enable_streaming_collision: bool = false
+## Side length (in heightmap cells) of the small HeightMapShape3D that slides under
+## the active vehicle. Physics cost is fixed at this size regardless of map size, so
+## the map can grow arbitrarily without the collision body becoming "death" to load.
+@export_range(32, 512, 16) var collision_window: int = 128
+## Re-centre the collision window once the focus point has drifted this many cells
+## from the window's last centre. Larger = fewer refills, smaller = tighter follow.
+@export_range(8, 256, 8) var collision_update_margin: int = 32
+
 @onready var collision     = $CollisionShape3D
 @onready var mesh_instance = $MeshInstance3D
 
@@ -88,6 +111,12 @@ var _visible_chunks: Dictionary = {}
 var _frontier:       Dictionary = {}
 var frustum_old
 var _lod_timer:     float = 0.0
+
+# ── Streaming collision runtime state ─────────────────────────────────────────
+var _col_size:  int  = 0      # actual side length (clamped to map size)
+var _col_ox:    int  = 0      # window origin in master-grid cells (X)
+var _col_oz:    int  = 0      # window origin in master-grid cells (Z)
+var _col_built: bool = false
 
 # ── Occlusion culling runtime state ──────────────────────────────────────────
 const OCCLUSION_UPDATE_INTERVAL: float = 0.20   # seconds between full occlusion passes
@@ -140,10 +169,12 @@ var _ed_cx:    int   = 0
 var _mat_lod0:     Material = null  # lod_grass_enabled = 1.0  (LOD 0, close)
 var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
 
-# ─────────────────────────────────────────────────────────────────────────────
-@onready var w  = collision.shape.map_width
-@onready var d  = collision.shape.map_depth
-@onready var md = collision.shape.map_data
+# ── Heightmap (the data the whole system reads) ───────────────────────────────
+# Filled by _load_heightmap() in _ready(): from the R32F image at runtime, or from
+# the embedded HeightMapShape3D (editor, or as a pre-bake fallback at runtime).
+var w:  int                = 0
+var d:  int                = 0
+var md: PackedFloat32Array = PackedFloat32Array()
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Ready
@@ -151,16 +182,111 @@ var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
+		# Editor keeps using the embedded HeightMapShape3D as its data + collision.
+		w  = collision.shape.map_width
+		d  = collision.shape.map_depth
+		md = collision.shape.map_data
 		update()
 		return
 	mesh_instance.visible = false
 	await get_tree().process_frame
-	_chunks_x = ceili(float(collision.shape.map_width - 1) / chunk_size)
 	if not camera:
 		camera = _find_game_camera()
+	if enable_streaming_collision:
+		_load_heightmap()                   # data from the R32F image (fallback: shape)
+		_setup_streaming_collision()        # replace the giant shape with a sliding window
+	else:
+		# Current behaviour: the embedded HeightMapShape3D is both data and collision.
+		w  = collision.shape.map_width
+		d  = collision.shape.map_depth
+		md = collision.shape.map_data
+	_chunks_x = ceili(float(w - 1) / chunk_size)
 	await _build_chunks_from_map_data()
 	if camera:
 		_full_scan()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Heightmap loading + streaming collision
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Loads the master heightmap into w / d / md. Prefers the R32F image (scales to huge
+# maps); falls back to the embedded HeightMapShape3D so the game still runs pre-bake.
+func _load_heightmap() -> void:
+	var img := _load_heightmap_image()
+	if img != null:
+		w  = img.get_width()
+		d  = img.get_height()
+		if img.get_format() != Image.FORMAT_RF:
+			img.convert(Image.FORMAT_RF)
+		md = img.get_data().to_float32_array()
+		return
+	# Fallback: read the heights out of the still-attached HeightMapShape3D.
+	push_warning("map.gd: heightmap image not found at '%s' — using embedded CollisionShape3D data. Run 'Bake heightmap → image' in the Terraid3D dock for big-map streaming." % heightmap_path)
+	if collision.shape is HeightMapShape3D:
+		w  = collision.shape.map_width
+		d  = collision.shape.map_depth
+		md = collision.shape.map_data
+
+func _load_heightmap_image() -> Image:
+	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
+		return null
+	var res = load(heightmap_path)
+	if res is Image:
+		return res as Image
+	if res is Texture2D:
+		return (res as Texture2D).get_image()
+	return null
+
+# Swaps the map's CollisionShape3D to a small HeightMapShape3D that follows the player.
+# Physics cost becomes fixed (collision_window²) no matter how large the map is.
+func _setup_streaming_collision() -> void:
+	if md.is_empty() or w <= 0 or d <= 0:
+		return
+	_col_size = mini(collision_window, mini(w, d))
+	var shape := HeightMapShape3D.new()
+	shape.map_width = _col_size
+	shape.map_depth = _col_size
+	collision.shape = shape
+	collision.top_level = false          # we drive its local position relative to the map
+	_col_built = false
+	_update_collision_window()           # initial fill around the start position
+
+# Re-centres / refills the collision window when the focus point (active vehicle,
+# approximated by the camera) has drifted past collision_update_margin cells.
+func _update_collision_window() -> void:
+	if _col_size <= 0 or md.is_empty():
+		return
+	var focus: Vector3 = camera.global_position if camera else global_position
+	var local := global_transform.affine_inverse() * focus
+	# Inverse of the vertex formula x = lx + w*0.5 - 0.5  (see _compute_chunk_data).
+	var fx := int(round(local.x + float(w) * 0.5 - 0.5))
+	var fz := int(round(local.z + float(d) * 0.5 - 0.5))
+	var ox := clampi(fx - _col_size / 2, 0, maxi(0, w - _col_size))
+	var oz := clampi(fz - _col_size / 2, 0, maxi(0, d - _col_size))
+	if _col_built and absi(ox - _col_ox) < collision_update_margin \
+				 and absi(oz - _col_oz) < collision_update_margin:
+		return
+	_fill_collision_window(ox, oz)
+
+func _fill_collision_window(ox: int, oz: int) -> void:
+	var W := _col_size
+	var data := PackedFloat32Array()
+	data.resize(W * W)
+	for j in W:
+		var srow := (oz + j) * w + ox
+		var drow := j * W
+		for i in W:
+			data[drow + i] = md[srow + i]
+	var shape: HeightMapShape3D = collision.shape
+	shape.map_data = data
+	# Offset the node so window cell (i,j) lands on the same local position as the
+	# visual mesh's master cell (ox+i, oz+j):  pos.x = (ox+i) - w/2 + 0.5, and the
+	# shape centres cell i at i - (W-1)/2  →  node.x = ox + (W - w) * 0.5.
+	collision.position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(W - d) * 0.5)
+	_col_ox = ox
+	_col_oz = oz
+	_col_built = true
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -171,9 +297,13 @@ func _ready() -> void:
 func update() -> void:
 	if not is_node_ready() or collision == null or mesh_instance == null:
 		return
-	# @onready кешує map_data один раз при _ready(). Плагін змінює shape.map_data
-	# через undo/redo вже після цього, тому кеш застарілий — оновлюємо примусово.
-	md = collision.shape.map_data
+	# Editor only: the plugin edits the HeightMapShape3D via undo/redo, so re-read it.
+	# At runtime md comes from the R32F image and collision.shape is the small streaming
+	# window — never overwrite md from it here.
+	if Engine.is_editor_hint() and collision.shape is HeightMapShape3D:
+		w  = collision.shape.map_width
+		d  = collision.shape.map_depth
+		md = collision.shape.map_data
 	if md.size() == 0:
 		return
 	if Engine.is_editor_hint():
@@ -187,7 +317,8 @@ func update_chunks(chunk_indices: Array) -> void:
 	if _ft_group_id >= 0:
 		WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
 		_ft_group_id = -1
-	md = collision.shape.map_data  # Refresh stale @onready cache (same reason as update())
+	if Engine.is_editor_hint() and collision.shape is HeightMapShape3D:
+		md = collision.shape.map_data  # editor: re-read the sculpted shape data
 	if Engine.is_editor_hint():
 		if _ed_cache.is_empty():
 			update()
@@ -252,9 +383,9 @@ func update_chunks(chunk_indices: Array) -> void:
 func get_chunk_info() -> Dictionary:
 	return {
 		"chunk_size": chunk_size,
-		"chunks_x":   ceili(float(collision.shape.map_width  - 1) / chunk_size),
-		"map_width":  collision.shape.map_width,
-		"map_depth":  collision.shape.map_depth,
+		"chunks_x":   ceili(float(w - 1) / chunk_size),
+		"map_width":  w,
+		"map_depth":  d,
 	}
 
 
@@ -1069,6 +1200,10 @@ func _process(delta: float) -> void:
 	if not camera:
 		camera = _find_game_camera()
 		return
+
+	# ── Streaming collision: keep the small physics window under the player ───
+	if _col_size > 0:
+		_update_collision_window()
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
