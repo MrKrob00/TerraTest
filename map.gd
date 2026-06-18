@@ -42,6 +42,11 @@ extends StaticBody3D
 @export var lod_distance_1: float = 80.0
 @export var lod_distance_2: float = 160.0
 
+## DEBUG ONLY: re-stitch EVERY chunk on every LOD pass, ignoring the change-detection
+## signature. Costly — use only to diagnose seam holes. If holes vanish with this ON,
+## the bug is in change detection; if they persist, it's the snapping geometry itself.
+@export var debug_force_restitch: bool = false
+
 # Vertex sampling step per LOD level (index = LOD level)
 const LOD_STEPS: Array[int] = [1, 2, 4, 8]
 const LOD_COUNT: int        = 4
@@ -553,7 +558,7 @@ func _update_lod() -> void:
 			continue
 		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
 			continue   # individual mesh is hidden; the macro instance renders this region
-		if _chunk_stitch_sig[i] != _stitch_signature(i):
+		if debug_force_restitch or _chunk_stitch_sig[i] != _stitch_signature(i):
 			_apply_lod_mesh(i, mat)
 
 
