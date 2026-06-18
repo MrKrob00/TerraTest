@@ -42,11 +42,6 @@ extends StaticBody3D
 @export var lod_distance_1: float = 80.0
 @export var lod_distance_2: float = 160.0
 
-## DEBUG ONLY: re-stitch EVERY chunk on every LOD pass, ignoring the change-detection
-## signature. Costly — use only to diagnose seam holes. If holes vanish with this ON,
-## the bug is in change detection; if they persist, it's the snapping geometry itself.
-@export var debug_force_restitch: bool = false
-
 # Vertex sampling step per LOD level (index = LOD level)
 const LOD_STEPS: Array[int] = [1, 2, 4, 8]
 const LOD_COUNT: int        = 4
@@ -294,6 +289,7 @@ func _apply_editor_cache() -> void:
 	var all_idx     := PackedInt32Array()
 	var all_normals := PackedVector3Array()
 	var all_uvs     := PackedVector2Array()
+	var all_colors  := PackedColorArray()
 	var v_offset    := 0
 
 	for arr in _ed_cache:
@@ -303,11 +299,17 @@ func _apply_editor_cache() -> void:
 		var idxs    := arr[Mesh.ARRAY_INDEX]  as PackedInt32Array
 		var normals := arr[Mesh.ARRAY_NORMAL] as PackedVector3Array
 		var uvs     := arr[Mesh.ARRAY_TEX_UV] as PackedVector2Array
+		var cols    := arr[Mesh.ARRAY_COLOR]  as PackedColorArray
 		if verts == null or verts.is_empty():
 			continue
 		all_verts.append_array(verts)
 		all_normals.append_array(normals)
 		all_uvs.append_array(uvs)
+		if cols != null and cols.size() == verts.size():
+			all_colors.append_array(cols)
+		else:
+			for _i in verts.size():
+				all_colors.append(Color(1.0, 1.0, 1.0, 1.0))
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -321,6 +323,7 @@ func _apply_editor_cache() -> void:
 	merged[Mesh.ARRAY_INDEX]  = all_idx
 	merged[Mesh.ARRAY_NORMAL] = all_normals
 	merged[Mesh.ARRAY_TEX_UV] = all_uvs
+	merged[Mesh.ARRAY_COLOR]  = all_colors
 
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, merged)
@@ -558,7 +561,7 @@ func _update_lod() -> void:
 			continue
 		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
 			continue   # individual mesh is hidden; the macro instance renders this region
-		if debug_force_restitch or _chunk_stitch_sig[i] != _stitch_signature(i):
+		if _chunk_stitch_sig[i] != _stitch_signature(i):
 			_apply_lod_mesh(i, mat)
 
 
@@ -737,6 +740,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 	var all_idx     := PackedInt32Array()
 	var all_normals := PackedVector3Array()
 	var all_uvs     := PackedVector2Array()
+	var all_colors  := PackedColorArray()
 	var v_offset    := 0
 
 	for ci in chunk_indices:
@@ -752,11 +756,18 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 		var idxs    := arrays[Mesh.ARRAY_INDEX]  as PackedInt32Array
 		var norms   := arrays[Mesh.ARRAY_NORMAL] as PackedVector3Array
 		var uvs     := arrays[Mesh.ARRAY_TEX_UV] as PackedVector2Array
+		var cols    := arrays[Mesh.ARRAY_COLOR]  as PackedColorArray
 		if verts == null or verts.is_empty():
 			continue
 		all_verts.append_array(verts)
 		all_normals.append_array(norms)
 		all_uvs.append_array(uvs)
+		if cols != null and cols.size() == verts.size():
+			all_colors.append_array(cols)
+		else:
+			# Source lacks colours — treat as all-interior so grass behaves as before.
+			for _i in verts.size():
+				all_colors.append(Color(1.0, 1.0, 1.0, 1.0))
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -770,6 +781,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 	arr[Mesh.ARRAY_INDEX]  = all_idx
 	arr[Mesh.ARRAY_NORMAL] = all_normals
 	arr[Mesh.ARRAY_TEX_UV] = all_uvs
+	arr[Mesh.ARRAY_COLOR]  = all_colors
 
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
@@ -905,6 +917,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var indices   = PackedInt32Array()
 	var normals   = PackedVector3Array()
 	var uvs       = PackedVector2Array()
+	var colors    = PackedColorArray()   # .r = grass mask: 0 on chunk borders, 1 inside
 	var local_idx = {}
 	var idx       = 0
 	var aabb_min  = Vector3(INF,  INF,  INF)
@@ -964,6 +977,13 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			aabb_max = aabb_max.max(pos)
 			uvs.append(Vector2(float(x) / w, float(z) / d))
 
+			# Mark chunk-border vertices so the shader skips grass displacement there.
+			# The base mesh is seam-stitched, but the grass vertex offset (along the
+			# per-LOD normal, plus extra fine-edge verts) would push these off the seam
+			# and re-open the crack. Keeping borders flat makes seams match at any LOD.
+			var on_border := (z == z0 or z == z1 or x == x0 or x == x1)
+			colors.append(Color(0.0, 0.0, 0.0, 1.0) if on_border else Color(1.0, 1.0, 1.0, 1.0))
+
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
 			var hl = md[z * w + maxi(x - sz, 0)]
@@ -998,6 +1018,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	arr[Mesh.ARRAY_INDEX]  = indices
 	arr[Mesh.ARRAY_NORMAL] = normals
 	arr[Mesh.ARRAY_TEX_UV] = uvs
+	arr[Mesh.ARRAY_COLOR]  = colors
 	return [arr, AABB(aabb_min, aabb_max - aabb_min)]
 
 
