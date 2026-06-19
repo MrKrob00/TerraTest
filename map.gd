@@ -325,6 +325,15 @@ func update() -> void:
 	if Engine.is_editor_hint():
 		_rebuild_editor_full()
 
+# Sets the whole heightmap and rebuilds. Used by the plugin's undo/redo for terrain
+# generation: routing both the do and the undo through this NODE method keeps the
+# action in a single EditorUndoRedoManager history, avoiding the "history mismatch"
+# you get when one action touches both the scene node and the heightmap resource.
+func apply_heightmap(data: PackedFloat32Array) -> void:
+	if collision != null and collision.shape is HeightMapShape3D:
+		collision.shape.map_data = data
+	update()
+
 # Partial update — only rebuild the listed chunk indices.
 # In the editor this is the hot path on every sculpt stroke.
 func update_chunks(chunk_indices: Array) -> void:
