@@ -52,13 +52,11 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 # ── Editor view settings ──────────────────────────────────────────────────────
 ## OFF (default): the editor bakes ONE full-resolution merged mesh for the whole map
 ## (current behaviour — fine for small maps, heavy for huge ones).
-## ON: the editor only builds + shows a bubble of chunks around the editor camera, so
-## a 10x map stays light to edit. You sculpt where you look, so the bubble is full-res
-## under the cursor. Reads the editor's existing data (the embedded shape) — no bake
-## required. The bubble follows the camera while the terrain node is selected.
-@export var editor_streamed: bool = false
-## Radius (world units) of the editor chunk bubble when editor_streamed is ON.
-@export_range(50.0, 4000.0, 25.0) var editor_radius: float = 300.0
+## ON: the editor builds the WHOLE map but with LOD — distant chunks low-poly, near
+## chunks full-res — using the same lod_distance_* thresholds as the game. The merged
+## mesh is only rebuilt after the editor camera STOPS moving (no per-move lag), and on
+## sculpt. Seams are snapped just like at runtime, so no LOD cracks.
+@export var editor_lod: bool = false
 
 # ── Streaming settings ────────────────────────────────────────────────────────
 ## Chunks within this XZ radius (world units) are meshed immediately at startup.
@@ -172,9 +170,12 @@ var _macro_active:     Array[bool]           = []
 var _ed_cache: Array = []
 var _ed_cx:    int   = 0
 var _ed_cz:    int   = 0
-# Editor camera (fed by plugin.gd) and last position the bubble was rebuilt at.
-var _editor_cam:     Camera3D = null
-var _editor_cam_pos: Vector3  = Vector3(INF, INF, INF)
+var _ed_lod:   Array[int] = []                 # per-chunk LOD level (editor)
+# Editor camera (fed by plugin.gd) + camera-settle tracking for lag-free LOD rebuilds.
+var _editor_cam:        Camera3D = null
+var _editor_track_pos:  Vector3  = Vector3(INF, INF, INF)
+var _editor_build_pos:  Vector3  = Vector3(INF, INF, INF)
+var _editor_settle_t:   float    = 0.0
 
 # ── LOD material cache ────────────────────────────────────────────────────────
 # Two static material variants replace per-instance shader parameters.
@@ -341,7 +342,18 @@ func update_chunks(chunk_indices: Array) -> void:
 		for ci in chunk_indices:
 			if ci < 0 or ci >= _ed_cache.size():
 				continue
-			_ed_cache[ci] = _chunk_surface_arrays(ci % _ed_cx, ci / _ed_cx)
+			var cx := ci % _ed_cx
+			var cz := ci / _ed_cx
+			if editor_lod:
+				# Rebuild the dirty chunk plus its 4 neighbours so seam snapping stays valid.
+				_ed_cache[ci] = _chunk_surface_arrays_lod(cx, cz)
+				for off in [[0,-1],[0,1],[-1,0],[1,0]]:
+					var nx := cx + off[0]
+					var nz := cz + off[1]
+					if nx >= 0 and nx < _ed_cx and nz >= 0 and nz < _ed_cz:
+						_ed_cache[nz * _ed_cx + nx] = _chunk_surface_arrays_lod(nx, nz)
+			else:
+				_ed_cache[ci] = _chunk_surface_arrays(cx, cz)
 		_apply_editor_cache()
 		return
 
@@ -410,16 +422,14 @@ func get_chunk_info() -> Dictionary:
 
 func _rebuild_editor_full() -> void:
 	_editor_ensure_cache_sized()
-	if editor_streamed:
-		# Only build + show a bubble of chunks around the editor camera.
-		_editor_merge_visible()
+	if editor_lod:
+		_editor_rebuild_lod()
 		return
 	for cz in _ed_cz:
 		for cx in _ed_cx:
 			_ed_cache[cz * _ed_cx + cx] = _chunk_surface_arrays(cx, cz)
 	_apply_editor_cache()
 
-# Allocates _ed_cache to the full chunk grid (entries built lazily in streamed mode).
 func _editor_ensure_cache_sized() -> void:
 	_ed_cx = ceili(float(w - 1) / chunk_size)
 	_ed_cz = ceili(float(d - 1) / chunk_size)
@@ -427,41 +437,83 @@ func _editor_ensure_cache_sized() -> void:
 	if _ed_cache.size() != total:
 		_ed_cache.clear()
 		_ed_cache.resize(total)
+	if _ed_lod.size() != total:
+		_ed_lod.resize(total)
 
-# Fed by plugin.gd on every 3D-viewport input event so the editor bubble can follow
-# the editor camera. Rebuilds the bubble only once the camera has moved noticeably.
+# Plugin feeds the editor camera here; the actual LOD rebuild is driven by _process so
+# it can wait for the camera to settle (no rebuild churn while you fly around).
 func set_editor_camera(c: Camera3D) -> void:
 	_editor_cam = c
-	if not Engine.is_editor_hint() or not editor_streamed or c == null:
-		return
-	if _editor_cam_pos.distance_to(c.global_position) < editor_radius * 0.2:
-		return
-	_editor_cam_pos = c.global_position
-	_editor_merge_visible()
 
-# Builds chunks within editor_radius of the editor camera, drops the rest, and merges
-# the bubble into the single editor mesh. Keeps a huge map cheap to open and sculpt.
-func _editor_merge_visible() -> void:
-	if _ed_cache.is_empty() or _ed_cx <= 0:
+# Editor-only (called from _process): rebuild the LOD mesh once the camera has been
+# still for ~0.35 s and moved enough since the last build. Nothing rebuilds while the
+# camera moves, so navigating stays smooth — the lighter LOD merge runs only on settle.
+func _editor_lod_tick(delta: float) -> void:
+	if _editor_cam == null or _ed_cx <= 0:
 		return
+	var pos := _editor_cam.global_position
+	if pos.distance_to(_editor_track_pos) > 2.0:
+		_editor_track_pos = pos
+		_editor_settle_t  = 0.0
+		return
+	_editor_settle_t += delta
+	if _editor_settle_t >= 0.35 \
+			and _editor_track_pos.distance_to(_editor_build_pos) > float(chunk_size) * 0.5:
+		_editor_rebuild_lod()
+
+# Picks each chunk's LOD by its XZ distance to the editor camera (same thresholds as
+# the game), then rebuilds the whole merged editor mesh at those LODs with seam snapping.
+func _editor_rebuild_lod() -> void:
+	_editor_ensure_cache_sized()
 	var cam_pos: Vector3 = _editor_cam.global_position if _editor_cam else global_position
 	var cam_local := global_transform.affine_inverse() * cam_pos
-	var r2 := editor_radius * editor_radius
 	for cz in _ed_cz:
 		for cx in _ed_cx:
-			var ci := cz * _ed_cx + cx
 			var ccx := (cx + 0.5) * chunk_size - w * 0.5
 			var ccz := (cz + 0.5) * chunk_size - d * 0.5
 			var dx := ccx - cam_local.x
 			var dz := ccz - cam_local.z
-			if dx * dx + dz * dz <= r2:
-				if _ed_cache[ci] == null:
-					_ed_cache[ci] = _chunk_surface_arrays(cx, cz)
-			else:
-				_ed_cache[ci] = null   # outside the bubble — excluded from the merge
+			var dist := sqrt(dx * dx + dz * dz)
+			var lod := 0
+			if dist >= lod_distance_2:   lod = 3
+			elif dist >= lod_distance_1: lod = 2
+			elif dist >= lod_distance_0: lod = 1
+			_ed_lod[cz * _ed_cx + cx] = lod
+	for cz in _ed_cz:
+		for cx in _ed_cx:
+			_ed_cache[cz * _ed_cx + cx] = _chunk_surface_arrays_lod(cx, cz)
 	_apply_editor_cache()
+	_editor_build_pos = cam_pos
 
-# Editor always uses full resolution (step=1) so sculpting looks correct.
+# Editor LOD step of the neighbour chunk, or 1 at the map edge (so no snap is forced).
+func _ed_neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
+	var nx := cx + dcx
+	var nz := cz + dcz
+	if nx < 0 or nx >= _ed_cx or nz < 0 or nz >= _ed_cz:
+		return 1
+	return LOD_STEPS[_ed_lod[nz * _ed_cx + nx]]
+
+# Builds chunk (cx,cz)'s surface arrays at its editor LOD, snapping borders toward any
+# coarser neighbour (same anti-crack stitching as runtime).
+func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
+	var ci := cz * _ed_cx + cx
+	var step := LOD_STEPS[_ed_lod[ci]]
+	var x0 := cx * chunk_size
+	var z0 := cz * chunk_size
+	var x1 := mini(x0 + chunk_size, w - 1)
+	var z1 := mini(z0 + chunk_size, d - 1)
+	var ns := _ed_neighbour_step(cx, cz,  0, -1)
+	var ss := _ed_neighbour_step(cx, cz,  0,  1)
+	var ws := _ed_neighbour_step(cx, cz, -1,  0)
+	var es := _ed_neighbour_step(cx, cz,  1,  0)
+	var res := _compute_chunk_data(x0, z0, x1, z1, step,
+			ns if ns > step else 0,
+			ss if ss > step else 0,
+			ws if ws > step else 0,
+			es if es > step else 0)
+	return [] if res.is_empty() else res[0]
+
+# Editor full-res chunk arrays (used when editor_lod is OFF).
 func _chunk_surface_arrays(cx: int, cz: int) -> Array:
 	var x0 = cx * chunk_size
 	var z0 = cz * chunk_size
@@ -1255,6 +1307,8 @@ func _find_game_camera() -> Camera3D:
 
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
+		if editor_lod:
+			_editor_lod_tick(delta)
 		return
 	if not camera:
 		camera = _find_game_camera()
