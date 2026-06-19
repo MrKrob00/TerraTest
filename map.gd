@@ -387,8 +387,8 @@ func _sample_height_local(lx: float, lz: float) -> float:
 	var z1 := mini(z0 + 1, d - 1)
 	var fx := clampf((lx + float(w) * 0.5 - 0.5) - float(x0), 0.0, 1.0)
 	var fz := clampf((lz + float(d) * 0.5 - 0.5) - float(z0), 0.0, 1.0)
-	var h0 := lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
-	var h1 := lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
+	var h0 = lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
+	var h1 = lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
 	return lerp(h0, h1, fz)
 
 # Ray-march the heightmap; returns the world hit position or null. Lets the editor
