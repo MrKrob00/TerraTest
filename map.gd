@@ -348,8 +348,8 @@ func update_chunks(chunk_indices: Array) -> void:
 				# Rebuild the dirty chunk plus its 4 neighbours so seam snapping stays valid.
 				_ed_cache[ci] = _chunk_surface_arrays_lod(cx, cz)
 				for off in [[0,-1],[0,1],[-1,0],[1,0]]:
-					var nx := cx + off[0]
-					var nz := cz + off[1]
+					var nx: int = cx + off[0]
+					var nz: int = cz + off[1]
 					if nx >= 0 and nx < _ed_cx and nz >= 0 and nz < _ed_cz:
 						_ed_cache[nz * _ed_cx + nx] = _chunk_surface_arrays_lod(nx, nz)
 			else:
