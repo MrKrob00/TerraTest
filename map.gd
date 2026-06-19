@@ -78,6 +78,14 @@ const MACRO_SIZE: int = 4
 ## the embedded CollisionShape3D HeightMapShape3D data (so nothing breaks pre-bake).
 @export_file("*.res", "*.exr", "*.png") var heightmap_path: String = "res://terrain_height.res"
 
+## Master decoupling switch. ON = the R32F image is the ONLY heightmap source, in the
+## editor AND at runtime; the giant HeightMapShape3D is never used for data, the editor
+## sculpts by ray-marching the heightmap (no physics needed), and runtime always uses
+## the streaming collision window. This is what lets the map grow huge — detach the big
+## terrain.res/terrain_mesh.res from the scene (plugin button) and nothing heavy loads.
+## OFF (default) = previous behaviour (embedded shape is data + collision).
+@export var use_image_data: bool = false
+
 # ── Streaming collision settings ──────────────────────────────────────────────
 ## Master switch. OFF (default) = current behaviour: the embedded HeightMapShape3D is
 ## both the data and the collision (whole map). ON = data comes from the R32F image and
@@ -198,21 +206,23 @@ var md: PackedFloat32Array = PackedFloat32Array()
 
 func _ready() -> void:
 	if Engine.is_editor_hint():
-		# Editor keeps using the embedded HeightMapShape3D as its data + collision.
-		w  = collision.shape.map_width
-		d  = collision.shape.map_depth
-		md = collision.shape.map_data
+		if use_image_data and _load_heightmap_image() != null:
+			_load_heightmap()                   # editor data from the R32F image
+		elif collision.shape is HeightMapShape3D:
+			w  = collision.shape.map_width      # legacy: data from the embedded shape
+			d  = collision.shape.map_depth
+			md = collision.shape.map_data
 		update()
 		return
 	mesh_instance.visible = false
 	await get_tree().process_frame
 	if not camera:
 		camera = _find_game_camera()
-	if enable_streaming_collision:
+	if use_image_data or enable_streaming_collision:
 		_load_heightmap()                   # data from the R32F image (fallback: shape)
-		_setup_streaming_collision()        # replace the giant shape with a sliding window
+		_setup_streaming_collision()        # small sliding collision window
 	else:
-		# Current behaviour: the embedded HeightMapShape3D is both data and collision.
+		# Legacy: the embedded HeightMapShape3D is both data and collision.
 		w  = collision.shape.map_width
 		d  = collision.shape.map_depth
 		md = collision.shape.map_data
@@ -316,7 +326,7 @@ func update() -> void:
 	# Editor only: the plugin edits the HeightMapShape3D via undo/redo, so re-read it.
 	# At runtime md comes from the R32F image and collision.shape is the small streaming
 	# window — never overwrite md from it here.
-	if Engine.is_editor_hint() and collision.shape is HeightMapShape3D:
+	if Engine.is_editor_hint() and not use_image_data and collision.shape is HeightMapShape3D:
 		w  = collision.shape.map_width
 		d  = collision.shape.map_depth
 		md = collision.shape.map_data
@@ -330,9 +340,133 @@ func update() -> void:
 # action in a single EditorUndoRedoManager history, avoiding the "history mismatch"
 # you get when one action touches both the scene node and the heightmap resource.
 func apply_heightmap(data: PackedFloat32Array) -> void:
+	if use_image_data:
+		md = data                          # image mode: md is the source of truth
+		if not Engine.is_editor_hint() and _col_size > 0:
+			_col_built = false             # force the streaming collision to refill
+			_update_collision_window()
+		update()
+		return
 	if collision != null and collision.shape is HeightMapShape3D:
 		collision.shape.map_data = data
 	update()
+
+
+# ── Image-data heightmap API (editor sculpt without a physics shape) ───────────
+
+func is_image_mode() -> bool:
+	return use_image_data and not md.is_empty()
+
+func get_heights() -> PackedFloat32Array:
+	return md
+
+func get_dims() -> Vector2i:
+	return Vector2i(w, d)
+
+# Replaces the whole heightmap AND its dimensions (used by 'generate' to make a bigger
+# map). Editor-side: rebuilds the LOD preview at the new size. The plugin saves md to
+# the R32F image afterwards; runtime then loads that image — no giant shape anywhere.
+func set_heightmap(data: PackedFloat32Array, width: int, depth: int) -> void:
+	if width <= 0 or depth <= 0 or data.size() != width * depth:
+		push_error("map.gd: set_heightmap got %d values for %dx%d" % [data.size(), width, depth])
+		return
+	md = data
+	w  = width
+	d  = depth
+	_chunks_x = ceili(float(w - 1) / chunk_size)
+	if Engine.is_editor_hint():
+		_rebuild_editor_full()
+
+# Bilinear local-space height at local XZ. Clamps to the edge outside the map.
+func _sample_height_local(lx: float, lz: float) -> float:
+	if md.is_empty() or w <= 0:
+		return 0.0
+	var x0 := clampi(int(floor(lx + float(w) * 0.5 - 0.5)), 0, w - 1)
+	var z0 := clampi(int(floor(lz + float(d) * 0.5 - 0.5)), 0, d - 1)
+	var x1 := mini(x0 + 1, w - 1)
+	var z1 := mini(z0 + 1, d - 1)
+	var fx := clampf((lx + float(w) * 0.5 - 0.5) - float(x0), 0.0, 1.0)
+	var fz := clampf((lz + float(d) * 0.5 - 0.5) - float(z0), 0.0, 1.0)
+	var h0 := lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
+	var h1 := lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
+	return lerp(h0, h1, fz)
+
+# Ray-march the heightmap; returns the world hit position or null. Lets the editor
+# sculpt with NO physics collision, so the giant HeightMapShape3D is never needed.
+func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
+	if md.is_empty() or w <= 0:
+		return null
+	var inv := global_transform.affine_inverse()
+	var o := inv * from_world
+	var dir := (inv.basis * dir_world).normalized()
+	var max_t := float(maxi(w, d)) * 2.0
+	var t := 0.0
+	var prev_gap := o.y - _sample_height_local(o.x, o.z)
+	while t < max_t:
+		t += 1.0
+		var p := o + dir * t
+		var gap := p.y - _sample_height_local(p.x, p.z)
+		if gap <= 0.0 and prev_gap > 0.0:
+			var lo := t - 1.0
+			var hi := t
+			for _i in 10:
+				var mid := (lo + hi) * 0.5
+				var pm := o + dir * mid
+				if pm.y - _sample_height_local(pm.x, pm.z) > 0.0:
+					lo = mid
+				else:
+					hi = mid
+			var ph := o + dir * hi
+			return global_transform * Vector3(ph.x, _sample_height_local(ph.x, ph.z), ph.z)
+		prev_gap = gap
+	return null
+
+# In-place brush on md around a world centre; returns the editor chunk indices touched.
+# mode: 1 = raise, -1 = lower, 0 = flatten.
+func apply_brush(center_world: Vector3, radius: float, strength: float, mode: int) -> PackedInt32Array:
+	var dirty := PackedInt32Array()
+	if md.is_empty() or w <= 0:
+		return dirty
+	var local := global_transform.affine_inverse() * center_world
+	var cx := int(round(local.x + float(w) * 0.5 - 0.5))
+	var cz := int(round(local.z + float(d) * 0.5 - 0.5))
+	var r := int(ceil(radius))
+	var x_min := clampi(cx - r, 0, w - 1)
+	var x_max := clampi(cx + r, 0, w - 1)
+	var z_min := clampi(cz - r, 0, d - 1)
+	var z_max := clampi(cz + r, 0, d - 1)
+	var avg := 0.0
+	if mode == 0:
+		var cnt := 0
+		for z in range(z_min, z_max + 1):
+			for x in range(x_min, x_max + 1):
+				if Vector2(x - cx, z - cz).length() <= radius:
+					avg += md[z * w + x]
+					cnt += 1
+		if cnt > 0:
+			avg /= float(cnt)
+	for z in range(z_min, z_max + 1):
+		for x in range(x_min, x_max + 1):
+			var dist := Vector2(x - cx, z - cz).length()
+			if dist > radius:
+				continue
+			var falloff := 1.0 - dist / radius
+			var idx := z * w + x
+			if mode == 0:
+				md[idx] = lerp(md[idx], avg, falloff * strength * 5.0)
+			else:
+				md[idx] += float(mode) * strength * falloff
+	# Touched editor chunks (so the plugin can rebuild just those).
+	if _ed_cx > 0:
+		var seen := {}
+		for cz2 in range(z_min / chunk_size, z_max / chunk_size + 1):
+			for cx2 in range(x_min / chunk_size, x_max / chunk_size + 1):
+				var ci := cz2 * _ed_cx + cx2
+				if not seen.has(ci):
+					seen[ci] = true
+					dirty.append(ci)
+	return dirty
+
 
 # Partial update — only rebuild the listed chunk indices.
 # In the editor this is the hot path on every sculpt stroke.
@@ -342,8 +476,8 @@ func update_chunks(chunk_indices: Array) -> void:
 	if _ft_group_id >= 0:
 		WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
 		_ft_group_id = -1
-	if Engine.is_editor_hint() and collision.shape is HeightMapShape3D:
-		md = collision.shape.map_data  # editor: re-read the sculpted shape data
+	if Engine.is_editor_hint() and not use_image_data and collision.shape is HeightMapShape3D:
+		md = collision.shape.map_data  # legacy editor: re-read the sculpted shape data
 	if Engine.is_editor_hint():
 		if _ed_cache.is_empty():
 			update()
