@@ -49,6 +49,17 @@ const LOD_COUNT: int        = 4
 # How often (seconds) the LOD check runs — no need every frame
 const LOD_UPDATE_INTERVAL: float = 0.15
 
+# ── Editor view settings ──────────────────────────────────────────────────────
+## OFF (default): the editor bakes ONE full-resolution merged mesh for the whole map
+## (current behaviour — fine for small maps, heavy for huge ones).
+## ON: the editor only builds + shows a bubble of chunks around the editor camera, so
+## a 10x map stays light to edit. You sculpt where you look, so the bubble is full-res
+## under the cursor. Reads the editor's existing data (the embedded shape) — no bake
+## required. The bubble follows the camera while the terrain node is selected.
+@export var editor_streamed: bool = false
+## Radius (world units) of the editor chunk bubble when editor_streamed is ON.
+@export_range(50.0, 4000.0, 25.0) var editor_radius: float = 300.0
+
 # ── Streaming settings ────────────────────────────────────────────────────────
 ## Chunks within this XZ radius (world units) are meshed immediately at startup.
 ## Chunks outside it are queued and streamed in during gameplay via _process().
@@ -160,6 +171,10 @@ var _macro_active:     Array[bool]           = []
 # Editor always renders LOD 0 (full resolution) for accurate sculpting.
 var _ed_cache: Array = []
 var _ed_cx:    int   = 0
+var _ed_cz:    int   = 0
+# Editor camera (fed by plugin.gd) and last position the bubble was rebuilt at.
+var _editor_cam:     Camera3D = null
+var _editor_cam_pos: Vector3  = Vector3(INF, INF, INF)
 
 # ── LOD material cache ────────────────────────────────────────────────────────
 # Two static material variants replace per-instance shader parameters.
@@ -394,12 +409,56 @@ func get_chunk_info() -> Dictionary:
 # ─────────────────────────────────────────────────────────────────────────────
 
 func _rebuild_editor_full() -> void:
-	_ed_cx = ceili(float(w - 1) / chunk_size)
-	var _ed_cz := ceili(float(d - 1) / chunk_size)
-	_ed_cache.resize(_ed_cx * _ed_cz)
+	_editor_ensure_cache_sized()
+	if editor_streamed:
+		# Only build + show a bubble of chunks around the editor camera.
+		_editor_merge_visible()
+		return
 	for cz in _ed_cz:
 		for cx in _ed_cx:
 			_ed_cache[cz * _ed_cx + cx] = _chunk_surface_arrays(cx, cz)
+	_apply_editor_cache()
+
+# Allocates _ed_cache to the full chunk grid (entries built lazily in streamed mode).
+func _editor_ensure_cache_sized() -> void:
+	_ed_cx = ceili(float(w - 1) / chunk_size)
+	_ed_cz = ceili(float(d - 1) / chunk_size)
+	var total := _ed_cx * _ed_cz
+	if _ed_cache.size() != total:
+		_ed_cache.clear()
+		_ed_cache.resize(total)
+
+# Fed by plugin.gd on every 3D-viewport input event so the editor bubble can follow
+# the editor camera. Rebuilds the bubble only once the camera has moved noticeably.
+func set_editor_camera(c: Camera3D) -> void:
+	_editor_cam = c
+	if not Engine.is_editor_hint() or not editor_streamed or c == null:
+		return
+	if _editor_cam_pos.distance_to(c.global_position) < editor_radius * 0.2:
+		return
+	_editor_cam_pos = c.global_position
+	_editor_merge_visible()
+
+# Builds chunks within editor_radius of the editor camera, drops the rest, and merges
+# the bubble into the single editor mesh. Keeps a huge map cheap to open and sculpt.
+func _editor_merge_visible() -> void:
+	if _ed_cache.is_empty() or _ed_cx <= 0:
+		return
+	var cam_pos: Vector3 = _editor_cam.global_position if _editor_cam else global_position
+	var cam_local := global_transform.affine_inverse() * cam_pos
+	var r2 := editor_radius * editor_radius
+	for cz in _ed_cz:
+		for cx in _ed_cx:
+			var ci := cz * _ed_cx + cx
+			var ccx := (cx + 0.5) * chunk_size - w * 0.5
+			var ccz := (cz + 0.5) * chunk_size - d * 0.5
+			var dx := ccx - cam_local.x
+			var dz := ccz - cam_local.z
+			if dx * dx + dz * dz <= r2:
+				if _ed_cache[ci] == null:
+					_ed_cache[ci] = _chunk_surface_arrays(cx, cz)
+			else:
+				_ed_cache[ci] = null   # outside the bubble — excluded from the merge
 	_apply_editor_cache()
 
 # Editor always uses full resolution (step=1) so sculpting looks correct.
