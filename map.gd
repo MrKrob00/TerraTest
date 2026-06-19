@@ -342,8 +342,8 @@ func update_chunks(chunk_indices: Array) -> void:
 		for ci in chunk_indices:
 			if ci < 0 or ci >= _ed_cache.size():
 				continue
-			var cx := ci % _ed_cx
-			var cz := ci / _ed_cx
+			var cx: int = ci % _ed_cx
+			var cz: int = ci / _ed_cx
 			if editor_lod:
 				# Rebuild the dirty chunk plus its 4 neighbours so seam snapping stays valid.
 				_ed_cache[ci] = _chunk_surface_arrays_lod(cx, cz)
