@@ -22,7 +22,7 @@
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://map.gd" id="17_tuemg"]
 [ext_resource type="Script" uid="uid://ct6cdn5f1v4hh" path="res://enemy_vehicle.gd" id="19_nu31w"]
 [ext_resource type="Shape3D" uid="uid://c3oh7as7ecrjx" path="res://addons/terrain_sculpt/terrain.res" id="21_s0gvp"]
-[ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/terrain_sculpt/terrain_mesh.res" id="22_obt1j"]
+[ext_resource type="ArrayMesh" uid="uid://dau7lf0nbm7rl" path="res://terrain_mesh.res" id="22_obt1j"]
 [ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/terrain_sculpt/terrain_shader.res" id="22_s0gvp"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
 [ext_resource type="Script" uid="uid://ch6lvbyyeape3" path="res://grass.gd" id="24_dhlwf"]
@@ -116,7 +116,7 @@ size = Vector2(128, 64)
 [sub_resource type="SphereShape3D" id="SphereShape3D_obt1j"]
 radius = 20.0
 
-[sub_resource type="HeightMapShape3D" id="HeightMapShape3D_nu31w"]
+[sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
 [sub_resource type="MultiMesh" id="MultiMesh_obt1j"]
 transform_format = 1
@@ -229,7 +229,7 @@ script = ExtResource("3_jsk3o")
 mesh = SubResource("BoxMesh_4arys")
 
 [node name="Player2" type="RigidBody3D" parent="Vehicles" unique_id=1746765942 node_paths=PackedStringArray("block_map_node", "ghost_block")]
-transform = Transform3D(1, 0, 0, 0, 0.9999999, 0, 0, 0, 1, -183.42493, 64.098114, -120.51358)
+transform = Transform3D(0.99931574, 0.002451858, -0.03690643, -0.0016332936, 0.9997523, 0.022193205, 0.036951706, -0.022117736, 0.99907225, 38.27903, 64.131966, -14.029939)
 collision_layer = 16
 collision_mask = 21
 can_sleep = false
@@ -483,14 +483,15 @@ shape = SubResource("SphereShape3D_obt1j")
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 frustum_margin = -0.04999999999999999
-occlusion_min_dist = 200.0
+enable_lod = false
+editor_lod = true
 stream_initial_radius = 20.0
 stream_batch_size = 4
 use_image_data = true
 enable_streaming_collision = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
-shape = SubResource("HeightMapShape3D_nu31w")
+shape = SubResource("HeightMapShape3D_obt1j")
 debug_color = Color(0, 11.708403, 13.469126, 1)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
