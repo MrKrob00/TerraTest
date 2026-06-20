@@ -101,6 +101,10 @@ const MACRO_SIZE: int = 4
 ## Re-centre the collision window once the focus point has drifted this many cells
 ## from the window's last centre. Larger = fewer refills, smaller = tighter follow.
 @export_range(8, 256, 8) var collision_update_margin: int = 32
+## Every RigidBody3D under these node paths gets its OWN collision window that follows
+## it, so the ground exists under all vehicles/objects — not only the active one. Empty
+## or no bodies found → a single window follows the camera (old behaviour).
+@export var collision_body_roots: Array[NodePath] = [NodePath("../Vehicles"), NodePath("../objects")]
 
 @onready var collision     = $CollisionShape3D
 @onready var mesh_instance = $MeshInstance3D
@@ -130,10 +134,9 @@ var frustum_old
 var _lod_timer:     float = 0.0
 
 # ── Streaming collision runtime state ─────────────────────────────────────────
-var _col_size:  int  = 0      # actual side length (clamped to map size)
-var _col_ox:    int  = 0      # window origin in master-grid cells (X)
-var _col_oz:    int  = 0      # window origin in master-grid cells (Z)
-var _col_built: bool = false
+var _col_size:      int   = 0      # window side length (clamped to map size)
+var _col_windows:   Array = []     # [{node:CollisionShape3D, body:Node3D|null, ox,oz,built}]
+var _col_regather_t: float = 0.0   # timer for re-scanning tracked bodies
 
 # ── Occlusion culling runtime state ──────────────────────────────────────────
 const OCCLUSION_UPDATE_INTERVAL: float = 0.20   # seconds between full occlusion passes
@@ -264,38 +267,99 @@ func _load_heightmap_image() -> Image:
 		return (res as Texture2D).get_image()
 	return null
 
-# Swaps the map's CollisionShape3D to a small HeightMapShape3D that follows the player.
-# Physics cost becomes fixed (collision_window²) no matter how large the map is.
+# Creates one small HeightMapShape3D collision window per tracked body (every vehicle,
+# and any RigidBody3D under collision_body_roots). Each window slides under its body, so
+# the ground exists under ALL of them — not just the active one — at fixed physics cost.
 func _setup_streaming_collision() -> void:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return
 	_col_size = mini(collision_window, mini(w, d))
-	var shape := HeightMapShape3D.new()
-	shape.map_width = _col_size
-	shape.map_depth = _col_size
-	collision.shape = shape
-	collision.top_level = false          # we drive its local position relative to the map
-	_col_built = false
-	_update_collision_window()           # initial fill around the start position
+	collision.disabled = true            # the scene's CollisionShape3D is unused at runtime
+	_clear_collision_windows()
+	var bodies := _gather_collision_bodies()
+	if bodies.is_empty():
+		_add_collision_window(null)      # fallback: a single window that follows the camera
+	else:
+		for b in bodies:
+			_add_collision_window(b)
+	_update_collision_windows()
 
-# Re-centres / refills the collision window when the focus point (active vehicle,
-# approximated by the camera) has drifted past collision_update_margin cells.
-func _update_collision_window() -> void:
+func _gather_collision_bodies() -> Array:
+	var out := []
+	for p in collision_body_roots:
+		var root := get_node_or_null(p)
+		if root == null:
+			continue
+		# Non-recursive: one window per top-level body (a vehicle), not per sub-block —
+		# the window is large enough to cover the whole vehicle (wheels, etc.).
+		for n in root.find_children("*", "RigidBody3D", false, false):
+			if not out.has(n):
+				out.append(n)
+	return out
+
+func _add_collision_window(body: Node3D) -> void:
+	var cs := CollisionShape3D.new()
+	var shape := HeightMapShape3D.new()
+	shape.map_width  = _col_size
+	shape.map_depth  = _col_size
+	cs.shape = shape
+	add_child(cs)
+	_col_windows.append({"node": cs, "body": body, "ox": 0, "oz": 0, "built": false})
+
+func _clear_collision_windows() -> void:
+	for win in _col_windows:
+		if is_instance_valid(win["node"]):
+			win["node"].queue_free()
+	_col_windows.clear()
+
+# Each frame: re-centre any window whose body has drifted past collision_update_margin,
+# and periodically re-scan so newly built / removed bodies get / drop their own window.
+func _update_collision_windows() -> void:
 	if _col_size <= 0 or md.is_empty():
 		return
-	var focus: Vector3 = camera.global_position if camera else global_position
-	var local := global_transform.affine_inverse() * focus
-	# Inverse of the vertex formula x = lx + w*0.5 - 0.5  (see _compute_chunk_data).
-	var fx := int(round(local.x + float(w) * 0.5 - 0.5))
-	var fz := int(round(local.z + float(d) * 0.5 - 0.5))
-	var ox := clampi(fx - _col_size / 2, 0, maxi(0, w - _col_size))
-	var oz := clampi(fz - _col_size / 2, 0, maxi(0, d - _col_size))
-	if _col_built and absi(ox - _col_ox) < collision_update_margin \
-				 and absi(oz - _col_oz) < collision_update_margin:
-		return
-	_fill_collision_window(ox, oz)
+	for win in _col_windows:
+		var body = win["body"]
+		var focus: Vector3
+		if body != null and is_instance_valid(body):
+			focus = body.global_position
+		elif camera:
+			focus = camera.global_position
+		else:
+			continue
+		var local := global_transform.affine_inverse() * focus
+		var fx := int(round(local.x + float(w) * 0.5 - 0.5))
+		var fz := int(round(local.z + float(d) * 0.5 - 0.5))
+		var ox := clampi(fx - _col_size / 2, 0, maxi(0, w - _col_size))
+		var oz := clampi(fz - _col_size / 2, 0, maxi(0, d - _col_size))
+		if win["built"] and absi(ox - win["ox"]) < collision_update_margin \
+					   and absi(oz - win["oz"]) < collision_update_margin:
+			continue
+		_fill_collision_window(win["node"], ox, oz)
+		win["ox"] = ox
+		win["oz"] = oz
+		win["built"] = true
 
-func _fill_collision_window(ox: int, oz: int) -> void:
+func _regather_collision_bodies() -> void:
+	if _col_size <= 0:
+		return
+	var bodies := _gather_collision_bodies()
+	var kept := []
+	var have := {}
+	for win in _col_windows:
+		var b = win["body"]
+		if b == null:
+			kept.append(win)                       # keep the camera fallback window
+		elif is_instance_valid(b) and bodies.has(b):
+			kept.append(win)
+			have[b] = true
+		elif is_instance_valid(win["node"]):
+			win["node"].queue_free()               # body gone → drop its window
+	_col_windows = kept
+	for b in bodies:
+		if not have.has(b):
+			_add_collision_window(b)
+
+func _fill_collision_window(node: CollisionShape3D, ox: int, oz: int) -> void:
 	var W := _col_size
 	var data := PackedFloat32Array()
 	data.resize(W * W)
@@ -304,15 +368,11 @@ func _fill_collision_window(ox: int, oz: int) -> void:
 		var drow := j * W
 		for i in W:
 			data[drow + i] = md[srow + i]
-	var shape: HeightMapShape3D = collision.shape
+	var shape: HeightMapShape3D = node.shape
 	shape.map_data = data
-	# Offset the node so window cell (i,j) lands on the same local position as the
-	# visual mesh's master cell (ox+i, oz+j):  pos.x = (ox+i) - w/2 + 0.5, and the
-	# shape centres cell i at i - (W-1)/2  →  node.x = ox + (W - w) * 0.5.
-	collision.position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(W - d) * 0.5)
-	_col_ox = ox
-	_col_oz = oz
-	_col_built = true
+	# Offset the node so window cell (i,j) lands on the same local position as the visual
+	# mesh's master cell (ox+i, oz+j):  node.x = ox + (W - w) * 0.5  (see vertex formula).
+	node.position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(W - d) * 0.5)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -343,8 +403,9 @@ func apply_heightmap(data: PackedFloat32Array) -> void:
 	if use_image_data:
 		md = data                          # image mode: md is the source of truth
 		if not Engine.is_editor_hint() and _col_size > 0:
-			_col_built = false             # force the streaming collision to refill
-			_update_collision_window()
+			for win in _col_windows:       # heights changed → force every window to refill
+				win["built"] = false
+			_update_collision_windows()
 		update()
 		return
 	if collision != null and collision.shape is HeightMapShape3D:
@@ -1460,9 +1521,13 @@ func _process(delta: float) -> void:
 		camera = _find_game_camera()
 		return
 
-	# ── Streaming collision: keep the small physics window under the player ───
+	# ── Streaming collision: keep a physics window under every tracked body ───
 	if _col_size > 0:
-		_update_collision_window()
+		_update_collision_windows()
+		_col_regather_t += delta
+		if _col_regather_t >= 1.0:        # re-scan for new/removed bodies once a second
+			_col_regather_t = 0.0
+			_regather_collision_bodies()
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
