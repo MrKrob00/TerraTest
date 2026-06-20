@@ -276,13 +276,13 @@ func _setup_streaming_collision() -> void:
 	_col_size = mini(collision_window, mini(w, d))
 	collision.disabled = true            # the scene's CollisionShape3D is unused at runtime
 	_clear_collision_windows()
+	_add_collision_window(null)          # always-on window under the camera / active vehicle
 	var bodies := _gather_collision_bodies()
-	if bodies.is_empty():
-		_add_collision_window(null)      # fallback: a single window that follows the camera
-	else:
-		for b in bodies:
-			_add_collision_window(b)
+	for b in bodies:
+		_add_collision_window(b)
 	_update_collision_windows()
+	print("[map] streaming collision: roots=%s  bodies=%d  windows=%d  size=%d"
+			% [str(collision_body_roots), bodies.size(), _col_windows.size(), _col_size])
 
 func _gather_collision_bodies() -> Array:
 	var out := []
