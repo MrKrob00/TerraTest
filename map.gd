@@ -650,10 +650,10 @@ func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 	var ws := _ed_neighbour_step(cx, cz, -1,  0)
 	var es := _ed_neighbour_step(cx, cz,  1,  0)
 	var res := _compute_chunk_data(x0, z0, x1, z1, step,
-			ns if ns > step else 0,
-			ss if ss > step else 0,
-			ws if ws > step else 0,
-			es if es > step else 0)
+			ns if ns != step else 0,
+			ss if ss != step else 0,
+			ws if ws != step else 0,
+			es if es != step else 0)
 	return [] if res.is_empty() else res[0]
 
 # Editor full-res chunk arrays (used when editor_lod is OFF).
@@ -1001,11 +1001,12 @@ func _apply_lod_mesh(ci: int, mat: Material) -> void:
 	_chunk_instances[ci].set_surface_override_material(0, lod_mat)
 
 
-# Returns the neighbour's LOD step if it is COARSER than my_step (so this chunk's
-# shared border must snap to it), otherwise 0 (no snapping needed on that edge).
+# Returns the neighbour's LOD step if it DIFFERS from my_step, else 0. Used both for
+# height snapping (only when the value is COARSER, i.e. > my_step) and for grass-seam
+# flattening (whenever it is non-zero, i.e. any LOD difference, either direction).
 func _border_snap(cx: int, cz: int, dcx: int, dcz: int, my_step: int) -> int:
 	var s := _neighbour_step(cx, cz, dcx, dcz)
-	return s if s > my_step else 0
+	return s if s != my_step else 0
 
 
 # Packs a chunk's LOD step and its 4 border snap steps into one int. Two chunks with
@@ -1362,12 +1363,14 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			aabb_max = aabb_max.max(pos)
 			uvs.append(Vector2(float(x) / w, float(z) / d))
 
-			# Mark chunk-border vertices so the shader skips grass displacement there.
-			# The base mesh is seam-stitched, but the grass vertex offset (along the
-			# per-LOD normal, plus extra fine-edge verts) would push these off the seam
-			# and re-open the crack. Keeping borders flat makes seams match at any LOD.
-			var on_border := (z == z0 or z == z1 or x == x0 or x == x1)
-			colors.append(Color(0.0, 0.0, 0.0, 1.0) if on_border else Color(1.0, 1.0, 1.0, 1.0))
+			# Flatten grass ONLY on borders that touch a DIFFERENT-LOD neighbour (a real
+			# LOD seam). There the grass vertex offset would re-open a crack, so the shader
+			# skips it (COLOR.r = 0). On same-LOD borders grass stays on — otherwise every
+			# chunk edge shows a dip/ridge in the grass. n/s/w/e_step != 0 means "neighbour
+			# differs" (see _border_snap). Pass 0 (default build) = grass everywhere.
+			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
+					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
+			colors.append(Color(0.0, 0.0, 0.0, 1.0) if seam else Color(1.0, 1.0, 1.0, 1.0))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
