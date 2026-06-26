@@ -295,7 +295,30 @@ func _gather_collision_bodies() -> Array:
 		for n in root.find_children("*", "RigidBody3D", false, false):
 			if not out.has(n):
 				out.append(n)
+	# Robust fallback: if the configured roots found nothing (e.g. paths not set on this
+	# scene), scan the whole scene and take every TOP-LEVEL RigidBody3D (skip blocks that
+	# are nested under another body, and anything under the map itself).
+	if out.is_empty():
+		var scene_root := get_tree().current_scene
+		if scene_root != null:
+			for n in scene_root.find_children("*", "RigidBody3D", true, false):
+				if is_ancestor_of(n):
+					continue
+				if _top_rigidbody(n) != n:
+					continue
+				if not out.has(n):
+					out.append(n)
 	return out
+
+# Highest RigidBody3D in n's ancestor chain, or n itself if none above it.
+func _top_rigidbody(n: Node) -> Node:
+	var top: Node = n
+	var p := n.get_parent()
+	while p != null:
+		if p is RigidBody3D:
+			top = p
+		p = p.get_parent()
+	return top
 
 func _add_collision_window(body: Node3D) -> void:
 	var cs := CollisionShape3D.new()
@@ -423,6 +446,16 @@ func get_heights() -> PackedFloat32Array:
 
 func get_dims() -> Vector2i:
 	return Vector2i(w, d)
+
+# World-space terrain height under world_pos. Use it to place vehicles/objects ON the
+# ground (e.g. body.global_position.y = map.terrain_height_at(body.global_position) + clearance)
+# instead of spawning them in the air and letting them drop.
+func terrain_height_at(world_pos: Vector3) -> float:
+	if md.is_empty() or w <= 0:
+		return 0.0
+	var local := global_transform.affine_inverse() * world_pos
+	var lh := _sample_height_local(local.x, local.z)
+	return (global_transform * Vector3(local.x, lh, local.z)).y
 
 # Replaces the whole heightmap AND its dimensions (used by 'generate' to make a bigger
 # map). Editor-side: rebuilds the LOD preview at the new size. The plugin saves md to
