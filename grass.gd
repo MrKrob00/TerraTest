@@ -23,10 +23,13 @@ func _setup() -> void:
 		push_error("GrassSystem: map_node не назначен!")
 		return
 
-	_map_material = _find_map_material()
-	if not _map_material:
-		push_error("GrassSystem: материал карты не найден!")
-		return
+	# Prefer the map's set_grass_benders() (targets the real LOD0 grass material). Only
+	# fall back to grabbing a material directly if the map doesn't expose it.
+	if not map_node.has_method("set_grass_benders"):
+		_map_material = _find_map_material()
+		if not _map_material:
+			push_error("GrassSystem: материал карты не найден!")
+			return
 
 	_initialized = true
 
@@ -68,9 +71,12 @@ func _update_benders() -> void:
 		return
 	_cached_positions = positions
 
-	# Без заполнения нулями — шейдер читает только до bender_count
-	_map_material.set_shader_parameter("bender_count", positions.size())
-	_map_material.set_shader_parameter("bender_positions", positions)
+	# Без заполнения нулями — шейдер читає тільки до bender_count
+	if map_node.has_method("set_grass_benders"):
+		map_node.set_grass_benders(positions, positions.size())
+	elif _map_material:
+		_map_material.set_shader_parameter("bender_count", positions.size())
+		_map_material.set_shader_parameter("bender_positions", positions)
 
 var _check_counter: int = 0
 const CHECK_EVERY: int = 3  # перевіряємо кожен 3й кадр
