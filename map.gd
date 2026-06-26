@@ -281,8 +281,6 @@ func _setup_streaming_collision() -> void:
 	for b in bodies:
 		_add_collision_window(b)
 	_update_collision_windows()
-	print("[map] streaming collision: roots=%s  bodies=%d  windows=%d  size=%d"
-			% [str(collision_body_roots), bodies.size(), _col_windows.size(), _col_size])
 
 func _gather_collision_bodies() -> Array:
 	var out := []
