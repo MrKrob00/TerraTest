@@ -15,7 +15,7 @@ extends StaticBody3D
 ## Uses the elevation-angle (horizon) method: samples the heightmap along the
 ## XZ ray from the camera to each chunk and tracks the maximum terrain angle.
 ## If the terrain horizon exceeds the angle to the chunk top, the chunk is occluded.
-@export var enable_occlusion_culling: bool = true
+@export var enable_occlusion_culling: bool = false
 ## XZ distance (world units) below which chunks are never occlusion-culled.
 ## Keeps nearby chunks always visible regardless of geometry.
 @export_range(0.0, 200.0, 1.0) var occlusion_min_dist: float = 40.0
@@ -43,8 +43,8 @@ extends StaticBody3D
 @export var lod_distance_2: float = 160.0
 
 # Vertex sampling step per LOD level (index = LOD level)
-const LOD_STEPS: Array[int] = [1, 2, 4, 8]
-const LOD_COUNT: int        = 4
+const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never shown at runtime
+const LOD_COUNT: int        = 3
 
 # How often (seconds) the LOD check runs — no need every frame
 const LOD_UPDATE_INTERVAL: float = 0.15
@@ -640,7 +640,7 @@ func update_chunks(chunk_indices: Array) -> void:
 		var macro_mesh := _build_macro_mesh(_macro_to_chunks[mi], 2)
 		if macro_mesh:
 			_macro_instances[mi].mesh = macro_mesh
-			_macro_instances[mi].set_surface_override_material(0, mat)
+			_macro_instances[mi].set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 
 func get_chunk_info() -> Dictionary:
 	return {
@@ -710,8 +710,7 @@ func _editor_rebuild_lod() -> void:
 			var dz := ccz - cam_local.z
 			var dist := sqrt(dx * dx + dz * dz)
 			var lod := 0
-			if dist >= lod_distance_2:   lod = 3
-			elif dist >= lod_distance_1: lod = 2
+			if dist >= lod_distance_1:   lod = 2   # LOD3 (step 8) removed — unused at runtime
 			elif dist >= lod_distance_0: lod = 1
 			_ed_lod[cz * _ed_cx + cx] = lod
 	for cz in _ed_cz:
@@ -1206,7 +1205,7 @@ func _build_macro_chunks() -> void:
 			inst.visible     = false   # activated by _set_macro_mode() only
 			if macro_mesh:
 				inst.mesh = macro_mesh
-				inst.set_surface_override_material(0, mat)
+				inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 			add_child(inst)
 			_macro_instances.append(inst)
 
@@ -1338,7 +1337,7 @@ func _stream_apply_batch() -> void:
 		var macro_mesh := _build_macro_mesh(_macro_to_chunks[mi], 2)
 		if macro_mesh:
 			_macro_instances[mi].mesh = macro_mesh
-			_macro_instances[mi].set_surface_override_material(0, mat)
+			_macro_instances[mi].set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 
 	# Seam-stitch each freshly-streamed chunk against its already-present neighbours.
 	# The stream queue is distance-sorted only once at startup, so as the player moves
