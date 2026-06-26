@@ -5,10 +5,11 @@ extends StaticBody3D
 @export var camera: Camera3D
 @export_range(-0.5, 0.5, 0.01) var frustum_margin: float = 0.05
 @export var enable_frustum_culling: bool = true
-## Run AABB frustum tests on worker threads — main thread never blocks.
-## Results arrive with ~1 frame latency (imperceptible). Disable on platforms
-## with unreliable WorkerThreadPool or for debugging.
-@export var enable_threaded_frustum: bool = true
+## Threaded frustum culling tests EVERY chunk every frame on worker threads — fine for
+## small maps but it tanks FPS on a big one. OFF (default) uses the incremental frontier
+## path (_update_chunk_visibility): only the visible/hidden boundary is tested, and that
+## boundary is kept small because chunks that fold into a macro stop being tracked here.
+@export var enable_threaded_frustum: bool = false
 
 # ── Occlusion culling settings ────────────────────────────────────────────────
 ## Hide chunks whose AABB top sits below the terrain horizon seen from the camera.
@@ -1286,19 +1287,25 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 func _set_macro_mode(mi: int, active: bool) -> void:
 	_macro_active[mi] = active
 	if active:
+		# The macro instance owns this region now, so stop tracking these sub-chunks in the
+		# individual frustum sets — that's what keeps the frontier/visible sets small (and
+		# the per-frame culling cheap) on a big map.
 		for ci in _macro_to_chunks[mi]:
-			if not _chunk_instances[ci]:   # not yet streamed in
-				continue
-			_chunk_instances[ci].visible = false
+			if _chunk_instances[ci]:
+				_chunk_instances[ci].visible = false
+			_visible_chunks.erase(ci)
+			_frontier.erase(ci)
 		# Frustum validity is confirmed each frame by _update_macro_visibility()
 		_macro_instances[mi].visible = true
 	else:
 		_macro_instances[mi].visible = false
-		# Restore each chunk's last-known frustum visibility (also respect occlusion)
+		# Hand the sub-chunks back to the individual frustum system via the frontier; the
+		# next _update_chunk_visibility pass shows the ones that are actually in view.
 		for ci in _macro_to_chunks[mi]:
-			if not _chunk_instances[ci]:   # not yet streamed in
-				continue
-			_chunk_instances[ci].visible = _visible_chunks.has(ci) and not _occluded_chunks.has(ci)
+			if _chunk_instances[ci]:
+				_chunk_instances[ci].visible = false
+			_visible_chunks.erase(ci)
+			_frontier[ci] = true
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1781,8 +1788,12 @@ func _update_chunk_visibility() -> void:
 			if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
 				_chunk_instances[i].visible = not _occluded_chunks.has(i)
 		for n in _get_neighbors(i):
-			if not _visible_chunks.has(n):
-				_frontier[n] = true
+			if _visible_chunks.has(n):
+				continue
+			# Don't flood-fill into a macro region — those chunks aren't tracked here.
+			if _chunk_macro_idx.size() > n and _macro_active[_chunk_macro_idx[n]]:
+				continue
+			_frontier[n] = true
 
 	for i in newly_hidden:
 		if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
