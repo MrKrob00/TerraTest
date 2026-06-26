@@ -1542,6 +1542,15 @@ func _setup_lod_materials(base_mat: Material) -> void:
 		_mat_lod0    = base_mat
 		_mat_lod_high = base_mat
 
+# Called by grass.gd. Grass only renders on the LOD0 (close) material, which is a private
+# duplicate of the base — so benders MUST be set here, not on the base material grass.gd
+# would otherwise find.
+func set_grass_benders(positions: Array, count: int) -> void:
+	if _mat_lod0 is ShaderMaterial:
+		var m := _mat_lod0 as ShaderMaterial
+		m.set_shader_parameter("bender_count", count)
+		m.set_shader_parameter("bender_positions", positions)
+
 func _get_material() -> Material:
 	var mat: Material = null
 	if mesh_instance.mesh != null and mesh_instance.mesh.get_surface_count() > 0:
