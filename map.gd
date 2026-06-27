@@ -13,8 +13,11 @@ extends StaticBody3D
 ## Macro groups whose XZ centre is farther than this from the camera are simply hidden,
 ## skipping the (more expensive) per-macro frustum AABB test. Set roughly to the fog/visibility
 ## distance — anything past it isn't visible anyway, so the frustum test would be wasted work.
-## This is what keeps the per-frame macro cost bounded instead of scaling with map size.
-@export var max_render_distance: float = 700.0
+## With the multi-level quadtree, distant terrain renders as a few big low-poly coarse
+## meshes, so this can be large (see mountains to the horizon) without tanking FPS — it
+## only bounds how far the cheap coarse meshes are still drawn. Fog should reach about this
+## far too, or the far meshes will be visible popping in/out at the edge.
+@export var max_render_distance: float = 3000.0
 
 # ── Occlusion culling settings ────────────────────────────────────────────────
 ## Hide chunks whose AABB top sits below the terrain horizon seen from the camera.
@@ -197,12 +200,27 @@ var _qt_aabb:  Array[AABB] = []   # node → local-space merged AABB
 var _qt_child: Array       = []   # node → Array[int] child node ids ([] = leaf)
 var _qt_macro: Array[int]  = []   # leaf → macro index; internal node → -1
 var _qt_built: bool        = false
+# Each INTERNAL node also carries one coarse merged mesh (its whole footprint sampled at a
+# step that grows with the node's size — ~constant triangle budget per node, with a skirt).
+# The descend renders the COARSEST node whose on-screen error is acceptable, so distant
+# terrain collapses into a few big low-poly meshes: you can see to the horizon (mountains)
+# for a handful of draw calls instead of thousands of macros. Leaves keep using the macro
+# meshes / individual chunks (fine near detail, grass, collision-matching).
+var _qt_rect:  Array        = []   # node → Vector4i(x0, z0, x1, z1) cell rect
+var _qt_step:  Array[int]   = []   # node → sample step of its coarse mesh
+var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection metric)
+var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
+var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
+const QT_QUALITY: float = 1.6      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
+const QT_SKIRT:   float = 6.0      # apron depth that hides cross-LOD seams (world units)
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
 var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered individually)
+var _qt_cur_nodes:  Dictionary = {}   # node → true (coarse internal mesh currently visible)
 # Per-frame scratch sets (members so they aren't reallocated every frame).
 var _qt_des_macros: Dictionary = {}
 var _qt_des_chunks: Dictionary = {}
+var _qt_des_nodes:  Dictionary = {}
 
 # ── Chunk residency (memory cap for big maps) ─────────────────────────────────
 # Individual chunk nodes/meshes are instantiated ONLY for macro groups near the camera.
@@ -1287,7 +1305,8 @@ func _build_macro_worker(mi: int, cxl: int) -> void:
 	var z0  := mgz * MACRO_SIZE * chunk_size
 	var x1  := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
 	var z1  := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
-	var data := _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[2])
+	# Skirt so the macro↔coarse-node seam (different LOD steps) never shows a crack.
+	var data := _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[2], 0, 0, 0, 0, QT_SKIRT)
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
@@ -1470,7 +1489,7 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 # Pass 0 (default) for edges that need no stitching.
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
-		w_step: int = 0, e_step: int = 0) -> Array:
+		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
 	var vertices  = PackedVector3Array()
 	var indices   = PackedInt32Array()
 	var normals   = PackedVector3Array()
@@ -1571,6 +1590,52 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
+
+	# ── Optional skirt ────────────────────────────────────────────────────────
+	# A vertical apron dropped `skirt` units below every border edge. It fills the
+	# T-junction cracks where this mesh abuts a neighbour built at a different LOD step
+	# (the multi-level quadtree), so seams never show a gap. Built two-sided (both
+	# windings) so it's visible from any angle, and inline here so the per-frame arrays
+	# stay local (no helper mutating a passed-in Packed array).
+	if skirt > 0.0:
+		var zlast: int = zs[zs.size() - 1]
+		var xlast: int = xs[xs.size() - 1]
+		var bottom := {}
+		var bkeys: Array = []
+		for x in xs:
+			bkeys.append(zs[0] * w + x)
+			bkeys.append(zlast * w + x)
+		for z in zs:
+			bkeys.append(z * w + xs[0])
+			bkeys.append(z * w + xlast)
+		for gk in bkeys:
+			if bottom.has(gk):
+				continue
+			var ti: int = local_idx.get(gk, -1)
+			if ti < 0:
+				continue
+			var tv: Vector3 = vertices[ti]
+			bottom[gk] = vertices.size()
+			vertices.append(Vector3(tv.x, tv.y - skirt, tv.z))
+			normals.append(normals[ti])
+			uvs.append(uvs[ti])
+			colors.append(colors[ti])
+		var edges: Array = []
+		for xi in range(xs.size() - 1):
+			edges.append([zs[0] * w + xs[xi],  zs[0] * w + xs[xi + 1]])
+			edges.append([zlast * w + xs[xi],  zlast * w + xs[xi + 1]])
+		for zi in range(zs.size() - 1):
+			edges.append([zs[zi] * w + xs[0],     zs[zi + 1] * w + xs[0]])
+			edges.append([zs[zi] * w + xlast,     zs[zi + 1] * w + xlast])
+		for e in edges:
+			var a: int  = local_idx.get(e[0], -1)
+			var b: int  = local_idx.get(e[1], -1)
+			var ba: int = bottom.get(e[0], -1)
+			var bb: int = bottom.get(e[1], -1)
+			if a < 0 or b < 0 or ba < 0 or bb < 0:
+				continue
+			indices.append_array([a, b, bb, a, bb, ba])
+			indices.append_array([a, bb, b, a, ba, bb])
 
 	var arr = Array()
 	arr.resize(Mesh.ARRAY_MAX)
@@ -1673,6 +1738,7 @@ func _full_scan() -> void:
 	# visible macros/chunks (and their LOD). Same call that runs every frame.
 	_qt_cur_macros.clear()
 	_qt_cur_chunks.clear()
+	_qt_cur_nodes.clear()
 	_qt_update(true)
 
 
@@ -1687,6 +1753,10 @@ func _build_quadtree() -> void:
 	_qt_aabb.clear()
 	_qt_child.clear()
 	_qt_macro.clear()
+	_qt_rect.clear()
+	_qt_step.clear()
+	_qt_size.clear()
+	_qt_inst.clear()
 	_qt_built = false
 	if _macro_aabbs.is_empty():
 		return
@@ -1699,15 +1769,51 @@ func _build_quadtree() -> void:
 	_qt_build_node(0, 0, macro_cx, macro_cz, macro_cx)
 	_qt_built = not _qt_aabb.is_empty()
 
+	# ── Build each internal node's coarse merged mesh (threaded), then its instance ──
+	var node_n := _qt_aabb.size()
+	_qt_inst.resize(node_n)
+	_qt_node_results.resize(node_n)
+	var internal: Array[int] = []
+	for n in node_n:
+		if _qt_macro[n] < 0:
+			internal.append(n)
+	if not internal.is_empty():
+		var node_task := func(i: int) -> void:
+			_qt_node_worker(internal[i])
+		var ngid := WorkerThreadPool.add_group_task(node_task, internal.size(), -1, true)
+		WorkerThreadPool.wait_for_group_task_completion(ngid)
+	var mat := _get_material()
+	for n in internal:
+		var m: ArrayMesh = _qt_node_results[n]
+		var inst := MeshInstance3D.new()
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inst.visible     = false
+		if m:
+			inst.mesh = m
+			inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
+		add_child(inst)
+		_qt_inst[n] = inst
+	_qt_node_results.clear()
+
 
 # Recursively builds a node covering the macro-grid rectangle
 # [mx0, mx0+wsz) × [mz0, mz0+hsz). Splits the longer axis so nodes stay squarish.
-# Returns the new node's id.
+# Returns the new node's id. Also records the node's cell rect / coarse-mesh step / world
+# size, which the descend uses for LOD selection and the coarse-mesh build.
 func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> int:
 	var node_id := _qt_aabb.size()
 	_qt_aabb.append(AABB())
 	_qt_child.append([] as Array[int])
 	_qt_macro.append(-1)
+	# Cell rect of the whole node footprint (clamped to the heightmap edge).
+	var rx0 := mx0 * MACRO_SIZE * chunk_size
+	var rz0 := mz0 * MACRO_SIZE * chunk_size
+	var rx1 := mini((mx0 + wsz) * MACRO_SIZE * chunk_size, w - 1)
+	var rz1 := mini((mz0 + hsz) * MACRO_SIZE * chunk_size, d - 1)
+	_qt_rect.append(Vector4i(rx0, rz0, rx1, rz1))
+	# Step grows with node size → ~constant triangle budget per node regardless of level.
+	_qt_step.append(maxi(wsz, hsz) * MACRO_SIZE)
+	_qt_size.append(float(maxi(rx1 - rx0, rz1 - rz0)))
 
 	if wsz <= 1 and hsz <= 1:
 		var mi: int = mz0 * macro_cx + mx0
@@ -1744,6 +1850,18 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	return node_id
 
 
+# Threaded worker: builds internal node n's coarse merged mesh straight from the heightmap
+# over its whole footprint, sampled at _qt_step[n], with a skirt to hide cross-LOD seams.
+func _qt_node_worker(n: int) -> void:
+	var r: Vector4i = _qt_rect[n]
+	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n], 0, 0, 0, 0, QT_SKIRT)
+	if data.is_empty():
+		return
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
+	_qt_node_results[n] = am
+
+
 # Per-frame entry point: descend the tree to pick what renders, then diff the
 # selection against what's currently shown. do_lod (throttled) also reassigns
 # per-chunk LOD and rebuilds stale seam-stitched meshes.
@@ -1759,6 +1877,7 @@ func _qt_update(do_lod: bool) -> void:
 	var max_d := max_render_distance + chunk_size * MACRO_SIZE
 	_qt_des_macros.clear()
 	_qt_des_chunks.clear()
+	_qt_des_nodes.clear()
 	_qt_descend(0, frustum, cam, margin, max_d * max_d)
 	_qt_apply(do_lod)
 	# Free chunk nodes for macros the camera has left (throttled — runs with LOD).
@@ -1774,7 +1893,7 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 		return                                   # whole subtree off-screen — never descended
 	var mi: int = _qt_macro[node]
 	if mi >= 0:
-		# Leaf macro: far → render merged; near → expand into individual chunks.
+		# Leaf macro: far → render merged macro mesh; near → expand into individual chunks.
 		var center := world_aabb.position + world_aabb.size * 0.5
 		var dx := cam.x - center.x
 		var dz := cam.z - center.z
@@ -1783,8 +1902,14 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 		else:
 			_qt_expand_macro(mi, frustum, cam, margin, max_d2)
 	else:
-		for ch in _qt_child[node]:
-			_qt_descend(ch, frustum, cam, margin, max_d2)
+		# Internal node: if far enough that its coarse mesh is good enough, render it and
+		# stop (one big low-poly mesh for the whole subtree). Otherwise descend for detail.
+		var nearest := sqrt(_aabb_xz_dist2(world_aabb, cam))
+		if nearest >= _qt_size[node] * QT_QUALITY:
+			_qt_des_nodes[node] = true
+		else:
+			for ch in _qt_child[node]:
+				_qt_descend(ch, frustum, cam, margin, max_d2)
 
 
 # A near macro renders as individual chunks. If its chunks aren't instantiated yet,
@@ -1816,6 +1941,18 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 # only the instances that changed. do_lod additionally commits per-chunk LOD and
 # rebuilds any chunk whose seam-stitch signature went stale.
 func _qt_apply(do_lod: bool) -> void:
+	# ── Coarse internal nodes (the far, low-poly representation) ───────────────
+	for node in _qt_des_nodes:
+		var ninst: MeshInstance3D = _qt_inst[node]
+		if ninst:
+			ninst.visible = true
+	for node in _qt_cur_nodes:
+		if not _qt_des_nodes.has(node):
+			var ninst2: MeshInstance3D = _qt_inst[node]
+			if ninst2:
+				ninst2.visible = false
+	_qt_cur_nodes = _qt_des_nodes.duplicate()
+
 	# ── Macros ────────────────────────────────────────────────────────────────
 	for mi in _qt_des_macros:
 		if not _qt_cur_macros.has(mi):
