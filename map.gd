@@ -183,6 +183,27 @@ var _macro_to_chunks:  Array                 = []
 var _chunk_macro_idx:  Array[int]            = []
 var _macro_active:     Array[bool]           = []
 
+# ── Quadtree (runtime frustum + LOD selection) ────────────────────────────────
+# Spatial hierarchy over the MACRO grid: each leaf = one macro group (4×4 chunks);
+# internal nodes merge their children's AABBs up to a single root. Selection descends
+# from the root every frame — any subtree fully outside the frustum, or entirely beyond
+# max_render_distance, is pruned WITHOUT being visited. So per-frame cull/LOD cost scales
+# with the visible area, not the map size (the far 3/4 of a huge map is never iterated),
+# and because the selection is recomputed statelessly from the root it is instantly
+# correct after a camera teleport (no temporal-coherence frontier to repair).
+#   far leaf  → rendered as its merged macro mesh (1 draw call)
+#   near leaf → expanded into its individual chunks at per-chunk LOD 0/1
+var _qt_aabb:  Array[AABB] = []   # node → local-space merged AABB
+var _qt_child: Array       = []   # node → Array[int] child node ids ([] = leaf)
+var _qt_macro: Array[int]  = []   # leaf → macro index; internal node → -1
+var _qt_built: bool        = false
+# Currently-rendered selection, kept for cheap show/hide diffing each frame.
+var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
+var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered individually)
+# Per-frame scratch sets (members so they aren't reallocated every frame).
+var _qt_des_macros: Dictionary = {}
+var _qt_des_chunks: Dictionary = {}
+
 # ── Editor chunk cache ────────────────────────────────────────────────────────
 # The editor uses a single MeshInstance3D with one surface per chunk.
 # Editor always renders LOD 0 (full resolution) for accurate sculpting.
@@ -936,6 +957,7 @@ func _build_chunks_from_map_data() -> void:
 	# (_build_macro_mesh guards for null meshes); their macro meshes are rebuilt
 	# incrementally as _stream_apply_batch fills them in.
 	_build_macro_chunks()
+	_build_quadtree()
 
 	_is_streaming = not _stream_queue.is_empty()
 
@@ -963,15 +985,13 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 
 
 # Creates a MeshInstance3D for each ci in indices whose _stream_results[ci] is ready.
-# MUST run on the main thread — adds nodes to the scene tree.
-# Also classifies each new chunk into _visible_chunks or _frontier based on the
-# current camera frustum, so it integrates seamlessly into the culling system.
+# MUST run on the main thread — adds nodes to the scene tree. Instances are created
+# hidden; the quadtree's next descend decides their visibility and LOD.
 func _apply_built_results(indices: Array, mat: Material) -> void:
 	for ci in indices:
 		if _stream_results[ci] == null:
 			continue
 		var lod_meshes: Array = _stream_results[ci][0]
-		var first_aabb: AABB  = _stream_results[ci][1]
 		_stream_results[ci]   = null
 
 		var inst := MeshInstance3D.new()
@@ -992,25 +1012,10 @@ func _apply_built_results(indices: Array, mat: Material) -> void:
 			var lod_mat := _mat_lod0 if _mat_lod0 else mat
 			inst.set_surface_override_material(0, lod_mat)
 
-		if camera and enable_frustum_culling:
-			var frustum := camera.get_frustum()
-			var margin  := frustum_margin * (camera.position * Vector3(1, 0, 1)).length() + chunk_size
-			# A chunk inside an already-active macro group must stay hidden — the merged
-			# macro MeshInstance3D owns rendering for that region. This case happens for
-			# far chunks streamed in AFTER their group collapsed into a macro. Showing the
-			# individual instance here would double-render it AND strand it: _ft_apply's
-			# newly-hidden path skips the .visible write for macro chunks, so once it left
-			# the frustum it could never be hidden again. Track frustum state regardless,
-			# so visibility is restored correctly if the macro later deactivates.
-			var in_active_macro: bool = _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]
-			if _aabb_in_frustum(global_transform * first_aabb, frustum, margin):
-				_visible_chunks[ci] = true
-				inst.visible = not in_active_macro and not _occluded_chunks.has(ci)
-			else:
-				_frontier[ci] = true
-				inst.visible = false
-		else:
-			inst.visible = false
+		# Created hidden. The quadtree's next descend (_qt_update) decides whether this
+		# chunk renders individually, is covered by an active macro, or stays culled —
+		# no frustum bookkeeping needed here.
+		inst.visible = false
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1604,38 +1609,14 @@ func _process(delta: float) -> void:
 	if _is_streaming:
 		_stream_tick(delta)
 
-	# ── Frustum culling ───────────────────────────────────────────────────────
-	if enable_frustum_culling:
-		if enable_threaded_frustum:
-			# ── Async path ────────────────────────────────────────────────────
-			# Step 1: if the previous task just finished, apply its results.
-			if _ft_group_id >= 0 and WorkerThreadPool.is_group_task_completed(_ft_group_id):
-				WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)  # join (instant)
-				_ft_group_id = -1
-				_ft_apply()
-			# Step 2: dispatch next task if none is in flight.
-			# (If the previous task hasn't finished yet we simply reuse
-			#  _visible_chunks from the last applied frame — zero stall.)
-			if _ft_group_id < 0:
-				_ft_dispatch()
-		else:
-			# ── Sync fallback ─────────────────────────────────────────────────
-			# Drain any leftover async task before switching to sync mode.
-			if _ft_group_id >= 0:
-				WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
-				_ft_group_id = -1
-			_update_chunk_visibility()
-		# Macro visibility: few AABBs, stays on main thread every frame
-		_update_macro_visibility()
-	else:
-		# No frustum culling — show everything while still respecting macro mode and occlusion
-		for i in _chunk_instances.size():
-			if not _chunk_instances[i]:   # not yet streamed in
-				continue
-			var in_macro := _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]
-			_chunk_instances[i].visible = not in_macro and not _occluded_chunks.has(i)
-		for mi in _macro_instances.size():
-			_macro_instances[mi].visible = _macro_active[mi] and not _occluded_macros.has(mi)
+	# ── Quadtree frustum culling + LOD selection ──────────────────────────────
+	# One descend from the root each frame handles culling AND macro/chunk LOD; the
+	# heavier work (per-chunk LOD reassignment + seam-stitch rebuilds) is throttled.
+	_lod_timer += delta
+	var do_lod := _lod_timer >= LOD_UPDATE_INTERVAL
+	if do_lod:
+		_lod_timer = 0.0
+	_qt_update(do_lod)
 
 	# ── Occlusion culling (throttled) ─────────────────────────────────────────
 	if enable_occlusion_culling:
@@ -1644,50 +1625,201 @@ func _process(delta: float) -> void:
 			_occlusion_timer = 0.0
 			_update_occlusion()
 	elif not (_occluded_chunks.is_empty() and _occluded_macros.is_empty()):
-		# Occlusion was just toggled off — restore full frustum-based visibility
+		# Occlusion was just toggled off — restore full quadtree-based visibility
 		_clear_occlusion()
 
-	# ── LOD update (throttled) ────────────────────────────────────────────────
-	if enable_lod:
-		_lod_timer += delta
-		if _lod_timer >= LOD_UPDATE_INTERVAL:
-			_lod_timer = 0.0
-			_update_lod()
-
 func _full_scan() -> void:
-	# Cancel any in-flight async task before we rebuild _visible_chunks from scratch.
-	if _ft_group_id >= 0:
-		WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
-		_ft_group_id = -1
-	_visible_chunks.clear()
-	_frontier.clear()
+	# Initial selection: one stateless quadtree descend picks the first frame's
+	# visible macros/chunks (and their LOD). Same call that runs every frame.
+	_qt_cur_macros.clear()
+	_qt_cur_chunks.clear()
+	_qt_update(true)
 
-	if enable_threaded_frustum and camera and not _chunk_aabbs.is_empty():
-		# Dispatch and wait synchronously — called once at startup, blocking is OK here.
-		_ft_dispatch()
-		if _ft_group_id >= 0:
-			WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
-			_ft_group_id = -1
-			_ft_apply()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Quadtree — frustum culling + LOD selection  (runtime only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Builds the macro-grid quadtree. Leaves are existing macro groups (so the merged
+# macro meshes are reused as-is); internal nodes just carry a merged AABB for
+# hierarchical frustum/range pruning. Called once, after _build_macro_chunks().
+func _build_quadtree() -> void:
+	_qt_aabb.clear()
+	_qt_child.clear()
+	_qt_macro.clear()
+	_qt_built = false
+	if _macro_aabbs.is_empty():
+		return
+	var cxl := ceili(float(w - 1) / chunk_size)
+	var czl := ceili(float(d - 1) / chunk_size)
+	var macro_cx := ceili(float(cxl) / MACRO_SIZE)
+	var macro_cz := ceili(float(czl) / MACRO_SIZE)
+	if macro_cx <= 0 or macro_cz <= 0:
+		return
+	_qt_build_node(0, 0, macro_cx, macro_cz, macro_cx)
+	_qt_built = not _qt_aabb.is_empty()
+
+
+# Recursively builds a node covering the macro-grid rectangle
+# [mx0, mx0+wsz) × [mz0, mz0+hsz). Splits the longer axis so nodes stay squarish.
+# Returns the new node's id.
+func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> int:
+	var node_id := _qt_aabb.size()
+	_qt_aabb.append(AABB())
+	_qt_child.append([] as Array[int])
+	_qt_macro.append(-1)
+
+	if wsz <= 1 and hsz <= 1:
+		var mi: int = mz0 * macro_cx + mx0
+		_qt_macro[node_id] = mi
+		_qt_aabb[node_id]  = _macro_aabbs[mi]
+		return node_id
+
+	var hw := (wsz + 1) >> 1
+	var hh := (hsz + 1) >> 1
+	var rects: Array = []
+	if wsz > 1 and hsz > 1:
+		rects = [[mx0, mz0, hw, hh], [mx0 + hw, mz0, wsz - hw, hh],
+				 [mx0, mz0 + hh, hw, hsz - hh], [mx0 + hw, mz0 + hh, wsz - hw, hsz - hh]]
+	elif wsz > 1:
+		rects = [[mx0, mz0, hw, hsz], [mx0 + hw, mz0, wsz - hw, hsz]]
 	else:
-		# Original single-threaded path (fallback / no camera yet)
-		if not camera:
-			return
-		var frustum := camera.get_frustum()
-		var margin  := frustum_margin * (camera.position * Vector3(1, 0, 1)).length() + chunk_size
-		for i in _chunk_instances.size():
-			if not _chunk_instances[i]:   # not yet streamed in
+		rects = [[mx0, mz0, wsz, hh], [mx0, mz0 + hh, wsz, hsz - hh]]
+
+	var children: Array[int] = []
+	var box := AABB()
+	var first := true
+	for r in rects:
+		if r[2] <= 0 or r[3] <= 0:
+			continue
+		var ch: int = _qt_build_node(r[0], r[1], r[2], r[3], macro_cx)
+		children.append(ch)
+		if first:
+			box = _qt_aabb[ch]
+			first = false
+		else:
+			box = box.merge(_qt_aabb[ch])
+	_qt_child[node_id] = children
+	_qt_aabb[node_id]  = box
+	return node_id
+
+
+# Per-frame entry point: descend the tree to pick what renders, then diff the
+# selection against what's currently shown. do_lod (throttled) also reassigns
+# per-chunk LOD and rebuilds stale seam-stitched meshes.
+func _qt_update(do_lod: bool) -> void:
+	if not _qt_built or not camera:
+		return
+	var frustum := camera.get_frustum()
+	var cam := camera.global_position
+	var margin := frustum_margin * (camera.position * Vector3(1, 0, 1)).length() \
+				 + chunk_size * MACRO_SIZE * 0.5
+	# Range cull: nodes whose nearest XZ point is past this are hidden without a
+	# frustum test (fog hides them anyway). + a macro footprint of slack.
+	var max_d := max_render_distance + chunk_size * MACRO_SIZE
+	_qt_des_macros.clear()
+	_qt_des_chunks.clear()
+	_qt_descend(0, frustum, cam, margin, max_d * max_d)
+	_qt_apply(do_lod)
+
+
+func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
+	var world_aabb: AABB = global_transform * _qt_aabb[node]
+	if _aabb_xz_dist2(world_aabb, cam) > max_d2:
+		return                                   # whole subtree beyond render range
+	if enable_frustum_culling and not _aabb_in_frustum(world_aabb, frustum, margin):
+		return                                   # whole subtree off-screen — never descended
+	var mi: int = _qt_macro[node]
+	if mi >= 0:
+		# Leaf macro: far → render merged; near → expand into individual chunks.
+		var center := world_aabb.position + world_aabb.size * 0.5
+		var dx := cam.x - center.x
+		var dz := cam.z - center.z
+		if dx * dx + dz * dz >= lod_distance_1 * lod_distance_1:
+			_qt_des_macros[mi] = true
+		else:
+			_qt_expand_macro(mi, frustum, cam, margin, max_d2)
+	else:
+		for ch in _qt_child[node]:
+			_qt_descend(ch, frustum, cam, margin, max_d2)
+
+
+# A near macro renders as individual chunks. Frustum/range-cull each built chunk and
+# pick its LOD (0 close, 1 farther). Chunks not yet streamed in are skipped (stay hidden).
+func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
+	for ci in _macro_to_chunks[mi]:
+		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
+			continue
+		var world_aabb: AABB = global_transform * _chunk_aabbs[ci]
+		if _aabb_xz_dist2(world_aabb, cam) > max_d2:
+			continue
+		if enable_frustum_culling and not _aabb_in_frustum(world_aabb, frustum, margin):
+			continue
+		var center := world_aabb.position + world_aabb.size * 0.5
+		var dx := cam.x - center.x
+		var dz := cam.z - center.z
+		var lod := 0
+		if enable_lod and dx * dx + dz * dz >= lod_distance_0 * lod_distance_0:
+			lod = 1
+		_qt_des_chunks[ci] = lod
+
+
+# Diffs the freshly-descended selection against what's currently rendered and toggles
+# only the instances that changed. do_lod additionally commits per-chunk LOD and
+# rebuilds any chunk whose seam-stitch signature went stale.
+func _qt_apply(do_lod: bool) -> void:
+	# ── Macros ────────────────────────────────────────────────────────────────
+	for mi in _qt_des_macros:
+		if not _qt_cur_macros.has(mi):
+			_macro_active[mi] = true
+			# The macro now owns this region — hide any individual chunks under it.
+			for ci in _macro_to_chunks[mi]:
+				if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
+					_chunk_instances[ci].visible = false
+				_qt_cur_chunks.erase(ci)
+		_macro_instances[mi].visible = not _occluded_macros.has(mi)
+	for mi in _qt_cur_macros:
+		if not _qt_des_macros.has(mi):
+			_macro_active[mi] = false
+			_macro_instances[mi].visible = false
+	_qt_cur_macros = _qt_des_macros.duplicate()
+
+	# ── Chunks ────────────────────────────────────────────────────────────────
+	if do_lod:
+		for ci in _qt_des_chunks:
+			_chunk_lod[ci] = _qt_des_chunks[ci]
+	for ci in _qt_des_chunks:
+		var inst: MeshInstance3D = _chunk_instances[ci]
+		if inst:
+			inst.visible = not _occluded_chunks.has(ci)
+	for ci in _qt_cur_chunks:
+		if not _qt_des_chunks.has(ci):
+			if ci < _chunk_instances.size() and _chunk_instances[ci]:
+				_chunk_instances[ci].visible = false
+	_qt_cur_chunks = _qt_des_chunks.duplicate()
+
+	# ── Seam-stitch rebuilds over the active chunk set only (throttled) ────────
+	# _chunk_lod is now current for every visible chunk, so _stitch_signature reflects
+	# neighbour LODs (including step=4 for chunks inside an active macro). Rebuild only
+	# the chunks whose signature changed — usually none once the view settles.
+	if do_lod:
+		var mat := _get_material()
+		for ci in _qt_cur_chunks:
+			if ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 				continue
-			var world_aabb := global_transform * _chunk_aabbs[i]
-			if _aabb_in_frustum(world_aabb, frustum, margin):
-				_chunk_instances[i].visible = not _occluded_chunks.has(i)
-				_visible_chunks[i] = true
-			else:
-				_chunk_instances[i].visible = false
-		for i in _visible_chunks:
-			for nb in _get_neighbors(i):
-				if not _visible_chunks.has(nb):
-					_frontier[nb] = true
+			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
+				_apply_lod_mesh(ci, mat)
+
+
+# Squared XZ distance from point p to the nearest point of aabb (0 if p is inside in XZ).
+func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
+	var minx := aabb.position.x
+	var maxx := aabb.position.x + aabb.size.x
+	var minz := aabb.position.z
+	var maxz := aabb.position.z + aabb.size.z
+	var dx := maxf(maxf(minx - p.x, p.x - maxx), 0.0)
+	var dz := maxf(maxf(minz - p.z, p.z - maxz), 0.0)
+	return dx * dx + dz * dz
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1900,11 +2032,11 @@ func _update_occlusion() -> void:
 	var new_occ_macros  := {}
 
 	# ── Individual chunks ─────────────────────────────────────────────────────
-	# When frustum culling is on, only test visible chunks (saves CPU).
-	# When off, iterate all because _visible_chunks may be empty.
+	# When frustum culling is on, only test the quadtree's currently-visible chunks
+	# (saves CPU). When off, iterate all because _qt_cur_chunks may be empty.
 	var chunks_to_test: Array
 	if enable_frustum_culling:
-		chunks_to_test = _visible_chunks.keys()
+		chunks_to_test = _qt_cur_chunks.keys()
 	else:
 		chunks_to_test = range(_chunk_instances.size())
 
@@ -1937,7 +2069,7 @@ func _update_occlusion() -> void:
 		var was := _occluded_chunks.has(ci)
 		var now  := new_occ_chunks.has(ci)
 		if was != now:
-			var in_frustum := not enable_frustum_culling or _visible_chunks.has(ci)
+			var in_frustum := not enable_frustum_culling or _qt_cur_chunks.has(ci)
 			_chunk_instances[ci].visible = in_frustum and not now
 
 	for mi in _macro_instances.size():
@@ -1971,7 +2103,7 @@ func _clear_occlusion() -> void:
 			continue
 		if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
 			continue
-		_chunk_instances[ci].visible = _visible_chunks.has(ci) or not enable_frustum_culling
+		_chunk_instances[ci].visible = _qt_cur_chunks.has(ci) or not enable_frustum_culling
 	for mi in _occluded_macros:
 		if mi >= _macro_instances.size() or not _macro_active[mi]:
 			continue
