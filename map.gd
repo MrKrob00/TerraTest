@@ -204,6 +204,18 @@ var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered in
 var _qt_des_macros: Dictionary = {}
 var _qt_des_chunks: Dictionary = {}
 
+# ── Chunk residency (memory cap for big maps) ─────────────────────────────────
+# Individual chunk nodes/meshes are instantiated ONLY for macro groups near the camera.
+# Far terrain is drawn by the always-resident macro meshes (built once, directly from the
+# heightmap — no per-chunk dependency). This bounds resident memory to the play area
+# instead of instantiating every chunk of the whole map at once — which is what blew the
+# node/object/memory counters up and crashed on load. Chunks stream in on demand when the
+# camera approaches a macro and are freed (evicted) when it leaves.
+var _resident_set:  Dictionary = {}   # mi → true : this macro's chunks are instantiated
+var _queued_chunks: Dictionary = {}   # ci → true : queued for (re)build (dedups enqueues)
+var _macro_results: Array      = []   # [mi] → ArrayMesh : threaded macro-mesh build scratch
+const QT_EVICT_MARGIN: float = 96.0   # free a macro's chunks only this far beyond the expand ring
+
 # ── Editor chunk cache ────────────────────────────────────────────────────────
 # The editor uses a single MeshInstance3D with one surface per chunk.
 # Editor always renders LOD 0 (full resolution) for accurate sculpting.
@@ -917,47 +929,44 @@ func _build_chunks_from_map_data() -> void:
 	var aabb_gid := WorkerThreadPool.add_group_task(aabb_task, total, -1, true)
 	WorkerThreadPool.wait_for_group_task_completion(aabb_gid)
 
-	# ── Sort all chunks by XZ distance from camera ────────────────────────────
-	var cam_pos := camera.global_position if camera else Vector3.ZERO
-	var sorted  := range(total)
-	sorted.sort_custom(func(a: int, b: int) -> bool:
-		var ax := (a % cxl + 0.5) * chunk_size - float(w) * 0.5
-		var az := (a / cxl + 0.5) * chunk_size - float(d) * 0.5
-		var bx := (b % cxl + 0.5) * chunk_size - float(w) * 0.5
-		var bz := (b / cxl + 0.5) * chunk_size - float(d) * 0.5
-		return (ax - cam_pos.x) * (ax - cam_pos.x) + (az - cam_pos.z) * (az - cam_pos.z) \
-			 < (bx - cam_pos.x) * (bx - cam_pos.x) + (bz - cam_pos.z) * (bz - cam_pos.z))
-
-	# ── Split: immediate (near camera) vs deferred (stream later) ────────────
-	var initial: Array[int] = []
-	var r2 := stream_initial_radius * stream_initial_radius
-	for ci in sorted:
-		var ax = (ci % cxl + 0.5) * chunk_size - float(w) * 0.5
-		var az = (ci / cxl + 0.5) * chunk_size - float(d) * 0.5
-		if (ax - cam_pos.x) * (ax - cam_pos.x) + (az - cam_pos.z) * (az - cam_pos.z) <= r2:
-			initial.append(ci)
-		else:
-			_stream_queue.append(ci)
-
-	# ── Phase 1: parallel full mesh build for initial (near-camera) chunks ────
-	if not initial.is_empty():
-		var build_task := func(i: int) -> void:
-			_build_chunk_worker(initial[i], cxl)
-		var gid := WorkerThreadPool.add_group_task(build_task, initial.size(), -1, true)
-		WorkerThreadPool.wait_for_group_task_completion(gid)
-
-	# ── Phase 2: create nodes on the main thread ──────────────────────────────
+	# ── Materials + macro meshes (the always-resident far representation) ──────
 	var mat := _get_material()
 	if _mat_lod0 == null:
 		_setup_lod_materials(mat)
-	_apply_built_results(initial, mat)
-
-	# Macro system already knows all AABBs from Phase 0, so the group structure
-	# is built for the full map. Unbuilt chunks contribute no geometry yet
-	# (_build_macro_mesh guards for null meshes); their macro meshes are rebuilt
-	# incrementally as _stream_apply_batch fills them in.
+	# Macro meshes are built directly from the heightmap (one merged step-4 mesh per group),
+	# so they need NO individual chunks to exist — that's what lets us instantiate chunks
+	# only near the camera. AABBs come from Phase 0.
 	_build_macro_chunks()
 	_build_quadtree()
+
+	# ── Initial resident set: only chunks of macros near the camera ───────────
+	# Every other chunk of the map is left uninstantiated; its macro mesh covers it until
+	# the camera comes close (then it streams in on demand). Bounds startup memory.
+	var cam_pos := camera.global_position if camera else Vector3.ZERO
+	var load_r  := lod_distance_1 + QT_EVICT_MARGIN
+	var load_d2 := load_r * load_r
+	var near_chunks: Array[int] = []
+	for mi in _macro_instances.size():
+		var c := global_transform * _macro_aabbs[mi].get_center()
+		var dx := cam_pos.x - c.x
+		var dz := cam_pos.z - c.z
+		if dx * dx + dz * dz <= load_d2:
+			_resident_set[mi] = true
+			for ci in _macro_to_chunks[mi]:
+				near_chunks.append(ci)
+
+	if not near_chunks.is_empty():
+		var build_task := func(i: int) -> void:
+			_build_chunk_worker(near_chunks[i], cxl)
+		var gid := WorkerThreadPool.add_group_task(build_task, near_chunks.size(), -1, true)
+		WorkerThreadPool.wait_for_group_task_completion(gid)
+		_apply_built_results(near_chunks, mat)
+		for ci in near_chunks:
+			if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
+				_apply_lod_mesh(ci, mat)
+
+	_stream_queue.clear()
+	_is_streaming = false
 
 	_is_streaming = not _stream_queue.is_empty()
 
@@ -1204,6 +1213,7 @@ func _build_macro_chunks() -> void:
 
 	_chunk_macro_idx.resize(_chunk_instances.size())
 
+	# ── Pass A: group structure + merged AABB (cheap, main thread) ────────────
 	for mz in _macro_cz:
 		for mx in _macro_cx:
 			# The macro index for this group is the current length of _macro_to_chunks
@@ -1232,17 +1242,57 @@ func _build_macro_chunks() -> void:
 			_macro_aabbs.append(grp_aabb)
 			_macro_active.append(false)
 
-			# Build merged LOD-2 mesh: step=4 → ~32 tris/chunk, negligible cost.
-			# Unbuilt chunks contribute no geometry (_build_macro_mesh guards for null).
-			var macro_mesh := _build_macro_mesh(c_list, 2)
-			var inst       := MeshInstance3D.new()
-			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			inst.visible     = false   # activated by _set_macro_mode() only
-			if macro_mesh:
-				inst.mesh = macro_mesh
-				inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
-			add_child(inst)
-			_macro_instances.append(inst)
+	# ── Pass B: build each macro's merged step-4 mesh in parallel ─────────────
+	# Built directly from the heightmap over the whole group extent — independent of
+	# whether any individual chunk is instantiated, so chunks can be freed/streamed freely.
+	var macro_n := _macro_instances_target_count()
+	_macro_results.clear()
+	_macro_results.resize(macro_n)
+	if macro_n > 0:
+		var macro_task := func(mi: int) -> void:
+			_build_macro_worker(mi, cxl)
+		var mgid := WorkerThreadPool.add_group_task(macro_task, macro_n, -1, true)
+		WorkerThreadPool.wait_for_group_task_completion(mgid)
+
+	# ── Pass C: create the macro MeshInstance3D nodes (main thread) ───────────
+	for mi in macro_n:
+		var inst := MeshInstance3D.new()
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		inst.visible     = false   # the quadtree shows/hides macros each frame
+		var macro_mesh: ArrayMesh = _macro_results[mi]
+		if macro_mesh:
+			inst.mesh = macro_mesh
+			inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
+		add_child(inst)
+		_macro_instances.append(inst)
+	_macro_results.clear()
+
+
+# Number of macro groups (= entries already pushed into _macro_to_chunks by Pass A).
+func _macro_instances_target_count() -> int:
+	return _macro_to_chunks.size()
+
+
+# Threaded worker: builds macro mi's merged LOD-2 (step-4) mesh straight from the
+# heightmap over the group's full XZ extent. One surface, ~512 tris. Pure math + a
+# fresh ArrayMesh (same off-thread pattern as _build_chunk_worker).
+func _build_macro_worker(mi: int, cxl: int) -> void:
+	var c_list: Array = _macro_to_chunks[mi]
+	if c_list.is_empty():
+		return
+	var first_ci: int = c_list[0]
+	var mgx := (first_ci % cxl) / MACRO_SIZE
+	var mgz := (first_ci / cxl) / MACRO_SIZE
+	var x0  := mgx * MACRO_SIZE * chunk_size
+	var z0  := mgz * MACRO_SIZE * chunk_size
+	var x1  := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
+	var z1  := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
+	var data := _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[2])
+	if data.is_empty():
+		return
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
+	_macro_results[mi] = am
 
 
 # Merges the lod_level mesh of every chunk in chunk_indices into a single
@@ -1357,42 +1407,32 @@ func _stream_dispatch_batch() -> void:
 
 
 func _stream_apply_batch() -> void:
-	# Frustum workers read _chunk_aabbs concurrently. Join before any writes
-	# to shared chunk data — mirrors the same guard in update_chunks().
-	if _ft_group_id >= 0:
-		WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
-		_ft_group_id = -1
-		_ft_apply()
-
 	var mat := _get_material()
 	_apply_built_results(_stream_batch, mat)
 
-	# Rebuild merged meshes for macro groups that just received new chunks
-	var dirty_macros := {}
+	# Macro meshes are built once at startup and never rebuilt at runtime (the heightmap
+	# doesn't change), so streamed-in chunks DON'T touch them — they only fill the
+	# individual-chunk detail back in for a macro the camera is approaching.
+	var touched := {}
 	for ci in _stream_batch:
+		_queued_chunks.erase(ci)
 		if _chunk_macro_idx.size() > ci:
-			dirty_macros[_chunk_macro_idx[ci]] = true
-	for mi in dirty_macros:
-		if mi >= _macro_instances.size():
-			continue
-		var macro_mesh := _build_macro_mesh(_macro_to_chunks[mi], 2)
-		if macro_mesh:
-			_macro_instances[mi].mesh = macro_mesh
-			_macro_instances[mi].set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
+			touched[_chunk_macro_idx[ci]] = true
 
-	# Seam-stitch each freshly-streamed chunk against its already-present neighbours.
-	# The stream queue is distance-sorted only once at startup, so as the player moves
-	# a fine (close) chunk can arrive AFTER its coarse (far) neighbour has already
-	# settled at a higher LOD. _update_lod stitches only on LOD transitions, so it would
-	# miss this fine chunk (it never changes LOD), leaving a permanent T-junction crack.
-	# _apply_lod_mesh snaps it now toward any coarser neighbour; it's a no-op otherwise
-	# and adds no geometry.
+	# Seam-stitch each freshly-streamed chunk against its already-present neighbours
+	# (snaps toward coarser/active-macro neighbours; a no-op when none differ).
 	for ci in _stream_batch:
 		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 			continue
 		if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
 			continue
 		_apply_lod_mesh(ci, mat)
+
+	# A macro becomes "resident" once all its chunks are present — the quadtree may then
+	# expand it into individual chunks instead of showing the merged macro mesh.
+	for mi in touched:
+		if _macro_all_present(mi):
+			_resident_set[mi] = true
 
 	if _stream_queue.is_empty():
 		_is_streaming = false
@@ -1721,6 +1761,9 @@ func _qt_update(do_lod: bool) -> void:
 	_qt_des_chunks.clear()
 	_qt_descend(0, frustum, cam, margin, max_d * max_d)
 	_qt_apply(do_lod)
+	# Free chunk nodes for macros the camera has left (throttled — runs with LOD).
+	if do_lod:
+		_qt_evict_far(cam)
 
 
 func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
@@ -1744,9 +1787,14 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 			_qt_descend(ch, frustum, cam, margin, max_d2)
 
 
-# A near macro renders as individual chunks. Frustum/range-cull each built chunk and
-# pick its LOD (0 close, 1 farther). Chunks not yet streamed in are skipped (stay hidden).
+# A near macro renders as individual chunks. If its chunks aren't instantiated yet,
+# request them (they stream in on background threads) and show the merged macro mesh in
+# the meantime — no gap. Once resident, frustum/range-cull each chunk and pick its LOD.
 func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
+	if not _resident_set.has(mi):
+		_request_resident(mi)
+		_qt_des_macros[mi] = true   # cover the region with the macro mesh until chunks arrive
+		return
 	for ci in _macro_to_chunks[mi]:
 		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 			continue
@@ -1820,6 +1868,67 @@ func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
 	var dx := maxf(maxf(minx - p.x, p.x - maxx), 0.0)
 	var dz := maxf(maxf(minz - p.z, p.z - maxz), 0.0)
 	return dx * dx + dz * dz
+
+
+# ── Chunk residency: stream individual chunks in/out as the camera moves ──────
+
+# True once every (in-range) chunk of macro mi has been instantiated.
+func _macro_all_present(mi: int) -> bool:
+	for ci in _macro_to_chunks[mi]:
+		if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci] == null:
+			return false
+	return true
+
+
+# Queue macro mi's missing chunks for a background (re)build. Cheap and idempotent:
+# already-present or already-queued chunks are skipped, so calling it every frame while
+# the camera sits near a not-yet-resident macro costs almost nothing.
+func _request_resident(mi: int) -> void:
+	var added := false
+	for ci in _macro_to_chunks[mi]:
+		if ci < 0 or ci >= _chunk_instances.size():
+			continue
+		if _chunk_instances[ci] == null and not _queued_chunks.has(ci):
+			_queued_chunks[ci] = true
+			_stream_queue.append(ci)
+			added = true
+	if added:
+		_is_streaming = true
+
+
+# Free macro mi's individual chunk nodes + meshes. The macro mesh keeps covering the
+# region, so nothing visually disappears — this just reclaims the memory.
+func _evict_macro(mi: int) -> void:
+	for ci in _macro_to_chunks[mi]:
+		if ci < 0 or ci >= _chunk_instances.size():
+			continue
+		if _chunk_instances[ci]:
+			_chunk_instances[ci].queue_free()
+			_chunk_instances[ci] = null
+		if ci < _chunk_meshes.size():
+			_chunk_meshes[ci] = null
+		_qt_cur_chunks.erase(ci)
+		_queued_chunks.erase(ci)
+	_resident_set.erase(mi)
+
+
+# Evicts every resident macro whose centre is well beyond the expand ring. Iterates only
+# the (small) resident set, and the QT_EVICT_MARGIN hysteresis stops a macro right at the
+# boundary from thrashing load↔evict as the camera jitters.
+func _qt_evict_far(cam: Vector3) -> void:
+	if _resident_set.is_empty():
+		return
+	var evict_r  := lod_distance_1 + QT_EVICT_MARGIN
+	var evict_d2 := evict_r * evict_r
+	var to_evict: Array[int] = []
+	for mi in _resident_set:
+		var c := global_transform * _macro_aabbs[mi].get_center()
+		var dx := cam.x - c.x
+		var dz := cam.z - c.z
+		if dx * dx + dz * dz > evict_d2:
+			to_evict.append(mi)
+	for mi in to_evict:
+		_evict_macro(mi)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
