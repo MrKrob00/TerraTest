@@ -269,8 +269,16 @@ var md: PackedFloat32Array = PackedFloat32Array()
 func _ready() -> void:
 	if Engine.is_editor_hint():
 		if use_image_data and _load_heightmap_image() != null:
-			_load_heightmap()                   # editor data from the R32F image
-		elif collision.shape is HeightMapShape3D:
+			# Image-data mode: terrain_height.res is the source of truth and the scene already
+			# references the baked preview mesh (terrain_mesh.res) as an EXTERNAL resource.
+			# Do NOT rebuild the full mesh on open — that was the slow part of editor startup,
+			# and assigning a fresh ArrayMesh replaced the external .res with a scene-embedded
+			# copy (forcing you to re-link it every time). We just load the heightmap data so
+			# sculpting works; the preview is rebuilt only on an explicit sculpt / Generate, and
+			# "Bake heightmap → image" persists edits back to the .res files.
+			_load_heightmap()
+			return
+		if collision.shape is HeightMapShape3D:
 			w  = collision.shape.map_width      # legacy: data from the embedded shape
 			d  = collision.shape.map_depth
 			md = collision.shape.map_data
@@ -884,6 +892,14 @@ func _apply_editor_cache() -> void:
 
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, merged)
+	# Keep the rebuilt preview linked to its EXTERNAL .res path (if the scene already points
+	# at one) so saving the scene writes a reference, not an embedded copy of this huge mesh.
+	# The file itself is only rewritten by "Bake heightmap → image"; this just stops the
+	# scene from swallowing the mesh. A built-in path looks like "res://scene.tscn::Id".
+	if mesh_instance.mesh != null:
+		var prev_path := mesh_instance.mesh.resource_path
+		if not prev_path.is_empty() and not prev_path.contains("::"):
+			am.take_over_path(prev_path)
 	mesh_instance.mesh = am
 	mesh_instance.set_surface_override_material(0, mat)
 
