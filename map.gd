@@ -909,7 +909,7 @@ func _apply_editor_cache() -> void:
 	# The file itself is only rewritten by "Bake heightmap → image"; this just stops the
 	# scene from swallowing the mesh. A built-in path looks like "res://scene.tscn::Id".
 	if mesh_instance.mesh != null:
-		var prev_path := mesh_instance.mesh.resource_path
+		var prev_path = mesh_instance.mesh.resource_path
 		if not prev_path.is_empty() and not prev_path.contains("::"):
 			am.take_over_path(prev_path)
 	mesh_instance.mesh = am
