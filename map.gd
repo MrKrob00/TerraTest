@@ -102,10 +102,12 @@ const MACRO_SIZE: int = 4
 ## node_added/node_removed signals — no per-frame polling.
 @export var vehicles_path: NodePath = NodePath("../Vehicles")
 @export var object_roots:  Array[NodePath] = [NodePath("../objects")]
-@export_range(16, 256, 4) var vehicle_window: int = 120   # ≈ 60-cell radius around a vehicle
-@export_range(2, 64, 1)   var vehicle_margin: int = 24    # refill once it drifts this far
-@export_range(4, 128, 2)  var object_window: int = 16     # ≈ 8-cell radius around an object
-@export_range(1, 32, 1)   var object_margin: int = 2
+## Collision is a GRID of tiled HeightMapShape3D cells. A body marks every cell within
+## its radius as needed; cells tile (no overlap → no doubled collision / catchy edges)
+## and bodies sharing a cell share its window.
+@export_range(16, 256, 8) var collision_cell:   int = 64   # heightmap cells per collision tile
+@export_range(8, 256, 4)  var vehicle_radius:   int = 64   # cells covered around a vehicle
+@export_range(2, 64, 2)   var object_radius:    int = 8    # cells covered around a world object
 
 @onready var collision     = $CollisionShape3D
 @onready var mesh_instance = $MeshInstance3D
@@ -135,8 +137,9 @@ var frustum_old
 var _lod_timer:     float = 0.0
 
 # ── Streaming collision runtime state ─────────────────────────────────────────
-var _col_active:  bool  = false
-var _col_windows: Array = []   # [{node:CollisionShape3D, body:Node3D, size,margin,ox,oz,built}]
+var _col_active: bool       = false
+var _col_bodies: Array      = []   # [{body:Node3D, radius:int}]
+var _col_cells:  Dictionary = {}   # cell_key -> CollisionShape3D (one tile per active cell)
 
 # ── Occlusion culling runtime state ──────────────────────────────────────────
 const OCCLUSION_UPDATE_INTERVAL: float = 0.20   # seconds between full occlusion passes
@@ -267,15 +270,17 @@ func _load_heightmap_image() -> Image:
 		return (res as Texture2D).get_image()
 	return null
 
-# ── Streaming collision ───────────────────────────────────────────────────────
-# One small HeightMapShape3D window per tracked body, kept in sync via the tree's
-# node_added/node_removed signals (no polling). Vehicles get a big window, world
-# blocks/resources a small one; blocks that belong to a vehicle are skipped.
+# ── Streaming collision (grid of tiled HeightMapShape3D cells) ─────────────────
+# Each tracked body marks the grid cells within its radius as "needed"; one small
+# HeightMapShape3D is created per needed cell. Cells TILE (no overlap → no doubled
+# collision and no catchy edges inside the driving area), and bodies that share a cell
+# share its window. Bodies are discovered via node_added/node_removed signals.
 func _setup_streaming_collision() -> void:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return
 	collision.disabled = true            # the scene's CollisionShape3D is unused at runtime
-	_clear_collision_windows()
+	_clear_collision_cells()
+	_col_bodies.clear()
 	_col_active = true
 	var scene_root := get_tree().current_scene
 	if scene_root != null:
@@ -284,7 +289,7 @@ func _setup_streaming_collision() -> void:
 	if not get_tree().node_added.is_connected(_on_node_added):
 		get_tree().node_added.connect(_on_node_added)
 		get_tree().node_removed.connect(_on_node_removed)
-	_update_collision_windows()
+	_update_collision_cells()
 
 # Highest RigidBody3D in n's ancestor chain, or n itself if none above it.
 func _top_rigidbody(n: Node) -> Node:
@@ -296,14 +301,14 @@ func _top_rigidbody(n: Node) -> Node:
 		p = p.get_parent()
 	return top
 
-# 0 = ignore, 1 = vehicle (big window), 2 = world block / resource (small window).
+# 0 = ignore, 1 = vehicle (big radius), 2 = world block / resource (small radius).
 func _classify_body(n: Node) -> int:
 	if not (n is RigidBody3D):
 		return 0
 	if is_ancestor_of(n):
 		return 0                          # our own collision shapes etc.
 	if _top_rigidbody(n) != n:
-		return 0                          # a sub-body (block on a vehicle) — parent's window covers it
+		return 0                          # a sub-body (block on a vehicle) — vehicle's cells cover it
 	var vroot := get_node_or_null(vehicles_path)
 	if vroot != null and (vroot == n.get_parent() or vroot.is_ancestor_of(n)):
 		return 1
@@ -319,23 +324,17 @@ func _register_body(n: Node) -> void:
 	var kind := _classify_body(n)
 	if kind == 0:
 		return
-	for win in _col_windows:
-		if win["body"] == n:
+	for b in _col_bodies:
+		if b["body"] == n:
 			return                        # already tracked
-	if kind == 1:
-		_add_collision_window(n, vehicle_window, vehicle_margin)
-	else:
-		_add_collision_window(n, object_window, object_margin)
+	_col_bodies.append({"body": n, "radius": vehicle_radius if kind == 1 else object_radius})
 
 func _unregister_body(n: Node) -> void:
 	var kept := []
-	for win in _col_windows:
-		if win["body"] == n:
-			if is_instance_valid(win["node"]):
-				win["node"].queue_free()
-		else:
-			kept.append(win)
-	_col_windows = kept
+	for b in _col_bodies:
+		if b["body"] != n:
+			kept.append(b)
+	_col_bodies = kept
 
 func _on_node_added(n: Node) -> void:
 	if n is RigidBody3D:
@@ -345,71 +344,82 @@ func _on_node_removed(n: Node) -> void:
 	if n is RigidBody3D:
 		_unregister_body(n)
 
-func _add_collision_window(body: Node3D, size: int, margin: int) -> void:
-	var s := clampi(size, 2, mini(w, d))
-	var cs := CollisionShape3D.new()
-	var shape := HeightMapShape3D.new()
-	shape.map_width  = s
-	shape.map_depth  = s
-	cs.shape = shape
-	add_child(cs)
-	_col_windows.append({"node": cs, "body": body, "size": s, "margin": margin,
-			"ox": 0, "oz": 0, "built": false})
+func _clear_collision_cells() -> void:
+	for key in _col_cells:
+		if is_instance_valid(_col_cells[key]):
+			_col_cells[key].queue_free()
+	_col_cells.clear()
 
-func _clear_collision_windows() -> void:
-	for win in _col_windows:
-		if is_instance_valid(win["node"]):
-			win["node"].queue_free()
-	_col_windows.clear()
-
-# Re-centre any window whose body has drifted past that window's margin.
-func _update_collision_windows() -> void:
-	if not _col_active or md.is_empty():
+# Recompute the set of grid cells needed (union of all bodies' footprints) and create /
+# free cell tiles to match. Diff-only, so static bodies cause zero churn.
+func _update_collision_cells() -> void:
+	if not _col_active or md.is_empty() or collision_cell <= 0:
 		return
+	var cells_x := (w + collision_cell - 1) / collision_cell
+	var cells_z := (d + collision_cell - 1) / collision_cell
+	var desired := {}
 	var dead := false
-	for win in _col_windows:
-		var body: Node3D = win["body"]
+	for b in _col_bodies:
+		var body: Node3D = b["body"]
 		if body == null or not is_instance_valid(body):
 			dead = true
 			continue
-		var W: int = win["size"]
+		var r: int = b["radius"]
 		var local := global_transform.affine_inverse() * body.global_position
-		var fx := int(round(local.x + float(w) * 0.5 - 0.5))
-		var fz := int(round(local.z + float(d) * 0.5 - 0.5))
-		var ox := clampi(fx - W / 2, 0, maxi(0, w - W))
-		var oz := clampi(fz - W / 2, 0, maxi(0, d - W))
-		var margin: int = win["margin"]
-		if win["built"] and absi(ox - win["ox"]) < margin and absi(oz - win["oz"]) < margin:
-			continue
-		_fill_collision_window(win, ox, oz)
-		win["ox"] = ox
-		win["oz"] = oz
-		win["built"] = true
+		var bx := int(round(local.x + float(w) * 0.5 - 0.5))
+		var bz := int(round(local.z + float(d) * 0.5 - 0.5))
+		var cx0 := clampi((bx - r) / collision_cell, 0, cells_x - 1)
+		var cx1 := clampi((bx + r) / collision_cell, 0, cells_x - 1)
+		var cz0 := clampi((bz - r) / collision_cell, 0, cells_z - 1)
+		var cz1 := clampi((bz + r) / collision_cell, 0, cells_z - 1)
+		for cz in range(cz0, cz1 + 1):
+			for cx in range(cx0, cx1 + 1):
+				desired[cz * cells_x + cx] = true
+	for key in desired:
+		if not _col_cells.has(key):
+			_make_cell_tile(key, cells_x)
+	for key in _col_cells.keys():
+		if not desired.has(key):
+			if is_instance_valid(_col_cells[key]):
+				_col_cells[key].queue_free()
+			_col_cells.erase(key)
 	if dead:
-		_prune_dead_windows()
+		_prune_dead_bodies()
 
-func _prune_dead_windows() -> void:
+func _prune_dead_bodies() -> void:
 	var kept := []
-	for win in _col_windows:
-		if win["body"] != null and is_instance_valid(win["body"]):
-			kept.append(win)
-		elif is_instance_valid(win["node"]):
-			win["node"].queue_free()
-	_col_windows = kept
+	for b in _col_bodies:
+		if b["body"] != null and is_instance_valid(b["body"]):
+			kept.append(b)
+	_col_bodies = kept
 
-func _fill_collision_window(win: Dictionary, ox: int, oz: int) -> void:
-	var W: int = win["size"]
+func _make_cell_tile(key: int, cells_x: int) -> void:
+	var cx := key % cells_x
+	var cz := key / cells_x
+	var ox := cx * collision_cell
+	var oz := cz * collision_cell
+	# +1 so neighbouring tiles share their boundary row (seamless, no gap, no overlap area).
+	var W := mini(collision_cell + 1, w - ox)
+	var H := mini(collision_cell + 1, d - oz)
+	if W < 2 or H < 2:
+		return
 	var data := PackedFloat32Array()
-	data.resize(W * W)
-	for j in W:
+	data.resize(W * H)
+	for j in H:
 		var srow := (oz + j) * w + ox
 		var drow := j * W
 		for i in W:
 			data[drow + i] = md[srow + i]
-	var shape: HeightMapShape3D = win["node"].shape
-	shape.map_data = data
-	# node.x = ox + (W - w) * 0.5 aligns window cell (i,j) with the visual mesh master cell.
-	win["node"].position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(W - d) * 0.5)
+	var shape := HeightMapShape3D.new()
+	shape.map_width  = W
+	shape.map_depth  = H
+	shape.map_data   = data
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	# node.x = ox + (W - w)*0.5 aligns tile cell (i,j) with the visual master cell (ox+i,oz+j).
+	cs.position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(H - d) * 0.5)
+	add_child(cs)
+	_col_cells[key] = cs
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -440,9 +450,8 @@ func apply_heightmap(data: PackedFloat32Array) -> void:
 	if use_image_data:
 		md = data                          # image mode: md is the source of truth
 		if not Engine.is_editor_hint() and _col_active:
-			for win in _col_windows:       # heights changed → force every window to refill
-				win["built"] = false
-			_update_collision_windows()
+			_clear_collision_cells()       # heights changed → rebuild tiles from fresh md
+			_update_collision_cells()
 		update()
 		return
 	if collision != null and collision.shape is HeightMapShape3D:
@@ -1582,9 +1591,9 @@ func _process(delta: float) -> void:
 		camera = _find_game_camera()
 		return
 
-	# ── Streaming collision: keep a physics window under every tracked body ───
+	# ── Streaming collision: keep tiled collision cells under the tracked bodies ──
 	if _col_active:
-		_update_collision_windows()
+		_update_collision_cells()
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
