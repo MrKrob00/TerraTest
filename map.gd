@@ -10,6 +10,11 @@ extends StaticBody3D
 ## path (_update_chunk_visibility): only the visible/hidden boundary is tested, and that
 ## boundary is kept small because chunks that fold into a macro stop being tracked here.
 @export var enable_threaded_frustum: bool = false
+## Macro groups whose XZ centre is farther than this from the camera are simply hidden,
+## skipping the (more expensive) per-macro frustum AABB test. Set roughly to the fog/visibility
+## distance — anything past it isn't visible anyway, so the frustum test would be wasted work.
+## This is what keeps the per-frame macro cost bounded instead of scaling with map size.
+@export var max_render_distance: float = 700.0
 
 # ── Occlusion culling settings ────────────────────────────────────────────────
 ## Hide chunks whose AABB top sits below the terrain horizon seen from the camera.
@@ -1840,8 +1845,21 @@ func _update_macro_visibility() -> void:
 	# clipped too aggressively near the frustum edge.
 	var margin  := frustum_margin * (camera.position * Vector3(1, 0, 1)).distance_to(Vector3.ZERO) \
 				   + chunk_size * MACRO_SIZE * 0.5
+	# Camera position in this node's local space (macro AABBs are local) — flattened to XZ.
+	var cam_local: Vector3 = global_transform.affine_inverse() * camera.global_position
+	cam_local.y = 0.0
+	# Past this XZ distance the macro can't be on screen (fog/far hides it), so skip the
+	# frustum maths and just hide it. + the macro half-footprint so we don't clip a group
+	# whose centre is past the line but whose near edge is still visible.
+	var cull_dist: float = max_render_distance + chunk_size * MACRO_SIZE * 0.5
+	var cull_dist_sq: float = cull_dist * cull_dist
 	for mi in _macro_instances.size():
 		if not _macro_active[mi]:
+			continue
+		var center: Vector3 = _macro_aabbs[mi].get_center()
+		center.y = 0.0
+		if cam_local.distance_squared_to(center) > cull_dist_sq:
+			_macro_instances[mi].visible = false
 			continue
 		var world_aabb := global_transform * _macro_aabbs[mi]
 		_macro_instances[mi].visible = _aabb_in_frustum(world_aabb, frustum, margin) \
