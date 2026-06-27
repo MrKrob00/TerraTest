@@ -111,11 +111,16 @@ const MACRO_SIZE: int = 4
 @export var vehicles_path: NodePath = NodePath("../Vehicles")
 @export var object_roots:  Array[NodePath] = [NodePath("../objects")]
 ## Collision is a GRID of tiled HeightMapShape3D cells. A body marks every cell within
-## its radius as needed; cells tile (no overlap → no doubled collision / catchy edges)
-## and bodies sharing a cell share its window.
+## its radius as needed; bodies sharing a cell share its window.
 @export_range(16, 256, 8) var collision_cell:   int = 64   # heightmap cells per collision tile
 @export_range(8, 256, 4)  var vehicle_radius:   int = 64   # cells covered around a vehicle
 @export_range(2, 64, 2)   var object_radius:    int = 8    # cells covered around a world object
+## Each tile is grown by this many cells on every side so neighbouring tiles OVERLAP.
+## Jolt only smooths ("deactivates") the internal edges of a SINGLE heightfield — the
+## boundary edge between two separate tiles stays live and a wheel snags on it when crossing.
+## Overlapping the tiles buries each tile's boundary edge under the neighbour's coincident
+## (same-height) surface, so the wheel always rolls on continuous ground. 0 = old behaviour.
+@export_range(0, 32, 1) var collision_overlap:  int = 8
 
 @onready var collision     = $CollisionShape3D
 @onready var mesh_instance = $MeshInstance3D
@@ -460,17 +465,24 @@ func _prune_dead_bodies() -> void:
 func _make_cell_tile(key: int, cells_x: int) -> void:
 	var cx := key % cells_x
 	var cz := key / cells_x
+	# This tile OWNS cells [ox, ox+collision_cell] but its shape is grown by collision_overlap
+	# on every side (clamped to the map) so it overlaps its neighbours — see collision_overlap.
+	# +1 already shares the boundary row with neighbours; the extra overlap buries the live
+	# tile-edge Jolt would otherwise snag a wheel on.
 	var ox := cx * collision_cell
 	var oz := cz * collision_cell
-	# +1 so neighbouring tiles share their boundary row (seamless, no gap, no overlap area).
-	var W := mini(collision_cell + 1, w - ox)
-	var H := mini(collision_cell + 1, d - oz)
+	var sx0 := maxi(ox - collision_overlap, 0)
+	var sz0 := maxi(oz - collision_overlap, 0)
+	var sx1 := mini(ox + collision_cell + collision_overlap, w - 1)
+	var sz1 := mini(oz + collision_cell + collision_overlap, d - 1)
+	var W := sx1 - sx0 + 1
+	var H := sz1 - sz0 + 1
 	if W < 2 or H < 2:
 		return
 	var data := PackedFloat32Array()
 	data.resize(W * H)
 	for j in H:
-		var srow := (oz + j) * w + ox
+		var srow := (sz0 + j) * w + sx0
 		var drow := j * W
 		for i in W:
 			data[drow + i] = md[srow + i]
@@ -480,8 +492,8 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	shape.map_data   = data
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
-	# node.x = ox + (W - w)*0.5 aligns tile cell (i,j) with the visual master cell (ox+i,oz+j).
-	cs.position = Vector3(ox + float(W - w) * 0.5, 0.0, oz + float(H - d) * 0.5)
+	# position so the shape's cell (i,j) lands on the visual master cell (sx0+i, sz0+j).
+	cs.position = Vector3(sx0 + float(W - w) * 0.5, 0.0, sz0 + float(H - d) * 0.5)
 	add_child(cs)
 	_col_cells[key] = cs
 
