@@ -32,22 +32,6 @@ extends RigidBody3D
 @export var base_weight: float = 40.0
 @export var gravity_mult: float = 2.5
 
-@export_group("Подвеска")
-## Мягкая подвеска под каждым колесом: луч вниз + пружина/демпфер. Гасит подскоки на
-## неровностях и стыках коллизии. Боксы колёс остаются «отбойником» на сильных ударах.
-@export var suspension_enabled: bool = true
-## Длина луча подвески вниз от колеса (м). Земля ближе этого → пружина+демпфер работают.
-@export var suspension_rest: float = 0.5
-## Жёсткость пружины (сила на единицу сжатия, ×масса). НИЗКАЯ намеренно: подвеска — лишь
-## мягкая подушка поверх боксов колёс, она НЕ держит весь вес (иначе на жёстком приземлении
-## 4 колеса разом дают импульс вверх → машину подкидывает и протыкает рельеф).
-@export var suspension_stiffness: float = 6.0
-## Демпфер — гаситель подскоков (сила на скорость колеса вверх, ×масса).
-@export var suspension_damping: float = 2.5
-## Потолок силы подвески на КОЛЕСО (×масса). Держим низким: 4×этого должно быть в районе
-## силы тяжести, чтобы подвеска не могла выбросить машину вверх. Боксы — отбойник на ударах.
-@export var suspension_max_force: float = 8.0
-
 @export var RADIUS: float = 8.0
 @export var CAM_HEIGHT: float = 8.0
 @export var ROT_SPEED: float = 1.5
@@ -94,9 +78,6 @@ func _ready() -> void:
 	gravity_scale = gravity_mult
 	linear_damp = 0.0
 	angular_damp = 4.0
-	# Непрерывная проверка коллизий — на быстром падении машина не проскакивает СКВОЗЬ
-	# тонкую поверхность рельефа (и не застревает под ней).
-	continuous_cd = true
 	_on_movement_pressed()
 	await get_tree().process_frame
 
@@ -187,7 +168,6 @@ func _physics_process(delta: float) -> void:
 	_process_input(joy, delta)
 	_check_ground()
 	_sync_mass()
-	_apply_suspension()
 
 	if _on_ground:
 		_apply_engine(delta)
@@ -236,38 +216,6 @@ func _check_ground() -> void:
 	q.exclude = [self]
 	q.collision_mask = 1
 	_on_ground = space.intersect_ray(q).size() > 0
-
-# ══════════════════════════════════════════
-# ПОДВЕСКА (raycast spring+damper под каждым колесом)
-# ══════════════════════════════════════════
-# Кузов — один RigidBody3D с жёсткими боксами колёс, поэтому удары рельефа бьют прямо в
-# тело (отсюда подскоки). Тут под каждым колесом пускаем луч вниз по «верху» машины: если
-# земля ближе rest, добавляем силу = пружина(сжатие) − демпфер(скорость колеса вверх),
-# приложенную в точке колеса. Демпфер гасит подскок, пружина мягко держит. Сила только
-# толкающая (clamp ≥ 0) — пассивная подвеска не тянет вниз; боксы остаются отбойником.
-func _apply_suspension() -> void:
-	if not suspension_enabled or Wheels.is_empty():
-		return
-	var space := get_world_3d().direct_space_state
-	var up := _get_up()
-	for wnode in Wheels:
-		if not is_instance_valid(wnode):
-			continue
-		var wp: Vector3 = wnode.global_position
-		var q := PhysicsRayQueryParameters3D.create(wp, wp - up * (suspension_rest + 0.4))
-		q.exclude = [self]
-		q.collision_mask = 1            # только рельеф (слой "world")
-		var hit := space.intersect_ray(q)
-		if hit.is_empty():
-			continue
-		var dist: float = wp.distance_to(hit.position)
-		var compression := clampf(suspension_rest - dist, 0.0, suspension_rest)
-		# скорость точки колеса вдоль "верха" машины (учёт вращения кузова)
-		var wheel_vel := linear_velocity + angular_velocity.cross(wp - global_position)
-		var vel_up := up.dot(wheel_vel)
-		var force_mag := (suspension_stiffness * compression - suspension_damping * vel_up) * mass
-		force_mag = clampf(force_mag, 0.0, suspension_max_force * mass)
-		apply_force(up * force_mag, wp - global_position)
 
 # ══════════════════════════════════════════
 # СИНХРОНИЗАЦИЯ МАССЫ
