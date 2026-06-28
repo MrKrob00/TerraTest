@@ -131,9 +131,6 @@ func _ready() -> void:
 	gravity_scale = gravity_mult
 	linear_damp   = 0.0
 	angular_damp  = 4.0
-	# Непрерывная проверка коллизий — чтобы на быстром падении машина не проскакивала
-	# СКВОЗЬ тонкую поверхность рельефа и не застревала под ней.
-	continuous_cd = true
 
 	_start_pos          = global_position
 	_stuck_check_pos    = global_position

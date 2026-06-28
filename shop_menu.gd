@@ -6,6 +6,7 @@ extends CanvasLayer
 # UI строится кодом, чтобы не было .tscn для ручной правки — стилизовать можно потом.
 
 var _shop: Node = null
+var _spawn_anchor: Vector3 = Vector3.ZERO   # мировая точка магазина (от его кнопки)
 
 var _bg:        ColorRect
 var _tabs:      TabContainer
@@ -87,8 +88,9 @@ func _build_ui() -> void:
 
 # ── Открытие / закрытие ───────────────────────────────────────────────────────
 
-func open(shop: Node) -> void:
+func open(shop: Node, spawn_anchor: Vector3 = Vector3.ZERO) -> void:
 	_shop = shop
+	_spawn_anchor = spawn_anchor
 	visible = true
 	_refresh()
 
@@ -151,10 +153,11 @@ func _take_out(block_type: int) -> void:
 		return
 	G.block_inventory.erase(block_type)            # убираем один экземпляр
 	var block := scene.instantiate()
-	# Мировая позиция спавна — рядом с магазином, чуть выше земли (упадёт на рельеф сам).
-	var origin := Vector3(0, 3, 0)
-	if _shop and _shop is Node3D:
-		origin = (_shop as Node3D).global_position + Vector3(3, 3, 0)
+	# Мировая точка спавна — от кнопки магазина (она физически на магазине), чуть в сторону
+	# и выше, упадёт на рельеф сам. Фолбэк на узел магазина, если якорь не передали.
+	var origin := _spawn_anchor + Vector3(2.0, 0.5, 2.0)
+	if _spawn_anchor == Vector3.ZERO and _shop and _shop is Node3D:
+		origin = (_shop as Node3D).global_position + Vector3(2.0, 2.0, 2.0)
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects:
 		objects.add_child(block)

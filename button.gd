@@ -19,7 +19,7 @@ func _input_event(camera: Camera3D, event: InputEvent, _pos: Vector3, _normal: V
 		return
 	if camera and camera.global_position.distance_to(global_position) > max_distance:
 		return
-	# owner = корень инстанса магазина (Node3D со скриптом shop.gd); по нему меню узнаёт,
-	# где спавнить блоки и чей это магазин.
+	# Кнопка физически стоит НА магазине, поэтому её мировая позиция = место магазина.
+	# Передаём её как точку спавна — надёжнее, чем гадать owner инстанса.
 	var shop: Node = owner if owner else get_parent()
-	ShopMenu.open(shop)
+	ShopMenu.open(shop, global_position)
