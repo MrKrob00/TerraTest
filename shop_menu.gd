@@ -151,17 +151,20 @@ func _take_out(block_type: int) -> void:
 		return
 	G.block_inventory.erase(block_type)            # убираем один экземпляр
 	var block := scene.instantiate()
-	# Спавним рядом с магазином, чуть выше земли — упадёт на рельеф сам.
+	# Мировая позиция спавна — рядом с магазином, чуть выше земли (упадёт на рельеф сам).
 	var origin := Vector3(0, 3, 0)
 	if _shop and _shop is Node3D:
 		origin = (_shop as Node3D).global_position + Vector3(3, 3, 0)
-	if block is Node3D:
-		(block as Node3D).position = origin
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects:
 		objects.add_child(block)
 	else:
 		get_tree().current_scene.add_child(block)
+	# ВАЖНО: ставим global_position ПОСЛЕ add_child. Узел objects сдвинут трансформом
+	# (~0,56,110), а локальный position игнорировал бы этот сдвиг → блок улетал в другой
+	# конец карты. global_position кладёт его именно туда, где магазин.
+	if block is Node3D:
+		(block as Node3D).global_position = origin
 	_refresh()
 
 func _block_name(block_type: int) -> String:

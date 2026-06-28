@@ -6,7 +6,7 @@ extends Area3D
 # physics_object_picking — это делает ShopMenu в _ready(). Без него клики по 3D молчат.
 
 ## Тапы дальше этого расстояния (м) игнорируются — кнопку видно примерно настолько же.
-@export var max_distance: float = 12.0
+@export var max_distance: float = 18.0
 
 func _ready() -> void:
 	input_ray_pickable = true

@@ -142,7 +142,12 @@ func fire_bullet():
 		free_bullet.append(new_bullet)
 	var bullet:Area3D = free_bullet.pop_back()
 	var dir = $Pivot.global_position.direction_to($Pivot/Marker3D.global_position)
-	bullet.global_position = $Pivot/DrillBody2.global_position
+	# Дуло: у пушки это DrillBody2, у лазера такого узла нет — берём Marker3D как запасной,
+	# иначе $Pivot/DrillBody2 = null и падало "global_position on null instance".
+	var muzzle: Node3D = $Pivot.get_node_or_null("DrillBody2")
+	if muzzle == null:
+		muzzle = $Pivot/Marker3D
+	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
 	bullet.look_at(dir+global_position)
 
