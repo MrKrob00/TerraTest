@@ -48,6 +48,10 @@ extends RigidBody3D
 @export var detection_radius:    float = 20.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
+## Слои, на которых ИИ ищет цели. Корпус машины (где живёт faction) лежит на слое
+## «machine» (5 → значение 16). Старое значение 1|2 ловило рельеф и блоки, но НЕ сам
+## корпус — поэтому ИИ не видел игрока. По умолчанию = слой machine.
+@export_flags_3d_physics var detection_mask: int = 16
 
 @export_group("ИИ — Патруль")
 ## Кастомные точки. Если пусто — генерируются случайные.
@@ -104,6 +108,9 @@ var _state_before_stuck:     AIState  = AIState.PATROL
 # Препятствия
 var _obstacle_correction: float = 0.0
 
+# Атака: сторона объезда цели (+1/-1), выбирается один раз за бой; 0 = не выбрана.
+var _orbit_dir: float = 0.0
+
 # ══════════════════════════════════════════
 # ОСИ — ИДЕНТИЧНО vehicle_body_3d
 # ══════════════════════════════════════════
@@ -133,7 +140,7 @@ func _setup_detection_area() -> void:
 	var area = Area3D.new()
 	area.name             = "DetectionArea"
 	area.collision_layer  = 0
-	area.collision_mask   = 1 | 2  # ловит все RigidBody3D
+	area.collision_mask   = detection_mask  # по умолчанию слой machine (корпуса машин)
 
 	var col  = CollisionShape3D.new()
 	var sph  = SphereShape3D.new()
@@ -241,49 +248,59 @@ func _ai_attack(delta: float) -> void:
 
 	_forget_timer = forget_enemy_time
 
-	var to_target = _target.global_position - global_position
-	var dist      = to_target.length()
+	var to_target := _target.global_position - global_position
+	to_target.y = 0.0
+	var dist := to_target.length()
 
 	if dist > attack_range * 1.3:
 		_state = AIState.CHASE
 		return
 
-	# Всегда атакуем
+	# Цель рядом — всегда стреляем. Турель сама целится в пределах своего конуса (±45°),
+	# поэтому машине НЕ нужно утыкаться носом во врага — она может спокойно кружить.
 	_do_attack()
 
-	# Направление к врагу (плоское — игнорируем Y)
-	var target_dir = Vector3(to_target.x, 0.0, to_target.z)
-	if target_dir.length_squared() < 0.001:
+	if dist < 0.01:
+		_throttle = lerp(_throttle, 0.0, 3.0 * delta)
 		return
-	target_dir = target_dir.normalized()
 
-	var fwd_flat = Vector3(_get_forward().x, 0.0, _get_forward().z)
+	var to_n := to_target / dist
+	var fwd_flat := Vector3(_get_forward().x, 0.0, _get_forward().z)
 	if fwd_flat.length_squared() < 0.001:
 		return
 	fwd_flat = fwd_flat.normalized()
 
-	var angle_to_target = fwd_flat.signed_angle_to(target_dir, Vector3.UP)
+	# Сторону объезда выбираем один раз за бой (в ту, куда уже повёрнуты) — без дёрганья.
+	var ang_to_target := fwd_flat.signed_angle_to(to_n, Vector3.UP)
+	if _orbit_dir == 0.0:
+		_orbit_dir = 1.0 if ang_to_target >= 0.0 else -1.0
 
-	# Руль на врага
-	var steer_input  = clamp(angle_to_target / PI, -1.0, 1.0)
-	var speed_ratio  = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit  = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
-	_steer_angle     = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
+	# Это МАШИНА: держим боевую дистанцию и КРУЖИМ вокруг цели рулём (касательная к окружности
+	# радиуса min_combat_distance), а не подъезжаем-тормозим. Радиальная поправка держит радиус:
+	# дальше — подворачиваем внутрь, ближе — наружу. Вплотную — сдаём назад, не теряя врага.
+	var radius := maxf(min_combat_distance, 2.0)
+	var tangent := Vector3(-to_n.z, 0.0, to_n.x) * _orbit_dir   # перпендикуляр = касательная орбиты
+	var radial := clampf((dist - radius) / radius, -1.0, 1.0)
 
-	# Газ по зонам
-	if dist > min_combat_distance + 2.0:
-		# Далеко — едем вперёд, притормаживаем на крутом повороте
-		var align = clamp(1.0 - abs(angle_to_target) / PI, 0.4, 1.0)
-		_throttle = lerp(_throttle, chase_speed_factor * align, 3.0 * delta)
-
-	elif dist > min_combat_distance - 1.0:
-		# Комфортная дистанция — кружим вокруг
-		_throttle = lerp(_throttle, patrol_speed_factor * 0.7, 3.0 * delta)
-		apply_central_force(_get_right() * sign(angle_to_target) * engine_force * mass * 0.25)
-
+	var desired: Vector3
+	var target_throttle: float
+	if dist < radius * 0.55:
+		desired = to_n                              # нос на цель
+		target_throttle = -0.5                      # сдаём назад
 	else:
-		# Слишком близко — тормозим плавно
-		_throttle = lerp(_throttle, 0.0, 6.0 * delta)
+		desired = tangent + to_n * radial           # орбита + поправка радиуса
+		if desired.length_squared() < 0.001:
+			desired = tangent
+		desired = desired.normalized()
+		var turn_factor := clampf(1.0 - absf(fwd_flat.signed_angle_to(desired, Vector3.UP)) / PI, 0.35, 1.0)
+		target_throttle = chase_speed_factor * 0.85 * turn_factor
+
+	var steer_ang := fwd_flat.signed_angle_to(desired, Vector3.UP)
+	var steer_input := clampf(steer_ang / (PI * 0.6), -1.0, 1.0)
+	var speed_ratio := clampf(linear_velocity.length() / max_speed, 0.0, 1.0)
+	var angle_limit := deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
+	_steer_angle = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
+	_throttle = lerp(_throttle, target_throttle, 3.0 * delta)
 
 # ══════════════════════════════════════════
 # СОСТОЯНИЕ: ВОССТАНОВЛЕНИЕ ПОСЛЕ ЗАСТРЕВАНИЯ
@@ -406,6 +423,7 @@ func _do_attack() -> void:
 
 func _lose_target() -> void:
 	_target       = null
+	_orbit_dir    = 0.0   # следующий бой выберет сторону объезда заново
 	_patrol_index = _nearest_patrol_index()
 	_state        = AIState.PATROL
 
