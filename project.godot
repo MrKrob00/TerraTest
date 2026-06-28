@@ -24,6 +24,7 @@ config/reflection_atlas/reflection_size=256
 [autoload]
 
 G="*res://G.gd"
+ShopMenu="*res://shop_menu.gd"
 
 [editor_plugins]
 
