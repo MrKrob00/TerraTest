@@ -21,6 +21,7 @@ func _on_taker_3_resource(resource: RigidBody3D) -> void:
 func _on_sell_timeout() -> void:
 	inventory1[0].queue_free()
 	inventory1.erase(inventory1[0])
+	G.add_money(5)
 	print("+5 Money")
 	if inventory1.size()>0:
 		$blocks/taker/Sell.start()
@@ -30,6 +31,7 @@ func _on_sell_timeout() -> void:
 func _on_sell_2_timeout() -> void:
 	inventory2[0].queue_free()
 	inventory2.erase(inventory2[0])
+	G.add_money(5)
 	print("+5 Money")
 	if inventory2.size()>0:
 		$blocks/taker2/Sell.start()
@@ -38,6 +40,7 @@ func _on_sell_2_timeout() -> void:
 func _on_sell_3_timeout() -> void:
 	inventory3[0].queue_free()
 	inventory3.erase(inventory3[0])
+	G.add_money(5)
 	print("+5 Money")
 	if inventory3.size()>0:
 		$blocks/taker3/Sell.start()

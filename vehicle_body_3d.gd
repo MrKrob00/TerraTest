@@ -450,16 +450,24 @@ func _on_building_pressed() -> void:
 
 func _handle_click(screen_pos: Vector2) -> void:
 	var camera = camera_controller.camera
-	var ray_origin = camera.project_ray_origin(screen_pos)
-	var ray_dir = camera.project_ray_normal(screen_pos)
-	ray_origin = ray_origin - position + Vector3(5, 0, 5)
+	var world_origin = camera.project_ray_origin(screen_pos)
+	var world_dir    = camera.project_ray_normal(screen_pos)
+	# Луч надо перевести из мира в ЛОКАЛЬНУЮ сетку блоков. Старый код вычитал только
+	# position (без учёта поворота машины и трансформа родителя) и НЕ поворачивал
+	# направление — поэтому, как только машина повёрнута (а в Building остаётся поворот
+	# по Y) или едет, выбор блоков переставал попадать. Берём пространство самого
+	# block_map_node: to_local() даёт полный перевод точки (позиция+поворот+родитель), а
+	# направление крутим обратным базисом. Сетка сдвинута на (5,0,5) (см. blocks.gd).
+	var space_node: Node3D = block_map_node if block_map_node else self
+	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 0, 5)
+	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
 	var res = _find_nearest_block_on_ray(ray_origin, ray_dir)
 	if block_take:
 		if res["hit"]: _place_ghost(res, true)
 		return
 	else:
 		camera.find_child("Raycast").process_mode = Node.PROCESS_MODE_DISABLED
-		camera.find_child("Raycast").look_at(camera.global_position + ray_dir)
+		camera.find_child("Raycast").look_at(camera.global_position + world_dir)
 		camera.find_child("Raycast").process_mode = Node.PROCESS_MODE_INHERIT
 	if !block_take and res["hit"]:
 		_place_ghost(res, false)
