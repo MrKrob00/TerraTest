@@ -12,7 +12,7 @@ func _ready() -> void:
 	input_ray_pickable = true
 
 func _input_event(camera: Camera3D, event: InputEvent, _pos: Vector3, _normal: Vector3, _shape: int) -> void:
-	var tapped := (event is InputEventMouseButton and event.pressed \
+	var tapped: bool = (event is InputEventMouseButton and event.pressed \
 			and event.button_index == MOUSE_BUTTON_LEFT) \
 		or (event is InputEventScreenTouch and event.pressed)
 	if not tapped:

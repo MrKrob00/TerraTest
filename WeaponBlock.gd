@@ -81,7 +81,7 @@ func _track_target(delta: float, firing: bool) -> void:
 
 	# Если в конусе есть цель — доворачиваем турель на неё, иначе плавно в нейтраль
 	# (стрельба «в воздух» — луч всё равно бьёт прямо, видно что оружие работает).
-	var has_target := _current_target != null and is_instance_valid(_current_target) \
+	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
 	if has_target:
 		var target_pos = _current_target.global_position
