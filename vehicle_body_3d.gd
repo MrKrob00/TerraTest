@@ -503,12 +503,12 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	var step_x := 1 if dir.x >= 0 else -1
 	var step_y := 1 if dir.y >= 0 else -1
 	var step_z := 1 if dir.z >= 0 else -1
-	var td_x := (1.0/abs(dir.x)) if dir.x != 0 else INF
-	var td_y := (1.0/abs(dir.y)) if dir.y != 0 else INF
-	var td_z := (1.0/abs(dir.z)) if dir.z != 0 else INF
-	var tm_x := ((cx + 0.5 - origin.x)/abs(dir.x)) if dir.x > 0 else ((origin.x - (cx - 0.5))/abs(dir.x)) if dir.x < 0 else INF
-	var tm_y := ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
-	var tm_z := ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
+	var td_x: float = (1.0/abs(dir.x)) if dir.x != 0 else INF
+	var td_y: float = (1.0/abs(dir.y)) if dir.y != 0 else INF
+	var td_z: float = (1.0/abs(dir.z)) if dir.z != 0 else INF
+	var tm_x: float = ((cx + 0.5 - origin.x)/abs(dir.x)) if dir.x > 0 else ((origin.x - (cx - 0.5))/abs(dir.x)) if dir.x < 0 else INF
+	var tm_y: float = ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
+	var tm_z: float = ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
 	var last_face := ""
 	for _i in range(128):
 		# Проверяем ТЕКУЩУЮ ячейку (включая стартовую) ещё до шага.
