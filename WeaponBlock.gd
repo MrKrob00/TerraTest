@@ -12,7 +12,13 @@ const YAW_LIMIT   = 45.0
 const PITCH_LIMIT = 30.0
 
 var _fire_timer: float = 0.0
-var _firing: bool = false
+## «Огонь» — это не защёлка, а таймер: attack() взводит его, и каждый кадр он гаснет.
+## Пока стрелок (игрок держит Attack / ИИ в атаке) зовёт attack() каждый кадр — оружие
+## стреляет; перестал звать → через FIRE_HOLD выключается. Так луч/трасер сами гаснут,
+## когда атака закончилась (раньше для ИИ _firing залипал в true навсегда).
+const FIRE_HOLD: float = 0.15
+var _fire_hold: float = 0.0
+var _anim_t: float = 0.0
 var _targets: Array[Node3D] = []
 var _current_target: Node3D = null
 func _ready() -> void:
@@ -21,18 +27,16 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-
 	_update_current_target()
 	raycast.force_raycast_update()
-	_track_target(delta)
-	if not _firing:
-		return
-	if Input.is_action_just_released("Attack"):
-		_firing = false
-	_handle_fire(delta)
+	_fire_hold = maxf(_fire_hold - delta, 0.0)
+	var firing := _fire_hold > 0.0
+	_track_target(delta, firing)
+	if firing:
+		_handle_fire(delta)
 
 func attack() -> void:
-	_firing = true
+	_fire_hold = FIRE_HOLD
 
 func _is_in_cone(body: Node3D) -> bool:
 	var dir_world = (body.global_position - pivot.global_position).normalized()
@@ -58,44 +62,63 @@ func _update_current_target() -> void:
 			closest = t
 	_current_target = closest
 
-func _track_target(delta: float) -> void:
-	var track_visual = raycast.get_node("track_visual")
+func _track_target(delta: float, firing: bool) -> void:
+	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
+	if track_visual == null:
+		return
 	var track_mat = track_visual.get_active_material(0)
 
-
-	if _current_target == null or !_is_in_cone(_current_target):
-		raycast.debug_shape_custom_color = Color(0, 1, 0)
-		track_mat.albedo_color = Color(0.0, 1.0, 0.0, 1.0)
+	# ── НЕ стреляем → луч полностью скрыт (ни цвета, ни геометрии) ────────────
+	if not firing:
+		if track_visual.visible:
+			track_visual.visible = false
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
 		return
 
-	# Берём центр AABB блока а не origin
-	var target_pos = _current_target.global_position
-	if _current_target is MeshInstance3D:
-		target_pos = _current_target.get_aabb().get_center() + _current_target.global_position
-	elif _current_target.has_node("CollisionShape3D"):
-		target_pos = _current_target.get_node("CollisionShape3D").global_position
+	# ── Стреляем → показываем и «оживляем» луч ───────────────────────────────
+	track_visual.visible = true
+	_anim_t += delta
 
-	var dir_world = (target_pos - pivot.global_position).normalized()
-	var dir_local = global_transform.basis.inverse() * dir_world
-
-	var yaw   = rad_to_deg(atan2(-dir_local.x, -dir_local.z))
-	var pitch = rad_to_deg(atan2(dir_local.y,
-		Vector2(dir_local.x, dir_local.z).length()))
-
-	yaw   = clamp(yaw,   -YAW_LIMIT,   YAW_LIMIT)
-	pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT)
-
-	if track_mat:
-		track_mat.albedo_color = Color(1, 0, 0)
-
-	var target_rot = Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0)
-	pivot.rotation = lerp(pivot.rotation, target_rot, 15.0 * delta)
-
-	if raycast.is_colliding():
-		raycast.debug_shape_custom_color = Color(1, 0, 0)
+	# Если в конусе есть цель — доворачиваем турель на неё, иначе плавно в нейтраль
+	# (стрельба «в воздух» — луч всё равно бьёт прямо, видно что оружие работает).
+	var has_target := _current_target != null and is_instance_valid(_current_target) \
+			and _is_in_cone(_current_target)
+	if has_target:
+		var target_pos = _current_target.global_position
+		if _current_target is MeshInstance3D:
+			target_pos = _current_target.get_aabb().get_center() + _current_target.global_position
+		elif _current_target.has_node("CollisionShape3D"):
+			target_pos = _current_target.get_node("CollisionShape3D").global_position
+		var dir_world = (target_pos - pivot.global_position).normalized()
+		var dir_local = global_transform.basis.inverse() * dir_world
+		var yaw   = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
+		var pitch = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
 	else:
-		raycast.debug_shape_custom_color = Color(0, 1, 0)
+		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
+
+	# Длина луча: до точки попадания, иначе на всю дальность (бьёт в воздух).
+	var hit := raycast.is_colliding()
+	var length := weapon_range
+	if hit:
+		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
+	if track_visual.mesh is CylinderMesh:
+		(track_visual.mesh as CylinderMesh).height = length
+		track_visual.position.z = -length * 0.5
+
+	# Анимация «рабочего» луча: пульсация яркости. По цели — горячий (бело-красный), в
+	# воздух — оранжево-красный поспокойнее. Луч материал unshaded, поэтому пульсируем
+	# именно albedo (на unshaded виден он, а не emission); emission ставим заодно для
+	# материалов с обычным шейдингом. Видно, что оружие именно СТРЕЛЯЕТ.
+	var pulse := 0.7 + 0.3 * sin(_anim_t * 40.0)
+	var base := Color(1.0, 0.85, 0.7) if hit else Color(1.0, 0.4, 0.1)
+	raycast.debug_shape_custom_color = Color(1, 0, 0) if hit else Color(1, 0.5, 0)
+	if track_mat is StandardMaterial3D:
+		var m := track_mat as StandardMaterial3D
+		m.albedo_color = base * pulse
+		m.emission_enabled = true
+		m.emission = base
+		m.emission_energy_multiplier = (3.0 if hit else 1.5) * pulse
 
 func _handle_fire(delta: float) -> void:
 	if _current_target == null or not raycast.is_colliding():
