@@ -9,6 +9,7 @@ size = Vector3(3, 4, 3)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_blqjs"]
 transparency = 1
+blend_mode = 3
 
 [sub_resource type="BoxMesh" id="BoxMesh_fgaav"]
 material = SubResource("StandardMaterial3D_blqjs")
@@ -42,7 +43,8 @@ albedo_texture = SubResource("GradientTexture2D_blqjs")
 billboard_mode = 1
 proximity_fade_distance = 14.09
 distance_fade_mode = 1
-distance_fade_min_distance = 12.0
+distance_fade_min_distance = 20.0
+distance_fade_max_distance = 18.0
 
 [sub_resource type="ExternalTexture" id="ExternalTexture_gmb2m"]
 
@@ -93,18 +95,18 @@ debug_color = Color(1.9187722, 2.0596302, 2.552633, 1)
 [node name="MeshInstance3D" type="MeshInstance3D" parent="black hole" unique_id=784611885]
 mesh = SubResource("SphereMesh_blqjs")
 
-[node name="Sprite3D" type="Sprite3D" parent="." unique_id=735847120]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 5.777947, 0)
+[node name="button" type="Sprite3D" parent="." unique_id=735847120]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1639752, 0)
 material_override = SubResource("StandardMaterial3D_6lah5")
 cast_shadow = 0
 billboard = 1
 render_priority = 1
 texture = SubResource("ExternalTexture_gmb2m")
 
-[node name="Area3D" type="Area3D" parent="Sprite3D" unique_id=1567632059]
+[node name="Area3D" type="Area3D" parent="button" unique_id=1567632059]
 script = ExtResource("3_fgaav")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Sprite3D/Area3D" unique_id=1954658589]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="button/Area3D" unique_id=1954658589]
 shape = SubResource("SphereShape3D_fgaav")
 
 [connection signal="body_entered" from="black hole/hole" to="black hole" method="_on_hole_body_entered"]
