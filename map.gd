@@ -5,11 +5,6 @@ extends StaticBody3D
 @export var camera: Camera3D
 @export_range(-0.5, 0.5, 0.01) var frustum_margin: float = 0.05
 @export var enable_frustum_culling: bool = true
-## Threaded frustum culling tests EVERY chunk every frame on worker threads — fine for
-## small maps but it tanks FPS on a big one. OFF (default) uses the incremental frontier
-## path (_update_chunk_visibility): only the visible/hidden boundary is tested, and that
-## boundary is kept small because chunks that fold into a macro stop being tracked here.
-@export var enable_threaded_frustum: bool = false
 ## Macro groups whose XZ centre is farther than this from the camera are simply hidden,
 ## skipping the (more expensive) per-macro frustum AABB test. Set roughly to the fog/visibility
 ## distance — anything past it isn't visible anyway, so the frustum test would be wasted work.
@@ -137,16 +132,13 @@ var _chunk_meshes:   Array = []
 var _chunk_lod:      Array[int] = []
 
 # Per-chunk "stitch signature": encodes the chunk's LOD step plus the snap step
-# on each of its 4 borders (see _stitch_signature). _update_lod rebuilds a chunk
+# on each of its 4 borders (see _stitch_signature). the quadtree LOD pass (_qt_apply) rebuilds a chunk
 # whenever its current required signature differs from the one last applied, which
 # makes seam stitching self-healing regardless of event order (LOD change, neighbour
 # LOD change, macro toggle, streamed-in chunk). 0 = no mesh applied yet.
 var _chunk_stitch_sig: Array[int] = []
 
 var _chunks_x:      int = 0
-var _visible_chunks: Dictionary = {}
-var _frontier:       Dictionary = {}
-var frustum_old
 var _lod_timer:     float = 0.0
 
 # ── Streaming collision runtime state ─────────────────────────────────────────
@@ -160,16 +152,6 @@ var _occlusion_timer: float = 0.0
 var _occluded_chunks: Dictionary = {}           # ci → true  (passed frustum, failed occlusion)
 var _occluded_macros: Dictionary = {}           # mi → true
 
-# ── Async frustum culling state (WorkerThreadPool) ────────────────────────────
-# Pattern: main thread snapshots frustum+transform → workers test all AABBs in
-# parallel → main thread applies visibility changes next frame.
-# _chunk_aabbs must NOT be written while _ft_group_id ≥ 0 (update_chunks waits).
-var _ft_snap_frustum: Array[Plane] = []         # captured on main thread, read-only by workers
-var _ft_snap_gt:      Transform3D  = Transform3D()
-var _ft_snap_margin:  float        = 0.0
-var _ft_results:      PackedByteArray = PackedByteArray()  # 1=in frustum, 0=out
-var _ft_group_id:     int          = -1         # -1 = no task in flight
-var _ft_chunk_count:  int          = 0          # snapshot of _chunk_aabbs.size() at dispatch
 
 # ── Streaming runtime state ───────────────────────────────────────────────────
 # Chunks outside stream_initial_radius are queued here and built in background.
@@ -664,11 +646,6 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 # Partial update — only rebuild the listed chunk indices.
 # In the editor this is the hot path on every sculpt stroke.
 func update_chunks(chunk_indices: Array) -> void:
-	# If a frustum task is in flight it holds read references to _chunk_aabbs.
-	# Wait for it to finish before we write new AABB data (avoids data race).
-	if _ft_group_id >= 0:
-		WorkerThreadPool.wait_for_group_task_completion(_ft_group_id)
-		_ft_group_id = -1
 	if Engine.is_editor_hint() and not use_image_data and collision.shape is HeightMapShape3D:
 		md = collision.shape.map_data  # legacy editor: re-read the sculpted shape data
 	if Engine.is_editor_hint():
@@ -1073,62 +1050,6 @@ func _apply_built_results(indices: Array, mat: Material) -> void:
 		inst.visible = false
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LOD update  (runtime only)
-# Runs every LOD_UPDATE_INTERVAL seconds.
-#
-# Step 1 — macro decision: any group whose XZ centre is ≥ lod_distance_1 from
-#   the camera collapses into one merged mesh (no shadow casts, 1 draw call).
-# Step 2 — individual LOD: close chunks (dist < lod_distance_1) switch between
-#   LOD 0 (full res) and LOD 1 (¼ res) only.  LOD 2/3 is the macro system's job.
-func _update_lod() -> void:
-	if not camera:
-		return
-
-	var cam_pos := camera.global_position
-	var mat     := _get_material()
-
-	# ── Step 1: macro vs individual per group ─────────────────────────────────
-	for mi in _macro_instances.size():
-		var center     := global_transform * _macro_aabbs[mi].get_center()
-		var dx         := cam_pos.x - center.x
-		var dz         := cam_pos.z - center.z
-		var dist       := sqrt(dx * dx + dz * dz)
-		var want_macro := dist >= lod_distance_1
-		if want_macro != _macro_active[mi]:
-			_set_macro_mode(mi, want_macro)
-
-	# ── Step 2: per-chunk target LOD ──────────────────────────────────────────
-	# Update every built, non-macro chunk's LOD (do NOT skip frustum-culled chunks —
-	# off-screen state must stay correct so a chunk re-entering the view never shows a
-	# stale, un-stitched mesh). Step 3's signature pass below picks up these LOD changes
-	# and re-stitches every affected seam, including macro-group boundaries.
-	for i in _chunk_instances.size():
-		if not _chunk_instances[i]:   # not yet streamed in
-			continue
-		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
-			continue
-		var center     := global_transform * _chunk_aabbs[i].get_center()
-		var dx         := cam_pos.x - center.x
-		var dz         := cam_pos.z - center.z
-		var dist       := sqrt(dx * dx + dz * dz)
-		_chunk_lod[i] = 1 if dist >= lod_distance_0 else 0
-
-	# ── Step 3: rebuild every chunk whose stitch signature is now stale ────────
-	# Self-healing seam stitching: a chunk's mesh is fully determined by its LOD plus
-	# the snap step on each of its 4 borders (_stitch_signature). Rebuild whenever the
-	# required signature differs from the one last applied. This catches EVERY cause of
-	# a stale seam — the chunk's own LOD change, a neighbour's LOD change, a macro group
-	# toggling, or a chunk newly streamed in — no matter the order events happened in,
-	# so a T-junction crack can never persist. After things settle the signatures match
-	# and nothing is rebuilt, so the steady-state cost is just the cheap comparison.
-	for i in _chunk_instances.size():
-		if not _chunk_instances[i]:
-			continue
-		if _chunk_macro_idx.size() > i and _macro_active[_chunk_macro_idx[i]]:
-			continue   # individual mesh is hidden; the macro instance renders this region
-		if _chunk_stitch_sig[i] != _stitch_signature(i):
-			_apply_lod_mesh(i, mat)
 
 
 # Applies the correct mesh to chunk ci, rebuilding with border snapping when
@@ -1153,7 +1074,7 @@ func _apply_lod_mesh(ci: int, mat: Material) -> void:
 	var w_snap := _border_snap(cx, cz, -1,  0, my_step)
 	var e_snap := _border_snap(cx, cz,  1,  0, my_step)
 
-	# Record the signature of the mesh we are about to apply, so _update_lod can tell
+	# Record the signature of the mesh we are about to apply, so the quadtree LOD pass can tell
 	# when this chunk needs rebuilding again (its LOD or any neighbour's step changed).
 	if ci < _chunk_stitch_sig.size():
 		_chunk_stitch_sig[ci] = _encode_sig(my_step, n_snap, s_snap, w_snap, e_snap)
@@ -1191,7 +1112,7 @@ func _border_snap(cx: int, cz: int, dcx: int, dcz: int, my_step: int) -> int:
 
 
 # Packs a chunk's LOD step and its 4 border snap steps into one int. Two chunks with
-# the same signature produce byte-identical meshes, so _update_lod only rebuilds when
+# the same signature produce byte-identical meshes, so the quadtree LOD pass only rebuilds when
 # the signature actually changes. Each value is ≤ 8, so 4 bits per field is plenty.
 func _encode_sig(my_step: int, n_snap: int, s_snap: int, w_snap: int, e_snap: int) -> int:
 	return my_step | (n_snap << 4) | (s_snap << 8) | (w_snap << 12) | (e_snap << 16)
@@ -1397,31 +1318,6 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 	return am
 
 
-# Switches macro-group mi between merged (active=true) and individual rendering.
-#   active=true  → hide 16 individual instances, show 1 merged (no shadows)
-#   active=false → hide merged, restore individual visibility from frustum state
-func _set_macro_mode(mi: int, active: bool) -> void:
-	_macro_active[mi] = active
-	if active:
-		# The macro instance owns this region now, so stop tracking these sub-chunks in the
-		# individual frustum sets — that's what keeps the frontier/visible sets small (and
-		# the per-frame culling cheap) on a big map.
-		for ci in _macro_to_chunks[mi]:
-			if _chunk_instances[ci]:
-				_chunk_instances[ci].visible = false
-			_visible_chunks.erase(ci)
-			_frontier.erase(ci)
-		# Frustum validity is confirmed each frame by _update_macro_visibility()
-		_macro_instances[mi].visible = true
-	else:
-		_macro_instances[mi].visible = false
-		# Hand the sub-chunks back to the individual frustum system via the frontier; the
-		# next _update_chunk_visibility pass shows the ones that are actually in view.
-		for ci in _macro_to_chunks[mi]:
-			if _chunk_instances[ci]:
-				_chunk_instances[ci].visible = false
-			_visible_chunks.erase(ci)
-			_frontier[ci] = true
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2096,192 +1992,6 @@ func _qt_evict_far(cam: Vector3) -> void:
 		_evict_macro(mi)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Async frustum culling  —  WorkerThreadPool
-# ─────────────────────────────────────────────────────────────────────────────
-
-# Snapshot current camera state on the main thread and kick off a group task.
-# Workers read _chunk_aabbs[] (read-only) and _ft_snap_frustum (read-only).
-# Writes only to distinct indices of _ft_results (PackedByteArray, thread-safe).
-func _ft_dispatch() -> void:
-	if not camera or _chunk_aabbs.is_empty():
-		return
-
-	var new_frustum := camera.get_frustum()
-	# Skip dispatch if the camera hasn't moved — results would be identical.
-	if new_frustum == _ft_snap_frustum:
-		return
-
-	_ft_chunk_count  = _chunk_aabbs.size()
-	_ft_snap_frustum = new_frustum          # fresh Array[Plane], kept alive by member var
-	_ft_snap_gt      = global_transform
-	_ft_snap_margin  = frustum_margin * (camera.position * Vector3(1, 0, 1)).length() \
-					   + chunk_size
-	_ft_results.resize(_ft_chunk_count)
-
-	# Each worker call gets its own index (0…_ft_chunk_count-1).
-	# bind() appends the extra args after the system-provided index.
-	_ft_group_id = WorkerThreadPool.add_group_task(
-			_ft_worker.bind(_ft_snap_gt, _ft_snap_frustum, _ft_snap_margin),
-			_ft_chunk_count, -1, true, "frustum_cull")
-
-
-# Worker — executes on a WorkerThreadPool thread.
-# MUST be pure math: no scene-tree, no node property writes, no GDScript Mutex.
-# Reads: _chunk_aabbs (read-only during task lifetime), bound args (read-only).
-# Writes: _ft_results[idx] — each thread writes to its own unique index only.
-func _ft_worker(idx: int, gt: Transform3D, frustum: Array[Plane], margin: float) -> void:
-	if idx >= _chunk_aabbs.size():
-		_ft_results[idx] = 0
-		return
-	var world_aabb := gt * _chunk_aabbs[idx]
-	_ft_results[idx] = 1 if _aabb_in_frustum(world_aabb, frustum, margin) else 0
-
-
-# Apply the completed task's results on the main thread.
-# Mirrors the newly-visible / newly-hidden logic of _update_chunk_visibility.
-func _ft_apply() -> void:
-	var n := mini(_ft_results.size(), _chunk_instances.size())
-	if n == 0:
-		return
-
-	var newly_visible: Array[int] = []
-	var newly_hidden:  Array[int] = []
-
-	for i in n:
-		var in_frustum := _ft_results[i] != 0
-		if in_frustum and not _visible_chunks.has(i):
-			newly_visible.append(i)
-		elif not in_frustum and _visible_chunks.has(i):
-			newly_hidden.append(i)
-
-	for i in newly_visible:
-		_visible_chunks[i] = true
-		_frontier.erase(i)
-		if _chunk_macro_idx.size() <= i or not _macro_active[_chunk_macro_idx[i]]:
-			if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
-				_chunk_instances[i].visible = not _occluded_chunks.has(i)
-		for nb in _get_neighbors(i):
-			if not _visible_chunks.has(nb):
-				_frontier[nb] = true
-
-	for i in newly_hidden:
-		_visible_chunks.erase(i)
-		_frontier[i] = true
-		# Always hide — safe in both individual and macro modes (mirrors the sync
-		# path in _update_chunk_visibility). Guarding this behind the macro check
-		# could strand a chunk visible if it was ever shown while its macro was active.
-		if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
-			_chunk_instances[i].visible = false
-		for nb in _get_neighbors(i):
-			if not _visible_chunks.has(nb):
-				var has_vis := false
-				for nnb in _get_neighbors(nb):
-					if _visible_chunks.has(nnb):
-						has_vis = true
-						break
-				if not has_vis:
-					_frontier.erase(nb)
-
-
-func _update_chunk_visibility() -> void:
-	var frustum = camera.get_frustum()
-	if frustum_old == frustum:
-		return
-	frustum_old = frustum
-	var margin = frustum_margin * (camera.position * Vector3(1, 0, 1)).distance_to(Vector3.ZERO) + chunk_size
-
-	var newly_visible = []
-	var newly_hidden  = []
-
-	for i in _frontier:
-		if i >= _chunk_aabbs.size():
-			continue
-		var world_aabb = global_transform * _chunk_aabbs[i]
-		if _aabb_in_frustum(world_aabb, frustum, margin):
-			newly_visible.append(i)
-
-	for i in _visible_chunks:
-		if i >= _chunk_aabbs.size():
-			continue
-		var world_aabb = global_transform * _chunk_aabbs[i]
-		if not _aabb_in_frustum(world_aabb, frustum, margin):
-			newly_hidden.append(i)
-
-	for i in newly_visible:
-		_visible_chunks[i] = true
-		_frontier.erase(i)
-		# Don't show individual instances that belong to an active macro group —
-		# the macro MeshInstance3D owns rendering for that region.
-		if _chunk_macro_idx.size() <= i or not _macro_active[_chunk_macro_idx[i]]:
-			if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
-				_chunk_instances[i].visible = not _occluded_chunks.has(i)
-		for n in _get_neighbors(i):
-			if _visible_chunks.has(n):
-				continue
-			# Don't flood-fill into a macro region — those chunks aren't tracked here.
-			if _chunk_macro_idx.size() > n and _macro_active[_chunk_macro_idx[n]]:
-				continue
-			_frontier[n] = true
-
-	for i in newly_hidden:
-		if _chunk_instances[i]:   # guard: chunk may not be streamed in yet
-			_chunk_instances[i].visible = false   # safe in both individual & macro modes
-		_visible_chunks.erase(i)
-		_frontier[i] = true
-		for n in _get_neighbors(i):
-			if not _visible_chunks.has(n):
-				var has_visible_neighbor = false
-				for nn in _get_neighbors(n):
-					if _visible_chunks.has(nn):
-						has_visible_neighbor = true
-						break
-				if not has_visible_neighbor:
-					_frontier.erase(n)
-
-
-# Frustum-culls macro instances independently of the individual-chunk frontier.
-# One AABB check per group replaces 16 individual checks for far-away terrain.
-# Called only when enable_frustum_culling is true (see _process).
-func _update_macro_visibility() -> void:
-	if _macro_instances.is_empty():
-		return
-	var frustum := camera.get_frustum()
-	# Margin scaled to the macro group's XZ footprint so large groups aren't
-	# clipped too aggressively near the frustum edge.
-	var margin  := frustum_margin * (camera.position * Vector3(1, 0, 1)).distance_to(Vector3.ZERO) \
-				   + chunk_size * MACRO_SIZE * 0.5
-	# Camera position in this node's local space (macro AABBs are local) — flattened to XZ.
-	var cam_local: Vector3 = global_transform.affine_inverse() * camera.global_position
-	cam_local.y = 0.0
-	# Past this XZ distance the macro can't be on screen (fog/far hides it), so skip the
-	# frustum maths and just hide it. + the macro half-footprint so we don't clip a group
-	# whose centre is past the line but whose near edge is still visible.
-	var cull_dist: float = max_render_distance + chunk_size * MACRO_SIZE * 0.5
-	var cull_dist_sq: float = cull_dist * cull_dist
-	for mi in _macro_instances.size():
-		if not _macro_active[mi]:
-			continue
-		var center: Vector3 = _macro_aabbs[mi].get_center()
-		center.y = 0.0
-		if cam_local.distance_squared_to(center) > cull_dist_sq:
-			_macro_instances[mi].visible = false
-			continue
-		var world_aabb := global_transform * _macro_aabbs[mi]
-		_macro_instances[mi].visible = _aabb_in_frustum(world_aabb, frustum, margin) \
-				and not _occluded_macros.has(mi)
-
-
-func _get_neighbors(i: int) -> Array:
-	var neighbors = []
-	var total = _chunk_instances.size()
-	var cz = i / _chunks_x
-	var cx = i % _chunks_x
-	if cx > 0:                            neighbors.append(i - 1)
-	if cx < _chunks_x - 1:               neighbors.append(i + 1)
-	if cz > 0:                            neighbors.append(i - _chunks_x)
-	if cz < (total / _chunks_x) - 1:     neighbors.append(i + _chunks_x)
-	return neighbors
 
 
 # ─────────────────────────────────────────────────────────────────────────────
