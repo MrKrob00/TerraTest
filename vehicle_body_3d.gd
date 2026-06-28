@@ -544,8 +544,11 @@ func _get_block_name(block: int) -> String:
 
 func _on_take_pressed() -> void:
 	if block_take:
-		if block_map_node.get_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]) != 0: return
 		var instance = camera_controller.camera.get_child(0).get_child(0)
+		# Проверяем ВЕСЬ footprint (для 2×2 — все 8 клеток), а не только якорную клетку,
+		# иначе 2×2-блок (селлер) можно было визуально воткнуть в уже занятые клетки (пушку).
+		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
+			return
 		var rotation_y = 0.0
 		match result.face:
 			"right":  rotation_y = -PI/2
@@ -568,8 +571,12 @@ func _on_take_pressed() -> void:
 	elif block_body:
 		if block_body.get_parent().name in "blocks":
 			block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+		# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
+		# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
 		for i in get_children():
-			if i is CollisionShape3D and i.position == block_body.position: i.queue_free()
+			if i is CollisionShape3D and (i.position == block_body.position \
+					or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
+				i.queue_free()
 		block_body.reparent(camera_controller.camera.get_child(0), false)
 		block_body.position = Vector3.ZERO
 		block_take = true

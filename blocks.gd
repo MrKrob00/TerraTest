@@ -9,6 +9,11 @@ const CELL_SIZE = 1.0
 var map: Array = []
 var node_map: Dictionary = {}
 var rotation_map: Dictionary = {}
+# Многоклеточные блоки (SELLER/PROCESSOR 2×2×2) занимают 8 клеток, но узел/поворот живут
+# на ОДНОЙ якорной клетке. cell_owner: "x,y,z" любой занятой клетки → "ax,ay,az" якоря.
+# Так любая из 8 клеток ведёт к одному блоку (выбор/удаление с любой стороны), а все 8
+# помечены занятыми (другой блок туда уже не встанет).
+var cell_owner: Dictionary = {}
 
 const SAVE_PATH = "user://vehicle_layout.json"
 
@@ -53,37 +58,66 @@ func _spawn_all() -> void:
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
-				if block != G.Block.EMPTY:
+				# Только якорные клетки — иначе многоклеточный блок заспавнится 8 раз.
+				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					spawn_block(block, x, y, z)
 
-# ─── Запись / чтение ──────────────────────────────────────────────────────────
-func set_block(x: int, y: int, z: int, block: G.Block, rot_y: float = 0.0) -> void:
-	print("set_block: %d,%d,%d = %s" % [x, y, z, G.Block.keys()[block]])
+# True, если (x,y,z) — якорная клетка своего блока (для одноклеточных всегда true).
+func _is_anchor(x: int, y: int, z: int) -> bool:
+	var key := "%d,%d,%d" % [x, y, z]
+	return cell_owner.get(key, key) == key
 
-	if _in_bounds(x, y, z):
-		if block == G.Block.PROCESSOR or \
-			block == G.Block.SELLER:
-			if map[x][y][z] == G.Block.EMPTY and map[x-1][y][z] == G.Block.EMPTY\
-			and map[x-1][y+1][z] == G.Block.EMPTY and map[x-1][y][z-1] == G.Block.EMPTY\
-			and map[x][y+1][z] == G.Block.EMPTY and map[x][y+1][z-1] == G.Block.EMPTY\
-			and map[x][y][z-1] == G.Block.EMPTY and map[x-1][y+1][z-1] == G.Block.EMPTY:
-				for xy in 2:
-					print(xy)
-				map[x][y][z] = block
-				rotation_map["%d,%d,%d" % [x, y, z]] = rot_y
-		elif map[x][y][z] == G.Block.EMPTY:
-			map[x][y][z] = block
-			rotation_map["%d,%d,%d" % [x, y, z]] = rot_y
-	else:
+# ─── Клетки, которые занимает блок ────────────────────────────────────────────
+# Якорь (x,y,z). 2×2×2 (SELLER/PROCESSOR) занимает x-1..x, y..y+1, z-1..z (8 клеток),
+# остальные блоки — одну клетку. Те же 8 клеток, что проверял старый код.
+func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
+	if block == G.Block.PROCESSOR or block == G.Block.SELLER:
+		var cells: Array = []
+		for dx in [-1, 0]:
+			for dy in [0, 1]:
+				for dz in [-1, 0]:
+					cells.append(Vector3i(x + dx, y + dy, z + dz))
+		return cells
+	return [Vector3i(x, y, z)]
+
+# Можно ли поставить block с якорем (x,y,z): все клетки footprint в границах и пусты.
+func can_place(block: int, x: int, y: int, z: int) -> bool:
+	for c in _block_footprint(block, x, y, z):
+		if not _in_bounds(c.x, c.y, c.z) or map[c.x][c.y][c.z] != G.Block.EMPTY:
+			return false
+	return true
+
+# ─── Запись / чтение ──────────────────────────────────────────────────────────
+# Возвращает true, если блок реально поставлен (footprint был свободен).
+func set_block(x: int, y: int, z: int, block: G.Block, rot_y: float = 0.0) -> bool:
+	print("set_block: %d,%d,%d = %s" % [x, y, z, G.Block.keys()[block]])
+	if not _in_bounds(x, y, z):
 		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
+		return false
+	if not can_place(block, x, y, z):
+		return false   # перекрытие/край → не ставим
+	var anchor := "%d,%d,%d" % [x, y, z]
+	for c in _block_footprint(block, x, y, z):
+		map[c.x][c.y][c.z] = block
+		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
+	rotation_map[anchor] = rot_y
+	return true
 
 func remove_block(x: int, y: int, z: int) -> void:
-	if _in_bounds(x, y, z):
-		if map[x][y][z] != G.Block.EMPTY:
-			map[x][y][z] = G.Block.EMPTY
-			var key := "%d,%d,%d" % [x, y, z]
-			node_map.erase(key)
-			rotation_map.erase(key)
+	if not _in_bounds(x, y, z):
+		return
+	# Удаляем весь блок, даже если тапнули по не-якорной клетке многоклеточного блока.
+	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
+	var parts := anchor.split(",")
+	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
+	if not _in_bounds(ax, ay, az) or map[ax][ay][az] == G.Block.EMPTY:
+		return
+	for c in _block_footprint(map[ax][ay][az], ax, ay, az):
+		if _in_bounds(c.x, c.y, c.z):
+			map[c.x][c.y][c.z] = G.Block.EMPTY
+			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
+	node_map.erase(anchor)
+	rotation_map.erase(anchor)
 
 func get_block(x: int, y: int, z: int) -> G.Block:
 	if _in_bounds(x, y, z):
@@ -94,8 +128,9 @@ func find_block(x: int, y: int, z: int) -> Node3D:
 	if not _in_bounds(x, y, z):
 		push_warning("find_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
 		return null
-	var key := "%d,%d,%d" % [x, y, z]
-	return node_map.get(key, null)
+	# Любая клетка многоклеточного блока ведёт к его якорному узлу.
+	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
+	return node_map.get(anchor, null)
 
 func _in_bounds(x: int, y: int, z: int) -> bool:
 	return (
@@ -152,7 +187,7 @@ func save_layout() -> void:
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block = map[x][y][z]
-				if block != G.Block.EMPTY:
+				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
 						"x": x,
@@ -177,6 +212,7 @@ func load_layout() -> void:
 		child.queue_free()
 	node_map.clear()
 	rotation_map.clear()
+	cell_owner.clear()
 	_init_map()
 
 	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
@@ -197,7 +233,7 @@ func get_layout() -> Array:
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block = map[x][y][z]
-				if block != G.Block.EMPTY:
+				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
 						"x": x, "y": y, "z": z,
@@ -211,6 +247,7 @@ func apply_layout(blocks_array: Array) -> void:
 		child.queue_free()
 	node_map.clear()
 	rotation_map.clear()
+	cell_owner.clear()
 	_init_map()
 	for entry in blocks_array:
 		set_block(entry["x"], entry["y"], entry["z"], entry["block"], entry["rot_y"])
