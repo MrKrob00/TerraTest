@@ -273,32 +273,45 @@ func _ai_attack(delta: float) -> void:
 		return
 	fwd_flat = fwd_flat.normalized()
 
-	# Сторону объезда выбираем один раз за бой (в ту, куда уже повёрнуты) — без дёрганья.
-	var ang_to_target := fwd_flat.signed_angle_to(to_n, Vector3.UP)
+	# ── «2D-карта» цели: где она и КУДА СМОТРИТ (там её оружие/лоб) ──────────────
+	# Перёд цели = -Z её базиса (как и у нас). Зная это, заходим в РЕАР-фланг —
+	# вне её лобового конуса — а не лезем в лоб под выстрелы.
+	var tb := _target.global_transform.basis
+	var enemy_fwd := Vector3(-tb.z.x, 0.0, -tb.z.z)
+	if enemy_fwd.length_squared() < 0.0001:
+		enemy_fwd = -to_n
+	enemy_fwd = enemy_fwd.normalized()
+	var enemy_right := Vector3(enemy_fwd.z, 0.0, -enemy_fwd.x)   # правый борт цели
+
+	# Заходим на тот фланг цели, что сейчас ближе (выбираем один раз за бой).
 	if _orbit_dir == 0.0:
-		_orbit_dir = 1.0 if ang_to_target >= 0.0 else -1.0
+		_orbit_dir = 1.0 if enemy_right.dot(-to_n) >= 0.0 else -1.0
 
-	# Это МАШИНА: держим боевую дистанцию и КРУЖИМ вокруг цели рулём (касательная к окружности
-	# радиуса min_combat_distance), а не подъезжаем-тормозим. Радиальная поправка держит радиус:
-	# дальше — подворачиваем внутрь, ближе — наружу. Вплотную — сдаём назад, не теряя врага.
-	var radius := maxf(min_combat_distance, 2.0)
-	var tangent := Vector3(-to_n.z, 0.0, to_n.x) * _orbit_dir   # перпендикуляр = касательная орбиты
-	var radial := clampf((dist - radius) / radius, -1.0, 1.0)
+	# Желаемая позиция: боевая дистанция, СЗАДИ-сбоку от цели. Точка рядом с целью →
+	# мы едем примерно НА неё, цель остаётся спереди → турель (±45°) её держит. Цель
+	# крутится → точка ездит за её спиной → мы обходим и переигрываем по манёвру.
+	var radius := maxf(min_combat_distance, 3.0)
+	var desired_pos := _target.global_position \
+			- enemy_fwd * (radius * 0.7) \
+			+ enemy_right * (_orbit_dir * radius * 0.85)
+	var to_desired := Vector3(desired_pos.x - global_position.x, 0.0, desired_pos.z - global_position.z)
+	var arrive := to_desired.length()
 
-	var desired: Vector3
+	# Куда рулим и сколько газу.
+	var steer_target: Vector3
 	var target_throttle: float
-	if dist < radius * 0.55:
-		desired = to_n                              # нос на цель
-		target_throttle = -0.5                      # сдаём назад
+	if dist < radius * 0.5:
+		steer_target = to_n          # вплотную к цели — нос на неё, сдаём назад (турель целится)
+		target_throttle = -0.5
+	elif arrive < 1.5:
+		steer_target = to_n          # на позиции — держим цель в прицеле, почти стоим
+		target_throttle = 0.15
 	else:
-		desired = tangent + to_n * radial           # орбита + поправка радиуса
-		if desired.length_squared() < 0.001:
-			desired = tangent
-		desired = desired.normalized()
-		var turn_factor := clampf(1.0 - absf(fwd_flat.signed_angle_to(desired, Vector3.UP)) / PI, 0.35, 1.0)
-		target_throttle = chase_speed_factor * 0.85 * turn_factor
+		steer_target = to_desired / arrive
+		var ang := absf(fwd_flat.signed_angle_to(steer_target, Vector3.UP))
+		target_throttle = chase_speed_factor * clampf(1.0 - ang / PI, 0.35, 1.0)
 
-	var steer_ang := fwd_flat.signed_angle_to(desired, Vector3.UP)
+	var steer_ang := fwd_flat.signed_angle_to(steer_target, Vector3.UP)
 	var steer_input := clampf(steer_ang / (PI * 0.6), -1.0, 1.0)
 	var speed_ratio := clampf(linear_velocity.length() / max_speed, 0.0, 1.0)
 	var angle_limit := deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
