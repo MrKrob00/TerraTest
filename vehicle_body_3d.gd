@@ -492,25 +492,26 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 
 var result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictionary:
+	result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 	var dir = direction
-	var cx = round(origin.x); var cy = round(origin.y); var cz = round(origin.z)
-	var step_x = 1 if dir.x > 0 else -1
-	var step_y = 1 if dir.y > 0 else -1
-	var step_z = 1 if dir.z > 0 else -1
-	var td_x = (1.0/abs(dir.x)) if dir.x != 0 else INF
-	var td_y = (1.0/abs(dir.y)) if dir.y != 0 else INF
-	var td_z = (1.0/abs(dir.z)) if dir.z != 0 else INF
-	var tm_x = ((round(origin.x)+1-origin.x)/abs(dir.x)) if dir.x>0 else ((origin.x-round(origin.x))/abs(dir.x)) if dir.x<0 else INF
-	var tm_y = ((round(origin.y)+1-origin.y)/abs(dir.y)) if dir.y>0 else ((origin.y-round(origin.y))/abs(dir.y)) if dir.y<0 else INF
-	var tm_z = ((round(origin.z)+1-origin.z)/abs(dir.z)) if dir.z>0 else ((origin.z-round(origin.z))/abs(dir.z)) if dir.z<0 else INF
-	var last_face = ""
-	for _i in range(100):
-		if tm_x < tm_y and tm_x < tm_z:
-			cx += step_x; tm_x += td_x; last_face = "left" if step_x>0 else "right"
-		elif tm_y < tm_z:
-			cy += step_y; tm_y += td_y; last_face = "bottom" if step_y>0 else "top"
-		else:
-			cz += step_z; tm_z += td_z; last_face = "front" if step_z>0 else "back"
+	# Ячейки сетки ЦЕНТРИРОВАНЫ на целых (блок (x,y,z) занимает [x-0.5 … x+0.5]), значит
+	# стартовая ячейка = round(origin), а границы ячеек — на ПОЛУцелых. Старый код брал
+	# границы на целых (round(origin)+1) → стабильный промах ~на полклетки. Здесь правильно:
+	# t до первой границы считается до cx±0.5. Плюс проверяем и стартовую ячейку (раньше
+	# сначала шагали, потом проверяли — стартовую пропускали).
+	var cx := int(round(origin.x)); var cy := int(round(origin.y)); var cz := int(round(origin.z))
+	var step_x := 1 if dir.x >= 0 else -1
+	var step_y := 1 if dir.y >= 0 else -1
+	var step_z := 1 if dir.z >= 0 else -1
+	var td_x := (1.0/abs(dir.x)) if dir.x != 0 else INF
+	var td_y := (1.0/abs(dir.y)) if dir.y != 0 else INF
+	var td_z := (1.0/abs(dir.z)) if dir.z != 0 else INF
+	var tm_x := ((cx + 0.5 - origin.x)/abs(dir.x)) if dir.x > 0 else ((origin.x - (cx - 0.5))/abs(dir.x)) if dir.x < 0 else INF
+	var tm_y := ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
+	var tm_z := ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
+	var last_face := ""
+	for _i in range(128):
+		# Проверяем ТЕКУЩУЮ ячейку (включая стартовую) ещё до шага.
 		if _in_bounds(cx, cy, cz):
 			var block = block_map_node.get_block(cx, cy, cz)
 			if block != 0:
@@ -518,6 +519,13 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 				result["x"] = cx; result["y"] = cy; result["z"] = cz
 				result["block_name"] = _get_block_name(block); result["face"] = last_face
 				return result
+		# Шаг в соседнюю ячейку по наименьшему tMax.
+		if tm_x < tm_y and tm_x < tm_z:
+			cx += step_x; tm_x += td_x; last_face = "left" if step_x>0 else "right"
+		elif tm_y < tm_z:
+			cy += step_y; tm_y += td_y; last_face = "bottom" if step_y>0 else "top"
+		else:
+			cz += step_z; tm_z += td_z; last_face = "front" if step_z>0 else "back"
 	return result
 
 func _in_bounds(x: float, y: float, z: float) -> bool:
