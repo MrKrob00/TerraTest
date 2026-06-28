@@ -91,6 +91,9 @@ func _ready() -> void:
 	gravity_scale = gravity_mult
 	linear_damp = 0.0
 	angular_damp = 4.0
+	# Непрерывная проверка коллизий — на быстром падении машина не проскакивает СКВОЗЬ
+	# тонкую поверхность рельефа (и не застревает под ней).
+	continuous_cd = true
 	_on_movement_pressed()
 	await get_tree().process_frame
 

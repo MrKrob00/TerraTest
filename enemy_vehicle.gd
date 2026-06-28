@@ -115,7 +115,10 @@ var _orbit_dir: float = 0.0
 # ОСИ — ИДЕНТИЧНО vehicle_body_3d
 # ══════════════════════════════════════════
 
-func _get_forward() -> Vector3: return  global_transform.basis.z
+# Перёд = -Z, как у игрока: враг использует тот же blocks.gd-расклад (дрель/нос на z=4 →
+# локальный -Z, колёса z=5..7). Раньше тут был +Z → ИИ ехал ЗАДОМ (это вылезло только
+# когда фикс detection_mask заставил его реально преследовать).
+func _get_forward() -> Vector3: return -global_transform.basis.z
 func _get_right()   -> Vector3: return  global_transform.basis.x
 func _get_up()      -> Vector3: return  global_transform.basis.y
 
@@ -128,6 +131,9 @@ func _ready() -> void:
 	gravity_scale = gravity_mult
 	linear_damp   = 0.0
 	angular_damp  = 4.0
+	# Непрерывная проверка коллизий — чтобы на быстром падении машина не проскакивала
+	# СКВОЗЬ тонкую поверхность рельефа и не застревала под ней.
+	continuous_cd = true
 
 	_start_pos          = global_position
 	_stuck_check_pos    = global_position
