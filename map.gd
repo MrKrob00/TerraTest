@@ -63,9 +63,6 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 @export var editor_lod: bool = false
 
 # ── Streaming settings ────────────────────────────────────────────────────────
-## Chunks within this XZ radius (world units) are meshed immediately at startup.
-## Chunks outside it are queued and streamed in during gameplay via _process().
-@export_range(20.0, 500.0, 10.0) var stream_initial_radius: float = 100.0
 ## How many chunks are meshed per streaming batch. Lower = fewer frame hitches.
 @export_range(4, 128, 4) var stream_batch_size: int = 32
 
@@ -154,7 +151,7 @@ var _occluded_macros: Dictionary = {}           # mi → true
 
 
 # ── Streaming runtime state ───────────────────────────────────────────────────
-# Chunks outside stream_initial_radius are queued here and built in background.
+# Chunks not built at startup are queued here and built in background (on demand).
 var _stream_queue:    Array[int] = []   # chunk indices not yet meshed, sorted by dist
 var _stream_batch:    Array[int] = []   # indices being processed in the current batch
 var _stream_results:  Array      = []   # [ci] = [lod_meshes, aabb] | null (worker output)
@@ -905,8 +902,8 @@ func _apply_editor_cache() -> void:
 #   operational for the whole map, even for chunks not yet meshed.
 #
 # Phase 1 — WorkerThreadPool (initial chunks near camera only):
-#   Mesh data generated in parallel across all CPU cores for chunks within
-#   stream_initial_radius. Same thread-safety contract as before: reads md/w/d
+#   Mesh data generated in parallel across all CPU cores for chunks of the macros
+#   near the camera. Same thread-safety contract as before: reads md/w/d
 #   (immutable), each task writes to its exclusive _stream_results[ci] slot.
 #
 # Phase 2 — main thread (initial chunks only):

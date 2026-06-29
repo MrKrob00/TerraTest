@@ -485,7 +485,6 @@ shape = SubResource("SphereShape3D_obt1j")
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 frustum_margin = -0.04999999999999999
-stream_initial_radius = 20.0
 stream_batch_size = 4
 use_image_data = true
 enable_streaming_collision = true
