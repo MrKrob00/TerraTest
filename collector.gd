@@ -24,9 +24,7 @@ func _process(delta: float) -> void:
 
 func _on_collector_body_entered(body: RigidBody3D) -> void:
 	if inventory.has(body): return  # ← уже в инвентаре, игнорируем
-	#print("find resource")
 	if inventory.size()>=capacity: 
-		print("max capacity")
 		return 
 	elif body.freeze:
 		return

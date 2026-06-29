@@ -90,7 +90,6 @@ func can_place(block: int, x: int, y: int, z: int) -> bool:
 # ─── Запись / чтение ──────────────────────────────────────────────────────────
 # Возвращает true, если блок реально поставлен (footprint был свободен).
 func set_block(x: int, y: int, z: int, block: G.Block, rot_y: float = 0.0) -> bool:
-	print("set_block: %d,%d,%d = %s" % [x, y, z, G.Block.keys()[block]])
 	if not _in_bounds(x, y, z):
 		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
 		return false
@@ -174,7 +173,6 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 
 # ── Обработчик: блок уничтожен ────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:
-	print("Блок уничтожен на позиции %d,%d,%d" % [x, y, z])
 	remove_block(x, y, z)
 
 # ══════════════════════════════════════════════════════════════════════════════
