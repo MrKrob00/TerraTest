@@ -147,7 +147,8 @@ var _col_cells:  Dictionary = {}   # cell_key -> CollisionShape3D (one tile per 
 const OCCLUSION_UPDATE_INTERVAL: float = 0.20   # seconds between full occlusion passes
 var _occlusion_timer: float = 0.0
 var _occluded_chunks: Dictionary = {}           # ci → true  (passed frustum, failed occlusion)
-var _occluded_macros: Dictionary = {}           # mi → true
+var _occluded_macros: Dictionary = {}
+var _occluded_nodes:  Dictionary = {}           # node → true (far coarse quadtree mesh, occluded)           # mi → true
 
 
 # ── Streaming runtime state ───────────────────────────────────────────────────
@@ -1650,7 +1651,7 @@ func _process(delta: float) -> void:
 		if _occlusion_timer >= OCCLUSION_UPDATE_INTERVAL:
 			_occlusion_timer = 0.0
 			_update_occlusion()
-	elif not (_occluded_chunks.is_empty() and _occluded_macros.is_empty()):
+	elif not (_occluded_chunks.is_empty() and _occluded_macros.is_empty() and _occluded_nodes.is_empty()):
 		# Occlusion was just toggled off — restore full quadtree-based visibility
 		_clear_occlusion()
 
@@ -1866,7 +1867,7 @@ func _qt_apply(do_lod: bool) -> void:
 	for node in _qt_des_nodes:
 		var ninst: MeshInstance3D = _qt_inst[node]
 		if ninst:
-			ninst.visible = true
+			ninst.visible = not _occluded_nodes.has(node)   # far mesh hidden if behind terrain
 	for node in _qt_cur_nodes:
 		if not _qt_des_nodes.has(node):
 			var ninst2: MeshInstance3D = _qt_inst[node]
@@ -2011,6 +2012,7 @@ func _update_occlusion() -> void:
 
 	var new_occ_chunks := {}
 	var new_occ_macros  := {}
+	var new_occ_nodes   := {}
 
 	# ── Individual chunks ─────────────────────────────────────────────────────
 	# When frustum culling is on, only test the quadtree's currently-visible chunks
@@ -2038,6 +2040,12 @@ func _update_occlusion() -> void:
 			continue
 		if _is_aabb_occluded(_macro_aabbs[mi], cam_local):
 			new_occ_macros[mi] = true
+
+	# ── Far coarse quadtree meshes ────────────────────────────────────────────
+	# The far, low-poly representation behind a ridge was still being drawn; test it too.
+	for node in _qt_cur_nodes:
+		if node < _qt_aabb.size() and _is_aabb_occluded(_qt_aabb[node], cam_local):
+			new_occ_nodes[node] = true
 
 	# ── Apply visibility — only when the occluded/clear state changes ─────────
 	for ci in chunks_to_test:
@@ -2070,8 +2078,17 @@ func _update_occlusion() -> void:
 			else:
 				_macro_instances[mi].visible = not now
 
+	# Coarse nodes: flip visibility only when occluded/clear state changed (and the node
+	# is still in view this frame — _qt_cur_nodes is the current rendered set).
+	for node in _qt_cur_nodes:
+		var was_n := _occluded_nodes.has(node)
+		var now_n := new_occ_nodes.has(node)
+		if was_n != now_n and node < _qt_inst.size() and _qt_inst[node]:
+			_qt_inst[node].visible = not now_n
+
 	_occluded_chunks = new_occ_chunks
 	_occluded_macros = new_occ_macros
+	_occluded_nodes  = new_occ_nodes
 
 
 # Restores full frustum-based visibility for every previously-occluded object.
@@ -2097,8 +2114,13 @@ func _clear_occlusion() -> void:
 			_macro_instances[mi].visible = _aabb_in_frustum(world_aabb, frustum, margin)
 		else:
 			_macro_instances[mi].visible = true
+	# Restore far coarse meshes that occlusion had hidden (only those still in the cut).
+	for node in _occluded_nodes:
+		if node < _qt_inst.size() and _qt_inst[node]:
+			_qt_inst[node].visible = _qt_cur_nodes.has(node)
 	_occluded_chunks.clear()
 	_occluded_macros.clear()
+	_occluded_nodes.clear()
 
 
 # Returns true when the given local-space AABB is fully hidden behind terrain
