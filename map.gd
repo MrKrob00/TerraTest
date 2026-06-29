@@ -21,15 +21,16 @@ extends StaticBody3D
 ## If the terrain horizon exceeds the angle to the chunk top, the chunk is occluded.
 @export var enable_occlusion_culling: bool = false
 ## XZ distance (world units) below which chunks are never occlusion-culled.
-## Keeps nearby chunks always visible regardless of geometry.
-@export_range(0.0, 200.0, 1.0) var occlusion_min_dist: float = 40.0
+## Keeps nearby chunks always visible regardless of geometry. Lower = a hill close to
+## the car can hide terrain just behind it; too low risks culling ground around you.
+@export_range(0.0, 200.0, 1.0) var occlusion_min_dist: float = 18.0
 ## Added to the chunk AABB top before the horizon test.
-## Raises the occluder bar so only clearly dominant ridges trigger culling;
-## prevents popping when the camera nearly grazes a ridge line.
-@export_range(0.0, 10.0, 0.5) var occlusion_bias: float = 1.5
+## Raises the occluder bar so only clearly dominant ridges trigger culling; lower = even
+## small hills occlude (but more risk of false culls / holes). Raise if you see popping.
+@export_range(0.0, 10.0, 0.5) var occlusion_bias: float = 0.5
 ## Heightmap samples taken along each camera→chunk ray.
-## More samples = fewer missed occluders, more CPU cost.
-@export_range(2, 24, 1) var occlusion_samples: int = 8
+## More samples = fewer missed occluders (e.g. a narrow peak), more CPU cost.
+@export_range(2, 24, 1) var occlusion_samples: int = 12
 
 @export var chunk_size: int = 16
 
