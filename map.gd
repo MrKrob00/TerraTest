@@ -1792,8 +1792,10 @@ func _qt_update(do_lod: bool) -> void:
 		return
 	var frustum := camera.get_frustum()
 	var cam := camera.global_position
-	var margin := frustum_margin * (camera.position * Vector3(1, 0, 1)).length() \
-				 + chunk_size * MACRO_SIZE * 0.5
+	# Base slack (a macro half-footprint) so chunks don't pop at the screen edge.
+	# frustum_margin tightens (<0) or loosens (>0) it as a ratio — the OLD formula
+	# multiplied it by the camera's LOCAL XZ pos (≈0 on a spring arm), so it did nothing.
+	var margin := chunk_size * MACRO_SIZE * 0.5 * (1.0 + frustum_margin)
 	# Range cull: nodes whose nearest XZ point is past this are hidden without a
 	# frustum test (fog hides them anyway). + a macro footprint of slack.
 	var max_d := max_render_distance + chunk_size * MACRO_SIZE
@@ -2071,9 +2073,7 @@ func _update_occlusion() -> void:
 				# Re-confirm frustum: don't accidentally un-hide a macro outside the view
 				var world_aabb := global_transform * _macro_aabbs[mi]
 				var frustum    := camera.get_frustum()
-				var margin     := frustum_margin * \
-						(camera.position * Vector3(1, 0, 1)).distance_to(Vector3.ZERO) \
-						+ chunk_size * MACRO_SIZE * 0.5
+				var margin     := chunk_size * MACRO_SIZE * 0.5 * (1.0 + frustum_margin)
 				_macro_instances[mi].visible = _aabb_in_frustum(world_aabb, frustum, margin) and not now
 			else:
 				_macro_instances[mi].visible = not now
@@ -2108,9 +2108,7 @@ func _clear_occlusion() -> void:
 		if enable_frustum_culling:
 			var world_aabb := global_transform * _macro_aabbs[mi]
 			var frustum    := camera.get_frustum()
-			var margin     := frustum_margin * \
-					(camera.position * Vector3(1, 0, 1)).distance_to(Vector3.ZERO) \
-					+ chunk_size * MACRO_SIZE * 0.5
+			var margin     := chunk_size * MACRO_SIZE * 0.5 * (1.0 + frustum_margin)
 			_macro_instances[mi].visible = _aabb_in_frustum(world_aabb, frustum, margin)
 		else:
 			_macro_instances[mi].visible = true
