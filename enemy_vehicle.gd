@@ -45,7 +45,7 @@ extends RigidBody3D
 @export var faction: int = 1
 
 @export_group("ИИ — Обнаружение")
-@export var detection_radius:    float = 20.0
+@export var detection_radius:    float = 40.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
 ## Слои, на которых ИИ ищет цели. Корпус машины (где живёт faction) лежит на слое
