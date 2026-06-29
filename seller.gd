@@ -45,7 +45,6 @@ func _on_timer_timeout() -> void:
 	await $GPUParticles3D.finished
 	current_item.visible=false
 
-	print("Продано за %d$" % price, "всего ", G.money)
 	# Удаляем ресурс из мира
 	current_item.queue_free()
 	current_item = null 

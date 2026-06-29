@@ -40,7 +40,6 @@ func _on_body_entered(body: Node3D) -> void:
 		if not vehicles_in_zone.has(body):
 			vehicles_in_zone.append(body)
 		#if timer.is_stopped():
-		print("NEMA")
 		timer.start(1)
 
 func _on_body_exited(body: Node3D) -> void:
@@ -50,7 +49,6 @@ func _on_body_exited(body: Node3D) -> void:
 			timer.stop()
 
 func _on_timer_timeout() -> void:
-	if inventory.size()>0: print("[intake] таймер сработал, inventory: %d" % inventory.size())
 	# Сбрасываем флаг ожидания — проверим сами
 	if waiting_for_next and next_block and next_block.current_item == null:
 		waiting_for_next = false
@@ -71,11 +69,8 @@ func _push_from_inventory() -> void:
 	if inventory.is_empty():
 		return
 	var item = inventory[0]
-	print("[intake] пробуем отдать item в [%s]" % next_block.name)
 	# Переносим в корень сцены чтобы мировая позиция была чистой
 	var world_pos = item.global_position
-	print("item.global_position перед передачей: ", item.global_position)
-	print("belt.global_position: ", next_block.global_position)
 	item.reparent(get_tree().root, false)
 	item.global_position = world_pos
 	if next_block.try_receive(item):
@@ -86,7 +81,6 @@ func _push_from_inventory() -> void:
 		# Не приняли — возвращаем обратно в $resources
 		item.reparent($resources, false)
 		item.global_position = world_pos
-		print("[intake] следующий занят — ждём")
 		if not waiting_for_next:
 			waiting_for_next = true
 			next_block.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)

@@ -43,7 +43,6 @@ func _on_parent_changed() -> void:
 
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage
-	print("%s получил %d урона, осталось %d/%d HP" % [G.Block.keys()[block], damage, current_hp, max_hp])
 	_play_hit_effect()
 	if current_hp <= 0:
 		destroy()

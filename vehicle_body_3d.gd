@@ -108,7 +108,6 @@ func connect_block_signals(block: Node) -> void:
 		block.destroyed.connect(_on_block_destroyed)
 
 func _on_block_destroyed(destroyed_block: Node3D) -> void:
-	print("Блок знищено: ", destroyed_block.name, ". Шукаємо колізію всередині Vehicle...")
 	
 	var keys_to_remove: Array = []
 	
@@ -120,7 +119,6 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 			# Якщо ця колізія належить знищеному блоку
 			if collision_shape.position == destroyed_block.position:
 				
-				print("💥 Миттєво видаляємо колізію з кузова машини: ", collision_shape.name)
 				
 				# 1. Вимикаємо її у фізичному рушії (стоп колізія)
 				shape_owner_set_disabled(owner_id, true)

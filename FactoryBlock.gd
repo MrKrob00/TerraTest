@@ -13,7 +13,6 @@ func _ready() -> void:
 	super._ready()
 
 func _find_next_block() -> void:
-	if block == G.Block.BELT: print(true)
 	var blocks_node = get_parent()
 	var owner_node = blocks_node.get_parent()
 	if not owner_node.has_node("blocks"):
@@ -32,7 +31,6 @@ func _find_next_block() -> void:
 	var my_local = round(position)
 	var neighbor_local = my_local + forward
 	
-	print(block," ",my_local, neighbor_local)
 	
 	var key = "%d,%d,%d" % [
 		int(neighbor_local.x) + 5,
@@ -42,9 +40,6 @@ func _find_next_block() -> void:
 	var neighbor = block_map.node_map.get(key, null)
 	if neighbor and neighbor.has_method("try_receive"):
 		next_block = neighbor
-		print("%s → следующий: %s" % [block, next_block.block])
-	elif neighbor:
-		print("%s → следующего блока нет" % block, neighbor.block)
 
 func try_receive(item: Node3D) -> bool:
 	if current_item != null:
