@@ -25,6 +25,8 @@ func _on_sell_timeout() -> void:
 		$blocks/taker/Sell.start()
 		update_position()
 
+func _unhandled_input(event: InputEvent) -> void:
+	print(get_global_mouse_position())
 
 func _on_sell_2_timeout() -> void:
 	inventory2[0].queue_free()
