@@ -4,7 +4,7 @@ extends Area3D
 ## боевой дистанции (~15 ед) и «недолетала». Быстрее = меньше времени в полёте = меньше просадка.
 @export var speed: float = 120.0
 ## Падение пули по гравитации (ед/с²-ish). Меньше → траектория ровнее, бьёт дальше прямо.
-@export var gravity: float = 50.0
+@export var bullet_gravity: float = 50.0
 
 var dir: Vector3 = Vector3.ZERO
 var t: float = 0.0
@@ -15,4 +15,4 @@ func _physics_process(delta: float) -> void:
 	else:
 		t += delta
 	global_position += dir * speed * delta
-	global_position.y -= t * gravity * delta
+	global_position.y -= t * bullet_gravity * delta
