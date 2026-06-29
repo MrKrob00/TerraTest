@@ -8,11 +8,11 @@ extends StaticBody3D
 ## Macro groups whose XZ centre is farther than this from the camera are simply hidden,
 ## skipping the (more expensive) per-macro frustum AABB test. Set roughly to the fog/visibility
 ## distance — anything past it isn't visible anyway, so the frustum test would be wasted work.
-## With the multi-level quadtree, distant terrain renders as a few big low-poly coarse
-## meshes, so this can be large (see mountains to the horizon) without tanking FPS — it
-## only bounds how far the cheap coarse meshes are still drawn. Fog should reach about this
-## far too, or the far meshes will be visible popping in/out at the edge.
-@export var max_render_distance: float = 3000.0
+## How far terrain is drawn. KEEP THIS ≈ the fog distance: with fog_density 0.002 the
+## terrain is ~fully fogged by ~1500 m, so anything past that is rendered but invisible —
+## pure waste that tanked FPS when looking toward the horizon. Raise it only if you also
+## thin the fog (and accept the FPS cost of drawing more distant terrain).
+@export var max_render_distance: float = 1400.0
 
 # ── Occlusion culling settings ────────────────────────────────────────────────
 ## Hide chunks whose AABB top sits below the terrain horizon seen from the camera.
@@ -146,7 +146,7 @@ const OCCLUSION_UPDATE_INTERVAL: float = 0.20   # seconds between full occlusion
 var _occlusion_timer: float = 0.0
 var _occluded_chunks: Dictionary = {}           # ci → true  (passed frustum, failed occlusion)
 var _occluded_macros: Dictionary = {}
-var _occluded_nodes:  Dictionary = {}           # node → true (far coarse quadtree mesh, occluded)           # mi → true
+var _occluded_nodes:  Dictionary = {}           # node → true (far coarse quadtree mesh, occluded)
 
 
 # ── Streaming runtime state ───────────────────────────────────────────────────
@@ -194,7 +194,7 @@ var _qt_step:  Array[int]   = []   # node → sample step of its coarse mesh
 var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection metric)
 var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
 var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
-const QT_QUALITY: float = 1.6      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
+const QT_QUALITY: float = 1.1      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
 const QT_SKIRT:   float = 6.0      # apron depth that hides cross-LOD seams (world units)
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
@@ -984,10 +984,10 @@ func _build_chunks_from_map_data() -> void:
 			if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
 				_apply_lod_mesh(ci, mat)
 
+	# Near chunks are built synchronously above; nothing is queued at startup. On-demand
+	# streaming (_request_resident) fills the queue later as the camera moves.
 	_stream_queue.clear()
 	_is_streaming = false
-
-	_is_streaming = not _stream_queue.is_empty()
 
 
 # Computes all 4 LOD meshes for chunk ci and stores the result in _stream_results[ci].
