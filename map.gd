@@ -1586,14 +1586,16 @@ func _setup_lod_materials(base_mat: Material) -> void:
 		_mat_lod0    = base_mat
 		_mat_lod_high = base_mat
 
-# Called by grass.gd. Grass only renders on the LOD0 (close) material, which is a private
-# duplicate of the base — so benders MUST be set here, not on the base material grass.gd
-# would otherwise find.
-func set_grass_benders(positions: Array, count: int) -> void:
+# Called by grass.gd every frame. Grass only renders on the LOD0 (close) material, which is
+# a private duplicate of the base — so the trample map MUST be set here, not on the base
+# material grass.gd would otherwise find. tex = top-down flatten texture, center/size =
+# the world-space window it covers (follows the camera).
+func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 	if _mat_lod0 is ShaderMaterial:
 		var m := _mat_lod0 as ShaderMaterial
-		m.set_shader_parameter("bender_count", count)
-		m.set_shader_parameter("bender_positions", positions)
+		m.set_shader_parameter("trample_map", tex)
+		m.set_shader_parameter("trample_center", center)
+		m.set_shader_parameter("trample_size", size)
 
 func _get_material() -> Material:
 	var mat: Material = null
