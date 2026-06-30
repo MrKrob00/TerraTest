@@ -73,6 +73,7 @@ pointing/android/enable_long_press_as_right_click=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+scaling_3d/scale=0.75
 lights_and_shadows/use_physical_light_units=true
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
