@@ -545,6 +545,13 @@ func take_block_into_hand(block_type: int) -> bool:
 		instance.scale = Vector3.ONE
 	block_body = instance
 	block_take = true
+	# Сразу включаем режим стройки, чтобы блок можно было поставить без лишних нажатий
+	# (и обновляем визуал HUD — кнопки Take/TakeOff). _on_building_pressed сам сгейтит
+	# повтор через `if Building: return`.
+	_on_building_pressed()
+	var hud = camera_controller.hud
+	if hud and hud.has_method("_on_building_pressed"):
+		hud._on_building_pressed()
 	return true
 
 func _on_take_off_pressed() -> void:
