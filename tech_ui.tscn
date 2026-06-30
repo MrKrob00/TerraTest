@@ -116,6 +116,12 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "300"
 
+[node name="Close" type="Button" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(48, 48)
+layout_mode = 2
+text = "X"
+
 [node name="Main" type="HBoxContainer" parent="Root"]
 layout_mode = 2
 size_flags_vertical = 3

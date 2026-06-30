@@ -33,6 +33,8 @@ func _ready() -> void:
 	_weapon_types = [G.Block.GUN, G.Block.LASER]
 	if _search:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
+	if has_node("%Close"):
+		%Close.pressed.connect(hide)
 	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].pressed.connect(_select_tab.bind(i))
