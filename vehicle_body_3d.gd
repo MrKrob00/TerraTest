@@ -527,6 +527,26 @@ func _on_take_pressed() -> void:
 		block_body.position = Vector3.ZERO
 		block_take = true
 
+# Дать игроку блок В РУКУ из инвентаря (вызывается из tech_ui при клике по слоту).
+# Блок инстансится из сцены и вешается на takepos (camera.get_child(0)) — ровно туда,
+# куда попадает блок, снятый с машины. Дальше его ставит обычный Building-флоу
+# (_handle_click → _on_take_pressed). Возвращает false, если в руке уже что-то есть.
+func take_block_into_hand(block_type: int) -> bool:
+	if block_take:
+		return false
+	var scene: PackedScene = G.get_scene(block_type)
+	if scene == null:
+		return false
+	var instance = scene.instantiate()
+	var holder: Node = camera_controller.camera.get_child(0)   # takepos Marker3D
+	holder.add_child(instance)
+	if instance is Node3D:
+		instance.position = Vector3.ZERO
+		instance.scale = Vector3.ONE
+	block_body = instance
+	block_take = true
+	return true
+
 func _on_take_off_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
