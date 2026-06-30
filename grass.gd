@@ -1,90 +1,135 @@
 # grass_system.gd
+# Interactive grass via a TRAMPLE MAP (a.k.a. interaction/flatten texture):
+# a top-down SubViewport stamps a soft blob under every ground-touching object, the stamps
+# fade over a few seconds (grass springs back), and the grass shader presses each blade down
+# by one texture fetch. Replaces the old per-vertex loop over 64 bend points → much cheaper
+# on the GPU vertex shader (the project is GPU/fill-bound on Adreno), and the fade gives
+# trails that linger after a vehicle has driven past.
 extends Node3D
 
 @export var map_node: StaticBody3D
-@export var max_benders: int = 64
-@export var update_threshold: float = 0.3
-## A bender only presses grass while it is within this height of the terrain. Objects
-## higher up (e.g. blocks riding on a vehicle, not touching the grass) are ignored.
+## Сколько секунд трава остаётся примятой после ухода объекта (затухание следа).
+@export var flatten_lifetime: float = 2.5
+## Размер окна примятия в МИРЕ (единиц). Должно покрывать зону травы у камеры (≈ lod_distance_1 ×2).
+@export var window_size: float = 130.0
+## Радиус одного отпечатка в мире (единиц).
+@export var stamp_radius: float = 2.5
+## Бендер прижимает траву только если он не выше этого над рельефом (блоки на крыше машины игнор).
 @export var ground_touch_height: float = 2.0
+## Мин. сдвиг объекта, прежде чем оставить новый отпечаток (м) — чтобы стоящий объект не плодил их.
+@export var footprint_spacing: float = 0.5
+## Сколько отпечатков держим максимум (= размер пула спрайтов).
+@export var max_footprints: int = 200
 
-var _map_material: ShaderMaterial = null
+const VP_SIZE: int = 512
+
 var _initialized: bool = false
 var _benders: Array = []
-var _cached_positions: Array[Vector2] = []
+var _vp: SubViewport
+var _sprite_pool: Array[Sprite2D] = []
+var _stamp_tex: Texture2D
+var _footprints: Array = []          # [{pos: Vector2 (world xz), born: float}]
+var _time: float = 0.0
+var _refresh_t: float = 0.0
 
 func _ready() -> void:
 	await get_tree().process_frame
-	_benders = get_tree().get_nodes_in_group("grass_benders")
-	_setup()
-
-func _setup() -> void:
-	if not map_node:
-		push_error("GrassSystem: map_node не назначен!")
+	if not map_node or not map_node.has_method("set_grass_trample"):
+		push_error("GrassSystem: map_node не поддерживает set_grass_trample()")
 		return
-
-	# Prefer the map's set_grass_benders() (targets the real LOD0 grass material). Only
-	# fall back to grabbing a material directly if the map doesn't expose it.
-	if not map_node.has_method("set_grass_benders"):
-		_map_material = _find_map_material()
-		if not _map_material:
-			push_error("GrassSystem: материал карты не найден!")
-			return
-
+	_benders = get_tree().get_nodes_in_group("grass_benders")
+	_build_viewport()
 	_initialized = true
 
-func _find_map_material() -> ShaderMaterial:
-	for child in map_node.get_children():
-		if child is MeshInstance3D:
-			var mat = child.get_surface_override_material(0)
-			if mat is ShaderMaterial:
-				return mat as ShaderMaterial
-			if child.mesh:
-				mat = child.mesh.surface_get_material(0)
-				if mat is ShaderMaterial:
-					return mat as ShaderMaterial
-	return null
+# ── Build the flatten SubViewport + a pool of stamp sprites (all in code, no .tscn) ──────
+func _build_viewport() -> void:
+	_vp = SubViewport.new()
+	_vp.size = Vector2i(VP_SIZE, VP_SIZE)
+	_vp.transparent_bg = true                              # empty = red 0 = no press
+	_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
+	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_vp)
 
-func _positions_changed(positions: Array[Vector2]) -> bool:
-	if positions.size() != _cached_positions.size():
-		return true
-	for i in positions.size():
-		if positions[i].distance_to(_cached_positions[i]) > update_threshold:
-			return true
-	return false
+	_stamp_tex = _make_stamp_texture()
+	var add_mat := CanvasItemMaterial.new()
+	add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD   # overlapping prints accumulate
+	for _i in max_footprints:
+		var s := Sprite2D.new()
+		s.texture = _stamp_tex
+		s.material = add_mat
+		s.visible = false
+		_vp.add_child(s)
+		_sprite_pool.append(s)
 
-func _update_benders() -> void:
-	_benders = _benders.filter(func(t): return is_instance_valid(t))
+# Soft round blob: red falls off from the centre.
+func _make_stamp_texture() -> Texture2D:
+	var sz := 64
+	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
+	var c := float(sz) * 0.5
+	for y in sz:
+		for x in sz:
+			var dn := Vector2(float(x) - c, float(y) - c).length() / c
+			var v := clampf(1.0 - dn, 0.0, 1.0)
+			v = v * v                                       # softer edge
+			img.set_pixel(x, y, Color(v, v, v, v))
+	return ImageTexture.create_from_image(img)
 
-	var has_map := map_node != null and map_node.has_method("terrain_height_at")
-	var positions: Array[Vector2] = []
-	for b in _benders:
-		if positions.size() >= max_benders:
-			break
-		var bp: Vector3 = b.global_position
-		# Skip benders that aren't actually on the grass (too high above the terrain).
-		if has_map and bp.y - map_node.terrain_height_at(bp) > ground_touch_height:
-			continue
-		positions.append(Vector2(bp.x, bp.z))
-
-	if not _positions_changed(positions):
-		return
-	_cached_positions = positions
-
-	# Без заполнения нулями — шейдер читає тільки до bender_count
-	if map_node.has_method("set_grass_benders"):
-		map_node.set_grass_benders(positions, positions.size())
-	elif _map_material:
-		_map_material.set_shader_parameter("bender_count", positions.size())
-		_map_material.set_shader_parameter("bender_positions", positions)
-
-var _check_counter: int = 0
-const CHECK_EVERY: int = 3  # перевіряємо кожен 3й кадр
-
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not _initialized:
 		return
-	_check_counter += 1
-	if _check_counter >= CHECK_EVERY:
-		_check_counter = 0
-		_update_benders()
+	_time += delta
+
+	# Refresh the bender list periodically so newly-spawned objects are picked up.
+	_refresh_t += delta
+	if _refresh_t >= 0.5:
+		_refresh_t = 0.0
+		_benders = get_tree().get_nodes_in_group("grass_benders")
+	_benders = _benders.filter(func(t): return is_instance_valid(t))
+
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var center := Vector2(cam.global_position.x, cam.global_position.z)
+	var has_map := map_node.has_method("terrain_height_at")
+
+	# 1. Drop a fresh footprint under each ground-touching bender that has moved enough.
+	for b in _benders:
+		var bp: Vector3 = b.global_position
+		if has_map and bp.y - map_node.terrain_height_at(bp) > ground_touch_height:
+			continue
+		var p := Vector2(bp.x, bp.z)
+		var last = b.get_meta("_last_print", Vector2(INF, INF))
+		if last.distance_to(p) >= footprint_spacing:
+			b.set_meta("_last_print", p)
+			_footprints.append({"pos": p, "born": _time})
+
+	# 2. Expire old footprints (front is oldest).
+	while not _footprints.is_empty() and _time - _footprints[0]["born"] > flatten_lifetime:
+		_footprints.pop_front()
+	while _footprints.size() > max_footprints:
+		_footprints.pop_front()
+
+	# 3. Draw the footprints into the player-centred window.
+	var half := window_size * 0.5
+	var ppu  := float(VP_SIZE) / window_size               # pixels per world unit
+	var sprite_scale := (stamp_radius * 2.0 * ppu) / float(_stamp_tex.get_width())
+	var i := 0
+	for fp in _footprints:
+		if i >= _sprite_pool.size():
+			break
+		var rel: Vector2 = fp["pos"] - center
+		if absf(rel.x) > half or absf(rel.y) > half:
+			continue                                        # outside the window
+		var s := _sprite_pool[i]
+		i += 1
+		s.visible = true
+		s.position = Vector2((rel.x + half) * ppu, (rel.y + half) * ppu)
+		s.scale = Vector2(sprite_scale, sprite_scale)
+		var fade := clampf(1.0 - (_time - fp["born"]) / flatten_lifetime, 0.0, 1.0)
+		s.modulate = Color(fade, fade, fade, fade)
+	while i < _sprite_pool.size():
+		_sprite_pool[i].visible = false
+		i += 1
+
+	# 4. Feed the flatten texture + window to the grass material.
+	map_node.set_grass_trample(_vp.get_texture(), center, window_size)
