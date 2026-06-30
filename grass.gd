@@ -92,12 +92,16 @@ func _process(delta: float) -> void:
 	var center := Vector2(cam.global_position.x, cam.global_position.z)
 	var has_map := map_node.has_method("terrain_height_at")
 
-	# 1. Drop a fresh footprint under each ground-touching bender that has moved enough.
+	# 1. Per ground-touching bender: it's "live" this frame (stays fully pressed while
+	#    present — fixes grass springing back under a STATIONARY object), and it drops a
+	#    fading footprint when it has moved enough (the lingering trail behind it).
+	var live: Array[Vector2] = []
 	for b in _benders:
 		var bp: Vector3 = b.global_position
 		if has_map and bp.y - map_node.terrain_height_at(bp) > ground_touch_height:
 			continue
 		var p := Vector2(bp.x, bp.z)
+		live.append(p)
 		var last = b.get_meta("_last_print", Vector2(INF, INF))
 		if last.distance_to(p) >= footprint_spacing:
 			b.set_meta("_last_print", p)
@@ -109,27 +113,39 @@ func _process(delta: float) -> void:
 	while _footprints.size() > max_footprints:
 		_footprints.pop_front()
 
-	# 3. Draw the footprints into the player-centred window.
+	# 3. Draw into the player-centred window: LIVE stamps first (full press, never fades),
+	#    then the fading TRAIL (newest first, so if the pool runs out the oldest drop).
 	var half := window_size * 0.5
 	var ppu  := float(VP_SIZE) / window_size               # pixels per world unit
 	var sprite_scale := (stamp_radius * 2.0 * ppu) / float(_stamp_tex.get_width())
 	var i := 0
-	for fp in _footprints:
+	for p in live:
 		if i >= _sprite_pool.size():
 			break
-		var rel: Vector2 = fp["pos"] - center
+		var rel := p - center
 		if absf(rel.x) > half or absf(rel.y) > half:
-			continue                                        # outside the window
-		var s := _sprite_pool[i]
-		i += 1
-		s.visible = true
-		s.position = Vector2((rel.x + half) * ppu, (rel.y + half) * ppu)
-		s.scale = Vector2(sprite_scale, sprite_scale)
-		var fade := clampf(1.0 - (_time - fp["born"]) / flatten_lifetime, 0.0, 1.0)
-		s.modulate = Color(fade, fade, fade, fade)
+			continue
+		i = _place_stamp(i, rel, half, ppu, sprite_scale, 1.0)
+	for fi in range(_footprints.size() - 1, -1, -1):
+		if i >= _sprite_pool.size():
+			break
+		var rel2: Vector2 = _footprints[fi]["pos"] - center
+		if absf(rel2.x) > half or absf(rel2.y) > half:
+			continue
+		var fade := clampf(1.0 - (_time - _footprints[fi]["born"]) / flatten_lifetime, 0.0, 1.0)
+		i = _place_stamp(i, rel2, half, ppu, sprite_scale, fade)
 	while i < _sprite_pool.size():
 		_sprite_pool[i].visible = false
 		i += 1
 
 	# 4. Feed the flatten texture + window to the grass material.
 	map_node.set_grass_trample(_vp.get_texture(), center, window_size)
+
+# Positions sprite at pool index `i` at world-relative `rel` with strength `fade`. Returns i+1.
+func _place_stamp(i: int, rel: Vector2, half: float, ppu: float, sprite_scale: float, fade: float) -> int:
+	var s := _sprite_pool[i]
+	s.visible = true
+	s.position = Vector2((rel.x + half) * ppu, (rel.y + half) * ppu)
+	s.scale = Vector2(sprite_scale, sprite_scale)
+	s.modulate = Color(fade, fade, fade, fade)
+	return i + 1
