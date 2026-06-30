@@ -83,11 +83,11 @@ layout_mode = 2
 toggle_mode = true
 text = "INVENTORY"
 
-[node name="TabCab" type="Button" parent="Root/TopBar/TopRow"]
+[node name="TabShop" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "CAB CRAFTING"
+text = "SHOP"
 
 [node name="TabWeapons" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
@@ -112,6 +112,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 
 [node name="Currency" type="Label" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
 layout_mode = 2
 text = "300"
 
@@ -228,7 +229,7 @@ theme_override_constants/separation = 6
 
 [node name="ReactorLabel" type="Label" parent="Root/Main/RightPanel/RightVB/Reactor/ReactorVB"]
 layout_mode = 2
-text = "REACTOR  ·  CAPACITY"
+text = "BLOCKS  ·  BUILT / OWNED"
 
 [node name="ReactorValue" type="Label" parent="Root/Main/RightPanel/RightVB/Reactor/ReactorVB"]
 unique_name_in_owner = true

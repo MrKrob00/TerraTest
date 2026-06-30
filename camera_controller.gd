@@ -19,7 +19,7 @@ var angle: float = 0.0
 var is_active: bool = false
 
 func _ready():
-	
+	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
 	var vehicle_childs = $"..".get_children()
 	for i in vehicle_childs:
 		if i is RigidBody3D:
