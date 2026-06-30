@@ -20,16 +20,14 @@ var is_active: bool = false
 
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
+	# Собираем только управляемую игроком технику (у неё есть take_block_into_hand),
+	# чтобы враг (другой RigidBody3D в Vehicles) не попадал в список переключения.
 	var vehicle_childs = $"..".get_children()
 	for i in vehicle_childs:
-		if i is RigidBody3D:
-			if !vehicles.has(i): 
+		if i is RigidBody3D and i.has_method("take_block_into_hand"):
+			if !vehicles.has(i):
 				vehicles.append(i)
-				if vehicles.size()>1:
-					var Machine_duplicate= $"HUD/TabContainer/Machine 1".duplicate()
-					Machine_duplicate.name = "Machine "+ str(vehicles.size())
-					$HUD/TabContainer.add_child(Machine_duplicate)
-	
+
 	# Если машина не задана, попробуем найти первую в списке Vehicles
 	if not current_vehicle:
 		switch_to_vehicle(vehicles[0])
@@ -87,7 +85,3 @@ func _on_raycast_body_entered(body: Node3D) -> void:
 	if body.get_parent().name in "objects" and !current_vehicle.block_take:
 		current_vehicle.ghost_block.global_position = body.global_position
 		current_vehicle.block_body = body
-
-
-func _on_switch_pressed() -> void:
-	switch_to_vehicle(vehicles[$HUD/TabContainer.current_tab])

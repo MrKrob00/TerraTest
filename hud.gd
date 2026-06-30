@@ -16,9 +16,12 @@ var _drawer: PanelContainer
 var _handle: Button
 var _drawer_open: bool = false
 var _tech_ui: Control = null
+var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
+var _game_controls: Array = []              # игровые кнопки/джойстики — прячем при инвентаре
 
 func _ready() -> void:
 	_build_ark_drawer()
+	_collect_game_controls()
 
 
 func _process(_delta: float) -> void:
@@ -50,7 +53,18 @@ func _build_ark_drawer() -> void:
 	vb.add_child(title)
 
 	vb.add_child(_make_drawer_button("Инвентарь", _toggle_inventory))
-	vb.add_child(_make_drawer_button("Сменить технику", _switch_vehicle))
+
+	var veh_label := Label.new()
+	veh_label.text = "ТЕХНИКА"
+	veh_label.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.8))
+	veh_label.add_theme_font_size_override("font_size", 14)
+	vb.add_child(veh_label)
+
+	# Список техники строится при каждом открытии drawer (машины известны только
+	# после _ready камеры-контроллера, который вызывается позже HUD).
+	_vehicle_list = VBoxContainer.new()
+	_vehicle_list.add_theme_constant_override("separation", 6)
+	vb.add_child(_vehicle_list)
 
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -77,6 +91,8 @@ func _toggle_drawer() -> void:
 
 func _set_drawer(open: bool) -> void:
 	_drawer_open = open
+	if open:
+		_rebuild_vehicle_list()
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	var target_x: float = (screen.x - DRAWER_W) if open else screen.x
 	var handle_x: float = (screen.x - DRAWER_W - 50.0) if open else (screen.x - 50.0)
@@ -94,19 +110,90 @@ func _toggle_inventory() -> void:
 		_tech_ui = TECH_UI.instantiate()
 		_tech_ui.visible = false          # известное состояние до add_child (без вспышки)
 		add_child(_tech_ui)
+		# Один обработчик на открытие И закрытие (в т.ч. крестиком X и при взятии блока):
+		# прячем/возвращаем игровые кнопки, чтобы они не светились сквозь инвентарь.
+		_tech_ui.visibility_changed.connect(_on_tech_ui_visibility)
+	_set_drawer(false)
 	_tech_ui.visible = not _tech_ui.visible
 	if _tech_ui.visible and _tech_ui.has_method("refresh"):
 		_tech_ui.refresh()
-	_set_drawer(false)
 
-func _switch_vehicle() -> void:
+func _on_tech_ui_visibility() -> void:
+	# Инвентарь открыт → прячем игровой HUD; закрыт → возвращаем как было.
+	_set_game_controls_hidden(_tech_ui != null and _tech_ui.visible)
+
+# ── Выбор техники (список в drawer) ───────────────────────────────────────────
+func _player_vehicles() -> Array:
 	var cc: Node = $".."
-	if cc and "vehicles" in cc and cc.vehicles.size() > 1:
-		var idx: int = cc.vehicles.find(cc.current_vehicle)
-		idx = (idx + 1) % cc.vehicles.size()
-		cc.switch_to_vehicle(cc.vehicles[idx])
+	if cc and "vehicles" in cc:
+		return cc.vehicles
+	return []
+
+func _rebuild_vehicle_list() -> void:
+	if _vehicle_list == null:
+		return
+	for c in _vehicle_list.get_children():
+		c.queue_free()
+	var cur: Node = current_vehicle
+	var cc: Node = $".."
+	if cc and "current_vehicle" in cc:
+		cur = cc.current_vehicle
+	var i := 0
+	for v in _player_vehicles():
+		if not is_instance_valid(v):
+			continue
+		i += 1
+		var is_cur: bool = (v == cur)
+		var label: String = ("● " if is_cur else "  ") + str(v.name)
+		var btn := _make_drawer_button(label, _select_vehicle.bind(v))
+		if is_cur:
+			btn.add_theme_color_override("font_color", Color(1.0, 0.65, 0.2, 1))  # текущая — оранжевым
+			btn.disabled = true
+		_vehicle_list.add_child(btn)
+	if i == 0:
+		var empty := Label.new()
+		empty.text = "нет техники"
+		empty.modulate = Color(1, 1, 1, 0.5)
+		_vehicle_list.add_child(empty)
+
+func _select_vehicle(v: Node) -> void:
+	var cc: Node = $".."
+	if cc and cc.has_method("switch_to_vehicle") and is_instance_valid(v):
+		cc.switch_to_vehicle(v)
 		current_vehicle = cc.current_vehicle
-	_set_drawer(false)
+	_rebuild_vehicle_list()        # обновляем подсветку текущей
+
+# ── Прятать/возвращать игровой HUD под инвентарём ─────────────────────────────
+func _collect_game_controls() -> void:
+	_game_controls.clear()
+	for n in ["Movement", "Building", "Take", "TakeOff", "Attack",
+			"Joystick_movement", "Joystick_camera", "Label"]:
+		var node: Node = get_node_or_null(n)
+		if node:
+			_game_controls.append(node)
+	if _drawer:
+		_game_controls.append(_drawer)
+	if _handle:
+		_game_controls.append(_handle)
+
+func _set_game_controls_hidden(hidden: bool) -> void:
+	for n in _game_controls:
+		if is_instance_valid(n):
+			n.visible = not hidden
+	# При закрытии инвентаря возвращаем кнопки в правильный режим машины
+	# (мог поменяться, если игрок взял блок в руку → стройка).
+	if not hidden:
+		_apply_mode_visibility()
+
+func _apply_mode_visibility() -> void:
+	var v: Node = current_vehicle
+	var cc: Node = $".."
+	if cc and "current_vehicle" in cc:
+		v = cc.current_vehicle
+	if v and "Building" in v and v.Building:
+		_on_building_pressed()
+	else:
+		_on_movement_pressed()
 
 
 # ── Стили (тёмно-бирюзовая палитра tech_ui) ───────────────────────────────────
