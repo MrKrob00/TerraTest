@@ -42,12 +42,6 @@ background_color = Color(0.21960784, 0.11372549, 0.5294118, 1)
 sky = SubResource("Sky_2yde8")
 sky_custom_fov = 80.0
 tonemap_agx_contrast = 1.7
-glow_intensity = 0.1
-glow_bloom = 1.0
-fog_sun_scatter = 0.25
-fog_density = 0.002
-fog_sky_affect = 0.121
-adjustment_brightness = 1.6
 
 [sub_resource type="CameraAttributesPhysical" id="CameraAttributesPhysical_1q667"]
 exposure_aperture = 19.0
