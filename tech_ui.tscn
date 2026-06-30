@@ -267,24 +267,24 @@ theme_override_constants/separation = 24
 
 [node name="H1" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Tab  Exit"
+text = "👆 Тап по блоку — взять в руку"
 
 [node name="H2" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "R  Restore Blocks"
+text = "🛒 SHOP — купить блоки"
 
 [node name="H3" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Raise / Hover Tech"
+text = "🔍 Поиск — фильтр по названию"
 
 [node name="H4" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "G  Hanging Blocks"
+text = "🚗 Тап по машине — поставить блок"
 
 [node name="H5" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Rotate Camera"
+text = "✋ Перетащи — поворот камеры"
 
 [node name="H6" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Zoom"
+text = "🤏 Два пальца — зум"
