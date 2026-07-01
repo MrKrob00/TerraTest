@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://ccy4xql8u7bqc" path="res://camera_controller.gd" id="13_3v7ru"]
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
 [ext_resource type="PackedScene" uid="uid://u0tdxsa46btj" path="res://shop.tscn" id="15_3v7ru"]
+[ext_resource type="Script" path="res://shop_spawner.gd" id="15_shopspawn"]
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://map.gd" id="17_tuemg"]
 [ext_resource type="Script" uid="uid://ct6cdn5f1v4hh" path="res://enemy_vehicle.gd" id="19_nu31w"]
 [ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/terrain_sculpt/terrain_mesh.res" id="22_obt1j"]
@@ -181,6 +182,11 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.3150005, 25.723307, 92.2282
 
 [node name="Shop" parent="." unique_id=1925840308 instance=ExtResource("15_3v7ru")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 9.278954, 17.099308)
+
+[node name="Shops" type="Node3D" parent="." node_paths=PackedStringArray("map_node")]
+script = ExtResource("15_shopspawn")
+shop_scene = ExtResource("15_3v7ru")
+map_node = NodePath("../map")
 
 [node name="Vehicles" type="Node3D" parent="." unique_id=898889598]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 49.802696, 0)
