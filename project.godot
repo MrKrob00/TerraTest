@@ -75,8 +75,10 @@ pointing/android/enable_long_press_as_right_click=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
-scaling_3d/scale=0.75
 lights_and_shadows/use_physical_light_units=true
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
-occlusion_culling/occlusion_rays_per_thread=216
+scaling_3d/scale=0.75
+occlusion_culling/use_occlusion_culling=true

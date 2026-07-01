@@ -153,7 +153,7 @@ func active_quests() -> Array[Dictionary]:
 # все ежедневные. Будущие сюжетные (ещё закрытые) не показываем.
 func visible_quests() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var cur_order := _current_story().get("order", 999999)
+	var cur_order = _current_story().get("order", 999999)
 	for q in _sorted_story():
 		if q["done"] or q["order"] <= cur_order:
 			out.append(q)

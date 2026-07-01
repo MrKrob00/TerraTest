@@ -94,7 +94,7 @@ skeleton = NodePath("../..")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 top_level = true
 collision_layer = 0
-collision_mask = 3
+collision_mask = 7
 script = ExtResource("2_dk5gl")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ammo/Bullet" unique_id=731660699]

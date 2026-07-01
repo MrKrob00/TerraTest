@@ -1,24 +1,12 @@
-[gd_scene load_steps=4 format=3 uid="uid://cquestsorca0001"]
+[gd_scene format=3 uid="uid://vbcwovv3kt73"]
 
-[ext_resource type="Script" path="res://quests.gd" id="1_q"]
-
-[sub_resource type="StyleBoxFlat" id="panel"]
-bg_color = Color(0.043, 0.122, 0.149, 0.94)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.247, 0.6, 0.65, 0.5)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
-content_margin_left = 12.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
+[ext_resource type="Script" uid="uid://lx0aw3qhsugp" path="res://quests.gd" id="1_q"]
 
 [sub_resource type="StyleBoxFlat" id="tracker"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
 bg_color = Color(0.07, 0.18, 0.21, 0.94)
 border_width_left = 3
 border_width_top = 1
@@ -29,29 +17,42 @@ corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-content_margin_left = 12.0
-content_margin_top = 8.0
-content_margin_right = 12.0
-content_margin_bottom = 8.0
 
-[node name="Quests" type="CanvasLayer"]
+[sub_resource type="StyleBoxFlat" id="panel"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.043, 0.122, 0.149, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.247, 0.6, 0.65, 0.5)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="Quests" type="CanvasLayer" unique_id=126925193]
 layer = 5
 script = ExtResource("1_q")
 
-[node name="Tracker" type="Button" parent="."]
+[node name="Tracker" type="Button" parent="." unique_id=771392479]
 unique_name_in_owner = true
+anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -308.0
-offset_top = 14.0
-offset_right = -14.0
-offset_bottom = 78.0
+offset_left = -313.0
+offset_top = 76.0
+offset_right = -19.0
+offset_bottom = 140.0
 grow_horizontal = 0
 theme_override_styles/normal = SubResource("tracker")
-theme_override_styles/hover = SubResource("tracker")
 theme_override_styles/pressed = SubResource("tracker")
+theme_override_styles/hover = SubResource("tracker")
 
-[node name="TrackVB" type="VBoxContainer" parent="Tracker"]
+[node name="TrackVB" type="VBoxContainer" parent="Tracker" unique_id=2057609236]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -61,25 +62,24 @@ grow_vertical = 2
 mouse_filter = 2
 theme_override_constants/separation = 2
 
-[node name="TrackTitle" type="Label" parent="Tracker/TrackVB"]
+[node name="TrackTitle" type="Label" parent="Tracker/TrackVB" unique_id=1369017009]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(1, 0.65, 0.2, 1)
 theme_override_font_sizes/font_size = 16
 text = "★ Задание"
 
-[node name="TrackObjective" type="Label" parent="Tracker/TrackVB"]
+[node name="TrackObjective" type="Label" parent="Tracker/TrackVB" unique_id=862751314]
 unique_name_in_owner = true
 layout_mode = 2
-mouse_filter = 2
 theme_override_colors/font_color = Color(0.85, 0.93, 0.95, 1)
 theme_override_font_sizes/font_size = 13
 text = "цель — 0/0"
 
-[node name="ListPanel" type="PanelContainer" parent="."]
+[node name="ListPanel" type="PanelContainer" parent="." unique_id=888738037]
 unique_name_in_owner = true
 visible = false
+anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -360.0
@@ -89,37 +89,37 @@ offset_bottom = 520.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("panel")
 
-[node name="ListVB" type="VBoxContainer" parent="ListPanel"]
+[node name="ListVB" type="VBoxContainer" parent="ListPanel" unique_id=1023611589]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Header" type="HBoxContainer" parent="ListPanel/ListVB"]
+[node name="Header" type="HBoxContainer" parent="ListPanel/ListVB" unique_id=2064426118]
 layout_mode = 2
 
-[node name="Title" type="Label" parent="ListPanel/ListVB/Header"]
+[node name="Title" type="Label" parent="ListPanel/ListVB/Header" unique_id=1894383428]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.55, 0.85, 0.9, 1)
 theme_override_font_sizes/font_size = 20
 text = "ЗАДАНИЯ"
 
-[node name="Close" type="Button" parent="ListPanel/ListVB/Header"]
+[node name="Close" type="Button" parent="ListPanel/ListVB/Header" unique_id=1806020968]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(40, 40)
 layout_mode = 2
 text = "X"
 
-[node name="Hint" type="Label" parent="ListPanel/ListVB"]
+[node name="Hint" type="Label" parent="ListPanel/ListVB" unique_id=292855431]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.45)
 theme_override_font_sizes/font_size = 12
 text = "★ — отслеживать вверху справа"
 
-[node name="Scroll" type="ScrollContainer" parent="ListPanel/ListVB"]
+[node name="Scroll" type="ScrollContainer" parent="ListPanel/ListVB" unique_id=2125908248]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="QuestList" type="VBoxContainer" parent="ListPanel/ListVB/Scroll"]
+[node name="QuestList" type="VBoxContainer" parent="ListPanel/ListVB/Scroll" unique_id=1872184016]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
