@@ -17,22 +17,34 @@ func _ready() -> void:
 	_seed_demo()
 	_auto_track()
 
-# Демо-набор. Замени/дополни своими; порядок сюжета — поле order.
+# Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
+# reward_money — сколько $ выдать при выполнении. Порядок сюжета — поле order.
 func _seed_demo() -> void:
-	add_quest("story_build",  "Собери машину",     "Поставь кабину и 4 колеса",        Type.STORY, 5, 0)
-	add_quest("story_ore",    "Добудь руду",       "Насверли 10 руды дрелью",          Type.STORY, 10, 1)
-	add_quest("story_sell",   "Заработай денег",   "Продай ресурсы на 100$",           Type.STORY, 100, 2)
-	add_quest("story_kill",   "Первый бой",        "Уничтожь кабину врага",            Type.STORY, 1, 3)
-	add_quest("daily_ore",    "Ежедневно: руда",   "Добудь 20 руды",                   Type.DAILY, 20, 0)
-	add_quest("daily_kill",   "Ежедневно: враги",  "Уничтожь 3 машины",                Type.DAILY, 3, 0)
+	add_quest("story_build", "Собери машину",    "Поставь 5 блоков",        Type.STORY, 5,   0, "block_placed", 20)
+	add_quest("story_ore",   "Добудь руду",      "Насверли 10 руды",        Type.STORY, 10,  1, "ore_mined",    30)
+	add_quest("story_sell",  "Заработай денег",  "Заработай 100$",          Type.STORY, 100, 2, "money_earned", 50)
+	add_quest("story_kill",  "Первый бой",       "Уничтожь кабину врага",   Type.STORY, 1,   3, "enemy_killed", 40)
+	add_quest("daily_ore",   "Ежедневно: руда",  "Добудь 20 руды",          Type.DAILY, 20,  0, "ore_mined",    25)
+	add_quest("daily_kill",  "Ежедневно: враги", "Уничтожь 3 машины",       Type.DAILY, 3,   0, "enemy_killed", 40)
 
 # ── Данные ────────────────────────────────────────────────────────────────────
-func add_quest(id: String, title: String, desc: String, type: int, goal: int, order: int = 0) -> void:
+func add_quest(id: String, title: String, desc: String, type: int, goal: int,
+		order: int = 0, event: String = "", reward_money: int = 0) -> void:
 	quests.append({
 		"id": id, "title": title, "desc": desc, "type": type,
 		"goal": maxi(goal, 1), "progress": 0, "done": false, "order": order,
+		"event": event, "reward_money": reward_money,
 	})
 	changed.emit()
+
+# Игра сообщает о событии — двигаем ВСЕ активные задания с таким event (и сюжет, и дейлики):
+#   Q.report("ore_mined", 1) / Q.report("enemy_killed", 1) / Q.report("money_earned", 5)
+func report(event: String, amount: int = 1) -> void:
+	if event == "":
+		return
+	for q in active_quests():
+		if q.get("event", "") == event and not q["done"]:
+			add_progress(q["id"], amount)
 
 func _find(id: String) -> Dictionary:
 	for q in quests:
@@ -57,7 +69,14 @@ func set_progress(id: String, value: int) -> void:
 func complete(id: String) -> void:
 	set_progress(id, _find(id).get("goal", 1))
 
-func _on_completed(_q: Dictionary) -> void:
+func _on_completed(q: Dictionary) -> void:
+	# Награда деньгами. Начисляем НАПРЯМУЮ (g.money += ...), а не через add_money, чтобы
+	# награда сама не засчитывалась в задание «заработай денег».
+	var reward: int = int(q.get("reward_money", 0))
+	if reward > 0:
+		var g = get_node_or_null("/root/G")
+		if g:
+			g.money += reward
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):

@@ -82,7 +82,13 @@ func _make_row(q: Dictionary) -> Control:
 	t.add_theme_color_override("font_color", Color(0.6, 0.75, 0.6, 1) if q["done"] else Color(0.92, 0.96, 0.98, 1))
 	vb.add_child(t)
 	var o := Label.new()
-	o.text = "✓ выполнено" if q["done"] else "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+	if q["done"]:
+		o.text = "✓ выполнено"
+	else:
+		o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+		var reward: int = int(q.get("reward_money", 0))
+		if reward > 0:
+			o.text += "  ·  +%d$" % reward
 	o.add_theme_font_size_override("font_size", 12)
 	o.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	vb.add_child(o)
