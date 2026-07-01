@@ -45,9 +45,9 @@ extends RigidBody3D
 @export var faction: int = 1
 
 @export_group("ИИ — Живучесть")
-## Машина гибнет, когда уничтожена КАБИНА. Оружие игрока зовёт body.hurt() по корпусу
-## врага (враг — одно тело) — мы направляем урон в кабину; на её destroyed враг гибнет,
-## шлёт died (спавнер поднимает нового) и ВЫКИДЫВАЕТ остальные блоки в мир пикапами.
+## Блоки — отдельные RigidBody (слой 2) со своим HP; пули игрока (mask 3) бьют по ним,
+## а не по корпусу. Ловим destroyed КАБИНЫ → машина гибнет, шлёт died (спавнер поднимает
+## нового) и роняет остальные блоки в мир (reparent в objects → они сами оживают).
 signal died(enemy: Node)
 var _cabin: Node = null
 var _dying: bool = false
@@ -161,13 +161,6 @@ func _connect_cabin() -> void:
 				b.destroyed.connect(_on_cabin_destroyed)
 			return
 
-# Урон по врагу (зовёт оружие игрока по корпусу) направляем в кабину.
-func hurt(damage: int = 10) -> void:
-	if is_instance_valid(_cabin) and _cabin.has_method("hurt"):
-		_cabin.hurt(damage)
-	elif not _dying:
-		_die()                              # кабины уже нет — добиваем корпус
-
 func _on_cabin_destroyed(_b = null) -> void:
 	_die()
 
@@ -179,22 +172,18 @@ func _die() -> void:
 	_eject_blocks()
 	queue_free()
 
-# Выкидываем уцелевшие блоки в мир пикапами (свежие мировые инстансы у позиций блоков).
+# Роняем уцелевшие блоки в мир: сами блоки — RigidBody, переносим их в objects, где
+# VehicleBlock._on_parent_changed разморозит их (freeze=false) → живые пикапы.
 func _eject_blocks() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	var blocks_node := get_node_or_null("blocks")
 	if objects == null or blocks_node == null:
 		return
-	for b in blocks_node.get_children():
-		var btype = b.get("block")
-		if btype == null or btype == G.Block.CABIN:
-			continue                        # кабина уничтожена — не роняем
-		var scene: PackedScene = G.get_scene(btype)
-		if scene == null:
-			continue
-		var drop: Node3D = scene.instantiate()
-		objects.add_child(drop)
-		drop.global_position = (b as Node3D).global_position + Vector3(randf_range(-1.0, 1.0), 1.0, randf_range(-1.0, 1.0))
+	for b in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
+		if b.get("block") == G.Block.CABIN:
+			continue                              # кабина уничтожена — не роняем
+		if b is Node3D:
+			(b as Node3D).reparent(objects)       # keep_global_transform=true → блок на месте
 
 func _setup_detection_area() -> void:
 	var area = Area3D.new()
