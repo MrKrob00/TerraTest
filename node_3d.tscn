@@ -21,7 +21,6 @@
 [ext_resource type="PackedScene" uid="uid://u0tdxsa46btj" path="res://shop.tscn" id="15_3v7ru"]
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://map.gd" id="17_tuemg"]
 [ext_resource type="Script" uid="uid://ct6cdn5f1v4hh" path="res://enemy_vehicle.gd" id="19_nu31w"]
-[ext_resource type="Shape3D" uid="uid://c3oh7as7ecrjx" path="res://addons/terrain_sculpt/terrain.res" id="21_s0gvp"]
 [ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/terrain_sculpt/terrain_mesh.res" id="22_obt1j"]
 [ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/terrain_sculpt/terrain_shader.res" id="22_s0gvp"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
@@ -484,7 +483,6 @@ update_threshold = 1.0
 [node name="Resource_Nodes" type="Node3D" parent="map" unique_id=213070597 node_paths=PackedStringArray("multimesh_nodes")]
 script = ExtResource("24_5t8nk")
 resource_nodes = Array[PackedScene]([ExtResource("11_tereu")])
-HeightMap = ExtResource("21_s0gvp")
 multimesh_nodes = [NodePath("MultiMeshInstance3D"), NodePath("MultiMeshInstance3D2")]
 
 [node name="MultiMeshInstance3D" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1838571884]
