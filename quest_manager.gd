@@ -81,11 +81,11 @@ func _on_completed(q: Dictionary) -> void:
 		var g = get_node_or_null("/root/G")
 		if g:
 			g.money += reward
-	# Реплика о выполнении.
-	var msg := "Готово: %s." % q["title"]
+	# Реплика о выполнении от «системы».
+	var msg := "Квест выполнен: %s." % q["title"]
 	if reward > 0:
-		msg += " Держи %d$." % reward
-	_say("Механик", msg)
+		msg += " Награда: %d$." % reward
+	_say("Система", msg)
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
