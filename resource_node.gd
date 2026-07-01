@@ -48,6 +48,7 @@ func _eject_one() -> void:
 	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
 	if res.has_method("set_tint"):
 		res.set_tint(ore_color)
+	Q.report("ore_mined", 1)                    # прогресс заданий на добычу
 
 # Жила восстановилась: снова полна руды, HP сброшен.
 func _on_rest_timer_timeout() -> void:

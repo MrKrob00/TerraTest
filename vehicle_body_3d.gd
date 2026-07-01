@@ -514,6 +514,7 @@ func _on_take_pressed() -> void:
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation.y)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
 		block_take = false
+		Q.report("block_placed", 1)             # прогресс заданий на сборку
 	elif block_body:
 		if block_body.get_parent().name in "blocks":
 			block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])

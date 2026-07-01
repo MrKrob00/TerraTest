@@ -4,6 +4,10 @@ var money = 50
 
 func add_money(value):
 	money+= value
+	# Заработок двигает задания «заработай денег». Q грузится после G — берём безопасно.
+	var q = get_node_or_null("/root/Q")
+	if q:
+		q.report("money_earned", value)
 
 var block_inventory = []
 

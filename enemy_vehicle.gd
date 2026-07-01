@@ -168,6 +168,7 @@ func _die() -> void:
 	if _dying:
 		return
 	_dying = true
+	Q.report("enemy_killed", 1)             # прогресс боевых заданий
 	died.emit(self)
 	_eject_blocks()
 	queue_free()
