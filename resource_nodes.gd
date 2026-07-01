@@ -7,6 +7,15 @@ extends Node3D
 @export var resource_nodes: Array[PackedScene]
 @export var multimesh_nodes: Array[MultiMeshInstance3D]
 
+## Цвета типов жил. Тип выбирается случайно на жилу и красит руду через шейдер (один
+## draw-call на все жилы — бесплатно по FPS). ЧТОБЫ ДОБАВИТЬ НОВЫЙ ЦВЕТ ЖИЛЫ — просто
+## допиши сюда ещё один Color (до 8 штук, см. MAX_ORE_TYPES в resource.gdshader).
+@export var ore_colors: Array[Color] = [
+	Color(1.0, 0.75, 0.0),    # золото (по умолчанию)
+	Color(0.2, 0.8, 0.85),    # бирюза
+	Color(0.85, 0.25, 0.35),  # рубин
+]
+
 @export_group("Расстановка")
 @export var count: int = 200                 # сколько жил пытаемся расставить
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
@@ -31,8 +40,22 @@ func _ready() -> void:
 		push_error("resource_nodes: рельеф так и не загрузился")
 		return
 
+	_apply_ore_colors()
 	var positions: Array[Vector3] = _pick_positions(map, dims)
 	_spawn(positions)
+
+# Заливаем список цветов в шейдер руды (общий материал core.tres → один раз на всех).
+func _apply_ore_colors() -> void:
+	if ore_colors.is_empty():
+		return
+	var cols := PackedVector3Array()
+	for c in ore_colors:
+		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
+		cols.append(Vector3(lc.r, lc.g, lc.b))
+	for mm in multimesh_nodes:
+		var mesh: Mesh = mm.multimesh.mesh if mm.multimesh else null
+		if mesh is PrimitiveMesh and mesh.material is ShaderMaterial:
+			(mesh.material as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
 # Локальные позиции жил (Y уже на рельефе). Отбираем случайные точки по всей карте,
 # отбраковывая воду, обрывы и слишком близкие друг к другу.
@@ -78,15 +101,20 @@ func _spawn(positions: Array[Vector3]) -> void:
 		mm.multimesh.use_custom_data = true         # выделяем буфер custom-data ДО instance_count
 		mm.multimesh.instance_count = positions.size()
 
-	var empty_data := Color(0.0, 0.0, 0.0, 0.0)     # R=0 → «урона ещё не было»
+	var type_count: int = maxi(ore_colors.size(), 1)
 	for i in positions.size():
 		if resource_nodes.is_empty():
 			break
+		var ore_type: int = randi() % type_count
 		var node: Node3D = resource_nodes.pick_random().instantiate()
 		node.position = positions[i]
 		node.instance_id = i
+		if "ore_type" in node:
+			node.ore_type = ore_type            # жила помнит свой тип для дальнейших записей
 		add_child(node)
+		# R=0 → «урона ещё не было», A = тип руды (цвет берёт шейдер).
+		var custom := Color(0.0, 0.0, 0.0, float(ore_type))
 		var xform := Transform3D(Basis(), positions[i])
 		for mm in multimesh_nodes:
 			mm.multimesh.set_instance_transform(i, xform)
-			mm.multimesh.set_instance_custom_data(i, empty_data)
+			mm.multimesh.set_instance_custom_data(i, custom)
