@@ -12,6 +12,7 @@ const MAX_RESOURCES: int = 5
 
 var current_hp: int = 0
 var instance_id: int = 0
+var ore_type: int = 0                                # тип/цвет жилы (задаёт спавнер), в A-канал
 
 # Второй MultiMesh — тот, в который пишем состояние жилы для шейдера истощения.
 @onready var _depletion_mm: MultiMeshInstance3D = get_node_or_null("../MultiMeshInstance3D2")
@@ -25,8 +26,8 @@ func hurt(damage: int = 10) -> void:
 		return
 
 	current_hp = clampi(current_hp - damage, 0, max_hp)
-	# R — время удара (запускает в шейдере анимацию тряски), G — доля HP.
-	_write_shader_data(Color(_now(), float(current_hp) / float(max_hp), 0.0, 0.0))
+	# R — время удара (запускает в шейдере анимацию тряски), G — доля HP, A — тип (цвет).
+	_write_shader_data(Color(_now(), float(current_hp) / float(max_hp), 0.0, float(ore_type)))
 
 	var want_left: int = int(float(current_hp) / float(max_hp) * MAX_RESOURCES)
 	while resources.get_child_count() > want_left:
@@ -50,8 +51,8 @@ func _on_rest_timer_timeout() -> void:
 		res.process_mode = Node.PROCESS_MODE_DISABLED
 		resources.add_child(res)
 	current_hp = max_hp
-	# B — время респавна (запускает в шейдере анимацию роста), G=1 → жила снова целая.
-	_write_shader_data(Color(0.0, 1.0, _now(), 0.0))
+	# B — время респавна (запускает в шейдере анимацию роста), G=1 → жила снова целая, A — тип.
+	_write_shader_data(Color(0.0, 1.0, _now(), float(ore_type)))
 
 func _now() -> float:
 	return Time.get_ticks_msec() / 1000.0
