@@ -21,7 +21,7 @@ extends Node3D
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
 @export var min_height: float = 2.0          # ниже — вода/пляж, не спавним
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
-@export var min_spacing: float = 14.0        # минимальная дистанция между жилами
+@export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
 
 func _ready() -> void:
 	var map: Node = get_parent()
@@ -111,6 +111,8 @@ func _spawn(positions: Array[Vector3]) -> void:
 		node.instance_id = i
 		if "ore_type" in node:
 			node.ore_type = ore_type            # жила помнит свой тип для дальнейших записей
+		if "ore_color" in node and ore_type < ore_colors.size():
+			node.ore_color = ore_colors[ore_type]   # цвет для тинта вылетающей руды
 		add_child(node)
 		# R=0 → «урона ещё не было», A = тип руды (цвет берёт шейдер).
 		var custom := Color(0.0, 0.0, 0.0, float(ore_type))
