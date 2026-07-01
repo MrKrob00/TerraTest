@@ -195,7 +195,7 @@ var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection
 var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
 var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
 const QT_QUALITY: float = 1.1      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
-const QT_SKIRT:   float = 6.0      # apron depth that hides cross-LOD seams (world units)
+const QT_SKIRT:   float = 0.0      # юбку убрали (была видна свисающей у краёв LOD-узлов)
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
 var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered individually)

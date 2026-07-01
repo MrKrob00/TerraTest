@@ -9,11 +9,31 @@ extends CanvasLayer
 @onready var _list_panel: PanelContainer = %ListPanel
 @onready var _list:      VBoxContainer   = %QuestList
 
+var _tracker_top0: float = 0.0        # исходное положение трекера (чтобы вернуть)
+var _tracker_bot0: float = 0.0
+
 func _ready() -> void:
+	add_to_group("quests")            # чтобы HUD мог увести трекер вниз при открытом инвентаре
+	_tracker_top0 = _tracker.offset_top
+	_tracker_bot0 = _tracker.offset_bottom
 	_tracker.pressed.connect(_toggle_list)
 	%Close.pressed.connect(func(): _list_panel.visible = false)
 	Q.changed.connect(_refresh)       # Q — автолоад, всегда готов к моменту нашего _ready
 	_refresh()
+
+# HUD зовёт при открытии/закрытии инвентаря: при открытом уводим трекер вниз (из-под панели
+# статистики) и делаем его прозрачным для тача, чтобы он не перекрывал кнопку закрытия.
+func set_inventory_open(open: bool) -> void:
+	_list_panel.visible = false
+	if open:
+		var shift: float = get_viewport().get_visible_rect().size.y * 0.55
+		_tracker.offset_top = _tracker_top0 + shift
+		_tracker.offset_bottom = _tracker_bot0 + shift
+		_tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	else:
+		_tracker.offset_top = _tracker_top0
+		_tracker.offset_bottom = _tracker_bot0
+		_tracker.mouse_filter = Control.MOUSE_FILTER_STOP
 
 func _toggle_list() -> void:
 	_list_panel.visible = not _list_panel.visible
