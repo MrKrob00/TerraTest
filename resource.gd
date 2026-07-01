@@ -37,6 +37,9 @@ func _update_visual() -> void:
 	var mesh = get_node_or_null("MeshInstance3D/ResourceMesh")
 	if mesh == null:
 		return
+	# Форма: руда — шар, слиток — примятый (сплющенный) шар внутри внешней сферы.
+	# Внешний шар (MeshInstance3D) не трогаем — меняем только внутренний ResourceMesh.
+	mesh.scale = Vector3(1.3, 0.3, 1.3) if type == Type.INGOT else Vector3.ONE
 	if _has_tint:
 		mesh.material_override = _tint_material(_tint)
 		return
