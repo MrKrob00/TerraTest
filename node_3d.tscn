@@ -494,8 +494,6 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_5t8nk")
 
-[node name="ResourceNode" parent="map/Resource_Nodes" unique_id=1307481557 instance=ExtResource("11_tereu")]
-
 [connection signal="body_entered" from="Vehicles/Camera Controller/SpringArm3D/Camera3D/Raycast" to="Vehicles/Camera Controller" method="_on_raycast_body_entered"]
 [connection signal="pressed" from="Vehicles/Camera Controller/HUD/Movement" to="Vehicles/Camera Controller/HUD" method="_on_movement_pressed"]
 [connection signal="pressed" from="Vehicles/Camera Controller/HUD/Building" to="Vehicles/Camera Controller/HUD" method="_on_building_pressed"]
