@@ -12,7 +12,7 @@ extends Node3D
 @export var edge_margin: float = 60.0
 @export var min_height: float = 2.0            # ниже — вода/пляж, не ставим
 @export var max_slope: float = 6.0             # разброс высот вокруг точки; выше — обрыв
-@export var ground_offset: float = 2.0         # подъём над рельефом (пивот магазина в центре)
+@export var ground_offset: float = 0.0         # ставим ровно на рельеф (без подъёма +2)
 @export var avoid_existing: float = 90.0       # не ставить ближе этого к уже стоящему магазину
 
 @export_group("Куллинг")

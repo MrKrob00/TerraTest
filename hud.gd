@@ -120,7 +120,12 @@ func _toggle_inventory() -> void:
 
 func _on_tech_ui_visibility() -> void:
 	# Инвентарь открыт → прячем игровой HUD; закрыт → возвращаем как было.
-	_set_game_controls_hidden(_tech_ui != null and _tech_ui.visible)
+	var open: bool = _tech_ui != null and _tech_ui.visible
+	_set_game_controls_hidden(open)
+	# Уводим трекер квестов вниз, чтобы не перекрывал статистику и кнопку закрытия.
+	for q in get_tree().get_nodes_in_group("quests"):
+		if q.has_method("set_inventory_open"):
+			q.set_inventory_open(open)
 
 # ── Выбор техники (список в drawer) ───────────────────────────────────────────
 func _player_vehicles() -> Array:

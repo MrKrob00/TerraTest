@@ -142,6 +142,9 @@ func fire_bullet():
 		free_bullet.append(new_bullet)
 	var bullet:Area3D = free_bullet.pop_back()
 	var dir = $Pivot.global_position.direction_to($Pivot/Marker3D.global_position)
+	if not ("dir" in bullet):
+		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
+		return
 	# Дуло: у пушки это DrillBody2, у лазера такого узла нет — берём Marker3D как запасной,
 	# иначе $Pivot/DrillBody2 = null и падало "global_position on null instance".
 	var muzzle: Node3D = $Pivot.get_node_or_null("DrillBody2")
@@ -168,6 +171,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if body.get_parent() == get_parent(): return
 	if body.has_method("hurt"):
 		body.hurt(damage)
-	source.dir = Vector3.ZERO
+	if "dir" in source:
+		source.dir = Vector3.ZERO
 	source.global_position = Vector3.ZERO
 	free_bullet.append(source)
