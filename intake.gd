@@ -28,6 +28,8 @@ func _accept_item(item: Node3D) -> void:
 	var target_pos = Vector3(0, inventory.find(item) + 1, 0)
 	var tween = create_tween()
 	tween.tween_property(item, "position", target_pos, 0.3)
+	_push_from_inventory()   # проталкиваем СРАЗУ (по событию), а не ждём тика таймера
+	_update_take_timer()     # набрали capacity → таймер забора сам остановится
 
 func _fix_positions() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
@@ -36,34 +38,41 @@ func _fix_positions() -> void:
 		tween.tween_property(i, "position", Vector3(0, inventory.find(i) + 1, 0), 0.3)
 
 func _on_body_entered(body: Node3D) -> void:
-	if body is RigidBody3D:
-		if not vehicles_in_zone.has(body):
-			vehicles_in_zone.append(body)
-		#if timer.is_stopped():
-		timer.start(1)
+	if body is RigidBody3D and not vehicles_in_zone.has(body):
+		vehicles_in_zone.append(body)
+	_update_take_timer()
 
 func _on_body_exited(body: Node3D) -> void:
 	if body is RigidBody3D:
 		vehicles_in_zone.erase(body)
-		if vehicles_in_zone.is_empty():
-			timer.stop()
+	_update_take_timer()
 
+# Таймер забора крутится ТОЛЬКО когда есть у кого забирать И есть куда класть — иначе стоит,
+# чтобы не тикать вхолостую каждую секунду. Проталкивание дальше — по сигналу, не тут.
+func _update_take_timer() -> void:
+	vehicles_in_zone = vehicles_in_zone.filter(func(v): return is_instance_valid(v))
+	var need := not vehicles_in_zone.is_empty() and inventory.size() < capacity
+	if need and timer.is_stopped():
+		timer.start()
+	elif not need and not timer.is_stopped():
+		timer.stop()
+
+# Таймер нужен ЛИШЬ чтобы периодически забирать руду у машин в зоне (коллектор копит её сам,
+# отдельного сигнала нет). Проталкивание дальше — по сигналу (_accept_item/_on_next_block_freed).
 func _on_timer_timeout() -> void:
-	# Сбрасываем флаг ожидания — проверим сами
-	if waiting_for_next and next_block and next_block.current_item == null:
-		waiting_for_next = false
-	if inventory.size() > 0 and not waiting_for_next:
-		_push_from_inventory()
+	vehicles_in_zone = vehicles_in_zone.filter(func(v): return is_instance_valid(v))
 	if inventory.size() < capacity:
 		for vehicle in vehicles_in_zone:
-			var item = _take_from_vehicle(vehicle)
-			if item:
+			if _take_from_vehicle(vehicle):
 				break
+	_update_take_timer()
 
 func _push_from_inventory() -> void:
-	if next_block == null or inventory.is_empty():
+	if not is_instance_valid(next_block):
+		next_block = null
+		waiting_for_next = false   # следующий блок исчез — не залипаем в ожидании
 		return
-	if waiting_for_next:
+	if inventory.is_empty() or waiting_for_next:
 		return
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
 	if inventory.is_empty():
@@ -77,6 +86,7 @@ func _push_from_inventory() -> void:
 		inventory.erase(item)
 		_fix_positions()
 		slot_freed.emit()
+		_update_take_timer()   # освободилось место → снова можно забирать у машин
 	else:
 		# Не приняли — возвращаем обратно в $resources
 		item.reparent($resources, false)
@@ -94,6 +104,8 @@ func _on_item_received() -> void:
 	pass
 
 func _take_from_vehicle(vehicle: RigidBody3D) -> Node3D:
+	if not is_instance_valid(vehicle) or not vehicle.has_node("blocks"):
+		return null
 	for b in vehicle.get_node("blocks").get_children():
 		if vehicle.get_node("blocks").get_child(0) != b :
 			if b.has_node("resources"):
