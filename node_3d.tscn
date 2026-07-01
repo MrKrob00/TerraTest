@@ -23,6 +23,7 @@
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://map.gd" id="17_tuemg"]
 [ext_resource type="PackedScene" uid="uid://cenemyorca0001" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" path="res://enemy_spawner.gd" id="19_enemyspawn"]
+[ext_resource type="PackedScene" uid="uid://cquestsorca0001" path="res://quests.tscn" id="20_quests"]
 [ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/terrain_sculpt/terrain_mesh.res" id="22_obt1j"]
 [ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/terrain_sculpt/terrain_shader.res" id="22_s0gvp"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
@@ -193,6 +194,8 @@ map_node = NodePath("../map")
 script = ExtResource("19_enemyspawn")
 enemy_scenes = Array[PackedScene]([ExtResource("19_enemy")])
 map_node = NodePath("../map")
+
+[node name="Quests" parent="." instance=ExtResource("20_quests")]
 
 [node name="Vehicles" type="Node3D" parent="." unique_id=898889598]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 49.802696, 0)
