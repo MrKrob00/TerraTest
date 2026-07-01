@@ -16,6 +16,10 @@ var tracked_id: String = ""
 func _ready() -> void:
 	_seed_demo()
 	_auto_track()
+	_say_lines([
+		["Механик", "Эй, новичок! Сначала собери себе машину — поставь пару блоков."],
+		["Механик", "Потом сгоняй за рудой и глянь список заданий справа сверху."],
+	])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
 # reward_money — сколько $ выдать при выполнении. Порядок сюжета — поле order.
@@ -77,10 +81,26 @@ func _on_completed(q: Dictionary) -> void:
 		var g = get_node_or_null("/root/G")
 		if g:
 			g.money += reward
+	# Реплика о выполнении.
+	var msg := "Готово: %s." % q["title"]
+	if reward > 0:
+		msg += " Держи %d$." % reward
+	_say("Механик", msg)
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
 		_auto_track()
+
+# ── Мостик к диалогам (Dialogue — автолоад, грузится раньше Q) ─────────────────
+func _say(speaker: String, text: String) -> void:
+	var d = get_node_or_null("/root/Dialogue")
+	if d:
+		d.say(speaker, text)
+
+func _say_lines(lines: Array) -> void:
+	var d = get_node_or_null("/root/Dialogue")
+	if d:
+		d.say_lines(lines)
 
 # ── Отслеживание (звёздочка) ──────────────────────────────────────────────────
 func track(id: String) -> void:
