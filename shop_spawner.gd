@@ -15,6 +15,16 @@ extends Node3D
 @export var ground_offset: float = 2.0         # подъём над рельефом (пивот магазина в центре)
 @export var avoid_existing: float = 90.0       # не ставить ближе этого к уже стоящему магазину
 
+@export_group("Куллинг")
+## Дальше этого от камеры магазин прячется (visible=false) — снимает нагрузку GPU от
+## далёких магазинов (особенно от прозрачных мешей чёрной дыры). Off-screen меши Godot
+## куллит сам, это про «слишком далеко, но в кадре».
+@export var render_distance: float = 380.0
+@export var cull_interval: float = 0.3
+
+var _shops: Array[Node3D] = []                 # все магазины (стартовый + заспавненные)
+var _cull_t: float = 0.0
+
 func _ready() -> void:
 	var map: Node = _find_map()
 	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
@@ -45,7 +55,10 @@ func _find_map() -> Node:
 	return m
 
 func _scatter(map: Node, dims: Vector2i) -> void:
-	var placed: Array[Vector3] = _existing_shop_positions()   # мировые позиции уже стоящих
+	_shops = _existing_shop_nodes()                          # стартовый магазин тоже куллим
+	var placed: Array[Vector3] = []
+	for s in _shops:
+		placed.append(s.global_position)
 	var half_x: float = dims.x * 0.5 - edge_margin
 	var half_z: float = dims.y * 0.5 - edge_margin
 	var lx: float = -half_x
@@ -70,16 +83,34 @@ func _place_shop(world_pos: Vector3) -> void:
 	shop.add_to_group("shop")
 	add_child(shop)
 	shop.global_position = world_pos
+	_shops.append(shop)
 
-# Мировые позиции магазинов, уже стоящих в сцене вручную (имя начинается с "Shop").
-func _existing_shop_positions() -> Array[Vector3]:
-	var out: Array[Vector3] = []
+# Магазины, уже стоящие в сцене вручную (имя начинается с "Shop"), кроме самого спавнера.
+func _existing_shop_nodes() -> Array[Node3D]:
+	var out: Array[Node3D] = []
 	var main: Node = get_parent()
 	if main:
 		for c in main.get_children():
 			if c != self and c is Node3D and str(c.name).begins_with("Shop"):
-				out.append((c as Node3D).global_position)
+				out.append(c as Node3D)
 	return out
+
+# ── Дистанционный куллинг магазинов ───────────────────────────────────────────
+func _process(delta: float) -> void:
+	if _shops.is_empty():
+		return
+	_cull_t -= delta
+	if _cull_t > 0.0:
+		return
+	_cull_t = cull_interval
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cam_pos: Vector3 = cam.global_position
+	var d2: float = render_distance * render_distance
+	for s in _shops:
+		if is_instance_valid(s):
+			s.visible = cam_pos.distance_squared_to(s.global_position) <= d2
 
 # Крутизна = разброс высот в 4 точках вокруг (± sample юнитов).
 func _slope_at(map: Node, lx: float, lz: float) -> float:

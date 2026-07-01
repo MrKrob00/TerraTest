@@ -23,6 +23,16 @@ extends Node3D
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
 @export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
 
+@export_group("Куллинг")
+## Дальше этого от камеры жила не рендерится (MultiMesh не куллит инстансы сам, поэтому
+## далёкие схлопываем в нулевой масштаб — instance_id и данные истощения не трогаем).
+@export var render_distance: float = 280.0
+@export var cull_interval: float = 0.25      # как часто пересчитывать видимость (сек)
+
+var _positions: Array[Vector3] = []          # локальные позиции жил (для куллинга)
+var _visible_state: Array[bool] = []
+var _cull_t: float = 0.0
+
 func _ready() -> void:
 	var map: Node = get_parent()
 	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
@@ -120,3 +130,32 @@ func _spawn(positions: Array[Vector3]) -> void:
 		for mm in multimesh_nodes:
 			mm.multimesh.set_instance_transform(i, xform)
 			mm.multimesh.set_instance_custom_data(i, custom)
+
+	_positions = positions
+	_visible_state.resize(positions.size())
+	_visible_state.fill(true)
+
+# ── Дистанционный куллинг жил (MultiMesh не куллит инстансы поштучно) ──────────
+func _process(delta: float) -> void:
+	if _positions.is_empty():
+		return
+	_cull_t -= delta
+	if _cull_t > 0.0:
+		return
+	_cull_t = cull_interval
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cam_pos: Vector3 = cam.global_position
+	var d2: float = render_distance * render_distance
+	for i in _positions.size():
+		var world: Vector3 = to_global(_positions[i])
+		var want: bool = cam_pos.distance_squared_to(world) <= d2
+		if want == _visible_state[i]:
+			continue
+		_visible_state[i] = want
+		# Видимая — базовый трансформ; далёкая — нулевой масштаб (схлопнута, не рендерится).
+		var basis := Basis() if want else Basis().scaled(Vector3.ZERO)
+		var xform := Transform3D(basis, _positions[i])
+		for mm in multimesh_nodes:
+			mm.multimesh.set_instance_transform(i, xform)
