@@ -81,15 +81,31 @@ func _on_completed(q: Dictionary) -> void:
 		var g = get_node_or_null("/root/G")
 		if g:
 			g.money += reward
-	# Реплика о выполнении от «системы».
-	var msg := "Квест выполнен: %s." % q["title"]
-	if reward > 0:
-		msg += " Награда: %d$." % reward
-	_say("Система", msg)
+	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
+	_say("Система", _completion_message(str(q["title"]), reward))
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
 		_auto_track()
+
+# Случайная фраза о выполнении. С наградой и без — свои наборы.
+func _completion_message(title: String, reward: int) -> String:
+	if reward > 0:
+		var with_reward := [
+			"Квест «%s» выполнен, в награду %d$.",
+			"Задание «%s» закрыто! Держи %d$.",
+			"Отлично — «%s» сделано. Награда: %d$.",
+			"«%s» готово. Твоя доля — %d$.",
+			"Задание «%s» выполнено. Начислено %d$.",
+		]
+		return with_reward[randi() % with_reward.size()] % [title, reward]
+	var no_reward := [
+		"Квест «%s» выполнен.",
+		"Задание «%s» закрыто!",
+		"Готово — «%s» сделано.",
+		"«%s» выполнено.",
+	]
+	return no_reward[randi() % no_reward.size()] % title
 
 # ── Мостик к диалогам (Dialogue — автолоад, грузится раньше Q) ─────────────────
 func _say(speaker: String, text: String) -> void:
