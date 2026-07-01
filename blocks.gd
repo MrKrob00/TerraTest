@@ -17,6 +17,10 @@ var cell_owner: Dictionary = {}
 
 const SAVE_PATH = "user://vehicle_layout.json"
 
+## Пресет стартовой сборки. 0 — обычная машина (как у игрока, НЕ трогаем). 1+ — варианты
+## для врагов («машина из пула»). Спавнер врагов ставит случайный пресет ДО добавления в дерево.
+@export var layout_preset: int = 0
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
@@ -34,15 +38,18 @@ func _init_map() -> void:
 			plane.append(row)
 		map.append(plane)
 
-# ─── Раскладка по умолчанию ───────────────────────────────────────────────────
+# ─── Раскладка ────────────────────────────────────────────────────────────────
+# Пресет выбирает сборку. 0 — базовая (у игрока), 1/2 — варианты врагов из пула.
 func _define_layout() -> void:
+	match layout_preset:
+		1: _layout_dual_gun()
+		2: _layout_laser_scout()
+		_: _layout_default()
+
+# База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
+func _layout_default() -> void:
+	_wheels_6()
 	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 7, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 7, G.Block.WHEEL, -PI / 2)
 	set_block(5, 0, 4, G.Block.DRILL, 0.0)
 	set_block(5, 1, 5, G.Block.GUN, 0.0)
 	#set_block(5, 1, 5, G.Block.COLLECTOR, 0.0)
@@ -51,6 +58,30 @@ func _define_layout() -> void:
 	#set_block(4, 1, 6, G.Block.PROCESSOR, 0.0)
 	#set_block(4, 1, 4, G.Block.BELT, 0.0)
 	#set_block(4, 1, 3, G.Block.SELLER, 0.0)
+
+# Тяжёлый: две пушки.
+func _layout_dual_gun() -> void:
+	_wheels_6()
+	set_block(5, 0, 5, G.Block.CABIN, 0.0)
+	set_block(5, 1, 5, G.Block.GUN, 0.0)
+	set_block(5, 1, 6, G.Block.GUN, 0.0)
+
+# Разведчик: 4 колеса, лазер.
+func _layout_laser_scout() -> void:
+	set_block(5, 0, 5, G.Block.CABIN, 0.0)
+	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
+	set_block(5, 1, 5, G.Block.LASER, 0.0)
+
+func _wheels_6() -> void:
+	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
+	set_block(4, 0, 7, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 7, G.Block.WHEEL, -PI / 2)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:

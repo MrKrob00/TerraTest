@@ -44,6 +44,14 @@ extends RigidBody3D
 ## 0 = игрок, 1+ = враги. Атакует всех с другим faction.
 @export var faction: int = 1
 
+@export_group("ИИ — Живучесть")
+## Машина гибнет, когда уничтожена КАБИНА. Оружие игрока зовёт body.hurt() по корпусу
+## врага (враг — одно тело) — мы направляем урон в кабину; на её destroyed враг гибнет,
+## шлёт died (спавнер поднимает нового) и ВЫКИДЫВАЕТ остальные блоки в мир пикапами.
+signal died(enemy: Node)
+var _cabin: Node = null
+var _dying: bool = false
+
 @export_group("ИИ — Обнаружение")
 @export var detection_radius:    float = 40.0
 @export var attack_range:        float = 15.0
@@ -138,6 +146,55 @@ func _ready() -> void:
 
 	_setup_detection_area()
 	_setup_patrol_points()
+	_connect_cabin()
+
+# Кабина строится в blocks._ready (дочерний узел → раньше нашего _ready), поэтому она уже
+# готова. Ловим её destroyed → гибель машины.
+func _connect_cabin() -> void:
+	var blocks_node := get_node_or_null("blocks")
+	if blocks_node == null:
+		return
+	for b in blocks_node.get_children():
+		if b.get("block") == G.Block.CABIN:
+			_cabin = b
+			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
+				b.destroyed.connect(_on_cabin_destroyed)
+			return
+
+# Урон по врагу (зовёт оружие игрока по корпусу) направляем в кабину.
+func hurt(damage: int = 10) -> void:
+	if is_instance_valid(_cabin) and _cabin.has_method("hurt"):
+		_cabin.hurt(damage)
+	elif not _dying:
+		_die()                              # кабины уже нет — добиваем корпус
+
+func _on_cabin_destroyed(_b = null) -> void:
+	_die()
+
+func _die() -> void:
+	if _dying:
+		return
+	_dying = true
+	died.emit(self)
+	_eject_blocks()
+	queue_free()
+
+# Выкидываем уцелевшие блоки в мир пикапами (свежие мировые инстансы у позиций блоков).
+func _eject_blocks() -> void:
+	var objects := get_node_or_null("/root/Main/objects")
+	var blocks_node := get_node_or_null("blocks")
+	if objects == null or blocks_node == null:
+		return
+	for b in blocks_node.get_children():
+		var btype = b.get("block")
+		if btype == null or btype == G.Block.CABIN:
+			continue                        # кабина уничтожена — не роняем
+		var scene: PackedScene = G.get_scene(btype)
+		if scene == null:
+			continue
+		var drop: Node3D = scene.instantiate()
+		objects.add_child(drop)
+		drop.global_position = (b as Node3D).global_position + Vector3(randf_range(-1.0, 1.0), 1.0, randf_range(-1.0, 1.0))
 
 func _setup_detection_area() -> void:
 	var area = Area3D.new()
