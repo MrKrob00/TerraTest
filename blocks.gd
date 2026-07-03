@@ -83,7 +83,21 @@ func _define_layout() -> void:
 	match layout_preset:
 		1: _layout_dual_gun()
 		2: _layout_laser_scout()
+		3: _layout_starter()
 		_: _layout_default()
+
+# Стартовая машина (спавнится бесплатно при гибели): кабина, 4 колеса, пара блоков,
+# пулемёт и бур. Компактнее дефолта.
+func _layout_starter() -> void:
+	set_block(5, 0, 5, G.Block.CABIN, 0.0)
+	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
+	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 1, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 0, 4, G.Block.DRILL, 0.0)
+	set_block(5, 1, 5, G.Block.GUN, 0.0)
 
 # База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
 func _layout_default() -> void:
