@@ -433,8 +433,6 @@ script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 stream_batch_size = 4
 heightmap_path = "res://terrain_height.res"
-vehicles_path = NodePath("../Vehicles")
-object_roots = Array[NodePath]([NodePath("../objects")])
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")
