@@ -81,6 +81,44 @@ func switch_to_vehicle(new_vehicle: RigidBody3D):
 		current_vehicle.set_active(true)
 
 
+# Машина погибла (уничтожена кабина): убираем из списка, садимся в ближайшую живую,
+# а если техники не осталось — спавним бесплатную стартовую и садимся в неё.
+func on_vehicle_died(dead: Node) -> void:
+	vehicles.erase(dead)
+	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
+	if current_vehicle == dead:
+		current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
+	var alive: Array = []
+	for v in vehicles:
+		if is_instance_valid(v) and v != dead:
+			alive.append(v)
+	if alive.is_empty():
+		var starter = _spawn_starter_vehicle(origin)
+		if starter:
+			switch_to_vehicle(starter)
+		return
+	var best = alive[0]
+	var best_d := INF
+	for v in alive:
+		var d: float = origin.distance_to((v as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = v
+	switch_to_vehicle(best)
+
+func _spawn_starter_vehicle(pos: Vector3) -> Node:
+	var scene: PackedScene = load("res://player_vehicle.tscn")
+	if scene == null:
+		push_error("camera_controller: нет player_vehicle.tscn для стартовой машины")
+		return null
+	var v: Node3D = scene.instantiate()
+	get_parent().add_child(v)              # под Vehicles — карта даст стриминговую коллизию
+	v.global_position = pos + Vector3(0, 3, 0)
+	if not vehicles.has(v):
+		vehicles.append(v)
+	return v
+
+
 func _on_raycast_body_entered(body: Node3D) -> void:
 	if body.get_parent().name in "objects" and !current_vehicle.block_take:
 		current_vehicle.ghost_block.global_position = body.global_position

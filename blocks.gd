@@ -159,7 +159,8 @@ func can_place(block: int, x: int, y: int, z: int) -> bool:
 
 # ─── Запись / чтение ──────────────────────────────────────────────────────────
 # Возвращает true, если блок реально поставлен (footprint был свободен).
-func set_block(x: int, y: int, z: int, block: G.Block, rot_y: float = 0.0) -> bool:
+# rot принимает float (только yaw — старый формат) ИЛИ Vector3 (полный поворот с наклоном).
+func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 	if not _in_bounds(x, y, z):
 		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
 		return false
@@ -169,7 +170,7 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot_y: float = 0.0) -> bo
 	for c in _block_footprint(block, x, y, z):
 		map[c.x][c.y][c.z] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
-	rotation_map[anchor] = rot_y
+	rotation_map[anchor] = rot if rot is Vector3 else Vector3(0, float(rot), 0)
 	return true
 
 func remove_block(x: int, y: int, z: int) -> void:
@@ -223,11 +224,12 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		instance.destroyed.connect(_on_block_destroyed.bind(x, y, z))
 
 	var key := "%d,%d,%d" % [x, y, z]
-	var rot_y: float = rotation_map.get(key, 0.0)
-	instance.rotation.y = rot_y
+	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
+	instance.rotation = rot
 
 	var collision = instance.get_child(0).duplicate()
 	collision.position = Vector3(x - 5, y, z - 5)
+	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	if collision.shape.size == Vector3(2,2,2):
 		collision.position += Vector3(-0.5,0.5,-0.5)
 	if !get_parent().is_node_ready():
@@ -263,7 +265,7 @@ func save_layout() -> void:
 						"y": y,
 						"z": z,
 						"block": block,
-						"rot_y": rotation_map.get(key, 0.0)
+						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					})
 
 	var json_string = JSON.stringify(blocks_array, "\t")
@@ -291,7 +293,7 @@ func load_layout() -> void:
 
 	var blocks_array = json.get_data()
 	for entry in blocks_array:
-		set_block(entry["x"], entry["y"], entry["z"], entry["block"], entry["rot_y"])
+		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), _read_rot(entry))
 
 	_spawn_all()
 	print("Машина загружена!")
@@ -307,9 +309,21 @@ func get_layout() -> Array:
 					blocks_array.append({
 						"x": x, "y": y, "z": z,
 						"block": block,
-						"rot_y": rotation_map.get(key, 0.0)
+						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					})
 	return blocks_array
+
+func _rot_array(v: Vector3) -> Array:
+	return [v.x, v.y, v.z]
+
+# Читает поворот из записи раскладки: новый формат "rot":[x,y,z] или старый "rot_y":float.
+func _read_rot(entry: Dictionary) -> Vector3:
+	if entry.has("rot"):
+		var r = entry["rot"]
+		return Vector3(float(r[0]), float(r[1]), float(r[2]))
+	if entry.has("rot_y"):
+		return Vector3(0.0, float(entry["rot_y"]), 0.0)
+	return Vector3.ZERO
 
 func apply_layout(blocks_array: Array) -> void:
 	for child in get_children():
@@ -320,7 +334,7 @@ func apply_layout(blocks_array: Array) -> void:
 	cell_owner.clear()
 	_init_map()
 	for entry in blocks_array:
-		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), float(entry["rot_y"]))
+		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), _read_rot(entry))
 	_spawn_all()
 
 # Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,
