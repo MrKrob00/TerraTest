@@ -17,11 +17,51 @@ var _handle: Button
 var _drawer_open: bool = false
 var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
+var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
 var _game_controls: Array = []              # игровые кнопки/джойстики — прячем при инвентаре
 
 func _ready() -> void:
 	_build_ark_drawer()
+	_build_rotate_panel()
 	_collect_game_controls()
+
+# ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
+func _build_rotate_panel() -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	_rotate_panel = PanelContainer.new()
+	_rotate_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_rotate_panel.visible = false
+	var pw: float = 380.0
+	_rotate_panel.size = Vector2(pw, 64)
+	_rotate_panel.position = Vector2(screen.x * 0.5 - pw * 0.5, screen.y - 100.0)
+	add_child(_rotate_panel)
+	var hb := HBoxContainer.new()
+	hb.add_theme_constant_override("separation", 8)
+	_rotate_panel.add_child(hb)
+	hb.add_child(_rot_btn("Влево",  Vector3.UP,    PI / 2))
+	hb.add_child(_rot_btn("Вправо", Vector3.UP,   -PI / 2))
+	hb.add_child(_rot_btn("Наклон", Vector3.RIGHT, PI / 2))
+	hb.add_child(_rot_btn("Крен",   Vector3.BACK,  PI / 2))
+
+func _rot_btn(label: String, axis: Vector3, ang: float) -> Button:
+	var b := Button.new()
+	b.text = label
+	b.custom_minimum_size = Vector2(86, 48)
+	b.add_theme_font_size_override("font_size", 16)
+	b.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98, 1))
+	b.add_theme_stylebox_override("normal", _make_button_style(false))
+	b.add_theme_stylebox_override("hover", _make_button_style(false))
+	b.add_theme_stylebox_override("pressed", _make_button_style(true))
+	b.pressed.connect(func(): _rotate_block(axis, ang))
+	return b
+
+func _rotate_block(axis: Vector3, ang: float) -> void:
+	var v: Node = current_vehicle
+	var cc: Node = $".."
+	if cc and "current_vehicle" in cc:
+		v = cc.current_vehicle
+	if v and v.has_method("rotate_build"):
+		v.rotate_build(axis, ang)
 
 
 func _process(_delta: float) -> void:
@@ -180,6 +220,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_drawer)
 	if _handle:
 		_game_controls.append(_handle)
+	if _rotate_panel:
+		_game_controls.append(_rotate_panel)
 
 func _set_game_controls_hidden(hidden: bool) -> void:
 	for n in _game_controls:
@@ -258,6 +300,7 @@ func _on_movement_pressed() -> void:
 	$Attack.visible = true
 	$Take.visible = false
 	$TakeOff.visible = false
+	if _rotate_panel: _rotate_panel.visible = false
 	%Joystick_movement.visible=true
 	$Movement/Label.add_theme_color_override("font_color", Color.GREEN)
 	$Building/Label.add_theme_color_override("font_color", Color.BLACK)
@@ -267,6 +310,7 @@ func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = true
 	$TakeOff.visible = true
+	if _rotate_panel: _rotate_panel.visible = true
 	%Joystick_movement.visible=false
 	$Movement/Label.add_theme_color_override("font_color", Color.BLACK)
 	$Building/Label.add_theme_color_override("font_color", Color.GREEN)
