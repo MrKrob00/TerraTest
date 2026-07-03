@@ -20,12 +20,12 @@
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
 [ext_resource type="PackedScene" uid="uid://u0tdxsa46btj" path="res://shop.tscn" id="15_3v7ru"]
 [ext_resource type="Script" uid="uid://vjju26ed1x5a" path="res://shop_spawner.gd" id="15_shopspawn"]
-[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/terrain_sculpt/map.gd" id="17_tuemg"]
+[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="17_tuemg"]
 [ext_resource type="PackedScene" uid="uid://c21ydn7r4eaea" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" uid="uid://bnvf256vo4ij2" path="res://enemy_spawner.gd" id="19_enemyspawn"]
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
-[ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/terrain_sculpt/terrain_mesh.res" id="22_obt1j"]
-[ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/terrain_sculpt/terrain_shader.res" id="22_s0gvp"]
+[ext_resource type="ArrayMesh" uid="uid://bx6nktp8sxbf4" path="res://addons/LiteTerrain/terrain_mesh.res" id="22_obt1j"]
+[ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/LiteTerrain/terrain_shader.res" id="22_s0gvp"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
 [ext_resource type="Script" uid="uid://ch6lvbyyeape3" path="res://grass.gd" id="24_dhlwf"]
 [ext_resource type="CylinderMesh" uid="uid://b373o85jlixj5" path="res://resources/vein.tres" id="25_5t8nk"]
@@ -198,6 +198,8 @@ shape = SubResource("BoxShape3D_imku0")
 script = ExtResource("3_jsk3o")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Vehicles/Player/blocks" unique_id=1350624951]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 54.456856, -4.512438)
+top_level = true
 mesh = SubResource("BoxMesh_4arys")
 
 [node name="Player3" type="RigidBody3D" parent="Vehicles" unique_id=1954772677 node_paths=PackedStringArray("block_map_node", "ghost_block")]
@@ -219,6 +221,8 @@ shape = SubResource("BoxShape3D_imku0")
 script = ExtResource("3_jsk3o")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Vehicles/Player3/blocks" unique_id=843140513]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.625363, 52.48166, 2.5755591)
+top_level = true
 mesh = SubResource("BoxMesh_4arys")
 
 [node name="Player2" type="RigidBody3D" parent="Vehicles" unique_id=1746765942 node_paths=PackedStringArray("block_map_node", "ghost_block")]
@@ -241,7 +245,8 @@ shape = SubResource("BoxShape3D_imku0")
 script = ExtResource("3_jsk3o")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Vehicles/Player2/blocks" unique_id=2114572288]
-visible = false
+transform = Transform3D(0.99931574, 0.002451858, -0.03690643, -0.0016332936, 0.9997523, 0.022193205, 0.036951706, -0.022117736, 0.99907225, -284.6434, 34.72831, -257.36572)
+top_level = true
 mesh = SubResource("BoxMesh_4arys")
 
 [node name="Camera Controller" type="Node3D" parent="Vehicles" unique_id=910353809 node_paths=PackedStringArray("current_vehicle")]
@@ -430,9 +435,9 @@ text = "30 FPS"
 
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
-camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 stream_batch_size = 4
 heightmap_path = "res://terrain_height.res"
+camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")

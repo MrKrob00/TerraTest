@@ -1,0 +1,49 @@
+[gd_scene format=3 uid="uid://yufe2ra6o710"]
+
+[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="1_ngwxq"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_q5y4r"]
+sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+ground_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
+
+[sub_resource type="Sky" id="Sky_ngwxq"]
+sky_material = SubResource("ProceduralSkyMaterial_q5y4r")
+
+[sub_resource type="Environment" id="Environment_qk6f0"]
+background_mode = 2
+sky = SubResource("Sky_ngwxq")
+tonemap_mode = 2
+glow_enabled = true
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_tdfyi"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6hsrm"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_exyub"]
+
+[node name="LiteTerrain test" type="Node3D" unique_id=366729401]
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1309118974]
+transform = Transform3D(-0.8660254, -0.43301278, 0.25, 0, 0.49999997, 0.86602545, -0.50000006, 0.75, -0.43301266, 0, 0, 0)
+shadow_enabled = true
+directional_shadow_max_distance = 1.0
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1557073340]
+environment = SubResource("Environment_qk6f0")
+camera_attributes = SubResource("CameraAttributesPractical_tdfyi")
+
+[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=660702212]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.4996643, 0)
+
+[node name="Camera3D" type="Camera3D" parent="RigidBody3D" unique_id=630556343]
+transform = Transform3D(1, 0, 0, 0, 0.82214403, 0.56927955, 0, -0.56927955, 0.82214403, 0, 5, 5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=1598311411]
+shape = SubResource("BoxShape3D_6hsrm")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D" unique_id=87339598]
+mesh = SubResource("BoxMesh_exyub")
+
+[node name="LiteTerrain" type="StaticBody3D" parent="." unique_id=1365503108 node_paths=PackedStringArray("camera")]
+script = ExtResource("1_ngwxq")
+camera = NodePath("../RigidBody3D/Camera3D")
