@@ -7,7 +7,7 @@ extends Control
 #   • Справа    — имя машины, построено/в наличии блоков, масса машины (всё из игры).
 # ВИЗУАЛ (тема, иконки, радиальный гейдж) дорабатывается в редакторе поверх этого скелета.
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_WEAPONS, TAB_SKINS, TAB_SNAPSHOTS }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_WEAPONS, TAB_SKINS, TAB_BUILDS }
 
 @onready var _grid:   GridContainer = %Grid
 @onready var _search: LineEdit      = %Search
@@ -89,6 +89,9 @@ func _block_name(block_type: int) -> String:
 func _rebuild_grid(filter: String) -> void:
 	if _grid == null:
 		return
+	if _tab == TAB_BUILDS:
+		_build_builds_tab()
+		return
 	for c in _grid.get_children():
 		c.queue_free()
 	var f := filter.strip_edges().to_lower()
@@ -101,7 +104,7 @@ func _rebuild_grid(filter: String) -> void:
 	if shown == 0:
 		var empty := Label.new()
 		empty.modulate = Color(1, 1, 1, 0.5)
-		if _tab == TAB_SKINS or _tab == TAB_SNAPSHOTS:
+		if _tab == TAB_SKINS:
 			empty.text = "—"
 		elif not _items.is_empty():
 			empty.text = "Ничего не найдено"
@@ -137,6 +140,98 @@ func _make_slot(it: Dictionary) -> Control:
 		btn.pressed.connect(_take_into_hand.bind(block_type))
 	btn.add_child(corner)
 	return btn
+
+# ── Вкладка СБОРКИ (сохранённые машины) ───────────────────────────────────────
+func _build_builds_tab() -> void:
+	for c in _grid.get_children():
+		c.queue_free()
+	_grid.add_child(_make_action_slot("＋ Сохранить\nтекущую", _save_current_build))
+	for build_name in G.saved_builds:
+		_grid.add_child(_make_build_slot(str(build_name)))
+
+func _make_action_slot(label: String, cb: Callable) -> Control:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(96, 96)
+	btn.clip_text = true
+	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btn.text = label
+	btn.add_theme_font_size_override("font_size", 13)
+	btn.pressed.connect(cb)
+	return btn
+
+func _make_build_slot(build_name: String) -> Control:
+	var layout: Array = G.saved_builds.get(build_name, [])
+	var btn := _make_action_slot(build_name, _load_build.bind(build_name)) as Button
+	var corner := Label.new()
+	corner.text = "%d бл." % layout.size()
+	corner.add_theme_font_size_override("font_size", 12)
+	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	corner.offset_left = -52
+	corner.offset_top = -22
+	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(corner)
+	return btn
+
+func _save_current_build() -> void:
+	var v: Node = _get_vehicle()
+	if v == null or not v.has_method("capture_build"):
+		return
+	var layout: Array = v.capture_build()
+	if layout.is_empty():
+		return
+	var bname: String = "Сборка %d" % (G.saved_builds.size() + 1)
+	G.save_build(bname, layout)
+	_rebuild_grid("")
+	_say("Сборка сохранена: %s" % bname)
+
+# Применить сохранённую сборку с ПРОВЕРКОЙ блоков: пул = блоки на машине + инвентарь.
+func _load_build(build_name: String) -> void:
+	var v: Node = _get_vehicle()
+	if v == null or not v.has_method("apply_build"):
+		return
+	var blocks_node: Node = v.get_node_or_null("blocks")
+	if blocks_node == null:
+		return
+	var target: Array = G.saved_builds.get(build_name, [])
+	if target.is_empty():
+		return
+	var current: Array = blocks_node.get_layout() if blocks_node.has_method("get_layout") else []
+	var pool: Dictionary = G.layout_counts(current)
+	for b in G.block_inventory:
+		var t := int(b)
+		pool[t] = pool.get(t, 0) + 1
+	var need: Dictionary = G.layout_counts(target)
+	# Чего не хватает?
+	var missing: Dictionary = {}
+	for t in need:
+		var short: int = int(need[t]) - int(pool.get(t, 0))
+		if short > 0:
+			missing[t] = short
+	if not missing.is_empty():
+		_say("Не хватает: " + _missing_text(missing))
+		return
+	# Применяем: новый инвентарь = пул − потрачено на сборку.
+	for t in need:
+		pool[t] = int(pool.get(t, 0)) - int(need[t])
+	var new_inv: Array = []
+	for t in pool:
+		for _i in int(pool[t]):
+			new_inv.append(int(t))
+	G.block_inventory = new_inv
+	v.apply_build(target)
+	_say("Сборка применена: %s" % build_name)
+	refresh()
+
+func _missing_text(missing: Dictionary) -> String:
+	var parts: Array = []
+	for t in missing:
+		parts.append("%s ×%d" % [_block_name(int(t)), int(missing[t])])
+	return ", ".join(parts)
+
+func _say(text: String) -> void:
+	var d = get_node_or_null("/root/Dialogue")
+	if d:
+		d.say("Гараж", text)
 
 # ── Действия ──────────────────────────────────────────────────────────────────
 func _take_into_hand(block_type: int) -> void:

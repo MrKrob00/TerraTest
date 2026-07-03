@@ -233,6 +233,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	if !get_parent().is_node_ready():
 		await get_parent().ready
 	get_parent().add_child(collision)
+	collision.add_to_group("block_collision")   # чтобы смена сборки могла их убрать
 	node_map[key] = instance
 
 	instance.position = Vector3(
@@ -313,10 +314,21 @@ func get_layout() -> Array:
 func apply_layout(blocks_array: Array) -> void:
 	for child in get_children():
 		child.queue_free()
+	_clear_block_collisions()          # убираем коллизии блоков с кузова машины
 	node_map.clear()
 	rotation_map.clear()
 	cell_owner.clear()
 	_init_map()
 	for entry in blocks_array:
-		set_block(entry["x"], entry["y"], entry["z"], entry["block"], entry["rot_y"])
+		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), float(entry["rot_y"]))
 	_spawn_all()
+
+# Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,
+# иначе от старой машины остаются висеть коллайдеры.
+func _clear_block_collisions() -> void:
+	var parent := get_parent()
+	if parent == null:
+		return
+	for c in parent.get_children():
+		if c is CollisionShape3D and c.is_in_group("block_collision"):
+			c.queue_free()

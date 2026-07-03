@@ -11,6 +11,47 @@ func add_money(value):
 
 var block_inventory = []
 
+# ─── Сохранённые сборки машины ────────────────────────────────────────────────
+# name -> layout (массив {x,y,z,block,rot_y}, как blocks.get_layout()). Персистится в user://.
+var saved_builds: Dictionary = {}
+const BUILDS_PATH := "user://vehicle_builds.json"
+
+func _ready() -> void:
+	_load_builds()
+
+func save_build(build_name: String, layout: Array) -> void:
+	saved_builds[build_name] = layout
+	_persist_builds()
+
+func delete_build(build_name: String) -> void:
+	saved_builds.erase(build_name)
+	_persist_builds()
+
+func _persist_builds() -> void:
+	var f = FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(saved_builds))
+		f.close()
+
+func _load_builds() -> void:
+	if not FileAccess.file_exists(BUILDS_PATH):
+		return
+	var f = FileAccess.open(BUILDS_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if data is Dictionary:
+		saved_builds = data
+
+# Кол-во блоков по типам в раскладке (значения из JSON приходят float — приводим к int).
+func layout_counts(layout: Array) -> Dictionary:
+	var c: Dictionary = {}
+	for e in layout:
+		var t := int(e["block"])
+		c[t] = c.get(t, 0) + 1
+	return c
+
 enum Block {
 	EMPTY,
 	CABIN,#1

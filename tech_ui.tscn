@@ -75,7 +75,8 @@ theme_override_constants/separation = 14
 
 [node name="Dev" type="Label" parent="Root/TopBar/TopRow"]
 layout_mode = 2
-text = "DEV"
+theme_override_font_sizes/font_size = 20
+text = "ГАРАЖ"
 
 [node name="TabInventory" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
@@ -105,7 +106,7 @@ text = "SKINS"
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "SNAPSHOTS"
+text = "СБОРКИ"
 
 [node name="Spacer" type="Control" parent="Root/TopBar/TopRow"]
 layout_mode = 2
