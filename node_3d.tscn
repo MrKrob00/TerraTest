@@ -432,7 +432,6 @@ text = "30 FPS"
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 heightmap_path = "res://terrain_height.res"
-texture_blend = 0.0
 frustum_margin = -0.04999999999999999
 stream_batch_size = 4
 use_image_data = true
