@@ -507,14 +507,14 @@ func _on_take_pressed() -> void:
 		var neighbor_type: int = block_map_node.get_block(result.x, result.y, result.z)
 		if not block_map_node.can_attach(neighbor_type, instance.block, result.face):
 			return
+		# Поворот по грани — САМ разворачивает колесо в зависимости справа оно или слева
+		# ("right" → -90°, "left" → +90°, как в дефолтной сборке). Для остальных блоков — так же.
 		var rotation_y = 0.0
-		# Колесо не поворачиваем — у него уже есть боковая сторона.
-		if instance.block != G.Block.WHEEL:
-			match result.face:
-				"right":  rotation_y = -PI/2
-				"left":   rotation_y = PI/2
-				"back":   rotation_y = PI
-				"front":  rotation_y = 0.0
+		match result.face:
+			"right":  rotation_y = -PI/2
+			"left":   rotation_y = PI/2
+			"back":   rotation_y = PI
+			"front":  rotation_y = 0.0
 		instance.rotation = Vector3.ZERO
 		instance.rotation.y = rotation_y
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"], BuildingBlock["z"]-5)
