@@ -568,6 +568,7 @@ func _on_take_pressed() -> void:
 		if collision.shape.size == Vector3(2,2,2):
 			collision.position += Vector3(-0.5,0.5,-0.5)
 		add_child(collision)
+		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
 		instance.reparent($blocks, false)
 		instance.scale = Vector3.ONE
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation.y)
@@ -595,6 +596,18 @@ func _on_take_pressed() -> void:
 # Блок инстансится из сцены и вешается на takepos (camera.get_child(0)) — ровно туда,
 # куда попадает блок, снятый с машины. Дальше его ставит обычный Building-флоу
 # (_handle_click → _on_take_pressed). Возвращает false, если в руке уже что-то есть.
+# ── Сборки: снять текущую раскладку и применить сохранённую (для tech_ui) ─────
+func capture_build() -> Array:
+	if block_map_node and block_map_node.has_method("get_layout"):
+		return block_map_node.get_layout()
+	return []
+
+func apply_build(layout: Array) -> void:
+	if block_map_node == null or not block_map_node.has_method("apply_layout"):
+		return
+	Wheels.clear()                          # старые колёса исчезнут, новые сами добавятся
+	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
+
 func take_block_into_hand(block_type: int) -> bool:
 	if block_take:
 		return false
