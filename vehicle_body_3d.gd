@@ -530,7 +530,7 @@ func _preview_held(res: Dictionary) -> void:
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	var orient := _face_orient(res.face, instance.block) * build_basis
 	var local_pos := Vector3(gx - 5, gy, gz - 5)
-	var world_basis := (block_map_node.global_transform.basis * orient).orthonormalized()
+	var world_basis = (block_map_node.global_transform.basis * orient).orthonormalized()
 	instance.global_transform = Transform3D(world_basis, block_map_node.to_global(local_pos))
 	if ghost_block:
 		ghost_block.visible = false

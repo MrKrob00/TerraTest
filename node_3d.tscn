@@ -431,16 +431,10 @@ text = "30 FPS"
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
-heightmap_path = "res://terrain_height.res"
-frustum_margin = -0.04999999999999999
 stream_batch_size = 4
-use_image_data = true
-enable_streaming_collision = true
+heightmap_path = "res://terrain_height.res"
 vehicles_path = NodePath("../Vehicles")
-object_roots = [NodePath("../objects")]
-collision_cell = 16
-vehicle_radius = 8
-object_radius = 2
+object_roots = Array[NodePath]([NodePath("../objects")])
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")

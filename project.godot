@@ -30,7 +30,7 @@ Q="*res://quest_manager.gd"
 
 [editor_plugins]
 
-enabled=PackedStringArray()
+enabled=PackedStringArray("res://addons/terrain_sculpt/plugin.cfg")
 
 [input]
 
