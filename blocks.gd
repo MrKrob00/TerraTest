@@ -17,11 +17,49 @@ var cell_owner: Dictionary = {}
 
 const SAVE_PATH = "user://vehicle_layout.json"
 
+# ─── Точки контакта (к каким граням блока можно цеплять) ──────────────────────
+# У каждого блока есть грани-«разъёмы». Прицепить новый блок к грани соседа можно, только
+# если у СОСЕДА есть разъём на этой грани И у НОВОГО блока есть разъём на противоположной.
+# Пример: пушка (разъём только снизу) ставится НА блок, но на неё — нельзя. Колесо (разъём
+# слева) цепляется только справа от блока. Остальные блоки пока со всеми гранями (дополним).
+const ALL_FACES := ["top", "bottom", "left", "right", "front", "back"]
+const OPPOSITE := {
+	"top": "bottom", "bottom": "top",
+	"left": "right", "right": "left",
+	"front": "back", "back": "front",
+}
+# G.Block.* нельзя в const (это автолоад) — строим в _ready.
+var _contact_faces: Dictionary = {}
+
+func _init_contacts() -> void:
+	_contact_faces = {
+		G.Block.GUN:   ["bottom"],   # пушка: контакт только снизу
+		G.Block.WHEEL: ["left"],     # колесо правое: цепляющий блок слева
+		# остальные типы — все грани (по умолчанию); допишем по мере надобности
+	}
+
+# Грани-разъёмы блока (по умолчанию — все).
+func block_faces(block_type: int) -> Array:
+	return _contact_faces.get(block_type, ALL_FACES)
+
+# Можно ли прицепить new_type к грани attach_face блока neighbor_type.
+func can_attach(neighbor_type: int, new_type: int, attach_face: String) -> bool:
+	if not OPPOSITE.has(attach_face):
+		return true                        # нет данных о грани (первый блок и т.п.) — не мешаем
+	if neighbor_type == G.Block.EMPTY:
+		return true
+	if not block_faces(neighbor_type).has(attach_face):
+		return false                       # к этой грани соседа цеплять нельзя
+	if not block_faces(new_type).has(OPPOSITE[attach_face]):
+		return false                       # у нового блока нет разъёма с этой стороны
+	return true
+
 ## Пресет стартовой сборки. 0 — обычная машина (как у игрока, НЕ трогаем). 1+ — варианты
 ## для врагов («машина из пула»). Спавнер врагов ставит случайный пресет ДО добавления в дерево.
 @export var layout_preset: int = 0
 
 func _ready() -> void:
+	_init_contacts()
 	_init_map()
 	_define_layout()
 	_spawn_all()

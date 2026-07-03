@@ -393,6 +393,9 @@ var map = 0.0
 func _on_building_pressed() -> void:
 	if Building: return
 	ghost_block.visible = true
+	# top_level → трансформ призрака мировой, не наследует машину. Так позиция точная и не
+	# «плывёт» относительно блоков, когда машина двигается (см. _place_ghost — ставим global).
+	ghost_block.top_level = true
 	Building = true
 	#freeze = true
 	global_position.y += 4
@@ -436,7 +439,12 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		"left":   gx -= 1
 		"back":   gz += 1
 		"front":  gz -= 1
-	ghost_block.position = Vector3(gx - 5, gy, gz - 5)
+	var local_pos := Vector3(gx - 5, gy, gz - 5)
+	if ghost_block.top_level and block_map_node:
+		# Мировой трансформ ячейки (позиция + поворот машины) — призрак не отстаёт при движении.
+		ghost_block.global_transform = block_map_node.global_transform * Transform3D(Basis(), local_pos)
+	else:
+		ghost_block.position = local_pos
 	if BuildingBlock["build"]:
 		BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	else:
@@ -495,12 +503,18 @@ func _on_take_pressed() -> void:
 		# иначе 2×2-блок (селлер) можно было визуально воткнуть в уже занятые клетки (пушку).
 		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
 			return
+		# Точки контакта: можно ли прицепить сюда (пушка сверху нельзя, колесо только справа).
+		var neighbor_type: int = block_map_node.get_block(result.x, result.y, result.z)
+		if not block_map_node.can_attach(neighbor_type, instance.block, result.face):
+			return
 		var rotation_y = 0.0
-		match result.face:
-			"right":  rotation_y = -PI/2
-			"left":   rotation_y = PI/2
-			"back":   rotation_y = PI
-			"front":  rotation_y = 0.0
+		# Колесо не поворачиваем — у него уже есть боковая сторона.
+		if instance.block != G.Block.WHEEL:
+			match result.face:
+				"right":  rotation_y = -PI/2
+				"left":   rotation_y = PI/2
+				"back":   rotation_y = PI
+				"front":  rotation_y = 0.0
 		instance.rotation = Vector3.ZERO
 		instance.rotation.y = rotation_y
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"], BuildingBlock["z"]-5)
