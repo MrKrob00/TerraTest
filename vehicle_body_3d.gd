@@ -87,6 +87,45 @@ func _ready() -> void:
 	for block in block_map_node.get_children():
 		connect_block_signals(block)
 
+	_connect_cabin()
+
+# Смерть машины = уничтожена КАБИНА. Ловим её destroyed. При смене сборки зовём заново.
+var _dying: bool = false
+func _connect_cabin() -> void:
+	if block_map_node == null:
+		return
+	for b in block_map_node.get_children():
+		if b.get("block") == G.Block.CABIN:
+			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
+				b.destroyed.connect(_on_cabin_destroyed)
+			return
+
+func _on_cabin_destroyed(_b = null) -> void:
+	_die()
+
+# Кабина уничтожена → машина разваливается (блоки падают в мир), камера уходит к другой
+# машине (а если её нет — спавнит бесплатную стартовую), эта машина удаляется.
+func _die() -> void:
+	if _dying:
+		return
+	_dying = true
+	_scatter_blocks()
+	if camera_controller and camera_controller.has_method("on_vehicle_died"):
+		camera_controller.on_vehicle_died(self)
+	queue_free()
+
+func _scatter_blocks() -> void:
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or block_map_node == null:
+		return
+	for b in block_map_node.get_children():
+		if not ("block" in b):
+			continue                       # пропускаем меш-призрак
+		if b.get("block") == G.Block.CABIN:
+			continue                       # кабина разрушена
+		if b is Node3D:
+			(b as Node3D).reparent(objects)   # в objects VehicleBlock сам разморозится → упадёт
+
 
 func _map_block_collisions(block: Node) -> void:
 	for child in block.get_children():
@@ -571,7 +610,7 @@ func _on_take_pressed() -> void:
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
 		instance.reparent($blocks, false)
 		instance.scale = Vector3.ONE
-		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation.y)
+		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
@@ -607,6 +646,7 @@ func apply_build(layout: Array) -> void:
 		return
 	Wheels.clear()                          # старые колёса исчезнут, новые сами добавятся
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
+	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
 func take_block_into_hand(block_type: int) -> bool:
 	if block_take:
