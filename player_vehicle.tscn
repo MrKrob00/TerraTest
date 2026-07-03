@@ -29,6 +29,7 @@ shape = SubResource("BoxShape3D_veh")
 
 [node name="blocks" type="Node3D" parent="."]
 script = ExtResource("2_blk")
+layout_preset = 3
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="blocks"]
 mesh = SubResource("GhostMesh_veh")
