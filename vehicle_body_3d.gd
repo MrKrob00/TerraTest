@@ -367,6 +367,10 @@ const MAP_SIZE_Z = 10
 var block_take: bool = false
 var BuildingBlock = { "build": true, "x": 5, "y": 0, "z": 5, "block": 1 }
 
+# Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
+var build_basis: Basis = Basis()
+var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
+
 func _input(event: InputEvent) -> void:
 	if !is_active: return
 	if event is InputEventScreenTouch and event.pressed and Building:
@@ -418,7 +422,8 @@ func _handle_click(screen_pos: Vector2) -> void:
 	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
 	var res = _find_nearest_block_on_ray(ray_origin, ray_dir)
 	if block_take:
-		if res["hit"]: _place_ghost(res, true)
+		# Больше НЕ светяшка: двигаем сам взятый блок на выбранную ячейку (превью), тап Take ставит.
+		if res["hit"]: _preview_held(res)
 		return
 	else:
 		camera.find_child("Raycast").process_mode = Node.PROCESS_MODE_DISABLED
@@ -449,6 +454,53 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	else:
 		BuildingBlock["x"] = res.x; BuildingBlock["y"] = res.y; BuildingBlock["z"] = res.z
+
+# Авто-ориентация блока по грани крепления. Колёса — разворот по стороне (yaw, как раньше).
+# Остальные блоки — НАКЛОН так, чтобы НИЗ смотрел на соседа (боковое крепление): справа от
+# блока → низ влево и т.п. Углы могут потребовать проверки на живом тесте.
+func _face_orient(face: String, block_type: int) -> Basis:
+	if block_type == G.Block.WHEEL:
+		match face:
+			"right": return Basis(Vector3.UP, -PI / 2)
+			"left":  return Basis(Vector3.UP,  PI / 2)
+			"back":  return Basis(Vector3.UP,  PI)
+			_:       return Basis()
+	match face:
+		"bottom": return Basis(Vector3.RIGHT, PI)       # под блоком — низ вверх, к соседу
+		"right":  return Basis(Vector3.BACK, -PI / 2)   # низ → -X (влево, к соседу)
+		"left":   return Basis(Vector3.BACK,  PI / 2)   # низ → +X
+		"front":  return Basis(Vector3.RIGHT, -PI / 2)  # низ → +Z
+		"back":   return Basis(Vector3.RIGHT,  PI / 2)  # низ → -Z
+		_:        return Basis()                         # top — как есть
+
+# Ставим сам взятый блок на выбранную ячейку (превью реальным блоком, не светяшкой).
+func _preview_held(res: Dictionary) -> void:
+	var holder: Node = camera_controller.camera.get_child(0)
+	if holder.get_child_count() == 0:
+		return
+	var instance: Node3D = holder.get_child(0)
+	_preview_res = res
+	var gx: float = res.x; var gy: float = res.y; var gz: float = res.z
+	match res.face:
+		"top":    gy += 1
+		"bottom": gy -= 1
+		"right":  gx += 1
+		"left":   gx -= 1
+		"back":   gz += 1
+		"front":  gz -= 1
+	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
+	var orient := _face_orient(res.face, instance.block) * build_basis
+	var local_pos := Vector3(gx - 5, gy, gz - 5)
+	var world_basis := (block_map_node.global_transform.basis * orient).orthonormalized()
+	instance.global_transform = Transform3D(world_basis, block_map_node.to_global(local_pos))
+	if ghost_block:
+		ghost_block.visible = false
+
+# Ручной поворот блока в руке (кнопки UI). Переприменяет превью, если оно есть.
+func rotate_build(axis: Vector3, ang: float) -> void:
+	build_basis = (Basis(axis, ang) * build_basis).orthonormalized()
+	if block_take and _preview_res != null:
+		_preview_held(_preview_res)
 
 var result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictionary:
@@ -507,19 +559,12 @@ func _on_take_pressed() -> void:
 		var neighbor_type: int = block_map_node.get_block(result.x, result.y, result.z)
 		if not block_map_node.can_attach(neighbor_type, instance.block, result.face):
 			return
-		# Поворот по грани — САМ разворачивает колесо в зависимости справа оно или слева
-		# ("right" → -90°, "left" → +90°, как в дефолтной сборке). Для остальных блоков — так же.
-		var rotation_y = 0.0
-		match result.face:
-			"right":  rotation_y = -PI/2
-			"left":   rotation_y = PI/2
-			"back":   rotation_y = PI
-			"front":  rotation_y = 0.0
-		instance.rotation = Vector3.ZERO
-		instance.rotation.y = rotation_y
+		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
+		var orient := _face_orient(result.face, instance.block) * build_basis
+		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"], BuildingBlock["z"]-5)
 		var collision = instance.get_child(0).duplicate()
-		collision.position = instance.position
+		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		if collision.shape.size == Vector3(2,2,2):
 			collision.position += Vector3(-0.5,0.5,-0.5)
 		add_child(collision)
@@ -528,6 +573,8 @@ func _on_take_pressed() -> void:
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation.y)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
 		block_take = false
+		build_basis = Basis()          # сброс ручного поворота под следующий блок
+		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
 	elif block_body:
 		if block_body.get_parent().name in "blocks":
@@ -541,6 +588,8 @@ func _on_take_pressed() -> void:
 		block_body.reparent(camera_controller.camera.get_child(0), false)
 		block_body.position = Vector3.ZERO
 		block_take = true
+		build_basis = Basis()
+		_preview_res = null
 
 # Дать игроку блок В РУКУ из инвентаря (вызывается из tech_ui при клике по слоту).
 # Блок инстансится из сцены и вешается на takepos (camera.get_child(0)) — ровно туда,
@@ -560,6 +609,8 @@ func take_block_into_hand(block_type: int) -> bool:
 		instance.scale = Vector3.ONE
 	block_body = instance
 	block_take = true
+	build_basis = Basis()          # свежий блок — без ручного поворота
+	_preview_res = null
 	# Сразу включаем режим стройки, чтобы блок можно было поставить без лишних нажатий
 	# (и обновляем визуал HUD — кнопки Take/TakeOff). _on_building_pressed сам сгейтит
 	# повтор через `if Building: return`.
