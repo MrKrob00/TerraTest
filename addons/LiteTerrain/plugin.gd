@@ -250,24 +250,14 @@ func _enter_tree() -> void:
 	gen_btn.pressed.connect(_generate_noise)
 	panel.add_child(gen_btn)
 
-	# ── Bake → R32F heightmap image (runtime data source) ────────────────────
+	# ── Runtime Export (одной кнопкой) ───────────────────────────────────────
 	panel.add_child(_sep())
 	panel.add_child(_lbl("── Runtime Export ──"))
 	var bake_btn = Button.new()
-	bake_btn.text = "💾 Bake → files (height + mesh)"
-	bake_btn.pressed.connect(_bake_heightmap)
+	bake_btn.text = "💾 Bake → files (height + mesh + PNG)"
+	bake_btn.tooltip_text = "Одной кнопкой: карта высот (.res) + превью-меш (.res) + серый PNG (для миникарты)."
+	bake_btn.pressed.connect(_bake_and_export)
 	panel.add_child(bake_btn)
-
-	var png_btn = Button.new()
-	png_btn.text = "🖼 Generate PNG (heightmap)"
-	png_btn.tooltip_text = "Экспортирует карту высот в серый PNG (для миникарты/внешнего редактирования)."
-	png_btn.pressed.connect(_generate_png)
-	panel.add_child(png_btn)
-
-	var detach_btn = Button.new()
-	detach_btn.text = "✂ Detach big resources from scene"
-	detach_btn.pressed.connect(_detach_big_resources)
-	panel.add_child(detach_btn)
 
 	scroll.add_child(panel)
 	add_control_to_dock(DOCK_SLOT_LEFT_UL, scroll)
@@ -630,6 +620,11 @@ func _heightmap_target() -> String:
 func _heightmap_png_target() -> String:
 	return _heightmap_target().get_base_dir().path_join("terrain_heightmap.png")
 
+# Одна кнопка «Bake → files»: карта высот + превью-меш + PNG за один клик.
+func _bake_and_export() -> void:
+	_bake_heightmap()
+	_generate_png()
+
 func _bake_heightmap() -> void:
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
@@ -640,8 +635,7 @@ func _bake_heightmap() -> void:
 	var data: PackedFloat32Array
 
 	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-		# Image mode: the heights live in md, NOT in the CollisionShape3D (which after
-		# 'Detach' is just a 2x2 placeholder — baking from it would wipe the heightmap).
+		# Image mode: the heights live in md, not in the CollisionShape3D.
 		var dims: Vector2i = sculpt_node.get_dims()
 		width  = dims.x
 		depth  = dims.y
@@ -781,28 +775,6 @@ func _generate_png() -> void:
 		EditorInterface.get_resource_filesystem().scan()
 	else:
 		push_error("LiteTerrain: не удалось сохранить PNG (ошибка %d)" % err)
-
-
-# Replaces the big terrain.res / terrain_mesh.res references on the scene nodes with
-# tiny placeholders so saving the scene no longer drags in the huge resources. Use this
-# once you're in image mode (use_image_data ON + heightmap baked), then save the scene.
-func _detach_big_resources() -> void:
-	if sculpt_node == null:
-		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
-		return
-	if not (sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()):
-		push_warning("LiteTerrain: enable 'Use Image Data' on the map and bake the heightmap first")
-		return
-	var col = sculpt_node.get_node_or_null("CollisionShape3D")
-	if col != null:
-		var small := HeightMapShape3D.new()
-		small.map_width = 2
-		small.map_depth = 2
-		col.shape = small
-	var mi = sculpt_node.get_node_or_null("MeshInstance3D")
-	if mi != null:
-		mi.mesh = null
-	print("LiteTerrain: detached big resources — now SAVE THE SCENE (Ctrl+S) to drop their refs.")
 
 
 # ─────────────────────────────────────────────────

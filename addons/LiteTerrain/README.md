@@ -53,11 +53,10 @@ lean toward performance.
    - Or sculpt by hand with the Raise, Lower, and Flatten buttons. Paint with the
      left mouse button in the viewport. Radius and strength are in the dock. Each
      brush stroke is one undo step (Ctrl+Z to undo, Ctrl+Y to redo).
-4. Press "Bake to files" to write the runtime data: the heightmap
-   (`terrain_height.res`) and a preview mesh (`terrain_mesh.res`). This makes the
-   map load fast at runtime.
-5. Optionally press "Generate PNG" to export the heightmap as a grayscale image
-   (`terrain_heightmap.png`), useful for a minimap or for editing in another tool.
+4. Press "Bake to files" to write all runtime data at once: the heightmap
+   (`terrain_height.res`), a preview mesh (`terrain_mesh.res`), and a grayscale PNG
+   (`terrain_heightmap.png`, useful for a minimap). This makes the map load fast at
+   runtime.
 
 The dock remembers its brush and generation settings per project, so you do not
 have to set them again every session.
@@ -191,15 +190,14 @@ runtime and a reopened editor both load the new terrain.
 For large maps, use image mode:
 
 1. Turn on `use_image_data` (it is on by default).
-2. Press "Bake to files" to write `terrain_height.res` (the heightmap) and
-   `terrain_mesh.res` (the preview mesh).
-3. Press "Detach big resources from scene". This replaces the large in-scene shape
-   and mesh with tiny placeholders.
-4. Save the scene.
+2. Press "Bake to files" to write `terrain_height.res` (the heightmap),
+   `terrain_mesh.res` (the preview mesh), and the PNG.
+3. Save the scene.
 
-After this the runtime loads the baked `.res` and streams a small collision window
-under tracked bodies, so the scene file stays small and nothing heavy loads at
-startup.
+The runtime loads the baked `.res` and streams a small collision window under tracked
+bodies, so the scene file stays small and nothing heavy loads at startup. The node's
+CollisionShape3D and MeshInstance3D are internal (not saved into the scene), so there
+is nothing to detach by hand.
 
 ## Performance tuning
 
