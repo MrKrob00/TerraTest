@@ -16,17 +16,37 @@ var _inv_list:  VBoxContainer
 # Что продаётся и почём: тип блока (G.Block) → цена. Правь под свой баланс.
 var _prices: Dictionary = {}
 
+# ── Фильтры вкладки «Купить» ──────────────────────────────────────────────────
+# Категории блоков. «Остальные» — всё, что не попало в явные списки (на будущее).
+var _categories: Dictionary = {}          # ключ фильтра → Array типов (без "all"/"other")
+var _buy_filter: String = "all"
+var _filter_buttons: Dictionary = {}      # ключ → Button (для подсветки активного)
+const FILTERS := [
+	["all",     "Все"],
+	["attack",  "Атака"],
+	["blocks",  "Блоки"],
+	["factory", "Фабрика"],
+	["other",   "Остальные"],
+]
+
 func _ready() -> void:
 	layer = 20                                   # поверх HUD
 	# Без этого тап по 3D-кнопке магазина не доходит до её Area3D._input_event.
 	get_viewport().physics_object_picking = true
 	get_viewport().physics_object_picking_sort = true
+	# Продаётся ВСЁ (порядок = порядок в списке). Цены — черновой баланс, правь смело.
 	_prices = {
 		G.Block.BLOCK: 5,
 		G.Block.WHEEL: 10,
-		G.Block.COLLECTOR: 15,
-		G.Block.DRILL: 20,
 		G.Block.CABIN: 25,
+		G.Block.DRILL: 20,
+		G.Block.GUN: 35,
+		G.Block.LASER: 40,
+		G.Block.COLLECTOR: 15,
+		G.Block.INTAKE: 15,
+		G.Block.BELT: 10,
+		G.Block.PROCESSOR: 30,
+		G.Block.SELLER: 30,
 	}
 	_build_ui()
 	visible = false
@@ -45,7 +65,7 @@ func _build_ui() -> void:
 	add_child(center)
 
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(460, 580)
+	panel.custom_minimum_size = Vector2(560, 580)
 	center.add_child(panel)
 
 	var vb := VBoxContainer.new()
@@ -70,13 +90,37 @@ func _build_ui() -> void:
 	_tabs.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(_tabs)
 
+	# Вкладка «Купить»: слева колонка фильтров, справа прокручиваемый список товаров.
+	_categories = {
+		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.DRILL],
+		"blocks":  [G.Block.BLOCK, G.Block.CABIN, G.Block.WHEEL],
+		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER],
+	}
+	var buy_hb := HBoxContainer.new()
+	buy_hb.name = "Купить"
+	buy_hb.add_theme_constant_override("separation", 8)
+	_tabs.add_child(buy_hb)
+
+	var filter_col := VBoxContainer.new()
+	filter_col.add_theme_constant_override("separation", 6)
+	buy_hb.add_child(filter_col)
+	for f in FILTERS:
+		var fb := Button.new()
+		fb.text = f[1]
+		fb.toggle_mode = true
+		fb.button_pressed = (f[0] == _buy_filter)
+		fb.custom_minimum_size = Vector2(110, 44)
+		fb.pressed.connect(_set_buy_filter.bind(f[0]))
+		filter_col.add_child(fb)
+		_filter_buttons[f[0]] = fb
+
 	var buy_scroll := ScrollContainer.new()
-	buy_scroll.name = "Купить"
+	buy_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_buy_list = VBoxContainer.new()
 	_buy_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_buy_list.add_theme_constant_override("separation", 6)
 	buy_scroll.add_child(_buy_list)
-	_tabs.add_child(buy_scroll)
+	buy_hb.add_child(buy_scroll)
 
 	var inv_scroll := ScrollContainer.new()
 	inv_scroll.name = "Инвентарь"
@@ -104,13 +148,35 @@ func _refresh() -> void:
 	_refresh_buy()
 	_refresh_inventory()
 
+func _set_buy_filter(key: String) -> void:
+	_buy_filter = key
+	for k in _filter_buttons:
+		_filter_buttons[k].button_pressed = (k == key)
+	_refresh_buy()
+
+# Проходит ли блок текущий фильтр. "other" = не попал ни в одну явную категорию.
+func _passes_filter(block_type: int) -> bool:
+	match _buy_filter:
+		"all":
+			return true
+		"other":
+			for k in _categories:
+				if _categories[k].has(block_type):
+					return false
+			return true
+		_:
+			return _categories.get(_buy_filter, []).has(block_type)
+
 func _refresh_buy() -> void:
 	for c in _buy_list.get_children():
 		c.queue_free()
 	var money_row := Label.new()
 	money_row.text = "Деньги: %d$" % G.money
 	_buy_list.add_child(money_row)
+	var shown := 0
 	for block_type in _prices:
+		if not _passes_filter(block_type):
+			continue
 		var price: int = _prices[block_type]
 		var row := Button.new()
 		row.custom_minimum_size.y = 52
@@ -118,6 +184,11 @@ func _refresh_buy() -> void:
 		row.disabled = G.money < price
 		row.pressed.connect(_buy.bind(block_type, price))
 		_buy_list.add_child(row)
+		shown += 1
+	if shown == 0:
+		var empty := Label.new()
+		empty.text = "В этой категории пока пусто"
+		_buy_list.add_child(empty)
 
 func _buy(block_type: int, price: int) -> void:
 	if G.money < price:
