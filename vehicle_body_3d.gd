@@ -155,15 +155,19 @@ func _scatter_blocks() -> void:
 			continue                       # кабина разрушена
 		if b is Node3D:
 			var n3 := b as Node3D
-			# Толчок от кабины ЗАЯВКОЙ до reparent: VehicleBlock применит его сам в момент
-			# своей разморозки (kick/_pending_kick). Задавать скорость снаружи бесполезно —
-			# тело ещё заморожено, и значение терялось (блоки падали кучкой).
-			if n3.has_method("kick"):
-				var dir := (n3.global_position - cabin_pos)
+			n3.reparent(objects)
+			if n3 is RigidBody3D:
+				# Толчок сразу и напрямую: размораживаем САМИ (не ждём, пока VehicleBlock
+				# сделает это сигналом кадром позже), будим и даём импульс. freeze=false и
+				# apply_central_impulse — прямые вызовы физсервера, выполняются по порядку.
+				# Поздний _on_parent_changed поставит freeze=false ещё раз — без вреда.
+				var rb := n3 as RigidBody3D
+				var dir := (rb.global_position - cabin_pos)
 				dir.y = 0.0
 				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
-				n3.kick(dir * 5.0 + Vector3.UP * 4.0)
-			n3.reparent(objects)
+				rb.freeze = false
+				rb.sleeping = false
+				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
 
 # ══════════════════════════════════════════
