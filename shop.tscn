@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://bs5u4ea03wtv2" path="res://shop.gd" id="1_e7rdd"]
 [ext_resource type="Script" uid="uid://bajj37y8ulr5g" path="res://black_hole.gd" id="3_blqjs"]
-[ext_resource type="Script" uid="uid://bnrunspfddt18" path="res://button.gd" id="3_fgaav"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_e7rdd"]
 size = Vector3(3, 4, 3)
@@ -27,30 +26,6 @@ albedo_color = Color(0, 0, 0, 1)
 [sub_resource type="SphereMesh" id="SphereMesh_blqjs"]
 material = SubResource("StandardMaterial3D_fgaav")
 
-[sub_resource type="Gradient" id="Gradient_e7rdd"]
-offsets = PackedFloat32Array(0.66946715, 0.6816779)
-colors = PackedColorArray(0.12156863, 0.38431373, 0.84313726, 1, 0, 0, 0, 0)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_blqjs"]
-gradient = SubResource("Gradient_e7rdd")
-fill = 1
-fill_from = Vector2(0.5, 0.5)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6lah5"]
-blend_mode = 1
-shading_mode = 0
-albedo_texture = SubResource("GradientTexture2D_blqjs")
-billboard_mode = 1
-proximity_fade_distance = 14.09
-distance_fade_mode = 1
-distance_fade_min_distance = 20.0
-distance_fade_max_distance = 18.0
-
-[sub_resource type="ExternalTexture" id="ExternalTexture_gmb2m"]
-
-[sub_resource type="SphereShape3D" id="SphereShape3D_fgaav"]
-radius = 1.132671
-
 [node name="Shop" type="Node3D" unique_id=113866785]
 script = ExtResource("1_e7rdd")
 
@@ -72,7 +47,7 @@ script = ExtResource("3_blqjs")
 [node name="gravity" type="Area3D" parent="black hole" unique_id=185195165]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3)
 collision_layer = 0
-collision_mask = 2
+collision_mask = 10
 gravity_space_override = 3
 gravity_point = true
 gravity_point_center = Vector3(0, 0, 3)
@@ -84,7 +59,7 @@ debug_color = Color(1.0527041, 0, 1.2635698, 0.94509804)
 
 [node name="hole" type="Area3D" parent="black hole" unique_id=1750217605]
 collision_layer = 0
-collision_mask = 2
+collision_mask = 10
 gravity_point = true
 gravity = 30.0
 
@@ -94,19 +69,5 @@ debug_color = Color(1.9187722, 2.0596302, 2.552633, 1)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="black hole" unique_id=784611885]
 mesh = SubResource("SphereMesh_blqjs")
-
-[node name="button" type="Sprite3D" parent="." unique_id=735847120]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1639752, 0)
-material_override = SubResource("StandardMaterial3D_6lah5")
-cast_shadow = 0
-billboard = 1
-render_priority = 1
-texture = SubResource("ExternalTexture_gmb2m")
-
-[node name="Area3D" type="Area3D" parent="button" unique_id=1567632059]
-script = ExtResource("3_fgaav")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="button/Area3D" unique_id=1954658589]
-shape = SubResource("SphereShape3D_fgaav")
 
 [connection signal="body_entered" from="black hole/hole" to="black hole" method="_on_hole_body_entered"]

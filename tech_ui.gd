@@ -18,8 +18,22 @@ var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
 var _tab: int = TAB_INVENTORY
 var _prices: Dictionary = {}              # G.Block -> цена (что продаётся в SHOP)
 
+# ── Фильтры вкладки SHOP (гараж — единственный магазин блоков) ────────────────
+var _categories: Dictionary = {}          # ключ → Array типов
+var _shop_filter: String = "all"
+var _filter_col: VBoxContainer = null     # колонка кнопок слева от сетки (видна в SHOP)
+var _filter_buttons: Dictionary = {}
+const FILTERS := [
+	["all",     "Все"],
+	["attack",  "Атака"],
+	["blocks",  "Блоки"],
+	["factory", "Фабрика"],
+	["other",   "Остальные"],
+]
+
 func _ready() -> void:
-	# Тот же ассортимент и цены, что в мировом магазине (shop_menu.gd) — не расходятся.
+	# ЕДИНСТВЕННЫЙ магазин блоков в игре (мировой магазин продаёт только ресурсы
+	# через чёрную дыру и своего меню не имеет).
 	_prices = {
 		G.Block.BLOCK: 5,
 		G.Block.WHEEL: 10,
@@ -33,6 +47,12 @@ func _ready() -> void:
 		G.Block.PROCESSOR: 30,
 		G.Block.SELLER: 30,
 	}
+	_categories = {
+		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.DRILL],
+		"blocks":  [G.Block.BLOCK, G.Block.CABIN, G.Block.WHEEL],
+		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER],
+	}
+	_build_filter_column()
 	if _search:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
@@ -44,6 +64,46 @@ func _ready() -> void:
 	_select_tab(TAB_INVENTORY)
 	_refresh_stats()
 	_update_currency()
+
+# Колонка фильтров слева от сетки. Видна только на вкладке SHOP.
+func _build_filter_column() -> void:
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
+		return
+	_filter_col = VBoxContainer.new()
+	_filter_col.add_theme_constant_override("separation", 6)
+	_filter_col.visible = false
+	body.add_child(_filter_col)
+	body.move_child(_filter_col, 0)
+	for f in FILTERS:
+		var fb := Button.new()
+		fb.text = f[1]
+		fb.toggle_mode = true
+		fb.button_pressed = (f[0] == _shop_filter)
+		fb.custom_minimum_size = Vector2(104, 40)
+		fb.pressed.connect(_set_shop_filter.bind(f[0]))
+		_filter_col.add_child(fb)
+		_filter_buttons[f[0]] = fb
+
+func _set_shop_filter(key: String) -> void:
+	_shop_filter = key
+	for k in _filter_buttons:
+		_filter_buttons[k].button_pressed = (k == key)
+	_load_items()
+	_rebuild_grid(_search.text if _search else "")
+
+# Проходит ли блок текущий фильтр SHOP. "other" = не попал ни в одну категорию.
+func _passes_filter(block_type: int) -> bool:
+	match _shop_filter:
+		"all":
+			return true
+		"other":
+			for k in _categories:
+				if _categories[k].has(block_type):
+					return false
+			return true
+		_:
+			return _categories.get(_shop_filter, []).has(block_type)
 
 func _on_visibility_changed() -> void:
 	if visible:
@@ -61,6 +121,8 @@ func _load_items() -> void:
 	_items.clear()
 	if _tab == TAB_SHOP:
 		for block_type in _prices:
+			if not _passes_filter(int(block_type)):
+				continue
 			_items.append({
 				"type": int(block_type),
 				"name": _block_name(int(block_type)),
@@ -260,6 +322,8 @@ func _select_tab(idx: int) -> void:
 	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
+	if _filter_col:
+		_filter_col.visible = (_tab == TAB_SHOP)
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
 
