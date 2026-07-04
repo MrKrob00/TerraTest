@@ -90,18 +90,6 @@ layout_mode = 2
 toggle_mode = true
 text = "SHOP"
 
-[node name="TabWeapons" type="Button" parent="Root/TopBar/TopRow"]
-unique_name_in_owner = true
-layout_mode = 2
-toggle_mode = true
-text = "WEAPONS & EQUIPMENT"
-
-[node name="TabSkins" type="Button" parent="Root/TopBar/TopRow"]
-unique_name_in_owner = true
-layout_mode = 2
-toggle_mode = true
-text = "SKINS"
-
 [node name="TabSnapshots" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -138,54 +126,10 @@ theme_override_styles/panel = SubResource("panel")
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="CargoTabs" type="HBoxContainer" parent="Root/Main/LeftPanel/LeftVB"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="TechCargo" type="Button" parent="Root/Main/LeftPanel/LeftVB/CargoTabs"]
-layout_mode = 2
-toggle_mode = true
-button_pressed = true
-text = "TECH CARGO"
-
-[node name="Storage" type="Button" parent="Root/Main/LeftPanel/LeftVB/CargoTabs"]
-layout_mode = 2
-toggle_mode = true
-text = "TECH YARD STORAGE"
-
 [node name="Body" type="HBoxContainer" parent="Root/Main/LeftPanel/LeftVB"]
 layout_mode = 2
 size_flags_vertical = 3
 theme_override_constants/separation = 8
-
-[node name="Categories" type="VBoxContainer" parent="Root/Main/LeftPanel/LeftVB/Body"]
-layout_mode = 2
-theme_override_constants/separation = 6
-
-[node name="Cat0" type="Button" parent="Root/Main/LeftPanel/LeftVB/Body/Categories"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-text = "▣"
-
-[node name="Cat1" type="Button" parent="Root/Main/LeftPanel/LeftVB/Body/Categories"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-text = "◎"
-
-[node name="Cat2" type="Button" parent="Root/Main/LeftPanel/LeftVB/Body/Categories"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-text = "✦"
-
-[node name="Cat3" type="Button" parent="Root/Main/LeftPanel/LeftVB/Body/Categories"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-text = "⬢"
-
-[node name="Cat4" type="Button" parent="Root/Main/LeftPanel/LeftVB/Body/Categories"]
-custom_minimum_size = Vector2(40, 40)
-layout_mode = 2
-text = "★"
 
 [node name="Scroll" type="ScrollContainer" parent="Root/Main/LeftPanel/LeftVB/Body"]
 layout_mode = 2
