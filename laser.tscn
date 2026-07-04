@@ -51,32 +51,17 @@ shadow_mesh = SubResource("ArrayMesh_ydfe8")
 [sub_resource type="SphereShape3D" id="SphereShape3D_g6b45"]
 radius = 10.0
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_fn5yt"]
-shading_mode = 0
-specular_mode = 2
-disable_ambient_light = true
-disable_fog = true
-albedo_color = Color(0, 1, 0, 1)
-
-[sub_resource type="CylinderMesh" id="CylinderMesh_6vqwg"]
-material = SubResource("StandardMaterial3D_fn5yt")
-top_radius = 0.1
-bottom_radius = 0.1
-height = 10.0
-radial_segments = 4
-cap_top = false
-cap_bottom = false
-
 [sub_resource type="SeparationRayShape3D" id="SeparationRayShape3D_6vqwg"]
 length = 0.5
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kw0bs"]
 shading_mode = 0
+albedo_color = Color(0.019607844, 0.9529412, 0.26666668, 1)
 billboard_mode = 1
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_g6b45"]
 material = SubResource("StandardMaterial3D_kw0bs")
-size = Vector2(0.2, 0.2)
+size = Vector2(1, 0.2)
 orientation = 2
 
 [node name="Laser" type="RigidBody3D" unique_id=166704151 node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
@@ -119,12 +104,6 @@ collision_mask = 2
 debug_shape_custom_color = Color(0, 1, 0, 1)
 debug_shape_thickness = 5
 
-[node name="track_visual" type="MeshInstance3D" parent="Pivot/RayCast3D" unique_id=156124986]
-transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, -5)
-cast_shadow = 0
-mesh = SubResource("CylinderMesh_6vqwg")
-skeleton = NodePath("../..")
-
 [node name="Ammo" type="Node3D" parent="." unique_id=905663721]
 
 [node name="Bullet" type="Area3D" parent="Ammo" unique_id=1895188028]
@@ -142,4 +121,4 @@ mesh = SubResource("PlaneMesh_g6b45")
 
 [connection signal="body_entered" from="Area3D" to="." method="_on_area_3d_body_entered"]
 [connection signal="body_exited" from="Area3D" to="." method="_on_area_3d_body_exited"]
-[connection signal="body_entered" from="Ammo/Bullet" to="." method="_on_bullet_body_entered"]
+[connection signal="body_entered" from="Ammo/Bullet" to="." method="_on_bullet_body_entered" flags=18]
