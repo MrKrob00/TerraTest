@@ -1,36 +1,38 @@
 extends Control
-# Инвентарь/крафт-UI в духе TerraTech, подключён к реальной игре:
+# Инвентарь/крафт-UI (гараж), подключён к реальной игре:
 #   • INVENTORY — блоки из G.block_inventory; клик по слоту берёт блок В РУКУ
 #     (vehicle.take_block_into_hand) → дальше ставишь его на машину обычным Building-флоу.
-#   • SHOP      — покупка блоков за G.money (бывшая вкладка CAB CRAFTING).
-#   • WEAPONS   — те же блоки, отфильтрованные по оружию (GUN/LASER).
+#   • SHOP      — покупка блоков за G.money (ассортимент = мировой магазин).
+#   • СБОРКИ    — сохранение/применение раскладок машины.
 #   • Справа    — имя машины, построено/в наличии блоков, масса машины (всё из игры).
-# ВИЗУАЛ (тема, иконки, радиальный гейдж) дорабатывается в редакторе поверх этого скелета.
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_WEAPONS, TAB_SKINS, TAB_BUILDS }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS }
 
 @onready var _grid:   GridContainer = %Grid
 @onready var _search: LineEdit      = %Search
 @onready var _tab_buttons: Array = [
-	%TabInventory, %TabShop, %TabWeapons, %TabSkins, %TabSnapshots
+	%TabInventory, %TabShop, %TabSnapshots
 ]
 
 var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
 var _tab: int = TAB_INVENTORY
 var _prices: Dictionary = {}              # G.Block -> цена (что продаётся в SHOP)
-var _weapon_types: Array = []             # типы-оружие для вкладки WEAPONS
 
 func _ready() -> void:
+	# Тот же ассортимент и цены, что в мировом магазине (shop_menu.gd) — не расходятся.
 	_prices = {
 		G.Block.BLOCK: 5,
 		G.Block.WHEEL: 10,
-		G.Block.COLLECTOR: 15,
-		G.Block.DRILL: 20,
 		G.Block.CABIN: 25,
-		G.Block.GUN: 40,
-		G.Block.LASER: 60,
+		G.Block.DRILL: 20,
+		G.Block.GUN: 35,
+		G.Block.LASER: 40,
+		G.Block.COLLECTOR: 15,
+		G.Block.INTAKE: 15,
+		G.Block.BELT: 10,
+		G.Block.PROCESSOR: 30,
+		G.Block.SELLER: 30,
 	}
-	_weapon_types = [G.Block.GUN, G.Block.LASER]
 	if _search:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
@@ -66,13 +68,11 @@ func _load_items() -> void:
 				"price": int(_prices[block_type]),
 			})
 		return
-	# INVENTORY / WEAPONS — реальные блоки игрока, сгруппированные по типу.
+	# INVENTORY — реальные блоки игрока, сгруппированные по типу.
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
 	for block_type in counts:
-		if _tab == TAB_WEAPONS and not _weapon_types.has(int(block_type)):
-			continue
 		_items.append({
 			"type": int(block_type),
 			"name": _block_name(int(block_type)),
@@ -104,9 +104,7 @@ func _rebuild_grid(filter: String) -> void:
 	if shown == 0:
 		var empty := Label.new()
 		empty.modulate = Color(1, 1, 1, 0.5)
-		if _tab == TAB_SKINS:
-			empty.text = "—"
-		elif not _items.is_empty():
+		if not _items.is_empty():
 			empty.text = "Ничего не найдено"
 		elif _tab == TAB_SHOP:
 			empty.text = "Магазин пуст"
