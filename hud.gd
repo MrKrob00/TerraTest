@@ -26,32 +26,89 @@ func _ready() -> void:
 	_collect_game_controls()
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
+# Сетка 2×2: верхний ряд — НАКЛОН влево/вправо (крен вокруг Z), нижний ряд —
+# ПОВОРОТ влево/вправо (вокруг Y). Иконки рисуются нодами (RotIcon._draw):
+# кубик-блок + дуга-стрелка, никаких текстур.
+
+# Иконка кнопки поворота: кубик в центре + дуговая стрелка направления.
+# kind: tilt_left / tilt_right (дуга над кубиком, кубик наклонён) и
+#       yaw_left / yaw_right (плоская дуга-эллипс под кубиком — вид сверху).
+class RotIcon extends Control:
+	var kind := "yaw_left"
+	const COL := Color(0.88, 0.96, 0.98, 1)
+
+	func _arrow(p: Vector2, dir: Vector2) -> void:
+		var n := Vector2(-dir.y, dir.x)
+		draw_colored_polygon(PackedVector2Array([
+			p + dir * 8.0, p + n * 4.5, p - n * 4.5]), COL)
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var lw := 2.5
+		var tilt := 0.0
+		if kind == "tilt_left":  tilt = -0.35
+		if kind == "tilt_right": tilt =  0.35
+		# кубик-блок (наклонён для ряда «наклон»)
+		draw_set_transform(c + Vector2(0, 3), tilt, Vector2.ONE)
+		draw_rect(Rect2(Vector2(-8, -8), Vector2(16, 16)), COL, false, lw)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		var r := 17.0
+		if kind.begins_with("tilt"):
+			# дуга над кубиком: слева-сверху-направо (экранная плоскость = крен)
+			var a0 := -PI + 0.55
+			var a1 := -0.55
+			draw_arc(c + Vector2(0, 3), r, a0, a1, 20, COL, lw)
+			if kind == "tilt_right":
+				var p := c + Vector2(0, 3) + Vector2(cos(a1), sin(a1)) * r
+				_arrow(p, Vector2(-sin(a1), cos(a1)))
+			else:
+				var p := c + Vector2(0, 3) + Vector2(cos(a0), sin(a0)) * r
+				_arrow(p, Vector2(sin(a0), -cos(a0)))
+		else:
+			# сплюснутый эллипс под кубиком = горизонтальная плоскость (вид с 3/4)
+			var ec := c + Vector2(0, 9)
+			draw_set_transform(ec, 0.0, Vector2(1.0, 0.45))
+			draw_arc(Vector2.ZERO, r, 0.35, PI - 0.35, 20, COL, lw)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			# Стрелка на конце дуги, по касательной НАРУЖУ дуги: правый конец (a=0.35) —
+			# против роста угла, левый (a=PI-0.35) — по росту.
+			var a := 0.35 if kind == "yaw_right" else PI - 0.35
+			var p := ec + Vector2(cos(a) * r, sin(a) * r * 0.45)
+			var t := Vector2(-sin(a), cos(a) * 0.45).normalized()
+			_arrow(p, -t if kind == "yaw_right" else t)
+
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	_rotate_panel = PanelContainer.new()
 	_rotate_panel.add_theme_stylebox_override("panel", _make_panel_style())
 	_rotate_panel.visible = false
-	var pw: float = 380.0
-	_rotate_panel.size = Vector2(pw, 64)
-	_rotate_panel.position = Vector2(screen.x * 0.5 - pw * 0.5, screen.y - 100.0)
+	var pw: float = 180.0
+	_rotate_panel.size = Vector2(pw, 140)
+	_rotate_panel.position = Vector2(screen.x * 0.5 - pw * 0.5, screen.y - 180.0)
 	add_child(_rotate_panel)
-	var hb := HBoxContainer.new()
-	hb.add_theme_constant_override("separation", 8)
-	_rotate_panel.add_child(hb)
-	hb.add_child(_rot_btn("Влево",  Vector3.UP,    PI / 2))
-	hb.add_child(_rot_btn("Вправо", Vector3.UP,   -PI / 2))
-	hb.add_child(_rot_btn("Наклон", Vector3.RIGHT, PI / 2))
-	hb.add_child(_rot_btn("Крен",   Vector3.BACK,  PI / 2))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	_rotate_panel.add_child(grid)
+	# верхний ряд — наклон (крен вокруг оси Z), нижний — поворот (вокруг Y)
+	grid.add_child(_rot_btn("tilt_left",  "Наклон влево",   Vector3.BACK,  PI / 2))
+	grid.add_child(_rot_btn("tilt_right", "Наклон вправо",  Vector3.BACK, -PI / 2))
+	grid.add_child(_rot_btn("yaw_left",   "Поворот влево",  Vector3.UP,    PI / 2))
+	grid.add_child(_rot_btn("yaw_right",  "Поворот вправо", Vector3.UP,   -PI / 2))
 
-func _rot_btn(label: String, axis: Vector3, ang: float) -> Button:
+func _rot_btn(kind: String, tip: String, axis: Vector3, ang: float) -> Button:
 	var b := Button.new()
-	b.text = label
-	b.custom_minimum_size = Vector2(86, 48)
-	b.add_theme_font_size_override("font_size", 16)
-	b.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98, 1))
+	b.custom_minimum_size = Vector2(74, 56)
+	b.tooltip_text = tip
 	b.add_theme_stylebox_override("normal", _make_button_style(false))
 	b.add_theme_stylebox_override("hover", _make_button_style(false))
 	b.add_theme_stylebox_override("pressed", _make_button_style(true))
+	var ic := RotIcon.new()
+	ic.kind = kind
+	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(ic)
 	b.pressed.connect(func(): _rotate_block(axis, ang))
 	return b
 
