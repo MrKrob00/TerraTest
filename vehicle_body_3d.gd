@@ -55,6 +55,7 @@ var _defense_timer: float = 0.0
 # ── Якорь (фиксация к миру, как в TerraTech) ──────────────────────────────────
 var anchored: bool = false
 var _anchor_column: MeshInstance3D = null
+var _anchor_tween: Tween = null
 const ANCHOR_MAX_RISE := 0.5      # м: максимальный перепад земли под машиной для фиксации
 const ANCHOR_MAX_HEIGHT := 2.5    # м: выше этого над землёй якорить нельзя (прыжок/полёт)
 
@@ -205,14 +206,7 @@ func toggle_anchor() -> bool:
 		if dh:
 			dh.say("Якорь", "Слишком высоко над землёй")
 		return false
-	# Замораживаем ДО телепорта: трансформ незамороженного RigidBody физика тут же
-	# перетирает своим состоянием — из-за этого подъём «не происходил».
-	freeze = true
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
-	# (2) Подъём на 0.5 м (машина встаёт на колонну — так и остаётся приподнятой).
-	global_position.y += 0.5
-	# (3) Ровность: 4 угла + центр.
+	# (2) Ровность: 4 угла + центр (математика по террейну, от подъёма не зависит).
 	if terr != null:
 		var mn := INF
 		var mx := -INF
@@ -221,20 +215,26 @@ func toggle_anchor() -> bool:
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
 		if mx - mn > ANCHOR_MAX_RISE:
-			global_position.y -= 0.5          # неровно — вернули как было
-			freeze = false
 			var d = get_node_or_null("/root/Dialogue")
 			if d:
 				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
 			return false
-	# (4) Ровно 0° по X/Z (yaw остаётся).
-	global_rotation.x = 0.0
-	global_rotation.z = 0.0
-	# (5) Фиксация.
+	# (3) Замораживаем (STATIC): у замороженного тела transform МОЖНО двигать — физика его
+	# не перетирает. Прямой телепорт незамороженного RigidBody сервер откатывал, поэтому
+	# подъёма «не было видно». Tween по замороженному телу = серия телепортов: надёжно и
+	# видно глазом — машина поднимается на колонну и выравнивается.
+	freeze = true
 	anchored = true
-	# Колонна-упор: цилиндр от днища до земли.
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	var target_y := global_position.y + 0.5
+	_anchor_tween = create_tween()
+	_anchor_tween.tween_property(self, "global_position:y", target_y, 0.18)   # (4) подъём на 0.5
+	_anchor_tween.tween_property(self, "global_rotation:x", 0.0, 0.12)        # (5) ровно 0°
+	_anchor_tween.parallel().tween_property(self, "global_rotation:z", 0.0, 0.12)
+	# (6) Колонна-упор до земли (размер под конечную высоту).
 	var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-	var depth: float = maxf(global_position.y - ground_y, 0.4)
+	var depth: float = maxf(target_y - ground_y, 0.4)
 	_anchor_column = MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = 0.18
@@ -251,6 +251,9 @@ func toggle_anchor() -> bool:
 	return true
 
 func _release_anchor() -> void:
+	if _anchor_tween != null and _anchor_tween.is_valid():
+		_anchor_tween.kill()          # сброс во время анимации — не даём твину драться с физикой
+	_anchor_tween = null
 	anchored = false
 	freeze = false
 	contact_monitor = false

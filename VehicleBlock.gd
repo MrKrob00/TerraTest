@@ -45,8 +45,16 @@ func _on_parent_changed() -> void:
 		return
 	freeze = not (get_parent().name in "objects")
 	if not freeze and _pending_kick != Vector3.ZERO:
-		linear_velocity = _pending_kick
+		var v := _pending_kick
 		_pending_kick = Vector3.ZERO
+		# Правильный толчок RigidBody3D: дождаться, пока смена freeze ДОЕДЕТ до физсервера
+		# (кадр физики), разбудить и дать импульс. Прямое linear_velocity в тот же кадр,
+		# что и разморозка, сервер молча съедал — блоки не разлетались.
+		await get_tree().physics_frame
+		if not is_inside_tree() or freeze:
+			return
+		sleeping = false
+		apply_central_impulse(v * mass)
 
 
 
