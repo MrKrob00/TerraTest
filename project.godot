@@ -24,7 +24,6 @@ config/reflection_atlas/reflection_size=256
 [autoload]
 
 G="*res://G.gd"
-ShopMenu="*res://shop_menu.gd"
 Dialogue="*res://dialogue.tscn"
 Q="*res://quest_manager.gd"
 
