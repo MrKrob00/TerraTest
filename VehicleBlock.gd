@@ -54,7 +54,7 @@ func _on_parent_changed() -> void:
 		if not is_inside_tree() or freeze:
 			return
 		sleeping = false
-		apply_central_impulse(v * mass)
+		apply_central_impulse(v * mass )
 
 
 

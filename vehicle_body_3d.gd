@@ -142,22 +142,19 @@ func _scatter_blocks() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
-	# Центр разлёта = кабина (она и взорвалась). Блоки получают толчок ОТ неё.
-	var cabin_pos: Vector3 = global_position
+	
+	var cabin_pos: Vector3 = global_position  # Центр разлёта
 	for b in block_map_node.get_children():
 		if b.get("block") == G.Block.CABIN and b is Node3D:
 			cabin_pos = (b as Node3D).global_position
 			break
 	for b in block_map_node.get_children():
 		if not ("block" in b):
-			continue                       # пропускаем меш-призрак
+			continue      # пропускаем меш-призрак
 		if b.get("block") == G.Block.CABIN:
-			continue                       # кабина разрушена
+			continue      # кабина разрушена
 		if b is Node3D:
 			var n3 := b as Node3D
-			# Толчок от кабины ЗАЯВКОЙ до reparent: VehicleBlock применит его сам в момент
-			# своей разморозки (kick/_pending_kick). Задавать скорость снаружи бесполезно —
-			# тело ещё заморожено, и значение терялось (блоки падали кучкой).
 			if n3.has_method("kick"):
 				var dir := (n3.global_position - cabin_pos)
 				dir.y = 0.0
