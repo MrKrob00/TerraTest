@@ -30,12 +30,12 @@ func _ready() -> void:
 # ПОВОРОТ влево/вправо (вокруг Y). Иконки рисуются нодами (RotIcon._draw):
 # кубик-блок + дуга-стрелка, никаких текстур.
 
-# Иконка кнопки поворота: кубик в центре + дуговая стрелка направления.
-# kind: tilt_left / tilt_right (дуга над кубиком, кубик наклонён) и
-#       yaw_left / yaw_right (плоская дуга-эллипс под кубиком — вид сверху).
+# Стрелка направления поверх 3D-кубика (сам кубик — настоящий 3D в SubViewport).
+# kind: tilt_left / tilt_right — дуга над кубом (крен), yaw_left / yaw_right —
+# сплюснутый эллипс вокруг куба (поворот в горизонтальной плоскости).
 class RotIcon extends Control:
 	var kind := "yaw_left"
-	const COL := Color(0.88, 0.96, 0.98, 1)
+	const COL := Color(0.95, 0.99, 1.0, 1)
 
 	func _arrow(p: Vector2, dir: Vector2) -> void:
 		var n := Vector2(-dir.y, dir.x)
@@ -45,32 +45,25 @@ class RotIcon extends Control:
 	func _draw() -> void:
 		var c := size * 0.5
 		var lw := 2.5
-		var tilt := 0.0
-		if kind == "tilt_left":  tilt = -0.35
-		if kind == "tilt_right": tilt =  0.35
-		# кубик-блок (наклонён для ряда «наклон»)
-		draw_set_transform(c + Vector2(0, 3), tilt, Vector2.ONE)
-		draw_rect(Rect2(Vector2(-8, -8), Vector2(16, 16)), COL, false, lw)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		var r := 17.0
+		var r := minf(size.x, size.y) * 0.5 - 6.0
 		if kind.begins_with("tilt"):
-			# дуга над кубиком: слева-сверху-направо (экранная плоскость = крен)
+			# дуга над кубом: слева-сверху-направо (экранная плоскость = крен)
 			var a0 := -PI + 0.55
 			var a1 := -0.55
-			draw_arc(c + Vector2(0, 3), r, a0, a1, 20, COL, lw)
+			draw_arc(c, r, a0, a1, 20, COL, lw)
 			if kind == "tilt_right":
-				var p := c + Vector2(0, 3) + Vector2(cos(a1), sin(a1)) * r
+				var p := c + Vector2(cos(a1), sin(a1)) * r
 				_arrow(p, Vector2(-sin(a1), cos(a1)))
 			else:
-				var p := c + Vector2(0, 3) + Vector2(cos(a0), sin(a0)) * r
+				var p := c + Vector2(cos(a0), sin(a0)) * r
 				_arrow(p, Vector2(sin(a0), -cos(a0)))
 		else:
-			# сплюснутый эллипс под кубиком = горизонтальная плоскость (вид с 3/4)
-			var ec := c + Vector2(0, 9)
+			# сплюснутый эллипс = горизонтальная плоскость вокруг куба (вид сверху под 45°)
+			var ec := c + Vector2(0, 7)
 			draw_set_transform(ec, 0.0, Vector2(1.0, 0.45))
 			draw_arc(Vector2.ZERO, r, 0.35, PI - 0.35, 20, COL, lw)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			# Стрелка на конце дуги, по касательной НАРУЖУ дуги: правый конец (a=0.35) —
+			# Стрелка на конце дуги, по касательной наружу: правый конец (a=0.35) —
 			# против роста угла, левый (a=PI-0.35) — по росту.
 			var a := 0.35 if kind == "yaw_right" else PI - 0.35
 			var p := ec + Vector2(cos(a) * r, sin(a) * r * 0.45)
@@ -99,11 +92,12 @@ func _build_rotate_panel() -> void:
 
 func _rot_btn(kind: String, tip: String, axis: Vector3, ang: float) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(74, 56)
+	b.custom_minimum_size = Vector2(74, 62)
 	b.tooltip_text = tip
 	b.add_theme_stylebox_override("normal", _make_button_style(false))
 	b.add_theme_stylebox_override("hover", _make_button_style(false))
 	b.add_theme_stylebox_override("pressed", _make_button_style(true))
+	b.add_child(_cube_view(kind))
 	var ic := RotIcon.new()
 	ic.kind = kind
 	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -111,6 +105,48 @@ func _rot_btn(kind: String, tip: String, axis: Vector3, ang: float) -> Button:
 	b.add_child(ic)
 	b.pressed.connect(func(): _rotate_block(axis, ang))
 	return b
+
+# Настоящий 3D-куб внутри кнопки: свой мини-мир в SubViewport, камера смотрит на куб
+# СВЕРХУ под углом 45°. Ряд «наклон» показывает куб уже накренённым в сторону действия,
+# ряд «поворот» — куб, довёрнутый по Y. Рендерится только пока панель видна (стройка),
+# вьюпорт крошечный — по цене это ничто.
+func _cube_view(kind: String) -> SubViewportContainer:
+	var svc := SubViewportContainer.new()
+	svc.stretch = true
+	svc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	svc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sv := SubViewport.new()
+	sv.own_world_3d = true
+	sv.transparent_bg = true
+	sv.render_target_update_mode = SubViewport.UPDATE_WHEN_VISIBLE
+	svc.add_child(sv)
+
+	var cam := Camera3D.new()
+	cam.fov = 40.0
+	# 45° сверху: позиция по дуге (0, sin45, cos45)·d, наклон камеры -45° по X.
+	var d := 3.2
+	cam.transform = Transform3D(Basis(Vector3.RIGHT, -PI / 4), Vector3(0, d * sin(PI / 4), d * cos(PI / 4)))
+	sv.add_child(cam)
+
+	var light := DirectionalLight3D.new()
+	light.rotation = Vector3(-0.9, -0.5, 0)
+	sv.add_child(light)
+
+	var box := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3.ONE
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.35, 0.72, 0.78)
+	mat.roughness = 0.6
+	mesh.material = mat
+	box.mesh = mesh
+	match kind:                      # куб показывает РЕЗУЛЬТАТ нажатия
+		"tilt_left":  box.rotation = Vector3(0, 0,  0.4)
+		"tilt_right": box.rotation = Vector3(0, 0, -0.4)
+		"yaw_left":   box.rotation = Vector3(0,  0.5, 0)
+		"yaw_right":  box.rotation = Vector3(0, -0.5, 0)
+	sv.add_child(box)
+	return svc
 
 func _rotate_block(axis: Vector3, ang: float) -> void:
 	var v: Node = current_vehicle

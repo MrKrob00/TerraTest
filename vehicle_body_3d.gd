@@ -422,12 +422,18 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("Movement"): _on_movement_pressed()
 
 func _process(_delta: float) -> void:
-	# Подсветка блока для подбора (ghost_block, top_level) следит за самим блоком: позиция И
-	# ориентация. Раньше позиция фиксировалась один раз в _place_ghost — если блок/машина
-	# сдвинулись, подсветка отставала. В режиме переноса (block_take) блок сам себе превью.
-	if not Building or block_take or ghost_block == null:
+	if not Building:
 		return
-	if block_body != null and is_instance_valid(block_body):
+	if block_take:
+		# Превью держимого блока переприменяем КАЖДЫЙ кадр: машина в стройке левитирует
+		# вверх-вниз, а превью top_level (мировое) — без этого блок отставал от выбранной
+		# ячейки. Пересчёт от block_map_node приклеивает его к ячейке, как светяшку.
+		if _preview_res != null:
+			_preview_held(_preview_res)
+		return
+	# Подсветка блока для подбора (ghost_block, top_level) следит за самим блоком: позиция И
+	# ориентация — не отстаёт, если блок/машина сдвинулись.
+	if ghost_block != null and block_body != null and is_instance_valid(block_body):
 		ghost_block.global_transform = block_body.global_transform
 
 func _on_movement_pressed() -> void:
@@ -514,6 +520,8 @@ func _face_orient(face: String, block_type: int) -> Basis:
 			"left":  return Basis(Vector3.UP,  PI / 2)
 			"back":  return Basis(Vector3.UP,  PI)
 			_:       return Basis()
+	if block_type == G.Block.DRILL:
+		return Basis()   # контакт «сзади»: ставится только на морду, буром вперёд — без наклона
 	match face:
 		"bottom": return Basis(Vector3.RIGHT, PI)       # под блоком — низ вверх, к соседу
 		"right":  return Basis(Vector3.BACK, -PI / 2)   # низ → -X (влево, к соседу)
@@ -659,6 +667,8 @@ func _on_take_pressed() -> void:
 		block_take = true
 		build_basis = Basis()
 		_preview_res = null
+		if ghost_block:
+			ghost_block.visible = false   # блок взят в руку — светяшка больше не нужна
 
 # Дать игроку блок В РУКУ из инвентаря (вызывается из tech_ui при клике по слоту).
 # Блок инстансится из сцены и вешается на takepos (camera.get_child(0)) — ровно туда,
