@@ -800,17 +800,28 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 		ghost_block.visible = false
 
 # Кабина поставлена на землю → спавним НОВУЮ машину из одной кабины.
+# Машина ЖЁСТКО кладётся под Vehicles (не в objects!), регистрируется в списке техники
+# камеры и попадает в список «Сменить технику» — в неё сразу можно пересесть и рулить.
 func _place_cabin_vehicle(instance: Node3D) -> void:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
 	if scene == null:
 		push_error("vehicle: нет player_vehicle.tscn для новой машины")
 		return
 	var v: Node3D = scene.instantiate()
-	get_parent().add_child(v)                       # под Vehicles — там же стриминг коллизии
+	var vehicles_root: Node = get_node_or_null("/root/Main/Vehicles")
+	if vehicles_root == null:
+		vehicles_root = get_parent()                # фолбэк: рядом с этой машиной
+	vehicles_root.add_child(v)
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
 	if v.has_method("apply_build"):
 		# Только кабина (стартовый пресет сцены заменяется).
 		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": int(G.Block.CABIN), "rot": [0.0, 0.0, 0.0]}])
+	# Регистрация в списке техники (как делает _spawn_starter_vehicle) + обновление HUD.
+	if camera_controller and "vehicles" in camera_controller and not camera_controller.vehicles.has(v):
+		camera_controller.vehicles.append(v)
+	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
+	if hud and hud.has_method("_rebuild_vehicle_list"):
+		hud._rebuild_vehicle_list()
 	instance.queue_free()                           # кабина из руки потрачена
 	block_take = false
 	block_body = null
