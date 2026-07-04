@@ -32,29 +32,11 @@ func _ready() -> void:
 	tree_entered.connect(_on_parent_changed)
 	_on_parent_changed()
 
-# Отложенный толчок (разлёт при смерти кабины): скорость нельзя задать, пока тело
-# заморожено — заявка хранится и применяется ровно в момент разморозки ниже.
-var _pending_kick: Vector3 = Vector3.ZERO
-
-func kick(vel: Vector3) -> void:
-	_pending_kick = vel
-
 func _on_parent_changed() -> void:
 	await get_tree().process_frame
 	if get_parent() == null:
 		return
 	freeze = not (get_parent().name in "objects")
-	if not freeze and _pending_kick != Vector3.ZERO:
-		var v := _pending_kick
-		_pending_kick = Vector3.ZERO
-		# Правильный толчок RigidBody3D: дождаться, пока смена freeze ДОЕДЕТ до физсервера
-		# (кадр физики), разбудить и дать импульс. Прямое linear_velocity в тот же кадр,
-		# что и разморозка, сервер молча съедал — блоки не разлетались.
-		await get_tree().physics_frame
-		if not is_inside_tree() or freeze:
-			return
-		sleeping = false
-		apply_central_impulse(v * mass)
 
 
 
