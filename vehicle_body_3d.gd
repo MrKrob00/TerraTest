@@ -155,12 +155,19 @@ func _scatter_blocks() -> void:
 			continue      # кабина разрушена
 		if b is Node3D:
 			var n3 := b as Node3D
-			if n3.has_method("kick"):
-				var dir := (n3.global_position - cabin_pos)
+			n3.reparent(objects)
+			if n3 is RigidBody3D:
+				# Толчок сразу и напрямую: размораживаем САМИ (не ждём, пока VehicleBlock
+				# сделает это сигналом кадром позже), будим и даём импульс. freeze=false и
+				# apply_central_impulse — прямые вызовы физсервера, выполняются по порядку.
+				# Поздний _on_parent_changed поставит freeze=false ещё раз — без вреда.
+				var rb := n3 as RigidBody3D
+				var dir := (rb.global_position - cabin_pos)
 				dir.y = 0.0
 				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
-				n3.kick(dir * 5.0 + Vector3.UP * 4.0)
-			n3.reparent(objects)
+				rb.freeze = false
+				rb.sleeping = false
+				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
 
 # ══════════════════════════════════════════
@@ -197,11 +204,9 @@ func toggle_anchor() -> bool:
 		return false
 	var terr: Node = _find_terrain()
 	var ground_center: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-	# (1) Высоко над землёй (прыжок/полёт/обрыв) — якорить нельзя.
+	# (1) Высоко над землёй (прыжок/полёт/обрыв) — не якорим, просто подкидывает.
 	if global_position.y - ground_center > ANCHOR_MAX_HEIGHT:
-		var dh = get_node_or_null("/root/Dialogue")
-		if dh:
-			dh.say("Якорь", "Слишком высоко над землёй")
+		_anchor_refuse_hop()
 		return false
 	# (2) Ровность: 4 угла + центр (математика по террейну, от подъёма не зависит).
 	if terr != null:
@@ -212,9 +217,7 @@ func toggle_anchor() -> bool:
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
 		if mx - mn > ANCHOR_MAX_RISE:
-			var d = get_node_or_null("/root/Dialogue")
-			if d:
-				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
+			_anchor_refuse_hop()
 			return false
 	# (3) Замораживаем (STATIC): у замороженного тела transform МОЖНО двигать — физика его
 	# не перетирает. Прямой телепорт незамороженного RigidBody сервер откатывал, поэтому
@@ -246,6 +249,12 @@ func toggle_anchor() -> bool:
 	if not body_entered.is_connected(_on_anchor_contact):
 		body_entered.connect(_on_anchor_contact)
 	return true
+
+# Отказ якоря (высоко/неровно): без сообщений — машину просто подкидывает вверх,
+# якорь не ставится. Живая обратная связь вместо текста.
+func _anchor_refuse_hop() -> void:
+	sleeping = false
+	apply_central_impulse(Vector3.UP * mass * 5.0)
 
 func _release_anchor() -> void:
 	if _anchor_tween != null and _anchor_tween.is_valid():
@@ -791,17 +800,28 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 		ghost_block.visible = false
 
 # Кабина поставлена на землю → спавним НОВУЮ машину из одной кабины.
+# Машина ЖЁСТКО кладётся под Vehicles (не в objects!), регистрируется в списке техники
+# камеры и попадает в список «Сменить технику» — в неё сразу можно пересесть и рулить.
 func _place_cabin_vehicle(instance: Node3D) -> void:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
 	if scene == null:
 		push_error("vehicle: нет player_vehicle.tscn для новой машины")
 		return
 	var v: Node3D = scene.instantiate()
-	get_parent().add_child(v)                       # под Vehicles — там же стриминг коллизии
+	var vehicles_root: Node = get_node_or_null("/root/Main/Vehicles")
+	if vehicles_root == null:
+		vehicles_root = get_parent()                # фолбэк: рядом с этой машиной
+	vehicles_root.add_child(v)
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
 	if v.has_method("apply_build"):
 		# Только кабина (стартовый пресет сцены заменяется).
 		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": int(G.Block.CABIN), "rot": [0.0, 0.0, 0.0]}])
+	# Регистрация в списке техники (как делает _spawn_starter_vehicle) + обновление HUD.
+	if camera_controller and "vehicles" in camera_controller and not camera_controller.vehicles.has(v):
+		camera_controller.vehicles.append(v)
+	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
+	if hud and hud.has_method("_rebuild_vehicle_list"):
+		hud._rebuild_vehicle_list()
 	instance.queue_free()                           # кабина из руки потрачена
 	block_take = false
 	block_body = null
