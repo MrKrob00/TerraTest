@@ -85,9 +85,12 @@ func switch_to_vehicle(new_vehicle: RigidBody3D):
 # а если техники не осталось — спавним бесплатную стартовую и садимся в неё.
 func on_vehicle_died(dead: Node) -> void:
 	vehicles.erase(dead)
+	# Умерла НЕ текущая машина — камеру не трогаем, только вычистили из списка.
+	# Раньше камера пересаживалась при гибели ЛЮБОЙ машины игрока.
+	if current_vehicle != dead:
+		return
 	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
-	if current_vehicle == dead:
-		current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
+	current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
 	var alive: Array = []
 	for v in vehicles:
 		if is_instance_valid(v) and v != dead:
