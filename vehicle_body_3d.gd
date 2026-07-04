@@ -204,11 +204,9 @@ func toggle_anchor() -> bool:
 		return false
 	var terr: Node = _find_terrain()
 	var ground_center: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-	# (1) Высоко над землёй (прыжок/полёт/обрыв) — якорить нельзя.
+	# (1) Высоко над землёй (прыжок/полёт/обрыв) — не якорим, просто подкидывает.
 	if global_position.y - ground_center > ANCHOR_MAX_HEIGHT:
-		var dh = get_node_or_null("/root/Dialogue")
-		if dh:
-			dh.say("Якорь", "Слишком высоко над землёй")
+		_anchor_refuse_hop()
 		return false
 	# (2) Ровность: 4 угла + центр (математика по террейну, от подъёма не зависит).
 	if terr != null:
@@ -219,9 +217,7 @@ func toggle_anchor() -> bool:
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
 		if mx - mn > ANCHOR_MAX_RISE:
-			var d = get_node_or_null("/root/Dialogue")
-			if d:
-				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
+			_anchor_refuse_hop()
 			return false
 	# (3) Замораживаем (STATIC): у замороженного тела transform МОЖНО двигать — физика его
 	# не перетирает. Прямой телепорт незамороженного RigidBody сервер откатывал, поэтому
@@ -253,6 +249,12 @@ func toggle_anchor() -> bool:
 	if not body_entered.is_connected(_on_anchor_contact):
 		body_entered.connect(_on_anchor_contact)
 	return true
+
+# Отказ якоря (высоко/неровно): без сообщений — машину просто подкидывает вверх,
+# якорь не ставится. Живая обратная связь вместо текста.
+func _anchor_refuse_hop() -> void:
+	sleeping = false
+	apply_central_impulse(Vector3.UP * mass * 5.0)
 
 func _release_anchor() -> void:
 	if _anchor_tween != null and _anchor_tween.is_valid():
