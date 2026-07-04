@@ -1,3 +1,4 @@
+class_name VehicleInteractButton
 extends Area3D
 # Кнопка взаимодействия НА чужой машине игрока (билборд, как была у магазина).
 # Видна, когда эта машина не активна и активная машина игрока рядом. Удержание ~1с
@@ -13,6 +14,10 @@ const HOLD_TIME := 1.0          # с: сколько держать до отк�
 
 const COL_IDLE := Color(0.55, 0.95, 1.0)
 const COL_FULL := Color(1.0, 0.9, 0.25)
+
+# Пока кнопка удерживается или открыто круговое меню — джойстик камеры игнорирует ввод
+# (иначе удержание в зоне прокрутки крутило камеру вместе с прогрессом кнопки).
+static var camera_block: bool = false
 
 var vehicle: Node3D = null      # машина-владелец (ставит vehicle_body_3d при создании)
 
@@ -74,6 +79,8 @@ func _process(delta: float) -> void:
 				hud.open_vehicle_menu(vehicle, sp)
 
 func _cancel_hold() -> void:
+	if _holding:
+		VehicleInteractButton.camera_block = false
 	_holding = false
 	_hold = 0.0
 	if _label:
@@ -91,6 +98,7 @@ func _input_event(camera: Camera3D, event: InputEvent, _pos: Vector3, _normal: V
 	if pressed and not _holding:
 		_holding = true
 		_hold = 0.0
+		VehicleInteractButton.camera_block = true
 
 func _input(event: InputEvent) -> void:
 	# Реальное отпускание где угодно на экране — сброс (drag сюда не попадает).

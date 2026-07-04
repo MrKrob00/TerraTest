@@ -72,58 +72,113 @@ func _menu_vehicle_or_current() -> Node:
 	return current_vehicle
 
 # ── Круговое меню чужой машины (открывает vehicle_interact_button) ─────────────
-# Жестовое: появляется ВОКРУГ 2D-кнопки машины (палец ещё зажат после удержания).
-# Тянешь палец в сторону нужного пункта и ОТПУСКАЕШЬ — он срабатывает. Отпустил в
-# центре (мёртвая зона) — отмена. Никаких нажатий по кнопкам не требуется.
-const VMENU_RADIUS := 120.0
-const VMENU_DEAD_ZONE := 55.0
+# Колесо в стиле chatwheel: тёмный донат, секторы с разделителями, иконка + подпись
+# в каждом секторе, центральный круг с синим кольцом = мёртвая зона (отмена).
+# Жестовое: появляется вокруг 2D-кнопки машины (палец ещё зажат), тянешь к сектору
+# (он подсвечивается) и отпускаешь — срабатывает. Отпустил в центре — отмена.
+const VMENU_OUTER := 175.0
+const VMENU_INNER := 64.0
 var _vmenu: Control = null
 var _vmenu_center: Vector2 = Vector2.ZERO
-var _vmenu_buttons: Array = []
+var _vmenu_wheel: Control = null
+var _vmenu_count: int = 0
 var _vmenu_vehicle: Node = null
+
+class RadialWheel extends Control:
+	var items: Array = []        # [[иконка, подпись], ...]
+	var hovered: int = -1
+	var outer := 175.0
+	var inner := 64.0
+
+	func _ready() -> void:
+		size = Vector2(outer, outer) * 2.0
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var c := size * 0.5
+		var n := items.size()
+		for i in n:
+			var ang := -PI / 2 + TAU * float(i) / float(n)
+			var mid := c + Vector2(cos(ang), sin(ang)) * ((outer + inner) * 0.53)
+			var icon := Label.new()
+			icon.text = items[i][0]
+			icon.add_theme_font_size_override("font_size", 30)
+			icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			icon.size = Vector2(120, 36)
+			icon.position = mid - Vector2(60, 32)
+			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(icon)
+			var txt := Label.new()
+			txt.text = items[i][1]
+			txt.add_theme_font_size_override("font_size", 14)
+			txt.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
+			txt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			txt.size = Vector2(140, 20)
+			txt.position = mid + Vector2(-70, 8)
+			txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(txt)
+		var cancel := Label.new()
+		cancel.text = "ОТМЕНА"
+		cancel.add_theme_font_size_override("font_size", 15)
+		cancel.add_theme_color_override("font_color", Color(0.85, 0.9, 0.96))
+		cancel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cancel.size = Vector2(120, 20)
+		cancel.position = c - Vector2(60, 10)
+		cancel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(cancel)
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var n := maxi(items.size(), 1)
+		# донат-фон
+		draw_circle(c, outer, Color(0.075, 0.095, 0.13, 0.93))
+		# подсвеченный сектор (клин между inner и outer)
+		if hovered >= 0:
+			var a0 := -PI / 2 + TAU * (float(hovered) - 0.5) / float(n)
+			var steps := 22
+			var pts := PackedVector2Array()
+			for s in steps + 1:
+				var a := a0 + TAU / float(n) * float(s) / float(steps)
+				pts.append(c + Vector2(cos(a), sin(a)) * outer)
+			for s in steps + 1:
+				var a := a0 + TAU / float(n) * float(steps - s) / float(steps)
+				pts.append(c + Vector2(cos(a), sin(a)) * inner)
+			draw_colored_polygon(pts, Color(0.18, 0.25, 0.34, 0.95))
+		# разделители секторов
+		for i in n:
+			var ab := -PI / 2 + TAU * (float(i) - 0.5) / float(n)
+			var dv := Vector2(cos(ab), sin(ab))
+			draw_line(c + dv * inner, c + dv * outer, Color(1, 1, 1, 0.10), 2.0)
+		# центральный круг + синее кольцо (мёртвая зона / отмена)
+		draw_circle(c, inner, Color(0.05, 0.065, 0.095, 0.97))
+		draw_arc(c, inner, 0, TAU, 64, Color(0.42, 0.58, 0.76, 0.9), 3.5)
+		draw_arc(c, outer, 0, TAU, 64, Color(0, 0, 0, 0.35), 2.0)
 
 func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> void:
 	close_vehicle_menu()
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	# Центр меню — где 2D-кнопка машины; прижимаем к экрану, чтобы пункты не обрезались.
+	# Центр колеса — где 2D-кнопка машины; прижимаем к экрану, чтобы не обрезалось.
 	var center := screen * 0.5 if screen_pos.x < 0.0 else screen_pos
-	center.x = clampf(center.x, 200.0, screen.x - 200.0)
-	center.y = clampf(center.y, 110.0, screen.y - 110.0)
+	center.x = clampf(center.x, VMENU_OUTER + 10.0, screen.x - VMENU_OUTER - 10.0)
+	center.y = clampf(center.y, VMENU_OUTER + 10.0, screen.y - VMENU_OUTER - 10.0)
 	_vmenu_center = center
 	_vmenu_vehicle = vehicle
-	_vmenu_buttons.clear()
 	_vmenu = Control.new()
 	_vmenu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vmenu.mouse_filter = Control.MOUSE_FILTER_IGNORE   # ввод ловит hud._input, не UI
 	add_child(_vmenu)
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.45)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE   # ввод ловит hud._input, не UI
-	_vmenu.add_child(dim)
 	var defense_on: bool = bool(vehicle.get("defense_mode"))
-	var labels := [
-		"📦 В инвентарь",
-		"🔧 Разобрать",
-		"🛡 Защита: ВЫКЛ" if defense_on else "🛡 Защита: ВКЛ",
+	var wheel := RadialWheel.new()
+	wheel.outer = VMENU_OUTER
+	wheel.inner = VMENU_INNER
+	wheel.items = [
+		["📦", "В инвентарь"],
+		["🔧", "Разобрать"],
+		["🛡", "Защита: ВЫКЛ" if defense_on else "Защита: ВКЛ"],
 	]
-	for i in labels.size():
-		var ang := -PI / 2 + TAU * float(i) / float(labels.size())
-		var b := Button.new()
-		b.text = labels[i]
-		b.custom_minimum_size = Vector2(170, 56)
-		b.add_theme_font_size_override("font_size", 16)
-		b.add_theme_stylebox_override("normal", _make_button_style(false))
-		b.add_theme_stylebox_override("pressed", _make_button_style(true))
-		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		b.position = center + Vector2(cos(ang), sin(ang)) * VMENU_RADIUS - b.custom_minimum_size * 0.5
-		_vmenu.add_child(b)
-		_vmenu_buttons.append(b)
-	var cancel := Label.new()
-	cancel.text = "✕"
-	cancel.add_theme_font_size_override("font_size", 26)
-	cancel.position = center - Vector2(10, 18)
-	cancel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_vmenu.add_child(cancel)
+	wheel.position = center - Vector2(VMENU_OUTER, VMENU_OUTER)
+	_vmenu.add_child(wheel)
+	_vmenu_wheel = wheel
+	_vmenu_count = wheel.items.size()
+	VehicleInteractButton.camera_block = true   # жест меню не должен крутить камеру
 
 # Пока меню открыто — весь ввод сюда: движение подсвечивает сектор, отпускание выбирает.
 func _input(event: InputEvent) -> void:
@@ -144,8 +199,9 @@ func _input(event: InputEvent) -> void:
 		return
 	var idx := _vmenu_pick(pos)
 	if is_motion:
-		for i in _vmenu_buttons.size():
-			_vmenu_buttons[i].modulate = Color(1.4, 1.4, 1.0) if i == idx else Color(1, 1, 1)
+		if _vmenu_wheel and _vmenu_wheel.hovered != idx:
+			_vmenu_wheel.hovered = idx
+			_vmenu_wheel.queue_redraw()
 		get_viewport().set_input_as_handled()
 	elif is_release:
 		var vehicle := _vmenu_vehicle
@@ -157,13 +213,12 @@ func _input(event: InputEvent) -> void:
 # Какой пункт выбирает точка pos: -1 = мёртвая зона (отмена), иначе индекс по углу.
 func _vmenu_pick(pos: Vector2) -> int:
 	var v := pos - _vmenu_center
-	if v.length() < VMENU_DEAD_ZONE:
+	if v.length() < VMENU_INNER:
 		return -1
-	var n := _vmenu_buttons.size()
 	var best := 0
 	var best_d := INF
-	for i in n:
-		var ang := -PI / 2 + TAU * float(i) / float(n)
+	for i in _vmenu_count:
+		var ang := -PI / 2 + TAU * float(i) / float(_vmenu_count)
 		var d: float = absf(angle_difference(v.angle(), ang))
 		if d < best_d:
 			best_d = d
@@ -188,8 +243,9 @@ func close_vehicle_menu() -> void:
 	if _vmenu != null and is_instance_valid(_vmenu):
 		_vmenu.queue_free()
 	_vmenu = null
+	_vmenu_wheel = null
 	_vmenu_vehicle = null
-	_vmenu_buttons.clear()
+	VehicleInteractButton.camera_block = false
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
 # Сетка 2×2: верхний ряд — НАКЛОН влево/вправо (крен вокруг Z), нижний ряд —

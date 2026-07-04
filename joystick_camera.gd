@@ -25,6 +25,14 @@ func _draw() -> void:
 
 
 func _input(event):
+	# Удержание кнопки на машине / открытое круговое меню — камеру не крутим,
+	# иначе жест кнопки в зоне джойстика вращал камеру вместе с прогрессом.
+	if VehicleInteractButton.camera_block:
+		if active_touch_index != -1:
+			active_touch_index = -1
+			knob_pos = stick_center
+			queue_redraw()
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			if active_touch_index == -1 and is_touch_outside(event.position):
