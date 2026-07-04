@@ -421,6 +421,15 @@ func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("Building"): _on_building_pressed()
 	if event.is_action_pressed("Movement"): _on_movement_pressed()
 
+func _process(_delta: float) -> void:
+	# Подсветка блока для подбора (ghost_block, top_level) следит за самим блоком: позиция И
+	# ориентация. Раньше позиция фиксировалась один раз в _place_ghost — если блок/машина
+	# сдвинулись, подсветка отставала. В режиме переноса (block_take) блок сам себе превью.
+	if not Building or block_take or ghost_block == null:
+		return
+	if block_body != null and is_instance_valid(block_body):
+		ghost_block.global_transform = block_body.global_transform
+
 func _on_movement_pressed() -> void:
 	Building = false
 	ghost_block.visible = false
@@ -475,6 +484,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 
 func _place_ghost(res: Dictionary, face: bool) -> void:
 	if ghost_block == null: return
+	ghost_block.visible = true      # подсветка блока для подбора — вернуть, если её скрыл превью
 	var gx: float = res.x; var gy: float = res.y; var gz: float = res.z
 	if face: match res.face:
 		"top":    gy += 1
@@ -528,9 +538,25 @@ func _preview_held(res: Dictionary) -> void:
 		"back":   gz += 1
 		"front":  gz -= 1
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
+	# Точки контакта + занятость клеток: если сюда нельзя прицепить (напр. на колесо сверху)
+	# или клетки заняты — НЕ показываем блок на этой грани, держим его в руке, чтобы было
+	# видно, что сюда ставить нельзя (раньше показывал где угодно).
+	var neighbor_type: int = block_map_node.get_block(int(res.x), int(res.y), int(res.z))
+	var placeable: bool = block_map_node.can_attach(neighbor_type, instance.block, res.face) \
+			and block_map_node.can_place(instance.block, gx, gy, gz)
+	if not placeable:
+		instance.top_level = false
+		instance.position = Vector3.ZERO       # обратно в руку
+		instance.rotation = Vector3.ZERO
+		if ghost_block:
+			ghost_block.visible = false
+		return
 	var orient := _face_orient(res.face, instance.block) * build_basis
 	var local_pos := Vector3(gx - 5, gy, gz - 5)
 	var world_basis = (block_map_node.global_transform.basis * orient).orthonormalized()
+	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
+	# камерой; без этого при повороте камеры он «смотрел» на неё).
+	instance.top_level = true
 	instance.global_transform = Transform3D(world_basis, block_map_node.to_global(local_pos))
 	if ghost_block:
 		ghost_block.visible = false
@@ -598,6 +624,9 @@ func _on_take_pressed() -> void:
 		var neighbor_type: int = block_map_node.get_block(result.x, result.y, result.z)
 		if not block_map_node.can_attach(neighbor_type, instance.block, result.face):
 			return
+		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
+		# наследование, иначе local basis/position ниже применятся как мировые.
+		instance.top_level = false
 		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
 		var orient := _face_orient(result.face, instance.block) * build_basis
 		instance.basis = orient
@@ -677,6 +706,7 @@ func _on_take_off_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
 		if block_body.block == 1: return
+		instance.top_level = false        # мог остаться top_level от превью
 		instance.reparent(%objects)
 		instance.scale = Vector3.ONE
 		block_take = false
