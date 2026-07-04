@@ -55,7 +55,8 @@ var _defense_timer: float = 0.0
 # ── Якорь (фиксация к миру, как в TerraTech) ──────────────────────────────────
 var anchored: bool = false
 var _anchor_column: MeshInstance3D = null
-const ANCHOR_MAX_RISE := 0.5    # м: максимальный перепад земли под машиной для фиксации
+const ANCHOR_MAX_RISE := 0.5      # м: максимальный перепад земли под машиной для фиксации
+const ANCHOR_MAX_HEIGHT := 2.5    # м: выше этого над землёй якорить нельзя (прыжок/полёт)
 
 var _steer_angle: float = 0.0
 var _throttle: float = 0.0
@@ -191,14 +192,25 @@ func _defense_tick(delta: float) -> void:
 			return
 
 # Якорь: фиксирует машину ровно 0° (по горизонту) с колонной-упором, как в TerraTech.
-# Отказ: земля под машиной неровная (перепад > ANCHOR_MAX_RISE). Сброс: пока стоим на
-# якоре и что-то в нас упёрлось (контакт не с террейном) — фиксация снимается.
+# Порядок: (1) отказ, если высоко над землёй; (2) приподнимаем машину на 0.5 м, чтобы
+# выравнивание не воткнуло углы в склон; (3) проверка ровности (перепад <= 0.5 м, иначе
+# опускаем обратно и отказ); (4) поворот ровно 0°; (5) фиксация + колонна.
+# Сброс: пока на якоре, любой контакт НЕ с террейном снимает фиксацию.
 func toggle_anchor() -> bool:
 	if anchored:
 		_release_anchor()
 		return false
-	# Перепад высот под машиной: 4 угла + центр.
 	var terr: Node = _find_terrain()
+	var ground_center: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
+	# (1) Высоко над землёй (прыжок/полёт/обрыв) — якорить нельзя.
+	if global_position.y - ground_center > ANCHOR_MAX_HEIGHT:
+		var dh = get_node_or_null("/root/Dialogue")
+		if dh:
+			dh.say("Якорь", "Слишком высоко над землёй")
+		return false
+	# (2) Подъём на 0.5 м.
+	global_position.y += 0.5
+	# (3) Ровность: 4 угла + центр.
 	if terr != null:
 		var mn := INF
 		var mx := -INF
@@ -207,15 +219,17 @@ func toggle_anchor() -> bool:
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
 		if mx - mn > ANCHOR_MAX_RISE:
+			global_position.y -= 0.5          # неровно — вернули как было
 			var d = get_node_or_null("/root/Dialogue")
 			if d:
 				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
 			return false
-	# Фиксация: ровно 0° по X/Z (yaw остаётся), тело замораживается.
+	# (4) Ровно 0° по X/Z (yaw остаётся).
 	global_rotation.x = 0.0
 	global_rotation.z = 0.0
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+	# (5) Фиксация.
 	freeze = true
 	anchored = true
 	# Колонна-упор: цилиндр от днища до земли.
