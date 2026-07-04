@@ -30,14 +30,18 @@ func _find_next_block() -> void:
 	
 	var my_local = round(position)
 	var neighbor_local = my_local + forward
-	
-	
-	var key = "%d,%d,%d" % [
-		int(neighbor_local.x) + 5,
-		int(neighbor_local.y),
-		int(neighbor_local.z) + 5
-	]
-	var neighbor = block_map.node_map.get(key, null)
+
+	# find_block резолвит клетку через cell_owner: у 2×2-блоков (продавец/процессор) в
+	# node_map записан только ЯКОРЬ, и прямой node_map.get по соседней клетке их «не видел»
+	# — цепочка не находила блок продажи, если упиралась в его не-якорную клетку.
+	var nx: int = int(neighbor_local.x) + 5
+	var ny: int = int(neighbor_local.y)
+	var nz: int = int(neighbor_local.z) + 5
+	var neighbor = null
+	if block_map.has_method("find_block"):
+		neighbor = block_map.find_block(nx, ny, nz)
+	else:
+		neighbor = block_map.node_map.get("%d,%d,%d" % [nx, ny, nz], null)
 	if neighbor and neighbor.has_method("try_receive"):
 		next_block = neighbor
 

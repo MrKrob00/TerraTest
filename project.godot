@@ -56,7 +56,7 @@ Building={
 
 [input_devices]
 
-pointing/android/enable_long_press_as_right_click=true
+pointing/android/enable_long_press_as_right_click=false
 
 [layer_names]
 
