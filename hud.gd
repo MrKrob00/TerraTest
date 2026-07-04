@@ -23,7 +23,101 @@ var _game_controls: Array = []              # игровые кнопки/джо
 func _ready() -> void:
 	_build_ark_drawer()
 	_build_rotate_panel()
+	_build_anchor_button()
 	_collect_game_controls()
+
+# ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
+var _anchor_btn: Button = null
+func _build_anchor_button() -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	_anchor_btn = Button.new()
+	_anchor_btn.text = "⚓"
+	_anchor_btn.tooltip_text = "Якорь: зафиксировать машину (ровно 0°)"
+	_anchor_btn.custom_minimum_size = Vector2(64, 64)
+	_anchor_btn.add_theme_font_size_override("font_size", 30)
+	_anchor_btn.add_theme_stylebox_override("normal", _make_button_style(false))
+	_anchor_btn.add_theme_stylebox_override("hover", _make_button_style(false))
+	_anchor_btn.add_theme_stylebox_override("pressed", _make_button_style(true))
+	_anchor_btn.position = Vector2(16, screen.y - 170)
+	_anchor_btn.pressed.connect(_on_anchor_pressed)
+	add_child(_anchor_btn)
+
+func _on_anchor_pressed() -> void:
+	var v: Node = _menu_vehicle_or_current()
+	if v and v.has_method("toggle_anchor"):
+		var on: bool = v.toggle_anchor()
+		_anchor_btn.add_theme_color_override("font_color",
+				Color(0.3, 1.0, 0.5) if on else Color(0.88, 0.96, 0.98))
+
+func _menu_vehicle_or_current() -> Node:
+	var cc: Node = $".."
+	if cc and "current_vehicle" in cc:
+		return cc.current_vehicle
+	return current_vehicle
+
+# ── Круговое меню чужой машины (открывает vehicle_interact_button) ─────────────
+var _vmenu: Control = null
+func open_vehicle_menu(vehicle: Node) -> void:
+	close_vehicle_menu()
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	_vmenu = Control.new()
+	_vmenu.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_vmenu)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.45)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(func(e: InputEvent) -> void:
+		if (e is InputEventScreenTouch and e.pressed) or (e is InputEventMouseButton and e.pressed):
+			close_vehicle_menu())
+	_vmenu.add_child(dim)
+	var center := screen * 0.5
+	var radius := 130.0
+	var defense_on: bool = bool(vehicle.get("defense_mode"))
+	var labels := [
+		"📦 В инвентарь",
+		"🔧 Разобрать",
+		"🛡 Защита: ВЫКЛ" if defense_on else "🛡 Защита: ВКЛ",
+	]
+	# Кнопки по кругу: сверху, справа-снизу, слева-снизу.
+	for i in labels.size():
+		var ang := -PI / 2 + TAU * float(i) / float(labels.size())
+		var b := Button.new()
+		b.text = labels[i]
+		b.custom_minimum_size = Vector2(170, 56)
+		b.add_theme_font_size_override("font_size", 16)
+		b.add_theme_stylebox_override("normal", _make_button_style(false))
+		b.add_theme_stylebox_override("hover", _make_button_style(false))
+		b.add_theme_stylebox_override("pressed", _make_button_style(true))
+		b.position = center + Vector2(cos(ang), sin(ang)) * radius - b.custom_minimum_size * 0.5
+		b.pressed.connect(_on_vmenu_action.bind(i, vehicle))
+		_vmenu.add_child(b)
+	var cancel := Button.new()
+	cancel.text = "✕"
+	cancel.custom_minimum_size = Vector2(56, 56)
+	cancel.add_theme_font_size_override("font_size", 22)
+	cancel.add_theme_stylebox_override("normal", _make_button_style(true))
+	cancel.position = center - cancel.custom_minimum_size * 0.5
+	cancel.pressed.connect(close_vehicle_menu)
+	_vmenu.add_child(cancel)
+
+func _on_vmenu_action(idx: int, vehicle: Node) -> void:
+	if is_instance_valid(vehicle):
+		match idx:
+			0:
+				if vehicle.has_method("send_to_inventory"):
+					vehicle.send_to_inventory()
+			1:
+				if vehicle.has_method("disassemble"):
+					vehicle.disassemble()
+			2:
+				if vehicle.has_method("set_defense"):
+					vehicle.set_defense(not bool(vehicle.get("defense_mode")))
+	close_vehicle_menu()
+
+func close_vehicle_menu() -> void:
+	if _vmenu != null and is_instance_valid(_vmenu):
+		_vmenu.queue_free()
+	_vmenu = null
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
 # Сетка 2×2: верхний ряд — НАКЛОН влево/вправо (крен вокруг Z), нижний ряд —
@@ -315,6 +409,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_handle)
 	if _rotate_panel:
 		_game_controls.append(_rotate_panel)
+	if _anchor_btn:
+		_game_controls.append(_anchor_btn)
 
 func _set_game_controls_hidden(hidden: bool) -> void:
 	for n in _game_controls:

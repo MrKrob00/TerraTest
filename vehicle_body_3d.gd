@@ -46,6 +46,17 @@ var Building: bool = false
 var block_body
 var Wheels: Array = []
 
+# ── Режим защиты (ставится из кругового меню чужой машины) ────────────────────
+# Машина стоит на месте, но если враг в радиусе — её оружие атакует.
+var defense_mode: bool = false
+const DEFENSE_RANGE := 25.0
+var _defense_timer: float = 0.0
+
+# ── Якорь (фиксация к миру, как в TerraTech) ──────────────────────────────────
+var anchored: bool = false
+var _anchor_column: MeshInstance3D = null
+const ANCHOR_MAX_RISE := 0.5    # м: максимальный перепад земли под машиной для фиксации
+
 var _steer_angle: float = 0.0
 var _throttle: float = 0.0
 var _on_ground: bool = false
@@ -89,6 +100,17 @@ func _ready() -> void:
 
 	_connect_cabin()
 
+	# Кнопка взаимодействия (только на машинах игрока): подъехал другой машиной,
+	# зажал ~1с → круговое меню (в инвентарь / разобрать / защита).
+	if faction == 0:
+		var ib := Area3D.new()
+		ib.set_script(preload("res://vehicle_interact_button.gd"))
+		ib.vehicle = self
+		ib.position = Vector3(0, 2.2, 0)
+		ib.collision_layer = 16     # свой слой: луч тапа его видит, физика машин — нет
+		ib.collision_mask = 0
+		add_child(ib)
+
 # Смерть машины = уничтожена КАБИНА. Ловим её destroyed. При смене сборки зовём заново.
 var _dying: bool = false
 func _connect_cabin() -> void:
@@ -118,14 +140,160 @@ func _scatter_blocks() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
+	# Центр разлёта = кабина (она и взорвалась). Блоки получают толчок ОТ неё.
+	var cabin_pos: Vector3 = global_position
+	for b in block_map_node.get_children():
+		if b.get("block") == G.Block.CABIN and b is Node3D:
+			cabin_pos = (b as Node3D).global_position
+			break
 	for b in block_map_node.get_children():
 		if not ("block" in b):
 			continue                       # пропускаем меш-призрак
 		if b.get("block") == G.Block.CABIN:
 			continue                       # кабина разрушена
 		if b is Node3D:
-			(b as Node3D).reparent(objects)   # в objects VehicleBlock сам разморозится → упадёт
+			var n3 := b as Node3D
+			n3.reparent(objects)           # в objects VehicleBlock сам разморозится → упадёт
+			if n3 is RigidBody3D:
+				# Небольшое ускорение в противоположную от кабины сторону + вверх, чтобы
+				# кучка красиво разлеталась, а не оседала одним столбиком.
+				var dir := (n3.global_position - cabin_pos)
+				dir.y = 0.0
+				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
+				n3.set_deferred("linear_velocity", dir * 5.0 + Vector3.UP * 4.0)
 
+
+# ══════════════════════════════════════════
+# ЗАЩИТА / ЯКОРЬ / ДЕЙСТВИЯ КРУГОВОГО МЕНЮ
+# ══════════════════════════════════════════
+
+# Раз в 0.3с ищем врага (faction != наш) в радиусе; есть — жмём attack() у оружия.
+func _defense_tick(delta: float) -> void:
+	_defense_timer -= delta
+	if _defense_timer > 0.0:
+		return
+	_defense_timer = 0.3
+	var vehicles_root := get_parent()
+	if vehicles_root == null:
+		return
+	for v in vehicles_root.get_children():
+		if v == self or not (v is Node3D):
+			continue
+		var f = v.get("faction")
+		if f == null or f == faction:
+			continue
+		if global_position.distance_to((v as Node3D).global_position) <= DEFENSE_RANGE:
+			_on_attack_timeout()      # attack() у всех блоков с оружием
+			return
+
+# Якорь: фиксирует машину ровно 0° (по горизонту) с колонной-упором, как в TerraTech.
+# Отказ: земля под машиной неровная (перепад > ANCHOR_MAX_RISE). Сброс: пока стоим на
+# якоре и что-то в нас упёрлось (контакт не с террейном) — фиксация снимается.
+func toggle_anchor() -> bool:
+	if anchored:
+		_release_anchor()
+		return false
+	# Перепад высот под машиной: 4 угла + центр.
+	var terr: Node = _find_terrain()
+	if terr != null:
+		var mn := INF
+		var mx := -INF
+		for off in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
+			var h: float = terr.terrain_height_at(global_position + off)
+			mn = minf(mn, h)
+			mx = maxf(mx, h)
+		if mx - mn > ANCHOR_MAX_RISE:
+			var d = get_node_or_null("/root/Dialogue")
+			if d:
+				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
+			return false
+	# Фиксация: ровно 0° по X/Z (yaw остаётся), тело замораживается.
+	global_rotation.x = 0.0
+	global_rotation.z = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	freeze = true
+	anchored = true
+	# Колонна-упор: цилиндр от днища до земли.
+	var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
+	var depth: float = maxf(global_position.y - ground_y, 0.4)
+	_anchor_column = MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.18
+	cyl.bottom_radius = 0.28
+	cyl.height = depth
+	_anchor_column.mesh = cyl
+	_anchor_column.position = Vector3(0, -depth * 0.5, 0)
+	add_child(_anchor_column)
+	# Контакт-сброс: следим за столкновениями, пока на якоре.
+	contact_monitor = true
+	max_contacts_reported = 4
+	if not body_entered.is_connected(_on_anchor_contact):
+		body_entered.connect(_on_anchor_contact)
+	return true
+
+func _release_anchor() -> void:
+	anchored = false
+	freeze = false
+	contact_monitor = false
+	if body_entered.is_connected(_on_anchor_contact):
+		body_entered.disconnect(_on_anchor_contact)
+	if _anchor_column != null and is_instance_valid(_anchor_column):
+		_anchor_column.queue_free()
+	_anchor_column = null
+
+func _on_anchor_contact(body: Node) -> void:
+	if not anchored:
+		return
+	# Террейн — законная опора; всё остальное упёрлось в нас → фиксация сбрасывается.
+	if body != null and body.has_method("terrain_height_at"):
+		return
+	_release_anchor()
+
+func _find_terrain() -> Node:
+	for c in get_tree().current_scene.get_children():
+		if c.has_method("terrain_height_at"):
+			return c
+	return null
+
+# ── Действия кругового меню (вызывает hud.open_vehicle_menu) ─────────────────
+
+# Вся машина → в инвентарь: каждый блок типом в G.block_inventory, машина исчезает.
+func send_to_inventory() -> void:
+	if block_map_node == null:
+		return
+	for b in block_map_node.get_children():
+		if "block" in b:
+			G.block_inventory.append(b.block)
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc and "vehicles" in cc:
+		cc.vehicles.erase(self)
+	queue_free()
+
+# Разобрать: все блоки КРОМЕ кабины выпадают в мир, кабина остаётся стоять машиной.
+func disassemble() -> void:
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or block_map_node == null:
+		return
+	for b in block_map_node.get_children():
+		if not ("block" in b) or b.get("block") == G.Block.CABIN:
+			continue
+		if b is Node3D:
+			var n3 := b as Node3D
+			# Чистим клетку карты и коллизию блока на корпусе.
+			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y), roundi(n3.position.z + 5))
+			if block_map_node.has_method("remove_block"):
+				block_map_node.remove_block(cell.x, cell.y, cell.z)
+			for col in get_children():
+				if col is CollisionShape3D and col.is_in_group("block_collision") \
+						and (col.position == n3.position or col.position == n3.position + Vector3(-0.5, 0.5, -0.5)):
+					col.queue_free()
+			n3.reparent(objects)
+	Wheels.clear()
+
+# Защита вкл/выкл. Управление игроком выключает её (set_active).
+func set_defense(on: bool) -> void:
+	defense_mode = on
 
 func _map_block_collisions(block: Node) -> void:
 	for child in block.get_children():
@@ -187,8 +355,13 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 # ══════════════════════════════════════════
 
 func _physics_process(delta: float) -> void:
+	# Защита работает и у НЕактивной машины: стоит и отстреливается от врагов рядом.
+	if defense_mode:
+		_defense_tick(delta)
 	if !is_active:
 		return
+	if anchored:
+		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
 		var dist = global_position.y - map
 		if dist < 5.0:
@@ -390,6 +563,8 @@ func erase_wheel(wheel: Node) -> void:
 func set_active(active: bool) -> void:
 	is_active = active
 	Building = false
+	if active:
+		defense_mode = false     # игрок сел за руль — авто-оборона больше не рулит оружием
 
 # ══════════════════════════════════════════
 # СТРОИТЕЛЬСТВО (оригинальный код без изменений)

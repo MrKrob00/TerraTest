@@ -84,11 +84,8 @@ func _track_target(delta: float, firing: bool) -> void:
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
 	if has_target:
-		var target_pos = _current_target.global_position
-		if _current_target is MeshInstance3D:
-			target_pos = _current_target.get_aabb().get_center() + _current_target.global_position
-		elif _current_target.has_node("CollisionShape3D"):
-			target_pos = _current_target.get_node("CollisionShape3D").global_position
+		# Приоритет: незакрытая кабина → ближайший блок машины (см. _aim_point_for).
+		var target_pos = _aim_point_for(_current_target)
 		var dir_world = (target_pos - pivot.global_position).normalized()
 		var dir_local = global_transform.basis.inverse() * dir_world
 		var yaw   = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
@@ -158,8 +155,61 @@ func fire_bullet():
 func _on_area_3d_body_entered(body: Node3D) -> void:
 	if body == self or body.get_parent() == get_parent():
 		return
+	if body == _vehicle_root():
+		return                        # своя машина — не цель
+	if body.get_parent() != null and body.get_parent().name == "objects":
+		return                        # свободные блоки/объекты в мире — не цели
 	if not _targets.has(body):
 		_targets.append(body)
+
+# Корневое тело машины, на которой стоит это оружие.
+func _vehicle_root() -> Node:
+	var p := get_parent()
+	while p != null and not (p is RigidBody3D):
+		p = p.get_parent()
+	return p
+
+# Точка прицеливания по цели-машине: если КАБИНА ничем не закрыта — приоритет ей,
+# иначе ближайший к оружию блок машины. Для не-машин — как раньше (центр/коллизия).
+func _aim_point_for(body: Node3D) -> Vector3:
+	var blocks := body.get_node_or_null("blocks")
+	if blocks == null:
+		if body is MeshInstance3D:
+			return (body as MeshInstance3D).get_aabb().get_center() + body.global_position
+		if body.has_node("CollisionShape3D"):
+			return body.get_node("CollisionShape3D").global_position
+		return body.global_position
+	var cabin: Node3D = null
+	for b in blocks.get_children():
+		if b.get("block") == G.Block.CABIN and b is Node3D:
+			cabin = b
+			break
+	if cabin != null and _cabin_exposed(body, cabin):
+		return cabin.global_position
+	var best: Node3D = null
+	var bd := INF
+	for b in blocks.get_children():
+		if not ("block" in b) or not (b is Node3D):
+			continue
+		var d: float = pivot.global_position.distance_squared_to((b as Node3D).global_position)
+		if d < bd:
+			bd = d
+			best = b
+	return best.global_position if best != null else body.global_position
+
+# Кабина «не закрыта» = луч от оружия до кабины первым делом попадает в саму машину
+# рядом с кабиной (а не в другой её блок и не в постороннее препятствие).
+func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, cabin.global_position)
+	var own := _vehicle_root()
+	q.exclude = [self, own] if own != null else [self]
+	var res := space.intersect_ray(q)
+	if res.is_empty():
+		return true
+	if res.collider != body:
+		return false
+	return res.position.distance_to(cabin.global_position) <= 0.9
 
 func _on_area_3d_body_exited(body: Node3D) -> void:
 	_targets.erase(body)
