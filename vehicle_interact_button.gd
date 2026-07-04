@@ -66,7 +66,12 @@ func _process(delta: float) -> void:
 			_cancel_hold()
 			var hud: Node = cc.get_node_or_null("HUD")
 			if hud and hud.has_method("open_vehicle_menu"):
-				hud.open_vehicle_menu(vehicle)
+				# Меню раскрывается ВОКРУГ этой кнопки (палец ещё зажат): экранная позиция
+				# кнопки, дальше hud ведёт жест — тянешь к пункту и отпускаешь.
+				var cam := get_viewport().get_camera_3d()
+				var sp: Vector2 = cam.unproject_position(global_position) if cam \
+						else get_viewport().get_visible_rect().size * 0.5
+				hud.open_vehicle_menu(vehicle, sp)
 
 func _cancel_hold() -> void:
 	_holding = false
