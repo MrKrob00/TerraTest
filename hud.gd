@@ -27,27 +27,43 @@ func _ready() -> void:
 	_collect_game_controls()
 
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
+# Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
+class AnchorIcon extends Control:
+	var active := false
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(0.3, 1.0, 0.5) if active else Color(0.88, 0.96, 0.98)
+		var lw := 3.0
+		draw_arc(c + Vector2(0, -14), 5.0, 0.0, TAU, 16, col, lw)          # кольцо
+		draw_line(c + Vector2(0, -9), c + Vector2(0, 14), col, lw)          # шток
+		draw_line(c + Vector2(-9, -2), c + Vector2(9, -2), col, lw)         # перекладина
+		draw_arc(c + Vector2(0, 2), 13.0, PI * 0.15, PI * 0.85, 14, col, lw)  # лапы
+		draw_line(c + Vector2(-12.3, 8.0), c + Vector2(-9.0, 3.2), col, lw)   # зубец левый
+		draw_line(c + Vector2(12.3, 8.0), c + Vector2(9.0, 3.2), col, lw)     # зубец правый
+
 var _anchor_btn: Button = null
+var _anchor_icon: AnchorIcon = null
 func _build_anchor_button() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	_anchor_btn = Button.new()
-	_anchor_btn.text = "⚓"
 	_anchor_btn.tooltip_text = "Якорь: зафиксировать машину (ровно 0°)"
 	_anchor_btn.custom_minimum_size = Vector2(64, 64)
-	_anchor_btn.add_theme_font_size_override("font_size", 30)
 	_anchor_btn.add_theme_stylebox_override("normal", _make_button_style(false))
 	_anchor_btn.add_theme_stylebox_override("hover", _make_button_style(false))
 	_anchor_btn.add_theme_stylebox_override("pressed", _make_button_style(true))
 	_anchor_btn.position = Vector2(16, screen.y - 170)
 	_anchor_btn.pressed.connect(_on_anchor_pressed)
+	_anchor_icon = AnchorIcon.new()
+	_anchor_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_anchor_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_anchor_btn.add_child(_anchor_icon)
 	add_child(_anchor_btn)
 
 func _on_anchor_pressed() -> void:
 	var v: Node = _menu_vehicle_or_current()
 	if v and v.has_method("toggle_anchor"):
-		var on: bool = v.toggle_anchor()
-		_anchor_btn.add_theme_color_override("font_color",
-				Color(0.3, 1.0, 0.5) if on else Color(0.88, 0.96, 0.98))
+		_anchor_icon.active = v.toggle_anchor()
+		_anchor_icon.queue_redraw()
 
 func _menu_vehicle_or_current() -> Node:
 	var cc: Node = $".."
@@ -56,29 +72,40 @@ func _menu_vehicle_or_current() -> Node:
 	return current_vehicle
 
 # ── Круговое меню чужой машины (открывает vehicle_interact_button) ─────────────
+# Жестовое: появляется ВОКРУГ 2D-кнопки машины (палец ещё зажат после удержания).
+# Тянешь палец в сторону нужного пункта и ОТПУСКАЕШЬ — он срабатывает. Отпустил в
+# центре (мёртвая зона) — отмена. Никаких нажатий по кнопкам не требуется.
+const VMENU_RADIUS := 120.0
+const VMENU_DEAD_ZONE := 55.0
 var _vmenu: Control = null
-func open_vehicle_menu(vehicle: Node) -> void:
+var _vmenu_center: Vector2 = Vector2.ZERO
+var _vmenu_buttons: Array = []
+var _vmenu_vehicle: Node = null
+
+func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> void:
 	close_vehicle_menu()
 	var screen: Vector2 = get_viewport().get_visible_rect().size
+	# Центр меню — где 2D-кнопка машины; прижимаем к экрану, чтобы пункты не обрезались.
+	var center := screen * 0.5 if screen_pos.x < 0.0 else screen_pos
+	center.x = clampf(center.x, 200.0, screen.x - 200.0)
+	center.y = clampf(center.y, 110.0, screen.y - 110.0)
+	_vmenu_center = center
+	_vmenu_vehicle = vehicle
+	_vmenu_buttons.clear()
 	_vmenu = Control.new()
 	_vmenu.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(_vmenu)
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.45)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.gui_input.connect(func(e: InputEvent) -> void:
-		if (e is InputEventScreenTouch and e.pressed) or (e is InputEventMouseButton and e.pressed):
-			close_vehicle_menu())
+	dim.mouse_filter = Control.MOUSE_FILTER_IGNORE   # ввод ловит hud._input, не UI
 	_vmenu.add_child(dim)
-	var center := screen * 0.5
-	var radius := 130.0
 	var defense_on: bool = bool(vehicle.get("defense_mode"))
 	var labels := [
 		"📦 В инвентарь",
 		"🔧 Разобрать",
 		"🛡 Защита: ВЫКЛ" if defense_on else "🛡 Защита: ВКЛ",
 	]
-	# Кнопки по кругу: сверху, справа-снизу, слева-снизу.
 	for i in labels.size():
 		var ang := -PI / 2 + TAU * float(i) / float(labels.size())
 		var b := Button.new()
@@ -86,38 +113,83 @@ func open_vehicle_menu(vehicle: Node) -> void:
 		b.custom_minimum_size = Vector2(170, 56)
 		b.add_theme_font_size_override("font_size", 16)
 		b.add_theme_stylebox_override("normal", _make_button_style(false))
-		b.add_theme_stylebox_override("hover", _make_button_style(false))
 		b.add_theme_stylebox_override("pressed", _make_button_style(true))
-		b.position = center + Vector2(cos(ang), sin(ang)) * radius - b.custom_minimum_size * 0.5
-		b.pressed.connect(_on_vmenu_action.bind(i, vehicle))
+		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.position = center + Vector2(cos(ang), sin(ang)) * VMENU_RADIUS - b.custom_minimum_size * 0.5
 		_vmenu.add_child(b)
-	var cancel := Button.new()
+		_vmenu_buttons.append(b)
+	var cancel := Label.new()
 	cancel.text = "✕"
-	cancel.custom_minimum_size = Vector2(56, 56)
-	cancel.add_theme_font_size_override("font_size", 22)
-	cancel.add_theme_stylebox_override("normal", _make_button_style(true))
-	cancel.position = center - cancel.custom_minimum_size * 0.5
-	cancel.pressed.connect(close_vehicle_menu)
+	cancel.add_theme_font_size_override("font_size", 26)
+	cancel.position = center - Vector2(10, 18)
+	cancel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_vmenu.add_child(cancel)
 
-func _on_vmenu_action(idx: int, vehicle: Node) -> void:
-	if is_instance_valid(vehicle):
-		match idx:
-			0:
-				if vehicle.has_method("send_to_inventory"):
-					vehicle.send_to_inventory()
-			1:
-				if vehicle.has_method("disassemble"):
-					vehicle.disassemble()
-			2:
-				if vehicle.has_method("set_defense"):
-					vehicle.set_defense(not bool(vehicle.get("defense_mode")))
-	close_vehicle_menu()
+# Пока меню открыто — весь ввод сюда: движение подсвечивает сектор, отпускание выбирает.
+func _input(event: InputEvent) -> void:
+	if _vmenu == null:
+		return
+	var pos := Vector2.ZERO
+	var is_motion := false
+	var is_release := false
+	if event is InputEventScreenDrag:
+		pos = event.position; is_motion = true
+	elif event is InputEventMouseMotion:
+		pos = event.position; is_motion = true
+	elif event is InputEventScreenTouch and not event.pressed:
+		pos = event.position; is_release = true
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		pos = event.position; is_release = true
+	else:
+		return
+	var idx := _vmenu_pick(pos)
+	if is_motion:
+		for i in _vmenu_buttons.size():
+			_vmenu_buttons[i].modulate = Color(1.4, 1.4, 1.0) if i == idx else Color(1, 1, 1)
+		get_viewport().set_input_as_handled()
+	elif is_release:
+		var vehicle := _vmenu_vehicle
+		close_vehicle_menu()
+		if idx >= 0:
+			_do_vmenu_action(idx, vehicle)
+		get_viewport().set_input_as_handled()
+
+# Какой пункт выбирает точка pos: -1 = мёртвая зона (отмена), иначе индекс по углу.
+func _vmenu_pick(pos: Vector2) -> int:
+	var v := pos - _vmenu_center
+	if v.length() < VMENU_DEAD_ZONE:
+		return -1
+	var n := _vmenu_buttons.size()
+	var best := 0
+	var best_d := INF
+	for i in n:
+		var ang := -PI / 2 + TAU * float(i) / float(n)
+		var d: float = absf(angle_difference(v.angle(), ang))
+		if d < best_d:
+			best_d = d
+			best = i
+	return best
+
+func _do_vmenu_action(idx: int, vehicle: Node) -> void:
+	if vehicle == null or not is_instance_valid(vehicle):
+		return
+	match idx:
+		0:
+			if vehicle.has_method("send_to_inventory"):
+				vehicle.send_to_inventory()
+		1:
+			if vehicle.has_method("disassemble"):
+				vehicle.disassemble()
+		2:
+			if vehicle.has_method("set_defense"):
+				vehicle.set_defense(not bool(vehicle.get("defense_mode")))
 
 func close_vehicle_menu() -> void:
 	if _vmenu != null and is_instance_valid(_vmenu):
 		_vmenu.queue_free()
 	_vmenu = null
+	_vmenu_vehicle = null
+	_vmenu_buttons.clear()
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
 # Сетка 2×2: верхний ряд — НАКЛОН влево/вправо (крен вокруг Z), нижний ряд —

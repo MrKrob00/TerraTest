@@ -154,18 +154,15 @@ func _scatter_blocks() -> void:
 			continue                       # кабина разрушена
 		if b is Node3D:
 			var n3 := b as Node3D
-			n3.reparent(objects)
-			if n3 is RigidBody3D:
-				# Небольшое ускорение в противоположную от кабины сторону + вверх.
-				# ВАЖНО: размораживаем сами ДО назначения скорости (deferred выполняются по
-				# порядку). VehicleBlock размораживается только кадром позже (await в
-				# _on_parent_changed), и скорость, заданная замороженному телу, терялась —
-				# блоки просто падали кучкой.
+			# Толчок от кабины ЗАЯВКОЙ до reparent: VehicleBlock применит его сам в момент
+			# своей разморозки (kick/_pending_kick). Задавать скорость снаружи бесполезно —
+			# тело ещё заморожено, и значение терялось (блоки падали кучкой).
+			if n3.has_method("kick"):
 				var dir := (n3.global_position - cabin_pos)
 				dir.y = 0.0
 				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
-				n3.set_deferred("freeze", false)
-				n3.set_deferred("linear_velocity", dir * 5.0 + Vector3.UP * 4.0)
+				n3.kick(dir * 5.0 + Vector3.UP * 4.0)
+			n3.reparent(objects)
 
 
 # ══════════════════════════════════════════
@@ -208,7 +205,12 @@ func toggle_anchor() -> bool:
 		if dh:
 			dh.say("Якорь", "Слишком высоко над землёй")
 		return false
-	# (2) Подъём на 0.5 м.
+	# Замораживаем ДО телепорта: трансформ незамороженного RigidBody физика тут же
+	# перетирает своим состоянием — из-за этого подъём «не происходил».
+	freeze = true
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	# (2) Подъём на 0.5 м (машина встаёт на колонну — так и остаётся приподнятой).
 	global_position.y += 0.5
 	# (3) Ровность: 4 угла + центр.
 	if terr != null:
@@ -220,6 +222,7 @@ func toggle_anchor() -> bool:
 			mx = maxf(mx, h)
 		if mx - mn > ANCHOR_MAX_RISE:
 			global_position.y -= 0.5          # неровно — вернули как было
+			freeze = false
 			var d = get_node_or_null("/root/Dialogue")
 			if d:
 				d.say("Якорь", "Слишком неровно — нужен перепад не больше %.1f м" % ANCHOR_MAX_RISE)
@@ -227,10 +230,7 @@ func toggle_anchor() -> bool:
 	# (4) Ровно 0° по X/Z (yaw остаётся).
 	global_rotation.x = 0.0
 	global_rotation.z = 0.0
-	linear_velocity = Vector3.ZERO
-	angular_velocity = Vector3.ZERO
 	# (5) Фиксация.
-	freeze = true
 	anchored = true
 	# Колонна-упор: цилиндр от днища до земли.
 	var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
