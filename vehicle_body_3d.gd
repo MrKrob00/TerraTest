@@ -153,13 +153,17 @@ func _scatter_blocks() -> void:
 			continue                       # кабина разрушена
 		if b is Node3D:
 			var n3 := b as Node3D
-			n3.reparent(objects)           # в objects VehicleBlock сам разморозится → упадёт
+			n3.reparent(objects)
 			if n3 is RigidBody3D:
-				# Небольшое ускорение в противоположную от кабины сторону + вверх, чтобы
-				# кучка красиво разлеталась, а не оседала одним столбиком.
+				# Небольшое ускорение в противоположную от кабины сторону + вверх.
+				# ВАЖНО: размораживаем сами ДО назначения скорости (deferred выполняются по
+				# порядку). VehicleBlock размораживается только кадром позже (await в
+				# _on_parent_changed), и скорость, заданная замороженному телу, терялась —
+				# блоки просто падали кучкой.
 				var dir := (n3.global_position - cabin_pos)
 				dir.y = 0.0
 				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
+				n3.set_deferred("freeze", false)
 				n3.set_deferred("linear_velocity", dir * 5.0 + Vector3.UP * 4.0)
 
 
@@ -799,19 +803,26 @@ func _get_block_name(block: int) -> String:
 func _on_take_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
+		# Ставим РОВНО то, что показывает превью (_preview_res). Раньше грань бралась из
+		# глобального result, а тап по самой кнопке «поставить» тоже прогонял _handle_click
+		# по координатам кнопки и затирал result промахом (face="") — блок вставал без
+		# наклона, не как в превью. Без превью ставить нечего.
+		if _preview_res == null:
+			return
+		var pres: Dictionary = _preview_res
 		# Проверяем ВЕСЬ footprint (для 2×2 — все 8 клеток), а не только якорную клетку,
 		# иначе 2×2-блок (селлер) можно было визуально воткнуть в уже занятые клетки (пушку).
 		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
 			return
 		# Точки контакта: можно ли прицепить сюда (пушка сверху нельзя, колесо только справа).
-		var neighbor_type: int = block_map_node.get_block(result.x, result.y, result.z)
-		if not block_map_node.can_attach(neighbor_type, instance.block, result.face):
+		var neighbor_type: int = block_map_node.get_block(pres.x, pres.y, pres.z)
+		if not block_map_node.can_attach(neighbor_type, instance.block, pres.face):
 			return
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
 		instance.top_level = false
 		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
-		var orient := _face_orient(result.face, instance.block) * build_basis
+		var orient := _face_orient(pres.face, instance.block) * build_basis
 		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"], BuildingBlock["z"]-5)
 		var collision = instance.get_child(0).duplicate()
