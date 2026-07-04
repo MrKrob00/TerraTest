@@ -602,6 +602,7 @@ var BuildingBlock = { "build": true, "x": 5, "y": 0, "z": 5, "block": 1 }
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
 var build_basis: Basis = Basis()
 var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
+var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
@@ -664,6 +665,12 @@ func _handle_click(screen_pos: Vector2) -> void:
 	# по Y) или едет, выбор блоков переставал попадать. Берём пространство самого
 	# block_map_node: to_local() даёт полный перевод точки (позиция+поворот+родитель), а
 	# направление крутим обратным базисом. Сетка сдвинута на (5,0,5) (см. blocks.gd).
+	# КАБИНА в руке — это новая машина: ставится не на эту машину, а В МИР на землю.
+	if block_take:
+		var holder: Node = camera_controller.camera.get_child(0)
+		if holder.get_child_count() > 0 and holder.get_child(0).get("block") == G.Block.CABIN:
+			_preview_cabin_ground(world_origin, world_dir)
+			return
 	var space_node: Node3D = block_map_node if block_map_node else self
 	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 0, 5)
 	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
@@ -762,6 +769,48 @@ func _preview_held(res: Dictionary) -> void:
 	if ghost_block:
 		ghost_block.visible = false
 
+# Превью кабины НА ЗЕМЛЕ: физический луч в террейн (слой 1), кабина встаёт в точку
+# попадания стоймя. Тап Take превратит её в новую машину (см. _place_cabin_vehicle).
+func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
+	var holder: Node = camera_controller.camera.get_child(0)
+	if holder.get_child_count() == 0:
+		return
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(world_origin, world_origin + world_dir * 200.0)
+	q.collision_mask = 1
+	q.exclude = [self]
+	var hit := space.intersect_ray(q)
+	if hit.is_empty():
+		return
+	_cabin_ground = hit.position
+	_preview_res = null
+	var inst: Node3D = holder.get_child(0)
+	inst.top_level = true
+	inst.global_transform = Transform3D(Basis(), _cabin_ground + Vector3.UP * 0.6)
+	if ghost_block:
+		ghost_block.visible = false
+
+# Кабина поставлена на землю → спавним НОВУЮ машину из одной кабины.
+func _place_cabin_vehicle(instance: Node3D) -> void:
+	var scene: PackedScene = load("res://player_vehicle.tscn")
+	if scene == null:
+		push_error("vehicle: нет player_vehicle.tscn для новой машины")
+		return
+	var v: Node3D = scene.instantiate()
+	get_parent().add_child(v)                       # под Vehicles — там же стриминг коллизии
+	v.global_position = _cabin_ground + Vector3.UP * 1.2
+	if v.has_method("apply_build"):
+		# Только кабина (стартовый пресет сцены заменяется).
+		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": int(G.Block.CABIN), "rot": [0.0, 0.0, 0.0]}])
+	instance.queue_free()                           # кабина из руки потрачена
+	block_take = false
+	block_body = null
+	_cabin_ground = null
+	_preview_res = null
+	build_basis = Basis()
+	if ghost_block:
+		ghost_block.visible = false
+
 # Ручной поворот блока в руке (кнопки UI). Переприменяет превью, если оно есть.
 func rotate_build(axis: Vector3, ang: float) -> void:
 	build_basis = (Basis(axis, ang) * build_basis).orthonormalized()
@@ -817,6 +866,10 @@ func _get_block_name(block: int) -> String:
 func _on_take_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
+		# Кабина ставится не на машину, а В МИР — из неё рождается новая машина.
+		if instance.get("block") == G.Block.CABIN and _cabin_ground != null:
+			_place_cabin_vehicle(instance)
+			return
 		# Ставим РОВНО то, что показывает превью (_preview_res). Раньше грань бралась из
 		# глобального result, а тап по самой кнопке «поставить» тоже прогонял _handle_click
 		# по координатам кнопки и затирал result промахом (face="") — блок вставал без
@@ -867,6 +920,7 @@ func _on_take_pressed() -> void:
 		block_take = true
 		build_basis = Basis()
 		_preview_res = null
+		_cabin_ground = null
 		if ghost_block:
 			ghost_block.visible = false   # блок взят в руку — светяшка больше не нужна
 
@@ -903,6 +957,7 @@ func take_block_into_hand(block_type: int) -> bool:
 	block_take = true
 	build_basis = Basis()          # свежий блок — без ручного поворота
 	_preview_res = null
+	_cabin_ground = null
 	# Сразу включаем режим стройки, чтобы блок можно было поставить без лишних нажатий
 	# (и обновляем визуал HUD — кнопки Take/TakeOff). _on_building_pressed сам сгейтит
 	# повтор через `if Building: return`.
