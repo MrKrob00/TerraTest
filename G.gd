@@ -65,6 +65,11 @@ enum Block {
 	SELLER,#9
 	LASER,#10
 	GUN,#11
+	BATTERY,#12
+	SOLAR,#13
+	GENERATOR,#14
+	REGEN,#15
+	SHIELD,#16
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -77,6 +82,11 @@ enum Block {
 @onready var seller_scene: PackedScene = preload("res://seller.tscn")
 @onready var laser_scene: PackedScene = preload("res://laser.tscn")
 @onready var gun_scene: PackedScene = preload("res://gun.tscn")
+@onready var battery_scene: PackedScene = preload("res://battery.tscn")
+@onready var solar_scene: PackedScene = preload("res://solar.tscn")
+@onready var generator_scene: PackedScene = preload("res://generator.tscn")
+@onready var regen_scene: PackedScene = preload("res://regen.tscn")
+@onready var shield_scene: PackedScene = preload("res://shield.tscn")
 
 func get_scene(block: Block) -> PackedScene:
 	match block:
@@ -91,4 +101,9 @@ func get_scene(block: Block) -> PackedScene:
 		Block.SELLER: return seller_scene
 		Block.LASER: return laser_scene
 		Block.GUN: return gun_scene
+		Block.BATTERY: return battery_scene
+		Block.SOLAR: return solar_scene
+		Block.GENERATOR: return generator_scene
+		Block.REGEN: return regen_scene
+		Block.SHIELD: return shield_scene
 	return null

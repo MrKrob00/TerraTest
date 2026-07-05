@@ -46,11 +46,17 @@ func _ready() -> void:
 		G.Block.BELT: 10,
 		G.Block.PROCESSOR: 30,
 		G.Block.SELLER: 30,
+		G.Block.GENERATOR: 40,
+		G.Block.BATTERY: 30,
+		G.Block.SOLAR: 35,
+		G.Block.REGEN: 45,
+		G.Block.SHIELD: 50,
 	}
 	_categories = {
 		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.DRILL],
 		"blocks":  [G.Block.BLOCK, G.Block.CABIN, G.Block.WHEEL],
-		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER],
+		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER, G.Block.GENERATOR],
+		# BATTERY/SOLAR/REGEN/SHIELD не в явных категориях -> попадают в «Остальные»
 	}
 	_build_filter_column()
 	if _search:

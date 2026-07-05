@@ -14,6 +14,11 @@ const BLOCK_HP: Dictionary = {
 	G.Block.BELT:      40,
 	G.Block.PROCESSOR: 100,
 	G.Block.SELLER:    70,
+	G.Block.BATTERY:   60,
+	G.Block.SOLAR:     40,
+	G.Block.GENERATOR: 90,
+	G.Block.REGEN:     60,
+	G.Block.SHIELD:    70,
 }
 const DEFAULT_HP := 50
 

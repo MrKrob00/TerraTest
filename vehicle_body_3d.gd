@@ -52,6 +52,69 @@ var defense_mode: bool = false
 const DEFENSE_RANGE := 25.0
 var _defense_timer: float = 0.0
 
+# ── Энергосистема машины ──────────────────────────────────────────────────────
+# _energy — запас в аккумуляторах (кап = число BATTERY × BATTERY_CAP).
+# _tick_prod — энергия, произведённая В ЭТОМ тике (солнечные/генератор): потребители
+# (реген/щит) едят СНАЧАЛА её, потом запас. Остаток в начале следующего тика утекает в
+# аккумуляторы; если аккумуляторов нет — сгорает. Так «без аккума работает, но не больше,
+# чем производится» получается само собой.
+const BATTERY_CAP := 100.0
+const SOLAR_RATE := 6.0          # энергии в секунду с одной панели (только на якоре)
+var _energy: float = 0.0
+var _tick_prod: float = 0.0
+var _energy_cap: float = 0.0
+var _cap_timer: float = 0.0
+
+func energy_cap() -> float:
+	return _energy_cap
+
+func energy_stored() -> float:
+	return _energy
+
+# Доля заполнения аккумуляторов для HUD (0..1). Нет аккумуляторов — 0.
+func energy_fill() -> float:
+	return _energy / _energy_cap if _energy_cap > 0.0 else 0.0
+
+# Есть ли сейчас хоть какая-то энергия (запас или свежая выработка).
+func energy_available() -> float:
+	return _energy + _tick_prod
+
+# Источники (солнечная, генератор) добавляют выработку сюда.
+func energy_produce(amount: float) -> void:
+	_tick_prod += amount
+
+# Потребители (реген/щит) просят энергию; возвращается сколько реально выдано.
+func energy_consume(amount: float) -> float:
+	var given: float = 0.0
+	var from_prod: float = minf(amount, _tick_prod)
+	_tick_prod -= from_prod
+	given += from_prod
+	var from_store: float = minf(amount - given, _energy)
+	_energy -= from_store
+	given += from_store
+	return given
+
+# Тик энергии: остаток прошлого тика → в аккумуляторы (без них сгорает), пересчёт
+# ёмкости (раз в 0.5с), выработка солнечных панелей (только на якоре).
+func _energy_tick(delta: float) -> void:
+	_energy = minf(_energy + _tick_prod, _energy_cap)
+	_tick_prod = 0.0
+	_cap_timer -= delta
+	var solar := 0
+	if _cap_timer <= 0.0 or anchored:
+		var batteries := 0
+		if block_map_node != null:
+			for b in block_map_node.get_children():
+				match b.get("block"):
+					G.Block.BATTERY: batteries += 1
+					G.Block.SOLAR:   solar += 1
+		if _cap_timer <= 0.0:
+			_cap_timer = 0.5
+			_energy_cap = batteries * BATTERY_CAP
+			_energy = minf(_energy, _energy_cap)
+	if anchored and solar > 0:
+		energy_produce(solar * SOLAR_RATE * delta)
+
 # ── Якорь (фиксация к миру, как в TerraTech) ──────────────────────────────────
 var anchored: bool = false
 var _anchor_column: MeshInstance3D = null
@@ -382,6 +445,8 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 # ══════════════════════════════════════════
 
 func _physics_process(delta: float) -> void:
+	# Энергия тикает ВСЕГДА (даже у неактивной машины): база на якоре копит от солнца.
+	_energy_tick(delta)
 	# Защита работает и у НЕактивной машины: стоит и отстреливается от врагов рядом.
 	if defense_mode:
 		_defense_tick(delta)

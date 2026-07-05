@@ -60,6 +60,10 @@ func _update_take_timer() -> void:
 # Таймер нужен ЛИШЬ чтобы периодически забирать руду у машин в зоне (коллектор копит её сам,
 # отдельного сигнала нет). Проталкивание дальше — по сигналу (_accept_item/_on_next_block_freed).
 func _on_timer_timeout() -> void:
+	# Коллектор подбирает с земли и без якоря, но ЗАБОР у него (начало передачи по
+	# цепочке) работает только когда наша машина стоит на якоре.
+	if not _factory_active():
+		return
 	vehicles_in_zone = vehicles_in_zone.filter(func(v): return is_instance_valid(v))
 	if inventory.size() < capacity:
 		for vehicle in vehicles_in_zone:
