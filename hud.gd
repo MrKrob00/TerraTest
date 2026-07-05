@@ -24,7 +24,49 @@ func _ready() -> void:
 	_build_ark_drawer()
 	_build_rotate_panel()
 	_build_anchor_button()
+	_build_energy_gauge()
 	_collect_game_controls()
+
+# ── Круглый индикатор энергии (аккумулятор + %) ────────────────────────────────
+# Рисуется нодами: тёмный круг, дуга-прогресс по окружности (заполненность аккумуляторов),
+# значок батарейки в центре, процент снизу. Обновляется из _process.
+class EnergyGauge extends Control:
+	var fill: float = 0.0        # 0..1
+	var has_cap: bool = false    # есть ли аккумуляторы вообще
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.5 - 3.0
+		draw_circle(c, r, Color(0.05, 0.1, 0.12, 0.85))
+		draw_arc(c, r, 0, TAU, 48, Color(0.15, 0.3, 0.35), 3.0)
+		if has_cap:
+			var col := Color(0.3, 1.0, 0.5) if fill > 0.25 else Color(1.0, 0.6, 0.2)
+			draw_arc(c, r, -PI / 2, -PI / 2 + TAU * clampf(fill, 0.0, 1.0), 48, col, 4.5)
+		# батарейка: корпус + «пипка» + заливка по fill
+		var bw := r * 0.7
+		var bh := r * 0.42
+		var tl := c - Vector2(bw * 0.5, bh * 0.5 + r * 0.12)
+		var col_body := Color(0.85, 0.95, 1.0)
+		draw_rect(Rect2(tl, Vector2(bw, bh)), col_body, false, 2.0)
+		draw_rect(Rect2(tl + Vector2(bw, bh * 0.3), Vector2(3.5, bh * 0.4)), col_body)
+		if has_cap and fill > 0.01:
+			var pad := 3.0
+			draw_rect(Rect2(tl + Vector2(pad, pad), Vector2((bw - pad * 2.0) * clampf(fill, 0.0, 1.0), bh - pad * 2.0)),
+					Color(0.3, 1.0, 0.5) if fill > 0.25 else Color(1.0, 0.6, 0.2))
+		# процент
+		var txt := "%d%%" % int(round(fill * 100.0)) if has_cap else "--"
+		var f := get_theme_default_font()
+		var fs := 13
+		var w := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
+		draw_string(f, c + Vector2(-w * 0.5, r * 0.55), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color(0.9, 0.97, 1.0))
+
+var _energy_gauge: EnergyGauge = null
+func _build_energy_gauge() -> void:
+	_energy_gauge = EnergyGauge.new()
+	_energy_gauge.size = Vector2(78, 78)
+	_energy_gauge.position = Vector2(16, 16)
+	_energy_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_energy_gauge)
 
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
@@ -381,6 +423,18 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 
 func _process(_delta: float) -> void:
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
+	# Индикатор энергии текущей машины (заполненность аккумуляторов).
+	if _energy_gauge:
+		var v: Node = _menu_vehicle_or_current()
+		var new_fill := 0.0
+		var new_cap := false
+		if v and v.has_method("energy_fill"):
+			new_fill = v.energy_fill()
+			new_cap = v.energy_cap() > 0.0
+		if new_fill != _energy_gauge.fill or new_cap != _energy_gauge.has_cap:
+			_energy_gauge.fill = new_fill
+			_energy_gauge.has_cap = new_cap
+			_energy_gauge.queue_redraw()
 
 
 # ── Сборка выезжающей панели целиком в коде (тема — как у tech_ui) ─────────────
@@ -539,6 +593,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_rotate_panel)
 	if _anchor_btn:
 		_game_controls.append(_anchor_btn)
+	if _energy_gauge:
+		_game_controls.append(_energy_gauge)
 
 func _set_game_controls_hidden(hidden: bool) -> void:
 	for n in _game_controls:

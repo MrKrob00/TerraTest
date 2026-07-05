@@ -43,7 +43,19 @@ func _find_next_block() -> void:
 	if neighbor and neighbor.has_method("try_receive"):
 		next_block = neighbor
 
+# Фабрика работает ТОЛЬКО под якорем: машина должна стоять заякоренной. Исключение —
+# коллектор (он не в этой цепочке): подбирает с земли всегда, а вот передача дальше
+# (intake забирает у него и пушит по цепочке) уже гейтится этим условием.
+func _factory_active() -> bool:
+	var p := get_parent()
+	if p == null or p.name != "blocks":
+		return false                      # блок валяется в мире — фабрика не работает
+	var vehicle := p.get_parent()
+	return vehicle != null and bool(vehicle.get("anchored"))
+
 func try_receive(item: Node3D) -> bool:
+	if not _factory_active():
+		return false                      # без якоря цепочка стоит
 	if current_item != null:
 		return false
 	if not is_instance_valid(item):
@@ -70,6 +82,8 @@ func _on_item_received() -> void:
 	pass
 
 func _try_push() -> void:
+	if not _factory_active():
+		return                            # без якоря дальше не передаём
 	if current_item == null or not is_instance_valid(current_item):
 		current_item = null
 		return
