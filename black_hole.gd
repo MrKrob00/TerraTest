@@ -4,7 +4,7 @@ extends Node3D
 #   • свободный БЛОК (лежит в мире под "objects") → в инвентарь игрока (G.block_inventory).
 # Покупка блоков — только в UI гаража; у мирового магазина своего меню нет.
 
-const RESOURCE_PRICES := {"ORE": 10, "INGOT": 50}
+const RESOURCE_PRICES := {"ORE": 10, "INGOT": 50, "COAL": 8}
 
 func _on_hole_body_entered(body: Node3D) -> void:
 	# Ресурс: у него есть type + upgrade() (см. resource.gd). У машин/блоков upgrade нет.

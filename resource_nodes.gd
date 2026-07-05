@@ -16,6 +16,11 @@ extends Node3D
 	Color(0.85, 0.25, 0.35),  # рубин
 ]
 
+## Доля угольных жил (0..1). Угольная жила тёмная и выбрасывает УГОЛЬ (COAL) —
+## топливо генератора; слитка у угля нет, процессор его не переплавляет.
+@export var coal_chance: float = 0.25
+@export var coal_color: Color = Color(0.13, 0.13, 0.15)
+
 @export_group("Расстановка")
 @export var count: int = 200                 # сколько жил пытаемся расставить
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
@@ -59,7 +64,7 @@ func _apply_ore_colors() -> void:
 	if ore_colors.is_empty():
 		return
 	var cols := PackedVector3Array()
-	for c in ore_colors:
+	for c in ore_colors + [coal_color]:      # уголь — последний индекс в шейдере
 		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
 		cols.append(Vector3(lc.r, lc.g, lc.b))
 	for mm in multimesh_nodes:
@@ -115,10 +120,14 @@ func _spawn(positions: Array[Vector3]) -> void:
 	for i in positions.size():
 		if resource_nodes.is_empty():
 			break
-		var ore_type: int = randi() % type_count
+		# С шансом coal_chance жила угольная: тип = последний индекс (цвет угля).
+		var coal: bool = randf() < coal_chance
+		var ore_type: int = ore_colors.size() if coal else randi() % type_count
 		var node: Node3D = resource_nodes.pick_random().instantiate()
 		node.position = positions[i]
 		node.instance_id = i
+		if "is_coal" in node:
+			node.is_coal = coal
 		if "ore_type" in node:
 			node.ore_type = ore_type            # жила помнит свой тип для дальнейших записей
 		if "ore_color" in node and ore_type < ore_colors.size():
