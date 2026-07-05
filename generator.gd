@@ -4,6 +4,7 @@
 extends FactoryBlock
 
 const BURN_TIME := 3.0
+const ENERGY_COAL := 40.0     # уголь — основное топливо
 const ENERGY_ORE := 25.0
 const ENERGY_INGOT := 80.0
 
@@ -17,7 +18,10 @@ func _on_item_received() -> void:
 	_burn_energy = ENERGY_ORE
 	if "type" in current_item and current_item.has_method("upgrade"):
 		var tname: String = current_item.Type.keys()[current_item.type]
-		_burn_energy = ENERGY_INGOT if tname == "INGOT" else ENERGY_ORE
+		match tname:
+			"COAL":  _burn_energy = ENERGY_COAL
+			"INGOT": _burn_energy = ENERGY_INGOT
+			_:       _burn_energy = ENERGY_ORE
 	_burn_left = BURN_TIME
 	current_item.visible = false          # топливо «в топке»
 

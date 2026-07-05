@@ -14,6 +14,7 @@ var current_hp: int = 0
 var instance_id: int = 0
 var ore_type: int = 0
 var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающей руды (тинт)
+var is_coal: bool = false                           # угольная жила: выброс = COAL, без тинта
 var _available: int = MAX_RESOURCES                 # сколько руды осталось в жиле (логически)
 
 # Второй MultiMesh — в него пишем состояние жилы для шейдера истощения.
@@ -46,7 +47,9 @@ func _eject_one() -> void:
 	var res: Node3D = resource_tscn.instantiate()
 	get_parent().add_child(res)
 	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
-	if res.has_method("set_tint"):
+	if is_coal and "type" in res:
+		res.type = res.Type.COAL              # уголь: тёмный сам по себе, тинт не нужен
+	elif res.has_method("set_tint"):
 		res.set_tint(ore_color)
 	Q.report("ore_mined", 1)                    # прогресс заданий на добычу
 

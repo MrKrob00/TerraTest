@@ -1,7 +1,7 @@
 # resource_item.gd
 extends RigidBody3D
 
-enum Type { ORE, INGOT }
+enum Type { ORE, INGOT, COAL }
 
 @export var type: Type = Type.ORE
 
@@ -30,6 +30,7 @@ func upgrade() -> void:
 	match type:
 		Type.ORE:
 			type = Type.INGOT
+		# COAL слитка НЕ имеет — процессор его не переплавляет, уголь остаётся углём.
 		# В будущем: INGOT → ALLOY и т.д.
 	_update_visual()
 
@@ -40,6 +41,10 @@ func _update_visual() -> void:
 	# Форма: руда — шар, слиток — примятый (сплющенный) шар внутри внешней сферы.
 	# Внешний шар (MeshInstance3D) не трогаем — меняем только внутренний ResourceMesh.
 	mesh.scale = Vector3(1.3, 0.3, 1.3) if type == Type.INGOT else Vector3.ONE
+	# Уголь всегда тёмный (тинт жилы к нему не применяется).
+	if type == Type.COAL:
+		mesh.material_override = _coal_material()
+		return
 	if _has_tint:
 		mesh.material_override = _tint_material(_tint)
 		return
@@ -62,3 +67,11 @@ func _tint_material(c: Color) -> StandardMaterial3D:
 		_tint_mats[key] = m
 		cached = m
 	return cached
+
+static var _coal_mat: StandardMaterial3D = null
+static func _coal_material() -> StandardMaterial3D:
+	if _coal_mat == null:
+		_coal_mat = StandardMaterial3D.new()
+		_coal_mat.albedo_color = Color(0.12, 0.12, 0.14)
+		_coal_mat.roughness = 0.95
+	return _coal_mat

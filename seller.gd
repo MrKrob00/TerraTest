@@ -7,6 +7,7 @@ extends FactoryBlock
 @export var prices: Dictionary = {
 	"ORE": 10,
 	"INGOT": 50,
+	"COAL": 8,
 }
 
 var timer: Timer
