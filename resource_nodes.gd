@@ -22,7 +22,7 @@ extends Node3D
 @export var coal_color: Color = Color(0.13, 0.13, 0.15)
 
 @export_group("Расстановка")
-@export var count: int = 200                 # сколько жил пытаемся расставить
+@export var count: int = 800                 # сколько жил пытаемся расставить (было 200, ×4)
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
 @export var min_height: float = 2.0          # ниже — вода/пляж, не спавним
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
