@@ -1,5 +1,6 @@
 shader_type spatial;
-render_mode diffuse_lambert;
+// specular_disabled: террейн матовый (SPECULAR=0) — убираем расчёт спекуляра из пайплайна.
+render_mode diffuse_lambert, specular_disabled;
 
 group_uniforms Quality;
 // Низкое качество для слабого железа (fill-bound): выключает попиксельный шум и тайл-текстуру.
@@ -46,9 +47,13 @@ uniform vec2  trample_center = vec2(0.0);
 uniform float trample_size   = 130.0;
 group_uniforms;
 
+// FILL-ОПТИМИЗАЦИЯ: цвет зон по высоте + переход в камень по склону считается в ВЕРШИНЕ
+// (v_base_col) и интерполируется, а не пересчитывается на каждый пиксель. Террейн — fill-bound
+// (тяжёл именно попиксельно), а вершин на порядки меньше. Механики те же; на границах зон
+// переход становится линейным (вблизи, где сетка плотная, — незаметно; вдали и так мелко).
+// Во фрагменте остаётся только то, что обязано быть per-pixel: шум и тайл-текстура.
 varying vec2  v_pixel_uv;
-varying float v_world_height;
-varying float v_world_normal_y;
+varying vec3  v_base_col;
 varying float v_is_grass;
 
 float hash2D(vec2 p) {
@@ -58,18 +63,24 @@ float hash2D(vec2 p) {
 }
 
 void vertex() {
-    vec4 world_pos   = MODEL_MATRIX * vec4(VERTEX, 1.0);
-    v_pixel_uv       = floor(world_pos.xz / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
-    v_world_height   = world_pos.y;
-    v_world_normal_y = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+    vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
+    float wy = world_pos.y;
+    v_pixel_uv = floor(world_pos.xz / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+
+    // Высотные зоны (песок→трава→снег) + склон→камень — весь базовый цвет здесь.
+    float t_grass = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
+    float t_snow  = smoothstep(height_snow_start  - zone_blend, height_snow_start  + zone_blend, wy);
+    vec3  zone    = mix(color_sand.rgb, color_grass.rgb, t_grass);
+    zone          = mix(zone,           color_snow.rgb,  t_snow);
+    float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+    float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
+    v_base_col    = mix(zone, color_rock.rgb, rock_t);
 
     v_is_grass = 0.0;
-
     // COLOR.r < 0.5 помечает вершины на границе чанка: там смещение травы пропускаем, чтобы
-    // шов (особенно на границе LOD) остался на сшитой базовой поверхности. Меши без vertex
-    // colours дают COLOR = белый. lod_grass_enabled = 1.0 только на ближнем (LOD-0) материале,
-    // так что трава смещается лишь вблизи, где её видно.
-    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && v_world_height >= grass_min_height && v_world_height <= grass_max_height) {
+    // шов (особенно на границе LOD) остался на сшитой базовой поверхности. lod_grass_enabled=1
+    // только на ближнем LOD-0 материале — трава смещается лишь вблизи, где её видно.
+    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && wy >= grass_min_height && wy <= grass_max_height) {
         if (hash2D(v_pixel_uv) < grass_density) {
             vec3 offset = NORMAL * grass_height;
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
@@ -84,34 +95,17 @@ void vertex() {
 }
 
 void fragment() {
-    // Высотные зоны: песок -> трава -> снег.
-    float t_grass = smoothstep(height_grass_start - zone_blend,
-                                height_grass_start + zone_blend, v_world_height);
-    float t_snow  = smoothstep(height_snow_start  - zone_blend,
-                                height_snow_start  + zone_blend, v_world_height);
+    vec3 base_col = v_base_col;
 
-    vec3 zone_col = mix(color_sand.rgb, color_grass.rgb, t_grass);
-    zone_col      = mix(zone_col,       color_snow.rgb,  t_snow);
-
-    // Крутые склоны -> камень.
-    float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend,
-                                       rock_threshold + rock_blend, v_world_normal_y);
-    vec3 base_col = mix(zone_col, color_rock.rgb, rock_t);
-
-    // Попиксельный шум + тайл-текстура. В low_quality пропускаем (экономия fill).
+    // Только per-pixel: шум цвета + тайл-текстура. В low_quality пропускаем (экономия fill).
     if (!low_quality) {
-        float noise = (hash2D(v_pixel_uv) - 0.5) * color_variation;
-        base_col     = clamp(base_col + noise, 0.0, 1.0);
+        base_col = clamp(base_col + (hash2D(v_pixel_uv) - 0.5) * color_variation, 0.0, 1.0);
         if (texture_blend > 0.001) {
-            vec4 tile_col = texture(tile_texture, v_pixel_uv);
-            base_col = mix(base_col, tile_col.rgb, texture_blend);
+            base_col = mix(base_col, texture(tile_texture, v_pixel_uv).rgb, texture_blend);
         }
     }
 
-    // Вершины травы (v_is_grass=1) чуть ярче подстилки — простая тень под травой.
-    float shadow = mix(0.65, 1.0, v_is_grass);
-
-    ALBEDO    = base_col * shadow;
+    // Трава-вершины (v_is_grass=1) чуть ярче подстилки — простая тень под травой.
+    ALBEDO    = base_col * mix(0.65, 1.0, v_is_grass);
     ROUGHNESS = 0.9;
-    SPECULAR  = 0.0;
 }
