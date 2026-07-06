@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://c264bkenkyn5c"]
 
-[ext_resource type="Script" uid="uid://0ip7gd6i3a7l" path="res://WeaponBlock.gd" id="1_g6b45"]
+[ext_resource type="Script" uid="uid://euo01gggviqr" path="res://laser.gd" id="1_g6b45"]
 [ext_resource type="Texture2D" uid="uid://b86g0xq4jopks" path="res://objects/Laser_0.png" id="2_g6b45"]
 [ext_resource type="Script" uid="uid://b4io8r1rqborh" path="res://bullet.gd" id="3_bullet"]
 

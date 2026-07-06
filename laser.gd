@@ -1,126 +1,140 @@
-extends VehicleBlock
+extends WeaponBlock
+# Лазер = WeaponBlock, но БЕЗ пуль: бьёт hitscan-лучом (мгновенный урон по raycast) и
+# рисует красивый непрерывный луч (толстая светящаяся линия дуло→цель + вспышка у дула +
+# свечение в точке попадания). Переопределяем только _track_target (визуал+наводка) и
+# _handle_fire (урон лучом вместо fire_bullet). Базовый WeaponBlock (общий с пушкой) не трогаем.
 
-@export var laser_damage: int = 5
-@export var laser_range: float = 10.0
-@export var fire_rate: float = 0.2
-@export var raycast: RayCast3D
-@export var pivot: Node3D
+const BEAM_COLOR := Color(1.0, 0.15, 0.2)     # цвет луча
+const BEAM_RADIUS := 0.06
+const LASER_RANGE := 16.0
+const LASER_FIRE_RATE := 0.1                  # тик урона (частый = «непрерывный» луч)
+const LASER_DAMAGE := 3                       # урон за тик
 
-const YAW_LIMIT   = 45.0
-const PITCH_LIMIT = 30.0
-
-var _fire_timer: float = 0.0
-var _firing: bool = false
-var _targets: Array[Node3D] = []
-var _current_target: Node3D = null
+var _beam: MeshInstance3D = null
+var _beam_mat: StandardMaterial3D = null
+var _muzzle_glow: MeshInstance3D = null
+var _impact_glow: MeshInstance3D = null
+var _beam_t: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	raycast.target_position = Vector3(0, 0, -laser_range)
+	weapon_range = LASER_RANGE
+	fire_rate = LASER_FIRE_RATE
+	damage = LASER_DAMAGE
+	raycast.target_position = Vector3(0, 0, -weapon_range)
+	_build_beam()
 
-func _process(delta: float) -> void:
-	_update_current_target()
-	raycast.force_raycast_update()
-	_track_target(delta)
-	if not _firing:
-		return
-	if Input.is_action_just_released("Attack"):
-		_firing = false
-	_handle_fire(delta)
+func _build_beam() -> void:
+	# Луч: цилиндр вдоль -Z под raycast (как track_visual пушки, но ярче и толще).
+	_beam = MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = BEAM_RADIUS
+	cyl.bottom_radius = BEAM_RADIUS
+	cyl.height = 1.0
+	cyl.radial_segments = 6
+	_beam_mat = _glow_mat(BEAM_COLOR, 6.0)
+	cyl.material = _beam_mat
+	_beam.mesh = cyl
+	_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# CylinderMesh идёт вдоль Y → кладём вдоль -Z.
+	_beam.rotation = Vector3(-PI / 2, 0, 0)
+	_beam.visible = false
+	raycast.add_child(_beam)
 
-func attack() -> void:
-	_firing = true
+	# Вспышка у дула (Marker3D) и свечение в точке попадания.
+	_muzzle_glow = _make_glow_sphere(0.16, BEAM_COLOR, 7.0)
+	pivot.get_node("Marker3D").add_child(_muzzle_glow)
+	_impact_glow = _make_glow_sphere(0.22, BEAM_COLOR.lerp(Color(1, 1, 1), 0.4), 8.0)
+	add_child(_impact_glow)       # позиционируем в мировой точке попадания
+	_impact_glow.top_level = true
+	_impact_glow.visible = false
 
-func _is_in_cone(body: Node3D) -> bool:
-	var dir_world = (body.global_position - pivot.global_position).normalized()
-	var dir_local = pivot.global_transform.basis.inverse() * dir_world
-	var yaw   = abs(rad_to_deg(atan2(-dir_local.x, -dir_local.z)))
-	var pitch = abs(rad_to_deg(atan2(dir_local.y,
-			Vector2(dir_local.x, dir_local.z).length())))
-	return yaw <= YAW_LIMIT and pitch <= PITCH_LIMIT
+func _glow_mat(col: Color, energy: float) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(col.r, col.g, col.b, 0.85)
+	m.emission_enabled = true
+	m.emission = col
+	m.emission_energy_multiplier = energy
+	return m
 
-func _update_current_target() -> void:
-	#_targets = _targets.filter(func(t): return is_instance_valid(t) and _is_in_cone(t))
+func _make_glow_sphere(r: float, col: Color, energy: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = r
+	sm.height = r * 2.0
+	sm.radial_segments = 8
+	sm.rings = 4
+	sm.material = _glow_mat(col, energy)
+	mi.mesh = sm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
 
-	if _targets.is_empty():
-		_current_target = null
-		return
-
-	var closest: Node3D = null
-	var closest_dist = INF
-	for t in _targets:
-		var d = pivot.global_position.distance_to(t.global_position)
-		if d < closest_dist:
-			closest_dist = d
-			closest = t
-	_current_target = closest
-
-func _track_target(delta: float) -> void:
-	var laser_visual = raycast.get_node("laservisual")
-	var laser_mat = laser_visual.get_active_material(0)
-	var mesh = laser_visual.mesh as CylinderMesh
-
-	if _current_target == null or !_is_in_cone(_current_target):
-		raycast.debug_shape_custom_color = Color(0, 1, 0)
-		mesh.height = laser_range
-		laser_visual.position.z = -laser_range / 2.0
-		if laser_mat:
-			laser_mat.albedo_color = Color(0, 1, 0)
+# Наводка турели (как в базе) + рисование луча. Пушечный track_visual тут не используется.
+func _track_target(delta: float, firing: bool) -> void:
+	if not firing:
+		_beam.visible = false
+		_muzzle_glow.visible = false
+		_impact_glow.visible = false
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
 		return
 
-	# Берём центр AABB блока а не origin
-	var target_pos = _current_target.global_position
-	if _current_target is MeshInstance3D:
-		target_pos = _current_target.get_aabb().get_center() + _current_target.global_position
-	elif _current_target.has_node("CollisionShape3D"):
-		target_pos = _current_target.get_node("CollisionShape3D").global_position
-
-	var dir_world = (target_pos - pivot.global_position).normalized()
-	var dir_local = global_transform.basis.inverse() * dir_world
-
-	var yaw   = rad_to_deg(atan2(-dir_local.x, -dir_local.z))
-	var pitch = rad_to_deg(atan2(dir_local.y,
-			Vector2(dir_local.x, dir_local.z).length()))
-
-	yaw   = clamp(yaw,   -YAW_LIMIT,   YAW_LIMIT)
-	pitch = clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT)
-
-	if laser_mat:
-		laser_mat.albedo_color = Color(1, 0, 0)
-
-	var target_rot = Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0)
-	pivot.rotation = lerp(pivot.rotation, target_rot, 15.0 * delta)
-
-	if raycast.is_colliding():
-		raycast.debug_shape_custom_color = Color(1, 0, 0)
-		var hit_point = raycast.get_collision_point()
-		var dist = min(raycast.global_position.distance_to(hit_point), laser_range)
-		mesh.height = dist
-		laser_visual.position.z = -dist / 2.0
+	# Доворот на приоритетную точку цели (незакрытая кабина → ближайший блок), иначе в нейтраль.
+	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
+			and _is_in_cone(_current_target)
+	if has_target:
+		var tp := _aim_point_for(_current_target)
+		var dl := global_transform.basis.inverse() * (tp - pivot.global_position).normalized()
+		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -YAW_LIMIT, YAW_LIMIT)
+		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
 	else:
-		raycast.debug_shape_custom_color = Color(0, 1, 0)
-		mesh.height = laser_range
-		laser_visual.position.z = -laser_range / 2.0
+		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
 
+	# Длина луча: до точки попадания или на всю дальность.
+	var hit := raycast.is_colliding()
+	var length := weapon_range
+	if hit:
+		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
+
+	# Пульсация толщины и яркости — «живой» луч.
+	_beam_t += delta
+	var pulse := 0.85 + 0.15 * sin(_beam_t * 45.0)
+	_beam.visible = true
+	(_beam.mesh as CylinderMesh).height = length
+	_beam.position.z = -length * 0.5
+	_beam.scale = Vector3(pulse, 1.0, pulse)
+	_beam_mat.emission_energy_multiplier = 6.0 * pulse
+
+	_muzzle_glow.visible = true
+	_muzzle_glow.scale = Vector3.ONE * (0.8 + 0.4 * pulse)
+
+	_impact_glow.visible = hit
+	if hit:
+		_impact_glow.global_position = raycast.get_collision_point()
+		_impact_glow.scale = Vector3.ONE * (0.8 + 0.5 * sin(_beam_t * 60.0) * 0.5 + 0.4)
+
+# Урон лучом (hitscan) вместо пуль: по коллайдеру raycast, тиком fire_rate.
 func _handle_fire(delta: float) -> void:
-	if _current_target == null or not raycast.is_colliding():
+	if not raycast.is_colliding():
 		return
 	var body = raycast.get_collider()
-	if body == self or body.get_parent() == get_parent():
+	if body == null:
 		return
+	if body == self or body == _vehicle_root():
+		return
+	if body.get_parent() == get_parent():
+		return                                     # блок своей же машины
+	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root():
+		return                                     # свой щит-купол
 	_fire_timer -= delta
 	if _fire_timer > 0.0:
 		return
 	_fire_timer = fire_rate
 	if body.has_method("hurt"):
-		body.hurt(laser_damage)
+		body.hurt(damage)
 
-func _on_area_3d_body_entered(body: Node3D) -> void:
-	if body == self or body.get_parent() == get_parent():
-		return
-	if not _targets.has(body):
-		_targets.append(body)
-
-func _on_area_3d_body_exited(body: Node3D) -> void:
-	_targets.erase(body)
+# Лазер пулями не стреляет — на случай, если базовый путь позовёт.
+func fire_bullet() -> void:
+	pass
