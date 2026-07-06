@@ -99,5 +99,6 @@ func _collect_meshes(node: Node, result: Array) -> void:
 		_collect_meshes(child, result)
 
 func destroy() -> void:
+	BlockFX.play(self, true)          # эффект «матрицы» уничтожения (красные + глюк)
 	emit_signal("destroyed", self)
 	queue_free()
