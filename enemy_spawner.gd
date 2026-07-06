@@ -6,16 +6,22 @@ extends Node3D
 
 @export var enemy_scenes: Array[PackedScene]        # пул сцен врагов
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
-@export var max_enemies: int = 3
+@export var max_enemies: int = 9                    # было 3, ×3
 @export var spawn_interval: float = 6.0             # пауза между появлениями
 @export var spawn_min_dist: float = 45.0            # не ближе к игроку
 @export var spawn_max_dist: float = 85.0            # не дальше
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
+## Враг дальше far_dist от текущей машины дольше far_limit секунд — телепортируется обратно
+## в кольцо спавна возле игрока (не нашли точку — исчезает). Чтобы бой не «затухал», когда
+## игрок уехал от разбежавшихся врагов.
+@export var far_dist: float = 120.0
+@export var far_limit: float = 60.0
 @export var map_node: Node
 
 var _enemies: Array = []
+var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
 var _t: float = 0.0
 var _ready_done: bool = false
 
@@ -33,6 +39,7 @@ func _process(delta: float) -> void:
 	if not _ready_done:
 		return
 	_enemies = _enemies.filter(func(e): return is_instance_valid(e))
+	_track_far(delta)
 	if _enemies.size() >= max_enemies:
 		return
 	_t -= delta
@@ -40,6 +47,40 @@ func _process(delta: float) -> void:
 		return
 	_t = spawn_interval
 	_spawn_one()
+
+# Далёкие враги: кто дальше far_dist от текущей машины дольше far_limit — телепортируется
+# обратно в кольцо возле игрока (нет точки — исчезает). Так стычка не «уезжает» от игрока.
+func _track_far(delta: float) -> void:
+	for k in _far_time.keys():
+		if not is_instance_valid(k):
+			_far_time.erase(k)
+	var player: Node3D = _player()
+	if player == null:
+		return
+	var map: Node = _find_map()
+	for e in _enemies:
+		if not is_instance_valid(e):
+			continue
+		if player.global_position.distance_to(e.global_position) > far_dist:
+			_far_time[e] = _far_time.get(e, 0.0) + delta
+			if _far_time[e] >= far_limit:
+				_far_time.erase(e)
+				_relocate_enemy(e, map, player)
+		else:
+			_far_time.erase(e)
+
+func _relocate_enemy(enemy: Node3D, map: Node, player: Node3D) -> void:
+	if map == null:
+		enemy.queue_free()
+		return
+	var pos = _find_spawn_pos(map, player.global_position)
+	if pos == null:
+		enemy.queue_free()          # некуда переместить — просто исчезает
+		return
+	if enemy is RigidBody3D:
+		enemy.linear_velocity = Vector3.ZERO
+		enemy.angular_velocity = Vector3.ZERO
+	enemy.global_position = pos
 
 func _spawn_one() -> void:
 	if enemy_scenes.is_empty():
