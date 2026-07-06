@@ -7,7 +7,11 @@ group_uniforms Quality;
 uniform bool low_quality = false;
 
 group_uniforms Texture;
-uniform sampler2D tile_texture : source_color, filter_nearest;
+// filter_nearest_MIPMAP — ключ к FPS: без мипов дальние/наклонные тайлы читают разнесённые
+// тексели → сплошные промахи кэша текстур (главный fill-пожиратель, подтверждено тем, что
+// low_quality — он выключает эту выборку — давал +14 FPS). С мипами дальние пиксели берут
+// маленькие уровни → попадание в кэш, дёшево и без муара; вблизи nearest сохраняет пиксельность.
+uniform sampler2D tile_texture : source_color, filter_nearest_mipmap;
 // Размер тайла в мировых юнитах. Тайлинг считается из мировых XZ (см. vertex()), поэтому
 // подстраивается под любой размер карты и одинаков в игре и в редакторе.
 uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
@@ -52,7 +56,10 @@ group_uniforms;
 // (тяжёл именно попиксельно), а вершин на порядки меньше. Механики те же; на границах зон
 // переход становится линейным (вблизи, где сетка плотная, — незаметно; вдали и так мелко).
 // Во фрагменте остаётся только то, что обязано быть per-pixel: шум и тайл-текстура.
-varying vec2  v_pixel_uv;
+varying vec2  v_pixel_uv;    // квантованный (floor к сетке) — для стабильного шума и травы
+varying vec2  v_tile_uv;     // ГЛАДКИЙ — для выборки тайл-текстуры: только по нему GPU может
+                             // правильно выбрать мип-уровень (по производным ddx/ddy); от
+                             // квантованного v_pixel_uv производные ступенчатые → мип ломался.
 varying vec3  v_base_col;
 varying float v_is_grass;
 
@@ -65,7 +72,8 @@ float hash2D(vec2 p) {
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
-    v_pixel_uv = floor(world_pos.xz / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+    v_tile_uv  = world_pos.xz / tile_world_size;                                  // гладкий (текстура + мип)
+    v_pixel_uv = floor(v_tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;            // квантованный (шум/трава)
 
     // Высотные зоны (песок→трава→снег) + склон→камень — весь базовый цвет здесь.
     float t_grass = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
@@ -101,7 +109,7 @@ void fragment() {
     if (!low_quality) {
         base_col = clamp(base_col + (hash2D(v_pixel_uv) - 0.5) * color_variation, 0.0, 1.0);
         if (texture_blend > 0.001) {
-            base_col = mix(base_col, texture(tile_texture, v_pixel_uv).rgb, texture_blend);
+            base_col = mix(base_col, texture(tile_texture, v_tile_uv).rgb, texture_blend);
         }
     }
 
