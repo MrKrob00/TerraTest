@@ -55,10 +55,6 @@ Building={
 "events": []
 }
 
-[input_devices]
-
-pointing/android/enable_long_press_as_right_click=false
-
 [layer_names]
 
 3d_physics/layer_1="world"
@@ -81,4 +77,5 @@ lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
 scaling_3d/scale=0.75
+environment/glow/upscale_mode=0
 occlusion_culling/use_occlusion_culling=true

@@ -12,6 +12,7 @@
 [ext_resource type="PackedScene" uid="uid://dv0pgciocsbmf" path="res://processor.tscn" id="7_ealrb"]
 [ext_resource type="PackedScene" uid="uid://c1leq686mvs51" path="res://drill.tscn" id="8_tereu"]
 [ext_resource type="PackedScene" uid="uid://c264bkenkyn5c" path="res://laser.tscn" id="9_lggff"]
+[ext_resource type="Script" uid="uid://0ip7gd6i3a7l" path="res://WeaponBlock.gd" id="10_1q667"]
 [ext_resource type="PackedScene" uid="uid://mxhnqn0i2m1s" path="res://gun.tscn" id="10_s0gvp"]
 [ext_resource type="PackedScene" uid="uid://crogep0i3nb2s" path="res://resource_node.tscn" id="11_tereu"]
 [ext_resource type="PackedScene" uid="uid://c2t7vgexb38wm" path="res://resource.tscn" id="12_cdqbm"]
@@ -114,10 +115,7 @@ camera_attributes = SubResource("CameraAttributesPhysical_1q667")
 
 [node name="DirectionalLight3D2" type="DirectionalLight3D" parent="." unique_id=1149215750]
 transform = Transform3D(0.45055014, -0.31362793, 0.835848, -0.11317725, 0.90864134, 0.4019477, -0.8855481, -0.27569667, 0.37389287, 25.946136, 20.018013, 3.1658702)
-light_temperature = 5000.0
-light_energy = 1.652
-light_bake_mode = 1
-shadow_caster_mask = 4294967293
+light_energy = 1.645
 directional_shadow_mode = 0
 directional_shadow_split_1 = 0.04
 directional_shadow_split_2 = 0.11
@@ -154,6 +152,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.117151, 3.838951, -11.45313
 
 [node name="Laser" parent="objects" unique_id=172961242 instance=ExtResource("9_lggff")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5597343, 3.6736374, -8.266861)
+script = ExtResource("10_1q667")
 
 [node name="Gun" parent="objects" unique_id=1610090464 instance=ExtResource("10_s0gvp")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5379276, 2.885703, -9.327407)
@@ -435,9 +434,9 @@ text = "30 FPS"
 
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
+camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 stream_batch_size = 4
 heightmap_path = "res://terrain_height.res"
-camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")
