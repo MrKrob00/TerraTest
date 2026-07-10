@@ -25,6 +25,7 @@ config/reflection_atlas/reflection_size=256
 
 G="*res://G.gd"
 Dialogue="*res://dialogue.tscn"
+Music="*res://music_manager.gd"
 Q="*res://quest_manager.gd"
 
 [editor_plugins]
