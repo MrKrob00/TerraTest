@@ -16,11 +16,13 @@ enum Ctx { MENU, TRAVEL, BATTLE }
 
 # ── Параметры (подобраны по рисёрчу мобильных/консольных игр) ──────────────────
 const CROSSFADE := 2.0             # с: кроссфейд между треками/контекстами
-const BATTLE_ENTER_DELAY := 0.6    # с: враг рядом столько времени → бой (отсекает «мелькнул»)
+const BATTLE_ENTER_DELAY := 1.0    # с: враг рядом столько времени → бой (анти-«радар»: мгновенный бой телеграфирует невидимых врагов)
 const BATTLE_EXIT_DELAY := 8.0     # с: столько без врагов → обратно в travel (анти-дёрганье)
 const BATTLE_RADIUS := 32.0        # м: враг ближе — считается «рядом»
 const FAV_WEIGHT := 3.0            # любимый трек втрое вероятнее обычного
-const GAP_BETWEEN_TRACKS := 1.2    # с: пауза тишины между треками одного контекста
+const GAPS := {Ctx.MENU: 1.5, Ctx.TRAVEL: 10.0, Ctx.BATTLE: 0.8}
+# с: пауза тишины между треками. В TRAVEL заметная (10 с) НАМЕРЕННО — рисёрч (Skyrim,
+# Oblivion) показал: без пауз маленький плейлист приедается («same 30 seconds over and over»).
 const POLL := 0.4                  # с: период опроса контекста
 
 const DIRS := {Ctx.MENU: "res://music/menu", Ctx.TRAVEL: "res://music/travel", Ctx.BATTLE: "res://music/battle"}
@@ -38,13 +40,14 @@ var _ctx: int = Ctx.TRAVEL
 var _menu_open: bool = false
 var _cur: Dictionary = {}          # играющий трек ({} если тишина)
 var _last_file: Dictionary = {}    # Ctx -> имя файла последнего трека (не повторять подряд)
+var _resume: Dictionary = {}       # Ctx -> {file, pos}: прерванный трек контекста (возобновляем с места)
 var _a: AudioStreamPlayer
 var _b: AudioStreamPlayer
 var _active: AudioStreamPlayer     # кто из двух сейчас «основной»
 var _fade_tw: Tween = null
 var _poll_t: float = 0.0
 var _battle_seen: float = -1000.0  # когда последний раз видели врага рядом
-var _battle_first: float = -1.0    # когда врag впервые появился (для enter delay)
+var _battle_first: float = -1.0    # когда враг впервые появился (для enter delay)
 var _gap_left: float = 0.0
 
 func _ready() -> void:
@@ -135,8 +138,17 @@ func _recompute_context(force: bool) -> void:
 		if now - _battle_seen < BATTLE_EXIT_DELAY:
 			want = Ctx.BATTLE
 	if want != _ctx or force:
+		_save_resume(_ctx)          # запоминаем, где прервали трек уходящего контекста
 		_ctx = want
 		_play_for_context()
+
+# Трек прерван переключением контекста (не доиграл сам) → запоминаем позицию, чтобы при
+# возврате в контекст продолжить С ТОГО ЖЕ МЕСТА (рисёрч: иначе игрок слышит первые
+# 30 секунд трека сотни раз — Xenoblade X добавили resume патчем по жалобам).
+func _save_resume(ctx: int) -> void:
+	if _cur.is_empty() or not _active.playing:
+		return
+	_resume[ctx] = {"file": _cur["file"], "pos": _active.get_playback_position()}
 
 func _enemy_near() -> bool:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
@@ -157,6 +169,17 @@ func _enemy_near() -> bool:
 # ── Выбор и запуск треков ──────────────────────────────────────────────────────
 
 func _play_for_context() -> void:
+	# Возврат в контекст с прерванным треком → продолжаем его с места остановки.
+	var r: Dictionary = _resume.get(_ctx, {})
+	if not r.is_empty():
+		_resume.erase(_ctx)
+		if not banned.has(r["file"]):
+			for tr in tracks.get(_ctx, []):
+				if tr["file"] == r["file"]:
+					if tr.get("file", "") == _cur.get("file", "") and _active.playing:
+						return
+					_start_track(tr, true, float(r["pos"]))
+					return
 	var t := _pick(_ctx)
 	# Тот же трек уже играет (например, force-пересчёт) — не перезапускаем.
 	if not t.is_empty() and t.get("file", "") == _cur.get("file", "") and _active.playing:
@@ -188,7 +211,7 @@ func _pick(ctx: int) -> Dictionary:
 			return t
 	return candidates.back()
 
-func _start_track(t: Dictionary, crossfade: bool) -> void:
+func _start_track(t: Dictionary, crossfade: bool, from_pos: float = 0.0) -> void:
 	_gap_left = 0.0
 	if t.is_empty() or not enabled:
 		_fade_out_all()
@@ -197,12 +220,15 @@ func _start_track(t: Dictionary, crossfade: bool) -> void:
 	var stream := load(t["path"]) as AudioStream
 	if stream == null:
 		return
+	# Resume у самого конца трека смысла не имеет — начинаем с нуля.
+	if from_pos > 0.0 and stream.get_length() > 0.0 and from_pos >= stream.get_length() - 10.0:
+		from_pos = 0.0
 	_cur = t
 	_last_file[_ctx] = t["file"]
 	var next: AudioStreamPlayer = _b if _active == _a else _a
 	next.stream = stream
 	next.volume_db = linear_to_db(0.0001)
-	next.play()
+	next.play(from_pos)
 	var old := _active
 	_active = next
 	if _fade_tw != null and _fade_tw.is_valid():
@@ -231,7 +257,7 @@ func _on_track_finished(p: AudioStreamPlayer) -> void:
 	if p != _active or _cur.is_empty():
 		return
 	_cur = {}
-	_gap_left = GAP_BETWEEN_TRACKS
+	_gap_left = float(GAPS.get(_ctx, 1.5))
 
 # ── Сканирование треков ────────────────────────────────────────────────────────
 
