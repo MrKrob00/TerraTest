@@ -535,9 +535,8 @@ func _on_tech_ui_visibility() -> void:
 	# Инвентарь открыт → прячем игровой HUD; закрыт → возвращаем как было.
 	var open: bool = _tech_ui != null and _tech_ui.visible
 	_set_game_controls_hidden(open)
-	var music := get_node_or_null("/root/Music")
-	if music:
-		music.set_menu_open(open)          # гараж = музыка «меню»
+	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
+	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).
 	# Уводим трекер квестов вниз, чтобы не перекрывал статистику и кнопку закрытия.
 	for q in get_tree().get_nodes_in_group("quests"):
 		if q.has_method("set_inventory_open"):

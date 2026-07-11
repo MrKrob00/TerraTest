@@ -482,10 +482,11 @@ func _build_music_tab() -> void:
 		var mm := _music()
 		if mm: mm.set_volume(v))
 	vol_row.add_child(vol)
-	# Секции по типам
-	var sections := [["МЕНЮ", m.Ctx.MENU], ["ПУТЕШЕСТВИЕ", m.Ctx.TRAVEL], ["БОЙ", m.Ctx.BATTLE]]
+	# Два списка: путешествия (играют и в гараже) и отдельно сражения. Без «меню» —
+	# тот тип зарезервирован под будущее главное меню игры.
+	var sections := [["Путешествия", m.Ctx.TRAVEL], ["Сражения", m.Ctx.BATTLE]]
 	for s in sections:
-		_extra_header("— %s —" % s[0])
+		_extra_header(str(s[0]))
 		var list: Array = m.tracks.get(s[1], [])
 		if list.is_empty():
 			var empty := Label.new()
@@ -497,43 +498,76 @@ func _build_music_tab() -> void:
 		for tr in list:
 			_extra_vb.add_child(_music_row(m, tr, cur))
 
-# Строка трека: ♥ (любимое, чаще) / ✖ (не играть) + «Название — Автор», ▶ у играющего.
+# ── Иконки строк музыки: рисуются кодом (юникод-глифы ♥/✖ не рендерились шрифтом) ──
+class HeartIcon extends Control:
+	var active := false
+	func _draw() -> void:
+		var c := size * 0.5 + Vector2(0, -1)
+		var col := Color(1.0, 0.35, 0.5) if active else Color(0.45, 0.47, 0.52)
+		var r := 5.0
+		draw_circle(c + Vector2(-r, -2), r, col)
+		draw_circle(c + Vector2(r, -2), r, col)
+		draw_colored_polygon(PackedVector2Array([
+			c + Vector2(-2.0 * r, 0.5), c + Vector2(2.0 * r, 0.5), c + Vector2(0, 11.0)]), col)
+
+class BanIcon extends Control:
+	var active := false
+	func _draw() -> void:
+		var c := size * 0.5
+		# «Не любимое» — всегда красный: тусклый в покое, яркий когда включён.
+		var col := Color(1.0, 0.25, 0.2) if active else Color(0.62, 0.2, 0.18)
+		var a := 7.0
+		draw_line(c + Vector2(-a, -a), c + Vector2(a, a), col, 3.5)
+		draw_line(c + Vector2(-a, a), c + Vector2(a, -a), col, 3.5)
+
+# Строка трека: слева НАЗВАНИЕ (сверху) и под ним автор (мелко, серым), справа кнопки
+# ♥ (любимое — играет чаще) и ✖ (не играть). ▶ у играющего.
 func _music_row(m: Node, t: Dictionary, cur: Dictionary) -> Control:
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", 8)
 	var file: String = t["file"]
-	var fav_btn := Button.new()
-	fav_btn.text = "♥"
-	fav_btn.tooltip_text = "Любимый: играет чаще"
-	fav_btn.toggle_mode = true
-	fav_btn.button_pressed = m.fav.has(file)
-	fav_btn.custom_minimum_size = Vector2(40, 36)
-	fav_btn.add_theme_color_override("font_color", Color(1, 0.4, 0.55) if m.fav.has(file) else Color(0.5, 0.5, 0.55))
-	fav_btn.add_theme_color_override("font_pressed_color", Color(1, 0.4, 0.55))
-	fav_btn.toggled.connect(func(on: bool) -> void: m.set_favorite(file, on))
-	row.add_child(fav_btn)
-	var ban_btn := Button.new()
-	ban_btn.text = "✖"
-	ban_btn.tooltip_text = "Не играть никогда"
-	ban_btn.toggle_mode = true
-	ban_btn.button_pressed = m.banned.has(file)
-	ban_btn.custom_minimum_size = Vector2(40, 36)
-	ban_btn.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if m.banned.has(file) else Color(0.5, 0.5, 0.55))
-	ban_btn.add_theme_color_override("font_pressed_color", Color(1, 0.35, 0.3))
-	ban_btn.toggled.connect(func(on: bool) -> void: m.set_banned(file, on))
-	row.add_child(ban_btn)
-	var name_lbl := Label.new()
 	var playing: bool = cur.get("file", "") == file
-	name_lbl.text = ("▶ " if playing else "") + "%s — %s" % [t["title"], t["author"]]
-	name_lbl.add_theme_font_size_override("font_size", 14)
-	name_lbl.clip_text = true
-	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 0)
+	row.add_child(info)
+	var title := Label.new()
+	title.text = ("▶ " if playing else "") + str(t["title"])
+	title.add_theme_font_size_override("font_size", 15)
+	title.clip_text = true
 	if m.banned.has(file):
-		name_lbl.modulate = Color(1, 1, 1, 0.4)
+		title.modulate = Color(1, 1, 1, 0.4)
 	elif playing:
-		name_lbl.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
-	row.add_child(name_lbl)
+		title.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
+	info.add_child(title)
+	var author := Label.new()
+	author.text = str(t["author"])
+	author.add_theme_font_size_override("font_size", 12)
+	author.add_theme_color_override("font_color", Color(0.55, 0.58, 0.62))
+	author.clip_text = true
+	if m.banned.has(file):
+		author.modulate = Color(1, 1, 1, 0.4)
+	info.add_child(author)
+
+	row.add_child(_music_icon_btn(HeartIcon.new(), m.fav.has(file), "Любимый: играет чаще",
+			func(on: bool) -> void: m.set_favorite(file, on)))
+	row.add_child(_music_icon_btn(BanIcon.new(), m.banned.has(file), "Не играть никогда",
+			func(on: bool) -> void: m.set_banned(file, on)))
 	return row
+
+func _music_icon_btn(icon: Control, active: bool, tip: String, on_toggle: Callable) -> Button:
+	var b := Button.new()
+	b.toggle_mode = true
+	b.button_pressed = active
+	b.tooltip_text = tip
+	b.custom_minimum_size = Vector2(42, 40)
+	icon.set("active", active)
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(icon)
+	b.toggled.connect(on_toggle)
+	return b
 
 # ── Вкладка НАСТРОЙКИ ──────────────────────────────────────────────────────────
 # Авто-FPS (система в Main.gd: держит целевой FPS, меняя масштаб рендера). Авто
