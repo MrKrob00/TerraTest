@@ -15,10 +15,51 @@ var fps_buffer: Array[float] = []    # Буфер для усереднення 
 var buffer_size: int = 30            # Згладжування за останні 30 кадрів (~0.5 сек при 60 FPS)
 var cooldown_timer: float = 0.0      # Таймер блокування підвищення
 
+# ── Настройки (управляются вкладкой НАСТРОЙКИ в гараже, персист в user://) ──────
+const SETTINGS_PATH := "user://settings.json"
+var auto_fps: bool = true            # ВКЛ = авто-скейл по FPS; ВЫКЛ = ручной масштаб
+var manual_scale: float = 0.75       # масштаб рендера при выключенном авто
+
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
+	_load_settings()
+	if not auto_fps:
+		current_scale = manual_scale
+		get_viewport().scaling_3d_scale = manual_scale
+
+# Вкл/выкл авто-FPS. При выключении сразу применяется ручной масштаб.
+func set_auto_fps(on: bool) -> void:
+	auto_fps = on
+	if not on:
+		current_scale = manual_scale
+		get_viewport().scaling_3d_scale = manual_scale
+	fps_buffer.clear()
+	_save_settings()
+
+# Ручной масштаб рендера (работает при выключенном авто).
+func set_manual_scale(v: float) -> void:
+	manual_scale = clampf(v, SCALE_MIN, SCALE_MAX)
+	if not auto_fps:
+		current_scale = manual_scale
+		get_viewport().scaling_3d_scale = manual_scale
+	_save_settings()
+
+func _save_settings() -> void:
+	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"auto_fps": auto_fps, "manual_scale": manual_scale}))
+
+func _load_settings() -> void:
+	if not FileAccess.file_exists(SETTINGS_PATH):
+		return
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
+	if parsed is Dictionary:
+		auto_fps = bool(parsed.get("auto_fps", true))
+		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
 
 func _process(delta: float) -> void:
+	if not auto_fps:
+		return                        # ручной режим: масштаб держит игрок
 	# 1. Оновлюємо таймер затримки
 	if cooldown_timer > 0:
 		cooldown_timer -= delta
