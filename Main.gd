@@ -5,15 +5,18 @@ const TARGET_FPS: float = 55.0       # Цільовий FPS, нижче яког
 const SAFE_FPS_UP: float = 58.0      # FPS, вище якого можна спробувати ПІДВИЩИТИ якість
 const COOLDOWN_TIME: float = 3.0     # Скільки секунд чекати після ПІДВИЩЕННЯ, перш ніж підвищувати знову
 
-const SCALE_MIN: float = 0.25         # Мінімальний масштаб (25%)
-const SCALE_MAX: float = 2.0         # Максимальний масштаб (200%)
-const SCALE_STEP: float = 0.1       # Крок зміни масштабу (10%)
+const SCALE_MIN: float = 0.25        # Мінімальний масштаб (25%)
+const SCALE_MAX: float = 2.0         # Максимальний масштаб (200% — супер-семплінг для топових пристроїв)
+const SCALE_STEP: float = 0.1        # Крок зміни масштабу (10%)
 
 # --- ВНУТРІШНІ ЗМІННІ ---
 var current_scale: float = 1.0
 var fps_buffer: Array[float] = []    # Буфер для усереднення кадрів
 var buffer_size: int = 30            # Згладжування за останні 30 кадрів (~0.5 сек при 60 FPS)
 var cooldown_timer: float = 0.0      # Таймер блокування підвищення
+
+const SETTLE_TIME: float = 0.5       # Пауза после ЛЮБОЙ смены масштаба, пока буфер не наполнится заново
+var settle_timer: float = 0.0        # реальными кадрами — иначе следующий тик судит по 1 кадру и сразу
 
 # ── Настройки (управляются вкладкой НАСТРОЙКИ в гараже, персист в user://) ──────
 const SETTINGS_PATH := "user://settings.json"
@@ -63,12 +66,19 @@ func _process(delta: float) -> void:
 	# 1. Оновлюємо таймер затримки
 	if cooldown_timer > 0:
 		cooldown_timer -= delta
+	if settle_timer > 0:
+		settle_timer -= delta
 
 	# 2. Збираємо статистику FPS (усереднюємо значення)
 	fps_buffer.append(Engine.get_frames_per_second())
 	if fps_buffer.size() > buffer_size:
 		fps_buffer.pop_front()
-	
+
+	# Пока не улеглось после последней смены масштаба — не судим по свежему буферу
+	# (1-2 кадра сразу после ресайза — не показатель, буфер ещё не набрал реальных значений)
+	if settle_timer > 0:
+		return
+
 	# Обчислюємо середній FPS за останні пів секунди
 	var sum: float = 0.0
 	for f in fps_buffer:
@@ -76,20 +86,22 @@ func _process(delta: float) -> void:
 	var avg_fps: float = sum / fps_buffer.size()
 
 	# 3. ЛОГІКА ЗМІНИ РОЗДІЛЬНОЇ ЗДАТНОСТІ
-	
+
 	# КРИТИЧНЕ ПАДІННЯ: Якщо FPS впав нижче цілі — реагуємо МИТТЄВО
 	if avg_fps < TARGET_FPS and current_scale > SCALE_MIN:
 		change_scale(-SCALE_STEP)
 		# Скидаємо буфер, щоб система оцінила новий FPS вже з новою роздільною здатністю
-		fps_buffer.clear() 
+		fps_buffer.clear()
+		settle_timer = SETTLE_TIME
 		return
 
 	# ПІДВИЩЕННЯ ЯКОСТІ: Тільки якщо FPS стабільно високий ТА пройшов час затримки (cooldown)
 	if avg_fps >= SAFE_FPS_UP and current_scale < SCALE_MAX and cooldown_timer <= 0:
 		change_scale(SCALE_STEP)
 		fps_buffer.clear()
+		settle_timer = SETTLE_TIME
 		# Встановлюємо таймаут: не підвищувати якість наступні 3 секунди
-		cooldown_timer = COOLDOWN_TIME 
+		cooldown_timer = COOLDOWN_TIME
 
 # Функція безпечної зміни масштабу
 func change_scale(amount: float) -> void:
