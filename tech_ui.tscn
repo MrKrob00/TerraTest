@@ -96,6 +96,18 @@ layout_mode = 2
 toggle_mode = true
 text = "СБОРКИ"
 
+[node name="TabMusic" type="Button" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "МУЗЫКА"
+
+[node name="TabSettings" type="Button" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "НАСТРОЙКИ"
+
 [node name="Spacer" type="Control" parent="Root/TopBar/TopRow"]
 layout_mode = 2
 size_flags_horizontal = 3

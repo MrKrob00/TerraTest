@@ -6,12 +6,12 @@ extends Control
 #   • СБОРКИ    — сохранение/применение раскладок машины.
 #   • Справа    — имя машины, построено/в наличии блоков, масса машины (всё из игры).
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS }
 
 @onready var _grid:   GridContainer = %Grid
 @onready var _search: LineEdit      = %Search
 @onready var _tab_buttons: Array = [
-	%TabInventory, %TabShop, %TabSnapshots
+	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings
 ]
 
 var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
@@ -59,6 +59,7 @@ func _ready() -> void:
 		# BATTERY/SOLAR/REGEN/SHIELD не в явных категориях -> попадают в «Остальные»
 	}
 	_build_filter_column()
+	_build_extra_panel()
 	if _search:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
@@ -330,6 +331,21 @@ func _select_tab(idx: int) -> void:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
 		_filter_col.visible = (_tab == TAB_SHOP)
+	# МУЗЫКА/НАСТРОЙКИ живут в спец-панели вместо сетки блоков (и без поиска).
+	var extra: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
+	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
+	if grid_scroll:
+		grid_scroll.visible = not extra
+	if _extra_scroll:
+		_extra_scroll.visible = extra
+	if _search:
+		_search.visible = not extra
+	if extra:
+		if _tab == TAB_MUSIC:
+			_build_music_tab()
+		else:
+			_build_settings_tab()
+		return
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
 
@@ -379,3 +395,193 @@ func set_reactor(used: int, total: int) -> void:
 func set_weight(kg: int) -> void:
 	if has_node("%WeightValue"):
 		%WeightValue.text = "%d kg" % kg
+
+# ── Спец-панель для вкладок МУЗЫКА и НАСТРОЙКИ (вместо сетки блоков) ───────────
+var _extra_scroll: ScrollContainer = null
+var _extra_vb: VBoxContainer = null
+
+func _build_extra_panel() -> void:
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
+		return
+	_extra_scroll = ScrollContainer.new()
+	_extra_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_extra_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_extra_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_extra_scroll.visible = false
+	body.add_child(_extra_scroll)
+	_extra_vb = VBoxContainer.new()
+	_extra_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_extra_vb.add_theme_constant_override("separation", 6)
+	_extra_scroll.add_child(_extra_vb)
+	# Обновление вкладки МУЗЫКА при смене трека/предпочтений.
+	var m := _music()
+	if m:
+		m.prefs_changed.connect(func() -> void:
+			if visible and _tab == TAB_MUSIC: _build_music_tab())
+		m.track_changed.connect(func(_t: String, _a: String) -> void:
+			if visible and _tab == TAB_MUSIC: _build_music_tab())
+
+func _music() -> Node:
+	return get_node_or_null("/root/Music")
+
+func _clear_extra() -> void:
+	for c in _extra_vb.get_children():
+		c.queue_free()
+
+func _extra_header(text: String) -> void:
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.add_theme_font_size_override("font_size", 14)
+	lbl.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.9))
+	_extra_vb.add_child(lbl)
+
+# ── Вкладка МУЗЫКА ─────────────────────────────────────────────────────────────
+func _build_music_tab() -> void:
+	if _extra_vb == null:
+		return
+	_clear_extra()
+	var m := _music()
+	if m == null:
+		_extra_header("Музыкальная система не подключена")
+		return
+	var cur: Dictionary = m.current_track()
+	# Сейчас играет + пропуск
+	var now_row := HBoxContainer.new()
+	_extra_vb.add_child(now_row)
+	var now := Label.new()
+	now.text = ("▶ %s — %s  [%s]" % [cur.get("title", ""), cur.get("author", ""), m.context_name()]) \
+			if not cur.is_empty() else "Тишина (нет треков или всё выключено)"
+	now.add_theme_font_size_override("font_size", 13)
+	now.add_theme_color_override("font_color", Color(0.75, 0.95, 0.8))
+	now.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	now.clip_text = true
+	now_row.add_child(now)
+	var skip := Button.new()
+	skip.text = "⏭"
+	skip.tooltip_text = "Следующий трек"
+	skip.custom_minimum_size = Vector2(44, 38)
+	skip.pressed.connect(func() -> void:
+		var mm := _music()
+		if mm: mm.skip())
+	now_row.add_child(skip)
+	# Громкость
+	var vol_row := HBoxContainer.new()
+	_extra_vb.add_child(vol_row)
+	var vol_lbl := Label.new()
+	vol_lbl.text = "Громкость"
+	vol_lbl.add_theme_font_size_override("font_size", 13)
+	vol_row.add_child(vol_lbl)
+	var vol := HSlider.new()
+	vol.min_value = 0.0
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = m.volume
+	vol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vol.value_changed.connect(func(v: float) -> void:
+		var mm := _music()
+		if mm: mm.set_volume(v))
+	vol_row.add_child(vol)
+	# Секции по типам
+	var sections := [["МЕНЮ", m.Ctx.MENU], ["ПУТЕШЕСТВИЕ", m.Ctx.TRAVEL], ["БОЙ", m.Ctx.BATTLE]]
+	for s in sections:
+		_extra_header("— %s —" % s[0])
+		var list: Array = m.tracks.get(s[1], [])
+		if list.is_empty():
+			var empty := Label.new()
+			empty.text = "   (треков нет — кинь .ogg в music/)"
+			empty.add_theme_font_size_override("font_size", 12)
+			empty.modulate = Color(1, 1, 1, 0.45)
+			_extra_vb.add_child(empty)
+			continue
+		for tr in list:
+			_extra_vb.add_child(_music_row(m, tr, cur))
+
+# Строка трека: ♥ (любимое, чаще) / ✖ (не играть) + «Название — Автор», ▶ у играющего.
+func _music_row(m: Node, t: Dictionary, cur: Dictionary) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var file: String = t["file"]
+	var fav_btn := Button.new()
+	fav_btn.text = "♥"
+	fav_btn.tooltip_text = "Любимый: играет чаще"
+	fav_btn.toggle_mode = true
+	fav_btn.button_pressed = m.fav.has(file)
+	fav_btn.custom_minimum_size = Vector2(40, 36)
+	fav_btn.add_theme_color_override("font_color", Color(1, 0.4, 0.55) if m.fav.has(file) else Color(0.5, 0.5, 0.55))
+	fav_btn.add_theme_color_override("font_pressed_color", Color(1, 0.4, 0.55))
+	fav_btn.toggled.connect(func(on: bool) -> void: m.set_favorite(file, on))
+	row.add_child(fav_btn)
+	var ban_btn := Button.new()
+	ban_btn.text = "✖"
+	ban_btn.tooltip_text = "Не играть никогда"
+	ban_btn.toggle_mode = true
+	ban_btn.button_pressed = m.banned.has(file)
+	ban_btn.custom_minimum_size = Vector2(40, 36)
+	ban_btn.add_theme_color_override("font_color", Color(1, 0.35, 0.3) if m.banned.has(file) else Color(0.5, 0.5, 0.55))
+	ban_btn.add_theme_color_override("font_pressed_color", Color(1, 0.35, 0.3))
+	ban_btn.toggled.connect(func(on: bool) -> void: m.set_banned(file, on))
+	row.add_child(ban_btn)
+	var name_lbl := Label.new()
+	var playing: bool = cur.get("file", "") == file
+	name_lbl.text = ("▶ " if playing else "") + "%s — %s" % [t["title"], t["author"]]
+	name_lbl.add_theme_font_size_override("font_size", 14)
+	name_lbl.clip_text = true
+	name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if m.banned.has(file):
+		name_lbl.modulate = Color(1, 1, 1, 0.4)
+	elif playing:
+		name_lbl.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
+	row.add_child(name_lbl)
+	return row
+
+# ── Вкладка НАСТРОЙКИ ──────────────────────────────────────────────────────────
+# Авто-FPS (система в Main.gd: держит целевой FPS, меняя масштаб рендера). Авто
+# выключено → полоска ручного выбора масштаба.
+func _build_settings_tab() -> void:
+	if _extra_vb == null:
+		return
+	_clear_extra()
+	var main: Node = get_node_or_null("/root/Main")
+	_extra_header("— ГРАФИКА —")
+	if main == null or not ("auto_fps" in main):
+		_extra_header("Main с авто-FPS не найден")
+		return
+	var auto_btn := CheckButton.new()
+	auto_btn.text = "Авто FPS (масштаб рендера подстраивается сам)"
+	auto_btn.button_pressed = bool(main.auto_fps)
+	auto_btn.add_theme_font_size_override("font_size", 14)
+	_extra_vb.add_child(auto_btn)
+
+	var scale_row := HBoxContainer.new()
+	scale_row.visible = not bool(main.auto_fps)
+	_extra_vb.add_child(scale_row)
+	var scale_lbl := Label.new()
+	scale_lbl.text = "Масштаб: %d%%" % int(round(float(main.manual_scale) * 100.0))
+	scale_lbl.custom_minimum_size = Vector2(130, 0)
+	scale_lbl.add_theme_font_size_override("font_size", 13)
+	scale_row.add_child(scale_lbl)
+	var scale_sl := HSlider.new()
+	scale_sl.min_value = 0.5
+	scale_sl.max_value = 1.0
+	scale_sl.step = 0.05
+	scale_sl.value = float(main.manual_scale)
+	scale_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scale_sl.value_changed.connect(func(v: float) -> void:
+		scale_lbl.text = "Масштаб: %d%%" % int(round(v * 100.0))
+		var mn: Node = get_node_or_null("/root/Main")
+		if mn and mn.has_method("set_manual_scale"):
+			mn.set_manual_scale(v))
+	scale_row.add_child(scale_sl)
+
+	auto_btn.toggled.connect(func(on: bool) -> void:
+		var mn: Node = get_node_or_null("/root/Main")
+		if mn and mn.has_method("set_auto_fps"):
+			mn.set_auto_fps(on)
+		scale_row.visible = not on)
+
+	var hint := Label.new()
+	hint.text = "Ниже масштаб = выше FPS, мягче картинка. Авто держит ~55 FPS."
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(hint)
