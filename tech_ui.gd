@@ -596,8 +596,8 @@ func _build_settings_tab() -> void:
 	scale_lbl.add_theme_font_size_override("font_size", 13)
 	scale_row.add_child(scale_lbl)
 	var scale_sl := HSlider.new()
-	scale_sl.min_value = 0.5
-	scale_sl.max_value = 1.0
+	scale_sl.min_value = 0.25
+	scale_sl.max_value = 2.0
 	scale_sl.step = 0.05
 	scale_sl.value = float(main.manual_scale)
 	scale_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -615,7 +615,7 @@ func _build_settings_tab() -> void:
 		scale_row.visible = not on)
 
 	var hint := Label.new()
-	hint.text = "Ниже масштаб = выше FPS, мягче картинка. Авто держит ~55 FPS."
+	hint.text = "Авто режим держит ~55 FPS."
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(hint)
