@@ -992,7 +992,7 @@ func _on_take_pressed() -> void:
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
-	elif block_body:
+	elif block_body != null and is_instance_valid(block_body):
 		if block_body.get_parent().name in "blocks":
 			block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
@@ -1024,6 +1024,14 @@ func apply_build(layout: Array) -> void:
 	if block_map_node == null or not block_map_node.has_method("apply_layout"):
 		return
 	Wheels.clear()                          # старые колёса исчезнут, новые сами добавятся
+	# Сброс стройочного состояния: старые блоки сейчас будут удалены, и подвисшие ссылки
+	# ломали стройку — block_body указывал на мёртвый блок (краш при «Взять»), а светяшка
+	# застывала в воздухе на его последней позиции.
+	block_body = null
+	_preview_res = null
+	_cabin_ground = null
+	if ghost_block:
+		ghost_block.visible = false
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
