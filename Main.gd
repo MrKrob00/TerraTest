@@ -5,9 +5,9 @@ const TARGET_FPS: float = 55.0       # Цільовий FPS, нижче яког
 const SAFE_FPS_UP: float = 58.0      # FPS, вище якого можна спробувати ПІДВИЩИТИ якість
 const COOLDOWN_TIME: float = 3.0     # Скільки секунд чекати після ПІДВИЩЕННЯ, перш ніж підвищувати знову
 
-const SCALE_MIN: float = 0.5         # Мінімальний масштаб (50%)
-const SCALE_MAX: float = 1.0         # Максимальний масштаб (100%)
-const SCALE_STEP: float = 0.05       # Крок зміни масштабу (5%)
+const SCALE_MIN: float = 0.25         # Мінімальний масштаб (25%)
+const SCALE_MAX: float = 2.0         # Максимальний масштаб (200%)
+const SCALE_STEP: float = 0.1       # Крок зміни масштабу (10%)
 
 # --- ВНУТРІШНІ ЗМІННІ ---
 var current_scale: float = 1.0
