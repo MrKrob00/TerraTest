@@ -463,13 +463,17 @@ func _physics_process(delta: float) -> void:
 		angular_velocity.z += rotation.z
 		return
 
-	if Input.is_action_pressed("Attack"):
+	var typing := _typing_in_ui()
+	if Input.is_action_pressed("Attack") and not typing:
 		_on_attack_timeout()
 
 	var joy := camera_controller.joystick_move.get_joystick_dir()
 	# ПК: WASD/стрелки дают тот же Vector2, что и тач-джойстик (см. _process_input ниже).
 	# Суммируем с джойстиком и клампим — вместе на практике не используются, но так честно.
-	joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
+	# Гасим клавиатурную часть, пока фокус в текстовом поле (напр. поиск в гараже) —
+	# иначе набор "wasd" в строке поиска ещё и гонял бы машину.
+	if not typing:
+		joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
 	_process_input(joy, delta)
 	_check_ground()
 	_sync_mass()
@@ -681,8 +685,16 @@ var build_basis: Basis = Basis()
 var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
 var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
 
+# Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,
+# Take/TakeOff/Building/Movement/Attack — все читаются по сырому состоянию клавиши, в обход
+# фокуса UI) иначе срабатывали бы прямо во время печати. Мышь/тач это не трогает.
+func _typing_in_ui() -> bool:
+	var vp := get_viewport()
+	return vp != null and vp.gui_get_focus_owner() is LineEdit
+
 func _input(event: InputEvent) -> void:
 	if !is_active: return
+	if _typing_in_ui(): return
 	if Building:
 		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
 		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
