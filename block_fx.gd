@@ -23,7 +23,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 			host = block.get_tree().current_scene
 	if host == null:
 		return
-	var aabb := _world_aabb(block)
+	var aabb := _local_aabb(block)
 
 	var fx := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -34,13 +34,19 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	mat.shader = SHADER
 	mat.set_shader_parameter("mode", 1 if destroy else 0)
 	mat.set_shader_parameter("progress", 0.0)
+	# Свой узор цифр на каждый блок (сетка теперь в локальных осях, без этого узор был бы
+	# одинаковым у всех блоков).
+	mat.set_shader_parameter("seed",
+			wrapf(block.global_position.x * 3.7 + block.global_position.z * 7.1, 0.0, 100.0))
 	fx.material_override = mat
 	host.add_child(fx)
-	# Мировой трансформ (позиция + масштаб В МИРОВЫХ осях) выставляем ПОСЛЕ add_child: как
-	# ребёнок хоста эффект сохранит относительное положение и дальше едет вместе с ним.
-	# Масштаб через глобальный базис — локальный scale на повёрнутом блоке путал оси.
+	# Трансформ выставляем ПОСЛЕ add_child: как ребёнок хоста эффект сохранит относительное
+	# положение и дальше едет вместе с ним. Коробка строится В ОСЯХ БЛОКА (его позиция + его
+	# ПОВОРОТ + локальный AABB): раньше базис был мировой, без ротации — на повёрнутом блоке
+	# эффект стоял криво и не вращался вместе с ним.
 	var box_size := aabb.size * 1.05 + Vector3(0.05, 0.05, 0.05)   # чуть больше блока
-	fx.global_transform = Transform3D(Basis().scaled(box_size), aabb.get_center())
+	fx.global_transform = block.global_transform \
+			* Transform3D(Basis().scaled(box_size), aabb.get_center())
 
 	var dur := duration
 	if dur <= 0.0:
@@ -49,8 +55,11 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, dur)
 	tw.tween_callback(fx.queue_free)
 
-# Мировой AABB блока: объединяем AABB всех его MeshInstance3D (в мировых координатах).
-static func _world_aabb(block: Node3D) -> AABB:
+# AABB блока В ЕГО СОБСТВЕННЫХ ОСЯХ: объединяем AABB всех MeshInstance3D, переведя их
+# в систему координат блока. Повёрнутый блок получает плотную коробку по своим граням,
+# а не раздутый мировой AABB.
+static func _local_aabb(block: Node3D) -> AABB:
+	var inv := block.global_transform.affine_inverse()
 	var acc := AABB()
 	var has := false
 	var stack: Array = [block]
@@ -60,18 +69,18 @@ static func _world_aabb(block: Node3D) -> AABB:
 			stack.append(c)
 		if n is MeshInstance3D and n.mesh != null:
 			var la: AABB = n.get_aabb()
-			var xf: Transform3D = n.global_transform
+			var xf: Transform3D = inv * n.global_transform
 			for i in 8:
 				var corner := la.position + Vector3(
 						la.size.x * float(i & 1),
 						la.size.y * float((i >> 1) & 1),
 						la.size.z * float((i >> 2) & 1))
-				var wp := xf * corner
+				var lp := xf * corner
 				if not has:
-					acc = AABB(wp, Vector3.ZERO)
+					acc = AABB(lp, Vector3.ZERO)
 					has = true
 				else:
-					acc = acc.expand(wp)
+					acc = acc.expand(lp)
 	if not has:
-		acc = AABB(block.global_position - Vector3(0.5, 0.5, 0.5), Vector3.ONE)
+		acc = AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
 	return acc

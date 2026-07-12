@@ -2,19 +2,22 @@ shader_type spatial;
 render_mode blend_add, cull_disabled, unshaded, depth_draw_never;
 
 // «Матрица» для появления/уничтожения блока: сетка зелёных (спавн) или красных (глюк,
-// уничтожение) цифр 0/1 по ВСЕМ сторонам (триплан по мировым координатам, ~8 цифр на метр),
-// плавная волна-фронт снизу вверх (спавн) или сверху вниз (растворение). Рисуется на
-// коробке-оболочке чуть больше блока (см. block_fx.gd), сам блок под ней виден как есть.
+// уничтожение) цифр 0/1 по ВСЕМ сторонам (триплан в ЛОКАЛЬНЫХ осях коробки, ~8 цифр на
+// метр), плавная волна-фронт снизу вверх (спавн) или сверху вниз (растворение). Рисуется
+// на коробке-оболочке чуть больше блока (см. block_fx.gd), она ориентирована ПО БЛОКУ —
+// поэтому локальные координаты дают сетку, которая едет и ВРАЩАЕТСЯ вместе с блоком
+// (мировые координаты «плыли» по граням при движении и не учитывали поворот).
 
 uniform int   mode = 0;                                   // 0 = спавн (зелёный), 1 = уничтожение (красный+глюк)
 uniform float progress : hint_range(0.0, 1.0) = 0.0;      // 0..1 ход анимации
 uniform vec3  color_spawn   : source_color = vec3(0.15, 1.0, 0.35);
 uniform vec3  color_destroy : source_color = vec3(1.0, 0.12, 0.12);
-uniform float cells_per_meter = 8.0;                      // плотность цифр в мире
+uniform float cells_per_meter = 8.0;                      // плотность цифр (на метр)
 uniform float flip_speed = 7.0;                           // как часто цифры меняются 0<->1
+uniform float seed = 0.0;                                 // разный узор у разных блоков
 
-varying vec3  v_world;
-varying vec3  v_wnorm;
+varying vec3  v_local;      // позиция в метрах в осях коробки (= осях блока)
+varying vec3  v_lnorm;      // локальная нормаль (у BoxMesh строго по осям)
 varying float v_h;          // локальная высота 0..1 (для BoxMesh size=1 это VERTEX.y+0.5)
 
 float hash(vec2 p) {
@@ -35,19 +38,24 @@ float glyph(vec2 uv, float bit) {
 }
 
 void vertex() {
-	vec4 wp = MODEL_MATRIX * vec4(VERTEX, 1.0);
-	v_world = wp.xyz;
-	v_wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// Масштаб коробки достаём из колонок MODEL_MATRIX: VERTEX единичного BoxMesh (−0.5..0.5)
+	// умножаем на него, чтобы cells_per_meter остался «на метр» реального размера блока.
+	vec3 box_scale = vec3(length(MODEL_MATRIX[0].xyz),
+			length(MODEL_MATRIX[1].xyz), length(MODEL_MATRIX[2].xyz));
+	v_local = VERTEX * box_scale;
+	v_lnorm = NORMAL;
 	v_h = VERTEX.y + 0.5;
 }
 
 void fragment() {
-	// Триплан: 2 координаты по доминирующей оси мировой нормали → одинаковая сетка на всех гранях.
-	vec3 an = abs(v_wnorm);
+	// Триплан: 2 координаты по доминирующей оси ЛОКАЛЬНОЙ нормали → одинаковая сетка на всех
+	// гранях, прибитая к блоку (едет и вращается с ним).
+	vec3 an = abs(v_lnorm);
 	vec2 uv;
-	if (an.x >= an.y && an.x >= an.z)      uv = v_world.zy;
-	else if (an.y >= an.z)                 uv = v_world.xz;
-	else                                   uv = v_world.xy;
+	if (an.x >= an.y && an.x >= an.z)      uv = v_local.zy;
+	else if (an.y >= an.z)                 uv = v_local.xz;
+	else                                   uv = v_local.xy;
+	uv += seed;
 
 	vec2 grid = uv * cells_per_meter;
 
