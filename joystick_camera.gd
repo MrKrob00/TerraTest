@@ -90,6 +90,7 @@ func set_zoom(index1:Vector2,index2:Vector2):
 	var d = index1.distance_to(index2)
 	var result = d/ distance
 	distance = d
+	radius = $"../..".RADIUS   # ресинк с живым значением — иначе колесо мыши (ПК-зум) затиралось бы старым кэшем
 	radius/=result
 	if radius<2: radius=2
 	if radius>20: radius=20
