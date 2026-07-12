@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://cbyq8br6vvica"
+path="res://.godot/imported/sociopathy - fight.mp3-f1d131079400268d85e6aadd250ef64b.mp3str"
+
+[deps]
+
+source_file="res://music/battle/sociopathy - fight.mp3"
+dest_files=["res://.godot/imported/sociopathy - fight.mp3-f1d131079400268d85e6aadd250ef64b.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4

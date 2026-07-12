@@ -179,7 +179,7 @@ map_node = NodePath("../map")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 49.802696, 0)
 
 [node name="Player" type="RigidBody3D" parent="Vehicles" unique_id=946061725 node_paths=PackedStringArray("block_map_node", "ghost_block")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 4.654161, -4.512438)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 4.654161, -42.72137)
 collision_layer = 16
 collision_mask = 21
 can_sleep = false
@@ -197,7 +197,7 @@ shape = SubResource("BoxShape3D_imku0")
 script = ExtResource("3_jsk3o")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Vehicles/Player/blocks" unique_id=1350624951]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 54.456856, -4.512438)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 54.456856, -39.47743)
 top_level = true
 mesh = SubResource("BoxMesh_4arys")
 
@@ -250,7 +250,7 @@ mesh = SubResource("BoxMesh_4arys")
 
 [node name="Camera Controller" type="Node3D" parent="Vehicles" unique_id=910353809 node_paths=PackedStringArray("current_vehicle")]
 script = ExtResource("13_3v7ru")
-current_vehicle = NodePath("../Player2")
+current_vehicle = NodePath("../Player")
 
 [node name="SpringArm3D" type="SpringArm3D" parent="Vehicles/Camera Controller" unique_id=397129386]
 spring_length = 20.0
