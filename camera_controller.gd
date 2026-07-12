@@ -14,9 +14,13 @@ var vehicles: Array
 @export var RADIUS: float = 8.0
 @export var CAM_HEIGHT: float = 4.0
 @export var ROT_SPEED: float = 1.5
+## Камера никогда не опускается ниже этой высоты над террейном (склон/гора поджимают
+## её снизу — поднимаем точку камеры вертикально, взгляд остаётся на машине).
+@export var MIN_GROUND_CLEARANCE: float = 8.0
 
 var angle: float = 0.0
 var is_active: bool = false
+var _terrain: Node = null   # кэш ноды террейна (terrain_height_at)
 
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
@@ -62,12 +66,30 @@ func camera_movement(delta):
 			is_locked = true
 		angle = current_vehicle.global_rotation.y + locked_angle
 	
-	var x = RADIUS * sin(angle)
-	var z = RADIUS * cos(angle)
-	#camera.position = Vector3(x, CAM_HEIGHT, z)
-	Spring.spring_length = Vector3.ZERO.distance_to(Vector3(x, CAM_HEIGHT, z))
-	Spring.look_at_from_position(current_vehicle.global_position+(Vector3(x, CAM_HEIGHT, z)*0.01),current_vehicle.global_position)
-	Spring.rotation.x += current_vehicle.rotation.x
+	var offset := Vector3(RADIUS * sin(angle), CAM_HEIGHT, RADIUS * cos(angle))
+	# Минимум MIN_GROUND_CLEARANCE (8 м) над террейном: если точку камеры поджал рельеф —
+	# поднимаем её вертикально (взгляд всё равно на машину). Выше 8 м — не трогаем.
+	var cam_pos: Vector3 = current_vehicle.global_position + offset
+	var ground := _terrain_height(cam_pos)
+	if cam_pos.y < ground + MIN_GROUND_CLEARANCE:
+		offset.y += ground + MIN_GROUND_CLEARANCE - cam_pos.y
+	Spring.spring_length = offset.length()
+	# Смотрим строго на машину. Раньше сюда ДОБАВЛЯЛСЯ крен корпуса (rotation.x) поверх
+	# look_at — на горках камеру клевало вниз/вверх и она теряла машину из виду.
+	Spring.look_at_from_position(current_vehicle.global_position + offset * 0.01, current_vehicle.global_position)
+
+# Высота террейна под точкой (мировые координаты). Карты нет — вернёт -INF,
+# тогда ограничение по высоте просто не действует.
+func _terrain_height(world_pos: Vector3) -> float:
+	if _terrain == null or not is_instance_valid(_terrain):
+		_terrain = null
+		for c in get_tree().current_scene.get_children():
+			if c.has_method("terrain_height_at"):
+				_terrain = c
+				break
+	if _terrain == null:
+		return -INF
+	return _terrain.terrain_height_at(world_pos)
 
 # Machine change function 
 func switch_to_vehicle(new_vehicle: RigidBody3D):
