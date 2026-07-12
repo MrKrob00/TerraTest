@@ -55,9 +55,15 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, dur)
 	tw.tween_callback(fx.queue_free)
 
+# Коробка эффекта не может быть больше этого по каждой оси: страховка от FX-мешей
+# (луч лазера в момент выстрела и т.п.), которые не описывают сам блок.
+const MAX_EXTENT := 2.0
+
 # AABB блока В ЕГО СОБСТВЕННЫХ ОСЯХ: объединяем AABB всех MeshInstance3D, переведя их
 # в систему координат блока. Повёрнутый блок получает плотную коробку по своим граням,
-# а не раздутый мировой AABB.
+# а не раздутый мировой AABB. СКРЫТЫЕ меши пропускаем: у оружия детьми висят выключенные
+# FX (луч-цилиндр дальностью в десятки метров, глоу-сферы, трассер) — с ними коробка
+# выходила гигантской.
 static func _local_aabb(block: Node3D) -> AABB:
 	var inv := block.global_transform.affine_inverse()
 	var acc := AABB()
@@ -65,6 +71,8 @@ static func _local_aabb(block: Node3D) -> AABB:
 	var stack: Array = [block]
 	while not stack.is_empty():
 		var n = stack.pop_back()
+		if n is Node3D and not (n as Node3D).visible:
+			continue                       # скрытая ветка (FX) — не считаем и не спускаемся
 		for c in n.get_children():
 			stack.append(c)
 		if n is MeshInstance3D and n.mesh != null:
@@ -82,5 +90,11 @@ static func _local_aabb(block: Node3D) -> AABB:
 				else:
 					acc = acc.expand(lp)
 	if not has:
-		acc = AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
+		return AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
+	# Потолок размера: видимый FX (лазер стреляет прямо в момент сноса) всё ещё может
+	# растянуть AABB — обрезаем коробку до MAX_EXTENT вокруг центра блока.
+	var half := MAX_EXTENT * 0.5
+	acc = acc.intersection(AABB(Vector3(-half, -half, -half), Vector3(MAX_EXTENT, MAX_EXTENT, MAX_EXTENT)))
+	if acc.size.x <= 0.0 or acc.size.y <= 0.0 or acc.size.z <= 0.0:
+		return AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
 	return acc
