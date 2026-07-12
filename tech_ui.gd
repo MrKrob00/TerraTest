@@ -619,3 +619,20 @@ func _build_settings_tab() -> void:
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(hint)
+
+	if "shadows_enabled" in main:
+		var shadow_btn := CheckButton.new()
+		shadow_btn.text = "Тени"
+		shadow_btn.button_pressed = bool(main.shadows_enabled)
+		shadow_btn.add_theme_font_size_override("font_size", 14)
+		_extra_vb.add_child(shadow_btn)
+		shadow_btn.toggled.connect(func(on: bool) -> void:
+			var mn: Node = get_node_or_null("/root/Main")
+			if mn and mn.has_method("set_shadows_enabled"):
+				mn.set_shadows_enabled(on))
+
+		var shadow_hint := Label.new()
+		shadow_hint.text = "Выключи, если садится FPS — самая тяжёлая настройка."
+		shadow_hint.add_theme_font_size_override("font_size", 12)
+		shadow_hint.modulate = Color(1, 1, 1, 0.55)
+		_extra_vb.add_child(shadow_hint)

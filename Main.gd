@@ -22,6 +22,7 @@ var settle_timer: float = 0.0        # реальными кадрами — и�
 const SETTINGS_PATH := "user://settings.json"
 var auto_fps: bool = true            # ВКЛ = авто-скейл по FPS; ВЫКЛ = ручной масштаб
 var manual_scale: float = 0.75       # масштаб рендера при выключенном авто
+var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (самая тяжёлая настройка на мобилке)
 
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
@@ -29,6 +30,19 @@ func _ready() -> void:
 	if not auto_fps:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
+	_apply_shadows()
+
+# Вкл/выкл тени солнца. Самая тяжёлая графическая настройка на слабых GPU (Adreno 610) —
+# отдельный тумблер, независимый от авто-FPS/масштаба рендера.
+func set_shadows_enabled(on: bool) -> void:
+	shadows_enabled = on
+	_apply_shadows()
+	_save_settings()
+
+func _apply_shadows() -> void:
+	var light := get_node_or_null("DirectionalLight3D2") as DirectionalLight3D
+	if light:
+		light.shadow_enabled = shadows_enabled
 
 # Вкл/выкл авто-FPS. При выключении сразу применяется ручной масштаб.
 func set_auto_fps(on: bool) -> void:
@@ -50,7 +64,11 @@ func set_manual_scale(v: float) -> void:
 func _save_settings() -> void:
 	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"auto_fps": auto_fps, "manual_scale": manual_scale}))
+		f.store_string(JSON.stringify({
+			"auto_fps": auto_fps,
+			"manual_scale": manual_scale,
+			"shadows_enabled": shadows_enabled,
+		}))
 
 func _load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
@@ -59,6 +77,7 @@ func _load_settings() -> void:
 	if parsed is Dictionary:
 		auto_fps = bool(parsed.get("auto_fps", true))
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
+		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 
 func _process(delta: float) -> void:
 	if not auto_fps:
