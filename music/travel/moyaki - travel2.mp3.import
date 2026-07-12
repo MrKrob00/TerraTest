@@ -1,0 +1,19 @@
+[remap]
+
+importer="mp3"
+type="AudioStreamMP3"
+uid="uid://jmq6kb0rq4pl"
+path="res://.godot/imported/moyaki - travel2.mp3-c380a69ce6483665205edc36f5122df8.mp3str"
+
+[deps]
+
+source_file="res://music/travel/moyaki - travel2.mp3"
+dest_files=["res://.godot/imported/moyaki - travel2.mp3-c380a69ce6483665205edc36f5122df8.mp3str"]
+
+[params]
+
+loop=false
+loop_offset=0
+bpm=0
+beat_count=0
+bar_beats=4
