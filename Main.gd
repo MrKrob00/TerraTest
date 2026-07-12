@@ -31,6 +31,37 @@ func _ready() -> void:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
 	_apply_shadows()
+	_setup_pc_input_map()
+
+# ── ПК-управление ──────────────────────────────────────────────────────────────
+# Take/TakeOff/Building/Movement/Attack уже существуют как Input-действия (их проверяют
+# event.is_action_pressed(...) / Input.is_action_pressed(...) в vehicle_body_3d.gd — код
+# там не трогаем) но у них не было ни одной клавиши, только тач-кнопки. Плюс 4 новых
+# действия для WASD/стрелок (движение читает Input.get_vector — см. vehicle_body_3d.gd).
+# Биндим В КОДЕ, а не в project.godot: это идемпотентно (безопасно звать каждый старт) и
+# не требует руками собирать бинарный формат ресурса InputMap.
+func _setup_pc_input_map() -> void:
+	_bind_key("Take", KEY_E)
+	_bind_key("TakeOff", KEY_Q)
+	_bind_key("Building", KEY_B)
+	_bind_key("Movement", KEY_ESCAPE)
+	_bind_key("Attack", KEY_SPACE)
+	_bind_key("move_forward", KEY_W)
+	_bind_key("move_forward", KEY_UP)
+	_bind_key("move_back", KEY_S)
+	_bind_key("move_back", KEY_DOWN)
+	_bind_key("move_left", KEY_A)
+	_bind_key("move_left", KEY_LEFT)
+	_bind_key("move_right", KEY_D)
+	_bind_key("move_right", KEY_RIGHT)
+
+func _bind_key(action: StringName, keycode: Key) -> void:
+	if not InputMap.has_action(action):
+		InputMap.add_action(action)
+	var ev := InputEventKey.new()
+	ev.physical_keycode = keycode
+	if not InputMap.action_has_event(action, ev):
+		InputMap.action_add_event(action, ev)
 
 # Вкл/выкл тени солнца. Самая тяжёлая графическая настройка на слабых GPU (Adreno 610) —
 # отдельный тумблер, независимый от авто-FPS/масштаба рендера.

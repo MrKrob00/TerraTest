@@ -466,7 +466,10 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("Attack"):
 		_on_attack_timeout()
 
-	var joy = camera_controller.joystick_move.get_joystick_dir()
+	var joy := camera_controller.joystick_move.get_joystick_dir()
+	# ПК: WASD/стрелки дают тот же Vector2, что и тач-джойстик (см. _process_input ниже).
+	# Суммируем с джойстиком и клампим — вместе на практике не используются, но так честно.
+	joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
 	_process_input(joy, delta)
 	_check_ground()
 	_sync_mass()
@@ -680,10 +683,16 @@ var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ст
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
-	if event is InputEventScreenTouch and event.pressed and Building:
-		_handle_click(event.position)
-	elif event is InputEventScreenDrag and Building:
-		_handle_click(event.position)
+	if Building:
+		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
+		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
+		# понадобится «тач-подобный» press (сейчас достаточно и одного motion).
+		var aiming := (event is InputEventScreenTouch and event.pressed) \
+				or event is InputEventScreenDrag \
+				or event is InputEventMouseMotion \
+				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)
+		if aiming:
+			_handle_click(event.position)
 	if event.is_action_pressed("Take"):     _on_take_pressed()
 	if event.is_action_pressed("TakeOff"):  _on_take_off_pressed()
 	if event.is_action_pressed("Building"): _on_building_pressed()

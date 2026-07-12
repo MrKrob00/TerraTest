@@ -18,9 +18,31 @@ var vehicles: Array
 ## её снизу — поднимаем точку камеры вертикально, взгляд остаётся на машине).
 @export var MIN_GROUND_CLEARANCE: float = 8.0
 
+# ── ПК: мышь ────────────────────────────────────────────────────────────────────
+# ПКМ+драг вращает камеру (ЛКМ занята стройкой/UI), колесо — зум. Тач-джойстик камеры
+# не трогаем — оба источника складываются в camera_movement().
+const MOUSE_SENS := 0.0025   # рад на пиксель движения мыши
+const ZOOM_STEP := 1.0
+const ZOOM_MIN := 2.0
+const ZOOM_MAX := 20.0
+var _mouse_look_dx: float = 0.0   # накопленный сдвиг мыши по X с прошлого кадра (ПКМ зажата)
+
 var angle: float = 0.0
 var is_active: bool = false
 var _terrain: Node = null   # кэш ноды террейна (terrain_height_at)
+
+func _input(event: InputEvent) -> void:
+	# Жест кругового меню (см. VehicleInteractButton) не должен ещё и крутить камеру —
+	# тот же гейт, что уже стоит у тач-джойстика камеры.
+	if VehicleInteractButton.camera_block:
+		return
+	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
+		_mouse_look_dx += event.relative.x
+	elif event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			RADIUS = clampf(RADIUS - ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			RADIUS = clampf(RADIUS + ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
 
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
@@ -55,9 +77,11 @@ var is_locked: bool = false
 
 func camera_movement(delta):
 	var dir = (-$"HUD/Joystick_camera".get_joystick_dir().x)
-	
-	if abs(dir) > 0.05:
-		angle += dir * ROT_SPEED * delta
+	var mouse_turn := -_mouse_look_dx * MOUSE_SENS
+	_mouse_look_dx = 0.0
+
+	if abs(dir) > 0.05 or absf(mouse_turn) > 0.0001:
+		angle += dir * ROT_SPEED * delta + mouse_turn
 		is_locked = false
 		locked_angle = angle - current_vehicle.global_rotation.y
 	else:
