@@ -39,21 +39,22 @@ func _ready() -> void:
 # там не трогаем) но у них не было ни одной клавиши, только тач-кнопки. Плюс 4 новых
 # действия для WASD/стрелок (движение читает Input.get_vector — см. vehicle_body_3d.gd).
 # Биндим В КОДЕ, а не в project.godot: это идемпотентно (безопасно звать каждый старт) и
-# не требует руками собирать бинарный формат ресурса InputMap.
+# не требует руками собирать текстовый ресурс InputMap, который тут негде прогнать через
+# редактор и проверить, что он вообще парсится.
+# Attack — Ctrl, не Space: Space это дефолтный ui_accept, и висел бы на любой сфокусированной
+# кнопке гаража (клик по вкладке — и Space одновременно жмёт кнопку И стреляет).
+# Движение — только WASD, без стрелок: стрелки в Godot по умолчанию уже листают фокус
+# (ui_up/down/left/right), с ними вместе получалось бы «двигаю машину, листая список».
 func _setup_pc_input_map() -> void:
 	_bind_key("Take", KEY_E)
 	_bind_key("TakeOff", KEY_Q)
 	_bind_key("Building", KEY_B)
 	_bind_key("Movement", KEY_ESCAPE)
-	_bind_key("Attack", KEY_SPACE)
+	_bind_key("Attack", KEY_CTRL)
 	_bind_key("move_forward", KEY_W)
-	_bind_key("move_forward", KEY_UP)
 	_bind_key("move_back", KEY_S)
-	_bind_key("move_back", KEY_DOWN)
 	_bind_key("move_left", KEY_A)
-	_bind_key("move_left", KEY_LEFT)
 	_bind_key("move_right", KEY_D)
-	_bind_key("move_right", KEY_RIGHT)
 
 func _bind_key(action: StringName, keycode: Key) -> void:
 	if not InputMap.has_action(action):

@@ -534,6 +534,13 @@ func _toggle_inventory() -> void:
 func _on_tech_ui_visibility() -> void:
 	# Инвентарь открыт → прячем игровой HUD; закрыт → возвращаем как было.
 	var open: bool = _tech_ui != null and _tech_ui.visible
+	if not open:
+		# Панель только скрывается (visible=false), фокус (напр. поле поиска) сам не
+		# снимается — на ПК залипший фокус в LineEdit гасил бы клавиатурные действия
+		# машины и после закрытия гаража (см. vehicle_body_3d._typing_in_ui).
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused != null:
+			focused.release_focus()
 	_set_game_controls_hidden(open)
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).

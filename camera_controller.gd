@@ -36,6 +36,11 @@ func _input(event: InputEvent) -> void:
 	# тот же гейт, что уже стоит у тач-джойстика камеры.
 	if VehicleInteractButton.camera_block:
 		return
+	# Мышь над любым UI (гараж, HUD-кнопки) не должна ещё и вертеть/зумить мировую камеру —
+	# иначе прокрутка списка в гараже или ПКМ-драг над панелью крутили бы камеру под ней.
+	# Тача это не касается: правая кнопка/колесо мыши тачем не эмулируются.
+	if get_viewport().gui_get_hovered_control() != null:
+		return
 	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 		_mouse_look_dx += event.relative.x
 	elif event is InputEventMouseButton and event.pressed:
@@ -77,10 +82,15 @@ var is_locked: bool = false
 
 func camera_movement(delta):
 	var dir = (-$"HUD/Joystick_camera".get_joystick_dir().x)
+	# Жест кругового меню мог включиться ПОСЛЕ того, как в этот же кадр уже накопился
+	# сдвиг мыши (_input идёт раньше _process) — не даём этому остатку доехать до угла.
+	if VehicleInteractButton.camera_block:
+		_mouse_look_dx = 0.0
 	var mouse_turn := -_mouse_look_dx * MOUSE_SENS
 	_mouse_look_dx = 0.0
-
-	if abs(dir) > 0.05 or absf(mouse_turn) > 0.0001:
+	# mouse_turn либо ровно 0.0 (не двигали), либо реальный накопленный сдвиг — тут не
+	# нужен допуск на дребезг, в отличие от аналогового джойстика ниже.
+	if abs(dir) > 0.05 or mouse_turn != 0.0:
 		angle += dir * ROT_SPEED * delta + mouse_turn
 		is_locked = false
 		locked_angle = angle - current_vehicle.global_rotation.y

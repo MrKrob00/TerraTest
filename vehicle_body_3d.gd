@@ -687,24 +687,34 @@ var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ст
 
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,
 # Take/TakeOff/Building/Movement/Attack — все читаются по сырому состоянию клавиши, в обход
-# фокуса UI) иначе срабатывали бы прямо во время печати. Мышь/тач это не трогает.
+# фокуса UI) иначе срабатывали бы прямо во время печати.
 func _typing_in_ui() -> bool:
 	var vp := get_viewport()
 	return vp != null and vp.gui_get_focus_owner() is LineEdit
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
-	if _typing_in_ui(): return
 	if Building:
-		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
-		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
-		# понадобится «тач-подобный» press (сейчас достаточно и одного motion).
-		var aiming := (event is InputEventScreenTouch and event.pressed) \
-				or event is InputEventScreenDrag \
-				or event is InputEventMouseMotion \
+		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр. Touch НЕ
+		# проверяем отдельно: Godot по умолчанию эмулирует тач событиями мыши
+		# (emulate_mouse_from_touch — этим же пользуется vehicle_interact_button.gd), а
+		# отдельная ветка на InputEventScreenTouch/Drag стреляла бы ДВАЖДЫ на один палец.
+		var aiming := event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)
 		if aiming:
-			_handle_click(event.position)
+			# «Пустой» ховер (мышь едет к кнопке БЕЗ зажатой ЛКМ) не должен целиться в мир,
+			# пока курсор идёт над HUD/панелью гаража — иначе наводка ломается по пути к
+			# кнопке. Тач-драг сюда не попадает: пока палец на экране, ЛКМ у Godot «зажата»
+			# всю дорогу (та же логика, что уже держит vehicle_interact_button.gd), так что
+			# тач ведёт себя ровно как раньше — гейт видит только настоящий ПК-ховер.
+			var idle_hover := event is InputEventMouseMotion and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+			if not (idle_hover and get_viewport().gui_get_hovered_control() != null):
+				_handle_click(event.position)
+	# Клавиатурные действия гасим ТОЛЬКО пока печатают в текстовом поле — иначе, если
+	# фокус где-то залип, тач/мышь-кнопки Take/TakeOff/Building/Movement (это тоже
+	# event.is_action_pressed, тач-кнопки шлют его же) перестали бы работать вовсе.
+	if event is InputEventKey and _typing_in_ui():
+		return
 	if event.is_action_pressed("Take"):     _on_take_pressed()
 	if event.is_action_pressed("TakeOff"):  _on_take_off_pressed()
 	if event.is_action_pressed("Building"): _on_building_pressed()
