@@ -579,7 +579,7 @@ func _apply_steering(delta: float) -> void:
 	var fwd = _get_forward()
 	var vel_fwd = fwd.dot(linear_velocity)
 
-	if abs(vel_fwd) < 0.3:
+	if abs(vel_fwd) < 0.05:
 		angular_velocity.y = lerp(angular_velocity.y, 0.0, 10.0 * delta)
 		return
 
