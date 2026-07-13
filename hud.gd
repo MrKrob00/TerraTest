@@ -18,11 +18,13 @@ var _drawer_open: bool = false
 var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
 var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
+var _block_globe: BlockGlobe = null          # «шар» выбора блока (видны в стройке)
 var _game_controls: Array = []              # игровые кнопки/джойстики — прячем при инвентаре
 
 func _ready() -> void:
 	_build_ark_drawer()
 	_build_rotate_panel()
+	_build_block_globe()
 	_build_anchor_button()
 	_build_energy_gauge()
 	_collect_game_controls()
@@ -358,6 +360,32 @@ func _build_rotate_panel() -> void:
 	grid.add_child(_rot_btn("yaw_left",   "Поворот влево",  Vector3.UP,    PI / 2))
 	grid.add_child(_rot_btn("yaw_right",  "Поворот вправо", Vector3.UP,   -PI / 2))
 
+# ── «Шар» выбора блока (стройка) ───────────────────────────────────────────────
+# Квадрат 2R×2R с ЦЕНТРОМ ровно в правом нижнем углу экрана: 3/4 круга уходят за
+# край окна и просто не рендерятся, видна только верхне-левая четверть — см.
+# block_globe.gd. Крутится драгом (два независимых вращения), тап без движения
+# берёт блок из центра в руку — так же, как клик по слоту в гараже.
+func _build_block_globe() -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var r := BlockGlobe.RADIUS
+	var globe := BlockGlobe.new()
+	globe.size = Vector2(r * 2.0, r * 2.0)
+	globe.position = screen - Vector2(r, r)
+	globe.visible = false
+	globe.block_chosen.connect(_on_globe_block_chosen)
+	add_child(globe)
+	_block_globe = globe
+
+func _on_globe_block_chosen(block_type: int) -> void:
+	var v: Node = _menu_vehicle_or_current()
+	if v == null or not v.has_method("take_block_into_hand"):
+		return
+	if not v.take_block_into_hand(block_type):
+		return                                  # в руке уже что-то есть
+	G.block_inventory.erase(block_type)          # списываем один экземпляр — как в гараже
+	if _block_globe:
+		_block_globe.refresh()
+
 func _rot_btn(kind: String, tip: String, axis: Vector3, ang: float) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(74, 62)
@@ -604,6 +632,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_handle)
 	if _rotate_panel:
 		_game_controls.append(_rotate_panel)
+	if _block_globe:
+		_game_controls.append(_block_globe)
 	if _anchor_btn:
 		_game_controls.append(_anchor_btn)
 	if _energy_gauge:
@@ -687,6 +717,7 @@ func _on_movement_pressed() -> void:
 	$Take.visible = false
 	$TakeOff.visible = false
 	if _rotate_panel: _rotate_panel.visible = false
+	if _block_globe: _block_globe.visible = false
 	%Joystick_movement.visible=true
 	$Movement/Label.add_theme_color_override("font_color", Color.GREEN)
 	$Building/Label.add_theme_color_override("font_color", Color.BLACK)
@@ -697,6 +728,9 @@ func _on_building_pressed() -> void:
 	$Take.visible = true
 	$TakeOff.visible = true
 	if _rotate_panel: _rotate_panel.visible = true
+	if _block_globe:
+		_block_globe.visible = true
+		_block_globe.refresh()      # инвентарь мог измениться с прошлого раза в стройке
 	%Joystick_movement.visible=false
 	$Movement/Label.add_theme_color_override("font_color", Color.BLACK)
 	$Building/Label.add_theme_color_override("font_color", Color.GREEN)
