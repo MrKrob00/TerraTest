@@ -76,28 +76,42 @@ void fragment() {
 	float bit   = step(0.5, hash(cell + vec2(tstep * 1.7, tstep * 0.3)));
 	float gl    = glyph(f, bit);
 
-	// Фронт волны по локальной высоте. Спавн: снизу вверх, тело ниже фронта. Уничтожение:
-	// фронт идёт сверху вниз, «съедая» блок.
-	float edge = (mode == 0) ? progress : (1.0 - progress);
-	float body = step(v_h, edge);
-	float wave = smoothstep(0.07, 0.0, abs(v_h - edge));
+	// Прогресс теперь в ДВЕ ПОСЛЕДОВАТЕЛЬНЫЕ фазы (по половине хода каждая):
+	//  • фаза 1 (0..0.5): волна закрашивает блок в сплошной чёрный, ЦИФР ЕЩЁ НЕТ;
+	//  • фаза 2 (0.5..1): вторая волна проявляет светящиеся цифры УЖЕ НА чёрном.
+	// Спавн — снизу вверх, уничтожение — сверху вниз (обе фазы, как и раньше).
+	float black_t = clamp(progress * 2.0, 0.0, 1.0);
+	float digit_t = clamp(progress * 2.0 - 1.0, 0.0, 1.0);
 
-	// Пока волна ещё не дошла (или уже прошла, для уничтожения) — тут ничего не рисуем,
+	float black_edge = (mode == 0) ? black_t : (1.0 - black_t);
+	float black_body = step(v_h, black_edge);
+	float black_wave = smoothstep(0.07, 0.0, abs(v_h - black_edge));
+
+	// Фаза 1 ещё не дошла (или уже прошла, для уничтожения) — тут ничего не рисуем,
 	// настоящий блок виден как есть.
-	if (body < 0.5 && wave < 0.02) discard;
+	if (black_body < 0.5 && black_wave < 0.02) discard;
+
+	// Волна цифр идёт ТОЛЬКО там, где чернота уже легла (black_body) — иначе на
+	// уничтожении цифры обгоняли бы черноту и светились бы там, где блок ещё цел.
+	float digit_edge = (mode == 0) ? digit_t : (1.0 - digit_t);
+	float digit_body = step(v_h, digit_edge) * black_body;
+	float digit_wave = smoothstep(0.07, 0.0, abs(v_h - digit_edge)) * black_body;
 
 	vec3 col = (mode == 0) ? color_spawn : color_destroy;
 
-	// Яркость цифр/фронта — как раньше, но это теперь МНОЖИТЕЛЬ поверх чёрного фона,
-	// а не альфа: фон сплошной чёрный (ALPHA=1), цифры/фронт светятся на нём цветом.
-	float glow = max(gl * body * 0.9, wave * (0.55 + gl * 0.45));
+	// Яркость цифр/фронта — множитель поверх чёрного фона (фон = ALPHA 1, ALBEDO 0).
+	float glow = max(gl * digit_body * 0.9, digit_wave * (0.55 + gl * 0.45));
 	glow *= 0.82 + 0.18 * sin(TIME * 30.0 + cell.x * 1.3 + cell.y * 0.7);
 	if (mode == 1) {
 		glow *= 0.55 + 0.45 * hash(vec2(floor(TIME * 22.0), cell.y));     // рваное мерцание глюка
-		glow += glitch_amp * gl * 0.5;
+		glow += glitch_amp * gl * digit_body * 0.5;
 	}
 	glow = clamp(glow, 0.0, 1.0);
 
-	ALBEDO = col * glow * (1.4 + wave * 3.5);   // 0 в промежутках между цифрами → чёрный фон
+	// Пока идёт фаза 1 (цифры ещё не начались) — тонкая подсветка на фронте закраски,
+	// чтобы граница «заливки» не выглядела сухой линией.
+	float paint_glow = black_wave * step(digit_t, 0.001) * 0.4;
+
+	ALBEDO = col * (glow * (1.4 + digit_wave * 3.5) + paint_glow);
 	ALPHA  = 1.0;                                 // непрозрачно: фон чёрный, не сквозной
 }
