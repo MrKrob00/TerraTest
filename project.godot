@@ -21,6 +21,19 @@ config/icon="res://icon.svg"
 config/specular_occlusion/enabled=true
 config/reflection_atlas/reflection_size=256
 
+[display]
+
+; Весь 2D/HUD рисуется в базовом разрешении 1152×648 и МАСШТАБИРУЕТСЯ под реальный
+; экран (canvas_items) — кнопки/джойстики/панели растут-уменьшаются вместе с окном,
+; а не остаются в пикселях. expand = заполнять экран (без чёрных полос), лишнее по
+; широкой стороне добавляется по краям (угловые элементы HUD в hud.gd пере-раскладываются
+; на size_changed).
+window/size/viewport_width=1152
+window/size/viewport_height=648
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="landscape"
+
 [autoload]
 
 G="*res://G.gd"

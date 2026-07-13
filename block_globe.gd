@@ -24,6 +24,27 @@ const LON_STEP := 0.80                 # ~46°: шаг между слотами
 const DRAG_SENS := 0.006               # рад на пиксель драга
 const SNAP_SPEED := 8.0                # скорость довода до слота после отпускания
 const ITEM_DIST := 2.4                 # радиус, на котором висят превью-кубики
+const CAM_Z := 5.2                     # позиция камеры по Z (смотрит в −Z на риг)
+const FOV := 30.0                      # угол камеры (для расчёта смещения рига)
+
+# Голубой фон-«четвертькруга» в углу: рисуется нодой (draw_colored_polygon сектором),
+# центр = угол экрана (локально (r,r)), сектор смотрит вверх-влево — ровно та четверть,
+# что видна на экране (остальные 3/4 Control-а за краем окна). Цвета под остальной UI
+# (см. hud._make_panel_style) держим ЛОКАЛЬНО: вложенный класс GDScript не видит const
+# внешнего класса по «голому» имени (как и другие inner-классы в hud.gd — цвета в них свои).
+class QuarterBg extends Control:
+	const FILL := Color(0.055, 0.16, 0.19, 0.92)
+	const ACCENT := Color(0.247, 0.6, 0.65, 0.75)
+	var radius := 190.0
+	func _draw() -> void:
+		var c := Vector2(radius, radius)             # центр = угол экрана
+		var steps := 28
+		var pts := PackedVector2Array([c])
+		for i in steps + 1:
+			var a := PI + (PI * 0.5) * float(i) / float(steps)   # от «влево» (PI) до «вверх» (1.5PI)
+			pts.append(c + Vector2(cos(a), sin(a)) * radius)
+		draw_colored_polygon(pts, FILL)
+		draw_arc(c, radius, PI, PI * 1.5, 40, ACCENT, 2.5)
 
 var _lon: float = 0.0
 var _lat: float = 0.0
@@ -45,6 +66,13 @@ func _ready() -> void:
 	_build_scene()
 
 func _build_scene() -> void:
+	# Голубой фон-четвертькруга ПОД 3D (SubViewport прозрачный — фон просвечивает).
+	var bg := QuarterBg.new()
+	bg.radius = RADIUS
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+
 	var svc := SubViewportContainer.new()
 	svc.stretch = true
 	svc.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -61,8 +89,8 @@ func _build_scene() -> void:
 	svc.add_child(sv)
 
 	var cam := Camera3D.new()
-	cam.fov = 30.0
-	cam.transform = Transform3D(Basis(), Vector3(0, 0, 5.2))
+	cam.fov = FOV
+	cam.transform = Transform3D(Basis(), Vector3(0, 0, CAM_Z))
 	sv.add_child(cam)
 
 	var light := DirectionalLight3D.new()
@@ -70,10 +98,17 @@ func _build_scene() -> void:
 	sv.add_child(light)
 
 	_rig = Node3D.new()
+	# Смещаем риг так, чтобы ТЕКУЩИЙ (передний) блок проецировался в ЦЕНТР ВИДИМОЙ
+	# четверти (uv≈0.25,0.25 — вверх-влево от угла), а не в сам угол (=центр вьюпорта),
+	# где он был наполовину за краем экрана. Из-за этого раньше «нижний» тип оказывался
+	# в невидимой части и его нельзя было толком выбрать. Полувысота кадра на глубине
+	# переднего блока → сдвигаем на её половину влево и вверх.
+	var half := tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - ITEM_DIST)
+	_rig.position = Vector3(-0.5 * half, 0.5 * half, 0.0)
 	sv.add_child(_rig)
 
 	_label = Label.new()
-	_label.position = Vector2(20, 18)
+	_label.position = Vector2(16, 12)
 	_label.add_theme_font_size_override("font_size", 15)
 	_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -207,6 +242,7 @@ func _apply_drag(rel: Vector2) -> void:
 	_lon_target -= rel.x * DRAG_SENS
 	var half_span := LAT_STEP * float(CAT_KEYS.size() - 1) * 0.5
 	_lat_target = clampf(_lat_target - rel.y * DRAG_SENS, -half_span, half_span)
+	_update_label_live()          # лейбл сразу показывает, что окажется под выбором
 
 func _end_drag() -> void:
 	_dragging = false
@@ -216,35 +252,47 @@ func _end_drag() -> void:
 		return
 	_snap_to_nearest()
 
-func _snap_to_nearest() -> void:
+# Ближайшая НЕПУСТАЯ категория к заданной широте (общее для снапа и живого лейбла).
+func _nearest_cat(lat: float) -> int:
 	var half_span := LAT_STEP * float(CAT_KEYS.size() - 1) * 0.5
-	var raw_cat := roundi((_lat_target + half_span) / LAT_STEP)
-	raw_cat = clampi(raw_cat, 0, CAT_KEYS.size() - 1)
-	var best_ci := raw_cat
-	if (_by_cat[CAT_KEYS[raw_cat]] as Array).is_empty():
-		var found := -1
-		for d in range(1, CAT_KEYS.size()):
-			for cand in [raw_cat - d, raw_cat + d]:
-				if cand >= 0 and cand < CAT_KEYS.size() and not (_by_cat[CAT_KEYS[cand]] as Array).is_empty():
-					found = cand
-					break
-			if found >= 0:
-				break
-		if found >= 0:
-			best_ci = found
-	_cat_idx = best_ci
-	_lat_target = _lat_for_cat(_cat_idx)
+	var raw := clampi(roundi((lat + half_span) / LAT_STEP), 0, CAT_KEYS.size() - 1)
+	if not (_by_cat[CAT_KEYS[raw]] as Array).is_empty():
+		return raw
+	for d in range(1, CAT_KEYS.size()):
+		for cand in [raw - d, raw + d]:
+			if cand >= 0 and cand < CAT_KEYS.size() and not (_by_cat[CAT_KEYS[cand]] as Array).is_empty():
+				return cand
+	return raw
 
-	var items: Array = _by_cat[CAT_KEYS[_cat_idx]]
+# Индекс слота внутри категории ci по текущей долготе (с заворотом по кругу).
+func _item_at_lon(ci: int) -> int:
+	var items: Array = _by_cat.get(CAT_KEYS[ci], [])
 	if items.is_empty():
+		return -1
+	var n := items.size()
+	return ((roundi(_lon_target / LON_STEP) % n) + n) % n
+
+func _snap_to_nearest() -> void:
+	_cat_idx = _nearest_cat(_lat_target)
+	_lat_target = _lat_for_cat(_cat_idx)
+	var idx := _item_at_lon(_cat_idx)
+	if idx < 0:
 		_update_label()
 		return
-	var n := items.size()
-	var raw_i := roundi(_lon_target / LON_STEP)
-	var idx := ((raw_i % n) + n) % n
 	_item_idx[CAT_KEYS[_cat_idx]] = idx
 	_lon_target = float(idx) * LON_STEP
 	_update_label()
+
+# Живой лейбл во время драга — от ТЕКУЩИХ целей (до снапа), чтобы игрок видел выбор сразу.
+func _update_label_live() -> void:
+	var ci := _nearest_cat(_lat_target)
+	var key: String = CAT_KEYS[ci]
+	var idx := _item_at_lon(ci)
+	if idx < 0:
+		_label.text = CAT_NAMES.get(key, key)
+		return
+	var items: Array = _by_cat[key]
+	_label.text = "%s\n%s" % [CAT_NAMES.get(key, key), _block_display_name(int(items[idx]["type"]))]
 
 func _choose_center() -> void:
 	var key: String = CAT_KEYS[_cat_idx]

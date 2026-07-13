@@ -28,10 +28,36 @@ func _ready() -> void:
 	_build_anchor_button()
 	_build_energy_gauge()
 	_collect_game_controls()
+	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
+	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
+	# экрана — их надо пере-разложить, иначе при expand они «отлипнут» от краёв.
+	get_viewport().size_changed.connect(_relayout)
 	# Тост «сейчас играет» при каждой смене трека (атрибуция для CC-BY треков).
 	var music := get_node_or_null("/root/Music")
 	if music:
 		music.track_changed.connect(_show_music_toast)
+
+# Пере-раскладка построенных в коде элементов HUD под текущий размер экрана. Всё, что
+# прибито к краям (drawer, ручка, панель поворота, кнопка якоря, «шар» блоков), пересчитываем
+# от свежего get_visible_rect(). Масштаб (размер кнопок/шрифтов) держит stretch движка.
+func _relayout() -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	if _drawer:
+		var dh: float = screen.y * DRAWER_H_RATIO
+		var dy: float = (screen.y - dh) * 0.5
+		_drawer.size = Vector2(DRAWER_W, dh)
+		_drawer.position = Vector2((screen.x - DRAWER_W) if _drawer_open else screen.x, dy)
+		if _handle:
+			_handle.position = Vector2(
+					(screen.x - DRAWER_W - 50.0) if _drawer_open else (screen.x - 50.0),
+					dy + dh * 0.5 - 36.0)
+	if _rotate_panel:
+		_rotate_panel.position = Vector2(screen.x * 0.5 - _rotate_panel.size.x * 0.5, screen.y - 180.0)
+	if _anchor_btn:
+		_anchor_btn.position = Vector2(16, screen.y - 170)
+	if _block_globe:
+		var r := BlockGlobe.RADIUS
+		_block_globe.position = screen - Vector2(r, r)
 
 # ── Круглый индикатор энергии (аккумулятор + %) ────────────────────────────────
 # Рисуется нодами: тёмный круг, дуга-прогресс по окружности (заполненность аккумуляторов),
