@@ -50,7 +50,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 
 	var dur := duration
 	if dur <= 0.0:
-		dur = 0.5 if destroy else 0.6
+		dur = 0.7 if destroy else 0.8   # +0.2с к прежним 0.5/0.6 — медленнее
 	var tw := fx.create_tween()
 	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, dur)
 	tw.tween_callback(fx.queue_free)
