@@ -3,3 +3,12 @@
 /android/
 /export/
 addons/terrain_sculpt/terrain_mesh2.res
+
+# Музыка: сами треки НЕ в гите (тяжёлые, ~21МБ) — держи их локально, кидай в папки
+# music/{travel,battle,menu}/. Структура папок (.gitkeep) и README остаются в репо.
+music/**/*.ogg
+music/**/*.mp3
+music/**/*.wav
+music/**/*.ogg.import
+music/**/*.mp3.import
+music/**/*.wav.import
