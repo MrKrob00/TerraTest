@@ -29,8 +29,10 @@ extends RigidBody3D
 @export var longitudinal_grip: float = 0.3
 
 @export_group("Стабилизация")
-@export var anti_roll:       float = 6.0
-@export var upright_strength: float = 12.0
+# Чуть сильнее, чем у игрока (6.0/12.0): у ИИ нет ручного контр-руления при опрокидывании,
+# так что запас устойчивости нужен больше — а сборки врагов часто кладут оружие на y=1.
+@export var anti_roll:       float = 8.0
+@export var upright_strength: float = 15.0
 
 @export_group("Масса и физика")
 @export var base_weight:  float = 40.0
@@ -361,7 +363,9 @@ func _ai_attack(delta: float) -> void:
 	var target_throttle: float
 	if dist < radius * 0.5:
 		steer_target = to_n          # вплотную к цели — нос на неё, сдаём назад (турель целится)
-		target_throttle = -0.5
+		# Было -0.5 — резкий реверс на ходу (только что гнались на полном газу) часто
+		# опрокидывал машину носом вперёд, особенно с оружием на y=1 (выше центр масс).
+		target_throttle = -0.25
 	elif arrive < 1.5:
 		steer_target = to_n          # на позиции — держим цель в прицеле, почти стоим
 		target_throttle = 0.15
