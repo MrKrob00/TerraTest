@@ -53,50 +53,14 @@ func hurt(damage: int = 10) -> void:
 		destroy()
 
 func _play_hit_effect() -> void:
-	# Собираем ВСЕ меши внутри блока
-	var meshes: Array = []
-	_collect_meshes(self, meshes)
-	if meshes.is_empty(): return
-
-	# Для каждого меша дублируем все его сурфейсы
-	var mats: Array = []
-	for mesh in meshes:
-		for s in mesh.get_surface_override_material_count():
-			var mat = mesh.get_surface_override_material(s)
-			if mat == null:
-				var base = mesh.get_active_material(s)
-				if base == null: continue
-				mat = base.duplicate()
-				mesh.set_surface_override_material(s, mat)
-			mats.append(mat)
-
-	if mats.is_empty(): return
-
-	# Запоминаем исходные цвета
-	var original_colors: Array = []
-	for mat in mats:
-		original_colors.append(mat.albedo_color)
-
-	# Scale анимация
+	# Лёгкий "пинок" масштабом — тактильная отдача от попадания.
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector3.ONE * 1.1, 0.07)
 	tween.tween_property(self, "scale", Vector3.ONE * 0.9, 0.07)
 	tween.tween_property(self, "scale", Vector3.ONE, 0.07)
-
-	# Цвет анимация — красный и обратно к оригиналу
-	for i in mats.size():
-		var mat = mats[i]
-		var orig = original_colors[i]
-		var tween2 = create_tween()
-		tween2.tween_property(mat, "albedo_color", Color.RED, 0.05)
-		tween2.tween_property(mat, "albedo_color", orig, 0.15)
-
-
-func _collect_meshes(node: Node, result: Array) -> void:
-	if node is MeshInstance3D:
-		result.append(node)
-	for child in node.get_children():
-		_collect_meshes(child, result)
+	# Красные 0/1 на паре случайных граней блока — вместо прежней заливки материалов
+	# в красный цвет (см. block_matrix.gdshader mode 2 / BlockFX.hit).
+	BlockFX.hit(self)
 
 func destroy() -> void:
 	BlockFX.play(self, true)          # эффект «матрицы» уничтожения (красные + глюк)
