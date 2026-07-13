@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode blend_add, cull_disabled, unshaded, depth_draw_never;
+render_mode cull_disabled, unshaded, depth_draw_always;
 
 // «Матрица» для появления/уничтожения блока: сетка зелёных (спавн) или красных (глюк,
 // уничтожение) цифр 0/1 по ВСЕМ сторонам (триплан в ЛОКАЛЬНЫХ осях коробки, ~8 цифр на
@@ -82,18 +82,22 @@ void fragment() {
 	float body = step(v_h, edge);
 	float wave = smoothstep(0.07, 0.0, abs(v_h - edge));
 
+	// Пока волна ещё не дошла (или уже прошла, для уничтожения) — тут ничего не рисуем,
+	// настоящий блок виден как есть.
+	if (body < 0.5 && wave < 0.02) discard;
+
 	vec3 col = (mode == 0) ? color_spawn : color_destroy;
 
-	// Альфа: цифры в теле + яркая линия на фронте. Плюс мерцание.
-	float a = max(gl * body * 0.9, wave * (0.55 + gl * 0.45));
-	a *= 0.82 + 0.18 * sin(TIME * 30.0 + cell.x * 1.3 + cell.y * 0.7);
+	// Яркость цифр/фронта — как раньше, но это теперь МНОЖИТЕЛЬ поверх чёрного фона,
+	// а не альфа: фон сплошной чёрный (ALPHA=1), цифры/фронт светятся на нём цветом.
+	float glow = max(gl * body * 0.9, wave * (0.55 + gl * 0.45));
+	glow *= 0.82 + 0.18 * sin(TIME * 30.0 + cell.x * 1.3 + cell.y * 0.7);
 	if (mode == 1) {
-		a *= 0.55 + 0.45 * hash(vec2(floor(TIME * 22.0), cell.y));     // рваное мерцание глюка
-		a += glitch_amp * gl * 0.5;
+		glow *= 0.55 + 0.45 * hash(vec2(floor(TIME * 22.0), cell.y));     // рваное мерцание глюка
+		glow += glitch_amp * gl * 0.5;
 	}
+	glow = clamp(glow, 0.0, 1.0);
 
-	if (a < 0.02) discard;
-
-	ALBEDO = col * (1.4 + wave * 3.5);   // на blend_add ярче = сильнее свечение (нужен glow в окружении)
-	ALPHA  = clamp(a, 0.0, 1.0);
+	ALBEDO = col * glow * (1.4 + wave * 3.5);   // 0 в промежутках между цифрами → чёрный фон
+	ALPHA  = 1.0;                                 // непрозрачно: фон чёрный, не сквозной
 }
