@@ -31,7 +31,11 @@ func _ready() -> void:
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
 	# экрана — их надо пере-разложить, иначе при expand они «отлипнут» от краёв.
-	get_viewport().size_changed.connect(_relayout)
+	# DEFERRED: Main тоже слушает size_changed и меняет content_scale_factor (умный размер
+	# UI) — deferred гарантирует, что раскладка идёт ПОСЛЕ смены масштаба, с финальным
+	# логическим размером экрана, а не до неё.
+	get_viewport().size_changed.connect(_relayout, CONNECT_DEFERRED)
+	_relayout.call_deferred()   # стартовая раскладка после того, как Main выставит масштаб
 	# Тост «сейчас играет» при каждой смене трека (атрибуция для CC-BY треков).
 	var music := get_node_or_null("/root/Music")
 	if music:

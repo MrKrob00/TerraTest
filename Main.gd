@@ -24,6 +24,16 @@ var auto_fps: bool = true            # ВКЛ = авто-скейл по FPS; В
 var manual_scale: float = 0.75       # масштаб рендера при выключенном авто
 var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (самая тяжёлая настройка на мобилке)
 
+# ── Умный размер интерфейса ────────────────────────────────────────────────────
+# project.godot [display] = canvas_items: HUD масштабируется ЛИНЕЙНО с разрешением, и на
+# больших планшетах кнопки раздувало. Гасим это: эффективный масштаб растёт как √(растяжения)
+# и ограничен сверху — большой экран даёт лишь слегка больший UI, а не гигантский; маленький
+# — не крохотный. Сверху ещё пользовательский множитель ui_scale (слайдер в настройках).
+const UI_BASE := Vector2(1280, 720)  # = window/size/viewport_* в project.godot
+const UI_SCALE_MIN := 0.7
+const UI_SCALE_MAX := 1.4
+var ui_scale: float = 1.0            # ручной множитель размера UI (слайдер)
+
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
 	_load_settings()
@@ -31,7 +41,30 @@ func _ready() -> void:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
 	_apply_shadows()
+	get_window().size_changed.connect(_apply_ui_scale)
+	_apply_ui_scale()
 	_setup_pc_input_map()
+
+# Пересчёт content_scale_factor под текущее окно. Зовётся на старте и на каждый ресайз.
+func _apply_ui_scale() -> void:
+	var win := get_window()
+	if win == null:
+		return
+	var size := Vector2(win.size)
+	var stretch: float = minf(size.x / UI_BASE.x, size.y / UI_BASE.y)
+	if stretch <= 0.0:
+		stretch = 1.0
+	# √ смягчает рост, clamp ставит потолок/пол — canvas_items дал бы «stretch» как есть.
+	var target: float = clampf(sqrt(stretch), 0.85, 1.4)
+	var csf: float = (target / stretch) * ui_scale
+	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
+	if not is_equal_approx(win.content_scale_factor, csf):
+		win.content_scale_factor = csf
+
+func set_ui_scale(v: float) -> void:
+	ui_scale = clampf(v, UI_SCALE_MIN, UI_SCALE_MAX)
+	_apply_ui_scale()
+	_save_settings()
 
 # ── ПК-управление ──────────────────────────────────────────────────────────────
 # Take/TakeOff/Building/Movement/Attack уже существуют как Input-действия (их проверяют
@@ -100,6 +133,7 @@ func _save_settings() -> void:
 			"auto_fps": auto_fps,
 			"manual_scale": manual_scale,
 			"shadows_enabled": shadows_enabled,
+			"ui_scale": ui_scale,
 		}))
 
 func _load_settings() -> void:
@@ -110,6 +144,7 @@ func _load_settings() -> void:
 		auto_fps = bool(parsed.get("auto_fps", true))
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
+		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 
 func _process(delta: float) -> void:
 	if not auto_fps:

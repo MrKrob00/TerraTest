@@ -28,8 +28,8 @@ config/reflection_atlas/reflection_size=256
 ; а не остаются в пикселях. expand = заполнять экран (без чёрных полос), лишнее по
 ; широкой стороне добавляется по краям (угловые элементы HUD в hud.gd пере-раскладываются
 ; на size_changed).
-window/size/viewport_width=1152
-window/size/viewport_height=648
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation="landscape"
