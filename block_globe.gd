@@ -58,8 +58,8 @@ var _label: Label = null
 var _by_cat: Dictionary = {}           # cat_key -> Array[{type:int, count:int}]
 
 var _dragging: bool = false
-var _drag_moved: bool = false
-var _touch_index: int = -1
+var _drag_dist: float = 0.0            # накопленный путь драга (тап vs драг по сумме, не по 1 событию)
+const TAP_SLOP := 6.0                  # < столько пикселей пути — это тап (взять блок), не драг
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -217,28 +217,21 @@ func _process(delta: float) -> void:
 	_lat = lerp(_lat, _lat_target, SNAP_SPEED * delta)
 	_rig.rotation = Vector3(-_lat, -_lon, 0)
 
+# Только мышь: касания Godot по умолчанию эмулирует событиями мыши (emulate_mouse_from_touch,
+# как и vehicle_interact_button.gd). Отдельная ветка на ScreenTouch/Drag ловила бы КАЖДЫЙ
+# палец дважды (тач + эмуляция) → _end_drag срабатывал бы два раза и «брал» блок дважды.
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventScreenTouch:
-		if event.pressed:
-			_touch_index = event.index
-			_dragging = true
-			_drag_moved = false
-		elif event.index == _touch_index:
-			_end_drag()
-	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			_dragging = true
-			_drag_moved = false
-		else:
+			_drag_dist = 0.0
+		elif _dragging:
 			_end_drag()
-	elif event is InputEventScreenDrag and event.index == _touch_index:
-		_apply_drag(event.relative)
 	elif event is InputEventMouseMotion and _dragging:
 		_apply_drag(event.relative)
 
 func _apply_drag(rel: Vector2) -> void:
-	if rel.length() > 1.0:
-		_drag_moved = true
+	_drag_dist += rel.length()        # тап/драг решаем по НАКОПЛЕННОМУ пути (медленный драг тоже драг)
 	_lon_target -= rel.x * DRAG_SENS
 	var half_span := LAT_STEP * float(CAT_KEYS.size() - 1) * 0.5
 	_lat_target = clampf(_lat_target - rel.y * DRAG_SENS, -half_span, half_span)
@@ -246,11 +239,10 @@ func _apply_drag(rel: Vector2) -> void:
 
 func _end_drag() -> void:
 	_dragging = false
-	_touch_index = -1
-	if not _drag_moved:
-		_choose_center()
+	if _drag_dist < TAP_SLOP:
+		_choose_center()          # тап (почти без движения) → взять блок из центра
 		return
-	_snap_to_nearest()
+	_snap_to_nearest()            # был драг → довести до ближайшего слота
 
 # Ближайшая НЕПУСТАЯ категория к заданной широте (общее для снапа и живого лейбла).
 func _nearest_cat(lat: float) -> int:
