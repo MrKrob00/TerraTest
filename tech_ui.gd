@@ -636,3 +636,31 @@ func _build_settings_tab() -> void:
 		shadow_hint.add_theme_font_size_override("font_size", 12)
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)
+
+	if "ui_scale" in main:
+		_extra_header("— ИНТЕРФЕЙС —")
+		var ui_row := HBoxContainer.new()
+		_extra_vb.add_child(ui_row)
+		var ui_lbl := Label.new()
+		ui_lbl.text = "Размер: %d%%" % int(round(float(main.ui_scale) * 100.0))
+		ui_lbl.custom_minimum_size = Vector2(130, 0)
+		ui_lbl.add_theme_font_size_override("font_size", 13)
+		ui_row.add_child(ui_lbl)
+		var ui_sl := HSlider.new()
+		ui_sl.min_value = 0.7      # = Main.UI_SCALE_MIN (set_ui_scale всё равно клампит)
+		ui_sl.max_value = 1.4      # = Main.UI_SCALE_MAX
+		ui_sl.step = 0.05
+		ui_sl.value = float(main.ui_scale)
+		ui_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ui_sl.value_changed.connect(func(v: float) -> void:
+			ui_lbl.text = "Размер: %d%%" % int(round(v * 100.0))
+			var mn: Node = get_node_or_null("/root/Main")
+			if mn and mn.has_method("set_ui_scale"):
+				mn.set_ui_scale(v))
+		ui_row.add_child(ui_sl)
+
+		var ui_hint := Label.new()
+		ui_hint.text = "Размер кнопок/панелей. База уже подстраивается под экран сама."
+		ui_hint.add_theme_font_size_override("font_size", 12)
+		ui_hint.modulate = Color(1, 1, 1, 0.55)
+		_extra_vb.add_child(ui_hint)
