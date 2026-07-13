@@ -113,20 +113,20 @@ func _layout_default() -> void:
 	#set_block(4, 1, 4, G.Block.BELT, 0.0)
 	#set_block(4, 1, 3, G.Block.SELLER, 0.0)
 
-# Тяжёлый: две пушки.
+# Тяжёлый: две пушки. Разнесены по длине корпуса (5 и 7, а не 5 и 6 рядом) — вес не
+# наваливается на передний край базы колёс, машина реже клюёт носом при торможении/ИИ-реверсе.
 func _layout_dual_gun() -> void:
 	_wheels_6()
 	set_block(5, 0, 5, G.Block.CABIN, 0.0)
 	set_block(5, 1, 5, G.Block.GUN, 0.0)
-	set_block(5, 1, 6, G.Block.GUN, 0.0)
+	set_block(5, 1, 7, G.Block.GUN, 0.0)
 
-# Разведчик: 4 колеса, лазер.
+# Разведчик: было 4 колеса на базе всего в 1 клетку — слишком короткое плечо для веса
+# лазера на y=1, машину легко кидало носом вперёд. Теперь такая же 6-колёсная база, как
+# у остальных пресетов (база в 2 клетки — вчетверо устойчивее к опрокидыванию по тангажу).
 func _layout_laser_scout() -> void:
+	_wheels_6()
 	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
 	set_block(5, 1, 5, G.Block.LASER, 0.0)
 
 func _wheels_6() -> void:
