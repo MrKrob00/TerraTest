@@ -33,7 +33,13 @@ func _physics_process(delta: float) -> void:
 	if has_node("%wheel"):
 		%wheel.rotation.y = current_steer_angle + deg_to_rad(90)
 		if throttle_input!=0:
-			%wheel.rotation.x += throttle_input * delta * 3.0
+			# Колесо крепится то через грань "left", то "right" (±90° по Y, см. _face_orient
+			# в vehicle_body_3d.gd) — эти монтажи зеркальны, поэтому один и тот же локальный
+			# спин катится визуально в РАЗНЫЕ мировые стороны слева/справа от машины.
+			# Компенсируем знаком по стороне (X-позиция колеса от центра машины, см. _on_take_pressed:
+			# position = Vector3(x-5, y, z-5) относительно $blocks).
+			var side := -1.0 if position.x < 0.0 else 1.0
+			%wheel.rotation.x += side * throttle_input * delta * 3.0
 
 func get_module_data() -> Dictionary:
 	var vehicle = get_parent().get_parent()
