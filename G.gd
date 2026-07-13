@@ -88,6 +88,15 @@ enum Block {
 @onready var regen_scene: PackedScene = preload("res://regen.tscn")
 @onready var shield_scene: PackedScene = preload("res://shield.tscn")
 
+# Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
+# в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
+# ни в одну из категорий ниже.
+const BLOCK_CATEGORIES := {
+	"attack":  [Block.GUN, Block.LASER, Block.DRILL],
+	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL],
+	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.PROCESSOR, Block.SELLER, Block.GENERATOR],
+}
+
 func get_scene(block: Block) -> PackedScene:
 	match block:
 		Block.CABIN:   return cabin_scene
