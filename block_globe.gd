@@ -115,6 +115,8 @@ var _drag_dist: float = 0.0            # накопленный путь дра�
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	for k in CAT_KEYS:
+		_by_cat[k] = []          # инициализируем ДО первого refresh, чтобы прямые _by_cat[k] были безопасны
 	_build_scene()
 
 func _build_scene() -> void:
@@ -387,12 +389,16 @@ func _process(delta: float) -> void:
 	_lon = lerp_angle(_lon, _lon_target, SNAP_SPEED * delta)
 	_lat = lerp(_lat, _lat_target, SNAP_SPEED * delta)
 	_rig.rotation = Vector3(-_lat, -_lon, 0)
-	# Подсветка текущего блока: он крупнее и, в покое, медленно вращается.
+	# Подсветка текущего блока: он крупнее и, в покое, медленно вращается. Ведём подсветку
+	# по ЖИВОМУ центру (nearest cat + _preview_idx) — тому же, что показывает лейбл — иначе во
+	# время горизонтального драга крупным оставался старый (закоммиченный) блок, а по центру
+	# уже другой. В покое живой центр совпадает с закоммиченным выбором.
 	var settled := absf(wrapf(_lon - _lon_target, -PI, PI)) < 0.02 \
 			and absf(_lat - _lat_target) < 0.02 and not _dragging
-	var cur_idx := int(_item_idx.get(CAT_KEYS[_cat_idx], 0))
+	var hi_cat := _nearest_cat(_lat_target)
+	var hi_idx := _preview_idx(hi_cat)
 	for h in _holders:
-		var is_center: bool = int(h["cat"]) == _cat_idx and int(h["idx"]) == cur_idx
+		var is_center: bool = hi_idx >= 0 and int(h["cat"]) == hi_cat and int(h["idx"]) == hi_idx
 		var holder: Node3D = h["node"]
 		var target_s := SELECT_SCALE if is_center else 1.0
 		holder.scale = holder.scale.lerp(Vector3.ONE * target_s, 10.0 * delta)
