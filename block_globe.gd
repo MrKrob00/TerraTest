@@ -24,9 +24,9 @@ const LON_STEP := 0.80                 # ~46°: шаг между слотами
 const DRAG_SENS := 0.006               # рад на пиксель драга
 const SNAP_SPEED := 8.0                # скорость довода до слота после отпускания
 const ITEM_DIST := 2.4                 # радиус, на котором висят превью
-const CAM_Z := 5.2                     # позиция камеры по Z (смотрит в −Z на риг)
+const CAM_Z := 6.4                     # камера дальше (был 5.2) — блоки мельче, меньше тесноты
 const FOV := 30.0                      # угол камеры (square viewport → hfov==vfov)
-const SLOT := 0.62                     # целевой габарит превью после нормализации
+const SLOT := 0.48                     # целевой габарит превью (был 0.62) — блоки поменьше
 const TAP_SLOP := 6.0                  # < столько пикселей пути — это тап (взять), не драг
 const SELECT_SCALE := 1.28             # во сколько раз крупнее текущий блок
 const IDLE_SPIN := 0.6                 # рад/с — медленное вращение текущего блока в покое
@@ -81,17 +81,17 @@ class Overlay extends Control:
 				draw_string(f, anchor + Vector2(-w * 0.5, -8 + li * 22), line,
 						HORIZONTAL_ALIGNMENT_CENTER, -1, 18, Color(0.7, 0.85, 0.9, 0.8))
 			return
-		draw_arc(anchor, 58.0, 0, TAU, 40, RING, 2.5)   # кольцо-зона текущего блока
+		draw_arc(anchor, 50.0, 0, TAU, 40, RING, 2.5)   # кольцо-зона текущего блока
 		if flash_a > 0.01:
 			draw_arc(anchor, flash_r, 0, TAU, 40, Color(1, 1, 1, flash_a), 3.0)
 	func _process(_delta: float) -> void:
 		if flash_a > 0.001:          # перерисовываем, только пока играет вспышка
 			queue_redraw()
 	func flash() -> void:
-		flash_r = 58.0
+		flash_r = 50.0
 		flash_a = 0.9
 		var tw := create_tween().set_parallel(true)
-		tw.tween_property(self, "flash_r", 112.0, 0.24)
+		tw.tween_property(self, "flash_r", 100.0, 0.24)
 		tw.tween_property(self, "flash_a", 0.0, 0.24)
 
 var _lon: float = 0.0
@@ -388,7 +388,11 @@ func _process(delta: float) -> void:
 		return
 	_lon = lerp_angle(_lon, _lon_target, SNAP_SPEED * delta)
 	_lat = lerp(_lat, _lat_target, SNAP_SPEED * delta)
-	_rig.rotation = Vector3(-_lat, -_lon, 0)
+	# Блок стоит на сфере как P = Ry(lon)·Rx(−lat)·ẑ, поэтому чтобы вывести выбранный блок
+	# ВПЕРЁД (к камере, ẑ) рига-базис должен быть Rx(lat)·Ry(−lon) — именно в этом порядке.
+	# Прежний Vector3(−lat,−lon,0) в YXZ-порядке Godot давал Ry(−lon)·Rx(−lat) — верно ТОЛЬКО
+	# на экваторе (lat=0, одна категория), а при смене категории центрировался НЕ тот блок.
+	_rig.basis = Basis(Vector3.RIGHT, _lat) * Basis(Vector3.UP, -_lon)
 	# Подсветка текущего блока: он крупнее и, в покое, медленно вращается. Ведём подсветку
 	# по ЖИВОМУ центру (nearest cat + _preview_idx) — тому же, что показывает лейбл — иначе во
 	# время горизонтального драга крупным оставался старый (закоммиченный) блок, а по центру

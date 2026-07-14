@@ -69,6 +69,8 @@ void fragment() {
 	float bit   = step(0.5, hash(cell + vec2(tstep * 1.7, tstep * 0.3)));
 	float gl    = glyph(f, bit);
 
+	// Godot-шейдер НЕ поддерживает ранний return в fragment() — три режима строго через
+	// if / else if / else (взаимоисключающие, без проваливания).
 	if (mode == 0) {
 		// СПАВН: чёрный фон — ВСЕГДА (мгновенно, без волны). Волна цифр идёт по всему
 		// ходу анимации (progress 0..1), снизу вверх.
@@ -81,10 +83,7 @@ void fragment() {
 
 		ALBEDO = color_spawn * glow * (1.4 + digit_wave * 3.5);   // 0 между цифрами → чёрный фон
 		ALPHA  = 1.0;                                             // непрозрачно, фон не сквозной
-		return;
-	}
-
-	if (mode == 1) {
+	} else if (mode == 1) {
 		// УНИЧТОЖЕНИЕ: просто глюк — без чёрного фона и волны-фронта. Полосы съезжают по X,
 		// ячейки мерцают/то пропадают, всё вместе гаснет к концу анимации (ALPHA → 0).
 		float band = floor(uv.y * 16.0);
@@ -101,20 +100,23 @@ void fragment() {
 
 		float fade = clamp(1.0 - progress, 0.0, 1.0);
 		float a = fade * (0.35 + glow * 0.65 + glitch_amp * 0.3);
-		if (a < 0.02) discard;
-
-		ALBEDO = color_destroy * (glow * 2.2 + glitch_amp * 0.6);
-		ALPHA  = clamp(a, 0.0, 1.0);
-		return;
+		if (a < 0.02) {
+			discard;
+		} else {
+			ALBEDO = color_destroy * (glow * 2.2 + glitch_amp * 0.6);
+			ALPHA  = clamp(a, 0.0, 1.0);
+		}
+	} else {
+		// mode == 2 — ДАМАГ: короткая вспышка на маленькой пластине (см. block_fx.hit).
+		// Цифры видны сразу целиком, просто гаснут — никакой волны-фронта не нужно.
+		float fade2 = clamp(1.0 - progress, 0.0, 1.0);
+		float glow2 = gl * (0.7 + 0.3 * sin(TIME * 40.0 + cell.x + cell.y));
+		float a2 = fade2 * (0.15 + glow2 * 0.85);
+		if (a2 < 0.02) {
+			discard;
+		} else {
+			ALBEDO = color_destroy * glow2 * 2.0;
+			ALPHA  = clamp(a2, 0.0, 1.0);
+		}
 	}
-
-	// mode == 2 — ДАМАГ: короткая вспышка на маленькой пластине (см. block_fx.hit).
-	// Цифры видны сразу целиком, просто гаснут — никакой волны-фронта не нужно.
-	float fade2 = clamp(1.0 - progress, 0.0, 1.0);
-	float glow2 = gl * (0.7 + 0.3 * sin(TIME * 40.0 + cell.x + cell.y));
-	float a2 = fade2 * (0.15 + glow2 * 0.85);
-	if (a2 < 0.02) discard;
-
-	ALBEDO = color_destroy * glow2 * 2.0;
-	ALPHA  = clamp(a2, 0.0, 1.0);
 }
