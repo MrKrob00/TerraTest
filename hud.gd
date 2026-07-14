@@ -15,6 +15,7 @@ const DRAWER_H_RATIO: float = 0.46
 var _drawer: PanelContainer
 var _handle: Button
 var _drawer_open: bool = false
+var _drawer_tween: Tween = null             # чтобы ресайз мог оборвать анимацию слайда
 var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
 var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
@@ -47,6 +48,8 @@ func _ready() -> void:
 func _relayout() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	if _drawer:
+		if _drawer_tween and _drawer_tween.is_valid():
+			_drawer_tween.kill()       # ресайз во время слайда — снапаем, не даём tween-у доиграть на старый размер
 		var dh: float = screen.y * DRAWER_H_RATIO
 		var dy: float = (screen.y - dh) * 0.5
 		_drawer.size = Vector2(DRAWER_W, dh)
@@ -62,6 +65,19 @@ func _relayout() -> void:
 	if _block_globe:
 		var r := BlockGlobe.RADIUS
 		_block_globe.position = screen - Vector2(r, r)
+	# Джойстики и FPS-метка — это ноды сцены с АБСОЛЮТНЫМИ позициями (авторились под одно
+	# разрешение). При expand на не-16:9 экране они «отлипали» от краёв. Прибиваем к краям
+	# от текущего размера (джойстики всё равно прыгают под палец при касании — это лишь
+	# позиция покоя, но её видно). Держим авторский отступ у базы 1280×720.
+	var jm := get_node_or_null("Joystick_movement") as Node2D
+	if jm:
+		jm.position = Vector2(186, screen.y - 249)         # низ-слева (реген у базы 720 = y 471)
+	var jc := get_node_or_null("Joystick_camera") as Node2D
+	if jc:
+		jc.position = Vector2(screen.x - 117, 141)         # право-сверху (реген у базы 1280 = x 1163)
+	var fps := get_node_or_null("Label") as Control
+	if fps:
+		fps.position = Vector2(screen.x * 0.5 - 75.0, 4.0) # по центру сверху
 
 # ── Круглый индикатор энергии (аккумулятор + %) ────────────────────────────────
 # Рисуется нодами: тёмный круг, дуга-прогресс по окружности (заполненность аккумуляторов),
@@ -567,7 +583,10 @@ func _set_drawer(open: bool) -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	var target_x: float = (screen.x - DRAWER_W) if open else screen.x
 	var handle_x: float = (screen.x - DRAWER_W - 50.0) if open else (screen.x - 50.0)
+	if _drawer_tween and _drawer_tween.is_valid():
+		_drawer_tween.kill()           # не наслаиваем анимации (в т.ч. после ресайза)
 	var tw := create_tween().set_parallel(true)
+	_drawer_tween = tw
 	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	tw.tween_property(_drawer, "position:x", target_x, 0.22)
 	if _handle:
