@@ -26,6 +26,18 @@ const ZOOM_STEP := 1.0
 const ZOOM_MIN := 2.0
 const ZOOM_MAX := 20.0
 var _mouse_look_dx: float = 0.0   # накопленный сдвиг мыши по X с прошлого кадра (ПКМ зажата)
+var _mouse_look_dy: float = 0.0   # то же по Y — наклон взгляда
+
+# ── Наклон взгляда (gaze pitch) ─────────────────────────────────────────────────
+# Позиция камеры остаётся на орбите (RADIUS/CAM_HEIGHT/прижим к земле не трогаем) —
+# наклоняется только НАПРАВЛЕНИЕ взгляда: camera.rotation.x. Храним именно УГОЛ,
+# а не сдвиг цели в метрах: наклон ощущается одинаково на любом зуме.
+# Управление: вертикаль джойстика камеры (раньше ось пустовала) и вертикаль мыши
+# при зажатой ПКМ. Сброс на машину: двойной тап по зоне джойстика / двойная ПКМ.
+const PITCH_SPEED := 1.4          # рад/с от джойстика
+const PITCH_MIN := -0.35          # ~−20°: смотреть вниз
+const PITCH_MAX := 0.66           # ~+38°: смотреть вдаль, к горизонту
+var gaze_pitch: float = 0.0       # 0 — ровно на машину, как раньше
 
 var angle: float = 0.0
 var is_active: bool = false
@@ -43,11 +55,14 @@ func _input(event: InputEvent) -> void:
 		return
 	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT):
 		_mouse_look_dx += event.relative.x
+		_mouse_look_dy += event.relative.y
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			RADIUS = clampf(RADIUS - ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			RADIUS = clampf(RADIUS + ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.double_click:
+			reset_gaze()             # двойная ПКМ — взгляд снова ровно на машину
 
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
@@ -86,8 +101,15 @@ func camera_movement(delta):
 	# сдвиг мыши (_input идёт раньше _process) — не даём этому остатку доехать до угла.
 	if VehicleInteractButton.camera_block:
 		_mouse_look_dx = 0.0
+		_mouse_look_dy = 0.0
 	var mouse_turn := -_mouse_look_dx * MOUSE_SENS
 	_mouse_look_dx = 0.0
+	# Наклон взгляда: джойстик вверх (экранный y отрицательный) и мышь вверх — смотреть выше.
+	var tilt := -joystick_cam.get_joystick_dir().y
+	var mouse_pitch := -_mouse_look_dy * MOUSE_SENS
+	_mouse_look_dy = 0.0
+	if absf(tilt) > 0.05 or mouse_pitch != 0.0:
+		gaze_pitch = clampf(gaze_pitch + tilt * PITCH_SPEED * delta + mouse_pitch, PITCH_MIN, PITCH_MAX)
 	# mouse_turn либо ровно 0.0 (не двигали), либо реальный накопленный сдвиг — тут не
 	# нужен допуск на дребезг, в отличие от аналогового джойстика ниже.
 	if abs(dir) > 0.05 or mouse_turn != 0.0:
@@ -111,6 +133,13 @@ func camera_movement(delta):
 	# Смотрим строго на машину. Раньше сюда ДОБАВЛЯЛСЯ крен корпуса (rotation.x) поверх
 	# look_at — на горках камеру клевало вниз/вверх и она теряла машину из виду.
 	Spring.look_at_from_position(current_vehicle.global_position + offset * 0.01, current_vehicle.global_position)
+	# Наклон — ЛОКАЛЬНО на камере, после look_at арки: рига/длина пружины/прижим к земле
+	# не затронуты, при gaze_pitch == 0 кадр идентичен прежнему.
+	camera.rotation.x = gaze_pitch
+
+# Вернуть взгляд ровно на машину (двойной тап по джойстику камеры / двойная ПКМ).
+func reset_gaze() -> void:
+	gaze_pitch = 0.0
 
 # Высота террейна под точкой (мировые координаты). Карты нет — вернёт -INF,
 # тогда ограничение по высоте просто не действует.
