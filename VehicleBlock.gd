@@ -25,6 +25,7 @@ const DEFAULT_HP := 50
 var max_hp: int = 50
 var current_hp: int = 50
 var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)
+var _hit_tween: Tween = null            # «пинок» масштабом при уроне (гасим прошлый, см. ниже)
 
 signal destroyed(block_node: VehicleBlock)
 
@@ -49,8 +50,11 @@ func _on_parent_changed() -> void:
 
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage
+	# Оверлей хп строим ДО хит-эффекта: _local_aabb внутри hp_overlay иначе прихватил бы
+	# только что заспавненные пластины вспышки (mode 2) и раздул бы коробку навсегда.
+	if current_hp > 0:
+		_refresh_hp_fx()
 	_play_hit_effect()
-	_refresh_hp_fx()
 	if current_hp <= 0:
 		destroy()
 
@@ -72,11 +76,14 @@ func _refresh_hp_fx() -> void:
 	(_hp_fx.material_override as ShaderMaterial).set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
 
 func _play_hit_effect() -> void:
-	# Лёгкий "пинок" масштабом — тактильная отдача от попадания.
-	var tween = create_tween()
-	tween.tween_property(self, "scale", Vector3.ONE * 1.1, 0.07)
-	tween.tween_property(self, "scale", Vector3.ONE * 0.9, 0.07)
-	tween.tween_property(self, "scale", Vector3.ONE, 0.07)
+	# Лёгкий "пинок" масштабом — тактильная отдача от попадания. Гасим прошлый твин: под
+	# лазером (урон каждые 0.1с) несколько твинов иначе дерутся за scale и блок дёргает.
+	if is_instance_valid(_hit_tween):
+		_hit_tween.kill()
+	_hit_tween = create_tween()
+	_hit_tween.tween_property(self, "scale", Vector3.ONE * 1.1, 0.07)
+	_hit_tween.tween_property(self, "scale", Vector3.ONE * 0.9, 0.07)
+	_hit_tween.tween_property(self, "scale", Vector3.ONE, 0.07)
 	# Красные 0/1 на паре случайных граней блока — вместо прежней заливки материалов
 	# в красный цвет (см. block_matrix.gdshader mode 2 / BlockFX.hit).
 	BlockFX.hit(self)
