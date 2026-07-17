@@ -411,7 +411,10 @@ func _build_rotate_panel() -> void:
 # два скрещенных овала-кольца «Х»: блоки и категории, крутятся диагональными
 # драгами; тап без движения берёт выбранный блок в руку — см. block_globe.gd.
 func _globe_pos(screen: Vector2) -> Vector2:
-	return Vector2(screen.x - BlockGlobe.SIZE - 212.0, screen.y - BlockGlobe.SIZE - 6.0)
+	# 218 — чтобы до колонки Take/TakeOff (~200px у правой кромки) оставался зазор под палец.
+	# С Attack виджет пересекается, но они взаимоисключающие: Attack виден только в movement,
+	# гироскоп — только в building (_on_movement_pressed/_on_building_pressed).
+	return Vector2(screen.x - BlockGlobe.SIZE - 218.0, screen.y - BlockGlobe.SIZE - 6.0)
 
 func _build_block_globe() -> void:
 	var globe := BlockGlobe.new()
