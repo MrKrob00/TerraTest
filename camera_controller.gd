@@ -99,13 +99,18 @@ func camera_movement(delta):
 	var dir = (-$"HUD/Joystick_camera".get_joystick_dir().x)
 	# Жест кругового меню мог включиться ПОСЛЕ того, как в этот же кадр уже накопился
 	# сдвиг мыши (_input идёт раньше _process) — не даём этому остатку доехать до угла.
+	# Наклон взгляда: джойстик вверх (экранный y отрицательный) и мышь вверх — смотреть выше.
+	var tilt := -joystick_cam.get_joystick_dir().y
+	# Жест кругового меню гасит ОБА источника, включая джойстик: его центрует _input самого
+	# джойстика, но если пальцы замерли — событий нет, и отклонённая ручка продолжала бы
+	# крутить (а теперь и наклонять) камеру весь холд.
 	if VehicleInteractButton.camera_block:
 		_mouse_look_dx = 0.0
 		_mouse_look_dy = 0.0
+		dir = 0.0
+		tilt = 0.0
 	var mouse_turn := -_mouse_look_dx * MOUSE_SENS
 	_mouse_look_dx = 0.0
-	# Наклон взгляда: джойстик вверх (экранный y отрицательный) и мышь вверх — смотреть выше.
-	var tilt := -joystick_cam.get_joystick_dir().y
 	var mouse_pitch := -_mouse_look_dy * MOUSE_SENS
 	_mouse_look_dy = 0.0
 	if absf(tilt) > 0.05 or mouse_pitch != 0.0:
