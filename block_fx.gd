@@ -105,6 +105,32 @@ static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:
 	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, HIT_DURATION)
 	tw.tween_callback(fx.queue_free)
 
+# ── Постоянный оверлей ХП (mode 3) ───────────────────────────────────────────────
+# Куб-оболочка 1³ на весь блок (как play(), но НЕ анимируется и НЕ удаляется) — ребёнок
+# блока, едет и вращается с ним. Густота/яркость красных цифр гонит юниформ `damage`,
+# который блок обновляет ТОЛЬКО при изменении хп (не по кадрам). При полном хп блок прячет
+# узел (см. VehicleBlock._refresh_hp_fx) → на целых блоках нулевая цена. Создаём лениво —
+# на первом же уроне, чтобы неповреждённые блоки не плодили узлы вовсе.
+static func hp_overlay(block: Node3D) -> MeshInstance3D:
+	var aabb := _local_aabb(block)
+	var fx := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	fx.mesh = bm
+	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER
+	mat.set_shader_parameter("mode", 3)
+	mat.set_shader_parameter("damage", 0.0)
+	mat.set_shader_parameter("cells_per_meter", 6.0)   # покрупнее цифры — читаемо как «хп»
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	fx.material_override = mat
+	block.add_child(fx)
+	# Локальный трансформ (ребёнок блока, aabb уже в осях блока): чуть больше габарита блока.
+	fx.transform = Transform3D(Basis().scaled(aabb.size * 1.04 + Vector3(0.03, 0.03, 0.03)),
+			aabb.get_center())
+	return fx
+
 # Коробка эффекта не может быть больше этого по каждой оси: страховка от FX-мешей
 # (луч лазера в момент выстрела и т.п.), которые не описывают сам блок.
 const MAX_EXTENT := 2.0

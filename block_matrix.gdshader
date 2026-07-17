@@ -7,12 +7,16 @@ render_mode cull_disabled, unshaded, depth_draw_always;
 //            проступают светящиеся зелёные 0/1 — «загрузка» блока.
 //   mode 1 — УНИЧТОЖЕНИЕ: просто ГЛЮК — хаотично мерцающие красные 0/1 по всей
 //            поверхности (без чёрного фона и волны-фронта), гаснущие к концу.
-//   mode 2 — ДАМАГ: короткая вспышка красных 0/1 на маленькой пластине (одна грань
-//            блока, см. block_fx.hit) — цифры видны сразу целиком и просто гаснут.
+//   mode 2 — ДАМАГ: короткая вспышка ~нескольких красных 0/1 (не сплошная сетка) на
+//            маленькой пластине (одна грань блока, см. block_fx.hit) — всплыли и гаснут.
+//   mode 3 — ХП: ПОСТОЯННЫЙ оверлей-куб на блоке. Густота/яркость красных всплывающих
+//            цифр = УРОН (damage 0..1 = 1−hp/max). damage 0 → всё discard (а GDScript ещё
+//            и прячет узел) → целый блок чистый и бесплатный; у смерти — густо и мерцает.
 // Триплан в ЛОКАЛЬНЫХ осях коробки/пластины — едет и вращается вместе с блоком.
 
 uniform int   mode = 0;
 uniform float progress : hint_range(0.0, 1.0) = 0.0;      // 0..1 ход анимации
+uniform float damage   : hint_range(0.0, 1.0) = 0.0;      // mode 3: доля потерянного хп
 uniform vec3  color_spawn   : source_color = vec3(0.15, 1.0, 0.35);
 uniform vec3  color_destroy : source_color = vec3(1.0, 0.12, 0.12);
 uniform float cells_per_meter = 8.0;                      // плотность цифр (на метр)
@@ -38,6 +42,16 @@ float glyph(vec2 uv, float bit) {
 	float outer = step(d.x, 0.25) * step(d.y, 0.34);
 	float inner = step(d.x, 0.13) * step(d.y, 0.20);
 	return clamp(outer - inner, 0.0, 1.0);                             // «0»
+}
+
+// Разреженные «всплывающие» цифры: горит лишь случайное подмножество ячеек (density),
+// и каждая появляется-гаснет по своему таймеру — образ «всплыло несколько цифр», а не
+// сплошная сетка. Возвращает яркость 0..1 для ячейки cell с уже посчитанным глифом gl.
+float sparse(vec2 cell, float gl, float density, float salt, float pop_speed) {
+	float lit   = step(hash(cell + vec2(salt, salt * 1.3)), density);
+	float phase = fract(TIME * pop_speed + hash(cell + vec2(salt * 2.1, 5.0)) * 11.0);
+	float pop   = smoothstep(0.0, 0.15, phase) * smoothstep(1.0, 0.6, phase);
+	return gl * lit * pop;
 }
 
 void vertex() {
@@ -106,17 +120,31 @@ void fragment() {
 			ALBEDO = color_destroy * (glow * 2.2 + glitch_amp * 0.6);
 			ALPHA  = clamp(a, 0.0, 1.0);
 		}
-	} else {
-		// mode == 2 — ДАМАГ: короткая вспышка на маленькой пластине (см. block_fx.hit).
-		// Цифры видны сразу целиком, просто гаснут — никакой волны-фронта не нужно.
+	} else if (mode == 2) {
+		// ДАМАГ: короткая вспышка НЕСКОЛЬКИХ (не сплошной сетки) красных 0/1 на пластине —
+		// всплыли и гаснут (см. block_fx.hit). Разреженный набор + затухание по progress.
+		float glow2 = sparse(cell, gl, 0.16, 2.0, 2.2);
+		glow2 *= 0.7 + 0.3 * sin(TIME * 40.0 + cell.x + cell.y);
 		float fade2 = clamp(1.0 - progress, 0.0, 1.0);
-		float glow2 = gl * (0.7 + 0.3 * sin(TIME * 40.0 + cell.x + cell.y));
-		float a2 = fade2 * (0.15 + glow2 * 0.85);
+		float a2 = fade2 * glow2 * 1.6;
 		if (a2 < 0.02) {
 			discard;
 		} else {
-			ALBEDO = color_destroy * glow2 * 2.0;
+			ALBEDO = color_destroy * (glow2 * 2.2 + 0.3);
 			ALPHA  = clamp(a2, 0.0, 1.0);
+		}
+	} else {
+		// mode == 3 — ХП: постоянный оверлей, густота/яркость красных всплывающих цифр = урон.
+		// damage 0 → всё discard (пусто, целый блок чистый); ближе к смерти — гуще и мерцает.
+		float density = 0.03 + damage * 0.30;              // доля «живых» ячеек растёт с уроном
+		float glow3 = sparse(cell, gl, density, 3.0, 1.3);
+		glow3 *= 0.6 + 0.4 * sin(TIME * 16.0 + cell.x * 2.0 + cell.y * 1.7);   // лёгкое мерцание
+		float a3 = clamp(glow3 * (0.7 + damage * 0.6), 0.0, 1.0);
+		if (a3 < 0.02) {
+			discard;
+		} else {
+			ALBEDO = color_destroy * (0.9 + damage * 1.6);
+			ALPHA  = a3;
 		}
 	}
 }
