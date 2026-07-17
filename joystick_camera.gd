@@ -94,4 +94,7 @@ func set_zoom(index1:Vector2,index2:Vector2):
 	radius/=result
 	if radius<2: radius=2
 	if radius>20: radius=20
-	$"../..".RADIUS =int(radius)
+	# Пишем float БЕЗ int(): раньше запись целого + ресинк выше стирали дробный прирост
+	# пинча каждое событие (8 → 8.08 → int → 8) — отдаление на телефоне стояло на месте,
+	# а приближение работало (int() округляет вниз). RADIUS и ПК-колесо и так float.
+	$"../..".RADIUS = radius
