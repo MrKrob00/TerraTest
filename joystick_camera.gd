@@ -11,6 +11,8 @@ var active_touch_pos: Vector2 = Vector2.ZERO
 var second_touch_pos: Vector2 = Vector2.ZERO
 var zoom: bool = false
 var distance: float = 0.0
+var _press_ms: int = 0             # когда нажали текущий палец (тап = короткое нажатие)
+var _tap_ready_ms: int = -10000    # когда отпустили последний КОРОТКИЙ тап (для двойного)
 
 @onready var screen_size = get_viewport().get_visible_rect().size
 
@@ -42,6 +44,11 @@ func _input(event):
 				active_touch_index = event.index
 				active_touch_pos = event.position
 				update_knob_position(event.position)
+				# Двойной тап по зоне джойстика — сброс наклона взгляда камеры на машину.
+				_press_ms = Time.get_ticks_msec()
+				if _press_ms - _tap_ready_ms < 300:
+					$"../..".reset_gaze()
+					_tap_ready_ms = -10000   # третий тап не считается новым «двойным»
 
 			if active_touch_index != -1 and is_touch_outside_2(event.position):
 				second_touch_index = event.index
@@ -52,6 +59,11 @@ func _input(event):
 			else: zoom = false
 
 		elif not event.pressed and event.index == active_touch_index:
+			# Тап = короткое нажатие почти без движения ручки; драг и пинч-зум — не тап.
+			var now := Time.get_ticks_msec()
+			if now - _press_ms < 250 and not zoom \
+					and (knob_pos - stick_center).length() < max_distance * 0.3:
+				_tap_ready_ms = now
 			active_touch_index = -1
 			knob_pos = stick_center
 
