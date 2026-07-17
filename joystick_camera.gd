@@ -13,6 +13,7 @@ var zoom: bool = false
 var distance: float = 0.0
 var _press_ms: int = 0             # когда нажали текущий палец (тап = короткое нажатие)
 var _tap_ready_ms: int = -10000    # когда отпустили последний КОРОТКИЙ тап (для двойного)
+var _had_pending: bool = false     # это нажатие пришло после свежего тапа (кандидат в двойной)
 
 @onready var screen_size = get_viewport().get_visible_rect().size
 
@@ -44,11 +45,12 @@ func _input(event):
 				active_touch_index = event.index
 				active_touch_pos = event.position
 				update_knob_position(event.position)
-				# Двойной тап по зоне джойстика — сброс наклона взгляда камеры на машину.
+				# Кандидат в двойной тап запоминаем, но РЕШАЕМ на отпускании: в момент
+				# нажатия ещё неизвестно, тап это или начало драга/пинча — сброс наклона
+				# по «тап + быстрый драг» стирал бы только что выставленный взгляд.
 				_press_ms = Time.get_ticks_msec()
-				if _press_ms - _tap_ready_ms < 300:
-					$"../..".reset_gaze()
-					_tap_ready_ms = -10000   # третий тап не считается новым «двойным»
+				_had_pending = _press_ms - _tap_ready_ms < 300
+				_tap_ready_ms = -10000   # ожидание потреблено этим нажатием
 
 			if active_touch_index != -1 and is_touch_outside_2(event.position):
 				second_touch_index = event.index
@@ -63,7 +65,11 @@ func _input(event):
 			var now := Time.get_ticks_msec()
 			if now - _press_ms < 250 and not zoom \
 					and (knob_pos - stick_center).length() < max_distance * 0.3:
-				_tap_ready_ms = now
+				if _had_pending:
+					$"../..".reset_gaze()   # второй быстрый тап подряд — сброс взгляда
+				else:
+					_tap_ready_ms = now     # первый тап — ждём второго (третий не сдвоится)
+			_had_pending = false
 			active_touch_index = -1
 			knob_pos = stick_center
 
