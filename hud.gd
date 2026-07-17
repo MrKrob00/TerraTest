@@ -63,8 +63,7 @@ func _relayout() -> void:
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
 	if _block_globe:
-		var r := BlockGlobe.RADIUS
-		_block_globe.position = screen - Vector2(r, r)
+		_block_globe.position = _globe_pos(screen)
 	# Джойстики и FPS-метка — это ноды сцены с АБСОЛЮТНЫМИ позициями (авторились под одно
 	# разрешение). При expand на не-16:9 экране они «отлипали» от краёв. Прибиваем к краям
 	# от текущего размера (джойстики всё равно прыгают под палец при касании — это лишь
@@ -406,17 +405,18 @@ func _build_rotate_panel() -> void:
 	grid.add_child(_rot_btn("yaw_left",   "Поворот влево",  Vector3.UP,    PI / 2))
 	grid.add_child(_rot_btn("yaw_right",  "Поворот вправо", Vector3.UP,   -PI / 2))
 
-# ── «Шар» выбора блока (стройка) ───────────────────────────────────────────────
-# Квадрат 2R×2R с ЦЕНТРОМ ровно в правом нижнем углу экрана: 3/4 круга уходят за
-# край окна и просто не рендерятся, видна только верхне-левая четверть — см.
-# block_globe.gd. Крутится драгом (два независимых вращения), тап без движения
-# берёт блок из центра в руку — так же, как клик по слоту в гараже.
+# ── «Гироскоп» выбора блока (стройка) ──────────────────────────────────────────
+# Квадрат SIZE×SIZE у правого-нижнего края, ЛЕВЕЕ колонки кнопок Take/TakeOff (они
+# ~200px у правой кромки — виджет их не перекрывает и не ворует их тапы). Внутри —
+# два скрещенных овала-кольца «Х»: блоки и категории, крутятся диагональными
+# драгами; тап без движения берёт выбранный блок в руку — см. block_globe.gd.
+func _globe_pos(screen: Vector2) -> Vector2:
+	return Vector2(screen.x - BlockGlobe.SIZE - 212.0, screen.y - BlockGlobe.SIZE - 6.0)
+
 func _build_block_globe() -> void:
-	var screen: Vector2 = get_viewport().get_visible_rect().size
-	var r := BlockGlobe.RADIUS
 	var globe := BlockGlobe.new()
-	globe.size = Vector2(r * 2.0, r * 2.0)
-	globe.position = screen - Vector2(r, r)
+	globe.size = Vector2(BlockGlobe.SIZE, BlockGlobe.SIZE)
+	globe.position = _globe_pos(get_viewport().get_visible_rect().size)
 	globe.visible = false
 	globe.block_chosen.connect(_on_globe_block_chosen)
 	add_child(globe)
