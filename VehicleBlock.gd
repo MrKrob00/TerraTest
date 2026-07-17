@@ -24,6 +24,7 @@ const DEFAULT_HP := 50
 
 var max_hp: int = 50
 var current_hp: int = 50
+var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)
 
 signal destroyed(block_node: VehicleBlock)
 
@@ -49,8 +50,26 @@ func _on_parent_changed() -> void:
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage
 	_play_hit_effect()
+	_refresh_hp_fx()
 	if current_hp <= 0:
 		destroy()
+
+# Постоянный показ хп красными «матричными» цифрами (см. block_fx.hp_overlay / mode 3).
+# Зовём ТОЛЬКО при изменении хп (урон/реген), не по кадрам: анимацию гонит сам шейдер от
+# TIME, GDScript лишь пишет юниформ `damage`. Полный хп → узел спрятан (нулевая цена);
+# оверлей создаётся лениво на первом уроне, чтобы целые блоки не плодили узлы.
+func _refresh_hp_fx() -> void:
+	var dmg := 1.0 - float(current_hp) / float(maxi(max_hp, 1))
+	if dmg <= 0.001:
+		if is_instance_valid(_hp_fx):
+			_hp_fx.visible = false
+		return
+	if not is_instance_valid(_hp_fx):
+		if not is_inside_tree():
+			return
+		_hp_fx = BlockFX.hp_overlay(self)
+	_hp_fx.visible = true
+	(_hp_fx.material_override as ShaderMaterial).set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
 
 func _play_hit_effect() -> void:
 	# Лёгкий "пинок" масштабом — тактильная отдача от попадания.
