@@ -9,14 +9,12 @@ render_mode cull_disabled, unshaded, depth_draw_always;
 //            поверхности (без чёрного фона и волны-фронта), гаснущие к концу.
 //   mode 2 — ДАМАГ: короткая вспышка ~нескольких красных 0/1 (не сплошная сетка) на
 //            маленькой пластине (одна грань блока, см. block_fx.hit) — всплыли и гаснут.
-//   mode 3 — ХП: ПОСТОЯННЫЙ оверлей-куб на блоке. Густота/яркость красных всплывающих
-//            цифр = УРОН (damage 0..1 = 1−hp/max). damage 0 → всё discard (а GDScript ещё
-//            и прячет узел) → целый блок чистый и бесплатный; у смерти — густо и мерцает.
+// ПОСТОЯННЫЙ показ хп вынесен в отдельный block_hp.gdshader (у него свой режим глубины,
+// чтобы прозрачный оверлей не писал глубину и не мерцал на стыках блоков).
 // Триплан в ЛОКАЛЬНЫХ осях коробки/пластины — едет и вращается вместе с блоком.
 
 uniform int   mode = 0;
 uniform float progress : hint_range(0.0, 1.0) = 0.0;      // 0..1 ход анимации
-uniform float damage   : hint_range(0.0, 1.0) = 0.0;      // mode 3: доля потерянного хп
 uniform vec3  color_spawn   : source_color = vec3(0.15, 1.0, 0.35);
 uniform vec3  color_destroy : source_color = vec3(1.0, 0.12, 0.12);
 uniform float cells_per_meter = 8.0;                      // плотность цифр (на метр)
@@ -120,9 +118,9 @@ void fragment() {
 			ALBEDO = color_destroy * (glow * 2.2 + glitch_amp * 0.6);
 			ALPHA  = clamp(a, 0.0, 1.0);
 		}
-	} else if (mode == 2) {
-		// ДАМАГ: короткая вспышка НЕСКОЛЬКИХ (не сплошной сетки) красных 0/1 на пластине —
-		// всплыли и гаснут (см. block_fx.hit). Разреженный набор + затухание по progress.
+	} else {
+		// mode == 2 — ДАМАГ: короткая вспышка НЕСКОЛЬКИХ (не сплошной сетки) красных 0/1 на
+		// пластине — всплыли и гаснут (см. block_fx.hit). Разреженный набор + затухание.
 		float glow2 = sparse(cell, gl, 0.16, 2.0, 2.2);
 		glow2 *= 0.7 + 0.3 * sin(TIME * 40.0 + cell.x + cell.y);
 		float fade2 = clamp(1.0 - progress, 0.0, 1.0);
@@ -132,19 +130,6 @@ void fragment() {
 		} else {
 			ALBEDO = color_destroy * (glow2 * 2.2 + 0.3);
 			ALPHA  = clamp(a2, 0.0, 1.0);
-		}
-	} else {
-		// mode == 3 — ХП: постоянный оверлей, густота/яркость красных всплывающих цифр = урон.
-		// damage 0 → всё discard (пусто, целый блок чистый); ближе к смерти — гуще и мерцает.
-		float density = 0.03 + damage * 0.30;              // доля «живых» ячеек растёт с уроном
-		float glow3 = sparse(cell, gl, density, 3.0, 1.3);
-		glow3 *= 0.6 + 0.4 * sin(TIME * 16.0 + cell.x * 2.0 + cell.y * 1.7);   // лёгкое мерцание
-		float a3 = clamp(glow3 * (0.7 + damage * 0.6), 0.0, 1.0);
-		if (a3 < 0.02) {
-			discard;
-		} else {
-			ALBEDO = color_destroy * (0.9 + damage * 1.6);
-			ALPHA  = a3;
 		}
 	}
 }

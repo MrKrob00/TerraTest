@@ -15,6 +15,7 @@ extends RefCounted
 # Гонит progress 0→1 и сам себя удаляет.
 
 const SHADER := preload("res://block_matrix.gdshader")
+const SHADER_HP := preload("res://block_hp.gdshader")   # постоянный оверлей хп (свой режим глубины)
 
 static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if block == null or not block.is_inside_tree():
@@ -119,10 +120,8 @@ static func hp_overlay(block: Node3D) -> MeshInstance3D:
 	fx.mesh = bm
 	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
-	mat.set_shader_parameter("mode", 3)
+	mat.shader = SHADER_HP
 	mat.set_shader_parameter("damage", 0.0)
-	mat.set_shader_parameter("cells_per_meter", 6.0)   # покрупнее цифры — читаемо как «хп»
 	mat.set_shader_parameter("seed", randf() * 100.0)
 	fx.material_override = mat
 	block.add_child(fx)
