@@ -27,13 +27,15 @@ const CAT_COLORS := {
 # (малая полуось / большая), ZK — глубинная амплитуда (передняя точка ближе к камере).
 const ROLL_C := 0.8191520443           # cos 35°
 const ROLL_S := 0.5735764364           # sin 35°
-const MINOR_K := 0.38
+# MINOR_K не уже 0.46: передние точки колец расходятся на ~65px, иначе выбранный блок при
+# вращении (диагональ куба шире грани!) задевал передний кристалл категории.
+const MINOR_K := 0.46
 const ZK := 0.92
 const R_RING := 1.30
 const CAM_Z := 6.4
 const FOV := 30.0
 const SLOT := 0.44                     # целевой габарит превью блока
-const GEM := 0.26                      # размер кристалла категории
+const GEM := 0.23                      # размер кристалла категории
 const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», листается без заворота
 
 # Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
@@ -45,7 +47,7 @@ const SLOT_DRAG_PX := 100.0            # пикселей драга на оди
 const TAP_SLOP := 6.0                  # короче этого пути — тап (взять), не драг
 const LOCK_DIST := 12.0                # путь, после которого лочится ось жеста
 const SNAP_SPEED := 8.0
-const SELECT_SCALE := 1.30
+const SELECT_SCALE := 1.18             # больше — и вращающийся блок цепляет соседний кристалл
 const IDLE_SPIN := 0.6                 # рад/с — вращение выбранного блока в покое
 
 # ── Фон: два овала-«Х» и мягкий тёмный диск. Всё передаётся снаружи готовыми полилиниями
@@ -78,7 +80,7 @@ class Overlay extends Control:
 		if empty_all:
 			_text("НЕТ\nБЛОКОВ", size * 0.5, 18)
 			return
-		draw_arc(anchor, 44.0, 0, TAU, 40, RING, 2.5)
+		draw_arc(anchor, 40.0, 0, TAU, 40, RING, 2.5)
 		if empty_cat:
 			_text("ПУСТО", anchor, 13)
 		if flash_a > 0.01:
@@ -94,10 +96,10 @@ class Overlay extends Control:
 		if flash_a > 0.001:            # перерисовка только пока играет вспышка
 			queue_redraw()
 	func flash() -> void:
-		flash_r = 44.0
+		flash_r = 40.0
 		flash_a = 0.9
 		var tw := create_tween().set_parallel(true)
-		tw.tween_property(self, "flash_r", 92.0, 0.24)
+		tw.tween_property(self, "flash_r", 84.0, 0.24)
 		tw.tween_property(self, "flash_a", 0.0, 0.24)
 
 var _ang_a := 0.0                      # угол кольца блоков (растёт непрерывно, слоты кратны _step_a)
@@ -204,7 +206,7 @@ func _build_scene() -> void:
 	add_child(_overlay)                    # после svc — рисуется поверх 3D
 
 	_label = Label.new()
-	_label.position = Vector2(8, 2)
+	_label.position = Vector2(8, 0)
 	_label.add_theme_font_size_override("font_size", 14)
 	_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -472,7 +474,7 @@ func _process(delta: float) -> void:
 	for ci in _gems.size():
 		var g: Node3D = _gems[ci]["node"]
 		g.position = _ring_point(float(ci) * STEP_B - _ang_b, -1.0)
-		var gs := 1.25 if ci == fc else 1.0
+		var gs := 1.18 if ci == fc else 1.0
 		g.scale = g.scale.lerp(Vector3.ONE * gs, 10.0 * delta)
 		if ci == fc and settled:
 			g.rotation.y += IDLE_SPIN * delta
