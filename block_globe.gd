@@ -76,6 +76,7 @@ class Overlay extends Control:
 	var empty_cat := false
 	var flash_r := 0.0
 	var flash_a := 0.0
+	var _tw: Tween = null
 	func _draw() -> void:
 		if empty_all:
 			_text("НЕТ\nБЛОКОВ", size * 0.5, 18)
@@ -96,11 +97,13 @@ class Overlay extends Control:
 		if flash_a > 0.001:            # перерисовка только пока играет вспышка
 			queue_redraw()
 	func flash() -> void:
+		if _tw:
+			_tw.kill()               # быстрый двойной тап — старая вспышка не борется с новой
 		flash_r = 40.0
 		flash_a = 0.9
-		var tw := create_tween().set_parallel(true)
-		tw.tween_property(self, "flash_r", 84.0, 0.24)
-		tw.tween_property(self, "flash_a", 0.0, 0.24)
+		_tw = create_tween().set_parallel(true)
+		_tw.tween_property(self, "flash_r", 84.0, 0.24)
+		_tw.tween_property(self, "flash_a", 0.0, 0.24)
 
 var _ang_a := 0.0                      # угол кольца блоков (растёт непрерывно, слоты кратны _step_a)
 var _ang_a_t := 0.0
@@ -122,6 +125,7 @@ var _bg: XBg = null
 var _overlay: Overlay = null
 var _visual_cache := {}                # block_type -> шаблон меша (строим один раз)
 var _all_empty := false
+var _inv_seen := -1                    # размер инвентаря на последнем refresh (см. _process)
 
 var _dragging := false
 var _drag_dist := 0.0
@@ -235,6 +239,7 @@ func _build_gems() -> void:
 
 # Полное обновление содержимого — звать при входе в стройку и после взятия блока.
 func refresh() -> void:
+	_inv_seen = G.block_inventory.size()
 	for k in CAT_KEYS:
 		(_by_cat[k] as Array).clear()
 	var counts: Dictionary = {}
@@ -451,18 +456,23 @@ func _sync_state() -> void:
 func _process(delta: float) -> void:
 	if not visible or _root_a == null:
 		return
+	# Пылесос чёрной дыры может докинуть блок прямо во время стройки — подхватываем
+	# (не в драге: refresh пересаживает углы мгновенно и сбил бы жест).
+	if not _dragging and G.block_inventory.size() != _inv_seen:
+		refresh()
 	var k := minf(SNAP_SPEED * delta, 1.0)
 	_ang_a = lerpf(_ang_a, _ang_a_t, k)
 	_ang_b = lerpf(_ang_b, _ang_b_t, k)
 	var settled := absf(_ang_a - _ang_a_t) < 0.02 and absf(_ang_b - _ang_b_t) < 0.02 \
 			and not _dragging
 	# Кольцо блоков: позиции каждый кадр (углы плывут), выбранный крупнее и в покое крутится.
+	var sk := minf(10.0 * delta, 1.0)   # без клампа фриз-кадр перебрасывает lerp за цель
 	var sel := _live_idx()
 	for i in _slots.size():
 		var holder: Node3D = _slots[i]["node"]
 		holder.position = _ring_point(float(i) * _step_a - _ang_a, 1.0)
 		var target_s := SELECT_SCALE if i == sel else 1.0
-		holder.scale = holder.scale.lerp(Vector3.ONE * target_s, 10.0 * delta)
+		holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 		var vis: Node3D = _slots[i]["visual"]
 		if i == sel:
 			if settled:
@@ -475,7 +485,7 @@ func _process(delta: float) -> void:
 		var g: Node3D = _gems[ci]["node"]
 		g.position = _ring_point(float(ci) * STEP_B - _ang_b, -1.0)
 		var gs := 1.18 if ci == fc else 1.0
-		g.scale = g.scale.lerp(Vector3.ONE * gs, 10.0 * delta)
+		g.scale = g.scale.lerp(Vector3.ONE * gs, sk)
 		if ci == fc and settled:
 			g.rotation.y += IDLE_SPIN * delta
 
