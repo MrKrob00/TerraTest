@@ -222,9 +222,12 @@ func _build_scene() -> void:
 	# Тёмные вуали (прозрачные квады, глубину НЕ пишут — дефолт для transparent):
 	# первая — сразу за передним кольцом (задние ярусы приглушены), вторая — между
 	# ярусами d=1 и d=2 (глубже — ещё темнее): три яруса яркости под три яруса размера.
-	# Размер квада — по ширине фрустума на его глубине (у второй он шире).
-	_add_veil(sv, VEIL_Z, 4.8, 0.30)
-	_add_veil(sv, VEIL2_Z, 6.0, 0.35)
+	# Вуаль РАДИАЛЬНАЯ (альфа гаснет к краю по радиусу фонового диска): сплошной квад
+	# в прозрачном вьюпорте писал бы альфу во весь кадр — виджет становился жёстким
+	# тёмным КВАДРАТОМ поверх мира вместо мягкого диска. Радиус диска в мире на глубине
+	# z: disc_px / ppw(z); квад чуть шире, гасим с ~70% радиуса.
+	_add_veil(sv, VEIL_Z, 0.30)
+	_add_veil(sv, VEIL2_Z, 0.35)
 
 	_overlay = Overlay.new()
 	_overlay.anchor = _to_px(_ring_point(0.0, 1.0))
@@ -239,14 +242,26 @@ func _build_scene() -> void:
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 
-func _add_veil(sv: SubViewport, z: float, side: float, alpha: float) -> void:
+func _add_veil(sv: SubViewport, z: float, alpha: float) -> void:
+	# Радиус фонового диска (px) в мировых единицах на глубине вуали.
+	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - z))
+	var disc_world := (SIZE * 0.485) / ppw
 	var veil := MeshInstance3D.new()
 	var q := QuadMesh.new()
-	q.size = Vector2(side, side)
+	q.size = Vector2(disc_world * 2.0, disc_world * 2.0)
+	var grad := Gradient.new()
+	grad.offsets = PackedFloat32Array([0.7, 1.0])
+	grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)          # радиус градиента = половина квада = радиус диска
 	var vm := StandardMaterial3D.new()
 	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	vm.albedo_color = Color(0.02, 0.08, 0.11, alpha)
+	vm.albedo_texture = tex                  # альфа = albedo_color.a × радиальный градиент
 	q.material = vm
 	veil.mesh = q
 	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -359,17 +374,14 @@ func _rebuild_rings() -> void:
 		_ring_by_ci[ci] = ring
 
 # Цели глубин стопки: кольцо категории ci — на posmod(ci − текущая, 4). Переднее (0) —
-# текущая категория; драг «\» вживую перекатывает стопку. Бейджи ×N — только спереди.
+# текущая категория; драг «\» вживую перекатывает стопку. Бейджи ×N включает _process
+# по ФАКТИЧЕСКОЙ глубине (no_depth_test-лейбл на глубоком кольце рисовался бы поверх вуали).
 func _retarget_depths(instant: bool) -> void:
 	var front := _front_cat()
 	for r in _rings:
 		r["depth_t"] = float(posmod(int(r["ci"]) - front, CAT_KEYS.size()))
 		if instant:
 			r["depth"] = r["depth_t"]
-		var is_front: bool = int(r["ci"]) == front
-		for s in r["slots"]:
-			if s["badge"] != null:
-				(s["badge"] as Label3D).visible = is_front
 
 # ── Реальный меш блока: собираем из его сцены, НЕ запуская логику ─────────────────
 # instantiate() не вызывает _ready() (там весь сайд-эффект: add_to_group/freeze/сигналы/
@@ -478,6 +490,15 @@ func _color_for(block_type: int) -> Color:
 func _front_cat() -> int:
 	return posmod(roundi(_ang_b_t / STEP_B), CAT_KEYS.size())
 
+# Все анимации доехали: кольцо категорий и глубины стопки у целей (для авто-refresh).
+func _stack_settled() -> bool:
+	if absf(_ang_b - _ang_b_t) >= 0.02:
+		return false
+	for r in _rings:
+		if absf(float(r["depth"]) - float(r["depth_t"])) >= 0.03:
+			return false
+	return true
+
 # Кольцо текущей (передней) категории; пустой Dictionary, если категория без блоков.
 func _front_ring() -> Dictionary:
 	return _ring_by_ci.get(_front_cat(), {})
@@ -527,9 +548,11 @@ func _sync_state() -> void:
 func _process(delta: float) -> void:
 	if not visible or _root_a == null:
 		return
-	# Пылесос чёрной дыры может докинуть блок прямо во время стройки — подхватываем
-	# (не в драге: refresh пересаживает углы мгновенно и сбил бы жест).
-	if not _dragging and G.block_inventory.size() != _inv_seen:
+	# Пылесос чёрной дыры может докинуть блок прямо во время стройки — подхватываем.
+	# Только в покое: refresh пересаживает углы/глубины мгновенно — в драге сбил бы жест,
+	# посреди перелистывания телепортировал бы стопку (инвентарь не совпал — дождёмся кадра,
+	# когда всё доехало, _inv_seen до тех пор не совпадёт).
+	if not _dragging and G.block_inventory.size() != _inv_seen and _stack_settled():
 		refresh()
 	var k := minf(SNAP_SPEED * delta, 1.0)
 	_ang_b = lerpf(_ang_b, _ang_b_t, k)
@@ -549,12 +572,17 @@ func _process(delta: float) -> void:
 		var is_front: bool = int(r["ci"]) == front
 		var ring_settled := is_front and settled \
 				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and d < 0.05
+		# Бейджи ×N — по ФАКТИЧЕСКОЙ глубине: пока кольцо едет из-за вуали, его
+		# no_depth_test-лейблы рисовались бы яркими поверх неё.
+		var show_badges: bool = is_front and d < 0.5
 		var slots: Array = r["slots"]
 		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
 			holder.position = _ring_point(float(i) * float(r["step"]) - float(r["ang"]), 1.0)
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
+			if slots[i]["badge"] != null:
+				(slots[i]["badge"] as Label3D).visible = show_badges
 			var vis: Node3D = slots[i]["visual"]
 			if is_front and i == sel:
 				if ring_settled:
