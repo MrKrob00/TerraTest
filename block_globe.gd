@@ -45,6 +45,7 @@ const DEPTH_STEP := 2.6                # м между «карточками» 
 const DEPTH_SCALE := 0.85              # доп. масштаб корня кольца за каждый шаг глубины
 const DEPTH_SPEED := 7.0               # скорость перелистывания стопки
 const VEIL_Z := -1.25                  # тёмная вуаль сразу ЗА передним кольцом (его дальняя точка −1.196)
+const VEIL2_Z := -3.9                  # вторая вуаль между d=1 и d=2: три яруса яркости 100/58/34%
 
 # Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
 const U_A := Vector2(0.8191520443, -0.5735764364)
@@ -93,7 +94,7 @@ class Overlay extends Control:
 		if empty_all:
 			_text("НЕТ\nБЛОКОВ", size * 0.5, 18)
 			return
-		draw_arc(anchor, 40.0, 0, TAU, 40, RING, 2.5)
+		draw_arc(anchor, 48.0, 0, TAU, 40, RING, 2.5)
 		if empty_cat:
 			_text("ПУСТО", anchor, 13)
 		if flash_a > 0.01:
@@ -111,10 +112,10 @@ class Overlay extends Control:
 	func flash() -> void:
 		if _tw:
 			_tw.kill()               # быстрый двойной тап — старая вспышка не борется с новой
-		flash_r = 40.0
+		flash_r = 48.0
 		flash_a = 0.9
 		_tw = create_tween().set_parallel(true)
-		_tw.tween_property(self, "flash_r", 84.0, 0.24)
+		_tw.tween_property(self, "flash_r", 100.0, 0.24)
 		_tw.tween_property(self, "flash_a", 0.0, 0.24)
 
 var _ang_b := 0.0                      # угол кольца категорий (слоты кратны STEP_B)
@@ -218,21 +219,12 @@ func _build_scene() -> void:
 	sv.add_child(_root_b)
 	_build_gems()
 
-	# Тёмная вуаль сразу за передним кольцом: всё, что глубже (задние кольца стопки),
-	# выглядит приглушённым. Прозрачная, глубину НЕ пишет (дефолт для transparent) —
-	# уроков block_hp это касалось. Один квад на всю ширину кадра на её глубине.
-	var veil := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(4.8, 4.8)
-	var vm := StandardMaterial3D.new()
-	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	vm.albedo_color = Color(0.02, 0.08, 0.11, 0.42)
-	q.material = vm
-	veil.mesh = q
-	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	veil.position = Vector3(0, 0, VEIL_Z)
-	sv.add_child(veil)
+	# Тёмные вуали (прозрачные квады, глубину НЕ пишут — дефолт для transparent):
+	# первая — сразу за передним кольцом (задние ярусы приглушены), вторая — между
+	# ярусами d=1 и d=2 (глубже — ещё темнее): три яруса яркости под три яруса размера.
+	# Размер квада — по ширине фрустума на его глубине (у второй он шире).
+	_add_veil(sv, VEIL_Z, 4.8, 0.30)
+	_add_veil(sv, VEIL2_Z, 6.0, 0.35)
 
 	_overlay = Overlay.new()
 	_overlay.anchor = _to_px(_ring_point(0.0, 1.0))
@@ -246,6 +238,20 @@ func _build_scene() -> void:
 	_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
+
+func _add_veil(sv: SubViewport, z: float, side: float, alpha: float) -> void:
+	var veil := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(side, side)
+	var vm := StandardMaterial3D.new()
+	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	vm.albedo_color = Color(0.02, 0.08, 0.11, alpha)
+	q.material = vm
+	veil.mesh = q
+	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	veil.position = Vector3(0, 0, z)
+	sv.add_child(veil)
 
 # Кристаллы категорий — кубик на «уголке» (поворот 45°+35°), цвет из CAT_COLORS.
 # Строятся один раз; пустые категории затемняются в _sync_state().
