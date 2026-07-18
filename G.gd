@@ -100,6 +100,37 @@ func add_research_points(amount: int) -> void:
 	mark_progress_dirty()
 	progress_changed.emit()
 
+# Единая точка конверсии игровых событий в прогрессию (зовёт Q.report — он уже шина
+# всех событий). Правила из ТЗ §3: убийство +15 XP (первый килл нового ВИДА врага
+# ещё +5 ДИ — видов пока один, задел на будущее), добыча +1 XP. money_earned XP не даёт.
+var killed_kinds: Array = []           # виды врагов, за которые уже выдали ДИ первого килла
+
+func on_game_event(event: String, amount: int = 1, kind: String = "default") -> void:
+	match event:
+		"enemy_killed":
+			add_faction_xp("start", 15 * amount)
+			if not killed_kinds.has(kind):
+				killed_kinds.append(kind)
+				add_research_points(5)
+		"ore_mined":
+			add_faction_xp("start", amount)
+
+# Имя блока для UI (реплика Механика, замки) — из ключей enum.
+func block_name(bt: int) -> String:
+	var names: Array = Block.keys()
+	if bt >= 0 and bt < names.size():
+		return str(names[bt]).capitalize()
+	return "?"
+
+# Блоки заданного грейда фракции (для «открылось в магазине: …»).
+func blocks_of_grade(f: String, g: int) -> Array:
+	var out: Array = []
+	for bt in BLOCK_META:
+		var m: Dictionary = BLOCK_META[bt]
+		if m["f"] == f and int(m["g"]) == g:
+			out.append(bt)
+	return out
+
 # Доступен ли блок в МАГАЗИНЕ (гараж SHOP). Трофеи этим не гейтятся.
 func is_block_shop_unlocked(bt: int) -> bool:
 	var m: Dictionary = BLOCK_META.get(bt, {})
@@ -162,6 +193,7 @@ func _flush_progress() -> void:
 			"research_points": research_points,
 			"researched": researched,
 			"quests_done": quests_done,
+			"killed_kinds": killed_kinds,
 		}))
 		f.close()
 
@@ -193,6 +225,9 @@ func _load_progress() -> void:
 	quests_done = []
 	for q in data.get("quests_done", []):
 		quests_done.append(str(q))
+	killed_kinds = []
+	for k2 in data.get("killed_kinds", []):
+		killed_kinds.append(str(k2))
 
 func _notification(what: int) -> void:
 	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем

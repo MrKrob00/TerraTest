@@ -68,6 +68,19 @@ func _ready() -> void:
 		if _tab_buttons[i]:
 			_tab_buttons[i].pressed.connect(_select_tab.bind(i))
 	visibility_changed.connect(_on_visibility_changed)
+	# Прогресс лицензии в шапке (перед деньгами): «Гр.N · XP x/y · ДИ z». Живёт в том же
+	# HBox TopRow, обновляется по G.progress_changed (XP/ДИ/исследования).
+	if has_node("%Currency"):
+		var row: Node = (%Currency as Node).get_parent()
+		_prog_label = Label.new()
+		_prog_label.add_theme_font_size_override("font_size", 14)
+		_prog_label.add_theme_color_override("font_color", Color(0.65, 0.85, 0.9))
+		row.add_child(_prog_label)
+		row.move_child(_prog_label, (%Currency as Node).get_index())
+	G.progress_changed.connect(func() -> void:
+		_update_currency()
+		if visible and _tab == TAB_SHOP:
+			_rebuild_grid(_search.text if _search else ""))   # замки могли открыться
 	_select_tab(TAB_INVENTORY)
 	_refresh_stats()
 	_update_currency()
@@ -199,9 +212,22 @@ func _make_slot(it: Dictionary) -> Control:
 	var block_type: int = int(it["type"])
 	if _tab == TAB_SHOP:
 		var price: int = int(it["price"])
-		corner.text = "%d$" % price
-		btn.disabled = G.money < price
-		btn.pressed.connect(_buy.bind(block_type, price))
+		if not G.is_block_shop_unlocked(block_type):
+			# Замок: блок виден (мотивация), но не покупается. Причина в углу и тултипе:
+			# не исследован в древе / не хватает грейда лицензии.
+			var m: Dictionary = G.BLOCK_META.get(block_type, {})
+			if not m.is_empty() and G.grade(m["f"]) < int(m["g"]):
+				corner.text = "гр.%d" % int(m["g"])
+				btn.tooltip_text = "Нужен грейд %d лицензии" % int(m["g"])
+			else:
+				corner.text = "древо"
+				btn.tooltip_text = "Исследуй в древе технологий"
+			btn.disabled = true
+			btn.modulate = Color(1, 1, 1, 0.45)
+		else:
+			corner.text = "%d$" % price
+			btn.disabled = G.money < price
+			btn.pressed.connect(_buy.bind(block_type, price))
 	else:
 		corner.text = "×%d" % int(it["count"])
 		btn.pressed.connect(_take_into_hand.bind(block_type))
@@ -362,9 +388,22 @@ func _get_vehicle() -> Node:
 	return null
 
 # ── Характеристики справа + деньги (реальные данные) ──────────────────────────
+var _prog_label: Label = null   # «Гр.N · XP x/y · ДИ z» в шапке (создаётся в _ready)
+
 func _update_currency() -> void:
 	if has_node("%Currency"):
 		%Currency.text = str(G.money)
+	if _prog_label:
+		var gr: int = G.grade("start")
+		var xp: int = int(G.faction_xp.get("start", 0))
+		var th: Array = (G.FACTIONS["start"] as Dictionary)["xp_thresholds"]
+		var txt := "Гр.%d" % gr
+		if gr < th.size():
+			txt += " · %d/%d XP" % [xp, int(th[gr])]   # порог СЛЕДУЮЩЕГО грейда
+		else:
+			txt += " · макс"
+		txt += " · ДИ %d" % G.research_points
+		_prog_label.text = txt
 
 func _refresh_stats() -> void:
 	var v: Node = _get_vehicle()
