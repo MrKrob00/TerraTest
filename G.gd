@@ -154,11 +154,12 @@ func _flush_progress() -> void:
 	_progress_dirty = false
 	var f = FileAccess.open(PROGRESS_PATH, FileAccess.WRITE)
 	if f:
+		# Имена ключей = имена полей (ТЗ §1): формат «навсегда», меняем осознанно.
 		f.store_string(JSON.stringify({
 			"money": money,
-			"inventory": block_inventory,
+			"block_inventory": block_inventory,
 			"faction_xp": faction_xp,
-			"rp": research_points,
+			"research_points": research_points,
 			"researched": researched,
 			"quests_done": quests_done,
 		}))
@@ -177,13 +178,13 @@ func _load_progress() -> void:
 		return
 	money = int(data.get("money", money))
 	block_inventory = []
-	for b in data.get("inventory", []):
+	for b in data.get("block_inventory", []):
 		block_inventory.append(int(b))       # JSON отдаёт float — приводим
 	var fx = data.get("faction_xp", {})
 	if fx is Dictionary:
 		for k in fx:
 			faction_xp[str(k)] = int(fx[k])
-	research_points = int(data.get("rp", 0))
+	research_points = int(data.get("research_points", 0))
 	var res = data.get("researched", [])
 	if res is Array and not res.is_empty():
 		researched = []
@@ -194,8 +195,10 @@ func _load_progress() -> void:
 		quests_done.append(str(q))
 
 func _notification(what: int) -> void:
-	# Мобайл: сворачивание = единственный «выход» — пишем сразу, не ждём debounce.
-	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED:
+	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем
+	# сразу, не ждём debounce.
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		_progress_dirty = true
 		_flush_progress()
 
