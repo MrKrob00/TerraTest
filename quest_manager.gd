@@ -81,6 +81,7 @@ func _on_completed(q: Dictionary) -> void:
 		var g = get_node_or_null("/root/G")
 		if g:
 			g.money += reward
+			g.mark_progress_dirty()   # мимо add_money — сейв надо пометить самим
 	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
 	_say("Система", _completion_message(str(q["title"]), reward))
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
