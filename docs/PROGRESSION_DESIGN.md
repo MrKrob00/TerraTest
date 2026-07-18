@@ -55,11 +55,12 @@ API в G:
 
 ```
 CABIN → DRILL → GUN → LASER
-CABIN → COLLECTOR → INTAKE → BELT → PROCESSOR
-        COLLECTOR → GENERATOR → SELLER
+CABIN → COLLECTOR → INTAKE → BELT → SELLER
+        COLLECTOR → PROCESSOR → GENERATOR
 CABIN → SOLAR → BATTERY → SHIELD → REGEN
-CABIN → WHEEL;  CABIN → BLOCK
+CABIN → BLOCK → WHEEL
 ```
+(рёбра утверждены игроком; имя фракции — позже, пока "start"; пороги XP из §1 приняты)
 Одна страница на фракцию; ветви по ролям (оружие/добыча/энергия). Новая фракция = новая страница.
 
 ## 5. UI

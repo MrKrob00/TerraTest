@@ -16,4 +16,5 @@ func _on_hole_body_entered(body: Node3D) -> void:
 	# Свободный блок из мира → в инвентарь (виден в гараже).
 	if body.get_parent() != null and body.get_parent().name == "objects" and "block" in body:
 		G.block_inventory.append(body.block)
+		G.mark_progress_dirty()
 		body.queue_free()
