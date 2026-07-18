@@ -109,6 +109,12 @@ func _make_row(q: Dictionary) -> Control:
 		var reward: int = int(q.get("reward_money", 0))
 		if reward > 0:
 			o.text += "  ·  +%d$" % reward
+		var rxp: int = int(q.get("reward_xp", 0))
+		if rxp > 0:
+			o.text += "  ·  +%dXP" % rxp
+		var rrp: int = int(q.get("reward_rp", 0))
+		if rrp > 0:
+			o.text += "  ·  +%dДИ" % rrp
 	o.add_theme_font_size_override("font_size", 12)
 	o.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	vb.add_child(o)
