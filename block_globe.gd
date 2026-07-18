@@ -1,20 +1,22 @@
 class_name BlockGlobe
 extends Control
-# «Гироскоп» выбора блока в стройке: два ОДИНАКОВЫХ вытянутых овала-кольца в 3D, скрещенных
-# буквой «Х» — общий центр, наклонены в противоположные стороны, в середине читается ромб.
+# «Гироскоп-ролодекс» выбора блока в стройке. Спереди — «Х» из двух вытянутых овалов:
 #   • кольцо «/» — БЛОКИ текущей категории (реальные превью-меши). Драг по диагонали
 #     «право-верх ↔ лево-низ» крутит его; ВЫБРАННЫЙ блок стоит спереди СЛЕВА-СВЕРХУ,
 #     крупнее остальных и в покое медленно вращается — его и берём тапом.
 #   • кольцо «\» — 4 КАТЕГОРИИ (те же G.BLOCK_CATEGORIES, что в гараже) — цветные кристаллы.
 #     Драг «право-низ ↔ лево-верх» крутит его; текущая категория спереди СПРАВА-СВЕРХУ.
-#     Пока крутишь категории, кольцо блоков живо перестраивается под переднюю.
+# НОВОЕ: у КАЖДОЙ непустой категории — СВОЁ кольцо блоков. Кольца стоят СТОПКОЙ по глубине
+# (ролодекс): переднее — текущая категория в полной детализации; остальные видны ЗА ним —
+# мельче, приглушены тёмной вуалью, без бейджей. Смена категории ничего не пересобирает —
+# стопка плавно «перелистывается», заднее кольцо выплывает вперёд с уже расставленными
+# блоками (у каждой категории свой запомненный слот и угол).
 # Ось жеста лочится по первой диагонали движения; отпустил — довод до ближайшего слота.
-# Тап без движения — взять текущий блок. У каждой категории — свой запомненный слот.
-# Пустая категория — «ПУСТО», совсем без блоков — «НЕТ БЛОКОВ».
+# Тап без движения — взять текущий блок. Пустая категория — «ПУСТО», всё пусто — «НЕТ БЛОКОВ».
 
 signal block_chosen(block_type: int)
 
-const SIZE := 264.0                    # сторона квадрата-виджета: весь «Х» виден целиком
+const SIZE := 320.0                    # сторона квадрата-виджета (крупнее: в кадре вся стопка)
 const CAT_KEYS := ["attack", "blocks", "factory", "other"]
 const CAT_NAMES := {"attack": "Атака", "blocks": "Блоки", "factory": "Фабрика", "other": "Остальное"}
 const CAT_COLORS := {
@@ -38,6 +40,12 @@ const SLOT := 0.44                     # целевой габарит прев�
 const GEM := 0.23                      # размер кристалла категории
 const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», листается без заворота
 
+# Стопка-ролодекс: кольцо категории ci стоит на глубине posmod(ci − текущая, 4).
+const DEPTH_STEP := 2.6                # м между «карточками» стопки: заднее кольцо ЦЕЛИКОМ за вуалью
+const DEPTH_SCALE := 0.85              # доп. масштаб корня кольца за каждый шаг глубины
+const DEPTH_SPEED := 7.0               # скорость перелистывания стопки
+const VEIL_Z := -1.25                  # тёмная вуаль сразу ЗА передним кольцом (его дальняя точка −1.196)
+
 # Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
 const U_A := Vector2(0.8191520443, -0.5735764364)
 const U_B := Vector2(0.8191520443, 0.5735764364)
@@ -50,25 +58,29 @@ const SNAP_SPEED := 8.0
 const SELECT_SCALE := 1.18             # больше — и вращающийся блок цепляет соседний кристалл
 const IDLE_SPIN := 0.6                 # рад/с — вращение выбранного блока в покое
 
-# ── Фон: два овала-«Х» и мягкий тёмный диск. Всё передаётся снаружи готовыми полилиниями
-# (вложенный класс GDScript не видит const внешнего по «голому» имени). ────────────────
+# ── Фон: два овала-«Х», эхо-овалы стопки и мягкий тёмный диск. Всё передаётся снаружи
+# готовыми полилиниями (вложенный класс не видит const внешнего по «голому» имени). ────
 class XBg extends Control:
-	const OVAL_A := Color(0.247, 0.6, 0.65, 0.5)
 	const OVAL_B := Color(0.58, 0.47, 0.78, 0.45)
 	const DISC := Color(0.03, 0.10, 0.13, 0.5)
 	var oval_a := PackedVector2Array()
 	var oval_b := PackedVector2Array()
+	var echoes: Array = []             # PackedVector2Array овалов задних «карточек» стопки
+	var front_color := Color(0.247, 0.6, 0.65)   # овал «/» красится в цвет текущей категории
 	var center := Vector2.ZERO
 	var disc_r := 100.0
 	func _draw() -> void:
 		draw_circle(center, disc_r, DISC)
+		for e in echoes:
+			if (e as PackedVector2Array).size() > 1:
+				draw_polyline(e, Color(front_color, 0.14), 1.0, true)
 		if oval_b.size() > 1:
 			draw_polyline(oval_b, OVAL_B, 1.5, true)
 		if oval_a.size() > 1:
-			draw_polyline(oval_a, OVAL_A, 1.5, true)
+			draw_polyline(oval_a, Color(front_color, 0.55), 1.5, true)
 
 # ── Оверлей поверх 3D: кольцо у выбранного блока, вспышка взятия, «ПУСТО»/«НЕТ БЛОКОВ».
-# Отдельный Control (не в риге): вспышка переживает rebuild кольца после взятия. ───────
+# Отдельный Control (не в риге): вспышка переживает rebuild колец после взятия. ────────
 class Overlay extends Control:
 	const RING := Color(0.247, 0.6, 0.65, 0.55)
 	var anchor := Vector2.ZERO         # экранная точка выбранного блока (передняя точка «/»)
@@ -105,20 +117,19 @@ class Overlay extends Control:
 		_tw.tween_property(self, "flash_r", 84.0, 0.24)
 		_tw.tween_property(self, "flash_a", 0.0, 0.24)
 
-var _ang_a := 0.0                      # угол кольца блоков (растёт непрерывно, слоты кратны _step_a)
-var _ang_a_t := 0.0
 var _ang_b := 0.0                      # угол кольца категорий (слоты кратны STEP_B)
 var _ang_b_t := 0.0
-var _step_a := TAU / float(MIN_SLOTS_A)
 var _cat_idx := 0                      # закоммиченная категория
-var _live_cat := 0                     # категория, чьи блоки сейчас на кольце (во время драга «\»)
 var _item_idx := {}                    # cat_key -> запомненный слот категории
-var _items: Array = []                 # блоки live-категории: [{type, count}]
 var _by_cat := {}                      # cat_key -> Array[{type, count}]
 
-var _root_a: Node3D = null             # держатели блоков (позиции считаем каждый кадр)
+# Стопка колец: по одному на НЕПУСТУЮ категорию.
+# Кольцо: {ci, items, root, slots:[{node, visual, badge}], ang, ang_t, step, depth, depth_t}
+var _rings: Array = []
+var _ring_by_ci := {}                  # ci -> кольцо (Dictionary)
+
+var _root_a: Node3D = null             # родитель корней всех колец стопки
 var _root_b: Node3D = null             # держатели кристаллов категорий
-var _slots: Array = []                 # [{node, visual}] — блоки, индекс = слот
 var _gems: Array = []                  # [{node, mat}] — кристаллы, индекс = категория
 var _label: Label = null
 var _bg: XBg = null
@@ -155,10 +166,13 @@ func _to_px(p: Vector3) -> Vector2:
 	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - p.z))
 	return Vector2(SIZE * 0.5 + p.x * ppw, SIZE * 0.5 - p.y * ppw)
 
-func _oval_px(gs: float) -> PackedVector2Array:
+func _oval_px(gs: float, depth: float = 0.0) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	var s := pow(DEPTH_SCALE, depth)
+	var dz := -DEPTH_STEP * depth
 	for i in 49:
-		pts.append(_to_px(_ring_point(TAU * float(i) / 48.0, gs)))
+		var p := _ring_point(TAU * float(i) / 48.0, gs) * s
+		pts.append(_to_px(Vector3(p.x, p.y, p.z + dz)))
 	return pts
 
 func _build_scene() -> void:
@@ -167,6 +181,7 @@ func _build_scene() -> void:
 	_bg.disc_r = SIZE * 0.485
 	_bg.oval_a = _oval_px(1.0)
 	_bg.oval_b = _oval_px(-1.0)
+	_bg.echoes = [_oval_px(1.0, 1.0), _oval_px(1.0, 2.0)]   # эхо стопки: намёк на задние кольца
 	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_bg)
@@ -202,6 +217,22 @@ func _build_scene() -> void:
 	_root_b = Node3D.new()
 	sv.add_child(_root_b)
 	_build_gems()
+
+	# Тёмная вуаль сразу за передним кольцом: всё, что глубже (задние кольца стопки),
+	# выглядит приглушённым. Прозрачная, глубину НЕ пишет (дефолт для transparent) —
+	# уроков block_hp это касалось. Один квад на всю ширину кадра на её глубине.
+	var veil := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(4.8, 4.8)
+	var vm := StandardMaterial3D.new()
+	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	vm.albedo_color = Color(0.02, 0.08, 0.11, 0.42)
+	q.material = vm
+	veil.mesh = q
+	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	veil.position = Vector3(0, 0, VEIL_Z)
+	sv.add_child(veil)
 
 	_overlay = Overlay.new()
 	_overlay.anchor = _to_px(_ring_point(0.0, 1.0))
@@ -259,7 +290,8 @@ func refresh() -> void:
 		_cat_idx = _nearest_nonempty(_cat_idx)
 	_ang_b = float(_cat_idx) * STEP_B
 	_ang_b_t = _ang_b
-	_load_cat(_cat_idx)
+	_rebuild_rings()
+	_retarget_depths(true)
 	_update_label()
 	_sync_state()
 
@@ -276,37 +308,62 @@ func _nearest_nonempty(ci: int) -> int:
 				return cand
 	return ci
 
-# Поставить на кольцо блоки категории ci (и вспомнить её сохранённый слот).
-func _load_cat(ci: int) -> void:
-	_live_cat = ci
-	_items = _by_cat[CAT_KEYS[ci]]
-	_step_a = TAU / float(maxi(_items.size(), MIN_SLOTS_A))
-	var mem := 0
-	if not _items.is_empty():
-		mem = clampi(int(_item_idx[CAT_KEYS[ci]]), 0, _items.size() - 1)
-	_ang_a = float(mem) * _step_a
-	_ang_a_t = _ang_a
-	for s in _slots:
-		_root_a.remove_child(s["node"])   # remove ДО free: без кадра сосуществования наборов
-		(s["node"] as Node).queue_free()
-	_slots.clear()
-	for it in _items:
-		var holder := Node3D.new()
-		var visual := _make_visual(int(it["type"]))
-		holder.add_child(visual)
-		if int(it["count"]) > 1:
-			var lbl := Label3D.new()
-			lbl.text = "×%d" % int(it["count"])
-			lbl.font_size = 34
-			lbl.position = Vector3(0, -0.40, 0)
-			lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-			lbl.no_depth_test = true
-			holder.add_child(lbl)
-		_root_a.add_child(holder)
-		_slots.append({"node": holder, "visual": visual})
-	if _overlay:
-		_overlay.empty_cat = _items.is_empty() and not _all_empty
-		_overlay.queue_redraw()
+# Пересобрать ВСЮ стопку (инвентарь изменился): по кольцу на каждую непустую категорию.
+# Каждое кольцо несёт ПОЛНЫЙ набор своих блоков и помнит свой угол (слот) — смена
+# категории потом ничего не пересобирает, только глубины (см. _retarget_depths).
+func _rebuild_rings() -> void:
+	for r in _rings:
+		_root_a.remove_child(r["root"])   # remove ДО free: без кадра сосуществования наборов
+		(r["root"] as Node).queue_free()
+	_rings.clear()
+	_ring_by_ci.clear()
+	for ci in CAT_KEYS.size():
+		var items: Array = _by_cat[CAT_KEYS[ci]]
+		if items.is_empty():
+			continue
+		var root := Node3D.new()
+		_root_a.add_child(root)
+		var step := TAU / float(maxi(items.size(), MIN_SLOTS_A))
+		var mem := clampi(int(_item_idx[CAT_KEYS[ci]]), 0, items.size() - 1)
+		var slots: Array = []
+		for it in items:
+			var holder := Node3D.new()
+			var visual := _make_visual(int(it["type"]))
+			holder.add_child(visual)
+			var badge: Label3D = null
+			if int(it["count"]) > 1:
+				badge = Label3D.new()
+				badge.text = "×%d" % int(it["count"])
+				badge.font_size = 34
+				badge.position = Vector3(0, -0.40, 0)
+				badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+				# no_depth_test игнорирует вуаль — на задних кольцах бейдж прятался бы
+				# некрасиво поверх неё, поэтому бейджи видны только у переднего кольца.
+				badge.no_depth_test = true
+				badge.visible = false
+				holder.add_child(badge)
+			root.add_child(holder)
+			slots.append({"node": holder, "visual": visual, "badge": badge})
+		var ring := {
+			"ci": ci, "items": items, "root": root, "slots": slots,
+			"ang": float(mem) * step, "ang_t": float(mem) * step, "step": step,
+			"depth": 3.0, "depth_t": 0.0,
+		}
+		_rings.append(ring)
+		_ring_by_ci[ci] = ring
+
+# Цели глубин стопки: кольцо категории ci — на posmod(ci − текущая, 4). Переднее (0) —
+# текущая категория; драг «\» вживую перекатывает стопку. Бейджи ×N — только спереди.
+func _retarget_depths(instant: bool) -> void:
+	var front := _front_cat()
+	for r in _rings:
+		r["depth_t"] = float(posmod(int(r["ci"]) - front, CAT_KEYS.size()))
+		if instant:
+			r["depth"] = r["depth_t"]
+		var is_front: bool = int(r["ci"]) == front
+		for s in r["slots"]:
+			if s["badge"] != null:
+				(s["badge"] as Label3D).visible = is_front
 
 # ── Реальный меш блока: собираем из его сцены, НЕ запуская логику ─────────────────
 # instantiate() не вызывает _ready() (там весь сайд-эффект: add_to_group/freeze/сигналы/
@@ -412,25 +469,30 @@ func _color_for(block_type: int) -> Color:
 	var h := float(block_type % 12) / 12.0
 	return Color.from_hsv(h, 0.55, 0.95)
 
-# Слот у передней точки кольца блоков. Кольцо с «пробелом» (мало блоков) не заворачивается —
-# края клампятся; полное (n >= MIN_SLOTS_A, шаг ровно TAU/n) листается по кругу бесшовно.
-func _live_idx() -> int:
-	var n := _items.size()
-	if n == 0:
-		return -1
-	if n < MIN_SLOTS_A:
-		return clampi(roundi(_ang_a_t / _step_a), 0, n - 1)
-	return posmod(roundi(_ang_a_t / _step_a), n)
-
 func _front_cat() -> int:
 	return posmod(roundi(_ang_b_t / STEP_B), CAT_KEYS.size())
 
+# Кольцо текущей (передней) категории; пустой Dictionary, если категория без блоков.
+func _front_ring() -> Dictionary:
+	return _ring_by_ci.get(_front_cat(), {})
+
+# Слот у передней точки переднего кольца. Кольцо с «пробелом» (мало блоков) не заворачивается —
+# края клампятся; полное (n >= MIN_SLOTS_A, шаг ровно TAU/n) листается по кругу бесшовно.
+func _live_idx() -> int:
+	var r := _front_ring()
+	if r.is_empty():
+		return -1
+	var n: int = (r["items"] as Array).size()
+	if n < MIN_SLOTS_A:
+		return clampi(roundi(float(r["ang_t"]) / float(r["step"])), 0, n - 1)
+	return posmod(roundi(float(r["ang_t"]) / float(r["step"])), n)
+
 func _update_label() -> void:
-	var key: String = CAT_KEYS[_live_cat]
+	var key: String = CAT_KEYS[_front_cat()]
 	var idx := _live_idx()
 	var disp := "—"
 	if idx >= 0:
-		disp = _block_display_name(int(_items[idx]["type"]))
+		disp = _block_display_name(int(((_front_ring())["items"] as Array)[idx]["type"]))
 	_label.text = "%s\n%s" % [CAT_NAMES[key], disp]
 
 func _block_display_name(block_type: int) -> String:
@@ -446,9 +508,12 @@ func _sync_state() -> void:
 		var mat: StandardMaterial3D = _gems[ci]["mat"]
 		mat.albedo_color = base if has_items else base.darkened(0.65)
 		mat.emission_energy_multiplier = 1.0 if has_items else 0.0
+	if _bg:
+		_bg.front_color = CAT_COLORS[CAT_KEYS[_front_cat()]]
+		_bg.queue_redraw()
 	if _overlay:
 		_overlay.empty_all = _all_empty
-		_overlay.empty_cat = _items.is_empty() and not _all_empty
+		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
 		_overlay.queue_redraw()
 	if _label:
 		_label.visible = not _all_empty     # при пустом инвентаре текст ведёт оверлей
@@ -461,32 +526,42 @@ func _process(delta: float) -> void:
 	if not _dragging and G.block_inventory.size() != _inv_seen:
 		refresh()
 	var k := minf(SNAP_SPEED * delta, 1.0)
-	_ang_a = lerpf(_ang_a, _ang_a_t, k)
 	_ang_b = lerpf(_ang_b, _ang_b_t, k)
-	var settled := absf(_ang_a - _ang_a_t) < 0.02 and absf(_ang_b - _ang_b_t) < 0.02 \
-			and not _dragging
-	# Кольцо блоков: позиции каждый кадр (углы плывут), выбранный крупнее и в покое крутится.
+	var dk := minf(DEPTH_SPEED * delta, 1.0)
 	var sk := minf(10.0 * delta, 1.0)   # без клампа фриз-кадр перебрасывает lerp за цель
+	var front := _front_cat()
 	var sel := _live_idx()
-	for i in _slots.size():
-		var holder: Node3D = _slots[i]["node"]
-		holder.position = _ring_point(float(i) * _step_a - _ang_a, 1.0)
-		var target_s := SELECT_SCALE if i == sel else 1.0
-		holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
-		var vis: Node3D = _slots[i]["visual"]
-		if i == sel:
-			if settled:
-				vis.rotation.y += IDLE_SPIN * delta
-		else:
-			vis.rotation.y = 0.0
+	var settled := absf(_ang_b - _ang_b_t) < 0.02 and not _dragging
+	# Стопка колец: глубина/масштаб корня, позиции блоков; у переднего — выбор и вращение.
+	for r in _rings:
+		r["ang"] = lerpf(float(r["ang"]), float(r["ang_t"]), k)
+		r["depth"] = lerpf(float(r["depth"]), float(r["depth_t"]), dk)
+		var d: float = r["depth"]
+		var root: Node3D = r["root"]
+		root.position = Vector3(0, 0, -DEPTH_STEP * d)
+		root.scale = Vector3.ONE * pow(DEPTH_SCALE, d)
+		var is_front: bool = int(r["ci"]) == front
+		var ring_settled := is_front and settled \
+				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and d < 0.05
+		var slots: Array = r["slots"]
+		for i in slots.size():
+			var holder: Node3D = slots[i]["node"]
+			holder.position = _ring_point(float(i) * float(r["step"]) - float(r["ang"]), 1.0)
+			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
+			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
+			var vis: Node3D = slots[i]["visual"]
+			if is_front and i == sel:
+				if ring_settled:
+					vis.rotation.y += IDLE_SPIN * delta
+			else:
+				vis.rotation.y = 0.0
 	# Кольцо категорий: передний кристалл крупнее и медленно крутится.
-	var fc := _front_cat()
 	for ci in _gems.size():
 		var g: Node3D = _gems[ci]["node"]
 		g.position = _ring_point(float(ci) * STEP_B - _ang_b, -1.0)
-		var gs := 1.18 if ci == fc else 1.0
+		var gs := 1.18 if ci == front else 1.0
 		g.scale = g.scale.lerp(Vector3.ONE * gs, sk)
-		if ci == fc and settled:
+		if ci == front and settled:
 			g.rotation.y += IDLE_SPIN * delta
 
 # Только мышь: касания Godot эмулирует событиями мыши (emulate_mouse_from_touch, как и
@@ -512,15 +587,26 @@ func _apply_drag(rel: Vector2) -> void:
 		# Ось — та диагональ, вдоль которой жест прошёл дальше.
 		_axis = 0 if absf(_drag_acc.dot(U_A)) >= absf(_drag_acc.dot(U_B)) else 1
 	if _axis == 0:
-		_ang_a_t -= rel.dot(U_A) * (_step_a / SLOT_DRAG_PX)
-		if _items.size() < MIN_SLOTS_A and _items.size() > 0:
-			_ang_a_t = clampf(_ang_a_t, 0.0, float(_items.size() - 1) * _step_a)
+		var r := _front_ring()
+		if not r.is_empty():
+			var n: int = (r["items"] as Array).size()
+			r["ang_t"] = float(r["ang_t"]) - rel.dot(U_A) * (float(r["step"]) / SLOT_DRAG_PX)
+			if n < MIN_SLOTS_A:
+				r["ang_t"] = clampf(float(r["ang_t"]), 0.0, float(n - 1) * float(r["step"]))
 	else:
 		_ang_b_t -= rel.dot(U_B) * (STEP_B / SLOT_DRAG_PX)
-		var lc := _front_cat()
-		if lc != _live_cat:
-			_load_cat(lc)             # блоки на кольце живо следуют за передней категорией
+		_retarget_depths(false)       # стопка вживую перекатывается за передней категорией
 	_update_label()
+	_sync_state_light()
+
+# Лёгкая версия _sync_state для драга: только цвет переднего овала и флаг «ПУСТО».
+func _sync_state_light() -> void:
+	if _bg:
+		_bg.front_color = CAT_COLORS[CAT_KEYS[_front_cat()]]
+		_bg.queue_redraw()
+	if _overlay:
+		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
+		_overlay.queue_redraw()
 
 func _end_drag() -> void:
 	_dragging = false
@@ -533,30 +619,32 @@ func _end_drag() -> void:
 func _snap_all() -> void:
 	_ang_b_t = float(roundi(_ang_b_t / STEP_B)) * STEP_B
 	_cat_idx = _front_cat()
-	if _live_cat != _cat_idx:
-		_load_cat(_cat_idx)           # страховка: live-догрузка могла не успеть за жестом
-	var idx := _live_idx()
-	if idx >= 0:
-		_ang_a_t = _canon_ang_a(idx)
-		_item_idx[CAT_KEYS[_cat_idx]] = idx
+	_retarget_depths(false)
+	var r := _front_ring()
+	if not r.is_empty():
+		var idx := _live_idx()
+		if idx >= 0:
+			r["ang_t"] = _canon_ang(r, idx)
+			_item_idx[CAT_KEYS[_cat_idx]] = idx
 	_update_label()
 	_sync_state()
 
 # Ближайшее к текущему углу представление слота idx (для полного кольца слот повторяется
 # каждый оборот — доводим в короткую сторону, а не через весь круг).
-func _canon_ang_a(idx: int) -> float:
-	var raw := float(roundi(_ang_a_t / _step_a)) * _step_a
-	if _items.size() >= MIN_SLOTS_A:
+func _canon_ang(r: Dictionary, idx: int) -> float:
+	var raw := float(roundi(float(r["ang_t"]) / float(r["step"]))) * float(r["step"])
+	if (r["items"] as Array).size() >= MIN_SLOTS_A:
 		return raw                    # roundi уже дал ближайший кратный слот — он и есть idx
-	return float(idx) * _step_a
+	return float(idx) * float(r["step"])
 
 func _choose() -> void:
-	if _items.is_empty():
+	var r := _front_ring()
+	if r.is_empty():
 		return
 	var idx := _live_idx()
 	if idx < 0:
 		return
-	_item_idx[CAT_KEYS[_live_cat]] = idx
+	_item_idx[CAT_KEYS[_front_cat()]] = idx
 	if _overlay:
-		_overlay.flash()              # подтверждение взятия — переживает rebuild кольца
-	block_chosen.emit(int(_items[idx]["type"]))
+		_overlay.flash()              # подтверждение взятия — переживает rebuild колец
+	block_chosen.emit(int((r["items"] as Array)[idx]["type"]))
