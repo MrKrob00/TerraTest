@@ -77,10 +77,8 @@ func _ready() -> void:
 		_prog_label.add_theme_color_override("font_color", Color(0.65, 0.85, 0.9))
 		row.add_child(_prog_label)
 		row.move_child(_prog_label, (%Currency as Node).get_index())
-	G.progress_changed.connect(func() -> void:
-		_update_currency()
-		if visible and _tab == TAB_SHOP:
-			_rebuild_grid(_search.text if _search else ""))   # замки могли открыться
+	G.progress_changed.connect(_on_progress_changed)   # XP/ДИ: замки могли открыться
+	G.money_changed.connect(_on_progress_changed)      # пассивный доход при открытом гараже
 	_select_tab(TAB_INVENTORY)
 	_refresh_stats()
 	_update_currency()
@@ -389,6 +387,13 @@ func _get_vehicle() -> Node:
 
 # ── Характеристики справа + деньги (реальные данные) ──────────────────────────
 var _prog_label: Label = null   # «Гр.N · XP x/y · ДИ z» в шапке (создаётся в _ready)
+
+# Прогресс/деньги изменились: обновить шапку; открытый SHOP перестроить (замки и
+# доступность кнопок покупки зависят от грейда/исследований/денег).
+func _on_progress_changed() -> void:
+	_update_currency()
+	if visible and _tab == TAB_SHOP:
+		_rebuild_grid(_search.text if _search else "")
 
 func _update_currency() -> void:
 	if has_node("%Currency"):
