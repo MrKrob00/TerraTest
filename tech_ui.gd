@@ -285,6 +285,7 @@ func _load_build(build_name: String) -> void:
 		for _i in int(pool[t]):
 			new_inv.append(int(t))
 	G.block_inventory = new_inv
+	G.mark_progress_dirty()
 	v.apply_build(target)
 	_say("Сборка применена: %s" % build_name)
 	refresh()
@@ -311,6 +312,7 @@ func _take_into_hand(block_type: int) -> void:
 	if not v.take_block_into_hand(block_type):
 		return                                  # в руке уже что-то есть
 	G.block_inventory.erase(block_type)         # списываем один экземпляр
+	G.mark_progress_dirty()
 	visible = false                             # прячем UI — пора ставить блок на машину
 
 func _buy(block_type: int, price: int) -> void:
@@ -318,6 +320,7 @@ func _buy(block_type: int, price: int) -> void:
 		return
 	G.money -= price
 	G.block_inventory.append(block_type)
+	G.mark_progress_dirty()
 	# Магазин остаётся открытым: обновляем цены/доступность кнопок и счётчик денег.
 	_rebuild_grid(_search.text if _search else "")
 	_update_currency()

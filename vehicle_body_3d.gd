@@ -355,6 +355,7 @@ func send_to_inventory() -> void:
 	for b in block_map_node.get_children():
 		if "block" in b:
 			G.block_inventory.append(b.block)
+	G.mark_progress_dirty()
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
 	if cc and "vehicles" in cc:
 		cc.vehicles.erase(self)
