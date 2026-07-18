@@ -15,11 +15,18 @@ var tracked_id: String = ""
 
 func _ready() -> void:
 	_seed_demo()
-	_auto_track()
-	# Реплика Механика при новом грейде лицензии (см. G.grade_up / этап 1 прогрессии).
 	var g = get_node_or_null("/root/G")
 	if g:
+		# Выполненные СЮЖЕТНЫЕ квесты персистятся (G.quests_done) — иначе награды
+		# (XP/ДИ/$ сохраняются!) фармились бы перезапуском. Дейлики повторяемы намеренно.
+		for q in quests:
+			if q["type"] == Type.STORY and g.quests_done.has(q["id"]):
+				q["done"] = true
+				q["progress"] = q["goal"]
+		changed.emit()
+		# Реплика Механика при новом грейде лицензии (см. G.grade_up / этап 1 прогрессии).
 		g.grade_up.connect(_on_grade_up)
+	_auto_track()
 	_say_lines([
 		["Механик", "Эй, новичок! Сначала собери себе машину — поставь пару блоков."],
 		["Механик", "Потом сгоняй за рудой и глянь список заданий справа сверху."],
@@ -92,8 +99,12 @@ func _on_completed(q: Dictionary) -> void:
 		if reward > 0:
 			g.money += reward
 			g.mark_progress_dirty()   # мимо add_money — сейв надо пометить самим
+			g.money_changed.emit()
 		g.add_faction_xp("start", int(q.get("reward_xp", 0)))
 		g.add_research_points(int(q.get("reward_rp", 0)))
+		if int(q["type"]) == Type.STORY and not g.quests_done.has(q["id"]):
+			g.quests_done.append(q["id"])   # сюжет — одноразовый (см. _ready)
+			g.mark_progress_dirty()
 	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
 	_say("Система", _completion_message(str(q["title"]), reward))
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
@@ -110,7 +121,8 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	for bt in g.blocks_of_grade(faction, new_grade):
 		names.append(g.block_name(int(bt)))
 	var what := "новые блоки" if names.is_empty() else ", ".join(names)
-	_say("Механик", "Лицензия — грейд %d! В магазине открылось: %s." % [new_grade, what])
+	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
+	_say("Механик", "Лицензия — грейд %d! Теперь можно исследовать: %s." % [new_grade, what])
 
 # Случайная фраза о выполнении. С наградой и без — свои наборы.
 func _completion_message(title: String, reward: int) -> String:

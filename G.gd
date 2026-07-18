@@ -2,9 +2,12 @@ extends Node
 
 var money = 500
 
+signal money_changed                   # для UI: деньги могли измениться пассивно (продавец)
+
 func add_money(value):
 	money+= value
 	mark_progress_dirty()
+	money_changed.emit()
 	# Заработок двигает задания «заработай денег». Q грузится после G — берём безопасно.
 	var q = get_node_or_null("/root/Q")
 	if q:
@@ -90,8 +93,8 @@ func add_faction_xp(f: String, amount: int) -> void:
 	mark_progress_dirty()
 	progress_changed.emit()
 	var after := grade(f)
-	if after > before:
-		grade_up.emit(f, after)
+	for gi in range(before + 1, after + 1):
+		grade_up.emit(f, gi)           # скачок через 2+ порога объявляет КАЖДЫЙ грейд
 
 func add_research_points(amount: int) -> void:
 	if amount <= 0:
