@@ -6,12 +6,13 @@ extends Control
 #   • СБОРКИ    — сохранение/применение раскладок машины.
 #   • Справа    — имя машины, построено/в наличии блоков, масса машины (всё из игры).
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH }
 
 @onready var _grid:   GridContainer = %Grid
 @onready var _search: LineEdit      = %Search
+# ВАЖНО: индекс в массиве = значение enum (bind в _ready) — TabTech последним.
 @onready var _tab_buttons: Array = [
-	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings
+	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings, %TabTech
 ]
 
 var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
@@ -358,8 +359,8 @@ func _select_tab(idx: int) -> void:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
 		_filter_col.visible = (_tab == TAB_SHOP)
-	# МУЗЫКА/НАСТРОЙКИ живут в спец-панели вместо сетки блоков (и без поиска).
-	var extra: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
+	# МУЗЫКА/НАСТРОЙКИ/ДРЕВО живут в спец-панели вместо сетки блоков (и без поиска).
+	var extra: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS or _tab == TAB_TECH
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
 	if grid_scroll:
 		grid_scroll.visible = not extra
@@ -370,6 +371,8 @@ func _select_tab(idx: int) -> void:
 	if extra:
 		if _tab == TAB_MUSIC:
 			_build_music_tab()
+		elif _tab == TAB_TECH:
+			_build_tech_tab()
 		else:
 			_build_settings_tab()
 		return
@@ -388,12 +391,16 @@ func _get_vehicle() -> Node:
 # ── Характеристики справа + деньги (реальные данные) ──────────────────────────
 var _prog_label: Label = null   # «Гр.N · XP x/y · ДИ z» в шапке (создаётся в _ready)
 
-# Прогресс/деньги изменились: обновить шапку; открытый SHOP перестроить (замки и
-# доступность кнопок покупки зависят от грейда/исследований/денег).
+# Прогресс/деньги изменились: обновить шапку; открытые SHOP/ДРЕВО перестроить
+# (замки, доступность кнопок и состояния нод зависят от грейда/исследований/денег/ДИ).
 func _on_progress_changed() -> void:
 	_update_currency()
-	if visible and _tab == TAB_SHOP:
+	if not visible:
+		return
+	if _tab == TAB_SHOP:
 		_rebuild_grid(_search.text if _search else "")
+	elif _tab == TAB_TECH:
+		_build_tech_tab()
 
 func _update_currency() -> void:
 	if has_node("%Currency"):
@@ -711,3 +718,122 @@ func _build_settings_tab() -> void:
 		ui_hint.add_theme_font_size_override("font_size", 12)
 		ui_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(ui_hint)
+
+# ══ Вкладка ДРЕВО: дерево технологий стартовой фракции (этап 2 прогрессии) ══════════
+# Вертикальные ярусы по грейдам (мобайл: ряды-«полки», не радиалка); нода = кнопка с
+# именем блока и статусом. 4 состояния: исследована / можно / не хватает ДИ / закрыта.
+# Паттерн покупки: ПЕРВЫЙ тап — панель с деталями сверху, ВТОРОЙ (кнопка) — исследовать.
+# Исследование сразу даёт +1 блок в инвентарь (G.research, без двойного гейта).
+
+var _tech_selected: int = -1           # выбранная нода (Block) для инфо-панели
+var _tech_info: Label = null
+var _tech_btn: Button = null
+
+func _build_tech_tab() -> void:
+	for c in _extra_vb.get_children():
+		c.queue_free()
+	_extra_vb.add_theme_constant_override("separation", 8)
+
+	var head := Label.new()
+	head.text = "Древо технологий — исследовано %d/%d · ДИ: %d" % [
+			G.researched.size(), G.BLOCK_META.size(), G.research_points]
+	head.add_theme_font_size_override("font_size", 16)
+	_extra_vb.add_child(head)
+
+	# Инфо-панель выбранной ноды (первый тап) + кнопка исследования (второй тап).
+	var panel := PanelContainer.new()
+	var pv := VBoxContainer.new()
+	panel.add_child(pv)
+	_tech_info = Label.new()
+	_tech_info.add_theme_font_size_override("font_size", 13)
+	_tech_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pv.add_child(_tech_info)
+	_tech_btn = Button.new()
+	_tech_btn.custom_minimum_size = Vector2(0, 40)
+	_tech_btn.pressed.connect(_tech_do_research)
+	pv.add_child(_tech_btn)
+	_extra_vb.add_child(panel)
+	_tech_update_info()
+
+	# Ярусы: грейд 1..5, в ряду — ноды блоков этого грейда (HFlow переносит на узком).
+	var max_g: int = int((G.FACTIONS["start"] as Dictionary)["grades"])
+	for gr in range(1, max_g + 1):
+		var tier := Label.new()
+		var cur: int = G.grade("start")
+		tier.text = "Грейд %d" % gr + ("" if cur >= gr else "   (ваш грейд: %d)" % cur)
+		tier.add_theme_font_size_override("font_size", 13)
+		tier.modulate = Color(1, 1, 1, 0.8 if cur >= gr else 0.45)
+		_extra_vb.add_child(tier)
+		var row := HFlowContainer.new()
+		row.add_theme_constant_override("h_separation", 8)
+		row.add_theme_constant_override("v_separation", 8)
+		for bt in G.blocks_of_grade("start", gr):
+			row.add_child(_make_tech_node(int(bt)))
+		_extra_vb.add_child(row)
+
+func _make_tech_node(bt: int) -> Control:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(104, 64)
+	btn.clip_text = true
+	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btn.add_theme_font_size_override("font_size", 13)
+	var meta: Dictionary = G.BLOCK_META[bt]
+	var status := ""
+	if G.researched.has(bt):
+		status = "✓"
+		btn.modulate = Color(0.72, 1.0, 0.82)
+	else:
+		var why: String = G.research_lock_reason(bt)
+		if why == "":
+			status = "%d ДИ" % int(meta["rp"])                 # можно исследовать
+		elif why.begins_with("нужно ДИ"):
+			status = "%d ДИ (мало)" % int(meta["rp"])
+			btn.modulate = Color(1.0, 0.93, 0.65, 0.9)
+		else:
+			status = "🔒"
+			btn.modulate = Color(1, 1, 1, 0.45)
+	btn.text = "%s\n%s" % [_block_name(bt), status]
+	if bt == _tech_selected:
+		btn.toggle_mode = true         # до button_pressed, иначе подсветка не применится
+		btn.button_pressed = true
+	btn.pressed.connect(func() -> void:
+		_tech_selected = bt
+		_tech_update_info())
+	return btn
+
+# Текст инфо-панели и состояние кнопки «Исследовать» по выбранной ноде.
+func _tech_update_info() -> void:
+	if _tech_info == null or _tech_btn == null:
+		return
+	if _tech_selected < 0 or not G.BLOCK_META.has(_tech_selected):
+		_tech_info.text = "Выбери блок в древе, чтобы посмотреть детали."
+		_tech_btn.text = "Исследовать"
+		_tech_btn.disabled = true
+		return
+	var bt := _tech_selected
+	var m: Dictionary = G.BLOCK_META[bt]
+	var line := "%s — грейд %d · цена %d ДИ" % [_block_name(bt), int(m["g"]), int(m["rp"])]
+	var parent := int(G.TECH_PARENT.get(bt, -1))
+	if parent >= 0:
+		line += " · требует: %s" % _block_name(parent)
+	var why: String = G.research_lock_reason(bt)
+	if why != "":
+		line += "\n" + why
+	_tech_info.text = line
+	if G.researched.has(bt):
+		_tech_btn.text = "Исследовано ✓"
+		_tech_btn.disabled = true
+	else:
+		_tech_btn.text = "Исследовать (%d ДИ)" % int(m["rp"])
+		_tech_btn.disabled = why != ""
+
+func _tech_do_research() -> void:
+	if _tech_selected < 0:
+		return
+	var bt := _tech_selected
+	if not G.research(bt):
+		_tech_update_info()            # причина могла устареть — показать актуальную
+		return
+	_say("Исследовано: %s! +1 блок уже в инвентаре." % _block_name(bt))
+	# G.research эмитит progress_changed → _on_progress_changed перестроит вкладку
+	# (нода станет ✓, соседи откроются) — тут ничего пересобирать не нужно.

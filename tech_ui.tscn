@@ -90,6 +90,12 @@ layout_mode = 2
 toggle_mode = true
 text = "SHOP"
 
+[node name="TabTech" type="Button" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "ДРЕВО"
+
 [node name="TabSnapshots" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
