@@ -6,11 +6,12 @@ extends Control
 #     крупнее остальных и в покое медленно вращается — его и берём тапом.
 #   • кольцо «\» — 4 КАТЕГОРИИ (те же G.BLOCK_CATEGORIES, что в гараже) — цветные кристаллы.
 #     Драг «право-низ ↔ лево-верх» крутит его; текущая категория спереди СПРАВА-СВЕРХУ.
-# НОВОЕ: у КАЖДОЙ непустой категории — СВОЁ кольцо блоков. Кольца стоят СТОПКОЙ по глубине
-# (ролодекс): переднее — текущая категория в полной детализации; остальные видны ЗА ним —
-# мельче, приглушены тёмной вуалью, без бейджей. Смена категории ничего не пересобирает —
-# стопка плавно «перелистывается», заднее кольцо выплывает вперёд с уже расставленными
-# блоками (у каждой категории свой запомненный слот и угол).
+# НОВОЕ: у КАЖДОЙ непустой категории — СВОЁ кольцо блоков, и ВСЕ они видны сразу —
+# ВЕЕРОМ-ГИРОСКОПОМ: скрещены через общий центр под разными углами (крен 35°/80°/125°/170°).
+# Активное кольцо всегда в «рабочем» слоте «/» (+35°) — жест прокрутки не меняется;
+# неактивные — целиком видны, но полупрозрачны (per-instance transparency, общие материалы
+# блоков не трогаем), чуть мельче и глубже. Смена категории ничего не пересобирает —
+# кольца плавно МЕНЯЮТСЯ УГЛАМИ (гироскоп перекатывается), у каждого свой слот и угол.
 # Ось жеста лочится по первой диагонали движения; отпустил — довод до ближайшего слота.
 # Тап без движения — взять текущий блок. Пустая категория — «ПУСТО», всё пусто — «НЕТ БЛОКОВ».
 
@@ -27,8 +28,6 @@ const CAT_COLORS := {
 # Геометрия колец. Наклон ±35° от горизонтали: C35/S35 — его косинус/синус (const-литералы,
 # т.к. cos()/sin() в const-выражении GDScript не сворачивает). MINOR_K — сжатие овала
 # (малая полуось / большая), ZK — глубинная амплитуда (передняя точка ближе к камере).
-const ROLL_C := 0.8191520443           # cos 35°
-const ROLL_S := 0.5735764364           # sin 35°
 # MINOR_K не уже 0.46: передние точки колец расходятся на ~65px, иначе выбранный блок при
 # вращении (диагональ куба шире грани!) задевал передний кристалл категории.
 const MINOR_K := 0.46
@@ -40,12 +39,15 @@ const SLOT := 0.44                     # целевой габарит прев�
 const GEM := 0.23                      # размер кристалла категории
 const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», листается без заворота
 
-# Стопка-ролодекс: кольцо категории ci стоит на глубине posmod(ci − текущая, 4).
-const DEPTH_STEP := 2.6                # м между «карточками» стопки: заднее кольцо ЦЕЛИКОМ за вуалью
-const DEPTH_SCALE := 0.85              # доп. масштаб корня кольца за каждый шаг глубины
-const DEPTH_SPEED := 7.0               # скорость перелистывания стопки
-const VEIL_Z := -1.25                  # тёмная вуаль сразу ЗА передним кольцом (его дальняя точка −1.196)
-const VEIL2_Z := -3.9                  # вторая вуаль между d=1 и d=2: три яруса яркости 100/58/34%
+# Веер-гироскоп: кольцо категории ci занимает слот posmod(ci − текущая, 4).
+# Слот 0 (активное) — крен +35° («/», жест не меняется), дальше веером до 170°
+# (крен θ и θ+180° выглядят одинаково, поэтому рабочий диапазон — 180°; −35° занят
+# кольцом категорий «\»). Неактивные кольца полупрозрачны, чуть мельче и глубже.
+const ROLL_SLOTS := [0.6108652, 1.3962634, 2.1816616, 2.9670597]   # 35/80/125/170°
+const FAN_SPEED := 6.0                 # скорость перекатывания веера
+const INACTIVE_SCALE := 0.85           # масштаб корня неактивного кольца
+const INACTIVE_Z := -0.6               # сдвиг вглубь за каждый шаг слота (перспектива поможет)
+const INACTIVE_ALPHA := 0.55           # transparency неактивных превью (0 — непрозрачно)
 
 # Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
 const U_A := Vector2(0.8191520443, -0.5735764364)
@@ -59,26 +61,19 @@ const SNAP_SPEED := 8.0
 const SELECT_SCALE := 1.18             # больше — и вращающийся блок цепляет соседний кристалл
 const IDLE_SPIN := 0.6                 # рад/с — вращение выбранного блока в покое
 
-# ── Фон: два овала-«Х», эхо-овалы стопки и мягкий тёмный диск. Всё передаётся снаружи
-# готовыми полилиниями (вложенный класс не видит const внешнего по «голому» имени). ────
+# ── Фон: контуры всех колец веера (в цветах категорий) + мягкий тёмный диск. Всё
+# передаётся снаружи готовым списком (вложенный класс не видит const внешнего). ────────
 class XBg extends Control:
-	const OVAL_B := Color(0.58, 0.47, 0.78, 0.45)
 	const DISC := Color(0.03, 0.10, 0.13, 0.5)
-	var oval_a := PackedVector2Array()
-	var oval_b := PackedVector2Array()
-	var echoes: Array = []             # PackedVector2Array овалов задних «карточек» стопки
-	var front_color := Color(0.247, 0.6, 0.65)   # овал «/» красится в цвет текущей категории
+	var ovals: Array = []              # [{pts: PackedVector2Array, color: Color, w: float}]
 	var center := Vector2.ZERO
 	var disc_r := 100.0
 	func _draw() -> void:
 		draw_circle(center, disc_r, DISC)
-		for e in echoes:
-			if (e as PackedVector2Array).size() > 1:
-				draw_polyline(e, Color(front_color, 0.14), 1.0, true)
-		if oval_b.size() > 1:
-			draw_polyline(oval_b, OVAL_B, 1.5, true)
-		if oval_a.size() > 1:
-			draw_polyline(oval_a, Color(front_color, 0.55), 1.5, true)
+		for o in ovals:
+			var pts: PackedVector2Array = o["pts"]
+			if pts.size() > 1:
+				draw_polyline(pts, o["color"], o["w"], true)
 
 # ── Оверлей поверх 3D: кольцо у выбранного блока, вспышка взятия, «ПУСТО»/«НЕТ БЛОКОВ».
 # Отдельный Control (не в риге): вспышка переживает rebuild колец после взятия. ────────
@@ -125,7 +120,8 @@ var _item_idx := {}                    # cat_key -> запомненный сл�
 var _by_cat := {}                      # cat_key -> Array[{type, count}]
 
 # Стопка колец: по одному на НЕПУСТУЮ категорию.
-# Кольцо: {ci, items, root, slots:[{node, visual, badge}], ang, ang_t, step, depth, depth_t}
+# Кольцо: {ci, items, root, slots:[{node, visual, badge}], meshes, ang, ang_t, step,
+#          slot_f, slot_t, alpha} — slot 0 = активное («/»), дальше веер по ROLL_SLOTS.
 var _rings: Array = []
 var _ring_by_ci := {}                  # ci -> кольцо (Dictionary)
 
@@ -151,28 +147,39 @@ func _ready() -> void:
 		_item_idx[k] = 0
 	_build_scene()
 
-# Точка кольца: базовая карусель в XZ, наклон до овала (MINOR_K), крен на ±35° (gs=+1 — «/»
-# блоки, gs=−1 — «\» категории). Передняя точка (phi=0) ближе всего к камере и СВЕРХУ:
-# у «/» — слева, у «\» — справа. Большая ось — соответствующая диагональ.
-func _ring_point(phi: float, gs: float) -> Vector3:
+# Точка кольца: базовая карусель в XZ, наклон до овала (MINOR_K), крен roll (рад).
+# roll=+35° — «/» (активный слот блоков), roll=−35° — «\» (категории). Передняя точка
+# (phi=0) ближе всего к камере и сверху; большая ось овала — вдоль направления крена.
+func _ring_point(phi: float, roll: float) -> Vector3:
 	var sp := sin(phi)
 	var cp := cos(phi)
+	var cr := cos(roll)
+	var sr := sin(roll)
 	return Vector3(
-			R_RING * (sp * ROLL_C - MINOR_K * cp * ROLL_S * gs),
-			R_RING * (sp * ROLL_S * gs + MINOR_K * cp * ROLL_C),
+			R_RING * (sp * cr - MINOR_K * cp * sr),
+			R_RING * (sp * sr + MINOR_K * cp * cr),
 			R_RING * ZK * cp)
+
+const ROLL_A := 0.6108652              # +35° — слот активного кольца блоков («/»)
+const ROLL_B := -0.6108652             # −35° — кольцо категорий («\»)
+
+# Крен для дробного слота веера (анимация: слот плывёт между целыми).
+func _fan_roll(slot_f: float) -> float:
+	var s := clampf(slot_f, 0.0, float(ROLL_SLOTS.size() - 1))
+	var i := int(floor(s))
+	if i >= ROLL_SLOTS.size() - 1:
+		return float(ROLL_SLOTS[ROLL_SLOTS.size() - 1])
+	return lerpf(float(ROLL_SLOTS[i]), float(ROLL_SLOTS[i + 1]), s - float(i))
 
 # Проекция 3D-точки в пиксели виджета (вьюпорт — квадрат SIZE, камера на +Z смотрит в −Z).
 func _to_px(p: Vector3) -> Vector2:
 	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - p.z))
 	return Vector2(SIZE * 0.5 + p.x * ppw, SIZE * 0.5 - p.y * ppw)
 
-func _oval_px(gs: float, depth: float = 0.0) -> PackedVector2Array:
+func _oval_px(roll: float, scl: float = 1.0, dz: float = 0.0) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	var s := pow(DEPTH_SCALE, depth)
-	var dz := -DEPTH_STEP * depth
 	for i in 49:
-		var p := _ring_point(TAU * float(i) / 48.0, gs) * s
+		var p := _ring_point(TAU * float(i) / 48.0, roll) * scl
 		pts.append(_to_px(Vector3(p.x, p.y, p.z + dz)))
 	return pts
 
@@ -180,9 +187,6 @@ func _build_scene() -> void:
 	_bg = XBg.new()
 	_bg.center = Vector2(SIZE * 0.5, SIZE * 0.5)
 	_bg.disc_r = SIZE * 0.485
-	_bg.oval_a = _oval_px(1.0)
-	_bg.oval_b = _oval_px(-1.0)
-	_bg.echoes = [_oval_px(1.0, 1.0), _oval_px(1.0, 2.0)]   # эхо стопки: намёк на задние кольца
 	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_bg)
@@ -218,19 +222,10 @@ func _build_scene() -> void:
 	_root_b = Node3D.new()
 	sv.add_child(_root_b)
 	_build_gems()
-
-	# Тёмные вуали (прозрачные квады, глубину НЕ пишут — дефолт для transparent):
-	# первая — сразу за передним кольцом (задние ярусы приглушены), вторая — между
-	# ярусами d=1 и d=2 (глубже — ещё темнее): три яруса яркости под три яруса размера.
-	# Вуаль РАДИАЛЬНАЯ (альфа гаснет к краю по радиусу фонового диска): сплошной квад
-	# в прозрачном вьюпорте писал бы альфу во весь кадр — виджет становился жёстким
-	# тёмным КВАДРАТОМ поверх мира вместо мягкого диска. Радиус диска в мире на глубине
-	# z: disc_px / ppw(z); квад чуть шире, гасим с ~70% радиуса.
-	_add_veil(sv, VEIL_Z, 0.30)
-	_add_veil(sv, VEIL2_Z, 0.35)
+	_sync_bg_ovals()
 
 	_overlay = Overlay.new()
-	_overlay.anchor = _to_px(_ring_point(0.0, 1.0))
+	_overlay.anchor = _to_px(_ring_point(0.0, ROLL_A))
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)                    # после svc — рисуется поверх 3D
@@ -242,31 +237,29 @@ func _build_scene() -> void:
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 
-func _add_veil(sv: SubViewport, z: float, alpha: float) -> void:
-	# Радиус фонового диска (px) в мировых единицах на глубине вуали.
-	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - z))
-	var disc_world := (SIZE * 0.485) / ppw
-	var veil := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(disc_world * 2.0, disc_world * 2.0)
-	var grad := Gradient.new()
-	grad.offsets = PackedFloat32Array([0.7, 1.0])
-	grad.colors = PackedColorArray([Color(1, 1, 1, 1), Color(1, 1, 1, 0)])
-	var tex := GradientTexture2D.new()
-	tex.gradient = grad
-	tex.fill = GradientTexture2D.FILL_RADIAL
-	tex.fill_from = Vector2(0.5, 0.5)
-	tex.fill_to = Vector2(1.0, 0.5)          # радиус градиента = половина квада = радиус диска
-	var vm := StandardMaterial3D.new()
-	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	vm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	vm.albedo_color = Color(0.02, 0.08, 0.11, alpha)
-	vm.albedo_texture = tex                  # альфа = albedo_color.a × радиальный градиент
-	q.material = vm
-	veil.mesh = q
-	veil.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	veil.position = Vector3(0, 0, z)
-	sv.add_child(veil)
+# Контуры фона: «\» категорий + овал каждого кольца веера в цвете его категории
+# (активное — ярче и поверх). Рисуем ЦЕЛЕВЫЕ слоты: во время анимации контуры уже на местах.
+func _sync_bg_ovals() -> void:
+	if _bg == null:
+		return
+	var ovals: Array = []
+	for r in _rings:
+		var st := float(r["slot_t"])
+		if int(st) == 0:
+			continue                   # активное — добавим последним, поверх остальных
+		ovals.append({"pts": _oval_px(_fan_roll(st), INACTIVE_SCALE, INACTIVE_Z * st),
+				"color": Color(CAT_COLORS[CAT_KEYS[int(r["ci"])]], 0.18), "w": 1.0})
+	ovals.append({"pts": _oval_px(ROLL_B), "color": Color(0.58, 0.47, 0.78, 0.45), "w": 1.5})
+	var have_front := false
+	for r in _rings:
+		if int(r["slot_t"]) == 0:
+			ovals.append({"pts": _oval_px(ROLL_A),
+					"color": Color(CAT_COLORS[CAT_KEYS[int(r["ci"])]], 0.55), "w": 1.5})
+			have_front = true
+	if not have_front:
+		ovals.append({"pts": _oval_px(ROLL_A), "color": Color(0.247, 0.6, 0.65, 0.4), "w": 1.5})
+	_bg.ovals = ovals
+	_bg.queue_redraw()
 
 # Кристаллы категорий — кубик на «уголке» (поворот 45°+35°), цвет из CAT_COLORS.
 # Строятся один раз; пустые категории затемняются в _sync_state().
@@ -312,7 +305,7 @@ func refresh() -> void:
 	_ang_b = float(_cat_idx) * STEP_B
 	_ang_b_t = _ang_b
 	_rebuild_rings()
-	_retarget_depths(true)
+	_retarget_fan(true)
 	_update_label()
 	_sync_state()
 
@@ -331,7 +324,7 @@ func _nearest_nonempty(ci: int) -> int:
 
 # Пересобрать ВСЮ стопку (инвентарь изменился): по кольцу на каждую непустую категорию.
 # Каждое кольцо несёт ПОЛНЫЙ набор своих блоков и помнит свой угол (слот) — смена
-# категории потом ничего не пересобирает, только глубины (см. _retarget_depths).
+# категории потом ничего не пересобирает, только слоты веера (см. _retarget_fan).
 func _rebuild_rings() -> void:
 	for r in _rings:
 		_root_a.remove_child(r["root"])   # remove ДО free: без кадра сосуществования наборов
@@ -358,30 +351,37 @@ func _rebuild_rings() -> void:
 				badge.font_size = 34
 				badge.position = Vector3(0, -0.40, 0)
 				badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				# no_depth_test игнорирует вуаль — на задних кольцах бейдж прятался бы
-				# некрасиво поверх неё, поэтому бейджи видны только у переднего кольца.
+				# Бейджи только у активного кольца (см. _process) — на неактивных
+				# полупрозрачных кольцах они лишний шум.
 				badge.no_depth_test = true
 				badge.visible = false
 				holder.add_child(badge)
 			root.add_child(holder)
 			slots.append({"node": holder, "visual": visual, "badge": badge})
+		# Кэш всех превью-мешей кольца — для быстрой per-instance прозрачности
+		# (owned=false: узлы созданы кодом, владельца-сцены у них нет).
+		var meshes: Array = []
+		for s2 in slots:
+			for m in (s2["visual"] as Node).find_children("*", "MeshInstance3D", true, false):
+				meshes.append(m)
 		var ring := {
-			"ci": ci, "items": items, "root": root, "slots": slots,
+			"ci": ci, "items": items, "root": root, "slots": slots, "meshes": meshes,
 			"ang": float(mem) * step, "ang_t": float(mem) * step, "step": step,
-			"depth": 3.0, "depth_t": 0.0,
+			"slot_f": 0.0, "slot_t": 0.0, "alpha": -1.0,
 		}
 		_rings.append(ring)
 		_ring_by_ci[ci] = ring
 
-# Цели глубин стопки: кольцо категории ci — на posmod(ci − текущая, 4). Переднее (0) —
-# текущая категория; драг «\» вживую перекатывает стопку. Бейджи ×N включает _process
-# по ФАКТИЧЕСКОЙ глубине (no_depth_test-лейбл на глубоком кольце рисовался бы поверх вуали).
-func _retarget_depths(instant: bool) -> void:
+# Цели слотов веера: кольцо категории ci — в слот posmod(ci − текущая, 4). Слот 0 —
+# активное («/», +35°); драг «\» вживую перекатывает веер. Бейджи ×N включает _process
+# по ФАКТИЧЕСКОМУ слоту (на неактивном кольце они лишние).
+func _retarget_fan(instant: bool) -> void:
 	var front := _front_cat()
 	for r in _rings:
-		r["depth_t"] = float(posmod(int(r["ci"]) - front, CAT_KEYS.size()))
+		r["slot_t"] = float(posmod(int(r["ci"]) - front, CAT_KEYS.size()))
 		if instant:
-			r["depth"] = r["depth_t"]
+			r["slot_f"] = r["slot_t"]
+	_sync_bg_ovals()
 
 # ── Реальный меш блока: собираем из его сцены, НЕ запуская логику ─────────────────
 # instantiate() не вызывает _ready() (там весь сайд-эффект: add_to_group/freeze/сигналы/
@@ -490,12 +490,12 @@ func _color_for(block_type: int) -> Color:
 func _front_cat() -> int:
 	return posmod(roundi(_ang_b_t / STEP_B), CAT_KEYS.size())
 
-# Все анимации доехали: кольцо категорий и глубины стопки у целей (для авто-refresh).
+# Все анимации доехали: кольцо категорий и слоты веера у целей (для авто-refresh).
 func _stack_settled() -> bool:
 	if absf(_ang_b - _ang_b_t) >= 0.02:
 		return false
 	for r in _rings:
-		if absf(float(r["depth"]) - float(r["depth_t"])) >= 0.03:
+		if absf(float(r["slot_f"]) - float(r["slot_t"])) >= 0.03:
 			return false
 	return true
 
@@ -535,9 +535,6 @@ func _sync_state() -> void:
 		var mat: StandardMaterial3D = _gems[ci]["mat"]
 		mat.albedo_color = base if has_items else base.darkened(0.65)
 		mat.emission_energy_multiplier = 1.0 if has_items else 0.0
-	if _bg:
-		_bg.front_color = CAT_COLORS[CAT_KEYS[_front_cat()]]
-		_bg.queue_redraw()
 	if _overlay:
 		_overlay.empty_all = _all_empty
 		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
@@ -556,29 +553,37 @@ func _process(delta: float) -> void:
 		refresh()
 	var k := minf(SNAP_SPEED * delta, 1.0)
 	_ang_b = lerpf(_ang_b, _ang_b_t, k)
-	var dk := minf(DEPTH_SPEED * delta, 1.0)
+	var fk := minf(FAN_SPEED * delta, 1.0)
 	var sk := minf(10.0 * delta, 1.0)   # без клампа фриз-кадр перебрасывает lerp за цель
 	var front := _front_cat()
 	var sel := _live_idx()
 	var settled := absf(_ang_b - _ang_b_t) < 0.02 and not _dragging
-	# Стопка колец: глубина/масштаб корня, позиции блоков; у переднего — выбор и вращение.
+	# Веер колец: крен/масштаб/глубина корня, прозрачность неактивных, позиции блоков;
+	# у активного — выбор и вращение.
 	for r in _rings:
 		r["ang"] = lerpf(float(r["ang"]), float(r["ang_t"]), k)
-		r["depth"] = lerpf(float(r["depth"]), float(r["depth_t"]), dk)
-		var d: float = r["depth"]
+		r["slot_f"] = lerpf(float(r["slot_f"]), float(r["slot_t"]), fk)
+		var sf: float = r["slot_f"]
+		var roll := _fan_roll(sf)
+		var inact := clampf(sf, 0.0, 1.0)
 		var root: Node3D = r["root"]
-		root.position = Vector3(0, 0, -DEPTH_STEP * d)
-		root.scale = Vector3.ONE * pow(DEPTH_SCALE, d)
-		var is_front: bool = int(r["ci"]) == front
+		root.position = Vector3(0, 0, INACTIVE_Z * sf)
+		root.scale = Vector3.ONE * lerpf(1.0, INACTIVE_SCALE, inact)
+		# Приглушение неактивных: per-instance transparency (общие материалы блоков
+		# не трогаем). Пишем только при заметном изменении — не каждый кадр.
+		var a := INACTIVE_ALPHA * inact
+		if absf(a - float(r["alpha"])) > 0.01:
+			r["alpha"] = a
+			for m in r["meshes"]:
+				(m as GeometryInstance3D).transparency = a
+		var is_front: bool = int(r["slot_t"]) == 0
 		var ring_settled := is_front and settled \
-				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and d < 0.05
-		# Бейджи ×N — по ФАКТИЧЕСКОЙ глубине: пока кольцо едет из-за вуали, его
-		# no_depth_test-лейблы рисовались бы яркими поверх неё.
-		var show_badges: bool = is_front and d < 0.5
+				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and sf < 0.05
+		var show_badges: bool = is_front and sf < 0.5   # на неактивных бейджи лишние
 		var slots: Array = r["slots"]
 		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
-			holder.position = _ring_point(float(i) * float(r["step"]) - float(r["ang"]), 1.0)
+			holder.position = _ring_point(float(i) * float(r["step"]) - float(r["ang"]), roll)
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 			if slots[i]["badge"] != null:
@@ -592,7 +597,7 @@ func _process(delta: float) -> void:
 	# Кольцо категорий: передний кристалл крупнее и медленно крутится.
 	for ci in _gems.size():
 		var g: Node3D = _gems[ci]["node"]
-		g.position = _ring_point(float(ci) * STEP_B - _ang_b, -1.0)
+		g.position = _ring_point(float(ci) * STEP_B - _ang_b, ROLL_B)
 		var gs := 1.18 if ci == front else 1.0
 		g.scale = g.scale.lerp(Vector3.ONE * gs, sk)
 		if ci == front and settled:
@@ -629,15 +634,13 @@ func _apply_drag(rel: Vector2) -> void:
 				r["ang_t"] = clampf(float(r["ang_t"]), 0.0, float(n - 1) * float(r["step"]))
 	else:
 		_ang_b_t -= rel.dot(U_B) * (STEP_B / SLOT_DRAG_PX)
-		_retarget_depths(false)       # стопка вживую перекатывается за передней категорией
+		_retarget_fan(false)          # веер вживую перекатывается за передней категорией
 	_update_label()
 	_sync_state_light()
 
-# Лёгкая версия _sync_state для драга: только цвет переднего овала и флаг «ПУСТО».
+# Лёгкая версия _sync_state для драга: только флаг «ПУСТО» (контуры фона обновляет
+# _retarget_fan при смене передней категории).
 func _sync_state_light() -> void:
-	if _bg:
-		_bg.front_color = CAT_COLORS[CAT_KEYS[_front_cat()]]
-		_bg.queue_redraw()
 	if _overlay:
 		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
 		_overlay.queue_redraw()
@@ -653,7 +656,7 @@ func _end_drag() -> void:
 func _snap_all() -> void:
 	_ang_b_t = float(roundi(_ang_b_t / STEP_B)) * STEP_B
 	_cat_idx = _front_cat()
-	_retarget_depths(false)
+	_retarget_fan(false)
 	var r := _front_ring()
 	if not r.is_empty():
 		var idx := _live_idx()
