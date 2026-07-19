@@ -43,11 +43,18 @@ const MIN_SLOTS_A := 5                 # меньше блоков — коль�
 # Слот 0 (активное) — крен +35° («/», жест не меняется), дальше веером до 170°
 # (крен θ и θ+180° выглядят одинаково, поэтому рабочий диапазон — 180°; −35° занят
 # кольцом категорий «\»). Неактивные кольца полупрозрачны, чуть мельче и глубже.
-const ROLL_SLOTS := [0.6108652, 1.3962634, 2.1816616, 2.9670597]   # 35/80/125/170°
+# Слоты крена 35/105/125/168° (посчитано, см. коммит): активный — 35° («/»), неактивные
+# начинаются со 105° — их передние точки ≥70px от якоря выбора (порог столкновения ~61px;
+# крен 80° давал бы ~49px, ровно на кольце выбора). Монотонно — кольцо катится плавно;
+# 125° держится в ≥20° от кристаллов категорий (145°).
+const ROLL_SLOTS := [0.6108652, 1.8325957, 2.1816616, 2.9321531]
 const FAN_SPEED := 6.0                 # скорость перекатывания веера
 const INACTIVE_SCALE := 0.85           # масштаб корня неактивного кольца
 const INACTIVE_Z := -0.6               # сдвиг вглубь за каждый шаг слота (перспектива поможет)
-const INACTIVE_ALPHA := 0.55           # transparency неактивных превью (0 — непрозрачно)
+# «Призрачный» вид неактивных: material_override с альфой — единственный способ
+# полупрозрачности в gl_compatibility (GeometryInstance3D.transparency там ИГНОРИРУЕТСЯ,
+# работает только в Forward+). Материал свой на кольцо, тонирован цветом категории.
+const GHOST_ALPHA := 0.35
 
 # Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
 const U_A := Vector2(0.8191520443, -0.5735764364)
@@ -358,16 +365,24 @@ func _rebuild_rings() -> void:
 				holder.add_child(badge)
 			root.add_child(holder)
 			slots.append({"node": holder, "visual": visual, "badge": badge})
-		# Кэш всех превью-мешей кольца — для быстрой per-instance прозрачности
-		# (owned=false: узлы созданы кодом, владельца-сцены у них нет).
+		# Все превью-меши кольца + их ИСХОДНЫЙ material_override — чтобы при уходе кольца в
+		# «призрак» подменить материал, а при возврате в активное — вернуть настоящий.
 		var meshes: Array = []
 		for s2 in slots:
 			for m in (s2["visual"] as Node).find_children("*", "MeshInstance3D", true, false):
-				meshes.append(m)
+				meshes.append({"mi": m, "orig": (m as MeshInstance3D).material_override})
+		# «Призрачный» материал кольца (тонирован цветом категории). material_override с
+		# альфой работает в gl_compatibility, в отличие от GeometryInstance3D.transparency.
+		var ghost := StandardMaterial3D.new()
+		ghost.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		ghost.cull_mode = BaseMaterial3D.CULL_DISABLED
+		ghost.albedo_color = Color(CAT_COLORS[CAT_KEYS[ci]], GHOST_ALPHA)
 		var ring := {
 			"ci": ci, "items": items, "root": root, "slots": slots, "meshes": meshes,
+			"ghost": ghost, "ghosted": -1,      # -1 — материал ещё не выставлен
 			"ang": float(mem) * step, "ang_t": float(mem) * step, "step": step,
-			"slot_f": 0.0, "slot_t": 0.0, "alpha": -1.0,
+			"slot_f": 0.0, "slot_t": 0.0,
 		}
 		_rings.append(ring)
 		_ring_by_ci[ci] = ring
@@ -569,14 +584,15 @@ func _process(delta: float) -> void:
 		var root: Node3D = r["root"]
 		root.position = Vector3(0, 0, INACTIVE_Z * sf)
 		root.scale = Vector3.ONE * lerpf(1.0, INACTIVE_SCALE, inact)
-		# Приглушение неактивных: per-instance transparency (общие материалы блоков
-		# не трогаем). Пишем только при заметном изменении — не каждый кадр.
-		var a := INACTIVE_ALPHA * inact
-		if absf(a - float(r["alpha"])) > 0.01:
-			r["alpha"] = a
-			for m in r["meshes"]:
-				(m as GeometryInstance3D).transparency = a
 		var is_front: bool = int(r["slot_t"]) == 0
+		# Активное кольцо — настоящие материалы; неактивные — «призрак» (цветной силуэт).
+		# Переключаем ТОЛЬКО на смене состояния (граница категории при драге «\»).
+		var want_ghost := 0 if is_front else 1
+		if int(r["ghosted"]) != want_ghost:
+			r["ghosted"] = want_ghost
+			for me in r["meshes"]:
+				(me["mi"] as MeshInstance3D).material_override = \
+						(r["ghost"] if want_ghost == 1 else me["orig"])
 		var ring_settled := is_front and settled \
 				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and sf < 0.05
 		var show_badges: bool = is_front and sf < 0.5   # на неактивных бейджи лишние
