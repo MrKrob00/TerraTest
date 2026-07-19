@@ -105,7 +105,12 @@ func _make_row(q: Dictionary) -> Control:
 	if q["done"]:
 		o.text = "✓ выполнено"
 	else:
-		o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+		var need_g: int = int(q.get("req_grade", 1))
+		if int(q["type"]) == Q.Type.STORY and G.grade("start") < need_g:
+			# Цепочка ждёт лицензию — вместо прогресса пишем условие (награды как тизер).
+			o.text = "Откроется на грейде %d лицензии" % need_g
+		else:
+			o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
 		var reward: int = int(q.get("reward_money", 0))
 		if reward > 0:
 			o.text += "  ·  +%d$" % reward

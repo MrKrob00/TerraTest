@@ -33,26 +33,54 @@ func _ready() -> void:
 	])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
-# reward_money/xp/rp — награды при выполнении ($ / XP фракции / ДИ). Порядок — order.
+# reward_money/xp/rp — награды при выполнении ($ / XP фракции / ДИ); req_grade — с какого
+# грейда лицензии цепочка доступна (сюжет ПАУЗИТСЯ на квесте, чей грейд ещё не взят).
+# ДИ по всем сюжеткам: 38+36+42+56+85 (+5 за первый килл) = 262 ≥ 260 на всё дерево —
+# древо добивается сюжетом, дейлики лишь ускоряют. Порядок — order (грейд N = 10*N-10).
 func _seed_demo() -> void:
 	add_quest("story_build", "Собери машину",    "Поставь 5 блоков",        Type.STORY, 5,   0, "block_placed", 20, 20, 5)
 	add_quest("story_ore",   "Добудь руду",      "Насверли 10 руды",        Type.STORY, 10,  1, "ore_mined",    30, 30, 8)
 	add_quest("story_sell",  "Заработай денег",  "Заработай 100$",          Type.STORY, 100, 2, "money_earned", 50, 40, 10)
 	add_quest("story_kill",  "Первый бой",       "Уничтожь кабину врага",   Type.STORY, 1,   3, "enemy_killed", 40, 50, 15)
-	add_quest("daily_ore",   "Ежедневно: руда",  "Добудь 20 руды",          Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
-	add_quest("daily_kill",  "Ежедневно: враги", "Уничтожь 3 машины",       Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
+	# Грейд 2: осваиваем добычу-производство и первое оружие.
+	add_quest("g2_ore",   "Добытчик II",      "Насверли 50 руды",      Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
+	add_quest("g2_kill",  "Охотник",          "Уничтожь 3 машины",     Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
+	add_quest("g2_money", "Торговец",         "Заработай 300$",        Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
+	add_quest("g2_build", "Строитель II",     "Поставь 15 блоков",     Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
+	# Грейд 3: производственная цепочка в полный рост.
+	add_quest("g3_ore",   "Промышленник",     "Насверли 150 руды",     Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
+	add_quest("g3_kill",  "Гроза пустоши",    "Уничтожь 10 машин",     Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
+	add_quest("g3_money", "Капитал",          "Заработай 1000$",       Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
+	# Грейд 4: тяжёлая техника.
+	add_quest("g4_ore",   "Рудный барон",     "Насверли 400 руды",     Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
+	add_quest("g4_kill",  "Ветеран",          "Уничтожь 25 машин",     Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
+	add_quest("g4_money", "Магнат",           "Заработай 3000$",       Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
+	# Грейд 5: эндгейм — XP уже не нужен (макс), упор на ДИ для добивания дерева.
+	add_quest("g5_kill",  "Легенда пустоши",  "Уничтожь 50 машин",     Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
+	add_quest("g5_ore",   "Хребет индустрии", "Насверли 1000 руды",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
+	add_quest("g5_money", "Империя",          "Заработай 10000$",      Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	add_quest("daily_ore",   "Ежедневно: руда",  "Добудь 20 руды",     Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
+	add_quest("daily_kill",  "Ежедневно: враги", "Уничтожь 3 машины",  Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
 
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
 		order: int = 0, event: String = "", reward_money: int = 0,
-		reward_xp: int = 0, reward_rp: int = 0) -> void:
+		reward_xp: int = 0, reward_rp: int = 0, req_grade: int = 1) -> void:
 	quests.append({
 		"id": id, "title": title, "desc": desc, "type": type,
 		"goal": maxi(goal, 1), "progress": 0, "done": false, "order": order,
 		"event": event, "reward_money": reward_money,
-		"reward_xp": reward_xp, "reward_rp": reward_rp,
+		"reward_xp": reward_xp, "reward_rp": reward_rp, "req_grade": req_grade,
 	})
 	changed.emit()
+
+# Взят ли грейд, нужный квесту (гейт цепочек по лицензии).
+func _grade_ok(q: Dictionary) -> bool:
+	var need := int(q.get("req_grade", 1))
+	if need <= 1:
+		return true
+	var g = get_node_or_null("/root/G")
+	return g == null or g.grade("start") >= need
 
 # Игра сообщает о событии — двигаем ВСЕ активные задания с таким event (и сюжет, и дейлики):
 #   Q.report("ore_mined", 1) / Q.report("enemy_killed", 1) / Q.report("money_earned", 5)
@@ -122,7 +150,16 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 		names.append(g.block_name(int(bt)))
 	var what := "новые блоки" if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
-	_say("Механик", "Лицензия — грейд %d! Теперь можно исследовать: %s." % [new_grade, what])
+	var extra_line := ""
+	for q in quests:
+		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
+			extra_line = " И новые задания подъехали."
+			break
+	_say("Механик", "Лицензия — грейд %d! Теперь можно исследовать: %s.%s" % [new_grade, what, extra_line])
+	# Пауза сюжета могла сняться — обновляем список и трекер.
+	changed.emit()
+	if tracked_id == "" or _find(tracked_id).get("done", true):
+		_auto_track()
 
 # Случайная фраза о выполнении. С наградой и без — свои наборы.
 func _completion_message(title: String, reward: int) -> String:
@@ -188,20 +225,24 @@ func active_quests() -> Array[Dictionary]:
 # Что показать в списке: все сюжетные ДО текущего включительно (выполненные + текущее) и
 # все ежедневные. Будущие сюжетные (ещё закрытые) не показываем.
 func visible_quests() -> Array[Dictionary]:
+	# Выполненные сюжетные + ПЕРВЫЙ невыполненный (текущий ЛИБО ждущий грейда — тогда
+	# quests.gd подпишет «откроется на грейде N»). Дальше будущее не светим.
 	var out: Array[Dictionary] = []
-	var cur_order = _current_story().get("order", 999999)
 	for q in _sorted_story():
-		if q["done"] or q["order"] <= cur_order:
-			out.append(q)
+		out.append(q)
+		if not q["done"]:
+			break
 	for q in quests:
 		if q["type"] == Type.DAILY:
 			out.append(q)
 	return out
 
 func _current_story() -> Dictionary:
+	# Первый невыполненный по order. Если его грейд ещё не взят — сюжет НА ПАУЗЕ
+	# (не перескакиваем вперёд): активного сюжетного нет, остаются дейлики.
 	for q in _sorted_story():
 		if not q["done"]:
-			return q
+			return q if _grade_ok(q) else {}
 	return {}
 
 func _sorted_story() -> Array[Dictionary]:
