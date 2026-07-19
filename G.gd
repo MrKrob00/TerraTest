@@ -150,7 +150,7 @@ func research_lock_reason(bt: int) -> String:
 		return "нет данных"
 	var parent := int(TECH_PARENT.get(bt, -1))
 	if parent >= 0 and not researched.has(parent):
-		return "нужен предыдущий блок"
+		return "нужен предыдущий блок: %s" % block_name(parent)
 	if grade(m["f"]) < int(m["g"]):
 		return "нужен грейд %d" % int(m["g"])
 	if research_points < int(m["rp"]):
