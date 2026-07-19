@@ -143,8 +143,16 @@ func _ring_point(theta: float, psi: float) -> Vector3:
 	var st := sin(theta)
 	return R_RING * Vector3(cos(theta), st * cos(psi), st * sin(psi))
 
+# Наклон кольца категории ci при данном кувырке. Считаем КРАТЧАЙШЕЕ смещение от передней
+# категории (wrapf ±ncat/2 шага), а не ci*FAN−_tilt: иначе _tilt рос бы без предела и после
+# 4 шагов активное кольцо уходило бы в psi=−π (зеркало: θ наоборот, точка выбора ломается).
+# Так активное всегда ровно psi=0, веер симметричен (соседи ±FAN, дальняя ±2·FAN).
+const HALF_CATS := 2.0                 # CAT_KEYS.size() / 2
+func _psi_at(ci: int, tilt: float) -> float:
+	return wrapf(float(ci) - tilt / FAN, -HALF_CATS, HALF_CATS) * FAN
+
 func _psi_of(ci: int) -> float:
-	return float(ci) * FAN - _tilt
+	return _psi_at(ci, _tilt)
 
 # Проекция точки атома (уже в мировых, после _view) в пиксели виджета.
 func _to_px(world: Vector3) -> Vector2:
@@ -454,11 +462,10 @@ func _sync_bg_ovals() -> void:
 		var ci := int(r["ci"])
 		if ci == front:
 			continue
-		var psi := float(ci) * FAN - _tilt_t
-		ovals.append({"pts": _ring_oval_px(psi),
+		ovals.append({"pts": _ring_oval_px(_psi_at(ci, _tilt)),   # _tilt — как рисуются меши
 				"color": Color(CAT_COLORS[CAT_KEYS[ci]], 0.22), "w": 1.0})
 	if _ring_by_ci.has(front):
-		ovals.append({"pts": _ring_oval_px(float(front) * FAN - _tilt_t),
+		ovals.append({"pts": _ring_oval_px(_psi_at(front, _tilt)),
 				"color": Color(CAT_COLORS[CAT_KEYS[front]], 0.6), "w": 1.6})
 	_bg.ovals = ovals
 	_bg.queue_redraw()
