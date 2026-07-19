@@ -573,6 +573,17 @@ func _end_drag() -> void:
 
 func _snap_all() -> void:
 	_tilt_t = float(roundi(_tilt_t / FAN)) * FAN
+	# Не залипаем на пустой категории: доводим кувырок до ближайшей непустой (кратчайшим
+	# знаковым шагом), чтобы «мёртвый» детент с «ПУСТО» не ловил при отпускании.
+	if not _all_empty and (_by_cat[CAT_KEYS[_front_cat()]] as Array).is_empty():
+		var d := posmod(_nearest_nonempty(_front_cat()) - _front_cat() + 2, CAT_KEYS.size()) - 2
+		_tilt_t += float(d) * FAN
+	# Гигиена: держим _tilt/_tilt_t ограниченными (период 4·FAN вид не меняет — psi и
+	# передняя категория периодичны по нему), иначе бесконечная крутёжка копит float.
+	var period := float(CAT_KEYS.size()) * FAN
+	var wraps := floorf(_tilt_t / period)
+	_tilt_t -= wraps * period
+	_tilt -= wraps * period
 	_cat_idx = _front_cat()
 	var r := _front_ring()
 	if not r.is_empty():
