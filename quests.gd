@@ -56,8 +56,15 @@ func _update_tracker() -> void:
 	_title.text = star + str(q["title"])
 	if q["done"]:
 		_objective.text = "✓ выполнено"
+	elif _grade_locked(q):
+		# Затрекан ждущий грейда квест (напр. сейв со старым треком) — не врём прогрессом.
+		_objective.text = "Откроется на грейде %d лицензии" % int(q.get("req_grade", 1))
 	else:
 		_objective.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+
+# Сюжетный квест ждёт грейда лицензии (см. quest_manager._grade_ok).
+func _grade_locked(q: Dictionary) -> bool:
+	return int(q["type"]) == Q.Type.STORY and G.grade("start") < int(q.get("req_grade", 1))
 
 # ── Список всех заданий ───────────────────────────────────────────────────────
 func _rebuild_list() -> void:
@@ -89,8 +96,8 @@ func _make_row(q: Dictionary) -> Control:
 	star.text = "★" if is_tracked else "☆"
 	star.add_theme_font_size_override("font_size", 20)
 	star.add_theme_color_override("font_color", Color(1, 0.65, 0.2, 1) if is_tracked else Color(0.7, 0.75, 0.78, 1))
-	star.disabled = q["done"]
-	star.pressed.connect(func(): Q.track(q["id"]))
+	star.disabled = q["done"] or _grade_locked(q)   # заблокированный не затрекать: прогресс
+	star.pressed.connect(func(): Q.track(q["id"]))  # у него всё равно не капает
 	row.add_child(star)
 
 	var vb := VBoxContainer.new()
@@ -105,10 +112,9 @@ func _make_row(q: Dictionary) -> Control:
 	if q["done"]:
 		o.text = "✓ выполнено"
 	else:
-		var need_g: int = int(q.get("req_grade", 1))
-		if int(q["type"]) == Q.Type.STORY and G.grade("start") < need_g:
+		if _grade_locked(q):
 			# Цепочка ждёт лицензию — вместо прогресса пишем условие (награды как тизер).
-			o.text = "Откроется на грейде %d лицензии" % need_g
+			o.text = "Откроется на грейде %d лицензии" % int(q.get("req_grade", 1))
 		else:
 			o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
 		var reward: int = int(q.get("reward_money", 0))

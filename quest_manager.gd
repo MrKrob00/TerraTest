@@ -227,6 +227,8 @@ func active_quests() -> Array[Dictionary]:
 func visible_quests() -> Array[Dictionary]:
 	# Выполненные сюжетные + ПЕРВЫЙ невыполненный (текущий ЛИБО ждущий грейда — тогда
 	# quests.gd подпишет «откроется на грейде N»). Дальше будущее не светим.
+	# ИНВАРИАНТ: quests_done — префикс порядка order (сюжет выполняется последовательно);
+	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
 	var out: Array[Dictionary] = []
 	for q in _sorted_story():
 		out.append(q)
