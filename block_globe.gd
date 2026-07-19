@@ -1,24 +1,18 @@
 class_name BlockGlobe
 extends Control
-# «Гироскоп-ролодекс» выбора блока в стройке. Спереди — «Х» из двух вытянутых овалов:
-#   • кольцо «/» — БЛОКИ текущей категории (реальные превью-меши). Драг по диагонали
-#     «право-верх ↔ лево-низ» крутит его; ВЫБРАННЫЙ блок стоит спереди СЛЕВА-СВЕРХУ,
-#     крупнее остальных и в покое медленно вращается — его и берём тапом.
-#   • кольцо «\» — 4 КАТЕГОРИИ (те же G.BLOCK_CATEGORIES, что в гараже) — цветные кристаллы.
-#     Драг «право-низ ↔ лево-верх» крутит его; текущая категория спереди СПРАВА-СВЕРХУ.
-# НОВОЕ: у КАЖДОЙ непустой категории — СВОЁ кольцо блоков, и ВСЕ они видны сразу —
-# ВЕЕРОМ-ГИРОСКОПОМ: скрещены через общий центр под разными углами (крен 35°/105°/125°/168°).
-# Активное кольцо всегда в «рабочем» слоте «/» (+35°) — жест прокрутки не меняется;
-# неактивные — целиком видны, но полупрозрачны: «призрачный» material_override (транспарентность
-# GeometryInstance3D в gl_compatibility НЕ работает), общих материалов блоков не трогаем; ещё
-# чуть мельче и глубже. Смена категории ничего не пересобирает —
-# кольца плавно МЕНЯЮТСЯ УГЛАМИ (гироскоп перекатывается), у каждого свой слот и угол.
-# Ось жеста лочится по первой диагонали движения; отпустил — довод до ближайшего слота.
-# Тап без движения — взять текущий блок. Пустая категория — «ПУСТО», всё пусто — «НЕТ БЛОКОВ».
+# «Атом» выбора блока в стройке (по прототипу игрока, см. docs/atom_picker_reference.md).
+# Ядро-сфера в центре; вокруг — кольца-категории на ОБЩЕЙ оси-шпинделе (X), наклонённые
+# веером по 45° (psi). Красный обод-экватор — «руль» выбора типа.
+#   • ТИП: вертикальный драг КУВЫРКАЕТ атом (_tilt) — нужная категория выезжает вперёд
+#     (psi→0, кольцо раскрывается к камере), остальные наклонены назад и приглушены (1A).
+#   • БЛОК: горизонтальный драг крутит АКТИВНОЕ (переднее) кольцо — блоки этого типа
+#     проезжают мимо точки выбора; тап без движения берёт центральный (2A).
+# Ось жеста лочится по первому движению. У каждой категории свой запомненный слот.
+# Пустая категория спереди — «ПУСТО», совсем без блоков — «НЕТ БЛОКОВ».
 
 signal block_chosen(block_type: int)
 
-const SIZE := 320.0                    # сторона квадрата-виджета (крупнее: в кадре вся стопка)
+const SIZE := 320.0
 const CAT_KEYS := ["attack", "blocks", "factory", "other"]
 const CAT_NAMES := {"attack": "Атака", "blocks": "Блоки", "factory": "Фабрика", "other": "Остальное"}
 const CAT_COLORS := {
@@ -26,69 +20,53 @@ const CAT_COLORS := {
 	"factory": Color(0.85, 0.66, 0.30), "other": Color(0.62, 0.46, 0.80),
 }
 
-# Геометрия колец. Наклон ±35° от горизонтали: C35/S35 — его косинус/синус (const-литералы,
-# т.к. cos()/sin() в const-выражении GDScript не сворачивает). MINOR_K — сжатие овала
-# (малая полуось / большая), ZK — глубинная амплитуда (передняя точка ближе к камере).
-# MINOR_K не уже 0.46: передние точки колец расходятся на ~65px, иначе выбранный блок при
-# вращении (диагональ куба шире грани!) задевал передний кристалл категории.
-const MINOR_K := 0.46
-const ZK := 0.92
-const R_RING := 1.30
+# Геометрия атома. Категория ci сидит на шпинделе (ось X) под наклоном psi = ci*FAN − _tilt;
+# при psi≈0 её кольцо смотрит на камеру (раскрыто), блоки читаются и листаются.
+const FAN := PI / 4.0                  # 45° между категориями по оси
+const R_RING := 1.16                   # радиус кольца категории
+const R_EQ := 1.55                     # радиус экватора (красный обод-селектор)
+const CORE_R := 0.34                   # радиус ядра-сферы
 const CAM_Z := 6.4
 const FOV := 30.0
-const SLOT := 0.44                     # целевой габарит превью блока
-const GEM := 0.23                      # размер кристалла категории
-const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», листается без заворота
-
-# Веер-гироскоп: кольцо категории ci занимает слот posmod(ci − текущая, 4).
-# Слот 0 (активное) — крен +35° («/», жест не меняется), дальше веером до 170°
-# (крен θ и θ+180° выглядят одинаково, поэтому рабочий диапазон — 180°; −35° занят
-# кольцом категорий «\»). Неактивные кольца полупрозрачны, чуть мельче и глубже.
-# Слоты крена 35/105/125/168° (посчитано, см. коммит): активный — 35° («/»), неактивные
-# со 105° — их ПЕРЕДНИЕ точки ≥70px от якоря выбора (крен 80° давал бы ~49px, ровно на
-# кольце). NB: ФЛАНГИ овалов подходят ближе (~14-23px), но 3D-призрак там перекрыт по
-# глубине непрозрачным увеличенным выбранным блоком — видны лишь тонкие фоновые контуры.
-# Монотонно — кольцо катится плавно; 125° держится в ≥20° от кристаллов категорий (145°).
-const ROLL_SLOTS := [0.6108652, 1.8325957, 2.1816616, 2.9321531]
-const FAN_SPEED := 6.0                 # скорость перекатывания веера
-const INACTIVE_SCALE := 0.85           # масштаб корня неактивного кольца
-const INACTIVE_Z := -0.6               # сдвиг вглубь за каждый шаг слота (перспектива поможет)
-# «Призрачный» вид неактивных: material_override с альфой — единственный способ
-# полупрозрачности в gl_compatibility (GeometryInstance3D.transparency там ИГНОРИРУЕТСЯ,
-# работает только в Forward+). Материал свой на кольцо, тонирован цветом категории.
-const GHOST_ALPHA := 0.35
-
-# Экранные орты диагоналей (y ВНИЗ): «/» — вправо-вверх, «\» — вправо-вниз.
-const U_A := Vector2(0.8191520443, -0.5735764364)
-const U_B := Vector2(0.8191520443, 0.5735764364)
-
-const STEP_B := TAU / 4.0              # шаг категорий: 4 кристалла ровно по кругу
-const SLOT_DRAG_PX := 100.0            # пикселей драга на один слот (обоим кольцам)
-const TAP_SLOP := 6.0                  # короче этого пути — тап (взять), не драг
-const LOCK_DIST := 12.0                # путь, после которого лочится ось жеста
-const SNAP_SPEED := 8.0
-const SELECT_SCALE := 1.18             # больше — и вращающийся блок цепляет соседний кристалл
+const SLOT := 0.40                     # целевой габарит превью блока
+const MIN_SLOTS_A := 5                 # меньше блоков — кольцо с «пробелом», без заворота
+const SELECT_SCALE := 1.18
 const IDLE_SPIN := 0.6                 # рад/с — вращение выбранного блока в покое
+const GHOST_ALPHA := 0.40              # альфа «призрачных» неактивных колец (цветной силуэт)
+# Вид: лёгкий наклон атома для объёмного 3/4 (питч вниз + доворот). Точку выбора (ближнюю
+# кромку активного кольца) считаем из этого базиса — см. _build_scene.
+const VIEW_PITCH := -0.34              # ~−19,5° — смотрим чуть сверху
+const VIEW_YAW := 0.42                 # ~24° — доворот для объёма
 
-# ── Фон: контуры всех колец веера (в цветах категорий) + мягкий тёмный диск. Всё
-# передаётся снаружи готовым списком (вложенный класс не видит const внешнего). ────────
+const TUMBLE_SPEED := 7.0
+const SCROLL_SPEED := 8.0
+const TUMBLE_DRAG_PX := 90.0           # px вертикального драга на одну категорию
+const SCROLL_DRAG_PX := 90.0           # px горизонтального драга на один блок
+const TAP_SLOP := 6.0
+const LOCK_DIST := 10.0
+
+# ── Фон: ядро-диск, красный обод-экватор и контуры колец категорий (в их цветах). Всё
+# передаётся снаружи готовыми полилиниями (вложенный класс не видит const внешнего). ────
 class XBg extends Control:
-	const DISC := Color(0.03, 0.10, 0.13, 0.5)
-	var ovals: Array = []              # [{pts: PackedVector2Array, color: Color, w: float}]
-	var center := Vector2.ZERO
-	var disc_r := 100.0
+	const CORE := Color(0.78, 0.80, 0.86, 0.9)
+	const EQUATOR := Color(0.90, 0.28, 0.28, 0.8)
+	var equator := PackedVector2Array()
+	var ovals: Array = []              # [{pts, color, w}]
+	var core_at := Vector2.ZERO
+	var core_r := 30.0
 	func _draw() -> void:
-		draw_circle(center, disc_r, DISC)
 		for o in ovals:
 			var pts: PackedVector2Array = o["pts"]
 			if pts.size() > 1:
 				draw_polyline(pts, o["color"], o["w"], true)
+		if equator.size() > 1:
+			draw_polyline(equator, EQUATOR, 2.0, true)
+		draw_circle(core_at, core_r, CORE)
 
-# ── Оверлей поверх 3D: кольцо у выбранного блока, вспышка взятия, «ПУСТО»/«НЕТ БЛОКОВ».
-# Отдельный Control (не в риге): вспышка переживает rebuild колец после взятия. ────────
+# ── Оверлей поверх 3D: кольцо у выбранного блока, вспышка взятия, «ПУСТО»/«НЕТ БЛОКОВ». ─
 class Overlay extends Control:
-	const RING := Color(0.247, 0.6, 0.65, 0.55)
-	var anchor := Vector2.ZERO         # экранная точка выбранного блока (передняя точка «/»)
+	const RING := Color(0.90, 0.28, 0.28, 0.7)
+	var anchor := Vector2.ZERO
 	var empty_all := false
 	var empty_cat := false
 	var flash_r := 0.0
@@ -98,7 +76,7 @@ class Overlay extends Control:
 		if empty_all:
 			_text("НЕТ\nБЛОКОВ", size * 0.5, 18)
 			return
-		draw_arc(anchor, 48.0, 0, TAU, 40, RING, 2.5)
+		draw_arc(anchor, 42.0, 0, TAU, 40, RING, 2.5)
 		if empty_cat:
 			_text("ПУСТО", anchor, 13)
 		if flash_a > 0.01:
@@ -111,92 +89,88 @@ class Overlay extends Control:
 			draw_string(f, at + Vector2(-w * 0.5, -4 + li * (px + 4)), lines[li],
 					HORIZONTAL_ALIGNMENT_CENTER, -1, px, Color(0.7, 0.85, 0.9, 0.8))
 	func _process(_delta: float) -> void:
-		if flash_a > 0.001:            # перерисовка только пока играет вспышка
+		if flash_a > 0.001:
 			queue_redraw()
 	func flash() -> void:
 		if _tw:
-			_tw.kill()               # быстрый двойной тап — старая вспышка не борется с новой
-		flash_r = 48.0
+			_tw.kill()
+		flash_r = 42.0
 		flash_a = 0.9
 		_tw = create_tween().set_parallel(true)
-		_tw.tween_property(self, "flash_r", 100.0, 0.24)
+		_tw.tween_property(self, "flash_r", 90.0, 0.24)
 		_tw.tween_property(self, "flash_a", 0.0, 0.24)
 
-var _ang_b := 0.0                      # угол кольца категорий (слоты кратны STEP_B)
-var _ang_b_t := 0.0
-var _cat_idx := 0                      # закоммиченная категория
-var _item_idx := {}                    # cat_key -> запомненный слот категории
+var _tilt := 0.0                       # кувырок атома (растёт непрерывно, категории кратны FAN)
+var _tilt_t := 0.0
+var _cat_idx := 0                      # закоммиченная (передняя) категория
+var _item_idx := {}                    # cat_key -> запомненный слот
 var _by_cat := {}                      # cat_key -> Array[{type, count}]
 
-# Стопка колец: по одному на НЕПУСТУЮ категорию.
 # Кольцо: {ci, items, root, slots:[{node, visual, badge}], meshes:[{mi, orig}], ghost,
-#          ghosted, ang, ang_t, step, slot_f, slot_t} — slot 0 = активное («/»),
-#          дальше веер по ROLL_SLOTS; неактивное кольцо носит «призрачный» material_override.
+#          ghosted, ang, ang_t, step} — ang = карусель блоков этого кольца.
 var _rings: Array = []
-var _ring_by_ci := {}                  # ci -> кольцо (Dictionary)
+var _ring_by_ci := {}
 
-var _root_a: Node3D = null             # родитель корней всех колец стопки
-var _root_b: Node3D = null             # держатели кристаллов категорий
-var _gems: Array = []                  # [{node, mat}] — кристаллы, индекс = категория
+var _view := Basis()                   # общий наклон атома (вид 3/4)
+var _theta_front := 0.0                # угол ближней кромки активного кольца (точка выбора)
+var _root: Node3D = null               # родитель колец (несёт _view)
 var _label: Label = null
 var _bg: XBg = null
 var _overlay: Overlay = null
-var _visual_cache := {}                # block_type -> шаблон меша (строим один раз)
+var _visual_cache := {}
 var _all_empty := false
-var _inv_seen := -1                    # размер инвентаря на последнем refresh (см. _process)
+var _inv_seen := -1
 
 var _dragging := false
 var _drag_dist := 0.0
 var _drag_acc := Vector2.ZERO
-var _axis := -1                        # -1 не решено, 0 — кольцо блоков «/», 1 — категорий «\»
+var _axis := -1                        # -1 не решено, 0 — блоки (гориз), 1 — тип (верт)
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	for k in CAT_KEYS:
 		_by_cat[k] = []
 		_item_idx[k] = 0
+	_view = Basis(Vector3.RIGHT, VIEW_PITCH) * Basis(Vector3.UP, VIEW_YAW)
+	# Ближняя кромка активного кольца (psi=0 → точки R(cosθ,sinθ,0)): θ, максимизирующий
+	# мировой z = cosθ·view.x.z + sinθ·view.y.z → atan2(view.y.z, view.x.z). Это точка выбора.
+	_theta_front = atan2(_view.y.z, _view.x.z)
 	_build_scene()
 
-# Точка кольца: базовая карусель в XZ, наклон до овала (MINOR_K), крен roll (рад).
-# roll=+35° — «/» (активный слот блоков), roll=−35° — «\» (категории). Передняя точка
-# (phi=0) ближе всего к камере и сверху; большая ось овала — вдоль направления крена.
-func _ring_point(phi: float, roll: float) -> Vector3:
-	var sp := sin(phi)
-	var cp := cos(phi)
-	var cr := cos(roll)
-	var sr := sin(roll)
-	return Vector3(
-			R_RING * (sp * cr - MINOR_K * cp * sr),
-			R_RING * (sp * sr + MINOR_K * cp * cr),
-			R_RING * ZK * cp)
+# Точка кольца категории: круг в плоскости, содержащей ось X, наклонённой на psi вокруг X.
+# psi=0 → круг XY (лицом к камере); psi=±90° → круг XZ (ребром, горизонтальная линия).
+func _ring_point(theta: float, psi: float) -> Vector3:
+	var st := sin(theta)
+	return R_RING * Vector3(cos(theta), st * cos(psi), st * sin(psi))
 
-const ROLL_A := 0.6108652              # +35° — слот активного кольца блоков («/»)
-const ROLL_B := -0.6108652             # −35° — кольцо категорий («\»)
+func _psi_of(ci: int) -> float:
+	return float(ci) * FAN - _tilt
 
-# Крен для дробного слота веера (анимация: слот плывёт между целыми).
-func _fan_roll(slot_f: float) -> float:
-	var s := clampf(slot_f, 0.0, float(ROLL_SLOTS.size() - 1))
-	var i := int(floor(s))
-	if i >= ROLL_SLOTS.size() - 1:
-		return float(ROLL_SLOTS[ROLL_SLOTS.size() - 1])
-	return lerpf(float(ROLL_SLOTS[i]), float(ROLL_SLOTS[i + 1]), s - float(i))
+# Проекция точки атома (уже в мировых, после _view) в пиксели виджета.
+func _to_px(world: Vector3) -> Vector2:
+	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - world.z))
+	return Vector2(SIZE * 0.5 + world.x * ppw, SIZE * 0.5 - world.y * ppw)
 
-# Проекция 3D-точки в пиксели виджета (вьюпорт — квадрат SIZE, камера на +Z смотрит в −Z).
-func _to_px(p: Vector3) -> Vector2:
-	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - p.z))
-	return Vector2(SIZE * 0.5 + p.x * ppw, SIZE * 0.5 - p.y * ppw)
-
-func _oval_px(roll: float, scl: float = 1.0, dz: float = 0.0) -> PackedVector2Array:
+func _ring_oval_px(psi: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in 49:
-		var p := _ring_point(TAU * float(i) / 48.0, roll) * scl
-		pts.append(_to_px(Vector3(p.x, p.y, p.z + dz)))
+		pts.append(_to_px(_view * _ring_point(TAU * float(i) / 48.0, psi)))
+	return pts
+
+func _equator_px() -> PackedVector2Array:
+	# Экватор — круг в плоскости YZ (нормаль = ось-шпиндель X), радиус R_EQ. Кувырок его
+	# НЕ меняет (симметричен относительно X), поэтому строим один раз.
+	var pts := PackedVector2Array()
+	for i in 49:
+		var a := TAU * float(i) / 48.0
+		pts.append(_to_px(_view * (R_EQ * Vector3(0, cos(a), sin(a)))))
 	return pts
 
 func _build_scene() -> void:
 	_bg = XBg.new()
-	_bg.center = Vector2(SIZE * 0.5, SIZE * 0.5)
-	_bg.disc_r = SIZE * 0.485
+	_bg.core_at = _to_px(_view * Vector3.ZERO)
+	_bg.core_r = CORE_R * (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * CAM_Z)
+	_bg.equator = _equator_px()
 	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_bg)
@@ -222,23 +196,34 @@ func _build_scene() -> void:
 	var light := DirectionalLight3D.new()
 	light.rotation = Vector3(-0.6, -0.5, 0)
 	sv.add_child(light)
-	var fill := DirectionalLight3D.new()   # слабый контражур, чтобы низ блоков не был чёрным
+	var fill := DirectionalLight3D.new()
 	fill.rotation = Vector3(0.7, 2.4, 0)
 	fill.light_energy = 0.4
 	sv.add_child(fill)
 
-	_root_a = Node3D.new()
-	sv.add_child(_root_a)
-	_root_b = Node3D.new()
-	sv.add_child(_root_b)
-	_build_gems()
-	_sync_bg_ovals()
+	# Ядро-сфера (3D, чтобы бликовало как нуклон). Держим прямо в мире по центру.
+	var core := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = CORE_R
+	sph.height = CORE_R * 2.0
+	var cm := StandardMaterial3D.new()
+	cm.albedo_color = Color(0.72, 0.75, 0.82)
+	cm.metallic = 0.3
+	cm.roughness = 0.35
+	sph.material = cm
+	core.mesh = sph
+	core.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sv.add_child(core)
+
+	_root = Node3D.new()               # кольца-держатели; общий наклон вида на риге
+	_root.basis = _view
+	sv.add_child(_root)
 
 	_overlay = Overlay.new()
-	_overlay.anchor = _to_px(_ring_point(0.0, ROLL_A))
+	_overlay.anchor = _to_px(_view * _ring_point(_theta_front, 0.0))
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_overlay)                    # после svc — рисуется поверх 3D
+	add_child(_overlay)
 
 	_label = Label.new()
 	_label.position = Vector2(8, 0)
@@ -247,52 +232,7 @@ func _build_scene() -> void:
 	_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_label)
 
-# Контуры фона: «\» категорий + овал каждого кольца веера в цвете его категории
-# (активное — ярче и поверх). Рисуем ЦЕЛЕВЫЕ слоты: во время анимации контуры уже на местах.
-func _sync_bg_ovals() -> void:
-	if _bg == null:
-		return
-	var ovals: Array = []
-	for r in _rings:
-		var st := float(r["slot_t"])
-		if int(st) == 0:
-			continue                   # активное — добавим последним, поверх остальных
-		ovals.append({"pts": _oval_px(_fan_roll(st), INACTIVE_SCALE, INACTIVE_Z * st),
-				"color": Color(CAT_COLORS[CAT_KEYS[int(r["ci"])]], 0.18), "w": 1.0})
-	ovals.append({"pts": _oval_px(ROLL_B), "color": Color(0.58, 0.47, 0.78, 0.45), "w": 1.5})
-	var have_front := false
-	for r in _rings:
-		if int(r["slot_t"]) == 0:
-			ovals.append({"pts": _oval_px(ROLL_A),
-					"color": Color(CAT_COLORS[CAT_KEYS[int(r["ci"])]], 0.55), "w": 1.5})
-			have_front = true
-	if not have_front:
-		ovals.append({"pts": _oval_px(ROLL_A), "color": Color(0.247, 0.6, 0.65, 0.4), "w": 1.5})
-	_bg.ovals = ovals
-	_bg.queue_redraw()
-
-# Кристаллы категорий — кубик на «уголке» (поворот 45°+35°), цвет из CAT_COLORS.
-# Строятся один раз; пустые категории затемняются в _sync_state().
-func _build_gems() -> void:
-	_gems.clear()
-	for k in CAT_KEYS:
-		var holder := Node3D.new()
-		var mi := MeshInstance3D.new()
-		var box := BoxMesh.new()
-		box.size = Vector3(GEM, GEM, GEM)
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = CAT_COLORS[k]
-		mat.emission_enabled = true
-		mat.emission = CAT_COLORS[k] * 0.35
-		mat.roughness = 0.35
-		box.material = mat
-		mi.mesh = box
-		mi.rotation = Vector3(0.6155, PI / 4.0, 0)   # «стоит на вершине» — читается как кристалл
-		holder.add_child(mi)
-		_root_b.add_child(holder)
-		_gems.append({"node": holder, "mat": mat})
-
-# Полное обновление содержимого — звать при входе в стройку и после взятия блока.
+# Полное обновление — при входе в стройку и после взятия блока.
 func refresh() -> void:
 	_inv_seen = G.block_inventory.size()
 	for k in CAT_KEYS:
@@ -309,13 +249,11 @@ func refresh() -> void:
 		if not items.is_empty():
 			_all_empty = false
 			_item_idx[k] = clampi(int(_item_idx[k]), 0, items.size() - 1)
-	# Текущая категория опустела → ближайшая непустая ПО КОЛЬЦУ (не с нуля).
 	if (_by_cat[CAT_KEYS[_cat_idx]] as Array).is_empty() and not _all_empty:
 		_cat_idx = _nearest_nonempty(_cat_idx)
-	_ang_b = float(_cat_idx) * STEP_B
-	_ang_b_t = _ang_b
+	_tilt = float(_cat_idx) * FAN
+	_tilt_t = _tilt
 	_rebuild_rings()
-	_retarget_fan(true)
 	_update_label()
 	_sync_state()
 
@@ -332,12 +270,9 @@ func _nearest_nonempty(ci: int) -> int:
 				return cand
 	return ci
 
-# Пересобрать ВСЮ стопку (инвентарь изменился): по кольцу на каждую непустую категорию.
-# Каждое кольцо несёт ПОЛНЫЙ набор своих блоков и помнит свой угол (слот) — смена
-# категории потом ничего не пересобирает, только слоты веера (см. _retarget_fan).
 func _rebuild_rings() -> void:
 	for r in _rings:
-		_root_a.remove_child(r["root"])   # remove ДО free: без кадра сосуществования наборов
+		_root.remove_child(r["root"])
 		(r["root"] as Node).queue_free()
 	_rings.clear()
 	_ring_by_ci.clear()
@@ -346,7 +281,7 @@ func _rebuild_rings() -> void:
 		if items.is_empty():
 			continue
 		var root := Node3D.new()
-		_root_a.add_child(root)
+		_root.add_child(root)
 		var step := TAU / float(maxi(items.size(), MIN_SLOTS_A))
 		var mem := clampi(int(_item_idx[CAT_KEYS[ci]]), 0, items.size() - 1)
 		var slots: Array = []
@@ -359,57 +294,34 @@ func _rebuild_rings() -> void:
 				badge = Label3D.new()
 				badge.text = "×%d" % int(it["count"])
 				badge.font_size = 34
-				badge.position = Vector3(0, -0.40, 0)
+				badge.position = Vector3(0, -0.38, 0)
 				badge.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-				# Бейджи только у активного кольца (см. _process) — на неактивных
-				# полупрозрачных кольцах они лишний шум.
 				badge.no_depth_test = true
 				badge.visible = false
 				holder.add_child(badge)
 			root.add_child(holder)
 			slots.append({"node": holder, "visual": visual, "badge": badge})
-		# Все превью-меши кольца + их ИСХОДНЫЙ material_override — чтобы при уходе кольца в
-		# «призрак» подменить материал, а при возврате в активное — вернуть настоящий.
 		var meshes: Array = []
 		for s2 in slots:
 			for m in (s2["visual"] as Node).find_children("*", "MeshInstance3D", true, false):
 				meshes.append({"mi": m, "orig": (m as MeshInstance3D).material_override})
-		# «Призрачный» материал кольца (тонирован цветом категории). material_override с
-		# альфой работает в gl_compatibility, в отличие от GeometryInstance3D.transparency.
 		var ghost := StandardMaterial3D.new()
 		ghost.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		ghost.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		ghost.cull_mode = BaseMaterial3D.CULL_DISABLED
 		ghost.albedo_color = Color(CAT_COLORS[CAT_KEYS[ci]], GHOST_ALPHA)
-		var ring := {
+		_rings.append({
 			"ci": ci, "items": items, "root": root, "slots": slots, "meshes": meshes,
-			"ghost": ghost, "ghosted": -1,      # -1 — материал ещё не выставлен
+			"ghost": ghost, "ghosted": -1,
 			"ang": float(mem) * step, "ang_t": float(mem) * step, "step": step,
-			"slot_f": 0.0, "slot_t": 0.0,
-		}
-		_rings.append(ring)
-		_ring_by_ci[ci] = ring
+		})
+		_ring_by_ci[ci] = _rings[_rings.size() - 1]
 
-# Цели слотов веера: кольцо категории ci — в слот posmod(ci − текущая, 4). Слот 0 —
-# активное («/», +35°); драг «\» вживую перекатывает веер. Бейджи ×N включает _process
-# по ФАКТИЧЕСКОМУ слоту (на неактивном кольце они лишние).
-func _retarget_fan(instant: bool) -> void:
-	var front := _front_cat()
-	for r in _rings:
-		r["slot_t"] = float(posmod(int(r["ci"]) - front, CAT_KEYS.size()))
-		if instant:
-			r["slot_f"] = r["slot_t"]
-	_sync_bg_ovals()
-
-# ── Реальный меш блока: собираем из его сцены, НЕ запуская логику ─────────────────
-# instantiate() не вызывает _ready() (там весь сайд-эффект: add_to_group/freeze/сигналы/
-# процедурные FX-меши), поэтому off-tree обход безопасен. Копируем меши+материалы ПО ССЫЛКЕ,
-# нормализуем в SLOT, инстанс free(). Шаблон кешируем — rebuild не пере-инстансит сцену.
+# ── Реальный меш блока: собираем из сцены, НЕ запуская логику ─────────────────────
 func _make_visual(block_type: int) -> Node3D:
 	var data := _visual_template(block_type)
 	var container := Node3D.new()
 	if not bool(data["ok"]):
-		# Фолбэк: цветной кубик, если реального меша не нашлось.
 		var mi := MeshInstance3D.new()
 		var box := BoxMesh.new(); box.size = Vector3(SLOT, SLOT, SLOT)
 		var m := StandardMaterial3D.new(); m.albedo_color = _color_for(block_type); m.roughness = 0.55
@@ -419,7 +331,7 @@ func _make_visual(block_type: int) -> Node3D:
 	var inner := Node3D.new()
 	var s: float = data["scale"]
 	var ctr: Vector3 = data["center"]
-	inner.transform = Transform3D(Basis().scaled(Vector3.ONE * s), -ctr * s)  # scale-then-recenter
+	inner.transform = Transform3D(Basis().scaled(Vector3.ONE * s), -ctr * s)
 	container.add_child(inner)
 	for p in data["parts"]:
 		var mc := MeshInstance3D.new()
@@ -442,7 +354,7 @@ func _visual_template(block_type: int) -> Dictionary:
 	if scene == null:
 		_visual_cache[block_type] = data
 		return data
-	var inst: Node = scene.instantiate()          # _ready НЕ вызывается — сайд-эффектов нет
+	var inst: Node = scene.instantiate()
 	var acc := AABB()
 	var has := false
 	var stack: Array = [[inst, Transform3D.IDENTITY]]
@@ -450,8 +362,6 @@ func _visual_template(block_type: int) -> Dictionary:
 		var pair = stack.pop_back()
 		var n = pair[0]
 		var xf: Transform3D = pair[1]
-		# Пропускаем ветки-НЕ-тело блока: скрытые, триггеры/индикаторы (Area3D), хосты
-		# трассера (RayCast3D — у оружия track_visual виден в .tscn, прячется только в _ready).
 		if n != inst:
 			if n is Area3D or n is RayCast3D:
 				continue
@@ -467,7 +377,7 @@ func _visual_template(block_type: int) -> Dictionary:
 			if mat is BaseMaterial3D:
 				var bm := (mat as BaseMaterial3D).blend_mode
 				if bm == BaseMaterial3D.BLEND_MODE_ADD or bm == BaseMaterial3D.BLEND_MODE_SUB:
-					continue    # аддитивный FX (луч/всасывающая капсула коллектора) — не тело
+					continue
 			var surf: Array = []
 			for si in n.get_surface_override_material_count():
 				surf.append(n.get_surface_override_material(si))
@@ -481,7 +391,7 @@ func _visual_template(block_type: int) -> Dictionary:
 					acc = AABB(wp, Vector3.ZERO); has = true
 				else:
 					acc = acc.expand(wp)
-	inst.free()      # off-tree узел — free() безопасен; меши/материалы (RefCounted) переживут
+	inst.free()
 	if has and not (data["parts"] as Array).is_empty():
 		var maxd: float = maxf(acc.size.x, maxf(acc.size.y, acc.size.z))
 		data["scale"] = (SLOT / maxd) if maxd > 1e-4 else 1.0
@@ -490,7 +400,6 @@ func _visual_template(block_type: int) -> Dictionary:
 	_visual_cache[block_type] = data
 	return data
 
-# Действующий материал MeshInstance3D: override → override поверхности → материал меша.
 func _active_material(mi: MeshInstance3D) -> Material:
 	if mi.material_override != null:
 		return mi.material_override
@@ -500,29 +409,18 @@ func _active_material(mi: MeshInstance3D) -> Material:
 		return mi.mesh.surface_get_material(0)
 	return null
 
-# Цвет-заглушка по типу (фолбэк, если реальный меш не собрался).
 func _color_for(block_type: int) -> Color:
 	var h := float(block_type % 12) / 12.0
 	return Color.from_hsv(h, 0.55, 0.95)
 
+# Передняя (активная) категория по кувырку.
 func _front_cat() -> int:
-	return posmod(roundi(_ang_b_t / STEP_B), CAT_KEYS.size())
+	return posmod(roundi(_tilt_t / FAN), CAT_KEYS.size())
 
-# Все анимации доехали: кольцо категорий и слоты веера у целей (для авто-refresh).
-func _stack_settled() -> bool:
-	if absf(_ang_b - _ang_b_t) >= 0.02:
-		return false
-	for r in _rings:
-		if absf(float(r["slot_f"]) - float(r["slot_t"])) >= 0.03:
-			return false
-	return true
-
-# Кольцо текущей (передней) категории; пустой Dictionary, если категория без блоков.
 func _front_ring() -> Dictionary:
 	return _ring_by_ci.get(_front_cat(), {})
 
-# Слот у передней точки переднего кольца. Кольцо с «пробелом» (мало блоков) не заворачивается —
-# края клампятся; полное (n >= MIN_SLOTS_A, шаг ровно TAU/n) листается по кругу бесшовно.
+# Слот у точки выбора активного кольца.
 func _live_idx() -> int:
 	var r := _front_ring()
 	if r.is_empty():
@@ -546,50 +444,60 @@ func _block_display_name(block_type: int) -> String:
 		return str(names[block_type]).capitalize()
 	return "?"
 
+# Контуры колец на фоне — цвет категории, активное ярче. Строим ЦЕЛЕВЫЕ psi.
+func _sync_bg_ovals() -> void:
+	if _bg == null:
+		return
+	var front := _front_cat()
+	var ovals: Array = []
+	for r in _rings:
+		var ci := int(r["ci"])
+		if ci == front:
+			continue
+		var psi := float(ci) * FAN - _tilt_t
+		ovals.append({"pts": _ring_oval_px(psi),
+				"color": Color(CAT_COLORS[CAT_KEYS[ci]], 0.22), "w": 1.0})
+	if _ring_by_ci.has(front):
+		ovals.append({"pts": _ring_oval_px(float(front) * FAN - _tilt_t),
+				"color": Color(CAT_COLORS[CAT_KEYS[front]], 0.6), "w": 1.6})
+	_bg.ovals = ovals
+	_bg.queue_redraw()
+
 func _sync_state() -> void:
-	for ci in _gems.size():
-		var base: Color = CAT_COLORS[CAT_KEYS[ci]]
-		var has_items: bool = not (_by_cat[CAT_KEYS[ci]] as Array).is_empty()
-		var mat: StandardMaterial3D = _gems[ci]["mat"]
-		mat.albedo_color = base if has_items else base.darkened(0.65)
-		mat.emission_energy_multiplier = 1.0 if has_items else 0.0
+	_sync_bg_ovals()
 	if _overlay:
 		_overlay.empty_all = _all_empty
 		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
 		_overlay.queue_redraw()
 	if _label:
-		_label.visible = not _all_empty     # при пустом инвентаре текст ведёт оверлей
+		_label.visible = not _all_empty
+
+func _stack_settled() -> bool:
+	if absf(_tilt - _tilt_t) >= 0.01:
+		return false
+	for r in _rings:
+		if absf(float(r["ang"]) - float(r["ang_t"])) >= 0.02:
+			return false
+	return true
 
 func _process(delta: float) -> void:
-	if not visible or _root_a == null:
+	if not visible or _root == null:
 		return
-	# Пылесос чёрной дыры может докинуть блок прямо во время стройки — подхватываем.
-	# Только в покое: refresh пересаживает углы/глубины мгновенно — в драге сбил бы жест,
-	# посреди перелистывания телепортировал бы стопку (инвентарь не совпал — дождёмся кадра,
-	# когда всё доехало, _inv_seen до тех пор не совпадёт).
 	if not _dragging and G.block_inventory.size() != _inv_seen and _stack_settled():
 		refresh()
-	var k := minf(SNAP_SPEED * delta, 1.0)
-	_ang_b = lerpf(_ang_b, _ang_b_t, k)
-	var fk := minf(FAN_SPEED * delta, 1.0)
-	var sk := minf(10.0 * delta, 1.0)   # без клампа фриз-кадр перебрасывает lerp за цель
+	var tk := minf(TUMBLE_SPEED * delta, 1.0)
+	_tilt = lerpf(_tilt, _tilt_t, tk)
+	var ak := minf(SCROLL_SPEED * delta, 1.0)
+	var sk := minf(10.0 * delta, 1.0)
 	var front := _front_cat()
 	var sel := _live_idx()
-	var settled := absf(_ang_b - _ang_b_t) < 0.02 and not _dragging
-	# Веер колец: крен/масштаб/глубина корня, прозрачность неактивных, позиции блоков;
-	# у активного — выбор и вращение.
+	var settled := absf(_tilt - _tilt_t) < 0.01 and not _dragging
 	for r in _rings:
-		r["ang"] = lerpf(float(r["ang"]), float(r["ang_t"]), k)
-		r["slot_f"] = lerpf(float(r["slot_f"]), float(r["slot_t"]), fk)
-		var sf: float = r["slot_f"]
-		var roll := _fan_roll(sf)
-		var inact := clampf(sf, 0.0, 1.0)
-		var root: Node3D = r["root"]
-		root.position = Vector3(0, 0, INACTIVE_Z * sf)
-		root.scale = Vector3.ONE * lerpf(1.0, INACTIVE_SCALE, inact)
-		var is_front: bool = int(r["slot_t"]) == 0
+		r["ang"] = lerpf(float(r["ang"]), float(r["ang_t"]), ak)
+		var ci := int(r["ci"])
+		var psi := _psi_of(ci)
+		var is_front: bool = ci == front
 		# Активное кольцо — настоящие материалы; неактивные — «призрак» (цветной силуэт).
-		# Переключаем ТОЛЬКО на смене состояния (граница категории при драге «\»).
 		var want_ghost := 0 if is_front else 1
 		if int(r["ghosted"]) != want_ghost:
 			r["ghosted"] = want_ghost
@@ -597,33 +505,26 @@ func _process(delta: float) -> void:
 				(me["mi"] as MeshInstance3D).material_override = \
 						(r["ghost"] if want_ghost == 1 else me["orig"])
 		var ring_settled := is_front and settled \
-				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02 and sf < 0.05
-		var show_badges: bool = is_front and sf < 0.5   # на неактивных бейджи лишние
+				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02
 		var slots: Array = r["slots"]
 		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
-			holder.position = _ring_point(float(i) * float(r["step"]) - float(r["ang"]), roll)
+			# Блок i на угле θ = θ_front + (i·step − ang): при ang=i·step блок в точке выбора.
+			holder.position = _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), psi)
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 			if slots[i]["badge"] != null:
-				(slots[i]["badge"] as Label3D).visible = show_badges
+				(slots[i]["badge"] as Label3D).visible = is_front
 			var vis: Node3D = slots[i]["visual"]
 			if is_front and i == sel:
 				if ring_settled:
 					vis.rotation.y += IDLE_SPIN * delta
 			else:
 				vis.rotation.y = 0.0
-	# Кольцо категорий: передний кристалл крупнее и медленно крутится.
-	for ci in _gems.size():
-		var g: Node3D = _gems[ci]["node"]
-		g.position = _ring_point(float(ci) * STEP_B - _ang_b, ROLL_B)
-		var gs := 1.18 if ci == front else 1.0
-		g.scale = g.scale.lerp(Vector3.ONE * gs, sk)
-		if ci == front and settled:
-			g.rotation.y += IDLE_SPIN * delta
+	# Контуры колец плывут вместе с кувырком — перерисовываем, пока не устаканилось.
+	if not settled:
+		_sync_bg_ovals()
 
-# Только мышь: касания Godot эмулирует событиями мыши (emulate_mouse_from_touch, как и
-# vehicle_interact_button.gd) — отдельная ветка на ScreenTouch/Drag ловила бы палец дважды.
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
@@ -637,32 +538,24 @@ func _gui_input(event: InputEvent) -> void:
 		_apply_drag(event.relative)
 
 func _apply_drag(rel: Vector2) -> void:
-	_drag_dist += rel.length()        # тап/драг решаем по накопленному пути
+	_drag_dist += rel.length()
 	_drag_acc += rel
 	if _axis < 0:
 		if _drag_dist < LOCK_DIST:
 			return
-		# Ось — та диагональ, вдоль которой жест прошёл дальше.
-		_axis = 0 if absf(_drag_acc.dot(U_A)) >= absf(_drag_acc.dot(U_B)) else 1
-	if _axis == 0:
+		# Вертикаль (|y|>|x|) — кувырок/тип; горизонталь — прокрутка блоков.
+		_axis = 1 if absf(_drag_acc.y) >= absf(_drag_acc.x) else 0
+	if _axis == 1:
+		_tilt_t += rel.y * (FAN / TUMBLE_DRAG_PX)
+	else:
 		var r := _front_ring()
 		if not r.is_empty():
 			var n: int = (r["items"] as Array).size()
-			r["ang_t"] = float(r["ang_t"]) - rel.dot(U_A) * (float(r["step"]) / SLOT_DRAG_PX)
+			r["ang_t"] = float(r["ang_t"]) - rel.x * (float(r["step"]) / SCROLL_DRAG_PX)
 			if n < MIN_SLOTS_A:
 				r["ang_t"] = clampf(float(r["ang_t"]), 0.0, float(n - 1) * float(r["step"]))
-	else:
-		_ang_b_t -= rel.dot(U_B) * (STEP_B / SLOT_DRAG_PX)
-		_retarget_fan(false)          # веер вживую перекатывается за передней категорией
 	_update_label()
-	_sync_state_light()
-
-# Лёгкая версия _sync_state для драга: только флаг «ПУСТО» (контуры фона обновляет
-# _retarget_fan при смене передней категории).
-func _sync_state_light() -> void:
-	if _overlay:
-		_overlay.empty_cat = _front_ring().is_empty() and not _all_empty
-		_overlay.queue_redraw()
+	_sync_state()
 
 func _end_drag() -> void:
 	_dragging = false
@@ -671,11 +564,9 @@ func _end_drag() -> void:
 	if was_tap:
 		_choose()
 
-# Довод обоих колец до ближайших слотов + коммит выбора.
 func _snap_all() -> void:
-	_ang_b_t = float(roundi(_ang_b_t / STEP_B)) * STEP_B
+	_tilt_t = float(roundi(_tilt_t / FAN)) * FAN
 	_cat_idx = _front_cat()
-	_retarget_fan(false)
 	var r := _front_ring()
 	if not r.is_empty():
 		var idx := _live_idx()
@@ -685,12 +576,10 @@ func _snap_all() -> void:
 	_update_label()
 	_sync_state()
 
-# Ближайшее к текущему углу представление слота idx (для полного кольца слот повторяется
-# каждый оборот — доводим в короткую сторону, а не через весь круг).
 func _canon_ang(r: Dictionary, idx: int) -> float:
 	var raw := float(roundi(float(r["ang_t"]) / float(r["step"]))) * float(r["step"])
 	if (r["items"] as Array).size() >= MIN_SLOTS_A:
-		return raw                    # roundi уже дал ближайший кратный слот — он и есть idx
+		return raw
 	return float(idx) * float(r["step"])
 
 func _choose() -> void:
@@ -702,5 +591,5 @@ func _choose() -> void:
 		return
 	_item_idx[CAT_KEYS[_front_cat()]] = idx
 	if _overlay:
-		_overlay.flash()              # подтверждение взятия — переживает rebuild колец
+		_overlay.flash()
 	block_chosen.emit(int((r["items"] as Array)[idx]["type"]))
