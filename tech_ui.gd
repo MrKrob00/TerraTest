@@ -79,7 +79,7 @@ func _ready() -> void:
 		row.add_child(_prog_label)
 		row.move_child(_prog_label, (%Currency as Node).get_index())
 	G.progress_changed.connect(_on_progress_changed)   # XP/ДИ: замки могли открыться
-	G.money_changed.connect(_on_progress_changed)      # пассивный доход при открытом гараже
+	G.money_changed.connect(_on_money_changed)         # пассивный доход при открытом гараже
 	_select_tab(TAB_INVENTORY)
 	_refresh_stats()
 	_update_currency()
@@ -130,8 +130,13 @@ func _on_visibility_changed() -> void:
 
 # Полное обновление: инвентарь/магазин в сетке + характеристики справа + деньги.
 func refresh() -> void:
-	_load_items()
-	_rebuild_grid(_search.text if _search else "")
+	# Спец-вкладки (музыка/настройки/древо) перестраиваются СВОИМ билдером — иначе
+	# переоткрытый гараж показывал бы древо с ДИ/замками на момент закрытия.
+	if _tab == TAB_MUSIC or _tab == TAB_SETTINGS or _tab == TAB_TECH:
+		_select_tab(_tab)
+	else:
+		_load_items()
+		_rebuild_grid(_search.text if _search else "")
 	_refresh_stats()
 	_update_currency()
 
@@ -391,8 +396,7 @@ func _get_vehicle() -> Node:
 # ── Характеристики справа + деньги (реальные данные) ──────────────────────────
 var _prog_label: Label = null   # «Гр.N · XP x/y · ДИ z» в шапке (создаётся в _ready)
 
-# Прогресс/деньги изменились: обновить шапку; открытые SHOP/ДРЕВО перестроить
-# (замки, доступность кнопок и состояния нод зависят от грейда/исследований/денег/ДИ).
+# XP/ДИ/исследования изменились: шапка + открытые SHOP/ДРЕВО перестроить.
 func _on_progress_changed() -> void:
 	_update_currency()
 	if not visible:
@@ -401,6 +405,14 @@ func _on_progress_changed() -> void:
 		_rebuild_grid(_search.text if _search else "")
 	elif _tab == TAB_TECH:
 		_build_tech_tab()
+
+# ТОЛЬКО деньги (тикают пассивно от продавца): шапка + кнопки покупки SHOP.
+# Древо от денег не зависит — пересборка на каждый тик роняла бы тап по ноде
+# (кнопка освобождается под пальцем).
+func _on_money_changed() -> void:
+	_update_currency()
+	if visible and _tab == TAB_SHOP:
+		_rebuild_grid(_search.text if _search else "")
 
 func _update_currency() -> void:
 	if has_node("%Currency"):
@@ -730,9 +742,10 @@ var _tech_info: Label = null
 var _tech_btn: Button = null
 
 func _build_tech_tab() -> void:
+	if _extra_vb == null:
+		return
 	for c in _extra_vb.get_children():
 		c.queue_free()
-	_extra_vb.add_theme_constant_override("separation", 8)
 
 	var head := Label.new()
 	head.text = "Древо технологий — исследовано %d/%d · ДИ: %d" % [
@@ -778,9 +791,11 @@ func _make_tech_node(bt: int) -> Control:
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	btn.add_theme_font_size_override("font_size", 13)
 	var meta: Dictionary = G.BLOCK_META[bt]
+	# Статусы ТЕКСТОМ: юникод-значки (🔒/✓) шрифт проекта не рендерит — см. прецедент
+	# ♥/✖ в музыкальной вкладке (заменялись на _draw-иконки).
 	var status := ""
 	if G.researched.has(bt):
-		status = "✓"
+		status = "изучено"
 		btn.modulate = Color(0.72, 1.0, 0.82)
 	else:
 		var why: String = G.research_lock_reason(bt)
@@ -790,7 +805,7 @@ func _make_tech_node(bt: int) -> Control:
 			status = "%d ДИ (мало)" % int(meta["rp"])
 			btn.modulate = Color(1.0, 0.93, 0.65, 0.9)
 		else:
-			status = "🔒"
+			status = "закрыто"
 			btn.modulate = Color(1, 1, 1, 0.45)
 	btn.text = "%s\n%s" % [_block_name(bt), status]
 	if bt == _tech_selected:
@@ -816,12 +831,13 @@ func _tech_update_info() -> void:
 	var parent := int(G.TECH_PARENT.get(bt, -1))
 	if parent >= 0:
 		line += " · требует: %s" % _block_name(parent)
-	var why: String = G.research_lock_reason(bt)
-	if why != "":
-		line += "\n" + why
+	if not G.researched.has(bt):
+		var why: String = G.research_lock_reason(bt)
+		if why != "":
+			line += "\n" + why         # у изученной причины нет — кнопка и так скажет
 	_tech_info.text = line
 	if G.researched.has(bt):
-		_tech_btn.text = "Исследовано ✓"
+		_tech_btn.text = "Исследовано"
 		_tech_btn.disabled = true
 	else:
 		_tech_btn.text = "Исследовать (%d ДИ)" % int(m["rp"])
