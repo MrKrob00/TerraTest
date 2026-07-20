@@ -8,16 +8,16 @@ extends Node3D
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
 @export var max_enemies: int = 9                    # было 3, ×3
 @export var spawn_interval: float = 6.0             # пауза между появлениями
-@export var spawn_min_dist: float = 45.0            # не ближе к игроку
-@export var spawn_max_dist: float = 85.0            # не дальше
-@export var spawn_separation: float = 28.0          # не ближе этого к ДРУГИМ врагам (не кучковаться)
+@export var spawn_min_dist: float = 60.0            # не ближе к игроку
+@export var spawn_max_dist: float = 110.0           # не дальше (кольцо шире — врагам есть куда разойтись)
+@export var spawn_separation: float = 42.0          # не ближе этого к ДРУГИМ врагам (сильно разнесены, не кучкуются)
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
 ## Враг дальше far_dist от текущей машины дольше far_limit секунд — телепортируется обратно
 ## в кольцо спавна возле игрока (не нашли точку — исчезает). Чтобы бой не «затухал», когда
 ## игрок уехал от разбежавшихся врагов.
-@export var far_dist: float = 120.0
+@export var far_dist: float = 150.0                 # с запасом над spawn_max_dist, иначе дальние спавны сразу «далеко»
 @export var far_limit: float = 60.0
 @export var map_node: Node
 
@@ -118,8 +118,8 @@ func _on_enemy_died(_enemy: Node) -> void:
 # соседом (при телепорте его самого). Возвращает Vector3 или null.
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 	var base: float = randf() * TAU
-	for i in 24:
-		var ang: float = base + TAU * float(i) / 24.0 + randf_range(-0.13, 0.13)
+	for i in 36:
+		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)
 		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
 		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		var h: float = map.terrain_height_at(world)
