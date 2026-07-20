@@ -4,6 +4,17 @@
 /export/
 addons/terrain_sculpt/terrain_mesh2.res
 
+# Тяжёлые бейк-артефакты террейна — держи локально, в гит НЕ кладём (перезаписываются
+# при каждом бейке, раздувают историю на 15+ МБ за пуш). При свежем клоне пересбейкай
+# террейн в редакторе (LiteTerrain) или скопируй файлы вручную.
+/terrain_height.res
+addons/LiteTerrain/terrain_mesh.res
+
+# Случайные фото/скриншоты, попавшие в репо
+images/IMG_*.jpg
+images/IMG_*.jpeg
+images/IMG_*.png
+
 # Музыка: сами треки НЕ в гите (тяжёлые, ~21МБ) — держи их локально, кидай в папки
 # music/{travel,battle,menu}/. Структура папок (.gitkeep) и README остаются в репо.
 music/**/*.ogg

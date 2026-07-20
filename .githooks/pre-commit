@@ -1,0 +1,23 @@
+#!/bin/sh
+# Авто-игнор больших файлов: любой застейдженный файл крупнее лимита не отклоняем,
+# а просто убираем из индекса (git reset), коммит продолжается без него.
+# Файл остаётся на диске нетронутым. Активация (один раз на машине):
+#   git config core.hooksPath .githooks
+LIMIT_MB=5
+LIMIT=$((LIMIT_MB * 1024 * 1024))
+
+# Только добавленные/изменённые файлы в индексе (не удаления).
+# Построчно (IFS=newline) — корректно для имён с пробелами.
+git diff --cached --name-only --diff-filter=ACM | while IFS= read -r f; do
+	[ -f "$f" ] || continue
+	size=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+	[ -n "$size" ] || size=0
+	if [ "$size" -gt "$LIMIT" ]; then
+		git reset -q HEAD -- "$f"
+		mb=$((size / 1024 / 1024))
+		echo "  ⚠ пропущен большой файл (${mb} МБ > ${LIMIT_MB} МБ): $f" >&2
+		echo "    он не попадёт в коммит; лежит на диске. Хочешь его в гит — используй git lfs." >&2
+	fi
+done
+
+exit 0
