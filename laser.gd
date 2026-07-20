@@ -22,6 +22,13 @@ func _ready() -> void:
 	fire_rate = LASER_FIRE_RATE
 	damage = LASER_DAMAGE
 	raycast.target_position = Vector3(0, 0, -weapon_range)
+	# Лазер — hitscan (урон лучом в _handle_fire), пуль НЕ пускает. Убираем «спящий» узел
+	# Ammo/Bullet из сцены лазера: его Area3D (top_level, у мировой точки, маска на блоки)
+	# паразитно ловил тела и звал _on_bullet_body_entered, а сценовое соединение без bind
+	# роняло вызов (метод ждёт 2 аргумента, сигнал даёт 1) — та самая «ошибка с ammo».
+	var ammo_node := get_node_or_null("Ammo")
+	if ammo_node:
+		ammo_node.queue_free()
 	_build_beam()
 
 func _build_beam() -> void:

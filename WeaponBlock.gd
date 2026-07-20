@@ -24,6 +24,9 @@ var _current_target: Node3D = null
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
+	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
+	if has_node("Ammo/Bullet"):
+		_rebind_bullet($Ammo/Bullet)
 
 
 func _process(delta: float) -> void:
@@ -130,12 +133,27 @@ func _handle_fire(delta: float) -> void:
 	_fire_timer = fire_rate
 	fire_bullet()
 
-@onready var ammo: Node3D= $Ammo
-@onready var free_bullet:Array[Area3D] = [$Ammo/Bullet]
+# Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
+@onready var ammo: Node3D = get_node_or_null("Ammo")
+@onready var free_bullet: Array[Area3D] = ([$Ammo/Bullet] if has_node("Ammo/Bullet") else [])
+
+# Сценовое соединение Ammo/Bullet.body_entered → _on_bullet_body_entered БЕЗ bind давало
+# нехватку аргумента (source) и роняло вызов на КАЖДОМ попадании. Перецепляем с bind(самой
+# пули), чтобы source приходил корректно (нужен для возврата пули в пул).
+func _rebind_bullet(b: Area3D) -> void:
+	if b.body_entered.is_connected(_on_bullet_body_entered):
+		b.body_entered.disconnect(_on_bullet_body_entered)
+	var cb := _on_bullet_body_entered.bind(b)
+	if not b.body_entered.is_connected(cb):
+		b.body_entered.connect(cb)
+
 func fire_bullet():
+	if ammo == null:
+		return
 	if free_bullet.is_empty():
 		var new_bullet: Area3D = $Ammo/Bullet.duplicate()
 		ammo.add_child(new_bullet)
+		_rebind_bullet(new_bullet)              # дубликат унаследовал сценовое соединение без bind
 		free_bullet.append(new_bullet)
 	var bullet:Area3D = free_bullet.pop_back()
 	var dir = $Pivot.global_position.direction_to($Pivot/Marker3D.global_position)
@@ -150,6 +168,7 @@ func fire_bullet():
 	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
 	bullet.look_at(dir+global_position)
+	bullet.monitoring = true                    # в полёте ловит попадания
 
 
 func _on_area_3d_body_entered(body: Node3D) -> void:
@@ -227,5 +246,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 		body.hurt(damage)
 	if "dir" in source:
 		source.dir = Vector3.ZERO
+	source.monitoring = false                   # в пуле (у центра) не ловит тела повторно
 	source.global_position = Vector3.ZERO
-	free_bullet.append(source)
+	if not free_bullet.has(source):
+		free_bullet.append(source)              # без дублей в пуле
