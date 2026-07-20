@@ -792,6 +792,9 @@ func _on_movement_pressed() -> void:
 var map = 0.0
 func _on_building_pressed() -> void:
 	if Building: return
+	if not is_instance_valid(ghost_block):
+		push_warning("ghost_block недоступен — постройка невозможна")
+		return
 	ghost_block.visible = true
 	# top_level → трансформ призрака мировой, не наследует машину. Так позиция точная и не
 	# «плывёт» относительно блоков, когда машина двигается (см. _place_ghost — ставим global).

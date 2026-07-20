@@ -362,8 +362,12 @@ func _read_rot(entry: Dictionary) -> Vector3:
 	return Vector3.ZERO
 
 func apply_layout(blocks_array: Array) -> void:
-	for child in get_children():
-		child.queue_free()
+	# Освобождаем только инстансы блоков (они лежат в node_map), а НЕ всех детей —
+	# среди детей есть призрак постройки (blocks/MeshInstance3D, ghost_block у машины),
+	# который освобождать нельзя, иначе _on_building_pressed крашится на freed-объекте.
+	for inst in node_map.values():
+		if is_instance_valid(inst):
+			inst.queue_free()
 	_clear_block_collisions()          # убираем коллизии блоков с кузова машины
 	node_map.clear()
 	rotation_map.clear()
