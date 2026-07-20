@@ -737,6 +737,7 @@ func _process(_delta: float) -> void:
 		ghost_block.global_transform = block_body.global_transform
 
 func _on_movement_pressed() -> void:
+	_return_hand_to_inventory()   # выход из стройки — блок из руки возвращаем в инвентарь
 	Building = false
 	ghost_block.visible = false
 	freeze = false
@@ -1067,21 +1068,30 @@ func apply_build(layout: Array) -> void:
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
+# Блок из руки → обратно в инвентарь (при выходе из стройки и при замене руки).
+# Синхронный remove_child до queue_free — takepos не держит два блока разом.
+func _return_hand_to_inventory() -> void:
+	if not (block_take and block_body != null and is_instance_valid(block_body)):
+		return
+	G.block_inventory.append(int(block_body.block))
+	G.mark_progress_dirty()
+	var prev_parent: Node = block_body.get_parent()
+	if prev_parent:
+		prev_parent.remove_child(block_body)
+	block_body.queue_free()
+	block_body = null
+	block_take = false
+	_preview_res = null
+	if ghost_block:
+		ghost_block.visible = false
+
 func take_block_into_hand(block_type: int) -> bool:
 	var scene: PackedScene = G.get_scene(block_type)
 	if scene == null:
 		return false
-	# В руке уже блок — кладём его ОБРАТНО в инвентарь и берём новый (замена руки).
-	# Раньше тут был отказ (return false), и выбор нового блока из инвентаря игнорировался.
-	if block_take and block_body != null and is_instance_valid(block_body):
-		G.block_inventory.append(int(block_body.block))
-		G.mark_progress_dirty()
-		var prev_parent: Node = block_body.get_parent()
-		if prev_parent:
-			prev_parent.remove_child(block_body)
-		block_body.queue_free()
-		block_body = null
-		block_take = false
+	# Рука занята → кладём текущий блок в инвентарь и берём новый (замена). Раньше тут был
+	# отказ (return false), и выбор нового блока из инвентаря игнорировался.
+	_return_hand_to_inventory()
 	var instance = scene.instantiate()
 	var holder: Node = camera_controller.camera.get_child(0)   # takepos Marker3D
 	holder.add_child(instance)
