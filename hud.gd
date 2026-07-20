@@ -430,8 +430,8 @@ func _on_globe_block_chosen(block_type: int) -> void:
 	if v == null or not v.has_method("take_block_into_hand"):
 		return
 	if not v.take_block_into_hand(block_type):
-		return                                  # в руке уже что-то есть
-	G.block_inventory.erase(block_type)          # списываем один экземпляр — как в гараже
+		return                                  # не удалось (нет сцены); рука-занята теперь = замена
+	G.block_inventory.erase(block_type)          # списываем взятый экземпляр (блок из руки вернулся в inv внутри take)
 	G.mark_progress_dirty()
 	if _block_globe:
 		_block_globe.refresh()
