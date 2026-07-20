@@ -135,7 +135,7 @@ func _handle_fire(delta: float) -> void:
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")
-@onready var free_bullet: Array[Area3D] = ([$Ammo/Bullet] if has_node("Ammo/Bullet") else [])
+@onready var free_bullet: Array[Area3D]
 
 # Сценовое соединение Ammo/Bullet.body_entered → _on_bullet_body_entered БЕЗ bind давало
 # нехватку аргумента (source) и роняло вызов на КАЖДОМ попадании. Перецепляем с bind(самой

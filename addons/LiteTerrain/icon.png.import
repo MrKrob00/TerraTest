@@ -3,16 +3,17 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://r54ce3n6jvm0"
+path.s3tc="res://.godot/imported/icon.png-7add635fce091f94180513b559fe7508.s3tc.ctex"
 path.etc2="res://.godot/imported/icon.png-7add635fce091f94180513b559fe7508.etc2.ctex"
 metadata={
-"imported_formats": ["etc2_astc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://addons/LiteTerrain/icon.png"
-dest_files=["res://.godot/imported/icon.png-7add635fce091f94180513b559fe7508.etc2.ctex"]
+dest_files=["res://.godot/imported/icon.png-7add635fce091f94180513b559fe7508.s3tc.ctex", "res://.godot/imported/icon.png-7add635fce091f94180513b559fe7508.etc2.ctex"]
 
 [params]
 

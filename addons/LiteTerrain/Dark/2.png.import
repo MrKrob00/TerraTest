@@ -3,16 +3,17 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bbljx7b15gmw"
+path.s3tc="res://.godot/imported/2.png-4865021d2c225af3570b9e0b4c941e47.s3tc.ctex"
 path.etc2="res://.godot/imported/2.png-4865021d2c225af3570b9e0b4c941e47.etc2.ctex"
 metadata={
-"imported_formats": ["etc2_astc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://addons/LiteTerrain/Dark/2.png"
-dest_files=["res://.godot/imported/2.png-4865021d2c225af3570b9e0b4c941e47.etc2.ctex"]
+dest_files=["res://.godot/imported/2.png-4865021d2c225af3570b9e0b4c941e47.s3tc.ctex", "res://.godot/imported/2.png-4865021d2c225af3570b9e0b4c941e47.etc2.ctex"]
 
 [params]
 

@@ -509,7 +509,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("Attack") and not typing:
 		_on_attack_timeout()
 
-	var joy := camera_controller.joystick_move.get_joystick_dir()
+	var joy = camera_controller.joystick_move.get_joystick_dir()
 	# ПК: WASD/стрелки дают тот же Vector2, что и тач-джойстик (см. _process_input ниже).
 	# Суммируем с джойстиком и клампим — вместе на практике не используются, но так честно.
 	# Гасим клавиатурную часть, пока фокус в текстовом поле (напр. поиск в гараже) —
@@ -737,11 +737,12 @@ func _typing_in_ui() -> bool:
 func _input(event: InputEvent) -> void:
 	if !is_active: return
 	if Building:
-		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр. Touch НЕ
-		# проверяем отдельно: Godot по умолчанию эмулирует тач событиями мыши
-		# (emulate_mouse_from_touch — этим же пользуется vehicle_interact_button.gd), а
-		# отдельная ветка на InputEventScreenTouch/Drag стреляла бы ДВАЖДЫ на один палец.
-		var aiming := event is InputEventMouseMotion \
+		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
+		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
+		# понадобится «тач-подобный» press (сейчас достаточно и одного motion).
+		var aiming = (event is InputEventScreenTouch and event.pressed) \
+				or event is InputEventScreenDrag \
+				or event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)
 		if aiming:
 			# «Пустой» ховер (мышь едет к кнопке БЕЗ зажатой ЛКМ) не должен целиться в мир,

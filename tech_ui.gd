@@ -937,10 +937,11 @@ func _tech_update_info() -> void:
 	var m: Dictionary = G.BLOCK_META[bt]
 	var line := "%s — грейд %d · цена %d ДИ" % [_block_name(bt), int(m["g"]), int(m["rp"])]
 	var parent := int(G.TECH_PARENT.get(bt, -1))
+	var why: String
 	if parent >= 0:
 		line += " · требует: %s" % _block_name(parent)
 	if not G.researched.has(bt):
-		var why: String = G.research_lock_reason(bt)
+		why= G.research_lock_reason(bt)
 		if why != "":
 			line += "\n" + why         # у изученной причины нет — кнопка и так скажет
 	_tech_info.text = line
