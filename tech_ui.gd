@@ -364,22 +364,26 @@ func _select_tab(idx: int) -> void:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
 		_filter_col.visible = (_tab == TAB_SHOP)
-	# МУЗЫКА/НАСТРОЙКИ/ДРЕВО живут в спец-панели вместо сетки блоков (и без поиска).
-	var extra: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS or _tab == TAB_TECH
+	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
+	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
+	var is_tech: bool = _tab == TAB_TECH
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
 	if grid_scroll:
-		grid_scroll.visible = not extra
+		grid_scroll.visible = not (extra_list or is_tech)
 	if _extra_scroll:
-		_extra_scroll.visible = extra
+		_extra_scroll.visible = extra_list
+	if _tech_root:
+		_tech_root.visible = is_tech
 	if _search:
-		_search.visible = not extra
-	if extra:
+		_search.visible = not (extra_list or is_tech)
+	if extra_list:
 		if _tab == TAB_MUSIC:
 			_build_music_tab()
-		elif _tab == TAB_TECH:
-			_build_tech_tab()
 		else:
 			_build_settings_tab()
+		return
+	if is_tech:
+		_build_tech_tab()
 		return
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
@@ -737,23 +741,89 @@ func _build_settings_tab() -> void:
 # Паттерн покупки: ПЕРВЫЙ тап — панель с деталями сверху, ВТОРОЙ (кнопка) — исследовать.
 # Исследование сразу даёт +1 блок в инвентарь (G.research, без двойного гейта).
 
+# ── Вкладка ДРЕВО: граф слева-направо с линиями связей, панорама в 2D ──────────────
+# Раскладка деревом (RT-подобная): x = глубина по TECH_PARENT, y — листья по порядку,
+# родитель по среднему детей. Граф внутри ScrollContainer по ОБЕИМ осям — тащишь пальцем
+# вверх/вниз/влево/вправо (тач-драг), чтобы влезало. Сверху фикс. инфо-панель.
+const TNODE_W := 96.0
+const TNODE_H := 50.0
+const TCOL_W := 138.0                  # шаг колонок (глубина): зазор под линии связей
+const TROW_H := 64.0                   # шаг рядов
+const TMARGIN := 18.0
+
+# Холст графа: рисует линии связей родитель→ребёнок; ноды-кнопки — его дети.
+class TechGraph extends Control:
+	var edges: Array = []              # [{a: Vector2, b: Vector2, col: Color}]
+	func _draw() -> void:
+		for e in edges:
+			draw_line(e["a"], e["b"], e["col"], 2.0, true)
+
 var _tech_selected: int = -1           # выбранная нода (Block) для инфо-панели
 var _tech_info: Label = null
 var _tech_btn: Button = null
+var _tech_root: VBoxContainer = null    # фикс. инфо-панель + прокручиваемый граф
+var _tech_head: Label = null
+var _tech_scroll: ScrollContainer = null
+var _tech_graph: TechGraph = null       # холст графа (ноды + линии) внутри _tech_scroll
+var _tech_leaf := 0.0                    # счётчик листьев при раскладке (см. _tech_assign)
 
 func _build_tech_tab() -> void:
-	if _extra_vb == null:
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
 		return
-	for c in _extra_vb.get_children():
-		c.queue_free()
-
-	var head := Label.new()
-	head.text = "Древо технологий — исследовано %d/%d · ДИ: %d" % [
+	if _tech_root == null:
+		_tech_build_shell(body)
+	_tech_root.visible = true            # билдер зовётся только для активной вкладки ДРЕВО
+	_tech_head.text = "Древо технологий — исследовано %d/%d · ДИ: %d" % [
 			G.researched.size(), G.BLOCK_META.size(), G.research_points]
-	head.add_theme_font_size_override("font_size", 16)
-	_extra_vb.add_child(head)
+	_tech_update_info()
 
-	# Инфо-панель выбранной ноды (первый тап) + кнопка исследования (второй тап).
+	# Раскладка позиций всех нод (px) деревом.
+	var pos := _tech_layout()
+	# Холст нужного размера + перестройка нод/линий (сохраняя позицию прокрутки).
+	var keep := Vector2(_tech_scroll.scroll_horizontal, _tech_scroll.scroll_vertical)
+	var graph: TechGraph = _tech_graph
+	for c in graph.get_children():
+		c.queue_free()
+	var maxx := 0.0
+	var maxy := 0.0
+	for bt in pos:
+		maxx = maxf(maxx, (pos[bt] as Vector2).x)
+		maxy = maxf(maxy, (pos[bt] as Vector2).y)
+	graph.custom_minimum_size = Vector2(maxx + TNODE_W + TMARGIN, maxy + TNODE_H + TMARGIN)
+	# Линии связей: правый-центр родителя → левый-центр ребёнка.
+	var edges: Array = []
+	for bt in G.TECH_PARENT:
+		var par := int(G.TECH_PARENT[bt])
+		if not (pos.has(bt) and pos.has(par)):
+			continue
+		var a: Vector2 = (pos[par] as Vector2) + Vector2(TNODE_W, TNODE_H * 0.5)
+		var b: Vector2 = (pos[bt] as Vector2) + Vector2(0, TNODE_H * 0.5)
+		var col := Color(0.45, 0.55, 0.62, 0.75) if G.researched.has(int(bt)) \
+				else Color(0.4, 0.45, 0.5, 0.35)
+		edges.append({"a": a, "b": b, "col": col})
+	graph.edges = edges
+	graph.queue_redraw()
+	# Ноды.
+	for bt in pos:
+		graph.add_child(_make_tech_node(int(bt), pos[bt]))
+	# Вернуть прокрутку после того, как контейнер пересчитает размеры.
+	_tech_scroll.scroll_horizontal = int(keep.x)
+	_tech_scroll.scroll_vertical = int(keep.y)
+
+# Каркас вкладки (создаётся один раз): фикс. шапка+инфо+кнопка, ниже — граф в 2D-скролле.
+func _tech_build_shell(body: Node) -> void:
+	_tech_root = VBoxContainer.new()
+	_tech_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tech_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tech_root.add_theme_constant_override("separation", 6)
+	_tech_root.visible = false
+	body.add_child(_tech_root)
+
+	_tech_head = Label.new()
+	_tech_head.add_theme_font_size_override("font_size", 16)
+	_tech_root.add_child(_tech_head)
+
 	var panel := PanelContainer.new()
 	var pv := VBoxContainer.new()
 	panel.add_child(pv)
@@ -765,34 +835,72 @@ func _build_tech_tab() -> void:
 	_tech_btn.custom_minimum_size = Vector2(0, 40)
 	_tech_btn.pressed.connect(_tech_do_research)
 	pv.add_child(_tech_btn)
-	_extra_vb.add_child(panel)
-	_tech_update_info()
+	_tech_root.add_child(panel)
 
-	# Ярусы: грейд 1..5, в ряду — ноды блоков этого грейда (HFlow переносит на узком).
-	var max_g: int = int((G.FACTIONS["start"] as Dictionary)["grades"])
-	for gr in range(1, max_g + 1):
-		var tier := Label.new()
-		var cur: int = G.grade("start")
-		tier.text = "Грейд %d" % gr + ("" if cur >= gr else "   (ваш грейд: %d)" % cur)
-		tier.add_theme_font_size_override("font_size", 13)
-		tier.modulate = Color(1, 1, 1, 0.8 if cur >= gr else 0.45)
-		_extra_vb.add_child(tier)
-		var row := HFlowContainer.new()
-		row.add_theme_constant_override("h_separation", 8)
-		row.add_theme_constant_override("v_separation", 8)
-		for bt in G.blocks_of_grade("start", gr):
-			row.add_child(_make_tech_node(int(bt)))
-		_extra_vb.add_child(row)
+	_tech_scroll = ScrollContainer.new()
+	_tech_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_tech_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_tech_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_tech_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_tech_root.add_child(_tech_scroll)
+	_tech_graph = TechGraph.new()
+	_tech_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг скролла проходит сквозь холст
+	_tech_scroll.add_child(_tech_graph)
 
-func _make_tech_node(bt: int) -> Control:
+# Позиции всех нод дерева (px). x = глубина·TCOL_W; y = ряд·TROW_H (лист по счётчику,
+# родитель — среднее детей: классическая аккуратная раскладка дерева).
+func _tech_layout() -> Dictionary:
+	var children: Dictionary = {}
+	var root := -1
+	for bt in G.BLOCK_META:
+		if G.TECH_PARENT.has(bt):
+			var par := int(G.TECH_PARENT[bt])
+			if not children.has(par):
+				children[par] = []
+			(children[par] as Array).append(int(bt))
+		else:
+			root = int(bt)                 # без родителя = корень (кабина)
+	for par in children:
+		(children[par] as Array).sort()    # стабильный порядок детей
+	var rows: Dictionary = {}
+	_tech_leaf = 0.0
+	if root >= 0:
+		_tech_assign(root, children, rows)
+	var pos: Dictionary = {}
+	for bt in rows:
+		pos[bt] = Vector2(TMARGIN + _tech_depth(int(bt)) * TCOL_W,
+				TMARGIN + float(rows[bt]) * TROW_H)
+	return pos
+
+func _tech_assign(bt: int, children: Dictionary, rows: Dictionary) -> void:
+	var kids: Array = children.get(bt, [])
+	if kids.is_empty():
+		rows[bt] = _tech_leaf
+		_tech_leaf += 1.0
+		return
+	var s := 0.0
+	for k in kids:
+		_tech_assign(int(k), children, rows)
+		s += float(rows[int(k)])
+	rows[bt] = s / float(kids.size())
+
+func _tech_depth(bt: int) -> int:
+	var d := 0
+	var cur := bt
+	while G.TECH_PARENT.has(cur):
+		cur = int(G.TECH_PARENT[cur])
+		d += 1
+	return d
+
+func _make_tech_node(bt: int, at: Vector2) -> Control:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(104, 64)
+	btn.position = at
+	btn.size = Vector2(TNODE_W, TNODE_H)
 	btn.clip_text = true
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	btn.add_theme_font_size_override("font_size", 13)
+	btn.add_theme_font_size_override("font_size", 12)
 	var meta: Dictionary = G.BLOCK_META[bt]
-	# Статусы ТЕКСТОМ: юникод-значки (🔒/✓) шрифт проекта не рендерит — см. прецедент
-	# ♥/✖ в музыкальной вкладке (заменялись на _draw-иконки).
+	# Статусы ТЕКСТОМ: юникод-значки шрифт проекта не рендерит (прецедент ♥/✖).
 	var status := ""
 	if G.researched.has(bt):
 		status = "изучено"
@@ -800,7 +908,7 @@ func _make_tech_node(bt: int) -> Control:
 	else:
 		var why: String = G.research_lock_reason(bt)
 		if why == "":
-			status = "%d ДИ" % int(meta["rp"])                 # можно исследовать
+			status = "%d ДИ" % int(meta["rp"])
 		elif why.begins_with("нужно ДИ"):
 			status = "%d ДИ (мало)" % int(meta["rp"])
 			btn.modulate = Color(1.0, 0.93, 0.65, 0.9)
@@ -809,7 +917,7 @@ func _make_tech_node(bt: int) -> Control:
 			btn.modulate = Color(1, 1, 1, 0.45)
 	btn.text = "%s\n%s" % [_block_name(bt), status]
 	if bt == _tech_selected:
-		btn.toggle_mode = true         # до button_pressed, иначе подсветка не применится
+		btn.toggle_mode = true
 		btn.button_pressed = true
 	btn.pressed.connect(func() -> void:
 		_tech_selected = bt
