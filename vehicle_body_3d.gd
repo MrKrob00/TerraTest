@@ -119,6 +119,9 @@ func _energy_tick(delta: float) -> void:
 var anchored: bool = false
 var _anchor_column: MeshInstance3D = null
 var _anchor_tween: Tween = null
+# Стационарная структура (база): спавнится сразу на якоре, снять якорь/ехать нельзя.
+# Ставится флаг при спавне через _place_ground_structure (ядро — стационарный блок).
+var is_station: bool = false
 const ANCHOR_MAX_RISE := 0.5      # м: максимальный перепад земли под машиной для фиксации
 const ANCHOR_MAX_HEIGHT := 2.5    # м: выше этого над землёй якорить нельзя (прыжок/полёт)
 
@@ -262,6 +265,8 @@ func _defense_tick(delta: float) -> void:
 # опускаем обратно и отказ); (4) поворот ровно 0°; (5) фиксация + колонна.
 # Сброс: пока на якоре, любой контакт НЕ с террейном снимает фиксацию.
 func toggle_anchor() -> bool:
+	if is_station:
+		return true                        # стационарная база всегда на якоре — снять нельзя
 	if anchored:
 		_release_anchor()
 		return false
@@ -333,12 +338,48 @@ func _release_anchor() -> void:
 	_anchor_column = null
 
 func _on_anchor_contact(body: Node) -> void:
-	if not anchored:
+	if not anchored or is_station:          # база не слетает с якоря от касаний
 		return
 	# Террейн — законная опора; всё остальное упёрлось в нас → фиксация сбрасывается.
 	if body != null and body.has_method("terrain_height_at"):
 		return
 	_release_anchor()
+
+# Мгновенный якорь стационарной базы при спавне: без отказа (стоит на земле) и без
+# анимации-подъёма (уже на месте) — просто фиксируем, выравниваем и ставим колонну-упор.
+func _anchor_station() -> void:
+	anchored = true
+	freeze = true
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	global_rotation.x = 0.0
+	global_rotation.z = 0.0
+	if _anchor_column == null or not is_instance_valid(_anchor_column):
+		var terr: Node = _find_terrain()
+		var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
+		var depth: float = maxf(global_position.y - ground_y, 0.4)
+		_anchor_column = MeshInstance3D.new()
+		var cyl := CylinderMesh.new()
+		cyl.top_radius = 0.18
+		cyl.bottom_radius = 0.28
+		cyl.height = depth
+		_anchor_column.mesh = cyl
+		_anchor_column.position = Vector3(0, -depth * 0.5, 0)
+		add_child(_anchor_column)
+	_connect_station_core()
+
+# 4A: гибель стационарного ЯДРА (SELLER) = структура разваливается (как кабина у машины).
+# Спавн блоков асинхронный (spawn_block ждёт ready) — ретраим, пока ядро не появится.
+func _connect_station_core(tries: int = 0) -> void:
+	if block_map_node == null:
+		return
+	for b in block_map_node.get_children():
+		if "block" in b and G.is_stationary(int(b.block)):
+			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
+				b.destroyed.connect(_on_cabin_destroyed)
+			return
+	if tries < 5:
+		get_tree().create_timer(0.1).timeout.connect(_connect_station_core.bind(tries + 1))
 
 func _find_terrain() -> Node:
 	for c in get_tree().current_scene.get_children():
@@ -772,12 +813,15 @@ func _handle_click(screen_pos: Vector2) -> void:
 	# по Y) или едет, выбор блоков переставал попадать. Берём пространство самого
 	# block_map_node: to_local() даёт полный перевод точки (позиция+поворот+родитель), а
 	# направление крутим обратным базисом. Сетка сдвинута на (5,0,5) (см. blocks.gd).
-	# КАБИНА в руке — это новая машина: ставится не на эту машину, а В МИР на землю.
+	# КАБИНА (новая машина) и СТАЦИОНАРНЫЙ блок (новая база) в руке — ставятся не на эту
+	# машину, а В МИР на землю.
 	if block_take:
 		var holder: Node = camera_controller.camera.get_child(0)
-		if holder.get_child_count() > 0 and holder.get_child(0).get("block") == G.Block.CABIN:
-			_preview_cabin_ground(world_origin, world_dir)
-			return
+		if holder.get_child_count() > 0:
+			var held_bt = holder.get_child(0).get("block")
+			if held_bt == G.Block.CABIN or G.is_stationary(held_bt):
+				_preview_cabin_ground(world_origin, world_dir)
+				return
 	var space_node: Node3D = block_map_node if block_map_node else self
 	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 0, 5)
 	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
@@ -877,7 +921,7 @@ func _preview_held(res: Dictionary) -> void:
 		ghost_block.visible = false
 
 # Превью кабины НА ЗЕМЛЕ: физический луч в террейн (слой 1), кабина встаёт в точку
-# попадания стоймя. Тап Take превратит её в новую машину (см. _place_cabin_vehicle).
+# попадания стоймя. Тап Take превратит её в новую структуру (см. _place_ground_structure).
 func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	var holder: Node = camera_controller.camera.get_child(0)
 	if holder.get_child_count() == 0:
@@ -897,13 +941,16 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	if ghost_block:
 		ghost_block.visible = false
 
-# Кабина поставлена на землю → спавним НОВУЮ машину из одной кабины.
-# Машина ЖЁСТКО кладётся под Vehicles (не в objects!), регистрируется в списке техники
-# камеры и попадает в список «Сменить технику» — в неё сразу можно пересесть и рулить.
-func _place_cabin_vehicle(instance: Node3D) -> void:
+# Ядро поставлено на землю → спавним НОВУЮ структуру из одного блока-ядра.
+#   • ядро КАБИНА → мобильная машина (как было);
+#   • ядро СТАЦИОНАРНЫЙ блок (SELLER) → якорная база: is_station=true и мгновенный якорь.
+# Структура жёстко кладётся под Vehicles (не в objects), регистрируется в списке техники
+# камеры (в неё можно пересесть) — круговое меню создаётся её же _ready (faction 0).
+func _place_ground_structure(instance: Node3D) -> void:
+	var core: int = int(instance.get("block"))
 	var scene: PackedScene = load("res://player_vehicle.tscn")
 	if scene == null:
-		push_error("vehicle: нет player_vehicle.tscn для новой машины")
+		push_error("vehicle: нет player_vehicle.tscn для новой структуры")
 		return
 	var v: Node3D = scene.instantiate()
 	var vehicles_root: Node = get_node_or_null("/root/Main/Vehicles")
@@ -912,15 +959,21 @@ func _place_cabin_vehicle(instance: Node3D) -> void:
 	vehicles_root.add_child(v)
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
 	if v.has_method("apply_build"):
-		# Только кабина (стартовый пресет сцены заменяется).
-		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": int(G.Block.CABIN), "rot": [0.0, 0.0, 0.0]}])
-	# Регистрация в списке техники (как делает _spawn_starter_vehicle) + обновление HUD.
+		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])
+	# Стационарное ядро → база на якоре (нельзя ехать/снять якорь).
+	if G.is_stationary(core) and "is_station" in v:
+		v.is_station = true
+		if "block_map_node" in v and v.block_map_node != null and "is_station" in v.block_map_node:
+			v.block_map_node.is_station = true
+		if v.has_method("_anchor_station"):
+			v.call_deferred("_anchor_station")      # после apply_build/ready — тело уже на месте
+	# Регистрация в списке техники (как _spawn_starter_vehicle) + обновление HUD.
 	if camera_controller and "vehicles" in camera_controller and not camera_controller.vehicles.has(v):
 		camera_controller.vehicles.append(v)
 	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud and hud.has_method("_rebuild_vehicle_list"):
 		hud._rebuild_vehicle_list()
-	instance.queue_free()                           # кабина из руки потрачена
+	instance.queue_free()                           # ядро из руки потрачено
 	block_take = false
 	block_body = null
 	_cabin_ground = null
@@ -984,9 +1037,9 @@ func _get_block_name(block: int) -> String:
 func _on_take_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
-		# Кабина ставится не на машину, а В МИР — из неё рождается новая машина.
-		if instance.get("block") == G.Block.CABIN and _cabin_ground != null:
-			_place_cabin_vehicle(instance)
+		# Кабина → новая машина; стационарный блок → новая база. Ставятся В МИР на землю.
+		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN or G.is_stationary(instance.get("block"))):
+			_place_ground_structure(instance)
 			return
 		# Ставим РОВНО то, что показывает превью (_preview_res). Раньше грань бралась из
 		# глобального result, а тап по самой кнопке «поставить» тоже прогонял _handle_click

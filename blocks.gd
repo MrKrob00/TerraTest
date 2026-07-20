@@ -45,7 +45,23 @@ func block_faces(block_type: int) -> Array:
 	return _contact_faces.get(block_type, ALL_FACES)
 
 # Можно ли прицепить new_type к грани attach_face блока neighbor_type.
+# true, если структура — стационарная база (ставит vehicle при спавне с якорным ядром).
+var is_station: bool = false
+
+# Что можно ставить на СТАЦИОНАРНУЮ базу: другие стационары + обычные фабричные + каркас
+# (3Б — база-фабрика). Оружие/колёса/кабину на базу не ставим.
+func _allowed_on_station(bt: int) -> bool:
+	if G.is_stationary(bt) or bt == G.Block.BLOCK:
+		return true
+	return (G.BLOCK_CATEGORIES.get("factory", []) as Array).has(bt)
+
 func can_attach(neighbor_type: int, new_type: int, attach_face: String) -> bool:
+	# Стационарный блок нельзя на мобильную машину, только на стационарную базу (2A).
+	if G.is_stationary(new_type) and not is_station:
+		return false
+	# На стационарную базу — только разрешённые типы (3Б).
+	if is_station and not _allowed_on_station(new_type):
+		return false
 	if not OPPOSITE.has(attach_face):
 		return true                        # нет данных о грани (первый блок и т.п.) — не мешаем
 	if neighbor_type == G.Block.EMPTY:
