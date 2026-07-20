@@ -312,6 +312,12 @@ enum Block {
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
 # ни в одну из категорий ниже.
+# Стационарные блоки (базы): при постановке на ЗЕМЛЮ рождают якорную структуру, на
+# мобильную машину не ставятся (см. docs/STATIONARY_BLOCKS_DESIGN.md). Пока — только продавец.
+const STATIONARY_BLOCKS := [Block.SELLER]
+func is_stationary(bt: int) -> bool:
+	return STATIONARY_BLOCKS.has(int(bt))
+
 const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.DRILL],
 	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL],
