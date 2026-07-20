@@ -1020,7 +1020,8 @@ func _on_take_pressed() -> void:
 		instance.scale = Vector3.ONE
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
-		BlockFX.play(instance, false)           # эффект «матрицы» появления (зелёные 0/1)
+		# Матрицу-появление при РУЧНОЙ постановке не играем (выглядела так себе). Эффект теперь
+		# только когда машина строится с нуля — спавн/загрузка/смена сборки (blocks.spawn_block).
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
 		_preview_res = null

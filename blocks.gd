@@ -259,6 +259,11 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		(z - MAP_SIZE_Z / 2.0) * CELL_SIZE
 	)
 
+	# Эффект «матрицы»-появления — только когда машина строится с НУЛЯ (spawn_block зовётся
+	# лишь из _spawn_all: первая машина / загрузка / смена сборки). При ручной постановке
+	# блока его больше не играем (см. vehicle_body_3d._on_take_pressed).
+	BlockFX.play(instance, false)
+
 # ── Обработчик: блок уничтожен ────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:
 	remove_block(x, y, z)
