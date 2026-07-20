@@ -1068,11 +1068,20 @@ func apply_build(layout: Array) -> void:
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
 func take_block_into_hand(block_type: int) -> bool:
-	if block_take:
-		return false
 	var scene: PackedScene = G.get_scene(block_type)
 	if scene == null:
 		return false
+	# В руке уже блок — кладём его ОБРАТНО в инвентарь и берём новый (замена руки).
+	# Раньше тут был отказ (return false), и выбор нового блока из инвентаря игнорировался.
+	if block_take and block_body != null and is_instance_valid(block_body):
+		G.block_inventory.append(int(block_body.block))
+		G.mark_progress_dirty()
+		var prev_parent: Node = block_body.get_parent()
+		if prev_parent:
+			prev_parent.remove_child(block_body)
+		block_body.queue_free()
+		block_body = null
+		block_take = false
 	var instance = scene.instantiate()
 	var holder: Node = camera_controller.camera.get_child(0)   # takepos Marker3D
 	holder.add_child(instance)
