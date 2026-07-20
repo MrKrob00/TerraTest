@@ -115,6 +115,7 @@ var _rings: Array = []
 var _ring_by_ci := {}
 
 var _view := Basis()                   # наклон вида (смотрим сверху на диск)
+var _active_turn := Basis()            # доворот активного (переднего) кольца на 90°
 var _theta_front := 0.0                # угол точки выбора на переднем кольце (ближняя точка)
 var _root: Node3D = null
 var _label: Label = null
@@ -135,6 +136,7 @@ func _ready() -> void:
 		_by_cat[k] = []
 		_item_idx[k] = 0
 	_view = Basis(Vector3.RIGHT, VIEW_PITCH)
+	_active_turn = Basis(Vector3.RIGHT, PI / 2.0)   # активное кольцо повёрнуто на 90°
 	# Точка выбора — ближняя к камере точка переменной части переднего кольца (center+R·(cosθ,
 	# sinθ,0)): θ, максимизирующий world.z = cosθ·view.x.z + sinθ·view.y.z → atan2(y.z, x.z).
 	_theta_front = atan2(_view.y.z, _view.x.z)
@@ -162,10 +164,13 @@ func _to_px(world: Vector3) -> Vector2:
 	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - world.z))
 	return Vector2(SIZE * 0.5 + world.x * ppw, SIZE * 0.5 - world.y * ppw)
 
-func _ring_oval_px(beta: float) -> PackedVector2Array:
+func _ring_oval_px(beta: float, turn := false) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in 33:
-		pts.append(_to_px(_view * _ring_point(TAU * float(i) / 32.0, beta)))
+		var p := _ring_point(TAU * float(i) / 32.0, beta)
+		if turn:
+			p = _active_turn * p              # контур активного кольца — с доворотом на 90°
+		pts.append(_to_px(_view * p))
 	return pts
 
 func _dial_px() -> PackedVector2Array:
@@ -228,7 +233,7 @@ func _build_scene() -> void:
 	sv.add_child(_root)
 
 	_overlay = Overlay.new()
-	_overlay.anchor = _to_px(_view * _ring_point(_theta_front, 0.0))
+	_overlay.anchor = _to_px(_view * _active_turn * _ring_point(_theta_front, 0.0))
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
@@ -464,8 +469,8 @@ func _sync_bg_ovals() -> void:
 		ovals.append({"pts": _ring_oval_px(_beta_of(ci)),
 				"color": Color(CAT_COLORS[CAT_KEYS[ci]], 0.25), "w": 1.0})
 	if _ring_by_ci.has(front):
-		ovals.append({"pts": _ring_oval_px(_beta_of(front)),
-				"color": Color(ACTIVE_RING, 0.9), "w": 1.8})   # текущий тип — синее кольцо
+		ovals.append({"pts": _ring_oval_px(_beta_of(front), true),
+				"color": Color(ACTIVE_RING, 0.9), "w": 1.8})   # текущий тип — синее кольцо (доворот 90°)
 	_bg.ovals = ovals
 	_bg.queue_redraw()
 
@@ -516,7 +521,10 @@ func _process(delta: float) -> void:
 			var holder: Node3D = slots[i]["node"]
 			# Активное кольцо листается (точка выбора = θ_front); остальные стоят на своих
 			# запомненных углах (edge-on/сбоку, призрак).
-			holder.position = _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), beta)
+			var pos := _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), beta)
+			if is_front:
+				pos = _active_turn * pos      # активное кольцо повёрнуто на 90°
+			holder.position = pos
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 			if slots[i]["badge"] != null:
