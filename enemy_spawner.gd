@@ -10,6 +10,7 @@ extends Node3D
 @export var spawn_interval: float = 6.0             # пауза между появлениями
 @export var spawn_min_dist: float = 45.0            # не ближе к игроку
 @export var spawn_max_dist: float = 85.0            # не дальше
+@export var spawn_separation: float = 28.0          # не ближе этого к ДРУГИМ врагам (не кучковаться)
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
@@ -73,7 +74,7 @@ func _relocate_enemy(enemy: Node3D, map: Node, player: Node3D) -> void:
 	if map == null:
 		enemy.queue_free()
 		return
-	var pos = _find_spawn_pos(map, player.global_position)
+	var pos = _find_spawn_pos(map, player.global_position, enemy)
 	if pos == null:
 		enemy.queue_free()          # некуда переместить — просто исчезает
 		return
@@ -111,10 +112,14 @@ func _spawn_one() -> void:
 func _on_enemy_died(_enemy: Node) -> void:
 	pass    # _process сам подчистит список по is_instance_valid и дозаспавнит
 
-# Точка спавна: кольцо вокруг игрока, на рельефе, не вода/не обрыв. Возвращает Vector3 или null.
-func _find_spawn_pos(map: Node, center: Vector3):
-	for _i in 16:
-		var ang: float = randf() * TAU
+# Точка спавна: кольцо вокруг игрока, на рельефе, не вода/не обрыв, и НЕ вплотную к другим
+# врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
+# точки расходятся по кольцу, а не бьют в одно место. exclude — враг, которого не считаем
+# соседом (при телепорте его самого). Возвращает Vector3 или null.
+func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
+	var base: float = randf() * TAU
+	for i in 24:
+		var ang: float = base + TAU * float(i) / 24.0 + randf_range(-0.13, 0.13)
 		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
 		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		var h: float = map.terrain_height_at(world)
@@ -122,8 +127,21 @@ func _find_spawn_pos(map: Node, center: Vector3):
 			continue
 		if _slope_at(map, world) > max_slope:
 			continue
-		return Vector3(world.x, h + ground_offset, world.z)
+		var cand := Vector3(world.x, h + ground_offset, world.z)
+		if _too_close_to_enemy(cand, exclude):
+			continue
+		return cand
 	return null
+
+# Есть ли уже враг ближе spawn_separation (по горизонтали) к точке pos.
+func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
+	for e in _enemies:
+		if e == exclude or not is_instance_valid(e):
+			continue
+		var d := Vector2(pos.x - e.global_position.x, pos.z - e.global_position.z)
+		if d.length() < spawn_separation:
+			return true
+	return false
 
 func _slope_at(map: Node, world: Vector3) -> float:
 	var s: float = 3.0
