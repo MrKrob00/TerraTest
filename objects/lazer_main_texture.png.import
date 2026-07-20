@@ -2,18 +2,21 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://4r8rgqic7tpo"
-path.s3tc="res://.godot/imported/Terratech.jpeg-058c596e22595ef0f9923827d4b44510.s3tc.ctex"
-path.etc2="res://.godot/imported/Terratech.jpeg-058c596e22595ef0f9923827d4b44510.etc2.ctex"
+uid="uid://bqnmwy42qb7kf"
+path.s3tc="res://.godot/imported/lazer_main_texture.png-8f8614b0d375c356fe87655ecfc47041.s3tc.ctex"
+path.etc2="res://.godot/imported/lazer_main_texture.png-8f8614b0d375c356fe87655ecfc47041.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
+generator_parameters={
+"md5": "54233678f158e9aada321e938abe4281"
+}
 
 [deps]
 
-source_file="res://images/Terratech.jpeg"
-dest_files=["res://.godot/imported/Terratech.jpeg-058c596e22595ef0f9923827d4b44510.s3tc.ctex", "res://.godot/imported/Terratech.jpeg-058c596e22595ef0f9923827d4b44510.etc2.ctex"]
+source_file="res://objects/lazer_main_texture.png"
+dest_files=["res://.godot/imported/lazer_main_texture.png-8f8614b0d375c356fe87655ecfc47041.s3tc.ctex", "res://.godot/imported/lazer_main_texture.png-8f8614b0d375c356fe87655ecfc47041.etc2.ctex"]
 
 [params]
 

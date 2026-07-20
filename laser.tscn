@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://euo01gggviqr" path="res://laser.gd" id="1_g6b45"]
 [ext_resource type="Texture2D" uid="uid://b86g0xq4jopks" path="res://objects/Laser_0.png" id="2_g6b45"]
 [ext_resource type="Script" uid="uid://b4io8r1rqborh" path="res://bullet.gd" id="3_bullet"]
+[ext_resource type="PackedScene" uid="uid://c807gsbu6w1lb" path="res://objects/lazer.glb" id="4_7vci3"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_6vqwg"]
 
@@ -79,6 +80,7 @@ shape = SubResource("BoxShape3D_6vqwg")
 
 [node name="cylinder" type="MeshInstance3D" parent="." unique_id=744969169]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.42838767, 0)
+visible = false
 mesh = SubResource("ArrayMesh_xw5cg")
 skeleton = NodePath("")
 
@@ -118,6 +120,9 @@ shape = SubResource("SeparationRayShape3D_6vqwg")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=2103590166]
 mesh = SubResource("PlaneMesh_g6b45")
+
+[node name="lazer" parent="." unique_id=1802065757 instance=ExtResource("4_7vci3")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5011086, 0)
 
 [connection signal="body_entered" from="Area3D" to="." method="_on_area_3d_body_entered"]
 [connection signal="body_exited" from="Area3D" to="." method="_on_area_3d_body_exited"]

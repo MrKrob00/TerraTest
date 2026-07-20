@@ -360,7 +360,7 @@ func _load_heightmap() -> void:
 func _load_heightmap_image() -> Image:
 	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
 		return null
-	var res = load(heightmap_path)
+	var res := load(heightmap_path)
 	if res is Image:
 		return res as Image
 	if res is Texture2D:

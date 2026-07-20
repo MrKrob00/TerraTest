@@ -3,9 +3,10 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b8i3bb6860nvr"
+path.s3tc="res://.godot/imported/Laser_1.png-aadb85cb401f20aac9015051aeea857b.s3tc.ctex"
 path.etc2="res://.godot/imported/Laser_1.png-aadb85cb401f20aac9015051aeea857b.etc2.ctex"
 metadata={
-"imported_formats": ["etc2_astc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://objects/Laser_1.png"
-dest_files=["res://.godot/imported/Laser_1.png-aadb85cb401f20aac9015051aeea857b.etc2.ctex"]
+dest_files=["res://.godot/imported/Laser_1.png-aadb85cb401f20aac9015051aeea857b.s3tc.ctex", "res://.godot/imported/Laser_1.png-aadb85cb401f20aac9015051aeea857b.etc2.ctex"]
 
 [params]
 

@@ -114,14 +114,16 @@ func _layout_starter() -> void:
 	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 1, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 0, 4, G.Block.DRILL, 0.0)
-	set_block(5, 1, 5, G.Block.GUN, 0.0)
+	set_block(5, 1, 5, G.Block.LASER, 0.0)
+	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 0, 7, G.Block.BLOCK, 0.0)
 
 # База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
 func _layout_default() -> void:
 	_wheels_6()
 	set_block(5, 0, 5, G.Block.CABIN, 0.0)
 	set_block(5, 0, 4, G.Block.DRILL, 0.0)
-	set_block(5, 1, 5, G.Block.GUN, 0.0)
+	set_block(5, 1, 5, G.Block.LASER, 0.0)
 	#set_block(5, 1, 5, G.Block.COLLECTOR, 0.0)
 	#set_block(3, 1, 7, G.Block.INTAKE, -PI/2)
 	#set_block(4, 1, 7, G.Block.BELT, 0.0)
@@ -152,6 +154,8 @@ func _wheels_6() -> void:
 	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
 	set_block(4, 0, 7, G.Block.WHEEL, PI / 2)
 	set_block(6, 0, 7, G.Block.WHEEL, -PI / 2)
+	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 0, 7, G.Block.BLOCK, 0.0)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
