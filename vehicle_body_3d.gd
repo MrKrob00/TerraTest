@@ -819,7 +819,10 @@ func _handle_click(screen_pos: Vector2) -> void:
 		var holder: Node = camera_controller.camera.get_child(0)
 		if holder.get_child_count() > 0:
 			var held_bt = holder.get_child(0).get("block")
-			if held_bt == G.Block.CABIN or G.is_stationary(held_bt):
+			# Кабина → всегда новая машина на землю. Стационар → новая база на землю, ТОЛЬКО
+			# если сейчас управляем МАШИНОЙ; если управляем СТАНЦИЕЙ — идёт обычным путём
+			# сетки (прикрепляется к базе, can_attach разрешает стационар-на-стационар).
+			if held_bt == G.Block.CABIN or (G.is_stationary(held_bt) and not is_station):
 				_preview_cabin_ground(world_origin, world_dir)
 				return
 	var space_node: Node3D = block_map_node if block_map_node else self
@@ -1037,8 +1040,10 @@ func _get_block_name(block: int) -> String:
 func _on_take_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
-		# Кабина → новая машина; стационарный блок → новая база. Ставятся В МИР на землю.
-		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN or G.is_stationary(instance.get("block"))):
+		# Кабина → новая машина; стационар (с машины) → новая база. Ставятся В МИР на землю.
+		# Стационар на СТАНЦИИ на землю не идёт (_cabin_ground будет null — превью шло сеткой).
+		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN \
+				or (G.is_stationary(instance.get("block")) and not is_station)):
 			_place_ground_structure(instance)
 			return
 		# Ставим РОВНО то, что показывает превью (_preview_res). Раньше грань бралась из
