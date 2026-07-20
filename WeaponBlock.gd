@@ -146,6 +146,23 @@ func _rebind_bullet(b: Area3D) -> void:
 	var cb := _on_bullet_body_entered.bind(b)
 	if not b.body_entered.is_connected(cb):
 		b.body_entered.connect(cb)
+	# Пуля улетела за окно коллизий (ушла ниже min_y / вышло время) → вернуть в пул.
+	if b.has_signal("expired") and not b.expired.is_connected(_on_bullet_expired):
+		b.expired.connect(_on_bullet_expired)
+
+# Пуля отработала (попадание ИЛИ истечение полёта) — паркуем в пул инертной.
+func _recycle_bullet(b: Area3D) -> void:
+	if not is_instance_valid(b):
+		return
+	if "dir" in b:
+		b.dir = Vector3.ZERO
+	b.monitoring = false                        # в пуле (у центра) повторно не ловит тела
+	b.global_position = Vector3.ZERO
+	if not free_bullet.has(b):
+		free_bullet.append(b)
+
+func _on_bullet_expired(b: Area3D) -> void:
+	_recycle_bullet(b)
 
 func fire_bullet():
 	if ammo == null:
@@ -156,7 +173,10 @@ func fire_bullet():
 		_rebind_bullet(new_bullet)              # дубликат унаследовал сценовое соединение без bind
 		free_bullet.append(new_bullet)
 	var bullet:Area3D = free_bullet.pop_back()
-	var dir = $Pivot.global_position.direction_to($Pivot/Marker3D.global_position)
+	# Направление — FORWARD турели (её −Z), то же, что у прицельного raycast (target −Z).
+	# Раньше брали pivot→Marker3D: если маркер стоял не строго на оси ствола, пуля летела
+	# «не в ту сторону». Так — ровно куда целится турель.
+	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
 	if not ("dir" in bullet):
 		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
 		return
@@ -167,7 +187,8 @@ func fire_bullet():
 		muzzle = $Pivot/Marker3D
 	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
-	bullet.look_at(dir+global_position)
+	if absf(dir.dot(Vector3.UP)) < 0.99:        # look_at падает, если dir почти вертикальна
+		bullet.look_at(bullet.global_position + dir)
 	bullet.monitoring = true                    # в полёте ловит попадания
 
 
@@ -244,9 +265,4 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
 	if body.has_method("hurt"):
 		body.hurt(damage)
-	if "dir" in source:
-		source.dir = Vector3.ZERO
-	source.monitoring = false                   # в пуле (у центра) не ловит тела повторно
-	source.global_position = Vector3.ZERO
-	if not free_bullet.has(source):
-		free_bullet.append(source)              # без дублей в пуле
+	_recycle_bullet(source)
