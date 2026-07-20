@@ -266,6 +266,7 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 		["📦", "В инвентарь"],
 		["🔧", "Разобрать"],
 		["🛡", "Защита: ВЫКЛ" if defense_on else "Защита: ВКЛ"],
+		["🎥", "Управлять"],           # сменить камеру на эту машину/станцию
 	]
 	wheel.position = center - Vector2(VMENU_OUTER, VMENU_OUTER)
 	_vmenu.add_child(wheel)
@@ -331,6 +332,11 @@ func _do_vmenu_action(idx: int, vehicle: Node) -> void:
 		2:
 			if vehicle.has_method("set_defense"):
 				vehicle.set_defense(not bool(vehicle.get("defense_mode")))
+		3:
+			# Сменить камеру: садимся управлять этой машиной/станцией.
+			var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+			if cc and cc.has_method("switch_to_vehicle"):
+				cc.switch_to_vehicle(vehicle)
 
 func close_vehicle_menu() -> void:
 	if _vmenu != null and is_instance_valid(_vmenu):
