@@ -815,9 +815,14 @@ func _on_building_pressed() -> void:
 	ghost_block.top_level = true
 	Building = true
 	#freeze = true
-	global_position.y += 4
-	global_rotation.x = 0
-	global_rotation.z = 0
+	# Мобильную машину подбрасываем на 4 м (строить в воздухе, потом Movement опускает). СТАНЦИЮ
+	# НЕ поднимаем: она на якоре и стоит на месте — иначе база с колонной улетала бы вверх и не
+	# возвращалась (Movement высоту не восстанавливает). Строим прямо на станции (правила
+	# can_attach: на базу можно стационары + фабричные).
+	if not is_station:
+		global_position.y += 4
+		global_rotation.x = 0
+		global_rotation.z = 0
 	map = global_position.y
 
 func _handle_click(screen_pos: Vector2) -> void:
