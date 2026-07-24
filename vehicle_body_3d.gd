@@ -340,6 +340,10 @@ func _release_anchor() -> void:
 func _on_anchor_contact(body: Node) -> void:
 	if not anchored or is_station:          # база не слетает с якоря от касаний
 		return
+	# Пока идёт анимация постановки на якорь (подъём + выравнивание) — контакты игнорируем:
+	# иначе _release_anchor убьёт твин на полпути и машина зависнет НАКЛОНЁННОЙ и размороженной.
+	if _anchor_tween != null and _anchor_tween.is_valid():
+		return
 	# Террейн — законная опора; всё остальное упёрлось в нас → фиксация сбрасывается.
 	if body != null and body.has_method("terrain_height_at"):
 		return
@@ -402,13 +406,21 @@ func send_to_inventory() -> void:
 		cc.vehicles.erase(self)
 	queue_free()
 
-# Разобрать: все блоки КРОМЕ кабины выпадают в мир, кабина остаётся стоять машиной.
+# Разобрать: все блоки КРОМЕ ядра выпадают в мир. Ядро остаётся стоять: у машины это кабина,
+# у станции — стационарный блок (SELLER) на якоре.
 func disassemble() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
 	for b in block_map_node.get_children():
 		if not ("block" in b) or b.get("block") == G.Block.CABIN:
+			continue
+		# Ядро СТАНЦИИ (стационарный блок, напр. SELLER) — как кабина у машины: остаётся на
+		# якоре и НЕ выпадает. Пропускаем ДО remove_block/коллизии/reparent, чтобы клетки карты,
+		# коллизия и сам узел ядра сохранились и база продолжала стоять. SELLER 2×2×2 — один
+		# якорный узел, так что пропуска узла хватает на все 8 клеток. Гард по G.is_stationary
+		# (мобильная машина стационарный блок носить не может — can_attach это запрещает).
+		if G.is_stationary(int(b.get("block"))):
 			continue
 		if b is Node3D:
 			var n3 := b as Node3D
@@ -782,7 +794,8 @@ func _on_movement_pressed() -> void:
 	_return_hand_to_inventory()   # выход из стройки — блок из руки возвращаем в инвентарь
 	Building = false
 	ghost_block.visible = false
-	freeze = false
+	if not is_station:            # станция всегда на якоре — Movement не должен её размораживать
+		freeze = false
 	var up = global_transform.basis.y
 	if up.dot(Vector3.UP) < 0.3:
 		global_rotation.z = 0
@@ -964,6 +977,16 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if vehicles_root == null:
 		vehicles_root = get_parent()                # фолбэк: рядом с этой машиной
 	vehicles_root.add_child(v)
+	# СТАЦИОНАРНУЮ базу морозим СРАЗУ (STATIC), до постановки позиции: незамороженный RigidBody
+	# сервер откатывает при прямом телепорте (см. коммент якоря ~290), а off-center коллизия
+	# ядра 2×2 (SELLER) кренит тело за первый же физ-шаг — отсюда «наклон при якоре». Заморозка
+	# до позиции = база не падает и не наклоняется, выравниванию уже не с чем драться.
+	# Кабину-МАШИНУ НЕ морозим: freeze снимает только кнопка Movement, а switch_to_vehicle его
+	# не трогает — иначе только что поставленная машина не поедет.
+	if v is RigidBody3D and G.is_stationary(core):
+		v.freeze = true
+		v.linear_velocity = Vector3.ZERO
+		v.angular_velocity = Vector3.ZERO
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
 	if v.has_method("apply_build"):
 		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])
