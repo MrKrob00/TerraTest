@@ -1,16 +1,17 @@
 class_name BlockGlobe
 extends Control
-# «Атом» выбора блока в стройке (по описанию игрока, docs/atom_picker_reference.md).
-# Горизонтальный красный ДИСК-руль (в плоскости XZ) — выбор ТИПА. Кольца-категории — это
-# МЕРИДИАНЫ на общей вертикальной оси (концентричны, веером вокруг оси), а не карусель по
-# ободу. Поэтому неактивные кольца не наклоняются овалами, а «повёрнуты» вокруг оси, и
-# поворот всей конструкции на 90° даёт ту же фигуру. Активное кольцо — синее.
-#   • ТИП: горизонтальный драг КРУТИТ атом (_spin) — меридианы поворачиваются; переднее
-#     (в плоскости XY) встаёт ЛИЦОМ к игроку = активная категория (1A).
-#   • БЛОК: вертикальный драг листает переднее кольцо — блоки едут по нему мимо точки
-#     выбора (низ кольца); тап без движения берёт тот, что в точке выбора (2A).
-# Смотрим на диск чуть СВЕРХУ (VIEW_PITCH) — он читается как горизонтальный овал-руль,
-# а переднее кольцо стоит вертикально. Ось жеста лочится по первому движению.
+# «Атом»-АРМИЛЛЯРА выбора блока в стройке (по описанию игрока, docs/atom_picker_reference.md).
+# ГОРИЗОНТАЛЬНОЕ красное кольцо (в плоскости XZ, экватор) = выбор ТИПА — крутится вокруг
+# вертикальной оси Y (драг влево/вправо). На нём «построены» ВЕРТИКАЛЬНЫЕ кольца-меридианы
+# по одному на тип, расставленные веером через AZ=45° (PI/4) — при 4 типах они дают 4 РАЗНЫЕ
+# плоскости и НИКОГДА не совпадают (при 90° передняя и задняя слипались — это и был баг).
+# Вертикальное кольцо = горизонтальное, наклонённое на 90°. Отсюда раскладка жестов:
+#   • ТИП: драг ВЛЕВО/ВПРАВО крутит атом (_spin) — меридианы едут по кругу; тот, что вышел
+#     ЛИЦОМ к камере (β≈0, плоскость XY, вертикальный) = активная категория (1A).
+#   • БЛОК: драг ВВЕРХ/ВНИЗ листает переднее вертикальное кольцо — блоки едут по нему мимо
+#     точки выбора (ближний к камере верх кольца); тап без движения берёт тот, что в ней (2A).
+# Смотрим чуть СВЕРХУ (VIEW_PITCH ~29°): экватор читается горизонтальным овалом-рулём, а
+# переднее кольцо — вертикальным овалом лицом к игроку. Ось жеста лочится по первому движению.
 # Пустая категория спереди — «ПУСТО», совсем без блоков — «НЕТ БЛОКОВ».
 
 signal block_chosen(block_type: int)
@@ -25,7 +26,8 @@ const CAT_COLORS := {
 
 # Геометрия карусели. Категория ci стоит на ободе диска под азимутом β = base_ci + _spin;
 # при β≈0 её кольцо спереди (ближе к камере) и смотрит на игрока = активная.
-const AZ := TAU / 4.0                  # 90° между категориями по ободу (4 фикс. позиции)
+const AZ := TAU / 8.0                  # 45° (PI/4) между меридианами: 4 типа = 4 РАЗНЫЕ плоскости,
+#                                        не слипаются (при 90° перед/зад совпадали — тот баг)
 const R_DIAL := 1.05                   # радиус красного диска-руля (экватор; выбор типа)
 const R_RING := 1.0                    # радиус кольца-меридиана (≈ экватор → читается как глобус)
 const CORE_R := 0.26                   # радиус ядра-сферы
@@ -44,7 +46,7 @@ const VIEW_PITCH := 0.5                # ~+29°
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0
-const SPIN_DRAG_PX := 90.0             # px горизонтального драга на одну категорию (90°)
+const SPIN_DRAG_PX := 90.0             # px горизонтального драга на одну категорию (шаг 45°)
 const SCROLL_DRAG_PX := 90.0           # px вертикального драга на один блок
 const TAP_SLOP := 6.0
 const LOCK_DIST := 10.0
@@ -115,7 +117,6 @@ var _rings: Array = []
 var _ring_by_ci := {}
 
 var _view := Basis()                   # наклон вида (смотрим сверху на диск)
-var _active_turn := Basis()            # доворот активного (переднего) кольца на 90°
 var _theta_front := 0.0                # угол точки выбора на переднем кольце (ближняя точка)
 var _root: Node3D = null
 var _label: Label = null
@@ -136,7 +137,6 @@ func _ready() -> void:
 		_by_cat[k] = []
 		_item_idx[k] = 0
 	_view = Basis(Vector3.RIGHT, VIEW_PITCH)
-	_active_turn = Basis(Vector3.RIGHT, PI / 2.0)   # активное кольцо повёрнуто на 90°
 	# Точка выбора — ближняя к камере точка переменной части переднего кольца (center+R·(cosθ,
 	# sinθ,0)): θ, максимизирующий world.z = cosθ·view.x.z + sinθ·view.y.z → atan2(y.z, x.z).
 	_theta_front = atan2(_view.y.z, _view.x.z)
@@ -164,13 +164,10 @@ func _to_px(world: Vector3) -> Vector2:
 	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - world.z))
 	return Vector2(SIZE * 0.5 + world.x * ppw, SIZE * 0.5 - world.y * ppw)
 
-func _ring_oval_px(beta: float, turn := false) -> PackedVector2Array:
+func _ring_oval_px(beta: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	for i in 33:
-		var p := _ring_point(TAU * float(i) / 32.0, beta)
-		if turn:
-			p = _active_turn * p              # контур активного кольца — с доворотом на 90°
-		pts.append(_to_px(_view * p))
+		pts.append(_to_px(_view * _ring_point(TAU * float(i) / 32.0, beta)))
 	return pts
 
 func _dial_px() -> PackedVector2Array:
@@ -233,7 +230,7 @@ func _build_scene() -> void:
 	sv.add_child(_root)
 
 	_overlay = Overlay.new()
-	_overlay.anchor = _to_px(_view * _active_turn * _ring_point(_theta_front, 0.0))
+	_overlay.anchor = _to_px(_view * _ring_point(_theta_front, 0.0))
 	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
@@ -469,8 +466,8 @@ func _sync_bg_ovals() -> void:
 		ovals.append({"pts": _ring_oval_px(_beta_of(ci)),
 				"color": Color(CAT_COLORS[CAT_KEYS[ci]], 0.25), "w": 1.0})
 	if _ring_by_ci.has(front):
-		ovals.append({"pts": _ring_oval_px(_beta_of(front), true),
-				"color": Color(ACTIVE_RING, 0.9), "w": 1.8})   # текущий тип — синее кольцо (доворот 90°)
+		ovals.append({"pts": _ring_oval_px(_beta_of(front)),
+				"color": Color(ACTIVE_RING, 0.9), "w": 1.8})   # текущий тип — синее вертикальное кольцо
 	_bg.ovals = ovals
 	_bg.queue_redraw()
 
@@ -519,12 +516,9 @@ func _process(delta: float) -> void:
 		var slots: Array = r["slots"]
 		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
-			# Активное кольцо листается (точка выбора = θ_front); остальные стоят на своих
-			# запомненных углах (edge-on/сбоку, призрак).
-			var pos := _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), beta)
-			if is_front:
-				pos = _active_turn * pos      # активное кольцо повёрнуто на 90°
-			holder.position = pos
+			# Активное (переднее) кольцо вертикально ЛИЦОМ к камере, листается вверх/вниз (точка
+			# выбора = θ_front); остальные меридианы стоят веером через 45°, призрачные.
+			holder.position = _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), beta)
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 			if slots[i]["badge"] != null:
