@@ -17,8 +17,8 @@ extends Control
 signal block_chosen(block_type: int)
 
 const SIZE := 320.0
-const CAT_KEYS := {"attack": "Атака", "blocks": "Блоки", "factory": "Фабрика", "other": "Остальное"}
-const CAT_NAMES := ["attack", "blocks", "factory", "other"]
+const CAT_KEYS := ["attack", "blocks", "factory", "other"]
+const CAT_NAMES := {"attack": "Атака", "blocks": "Блоки", "factory": "Фабрика", "other": "Остальное"}
 const CAT_COLORS := {
 	"attack": Color(0.85, 0.36, 0.32), "blocks": Color(0.30, 0.62, 0.66),
 	"factory": Color(0.85, 0.66, 0.30), "other": Color(0.62, 0.46, 0.80),
