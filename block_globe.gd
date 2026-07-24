@@ -43,6 +43,10 @@ const ACTIVE_RING := Color(0.28, 0.55, 0.95)   # текущий тип — си�
 # руль читается горизонтальным овалом, переднее кольцо стоит вертикально. Точка выбора —
 # ближний (верхний) край переднего кольца (θ_front=+90°). Только питч — симметрично.
 const VIEW_PITCH := 0.5                # ~+29°
+# Доворот ВСЕЙ конструкции на 90° к камере (вокруг оси глубины): смотрим не «сбоку». После
+# него переднее кольцо блоков листается ВВЕРХ/ВНИЗ (а не вбок), красное кольцо типов —
+# вертикальное. Знак меняет сторону точки выбора (лево/право). Проверено проекцией.
+const VIEW_ROLL := PI / 2.0
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0
@@ -136,7 +140,7 @@ func _ready() -> void:
 	for k in CAT_KEYS:
 		_by_cat[k] = []
 		_item_idx[k] = 0
-	_view = Basis(Vector3.RIGHT, VIEW_PITCH)
+	_view = Basis(Vector3.BACK, VIEW_ROLL) * Basis(Vector3.RIGHT, VIEW_PITCH)
 	# Точка выбора — ближняя к камере точка переменной части переднего кольца (center+R·(cosθ,
 	# sinθ,0)): θ, максимизирующий world.z = cosθ·view.x.z + sinθ·view.y.z → atan2(y.z, x.z).
 	_theta_front = atan2(_view.y.z, _view.x.z)
