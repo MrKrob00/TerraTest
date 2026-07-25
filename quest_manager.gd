@@ -8,7 +8,9 @@ extends Node
 
 signal changed
 
-enum Type { STORY, DAILY }
+enum Type { STORY, DAILY, TUTORIAL }
+# TUTORIAL — обучение: последовательное (по order), идёт ПЕРВЫМ (до сюжета), ведёт «за руку» —
+# при активации шага Механик подсказывает, что сделать (поле hint). Награды символические.
 
 var quests: Array[Dictionary] = []
 var tracked_id: String = ""
@@ -20,17 +22,21 @@ func _ready() -> void:
 		# Выполненные СЮЖЕТНЫЕ квесты персистятся (G.quests_done) — иначе награды
 		# (XP/ДИ/$ сохраняются!) фармились бы перезапуском. Дейлики повторяемы намеренно.
 		for q in quests:
-			if q["type"] == Type.STORY and g.quests_done.has(q["id"]):
+			# Сюжет И обучение — одноразовые (персист в G.quests_done), иначе награды/шаги
+			# фармились бы перезапуском. Дейлики повторяемы намеренно.
+			if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
 				q["done"] = true
 				q["progress"] = q["goal"]
 		changed.emit()
 		# Реплика Механика при новом грейде лицензии (см. G.grade_up / этап 1 прогрессии).
 		g.grade_up.connect(_on_grade_up)
 	_auto_track()
-	_say_lines([
-		["Механик", "Эй, новичок! Сначала собери себе машину — поставь пару блоков."],
-		["Механик", "Потом сгоняй за рудой и глянь список заданий справа сверху."],
-	])
+	# Ведём за руку: если обучение не пройдено — Механик сразу подсказывает текущий шаг.
+	# Пройдено — обычное приветствие.
+	if not _announce_tutorial():
+		_say_lines([
+			["Механик", "С возвращением! Гляни список заданий справа сверху."],
+		])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
 # reward_money/xp/rp — награды при выполнении ($ / XP фракции / ДИ); req_grade — с какого
@@ -38,6 +44,18 @@ func _ready() -> void:
 # ДИ по всем сюжеткам: 38+36+42+56+85 (+5 за первый килл) = 262 ≥ 260 на всё дерево —
 # древо добивается сюжетом, дейлики лишь ускоряют. Порядок — order (грейд N = 10*N-10).
 func _seed_demo() -> void:
+	# ── ОБУЧЕНИЕ (идёт первым, ведёт за руку; hint — что нажать) ──────────────────
+	# Пока на существующих событиях (build/ore/sell/kill); остальные шаги (камера, движение,
+	# якорь, сбор, энерго, фабрика) добавятся, когда докинем их события — см. docs/QUESTS_DESIGN.
+	add_quest("tut_build", "Обучение: постройка", "Поставь 3 блока", Type.TUTORIAL, 3, 0, "block_placed", 0, 0, 0, 1,
+			"Открой стройку — глобус-кнопка снизу. Возьми блок и поставь на машину. Так собирается техника.")
+	add_quest("tut_ore",   "Обучение: добыча",    "Насверли 5 руды", Type.TUTORIAL, 5, 1, "ore_mined",    0, 0, 0, 1,
+			"Подъедь БУРОМ вплотную к руде и держись рядом — бур сам сверлит. Руда посыпется.")
+	add_quest("tut_sell",  "Обучение: продажа",   "Заработай 30$",   Type.TUTORIAL, 30, 2, "money_earned", 0, 0, 0, 1,
+			"Собранную руду вези к продавцу (SELLER) — получишь деньги. На них покупаешь блоки.")
+	add_quest("tut_fight", "Обучение: бой",       "Уничтожь кабину врага", Type.TUTORIAL, 1, 3, "enemy_killed", 0, 0, 0, 1,
+			"Наведись на врага и жми Атаку. Цель — его КАБИНА: разобьёшь её — машина развалится.")
+	# ── СЮЖЕТ ────────────────────────────────────────────────────────────────────
 	add_quest("story_build", "Собери машину",    "Поставь 5 блоков",        Type.STORY, 5,   0, "block_placed", 20, 20, 5)
 	add_quest("story_ore",   "Добудь руду",      "Насверли 10 руды",        Type.STORY, 10,  1, "ore_mined",    30, 30, 8)
 	add_quest("story_sell",  "Заработай денег",  "Заработай 100$",          Type.STORY, 100, 2, "money_earned", 50, 40, 10)
@@ -65,12 +83,13 @@ func _seed_demo() -> void:
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
 		order: int = 0, event: String = "", reward_money: int = 0,
-		reward_xp: int = 0, reward_rp: int = 0, req_grade: int = 1) -> void:
+		reward_xp: int = 0, reward_rp: int = 0, req_grade: int = 1, hint: String = "") -> void:
 	quests.append({
 		"id": id, "title": title, "desc": desc, "type": type,
 		"goal": maxi(goal, 1), "progress": 0, "done": false, "order": order,
 		"event": event, "reward_money": reward_money,
 		"reward_xp": reward_xp, "reward_rp": reward_rp, "req_grade": req_grade,
+		"hint": hint,        # подсказка Механика (обучение) — говорится при активации шага
 	})
 	changed.emit()
 
@@ -130,11 +149,14 @@ func _on_completed(q: Dictionary) -> void:
 			g.money_changed.emit()
 		g.add_faction_xp("start", int(q.get("reward_xp", 0)))
 		g.add_research_points(int(q.get("reward_rp", 0)))
-		if int(q["type"]) == Type.STORY and not g.quests_done.has(q["id"]):
-			g.quests_done.append(q["id"])   # сюжет — одноразовый (см. _ready)
+		if (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) and not g.quests_done.has(q["id"]):
+			g.quests_done.append(q["id"])   # сюжет и обучение — одноразовые (см. _ready)
 			g.mark_progress_dirty()
 	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
 	_say("Система", _completion_message(str(q["title"]), reward))
+	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
+	if int(q["type"]) == Type.TUTORIAL:
+		_announce_tutorial()
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
@@ -214,6 +236,10 @@ func _first_active() -> Dictionary:
 # Активные (можно отслеживать/двигать): текущее сюжетное + все незавершённые ежедневные.
 func active_quests() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	# Обучение ПЕРВЫМ — оно и трекается первым (_first_active берёт голову списка).
+	var tut := _current_tutorial()
+	if not tut.is_empty():
+		out.append(tut)
 	var cur := _current_story()
 	if not cur.is_empty():
 		out.append(cur)
@@ -221,6 +247,31 @@ func active_quests() -> Array[Dictionary]:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
 	return out
+
+# Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
+func _current_tutorial() -> Dictionary:
+	for q in _sorted_tutorial():
+		if not q["done"]:
+			return q
+	return {}
+
+func _sorted_tutorial() -> Array[Dictionary]:
+	var s: Array[Dictionary] = []
+	for q in quests:
+		if q["type"] == Type.TUTORIAL:
+			s.append(q)
+	s.sort_custom(func(a, b): return a["order"] < b["order"])
+	return s
+
+# Механик подсказывает текущий шаг обучения. Возвращает true, если обучение ещё идёт.
+func _announce_tutorial() -> bool:
+	var t := _current_tutorial()
+	if t.is_empty():
+		return false
+	var h := str(t.get("hint", ""))
+	if h != "":
+		_say("Механик", h)
+	return true
 
 # Что показать в списке: все сюжетные ДО текущего включительно (выполненные + текущее) и
 # все ежедневные. Будущие сюжетные (ещё закрытые) не показываем.
@@ -230,6 +281,11 @@ func visible_quests() -> Array[Dictionary]:
 	# ИНВАРИАНТ: quests_done — префикс порядка order (сюжет выполняется последовательно);
 	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
 	var out: Array[Dictionary] = []
+	# Обучение: выполненные + текущий шаг (дальше не светим).
+	for q in _sorted_tutorial():
+		out.append(q)
+		if not q["done"]:
+			break
 	for q in _sorted_story():
 		out.append(q)
 		if not q["done"]:
