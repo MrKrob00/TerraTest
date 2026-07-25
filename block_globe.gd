@@ -43,10 +43,11 @@ const ACTIVE_RING := Color(0.28, 0.55, 0.95)   # текущий тип — си�
 # руль читается горизонтальным овалом, переднее кольцо стоит вертикально. Точка выбора —
 # ближний (верхний) край переднего кольца (θ_front=+90°). Только питч — симметрично.
 const VIEW_PITCH := 0.5                # ~+29°
-# Доворот ВСЕЙ конструкции на 90° к камере (вокруг оси глубины): смотрим не «сбоку». После
-# него переднее кольцо блоков листается ВВЕРХ/ВНИЗ (а не вбок), красное кольцо типов —
-# вертикальное. Знак меняет сторону точки выбора (лево/право). Проверено проекцией.
-const VIEW_ROLL := PI / 2.0
+# Yaw ВСЕГО вида вокруг вертикали Y: активное (переднее) кольцо смотрит БОКОМ на камеру
+# (нормаль ~68° от оси взгляда), а не лицом. Красное кольцо-экватор при этом остаётся
+# горизонтальным (Y-поворот сохраняет горизонт). Смена типа плавная — это общий вид, без
+# скачков. ~65° (1.134 рад). Точка выбора считается там, где дотична вертикальна → скролл ↕.
+const VIEW_YAW := 1.134
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0
@@ -140,10 +141,17 @@ func _ready() -> void:
 	for k in CAT_KEYS:
 		_by_cat[k] = []
 		_item_idx[k] = 0
-	_view = Basis(Vector3.BACK, VIEW_ROLL) * Basis(Vector3.RIGHT, VIEW_PITCH)
-	# Точка выбора — ближняя к камере точка переменной части переднего кольца (center+R·(cosθ,
-	# sinθ,0)): θ, максимизирующий world.z = cosθ·view.x.z + sinθ·view.y.z → atan2(y.z, x.z).
-	_theta_front = atan2(_view.y.z, _view.x.z)
+	_view = Basis(Vector3.UP, VIEW_YAW) * Basis(Vector3.RIGHT, VIEW_PITCH)
+	# Точка выбора: θ на переднем кольце (β=0), где ЭКРАННАЯ дотична максимально ВЕРТИКАЛЬНА
+	# (тогда драг вверх/вниз катит блоки ↕) и блок ближе к камере. Раньше брали ближнюю точку
+	# (atan2), но при yaw её дотична диагональна — искали бы косой скролл. Считаем перебором.
+	var best := -INF
+	for i in 360:
+		var th := TAU * float(i) / 360.0
+		var sc := _vtan_score(th)
+		if sc > best:
+			best = sc
+			_theta_front = th
 	_build_scene()
 
 # Кольца-категории — МЕРИДИАНЫ на общей вертикальной оси (как в прототипе-«атоме»), а не
@@ -167,6 +175,15 @@ func _beta_of(ci: int) -> float:
 func _to_px(world: Vector3) -> Vector2:
 	var ppw := (SIZE * 0.5) / (tan(deg_to_rad(FOV) * 0.5) * (CAM_Z - world.z))
 	return Vector2(SIZE * 0.5 + world.x * ppw, SIZE * 0.5 - world.y * ppw)
+
+# Оценка «здесь скролл будет вертикальным»: угол экранной дотичной переднего кольца (β=0) в
+# точке θ (π/2 = вертикаль) плюс близость к камере. Максимум → точка выбора (см. _ready).
+func _vtan_score(th: float) -> float:
+	var e := 0.005
+	var a := _to_px(_view * _ring_point(th - e, 0.0))
+	var b := _to_px(_view * _ring_point(th + e, 0.0))
+	var vert := atan2(absf(b.y - a.y), absf(b.x - a.x))
+	return vert + (_view * _ring_point(th, 0.0)).z * 8.0
 
 func _ring_oval_px(beta: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
