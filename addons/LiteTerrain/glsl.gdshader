@@ -42,6 +42,12 @@ uniform float grass_min_height  : hint_range(-10.0, 10.0) = -2.0;
 uniform float grass_max_height  : hint_range(-10.0, 10.0) = 5.0;
 uniform float bend_radius       : hint_range(0.1, 10.0)   = 1.5;
 uniform float lod_grass_enabled : hint_range(0.0, 1.0)    = 1.0;
+// Яркость травы ОТНОСИТЕЛЬНО подстилки (подстилка = 0.65). Было 1.0 → трава была светлее и
+// «выскакивала» на границе. 0.62 = трава чуть темнее земли (мягкая тень у корня), не пятном.
+uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
+// Сколько травы на СНЕГУ относительно травяной зоны (0 = снег голый, 1 = столько же). На снегу
+// трава реже и короче (масштаб высоты = этому же множителю). В песке/воде и на КАМНЕ травы нет.
+uniform float snow_grass        : hint_range(0.0, 1.0)    = 0.35;
 
 group_uniforms Trample;
 // Карта примятия травы (кормит grass.gd через SubViewport). Чёрная по умолчанию = нет
@@ -88,16 +94,21 @@ void vertex() {
     // COLOR.r < 0.5 помечает вершины на границе чанка: там смещение травы пропускаем, чтобы
     // шов (особенно на границе LOD) остался на сшитой базовой поверхности. lod_grass_enabled=1
     // только на ближнем LOD-0 материале — трава смещается лишь вблизи, где её видно.
-    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && wy >= grass_min_height && wy <= grass_max_height) {
-        if (hash2D(v_pixel_uv) < grass_density) {
-            vec3 offset = NORMAL * grass_height;
+    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && wy >= grass_min_height) {
+        // БИОМ травы: полная в травяной зоне, реже/короче на снегу (snow_grass), НЕТ на камне
+        // (склон, rock_t) и в песке/воде (t_grass=0). Так трава «вообще везде», где может расти,
+        // с разной высотой по биому, а на скалу не приминается — rock_t зануляет.
+        float grassland = t_grass * (1.0 - t_snow);
+        float amount    = max(grassland, t_snow * snow_grass) * (1.0 - rock_t);
+        if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
+            vec3 offset = NORMAL * grass_height * amount;   // выше в траве, ниже на снегу
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
             if (t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
                 float press = texture(trample_map, t_uv).r;
-                offset.y -= clamp(press, 0.0, 1.0) * grass_height * 2.0;
+                offset.y -= clamp(press, 0.0, 1.0) * grass_height * amount * 2.0;
             }
             VERTEX    += offset;
-            v_is_grass = 1.0;
+            v_is_grass = amount;                            // плавно, для мягкой тени во фрагменте
         }
     }
 }
@@ -113,7 +124,8 @@ void fragment() {
         }
     }
 
-    // Трава-вершины (v_is_grass=1) чуть ярче подстилки — простая тень под травой.
-    ALBEDO    = base_col * mix(0.65, 1.0, v_is_grass);
+    // Трава НЕ ярче подстилки (чинит «выскакивание»): при grass_shade<0.65 трава чуть темнее
+    // земли — мягкая тень у корня, а не светлое пятно. Крутится uniform-ом grass_shade.
+    ALBEDO    = base_col * mix(0.65, grass_shade, v_is_grass);
     ROUGHNESS = 0.9;
 }
