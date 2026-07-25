@@ -8,16 +8,16 @@ extends Node3D
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
 @export var max_enemies: int = 9                    # было 3, ×3
 @export var spawn_interval: float = 6.0             # пауза между появлениями
-@export var spawn_min_dist: float = 120.0           # не ближе к игроку
-@export var spawn_max_dist: float = 260.0           # не дальше (карта 1982² — простора много; < render 1400, виден при спавне)
-@export var spawn_separation: float = 80.0          # не ближе этого к ДРУГИМ врагам (сильно разнесены, не кучкуются)
+@export var spawn_min_dist: float = 270.0           # не ближе к игроку (враги появляются далеко)
+@export var spawn_max_dist: float = 520.0           # не дальше (карта 1982² — простора много; < render 1400, виден при спавне)
+@export var spawn_separation: float = 110.0         # не ближе этого к ДРУГИМ врагам (сильно разнесены, не кучкуются)
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
 ## Враг дальше far_dist от текущей машины дольше far_limit секунд — телепортируется обратно
 ## в кольцо спавна возле игрока (не нашли точку — исчезает). Чтобы бой не «затухал», когда
 ## игрок уехал от разбежавшихся врагов.
-@export var far_dist: float = 340.0                 # с запасом над spawn_max_dist, иначе дальние спавны сразу «далеко»
+@export var far_dist: float = 640.0                 # с запасом над spawn_max_dist, иначе дальние спавны сразу «далеко»
 @export var far_limit: float = 60.0
 @export var map_node: Node
 
