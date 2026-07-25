@@ -52,7 +52,7 @@ func _update_tracker() -> void:
 		_title.text = "Нет активных заданий"
 		_objective.text = ""
 		return
-	var star := "★ " if q["type"] == Q.Type.STORY else "◆ "
+	var star := "▶ " if q["type"] == Q.Type.TUTORIAL else ("★ " if q["type"] == Q.Type.STORY else "◆ ")
 	_title.text = star + str(q["title"])
 	if q["done"]:
 		_objective.text = "✓ выполнено"
@@ -71,6 +71,7 @@ func _rebuild_list() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
+	_add_section("ОБУЧЕНИЕ", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
 	_add_section("СЮЖЕТ", vis.filter(func(q): return q["type"] == Q.Type.STORY))
 	_add_section("ЕЖЕДНЕВНЫЕ", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
 
