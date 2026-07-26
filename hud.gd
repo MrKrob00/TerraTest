@@ -20,6 +20,27 @@ var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
 var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
 var _block_globe: BlockGlobe = null          # «шар» выбора блока (видны в стройке)
+
+# ── Вид глобуса блоков (крутится в инспекторе живьём) ─────────────────────────
+# Глобус создаётся кодом (BlockGlobe.new), поэтому его @export не видны в инспекторе — рулим
+# отсюда, с ноды HUD. Меняешь ползунок → globe.apply_view() перестраивает вид сразу.
+@export_group("Глобус блоков (вид)")
+## Наклон глобуса (смотрим сверху). ~0.5 = как сейчас.
+@export var globe_tilt: float = 0.5 : set = _set_globe_tilt
+## Прокрут по красному кольцу-экватору (вокруг вертикали). 0 = спереди, ~1.57 (PI/2) = сбоку.
+@export var globe_spin: float = 1.5707964 : set = _set_globe_spin
+
+func _set_globe_tilt(v: float) -> void:
+	globe_tilt = v
+	if _block_globe:
+		_block_globe.view_pitch = v
+		_block_globe.apply_view()
+
+func _set_globe_spin(v: float) -> void:
+	globe_spin = v
+	if _block_globe:
+		_block_globe.view_yaw = v
+		_block_globe.apply_view()
 var _game_controls: Array = []              # игровые кнопки/джойстики — прячем при инвентаре
 
 func _ready() -> void:
@@ -427,8 +448,10 @@ func _build_block_globe() -> void:
 	globe.size = Vector2(BlockGlobe.SIZE, BlockGlobe.SIZE)
 	globe.position = _globe_pos(get_viewport().get_visible_rect().size)
 	globe.visible = false
+	globe.view_pitch = globe_tilt        # начальные наклон/прокрут из инспектора HUD
+	globe.view_yaw = globe_spin
 	globe.block_chosen.connect(_on_globe_block_chosen)
-	add_child(globe)
+	add_child(globe)                     # _ready глобуса построит вид с этими значениями
 	_block_globe = globe
 
 func _on_globe_block_chosen(block_type: int) -> void:

@@ -42,11 +42,12 @@ const ACTIVE_RING := Color(0.28, 0.55, 0.95)   # текущий тип — си�
 # Смотрим на диск чуть СВЕРХУ (положительный питч: перед диска ниже зада, как на пульт) —
 # руль читается горизонтальным овалом, переднее кольцо стоит вертикально. Точка выбора —
 # ближний (верхний) край переднего кольца (θ_front=+90°). Только питч — симметрично.
-const VIEW_PITCH := 0.5                # ~+29°
-# Камера смотрит на атом СБОКУ (слева), а не спереди. 0 = спереди (как было), PI/2 = ровно
-# слева, -PI/2 = справа. Просто крути это число под нужный ракурс. Красное кольцо-экватор
-# при повороте вокруг Y остаётся горизонтальным.
-const VIEW_YAW := PI / 2.0
+# Вид глобуса. Задаётся из HUD через @export (globe_tilt / globe_spin) → крутится в инспекторе
+# живьём (см. apply_view). view_pitch — НАКЛОН (смотрим сверху); view_yaw — ПРОКРУТ по красному
+# кольцу-экватору (вокруг вертикали Y): 0 = спереди, PI/2 = сбоку слева, -PI/2 = справа. Экватор
+# при Y-повороте остаётся горизонтальным.
+var view_pitch: float = 0.5           # ~+29°
+var view_yaw: float = PI / 2.0        # сбоку
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0
@@ -140,11 +141,27 @@ func _ready() -> void:
 	for k in CAT_KEYS:
 		_by_cat[k] = []
 		_item_idx[k] = 0
-	_view = Basis(Vector3.UP, VIEW_YAW) * Basis(Vector3.RIGHT, VIEW_PITCH)
-	# Точка выбора — ближняя к камере точка переменной части переднего кольца (center+R·(cosθ,
-	# sinθ,0)): θ, максимизирующий world.z = cosθ·view.x.z + sinθ·view.y.z → atan2(y.z, x.z).
-	_theta_front = atan2(_view.y.z, _view.x.z)
+	_recompute_view()
 	_build_scene()
+
+# Пересчёт матрицы вида из наклона/прокрута. Точка выбора — ближняя к камере точка переднего
+# кольца (θ, максимизирующий world.z): atan2(view.y.z, view.x.z).
+func _recompute_view() -> void:
+	_view = Basis(Vector3.UP, view_yaw) * Basis(Vector3.RIGHT, view_pitch)
+	_theta_front = atan2(_view.y.z, _view.x.z)
+
+# Переприменить вид ЖИВЬЁМ (HUD зовёт при правке @export наклона/прокрута). Пересобирает
+# матрицу вида и обновляет 3D-корень + фон (диск, контуры колец, точку выбора).
+func apply_view() -> void:
+	if _root == null:
+		return                       # сцена ещё не построена — _ready применит сам
+	_recompute_view()
+	_root.basis = _view
+	if _bg != null:
+		_bg.dial = _dial_px()
+	if _overlay != null:
+		_overlay.anchor = _to_px(_view * _ring_point(_theta_front, 0.0))
+	_sync_bg_ovals()
 
 # Кольца-категории — МЕРИДИАНЫ на общей вертикальной оси (как в прототипе-«атоме»), а не
 # карусель по ободу. Все концентричны в центре → поворот всей конструкции на AZ переводит
