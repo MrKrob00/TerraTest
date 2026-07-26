@@ -35,6 +35,14 @@ uniform float rock_threshold     : hint_range(0.0, 1.0)      = 0.7;
 uniform float rock_blend         : hint_range(0.0, 0.5)      = 0.15;
 uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 
+group_uniforms Biomes;
+// Песок/трава теперь по БИОМАМ (регионам), а не по высоте. Биом задаётся низкочастотным
+// шумом по миру XZ: крупные пятна травяного и песчаного биома. Снег остаётся по высоте (пики).
+uniform float biome_scale       : hint_range(30.0, 1000.0) = 320.0;  // размер пятна биома (единиц мира)
+uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.16;   // резкость границы биомов
+uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
+uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.2;    // сила травы в ПЕСЧАНОМ биоме (~0.2 макс)
+
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 0.4;
 uniform float grass_height      : hint_range(0.0, 1.0)    = 0.15;
@@ -75,16 +83,33 @@ float hash2D(vec2 p) {
     return fract(p.x * p.y);
 }
 
+// Гладкий value-noise [0..1] для БИОМОВ: билинейная интерполяция hash по узлам сетки со
+// smoothstep-сглаживанием. Низкая частота (world/biome_scale) → крупные пятна биомов.
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash2D(i);
+    float b = hash2D(i + vec2(1.0, 0.0));
+    float c = hash2D(i + vec2(0.0, 1.0));
+    float d = hash2D(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
     v_tile_uv  = world_pos.xz / tile_world_size;                                  // гладкий (текстура + мип)
     v_pixel_uv = floor(v_tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;            // квантованный (шум/трава)
 
-    // Высотные зоны (песок→трава→снег) + склон→камень — весь базовый цвет здесь.
-    float t_grass = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
-    float t_snow  = smoothstep(height_snow_start  - zone_blend, height_snow_start  + zone_blend, wy);
-    vec3  zone    = mix(color_sand.rgb, color_grass.rgb, t_grass);
+    // БИОМ: песок/трава по регионам (низкочастотный шум), а НЕ по высоте. biome_grass=1 —
+    // травяной биом, 0 — песчаный. Ниже уровня воды (height_grass_start) — всегда песок
+    // (пляж/дно), биом туда траву не тянет. Снег остаётся по ВЫСОТЕ (пики гор).
+    float biome_n     = vnoise(world_pos.xz / biome_scale);
+    float above_water = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
+    float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n) * above_water;
+    float t_snow  = smoothstep(height_snow_start - zone_blend, height_snow_start + zone_blend, wy);
+    vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);
     zone          = mix(zone,           color_snow.rgb,  t_snow);
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
@@ -95,11 +120,11 @@ void vertex() {
     // шов (особенно на границе LOD) остался на сшитой базовой поверхности. lod_grass_enabled=1
     // только на ближнем LOD-0 материале — трава смещается лишь вблизи, где её видно.
     if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && wy >= grass_min_height) {
-        // БИОМ травы: полная в травяной зоне, реже/короче на снегу (snow_grass), НЕТ на камне
-        // (склон, rock_t) и в песке/воде (t_grass=0). Так трава «вообще везде», где может расти,
-        // с разной высотой по биому, а на скалу не приминается — rock_t зануляет.
-        float grassland = t_grass * (1.0 - t_snow);
-        float amount    = max(grassland, t_snow * snow_grass) * (1.0 - rock_t);
+        // По БИОМУ: в травяном биоме трава полная, в ПЕСЧАНОМ — очень слабая (sand_grass~0.2
+        // макс, редкая и низкая), на снегу реже/короче (snow_grass), НЕТ на камне (rock_t
+        // зануляет — «на скалу не приминается»). amount масштабирует и высоту, и плотность.
+        float land   = mix(sand_grass, 1.0, biome_grass) * (1.0 - t_snow);
+        float amount = max(land, t_snow * snow_grass) * (1.0 - rock_t);
         if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;   // выше в траве, ниже на снегу
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
