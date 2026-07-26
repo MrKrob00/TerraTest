@@ -46,8 +46,8 @@ const ACTIVE_RING := Color(0.28, 0.55, 0.95)   # текущий тип — си�
 # живьём (см. apply_view). view_pitch — НАКЛОН (смотрим сверху); view_yaw — ПРОКРУТ по красному
 # кольцу-экватору (вокруг вертикали Y): 0 = спереди, PI/2 = сбоку слева, -PI/2 = справа. Экватор
 # при Y-повороте остаётся горизонтальным.
-var view_pitch: float = 0.5           # ~+29°
-var view_yaw: float = PI / 2.0        # сбоку
+var view_pitch: float = 0.0           # ~+29°
+var view_yaw: float = 0.0        # сбоку
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0

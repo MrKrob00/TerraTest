@@ -273,6 +273,8 @@ shape = SubResource("SeparationRayShape3D_jsk3o")
 
 [node name="HUD" type="CanvasLayer" parent="Vehicles/Camera Controller" unique_id=1503331732]
 script = ExtResource("14_tcnuu")
+globe_tilt = 0.0
+globe_spin = 1.5699999999999998
 
 [node name="Joystick_movement" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD" unique_id=212017106]
 unique_name_in_owner = true
