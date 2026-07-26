@@ -22,21 +22,28 @@ extends Node3D
 @export var coal_color: Color = Color(0.13, 0.13, 0.15)
 
 @export_group("Расстановка")
-@export var count: int = 800                 # сколько жил пытаемся расставить (было 200, ×4)
+@export var count: int = 2000                # жил по ВСЕЙ карте — «тысячи». Все они лишь ДАННЫЕ
+#                                              (позиция+тип, дёшево); ноды и слоты — только ближним.
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
 @export var min_height: float = 2.0          # ниже — вода/пляж, не спавним
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
 @export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
 
-@export_group("Куллинг")
-## Дальше этого от камеры жила не рендерится (MultiMesh не куллит инстансы сам, поэтому
-## далёкие схлопываем в нулевой масштаб — instance_id и данные истощения не трогаем).
-@export var render_distance: float = 280.0
-@export var cull_interval: float = 0.25      # как часто пересчитывать видимость (сек)
+@export_group("Стриминг")
+## Радиус вокруг камеры, в котором жилы РЕНДЕРЯТСЯ и активны (есть узел/коллизия для добычи).
+## Дальше — только запись в _data, ни ноды, ни инстанса MultiMesh (система не грузится).
+@export var render_distance: float = 160.0
+## ПОТОЛОК одновременно отрисованных/активных жил = размер буфера MultiMesh и пул слотов.
+## В радиусе 160 при 2000 жилах на карту 1982² их ~40-60; 180 — с большим запасом.
+@export var max_visible: int = 180
+@export var cull_interval: float = 0.25      # как часто пересчитывать стриминг (сек)
 
-var _positions: Array[Vector3] = []          # локальные позиции жил (для куллинга)
-var _visible_state: Array[bool] = []
+# Все жилы карты как данные: {pos, scene, ore_type, coal, slot(-1=не показана), node(null)}.
+var _data: Array = []
+var _free: Array[int] = []                   # свободные слоты MultiMesh (пул)
 var _cull_t: float = 0.0
+# Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
+var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
 func _ready() -> void:
 	var map: Node = get_parent()
@@ -57,7 +64,7 @@ func _ready() -> void:
 
 	_apply_ore_colors()
 	var positions: Array[Vector3] = _pick_positions(map, dims)
-	_spawn(positions)
+	_init_veins(positions)
 
 # Заливаем список цветов в шейдер руды (общий материал core.tres → один раз на всех).
 func _apply_ore_colors() -> void:
@@ -110,43 +117,75 @@ func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
 			return true
 	return false
 
-func _spawn(positions: Array[Vector3]) -> void:
+# Готовим ДАННЫЕ всех жил (дёшево) + буфер MultiMesh на max_visible слотов (все схлопнуты).
+# Узлы и видимые инстансы появляются позже, в _process, только для ближних (стриминг).
+func _init_veins(positions: Array[Vector3]) -> void:
+	var cap: int = mini(max_visible, positions.size())
+	# Инстансы теперь ЕЗДЯТ за камерой (стриминг). MultiMesh фрустум-куллит себя по своему AABB,
+	# который на set_instance_transform авто-обновляется не всегда → близкие жилы могли пропадать.
+	# Большой custom_aabb = MM никогда не куллится целиком (инстансов мало, 1 draw-call — дёшево).
+	var big := AABB(Vector3(-2000.0, -2000.0, -2000.0), Vector3(4000.0, 4000.0, 4000.0))
 	for mm in multimesh_nodes:
+		mm.custom_aabb = big
 		mm.multimesh.instance_count = 0
-		mm.multimesh.use_custom_data = true         # выделяем буфер custom-data ДО instance_count
-		mm.multimesh.instance_count = positions.size()
+		mm.multimesh.use_custom_data = true         # буфер custom-data ДО instance_count
+		mm.multimesh.instance_count = cap
+		for s in cap:
+			mm.multimesh.set_instance_transform(s, ZERO_XFORM)   # пусто, пока не заполнит стриминг
+	_free.clear()
+	for s in range(cap - 1, -1, -1):
+		_free.append(s)                             # слоты cap-1..0 свободны
 
 	var type_count: int = maxi(ore_colors.size(), 1)
-	for i in positions.size():
-		if resource_nodes.is_empty():
-			break
-		# С шансом coal_chance жила угольная: тип = последний индекс (цвет угля).
+	var scene: PackedScene = resource_nodes.pick_random() if not resource_nodes.is_empty() else null
+	_data.clear()
+	for p in positions:
+		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
 		var coal: bool = randf() < coal_chance
 		var ore_type: int = ore_colors.size() if coal else randi() % type_count
-		var node: Node3D = resource_nodes.pick_random().instantiate()
-		node.position = positions[i]
-		node.instance_id = i
-		if "is_coal" in node:
-			node.is_coal = coal
-		if "ore_type" in node:
-			node.ore_type = ore_type            # жила помнит свой тип для дальнейших записей
-		if "ore_color" in node and ore_type < ore_colors.size():
-			node.ore_color = ore_colors[ore_type]   # цвет для тинта вылетающей руды
+		_data.append({
+			"pos": p,
+			"scene": resource_nodes.pick_random() if not resource_nodes.is_empty() else scene,
+			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
+		})
+	_cull_t = 0.0                                    # первый стриминг — сразу
+
+# Жила вошла в радиус: берём слот из пула, рисуем инстанс + создаём узел (добыча/коллизия).
+func _stream_in(v: Dictionary) -> void:
+	if _free.is_empty():
+		return                                       # достигнут потолок max_visible — редко (кап с запасом)
+	var slot: int = _free.pop_back()
+	v["slot"] = slot
+	var xform := Transform3D(Basis(), v["pos"])
+	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))   # G=1 «целая», A=тип (стримнутая жила полна)
+	for mm in multimesh_nodes:
+		mm.multimesh.set_instance_transform(slot, xform)
+		mm.multimesh.set_instance_custom_data(slot, custom)
+	if v["scene"] != null:
+		var node: Node3D = v["scene"].instantiate()
+		node.position = v["pos"]
+		node.instance_id = slot                      # узел пишет истощение в ЭТОТ слот
+		if "is_coal" in node: node.is_coal = v["coal"]
+		if "ore_type" in node: node.ore_type = v["ore_type"]
+		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
+			node.ore_color = ore_colors[v["ore_type"]]
 		add_child(node)
-		# R=0 → «урона ещё не было», A = тип руды (цвет берёт шейдер).
-		var custom := Color(0.0, 0.0, 0.0, float(ore_type))
-		var xform := Transform3D(Basis(), positions[i])
-		for mm in multimesh_nodes:
-			mm.multimesh.set_instance_transform(i, xform)
-			mm.multimesh.set_instance_custom_data(i, custom)
+		v["node"] = node
 
-	_positions = positions
-	_visible_state.resize(positions.size())
-	_visible_state.fill(true)
+# Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.
+func _stream_out(v: Dictionary) -> void:
+	var slot: int = int(v["slot"])
+	for mm in multimesh_nodes:
+		mm.multimesh.set_instance_transform(slot, ZERO_XFORM)
+	if v["node"] != null and is_instance_valid(v["node"]):
+		v["node"].queue_free()
+	v["node"] = null
+	v["slot"] = -1
+	_free.append(slot)
 
-# ── Дистанционный куллинг жил (MultiMesh не куллит инстансы поштучно) ──────────
+# ── Стриминг: держим отрисованными/активными только жилы в render_distance ─────
 func _process(delta: float) -> void:
-	if _positions.is_empty():
+	if _data.is_empty():
 		return
 	_cull_t -= delta
 	if _cull_t > 0.0:
@@ -157,14 +196,10 @@ func _process(delta: float) -> void:
 		return
 	var cam_pos: Vector3 = cam.global_position
 	var d2: float = render_distance * render_distance
-	for i in _positions.size():
-		var world: Vector3 = to_global(_positions[i])
-		var want: bool = cam_pos.distance_squared_to(world) <= d2
-		if want == _visible_state[i]:
-			continue
-		_visible_state[i] = want
-		# Видимая — базовый трансформ; далёкая — нулевой масштаб (схлопнута, не рендерится).
-		var basis := Basis() if want else Basis().scaled(Vector3.ZERO)
-		var xform := Transform3D(basis, _positions[i])
-		for mm in multimesh_nodes:
-			mm.multimesh.set_instance_transform(i, xform)
+	for v in _data:
+		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
+		var shown: bool = int(v["slot"]) >= 0
+		if near and not shown:
+			_stream_in(v)
+		elif not near and shown:
+			_stream_out(v)
