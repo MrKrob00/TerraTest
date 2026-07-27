@@ -51,6 +51,8 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 		cmat.shader = CARD_SHADER
 		cmat.set_shader_parameter("card_color", CARD_CYAN if randf() < 0.5 else CARD_MAGENTA)
 		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)   # 4×4 или 6×6
+		cmat.set_shader_parameter("fill_threshold", randf_range(0.42, 0.55))     # сколько заполнено
 		cmat.set_shader_parameter("progress", 0.0)
 		card.material_override = cmat
 		cloud.add_child(card)
