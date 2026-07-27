@@ -1,9 +1,9 @@
 class_name BlockFX
 extends RefCounted
 # Эффект «матрицы» на блоке (block_matrix.gdshader): одной строкой
-#   BlockFX.play(block, false)   — появление: блок «собирается» из сине-фиолетовых глитч-
-#                                  пикселей снизу вверх (cyan/magenta, mode 0 в шейдере)
-#   BlockFX.play(block, true)    — уничтожение: глитч-пиксели мерцают/съезжают и гаснут (mode 1)
+#   BlockFX.play(block, false)   — появление: «хмара» плоских 2D-глитч-карточек разного
+#                                  размера на разной глубине вокруг блока (glitch_card.gdshader)
+#   BlockFX.play(block, true)    — уничтожение: та же хмара карточек, мерцает и гаснет
 #   BlockFX.hit(block)           — попадание: короткая вспышка КРАСНЫХ 0/1 (как раньше) на
 #                                  1-2 случайных гранях блока (mode 2)
 #
@@ -14,8 +14,13 @@ extends RefCounted
 #     и продолжает ехать с машиной; фолбэк — текущая сцена.
 # Гонит progress 0→1 и сам себя удаляет.
 
-const SHADER := preload("res://block_matrix.gdshader")
-const SHADER_HP := preload("res://block_hp.gdshader")   # постоянный оверлей хп (свой режим глубины)
+const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, красные цифры) — hit()
+const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
+const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
+const CARD_COUNT := 16          # сколько карточек в «хмаре»
+const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
+const CARD_CYAN := Color(0.15, 0.85, 1.0)
+const CARD_MAGENTA := Color(0.72, 0.16, 1.0)
 
 static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if block == null or not block.is_inside_tree():
@@ -29,35 +34,44 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 		return
 	var aabb := _local_aabb(block)
 
-	var fx := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE
-	fx.mesh = bm
-	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
-	mat.set_shader_parameter("mode", 1 if destroy else 0)
-	mat.set_shader_parameter("progress", 0.0)
-	# Свой узор цифр на каждый блок (сетка теперь в локальных осях, без этого узор был бы
-	# одинаковым у всех блоков).
-	mat.set_shader_parameter("seed",
-			wrapf(block.global_position.x * 3.7 + block.global_position.z * 7.1, 0.0, 100.0))
-	fx.material_override = mat
-	host.add_child(fx)
-	# Трансформ выставляем ПОСЛЕ add_child: как ребёнок хоста эффект сохранит относительное
-	# положение и дальше едет вместе с ним. Коробка строится В ОСЯХ БЛОКА (его позиция + его
-	# ПОВОРОТ + локальный AABB): раньше базис был мировой, без ротации — на повёрнутом блоке
-	# эффект стоял криво и не вращался вместе с ним.
-	var box_size := aabb.size * 1.05 + Vector3(0.05, 0.05, 0.05)   # чуть больше блока
-	fx.global_transform = block.global_transform \
-			* Transform3D(Basis().scaled(box_size), aabb.get_center())
+	# «Хмара» глитч-карточек: плоские 2D-билборды РАЗНОГО размера на РАЗНОЙ глубине внутри/
+	# вокруг блока, cyan/magenta, мерцают и гаснут (глитч появления/исчезновения — вариант 1).
+	var cloud := Node3D.new()
+	host.add_child(cloud)
+	cloud.global_transform = block.global_transform * Transform3D(Basis(), aabb.get_center())
+	var half := aabb.size * 0.5
+	var mats: Array = []
+	for i in CARD_COUNT:
+		var card := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		card.mesh = q
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var cmat := ShaderMaterial.new()
+		cmat.shader = CARD_SHADER
+		cmat.set_shader_parameter("card_color", CARD_CYAN if randf() < 0.5 else CARD_MAGENTA)
+		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("progress", 0.0)
+		card.material_override = cmat
+		cloud.add_child(card)
+		# позиция вразброс в пределах блока (чуть шире), масштаб случайный → разные размеры/глубины
+		card.position = Vector3(randf_range(-half.x, half.x), randf_range(-half.y, half.y),
+				randf_range(-half.z, half.z)) * CARD_SPREAD
+		var s := randf_range(aabb.size.length() * 0.10, aabb.size.length() * 0.35)
+		card.scale = Vector3(s, s, 1.0)
+		mats.append(cmat)
 
 	var dur := duration
 	if dur <= 0.0:
-		dur = 0.7 if destroy else 0.8   # +0.2с к прежним 0.5/0.6 — медленнее
-	var tw := fx.create_tween()
-	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, dur)
-	tw.tween_callback(fx.queue_free)
+		dur = 0.7 if destroy else 0.8
+	var tw := cloud.create_tween()
+	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, dur)
+	tw.tween_callback(cloud.queue_free)
+
+static func _set_cards_progress(p: float, mats: Array) -> void:
+	for m in mats:
+		if is_instance_valid(m):
+			(m as ShaderMaterial).set_shader_parameter("progress", p)
 
 const HIT_THICKNESS := 0.08   # толщина пластины вспышки попадания
 const HIT_DURATION := 0.3
