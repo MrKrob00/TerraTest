@@ -49,6 +49,7 @@ func _ready() -> void:
 	_build_block_globe()
 	_build_anchor_button()
 	_build_radar()
+	_build_settings_panel()
 	_collect_game_controls()
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
@@ -193,6 +194,80 @@ func _build_radar() -> void:
 
 func _radar_pos(screen: Vector2) -> Vector2:
 	return Vector2(screen.x - RADAR_SIZE - 12.0, 12.0)   # справа сверху
+
+# ── Настройки (чувствительность камеры) — каждый настраивает под себя ──────────
+# Панель по центру, открывается из меню. Значения хранятся в G (settings.json), меняются
+# ползунками и сохраняются сразу. Панель — Control (mouse_filter STOP), тач по ней не уходит
+# в камеру.
+var _settings_panel: PanelContainer = null
+func _build_settings_panel() -> void:
+	_settings_panel = PanelContainer.new()
+	_settings_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_settings_panel.custom_minimum_size = Vector2(380, 300)
+	_settings_panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_settings_panel.visible = false
+	add_child(_settings_panel)
+	var m := MarginContainer.new()
+	for s in ["left", "right", "top", "bottom"]:
+		m.add_theme_constant_override("margin_" + s, 18)
+	_settings_panel.add_child(m)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 14)
+	m.add_child(vb)
+	var t := Label.new()
+	t.text = "НАСТРОЙКИ КАМЕРЫ"
+	t.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
+	t.add_theme_font_size_override("font_size", 20)
+	vb.add_child(t)
+	vb.add_child(_settings_slider("Чувствительность поворота", G.cam_look_sens,
+			func(v): G.cam_look_sens = v; G.save_settings()))
+	vb.add_child(_settings_slider("Чувствительность зума", G.cam_zoom_sens,
+			func(v): G.cam_zoom_sens = v; G.save_settings()))
+	var cb := CheckButton.new()
+	cb.text = "Инвертировать вертикаль"
+	cb.button_pressed = G.cam_invert_y
+	cb.add_theme_color_override("font_color", Color(0.9, 0.96, 0.98, 1))
+	cb.toggled.connect(func(on): G.cam_invert_y = on; G.save_settings())
+	vb.add_child(cb)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(spacer)
+	vb.add_child(_make_drawer_button("Закрыть", func(): _settings_panel.visible = false))
+
+# Строка «подпись + ползунок + текущее значение». on_change(value) вызывается при движении.
+func _settings_slider(label: String, value: float, on_change: Callable) -> Control:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	var l := Label.new()
+	l.text = label
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", Color(0.9, 0.96, 0.98, 1))
+	row.add_child(l)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var s := HSlider.new()
+	s.min_value = 0.2
+	s.max_value = 3.0
+	s.step = 0.05
+	s.value = value
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.custom_minimum_size = Vector2(220, 32)
+	var val := Label.new()
+	val.text = "%.2f" % value
+	val.custom_minimum_size = Vector2(52, 0)
+	val.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
+	s.value_changed.connect(func(v): val.text = "%.2f" % v; on_change.call(v))
+	h.add_child(s)
+	h.add_child(val)
+	row.add_child(h)
+	return row
+
+func _toggle_settings() -> void:
+	if _settings_panel == null:
+		return
+	_settings_panel.visible = not _settings_panel.visible
+	if _settings_panel.visible and _drawer_open:
+		_set_drawer(false)             # открыли настройки — прячем боковое меню
 
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
@@ -672,6 +747,7 @@ func _build_ark_drawer() -> void:
 	vb.add_child(title)
 
 	vb.add_child(_make_drawer_button("Инвентарь", _toggle_inventory))
+	vb.add_child(_make_drawer_button("Настройки", _toggle_settings))
 
 	var veh_label := Label.new()
 	veh_label.text = "ТЕХНИКА"
