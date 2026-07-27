@@ -214,7 +214,8 @@ func _start_scan() -> void:
 	_scan_state = 1
 	_scan_left = scan_warn_time
 	_build_marker()
-	_say("Система", "⚠ ПРОВЕРКА СЕКТОРА. Покиньте квадрат за %d сек." % int(scan_warn_time))
+	# Обманка: Система ВЕЖЛИВО просит НЕ выходить — кто послушается, того зачистка :)
+	_say("Система", "🔍 Плановое сканирование сектора. Пожалуйста, НЕ покидайте зону сканирования. Это займёт %d сек. Спасибо за сотрудничество." % int(scan_warn_time))
 
 func _resolve_scan() -> void:
 	_scan_state = 0
@@ -222,10 +223,10 @@ func _resolve_scan() -> void:
 	_clear_marker()
 	var p := _player()
 	if p != null and _in_scan_box(p.global_position):
-		_say("Система", "✖ Нарушитель в секторе. Зачистка.")
+		_say("Система", "✔ Спасибо, что остались. Ваша лояльность отмечена. Инициирую... очистку.")
 		_spawn_enforcement()
 	else:
-		_say("Система", "✔ Сектор чист. Проверка завершена.")
+		_say("Система", "⚠ Субъект покинул зону сканирования. Это... засчитано как неповиновение.")
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
