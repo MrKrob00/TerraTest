@@ -906,11 +906,12 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 # Остальные блоки — НАКЛОН так, чтобы НИЗ смотрел на соседа (боковое крепление): справа от
 # блока → низ влево и т.п. Углы могут потребовать проверки на живом тесте.
 func _face_orient(face: String, block_type: int) -> Basis:
-	if block_type == G.Block.WHEEL:
+	if G.is_wheel(block_type):
 		match face:
 			"right": return Basis(Vector3.UP, -PI / 2)
 			"left":  return Basis(Vector3.UP,  PI / 2)
 			"back":  return Basis(Vector3.UP,  PI)
+			"top":   return Basis(Vector3.RIGHT, PI)   # верхнее колесо: перевёрнуто, свисает вниз
 			_:       return Basis()
 	if block_type == G.Block.DRILL:
 		return Basis()   # контакт «сзади»: ставится только на морду, буром вперёд — без наклона

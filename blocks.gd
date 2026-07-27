@@ -37,6 +37,11 @@ func _init_contacts() -> void:
 		G.Block.WHEEL: ["left", "right"],    # колесо цепляется слева и справа; постройка сама
 		#                                      разворачивает его по стороне (см. vehicle_body_3d)
 		G.Block.DRILL: ["back"],             # бур: контакт только сзади (ставится на морду, буром вперёд)
+		# Варианты колёс: обычные крепятся слева/справа (как WHEEL); ВЕРХНЕЕ — сверху.
+		G.Block.SMALL_WHEEL: ["left", "right"],
+		G.Block.BIG_WHEEL:   ["left", "right"],
+		G.Block.STAB_WHEEL:  ["left", "right"],
+		G.Block.TOP_WHEEL:   ["top"],
 		# остальные типы — все грани (по умолчанию); допишем по мере надобности
 	}
 
@@ -183,6 +188,14 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 				for dz in [-1, 0]:
 					cells.append(Vector3i(x + dx, y + dy, z + dz))
 		return cells
+	if block == G.Block.COAL_GEN:
+		var cells2: Array = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
+		for dx in [-1, 0]:
+			for dz in [-1, 0]:
+				cells2.append(Vector3i(x + dx, y, z + dz))
+		return cells2
+	if block == G.Block.BLOCK2:
+		return [Vector3i(x - 1, y, z), Vector3i(x, y, z)]   # 2×1×1
 	return [Vector3i(x, y, z)]
 
 # Можно ли поставить block с якорем (x,y,z): все клетки footprint в границах и пусты.
@@ -267,6 +280,10 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	if collision.shape.size == Vector3(2,2,2):
 		collision.position += Vector3(-0.5,0.5,-0.5)
+	elif collision.shape.size == Vector3(2,1,1):
+		collision.position += Vector3(-0.5,0.0,0.0)       # BLOCK2: центрируем 2-широкую коллизию
+	elif collision.shape.size == Vector3(2,1,2):
+		collision.position += Vector3(-0.5,0.0,-0.5)      # COAL_GEN: 2×1×2
 	if !get_parent().is_node_ready():
 		await get_parent().ready
 	get_parent().add_child(collision)
