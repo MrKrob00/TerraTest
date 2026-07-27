@@ -23,6 +23,39 @@ const BUILDS_PATH := "user://vehicle_builds.json"
 func _ready() -> void:
 	_load_builds()
 	_load_progress()
+	_load_settings()
+
+# ═══ Настройки игрока (чувствительность камеры и т.п.) ════════════════════════════
+# Отдельный файл от прогресса — это конфиг, не сейв. Множители к базовым константам
+# камеры (1.0 = как задумано). Меняются редко → пишем сразу (без debounce).
+const SETTINGS_PATH := "user://settings.json"
+var cam_look_sens: float = 1.0     # чувствительность поворота камеры свайпом/мышью
+var cam_zoom_sens: float = 1.0     # чувствительность пинч-зума
+var cam_invert_y: bool = false     # инвертировать вертикаль (наклон взгляда)
+
+func save_settings() -> void:
+	var f = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({
+			"cam_look_sens": cam_look_sens,
+			"cam_zoom_sens": cam_zoom_sens,
+			"cam_invert_y": cam_invert_y,
+		}))
+		f.close()
+
+func _load_settings() -> void:
+	if not FileAccess.file_exists(SETTINGS_PATH):
+		return
+	var f = FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	if f == null:
+		return
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (data is Dictionary):
+		return
+	cam_look_sens = clampf(float(data.get("cam_look_sens", 1.0)), 0.2, 3.0)
+	cam_zoom_sens = clampf(float(data.get("cam_zoom_sens", 1.0)), 0.2, 3.0)
+	cam_invert_y = bool(data.get("cam_invert_y", false))
 
 # ═══ Прогрессия: стартовая фракция, грейды, древо технологий ══════════════════════
 # ТЗ: docs/PROGRESSION_DESIGN.md. Сейчас фракция одна («start», имя дадим позже) —

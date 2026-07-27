@@ -125,7 +125,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			var pts: Array = _cam_touches.values()
 			var d: float = pts[0].distance_to(pts[1])
 			if _pinch_last > 0.0:
-				RADIUS = clampf(RADIUS - (d - _pinch_last) * PINCH_ZOOM_SENS, ZOOM_MIN, ZOOM_MAX)
+				RADIUS = clampf(RADIUS - (d - _pinch_last) * PINCH_ZOOM_SENS * G.cam_zoom_sens, ZOOM_MIN, ZOOM_MAX)
 			_pinch_last = d
 		else:
 			# Один палец — орбита (X) + наклон взгляда (Y). Копим сдвиг, применяем в camera_movement.
@@ -176,12 +176,16 @@ func camera_movement(_delta):
 		_mouse_look_dy = 0.0
 		_touch_look_dx = 0.0
 		_touch_look_dy = 0.0
-	var turn := -(_mouse_look_dx * MOUSE_SENS + _touch_look_dx * TOUCH_LOOK_SENS)
+	# Множитель чувствительности — из настроек игрока (G.cam_look_sens).
+	var look_k: float = G.cam_look_sens
+	var turn := -(_mouse_look_dx * MOUSE_SENS + _touch_look_dx * TOUCH_LOOK_SENS) * look_k
 	_mouse_look_dx = 0.0
 	_touch_look_dx = 0.0
-	var pitch := -(_mouse_look_dy * MOUSE_SENS + _touch_look_dy * TOUCH_LOOK_SENS)
+	var pitch := -(_mouse_look_dy * MOUSE_SENS + _touch_look_dy * TOUCH_LOOK_SENS) * look_k
 	_mouse_look_dy = 0.0
 	_touch_look_dy = 0.0
+	if G.cam_invert_y:
+		pitch = -pitch                     # инверсия вертикали (настройка)
 	if pitch != 0.0:
 		gaze_pitch = clampf(gaze_pitch + pitch, PITCH_MIN, PITCH_MAX)
 	if turn != 0.0:
