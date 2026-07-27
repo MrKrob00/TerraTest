@@ -19,8 +19,6 @@ const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный 
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
 const CARD_COUNT := 16          # сколько карточек в «хмаре»
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
-const CARD_CYAN := Color(0.15, 0.85, 1.0)
-const CARD_MAGENTA := Color(0.72, 0.16, 1.0)
 
 static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if block == null or not block.is_inside_tree():
@@ -49,10 +47,9 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var cmat := ShaderMaterial.new()
 		cmat.shader = CARD_SHADER
-		cmat.set_shader_parameter("card_color", CARD_CYAN if randf() < 0.5 else CARD_MAGENTA)
-		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("seed", randf() * 100.0)                       # свой цвет/форма патча
 		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)   # 4×4 или 6×6
-		cmat.set_shader_parameter("fill_threshold", randf_range(0.42, 0.55))     # сколько заполнено
+		cmat.set_shader_parameter("fill_threshold", randf_range(0.38, 0.5))      # форма пятна
 		cmat.set_shader_parameter("progress", 0.0)
 		card.material_override = cmat
 		cloud.add_child(card)
