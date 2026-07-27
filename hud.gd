@@ -225,6 +225,7 @@ func _build_anchor_button() -> void:
 	_anchor_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_anchor_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_anchor_btn.add_child(_anchor_icon)
+	_anchor_btn.visible = false        # появится, когда на машине есть фикс-опора (тик радара)
 	add_child(_anchor_btn)
 
 func _on_anchor_pressed() -> void:
@@ -602,6 +603,11 @@ func _update_radar(delta: float) -> void:
 		return
 	_radar_t = 0.15
 	var v: Node = _menu_vehicle_or_current()
+	# Кнопка якоря видна ТОЛЬКО если машина может якориться (есть фикс-опора SUPPORT или это
+	# база) и инвентарь закрыт. Без опоры — кнопки нет (по ТЗ: без неё нельзя сесть на якорь).
+	if _anchor_btn:
+		_anchor_btn.visible = (not _controls_hidden) and v != null \
+				and v.has_method("can_anchor") and v.can_anchor()
 	var on: bool = _has_radar(v)
 	if _radar.visible != on:
 		_radar.visible = on
@@ -809,12 +815,13 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_rotate_panel)
 	if _block_globe:
 		_game_controls.append(_block_globe)
-	if _anchor_btn:
-		_game_controls.append(_anchor_btn)
 	if _radar:
 		_game_controls.append(_radar)
+	# _anchor_btn НЕ в общем списке: его видимостью рулит тик радара (нужна фикс-опора).
 
+var _controls_hidden: bool = false
 func _set_game_controls_hidden(hidden: bool) -> void:
+	_controls_hidden = hidden
 	for n in _game_controls:
 		if is_instance_valid(n):
 			n.visible = not hidden
