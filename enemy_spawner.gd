@@ -222,11 +222,13 @@ func _resolve_scan() -> void:
 	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 	_clear_marker()
 	var p := _player()
+	# Система не отслеживает «кто ушёл» — она просто сканирует зону. Есть активность внутри
+	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
 	if p != null and _in_scan_box(p.global_position):
-		_say("Система", "✔ Спасибо, что остались. Ваша лояльность отмечена. Инициирую... очистку.")
+		_say("Система", "⚠ В секторе зафиксирована несанкционированная активность. Направляю обработчиков.")
 		_spawn_enforcement()
 	else:
-		_say("Система", "⚠ Субъект покинул зону сканирования. Это... засчитано как неповиновение.")
+		_say("Система", "Сканирование сектора завершено. Аномалий не зафиксировано.")
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
