@@ -48,7 +48,7 @@ func _ready() -> void:
 	_build_rotate_panel()
 	_build_block_globe()
 	_build_anchor_button()
-	_build_energy_gauge()
+	_build_radar()
 	_collect_game_controls()
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
@@ -85,6 +85,8 @@ func _relayout() -> void:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
 	if _block_globe:
 		_block_globe.position = _globe_pos(screen)
+	if _radar:
+		_radar.position = _radar_pos(screen)
 	# Джойстики и FPS-метка — это ноды сцены с АБСОЛЮТНЫМИ позициями (авторились под одно
 	# разрешение). При expand на не-16:9 экране они «отлипали» от краёв. Прибиваем к краям
 	# от текущего размера (джойстики всё равно прыгают под палец при касании — это лишь
@@ -132,6 +134,43 @@ class EnergyGauge extends Control:
 		var w := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
 		draw_string(f, c + Vector2(-w * 0.5, r * 0.55), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color(0.9, 0.97, 1.0))
 
+# ── Радар-карта (даёт блок RADAR): круг справа сверху с блипами; энергия — дугой слева-снизу ──
+# North-up: экран X = мир +X, экран Y (вниз) = мир +Z. Блипы — цель минус игрок (мир XZ).
+class RadarHUD extends Control:
+	var range_world: float = 220.0            # какой радиус мира влезает в радар
+	var blips: Array = []                     # [{p: Vector2 (dx,dz мир отн. игрока), c: Color}]
+	var heading: Vector2 = Vector2.UP         # «вперёд» игрока в экранных осях
+	var fill: float = 0.0                     # энергия 0..1
+	var has_cap: bool = false                 # есть ли аккумуляторы
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r := minf(size.x, size.y) * 0.5 - 12.0
+		# фон + обод + сетка
+		draw_circle(c, r, Color(0.03, 0.08, 0.10, 0.82))
+		draw_arc(c, r, 0, TAU, 64, Color(0.2, 0.5, 0.55, 0.9), 2.0)
+		draw_arc(c, r * 0.5, 0, TAU, 40, Color(0.2, 0.5, 0.55, 0.25), 1.0)
+		draw_line(c - Vector2(r, 0), c + Vector2(r, 0), Color(0.2, 0.5, 0.55, 0.22), 1.0)
+		draw_line(c - Vector2(0, r), c + Vector2(0, r), Color(0.2, 0.5, 0.55, 0.22), 1.0)
+		# блипы
+		var scale := r / maxf(range_world, 1.0)
+		for b in blips:
+			var pix: Vector2 = c + (b["p"] as Vector2) * scale
+			if pix.distance_to(c) > r - 2.0:
+				continue
+			draw_circle(pix, 3.0, b["c"])
+		# игрок в центре — треугольник по heading
+		var h: Vector2 = heading if heading.length() > 0.01 else Vector2.UP
+		var perp := Vector2(-h.y, h.x)
+		draw_colored_polygon(PackedVector2Array([c + h * 7.0, c - h * 4.0 + perp * 4.0, c - h * 4.0 - perp * 4.0]),
+				Color(0.9, 0.97, 1.0))
+		# энерго-дуга по ободу СНИЗУ-СЛЕВА (0=право, PI/2=низ, PI=лево)
+		var ar := r + 5.0
+		draw_arc(c, ar, PI * 0.5, PI, 22, Color(0.2, 0.5, 0.55, 0.35), 3.0)   # трек
+		if has_cap:
+			var col := Color(0.3, 1.0, 0.5) if fill > 0.25 else Color(1.0, 0.6, 0.2)
+			draw_arc(c, ar, PI * 0.5, PI * 0.5 + (PI * 0.5) * clampf(fill, 0.0, 1.0), 22, col, 4.5)
+
 var _energy_gauge: EnergyGauge = null
 func _build_energy_gauge() -> void:
 	_energy_gauge = EnergyGauge.new()
@@ -139,6 +178,21 @@ func _build_energy_gauge() -> void:
 	_energy_gauge.position = Vector2(16, 16)
 	_energy_gauge.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_energy_gauge)
+
+# Радар-карта: круг СПРАВА СВЕРХУ. Виден только если у активной машины есть блок RADAR.
+# Энергия показана дугой по его ободу слева-снизу (см. RadarHUD._draw).
+const RADAR_SIZE := 150.0
+var _radar: RadarHUD = null
+func _build_radar() -> void:
+	_radar = RadarHUD.new()
+	_radar.size = Vector2(RADAR_SIZE, RADAR_SIZE)
+	_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
+	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_radar.visible = false
+	add_child(_radar)
+
+func _radar_pos(screen: Vector2) -> Vector2:
+	return Vector2(screen.x - RADAR_SIZE - 12.0, 12.0)   # справа сверху
 
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
@@ -532,20 +586,59 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 		v.rotate_build(axis, ang)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
-	# Индикатор энергии текущей машины (заполненность аккумуляторов).
-	if _energy_gauge:
-		var v: Node = _menu_vehicle_or_current()
-		var new_fill := 0.0
-		var new_cap := false
-		if v and v.has_method("energy_fill"):
-			new_fill = v.energy_fill()
-			new_cap = v.energy_cap() > 0.0
-		if new_fill != _energy_gauge.fill or new_cap != _energy_gauge.has_cap:
-			_energy_gauge.fill = new_fill
-			_energy_gauge.has_cap = new_cap
-			_energy_gauge.queue_redraw()
+	_update_radar(delta)
+
+# Радар обновляем не каждый кадр (сбор блипов — O(враги+жилы)): раз в 0.15с. Виден только
+# если у активной машины есть блок RADAR. Блипы: враги (красные), активные жилы (жёлтые).
+# Энергия текущей машины — дугой по ободу радара (см. RadarHUD).
+var _radar_t: float = 0.0
+func _update_radar(delta: float) -> void:
+	if _radar == null:
+		return
+	_radar_t -= delta
+	if _radar_t > 0.0:
+		return
+	_radar_t = 0.15
+	var v: Node = _menu_vehicle_or_current()
+	var on: bool = _has_radar(v)
+	if _radar.visible != on:
+		_radar.visible = on
+	if not on:
+		return
+	var origin: Vector3 = (v as Node3D).global_position
+	var fwd: Vector3 = -(v as Node3D).global_transform.basis.z
+	var head := Vector2(fwd.x, fwd.z)
+	_radar.heading = head.normalized() if head.length() > 0.01 else Vector2.UP
+	_radar.fill = v.energy_fill() if v.has_method("energy_fill") else 0.0
+	_radar.has_cap = v.has_method("energy_cap") and v.energy_cap() > 0.0
+	var blips: Array = []
+	var vehicles := get_node_or_null("/root/Main/Vehicles")
+	if vehicles:
+		for e in vehicles.get_children():
+			if e == v or not (e is Node3D):
+				continue
+			var f = e.get("faction")
+			if f != null and int(f) != 0:
+				var rel: Vector3 = (e as Node3D).global_position - origin
+				blips.append({"p": Vector2(rel.x, rel.z), "c": Color(1.0, 0.32, 0.32)})
+	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
+	if rn and rn.has_method("active_positions"):
+		for wp in rn.active_positions():
+			var rel2: Vector3 = (wp as Vector3) - origin
+			blips.append({"p": Vector2(rel2.x, rel2.z), "c": Color(1.0, 0.82, 0.25)})
+	_radar.blips = blips
+	_radar.queue_redraw()
+
+# Есть ли у машины блок RADAR (тогда показываем радар-карту).
+func _has_radar(v) -> bool:
+	if v == null or not ("block_map_node" in v) or v.block_map_node == null:
+		return false
+	for b in v.block_map_node.get_children():
+		if "block" in b and int(b.block) == G.Block.RADAR:
+			return true
+	return false
 
 
 # ── Сборка выезжающей панели целиком в коде (тема — как у tech_ui) ─────────────
@@ -718,8 +811,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_block_globe)
 	if _anchor_btn:
 		_game_controls.append(_anchor_btn)
-	if _energy_gauge:
-		_game_controls.append(_energy_gauge)
+	if _radar:
+		_game_controls.append(_radar)
 
 func _set_game_controls_hidden(hidden: bool) -> void:
 	for n in _game_controls:

@@ -172,6 +172,14 @@ func _stream_in(v: Dictionary) -> void:
 		add_child(node)
 		v["node"] = node
 
+# Мировые позиции сейчас активных (стримнутых) жил — для блипов на радаре (hud.gd).
+func active_positions() -> Array:
+	var out: Array = []
+	for v in _data:
+		if int(v["slot"]) >= 0:
+			out.append(to_global(v["pos"]))
+	return out
+
 # Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])

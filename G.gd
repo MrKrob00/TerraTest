@@ -53,6 +53,7 @@ const BLOCK_META := {
 	Block.GENERATOR: {"f": "start", "g": 4, "rp": 30},
 	Block.REGEN:     {"f": "start", "g": 5, "rp": 40},
 	Block.SHIELD:    {"f": "start", "g": 5, "rp": 40},
+	Block.RADAR:     {"f": "start", "g": 2, "rp": 15},   # утилита: включает карту-радар на машине
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -64,6 +65,7 @@ const TECH_PARENT := {
 	Block.PROCESSOR: Block.COLLECTOR, Block.GENERATOR: Block.PROCESSOR,
 	Block.SOLAR: Block.CABIN,     Block.BATTERY: Block.SOLAR,
 	Block.SHIELD: Block.BATTERY,  Block.REGEN: Block.SHIELD,
+	Block.RADAR: Block.CABIN,     # утилита ветвится от кабины (ранняя QoL 2-го грейда)
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR]
@@ -291,6 +293,7 @@ enum Block {
 	GENERATOR,#14
 	REGEN,#15
 	SHIELD,#16
+	RADAR,#17
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -308,6 +311,7 @@ enum Block {
 @onready var generator_scene: PackedScene = preload("res://generator.tscn")
 @onready var regen_scene: PackedScene = preload("res://regen.tscn")
 @onready var shield_scene: PackedScene = preload("res://shield.tscn")
+@onready var radar_scene: PackedScene = preload("res://radar.tscn")   # при установке даёт карту-радар
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -342,4 +346,5 @@ func get_scene(block: Block) -> PackedScene:
 		Block.GENERATOR: return generator_scene
 		Block.REGEN: return regen_scene
 		Block.SHIELD: return shield_scene
+		Block.RADAR: return radar_scene
 	return null
