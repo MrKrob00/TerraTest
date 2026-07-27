@@ -17,7 +17,7 @@ extends RefCounted
 const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, красные цифры) — hit()
 const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
-const CARD_COUNT := 16          # сколько карточек в «хмаре»
+const CARD_COUNT := 28          # сколько карточек в «хмаре» (много; часть видна по ходу анимации)
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
 static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
