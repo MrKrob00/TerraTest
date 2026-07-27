@@ -44,12 +44,14 @@ vec3 palette(float t) {
 }
 
 void vertex() {
-	// Билборд: убираем поворот модели, оставляем позицию и масштаб (квад лицом к камере).
+	// Настоящий БИЛБОРД (лицом к КАМЕРЕ): берём оси камеры (INV_VIEW_MATRIX), масштабируем их
+	// размером карточки, позиция — из модели (m[3]). VIEW·(оси камеры) = единичный базис в
+	// экране → квад строго перпендикулярен взгляду и поворачивается за камерой.
 	mat4 m = MODEL_MATRIX;
 	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
-			vec4(length(m[0].xyz), 0.0, 0.0, 0.0),
-			vec4(0.0, length(m[1].xyz), 0.0, 0.0),
-			vec4(0.0, 0.0, length(m[2].xyz), 0.0),
+			INV_VIEW_MATRIX[0] * length(m[0].xyz),
+			INV_VIEW_MATRIX[1] * length(m[1].xyz),
+			INV_VIEW_MATRIX[2] * length(m[2].xyz),
 			m[3]);
 }
 
