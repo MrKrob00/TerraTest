@@ -39,6 +39,24 @@ const PITCH_MIN := -0.35          # ~−20°: смотреть вниз
 const PITCH_MAX := 0.66           # ~+38°: смотреть вдаль, к горизонту
 var gaze_pitch: float = 0.0       # 0 — ровно на машину, как раньше
 
+# ── Тач-камера (свайп вместо джойстика) ─────────────────────────────────────────
+# Один палец по миру — орбита (гориз.) + наклон взгляда (верт.), как во всех 3D-мобилках.
+# Два пальца — пинч-зум (раньше жил в джойстике камеры). Двойной тап — сброс взгляда.
+# Касания в зоне джойстика ДВИЖЕНИЯ игнорируем (там его палец), UI-кнопки/глобус тач съедают
+# сами (обрабатываем в _unhandled_input — доходит только НЕсъеденное).
+const TOUCH_LOOK_SENS := 0.006    # рад/пиксель свайпа (тач крупнее мыши)
+const PINCH_ZOOM_SENS := 0.03     # единиц RADIUS на пиксель изменения расстояния пинча
+const TAP_MAX_MOVE := 14.0        # пиксель: больше сдвиг — это свайп, а не тап
+const DOUBLE_TAP_MS := 300
+var _cam_touches: Dictionary = {} # index → позиция «мировых» касаний (не джойстик движения)
+var _touch_look_dx: float = 0.0
+var _touch_look_dy: float = 0.0
+var _pinch_last: float = -1.0
+var _tap_down_pos: Vector2 = Vector2.ZERO
+var _tap_down_ms: int = 0
+var _last_tap_ms: int = -10000
+var _tap_moved: bool = false
+
 var angle: float = 0.0
 var is_active: bool = false
 var _terrain: Node = null   # кэш ноды террейна (terrain_height_at)
@@ -64,8 +82,62 @@ func _input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.double_click:
 			reset_gaze()             # двойная ПКМ — взгляд снова ровно на машину
 
+# Тач-камера: сюда доходят только касания, НЕ съеденные UI (кнопки/глобус — Control-ы с
+# mouse_filter STOP их поглощают). Палец джойстика движения тоже пропускаем (по его индексу),
+# в стройке камеру не крутим (там драги ставят блоки).
+func _unhandled_input(event: InputEvent) -> void:
+	if VehicleInteractButton.camera_block:
+		return
+	if current_vehicle and "Building" in current_vehicle and current_vehicle.Building:
+		return
+	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			if event.index == jmove_idx:
+				return                       # это палец джойстика движения
+			_cam_touches[event.index] = event.position
+			if _cam_touches.size() == 1:
+				_tap_down_pos = event.position
+				_tap_down_ms = Time.get_ticks_msec()
+				_tap_moved = false
+		else:
+			if _cam_touches.has(event.index):
+				# короткое касание без свайпа = тап; два тапа подряд — сброс взгляда на машину.
+				if _cam_touches.size() == 1 and not _tap_moved \
+						and Time.get_ticks_msec() - _tap_down_ms < 250:
+					var now := Time.get_ticks_msec()
+					if now - _last_tap_ms < DOUBLE_TAP_MS:
+						reset_gaze()
+						_last_tap_ms = -10000
+					else:
+						_last_tap_ms = now
+				_cam_touches.erase(event.index)
+			if _cam_touches.size() < 2:
+				_pinch_last = -1.0
+	elif event is InputEventScreenDrag:
+		if event.index == jmove_idx or not _cam_touches.has(event.index):
+			return
+		_cam_touches[event.index] = event.position
+		if _tap_down_pos.distance_to(event.position) > TAP_MAX_MOVE:
+			_tap_moved = true
+		if _cam_touches.size() >= 2:
+			# Пинч-зум: развёл пальцы (дистанция растёт) → приближаем (RADIUS меньше).
+			var pts: Array = _cam_touches.values()
+			var d: float = pts[0].distance_to(pts[1])
+			if _pinch_last > 0.0:
+				RADIUS = clampf(RADIUS - (d - _pinch_last) * PINCH_ZOOM_SENS, ZOOM_MIN, ZOOM_MAX)
+			_pinch_last = d
+		else:
+			# Один палец — орбита (X) + наклон взгляда (Y). Копим сдвиг, применяем в camera_movement.
+			_touch_look_dx += event.relative.x
+			_touch_look_dy += event.relative.y
+
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
+	# Джойстик камеры заменён свайпом (тач-look) — прячем костыль и глушим его ввод.
+	if joystick_cam:
+		joystick_cam.visible = false
+		joystick_cam.set_process_input(false)
 	# Собираем только управляемую игроком технику (у неё есть take_block_into_hand),
 	# чтобы враг (другой RigidBody3D в Vehicles) не попадал в список переключения.
 	var vehicle_childs = $"..".get_children()
@@ -95,30 +167,25 @@ func _process(delta):
 var locked_angle: float = 0.0
 var is_locked: bool = false
 
-func camera_movement(delta):
-	var dir = (-$"HUD/Joystick_camera".get_joystick_dir().x)
-	# Жест кругового меню мог включиться ПОСЛЕ того, как в этот же кадр уже накопился
-	# сдвиг мыши (_input идёт раньше _process) — не даём этому остатку доехать до угла.
-	# Наклон взгляда: джойстик вверх (экранный y отрицательный) и мышь вверх — смотреть выше.
-	var tilt : float = -joystick_cam.get_joystick_dir().y
-	# Жест кругового меню гасит ОБА источника, включая джойстик: его центрует _input самого
-	# джойстика, но если пальцы замерли — событий нет, и отклонённая ручка продолжала бы
-	# крутить (а теперь и наклонять) камеру весь холд.
+func camera_movement(_delta):
+	# Поворот/наклон камеры — от СВАЙПА (тач) и мыши (ПКМ-драг на ПК). Оба уже в пикселях,
+	# накоплены за кадр (_touch_look_* в _unhandled_input, _mouse_look_* в _input). Джойстик
+	# камеры убран (был костылём). Жест кругового меню гасит оба источника.
 	if VehicleInteractButton.camera_block:
 		_mouse_look_dx = 0.0
 		_mouse_look_dy = 0.0
-		dir = 0.0
-		tilt = 0.0
-	var mouse_turn := -_mouse_look_dx * MOUSE_SENS
+		_touch_look_dx = 0.0
+		_touch_look_dy = 0.0
+	var turn := -(_mouse_look_dx * MOUSE_SENS + _touch_look_dx * TOUCH_LOOK_SENS)
 	_mouse_look_dx = 0.0
-	var mouse_pitch := -_mouse_look_dy * MOUSE_SENS
+	_touch_look_dx = 0.0
+	var pitch := -(_mouse_look_dy * MOUSE_SENS + _touch_look_dy * TOUCH_LOOK_SENS)
 	_mouse_look_dy = 0.0
-	if absf(tilt) > 0.05 or mouse_pitch != 0.0:
-		gaze_pitch = clampf(gaze_pitch + tilt * PITCH_SPEED * delta + mouse_pitch, PITCH_MIN, PITCH_MAX)
-	# mouse_turn либо ровно 0.0 (не двигали), либо реальный накопленный сдвиг — тут не
-	# нужен допуск на дребезг, в отличие от аналогового джойстика ниже.
-	if abs(dir) > 0.05 or mouse_turn != 0.0:
-		angle += dir * ROT_SPEED * delta + mouse_turn
+	_touch_look_dy = 0.0
+	if pitch != 0.0:
+		gaze_pitch = clampf(gaze_pitch + pitch, PITCH_MIN, PITCH_MAX)
+	if turn != 0.0:
+		angle += turn
 		is_locked = false
 		locked_angle = angle - current_vehicle.global_rotation.y
 	else:
