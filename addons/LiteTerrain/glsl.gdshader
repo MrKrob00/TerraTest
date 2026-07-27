@@ -42,6 +42,11 @@ uniform float biome_scale       : hint_range(30.0, 1000.0) = 320.0;  // разм
 uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.16;   // резкость границы биомов
 uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.2;    // сила травы в ПЕСЧАНОМ биоме (~0.2 макс)
+// КАНЬОН-биом: терракотовые регионы (свой шум). Перекрывает песок/траву, суша, без травы.
+uniform vec4  color_canyon      : source_color = vec4(0.62, 0.34, 0.22, 1.0);  // терракота
+uniform float canyon_scale      : hint_range(30.0, 1000.0) = 260.0;  // размер пятна каньона
+uniform float canyon_threshold  : hint_range(0.0, 1.0)     = 0.72;   // выше = реже каньоны
+uniform float canyon_edge       : hint_range(0.02, 0.5)    = 0.12;   // резкость границы
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 0.4;
@@ -137,11 +142,16 @@ void vertex() {
     float above_water = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
     float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n) * above_water;
     float t_snow  = smoothstep(height_snow_start - zone_blend, height_snow_start + zone_blend, wy);
+    // КАНЬОН: свой низкочастотный шум (оффсет) → терракотовые регионы, только на суше.
+    float canyon  = smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
+            vnoise(world_pos.xz / canyon_scale + vec2(101.0, 53.0))) * above_water;
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);
-    zone          = mix(zone,           color_snow.rgb,  t_snow);
+    zone          = mix(zone,           color_canyon.rgb, canyon);   // каньон поверх песка/травы
+    zone          = mix(zone,           color_snow.rgb,  t_snow);    // снег по высоте — поверх всего
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
-    v_base_col    = mix(zone, color_rock.rgb, rock_t);
+    vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // скалы каньона темнее-терракота
+    v_base_col    = mix(zone, rock_col, rock_t);
 
     v_is_grass = 0.0;
     // COLOR.r < 0.5 помечает вершины на границе чанка: там смещение травы пропускаем, чтобы
@@ -152,7 +162,7 @@ void vertex() {
         // макс, редкая и низкая), на снегу реже/короче (snow_grass), НЕТ на камне (rock_t
         // зануляет — «на скалу не приминается»). amount масштабирует и высоту, и плотность.
         float land   = mix(sand_grass, 1.0, biome_grass) * (1.0 - t_snow);
-        float amount = max(land, t_snow * snow_grass) * (1.0 - rock_t);
+        float amount = max(land, t_snow * snow_grass) * (1.0 - rock_t) * (1.0 - canyon);   // каньон сухой
         if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;   // выше в траве, ниже на снегу
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
