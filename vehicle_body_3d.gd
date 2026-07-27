@@ -1206,6 +1206,7 @@ func take_block_into_hand(block_type: int) -> bool:
 	if instance is Node3D:
 		instance.position = Vector3.ZERO
 		instance.scale = Vector3.ONE
+		BlockFX.play(instance, false)      # глитч появления блока в руке (как при спавне)
 	block_body = instance
 	block_take = true
 	build_basis = Basis()          # свежий блок — без ручного поворота
