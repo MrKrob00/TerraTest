@@ -264,11 +264,27 @@ func _defense_tick(delta: float) -> void:
 # выравнивание не воткнуло углы в склон; (3) проверка ровности (перепад <= 0.5 м, иначе
 # опускаем обратно и отказ); (4) поворот ровно 0°; (5) фиксация + колонна.
 # Сброс: пока на якоре, любой контакт НЕ с террейном снимает фиксацию.
+# Есть ли на машине блок ФИКС-ОПОРЫ (SUPPORT). Без него якорь недоступен (по ТЗ).
+func has_support() -> bool:
+	if block_map_node == null:
+		return false
+	for b in block_map_node.get_children():
+		if "block" in b and int(b.block) == G.Block.SUPPORT:
+			return true
+	return false
+
+# Можно ли этой машине вставать на якорь: она база ИЛИ на ней есть фикс-опора.
+func can_anchor() -> bool:
+	return is_station or has_support()
+
 func toggle_anchor() -> bool:
 	if is_station:
 		return true                        # стационарная база всегда на якоре — снять нельзя
 	if anchored:
 		_release_anchor()
+		return false
+	if not has_support():
+		_anchor_refuse_hop()               # без фикс-опоры якорь не ставится (нужен блок SUPPORT)
 		return false
 	var terr: Node = _find_terrain()
 	var ground_center: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
