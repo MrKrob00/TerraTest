@@ -1693,6 +1693,16 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
 
+# Карта состояния корруптации (grass.gd ведёт: пусто→редко +чанк→лечится у игрока навсегда).
+# Ставим на ОБА LOD-материала — глитч виден на любой дальности (лечится вблизи).
+func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
+	for m in [_mat_lod0, _mat_lod_high]:
+		if m is ShaderMaterial:
+			var sm := m as ShaderMaterial
+			sm.set_shader_parameter("corrupt_map", tex)
+			sm.set_shader_parameter("corrupt_world_center", center)
+			sm.set_shader_parameter("corrupt_world_size", size)
+
 func _get_material() -> Material:
 	var mat: Material = null
 	if mesh_instance.mesh != null and mesh_instance.mesh.get_surface_count() > 0:

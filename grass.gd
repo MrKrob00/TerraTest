@@ -21,7 +21,15 @@ extends Node3D
 ## Сколько отпечатков держим максимум (= размер пула спрайтов).
 @export var max_footprints: int = 200
 
+## КОРРУПТАЦИЯ (лор цифровой симуляции): карта состояния «битых чанков» для шейдера террейна.
+## Изначально пусто; редко +1 чанк; вблизи игрока чанк ЛЕЧИТСЯ НАВСЕГДА (иммунен к спреду).
+@export_group("Корруптация")
+@export var corr_spread_interval: float = 120.0     # раз в пару минут +1 чанк
+@export var corr_heal_dist: float = 240.0           # радиус лечения (3× прежних 80), НАВСЕГДА
+@export var corr_map_size: float = 1984.0           # мировой размер карты (единиц)
+
 const VP_SIZE: int = 512
+const CORR_GRID: int = 64                           # текстура состояния (клеток на сторону)
 
 var _initialized: bool = false
 var _benders: Array = []
@@ -32,6 +40,15 @@ var _footprints: Array = []          # [{pos: Vector2 (world xz), born: float}]
 var _time: float = 0.0
 var _refresh_t: float = 0.0
 
+var _corr: PackedByteArray           # 255 = чанк битый, 0 = чистый (это и есть данные R8-текстуры)
+var _corr_healed: PackedByteArray    # 1 = вылечен навсегда (иммунен к спреду)
+var _corr_img: Image
+var _corr_tex: ImageTexture
+var _corr_center: Vector2 = Vector2.ZERO
+var _corr_spread_t: float = 0.0
+var _corr_heal_t: float = 0.0
+var _corr_dirty: bool = false
+
 func _ready() -> void:
 	await get_tree().process_frame
 	if not map_node or not map_node.has_method("set_grass_trample"):
@@ -39,6 +56,7 @@ func _ready() -> void:
 		return
 	_benders = get_tree().get_nodes_in_group("grass_benders")
 	_build_viewport()
+	_corr_init()
 	_initialized = true
 
 # ── Build the flatten SubViewport + a pool of stamp sprites (all in code, no .tscn) ──────
@@ -78,6 +96,7 @@ func _process(delta: float) -> void:
 	if not _initialized:
 		return
 	_time += delta
+	_corruption_tick(delta)
 
 	# Refresh the bender list periodically so newly-spawned objects are picked up.
 	_refresh_t += delta
@@ -149,3 +168,98 @@ func _place_stamp(i: int, rel: Vector2, half: float, ppu: float, sprite_scale: f
 	s.scale = Vector2(sprite_scale, sprite_scale)
 	s.modulate = Color(fade, fade, fade, fade)
 	return i + 1
+
+# ══ КОРРУПТАЦИЯ: состояние «битых чанков» → текстура для шейдера террейна ══════════
+# Изначально пусто. Раз в corr_spread_interval добавляем +1 чанк (растёт от края уже битых).
+# Вблизи игрока (corr_heal_dist) чанки лечатся НАВСЕГДА (иммунны к дальнейшему спреду).
+func _corr_init() -> void:
+	var n := CORR_GRID * CORR_GRID
+	_corr = PackedByteArray(); _corr.resize(n); _corr.fill(0)
+	_corr_healed = PackedByteArray(); _corr_healed.resize(n); _corr_healed.fill(0)
+	_corr_img = Image.create(CORR_GRID, CORR_GRID, false, Image.FORMAT_R8)
+	_corr_img.fill(Color(0, 0, 0))
+	_corr_tex = ImageTexture.create_from_image(_corr_img)
+	if map_node is Node3D:
+		_corr_center = Vector2((map_node as Node3D).global_position.x, (map_node as Node3D).global_position.z)
+	if map_node and map_node.has_method("get_dims"):
+		var d = map_node.get_dims()
+		if d.x > 0:
+			corr_map_size = float(d.x)
+	_corr_spread_t = corr_spread_interval
+	if map_node.has_method("set_corruption_map"):
+		map_node.set_corruption_map(_corr_tex, _corr_center, corr_map_size)
+
+func _corruption_tick(delta: float) -> void:
+	_corr_spread_t -= delta
+	if _corr_spread_t <= 0.0:
+		_corr_spread_t = corr_spread_interval
+		_corr_spread_one()
+	_corr_heal_t -= delta
+	if _corr_heal_t <= 0.0:
+		_corr_heal_t = 0.5
+		_corr_heal_near()
+	if _corr_dirty:
+		_corr_dirty = false
+		_corr_img.set_data(CORR_GRID, CORR_GRID, false, Image.FORMAT_R8, _corr)
+		_corr_tex.update(_corr_img)
+
+# +1 битый чанк: если корруптации ещё нет — случайный сид; иначе клетка у края существующей.
+func _corr_spread_one() -> void:
+	var has_any := false
+	for v in _corr:
+		if v != 0:
+			has_any = true
+			break
+	if not has_any:
+		var tries := 0
+		while tries < 40:
+			tries += 1
+			var i := randi() % _corr.size()
+			if _corr_healed[i] == 0:
+				_corr[i] = 255
+				_corr_dirty = true
+				return
+		return
+	var cands: Array = []
+	for y in CORR_GRID:
+		for x in CORR_GRID:
+			var i := y * CORR_GRID + x
+			if _corr[i] != 0 or _corr_healed[i] != 0:
+				continue
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var nx := x + d.x
+				var ny := y + d.y
+				if nx >= 0 and nx < CORR_GRID and ny >= 0 and ny < CORR_GRID and _corr[ny * CORR_GRID + nx] != 0:
+					cands.append(i)
+					break
+	if cands.is_empty():
+		return
+	_corr[cands[randi() % cands.size()]] = 255
+	_corr_dirty = true
+
+# Лечим чанки в радиусе corr_heal_dist вокруг игрока — НАВСЕГДА (помечаем healed).
+func _corr_heal_near() -> void:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var p := Vector2(cam.global_position.x, cam.global_position.z)
+	var cell_w := corr_map_size / float(CORR_GRID)
+	var rad := int(ceil(corr_heal_dist / cell_w)) + 1
+	var pcx := int(((p.x - _corr_center.x) / corr_map_size + 0.5) * float(CORR_GRID))
+	var pcy := int(((p.y - _corr_center.y) / corr_map_size + 0.5) * float(CORR_GRID))
+	var d2 := corr_heal_dist * corr_heal_dist
+	for dy in range(-rad, rad + 1):
+		for dx in range(-rad, rad + 1):
+			var x := pcx + dx
+			var y := pcy + dy
+			if x < 0 or x >= CORR_GRID or y < 0 or y >= CORR_GRID:
+				continue
+			var i := y * CORR_GRID + x
+			if _corr_healed[i] != 0 and _corr[i] == 0:
+				continue
+			var wx := _corr_center.x + ((float(x) + 0.5) / float(CORR_GRID) - 0.5) * corr_map_size
+			var wz := _corr_center.y + ((float(y) + 0.5) / float(CORR_GRID) - 0.5) * corr_map_size
+			if Vector2(wx, wz).distance_squared_to(p) <= d2:
+				_corr[i] = 0
+				_corr_healed[i] = 1
+				_corr_dirty = true
