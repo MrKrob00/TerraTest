@@ -65,6 +65,20 @@ uniform vec2  trample_center = vec2(0.0);
 uniform float trample_size   = 130.0;
 group_uniforms;
 
+group_uniforms Corruption;
+// Зоны «битых данных» (лор цифровой симуляции): сине-фиолетовый ЧАНКОВЫЙ глитч поверх земли —
+// пятнами по миру (свой шум), мерцает во времени, СВЕТИТСЯ (EMISSION). Тюнинг в редакторе.
+uniform float corrupt_amount    : hint_range(0.0, 1.0)    = 1.0;    // мастер (0 = выкл)
+uniform float corrupt_scale     : hint_range(30.0, 800.0) = 180.0;  // размер пятна зоны
+uniform float corrupt_threshold : hint_range(0.0, 1.0)    = 0.64;   // выше = меньше зон
+uniform float corrupt_edge      : hint_range(0.01, 0.3)   = 0.08;   // резкость края зоны
+uniform float glitch_cell       : hint_range(0.3, 4.0)    = 1.0;    // размер «пикселя» глитча (мир)
+uniform float glitch_speed      : hint_range(0.0, 20.0)   = 7.0;    // частота мерцания
+uniform vec3  corrupt_cyan    : source_color = vec3(0.15, 0.85, 1.0);
+uniform vec3  corrupt_magenta : source_color = vec3(0.72, 0.16, 1.0);
+uniform float corrupt_glow      : hint_range(0.0, 4.0)    = 1.6;    // сила свечения
+group_uniforms;
+
 // FILL-ОПТИМИЗАЦИЯ: цвет зон по высоте + переход в камень по склону считается в ВЕРШИНЕ
 // (v_base_col) и интерполируется, а не пересчитывается на каждый пиксель. Террейн — fill-bound
 // (тяжёл именно попиксельно), а вершин на порядки меньше. Механики те же; на границах зон
@@ -76,6 +90,8 @@ varying vec2  v_tile_uv;     // ГЛАДКИЙ — для выборки тай�
                              // квантованного v_pixel_uv производные ступенчатые → мип ломался.
 varying vec3  v_base_col;
 varying float v_is_grass;
+varying vec2  v_world_xz;     // мир XZ — для чанкового глитча корруптации во фрагменте
+varying float v_corrupt;      // сила зоны битых данных (0..1)
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -101,6 +117,11 @@ void vertex() {
     float wy = world_pos.y;
     v_tile_uv  = world_pos.xz / tile_world_size;                                  // гладкий (текстура + мип)
     v_pixel_uv = floor(v_tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;            // квантованный (шум/трава)
+
+    // Зона «битых данных»: свой низкочастотный шум (оффсет, чтобы не совпадать с биомом).
+    v_world_xz    = world_pos.xz;
+    float corr_n  = vnoise(world_pos.xz / corrupt_scale + vec2(37.0, 91.0));
+    v_corrupt     = smoothstep(corrupt_threshold - corrupt_edge, corrupt_threshold + corrupt_edge, corr_n) * corrupt_amount;
 
     // БИОМ: песок/трава по регионам (низкочастотный шум), а НЕ по высоте. biome_grass=1 —
     // травяной биом, 0 — песчаный. Ниже уровня воды (height_grass_start) — всегда песок
@@ -153,4 +174,18 @@ void fragment() {
     // земли — мягкая тень у корня, а не светлое пятно. Крутится uniform-ом grass_shade.
     ALBEDO    = base_col * mix(0.65, grass_shade, v_is_grass);
     ROUGHNESS = 0.9;
+
+    // ── Зоны «битых данных»: сине-фиолетовый ЧАНКОВЫЙ глитч ──────────────────────
+    // Квантуем мир в клетки glitch_cell → на клетку хеш (+ время = мерцание) выбирает
+    // cyan / magenta / тёмный «бит». Рваными пятнами (второй хеш), светится (EMISSION).
+    EMISSION = vec3(0.0);
+    if (v_corrupt > 0.01) {
+        vec2 cell = floor(v_world_xz / glitch_cell);
+        float t = floor(TIME * glitch_speed);
+        float n = hash2D(cell + vec2(t * 1.7, t * 0.9));
+        vec3 g = (n < 0.42) ? corrupt_cyan : (n < 0.84 ? corrupt_magenta : vec3(0.02, 0.02, 0.05));
+        float k = v_corrupt * step(0.25, hash2D(cell * 1.3 + vec2(5.0)));   // не сплошняк
+        ALBEDO   = mix(ALBEDO, g, k);
+        EMISSION = g * corrupt_glow * k;
+    }
 }
