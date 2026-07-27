@@ -1,27 +1,24 @@
 shader_type spatial;
 render_mode cull_disabled, unshaded, depth_draw_always;
 
-// Эффект на блоке — три режима (см. block_fx.gd):
-//   mode 0 — ПОЯВЛЕНИЕ: блок «собирается» из сине-фиолетового ГЛИТЧА снизу вверх. Глитч
-//            РАЗНОМАСШТАБНЫЙ — пятна разного размера (не одинаковые квадраты), cyan/magenta.
-//   mode 1 — ИСЧЕЗНОВЕНИЕ: тот же разномасштабный глитч мерцает/съезжает полосами и гаснет.
-//   mode 2 — ДАМАГ: КАК РАНЬШЕ — короткая вспышка красных 0/1 (цифры) на грани.
+// «Разрендер» блока — эффект недогруженного объекта симуляции (см. block_fx.gd):
+//   mode 0 — ПОЯВЛЕНИЕ: блок «загружается» снизу вверх. Выше фронта — недогруз: вайрфрейм-
+//            сетка (cyan линии) + «missing texture» (magenta/чёрная шахматка) + мерцающий
+//            глитч; ниже фронта — уже собран (discard → виден настоящий блок).
+//   mode 1 — ИСЧЕЗНОВЕНИЕ: блок «разрендеривается» — та же вайрфрейм/missing-texture с
+//            выпадающими клетками, гаснет (ALPHA→0).
+//   mode 2 — ДАМАГ (как раньше): короткая вспышка КРАСНЫХ 0/1 на грани.
 // Триплан в ЛОКАЛЬНЫХ осях коробки — едет и вращается вместе с блоком.
 
 uniform int   mode = 0;
 uniform float progress : hint_range(0.0, 1.0) = 0.0;
-uniform vec3  glitch_a : source_color = vec3(0.15, 0.85, 1.0);   // cyan
-uniform vec3  glitch_b : source_color = vec3(0.72, 0.16, 1.0);   // magenta
+uniform vec3  glitch_a : source_color = vec3(0.15, 0.85, 1.0);     // cyan (вайрфрейм)
+uniform vec3  glitch_b : source_color = vec3(0.72, 0.16, 1.0);     // magenta (missing texture)
 uniform vec3  color_damage : source_color = vec3(1.0, 0.12, 0.12); // красный (урон, цифры)
-// Глитч появления/исчезновения — «пятна разного размера»: регион выбирает крупный/средний/мелкий
-// размер пикселя. cells_* — сколько пикселей на метр для трёх размеров.
-uniform float cells_coarse = 3.0;
-uniform float cells_mid    = 6.0;
-uniform float cells_fine   = 10.0;
-uniform float region_freq  = 1.6;    // как часто меняется размер (регионов на метр)
-uniform float damage_cells = 8.0;    // плотность цифр урона (mode 2)
+uniform float cells_per_meter = 5.0;                              // размер «текселя» разрендера
+uniform float damage_cells = 8.0;                                // плотность цифр урона (mode 2)
 uniform float flip_speed = 8.0;
-uniform float glow_mul = 1.6;
+uniform float glow_mul = 1.5;
 uniform float seed = 0.0;
 
 varying vec3  v_local;
@@ -34,7 +31,6 @@ float hash(vec2 p) {
 	return fract(p.x * p.y);
 }
 
-// Цвет глитч-пикселя: cyan / magenta / тёмный «бит».
 vec3 glitch_color(vec2 cell, float tt) {
 	float n = hash(cell + vec2(tt * 1.7, tt * 0.9));
 	if (n < 0.42) return glitch_a;
@@ -42,16 +38,21 @@ vec3 glitch_color(vec2 cell, float tt) {
 	return vec3(0.02, 0.02, 0.05);
 }
 
-// Размер «пикселя» глитча РАЗНЫЙ по регионам (3 размера) → не одинаковые квадраты.
-float region_cpm(vec2 uv) {
-	vec2 reg = floor(uv * region_freq);
-	float s = floor(hash(reg + vec2(9.0)) * 3.0);      // 0 / 1 / 2
-	if (s < 0.5) return cells_coarse;
-	if (s < 1.5) return cells_mid;
-	return cells_fine;
+// Вайрфрейм-сетка + missing-texture шахматка + мерцающий глитч. bright — усиление на линиях.
+vec3 derender_col(vec2 uv, float tt, out float bright) {
+	vec2 grid = uv * cells_per_meter;
+	vec2 cell = floor(grid);
+	vec2 f = fract(grid);
+	float line = max(smoothstep(0.07, 0.0, min(f.x, 1.0 - f.x)),
+			smoothstep(0.07, 0.0, min(f.y, 1.0 - f.y)));
+	float checker = mod(cell.x + cell.y, 2.0);
+	vec3 col = mix(vec3(0.02, 0.0, 0.05), glitch_b, checker * 0.6);   // missing texture (magenta/чёрный)
+	col = mix(col, glitch_a, line);                                  // вайрфрейм (cyan линии)
+	col = mix(col, glitch_color(cell, tt), 0.35);                    // лёгкий мерцающий глитч
+	bright = 0.5 + line * 0.9;
+	return col;
 }
 
-// Цифра 0/1 в ячейке (для урона).
 float glyph(vec2 uv, float bit) {
 	vec2 d = abs(uv - 0.5);
 	if (bit > 0.5) {
@@ -81,34 +82,26 @@ void fragment() {
 	float tt = floor(TIME * flip_speed);
 
 	if (mode == 0) {
-		// ПОЯВЛЕНИЕ: разномасштабный глитч «загружается» снизу вверх, яркий фронт волны.
-		float cpm = region_cpm(uv);
-		vec2 cell = floor(uv * cpm);
-		float body = step(v_h, progress);
-		float wave = smoothstep(0.12, 0.0, abs(v_h - progress));
-		float lit  = step(0.22, hash(cell + vec2(3.0)));
-		vec3  g    = glitch_color(cell, tt);
-		float on   = max(body * lit, wave);
-		float flick = 0.8 + 0.2 * hash(vec2(floor(TIME * 20.0), cell.y));
-		ALBEDO = g * on * flick * (glow_mul + wave * 2.5);
+		// ПОЯВЛЕНИЕ: собирается снизу вверх. Ниже фронта — discard (настоящий блок виден).
+		float front = smoothstep(0.09, 0.0, abs(v_h - progress));
+		if (v_h < progress - 0.02 && front < 0.02) {
+			discard;
+		}
+		float br;
+		vec3 col = derender_col(uv, tt, br);
+		ALBEDO = col * (br * glow_mul + front * 2.5);
 		ALPHA  = 1.0;
 	} else if (mode == 1) {
-		// ИСЧЕЗНОВЕНИЕ: разномасштабный глитч, полосы съезжают по X, гаснет.
-		float cpm = region_cpm(uv);
-		float band = floor(uv.y * 12.0);
-		float gg = hash(vec2(band, floor(TIME * 11.0)));
-		float shift = gg > 0.80 ? (gg - 0.4) * 3.5 : 0.0;
-		vec2 cell = floor(vec2(uv.x * cpm + shift, uv.y * cpm));
-		vec3 g = glitch_color(cell, tt);
-		float on = step(0.5, hash(cell + vec2(floor(TIME * 9.0), 7.0)));
-		float flicker = 0.5 + 0.5 * hash(vec2(floor(TIME * 22.0), cell.y));
-		float glow = on * flicker;
+		// ИСЧЕЗНОВЕНИЕ: разрендер с выпадающими клетками, гаснет.
+		float br;
+		vec3 col = derender_col(uv, tt, br);
+		float drop = step(0.3, hash(floor(uv * cells_per_meter) + vec2(floor(TIME * 10.0), 3.0)));
 		float fade = clamp(1.0 - progress, 0.0, 1.0);
-		float a = fade * (0.3 + glow * 0.7);
-		if (a < 0.02) {
+		float a = fade * (0.55 + drop * 0.45);
+		if (a < 0.03) {
 			discard;
 		} else {
-			ALBEDO = g * (glow * glow_mul + 0.25);
+			ALBEDO = col * (br * glow_mul + 0.4);
 			ALPHA  = clamp(a, 0.0, 1.0);
 		}
 	} else {
