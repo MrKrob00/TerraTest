@@ -69,9 +69,12 @@ group_uniforms Corruption;
 // Зоны «битых данных» (лор цифровой симуляции): сине-фиолетовый ЧАНКОВЫЙ глитч поверх земли —
 // пятнами по миру (свой шум), мерцает во времени, СВЕТИТСЯ (EMISSION). Тюнинг в редакторе.
 uniform float corrupt_amount    : hint_range(0.0, 1.0)    = 1.0;    // мастер (0 = выкл)
-uniform float corrupt_scale     : hint_range(30.0, 800.0) = 180.0;  // размер пятна зоны
-uniform float corrupt_threshold : hint_range(0.0, 1.0)    = 0.64;   // выше = меньше зон
-uniform float corrupt_edge      : hint_range(0.01, 0.3)   = 0.08;   // резкость края зоны
+uniform float corrupt_scale     : hint_range(30.0, 800.0) = 220.0;  // размер пятна зоны
+uniform float corrupt_threshold : hint_range(0.0, 1.0)    = 0.82;   // выше = РЕЖЕ зон (редкие)
+uniform float corrupt_edge      : hint_range(0.01, 0.3)   = 0.06;   // резкость края зоны
+// Вблизи камеры глитч «лечится» в нормальный террейн: ближе clear_dist — 0, дальше +fade — полный.
+uniform float corrupt_clear_dist : hint_range(10.0, 300.0) = 80.0;  // радиус, где всё уже нормально
+uniform float corrupt_fade       : hint_range(5.0, 120.0)  = 35.0;  // ширина перехода наружу
 uniform float glitch_cell       : hint_range(0.3, 4.0)    = 1.0;    // размер «пикселя» глитча (мир)
 uniform float glitch_speed      : hint_range(0.0, 20.0)   = 7.0;    // частота мерцания
 uniform vec3  corrupt_cyan    : source_color = vec3(0.15, 0.85, 1.0);
@@ -119,9 +122,13 @@ void vertex() {
     v_pixel_uv = floor(v_tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;            // квантованный (шум/трава)
 
     // Зона «битых данных»: свой низкочастотный шум (оффсет, чтобы не совпадать с биомом).
+    // Редкие зоны (высокий порог) + «лечатся» вблизи камеры: ближе corrupt_clear_dist глитча
+    // нет (нормальный террейн), дальше проступает. trample_center = позиция камеры (из grass.gd).
     v_world_xz    = world_pos.xz;
     float corr_n  = vnoise(world_pos.xz / corrupt_scale + vec2(37.0, 91.0));
-    v_corrupt     = smoothstep(corrupt_threshold - corrupt_edge, corrupt_threshold + corrupt_edge, corr_n) * corrupt_amount;
+    float cam_d   = distance(world_pos.xz, trample_center);
+    float near_fade = smoothstep(corrupt_clear_dist, corrupt_clear_dist + corrupt_fade, cam_d);
+    v_corrupt     = smoothstep(corrupt_threshold - corrupt_edge, corrupt_threshold + corrupt_edge, corr_n) * corrupt_amount * near_fade;
 
     // БИОМ: песок/трава по регионам (низкочастотный шум), а НЕ по высоте. biome_grass=1 —
     // травяной биом, 0 — песчаный. Ниже уровня воды (height_grass_start) — всегда песок
