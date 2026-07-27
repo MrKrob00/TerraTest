@@ -21,10 +21,28 @@ extends Node3D
 @export var far_limit: float = 60.0
 @export var map_node: Node
 
+## РЕДКОЕ СОБЫТИЕ «Проверка сектора» (лор цифровой симуляции): Система объявляет проверку
+## квадрата вокруг игрока, даёт время сбежать, и если он не покинул квадрат — вызывает
+## усиленный отряд врагов внутрь. Заглянул в квадрат — беги.
+@export_group("Проверка сектора")
+@export var scan_enabled: bool = true
+@export var scan_min_interval: float = 180.0        # не чаще (сек) — событие редкое
+@export var scan_max_interval: float = 420.0
+@export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
+@export var scan_warn_time: float = 12.0            # сколько секунд на побег
+@export var scan_squad: int = 5                     # сколько врагов вызывает при провале
+@export var scan_preset: int = 1                    # усиленная сборка (см. blocks.gd layout)
+
 var _enemies: Array = []
 var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
 var _t: float = 0.0
 var _ready_done: bool = false
+
+var _scan_state: int = 0                            # 0 — покой, 1 — идёт предупреждение
+var _scan_t: float = 0.0                            # до следующей проверки
+var _scan_left: float = 0.0                         # осталось до зачистки
+var _scan_center: Vector3 = Vector3.ZERO
+var _scan_marker: Node3D = null
 
 func _ready() -> void:
 	# Ждём загрузку рельефа (map грузит md после своего await).
@@ -35,12 +53,14 @@ func _ready() -> void:
 		map = _find_map()
 		guard += 1
 	_ready_done = map != null and map.has_method("get_dims") and map.get_dims().x > 0
+	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 
 func _process(delta: float) -> void:
 	if not _ready_done:
 		return
 	_enemies = _enemies.filter(func(e): return is_instance_valid(e))
 	_track_far(delta)
+	_scan_tick(delta)                               # редкое событие «проверка сектора»
 	if _enemies.size() >= max_enemies:
 		return
 	_t -= delta
@@ -170,3 +190,109 @@ func _player() -> Node3D:
 	if cc and "current_vehicle" in cc and is_instance_valid(cc.current_vehicle):
 		return cc.current_vehicle
 	return null
+
+# ── Проверка сектора (редкое событие) ─────────────────────────────────────────
+func _scan_tick(delta: float) -> void:
+	if not scan_enabled:
+		return
+	if _scan_state == 0:
+		_scan_t -= delta
+		if _scan_t <= 0.0:
+			_start_scan()
+	else:
+		_scan_left -= delta
+		_pulse_marker()
+		if _scan_left <= 0.0:
+			_resolve_scan()
+
+func _start_scan() -> void:
+	var p := _player()
+	if p == null:
+		_scan_t = 30.0                              # игрока нет — попробуем позже
+		return
+	_scan_center = p.global_position
+	_scan_state = 1
+	_scan_left = scan_warn_time
+	_build_marker()
+	_say("Система", "⚠ ПРОВЕРКА СЕКТОРА. Покиньте квадрат за %d сек." % int(scan_warn_time))
+
+func _resolve_scan() -> void:
+	_scan_state = 0
+	_scan_t = randf_range(scan_min_interval, scan_max_interval)
+	_clear_marker()
+	var p := _player()
+	if p != null and _in_scan_box(p.global_position):
+		_say("Система", "✖ Нарушитель в секторе. Зачистка.")
+		_spawn_enforcement()
+	else:
+		_say("Система", "✔ Сектор чист. Проверка завершена.")
+
+func _in_scan_box(pos: Vector3) -> bool:
+	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
+
+# Усиленный отряд внутрь квадрата (кольцом у края, на рельефе, агрессивно близко).
+func _spawn_enforcement() -> void:
+	var map: Node = _find_map()
+	var vehicles: Node = _vehicles_root()
+	if map == null or vehicles == null or enemy_scenes.is_empty():
+		return
+	for i in scan_squad:
+		var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+		var blocks := enemy.get_node_or_null("blocks")
+		if blocks and "layout_preset" in blocks:
+			blocks.layout_preset = scan_preset      # усиленная сборка
+		vehicles.add_child(enemy)
+		var ang: float = TAU * float(i) / float(maxi(scan_squad, 1))
+		var r: float = scan_half_size * 0.8
+		var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
+		var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
+		enemy.global_position = Vector3(wp.x, h + ground_offset, wp.z)
+		if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
+			enemy.died.connect(_on_enemy_died)
+		_enemies.append(enemy)
+
+# Маркер квадрата: 4 светящихся столба по углам (переживают неровный рельеф). Пульсируют,
+# к концу таймера краснеют — тревога.
+func _build_marker() -> void:
+	_clear_marker()
+	_scan_marker = Node3D.new()
+	get_tree().current_scene.add_child(_scan_marker)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.2, 0.9, 1.0)
+	mat.emission_enabled = true
+	mat.emission = Color(0.2, 0.9, 1.0)
+	var map: Node = _find_map()
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var pillar := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(1.4, 60.0, 1.4)
+			pillar.mesh = bm
+			pillar.material_override = mat
+			pillar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var wx: float = _scan_center.x + sx * scan_half_size
+			var wz: float = _scan_center.z + sz * scan_half_size
+			var h: float = map.terrain_height_at(Vector3(wx, 0.0, wz)) if (map and map.has_method("terrain_height_at")) else _scan_center.y
+			pillar.position = Vector3(wx, h + 28.0, wz)
+			_scan_marker.add_child(pillar)
+	_scan_marker.set_meta("mat", mat)
+
+func _pulse_marker() -> void:
+	if _scan_marker == null or not _scan_marker.has_meta("mat"):
+		return
+	var mat: StandardMaterial3D = _scan_marker.get_meta("mat")
+	var t: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+	var danger: float = 1.0 - clampf(_scan_left / maxf(scan_warn_time, 0.01), 0.0, 1.0)
+	mat.emission = Color(0.2 + danger * 0.8, 0.9 - danger * 0.7, 1.0 - danger * 0.85)
+	mat.emission_energy_multiplier = 1.0 + t * 2.0 + danger * 3.0
+
+func _clear_marker() -> void:
+	if _scan_marker != null and is_instance_valid(_scan_marker):
+		_scan_marker.queue_free()
+	_scan_marker = null
+
+func _say(speaker: String, text: String) -> void:
+	var d: Node = get_node_or_null("/root/Dialogue")
+	if d and d.has_method("say"):
+		d.say(speaker, text)
