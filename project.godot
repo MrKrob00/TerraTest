@@ -14,10 +14,10 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Terratest"
+config/name="WorldTech"
 run/main_scene="res://node_3d.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
-config/icon="res://icon.svg"
+config/icon="uid://bnmv2qdj2tbui"
 config/specular_occlusion/enabled=true
 config/reflection_atlas/reflection_size=256
 
