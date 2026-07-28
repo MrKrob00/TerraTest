@@ -135,16 +135,15 @@ void vertex() {
     }
     v_corrupt   = cstate * corrupt_amount;
 
-    // БИОМ: песок/трава по регионам (низкочастотный шум), а НЕ по высоте. biome_grass=1 —
-    // травяной биом, 0 — песчаный. Ниже уровня воды (height_grass_start) — всегда песок
-    // (пляж/дно), биом туда траву не тянет. Снег остаётся по ВЫСОТЕ (пики гор).
+    // БИОМ: песок/трава/каньон — ЧИСТО ПО РЕГИОНАМ (низкочастотный шум), на ЛЮБОЙ высоте.
+    // Воды нет: прежний высотный порог (height_grass_start) был легаси-раскраской «низ песок /
+    // верх трава» — сняли, перешли на биомы. Снег ОСТАЁТСЯ по ВЫСОТЕ (пики гор).
     float biome_n     = vnoise(world_pos.xz / biome_scale);
-    float above_water = smoothstep(height_grass_start - zone_blend, height_grass_start + zone_blend, wy);
-    float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n) * above_water;
+    float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n);
     float t_snow  = smoothstep(height_snow_start - zone_blend, height_snow_start + zone_blend, wy);
-    // КАНЬОН: свой низкочастотный шум (оффсет) → терракотовые регионы, только на суше.
+    // КАНЬОН: свой низкочастотный шум (оффсет) → терракотовые регионы, на любой высоте.
     float canyon  = smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
-            vnoise(world_pos.xz / canyon_scale + vec2(101.0, 53.0))) * above_water;
+            vnoise(world_pos.xz / canyon_scale + vec2(101.0, 53.0)));
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);
     zone          = mix(zone,           color_canyon.rgb, canyon);   // каньон поверх песка/травы
     zone          = mix(zone,           color_snow.rgb,  t_snow);    // снег по высоте — поверх всего

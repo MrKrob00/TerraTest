@@ -46,15 +46,13 @@ var gen_canyon_enable:    bool  = true
 var gen_canyon_scale:     float = 260.0  # = shader canyon_scale (размер терракотового региона)
 var gen_canyon_threshold: float = 0.72   # = shader canyon_threshold (выше → реже каньоны)
 var gen_canyon_edge:      float = 0.12   # = shader canyon_edge (мягкость края региона)
-var gen_canyon_mesa_rise: float = 28.0   # ВЫСОТА верха плато-меса НАД уровнем воды (абсолютно)
-var gen_canyon_depth:     float = 22.0   # глубина ущелий ниже верха плато
+var gen_canyon_mesa_rise: float = 28.0   # насколько верх плато-меса поднят НАД локальной землёй
+var gen_canyon_depth:     float = 22.0   # насколько дно ущелий врезано НИЖЕ локальной земли
 var gen_canyon_gorge:     float = 70.0   # частота сети ущелий (меньше → чаще русла)
 var gen_canyon_width:     float = 0.10   # ширина дна ущелий (в единицах шума; больше → шире)
-# Меса строятся АБСОЛЮТНО (плато на фиксированной высоте), а не «над локальной землёй»: рельеф карты
-# низкий (медиана ~6 м, вода 20 м), поэтому относительные каньоны были не видны. Верх держим ниже
-# снега, дно выше воды — иначе биом-цвет (снег/пляж по высоте) перекрыл бы терракоту.
+# Меса — ОТНОСИТЕЛЬНО локальной земли (воды/абсолютных уровней нет — биомы по региону, см. шейдер).
+# Верх лишь прижимаем ниже снеговой линии, чтобы высокие меса не побелели (снег остался по высоте).
 const CANYON_SNOW_SAFE := 62.0           # < shader height_snow_start (70)
-const CANYON_WATER := 20.0               # = shader height_grass_start (базовый уровень «суши»)
 
 # ─────────────────────────────────────────────────
 # Helper builders
@@ -294,12 +292,12 @@ func _enter_tree() -> void:
 	)
 	panel.add_child(canyon_cb)
 
-	var mesa_lbl = _lbl("  Высота плато над водой: " + str(int(gen_canyon_mesa_rise)))
+	var mesa_lbl = _lbl("  Высота плато над землёй: " + str(int(gen_canyon_mesa_rise)))
 	panel.add_child(mesa_lbl)
 	var mesa_sl = _slider(10.0, 45.0, gen_canyon_mesa_rise)
 	mesa_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_mesa_rise = v
-		mesa_lbl.text = "  Высота плато над водой: " + str(int(v))
+		mesa_lbl.text = "  Высота плато над землёй: " + str(int(v))
 	)
 	mesa_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(mesa_sl)
@@ -988,10 +986,9 @@ func _generate_noise() -> void:
 		new_data = buf
 
 	# ── Canyon carve (ПОСЛЕ blur — иначе размытие сгладило бы отвесные стены) ──────
-	# Терракотовые плато-меса, ПОДНЯТЫЕ над низкими песчаными равнинами (медиана рельефа ~6 м,
-	# вода 20 м), с сетью глубоких ущелий (отвесные стены) и редкими рампами-съездами на дно.
-	# Верх/дно — АБСОЛЮТНЫЕ уровни (не «над локальной землёй»): иначе на низкой карте каньонов не
-	# видно. Регион = тот же шум, что красит биом каньона в шейдере → цвет и форма совпадают.
+	# Плато-меса, поднятые ОТНОСИТЕЛЬНО локальной земли, с сетью глубоких ущелий (отвесные стены)
+	# и редкими рампами-съездами на дно. Воды нет — цвет каньона теперь по региону на любой высоте
+	# (см. шейдер), поэтому и рельеф строим относительно земли. Регион = тот же шум, что красит биом.
 	if gen_canyon_enable:
 		# Сеть русел: abs(fbm) ≈ 0 вдоль ветвящихся линий (как ridge, но каналами вниз).
 		var gorge_noise := FastNoiseLite.new()
@@ -1005,9 +1002,6 @@ func _generate_noise() -> void:
 		ramp_noise.seed        = gen_seed + 143
 		ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		ramp_noise.frequency   = 1.0 / 55.0
-		# Абсолютные уровни плато и дна (одни на всю карту).
-		var mesa_top: float = minf(CANYON_WATER + gen_canyon_mesa_rise, CANYON_SNOW_SAFE)   # ~48, < 62
-		var floor_h: float  = maxf(mesa_top - gen_canyon_depth, CANYON_WATER + 3.0)          # ~26, > вода
 		var carved := new_data.duplicate()
 		for z in depth:
 			for x in width:
@@ -1027,9 +1021,11 @@ func _generate_noise() -> void:
 				var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
 				var wall_lo: float = gen_canyon_width * 0.55
 				var wall_t := smoothstep(wall_lo, wall_hi, gv)   # 0 = дно ущелья, 1 = верх плато
-				var top := mesa_top + rn * 3.0                    # лёгкая неровность верха (не бетонная плита)
-				var canyon_h := lerpf(floor_h, top, wall_t)
-				# cmask даёт внешнюю стену месы: плато вырастает из равнины по краю региона.
+				# Относительно локальной земли: верх +rise (с лёгкой неровностью, но ниже снега),
+				# дно −depth (не ниже 0). Плато вырастает из земли по краю региона (cmask).
+				var mesa_top: float = minf(base_h + gen_canyon_mesa_rise + rn * 3.0, CANYON_SNOW_SAFE)
+				var floor_h: float  = maxf(base_h - gen_canyon_depth, 0.0)
+				var canyon_h := lerpf(floor_h, mesa_top, wall_t)
 				carved[idx] = lerpf(base_h, canyon_h, cmask)
 		new_data = carved
 
