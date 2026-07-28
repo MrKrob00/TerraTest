@@ -762,31 +762,39 @@ func _typing_in_ui() -> bool:
 	var vp := get_viewport()
 	return vp != null and vp.gui_get_focus_owner() is LineEdit
 
-var _touch_count: int = 0   # активных пальцев на экране — наводим блок только ОДНИМ (2-й крутит камеру)
+var _touch_count: int = 0        # активных пальцев на экране
+var _build_tap_pos: Vector2 = Vector2.ZERO
+var _build_tap_ms: int = 0
+var _build_tap_moved: bool = false   # палец сдвинулся → это ОРБИТА камеры, а не наводка блока
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
 	if event is InputEventScreenTouch:
 		_touch_count = maxi(_touch_count + (1 if event.pressed else -1), 0)
 	if Building:
-		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
-		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
-		# понадобится «тач-подобный» press (сейчас достаточно и одного motion).
-		var aiming = (event is InputEventScreenTouch and event.pressed) \
-				or event is InputEventScreenDrag \
-				or event is InputEventMouseMotion \
-				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)
-		if aiming:
-			# «Пустой» ховер (мышь едет к кнопке БЕЗ зажатой ЛКМ) не должен целиться в мир,
-			# пока курсор идёт над HUD/панелью гаража — иначе наводка ломается по пути к
-			# кнопке. Тач-драг сюда не попадает: пока палец на экране, ЛКМ у Godot «зажата»
-			# всю дорогу (та же логика, что уже держит vehicle_interact_button.gd), так что
-			# тач ведёт себя ровно как раньше — гейт видит только настоящий ПК-ховер.
+		# Управление одним пальцем — как при езде: ДРАГ крутит камеру (это делает
+		# camera_controller), а блок наводится ТАПОМ (короткое касание без свайпа) по клетке.
+		# Раньше блок таскался драгом, и камеру пришлось отдавать двум пальцам — неудобно и
+		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
+		if event is InputEventMouseMotion \
+				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+			# ПК: мышь целится непрерывно (у неё орбита на ПКМ — конфликта нет). «Пустой» ховер
+			# над HUD не целится в мир (иначе наводка ломается по пути к кнопке).
 			var idle_hover := event is InputEventMouseMotion and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-			# Второй палец на экране = жест камеры (орбита/пинч), а не наводка: замораживаем
-			# превью блока, чтобы оно не прыгало между пальцами. Мышь (_touch_count == 0) не задета.
-			if _touch_count <= 1 and not (idle_hover and get_viewport().gui_get_hovered_control() != null):
+			if not (idle_hover and get_viewport().gui_get_hovered_control() != null):
 				_handle_click(event.position)
+		elif event is InputEventScreenTouch:
+			if event.pressed:
+				_build_tap_pos = event.position
+				_build_tap_ms = Time.get_ticks_msec()
+				_build_tap_moved = false
+			elif _touch_count == 0 and not _build_tap_moved \
+					and Time.get_ticks_msec() - _build_tap_ms < 250 \
+					and get_viewport().gui_get_hovered_control() == null:
+				_handle_click(event.position)          # одиночный тап по миру = навести блок сюда
+		elif event is InputEventScreenDrag:
+			if _build_tap_pos.distance_to(event.position) > 14.0:
+				_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
 	# Клавиатурные действия гасим ТОЛЬКО пока печатают в текстовом поле — иначе, если
 	# фокус где-то залип, тач/мышь-кнопки Take/TakeOff/Building/Movement (это тоже
 	# event.is_action_pressed, тач-кнопки шлют его же) перестали бы работать вовсе.

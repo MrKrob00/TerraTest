@@ -52,7 +52,6 @@ var _cam_touches: Dictionary = {} # index → позиция «мировых» 
 var _touch_look_dx: float = 0.0
 var _touch_look_dy: float = 0.0
 var _pinch_last: float = -1.0
-var _pinch_centroid_last: Vector2 = Vector2.ZERO   # центр двух пальцев — орбита в стройке
 var _tap_down_pos: Vector2 = Vector2.ZERO
 var _tap_down_ms: int = 0
 var _last_tap_ms: int = -10000
@@ -89,9 +88,9 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if VehicleInteractButton.camera_block:
 		return
-	# В стройке одиночный палец занят НАВОДКОЙ блока (см. vehicle_body_3d._input), поэтому
-	# камеру там крутим/зумим ДВУМЯ пальцами. Раньше здесь стоял return — камера в стройке
-	# вообще не поворачивалась. Одиночный свайп-орбиту в стройке глушим ниже (_in_build).
+	# Камера крутится ОДНИМ пальцем одинаково во всех режимах (и в езде, и в стройке): драг —
+	# орбита. В стройке блок наводится ТАПОМ (см. vehicle_body_3d._input), поэтому драг свободен
+	# под камеру — двумя пальцами больше крутить не надо (было неудобно/непривычно).
 	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -108,7 +107,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if _cam_touches.size() == 1 and not _tap_moved \
 						and Time.get_ticks_msec() - _tap_down_ms < 250:
 					var now := Time.get_ticks_msec()
-					if now - _last_tap_ms < DOUBLE_TAP_MS:
+					if now - _last_tap_ms < DOUBLE_TAP_MS and not _in_build():
 						reset_gaze()
 						_last_tap_ms = -10000
 					else:
@@ -126,19 +125,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Пинч-зум: развёл пальцы (дистанция растёт) → приближаем (RADIUS меньше).
 			var pts: Array = _cam_touches.values()
 			var d: float = pts[0].distance_to(pts[1])
-			var centroid: Vector2 = (pts[0] + pts[1]) * 0.5
 			if _pinch_last > 0.0:
 				RADIUS = clampf(RADIUS - (d - _pinch_last) * PINCH_ZOOM_SENS * G.cam_zoom_sens, ZOOM_MIN, ZOOM_MAX)
-				# В стройке орбиту/наклон даём сдвигом ЦЕНТРА двух пальцев (одиночный палец там
-				# целится блоком). В обычном режиме двумя пальцами только зумим — как было.
-				if _in_build():
-					_touch_look_dx += centroid.x - _pinch_centroid_last.x
-					_touch_look_dy += centroid.y - _pinch_centroid_last.y
 			_pinch_last = d
-			_pinch_centroid_last = centroid
-		elif not _in_build():
-			# Один палец — орбита (X) + наклон взгляда (Y). Копим сдвиг, применяем в camera_movement.
-			# В стройке одиночный палец не крутит камеру (он наводит блок).
+		else:
+			# Один палец — орбита (X) + наклон взгляда (Y). Работает и в стройке: там одиночный
+			# палец крутит камеру ровно как при езде, а блок наводится ТАПОМ (vehicle_body_3d).
 			_touch_look_dx += event.relative.x
 			_touch_look_dy += event.relative.y
 
