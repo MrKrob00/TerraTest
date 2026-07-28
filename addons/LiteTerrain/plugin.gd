@@ -39,6 +39,21 @@ var gen_amplitude:       float  = 30.0   # max height in world units
 var gen_smooth:           int   = 1      # blur passes after generation
 var gen_size:             int   = 0      # image-mode target size (0 = keep current)
 
+# ---------- Canyon carving (запекается в высоту ПОСЛЕ blur, чтобы стены остались отвесными) ----------
+# Форма каньонов привязана к ТОМУ ЖЕ шуму, что красит биом каньона в шейдере (glsl.gdshader:
+# canyon_scale/threshold/edge, оффсет +(101,53)) — цвет и рельеф совпадают автоматически.
+var gen_canyon_enable:    bool  = true
+var gen_canyon_scale:     float = 260.0  # = shader canyon_scale (размер терракотового региона)
+var gen_canyon_threshold: float = 0.72   # = shader canyon_threshold (выше → реже каньоны)
+var gen_canyon_edge:      float = 0.12   # = shader canyon_edge (мягкость края региона)
+var gen_canyon_mesa_rise: float = 18.0   # насколько плато-меса поднято над окрестной землёй
+var gen_canyon_depth:     float = 20.0   # глубина ущелий ниже окрестной земли
+var gen_canyon_gorge:     float = 70.0   # частота сети ущелий (меньше → чаще русла)
+var gen_canyon_width:     float = 0.10   # ширина дна ущелий (в единицах шума; больше → шире)
+# Держим меса ниже снега и дно выше воды — иначе биом-цвет (снег по высоте / пляж) перекроет терракоту.
+const CANYON_SNOW_SAFE := 62.0           # < shader height_snow_start (70)
+const CANYON_WATER_SAFE := 23.0          # > shader height_grass_start (20)
+
 # ─────────────────────────────────────────────────
 # Helper builders
 # ─────────────────────────────────────────────────
@@ -51,6 +66,27 @@ func _lbl(t: String) -> Label:
 	var l = Label.new()
 	l.text = t
 	return l
+
+# Value-noise, ИДЕНТИЧНЫЙ шейдеру (glsl.gdshader hash2D/vnoise) — чтобы маска каньона в
+# генераторе совпадала с терракотовым цветом биома. Меняешь одно — правь и там, и тут.
+func _cv_fract(x: float) -> float:
+	return x - floor(x)
+
+func _cv_hash2d(p: Vector2) -> float:
+	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
+	var d: float = p.dot(p + Vector2(45.32, 45.32))
+	p += Vector2(d, d)
+	return _cv_fract(p.x * p.y)
+
+func _cv_noise(p: Vector2) -> float:
+	var i := Vector2(floor(p.x), floor(p.y))
+	var f := p - i
+	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _cv_hash2d(i)
+	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
+	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
+	var dd := _cv_hash2d(i + Vector2(1.0, 1.0))
+	return lerpf(lerpf(a, b, f.x), lerpf(c, dd, f.x), f.y)
 
 func _slider(mn: float, mx: float, val: float, step: float = 0.0) -> HSlider:
 	var sl = HSlider.new()
@@ -245,6 +281,57 @@ func _enter_tree() -> void:
 	)
 	panel.add_child(size_spin)
 
+	# ── Canyons (запекаются в высоту при генерации) ──────────────────────────
+	panel.add_child(_sep())
+	var canyon_cb = CheckBox.new()
+	canyon_cb.text = "Каньоны (меса + ущелья)"
+	canyon_cb.button_pressed = gen_canyon_enable
+	canyon_cb.toggled.connect(func(on: bool) -> void:
+		gen_canyon_enable = on
+		_save_settings()
+	)
+	panel.add_child(canyon_cb)
+
+	var mesa_lbl = _lbl("  Высота плато: " + str(int(gen_canyon_mesa_rise)))
+	panel.add_child(mesa_lbl)
+	var mesa_sl = _slider(2.0, 40.0, gen_canyon_mesa_rise)
+	mesa_sl.value_changed.connect(func(v: float) -> void:
+		gen_canyon_mesa_rise = v
+		mesa_lbl.text = "  Высота плато: " + str(int(v))
+	)
+	mesa_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
+	panel.add_child(mesa_sl)
+
+	var depth_lbl = _lbl("  Глубина ущелий: " + str(int(gen_canyon_depth)))
+	panel.add_child(depth_lbl)
+	var depth_sl = _slider(4.0, 45.0, gen_canyon_depth)
+	depth_sl.value_changed.connect(func(v: float) -> void:
+		gen_canyon_depth = v
+		depth_lbl.text = "  Глубина ущелий: " + str(int(v))
+	)
+	depth_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
+	panel.add_child(depth_sl)
+
+	var gwidth_lbl = _lbl("  Ширина ущелий: " + str(snapped(gen_canyon_width, 0.01)))
+	panel.add_child(gwidth_lbl)
+	var gwidth_sl = _slider(0.03, 0.30, gen_canyon_width, 0.01)
+	gwidth_sl.value_changed.connect(func(v: float) -> void:
+		gen_canyon_width = v
+		gwidth_lbl.text = "  Ширина ущелий: " + str(snapped(v, 0.01))
+	)
+	gwidth_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
+	panel.add_child(gwidth_sl)
+
+	var gorge_lbl = _lbl("  Частота русел: " + str(int(gen_canyon_gorge)))
+	panel.add_child(gorge_lbl)
+	var gorge_sl = _slider(30.0, 160.0, gen_canyon_gorge)
+	gorge_sl.value_changed.connect(func(v: float) -> void:
+		gen_canyon_gorge = v
+		gorge_lbl.text = "  Частота русел: " + str(int(v))
+	)
+	gorge_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
+	panel.add_child(gorge_sl)
+
 	var gen_btn = Button.new()
 	gen_btn.text = "🌍 Generate Terrain"
 	gen_btn.pressed.connect(_generate_noise)
@@ -326,6 +413,11 @@ func _save_settings() -> void:
 		"gen_amplitude":       gen_amplitude,
 		"gen_smooth":          gen_smooth,
 		"gen_size":            gen_size,
+		"gen_canyon_enable":    gen_canyon_enable,
+		"gen_canyon_mesa_rise": gen_canyon_mesa_rise,
+		"gen_canyon_depth":     gen_canyon_depth,
+		"gen_canyon_gorge":     gen_canyon_gorge,
+		"gen_canyon_width":     gen_canyon_width,
 	})
 
 func _load_settings() -> void:
@@ -347,6 +439,11 @@ func _load_settings() -> void:
 	gen_amplitude       = float(d.get("gen_amplitude",       gen_amplitude))
 	gen_smooth          = int(d.get("gen_smooth",            gen_smooth))
 	gen_size            = int(d.get("gen_size",              gen_size))
+	gen_canyon_enable    = bool(d.get("gen_canyon_enable",    gen_canyon_enable))
+	gen_canyon_mesa_rise = float(d.get("gen_canyon_mesa_rise", gen_canyon_mesa_rise))
+	gen_canyon_depth     = float(d.get("gen_canyon_depth",     gen_canyon_depth))
+	gen_canyon_gorge     = float(d.get("gen_canyon_gorge",     gen_canyon_gorge))
+	gen_canyon_width     = float(d.get("gen_canyon_width",     gen_canyon_width))
 
 
 # ─────────────────────────────────────────────────
@@ -887,6 +984,49 @@ func _generate_noise() -> void:
 					new_data[(z + 1) * width + x]
 				) * 0.2
 		new_data = buf
+
+	# ── Canyon carve (ПОСЛЕ blur — иначе размытие сгладило бы отвесные стены) ──────
+	# Приподнятое плато-меса + сеть глубоких ущелий с почти вертикальными стенами и редкими
+	# пологими рампами-съездами на дно. Маска региона = тот же шум, что красит биом каньона.
+	if gen_canyon_enable:
+		# Сеть русел: abs(fbm) ≈ 0 вдоль ветвящихся линий (как ridge, но каналами вниз).
+		var gorge_noise := FastNoiseLite.new()
+		gorge_noise.seed          = gen_seed + 91
+		gorge_noise.noise_type    = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		gorge_noise.fractal_type  = FastNoiseLite.FRACTAL_FBM
+		gorge_noise.fractal_octaves = 3
+		gorge_noise.frequency     = 1.0 / maxf(gen_canyon_gorge, 1.0)
+		# Где рампа велика — стенка пологая (заезд на дно), иначе отвесный обрыв.
+		var ramp_noise := FastNoiseLite.new()
+		ramp_noise.seed        = gen_seed + 143
+		ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		ramp_noise.frequency   = 1.0 / 55.0
+		var carved := new_data.duplicate()
+		for z in depth:
+			for x in width:
+				var idx := z * width + x
+				var base_h: float = new_data[idx]
+				# Мировые XZ (центрированы, как в шейдере: world.x ≈ grid_x - width/2).
+				var wx := float(x) - width * 0.5
+				var wz := float(z) - depth * 0.5
+				var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
+				var cmask := smoothstep(gen_canyon_threshold - gen_canyon_edge,
+						gen_canyon_threshold + gen_canyon_edge, cn)
+				# Только на суше и не на высоких горах (иначе каньон-плато провалится в пик).
+				cmask *= smoothstep(CANYON_WATER_SAFE, CANYON_WATER_SAFE + 6.0, base_h)
+				cmask *= 1.0 - smoothstep(CANYON_SNOW_SAFE - 14.0, CANYON_SNOW_SAFE, base_h)
+				if cmask <= 0.001:
+					continue
+				var gv := absf(gorge_noise.get_noise_2d(wx, wz))
+				var ramp := smoothstep(0.62, 0.82, (ramp_noise.get_noise_2d(wx, wz) + 1.0) * 0.5)
+				var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
+				var wall_lo: float = gen_canyon_width * 0.55
+				var wall_t := smoothstep(wall_lo, wall_hi, gv)   # 0 = дно ущелья, 1 = верх плато
+				var mesa_top: float = minf(base_h + gen_canyon_mesa_rise, CANYON_SNOW_SAFE)
+				var floor_h: float  = maxf(base_h - gen_canyon_depth, CANYON_WATER_SAFE)
+				var canyon_h := lerpf(floor_h, mesa_top, wall_t)
+				carved[idx] = lerpf(base_h, canyon_h, cmask)
+		new_data = carved
 
 	if image_mode:
 		# Set md + size, rebuild the editor preview, and write the heightmap image so the
