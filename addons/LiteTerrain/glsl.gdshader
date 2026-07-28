@@ -15,7 +15,7 @@ uniform sampler2D tile_texture : source_color, filter_nearest_mipmap;
 // Размер тайла в мировых юнитах. Тайлинг считается из мировых XZ (см. vertex()), поэтому
 // подстраивается под любой размер карты и одинаков в игре и в редакторе.
 uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
-uniform float texture_blend    : hint_range(0.0, 1.0)    = 0.1;
+uniform float texture_blend    : hint_range(0.0, 1.0)    = 0.06;
 
 // Квантизация v_pixel_uv к сетке, чтобы шум и трава были стабильны по ячейке, а не мерцали
 // по фрагментам. Константа, а не uniform — это не настройка вида.
@@ -25,7 +25,7 @@ group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.76, 0.66, 0.48, 1.0);
 uniform vec4 color_grass : source_color = vec4(0.29, 0.48, 0.23, 1.0);
 uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
-uniform vec4 color_rock  : source_color = vec4(0.44, 0.38, 0.31, 1.0);
+uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // холодно-серый (каньон-скала контрастнее)
 
 group_uniforms Terrain;
 uniform float height_grass_start : hint_range(-200.0, 500.0) = 20.0;
@@ -38,15 +38,16 @@ uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 group_uniforms Biomes;
 // Песок/трава теперь по БИОМАМ (регионам), а не по высоте. Биом задаётся низкочастотным
 // шумом по миру XZ: крупные пятна травяного и песчаного биома. Снег остаётся по высоте (пики).
-uniform float biome_scale       : hint_range(30.0, 1000.0) = 320.0;  // размер пятна биома (единиц мира)
-uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.16;   // резкость границы биомов
+uniform float biome_scale       : hint_range(30.0, 1000.0) = 140.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
+uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.07;   // резкость границы биомов (уже → чётче, не «мешанина»)
 uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.2;    // сила травы в ПЕСЧАНОМ биоме (~0.2 макс)
 // КАНЬОН-биом: терракотовые регионы (свой шум). Перекрывает песок/траву, суша, без травы.
-uniform vec4  color_canyon      : source_color = vec4(0.62, 0.34, 0.22, 1.0);  // терракота
-uniform float canyon_scale      : hint_range(30.0, 1000.0) = 260.0;  // размер пятна каньона
-uniform float canyon_threshold  : hint_range(0.0, 1.0)     = 0.72;   // выше = реже каньоны
-uniform float canyon_edge       : hint_range(0.02, 0.5)    = 0.12;   // резкость границы
+uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);  // терракота (горячее/насыщеннее)
+uniform float canyon_scale      : hint_range(30.0, 1000.0) = 160.0;  // размер пятна каньона (мельче → много мес)
+uniform float canyon_threshold  : hint_range(0.0, 1.0)     = 0.70;   // выше = реже каньоны (~21% при 160)
+uniform float canyon_edge       : hint_range(0.02, 0.5)    = 0.05;   // резкость границы (уже → отвеснее внешняя стена)
+uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // высота страты-полосы (== террасе геометрии в plugin.gd)
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 0.4;
@@ -144,8 +145,15 @@ void vertex() {
     // КАНЬОН: свой низкочастотный шум (оффсет) → терракотовые регионы, на любой высоте.
     float canyon  = smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
             vnoise(world_pos.xz / canyon_scale + vec2(101.0, 53.0)));
+    // Терракота ПОЛОСАМИ по высоте (страты) — иконка badlands. Полосы совпадают с террасами
+    // геометрии (canyon_band_h == gen_canyon_terrace): плоский тред → все вершины в одной полосе
+    // (сплошная полоса цвета), крутые уступы остаются тёмной скалой между полосами.
+    float band_id    = floor(wy / canyon_band_h);
+    float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 на каждую полосу, стабильно
+    vec3  canyon_col = mix(color_canyon.rgb * 0.72,
+                           clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);
-    zone          = mix(zone,           color_canyon.rgb, canyon);   // каньон поверх песка/травы
+    zone          = mix(zone,           canyon_col,       canyon);   // каньон (полосатая терракота) поверх песка/травы
     zone          = mix(zone,           color_snow.rgb,  t_snow);    // снег по высоте — поверх всего
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
@@ -188,7 +196,7 @@ void fragment() {
 
     // Трава НЕ ярче подстилки (чинит «выскакивание»): при grass_shade<0.65 трава чуть темнее
     // земли — мягкая тень у корня, а не светлое пятно. Крутится uniform-ом grass_shade.
-    ALBEDO    = base_col * mix(0.65, grass_shade, v_is_grass);
+    ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
     ROUGHNESS = 0.9;
 
     // ── Зоны «битых данных»: сине-фиолетовый ЧАНКОВЫЙ глитч ──────────────────────
