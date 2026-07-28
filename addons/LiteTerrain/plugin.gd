@@ -32,7 +32,7 @@ var _last_dab_pos  := Vector3.ZERO
 var gen_seed:             int   = 42
 var gen_scale:           float  = 150.0   # continental frequency scale
 var gen_octaves:          int   = 6       # FBM octaves
-var gen_power:           float  = 2.3    # ^N curve (4=всё плоско). 2.3 → холмистые равнины: биомы различаются ФОРМОЙ, не только цветом
+var gen_power:           float  = 2.6    # ^N curve (4=всё плоско). 2.6 → холмистые равнины; горы теперь не расползаются (маска ниже)
 var gen_mountain_amount: float  = 0.8    # ridge contribution
 var gen_ridge_sharpness: float  = 2.5    # how knife-sharp ridges are
 var gen_amplitude:       float  = 30.0   # max height in world units
@@ -952,7 +952,7 @@ func _generate_noise() -> void:
 	base_noise.fractal_octaves  = gen_octaves
 	base_noise.frequency        = 1.0 / gen_scale
 	base_noise.fractal_lacunarity = 2.0
-	base_noise.fractal_gain     = 0.5
+	base_noise.fractal_gain     = 0.42   # мягче high-freq → плавные холмистые равнины, а не «рябь»
 
 	# ── Layer 2: Ridge noise ─────────────────────
 	# A separate FBM sampled at slightly higher frequency.
@@ -987,10 +987,10 @@ func _generate_noise() -> void:
 			var ridge = 1.0 - abs(rn)               # peaks where rn ≈ 0
 			ridge = pow(ridge, gen_ridge_sharpness)  # sharpen crest
 
-			# Mountain mask: ridges grow in only where the continental
-			# base is already elevated (smoothstep 0.35 → 0.70 — держим горы на настоящих высотах,
-			# чтобы после смягчения gen_power они не лезли в поднятые равнины).
-			var mountain_mask = smoothstep(0.35, 0.70, continental)
+			# Mountain mask: ridges grow in only where the continental base is УЖЕ высокий.
+			# Порог поднят (0.52→0.78): при низком gen_power ридж-горы иначе расползаются по
+			# среднему рельефу и дают «странные» пики повсюду. Теперь горы — только настоящие пики.
+			var mountain_mask = smoothstep(0.52, 0.78, continental)
 
 			# ── Combine ──────────────────────────
 			var ridge_term = ridge * gen_mountain_amount * mountain_mask

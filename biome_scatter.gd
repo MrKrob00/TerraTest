@@ -79,13 +79,14 @@ func _ss(a: float, b: float, x: float) -> float:
 	return smoothstep(a, b, x)
 
 func _biome_at(wx: float, wz: float, wy: float) -> int:
-	# Биом ЧИСТО по региону (шум), на любой высоте — воды нет (см. glsl.gdshader). Снег — по высоте.
-	if _ss(height_snow_start - zone_blend, height_snow_start + zone_blend, wy) > 0.5:
-		return SNOW
+	# Биом ЧИСТО по региону (шум), на любой высоте — воды нет (см. glsl.gdshader).
+	# КАНЬОН проверяем ДО снега — он исключение: терракота не белеет даже на высоте.
 	var canyon := _ss(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
 			_vnoise(Vector2(wx, wz) / canyon_scale + Vector2(101.0, 53.0)))
 	if canyon > 0.5:
 		return CANYON
+	if _ss(height_snow_start - zone_blend, height_snow_start + zone_blend, wy) > 0.5:
+		return SNOW
 	var bn := _vnoise(Vector2(wx, wz) / biome_scale)
 	return GRASS if _ss(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, bn) > 0.5 else SAND
 
