@@ -762,8 +762,12 @@ func _typing_in_ui() -> bool:
 	var vp := get_viewport()
 	return vp != null and vp.gui_get_focus_owner() is LineEdit
 
+var _touch_count: int = 0   # активных пальцев на экране — наводим блок только ОДНИМ (2-й крутит камеру)
+
 func _input(event: InputEvent) -> void:
 	if !is_active: return
+	if event is InputEventScreenTouch:
+		_touch_count = maxi(_touch_count + (1 if event.pressed else -1), 0)
 	if Building:
 		# ПК: мышь целится как палец — motion обновляет наводку каждый кадр без зажатой
 		# кнопки (двигать мышью проще, чем тянуть тач-драг); левый клик — на случай, если
@@ -779,7 +783,9 @@ func _input(event: InputEvent) -> void:
 			# всю дорогу (та же логика, что уже держит vehicle_interact_button.gd), так что
 			# тач ведёт себя ровно как раньше — гейт видит только настоящий ПК-ховер.
 			var idle_hover := event is InputEventMouseMotion and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-			if not (idle_hover and get_viewport().gui_get_hovered_control() != null):
+			# Второй палец на экране = жест камеры (орбита/пинч), а не наводка: замораживаем
+			# превью блока, чтобы оно не прыгало между пальцами. Мышь (_touch_count == 0) не задета.
+			if _touch_count <= 1 and not (idle_hover and get_viewport().gui_get_hovered_control() != null):
 				_handle_click(event.position)
 	# Клавиатурные действия гасим ТОЛЬКО пока печатают в текстовом поле — иначе, если
 	# фокус где-то залип, тач/мышь-кнопки Take/TakeOff/Building/Movement (это тоже

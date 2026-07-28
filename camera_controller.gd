@@ -52,6 +52,7 @@ var _cam_touches: Dictionary = {} # index → позиция «мировых» 
 var _touch_look_dx: float = 0.0
 var _touch_look_dy: float = 0.0
 var _pinch_last: float = -1.0
+var _pinch_centroid_last: Vector2 = Vector2.ZERO   # центр двух пальцев — орбита в стройке
 var _tap_down_pos: Vector2 = Vector2.ZERO
 var _tap_down_ms: int = 0
 var _last_tap_ms: int = -10000
@@ -88,8 +89,9 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if VehicleInteractButton.camera_block:
 		return
-	if current_vehicle and "Building" in current_vehicle and current_vehicle.Building:
-		return
+	# В стройке одиночный палец занят НАВОДКОЙ блока (см. vehicle_body_3d._input), поэтому
+	# камеру там крутим/зумим ДВУМЯ пальцами. Раньше здесь стоял return — камера в стройке
+	# вообще не поворачивалась. Одиночный свайп-орбиту в стройке глушим ниже (_in_build).
 	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -124,11 +126,19 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Пинч-зум: развёл пальцы (дистанция растёт) → приближаем (RADIUS меньше).
 			var pts: Array = _cam_touches.values()
 			var d: float = pts[0].distance_to(pts[1])
+			var centroid: Vector2 = (pts[0] + pts[1]) * 0.5
 			if _pinch_last > 0.0:
 				RADIUS = clampf(RADIUS - (d - _pinch_last) * PINCH_ZOOM_SENS * G.cam_zoom_sens, ZOOM_MIN, ZOOM_MAX)
+				# В стройке орбиту/наклон даём сдвигом ЦЕНТРА двух пальцев (одиночный палец там
+				# целится блоком). В обычном режиме двумя пальцами только зумим — как было.
+				if _in_build():
+					_touch_look_dx += centroid.x - _pinch_centroid_last.x
+					_touch_look_dy += centroid.y - _pinch_centroid_last.y
 			_pinch_last = d
-		else:
+			_pinch_centroid_last = centroid
+		elif not _in_build():
 			# Один палец — орбита (X) + наклон взгляда (Y). Копим сдвиг, применяем в camera_movement.
+			# В стройке одиночный палец не крутит камеру (он наводит блок).
 			_touch_look_dx += event.relative.x
 			_touch_look_dy += event.relative.y
 
@@ -212,6 +222,10 @@ func camera_movement(_delta):
 	# Наклон — ЛОКАЛЬНО на камере, после look_at арки: рига/длина пружины/прижим к земле
 	# не затронуты, при gaze_pitch == 0 кадр идентичен прежнему.
 	camera.rotation.x = gaze_pitch
+
+# Активная машина сейчас в режиме стройки? (в стройке камеру крутим двумя пальцами)
+func _in_build() -> bool:
+	return current_vehicle != null and ("Building" in current_vehicle) and current_vehicle.Building
 
 # Вернуть взгляд ровно на машину (двойной тап по джойстику камеры / двойная ПКМ).
 func reset_gaze() -> void:
