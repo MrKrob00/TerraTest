@@ -4,16 +4,19 @@ extends VehicleBlock
 
 func attack():
 	if $AnimationPlayer.is_playing(): return
-	$drill.monitoring = true
+	$drill.monitoring = true                 # сенсор активен только на время бурения
 	$AnimationPlayer.play("drilling")
 	await $AnimationPlayer.animation_finished
+	_dig()                                    # бьём по тому, что СЕЙЧАС в контакте
 	$drill.monitoring = false
 
-
-
-func _on_drill_body_entered(body: Node3D) -> void:
-	# Игнорируем себя и все блоки своей машины
-	if body == self: return
-	if body.get_parent() == get_parent(): return
-	if body.has_method("hurt"):
-		body.hurt(drill_damage)
+# Каждый удар наносит урон ВСЕМ рудам, что сейчас перекрывают зону бура.
+# Раньше урон шёл от сигнала body_entered — а он срабатывает лишь в момент ВХОДА тела в зону.
+# Руда, оставшаяся в контакте после первого удара, повторно «не входит», поэтому со второй
+# атаки не добывалась. Опрос get_overlapping_bodies() снимает зависимость от событий входа.
+func _dig() -> void:
+	for body in $drill.get_overlapping_bodies():
+		if body == self: continue
+		if body.get_parent() == get_parent(): continue   # свои блоки не бурим
+		if body.has_method("hurt"):
+			body.hurt(drill_damage)
