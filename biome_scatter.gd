@@ -79,9 +79,7 @@ func _ss(a: float, b: float, x: float) -> float:
 	return smoothstep(a, b, x)
 
 func _biome_at(wx: float, wz: float, wy: float) -> int:
-	var above := _ss(height_grass_start - zone_blend, height_grass_start + zone_blend, wy)
-	if above < 0.5:
-		return SAND                            # ниже уровня воды — песок (пляж/дно)
+	# Биом ЧИСТО по региону (шум), на любой высоте — воды нет (см. glsl.gdshader). Снег — по высоте.
 	if _ss(height_snow_start - zone_blend, height_snow_start + zone_blend, wy) > 0.5:
 		return SNOW
 	var canyon := _ss(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
