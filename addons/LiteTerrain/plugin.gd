@@ -1011,10 +1011,16 @@ func _generate_noise() -> void:
 				var wx := float(x) - width * 0.5
 				var wz := float(z) - depth * 0.5
 				var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
+				# «Мягкая» маска региона — только чтобы понять, попали ли в каньон-регион (совпадает
+				# с плавным краем цвета в шейдере). ВНЕ региона — пропускаем.
 				var cmask := smoothstep(gen_canyon_threshold - gen_canyon_edge,
 						gen_canyon_threshold + gen_canyon_edge, cn)
 				if cmask <= 0.001:
 					continue
+				# «Резкая» маска ВЫСОТЫ — внешняя стена месы должна быть ОТВЕСНОЙ, а не пологим
+				# холмом. Без этого меса вырастала из равнины на 30–60 м и читалась как обычный
+				# холм (потому каньон и «похож на остальные»). Узкая полоса → почти вертикальный обрыв.
+				var hmask := smoothstep(gen_canyon_threshold - 0.03, gen_canyon_threshold + 0.02, cn)
 				var gv := absf(gorge_noise.get_noise_2d(wx, wz))
 				var rn := ramp_noise.get_noise_2d(wx, wz)
 				var ramp := smoothstep(0.5, 0.75, (rn + 1.0) * 0.5)   # где велик — пологий съезд на дно
@@ -1022,11 +1028,11 @@ func _generate_noise() -> void:
 				var wall_lo: float = gen_canyon_width * 0.55
 				var wall_t := smoothstep(wall_lo, wall_hi, gv)   # 0 = дно ущелья, 1 = верх плато
 				# Относительно локальной земли: верх +rise (с лёгкой неровностью, но ниже снега),
-				# дно −depth (не ниже 0). Плато вырастает из земли по краю региона (cmask).
+				# дно −depth (не ниже 0). Плоский верх плато + отвесная внешняя стена (hmask).
 				var mesa_top: float = minf(base_h + gen_canyon_mesa_rise + rn * 3.0, CANYON_SNOW_SAFE)
 				var floor_h: float  = maxf(base_h - gen_canyon_depth, 0.0)
 				var canyon_h := lerpf(floor_h, mesa_top, wall_t)
-				carved[idx] = lerpf(base_h, canyon_h, cmask)
+				carved[idx] = lerpf(base_h, canyon_h, hmask)
 		new_data = carved
 
 	if image_mode:
