@@ -19,6 +19,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.GENERATOR: 90,
 	G.Block.REGEN:     60,
 	G.Block.SHIELD:    70,
+	G.Block.ROCKET:    70,
 }
 const DEFAULT_HP := 50
 

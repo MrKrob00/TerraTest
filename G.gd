@@ -94,6 +94,7 @@ const BLOCK_META := {
 	Block.STAB_WHEEL:  {"f": "start", "g": 2, "rp": 15},
 	Block.BLOCK2:      {"f": "start", "g": 1, "rp": 5},
 	Block.COAL_GEN:    {"f": "start", "g": 4, "rp": 30},  # большой генератор: уголь→энергия на якоре
+	Block.ROCKET:      {"f": "start", "g": 4, "rp": 35},  # ракетница: снаряд с AOE-взрывом
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -110,6 +111,7 @@ const TECH_PARENT := {
 	Block.SMALL_WHEEL: Block.WHEEL, Block.BIG_WHEEL: Block.WHEEL,
 	Block.TOP_WHEEL: Block.WHEEL,   Block.STAB_WHEEL: Block.WHEEL,
 	Block.BLOCK2: Block.BLOCK,      Block.COAL_GEN: Block.GENERATOR,
+	Block.ROCKET: Block.LASER,      # ракетница ветвится от лазера (продвинутое оружие)
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -345,6 +347,7 @@ enum Block {
 	STAB_WHEEL,#22
 	BLOCK2,#23
 	COAL_GEN,#24
+	ROCKET,#25
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -370,6 +373,7 @@ enum Block {
 @onready var stab_wheel_scene: PackedScene = preload("res://stab_wheel.tscn")   # стабилизирующее (90°)
 @onready var block2_scene: PackedScene = preload("res://block2.tscn")           # 2×1×1
 @onready var coal_gen_scene: PackedScene = preload("res://coal_gen.tscn")       # 2×1×2, уголь→энергия на якоре
+@onready var rocket_scene: PackedScene = preload("res://rocket_launcher.tscn")  # ракетница: снаряд с AOE-взрывом
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -381,7 +385,7 @@ func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
 const BLOCK_CATEGORIES := {
-	"attack":  [Block.GUN, Block.LASER, Block.DRILL],
+	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL],
 	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL, Block.SUPPORT],
 	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
@@ -413,6 +417,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.STAB_WHEEL: return stab_wheel_scene
 		Block.BLOCK2: return block2_scene
 		Block.COAL_GEN: return coal_gen_scene
+		Block.ROCKET: return rocket_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).

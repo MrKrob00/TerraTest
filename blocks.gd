@@ -34,6 +34,7 @@ var _contact_faces: Dictionary = {}
 func _init_contacts() -> void:
 	_contact_faces = {
 		G.Block.GUN:   ["bottom"],           # пушка: контакт только снизу
+		G.Block.ROCKET: ["bottom"],          # ракетница: контакт только снизу (как пушка)
 		G.Block.WHEEL: ["left", "right"],    # колесо цепляется слева и справа; постройка сама
 		#                                      разворачивает его по стороне (см. vehicle_body_3d)
 		G.Block.DRILL: ["back"],             # бур: контакт только сзади (ставится на морду, буром вперёд)

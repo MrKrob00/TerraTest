@@ -42,6 +42,7 @@ func _ready() -> void:
 		G.Block.DRILL: 20,
 		G.Block.GUN: 35,
 		G.Block.LASER: 40,
+		G.Block.ROCKET: 55,
 		G.Block.COLLECTOR: 15,
 		G.Block.INTAKE: 15,
 		G.Block.BELT: 10,
@@ -54,7 +55,7 @@ func _ready() -> void:
 		G.Block.SHIELD: 50,
 	}
 	_categories = {
-		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.DRILL],
+		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.ROCKET, G.Block.DRILL],
 		"blocks":  [G.Block.BLOCK, G.Block.CABIN, G.Block.WHEEL],
 		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER, G.Block.GENERATOR],
 		# BATTERY/SOLAR/REGEN/SHIELD не в явных категориях -> попадают в «Остальные»
