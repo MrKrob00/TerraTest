@@ -20,6 +20,71 @@ const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-кар
 const CARD_COUNT := 28          # сколько карточек в «хмаре» (много; часть видна по ходу анимации)
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
+# AOE-взрыв: урон блокам в радиусе (спад от центра) + дешёвый огненный эффект (два additive-меша,
+# без частиц/света — легко для мобильного GPU). Батарея зовёт это при уничтожении. exclude_root —
+# машина, которую НЕ бить (напр. ракета не бьёт свою); для батареи null — взрывает всё вокруг.
+static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: int, exclude_root: Node = null) -> void:
+	if not is_instance_valid(anchor):
+		return
+	var world := anchor.get_world_3d()
+	if world != null:
+		var sphere := SphereShape3D.new()
+		sphere.radius = radius
+		var q := PhysicsShapeQueryParameters3D.new()
+		q.shape = sphere
+		q.transform = Transform3D(Basis(), world_pos)
+		q.collision_mask = 2                                # слой блоков (VehicleBlock.collision_layer=2)
+		q.collide_with_bodies = true
+		var seen := {}
+		for hit in world.direct_space_state.intersect_shape(q, 48):
+			var b = hit.get("collider")
+			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
+				continue
+			if exclude_root != null and _root_of(b) == exclude_root:
+				continue
+			seen[b] = true
+			var dist: float = (b as Node3D).global_position.distance_to(world_pos)
+			var f: float = clampf(1.0 - dist / radius, 0.15, 1.0)   # спад урона к краю
+			b.hurt(int(round(dmg * f)))
+	var tree := anchor.get_tree()
+	if tree != null and tree.current_scene != null:
+		_boom(tree.current_scene, world_pos, radius, Color(1.0, 0.55, 0.15), 4.0, 0.38)   # огненный шар
+		_boom(tree.current_scene, world_pos, radius * 0.55, Color(1.0, 0.95, 0.7), 6.0, 0.22)  # горячее ядро
+
+static func _root_of(n: Node) -> Node:
+	var p: Node = n
+	while p != null and not (p is RigidBody3D):
+		p = p.get_parent()
+	return p
+
+static func _boom(root: Node, pos: Vector3, target_r: float, col: Color, energy: float, dur: float) -> void:
+	var mi := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.5
+	sm.height = 1.0
+	sm.radial_segments = 10
+	sm.rings = 6
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	mat.albedo_color = Color(col.r, col.g, col.b, 1.0)
+	mat.emission_enabled = true
+	mat.emission = col
+	mat.emission_energy_multiplier = energy
+	sm.material = mat
+	mi.mesh = sm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(mi)
+	mi.global_position = pos
+	mi.scale = Vector3.ONE * 0.25
+	var tw := mi.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3.ONE * (target_r / 0.5), dur).set_ease(Tween.EASE_OUT)
+	tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
+	tw.tween_property(mat, "emission_energy_multiplier", 0.0, dur)
+	tw.chain().tween_callback(mi.queue_free)
+
 static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if block == null or not block.is_inside_tree():
 		return
