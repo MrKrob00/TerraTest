@@ -407,6 +407,36 @@ func _find_terrain() -> Node:
 			return c
 	return null
 
+# ── Медленное перемещение в РЕЖИМЕ СТРОЙКИ (репозиция, чтобы выбраться из ямы/застревания) ──
+const BUILD_MOVE_SPEED := 4.0         # медленно (u/с) — это не езда, а сдвиг платформы
+const BUILD_HOVER_CLEARANCE := 4.0    # высота парения над рельефом в стройке
+var _terr_cache: Node = null
+
+func _get_terrain() -> Node:
+	if _terr_cache == null or not is_instance_valid(_terr_cache):
+		_terr_cache = _find_terrain()
+	return _terr_cache
+
+# Направление сдвига в стройке (джойстик движения + WASD), ОТНОСИТЕЛЬНО КАМЕРЫ (вверх по стику —
+# от игрока). Свободный XZ-сдвиг, а не «газ/руль» — репозиция висящей платформы.
+func _build_move_dir() -> Vector3:
+	var joy := Vector2.ZERO
+	if camera_controller != null and camera_controller.joystick_move != null:
+		joy = camera_controller.joystick_move.get_joystick_dir()
+	if not _typing_in_ui():
+		joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
+	if joy.length() < 0.12:
+		return Vector3.ZERO
+	var cam: Camera3D = camera_controller.camera if camera_controller != null else null
+	if cam == null:
+		return Vector3.ZERO
+	var cf := -cam.global_transform.basis.z; cf.y = 0.0
+	var cr := cam.global_transform.basis.x;  cr.y = 0.0
+	if cf.length() > 0.01: cf = cf.normalized()
+	if cr.length() > 0.01: cr = cr.normalized()
+	var m := cr * joy.x + cf * (-joy.y)   # joy.y вверх = -1 → вперёд (от камеры)
+	return m.normalized() if m.length() > 1.0 else m
+
 # ── Действия кругового меню (вызывает hud.open_vehicle_menu) ─────────────────
 
 # Вся машина → в инвентарь: каждый блок типом в G.block_inventory, машина исчезает.
@@ -563,15 +593,23 @@ func _physics_process(delta: float) -> void:
 	if anchored:
 		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
-		# Держим машину на высоте map БЕЗ тряски. Раньше сюда только ДОБАВЛЯЛАСЬ скорость вверх,
-		# а гравитация тянула вниз — незатухающий «прыжок» вверх-вниз. Теперь скорость по Y —
-		# задемпфированная пружина к цели (v ∝ остатку пути → плавный подход без овершута),
-		# а горизонталь и вращение гасим, чтобы платформа стояла ровно.
+		# Держим машину-платформу БЕЗ тряски: высота — задемпфированная пружина к map (v ∝ остатку
+		# пути, без овершута), поворот — плавно к ровному. Горизонталь — МЕДЛЕННО по джойстику
+		# (репозиция), иначе гасится к нулю (стоит на месте).
+		# Высота цели СЛЕДУЕТ ЗА РЕЛЬЕФОМ (+клиренс), чтобы можно было выплыть из ямы/застревания:
+		# двигаешь машину к краю → она поднимается над землёй и переваливает через препятствие.
+		if not is_station:
+			var terr := _get_terrain()
+			if terr != null:
+				map = terr.terrain_height_at(global_position) + BUILD_HOVER_CLEARANCE
 		var err := map - global_position.y
-		linear_velocity.y = clampf(err * 6.0, -4.0, 4.0)
-		var h := clampf(delta * 10.0, 0.0, 1.0)
-		linear_velocity.x = lerpf(linear_velocity.x, 0.0, h)
-		linear_velocity.z = lerpf(linear_velocity.z, 0.0, h)
+		linear_velocity.y = clampf(err * 6.0, -6.0, 6.0)
+		var h := clampf(delta * 8.0, 0.0, 1.0)
+		# Медленное ПЕРЕМЕЩЕНИЕ джойстиком/WASD (репозиция, не езда): свободный сдвиг по XZ
+		# относительно камеры. Станцию не двигаем (на якоре).
+		var move := _build_move_dir() if not is_station else Vector3.ZERO
+		linear_velocity.x = lerpf(linear_velocity.x, move.x * BUILD_MOVE_SPEED, h)
+		linear_velocity.z = lerpf(linear_velocity.z, move.z * BUILD_MOVE_SPEED, h)
 		# ВЫРАВНИВАНИЕ: плавно ставим машину РОВНО (верх = мир-верх), сохраняя курс (yaw). Если
 		# въехали в стройку перевёрнутыми/на боку — она сама встаёт вертикально (не мгновенным
 		# сбросом эйлеров, который «гимбалит» на перевороте, а slerp к ровной ориентации).

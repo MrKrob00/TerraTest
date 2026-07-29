@@ -989,7 +989,7 @@ func _on_building_pressed() -> void:
 	if _block_globe:
 		_block_globe.visible = true
 		_block_globe.refresh()      # инвентарь мог измениться с прошлого раза в стройке
-	%Joystick_movement.visible=false
+	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
 	$Movement/Label.add_theme_color_override("font_color", Color.BLACK)
 	$Building/Label.add_theme_color_override("font_color", Color.GREEN)
 
