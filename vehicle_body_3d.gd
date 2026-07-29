@@ -1173,6 +1173,10 @@ func _on_take_pressed() -> void:
 	elif block_body != null and is_instance_valid(block_body):
 		if block_body.get_parent().name in "blocks":
 			block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+			# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
+			# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
+			if block_map_node.has_method("_detach_orphans"):
+				block_map_node.call_deferred("_detach_orphans")
 		# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
 		# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
 		for i in get_children():
