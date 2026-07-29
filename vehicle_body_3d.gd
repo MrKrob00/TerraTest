@@ -525,12 +525,16 @@ func _physics_process(delta: float) -> void:
 	if anchored:
 		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
-		var dist = global_position.y - map
-		if dist < 5.0:
-			var t = 1.0 - clamp(dist / 5.0, 0.0, 0.3)
-			linear_velocity.y += lerp(0.0, 0.45, t)
-		angular_velocity.x += rotation.x
-		angular_velocity.z += rotation.z
+		# Держим машину на высоте map БЕЗ тряски. Раньше сюда только ДОБАВЛЯЛАСЬ скорость вверх,
+		# а гравитация тянула вниз — незатухающий «прыжок» вверх-вниз. Теперь скорость по Y —
+		# задемпфированная пружина к цели (v ∝ остатку пути → плавный подход без овершута),
+		# а горизонталь и вращение гасим, чтобы платформа стояла ровно.
+		var err := map - global_position.y
+		linear_velocity.y = clampf(err * 6.0, -4.0, 4.0)
+		var h := clampf(delta * 10.0, 0.0, 1.0)
+		linear_velocity.x = lerpf(linear_velocity.x, 0.0, h)
+		linear_velocity.z = lerpf(linear_velocity.z, 0.0, h)
+		angular_velocity = angular_velocity.lerp(Vector3.ZERO, h)
 		return
 
 	var typing := _typing_in_ui()
