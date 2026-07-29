@@ -305,6 +305,80 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 # ── Обработчик: блок уничтожен ────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:
 	remove_block(x, y, z)
+	# Структурная целостность: блоки, потерявшие связь с корнем (кабина/база), падают в мир.
+	# Отложенно (call_deferred) — репарент/разморозка небезопасны прямо в физ-колбэке урона.
+	call_deferred("_detach_orphans")
+
+# ── Структурная целостность ───────────────────────────────────────────────────
+# Корень постройки: КАБИНА (мобильная машина) или СТАЦИОНАРНЫЙ блок (база). Всё, что не
+# добирается до корня по грани-к-грани, — оторвано. Один BFS ловит сразу целый оторванный кусок.
+func _reachable_cells() -> Dictionary:
+	var seen: Dictionary = {}
+	var queue: Array = []
+	for x in MAP_SIZE_X:
+		for y in MAP_SIZE_Y:
+			for z in MAP_SIZE_Z:
+				var bt: int = map[x][y][z]
+				if bt != G.Block.EMPTY and (bt == G.Block.CABIN or G.is_stationary(bt)):
+					var k := "%d,%d,%d" % [x, y, z]
+					if not seen.has(k):
+						seen[k] = true
+						queue.append(Vector3i(x, y, z))
+	var DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+	while not queue.is_empty():
+		var c: Vector3i = queue.pop_back()
+		for d in DIRS:
+			var n: Vector3i = c + d
+			if not _in_bounds(n.x, n.y, n.z):
+				continue
+			if map[n.x][n.y][n.z] == G.Block.EMPTY:
+				continue
+			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
+			if seen.has(nk):
+				continue
+			seen[nk] = true
+			queue.append(n)
+	return seen
+
+func _detach_orphans() -> void:
+	if node_map.is_empty():
+		return
+	var reachable := _reachable_cells()
+	if reachable.is_empty():
+		return   # корня нет (кабина/база уничтожена) — этим займётся смерть машины (_scatter_blocks)
+	var orphans: Array = []
+	for anchor in node_map.keys():
+		var parts: PackedStringArray = anchor.split(",")
+		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
+		if not _in_bounds(ax, ay, az):
+			continue
+		var bt: int = map[ax][ay][az]
+		if bt == G.Block.EMPTY:
+			continue
+		var grounded := false
+		for c in _block_footprint(bt, ax, ay, az):
+			if reachable.has("%d,%d,%d" % [c.x, c.y, c.z]):
+				grounded = true
+				break
+		if not grounded:
+			orphans.append(Vector3i(ax, ay, az))
+	for o in orphans:
+		_detach_one(o.x, o.y, o.z)
+
+# Оторвать блок в мир: снять сигналы разрушения (чтобы гибель уже свободного блока не трогала
+# карту машины), очистить карту, и поручить машине уронить узел (коллизия + репарент + импульс).
+func _detach_one(ax: int, ay: int, az: int) -> void:
+	var anchor := "%d,%d,%d" % [ax, ay, az]
+	var node: Node = node_map.get(anchor, null)
+	if node != null and is_instance_valid(node) and node.has_signal("destroyed"):
+		for con in node.destroyed.get_connections():
+			node.destroyed.disconnect(con["callable"])
+	remove_block(ax, ay, az)                       # чистит карту, сам узел НЕ трогает
+	if node == null or not is_instance_valid(node):
+		return
+	var veh := get_parent()
+	if veh != null and veh.has_method("detach_block_to_world"):
+		veh.detach_block_to_world(node)
 
 # ══════════════════════════════════════════════════════════════════════════════
 # СОХРАНЕНИЕ / ЗАГРУЗКА
