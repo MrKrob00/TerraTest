@@ -141,6 +141,7 @@ void vertex() {
     // распределения НЕТ (убрано по просьбе). Пустыня — сухой песок без травы; луг — сочная зелень.
     float biome_grass = COLOR.b;
     float canyon  = COLOR.g;
+    float mountain = COLOR.a;                                          // биом ГОР (снежные, высокие)
     // Терракота ПОЛОСАМИ по высоте (страты каньона): плоский тред → одна полоса цвета.
     float band_id    = floor(wy / canyon_band_h);
     float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 на каждую полосу, стабильно
@@ -148,9 +149,10 @@ void vertex() {
                            clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);  // пустыня ↔ луг
     zone          = mix(zone,           canyon_col,       canyon);      // каньон поверх
+    zone          = mix(zone,           color_snow.rgb,   mountain);    // снежные горы поверх (белый)
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
-    vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // скалы каньона темнее-терракота
+    vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // скалы: каньон темнее, на снегу — тёмная порода
     v_base_col    = mix(zone, rock_col, rock_t);
 
     v_is_grass = 0.0;
@@ -160,7 +162,7 @@ void vertex() {
     if (lod_grass_enabled > 0.5 && COLOR.r > 0.5) {
         // Трава ТОЛЬКО в ЛУГУ (biome_grass). В ПУСТЫНЕ sand_grass=0 → сухой песок без травы. НЕТ
         // на камне (rock_t) и в каньоне. Без высотного гейта. amount масштабирует высоту и плотность.
-        float amount = mix(sand_grass, 1.0, biome_grass) * (1.0 - rock_t) * (1.0 - canyon);
+        float amount = mix(sand_grass, 1.0, biome_grass) * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain);
         if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;   // выше в траве, ниже на снегу
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);

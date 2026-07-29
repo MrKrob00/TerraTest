@@ -33,9 +33,13 @@ const SNOW := 4
 @export var biome_scale: float = 140.0
 @export var biome_blend: float = 0.07
 @export var biome_grass_bias: float = 0.5
+@export var biome_contrast: float = 1.8
 @export var canyon_scale: float = 160.0
 @export var canyon_threshold: float = 0.70
 @export var canyon_edge: float = 0.05
+@export var mtn_scale: float = 280.0
+@export var mtn_threshold: float = 0.72
+@export var mtn_edge: float = 0.05
 
 var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
 var _cull_t: float = 0.0
@@ -79,15 +83,18 @@ func _ss(a: float, b: float, x: float) -> float:
 	return smoothstep(a, b, x)
 
 func _biome_at(wx: float, wz: float, wy: float) -> int:
-	# Биом ЧИСТО по региону (шум), на любой высоте — воды нет (см. glsl.gdshader).
-	# КАНЬОН проверяем ДО снега — он исключение: терракота не белеет даже на высоте.
+	# Биом ЧИСТО по региону (шум), на любой высоте — воды/снега-по-высоте нет (см. glsl.gdshader).
+	# Порядок как в шейдере (верхний слой побеждает): ГОРЫ(снег) → КАНЬОН → трава/песок.
+	var mtn := _ss(mtn_threshold - mtn_edge, mtn_threshold + mtn_edge,
+			_vnoise(Vector2(wx, wz) / mtn_scale + Vector2(211.0, 77.0)))
+	if mtn > 0.5:
+		return SNOW
 	var canyon := _ss(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
 			_vnoise(Vector2(wx, wz) / canyon_scale + Vector2(101.0, 53.0)))
 	if canyon > 0.5:
 		return CANYON
-	if _ss(height_snow_start - zone_blend, height_snow_start + zone_blend, wy) > 0.5:
-		return SNOW
 	var bn := _vnoise(Vector2(wx, wz) / biome_scale)
+	bn = clampf((bn - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
 	return GRASS if _ss(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, bn) > 0.5 else SAND
 
 # ── Расстановка: для каждого набора набираем count точек в его биоме ───────────
