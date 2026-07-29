@@ -73,6 +73,85 @@ const GEN_MTN_THRESHOLD := 0.72
 const GEN_MTN_EDGE := 0.05
 const GEN_MOUNTAIN_RISE := 48.0          # высота гор, м
 
+# ── Многопоточная генерация (WorkerThreadPool) ────────────────────────────────
+# Два тяжёлых noise-цикла (заливка высот + карвинг каньонов) — построчно параллельны (строки
+# независимы). Раскидываем строки по потокам: каждый пишет СВОИ индексы массива (refcount=1 →
+# без copy-on-write гонок), шумы читаются потоками только для чтения (FastNoiseLite/_cv_noise —
+# без изменяемого состояния). Состояние потоковых callable'ов — в этих полях.
+var _gen_w: int = 0
+var _gen_d: int = 0
+var _gen_base: FastNoiseLite
+var _gen_ridge: FastNoiseLite
+var _gen_dune: FastNoiseLite
+var _gen_gorge: FastNoiseLite
+var _gen_ramp: FastNoiseLite
+var _gen_out: PackedFloat32Array
+var _gen_base_in: PackedFloat32Array
+var _gen_carved: PackedFloat32Array
+var _gen_mesa_min: float = 0.0
+
+# Одна строка z заливки высот (вызывается WorkerThreadPool.add_group_task на каждую строку).
+func _gen_fill_row(z: int) -> void:
+	var w := _gen_w
+	var hw := float(w) * 0.5
+	var hd := float(_gen_d) * 0.5
+	var fz := float(z)
+	var row := z * w
+	for x in w:
+		var fx := float(x)
+		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
+		var continental = pow(base, gen_power)
+		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), gen_ridge_sharpness)
+		var mountain_mask = smoothstep(0.52, 0.78, continental)
+		var ridge_term = ridge * gen_mountain_amount * mountain_mask
+		var wx := fx - hw
+		var wz := fz - hd
+		if gen_canyon_enable and ridge_term > 0.001:
+			var cnn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
+			ridge_term *= 1.0 - smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cnn)
+		var bnn := _cv_noise(Vector2(wx, wz) / GEN_BIOME_SCALE)
+		bnn = clampf((bnn - 0.5) * GEN_BIOME_CONTRAST + 0.5, 0.0, 1.0)
+		var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
+		var mraw := _cv_noise(Vector2(wx, wz) / GEN_MTN_SCALE + Vector2(211.0, 77.0))
+		var mtn_mask := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, GEN_MTN_THRESHOLD + GEN_MTN_EDGE, mraw)
+		var mtn_dome := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, 0.95, mraw)
+		var not_mtn := 1.0 - mtn_mask
+		var land_sand := sand_m * not_mtn
+		var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, land_sand)
+		var h = cont_biome + ridge_term * not_mtn
+		var duneph := wx / GEN_DUNE_WAVELEN + _gen_dune.get_noise_2d(fx, fz) * 3.5
+		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * land_sand
+		var mtn_rise := mtn_dome * GEN_MOUNTAIN_RISE + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
+		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
+
+# Одна строка z карвинга каньонов (читает _gen_base_in, пишет _gen_carved).
+func _gen_carve_row(z: int) -> void:
+	var w := _gen_w
+	var hw := float(w) * 0.5
+	var hd := float(_gen_d) * 0.5
+	var fz := float(z)
+	var terr: float = maxf(gen_canyon_terrace, 0.5)
+	for x in w:
+		var idx := z * w + x
+		var wx := float(x) - hw
+		var wz := fz - hd
+		var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
+		if smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cn) <= 0.001:
+			continue
+		var hmask := smoothstep(gen_canyon_threshold - 0.02, gen_canyon_threshold + 0.02, cn)
+		var bt := _cv_noise(Vector2(wx, wz) / CANYON_BUTTE_SCALE + Vector2(300.0, 300.0))
+		var mesa_top: float = lerpf(_gen_mesa_min, gen_canyon_plateau, bt)
+		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
+		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
+		var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
+		var wall_t := smoothstep(gen_canyon_width * 0.55, wall_hi, gv)
+		var canyon_h := lerpf(gen_canyon_floor, mesa_top, wall_t)
+		var lvl: float = canyon_h / terr
+		var li: float = floor(lvl)
+		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, lvl - li)
+		canyon_h = (li + riser) * terr
+		_gen_carved[idx] = lerpf(_gen_base_in[idx], canyon_h, hmask)
+
 # ─────────────────────────────────────────────────
 # Helper builders
 # ─────────────────────────────────────────────────
@@ -991,59 +1070,20 @@ func _generate_noise() -> void:
 	dune_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	dune_noise.frequency   = 1.0 / 140.0
 
-	var new_data = PackedFloat32Array()
-	new_data.resize(width * depth)
-
-	for z in depth:
-		for x in width:
-			# ── Continental base ──────────────────
-			var raw = base_noise.get_noise_2d(float(x), float(z))
-			var base = (raw + 1.0) * 0.5            # remap to [0, 1]
-
-			# Power curve: flattens plains, keeps peaks elevated.
-			# ^4 means 0.5^4 = 0.0625 (flat), 0.9^4 = 0.66 (hill).
-			var continental = pow(base, gen_power)
-
-			# ── Ridge ────────────────────────────
-			var rn    = ridge_noise.get_noise_2d(float(x), float(z))
-			var ridge = 1.0 - abs(rn)               # peaks where rn ≈ 0
-			ridge = pow(ridge, gen_ridge_sharpness)  # sharpen crest
-
-			# Mountain mask: ridges grow in only where the continental base is УЖЕ высокий.
-			# Порог поднят (0.52→0.78): при низком gen_power ридж-горы иначе расползаются по
-			# среднему рельефу и дают «странные» пики повсюду. Теперь горы — только настоящие пики.
-			var mountain_mask = smoothstep(0.52, 0.78, continental)
-
-			# ── Combine ──────────────────────────
-			var ridge_term = ridge * gen_mountain_amount * mountain_mask
-			# Гасим ридж-горы ВНУТРИ каньон-региона (та же маска, что красит биом) — чтобы каньон
-			# строился на чистой равнине, а не на муляже «гора+меса». _cv_noise зовём ТОЛЬКО там,
-			# где есть что гасить (горные ячейки) — иначе 4M лишних сэмплов тормозят генерацию.
-			if gen_canyon_enable and ridge_term > 0.001:
-				var cnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / gen_canyon_scale + Vector2(101.0, 53.0))
-				var cm := smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cnn)
-				ridge_term *= (1.0 - cm)
-			# БИОМ определяет и ФОРМУ рельефа, а не только цвет (иначе пустыня и луг — одни и те же
-			# холмы, лишь перекрашенные). Шум и контраст — те же, что цвет в map.gd (_biome_grass01).
-			var bnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_BIOME_SCALE)
-			bnn = clampf((bnn - 0.5) * GEN_BIOME_CONTRAST + 0.5, 0.0, 1.0)
-			var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
-			# ГОРЫ: свой регион-шум. Плавный КУПОЛ (высокий в центре, пологий к краю → проезжаемо).
-			var mraw := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_MTN_SCALE + Vector2(211.0, 77.0))
-			var mtn_mask := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, GEN_MTN_THRESHOLD + GEN_MTN_EDGE, mraw)
-			var mtn_dome := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, 0.95, mraw)   # 0 на краю → 1 к пику
-			var not_mtn := 1.0 - mtn_mask
-			# ПУСТЫНЯ = плоское песчаное море (сплющиваем холмы) + ДЮНЫ; ЛУГ = холмистая зелень.
-			# Форму пустыни/дюны/ридж гасим в горах (у гор своя высота). Формы биомов РАЗНЫЕ.
-			var land_sand := sand_m * not_mtn
-			var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, land_sand)
-			var h = cont_biome + ridge_term * not_mtn
-			var duneph := (float(x) - width * 0.5) / GEN_DUNE_WAVELEN \
-					+ dune_noise.get_noise_2d(float(x), float(z)) * 3.5
-			var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * land_sand   # острые гребни дюн
-			var mtn_rise := mtn_dome * GEN_MOUNTAIN_RISE \
-					+ dune_noise.get_noise_2d(float(x) * 1.7, float(z) * 1.7) * 4.0 * mtn_mask   # лёгкая неровность вершин
-			new_data[z * width + x] = h * gen_amplitude + dune + mtn_rise
+	# ── Заливка высот В ПОТОКАХ ───────────────────────────────────────────────
+	# Строки независимы → раскидываем по WorkerThreadPool (ускорение ~× число ядер). Шумы —
+	# члены-поля (потоки читают их только для чтения). Пишем в _gen_out (refcount=1 → без CoW).
+	_gen_w = width
+	_gen_d = depth
+	_gen_base = base_noise
+	_gen_ridge = ridge_noise
+	_gen_dune = dune_noise
+	_gen_out = PackedFloat32Array()
+	_gen_out.resize(width * depth)
+	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: высоты")
+	WorkerThreadPool.wait_for_group_task_completion(_fill_gid)
+	var new_data := _gen_out
+	_gen_out = PackedFloat32Array()          # снять ссылку-член (дальше владеет new_data)
 
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
@@ -1078,46 +1118,17 @@ func _generate_noise() -> void:
 		ramp_noise.seed        = gen_seed + 143
 		ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		ramp_noise.frequency   = 1.0 / 55.0
-		var carved := new_data.duplicate()
-		var mesa_min: float = maxf(gen_canyon_plateau - 22.0, gen_canyon_floor + 8.0)   # низ разброса высот мес
-		for z in depth:
-			for x in width:
-				var idx := z * width + x
-				var base_h: float = new_data[idx]
-				# Мировые XZ (центрированы, как в шейдере: world.x ≈ grid_x - width/2).
-				var wx := float(x) - width * 0.5
-				var wz := float(z) - depth * 0.5
-				var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
-				# «Мягкая» маска региона — только чтобы понять, попали ли в каньон-регион.
-				if smoothstep(gen_canyon_threshold - gen_canyon_edge,
-						gen_canyon_threshold + gen_canyon_edge, cn) <= 0.001:
-					continue
-				# «Резкая» маска ВЫСОТЫ — внешняя стена месы ОТВЕСНАЯ, а не пологий холм.
-				var hmask := smoothstep(gen_canyon_threshold - 0.02, gen_canyon_threshold + 0.02, cn)
-				# АБСОЛЮТНЫЙ верх плато, варьируется по крупному бьютт-шуму → разные меса разной высоты.
-				var bt := _cv_noise(Vector2(wx, wz) / CANYON_BUTTE_SCALE + Vector2(300.0, 300.0))
-				var mesa_top: float = lerpf(mesa_min, gen_canyon_plateau, bt)
-				var floor_h: float  = gen_canyon_floor
-				var gv := absf(gorge_noise.get_noise_2d(wx, wz))
-				var rn := ramp_noise.get_noise_2d(wx, wz)
-				var ramp := smoothstep(0.5, 0.75, (rn + 1.0) * 0.5)   # где велик — пологий съезд на дно
-				var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
-				var wall_lo: float = gen_canyon_width * 0.55
-				var wall_t := smoothstep(wall_lo, wall_hi, gv)   # 0 = дно ущелья, 1 = верх плато
-				var canyon_h := lerpf(floor_h, mesa_top, wall_t)
-				# ТЕРРАСИРОВАНИЕ по АБСОЛЮТНОЙ сетке высот (кратно terrace): плоские треды + резкие
-				# уступы-страты. Абсолют → страты совпадают между всеми месами И с цветовыми полосами
-				# шейдера (floor(wy/canyon_band_h)). На рампах уступы сглаживаем — съезды на дно проезжие.
-				var terr: float = maxf(gen_canyon_terrace, 0.5)
-				var lvl: float = canyon_h / terr
-				var li: float = floor(lvl)
-				var lf: float = lvl - li                               # ручной fract (нет глобального в GDScript)
-				var eff_riser: float = lerpf(gen_canyon_riser, 0.02, ramp)
-				var riser: float = smoothstep(1.0 - eff_riser, 1.0, lf)   # плоский тред, затем резкий уступ
-				canyon_h = (li + riser) * terr
-				# Абсолютный каньон ПОВЕРХ базы: резкая внешняя стена (hmask), а не подъём от равнины.
-				carved[idx] = lerpf(base_h, canyon_h, hmask)
-		new_data = carved
+		# Карвинг каньонов В ПОТОКАХ (строки независимы): читаем базу _gen_base_in, пишем _gen_carved.
+		_gen_gorge = gorge_noise
+		_gen_ramp = ramp_noise
+		_gen_mesa_min = maxf(gen_canyon_plateau - 22.0, gen_canyon_floor + 8.0)   # низ разброса высот мес
+		_gen_base_in = new_data
+		_gen_carved = new_data.duplicate()      # refcount=1: потоки пишут свои строки без CoW
+		var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: каньоны")
+		WorkerThreadPool.wait_for_group_task_completion(_carve_gid)
+		new_data = _gen_carved
+		_gen_carved = PackedFloat32Array()
+		_gen_base_in = PackedFloat32Array()
 
 	if image_mode:
 		# Set md + size, rebuild the editor preview, and write the heightmap image so the
