@@ -89,7 +89,30 @@ func _play_hit_effect() -> void:
 	# в красный цвет (см. block_matrix.gdshader mode 2 / BlockFX.hit).
 	BlockFX.hit(self)
 
+const BATTERY_BLAST_RADIUS := 3.0
+const BATTERY_BLAST_DAMAGE := 35
+const BATTERY_BLAST_FORCE := 7.0
+var _destroyed: bool = false
+
 func destroy() -> void:
+	if _destroyed:                    # защита от двойного вызова (цепные взрывы, урон в кадре гибели)
+		return
+	_destroyed = true
+	# Батарея ВОЛАТИЛЬНА: при уничтожении — AOE-урон блокам вокруг (~3 м) + пометка «бласт», чтобы
+	# осколки, оторвавшиеся из-за её гибели, разлетелись СИЛЬНЕЕ обычного (см. detach_block_to_world).
+	if block == G.Block.BATTERY:
+		var veh := _root_body()
+		if veh != null and veh.has_method("register_blast"):
+			veh.register_blast(global_position, BATTERY_BLAST_FORCE)
+		BlockFX.explosion(self, global_position, BATTERY_BLAST_RADIUS, BATTERY_BLAST_DAMAGE)
 	BlockFX.play(self, true)          # эффект «матрицы» уничтожения (красные + глюк)
 	emit_signal("destroyed", self)
 	queue_free()
+
+# Корневое тело (RigidBody3D-машина) над блоком — минуя ноду blocks. self сам RigidBody, поэтому
+# идём от родителя.
+func _root_body() -> Node:
+	var p: Node = get_parent()
+	while p != null and not (p is RigidBody3D):
+		p = p.get_parent()
+	return p
