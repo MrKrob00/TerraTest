@@ -62,8 +62,10 @@ const CANYON_BUTTE_SCALE := 110.0        # масштаб вариации вы�
 const GEN_BIOME_SCALE := 140.0
 const GEN_BIOME_BIAS := 0.5
 const GEN_BIOME_BLEND := 0.07
-const GEN_DUNE_AMP := 5.0                # высота дюн, м
-const GEN_DUNE_WAVELEN := 32.0           # длина волны гряд дюн, м
+const GEN_BIOME_CONTRAST := 1.8          # растяжка контраста шума → чётче песок↔трава (совпад. с map.gd)
+const GEN_DUNE_AMP := 9.0                # высота дюн, м (заметные гряды пустыни)
+const GEN_DUNE_WAVELEN := 34.0           # длина волны гряд дюн, м
+const GEN_DESERT_FLATTEN := 0.4          # насколько сплющить холмы в пустыне (0=плоско, 1=как луг)
 
 # ─────────────────────────────────────────────────
 # Helper builders
@@ -1015,13 +1017,18 @@ func _generate_noise() -> void:
 				var cnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / gen_canyon_scale + Vector2(101.0, 53.0))
 				var cm := smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cnn)
 				ridge_term *= (1.0 - cm)
-			var h = continental + ridge_term
-			# ДЮНЫ пустыни: только в ПЕСЧАНОМ биоме (та же CPU-маска, что цвет в map.gd). Волнистые
-			# гряды (warped sine). В луге sand_m=0 → дюн нет (остаётся холмистая зелень).
+			# БИОМ определяет и ФОРМУ рельефа, а не только цвет (иначе пустыня и луг — одни и те же
+			# холмы, лишь перекрашенные). Шум и контраст — те же, что цвет в map.gd (_biome_grass01).
 			var bnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_BIOME_SCALE)
+			bnn = clampf((bnn - 0.5) * GEN_BIOME_CONTRAST + 0.5, 0.0, 1.0)
 			var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
-			var dune := (0.5 + 0.5 * sin((float(x) - width * 0.5) / GEN_DUNE_WAVELEN \
-					+ dune_noise.get_noise_2d(float(x), float(z)) * 3.5)) * GEN_DUNE_AMP * sand_m
+			# ПУСТЫНЯ = плоское песчаное море (сплющиваем холмистый continental) + крупные ДЮНЫ.
+			# ЛУГ = холмистая зелень (continental как есть). Формы РАЗНЫЕ, не только цвет.
+			var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, sand_m)
+			var h = cont_biome + ridge_term
+			var duneph := (float(x) - width * 0.5) / GEN_DUNE_WAVELEN \
+					+ dune_noise.get_noise_2d(float(x), float(z)) * 3.5
+			var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * sand_m   # острые гребни дюн
 			new_data[z * width + x] = h * gen_amplitude + dune
 
 	# ── Optional blur passes ─────────────────────
