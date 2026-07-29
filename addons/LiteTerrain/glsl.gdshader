@@ -38,13 +38,13 @@ uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 group_uniforms Biomes;
 // Песок/трава теперь по БИОМАМ (регионам), а не по высоте. Биом задаётся низкочастотным
 // шумом по миру XZ: крупные пятна травяного и песчаного биома. Снег остаётся по высоте (пики).
-uniform float biome_scale       : hint_range(30.0, 1000.0) = 140.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
+uniform float biome_scale       : hint_range(30.0, 1000.0) = 230.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
 uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.07;   // резкость границы биомов (уже → чётче, не «мешанина»)
 uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.0;    // травы в ПУСТЫНЕ нет (сухой песок)
 // КАНЬОН-биом: терракотовые регионы (свой шум). Перекрывает песок/траву, суша, без травы.
 uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);  // терракота (горячее/насыщеннее)
-uniform float canyon_scale      : hint_range(30.0, 1000.0) = 160.0;  // размер пятна каньона (мельче → много мес)
+uniform float canyon_scale      : hint_range(30.0, 1000.0) = 250.0;  // размер пятна каньона (мельче → много мес)
 uniform float canyon_threshold  : hint_range(0.0, 1.0)     = 0.70;   // выше = реже каньоны (~21% при 160)
 uniform float canyon_edge       : hint_range(0.02, 0.5)    = 0.05;   // резкость границы (уже → отвеснее внешняя стена)
 uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // высота страты-полосы (== террасе геометрии в plugin.gd)
