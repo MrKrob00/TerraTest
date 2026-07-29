@@ -227,8 +227,8 @@ func _corr_spread_one() -> void:
 			if _corr[i] != 0 or _corr_healed[i] != 0:
 				continue
 			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var nx := x + d.x
-				var ny := y + d.y
+				var nx :int= x + d.x
+				var ny :int= y + d.y
 				if nx >= 0 and nx < CORR_GRID and ny >= 0 and ny < CORR_GRID and _corr[ny * CORR_GRID + nx] != 0:
 					cands.append(i)
 					break
