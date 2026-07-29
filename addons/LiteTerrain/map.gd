@@ -944,7 +944,7 @@ func _apply_editor_cache() -> void:
 			all_colors.append_array(cols)
 		else:
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 1.0, 1.0, 1.0))
+				all_colors.append(Color(1.0, 0.0, 0.0, 1.0))   # .g=0: без каньона (фолбэк)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1378,7 +1378,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 		else:
 			# Source lacks colours — treat as all-interior so grass behaves as before.
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 1.0, 1.0, 1.0))
+				all_colors.append(Color(1.0, 0.0, 0.0, 1.0))   # .g=0: без каньона (фолбэк)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1492,6 +1492,36 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 # sample positions are linearly interpolated so both meshes share the same
 # height along the seam — eliminating T-junction cracks.
 # Pass 0 (default) for edges that need no stitching.
+# ── Каньон-маска, ЗАПЕКАЕМАЯ в цвет вершины (.g) ──────────────────────────────
+# Раньше цвет каньона считался в ШЕЙДЕРЕ (GPU float32), а рельеф-каньон — в генераторе
+# (GDScript float64). Хеш fract(p.x*p.y) чувствителен к точности → регионы РАСХОДИЛИСЬ (~30%).
+# Теперь маску региона считаем ЗДЕСЬ (CPU, той же формулой, что plugin.gd/biome_scatter) и кладём
+# в COLOR.g; шейдер её просто читает. Так цвет и рельеф берут ОДИН шум → совпадают (и на всех LOD).
+# ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (gen_canyon_*) и glsl.gdshader (canyon_*).
+const CANYON_SCALE := 160.0
+const CANYON_THRESHOLD := 0.70
+const CANYON_EDGE := 0.05
+func _cv_fract(v: float) -> float:
+	return v - floor(v)
+func _cv_hash2d(p: Vector2) -> float:
+	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
+	var dd: float = p.dot(p + Vector2(45.32, 45.32))
+	p += Vector2(dd, dd)
+	return _cv_fract(p.x * p.y)
+func _cv_noise(p: Vector2) -> float:
+	var i := Vector2(floor(p.x), floor(p.y))
+	var f := p - i
+	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _cv_hash2d(i)
+	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
+	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
+	var dh := _cv_hash2d(i + Vector2(1.0, 1.0))
+	return lerpf(lerpf(a, b, f.x), lerpf(c, dh, f.x), f.y)
+# Мировые XZ ровно как в генераторе (plugin.gd): grid − размер/2 (совпадение до 0.5 клетки).
+func _canyon_mask01(gx: int, gz: int) -> float:
+	var cn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / CANYON_SCALE + Vector2(101.0, 53.0))
+	return smoothstep(CANYON_THRESHOLD - CANYON_EDGE, CANYON_THRESHOLD + CANYON_EDGE, cn)
+
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
 		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
@@ -1574,7 +1604,9 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# differs" (see _border_snap). Pass 0 (default build) = grass everywhere.
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
-			colors.append(Color(0.0, 0.0, 0.0, 1.0) if seam else Color(1.0, 1.0, 1.0, 1.0))
+			# .r = маска травы (0 на шве LOD, иначе 1); .g = маска КАНЬОНА (совпадает с рельефом).
+			var cg := _canyon_mask01(x, z)
+			colors.append(Color(0.0, cg, 0.0, 1.0) if seam else Color(1.0, cg, 0.0, 1.0))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
