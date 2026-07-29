@@ -448,6 +448,7 @@ shape = SubResource("HeightMapShape3D_obt1j")
 debug_color = Color(0, 11.708403, 13.469126, 1)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.71846, 5.4409027, -9.443741)
 top_level = true
 material_override = ExtResource("22_s0gvp")
 cast_shadow = 0
