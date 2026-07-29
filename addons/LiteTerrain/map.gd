@@ -1522,6 +1522,15 @@ func _canyon_mask01(gx: int, gz: int) -> float:
 	var cn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / CANYON_SCALE + Vector2(101.0, 53.0))
 	return smoothstep(CANYON_THRESHOLD - CANYON_EDGE, CANYON_THRESHOLD + CANYON_EDGE, cn)
 
+# Маска ЛУГА (1) ↔ ПУСТЫНИ (0), тем же CPU-шумом, что цвет в шейдере (COLOR.b) и дюны генератора.
+# ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (дюны) и glsl.gdshader (biome_scale/bias/blend).
+const BIOME_SCALE := 140.0
+const BIOME_GRASS_BIAS := 0.5
+const BIOME_BLEND := 0.07
+func _biome_grass01(gx: int, gz: int) -> float:
+	var bn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / BIOME_SCALE)
+	return smoothstep(BIOME_GRASS_BIAS - BIOME_BLEND, BIOME_GRASS_BIAS + BIOME_BLEND, bn)
+
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
 		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
@@ -1604,9 +1613,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# differs" (see _border_snap). Pass 0 (default build) = grass everywhere.
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
-			# .r = маска травы (0 на шве LOD, иначе 1); .g = маска КАНЬОНА (совпадает с рельефом).
+			# .r = маска травы-шва (0 на шве LOD, иначе 1); .g = КАНЬОН; .b = ЛУГ↔ПУСТЫНЯ.
 			var cg := _canyon_mask01(x, z)
-			colors.append(Color(0.0, cg, 0.0, 1.0) if seam else Color(1.0, cg, 0.0, 1.0))
+			var bg := _biome_grass01(x, z)
+			colors.append(Color(0.0, cg, bg, 1.0) if seam else Color(1.0, cg, bg, 1.0))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.

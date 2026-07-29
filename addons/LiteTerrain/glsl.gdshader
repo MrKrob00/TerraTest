@@ -22,8 +22,8 @@ uniform float texture_blend    : hint_range(0.0, 1.0)    = 0.06;
 const float PIXELS_PER_TILE = 16.0;
 
 group_uniforms Colors;
-uniform vec4 color_sand  : source_color = vec4(0.76, 0.66, 0.48, 1.0);
-uniform vec4 color_grass : source_color = vec4(0.29, 0.48, 0.23, 1.0);
+uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // тёплый золотистый песок (пустыня)
+uniform vec4 color_grass : source_color = vec4(0.33, 0.56, 0.23, 1.0);  // сочная зелень (луг)
 uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
 uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // холодно-серый (каньон-скала контрастнее)
 
@@ -41,7 +41,7 @@ group_uniforms Biomes;
 uniform float biome_scale       : hint_range(30.0, 1000.0) = 140.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
 uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.07;   // резкость границы биомов (уже → чётче, не «мешанина»)
 uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
-uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.2;    // сила травы в ПЕСЧАНОМ биоме (~0.2 макс)
+uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.0;    // травы в ПУСТЫНЕ нет (сухой песок)
 // КАНЬОН-биом: терракотовые регионы (свой шум). Перекрывает песок/траву, суша, без травы.
 uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);  // терракота (горячее/насыщеннее)
 uniform float canyon_scale      : hint_range(30.0, 1000.0) = 160.0;  // размер пятна каньона (мельче → много мес)
@@ -136,27 +136,18 @@ void vertex() {
     }
     v_corrupt   = cstate * corrupt_amount;
 
-    // БИОМ: песок/трава/каньон — ЧИСТО ПО РЕГИОНАМ (низкочастотный шум), на ЛЮБОЙ высоте.
-    // Воды нет: прежний высотный порог (height_grass_start) был легаси-раскраской «низ песок /
-    // верх трава» — сняли, перешли на биомы. Снег ОСТАЁТСЯ по ВЫСОТЕ (пики гор).
-    float biome_n     = vnoise(world_pos.xz / biome_scale);
-    float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n);
-    float t_snow  = smoothstep(height_snow_start - zone_blend, height_snow_start + zone_blend, wy);
-    // КАНЬОН: маска региона ЗАПЕЧЕНА в цвет вершины (COLOR.g, см. map.gd _canyon_mask01) на CPU —
-    // той же формулой/точностью, что рельеф-каньон в генераторе. Раньше считали здесь на GPU
-    // (float32) и регионы РАСХОДИЛИСЬ с рельефом (float64). Теперь просто читаем — совпадает.
+    // БИОМ: ПУСТЫНЯ (песок) ↔ ЛУГ (трава) — ЧИСТО ПО РЕГИОНАМ, БЕЗ высоты. Маски ЗАПЕЧЕНЫ на CPU
+    // (map.gd): COLOR.b = луг (совпадает с дюнами генератора), COLOR.g = каньон. Снега/высотного
+    // распределения НЕТ (убрано по просьбе). Пустыня — сухой песок без травы; луг — сочная зелень.
+    float biome_grass = COLOR.b;
     float canyon  = COLOR.g;
-    t_snow *= (1.0 - canyon);   // КАНЬОН — ИСКЛЮЧЕНИЕ: снега на терракоте нет, даже на высоких месах
-    // Терракота ПОЛОСАМИ по высоте (страты) — иконка badlands. Полосы совпадают с террасами
-    // геометрии (canyon_band_h == gen_canyon_terrace): плоский тред → все вершины в одной полосе
-    // (сплошная полоса цвета), крутые уступы остаются тёмной скалой между полосами.
+    // Терракота ПОЛОСАМИ по высоте (страты каньона): плоский тред → одна полоса цвета.
     float band_id    = floor(wy / canyon_band_h);
     float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 на каждую полосу, стабильно
     vec3  canyon_col = mix(color_canyon.rgb * 0.72,
                            clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
-    vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);
-    zone          = mix(zone,           canyon_col,       canyon);   // каньон (полосатая терракота) поверх песка/травы
-    zone          = mix(zone,           color_snow.rgb,  t_snow);    // снег по высоте — поверх всего
+    vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);  // пустыня ↔ луг
+    zone          = mix(zone,           canyon_col,       canyon);      // каньон поверх
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
     vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // скалы каньона темнее-терракота
@@ -166,12 +157,10 @@ void vertex() {
     // COLOR.r < 0.5 помечает вершины на границе чанка: там смещение травы пропускаем, чтобы
     // шов (особенно на границе LOD) остался на сшитой базовой поверхности. lod_grass_enabled=1
     // только на ближнем LOD-0 материале — трава смещается лишь вблизи, где её видно.
-    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5 && wy >= grass_min_height) {
-        // По БИОМУ: в травяном биоме трава полная, в ПЕСЧАНОМ — очень слабая (sand_grass~0.2
-        // макс, редкая и низкая), на снегу реже/короче (snow_grass), НЕТ на камне (rock_t
-        // зануляет — «на скалу не приминается»). amount масштабирует и высоту, и плотность.
-        float land   = mix(sand_grass, 1.0, biome_grass) * (1.0 - t_snow);
-        float amount = max(land, t_snow * snow_grass) * (1.0 - rock_t) * (1.0 - canyon);   // каньон сухой
+    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5) {
+        // Трава ТОЛЬКО в ЛУГУ (biome_grass). В ПУСТЫНЕ sand_grass=0 → сухой песок без травы. НЕТ
+        // на камне (rock_t) и в каньоне. Без высотного гейта. amount масштабирует высоту и плотность.
+        float amount = mix(sand_grass, 1.0, biome_grass) * (1.0 - rock_t) * (1.0 - canyon);
         if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;   // выше в траве, ниже на снегу
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);

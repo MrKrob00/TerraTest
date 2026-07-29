@@ -56,6 +56,14 @@ var gen_canyon_width:     float = 0.10   # ширина дна ущелий (в 
 # страты) — иконка badlands. Воды нет, биомы по региону (см. шейдер). Ридж гор в регионе гасим.
 const CANYON_SNOW_SAFE := 62.0           # < shader height_snow_start (70): плато не в снег
 const CANYON_BUTTE_SCALE := 110.0        # масштаб вариации высоты мес (крупные бьютты)
+# ---------- Дюны пустыни (в песчаном биоме) ----------
+# Биом-регион ТЕМ ЖЕ CPU-шумом, что цвет в map.gd (_biome_grass01) → дюны совпадают с песком.
+# ДЕРЖАТЬ В СИНХРОНЕ с map.gd (BIOME_*) и glsl.gdshader (biome_scale/bias/blend).
+const GEN_BIOME_SCALE := 140.0
+const GEN_BIOME_BIAS := 0.5
+const GEN_BIOME_BLEND := 0.07
+const GEN_DUNE_AMP := 5.0                # высота дюн, м
+const GEN_DUNE_WAVELEN := 32.0           # длина волны гряд дюн, м
 
 # ─────────────────────────────────────────────────
 # Helper builders
@@ -969,6 +977,12 @@ func _generate_noise() -> void:
 	ridge_noise.fractal_lacunarity = 2.2
 	ridge_noise.fractal_gain      = 0.45
 
+	# Дюны: низкочастотный варп направления гряд (чтобы дюны не были идеально прямыми).
+	var dune_noise := FastNoiseLite.new()
+	dune_noise.seed        = gen_seed + 211
+	dune_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	dune_noise.frequency   = 1.0 / 140.0
+
 	var new_data = PackedFloat32Array()
 	new_data.resize(width * depth)
 
@@ -1002,7 +1016,13 @@ func _generate_noise() -> void:
 				var cm := smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cnn)
 				ridge_term *= (1.0 - cm)
 			var h = continental + ridge_term
-			new_data[z * width + x] = h * gen_amplitude
+			# ДЮНЫ пустыни: только в ПЕСЧАНОМ биоме (та же CPU-маска, что цвет в map.gd). Волнистые
+			# гряды (warped sine). В луге sand_m=0 → дюн нет (остаётся холмистая зелень).
+			var bnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_BIOME_SCALE)
+			var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
+			var dune := (0.5 + 0.5 * sin((float(x) - width * 0.5) / GEN_DUNE_WAVELEN \
+					+ dune_noise.get_noise_2d(float(x), float(z)) * 3.5)) * GEN_DUNE_AMP * sand_m
+			new_data[z * width + x] = h * gen_amplitude + dune
 
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
