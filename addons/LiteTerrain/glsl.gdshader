@@ -142,9 +142,10 @@ void vertex() {
     float biome_n     = vnoise(world_pos.xz / biome_scale);
     float biome_grass = smoothstep(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, biome_n);
     float t_snow  = smoothstep(height_snow_start - zone_blend, height_snow_start + zone_blend, wy);
-    // КАНЬОН: свой низкочастотный шум (оффсет) → терракотовые регионы, на любой высоте.
-    float canyon  = smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
-            vnoise(world_pos.xz / canyon_scale + vec2(101.0, 53.0)));
+    // КАНЬОН: маска региона ЗАПЕЧЕНА в цвет вершины (COLOR.g, см. map.gd _canyon_mask01) на CPU —
+    // той же формулой/точностью, что рельеф-каньон в генераторе. Раньше считали здесь на GPU
+    // (float32) и регионы РАСХОДИЛИСЬ с рельефом (float64). Теперь просто читаем — совпадает.
+    float canyon  = COLOR.g;
     t_snow *= (1.0 - canyon);   // КАНЬОН — ИСКЛЮЧЕНИЕ: снега на терракоте нет, даже на высоких месах
     // Терракота ПОЛОСАМИ по высоте (страты) — иконка badlands. Полосы совпадают с террасами
     // геометрии (canyon_band_h == gen_canyon_terrace): плоский тред → все вершины в одной полосе
