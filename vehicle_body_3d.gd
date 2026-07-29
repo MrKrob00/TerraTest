@@ -506,6 +506,25 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	for key in keys_to_remove:
 		collision_to_block_map.erase(key)
 
+# Блок потерял связь с корнем (кабина/база) и падает в мир (см. blocks._detach_orphans):
+# снимаем его дублированную коллизию с тела машины, репарентим в objects, размораживаем и роняем.
+func detach_block_to_world(node: Node) -> void:
+	if not is_instance_valid(node):
+		return
+	if node is Node3D:
+		_on_block_destroyed(node as Node3D)          # убрать коллизию блока с тела + чистка мапы урона
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or not (node is Node3D):
+		return
+	(node as Node3D).reparent(objects)
+	if node is RigidBody3D:
+		var rb := node as RigidBody3D
+		rb.freeze = false
+		rb.sleeping = false
+		var dir := Vector3(randf() - 0.5, 0.0, randf() - 0.5)
+		dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+		rb.apply_central_impulse((dir * 2.0 + Vector3.UP * 2.5) * rb.mass)
+
 
 
 
