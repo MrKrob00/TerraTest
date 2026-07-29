@@ -1527,8 +1527,10 @@ func _canyon_mask01(gx: int, gz: int) -> float:
 const BIOME_SCALE := 140.0
 const BIOME_GRASS_BIAS := 0.5
 const BIOME_BLEND := 0.07
+const BIOME_CONTRAST := 1.8              # = plugin.gd GEN_BIOME_CONTRAST (чтобы цвет совпал с формой)
 func _biome_grass01(gx: int, gz: int) -> float:
 	var bn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / BIOME_SCALE)
+	bn = clampf((bn - 0.5) * BIOME_CONTRAST + 0.5, 0.0, 1.0)
 	return smoothstep(BIOME_GRASS_BIAS - BIOME_BLEND, BIOME_GRASS_BIAS + BIOME_BLEND, bn)
 
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
