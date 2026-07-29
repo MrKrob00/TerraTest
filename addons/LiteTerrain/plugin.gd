@@ -66,6 +66,12 @@ const GEN_BIOME_CONTRAST := 1.8          # растяжка контраста �
 const GEN_DUNE_AMP := 9.0                # высота дюн, м (заметные гряды пустыни)
 const GEN_DUNE_WAVELEN := 34.0           # длина волны гряд дюн, м
 const GEN_DESERT_FLATTEN := 0.4          # насколько сплющить холмы в пустыне (0=плоско, 1=как луг)
+# ---------- Биом ГОР (снежные, высокие, проезжаемые) ----------
+# Свой регион-шум (оффсет), СИНХРОН с map.gd (MTN_*). Плавный купол → высоко, но склоны пологие.
+const GEN_MTN_SCALE := 280.0
+const GEN_MTN_THRESHOLD := 0.72
+const GEN_MTN_EDGE := 0.05
+const GEN_MOUNTAIN_RISE := 48.0          # высота гор, м
 
 # ─────────────────────────────────────────────────
 # Helper builders
@@ -1022,14 +1028,22 @@ func _generate_noise() -> void:
 			var bnn := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_BIOME_SCALE)
 			bnn = clampf((bnn - 0.5) * GEN_BIOME_CONTRAST + 0.5, 0.0, 1.0)
 			var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
-			# ПУСТЫНЯ = плоское песчаное море (сплющиваем холмистый continental) + крупные ДЮНЫ.
-			# ЛУГ = холмистая зелень (continental как есть). Формы РАЗНЫЕ, не только цвет.
-			var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, sand_m)
-			var h = cont_biome + ridge_term
+			# ГОРЫ: свой регион-шум. Плавный КУПОЛ (высокий в центре, пологий к краю → проезжаемо).
+			var mraw := _cv_noise(Vector2(float(x) - width * 0.5, float(z) - depth * 0.5) / GEN_MTN_SCALE + Vector2(211.0, 77.0))
+			var mtn_mask := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, GEN_MTN_THRESHOLD + GEN_MTN_EDGE, mraw)
+			var mtn_dome := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, 0.95, mraw)   # 0 на краю → 1 к пику
+			var not_mtn := 1.0 - mtn_mask
+			# ПУСТЫНЯ = плоское песчаное море (сплющиваем холмы) + ДЮНЫ; ЛУГ = холмистая зелень.
+			# Форму пустыни/дюны/ридж гасим в горах (у гор своя высота). Формы биомов РАЗНЫЕ.
+			var land_sand := sand_m * not_mtn
+			var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, land_sand)
+			var h = cont_biome + ridge_term * not_mtn
 			var duneph := (float(x) - width * 0.5) / GEN_DUNE_WAVELEN \
 					+ dune_noise.get_noise_2d(float(x), float(z)) * 3.5
-			var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * sand_m   # острые гребни дюн
-			new_data[z * width + x] = h * gen_amplitude + dune
+			var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * land_sand   # острые гребни дюн
+			var mtn_rise := mtn_dome * GEN_MOUNTAIN_RISE \
+					+ dune_noise.get_noise_2d(float(x) * 1.7, float(z) * 1.7) * 4.0 * mtn_mask   # лёгкая неровность вершин
+			new_data[z * width + x] = h * gen_amplitude + dune + mtn_rise
 
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.

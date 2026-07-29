@@ -944,7 +944,7 @@ func _apply_editor_cache() -> void:
 			all_colors.append_array(cols)
 		else:
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 0.0, 0.0, 1.0))   # .g=0: без каньона (фолбэк)
+				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1378,7 +1378,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 		else:
 			# Source lacks colours — treat as all-interior so grass behaves as before.
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 0.0, 0.0, 1.0))   # .g=0: без каньона (фолбэк)
+				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1533,6 +1533,15 @@ func _biome_grass01(gx: int, gz: int) -> float:
 	bn = clampf((bn - 0.5) * BIOME_CONTRAST + 0.5, 0.0, 1.0)
 	return smoothstep(BIOME_GRASS_BIAS - BIOME_BLEND, BIOME_GRASS_BIAS + BIOME_BLEND, bn)
 
+# Маска биома ГОР (снежные, высокие, проезжаемые). Свой шум (оффсет). Печём в COLOR.a; шейдер
+# красит в белый/снег. Рельеф поднимает генератор той же маской. СИНХРОН с plugin.gd (GEN_MTN_*).
+const MTN_SCALE := 280.0
+const MTN_THRESHOLD := 0.72
+const MTN_EDGE := 0.05
+func _mountain_mask01(gx: int, gz: int) -> float:
+	var mn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / MTN_SCALE + Vector2(211.0, 77.0))
+	return smoothstep(MTN_THRESHOLD - MTN_EDGE, MTN_THRESHOLD + MTN_EDGE, mn)
+
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
 		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
@@ -1615,10 +1624,11 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# differs" (see _border_snap). Pass 0 (default build) = grass everywhere.
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
-			# .r = маска травы-шва (0 на шве LOD, иначе 1); .g = КАНЬОН; .b = ЛУГ↔ПУСТЫНЯ.
+			# .r = маска травы-шва (0 на шве LOD, иначе 1); .g = КАНЬОН; .b = ЛУГ↔ПУСТЫНЯ; .a = ГОРЫ.
 			var cg := _canyon_mask01(x, z)
 			var bg := _biome_grass01(x, z)
-			colors.append(Color(0.0, cg, bg, 1.0) if seam else Color(1.0, cg, bg, 1.0))
+			var mg := _mountain_mask01(x, z)
+			colors.append(Color(0.0, cg, bg, mg) if seam else Color(1.0, cg, bg, mg))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
