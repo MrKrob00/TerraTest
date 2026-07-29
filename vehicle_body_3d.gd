@@ -856,7 +856,7 @@ func _on_movement_pressed() -> void:
 	for b in $blocks.get_children():
 		if b.has_method("_find_next_block"): b._find_next_block()
 
-var map = 0.0
+var map:float = 0.0
 func _on_building_pressed() -> void:
 	if Building: return
 	if not is_instance_valid(ghost_block):
