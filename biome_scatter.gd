@@ -30,14 +30,14 @@ const SNOW := 4
 @export var height_grass_start: float = 20.0
 @export var height_snow_start: float = 70.0
 @export var zone_blend: float = 5.0
-@export var biome_scale: float = 140.0
+@export var biome_scale: float = 230.0
 @export var biome_blend: float = 0.07
 @export var biome_grass_bias: float = 0.5
 @export var biome_contrast: float = 1.8
-@export var canyon_scale: float = 160.0
+@export var canyon_scale: float = 250.0
 @export var canyon_threshold: float = 0.70
 @export var canyon_edge: float = 0.05
-@export var mtn_scale: float = 280.0
+@export var mtn_scale: float = 420.0
 @export var mtn_threshold: float = 0.72
 @export var mtn_edge: float = 0.05
 

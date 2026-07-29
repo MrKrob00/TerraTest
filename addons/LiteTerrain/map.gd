@@ -1498,7 +1498,7 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 # Теперь маску региона считаем ЗДЕСЬ (CPU, той же формулой, что plugin.gd/biome_scatter) и кладём
 # в COLOR.g; шейдер её просто читает. Так цвет и рельеф берут ОДИН шум → совпадают (и на всех LOD).
 # ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (gen_canyon_*) и glsl.gdshader (canyon_*).
-const CANYON_SCALE := 160.0
+const CANYON_SCALE := 250.0
 const CANYON_THRESHOLD := 0.70
 const CANYON_EDGE := 0.05
 func _cv_fract(v: float) -> float:
@@ -1524,7 +1524,7 @@ func _canyon_mask01(gx: int, gz: int) -> float:
 
 # Маска ЛУГА (1) ↔ ПУСТЫНИ (0), тем же CPU-шумом, что цвет в шейдере (COLOR.b) и дюны генератора.
 # ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (дюны) и glsl.gdshader (biome_scale/bias/blend).
-const BIOME_SCALE := 140.0
+const BIOME_SCALE := 230.0
 const BIOME_GRASS_BIAS := 0.5
 const BIOME_BLEND := 0.07
 const BIOME_CONTRAST := 1.8              # = plugin.gd GEN_BIOME_CONTRAST (чтобы цвет совпал с формой)
@@ -1535,7 +1535,7 @@ func _biome_grass01(gx: int, gz: int) -> float:
 
 # Маска биома ГОР (снежные, высокие, проезжаемые). Свой шум (оффсет). Печём в COLOR.a; шейдер
 # красит в белый/снег. Рельеф поднимает генератор той же маской. СИНХРОН с plugin.gd (GEN_MTN_*).
-const MTN_SCALE := 280.0
+const MTN_SCALE := 420.0
 const MTN_THRESHOLD := 0.72
 const MTN_EDGE := 0.05
 func _mountain_mask01(gx: int, gz: int) -> float:

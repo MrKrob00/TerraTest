@@ -43,7 +43,7 @@ var gen_size:             int   = 0      # image-mode target size (0 = keep curr
 # Форма каньонов привязана к ТОМУ ЖЕ шуму, что красит биом каньона в шейдере (glsl.gdshader:
 # canyon_scale/threshold/edge, оффсет +(101,53)) — цвет и рельеф совпадают автоматически.
 var gen_canyon_enable:    bool  = true
-var gen_canyon_scale:     float = 160.0  # = shader canyon_scale (мельче → МНОГО отдельных мес, а не пара глыб)
+var gen_canyon_scale:     float = 250.0  # = shader canyon_scale (мельче → МНОГО отдельных мес, а не пара глыб)
 var gen_canyon_threshold: float = 0.70   # = shader canyon_threshold (~21% карты)
 var gen_canyon_edge:      float = 0.05   # = shader canyon_edge (уже → отвеснее внешняя стена)
 var gen_canyon_plateau:   float = 46.0   # верх САМЫХ высоких мес (ниже — по шуму-бьютту → иерархия высот)
@@ -59,7 +59,7 @@ const CANYON_BUTTE_SCALE := 110.0        # масштаб вариации вы�
 # ---------- Дюны пустыни (в песчаном биоме) ----------
 # Биом-регион ТЕМ ЖЕ CPU-шумом, что цвет в map.gd (_biome_grass01) → дюны совпадают с песком.
 # ДЕРЖАТЬ В СИНХРОНЕ с map.gd (BIOME_*) и glsl.gdshader (biome_scale/bias/blend).
-const GEN_BIOME_SCALE := 140.0
+const GEN_BIOME_SCALE := 230.0
 const GEN_BIOME_BIAS := 0.5
 const GEN_BIOME_BLEND := 0.07
 const GEN_BIOME_CONTRAST := 1.8          # растяжка контраста шума → чётче песок↔трава (совпад. с map.gd)
@@ -68,7 +68,7 @@ const GEN_DUNE_WAVELEN := 34.0           # длина волны гряд дюн
 const GEN_DESERT_FLATTEN := 0.4          # насколько сплющить холмы в пустыне (0=плоско, 1=как луг)
 # ---------- Биом ГОР (снежные, высокие, проезжаемые) ----------
 # Свой регион-шум (оффсет), СИНХРОН с map.gd (MTN_*). Плавный купол → высоко, но склоны пологие.
-const GEN_MTN_SCALE := 280.0
+const GEN_MTN_SCALE := 420.0
 const GEN_MTN_THRESHOLD := 0.72
 const GEN_MTN_EDGE := 0.05
 const GEN_MOUNTAIN_RISE := 48.0          # высота гор, м
