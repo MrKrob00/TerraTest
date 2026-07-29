@@ -8,7 +8,7 @@ extends Control
 
 enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH }
 
-@onready var _grid:   GridContainer = %Grid
+@onready var _grid:   HFlowContainer = %Grid
 @onready var _search: LineEdit      = %Search
 # ВАЖНО: индекс в массиве = значение enum (bind в _ready) — TabTech последним.
 @onready var _tab_buttons: Array = [
@@ -54,12 +54,13 @@ func _ready() -> void:
 		G.Block.REGEN: 45,
 		G.Block.SHIELD: 50,
 	}
-	_categories = {
-		"attack":  [G.Block.GUN, G.Block.LASER, G.Block.ROCKET, G.Block.DRILL],
-		"blocks":  [G.Block.BLOCK, G.Block.CABIN, G.Block.WHEEL],
-		"factory": [G.Block.COLLECTOR, G.Block.INTAKE, G.Block.BELT, G.Block.PROCESSOR, G.Block.SELLER, G.Block.GENERATOR],
-		# BATTERY/SOLAR/REGEN/SHIELD не в явных категориях -> попадают в «Остальные»
-	}
+	# Любой блок из дерева, которому не задали цену выше, ВСЁ РАВНО попадает в магазин (цена от
+	# стоимости исследования). Так все блоки — и новые в будущем — автоматически есть в магазине.
+	for _bt in G.BLOCK_META:
+		if not _prices.has(_bt):
+			_prices[_bt] = maxi(int(G.BLOCK_META[_bt].get("rp", 10)), 5)
+	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
+	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
 	_build_extra_panel()
 	if _search:
