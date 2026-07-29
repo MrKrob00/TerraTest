@@ -572,7 +572,20 @@ func _physics_process(delta: float) -> void:
 		var h := clampf(delta * 10.0, 0.0, 1.0)
 		linear_velocity.x = lerpf(linear_velocity.x, 0.0, h)
 		linear_velocity.z = lerpf(linear_velocity.z, 0.0, h)
-		angular_velocity = angular_velocity.lerp(Vector3.ZERO, h)
+		# ВЫРАВНИВАНИЕ: плавно ставим машину РОВНО (верх = мир-верх), сохраняя курс (yaw). Если
+		# въехали в стройку перевёрнутыми/на боку — она сама встаёт вертикально (не мгновенным
+		# сбросом эйлеров, который «гимбалит» на перевороте, а slerp к ровной ориентации).
+		if not is_station:
+			var fwd := -global_transform.basis.z
+			fwd.y = 0.0
+			if fwd.length_squared() < 0.0001:      # смотрит строго вверх/вниз → курс берём из «верха»
+				fwd = global_transform.basis.y
+				fwd.y = 0.0
+			if fwd.length_squared() < 0.0001:
+				fwd = Vector3.FORWARD
+			var target := Basis.looking_at(fwd.normalized(), Vector3.UP)
+			global_basis = global_basis.orthonormalized().slerp(target, clampf(delta * 8.0, 0.0, 1.0)).orthonormalized()
+		angular_velocity = Vector3.ZERO
 		return
 
 	var typing := _typing_in_ui()
@@ -892,9 +905,7 @@ func _on_building_pressed() -> void:
 	# возвращалась (Movement высоту не восстанавливает). Строим прямо на станции (правила
 	# can_attach: на базу можно стационары + фабричные).
 	if not is_station:
-		global_position.y += 4
-		global_rotation.x = 0
-		global_rotation.z = 0
+		global_position.y += 4          # подброс для стройки в воздухе; выравнивание — плавно в _physics_process
 	map = global_position.y
 
 func _handle_click(screen_pos: Vector2) -> void:
