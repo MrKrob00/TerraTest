@@ -33,10 +33,12 @@ const UI_BASE := Vector2(1280, 720)  # = window/size/viewport_* в project.godot
 const UI_SCALE_MIN := 0.7
 const UI_SCALE_MAX := 1.4
 var ui_scale: float = 1.0            # ручной множитель размера UI (слайдер)
+var fullscreen: bool = false         # полноэкранный; иначе — плавающее окно (тянется мышью, UI сам подстраивается)
 
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
 	_load_settings()
+	_apply_window_mode()
 	if not auto_fps:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
@@ -63,6 +65,19 @@ func _apply_ui_scale() -> void:
 	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
 	if not is_equal_approx(win.content_scale_factor, csf):
 		win.content_scale_factor = csf
+
+# Полноэкранный ↔ ПЛАВАЮЩЕЕ ОКНО (только на ПК; мобилка всегда полноэкранная). В оконном режиме
+# окно свободно тянется мышью, а UI подстраивается сам (size_changed → _apply_ui_scale + expand).
+func set_fullscreen(on: bool) -> void:
+	fullscreen = on
+	_apply_window_mode()
+	_save_settings()
+
+func _apply_window_mode() -> void:
+	if not OS.has_feature("pc"):
+		return
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen \
+			else DisplayServer.WINDOW_MODE_WINDOWED)
 
 func set_ui_scale(v: float) -> void:
 	ui_scale = clampf(v, UI_SCALE_MIN, UI_SCALE_MAX)
@@ -137,6 +152,7 @@ func _save_settings() -> void:
 			"manual_scale": manual_scale,
 			"shadows_enabled": shadows_enabled,
 			"ui_scale": ui_scale,
+			"fullscreen": fullscreen,
 		}))
 
 func _load_settings() -> void:
@@ -148,6 +164,7 @@ func _load_settings() -> void:
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
+		fullscreen = bool(parsed.get("fullscreen", false))
 
 func _process(delta: float) -> void:
 	if not auto_fps:
