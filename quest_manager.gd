@@ -83,13 +83,15 @@ func _seed_demo() -> void:
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
 		order: int = 0, event: String = "", reward_money: int = 0,
-		reward_xp: int = 0, reward_rp: int = 0, req_grade: int = 1, hint: String = "") -> void:
+		reward_xp: int = 0, reward_rp: int = 0, req_grade: int = 1, hint: String = "",
+		reward_block: int = 0, reward_block_count: int = 1) -> void:
 	quests.append({
 		"id": id, "title": title, "desc": desc, "type": type,
 		"goal": maxi(goal, 1), "progress": 0, "done": false, "order": order,
 		"event": event, "reward_money": reward_money,
 		"reward_xp": reward_xp, "reward_rp": reward_rp, "req_grade": req_grade,
 		"hint": hint,        # подсказка Механика (обучение) — говорится при активации шага
+		"reward_block": reward_block, "reward_block_count": reward_block_count,  # награда БЛОКАМИ (кружат→в мир)
 	})
 	changed.emit()
 
@@ -149,6 +151,14 @@ func _on_completed(q: Dictionary) -> void:
 			g.money_changed.emit()
 		g.add_faction_xp("start", int(q.get("reward_xp", 0)))
 		g.add_research_points(int(q.get("reward_rp", 0)))
+	# Награда БЛОКАМИ: блоки глючно кружат вокруг машины игрока, затем падают в мир (не молча в
+	# инвентарь). Ставим на активную машину игрока.
+	var rblock: int = int(q.get("reward_block", 0))
+	if rblock > 0:
+		var cc = get_tree().get_first_node_in_group("camera_controller")
+		if cc != null and "current_vehicle" in cc and cc.current_vehicle != null \
+				and cc.current_vehicle.has_method("award_blocks"):
+			cc.current_vehicle.award_blocks(rblock, int(q.get("reward_block_count", 1)))
 		if (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) and not g.quests_done.has(q["id"]):
 			g.quests_done.append(q["id"])   # сюжет и обучение — одноразовые (см. _ready)
 			g.mark_progress_dirty()

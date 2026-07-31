@@ -574,6 +574,20 @@ func register_blast(pos: Vector3, force: float) -> void:
 	_blast_force = force
 	_blast_until_ms = Time.get_ticks_msec() + 300
 
+# Награда блоками (подача): count блоков ГЛЮЧНО возникают и КРУЖАТ вокруг машины, следуя за ней,
+# затем падают в мир (см. reward_orbiter.gd). Зовётся из квестов вместо «молча в инвентарь».
+const REWARD_ORBITER := preload("res://reward_orbiter.gd")
+func award_blocks(block_type: int, count: int = 1) -> void:
+	if count <= 0:
+		return
+	var scn := get_tree().current_scene
+	if scn == null:
+		return
+	for i in count:
+		var orb = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
+		scn.add_child(orb)
+		orb.setup(self, block_type, TAU * float(i) / float(count))
+
 
 
 
