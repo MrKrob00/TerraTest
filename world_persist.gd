@@ -118,15 +118,12 @@ func _fresh_start() -> void:
 			if _is_world_block(c):
 				c.queue_free()                          # убрать предустановленные тест-блоки
 	var primary = _primary_machine()
-	if primary == null or not (primary is Node3D):
+	if primary == null or not primary.has_method("award_block_list"):
 		return
-	# Базовый набор: 2 блока, 4 колеса, 1 бур, 1 пушка — падают вокруг игрока.
-	var drop := [G.Block.BLOCK, G.Block.BLOCK, G.Block.WHEEL, G.Block.WHEEL,
-			G.Block.WHEEL, G.Block.WHEEL, G.Block.DRILL, G.Block.GUN]
-	var base: Vector3 = (primary as Node3D).global_position
-	for i in drop.size():
-		var ang := TAU * float(i) / float(drop.size())
-		_spawn_world_block(int(drop[i]), base + Vector3(cos(ang) * 3.5, 2.5, sin(ang) * 3.5), null)
+	# Базовый набор: 2 блока, 4 колеса, 1 бур, 1 пушка — глючно КРУЖАТ вокруг игрока (как награда),
+	# затем осыпаются в мир (reward_orbiter.gd). Игрок подбирает их в стройке.
+	primary.award_block_list([G.Block.BLOCK, G.Block.BLOCK, G.Block.WHEEL, G.Block.WHEEL,
+			G.Block.WHEEL, G.Block.WHEEL, G.Block.DRILL, G.Block.GUN])
 
 # ── Сохранение / загрузка ─────────────────────────────────────────────────────
 func _save_world() -> void:

@@ -578,15 +578,24 @@ func register_blast(pos: Vector3, force: float) -> void:
 # затем падают в мир (см. reward_orbiter.gd). Зовётся из квестов вместо «молча в инвентарь».
 const REWARD_ORBITER := preload("res://reward_orbiter.gd")
 func award_blocks(block_type: int, count: int = 1) -> void:
-	if count <= 0:
+	var list: Array = []
+	for _i in count:
+		list.append(block_type)
+	award_block_list(list)
+
+# Наградить СМЕШАННЫМ набором блоков: все они глючно кружат вокруг машины (равномерно по кругу),
+# затем падают в мир (см. reward_orbiter.gd). Напр. стартовый набор: [BLOCK,BLOCK,WHEEL×4,DRILL,GUN].
+func award_block_list(types: Array) -> void:
+	if types.is_empty():
 		return
 	var scn := get_tree().current_scene
 	if scn == null:
 		return
-	for i in count:
+	var n := types.size()
+	for i in n:
 		var orb = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
 		scn.add_child(orb)
-		orb.setup(self, block_type, TAU * float(i) / float(count))
+		orb.setup(self, int(types[i]), TAU * float(i) / float(n))
 
 
 
