@@ -896,10 +896,12 @@ func _input(event: InputEvent) -> void:
 		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
 		if event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
-			# ПК: мышь целится непрерывно (у неё орбита на ПКМ — конфликта нет). «Пустой» ховер
-			# над HUD не целится в мир (иначе наводка ломается по пути к кнопке).
-			var idle_hover := event is InputEventMouseMotion and not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-			if not (idle_hover and get_viewport().gui_get_hovered_control() != null):
+			# ПК: мышь целится непрерывно (орбита на ПКМ — конфликта нет). НО не целимся в мир,
+			# когда курсор над HUD — иначе КЛИК по кнопке «Place» гонит _handle_click по координатам
+			# кнопки и перенаводит блок/_cabin_ground туда, где кнопка, вместо выбранной клетки
+			# (grid-путь это переживал — луч мимо машины не трогал _preview_res, а вот наземное
+			# ядро перекидывалось на позицию кнопки). Тач-путь ниже уже гейтит тем же условием.
+			if get_viewport().gui_get_hovered_control() == null:
 				_handle_click(event.position)
 		elif event is InputEventScreenTouch:
 			if event.pressed:
