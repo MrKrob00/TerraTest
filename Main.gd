@@ -54,10 +54,11 @@ func _apply_ui_scale() -> void:
 	var stretch: float = minf(size.x / UI_BASE.x, size.y / UI_BASE.y)
 	if stretch <= 0.0:
 		stretch = 1.0
-	# √ смягчает рост, clamp ставит потолок/пол — canvas_items дал бы «stretch» как есть.
-	# ×0.95: авто-масштаб был великоват (нейтраль 100% ощущалась как ~105%). Сдвинули базу на −5%,
-	# чтобы слайдер 100% = комфортный размер (раньше подходил только 95%).
-	var target: float = clampf(sqrt(stretch) * 0.95, 0.85, 1.4)
+	# ПРИЧИНА бывшей «раздутости»: почти любой экран БОЛЬШЕ базы 1280×720 (stretch>1), а sqrt(stretch)
+	# при stretch>1 даёт >1 → UI на 100% авто-увеличивался ВЫШЕ базового 1:1 у всех (у кого-то +5%,
+	# на 1080p-телефоне +22%). Чиним: потолок авто-увеличения = 1.0 → на 100% ВСЕГДА ровно базовый
+	# размер, а на мелких экранах (stretch<1) остаётся мягкий шринк для читаемости. Крупнее — ползунком.
+	var target: float = clampf(sqrt(stretch), 0.85, 1.0)
 	var csf: float = (target / stretch) * ui_scale
 	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
 	if not is_equal_approx(win.content_scale_factor, csf):
