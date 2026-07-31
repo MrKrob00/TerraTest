@@ -1164,11 +1164,34 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if ghost_block:
 		ghost_block.visible = false
 
-# Ручной поворот блока в руке (кнопки UI). Переприменяет превью, если оно есть.
+# Взятый в руку блок (child takepos-маркера под камерой) или null, если рука пуста.
+func _hand_instance() -> Node3D:
+	if camera_controller == null or camera_controller.camera == null:
+		return null
+	if camera_controller.camera.get_child_count() == 0:
+		return null
+	var holder: Node = camera_controller.camera.get_child(0)
+	if holder == null or holder.get_child_count() == 0:
+		return null
+	return holder.get_child(0) as Node3D
+
+# Ручной поворот/наклон блока (кнопки UI). Крутим СРАЗУ:
+#  • если блок наведён на клетку машины (превью, top_level) — переприменяем превью с
+#    ориентацией по грани (_face_orient ∘ build_basis);
+#  • если блок просто в руке — вращаем его прямо под камерой (build_basis как локальный базис),
+#    ставить на машину для этого больше не нужно.
+# build_basis копится в обоих случаях, поэтому наклон сохраняется до самой постановки.
 func rotate_build(axis: Vector3, ang: float) -> void:
 	build_basis = (Basis(axis, ang) * build_basis).orthonormalized()
-	if block_take and _preview_res != null:
-		_preview_held(_preview_res)
+	if not block_take:
+		return
+	var held := _hand_instance()
+	if held == null:
+		return
+	if held.top_level and _preview_res != null:
+		_preview_held(_preview_res)          # наведён на клетку — с ориентацией по грани
+	else:
+		held.basis = build_basis             # в руке — крутится сразу под камерой
 
 var result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictionary:
