@@ -55,7 +55,9 @@ func _apply_ui_scale() -> void:
 	if stretch <= 0.0:
 		stretch = 1.0
 	# √ смягчает рост, clamp ставит потолок/пол — canvas_items дал бы «stretch» как есть.
-	var target: float = clampf(sqrt(stretch), 0.85, 1.4)
+	# ×0.95: авто-масштаб был великоват (нейтраль 100% ощущалась как ~105%). Сдвинули базу на −5%,
+	# чтобы слайдер 100% = комфортный размер (раньше подходил только 95%).
+	var target: float = clampf(sqrt(stretch) * 0.95, 0.85, 1.4)
 	var csf: float = (target / stretch) * ui_scale
 	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
 	if not is_equal_approx(win.content_scale_factor, csf):
