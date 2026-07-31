@@ -471,7 +471,7 @@ func disassemble() -> void:
 		if b is Node3D:
 			var n3 := b as Node3D
 			# Чистим клетку карты и коллизию блока на корпусе.
-			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y), roundi(n3.position.z + 5))
+			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y + 5), roundi(n3.position.z + 5))
 			if block_map_node.has_method("remove_block"):
 				block_map_node.remove_block(cell.x, cell.y, cell.z)
 			for col in get_children():
@@ -859,12 +859,14 @@ func set_active(active: bool) -> void:
 @export var ghost_block: Node3D
 
 const CELL_SIZE = 1.0
-const MAP_SIZE_X = 10
-const MAP_SIZE_Y = 10
-const MAP_SIZE_Z = 10
+# Сетка сборки 11×11×11 с ядром в центре (см. blocks.gd) — луч выбора/постановки блоков ходит
+# по клеткам 0..10, клетка ядра = 5 по каждой оси.
+const MAP_SIZE_X = 11
+const MAP_SIZE_Y = 11
+const MAP_SIZE_Z = 11
 
 var block_take: bool = false
-var BuildingBlock = { "build": true, "x": 5, "y": 0, "z": 5, "block": 1 }
+var BuildingBlock = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # дефолт = центр сетки 11³
 
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
 var build_basis: Basis = Basis()
@@ -992,7 +994,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 				_preview_cabin_ground(world_origin, world_dir)
 				return
 	var space_node: Node3D = block_map_node if block_map_node else self
-	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 0, 5)
+	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 5, 5)
 	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
 	var res = _find_nearest_block_on_ray(ray_origin, ray_dir)
 	if block_take:
@@ -1019,7 +1021,7 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		"left":   gx -= 1
 		"back":   gz += 1
 		"front":  gz -= 1
-	var local_pos := Vector3(gx - 5, gy, gz - 5)
+	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
 	if ghost_block.top_level and block_map_node:
 		# Мировой трансформ ячейки (позиция + поворот машины) — призрак не отстаёт при движении.
 		ghost_block.global_transform = block_map_node.global_transform * Transform3D(Basis(), local_pos)
@@ -1081,7 +1083,7 @@ func _preview_held(res: Dictionary) -> void:
 			ghost_block.visible = false
 		return
 	var orient := _face_orient(res.face, instance.block) * build_basis
-	var local_pos := Vector3(gx - 5, gy, gz - 5)
+	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
 	var world_basis = (block_map_node.global_transform.basis * orient).orthonormalized()
 	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
 	# камерой; без этого при повороте камеры он «смотрел» на неё).
@@ -1139,7 +1141,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 		v.angular_velocity = Vector3.ZERO
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
 	if v.has_method("apply_build"):
-		v.apply_build([{"x": 5, "y": 0, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])
+		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # ядро в ЦЕНТРЕ сетки 11³
 	# Стационарное ядро → база на якоре (нельзя ехать/снять якорь).
 	if G.is_stationary(core) and "is_station" in v:
 		v.is_station = true
@@ -1244,7 +1246,7 @@ func _on_take_pressed() -> void:
 		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
 		var orient := _face_orient(pres.face, instance.block) * build_basis
 		instance.basis = orient
-		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"], BuildingBlock["z"]-5)
+		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"]-5, BuildingBlock["z"]-5)
 		var collision = instance.get_child(0).duplicate()
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		if collision.shape.size == Vector3(2,2,2):
