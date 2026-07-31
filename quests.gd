@@ -49,16 +49,16 @@ func _refresh() -> void:
 func _update_tracker() -> void:
 	var q: Dictionary = Q.tracked()
 	if q.is_empty():
-		_title.text = "Нет активных заданий"
+		_title.text = "No active quests"
 		_objective.text = ""
 		return
 	var star := "▶ " if q["type"] == Q.Type.TUTORIAL else ("★ " if q["type"] == Q.Type.STORY else "◆ ")
 	_title.text = star + str(q["title"])
 	if q["done"]:
-		_objective.text = "✓ выполнено"
+		_objective.text = "✓ done"
 	elif _grade_locked(q):
 		# Затрекан ждущий грейда квест (напр. сейв со старым треком) — не врём прогрессом.
-		_objective.text = "Откроется на грейде %d лицензии" % int(q.get("req_grade", 1))
+		_objective.text = "Unlocks at license grade %d" % int(q.get("req_grade", 1))
 	else:
 		_objective.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
 
@@ -71,9 +71,9 @@ func _rebuild_list() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
-	_add_section("ОБУЧЕНИЕ", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
-	_add_section("СЮЖЕТ", vis.filter(func(q): return q["type"] == Q.Type.STORY))
-	_add_section("ЕЖЕДНЕВНЫЕ", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
+	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
+	_add_section("STORY", vis.filter(func(q): return q["type"] == Q.Type.STORY))
+	_add_section("DAILY", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
 
 func _add_section(section_name: String, items: Array) -> void:
 	if items.is_empty():
@@ -111,11 +111,11 @@ func _make_row(q: Dictionary) -> Control:
 	vb.add_child(t)
 	var o := Label.new()
 	if q["done"]:
-		o.text = "✓ выполнено"
+		o.text = "✓ done"
 	else:
 		if _grade_locked(q):
 			# Цепочка ждёт лицензию — вместо прогресса пишем условие (награды как тизер).
-			o.text = "Откроется на грейде %d лицензии" % int(q.get("req_grade", 1))
+			o.text = "Unlocks at license grade %d" % int(q.get("req_grade", 1))
 		else:
 			o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
 		var reward: int = int(q.get("reward_money", 0))
@@ -126,7 +126,7 @@ func _make_row(q: Dictionary) -> Control:
 			o.text += "  ·  +%dXP" % rxp
 		var rrp: int = int(q.get("reward_rp", 0))
 		if rrp > 0:
-			o.text += "  ·  +%dДИ" % rrp
+			o.text += "  ·  +%d RP" % rrp
 	o.add_theme_font_size_override("font_size", 12)
 	o.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	vb.add_child(o)

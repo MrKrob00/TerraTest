@@ -24,7 +24,7 @@ var _block_globe: BlockGlobe = null          # «шар» выбора блок�
 # ── Вид глобуса блоков (крутится в инспекторе живьём) ─────────────────────────
 # Глобус создаётся кодом (BlockGlobe.new), поэтому его @export не видны в инспекторе — рулим
 # отсюда, с ноды HUD. Меняешь ползунок → globe.apply_view() перестраивает вид сразу.
-@export_group("Глобус блоков (вид)")
+@export_group("Block globe (view)")
 ## Наклон глобуса (смотрим сверху). ~0.5 = как сейчас.
 @export var globe_tilt: float = 0.5 : set = _set_globe_tilt
 ## Прокрут по красному кольцу-экватору (вокруг вертикали). 0 = спереди, ~1.57 (PI/2) = сбоку.
@@ -215,16 +215,16 @@ func _build_settings_panel() -> void:
 	vb.add_theme_constant_override("separation", 14)
 	m.add_child(vb)
 	var t := Label.new()
-	t.text = "НАСТРОЙКИ КАМЕРЫ"
+	t.text = "CAMERA SETTINGS"
 	t.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
 	t.add_theme_font_size_override("font_size", 20)
 	vb.add_child(t)
-	vb.add_child(_settings_slider("Чувствительность поворота", G.cam_look_sens,
+	vb.add_child(_settings_slider("Rotation sensitivity", G.cam_look_sens,
 			func(v): G.cam_look_sens = v; G.save_settings()))
-	vb.add_child(_settings_slider("Чувствительность зума", G.cam_zoom_sens,
+	vb.add_child(_settings_slider("Zoom sensitivity", G.cam_zoom_sens,
 			func(v): G.cam_zoom_sens = v; G.save_settings()))
 	var cb := CheckButton.new()
-	cb.text = "Инвертировать вертикаль"
+	cb.text = "Invert vertical"
 	cb.button_pressed = G.cam_invert_y
 	cb.add_theme_color_override("font_color", Color(0.9, 0.96, 0.98, 1))
 	cb.toggled.connect(func(on): G.cam_invert_y = on; G.save_settings())
@@ -232,7 +232,7 @@ func _build_settings_panel() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vb.add_child(spacer)
-	vb.add_child(_make_drawer_button("Закрыть", func(): _settings_panel.visible = false))
+	vb.add_child(_make_drawer_button("Close", func(): _settings_panel.visible = false))
 
 # Строка «подпись + ползунок + текущее значение». on_change(value) вызывается при движении.
 func _settings_slider(label: String, value: float, on_change: Callable) -> Control:
@@ -289,7 +289,7 @@ var _anchor_icon: AnchorIcon = null
 func _build_anchor_button() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	_anchor_btn = Button.new()
-	_anchor_btn.tooltip_text = "Якорь: зафиксировать машину (ровно 0°)"
+	_anchor_btn.tooltip_text = "Anchor: lock the vehicle (level, 0°)"
 	_anchor_btn.custom_minimum_size = Vector2(64, 64)
 	_anchor_btn.add_theme_stylebox_override("normal", _make_button_style(false))
 	_anchor_btn.add_theme_stylebox_override("hover", _make_button_style(false))
@@ -360,7 +360,7 @@ class RadialWheel extends Control:
 			txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			add_child(txt)
 		var cancel := Label.new()
-		cancel.text = "ОТМЕНА"
+		cancel.text = "CANCEL"
 		cancel.add_theme_font_size_override("font_size", 15)
 		cancel.add_theme_color_override("font_color", Color(0.85, 0.9, 0.96))
 		cancel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -414,10 +414,10 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	wheel.outer = VMENU_OUTER
 	wheel.inner = VMENU_INNER
 	wheel.items = [
-		["📦", "В инвентарь"],
-		["🔧", "Разобрать"],
-		["🛡", "Защита: ВЫКЛ" if defense_on else "Защита: ВКЛ"],
-		["🎥", "Управлять"],           # сменить камеру на эту машину/станцию
+		["📦", "To inventory"],
+		["🔧", "Disassemble"],
+		["🛡", "Defense: OFF" if defense_on else "Defense: ON"],
+		["🎥", "Control"],           # сменить камеру на эту машину/станцию
 	]
 	wheel.position = center - Vector2(VMENU_OUTER, VMENU_OUTER)
 	_vmenu.add_child(wheel)
@@ -557,10 +557,10 @@ func _build_rotate_panel() -> void:
 	grid.add_theme_constant_override("v_separation", 8)
 	_rotate_panel.add_child(grid)
 	# верхний ряд — наклон (крен вокруг оси Z), нижний — поворот (вокруг Y)
-	grid.add_child(_rot_btn("tilt_left",  "Наклон влево",   Vector3.BACK,  PI / 2))
-	grid.add_child(_rot_btn("tilt_right", "Наклон вправо",  Vector3.BACK, -PI / 2))
-	grid.add_child(_rot_btn("yaw_left",   "Поворот влево",  Vector3.UP,    PI / 2))
-	grid.add_child(_rot_btn("yaw_right",  "Поворот вправо", Vector3.UP,   -PI / 2))
+	grid.add_child(_rot_btn("tilt_left",  "Tilt left",   Vector3.BACK,  PI / 2))
+	grid.add_child(_rot_btn("tilt_right", "Tilt right",  Vector3.BACK, -PI / 2))
+	grid.add_child(_rot_btn("yaw_left",   "Turn left",   Vector3.UP,    PI / 2))
+	grid.add_child(_rot_btn("yaw_right",  "Turn right",  Vector3.UP,   -PI / 2))
 
 # ── «Гироскоп» выбора блока (стройка) ──────────────────────────────────────────
 # Квадрат SIZE×SIZE у правого-нижнего края, ЛЕВЕЕ колонки кнопок Take/TakeOff (они
@@ -741,16 +741,16 @@ func _build_ark_drawer() -> void:
 	_drawer.add_child(vb)
 
 	var title := Label.new()
-	title.text = "МЕНЮ"
+	title.text = "MENU"
 	title.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
 	title.add_theme_font_size_override("font_size", 22)
 	vb.add_child(title)
 
-	vb.add_child(_make_drawer_button("Инвентарь", _toggle_inventory))
+	vb.add_child(_make_drawer_button("Inventory", _toggle_inventory))
 	# «Настройки» переехали в ГАРАЖ (tech_ui, вкладка НАСТРОЙКИ → секция КАМЕРА).
 
 	var veh_label := Label.new()
-	veh_label.text = "ТЕХНИКА"
+	veh_label.text = "VEHICLES"
 	veh_label.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.8))
 	veh_label.add_theme_font_size_override("font_size", 14)
 	vb.add_child(veh_label)
@@ -864,7 +864,7 @@ func _rebuild_vehicle_list() -> void:
 		_vehicle_list.add_child(btn)
 	if i == 0:
 		var empty := Label.new()
-		empty.text = "нет техники"
+		empty.text = "no vehicles"
 		empty.modulate = Color(1, 1, 1, 0.5)
 		_vehicle_list.add_child(empty)
 

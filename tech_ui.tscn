@@ -76,7 +76,7 @@ theme_override_constants/separation = 14
 [node name="Dev" type="Label" parent="Root/TopBar/TopRow"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
-text = "ГАРАЖ"
+text = "GARAGE"
 
 [node name="TabInventory" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
@@ -94,25 +94,25 @@ text = "SHOP"
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "ДРЕВО"
+text = "TREE"
 
 [node name="TabSnapshots" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "СБОРКИ"
+text = "BUILDS"
 
 [node name="TabMusic" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "МУЗЫКА"
+text = "MUSIC"
 
 [node name="TabSettings" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2
 toggle_mode = true
-text = "НАСТРОЙКИ"
+text = "SETTINGS"
 
 [node name="Spacer" type="Control" parent="Root/TopBar/TopRow"]
 layout_mode = 2
@@ -236,24 +236,24 @@ theme_override_constants/separation = 24
 
 [node name="H1" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "👆 Тап по блоку — взять в руку"
+text = "👆 Tap a block — take it in hand"
 
 [node name="H2" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🛒 SHOP — купить блоки"
+text = "🛒 SHOP — buy blocks"
 
 [node name="H3" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🔍 Поиск — фильтр по названию"
+text = "🔍 Search — filter by name"
 
 [node name="H4" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🚗 Тап по машине — поставить блок"
+text = "🚗 Tap the vehicle — place a block"
 
 [node name="H5" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "✋ Перетащи — поворот камеры"
+text = "✋ Drag — rotate camera"
 
 [node name="H6" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🤏 Два пальца — зум"
+text = "🤏 Two fingers — zoom"

@@ -105,7 +105,7 @@ func current_track() -> Dictionary:
 	return _cur
 
 func context_name() -> String:
-	return ["Меню", "Путешествие", "Бой"][_ctx]
+	return ["Menu", "Travel", "Battle"][_ctx]
 
 # ── Контекст ───────────────────────────────────────────────────────────────────
 
@@ -286,7 +286,7 @@ func _scan_tracks() -> void:
 
 func _make_track(path: String, file: String, meta: Dictionary) -> Dictionary:
 	var title := file.get_basename()
-	var author := "Неизвестен"
+	var author := "Unknown"
 	# Имя файла «Автор - Название.ogg» → метаданные.
 	var dash := title.find(" - ")
 	if dash > 0:

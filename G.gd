@@ -66,7 +66,7 @@ signal grade_up(faction: String, new_grade: int)
 signal progress_changed                # XP/ДИ/исследования изменились (для UI)
 
 const FACTIONS := {
-	"start": {"name": "Стартовая", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500]},
+	"start": {"name": "Starter", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500]},
 }
 # Блок → фракция / грейд / цена исследования в ДИ (раскладка утверждена в ТЗ §2).
 const BLOCK_META := {
@@ -192,17 +192,17 @@ func is_block_shop_unlocked(bt: int) -> bool:
 # Почему блок нельзя исследовать; "" — можно (текст для замка в UI).
 func research_lock_reason(bt: int) -> String:
 	if researched.has(bt):
-		return "уже исследовано"
+		return "already researched"
 	var m: Dictionary = BLOCK_META.get(bt, {})
 	if m.is_empty():
-		return "нет данных"
+		return "no data"
 	var parent := int(TECH_PARENT.get(bt, -1))
 	if parent >= 0 and not researched.has(parent):
-		return "нужен предыдущий блок: %s" % block_name(parent)
+		return "need previous block: %s" % block_name(parent)
 	if grade(m["f"]) < int(m["g"]):
-		return "нужен грейд %d" % int(m["g"])
+		return "need grade %d" % int(m["g"])
 	if research_points < int(m["rp"]):
-		return "нужно ДИ: %d" % int(m["rp"])
+		return "need RP: %d" % int(m["rp"])
 	return ""
 
 # Исследовать блок: списывает ДИ, «дарит» ПЕРВЫЙ экземпляр в инвентарь (без двойного
