@@ -25,11 +25,11 @@ var _shop_filter: String = "all"
 var _filter_col: VBoxContainer = null     # колонка кнопок слева от сетки (видна в SHOP)
 var _filter_buttons: Dictionary = {}
 const FILTERS := [
-	["all",     "Все"],
-	["attack",  "Атака"],
-	["blocks",  "Блоки"],
-	["factory", "Фабрика"],
-	["other",   "Остальные"],
+	["all",     "All"],
+	["attack",  "Attack"],
+	["blocks",  "Blocks"],
+	["factory", "Factory"],
+	["other",   "Other"],
 ]
 
 func _ready() -> void:
@@ -193,11 +193,11 @@ func _rebuild_grid(filter: String) -> void:
 		var empty := Label.new()
 		empty.modulate = Color(1, 1, 1, 0.5)
 		if not _items.is_empty():
-			empty.text = "Ничего не найдено"
+			empty.text = "Nothing found"
 		elif _tab == TAB_SHOP:
-			empty.text = "Магазин пуст"
+			empty.text = "Shop empty"
 		else:
-			empty.text = "Инвентарь пуст"
+			empty.text = "Inventory empty"
 		_grid.add_child(empty)
 
 func _make_slot(it: Dictionary) -> Control:
@@ -223,11 +223,11 @@ func _make_slot(it: Dictionary) -> Control:
 			# не исследован в древе / не хватает грейда лицензии.
 			var m: Dictionary = G.BLOCK_META.get(block_type, {})
 			if not m.is_empty() and G.grade(m["f"]) < int(m["g"]):
-				corner.text = "гр.%d" % int(m["g"])
-				btn.tooltip_text = "Нужен грейд %d лицензии" % int(m["g"])
+				corner.text = "gr.%d" % int(m["g"])
+				btn.tooltip_text = "Requires license grade %d" % int(m["g"])
 			else:
-				corner.text = "древо"
-				btn.tooltip_text = "Исследуй в древе технологий"
+				corner.text = "tree"
+				btn.tooltip_text = "Research in the tech tree"
 			btn.disabled = true
 			btn.modulate = Color(1, 1, 1, 0.45)
 		else:
@@ -244,7 +244,7 @@ func _make_slot(it: Dictionary) -> Control:
 func _build_builds_tab() -> void:
 	for c in _grid.get_children():
 		c.queue_free()
-	_grid.add_child(_make_action_slot("＋ Сохранить\nтекущую", _save_current_build))
+	_grid.add_child(_make_action_slot("＋ Save\ncurrent", _save_current_build))
 	for build_name in G.saved_builds:
 		_grid.add_child(_make_build_slot(str(build_name)))
 
@@ -262,7 +262,7 @@ func _make_build_slot(build_name: String) -> Control:
 	var layout: Array = G.saved_builds.get(build_name, [])
 	var btn := _make_action_slot(build_name, _load_build.bind(build_name)) as Button
 	var corner := Label.new()
-	corner.text = "%d бл." % layout.size()
+	corner.text = "%d bl." % layout.size()
 	corner.add_theme_font_size_override("font_size", 12)
 	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	corner.offset_left = -52
@@ -278,10 +278,10 @@ func _save_current_build() -> void:
 	var layout: Array = v.capture_build()
 	if layout.is_empty():
 		return
-	var bname: String = "Сборка %d" % (G.saved_builds.size() + 1)
+	var bname: String = "Build %d" % (G.saved_builds.size() + 1)
 	G.save_build(bname, layout)
 	_rebuild_grid("")
-	_say("Сборка сохранена: %s" % bname)
+	_say("Build saved: %s" % bname)
 
 # Применить сохранённую сборку с ПРОВЕРКОЙ блоков: пул = блоки на машине + инвентарь.
 func _load_build(build_name: String) -> void:
@@ -307,7 +307,7 @@ func _load_build(build_name: String) -> void:
 		if short > 0:
 			missing[t] = short
 	if not missing.is_empty():
-		_say("Не хватает: " + _missing_text(missing))
+		_say("Missing: " + _missing_text(missing))
 		return
 	# Применяем: новый инвентарь = пул − потрачено на сборку.
 	for t in need:
@@ -319,7 +319,7 @@ func _load_build(build_name: String) -> void:
 	G.block_inventory = new_inv
 	G.mark_progress_dirty()
 	v.apply_build(target)
-	_say("Сборка применена: %s" % build_name)
+	_say("Build applied: %s" % build_name)
 	refresh()
 
 func _missing_text(missing: Dictionary) -> String:
@@ -331,7 +331,7 @@ func _missing_text(missing: Dictionary) -> String:
 func _say(text: String) -> void:
 	var d = get_node_or_null("/root/Dialogue")
 	if d:
-		d.say("Гараж", text)
+		d.say("Garage", text)
 
 # ── Действия ──────────────────────────────────────────────────────────────────
 func _take_into_hand(block_type: int) -> void:
@@ -339,7 +339,7 @@ func _take_into_hand(block_type: int) -> void:
 		return
 	var v: Node = _get_vehicle()
 	if v == null or not v.has_method("take_block_into_hand"):
-		push_warning("tech_ui: не нашёл активную машину для выдачи блока в руку")
+		push_warning("tech_ui: no active vehicle found to hand the block to")
 		return
 	if not v.take_block_into_hand(block_type):
 		return                                  # в руке уже что-то есть
@@ -427,12 +427,12 @@ func _update_currency() -> void:
 		var gr: int = G.grade("start")
 		var xp: int = int(G.faction_xp.get("start", 0))
 		var th: Array = (G.FACTIONS["start"] as Dictionary)["xp_thresholds"]
-		var txt := "Гр.%d" % gr
+		var txt := "Gr.%d" % gr
 		if gr < th.size():
 			txt += " · %d/%d XP" % [xp, int(th[gr])]   # порог СЛЕДУЮЩЕГО грейда
 		else:
-			txt += " · макс"
-		txt += " · ДИ %d" % G.research_points
+			txt += " · max"
+		txt += " · RP %d" % G.research_points
 		_prog_label.text = txt
 
 func _refresh_stats() -> void:
@@ -515,7 +515,7 @@ func _build_music_tab() -> void:
 	_clear_extra()
 	var m := _music()
 	if m == null:
-		_extra_header("Музыкальная система не подключена")
+		_extra_header("Music system not connected")
 		return
 	var cur: Dictionary = m.current_track()
 	# Сейчас играет + пропуск
@@ -523,7 +523,7 @@ func _build_music_tab() -> void:
 	_extra_vb.add_child(now_row)
 	var now := Label.new()
 	now.text = ("▶ %s — %s  [%s]" % [cur.get("title", ""), cur.get("author", ""), m.context_name()]) \
-			if not cur.is_empty() else "Тишина (нет треков или всё выключено)"
+			if not cur.is_empty() else "Silence (no tracks or all disabled)"
 	now.add_theme_font_size_override("font_size", 13)
 	now.add_theme_color_override("font_color", Color(0.75, 0.95, 0.8))
 	now.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -531,7 +531,7 @@ func _build_music_tab() -> void:
 	now_row.add_child(now)
 	var skip := Button.new()
 	skip.text = "⏭"
-	skip.tooltip_text = "Следующий трек"
+	skip.tooltip_text = "Next track"
 	skip.custom_minimum_size = Vector2(44, 38)
 	skip.pressed.connect(func() -> void:
 		var mm := _music()
@@ -541,7 +541,7 @@ func _build_music_tab() -> void:
 	var vol_row := HBoxContainer.new()
 	_extra_vb.add_child(vol_row)
 	var vol_lbl := Label.new()
-	vol_lbl.text = "Громкость"
+	vol_lbl.text = "Volume"
 	vol_lbl.add_theme_font_size_override("font_size", 13)
 	vol_row.add_child(vol_lbl)
 	var vol := HSlider.new()
@@ -556,13 +556,13 @@ func _build_music_tab() -> void:
 	vol_row.add_child(vol)
 	# Два списка: путешествия (играют и в гараже) и отдельно сражения. Без «меню» —
 	# тот тип зарезервирован под будущее главное меню игры.
-	var sections := [["Путешествия", m.Ctx.TRAVEL], ["Сражения", m.Ctx.BATTLE]]
+	var sections := [["Travel", m.Ctx.TRAVEL], ["Battle", m.Ctx.BATTLE]]
 	for s in sections:
 		_extra_header(str(s[0]))
 		var list: Array = m.tracks.get(s[1], [])
 		if list.is_empty():
 			var empty := Label.new()
-			empty.text = "   (треков нет — кинь .ogg в music/)"
+			empty.text = "   (no tracks — drop .ogg into music/)"
 			empty.add_theme_font_size_override("font_size", 12)
 			empty.modulate = Color(1, 1, 1, 0.45)
 			_extra_vb.add_child(empty)
@@ -622,9 +622,9 @@ func _music_row(m: Node, t: Dictionary, cur: Dictionary) -> Control:
 		author.modulate = Color(1, 1, 1, 0.4)
 	info.add_child(author)
 
-	row.add_child(_music_icon_btn(HeartIcon.new(), m.fav.has(file), "Любимый: играет чаще",
+	row.add_child(_music_icon_btn(HeartIcon.new(), m.fav.has(file), "Favorite: plays more often",
 			func(on: bool) -> void: m.set_favorite(file, on)))
-	row.add_child(_music_icon_btn(BanIcon.new(), m.banned.has(file), "Не играть никогда",
+	row.add_child(_music_icon_btn(BanIcon.new(), m.banned.has(file), "Never play",
 			func(on: bool) -> void: m.set_banned(file, on)))
 	return row
 
@@ -649,12 +649,12 @@ func _build_settings_tab() -> void:
 		return
 	_clear_extra()
 	var main: Node = get_node_or_null("/root/Main")
-	_extra_header("— ГРАФИКА —")
+	_extra_header("— GRAPHICS —")
 	if main == null or not ("auto_fps" in main):
-		_extra_header("Main с авто-FPS не найден")
+		_extra_header("Main with auto-FPS not found")
 		return
 	var auto_btn := CheckButton.new()
-	auto_btn.text = "Авто FPS (масштаб рендера подстраивается сам)"
+	auto_btn.text = "Auto FPS (render scale adjusts itself)"
 	auto_btn.button_pressed = bool(main.auto_fps)
 	auto_btn.add_theme_font_size_override("font_size", 14)
 	_extra_vb.add_child(auto_btn)
@@ -663,7 +663,7 @@ func _build_settings_tab() -> void:
 	scale_row.visible = not bool(main.auto_fps)
 	_extra_vb.add_child(scale_row)
 	var scale_lbl := Label.new()
-	scale_lbl.text = "Масштаб: %d%%" % int(round(float(main.manual_scale) * 100.0))
+	scale_lbl.text = "Scale: %d%%" % int(round(float(main.manual_scale) * 100.0))
 	scale_lbl.custom_minimum_size = Vector2(130, 0)
 	scale_lbl.add_theme_font_size_override("font_size", 13)
 	scale_row.add_child(scale_lbl)
@@ -674,7 +674,7 @@ func _build_settings_tab() -> void:
 	scale_sl.value = float(main.manual_scale)
 	scale_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scale_sl.value_changed.connect(func(v: float) -> void:
-		scale_lbl.text = "Масштаб: %d%%" % int(round(v * 100.0))
+		scale_lbl.text = "Scale: %d%%" % int(round(v * 100.0))
 		var mn: Node = get_node_or_null("/root/Main")
 		if mn and mn.has_method("set_manual_scale"):
 			mn.set_manual_scale(v))
@@ -687,14 +687,14 @@ func _build_settings_tab() -> void:
 		scale_row.visible = not on)
 
 	var hint := Label.new()
-	hint.text = "Авто режим держит ~55 FPS."
+	hint.text = "Auto mode holds ~55 FPS."
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(hint)
 
 	if "shadows_enabled" in main:
 		var shadow_btn := CheckButton.new()
-		shadow_btn.text = "Тени"
+		shadow_btn.text = "Shadows"
 		shadow_btn.button_pressed = bool(main.shadows_enabled)
 		shadow_btn.add_theme_font_size_override("font_size", 14)
 		_extra_vb.add_child(shadow_btn)
@@ -704,7 +704,7 @@ func _build_settings_tab() -> void:
 				mn.set_shadows_enabled(on))
 
 		var shadow_hint := Label.new()
-		shadow_hint.text = "Выключи, если садится FPS — самая тяжёлая настройка."
+		shadow_hint.text = "Turn off if FPS drops — the heaviest setting."
 		shadow_hint.add_theme_font_size_override("font_size", 12)
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)
@@ -712,7 +712,7 @@ func _build_settings_tab() -> void:
 	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
 	if OS.has_feature("pc") and "fullscreen" in main:
 		var fs_btn := CheckButton.new()
-		fs_btn.text = "Полноэкранный режим (выкл — плавающее окно)"
+		fs_btn.text = "Fullscreen mode (off — floating window)"
 		fs_btn.button_pressed = bool(main.fullscreen)
 		fs_btn.add_theme_font_size_override("font_size", 14)
 		fs_btn.toggled.connect(func(on: bool) -> void:
@@ -722,11 +722,11 @@ func _build_settings_tab() -> void:
 		_extra_vb.add_child(fs_btn)
 
 	if "ui_scale" in main:
-		_extra_header("— ИНТЕРФЕЙС —")
+		_extra_header("— INTERFACE —")
 		var ui_row := HBoxContainer.new()
 		_extra_vb.add_child(ui_row)
 		var ui_lbl := Label.new()
-		ui_lbl.text = "Размер: %d%%" % int(round(float(main.ui_scale) * 100.0))
+		ui_lbl.text = "Size: %d%%" % int(round(float(main.ui_scale) * 100.0))
 		ui_lbl.custom_minimum_size = Vector2(130, 0)
 		ui_lbl.add_theme_font_size_override("font_size", 13)
 		ui_row.add_child(ui_lbl)
@@ -737,26 +737,26 @@ func _build_settings_tab() -> void:
 		ui_sl.value = float(main.ui_scale)
 		ui_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		ui_sl.value_changed.connect(func(v: float) -> void:
-			ui_lbl.text = "Размер: %d%%" % int(round(v * 100.0))
+			ui_lbl.text = "Size: %d%%" % int(round(v * 100.0))
 			var mn: Node = get_node_or_null("/root/Main")
 			if mn and mn.has_method("set_ui_scale"):
 				mn.set_ui_scale(v))
 		ui_row.add_child(ui_sl)
 
 		var ui_hint := Label.new()
-		ui_hint.text = "Размер кнопок/панелей. База уже подстраивается под экран сама."
+		ui_hint.text = "Size of buttons/panels. The base already adapts to the screen on its own."
 		ui_hint.add_theme_font_size_override("font_size", 12)
 		ui_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(ui_hint)
 
 	# — КАМЕРА — (перенесено из HUD: управление камерой настраивается здесь, в гараже)
-	_extra_header("— КАМЕРА —")
-	_extra_vb.add_child(_cam_slider("Чувствительность поворота", G.cam_look_sens,
+	_extra_header("— CAMERA —")
+	_extra_vb.add_child(_cam_slider("Rotation sensitivity", G.cam_look_sens,
 			func(v): G.cam_look_sens = v; G.save_settings()))
-	_extra_vb.add_child(_cam_slider("Чувствительность зума", G.cam_zoom_sens,
+	_extra_vb.add_child(_cam_slider("Zoom sensitivity", G.cam_zoom_sens,
 			func(v): G.cam_zoom_sens = v; G.save_settings()))
 	var inv := CheckButton.new()
-	inv.text = "Инвертировать вертикаль"
+	inv.text = "Invert vertical"
 	inv.button_pressed = G.cam_invert_y
 	inv.add_theme_font_size_override("font_size", 14)
 	inv.toggled.connect(func(on: bool) -> void: G.cam_invert_y = on; G.save_settings())
@@ -826,7 +826,7 @@ func _build_tech_tab() -> void:
 	if _tech_root == null:
 		_tech_build_shell(body)
 	_tech_root.visible = true            # билдер зовётся только для активной вкладки ДРЕВО
-	_tech_head.text = "Древо технологий — исследовано %d/%d · ДИ: %d" % [
+	_tech_head.text = "Tech tree — researched %d/%d · RP: %d" % [
 			G.researched.size(), G.BLOCK_META.size(), G.research_points]
 	_tech_update_info()
 
@@ -955,17 +955,17 @@ func _make_tech_node(bt: int, at: Vector2) -> Control:
 	# Статусы ТЕКСТОМ: юникод-значки шрифт проекта не рендерит (прецедент ♥/✖).
 	var status := ""
 	if G.researched.has(bt):
-		status = "изучено"
+		status = "researched"
 		btn.modulate = Color(0.72, 1.0, 0.82)
 	else:
 		var why: String = G.research_lock_reason(bt)
 		if why == "":
-			status = "%d ДИ" % int(meta["rp"])
-		elif why.begins_with("нужно ДИ"):
-			status = "%d ДИ (мало)" % int(meta["rp"])
+			status = "%d RP" % int(meta["rp"])
+		elif why.begins_with("need RP"):
+			status = "%d RP (short)" % int(meta["rp"])
 			btn.modulate = Color(1.0, 0.93, 0.65, 0.9)
 		else:
-			status = "закрыто"
+			status = "locked"
 			btn.modulate = Color(1, 1, 1, 0.45)
 	btn.text = "%s\n%s" % [_block_name(bt), status]
 	if bt == _tech_selected:
@@ -981,27 +981,27 @@ func _tech_update_info() -> void:
 	if _tech_info == null or _tech_btn == null:
 		return
 	if _tech_selected < 0 or not G.BLOCK_META.has(_tech_selected):
-		_tech_info.text = "Выбери блок в древе, чтобы посмотреть детали."
-		_tech_btn.text = "Исследовать"
+		_tech_info.text = "Select a block in the tree to see details."
+		_tech_btn.text = "Research"
 		_tech_btn.disabled = true
 		return
 	var bt := _tech_selected
 	var m: Dictionary = G.BLOCK_META[bt]
-	var line := "%s — грейд %d · цена %d ДИ" % [_block_name(bt), int(m["g"]), int(m["rp"])]
+	var line := "%s — grade %d · cost %d RP" % [_block_name(bt), int(m["g"]), int(m["rp"])]
 	var parent := int(G.TECH_PARENT.get(bt, -1))
 	var why: String
 	if parent >= 0:
-		line += " · требует: %s" % _block_name(parent)
+		line += " · requires: %s" % _block_name(parent)
 	if not G.researched.has(bt):
 		why= G.research_lock_reason(bt)
 		if why != "":
 			line += "\n" + why         # у изученной причины нет — кнопка и так скажет
 	_tech_info.text = line
 	if G.researched.has(bt):
-		_tech_btn.text = "Исследовано"
+		_tech_btn.text = "Researched"
 		_tech_btn.disabled = true
 	else:
-		_tech_btn.text = "Исследовать (%d ДИ)" % int(m["rp"])
+		_tech_btn.text = "Research (%d RP)" % int(m["rp"])
 		_tech_btn.disabled = why != ""
 
 func _tech_do_research() -> void:
@@ -1011,6 +1011,6 @@ func _tech_do_research() -> void:
 	if not G.research(bt):
 		_tech_update_info()            # причина могла устареть — показать актуальную
 		return
-	_say("Исследовано: %s! +1 блок уже в инвентаре." % _block_name(bt))
+	_say("Researched: %s! +1 block already in inventory." % _block_name(bt))
 	# G.research эмитит progress_changed → _on_progress_changed перестроит вкладку
 	# (нода станет ✓, соседи откроются) — тут ничего пересобирать не нужно.

@@ -35,7 +35,7 @@ func _ready() -> void:
 	# Пройдено — обычное приветствие.
 	if not _announce_tutorial():
 		_say_lines([
-			["Механик", "С возвращением! Гляни список заданий справа сверху."],
+			["Mechanic", "Welcome back! Check the quest list at the top right."],
 		])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
@@ -47,38 +47,38 @@ func _seed_demo() -> void:
 	# ── ОБУЧЕНИЕ (идёт первым, ведёт за руку; hint — что нажать) ──────────────────
 	# Пока на существующих событиях (build/ore/sell/kill); остальные шаги (камера, движение,
 	# якорь, сбор, энерго, фабрика) добавятся, когда докинем их события — см. docs/QUESTS_DESIGN.
-	add_quest("tut_build", "Обучение: постройка", "Поставь 3 блока", Type.TUTORIAL, 3, 0, "block_placed", 0, 0, 0, 1,
-			"Открой стройку — глобус-кнопка снизу. Возьми блок и поставь на машину. Так собирается техника.")
-	add_quest("tut_ore",   "Обучение: добыча",    "Насверли 5 руды", Type.TUTORIAL, 5, 1, "ore_mined",    0, 0, 0, 1,
-			"Подъедь БУРОМ вплотную к руде и держись рядом — бур сам сверлит. Руда посыпется.")
-	add_quest("tut_sell",  "Обучение: продажа",   "Заработай 30$",   Type.TUTORIAL, 30, 2, "money_earned", 0, 0, 0, 1,
-			"Собранную руду вези к продавцу (SELLER) — получишь деньги. На них покупаешь блоки.")
-	add_quest("tut_fight", "Обучение: бой",       "Уничтожь кабину врага", Type.TUTORIAL, 1, 3, "enemy_killed", 0, 0, 0, 1,
-			"Наведись на врага и жми Атаку. Цель — его КАБИНА: разобьёшь её — машина развалится.")
-	# ── СЮЖЕТ ────────────────────────────────────────────────────────────────────
-	add_quest("story_build", "Собери машину",    "Поставь 5 блоков",        Type.STORY, 5,   0, "block_placed", 20, 20, 5)
-	add_quest("story_ore",   "Добудь руду",      "Насверли 10 руды",        Type.STORY, 10,  1, "ore_mined",    30, 30, 8)
-	add_quest("story_sell",  "Заработай денег",  "Заработай 100$",          Type.STORY, 100, 2, "money_earned", 50, 40, 10)
-	add_quest("story_kill",  "Первый бой",       "Уничтожь кабину врага",   Type.STORY, 1,   3, "enemy_killed", 40, 50, 15)
-	# Грейд 2: осваиваем добычу-производство и первое оружие.
-	add_quest("g2_ore",   "Добытчик II",      "Насверли 50 руды",      Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
-	add_quest("g2_kill",  "Охотник",          "Уничтожь 3 машины",     Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
-	add_quest("g2_money", "Торговец",         "Заработай 300$",        Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
-	add_quest("g2_build", "Строитель II",     "Поставь 15 блоков",     Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
-	# Грейд 3: производственная цепочка в полный рост.
-	add_quest("g3_ore",   "Промышленник",     "Насверли 150 руды",     Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
-	add_quest("g3_kill",  "Гроза пустоши",    "Уничтожь 10 машин",     Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
-	add_quest("g3_money", "Капитал",          "Заработай 1000$",       Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
-	# Грейд 4: тяжёлая техника.
-	add_quest("g4_ore",   "Рудный барон",     "Насверли 400 руды",     Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
-	add_quest("g4_kill",  "Ветеран",          "Уничтожь 25 машин",     Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
-	add_quest("g4_money", "Магнат",           "Заработай 3000$",       Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
-	# Грейд 5: эндгейм — XP уже не нужен (макс), упор на ДИ для добивания дерева.
-	add_quest("g5_kill",  "Легенда пустоши",  "Уничтожь 50 машин",     Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
-	add_quest("g5_ore",   "Хребет индустрии", "Насверли 1000 руды",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
-	add_quest("g5_money", "Империя",          "Заработай 10000$",      Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
-	add_quest("daily_ore",   "Ежедневно: руда",  "Добудь 20 руды",     Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
-	add_quest("daily_kill",  "Ежедневно: враги", "Уничтожь 3 машины",  Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
+	add_quest("tut_build", "Tutorial: Building", "Place 3 blocks", Type.TUTORIAL, 3, 0, "block_placed", 0, 0, 0, 1,
+			"Open building mode — the globe button at the bottom. Take a block and place it on the vehicle. That's how machines are built.")
+	add_quest("tut_ore",   "Tutorial: Mining",    "Drill 5 ore", Type.TUTORIAL, 5, 1, "ore_mined",    0, 0, 0, 1,
+			"Drive right up to the ore with your DRILL and stay close — the drill digs by itself. Ore will drop.")
+	add_quest("tut_sell",  "Tutorial: Selling",   "Earn 30$",   Type.TUTORIAL, 30, 2, "money_earned", 0, 0, 0, 1,
+			"Take the ore you collected to the seller (SELLER) — you'll get money. Spend it on blocks.")
+	add_quest("tut_fight", "Tutorial: Combat",       "Destroy an enemy cabin", Type.TUTORIAL, 1, 3, "enemy_killed", 0, 0, 0, 1,
+			"Aim at the enemy and press Attack. Target its CABIN: break it and the vehicle falls apart.")
+	# ── STORY ────────────────────────────────────────────────────────────────────
+	add_quest("story_build", "Build a Vehicle",  "Place 5 blocks",          Type.STORY, 5,   0, "block_placed", 20, 20, 5)
+	add_quest("story_ore",   "Mine Ore",         "Drill 10 ore",            Type.STORY, 10,  1, "ore_mined",    30, 30, 8)
+	add_quest("story_sell",  "Earn Money",       "Earn 100$",               Type.STORY, 100, 2, "money_earned", 50, 40, 10)
+	add_quest("story_kill",  "First Fight",      "Destroy an enemy cabin",  Type.STORY, 1,   3, "enemy_killed", 40, 50, 15)
+	# Grade 2: mastering mining-production and the first weapon.
+	add_quest("g2_ore",   "Miner II",         "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
+	add_quest("g2_kill",  "Hunter",           "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
+	add_quest("g2_money", "Trader",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
+	add_quest("g2_build", "Builder II",       "Place 15 blocks",       Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
+	# Grade 3: the production chain at full scale.
+	add_quest("g3_ore",   "Industrialist",    "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
+	add_quest("g3_kill",  "Wasteland Terror", "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
+	add_quest("g3_money", "Capital",          "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
+	# Grade 4: heavy machinery.
+	add_quest("g4_ore",   "Ore Baron",        "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
+	add_quest("g4_kill",  "Veteran",          "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
+	add_quest("g4_money", "Magnate",          "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
+	# Grade 5: endgame — XP no longer needed (maxed), focus on RP to finish the tree.
+	add_quest("g5_kill",  "Wasteland Legend", "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
+	add_quest("g5_ore",   "Backbone of Industry", "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
+	add_quest("g5_money", "Empire",           "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	add_quest("daily_ore",   "Daily: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
+	add_quest("daily_kill",  "Daily: Enemies",   "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
 
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
@@ -163,7 +163,7 @@ func _on_completed(q: Dictionary) -> void:
 			g.quests_done.append(q["id"])   # сюжет и обучение — одноразовые (см. _ready)
 			g.mark_progress_dirty()
 	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
-	_say("Система", _completion_message(str(q["title"]), reward))
+	_say("System", _completion_message(str(q["title"]), reward))
 	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 	if int(q["type"]) == Type.TUTORIAL:
 		_announce_tutorial()
@@ -180,14 +180,14 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	var names: Array = []
 	for bt in g.blocks_of_grade(faction, new_grade):
 		names.append(g.block_name(int(bt)))
-	var what := "новые блоки" if names.is_empty() else ", ".join(names)
+	var what := "new blocks" if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
 	var extra_line := ""
 	for q in quests:
 		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
-			extra_line = " И новые задания подъехали."
+			extra_line = " And new quests have arrived."
 			break
-	_say("Механик", "Лицензия — грейд %d! Теперь можно исследовать: %s.%s" % [new_grade, what, extra_line])
+	_say("Mechanic", "License — grade %d! You can now research: %s.%s" % [new_grade, what, extra_line])
 	# Пауза сюжета могла сняться — обновляем список и трекер.
 	changed.emit()
 	if tracked_id == "" or _find(tracked_id).get("done", true):
@@ -197,18 +197,18 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 func _completion_message(title: String, reward: int) -> String:
 	if reward > 0:
 		var with_reward := [
-			"Квест «%s» выполнен, в награду %d$.",
-			"Задание «%s» закрыто! Держи %d$.",
-			"Отлично — «%s» сделано. Награда: %d$.",
-			"«%s» готово. Твоя доля — %d$.",
-			"Задание «%s» выполнено. Начислено %d$.",
+			"Quest '%s' complete, reward %d$.",
+			"Quest '%s' done! Here's %d$.",
+			"Nice — '%s' done. Reward: %d$.",
+			"'%s' finished. Your cut — %d$.",
+			"Quest '%s' complete. Credited %d$.",
 		]
 		return with_reward[randi() % with_reward.size()] % [title, reward]
 	var no_reward := [
-		"Квест «%s» выполнен.",
-		"Задание «%s» закрыто!",
-		"Готово — «%s» сделано.",
-		"«%s» выполнено.",
+		"Quest '%s' complete.",
+		"Quest '%s' done!",
+		"Done — '%s' complete.",
+		"'%s' complete.",
 	]
 	return no_reward[randi() % no_reward.size()] % title
 
@@ -280,7 +280,7 @@ func _announce_tutorial() -> bool:
 		return false
 	var h := str(t.get("hint", ""))
 	if h != "":
-		_say("Механик", h)
+		_say("Mechanic", h)
 	return true
 
 # Что показать в списке: все сюжетные ДО текущего включительно (выполненные + текущее) и

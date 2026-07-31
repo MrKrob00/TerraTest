@@ -46,4 +46,4 @@ fit_content = true
 scroll_active = false
 autowrap_mode = 3
 theme_override_font_sizes/normal_font_size = 20
-text = "[color=#e6a533][Кто-то][/color]: реплика"
+text = "[color=#e6a533][Someone][/color]: line"

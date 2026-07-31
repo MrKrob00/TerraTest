@@ -215,7 +215,7 @@ func _start_scan() -> void:
 	_scan_left = scan_warn_time
 	_build_marker()
 	# Обманка: Система ВЕЖЛИВО просит НЕ выходить — кто послушается, того зачистка :)
-	_say("Система", "🔍 Плановое сканирование сектора. Пожалуйста, НЕ покидайте зону сканирования. Это займёт %d сек. Спасибо за сотрудничество." % int(scan_warn_time))
+	_say("System", "🔍 Scheduled sector scan. Please do NOT leave the scan zone. This will take %d sec. Thank you for your cooperation." % int(scan_warn_time))
 
 func _resolve_scan() -> void:
 	_scan_state = 0
@@ -225,10 +225,10 @@ func _resolve_scan() -> void:
 	# Система не отслеживает «кто ушёл» — она просто сканирует зону. Есть активность внутри
 	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
 	if p != null and _in_scan_box(p.global_position):
-		_say("Система", "⚠ В секторе зафиксирована несанкционированная активность. Направляю обработчиков.")
+		_say("System", "⚠ Unauthorized activity detected in the sector. Dispatching handlers.")
 		_spawn_enforcement()
 	else:
-		_say("Система", "Сканирование сектора завершено. Аномалий не зафиксировано.")
+		_say("System", "Sector scan complete. No anomalies detected.")
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size

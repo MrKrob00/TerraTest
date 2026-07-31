@@ -67,14 +67,14 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.65, 0.2, 1)
 theme_override_font_sizes/font_size = 16
-text = "★ Задание"
+text = "★ Quest"
 
 [node name="TrackObjective" type="Label" parent="Tracker/TrackVB" unique_id=862751314]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.85, 0.93, 0.95, 1)
 theme_override_font_sizes/font_size = 13
-text = "цель — 0/0"
+text = "objective — 0/0"
 
 [node name="ListPanel" type="PanelContainer" parent="." unique_id=888738037]
 unique_name_in_owner = true
@@ -101,7 +101,7 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.55, 0.85, 0.9, 1)
 theme_override_font_sizes/font_size = 20
-text = "ЗАДАНИЯ"
+text = "QUESTS"
 
 [node name="Close" type="Button" parent="ListPanel/ListVB/Header" unique_id=1806020968]
 unique_name_in_owner = true
@@ -113,7 +113,7 @@ text = "X"
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.45)
 theme_override_font_sizes/font_size = 12
-text = "★ — отслеживать вверху справа"
+text = "★ — track at top right"
 
 [node name="Scroll" type="ScrollContainer" parent="ListPanel/ListVB" unique_id=2125908248]
 layout_mode = 2

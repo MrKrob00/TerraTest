@@ -18,7 +18,7 @@ signal block_chosen(block_type: int)
 
 const SIZE := 320.0
 const CAT_KEYS := ["attack", "blocks", "factory", "other"]
-const CAT_NAMES := {"attack": "Атака", "blocks": "Блоки", "factory": "Фабрика", "other": "Остальное"}
+const CAT_NAMES := {"attack": "Attack", "blocks": "Blocks", "factory": "Factory", "other": "Other"}
 const CAT_COLORS := {
 	"attack": Color(0.85, 0.36, 0.32), "blocks": Color(0.30, 0.62, 0.66),
 	"factory": Color(0.85, 0.66, 0.30), "other": Color(0.62, 0.46, 0.80),
@@ -81,11 +81,11 @@ class Overlay extends Control:
 	var _tw: Tween = null
 	func _draw() -> void:
 		if empty_all:
-			_text("НЕТ\nБЛОКОВ", size * 0.5, 18)
+			_text("NO\nBLOCKS", size * 0.5, 18)
 			return
 		draw_arc(anchor, 40.0, 0, TAU, 40, RING, 2.5)
 		if empty_cat:
-			_text("ПУСТО", anchor, 13)
+			_text("EMPTY", anchor, 13)
 		if flash_a > 0.01:
 			draw_arc(anchor, flash_r, 0, TAU, 40, Color(1, 1, 1, flash_a), 3.0)
 	func _text(txt: String, at: Vector2, px: int) -> void:
