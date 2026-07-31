@@ -100,7 +100,7 @@ func _gen_fill_row(z: int) -> void:
 	for x in w:
 		var fx := float(x)
 		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
-		var continental = pow(base, gen_power)
+		var continental:float = pow(base, gen_power)
 		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), gen_ridge_sharpness)
 		var mountain_mask = smoothstep(0.52, 0.78, continental)
 		var ridge_term = ridge * gen_mountain_amount * mountain_mask
