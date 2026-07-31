@@ -1,9 +1,14 @@
 # block_map.gd
 extends Node3D
 
-const MAP_SIZE_X = 10
-const MAP_SIZE_Y = 10
-const MAP_SIZE_Z = 10
+# Сетка сборки 11×11×11: КАБИНА/ядро в ЦЕНТРЕ (CENTER,CENTER,CENTER), поэтому от неё можно
+# ставить по 5 блоков в КАЖДУЮ сторону — вниз/вверх, влево/вправо, вперёд/назад. Раньше сетка
+# была 10 с ядром на y=0 (снизу) — вниз строить было нельзя. Мировая позиция клетки центрируется
+# на ядре: (x-CENTER, y-CENTER, z-CENTER)*CELL — визуально машина стоит там же (ядро в origin).
+const MAP_SIZE_X = 11
+const MAP_SIZE_Y = 11
+const MAP_SIZE_Z = 11
+const CENTER = 5                     # индекс центральной клетки по каждой оси (0..10 → центр 5)
 const CELL_SIZE = 1.0
 
 var map: Array = []
@@ -111,30 +116,31 @@ func _define_layout() -> void:
 		_: _layout_default()
 
 # Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
+# Ядро в ЦЕНТРЕ сетки (CENTER на всех осях), y-этажи присборок отсчитываются от центра (+5).
 func _layout_cabin_only() -> void:
-	set_block(5, 0, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 
 # Стартовая машина (спавнится бесплатно при гибели): кабина, 4 колеса, пара блоков,
 # пулемёт и бур. Компактнее дефолта.
 func _layout_starter() -> void:
-	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
-	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 1, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 0, 4, G.Block.DRILL, 0.0)
-	set_block(5, 1, 5, G.Block.LASER, 0.0)
-	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 0, 7, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 6, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 4, G.Block.DRILL, 0.0)
+	set_block(5, 6, 5, G.Block.LASER, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 
 # База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
 func _layout_default() -> void:
 	_wheels_6()
-	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(5, 0, 4, G.Block.DRILL, 0.0)
-	set_block(5, 1, 5, G.Block.LASER, 0.0)
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.DRILL, 0.0)
+	set_block(5, 6, 5, G.Block.LASER, 0.0)
 	#set_block(5, 1, 5, G.Block.COLLECTOR, 0.0)
 	#set_block(3, 1, 7, G.Block.INTAKE, -PI/2)
 	#set_block(4, 1, 7, G.Block.BELT, 0.0)
@@ -146,27 +152,27 @@ func _layout_default() -> void:
 # наваливается на передний край базы колёс, машина реже клюёт носом при торможении/ИИ-реверсе.
 func _layout_dual_gun() -> void:
 	_wheels_6()
-	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(5, 1, 5, G.Block.GUN, 0.0)
-	set_block(5, 1, 7, G.Block.GUN, 0.0)
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 6, 5, G.Block.GUN, 0.0)
+	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
 # Разведчик: было 4 колеса на базе всего в 1 клетку — слишком короткое плечо для веса
 # лазера на y=1, машину легко кидало носом вперёд. Теперь такая же 6-колёсная база, как
 # у остальных пресетов (база в 2 клетки — вчетверо устойчивее к опрокидыванию по тангажу).
 func _layout_laser_scout() -> void:
 	_wheels_6()
-	set_block(5, 0, 5, G.Block.CABIN, 0.0)
-	set_block(5, 1, 5, G.Block.LASER, 0.0)
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 6, 5, G.Block.LASER, 0.0)
 
 func _wheels_6() -> void:
-	set_block(4, 0, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 6, G.Block.WHEEL, -PI / 2)
-	set_block(4, 0, 7, G.Block.WHEEL, PI / 2)
-	set_block(6, 0, 7, G.Block.WHEEL, -PI / 2)
-	set_block(5, 0, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 0, 7, G.Block.BLOCK, 0.0)
+	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
+	set_block(4, 5, 7, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 7, G.Block.WHEEL, -PI / 2)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
@@ -282,7 +288,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	instance.rotation = rot
 
 	var collision = instance.get_child(0).duplicate()
-	collision.position = Vector3(x - 5, y, z - 5)
+	collision.position = Vector3(x - CENTER, y - CENTER, z - CENTER)
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	if collision.shape.size == Vector3(2,2,2):
 		collision.position += Vector3(-0.5,0.5,-0.5)
@@ -297,9 +303,9 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	node_map[key] = instance
 
 	instance.position = Vector3(
-		(x - MAP_SIZE_X / 2.0) * CELL_SIZE,
-		y * CELL_SIZE,
-		(z - MAP_SIZE_Z / 2.0) * CELL_SIZE
+		(x - CENTER) * CELL_SIZE,
+		(y - CENTER) * CELL_SIZE,
+		(z - CENTER) * CELL_SIZE
 	)
 
 	# Эффект «матрицы»-появления — только когда машина строится с НУЛЯ (spawn_block зовётся

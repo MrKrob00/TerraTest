@@ -37,7 +37,7 @@ func _physics_process(delta: float) -> void:
 			# в vehicle_body_3d.gd) — эти монтажи зеркальны, поэтому один и тот же локальный
 			# спин катится визуально в РАЗНЫЕ мировые стороны слева/справа от машины.
 			# Компенсируем знаком по стороне (X-позиция колеса от центра машины, см. _on_take_pressed:
-			# position = Vector3(x-5, y, z-5) относительно $blocks).
+			# position = Vector3(x-5, y-5, z-5) относительно $blocks — сетка 11³, центр 5).
 			var side := -1.0 if position.x < 0.0 else 1.0
 			%wheel.rotation.x += side * throttle_input * delta * 3.0
 
