@@ -872,6 +872,7 @@ var BuildingBlock = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # д�
 var build_basis: Basis = Basis()
 var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
 var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
+var _hand_from_inventory := false  # блок в руке взят из инвентаря (а не снят с машины) — для авто-добора
 
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,
 # Take/TakeOff/Building/Movement/Attack — все читаются по сырому состоянию клавиши, в обход
@@ -902,6 +903,9 @@ func _input(event: InputEvent) -> void:
 			# — луч мимо машины не трогал _preview_res, а вот наземное ядро перекидывалось на кнопку.)
 			if not _tap_over_ui(event.position):
 				_handle_click(event.position)
+				# По КЛИКУ мышью (не по ховеру) без блока в руке — сразу берём наведённый блок машины.
+				if event is InputEventMouseButton:
+					_maybe_grab_on_tap()
 		elif event is InputEventScreenTouch:
 			if event.pressed:
 				_build_tap_pos = event.position
@@ -911,6 +915,7 @@ func _input(event: InputEvent) -> void:
 					and Time.get_ticks_msec() - _build_tap_ms < 250 \
 					and not _tap_over_ui(event.position):
 				_handle_click(event.position)          # одиночный тап по миру = навести блок сюда
+				_maybe_grab_on_tap()                   # без блока в руке тап по блоку = взять его в руку
 		elif event is InputEventScreenDrag:
 			if _build_tap_pos.distance_to(event.position) > 14.0:
 				_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
@@ -1051,6 +1056,9 @@ func _handle_click(screen_pos: Vector2) -> void:
 		_place_ghost(res, false)
 		block_body = block_map_node.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		res["hit"] = false
+	elif !block_take:
+		block_body = null                # тап/ховер мимо блока — снимаем выделение, иначе тап-захват
+		if ghost_block: ghost_block.visible = false   # взял бы устаревший block_body по промаху
 
 func _place_ghost(res: Dictionary, face: bool) -> void:
 	if ghost_block == null: return
@@ -1281,6 +1289,57 @@ func _get_block_name(block: int) -> String:
 	if block < names.size(): return names[block]
 	return "UNKNOWN"
 
+# Снять НАВЕДЁННЫЙ блок машины (block_body) в руку. Ядро (кабину/стационар) не трогаем.
+# Общий код для кнопки Take и для тапа-по-блоку (см. _maybe_grab_on_tap). Возвращает true,
+# если блок реально взят.
+func _pick_selected_block() -> bool:
+	if block_body == null or not is_instance_valid(block_body):
+		return false
+	var bt := int(block_body.get("block"))
+	if bt == G.Block.CABIN or G.is_stationary(bt):
+		return false                              # ядро сборки не снимаем
+	if block_body.get_parent() != null and block_body.get_parent().name in "blocks":
+		block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+		# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
+		# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
+		if block_map_node.has_method("_detach_orphans"):
+			block_map_node.call_deferred("_detach_orphans")
+	# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
+	# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
+	for i in get_children():
+		if i is CollisionShape3D and (i.position == block_body.position \
+				or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
+			i.queue_free()
+	block_body.reparent(camera_controller.camera.get_child(0), false)
+	block_body.position = Vector3.ZERO
+	block_take = true
+	_hand_from_inventory = false                   # снят с машины, не из инвентаря — без авто-добора
+	build_basis = Basis()
+	_preview_res = null
+	_cabin_ground = null
+	if ghost_block:
+		ghost_block.visible = false                # блок взят в руку — светяшка больше не нужна
+	return true
+
+# Авто-добор такого же блока из инвентаря после постановки (серийная стройка).
+func _refill_hand_from_inventory(bt: int) -> void:
+	if not G.block_inventory.has(bt):
+		return
+	if take_block_into_hand(bt):
+		G.block_inventory.erase(bt)                # списываем экземпляр (как tech_ui._take_into_hand)
+		G.mark_progress_dirty()
+
+# Реквест: наведённый блок машины берётся В РУКУ сразу по тапу/клику — без отдельной кнопки Take.
+# Зовём ТОЛЬКО по дискретному тапу (не по ховеру мыши на ПК) и только когда рука пуста.
+func _maybe_grab_on_tap() -> void:
+	if block_take:
+		return
+	if block_body == null or not is_instance_valid(block_body):
+		return
+	if block_body.get_parent() == null or not (block_body.get_parent().name in "blocks"):
+		return                                     # только блок, реально стоящий на машине
+	_pick_selected_block()
+
 func _on_take_pressed() -> void:
 	if block_take:
 		var instance = camera_controller.camera.get_child(0).get_child(0)
@@ -1324,31 +1383,17 @@ func _on_take_pressed() -> void:
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
 		# Матрицу-появление при РУЧНОЙ постановке не играем (выглядела так себе). Эффект теперь
 		# только когда машина строится с нуля — спавн/загрузка/смена сборки (blocks.spawn_block).
+		var placed_bt := int(instance.block)
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
+		# Авто-добор (реквест): блок был из ИНВЕНТАРЯ и там есть ещё такой же → сразу берём
+		# следующий такой же в руку, чтобы ставить серией без возврата в гараж.
+		if _hand_from_inventory:
+			_refill_hand_from_inventory(placed_bt)
 	elif block_body != null and is_instance_valid(block_body):
-		if block_body.get_parent().name in "blocks":
-			block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
-			# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
-			# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
-			if block_map_node.has_method("_detach_orphans"):
-				block_map_node.call_deferred("_detach_orphans")
-		# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
-		# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
-		for i in get_children():
-			if i is CollisionShape3D and (i.position == block_body.position \
-					or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
-				i.queue_free()
-		block_body.reparent(camera_controller.camera.get_child(0), false)
-		block_body.position = Vector3.ZERO
-		block_take = true
-		build_basis = Basis()
-		_preview_res = null
-		_cabin_ground = null
-		if ghost_block:
-			ghost_block.visible = false   # блок взят в руку — светяшка больше не нужна
+		_pick_selected_block()
 
 # Дать игроку блок В РУКУ из инвентаря (вызывается из tech_ui при клике по слоту).
 # Блок инстансится из сцены и вешается на takepos (camera.get_child(0)) — ровно туда,
@@ -1408,6 +1453,7 @@ func take_block_into_hand(block_type: int) -> bool:
 		BlockFX.play(instance, false)      # глитч появления блока в руке (как при спавне)
 	block_body = instance
 	block_take = true
+	_hand_from_inventory = true     # взят из инвентаря → после постановки авто-доберём такой же
 	build_basis = Basis()          # свежий блок — без ручного поворота
 	_preview_res = null
 	_cabin_ground = null
