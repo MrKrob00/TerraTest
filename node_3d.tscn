@@ -5,17 +5,7 @@
 [ext_resource type="Script" uid="uid://cxnmsd3mg0odu" path="res://joystick.gd" id="2_noarx"]
 [ext_resource type="Script" uid="uid://1rm2owmbub47" path="res://blocks.gd" id="3_jsk3o"]
 [ext_resource type="Script" uid="uid://43djmb24ejbs" path="res://joystick_camera.gd" id="4_r3fl7"]
-[ext_resource type="PackedScene" uid="uid://bkj6a2sxu6ots" path="res://wheel.tscn" id="5_6iypd"]
-[ext_resource type="PackedScene" uid="uid://bih7xqbn7fn2p" path="res://belt.tscn" id="5_tcnuu"]
-[ext_resource type="PackedScene" uid="uid://d4he5yhxt34uw" path="res://seller.tscn" id="6_i0g27"]
-[ext_resource type="PackedScene" uid="uid://3ixxsglc72w5" path="res://block.tscn" id="7_6iypd"]
-[ext_resource type="PackedScene" uid="uid://dv0pgciocsbmf" path="res://processor.tscn" id="7_ealrb"]
-[ext_resource type="PackedScene" uid="uid://c1leq686mvs51" path="res://drill.tscn" id="8_tereu"]
-[ext_resource type="PackedScene" uid="uid://c264bkenkyn5c" path="res://laser.tscn" id="9_lggff"]
-[ext_resource type="Script" uid="uid://0ip7gd6i3a7l" path="res://WeaponBlock.gd" id="10_1q667"]
-[ext_resource type="PackedScene" uid="uid://mxhnqn0i2m1s" path="res://gun.tscn" id="10_s0gvp"]
 [ext_resource type="PackedScene" uid="uid://crogep0i3nb2s" path="res://resource_node.tscn" id="11_tereu"]
-[ext_resource type="PackedScene" uid="uid://xximcpqpe85s" path="res://intake.tscn" id="12_wlxy5"]
 [ext_resource type="Script" uid="uid://ccy4xql8u7bqc" path="res://camera_controller.gd" id="13_3v7ru"]
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
 [ext_resource type="PackedScene" uid="uid://u0tdxsa46btj" path="res://shop.tscn" id="15_3v7ru"]
@@ -31,7 +21,7 @@
 [ext_resource type="CylinderMesh" uid="uid://b373o85jlixj5" path="res://resources/vein.tres" id="25_5t8nk"]
 [ext_resource type="CapsuleMesh" uid="uid://b385jequj3mbb" path="res://resources/core.tres" id="26_j3e5s"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
-[ext_resource type="Script" path="res://world_persist.gd" id="28_worldpersist"]
+[ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.38431373, 0.45490196, 0.76862746, 1)
@@ -127,37 +117,6 @@ directional_shadow_blend_splits = true
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 56.088036, 110.67179)
 
-[node name="Drill" parent="objects" unique_id=1014103649 instance=ExtResource("8_tereu")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.2870026, 3.2942429, -7.108572)
-
-[node name="Block" parent="objects" unique_id=1731736359 instance=ExtResource("7_6iypd")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.6963253, 3.4405155, -5.475209)
-
-[node name="wheel" parent="objects" unique_id=1838768799 instance=ExtResource("5_6iypd")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.4665794, 3.2818775, -5.651332)
-
-[node name="belt" parent="objects" unique_id=560596903 instance=ExtResource("5_tcnuu")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.227745, 3.6750965, -5.106488)
-
-[node name="belt2" parent="objects" unique_id=1176145101 instance=ExtResource("5_tcnuu")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.884427, 3.192708, -10.088804)
-
-[node name="seller" parent="objects" unique_id=1636723516 instance=ExtResource("6_i0g27")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.8110466, 3.8293037, -10.457301)
-
-[node name="processor" parent="objects" unique_id=1927017912 instance=ExtResource("7_ealrb")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.4793634, 4.361312, -15.767304)
-
-[node name="Intake" parent="objects" unique_id=1391003942 instance=ExtResource("12_wlxy5")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.117151, 3.838951, -11.453131)
-
-[node name="Laser" parent="objects" unique_id=172961242 instance=ExtResource("9_lggff")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5597343, 3.6736374, -8.266861)
-script = ExtResource("10_1q667")
-
-[node name="Gun" parent="objects" unique_id=1610090464 instance=ExtResource("10_s0gvp")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.5379276, 2.885703, -9.327407)
-
 [node name="Shops" type="Node3D" parent="." unique_id=550903525 node_paths=PackedStringArray("map_node")]
 script = ExtResource("15_shopspawn")
 shop_scene = ExtResource("15_3v7ru")
@@ -174,7 +133,7 @@ map_node = NodePath("../map")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 49.802696, 0)
 
 [node name="Player" type="RigidBody3D" parent="Vehicles" unique_id=946061725 node_paths=PackedStringArray("block_map_node", "ghost_block")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.425968, 13.019241, 87.281494)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -62.81341, -19.189545, 164.26987)
 collision_layer = 16
 collision_mask = 21
 can_sleep = false
@@ -420,7 +379,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_5t8nk")
 
-[node name="WorldPersist" type="Node" parent="."]
+[node name="WorldPersist" type="Node" parent="." unique_id=3615113]
 script = ExtResource("28_worldpersist")
 
 [connection signal="body_entered" from="Vehicles/Camera Controller/SpringArm3D/Camera3D/Raycast" to="Vehicles/Camera Controller" method="_on_raycast_body_entered"]
