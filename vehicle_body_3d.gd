@@ -896,12 +896,11 @@ func _input(event: InputEvent) -> void:
 		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
 		if event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
-			# ПК: мышь целится непрерывно (орбита на ПКМ — конфликта нет). НО не целимся в мир,
-			# когда курсор над HUD — иначе КЛИК по кнопке «Place» гонит _handle_click по координатам
-			# кнопки и перенаводит блок/_cabin_ground туда, где кнопка, вместо выбранной клетки
-			# (grid-путь это переживал — луч мимо машины не трогал _preview_res, а вот наземное
-			# ядро перекидывалось на позицию кнопки). Тач-путь ниже уже гейтит тем же условием.
-			if get_viewport().gui_get_hovered_control() == null:
+			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui): иначе
+			# КЛИК/ТАП по кнопке «Place» гонит _handle_click по координатам кнопки и перенаводит
+			# блок/_cabin_ground туда, где кнопка, вместо выбранной клетки. (Grid-путь это переживал
+			# — луч мимо машины не трогал _preview_res, а вот наземное ядро перекидывалось на кнопку.)
+			if not _tap_over_ui(event.position):
 				_handle_click(event.position)
 		elif event is InputEventScreenTouch:
 			if event.pressed:
@@ -910,7 +909,7 @@ func _input(event: InputEvent) -> void:
 				_build_tap_moved = false
 			elif _touch_count == 0 and not _build_tap_moved \
 					and Time.get_ticks_msec() - _build_tap_ms < 250 \
-					and get_viewport().gui_get_hovered_control() == null:
+					and not _tap_over_ui(event.position):
 				_handle_click(event.position)          # одиночный тап по миру = навести блок сюда
 		elif event is InputEventScreenDrag:
 			if _build_tap_pos.distance_to(event.position) > 14.0:
@@ -972,6 +971,47 @@ func _on_building_pressed() -> void:
 	if not is_station:
 		global_position.y += 4          # подброс для стройки в воздухе; выравнивание — плавно в _physics_process
 	map = global_position.y
+
+# Интерактивные узлы HUD, тап по которым НЕ должен наводить блок в мир.
+const _UI_HIT_NODES := ["Take", "TakeOff", "Attack", "Movement", "Building",
+		"Joystick_movement", "Joystick_camera"]
+
+# Пришёлся ли указатель на интерактивный HUD? На ПК hover-контрол ловит это сам. На ТАЧЕ
+# gui_get_hovered_control после отрыва пальца врёт (hover «висит» пусто), из-за чего тап по
+# кнопке «Place» повторно гнал _handle_click по её координатам и перенаводил блок. Поэтому
+# бьём по геометрии: rect у Control-кнопок (Take/TakeOff/Attack) и shape у TouchScreenButton
+# (джойстики/Movement/Building) — ровно так, как сам TouchScreenButton считает своё нажатие.
+func _tap_over_ui(pos: Vector2) -> bool:
+	if get_viewport().gui_get_hovered_control() != null:
+		return true
+	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
+	if hud == null:
+		return false
+	for nm in _UI_HIT_NODES:
+		var n = hud.get_node_or_null(nm)
+		if n == null or not (n is CanvasItem) or not n.visible:
+			continue
+		if n is Control and (n as Control).get_global_rect().has_point(pos):
+			return true
+		if n is TouchScreenButton and _tsb_hit(n as TouchScreenButton, pos):
+			return true
+	return false
+
+# Точка pos внутри области нажатия TouchScreenButton (учитываем shape_centered, как движок).
+func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
+	var s = b.shape
+	if s == null:
+		return false
+	var o: Vector2 = b.global_position
+	if s is RectangleShape2D:
+		var sz: Vector2 = (s as RectangleShape2D).size
+		var tl: Vector2 = (o - sz * 0.5) if b.shape_centered else o
+		return Rect2(tl, sz).has_point(pos)
+	if s is CircleShape2D:
+		var r: float = (s as CircleShape2D).radius
+		var c: Vector2 = o if b.shape_centered else o + Vector2(r, r)
+		return c.distance_to(pos) <= r
+	return false
 
 func _handle_click(screen_pos: Vector2) -> void:
 	var camera = camera_controller.camera
