@@ -18,6 +18,7 @@ config/name="WorldTech"
 run/main_scene="res://node_3d.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="uid://bnmv2qdj2tbui"
+boot_splash/image="uid://bnmv2qdj2tbui"
 config/specular_occlusion/enabled=true
 config/reflection_atlas/reflection_size=256
 
