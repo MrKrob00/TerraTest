@@ -38,6 +38,12 @@ const PITCH_SPEED := 1.4          # рад/с от джойстика
 const PITCH_MIN := -0.35          # ~−20°: смотреть вниз
 const PITCH_MAX := 0.66           # ~+38°: смотреть вдаль, к горизонту
 var gaze_pitch: float = 0.0       # 0 — ровно на машину, как раньше
+# В СТРОЙКЕ разрешаем заглянуть ПОД машину (ставить блоки снизу): смотрим сильнее вверх, и чем
+# выше взгляд — тем ниже уходит камера (под днище). Машина в стройке парит, поэтому камере можно
+# опуститься ближе к земле, чем обычные 8 м.
+const BUILD_PITCH_MAX := 1.4      # ~+80° вверх в стройке
+const BUILD_UNDER_DROP := 5.0     # насколько камера уходит НИЖЕ машины при полном взгляде вверх
+const BUILD_MIN_CLEARANCE := 1.5  # в стройке камере можно ближе к земле
 
 # ── Тач-камера (свайп вместо джойстика) ─────────────────────────────────────────
 # Один палец по миру — орбита (гориз.) + наклон взгляда (верт.), как во всех 3D-мобилках.
@@ -188,8 +194,10 @@ func camera_movement(_delta):
 	_touch_look_dy = 0.0
 	if G.cam_invert_y:
 		pitch = -pitch                     # инверсия вертикали (настройка)
+	var pmax := BUILD_PITCH_MAX if _in_build() else PITCH_MAX
 	if pitch != 0.0:
-		gaze_pitch = clampf(gaze_pitch + pitch, PITCH_MIN, PITCH_MAX)
+		gaze_pitch = clampf(gaze_pitch + pitch, PITCH_MIN, pmax)
+	gaze_pitch = clampf(gaze_pitch, PITCH_MIN, pmax)   # ре-кламп при смене режима (вышел из стройки)
 	if turn != 0.0:
 		angle += turn
 		is_locked = false
@@ -200,20 +208,29 @@ func camera_movement(_delta):
 			is_locked = true
 		angle = current_vehicle.global_rotation.y + locked_angle
 	
-	var offset := Vector3(RADIUS * sin(angle), CAM_HEIGHT, RADIUS * cos(angle))
-	# Минимум MIN_GROUND_CLEARANCE (8 м) над террейном: если точку камеры поджал рельеф —
-	# поднимаем её вертикально (взгляд всё равно на машину). Выше 8 м — не трогаем.
+	var cam_h := CAM_HEIGHT
+	var min_clear := MIN_GROUND_CLEARANCE
+	if _in_build():
+		# Заглянуть ПОД машину: чем выше смотрим (gaze_pitch↑), тем ниже уходит камера (под днище).
+		var under := clampf(gaze_pitch / BUILD_PITCH_MAX, 0.0, 1.0)
+		cam_h = lerpf(CAM_HEIGHT, -BUILD_UNDER_DROP, under)
+		min_clear = BUILD_MIN_CLEARANCE
+	var offset := Vector3(RADIUS * sin(angle), cam_h, RADIUS * cos(angle))
+	# Минимум min_clear над террейном: если точку камеры поджал рельеф — поднимаем её вертикально
+	# (взгляд всё равно на машину). В стройке порог ниже, чтобы камера могла уйти под парящую машину.
 	var cam_pos: Vector3 = current_vehicle.global_position + offset
 	var ground := _terrain_height(cam_pos)
-	if cam_pos.y < ground + MIN_GROUND_CLEARANCE:
-		offset.y += ground + MIN_GROUND_CLEARANCE - cam_pos.y
+	if cam_pos.y < ground + min_clear:
+		offset.y += ground + min_clear - cam_pos.y
 	Spring.spring_length = offset.length()
 	# Смотрим строго на машину. Раньше сюда ДОБАВЛЯЛСЯ крен корпуса (rotation.x) поверх
 	# look_at — на горках камеру клевало вниз/вверх и она теряла машину из виду.
 	Spring.look_at_from_position(current_vehicle.global_position + offset * 0.01, current_vehicle.global_position)
 	# Наклон — ЛОКАЛЬНО на камере, после look_at арки: рига/длина пружины/прижим к земле
 	# не затронуты, при gaze_pitch == 0 кадр идентичен прежнему.
-	camera.rotation.x = gaze_pitch
+	# В СТРОЙКЕ gaze_pitch двигает камеру ПО ВЫСОТЕ (свешивает под машину), а look_at сам держит
+	# машину в кадре — поэтому дополнительный наклон вида не добавляем (иначе перекрутит вверх).
+	camera.rotation.x = 0.0 if _in_build() else gaze_pitch
 
 # Активная машина сейчас в режиме стройки? (в стройке камеру крутим двумя пальцами)
 func _in_build() -> bool:
