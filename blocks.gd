@@ -107,7 +107,12 @@ func _define_layout() -> void:
 		1: _layout_dual_gun()
 		2: _layout_laser_scout()
 		3: _layout_starter()
+		4: _layout_cabin_only()
 		_: _layout_default()
+
+# Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
+func _layout_cabin_only() -> void:
+	set_block(5, 0, 5, G.Block.CABIN, 0.0)
 
 # Стартовая машина (спавнится бесплатно при гибели): кабина, 4 колеса, пара блоков,
 # пулемёт и бур. Компактнее дефолта.
