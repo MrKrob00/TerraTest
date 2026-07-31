@@ -1,19 +1,33 @@
 extends VehicleBlock
 
 @export var drill_damage: int = 20
+const DIG_INTERVAL := 0.3   # пауза между ударами, пока зажата атака и бур в контакте
+var _dig_cd := 0.0
 
-func attack():
-	if $AnimationPlayer.is_playing(): return
-	$drill.monitoring = true                 # сенсор активен только на время бурения
-	$AnimationPlayer.play("drilling")
-	await $AnimationPlayer.animation_finished
-	_dig()                                    # бьём по тому, что СЕЙЧАС в контакте
-	$drill.monitoring = false
+func _ready() -> void:
+	super()                  # VehicleBlock._ready (слои, hp, заморозка)
+	$drill.monitoring = true # сенсор бура держим включённым: overlaps готовы к первому же удару
 
-# Каждый удар наносит урон ВСЕМ рудам, что сейчас перекрывают зону бура.
-# Раньше урон шёл от сигнала body_entered — а он срабатывает лишь в момент ВХОДА тела в зону.
-# Руда, оставшаяся в контакте после первого удара, повторно «не входит», поэтому со второй
-# атаки не добывалась. Опрос get_overlapping_bodies() снимает зависимость от событий входа.
+func _process(delta: float) -> void:
+	if _dig_cd > 0.0:
+		_dig_cd -= delta
+
+# Зовётся КАЖДЫЙ физ-кадр, пока зажата Атака (см. vehicle_body_3d._on_attack_timeout), и раз в
+# ~0.3с у ИИ. Раньше attack() ждал конца анимации через `await animation_finished` и дёргал
+# monitoring вкл/выкл. При вызове каждый кадр это давало гонку корутин: monitoring мог погаснуть
+# ПЕРЕД _dig, и после первого удара бур замолкал (добывал «только один раз в начале»). Теперь
+# удар идёт по таймеру-кулдауну, сенсор всегда включён, а анимация — лишь визуал (без await).
+func attack() -> void:
+	if _dig_cd > 0.0:
+		return
+	_dig_cd = DIG_INTERVAL
+	if not $AnimationPlayer.is_playing():
+		$AnimationPlayer.play("drilling")
+	_dig()
+
+# Каждый удар бьёт по ВСЕМ рудам, что сейчас перекрывают зону бура. Опрос get_overlapping_bodies()
+# (а не сигнал body_entered, который срабатывает лишь при ВХОДЕ тела) добывает и застрявшую вплотную
+# руду, оставшуюся в контакте после первого удара.
 func _dig() -> void:
 	for body in $drill.get_overlapping_bodies():
 		if body == self: continue
