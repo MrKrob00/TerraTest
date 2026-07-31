@@ -737,6 +737,44 @@ func _build_settings_tab() -> void:
 		ui_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(ui_hint)
 
+	# — КАМЕРА — (перенесено из HUD: управление камерой настраивается здесь, в гараже)
+	_extra_header("— КАМЕРА —")
+	_extra_vb.add_child(_cam_slider("Чувствительность поворота", G.cam_look_sens,
+			func(v): G.cam_look_sens = v; G.save_settings()))
+	_extra_vb.add_child(_cam_slider("Чувствительность зума", G.cam_zoom_sens,
+			func(v): G.cam_zoom_sens = v; G.save_settings()))
+	var inv := CheckButton.new()
+	inv.text = "Инвертировать вертикаль"
+	inv.button_pressed = G.cam_invert_y
+	inv.add_theme_font_size_override("font_size", 14)
+	inv.toggled.connect(func(on: bool) -> void: G.cam_invert_y = on; G.save_settings())
+	_extra_vb.add_child(inv)
+
+# Строка «подпись + ползунок + значение» для настроек камеры (0.2..3.0).
+func _cam_slider(label: String, value: float, on_change: Callable) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var l := Label.new()
+	l.text = label
+	l.custom_minimum_size = Vector2(190, 0)
+	l.add_theme_font_size_override("font_size", 13)
+	row.add_child(l)
+	var s := HSlider.new()
+	s.min_value = 0.2
+	s.max_value = 3.0
+	s.step = 0.05
+	s.value = value
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var val := Label.new()
+	val.text = "%.2f" % value
+	val.custom_minimum_size = Vector2(44, 0)
+	s.value_changed.connect(func(v: float) -> void:
+		val.text = "%.2f" % v
+		on_change.call(v))
+	row.add_child(s)
+	row.add_child(val)
+	return row
+
 # ══ Вкладка ДРЕВО: дерево технологий стартовой фракции (этап 2 прогрессии) ══════════
 # Вертикальные ярусы по грейдам (мобайл: ряды-«полки», не радиалка); нода = кнопка с
 # именем блока и статусом. 4 состояния: исследована / можно / не хватает ДИ / закрыта.

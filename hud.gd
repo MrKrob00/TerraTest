@@ -49,7 +49,7 @@ func _ready() -> void:
 	_build_block_globe()
 	_build_anchor_button()
 	_build_radar()
-	_build_settings_panel()
+	# _build_settings_panel()   # настройки камеры переехали в гараж (tech_ui)
 	_collect_game_controls()
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
@@ -747,7 +747,7 @@ func _build_ark_drawer() -> void:
 	vb.add_child(title)
 
 	vb.add_child(_make_drawer_button("Инвентарь", _toggle_inventory))
-	vb.add_child(_make_drawer_button("Настройки", _toggle_settings))
+	# «Настройки» переехали в ГАРАЖ (tech_ui, вкладка НАСТРОЙКИ → секция КАМЕРА).
 
 	var veh_label := Label.new()
 	veh_label.text = "ТЕХНИКА"
