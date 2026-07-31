@@ -709,6 +709,18 @@ func _build_settings_tab() -> void:
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)
 
+	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
+	if OS.has_feature("pc") and "fullscreen" in main:
+		var fs_btn := CheckButton.new()
+		fs_btn.text = "Полноэкранный режим (выкл — плавающее окно)"
+		fs_btn.button_pressed = bool(main.fullscreen)
+		fs_btn.add_theme_font_size_override("font_size", 14)
+		fs_btn.toggled.connect(func(on: bool) -> void:
+			var mn: Node = get_node_or_null("/root/Main")
+			if mn and mn.has_method("set_fullscreen"):
+				mn.set_fullscreen(on))
+		_extra_vb.add_child(fs_btn)
+
 	if "ui_scale" in main:
 		_extra_header("— ИНТЕРФЕЙС —")
 		var ui_row := HBoxContainer.new()
