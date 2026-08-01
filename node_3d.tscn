@@ -22,13 +22,21 @@
 [ext_resource type="CapsuleMesh" uid="uid://b385jequj3mbb" path="res://resources/core.tres" id="26_j3e5s"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
-[ext_resource type="Shader" path="res://sky.gdshader" id="29_sky"]
 
-[sub_resource type="ShaderMaterial" id="SkyMaterial_obt1j"]
-shader = ExtResource("29_sky")
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
+sky_top_color = Color(0.15, 0.3, 0.58, 1)
+sky_horizon_color = Color(0.65, 0.78, 0.9, 1)
+sky_curve = 0.15
+ground_horizon_color = Color(0.6, 0.72, 0.84, 1)
+ground_bottom_color = Color(0.42, 0.44, 0.5, 1)
+ground_curve = 0.1
+sun_angle_max = 12.0
+sun_curve = 0.08
+use_debanding = false
 
 [sub_resource type="Sky" id="Sky_2yde8"]
-sky_material = SubResource("SkyMaterial_obt1j")
+sky_material = SubResource("ProceduralSkyMaterial_obt1j")
+process_mode = 2
 
 [sub_resource type="Environment" id="Environment_id0nj"]
 background_mode = 2
