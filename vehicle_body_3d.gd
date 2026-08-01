@@ -890,18 +890,22 @@ var _build_tap_moved: bool = false   # палец сдвинулся → это 
 # Двойной тап = «подтверждение» (взять/поставить). Одиночный только наводит/подсвечивает.
 var _dbl_tap_ms: int = 0
 var _dbl_tap_pos: Vector2 = Vector2.ZERO
+var _last_touch_ms: int = 0    # был недавно тач → эмулированную мышь игнорируем (иначе двойной тап
+#                                срабатывал ДВАЖДЫ: взял блок и тут же поставил обратно)
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
 	if event is InputEventScreenTouch:
 		_touch_count = maxi(_touch_count + (1 if event.pressed else -1), 0)
+		_last_touch_ms = Time.get_ticks_msec()
 	if Building:
 		# Управление одним пальцем — как при езде: ДРАГ крутит камеру (это делает
 		# camera_controller), а блок наводится ТАПОМ (короткое касание без свайпа) по клетке.
 		# Раньше блок таскался драгом, и камеру пришлось отдавать двум пальцам — неудобно и
 		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
-		if event is InputEventMouseMotion \
-				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+		if (event is InputEventMouseMotion \
+				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
+				and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
 			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
 			if not _tap_over_ui(event.position):
 				_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
