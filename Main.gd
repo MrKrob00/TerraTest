@@ -23,6 +23,7 @@ const SETTINGS_PATH := "user://settings.json"
 var auto_fps: bool = true            # ВКЛ = авто-скейл по FPS; ВЫКЛ = ручной масштаб
 var manual_scale: float = 0.75       # масштаб рендера при выключенном авто
 var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (самая тяжёлая настройка на мобилке)
+var terrain_low_quality: bool = false  # низкое качество рельефа (шейдер без попиксельного шума/тайла) — +FPS
 
 # ── Умный размер интерфейса ────────────────────────────────────────────────────
 # project.godot [display] = canvas_items: HUD масштабируется ЛИНЕЙНО с разрешением, и на
@@ -43,6 +44,7 @@ func _ready() -> void:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
 	_apply_shadows()
+	_apply_terrain_quality()
 	get_window().size_changed.connect(_apply_ui_scale)
 	_apply_ui_scale()
 	_setup_pc_input_map()
@@ -127,6 +129,23 @@ func _apply_shadows() -> void:
 	if light:
 		light.shadow_enabled = shadows_enabled
 
+# Вкл/выкл низкое качество рельефа. Шейдер террейна пропускает попиксельный шум цвета и тайл-текстуру
+# (самое дорогое во фрагменте) — заметный +FPS ценой мелкой детализации земли. Отдельный тумблер.
+func set_terrain_low_quality(on: bool) -> void:
+	terrain_low_quality = on
+	_apply_terrain_quality()
+	_save_settings()
+
+func _apply_terrain_quality() -> void:
+	var m := get_node_or_null("map")
+	if m == null:
+		for c in get_children():
+			if c.has_method("set_terrain_low_quality"):
+				m = c
+				break
+	if m != null and m.has_method("set_terrain_low_quality"):
+		m.set_terrain_low_quality(terrain_low_quality)
+
 # Вкл/выкл авто-FPS. При выключении сразу применяется ручной масштаб.
 func set_auto_fps(on: bool) -> void:
 	auto_fps = on
@@ -151,6 +170,7 @@ func _save_settings() -> void:
 			"auto_fps": auto_fps,
 			"manual_scale": manual_scale,
 			"shadows_enabled": shadows_enabled,
+			"terrain_low_quality": terrain_low_quality,
 			"ui_scale": ui_scale,
 			"fullscreen": fullscreen,
 		}))
@@ -163,6 +183,7 @@ func _load_settings() -> void:
 		auto_fps = bool(parsed.get("auto_fps", true))
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
+		terrain_low_quality = bool(parsed.get("terrain_low_quality", false))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 
