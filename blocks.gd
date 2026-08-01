@@ -319,6 +319,7 @@ func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> v
 	# Структурная целостность: блоки, потерявшие связь с корнем (кабина/база), падают в мир.
 	# Отложенно (call_deferred) — репарент/разморозка небезопасны прямо в физ-колбэке урона.
 	call_deferred("_detach_orphans")
+	call_deferred("rebuild_factory_links")   # топология изменилась — пересчитать цепочку фабрики
 
 # ── Структурная целостность ───────────────────────────────────────────────────
 # Корень постройки: КАБИНА (мобильная машина) или СТАЦИОНАРНЫЙ блок (база). Всё, что не
@@ -493,3 +494,73 @@ func _clear_block_collisions() -> void:
 	for c in parent.get_children():
 		if c is CollisionShape3D and c.is_in_group("block_collision"):
 			c.queue_free()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ФАБРИЧНЫЕ СВЯЗИ — авто-коннект по соседству (без ручного поворота блоков)
+# ══════════════════════════════════════════════════════════════════════════════
+# Раньше следующий блок цепочки (next_block) искался по «направлению вперёд» из rotation.y —
+# хрупко и вовсе ломалось авто-наклоном при постановке. Теперь строим ПОЛЕ ПОТОКА: BFS от
+# стоков (ПРОДАВЕЦ / ГЕНЕРАТОР), каждый фабричный блок течёт к соседу, который БЛИЖЕ к стоку.
+# Игроку достаточно ставить блоки в ряд вплотную — направление и связи считаются сами.
+func rebuild_factory_links() -> void:
+	var fac_cells := {}                    # node → PackedArray клеток его футпринта
+	var facs: Array = []
+	for k in node_map.keys():
+		var n = node_map[k]
+		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
+			continue
+		var parts: PackedStringArray = k.split(",")
+		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
+		if not _in_bounds(ax, ay, az):
+			continue
+		fac_cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
+		facs.append(n)
+	# Смежность фабричных блоков (по граням, с учётом многоклеточных футпринтов).
+	var adj := {}
+	for n in facs:
+		adj[n] = _factory_neighbors(n, fac_cells)
+	# BFS расстояния до ближайшего стока (продавец/генератор потребляют ресурс, дальше не толкают).
+	var dist := {}
+	var queue: Array = []
+	for n in facs:
+		if _is_factory_sink(n):
+			dist[n] = 0
+			queue.append(n)
+	var head := 0
+	while head < queue.size():
+		var cur = queue[head]; head += 1
+		for nb in adj[cur]:
+			if not dist.has(nb):
+				dist[nb] = int(dist[cur]) + 1
+				queue.append(nb)
+	# Каждый блок течёт к соседу с дистанцией на 1 меньше (ближе к стоку). Строго убывающая
+	# дистанция = нет петель. Стоки и блоки без связи со стоком — next_block = null (стоят).
+	for n in facs:
+		n.next_block = null
+		if not dist.has(n) or int(dist[n]) == 0:
+			continue
+		for nb in adj[n]:
+			if dist.has(nb) and int(dist[nb]) == int(dist[n]) - 1:
+				n.next_block = nb
+				break
+
+# Соседние (по грани) фабричные блоки данного узла — с учётом всех клеток его футпринта.
+func _factory_neighbors(node, fac_cells: Dictionary) -> Array:
+	var out: Array = []
+	var seen := {}
+	var DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+	for c in fac_cells[node]:
+		for d in DIRS:
+			var nx: int = c.x + d.x; var ny: int = c.y + d.y; var nz: int = c.z + d.z
+			if not _in_bounds(nx, ny, nz):
+				continue
+			var nb = find_block(nx, ny, nz)
+			if nb != null and nb != node and fac_cells.has(nb) and not seen.has(nb):
+				seen[nb] = true
+				out.append(nb)
+	return out
+
+# Сток цепочки: продавец (деньги) или генератор (топливо→энергия). Дальше ресурс не толкают.
+func _is_factory_sink(node) -> bool:
+	var bt := int(node.get("block"))
+	return bt == G.Block.SELLER or bt == G.Block.COAL_GEN
