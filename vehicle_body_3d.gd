@@ -1520,14 +1520,41 @@ func take_block_into_hand(block_type: int) -> bool:
 		hud._on_building_pressed()
 	return true
 
-func _on_take_off_pressed() -> void:
+# Убрать блок из руки — ДВА варианта (кнопки HUD): спрятать В ИНВЕНТАРЬ или бросить В МИР.
+func stash_hand_to_inventory() -> void:
 	if not block_take:
 		return
-	# «Take off» = убрать блок из руки В ИНВЕНТАРЬ (реквест: удобный способ спрятать взятый блок).
-	# Раньше блок ронялся в мир (%objects), и его потом снова надо было ловить — неудобно.
 	if block_body != null and is_instance_valid(block_body) and int(block_body.get("block")) == G.Block.CABIN:
-		return                            # кабину (ядро новой машины) в инвентарь не прячем
+		return                            # кабину (ядро новой машины) не прячем
 	_return_hand_to_inventory()
+
+func drop_hand_to_world() -> void:
+	if not block_take:
+		return
+	var holder: Node = camera_controller.camera.get_child(0) \
+			if (camera_controller != null and camera_controller.camera != null) else null
+	if holder == null or holder.get_child_count() == 0:
+		block_body = null
+		block_take = false
+		return
+	var instance: Node3D = holder.get_child(0)
+	if int(instance.get("block")) == G.Block.CABIN:
+		return                            # кабину не бросаем в мир (это ядро новой машины)
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null:
+		return
+	instance.top_level = false            # мог остаться top_level от превью
+	instance.reparent(objects)            # VehicleBlock сам разморозится (parent == "objects")
+	instance.scale = Vector3.ONE
+	block_body = null
+	block_take = false
+	_preview_res = null
+	if ghost_block:
+		ghost_block.visible = false
+
+# Q на ПК / действие «TakeOff» = быстро бросить блок в мир.
+func _on_take_off_pressed() -> void:
+	drop_hand_to_world()
 
 func _on_attack_timeout() -> void:
 	for i in $blocks.get_children():

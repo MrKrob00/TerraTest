@@ -46,6 +46,7 @@ var _game_controls: Array = []              # игровые кнопки/джо
 func _ready() -> void:
 	_build_ark_drawer()
 	_build_rotate_panel()
+	_build_hand_panel()
 	_build_block_globe()
 	_build_anchor_button()
 	_build_radar()
@@ -82,6 +83,8 @@ func _relayout() -> void:
 					dy + dh * 0.5 - 36.0)
 	if _rotate_panel:
 		_rotate_panel.position = Vector2(screen.x * 0.5 - _rotate_panel.size.x * 0.5, screen.y - 180.0)
+	if _hand_panel:
+		_hand_panel.position = Vector2(screen.x * 0.5 - _hand_panel.size.x * 0.5, screen.y - 262.0)
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
 	if _block_globe:
@@ -542,6 +545,60 @@ class RotIcon extends Control:
 			var t := Vector2(-sin(a), cos(a) * 0.45).normalized()
 			_arrow(p, -t if kind == "yaw_right" else t)
 
+# ── Панель «убрать блок из руки» (стройка) ─────────────────────────────────────
+# Две кнопки: спрятать блок В ИНВЕНТАРЬ (📦) и бросить его В МИР (🗑). Видна в стройке, когда в
+# руке есть блок. Стиль — как у панели поворота (палитра tech_ui), чтобы весь HUD смотрелся цельно.
+var _hand_panel: PanelContainer
+func _build_hand_panel() -> void:
+	_hand_panel = PanelContainer.new()
+	_hand_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_hand_panel.visible = false
+	add_child(_hand_panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	_hand_panel.add_child(row)
+	row.add_child(_hand_btn("📦", "To inventory", func(): _hand_action("stash")))
+	row.add_child(_hand_btn("🗑", "Drop to world", func(): _hand_action("drop")))
+
+func _hand_btn(icon: String, tip: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(68, 60)
+	b.text = icon
+	b.tooltip_text = tip
+	b.add_theme_font_size_override("font_size", 26)
+	b.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98, 1))
+	b.add_theme_stylebox_override("normal", _make_button_style(false))
+	b.add_theme_stylebox_override("hover", _make_button_style(false))
+	b.add_theme_stylebox_override("pressed", _make_button_style(true))
+	b.pressed.connect(cb)
+	return b
+
+func _hand_action(kind: String) -> void:
+	var v: Node = _menu_vehicle_or_current()
+	if v == null:
+		return
+	if kind == "stash" and v.has_method("stash_hand_to_inventory"):
+		v.stash_hand_to_inventory()
+	elif kind == "drop" and v.has_method("drop_hand_to_world"):
+		v.drop_hand_to_world()
+	if _block_globe:
+		_block_globe.refresh()             # инвентарь мог измениться (стос в инвентарь)
+
+# Показываем панель рук только в стройке и только когда в руке есть блок. Зовётся из _process,
+# чтобы состояние было живым (block_take меняется в стройке тапом/постановкой, HUD об этом не знает).
+func _update_hand_panel() -> void:
+	if _hand_panel == null:
+		return
+	var v: Node = _menu_vehicle_or_current()
+	var show_it: bool = (not _controls_hidden) and v != null and ("block_take" in v) and v.block_take \
+			and ("Building" in v) and v.Building
+	if _hand_panel.visible != show_it:
+		_hand_panel.visible = show_it
+	if show_it:
+		# Центрируем по факту размера (PanelContainer знает ширину только после раскладки).
+		var screen: Vector2 = get_viewport().get_visible_rect().size
+		_hand_panel.position = Vector2(screen.x * 0.5 - _hand_panel.size.x * 0.5, screen.y - 262.0)
+
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	_rotate_panel = PanelContainer.new()
@@ -665,6 +722,7 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 func _process(delta: float) -> void:
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
 	_update_radar(delta)
+	_update_hand_panel()
 
 # Радар обновляем не каждый кадр (сбор блипов — O(враги+жилы)): раз в 0.15с. Виден только
 # если у активной машины есть блок RADAR. Блипы: враги (красные), активные жилы (жёлтые).
@@ -984,7 +1042,7 @@ func _on_movement_pressed() -> void:
 func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = true
-	$TakeOff.visible = true
+	$TakeOff.visible = false            # старую кнопку заменила панель рук (📦/🗑), см. _hand_panel
 	if _rotate_panel: _rotate_panel.visible = true
 	if _block_globe:
 		_block_globe.visible = true
@@ -998,10 +1056,9 @@ func _on_take_pressed() -> void:
 	if current_vehicle.block_map_node.get_block(current_vehicle.BuildingBlock["x"],current_vehicle.BuildingBlock["y"],current_vehicle.BuildingBlock["z"])!=0:
 		return #if no empty return
 	$Take/Label.text = "Take"
-	$TakeOff.visible = false
+	$TakeOff.visible = false            # убрать-из-руки теперь на панели рук (📦 инвентарь / 🗑 в мир)
 	if current_vehicle.block_body: #Take blocking
 		$Take/Label.text = "Place"
-		$TakeOff.visible = true
 
 
 
