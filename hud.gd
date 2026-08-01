@@ -82,7 +82,7 @@ func _relayout() -> void:
 					(screen.x - DRAWER_W - 50.0) if _drawer_open else (screen.x - 50.0),
 					dy + dh * 0.5 - 36.0)
 	if _rotate_panel:
-		_rotate_panel.position = Vector2(screen.x * 0.5 - _rotate_panel.size.x * 0.5, screen.y - 180.0)
+		_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - _rotate_panel.size.y * 0.5)
 	if _hand_panel:
 		_hand_panel.position = Vector2(
 				screen.x - 98.0 - _hand_panel.size.x * 0.5,
@@ -554,7 +554,7 @@ class RotIcon extends Control:
 var _hand_panel: PanelContainer
 func _build_hand_panel() -> void:
 	_hand_panel = PanelContainer.new()
-	_hand_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_hand_panel.add_theme_stylebox_override("panel", _make_float_panel_style())
 	_hand_panel.visible = false
 	add_child(_hand_panel)
 	var row := HBoxContainer.new()
@@ -651,11 +651,13 @@ func _update_hand_panel() -> void:
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	_rotate_panel = PanelContainer.new()
-	_rotate_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_rotate_panel.add_theme_stylebox_override("panel", _make_float_panel_style())
 	_rotate_panel.visible = false
 	var pw: float = 180.0
 	_rotate_panel.size = Vector2(pw, 140)
-	_rotate_panel.position = Vector2(screen.x * 0.5 - pw * 0.5, screen.y - 180.0)
+	# Не по центру снизу (было неудобно), а у ЛЕВОГО края по вертикали — под левый палец, а низ и
+	# центр свободны. Повёрнуто в резайз-хендлере тоже (см. _reposition в самом верху).
+	_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - 70.0)
 	add_child(_rotate_panel)
 	var grid := GridContainer.new()
 	grid.columns = 2
@@ -1038,6 +1040,21 @@ func _make_panel_style() -> StyleBoxFlat:
 	s.content_margin_right = 14
 	s.content_margin_top = 12
 	s.content_margin_bottom = 12
+	return s
+
+# Стиль для ПЛАВАЮЩИХ панелей (поворот блока, рука): ВСЕ углы скруглены и рамка со всех сторон —
+# _make_panel_style скругляет только левую кромку (он для приклеенных к правому краю ящиков), из-за
+# чего в центре экрана правый бок был «квадратным».
+func _make_float_panel_style() -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	s.bg_color = Color(0.043, 0.122, 0.149, 0.95)
+	s.border_color = Color(0.247, 0.6, 0.65, 0.5)
+	s.set_border_width_all(2)
+	s.set_corner_radius_all(14)
+	s.content_margin_left = 12
+	s.content_margin_right = 12
+	s.content_margin_top = 10
+	s.content_margin_bottom = 10
 	return s
 
 func _make_handle_style(pressed: bool) -> StyleBoxFlat:
