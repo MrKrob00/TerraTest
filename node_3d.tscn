@@ -22,7 +22,6 @@
 [ext_resource type="CapsuleMesh" uid="uid://b385jequj3mbb" path="res://resources/core.tres" id="26_j3e5s"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
-[ext_resource type="Script" path="res://loading_screen.gd" id="30_load"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
@@ -111,9 +110,6 @@ script = ExtResource("1_ealrb")
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1964980053]
 environment = SubResource("Environment_id0nj")
 camera_attributes = SubResource("CameraAttributesPhysical_1q667")
-
-[node name="LoadingScreen" type="CanvasLayer" parent="."]
-script = ExtResource("30_load")
 
 [node name="DirectionalLight3D2" type="DirectionalLight3D" parent="." unique_id=1149215750]
 transform = Transform3D(0.45055014, -0.31362793, 0.835848, -0.11317725, 0.90864134, 0.4019477, -0.8855481, -0.27569667, 0.37389287, 25.946136, 20.018013, 3.1658702)
