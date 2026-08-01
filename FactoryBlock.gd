@@ -89,7 +89,8 @@ func _try_push() -> void:
 	if current_item == null or not is_instance_valid(current_item):
 		current_item = null
 		return
-	if next_block == null:
+	if next_block == null or not is_instance_valid(next_block):
+		next_block = null                 # следующий блок исчез (разрушен/снят) — не течём в мёртвую ссылку
 		return
 	if next_block.try_receive(current_item):
 		current_item = null

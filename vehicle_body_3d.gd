@@ -311,6 +311,7 @@ func toggle_anchor() -> bool:
 	anchored = true
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+	_rebuild_factory()                    # цепочка фабрики свежая к запуску под якорем
 	var target_y := global_position.y + 0.5
 	_anchor_tween = create_tween()
 	_anchor_tween.tween_property(self, "global_position:y", target_y, 0.18)   # (4) подъём на 0.5
@@ -372,6 +373,7 @@ func _anchor_station() -> void:
 	freeze = true
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
+	_rebuild_factory()
 	global_rotation.x = 0.0
 	global_rotation.z = 0.0
 	if _anchor_column == null or not is_instance_valid(_anchor_column):
@@ -954,8 +956,13 @@ func _on_movement_pressed() -> void:
 	if up.dot(Vector3.UP) < 0.3:
 		global_rotation.z = 0
 		global_rotation.x = 0
-	for b in $blocks.get_children():
-		if b.has_method("_find_next_block"): b._find_next_block()
+	_rebuild_factory()            # авто-коннект фабрики по соседству (без ручного поворота)
+
+# Пересобрать связи фабричной цепочки (поле потока к продавцу/генератору). Зовём при выходе
+# из стройки и при постановке на якорь — чтобы цепочка была свежей к моменту запуска фабрики.
+func _rebuild_factory() -> void:
+	if block_map_node != null and block_map_node.has_method("rebuild_factory_links"):
+		block_map_node.rebuild_factory_links()
 
 var map:float = 0.0
 func _on_building_pressed() -> void:
@@ -1091,6 +1098,10 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 # Остальные блоки — НАКЛОН так, чтобы НИЗ смотрел на соседа (боковое крепление): справа от
 # блока → низ влево и т.п. Углы могут потребовать проверки на живом тесте.
 func _face_orient(face: String, block_type: int) -> Basis:
+	# Фабричные блоки ставим РОВНО (без наклона): связь в цепочке считается по соседству
+	# (rebuild_factory_links), а не по повороту — игроку не нужно их вращать и целиться гранью.
+	if (G.BLOCK_CATEGORIES.get("factory", []) as Array).has(block_type):
+		return Basis()
 	if G.is_wheel(block_type):
 		match face:
 			"right": return Basis(Vector3.UP, -PI / 2)
@@ -1439,6 +1450,7 @@ func _on_take_pressed() -> void:
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
+		_rebuild_factory()                      # авто-коннект фабрики сразу после постановки
 		# Авто-добор (реквест): блок был из ИНВЕНТАРЯ и там есть ещё такой же → сразу берём
 		# следующий такой же в руку, чтобы ставить серией без возврата в гараж.
 		if _hand_from_inventory:
