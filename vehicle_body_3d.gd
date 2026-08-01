@@ -887,6 +887,9 @@ var _touch_count: int = 0        # активных пальцев на экра
 var _build_tap_pos: Vector2 = Vector2.ZERO
 var _build_tap_ms: int = 0
 var _build_tap_moved: bool = false   # палец сдвинулся → это ОРБИТА камеры, а не наводка блока
+# Двойной тап = «подтверждение» (взять/поставить). Одиночный только наводит/подсвечивает.
+var _dbl_tap_ms: int = 0
+var _dbl_tap_pos: Vector2 = Vector2.ZERO
 
 func _input(event: InputEvent) -> void:
 	if !is_active: return
@@ -899,15 +902,12 @@ func _input(event: InputEvent) -> void:
 		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
 		if event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
-			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui): иначе
-			# КЛИК/ТАП по кнопке «Place» гонит _handle_click по координатам кнопки и перенаводит
-			# блок/_cabin_ground туда, где кнопка, вместо выбранной клетки. (Grid-путь это переживал
-			# — луч мимо машины не трогал _preview_res, а вот наземное ядро перекидывалось на кнопку.)
+			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
 			if not _tap_over_ui(event.position):
-				_handle_click(event.position)
-				# По КЛИКУ мышью (не по ховеру) без блока в руке — сразу берём блок (машины или из мира).
-				if event is InputEventMouseButton:
-					_maybe_grab_on_tap(event.position)
+				_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
+				# ДВОЙНОЙ клик мышью = подтверждение: поставить блок из руки / взять наведённый.
+				if event is InputEventMouseButton and event.double_click:
+					_commit_build_tap(event.position)
 		elif event is InputEventScreenTouch:
 			if event.pressed:
 				_build_tap_pos = event.position
@@ -916,8 +916,15 @@ func _input(event: InputEvent) -> void:
 			elif _touch_count == 0 and not _build_tap_moved \
 					and Time.get_ticks_msec() - _build_tap_ms < 250 \
 					and not _tap_over_ui(event.position):
-				_handle_click(event.position)          # одиночный тап по миру = навести блок сюда
-				_maybe_grab_on_tap(event.position)     # без блока в руке тап по блоку/миру = взять его в руку
+				_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
+				# ДВОЙНОЙ тап (второй за ~340мс рядом) = подтверждение: взять/поставить.
+				var _now := Time.get_ticks_msec()
+				if _now - _dbl_tap_ms < 340 and _dbl_tap_pos.distance_to(event.position) < 45.0:
+					_commit_build_tap(event.position)
+					_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
+				else:
+					_dbl_tap_ms = _now
+					_dbl_tap_pos = event.position
 		elif event is InputEventScreenDrag:
 			if _build_tap_pos.distance_to(event.position) > 14.0:
 				_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
@@ -1347,9 +1354,21 @@ func _refill_hand_from_inventory(bt: int) -> void:
 		G.block_inventory.erase(bt)                # списываем экземпляр (как tech_ui._take_into_hand)
 		G.mark_progress_dirty()
 
-# Реквест: блок берётся В РУКУ сразу по тапу/клику — без отдельной кнопки Take. Зовём ТОЛЬКО по
-# дискретному тапу (не по ховеру мыши на ПК) и только когда рука пуста. Берём и блок машины
-# (найден grid-лучом в _handle_click → block_body), и СВОБОДНЫЙ блок в мире (физ-луч из точки тапа).
+# Подтверждение стройки по ДВОЙНОМУ тапу/клику (кнопка Take не нужна): держим блок в руке → СТАВИМ
+# его; рука пуста → БЕРЁМ наведённый блок. Одиночный тап только наводит/подсвечивает (_handle_click).
+var _last_commit_ms: int = 0
+func _commit_build_tap(screen_pos: Vector2) -> void:
+	var now := Time.get_ticks_msec()
+	if now - _last_commit_ms < 250:
+		return                           # антидубль: на мобилке тач И эмулированная мышь дают двойной
+	_last_commit_ms = now
+	if block_take:
+		_on_take_pressed()               # поставить блок из руки (или наземное ядро — кабина/база)
+	else:
+		_maybe_grab_on_tap(screen_pos)   # взять наведённый блок машины / свободный блок из мира
+
+# Взять В РУКУ наведённый блок машины (block_body из _handle_click) ИЛИ свободный блок из мира
+# (физ-луч из точки тапа). Зовётся из _commit_build_tap по двойному тапу, когда рука пуста.
 func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 	if block_take:
 		return
