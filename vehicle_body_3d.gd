@@ -1126,14 +1126,12 @@ func _preview_held(res: Dictionary) -> void:
 		return
 	var instance: Node3D = holder.get_child(0)
 	_preview_res = res
-	var gx: float = res.x; var gy: float = res.y; var gz: float = res.z
-	match res.face:
-		"top":    gy += 1
-		"bottom": gy -= 1
-		"right":  gx += 1
-		"left":   gx -= 1
-		"back":   gz += 1
-		"front":  gz -= 1
+	# Сдвиг якоря к выбранной грани — с учётом РАЗМЕРА блока (attach_delta), чтобы многоклеточные
+	# (процессор/продавец) вставали и СБОКУ, а не только наверх (см. blocks.attach_delta).
+	var ad := block_map_node.attach_delta(int(instance.block), String(res.face))
+	var gx: float = float(res.x) + ad.x
+	var gy: float = float(res.y) + ad.y
+	var gz: float = float(res.z) + ad.z
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	# Точки контакта + занятость клеток: если сюда нельзя прицепить (напр. на колесо сверху)
 	# или клетки заняты — НЕ показываем блок на этой грани, держим его в руке, чтобы было
@@ -1175,7 +1173,9 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	_preview_res = null
 	var inst: Node3D = holder.get_child(0)
 	inst.top_level = true
-	inst.global_transform = Transform3D(Basis(), _cabin_ground + Vector3.UP * 0.6)
+	# Превью показывает и РУЧНОЙ поворот (yaw из build_basis), и ТУ ЖЕ высоту, что и постановка
+	# (+1.2): раньше превью висело на +0.6 и без поворота — блок прыгал по позиции и игнорил разворот.
+	inst.global_transform = Transform3D(Basis(Vector3.UP, build_basis.get_euler().y), _cabin_ground + Vector3.UP * 1.2)
 	if ghost_block:
 		ghost_block.visible = false
 
@@ -1206,6 +1206,8 @@ func _place_ground_structure(instance: Node3D) -> void:
 		v.linear_velocity = Vector3.ZERO
 		v.angular_velocity = Vector3.ZERO
 	v.global_position = _cabin_ground + Vector3.UP * 1.2
+	if v is Node3D:
+		v.global_rotation.y = build_basis.get_euler().y   # уважаем ручной поворот игрока (как в превью)
 	if v.has_method("apply_build"):
 		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # ядро в ЦЕНТРЕ сетки 11³
 	# Стационарное ядро → база на якоре (нельзя ехать/снять якорь).
