@@ -709,6 +709,23 @@ func _build_settings_tab() -> void:
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)
 
+	if "terrain_low_quality" in main:
+		var terr_btn := CheckButton.new()
+		terr_btn.text = "Simple terrain"
+		terr_btn.button_pressed = bool(main.terrain_low_quality)
+		terr_btn.add_theme_font_size_override("font_size", 14)
+		_extra_vb.add_child(terr_btn)
+		terr_btn.toggled.connect(func(on: bool) -> void:
+			var mn: Node = get_node_or_null("/root/Main")
+			if mn and mn.has_method("set_terrain_low_quality"):
+				mn.set_terrain_low_quality(on))
+
+		var terr_hint := Label.new()
+		terr_hint.text = "Cheaper ground shader (no per-pixel noise) — more FPS on weak devices."
+		terr_hint.add_theme_font_size_override("font_size", 12)
+		terr_hint.modulate = Color(1, 1, 1, 0.55)
+		_extra_vb.add_child(terr_hint)
+
 	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
 	if OS.has_feature("pc") and "fullscreen" in main:
 		var fs_btn := CheckButton.new()

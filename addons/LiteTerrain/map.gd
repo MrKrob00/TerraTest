@@ -291,6 +291,7 @@ var _editor_settle_t:   float    = 0.0
 # Swapping materials uses zero buffer slots and costs nothing at runtime.
 var _mat_lod0:     Material = null  # lod_grass_enabled = 1.0  (LOD 0, close)
 var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
+var _terrain_low_quality: bool = false   # низкое качество рельефа (без попиксельного шума/тайла)
 
 # ── Heightmap (the data the whole system reads) ───────────────────────────────
 # Filled by _load_heightmap() in _ready(): from the R32F image at runtime, or from
@@ -1812,6 +1813,17 @@ func _setup_lod_materials(base_mat: Material) -> void:
 		# StandardMaterial3D or unknown — no grass parameter, use same ref for both
 		_mat_lod0    = base_mat
 		_mat_lod_high = base_mat
+	set_terrain_low_quality(_terrain_low_quality)   # применить сохранённый флаг качества к новым материалам
+
+# Низкое качество рельефа: шейдер пропускает попиксельный шум цвета и тайл-текстуру (самое дорогое
+# во фрагменте — террейн fill-bound). Ставим на ОБА LOD-материала (+ базовый). Настройка из гаража
+# (Main.terrain_low_quality) — для слабых устройств больше FPS ценой мелкой детализации земли.
+func set_terrain_low_quality(on: bool) -> void:
+	_terrain_low_quality = on
+	for m in [_mat_lod0, _mat_lod_high, surface_material]:
+		var sm := m as ShaderMaterial
+		if sm != null:
+			sm.set_shader_parameter("low_quality", on)
 
 # Called by grass.gd every frame. Grass only renders on the LOD0 (close) material, which is
 # a private duplicate of the base — so the trample map MUST be set here, not on the base
