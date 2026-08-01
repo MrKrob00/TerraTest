@@ -1045,7 +1045,7 @@ func _build_chunks_from_map_data() -> void:
 	# Macro meshes are built directly from the heightmap (one merged step-4 mesh per group),
 	# so they need NO individual chunks to exist — that's what lets us instantiate chunks
 	# only near the camera. AABBs come from Phase 0.
-	_build_macro_chunks()
+	await _build_macro_chunks()   # await: внутри уступает кадры (чтобы не морозить экран загрузки)
 	_build_quadtree()
 
 	# ── Initial resident set: only chunks of macros near the camera ───────────
@@ -1068,7 +1068,9 @@ func _build_chunks_from_map_data() -> void:
 		var build_task := func(i: int) -> void:
 			_build_chunk_worker(near_chunks[i], cxl)
 		var gid := WorkerThreadPool.add_group_task(build_task, near_chunks.size(), -1, true)
-		WorkerThreadPool.wait_for_group_task_completion(gid)
+		while not WorkerThreadPool.is_group_task_completed(gid):
+			await get_tree().process_frame          # уступаем кадры, пока потоки строят ближние чанки
+		WorkerThreadPool.wait_for_group_task_completion(gid)   # мгновенный join
 		_apply_built_results(near_chunks, mat)
 		for ci in near_chunks:
 			if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
@@ -1305,7 +1307,9 @@ func _build_macro_chunks() -> void:
 		var macro_task := func(mi: int) -> void:
 			_build_macro_worker(mi, cxl)
 		var mgid := WorkerThreadPool.add_group_task(macro_task, macro_n, -1, true)
-		WorkerThreadPool.wait_for_group_task_completion(mgid)
+		while not WorkerThreadPool.is_group_task_completed(mgid):
+			await get_tree().process_frame          # уступаем кадры (экран загрузки анимируется, не морозится)
+		WorkerThreadPool.wait_for_group_task_completion(mgid)   # мгновенный join
 
 	# ── Pass C: create the macro MeshInstance3D nodes (main thread) ───────────
 	for mi in macro_n:
