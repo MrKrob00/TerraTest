@@ -156,7 +156,11 @@ func _recycle_bullet(b: Area3D) -> void:
 		return
 	if "dir" in b:
 		b.dir = Vector3.ZERO
-	b.monitoring = false                        # в пуле (у центра) повторно не ловит тела
+	# _recycle_bullet зовётся ИЗ сигнала body_entered пули — прямая смена monitoring в этот момент
+	# заблокирована движком (Area заблокирована на время in/out-сигнала). set_deferred применит её
+	# в конце кадра. Без этого рецикл срывался: пуля оставалась monitoring=true у центра мира и
+	# продолжала ловить тела/слать сигналы (спам и возможные каскадные падения).
+	b.set_deferred("monitoring", false)         # в пуле (у центра) повторно не ловит тела
 	b.global_position = Vector3.ZERO
 	if not free_bullet.has(b):
 		free_bullet.append(b)
