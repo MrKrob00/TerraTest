@@ -14,7 +14,6 @@ const MAGENTA := Color(0.72, 0.16, 1.0)
 
 var _ui: Control
 var _titles: Array[Label] = []
-var _sub: Label
 var _load: Label
 var _bar: ColorRect
 var _bar_bg: ColorRect
@@ -23,6 +22,7 @@ var _t: float = 0.0
 var _progress: float = 0.0
 var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
 var _wait: float = 0.0
+var _dissolve: float = 0.0 # 0→1 «глитч-развал» при исчезновении (как снос блока)
 
 func _ready() -> void:
 	layer = 200
@@ -44,17 +44,20 @@ func _ready() -> void:
 	_glitch.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(_glitch)
 
-	for col in [CYAN, MAGENTA, Color(0.95, 0.98, 1.0)]:
+	# RGB-сплит в СИНЕ-ГОЛУБЫХ тонах (без магенты): глубокий синий ↔ голубой ↔ бело-голубой.
+	# «Мультяшность» даёт толстая ТЁМНО-СИНЯЯ обводка (как у логотипов из мультиков).
+	for col in [Color(0.20, 0.48, 1.0), Color(0.15, 0.85, 1.0), Color(0.80, 0.95, 1.0)]:
 		var l := Label.new()
 		l.text = "WorldTech"
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.add_theme_font_size_override("font_size", 96)
+		l.add_theme_font_size_override("font_size", 104)
 		l.add_theme_color_override("font_color", col)
+		l.add_theme_constant_override("outline_size", 12)
+		l.add_theme_color_override("font_outline_color", Color(0.03, 0.09, 0.22))
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_ui.add_child(l)
 		_titles.append(l)
 
-	_sub = _mk("unofficial TerraTech port", 20, Color(0.6, 0.75, 0.85, 0.85))
 	_load = _mk("LOADING", 16, CYAN)
 
 	_bar_bg = ColorRect.new()
@@ -83,9 +86,8 @@ func _mk(txt: String, fsize: int, col: Color) -> Label:
 func _layout() -> void:
 	var s := get_viewport().get_visible_rect().size
 	for l in _titles:
-		l.size = Vector2(s.x, 120)
-		l.position = Vector2(0, s.y * 0.5 - 100.0)
-	_sub.size = Vector2(s.x, 28);  _sub.position = Vector2(0, s.y * 0.5 + 26.0)
+		l.size = Vector2(s.x, 150)
+		l.position = Vector2(0, s.y * 0.5 - 95.0)
 	_load.size = Vector2(s.x, 22); _load.position = Vector2(0, s.y - 84.0)
 	var bw: float = minf(s.x * 0.5, 460.0)
 	_bar_bg.size = Vector2(bw, 4); _bar_bg.position = Vector2((s.x - bw) * 0.5, s.y - 56.0)
@@ -93,16 +95,22 @@ func _layout() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	# --- глитч-анимация заголовка ---
+	# --- глитч-анимация заголовка (как «лаг» блоков при появлении/исчезновении) ---
 	var s := get_viewport().get_visible_rect().size
-	var base_y: float = s.y * 0.5 - 100.0
-	var dx: float = 2.0 + absf(sin(_t * 9.0)) * 2.5
-	var gx: float = randf_range(-16.0, 16.0) if randf() < 0.05 else 0.0
-	var gy: float = randf_range(-6.0, 6.0) if randf() < 0.04 else 0.0
-	_titles[0].position = Vector2(-dx + gx, base_y + gy)
-	_titles[1].position = Vector2(dx - gx * 0.6, base_y - gy)
-	_titles[2].position = Vector2(gx * 0.25, base_y)
-	_titles[2].modulate.a = 0.85 + randf() * 0.15
+	var base_y: float = s.y * 0.5 - 95.0
+	var appear: float = clampf(_t / 0.9, 0.0, 1.0)            # 0→1 материализация при появлении
+	var gi: float = maxf(1.0 - appear, _dissolve)            # сильный глитч в начале И при развале
+	gi = maxf(gi, 0.12)                                      # базовый холостой дребезг
+	var dx: float = (2.5 + absf(sin(_t * 9.0)) * 2.5) * (1.0 + gi * 4.0)
+	var gx: float = randf_range(-28.0, 28.0) * gi if randf() < 0.06 + gi * 0.4 else 0.0
+	var gy: float = randf_range(-12.0, 12.0) * gi if randf() < 0.05 + gi * 0.3 else 0.0
+	_titles[0].position = Vector2(-dx + gx, base_y + gy)      # синий
+	_titles[1].position = Vector2(dx - gx * 0.6, base_y - gy) # голубой
+	_titles[2].position = Vector2(gx * 0.25, base_y)         # бело-голубой
+	# Мерцание/пропадание (как глитч-карточки блока то видны, то нет): сильнее глитч → чаще гаснет.
+	var vis: float = 1.0 if randf() > gi * 0.55 else randf() * (1.0 - gi * 0.6)
+	for l in _titles:
+		l.modulate.a = vis
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
 	_glitch.queue_redraw()
 
@@ -163,7 +171,10 @@ func _finish() -> void:
 		return
 	_phase = 2
 	var tw := create_tween()
-	tw.tween_property(_ui, "modulate:a", 0.0, 0.55)
+	tw.set_parallel(true)
+	tw.tween_property(self, "_dissolve", 1.0, 0.5)          # нарастающий глитч-развал (как снос блока)
+	tw.tween_property(_ui, "modulate:a", 0.0, 0.5)
+	tw.set_parallel(false)
 	tw.tween_callback(queue_free)
 
 # Слой глитч-эффектов: сканлайны + случайные цианово-магентовые полосы (перерисовка каждый кадр).
