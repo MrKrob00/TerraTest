@@ -1074,8 +1074,8 @@ func _on_movement_pressed() -> void:
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
-	$Take.visible = true
-	$TakeOff.visible = false            # старую кнопку заменила панель рук (📦/🗑), см. _hand_panel
+	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
+	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
 	if _rotate_panel: _rotate_panel.visible = true
 	if _block_globe:
 		_block_globe.visible = true
