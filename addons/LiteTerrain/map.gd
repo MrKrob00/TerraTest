@@ -22,6 +22,16 @@ var _cam: Camera3D = null
 ## ноды. Дефолты лежат в самом шейдере (glsl.gdshader) и в этом материале.
 @export var surface_material: Material = preload("res://addons/LiteTerrain/terrain_shader.res")
 
+# ── Запекание тени солнца от рельефа (карта СТАТИЧНА → считаем один раз при загрузке) ──
+# Даёт статичные тени от пагорбов БЕЗ попиксельной выборки карты теней. Запекание разбито по
+# строкам (не морозит кадр), тень появляется через ~секунду. ВЫКЛ по умолчанию — текущий билд не
+# меняется; включи, чтобы попробовать. Если тени с не той стороны — sun_shadow_invert.
+@export var bake_sun_shadows: bool = false
+@export_range(0.0, 1.0) var sun_shadow_darkness: float = 0.5     # насколько темнее в тени
+@export var sun_shadow_invert: bool = false
+@export_range(48, 384, 16) var sun_shadow_res: int = 128         # разрешение карты тени
+@export var sun_light_path: NodePath = ^"../DirectionalLight3D2" # солнце сцены
+
 # Прячем в инспекторе настройки того, что выключено (чистый UX).
 func _validate_property(property: Dictionary) -> void:
 	# heightmap_path нужен только в image-режиме.
@@ -331,6 +341,8 @@ func _ready() -> void:
 	await _build_chunks_from_map_data()
 	if _cam:
 		_full_scan()
+	if bake_sun_shadows:
+		_bake_sun_shadows()          # запечь тень солнца от рельефа (async, по строкам — не морозит)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -577,6 +589,71 @@ func terrain_height_at(world_pos: Vector3) -> float:
 	var local := global_transform.affine_inverse() * world_pos
 	var lh := _sample_height_local(local.x, local.z)
 	return (global_transform * Vector3(local.x, lh, local.z)).y
+
+# ── Запекание тени солнца от рельефа ───────────────────────────────────────────
+# Из каждой точки мира шагаем К СОЛНЦУ; если рельеф выше луча — точка в тени. Пишем в текстуру с
+# ТОЙ ЖЕ мировой привязкой, что и corrupt_map (шейдер берёт ту же UV → выравнено). Печём по строкам
+# с await — кадр не морозится, тень «проявляется» за ~секунду. Ставим текстуру на оба LOD-материала.
+func _bake_sun_shadows() -> void:
+	for _i in 300:                                # ждём готовности карты высот/материалов (рантайм async)
+		if not md.is_empty() and (_mat_lod0 != null or surface_material != null):
+			break
+		await get_tree().process_frame
+	if md.is_empty():
+		return
+	var ref_mat := (_mat_lod0 as ShaderMaterial)
+	if ref_mat == null:
+		ref_mat = surface_material as ShaderMaterial
+	var wsize: float = 1984.0
+	var wcenter := Vector2.ZERO
+	if ref_mat != null:
+		var s = ref_mat.get_shader_parameter("corrupt_world_size")
+		if s != null: wsize = float(s)
+		var c = ref_mat.get_shader_parameter("corrupt_world_center")
+		if c != null: wcenter = c
+	var sun := _sun_toward()
+	if sun == Vector3.ZERO:
+		return
+	var RES: int = sun_shadow_res
+	var STEPS := 32
+	var march := wsize / float(RES)               # шаг ~ размер тексела в мире
+	var img := Image.create(RES, RES, false, Image.FORMAT_R8)
+	for j in RES:
+		for i in RES:
+			var wx := wcenter.x + (((float(i) + 0.5) / float(RES)) - 0.5) * wsize
+			var wz := wcenter.y + (((float(j) + 0.5) / float(RES)) - 0.5) * wsize
+			var h0 := terrain_height_at(Vector3(wx, 0.0, wz))
+			var lit := 1.0
+			var t := march
+			for _s in STEPS:
+				var py := h0 + sun.y * t
+				if terrain_height_at(Vector3(wx + sun.x * t, 0.0, wz + sun.z * t)) > py + 0.6:
+					lit = 0.0                     # в тени (силу задаёт sun_shadow_strength в шейдере)
+					break
+				t += march
+			img.set_pixel(i, j, Color(lit, lit, lit, 1.0))
+		if (j & 7) == 0:
+			await get_tree().process_frame        # печём порциями по строкам — без фриза
+	var tex := ImageTexture.create_from_image(img)
+	for m in [_mat_lod0, _mat_lod_high, surface_material]:
+		var sm := m as ShaderMaterial
+		if sm != null:
+			sm.set_shader_parameter("sun_shadow_tex", tex)
+			sm.set_shader_parameter("sun_shadow_strength", sun_shadow_darkness)
+
+# Направление НА солнце из DirectionalLight сцены (с авто-подъёмом над горизонтом и инверсией).
+func _sun_toward() -> Vector3:
+	var light := get_node_or_null(sun_light_path) as Node3D
+	if light == null and get_tree().current_scene != null:
+		light = get_tree().current_scene.get_node_or_null("DirectionalLight3D2") as Node3D
+	if light == null:
+		return Vector3.ZERO
+	var dir := light.global_transform.basis.z.normalized()
+	if dir.y < 0.0:
+		dir = -dir                                # солнце всегда над горизонтом
+	if sun_shadow_invert:
+		dir = Vector3(-dir.x, dir.y, -dir.z)
+	return dir
 
 # Replaces the whole heightmap AND its dimensions (used by 'generate' to make a bigger
 # map). Editor-side: rebuilds the LOD preview at the new size. The plugin saves md to
