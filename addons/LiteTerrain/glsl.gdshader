@@ -1,6 +1,10 @@
 shader_type spatial;
 // specular_disabled: террейн матовый (SPECULAR=0) — убираем расчёт спекуляра из пайплайна.
-render_mode diffuse_lambert, specular_disabled;
+// shadows_disabled: КАРТА СТАТИЧНА и солнце статично → рельефу не нужны динамические тени. Это
+// снимает попиксельную выборку карты теней по всему террейну (главный филл-косте теней на
+// Adreno). Рельеф остаётся освещён солнцем (diffuse_lambert). Тень машины на земле подделываем
+// дешёвым «блобом» под ней (см. vehicle_body_3d), а сами блоки машины тенятся друг о друга как были.
+render_mode diffuse_lambert, specular_disabled, shadows_disabled;
 
 group_uniforms Quality;
 // Низкое качество для слабого железа (fill-bound): выключает попиксельный шум и тайл-текстуру.
