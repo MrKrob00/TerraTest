@@ -282,6 +282,9 @@ var _editor_settle_t:   float    = 0.0
 var _mat_lod0:     Material = null  # lod_grass_enabled = 1.0  (LOD 0, close)
 var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
 
+signal terrain_ready                 # ближний террейн построен (для экрана загрузки)
+var terrain_is_ready: bool = false
+
 # ── Heightmap (the data the whole system reads) ───────────────────────────────
 # Filled by _load_heightmap() in _ready(): from the R32F image at runtime, or from
 # the embedded HeightMapShape3D (editor, or as a pre-bake fallback at runtime).
@@ -331,6 +334,8 @@ func _ready() -> void:
 	await _build_chunks_from_map_data()
 	if _cam:
 		_full_scan()
+	terrain_is_ready = true          # ближний террейн построен → экран загрузки может уходить
+	terrain_ready.emit()
 
 
 # ─────────────────────────────────────────────────────────────────────────────

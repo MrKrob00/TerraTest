@@ -1,18 +1,19 @@
-extends Control
-## СЦЕНА ЗАГРУЗКИ (главная сцена проекта). Показывает глючный экран WorldTech и В ФОНЕ (threaded)
-## грузит игровую сцену с РЕАЛЬНЫМ прогрессом. Как только загружено (и прошёл минимум времени) —
-## переключается на игру. Всё рисуется В КОДЕ, без ассетов. Раньше экран был ВНУТРИ игровой сцены,
-## поэтому показывался уже ПОСЛЕ долгой загрузки — теперь наоборот: экран крутится ВО ВРЕМЯ загрузки.
+extends CanvasLayer
+## СТОЙКИЙ оверлей загрузки. Его поднимает loading_boot (главная сцена) и добавляет прямо в root —
+## поэтому он ПЕРЕЖИВАЕТ смену сцены (change_scene освобождает только current_scene, не соседей root).
+##
+## Порядок: потоково грузим игровую сцену → меняем на неё → ДЕРЖИМСЯ сверху (слой 200), пока карта
+## не построит ближний террейн (map.terrain_ready) → гаснем и удаляемся. Так экран крутится ВСЁ время
+## загрузки: и парсинг ресурсов, и ~15с генерации террейна (раньше она шла на чёрном экране, т.к.
+## происходит в _ready карты уже ПОСЛЕ смены сцены). Всё рисуется в коде, без ассетов.
 
-@export_file("*.tscn") var next_scene: String = "res://node_3d.tscn"
-@export var min_time: float = 1.6          # минимум показа (чтобы не мигнуло, если загрузка быстрая)
-@export var title_text: String = "WorldTech"
-@export var subtitle_text: String = "unofficial TerraTech port"
+var next_scene: String = "res://node_3d.tscn"
 
 const CYAN := Color(0.15, 0.85, 1.0)
 const MAGENTA := Color(0.72, 0.16, 1.0)
 
-var _titles: Array[Label] = []             # [циан, магента, белый] — RGB-сплит
+var _ui: Control
+var _titles: Array[Label] = []
 var _sub: Label
 var _load: Label
 var _bar: ColorRect
@@ -20,62 +21,63 @@ var _bar_bg: ColorRect
 var _glitch: Control
 var _t: float = 0.0
 var _progress: float = 0.0
-var _loaded := false
-var _switching := false
+var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
+var _wait: float = 0.0
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	layer = 200
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+	_ui = Control.new()
+	_ui.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_ui.mouse_filter = Control.MOUSE_FILTER_STOP           # блокируем ввод под экраном
+	add_child(_ui)
 
 	var bg := ColorRect.new()
 	bg.color = Color(0.02, 0.03, 0.06)
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	_ui.add_child(bg)
 
 	_glitch = _GlitchFx.new()
 	_glitch.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_glitch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_glitch)
+	_ui.add_child(_glitch)
 
 	for col in [CYAN, MAGENTA, Color(0.95, 0.98, 1.0)]:
 		var l := Label.new()
-		l.text = title_text
+		l.text = "WorldTech"
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.add_theme_font_size_override("font_size", 96)
 		l.add_theme_color_override("font_color", col)
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(l)
+		_ui.add_child(l)
 		_titles.append(l)
 
-	_sub = _mk_label(subtitle_text, 20, Color(0.6, 0.75, 0.85, 0.85))
-	_load = _mk_label("LOADING", 16, CYAN)
+	_sub = _mk("unofficial TerraTech port", 20, Color(0.6, 0.75, 0.85, 0.85))
+	_load = _mk("LOADING", 16, CYAN)
 
 	_bar_bg = ColorRect.new()
 	_bar_bg.color = Color(1, 1, 1, 0.08)
 	_bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_bar_bg)
+	_ui.add_child(_bar_bg)
 	_bar = ColorRect.new()
 	_bar.color = CYAN
 	_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_bar)
+	_ui.add_child(_bar)
 
 	_layout()
 	get_viewport().size_changed.connect(_layout)
+	ResourceLoader.load_threaded_request(next_scene)
 
-	# Фоновая (потоковая) загрузка игровой сцены — она и есть те «полминуты».
-	var err := ResourceLoader.load_threaded_request(next_scene)
-	if err != OK:
-		_loaded = true                     # не удалось запросить — уйдём по таймеру (фолбэк в _go)
-
-func _mk_label(txt: String, fsize: int, col: Color) -> Label:
+func _mk(txt: String, fsize: int, col: Color) -> Label:
 	var l := Label.new()
 	l.text = txt
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.add_theme_font_size_override("font_size", fsize)
 	l.add_theme_color_override("font_color", col)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(l)
+	_ui.add_child(l)
 	return l
 
 func _layout() -> void:
@@ -91,9 +93,9 @@ func _layout() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	# --- глитч-анимация заголовка ---
 	var s := get_viewport().get_visible_rect().size
 	var base_y: float = s.y * 0.5 - 100.0
-	# RGB-сплит: базовый джиттер + редкий резкий глитч-сдвиг.
 	var dx: float = 2.0 + absf(sin(_t * 9.0)) * 2.5
 	var gx: float = randf_range(-16.0, 16.0) if randf() < 0.05 else 0.0
 	var gy: float = randf_range(-6.0, 6.0) if randf() < 0.04 else 0.0
@@ -104,31 +106,65 @@ func _process(delta: float) -> void:
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
 	_glitch.queue_redraw()
 
-	# Опрос потоковой загрузки → реальный прогресс.
-	if not _loaded:
+	# --- логика загрузки ---
+	if _phase == 0:
 		var prog: Array = []
 		var st := ResourceLoader.load_threaded_get_status(next_scene, prog)
 		if prog.size() > 0:
-			_progress = float(prog[0])
+			_progress = float(prog[0]) * 0.4               # ресурс = первые 40% бара
 		if st == ResourceLoader.THREAD_LOAD_LOADED:
-			_loaded = true
+			_swap()
 		elif st == ResourceLoader.THREAD_LOAD_FAILED or st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
-			_loaded = true                 # ошибка — фолбэк на прямую смену в _go
-	# Бар: реальный прогресс, но не даём «висеть на нуле», пока движок только начал.
-	var shown: float = 1.0 if _loaded else maxf(_progress, clampf(_t / 8.0, 0.0, 0.96))
-	_bar.size.x = _bar_bg.size.x * shown
+			get_tree().change_scene_to_file(next_scene)     # фолбэк
+			_finish()
+	elif _phase == 1:
+		_wait += delta
+		_progress = 0.4 + clampf(_wait / 12.0, 0.0, 0.55)   # генерация террейна = остальное (по времени)
+		if _wait > 40.0:
+			_finish()                                       # жёсткий фолбэк, если сигнала так и нет
 
-	# Переход, когда загружено И прошёл минимум показа.
-	if _loaded and _t >= min_time and not _switching:
-		_switching = true
-		call_deferred("_go")
+	_bar.size.x = _bar_bg.size.x * (1.0 if _phase == 2 else _progress)
 
-func _go() -> void:
-	var res: Variant = ResourceLoader.load_threaded_get(next_scene)
-	if res is PackedScene:
-		get_tree().change_scene_to_packed(res)
+func _swap() -> void:
+	if _phase != 0:
+		return
+	_phase = 1
+	var packed: Variant = ResourceLoader.load_threaded_get(next_scene)
+	if not (packed is PackedScene):
+		get_tree().change_scene_to_file(next_scene)
+		_finish()
+		return
+	get_tree().change_scene_to_packed(packed)               # освободит Boot(current_scene); мы — сосед root, выживем
+	await get_tree().process_frame                          # даём смене сцены произойти
+	await get_tree().process_frame
+	_hook_terrain()
+
+# Подписываемся на готовность террейна в НОВОЙ игровой сцене (или уходим, если её нет/уже готова).
+func _hook_terrain() -> void:
+	var scn := get_tree().current_scene
+	var map: Node = null
+	if scn != null:
+		for c in scn.get_children():
+			if c.has_method("terrain_height_at"):
+				map = c
+				break
+	if map != null and ("terrain_is_ready" in map):
+		if map.terrain_is_ready:
+			_finish()
+		elif map.has_signal("terrain_ready"):
+			map.terrain_ready.connect(_finish, CONNECT_ONE_SHOT)
+		else:
+			_finish()
 	else:
-		get_tree().change_scene_to_file(next_scene)   # фолбэк (потоковая не удалась)
+		_finish()
+
+func _finish() -> void:
+	if _phase == 2:
+		return
+	_phase = 2
+	var tw := create_tween()
+	tw.tween_property(_ui, "modulate:a", 0.0, 0.55)
+	tw.tween_callback(queue_free)
 
 # Слой глитч-эффектов: сканлайны + случайные цианово-магентовые полосы (перерисовка каждый кадр).
 class _GlitchFx extends Control:
