@@ -96,7 +96,7 @@ group_uniforms SunShadow;
 // выборок карты теней. hint_default_white: пока текстура не назначена, тени НЕТ (рельеф как есть,
 // без регрессии). Выборку делаем в ВЕРШИНЕ (дёшево: террейн fill-bound), затемняем ALBEDO пиксельно.
 uniform sampler2D sun_shadow_tex : hint_default_white, filter_linear;
-uniform float sun_shadow_strength : hint_range(0.0, 1.0) = 0.5;   // насколько темнее в тени (0 = выкл)
+uniform float sun_shadow_strength : hint_range(0.0, 1.0) = 0.0;   // 0 = выкл (по умолчанию: без выборки)
 group_uniforms;
 
 // FILL-ОПТИМИЗАЦИЯ: цвет зон по высоте + переход в камень по склону считается в ВЕРШИНЕ
@@ -144,10 +144,14 @@ void vertex() {
     v_world_xz  = world_pos.xz;
     vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
     float cstate = 0.0;
-    v_sun_shadow = 1.0;                                    // вне карты — считаем освещённым
+    v_sun_shadow = 1.0;                                    // вне карты / тень выкл — освещено
     if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
         cstate = textureLod(corrupt_map, cuv, 0.0).r;
-        v_sun_shadow = textureLod(sun_shadow_tex, cuv, 0.0).r;   // та же мировая карта → выравнено
+        // Вершинную выборку тени делаем ТОЛЬКО когда фича включена (strength>0). Иначе Adreno
+        // всё равно платил бы за vertex texture fetch КАЖДЫЙ кадр — это и уронило базовый FPS.
+        if (sun_shadow_strength > 0.001) {
+            v_sun_shadow = textureLod(sun_shadow_tex, cuv, 0.0).r;   // та же мировая UV → выравнено
+        }
     }
     v_corrupt   = cstate * corrupt_amount;
 
