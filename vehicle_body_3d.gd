@@ -1128,7 +1128,7 @@ func _preview_held(res: Dictionary) -> void:
 	_preview_res = res
 	# Сдвиг якоря к выбранной грани — с учётом РАЗМЕРА блока (attach_delta), чтобы многоклеточные
 	# (процессор/продавец) вставали и СБОКУ, а не только наверх (см. blocks.attach_delta).
-	var ad := block_map_node.attach_delta(int(instance.block), String(res.face))
+	var ad :Vector3 = block_map_node.attach_delta(int(instance.block), String(res.face))
 	var gx: float = float(res.x) + ad.x
 	var gy: float = float(res.y) + ad.y
 	var gz: float = float(res.z) + ad.z
