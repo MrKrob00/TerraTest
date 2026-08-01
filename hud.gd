@@ -84,7 +84,9 @@ func _relayout() -> void:
 	if _rotate_panel:
 		_rotate_panel.position = Vector2(screen.x * 0.5 - _rotate_panel.size.x * 0.5, screen.y - 180.0)
 	if _hand_panel:
-		_hand_panel.position = Vector2(screen.x * 0.5 - _hand_panel.size.x * 0.5, screen.y - 262.0)
+		_hand_panel.position = Vector2(
+				screen.x - 98.0 - _hand_panel.size.x * 0.5,
+				screen.y * 0.5 + 49.0 - _hand_panel.size.y - 12.0)
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
 	if _block_globe:
@@ -546,8 +548,9 @@ class RotIcon extends Control:
 			_arrow(p, -t if kind == "yaw_right" else t)
 
 # ── Панель «убрать блок из руки» (стройка) ─────────────────────────────────────
-# Две кнопки: спрятать блок В ИНВЕНТАРЬ (📦) и бросить его В МИР (🗑). Видна в стройке, когда в
-# руке есть блок. Стиль — как у панели поворота (палитра tech_ui), чтобы весь HUD смотрелся цельно.
+# Две кнопки: спрятать блок В ИНВЕНТАРЬ (ящик) и бросить его В МИР (блок падает на землю). Иконки
+# РИСУЕМ в коде (шрифт проекта не рендерит эмодзи — были пустые кнопки). Видна в стройке рядом с
+# кнопкой Take/Place, когда в руке есть блок. Стиль — палитра tech_ui, как у остальных панелей.
 var _hand_panel: PanelContainer
 func _build_hand_panel() -> void:
 	_hand_panel = PanelContainer.new()
@@ -557,21 +560,47 @@ func _build_hand_panel() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_hand_panel.add_child(row)
-	row.add_child(_hand_btn("📦", "To inventory", func(): _hand_action("stash")))
-	row.add_child(_hand_btn("🗑", "Drop to world", func(): _hand_action("drop")))
+	row.add_child(_hand_btn(InvIcon.new(), "To inventory", func(): _hand_action("stash")))
+	row.add_child(_hand_btn(DropIcon.new(), "Drop to world", func(): _hand_action("drop")))
 
-func _hand_btn(icon: String, tip: String, cb: Callable) -> Button:
+func _hand_btn(icon: Control, tip: String, cb: Callable) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(68, 60)
-	b.text = icon
+	b.custom_minimum_size = Vector2(64, 58)
 	b.tooltip_text = tip
-	b.add_theme_font_size_override("font_size", 26)
-	b.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98, 1))
 	b.add_theme_stylebox_override("normal", _make_button_style(false))
 	b.add_theme_stylebox_override("hover", _make_button_style(false))
 	b.add_theme_stylebox_override("pressed", _make_button_style(true))
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(icon)
 	b.pressed.connect(cb)
 	return b
+
+# Рисованные иконки для кнопок руки (эмодзи шрифт не тянет). Стиль — тонкая светлая обводка,
+# как AnchorIcon/RotIcon.
+class InvIcon extends Control:            # «в инвентарь»: ящик + стрелка вниз внутрь
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(0.88, 0.96, 0.98)
+		var lw := 2.6
+		draw_rect(Rect2(c + Vector2(-12, 1), Vector2(24, 15)), col, false, lw)   # ящик
+		draw_line(c + Vector2(-14, 1), c + Vector2(14, 1), col, lw)              # крышка
+		draw_line(c + Vector2(0, -19), c + Vector2(0, -5), col, lw)              # стрелка вниз…
+		draw_line(c + Vector2(-4, -9), c + Vector2(0, -5), col, lw)              # …в ящик
+		draw_line(c + Vector2(4, -9), c + Vector2(0, -5), col, lw)
+
+class DropIcon extends Control:           # «в мир»: блок падает стрелкой вниз на землю
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(0.88, 0.96, 0.98)
+		var lw := 2.6
+		draw_rect(Rect2(c + Vector2(-6, -18), Vector2(12, 11)), col, false, lw)  # падающий блок
+		draw_line(c + Vector2(0, -5), c + Vector2(0, 7), col, lw)                # стрелка вниз…
+		draw_line(c + Vector2(-5, 2), c + Vector2(0, 7), col, lw)
+		draw_line(c + Vector2(5, 2), c + Vector2(0, 7), col, lw)
+		draw_line(c + Vector2(-13, 15), c + Vector2(13, 15), col, lw)            # земля (мир)
+		draw_line(c + Vector2(-9, 19), c + Vector2(-5, 15), col, lw * 0.8)       # штриховка грунта
+		draw_line(c + Vector2(2, 19), c + Vector2(6, 15), col, lw * 0.8)
 
 func _hand_action(kind: String) -> void:
 	var v: Node = _menu_vehicle_or_current()
@@ -595,9 +624,13 @@ func _update_hand_panel() -> void:
 	if _hand_panel.visible != show_it:
 		_hand_panel.visible = show_it
 	if show_it:
-		# Центрируем по факту размера (PanelContainer знает ширину только после раскладки).
+		# Ставим НАД кнопкой Take/Place (справа): все действия «с блоком в руке» — рядом, а не
+		# посреди экрана. Take: anchor right-center, offset_top=49 → её верх на screen.y/2+49,
+		# центр по X на screen.x-98 (offset_left -198 / right 2). Размер знаем после раскладки.
 		var screen: Vector2 = get_viewport().get_visible_rect().size
-		_hand_panel.position = Vector2(screen.x * 0.5 - _hand_panel.size.x * 0.5, screen.y - 262.0)
+		_hand_panel.position = Vector2(
+				screen.x - 98.0 - _hand_panel.size.x * 0.5,
+				screen.y * 0.5 + 49.0 - _hand_panel.size.y - 12.0)
 
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
