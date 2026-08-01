@@ -544,6 +544,26 @@ func rebuild_factory_links() -> void:
 				n.next_block = nb
 				break
 
+# Смещение ЯКОРЯ при пристыковке блока к грани соседа. Для МНОГОКЛЕТОЧНЫХ блоков (процессор/
+# продавец 2×2×2 и т.п.) простого ±1 мало: футпринт растёт в одну сторону, и на «положительных»
+# гранях (право/зад/низ) он налезал на соседа → блок вставал только НАВЕРХ. Считаем сдвиг по
+# реальным границам футпринта, чтобы блок вставал ВПЛОТНУЮ к грани и не перекрывал соседа.
+# Для 1×1×1 даёт прежние ±1 (границы = 0).
+func attach_delta(block_type: int, face: String) -> Vector3i:
+	var lo := Vector3i(0, 0, 0)
+	var hi := Vector3i(0, 0, 0)
+	for c in _block_footprint(block_type, 0, 0, 0):
+		lo.x = mini(lo.x, c.x); lo.y = mini(lo.y, c.y); lo.z = mini(lo.z, c.z)
+		hi.x = maxi(hi.x, c.x); hi.y = maxi(hi.y, c.y); hi.z = maxi(hi.z, c.z)
+	match face:
+		"right":  return Vector3i(-lo.x + 1, 0, 0)
+		"left":   return Vector3i(-hi.x - 1, 0, 0)
+		"top":    return Vector3i(0, -lo.y + 1, 0)
+		"bottom": return Vector3i(0, -hi.y - 1, 0)
+		"back":   return Vector3i(0, 0, -lo.z + 1)
+		"front":  return Vector3i(0, 0, -hi.z - 1)
+	return Vector3i.ZERO
+
 # Соседние (по грани) фабричные блоки данного узла — с учётом всех клеток его футпринта.
 func _factory_neighbors(node, fac_cells: Dictionary) -> Array:
 	var out: Array = []
