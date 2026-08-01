@@ -26,9 +26,8 @@
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
 sky_horizon_color = Color(0.65, 0.78, 0.9, 1)
-sky_curve = 0.15
-ground_horizon_color = Color(0.6, 0.72, 0.84, 1)
 ground_bottom_color = Color(0.42, 0.44, 0.5, 1)
+ground_horizon_color = Color(0.6, 0.72, 0.84, 1)
 ground_curve = 0.1
 sun_angle_max = 12.0
 sun_curve = 0.08
@@ -117,8 +116,8 @@ transform = Transform3D(0.45055014, -0.31362793, 0.835848, -0.11317725, 0.908641
 light_energy = 1.645
 shadow_enabled = true
 directional_shadow_mode = 0
-directional_shadow_max_distance = 80.0
 directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 80.0
 
 [node name="objects" type="Node3D" parent="." unique_id=1846303496]
 unique_name_in_owner = true
@@ -352,6 +351,8 @@ text = "30 FPS"
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
+bake_sun_shadows = true
+sun_shadow_darkness = 1.0
 stream_batch_size = 4
 heightmap_path = "res://terrain_height.res"
 
