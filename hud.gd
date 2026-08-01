@@ -560,34 +560,50 @@ func _build_hand_panel() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_hand_panel.add_child(row)
-	row.add_child(_hand_btn(InvIcon.new(), "To inventory", func(): _hand_action("stash")))
-	row.add_child(_hand_btn(DropIcon.new(), "Drop to world", func(): _hand_action("drop")))
+	row.add_child(_hand_btn(InvIcon.new(), "Inventory", "Put the held block into inventory", func(): _hand_action("stash")))
+	row.add_child(_hand_btn(DropIcon.new(), "Drop", "Drop the held block into the world", func(): _hand_action("drop")))
 
-func _hand_btn(icon: Control, tip: String, cb: Callable) -> Button:
+# Кнопка = ИКОНКА сверху + ПОДПИСЬ снизу (подписи чинят «непонятность» иконок — шрифт текст рендерит).
+func _hand_btn(icon: Control, label: String, tip: String, cb: Callable) -> Button:
 	var b := Button.new()
-	b.custom_minimum_size = Vector2(64, 58)
+	b.custom_minimum_size = Vector2(84, 72)
 	b.tooltip_text = tip
 	b.add_theme_stylebox_override("normal", _make_button_style(false))
 	b.add_theme_stylebox_override("hover", _make_button_style(false))
 	b.add_theme_stylebox_override("pressed", _make_button_style(true))
-	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	icon.offset_top = 5
+	icon.offset_bottom = 47
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(icon)
+	var lbl := Label.new()
+	lbl.text = label
+	lbl.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	lbl.offset_top = -22
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 11)
+	lbl.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98, 1))
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(lbl)
 	b.pressed.connect(cb)
 	return b
 
 # Рисованные иконки для кнопок руки (эмодзи шрифт не тянет). Стиль — тонкая светлая обводка,
 # как AnchorIcon/RotIcon.
-class InvIcon extends Control:            # «в инвентарь»: ящик + стрелка вниз внутрь
+class InvIcon extends Control:            # «в инвентарь»: стрелка вниз в ОТКРЫТУЮ коробку (с створками)
 	func _draw() -> void:
 		var c := size * 0.5
 		var col := Color(0.88, 0.96, 0.98)
 		var lw := 2.6
-		draw_rect(Rect2(c + Vector2(-12, 1), Vector2(24, 15)), col, false, lw)   # ящик
-		draw_line(c + Vector2(-14, 1), c + Vector2(14, 1), col, lw)              # крышка
-		draw_line(c + Vector2(0, -19), c + Vector2(0, -5), col, lw)              # стрелка вниз…
-		draw_line(c + Vector2(-4, -9), c + Vector2(0, -5), col, lw)              # …в ящик
-		draw_line(c + Vector2(4, -9), c + Vector2(0, -5), col, lw)
+		# открытая коробка: отогнутая створка → стенка → дно → стенка → отогнутая створка
+		draw_polyline(PackedVector2Array([
+			c + Vector2(-15, -2), c + Vector2(-11, 3), c + Vector2(-11, 13),
+			c + Vector2(11, 13),  c + Vector2(11, 3),  c + Vector2(15, -2)]), col, lw)
+		# стрелка ВНИЗ внутрь коробки
+		draw_line(c + Vector2(0, -16), c + Vector2(0, 0), col, lw)
+		draw_line(c + Vector2(-5, -5), c + Vector2(0, 0), col, lw)
+		draw_line(c + Vector2(5, -5), c + Vector2(0, 0), col, lw)
 
 class DropIcon extends Control:           # «в мир»: блок падает стрелкой вниз на землю
 	func _draw() -> void:
