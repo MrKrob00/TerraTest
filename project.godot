@@ -15,7 +15,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 [application]
 
 config/name="WorldTech"
-run/main_scene="res://node_3d.tscn"
+run/main_scene="res://loading.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="uid://bnmv2qdj2tbui"
 boot_splash/image="uid://bnmv2qdj2tbui"
