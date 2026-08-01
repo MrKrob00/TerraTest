@@ -409,6 +409,45 @@ func _find_terrain() -> Node:
 			return c
 	return null
 
+# ── Дешёвая «блоб»-тень под машиной ────────────────────────────────────────────
+# Рельеф больше не принимает динамические тени (shadows_disabled — карта статична), поэтому
+# контактную тень машины на земле подделываем мягким тёмным пятном: один unshaded-квад с
+# радиальным градиентом, лежит на рельефе под машиной. Практически бесплатно.
+var _blob: MeshInstance3D = null
+
+func _update_blob() -> void:
+	if _blob == null or not is_instance_valid(_blob):
+		var grad := Gradient.new()
+		grad.set_color(0, Color(0, 0, 0, 0.45))
+		grad.set_color(1, Color(0, 0, 0, 0.0))
+		var tex := GradientTexture2D.new()
+		tex.gradient = grad
+		tex.fill = GradientTexture2D.FILL_RADIAL
+		tex.fill_from = Vector2(0.5, 0.5)
+		tex.fill_to = Vector2(1.0, 0.5)
+		tex.width = 48
+		tex.height = 48
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.albedo_texture = tex
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(7.0, 7.0)
+		_blob = MeshInstance3D.new()
+		_blob.mesh = pm
+		_blob.material_override = m
+		_blob.top_level = true                      # плоско в мире, не наследует крен машины
+		_blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(_blob)
+	var terr := _find_terrain()
+	var gy: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
+	_blob.visible = (global_position.y - gy) < 8.0 and not Building   # в воздухе/стройке прячем
+	if _blob.visible:
+		_blob.global_position = Vector3(global_position.x, gy + 0.07, global_position.z)
+		_blob.global_rotation = Vector3.ZERO
+
 # ── Медленное перемещение в РЕЖИМЕ СТРОЙКИ (репозиция, чтобы выбраться из ямы/застревания) ──
 const BUILD_MOVE_SPEED := 4.0         # медленно (u/с) — это не езда, а сдвиг платформы
 const BUILD_HOVER_CLEARANCE := 4.0    # высота парения над рельефом в стройке
@@ -610,6 +649,7 @@ func award_block_list(types: Array) -> void:
 func _physics_process(delta: float) -> void:
 	# Энергия тикает ВСЕГДА (даже у неактивной машины): база на якоре копит от солнца.
 	_energy_tick(delta)
+	_update_blob()                  # дешёвая контактная тень-пятно под машиной (рельеф теней не принимает)
 	# Защита работает и у НЕактивной машины: стоит и отстреливается от врагов рядом.
 	if defense_mode:
 		_defense_tick(delta)
