@@ -90,11 +90,21 @@ uniform vec3  corrupt_magenta : source_color = vec3(0.72, 0.16, 1.0);
 uniform float corrupt_glow      : hint_range(0.0, 4.0)    = 1.6;    // сила свечения
 group_uniforms;
 
+group_uniforms SunShadow;
+// ЗАПЕЧЁННАЯ тень рельефа от солнца. Карта высот и солнце СТАТИЧНЫ → самозатенение (пагорбы на
+// долины) считаем ОДИН РАЗ (map.gd, bake_sun_shadows) и кладём в текстуру. В рантайме — ноль
+// выборок карты теней. hint_default_white: пока текстура не назначена, тени НЕТ (рельеф как есть,
+// без регрессии). Выборку делаем в ВЕРШИНЕ (дёшево: террейн fill-bound), затемняем ALBEDO пиксельно.
+uniform sampler2D sun_shadow_tex : hint_default_white, filter_linear;
+uniform float sun_shadow_strength : hint_range(0.0, 1.0) = 0.5;   // насколько темнее в тени (0 = выкл)
+group_uniforms;
+
 // FILL-ОПТИМИЗАЦИЯ: цвет зон по высоте + переход в камень по склону считается в ВЕРШИНЕ
 // (v_base_col) и интерполируется, а не пересчитывается на каждый пиксель. Террейн — fill-bound
 // (тяжёл именно попиксельно), а вершин на порядки меньше. Механики те же; на границах зон
 // переход становится линейным (вблизи, где сетка плотная, — незаметно; вдали и так мелко).
 // Во фрагменте остаётся только то, что обязано быть per-pixel: шум и тайл-текстура.
+varying float v_sun_shadow;  // запечённая тень солнца (1 = освещено, 0 = в тени рельефа)
 varying vec2  v_pixel_uv;    // квантованный (floor к сетке) — для стабильного шума и травы
 varying vec2  v_tile_uv;     // ГЛАДКИЙ — для выборки тайл-текстуры: только по нему GPU может
                              // правильно выбрать мип-уровень (по производным ddx/ddy); от
@@ -134,8 +144,10 @@ void vertex() {
     v_world_xz  = world_pos.xz;
     vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
     float cstate = 0.0;
+    v_sun_shadow = 1.0;                                    // вне карты — считаем освещённым
     if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
         cstate = textureLod(corrupt_map, cuv, 0.0).r;
+        v_sun_shadow = textureLod(sun_shadow_tex, cuv, 0.0).r;   // та же мировая карта → выравнено
     }
     v_corrupt   = cstate * corrupt_amount;
 
@@ -193,6 +205,8 @@ void fragment() {
     // Трава НЕ ярче подстилки (чинит «выскакивание»): при grass_shade<0.65 трава чуть темнее
     // земли — мягкая тень у корня, а не светлое пятно. Крутится uniform-ом grass_shade.
     ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
+    // Запечённая тень солнца: затемняем там, где рельеф закрывает солнце (v_sun_shadow=0).
+    ALBEDO   *= mix(1.0 - sun_shadow_strength, 1.0, v_sun_shadow);
     ROUGHNESS = 0.9;
 
     // ── Зоны «битых данных»: сине-фиолетовый ЧАНКОВЫЙ глитч ──────────────────────
