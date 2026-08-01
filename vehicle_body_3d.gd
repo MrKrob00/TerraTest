@@ -903,9 +903,9 @@ func _input(event: InputEvent) -> void:
 			# — луч мимо машины не трогал _preview_res, а вот наземное ядро перекидывалось на кнопку.)
 			if not _tap_over_ui(event.position):
 				_handle_click(event.position)
-				# По КЛИКУ мышью (не по ховеру) без блока в руке — сразу берём наведённый блок машины.
+				# По КЛИКУ мышью (не по ховеру) без блока в руке — сразу берём блок (машины или из мира).
 				if event is InputEventMouseButton:
-					_maybe_grab_on_tap()
+					_maybe_grab_on_tap(event.position)
 		elif event is InputEventScreenTouch:
 			if event.pressed:
 				_build_tap_pos = event.position
@@ -915,7 +915,7 @@ func _input(event: InputEvent) -> void:
 					and Time.get_ticks_msec() - _build_tap_ms < 250 \
 					and not _tap_over_ui(event.position):
 				_handle_click(event.position)          # одиночный тап по миру = навести блок сюда
-				_maybe_grab_on_tap()                   # без блока в руке тап по блоку = взять его в руку
+				_maybe_grab_on_tap(event.position)     # без блока в руке тап по блоку/миру = взять его в руку
 		elif event is InputEventScreenDrag:
 			if _build_tap_pos.distance_to(event.position) > 14.0:
 				_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
@@ -1334,16 +1334,62 @@ func _refill_hand_from_inventory(bt: int) -> void:
 		G.block_inventory.erase(bt)                # списываем экземпляр (как tech_ui._take_into_hand)
 		G.mark_progress_dirty()
 
-# Реквест: наведённый блок машины берётся В РУКУ сразу по тапу/клику — без отдельной кнопки Take.
-# Зовём ТОЛЬКО по дискретному тапу (не по ховеру мыши на ПК) и только когда рука пуста.
-func _maybe_grab_on_tap() -> void:
+# Реквест: блок берётся В РУКУ сразу по тапу/клику — без отдельной кнопки Take. Зовём ТОЛЬКО по
+# дискретному тапу (не по ховеру мыши на ПК) и только когда рука пуста. Берём и блок машины
+# (найден grid-лучом в _handle_click → block_body), и СВОБОДНЫЙ блок в мире (физ-луч из точки тапа).
+func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 	if block_take:
 		return
-	if block_body == null or not is_instance_valid(block_body):
+	# 1) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
+	if block_body != null and is_instance_valid(block_body) \
+			and block_body.get_parent() != null and block_body.get_parent().name in "blocks":
+		_pick_selected_block()
 		return
-	if block_body.get_parent() == null or not (block_body.get_parent().name in "blocks"):
-		return                                     # только блок, реально стоящий на машине
-	_pick_selected_block()
+	# 2) СВОБОДНЫЙ блок в МИРЕ (лежит в /root/Main/objects) — физ-луч из точки тапа, берём в руку.
+	#    Раньше это делал только асинхронный камера-Raycast (_on_raycast_body_entered) + кнопка Take,
+	#    и по земле (взгляд вниз) он не наводился — поэтому тап по миру блок не брал.
+	_grab_world_block(screen_pos)
+
+# Взять СВОБОДНЫЙ блок из мира (RigidBody-VehicleBlock под /root/Main/objects) в руку по клику.
+func _grab_world_block(screen_pos: Vector2) -> bool:
+	if camera_controller == null or camera_controller.camera == null:
+		return false
+	var cam = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var to: Vector3 = from + cam.project_ray_normal(screen_pos) * 500.0
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	q.collision_mask = 2                           # VehicleBlock.collision_layer = 2 (свободные блоки)
+	q.exclude = [get_rid()]                         # не цепляем саму машину
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var body = hit.get("collider")
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or not (body is Node3D) or body.get_parent() != objects or not ("block" in body):
+		return false                               # только свободный блок, реально лежащий в мире
+	var bt := int(body.get("block"))
+	if bt == G.Block.CABIN or G.is_stationary(bt):
+		return false
+	_return_hand_to_inventory()                    # рука должна быть пустой (перестраховка от лишних блоков)
+	body.reparent(camera_controller.camera.get_child(0), false)   # в takepos под камерой
+	if body is Node3D:
+		body.top_level = false
+		body.position = Vector3.ZERO
+		body.rotation = Vector3.ZERO
+	if body is RigidBody3D:
+		body.freeze = true
+		body.linear_velocity = Vector3.ZERO
+		body.angular_velocity = Vector3.ZERO
+	block_body = body
+	block_take = true
+	_hand_from_inventory = false                   # из мира, не из инвентаря — без авто-добора
+	build_basis = Basis()
+	_preview_res = null
+	_cabin_ground = null
+	if ghost_block:
+		ghost_block.visible = false
+	_on_building_pressed()                          # гарантируем режим стройки (if Building: return внутри)
+	return true
 
 func _on_take_pressed() -> void:
 	if block_take:
@@ -1425,17 +1471,20 @@ func apply_build(layout: Array) -> void:
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
-# Блок из руки → обратно в инвентарь (при выходе из стройки и при замене руки).
-# Синхронный remove_child до queue_free — takepos не держит два блока разом.
+# Блоки из руки → обратно в инвентарь (при выходе из стройки, при замене руки, при «Take off»).
+# ЧИСТИМ ВСЕ блоки под takepos, а не только tracked block_body: редкие рассинхроны (взял из
+# мира, потом из инвентаря) оставляли лишний блок в руке — в руке оказывалось несколько блоков,
+# было непонятно какой ставишь, и выбросить их не получалось. Теперь takepos гарантированно пуст.
 func _return_hand_to_inventory() -> void:
-	if not (block_take and block_body != null and is_instance_valid(block_body)):
-		return
-	G.block_inventory.append(int(block_body.block))
-	G.mark_progress_dirty()
-	var prev_parent: Node = block_body.get_parent()
-	if prev_parent:
-		prev_parent.remove_child(block_body)
-	block_body.queue_free()
+	var holder: Node = camera_controller.camera.get_child(0) \
+			if (camera_controller != null and camera_controller.camera != null) else null
+	if holder != null:
+		for child in holder.get_children():
+			if "block" in child:
+				G.block_inventory.append(int(child.get("block")))
+			holder.remove_child(child)
+			child.queue_free()
+		G.mark_progress_dirty()
 	block_body = null
 	block_take = false
 	_preview_res = null
@@ -1472,13 +1521,13 @@ func take_block_into_hand(block_type: int) -> bool:
 	return true
 
 func _on_take_off_pressed() -> void:
-	if block_take:
-		var instance = camera_controller.camera.get_child(0).get_child(0)
-		if block_body.block == 1: return
-		instance.top_level = false        # мог остаться top_level от превью
-		instance.reparent(%objects)
-		instance.scale = Vector3.ONE
-		block_take = false
+	if not block_take:
+		return
+	# «Take off» = убрать блок из руки В ИНВЕНТАРЬ (реквест: удобный способ спрятать взятый блок).
+	# Раньше блок ронялся в мир (%objects), и его потом снова надо было ловить — неудобно.
+	if block_body != null and is_instance_valid(block_body) and int(block_body.get("block")) == G.Block.CABIN:
+		return                            # кабину (ядро новой машины) в инвентарь не прячем
+	_return_hand_to_inventory()
 
 func _on_attack_timeout() -> void:
 	for i in $blocks.get_children():
