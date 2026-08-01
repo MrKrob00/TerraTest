@@ -1049,9 +1049,14 @@ func _handle_click(screen_pos: Vector2) -> void:
 		if res["hit"]: _preview_held(res)
 		return
 	else:
-		camera.find_child("Raycast").process_mode = Node.PROCESS_MODE_DISABLED
-		camera.find_child("Raycast").look_at(camera.global_position + world_dir)
-		camera.find_child("Raycast").process_mode = Node.PROCESS_MODE_INHERIT
+		# look_at ломается, когда направление почти вертикально (клик СТРОГО «по земле» — взгляд
+		# вниз): базис вырождается, и на экспортной сборке это тихий креш без ошибки в консоли.
+		# Целимся Raycast'ом только если луч не вертикален (как уже сделано для пуль в WeaponBlock).
+		var _rc: Node3D = camera.find_child("Raycast")
+		if _rc != null and absf(world_dir.dot(Vector3.UP)) < 0.99:
+			_rc.process_mode = Node.PROCESS_MODE_DISABLED
+			_rc.look_at(camera.global_position + world_dir)
+			_rc.process_mode = Node.PROCESS_MODE_INHERIT
 	if !block_take and res["hit"]:
 		_place_ghost(res, false)
 		block_body = block_map_node.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
