@@ -18,6 +18,7 @@ var _load: Label
 var _bar: ColorRect
 var _bar_bg: ColorRect
 var _glitch: Control
+var _scanlines: Control
 var _t: float = 0.0
 var _progress: float = 0.0
 var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
@@ -38,6 +39,11 @@ func _ready() -> void:
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(bg)
+
+	_scanlines = _Scanlines.new()                 # статичный слой: рисуется один раз
+	_scanlines.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_scanlines.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_scanlines)
 
 	_glitch = _GlitchFx.new()
 	_glitch.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -116,15 +122,23 @@ func _process(delta: float) -> void:
 
 	# --- логика загрузки ---
 	if _phase == 0:
+		_wait += delta
 		var prog: Array = []
 		var st := ResourceLoader.load_threaded_get_status(next_scene, prog)
 		if prog.size() > 0:
 			_progress = float(prog[0]) * 0.4               # ресурс = первые 40% бара
 		if st == ResourceLoader.THREAD_LOAD_LOADED:
+			_wait = 0.0
 			_swap()
-		elif st == ResourceLoader.THREAD_LOAD_FAILED or st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+		elif st == ResourceLoader.THREAD_LOAD_FAILED or st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE \
+				or _wait > 60.0:
+			# Дедлайн: если поток загрузки завис, лучше уйти в обычную смену сцены, чем крутить
+			# анимацию вечно (в фазе 0 фолбэка по времени раньше не было вовсе).
+			_phase = 1
+			_wait = 0.0
 			get_tree().change_scene_to_file(next_scene)     # фолбэк
-			_finish()
+			await get_tree().process_frame
+			_hook_terrain()
 	elif _phase == 1:
 		_wait += delta
 		_progress = 0.4 + clampf(_wait / 12.0, 0.0, 0.55)   # генерация террейна = остальное (по времени)
@@ -147,15 +161,23 @@ func _swap() -> void:
 	await get_tree().process_frame
 	_hook_terrain()
 
+# Ищем ноду террейна ВГЛУБЬ (не только среди прямых детей): если карту завернут в контейнер,
+# поиск по одному уровню вернул бы null и экран снялся бы сразу, вернув чёрную загрузку.
+func _find_terrain(n: Node) -> Node:
+	if n == null:
+		return null
+	for c in n.get_children():
+		if c.has_method("terrain_height_at"):
+			return c
+		var deep := _find_terrain(c)
+		if deep != null:
+			return deep
+	return null
+
 # Подписываемся на готовность террейна в НОВОЙ игровой сцене (или уходим, если её нет/уже готова).
 func _hook_terrain() -> void:
 	var scn := get_tree().current_scene
-	var map: Node = null
-	if scn != null:
-		for c in scn.get_children():
-			if c.has_method("terrain_height_at"):
-				map = c
-				break
+	var map: Node = _find_terrain(scn)              # рекурсивно: карта может лежать не первым уровнем
 	if map != null and ("terrain_is_ready" in map):
 		if map.terrain_is_ready:
 			_finish()
@@ -177,16 +199,23 @@ func _finish() -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(queue_free)
 
-# Слой глитч-эффектов: сканлайны + случайные цианово-магентовые полосы (перерисовка каждый кадр).
-class _GlitchFx extends Control:
+# СТАТИЧНЫЕ сканлайны: рисуются ОДИН раз (перерисовка только на ресайз). Раньше они шли в том же
+# _draw, что и полосы, т.е. 240-360 draw_line КАЖДЫЙ кадр — заметная трата на мобилке ровно там,
+# где нам нужен плавный кадр.
+class _Scanlines extends Control:
 	func _draw() -> void:
 		var s := size
 		var y: float = 0.0
 		while y < s.y:
 			draw_line(Vector2(0, y), Vector2(s.x, y), Color(0, 0, 0, 0.13), 1.0)
 			y += 3.0
+
+# Только анимируемая часть: несколько сине-голубых полос (≤6 draw_rect за кадр).
+class _GlitchFx extends Control:
+	func _draw() -> void:
+		var s := size
 		for i in 6:
 			if randf() < 0.5:
-				var col := Color(0.15, 0.85, 1.0) if randf() < 0.5 else Color(0.72, 0.16, 1.0)
+				var col := Color(0.15, 0.85, 1.0) if randf() < 0.5 else Color(0.35, 0.55, 1.0)
 				col.a = randf_range(0.05, 0.16)
 				draw_rect(Rect2(randf_range(-30.0, 30.0), randf() * s.y, s.x + 60.0, randf_range(2.0, 9.0)), col)

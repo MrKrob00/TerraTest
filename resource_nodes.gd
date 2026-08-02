@@ -63,7 +63,7 @@ func _ready() -> void:
 		return
 
 	_apply_ore_colors()
-	var positions: Array[Vector3] = _pick_positions(map, dims)
+	var positions: Array[Vector3] = await _pick_positions(map, dims)
 	_init_veins(positions)
 
 # Заливаем список цветов в шейдер руды (общий материал core.tres → один раз на всех).
@@ -81,13 +81,27 @@ func _apply_ore_colors() -> void:
 
 # Локальные позиции жил (Y уже на рельефе). Отбираем случайные точки по всей карте,
 # отбраковывая воду, обрывы и слишком близкие друг к другу.
+# Отбор идёт ПОРЦИЯМИ (между ними отдаём кадр) — иначе до 24 000 попыток × 5 сэмплов рельефа
+# вставали одним многосекундным фризом поверх экрана загрузки.
+const PICK_BATCH := 400
+
 func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 	var positions: Array[Vector3] = []
 	var half_x: float = dims.x * 0.5 - edge_margin
 	var half_z: float = dims.y * 0.5 - edge_margin
 	var attempts: int = count * 12
+	# Пространственный хеш вместо линейного скана: раньше _too_close сравнивал КАЖДУЮ новую точку со
+	# ВСЕМИ принятыми (O(n²) ≈ 2 млн distance_to при count=2000). Теперь смотрим только 3×3 соседние
+	# ячейки решётки со стороной min_spacing — O(1) на точку.
+	var grid: Dictionary = {}
+	var cell: float = maxf(min_spacing, 0.001)
+	var since_yield: int = 0
 	while positions.size() < count and attempts > 0:
 		attempts -= 1
+		since_yield += 1
+		if since_yield >= PICK_BATCH:
+			since_yield = 0
+			await get_tree().process_frame
 		var lx: float = randf_range(-half_x, half_x)
 		var lz: float = randf_range(-half_z, half_z)
 		var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
@@ -97,10 +111,28 @@ func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 		if _slope_at(map, lx, lz) > max_slope:
 			continue                                        # обрыв
 		var local_pos: Vector3 = to_local(Vector3(world.x, h + 0.25, world.z))
-		if _too_close(positions, local_pos):
+		if _too_close_hashed(grid, cell, local_pos):
 			continue
 		positions.append(local_pos)
+		var key := Vector2i(floori(local_pos.x / cell), floori(local_pos.z / cell))
+		if not grid.has(key):
+			grid[key] = [] as Array[Vector3]
+		(grid[key] as Array).append(local_pos)
 	return positions
+
+# Есть ли принятая точка ближе min_spacing? Смотрим только свою и 8 соседних ячеек решётки.
+func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
+	var cx := floori(p.x / cell)
+	var cz := floori(p.z / cell)
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			var bucket = grid.get(Vector2i(cx + dx, cz + dz), null)
+			if bucket == null:
+				continue
+			for q in (bucket as Array):
+				if (q as Vector3).distance_to(p) < min_spacing:
+					return true
+	return false
 
 # Крутизна = разброс высот в 4 точках вокруг (± sample юнитов).
 func _slope_at(map: Node, lx: float, lz: float) -> float:
