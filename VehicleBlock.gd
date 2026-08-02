@@ -76,7 +76,17 @@ func _refresh_hp_fx() -> void:
 	_hp_fx.visible = true
 	(_hp_fx.material_override as ShaderMaterial).set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
 
+var _hit_fx_ms: int = 0
+const HIT_FX_COOLDOWN := 120        # мс между визуальными откликами на попадание
+
 func _play_hit_effect() -> void:
+	# Троттл: эффект — чисто визуальная отдача, но каждый вызов создаёт твин из 3 шагов И
+	# BlockFX.hit() (пластины-вспышки с шейдером). Лазер бьёт 10 раз/с по блоку, а взрыв батареи
+	# зовёт это сразу у 48 блоков в одном кадре. Чаще ~8 Гц глазом всё равно не различить.
+	var now := Time.get_ticks_msec()
+	if now - _hit_fx_ms < HIT_FX_COOLDOWN:
+		return
+	_hit_fx_ms = now
 	# Лёгкий "пинок" масштабом — тактильная отдача от попадания. Гасим прошлый твин: под
 	# лазером (урон каждые 0.1с) несколько твинов иначе дерутся за scale и блок дёргает.
 	if is_instance_valid(_hit_tween):

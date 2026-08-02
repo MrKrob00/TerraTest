@@ -911,6 +911,8 @@ var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block"
 
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
 var build_basis: Basis = Basis()
+var _rc_cache: Node3D = null       # кеш узла Camera3D/Raycast (find_child — рекурсивный поиск)
+var _hover_ms: int = 0             # троттл наведения мышью (ховер шлёт до 1000 событий/с)
 var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
 var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
 var _hand_from_inventory := false  # блок в руке взят из инвентаря (а не снят с машины) — для авто-добора
@@ -945,6 +947,14 @@ func _input(event: InputEvent) -> void:
 		if (event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
 				and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
+			# Ховер мыши шлёт до 1000 событий в секунду, и КАЖДОЕ гоняло полный пайплайн наведения
+			# (проверка HUD + DDA-луч по сетке + пересборка превью). Для наведения хватает ~60 Гц;
+			# КЛИК пропускаем всегда, чтобы постановка блока не «проглатывалась» троттлом.
+			var _is_click := event is InputEventMouseButton
+			var _now_ms := Time.get_ticks_msec()
+			if not _is_click and _now_ms - _hover_ms < 16:
+				return
+			_hover_ms = _now_ms
 			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
 			if not _tap_over_ui(event.position):
 				_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
@@ -1109,7 +1119,11 @@ func _handle_click(screen_pos: Vector2) -> void:
 		# look_at ломается, когда направление почти вертикально (клик СТРОГО «по земле» — взгляд
 		# вниз): базис вырождается, и на экспортной сборке это тихий креш без ошибки в консоли.
 		# Целимся Raycast'ом только если луч не вертикален (как уже сделано для пуль в WeaponBlock).
-		var _rc: Node3D = camera.find_child("Raycast")
+		# Узел статичен (Camera3D/Raycast) — кешируем. find_child() это РЕКУРСИВНЫЙ поиск с
+		# сопоставлением имён по всему поддереву камеры, а звался он на каждом наведении.
+		if _rc_cache == null or not is_instance_valid(_rc_cache):
+			_rc_cache = camera.find_child("Raycast") as Node3D
+		var _rc: Node3D = _rc_cache
 		if _rc != null and absf(world_dir.dot(Vector3.UP)) < 0.99:
 			_rc.process_mode = Node.PROCESS_MODE_DISABLED
 			_rc.look_at(camera.global_position + world_dir)
