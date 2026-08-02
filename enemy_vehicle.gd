@@ -73,7 +73,10 @@ var _dying: bool = false
 @export_group("ИИ — Поведение")
 @export var patrol_speed_factor: float = 0.5
 @export var chase_speed_factor:  float = 1.0
-@export var forget_enemy_time:   float = 3.0
+## Сколько держим цель ПОСЛЕ того, как она вышла из зоны обнаружения (внутри зоны не забываем).
+@export var forget_enemy_time:   float = 6.0
+## Множитель тяги в погоне. При равном max_speed догнать убегающего нельзя — даём небольшой перевес.
+@export var chase_boost:         float = 1.25
 
 @export_group("ИИ — Препятствия")
 @export var obstacle_ray_length: float = 5.0
@@ -212,6 +215,7 @@ func _setup_detection_area() -> void:
 	col.shape  = sph
 	area.add_child(col)
 	add_child(area)
+	_detect_area = area                     # держим ссылку: по ней ПЕРИОДИЧЕСКИ пере-ищем цель
 
 	area.body_entered.connect(_on_body_entered)
 	area.body_exited.connect(_on_body_exited)
@@ -254,7 +258,40 @@ func _physics_process(delta: float) -> void:
 # ИИ — ДИСПЕТЧЕР
 # ══════════════════════════════════════════
 
+var _detect_area: Area3D = null
+var _reacquire_t: float = 0.0
+var _last_known_pos: Vector3 = Vector3.ZERO
+var _has_last_known: bool = false
+
+# ГЛАВНЫЙ ФИКС ИИ: цель бралась ТОЛЬКО из сигнала body_entered. Стоило потерять её
+# (forget_enemy_time), как игрок оставался ВНУТРИ сферы обнаружения — а значит body_entered
+# больше никогда не срабатывал, и враг уезжал патрулировать, в упор игнорируя игрока, пока тот
+# не выедет за 40 м и не вернётся. Отсюда и «пострелял пару секунд → перестал → долго ничего».
+# Теперь, когда цели нет, регулярно опрашиваем саму зону обнаружения.
+func _scan_for_targets() -> void:
+	if _detect_area == null or not is_instance_valid(_detect_area):
+		return
+	var best: Node3D = null
+	var best_d: float = INF
+	for b in _detect_area.get_overlapping_bodies():
+		if not _is_enemy(b) or not (b is Node3D):
+			continue
+		var d: float = global_position.distance_to((b as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = b as Node3D
+	if best != null:
+		_target = best
+		_forget_timer = forget_enemy_time
+		_state = AIState.CHASE
+
 func _update_ai(delta: float) -> void:
+	# Нет цели (или она погибла) — периодически пере-ищем её в зоне обнаружения.
+	if not is_instance_valid(_target):
+		_reacquire_t -= delta
+		if _reacquire_t <= 0.0:
+			_reacquire_t = 0.3
+			_scan_for_targets()
 	match _state:
 		AIState.PATROL:         _ai_patrol(delta)
 		AIState.CHASE:          _ai_chase(delta)
@@ -267,6 +304,14 @@ func _update_ai(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _ai_patrol(delta: float) -> void:
+	# Сначала — доехать до ПОСЛЕДНЕЙ ИЗВЕСТНОЙ точки цели. Раньше при потере врага он мгновенно
+	# уезжал на свои патрульные точки (они возле точки спавна), т.е. просто бросал бой и уходил
+	# в сторону. Теперь он идёт туда, где видел игрока, и по дороге снова его засекает.
+	if _has_last_known:
+		if global_position.distance_to(_last_known_pos) > waypoint_reach_dist * 1.5:
+			_drive_toward(_last_known_pos, chase_speed_factor, delta)
+			return
+		_has_last_known = false          # дошли — дальше обычный патруль
 	if _patrol_targets.is_empty():
 		_throttle = 0.0
 		return
@@ -290,17 +335,32 @@ func _ai_chase(delta: float) -> void:
 		return
 
 	var dist: float = global_position.distance_to(_target.global_position)
+	_last_known_pos = _target.global_position
+	_has_last_known = true
 
 	if dist <= attack_range:
 		_state = AIState.ATTACK
 		return
 
-	_forget_timer -= delta
-	if _forget_timer <= 0.0:
-		_lose_target()
-		return
+	# Таймер забывания тикает ТОЛЬКО когда цель реально вне зоны обнаружения. Раньше он шёл
+	# всегда, поэтому убегающего игрока враг бросал через 3 секунды, даже видя его в упор —
+	# «уехал = проблем нет». Пока цель в радиусе — преследуем сколько нужно.
+	if dist > detection_radius:
+		_forget_timer -= delta
+		if _forget_timer <= 0.0:
+			_lose_target()
+			return
+	else:
+		_forget_timer = forget_enemy_time
 
-	_drive_toward(_target.global_position, chase_speed_factor, delta)
+	# Стреляем и В ПОГОНЕ, если цель уже в пределах оружия: турель наводится сама (±45°),
+	# так что ждать перехода в ATTACK незачем — иначе враг долго едет молча.
+	if dist <= attack_range * 1.15:
+		_do_attack()
+
+	# Убегающего догоняем с небольшим бонусом к скорости, иначе при равном max_speed (20 у обоих)
+	# догнать игрока невозможно в принципе — он просто уезжает.
+	_drive_toward(_target.global_position, chase_speed_factor * chase_boost, delta)
 
 # ══════════════════════════════════════════
 # СОСТОЯНИЕ: АТАКА
@@ -335,45 +395,34 @@ func _ai_attack(delta: float) -> void:
 		return
 	fwd_flat = fwd_flat.normalized()
 
-	# ── «2D-карта» цели: где она и КУДА СМОТРИТ (там её оружие/лоб) ──────────────
-	# Перёд цели = -Z её базиса (как и у нас). Зная это, заходим в РЕАР-фланг —
-	# вне её лобового конуса — а не лезем в лоб под выстрелы.
-	var tb := _target.global_transform.basis
-	var enemy_fwd := Vector3(-tb.z.x, 0.0, -tb.z.z)
-	if enemy_fwd.length_squared() < 0.0001:
-		enemy_fwd = -to_n
-	enemy_fwd = enemy_fwd.normalized()
-	var enemy_right := Vector3(enemy_fwd.z, 0.0, -enemy_fwd.x)   # правый борт цели
-
-	# Заходим на тот фланг цели, что сейчас ближе (выбираем один раз за бой).
+	# ── Бой: ДЕРЖИМ ДИСТАНЦИЮ, НЕ ТЕРЯЯ ЦЕЛЬ ИЗ ПРИЦЕЛА ─────────────────────────
+	# Раньше здесь строилась «желаемая точка» в тылу цели: враг ехал ЗА спину игрока, а стоило
+	# игроку повернуть — точка убегала на другую сторону, и враг снова катался вместо стрельбы.
+	# Отсюда и «атаковал пару секунд, потом всё время меняет позицию». Теперь проще и злее:
+	# нос всегда на цель (турель ±45° тогда всегда её достаёт), а газом только удерживаем
+	# дистанцию в боевом коридоре. Боковой снос добавляем лёгким смещением прицела — враг
+	# кружит, но НЕ перестаёт стрелять.
+	var band_near := maxf(min_combat_distance, 3.0)      # ближе — сдаём назад
+	var band_far := attack_range * 0.8                   # дальше — поджимаем
 	if _orbit_dir == 0.0:
-		_orbit_dir = 1.0 if enemy_right.dot(-to_n) >= 0.0 else -1.0
+		_orbit_dir = 1.0 if randf() > 0.5 else -1.0
+	var right_of_target := Vector3(to_n.z, 0.0, -to_n.x)  # перпендикуляр к линии на цель
 
-	# Желаемая позиция: боевая дистанция, СЗАДИ-сбоку от цели. Точка рядом с целью →
-	# мы едем примерно НА неё, цель остаётся спереди → турель (±45°) её держит. Цель
-	# крутится → точка ездит за её спиной → мы обходим и переигрываем по манёвру.
-	var radius := maxf(min_combat_distance, 3.0)
-	var desired_pos := _target.global_position \
-			- enemy_fwd * (radius * 0.7) \
-			+ enemy_right * (_orbit_dir * radius * 0.85)
-	var to_desired := Vector3(desired_pos.x - global_position.x, 0.0, desired_pos.z - global_position.z)
-	var arrive := to_desired.length()
-
-	# Куда рулим и сколько газу.
 	var steer_target: Vector3
 	var target_throttle: float
-	if dist < radius * 0.5:
-		steer_target = to_n          # вплотную к цели — нос на неё, сдаём назад (турель целится)
-		# Было -0.5 — резкий реверс на ходу (только что гнались на полном газу) часто
-		# опрокидывал машину носом вперёд, особенно с оружием на y=1 (выше центр масс).
-		target_throttle = -0.25
-	elif arrive < 1.5:
-		steer_target = to_n          # на позиции — держим цель в прицеле, почти стоим
-		target_throttle = 0.15
+	if dist < band_near:
+		# Слишком близко: пятимся, но нос держим на цели — оружие продолжает работать.
+		steer_target = to_n
+		target_throttle = -0.3
+	elif dist > band_far:
+		# Далековато: сближаемся по прямой на цель.
+		steer_target = to_n
+		target_throttle = chase_speed_factor
 	else:
-		steer_target = to_desired / arrive
-		var ang := absf(fwd_flat.signed_angle_to(steer_target, Vector3.UP))
-		target_throttle = chase_speed_factor * clampf(1.0 - ang / PI, 0.35, 1.0)
+		# В коридоре: идём по дуге вокруг цели (смесь «на цель» и «вбок») — сложнее попасть по
+		# нам, но цель всё время в лобовом секторе, значит турель стреляет непрерывно.
+		steer_target = (to_n + right_of_target * (_orbit_dir * 0.75)).normalized()
+		target_throttle = chase_speed_factor * 0.55
 
 	var steer_ang := fwd_flat.signed_angle_to(steer_target, Vector3.UP)
 	var steer_input := clampf(steer_ang / (PI * 0.6), -1.0, 1.0)
@@ -506,9 +555,23 @@ func _drive_toward(target_pos: Vector3, speed_factor: float, delta: float) -> vo
 # ВСПОМОГАТЕЛЬНЫЕ
 # ══════════════════════════════════════════
 
+# Кеш стреляющих блоков: теперь зовётся каждый физ-тик и в бою, и в погоне, поэтому
+# get_children()+has_method на каждом вызове здесь недопустимы (см. тот же приём у игрока).
+var _atk_cache: Array = []
+var _atk_n: int = -1
+
 func _do_attack() -> void:
-	for block in $blocks.get_children():
-		if block.has_method("attack"): block.attack()
+	var bl := get_node_or_null("blocks")
+	if bl == null:
+		return
+	if bl.get_child_count() != _atk_n:
+		_atk_n = bl.get_child_count()
+		_atk_cache.clear()
+		for b in bl.get_children():
+			if b.has_method("attack"):
+				_atk_cache.append(b)
+	for b in _atk_cache:
+		b.attack()
 
 func _lose_target() -> void:
 	_target       = null
@@ -685,8 +748,12 @@ func _apply_upright(delta: float) -> void:
 func _limit_speed() -> void:
 	var fwd: Vector3 = _get_forward()
 	var vel_fwd: float = fwd.dot(linear_velocity)
-	if abs(vel_fwd) > max_speed:
-		linear_velocity -= fwd * (vel_fwd - sign(vel_fwd) * max_speed)
+	# В ПОГОНЕ потолок скорости выше: у врага и игрока max_speed одинаковый (20), поэтому с общим
+	# лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою/патруле
+	# лимит обычный, так что вне погони враг не становится быстрее.
+	var cap: float = max_speed * (chase_boost if _state == AIState.CHASE else 1.0)
+	if abs(vel_fwd) > cap:
+		linear_velocity -= fwd * (vel_fwd - sign(vel_fwd) * cap)
 	if linear_velocity.y > 10.0:
 		linear_velocity.y = 10.0
 
