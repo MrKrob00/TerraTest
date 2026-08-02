@@ -285,6 +285,10 @@ var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
 signal terrain_ready                 # ближний террейн построен (для экрана загрузки)
 var terrain_is_ready: bool = false
 
+# Сколько узлов создавать за один кадр при стартовой сборке (add_child = вход в дерево + создание
+# рендер-инстанса; сотни за кадр = видимый фриз, поэтому режем на порции и отдаём кадр между ними).
+const NODE_BATCH := 64
+
 # ── Heightmap (the data the whole system reads) ───────────────────────────────
 # Filled by _load_heightmap() in _ready(): from the R32F image at runtime, or from
 # the embedded HeightMapShape3D (editor, or as a pre-bake fallback at runtime).
@@ -319,7 +323,8 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_cam = _active_camera()
 	if use_image_data or enable_streaming_collision:
-		_load_heightmap()                   # data from the R32F image (fallback: shape)
+		await _prewarm_heightmap()          # тянем 15+ МБ карты высот в ФОНЕ (иначе load() морозит кадр)
+		_load_heightmap()                   # теперь берётся из кеша ресурсов — без блокирующего чтения
 		_setup_streaming_collision()        # small sliding collision window
 	else:
 		# Legacy: the embedded HeightMapShape3D is both data and collision.
@@ -329,6 +334,8 @@ func _ready() -> void:
 			md = collision.shape.map_data
 		else:
 			push_error("LiteTerrain: legacy mode needs a HeightMapShape3D on CollisionShape3D. Turn on use_image_data (default) or generate/bake terrain from the LiteTerrain dock.")
+			terrain_is_ready = true         # иначе экран загрузки ждал бы сигнала вечно
+			terrain_ready.emit()
 			return
 	_chunks_x = ceili(float(w - 1) / chunk_size)
 	await _build_chunks_from_map_data()
@@ -361,6 +368,23 @@ func _load_heightmap() -> void:
 		d  = collision.shape.map_depth
 		md = collision.shape.map_data
 		_recompute_height_bound()
+
+# Подтягивает файл карты высот (у нас ~15 МБ R32F) в ФОНОВОМ потоке и ждёт, отдавая кадры.
+# После этого обычный load() внутри _load_heightmap_image() достаёт ресурс ИЗ КЕША мгновенно
+# (CACHE_MODE_REUSE — режим по умолчанию), т.е. блокирующего чтения с диска в кадре уже нет.
+# Важно: terrain_height.res НЕ является зависимостью node_3d.tscn (путь задан строкой), поэтому
+# фоновая загрузка сцены его не касалась — он грузился синхронно и морозил экран загрузки.
+func _prewarm_heightmap() -> void:
+	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
+		return
+	if ResourceLoader.load_threaded_request(heightmap_path) != OK:
+		return                               # не вышло — _load_heightmap() отработает обычным load()
+	while true:
+		var st := ResourceLoader.load_threaded_get_status(heightmap_path)
+		if st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			break
+		await get_tree().process_frame
+	ResourceLoader.load_threaded_get(heightmap_path)   # забираем (кладётся в кеш ресурсов)
 
 func _load_heightmap_image() -> Image:
 	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
@@ -1036,7 +1060,9 @@ func _build_chunks_from_map_data() -> void:
 			Vector3(x0 - float(w) * 0.5 + 0.5, min_h, z0 - float(d) * 0.5 + 0.5),
 			Vector3(x1 - x0, max_h - min_h, z1 - z0))
 	var aabb_gid := WorkerThreadPool.add_group_task(aabb_task, total, -1, true)
-	WorkerThreadPool.wait_for_group_task_completion(aabb_gid)
+	while not WorkerThreadPool.is_group_task_completed(aabb_gid):
+		await get_tree().process_frame          # уступаем кадры: скан читает ~4.4М клеток карты высот
+	WorkerThreadPool.wait_for_group_task_completion(aabb_gid)   # мгновенный join
 
 	# ── Materials + macro meshes (the always-resident far representation) ──────
 	var mat := _get_material()
@@ -1046,7 +1072,7 @@ func _build_chunks_from_map_data() -> void:
 	# so they need NO individual chunks to exist — that's what lets us instantiate chunks
 	# only near the camera. AABBs come from Phase 0.
 	await _build_macro_chunks()   # await: внутри уступает кадры (чтобы не морозить экран загрузки)
-	_build_quadtree()
+	await _build_quadtree()       # тоже уступает: джойн потоков + сотни add_child порциями
 
 	# ── Initial resident set: only chunks of macros near the camera ───────────
 	# Every other chunk of the map is left uninstantiated; its macro mesh covers it until
@@ -1071,10 +1097,14 @@ func _build_chunks_from_map_data() -> void:
 		while not WorkerThreadPool.is_group_task_completed(gid):
 			await get_tree().process_frame          # уступаем кадры, пока потоки строят ближние чанки
 		WorkerThreadPool.wait_for_group_task_completion(gid)   # мгновенный join
-		_apply_built_results(near_chunks, mat)
+		await _apply_built_results(near_chunks, mat, NODE_BATCH)   # ~380 узлов — порциями
+		var done := 0
 		for ci in near_chunks:
 			if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
 				_apply_lod_mesh(ci, mat)
+			done += 1
+			if done % NODE_BATCH == 0:
+				await get_tree().process_frame
 
 	# Near chunks are built synchronously above; nothing is queued at startup. On-demand
 	# streaming (_request_resident) fills the queue later as the camera moves.
@@ -1107,10 +1137,17 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 # Creates a MeshInstance3D for each ci in indices whose _stream_results[ci] is ready.
 # MUST run on the main thread — adds nodes to the scene tree. Instances are created
 # hidden; the quadtree's next descend decides their visibility and LOD.
-func _apply_built_results(indices: Array, mat: Material) -> void:
+# batch>0 (только стартовая сборка) — отдавать кадр каждые batch созданных узлов, чтобы сотни
+# add_child не вставали одним фризом. Стриминг зовёт с batch=0 (пачки там и так маленькие) —
+# его поведение не меняется.
+func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void:
+	var made := 0
 	for ci in indices:
 		if _stream_results[ci] == null:
 			continue
+		if batch > 0 and made > 0 and made % batch == 0:
+			await get_tree().process_frame
+		made += 1
 		var lod_meshes: Array = _stream_results[ci][0]
 		_stream_results[ci]   = null
 
@@ -1312,6 +1349,8 @@ func _build_macro_chunks() -> void:
 		WorkerThreadPool.wait_for_group_task_completion(mgid)   # мгновенный join
 
 	# ── Pass C: create the macro MeshInstance3D nodes (main thread) ───────────
+	# Узлов сотни (≈961 при 124×124 чанках). add_child = вход в дерево + создание рендер-инстанса,
+	# всё в одном кадре = многосекундный фриз. Создаём порциями по NODE_BATCH, между ними отдаём кадр.
 	for mi in macro_n:
 		var inst := MeshInstance3D.new()
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1322,6 +1361,8 @@ func _build_macro_chunks() -> void:
 			inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 		add_child(inst)
 		_macro_instances.append(inst)
+		if (mi + 1) % NODE_BATCH == 0:
+			await get_tree().process_frame
 	_macro_results.clear()
 
 
@@ -1868,7 +1909,9 @@ func _build_quadtree() -> void:
 	if macro_cx <= 0 or macro_cz <= 0:
 		return
 	_qt_build_node(0, 0, macro_cx, macro_cz, macro_cx)
-	_qt_built = not _qt_aabb.is_empty()
+	# ВНИМАНИЕ: _qt_built включаем только В КОНЦЕ, после создания всех инстансов. Ниже есть await
+	# (джойн потоков + порционный add_child), а _process/_qt_update гейтится этим флагом — иначе
+	# он побежал бы по ещё не заполненному _qt_inst между кадрами.
 
 	# ── Build each internal node's coarse merged mesh (threaded), then its instance ──
 	var node_n := _qt_aabb.size()
@@ -1882,8 +1925,11 @@ func _build_quadtree() -> void:
 		var node_task := func(i: int) -> void:
 			_qt_node_worker(internal[i])
 		var ngid := WorkerThreadPool.add_group_task(node_task, internal.size(), -1, true)
-		WorkerThreadPool.wait_for_group_task_completion(ngid)
+		while not WorkerThreadPool.is_group_task_completed(ngid):
+			await get_tree().process_frame       # уступаем кадры, пока потоки считают коарс-меши узлов
+		WorkerThreadPool.wait_for_group_task_completion(ngid)   # мгновенный join
 	var mat := _get_material()
+	var made := 0
 	for n in internal:
 		var m: ArrayMesh = _qt_node_results[n]
 		var inst := MeshInstance3D.new()
@@ -1894,7 +1940,13 @@ func _build_quadtree() -> void:
 			inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 		add_child(inst)
 		_qt_inst[n] = inst
+		# add_child создаёт инстанс рендера и триггерит вход в дерево — сотни узлов в одном кадре
+		# дают заметный хич. Режем на порции (NODE_BATCH), между ними отдаём кадр.
+		made += 1
+		if made % NODE_BATCH == 0:
+			await get_tree().process_frame
 	_qt_node_results.clear()
+	_qt_built = not _qt_aabb.is_empty()      # только теперь дерево готово к обходу в _process
 
 
 # Recursively builds a node covering the macro-grid rectangle

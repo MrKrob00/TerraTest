@@ -44,7 +44,7 @@ func _ready() -> void:
 		push_error("shop_spawner: рельеф так и не загрузился")
 		return
 
-	_scatter(map, dims)
+	await _scatter(map, dims)
 
 func _find_map() -> Node:
 	if map_node:
@@ -75,6 +75,9 @@ func _scatter(map: Node, dims: Vector2i) -> void:
 				if not _too_close(placed, pos):
 					_place_shop(pos)
 					placed.append(pos)
+					# Каждый магазин — сцена из ~10 узлов с ареями/коллизиями. Десятки за один кадр
+					# давали хич поверх экрана загрузки: отдаём кадр после каждой постановки.
+					await get_tree().process_frame
 			lz += cell_size
 		lx += cell_size
 
