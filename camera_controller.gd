@@ -161,12 +161,17 @@ func _ready():
 		if current_vehicle.has_method("set_active"):
 			current_vehicle.set_active(true)
 
-func _process(delta):
+# Камера следит за МАШИНОЙ, а машина — RigidBody3D, её трансформ обновляет физика на своём тике.
+# Раньше слежение шло в _process (кадр отрисовки): между физ-шагами позиция тела не меняется, и
+# камера то догоняла её, то стояла — характерное подрагивание картинки, особенно когда FPS не
+# совпадает с частотой физики (а у нас авто-масштаб FPS её как раз гоняет). Читаем позицию там же,
+# где она меняется — на физ-тике.
+func _physics_process(delta):
 	if not current_vehicle: return
 
-	# 1. Smoothly move the entire controller to the car's 
-	var target_pos = current_vehicle.global_position
-	
+	# 1. Smoothly move the entire controller to the car's
+	var target_pos: Vector3 = current_vehicle.global_position
+
 	global_position = global_position.lerp(target_pos, delta * lerp_speed)
 
 

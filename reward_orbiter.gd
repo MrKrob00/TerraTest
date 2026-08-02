@@ -35,7 +35,10 @@ func setup(tgt: Node3D, block_type: int, phase: float) -> void:
 		BlockFX.play(_block, false)            # глюк появления
 	_glitch_t = 0.9
 
-func _process(delta: float) -> void:
+# Блок ПРИКЛЕЕН к машине (позиция считается от target.global_position), а машина — RigidBody3D,
+# её двигает физика. Поэтому крутимся на физ-тике: на кадре отрисовки якорь между физ-шагами не
+# меняется, и блоки подрагивали бы относительно машины (камера теперь тоже на физ-тике).
+func _physics_process(delta: float) -> void:
 	if _dropped:
 		return
 	if target == null or not is_instance_valid(target):
