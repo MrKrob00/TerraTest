@@ -325,7 +325,12 @@ func _ready() -> void:
 	if use_image_data or enable_streaming_collision:
 		await _prewarm_heightmap()          # тянем 15+ МБ карты высот в ФОНЕ (иначе load() морозит кадр)
 		_load_heightmap()                   # теперь берётся из кеша ресурсов — без блокирующего чтения
+		# Отдаём кадр МЕЖДУ тяжёлыми фазами: сама распаковка карты высот (to_float32_array — ~31 МБ
+		# копирования) и постройка коллизий (обход всей сцены + heightfield-тайлы в Jolt) внутри не
+		# прерываются, но между ними экран загрузки успевает нарисовать кадр и не выглядит зависшим.
+		await get_tree().process_frame
 		_setup_streaming_collision()        # small sliding collision window
+		await get_tree().process_frame
 	else:
 		# Legacy: the embedded HeightMapShape3D is both data and collision.
 		if collision.shape is HeightMapShape3D:
@@ -340,7 +345,9 @@ func _ready() -> void:
 	_chunks_x = ceili(float(w - 1) / chunk_size)
 	await _build_chunks_from_map_data()
 	if _cam:
+		await get_tree().process_frame   # кадр ПЕРЕД полным сканом (он тяжёлый и неразрывный)
 		_full_scan()
+	await get_tree().process_frame       # и кадр после — чтобы фейд экрана начался уже без хича
 	terrain_is_ready = true          # ближний террейн построен → экран загрузки может уходить
 	terrain_ready.emit()
 
@@ -1305,8 +1312,12 @@ func _build_macro_chunks() -> void:
 
 	_chunk_macro_idx.resize(_chunk_instances.size())
 
-	# ── Pass A: group structure + merged AABB (cheap, main thread) ────────────
+	# ── Pass A: group structure + merged AABB (main thread) ───────────────────
+	# Комментарий «cheap» верен для маленьких карт, но при 124×124 чанках это ~15 000 итераций
+	# с AABB.merge и append одним куском. Отдаём кадр после каждого РЯДА макро-групп.
 	for mz in _macro_cz:
+		if mz > 0:
+			await get_tree().process_frame
 		for mx in _macro_cx:
 			# The macro index for this group is the current length of _macro_to_chunks
 			# (assigned before the append, so it equals mz*_macro_cx + mx).
