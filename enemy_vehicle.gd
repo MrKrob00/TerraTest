@@ -251,6 +251,9 @@ func _physics_process(delta: float) -> void:
 	# Кеш вместо get_children()+has_method каждый физ-тик (см. тот же приём у игрока).
 	var steer_norm: float = -_steer_angle / deg_to_rad(steer_max_angle)
 	for block in _drive_blocks():
+		if not is_instance_valid(block):
+			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
+			continue
 		block.set_throttle(_throttle)
 		block.set_steer(steer_norm)
 
@@ -571,6 +574,9 @@ func _do_attack() -> void:
 			if b.has_method("attack"):
 				_atk_cache.append(b)
 	for b in _atk_cache:
+		if not is_instance_valid(b):
+			_atk_n = -1                 # блок уничтожили — пересоберём кеш
+			continue
 		b.attack()
 
 func _lose_target() -> void:

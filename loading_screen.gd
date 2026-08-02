@@ -13,7 +13,13 @@ const CYAN := Color(0.15, 0.85, 1.0)
 const MAGENTA := Color(0.72, 0.16, 1.0)
 
 var _ui: Control
-var _titles: Array[Label] = []
+var _title_vp: SubViewport
+var _title_label: Label
+var _title_rect: TextureRect
+var _title_mat: ShaderMaterial
+var _cards: ColorRect
+var _cards_mat: ShaderMaterial
+var _last_rect: Vector2 = Vector2.ZERO   # следим за сменой размера ВИРТУАЛЬНОГО вьюпорта
 var _load: Label
 var _bar: ColorRect
 var _bar_bg: ColorRect
@@ -52,17 +58,45 @@ func _ready() -> void:
 
 	# RGB-сплит в СИНЕ-ГОЛУБЫХ тонах (без магенты): глубокий синий ↔ голубой ↔ бело-голубой.
 	# «Мультяшность» даёт толстая ТЁМНО-СИНЯЯ обводка (как у логотипов из мультиков).
-	for col in [Color(0.20, 0.48, 1.0), Color(0.15, 0.85, 1.0), Color(0.80, 0.95, 1.0)]:
-		var l := Label.new()
-		l.text = "WorldTech"
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		l.add_theme_font_size_override("font_size", 104)
-		l.add_theme_color_override("font_color", col)
-		l.add_theme_constant_override("outline_size", 12)
-		l.add_theme_color_override("font_outline_color", Color(0.03, 0.09, 0.22))
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_ui.add_child(l)
-		_titles.append(l)
+	# ── Заголовок: Label живёт в SubViewport, на экран идёт ТЕКСТУРОЙ через шейдер ──────────
+	# Только так глитч может по-настоящему РВАТЬ надпись: у Label «текстура» — атлас шрифта,
+	# и сдвиг UV вытащил бы соседние глифы вместо смещения текста. Через вьюпорт шейдер получает
+	# готовую картинку надписи и делает с ней что угодно (разрывы полос, RGB-сплит, выпадение).
+	_title_vp = SubViewport.new()
+	_title_vp.transparent_bg = true
+	_title_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
+	_title_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(_title_vp)
+
+	_title_label = Label.new()
+	_title_label.text = "WorldTech"
+	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_title_label.add_theme_color_override("font_color", Color(0.85, 0.96, 1.0))
+	_title_label.add_theme_color_override("font_outline_color", Color(0.03, 0.09, 0.22))
+	_title_vp.add_child(_title_label)
+
+	_title_rect = TextureRect.new()
+	_title_rect.texture = _title_vp.get_texture()
+	_title_rect.stretch_mode = TextureRect.STRETCH_KEEP
+	_title_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tmat := ShaderMaterial.new()
+	tmat.shader = load("res://loading_title.gdshader")
+	tmat.set_shader_parameter("seed", randf() * 100.0)
+	_title_rect.material = tmat
+	_title_mat = tmat
+	_ui.add_child(_title_rect)
+
+	# Облако глитч-карточек ВОКРУГ названия — тот же эффект, что у блоков (порт glitch_card).
+	_cards = ColorRect.new()
+	_cards.color = Color(1, 1, 1, 1)          # цвет даёт шейдер
+	_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var cmat := ShaderMaterial.new()
+	cmat.shader = load("res://loading_glitch.gdshader")
+	cmat.set_shader_parameter("seed", randf() * 100.0)
+	_cards.material = cmat
+	_cards_mat = cmat
+	_ui.add_child(_cards)
 
 	_load = _mk("LOADING", 16, CYAN)
 
@@ -91,9 +125,25 @@ func _mk(txt: String, fsize: int, col: Color) -> Label:
 
 func _layout() -> void:
 	var s := get_viewport().get_visible_rect().size
-	for l in _titles:
-		l.size = Vector2(s.x, 150)
-		l.position = Vector2(0, s.y * 0.5 - 95.0)
+	_last_rect = s
+	# Размер шрифта СЧИТАЕМ ОТ ЭКРАНА, а не берём фиксированный. Причина «через пару секунд надпись
+	# уменьшается»: новая сцена в Main._ready ставит content_scale_factor, и виртуальный вьюпорт
+	# прыгает (напр. 1280×720 → 1920×1080). Наш оверлей переживает смену сцены, а надпись была
+	# задана в ВИРТУАЛЬНЫХ пикселях (104) — вьюпорт стал больше, надпись относительно экрана стала
+	# мельче. Теперь она пересчитывается от текущего размера, поэтому выглядит одинаково всегда.
+	var fs: int = clampi(int(s.y * 0.15), 44, 190)
+	_title_label.add_theme_font_size_override("font_size", fs)
+	_title_label.add_theme_constant_override("outline_size", maxi(int(fs * 0.11), 6))
+	var tw: float = minf(s.x, fs * 8.0)
+	var th: float = fs * 1.6
+	_title_vp.size = Vector2i(int(tw), int(th))
+	_title_label.size = Vector2(tw, th)
+	_title_label.position = Vector2.ZERO
+	_title_rect.size = Vector2(tw, th)
+	_title_rect.position = Vector2((s.x - tw) * 0.5, s.y * 0.5 - th * 0.62)
+	# Карточки — полосой вокруг названия (чуть шире и выше него).
+	_cards.size = Vector2(s.x, th * 1.5)
+	_cards.position = Vector2(0, s.y * 0.5 - th * 0.85)
 	_load.size = Vector2(s.x, 22); _load.position = Vector2(0, s.y - 84.0)
 	var bw: float = minf(s.x * 0.5, 460.0)
 	_bar_bg.size = Vector2(bw, 4); _bar_bg.position = Vector2((s.x - bw) * 0.5, s.y - 56.0)
@@ -101,22 +151,19 @@ func _layout() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
-	# --- глитч-анимация заголовка (как «лаг» блоков при появлении/исчезновении) ---
+	# Виртуальный вьюпорт мог смениться (новая сцена ставит content_scale_factor) — тогда
+	# пересобираем раскладку, иначе надпись «уменьшалась» относительно экрана.
 	var s := get_viewport().get_visible_rect().size
-	var base_y: float = s.y * 0.5 - 95.0
-	var appear: float = clampf(_t / 0.9, 0.0, 1.0)            # 0→1 материализация при появлении
-	var gi: float = maxf(1.0 - appear, _dissolve)            # сильный глитч в начале И при развале
-	gi = maxf(gi, 0.12)                                      # базовый холостой дребезг
-	var dx: float = (2.5 + absf(sin(_t * 9.0)) * 2.5) * (1.0 + gi * 4.0)
-	var gx: float = randf_range(-28.0, 28.0) * gi if randf() < 0.06 + gi * 0.4 else 0.0
-	var gy: float = randf_range(-12.0, 12.0) * gi if randf() < 0.05 + gi * 0.3 else 0.0
-	_titles[0].position = Vector2(-dx + gx, base_y + gy)      # синий
-	_titles[1].position = Vector2(dx - gx * 0.6, base_y - gy) # голубой
-	_titles[2].position = Vector2(gx * 0.25, base_y)         # бело-голубой
-	# Мерцание/пропадание (как глитч-карточки блока то видны, то нет): сильнее глитч → чаще гаснет.
-	var vis: float = 1.0 if randf() > gi * 0.55 else randf() * (1.0 - gi * 0.6)
-	for l in _titles:
-		l.modulate.a = vis
+	if s != _last_rect:
+		_layout()
+	# Сила глитча: максимум при ПОЯВЛЕНИИ и при РАЗВАЛЕ (как у блоков), в середине — лёгкий фон.
+	var appear: float = clampf(_t / 0.9, 0.0, 1.0)
+	var gi: float = maxf(maxf(1.0 - appear, _dissolve), 0.10)
+	_title_mat.set_shader_parameter("glitch", gi)
+	# progress карточек гоняем 0→1 по той же кривой, что у блоков: появление, пик, угасание.
+	var cards_p: float = (1.0 - appear) * 0.5 if _dissolve <= 0.0 else 0.5 + _dissolve * 0.5
+	_cards_mat.set_shader_parameter("progress", cards_p)
+	_cards_mat.set_shader_parameter("intensity", clampf(gi * 1.4, 0.12, 1.0))
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
 	_glitch.queue_redraw()
 
