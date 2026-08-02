@@ -34,6 +34,7 @@ extends Node3D
 @export var scan_preset: int = 1                    # усиленная сборка (см. blocks.gd layout)
 
 var _enemies: Array = []
+var _clean_t: float = 0.0                           # троттл чистки списка от мёртвых врагов
 var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
 var _t: float = 0.0
 var _ready_done: bool = false
@@ -58,7 +59,14 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not _ready_done:
 		return
-	_enemies = _enemies.filter(func(e): return is_instance_valid(e))
+	# Чистка списка — раз в 0.5с, а не каждый кадр: .filter() создавал новую Callable + новый
+	# Array и звал is_instance_valid на всех врагах 60 раз в секунду ради события, которое
+	# случается редко (смерть врага). На счёт лимита это не влияет — проверка ниже переживёт
+	# полсекунды с мёртвой записью.
+	_clean_t -= delta
+	if _clean_t <= 0.0:
+		_clean_t = 0.5
+		_enemies = _enemies.filter(func(e): return is_instance_valid(e))
 	_track_far(delta)
 	_scan_tick(delta)                               # редкое событие «проверка сектора»
 	if _enemies.size() >= max_enemies:

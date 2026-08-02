@@ -232,7 +232,7 @@ func _setup_patrol_points() -> void:
 
 func _physics_process(delta: float) -> void:
 	_check_ground()
-	_sync_mass()
+	_sync_mass(delta)
 	_update_ai(delta)
 	_detect_obstacles()
 
@@ -244,10 +244,11 @@ func _physics_process(delta: float) -> void:
 	_apply_upright(delta)
 	_limit_speed()
 
-	for block in $blocks.get_children():
-		if block.has_method("set_throttle"): block.set_throttle(_throttle)
-		if block.has_method("set_steer"):
-			block.set_steer(-_steer_angle / deg_to_rad(steer_max_angle))
+	# Кеш вместо get_children()+has_method каждый физ-тик (см. тот же приём у игрока).
+	var steer_norm: float = -_steer_angle / deg_to_rad(steer_max_angle)
+	for block in _drive_blocks():
+		block.set_throttle(_throttle)
+		block.set_steer(steer_norm)
 
 # ══════════════════════════════════════════
 # ИИ — ДИСПЕТЧЕР
@@ -562,11 +563,38 @@ func _check_ground() -> void:
 # ФИЗИКА — МАССА
 # ══════════════════════════════════════════
 
-func _sync_mass() -> void:
+# Как у игрока: масса зависит только от НАБОРА колёс (вес колеса — константный @export), поэтому
+# пересчитываем при смене их числа и раз в 0.5с, а не каждый физ-тик. Раньше на каждое колесо
+# рождался Dictionary из get_module_data() — 6 колёс × 60 Гц × 9 врагов ≈ 3200 аллокаций/с.
+var _mass_wheels_n: int = -1
+var _mass_timer: float = 0.0
+
+# Блоки, принимающие газ/руль (колёса). Кеш инвалидируется по числу детей $blocks.
+var _drive_cache: Array = []
+var _drive_n: int = -1
+
+func _drive_blocks() -> Array:
+	var bl := get_node_or_null("blocks")
+	if bl == null:
+		return []
+	if bl.get_child_count() != _drive_n:
+		_drive_n = bl.get_child_count()
+		_drive_cache.clear()
+		for b in bl.get_children():
+			if b.has_method("set_throttle") and b.has_method("set_steer"):
+				_drive_cache.append(b)
+	return _drive_cache
+
+func _sync_mass(delta: float = 0.0) -> void:
+	_mass_timer -= delta
+	if Wheels.size() == _mass_wheels_n and _mass_timer > 0.0:
+		return
+	_mass_wheels_n = Wheels.size()
+	_mass_timer = 0.5
 	var total: float = base_weight
 	for w in Wheels:
 		if is_instance_valid(w):
-			total += w.get_module_data()["weight"]
+			total += float(w.weight)
 	mass = total
 
 # ══════════════════════════════════════════
