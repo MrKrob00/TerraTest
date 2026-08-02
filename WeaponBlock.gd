@@ -35,13 +35,21 @@ func _ready() -> void:
 # частота стрельбы тоже становилась зависимой от FPS. Наведение башни оставляем здесь же — физ-тик
 # 60 Гц даёт ровное вращение и башня не отстаёт от тела, на котором стоит.
 func _physics_process(delta: float) -> void:
-	_update_current_target()
-	raycast.force_raycast_update()
 	_fire_hold = maxf(_fire_hold - delta, 0.0)
 	var firing := _fire_hold > 0.0
-	_track_target(delta, firing)
-	if firing:
-		_handle_fire(delta)
+	# Луч обновляем ТОЛЬКО когда стреляем: RayCast3D и так опрашивается физикой сам, а
+	# force_raycast_update() — второй запрос к физ-серверу за тик. Раньше он шёл безусловно, т.е.
+	# каждое простаивающее оружие (в т.ч. у всех врагов и припаркованных машин) держало лишние
+	# 60 запросов/с. Цель тоже нужна только для наведения/огня.
+	if not firing:
+		if _current_target != null:
+			_current_target = null
+		_track_target(delta, false)     # прячет луч и плавно возвращает башню в нейтраль
+		return
+	_update_current_target()
+	raycast.force_raycast_update()
+	_track_target(delta, true)
+	_handle_fire(delta)
 
 func attack() -> void:
 	_fire_hold = FIRE_HOLD
@@ -107,8 +115,12 @@ func _track_target(delta: float, firing: bool) -> void:
 	var length := weapon_range
 	if hit:
 		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
+	# Запись height в PrimitiveMesh пересобирает вершинные буферы меша. Раньше это делалось
+	# КАЖДЫЙ кадр стрельбы, даже когда длина не менялась. Пишем только при заметном изменении.
 	if track_visual.mesh is CylinderMesh:
-		(track_visual.mesh as CylinderMesh).height = length
+		var cyl := track_visual.mesh as CylinderMesh
+		if absf(cyl.height - length) > 0.05:
+			cyl.height = length
 		track_visual.position.z = -length * 0.5
 
 	# Анимация «рабочего» луча: пульсация яркости. По цели — горячий (бело-красный), в

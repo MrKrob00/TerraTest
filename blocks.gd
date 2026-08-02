@@ -318,8 +318,19 @@ func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> v
 	remove_block(x, y, z)
 	# Структурная целостность: блоки, потерявшие связь с корнем (кабина/база), падают в мир.
 	# Отложенно (call_deferred) — репарент/разморозка небезопасны прямо в физ-колбэке урона.
-	call_deferred("_detach_orphans")
-	call_deferred("rebuild_factory_links")   # топология изменилась — пересчитать цепочку фабрики
+	# Дедуп: call_deferred НЕ схлопывает одинаковые вызовы, а взрыв батареи сносит десятки блоков
+	# за один кадр — раньше это ставило в очередь по два полных пересчёта (BFS по сетке 11³ +
+	# перестройка связей фабрики) НА КАЖДЫЙ блок. Флаг гарантирует ровно один пересчёт за кадр.
+	if not _rebuild_queued:
+		_rebuild_queued = true
+		call_deferred("_deferred_rebuild")
+
+var _rebuild_queued: bool = false
+
+func _deferred_rebuild() -> void:
+	_rebuild_queued = false
+	_detach_orphans()
+	rebuild_factory_links()                  # топология изменилась — пересчитать цепочку фабрики
 
 # ── Структурная целостность ───────────────────────────────────────────────────
 # Корень постройки: КАБИНА (мобильная машина) или СТАЦИОНАРНЫЙ блок (база). Всё, что не

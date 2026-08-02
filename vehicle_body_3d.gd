@@ -64,6 +64,7 @@ var _energy: float = 0.0
 var _tick_prod: float = 0.0
 var _energy_cap: float = 0.0
 var _cap_timer: float = 0.0
+var _solar_count: int = 0            # кеш числа солнечных блоков (обновляется вместе с _cap_timer)
 
 func energy_cap() -> float:
 	return _energy_cap
@@ -100,20 +101,23 @@ func _energy_tick(delta: float) -> void:
 	_energy = minf(_energy + _tick_prod, _energy_cap)
 	_tick_prod = 0.0
 	_cap_timer -= delta
-	var solar := 0
-	if _cap_timer <= 0.0 or anchored:
+	# Пересчёт блоков — СТРОГО по таймеру 0.5с. Раньше условие было `_cap_timer <= 0.0 or anchored`,
+	# и на якоре `or anchored` сводил троттл на нет: перебор всех блоков шёл КАЖДЫЙ тик (на базе в
+	# 100 блоков это ~6000 Variant-обращений get("block") в секунду). Счётчик солнечных кешируем и
+	# используем между пересчётами — выработка идёт так же, просто состав блоков опрашиваем реже.
+	if _cap_timer <= 0.0:
+		_cap_timer = 0.5
 		var batteries := 0
+		_solar_count = 0
 		if block_map_node != null:
 			for b in block_map_node.get_children():
 				match b.get("block"):
 					G.Block.BATTERY: batteries += 1
-					G.Block.SOLAR:   solar += 1
-		if _cap_timer <= 0.0:
-			_cap_timer = 0.5
-			_energy_cap = batteries * BATTERY_CAP
-			_energy = minf(_energy, _energy_cap)
-	if anchored and solar > 0:
-		energy_produce(solar * SOLAR_RATE * delta)
+					G.Block.SOLAR:   _solar_count += 1
+		_energy_cap = batteries * BATTERY_CAP
+		_energy = minf(_energy, _energy_cap)
+	if anchored and _solar_count > 0:
+		energy_produce(_solar_count * SOLAR_RATE * delta)
 
 # ── Якорь (фиксация к миру, как в TerraTech) ──────────────────────────────────
 var anchored: bool = false
@@ -664,7 +668,7 @@ func _physics_process(delta: float) -> void:
 		joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
 	_process_input(joy, delta)
 	_check_ground()
-	_sync_mass()
+	_sync_mass(delta)
 
 	if _on_ground:
 		_apply_engine(delta)
@@ -695,34 +699,69 @@ func _process_input(joy: Vector2, delta: float) -> void:
 	var target_steer: float = -raw_steer * angle_limit
 	_steer_angle = lerp(_steer_angle, target_steer, steer_speed * delta)
 
-	# Передаём блокам для визуала колёс
-	for block in $blocks.get_children():
-		if block.has_method("set_throttle"): block.set_throttle(_throttle)
-		if block.has_method("set_steer"):    block.set_steer(raw_steer)
+	# Передаём блокам для визуала колёс. Список кешируем: раньше каждый физ-тик заново
+	# резолвился NodePath $blocks, аллоцировался массив get_children() и на КАЖДЫЙ блок шли два
+	# has_method() (на 40-блочной машине ~4800 поисков в секунду). Пересобираем только когда
+	# изменилось число детей (постановка/снятие блока, смена сборки).
+	for block in _drive_blocks():
+		block.set_throttle(_throttle)
+		block.set_steer(raw_steer)
 
 # ══════════════════════════════════════════
 # КОНТАКТ С ЗЕМЛЁЙ
 # ══════════════════════════════════════════
 
+# Объект запроса создаём ОДИН раз и переиспользуем: раньше каждый физ-тик рождались новый
+# PhysicsRayQueryParameters3D и новый Array [self] (3 аллокации × 60/с на каждую машину).
+var _ground_q: PhysicsRayQueryParameters3D = null
+
 func _check_ground() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-	var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
-		global_position,
-		global_position + Vector3.DOWN * 1.4
-	)
-	q.exclude = [self]
-	q.collision_mask = 1
-	_on_ground = space.intersect_ray(q).size() > 0
+	if _ground_q == null:
+		_ground_q = PhysicsRayQueryParameters3D.new()
+		_ground_q.exclude = [self]          # состав не меняется — задаём один раз
+		_ground_q.collision_mask = 1
+	_ground_q.from = global_position
+	_ground_q.to = global_position + Vector3.DOWN * 1.4
+	_on_ground = not space.intersect_ray(_ground_q).is_empty()
 
 # ══════════════════════════════════════════
 # СИНХРОНИЗАЦИЯ МАССЫ
 # ══════════════════════════════════════════
 
-func _sync_mass() -> void:
+# Масса меняется только когда меняется НАБОР колёс (вес колеса — константный @export). Раньше
+# она пересчитывалась каждый физ-тик: на каждое колесо — новый Dictionary из get_module_data()
+# (4-8 аллокаций за тик, 240-480/с на машину). Теперь считаем при смене числа колёс и раз в 0.5с
+# как страховка (колесо могло быть освобождено, оставшись в массиве).
+var _mass_wheels_n: int = -1
+var _mass_timer: float = 0.0
+
+# Блоки, принимающие газ/руль (колёса). Кеш инвалидируется по числу детей $blocks.
+var _drive_cache: Array = []
+var _drive_n: int = -1
+
+func _drive_blocks() -> Array:
+	var bl := block_map_node if block_map_node != null else get_node_or_null("blocks")
+	if bl == null:
+		return []
+	if bl.get_child_count() != _drive_n:
+		_drive_n = bl.get_child_count()
+		_drive_cache.clear()
+		for b in bl.get_children():
+			if b.has_method("set_throttle") and b.has_method("set_steer"):
+				_drive_cache.append(b)
+	return _drive_cache
+
+func _sync_mass(delta: float = 0.0) -> void:
+	_mass_timer -= delta
+	if Wheels.size() == _mass_wheels_n and _mass_timer > 0.0:
+		return
+	_mass_wheels_n = Wheels.size()
+	_mass_timer = 0.5
 	var total: float = base_weight
 	for w in Wheels:
 		if is_instance_valid(w):
-			total += w.get_module_data()["weight"]
+			total += float(w.weight)        # прямое поле вместо Dictionary из get_module_data()
 	mass = total
 
 # ══════════════════════════════════════════
@@ -1593,6 +1632,20 @@ func drop_hand_to_world() -> void:
 func _on_take_off_pressed() -> void:
 	drop_hand_to_world()
 
+# Кеш стреляющих блоков: зовётся каждый физ-тик, пока зажата Атака, и раньше каждый раз
+# резолвил $blocks, аллоцировал get_children() и звал has_method на каждом блоке.
+var _atk_cache: Array = []
+var _atk_n: int = -1
+
 func _on_attack_timeout() -> void:
-	for i in $blocks.get_children():
-		if i.has_method("attack"): i.attack()
+	var bl := block_map_node if block_map_node != null else get_node_or_null("blocks")
+	if bl == null:
+		return
+	if bl.get_child_count() != _atk_n:
+		_atk_n = bl.get_child_count()
+		_atk_cache.clear()
+		for i in bl.get_children():
+			if i.has_method("attack"):
+				_atk_cache.append(i)
+	for i in _atk_cache:
+		i.attack()

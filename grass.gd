@@ -103,7 +103,12 @@ func _process(delta: float) -> void:
 	if _refresh_t >= 0.5:
 		_refresh_t = 0.0
 		_benders = get_tree().get_nodes_in_group("grass_benders")
-	_benders = _benders.filter(func(t): return is_instance_valid(t))
+	# Отсев мёртвых — вместе с обновлением списка (раз в 0.5с), а не каждый кадр: .filter()
+	# каждый кадр создавал новую Callable + новый Array и звал is_instance_valid на всех
+	# benders (а туда попадает КАЖДЫЙ блок машины). Между обновлениями мёртвые отсеиваются
+	# ниже по месту, в самом цикле.
+	if _refresh_t == 0.0:
+		_benders = _benders.filter(func(t): return is_instance_valid(t))
 
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
@@ -116,6 +121,8 @@ func _process(delta: float) -> void:
 	#    fading footprint when it has moved enough (the lingering trail behind it).
 	var live: Array[Vector2] = []
 	for b in _benders:
+		if not is_instance_valid(b):
+			continue                       # мёртвых чистит периодический filter выше
 		var bp: Vector3 = b.global_position
 		if has_map and bp.y - map_node.terrain_height_at(bp) > ground_touch_height:
 			continue

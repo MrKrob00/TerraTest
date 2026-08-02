@@ -56,7 +56,7 @@ func _ready() -> void:
 		guard += 1
 	if map.get_dims().x <= 0:
 		return
-	_place(map, map.get_dims())
+	await _place(map, map.get_dims())      # расстановка уступает кадры (см. PLACE_BATCH)
 	_cull_t = 0.0
 
 # ── Биом в мировой точке (зеркалит шейдер) ────────────────────────────────────
@@ -106,8 +106,18 @@ func _place(map: Node, dims: Vector2i) -> void:
 			continue
 		var placed: Array = []
 		var attempts: int = setp.count * 12
+		# Пространственный хеш вместо линейного скана (как в resource_nodes): раньше _too_close
+		# сравнивал каждую точку со ВСЕМИ принятыми — при count=400 это ~1 млн distance_to на
+		# один набор, одним куском без единого кадра. Плюс отдаём кадр каждые PLACE_BATCH попыток.
+		var grid: Dictionary = {}
+		var cell: float = maxf(setp.min_spacing, 0.001)
+		var since_yield: int = 0
 		while placed.size() < setp.count and attempts > 0:
 			attempts -= 1
+			since_yield += 1
+			if since_yield >= PLACE_BATCH:
+				since_yield = 0
+				await get_tree().process_frame
 			var lx: float = randf_range(-half_x, half_x)
 			var lz: float = randf_range(-half_z, half_z)
 			var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
@@ -119,9 +129,13 @@ func _place(map: Node, dims: Vector2i) -> void:
 			if int(setp.biome) != ANY and _biome_at(world.x, world.z, h) != int(setp.biome):
 				continue
 			var local_pos: Vector3 = to_local(Vector3(world.x, h + setp.y_offset, world.z))
-			if _too_close(placed, local_pos, setp.min_spacing):
+			if _too_close_hashed(grid, cell, local_pos, setp.min_spacing):
 				continue
 			placed.append(local_pos)
+			var key := Vector2i(floori(local_pos.x / cell), floori(local_pos.z / cell))
+			if not grid.has(key):
+				grid[key] = [] as Array[Vector3]
+			(grid[key] as Array).append(local_pos)
 			_data.append({
 				"pos": local_pos,
 				"scene": setp.scenes.pick_random(),
@@ -138,10 +152,26 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 	var h4: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz - s))
 	return maxf(maxf(h1, h2), maxf(h3, h4)) - minf(minf(h1, h2), minf(h3, h4))
 
+const PLACE_BATCH := 400            # попыток на кадр при расстановке пропов
+
 func _too_close(placed: Array, p: Vector3, spacing: float) -> bool:
 	for q in placed:
 		if (q as Vector3).distance_to(p) < spacing:
 			return true
+	return false
+
+# O(1)-версия: смотрим только свою и 8 соседних ячеек решётки со стороной spacing.
+func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float) -> bool:
+	var cx := floori(p.x / cell)
+	var cz := floori(p.z / cell)
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			var bucket = grid.get(Vector2i(cx + dx, cz + dz), null)
+			if bucket == null:
+				continue
+			for q in (bucket as Array):
+				if (q as Vector3).distance_to(p) < spacing:
+					return true
 	return false
 
 # ── Стриминг: ноды только для ближних пропов ──────────────────────────────────
