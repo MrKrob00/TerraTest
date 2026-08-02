@@ -31,7 +31,7 @@ func _on_timer_timeout() -> void:
 
 	# Получаем цену
 	var item_type = current_item.get("type")
-	var type_name = ""
+	var type_name: String = ""
 	if item_type != null:
 		type_name = current_item.Type.keys()[item_type]  # 0 → "ORE"
 	else:

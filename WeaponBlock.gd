@@ -47,10 +47,10 @@ func attack() -> void:
 	_fire_hold = FIRE_HOLD
 
 func _is_in_cone(body: Node3D) -> bool:
-	var dir_world = (body.global_position - pivot.global_position).normalized()
-	var dir_local = pivot.global_transform.basis.inverse() * dir_world
-	var yaw   = abs(rad_to_deg(atan2(-dir_local.x, -dir_local.z)))
-	var pitch = abs(rad_to_deg(atan2(dir_local.y,
+	var dir_world: Vector3 = (body.global_position - pivot.global_position).normalized()
+	var dir_local: Vector3 = pivot.global_transform.basis.inverse() * dir_world
+	var yaw: float = abs(rad_to_deg(atan2(-dir_local.x, -dir_local.z)))
+	var pitch: float = abs(rad_to_deg(atan2(dir_local.y,
 		Vector2(dir_local.x, dir_local.z).length())))
 	return yaw <= YAW_LIMIT and pitch <= PITCH_LIMIT
 
@@ -62,9 +62,9 @@ func _update_current_target() -> void:
 		return
 
 	var closest: Node3D = null
-	var closest_dist = INF
+	var closest_dist: float = INF
 	for t in _targets:
-		var d = pivot.global_position.distance_to(t.global_position)
+		var d: float = pivot.global_position.distance_to(t.global_position)
 		if d < closest_dist:
 			closest_dist = d
 			closest = t
@@ -93,11 +93,11 @@ func _track_target(delta: float, firing: bool) -> void:
 			and _is_in_cone(_current_target)
 	if has_target:
 		# Приоритет: незакрытая кабина → ближайший блок машины (см. _aim_point_for).
-		var target_pos = _aim_point_for(_current_target)
-		var dir_world = (target_pos - pivot.global_position).normalized()
-		var dir_local = global_transform.basis.inverse() * dir_world
-		var yaw   = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
-		var pitch = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		var target_pos: Vector3 = _aim_point_for(_current_target)
+		var dir_world: Vector3 = (target_pos - pivot.global_position).normalized()
+		var dir_local: Vector3 = global_transform.basis.inverse() * dir_world
+		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
+		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
 		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
 	else:
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)

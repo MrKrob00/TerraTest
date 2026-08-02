@@ -25,8 +25,8 @@ func _on_item_received() -> void:
 
 func _on_timer_visual_timeout():
 	if !current_item: return 
-	var item = current_item
-	var target = Vector3.ZERO
+	var item: Node3D = current_item
+	var target: Vector3 = Vector3.ZERO
 	if item.position == $item_slot.position: target = $item_slot2.position
 	elif item.position == $item_slot2.position: 
 		target = $item_slot3.position
@@ -37,11 +37,11 @@ func _on_timer_visual_timeout():
 		_set_processing_visual(false)
 		call_deferred("_try_push")
 	
-	var tween = create_tween()
+	var tween: Tween = create_tween()
 	tween.tween_property(item, "position", target, 0.3)
 
 func _set_processing_visual(active: bool) -> void:
-	var mat = StandardMaterial3D.new()
+	var mat: StandardMaterial3D = StandardMaterial3D.new()
 	mat.albedo_color = Color.GREEN if active else Color.RED
 	$MeshInstance3D.material_override = mat
 	# Например мигание или вращение меша процессора

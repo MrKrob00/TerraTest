@@ -19,7 +19,7 @@ func _find_next_block() -> void:
 		push_warning("FactoryBlock: не найден node 'blocks'")
 		return
 	var block_map = owner_node.get_node("blocks")
-	var forward
+	var forward: Vector3
 	if block == G.Block.PROCESSOR or \
 		block == G.Block.SELLER:
 		forward = Vector3(0, 0, -2)
@@ -28,15 +28,15 @@ func _find_next_block() -> void:
 		elif rotation.y == PI*2.0: forward = Vector3(0,0,1)
 		else: forward = Vector3(sign(rotation.y),0,0)*-1
 	
-	var my_local = round(position)
-	var neighbor_local = my_local + forward
+	var my_local: Vector3 = round(position)
+	var neighbor_local: Vector3 = my_local + forward
 
 	# НАМЕРЕННО прямой node_map (только якорная клетка). 2×2-блок (продавец/процессор)
 	# принимает ресурс только в ОДНУ клетку — якорную, то есть вкинуть в него можно лишь
 	# с её двух открытых сторон. Смотрим в не-якорную клетку — соединения нет, это дизайн.
 	# Локальная позиция клетки = (x-5, y-5, z-5) от ядра (сетка 11³, центр 5 — см. blocks.gd),
 	# поэтому обратно в grid-ключ node_map прибавляем 5 по ВСЕМ осям (раньше Y был снизу, без +5).
-	var key = "%d,%d,%d" % [
+	var key: String = "%d,%d,%d" % [
 		int(neighbor_local.x) + 5,
 		int(neighbor_local.y) + 5,
 		int(neighbor_local.z) + 5
@@ -66,16 +66,16 @@ func try_receive(item: Node3D) -> bool:
 	if item is RigidBody3D:
 		item.freeze = true
 	# Запоминаем мировую позицию ДО reparent
-	var world_pos = item.global_position
+	var world_pos: Vector3 = item.global_position
 	item.reparent(self, true)
 	# Восстанавливаем мировую позицию ПОСЛЕ reparent
 	item.global_position = world_pos
 	# Анимируем к item_slot
-	var target = Vector3.ZERO
+	var target: Vector3 = Vector3.ZERO
 	if has_node("item_slot"):
 		target = to_local(global_position) + $item_slot.position
 		target = $item_slot.position
-	var tween = create_tween()
+	var tween: Tween = create_tween()
 	tween.tween_property(item, "position", target, 0.3)
 	tween.finished.connect(func(): _on_item_received(), CONNECT_ONE_SHOT)
 	return true
