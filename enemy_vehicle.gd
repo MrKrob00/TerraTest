@@ -234,7 +234,7 @@ func _physics_process(delta: float) -> void:
 	_check_ground()
 	_sync_mass(delta)
 	_update_ai(delta)
-	_detect_obstacles()
+	_detect_obstacles(delta)
 
 	if _on_ground:
 		_apply_engine(delta)
@@ -434,34 +434,43 @@ func _check_stuck(delta: float) -> void:
 # Лучи смотрят в направлении движения (вперёд ИЛИ назад)
 # ══════════════════════════════════════════
 
-func _detect_obstacles() -> void:
-	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-	var origin: Vector3 = global_position + Vector3.UP * 0.5
+# Троттл + переиспользуемый объект запроса. Раньше это шло КАЖДЫЙ физ-тик и на каждом вызове
+# рождало массив dirs, массив hit и ТРИ новых PhysicsRayQueryParameters3D с новым [self]:
+# ~3 луча + ~11 аллокаций на врага за тик (при 9 врагах ≈1600 лучей и 5900 аллокаций в секунду).
+# Препятствия — вещь инерционная, 10 Гц достаточно; сглаживание ниже осталось прежним, поэтому
+# руль ведёт себя так же плавно. Между опросами применяем последний результат.
+const OBSTACLE_HZ := 0.1
+var _obst_t: float = 0.0
+var _obst_q: PhysicsRayQueryParameters3D = null
+var _obstacle_correction_target: float = 0.0
 
-	# Если едем назад — лучи тоже назад
-	var ray_fwd: Vector3 = _get_forward() if _throttle >= 0.0 else -_get_forward()
-	var ang_rad: float = deg_to_rad(obstacle_ray_angle)
+func _detect_obstacles(delta: float = 0.0) -> void:
+	_obst_t -= delta
+	if _obst_t <= 0.0:
+		_obst_t = OBSTACLE_HZ
+		var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+		var origin: Vector3 = global_position + Vector3.UP * 0.5
+		# Если едем назад — лучи тоже назад
+		var ray_fwd: Vector3 = _get_forward() if _throttle >= 0.0 else -_get_forward()
+		var ang_rad: float = deg_to_rad(obstacle_ray_angle)
+		if _obst_q == null:
+			_obst_q = PhysicsRayQueryParameters3D.new()
+			_obst_q.exclude = [self]
+			_obst_q.collision_mask = 1
+		var hit_l := _ray_hits(space, origin, ray_fwd.rotated(Vector3.UP, -ang_rad))  # левый
+		var hit_c := _ray_hits(space, origin, ray_fwd)                                # центр
+		var hit_r := _ray_hits(space, origin, ray_fwd.rotated(Vector3.UP,  ang_rad))  # правый
+		var correction: float = 0.0
+		if   hit_l and !hit_r: correction = -0.5   # объект слева → уходим вправо
+		elif hit_r and !hit_l: correction =  0.5   # объект справа → уходим влево
+		elif hit_c:            correction =  0.5 * (1.0 if randf() > 0.5 else -1.0)
+		_obstacle_correction_target = correction * deg_to_rad(steer_max_angle)
+	_obstacle_correction = lerp(_obstacle_correction, _obstacle_correction_target, 0.15)
 
-	var dirs: Array[Vector3] = [
-		ray_fwd.rotated(Vector3.UP, -ang_rad),  # 0 = левый  (для +Z перёд: CW = влево)
-		ray_fwd,                                 # 1 = центр
-		ray_fwd.rotated(Vector3.UP,  ang_rad),  # 2 = правый (для +Z перёд: CCW = вправо)
-	]
-
-	var hit: Array[bool] = [false, false, false]
-	for i in 3:
-		var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, origin + dirs[i] * obstacle_ray_length)
-		q.exclude       = [self]
-		q.collision_mask = 1
-		if space.intersect_ray(q).size() > 0:
-			hit[i] = true
-
-	var correction: float = 0.0
-	if   hit[0] and !hit[2]: correction = -0.5   # объект слева → уходим вправо
-	elif hit[2] and !hit[0]: correction =  0.5   # объект справа → уходим влево
-	elif hit[1]:              correction =  0.5 * (1.0 if randf() > 0.5 else -1.0)
-
-	_obstacle_correction = lerp(_obstacle_correction, correction * deg_to_rad(steer_max_angle), 0.15)
+func _ray_hits(space: PhysicsDirectSpaceState3D, origin: Vector3, dir: Vector3) -> bool:
+	_obst_q.from = origin
+	_obst_q.to = origin + dir * obstacle_ray_length
+	return not space.intersect_ray(_obst_q).is_empty()
 
 # ══════════════════════════════════════════
 # ДВИЖЕНИЕ К ТОЧКЕ

@@ -18,6 +18,13 @@ const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, к�
 const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
 const CARD_COUNT := 28          # сколько карточек в «хмаре» (много; часть видна по ходу анимации)
+# Потолок карточек, которые можно создать за ОДИН кадр по всей игре. Сборка машины зовёт play()
+# на каждый блок сразу: 40 блоков × 28 = 1120 MeshInstance3D + столько же QuadMesh и
+# ShaderMaterial в одном кадре — заметный хич на загрузке/респавне. Сверх лимита эффект просто
+# получает меньше карточек (или пропускается) — визуально почти незаметно, зато без просадки.
+const CARDS_PER_FRAME := 120
+static var _cards_frame: int = -1
+static var _cards_used: int = 0
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
 # AOE-взрыв: урон блокам в радиусе (спад от центра) + дешёвый огненный эффект (два additive-меша,
@@ -104,7 +111,18 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	cloud.global_transform = block.global_transform * Transform3D(Basis(), aabb.get_center())
 	var half := aabb.size * 0.5
 	var mats: Array = []
-	for i in CARD_COUNT:
+	# Бюджет карточек на кадр (см. CARDS_PER_FRAME): считаем кадры по счётчику движка.
+	var frame := Engine.get_frames_drawn()
+	if frame != _cards_frame:
+		_cards_frame = frame
+		_cards_used = 0
+	var budget: int = maxi(CARDS_PER_FRAME - _cards_used, 0)
+	var count: int = mini(CARD_COUNT, budget)
+	_cards_used += count
+	if count <= 0:
+		cloud.queue_free()
+		return
+	for i in count:
 		var card := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2.ONE

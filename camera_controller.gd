@@ -247,9 +247,18 @@ func reset_gaze() -> void:
 
 # Высота террейна под точкой (мировые координаты). Карты нет — вернёт -INF,
 # тогда ограничение по высоте просто не действует.
+# Зовётся каждый физ-тик из camera_movement. Кеш срабатывал только при УСПЕХЕ: пока карты в
+# сцене нет (первые кадры) или её вообще нет, поиск шёл заново КАЖДЫЙ тик — аллокация массива
+# всех детей сцены + has_method() на каждом. Держим отдельный троттл на неудачный поиск.
+var _terrain_retry: float = 0.0
+
 func _terrain_height(world_pos: Vector3) -> float:
 	if _terrain == null or not is_instance_valid(_terrain):
 		_terrain = null
+		if _terrain_retry > 0.0:
+			_terrain_retry -= get_physics_process_delta_time()
+			return -INF                     # не пересканируем сцену чаще раза в 0.5с
+		_terrain_retry = 0.5
 		for c in get_tree().current_scene.get_children():
 			if c.has_method("terrain_height_at"):
 				_terrain = c
