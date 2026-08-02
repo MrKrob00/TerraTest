@@ -704,6 +704,9 @@ func _process_input(joy: Vector2, delta: float) -> void:
 	# has_method() (на 40-блочной машине ~4800 поисков в секунду). Пересобираем только когда
 	# изменилось число детей (постановка/снятие блока, смена сборки).
 	for block in _drive_blocks():
+		if not is_instance_valid(block):
+			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
+			continue
 		block.set_throttle(_throttle)
 		block.set_steer(raw_steer)
 
@@ -1662,4 +1665,7 @@ func _on_attack_timeout() -> void:
 			if i.has_method("attack"):
 				_atk_cache.append(i)
 	for i in _atk_cache:
+		if not is_instance_valid(i):
+			_atk_n = -1                 # блок уничтожили — пересоберём кеш на следующем вызове
+			continue
 		i.attack()
