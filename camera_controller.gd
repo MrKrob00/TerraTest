@@ -9,7 +9,7 @@ var vehicles: Array
 @onready var Spring: SpringArm3D = $SpringArm3D
 @onready var hud: CanvasLayer = $HUD
 @onready var joystick_move = $HUD/Joystick_movement
-@onready var joystick_cam = $HUD/Joystick_camera
+@onready var joystick_cam: TouchScreenButton = $HUD/Joystick_camera
 
 @export var RADIUS: float = 8.0
 @export var CAM_HEIGHT: float = 4.0
@@ -285,11 +285,11 @@ func on_vehicle_died(dead: Node) -> void:
 		if is_instance_valid(v) and v != dead:
 			alive.append(v)
 	if alive.is_empty():
-		var starter = _spawn_starter_vehicle(origin)
+		var starter: Node = _spawn_starter_vehicle(origin)
 		if starter:
 			switch_to_vehicle(starter)
 		return
-	var best = alive[0]
+	var best: RigidBody3D = alive[0]
 	var best_d := INF
 	for v in alive:
 		var d: float = origin.distance_to((v as Node3D).global_position)

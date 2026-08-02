@@ -35,7 +35,7 @@ extends RigidBody3D
 @export var RADIUS: float = 8.0
 @export var CAM_HEIGHT: float = 8.0
 @export var ROT_SPEED: float = 1.5
-@onready var camera_controller = $"../Camera Controller"
+@onready var camera_controller: Node3D = $"../Camera Controller"
 
 # ══════════════════════════════════════════
 # ВНУТРЕННИЕ ПЕРЕМЕННЫЕ
@@ -512,7 +512,7 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	
 	# Перебираємо всі фізичні форми самого Vehicle
 	for owner_id in get_shape_owners():
-		var collision_shape = shape_owner_get_owner(owner_id) as CollisionShape3D
+		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
 		if is_instance_valid(collision_shape):
 			# Якщо ця колізія належить знищеному блоку
@@ -655,7 +655,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("Attack") and not typing:
 		_on_attack_timeout()
 
-	var joy = camera_controller.joystick_move.get_joystick_dir()
+	var joy: Vector2 = camera_controller.joystick_move.get_joystick_dir()
 	# ПК: WASD/стрелки дают тот же Vector2, что и тач-джойстик (см. _process_input ниже).
 	# Суммируем с джойстиком и клампим — вместе на практике не используются, но так честно.
 	# Гасим клавиатурную часть, пока фокус в текстовом поле (напр. поиск в гараже) —
@@ -1007,11 +1007,11 @@ const _UI_HIT_NODES := ["Take", "TakeOff", "Attack", "Movement", "Building",
 func _tap_over_ui(pos: Vector2) -> bool:
 	if get_viewport().gui_get_hovered_control() != null:
 		return true
-	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
+	var hud: CanvasLayer = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud == null:
 		return false
 	for nm in _UI_HIT_NODES:
-		var n = hud.get_node_or_null(nm)
+		var n: Node = hud.get_node_or_null(nm)
 		if n == null or not (n is CanvasItem) or not n.visible:
 			continue
 		if n is Control and (n as Control).get_global_rect().has_point(pos):
@@ -1022,7 +1022,7 @@ func _tap_over_ui(pos: Vector2) -> bool:
 
 # Точка pos внутри области нажатия TouchScreenButton (учитываем shape_centered, как движок).
 func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
-	var s = b.shape
+	var s: Shape2D = b.shape
 	if s == null:
 		return false
 	var o: Vector2 = b.global_position
@@ -1037,9 +1037,9 @@ func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
 	return false
 
 func _handle_click(screen_pos: Vector2) -> void:
-	var camera = camera_controller.camera
-	var world_origin = camera.project_ray_origin(screen_pos)
-	var world_dir    = camera.project_ray_normal(screen_pos)
+	var camera: Camera3D = camera_controller.camera
+	var world_origin: Vector3 = camera.project_ray_origin(screen_pos)
+	var world_dir: Vector3 = camera.project_ray_normal(screen_pos)
 	# Луч надо перевести из мира в ЛОКАЛЬНУЮ сетку блоков. Старый код вычитал только
 	# position (без учёта поворота машины и трансформа родителя) и НЕ поворачивал
 	# направление — поэтому, как только машина повёрнута (а в Building остаётся поворот
@@ -1051,7 +1051,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 	if block_take:
 		var holder: Node = camera_controller.camera.get_child(0)
 		if holder.get_child_count() > 0:
-			var held_bt = holder.get_child(0).get("block")
+			var held_bt: int = holder.get_child(0).get("block")
 			# Кабина → всегда новая машина на землю. Стационар → новая база на землю, ТОЛЬКО
 			# если сейчас управляем МАШИНОЙ; если управляем СТАНЦИЕЙ — идёт обычным путём
 			# сетки (прикрепляется к базе, can_attach разрешает стационар-на-стационар).
@@ -1159,7 +1159,7 @@ func _preview_held(res: Dictionary) -> void:
 		return
 	var orient := _face_orient(res.face, instance.block) * build_basis
 	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
-	var world_basis = (block_map_node.global_transform.basis * orient).orthonormalized()
+	var world_basis: Basis = (block_map_node.global_transform.basis * orient).orthonormalized()
 	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
 	# камерой; без этого при повороте камеры он «смотрел» на неё).
 	instance.top_level = true
@@ -1231,7 +1231,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 	# Регистрация в списке техники (как _spawn_starter_vehicle) + обновление HUD.
 	if camera_controller and "vehicles" in camera_controller and not camera_controller.vehicles.has(v):
 		camera_controller.vehicles.append(v)
-	var hud = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
+	var hud: CanvasLayer = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud and hud.has_method("_rebuild_vehicle_list"):
 		hud._rebuild_vehicle_list()
 	instance.queue_free()                           # ядро из руки потрачено
@@ -1295,7 +1295,7 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	for _i in range(128):
 		# Проверяем ТЕКУЩУЮ ячейку (включая стартовую) ещё до шага.
 		if _in_bounds(cx, cy, cz):
-			var block = block_map_node.get_block(cx, cy, cz)
+			var block: int = block_map_node.get_block(cx, cy, cz)
 			if block != 0:
 				result["hit"] = true
 				result["x"] = cx; result["y"] = cy; result["z"] = cz
@@ -1390,7 +1390,7 @@ func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 func _grab_world_block(screen_pos: Vector2) -> bool:
 	if camera_controller == null or camera_controller.camera == null:
 		return false
-	var cam = camera_controller.camera
+	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var to: Vector3 = from + cam.project_ray_normal(screen_pos) * 500.0
 	var q := PhysicsRayQueryParameters3D.create(from, to)
@@ -1399,7 +1399,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
-	var body = hit.get("collider")
+	var body: Node3D = hit.get("collider")
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or not (body is Node3D) or body.get_parent() != objects or not ("block" in body):
 		return false                               # только свободный блок, реально лежащий в мире
@@ -1429,7 +1429,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 
 func _on_take_pressed() -> void:
 	if block_take:
-		var instance = camera_controller.camera.get_child(0).get_child(0)
+		var instance: VehicleBlock = camera_controller.camera.get_child(0).get_child(0)
 		# Кабина → новая машина; стационар (с машины) → новая база. Ставятся В МИР на землю.
 		# Стационар на СТАНЦИИ на землю не идёт (_cabin_ground будет null — превью шло сеткой).
 		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN \
@@ -1458,7 +1458,7 @@ func _on_take_pressed() -> void:
 		var orient := _face_orient(pres.face, instance.block) * build_basis
 		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"]-5, BuildingBlock["z"]-5)
-		var collision = instance.get_child(0).duplicate()
+		var collision: CollisionShape3D = instance.get_child(0).duplicate()
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		if collision.shape.size == Vector3(2,2,2):
 			collision.position += Vector3(-0.5,0.5,-0.5)
@@ -1535,7 +1535,7 @@ func take_block_into_hand(block_type: int) -> bool:
 	# Рука занята → кладём текущий блок в инвентарь и берём новый (замена). Раньше тут был
 	# отказ (return false), и выбор нового блока из инвентаря игнорировался.
 	_return_hand_to_inventory()
-	var instance = scene.instantiate()
+	var instance: VehicleBlock = scene.instantiate()
 	var holder: Node = camera_controller.camera.get_child(0)   # takepos Marker3D
 	holder.add_child(instance)
 	if instance is Node3D:
@@ -1552,7 +1552,7 @@ func take_block_into_hand(block_type: int) -> bool:
 	# (и обновляем визуал HUD — кнопки Take/TakeOff). _on_building_pressed сам сгейтит
 	# повтор через `if Building: return`.
 	_on_building_pressed()
-	var hud = camera_controller.hud
+	var hud: CanvasLayer = camera_controller.hud
 	if hud and hud.has_method("_on_building_pressed"):
 		hud._on_building_pressed()
 	return true

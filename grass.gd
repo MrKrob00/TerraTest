@@ -121,7 +121,7 @@ func _process(delta: float) -> void:
 			continue
 		var p := Vector2(bp.x, bp.z)
 		live.append(p)
-		var last = b.get_meta("_last_print", Vector2(INF, INF))
+		var last: Vector2 = b.get_meta("_last_print", Vector2(INF, INF))
 		if last.distance_to(p) >= footprint_spacing:
 			b.set_meta("_last_print", p)
 			_footprints.append({"pos": p, "born": _time})
@@ -182,7 +182,7 @@ func _corr_init() -> void:
 	if map_node is Node3D:
 		_corr_center = Vector2((map_node as Node3D).global_position.x, (map_node as Node3D).global_position.z)
 	if map_node and map_node.has_method("get_dims"):
-		var d = map_node.get_dims()
+		var d: Vector2i = map_node.get_dims()
 		if d.x > 0:
 			corr_map_size = float(d.x)
 	_corr_spread_t = corr_spread_interval

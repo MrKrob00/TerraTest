@@ -42,7 +42,7 @@ func _physics_process(delta: float) -> void:
 			%wheel.rotation.x += side * throttle_input * delta * 3.0
 
 func get_module_data() -> Dictionary:
-	var vehicle = get_parent().get_parent()
+	var vehicle: Node3D = get_parent().get_parent()
 	var car_forward: Vector3 = vehicle.global_transform.basis.z
 
 	var wheel_dir: Vector3
