@@ -5,9 +5,9 @@ extends Node3D
 
 var vehicles: Array
 
-@onready var camera = $SpringArm3D/Camera3D
-@onready var Spring = $SpringArm3D
-@onready var hud = $HUD
+@onready var camera: Camera3D = $SpringArm3D/Camera3D
+@onready var Spring: SpringArm3D = $SpringArm3D
+@onready var hud: CanvasLayer = $HUD
 @onready var joystick_move = $HUD/Joystick_movement
 @onready var joystick_cam = $HUD/Joystick_camera
 
@@ -148,7 +148,7 @@ func _ready():
 		joystick_cam.set_process_input(false)
 	# Собираем только управляемую игроком технику (у неё есть take_block_into_hand),
 	# чтобы враг (другой RigidBody3D в Vehicles) не попадал в список переключения.
-	var vehicle_childs = $"..".get_children()
+	var vehicle_childs: Array[Node] = $"..".get_children()
 	for i in vehicle_childs:
 		if i is RigidBody3D and i.has_method("take_block_into_hand"):
 			if !vehicles.has(i):

@@ -27,7 +27,7 @@ func set_steer(value: float) -> void:
 		steer_input = -value
 
 func _physics_process(delta: float) -> void:
-	var target_angle = deg_to_rad(steer_input * MAX_STEER_ANGLE)
+	var target_angle: float = deg_to_rad(steer_input * MAX_STEER_ANGLE)
 	current_steer_angle = lerp(current_steer_angle, target_angle, STEER_SPEED * delta)
 
 	if has_node("%wheel"):
@@ -43,7 +43,7 @@ func _physics_process(delta: float) -> void:
 
 func get_module_data() -> Dictionary:
 	var vehicle = get_parent().get_parent()
-	var car_forward = vehicle.global_transform.basis.z
+	var car_forward: Vector3 = vehicle.global_transform.basis.z
 
 	var wheel_dir: Vector3
 	if is_front:
@@ -51,7 +51,7 @@ func get_module_data() -> Dictionary:
 	else:
 		wheel_dir = car_forward
 
-	var force = Vector3.ZERO
+	var force: Vector3 = Vector3.ZERO
 	if is_drive:
 		force = wheel_dir * throttle_input * wheel_power
 

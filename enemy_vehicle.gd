@@ -201,13 +201,13 @@ func _eject_blocks() -> void:
 				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
 func _setup_detection_area() -> void:
-	var area = Area3D.new()
+	var area: Area3D = Area3D.new()
 	area.name             = "DetectionArea"
 	area.collision_layer  = 0
 	area.collision_mask   = detection_mask  # по умолчанию слой machine (корпуса машин)
 
-	var col  = CollisionShape3D.new()
-	var sph  = SphereShape3D.new()
+	var col: CollisionShape3D = CollisionShape3D.new()
+	var sph: SphereShape3D = SphereShape3D.new()
 	sph.radius = detection_radius
 	col.shape  = sph
 	area.add_child(col)
@@ -222,8 +222,8 @@ func _setup_patrol_points() -> void:
 		return
 	_patrol_targets.clear()
 	for i in patrol_points_count:
-		var ang  = (TAU / patrol_points_count) * i + randf_range(-0.5, 0.5)
-		var dist = patrol_radius * randf_range(0.5, 1.0)
+		var ang: float = (TAU / patrol_points_count) * i + randf_range(-0.5, 0.5)
+		var dist: float = patrol_radius * randf_range(0.5, 1.0)
 		_patrol_targets.append(_start_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
 
 # ══════════════════════════════════════════
@@ -270,7 +270,7 @@ func _ai_patrol(delta: float) -> void:
 		_throttle = 0.0
 		return
 
-	var target_pos = _patrol_targets[_patrol_index]
+	var target_pos: Vector3 = _patrol_targets[_patrol_index]
 
 	# Достигли точки — берём следующую сразу (не делаем return)
 	if global_position.distance_to(target_pos) < waypoint_reach_dist:
@@ -288,7 +288,7 @@ func _ai_chase(delta: float) -> void:
 		_lose_target()
 		return
 
-	var dist = global_position.distance_to(_target.global_position)
+	var dist: float = global_position.distance_to(_target.global_position)
 
 	if dist <= attack_range:
 		_state = AIState.ATTACK
@@ -391,7 +391,7 @@ func _ai_stuck_recovery(delta: float) -> void:
 	# Едем в обратную сторону и рулим
 	_throttle    = lerp(_throttle, _stuck_drive_dir * 0.8, 6.0 * delta)
 	var speed_ratio = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
+	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle = lerp(_steer_angle, angle_limit * 0.7 * sign(_stuck_drive_dir), steer_speed * delta)
 
 	if _stuck_recovery_timer <= 0.0:
@@ -419,7 +419,7 @@ func _check_stuck(delta: float) -> void:
 		return
 
 	_stuck_timer = 0.0
-	var moved    = global_position.distance_to(_stuck_check_pos)
+	var moved: float = global_position.distance_to(_stuck_check_pos)
 	_stuck_check_pos = global_position
 
 	if abs(_throttle) > 0.15 and moved < 0.5:
@@ -434,28 +434,28 @@ func _check_stuck(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _detect_obstacles() -> void:
-	var space  = get_world_3d().direct_space_state
-	var origin = global_position + Vector3.UP * 0.5
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var origin: Vector3 = global_position + Vector3.UP * 0.5
 
 	# Если едем назад — лучи тоже назад
-	var ray_fwd = _get_forward() if _throttle >= 0.0 else -_get_forward()
-	var ang_rad = deg_to_rad(obstacle_ray_angle)
+	var ray_fwd: Vector3 = _get_forward() if _throttle >= 0.0 else -_get_forward()
+	var ang_rad: float = deg_to_rad(obstacle_ray_angle)
 
-	var dirs = [
+	var dirs: Array[Vector3] = [
 		ray_fwd.rotated(Vector3.UP, -ang_rad),  # 0 = левый  (для +Z перёд: CW = влево)
 		ray_fwd,                                 # 1 = центр
 		ray_fwd.rotated(Vector3.UP,  ang_rad),  # 2 = правый (для +Z перёд: CCW = вправо)
 	]
 
-	var hit = [false, false, false]
+	var hit: Array[bool] = [false, false, false]
 	for i in 3:
-		var q = PhysicsRayQueryParameters3D.create(origin, origin + dirs[i] * obstacle_ray_length)
+		var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(origin, origin + dirs[i] * obstacle_ray_length)
 		q.exclude       = [self]
 		q.collision_mask = 1
 		if space.intersect_ray(q).size() > 0:
 			hit[i] = true
 
-	var correction = 0.0
+	var correction: float = 0.0
 	if   hit[0] and !hit[2]: correction = -0.5   # объект слева → уходим вправо
 	elif hit[2] and !hit[0]: correction =  0.5   # объект справа → уходим влево
 	elif hit[1]:              correction =  0.5 * (1.0 if randf() > 0.5 else -1.0)
@@ -467,25 +467,25 @@ func _detect_obstacles() -> void:
 # ══════════════════════════════════════════
 
 func _drive_toward(target_pos: Vector3, speed_factor: float, delta: float) -> void:
-	var to_target = target_pos - global_position
+	var to_target: Vector3 = target_pos - global_position
 	to_target.y   = 0.0
 	if to_target.length_squared() < 0.001:
 		return
 
-	var target_dir = to_target.normalized()
+	var target_dir: Vector3 = to_target.normalized()
 
-	var fwd_flat = Vector3(_get_forward().x, 0.0, _get_forward().z)
+	var fwd_flat: Vector3 = Vector3(_get_forward().x, 0.0, _get_forward().z)
 	if fwd_flat.length_squared() < 0.001:
 		return
 	fwd_flat = fwd_flat.normalized()
 
 	# Знаковый угол: отрицательный = цель справа, положительный = цель слева
-	var angle_to_target = fwd_flat.signed_angle_to(target_dir, Vector3.UP)
+	var angle_to_target: float = fwd_flat.signed_angle_to(target_dir, Vector3.UP)
 
 	# steer_input < 0 → нос едет вправо (steer_angle < 0 → target_yaw < 0 → CW = право)
 	var steer_input = clamp(angle_to_target / PI, -1.0, 1.0)
 	var speed_ratio = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
+	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle    = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
 
 	# Газ: снижаем на резком повороте, минимум 0.4 чтобы машина всегда набирала скорость
@@ -507,10 +507,10 @@ func _lose_target() -> void:
 	_state        = AIState.PATROL
 
 func _nearest_patrol_index() -> int:
-	var best_i    = 0
-	var best_dist = INF
+	var best_i: int = 0
+	var best_dist: float = INF
 	for i in _patrol_targets.size():
-		var d = global_position.distance_to(_patrol_targets[i])
+		var d: float = global_position.distance_to(_patrol_targets[i])
 		if d < best_dist:
 			best_dist = d
 			best_i    = i
@@ -534,8 +534,8 @@ func _on_body_entered(body: Node) -> void:
 		_forget_timer = forget_enemy_time
 		_state        = AIState.CHASE
 	else:
-		var d_new = global_position.distance_to(body3d.global_position)
-		var d_cur = global_position.distance_to(_target.global_position)
+		var d_new: float = global_position.distance_to(body3d.global_position)
+		var d_cur: float = global_position.distance_to(_target.global_position)
 		if d_new < d_cur:
 			_target = body3d
 			_forget_timer = forget_enemy_time
@@ -549,8 +549,8 @@ func _on_body_exited(body: Node) -> void:
 # ══════════════════════════════════════════
 
 func _check_ground() -> void:
-	var space = get_world_3d().direct_space_state
-	var q     = PhysicsRayQueryParameters3D.create(
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
 		global_position,
 		global_position + Vector3.DOWN * 1.4
 	)
@@ -563,7 +563,7 @@ func _check_ground() -> void:
 # ══════════════════════════════════════════
 
 func _sync_mass() -> void:
-	var total = base_weight
+	var total: float = base_weight
 	for w in Wheels:
 		if is_instance_valid(w):
 			total += w.get_module_data()["weight"]
@@ -574,8 +574,8 @@ func _sync_mass() -> void:
 # ══════════════════════════════════════════
 
 func _apply_engine(delta: float) -> void:
-	var fwd     = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 
 	if abs(_throttle) > 0.01:
 		var sf = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
@@ -588,11 +588,11 @@ func _apply_engine(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_grip(delta: float) -> void:
-	var right   = _get_right()
-	var fwd     = _get_forward()
-	var vel_lat = right.dot(linear_velocity)
+	var right: Vector3 = _get_right()
+	var fwd: Vector3 = _get_forward()
+	var vel_lat: float = right.dot(linear_velocity)
 	apply_central_force(-right * vel_lat * lateral_grip * mass)
-	var vel_fwd = fwd.dot(linear_velocity)
+	var vel_fwd: float = fwd.dot(linear_velocity)
 	if abs(_throttle) < 0.01 and abs(vel_fwd) > 0.05:
 		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass)
 
@@ -601,15 +601,15 @@ func _apply_grip(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_steering(delta: float) -> void:
-	var fwd     = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 
 	if abs(vel_fwd) < 0.3:
 		angular_velocity.y = lerp(angular_velocity.y, 0.0, 10.0 * delta)
 		return
 
-	var wheelbase  = _get_wheelbase()
-	var target_yaw = 0.0
+	var wheelbase: float = _get_wheelbase()
+	var target_yaw: float = 0.0
 	if abs(_steer_angle) > 0.001 and wheelbase > 0.1:
 		target_yaw = vel_fwd * tan(_steer_angle) / wheelbase
 		if vel_fwd < 0:
@@ -622,8 +622,8 @@ func _apply_steering(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_anti_roll(delta: float) -> void:
-	var local_av = global_transform.basis.inverse() * angular_velocity
-	var correction = global_transform.basis * Vector3(
+	var local_av: Vector3 = global_transform.basis.inverse() * angular_velocity
+	var correction: Vector3 = global_transform.basis * Vector3(
 		-local_av.x * anti_roll, 0.0, -local_av.z * anti_roll
 	)
 	apply_torque(correction * mass * delta)
@@ -633,10 +633,10 @@ func _apply_anti_roll(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_upright(delta: float) -> void:
-	var up  = _get_up()
-	var dot = up.dot(Vector3.UP)
+	var up: Vector3 = _get_up()
+	var dot: float = up.dot(Vector3.UP)
 	if dot >= 0.85: return
-	var axis = up.cross(Vector3.UP)
+	var axis: Vector3 = up.cross(Vector3.UP)
 	if axis.length_squared() < 0.0001: return
 	axis = axis.normalized()
 	apply_torque(axis * acos(clamp(dot, -1.0, 1.0)) * upright_strength * mass * delta)
@@ -646,8 +646,8 @@ func _apply_upright(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _limit_speed() -> void:
-	var fwd     = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 	if abs(vel_fwd) > max_speed:
 		linear_velocity -= fwd * (vel_fwd - sign(vel_fwd) * max_speed)
 	if linear_velocity.y > 10.0:
@@ -658,13 +658,13 @@ func _limit_speed() -> void:
 # ══════════════════════════════════════════
 
 func _get_wheelbase() -> float:
-	var front_z = -INF
-	var rear_z  =  INF
-	var has_f   = false
-	var has_r   = false
+	var front_z: float = -INF
+	var rear_z: float = INF
+	var has_f: bool = false
+	var has_r: bool = false
 	for w in Wheels:
 		if !is_instance_valid(w): continue
-		var lz = to_local(w.global_position).z
+		var lz: float = to_local(w.global_position).z
 		if w.is_front: front_z = max(front_z, lz); has_f = true
 		else:          rear_z  = min(rear_z,  lz); has_r = true
 	if has_f and has_r:

@@ -595,7 +595,7 @@ func award_block_list(types: Array) -> void:
 		return
 	var n := types.size()
 	for i in n:
-		var orb = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
+		var orb: Node3D = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
 		scn.add_child(orb)
 		orb.setup(self, int(types[i]), TAU * float(i) / float(n))
 
@@ -681,8 +681,8 @@ func _physics_process(delta: float) -> void:
 func _process_input(joy: Vector2, delta: float) -> void:
 	# joy.y вверх = -1 на большинстве джойстиков → газ вперёд
 	# Если едет назад при нажатии вперёд — убери минус
-	var raw_throttle = -joy.y
-	var raw_steer = joy.x
+	var raw_throttle: float = -joy.y
+	var raw_steer: float = joy.x
 
 	if abs(raw_throttle) < 0.08: raw_throttle = 0.0
 	if abs(raw_steer) < 0.05:    raw_steer = 0.0
@@ -690,9 +690,9 @@ func _process_input(joy: Vector2, delta: float) -> void:
 	_throttle = raw_throttle
 
 	# Угол руля: уменьшается на скорости
-	var speed_ratio = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
-	var target_steer = -raw_steer * angle_limit
+	var speed_ratio: float = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
+	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
+	var target_steer: float = -raw_steer * angle_limit
 	_steer_angle = lerp(_steer_angle, target_steer, steer_speed * delta)
 
 	# Передаём блокам для визуала колёс
@@ -705,8 +705,8 @@ func _process_input(joy: Vector2, delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _check_ground() -> void:
-	var space = get_world_3d().direct_space_state
-	var q = PhysicsRayQueryParameters3D.create(
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
 		global_position,
 		global_position + Vector3.DOWN * 1.4
 	)
@@ -719,7 +719,7 @@ func _check_ground() -> void:
 # ══════════════════════════════════════════
 
 func _sync_mass() -> void:
-	var total = base_weight
+	var total: float = base_weight
 	for w in Wheels:
 		if is_instance_valid(w):
 			total += w.get_module_data()["weight"]
@@ -730,11 +730,11 @@ func _sync_mass() -> void:
 # ══════════════════════════════════════════
 
 func _apply_engine(delta: float) -> void:
-	var fwd = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 
 	if abs(_throttle) > 0.01:
-		var speed_factor = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
+		var speed_factor: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
 		apply_central_force(fwd * _throttle * engine_force * mass * speed_factor)
 	elif abs(vel_fwd) > 0.1:
 		# Двигательное торможение (накат)
@@ -746,15 +746,15 @@ func _apply_engine(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_grip(delta: float) -> void:
-	var right = _get_right()
-	var fwd = _get_forward()
+	var right: Vector3 = _get_right()
+	var fwd: Vector3 = _get_forward()
 
 	# Боковое сцепление
-	var vel_lat = right.dot(linear_velocity)
+	var vel_lat: float = right.dot(linear_velocity)
 	apply_central_force(-right * vel_lat * lateral_grip * mass)
 
 	# Лёгкое трение качения
-	var vel_fwd = fwd.dot(linear_velocity)
+	var vel_fwd: float = fwd.dot(linear_velocity)
 	if abs(_throttle) < 0.01 and abs(vel_fwd) > 0.05:
 		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass)
 
@@ -764,15 +764,15 @@ func _apply_grip(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_steering(delta: float) -> void:
-	var fwd = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 
 	if abs(vel_fwd) < 0.05:
 		angular_velocity.y = lerp(angular_velocity.y, 0.0, 10.0 * delta)
 		return
 
-	var wheelbase = _get_wheelbase()
-	var target_yaw = 0.0
+	var wheelbase: float = _get_wheelbase()
+	var target_yaw: float = 0.0
 	if abs(_steer_angle) > 0.001 and wheelbase > 0.1:
 		target_yaw = vel_fwd * tan(_steer_angle) / wheelbase
 		if vel_fwd < 0:
@@ -785,8 +785,8 @@ func _apply_steering(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_anti_roll(delta: float) -> void:
-	var local_av = global_transform.basis.inverse() * angular_velocity
-	var correction = global_transform.basis * Vector3(
+	var local_av: Vector3 = global_transform.basis.inverse() * angular_velocity
+	var correction: Vector3 = global_transform.basis * Vector3(
 		-local_av.x * anti_roll,
 		0.0,
 		-local_av.z * anti_roll
@@ -798,14 +798,14 @@ func _apply_anti_roll(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _apply_upright(delta: float) -> void:
-	var up = _get_up()
-	var dot = up.dot(Vector3.UP)
+	var up: Vector3 = _get_up()
+	var dot: float = up.dot(Vector3.UP)
 	if dot >= 0.85: return
 
-	var axis = up.cross(Vector3.UP)
+	var axis: Vector3 = up.cross(Vector3.UP)
 	if axis.length_squared() < 0.0001: return
 	axis = axis.normalized()
-	var angle = acos(clamp(dot, -1.0, 1.0))
+	var angle: float = acos(clamp(dot, -1.0, 1.0))
 	apply_torque(axis * angle * upright_strength * mass * delta)
 	
 
@@ -814,8 +814,8 @@ func _apply_upright(delta: float) -> void:
 # ══════════════════════════════════════════
 
 func _limit_speed() -> void:
-	var fwd = _get_forward()
-	var vel_fwd = fwd.dot(linear_velocity)
+	var fwd: Vector3 = _get_forward()
+	var vel_fwd: float = fwd.dot(linear_velocity)
 	if abs(vel_fwd) > max_speed:
 		linear_velocity -= fwd * (vel_fwd - sign(vel_fwd) * max_speed)
 	if linear_velocity.y > 10.0:
@@ -826,13 +826,13 @@ func _limit_speed() -> void:
 # ══════════════════════════════════════════
 
 func _get_wheelbase() -> float:
-	var front_z = -INF
-	var rear_z = INF
-	var has_f = false
-	var has_r = false
+	var front_z: float = -INF
+	var rear_z: float = INF
+	var has_f: bool = false
+	var has_r: bool = false
 	for w in Wheels:
 		if !is_instance_valid(w): continue
-		var lz = to_local(w.global_position).z
+		var lz: float = to_local(w.global_position).z
 		if w.is_front:
 			front_z = max(front_z, lz); has_f = true
 		else:
@@ -868,7 +868,7 @@ const MAP_SIZE_Y = 11
 const MAP_SIZE_Z = 11
 
 var block_take: bool = false
-var BuildingBlock = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # дефолт = центр сетки 11³
+var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # дефолт = центр сетки 11³
 
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
 var build_basis: Basis = Basis()
@@ -963,7 +963,7 @@ func _on_movement_pressed() -> void:
 	ghost_block.visible = false
 	if not is_station:            # станция всегда на якоре — Movement не должен её размораживать
 		freeze = false
-	var up = global_transform.basis.y
+	var up: Vector3 = global_transform.basis.y
 	if up.dot(Vector3.UP) < 0.3:
 		global_rotation.z = 0
 		global_rotation.x = 0
@@ -1059,9 +1059,9 @@ func _handle_click(screen_pos: Vector2) -> void:
 				_preview_cabin_ground(world_origin, world_dir)
 				return
 	var space_node: Node3D = block_map_node if block_map_node else self
-	var ray_origin = space_node.to_local(world_origin) + Vector3(5, 5, 5)
-	var ray_dir    = (space_node.global_transform.basis.inverse() * world_dir).normalized()
-	var res = _find_nearest_block_on_ray(ray_origin, ray_dir)
+	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
+	var ray_dir: Vector3 = (space_node.global_transform.basis.inverse() * world_dir).normalized()
+	var res: Dictionary = _find_nearest_block_on_ray(ray_origin, ray_dir)
 	if block_take:
 		# Больше НЕ светяшка: двигаем сам взятый блок на выбранную ячейку (превью), тап Take ставит.
 		if res["hit"]: _preview_held(res)
@@ -1272,10 +1272,10 @@ func rotate_build(axis: Vector3, ang: float) -> void:
 	else:
 		held.basis = build_basis             # в руке — крутится сразу под камерой
 
-var result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
+var result: Dictionary = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictionary:
 	result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
-	var dir = direction
+	var dir: Vector3 = direction
 	# Ячейки сетки ЦЕНТРИРОВАНЫ на целых (блок (x,y,z) занимает [x-0.5 … x+0.5]), значит
 	# стартовая ячейка = round(origin), а границы ячеек — на ПОЛУцелых. Старый код брал
 	# границы на целых (round(origin)+1) → стабильный промах ~на полклетки. Здесь правильно:
@@ -1314,7 +1314,7 @@ func _in_bounds(x: float, y: float, z: float) -> bool:
 	return x>=0 and x<MAP_SIZE_X and y>=0 and y<MAP_SIZE_Y and z>=0 and z<MAP_SIZE_Z
 
 func _get_block_name(block: int) -> String:
-	var names = G.Block.keys()
+	var names: Array = G.Block.keys()
 	if block < names.size(): return names[block]
 	return "UNKNOWN"
 

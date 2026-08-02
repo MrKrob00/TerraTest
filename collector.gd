@@ -4,7 +4,7 @@ extends VehicleBlock
 
 var is_on_vehicle: bool = false
 var inventory:Array = []
-@export var capacity = 2
+@export var capacity: int = 2
 
 # ФИЗИКА (freeze тела, monitoring ареи) — в _physics_process: это свойства физического сервера,
 # менять их надо на физ-тике, а не на кадре отрисовки (иначе правки летят в произвольный момент

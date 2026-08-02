@@ -397,13 +397,13 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 # ══════════════════════════════════════════════════════════════════════════════
 
 func save_layout() -> void:
-	var blocks_array = []
+	var blocks_array: Array = []
 	for x in range(MAP_SIZE_X):
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
-					var key = "%d,%d,%d" % [x, y, z]
+					var key: String = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
 						"x": x,
 						"y": y,
@@ -412,7 +412,7 @@ func save_layout() -> void:
 						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					})
 
-	var json_string = JSON.stringify(blocks_array, "\t")
+	var json_string: String = JSON.stringify(blocks_array, "\t")
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	file.store_string(json_string)
 	file.close()
@@ -431,7 +431,7 @@ func load_layout() -> void:
 	_init_map()
 
 	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
-	var json = JSON.new()
+	var json: JSON = JSON.new()
 	json.parse(file.get_as_text())
 	file.close()
 
@@ -443,13 +443,13 @@ func load_layout() -> void:
 	print("Машина загружена!")
 
 func get_layout() -> Array:
-	var blocks_array = []
+	var blocks_array: Array = []
 	for x in range(MAP_SIZE_X):
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
-					var key = "%d,%d,%d" % [x, y, z]
+					var key: String = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
 						"x": x, "y": y, "z": z,
 						"block": block,
