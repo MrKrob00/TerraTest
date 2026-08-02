@@ -81,9 +81,9 @@ func _push_from_inventory() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
 	if inventory.is_empty():
 		return
-	var item = inventory[0]
+	var item: Node3D = inventory[0]
 	# Переносим в корень сцены чтобы мировая позиция была чистой
-	var world_pos = item.global_position
+	var world_pos: Vector3 = item.global_position
 	item.reparent(get_tree().root, false)
 	item.global_position = world_pos
 	if next_block.try_receive(item):
@@ -120,9 +120,9 @@ func _take_from_vehicle(vehicle: RigidBody3D) -> Node3D:
 		if vehicle.get_node("blocks").get_child(0) != b :
 			if b.has_node("resources"):
 				if b.block ==5:
-					var resources = b.get_node("resources")
+					var resources: Node = b.get_node("resources")
 					if resources.get_child_count() > 0:
-						var item = resources.get_child(0)
+						var item: Node3D = resources.get_child(0)
 						if b.has_method("remove_from_inventory"):
 							b.remove_from_inventory(item)
 						_accept_item(item)

@@ -401,7 +401,7 @@ func save_layout() -> void:
 	for x in range(MAP_SIZE_X):
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
-				var block = map[x][y][z]
+				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
@@ -413,7 +413,7 @@ func save_layout() -> void:
 					})
 
 	var json_string: String = JSON.stringify(blocks_array, "\t")
-	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	file.store_string(json_string)
 	file.close()
 	print("Машина сохранена: ", SAVE_PATH)
@@ -430,7 +430,7 @@ func load_layout() -> void:
 	cell_owner.clear()
 	_init_map()
 
-	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
 	var json: JSON = JSON.new()
 	json.parse(file.get_as_text())
 	file.close()
@@ -447,7 +447,7 @@ func get_layout() -> Array:
 	for x in range(MAP_SIZE_X):
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
-				var block = map[x][y][z]
+				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
@@ -463,7 +463,7 @@ func _rot_array(v: Vector3) -> Array:
 # Читает поворот из записи раскладки: новый формат "rot":[x,y,z] или старый "rot_y":float.
 func _read_rot(entry: Dictionary) -> Vector3:
 	if entry.has("rot"):
-		var r = entry["rot"]
+		var r: Array = entry["rot"]
 		return Vector3(float(r[0]), float(r[1]), float(r[2]))
 	if entry.has("rot_y"):
 		return Vector3(0.0, float(entry["rot_y"]), 0.0)
@@ -528,7 +528,7 @@ func rebuild_factory_links() -> void:
 			queue.append(n)
 	var head := 0
 	while head < queue.size():
-		var cur = queue[head]; head += 1
+		var cur: FactoryBlock = queue[head]; head += 1
 		for nb in adj[cur]:
 			if not dist.has(nb):
 				dist[nb] = int(dist[cur]) + 1
@@ -574,7 +574,7 @@ func _factory_neighbors(node, fac_cells: Dictionary) -> Array:
 			var nx: int = c.x + d.x; var ny: int = c.y + d.y; var nz: int = c.z + d.z
 			if not _in_bounds(nx, ny, nz):
 				continue
-			var nb = find_block(nx, ny, nz)
+			var nb: Node3D = find_block(nx, ny, nz)
 			if nb != null and nb != node and fac_cells.has(nb) and not seen.has(nb):
 				seen[nb] = true
 				out.append(nb)

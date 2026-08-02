@@ -390,7 +390,7 @@ func _ai_stuck_recovery(delta: float) -> void:
 
 	# Едем в обратную сторону и рулим
 	_throttle    = lerp(_throttle, _stuck_drive_dir * 0.8, 6.0 * delta)
-	var speed_ratio = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
+	var speed_ratio: float = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle = lerp(_steer_angle, angle_limit * 0.7 * sign(_stuck_drive_dir), steer_speed * delta)
 
@@ -483,13 +483,13 @@ func _drive_toward(target_pos: Vector3, speed_factor: float, delta: float) -> vo
 	var angle_to_target: float = fwd_flat.signed_angle_to(target_dir, Vector3.UP)
 
 	# steer_input < 0 → нос едет вправо (steer_angle < 0 → target_yaw < 0 → CW = право)
-	var steer_input = clamp(angle_to_target / PI, -1.0, 1.0)
-	var speed_ratio = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
+	var steer_input: float = clamp(angle_to_target / PI, -1.0, 1.0)
+	var speed_ratio: float = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle    = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
 
 	# Газ: снижаем на резком повороте, минимум 0.4 чтобы машина всегда набирала скорость
-	var turn_factor = clamp(1.0 - abs(angle_to_target) / PI, 0.4, 1.0)
+	var turn_factor: float = clamp(1.0 - abs(angle_to_target) / PI, 0.4, 1.0)
 	_throttle       = lerp(_throttle, speed_factor * turn_factor, 4.0 * delta)
 
 # ══════════════════════════════════════════
@@ -528,7 +528,7 @@ func _is_enemy(body: Node) -> bool:
 
 func _on_body_entered(body: Node) -> void:
 	if !_is_enemy(body): return
-	var body3d = body as Node3D
+	var body3d: Node3D = body as Node3D
 	if !is_instance_valid(_target):
 		_target       = body3d
 		_forget_timer = forget_enemy_time
@@ -578,7 +578,7 @@ func _apply_engine(delta: float) -> void:
 	var vel_fwd: float = fwd.dot(linear_velocity)
 
 	if abs(_throttle) > 0.01:
-		var sf = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
+		var sf: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
 		apply_central_force(fwd * _throttle * engine_force * mass * sf)
 	elif abs(vel_fwd) > 0.1:
 		apply_central_force(-fwd * vel_fwd * engine_brake * mass)

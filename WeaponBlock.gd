@@ -74,7 +74,7 @@ func _track_target(delta: float, firing: bool) -> void:
 	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
 	if track_visual == null:
 		return
-	var track_mat = track_visual.get_active_material(0)
+	var track_mat: Material = track_visual.get_active_material(0)
 
 	# ── НЕ стреляем → луч полностью скрыт (ни цвета, ни геометрии) ────────────
 	if not firing:
@@ -128,7 +128,7 @@ func _track_target(delta: float, firing: bool) -> void:
 func _handle_fire(delta: float) -> void:
 	if _current_target == null or not raycast.is_colliding():
 		pass#return
-	var body = raycast.get_collider()
+	var body: Node3D = raycast.get_collider()
 	if body:
 		if body == self or body.get_parent() == get_parent():
 			return

@@ -13,8 +13,8 @@ func _ready() -> void:
 	super._ready()
 
 func _find_next_block() -> void:
-	var blocks_node = get_parent()
-	var owner_node = blocks_node.get_parent()
+	var blocks_node: Node = get_parent()
+	var owner_node: Node = blocks_node.get_parent()
 	if not owner_node.has_node("blocks"):
 		push_warning("FactoryBlock: не найден node 'blocks'")
 		return
@@ -41,7 +41,7 @@ func _find_next_block() -> void:
 		int(neighbor_local.y) + 5,
 		int(neighbor_local.z) + 5
 	]
-	var neighbor = block_map.node_map.get(key, null)
+	var neighbor: Node3D = block_map.node_map.get(key, null)
 	if neighbor and neighbor.has_method("try_receive"):
 		next_block = neighbor
 
