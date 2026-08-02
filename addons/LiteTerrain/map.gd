@@ -632,8 +632,8 @@ func _sample_height_local(lx: float, lz: float) -> float:
 	var z1 := mini(z0 + 1, d - 1)
 	var fx := clampf((lx + float(w) * 0.5 - 0.5) - float(x0), 0.0, 1.0)
 	var fz := clampf((lz + float(d) * 0.5 - 0.5) - float(z0), 0.0, 1.0)
-	var h0 = lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
-	var h1 = lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
+	var h0: float = lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
+	var h1: float = lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
 	return lerp(h0, h1, fz)
 
 # Верхняя граница высот карты (локальные единицы). Нужна только редакторному
@@ -781,8 +781,8 @@ func update_chunks(chunk_indices: Array) -> void:
 		return
 
 	# Runtime: rebuild all LOD levels for the specified chunks
-	var mat  = _get_material()
-	var cxl  = ceili(float(w - 1) / chunk_size)
+	var mat: Material = _get_material()
+	var cxl: int = ceili(float(w - 1) / chunk_size)
 	var dirty_macros := {}   # macro group indices that need their mesh rebuilt
 
 	for ci in chunk_indices:
@@ -790,20 +790,20 @@ func update_chunks(chunk_indices: Array) -> void:
 			continue
 		if not _chunk_instances[ci]:   # skip chunks not yet streamed in
 			continue
-		var cx_l = ci % cxl
-		var cz_l = ci / cxl
-		var x0 = cx_l * chunk_size
-		var z0 = cz_l * chunk_size
-		var x1 = mini(x0 + chunk_size, w - 1)
-		var z1 = mini(z0 + chunk_size, d - 1)
+		var cx_l: int = ci % cxl
+		var cz_l: int = ci / cxl
+		var x0: int = cx_l * chunk_size
+		var z0: int = cz_l * chunk_size
+		var x1: int = mini(x0 + chunk_size, w - 1)
+		var z1: int = mini(z0 + chunk_size, d - 1)
 
 		var lod_meshes: Array = []
 		for lod in LOD_COUNT:
-			var data = _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[lod])
+			var data: Array = _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[lod])
 			if data.is_empty():
 				lod_meshes.append(null)
 				continue
-			var am = ArrayMesh.new()
+			var am: ArrayMesh = ArrayMesh.new()
 			am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
 			lod_meshes.append(am)
 			if lod == 0:
@@ -817,8 +817,8 @@ func update_chunks(chunk_indices: Array) -> void:
 		# Apply the currently-active LOD — only when NOT in macro mode
 		var in_macro: bool = _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]
 		if not in_macro:
-			var cur_lod = _chunk_lod[ci] if ci < _chunk_lod.size() else 0
-			var display_mesh = _best_available_mesh(lod_meshes, cur_lod)
+			var cur_lod: int = _chunk_lod[ci] if ci < _chunk_lod.size() else 0
+			var display_mesh: ArrayMesh = _best_available_mesh(lod_meshes, cur_lod)
 			if display_mesh:
 				_chunk_instances[ci].mesh = display_mesh
 				_chunk_instances[ci].set_surface_override_material(0, mat)
@@ -937,15 +937,15 @@ func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 
 # Editor full-res chunk arrays (used when editor_lod is OFF).
 func _chunk_surface_arrays(cx: int, cz: int) -> Array:
-	var x0 = cx * chunk_size
-	var z0 = cz * chunk_size
-	var x1 = mini(x0 + chunk_size, w - 1)
-	var z1 = mini(z0 + chunk_size, d - 1)
-	var res = _compute_chunk_data(x0, z0, x1, z1, 1)
+	var x0: int = cx * chunk_size
+	var z0: int = cz * chunk_size
+	var x1: int = mini(x0 + chunk_size, w - 1)
+	var z1: int = mini(z0 + chunk_size, d - 1)
+	var res: Array = _compute_chunk_data(x0, z0, x1, z1, 1)
 	return [] if res.is_empty() else res[0]
 
 func _apply_editor_cache() -> void:
-	var mat = _get_material()
+	var mat: Material = _get_material()
 
 	# Merge every chunk into ONE surface to avoid hitting MAX_MESH_SURFACES (256).
 	# Same technique as _build_macro_mesh() — offset indices per chunk and combine.
@@ -996,7 +996,7 @@ func _apply_editor_cache() -> void:
 	# The file itself is only rewritten by "Bake heightmap → image"; this just stops the
 	# scene from swallowing the mesh. A built-in path looks like "res://scene.tscn::Id".
 	if mesh_instance.mesh != null:
-		var prev_path = mesh_instance.mesh.resource_path
+		var prev_path: String = mesh_instance.mesh.resource_path
 		if not prev_path.is_empty() and not prev_path.contains("::"):
 			am.take_over_path(prev_path)
 	mesh_instance.mesh = am
@@ -1281,7 +1281,7 @@ func _neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
 # Returns the mesh at `preferred_lod`, falling back to the next finer LOD
 # if the preferred one happens to be null (tiny edge-chunks may skip coarse LODs).
 func _best_available_mesh(lod_meshes: Array, preferred_lod: int) -> ArrayMesh:
-	var lod = preferred_lod
+	var lod: int = preferred_lod
 	while lod > 0 and lod_meshes[lod] == null:
 		lod -= 1
 	return lod_meshes[lod]
@@ -1521,8 +1521,8 @@ func _stream_apply_batch() -> void:
 # this guarantees chunk edges share the same vertex positions across LOD levels,
 # which eliminates visible seams between adjacent chunks at different LODs.
 func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
-	var result = PackedInt32Array()
-	var pos    = start
+	var result: PackedInt32Array = PackedInt32Array()
+	var pos: int = start
 	while pos < end:
 		result.append(pos)
 		pos += step
@@ -1595,19 +1595,19 @@ func _mountain_mask01(gx: int, gz: int) -> float:
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
 		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
-	var vertices  = PackedVector3Array()
-	var indices   = PackedInt32Array()
-	var normals   = PackedVector3Array()
-	var uvs       = PackedVector2Array()
-	var colors    = PackedColorArray()   # .r = grass mask: 0 on chunk borders, 1 inside
-	var local_idx = {}
-	var idx       = 0
-	var aabb_min  = Vector3(INF,  INF,  INF)
-	var aabb_max  = Vector3(-INF, -INF, -INF)
+	var vertices: PackedVector3Array = PackedVector3Array()
+	var indices: PackedInt32Array = PackedInt32Array()
+	var normals: PackedVector3Array = PackedVector3Array()
+	var uvs: PackedVector2Array = PackedVector2Array()
+	var colors: PackedColorArray = PackedColorArray()   # .r = grass mask: 0 on chunk borders, 1 inside
+	var local_idx: Dictionary = {}
+	var idx: int = 0
+	var aabb_min: Vector3 = Vector3(INF,  INF,  INF)
+	var aabb_max: Vector3 = Vector3(-INF, -INF, -INF)
 
-	var sz = maxi(1, step)
-	var xs = _sample_range(x0, x1, sz)
-	var zs = _sample_range(z0, z1, sz)
+	var sz: int = maxi(1, step)
+	var xs: PackedInt32Array = _sample_range(x0, x1, sz)
+	var zs: PackedInt32Array = _sample_range(z0, z1, sz)
 	# Вырожденный чанк (меньше 2×2 сэмплов) — квадов не построить. На маленьких картах это
 	# ловило ошибку сборки меша: возвращаем пусто, такой чанк просто не рисуется.
 	if xs.size() < 2 or zs.size() < 2:
@@ -1616,7 +1616,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	# ── Vertices ──────────────────────────────────────────────────────────────
 	for z in zs:
 		for x in xs:
-			var h = float(md[z * w + x])
+			var h: float = float(md[z * w + x])
 
 			# ── Border snapping ───────────────────────────────────────────────
 			# If this vertex is on an edge adjacent to a coarser-LOD chunk and
@@ -1661,7 +1661,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(md[mini(z - rem + e_step, d - 1) * w + x]),
 							 float(rem) / float(e_step))
 
-			var pos = Vector3(x - w * 0.5 + 0.5, h, z - d * 0.5 + 0.5)
+			var pos: Vector3 = Vector3(x - w * 0.5 + 0.5, h, z - d * 0.5 + 0.5)
 			vertices.append(pos)
 			aabb_min = aabb_min.min(pos)
 			aabb_max = aabb_max.max(pos)
@@ -1682,10 +1682,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
-			var hl = md[z * w + maxi(x - sz, 0)]
-			var hr = md[z * w + mini(x + sz, w - 1)]
-			var hu = md[maxi(z - sz, 0) * w + x]
-			var hd = md[mini(z + sz, d - 1) * w + x]
+			var hl: float = md[z * w + maxi(x - sz, 0)]
+			var hr: float = md[z * w + mini(x + sz, w - 1)]
+			var hu: float = md[maxi(z - sz, 0) * w + x]
+			var hd: float = md[mini(z + sz, d - 1) * w + x]
 			normals.append(Vector3(hl - hr, 2.0 * sz, hu - hd).normalized())
 
 			local_idx[z * w + x] = idx
@@ -1696,10 +1696,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	# so we always connect exactly the vertices we generated above.
 	for zi in range(zs.size() - 1):
 		for xi in range(xs.size() - 1):
-			var i00 = local_idx.get(zs[zi]     * w + xs[xi],     -1)
-			var i10 = local_idx.get(zs[zi]     * w + xs[xi + 1], -1)
-			var i01 = local_idx.get(zs[zi + 1] * w + xs[xi],     -1)
-			var i11 = local_idx.get(zs[zi + 1] * w + xs[xi + 1], -1)
+			var i00: int = local_idx.get(zs[zi]     * w + xs[xi],     -1)
+			var i10: int = local_idx.get(zs[zi]     * w + xs[xi + 1], -1)
+			var i01: int = local_idx.get(zs[zi + 1] * w + xs[xi],     -1)
+			var i11: int = local_idx.get(zs[zi + 1] * w + xs[xi + 1], -1)
 			if i00 < 0 or i10 < 0 or i01 < 0 or i11 < 0:
 				continue
 			indices.append_array([i00, i10, i11])
@@ -1754,7 +1754,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			indices.append_array([a, b, bb, a, bb, ba])
 			indices.append_array([a, bb, b, a, ba, bb])
 
-	var arr = Array()
+	var arr: Array = Array()
 	arr.resize(Mesh.ARRAY_MAX)
 	arr[Mesh.ARRAY_VERTEX] = vertices
 	arr[Mesh.ARRAY_INDEX]  = indices
@@ -2373,10 +2373,10 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 	# md is refreshed by update_chunks() but w/d are @onready — they can
 	# temporarily disagree with md.size() after a map resize.  Derive the
 	# actual row-count from the live array so clampi stays within real bounds.
-	var md_size = md.size()
+	var md_size: int = md.size()
 	if md_size == 0 or w <= 0:
 		return false
-	var actual_d = md_size / w          # real depth regardless of stale d
+	var actual_d: int = md_size / w          # real depth regardless of stale d
 	if actual_d <= 0:
 		return false
 
@@ -2420,7 +2420,7 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 		# stale-cache OOB when the map was resized after _ready().
 		var hx  := clampi(int(round(lx + float(w)        * 0.5 - 0.5)), 0, w        - 1)
 		var hz  := clampi(int(round(lz + float(actual_d) * 0.5 - 0.5)), 0, actual_d - 1)
-		var idx = hz * w + hx
+		var idx: int = hz * w + hx
 		# Final safety net — prevents any remaining edge-case OOB
 		if idx < 0 or idx >= md_size:
 			continue
@@ -2436,12 +2436,12 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 
 
 func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
-	var bmin = aabb.position
-	var bmax = aabb.position + aabb.size
+	var bmin: Vector3 = aabb.position
+	var bmax: Vector3 = aabb.position + aabb.size
 	for plane in frustum:
-		var nx = bmin.x if plane.normal.x >= 0.0 else bmax.x
-		var ny = bmin.y if plane.normal.y >= 0.0 else bmax.y
-		var nz = bmin.z if plane.normal.z >= 0.0 else bmax.z
+		var nx: float = bmin.x if plane.normal.x >= 0.0 else bmax.x
+		var ny: float = bmin.y if plane.normal.y >= 0.0 else bmax.y
+		var nz: float = bmin.z if plane.normal.z >= 0.0 else bmax.z
 		if plane.distance_to(Vector3(nx, ny, nz)) > margin:
 			return false
 	return true
