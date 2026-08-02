@@ -8,7 +8,10 @@ func _ready() -> void:
 	super()                  # VehicleBlock._ready (слои, hp, заморозка)
 	$drill.monitoring = true # сенсор бура держим включённым: overlaps готовы к первому же удару
 
-func _process(delta: float) -> void:
+# Кулдаун тикает на ФИЗ-ТИКЕ, потому что и тратится он оттуда же: attack() зовётся из
+# _physics_process машины (зажатая Атака) и из ИИ-таймера. Раньше он убывал на кадре отрисовки —
+# счёт шёл по реальному времени и в целом совпадал, но темп бурения зависел от FPS.
+func _physics_process(delta: float) -> void:
 	if _dig_cd > 0.0:
 		_dig_cd -= delta
 

@@ -6,17 +6,24 @@ var is_on_vehicle: bool = false
 var inventory:Array = []
 @export var capacity = 2
 
-func _process(delta: float) -> void:
+# ФИЗИКА (freeze тела, monitoring ареи) — в _physics_process: это свойства физического сервера,
+# менять их надо на физ-тике, а не на кадре отрисовки (иначе правки летят в произвольный момент
+# шага физики и лишний раз дёргают сервер на быстрых экранах).
+func _physics_process(_delta: float) -> void:
 	if $"..".name in "objects":
-		if is_on_vehicle: 
+		if is_on_vehicle:
 			$collector.monitoring = false
-			is_on_vehicle=false
-		return 
-	if !is_on_vehicle: 
+			is_on_vehicle = false
+		return
+	if !is_on_vehicle:
 		$collector.monitoring = true
-		is_on_vehicle=true
+		is_on_vehicle = true
 		freeze = false
 	else: freeze = true
+
+# ВИЗУАЛ (вращение тарелки, подтяжка её высоты) — в _process: должен идти по кадрам отрисовки,
+# чтобы крутился плавно и на экранах с частотой выше физ-тика.
+func _process(delta: float) -> void:
 	if !is_on_vehicle: return
 	$collector/MeshInstance3D.rotation.y += deg_to_rad(360)*delta/6
 	$collector/MeshInstance3D.global_position.y = get_parent().global_position.y
