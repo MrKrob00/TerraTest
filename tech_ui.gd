@@ -22,6 +22,7 @@ var _prices: Dictionary = {}              # G.Block -> цена (что прод
 # ── Фильтры вкладки SHOP (гараж — единственный магазин блоков) ────────────────
 var _categories: Dictionary = {}          # ключ → Array типов
 var _shop_filter: String = "all"
+var _last_slot_side: float = 0.0        # чтобы пересобирать сетку только при реальной смене ширины
 var _filter_col: VBoxContainer = null     # колонка кнопок слева от сетки (видна в SHOP)
 var _filter_buttons: Dictionary = {}
 const FILTERS := [
@@ -63,6 +64,11 @@ func _ready() -> void:
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
 	_build_extra_panel()
+	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
+	# пересобираем слоты, чтобы в ряду ОСТАЛОСЬ ровно COLS. Гейт по изменению размера слота,
+	# иначе перестройка сама меняла бы размер сетки и зациклилась.
+	if _grid:
+		_grid.resized.connect(_on_grid_resized)
 	if _search:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
@@ -156,11 +162,14 @@ func _load_items() -> void:
 				"price": int(_prices[block_type]),
 			})
 		return
-	# INVENTORY — реальные блоки игрока, сгруппированные по типу.
+	# INVENTORY — реальные блоки игрока, сгруппированные по типу. Фильтр категорий применяем
+	# и здесь (по просьбе): сортировка та же, что в магазине.
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
 	for block_type in counts:
+		if not _passes_filter(int(block_type)):
+			continue
 		_items.append({
 			"type": int(block_type),
 			"name": _block_name(int(block_type)),
@@ -174,9 +183,32 @@ func _block_name(block_type: int) -> String:
 		return str(names[block_type]).capitalize()
 	return "Block %d" % block_type
 
+# ── Ровно 4 позиции в ряду ────────────────────────────────────────────────────
+# Раньше слот был фиксированный (96px), а HFlowContainer переносил по факту ширины — в ряд
+# влезало сколько влезет, и на разных экранах по-разному. Считаем размер слота ОТ ШИРИНЫ сетки,
+# чтобы всегда получалось ровно COLS штук.
+const COLS := 4
+
+func _slot_side() -> float:
+	if _grid == null:
+		return 96.0
+	var sep: float = float(_grid.get_theme_constant("h_separation"))
+	var w: float = _grid.size.x
+	if w <= 1.0:                                   # ещё не разложились — берём разумный дефолт
+		return 96.0
+	return maxf(floorf((w - sep * float(COLS - 1)) / float(COLS)), 48.0)
+
+func _on_grid_resized() -> void:
+	if _tab != TAB_INVENTORY and _tab != TAB_SHOP and _tab != TAB_BUILDS:
+		return
+	if absf(_slot_side() - _last_slot_side) < 1.0:
+		return                                     # ширина слота не изменилась — перестраивать нечего
+	_rebuild_grid(_search.text if _search else "")
+
 func _rebuild_grid(filter: String) -> void:
 	if _grid == null:
 		return
+	_last_slot_side = _slot_side()
 	if _tab == TAB_BUILDS:
 		_build_builds_tab()
 		return
@@ -204,7 +236,8 @@ func _make_slot(it: Dictionary) -> Control:
 	# Слот = кнопка с названием блока. INVENTORY: в углу ×count, клик → блок в руку.
 	# SHOP: в углу цена, клик → купить (выключена, если не хватает денег).
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(96, 96)
+	var _side := _slot_side()
+	btn.custom_minimum_size = Vector2(_side, _side)
 	btn.clip_text = true
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	btn.text = str(it["name"])
@@ -250,7 +283,8 @@ func _build_builds_tab() -> void:
 
 func _make_action_slot(label: String, cb: Callable) -> Control:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(96, 96)
+	var _side := _slot_side()
+	btn.custom_minimum_size = Vector2(_side, _side)
 	btn.clip_text = true
 	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	btn.text = label
@@ -365,7 +399,7 @@ func _select_tab(idx: int) -> void:
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
-		_filter_col.visible = (_tab == TAB_SHOP)
+		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
 	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
 	var is_tech: bool = _tab == TAB_TECH
