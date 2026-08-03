@@ -30,6 +30,9 @@ var _progress: float = 0.0
 var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
 var _wait: float = 0.0
 var _dissolve: float = 0.0 # 0→1 «глитч-развал» при исчезновении (как снос блока)
+var _burst_t: float = 0.0      # время внутри текущей вспышки глитча
+var _burst_len: float = 0.7    # её длительность
+var _burst_cycle: float = 1.0  # вспышка + пауза = период (обновляется каждый цикл)
 
 func _ready() -> void:
 	layer = 200
@@ -156,14 +159,33 @@ func _process(delta: float) -> void:
 	var s := get_viewport().get_visible_rect().size
 	if s != _last_rect:
 		_layout()
-	# Сила глитча: максимум при ПОЯВЛЕНИИ и при РАЗВАЛЕ (как у блоков), в середине — лёгкий фон.
 	var appear: float = clampf(_t / 0.9, 0.0, 1.0)
-	var gi: float = maxf(maxf(1.0 - appear, _dissolve), 0.10)
+
+	# ── Глитч идёт ВСЁ ВРЕМЯ и КАЖДЫЙ РАЗ ПО-РАЗНОМУ ────────────────────────────
+	# Раньше progress гнался один раз от появления и застревал на месте — эффект «сыграл» и
+	# замирал. Теперь это ЦИКЛ бурстов: каждый прогон 0→1 (та же кривая появления/угасания, что
+	# у блоков), а на старте нового прогона меняем seed и форму сетки — поэтому двух одинаковых
+	# вспышек не бывает. Между бурстами короткая пауза, чтобы не мельтешило сплошняком.
+	_burst_t += delta
+	if _burst_t >= _burst_cycle:
+		_burst_t = 0.0
+		_burst_len = randf_range(0.5, 1.0)                   # сколько длится сама вспышка
+		_burst_cycle = _burst_len + randf_range(0.15, 0.5)   # + короткая пауза до следующей
+		_cards_mat.set_shader_parameter("seed", randf() * 100.0)
+		_cards_mat.set_shader_parameter("grid_cells", randf_range(14.0, 30.0))
+		_cards_mat.set_shader_parameter("fill_threshold", randf_range(0.45, 0.62))
+		_cards_mat.set_shader_parameter("cell_aspect", Vector2(1.0, randf_range(0.22, 0.5)))
+		_title_mat.set_shader_parameter("seed", randf() * 100.0)
+		_title_mat.set_shader_parameter("slices", randf_range(12.0, 30.0))
+	# Прогресс ТЕКУЩЕЙ вспышки 0→1; после её конца остаётся 1 (всё погашено) до нового цикла.
+	var burst_p: float = clampf(_burst_t / maxf(_burst_len, 0.01), 0.0, 1.0)
+	# Сила: максимум при ПОЯВЛЕНИИ экрана и при РАЗВАЛЕ, между ними — ритм вспышек.
+	var edge: float = maxf(1.0 - appear, _dissolve)
+	var pulse: float = 1.0 - absf(burst_p * 2.0 - 1.0)       # 0→1→0 внутри вспышки
+	var gi: float = clampf(maxf(edge, pulse * 0.85), 0.06, 1.0)
 	_title_mat.set_shader_parameter("glitch", gi)
-	# progress карточек гоняем 0→1 по той же кривой, что у блоков: появление, пик, угасание.
-	var cards_p: float = (1.0 - appear) * 0.5 if _dissolve <= 0.0 else 0.5 + _dissolve * 0.5
-	_cards_mat.set_shader_parameter("progress", cards_p)
-	_cards_mat.set_shader_parameter("intensity", clampf(gi * 1.4, 0.12, 1.0))
+	_cards_mat.set_shader_parameter("progress", burst_p if edge <= 0.0 else minf(burst_p, 0.5))
+	_cards_mat.set_shader_parameter("intensity", clampf(maxf(edge, pulse), 0.0, 1.0))
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
 	_glitch.queue_redraw()
 

@@ -234,7 +234,7 @@ func _resolve_scan() -> void:
 	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
 	if p != null and _in_scan_box(p.global_position):
 		_say("System", "⚠ Unauthorized activity detected in the sector. Dispatching handlers.")
-		_spawn_enforcement()
+		_spawn_enforcement(p)          # отряд идёт именно за ЗАСЕЧЁННОЙ машиной
 	else:
 		_say("System", "Sector scan complete. No anomalies detected.")
 
@@ -242,7 +242,7 @@ func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
 
 # Усиленный отряд внутрь квадрата (кольцом у края, на рельефе, агрессивно близко).
-func _spawn_enforcement() -> void:
+func _spawn_enforcement(locked: Node3D = null) -> void:
 	var map: Node = _find_map()
 	var vehicles: Node = _vehicles_root()
 	if map == null or vehicles == null or enemy_scenes.is_empty():
@@ -260,7 +260,24 @@ func _spawn_enforcement() -> void:
 		enemy.global_position = Vector3(wp.x, h + ground_offset, wp.z)
 		if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 			enemy.died.connect(_on_enemy_died)
+		# Отряд по итогам ПРОВЕРКИ СЕКТОРА идёт именно за той машиной, которую засекли: цель
+		# назначаем сразу при спавне и включаем relentless — они её уже не забудут и не
+		# переключатся на другую (обычные враги ищут цель сами и цель могут терять).
+		_lock_on_target(enemy, locked)
 		_enemies.append(enemy)
+
+# Жёстко назначить врагу цель (без ожидания сигнала зоны обнаружения) и сделать его невідступным.
+func _lock_on_target(enemy: Node, target: Node3D) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	if "relentless" in enemy:
+		enemy.relentless = true
+	if "_target" in enemy:
+		enemy.set("_target", target)
+	if "_forget_timer" in enemy and "forget_enemy_time" in enemy:
+		enemy.set("_forget_timer", enemy.get("forget_enemy_time"))
+	if "_state" in enemy:
+		enemy.set("_state", 1)          # AIState.CHASE
 
 # Маркер квадрата: 4 светящихся столба по углам (переживают неровный рельеф). Пульсируют,
 # к концу таймера краснеют — тревога.

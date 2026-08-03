@@ -77,6 +77,9 @@ var _dying: bool = false
 @export var forget_enemy_time:   float = 6.0
 ## Множитель тяги в погоне. При равном max_speed догнать убегающего нельзя — даём небольшой перевес.
 @export var chase_boost:         float = 1.25
+## «Невідступний»: цель, назначенная при спавне (напр. отряд от проверки сектора), НИКОГДА не
+## забывается и не меняется — такой враг ведёт её через всю карту, сколько бы она ни убегала.
+@export var relentless:          bool = false
 
 @export_group("ИИ — Препятствия")
 @export var obstacle_ray_length: float = 5.0
@@ -237,6 +240,11 @@ func _setup_patrol_points() -> void:
 func _physics_process(delta: float) -> void:
 	_check_ground()
 	_sync_mass(delta)
+	# Перевернулся — включаем тот же приём, что у игрока в СТРОЙКЕ: приподнимаем над рельефом и
+	# плавно доворачиваем «ровно». _apply_upright сам по себе перевёрнутую машину на колёсах часто
+	# не поднимает (крутящий момент упирается в землю), и враг оставался лежать навсегда.
+	if _flip_recover(delta):
+		return                    # пока встаём — ИИ и обычная физика движения не мешают
 	_update_ai(delta)
 	_detect_obstacles(delta)
 
@@ -348,7 +356,9 @@ func _ai_chase(delta: float) -> void:
 	# Таймер забывания тикает ТОЛЬКО когда цель реально вне зоны обнаружения. Раньше он шёл
 	# всегда, поэтому убегающего игрока враг бросал через 3 секунды, даже видя его в упор —
 	# «уехал = проблем нет». Пока цель в радиусе — преследуем сколько нужно.
-	if dist > detection_radius:
+	# Невідступный (отряд от проверки сектора) НИКОГДА не сбрасывает цель — гонит её через всю
+	# карту. Обычный забывает, только когда цель реально ушла за радиус обнаружения.
+	if dist > detection_radius and not relentless:
 		_forget_timer -= delta
 		if _forget_timer <= 0.0:
 			_lose_target()
@@ -580,6 +590,8 @@ func _do_attack() -> void:
 		b.attack()
 
 func _lose_target() -> void:
+	if relentless and is_instance_valid(_target):
+		return                      # невідступный цель не бросает
 	_target       = null
 	_orbit_dir    = 0.0   # следующий бой выберет сторону объезда заново
 	_patrol_index = _nearest_patrol_index()
@@ -612,6 +624,8 @@ func _on_body_entered(body: Node) -> void:
 		_target       = body3d
 		_forget_timer = forget_enemy_time
 		_state        = AIState.CHASE
+	elif relentless:
+		return                      # цель зафиксирована при спавне — на других не отвлекаемся
 	else:
 		var d_new: float = global_position.distance_to(body3d.global_position)
 		var d_cur: float = global_position.distance_to(_target.global_position)
@@ -636,6 +650,62 @@ func _check_ground() -> void:
 	q.exclude        = [self]
 	q.collision_mask = 1
 	_on_ground = space.intersect_ray(q).size() > 0
+
+# ══════════════════════════════════════════
+# САМОВОССТАНОВЛЕНИЕ ПРИ ПЕРЕВОРОТЕ
+# ══════════════════════════════════════════
+# Ровно то же, что делает машина игрока в режиме СТРОЙКИ: подъём над рельефом на клиренс +
+# плавный доворот к «ровно» (slerp к Basis.looking_at, а не сброс эйлеров — тот гимбалит на
+# перевороте). Держим FLIP_TIME секунд, потом отпускаем в обычную физику.
+const FLIP_DOT := 0.3          # верх машины отклонился больше ~72° → считаем перевёрнутой
+const FLIP_TIME := 2.0         # сколько длится подъём/выравнивание
+const FLIP_CLEARANCE := 3.0    # на сколько поднимаем над рельефом
+var _flip_t: float = 0.0
+
+func _flip_recover(delta: float) -> bool:
+	if _flip_t <= 0.0:
+		if _get_up().dot(Vector3.UP) >= FLIP_DOT:
+			return false
+		_flip_t = FLIP_TIME                       # только что перевернулись — запускаем подъём
+	_flip_t -= delta
+	# Высота: тянемся к рельефу + клиренс (демпфированная пружина, без овершута).
+	var terr: Node = _find_terrain()
+	var target_y: float = global_position.y
+	if terr != null:
+		target_y = terr.terrain_height_at(global_position) + FLIP_CLEARANCE
+	linear_velocity.y = clampf((target_y - global_position.y) * 6.0, -6.0, 6.0)
+	linear_velocity.x = lerpf(linear_velocity.x, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+	linear_velocity.z = lerpf(linear_velocity.z, 0.0, clampf(delta * 8.0, 0.0, 1.0))
+	# Доворот «ровно», курс (yaw) сохраняем.
+	var fwd := -global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		fwd = global_transform.basis.y
+		fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		fwd = Vector3.FORWARD
+	var want := Basis.looking_at(fwd.normalized(), Vector3.UP)
+	global_transform.basis = global_transform.basis.slerp(want, clampf(delta * 4.0, 0.0, 1.0)).orthonormalized()
+	angular_velocity = Vector3.ZERO
+	_throttle = 0.0
+	if _flip_t <= 0.0:
+		_stuck_timer = 0.0                        # после подъёма не считаем это застреванием
+		_stuck_check_pos = global_position
+	return _flip_t > 0.0
+
+var _terrain_cache: Node = null
+
+func _find_terrain() -> Node:
+	if _terrain_cache != null and is_instance_valid(_terrain_cache):
+		return _terrain_cache
+	var scn := get_tree().current_scene
+	if scn == null:
+		return null
+	for c in scn.get_children():
+		if c.has_method("terrain_height_at"):
+			_terrain_cache = c
+			return c
+	return null
 
 # ══════════════════════════════════════════
 # ФИЗИКА — МАССА
