@@ -494,53 +494,9 @@ func _clear_block_collisions() -> void:
 		if c is CollisionShape3D and c.is_in_group("block_collision"):
 			c.queue_free()
 
-func rebuild_factory_links() -> void:
-	var fac_cells := {}                    # node → PackedArray клеток его футпринта
-	var facs: Array = []
-	for k in node_map.keys():
-		var n = node_map[k]
-		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
-			continue
-		var parts: PackedStringArray = k.split(",")
-		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
-		if not _in_bounds(ax, ay, az):
-			continue
-		fac_cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
-		facs.append(n)
-	# Смежность фабричных блоков (по граням, с учётом многоклеточных футпринтов).
-	var adj := {}
-	for n in facs:
-		adj[n] = _factory_neighbors(n, fac_cells)
-	# BFS расстояния до ближайшего стока (продавец/генератор потребляют ресурс, дальше не толкают).
-	var dist := {}
-	var queue: Array = []
-	for n in facs:
-		if _is_factory_sink(n):
-			dist[n] = 0
-			queue.append(n)
-	var head := 0
-	while head < queue.size():
-		var cur: FactoryBlock = queue[head]; head += 1
-		for nb in adj[cur]:
-			if not dist.has(nb):
-				dist[nb] = int(dist[cur]) + 1
-				queue.append(nb)
-	# Каждый блок течёт к соседу с дистанцией на 1 меньше (ближе к стоку). Строго убывающая
-	# дистанция = нет петель. Стоки и блоки без связи со стоком — next_block = null (стоят).
-	for n in facs:
-		n.next_block = null
-		if not dist.has(n) or int(dist[n]) == 0:
-			continue
-		for nb in adj[n]:
-			if dist.has(nb) and int(dist[nb]) == int(dist[n]) - 1:
-				n.next_block = nb
-				break
-
 # Смещение ЯКОРЯ при пристыковке блока к грани соседа. Для МНОГОКЛЕТОЧНЫХ блоков (процессор/
-# продавец 2×2×2 и т.п.) простого ±1 мало: футпринт растёт в одну сторону, и на «положительных»
-# гранях (право/зад/низ) он налезал на соседа → блок вставал только НАВЕРХ. Считаем сдвиг по
-# реальным границам футпринта, чтобы блок вставал ВПЛОТНУЮ к грани и не перекрывал соседа.
-# Для 1×1×1 даёт прежние ±1 (границы = 0).
+# продавец 2×2×2) простого ±1 мало: футпринт растёт в одну сторону, и на «положительных» гранях
+# он налезал бы на соседа. Считаем сдвиг по реальным границам футпринта. Для 1×1×1 даёт ±1.
 func attach_delta(block_type: int, face: String) -> Vector3i:
 	var lo := Vector3i(0, 0, 0)
 	var hi := Vector3i(0, 0, 0)
@@ -556,23 +512,45 @@ func attach_delta(block_type: int, face: String) -> Vector3i:
 		"front":  return Vector3i(0, 0, -hi.z - 1)
 	return Vector3i.ZERO
 
-# Соседние (по грани) фабричные блоки данного узла — с учётом всех клеток его футпринта.
-func _factory_neighbors(node, fac_cells: Dictionary) -> Array:
-	var out: Array = []
-	var seen := {}
-	var DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
-	for c in fac_cells[node]:
-		for d in DIRS:
-			var nx: int = c.x + d.x; var ny: int = c.y + d.y; var nz: int = c.z + d.z
-			if not _in_bounds(nx, ny, nz):
+# ══════════════════════════════════════════════════════════════════════════════
+# ФАБРИЧНЫЕ СВЯЗИ
+# ══════════════════════════════════════════════════════════════════════════════
+# Куда блок отдаёт ресурс, задают ЕГО СОБСТВЕННЫЕ грани (FactoryBlock.output_faces /
+# input_faces, настраиваются в инспекторе сцены блока) с учётом его поворота.
+# Связь A→B есть, когда: у A грань вывода смотрит на клетку B И у B грань ввода смотрит
+# навстречу. Многоклеточные блоки (2×2×2) отдают/принимают с любой своей клетки.
+func rebuild_factory_links() -> void:
+	var facs: Array = []
+	var cells: Dictionary = {}                    # node → клетки его футпринта
+	for k in node_map.keys():
+		var n = node_map[k]
+		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
+			continue
+		var parts: PackedStringArray = k.split(",")
+		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
+		if not _in_bounds(ax, ay, az):
+			continue
+		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
+		facs.append(n)
+	for n in facs:
+		n.next_block = null
+		var own: Array = cells[n]
+		for face in n.output_faces:
+			var d: Vector3i = n.face_dir(String(face))
+			if d == Vector3i.ZERO:
 				continue
-			var nb: Node3D = find_block(nx, ny, nz)
-			if nb != null and nb != node and fac_cells.has(nb) and not seen.has(nb):
-				seen[nb] = true
-				out.append(nb)
-	return out
-
-# Сток цепочки: продавец (деньги) или генератор (топливо→энергия). Дальше ресурс не толкают.
-func _is_factory_sink(node) -> bool:
-	var bt := int(node.get("block"))
-	return bt == G.Block.SELLER or bt == G.Block.COAL_GEN
+			var found = null
+			for c in own:
+				var t: Vector3i = c + d
+				if not _in_bounds(t.x, t.y, t.z):
+					continue
+				var nb = find_block(t.x, t.y, t.z)
+				if nb == null or nb == n or not cells.has(nb):
+					continue                      # не фабричный сосед — ресурс туда не идёт
+				if not nb.accepts_from(d):
+					continue                      # у соседа с этой стороны нет грани ВВОДА
+				found = nb
+				break
+			if found != null:
+				n.next_block = found
+				break
