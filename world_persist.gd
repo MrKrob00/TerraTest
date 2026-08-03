@@ -39,11 +39,6 @@ func _ready() -> void:
 	t.timeout.connect(_save_world)
 	add_child(t)
 
-# Сохранение при ЗАКРЫТИИ окна и при сворачивании (мобилка: «назад»/домой). Раньше мир писался
-# ТОЛЬКО раз в интервал автосейва, поэтому всё после последней записи терялось, а на короткой
-# сессии файл сейва мог не появиться вовсе — и игра каждый раз стартовала как новая.
-# Движок сам завершает работу после этой нотификации (auto_accept_quit не трогаем — так же
-# устроен персист прогресса в G.gd), нам достаточно успеть записать.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
 			or what == NOTIFICATION_WM_GO_BACK_REQUEST:

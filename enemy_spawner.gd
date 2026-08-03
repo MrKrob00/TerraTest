@@ -6,7 +6,7 @@ extends Node3D
 
 @export var enemy_scenes: Array[PackedScene]        # пул сцен врагов
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
-@export var max_enemies: int = 9                    # было 3, ×3
+@export var max_enemies: int = 9
 @export var spawn_interval: float = 6.0             # пауза между появлениями
 @export var spawn_min_dist: float = 270.0           # не ближе к игроку (враги появляются далеко)
 @export var spawn_max_dist: float = 520.0           # не дальше (карта 1982² — простора много; < render 1400, виден при спавне)

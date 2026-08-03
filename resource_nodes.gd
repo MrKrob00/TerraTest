@@ -51,8 +51,6 @@ func _ready() -> void:
 		push_error("resource_nodes: у родителя-карты нет terrain_height_at()/get_dims()")
 		return
 
-	# Рельеф грузится в map._ready ПОСЛЕ его await, а этот _ready (ребёнок) идёт раньше —
-	# поэтому ждём, пока карта не отдаст размеры (md загружен).
 	var guard: int = 0
 	while map.get_dims().x <= 0 and guard < 300:
 		await get_tree().process_frame
@@ -90,9 +88,6 @@ func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 	var half_x: float = dims.x * 0.5 - edge_margin
 	var half_z: float = dims.y * 0.5 - edge_margin
 	var attempts: int = count * 12
-	# Пространственный хеш вместо линейного скана: раньше _too_close сравнивал КАЖДУЮ новую точку со
-	# ВСЕМИ принятыми (O(n²) ≈ 2 млн distance_to при count=2000). Теперь смотрим только 3×3 соседние
-	# ячейки решётки со стороной min_spacing — O(1) на точку.
 	var grid: Dictionary = {}
 	var cell: float = maxf(min_spacing, 0.001)
 	var since_yield: int = 0
@@ -153,9 +148,6 @@ func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
 # Узлы и видимые инстансы появляются позже, в _process, только для ближних (стриминг).
 func _init_veins(positions: Array[Vector3]) -> void:
 	var cap: int = mini(max_visible, positions.size())
-	# Инстансы теперь ЕЗДЯТ за камерой (стриминг). MultiMesh фрустум-куллит себя по своему AABB,
-	# который на set_instance_transform авто-обновляется не всегда → близкие жилы могли пропадать.
-	# Большой custom_aabb = MM никогда не куллится целиком (инстансов мало, 1 draw-call — дёшево).
 	var big := AABB(Vector3(-2000.0, -2000.0, -2000.0), Vector3(4000.0, 4000.0, 4000.0))
 	for mm in multimesh_nodes:
 		mm.custom_aabb = big

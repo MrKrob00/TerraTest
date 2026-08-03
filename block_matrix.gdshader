@@ -1,15 +1,6 @@
 shader_type spatial;
 render_mode cull_disabled, unshaded, depth_draw_always;
 
-// «Разрендер» блока — эффект недогруженного объекта симуляции (см. block_fx.gd):
-//   mode 0 — ПОЯВЛЕНИЕ: блок «загружается» снизу вверх. Выше фронта — недогруз: вайрфрейм-
-//            сетка (cyan линии) + «missing texture» (magenta/чёрная шахматка) + мерцающий
-//            глитч; ниже фронта — уже собран (discard → виден настоящий блок).
-//   mode 1 — ИСЧЕЗНОВЕНИЕ: блок «разрендеривается» — та же вайрфрейм/missing-texture с
-//            выпадающими клетками, гаснет (ALPHA→0).
-//   mode 2 — ДАМАГ (как раньше): короткая вспышка КРАСНЫХ 0/1 на грани.
-// Триплан в ЛОКАЛЬНЫХ осях коробки — едет и вращается вместе с блоком.
-
 uniform int   mode = 0;
 uniform float progress : hint_range(0.0, 1.0) = 0.0;
 uniform vec3  glitch_a : source_color = vec3(0.15, 0.85, 1.0);     // cyan (вайрфрейм)
@@ -105,7 +96,6 @@ void fragment() {
 			ALPHA  = clamp(a, 0.0, 1.0);
 		}
 	} else {
-		// ДАМАГ (как раньше): разреженная вспышка КРАСНЫХ цифр 0/1.
 		vec2 grid = uv * damage_cells;
 		vec2 cell = floor(grid);
 		vec2 fpart = fract(grid);

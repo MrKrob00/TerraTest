@@ -106,9 +106,6 @@ func _place(map: Node, dims: Vector2i) -> void:
 			continue
 		var placed: Array = []
 		var attempts: int = setp.count * 12
-		# Пространственный хеш вместо линейного скана (как в resource_nodes): раньше _too_close
-		# сравнивал каждую точку со ВСЕМИ принятыми — при count=400 это ~1 млн distance_to на
-		# один набор, одним куском без единого кадра. Плюс отдаём кадр каждые PLACE_BATCH попыток.
 		var grid: Dictionary = {}
 		var cell: float = maxf(setp.min_spacing, 0.001)
 		var since_yield: int = 0

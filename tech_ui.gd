@@ -162,8 +162,6 @@ func _load_items() -> void:
 				"price": int(_prices[block_type]),
 			})
 		return
-	# INVENTORY — реальные блоки игрока, сгруппированные по типу. Фильтр категорий применяем
-	# и здесь (по просьбе): сортировка та же, что в магазине.
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
@@ -183,10 +181,6 @@ func _block_name(block_type: int) -> String:
 		return str(names[block_type]).capitalize()
 	return "Block %d" % block_type
 
-# ── Ровно 4 позиции в ряду ────────────────────────────────────────────────────
-# Раньше слот был фиксированный (96px), а HFlowContainer переносил по факту ширины — в ряд
-# влезало сколько влезет, и на разных экранах по-разному. Считаем размер слота ОТ ШИРИНЫ сетки,
-# чтобы всегда получалось ровно COLS штук.
 const COLS := 4
 
 func _slot_side() -> float:

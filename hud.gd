@@ -629,8 +629,6 @@ func _hand_action(kind: String) -> void:
 	if _block_globe:
 		_block_globe.refresh()             # инвентарь мог измениться (стос в инвентарь)
 
-# Показываем панель рук только в стройке и только когда в руке есть блок. Зовётся из _process,
-# чтобы состояние было живым (block_take меняется в стройке тапом/постановкой, HUD об этом не знает).
 func _update_hand_panel() -> void:
 	if _hand_panel == null:
 		return
@@ -655,8 +653,6 @@ func _build_rotate_panel() -> void:
 	_rotate_panel.visible = false
 	var pw: float = 180.0
 	_rotate_panel.size = Vector2(pw, 140)
-	# Не по центру снизу (было неудобно), а у ЛЕВОГО края по вертикали — под левый палец, а низ и
-	# центр свободны. Повёрнуто в резайз-хендлере тоже (см. _reposition в самом верху).
 	_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - 70.0)
 	add_child(_rotate_panel)
 	var grid := GridContainer.new()
@@ -697,7 +693,7 @@ func _on_globe_block_chosen(block_type: int) -> void:
 	if v == null or not v.has_method("take_block_into_hand"):
 		return
 	if not v.take_block_into_hand(block_type):
-		return                                  # не удалось (нет сцены); рука-занята теперь = замена
+		return
 	G.block_inventory.erase(block_type)          # списываем взятый экземпляр (блок из руки вернулся в inv внутри take)
 	G.mark_progress_dirty()
 	if _block_globe:
@@ -769,7 +765,6 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 	if v and v.has_method("rotate_build"):
 		v.rotate_build(axis, ang)
 
-
 func _process(delta: float) -> void:
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
 	_update_radar(delta)
@@ -830,7 +825,6 @@ func _has_radar(v) -> bool:
 			return true
 	return false
 
-
 # ── Сборка выезжающей панели целиком в коде (тема — как у tech_ui) ─────────────
 func _build_ark_drawer() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
@@ -889,7 +883,6 @@ func _build_ark_drawer() -> void:
 	add_child(handle)
 	_handle = handle
 
-
 func _toggle_drawer() -> void:
 	_set_drawer(not _drawer_open)
 
@@ -910,7 +903,6 @@ func _set_drawer(open: bool) -> void:
 		tw.tween_property(_handle, "position:x", handle_x, 0.22)
 		_handle.text = ">" if open else "<"
 
-
 # ── Действия панели ───────────────────────────────────────────────────────────
 func _toggle_inventory() -> void:
 	if _tech_ui == null:
@@ -926,7 +918,6 @@ func _toggle_inventory() -> void:
 		_tech_ui.refresh()
 
 func _on_tech_ui_visibility() -> void:
-	# Инвентарь открыт → прячем игровой HUD; закрыт → возвращаем как было.
 	var open: bool = _tech_ui != null and _tech_ui.visible
 	if not open:
 		# Панель только скрывается (visible=false), фокус (напр. поле поиска) сам не
@@ -1025,7 +1016,6 @@ func _apply_mode_visibility() -> void:
 	else:
 		_on_movement_pressed()
 
-
 # ── Стили (тёмно-бирюзовая палитра tech_ui) ───────────────────────────────────
 func _make_panel_style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -1092,7 +1082,6 @@ func _make_drawer_button(label: String, cb: Callable) -> Button:
 	b.pressed.connect(cb)
 	return b
 
-
 # ── Старая логика режимов/кнопок (визуал) ─────────────────────────────────────
 func _on_movement_pressed() -> void:
 	$Attack.visible = true
@@ -1103,7 +1092,6 @@ func _on_movement_pressed() -> void:
 	%Joystick_movement.visible=true
 	$Movement/Label.add_theme_color_override("font_color", Color.GREEN)
 	$Building/Label.add_theme_color_override("font_color", Color.BLACK)
-
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
@@ -1117,16 +1105,13 @@ func _on_building_pressed() -> void:
 	$Movement/Label.add_theme_color_override("font_color", Color.BLACK)
 	$Building/Label.add_theme_color_override("font_color", Color.GREEN)
 
-
 func _on_take_pressed() -> void:
 	if current_vehicle.block_map_node.get_block(current_vehicle.BuildingBlock["x"],current_vehicle.BuildingBlock["y"],current_vehicle.BuildingBlock["z"])!=0:
 		return #if no empty return
 	$Take/Label.text = "Take"
-	$TakeOff.visible = false            # убрать-из-руки теперь на панели рук (📦 инвентарь / 🗑 в мир)
+	$TakeOff.visible = false
 	if current_vehicle.block_body: #Take blocking
 		$Take/Label.text = "Place"
-
-
 
 func _on_take_off_pressed() -> void:
 	if current_vehicle.block_take:

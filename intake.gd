@@ -91,10 +91,6 @@ func _push_from_inventory() -> void:
 		_fix_positions()
 		slot_freed.emit()
 		_update_take_timer()   # освободилось место → снова можно забирать у машин
-		# ОСТАЛИСЬ предметы? Проталкиваем следующий. Раньше после успеха пуш не перезапускался и
-		# не переподписывался на slot_freed — поэтому последний(ие) предмет(ы) застревали в приёмнике,
-		# пока не приедет новый. Теперь дожимаем всю очередь: следующий пуш либо уйдёт, либо
-		# упрётся в занятый блок и дождётся его slot_freed (см. ветку else).
 		if not inventory.is_empty():
 			call_deferred("_push_from_inventory")
 	else:
@@ -108,7 +104,6 @@ func _push_from_inventory() -> void:
 func _on_next_block_freed() -> void:
 	waiting_for_next = false
 	call_deferred("_push_from_inventory")  # ← тоже deferred
-
 
 func _on_item_received() -> void:
 	pass

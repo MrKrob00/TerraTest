@@ -129,11 +129,6 @@ func _mk(txt: String, fsize: int, col: Color) -> Label:
 func _layout() -> void:
 	var s := get_viewport().get_visible_rect().size
 	_last_rect = s
-	# Размер шрифта СЧИТАЕМ ОТ ЭКРАНА, а не берём фиксированный. Причина «через пару секунд надпись
-	# уменьшается»: новая сцена в Main._ready ставит content_scale_factor, и виртуальный вьюпорт
-	# прыгает (напр. 1280×720 → 1920×1080). Наш оверлей переживает смену сцены, а надпись была
-	# задана в ВИРТУАЛЬНЫХ пикселях (104) — вьюпорт стал больше, надпись относительно экрана стала
-	# мельче. Теперь она пересчитывается от текущего размера, поэтому выглядит одинаково всегда.
 	var fs: int = clampi(int(s.y * 0.15), 44, 190)
 	_title_label.add_theme_font_size_override("font_size", fs)
 	_title_label.add_theme_constant_override("outline_size", maxi(int(fs * 0.11), 6))
@@ -161,11 +156,6 @@ func _process(delta: float) -> void:
 		_layout()
 	var appear: float = clampf(_t / 0.9, 0.0, 1.0)
 
-	# ── Глитч идёт ВСЁ ВРЕМЯ и КАЖДЫЙ РАЗ ПО-РАЗНОМУ ────────────────────────────
-	# Раньше progress гнался один раз от появления и застревал на месте — эффект «сыграл» и
-	# замирал. Теперь это ЦИКЛ бурстов: каждый прогон 0→1 (та же кривая появления/угасания, что
-	# у блоков), а на старте нового прогона меняем seed и форму сетки — поэтому двух одинаковых
-	# вспышек не бывает. Между бурстами короткая пауза, чтобы не мельтешило сплошняком.
 	_burst_t += delta
 	if _burst_t >= _burst_cycle:
 		_burst_t = 0.0
@@ -201,8 +191,6 @@ func _process(delta: float) -> void:
 			_swap()
 		elif st == ResourceLoader.THREAD_LOAD_FAILED or st == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE \
 				or _wait > 60.0:
-			# Дедлайн: если поток загрузки завис, лучше уйти в обычную смену сцены, чем крутить
-			# анимацию вечно (в фазе 0 фолбэка по времени раньше не было вовсе).
 			_phase = 1
 			_wait = 0.0
 			get_tree().change_scene_to_file(next_scene)     # фолбэк
@@ -268,9 +256,6 @@ func _finish() -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(queue_free)
 
-# СТАТИЧНЫЕ сканлайны: рисуются ОДИН раз (перерисовка только на ресайз). Раньше они шли в том же
-# _draw, что и полосы, т.е. 240-360 draw_line КАЖДЫЙ кадр — заметная трата на мобилке ровно там,
-# где нам нужен плавный кадр.
 class _Scanlines extends Control:
 	func _draw() -> void:
 		var s := size

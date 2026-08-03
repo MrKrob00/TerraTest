@@ -101,10 +101,6 @@ func _energy_tick(delta: float) -> void:
 	_energy = minf(_energy + _tick_prod, _energy_cap)
 	_tick_prod = 0.0
 	_cap_timer -= delta
-	# Пересчёт блоков — СТРОГО по таймеру 0.5с. Раньше условие было `_cap_timer <= 0.0 or anchored`,
-	# и на якоре `or anchored` сводил троттл на нет: перебор всех блоков шёл КАЖДЫЙ тик (на базе в
-	# 100 блоков это ~6000 Variant-обращений get("block") в секунду). Счётчик солнечных кешируем и
-	# используем между пересчётами — выработка идёт так же, просто состав блоков опрашиваем реже.
 	if _cap_timer <= 0.0:
 		_cap_timer = 0.5
 		var batteries := 0
@@ -239,7 +235,6 @@ func _scatter_blocks() -> void:
 				rb.sleeping = false
 				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
-
 # ══════════════════════════════════════════
 # ЗАЩИТА / ЯКОРЬ / ДЕЙСТВИЯ КРУГОВОГО МЕНЮ
 # ══════════════════════════════════════════
@@ -307,10 +302,6 @@ func toggle_anchor() -> bool:
 		if mx - mn > ANCHOR_MAX_RISE:
 			_anchor_refuse_hop()
 			return false
-	# (3) Замораживаем (STATIC): у замороженного тела transform МОЖНО двигать — физика его
-	# не перетирает. Прямой телепорт незамороженного RigidBody сервер откатывал, поэтому
-	# подъёма «не было видно». Tween по замороженному телу = серия телепортов: надёжно и
-	# видно глазом — машина поднимается на колонну и выравнивается.
 	freeze = true
 	anchored = true
 	linear_velocity = Vector3.ZERO
@@ -505,7 +496,6 @@ func _map_block_collisions(block: Node) -> void:
 			# щоб швидко знайти її при видаленні блока
 			child.set_meta("block_owner", block)
 
-
 func connect_block_signals(block: Node) -> void:
 	if block.has_signal("destroyed"):
 		block.destroyed.connect(_on_block_destroyed)
@@ -603,10 +593,6 @@ func award_block_list(types: Array) -> void:
 		scn.add_child(orb)
 		orb.setup(self, int(types[i]), TAU * float(i) / float(n))
 
-
-
-
-
 # ══════════════════════════════════════════
 # ГЛАВНЫЙ ЦИКЛ
 # ══════════════════════════════════════════
@@ -622,11 +608,6 @@ func _physics_process(delta: float) -> void:
 	if anchored:
 		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
-		# Держим машину-платформу БЕЗ тряски: высота — задемпфированная пружина к map (v ∝ остатку
-		# пути, без овершута), поворот — плавно к ровному. Горизонталь — МЕДЛЕННО по джойстику
-		# (репозиция), иначе гасится к нулю (стоит на месте).
-		# Высота цели СЛЕДУЕТ ЗА РЕЛЬЕФОМ (+клиренс), чтобы можно было выплыть из ямы/застревания:
-		# двигаешь машину к краю → она поднимается над землёй и переваливает через препятствие.
 		if not is_station:
 			var terr := _get_terrain()
 			if terr != null:
@@ -699,10 +680,6 @@ func _process_input(joy: Vector2, delta: float) -> void:
 	var target_steer: float = -raw_steer * angle_limit
 	_steer_angle = lerp(_steer_angle, target_steer, steer_speed * delta)
 
-	# Передаём блокам для визуала колёс. Список кешируем: раньше каждый физ-тик заново
-	# резолвился NodePath $blocks, аллоцировался массив get_children() и на КАЖДЫЙ блок шли два
-	# has_method() (на 40-блочной машине ~4800 поисков в секунду). Пересобираем только когда
-	# изменилось число детей (постановка/снятие блока, смена сборки).
 	for block in _drive_blocks():
 		if not is_instance_valid(block):
 			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
@@ -714,8 +691,6 @@ func _process_input(joy: Vector2, delta: float) -> void:
 # КОНТАКТ С ЗЕМЛЁЙ
 # ══════════════════════════════════════════
 
-# Объект запроса создаём ОДИН раз и переиспользуем: раньше каждый физ-тик рождались новый
-# PhysicsRayQueryParameters3D и новый Array [self] (3 аллокации × 60/с на каждую машину).
 var _ground_q: PhysicsRayQueryParameters3D = null
 
 func _check_ground() -> void:
@@ -732,10 +707,6 @@ func _check_ground() -> void:
 # СИНХРОНИЗАЦИЯ МАССЫ
 # ══════════════════════════════════════════
 
-# Масса меняется только когда меняется НАБОР колёс (вес колеса — константный @export). Раньше
-# она пересчитывалась каждый физ-тик: на каждое колесо — новый Dictionary из get_module_data()
-# (4-8 аллокаций за тик, 240-480/с на машину). Теперь считаем при смене числа колёс и раз в 0.5с
-# как страховка (колесо могло быть освобождено, оставшись в массиве).
 var _mass_wheels_n: int = -1
 var _mass_timer: float = 0.0
 
@@ -943,10 +914,6 @@ func _input(event: InputEvent) -> void:
 		_touch_count = maxi(_touch_count + (1 if event.pressed else -1), 0)
 		_last_touch_ms = Time.get_ticks_msec()
 	if Building:
-		# Управление одним пальцем — как при езде: ДРАГ крутит камеру (это делает
-		# camera_controller), а блок наводится ТАПОМ (короткое касание без свайпа) по клетке.
-		# Раньше блок таскался драгом, и камеру пришлось отдавать двум пальцам — неудобно и
-		# непривычно после одно-пальцевой езды. Теперь один палец ведёт себя одинаково везде.
 		if (event is InputEventMouseMotion \
 				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
 				and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
@@ -1161,9 +1128,6 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 	else:
 		BuildingBlock["x"] = res.x; BuildingBlock["y"] = res.y; BuildingBlock["z"] = res.z
 
-# Авто-ориентация блока по грани крепления. Колёса — разворот по стороне (yaw, как раньше).
-# Остальные блоки — НАКЛОН так, чтобы НИЗ смотрел на соседа (боковое крепление): справа от
-# блока → низ влево и т.п. Углы могут потребовать проверки на живом тесте.
 func _face_orient(face: String, block_type: int) -> Basis:
 	# Фабричные блоки ставим РОВНО (без наклона): связь в цепочке считается по соседству
 	# (rebuild_factory_links), а не по повороту — игроку не нужно их вращать и целиться гранью.
@@ -1200,9 +1164,6 @@ func _preview_held(res: Dictionary) -> void:
 	var gy: float = float(res.y) + ad.y
 	var gz: float = float(res.z) + ad.z
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
-	# Точки контакта + занятость клеток: если сюда нельзя прицепить (напр. на колесо сверху)
-	# или клетки заняты — НЕ показываем блок на этой грани, держим его в руке, чтобы было
-	# видно, что сюда ставить нельзя (раньше показывал где угодно).
 	var neighbor_type: int = block_map_node.get_block(int(res.x), int(res.y), int(res.z))
 	var placeable: bool = block_map_node.can_attach(neighbor_type, instance.block, res.face) \
 			and block_map_node.can_place(instance.block, gx, gy, gz)
@@ -1240,17 +1201,10 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	_preview_res = null
 	var inst: Node3D = holder.get_child(0)
 	inst.top_level = true
-	# Превью показывает и РУЧНОЙ поворот (yaw из build_basis), и ТУ ЖЕ высоту, что и постановка
-	# (+1.2): раньше превью висело на +0.6 и без поворота — блок прыгал по позиции и игнорил разворот.
 	inst.global_transform = Transform3D(Basis(Vector3.UP, build_basis.get_euler().y), _cabin_ground + Vector3.UP * 1.2)
 	if ghost_block:
 		ghost_block.visible = false
 
-# Ядро поставлено на землю → спавним НОВУЮ структуру из одного блока-ядра.
-#   • ядро КАБИНА → мобильная машина (как было);
-#   • ядро СТАЦИОНАРНЫЙ блок (SELLER) → якорная база: is_station=true и мгновенный якорь.
-# Структура жёстко кладётся под Vehicles (не в objects), регистрируется в списке техники
-# камеры (в неё можно пересесть) — круговое меню создаётся её же _ready (faction 0).
 func _place_ground_structure(instance: Node3D) -> void:
 	var core: int = int(instance.get("block"))
 	var scene: PackedScene = load("res://player_vehicle.tscn")
@@ -1332,11 +1286,6 @@ var result: Dictionary = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": ""
 func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictionary:
 	result = {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
 	var dir: Vector3 = direction
-	# Ячейки сетки ЦЕНТРИРОВАНЫ на целых (блок (x,y,z) занимает [x-0.5 … x+0.5]), значит
-	# стартовая ячейка = round(origin), а границы ячеек — на ПОЛУцелых. Старый код брал
-	# границы на целых (round(origin)+1) → стабильный промах ~на полклетки. Здесь правильно:
-	# t до первой границы считается до cx±0.5. Плюс проверяем и стартовую ячейку (раньше
-	# сначала шагали, потом проверяли — стартовую пропускали).
 	var cx := int(round(origin.x)); var cy := int(round(origin.y)); var cz := int(round(origin.z))
 	var step_x := 1 if dir.x >= 0 else -1
 	var step_y := 1 if dir.y >= 0 else -1
@@ -1437,9 +1386,6 @@ func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 			and block_body.get_parent() != null and block_body.get_parent().name in "blocks":
 		_pick_selected_block()
 		return
-	# 2) СВОБОДНЫЙ блок в МИРЕ (лежит в /root/Main/objects) — физ-луч из точки тапа, берём в руку.
-	#    Раньше это делал только асинхронный камера-Raycast (_on_raycast_body_entered) + кнопка Take,
-	#    и по земле (взгляд вниз) он не наводился — поэтому тап по миру блок не брал.
 	_grab_world_block(screen_pos)
 
 # Взять СВОБОДНЫЙ блок из мира (RigidBody-VehicleBlock под /root/Main/objects) в руку по клику.
@@ -1492,15 +1438,9 @@ func _on_take_pressed() -> void:
 				or (G.is_stationary(instance.get("block")) and not is_station)):
 			_place_ground_structure(instance)
 			return
-		# Ставим РОВНО то, что показывает превью (_preview_res). Раньше грань бралась из
-		# глобального result, а тап по самой кнопке «поставить» тоже прогонял _handle_click
-		# по координатам кнопки и затирал result промахом (face="") — блок вставал без
-		# наклона, не как в превью. Без превью ставить нечего.
 		if _preview_res == null:
 			return
 		var pres: Dictionary = _preview_res
-		# Проверяем ВЕСЬ footprint (для 2×2 — все 8 клеток), а не только якорную клетку,
-		# иначе 2×2-блок (селлер) можно было визуально воткнуть в уже занятые клетки (пушку).
 		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
 			return
 		# Точки контакта: можно ли прицепить сюда (пушка сверху нельзя, колесо только справа).
@@ -1524,16 +1464,12 @@ func _on_take_pressed() -> void:
 		instance.scale = Vector3.ONE
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
-		# Матрицу-появление при РУЧНОЙ постановке не играем (выглядела так себе). Эффект теперь
-		# только когда машина строится с нуля — спавн/загрузка/смена сборки (blocks.spawn_block).
 		var placed_bt := int(instance.block)
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
 		_rebuild_factory()                      # авто-коннект фабрики сразу после постановки
-		# Авто-добор (реквест): блок был из ИНВЕНТАРЯ и там есть ещё такой же → сразу берём
-		# следующий такой же в руку, чтобы ставить серией без возврата в гараж.
 		if _hand_from_inventory:
 			_refill_hand_from_inventory(placed_bt)
 	elif block_body != null and is_instance_valid(block_body):
@@ -1564,10 +1500,6 @@ func apply_build(layout: Array) -> void:
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
 
-# Блоки из руки → обратно в инвентарь (при выходе из стройки, при замене руки, при «Take off»).
-# ЧИСТИМ ВСЕ блоки под takepos, а не только tracked block_body: редкие рассинхроны (взял из
-# мира, потом из инвентаря) оставляли лишний блок в руке — в руке оказывалось несколько блоков,
-# было непонятно какой ставишь, и выбросить их не получалось. Теперь takepos гарантированно пуст.
 func _return_hand_to_inventory() -> void:
 	var holder: Node = camera_controller.camera.get_child(0) \
 			if (camera_controller != null and camera_controller.camera != null) else null
@@ -1588,8 +1520,6 @@ func take_block_into_hand(block_type: int) -> bool:
 	var scene: PackedScene = G.get_scene(block_type)
 	if scene == null:
 		return false
-	# Рука занята → кладём текущий блок в инвентарь и берём новый (замена). Раньше тут был
-	# отказ (return false), и выбор нового блока из инвентаря игнорировался.
 	_return_hand_to_inventory()
 	var instance: VehicleBlock = scene.instantiate()
 	var holder: Node = camera_controller.camera.get_child(0)   # takepos Marker3D
@@ -1604,9 +1534,6 @@ func take_block_into_hand(block_type: int) -> bool:
 	build_basis = Basis()          # свежий блок — без ручного поворота
 	_preview_res = null
 	_cabin_ground = null
-	# Сразу включаем режим стройки, чтобы блок можно было поставить без лишних нажатий
-	# (и обновляем визуал HUD — кнопки Take/TakeOff). _on_building_pressed сам сгейтит
-	# повтор через `if Building: return`.
 	_on_building_pressed()
 	var hud: CanvasLayer = camera_controller.hud
 	if hud and hud.has_method("_on_building_pressed"):
@@ -1649,8 +1576,6 @@ func drop_hand_to_world() -> void:
 func _on_take_off_pressed() -> void:
 	drop_hand_to_world()
 
-# Кеш стреляющих блоков: зовётся каждый физ-тик, пока зажата Атака, и раньше каждый раз
-# резолвил $blocks, аллоцировал get_children() и звал has_method на каждом блоке.
 var _atk_cache: Array = []
 var _atk_n: int = -1
 

@@ -26,7 +26,6 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, max_distance, Color.WHITE, false, 12)
 	draw_circle(knob_pos, max_distance/2, Color.GHOST_WHITE, true)
 
-
 func _input(event):
 	# Удержание кнопки на машине / открытое круговое меню — камеру не крутим,
 	# иначе жест кнопки в зоне джойстика вращал камеру вместе с прогрессом.
@@ -95,7 +94,6 @@ func is_touch_outside_2(touch_pos: Vector2):
 	screen_size = get_viewport().get_visible_rect().size
 	return (touch_pos - global_position).length() > max_distance and touch_pos.x > screen_size.x/2 and touch_pos.y <screen_size.y/2
 
-
 func update_knob_position(touch_pos: Vector2):
 	var dir = touch_pos - global_position
 	knob_pos = stick_center + dir.limit_length(max_distance)
@@ -112,7 +110,4 @@ func set_zoom(index1:Vector2,index2:Vector2):
 	radius/=result
 	if radius<2: radius=2
 	if radius>20: radius=20
-	# Пишем float БЕЗ int(): раньше запись целого + ресинк выше стирали дробный прирост
-	# пинча каждое событие (8 → 8.08 → int → 8) — отдаление на телефоне стояло на месте,
-	# а приближение работало (int() округляет вниз). RADIUS и ПК-колесо и так float.
 	$"../..".RADIUS = radius

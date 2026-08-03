@@ -1,7 +1,6 @@
 extends VehicleBlock
 class_name WeaponBlock
 
-
 @export var damage: int = 5
 @export var weapon_range: float = 10.0
 @export var fire_rate: float = 0.2
@@ -28,7 +27,6 @@ func _ready() -> void:
 	if has_node("Ammo/Bullet"):
 		_rebind_bullet($Ammo/Bullet)
 
-
 # ФИЗ-ТИК, а не кадр отрисовки: force_raycast_update() — это запрос к физическому серверу (луч
 # наведения), а выстрел рождает физические тела (пули/ракеты). На кадре отрисовки такой запрос
 # читает состояние физики в произвольной точке шага и лишний раз гоняет её на быстрых экранах;
@@ -37,10 +35,6 @@ func _ready() -> void:
 func _physics_process(delta: float) -> void:
 	_fire_hold = maxf(_fire_hold - delta, 0.0)
 	var firing := _fire_hold > 0.0
-	# Луч обновляем ТОЛЬКО когда стреляем: RayCast3D и так опрашивается физикой сам, а
-	# force_raycast_update() — второй запрос к физ-серверу за тик. Раньше он шёл безусловно, т.е.
-	# каждое простаивающее оружие (в т.ч. у всех врагов и припаркованных машин) держало лишние
-	# 60 запросов/с. Цель тоже нужна только для наведения/огня.
 	if not firing:
 		if _current_target != null:
 			_current_target = null
@@ -115,8 +109,6 @@ func _track_target(delta: float, firing: bool) -> void:
 	var length := weapon_range
 	if hit:
 		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
-	# Запись height в PrimitiveMesh пересобирает вершинные буферы меша. Раньше это делалось
-	# КАЖДЫЙ кадр стрельбы, даже когда длина не менялась. Пишем только при заметном изменении.
 	if track_visual.mesh is CylinderMesh:
 		var cyl := track_visual.mesh as CylinderMesh
 		if absf(cyl.height - length) > 0.05:
@@ -194,9 +186,6 @@ func fire_bullet():
 		_rebind_bullet(new_bullet)              # дубликат унаследовал сценовое соединение без bind
 		free_bullet.append(new_bullet)
 	var bullet:Area3D = free_bullet.pop_back()
-	# Направление — FORWARD турели (её −Z), то же, что у прицельного raycast (target −Z).
-	# Раньше брали pivot→Marker3D: если маркер стоял не строго на оси ствола, пуля летела
-	# «не в ту сторону». Так — ровно куда целится турель.
 	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
 	if not ("dir" in bullet):
 		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
@@ -211,7 +200,6 @@ func fire_bullet():
 	if absf(dir.dot(Vector3.UP)) < 0.99:        # look_at падает, если dir почти вертикальна
 		bullet.look_at(bullet.global_position + dir)
 	bullet.monitoring = true                    # в полёте ловит попадания
-
 
 func _on_area_3d_body_entered(body: Node3D) -> void:
 	if body == self or body.get_parent() == get_parent():
@@ -232,8 +220,6 @@ func _vehicle_root() -> Node:
 		p = p.get_parent()
 	return p
 
-# Точка прицеливания по цели-машине: если КАБИНА ничем не закрыта — приоритет ей,
-# иначе ближайший к оружию блок машины. Для не-машин — как раньше (центр/коллизия).
 func _aim_point_for(body: Node3D) -> Vector3:
 	var blocks := body.get_node_or_null("blocks")
 	if blocks == null:
@@ -276,8 +262,6 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 
 func _on_area_3d_body_exited(body: Node3D) -> void:
 	_targets.erase(body)
-
-
 
 func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if body == self: return

@@ -1,7 +1,4 @@
 shader_type spatial;
-// specular_disabled: террейн матовый (SPECULAR=0) — убираем расчёт спекуляра из пайплайна.
-// (shadows_disabled НЕ ставим: он убирал тень машины на землю, а FPS не давал — приём теней
-// рельефом оказался НЕ узким местом. Рельеф принимает динамические тени как раньше.)
 render_mode diffuse_lambert, specular_disabled;
 
 group_uniforms Quality;
@@ -38,8 +35,6 @@ uniform float rock_blend         : hint_range(0.0, 0.5)      = 0.15;
 uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 
 group_uniforms Biomes;
-// Песок/трава теперь по БИОМАМ (регионам), а не по высоте. Биом задаётся низкочастотным
-// шумом по миру XZ: крупные пятна травяного и песчаного биома. Снег остаётся по высоте (пики).
 uniform float biome_scale       : hint_range(30.0, 1000.0) = 230.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
 uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.07;   // резкость границы биомов (уже → чётче, не «мешанина»)
 uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
@@ -58,8 +53,6 @@ uniform float grass_min_height  : hint_range(-10.0, 10.0) = -2.0;
 uniform float grass_max_height  : hint_range(-10.0, 10.0) = 5.0;
 uniform float bend_radius       : hint_range(0.1, 10.0)   = 1.5;
 uniform float lod_grass_enabled : hint_range(0.0, 1.0)    = 1.0;
-// Яркость травы ОТНОСИТЕЛЬНО подстилки (подстилка = 0.65). Было 1.0 → трава была светлее и
-// «выскакивала» на границе. 0.62 = трава чуть темнее земли (мягкая тень у корня), не пятном.
 uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
 // Сколько травы на СНЕГУ относительно травяной зоны (0 = снег голый, 1 = столько же). На снегу
 // трава реже и короче (масштаб высоты = этому же множителю). В песке/воде и на КАМНЕ травы нет.
@@ -138,9 +131,6 @@ void vertex() {
     }
     v_corrupt   = cstate * corrupt_amount;
 
-    // БИОМ: ПУСТЫНЯ (песок) ↔ ЛУГ (трава) — ЧИСТО ПО РЕГИОНАМ, БЕЗ высоты. Маски ЗАПЕЧЕНЫ на CPU
-    // (map.gd): COLOR.b = луг (совпадает с дюнами генератора), COLOR.g = каньон. Снега/высотного
-    // распределения НЕТ (убрано по просьбе). Пустыня — сухой песок без травы; луг — сочная зелень.
     float biome_grass = COLOR.b;
     float canyon  = COLOR.g;
     float mountain = COLOR.a;                                          // биом ГОР (снежные, высокие)

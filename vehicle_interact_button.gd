@@ -27,7 +27,6 @@ var _label: Label3D = null
 
 func _ready() -> void:
 	input_ray_pickable = true
-	# Без physics_object_picking Area3D._input_event молчит (раньше это включал ShopMenu).
 	get_viewport().physics_object_picking = true
 	get_viewport().physics_object_picking_sort = true
 	var shape := CollisionShape3D.new()

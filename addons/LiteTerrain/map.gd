@@ -192,7 +192,6 @@ var _occluded_chunks: Dictionary = {}           # ci → true  (passed frustum, 
 var _occluded_macros: Dictionary = {}
 var _occluded_nodes:  Dictionary = {}           # node → true (far coarse quadtree mesh, occluded)
 
-
 # ── Streaming runtime state ───────────────────────────────────────────────────
 # Chunks not built at startup are queued here and built in background (on demand).
 var _stream_queue:    Array[int] = []   # chunk indices not yet meshed, sorted by dist
@@ -324,7 +323,7 @@ func _ready() -> void:
 	_cam = _active_camera()
 	if use_image_data or enable_streaming_collision:
 		await _prewarm_heightmap()          # тянем 15+ МБ карты высот в ФОНЕ (иначе load() морозит кадр)
-		_load_heightmap()                   # теперь берётся из кеша ресурсов — без блокирующего чтения
+		_load_heightmap()
 		# Отдаём кадр МЕЖДУ тяжёлыми фазами: сама распаковка карты высот (to_float32_array — ~31 МБ
 		# копирования) и постройка коллизий (обход всей сцены + heightfield-тайлы в Jolt) внутри не
 		# прерываются, но между ними экран загрузки успевает нарисовать кадр и не выглядит зависшим.
@@ -350,7 +349,6 @@ func _ready() -> void:
 	await get_tree().process_frame       # и кадр после — чтобы фейд экрана начался уже без хича
 	terrain_is_ready = true          # ближний террейн построен → экран загрузки может уходить
 	terrain_ready.emit()
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Heightmap loading + streaming collision
@@ -554,7 +552,6 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	add_child(cs)
 	_col_cells[key] = cs
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API  (called by plugin.gd)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -591,7 +588,6 @@ func apply_heightmap(data: PackedFloat32Array) -> void:
 	if collision != null and collision.shape is HeightMapShape3D:
 		collision.shape.map_data = data
 	update()
-
 
 # ── Image-data heightmap API (editor sculpt without a physics shape) ───────────
 
@@ -759,7 +755,6 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 					dirty.append(ci)
 	return dirty
 
-
 # Partial update — only rebuild the listed chunk indices.
 # In the editor this is the hot path on every sculpt stroke.
 func update_chunks(chunk_indices: Array) -> void:
@@ -844,7 +839,6 @@ func get_chunk_info() -> Dictionary:
 		"map_width":  w,
 		"map_depth":  d,
 	}
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Editor chunk cache internals
@@ -1009,7 +1003,6 @@ func _apply_editor_cache() -> void:
 	mesh_instance.mesh = am
 	mesh_instance.set_surface_override_material(0, mat)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Runtime chunk building
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1118,7 +1111,6 @@ func _build_chunks_from_map_data() -> void:
 	_stream_queue.clear()
 	_is_streaming = false
 
-
 # Computes all 4 LOD meshes for chunk ci and stores the result in _stream_results[ci].
 # Thread-safe: reads only md/w/d (immutable during build), writes only to its
 # exclusive _stream_results[ci] slot — same pattern as the original Phase 1.
@@ -1139,7 +1131,6 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 		if lod == 0:
 			first_aabb = data[1]
 	_stream_results[ci] = [lod_meshes, first_aabb]
-
 
 # Creates a MeshInstance3D for each ci in indices whose _stream_results[ci] is ready.
 # MUST run on the main thread — adds nodes to the scene tree. Instances are created
@@ -1180,9 +1171,6 @@ func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void
 		# chunk renders individually, is covered by an active macro, or stays culled —
 		# no frustum bookkeeping needed here.
 		inst.visible = false
-
-
-
 
 # Applies the correct mesh to chunk ci, rebuilding with border snapping when
 # the chunk is at LOD 0 and any neighbour is at a coarser step.
@@ -1234,7 +1222,6 @@ func _apply_lod_mesh(ci: int, mat: Material) -> void:
 		_chunk_instances[ci].mesh = display_mesh
 	_chunk_instances[ci].set_surface_override_material(0, lod_mat)
 
-
 # Returns the neighbour's LOD step if it DIFFERS from my_step, else 0. Used both for
 # height snapping (only when the value is COARSER, i.e. > my_step) and for grass-seam
 # flattening (whenever it is non-zero, i.e. any LOD difference, either direction).
@@ -1242,13 +1229,11 @@ func _border_snap(cx: int, cz: int, dcx: int, dcz: int, my_step: int) -> int:
 	var s := _neighbour_step(cx, cz, dcx, dcz)
 	return s if s != my_step else 0
 
-
 # Packs a chunk's LOD step and its 4 border snap steps into one int. Two chunks with
 # the same signature produce byte-identical meshes, so the quadtree LOD pass only rebuilds when
 # the signature actually changes. Each value is ≤ 8, so 4 bits per field is plenty.
 func _encode_sig(my_step: int, n_snap: int, s_snap: int, w_snap: int, e_snap: int) -> int:
 	return my_step | (n_snap << 4) | (s_snap << 8) | (w_snap << 12) | (e_snap << 16)
-
 
 # Current required signature for chunk ci (its LOD step + the snap step each border
 # needs given its neighbours right now). Compared against _chunk_stitch_sig to decide
@@ -1264,7 +1249,6 @@ func _stitch_signature(ci: int) -> int:
 			_border_snap(cx, cz, -1,  0, my_step),
 			_border_snap(cx, cz,  1,  0, my_step))
 
-
 # Returns the flat chunk index for grid position (cx, cz), or -1 if out of bounds.
 func _get_chunk_idx(cx: int, cz: int) -> int:
 	var cxl := ceili(float(w - 1) / chunk_size)
@@ -1272,7 +1256,6 @@ func _get_chunk_idx(cx: int, cz: int) -> int:
 	if cx < 0 or cx >= cxl or cz < 0 or cz >= czl:
 		return -1
 	return cz * cxl + cx
-
 
 # Returns the LOD vertex-step of the neighbour at (cx+dcx, cz+dcz).
 # Macro groups report step=4 (their merged mesh uses LOD 2).
@@ -1292,7 +1275,6 @@ func _best_available_mesh(lod_meshes: Array, preferred_lod: int) -> ArrayMesh:
 	while lod > 0 and lod_meshes[lod] == null:
 		lod -= 1
 	return lod_meshes[lod]
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Macro-chunk building & management
@@ -1376,11 +1358,9 @@ func _build_macro_chunks() -> void:
 			await get_tree().process_frame
 	_macro_results.clear()
 
-
 # Number of macro groups (= entries already pushed into _macro_to_chunks by Pass A).
 func _macro_instances_target_count() -> int:
 	return _macro_to_chunks.size()
-
 
 # Threaded worker: builds macro mi's merged LOD-2 (step-4) mesh straight from the
 # heightmap over the group's full XZ extent. One surface, ~512 tris. Pure math + a
@@ -1403,7 +1383,6 @@ func _build_macro_worker(mi: int, cxl: int) -> void:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
 	_macro_results[mi] = am
-
 
 # Merges the lod_level mesh of every chunk in chunk_indices into a single
 # ArrayMesh with one surface → one draw call.  Returns null if no geometry.
@@ -1459,9 +1438,6 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 	return am
 
-
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Chunk streaming  (called from _process when _is_streaming == true)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1479,7 +1455,6 @@ func _stream_tick(_delta: float) -> void:
 	if _stream_group_id < 0 and not _stream_queue.is_empty():
 		_stream_dispatch_batch()
 
-
 func _stream_dispatch_batch() -> void:
 	var count := mini(stream_batch_size, _stream_queue.size())
 	_stream_batch = _stream_queue.slice(0, count)
@@ -1489,7 +1464,6 @@ func _stream_dispatch_batch() -> void:
 		_build_chunk_worker(_stream_batch[i], cxl)
 	_stream_group_id = WorkerThreadPool.add_group_task(
 			task, count, -1, true, "stream_chunk")
-
 
 func _stream_apply_batch() -> void:
 	var mat := _get_material()
@@ -1522,7 +1496,6 @@ func _stream_apply_batch() -> void:
 	if _stream_queue.is_empty():
 		_is_streaming = false
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Core geometry helper
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1542,23 +1515,6 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 		result.append(end)
 	return result
 
-# Returns [surface_arrays, AABB], or [] for a degenerate chunk.
-# `step` controls LOD resolution:
-#   step=1 → every vertex (LOD 0, full quality)
-#   step=2 → every other vertex (LOD 1, ~4× fewer triangles)
-#   step=4 → every 4th vertex  (LOD 2, ~16× fewer triangles)
-#   step=8 → every 8th vertex  (LOD 3, ~64× fewer triangles)
-# n/s/w/e_step: LOD step of the neighbour on that edge.
-# When neighbour_step > step, border vertices that fall between the neighbour's
-# sample positions are linearly interpolated so both meshes share the same
-# height along the seam — eliminating T-junction cracks.
-# Pass 0 (default) for edges that need no stitching.
-# ── Каньон-маска, ЗАПЕКАЕМАЯ в цвет вершины (.g) ──────────────────────────────
-# Раньше цвет каньона считался в ШЕЙДЕРЕ (GPU float32), а рельеф-каньон — в генераторе
-# (GDScript float64). Хеш fract(p.x*p.y) чувствителен к точности → регионы РАСХОДИЛИСЬ (~30%).
-# Теперь маску региона считаем ЗДЕСЬ (CPU, той же формулой, что plugin.gd/biome_scatter) и кладём
-# в COLOR.g; шейдер её просто читает. Так цвет и рельеф берут ОДИН шум → совпадают (и на всех LOD).
-# ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (gen_canyon_*) и glsl.gdshader (canyon_*).
 const CANYON_SCALE := 250.0
 const CANYON_THRESHOLD := 0.70
 const CANYON_EDGE := 0.05
@@ -1774,7 +1730,6 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	arr[Mesh.ARRAY_COLOR]  = colors
 	return [arr, AABB(aabb_min, aabb_max - aabb_min)]
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Material helpers
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1829,7 +1784,6 @@ func _get_material() -> Material:
 	if mat == null:
 		mat = StandardMaterial3D.new()
 	return mat
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Camera / frustum culling  (runtime only)
@@ -1894,7 +1848,6 @@ func _full_scan() -> void:
 	_qt_cur_nodes.clear()
 	_qt_update(true)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Quadtree — frustum culling + LOD selection  (runtime only)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1957,8 +1910,7 @@ func _build_quadtree() -> void:
 		if made % NODE_BATCH == 0:
 			await get_tree().process_frame
 	_qt_node_results.clear()
-	_qt_built = not _qt_aabb.is_empty()      # только теперь дерево готово к обходу в _process
-
+	_qt_built = not _qt_aabb.is_empty()
 
 # Recursively builds a node covering the macro-grid rectangle
 # [mx0, mx0+wsz) × [mz0, mz0+hsz). Splits the longer axis so nodes stay squarish.
@@ -2013,7 +1965,6 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	_qt_aabb[node_id]  = box
 	return node_id
 
-
 # Threaded worker: builds internal node n's coarse merged mesh straight from the heightmap
 # over its whole footprint, sampled at _qt_step[n], with a skirt to hide cross-LOD seams.
 func _qt_node_worker(n: int) -> void:
@@ -2024,7 +1975,6 @@ func _qt_node_worker(n: int) -> void:
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
 	_qt_node_results[n] = am
-
 
 # Per-frame entry point: descend the tree to pick what renders, then diff the
 # selection against what's currently shown. do_lod (throttled) also reassigns
@@ -2049,7 +1999,6 @@ func _qt_update(do_lod: bool) -> void:
 	# Free chunk nodes for macros the camera has left (throttled — runs with LOD).
 	if do_lod:
 		_qt_evict_far(cam)
-
 
 func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
 	var world_aabb: AABB = global_transform * _qt_aabb[node]
@@ -2077,7 +2026,6 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 			for ch in _qt_child[node]:
 				_qt_descend(ch, frustum, cam, margin, max_d2)
 
-
 # A near macro renders as individual chunks. If its chunks aren't instantiated yet,
 # request them (they stream in on background threads) and show the merged macro mesh in
 # the meantime — no gap. Once resident, frustum/range-cull each chunk and pick its LOD.
@@ -2101,7 +2049,6 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 		if enable_lod and dx * dx + dz * dz >= lod_distance_0 * lod_distance_0:
 			lod = 1
 		_qt_des_chunks[ci] = lod
-
 
 # Diffs the freshly-descended selection against what's currently rendered and toggles
 # only the instances that changed. do_lod additionally commits per-chunk LOD and
@@ -2161,7 +2108,6 @@ func _qt_apply(do_lod: bool) -> void:
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
 
-
 # Squared XZ distance from point p to the nearest point of aabb (0 if p is inside in XZ).
 func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
 	var minx := aabb.position.x
@@ -2172,7 +2118,6 @@ func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
 	var dz := maxf(maxf(minz - p.z, p.z - maxz), 0.0)
 	return dx * dx + dz * dz
 
-
 # ── Chunk residency: stream individual chunks in/out as the camera moves ──────
 
 # True once every (in-range) chunk of macro mi has been instantiated.
@@ -2181,7 +2126,6 @@ func _macro_all_present(mi: int) -> bool:
 		if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci] == null:
 			return false
 	return true
-
 
 # Queue macro mi's missing chunks for a background (re)build. Cheap and idempotent:
 # already-present or already-queued chunks are skipped, so calling it every frame while
@@ -2198,7 +2142,6 @@ func _request_resident(mi: int) -> void:
 	if added:
 		_is_streaming = true
 
-
 # Free macro mi's individual chunk nodes + meshes. The macro mesh keeps covering the
 # region, so nothing visually disappears — this just reclaims the memory.
 func _evict_macro(mi: int) -> void:
@@ -2213,7 +2156,6 @@ func _evict_macro(mi: int) -> void:
 		_qt_cur_chunks.erase(ci)
 		_queued_chunks.erase(ci)
 	_resident_set.erase(mi)
-
 
 # Evicts every resident macro whose centre is well beyond the expand ring. Iterates only
 # the (small) resident set, and the QT_EVICT_MARGIN hysteresis stops a macro right at the
@@ -2232,9 +2174,6 @@ func _qt_evict_far(cam: Vector3) -> void:
 			to_evict.append(mi)
 	for mi in to_evict:
 		_evict_macro(mi)
-
-
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Software occlusion culling  (runtime only)
@@ -2332,7 +2271,6 @@ func _update_occlusion() -> void:
 	_occluded_macros = new_occ_macros
 	_occluded_nodes  = new_occ_nodes
 
-
 # Restores full frustum-based visibility for every previously-occluded object.
 # Called once when enable_occlusion_culling is toggled off at runtime.
 func _clear_occlusion() -> void:
@@ -2361,7 +2299,6 @@ func _clear_occlusion() -> void:
 	_occluded_chunks.clear()
 	_occluded_macros.clear()
 	_occluded_nodes.clear()
-
 
 # Returns true when the given local-space AABB is fully hidden behind terrain
 # as seen from cam_local (also in local space).
@@ -2444,7 +2381,6 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 
 	# Terrain horizon is above the chunk top → chunk is occluded
 	return max_terrain_angle > chunk_angle
-
 
 func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
 	var bmin: Vector3 = aabb.position
