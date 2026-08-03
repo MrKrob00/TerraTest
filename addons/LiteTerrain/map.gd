@@ -342,6 +342,7 @@ func _ready() -> void:
 			terrain_ready.emit()
 			return
 	_chunks_x = ceili(float(w - 1) / chunk_size)
+	await _build_mask_lattice()      # до потоков: дальше её читают рабочие потоки только на чтение
 	await _build_chunks_from_map_data()
 	if _cam:
 		await get_tree().process_frame   # кадр ПЕРЕД полным сканом (он тяжёлый и неразрывный)
@@ -1535,6 +1536,57 @@ func _cv_noise(p: Vector2) -> float:
 	var dh := _cv_hash2d(i + Vector2(1.0, 1.0))
 	return lerpf(lerpf(a, b, f.x), lerpf(c, dh, f.x), f.y)
 # Мировые XZ ровно как в генераторе (plugin.gd): grid − размер/2 (совпадение до 0.5 клетки).
+# ── Маски биомов: считаем РАЗ на разреженной решётке, дальше читаем с интерполяцией ──────
+# Раскладка биомов — чистая функция от (x,z) и на статичной карте не меняется, но раньше три
+# шумовые маски вычислялись НА КАЖДУЮ ВЕРШИНУ: макро-меши + узлы квадродерева + ближние чанки
+# дают ~380 тыс. вершин, т.е. больше миллиона вызовов шума на GDScript при каждом запуске —
+# это и есть основная часть долгой загрузки. Маски очень плавные (масштаб 230-420 единиц мира),
+# поэтому решётки с шагом MASK_STEP хватает с запасом: 64× меньше вычислений, разницы не видно.
+# Решётку строим ДО многопоточной сборки и больше не меняем — чтение PackedFloat32Array из
+# рабочих потоков безопасно (в отличие от Dictionary-кеша, который дал бы гонку).
+const MASK_STEP := 8
+var _mask_lat := PackedFloat32Array()
+var _mask_w: int = 0
+var _mask_h: int = 0
+
+func _build_mask_lattice() -> void:
+	if w <= 0 or d <= 0:
+		return
+	_mask_w = int(ceil(float(w) / float(MASK_STEP))) + 1
+	_mask_h = int(ceil(float(d) / float(MASK_STEP))) + 1
+	_mask_lat.resize(_mask_w * _mask_h * 3)
+	for j in _mask_h:
+		var gz := j * MASK_STEP
+		for i in _mask_w:
+			var gx := i * MASK_STEP
+			var o := (j * _mask_w + i) * 3
+			_mask_lat[o]     = _canyon_mask01(gx, gz)
+			_mask_lat[o + 1] = _biome_grass01(gx, gz)
+			_mask_lat[o + 2] = _mountain_mask01(gx, gz)
+		if (j & 15) == 0:
+			await get_tree().process_frame     # не морозим экран загрузки
+
+# Маски в точке (canyon, grass, mountain). Билинейно с решётки; если её нет — считаем напрямую.
+func _masks_at(gx: int, gz: int) -> Vector3:
+	if _mask_lat.is_empty():
+		return Vector3(_canyon_mask01(gx, gz), _biome_grass01(gx, gz), _mountain_mask01(gx, gz))
+	var fx: float = float(gx) / float(MASK_STEP)
+	var fz: float = float(gz) / float(MASK_STEP)
+	var i0: int = clampi(int(floor(fx)), 0, _mask_w - 1)
+	var j0: int = clampi(int(floor(fz)), 0, _mask_h - 1)
+	var i1: int = mini(i0 + 1, _mask_w - 1)
+	var j1: int = mini(j0 + 1, _mask_h - 1)
+	var tx: float = clampf(fx - float(i0), 0.0, 1.0)
+	var tz: float = clampf(fz - float(j0), 0.0, 1.0)
+	var a := (j0 * _mask_w + i0) * 3
+	var b := (j0 * _mask_w + i1) * 3
+	var c := (j1 * _mask_w + i0) * 3
+	var e := (j1 * _mask_w + i1) * 3
+	return Vector3(
+		lerpf(lerpf(_mask_lat[a],     _mask_lat[b],     tx), lerpf(_mask_lat[c],     _mask_lat[e],     tx), tz),
+		lerpf(lerpf(_mask_lat[a + 1], _mask_lat[b + 1], tx), lerpf(_mask_lat[c + 1], _mask_lat[e + 1], tx), tz),
+		lerpf(lerpf(_mask_lat[a + 2], _mask_lat[b + 2], tx), lerpf(_mask_lat[c + 2], _mask_lat[e + 2], tx), tz))
+
 func _canyon_mask01(gx: int, gz: int) -> float:
 	var cn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / CANYON_SCALE + Vector2(101.0, 53.0))
 	return smoothstep(CANYON_THRESHOLD - CANYON_EDGE, CANYON_THRESHOLD + CANYON_EDGE, cn)
@@ -1642,10 +1694,8 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
 			# .r = маска травы-шва (0 на шве LOD, иначе 1); .g = КАНЬОН; .b = ЛУГ↔ПУСТЫНЯ; .a = ГОРЫ.
-			var cg := _canyon_mask01(x, z)
-			var bg := _biome_grass01(x, z)
-			var mg := _mountain_mask01(x, z)
-			colors.append(Color(0.0, cg, bg, mg) if seam else Color(1.0, cg, bg, mg))
+			var mk := _masks_at(x, z)
+			colors.append(Color(0.0, mk.x, mk.y, mk.z) if seam else Color(1.0, mk.x, mk.y, mk.z))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
 			# remain smooth at lower LODs instead of having discontinuities.
