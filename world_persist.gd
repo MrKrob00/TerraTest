@@ -8,7 +8,7 @@ extends Node
 
 const SAVE_PATH := "user://world_save.json"
 const BLOCK_TTL := 600.0            # 10 мин — время жизни свободного блока в мире
-const AUTOSAVE_EVERY := 300.0       # 5 мин — период автосейва
+const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейва (машины, блоки мира, позиции)
 
 var _tick: float = 0.0
 
