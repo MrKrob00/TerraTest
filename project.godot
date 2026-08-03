@@ -8,6 +8,65 @@
 
 config_version=5
 
+[admob]
+
+config={
+"banner": {
+"position": 1,
+"respect_safe_area": true,
+"show_instantly": true,
+"size": "BANNER",
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/6300978111"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/2934735716"
+}
+}
+},
+"debug": {
+"is_debug_on_release": false,
+"is_real": true,
+"is_test_europe_user_consent": false
+},
+"general": {
+"is_enabled": true,
+"is_for_child_directed_treatment": false,
+"max_ad_content_rating": "PG"
+},
+"interstitial": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/1033173712"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/4411468910"
+}
+}
+},
+"rewarded": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/5224354917"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/1712485313"
+}
+}
+},
+"rewarded_interstitial": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/5354046379"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/6978759866"
+}
+}
+}
+}
+
 [animation]
 
 compatibility/default_parent_skeleton_in_mesh_instance_3d=true
@@ -28,6 +87,7 @@ G="*res://G.gd"
 Dialogue="*res://dialogue.tscn"
 Music="*res://music_manager.gd"
 Q="*res://quest_manager.gd"
+MobileAds="*uid://cgi4yv4jxmjuy"
 
 [display]
 
@@ -39,7 +99,7 @@ window/handheld/orientation="landscape"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/LiteTerrain/plugin.cfg")
+enabled=PackedStringArray("res://addons/LiteTerrain/plugin.cfg", "res://addons/admob/plugin.cfg")
 
 [input]
 
