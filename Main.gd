@@ -56,10 +56,6 @@ func _apply_ui_scale() -> void:
 	var stretch: float = minf(size.x / UI_BASE.x, size.y / UI_BASE.y)
 	if stretch <= 0.0:
 		stretch = 1.0
-	# ПРИЧИНА бывшей «раздутости»: почти любой экран БОЛЬШЕ базы 1280×720 (stretch>1), а sqrt(stretch)
-	# при stretch>1 даёт >1 → UI на 100% авто-увеличивался ВЫШЕ базового 1:1 у всех (у кого-то +5%,
-	# на 1080p-телефоне +22%). Чиним: потолок авто-увеличения = 1.0 → на 100% ВСЕГДА ровно базовый
-	# размер, а на мелких экранах (stretch<1) остаётся мягкий шринк для читаемости. Крупнее — ползунком.
 	var target: float = clampf(sqrt(stretch), 0.85, 1.0)
 	var csf: float = (target / stretch) * ui_scale
 	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
@@ -84,18 +80,6 @@ func set_ui_scale(v: float) -> void:
 	_apply_ui_scale()
 	_save_settings()
 
-# ── ПК-управление ──────────────────────────────────────────────────────────────
-# Take/TakeOff/Building/Movement/Attack уже существуют как Input-действия (их проверяют
-# event.is_action_pressed(...) / Input.is_action_pressed(...) в vehicle_body_3d.gd — код
-# там не трогаем) но у них не было ни одной клавиши, только тач-кнопки. Плюс 4 новых
-# действия для WASD/стрелок (движение читает Input.get_vector — см. vehicle_body_3d.gd).
-# Биндим В КОДЕ, а не в project.godot: это идемпотентно (безопасно звать каждый старт) и
-# не требует руками собирать текстовый ресурс InputMap, который тут негде прогнать через
-# редактор и проверить, что он вообще парсится.
-# Attack — Ctrl, не Space: Space это дефолтный ui_accept, и висел бы на любой сфокусированной
-# кнопке гаража (клик по вкладке — и Space одновременно жмёт кнопку И стреляет).
-# Движение — только WASD, без стрелок: стрелки в Godot по умолчанию уже листают фокус
-# (ui_up/down/left/right), с ними вместе получалось бы «двигаю машину, листая список».
 func _setup_pc_input_map() -> void:
 	_bind_key("Take", KEY_E)
 	_bind_key("TakeOff", KEY_Q)

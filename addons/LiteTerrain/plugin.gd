@@ -32,7 +32,7 @@ var _last_dab_pos  := Vector3.ZERO
 var gen_seed:             int   = 42
 var gen_scale:           float  = 150.0   # continental frequency scale
 var gen_octaves:          int   = 6       # FBM octaves
-var gen_power:           float  = 2.6    # ^N curve (4=всё плоско). 2.6 → холмистые равнины; горы теперь не расползаются (маска ниже)
+var gen_power:           float  = 2.6
 var gen_mountain_amount: float  = 0.8    # ridge contribution
 var gen_ridge_sharpness: float  = 2.5    # how knife-sharp ridges are
 var gen_amplitude:       float  = 30.0   # max height in world units
@@ -467,7 +467,6 @@ func _enter_tree() -> void:
 	scroll.add_child(panel)
 	add_control_to_dock(DOCK_SLOT_LEFT_UL, scroll)
 
-
 func _exit_tree() -> void:
 	# Сохраняем состояние дока при закрытии редактора / отключении плагина.
 	_save_settings()
@@ -479,7 +478,6 @@ func _exit_tree() -> void:
 		else:
 			remove_control_from_docks(panel)
 			panel.queue_free()
-
 
 # ─────────────────────────────────────────────────
 # Sculpt mode callbacks
@@ -504,7 +502,6 @@ func _mode_text() -> String:
 		"lower":   return "▼ Lower"
 		"flatten": return "⬛ Flatten"
 		_:         return "▲ Raise"
-
 
 # ─────────────────────────────────────────────────
 # Persist the dock's brush + generation settings across editor sessions.
@@ -567,7 +564,6 @@ func _load_settings() -> void:
 	gen_canyon_gorge     = float(d.get("gen_canyon_gorge",     gen_canyon_gorge))
 	gen_canyon_width     = float(d.get("gen_canyon_width",     gen_canyon_width))
 
-
 # ─────────────────────────────────────────────────
 # Node selection
 # ─────────────────────────────────────────────────
@@ -584,7 +580,6 @@ func _edit(object) -> void:
 		sculpt_node = object
 	elif object is CollisionShape3D:
 		sculpt_node = object.get_parent()
-
 
 # ─────────────────────────────────────────────────
 # Viewport input (sculpting)
@@ -668,7 +663,6 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		return EditorPlugin.AFTER_GUI_INPUT_STOP
 
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
-
 
 # ─────────────────────────────────────────────────
 # Sculpt brush
@@ -771,7 +765,6 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 				if ci >= 0 and ci < total_chunks:
 					_dirty_chunks[ci] = true
 
-
 # ─────────────────────────────────────────────────
 # End of an image-mode stroke → one undo/redo step.
 # Snapshot «до» снят в начале мазка; сейчас берём «после» и регистрируем действие,
@@ -801,7 +794,6 @@ func _commit_stroke_undo() -> void:
 	_persist_heightmap()
 	_stroke_before = PackedFloat32Array()
 
-
 # Переписывает R32F-карту высот в файл, который грузит нода (её heightmap_path), чтобы
 # диск не отставал от sculpt/undo/redo. Без этого правки жили бы только в памяти до Bake.
 func _persist_heightmap() -> void:
@@ -813,7 +805,6 @@ func _persist_heightmap() -> void:
 		return
 	var img := Image.create_from_data(dims.x, dims.y, false, Image.FORMAT_RF, data.to_byte_array())
 	ResourceSaver.save(img, _heightmap_target())
-
 
 # ─────────────────────────────────────────────────
 # Bake the sculpted HeightMapShape3D into an R32F image
@@ -897,7 +888,6 @@ func _bake_heightmap() -> void:
 	else:
 		push_warning("LiteTerrain: MeshInstance3D has no mesh to bake yet")
 
-
 # Кнопка «Create Terrain Node»: добавляет ОДНУ ноду LiteTerrain. CollisionShape3D и
 # MeshInstance3D она создаёт себе сама (_ensure_children), их вручную не собираем.
 const TERRAIN_SCRIPT   := "res://addons/LiteTerrain/map.gd"
@@ -944,7 +934,6 @@ func _create_terrain() -> void:
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(body)
 	print("LiteTerrain: создан узел LiteTerrain (%dx%d, image-режим). Дальше — Generate/Sculpt." % [NEW_MAP_SIZE, NEW_MAP_SIZE])
-
 
 # ─────────────────────────────────────────────────
 # Экспорт карты высот в серый PNG (нормируем высоты в 0..255). Годится для миникарты
@@ -994,7 +983,6 @@ func _generate_png() -> void:
 		EditorInterface.get_resource_filesystem().scan()
 	else:
 		push_error("LiteTerrain: не удалось сохранить PNG (ошибка %d)" % err)
-
 
 # ─────────────────────────────────────────────────
 # Noise terrain generation

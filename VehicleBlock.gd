@@ -46,9 +46,6 @@ func _on_parent_changed() -> void:
 		return
 	freeze = not (get_parent().name in "objects")
 
-
-
-
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage
 	# Оверлей хп строим ДО хит-эффекта: _local_aabb внутри hp_overlay иначе прихватил бы

@@ -1,10 +1,4 @@
 extends Node
-# Автолоад Q — менеджер заданий. Два вида:
-#   • STORY — сюжетные/последовательные: показывается только текущее незавершённое (плюс
-#     уже выполненные); следующее открывается, когда предыдущее сдано (по полю order).
-#   • DAILY — ежедневные: доступны все сразу.
-# UI (quests.gd) читает отсюда и пересобирается по сигналу changed. Прогресс двигай из
-# игры: Q.add_progress("story_ore", 1) — когда добыл руду, убил врага и т.п.
 
 signal changed
 
@@ -162,7 +156,6 @@ func _on_completed(q: Dictionary) -> void:
 		if (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) and not g.quests_done.has(q["id"]):
 			g.quests_done.append(q["id"])   # сюжет и обучение — одноразовые (см. _ready)
 			g.mark_progress_dirty()
-	# Реплика о выполнении от «системы» — случайный шаблон, чтобы не было монотонно.
 	_say("System", _completion_message(str(q["title"]), reward))
 	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 	if int(q["type"]) == Type.TUTORIAL:
@@ -212,7 +205,6 @@ func _completion_message(title: String, reward: int) -> String:
 	]
 	return no_reward[randi() % no_reward.size()] % title
 
-# ── Мостик к диалогам (Dialogue — автолоад, грузится раньше Q) ─────────────────
 func _say(speaker: String, text: String) -> void:
 	var d = get_node_or_null("/root/Dialogue")
 	if d:

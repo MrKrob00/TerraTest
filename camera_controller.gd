@@ -28,16 +28,10 @@ const ZOOM_MAX := 20.0
 var _mouse_look_dx: float = 0.0   # накопленный сдвиг мыши по X с прошлого кадра (ПКМ зажата)
 var _mouse_look_dy: float = 0.0   # то же по Y — наклон взгляда
 
-# ── Наклон взгляда (gaze pitch) ─────────────────────────────────────────────────
-# Позиция камеры остаётся на орбите (RADIUS/CAM_HEIGHT/прижим к земле не трогаем) —
-# наклоняется только НАПРАВЛЕНИЕ взгляда: camera.rotation.x. Храним именно УГОЛ,
-# а не сдвиг цели в метрах: наклон ощущается одинаково на любом зуме.
-# Управление: вертикаль джойстика камеры (раньше ось пустовала) и вертикаль мыши
-# при зажатой ПКМ. Сброс на машину: двойной тап по зоне джойстика / двойная ПКМ.
 const PITCH_SPEED := 1.4          # рад/с от джойстика
 const PITCH_MIN := -0.35          # ~−20°: смотреть вниз
 const PITCH_MAX := 0.66           # ~+38°: смотреть вдаль, к горизонту
-var gaze_pitch: float = 0.0       # 0 — ровно на машину, как раньше
+var gaze_pitch: float = 0.0
 # В СТРОЙКЕ разрешаем заглянуть ПОД машину (ставить блоки снизу): смотрим сильнее вверх, и чем
 # выше взгляд — тем ниже уходит камера (под днище). Машина в стройке парит, поэтому камере можно
 # опуститься ближе к земле, чем обычные 8 м.
@@ -45,11 +39,6 @@ const BUILD_PITCH_MAX := 1.4      # ~+80° вверх в стройке
 const BUILD_UNDER_DROP := 5.0     # насколько камера уходит НИЖЕ машины при полном взгляде вверх
 const BUILD_MIN_CLEARANCE := 1.5  # в стройке камере можно ближе к земле
 
-# ── Тач-камера (свайп вместо джойстика) ─────────────────────────────────────────
-# Один палец по миру — орбита (гориз.) + наклон взгляда (верт.), как во всех 3D-мобилках.
-# Два пальца — пинч-зум (раньше жил в джойстике камеры). Двойной тап — сброс взгляда.
-# Касания в зоне джойстика ДВИЖЕНИЯ игнорируем (там его палец), UI-кнопки/глобус тач съедают
-# сами (обрабатываем в _unhandled_input — доходит только НЕсъеденное).
 const TOUCH_LOOK_SENS := 0.006    # рад/пиксель свайпа (тач крупнее мыши)
 const PINCH_ZOOM_SENS := 0.03     # единиц RADIUS на пиксель изменения расстояния пинча
 const TAP_MAX_MOVE := 14.0        # пиксель: больше сдвиг — это свайп, а не тап
@@ -94,9 +83,6 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if VehicleInteractButton.camera_block:
 		return
-	# Камера крутится ОДНИМ пальцем одинаково во всех режимах (и в езде, и в стройке): драг —
-	# орбита. В стройке блок наводится ТАПОМ (см. vehicle_body_3d._input), поэтому драг свободен
-	# под камеру — двумя пальцами больше крутить не надо (было неудобно/непривычно).
 	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -161,11 +147,6 @@ func _ready():
 		if current_vehicle.has_method("set_active"):
 			current_vehicle.set_active(true)
 
-# Камера следит за МАШИНОЙ, а машина — RigidBody3D, её трансформ обновляет физика на своём тике.
-# Раньше слежение шло в _process (кадр отрисовки): между физ-шагами позиция тела не меняется, и
-# камера то догоняла её, то стояла — характерное подрагивание картинки, особенно когда FPS не
-# совпадает с частотой физики (а у нас авто-масштаб FPS её как раз гоняет). Читаем позицию там же,
-# где она меняется — на физ-тике.
 func _physics_process(delta):
 	if not current_vehicle: return
 
@@ -173,7 +154,6 @@ func _physics_process(delta):
 	var target_pos: Vector3 = current_vehicle.global_position
 
 	global_position = global_position.lerp(target_pos, delta * lerp_speed)
-
 
 	camera_movement(delta)
 
@@ -228,8 +208,6 @@ func camera_movement(_delta):
 	if cam_pos.y < ground + min_clear:
 		offset.y += ground + min_clear - cam_pos.y
 	Spring.spring_length = offset.length()
-	# Смотрим строго на машину. Раньше сюда ДОБАВЛЯЛСЯ крен корпуса (rotation.x) поверх
-	# look_at — на горках камеру клевало вниз/вверх и она теряла машину из виду.
 	Spring.look_at_from_position(current_vehicle.global_position + offset * 0.01, current_vehicle.global_position)
 	# Наклон — ЛОКАЛЬНО на камере, после look_at арки: рига/длина пружины/прижим к земле
 	# не затронуты, при gaze_pitch == 0 кадр идентичен прежнему.
@@ -278,13 +256,10 @@ func switch_to_vehicle(new_vehicle: RigidBody3D):
 	if current_vehicle.has_method("set_active"):
 		current_vehicle.set_active(true)
 
-
 # Машина погибла (уничтожена кабина): убираем из списка, садимся в ближайшую живую,
 # а если техники не осталось — спавним бесплатную стартовую и садимся в неё.
 func on_vehicle_died(dead: Node) -> void:
 	vehicles.erase(dead)
-	# Умерла НЕ текущая машина — камеру не трогаем, только вычистили из списка.
-	# Раньше камера пересаживалась при гибели ЛЮБОЙ машины игрока.
 	if current_vehicle != dead:
 		return
 	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
@@ -318,7 +293,6 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	if not vehicles.has(v):
 		vehicles.append(v)
 	return v
-
 
 func _on_raycast_body_entered(body: Node3D) -> void:
 	if body.get_parent().name in "objects" and !current_vehicle.block_take:
