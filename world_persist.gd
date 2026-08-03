@@ -13,7 +13,18 @@ const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейв
 var _tick: float = 0.0
 
 func _ready() -> void:
-	# Даём машинам/камере доиниться (у vehicle._ready есть await), потом решаем старт.
+	# ЖДЁМ, пока машина реально достроится. Мало двух кадров: blocks.spawn_block внутри делает
+	# `await get_parent().ready`, т.е. стартовые блоки доезжают ОТЛОЖЕННО. Если применить
+	# сохранённую сборку в этот момент, apply_layout вычистит node_map, а «догоняющие» корутины
+	# потом допишут коллизии и позиции уже освобождённым узлам — сборка из сейва затиралась
+	# стартовой (и могло падать). Ждём готовности машины + пару кадров на догон корутин.
+	var guard := 0
+	while guard < 600:
+		var v = _primary_machine()
+		if v != null and v.is_node_ready() and v.get("block_map_node") != null:
+			break
+		await get_tree().process_frame
+		guard += 1
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_purge_extra_machines()                        # оставляем только ОСНОВНУЮ машину игрока
@@ -27,6 +38,16 @@ func _ready() -> void:
 	t.one_shot = false
 	t.timeout.connect(_save_world)
 	add_child(t)
+
+# Сохранение при ЗАКРЫТИИ окна и при сворачивании (мобилка: «назад»/домой). Раньше мир писался
+# ТОЛЬКО раз в интервал автосейва, поэтому всё после последней записи терялось, а на короткой
+# сессии файл сейва мог не появиться вовсе — и игра каждый раз стартовала как новая.
+# Движок сам завершает работу после этой нотификации (auto_accept_quit не трогаем — так же
+# устроен персист прогресса в G.gd), нам достаточно успеть записать.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_save_world()
 
 func _process(delta: float) -> void:
 	_tick += delta
@@ -175,10 +196,20 @@ func _load_world() -> void:
 	var data: Dictionary = json.get_data()
 	var machines: Array = data.get("machines", [])
 	var primary = _primary_machine()
-	if not machines.is_empty() and primary != null and primary.has_method("apply_build"):
-		_restore_machine(primary, machines[0])
-		for i in range(1, machines.size()):
-			_spawn_machine(machines[i])
+	if machines.is_empty() or primary == null or not primary.has_method("apply_build"):
+		# Сейв есть, но машины в нём нет (например, записался до того, как машина появилась).
+		# Молча оставить игрока с голой кабиной и без блоков = тупик, поэтому — новый старт.
+		_fresh_start()
+		return
+	_restore_machine(primary, machines[0])
+	for i in range(1, machines.size()):
+		_spawn_machine(machines[i])
+	# Убираем предустановленные в сцене тест-блоки, иначе они копятся поверх сохранённых.
+	var o := _objects()
+	if o != null:
+		for c in o.get_children():
+			if _is_world_block(c):
+				c.queue_free()
 	for wb in data.get("world_blocks", []):
 		var p = wb.get("pos", [0, 0, 0])
 		var r = wb.get("rot", [0, 0, 0])
