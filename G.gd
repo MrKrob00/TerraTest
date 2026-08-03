@@ -167,6 +167,28 @@ func on_game_event(event: String, amount: int = 1, kind: String = "default") -> 
 			add_faction_xp("start", amount)
 
 # Имя блока для UI (реплика Механика, замки) — из ключей enum.
+# ── Идентификатор блока для СЕЙВОВ ────────────────────────────────────────────
+# Версия формата сохранений. Поднимать при несовместимом изменении структуры.
+const SAVE_FORMAT := 2
+
+# Имя блока для записи в файл. Пишем строку, а не число: числовой enum ломается от любой
+# вставки блока в середину списка (все последующие значения сдвигаются и старый сейв читается
+# как совсем другие блоки — колесо становится буром).
+func block_key(bt: int) -> String:
+	var names: Array = Block.keys()
+	if bt >= 0 and bt < names.size():
+		return str(names[bt])
+	return "EMPTY"
+
+# Чтение блока из сейва: строка (новый формат) ИЛИ число (старые файлы) — понимаем оба.
+func block_from_key(v) -> int:
+	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
+		var idx: int = Block.keys().find(str(v))
+		if idx >= 0:
+			return int(Block.values()[idx])
+		return int(Block.EMPTY)
+	return int(v)
+
 func block_name(bt: int) -> String:
 	var names: Array = Block.keys()
 	if bt >= 0 and bt < names.size():
@@ -317,37 +339,41 @@ func _load_builds() -> void:
 func layout_counts(layout: Array) -> Dictionary:
 	var c: Dictionary = {}
 	for e in layout:
-		var t := int(e["block"])
+		var t := block_from_key(e["block"])
 		c[t] = c.get(t, 0) + 1
 	return c
 
+# ВАЖНО: значения enum ЗАФИКСИРОВАНЫ явно и менять их нельзя — они лежат в старых сейвах.
+# Новые блоки добавлять ТОЛЬКО в конец, со следующим свободным номером.
+# Сейвы пишутся по ИМЕНИ блока (block_key), поэтому даже перестановка enum их не сломает;
+# числа остаются лишь для чтения старых файлов.
 enum Block {
-	EMPTY,
-	CABIN,#1
-	WHEEL,#2
-	BLOCK,#3
-	DRILL,#4
-	COLLECTOR,#5
-	INTAKE,#6
-	BELT,#7
-	PROCESSOR,#8
-	SELLER,#9
-	LASER,#10
-	GUN,#11
-	BATTERY,#12
-	SOLAR,#13
-	GENERATOR,#14
-	REGEN,#15
-	SHIELD,#16
-	RADAR,#17
-	SUPPORT,#18
-	SMALL_WHEEL,#19
-	BIG_WHEEL,#20
-	TOP_WHEEL,#21
-	STAB_WHEEL,#22
-	BLOCK2,#23
-	COAL_GEN,#24
-	ROCKET,#25
+	EMPTY = 0,
+	CABIN = 1,
+	WHEEL = 2,
+	BLOCK = 3,
+	DRILL = 4,
+	COLLECTOR = 5,
+	INTAKE = 6,
+	BELT = 7,
+	PROCESSOR = 8,
+	SELLER = 9,
+	LASER = 10,
+	GUN = 11,
+	BATTERY = 12,
+	SOLAR = 13,
+	GENERATOR = 14,
+	REGEN = 15,
+	SHIELD = 16,
+	RADAR = 17,
+	SUPPORT = 18,
+	SMALL_WHEEL = 19,
+	BIG_WHEEL = 20,
+	TOP_WHEEL = 21,
+	STAB_WHEEL = 22,
+	BLOCK2 = 23,
+	COAL_GEN = 24,
+	ROCKET = 25,
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")

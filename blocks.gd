@@ -407,7 +407,7 @@ func save_layout() -> void:
 						"x": x,
 						"y": y,
 						"z": z,
-						"block": block,
+						"block": G.block_key(block),
 						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					})
 
@@ -436,7 +436,7 @@ func load_layout() -> void:
 
 	var blocks_array = json.get_data()
 	for entry in blocks_array:
-		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), _read_rot(entry))
+		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 
 	_spawn_all()
 	print("Машина загружена!")
@@ -451,7 +451,7 @@ func get_layout() -> Array:
 					var key: String = "%d,%d,%d" % [x, y, z]
 					blocks_array.append({
 						"x": x, "y": y, "z": z,
-						"block": block,
+						"block": G.block_key(block),
 						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					})
 	return blocks_array
@@ -481,7 +481,7 @@ func apply_layout(blocks_array: Array) -> void:
 	cell_owner.clear()
 	_init_map()
 	for entry in blocks_array:
-		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), int(entry["block"]), _read_rot(entry))
+		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 	_spawn_all()
 
 # Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,

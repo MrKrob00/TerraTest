@@ -167,14 +167,18 @@ func _save_world() -> void:
 			var bp: Vector3 = (c as Node3D).global_position
 			var br: Vector3 = (c as Node3D).global_rotation
 			blocks.append({
-				"block": int(c.get("block")),
+				"block": G.block_key(int(c.get("block"))),
 				"pos": [bp.x, bp.y, bp.z],
 				"rot": [br.x, br.y, br.z],
 				"age": age,
 			})
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
-		f.store_string(JSON.stringify({"machines": machines, "world_blocks": blocks}))
+		f.store_string(JSON.stringify({
+			"version": G.SAVE_FORMAT,
+			"machines": machines,
+			"world_blocks": blocks,
+		}))
 		f.close()
 
 func _load_world() -> void:
@@ -208,7 +212,7 @@ func _load_world() -> void:
 	for wb in data.get("world_blocks", []):
 		var p = wb.get("pos", [0, 0, 0])
 		var r = wb.get("rot", [0, 0, 0])
-		_spawn_world_block(int(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
+		_spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
 
 func _restore_machine(veh, mdata: Dictionary) -> void:
