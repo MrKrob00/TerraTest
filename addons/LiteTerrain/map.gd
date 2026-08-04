@@ -64,6 +64,10 @@ func _validate_property(property: Dictionary) -> void:
 #   dist < lod_distance_1  →  LOD 1  (step=2, ¼ tris, ~128/chunk)
 #   dist < lod_distance_2  →  LOD 2  (step=4, 1/16 tris, ~32/chunk)
 #   dist ≥ lod_distance_2  →  LOD 3  (step=8, 1/64 tris, ~8/chunk)
+## Насколько чанк может отходить от «двух больших граней», чтобы всё равно считаться РОВНЫМ
+## (в единицах мира). Ровные площадки и ровные склоны рисуются крупными треугольниками —
+## на глаз разницы нет, а вершин уходит в разы меньше. 0 = выключить (всё по дистанции).
+@export var flat_lod_error: float = 0.35
 @export var lod_distance_0: float = 40.0
 @export var lod_distance_1: float = 80.0
 @export var lod_distance_2: float = 160.0
@@ -169,6 +173,7 @@ var _chunk_meshes:   Array = []
 
 # Current LOD level that is actually displayed for each chunk
 var _chunk_lod:      Array[int] = []
+var _chunk_flat_err: PackedFloat32Array = PackedFloat32Array()   # отклонение чанка от плоскости
 
 # Per-chunk "stitch signature": encodes the chunk's LOD step plus the snap step
 # on each of its 4 borders (see _stitch_signature). the quadtree LOD pass (_qt_apply) rebuilds a chunk
@@ -1040,6 +1045,7 @@ func _build_chunks_from_map_data() -> void:
 	_chunk_meshes.resize(total)
 	_chunk_aabbs.resize(total)
 	_stream_results.resize(total)
+	_chunk_flat_err.resize(total)
 
 	# ── Phase 0: parallel AABB scan for ALL chunks ────────────────────────────
 	# Only reads heightmap extremes — no mesh generation, very fast even on
@@ -1050,13 +1056,28 @@ func _build_chunks_from_map_data() -> void:
 		var x0 := cx * chunk_size;  var x1 := mini(x0 + chunk_size, w - 1)
 		var z0 := cz * chunk_size;  var z1 := mini(z0 + chunk_size, d - 1)
 		var min_h := INF;  var max_h := -INF
+		# Заодно считаем ПЛОСКОСТНУЮ ОШИБКУ чанка: насколько его рельеф отходит от простой
+		# натянутой на 4 угла поверхности (то есть от версии «две большие треугольные грани»).
+		# Ровная площадка или ровный склон дают ошибку ≈0 — такому чанку густая сетка не нужна.
+		var h00 := float(md[z0 * w + x0])
+		var h10 := float(md[z0 * w + x1])
+		var h01 := float(md[z1 * w + x0])
+		var h11 := float(md[z1 * w + x1])
+		var span_x := float(maxi(x1 - x0, 1))
+		var span_z := float(maxi(z1 - z0, 1))
+		var err := 0.0
 		for zz in range(z0, z1 + 1):
+			var tz := float(zz - z0) / span_z
 			for xx in range(x0, x1 + 1):
 				var h := float(md[zz * w + xx])
 				if h < min_h: min_h = h
 				if h > max_h: max_h = h
+				var tx := float(xx - x0) / span_x
+				var flat := lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
+				err = maxf(err, absf(h - flat))
 		if min_h == INF:
 			return
+		_chunk_flat_err[ci] = err
 		_chunk_aabbs[ci] = AABB(
 			Vector3(x0 - float(w) * 0.5 + 0.5, min_h, z0 - float(d) * 0.5 + 0.5),
 			Vector3(x1 - x0, max_h - min_h, z1 - z0))
@@ -2100,7 +2121,10 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 		var lod := 0
 		if enable_lod and dx * dx + dy * dy + dz * dz >= lod_distance_0 * lod_distance_0:
 			lod = 1
-		_qt_des_chunks[ci] = lod
+		# РОВНЫЙ чанк можно рисовать грубее, даже если он под носом: на плоскости или ровном
+		# склоне крупные треугольники повторяют поверхность почти точно, разницы не видно —
+		# а вершин уходит вчетверо/вшестнадцатеро меньше. Ошибка посчитана в фазе 0.
+		_qt_des_chunks[ci] = maxi(lod, _flat_lod(ci))
 
 # Diffs the freshly-descended selection against what's currently rendered and toggles
 # only the instances that changed. do_lod additionally commits per-chunk LOD and
@@ -2166,6 +2190,18 @@ func _qt_apply(do_lod: bool) -> void:
 # под ней, имела горизонтальную дистанцию ≈0 — и весь рельеф грузился на максимальной детализации,
 # как будто она стоит на земле. На обычной игре разница ничтожна (камера в 8-20 м над машиной),
 # а вот в горах и при любом виде сверху выбор LOD теперь честный.
+# Минимальный (самый грубый) LOD, допустимый по «ровности» чанка. Порог берём из
+# flat_lod_error: чем ровнее чанк, тем крупнее треугольники ему разрешены.
+func _flat_lod(ci: int) -> int:
+	if flat_lod_error <= 0.0 or ci < 0 or ci >= _chunk_flat_err.size():
+		return 0
+	var err := _chunk_flat_err[ci]
+	if err <= flat_lod_error:
+		return LOD_COUNT - 1          # практически плоскость — самая крупная сетка
+	if err <= flat_lod_error * 3.0:
+		return 1                      # лёгкий рельеф — на ступень грубее
+	return 0                          # изрезанный (каньон, склон горы) — полная детализация
+
 func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var mn := aabb.position
 	var mx := aabb.position + aabb.size
