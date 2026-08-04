@@ -1332,7 +1332,7 @@ func _pick_selected_block() -> bool:
 	var bt := int(block_body.get("block"))
 	if bt == G.Block.CABIN or G.is_stationary(bt):
 		return false                              # ядро сборки не снимаем
-	if block_body.get_parent() != null and block_body.get_parent().name in "blocks":
+	if block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
 		# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
@@ -1383,7 +1383,7 @@ func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 		return
 	# 1) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
 	if block_body != null and is_instance_valid(block_body) \
-			and block_body.get_parent() != null and block_body.get_parent().name in "blocks":
+			and block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		_pick_selected_block()
 		return
 	_grab_world_block(screen_pos)

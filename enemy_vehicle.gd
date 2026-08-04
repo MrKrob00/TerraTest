@@ -269,6 +269,16 @@ var _reacquire_t: float = 0.0
 var _last_known_pos: Vector3 = Vector3.ZERO
 var _has_last_known: bool = false
 
+# Назначить цель ИЗВНЕ (отряд от проверки сектора). Спавнер раньше писал приватные поля напрямую
+# и ставил номер состояния числом — при любой правке enum это молча ломалось бы.
+func assign_target(t: Node3D, never_forget: bool = false) -> void:
+	if t == null or not is_instance_valid(t):
+		return
+	_target = t
+	_forget_timer = forget_enemy_time
+	_state = AIState.CHASE
+	relentless = never_forget
+
 func _scan_for_targets() -> void:
 	if _detect_area == null or not is_instance_valid(_detect_area):
 		return

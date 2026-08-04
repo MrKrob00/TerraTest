@@ -44,7 +44,7 @@ func _on_parent_changed() -> void:
 	await get_tree().process_frame
 	if get_parent() == null:
 		return
-	freeze = not (get_parent().name in "objects")
+	freeze = not (get_parent().name == "objects")
 
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage

@@ -112,17 +112,20 @@ func _on_item_received() -> void:
 func _take_from_vehicle(vehicle: RigidBody3D) -> Node3D:
 	if not is_instance_valid(vehicle) or not vehicle.has_node("blocks"):
 		return null
+	# Забираем руду у КОЛЛЕКТОРОВ машины. Тип блока проверяем явно, поэтому «пропустить
+	# первого ребёнка» (прежний произвольный костыль) не нужно — он мог отбросить настоящий
+	# коллектор, если тот оказывался первым в списке.
 	for b in vehicle.get_node("blocks").get_children():
-		if vehicle.get_node("blocks").get_child(0) != b :
-			if b.has_node("resources"):
-				if b.block ==5:
-					var resources: Node = b.get_node("resources")
-					if resources.get_child_count() > 0:
-						var item: Node3D = resources.get_child(0)
-						if b.has_method("remove_from_inventory"):
-							b.remove_from_inventory(item)
-						_accept_item(item)
-						return item
+		if b.get("block") != G.Block.COLLECTOR or not b.has_node("resources"):
+			continue
+		var resources: Node = b.get_node("resources")
+		if resources.get_child_count() == 0:
+			continue
+		var item: Node3D = resources.get_child(0)
+		if b.has_method("remove_from_inventory"):
+			b.remove_from_inventory(item)
+		_accept_item(item)
+		return item
 	return null
 
 func _on_resources_child_order_changed() -> void:
