@@ -2052,7 +2052,7 @@ func _qt_update(do_lod: bool) -> void:
 
 func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, max_d2: float) -> void:
 	var world_aabb: AABB = global_transform * _qt_aabb[node]
-	if _aabb_xz_dist2(world_aabb, cam) > max_d2:
+	if _aabb_dist2(world_aabb, cam) > max_d2:
 		return                                   # whole subtree beyond render range
 	if enable_frustum_culling and not _aabb_in_frustum(world_aabb, frustum, margin):
 		return                                   # whole subtree off-screen — never descended
@@ -2061,15 +2061,16 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 		# Leaf macro: far → render merged macro mesh; near → expand into individual chunks.
 		var center := world_aabb.position + world_aabb.size * 0.5
 		var dx := cam.x - center.x
+		var dy := cam.y - center.y
 		var dz := cam.z - center.z
-		if dx * dx + dz * dz >= lod_distance_1 * lod_distance_1:
+		if dx * dx + dy * dy + dz * dz >= lod_distance_1 * lod_distance_1:
 			_qt_des_macros[mi] = true
 		else:
 			_qt_expand_macro(mi, frustum, cam, margin, max_d2)
 	else:
 		# Internal node: if far enough that its coarse mesh is good enough, render it and
 		# stop (one big low-poly mesh for the whole subtree). Otherwise descend for detail.
-		var nearest := sqrt(_aabb_xz_dist2(world_aabb, cam))
+		var nearest := sqrt(_aabb_dist2(world_aabb, cam))
 		if nearest >= _qt_size[node] * QT_QUALITY:
 			_qt_des_nodes[node] = true
 		else:
@@ -2088,15 +2089,16 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 			continue
 		var world_aabb: AABB = global_transform * _chunk_aabbs[ci]
-		if _aabb_xz_dist2(world_aabb, cam) > max_d2:
+		if _aabb_dist2(world_aabb, cam) > max_d2:
 			continue
 		if enable_frustum_culling and not _aabb_in_frustum(world_aabb, frustum, margin):
 			continue
 		var center := world_aabb.position + world_aabb.size * 0.5
 		var dx := cam.x - center.x
+		var dy := cam.y - center.y
 		var dz := cam.z - center.z
 		var lod := 0
-		if enable_lod and dx * dx + dz * dz >= lod_distance_0 * lod_distance_0:
+		if enable_lod and dx * dx + dy * dy + dz * dz >= lod_distance_0 * lod_distance_0:
 			lod = 1
 		_qt_des_chunks[ci] = lod
 
@@ -2159,6 +2161,19 @@ func _qt_apply(do_lod: bool) -> void:
 				_apply_lod_mesh(ci, mat)
 
 # Squared XZ distance from point p to the nearest point of aabb (0 if p is inside in XZ).
+# Квадрат расстояния от точки до AABB в ТРЁХ измерениях. Отсечение по дальности и выбор LOD
+# считались только по XZ, т.е. ВЫСОТА игнорировалась: камера, оказавшаяся высоко над картой или
+# под ней, имела горизонтальную дистанцию ≈0 — и весь рельеф грузился на максимальной детализации,
+# как будто она стоит на земле. На обычной игре разница ничтожна (камера в 8-20 м над машиной),
+# а вот в горах и при любом виде сверху выбор LOD теперь честный.
+func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
+	var mn := aabb.position
+	var mx := aabb.position + aabb.size
+	var dx := maxf(maxf(mn.x - p.x, p.x - mx.x), 0.0)
+	var dy := maxf(maxf(mn.y - p.y, p.y - mx.y), 0.0)
+	var dz := maxf(maxf(mn.z - p.z, p.z - mx.z), 0.0)
+	return dx * dx + dy * dy + dz * dz
+
 func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
 	var minx := aabb.position.x
 	var maxx := aabb.position.x + aabb.size.x
