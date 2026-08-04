@@ -74,6 +74,19 @@ func _validate_property(property: Dictionary) -> void:
 
 # Vertex sampling step per LOD level (index = LOD level)
 const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never shown at runtime
+
+## РАЗМЕР ТРЕУГОЛЬНИКА в единицах мира (сторона клетки сетки на самом детальном LOD).
+## 1 — вершина на каждую клетку карты высот (как было): максимум деталей и вершин.
+## 2 — вчетверо меньше вершин, 4 — в шестнадцать раз. Рельеф тут по большей части ровный
+## или с ровным уклоном, поэтому на глаз укрупнение почти не читается, а вершинная нагрузка
+## (а шейдер рельефа делает на вершину реальную работу) падает кратно.
+## Масштабирует ВСЮ иерархию сразу — чанки, макро-меши и коарс-меши квадродерева, — поэтому
+## сшивание швов между разными LOD продолжает совпадать.
+@export_enum("1 (детально)", "2 (рекомендуется)", "4 (максимум FPS)") var triangle_size: int = 0
+
+# Шаг сетки для уровня lod с учётом triangle_size.
+func _step_for(lod: int) -> int:
+	return LOD_STEPS[clampi(lod, 0, LOD_STEPS.size() - 1)] * (1 << triangle_size)
 const LOD_COUNT: int        = 3
 
 # How often (seconds) the LOD check runs — no need every frame
@@ -807,7 +820,7 @@ func update_chunks(chunk_indices: Array) -> void:
 
 		var lod_meshes: Array = []
 		for lod in LOD_COUNT:
-			var data: Array = _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[lod])
+			var data: Array = _compute_chunk_data(x0, z0, x1, z1, _step_for(lod))
 			if data.is_empty():
 				lod_meshes.append(null)
 				continue
@@ -920,13 +933,13 @@ func _ed_neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
 	var nz := cz + dcz
 	if nx < 0 or nx >= _ed_cx or nz < 0 or nz >= _ed_cz:
 		return 1
-	return LOD_STEPS[_ed_lod[nz * _ed_cx + nx]]
+	return _step_for(_ed_lod[nz * _ed_cx + nx])
 
 # Builds chunk (cx,cz)'s surface arrays at its editor LOD, snapping borders toward any
 # coarser neighbour (same anti-crack stitching as runtime).
 func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 	var ci := cz * _ed_cx + cx
-	var step := LOD_STEPS[_ed_lod[ci]]
+	var step := _step_for(_ed_lod[ci])
 	var x0 := cx * chunk_size
 	var z0 := cz * chunk_size
 	var x1 := mini(x0 + chunk_size, w - 1)
@@ -1143,7 +1156,7 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 	var lod_meshes: Array = []
 	var first_aabb := AABB()
 	for lod in LOD_COUNT:
-		var data := _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[lod])
+		var data := _compute_chunk_data(x0, z0, x1, z1, _step_for(lod))
 		if data.is_empty():
 			lod_meshes.append(null)
 			continue
@@ -1202,7 +1215,7 @@ func _apply_lod_mesh(ci: int, mat: Material) -> void:
 	if not _chunk_instances[ci]:
 		return   # chunk not yet streamed in
 	var target_lod := _chunk_lod[ci]
-	var my_step    := LOD_STEPS[target_lod]
+	var my_step    := _step_for(target_lod)
 	var cxl        := ceili(float(w - 1) / chunk_size)
 	var cx         := ci % cxl
 	var cz         := ci / cxl
@@ -1264,7 +1277,7 @@ func _stitch_signature(ci: int) -> int:
 	var cxl := ceili(float(w - 1) / chunk_size)
 	var cx := ci % cxl
 	var cz := ci / cxl
-	var my_step := LOD_STEPS[_chunk_lod[ci]]
+	var my_step := _step_for(_chunk_lod[ci])
 	return _encode_sig(my_step,
 			_border_snap(cx, cz,  0, -1, my_step),
 			_border_snap(cx, cz,  0,  1, my_step),
@@ -1287,8 +1300,8 @@ func _neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
 	if ni < 0 or ni >= _chunk_lod.size():
 		return 1   # map boundary or not-yet-built chunk — no snap
 	if _chunk_macro_idx.size() > ni and _macro_active[_chunk_macro_idx[ni]]:
-		return LOD_STEPS[2]   # macro group uses LOD-2 step (= 4)
-	return LOD_STEPS[_chunk_lod[ni]]
+		return _step_for(2)   # macro group uses LOD-2 step
+	return _step_for(_chunk_lod[ni])
 
 # Returns the mesh at `preferred_lod`, falling back to the next finer LOD
 # if the preferred one happens to be null (tiny edge-chunks may skip coarse LODs).
@@ -1399,7 +1412,7 @@ func _build_macro_worker(mi: int, cxl: int) -> void:
 	var x1  := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
 	var z1  := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
 	# Skirt so the macro↔coarse-node seam (different LOD steps) never shows a crack.
-	var data := _compute_chunk_data(x0, z0, x1, z1, LOD_STEPS[2], 0, 0, 0, 0, QT_SKIRT)
+	var data := _compute_chunk_data(x0, z0, x1, z1, _step_for(2), 0, 0, 0, 0, QT_SKIRT)
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
@@ -1999,7 +2012,7 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	var rz1 := mini((mz0 + hsz) * MACRO_SIZE * chunk_size, d - 1)
 	_qt_rect.append(Vector4i(rx0, rz0, rx1, rz1))
 	# Step grows with node size → ~constant triangle budget per node regardless of level.
-	_qt_step.append(maxi(wsz, hsz) * MACRO_SIZE)
+	_qt_step.append(maxi(wsz, hsz) * MACRO_SIZE * (1 << triangle_size))
 	_qt_size.append(float(maxi(rx1 - rx0, rz1 - rz0)))
 
 	if wsz <= 1 and hsz <= 1:
