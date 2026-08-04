@@ -124,10 +124,13 @@ void vertex() {
     // Зона «битых данных» — из СТАН-КАРТЫ (grass.gd): красный канал чанка = степень корруптации.
     // Изначально пусто; редко +чанк; вблизи игрока лечится НАВСЕГДА (карта обнуляет чанк).
     v_world_xz  = world_pos.xz;
-    vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
     float cstate = 0.0;
-    if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
-        cstate = textureLod(corrupt_map, cuv, 0.0).r;
+    // Uniform-ветка: при corrupt_amount == 0 вершинной выборки текстуры (VTF) нет вообще.
+    if (corrupt_amount > 0.001) {
+        vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
+        if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
+            cstate = textureLod(corrupt_map, cuv, 0.0).r;
+        }
     }
     v_corrupt   = cstate * corrupt_amount;
 
