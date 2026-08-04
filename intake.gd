@@ -72,9 +72,9 @@ func _on_timer_timeout() -> void:
 	_update_take_timer()
 
 func _push_from_inventory() -> void:
-	if not is_instance_valid(next_block):
+	if _valid_targets().is_empty():
 		next_block = null
-		waiting_for_next = false   # следующий блок исчез — не залипаем в ожидании
+		waiting_for_next = false   # приёмников больше нет — не залипаем в ожидании
 		return
 	if inventory.is_empty() or waiting_for_next:
 		return
@@ -86,7 +86,7 @@ func _push_from_inventory() -> void:
 	var world_pos: Vector3 = item.global_position
 	item.reparent(get_tree().root, false)
 	item.global_position = world_pos
-	if next_block.try_receive(item):
+	if push_item(item):            # раздаём по кругу между всеми выходами (см. FactoryBlock)
 		inventory.erase(item)
 		_fix_positions()
 		slot_freed.emit()
@@ -97,9 +97,10 @@ func _push_from_inventory() -> void:
 		# Не приняли — возвращаем обратно в $resources
 		item.reparent($resources, false)
 		item.global_position = world_pos
-		if not waiting_for_next:
+		var wait_on := _first_valid_target()
+		if wait_on != null and not waiting_for_next:
 			waiting_for_next = true
-			next_block.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
+			wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
 
 func _on_next_block_freed() -> void:
 	waiting_for_next = false

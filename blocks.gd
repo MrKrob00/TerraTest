@@ -533,13 +533,14 @@ func rebuild_factory_links() -> void:
 		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
 		facs.append(n)
 	for n in facs:
+		n.next_blocks = []
 		n.next_block = null
 		var own: Array = cells[n]
-		for face in n.output_faces:
-			var d: Vector3i = n.face_dir(String(face))
+		# Собираем ВСЕ подключённые приёмники, а не первый попавшийся: блок может иметь
+		# несколько выходов (делитель) — тогда он раздаёт по кругу (FactoryBlock.push_item).
+		for d in n.face_dirs(n.output_faces):
 			if d == Vector3i.ZERO:
 				continue
-			var found = null
 			for c in own:
 				var t: Vector3i = c + d
 				if not _in_bounds(t.x, t.y, t.z):
@@ -548,9 +549,9 @@ func rebuild_factory_links() -> void:
 				if nb == null or nb == n or not cells.has(nb):
 					continue                      # не фабричный сосед — ресурс туда не идёт
 				if not nb.accepts_from(d):
-					continue                      # у соседа с этой стороны нет грани ВВОДА
-				found = nb
+					continue                      # у соседа с этой стороны нет стороны ВВОДА
+				if not n.next_blocks.has(nb):
+					n.next_blocks.append(nb)
 				break
-			if found != null:
-				n.next_block = found
-				break
+		if not n.next_blocks.is_empty():
+			n.next_block = n.next_blocks[0]
