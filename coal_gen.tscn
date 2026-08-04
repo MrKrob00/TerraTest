@@ -18,8 +18,8 @@ collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_s")
 block = 24
-input_faces = Array[String](["front", "back", "left", "right", "top"])
-output_faces = Array[String]([])
+input_faces = 31
+output_faces = 0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)

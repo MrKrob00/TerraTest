@@ -10,44 +10,59 @@ signal slot_freed
 #   front = −Z (морда), back = +Z, right = +X, left = −X, top = +Y, bottom = −Y
 # Ресурс уходит с грани из output_faces в соседа, у которого НАВСТРЕЧУ смотрит одна из
 # input_faces. Пусто в output_faces = блок ничего не отдаёт (продавец, генератор — «сток»).
-const FACES := ["front", "back", "left", "right", "top", "bottom"]
+# Галочки в инспекторе: отмечаешь нужные стороны, ничего вписывать руками не надо.
+# Сторон можно отметить сколько угодно — блок бывает и многовходовым, и многовыходным.
+@export_flags("Front (−Z)", "Back (+Z)", "Left (−X)", "Right (+X)", "Top (+Y)", "Bottom (−Y)") \
+		var input_faces: int = FACE_BACK       ## Стороны, которыми блок ПРИНИМАЕТ ресурс
+@export_flags("Front (−Z)", "Back (+Z)", "Left (−X)", "Right (+X)", "Top (+Y)", "Bottom (−Y)") \
+		var output_faces: int = FACE_FRONT     ## Стороны, которыми блок ОТДАЁТ ресурс
 
-@export var input_faces: Array[String] = ["back"]     ## Откуда блок ПРИНИМАЕТ ресурс
-@export var output_faces: Array[String] = ["front"]   ## Куда блок ОТДАЁТ ресурс
+const FACE_FRONT  := 1
+const FACE_BACK   := 2
+const FACE_LEFT   := 4
+const FACE_RIGHT  := 8
+const FACE_TOP    := 16
+const FACE_BOTTOM := 32
+
+# Локальные направления сторон (в осях самого блока; поворот учитывается в face_dirs).
+const FACE_VECS := [
+	Vector3(0, 0, -1),   # Front
+	Vector3(0, 0, 1),    # Back
+	Vector3(-1, 0, 0),   # Left
+	Vector3(1, 0, 0),    # Right
+	Vector3(0, 1, 0),    # Top
+	Vector3(0, -1, 0),   # Bottom
+]
 
 var current_item: Node3D = null
-var next_block: FactoryBlock = null
+var next_block: FactoryBlock = null       # текущая цель выдачи (одна из next_blocks)
+var next_blocks: Array = []               # ВСЕ подключённые приёмники (многовыходный блок)
+var _out_turn: int = 0                    # по кругу между выходами, чтобы делитель делил поровну
 var waiting_for_next: bool = false
 
 # Принимает ли блок ресурс, приходящий с направления from_dir (вектор в осях РОДИТЕЛЯ,
 # указывает ОТ соседа К нам). Зовётся из blocks.rebuild_factory_links.
 func accepts_from(from_dir: Vector3i) -> bool:
-	for f in input_faces:
-		if face_dir(f) == -from_dir:      # грань ввода смотрит навстречу приходящему ресурсу
+	for dir in face_dirs(input_faces):
+		if dir == -from_dir:              # сторона ввода смотрит навстречу приходящему ресурсу
 			return true
 	return false
 
-# Мировое (в осях родителя-blocks) направление грани с учётом ПОВОРОТА блока.
-func face_dir(face: String) -> Vector3i:
-	var local: Vector3 = LOCAL_FACE.get(face, Vector3.ZERO)
-	if local == Vector3.ZERO:
-		return Vector3i.ZERO
-	var v: Vector3 = (basis * local).normalized()
-	# Прижимаем к ближайшей оси: блок стоит по сетке, поворот кратен 90°.
-	if absf(v.x) >= absf(v.y) and absf(v.x) >= absf(v.z):
-		return Vector3i(signi(int(signf(v.x))), 0, 0)
-	if absf(v.y) >= absf(v.z):
-		return Vector3i(0, signi(int(signf(v.y))), 0)
-	return Vector3i(0, 0, signi(int(signf(v.z))))
-
-const LOCAL_FACE := {
-	"front":  Vector3(0, 0, -1),
-	"back":   Vector3(0, 0, 1),
-	"right":  Vector3(1, 0, 0),
-	"left":   Vector3(-1, 0, 0),
-	"top":    Vector3(0, 1, 0),
-	"bottom": Vector3(0, -1, 0),
-}
+# Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
+func face_dirs(mask: int) -> Array:
+	var out: Array = []
+	for i in FACE_VECS.size():
+		if mask & (1 << i) == 0:
+			continue
+		var v: Vector3 = (basis * FACE_VECS[i]).normalized()
+		# Прижимаем к ближайшей оси: блок стоит по сетке, поворот кратен 90°.
+		if absf(v.x) >= absf(v.y) and absf(v.x) >= absf(v.z):
+			out.append(Vector3i(int(signf(v.x)), 0, 0))
+		elif absf(v.y) >= absf(v.z):
+			out.append(Vector3i(0, int(signf(v.y)), 0))
+		else:
+			out.append(Vector3i(0, 0, int(signf(v.z))))
+	return out
 
 func _ready() -> void:
 	await get_tree().process_frame
@@ -98,17 +113,41 @@ func _try_push() -> void:
 	if current_item == null or not is_instance_valid(current_item):
 		current_item = null
 		return
-	if next_block == null or not is_instance_valid(next_block):
-		next_block = null                 # следующий блок исчез (разрушен/снят) — не течём в мёртвую ссылку
-		return
-	if next_block.try_receive(current_item):
+	if push_item(current_item):
 		current_item = null
 		waiting_for_next = false
 		slot_freed.emit()
-	else:
-		if not waiting_for_next:
-			waiting_for_next = true
-			next_block.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
+		return
+	# Никто не принял — ждём, когда освободится первый занятый приёмник.
+	var wait_on := _first_valid_target()
+	if wait_on != null and not waiting_for_next:
+		waiting_for_next = true
+		wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
+
+# Отдать предмет ЛЮБОМУ из подключённых приёмников. Обходим их ПО КРУГУ (_out_turn), поэтому
+# блок с несколькими выходами работает делителем и раздаёт поровну, а не забивает первый.
+func push_item(item: Node3D) -> bool:
+	var targets := _valid_targets()
+	if targets.is_empty() or item == null or not is_instance_valid(item):
+		return false
+	for i in targets.size():
+		var t: FactoryBlock = targets[(_out_turn + i) % targets.size()]
+		if t.try_receive(item):
+			_out_turn = (_out_turn + i + 1) % targets.size()
+			next_block = t
+			return true
+	return false
+
+func _valid_targets() -> Array:
+	var out: Array = []
+	for t in next_blocks:
+		if t != null and is_instance_valid(t):
+			out.append(t)
+	return out
+
+func _first_valid_target() -> FactoryBlock:
+	var t := _valid_targets()
+	return t[0] if not t.is_empty() else null
 
 func _on_next_block_freed() -> void:
 	waiting_for_next = false
