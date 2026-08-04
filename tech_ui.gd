@@ -297,27 +297,71 @@ func _make_build_slot(build_name: String) -> Control:
 	corner.offset_top = -22
 	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(corner)
-	# Кнопки-иконки в верхнем углу слота: карандаш — переименовать, корзина — удалить.
-	# Это дочерние Button поверх слота, поэтому клик по ним НЕ применяет сборку.
-	btn.add_child(_slot_icon_btn(PencilIcon.new(), "Rename", 4.0, _ask_rename_build.bind(build_name)))
-	btn.add_child(_slot_icon_btn(TrashIcon.new(), "Delete", 32.0, _ask_delete_build.bind(build_name)))
+	# Действия (переименовать/удалить) — по ДОЛГОМУ нажатию (и правой кнопкой на ПК), а не
+	# крошечными иконками в углу: на телефоне в 26 px попасть пальцем невозможно, а увеличить
+	# их прямо в слоте — значит закрыть название сборки. В меню цели крупные и не мешают.
+	btn.gui_input.connect(_on_build_slot_input.bind(build_name))
+	btn.button_up.connect(func() -> void: _hold_name = "")
+	var hint := PencilIcon.new()                       # маленький значок «у слота есть действия»
+	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	hint.offset_left = -24.0
+	hint.offset_top = 2.0
+	hint.offset_right = -2.0
+	hint.offset_bottom = 24.0
+	hint.modulate = Color(1, 1, 1, 0.45)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE    # не перехватывает нажатие — это лишь подсказка
+	btn.add_child(hint)
 	return btn
 
-# Маленькая кнопка с рисованной иконкой в верхнем-правом углу слота (offset_r — сдвиг влево).
-func _slot_icon_btn(icon: Control, tip: String, offset_r: float, cb: Callable) -> Button:
-	var b := Button.new()
-	b.tooltip_text = tip
-	b.custom_minimum_size = Vector2(26, 26)
-	b.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	b.offset_left = -(offset_r + 26.0)
-	b.offset_right = -offset_r
-	b.offset_top = 4.0
-	b.offset_bottom = 30.0
-	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.add_child(icon)
-	b.pressed.connect(cb)
-	return b
+# ── Долгое нажатие по слоту сборки → меню действий ────────────────────────────
+const HOLD_MS := 450
+var _hold_name: String = ""
+var _hold_start: int = 0
+var _build_menu: PopupMenu = null
+var _menu_target: String = ""
+var _skip_apply: bool = false
+
+func _on_build_slot_input(event: InputEvent, build_name: String) -> void:
+	# ПК: правая кнопка открывает меню сразу.
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		_open_build_menu(build_name)
+		return
+	if event is InputEventMouseButton or event is InputEventScreenTouch:
+		if event.pressed:
+			_hold_name = build_name
+			_hold_start = Time.get_ticks_msec()
+		else:
+			_hold_name = ""
+
+func _process(_delta: float) -> void:
+	# Держим палец на слоте дольше HOLD_MS → открываем меню (и гасим последующее «применить»).
+	if _hold_name != "" and Time.get_ticks_msec() - _hold_start >= HOLD_MS:
+		var n := _hold_name
+		_hold_name = ""
+		_skip_apply = true
+		_open_build_menu(n)
+
+func _open_build_menu(build_name: String) -> void:
+	_menu_target = build_name
+	if _build_menu == null or not is_instance_valid(_build_menu):
+		_build_menu = PopupMenu.new()
+		_build_menu.add_theme_font_size_override("font_size", 18)
+		_build_menu.add_item("Apply", 0)
+		_build_menu.add_item("Rename", 1)
+		_build_menu.add_item("Delete", 2)
+		_build_menu.id_pressed.connect(_on_build_menu_id)
+		add_child(_build_menu)
+	_build_menu.title = build_name
+	_build_menu.reset_size()
+	# Крупные строки: минимальная ширина + высота элемента под палец.
+	_build_menu.min_size = Vector2i(220, 0)
+	_build_menu.popup_centered()
+
+func _on_build_menu_id(id: int) -> void:
+	match id:
+		0: _load_build(_menu_target)
+		1: _ask_rename_build(_menu_target)
+		2: _ask_delete_build(_menu_target)
 
 # Иконки рисуем в коде: шрифт проекта не рендерит эмодзи (пустые кнопки — уже проходили).
 class PencilIcon extends Control:
@@ -409,6 +453,11 @@ func _save_current_build() -> void:
 
 # Применить сохранённую сборку с ПРОВЕРКОЙ блоков: пул = блоки на машине + инвентарь.
 func _load_build(build_name: String) -> void:
+	# После долгого нажатия кнопка всё равно шлёт pressed при отпускании — гасим, иначе меню
+	# открылось бы И сборка тут же применилась.
+	if _skip_apply:
+		_skip_apply = false
+		return
 	var v: Node = _get_vehicle()
 	if v == null or not v.has_method("apply_build"):
 		return
