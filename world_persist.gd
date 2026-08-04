@@ -8,6 +8,8 @@ extends Node
 
 const SAVE_PATH := "user://world_save.json"
 const BAD_SAVE_PATH := "user://world_save.bad.json"   # сюда уезжает сейв, который не удалось загрузить
+const SAFE_CLEARANCE := 2.0         # на сколько поднимаем машину над рельефом при восстановлении
+const FALL_LIMIT := 60.0            # глубже рельефа на столько = провалилась, спасаем
 const BLOCK_TTL := 600.0            # 10 мин — время жизни свободного блока в мире
 const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейва (машины, блоки мира, позиции)
 
@@ -30,7 +32,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_purge_extra_machines()                        # оставляем только ОСНОВНУЮ машину игрока
 	if FileAccess.file_exists(SAVE_PATH):
-		_load_world()
+		await _load_world()        # внутри есть await (разморозка после телепорта) — дожидаемся
 	else:
 		_fresh_start()
 	var t := Timer.new()
@@ -51,6 +53,49 @@ func _process(delta: float) -> void:
 		return
 	_tick = 0.0
 	_expire_world_blocks()                         # деспавн свободных блоков старше 10 мин
+	_rescue_fallen()                               # машина провалилась сквозь рельеф — вернуть наверх
+
+# Кэш ноды рельефа (у неё есть terrain_height_at).
+var _terrain_node: Node = null
+
+func _terrain() -> Node:
+	if _terrain_node != null and is_instance_valid(_terrain_node):
+		return _terrain_node
+	var scn := get_tree().current_scene
+	if scn == null:
+		return null
+	for c in scn.get_children():
+		if c.has_method("terrain_height_at"):
+			_terrain_node = c
+			return c
+	return null
+
+# СТРАХОВКА: если машина оказалась заметно НИЖЕ рельефа, она провалилась сквозь него (коллизия
+# рельефа стриминговая — под только что телепортированным телом её может ещё не быть). Без этого
+# машина падала бесконечно, а камера уезжала за ней на километры вниз — экран становился пустым.
+func _rescue_fallen() -> void:
+	var terr := _terrain()
+	if terr == null:
+		return
+	for m in _player_machines():
+		var n3 := m as Node3D
+		if n3 == null:
+			continue
+		var ground: float = terr.terrain_height_at(n3.global_position)
+		if n3.global_position.y > ground - FALL_LIMIT:
+			continue
+		push_warning("world_persist: машина провалилась под рельеф — возвращаю наверх")
+		var rb := m as RigidBody3D
+		if rb != null:
+			rb.freeze = true
+			rb.linear_velocity = Vector3.ZERO
+			rb.angular_velocity = Vector3.ZERO
+		n3.global_position = Vector3(n3.global_position.x,
+				ground + SAFE_CLEARANCE + 2.0, n3.global_position.z)
+		if rb != null:
+			await get_tree().process_frame          # даём коллизии построиться под новой точкой
+			await get_tree().process_frame
+			rb.freeze = false
 
 # ── Узлы сцены ────────────────────────────────────────────────────────────────
 func _objects() -> Node:
@@ -207,7 +252,7 @@ func _load_world() -> void:
 		_quarantine_save("раскладка машины повреждена")
 		_fresh_start()
 		return
-	_restore_machine(primary, machines[0])
+	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])
 	# Убираем предустановленные в сцене тест-блоки, иначе они копятся поверх сохранённых.
@@ -254,11 +299,31 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	veh.apply_build(mdata.get("layout", []))
 	var p = mdata.get("pos", null)
 	var r = mdata.get("rot", null)
-	if veh is Node3D:
-		if p != null:
-			veh.global_position = Vector3(p[0], p[1], p[2])
-		if r != null:
-			veh.global_rotation = Vector3(r[0], r[1], r[2])
+	if not (veh is Node3D):
+		return
+	# Машина — RigidBody3D, и ПРЯМОЙ телепорт незамороженного тела физика откатывает, а под новой
+	# точкой ещё нет стриминговой коллизии рельефа (её тайлы строятся вокруг тела уже ПОСЛЕ того,
+	# как оно там окажется). Из-за этого машина проваливалась сквозь мир и бесконечно падала —
+	# камера уезжала за ней на километры вниз, и экран становился пустым.
+	# Поэтому: замораживаем → ставим позицию НЕ НИЖЕ рельефа → ждём пару кадров, пока построится
+	# коллизия → отпускаем.
+	var rb := veh as RigidBody3D
+	if rb != null:
+		rb.freeze = true
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
+	if r != null:
+		veh.global_rotation = Vector3(r[0], r[1], r[2])
+	if p != null:
+		var pos := Vector3(p[0], p[1], p[2])
+		var terr := _terrain()
+		if terr != null:
+			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
+		veh.global_position = pos
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if rb != null:
+		rb.freeze = false
 
 func _spawn_machine(mdata: Dictionary) -> void:
 	var scene := load("res://player_vehicle.tscn") as PackedScene
@@ -270,7 +335,7 @@ func _spawn_machine(mdata: Dictionary) -> void:
 	await get_tree().process_frame                 # даём _ready машины отработать до apply_build
 	await get_tree().process_frame
 	if v.has_method("apply_build"):
-		_restore_machine(v, mdata)
+		await _restore_machine(v, mdata)
 	var cc = _camera()
 	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
 		cc.vehicles.append(v)
