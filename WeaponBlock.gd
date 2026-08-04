@@ -130,8 +130,6 @@ func _track_target(delta: float, firing: bool) -> void:
 		m.emission_energy_multiplier = (3.0 if hit else 1.5) * pulse
 
 func _handle_fire(delta: float) -> void:
-	if _current_target == null or not raycast.is_colliding():
-		pass#return
 	var body: Node3D = raycast.get_collider()
 	if body:
 		if body == self or body.get_parent() == get_parent():

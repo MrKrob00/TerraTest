@@ -295,6 +295,6 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	return v
 
 func _on_raycast_body_entered(body: Node3D) -> void:
-	if body.get_parent().name in "objects" and !current_vehicle.block_take:
+	if body.get_parent().name == "objects" and !current_vehicle.block_take:
 		current_vehicle.ghost_block.global_position = body.global_position
 		current_vehicle.block_body = body

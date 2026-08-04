@@ -8,7 +8,7 @@ var inventory:Array = []
 # менять их надо на физ-тике, а не на кадре отрисовки (иначе правки летят в произвольный момент
 # шага физики и лишний раз дёргают сервер на быстрых экранах).
 func _physics_process(_delta: float) -> void:
-	if $"..".name in "objects":
+	if $"..".name == "objects":
 		if is_on_vehicle:
 			$collector.monitoring = false
 			is_on_vehicle = false

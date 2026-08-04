@@ -270,14 +270,8 @@ func _spawn_enforcement(locked: Node3D = null) -> void:
 func _lock_on_target(enemy: Node, target: Node3D) -> void:
 	if target == null or not is_instance_valid(target):
 		return
-	if "relentless" in enemy:
-		enemy.relentless = true
-	if "_target" in enemy:
-		enemy.set("_target", target)
-	if "_forget_timer" in enemy and "forget_enemy_time" in enemy:
-		enemy.set("_forget_timer", enemy.get("forget_enemy_time"))
-	if "_state" in enemy:
-		enemy.set("_state", 1)          # AIState.CHASE
+	if enemy.has_method("assign_target"):
+		enemy.assign_target(target, true)
 
 # Маркер квадрата: 4 светящихся столба по углам (переживают неровный рельеф). Пульсируют,
 # к концу таймера краснеют — тревога.
