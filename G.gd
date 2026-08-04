@@ -318,6 +318,27 @@ func delete_build(build_name: String) -> void:
 	saved_builds.erase(build_name)
 	_persist_builds()
 
+# Переименовать сборку. Возвращает false, если имя пустое или уже занято (порядок сборок
+# сохраняем: Dictionary в GDScript помнит порядок вставки, поэтому пересобираем его целиком,
+# иначе переименованная сборка прыгала бы в конец списка).
+func rename_build(old_name: String, new_name: String) -> bool:
+	new_name = new_name.strip_edges()
+	if new_name.is_empty() or not saved_builds.has(old_name):
+		return false
+	if new_name == old_name:
+		return true
+	if saved_builds.has(new_name):
+		return false
+	var rebuilt: Dictionary = {}
+	for k in saved_builds:
+		if k == old_name:
+			rebuilt[new_name] = saved_builds[k]
+		else:
+			rebuilt[k] = saved_builds[k]
+	saved_builds = rebuilt
+	_persist_builds()
+	return true
+
 func _persist_builds() -> void:
 	var f = FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
 	if f:

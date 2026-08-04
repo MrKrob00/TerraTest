@@ -297,7 +297,103 @@ func _make_build_slot(build_name: String) -> Control:
 	corner.offset_top = -22
 	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(corner)
+	# Кнопки-иконки в верхнем углу слота: карандаш — переименовать, корзина — удалить.
+	# Это дочерние Button поверх слота, поэтому клик по ним НЕ применяет сборку.
+	btn.add_child(_slot_icon_btn(PencilIcon.new(), "Rename", 4.0, _ask_rename_build.bind(build_name)))
+	btn.add_child(_slot_icon_btn(TrashIcon.new(), "Delete", 32.0, _ask_delete_build.bind(build_name)))
 	return btn
+
+# Маленькая кнопка с рисованной иконкой в верхнем-правом углу слота (offset_r — сдвиг влево).
+func _slot_icon_btn(icon: Control, tip: String, offset_r: float, cb: Callable) -> Button:
+	var b := Button.new()
+	b.tooltip_text = tip
+	b.custom_minimum_size = Vector2(26, 26)
+	b.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	b.offset_left = -(offset_r + 26.0)
+	b.offset_right = -offset_r
+	b.offset_top = 4.0
+	b.offset_bottom = 30.0
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(icon)
+	b.pressed.connect(cb)
+	return b
+
+# Иконки рисуем в коде: шрифт проекта не рендерит эмодзи (пустые кнопки — уже проходили).
+class PencilIcon extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(0.88, 0.96, 0.98)
+		draw_line(c + Vector2(-6, 6), c + Vector2(4, -5), col, 2.4)      # корпус ручки
+		draw_line(c + Vector2(-3, 7), c + Vector2(6, -3), col, 2.4)
+		draw_line(c + Vector2(4, -5), c + Vector2(6, -3), col, 2.4)      # обод у наконечника
+		draw_colored_polygon(PackedVector2Array([                        # остриё
+			c + Vector2(-6, 6), c + Vector2(-3, 7), c + Vector2(-7, 8)]), col)
+
+class TrashIcon extends Control:
+	func _draw() -> void:
+		var c := size * 0.5
+		var col := Color(1.0, 0.62, 0.62)                                # красноватая — «удалить»
+		draw_line(c + Vector2(-8, -5), c + Vector2(8, -5), col, 2.2)     # крышка
+		draw_line(c + Vector2(-3, -8), c + Vector2(3, -8), col, 2.2)     # ручка крышки
+		draw_polyline(PackedVector2Array([                               # корпус ведра
+			c + Vector2(-6, -4), c + Vector2(-5, 8),
+			c + Vector2(5, 8),   c + Vector2(6, -4)]), col, 2.2)
+		draw_line(c + Vector2(-2, -2), c + Vector2(-2, 5), col, 1.6)     # рёбра
+		draw_line(c + Vector2(2, -2), c + Vector2(2, 5), col, 1.6)
+
+# ── Переименование / удаление сборки ──────────────────────────────────────────
+var _rename_dialog: AcceptDialog = null
+var _rename_edit: LineEdit = null
+var _rename_target: String = ""
+
+func _ask_rename_build(build_name: String) -> void:
+	_rename_target = build_name
+	if _rename_dialog == null or not is_instance_valid(_rename_dialog):
+		_rename_dialog = AcceptDialog.new()
+		_rename_dialog.title = "Rename build"
+		_rename_dialog.ok_button_text = "Rename"
+		_rename_dialog.add_cancel_button("Cancel")
+		_rename_edit = LineEdit.new()
+		_rename_edit.custom_minimum_size = Vector2(260, 0)
+		_rename_edit.max_length = 24
+		_rename_dialog.add_child(_rename_edit)
+		_rename_dialog.register_text_enter(_rename_edit)     # Enter = подтвердить
+		_rename_dialog.confirmed.connect(_apply_rename)
+		add_child(_rename_dialog)
+	_rename_edit.text = build_name
+	_rename_dialog.popup_centered(Vector2i(320, 120))
+	_rename_edit.grab_focus()
+	_rename_edit.select_all()
+
+func _apply_rename() -> void:
+	var new_name: String = _rename_edit.text.strip_edges()
+	if new_name.is_empty() or new_name == _rename_target:
+		return
+	if not G.rename_build(_rename_target, new_name):
+		_say("Name already taken: %s" % new_name)
+		return
+	_rebuild_grid("")
+	_say("Renamed: %s" % new_name)
+
+var _delete_dialog: ConfirmationDialog = null
+var _delete_target: String = ""
+
+func _ask_delete_build(build_name: String) -> void:
+	_delete_target = build_name
+	if _delete_dialog == null or not is_instance_valid(_delete_dialog):
+		_delete_dialog = ConfirmationDialog.new()
+		_delete_dialog.title = "Delete build"
+		_delete_dialog.ok_button_text = "Delete"
+		_delete_dialog.confirmed.connect(_apply_delete)
+		add_child(_delete_dialog)
+	_delete_dialog.dialog_text = "Delete build \"%s\"?" % build_name
+	_delete_dialog.popup_centered(Vector2i(340, 130))
+
+func _apply_delete() -> void:
+	G.delete_build(_delete_target)
+	_rebuild_grid("")
+	_say("Deleted: %s" % _delete_target)
 
 func _save_current_build() -> void:
 	var v: Node = _get_vehicle()
