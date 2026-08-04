@@ -7,6 +7,7 @@ extends Node
 # Загрузка при любой ошибке откатывается на новый старт (сейв игру не ломает).
 
 const SAVE_PATH := "user://world_save.json"
+const BAD_SAVE_PATH := "user://world_save.bad.json"   # сюда уезжает сейв, который не удалось загрузить
 const BLOCK_TTL := 600.0            # 10 мин — время жизни свободного блока в мире
 const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейва (машины, блоки мира, позиции)
 
@@ -190,6 +191,7 @@ func _load_world() -> void:
 	var err := json.parse(f.get_as_text())
 	f.close()
 	if err != OK or typeof(json.get_data()) != TYPE_DICTIONARY:
+		_quarantine_save("файл не разобрался как JSON")
 		_fresh_start()
 		return
 	var data: Dictionary = json.get_data()
@@ -198,6 +200,11 @@ func _load_world() -> void:
 	if machines.is_empty() or primary == null or not primary.has_method("apply_build"):
 		# Сейв есть, но машины в нём нет (например, записался до того, как машина появилась).
 		# Молча оставить игрока с голой кабиной и без блоков = тупик, поэтому — новый старт.
+		_quarantine_save("в сейве нет машин")
+		_fresh_start()
+		return
+	if not _layout_ok(machines[0].get("layout", [])):
+		_quarantine_save("раскладка машины повреждена")
 		_fresh_start()
 		return
 	_restore_machine(primary, machines[0])
@@ -214,6 +221,34 @@ func _load_world() -> void:
 		var r = wb.get("rot", [0, 0, 0])
 		_spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
+
+# Проверка раскладки ДО применения: одна битая запись роняла бы сборку молча, а игрок получал
+# пустую машину и не понимал почему. Требуем массив словарей с координатами в пределах сетки
+# и известным типом блока.
+func _layout_ok(layout) -> bool:
+	if not (layout is Array) or (layout as Array).is_empty():
+		return false
+	for e in layout:
+		if not (e is Dictionary):
+			return false
+		if not (e.has("x") and e.has("y") and e.has("z") and e.has("block")):
+			return false
+		var x := int(e["x"]); var y := int(e["y"]); var z := int(e["z"])
+		if x < 0 or x > 10 or y < 0 or y > 10 or z < 0 or z > 10:
+			return false                      # координаты вне сетки 11³ — файл от другой версии
+		if G.block_from_key(e["block"]) == G.Block.EMPTY:
+			return false                      # неизвестный блок (переименовали/удалили тип)
+	return true
+
+# Битый сейв НЕ удаляем, а отодвигаем в сторону: игра стартует заново и больше не залипает,
+# а файл остаётся — по нему можно понять, что именно сломалось.
+func _quarantine_save(reason: String) -> void:
+	push_warning("world_persist: сейв не загружен (%s) → откладываю в %s" % [reason, BAD_SAVE_PATH])
+	var d := DirAccess.open("user://")
+	if d != null:
+		if d.file_exists(BAD_SAVE_PATH.get_file()):
+			d.remove(BAD_SAVE_PATH.get_file())
+		d.rename(SAVE_PATH.get_file(), BAD_SAVE_PATH.get_file())
 
 func _restore_machine(veh, mdata: Dictionary) -> void:
 	veh.apply_build(mdata.get("layout", []))
