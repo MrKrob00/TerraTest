@@ -103,6 +103,52 @@ func mass_comfort() -> float:
 func mass_limit() -> float:
 	return rated_power() / ACCEL_CRAWL
 
+# ── Общие показатели машины ───────────────────────────────────────────────────
+# Живут здесь, а не у врага, потому что описывают ЛЮБУЮ машину: ИИ по ним решает,
+# стоит ли драться, а гараж их же показывает игроку. Считаются в одном месте, значит
+# панель не может разойтись с тем, что видит ИИ.
+
+## Текущий и максимальный HP всех блоков.
+func hp_totals() -> Vector2i:
+	var bl: Node = _blocks_root()
+	if bl == null:
+		return Vector2i(1, 1)
+	var cur: int = 0
+	var mx: int = 0
+	for b in bl.get_children():
+		if b is VehicleBlock:
+			cur += (b as VehicleBlock).current_hp
+			mx += (b as VehicleBlock).max_hp
+	return Vector2i(cur, maxi(mx, 1))
+
+func health_ratio() -> float:
+	var hp: Vector2i = hp_totals()
+	return clampf(float(hp.x) / float(hp.y), 0.0, 1.0)
+
+## Грубый урон в секунду всех орудий — для сравнения «кто кого перестреляет».
+func firepower() -> float:
+	var bl: Node = _blocks_root()
+	if bl == null:
+		return 0.0
+	var p: float = 0.0
+	for b in bl.get_children():
+		var dmg: Variant = b.get("damage")
+		var rate: Variant = b.get("fire_rate")
+		if dmg != null and rate != null and float(rate) > 0.001:
+			p += float(dmg) / float(rate)
+	return p
+
+## Сколько на машине колёс: x — всего, y — ведущих.
+func wheel_counts() -> Vector2i:
+	var total: int = 0
+	var driven: int = 0
+	for w in Wheels:
+		if is_instance_valid(w):
+			total += 1
+			if w.is_drive:
+				driven += 1
+	return Vector2i(total, driven)
+
 ## Пересчитать массу и центр масс немедленно. Нужно гаражу: у неактивной машины
 ## _physics_process выходит досрочно, и _sync_mass там не вызывается — без этого
 ## панель показывала бы данные на момент последней поездки.
