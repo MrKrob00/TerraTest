@@ -6,7 +6,9 @@ class_name Wheel
 @export var weight: float = 20.0
 ## Тяга одного колеса в ньютонах. Общая тяга машины = сумма по ведущим колёсам,
 ## КАСАЮЩИМСЯ земли, поэтому больше колёс — быстрее разгон, а больше блоков — медленнее.
-@export var wheel_power: float = 1800.0
+## Величина откалибрована по реальной сборке: 296 кг на пяти колёсах дают ~68 м/с²,
+## что близко к отклику до перехода на тяговую модель.
+@export var wheel_power: float = 4000.0
 @export var max_brake_force: float = 300.0
 
 const MAX_STEER_ANGLE: float = 25.0
@@ -21,8 +23,27 @@ var grounded: bool = false
 
 func _ready() -> void:
 	super._ready()
-	if get_parent().name == "blocks":
-		get_parent().get_parent().append_wheel(self)
+
+# Регистрация идёт по ВХОДУ В ДЕРЕВО, а не в _ready. Блок, который игрок ставит руками,
+# сначала инстансится в держатель у камеры (take_block_into_hand), там у него отрабатывает
+# _ready — и родитель в тот момент не "blocks". Потом блок переносится на машину через
+# reparent, но _ready второй раз не вызывается, и колесо навсегда оставалось
+# незарегистрированным: тяга машины не росла, сколько колёс ни ставь.
+func _enter_tree() -> void:
+	var machine: Node = _machine()
+	if machine != null and machine.has_method("append_wheel"):
+		machine.append_wheel(self)
+
+func _exit_tree() -> void:
+	var machine: Node = _machine()
+	if machine != null and machine.has_method("erase_wheel"):
+		machine.erase_wheel(self)
+
+func _machine() -> Node:
+	var p: Node = get_parent()
+	if p == null or p.name != "blocks":
+		return null
+	return p.get_parent()
 
 func get_weight() -> float:
 	return weight
