@@ -613,15 +613,10 @@ func _refresh_stats() -> void:
 	if v == null:
 		return
 	set_vehicle_name(str(v.name))
-	# «Реактор» переосмыслен как блоки: построено на машине / всего во владении.
-	var built := 0
-	var blocks_node: Node = v.get_node_or_null("blocks")
-	if blocks_node:
-		for b in blocks_node.get_children():
-			if "block" in b:                    # блоки имеют свойство .block; меш-узел — нет
-				built += 1
-	var owned: int = built + G.block_inventory.size()
-	set_reactor(built, max(owned, 1))
+	if v is MachineBody:
+		var m: MachineBody = v as MachineBody
+		m.refresh_mass()                        # в гараже физпроцесс машины не крутится
+		set_load(m)
 	if "mass" in v:
 		set_weight(int(round(v.mass)))
 
@@ -630,12 +625,42 @@ func set_vehicle_name(n: String) -> void:
 	if has_node("%VehicleName"):
 		%VehicleName.text = n
 
-func set_reactor(used: int, total: int) -> void:
+const LOAD_OK: Color = Color(0.35, 0.85, 0.42)     # тянет легко
+const LOAD_WARN: Color = Color(1.0, 0.78, 0.22)    # тянет, но с трудом
+const LOAD_BAD: Color = Color(0.95, 0.32, 0.28)    # не поедет
+
+# Панель показывает не число блоков, а способность машины себя везти: её масса против
+# той, которую вытянет её собственная тяга. Предел не константа — он растёт от колёс,
+# поэтому берётся из MachineBody, из той же формулы, по которой машина реально едет.
+func set_load(m: MachineBody) -> void:
+	var mass_now: float = m.mass
+	var comfort: float = m.mass_comfort()
+	var limit: float = m.mass_limit()
+
+	var col: Color = LOAD_OK
+	var verdict: String = "MOVES WELL"
+	if limit < 1.0:
+		col = LOAD_BAD
+		verdict = "NO DRIVE"                       # тяги нет вообще: нужны колёса
+	elif mass_now > limit:
+		col = LOAD_BAD
+		verdict = "TOO HEAVY"
+	elif mass_now > comfort:
+		col = LOAD_WARN
+		verdict = "STRAINED"
+
+	if has_node("%ReactorLabel"):
+		%ReactorLabel.text = "LOAD  ·  " + verdict
 	if has_node("%ReactorValue"):
-		%ReactorValue.text = "%d / %d" % [used, total]
+		%ReactorValue.text = "%d / %d kg" % [int(round(mass_now)), int(round(limit))]
+		%ReactorValue.add_theme_color_override("font_color", col)
 	if has_node("%ReactorBar"):
-		%ReactorBar.max_value = total
-		%ReactorBar.value = used
+		%ReactorBar.max_value = maxf(limit, 1.0)
+		%ReactorBar.value = clampf(mass_now, 0.0, maxf(limit, 1.0))
+		var fill := StyleBoxFlat.new()
+		fill.bg_color = col
+		fill.set_corner_radius_all(3)
+		%ReactorBar.add_theme_stylebox_override("fill", fill)
 
 func set_weight(kg: int) -> void:
 	if has_node("%WeightValue"):

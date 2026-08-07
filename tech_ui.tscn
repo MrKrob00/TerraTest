@@ -197,21 +197,22 @@ layout_mode = 2
 theme_override_constants/separation = 6
 
 [node name="ReactorLabel" type="Label" parent="Root/Main/RightPanel/RightVB/Reactor/ReactorVB"]
+unique_name_in_owner = true
 layout_mode = 2
-text = "BLOCKS  ·  BUILT / OWNED"
+text = "LOAD  ·  MOVES WELL"
 
 [node name="ReactorValue" type="Label" parent="Root/Main/RightPanel/RightVB/Reactor/ReactorVB"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.65, 0.2, 1)
 theme_override_font_sizes/font_size = 30
-text = "243 / 260"
+text = "390 / 1440 kg"
 
 [node name="ReactorBar" type="ProgressBar" parent="Root/Main/RightPanel/RightVB/Reactor/ReactorVB"]
 unique_name_in_owner = true
 layout_mode = 2
-max_value = 260.0
-value = 243.0
+max_value = 1440.0
+value = 390.0
 show_percentage = false
 
 [node name="WeightRow" type="HBoxContainer" parent="Root/Main/RightPanel/RightVB"]
