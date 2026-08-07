@@ -46,17 +46,42 @@ const PAD_MARK: Color = Color(96.0 / 255.0, 103.0 / 255.0, 126.0 / 255.0)
 const KIND_WORLD: int = 0        # UV из мировой позиции — полоса непрерывна через фаски
 const KIND_PAD: int = 1          # UV из собственной ячейки метки
 
-# Меш и материал одни на все экземпляры: блоков на машине десятки, плодить копии незачем.
+# Меш один на все экземпляры: блоков на машине десятки, плодить копии незачем.
 static var _shared_mesh: ArrayMesh = null
-static var _shared_material: StandardMaterial3D = null
+
+## Готовый меш с УЖЕ вложенным материалом. Можно звать откуда угодно:
+##     mesh_instance.mesh = GeneratedBlock.block_mesh()
+## Ни сцены, ни скрипта на ноде для этого не нужно.
+static func block_mesh() -> ArrayMesh:
+	if _shared_mesh == null:
+		_shared_mesh = _build_mesh()
+	return _shared_mesh
+
+## Нажми в инспекторе — меш вместе с материалом и текстурой ляжет в файл
+## res://objects/gen/armor_block.res. Дальше его можно назначить полю Mesh любого
+## MeshInstance3D мышкой: ни сцены-обёртки, ни скрипта на ноде не потребуется.
+@export var bake_to_file: bool = false:
+	set(value):
+		bake_to_file = false                 # это кнопка, а не настройка
+		if value and Engine.is_editor_hint():
+			_bake_to_file()
+
+const BAKE_PATH: String = "res://objects/gen/armor_block.res"
+
+func _bake_to_file() -> void:
+	_shared_mesh = null                      # печём свежий, а не то, что лежало в кеше
+	var baked: ArrayMesh = block_mesh()
+	DirAccess.make_dir_recursive_absolute(BAKE_PATH.get_base_dir())
+	var err: int = ResourceSaver.save(baked, BAKE_PATH)
+	if err == OK:
+		print("Меш блока сохранён: ", BAKE_PATH)
+	else:
+		push_error("Не удалось сохранить меш блока (%s), код %d" % [BAKE_PATH, err])
 
 func _ready() -> void:
-	if _shared_mesh == null or Engine.is_editor_hint():
-		_shared_mesh = _build_mesh()
-	if _shared_material == null or Engine.is_editor_hint():
-		_shared_material = _build_material()
-	mesh = _shared_mesh
-	material_override = _shared_material
+	if Engine.is_editor_hint():
+		_shared_mesh = null                  # в редакторе правки констант видны сразу
+	mesh = block_mesh()
 
 # ══════════════════════════════════════════
 # ГЕОМЕТРИЯ
@@ -252,9 +277,16 @@ static func _build_mesh() -> ArrayMesh:
 		var uvs: Array = _face_uvs(poly, normal, entry[1])
 		st.set_normal(normal)                    # нормаль по грани — плоская закраска
 		for c in range(1, poly.size() - 1):
-			for idx in [0, c, c + 1]:
+			# Обход задом наперёд: _orient_outward выдаёт грань против часовой (правило
+			# Ньюэлла), а Godot передней считает намотку ПО часовой. С прямым порядком
+			# все грани отбраковывались как задние — блок просвечивал изнанкой.
+			for idx in [0, c + 1, c]:
 				st.set_uv(uvs[idx])
 				st.add_vertex(poly[idx])
+	# Материал кладём В МЕШ, а не на ноду: тогда меш можно назначить любому
+	# MeshInstance3D и он приедет уже со своим материалом. С material_override
+	# материал оставался у ноды, и голый меш терял и текстуру, и фильтр — отсюда мыло.
+	st.set_material(_build_material())
 	return st.commit()
 
 static func _atlas_image() -> Image:
