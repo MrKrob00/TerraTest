@@ -23,6 +23,36 @@ const BLOCK_HP: Dictionary = {
 }
 const DEFAULT_HP := 50
 
+# Вес блока в килограммах. Раньше массу машины составляли только колёса, из-за чего
+# постройка вообще не влияла на ходовые качества. Теперь каждый блок весит.
+const BLOCK_WEIGHT: Dictionary = {
+	G.Block.CABIN:     30.0,
+	G.Block.BLOCK:     12.0,
+	G.Block.BLOCK2:    22.0,
+	G.Block.DRILL:     25.0,
+	G.Block.COLLECTOR: 12.0,
+	G.Block.INTAKE:    12.0,
+	G.Block.BELT:       6.0,
+	G.Block.PROCESSOR: 30.0,
+	G.Block.SELLER:    18.0,
+	G.Block.LASER:     18.0,
+	G.Block.GUN:       20.0,
+	G.Block.ROCKET:    22.0,
+	G.Block.BATTERY:   20.0,
+	G.Block.SOLAR:      8.0,
+	G.Block.GENERATOR: 28.0,
+	G.Block.COAL_GEN:  35.0,
+	G.Block.REGEN:     15.0,
+	G.Block.SHIELD:    18.0,
+	G.Block.RADAR:     10.0,
+	G.Block.SUPPORT:   15.0,
+}
+const DEFAULT_WEIGHT := 10.0
+
+# Колёса переопределяют это своим экспортом — у них вес настраивается на сцене.
+func get_weight() -> float:
+	return float(BLOCK_WEIGHT.get(block, DEFAULT_WEIGHT))
+
 var max_hp: int = 50
 var current_hp: int = 50
 var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)
