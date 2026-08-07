@@ -7,7 +7,12 @@ extends RigidBody3D
 @export var faction: int = 0  # 0 = игрок
 
 @export_group("Двигатель")
-@export var engine_force: float = 80.0
+## Общий множитель тяги. Сама тяга берётся из колёс (Wheel.wheel_power), это лишь
+## ручка для настройки всей машины разом: ускорение = engine_force * Σтяга / масса.
+@export var engine_force: float = 1.0
+## Собственная тяга шасси, без колёс. Нужна, чтобы голая кабина в начале игры могла
+## доползти до блоков, лежащих рядом. Заметно слабее колеса — колёса остаются апгрейдом.
+@export var chassis_power: float = 500.0
 @export var max_speed: float = 20.0
 @export var engine_brake: float = 0.3
 
@@ -27,10 +32,16 @@ extends RigidBody3D
 @export_group("Стабилизация")
 @export var anti_roll: float = 6.0
 @export var upright_strength: float = 12.0
+## Доля гашения крена, работающая в воздухе. Без контакта колёс демпфировать нечем,
+## но полностью отключать нельзя — иначе машина после трамплина крутится неуправляемо.
+@export_range(0.0, 1.0) var air_stability: float = 0.35
 
 @export_group("Масса и физика")
 @export var base_weight: float = 40.0
 @export var gravity_mult: float = 2.5
+## Насколько центр масс опущен ниже оси колёс. Низкий центр масс — то, чем реальные
+## машины держатся от переворота; заодно тяга перестаёт создавать опрокидывающий момент.
+@export var com_drop: float = 0.40
 
 @export var RADIUS: float = 8.0
 @export var CAM_HEIGHT: float = 8.0
@@ -655,7 +666,9 @@ func _physics_process(delta: float) -> void:
 		_apply_engine(delta)
 		_apply_grip(delta)
 		_apply_steering(delta)
-		_apply_anti_roll(delta)
+	# Крен гасим и в воздухе, но слабее: без контакта колёс демпфировать физически
+	# нечем, а полностью отпустив машину, получаем неуправляемое вращение после трамплина.
+	_apply_anti_roll(delta, 1.0 if _on_ground else air_stability)
 	_apply_upright(delta)
 	_limit_speed()
 
@@ -692,16 +705,45 @@ func _process_input(joy: Vector2, delta: float) -> void:
 # ══════════════════════════════════════════
 
 var _ground_q: PhysicsRayQueryParameters3D = null
+var _grounded_wheels: int = 0
+var _wheel_count: int = 0
 
+# Землю щупает КАЖДОЕ колесо у себя под собой. Прежний вариант — один луч из центра
+# корпуса на 1.4 — ломался, как только машина становилась выше кабины: центр уезжал
+# вверх вместе с постройкой, луч переставал доставать, и вместе с `_on_ground`
+# отключались разом тяга, сцепление и поворот. Колёса же всегда там, где контакт.
 func _check_ground() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if _ground_q == null:
 		_ground_q = PhysicsRayQueryParameters3D.new()
 		_ground_q.exclude = [self]          # состав не меняется — задаём один раз
 		_ground_q.collision_mask = 1
-	_ground_q.from = global_position
-	_ground_q.to = global_position + Vector3.DOWN * 1.4
+
+	_grounded_wheels = 0
+	_wheel_count = 0
+	for w in Wheels:
+		if not is_instance_valid(w):
+			continue
+		_wheel_count += 1
+		if w.probe_ground(space, _ground_q):
+			_grounded_wheels += 1
+
+	if _wheel_count > 0:
+		_on_ground = _grounded_wheels > 0
+		return
+
+	# Колёс нет (сбили все, или это стационарная база) — щупаем от НИЗА машины,
+	# а не от центра, чтобы длина луча не зависела от высоты постройки.
+	_ground_q.from = global_position + global_transform.basis.y * _body_drop
+	_ground_q.to = _ground_q.from + Vector3.DOWN * 0.5
 	_on_ground = not space.intersect_ray(_ground_q).is_empty()
+
+# Доля колёс на земле: 1.0 — вся машина в контакте, 0.25 — висит на одном колесе.
+# Без колёс возвращаем 1.0, иначе стационарные постройки лишились бы сцепления.
+func _contact_ratio() -> float:
+	if _wheel_count <= 0:
+		return 1.0
+	return float(_grounded_wheels) / float(_wheel_count)
 
 # ══════════════════════════════════════════
 # СИНХРОНИЗАЦИЯ МАССЫ
@@ -726,29 +768,90 @@ func _drive_blocks() -> Array:
 				_drive_cache.append(b)
 	return _drive_cache
 
+# Низ машины в локальных координатах (отрицательный) — нужен проверке земли без колёс.
+var _body_drop: float = -0.5
+
+# Пересчитывает массу, центр масс и низ корпуса за один проход по блокам.
+# Массу теперь дают ВСЕ блоки, а не только колёса: иначе постройка не влияла бы
+# ни на разгон, ни на инерцию, и сборка машины ничего не решала.
 func _sync_mass(delta: float = 0.0) -> void:
 	_mass_timer -= delta
 	if Wheels.size() == _mass_wheels_n and _mass_timer > 0.0:
 		return
 	_mass_wheels_n = Wheels.size()
 	_mass_timer = 0.5
+
 	var total: float = base_weight
-	for w in Wheels:
-		if is_instance_valid(w):
-			total += float(w.weight)        # прямое поле вместо Dictionary из get_module_data()
+	var sum_x: float = 0.0
+	var sum_z: float = 0.0
+	var lowest: float = -0.5
+	var bl: Node = block_map_node if block_map_node != null else get_node_or_null("blocks")
+	if bl != null:
+		for b in bl.get_children():
+			if not b.has_method("get_weight"):
+				continue
+			var w: float = b.get_weight()
+			total += w
+			sum_x += b.position.x * w
+			sum_z += b.position.z * w
+			lowest = minf(lowest, b.position.y - 0.5)
 	mass = total
+	_body_drop = lowest
+
+	# Центр масс опускаем ниже оси колёс. Это не подкрутка «чтобы не падало», а то же
+	# самое, чем реальные машины держатся от переворота: чем ниже центр масс над пятном
+	# контакта, тем больший угол крена нужен, чтобы вертикаль вышла за опору. Побочно
+	# исчезает опрокидывающий момент от тяги — apply_central_force бьёт в центр масс,
+	# и пока он был высоко, разгон подкидывал нос.
+	var axle_y: float = 0.0
+	var sum_z_w: float = 0.0
+	var min_z: float = INF
+	var max_z: float = -INF
+	var n: int = 0
+	for wheel in Wheels:
+		if is_instance_valid(wheel):
+			axle_y += wheel.position.y
+			sum_z_w += wheel.position.z
+			min_z = minf(min_z, wheel.position.z)
+			max_z = maxf(max_z, wheel.position.z)
+			n += 1
+	if n > 0:
+		axle_y /= float(n)
+		_update_axles(sum_z_w / float(n), min_z, max_z)
+	else:
+		axle_y = lowest + 0.5
+		_wheelbase = 2.0
+
+	# Делим на ПОЛНУЮ массу: base_weight — это шасси, оно лежит в начале координат и
+	# тянет центр масс к середине. Без него несимметричная постройка смещала бы центр
+	# сильнее, чем есть на самом деле.
+	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
+	center_of_mass = Vector3(sum_x / total, axle_y - com_drop, sum_z / total)
 
 # ══════════════════════════════════════════
 # ТЯГА ДВИГАТЕЛЯ
 # ══════════════════════════════════════════
 
-func _apply_engine(delta: float) -> void:
+# Суммарная тяга ведущих колёс, СТОЯЩИХ на земле. Колесо в воздухе не толкает.
+func _drive_power() -> float:
+	var power: float = chassis_power
+	for w in Wheels:
+		if is_instance_valid(w) and w.is_drive and w.grounded:
+			power += w.wheel_power
+	return power
+
+func _apply_engine(_delta: float) -> void:
 	var fwd: Vector3 = _get_forward()
 	var vel_fwd: float = fwd.dot(linear_velocity)
 
-	if abs(_throttle) > 0.01:
+	# Раньше сила умножалась на массу, из-за чего масса сокращалась и ускорение
+	# выходило постоянным: машина из пяти блоков и из ста разгонялись одинаково, а
+	# лишние колёса не давали ничего. Теперь сила — это сумма тяги колёс, а ускорение
+	# получается делением на массу самим физдвижком, как в жизни.
+	var power: float = _drive_power()
+	if abs(_throttle) > 0.01 and power > 0.0:
 		var speed_factor: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
-		apply_central_force(fwd * _throttle * engine_force * mass * speed_factor)
+		apply_central_force(fwd * _throttle * power * engine_force * speed_factor)
 	elif abs(vel_fwd) > 0.1:
 		# Двигательное торможение (накат)
 		apply_central_force(-fwd * vel_fwd * engine_brake * mass)
@@ -758,18 +861,21 @@ func _apply_engine(delta: float) -> void:
 # Боковое трение — машина не скользит бочком
 # ══════════════════════════════════════════
 
-func _apply_grip(delta: float) -> void:
+func _apply_grip(_delta: float) -> void:
 	var right: Vector3 = _get_right()
 	var fwd: Vector3 = _get_forward()
+	# Держит машину ровно столько колёс, сколько реально касается земли: повиснув на
+	# двух колёсах из шести, машина должна скользить, а не ехать как по рельсам.
+	var contact: float = _contact_ratio()
 
 	# Боковое сцепление
 	var vel_lat: float = right.dot(linear_velocity)
-	apply_central_force(-right * vel_lat * lateral_grip * mass)
+	apply_central_force(-right * vel_lat * lateral_grip * mass * contact)
 
 	# Лёгкое трение качения
 	var vel_fwd: float = fwd.dot(linear_velocity)
 	if abs(_throttle) < 0.01 and abs(vel_fwd) > 0.05:
-		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass)
+		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass * contact)
 
 # ══════════════════════════════════════════
 # ПОВОРОТ (формула Аккермана через angular_velocity)
@@ -797,14 +903,14 @@ func _apply_steering(delta: float) -> void:
 # ГАШЕНИЕ КРЕНА
 # ══════════════════════════════════════════
 
-func _apply_anti_roll(delta: float) -> void:
+func _apply_anti_roll(delta: float, scale: float = 1.0) -> void:
 	var local_av: Vector3 = global_transform.basis.inverse() * angular_velocity
 	var correction: Vector3 = global_transform.basis * Vector3(
 		-local_av.x * anti_roll,
 		0.0,
 		-local_av.z * anti_roll
 	)
-	apply_torque(correction * mass * delta)
+	apply_torque(correction * mass * delta * scale)
 
 # ══════════════════════════════════════════
 # ВОЗВРАТ В ВЕРТИКАЛЬ
@@ -838,21 +944,23 @@ func _limit_speed() -> void:
 # ВСПОМОГАТЕЛЬНЫЕ
 # ══════════════════════════════════════════
 
-func _get_wheelbase() -> float:
-	var front_z: float = -INF
-	var rear_z: float = INF
-	var has_f: bool = false
-	var has_r: bool = false
+var _wheelbase: float = 2.0
+
+# Кто передний, а кто задний, определяется РАСПОЛОЖЕНИЕМ колёс, а не флагом is_front:
+# этот флаг нигде не выставлялся и у всех колёс оставался true, из-за чего база всегда
+# была заглушкой 2.0, и длина машины никак не влияла на радиус поворота.
+# Вперёд у нас -Z (см. _get_forward), поэтому переднее колесо — то, у которого z меньше.
+func _update_axles(mid_z: float, min_z: float, max_z: float) -> void:
+	var spread: float = max_z - min_z
+	_wheelbase = maxf(spread, 0.5)
+	# Колёса в один ряд — руль отдаём всем, иначе поворачивать было бы нечем.
+	var single_row: bool = spread < 0.5
 	for w in Wheels:
-		if !is_instance_valid(w): continue
-		var lz: float = to_local(w.global_position).z
-		if w.is_front:
-			front_z = max(front_z, lz); has_f = true
-		else:
-			rear_z = min(rear_z, lz); has_r = true
-	if has_f and has_r:
-		return max(abs(front_z - rear_z), 0.5)
-	return 2.0
+		if is_instance_valid(w):
+			w.is_front = single_row or w.position.z < mid_z
+
+func _get_wheelbase() -> float:
+	return _wheelbase
 
 func append_wheel(wheel: Node) -> void:
 	if !Wheels.has(wheel): Wheels.append(wheel)
