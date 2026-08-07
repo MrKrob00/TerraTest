@@ -270,10 +270,10 @@ def side_cell():
     for y in range(CELL):
         if y == 0:
             col = SLATE_RIM
-        elif y <= 10:
+        elif y <= 6:
             col = SLATE_LIGHT
-        elif y <= 12:
-            col = CREAM          # полоса ушла ниже центра: центр занят меткой
+        elif y <= 8:
+            col = CREAM          # ровно по середине грани (ряды 7-8 из 16)
         else:
             col = SLATE_DARK
         rows.append([col] * CELL)

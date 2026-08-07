@@ -296,10 +296,10 @@ static func _atlas_image() -> Image:
 		var side: Color = SLATE_LIGHT
 		if y == 0:
 			side = SLATE_RIM
-		elif y > 12:
+		elif y > 8:
 			side = SLATE_DARK
-		elif y > 10:
-			side = CREAM             # полоса ниже центра: центр грани занят меткой
+		elif y > 6:
+			side = CREAM             # ровно по середине грани (ряды 7-8 из 16)
 		for x in CELL:
 			img.set_pixel(CELL_SIDE.x * CELL + x, CELL_SIDE.y * CELL + y, side)
 
