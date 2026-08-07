@@ -1,42 +1,4 @@
-extends RigidBody3D
-
-# ══════════════════════════════════════════════════════════════════
-# ENEMY VEHICLE — полный переписанный ИИ
-# _get_forward() = +Z (колёса в +Z = визуальный передок машины)
-# Area3D создаётся программно, сигналы подключаются в _ready
-# ══════════════════════════════════════════════════════════════════
-
-# ══════════════════════════════════════════
-# ЭКСПОРТ — ФИЗИКА (идентично vehicle_body_3d)
-# ══════════════════════════════════════════
-
-@export_group("Двигатель")
-@export var engine_force:  float = 80.0
-@export var max_speed:     float = 20.0
-@export var engine_brake:  float = 0.3
-
-@export_group("Тормоза")
-@export var brake_power: float = 4.0
-
-@export_group("Поворот")
-@export var steer_max_angle:       float = 45.0
-@export var steer_speed:           float = 10.0
-@export var turn_response:         float = 4.0
-@export var speed_steer_reduction: float = 0.5
-
-@export_group("Сцепление шин")
-@export var lateral_grip:      float = 8.0
-@export var longitudinal_grip: float = 0.3
-
-@export_group("Стабилизация")
-# Чуть сильнее, чем у игрока (6.0/12.0): у ИИ нет ручного контр-руления при опрокидывании,
-# так что запас устойчивости нужен больше — а сборки врагов часто кладут оружие на y=1.
-@export var anti_roll:       float = 8.0
-@export var upright_strength: float = 15.0
-
-@export_group("Масса и физика")
-@export var base_weight:  float = 40.0
-@export var gravity_mult: float = 2.5
+extends MachineBody
 
 # ══════════════════════════════════════════
 # ЭКСПОРТ — ИИ
@@ -92,15 +54,6 @@ var _dying: bool = false
 enum AIState { PATROL, CHASE, ATTACK, STUCK_RECOVERY }
 
 # ══════════════════════════════════════════
-# ПЕРЕМЕННЫЕ — ФИЗИКА
-# ══════════════════════════════════════════
-
-var Wheels: Array  = []
-var _steer_angle:  float = 0.0
-var _throttle:     float = 0.0
-var _on_ground:    bool  = false
-
-# ══════════════════════════════════════════
 # ПЕРЕМЕННЫЕ — ИИ
 # ══════════════════════════════════════════
 
@@ -128,20 +81,18 @@ var _obstacle_correction: float = 0.0
 var _orbit_dir: float = 0.0
 
 # ══════════════════════════════════════════
-# ОСИ — ИДЕНТИЧНО vehicle_body_3d
-# ══════════════════════════════════════════
-
-func _get_forward() -> Vector3: return -global_transform.basis.z
-func _get_right()   -> Vector3: return  global_transform.basis.x
-func _get_up()      -> Vector3: return  global_transform.basis.y
-
-# ══════════════════════════════════════════
 # ИНИЦИАЛИЗАЦИЯ
 # ══════════════════════════════════════════
 
 func _ready() -> void:
 	mass          = base_weight
-	gravity_scale = gravity_mult
+	# Врагу нужны свои значения, а не игроковские: ИИ не контр-рулит при опрокидывании,
+	# поэтому запас устойчивости больше, а порог руля выше — иначе он дёргает рулём,
+	# почти остановившись. Сборки врагов к тому же часто кладут оружие на y=1.
+	anti_roll = 8.0
+	upright_strength = 15.0
+	steer_min_speed = 0.3
+	init_machine_physics()
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
@@ -232,9 +183,14 @@ func _setup_patrol_points() -> void:
 # ГЛАВНЫЙ ЦИКЛ
 # ══════════════════════════════════════════
 
+# В ПОГОНЕ потолок скорости выше: у врага и игрока max_speed одинаковый, поэтому с общим
+# лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою и
+# патруле лимит обычный, так что вне погони враг быстрее не становится.
+func _speed_cap() -> float:
+	return max_speed * (chase_boost if _state == AIState.CHASE else 1.0)
+
 func _physics_process(delta: float) -> void:
-	_check_ground()
-	_sync_mass(delta)
+	sense_ground(delta)
 	# Перевернулся — включаем тот же приём, что у игрока в СТРОЙКЕ: приподнимаем над рельефом и
 	# плавно доворачиваем «ровно». _apply_upright сам по себе перевёрнутую машину на колёсах часто
 	# не поднимает (крутящий момент упирается в землю), и враг оставался лежать навсегда.
@@ -243,22 +199,8 @@ func _physics_process(delta: float) -> void:
 	_update_ai(delta)
 	_detect_obstacles(delta)
 
-	if _on_ground:
-		_apply_engine(delta)
-		_apply_grip(delta)
-		_apply_steering(delta)
-		_apply_anti_roll(delta)
-	_apply_upright(delta)
-	_limit_speed()
-
-	# Кеш вместо get_children()+has_method каждый физ-тик (см. тот же приём у игрока).
-	var steer_norm: float = -_steer_angle / deg_to_rad(steer_max_angle)
-	for block in _drive_blocks():
-		if not is_instance_valid(block):
-			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
-			continue
-		block.set_throttle(_throttle)
-		block.set_steer(steer_norm)
+	drive_physics(delta)
+	push_drive_input(-_steer_angle / deg_to_rad(steer_max_angle))
 
 # ══════════════════════════════════════════
 # ИИ — ДИСПЕТЧЕР
@@ -616,20 +558,6 @@ func _on_body_exited(body: Node) -> void:
 		_forget_timer = forget_enemy_time
 
 # ══════════════════════════════════════════
-# ФИЗИКА — ЗЕМЛЯ
-# ══════════════════════════════════════════
-
-func _check_ground() -> void:
-	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-	var q: PhysicsRayQueryParameters3D = PhysicsRayQueryParameters3D.create(
-		global_position,
-		global_position + Vector3.DOWN * 1.4
-	)
-	q.exclude        = [self]
-	q.collision_mask = 1
-	_on_ground = space.intersect_ray(q).size() > 0
-
-# ══════════════════════════════════════════
 # САМОВОССТАНОВЛЕНИЕ ПРИ ПЕРЕВОРОТЕ
 # ══════════════════════════════════════════
 # Ровно то же, что делает машина игрока в режиме СТРОЙКИ: подъём над рельефом на клиренс +
@@ -689,145 +617,9 @@ func _find_terrain() -> Node:
 # ФИЗИКА — МАССА
 # ══════════════════════════════════════════
 
-var _mass_wheels_n: int = -1
-var _mass_timer: float = 0.0
 
 # Блоки, принимающие газ/руль (колёса). Кеш инвалидируется по числу детей $blocks.
-var _drive_cache: Array = []
-var _drive_n: int = -1
-
-func _drive_blocks() -> Array:
-	var bl := get_node_or_null("blocks")
-	if bl == null:
-		return []
-	if bl.get_child_count() != _drive_n:
-		_drive_n = bl.get_child_count()
-		_drive_cache.clear()
-		for b in bl.get_children():
-			if b.has_method("set_throttle") and b.has_method("set_steer"):
-				_drive_cache.append(b)
-	return _drive_cache
-
-func _sync_mass(delta: float = 0.0) -> void:
-	_mass_timer -= delta
-	if Wheels.size() == _mass_wheels_n and _mass_timer > 0.0:
-		return
-	_mass_wheels_n = Wheels.size()
-	_mass_timer = 0.5
-	var total: float = base_weight
-	for w in Wheels:
-		if is_instance_valid(w):
-			total += float(w.weight)
-	mass = total
-
-# ══════════════════════════════════════════
-# ФИЗИКА — ДВИГАТЕЛЬ
-# ══════════════════════════════════════════
-
-func _apply_engine(delta: float) -> void:
-	var fwd: Vector3 = _get_forward()
-	var vel_fwd: float = fwd.dot(linear_velocity)
-
-	if abs(_throttle) > 0.01:
-		var sf: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
-		apply_central_force(fwd * _throttle * engine_force * mass * sf)
-	elif abs(vel_fwd) > 0.1:
-		apply_central_force(-fwd * vel_fwd * engine_brake * mass)
-
-# ══════════════════════════════════════════
-# ФИЗИКА — СЦЕПЛЕНИЕ
-# ══════════════════════════════════════════
-
-func _apply_grip(delta: float) -> void:
-	var right: Vector3 = _get_right()
-	var fwd: Vector3 = _get_forward()
-	var vel_lat: float = right.dot(linear_velocity)
-	apply_central_force(-right * vel_lat * lateral_grip * mass)
-	var vel_fwd: float = fwd.dot(linear_velocity)
-	if abs(_throttle) < 0.01 and abs(vel_fwd) > 0.05:
-		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass)
-
-# ══════════════════════════════════════════
-# ФИЗИКА — ПОВОРОТ
-# ══════════════════════════════════════════
-
-func _apply_steering(delta: float) -> void:
-	var fwd: Vector3 = _get_forward()
-	var vel_fwd: float = fwd.dot(linear_velocity)
-
-	if abs(vel_fwd) < 0.3:
-		angular_velocity.y = lerp(angular_velocity.y, 0.0, 10.0 * delta)
-		return
-
-	var wheelbase: float = _get_wheelbase()
-	var target_yaw: float = 0.0
-	if abs(_steer_angle) > 0.001 and wheelbase > 0.1:
-		target_yaw = vel_fwd * tan(_steer_angle) / wheelbase
-		if vel_fwd < 0:
-			target_yaw = -target_yaw
-
-	angular_velocity.y = lerp(angular_velocity.y, target_yaw, turn_response * delta)
-
-# ══════════════════════════════════════════
-# ФИЗИКА — КРЕН
-# ══════════════════════════════════════════
-
-func _apply_anti_roll(delta: float) -> void:
-	var local_av: Vector3 = global_transform.basis.inverse() * angular_velocity
-	var correction: Vector3 = global_transform.basis * Vector3(
-		-local_av.x * anti_roll, 0.0, -local_av.z * anti_roll
-	)
-	apply_torque(correction * mass * delta)
-
-# ══════════════════════════════════════════
-# ФИЗИКА — ВЕРТИКАЛЬ
-# ══════════════════════════════════════════
-
-func _apply_upright(delta: float) -> void:
-	var up: Vector3 = _get_up()
-	var dot: float = up.dot(Vector3.UP)
-	if dot >= 0.85: return
-	var axis: Vector3 = up.cross(Vector3.UP)
-	if axis.length_squared() < 0.0001: return
-	axis = axis.normalized()
-	apply_torque(axis * acos(clamp(dot, -1.0, 1.0)) * upright_strength * mass * delta)
-
-# ══════════════════════════════════════════
-# ФИЗИКА — ЛИМИТ СКОРОСТИ
-# ══════════════════════════════════════════
-
-func _limit_speed() -> void:
-	var fwd: Vector3 = _get_forward()
-	var vel_fwd: float = fwd.dot(linear_velocity)
-	# В ПОГОНЕ потолок скорости выше: у врага и игрока max_speed одинаковый (20), поэтому с общим
-	# лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою/патруле
-	# лимит обычный, так что вне погони враг не становится быстрее.
-	var cap: float = max_speed * (chase_boost if _state == AIState.CHASE else 1.0)
-	if abs(vel_fwd) > cap:
-		linear_velocity -= fwd * (vel_fwd - sign(vel_fwd) * cap)
-	if linear_velocity.y > 10.0:
-		linear_velocity.y = 10.0
 
 # ══════════════════════════════════════════
 # ФИЗИКА — БАЗА КОЛЁС
 # ══════════════════════════════════════════
-
-func _get_wheelbase() -> float:
-	var front_z: float = -INF
-	var rear_z: float = INF
-	var has_f: bool = false
-	var has_r: bool = false
-	for w in Wheels:
-		if !is_instance_valid(w): continue
-		var lz: float = to_local(w.global_position).z
-		if w.is_front: front_z = max(front_z, lz); has_f = true
-		else:          rear_z  = min(rear_z,  lz); has_r = true
-	if has_f and has_r:
-		return max(abs(front_z - rear_z), 0.5)
-	return 2.0
-
-func append_wheel(wheel: Node) -> void:
-	if !Wheels.has(wheel): Wheels.append(wheel)
-
-func erase_wheel(wheel: Node) -> void:
-	Wheels.erase(wheel)
