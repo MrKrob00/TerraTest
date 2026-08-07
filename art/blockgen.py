@@ -34,6 +34,12 @@ SLATE_LIGHT = (110, 118, 143)
 SLATE_DARK = (88, 95, 119)
 CREAM = (226, 224, 212)
 
+# Метка точки крепления. Кольцо 4x4 центрируется точно (6..9 при 16 текселях),
+# ряды 2..5 — над кремовой полосой, в светлой зоне.
+MARK_COL = SLATE_RIM
+MARK_TOP = 2
+MARK_LEFT = 6
+
 
 def chamfered_box():
     """Грани скошенного куба: 6 площадок + 12 рёбер + 8 углов = 44 треугольника."""
@@ -182,6 +188,16 @@ def write_obj(path, name):
     return len(faces), tris, len(verts)
 
 
+def stamp_mark(rows, top, left, col, size=4):
+    """Метка точки крепления: квадратное кольцо size x size без заливки.
+    Кольцо, а не сплошной квадрат — на 16 текселях контур читается, пятно нет."""
+    for y in range(size):
+        for x in range(size):
+            edge = y in (0, size - 1) or x in (0, size - 1)
+            if edge:
+                rows[top + y][left + x] = col
+
+
 def side_cell():
     rows = []
     for y in range(CELL):
@@ -194,6 +210,7 @@ def side_cell():
         else:
             col = SLATE_DARK
         rows.append([col] * CELL)
+    stamp_mark(rows, MARK_TOP, MARK_LEFT, MARK_COL)
     return rows
 
 
@@ -204,11 +221,14 @@ def top_cell():
         rows[i][0] = SLATE_RIM
         rows[CELL - 1][i] = SLATE_DARK
         rows[i][CELL - 1] = SLATE_DARK
+    stamp_mark(rows, 6, MARK_LEFT, MARK_COL)   # на крышке метка по центру грани
     return rows
 
 
 def bottom_cell():
-    return [[SLATE_DARK] * CELL for _ in range(CELL)]
+    rows = [[SLATE_DARK] * CELL for _ in range(CELL)]
+    stamp_mark(rows, 6, MARK_LEFT, SLATE_LIGHT)
+    return rows
 
 
 def write_png(path):
