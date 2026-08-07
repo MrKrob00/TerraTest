@@ -147,12 +147,11 @@ const MACRO_SIZE: int = 4
 ## collision_radius as needed; bodies sharing a cell share its window.
 @export_range(16, 256, 8) var collision_cell:   int = 16   # heightmap cells per collision tile
 @export_range(4, 256, 4)  var collision_radius: int = 8    # cells covered around each tracked body
-## Each tile is grown by this many cells on every side so neighbouring tiles OVERLAP.
-## Jolt only smooths ("deactivates") the internal edges of a SINGLE heightfield — the
-## boundary edge between two separate tiles stays live and a wheel snags on it when crossing.
-## Overlapping the tiles buries each tile's boundary edge under the neighbour's coincident
-## (same-height) surface, so the wheel always rolls on continuous ground. 0 = old behaviour.
-@export_range(0, 32, 1) var collision_overlap:  int = 8
+## На сколько единиц опускается «юбка» — кольцо отсчётов вокруг плитки. Jolt гасит
+## внутренние рёбра ОДНОГО поля высот, но его внешний край всегда считает активным ребром,
+## и колесо об этот край тормозит. Юбка уводит край ВНИЗ, под поверхность, где до него
+## уже никто не достаёт; саму поверхность на стыке даёт соседняя плитка.
+@export_range(5.0, 200.0, 5.0) var collision_skirt_drop: float = 40.0
 
 # Дочерние ноды больше НЕ обязательны в сцене — нода создаёт их сама (см. _ensure_children),
 # так что LiteTerrain можно просто добавить одной нодой, без ручной сборки CollisionShape3D +
@@ -539,16 +538,24 @@ func _prune_dead_bodies() -> void:
 func _make_cell_tile(key: int, cells_x: int) -> void:
 	var cx := key % cells_x
 	var cz := key / cells_x
-	# This tile OWNS cells [ox, ox+collision_cell] but its shape is grown by collision_overlap
-	# on every side (clamped to the map) so it overlaps its neighbours — see collision_overlap.
-	# +1 already shares the boundary row with neighbours; the extra overlap buries the live
-	# tile-edge Jolt would otherwise snag a wheel on.
+	# Плитка ВЛАДЕЕТ отсчётами [ox, ox+collision_cell] включительно, то есть делит с каждым
+	# соседом ровно одну граничную строку: ни зазора, ни наложения. Раньше плитки растягивали
+	# друг на друга на collision_overlap — это не убирало живой край, а размножало его
+	# (край каждой плитки оказывался посреди проезжей части соседней) и вдобавок клало две
+	# совпадающие статические поверхности, с которых солвер собирал дублирующие контакты.
 	var ox := cx * collision_cell
 	var oz := cz * collision_cell
-	var sx0 := maxi(ox - collision_overlap, 0)
-	var sz0 := maxi(oz - collision_overlap, 0)
-	var sx1 := mini(ox + collision_cell + collision_overlap, w - 1)
-	var sz1 := mini(oz + collision_cell + collision_overlap, d - 1)
+	var ax0 := ox
+	var az0 := oz
+	var ax1 := mini(ox + collision_cell, w - 1)
+	var az1 := mini(oz + collision_cell, d - 1)
+	if ax1 - ax0 < 1 or az1 - az0 < 1:
+		return
+	# Вокруг владения — одно кольцо «юбки» (там, где карта не кончилась).
+	var sx0 := maxi(ax0 - 1, 0)
+	var sz0 := maxi(az0 - 1, 0)
+	var sx1 := mini(ax1 + 1, w - 1)
+	var sz1 := mini(az1 + 1, d - 1)
 	var W := sx1 - sx0 + 1
 	var H := sz1 - sz0 + 1
 	if W < 2 or H < 2:
@@ -556,10 +563,19 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	var data := PackedFloat32Array()
 	data.resize(W * H)
 	for j in H:
-		var srow := (sz0 + j) * w + sx0
+		var sz := sz0 + j
+		var srow := sz * w
 		var drow := j * W
+		var edge_row := sz < az0 or sz > az1
 		for i in W:
-			data[drow + i] = md[srow + i]
+			var sx := sx0 + i
+			var h: float = md[srow + sx]
+			# Кольцо юбки берёт ту же высоту, но опущенную: внешний край поля высот
+			# оказывается заведомо ниже проезжей поверхности, которую на этом же месте
+			# держит соседняя плитка со своими настоящими высотами.
+			if edge_row or sx < ax0 or sx > ax1:
+				h -= collision_skirt_drop
+			data[drow + i] = h
 	var shape := HeightMapShape3D.new()
 	shape.map_width  = W
 	shape.map_depth  = H
