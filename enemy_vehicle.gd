@@ -44,20 +44,20 @@ var _dying: bool = false
 @export var relentless:          bool = false
 
 @export_group("ИИ — Препятствия")
+## Дальность лучей контекстной карты. Углы больше не задаются: направления берутся
+## из 16 секторов ContextSteering, а не из пары «влево/вправо на N градусов».
 @export var obstacle_ray_length: float = 5.0
-@export var obstacle_ray_angle:  float = 35.0
 
 # ══════════════════════════════════════════
 # СОСТОЯНИЯ
 # ══════════════════════════════════════════
 
-enum AIState { PATROL, CHASE, ATTACK, STUCK_RECOVERY }
+# Поведение выбирает EnemyBrain по полезности — жёсткой машины состояний больше нет.
+var _act: int = EnemyBrain.Act.PATROL
+var _percept: Dictionary = {}
+var _decide_t: float = 0.0
+const DECIDE_PERIOD: float = 0.15        # переоценка обстановки ~7 раз в секунду
 
-# ══════════════════════════════════════════
-# ПЕРЕМЕННЫЕ — ИИ
-# ══════════════════════════════════════════
-
-var _state:        AIState = AIState.PATROL
 var _target:       Node3D  = null
 var _forget_timer: float   = 0.0
 
@@ -65,20 +65,18 @@ var _patrol_targets: Array[Vector3] = []
 var _patrol_index:   int   = 0
 var _start_pos:      Vector3
 
-# Застревание
-var _stuck_timer:            float    = 0.0
-var _stuck_check_pos:        Vector3
-var _stuck_check_interval:   float    = 1.5
-var _stuck_recovery_timer:   float    = 0.0
-var _stuck_recovery_duration: float   = 2.0
-var _stuck_drive_dir:        float    = -1.0
-var _state_before_stuck:     AIState  = AIState.PATROL
+# Локальная навигация: контекстная карта вместо трёх лучей с доворотом.
+var _steering: ContextSteering = ContextSteering.new()
+var _ctx_t: float = 0.0
+var _obst_q: PhysicsRayQueryParameters3D = null
 
-# Препятствия
-var _obstacle_correction: float = 0.0
+# Замер застревания
+var _stuck01: float = 0.0
+var _move_ref: Vector3 = Vector3.ZERO
+var _move_t: float = 0.0
 
-# Атака: сторона объезда цели (+1/-1), выбирается один раз за бой; 0 = не выбрана.
-var _orbit_dir: float = 0.0
+# Самокалибровка подвижности: сколько колёс было в лучшие времена.
+var _wheels_peak: int = 1
 
 # ══════════════════════════════════════════
 # ИНИЦИАЛИЗАЦИЯ
@@ -96,9 +94,8 @@ func _ready() -> void:
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
-	_start_pos          = global_position
-	_stuck_check_pos    = global_position
-	_state_before_stuck = AIState.PATROL
+	_start_pos = global_position
+	_move_ref  = global_position
 
 	_setup_detection_area()
 	_setup_patrol_points()
@@ -187,7 +184,7 @@ func _setup_patrol_points() -> void:
 # лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою и
 # патруле лимит обычный, так что вне погони враг быстрее не становится.
 func _speed_cap() -> float:
-	return max_speed * (chase_boost if _state == AIState.CHASE else 1.0)
+	return max_speed * (chase_boost if _act == EnemyBrain.Act.PURSUE else 1.0)
 
 func _physics_process(delta: float) -> void:
 	sense_ground(delta)
@@ -197,8 +194,6 @@ func _physics_process(delta: float) -> void:
 	if _flip_recover(delta):
 		return                    # пока встаём — ИИ и обычная физика движения не мешают
 	_update_ai(delta)
-	_detect_obstacles(delta)
-
 	drive_physics(delta)
 	push_drive_input(-_steer_angle / deg_to_rad(steer_max_angle))
 
@@ -218,7 +213,7 @@ func assign_target(t: Node3D, never_forget: bool = false) -> void:
 		return
 	_target = t
 	_forget_timer = forget_enemy_time
-	_state = AIState.CHASE
+	_act = EnemyBrain.Act.PURSUE
 	relentless = never_forget
 
 func _scan_for_targets() -> void:
@@ -236,274 +231,354 @@ func _scan_for_targets() -> void:
 	if best != null:
 		_target = best
 		_forget_timer = forget_enemy_time
-		_state = AIState.CHASE
 
 func _update_ai(delta: float) -> void:
-	# Нет цели (или она погибла) — периодически пере-ищем её в зоне обнаружения.
-	if not is_instance_valid(_target):
-		_reacquire_t -= delta
-		if _reacquire_t <= 0.0:
-			_reacquire_t = 0.3
+	# Цель периодически пере-ищется, пока её нет.
+	_reacquire_t -= delta
+	if _reacquire_t <= 0.0:
+		_reacquire_t = 0.3
+		if not is_instance_valid(_target):
 			_scan_for_targets()
-	match _state:
-		AIState.PATROL:         _ai_patrol(delta)
-		AIState.CHASE:          _ai_chase(delta)
-		AIState.ATTACK:         _ai_attack(delta)
-		AIState.STUCK_RECOVERY: _ai_stuck_recovery(delta)
-	_check_stuck(delta)
+
+	# Забывание: внутри радиуса обнаружения цель не забывается никогда, снаружи — по
+	# таймеру. Невідступный не забывает вообще.
+	if is_instance_valid(_target):
+		if global_position.distance_to(_target.global_position) > detection_radius and not relentless:
+			_forget_timer -= delta
+			if _forget_timer <= 0.0:
+				_lose_target()
+		else:
+			_forget_timer = forget_enemy_time
+	elif _target != null:
+		_target = null
+
+	_update_stuck(delta)
+
+	# Обстановка переоценивается несколько раз в секунду, а не каждый физкадр: решение
+	# всё равно меняется медленнее, а замеры (HP, огневая мощь, линия огня) не бесплатны.
+	_decide_t -= delta
+	if _decide_t <= 0.0:
+		_decide_t = DECIDE_PERIOD
+		_percept = _sense()
+		_act = EnemyBrain.decide(_percept, _act)
+
+	match _act:
+		EnemyBrain.Act.PATROL:      _act_patrol(delta)
+		EnemyBrain.Act.INVESTIGATE: _act_investigate(delta)
+		EnemyBrain.Act.PURSUE:      _act_pursue(delta)
+		EnemyBrain.Act.ENGAGE:      _act_engage(delta)
+		EnemyBrain.Act.FLANK:       _act_flank(delta)
+		EnemyBrain.Act.RETREAT:     _act_retreat(delta)
+		EnemyBrain.Act.UNSTICK:     _act_unstick(delta)
 
 # ══════════════════════════════════════════
-# СОСТОЯНИЕ: ПАТРУЛЬ
+# ВОСПРИЯТИЕ
 # ══════════════════════════════════════════
 
-func _ai_patrol(delta: float) -> void:
-	if _has_last_known:
-		if global_position.distance_to(_last_known_pos) > waypoint_reach_dist * 1.5:
-			_drive_toward(_last_known_pos, chase_speed_factor, delta)
-			return
-		_has_last_known = false          # дошли — дальше обычный патруль
+const NO_TARGET_DIST: float = 1.0e6
+
+func _sense() -> Dictionary:
+	var has_t: bool = is_instance_valid(_target)
+	var dist: float = NO_TARGET_DIST
+	var facing: float = 0.0
+	var los: bool = false
+	if has_t:
+		var to_us: Vector3 = global_position - _target.global_position
+		to_us.y = 0.0
+		dist = to_us.length()
+		_last_known_pos = _target.global_position
+		_has_last_known = true
+		if dist > 0.01:
+			var t_fwd: Vector3 = -_target.global_transform.basis.z
+			t_fwd.y = 0.0
+			if t_fwd.length_squared() > 0.0001:
+				facing = clampf(t_fwd.normalized().dot(to_us.normalized()), 0.0, 1.0)
+		los = _has_line_of_sight(_target)
+
+	# Подвижность самокалибруется: запоминаем, сколько колёс было в лучшие времена, и
+	# сравниваем с текущим. Не нужно ловить момент сборки машины.
+	_wheels_peak = maxi(_wheels_peak, _wheel_count)
+	var wheels01: float = float(_wheel_count) / float(maxi(_wheels_peak, 1))
+
+	return {
+		"has_target": has_t,
+		"has_memory": _has_last_known,
+		"dist": dist,
+		"range": _own_weapon_range(),
+		"health": _health01(),
+		"mobility": clampf(wheels01 * _contact_ratio(), 0.0, 1.0),
+		"power_ratio": _power_ratio(),
+		"los": los,
+		"stuck": _stuck01,
+		"facing_us": facing,
+	}
+
+func _health01() -> float:
+	var bl: Node = get_node_or_null("blocks")
+	if bl == null:
+		return 1.0
+	var cur: float = 0.0
+	var mx: float = 0.0
+	for b in bl.get_children():
+		if b is VehicleBlock:
+			cur += float((b as VehicleBlock).current_hp)
+			mx += float((b as VehicleBlock).max_hp)
+	return clampf(cur / mx, 0.0, 1.0) if mx > 0.0 else 1.0
+
+# Эффективная дальность = дальность лучшего своего ствола. Раньше это был экспорт
+# attack_range, не связанный с тем, чем машина реально вооружена.
+func _own_weapon_range() -> float:
+	var r: float = 0.0
+	for b in _weapon_blocks():
+		if not is_instance_valid(b):
+			continue
+		var wr: Variant = b.get("weapon_range")
+		if wr != null:
+			r = maxf(r, float(wr))
+	return r if r > 0.5 else attack_range
+
+# Грубый урон в секунду по блокам машины — для сравнения «кто кого перестреляет».
+static func _firepower_of(machine: Node) -> float:
+	var bl: Node = machine.get_node_or_null("blocks")
+	if bl == null:
+		return 0.0
+	var p: float = 0.0
+	for b in bl.get_children():
+		var dmg: Variant = b.get("damage")
+		var rate: Variant = b.get("fire_rate")
+		if dmg != null and rate != null and float(rate) > 0.001:
+			p += float(dmg) / float(rate)
+	return p
+
+func _power_ratio() -> float:
+	if not is_instance_valid(_target):
+		return 0.5
+	var mine: float = _firepower_of(self)
+	var total: float = mine + _firepower_of(_target)
+	return 0.5 if total < 0.001 else clampf(mine / total, 0.0, 1.0)
+
+var _los_q: PhysicsRayQueryParameters3D = null
+
+func _has_line_of_sight(t: Node3D) -> bool:
+	if _los_q == null:
+		_los_q = PhysicsRayQueryParameters3D.new()
+		_los_q.collision_mask = 1        # только рельеф: чужие блоки укрытием не считаем
+	_los_q.exclude = [self, t]
+	_los_q.from = global_position + Vector3.UP
+	_los_q.to = t.global_position + Vector3.UP
+	return get_world_3d().direct_space_state.intersect_ray(_los_q).is_empty()
+
+# Застревание — это «командую ехать, а не еду». Плавная величина, а не флаг: растёт,
+# пока машина стоит под газом, и падает, как только поехала. Отдельного режима
+# восстановления с таймером больше нет, решение принимает та же оценка полезности.
+const STUCK_WINDOW: float = 1.2
+const STUCK_MIN_MOVE: float = 0.8
+
+func _update_stuck(delta: float) -> void:
+	_move_t += delta
+	if _move_t < STUCK_WINDOW:
+		return
+	_move_t = 0.0
+	var moved: float = global_position.distance_to(_move_ref)
+	_move_ref = global_position
+	if absf(_throttle) > 0.15 and moved < STUCK_MIN_MOVE:
+		_stuck01 = minf(1.0, _stuck01 + 0.5)
+	else:
+		_stuck01 = maxf(0.0, _stuck01 - 0.5)
+
+# ══════════════════════════════════════════
+# ПОВЕДЕНИЯ
+# ══════════════════════════════════════════
+
+func _act_patrol(delta: float) -> void:
 	if _patrol_targets.is_empty():
-		_throttle = 0.0
+		_drive(_get_forward(), 0.0, delta)
 		return
-
-	var target_pos: Vector3 = _patrol_targets[_patrol_index]
-
-	# Достигли точки — берём следующую сразу (не делаем return)
-	if global_position.distance_to(target_pos) < waypoint_reach_dist:
+	var goal: Vector3 = _patrol_targets[_patrol_index]
+	if global_position.distance_to(goal) < waypoint_reach_dist:
 		_patrol_index = (_patrol_index + 1) % _patrol_targets.size()
-		target_pos    = _patrol_targets[_patrol_index]
+		goal = _patrol_targets[_patrol_index]
+	_drive_to(goal, patrol_speed_factor, delta)
 
-	_drive_toward(target_pos, patrol_speed_factor, delta)
-
-# ══════════════════════════════════════════
-# СОСТОЯНИЕ: ПРЕСЛЕДОВАНИЕ
-# ══════════════════════════════════════════
-
-func _ai_chase(delta: float) -> void:
-	if !is_instance_valid(_target):
-		_lose_target()
+func _act_investigate(delta: float) -> void:
+	if not _has_last_known:
+		_act_patrol(delta)
 		return
-
-	var dist: float = global_position.distance_to(_target.global_position)
-	_last_known_pos = _target.global_position
-	_has_last_known = true
-
-	if dist <= attack_range:
-		_state = AIState.ATTACK
+	if global_position.distance_to(_last_known_pos) < waypoint_reach_dist:
+		_has_last_known = false          # дошли, никого нет — обратно к патрулю
 		return
+	_drive_to(_last_known_pos, chase_speed_factor, delta)
 
-	if dist > detection_radius and not relentless:
-		_forget_timer -= delta
-		if _forget_timer <= 0.0:
-			_lose_target()
-			return
-	else:
-		_forget_timer = forget_enemy_time
-
-	# Стреляем и В ПОГОНЕ, если цель уже в пределах оружия: турель наводится сама (±45°),
-	# так что ждать перехода в ATTACK незачем — иначе враг долго едет молча.
-	if dist <= attack_range * 1.15:
+func _act_pursue(delta: float) -> void:
+	if not is_instance_valid(_target):
+		return
+	# Турель наводится сама в своём конусе, поэтому стреляем на ходу, не дожидаясь боя.
+	if float(_percept.get("dist", NO_TARGET_DIST)) <= _own_weapon_range() * 1.15:
 		_do_attack()
+	_drive_to(_target.global_position, chase_speed_factor, delta)
 
-	# Убегающего догоняем с небольшим бонусом к скорости, иначе при равном max_speed (20 у обоих)
-	# догнать игрока невозможно в принципе — он просто уезжает.
-	_drive_toward(_target.global_position, chase_speed_factor * chase_boost, delta)
-
-# ══════════════════════════════════════════
-# СОСТОЯНИЕ: АТАКА
-# ══════════════════════════════════════════
-
-func _ai_attack(delta: float) -> void:
-	if !is_instance_valid(_target):
-		_lose_target()
+func _act_engage(delta: float) -> void:
+	if not is_instance_valid(_target):
 		return
-
-	_forget_timer = forget_enemy_time
-
-	var to_target := _target.global_position - global_position
-	to_target.y = 0.0
-	var dist := to_target.length()
-
-	if dist > attack_range * 1.3:
-		_state = AIState.CHASE
-		return
-
-	# Цель рядом — всегда стреляем. Турель сама целится в пределах своего конуса (±45°),
-	# поэтому машине НЕ нужно утыкаться носом во врага — она может спокойно кружить.
 	_do_attack()
-
+	var to_t: Vector3 = _target.global_position - global_position
+	to_t.y = 0.0
+	var dist: float = to_t.length()
 	if dist < 0.01:
-		_throttle = lerp(_throttle, 0.0, 3.0 * delta)
 		return
+	var dir: Vector3 = to_t / dist
+	var rng: float = _own_weapon_range()
+	var band_near: float = maxf(min_combat_distance, rng * 0.35)
+	var band_far: float = rng * 0.85
 
-	var to_n := to_target / dist
-	var fwd_flat := Vector3(_get_forward().x, 0.0, _get_forward().z)
-	if fwd_flat.length_squared() < 0.001:
-		return
-	fwd_flat = fwd_flat.normalized()
-
-	var band_near := maxf(min_combat_distance, 3.0)      # ближе — сдаём назад
-	var band_far := attack_range * 0.8                   # дальше — поджимаем
-	if _orbit_dir == 0.0:
-		_orbit_dir = 1.0 if randf() > 0.5 else -1.0
-	var right_of_target := Vector3(to_n.z, 0.0, -to_n.x)  # перпендикуляр к линии на цель
-
-	var steer_target: Vector3
-	var target_throttle: float
 	if dist < band_near:
-		# Слишком близко: пятимся, но нос держим на цели — оружие продолжает работать.
-		steer_target = to_n
-		target_throttle = -0.3
+		_drive(dir, -0.35, delta)                       # пятимся, нос держим на цели
 	elif dist > band_far:
-		# Далековато: сближаемся по прямой на цель.
-		steer_target = to_n
-		target_throttle = chase_speed_factor
+		_drive(dir, chase_speed_factor, delta)          # поджимаем
 	else:
-		# В коридоре: идём по дуге вокруг цели (смесь «на цель» и «вбок») — сложнее попасть по
-		# нам, но цель всё время в лобовом секторе, значит турель стреляет непрерывно.
-		steer_target = (to_n + right_of_target * (_orbit_dir * 0.75)).normalized()
-		target_throttle = chase_speed_factor * 0.55
+		# В коридоре идём по дуге. Сторона выбирается по той, на которой уже находимся,
+		# а не жребием: случайный выбор бросал врага поперёк собственной линии огня.
+		var side: Vector3 = Vector3(dir.z, 0.0, -dir.x)
+		var sgn: float = signf(side.dot(_get_forward()))
+		if absf(sgn) < 0.01:
+			sgn = 1.0
+		_drive((dir + side * (sgn * 0.75)).normalized(), chase_speed_factor * 0.6, delta)
 
-	var steer_ang := fwd_flat.signed_angle_to(steer_target, Vector3.UP)
-	var steer_input := clampf(steer_ang / (PI * 0.6), -1.0, 1.0)
-	var speed_ratio := clampf(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit := deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
-	_steer_angle = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
-	_throttle = lerp(_throttle, target_throttle, 3.0 * delta)
+func _act_flank(delta: float) -> void:
+	if not is_instance_valid(_target):
+		return
+	_do_attack()
+	# Уходим из лобового сектора цели, оставаясь в своём: точка сбоку-сзади от неё, с той
+	# стороны, где мы уже находимся, чтобы не пересекать линию её огня.
+	var t_fwd: Vector3 = -_target.global_transform.basis.z
+	t_fwd.y = 0.0
+	if t_fwd.length_squared() < 0.0001:
+		_act_engage(delta)
+		return
+	t_fwd = t_fwd.normalized()
+	var t_right: Vector3 = Vector3(t_fwd.z, 0.0, -t_fwd.x)
+	var to_us: Vector3 = global_position - _target.global_position
+	to_us.y = 0.0
+	var sgn: float = signf(t_right.dot(to_us))
+	if absf(sgn) < 0.01:
+		sgn = 1.0
+	var rng: float = maxf(_own_weapon_range() * 0.7, min_combat_distance)
+	var spot: Vector3 = _target.global_position + t_right * (sgn * rng) - t_fwd * (rng * 0.3)
+	_drive_to(spot, chase_speed_factor * 0.9, delta)
+
+func _act_retreat(delta: float) -> void:
+	_do_attack()                                        # турели работают и на отходе
+	var away: Vector3 = global_position - _last_known_pos
+	if is_instance_valid(_target):
+		away = global_position - _target.global_position
+	away.y = 0.0
+	if away.length_squared() < 0.0001:
+		away = _get_forward()
+	_drive(away.normalized(), chase_speed_factor, delta)
+
+func _act_unstick(delta: float) -> void:
+	# Задний ход, но направление выбирает та же контекстная карта — она видит, где сзади
+	# свободно. Фиксированного «пятиться 2 секунды и рулить вбок» больше нет.
+	_drive(_get_forward(), -0.7, delta)
 
 # ══════════════════════════════════════════
-# СОСТОЯНИЕ: ВОССТАНОВЛЕНИЕ ПОСЛЕ ЗАСТРЕВАНИЯ
+# ДВИЖЕНИЕ ЧЕРЕЗ КОНТЕКСТНУЮ КАРТУ
 # ══════════════════════════════════════════
 
-func _ai_stuck_recovery(delta: float) -> void:
-	_stuck_recovery_timer -= delta
+func _drive_to(pos: Vector3, speed: float, delta: float) -> void:
+	var to: Vector3 = pos - global_position
+	to.y = 0.0
+	if to.length_squared() < 0.0001:
+		return
+	_drive(to.normalized(), speed, delta)
 
-	# Едем в обратную сторону и рулим
-	_throttle    = lerp(_throttle, _stuck_drive_dir * 0.8, 6.0 * delta)
-	var speed_ratio: float = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
+# nose_dir — куда хотим смотреть, speed — знаковая скорость (минус = задний ход).
+func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
+	var travel: Vector3 = nose_dir if speed >= 0.0 else -nose_dir
+	_refresh_context(travel, delta)
+	var safe: Vector3 = _steering.choose(travel)
+	var aim: Vector3 = safe if speed >= 0.0 else -safe
+
+	var fwd: Vector3 = Vector3(_get_forward().x, 0.0, _get_forward().z)
+	if fwd.length_squared() < 0.0001:
+		return
+	fwd = fwd.normalized()
+
+	var ang: float = fwd.signed_angle_to(aim, Vector3.UP)
+	var steer_input: float = clampf(ang / PI, -1.0, 1.0)
+	var speed_ratio: float = clampf(linear_velocity.length() / max_speed, 0.0, 1.0)
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
-	_steer_angle = lerp(_steer_angle, angle_limit * 0.7 * sign(_stuck_drive_dir), steer_speed * delta)
+	_steer_angle = lerp(_steer_angle, steer_input * angle_limit, steer_speed * delta)
 
-	if _stuck_recovery_timer <= 0.0:
-		_stuck_timer     = 0.0
-		_stuck_check_pos = global_position
+	# На резком повороте сбрасываем газ, но не в ноль — иначе машина не доворачивает.
+	var turn_factor: float = clampf(1.0 - absf(ang) / PI, 0.4, 1.0)
+	_throttle = lerp(_throttle, speed * turn_factor, 4.0 * delta)
 
-		# Возвращаемся в предыдущее состояние
-		if _state_before_stuck == AIState.CHASE or _state_before_stuck == AIState.ATTACK:
-			if is_instance_valid(_target):
-				_state = _state_before_stuck
-				return
-		_patrol_index = _nearest_patrol_index()
-		_state        = AIState.PATROL
+const CTX_PERIOD: float = 0.12
+const PROBE_NEAR: float = 3.0
+const PROBE_FAR: float = 7.0
+const MAX_CLIMB: float = 2.5     # подъём круче этого машина не вытянет
+const MAX_DROP: float = 3.5      # спуск круче этого — обрыв, туда не едем
 
-# ══════════════════════════════════════════
-# ПРОВЕРКА ЗАСТРЕВАНИЯ
-# ══════════════════════════════════════════
+func _refresh_context(travel: Vector3, delta: float) -> void:
+	_ctx_t -= delta
+	if _ctx_t <= 0.0:
+		_ctx_t = CTX_PERIOD
+		_sample_danger()
+	_steering.clear_interest()
+	_steering.seek(travel)
 
-func _check_stuck(delta: float) -> void:
-	if _state == AIState.STUCK_RECOVERY:
-		return
+# Опасность по всем 16 направлениям. Рельеф считается математикой (terrain_height_at,
+# без физики) — поэтому щупаем все стороны; лучами проверяем каждую вторую, этого хватает,
+# а стоят они куда дороже.
+func _sample_danger() -> void:
+	_steering.clear_danger()
+	var terr: Node = _find_terrain()
+	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
+	if _obst_q == null:
+		_obst_q = PhysicsRayQueryParameters3D.new()
+		_obst_q.exclude = [self]
+		_obst_q.collision_mask = 1
+	var here: float = global_position.y
+	var origin: Vector3 = global_position + Vector3.UP * 0.5
 
-	_stuck_timer += delta
-	if _stuck_timer < _stuck_check_interval:
-		return
-
-	_stuck_timer = 0.0
-	var moved: float = global_position.distance_to(_stuck_check_pos)
-	_stuck_check_pos = global_position
-
-	if abs(_throttle) > 0.15 and moved < 0.5:
-		_state_before_stuck    = _state
-		_state                 = AIState.STUCK_RECOVERY
-		_stuck_recovery_timer  = _stuck_recovery_duration
-		_stuck_drive_dir       = -sign(_throttle) if abs(_throttle) > 0.01 else -1.0
-
-# ══════════════════════════════════════════
-# ОБНАРУЖЕНИЕ ПРЕПЯТСТВИЙ
-# Лучи смотрят в направлении движения (вперёд ИЛИ назад)
-# ══════════════════════════════════════════
-
-const OBSTACLE_HZ := 0.1
-var _obst_t: float = 0.0
-var _obst_q: PhysicsRayQueryParameters3D = null
-var _obstacle_correction_target: float = 0.0
-
-func _detect_obstacles(delta: float = 0.0) -> void:
-	_obst_t -= delta
-	if _obst_t <= 0.0:
-		_obst_t = OBSTACLE_HZ
-		var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
-		var origin: Vector3 = global_position + Vector3.UP * 0.5
-		# Если едем назад — лучи тоже назад
-		var ray_fwd: Vector3 = _get_forward() if _throttle >= 0.0 else -_get_forward()
-		var ang_rad: float = deg_to_rad(obstacle_ray_angle)
-		if _obst_q == null:
-			_obst_q = PhysicsRayQueryParameters3D.new()
-			_obst_q.exclude = [self]
-			_obst_q.collision_mask = 1
-		var hit_l := _ray_hits(space, origin, ray_fwd.rotated(Vector3.UP, -ang_rad))  # левый
-		var hit_c := _ray_hits(space, origin, ray_fwd)                                # центр
-		var hit_r := _ray_hits(space, origin, ray_fwd.rotated(Vector3.UP,  ang_rad))  # правый
-		var correction: float = 0.0
-		if   hit_l and !hit_r: correction = -0.5   # объект слева → уходим вправо
-		elif hit_r and !hit_l: correction =  0.5   # объект справа → уходим влево
-		elif hit_c:            correction =  0.5 * (1.0 if randf() > 0.5 else -1.0)
-		_obstacle_correction_target = correction * deg_to_rad(steer_max_angle)
-	_obstacle_correction = lerp(_obstacle_correction, _obstacle_correction_target, 0.15)
-
-func _ray_hits(space: PhysicsDirectSpaceState3D, origin: Vector3, dir: Vector3) -> bool:
-	_obst_q.from = origin
-	_obst_q.to = origin + dir * obstacle_ray_length
-	return not space.intersect_ray(_obst_q).is_empty()
-
-# ══════════════════════════════════════════
-# ДВИЖЕНИЕ К ТОЧКЕ
-# ══════════════════════════════════════════
-
-func _drive_toward(target_pos: Vector3, speed_factor: float, delta: float) -> void:
-	var to_target: Vector3 = target_pos - global_position
-	to_target.y   = 0.0
-	if to_target.length_squared() < 0.001:
-		return
-
-	var target_dir: Vector3 = to_target.normalized()
-
-	var fwd_flat: Vector3 = Vector3(_get_forward().x, 0.0, _get_forward().z)
-	if fwd_flat.length_squared() < 0.001:
-		return
-	fwd_flat = fwd_flat.normalized()
-
-	# Знаковый угол: отрицательный = цель справа, положительный = цель слева
-	var angle_to_target: float = fwd_flat.signed_angle_to(target_dir, Vector3.UP)
-
-	# steer_input < 0 → нос едет вправо (steer_angle < 0 → target_yaw < 0 → CW = право)
-	var steer_input: float = clamp(angle_to_target / PI, -1.0, 1.0)
-	var speed_ratio: float = clamp(linear_velocity.length() / max_speed, 0.0, 1.0)
-	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
-	_steer_angle    = lerp(_steer_angle, steer_input * angle_limit + _obstacle_correction, steer_speed * delta)
-
-	# Газ: снижаем на резком повороте, минимум 0.4 чтобы машина всегда набирала скорость
-	var turn_factor: float = clamp(1.0 - abs(angle_to_target) / PI, 0.4, 1.0)
-	_throttle       = lerp(_throttle, speed_factor * turn_factor, 4.0 * delta)
-
-# ══════════════════════════════════════════
-# ВСПОМОГАТЕЛЬНЫЕ
-# ══════════════════════════════════════════
+	for i in ContextSteering.SLOTS:
+		var d: Vector3 = _steering.direction(i)
+		if terr != null:
+			var h_near: float = terr.terrain_height_at(global_position + d * PROBE_NEAR)
+			var h_far: float = terr.terrain_height_at(global_position + d * PROBE_FAR)
+			var climb: float = maxf(h_near - here, h_far - here)
+			var drop: float = maxf(here - h_near, here - h_far)
+			if climb > MAX_CLIMB:
+				_steering.set_danger(i, clampf(climb / (MAX_CLIMB * 2.0), 0.0, 1.0))
+			if drop > MAX_DROP:
+				_steering.set_danger(i, clampf(drop / (MAX_DROP * 2.0), 0.0, 1.0))
+		if i % 2 == 0:
+			_obst_q.from = origin
+			_obst_q.to = origin + d * obstacle_ray_length
+			var hit: Dictionary = space.intersect_ray(_obst_q)
+			if not hit.is_empty():
+				var dd: float = origin.distance_to(hit["position"])
+				_steering.add_danger(d, clampf(1.0 - dd / obstacle_ray_length, 0.2, 1.0))
 
 var _atk_cache: Array = []
 var _atk_n: int = -1
 
-func _do_attack() -> void:
+# Кеш оружейных блоков: нужен и для стрельбы, и для оценки своей дальности/мощи.
+func _weapon_blocks() -> Array:
 	var bl := get_node_or_null("blocks")
 	if bl == null:
-		return
+		return []
 	if bl.get_child_count() != _atk_n:
 		_atk_n = bl.get_child_count()
 		_atk_cache.clear()
 		for b in bl.get_children():
 			if b.has_method("attack"):
 				_atk_cache.append(b)
-	for b in _atk_cache:
+	return _atk_cache
+
+func _do_attack() -> void:
+	for b in _weapon_blocks():
 		if not is_instance_valid(b):
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш
 			continue
@@ -513,9 +588,9 @@ func _lose_target() -> void:
 	if relentless and is_instance_valid(_target):
 		return                      # невідступный цель не бросает
 	_target       = null
-	_orbit_dir    = 0.0   # следующий бой выберет сторону объезда заново
 	_patrol_index = _nearest_patrol_index()
-	_state        = AIState.PATROL
+	# Поведение не назначаем: оценка сама выберет ПОИСК (мы помним последнее место)
+	# либо ПАТРУЛЬ, если помнить уже нечего.
 
 func _nearest_patrol_index() -> int:
 	var best_i: int = 0
@@ -543,7 +618,6 @@ func _on_body_entered(body: Node) -> void:
 	if !is_instance_valid(_target):
 		_target       = body3d
 		_forget_timer = forget_enemy_time
-		_state        = AIState.CHASE
 	elif relentless:
 		return                      # цель зафиксирована при спавне — на других не отвлекаемся
 	else:
@@ -595,8 +669,9 @@ func _flip_recover(delta: float) -> bool:
 	angular_velocity = Vector3.ZERO
 	_throttle = 0.0
 	if _flip_t <= 0.0:
-		_stuck_timer = 0.0                        # после подъёма не считаем это застреванием
-		_stuck_check_pos = global_position
+		_stuck01 = 0.0                            # после подъёма это не застревание
+		_move_ref = global_position
+		_move_t = 0.0
 	return _flip_t > 0.0
 
 var _terrain_cache: Node = null
