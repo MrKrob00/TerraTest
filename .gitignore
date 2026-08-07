@@ -23,3 +23,7 @@ music/**/*.wav
 music/**/*.ogg.import
 music/**/*.mp3.import
 music/**/*.wav.import
+
+# Кэш байткода Python от генераторов в art/ — пересоздаётся сам при каждом запуске.
+__pycache__/
+*.pyc
