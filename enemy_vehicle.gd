@@ -305,25 +305,13 @@ func _sense() -> Dictionary:
 		"has_memory": _has_last_known,
 		"dist": dist,
 		"range": _own_weapon_range(),
-		"health": _health01(),
+		"health": health_ratio(),
 		"mobility": clampf(wheels01 * _contact_ratio(), 0.0, 1.0),
 		"power_ratio": _power_ratio(),
 		"los": los,
 		"stuck": _stuck01,
 		"facing_us": facing,
 	}
-
-func _health01() -> float:
-	var bl: Node = get_node_or_null("blocks")
-	if bl == null:
-		return 1.0
-	var cur: float = 0.0
-	var mx: float = 0.0
-	for b in bl.get_children():
-		if b is VehicleBlock:
-			cur += float((b as VehicleBlock).current_hp)
-			mx += float((b as VehicleBlock).max_hp)
-	return clampf(cur / mx, 0.0, 1.0) if mx > 0.0 else 1.0
 
 # Эффективная дальность = дальность лучшего своего ствола. Раньше это был экспорт
 # attack_range, не связанный с тем, чем машина реально вооружена.
@@ -337,24 +325,11 @@ func _own_weapon_range() -> float:
 			r = maxf(r, float(wr))
 	return r if r > 0.5 else attack_range
 
-# Грубый урон в секунду по блокам машины — для сравнения «кто кого перестреляет».
-static func _firepower_of(machine: Node) -> float:
-	var bl: Node = machine.get_node_or_null("blocks")
-	if bl == null:
-		return 0.0
-	var p: float = 0.0
-	for b in bl.get_children():
-		var dmg: Variant = b.get("damage")
-		var rate: Variant = b.get("fire_rate")
-		if dmg != null and rate != null and float(rate) > 0.001:
-			p += float(dmg) / float(rate)
-	return p
-
 func _power_ratio() -> float:
-	if not is_instance_valid(_target):
+	if not is_instance_valid(_target) or not _target.has_method("firepower"):
 		return 0.5
-	var mine: float = _firepower_of(self)
-	var total: float = mine + _firepower_of(_target)
+	var mine: float = firepower()
+	var total: float = mine + float(_target.call("firepower"))
 	return 0.5 if total < 0.001 else clampf(mine / total, 0.0, 1.0)
 
 var _los_q: PhysicsRayQueryParameters3D = null

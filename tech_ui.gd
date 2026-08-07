@@ -4,7 +4,9 @@ extends Control
 #     (vehicle.take_block_into_hand) → дальше ставишь его на машину обычным Building-флоу.
 #   • SHOP      — покупка блоков за G.money (ассортимент = мировой магазин).
 #   • СБОРКИ    — сохранение/применение раскладок машины.
-#   • Справа    — имя машины, построено/в наличии блоков, масса машины (всё из игры).
+#   • Справа    — имя машины, нагруженность (тянет/не тянет) и характеристики.
+#                 Все значения живые: строки собираются кодом из MachineBody, а не
+#                 лежат в сцене, где часть чисел осталась картинкой со скриншота.
 
 enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH }
 
@@ -63,6 +65,7 @@ func _ready() -> void:
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
+	_build_stats_panel()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
 	# пересобираем слоты, чтобы в ряду ОСТАЛОСЬ ровно COLS. Гейт по изменению размера слота,
@@ -617,13 +620,101 @@ func _refresh_stats() -> void:
 		var m: MachineBody = v as MachineBody
 		m.refresh_mass()                        # в гараже физпроцесс машины не крутится
 		set_load(m)
-	if "mass" in v:
-		set_weight(int(round(v.mass)))
+		_fill_stats(m)
 
 # ── Публичный API характеристик справа ────────────────────────────────────────
 func set_vehicle_name(n: String) -> void:
 	if has_node("%VehicleName"):
 		%VehicleName.text = n
+
+# ── Характеристики машины ─────────────────────────────────────────────────────
+# Строки собираются кодом, а не лежат в сцене. Панель рисовалась по скриншоту игры, и
+# часть чисел так и осталась картинкой из него. Строка, рождённая из данных, застыть
+# не может — ей просто неоткуда взять «нарисованное» значение.
+# MASS сюда не берём — он уже левое число в LOAD. Вместо него разгон: он меняется
+# от каждого навешенного блока и от каждого колеса, то есть показывает то же, что
+# и цвет LOAD, но числом.
+const STAT_ROWS: Array[String] = ["ACCEL", "THRUST", "TOP SPEED", "FIREPOWER", "ARMOUR", "WHEELS"]
+const STAT_NAME_COLOR: Color = Color(0.58, 0.63, 0.72)
+const STAT_VALUE_COLOR: Color = Color(0.93, 0.95, 1.0)
+
+var _stat_values: Dictionary = {}
+
+func _build_stats_panel() -> void:
+	var right: Node = get_node_or_null("Root/Main/RightPanel/RightVB")
+	if right == null:
+		return
+	var weight_row: Node = right.get_node_or_null("WeightRow")
+	if weight_row != null:
+		(weight_row as Control).visible = false     # масса переехала в сетку, дубль убираем
+
+	# Оформляем как соседнюю панель LOAD, а не голой сеткой: стиль берём с неё же, чтобы
+	# блок не выглядел приклеенным и не разъехался, если тему панели поменяют.
+	var panel := PanelContainer.new()
+	panel.name = "StatsPanel"
+	var reactor: Node = right.get_node_or_null("Reactor")
+	if reactor != null:
+		var style: StyleBox = (reactor as PanelContainer).get_theme_stylebox("panel")
+		if style != null:
+			panel.add_theme_stylebox_override("panel", style)
+	right.add_child(panel)
+
+	var column := VBoxContainer.new()
+	column.add_theme_constant_override("separation", 8)
+	panel.add_child(column)
+
+	var heading := Label.new()
+	heading.text = "SPECS"
+	heading.add_theme_color_override("font_color", STAT_NAME_COLOR)
+	heading.add_theme_font_size_override("font_size", 12)
+	column.add_child(heading)
+
+	var grid := GridContainer.new()
+	grid.name = "StatsGrid"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 5)
+	column.add_child(grid)
+
+	for key in STAT_ROWS:
+		var caption := Label.new()
+		caption.text = key
+		caption.add_theme_color_override("font_color", STAT_NAME_COLOR)
+		caption.add_theme_font_size_override("font_size", 13)
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(caption)
+
+		var value := Label.new()
+		value.text = "—"
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_color_override("font_color", STAT_VALUE_COLOR)
+		value.add_theme_font_size_override("font_size", 15)
+		grid.add_child(value)
+		_stat_values[key] = value
+
+func _set_stat(key: String, text: String, tint: Color = STAT_VALUE_COLOR) -> void:
+	var lbl: Label = _stat_values.get(key)
+	if lbl != null:
+		lbl.text = text
+		lbl.add_theme_color_override("font_color", tint)
+
+func _fill_stats(m: MachineBody) -> void:
+	var hp: Vector2i = m.hp_totals()
+	var wheels: Vector2i = m.wheel_counts()
+	var health: float = m.health_ratio()
+	var accel: float = m.rated_power() / maxf(m.mass, 0.001)
+	_set_stat("ACCEL", "%.1f m/s²" % accel,
+		LOAD_OK if accel >= MachineBody.ACCEL_BRISK
+		else (LOAD_WARN if accel >= MachineBody.ACCEL_CRAWL else LOAD_BAD))
+	_set_stat("THRUST", "%d N" % int(round(m.rated_power())))
+	_set_stat("TOP SPEED", "%d km/h" % int(round(m.max_speed * 3.6)))
+	_set_stat("FIREPOWER", "%d dps" % int(round(m.firepower())))
+	# Броня красится по остатку — сразу видно побитую машину, без чтения цифр.
+	_set_stat("ARMOUR", "%d / %d" % [hp.x, hp.y],
+		LOAD_OK if health > 0.66 else (LOAD_WARN if health > 0.33 else LOAD_BAD))
+	# Ведущие показываем отдельно: именно они дают тягу, остальные только катятся.
+	_set_stat("WHEELS", "%d / %d driven" % [wheels.y, wheels.x],
+		STAT_VALUE_COLOR if wheels.y > 0 else LOAD_BAD)
 
 const LOAD_OK: Color = Color(0.35, 0.85, 0.42)     # тянет легко
 const LOAD_WARN: Color = Color(1.0, 0.78, 0.22)    # тянет, но с трудом
@@ -661,10 +752,6 @@ func set_load(m: MachineBody) -> void:
 		fill.bg_color = col
 		fill.set_corner_radius_all(3)
 		%ReactorBar.add_theme_stylebox_override("fill", fill)
-
-func set_weight(kg: int) -> void:
-	if has_node("%WeightValue"):
-		%WeightValue.text = "%d kg" % kg
 
 # ── Спец-панель для вкладок МУЗЫКА и НАСТРОЙКИ (вместо сетки блоков) ───────────
 var _extra_scroll: ScrollContainer = null
