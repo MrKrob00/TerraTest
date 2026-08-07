@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
-"""Генератор лоу-поли блоков WorldTech: меш (.obj) + пиксельный атлас (.png).
+"""Генератор лоу-поли блоков WorldTech: меш (.obj + .mtl) + пиксельный атлас (.png).
+
+ЗЕРКАЛО block_mesh.gd. В игре меш и материал собирает GDScript — там гарантированно
+правильный фильтр и никакой ручной настройки. Этот файл нужен, чтобы форму можно было
+посмотреть (art/preview.py) до запуска Godot. Правишь одно — правь и второе.
 
 Спецификация стиля (общая для всех блоков):
   габарит      0.96 в ячейке 1.0  — зазор 0.02 даёт видимый шов между блоками
   фаска        0.10 на всех рёбрах
+  метка        выпуклая четырёхлучевая звезда по центру КАЖДОЙ грани, лучи по диагоналям
   нормали      плоские (по грани)
   тексель      16 пикселей на мировую единицу — совпадает с землёй
                (PIXELS_PER_TILE = 16.0 в addons/LiteTerrain/glsl.gdshader)
-  атлас        ячейки 16x16, выборка в центр текселя, мипы не нужны
+  фильтр       ТОЛЬКО nearest, без мипов — иначе пиксели мылятся
 
 Зависимостей нет — только стандартная библиотека.
 """
@@ -20,32 +25,35 @@ HALF = 0.48          # половина габарита (блок 0.96 в яч�
 CHAMFER = 0.10       # срез ребра
 INNER = HALF - CHAMFER
 
+# Метка крепления: выпуклая звезда с лучами по диагоналям грани.
+PAD_RISE = 0.02      # «чуть-чуть» — с меткой блок ровно заполняет ячейку 1.0
+PAD_TIP = 0.165      # радиус луча
+PAD_VALLEY = 0.075   # радиус впадины: заметно меньше луча, иначе звезда вырождается в квадрат
+
 CELL = 16            # тексель-ячейка грани
 ATLAS = 32           # атлас 2x2 ячейки
 
-# Ячейки атласа: (столбец, строка)
 CELL_SIDE = (0, 0)
 CELL_TOP = (1, 0)
 CELL_BOTTOM = (0, 1)
+CELL_PAD = (1, 1)
 
-# Палитра. Сине-серый сланец — новое семейство, добавлено под блок корпуса.
+# Палитра. Сине-серый сланец — семейство, заведённое под блок корпуса.
 SLATE_RIM = (132, 140, 165)
 SLATE_LIGHT = (110, 118, 143)
 SLATE_DARK = (88, 95, 119)
 CREAM = (226, 224, 212)
+PAD_FACE = (146, 154, 178)
+PAD_MARK = (96, 103, 126)
 
-# Метка точки крепления. Кольцо 4x4 центрируется точно (6..9 при 16 текселях),
-# ряды 2..5 — над кремовой полосой, в светлой зоне.
-MARK_COL = SLATE_RIM
-MARK_TOP = 2
-MARK_LEFT = 6
+WORLD = 0            # UV из мировой позиции — полоса непрерывна через фаски
+PAD = 1              # UV из собственной ячейки метки
 
 
 def chamfered_box():
     """Грани скошенного куба: 6 площадок + 12 рёбер + 8 углов = 44 треугольника."""
     faces = []
 
-    # 6 основных площадок
     for axis in range(3):
         for sign in (-1, 1):
             quad = []
@@ -56,11 +64,8 @@ def chamfered_box():
                     p[(axis + 1) % 3] = a
                     p[(axis + 2) % 3] = b
                     quad.append(tuple(p))
-            # порядок по кольцу, а не змейкой
-            quad = [quad[0], quad[1], quad[3], quad[2]]
-            faces.append(quad)
+            faces.append([quad[0], quad[1], quad[3], quad[2]])
 
-    # 12 рёберных полос
     for i in range(3):
         for j in range(i + 1, 3):
             k = 3 - i - j
@@ -74,20 +79,65 @@ def chamfered_box():
                             p[j] = sj * (HALF if lead == j else INNER)
                             p[k] = sk * INNER
                             quad.append(tuple(p))
-                    quad = [quad[0], quad[1], quad[3], quad[2]]
-                    faces.append(quad)
+                    faces.append([quad[0], quad[1], quad[3], quad[2]])
 
-    # 8 угловых треугольников
     for sx in (-1, 1):
         for sy in (-1, 1):
             for sz in (-1, 1):
                 s = (sx, sy, sz)
-                tri = []
-                for lead in range(3):
-                    p = [s[a] * (HALF if a == lead else INNER) for a in range(3)]
-                    tri.append(tuple(p))
-                faces.append(tri)
+                faces.append([tuple(s[a] * (HALF if a == lead else INNER) for a in range(3))
+                              for lead in range(3)])
+    return faces
 
+
+def face_axes(axis, sign):
+    """Пара осей в плоскости грани. u берём так, чтобы лучи звезды шли по диагоналям
+    квадрата грани, а не по его сторонам."""
+    u = [0.0, 0.0, 0.0]
+    v = [0.0, 0.0, 0.0]
+    u[(axis + 1) % 3] = 1.0
+    v[(axis + 2) % 3] = float(sign)
+    return tuple(u), tuple(v)
+
+
+def star_outline():
+    """Восемь точек контура: лучи по диагоналям (45°, 135°, 225°, 315°)."""
+    import math
+    pts = []
+    for i in range(8):
+        ang = math.pi / 4.0 + math.pi / 4.0 * i     # старт с диагонали
+        r = PAD_TIP if i % 2 == 0 else PAD_VALLEY
+        pts.append((math.cos(ang) * r, math.sin(ang) * r))
+    return pts
+
+
+def pad_faces(axis, sign):
+    """Выпуклая звезда по центру грани: верхняя крышка веером + бортик по контуру."""
+    u, v = face_axes(axis, sign)
+    n = [0.0, 0.0, 0.0]
+    n[axis] = float(sign)
+
+    def at(su, sv, rise):
+        return tuple(u[a] * su + v[a] * sv + n[a] * (HALF + rise) for a in range(3))
+
+    outline = star_outline()
+    faces = []
+    centre = at(0.0, 0.0, PAD_RISE)
+    for i in range(8):
+        a = outline[i]
+        b = outline[(i + 1) % 8]
+        faces.append(([centre, at(a[0], a[1], PAD_RISE), at(b[0], b[1], PAD_RISE)], PAD))
+        faces.append(([at(a[0], a[1], 0.0), at(b[0], b[1], 0.0),
+                       at(b[0], b[1], PAD_RISE), at(a[0], a[1], PAD_RISE)], PAD))
+    return faces
+
+
+def block_faces():
+    """Полный блок: корпус (UV из мира) + шесть меток (UV из своей ячейки)."""
+    faces = [(poly, WORLD) for poly in chamfered_box()]
+    for axis in range(3):
+        for sign in (-1, 1):
+            faces.extend(pad_faces(axis, sign))
     return faces
 
 
@@ -100,7 +150,7 @@ def newell_normal(poly):
         nx += (y0 - y1) * (z0 + z1)
         ny += (z0 - z1) * (x0 + x1)
         nz += (x0 - x1) * (y0 + y1)
-    length = (nx * nx + ny * ny + nz * nz) ** 0.5
+    length = (nx * nx + ny * ny + nz * nz) ** 0.5 or 1.0
     return (nx / length, ny / length, nz / length)
 
 
@@ -119,49 +169,59 @@ def orient_outward(poly):
 def cell_uv(cell, u, v):
     """Выборка в ЦЕНТР текселя: край ячейки при nearest ушёл бы в соседнюю."""
     cx, cy = cell
-    au = (cx * CELL + 0.5 + u * (CELL - 1)) / ATLAS
-    av = (cy * CELL + 0.5 + v * (CELL - 1)) / ATLAS
+    au = (cx * CELL + 0.5 + min(max(u, 0.0), 1.0) * (CELL - 1)) / ATLAS
+    av = (cy * CELL + 0.5 + min(max(v, 0.0), 1.0) * (CELL - 1)) / ATLAS
     return au, av
 
 
-def face_uvs(poly, normal):
-    """UV считаются из МИРОВОЙ позиции, а не по грани — тогда полоса непрерывно
-    продолжается через фаски, а не обрывается на каждом ребре."""
+def face_uvs(poly, normal, kind):
+    if kind == PAD:
+        # Метка берёт цвет из своей ячейки: центр звезды — в центр ячейки.
+        axis = max(range(3), key=lambda a: abs(normal[a]))
+        sign = 1 if normal[axis] > 0 else -1
+        u, v = face_axes(axis, sign)
+        out = []
+        for p in poly:
+            su = sum(p[a] * u[a] for a in range(3)) / (PAD_TIP * 2.0) + 0.5
+            sv = sum(p[a] * v[a] for a in range(3)) / (PAD_TIP * 2.0) + 0.5
+            out.append(cell_uv(CELL_PAD, su, 1.0 - sv))
+        return out
+
+    # UV корпуса считаются из МИРОВОЙ позиции, а не по грани — тогда полоса непрерывно
+    # продолжается через фаски, а не обрывается на каждом ребре.
     span = 2.0 * HALF
     out = []
     if abs(normal[1]) > 0.999:
         cell = CELL_TOP if normal[1] > 0.0 else CELL_BOTTOM
         for x, y, z in poly:
-            u = (x + HALF) / span
-            v = (z + HALF) / span
+            uu = (x + HALF) / span
+            vv = (z + HALF) / span
             if normal[1] < 0.0:
-                v = 1.0 - v
-            out.append(cell_uv(cell, min(max(u, 0.0), 1.0), min(max(v, 0.0), 1.0)))
+                vv = 1.0 - vv
+            out.append(cell_uv(cell, uu, vv))
         return out
 
     horizontal_x = abs(normal[0]) >= abs(normal[2])
     for x, y, z in poly:
-        v = (HALF - y) / span
+        vv = (HALF - y) / span
         if horizontal_x:
-            u = (z + HALF) / span
+            uu = (z + HALF) / span
             if normal[0] > 0.0:
-                u = 1.0 - u
+                uu = 1.0 - uu
         else:
-            u = (x + HALF) / span
+            uu = (x + HALF) / span
             if normal[2] < 0.0:
-                u = 1.0 - u
-        out.append(cell_uv(CELL_SIDE, min(max(u, 0.0), 1.0), min(max(v, 0.0), 1.0)))
+                uu = 1.0 - uu
+        out.append(cell_uv(CELL_SIDE, uu, vv))
     return out
 
 
-def write_obj(path, name):
-    faces = chamfered_box()
+def write_obj(path, name, mtl_name):
     verts, uvs, norms, lines = [], [], [], []
     tris = 0
-
-    for poly in faces:
+    for poly, kind in block_faces():
         poly, normal = orient_outward(poly)
-        uv = face_uvs(poly, normal)
+        uv = face_uvs(poly, normal, kind)
         norms.append(normal)
         ni = len(norms)
         idx = []
@@ -175,27 +235,30 @@ def write_obj(path, name):
 
     with open(path, "w") as f:
         f.write("# WorldTech low-poly block, generated by art/blockgen.py\n")
-        f.write(f"o {name}\n")
+        f.write("mtllib %s\n" % mtl_name)
+        f.write("o %s\n" % name)
         for x, y, z in verts:
-            f.write(f"v {x:.5f} {y:.5f} {z:.5f}\n")
+            f.write("v %.5f %.5f %.5f\n" % (x, y, z))
         for u, v in uvs:
-            f.write(f"vt {u:.6f} {1.0 - v:.6f}\n")   # OBJ считает V снизу
+            f.write("vt %.6f %.6f\n" % (u, 1.0 - v))     # OBJ считает V снизу
         for x, y, z in norms:
-            f.write(f"vn {x:.5f} {y:.5f} {z:.5f}\n")
+            f.write("vn %.5f %.5f %.5f\n" % (x, y, z))
+        f.write("usemtl block\n")
         for a, b, c, n in lines:
-            f.write(f"f {a}/{a}/{n} {b}/{b}/{n} {c}/{c}/{n}\n")
+            f.write("f %d/%d/%d %d/%d/%d %d/%d/%d\n" % (a, a, n, b, b, n, c, c, n))
+    return len(block_faces()), tris, len(verts)
 
-    return len(faces), tris, len(verts)
 
-
-def stamp_mark(rows, top, left, col, size=4):
-    """Метка точки крепления: квадратное кольцо size x size без заливки.
-    Кольцо, а не сплошной квадрат — на 16 текселях контур читается, пятно нет."""
-    for y in range(size):
-        for x in range(size):
-            edge = y in (0, size - 1) or x in (0, size - 1)
-            if edge:
-                rows[top + y][left + x] = col
+def write_mtl(path, texture_name):
+    """Чтобы .obj тянул текстуру сам, а не руками. Фильтр отсюда не задать — за этим
+    в игре следит block_mesh.gd, который собирает материал сам."""
+    with open(path, "w") as f:
+        f.write("newmtl block\n")
+        f.write("Ka 1.000 1.000 1.000\n")
+        f.write("Kd 1.000 1.000 1.000\n")
+        f.write("Ks 0.000 0.000 0.000\n")
+        f.write("d 1.0\nillum 1\n")
+        f.write("map_Kd %s\n" % texture_name)
 
 
 def side_cell():
@@ -203,14 +266,13 @@ def side_cell():
     for y in range(CELL):
         if y == 0:
             col = SLATE_RIM
-        elif y <= 6:
+        elif y <= 10:
             col = SLATE_LIGHT
-        elif y <= 8:
-            col = CREAM
+        elif y <= 12:
+            col = CREAM          # полоса ушла ниже центра: центр занят меткой
         else:
             col = SLATE_DARK
         rows.append([col] * CELL)
-    stamp_mark(rows, MARK_TOP, MARK_LEFT, MARK_COL)
     return rows
 
 
@@ -221,13 +283,20 @@ def top_cell():
         rows[i][0] = SLATE_RIM
         rows[CELL - 1][i] = SLATE_DARK
         rows[i][CELL - 1] = SLATE_DARK
-    stamp_mark(rows, 6, MARK_LEFT, MARK_COL)   # на крышке метка по центру грани
     return rows
 
 
 def bottom_cell():
-    rows = [[SLATE_DARK] * CELL for _ in range(CELL)]
-    stamp_mark(rows, 6, MARK_LEFT, SLATE_LIGHT)
+    return [[SLATE_DARK] * CELL for _ in range(CELL)]
+
+
+def pad_cell():
+    """Ячейка метки: ровный светлый тон с чуть темнее серединой. Форму лучей даёт
+    геометрия — рисовать её ещё и пикселями значит получить грязь поверх граней."""
+    rows = [[PAD_FACE] * CELL for _ in range(CELL)]
+    for y in range(7, 9):
+        for x in range(7, 9):
+            rows[y][x] = PAD_MARK          # только точка в центре — «ось» крепления
     return rows
 
 
@@ -243,6 +312,7 @@ def write_png(path):
     blit(CELL_SIDE, side_cell())
     blit(CELL_TOP, top_cell())
     blit(CELL_BOTTOM, bottom_cell())
+    blit(CELL_PAD, pad_cell())
 
     raw = b""
     for row in pixels:
@@ -261,11 +331,10 @@ def write_png(path):
 
 
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "objects", "gen")
-    out = os.path.normpath(out)
+    out = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "objects", "gen"))
     os.makedirs(out, exist_ok=True)
-
-    nf, nt, nv = write_obj(os.path.join(out, "armor_block.obj"), "armor_block")
+    nf, nt, nv = write_obj(os.path.join(out, "armor_block.obj"), "armor_block", "armor_block.mtl")
+    write_mtl(os.path.join(out, "armor_block.mtl"), "blocks_atlas.png")
     write_png(os.path.join(out, "blocks_atlas.png"))
-    print(f"граней {nf}, треугольников {nt}, вершин {nv}")
-    print(f"атлас {ATLAS}x{ATLAS}, ячейка {CELL}x{CELL}")
+    print("граней %d, треугольников %d, вершин %d" % (nf, nt, nv))
+    print("атлас %dx%d, ячейка %dx%d" % (ATLAS, ATLAS, CELL, CELL))

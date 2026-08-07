@@ -9,7 +9,9 @@ import sys
 import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from blockgen import ATLAS, chamfered_box, face_uvs, orient_outward, side_cell, top_cell, bottom_cell, CELL, CELL_SIDE, CELL_TOP, CELL_BOTTOM
+from blockgen import (ATLAS, CELL, CELL_SIDE, CELL_TOP, CELL_BOTTOM, CELL_PAD,
+                      block_faces, face_uvs, orient_outward,
+                      side_cell, top_cell, bottom_cell, pad_cell)
 
 W = H = 320
 BG = (36, 38, 46)
@@ -19,7 +21,8 @@ AMBIENT = 0.52
 
 def atlas_pixels():
     px = [[(0, 0, 0)] * ATLAS for _ in range(ATLAS)]
-    for cell, data in ((CELL_SIDE, side_cell()), (CELL_TOP, top_cell()), (CELL_BOTTOM, bottom_cell())):
+    for cell, data in ((CELL_SIDE, side_cell()), (CELL_TOP, top_cell()),
+                       (CELL_BOTTOM, bottom_cell()), (CELL_PAD, pad_cell())):
         cx, cy = cell
         for y in range(CELL):
             for x in range(CELL):
@@ -47,9 +50,9 @@ def render(path, eye=(1.95, 1.25, 2.75)):
     color = [[BG] * W for _ in range(H)]
     depth = [[1e9] * W for _ in range(H)]
 
-    for poly in chamfered_box():
+    for poly, kind in block_faces():
         poly, normal = orient_outward(poly)
-        uvs = face_uvs(poly, normal)
+        uvs = face_uvs(poly, normal, kind)
         lam = max(0.0, sum(normal[i] * LIGHT[i] for i in range(3)))
         shade = AMBIENT + (1.0 - AMBIENT) * lam
 
