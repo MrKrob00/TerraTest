@@ -10,8 +10,9 @@ extends RigidBody3D
 ## Общий множитель тяги. Сама тяга берётся из колёс (Wheel.wheel_power), это лишь
 ## ручка для настройки всей машины разом: ускорение = engine_force * Σтяга / масса.
 @export var engine_force: float = 1.0
-## Собственная тяга шасси, без колёс. Нужна, чтобы голая кабина в начале игры могла
-## доползти до блоков, лежащих рядом. Заметно слабее колеса — колёса остаются апгрейдом.
+## Собственная тяга ГОЛОЙ кабины — когда на ней нет ни одного навесного блока.
+## Нужна, чтобы в начале игры доползти до блоков, лежащих рядом. Стоит навесить хоть
+## что-то — тяга пропадает, и машина не поедет, пока на неё не поставят колёса.
 @export var chassis_power: float = 500.0
 @export var max_speed: float = 20.0
 @export var engine_brake: float = 0.3
@@ -770,6 +771,8 @@ func _drive_blocks() -> Array:
 
 # Низ машины в локальных координатах (отрицательный) — нужен проверке земли без колёс.
 var _body_drop: float = -0.5
+# Сколько на машине блоков помимо кабины. 0 = голая кабина, ей разрешено ползти самой.
+var _extra_blocks: int = 0
 
 # Пересчитывает массу, центр масс и низ корпуса за один проход по блокам.
 # Массу теперь дают ВСЕ блоки, а не только колёса: иначе постройка не влияла бы
@@ -785,6 +788,7 @@ func _sync_mass(delta: float = 0.0) -> void:
 	var sum_x: float = 0.0
 	var sum_z: float = 0.0
 	var lowest: float = -0.5
+	var extra: int = 0
 	var bl: Node = block_map_node if block_map_node != null else get_node_or_null("blocks")
 	if bl != null:
 		for b in bl.get_children():
@@ -795,8 +799,11 @@ func _sync_mass(delta: float = 0.0) -> void:
 			sum_x += b.position.x * w
 			sum_z += b.position.z * w
 			lowest = minf(lowest, b.position.y - 0.5)
+			if int(b.block) != G.Block.CABIN:
+				extra += 1
 	mass = total
 	_body_drop = lowest
+	_extra_blocks = extra
 
 	# Центр масс опускаем ниже оси колёс. Это не подкрутка «чтобы не падало», а то же
 	# самое, чем реальные машины держатся от переворота: чем ниже центр масс над пятном
@@ -834,10 +841,14 @@ func _sync_mass(delta: float = 0.0) -> void:
 
 # Суммарная тяга ведущих колёс, СТОЯЩИХ на земле. Колесо в воздухе не толкает.
 func _drive_power() -> float:
-	var power: float = chassis_power
+	var power: float = 0.0
 	for w in Wheels:
 		if is_instance_valid(w) and w.is_drive and w.grounded:
 			power += w.wheel_power
+	# Своим ходом ползёт ТОЛЬКО голая кабина. Навесил хоть один блок — теперь это
+	# машина, и она обязана стоять на колёсах, иначе никуда не поедет.
+	if _extra_blocks == 0:
+		power += chassis_power
 	return power
 
 func _apply_engine(_delta: float) -> void:
