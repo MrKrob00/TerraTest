@@ -102,7 +102,7 @@ func _relocate_enemy(enemy: Node3D, map: Node, player: Node3D) -> void:
 	if map == null:
 		enemy.queue_free()
 		return
-	var pos = _find_spawn_pos(map, player.global_position, enemy)
+	var pos: Variant = _find_spawn_pos(map, player.global_position, enemy)
 	if pos == null:
 		enemy.queue_free()          # некуда переместить — просто исчезает
 		return
@@ -118,7 +118,7 @@ func _spawn_one() -> void:
 	var player: Node3D = _player()
 	if map == null or player == null:
 		return
-	var pos = _find_spawn_pos(map, player.global_position)
+	var pos: Variant = _find_spawn_pos(map, player.global_position)
 	if pos == null:
 		return
 
@@ -144,7 +144,8 @@ func _on_enemy_died(_enemy: Node) -> void:
 # врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
 # точки расходятся по кольцу, а не бьют в одно место. exclude — враг, которого не считаем
 # соседом (при телепорте его самого). Возвращает Vector3 или null.
-func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
+## Точка спавна рядом с центром, либо null, если места не нашлось.
+func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null) -> Variant:
 	var base: float = randf() * TAU
 	for i in 36:
 		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)

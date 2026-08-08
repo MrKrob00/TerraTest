@@ -23,7 +23,7 @@ func _ready() -> void:
 	# стартовой (и могло падать). Ждём готовности машины + пару кадров на догон корутин.
 	var guard := 0
 	while guard < 600:
-		var v = _primary_machine()
+		var v := _primary_machine()
 		if v != null and v.is_node_ready() and v.get("block_map_node") != null:
 			break
 		await get_tree().process_frame
@@ -104,7 +104,7 @@ func _objects() -> Node:
 func _vehicles_root() -> Node:
 	return get_node_or_null("/root/Main/Vehicles")
 
-func _camera():
+func _camera() -> Node:
 	return get_tree().get_first_node_in_group("camera_controller")
 
 func _now() -> float:
@@ -122,8 +122,8 @@ func _player_machines() -> Array:
 			out.append(c)
 	return out
 
-func _primary_machine():
-	var cc = _camera()
+func _primary_machine() -> Node:
+	var cc := _camera()
 	if cc != null and "current_vehicle" in cc and cc.current_vehicle != null:
 		return cc.current_vehicle
 	var m := _player_machines()
@@ -131,8 +131,8 @@ func _primary_machine():
 
 # Убрать лишние машины игрока (в сцене их бывает несколько для теста) — оставить только основную.
 func _purge_extra_machines() -> void:
-	var primary = _primary_machine()
-	var cc = _camera()
+	var primary := _primary_machine()
+	var cc := _camera()
 	for m in _player_machines():
 		if m == primary:
 			continue
@@ -163,7 +163,7 @@ func _spawn_world_block(bt: int, pos: Vector3, rot, age_s: float = 0.0) -> Node:
 	var o := _objects()
 	if scene == null or o == null:
 		return null
-	var b = scene.instantiate()
+	var b := scene.instantiate()
 	o.add_child(b)
 	if b is Node3D:
 		b.global_position = pos
@@ -179,7 +179,7 @@ func _fresh_start() -> void:
 		for c in o.get_children():
 			if _is_world_block(c):
 				c.queue_free()                          # убрать предустановленные тест-блоки
-	var primary = _primary_machine()
+	var primary := _primary_machine()
 	if primary == null or not primary.has_method("award_block_list"):
 		return
 	# Базовый набор: 2 блока, 4 колеса, 1 бур, 1 пушка — глючно КРУЖАТ вокруг игрока (как награда),
@@ -241,7 +241,7 @@ func _load_world() -> void:
 		return
 	var data: Dictionary = json.get_data()
 	var machines: Array = data.get("machines", [])
-	var primary = _primary_machine()
+	var primary := _primary_machine()
 	if machines.is_empty() or primary == null or not primary.has_method("apply_build"):
 		# Сейв есть, но машины в нём нет (например, записался до того, как машина появилась).
 		# Молча оставить игрока с голой кабиной и без блоков = тупик, поэтому — новый старт.
@@ -262,8 +262,8 @@ func _load_world() -> void:
 			if _is_world_block(c):
 				c.queue_free()
 	for wb in data.get("world_blocks", []):
-		var p = wb.get("pos", [0, 0, 0])
-		var r = wb.get("rot", [0, 0, 0])
+		var p: Variant = wb.get("pos", [0, 0, 0])
+		var r: Variant = wb.get("rot", [0, 0, 0])
 		_spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
 
@@ -297,8 +297,8 @@ func _quarantine_save(reason: String) -> void:
 
 func _restore_machine(veh, mdata: Dictionary) -> void:
 	veh.apply_build(mdata.get("layout", []))
-	var p = mdata.get("pos", null)
-	var r = mdata.get("rot", null)
+	var p: Variant = mdata.get("pos", null)
+	var r: Variant = mdata.get("rot", null)
 	if not (veh is Node3D):
 		return
 	# Машина — RigidBody3D, и ПРЯМОЙ телепорт незамороженного тела физика откатывает, а под новой
@@ -330,13 +330,13 @@ func _spawn_machine(mdata: Dictionary) -> void:
 	var vr := _vehicles_root()
 	if scene == null or vr == null:
 		return
-	var v = scene.instantiate()
+	var v := scene.instantiate()
 	vr.add_child(v)
 	await get_tree().process_frame                 # даём _ready машины отработать до apply_build
 	await get_tree().process_frame
 	if v.has_method("apply_build"):
 		await _restore_machine(v, mdata)
-	var cc = _camera()
+	var cc := _camera()
 	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
 		cc.vehicles.append(v)
 	if v.has_method("set_active"):

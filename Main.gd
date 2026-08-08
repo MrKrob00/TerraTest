@@ -142,7 +142,7 @@ func _save_settings() -> void:
 func _load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		return
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
 	if parsed is Dictionary:
 		auto_fps = bool(parsed.get("auto_fps", true))
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)

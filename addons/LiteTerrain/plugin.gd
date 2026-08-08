@@ -2,9 +2,9 @@
 extends EditorPlugin
 
 var sculpt_node     = null
-var brush_radius    = 3.0
-var brush_strength  = 0.1
-var sculpt_mode     = "raise"
+var brush_radius: float = 3.0
+var brush_strength: float = 0.1
+var sculpt_mode: String = "raise"
 var panel           = null
 var radius_slider   = null
 var strength_slider = null
@@ -156,12 +156,12 @@ func _gen_carve_row(z: int) -> void:
 # Helper builders
 # ─────────────────────────────────────────────────
 func _sep() -> HSeparator:
-	var s = HSeparator.new()
+	var s: HSeparator = HSeparator.new()
 	s.custom_minimum_size = Vector2(0, 6)
 	return s
 
 func _lbl(t: String) -> Label:
-	var l = Label.new()
+	var l: Label = Label.new()
 	l.text = t
 	return l
 
@@ -187,7 +187,7 @@ func _cv_noise(p: Vector2) -> float:
 	return lerpf(lerpf(a, b, f.x), lerpf(c, dd, f.x), f.y)
 
 func _slider(mn: float, mx: float, val: float, step: float = 0.0) -> HSlider:
-	var sl = HSlider.new()
+	var sl: HSlider = HSlider.new()
 	sl.min_value = mn
 	sl.max_value = mx
 	sl.value    = val
@@ -204,7 +204,7 @@ func _enter_tree() -> void:
 	_load_settings()
 
 	# Wrap everything in a ScrollContainer so the dock is scrollable on tablets
-	var scroll = ScrollContainer.new()
+	var scroll: ScrollContainer = ScrollContainer.new()
 	scroll.name = "LiteTerrain"
 	scroll.custom_minimum_size = Vector2(220, 0)
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -216,7 +216,7 @@ func _enter_tree() -> void:
 
 	# ── Setup: one-click terrain node ───────────
 	panel.add_child(_lbl("── Setup ──"))
-	var create_btn = Button.new()
+	var create_btn: Button = Button.new()
 	create_btn.text = "➕ Create Terrain Node"
 	create_btn.tooltip_text = "Добавляет одну ноду LiteTerrain (image-режим, плоская 128×128). Дети создаются сами."
 	create_btn.pressed.connect(_create_terrain)
@@ -230,17 +230,17 @@ func _enter_tree() -> void:
 	mode_label = _lbl(_mode_text())
 	panel.add_child(mode_label)
 
-	var raise_btn = Button.new()
+	var raise_btn: Button = Button.new()
 	raise_btn.text = "▲ Raise"
 	raise_btn.pressed.connect(_on_raise)
 	panel.add_child(raise_btn)
 
-	var lower_btn = Button.new()
+	var lower_btn: Button = Button.new()
 	lower_btn.text = "▼ Lower"
 	lower_btn.pressed.connect(_on_lower)
 	panel.add_child(lower_btn)
 
-	var flatten_btn = Button.new()
+	var flatten_btn: Button = Button.new()
 	flatten_btn.text = "⬛ Flatten"
 	flatten_btn.pressed.connect(_on_flatten)
 	panel.add_child(flatten_btn)
@@ -271,7 +271,7 @@ func _enter_tree() -> void:
 
 	var seed_lbl = _lbl("Seed: " + str(gen_seed))
 	panel.add_child(seed_lbl)
-	var seed_spin = SpinBox.new()
+	var seed_spin: SpinBox = SpinBox.new()
 	seed_spin.min_value = 0
 	seed_spin.max_value = 99999
 	seed_spin.value     = gen_seed
@@ -295,7 +295,7 @@ func _enter_tree() -> void:
 
 	var oct_lbl = _lbl("Octaves: " + str(gen_octaves))
 	panel.add_child(oct_lbl)
-	var oct_spin = SpinBox.new()
+	var oct_spin: SpinBox = SpinBox.new()
 	oct_spin.min_value = 1
 	oct_spin.max_value = 8
 	oct_spin.value     = gen_octaves
@@ -353,7 +353,7 @@ func _enter_tree() -> void:
 	# Smooth passes (simple box-blur after generation)
 	var smooth_lbl = _lbl("Smooth Passes: " + str(gen_smooth))
 	panel.add_child(smooth_lbl)
-	var smooth_spin = SpinBox.new()
+	var smooth_spin: SpinBox = SpinBox.new()
 	smooth_spin.min_value = 0
 	smooth_spin.max_value = 12
 	smooth_spin.value     = gen_smooth
@@ -367,7 +367,7 @@ func _enter_tree() -> void:
 	# Map size (image mode only). 0 = keep the current size.
 	var size_lbl = _lbl("Map Size (0 = keep): " + str(gen_size))
 	panel.add_child(size_lbl)
-	var size_spin = SpinBox.new()
+	var size_spin: SpinBox = SpinBox.new()
 	size_spin.min_value = 0
 	size_spin.max_value = 8192
 	size_spin.step      = 64
@@ -381,7 +381,7 @@ func _enter_tree() -> void:
 
 	# ── Canyons (запекаются в высоту при генерации) ──────────────────────────
 	panel.add_child(_sep())
-	var canyon_cb = CheckBox.new()
+	var canyon_cb: CheckBox = CheckBox.new()
 	canyon_cb.text = "Каньоны (меса + ущелья)"
 	canyon_cb.button_pressed = gen_canyon_enable
 	canyon_cb.toggled.connect(func(on: bool) -> void:
@@ -450,7 +450,7 @@ func _enter_tree() -> void:
 	gorge_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(gorge_sl)
 
-	var gen_btn = Button.new()
+	var gen_btn: Button = Button.new()
 	gen_btn.text = "🌍 Generate Terrain"
 	gen_btn.pressed.connect(_generate_noise)
 	panel.add_child(gen_btn)
@@ -458,7 +458,7 @@ func _enter_tree() -> void:
 	# ── Runtime Export (одной кнопкой) ───────────────────────────────────────
 	panel.add_child(_sep())
 	panel.add_child(_lbl("── Runtime Export ──"))
-	var bake_btn = Button.new()
+	var bake_btn: Button = Button.new()
 	bake_btn.text = "💾 Bake → files (height + mesh + PNG)"
 	bake_btn.tooltip_text = "Одной кнопкой: карта высот (.res) + превью-меш (.res) + серый PNG (для миникарты)."
 	bake_btn.pressed.connect(_bake_and_export)
@@ -706,8 +706,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 	var z_max = clamp(cz + r, 0, depth - 1)
 
 	if sculpt_mode == "flatten":
-		var avg_height = 0.0
-		var count      = 0
+		var avg_height: float = 0.0
+		var count: int = 0
 		for z in range(z_min, z_max + 1):
 			for x in range(x_min, x_max + 1):
 				var dx = x - cx
@@ -1028,7 +1028,7 @@ func _generate_noise() -> void:
 	# After remapping to [0,1], we raise to gen_power (e.g. ^4):
 	# values below 0.5 collapse toward 0 (flat plains),
 	# while values above 0.7 stay high (mountain bases).
-	var base_noise = FastNoiseLite.new()
+	var base_noise: FastNoiseLite = FastNoiseLite.new()
 	base_noise.seed             = gen_seed
 	base_noise.noise_type       = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	base_noise.fractal_type     = FastNoiseLite.FRACTAL_FBM
@@ -1043,7 +1043,7 @@ func _generate_noise() -> void:
 	# This creates a network of sharp crests wherever the raw
 	# noise crosses zero.  We then mask it by the continental
 	# elevation so ridges only form on already-high terrain.
-	var ridge_noise = FastNoiseLite.new()
+	var ridge_noise: FastNoiseLite = FastNoiseLite.new()
 	ridge_noise.seed              = gen_seed + 17
 	ridge_noise.noise_type        = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	ridge_noise.fractal_type      = FastNoiseLite.FRACTAL_FBM

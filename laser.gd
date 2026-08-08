@@ -126,7 +126,7 @@ func _track_target(delta: float, firing: bool) -> void:
 func _handle_fire(delta: float) -> void:
 	if not raycast.is_colliding():
 		return
-	var body = raycast.get_collider()
+	var body := raycast.get_collider()
 	if body == null:
 		return
 	if body == self or body == _vehicle_root():

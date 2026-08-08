@@ -160,7 +160,7 @@ func _enemy_near() -> bool:
 		return false
 	for v in vehicles.get_children():
 		if v is Node3D and v != me:
-			var f = v.get("faction")
+			var f: Variant = v.get("faction")
 			if f != null and int(f) != 0 \
 					and me.global_position.distance_to((v as Node3D).global_position) <= BATTLE_RADIUS:
 				return true
@@ -304,7 +304,7 @@ func _load_meta() -> Dictionary:
 	if not FileAccess.file_exists(META_PATH):
 		return {}
 	var txt := FileAccess.get_file_as_string(META_PATH)
-	var parsed = JSON.parse_string(txt)
+	var parsed: Variant = JSON.parse_string(txt)
 	return parsed if parsed is Dictionary else {}
 
 # ── Персист предпочтений ───────────────────────────────────────────────────────
@@ -320,7 +320,7 @@ func _save_prefs() -> void:
 func _load_prefs() -> void:
 	if not FileAccess.file_exists(PREFS_PATH):
 		return
-	var parsed = JSON.parse_string(FileAccess.get_file_as_string(PREFS_PATH))
+	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(PREFS_PATH))
 	if not (parsed is Dictionary):
 		return
 	for k in parsed.get("fav", []):
