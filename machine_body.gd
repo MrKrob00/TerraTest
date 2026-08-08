@@ -176,8 +176,27 @@ func _blocks_root() -> Node:
 # ИНИЦИАЛИЗАЦИЯ
 # ══════════════════════════════════════════
 
+## Трение корпуса о рельеф. Задаём ЯВНО: от него напрямую зависит, тронется ли машина
+## с места, и оставлять здесь молчаливое умолчание движка нельзя.
+const GROUND_FRICTION: float = 0.35
+
 func init_machine_physics() -> void:
 	gravity_scale = gravity_mult
+	var mat := PhysicsMaterial.new()
+	mat.friction = GROUND_FRICTION
+	physics_material_override = mat
+
+# Эффективное ускорение свободного падения с учётом gravity_scale.
+func _gravity_accel() -> float:
+	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * gravity_scale
+
+# Сила сопротивления качению, которую двигатель обязан перебить, прежде чем машина
+# вообще стронется. Коэффициент берём как корень из своего трения: движок сводит
+# трение двух тел, а у рельефа материал не задан (то есть 1.0), и при усреднении по
+# среднему геометрическому получается sqrt(нашего). Это ПЕССИМИСТИЧНАЯ оценка — если
+# правило сведения окажется другим, мы скомпенсируем с запасом, а не недодадим.
+func _rolling_drag() -> float:
+	return sqrt(GROUND_FRICTION) * mass * _gravity_accel()
 
 func append_wheel(wheel: Node) -> void:
 	if !Wheels.has(wheel):
@@ -376,7 +395,14 @@ func _apply_engine() -> void:
 	var power: float = _drive_power()
 	if abs(_throttle) > 0.01 and power > 0.0:
 		var speed_factor: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
-		apply_central_force(fwd * _throttle * power * engine_force * speed_factor)
+		# Двигатель отдельно перебивает СОБСТВЕННОЕ сопротивление качению, а Σтяга колёс
+		# остаётся чистым избытком на разгон. Без этого тяга конкурировала с трением,
+		# которое растёт с массой: при 296 кг трение (~7250 Н) почти в точности равнялось
+		# тяге четырёх колёс, и машина стояла, хотя расчёт обещал 24 м/с². Старая модель
+		# этой беды не знала лишь потому, что умножала тягу на массу и трение сокращалось.
+		# Теперь ускорение действительно равно Σтяга / масса — ровно то, что в гараже.
+		var surplus: float = power * engine_force * speed_factor
+		apply_central_force(fwd * _throttle * (surplus + _rolling_drag()))
 	elif abs(vel_fwd) > 0.1:
 		apply_central_force(-fwd * vel_fwd * engine_brake * mass)   # накат
 
