@@ -48,7 +48,10 @@ var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 func _ready() -> void:
 	var map: Node = get_parent()
 	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
-		push_error("resource_nodes: у родителя-карты нет terrain_height_at()/get_dims()")
+		push_error("resource_nodes: у родителя-карты нет terrain_height_at()/get_dims(). Достался: %s тип %s скрипт %s" % [
+				"null" if map == null else map.name,
+				"-" if map == null else map.get_class(),
+				"нет" if map == null or map.get_script() == null else map.get_script().resource_path])
 		return
 
 	var guard: int = 0

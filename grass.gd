@@ -52,7 +52,10 @@ var _corr_dirty: bool = false
 func _ready() -> void:
 	await get_tree().process_frame
 	if not map_node or not map_node.has_method("set_grass_trample"):
-		push_error("GrassSystem: map_node не поддерживает set_grass_trample()")
+		push_error("GrassSystem: map_node не поддерживает set_grass_trample(). Достался: %s тип %s скрипт %s" % [
+				"null" if map_node == null else map_node.name,
+				"-" if map_node == null else map_node.get_class(),
+				"нет" if map_node == null or map_node.get_script() == null else map_node.get_script().resource_path])
 		return
 	_benders = get_tree().get_nodes_in_group("grass_benders")
 	_build_viewport()

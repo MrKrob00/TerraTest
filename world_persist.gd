@@ -9,7 +9,10 @@ extends Node
 const SAVE_PATH := "user://world_save.json"
 const BAD_SAVE_PATH := "user://world_save.bad.json"   # сюда уезжает сейв, который не удалось загрузить
 const SAFE_CLEARANCE := 2.0         # на сколько поднимаем машину над рельефом при восстановлении
-const FALL_LIMIT := 60.0            # глубже рельефа на столько = провалилась, спасаем
+# Рельеф — карта высот: под поверхностью нет НИЧЕГО, поэтому оказаться там глубже пары
+# метров можно только провалившись сквозь неё. Прежние 60 м означали, что застрявшую в
+# толще машину страховка не замечала вовсе.
+const FALL_LIMIT := 3.0             # ниже рельефа на столько = провалился, поднимаем
 const BLOCK_TTL := 600.0            # 10 мин — время жизни свободного блока в мире
 const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейва (машины, блоки мира, позиции)
 
@@ -70,32 +73,56 @@ func _terrain() -> Node:
 			return c
 	return null
 
+# Рельеф, у которого УЖЕ загружены высоты. Пока карта не прочитала heightmap, get_dims()
+# нулевой, а terrain_height_at возвращает бессмысленный ноль — и подъём «над рельефом» по
+# такому нулю ставит машину внутрь холма. Именно так позиция и оказывалась под картой.
+func _ready_terrain() -> Node:
+	var terr := _terrain()
+	if terr == null or not terr.has_method("get_dims"):
+		return null
+	return terr if terr.get_dims().x > 0 else null
+
 # СТРАХОВКА: если машина оказалась заметно НИЖЕ рельефа, она провалилась сквозь него (коллизия
 # рельефа стриминговая — под только что телепортированным телом её может ещё не быть). Без этого
 # машина падала бесконечно, а камера уезжала за ней на километры вниз — экран становился пустым.
 func _rescue_fallen() -> void:
-	var terr := _terrain()
+	var terr := _ready_terrain()
 	if terr == null:
 		return
-	for m in _player_machines():
-		var n3 := m as Node3D
-		if n3 == null:
+	var lifted: Array[RigidBody3D] = []
+	for n in _fall_candidates():
+		var n3 := n as Node3D
+		if n3 == null or not is_instance_valid(n3):
 			continue
 		var ground: float = terr.terrain_height_at(n3.global_position)
 		if n3.global_position.y > ground - FALL_LIMIT:
 			continue
-		push_warning("world_persist: машина провалилась под рельеф — возвращаю наверх")
-		var rb := m as RigidBody3D
-		if rb != null:
-			rb.freeze = true
+		push_warning("world_persist: %s провалился под рельеф — возвращаю наверх" % n3.name)
+		var rb := n3 as RigidBody3D
+		if rb != null and not rb.freeze:
+			rb.freeze = true                    # замороженным (база на якоре) не мешаем
 			rb.linear_velocity = Vector3.ZERO
 			rb.angular_velocity = Vector3.ZERO
+			lifted.append(rb)
 		n3.global_position = Vector3(n3.global_position.x,
 				ground + SAFE_CLEARANCE + 2.0, n3.global_position.z)
-		if rb != null:
-			await get_tree().process_frame          # даём коллизии построиться под новой точкой
-			await get_tree().process_frame
+	if lifted.is_empty():
+		return
+	# Стриминговая коллизия рельефа строится ВОКРУГ тел, то есть уже после того, как тело
+	# окажется на новом месте. Отпускаем через пару кадров, иначе провалится снова.
+	await get_tree().process_frame
+	await get_tree().process_frame
+	for rb in lifted:
+		if is_instance_valid(rb):
 			rb.freeze = false
+
+# Всё, что может провалиться: машины и свободные блоки/ресурсы в мире.
+func _fall_candidates() -> Array:
+	var out: Array = _player_machines().duplicate()
+	var o := _objects()
+	if o != null:
+		out.append_array(o.get_children())
+	return out
 
 # ── Узлы сцены ────────────────────────────────────────────────────────────────
 func _objects() -> Node:
@@ -195,6 +222,12 @@ func _save_world() -> void:
 			continue
 		var gp: Vector3 = (m as Node3D).global_position
 		var gr: Vector3 = (m as Node3D).global_rotation
+		# В сейв не должна попасть точка ПОД рельефом. Иначе одна неудачная автосохранёнка
+		# закрепляется навсегда: каждая следующая загрузка возвращает машину туда же, и
+		# игрок падает снова и снова, сколько ни перезапускай.
+		var terr_save := _ready_terrain()
+		if terr_save != null:
+			gp.y = maxf(gp.y, terr_save.terrain_height_at(gp) + SAFE_CLEARANCE)
 		machines.append({
 			"layout": m.block_map_node.get_layout(),
 			"pos": [gp.x, gp.y, gp.z],
@@ -316,9 +349,18 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 		veh.global_rotation = Vector3(r[0], r[1], r[2])
 	if p != null:
 		var pos := Vector3(p[0], p[1], p[2])
-		var terr := _terrain()
+		# Ждём, пока рельеф прочитает высоты: до этого terrain_height_at даёт ноль, подъём
+		# считается от нуля, и машина встаёт внутрь холма — а дальше падает сквозь него.
+		var guard: int = 0
+		var terr := _ready_terrain()
+		while terr == null and guard < 600:
+			await get_tree().process_frame
+			guard += 1
+			terr = _ready_terrain()
 		if terr != null:
 			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
+		else:
+			push_warning("world_persist: рельеф не готов — позиция машины взята из сейва как есть")
 		veh.global_position = pos
 	await get_tree().process_frame
 	await get_tree().process_frame
