@@ -1,11 +1,25 @@
 extends VehicleBlock
 
-# Меш блока корпуса берётся у генератора, а не из objects/GSO*.res. Так он приходит вместе
-# со своим материалом (текстура в памяти, фильтр nearest), и настраивать в редакторе нечего.
-# Ставим в _ready, а не ссылкой в сцене: тогда правка block_mesh.gd сразу видна в игре и
-# не нужно ни печь .res, ни держать в сцене ссылку на сгенерированный ресурс.
+# Меш блока — обычный ассет res://blocks/armor.blockgen: плагин addons/blockgen импортирует
+# его в ресурс Mesh, который видно в файловой панели и можно перетащить в поле Mesh любого
+# MeshInstance3D. Здесь он просто грузится по пути.
+#
+# Если плагин выключен и ассета нет, меш строится на лету тем же BlockBuilder: игра не
+# должна ломаться из-за настроек редактора. Меш общий на все экземпляры — блоков десятки.
+const MESH_PATH: String = "res://blocks/armor.blockgen"
+
+static var _mesh: Mesh = null
+
 func _ready() -> void:
 	super._ready()
 	var mi: MeshInstance3D = get_node_or_null("Block") as MeshInstance3D
 	if mi != null:
-		mi.mesh = GeneratedBlock.block_mesh()
+		mi.mesh = _block_mesh()
+
+static func _block_mesh() -> Mesh:
+	if _mesh == null:
+		if ResourceLoader.exists(MESH_PATH):
+			_mesh = load(MESH_PATH) as Mesh
+		if _mesh == null:
+			_mesh = BlockBuilder.from_file(MESH_PATH)
+	return _mesh

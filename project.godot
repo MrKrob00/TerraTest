@@ -99,7 +99,7 @@ window/handheld/orientation="landscape"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/LiteTerrain/plugin.cfg", "res://addons/admob/plugin.cfg")
+enabled=PackedStringArray("res://addons/LiteTerrain/plugin.cfg", "res://addons/admob/plugin.cfg", "res://addons/blockgen/plugin.cfg")
 
 [input]
 
