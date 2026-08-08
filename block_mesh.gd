@@ -208,11 +208,17 @@ static func _orient_outward(poly: Array) -> Array:
 # UV
 # ══════════════════════════════════════════
 
-# Выборка в ЦЕНТР текселя: край ячейки при nearest ушёл бы в соседнюю.
+# Отступ от края ячейки: держит выборку внутри неё, чтобы nearest не заглянул в соседнюю.
+const EDGE_EPS: float = 0.01
+
+# u,v растягиваются на ПОЛНУЮ ширину ячейки, а не на центры крайних текселей. При
+# отображении «центр-в-центр» крайним рядам доставалась вдвое меньшая доля u, и ободок
+# на грани выходил вдвое тоньше остальных полос.
 static func _cell_uv(cell: Vector2i, u: float, v: float) -> Vector2:
+	var span: float = float(CELL) - 2.0 * EDGE_EPS
 	return Vector2(
-		(cell.x * CELL + 0.5 + clampf(u, 0.0, 1.0) * (CELL - 1)) / float(ATLAS),
-		(cell.y * CELL + 0.5 + clampf(v, 0.0, 1.0) * (CELL - 1)) / float(ATLAS))
+		(cell.x * CELL + EDGE_EPS + clampf(u, 0.0, 1.0) * span) / float(ATLAS),
+		(cell.y * CELL + EDGE_EPS + clampf(v, 0.0, 1.0) * span) / float(ATLAS))
 
 static func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 	var out: Array = []
