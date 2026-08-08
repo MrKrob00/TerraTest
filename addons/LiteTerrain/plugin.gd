@@ -1,14 +1,14 @@
 @tool
 extends EditorPlugin
 
-var sculpt_node     = null
+var sculpt_node: Node = null
 var brush_radius: float = 3.0
 var brush_strength: float = 0.1
 var sculpt_mode: String = "raise"
-var panel           = null
-var radius_slider   = null
-var strength_slider = null
-var mode_label      = null
+var panel: VBoxContainer = null
+var radius_slider: HSlider = null
+var strength_slider: HSlider = null
+var mode_label: Label = null
 
 var _dirty_chunks: Dictionary = {}
 
@@ -99,11 +99,11 @@ func _gen_fill_row(z: int) -> void:
 	var row := z * w
 	for x: Variant in w:
 		var fx := float(x)
-		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
+		var base := (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
 		var continental:float = pow(base, gen_power)
-		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), gen_ridge_sharpness)
-		var mountain_mask = smoothstep(0.52, 0.78, continental)
-		var ridge_term = ridge * gen_mountain_amount * mountain_mask
+		var ridge := pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), gen_ridge_sharpness)
+		var mountain_mask := smoothstep(0.52, 0.78, continental)
+		var ridge_term := ridge * gen_mountain_amount * mountain_mask
 		var wx := fx - hw
 		var wz := fz - hd
 		if gen_canyon_enable and ridge_term > 0.001:
@@ -118,7 +118,7 @@ func _gen_fill_row(z: int) -> void:
 		var not_mtn := 1.0 - mtn_mask
 		var land_sand := sand_m * not_mtn
 		var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, land_sand)
-		var h = cont_biome + ridge_term * not_mtn
+		var h := cont_biome + ridge_term * not_mtn
 		var duneph := wx / GEN_DUNE_WAVELEN + _gen_dune.get_noise_2d(fx, fz) * 3.5
 		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * land_sand
 		var mtn_rise := mtn_dome * GEN_MOUNTAIN_RISE + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
@@ -245,7 +245,7 @@ func _enter_tree() -> void:
 	flatten_btn.pressed.connect(_on_flatten)
 	panel.add_child(flatten_btn)
 
-	var radius_label = _lbl("Radius: " + str(snapped(brush_radius, 0.5)))
+	var radius_label := _lbl("Radius: " + str(snapped(brush_radius, 0.5)))
 	panel.add_child(radius_label)
 	radius_slider = _slider(1.0, 200.0, brush_radius)
 	radius_slider.value_changed.connect(func(v: float) -> void:
@@ -255,7 +255,7 @@ func _enter_tree() -> void:
 	radius_slider.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(radius_slider)
 
-	var strength_label = _lbl("Strength: " + str(int(round(brush_strength * 1000.0))))
+	var strength_label := _lbl("Strength: " + str(int(round(brush_strength * 1000.0))))
 	panel.add_child(strength_label)
 	strength_slider = _slider(1.0, 1000.0, brush_strength * 1000.0)
 	strength_slider.value_changed.connect(func(v: float) -> void:
@@ -269,7 +269,7 @@ func _enter_tree() -> void:
 	panel.add_child(_sep())
 	panel.add_child(_lbl("── Noise Generation ──"))
 
-	var seed_lbl = _lbl("Seed: " + str(gen_seed))
+	var seed_lbl := _lbl("Seed: " + str(gen_seed))
 	panel.add_child(seed_lbl)
 	var seed_spin: SpinBox = SpinBox.new()
 	seed_spin.min_value = 0
@@ -283,9 +283,9 @@ func _enter_tree() -> void:
 	panel.add_child(seed_spin)
 
 	# Scale (continental frequency)
-	var scale_lbl = _lbl("Scale: " + str(int(gen_scale)))
+	var scale_lbl := _lbl("Scale: " + str(int(gen_scale)))
 	panel.add_child(scale_lbl)
-	var scale_sl = _slider(10.0, 600.0, gen_scale)
+	var scale_sl := _slider(10.0, 600.0, gen_scale)
 	scale_sl.value_changed.connect(func(v: float) -> void:
 		gen_scale = v
 		scale_lbl.text = "Scale: " + str(int(v))
@@ -293,7 +293,7 @@ func _enter_tree() -> void:
 	scale_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(scale_sl)
 
-	var oct_lbl = _lbl("Octaves: " + str(gen_octaves))
+	var oct_lbl := _lbl("Octaves: " + str(gen_octaves))
 	panel.add_child(oct_lbl)
 	var oct_spin: SpinBox = SpinBox.new()
 	oct_spin.min_value = 1
@@ -307,9 +307,9 @@ func _enter_tree() -> void:
 	panel.add_child(oct_spin)
 
 	# Power curve  (^N — higher = flatter plains, sharper peaks)
-	var pow_lbl = _lbl("Plains Power (^N): " + str(snapped(gen_power, 0.1)))
+	var pow_lbl := _lbl("Plains Power (^N): " + str(snapped(gen_power, 0.1)))
 	panel.add_child(pow_lbl)
-	var pow_sl = _slider(1.0, 8.0, gen_power, 0.1)
+	var pow_sl := _slider(1.0, 8.0, gen_power, 0.1)
 	pow_sl.value_changed.connect(func(v: float) -> void:
 		gen_power = v
 		pow_lbl.text = "Plains Power (^N): " + str(snapped(v, 0.1))
@@ -318,9 +318,9 @@ func _enter_tree() -> void:
 	panel.add_child(pow_sl)
 
 	# Mountain ridge amount
-	var mount_lbl = _lbl("Mountains: " + str(int(gen_mountain_amount * 100)) + " %")
+	var mount_lbl := _lbl("Mountains: " + str(int(gen_mountain_amount * 100)) + " %")
 	panel.add_child(mount_lbl)
-	var mount_sl = _slider(0.0, 1.0, gen_mountain_amount, 0.01)
+	var mount_sl := _slider(0.0, 1.0, gen_mountain_amount, 0.01)
 	mount_sl.value_changed.connect(func(v: float) -> void:
 		gen_mountain_amount = v
 		mount_lbl.text = "Mountains: " + str(int(v * 100)) + " %"
@@ -329,9 +329,9 @@ func _enter_tree() -> void:
 	panel.add_child(mount_sl)
 
 	# Ridge sharpness  (higher = knife-edge ridges)
-	var ridge_lbl = _lbl("Ridge Sharpness: " + str(snapped(gen_ridge_sharpness, 0.1)))
+	var ridge_lbl := _lbl("Ridge Sharpness: " + str(snapped(gen_ridge_sharpness, 0.1)))
 	panel.add_child(ridge_lbl)
-	var ridge_sl = _slider(1.0, 8.0, gen_ridge_sharpness, 0.1)
+	var ridge_sl := _slider(1.0, 8.0, gen_ridge_sharpness, 0.1)
 	ridge_sl.value_changed.connect(func(v: float) -> void:
 		gen_ridge_sharpness = v
 		ridge_lbl.text = "Ridge Sharpness: " + str(snapped(v, 0.1))
@@ -340,9 +340,9 @@ func _enter_tree() -> void:
 	panel.add_child(ridge_sl)
 
 	# Amplitude (max height in world units)
-	var amp_lbl = _lbl("Amplitude: " + str(int(gen_amplitude)))
+	var amp_lbl := _lbl("Amplitude: " + str(int(gen_amplitude)))
 	panel.add_child(amp_lbl)
-	var amp_sl = _slider(1.0, 300.0, gen_amplitude)
+	var amp_sl := _slider(1.0, 300.0, gen_amplitude)
 	amp_sl.value_changed.connect(func(v: float) -> void:
 		gen_amplitude = v
 		amp_lbl.text = "Amplitude: " + str(int(v))
@@ -351,7 +351,7 @@ func _enter_tree() -> void:
 	panel.add_child(amp_sl)
 
 	# Smooth passes (simple box-blur after generation)
-	var smooth_lbl = _lbl("Smooth Passes: " + str(gen_smooth))
+	var smooth_lbl := _lbl("Smooth Passes: " + str(gen_smooth))
 	panel.add_child(smooth_lbl)
 	var smooth_spin: SpinBox = SpinBox.new()
 	smooth_spin.min_value = 0
@@ -365,7 +365,7 @@ func _enter_tree() -> void:
 	panel.add_child(smooth_spin)
 
 	# Map size (image mode only). 0 = keep the current size.
-	var size_lbl = _lbl("Map Size (0 = keep): " + str(gen_size))
+	var size_lbl := _lbl("Map Size (0 = keep): " + str(gen_size))
 	panel.add_child(size_lbl)
 	var size_spin: SpinBox = SpinBox.new()
 	size_spin.min_value = 0
@@ -390,9 +390,9 @@ func _enter_tree() -> void:
 	)
 	panel.add_child(canyon_cb)
 
-	var mesa_lbl = _lbl("  Высота плато (макс): " + str(int(gen_canyon_plateau)))
+	var mesa_lbl := _lbl("  Высота плато (макс): " + str(int(gen_canyon_plateau)))
 	panel.add_child(mesa_lbl)
-	var mesa_sl = _slider(20.0, 60.0, gen_canyon_plateau)
+	var mesa_sl := _slider(20.0, 60.0, gen_canyon_plateau)
 	mesa_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_plateau = v
 		mesa_lbl.text = "  Высота плато (макс): " + str(int(v))
@@ -400,9 +400,9 @@ func _enter_tree() -> void:
 	mesa_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(mesa_sl)
 
-	var floor_lbl = _lbl("  Дно каньонов: " + str(int(gen_canyon_floor)))
+	var floor_lbl := _lbl("  Дно каньонов: " + str(int(gen_canyon_floor)))
 	panel.add_child(floor_lbl)
-	var floor_sl = _slider(0.0, 20.0, gen_canyon_floor)
+	var floor_sl := _slider(0.0, 20.0, gen_canyon_floor)
 	floor_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_floor = v
 		floor_lbl.text = "  Дно каньонов: " + str(int(v))
@@ -410,9 +410,9 @@ func _enter_tree() -> void:
 	floor_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(floor_sl)
 
-	var terr_lbl = _lbl("  Высота страты (терраса): " + str(snapped(gen_canyon_terrace, 0.5)))
+	var terr_lbl := _lbl("  Высота страты (терраса): " + str(snapped(gen_canyon_terrace, 0.5)))
 	panel.add_child(terr_lbl)
-	var terr_sl = _slider(2.0, 12.0, gen_canyon_terrace, 0.5)
+	var terr_sl := _slider(2.0, 12.0, gen_canyon_terrace, 0.5)
 	terr_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_terrace = v
 		terr_lbl.text = "  Высота страты (терраса): " + str(snapped(v, 0.5))
@@ -420,9 +420,9 @@ func _enter_tree() -> void:
 	terr_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(terr_sl)
 
-	var riser_lbl = _lbl("  Крутизна уступа: " + str(snapped(gen_canyon_riser, 0.05)))
+	var riser_lbl := _lbl("  Крутизна уступа: " + str(snapped(gen_canyon_riser, 0.05)))
 	panel.add_child(riser_lbl)
-	var riser_sl = _slider(0.1, 0.6, gen_canyon_riser, 0.05)
+	var riser_sl := _slider(0.1, 0.6, gen_canyon_riser, 0.05)
 	riser_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_riser = v
 		riser_lbl.text = "  Крутизна уступа: " + str(snapped(v, 0.05))
@@ -430,9 +430,9 @@ func _enter_tree() -> void:
 	riser_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(riser_sl)
 
-	var gwidth_lbl = _lbl("  Ширина ущелий: " + str(snapped(gen_canyon_width, 0.01)))
+	var gwidth_lbl := _lbl("  Ширина ущелий: " + str(snapped(gen_canyon_width, 0.01)))
 	panel.add_child(gwidth_lbl)
-	var gwidth_sl = _slider(0.03, 0.30, gen_canyon_width, 0.01)
+	var gwidth_sl := _slider(0.03, 0.30, gen_canyon_width, 0.01)
 	gwidth_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_width = v
 		gwidth_lbl.text = "  Ширина ущелий: " + str(snapped(v, 0.01))
@@ -440,9 +440,9 @@ func _enter_tree() -> void:
 	gwidth_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(gwidth_sl)
 
-	var gorge_lbl = _lbl("  Частота русел: " + str(int(gen_canyon_gorge)))
+	var gorge_lbl := _lbl("  Частота русел: " + str(int(gen_canyon_gorge)))
 	panel.add_child(gorge_lbl)
-	var gorge_sl = _slider(30.0, 160.0, gen_canyon_gorge)
+	var gorge_sl := _slider(30.0, 160.0, gen_canyon_gorge)
 	gorge_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_gorge = v
 		gorge_lbl.text = "  Частота русел: " + str(int(v))
@@ -471,7 +471,7 @@ func _exit_tree() -> void:
 	# Сохраняем состояние дока при закрытии редактора / отключении плагина.
 	_save_settings()
 	if panel:
-		var scroll = panel.get_parent()
+		var scroll := panel.get_parent()
 		if scroll:
 			remove_control_from_docks(scroll)
 			scroll.queue_free()
@@ -541,7 +541,7 @@ func _load_settings() -> void:
 	var es := EditorInterface.get_editor_settings()
 	if es == null:
 		return
-	var d = es.get_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {})
+	var d := es.get_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {})
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 	brush_radius        = float(d.get("brush_radius",        brush_radius))
@@ -618,33 +618,33 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 			return EditorPlugin.AFTER_GUI_INPUT_PASS
 
 	if event is InputEventMouseMotion or event is InputEventMouseButton:
-		var left  = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-		var right = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
+		var left := Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+		var right := Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
 
 		if not left and not right:
 			return EditorPlugin.AFTER_GUI_INPUT_PASS
 
-		var ray_origin = viewport_camera.project_ray_origin(event.position)
-		var ray_dir    = viewport_camera.project_ray_normal(event.position)
+		var ray_origin := viewport_camera.project_ray_origin(event.position)
+		var ray_dir := viewport_camera.project_ray_normal(event.position)
 
 		var hit_pos
 		if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
 			# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
-			var rh = sculpt_node.raycast_heightmap(ray_origin, ray_dir)
+			var rh := sculpt_node.raycast_heightmap(ray_origin, ray_dir)
 			if rh == null:
 				return EditorPlugin.AFTER_GUI_INPUT_PASS
 			hit_pos = rh
 		else:
-			var space = sculpt_node.get_world_3d().direct_space_state
-			var query = PhysicsRayQueryParameters3D.create(
+			var space := sculpt_node.get_world_3d().direct_space_state
+			var query := PhysicsRayQueryParameters3D.create(
 				ray_origin, ray_origin + ray_dir * 1000.0)
 			query.collide_with_bodies = true
-			var result = space.intersect_ray(query)
+			var result := space.intersect_ray(query)
 			if result.is_empty():
 				return EditorPlugin.AFTER_GUI_INPUT_PASS
 			hit_pos = result.position
 
-		var raise = left
+		var raise := left
 		if sculpt_mode == "lower":
 			raise = false
 		elif sculpt_mode == "raise":
@@ -683,35 +683,35 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 			_dirty_chunks[ci] = true
 		return
 
-	var col_shape = sculpt_node.get_node("CollisionShape3D")
+	var col_shape := sculpt_node.get_node("CollisionShape3D")
 	if col_shape == null:
 		return
-	var shape = col_shape.shape
+	var shape := col_shape.shape
 	if not shape is HeightMapShape3D:
 		return
 
-	var width        = shape.map_width
-	var depth        = shape.map_depth
-	var map_data_old = shape.map_data.duplicate()
-	var map_data     = shape.map_data
+	var width := shape.map_width
+	var depth := shape.map_depth
+	var map_data_old := shape.map_data.duplicate()
+	var map_data := shape.map_data
 
-	var local_pos = sculpt_node.to_local(hit_pos)
-	var cx = int(local_pos.x + width / 2.0)
-	var cz = int(local_pos.z + depth / 2.0)
+	var local_pos := sculpt_node.to_local(hit_pos)
+	var cx := int(local_pos.x + width / 2.0)
+	var cz := int(local_pos.z + depth / 2.0)
 
-	var r     = int(ceil(brush_radius))
-	var x_min = clamp(cx - r, 0, width - 1)
-	var x_max = clamp(cx + r, 0, width - 1)
-	var z_min = clamp(cz - r, 0, depth - 1)
-	var z_max = clamp(cz + r, 0, depth - 1)
+	var r := int(ceil(brush_radius))
+	var x_min := clamp(cx - r, 0, width - 1)
+	var x_max := clamp(cx + r, 0, width - 1)
+	var z_min := clamp(cz - r, 0, depth - 1)
+	var z_max := clamp(cz + r, 0, depth - 1)
 
 	if sculpt_mode == "flatten":
 		var avg_height: float = 0.0
 		var count: int = 0
 		for z: int in range(z_min, z_max + 1):
 			for x: int in range(x_min, x_max + 1):
-				var dx = x - cx
-				var dz = z - cz
+				var dx := x - cx
+				var dz := z - cz
 				if sqrt(dx*dx + dz*dz) <= brush_radius:
 					avg_height += map_data[z * width + x]
 					count += 1
@@ -719,49 +719,49 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 			avg_height /= count
 		for z: int in range(z_min, z_max + 1):
 			for x: int in range(x_min, x_max + 1):
-				var dx   = x - cx
-				var dz   = z - cz
-				var dist = sqrt(dx*dx + dz*dz)
+				var dx := x - cx
+				var dz := z - cz
+				var dist := sqrt(dx*dx + dz*dz)
 				if dist <= brush_radius:
-					var falloff = 1.0 - (dist / brush_radius)
-					var index   = z * width + x
+					var falloff := 1.0 - (dist / brush_radius)
+					var index := z * width + x
 					# Вес lerp в [0,1] — тот же фикс, что и в image-режиме: *5 без клампа
 					# «перелетал» среднее при большой силе и ломал карту.
 					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * brush_strength, 0.0, 1.0))
 	else:
 		for z: int in range(z_min, z_max + 1):
 			for x: int in range(x_min, x_max + 1):
-				var dx   = x - cx
-				var dz   = z - cz
-				var dist = sqrt(dx*dx + dz*dz)
+				var dx := x - cx
+				var dz := z - cz
+				var dist := sqrt(dx*dx + dz*dz)
 				if dist <= brush_radius:
-					var falloff = 1.0 - (dist / brush_radius)
-					var index   = z * width + x
+					var falloff := 1.0 - (dist / brush_radius)
+					var index := z * width + x
 					if raise:
 						map_data[index] += brush_strength * falloff
 					else:
 						map_data[index] -= brush_strength * falloff
 
-	var ur = get_undo_redo()
+	var ur := get_undo_redo()
 	ur.create_action("Sculpt Terrain", UndoRedo.MERGE_ALL)
 	ur.add_do_property(shape, "map_data", map_data)
 	ur.add_undo_property(shape, "map_data", map_data_old)
 	ur.commit_action()
 
 	if sculpt_node.has_method("get_chunk_info"):
-		var info      = sculpt_node.get_chunk_info()
-		var cs        = info["chunk_size"]
-		var chunks_x  = info["chunks_x"]
-		var map_w     = info["map_width"]
-		var map_d     = info["map_depth"]
-		var chunks_z  = ceili(float(map_d - 1) / cs)
-		var total_chunks = chunks_x * chunks_z
-		var cx_center = int(local_pos.x + map_w / 2.0) / cs
-		var cz_center = int(local_pos.z + map_d / 2.0) / cs
-		var cr        = int(ceil(brush_radius / cs)) + 1
+		var info := sculpt_node.get_chunk_info()
+		var cs := info["chunk_size"]
+		var chunks_x := info["chunks_x"]
+		var map_w := info["map_width"]
+		var map_d := info["map_depth"]
+		var chunks_z := ceili(float(map_d - 1) / cs)
+		var total_chunks := chunks_x * chunks_z
+		var cx_center := int(local_pos.x + map_w / 2.0) / cs
+		var cz_center := int(local_pos.z + map_d / 2.0) / cs
+		var cr := int(ceil(brush_radius / cs)) + 1
 		for dz: int in range(-cr, cr + 1):
 			for dx: int in range(-cr, cr + 1):
-				var ci = (cz_center + dz) * chunks_x + (cx_center + dx)
+				var ci := (cz_center + dz) * chunks_x + (cx_center + dx)
 				if ci >= 0 and ci < total_chunks:
 					_dirty_chunks[ci] = true
 
@@ -782,7 +782,7 @@ func _commit_stroke_undo() -> void:
 	if _stroke_before == after:      # мазок ничего не изменил — не мусорим в истории
 		return
 	var dims: Vector2i = sculpt_node.get_dims()
-	var ur = get_undo_redo()
+	var ur := get_undo_redo()
 	ur.create_action("Sculpt Terrain", UndoRedo.MERGE_DISABLE, sculpt_node)
 	ur.add_do_method(sculpt_node, "set_heightmap", after, dims.x, dims.y)
 	ur.add_do_method(self, "_persist_heightmap")
@@ -851,11 +851,11 @@ func _bake_heightmap() -> void:
 		depth  = dims.y
 		data   = sculpt_node.get_heights()
 	else:
-		var col_shape = sculpt_node.get_node_or_null("CollisionShape3D")
+		var col_shape := sculpt_node.get_node_or_null("CollisionShape3D")
 		if col_shape == null or not (col_shape.shape is HeightMapShape3D):
 			push_warning("LiteTerrain: no HeightMapShape3D found on the selected node")
 			return
-		var shape = col_shape.shape
+		var shape := col_shape.shape
 		width = shape.map_width
 		depth = shape.map_depth
 		data  = shape.map_data
@@ -877,7 +877,7 @@ func _bake_heightmap() -> void:
 	# Without this the generated ArrayMesh is unique-to-scene and gets embedded into the
 	# .tscn on save (bloat + manual re-link each time). take_over_path() makes the live
 	# mesh point at the file, so the scene just references it externally.
-	var mi = sculpt_node.get_node_or_null("MeshInstance3D")
+	var mi := sculpt_node.get_node_or_null("MeshInstance3D")
 	if mi != null and mi.mesh != null:
 		var merr := ResourceSaver.save(mi.mesh, MESH_PATH)
 		if merr == OK:
@@ -952,7 +952,7 @@ func _generate_png() -> void:
 		depth = dims.y
 		data  = sculpt_node.get_heights()
 	else:
-		var col = sculpt_node.get_node_or_null("CollisionShape3D")
+		var col := sculpt_node.get_node_or_null("CollisionShape3D")
 		if col == null or not (col.shape is HeightMapShape3D):
 			push_warning("LiteTerrain: нет HeightMapShape3D")
 			return
@@ -996,7 +996,7 @@ func _generate_noise() -> void:
 	var image_mode: bool = sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()
 	var width: int
 	var depth: int
-	var shape = null
+	var shape: HeightMapShape3D = null
 	var map_data_old := PackedFloat32Array()
 
 	if image_mode:
@@ -1007,7 +1007,7 @@ func _generate_noise() -> void:
 		if width  <= 0: width  = 512
 		if depth  <= 0: depth  = 512
 	else:
-		var col_shape = sculpt_node.get_node_or_null("CollisionShape3D")
+		var col_shape := sculpt_node.get_node_or_null("CollisionShape3D")
 		if col_shape == null:
 			push_warning("LiteTerrain: no CollisionShape3D child found")
 			return
@@ -1077,7 +1077,7 @@ func _generate_noise() -> void:
 	# Simple 5-tap box blur to soften extreme spikes.
 	# Each pass slightly reduces aliasing without destroying ridges.
 	for _p: int in gen_smooth:
-		var buf = new_data.duplicate()
+		var buf := new_data.duplicate()
 		for z: int in range(1, depth - 1):
 			for x: int in range(1, width - 1):
 				buf[z * width + x] = (
@@ -1136,7 +1136,7 @@ func _generate_noise() -> void:
 	# action lives in the scene-node history. (Mixing add_do_property on the heightmap
 	# resource with add_do_method on the node caused "UndoRedo history mismatch".)
 	# custom_context = sculpt_node pins the action to the node's history as well.
-	var ur = get_undo_redo()
+	var ur := get_undo_redo()
 	ur.create_action("Generate Terrain Noise", UndoRedo.MERGE_DISABLE, sculpt_node)
 	ur.add_do_method(sculpt_node, "apply_heightmap", new_data)
 	ur.add_undo_method(sculpt_node, "apply_heightmap", map_data_old)
