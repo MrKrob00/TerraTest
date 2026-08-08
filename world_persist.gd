@@ -113,7 +113,11 @@ func _rescue_fallen() -> void:
 		var ground: float = terr.terrain_height_at(n3.global_position)
 		if n3.global_position.y > ground - FALL_LIMIT:
 			continue
-		push_warning("world_persist: %s провалился под рельеф — возвращаю наверх" % n3.name)
+		var diag: String = ""
+		if terr.has_method("collision_debug_at"):
+			diag = " | " + str(terr.call("collision_debug_at", n3.global_position))
+		push_warning("world_persist: %s провалился под рельеф (y=%.1f, земля %.1f)%s"
+				% [n3.name, n3.global_position.y, ground, diag])
 		var rb := n3 as RigidBody3D
 		if rb != null and not rb.freeze:
 			rb.freeze = true                    # замороженным (база на якоре) не мешаем

@@ -394,6 +394,14 @@ func _load_heightmap() -> void:
 		d  = collision.shape.map_depth
 		md = collision.shape.map_data
 		_recompute_height_bound()
+	if md.is_empty():
+		# Без высот НЕТ НИ РЕЛЬЕФА, НИ КОЛЛИЗИИ — игрок просто проваливается в пустоту.
+		# Молчать об этом нельзя: раньше отказ был тихим, и причину искали часами.
+		push_error("LiteTerrain: карта высот не загружена (%s отсутствует, встроенного "
+				% heightmap_path
+				+ "HeightMapShape3D тоже нет). Коллизии и рельефа не будет. "
+				+ "terrain_height.res лежит в .gitignore — пересбейкай террейн в доке "
+				+ "LiteTerrain («Bake heightmap → image») или положи файл на место.")
 
 # Подтягивает файл карты высот (у нас ~15 МБ R32F) в ФОНОВОМ потоке и ждёт, отдавая кадры.
 # После этого обычный load() внутри _load_heightmap_image() достаёт ресурс ИЗ КЕША мгновенно
@@ -497,7 +505,13 @@ func _clear_collision_cells() -> void:
 
 # Recompute the set of grid cells needed (union of all bodies' footprints) and create /
 # free cell tiles to match. Diff-only, so static bodies cause zero churn.
+var _warned_no_heights: bool = false
+
 func _update_collision_cells() -> void:
+	if md.is_empty() and _col_active and not _warned_no_heights:
+		_warned_no_heights = true      # один раз, а не каждый кадр
+		push_error("LiteTerrain: коллизия не строится — карта высот пуста (w=%d d=%d). "
+				% [w, d] + "См. сообщение при загрузке карты высот выше.")
 	if not _col_active or md.is_empty() or collision_cell <= 0:
 		return
 	var cells_x := (w + collision_cell - 1) / collision_cell
@@ -530,6 +544,28 @@ func _update_collision_cells() -> void:
 			_col_cells.erase(key)
 	if dead:
 		_prune_dead_bodies()
+
+## Состояние стриминговой коллизии в точке. Зовётся страховкой world_persist в момент,
+## когда тело поймано под рельефом: одна строка в логе отвечает, была ли там коллизия
+## вообще — вместо перебора гипотез по коду.
+func collision_debug_at(world_pos: Vector3) -> String:
+	if md.is_empty():
+		return "карта высот ПУСТА (w=%d d=%d) — коллизии нет ни в каком виде" % [w, d]
+	if not _col_active:
+		return "стриминг ВЫКЛЮЧЕН, работает встроенная коллизия (disabled=%s)" % str(collision.disabled)
+	var cells_x: int = (w + collision_cell - 1) / collision_cell
+	var cells_z: int = (d + collision_cell - 1) / collision_cell
+	var local: Vector3 = global_transform.affine_inverse() * world_pos
+	var bx: int = int(round(local.x + float(w) * 0.5 - 0.5))
+	var bz: int = int(round(local.z + float(d) * 0.5 - 0.5))
+	var cx: int = clampi(bx / collision_cell, 0, cells_x - 1)
+	var cz: int = clampi(bz / collision_cell, 0, cells_z - 1)
+	var key: int = cz * cells_x + cx
+	return "клетка (%d,%d) key=%d — тайл %s | тайлов %d | отслеживается тел %d | внутри карты %s" % [
+			cx, cz, key,
+			"ЕСТЬ" if _col_cells.has(key) else "ОТСУТСТВУЕТ",
+			_col_cells.size(), _col_bodies.size(),
+			"да" if (bx >= 0 and bx < w and bz >= 0 and bz < d) else "НЕТ"]
 
 func _prune_dead_bodies() -> void:
 	var kept := []
