@@ -125,6 +125,6 @@ def write_png(path, rows):
 
 
 if __name__ == "__main__":
-    out = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "objects", "gen"))
+    out = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
     render(os.path.join(out, "preview_armor_block.png"))
     print("превью готово")
