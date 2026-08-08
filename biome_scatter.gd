@@ -48,7 +48,10 @@ var _shown: int = 0
 func _ready() -> void:
 	var map: Node = get_parent()
 	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
-		push_error("BiomeScatter: родитель должен быть картой (terrain_height_at/get_dims)")
+		push_error("BiomeScatter: родитель должен быть картой (terrain_height_at/get_dims). Достался: %s тип %s скрипт %s" % [
+				"null" if map == null else map.name,
+				"-" if map == null else map.get_class(),
+				"нет" if map == null or map.get_script() == null else map.get_script().resource_path])
 		return
 	var guard: int = 0
 	while map.get_dims().x <= 0 and guard < 300:
