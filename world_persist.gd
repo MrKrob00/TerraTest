@@ -76,6 +76,19 @@ func _terrain() -> Node:
 # Рельеф, у которого УЖЕ загружены высоты. Пока карта не прочитала heightmap, get_dims()
 # нулевой, а terrain_height_at возвращает бессмысленный ноль — и подъём «над рельефом» по
 # такому нулю ставит машину внутрь холма. Именно так позиция и оказывалась под картой.
+# Сколько ждём готовности рельефа при восстановлении. Держать дольше нельзя: всё это время
+# машина заморожена, а игрок смотрит на неподвижную картинку.
+const TERRAIN_WAIT_FRAMES: int = 120
+
+func _await_terrain(max_frames: int) -> Node:
+	var terr := _ready_terrain()
+	var guard: int = 0
+	while terr == null and guard < max_frames:
+		await get_tree().process_frame
+		guard += 1
+		terr = _ready_terrain()
+	return terr
+
 func _ready_terrain() -> Node:
 	var terr := _terrain()
 	if terr == null or not terr.has_method("get_dims"):
@@ -334,12 +347,16 @@ func _restore_machine(veh: Node, mdata: Dictionary) -> void:
 	var r: Variant = mdata.get("rot", null)
 	if not (veh is Node3D):
 		return
+	# Рельеф ждём ДО заморозки и недолго. Раньше машину морозили и держали так до 600 кадров,
+	# и если рельеф не успевал прочитать высоты, игрок десять секунд стоял неподвижным кирпичом.
+	# Не дождались — ставим как в сейве: страховка _rescue_fallen крутится раз в секунду и
+	# поднимет машину, если та окажется под землёй.
+	var terr: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
+
 	# Машина — RigidBody3D, и ПРЯМОЙ телепорт незамороженного тела физика откатывает, а под новой
 	# точкой ещё нет стриминговой коллизии рельефа (её тайлы строятся вокруг тела уже ПОСЛЕ того,
-	# как оно там окажется). Из-за этого машина проваливалась сквозь мир и бесконечно падала —
-	# камера уезжала за ней на километры вниз, и экран становился пустым.
-	# Поэтому: замораживаем → ставим позицию НЕ НИЖЕ рельефа → ждём пару кадров, пока построится
-	# коллизия → отпускаем.
+	# как оно там окажется). Поэтому: замораживаем → ставим позицию НЕ НИЖЕ рельефа → ждём пару
+	# кадров, пока построится коллизия → отпускаем.
 	var rb := veh as RigidBody3D
 	if rb != null:
 		rb.freeze = true
@@ -349,18 +366,10 @@ func _restore_machine(veh: Node, mdata: Dictionary) -> void:
 		veh.global_rotation = Vector3(r[0], r[1], r[2])
 	if p != null:
 		var pos := Vector3(p[0], p[1], p[2])
-		# Ждём, пока рельеф прочитает высоты: до этого terrain_height_at даёт ноль, подъём
-		# считается от нуля, и машина встаёт внутрь холма — а дальше падает сквозь него.
-		var guard: int = 0
-		var terr := _ready_terrain()
-		while terr == null and guard < 600:
-			await get_tree().process_frame
-			guard += 1
-			terr = _ready_terrain()
 		if terr != null:
 			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
 		else:
-			push_warning("world_persist: рельеф не готов — позиция машины взята из сейва как есть")
+			push_warning("world_persist: рельеф не готов, позиция из сейва без проверки высоты")
 		veh.global_position = pos
 	await get_tree().process_frame
 	await get_tree().process_frame

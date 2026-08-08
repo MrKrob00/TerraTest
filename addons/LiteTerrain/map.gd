@@ -147,11 +147,11 @@ const MACRO_SIZE: int = 4
 ## collision_radius as needed; bodies sharing a cell share its window.
 @export_range(16, 256, 8) var collision_cell:   int = 16   # heightmap cells per collision tile
 @export_range(4, 256, 4)  var collision_radius: int = 8    # cells covered around each tracked body
-## На сколько единиц опускается «юбка» — кольцо отсчётов вокруг плитки. Jolt гасит
-## внутренние рёбра ОДНОГО поля высот, но его внешний край всегда считает активным ребром,
-## и колесо об этот край тормозит. Юбка уводит край ВНИЗ, под поверхность, где до него
-## уже никто не достаёт; саму поверхность на стыке даёт соседняя плитка.
-@export_range(5.0, 200.0, 5.0) var collision_skirt_drop: float = 40.0
+## На сколько отсчётов плитка заходит на соседнюю. Кромка поля высот для Jolt — активное
+## ребро, и колесо об неё тормозит; перекрытие в один отсчёт кладёт поверх этой кромки
+## настоящую поверхность соседа. Больше единицы не нужно: чем шире перекрытие, тем больше
+## совпадающих статических поверхностей и дублирующих контактов у солвера.
+@export_range(0, 4, 1) var collision_overlap: int = 1
 
 # Дочерние ноды больше НЕ обязательны в сцене — нода создаёт их сама (см. _ensure_children),
 # так что LiteTerrain можно просто добавить одной нодой, без ручной сборки CollisionShape3D +
@@ -539,10 +539,7 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	var cx := key % cells_x
 	var cz := key / cells_x
 	# Плитка ВЛАДЕЕТ отсчётами [ox, ox+collision_cell] включительно, то есть делит с каждым
-	# соседом ровно одну граничную строку: ни зазора, ни наложения. Раньше плитки растягивали
-	# друг на друга на collision_overlap — это не убирало живой край, а размножало его
-	# (край каждой плитки оказывался посреди проезжей части соседней) и вдобавок клало две
-	# совпадающие статические поверхности, с которых солвер собирал дублирующие контакты.
+	# соседом ровно одну граничную строку — ни зазора, ни дыры.
 	var ox := cx * collision_cell
 	var oz := cz * collision_cell
 	var ax0 := ox
@@ -551,31 +548,25 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	var az1 := mini(oz + collision_cell, d - 1)
 	if ax1 - ax0 < 1 or az1 - az0 < 1:
 		return
-	# Вокруг владения — одно кольцо «юбки» (там, где карта не кончилась).
-	var sx0 := maxi(ax0 - 1, 0)
-	var sz0 := maxi(az0 - 1, 0)
-	var sx1 := mini(ax1 + 1, w - 1)
-	var sz1 := mini(az1 + 1, d - 1)
+	# Кольцо перекрытия вокруг владения — с НАСТОЯЩИМИ высотами.
+	# Опускать это кольцо вниз (как делала «юбка») нельзя: соседняя плитка грузится не
+	# всегда, и там, где её ещё нет, опущенное кольцо остаётся единственной поверхностью —
+	# то есть ямой в паре десятков метров от игрока, куда он и проваливался.
+	var sx0 := maxi(ax0 - collision_overlap, 0)
+	var sz0 := maxi(az0 - collision_overlap, 0)
+	var sx1 := mini(ax1 + collision_overlap, w - 1)
+	var sz1 := mini(az1 + collision_overlap, d - 1)
 	var W := sx1 - sx0 + 1
 	var H := sz1 - sz0 + 1
 	if W < 2 or H < 2:
 		return
 	var data := PackedFloat32Array()
 	data.resize(W * H)
-	for j: Variant in H:
-		var sz := sz0 + j
-		var srow := sz * w
+	for j: int in H:
+		var srow := (sz0 + j) * w + sx0
 		var drow := j * W
-		var edge_row := sz < az0 or sz > az1
-		for i: Variant in W:
-			var sx := sx0 + i
-			var h: float = md[srow + sx]
-			# Кольцо юбки берёт ту же высоту, но опущенную: внешний край поля высот
-			# оказывается заведомо ниже проезжей поверхности, которую на этом же месте
-			# держит соседняя плитка со своими настоящими высотами.
-			if edge_row or sx < ax0 or sx > ax1:
-				h -= collision_skirt_drop
-			data[drow + i] = h
+		for i: int in W:
+			data[drow + i] = md[srow + i]
 	var shape := HeightMapShape3D.new()
 	shape.map_width  = W
 	shape.map_depth  = H
