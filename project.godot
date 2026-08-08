@@ -89,6 +89,10 @@ Music="*res://music_manager.gd"
 Q="*res://quest_manager.gd"
 MobileAds="*uid://cgi4yv4jxmjuy"
 
+[debug]
+
+gdscript/warnings/untyped_declaration=1
+
 [display]
 
 window/size/viewport_width=1280
