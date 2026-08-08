@@ -250,7 +250,7 @@ func toggle_anchor() -> bool:
 	if terr != null:
 		var mn := INF
 		var mx := -INF
-		for off: Variant in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
+		for off in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
 			var h: float = terr.terrain_height_at(global_position + off)
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
@@ -460,7 +460,7 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	var keys_to_remove: Array = []
 	
 	# Перебираємо всі фізичні форми самого Vehicle
-	for owner_id: Variant in get_shape_owners():
+	for owner_id in get_shape_owners():
 		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
 		if is_instance_valid(collision_shape):
@@ -484,7 +484,7 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 				keys_to_remove.append(owner_id)
 				
 	# Очищаємо словник урону від застарілих ID
-	for key: Variant in keys_to_remove:
+	for key in keys_to_remove:
 		collision_to_block_map.erase(key)
 
 # Блок потерял связь с корнем (кабина/база) и падает в мир (см. blocks._detach_orphans):
@@ -530,7 +530,7 @@ func register_blast(pos: Vector3, force: float) -> void:
 const REWARD_ORBITER := preload("res://reward_orbiter.gd")
 func award_blocks(block_type: int, count: int = 1) -> void:
 	var list: Array = []
-	for _i: Variant in count:
+	for _i in count:
 		list.append(block_type)
 	award_block_list(list)
 
@@ -543,7 +543,7 @@ func award_block_list(types: Array) -> void:
 	if scn == null:
 		return
 	var n := types.size()
-	for i: Variant in n:
+	for i in n:
 		var orb: Node3D = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
 		scn.add_child(orb)
 		orb.setup(self, int(types[i]), TAU * float(i) / float(n))
@@ -845,7 +845,7 @@ func _tap_over_ui(pos: Vector2) -> bool:
 	var hud: CanvasLayer = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud == null:
 		return false
-	for nm: Variant in _UI_HIT_NODES:
+	for nm in _UI_HIT_NODES:
 		var n: Node = hud.get_node_or_null(nm)
 		if n == null or not (n is CanvasItem) or not n.visible:
 			continue
@@ -1405,7 +1405,7 @@ func _on_attack_timeout() -> void:
 		for i: Node in bl.get_children():
 			if i.has_method("attack"):
 				_atk_cache.append(i)
-	for i: Variant in _atk_cache:
+	for i in _atk_cache:
 		if not is_instance_valid(i):
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш на следующем вызове
 			continue

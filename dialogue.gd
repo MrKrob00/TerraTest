@@ -29,7 +29,7 @@ func say(speaker: String, text: String, duration: float = 0.0) -> void:
 
 # Пачка реплик: [[speaker, text], ...] или [{speaker, text, dur}, ...].
 func say_lines(lines: Array) -> void:
-	for l: Variant in lines:
+	for l in lines:
 		if l is Array and l.size() >= 2:
 			say(str(l[0]), str(l[1]), float(l[2]) if l.size() > 2 else 0.0)
 		elif l is Dictionary:

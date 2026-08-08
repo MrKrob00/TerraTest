@@ -3,6 +3,8 @@ extends Node3D
 @export var current_vehicle: RigidBody3D # Ссылка на активную машину
 @export var lerp_speed: float = 10.0 # Скорость следования камеры
 
+# НЕ типизировать: сюда кладут и Node, и Node3D, а достают в параметр RigidBody3D.
+# Любой Array[T] сломает одно из трёх — нетипизированный массив здесь несущий.
 var vehicles: Array
 
 @onready var camera: Camera3D = $SpringArm3D/Camera3D
@@ -135,7 +137,7 @@ func _ready() -> void:
 	# Собираем только управляемую игроком технику (у неё есть take_block_into_hand),
 	# чтобы враг (другой RigidBody3D в Vehicles) не попадал в список переключения.
 	var vehicle_childs: Array[Node] = $"..".get_children()
-	for i in vehicle_childs:
+	for i: Node in vehicle_childs:
 		if i is RigidBody3D and i.has_method("take_block_into_hand"):
 			if !vehicles.has(i):
 				vehicles.append(i)
@@ -237,7 +239,7 @@ func _terrain_height(world_pos: Vector3) -> float:
 			_terrain_retry -= get_physics_process_delta_time()
 			return -INF                     # не пересканируем сцену чаще раза в 0.5с
 		_terrain_retry = 0.5
-		for c in get_tree().current_scene.get_children():
+		for c: Node in get_tree().current_scene.get_children():
 			if c.has_method("terrain_height_at"):
 				_terrain = c
 				break
@@ -264,7 +266,7 @@ func on_vehicle_died(dead: Node) -> void:
 		return
 	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
 	current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
-	var alive: Array = []
+	var alive: Array = []      # см. vehicles: тот же путь в RigidBody3D-параметр
 	for v in vehicles:
 		if is_instance_valid(v) and v != dead:
 			alive.append(v)

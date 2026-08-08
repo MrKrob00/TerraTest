@@ -174,7 +174,7 @@ func _play_for_context() -> void:
 	if not r.is_empty():
 		_resume.erase(_ctx)
 		if not banned.has(r["file"]):
-			for tr: Variant in tracks.get(_ctx, []):
+			for tr in tracks.get(_ctx, []):
 				if tr["file"] == r["file"]:
 					if tr.get("file", "") == _cur.get("file", "") and _active.playing:
 						return
@@ -190,7 +190,7 @@ func _play_for_context() -> void:
 func _pick(ctx: int) -> Dictionary:
 	var pool: Array = tracks.get(ctx, [])
 	var candidates: Array = []
-	for t: Variant in pool:
+	for t in pool:
 		if banned.has(t["file"]):
 			continue
 		candidates.append(t)
@@ -202,10 +202,10 @@ func _pick(ctx: int) -> Dictionary:
 		if not without_last.is_empty():
 			candidates = without_last
 	var total := 0.0
-	for t: Variant in candidates:
+	for t in candidates:
 		total += FAV_WEIGHT if fav.has(t["file"]) else 1.0
 	var roll := randf() * total
-	for t: Variant in candidates:
+	for t in candidates:
 		roll -= FAV_WEIGHT if fav.has(t["file"]) else 1.0
 		if roll <= 0.0:
 			return t
@@ -246,7 +246,7 @@ func _fade_out_all() -> void:
 	if _fade_tw != null and _fade_tw.is_valid():
 		_fade_tw.kill()
 	_fade_tw = create_tween()
-	for p: Variant in [_a, _b]:
+	for p in [_a, _b]:
 		if p.playing:
 			_fade_tw.parallel().tween_method(_set_player_vol.bind(p), 1.0, 0.0, 1.0)
 	_fade_tw.chain().tween_callback(_stop_all)
@@ -264,7 +264,7 @@ func _on_track_finished(p: AudioStreamPlayer) -> void:
 # В экспортированной сборке файлы видны как .import/.remap — учитываем оба варианта.
 func _scan_tracks() -> void:
 	var meta := _load_meta()
-	for ctx: Variant in DIRS:
+	for ctx in DIRS:
 		var list: Array = []
 		var dir := DirAccess.open(DIRS[ctx])
 		if dir != null:
@@ -323,9 +323,9 @@ func _load_prefs() -> void:
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(PREFS_PATH))
 	if not (parsed is Dictionary):
 		return
-	for k: Variant in parsed.get("fav", []):
+	for k in parsed.get("fav", []):
 		fav[str(k)] = true
-	for k: Variant in parsed.get("banned", []):
+	for k in parsed.get("banned", []):
 		banned[str(k)] = true
 	volume = clampf(float(parsed.get("volume", 0.8)), 0.0, 1.0)
 	enabled = bool(parsed.get("enabled", true))

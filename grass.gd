@@ -76,7 +76,7 @@ func _build_viewport() -> void:
 	_stamp_tex = _make_stamp_texture()
 	var add_mat := CanvasItemMaterial.new()
 	add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD   # overlapping prints accumulate
-	for _i: Variant in max_footprints:
+	for _i in max_footprints:
 		var s := Sprite2D.new()
 		s.texture = _stamp_tex
 		s.material = add_mat
@@ -125,7 +125,7 @@ func _process(delta: float) -> void:
 	#    present — fixes grass springing back under a STATIONARY object), and it drops a
 	#    fading footprint when it has moved enough (the lingering trail behind it).
 	var live: Array[Vector2] = []
-	for b: Variant in _benders:
+	for b in _benders:
 		if not is_instance_valid(b):
 			continue                       # мёртвых чистит периодический filter выше
 		var bp: Vector3 = b.global_position
@@ -238,7 +238,7 @@ func _corr_spread_one() -> void:
 			var i := y * CORR_GRID + x
 			if _corr[i] != 0 or _corr_healed[i] != 0:
 				continue
-			for d: Variant in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nx :int= x + d.x
 				var ny :int= y + d.y
 				if nx >= 0 and nx < CORR_GRID and ny >= 0 and ny < CORR_GRID and _corr[ny * CORR_GRID + nx] != 0:

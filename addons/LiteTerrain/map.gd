@@ -434,7 +434,7 @@ func _setup_streaming_collision() -> void:
 	var scene_root := get_tree().current_scene
 	if scene_root != null:
 		# Track every moving body (RigidBody3D/VehicleBody3D/CharacterBody3D); _register_body filters.
-		for n: Variant in scene_root.find_children("*", "PhysicsBody3D", true, false):
+		for n in scene_root.find_children("*", "PhysicsBody3D", true, false):
 			_register_body(n)
 	if not get_tree().node_added.is_connected(_on_node_added):
 		get_tree().node_added.connect(_on_node_added)
@@ -466,14 +466,14 @@ func _register_body(n: Node) -> void:
 		return                            # our own collision shapes etc.
 	if _top_body(n) != n:
 		return                            # a sub-body — the top body's window already covers it
-	for b: Variant in _col_bodies:
+	for b in _col_bodies:
 		if b["body"] == n:
 			return                        # already tracked
 	_col_bodies.append({"body": n})
 
 func _unregister_body(n: Node) -> void:
 	var kept := []
-	for b: Variant in _col_bodies:
+	for b in _col_bodies:
 		if b["body"] != n:
 			kept.append(b)
 	_col_bodies = kept
@@ -487,7 +487,7 @@ func _on_node_removed(n: Node) -> void:
 		_unregister_body(n)
 
 func _clear_collision_cells() -> void:
-	for key: Variant in _col_cells:
+	for key in _col_cells:
 		if is_instance_valid(_col_cells[key]):
 			_col_cells[key].queue_free()
 	_col_cells.clear()
@@ -501,7 +501,7 @@ func _update_collision_cells() -> void:
 	var cells_z := (d + collision_cell - 1) / collision_cell
 	var desired := {}
 	var dead := false
-	for b: Variant in _col_bodies:
+	for b in _col_bodies:
 		var body: Node3D = b["body"]
 		if body == null or not is_instance_valid(body):
 			dead = true
@@ -517,10 +517,10 @@ func _update_collision_cells() -> void:
 		for cz: int in range(cz0, cz1 + 1):
 			for cx: int in range(cx0, cx1 + 1):
 				desired[cz * cells_x + cx] = true
-	for key: Variant in desired:
+	for key in desired:
 		if not _col_cells.has(key):
 			_make_cell_tile(key, cells_x)
-	for key: Variant in _col_cells.keys():
+	for key in _col_cells.keys():
 		if not desired.has(key):
 			if is_instance_valid(_col_cells[key]):
 				_col_cells[key].queue_free()
@@ -530,7 +530,7 @@ func _update_collision_cells() -> void:
 
 func _prune_dead_bodies() -> void:
 	var kept := []
-	for b: Variant in _col_bodies:
+	for b in _col_bodies:
 		if b["body"] != null and is_instance_valid(b["body"]):
 			kept.append(b)
 	_col_bodies = kept
@@ -790,7 +790,7 @@ func update_chunks(chunk_indices: Array) -> void:
 		if _ed_cache.is_empty():
 			update()
 			return
-		for ci: Variant in chunk_indices:
+		for ci in chunk_indices:
 			if ci < 0 or ci >= _ed_cache.size():
 				continue
 			var cx: int = ci % _ed_cx
@@ -798,7 +798,7 @@ func update_chunks(chunk_indices: Array) -> void:
 			if editor_lod:
 				# Rebuild the dirty chunk plus its 4 neighbours so seam snapping stays valid.
 				_ed_cache[ci] = _chunk_surface_arrays_lod(cx, cz)
-				for off: Variant in [[0,-1],[0,1],[-1,0],[1,0]]:
+				for off in [[0,-1],[0,1],[-1,0],[1,0]]:
 					var nx: int = cx + off[0]
 					var nz: int = cz + off[1]
 					if nx >= 0 and nx < _ed_cx and nz >= 0 and nz < _ed_cz:
@@ -813,7 +813,7 @@ func update_chunks(chunk_indices: Array) -> void:
 	var cxl: int = ceili(float(w - 1) / chunk_size)
 	var dirty_macros := {}   # macro group indices that need their mesh rebuilt
 
-	for ci: Variant in chunk_indices:
+	for ci in chunk_indices:
 		if ci < 0 or ci >= _chunk_instances.size():
 			continue
 		if not _chunk_instances[ci]:   # skip chunks not yet streamed in
@@ -852,7 +852,7 @@ func update_chunks(chunk_indices: Array) -> void:
 				_chunk_instances[ci].set_surface_override_material(0, mat)
 
 	# Rebuild merged meshes for every macro group that had a sub-chunk change
-	for mi: Variant in dirty_macros:
+	for mi in dirty_macros:
 		var macro_mesh := _build_macro_mesh(_macro_to_chunks[mi], 2)
 		if macro_mesh:
 			_macro_instances[mi].mesh = macro_mesh
@@ -983,7 +983,7 @@ func _apply_editor_cache() -> void:
 	var all_colors  := PackedColorArray()
 	var v_offset    := 0
 
-	for arr: Variant in _ed_cache:
+	for arr in _ed_cache:
 		if arr == null or arr.is_empty():
 			continue
 		var verts   := arr[Mesh.ARRAY_VERTEX] as PackedVector3Array
@@ -1001,7 +1001,7 @@ func _apply_editor_cache() -> void:
 		else:
 			for _i: int in verts.size():
 				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
-		for raw_idx: Variant in idxs:
+		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
 
@@ -1129,7 +1129,7 @@ func _build_chunks_from_map_data() -> void:
 		var dz := cam_pos.z - c.z
 		if dx * dx + dz * dz <= load_d2:
 			_resident_set[mi] = true
-			for ci: Variant in _macro_to_chunks[mi]:
+			for ci in _macro_to_chunks[mi]:
 				near_chunks.append(ci)
 
 	if not near_chunks.is_empty():
@@ -1339,10 +1339,10 @@ func _build_macro_chunks() -> void:
 	# ── Pass A: group structure + merged AABB (main thread) ───────────────────
 	# Комментарий «cheap» верен для маленьких карт, но при 124×124 чанках это ~15 000 итераций
 	# с AABB.merge и append одним куском. Отдаём кадр после каждого РЯДА макро-групп.
-	for mz: Variant in _macro_cz:
+	for mz in _macro_cz:
 		if mz > 0:
 			await get_tree().process_frame
-		for mx: Variant in _macro_cx:
+		for mx in _macro_cx:
 			# The macro index for this group is the current length of _macro_to_chunks
 			# (assigned before the append, so it equals mz*_macro_cx + mx).
 			var mi_now  := _macro_to_chunks.size()
@@ -1386,7 +1386,7 @@ func _build_macro_chunks() -> void:
 	# ── Pass C: create the macro MeshInstance3D nodes (main thread) ───────────
 	# Узлов сотни (≈961 при 124×124 чанках). add_child = вход в дерево + создание рендер-инстанса,
 	# всё в одном кадре = многосекундный фриз. Создаём порциями по NODE_BATCH, между ними отдаём кадр.
-	for mi: Variant in macro_n:
+	for mi in macro_n:
 		var inst := MeshInstance3D.new()
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inst.visible     = false   # the quadtree shows/hides macros each frame
@@ -1436,7 +1436,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 	var all_colors  := PackedColorArray()
 	var v_offset    := 0
 
-	for ci: Variant in chunk_indices:
+	for ci in chunk_indices:
 		if ci < 0 or ci >= _chunk_meshes.size():
 			continue
 		if not _chunk_meshes[ci]:   # chunk not yet streamed in
@@ -1461,7 +1461,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 			# Source lacks colours — treat as all-interior so grass behaves as before.
 			for _i: int in verts.size():
 				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
-		for raw_idx: Variant in idxs:
+		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
 
@@ -1531,7 +1531,7 @@ func _stream_apply_batch() -> void:
 
 	# A macro becomes "resident" once all its chunks are present — the quadtree may then
 	# expand it into individual chunks instead of showing the merged macro mesh.
-	for mi: Variant in touched:
+	for mi in touched:
 		if _macro_all_present(mi):
 			_resident_set[mi] = true
 
@@ -1783,7 +1783,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		for z: int in zs:
 			bkeys.append(z * w + xs[0])
 			bkeys.append(z * w + xlast)
-		for gk: Variant in bkeys:
+		for gk in bkeys:
 			if bottom.has(gk):
 				continue
 			var ti: int = local_idx.get(gk, -1)
@@ -1802,7 +1802,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		for zi: int in range(zs.size() - 1):
 			edges.append([zs[zi] * w + xs[0],     zs[zi + 1] * w + xs[0]])
 			edges.append([zs[zi] * w + xlast,     zs[zi + 1] * w + xlast])
-		for e: Variant in edges:
+		for e in edges:
 			var a: int  = local_idx.get(e[0], -1)
 			var b: int  = local_idx.get(e[1], -1)
 			var ba: int = bottom.get(e[0], -1)
@@ -1857,7 +1857,7 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 # Карта состояния корруптации (grass.gd ведёт: пусто→редко +чанк→лечится у игрока навсегда).
 # Ставим на ОБА LOD-материала — глитч виден на любой дальности (лечится вблизи).
 func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
-	for m: Variant in [_mat_lod0, _mat_lod_high]:
+	for m in [_mat_lod0, _mat_lod_high]:
 		if m is ShaderMaterial:
 			var sm := m as ShaderMaterial
 			sm.set_shader_parameter("corrupt_map", tex)
@@ -1973,7 +1973,7 @@ func _build_quadtree() -> void:
 	_qt_inst.resize(node_n)
 	_qt_node_results.resize(node_n)
 	var internal: Array[int] = []
-	for n: Variant in node_n:
+	for n in node_n:
 		if _qt_macro[n] < 0:
 			internal.append(n)
 	if not internal.is_empty():
@@ -2042,7 +2042,7 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	var children: Array[int] = []
 	var box := AABB()
 	var first := true
-	for r: Variant in rects:
+	for r in rects:
 		if r[2] <= 0 or r[3] <= 0:
 			continue
 		var ch: int = _qt_build_node(r[0], r[1], r[2], r[3], macro_cx)
@@ -2115,7 +2115,7 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 		if nearest >= _qt_size[node] * QT_QUALITY:
 			_qt_des_nodes[node] = true
 		else:
-			for ch: Variant in _qt_child[node]:
+			for ch in _qt_child[node]:
 				_qt_descend(ch, frustum, cam, margin, max_d2)
 
 # A near macro renders as individual chunks. If its chunks aren't instantiated yet,
@@ -2126,7 +2126,7 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 		_request_resident(mi)
 		_qt_des_macros[mi] = true   # cover the region with the macro mesh until chunks arrive
 		return
-	for ci: Variant in _macro_to_chunks[mi]:
+	for ci in _macro_to_chunks[mi]:
 		if ci < 0 or ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 			continue
 		var world_aabb: AABB = global_transform * _chunk_aabbs[ci]
@@ -2151,11 +2151,11 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 # rebuilds any chunk whose seam-stitch signature went stale.
 func _qt_apply(do_lod: bool) -> void:
 	# ── Coarse internal nodes (the far, low-poly representation) ───────────────
-	for node: Variant in _qt_des_nodes:
+	for node in _qt_des_nodes:
 		var ninst: MeshInstance3D = _qt_inst[node]
 		if ninst:
 			ninst.visible = not _occluded_nodes.has(node)   # far mesh hidden if behind terrain
-	for node: Variant in _qt_cur_nodes:
+	for node in _qt_cur_nodes:
 		if not _qt_des_nodes.has(node):
 			var ninst2: MeshInstance3D = _qt_inst[node]
 			if ninst2:
@@ -2163,16 +2163,16 @@ func _qt_apply(do_lod: bool) -> void:
 	_qt_cur_nodes = _qt_des_nodes.duplicate()
 
 	# ── Macros ────────────────────────────────────────────────────────────────
-	for mi: Variant in _qt_des_macros:
+	for mi in _qt_des_macros:
 		if not _qt_cur_macros.has(mi):
 			_macro_active[mi] = true
 			# The macro now owns this region — hide any individual chunks under it.
-			for ci: Variant in _macro_to_chunks[mi]:
+			for ci in _macro_to_chunks[mi]:
 				if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
 					_chunk_instances[ci].visible = false
 				_qt_cur_chunks.erase(ci)
 		_macro_instances[mi].visible = not _occluded_macros.has(mi)
-	for mi: Variant in _qt_cur_macros:
+	for mi in _qt_cur_macros:
 		if not _qt_des_macros.has(mi):
 			_macro_active[mi] = false
 			_macro_instances[mi].visible = false
@@ -2180,13 +2180,13 @@ func _qt_apply(do_lod: bool) -> void:
 
 	# ── Chunks ────────────────────────────────────────────────────────────────
 	if do_lod:
-		for ci: Variant in _qt_des_chunks:
+		for ci in _qt_des_chunks:
 			_chunk_lod[ci] = _qt_des_chunks[ci]
-	for ci: Variant in _qt_des_chunks:
+	for ci in _qt_des_chunks:
 		var inst: MeshInstance3D = _chunk_instances[ci]
 		if inst:
 			inst.visible = not _occluded_chunks.has(ci)
-	for ci: Variant in _qt_cur_chunks:
+	for ci in _qt_cur_chunks:
 		if not _qt_des_chunks.has(ci):
 			if ci < _chunk_instances.size() and _chunk_instances[ci]:
 				_chunk_instances[ci].visible = false
@@ -2198,7 +2198,7 @@ func _qt_apply(do_lod: bool) -> void:
 	# the chunks whose signature changed — usually none once the view settles.
 	if do_lod:
 		var mat := _get_material()
-		for ci: Variant in _qt_cur_chunks:
+		for ci in _qt_cur_chunks:
 			if ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 				continue
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
@@ -2243,7 +2243,7 @@ func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
 
 # True once every (in-range) chunk of macro mi has been instantiated.
 func _macro_all_present(mi: int) -> bool:
-	for ci: Variant in _macro_to_chunks[mi]:
+	for ci in _macro_to_chunks[mi]:
 		if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci] == null:
 			return false
 	return true
@@ -2253,7 +2253,7 @@ func _macro_all_present(mi: int) -> bool:
 # the camera sits near a not-yet-resident macro costs almost nothing.
 func _request_resident(mi: int) -> void:
 	var added := false
-	for ci: Variant in _macro_to_chunks[mi]:
+	for ci in _macro_to_chunks[mi]:
 		if ci < 0 or ci >= _chunk_instances.size():
 			continue
 		if _chunk_instances[ci] == null and not _queued_chunks.has(ci):
@@ -2266,7 +2266,7 @@ func _request_resident(mi: int) -> void:
 # Free macro mi's individual chunk nodes + meshes. The macro mesh keeps covering the
 # region, so nothing visually disappears — this just reclaims the memory.
 func _evict_macro(mi: int) -> void:
-	for ci: Variant in _macro_to_chunks[mi]:
+	for ci in _macro_to_chunks[mi]:
 		if ci < 0 or ci >= _chunk_instances.size():
 			continue
 		if _chunk_instances[ci]:
@@ -2287,7 +2287,7 @@ func _qt_evict_far(cam: Vector3) -> void:
 	var evict_r  := lod_distance_1 + QT_EVICT_MARGIN
 	var evict_d2 := evict_r * evict_r
 	var to_evict: Array[int] = []
-	for mi: Variant in _resident_set:
+	for mi in _resident_set:
 		var c := global_transform * _macro_aabbs[mi].get_center()
 		var dx := cam.x - c.x
 		var dz := cam.z - c.z
@@ -2327,7 +2327,7 @@ func _update_occlusion() -> void:
 	else:
 		chunks_to_test = range(_chunk_instances.size())
 
-	for ci: Variant in chunks_to_test:
+	for ci in chunks_to_test:
 		if ci >= _chunk_aabbs.size():
 			continue
 		if not _chunk_instances[ci]:   # not yet streamed in
@@ -2347,12 +2347,12 @@ func _update_occlusion() -> void:
 
 	# ── Far coarse quadtree meshes ────────────────────────────────────────────
 	# The far, low-poly representation behind a ridge was still being drawn; test it too.
-	for node: Variant in _qt_cur_nodes:
+	for node in _qt_cur_nodes:
 		if node < _qt_aabb.size() and _is_aabb_occluded(_qt_aabb[node], cam_local):
 			new_occ_nodes[node] = true
 
 	# ── Apply visibility — only when the occluded/clear state changes ─────────
-	for ci: Variant in chunks_to_test:
+	for ci in chunks_to_test:
 		if ci >= _chunk_instances.size():
 			continue
 		if not _chunk_instances[ci]:   # not yet streamed in
@@ -2382,7 +2382,7 @@ func _update_occlusion() -> void:
 
 	# Coarse nodes: flip visibility only when occluded/clear state changed (and the node
 	# is still in view this frame — _qt_cur_nodes is the current rendered set).
-	for node: Variant in _qt_cur_nodes:
+	for node in _qt_cur_nodes:
 		var was_n := _occluded_nodes.has(node)
 		var now_n := new_occ_nodes.has(node)
 		if was_n != now_n and node < _qt_inst.size() and _qt_inst[node]:
@@ -2395,7 +2395,7 @@ func _update_occlusion() -> void:
 # Restores full frustum-based visibility for every previously-occluded object.
 # Called once when enable_occlusion_culling is toggled off at runtime.
 func _clear_occlusion() -> void:
-	for ci: Variant in _occluded_chunks:
+	for ci in _occluded_chunks:
 		if ci >= _chunk_instances.size():
 			continue
 		if not _chunk_instances[ci]:   # not yet streamed in
@@ -2403,7 +2403,7 @@ func _clear_occlusion() -> void:
 		if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
 			continue
 		_chunk_instances[ci].visible = _qt_cur_chunks.has(ci) or not enable_frustum_culling
-	for mi: Variant in _occluded_macros:
+	for mi in _occluded_macros:
 		if mi >= _macro_instances.size() or not _macro_active[mi]:
 			continue
 		if enable_frustum_culling:
@@ -2414,7 +2414,7 @@ func _clear_occlusion() -> void:
 		else:
 			_macro_instances[mi].visible = true
 	# Restore far coarse meshes that occlusion had hidden (only those still in the cut).
-	for node: Variant in _occluded_nodes:
+	for node in _occluded_nodes:
 		if node < _qt_inst.size() and _qt_inst[node]:
 			_qt_inst[node].visible = _qt_cur_nodes.has(node)
 	_occluded_chunks.clear()
@@ -2506,7 +2506,7 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
 	var bmin: Vector3 = aabb.position
 	var bmax: Vector3 = aabb.position + aabb.size
-	for plane: Variant in frustum:
+	for plane in frustum:
 		var nx: float = bmin.x if plane.normal.x >= 0.0 else bmax.x
 		var ny: float = bmin.y if plane.normal.y >= 0.0 else bmax.y
 		var nz: float = bmin.z if plane.normal.z >= 0.0 else bmax.z

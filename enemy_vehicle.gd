@@ -171,7 +171,7 @@ func _setup_patrol_points() -> void:
 		_patrol_targets = patrol_points.duplicate()
 		return
 	_patrol_targets.clear()
-	for i: Variant in patrol_points_count:
+	for i in patrol_points_count:
 		var ang: float = (TAU / patrol_points_count) * i + randf_range(-0.5, 0.5)
 		var dist: float = patrol_radius * randf_range(0.5, 1.0)
 		_patrol_targets.append(_start_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
@@ -221,7 +221,7 @@ func _scan_for_targets() -> void:
 		return
 	var best: Node3D = null
 	var best_d: float = INF
-	for b: Variant in _detect_area.get_overlapping_bodies():
+	for b in _detect_area.get_overlapping_bodies():
 		if not _is_enemy(b) or not (b is Node3D):
 			continue
 		var d: float = global_position.distance_to((b as Node3D).global_position)
@@ -317,7 +317,7 @@ func _sense() -> Dictionary:
 # attack_range, не связанный с тем, чем машина реально вооружена.
 func _own_weapon_range() -> float:
 	var r: float = 0.0
-	for b: Variant in _weapon_blocks():
+	for b in _weapon_blocks():
 		if not is_instance_valid(b):
 			continue
 		var wr: Variant = b.get("weapon_range")
@@ -517,7 +517,7 @@ func _sample_danger() -> void:
 	var here: float = global_position.y
 	var origin: Vector3 = global_position + Vector3.UP * 0.5
 
-	for i: Variant in ContextSteering.SLOTS:
+	for i in ContextSteering.SLOTS:
 		var d: Vector3 = _steering.direction(i)
 		if terr != null:
 			var h_near: float = terr.terrain_height_at(global_position + d * PROBE_NEAR)
@@ -553,7 +553,7 @@ func _weapon_blocks() -> Array:
 	return _atk_cache
 
 func _do_attack() -> void:
-	for b: Variant in _weapon_blocks():
+	for b in _weapon_blocks():
 		if not is_instance_valid(b):
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш
 			continue

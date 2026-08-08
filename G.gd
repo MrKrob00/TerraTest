@@ -198,7 +198,7 @@ func block_name(bt: int) -> String:
 # Блоки заданного грейда фракции (для «открылось в магазине: …»).
 func blocks_of_grade(f: String, g: int) -> Array:
 	var out: Array = []
-	for bt: Variant in BLOCK_META:
+	for bt in BLOCK_META:
 		var m: Dictionary = BLOCK_META[bt]
 		if m["f"] == f and int(m["g"]) == g:
 			out.append(bt)
@@ -283,23 +283,23 @@ func _load_progress() -> void:
 		return
 	money = int(data.get("money", money))
 	block_inventory = []
-	for b: Variant in data.get("block_inventory", []):
+	for b in data.get("block_inventory", []):
 		block_inventory.append(int(b))       # JSON отдаёт float — приводим
 	var fx: Variant = data.get("faction_xp", {})
 	if fx is Dictionary:
-		for k: Variant in fx:
+		for k in fx:
 			faction_xp[str(k)] = int(fx[k])
 	research_points = int(data.get("research_points", 0))
 	var res: Variant = data.get("researched", [])
 	if res is Array and not res.is_empty():
 		researched = []
-		for b: Variant in res:
+		for b in res:
 			researched.append(int(b))
 	quests_done = []
-	for q: Variant in data.get("quests_done", []):
+	for q in data.get("quests_done", []):
 		quests_done.append(str(q))
 	killed_kinds = []
-	for k2: Variant in data.get("killed_kinds", []):
+	for k2 in data.get("killed_kinds", []):
 		killed_kinds.append(str(k2))
 
 func _notification(what: int) -> void:
@@ -330,7 +330,7 @@ func rename_build(old_name: String, new_name: String) -> bool:
 	if saved_builds.has(new_name):
 		return false
 	var rebuilt: Dictionary = {}
-	for k: Variant in saved_builds:
+	for k in saved_builds:
 		if k == old_name:
 			rebuilt[new_name] = saved_builds[k]
 		else:
@@ -359,7 +359,7 @@ func _load_builds() -> void:
 # Кол-во блоков по типам в раскладке (значения из JSON приходят float — приводим к int).
 func layout_counts(layout: Array) -> Dictionary:
 	var c: Dictionary = {}
-	for e: Variant in layout:
+	for e in layout:
 		var t := block_from_key(e["block"])
 		c[t] = c.get(t, 0) + 1
 	return c

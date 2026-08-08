@@ -75,7 +75,7 @@ func _apply_ore_colors() -> void:
 	if ore_colors.is_empty():
 		return
 	var cols := PackedVector3Array()
-	for c: Variant in ore_colors + [coal_color]:      # уголь — последний индекс в шейдере
+	for c in ore_colors + [coal_color]:      # уголь — последний индекс в шейдере
 		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
 		cols.append(Vector3(lc.r, lc.g, lc.b))
 	for mm: MultiMeshInstance3D in multimesh_nodes:
@@ -130,7 +130,7 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
 			var bucket: Variant = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue
-			for q: Variant in (bucket as Array):
+			for q in (bucket as Array):
 				if (q as Vector3).distance_to(p) < min_spacing:
 					return true
 	return false
@@ -205,7 +205,7 @@ func _stream_in(v: Dictionary) -> void:
 # Мировые позиции сейчас активных (стримнутых) жил — для блипов на радаре (hud.gd).
 func active_positions() -> Array:
 	var out: Array = []
-	for v: Variant in _data:
+	for v in _data:
 		if int(v["slot"]) >= 0:
 			out.append(to_global(v["pos"]))
 	return out
@@ -234,7 +234,7 @@ func _process(delta: float) -> void:
 		return
 	var cam_pos: Vector3 = cam.global_position
 	var d2: float = render_distance * render_distance
-	for v: Variant in _data:
+	for v in _data:
 		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
 		var shown: bool = int(v["slot"]) >= 0
 		if near and not shown:

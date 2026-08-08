@@ -83,7 +83,7 @@ func _add_section(section_name: String, items: Array) -> void:
 	h.add_theme_font_size_override("font_size", 13)
 	h.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.85))
 	_list.add_child(h)
-	for q: Variant in items:
+	for q in items:
 		_list.add_child(_make_row(q))
 
 func _make_row(q: Dictionary) -> Control:
