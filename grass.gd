@@ -49,13 +49,15 @@ var _corr_spread_t: float = 0.0
 var _corr_heal_t: float = 0.0
 var _corr_dirty: bool = false
 
+# _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
+# момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
+# Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
+# делал return, из-за чего узел не инициализировался за весь сеанс.
+const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+
 func _ready() -> void:
-	await get_tree().process_frame
-	if not map_node or not map_node.has_method("set_grass_trample"):
-		push_error("GrassSystem: map_node не поддерживает set_grass_trample(). Достался: %s тип %s скрипт %s" % [
-				"null" if map_node == null else map_node.name,
-				"-" if map_node == null else map_node.get_class(),
-				"нет" if map_node == null or map_node.get_script() == null else map_node.get_script().resource_path])
+	if not await _await_map():
+		push_error("GrassSystem: map_node так и не поддержал set_grass_trample()")
 		return
 	_benders = get_tree().get_nodes_in_group("grass_benders")
 	_build_viewport()
@@ -273,3 +275,14 @@ func _corr_heal_near() -> void:
 				_corr[i] = 0
 				_corr_healed[i] = 1
 				_corr_dirty = true
+
+
+# Дождаться, пока карта сможет принимать карту примятия травы.
+func _await_map() -> bool:
+	var guard: int = 0
+	while guard < MAP_WAIT_FRAMES:
+		if map_node != null and map_node.has_method("set_grass_trample"):
+			return true
+		await get_tree().process_frame
+		guard += 1
+	return false

@@ -45,13 +45,16 @@ var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
 var _cull_t: float = 0.0
 var _shown: int = 0
 
+# _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
+# момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
+# Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
+# делал return, из-за чего узел не инициализировался за весь сеанс.
+const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+
 func _ready() -> void:
-	var map: Node = get_parent()
-	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
-		push_error("BiomeScatter: родитель должен быть картой (terrain_height_at/get_dims). Достался: %s тип %s скрипт %s" % [
-				"null" if map == null else map.name,
-				"-" if map == null else map.get_class(),
-				"нет" if map == null or map.get_script() == null else map.get_script().resource_path])
+	var map: Node = await _await_map()
+	if map == null:
+		push_error("BiomeScatter: родитель так и не стал картой (нет terrain_height_at/get_dims)")
 		return
 	var guard: int = 0
 	while map.get_dims().x <= 0 and guard < 300:
@@ -211,3 +214,16 @@ func _despawn(v: Dictionary) -> void:
 		(v["node"] as Node).queue_free()
 	v["node"] = null
 	_shown -= 1
+
+
+# Родитель, умеющий отвечать как карта. null, если не дождались.
+func _await_map() -> Node:
+	var map: Node = get_parent()
+	var guard: int = 0
+	while guard < MAP_WAIT_FRAMES:
+		if map != null and map.has_method("terrain_height_at") and map.has_method("get_dims"):
+			return map
+		await get_tree().process_frame
+		guard += 1
+		map = get_parent()
+	return null
