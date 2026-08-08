@@ -10,6 +10,7 @@
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
 [ext_resource type="PackedScene" uid="uid://u0tdxsa46btj" path="res://shop.tscn" id="15_3v7ru"]
 [ext_resource type="Script" uid="uid://vjju26ed1x5a" path="res://shop_spawner.gd" id="15_shopspawn"]
+[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="17_tuemg"]
 [ext_resource type="PackedScene" uid="uid://c21ydn7r4eaea" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" uid="uid://bnvf256vo4ij2" path="res://enemy_spawner.gd" id="19_enemyspawn"]
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
@@ -347,8 +348,11 @@ theme_override_colors/font_color = Color(0.55, 0.85, 0.9, 1)
 theme_override_font_sizes/font_size = 48
 text = "30 FPS"
 
-[node name="map" type="StaticBody3D" parent="." unique_id=1582159453]
-script = ExtResource("3_jsk3o")
+[node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
+script = ExtResource("17_tuemg")
+camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
+stream_batch_size = 4
+heightmap_path = "res://terrain_height.res"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")
