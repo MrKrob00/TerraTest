@@ -51,20 +51,20 @@ func is_touch_outside(touch_pos: Vector2) -> bool:
 		and touch_pos.y > screen_size.y * ZONE_Y_FRAC
 
 func update_knob_position(touch_pos: Vector2) -> void:
-	var dir := touch_pos - global_position
+	var dir = touch_pos - global_position
 	knob_pos = stick_center + dir.limit_length(max_distance)
 
 func get_joystick_dir() -> Vector2:
-	var dir := knob_pos - stick_center
+	var dir = knob_pos - stick_center
 	# Нормализуем по радиусу джойстика → получаем значение 0.0 .. 1.0
-	var raw := dir / max_distance
+	var raw = dir / max_distance
 
 	# Применяем мёртвую зону
-	var length := raw.length()
+	var length = raw.length()
 	if length < DEAD_ZONE:
 		return Vector2.ZERO
 
 	# Ремапируем диапазон [DEAD_ZONE .. 1.0] → [0.0 .. 1.0]
 	# Это убирает прыжок при выходе из мёртвой зоны
-	var remapped := (length - DEAD_ZONE) / (1.0 - DEAD_ZONE)
+	var remapped = (length - DEAD_ZONE) / (1.0 - DEAD_ZONE)
 	return raw.normalized() * clamp(remapped, 0.0, 1.0)

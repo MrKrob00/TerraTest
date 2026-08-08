@@ -579,7 +579,7 @@ func _nearest_patrol_index() -> int:
 
 func _is_enemy(body: Node) -> bool:
 	if body == self: return false
-	var f: Variant = body.get("faction")
+	var f = body.get("faction")
 	if f == null: return false
 	return f != faction
 

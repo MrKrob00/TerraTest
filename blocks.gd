@@ -280,7 +280,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
 	instance.rotation = rot
 
-	var collision := instance.get_child(0).duplicate()
+	var collision = instance.get_child(0).duplicate()
 	collision.position = Vector3(x - CENTER, y - CENTER, z - CENTER)
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	if collision.shape.size == Vector3(2,2,2):
@@ -434,7 +434,7 @@ func load_layout() -> void:
 	json.parse(file.get_as_text())
 	file.close()
 
-	var blocks_array: Variant = json.get_data()
+	var blocks_array = json.get_data()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 
@@ -523,7 +523,7 @@ func rebuild_factory_links() -> void:
 	var facs: Array = []
 	var cells: Dictionary = {}                    # node → клетки его футпринта
 	for k in node_map.keys():
-		var n: Variant = node_map[k]
+		var n = node_map[k]
 		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
 			continue
 		var parts: PackedStringArray = k.split(",")
@@ -545,7 +545,7 @@ func rebuild_factory_links() -> void:
 				var t: Vector3i = c + d
 				if not _in_bounds(t.x, t.y, t.z):
 					continue
-				var nb := find_block(t.x, t.y, t.z)
+				var nb = find_block(t.x, t.y, t.z)
 				if nb == null or nb == n or not cells.has(nb):
 					continue                      # не фабричный сосед — ресурс туда не идёт
 				if not nb.accepts_from(d):

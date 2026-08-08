@@ -71,7 +71,7 @@ func upgrade() -> void:
 	_update_visual()
 
 func _update_visual() -> void:
-	var mesh := get_node_or_null("MeshInstance3D/ResourceMesh")
+	var mesh = get_node_or_null("MeshInstance3D/ResourceMesh")
 	if mesh == null:
 		return
 	# Форма: руда — шар, слиток — примятый (сплющенный) шар внутри внешней сферы.
@@ -94,7 +94,7 @@ func _update_visual() -> void:
 
 func _tint_material(c: Color) -> StandardMaterial3D:
 	var key := c.to_rgba32()
-	var cached: Variant = _tint_mats.get(key)
+	var cached = _tint_mats.get(key)
 	if cached == null:
 		var m := StandardMaterial3D.new()
 		m.albedo_color = c
