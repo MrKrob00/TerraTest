@@ -105,14 +105,14 @@ func _connect_cabin() -> void:
 	var blocks_node := get_node_or_null("blocks")
 	if blocks_node == null:
 		return
-	for b: Node in blocks_node.get_children():
+	for b in blocks_node.get_children():
 		if b.get("block") == G.Block.CABIN:
 			_cabin = b
 			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
 				b.destroyed.connect(_on_cabin_destroyed)
 			return
 
-func _on_cabin_destroyed(_b: Variant = null) -> void:
+func _on_cabin_destroyed(_b = null) -> void:
 	_die()
 
 func _die() -> void:
@@ -134,7 +134,7 @@ func _eject_blocks() -> void:
 	var cabin_pos: Vector3 = global_position
 	if _cabin != null and is_instance_valid(_cabin) and _cabin is Node3D:
 		cabin_pos = (_cabin as Node3D).global_position
-	for b: Node in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
+	for b in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
 		if b.get("block") == G.Block.CABIN:
 			continue                              # кабина уничтожена — не роняем
 		if b is Node3D:
@@ -547,7 +547,7 @@ func _weapon_blocks() -> Array:
 	if bl.get_child_count() != _atk_n:
 		_atk_n = bl.get_child_count()
 		_atk_cache.clear()
-		for b: Node in bl.get_children():
+		for b in bl.get_children():
 			if b.has_method("attack"):
 				_atk_cache.append(b)
 	return _atk_cache
@@ -570,7 +570,7 @@ func _lose_target() -> void:
 func _nearest_patrol_index() -> int:
 	var best_i: int = 0
 	var best_dist: float = INF
-	for i: int in _patrol_targets.size():
+	for i in _patrol_targets.size():
 		var d: float = global_position.distance_to(_patrol_targets[i])
 		if d < best_dist:
 			best_dist = d
@@ -657,7 +657,7 @@ func _find_terrain() -> Node:
 	var scn := get_tree().current_scene
 	if scn == null:
 		return null
-	for c: Node in scn.get_children():
+	for c in scn.get_children():
 		if c.has_method("terrain_height_at"):
 			_terrain_cache = c
 			return c

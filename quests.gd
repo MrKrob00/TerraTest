@@ -68,7 +68,7 @@ func _grade_locked(q: Dictionary) -> bool:
 
 # ── Список всех заданий ───────────────────────────────────────────────────────
 func _rebuild_list() -> void:
-	for c: Node in _list.get_children():
+	for c in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
 	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))

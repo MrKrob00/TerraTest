@@ -57,7 +57,7 @@ func _find_map() -> Node:
 func _scatter(map: Node, dims: Vector2i) -> void:
 	_shops = _existing_shop_nodes()                          # стартовый магазин тоже куллим
 	var placed: Array[Vector3] = []
-	for s: Node3D in _shops:
+	for s in _shops:
 		placed.append(s.global_position)
 	var half_x: float = dims.x * 0.5 - edge_margin
 	var half_z: float = dims.y * 0.5 - edge_margin
@@ -93,7 +93,7 @@ func _existing_shop_nodes() -> Array[Node3D]:
 	var out: Array[Node3D] = []
 	var main: Node = get_parent()
 	if main:
-		for c: Node in main.get_children():
+		for c in main.get_children():
 			if c != self and c is Node3D and str(c.name).begins_with("Shop"):
 				out.append(c as Node3D)
 	return out
@@ -111,7 +111,7 @@ func _process(delta: float) -> void:
 		return
 	var cam_pos: Vector3 = cam.global_position
 	var d2: float = render_distance * render_distance
-	for s: Node3D in _shops:
+	for s in _shops:
 		if is_instance_valid(s):
 			s.visible = cam_pos.distance_squared_to(s.global_position) <= d2
 
@@ -125,7 +125,7 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 	return maxf(maxf(hx1, hx2), maxf(hz1, hz2)) - minf(minf(hx1, hx2), minf(hz1, hz2))
 
 func _too_close(placed: Array[Vector3], p: Vector3) -> bool:
-	for q: Vector3 in placed:
+	for q in placed:
 		if Vector2(q.x, q.z).distance_to(Vector2(p.x, p.z)) < avoid_existing:
 			return true
 	return false

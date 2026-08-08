@@ -117,7 +117,7 @@ func hp_totals() -> Vector2i:
 		return Vector2i(1, 1)
 	var cur: int = 0
 	var mx: int = 0
-	for b: Node in bl.get_children():
+	for b in bl.get_children():
 		if b is VehicleBlock:
 			cur += (b as VehicleBlock).current_hp
 			mx += (b as VehicleBlock).max_hp
@@ -133,7 +133,7 @@ func firepower() -> float:
 	if bl == null:
 		return 0.0
 	var p: float = 0.0
-	for b: Node in bl.get_children():
+	for b in bl.get_children():
 		var dmg: Variant = b.get("damage")
 		var rate: Variant = b.get("fire_rate")
 		if dmg != null and rate != null and float(rate) > 0.001:
@@ -241,7 +241,7 @@ func _drive_blocks() -> Array:
 	if bl.get_child_count() != _drive_n:
 		_drive_n = bl.get_child_count()
 		_drive_cache.clear()
-		for b: Node in bl.get_children():
+		for b in bl.get_children():
 			if b.has_method("set_throttle") and b.has_method("set_steer"):
 				_drive_cache.append(b)
 	return _drive_cache
@@ -308,7 +308,7 @@ func _sync_mass(delta: float = 0.0) -> void:
 	var extra: int = 0
 	var bl: Node = _blocks_root()
 	if bl != null:
-		for b: Node in bl.get_children():
+		for b in bl.get_children():
 			if not b.has_method("get_weight"):
 				continue
 			var w: float = b.get_weight()

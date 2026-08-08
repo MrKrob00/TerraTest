@@ -223,7 +223,7 @@ func _swap() -> void:
 func _find_terrain(n: Node) -> Node:
 	if n == null:
 		return null
-	for c: Node in n.get_children():
+	for c in n.get_children():
 		if c.has_method("terrain_height_at"):
 			return c
 		var deep := _find_terrain(c)
@@ -268,7 +268,7 @@ class _Scanlines extends Control:
 class _GlitchFx extends Control:
 	func _draw() -> void:
 		var s := size
-		for i: int in 6:
+		for i in 6:
 			if randf() < 0.5:
 				var col := Color(0.15, 0.85, 1.0) if randf() < 0.5 else Color(0.35, 0.55, 1.0)
 				col.a = randf_range(0.05, 0.16)

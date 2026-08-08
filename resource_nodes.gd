@@ -78,7 +78,7 @@ func _apply_ore_colors() -> void:
 	for c in ore_colors + [coal_color]:      # уголь — последний индекс в шейдере
 		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
 		cols.append(Vector3(lc.r, lc.g, lc.b))
-	for mm: MultiMeshInstance3D in multimesh_nodes:
+	for mm in multimesh_nodes:
 		var mesh: Mesh = mm.multimesh.mesh if mm.multimesh else null
 		if mesh is PrimitiveMesh and mesh.material is ShaderMaterial:
 			(mesh.material as ShaderMaterial).set_shader_parameter("ore_colors", cols)
@@ -125,8 +125,8 @@ func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
 	var cx := floori(p.x / cell)
 	var cz := floori(p.z / cell)
-	for dx: int in [-1, 0, 1]:
-		for dz: int in [-1, 0, 1]:
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
 			var bucket: Variant = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue
@@ -145,7 +145,7 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 	return maxf(maxf(hx1, hx2), maxf(hz1, hz2)) - minf(minf(hx1, hx2), minf(hz1, hz2))
 
 func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
-	for q: Vector3 in positions:
+	for q in positions:
 		if q.distance_to(p) < min_spacing:
 			return true
 	return false
@@ -155,21 +155,21 @@ func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
 func _init_veins(positions: Array[Vector3]) -> void:
 	var cap: int = mini(max_visible, positions.size())
 	var big := AABB(Vector3(-2000.0, -2000.0, -2000.0), Vector3(4000.0, 4000.0, 4000.0))
-	for mm: MultiMeshInstance3D in multimesh_nodes:
+	for mm in multimesh_nodes:
 		mm.custom_aabb = big
 		mm.multimesh.instance_count = 0
 		mm.multimesh.use_custom_data = true         # буфер custom-data ДО instance_count
 		mm.multimesh.instance_count = cap
-		for s: int in cap:
+		for s in cap:
 			mm.multimesh.set_instance_transform(s, ZERO_XFORM)   # пусто, пока не заполнит стриминг
 	_free.clear()
-	for s: int in range(cap - 1, -1, -1):
+	for s in range(cap - 1, -1, -1):
 		_free.append(s)                             # слоты cap-1..0 свободны
 
 	var type_count: int = maxi(ore_colors.size(), 1)
 	var scene: PackedScene = resource_nodes.pick_random() if not resource_nodes.is_empty() else null
 	_data.clear()
-	for p: Vector3 in positions:
+	for p in positions:
 		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
 		var coal: bool = randf() < coal_chance
 		var ore_type: int = ore_colors.size() if coal else randi() % type_count
@@ -188,7 +188,7 @@ func _stream_in(v: Dictionary) -> void:
 	v["slot"] = slot
 	var xform := Transform3D(Basis(), v["pos"])
 	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))   # G=1 «целая», A=тип (стримнутая жила полна)
-	for mm: MultiMeshInstance3D in multimesh_nodes:
+	for mm in multimesh_nodes:
 		mm.multimesh.set_instance_transform(slot, xform)
 		mm.multimesh.set_instance_custom_data(slot, custom)
 	if v["scene"] != null:
@@ -213,7 +213,7 @@ func active_positions() -> Array:
 # Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])
-	for mm: MultiMeshInstance3D in multimesh_nodes:
+	for mm in multimesh_nodes:
 		mm.multimesh.set_instance_transform(slot, ZERO_XFORM)
 	if v["node"] != null and is_instance_valid(v["node"]):
 		v["node"].queue_free()

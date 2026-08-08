@@ -91,7 +91,7 @@ class Overlay extends Control:
 	func _text(txt: String, at: Vector2, px: int) -> void:
 		var f := get_theme_default_font()
 		var lines := txt.split("\n")
-		for li: int in lines.size():
+		for li in lines.size():
 			var w := f.get_string_size(lines[li], HORIZONTAL_ALIGNMENT_CENTER, -1, px).x
 			draw_string(f, at + Vector2(-w * 0.5, -4 + li * (px + 4)), lines[li],
 					HORIZONTAL_ALIGNMENT_CENTER, -1, px, Color(0.7, 0.85, 0.9, 0.8))
@@ -180,13 +180,13 @@ func _to_px(world: Vector3) -> Vector2:
 
 func _ring_oval_px(beta: float) -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	for i: int in 33:
+	for i in 33:
 		pts.append(_to_px(_view * _ring_point(TAU * float(i) / 32.0, beta)))
 	return pts
 
 func _dial_px() -> PackedVector2Array:
 	var pts := PackedVector2Array()
-	for i: int in 49:
+	for i in 49:
 		var a := TAU * float(i) / 48.0
 		pts.append(_to_px(_view * (R_DIAL * Vector3(cos(a), 0, sin(a)))))
 	return pts
@@ -288,7 +288,7 @@ func _category_of(block_type: int) -> String:
 	return "other"
 
 func _nearest_nonempty(ci: int) -> int:
-	for d: int in [1, 2]:
+	for d in [1, 2]:
 		for cand in [posmod(ci - d, CAT_KEYS.size()), posmod(ci + d, CAT_KEYS.size())]:
 			if not (_by_cat[CAT_KEYS[cand]] as Array).is_empty():
 				return cand
@@ -300,7 +300,7 @@ func _rebuild_rings() -> void:
 		(r["root"] as Node).queue_free()
 	_rings.clear()
 	_ring_by_ci.clear()
-	for ci: int in CAT_KEYS.size():
+	for ci in CAT_KEYS.size():
 		var items: Array = _by_cat[CAT_KEYS[ci]]
 		if items.is_empty():
 			continue
@@ -363,7 +363,7 @@ func _make_visual(block_type: int) -> Node3D:
 		if p["mat"] != null:
 			mc.material_override = p["mat"]
 		var surf: Array = p["surf"]
-		for si: int in surf.size():
+		for si in surf.size():
 			if surf[si] != null:
 				mc.set_surface_override_material(si, surf[si])
 		mc.transform = p["xform"]
@@ -394,7 +394,7 @@ func _visual_template(block_type: int) -> Dictionary:
 		var here := xf
 		if n is Node3D:
 			here = xf * (n as Node3D).transform
-		for c: Node in n.get_children():
+		for c in n.get_children():
 			stack.append([c, here])
 		if n is MeshInstance3D and n.mesh != null:
 			var mat := _active_material(n)
@@ -407,7 +407,7 @@ func _visual_template(block_type: int) -> Dictionary:
 				surf.append(n.get_surface_override_material(si))
 			data["parts"].append({"mesh": n.mesh, "mat": n.material_override, "surf": surf, "xform": here})
 			var la: AABB = n.mesh.get_aabb()
-			for i: int in 8:
+			for i in 8:
 				var corner := la.position + Vector3(
 						la.size.x * float(i & 1), la.size.y * float((i >> 1) & 1), la.size.z * float((i >> 2) & 1))
 				var wp := here * corner
@@ -528,7 +528,7 @@ func _process(delta: float) -> void:
 		var ring_settled := is_front and settled \
 				and absf(float(r["ang"]) - float(r["ang_t"])) < 0.02
 		var slots: Array = r["slots"]
-		for i: int in slots.size():
+		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
 			# Активное (переднее) кольцо вертикально ЛИЦОМ к камере, листается вверх/вниз (точка
 			# выбора = θ_front); остальные меридианы стоят веером через 45°, призрачные.

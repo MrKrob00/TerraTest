@@ -95,8 +95,8 @@ static func from_file(path: String) -> ArrayMesh:
 func _chamfered_box() -> Array:
 	var faces: Array = []
 
-	for axis: int in 3:
-		for sgn: int in [-1, 1]:
+	for axis in 3:
+		for sgn in [-1, 1]:
 			var quad: Array = []
 			for a in [-_inner, _inner]:
 				for b in [-_inner, _inner]:
@@ -107,13 +107,13 @@ func _chamfered_box() -> Array:
 					quad.append(p)
 			faces.append([quad[0], quad[1], quad[3], quad[2]])
 
-	for i: int in 3:
-		for j: int in range(i + 1, 3):
+	for i in 3:
+		for j in range(i + 1, 3):
 			var k: int = 3 - i - j
-			for si: int in [-1, 1]:
-				for sj: int in [-1, 1]:
+			for si in [-1, 1]:
+				for sj in [-1, 1]:
 					var quad: Array = []
-					for sk: int in [-1, 1]:
+					for sk in [-1, 1]:
 						for lead in [i, j]:
 							var p: Vector3 = Vector3.ZERO
 							p[i] = si * (half if lead == i else _inner)
@@ -122,14 +122,14 @@ func _chamfered_box() -> Array:
 							quad.append(p)
 					faces.append([quad[0], quad[1], quad[3], quad[2]])
 
-	for sx: int in [-1, 1]:
-		for sy: int in [-1, 1]:
-			for sz: int in [-1, 1]:
+	for sx in [-1, 1]:
+		for sy in [-1, 1]:
+			for sz in [-1, 1]:
 				var s: Array = [sx, sy, sz]
 				var tri: Array = []
-				for lead: int in 3:
+				for lead in 3:
 					var p: Vector3 = Vector3.ZERO
-					for a: int in 3:
+					for a in 3:
 						p[a] = s[a] * (half if a == lead else _inner)
 					tri.append(p)
 				faces.append(tri)
@@ -145,8 +145,8 @@ func _face_axes(axis: int, sgn: int) -> Array:
 
 # Восемь точек контура: вершины лучей на диагоналях, впадины между ними.
 func _star_outline() -> Array:
-	var pts: Array[Vector2] = []
-	for i: int in 8:
+	var pts: Array = []
+	for i in 8:
 		var ang: float = PI / 4.0 + PI / 4.0 * float(i)
 		var r: float = pad_tip if i % 2 == 0 else pad_valley
 		pts.append(Vector2(cos(ang) * r, sin(ang) * r))
@@ -163,7 +163,7 @@ func _pad_faces(axis: int, sgn: int) -> Array:
 	var outline: Array = _star_outline()
 	var faces: Array = []
 	var centre: Vector3 = n * (half + pad_rise)
-	for i: int in 8:
+	for i in 8:
 		var a: Vector2 = outline[i]
 		var b: Vector2 = outline[(i + 1) % 8]
 		var a_top: Vector3 = u * a.x + v * a.y + n * (half + pad_rise)
@@ -178,15 +178,15 @@ func _block_faces() -> Array:
 	var faces: Array = []
 	for poly in _chamfered_box():
 		faces.append([poly, KIND_WORLD])
-	for axis: int in 3:
-		for sgn: int in [-1, 1]:
+	for axis in 3:
+		for sgn in [-1, 1]:
 			faces.append_array(_pad_faces(axis, sgn))
 	return faces
 
 static func _newell(poly: Array) -> Vector3:
 	var n: Vector3 = Vector3.ZERO
 	var count: int = poly.size()
-	for i: int in count:
+	for i in count:
 		var p0: Vector3 = poly[i]
 		var p1: Vector3 = poly[(i + 1) % count]
 		n.x += (p0.y - p1.y) * (p0.z + p1.z)
@@ -226,7 +226,7 @@ func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 
 	if kind == KIND_PAD:
 		var axis: int = 0
-		for a: int in 3:
+		for a in 3:
 			if absf(normal[a]) > absf(normal[axis]):
 				axis = a
 		var sgn: int = 1 if normal[axis] > 0.0 else -1
@@ -283,7 +283,7 @@ func build() -> ArrayMesh:
 		var normal: Vector3 = oriented[1]
 		var uvs: Array = _face_uvs(poly, normal, entry[1])
 		st.set_normal(normal)                    # нормаль по грани — плоская закраска
-		for c: int in range(1, poly.size() - 1):
+		for c in range(1, poly.size() - 1):
 			# Обход задом наперёд: _orient_outward выдаёт грань против часовой (правило
 			# Ньюэлла), а Godot передней считает намотку ПО часовой. С прямым порядком
 			# все грани отбраковывались как задние — блок просвечивал изнанкой.
@@ -299,7 +299,7 @@ func build() -> ArrayMesh:
 func atlas_image() -> Image:
 	var img: Image = Image.create_empty(ATLAS, ATLAS, false, Image.FORMAT_RGB8)
 
-	for y: int in CELL:
+	for y in CELL:
 		var side: Color = col_light
 		if y == 0:
 			side = col_rim
@@ -307,7 +307,7 @@ func atlas_image() -> Image:
 			side = col_dark
 		elif y >= band_from:
 			side = col_band
-		for x: int in CELL:
+		for x in CELL:
 			img.set_pixel(CELL_SIDE.x * CELL + x, CELL_SIDE.y * CELL + y, side)
 
 			var top: Color = col_light

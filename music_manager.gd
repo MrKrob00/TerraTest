@@ -158,7 +158,7 @@ func _enemy_near() -> bool:
 	var vehicles := cc.get_parent()      # Camera Controller живёт под Vehicles
 	if vehicles == null:
 		return false
-	for v: Node in vehicles.get_children():
+	for v in vehicles.get_children():
 		if v is Node3D and v != me:
 			var f: Variant = v.get("faction")
 			if f != null and int(f) != 0 \

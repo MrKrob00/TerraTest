@@ -147,7 +147,7 @@ func _on_enemy_died(_enemy: Node) -> void:
 ## Точка спавна рядом с центром, либо null, если места не нашлось.
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null) -> Variant:
 	var base: float = randf() * TAU
-	for i: int in 36:
+	for i in 36:
 		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)
 		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
 		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
@@ -286,8 +286,8 @@ func _build_marker() -> void:
 	mat.emission_enabled = true
 	mat.emission = Color(0.2, 0.9, 1.0)
 	var map: Node = _find_map()
-	for sx: float in [-1.0, 1.0]:
-		for sz: float in [-1.0, 1.0]:
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
 			var pillar := MeshInstance3D.new()
 			var bm := BoxMesh.new()
 			bm.size = Vector3(1.4, 60.0, 1.4)
