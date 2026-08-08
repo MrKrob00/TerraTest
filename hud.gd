@@ -137,7 +137,7 @@ class EnergyGauge extends Control:
 		var txt := "%d%%" % int(round(fill * 100.0)) if has_cap else "--"
 		var f := get_theme_default_font()
 		var fs := 13
-		var w := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
+		var w: float = f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
 		draw_string(f, c + Vector2(-w * 0.5, r * 0.55), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color(0.9, 0.97, 1.0))
 
 # ── Радар-карта (даёт блок RADAR): круг справа сверху с блипами; энергия — дугой слева-снизу ──
