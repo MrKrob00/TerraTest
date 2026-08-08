@@ -132,7 +132,7 @@ func _gen_carve_row(z: int) -> void:
 	var fz := float(z)
 	var terr: float = maxf(gen_canyon_terrace, 0.5)
 	for x: Variant in w:
-		var idx := z * w + x
+		var idx :int = z * w + x
 		var wx := float(x) - hw
 		var wz := fz - hd
 		var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
