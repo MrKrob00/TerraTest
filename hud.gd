@@ -804,7 +804,7 @@ func _update_radar(delta: float) -> void:
 		for e in vehicles.get_children():
 			if e == v or not (e is Node3D):
 				continue
-			var f: Variant = e.get("faction")
+			var f = e.get("faction")
 			if f != null and int(f) != 0:
 				var rel: Vector3 = (e as Node3D).global_position - origin
 				blips.append({"p": Vector2(rel.x, rel.z), "c": Color(1.0, 0.32, 0.32)})

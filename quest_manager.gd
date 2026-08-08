@@ -11,7 +11,7 @@ var tracked_id: String = ""
 
 func _ready() -> void:
 	_seed_demo()
-	var g := get_node_or_null("/root/G")
+	var g = get_node_or_null("/root/G")
 	if g:
 		# Выполненные СЮЖЕТНЫЕ квесты персистятся (G.quests_done) — иначе награды
 		# (XP/ДИ/$ сохраняются!) фармились бы перезапуском. Дейлики повторяемы намеренно.
@@ -94,7 +94,7 @@ func _grade_ok(q: Dictionary) -> bool:
 	var need := int(q.get("req_grade", 1))
 	if need <= 1:
 		return true
-	var g := get_node_or_null("/root/G")
+	var g = get_node_or_null("/root/G")
 	return g == null or g.grade("start") >= need
 
 # Игра сообщает о событии — двигаем ВСЕ активные задания с таким event (и сюжет, и дейлики):
@@ -103,7 +103,7 @@ func _grade_ok(q: Dictionary) -> bool:
 func report(event: String, amount: int = 1) -> void:
 	if event == "":
 		return
-	var g := get_node_or_null("/root/G")
+	var g = get_node_or_null("/root/G")
 	if g:
 		g.on_game_event(event, amount)
 	for q in active_quests():
@@ -137,7 +137,7 @@ func _on_completed(q: Dictionary) -> void:
 	# Награда деньгами. Начисляем НАПРЯМУЮ (g.money += ...), а не через add_money, чтобы
 	# награда сама не засчитывалась в задание «заработай денег».
 	var reward: int = int(q.get("reward_money", 0))
-	var g := get_node_or_null("/root/G")
+	var g = get_node_or_null("/root/G")
 	if g:
 		if reward > 0:
 			g.money += reward
@@ -149,7 +149,7 @@ func _on_completed(q: Dictionary) -> void:
 	# инвентарь). Ставим на активную машину игрока.
 	var rblock: int = int(q.get("reward_block", 0))
 	if rblock > 0:
-		var cc := get_tree().get_first_node_in_group("camera_controller")
+		var cc = get_tree().get_first_node_in_group("camera_controller")
 		if cc != null and "current_vehicle" in cc and cc.current_vehicle != null \
 				and cc.current_vehicle.has_method("award_blocks"):
 			cc.current_vehicle.award_blocks(rblock, int(q.get("reward_block_count", 1)))
@@ -167,7 +167,7 @@ func _on_completed(q: Dictionary) -> void:
 
 # Новый грейд лицензии: Механик объявляет, что открылось в магазине (этап 1 прогрессии).
 func _on_grade_up(faction: String, new_grade: int) -> void:
-	var g := get_node_or_null("/root/G")
+	var g = get_node_or_null("/root/G")
 	if g == null:
 		return
 	var names: Array = []
@@ -206,12 +206,12 @@ func _completion_message(title: String, reward: int) -> String:
 	return no_reward[randi() % no_reward.size()] % title
 
 func _say(speaker: String, text: String) -> void:
-	var d := get_node_or_null("/root/Dialogue")
+	var d = get_node_or_null("/root/Dialogue")
 	if d:
 		d.say(speaker, text)
 
 func _say_lines(lines: Array) -> void:
-	var d := get_node_or_null("/root/Dialogue")
+	var d = get_node_or_null("/root/Dialogue")
 	if d:
 		d.say_lines(lines)
 

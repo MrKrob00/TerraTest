@@ -95,16 +95,16 @@ func is_touch_outside_2(touch_pos: Vector2):
 	return (touch_pos - global_position).length() > max_distance and touch_pos.x > screen_size.x/2 and touch_pos.y <screen_size.y/2
 
 func update_knob_position(touch_pos: Vector2):
-	var dir := touch_pos - global_position
+	var dir = touch_pos - global_position
 	knob_pos = stick_center + dir.limit_length(max_distance)
 
 func get_joystick_dir() -> Vector2:
-	var dir := knob_pos - stick_center
+	var dir = knob_pos - stick_center
 	return dir.normalized()
 
 func set_zoom(index1:Vector2,index2:Vector2):
-	var d := index1.distance_to(index2)
-	var result := d/ distance
+	var d = index1.distance_to(index2)
+	var result = d/ distance
 	distance = d
 	radius = $"../..".RADIUS   # ресинк с живым значением — иначе колесо мыши (ПК-зум) затиралось бы старым кэшем
 	radius/=result

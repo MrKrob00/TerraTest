@@ -505,7 +505,7 @@ func _missing_text(missing: Dictionary) -> String:
 	return ", ".join(parts)
 
 func _say(text: String) -> void:
-	var d := get_node_or_null("/root/Dialogue")
+	var d = get_node_or_null("/root/Dialogue")
 	if d:
 		d.say("Garage", text)
 

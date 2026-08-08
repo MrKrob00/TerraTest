@@ -383,8 +383,8 @@ func _visual_template(block_type: int) -> Dictionary:
 	var has := false
 	var stack: Array = [[inst, Transform3D.IDENTITY]]
 	while not stack.is_empty():
-		var pair: Variant = stack.pop_back()
-		var n: Variant = pair[0]
+		var pair = stack.pop_back()
+		var n = pair[0]
 		var xf: Transform3D = pair[1]
 		if n != inst:
 			if n is Area3D or n is RayCast3D:

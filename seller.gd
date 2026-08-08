@@ -30,13 +30,13 @@ func _on_timer_timeout() -> void:
 		return
 
 	# Получаем цену
-	var item_type: Variant = current_item.get("type")
+	var item_type = current_item.get("type")
 	var type_name: String = ""
 	if item_type != null:
 		type_name = current_item.Type.keys()[item_type]  # 0 → "ORE"
 	else:
 		type_name = "ORE"
-	var price: Variant = prices.get(type_name, 0)
+	var price = prices.get(type_name, 0)
 
 	# Добавляем деньги (G — глобальный синглтон)
 	if G.has_method("add_money"):

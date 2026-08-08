@@ -1,6 +1,6 @@
 extends Node
 
-var money: int = 500
+var money = 500
 
 signal money_changed                   # для UI: деньги могли измениться пассивно (продавец)
 
@@ -9,11 +9,11 @@ func add_money(value):
 	mark_progress_dirty()
 	money_changed.emit()
 	# Заработок двигает задания «заработай денег». Q грузится после G — берём безопасно.
-	var q := get_node_or_null("/root/Q")
+	var q = get_node_or_null("/root/Q")
 	if q:
 		q.report("money_earned", value)
 
-var block_inventory: Array = []
+var block_inventory = []
 
 # ─── Сохранённые сборки машины ────────────────────────────────────────────────
 # name -> layout (массив {x,y,z,block,rot_y}, как blocks.get_layout()). Персистится в user://.
@@ -34,7 +34,7 @@ var cam_zoom_sens: float = 1.0     # чувствительность пинч-�
 var cam_invert_y: bool = false     # инвертировать вертикаль (наклон взгляда)
 
 func save_settings() -> void:
-	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
+	var f = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify({
 			"cam_look_sens": cam_look_sens,
@@ -46,10 +46,10 @@ func save_settings() -> void:
 func _load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		return
-	var f := FileAccess.open(SETTINGS_PATH, FileAccess.READ)
+	var f = FileAccess.open(SETTINGS_PATH, FileAccess.READ)
 	if f == null:
 		return
-	var data: Variant = JSON.parse_string(f.get_as_text())
+	var data = JSON.parse_string(f.get_as_text())
 	f.close()
 	if not (data is Dictionary):
 		return
@@ -256,7 +256,7 @@ func _flush_progress() -> void:
 	if not _progress_dirty:
 		return
 	_progress_dirty = false
-	var f := FileAccess.open(PROGRESS_PATH, FileAccess.WRITE)
+	var f = FileAccess.open(PROGRESS_PATH, FileAccess.WRITE)
 	if f:
 		# Имена ключей = имена полей (ТЗ §1): формат «навсегда», меняем осознанно.
 		f.store_string(JSON.stringify({
@@ -274,10 +274,10 @@ func _load_progress() -> void:
 	researched = START_RESEARCHED.duplicate()
 	if not FileAccess.file_exists(PROGRESS_PATH):
 		return
-	var f := FileAccess.open(PROGRESS_PATH, FileAccess.READ)
+	var f = FileAccess.open(PROGRESS_PATH, FileAccess.READ)
 	if f == null:
 		return
-	var data: Variant = JSON.parse_string(f.get_as_text())
+	var data = JSON.parse_string(f.get_as_text())
 	f.close()
 	if not (data is Dictionary):
 		return
@@ -285,12 +285,12 @@ func _load_progress() -> void:
 	block_inventory = []
 	for b in data.get("block_inventory", []):
 		block_inventory.append(int(b))       # JSON отдаёт float — приводим
-	var fx: Variant = data.get("faction_xp", {})
+	var fx = data.get("faction_xp", {})
 	if fx is Dictionary:
 		for k in fx:
 			faction_xp[str(k)] = int(fx[k])
 	research_points = int(data.get("research_points", 0))
-	var res: Variant = data.get("researched", [])
+	var res = data.get("researched", [])
 	if res is Array and not res.is_empty():
 		researched = []
 		for b in res:
@@ -340,7 +340,7 @@ func rename_build(old_name: String, new_name: String) -> bool:
 	return true
 
 func _persist_builds() -> void:
-	var f := FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
+	var f = FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(saved_builds))
 		f.close()
@@ -348,10 +348,10 @@ func _persist_builds() -> void:
 func _load_builds() -> void:
 	if not FileAccess.file_exists(BUILDS_PATH):
 		return
-	var f := FileAccess.open(BUILDS_PATH, FileAccess.READ)
+	var f = FileAccess.open(BUILDS_PATH, FileAccess.READ)
 	if f == null:
 		return
-	var data: Variant = JSON.parse_string(f.get_as_text())
+	var data = JSON.parse_string(f.get_as_text())
 	f.close()
 	if data is Dictionary:
 		saved_builds = data
