@@ -106,7 +106,7 @@ func report(event: String, amount: int = 1) -> void:
 	var g := get_node_or_null("/root/G")
 	if g:
 		g.on_game_event(event, amount)
-	for q: Variant in active_quests():
+	for q in active_quests():
 		if q.get("event", "") == event and not q["done"]:
 			add_progress(q["id"], amount)
 
@@ -171,7 +171,7 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	if g == null:
 		return
 	var names: Array = []
-	for bt: Variant in g.blocks_of_grade(faction, new_grade):
+	for bt in g.blocks_of_grade(faction, new_grade):
 		names.append(g.block_name(int(bt)))
 	var what := "new blocks" if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
@@ -230,7 +230,7 @@ func _auto_track() -> void:
 	changed.emit()
 
 func _first_active() -> Dictionary:
-	for q: Variant in active_quests():
+	for q in active_quests():
 		return q
 	return {}
 
@@ -252,7 +252,7 @@ func active_quests() -> Array[Dictionary]:
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
-	for q: Variant in _sorted_tutorial():
+	for q in _sorted_tutorial():
 		if not q["done"]:
 			return q
 	return {}
@@ -284,11 +284,11 @@ func visible_quests() -> Array[Dictionary]:
 	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
 	var out: Array[Dictionary] = []
 	# Обучение: выполненные + текущий шаг (дальше не светим).
-	for q: Variant in _sorted_tutorial():
+	for q in _sorted_tutorial():
 		out.append(q)
 		if not q["done"]:
 			break
-	for q: Variant in _sorted_story():
+	for q in _sorted_story():
 		out.append(q)
 		if not q["done"]:
 			break
@@ -300,7 +300,7 @@ func visible_quests() -> Array[Dictionary]:
 func _current_story() -> Dictionary:
 	# Первый невыполненный по order. Если его грейд ещё не взят — сюжет НА ПАУЗЕ
 	# (не перескакиваем вперёд): активного сюжетного нет, остаются дейлики.
-	for q: Variant in _sorted_story():
+	for q in _sorted_story():
 		if not q["done"]:
 			return q if _grade_ok(q) else {}
 	return {}

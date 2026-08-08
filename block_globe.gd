@@ -64,7 +64,7 @@ class XBg extends Control:
 	func _draw() -> void:
 		if dial.size() > 1:
 			draw_polyline(dial, DIAL, 2.5, true)
-		for o: Variant in ovals:
+		for o in ovals:
 			var pts: PackedVector2Array = o["pts"]
 			if pts.size() > 1:
 				draw_polyline(pts, o["color"], o["w"], true)
@@ -135,7 +135,7 @@ var _axis := -1                        # -1 не решено, 0 — блоки 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	for k: Variant in CAT_KEYS:
+	for k in CAT_KEYS:
 		_by_cat[k] = []
 		_item_idx[k] = 0
 	_recompute_view()
@@ -258,16 +258,16 @@ func _build_scene() -> void:
 
 func refresh() -> void:
 	_inv_seen = G.block_inventory.size()
-	for k: Variant in CAT_KEYS:
+	for k in CAT_KEYS:
 		(_by_cat[k] as Array).clear()
 	var counts: Dictionary = {}
-	for b: Variant in G.block_inventory:
+	for b in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
-	for block_type: Variant in counts:
+	for block_type in counts:
 		var key := _category_of(int(block_type))
 		(_by_cat[key] as Array).append({"type": int(block_type), "count": int(counts[block_type])})
 	_all_empty = true
-	for k: Variant in CAT_KEYS:
+	for k in CAT_KEYS:
 		var items: Array = _by_cat[k]
 		if not items.is_empty():
 			_all_empty = false
@@ -282,20 +282,20 @@ func refresh() -> void:
 	_sync_state()
 
 func _category_of(block_type: int) -> String:
-	for k: Variant in G.BLOCK_CATEGORIES:
+	for k in G.BLOCK_CATEGORIES:
 		if (G.BLOCK_CATEGORIES[k] as Array).has(block_type):
 			return k
 	return "other"
 
 func _nearest_nonempty(ci: int) -> int:
 	for d: int in [1, 2]:
-		for cand: Variant in [posmod(ci - d, CAT_KEYS.size()), posmod(ci + d, CAT_KEYS.size())]:
+		for cand in [posmod(ci - d, CAT_KEYS.size()), posmod(ci + d, CAT_KEYS.size())]:
 			if not (_by_cat[CAT_KEYS[cand]] as Array).is_empty():
 				return cand
 	return ci
 
 func _rebuild_rings() -> void:
-	for r: Variant in _rings:
+	for r in _rings:
 		_root.remove_child(r["root"])
 		(r["root"] as Node).queue_free()
 	_rings.clear()
@@ -309,7 +309,7 @@ func _rebuild_rings() -> void:
 		var step := TAU / float(maxi(items.size(), MIN_SLOTS_A))
 		var mem := clampi(int(_item_idx[CAT_KEYS[ci]]), 0, items.size() - 1)
 		var slots: Array = []
-		for it: Variant in items:
+		for it in items:
 			var holder := Node3D.new()
 			var visual := _make_visual(int(it["type"]))
 			holder.add_child(visual)
@@ -326,8 +326,8 @@ func _rebuild_rings() -> void:
 			root.add_child(holder)
 			slots.append({"node": holder, "visual": visual, "badge": badge})
 		var meshes: Array = []
-		for s2: Variant in slots:
-			for m: Variant in (s2["visual"] as Node).find_children("*", "MeshInstance3D", true, false):
+		for s2 in slots:
+			for m in (s2["visual"] as Node).find_children("*", "MeshInstance3D", true, false):
 				meshes.append({"mi": m, "orig": (m as MeshInstance3D).material_override})
 		var ghost := StandardMaterial3D.new()
 		ghost.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -357,7 +357,7 @@ func _make_visual(block_type: int) -> Node3D:
 	var ctr: Vector3 = data["center"]
 	inner.transform = Transform3D(Basis().scaled(Vector3.ONE * s), -ctr * s)
 	container.add_child(inner)
-	for p: Variant in data["parts"]:
+	for p in data["parts"]:
 		var mc := MeshInstance3D.new()
 		mc.mesh = p["mesh"]
 		if p["mat"] != null:
@@ -403,7 +403,7 @@ func _visual_template(block_type: int) -> Dictionary:
 				if bm == BaseMaterial3D.BLEND_MODE_ADD or bm == BaseMaterial3D.BLEND_MODE_SUB:
 					continue
 			var surf: Array = []
-			for si: Variant in n.get_surface_override_material_count():
+			for si in n.get_surface_override_material_count():
 				surf.append(n.get_surface_override_material(si))
 			data["parts"].append({"mesh": n.mesh, "mat": n.material_override, "surf": surf, "xform": here})
 			var la: AABB = n.mesh.get_aabb()
@@ -473,7 +473,7 @@ func _sync_bg_ovals() -> void:
 		return
 	var front := _front_cat()
 	var ovals: Array = []
-	for r: Variant in _rings:
+	for r in _rings:
 		var ci := int(r["ci"])
 		if ci == front:
 			continue
@@ -497,7 +497,7 @@ func _sync_state() -> void:
 func _stack_settled() -> bool:
 	if absf(_spin - _spin_t) >= 0.01:
 		return false
-	for r: Variant in _rings:
+	for r in _rings:
 		if absf(float(r["ang"]) - float(r["ang_t"])) >= 0.02:
 			return false
 	return true
@@ -514,7 +514,7 @@ func _process(delta: float) -> void:
 	var front := _front_cat()
 	var sel := _live_idx()
 	var settled := absf(_spin - _spin_t) < 0.01 and not _dragging
-	for r: Variant in _rings:
+	for r in _rings:
 		r["ang"] = lerpf(float(r["ang"]), float(r["ang_t"]), ak)
 		var ci := int(r["ci"])
 		var beta := _beta_of(ci)
@@ -522,7 +522,7 @@ func _process(delta: float) -> void:
 		var want_ghost := 0 if is_front else 1
 		if int(r["ghosted"]) != want_ghost:
 			r["ghosted"] = want_ghost
-			for me: Variant in r["meshes"]:
+			for me in r["meshes"]:
 				(me["mi"] as MeshInstance3D).material_override = \
 						(r["ghost"] if want_ghost == 1 else me["orig"])
 		var ring_settled := is_front and settled \

@@ -97,7 +97,7 @@ func _gen_fill_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var row := z * w
-	for x: Variant in w:
+	for x in w:
 		var fx := float(x)
 		var base := (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
 		var continental:float = pow(base, gen_power)
@@ -131,8 +131,8 @@ func _gen_carve_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var terr: float = maxf(gen_canyon_terrace, 0.5)
-	for x: Variant in w:
-		var idx :int = z * w + x
+	for x: int in w:                    # w целое → элемент тоже целый
+		var idx := z * w + x
 		var wx := float(x) - hw
 		var wz := fz - hd
 		var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))

@@ -30,7 +30,7 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 		q.collision_mask = 2                                # слой блоков (VehicleBlock.collision_layer=2)
 		q.collide_with_bodies = true
 		var seen := {}
-		for hit: Variant in world.direct_space_state.intersect_shape(q, 48):
+		for hit in world.direct_space_state.intersect_shape(q, 48):
 			var b: Variant = hit.get("collider")
 			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
 				continue
@@ -138,7 +138,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	tw.tween_callback(cloud.queue_free)
 
 static func _set_cards_progress(p: float, mats: Array) -> void:
-	for m: Variant in mats:
+	for m in mats:
 		if is_instance_valid(m):
 			(m as ShaderMaterial).set_shader_parameter("progress", p)
 
@@ -155,7 +155,7 @@ static func hit(block: Node3D, faces: int = 2) -> void:
 	var aabb := _local_aabb(block)
 	var dirs: Array = [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.DOWN, Vector3.FORWARD, Vector3.BACK]
 	dirs.shuffle()
-	for i: Variant in mini(faces, dirs.size()):
+	for i in mini(faces, dirs.size()):
 		_spawn_hit_flash(block, aabb, dirs[i])
 
 static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:

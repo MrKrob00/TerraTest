@@ -43,7 +43,7 @@ var waiting_for_next: bool = false
 # Принимает ли блок ресурс, приходящий с направления from_dir (вектор в осях РОДИТЕЛЯ,
 # указывает ОТ соседа К нам). Зовётся из blocks.rebuild_factory_links.
 func accepts_from(from_dir: Vector3i) -> bool:
-	for dir: Variant in face_dirs(input_faces):
+	for dir in face_dirs(input_faces):
 		if dir == -from_dir:              # сторона ввода смотрит навстречу приходящему ресурсу
 			return true
 	return false
@@ -140,7 +140,7 @@ func push_item(item: Node3D) -> bool:
 
 func _valid_targets() -> Array:
 	var out: Array = []
-	for t: Variant in next_blocks:
+	for t in next_blocks:
 		if t != null and is_instance_valid(t):
 			out.append(t)
 	return out

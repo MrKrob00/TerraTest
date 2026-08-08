@@ -103,7 +103,7 @@ func _rescue_fallen() -> void:
 	if terr == null:
 		return
 	var lifted: Array[RigidBody3D] = []
-	for n: Variant in _fall_candidates():
+	for n in _fall_candidates():
 		var n3 := n as Node3D
 		if n3 == null or not is_instance_valid(n3):
 			continue
@@ -173,7 +173,7 @@ func _primary_machine() -> Node:
 func _purge_extra_machines() -> void:
 	var primary := _primary_machine()
 	var cc := _camera()
-	for m: Variant in _player_machines():
+	for m in _player_machines():
 		if m == primary:
 			continue
 		if cc != null and "vehicles" in cc:
@@ -230,7 +230,7 @@ func _fresh_start() -> void:
 # ── Сохранение / загрузка ─────────────────────────────────────────────────────
 func _save_world() -> void:
 	var machines: Array = []
-	for m: Variant in _player_machines():
+	for m in _player_machines():
 		if m.block_map_node == null or not m.block_map_node.has_method("get_layout"):
 			continue
 		var gp: Vector3 = (m as Node3D).global_position
@@ -307,7 +307,7 @@ func _load_world() -> void:
 		for c: Node in o.get_children():
 			if _is_world_block(c):
 				c.queue_free()
-	for wb: Variant in data.get("world_blocks", []):
+	for wb in data.get("world_blocks", []):
 		var p: Variant = wb.get("pos", [0, 0, 0])
 		var r: Variant = wb.get("rot", [0, 0, 0])
 		_spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
@@ -319,7 +319,7 @@ func _load_world() -> void:
 func _layout_ok(layout: Variant) -> bool:
 	if not (layout is Array) or (layout as Array).is_empty():
 		return false
-	for e: Variant in layout:
+	for e in layout:
 		if not (e is Dictionary):
 			return false
 		if not (e.has("x") and e.has("y") and e.has("z") and e.has("block")):

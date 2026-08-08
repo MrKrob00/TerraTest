@@ -90,7 +90,7 @@ const ACCEL_CRAWL: float = 10.0
 ## в гараже машина висит в воздухе, а знать её возможности всё равно нужно.
 func rated_power() -> float:
 	var power: float = 0.0
-	for w: Variant in Wheels:
+	for w in Wheels:
 		if is_instance_valid(w) and w.is_drive:
 			power += w.wheel_power
 	if _extra_blocks == 0:
@@ -144,7 +144,7 @@ func firepower() -> float:
 func wheel_counts() -> Vector2i:
 	var total: int = 0
 	var driven: int = 0
-	for w: Variant in Wheels:
+	for w in Wheels:
 		if is_instance_valid(w):
 			total += 1
 			if w.is_drive:
@@ -226,7 +226,7 @@ func drive_physics(delta: float) -> void:
 
 # Газ и руль уходят в колёсные блоки — они от этого крутятся и поворачиваются визуально.
 func push_drive_input(steer_norm: float) -> void:
-	for block: Variant in _drive_blocks():
+	for block in _drive_blocks():
 		if not is_instance_valid(block):
 			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
 			continue
@@ -263,7 +263,7 @@ func _check_ground() -> void:
 
 	_grounded_wheels = 0
 	_wheel_count = 0
-	for w: Variant in Wheels:
+	for w in Wheels:
 		if not is_instance_valid(w):
 			continue
 		_wheel_count += 1
@@ -332,7 +332,7 @@ func _sync_mass(delta: float = 0.0) -> void:
 	var min_z: float = INF
 	var max_z: float = -INF
 	var n: int = 0
-	for wheel: Variant in Wheels:
+	for wheel in Wheels:
 		if is_instance_valid(wheel):
 			axle_y += wheel.position.y
 			sum_z_w += wheel.position.z
@@ -361,7 +361,7 @@ func _update_axles(mid_z: float, min_z: float, max_z: float) -> void:
 	_wheelbase = maxf(spread, 0.5)
 	# Колёса в один ряд — руль отдаём всем, иначе поворачивать было бы нечем.
 	var single_row: bool = spread < 0.5
-	for w: Variant in Wheels:
+	for w in Wheels:
 		if is_instance_valid(w):
 			w.is_front = single_row or w.position.z < mid_z
 
@@ -375,7 +375,7 @@ func _get_wheelbase() -> float:
 # Суммарная тяга ведущих колёс, СТОЯЩИХ на земле. Колесо в воздухе не толкает.
 func _drive_power() -> float:
 	var power: float = 0.0
-	for w: Variant in Wheels:
+	for w in Wheels:
 		if is_instance_valid(w) and w.is_drive and w.grounded:
 			power += w.wheel_power
 	# Своим ходом ползёт ТОЛЬКО голая кабина. Навесил хоть один блок — теперь это

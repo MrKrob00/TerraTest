@@ -98,8 +98,8 @@ func _chamfered_box() -> Array:
 	for axis: int in 3:
 		for sgn: int in [-1, 1]:
 			var quad: Array = []
-			for a: Variant in [-_inner, _inner]:
-				for b: Variant in [-_inner, _inner]:
+			for a in [-_inner, _inner]:
+				for b in [-_inner, _inner]:
 					var p: Vector3 = Vector3.ZERO
 					p[axis] = sgn * half
 					p[(axis + 1) % 3] = a
@@ -114,7 +114,7 @@ func _chamfered_box() -> Array:
 				for sj: int in [-1, 1]:
 					var quad: Array = []
 					for sk: int in [-1, 1]:
-						for lead: Variant in [i, j]:
+						for lead in [i, j]:
 							var p: Vector3 = Vector3.ZERO
 							p[i] = si * (half if lead == i else _inner)
 							p[j] = sj * (half if lead == j else _inner)
@@ -176,7 +176,7 @@ func _pad_faces(axis: int, sgn: int) -> Array:
 
 func _block_faces() -> Array:
 	var faces: Array = []
-	for poly: Variant in _chamfered_box():
+	for poly in _chamfered_box():
 		faces.append([poly, KIND_WORLD])
 	for axis: int in 3:
 		for sgn: int in [-1, 1]:
@@ -199,7 +199,7 @@ static func _newell(poly: Array) -> Vector3:
 static func _orient_outward(poly: Array) -> Array:
 	var normal: Vector3 = _newell(poly)
 	var centroid: Vector3 = Vector3.ZERO
-	for p: Variant in poly:
+	for p in poly:
 		centroid += p
 	centroid /= float(poly.size())
 	if normal.dot(centroid) < 0.0:
@@ -233,7 +233,7 @@ func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 		var ax: Array = _face_axes(axis, sgn)
 		var au: Vector3 = ax[0]
 		var av: Vector3 = ax[1]
-		for p: Variant in poly:
+		for p in poly:
 			var pv: Vector3 = p
 			var su: float = pv.dot(au) / (pad_tip * 2.0) + 0.5
 			var sv: float = pv.dot(av) / (pad_tip * 2.0) + 0.5
@@ -245,7 +245,7 @@ func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 	var span: float = 2.0 * half
 	if absf(normal.y) > 0.999:
 		var cell: Vector2i = CELL_TOP if normal.y > 0.0 else CELL_BOTTOM
-		for p: Variant in poly:
+		for p in poly:
 			var pt: Vector3 = p
 			var uu: float = (pt.x + half) / span
 			var vv: float = (pt.z + half) / span
@@ -255,7 +255,7 @@ func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 		return out
 
 	var horizontal_x: bool = absf(normal.x) >= absf(normal.z)
-	for p: Variant in poly:
+	for p in poly:
 		var pv: Vector3 = p
 		var vv: float = (half - pv.y) / span
 		var uu: float = 0.0
@@ -277,7 +277,7 @@ func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 func build() -> ArrayMesh:
 	var st: SurfaceTool = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for entry: Variant in _block_faces():
+	for entry in _block_faces():
 		var oriented: Array = _orient_outward(entry[0])
 		var poly: Array = oriented[0]
 		var normal: Vector3 = oriented[1]
@@ -287,7 +287,7 @@ func build() -> ArrayMesh:
 			# Обход задом наперёд: _orient_outward выдаёт грань против часовой (правило
 			# Ньюэлла), а Godot передней считает намотку ПО часовой. С прямым порядком
 			# все грани отбраковывались как задние — блок просвечивал изнанкой.
-			for idx: Variant in [0, c + 1, c]:
+			for idx in [0, c + 1, c]:
 				st.set_uv(uvs[idx])
 				st.add_vertex(poly[idx])
 	# Материал кладём В МЕШ, а не на ноду: тогда меш можно назначить любому MeshInstance3D

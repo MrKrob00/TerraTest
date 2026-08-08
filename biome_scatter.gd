@@ -158,7 +158,7 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 const PLACE_BATCH := 400            # попыток на кадр при расстановке пропов
 
 func _too_close(placed: Array, p: Vector3, spacing: float) -> bool:
-	for q: Variant in placed:
+	for q in placed:
 		if (q as Vector3).distance_to(p) < spacing:
 			return true
 	return false
@@ -172,7 +172,7 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float
 			var bucket: Variant = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue
-			for q: Variant in (bucket as Array):
+			for q in (bucket as Array):
 				if (q as Vector3).distance_to(p) < spacing:
 					return true
 	return false
@@ -190,7 +190,7 @@ func _process(delta: float) -> void:
 		return
 	var cam_pos: Vector3 = cam.global_position
 	var d2: float = render_distance * render_distance
-	for v: Variant in _data:
+	for v in _data:
 		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
 		var has: bool = v["node"] != null
 		if near and not has and _shown < max_visible:

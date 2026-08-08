@@ -42,7 +42,7 @@ func fix_position_resources(body: Node3D) -> void:
 	body.position = Vector3(0,inventory.find(body)+1,0)
 
 func _on_resources_child_order_changed() -> void:
-	for i: Variant in inventory:
+	for i in inventory:
 		if i.get_parent() != $resources:
 			inventory.erase(i)
 		else: i.position = Vector3(0,inventory.find(i)+1,0)
