@@ -18,6 +18,12 @@ block_mesh.gd она перевёрнута намеренно, потому ч�
                (PIXELS_PER_TILE = 16.0 в addons/LiteTerrain/glsl.gdshader)
   фильтр       ТОЛЬКО nearest, без мипов — иначе пиксели мылятся
 
+Экспорт кладётся в art/out/, а НЕ в res://. Там лежит .gdignore, и Godot эту папку не
+импортирует — намеренно. Формат .mtl не умеет задавать фильтр текстуры, поэтому импортёр
+.obj всегда делает материал с линейным фильтром и мипами, и пиксель-арт из него выходит
+мыльным. Через .obj блок в игру попасть НЕ должен: для этого есть block_mesh.gd, который
+собирает материал сам. Здесь .obj нужен только для превью и чтобы открыть форму в Blender.
+
 Зависимостей нет — только стандартная библиотека.
 """
 
@@ -340,7 +346,7 @@ def write_png(path):
 
 
 if __name__ == "__main__":
-    out = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "objects", "gen"))
+    out = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "out"))
     os.makedirs(out, exist_ok=True)
     nf, nt, nv = write_obj(os.path.join(out, "armor_block.obj"), "armor_block", "armor_block.mtl")
     write_mtl(os.path.join(out, "armor_block.mtl"), "blocks_atlas.png")
