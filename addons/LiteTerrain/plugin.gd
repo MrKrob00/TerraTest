@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-var sculpt_node: Node = null
+var sculpt_node: Node3D = null
 var brush_radius: float = 3.0
 var brush_strength: float = 0.1
 var sculpt_mode: String = "raise"
@@ -627,10 +627,10 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		var ray_origin := viewport_camera.project_ray_origin(event.position)
 		var ray_dir := viewport_camera.project_ray_normal(event.position)
 
-		var hit_pos
+		var hit_pos: Vector3 = Vector3.ZERO
 		if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
 			# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
-			var rh := sculpt_node.raycast_heightmap(ray_origin, ray_dir)
+			var rh: Variant = sculpt_node.raycast_heightmap(ray_origin, ray_dir)
 			if rh == null:
 				return EditorPlugin.AFTER_GUI_INPUT_PASS
 			hit_pos = rh
@@ -686,7 +686,7 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 	var col_shape := sculpt_node.get_node("CollisionShape3D")
 	if col_shape == null:
 		return
-	var shape := col_shape.shape
+	var shape: HeightMapShape3D = col_shape.shape
 	if not shape is HeightMapShape3D:
 		return
 
@@ -749,19 +749,19 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 	ur.commit_action()
 
 	if sculpt_node.has_method("get_chunk_info"):
-		var info := sculpt_node.get_chunk_info()
-		var cs := info["chunk_size"]
-		var chunks_x := info["chunks_x"]
-		var map_w := info["map_width"]
-		var map_d := info["map_depth"]
+		var info: Dictionary = sculpt_node.get_chunk_info()
+		var cs: int = info["chunk_size"]
+		var chunks_x: int = info["chunks_x"]
+		var map_w: int = info["map_width"]
+		var map_d: int = info["map_depth"]
 		var chunks_z := ceili(float(map_d - 1) / cs)
-		var total_chunks := chunks_x * chunks_z
-		var cx_center := int(local_pos.x + map_w / 2.0) / cs
-		var cz_center := int(local_pos.z + map_d / 2.0) / cs
+		var total_chunks: int = chunks_x * chunks_z
+		var cx_center: int = int(local_pos.x + map_w / 2.0) / cs
+		var cz_center: int = int(local_pos.z + map_d / 2.0) / cs
 		var cr := int(ceil(brush_radius / cs)) + 1
 		for dz: int in range(-cr, cr + 1):
 			for dx: int in range(-cr, cr + 1):
-				var ci := (cz_center + dz) * chunks_x + (cx_center + dx)
+				var ci: int = (cz_center + dz) * chunks_x + (cx_center + dx)
 				if ci >= 0 and ci < total_chunks:
 					_dirty_chunks[ci] = true
 
@@ -855,7 +855,7 @@ func _bake_heightmap() -> void:
 		if col_shape == null or not (col_shape.shape is HeightMapShape3D):
 			push_warning("LiteTerrain: no HeightMapShape3D found on the selected node")
 			return
-		var shape := col_shape.shape
+		var shape: HeightMapShape3D = col_shape.shape
 		width = shape.map_width
 		depth = shape.map_depth
 		data  = shape.map_data
@@ -973,7 +973,7 @@ func _generate_png() -> void:
 	var img := Image.create(width, depth, false, Image.FORMAT_L8)
 	for z: int in depth:
 		for x: int in width:
-			var v := (data[z * width + x] - mn) / rng
+			var v: float = (data[z * width + x] - mn) / rng
 			img.set_pixel(x, z, Color(v, v, v))
 
 	var png_path := _heightmap_png_target()
