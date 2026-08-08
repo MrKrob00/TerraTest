@@ -31,7 +31,7 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 		q.collide_with_bodies = true
 		var seen := {}
 		for hit in world.direct_space_state.intersect_shape(q, 48):
-			var b = hit.get("collider")
+			var b: Variant = hit.get("collider")
 			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
 				continue
 			if exclude_root != null and _root_of(b) == exclude_root:
@@ -232,7 +232,7 @@ static func _local_aabb(block: Node3D) -> AABB:
 	var has := false
 	var stack: Array = [block]
 	while not stack.is_empty():
-		var n = stack.pop_back()
+		var n: Variant = stack.pop_back()
 		if n is Node3D and not (n as Node3D).visible:
 			continue                       # скрытая ветка (FX) — не считаем и не спускаемся
 		if n is Area3D and n != block:

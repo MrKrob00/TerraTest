@@ -206,7 +206,7 @@ func _defense_tick(delta: float) -> void:
 	for v in vehicles_root.get_children():
 		if v == self or not (v is Node3D):
 			continue
-		var f = v.get("faction")
+		var f: Variant = v.get("faction")
 		if f == null or f == faction:
 			continue
 		if global_position.distance_to((v as Node3D).global_position) <= DEFENSE_RANGE:
@@ -703,8 +703,8 @@ var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block"
 var build_basis: Basis = Basis()
 var _rc_cache: Node3D = null       # кеш узла Camera3D/Raycast (find_child — рекурсивный поиск)
 var _hover_ms: int = 0             # троттл наведения мышью (ховер шлёт до 1000 событий/с)
-var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
-var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
+var _preview_res: Variant = null            # последний res для превью (чтобы переприменить при повороте)
+var _cabin_ground: Variant = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
 var _hand_from_inventory := false  # блок в руке взят из инвентаря (а не снят с машины) — для авто-добора
 
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,

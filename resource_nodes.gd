@@ -121,7 +121,7 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
 	var cz := floori(p.z / cell)
 	for dx in [-1, 0, 1]:
 		for dz in [-1, 0, 1]:
-			var bucket = grid.get(Vector2i(cx + dx, cz + dz), null)
+			var bucket: Variant = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue
 			for q in (bucket as Array):
