@@ -17,7 +17,7 @@ var _had_pending: bool = false     # это нажатие пришло посл
 
 @onready var screen_size = get_viewport().get_visible_rect().size
 
-func _ready():
+func _ready() -> void:
 	#var start_pos = global_position
 	knob_pos = stick_center
 	#set_process(false)
@@ -26,7 +26,7 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, max_distance, Color.WHITE, false, 12)
 	draw_circle(knob_pos, max_distance/2, Color.GHOST_WHITE, true)
 
-func _input(event):
+func _input(event: InputEvent) -> void:
 	# Удержание кнопки на машине / открытое круговое меню — камеру не крутим,
 	# иначе жест кнопки в зоне джойстика вращал камеру вместе с прогрессом.
 	if VehicleInteractButton.camera_block:
@@ -83,18 +83,18 @@ func _input(event):
 			set_zoom(active_touch_pos,second_touch_pos)
 			second_touch_pos = event.position
 
-func is_touch_inside(touch_pos: Vector2):
+func is_touch_inside(touch_pos: Vector2) -> bool:
 	return (touch_pos - global_position).length() <= max_distance /10
 
-func is_touch_outside(touch_pos: Vector2):
+func is_touch_outside(touch_pos: Vector2) -> bool:
 	screen_size = get_viewport().get_visible_rect().size
 	return (touch_pos - global_position).length() > max_distance/10 and touch_pos.x > screen_size.x/3*2 and touch_pos.y <screen_size.y/2
 
-func is_touch_outside_2(touch_pos: Vector2):
+func is_touch_outside_2(touch_pos: Vector2) -> bool:
 	screen_size = get_viewport().get_visible_rect().size
 	return (touch_pos - global_position).length() > max_distance and touch_pos.x > screen_size.x/2 and touch_pos.y <screen_size.y/2
 
-func update_knob_position(touch_pos: Vector2):
+func update_knob_position(touch_pos: Vector2) -> void:
 	var dir := touch_pos - global_position
 	knob_pos = stick_center + dir.limit_length(max_distance)
 
@@ -102,7 +102,7 @@ func get_joystick_dir() -> Vector2:
 	var dir := knob_pos - stick_center
 	return dir.normalized()
 
-func set_zoom(index1:Vector2,index2:Vector2):
+func set_zoom(index1:Vector2,index2:Vector2) -> void:
 	var d := index1.distance_to(index2)
 	var result := d/ distance
 	distance = d

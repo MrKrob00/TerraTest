@@ -80,14 +80,14 @@ func _process(delta: float) -> void:
 # Далёкие враги: кто дальше far_dist от текущей машины дольше far_limit — телепортируется
 # обратно в кольцо возле игрока (нет точки — исчезает). Так стычка не «уезжает» от игрока.
 func _track_far(delta: float) -> void:
-	for k in _far_time.keys():
+	for k: Variant in _far_time.keys():
 		if not is_instance_valid(k):
 			_far_time.erase(k)
 	var player: Node3D = _player()
 	if player == null:
 		return
 	var map: Node = _find_map()
-	for e in _enemies:
+	for e: Variant in _enemies:
 		if not is_instance_valid(e):
 			continue
 		if player.global_position.distance_to(e.global_position) > far_dist:
@@ -147,7 +147,7 @@ func _on_enemy_died(_enemy: Node) -> void:
 ## Точка спавна рядом с центром, либо null, если места не нашлось.
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null) -> Variant:
 	var base: float = randf() * TAU
-	for i in 36:
+	for i: int in 36:
 		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)
 		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
 		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
@@ -164,7 +164,7 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null) -> Varian
 
 # Есть ли уже враг ближе spawn_separation (по горизонтали) к точке pos.
 func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
-	for e in _enemies:
+	for e: Variant in _enemies:
 		if e == exclude or not is_instance_valid(e):
 			continue
 		var d := Vector2(pos.x - e.global_position.x, pos.z - e.global_position.z)
@@ -248,7 +248,7 @@ func _spawn_enforcement(locked: Node3D = null) -> void:
 	var vehicles: Node = _vehicles_root()
 	if map == null or vehicles == null or enemy_scenes.is_empty():
 		return
-	for i in scan_squad:
+	for i: Variant in scan_squad:
 		var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 		var blocks := enemy.get_node_or_null("blocks")
 		if blocks and "layout_preset" in blocks:
@@ -286,8 +286,8 @@ func _build_marker() -> void:
 	mat.emission_enabled = true
 	mat.emission = Color(0.2, 0.9, 1.0)
 	var map: Node = _find_map()
-	for sx in [-1.0, 1.0]:
-		for sz in [-1.0, 1.0]:
+	for sx: float in [-1.0, 1.0]:
+		for sz: float in [-1.0, 1.0]:
 			var pillar := MeshInstance3D.new()
 			var bm := BoxMesh.new()
 			bm.size = Vector3(1.4, 60.0, 1.4)

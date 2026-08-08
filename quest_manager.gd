@@ -15,7 +15,7 @@ func _ready() -> void:
 	if g:
 		# Выполненные СЮЖЕТНЫЕ квесты персистятся (G.quests_done) — иначе награды
 		# (XP/ДИ/$ сохраняются!) фармились бы перезапуском. Дейлики повторяемы намеренно.
-		for q in quests:
+		for q: Dictionary in quests:
 			# Сюжет И обучение — одноразовые (персист в G.quests_done), иначе награды/шаги
 			# фармились бы перезапуском. Дейлики повторяемы намеренно.
 			if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
@@ -106,12 +106,12 @@ func report(event: String, amount: int = 1) -> void:
 	var g := get_node_or_null("/root/G")
 	if g:
 		g.on_game_event(event, amount)
-	for q in active_quests():
+	for q: Variant in active_quests():
 		if q.get("event", "") == event and not q["done"]:
 			add_progress(q["id"], amount)
 
 func _find(id: String) -> Dictionary:
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["id"] == id:
 			return q
 	return {}
@@ -171,12 +171,12 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	if g == null:
 		return
 	var names: Array = []
-	for bt in g.blocks_of_grade(faction, new_grade):
+	for bt: Variant in g.blocks_of_grade(faction, new_grade):
 		names.append(g.block_name(int(bt)))
 	var what := "new blocks" if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
 	var extra_line := ""
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
 			extra_line = " And new quests have arrived."
 			break
@@ -230,7 +230,7 @@ func _auto_track() -> void:
 	changed.emit()
 
 func _first_active() -> Dictionary:
-	for q in active_quests():
+	for q: Variant in active_quests():
 		return q
 	return {}
 
@@ -245,21 +245,21 @@ func active_quests() -> Array[Dictionary]:
 	var cur := _current_story()
 	if not cur.is_empty():
 		out.append(cur)
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
 	return out
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
-	for q in _sorted_tutorial():
+	for q: Variant in _sorted_tutorial():
 		if not q["done"]:
 			return q
 	return {}
 
 func _sorted_tutorial() -> Array[Dictionary]:
 	var s: Array[Dictionary] = []
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["type"] == Type.TUTORIAL:
 			s.append(q)
 	s.sort_custom(func(a, b): return a["order"] < b["order"])
@@ -284,15 +284,15 @@ func visible_quests() -> Array[Dictionary]:
 	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
 	var out: Array[Dictionary] = []
 	# Обучение: выполненные + текущий шаг (дальше не светим).
-	for q in _sorted_tutorial():
+	for q: Variant in _sorted_tutorial():
 		out.append(q)
 		if not q["done"]:
 			break
-	for q in _sorted_story():
+	for q: Variant in _sorted_story():
 		out.append(q)
 		if not q["done"]:
 			break
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["type"] == Type.DAILY:
 			out.append(q)
 	return out
@@ -300,14 +300,14 @@ func visible_quests() -> Array[Dictionary]:
 func _current_story() -> Dictionary:
 	# Первый невыполненный по order. Если его грейд ещё не взят — сюжет НА ПАУЗЕ
 	# (не перескакиваем вперёд): активного сюжетного нет, остаются дейлики.
-	for q in _sorted_story():
+	for q: Variant in _sorted_story():
 		if not q["done"]:
 			return q if _grade_ok(q) else {}
 	return {}
 
 func _sorted_story() -> Array[Dictionary]:
 	var s: Array[Dictionary] = []
-	for q in quests:
+	for q: Dictionary in quests:
 		if q["type"] == Type.STORY:
 			s.append(q)
 	s.sort_custom(func(a, b): return a["order"] < b["order"])

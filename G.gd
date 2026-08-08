@@ -4,7 +4,7 @@ var money: int = 500
 
 signal money_changed                   # для UI: деньги могли измениться пассивно (продавец)
 
-func add_money(value):
+func add_money(value: int) -> void:
 	money+= value
 	mark_progress_dirty()
 	money_changed.emit()
@@ -128,7 +128,7 @@ func grade(f: String) -> int:
 	var th: Array = FACTIONS[f]["xp_thresholds"]
 	var xp := int(faction_xp.get(f, 0))
 	var g := 1
-	for i in th.size():
+	for i: int in th.size():
 		if xp >= int(th[i]):
 			g = i + 1
 	return mini(g, int(FACTIONS[f]["grades"]))
@@ -141,7 +141,7 @@ func add_faction_xp(f: String, amount: int) -> void:
 	mark_progress_dirty()
 	progress_changed.emit()
 	var after := grade(f)
-	for gi in range(before + 1, after + 1):
+	for gi: int in range(before + 1, after + 1):
 		grade_up.emit(f, gi)           # скачок через 2+ порога объявляет КАЖДЫЙ грейд
 
 func add_research_points(amount: int) -> void:
@@ -181,7 +181,7 @@ func block_key(bt: int) -> String:
 	return "EMPTY"
 
 # Чтение блока из сейва: строка (новый формат) ИЛИ число (старые файлы) — понимаем оба.
-func block_from_key(v) -> int:
+func block_from_key(v: Variant) -> int:
 	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
 		var idx: int = Block.keys().find(str(v))
 		if idx >= 0:
@@ -198,7 +198,7 @@ func block_name(bt: int) -> String:
 # Блоки заданного грейда фракции (для «открылось в магазине: …»).
 func blocks_of_grade(f: String, g: int) -> Array:
 	var out: Array = []
-	for bt in BLOCK_META:
+	for bt: Variant in BLOCK_META:
 		var m: Dictionary = BLOCK_META[bt]
 		if m["f"] == f and int(m["g"]) == g:
 			out.append(bt)
@@ -283,23 +283,23 @@ func _load_progress() -> void:
 		return
 	money = int(data.get("money", money))
 	block_inventory = []
-	for b in data.get("block_inventory", []):
+	for b: Variant in data.get("block_inventory", []):
 		block_inventory.append(int(b))       # JSON отдаёт float — приводим
 	var fx: Variant = data.get("faction_xp", {})
 	if fx is Dictionary:
-		for k in fx:
+		for k: Variant in fx:
 			faction_xp[str(k)] = int(fx[k])
 	research_points = int(data.get("research_points", 0))
 	var res: Variant = data.get("researched", [])
 	if res is Array and not res.is_empty():
 		researched = []
-		for b in res:
+		for b: Variant in res:
 			researched.append(int(b))
 	quests_done = []
-	for q in data.get("quests_done", []):
+	for q: Variant in data.get("quests_done", []):
 		quests_done.append(str(q))
 	killed_kinds = []
-	for k2 in data.get("killed_kinds", []):
+	for k2: Variant in data.get("killed_kinds", []):
 		killed_kinds.append(str(k2))
 
 func _notification(what: int) -> void:
@@ -330,7 +330,7 @@ func rename_build(old_name: String, new_name: String) -> bool:
 	if saved_builds.has(new_name):
 		return false
 	var rebuilt: Dictionary = {}
-	for k in saved_builds:
+	for k: Variant in saved_builds:
 		if k == old_name:
 			rebuilt[new_name] = saved_builds[k]
 		else:
@@ -359,7 +359,7 @@ func _load_builds() -> void:
 # Кол-во блоков по типам в раскладке (значения из JSON приходят float — приводим к int).
 func layout_counts(layout: Array) -> Dictionary:
 	var c: Dictionary = {}
-	for e in layout:
+	for e: Variant in layout:
 		var t := block_from_key(e["block"])
 		c[t] = c.get(t, 0) + 1
 	return c

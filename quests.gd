@@ -68,7 +68,7 @@ func _grade_locked(q: Dictionary) -> bool:
 
 # ── Список всех заданий ───────────────────────────────────────────────────────
 func _rebuild_list() -> void:
-	for c in _list.get_children():
+	for c: Node in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
 	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
@@ -83,7 +83,7 @@ func _add_section(section_name: String, items: Array) -> void:
 	h.add_theme_font_size_override("font_size", 13)
 	h.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.85))
 	_list.add_child(h)
-	for q in items:
+	for q: Variant in items:
 		_list.add_child(_make_row(q))
 
 func _make_row(q: Dictionary) -> Control:

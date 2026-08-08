@@ -126,7 +126,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_touch_look_dx += event.relative.x
 			_touch_look_dy += event.relative.y
 
-func _ready():
+func _ready() -> void:
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
 	# Джойстик камеры заменён свайпом (тач-look) — прячем костыль и глушим его ввод.
 	if joystick_cam:
@@ -135,7 +135,7 @@ func _ready():
 	# Собираем только управляемую игроком технику (у неё есть take_block_into_hand),
 	# чтобы враг (другой RigidBody3D в Vehicles) не попадал в список переключения.
 	var vehicle_childs: Array[Node] = $"..".get_children()
-	for i in vehicle_childs:
+	for i: Node in vehicle_childs:
 		if i is RigidBody3D and i.has_method("take_block_into_hand"):
 			if !vehicles.has(i):
 				vehicles.append(i)
@@ -147,7 +147,7 @@ func _ready():
 		if current_vehicle.has_method("set_active"):
 			current_vehicle.set_active(true)
 
-func _physics_process(delta):
+func _physics_process(delta: float) -> void:
 	if not current_vehicle: return
 
 	# 1. Smoothly move the entire controller to the car's
@@ -160,7 +160,7 @@ func _physics_process(delta):
 var locked_angle: float = 0.0
 var is_locked: bool = false
 
-func camera_movement(_delta):
+func camera_movement(_delta: float) -> void:
 	# Поворот/наклон камеры — от СВАЙПА (тач) и мыши (ПКМ-драг на ПК). Оба уже в пикселях,
 	# накоплены за кадр (_touch_look_* в _unhandled_input, _mouse_look_* в _input). Джойстик
 	# камеры убран (был костылём). Жест кругового меню гасит оба источника.
@@ -237,7 +237,7 @@ func _terrain_height(world_pos: Vector3) -> float:
 			_terrain_retry -= get_physics_process_delta_time()
 			return -INF                     # не пересканируем сцену чаще раза в 0.5с
 		_terrain_retry = 0.5
-		for c in get_tree().current_scene.get_children():
+		for c: Node in get_tree().current_scene.get_children():
 			if c.has_method("terrain_height_at"):
 				_terrain = c
 				break
@@ -246,7 +246,7 @@ func _terrain_height(world_pos: Vector3) -> float:
 	return _terrain.terrain_height_at(world_pos)
 
 # Machine change function 
-func switch_to_vehicle(new_vehicle: RigidBody3D):
+func switch_to_vehicle(new_vehicle: RigidBody3D) -> void:
 	if current_vehicle and current_vehicle.has_method("set_active"):
 		current_vehicle._on_take_off_pressed()
 		current_vehicle.set_active(false)
@@ -265,7 +265,7 @@ func on_vehicle_died(dead: Node) -> void:
 	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
 	current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
 	var alive: Array = []
-	for v in vehicles:
+	for v: Variant in vehicles:
 		if is_instance_valid(v) and v != dead:
 			alive.append(v)
 	if alive.is_empty():
@@ -275,7 +275,7 @@ func on_vehicle_died(dead: Node) -> void:
 		return
 	var best: RigidBody3D = alive[0]
 	var best_d := INF
-	for v in alive:
+	for v: Variant in alive:
 		var d: float = origin.distance_to((v as Node3D).global_position)
 		if d < best_d:
 			best_d = d

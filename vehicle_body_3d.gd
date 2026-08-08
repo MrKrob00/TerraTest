@@ -79,7 +79,7 @@ func _energy_tick(delta: float) -> void:
 		var batteries := 0
 		_solar_count = 0
 		if block_map_node != null:
-			for b in block_map_node.get_children():
+			for b: Node in block_map_node.get_children():
 				match b.get("block"):
 					G.Block.BATTERY: batteries += 1
 					G.Block.SOLAR:   _solar_count += 1
@@ -115,10 +115,10 @@ func _ready() -> void:
 	_on_movement_pressed()
 	await get_tree().process_frame
 
-	for block in get_children():
+	for block: Node in get_children():
 		_map_block_collisions(block)
 
-	for block in block_map_node.get_children():
+	for block: Node in block_map_node.get_children():
 		connect_block_signals(block)
 
 	_connect_cabin()
@@ -139,13 +139,13 @@ var _dying: bool = false
 func _connect_cabin() -> void:
 	if block_map_node == null:
 		return
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if b.get("block") == G.Block.CABIN:
 			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
 				b.destroyed.connect(_on_cabin_destroyed)
 			return
 
-func _on_cabin_destroyed(_b = null) -> void:
+func _on_cabin_destroyed(_b: Variant = null) -> void:
 	_die()
 
 # Кабина уничтожена → машина разваливается (блоки падают в мир), камера уходит к другой
@@ -165,11 +165,11 @@ func _scatter_blocks() -> void:
 		return
 	
 	var cabin_pos: Vector3 = global_position  # Центр разлёта
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if b.get("block") == G.Block.CABIN and b is Node3D:
 			cabin_pos = (b as Node3D).global_position
 			break
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if not ("block" in b):
 			continue      # пропускаем меш-призрак
 		if b.get("block") == G.Block.CABIN:
@@ -203,7 +203,7 @@ func _defense_tick(delta: float) -> void:
 	var vehicles_root := get_parent()
 	if vehicles_root == null:
 		return
-	for v in vehicles_root.get_children():
+	for v: Node in vehicles_root.get_children():
 		if v == self or not (v is Node3D):
 			continue
 		var f: Variant = v.get("faction")
@@ -222,7 +222,7 @@ func _defense_tick(delta: float) -> void:
 func has_support() -> bool:
 	if block_map_node == null:
 		return false
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if "block" in b and int(b.block) == G.Block.SUPPORT:
 			return true
 	return false
@@ -250,7 +250,7 @@ func toggle_anchor() -> bool:
 	if terr != null:
 		var mn := INF
 		var mx := -INF
-		for off in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
+		for off: Variant in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
 			var h: float = terr.terrain_height_at(global_position + off)
 			mn = minf(mn, h)
 			mx = maxf(mx, h)
@@ -345,7 +345,7 @@ func _anchor_station() -> void:
 func _connect_station_core(tries: int = 0) -> void:
 	if block_map_node == null:
 		return
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if "block" in b and G.is_stationary(int(b.block)):
 			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
 				b.destroyed.connect(_on_cabin_destroyed)
@@ -354,7 +354,7 @@ func _connect_station_core(tries: int = 0) -> void:
 		get_tree().create_timer(0.1).timeout.connect(_connect_station_core.bind(tries + 1))
 
 func _find_terrain() -> Node:
-	for c in get_tree().current_scene.get_children():
+	for c: Node in get_tree().current_scene.get_children():
 		if c.has_method("terrain_height_at"):
 			return c
 	return null
@@ -395,7 +395,7 @@ func _build_move_dir() -> Vector3:
 func send_to_inventory() -> void:
 	if block_map_node == null:
 		return
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if "block" in b:
 			G.block_inventory.append(b.block)
 	G.mark_progress_dirty()
@@ -410,7 +410,7 @@ func disassemble() -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
-	for b in block_map_node.get_children():
+	for b: Node in block_map_node.get_children():
 		if not ("block" in b) or b.get("block") == G.Block.CABIN:
 			continue
 		# Ядро СТАНЦИИ (стационарный блок, напр. SELLER) — как кабина у машины: остаётся на
@@ -426,7 +426,7 @@ func disassemble() -> void:
 			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y + 5), roundi(n3.position.z + 5))
 			if block_map_node.has_method("remove_block"):
 				block_map_node.remove_block(cell.x, cell.y, cell.z)
-			for col in get_children():
+			for col: Node in get_children():
 				if col is CollisionShape3D and col.is_in_group("block_collision") \
 						and (col.position == n3.position or col.position == n3.position + Vector3(-0.5, 0.5, -0.5)):
 					col.queue_free()
@@ -438,7 +438,7 @@ func set_defense(on: bool) -> void:
 	defense_mode = on
 
 func _map_block_collisions(block: Node) -> void:
-	for child in block.get_children():
+	for child: Node in block.get_children():
 		if child is CollisionShape3D:
 			# Отримуємо ID власника форми всередині цього фізичного тіла (Vehicle)
 			# Цей ID ідеально збігається з shape_owner_id, який дає RayCast/Area3D
@@ -460,7 +460,7 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	var keys_to_remove: Array = []
 	
 	# Перебираємо всі фізичні форми самого Vehicle
-	for owner_id in get_shape_owners():
+	for owner_id: Variant in get_shape_owners():
 		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
 		if is_instance_valid(collision_shape):
@@ -484,7 +484,7 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 				keys_to_remove.append(owner_id)
 				
 	# Очищаємо словник урону від застарілих ID
-	for key in keys_to_remove:
+	for key: Variant in keys_to_remove:
 		collision_to_block_map.erase(key)
 
 # Блок потерял связь с корнем (кабина/база) и падает в мир (см. blocks._detach_orphans):
@@ -530,7 +530,7 @@ func register_blast(pos: Vector3, force: float) -> void:
 const REWARD_ORBITER := preload("res://reward_orbiter.gd")
 func award_blocks(block_type: int, count: int = 1) -> void:
 	var list: Array = []
-	for _i in count:
+	for _i: Variant in count:
 		list.append(block_type)
 	award_block_list(list)
 
@@ -543,7 +543,7 @@ func award_block_list(types: Array) -> void:
 	if scn == null:
 		return
 	var n := types.size()
-	for i in n:
+	for i: Variant in n:
 		var orb: Node3D = REWARD_ORBITER.new()                      # untyped → setup() зовётся динамически
 		scn.add_child(orb)
 		orb.setup(self, int(types[i]), TAU * float(i) / float(n))
@@ -845,7 +845,7 @@ func _tap_over_ui(pos: Vector2) -> bool:
 	var hud: CanvasLayer = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud == null:
 		return false
-	for nm in _UI_HIT_NODES:
+	for nm: Variant in _UI_HIT_NODES:
 		var n: Node = hud.get_node_or_null(nm)
 		if n == null or not (n is CanvasItem) or not n.visible:
 			continue
@@ -1113,7 +1113,7 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	var tm_y: float = ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
 	var tm_z: float = ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
 	var last_face := ""
-	for _i in range(128):
+	for _i: int in range(128):
 		# Проверяем ТЕКУЩУЮ ячейку (включая стартовую) ещё до шага.
 		if _in_bounds(cx, cy, cz):
 			var block: int = block_map_node.get_block(cx, cy, cz)
@@ -1156,7 +1156,7 @@ func _pick_selected_block() -> bool:
 			block_map_node.call_deferred("_detach_orphans")
 	# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
 	# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
-	for i in get_children():
+	for i: Node in get_children():
 		if i is CollisionShape3D and (i.position == block_body.position \
 				or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
 			i.queue_free()
@@ -1320,7 +1320,7 @@ func _return_hand_to_inventory() -> void:
 	var holder: Node = camera_controller.camera.get_child(0) \
 			if (camera_controller != null and camera_controller.camera != null) else null
 	if holder != null:
-		for child in holder.get_children():
+		for child: Node in holder.get_children():
 			if "block" in child:
 				G.block_inventory.append(int(child.get("block")))
 			holder.remove_child(child)
@@ -1402,10 +1402,10 @@ func _on_attack_timeout() -> void:
 	if bl.get_child_count() != _atk_n:
 		_atk_n = bl.get_child_count()
 		_atk_cache.clear()
-		for i in bl.get_children():
+		for i: Node in bl.get_children():
 			if i.has_method("attack"):
 				_atk_cache.append(i)
-	for i in _atk_cache:
+	for i: Variant in _atk_cache:
 		if not is_instance_valid(i):
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш на следующем вызове
 			continue

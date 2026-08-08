@@ -92,11 +92,11 @@ func _ready() -> void:
 # ─── Инициализация ────────────────────────────────────────────────────────────
 func _init_map() -> void:
 	map = []
-	for x in range(MAP_SIZE_X):
+	for x: int in range(MAP_SIZE_X):
 		var plane: Array = []
-		for y in range(MAP_SIZE_Y):
+		for y: int in range(MAP_SIZE_Y):
 			var row: Array = []
-			for z in range(MAP_SIZE_Z):
+			for z: int in range(MAP_SIZE_Z):
 				row.append(G.Block.EMPTY)
 			plane.append(row)
 		map.append(plane)
@@ -169,9 +169,9 @@ func _wheels_6() -> void:
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
+	for x: int in range(MAP_SIZE_X):
+		for y: int in range(MAP_SIZE_Y):
+			for z: int in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				# Только якорные клетки — иначе многоклеточный блок заспавнится 8 раз.
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
@@ -187,16 +187,16 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 # остальные блоки — одну клетку. Те же 8 клеток, что проверял старый код.
 func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 	if block == G.Block.PROCESSOR or block == G.Block.SELLER:
-		var cells: Array = []
-		for dx in [-1, 0]:
-			for dy in [0, 1]:
-				for dz in [-1, 0]:
+		var cells: Array[Vector3i] = []
+		for dx: int in [-1, 0]:
+			for dy: int in [0, 1]:
+				for dz: int in [-1, 0]:
 					cells.append(Vector3i(x + dx, y + dy, z + dz))
 		return cells
 	if block == G.Block.COAL_GEN:
-		var cells2: Array = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
-		for dx in [-1, 0]:
-			for dz in [-1, 0]:
+		var cells2: Array[Vector3i] = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
+		for dx: int in [-1, 0]:
+			for dz: int in [-1, 0]:
 				cells2.append(Vector3i(x + dx, y, z + dz))
 		return cells2
 	if block == G.Block.BLOCK2:
@@ -205,7 +205,7 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 
 # Можно ли поставить block с якорем (x,y,z): все клетки footprint в границах и пусты.
 func can_place(block: int, x: int, y: int, z: int) -> bool:
-	for c in _block_footprint(block, x, y, z):
+	for c: Variant in _block_footprint(block, x, y, z):
 		if not _in_bounds(c.x, c.y, c.z) or map[c.x][c.y][c.z] != G.Block.EMPTY:
 			return false
 	return true
@@ -213,14 +213,14 @@ func can_place(block: int, x: int, y: int, z: int) -> bool:
 # ─── Запись / чтение ──────────────────────────────────────────────────────────
 # Возвращает true, если блок реально поставлен (footprint был свободен).
 # rot принимает float (только yaw — старый формат) ИЛИ Vector3 (полный поворот с наклоном).
-func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
+func set_block(x: int, y: int, z: int, block: G.Block, rot: Variant = 0.0) -> bool:
 	if not _in_bounds(x, y, z):
 		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
 		return false
 	if not can_place(block, x, y, z):
 		return false   # перекрытие/край → не ставим
 	var anchor := "%d,%d,%d" % [x, y, z]
-	for c in _block_footprint(block, x, y, z):
+	for c: Variant in _block_footprint(block, x, y, z):
 		map[c.x][c.y][c.z] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
 	rotation_map[anchor] = rot if rot is Vector3 else Vector3(0, float(rot), 0)
@@ -235,7 +235,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 	if not _in_bounds(ax, ay, az) or map[ax][ay][az] == G.Block.EMPTY:
 		return
-	for c in _block_footprint(map[ax][ay][az], ax, ay, az):
+	for c: Variant in _block_footprint(map[ax][ay][az], ax, ay, az):
 		if _in_bounds(c.x, c.y, c.z):
 			map[c.x][c.y][c.z] = G.Block.EMPTY
 			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
@@ -326,9 +326,9 @@ func _deferred_rebuild() -> void:
 func _reachable_cells() -> Dictionary:
 	var seen: Dictionary = {}
 	var queue: Array = []
-	for x in MAP_SIZE_X:
-		for y in MAP_SIZE_Y:
-			for z in MAP_SIZE_Z:
+	for x: Variant in MAP_SIZE_X:
+		for y: Variant in MAP_SIZE_Y:
+			for z: Variant in MAP_SIZE_Z:
 				var bt: int = map[x][y][z]
 				if bt != G.Block.EMPTY and (bt == G.Block.CABIN or G.is_stationary(bt)):
 					var k := "%d,%d,%d" % [x, y, z]
@@ -338,7 +338,7 @@ func _reachable_cells() -> Dictionary:
 	var DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
 	while not queue.is_empty():
 		var c: Vector3i = queue.pop_back()
-		for d in DIRS:
+		for d: Variant in DIRS:
 			var n: Vector3i = c + d
 			if not _in_bounds(n.x, n.y, n.z):
 				continue
@@ -357,8 +357,8 @@ func _detach_orphans() -> void:
 	var reachable := _reachable_cells()
 	if reachable.is_empty():
 		return   # корня нет (кабина/база уничтожена) — этим займётся смерть машины (_scatter_blocks)
-	var orphans: Array = []
-	for anchor in node_map.keys():
+	var orphans: Array[Vector3i] = []
+	for anchor: Variant in node_map.keys():
 		var parts: PackedStringArray = anchor.split(",")
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 		if not _in_bounds(ax, ay, az):
@@ -367,13 +367,13 @@ func _detach_orphans() -> void:
 		if bt == G.Block.EMPTY:
 			continue
 		var grounded := false
-		for c in _block_footprint(bt, ax, ay, az):
+		for c: Variant in _block_footprint(bt, ax, ay, az):
 			if reachable.has("%d,%d,%d" % [c.x, c.y, c.z]):
 				grounded = true
 				break
 		if not grounded:
 			orphans.append(Vector3i(ax, ay, az))
-	for o in orphans:
+	for o: Variant in orphans:
 		_detach_one(o.x, o.y, o.z)
 
 # Оторвать блок в мир: снять сигналы разрушения (чтобы гибель уже свободного блока не трогала
@@ -382,7 +382,7 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 	var anchor := "%d,%d,%d" % [ax, ay, az]
 	var node: Node = node_map.get(anchor, null)
 	if node != null and is_instance_valid(node) and node.has_signal("destroyed"):
-		for con in node.destroyed.get_connections():
+		for con: Variant in node.destroyed.get_connections():
 			node.destroyed.disconnect(con["callable"])
 	remove_block(ax, ay, az)                       # чистит карту, сам узел НЕ трогает
 	if node == null or not is_instance_valid(node):
@@ -397,9 +397,9 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 
 func save_layout() -> void:
 	var blocks_array: Array = []
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
+	for x: int in range(MAP_SIZE_X):
+		for y: int in range(MAP_SIZE_Y):
+			for z: int in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
@@ -422,7 +422,7 @@ func load_layout() -> void:
 		push_warning("Файл сохранения не найден: ", SAVE_PATH)
 		return
 
-	for child in get_children():
+	for child: Node in get_children():
 		child.queue_free()
 	node_map.clear()
 	rotation_map.clear()
@@ -435,7 +435,7 @@ func load_layout() -> void:
 	file.close()
 
 	var blocks_array: Variant = json.get_data()
-	for entry in blocks_array:
+	for entry: Variant in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 
 	_spawn_all()
@@ -443,9 +443,9 @@ func load_layout() -> void:
 
 func get_layout() -> Array:
 	var blocks_array: Array = []
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
+	for x: int in range(MAP_SIZE_X):
+		for y: int in range(MAP_SIZE_Y):
+			for z: int in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
@@ -472,7 +472,7 @@ func apply_layout(blocks_array: Array) -> void:
 	# Освобождаем только инстансы блоков (они лежат в node_map), а НЕ всех детей —
 	# среди детей есть призрак постройки (blocks/MeshInstance3D, ghost_block у машины),
 	# который освобождать нельзя, иначе _on_building_pressed крашится на freed-объекте.
-	for inst in node_map.values():
+	for inst: Variant in node_map.values():
 		if is_instance_valid(inst):
 			inst.queue_free()
 	_clear_block_collisions()          # убираем коллизии блоков с кузова машины
@@ -480,7 +480,7 @@ func apply_layout(blocks_array: Array) -> void:
 	rotation_map.clear()
 	cell_owner.clear()
 	_init_map()
-	for entry in blocks_array:
+	for entry: Variant in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 	_spawn_all()
 
@@ -490,7 +490,7 @@ func _clear_block_collisions() -> void:
 	var parent := get_parent()
 	if parent == null:
 		return
-	for c in parent.get_children():
+	for c: Node in parent.get_children():
 		if c is CollisionShape3D and c.is_in_group("block_collision"):
 			c.queue_free()
 
@@ -500,7 +500,7 @@ func _clear_block_collisions() -> void:
 func attach_delta(block_type: int, face: String) -> Vector3i:
 	var lo := Vector3i(0, 0, 0)
 	var hi := Vector3i(0, 0, 0)
-	for c in _block_footprint(block_type, 0, 0, 0):
+	for c: Variant in _block_footprint(block_type, 0, 0, 0):
 		lo.x = mini(lo.x, c.x); lo.y = mini(lo.y, c.y); lo.z = mini(lo.z, c.z)
 		hi.x = maxi(hi.x, c.x); hi.y = maxi(hi.y, c.y); hi.z = maxi(hi.z, c.z)
 	match face:
@@ -522,7 +522,7 @@ func attach_delta(block_type: int, face: String) -> Vector3i:
 func rebuild_factory_links() -> void:
 	var facs: Array = []
 	var cells: Dictionary = {}                    # node → клетки его футпринта
-	for k in node_map.keys():
+	for k: Variant in node_map.keys():
 		var n: Variant = node_map[k]
 		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
 			continue
@@ -532,16 +532,16 @@ func rebuild_factory_links() -> void:
 			continue
 		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
 		facs.append(n)
-	for n in facs:
+	for n: Variant in facs:
 		n.next_blocks = []
 		n.next_block = null
 		var own: Array = cells[n]
 		# Собираем ВСЕ подключённые приёмники, а не первый попавшийся: блок может иметь
 		# несколько выходов (делитель) — тогда он раздаёт по кругу (FactoryBlock.push_item).
-		for d in n.face_dirs(n.output_faces):
+		for d: Variant in n.face_dirs(n.output_faces):
 			if d == Vector3i.ZERO:
 				continue
-			for c in own:
+			for c: Variant in own:
 				var t: Vector3i = c + d
 				if not _in_bounds(t.x, t.y, t.z):
 					continue

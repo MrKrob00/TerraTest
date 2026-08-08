@@ -59,7 +59,7 @@ func _ready() -> void:
 	}
 	# Любой блок из дерева, которому не задали цену выше, ВСЁ РАВНО попадает в магазин (цена от
 	# стоимости исследования). Так все блоки — и новые в будущем — автоматически есть в магазине.
-	for _bt in G.BLOCK_META:
+	for _bt: Variant in G.BLOCK_META:
 		if not _prices.has(_bt):
 			_prices[_bt] = maxi(int(G.BLOCK_META[_bt].get("rp", 10)), 5)
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
@@ -76,7 +76,7 @@ func _ready() -> void:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
 		%Close.pressed.connect(hide)
-	for i in _tab_buttons.size():
+	for i: int in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].pressed.connect(_select_tab.bind(i))
 	visibility_changed.connect(_on_visibility_changed)
@@ -105,7 +105,7 @@ func _build_filter_column() -> void:
 	_filter_col.visible = false
 	body.add_child(_filter_col)
 	body.move_child(_filter_col, 0)
-	for f in FILTERS:
+	for f: Variant in FILTERS:
 		var fb := Button.new()
 		fb.text = f[1]
 		fb.toggle_mode = true
@@ -117,7 +117,7 @@ func _build_filter_column() -> void:
 
 func _set_shop_filter(key: String) -> void:
 	_shop_filter = key
-	for k in _filter_buttons:
+	for k: Variant in _filter_buttons:
 		_filter_buttons[k].button_pressed = (k == key)
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
@@ -128,7 +128,7 @@ func _passes_filter(block_type: int) -> bool:
 		"all":
 			return true
 		"other":
-			for k in _categories:
+			for k: Variant in _categories:
 				if _categories[k].has(block_type):
 					return false
 			return true
@@ -155,7 +155,7 @@ func refresh() -> void:
 func _load_items() -> void:
 	_items.clear()
 	if _tab == TAB_SHOP:
-		for block_type in _prices:
+		for block_type: Variant in _prices:
 			if not _passes_filter(int(block_type)):
 				continue
 			_items.append({
@@ -166,9 +166,9 @@ func _load_items() -> void:
 			})
 		return
 	var counts: Dictionary = {}
-	for b in G.block_inventory:
+	for b: Variant in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
-	for block_type in counts:
+	for block_type: Variant in counts:
 		if not _passes_filter(int(block_type)):
 			continue
 		_items.append({
@@ -209,11 +209,11 @@ func _rebuild_grid(filter: String) -> void:
 	if _tab == TAB_BUILDS:
 		_build_builds_tab()
 		return
-	for c in _grid.get_children():
+	for c: Node in _grid.get_children():
 		c.queue_free()
 	var f := filter.strip_edges().to_lower()
 	var shown := 0
-	for it in _items:
+	for it: Variant in _items:
 		if f != "" and not str(it["name"]).to_lower().contains(f):
 			continue
 		_grid.add_child(_make_slot(it))
@@ -272,10 +272,10 @@ func _make_slot(it: Dictionary) -> Control:
 
 # ── Вкладка СБОРКИ (сохранённые машины) ───────────────────────────────────────
 func _build_builds_tab() -> void:
-	for c in _grid.get_children():
+	for c: Node in _grid.get_children():
 		c.queue_free()
 	_grid.add_child(_make_action_slot("＋ Save\ncurrent", _save_current_build))
-	for build_name in G.saved_builds:
+	for build_name: Variant in G.saved_builds:
 		_grid.add_child(_make_build_slot(str(build_name)))
 
 func _make_action_slot(label: String, cb: Callable) -> Control:
@@ -472,13 +472,13 @@ func _load_build(build_name: String) -> void:
 		return
 	var current: Array = blocks_node.get_layout() if blocks_node.has_method("get_layout") else []
 	var pool: Dictionary = G.layout_counts(current)
-	for b in G.block_inventory:
+	for b: Variant in G.block_inventory:
 		var t := int(b)
 		pool[t] = pool.get(t, 0) + 1
 	var need: Dictionary = G.layout_counts(target)
 	# Чего не хватает?
 	var missing: Dictionary = {}
-	for t in need:
+	for t: Variant in need:
 		var short: int = int(need[t]) - int(pool.get(t, 0))
 		if short > 0:
 			missing[t] = short
@@ -486,11 +486,11 @@ func _load_build(build_name: String) -> void:
 		_say("Missing: " + _missing_text(missing))
 		return
 	# Применяем: новый инвентарь = пул − потрачено на сборку.
-	for t in need:
+	for t: Variant in need:
 		pool[t] = int(pool.get(t, 0)) - int(need[t])
 	var new_inv: Array = []
-	for t in pool:
-		for _i in int(pool[t]):
+	for t: Variant in pool:
+		for _i: Variant in int(pool[t]):
 			new_inv.append(int(t))
 	G.block_inventory = new_inv
 	G.mark_progress_dirty()
@@ -500,7 +500,7 @@ func _load_build(build_name: String) -> void:
 
 func _missing_text(missing: Dictionary) -> String:
 	var parts: Array = []
-	for t in missing:
+	for t: Variant in missing:
 		parts.append("%s ×%d" % [_block_name(int(t)), int(missing[t])])
 	return ", ".join(parts)
 
@@ -537,7 +537,7 @@ func _buy(block_type: int, price: int) -> void:
 # ── Вкладки ───────────────────────────────────────────────────────────────────
 func _select_tab(idx: int) -> void:
 	_tab = idx
-	for i in _tab_buttons.size():
+	for i: int in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
@@ -676,7 +676,7 @@ func _build_stats_panel() -> void:
 	grid.add_theme_constant_override("v_separation", 5)
 	column.add_child(grid)
 
-	for key in STAT_ROWS:
+	for key: String in STAT_ROWS:
 		var caption := Label.new()
 		caption.text = key
 		caption.add_theme_color_override("font_color", STAT_NAME_COLOR)
@@ -783,7 +783,7 @@ func _music() -> Node:
 	return get_node_or_null("/root/Music")
 
 func _clear_extra() -> void:
-	for c in _extra_vb.get_children():
+	for c: Node in _extra_vb.get_children():
 		c.queue_free()
 
 func _extra_header(text: String) -> void:
@@ -842,7 +842,7 @@ func _build_music_tab() -> void:
 	# Два списка: путешествия (играют и в гараже) и отдельно сражения. Без «меню» —
 	# тот тип зарезервирован под будущее главное меню игры.
 	var sections := [["Travel", m.Ctx.TRAVEL], ["Battle", m.Ctx.BATTLE]]
-	for s in sections:
+	for s: Variant in sections:
 		_extra_header(str(s[0]))
 		var list: Array = m.tracks.get(s[1], [])
 		if list.is_empty():
@@ -852,7 +852,7 @@ func _build_music_tab() -> void:
 			empty.modulate = Color(1, 1, 1, 0.45)
 			_extra_vb.add_child(empty)
 			continue
-		for tr in list:
+		for tr: Variant in list:
 			_extra_vb.add_child(_music_row(m, tr, cur))
 
 # ── Иконки строк музыки: рисуются кодом (юникод-глифы ♥/✖ не рендерились шрифтом) ──
@@ -1092,7 +1092,7 @@ const TMARGIN := 18.0
 class TechGraph extends Control:
 	var edges: Array = []              # [{a: Vector2, b: Vector2, col: Color}]
 	func _draw() -> void:
-		for e in edges:
+		for e: Variant in edges:
 			draw_line(e["a"], e["b"], e["col"], 2.0, true)
 
 var _tech_selected: int = -1           # выбранная нода (Block) для инфо-панели
@@ -1120,17 +1120,17 @@ func _build_tech_tab() -> void:
 	# Холст нужного размера + перестройка нод/линий (сохраняя позицию прокрутки).
 	var keep := Vector2(_tech_scroll.scroll_horizontal, _tech_scroll.scroll_vertical)
 	var graph: TechGraph = _tech_graph
-	for c in graph.get_children():
+	for c: Node in graph.get_children():
 		c.queue_free()
 	var maxx := 0.0
 	var maxy := 0.0
-	for bt in pos:
+	for bt: Variant in pos:
 		maxx = maxf(maxx, (pos[bt] as Vector2).x)
 		maxy = maxf(maxy, (pos[bt] as Vector2).y)
 	graph.custom_minimum_size = Vector2(maxx + TNODE_W + TMARGIN, maxy + TNODE_H + TMARGIN)
 	# Линии связей: правый-центр родителя → левый-центр ребёнка.
 	var edges: Array = []
-	for bt in G.TECH_PARENT:
+	for bt: Variant in G.TECH_PARENT:
 		var par := int(G.TECH_PARENT[bt])
 		if not (pos.has(bt) and pos.has(par)):
 			continue
@@ -1142,7 +1142,7 @@ func _build_tech_tab() -> void:
 	graph.edges = edges
 	graph.queue_redraw()
 	# Ноды.
-	for bt in pos:
+	for bt: Variant in pos:
 		graph.add_child(_make_tech_node(int(bt), pos[bt]))
 	# Вернуть прокрутку после того, как контейнер пересчитает размеры.
 	_tech_scroll.scroll_horizontal = int(keep.x)
@@ -1189,7 +1189,7 @@ func _tech_build_shell(body: Node) -> void:
 func _tech_layout() -> Dictionary:
 	var children: Dictionary = {}
 	var root := -1
-	for bt in G.BLOCK_META:
+	for bt: Variant in G.BLOCK_META:
 		if G.TECH_PARENT.has(bt):
 			var par := int(G.TECH_PARENT[bt])
 			if not children.has(par):
@@ -1197,14 +1197,14 @@ func _tech_layout() -> Dictionary:
 			(children[par] as Array).append(int(bt))
 		else:
 			root = int(bt)                 # без родителя = корень (кабина)
-	for par in children:
+	for par: Variant in children:
 		(children[par] as Array).sort()    # стабильный порядок детей
 	var rows: Dictionary = {}
 	_tech_leaf = 0.0
 	if root >= 0:
 		_tech_assign(root, children, rows)
 	var pos: Dictionary = {}
-	for bt in rows:
+	for bt: Variant in rows:
 		pos[bt] = Vector2(TMARGIN + _tech_depth(int(bt)) * TCOL_W,
 				TMARGIN + float(rows[bt]) * TROW_H)
 	return pos
@@ -1216,7 +1216,7 @@ func _tech_assign(bt: int, children: Dictionary, rows: Dictionary) -> void:
 		_tech_leaf += 1.0
 		return
 	var s := 0.0
-	for k in kids:
+	for k: Variant in kids:
 		_tech_assign(int(k), children, rows)
 		s += float(rows[int(k)])
 	rows[bt] = s / float(kids.size())

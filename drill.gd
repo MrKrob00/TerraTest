@@ -24,7 +24,7 @@ func attack() -> void:
 # (а не сигнал body_entered, который срабатывает лишь при ВХОДЕ тела) добывает и застрявшую вплотную
 # руду, оставшуюся в контакте после первого удара.
 func _dig() -> void:
-	for body in $drill.get_overlapping_bodies():
+	for body: Variant in $drill.get_overlapping_bodies():
 		if body == self: continue
 		if body.get_parent() == get_parent(): continue   # свои блоки не бурим
 		if body.has_method("hurt"):

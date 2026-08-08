@@ -22,7 +22,7 @@ func _physics_process(delta: float) -> void:
 	if _timer > 0.0:
 		return
 	_timer = REGEN_INTERVAL
-	for b in blocks_node.get_children():
+	for b: Node in blocks_node.get_children():
 		if b == self or not ("current_hp" in b) or not (b is Node3D):
 			continue
 		if b.current_hp >= b.max_hp:
