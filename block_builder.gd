@@ -1,15 +1,16 @@
-@tool
-class_name GeneratedBlock
-extends MeshInstance3D
+class_name BlockBuilder
+extends RefCounted
 
-# Блок собирает СЕБЯ: и меш, и текстуру, и материал. Ничего не надо назначать руками и
-# нечему сбиться — раньше .obj с .png требовал настройки материала в редакторе, и с
-# фильтром по умолчанию (линейный + мипы) пиксельная текстура превращалась в мыло.
-# Здесь фильтр задаётся кодом и всегда nearest, а текстура рождается в памяти, поэтому
-# настроек импорта у неё просто нет.
+# Сборщик меша блока. Ни узел, ни сцена — просто объект, который строит ArrayMesh вместе
+# с его материалом и текстурой. Пользуются им двое:
+#   • addons/blockgen — плагин импорта: превращает файл .blockgen в ресурс Mesh, который
+#     видно в файловой панели и можно таскать мышкой, как любой другой меш;
+#   • block.gd — берёт готовый ассет, а если тот почему-то не импортировался, строит на лету.
 #
-# ЗЕРКАЛО art/blockgen.py — там тот же генератор на Python, он нужен только чтобы
-# отрисовать превью формы без запуска Godot. Правишь одно — правь и второе.
+# ЗЕРКАЛО art/blockgen.py — там тот же генератор на Python, он рисует превью формы без
+# запуска Godot. Правишь одно — правь и второе. Намотка треугольников там ОСТАЁТСЯ против
+# часовой (конвенция .obj), здесь она перевёрнута: Godot передней гранью считает намотку
+# по часовой.
 #
 # Спецификация стиля:
 #   габарит  0.96 в ячейке 1.0 — зазор 0.02 даёт видимый шов между блоками
@@ -19,85 +20,88 @@ extends MeshInstance3D
 #   тексель  16 пикселей на мировую единицу — совпадает с землёй
 #            (PIXELS_PER_TILE = 16.0 в addons/LiteTerrain/glsl.gdshader)
 
-const HALF: float = 0.48
-const CHAMFER: float = 0.10
-const INNER: float = HALF - CHAMFER
-
-# Метка крепления: выпуклая звезда с лучами по диагоналям грани.
-const PAD_RISE: float = 0.02     # «чуть-чуть» — с меткой блок ровно заполняет ячейку 1.0
-const PAD_TIP: float = 0.165     # радиус луча
-const PAD_VALLEY: float = 0.075  # радиус впадины: меньше луча, иначе звезда вырождается в квадрат
-
-const CELL: int = 16
-const ATLAS: int = 32
+const CELL: int = 16             # тексель-ячейка грани
+const ATLAS: int = 32            # атлас 2x2 ячейки
+const EDGE_EPS: float = 0.01     # отступ от края ячейки, чтобы nearest не попал в соседнюю
 
 const CELL_SIDE: Vector2i = Vector2i(0, 0)
 const CELL_TOP: Vector2i = Vector2i(1, 0)
 const CELL_BOTTOM: Vector2i = Vector2i(0, 1)
 const CELL_PAD: Vector2i = Vector2i(1, 1)
 
-const SLATE_RIM: Color = Color(132.0 / 255.0, 140.0 / 255.0, 165.0 / 255.0)
-const SLATE_LIGHT: Color = Color(110.0 / 255.0, 118.0 / 255.0, 143.0 / 255.0)
-const SLATE_DARK: Color = Color(88.0 / 255.0, 95.0 / 255.0, 119.0 / 255.0)
-const CREAM: Color = Color(226.0 / 255.0, 224.0 / 255.0, 212.0 / 255.0)
-const PAD_FACE: Color = Color(146.0 / 255.0, 154.0 / 255.0, 178.0 / 255.0)
-const PAD_MARK: Color = Color(96.0 / 255.0, 103.0 / 255.0, 126.0 / 255.0)
-
 const KIND_WORLD: int = 0        # UV из мировой позиции — полоса непрерывна через фаски
 const KIND_PAD: int = 1          # UV из собственной ячейки метки
 
-# Меш один на все экземпляры: блоков на машине десятки, плодить копии незачем.
-static var _shared_mesh: ArrayMesh = null
+# ── Параметры блока (перекрываются из .blockgen) ──────────────────────────────
+var half: float = 0.48
+var chamfer: float = 0.10
+var pad_rise: float = 0.02       # «чуть-чуть» — с меткой блок ровно заполняет ячейку 1.0
+var pad_tip: float = 0.165       # радиус луча звезды
+var pad_valley: float = 0.075    # радиус впадины: меньше луча, иначе звезда станет квадратом
+var band_from: int = 7           # первый ряд светлой полосы (из 16)
+var band_to: int = 8             # последний ряд светлой полосы
 
-## Готовый меш с УЖЕ вложенным материалом. Можно звать откуда угодно:
-##     mesh_instance.mesh = GeneratedBlock.block_mesh()
-## Ни сцены, ни скрипта на ноде для этого не нужно.
-static func block_mesh() -> ArrayMesh:
-	if _shared_mesh == null:
-		_shared_mesh = _build_mesh()
-	return _shared_mesh
+var col_rim: Color = Color(132.0 / 255.0, 140.0 / 255.0, 165.0 / 255.0)
+var col_light: Color = Color(110.0 / 255.0, 118.0 / 255.0, 143.0 / 255.0)
+var col_dark: Color = Color(88.0 / 255.0, 95.0 / 255.0, 119.0 / 255.0)
+var col_band: Color = Color(226.0 / 255.0, 224.0 / 255.0, 212.0 / 255.0)
+var col_pad: Color = Color(146.0 / 255.0, 154.0 / 255.0, 178.0 / 255.0)
+var col_mark: Color = Color(96.0 / 255.0, 103.0 / 255.0, 126.0 / 255.0)
 
-## Нажми в инспекторе — меш вместе с материалом и текстурой ляжет в файл
-## res://objects/gen/armor_block.res. Дальше его можно назначить полю Mesh любого
-## MeshInstance3D мышкой: ни сцены-обёртки, ни скрипта на ноде не потребуется.
-@export var bake_to_file: bool = false:
-	set(value):
-		bake_to_file = false                 # это кнопка, а не настройка
-		if value and Engine.is_editor_hint():
-			_bake_to_file()
+var _inner: float = 0.38
 
-const BAKE_PATH: String = "res://objects/gen/armor_block.res"
+func _init(cfg: Dictionary = {}) -> void:
+	half = float(cfg.get("half", half))
+	chamfer = float(cfg.get("chamfer", chamfer))
+	var pad: Dictionary = cfg.get("pad", {})
+	pad_rise = float(pad.get("rise", pad_rise))
+	pad_tip = float(pad.get("tip", pad_tip))
+	pad_valley = float(pad.get("valley", pad_valley))
+	var band: Array = cfg.get("band_rows", [band_from, band_to])
+	if band.size() == 2:
+		band_from = int(band[0])
+		band_to = int(band[1])
+	var pal: Dictionary = cfg.get("palette", {})
+	col_rim = _colour(pal.get("rim"), col_rim)
+	col_light = _colour(pal.get("light"), col_light)
+	col_dark = _colour(pal.get("dark"), col_dark)
+	col_band = _colour(pal.get("band"), col_band)
+	col_pad = _colour(pal.get("pad"), col_pad)
+	col_mark = _colour(pal.get("mark"), col_mark)
+	_inner = half - chamfer
 
-func _bake_to_file() -> void:
-	_shared_mesh = null                      # печём свежий, а не то, что лежало в кеше
-	var baked: ArrayMesh = block_mesh()
-	DirAccess.make_dir_recursive_absolute(BAKE_PATH.get_base_dir())
-	var err: int = ResourceSaver.save(baked, BAKE_PATH)
-	if err == OK:
-		print("Меш блока сохранён: ", BAKE_PATH)
-	else:
-		push_error("Не удалось сохранить меш блока (%s), код %d" % [BAKE_PATH, err])
+# Цвета в .blockgen пишутся как [r, g, b] в диапазоне 0..255 — так их проще брать из палитры.
+static func _colour(value: Variant, fallback: Color) -> Color:
+	if value is Array and (value as Array).size() >= 3:
+		var a: Array = value
+		return Color(float(a[0]) / 255.0, float(a[1]) / 255.0, float(a[2]) / 255.0)
+	return fallback
 
-func _ready() -> void:
-	if Engine.is_editor_hint():
-		_shared_mesh = null                  # в редакторе правки констант видны сразу
-	mesh = block_mesh()
+## Прочитать описание блока и собрать меш. Возвращает null, если файл нечитаем.
+static func from_file(path: String) -> ArrayMesh:
+	if not FileAccess.file_exists(path):
+		return null
+	var text: String = FileAccess.get_file_as_string(path)
+	var parsed: Variant = JSON.parse_string(text)
+	if not (parsed is Dictionary):
+		return null
+	return BlockBuilder.new(parsed).build()
 
 # ══════════════════════════════════════════
 # ГЕОМЕТРИЯ
 # ══════════════════════════════════════════
 
 # Скошенный куб: 6 площадок + 12 рёбер + 8 углов = 44 треугольника.
-static func _chamfered_box() -> Array:
+func _chamfered_box() -> Array:
 	var faces: Array = []
 
 	for axis in 3:
 		for sgn in [-1, 1]:
 			var quad: Array = []
-			for a in [-INNER, INNER]:
-				for b in [-INNER, INNER]:
+			for a in [-_inner, _inner]:
+				for b in [-_inner, _inner]:
 					var p: Vector3 = Vector3.ZERO
-					p[axis] = sgn * HALF
+					p[axis] = sgn * half
 					p[(axis + 1) % 3] = a
 					p[(axis + 2) % 3] = b
 					quad.append(p)
@@ -112,9 +116,9 @@ static func _chamfered_box() -> Array:
 					for sk in [-1, 1]:
 						for lead in [i, j]:
 							var p: Vector3 = Vector3.ZERO
-							p[i] = si * (HALF if lead == i else INNER)
-							p[j] = sj * (HALF if lead == j else INNER)
-							p[k] = sk * INNER
+							p[i] = si * (half if lead == i else _inner)
+							p[j] = sj * (half if lead == j else _inner)
+							p[k] = sk * _inner
 							quad.append(p)
 					faces.append([quad[0], quad[1], quad[3], quad[2]])
 
@@ -126,13 +130,13 @@ static func _chamfered_box() -> Array:
 				for lead in 3:
 					var p: Vector3 = Vector3.ZERO
 					for a in 3:
-						p[a] = s[a] * (HALF if a == lead else INNER)
+						p[a] = s[a] * (half if a == lead else _inner)
 					tri.append(p)
 				faces.append(tri)
 	return faces
 
 # Пара осей в плоскости грани: лучи звезды идут по диагоналям квадрата грани.
-static func _face_axes(axis: int, sgn: int) -> Array:
+func _face_axes(axis: int, sgn: int) -> Array:
 	var u: Vector3 = Vector3.ZERO
 	var v: Vector3 = Vector3.ZERO
 	u[(axis + 1) % 3] = 1.0
@@ -140,16 +144,16 @@ static func _face_axes(axis: int, sgn: int) -> Array:
 	return [u, v]
 
 # Восемь точек контура: вершины лучей на диагоналях, впадины между ними.
-static func _star_outline() -> Array:
+func _star_outline() -> Array:
 	var pts: Array = []
 	for i in 8:
 		var ang: float = PI / 4.0 + PI / 4.0 * float(i)
-		var r: float = PAD_TIP if i % 2 == 0 else PAD_VALLEY
+		var r: float = pad_tip if i % 2 == 0 else pad_valley
 		pts.append(Vector2(cos(ang) * r, sin(ang) * r))
 	return pts
 
 # Выпуклая звезда: крышка веером из центра + бортик по контуру.
-static func _pad_faces(axis: int, sgn: int) -> Array:
+func _pad_faces(axis: int, sgn: int) -> Array:
 	var ax: Array = _face_axes(axis, sgn)
 	var u: Vector3 = ax[0]
 	var v: Vector3 = ax[1]
@@ -158,19 +162,19 @@ static func _pad_faces(axis: int, sgn: int) -> Array:
 
 	var outline: Array = _star_outline()
 	var faces: Array = []
-	var centre: Vector3 = n * (HALF + PAD_RISE)
+	var centre: Vector3 = n * (half + pad_rise)
 	for i in 8:
 		var a: Vector2 = outline[i]
 		var b: Vector2 = outline[(i + 1) % 8]
-		var a_top: Vector3 = u * a.x + v * a.y + n * (HALF + PAD_RISE)
-		var b_top: Vector3 = u * b.x + v * b.y + n * (HALF + PAD_RISE)
-		var a_base: Vector3 = u * a.x + v * a.y + n * HALF
-		var b_base: Vector3 = u * b.x + v * b.y + n * HALF
+		var a_top: Vector3 = u * a.x + v * a.y + n * (half + pad_rise)
+		var b_top: Vector3 = u * b.x + v * b.y + n * (half + pad_rise)
+		var a_base: Vector3 = u * a.x + v * a.y + n * half
+		var b_base: Vector3 = u * b.x + v * b.y + n * half
 		faces.append([[centre, a_top, b_top], KIND_PAD])
 		faces.append([[a_base, b_base, b_top, a_top], KIND_PAD])
 	return faces
 
-static func _block_faces() -> Array:
+func _block_faces() -> Array:
 	var faces: Array = []
 	for poly in _chamfered_box():
 		faces.append([poly, KIND_WORLD])
@@ -208,9 +212,6 @@ static func _orient_outward(poly: Array) -> Array:
 # UV
 # ══════════════════════════════════════════
 
-# Отступ от края ячейки: держит выборку внутри неё, чтобы nearest не заглянул в соседнюю.
-const EDGE_EPS: float = 0.01
-
 # u,v растягиваются на ПОЛНУЮ ширину ячейки, а не на центры крайних текселей. При
 # отображении «центр-в-центр» крайним рядам доставалась вдвое меньшая доля u, и ободок
 # на грани выходил вдвое тоньше остальных полос.
@@ -220,7 +221,7 @@ static func _cell_uv(cell: Vector2i, u: float, v: float) -> Vector2:
 		(cell.x * CELL + EDGE_EPS + clampf(u, 0.0, 1.0) * span) / float(ATLAS),
 		(cell.y * CELL + EDGE_EPS + clampf(v, 0.0, 1.0) * span) / float(ATLAS))
 
-static func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
+func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 	var out: Array = []
 
 	if kind == KIND_PAD:
@@ -234,20 +235,20 @@ static func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 		var av: Vector3 = ax[1]
 		for p in poly:
 			var pv: Vector3 = p
-			var su: float = pv.dot(au) / (PAD_TIP * 2.0) + 0.5
-			var sv: float = pv.dot(av) / (PAD_TIP * 2.0) + 0.5
+			var su: float = pv.dot(au) / (pad_tip * 2.0) + 0.5
+			var sv: float = pv.dot(av) / (pad_tip * 2.0) + 0.5
 			out.append(_cell_uv(CELL_PAD, su, 1.0 - sv))
 		return out
 
 	# UV корпуса считаются из МИРОВОЙ позиции, а не по грани — тогда светлая полоса
 	# непрерывно продолжается через фаску на соседнюю грань, а не обрывается на ребре.
-	var span: float = 2.0 * HALF
+	var span: float = 2.0 * half
 	if absf(normal.y) > 0.999:
 		var cell: Vector2i = CELL_TOP if normal.y > 0.0 else CELL_BOTTOM
 		for p in poly:
 			var pt: Vector3 = p
-			var uu: float = (pt.x + HALF) / span
-			var vv: float = (pt.z + HALF) / span
+			var uu: float = (pt.x + half) / span
+			var vv: float = (pt.z + half) / span
 			if normal.y < 0.0:
 				vv = 1.0 - vv
 			out.append(_cell_uv(cell, uu, vv))
@@ -256,14 +257,14 @@ static func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 	var horizontal_x: bool = absf(normal.x) >= absf(normal.z)
 	for p in poly:
 		var pv: Vector3 = p
-		var vv: float = (HALF - pv.y) / span
+		var vv: float = (half - pv.y) / span
 		var uu: float = 0.0
 		if horizontal_x:
-			uu = (pv.z + HALF) / span
+			uu = (pv.z + half) / span
 			if normal.x > 0.0:
 				uu = 1.0 - uu
 		else:
-			uu = (pv.x + HALF) / span
+			uu = (pv.x + half) / span
 			if normal.z < 0.0:
 				uu = 1.0 - uu
 		out.append(_cell_uv(CELL_SIDE, uu, vv))
@@ -273,7 +274,7 @@ static func _face_uvs(poly: Array, normal: Vector3, kind: int) -> Array:
 # СБОРКА
 # ══════════════════════════════════════════
 
-static func _build_mesh() -> ArrayMesh:
+func build() -> ArrayMesh:
 	var st: SurfaceTool = SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	for entry in _block_faces():
@@ -289,44 +290,44 @@ static func _build_mesh() -> ArrayMesh:
 			for idx in [0, c + 1, c]:
 				st.set_uv(uvs[idx])
 				st.add_vertex(poly[idx])
-	# Материал кладём В МЕШ, а не на ноду: тогда меш можно назначить любому
-	# MeshInstance3D и он приедет уже со своим материалом. С material_override
-	# материал оставался у ноды, и голый меш терял и текстуру, и фильтр — отсюда мыло.
-	st.set_material(_build_material())
+	# Материал кладём В МЕШ, а не на ноду: тогда меш можно назначить любому MeshInstance3D
+	# и он приедет уже со своим материалом. С material_override материал оставался у ноды,
+	# и голый меш терял и текстуру, и фильтр — отсюда мыло.
+	st.set_material(build_material())
 	return st.commit()
 
-static func _atlas_image() -> Image:
+func atlas_image() -> Image:
 	var img: Image = Image.create_empty(ATLAS, ATLAS, false, Image.FORMAT_RGB8)
 
 	for y in CELL:
-		var side: Color = SLATE_LIGHT
+		var side: Color = col_light
 		if y == 0:
-			side = SLATE_RIM
-		elif y > 8:
-			side = SLATE_DARK
-		elif y > 6:
-			side = CREAM             # ровно по середине грани (ряды 7-8 из 16)
+			side = col_rim
+		elif y > band_to:
+			side = col_dark
+		elif y >= band_from:
+			side = col_band
 		for x in CELL:
 			img.set_pixel(CELL_SIDE.x * CELL + x, CELL_SIDE.y * CELL + y, side)
 
-			var top: Color = SLATE_LIGHT
+			var top: Color = col_light
 			if y == 0 or x == 0:
-				top = SLATE_RIM
+				top = col_rim
 			elif y == CELL - 1 or x == CELL - 1:
-				top = SLATE_DARK
+				top = col_dark
 			img.set_pixel(CELL_TOP.x * CELL + x, CELL_TOP.y * CELL + y, top)
 
-			img.set_pixel(CELL_BOTTOM.x * CELL + x, CELL_BOTTOM.y * CELL + y, SLATE_DARK)
+			img.set_pixel(CELL_BOTTOM.x * CELL + x, CELL_BOTTOM.y * CELL + y, col_dark)
 
 			# Форму лучей даёт геометрия; рисовать её ещё и пикселями — получить грязь
 			# поверх граней. В текстуре только точка «оси» в центре метки.
-			var pad: Color = PAD_MARK if (x >= 7 and x <= 8 and y >= 7 and y <= 8) else PAD_FACE
+			var pad: Color = col_mark if (x >= 7 and x <= 8 and y >= 7 and y <= 8) else col_pad
 			img.set_pixel(CELL_PAD.x * CELL + x, CELL_PAD.y * CELL + y, pad)
 	return img
 
-static func _build_material() -> StandardMaterial3D:
+func build_material() -> StandardMaterial3D:
 	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_texture = ImageTexture.create_from_image(_atlas_image())
+	mat.albedo_texture = ImageTexture.create_from_image(atlas_image())
 	# Вот эти две строки и есть ответ на «текстура мыльная»: по умолчанию Godot берёт
 	# линейный фильтр с мипами, и 16 текселей растягиваются в градиент. Nearest держит
 	# пиксель пикселем, мипы такой мелкой текстуре не нужны — она и так вся в кэше.
