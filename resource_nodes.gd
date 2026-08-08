@@ -45,13 +45,16 @@ var _cull_t: float = 0.0
 # Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
 var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
+# _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
+# момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
+# Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
+# делал return, из-за чего узел не инициализировался за весь сеанс.
+const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+
 func _ready() -> void:
-	var map: Node = get_parent()
-	if map == null or not map.has_method("terrain_height_at") or not map.has_method("get_dims"):
-		push_error("resource_nodes: у родителя-карты нет terrain_height_at()/get_dims(). Достался: %s тип %s скрипт %s" % [
-				"null" if map == null else map.name,
-				"-" if map == null else map.get_class(),
-				"нет" if map == null or map.get_script() == null else map.get_script().resource_path])
+	var map: Node = await _await_map()
+	if map == null:
+		push_error("resource_nodes: родитель так и не стал картой (нет terrain_height_at/get_dims)")
 		return
 
 	var guard: int = 0
@@ -238,3 +241,16 @@ func _process(delta: float) -> void:
 			_stream_in(v)
 		elif not near and shown:
 			_stream_out(v)
+
+
+# Родитель, умеющий отвечать как карта. null, если не дождались.
+func _await_map() -> Node:
+	var map: Node = get_parent()
+	var guard: int = 0
+	while guard < MAP_WAIT_FRAMES:
+		if map != null and map.has_method("terrain_height_at") and map.has_method("get_dims"):
+			return map
+		await get_tree().process_frame
+		guard += 1
+		map = get_parent()
+	return null
