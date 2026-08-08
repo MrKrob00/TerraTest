@@ -76,7 +76,7 @@ func _ready() -> void:
 		_search.text_changed.connect(func(t: String) -> void: _rebuild_grid(t))
 	if has_node("%Close"):
 		%Close.pressed.connect(hide)
-	for i: int in _tab_buttons.size():
+	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].pressed.connect(_select_tab.bind(i))
 	visibility_changed.connect(_on_visibility_changed)
@@ -209,7 +209,7 @@ func _rebuild_grid(filter: String) -> void:
 	if _tab == TAB_BUILDS:
 		_build_builds_tab()
 		return
-	for c: Node in _grid.get_children():
+	for c in _grid.get_children():
 		c.queue_free()
 	var f := filter.strip_edges().to_lower()
 	var shown := 0
@@ -272,7 +272,7 @@ func _make_slot(it: Dictionary) -> Control:
 
 # ── Вкладка СБОРКИ (сохранённые машины) ───────────────────────────────────────
 func _build_builds_tab() -> void:
-	for c: Node in _grid.get_children():
+	for c in _grid.get_children():
 		c.queue_free()
 	_grid.add_child(_make_action_slot("＋ Save\ncurrent", _save_current_build))
 	for build_name in G.saved_builds:
@@ -537,7 +537,7 @@ func _buy(block_type: int, price: int) -> void:
 # ── Вкладки ───────────────────────────────────────────────────────────────────
 func _select_tab(idx: int) -> void:
 	_tab = idx
-	for i: int in _tab_buttons.size():
+	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
@@ -676,7 +676,7 @@ func _build_stats_panel() -> void:
 	grid.add_theme_constant_override("v_separation", 5)
 	column.add_child(grid)
 
-	for key: String in STAT_ROWS:
+	for key in STAT_ROWS:
 		var caption := Label.new()
 		caption.text = key
 		caption.add_theme_color_override("font_color", STAT_NAME_COLOR)
@@ -783,7 +783,7 @@ func _music() -> Node:
 	return get_node_or_null("/root/Music")
 
 func _clear_extra() -> void:
-	for c: Node in _extra_vb.get_children():
+	for c in _extra_vb.get_children():
 		c.queue_free()
 
 func _extra_header(text: String) -> void:
@@ -1120,7 +1120,7 @@ func _build_tech_tab() -> void:
 	# Холст нужного размера + перестройка нод/линий (сохраняя позицию прокрутки).
 	var keep := Vector2(_tech_scroll.scroll_horizontal, _tech_scroll.scroll_vertical)
 	var graph: TechGraph = _tech_graph
-	for c: Node in graph.get_children():
+	for c in graph.get_children():
 		c.queue_free()
 	var maxx := 0.0
 	var maxy := 0.0

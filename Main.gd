@@ -171,7 +171,7 @@ func _process(delta: float) -> void:
 
 	# Обчислюємо середній FPS за останні пів секунди
 	var sum: float = 0.0
-	for f: float in fps_buffer:
+	for f in fps_buffer:
 		sum += f
 	var avg_fps: float = sum / fps_buffer.size()
 

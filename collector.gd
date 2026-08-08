@@ -38,7 +38,7 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 	body.freeze = true
 	fix_position_resources.call_deferred(body)
 
-func fix_position_resources(body: Node3D) -> void:
+func fix_position_resources(body:Node3D):
 	body.position = Vector3(0,inventory.find(body)+1,0)
 
 func _on_resources_child_order_changed() -> void:

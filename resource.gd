@@ -21,7 +21,7 @@ func _map() -> Node:
 		return _map_cache
 	var scene := get_tree().current_scene
 	if scene:
-		for c: Node in scene.get_children():
+		for c in scene.get_children():
 			if c.has_method("terrain_height_at"):
 				_map_cache = c
 				return _map_cache

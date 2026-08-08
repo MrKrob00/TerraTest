@@ -109,7 +109,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if count <= 0:
 		cloud.queue_free()
 		return
-	for i: int in count:
+	for i in count:
 		var card := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2.ONE
@@ -237,12 +237,12 @@ static func _local_aabb(block: Node3D) -> AABB:
 			continue                       # скрытая ветка (FX) — не считаем и не спускаемся
 		if n is Area3D and n != block:
 			continue                       # триггер/индикатор дальности — не тело блока
-		for c: Node in n.get_children():
+		for c in n.get_children():
 			stack.append(c)
 		if n is MeshInstance3D and n.mesh != null:
 			var la: AABB = n.get_aabb()
 			var xf: Transform3D = inv * n.global_transform
-			for i: int in 8:
+			for i in 8:
 				var corner := la.position + Vector3(
 						la.size.x * float(i & 1),
 						la.size.y * float((i >> 1) & 1),

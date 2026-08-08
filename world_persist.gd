@@ -67,7 +67,7 @@ func _terrain() -> Node:
 	var scn := get_tree().current_scene
 	if scn == null:
 		return null
-	for c: Node in scn.get_children():
+	for c in scn.get_children():
 		if c.has_method("terrain_height_at"):
 			_terrain_node = c
 			return c
@@ -125,7 +125,7 @@ func _rescue_fallen() -> void:
 	# окажется на новом месте. Отпускаем через пару кадров, иначе провалится снова.
 	await get_tree().process_frame
 	await get_tree().process_frame
-	for rb: RigidBody3D in lifted:
+	for rb in lifted:
 		if is_instance_valid(rb):
 			rb.freeze = false
 
@@ -156,7 +156,7 @@ func _player_machines() -> Array:
 	var vr := _vehicles_root()
 	if vr == null:
 		return out
-	for c: Node in vr.get_children():
+	for c in vr.get_children():
 		if c is RigidBody3D and "block_map_node" in c and c.get("block_map_node") != null \
 				and "faction" in c and int(c.get("faction")) == 0:
 			out.append(c)
@@ -181,7 +181,7 @@ func _purge_extra_machines() -> void:
 		m.queue_free()
 
 # ── Свободные блоки в мире ────────────────────────────────────────────────────
-func _is_world_block(n: Node) -> bool:
+func _is_world_block(n) -> bool:
 	return n is RigidBody3D and "block" in n
 
 func _expire_world_blocks() -> void:
@@ -189,7 +189,7 @@ func _expire_world_blocks() -> void:
 	if o == null:
 		return
 	var now := _now()
-	for c: Node in o.get_children():
+	for c in o.get_children():
 		if not _is_world_block(c):
 			continue
 		if not c.has_meta("world_spawn_s"):
@@ -198,7 +198,7 @@ func _expire_world_blocks() -> void:
 		if now - float(c.get_meta("world_spawn_s")) > BLOCK_TTL:
 			c.queue_free()
 
-func _spawn_world_block(bt: int, pos: Vector3, rot: Vector3, age_s: float = 0.0) -> Node:
+func _spawn_world_block(bt: int, pos: Vector3, rot, age_s: float = 0.0) -> Node:
 	var scene: PackedScene = G.get_scene(bt)
 	var o := _objects()
 	if scene == null or o == null:
@@ -216,7 +216,7 @@ func _spawn_world_block(bt: int, pos: Vector3, rot: Vector3, age_s: float = 0.0)
 func _fresh_start() -> void:
 	var o := _objects()
 	if o != null:
-		for c: Node in o.get_children():
+		for c in o.get_children():
 			if _is_world_block(c):
 				c.queue_free()                          # убрать предустановленные тест-блоки
 	var primary := _primary_machine()
@@ -250,7 +250,7 @@ func _save_world() -> void:
 	var o := _objects()
 	if o != null:
 		var now := _now()
-		for c: Node in o.get_children():
+		for c in o.get_children():
 			if not _is_world_block(c):
 				continue
 			var age := 0.0
@@ -299,12 +299,12 @@ func _load_world() -> void:
 		_fresh_start()
 		return
 	await _restore_machine(primary, machines[0])
-	for i: int in range(1, machines.size()):
+	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])
 	# Убираем предустановленные в сцене тест-блоки, иначе они копятся поверх сохранённых.
 	var o := _objects()
 	if o != null:
-		for c: Node in o.get_children():
+		for c in o.get_children():
 			if _is_world_block(c):
 				c.queue_free()
 	for wb in data.get("world_blocks", []):
@@ -316,7 +316,7 @@ func _load_world() -> void:
 # Проверка раскладки ДО применения: одна битая запись роняла бы сборку молча, а игрок получал
 # пустую машину и не понимал почему. Требуем массив словарей с координатами в пределах сетки
 # и известным типом блока.
-func _layout_ok(layout: Variant) -> bool:
+func _layout_ok(layout) -> bool:
 	if not (layout is Array) or (layout as Array).is_empty():
 		return false
 	for e in layout:
@@ -341,7 +341,7 @@ func _quarantine_save(reason: String) -> void:
 			d.remove(BAD_SAVE_PATH.get_file())
 		d.rename(SAVE_PATH.get_file(), BAD_SAVE_PATH.get_file())
 
-func _restore_machine(veh: Node, mdata: Dictionary) -> void:
+func _restore_machine(veh, mdata: Dictionary) -> void:
 	veh.apply_build(mdata.get("layout", []))
 	var p: Variant = mdata.get("pos", null)
 	var r: Variant = mdata.get("rot", null)

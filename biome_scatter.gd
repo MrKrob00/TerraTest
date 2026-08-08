@@ -107,7 +107,7 @@ func _biome_at(wx: float, wz: float, wy: float) -> int:
 func _place(map: Node, dims: Vector2i) -> void:
 	var half_x: float = dims.x * 0.5 - edge_margin
 	var half_z: float = dims.y * 0.5 - edge_margin
-	for setp: BiomePropSet in biome_props:
+	for setp in biome_props:
 		if setp == null or setp.scenes.is_empty():
 			continue
 		var placed: Array = []
@@ -167,8 +167,8 @@ func _too_close(placed: Array, p: Vector3, spacing: float) -> bool:
 func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float) -> bool:
 	var cx := floori(p.x / cell)
 	var cz := floori(p.z / cell)
-	for dx: int in [-1, 0, 1]:
-		for dz: int in [-1, 0, 1]:
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
 			var bucket: Variant = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue

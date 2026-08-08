@@ -89,8 +89,8 @@ func _make_stamp_texture() -> Texture2D:
 	var sz := 64
 	var img := Image.create(sz, sz, false, Image.FORMAT_RGBA8)
 	var c := float(sz) * 0.5
-	for y: int in sz:
-		for x: int in sz:
+	for y in sz:
+		for x in sz:
 			var dn := Vector2(float(x) - c, float(y) - c).length() / c
 			var v := clampf(1.0 - dn, 0.0, 1.0)
 			v = v * v                                       # softer edge
@@ -150,14 +150,14 @@ func _process(delta: float) -> void:
 	var ppu  := float(VP_SIZE) / window_size               # pixels per world unit
 	var sprite_scale := (stamp_radius * 2.0 * ppu) / float(_stamp_tex.get_width())
 	var i := 0
-	for p: Vector2 in live:
+	for p in live:
 		if i >= _sprite_pool.size():
 			break
 		var rel := p - center
 		if absf(rel.x) > half or absf(rel.y) > half:
 			continue
 		i = _place_stamp(i, rel, half, ppu, sprite_scale, 1.0)
-	for fi: int in range(_footprints.size() - 1, -1, -1):
+	for fi in range(_footprints.size() - 1, -1, -1):
 		if i >= _sprite_pool.size():
 			break
 		var rel2: Vector2 = _footprints[fi]["pos"] - center
@@ -218,7 +218,7 @@ func _corruption_tick(delta: float) -> void:
 # +1 битый чанк: если корруптации ещё нет — случайный сид; иначе клетка у края существующей.
 func _corr_spread_one() -> void:
 	var has_any := false
-	for v: int in _corr:
+	for v in _corr:
 		if v != 0:
 			has_any = true
 			break
@@ -232,9 +232,9 @@ func _corr_spread_one() -> void:
 				_corr_dirty = true
 				return
 		return
-	var cands: Array[int] = []
-	for y: int in CORR_GRID:
-		for x: int in CORR_GRID:
+	var cands: Array = []
+	for y in CORR_GRID:
+		for x in CORR_GRID:
 			var i := y * CORR_GRID + x
 			if _corr[i] != 0 or _corr_healed[i] != 0:
 				continue
@@ -260,8 +260,8 @@ func _corr_heal_near() -> void:
 	var pcx := int(((p.x - _corr_center.x) / corr_map_size + 0.5) * float(CORR_GRID))
 	var pcy := int(((p.y - _corr_center.y) / corr_map_size + 0.5) * float(CORR_GRID))
 	var d2 := corr_heal_dist * corr_heal_dist
-	for dy: int in range(-rad, rad + 1):
-		for dx: int in range(-rad, rad + 1):
+	for dy in range(-rad, rad + 1):
+		for dx in range(-rad, rad + 1):
 			var x := pcx + dx
 			var y := pcy + dy
 			if x < 0 or x >= CORR_GRID or y < 0 or y >= CORR_GRID:

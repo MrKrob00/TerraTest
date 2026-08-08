@@ -4,7 +4,7 @@ var money: int = 500
 
 signal money_changed                   # для UI: деньги могли измениться пассивно (продавец)
 
-func add_money(value: int) -> void:
+func add_money(value):
 	money+= value
 	mark_progress_dirty()
 	money_changed.emit()
@@ -128,7 +128,7 @@ func grade(f: String) -> int:
 	var th: Array = FACTIONS[f]["xp_thresholds"]
 	var xp := int(faction_xp.get(f, 0))
 	var g := 1
-	for i: int in th.size():
+	for i in th.size():
 		if xp >= int(th[i]):
 			g = i + 1
 	return mini(g, int(FACTIONS[f]["grades"]))
@@ -141,7 +141,7 @@ func add_faction_xp(f: String, amount: int) -> void:
 	mark_progress_dirty()
 	progress_changed.emit()
 	var after := grade(f)
-	for gi: int in range(before + 1, after + 1):
+	for gi in range(before + 1, after + 1):
 		grade_up.emit(f, gi)           # скачок через 2+ порога объявляет КАЖДЫЙ грейд
 
 func add_research_points(amount: int) -> void:
@@ -181,7 +181,7 @@ func block_key(bt: int) -> String:
 	return "EMPTY"
 
 # Чтение блока из сейва: строка (новый формат) ИЛИ число (старые файлы) — понимаем оба.
-func block_from_key(v: Variant) -> int:
+func block_from_key(v) -> int:
 	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
 		var idx: int = Block.keys().find(str(v))
 		if idx >= 0:

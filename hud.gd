@@ -137,7 +137,7 @@ class EnergyGauge extends Control:
 		var txt := "%d%%" % int(round(fill * 100.0)) if has_cap else "--"
 		var f := get_theme_default_font()
 		var fs := 13
-		var w: float = f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
+		var w := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
 		draw_string(f, c + Vector2(-w * 0.5, r * 0.55), txt, HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color(0.9, 0.97, 1.0))
 
 # ── Радар-карта (даёт блок RADAR): круг справа сверху с блипами; энергия — дугой слева-снизу ──
@@ -467,7 +467,7 @@ func _vmenu_pick(pos: Vector2) -> int:
 		return -1
 	var best := 0
 	var best_d := INF
-	for i: int in _vmenu_count:
+	for i in _vmenu_count:
 		var ang := -PI / 2 + TAU * float(i) / float(_vmenu_count)
 		var d: float = absf(angle_difference(v.angle(), ang))
 		if d < best_d:
@@ -801,7 +801,7 @@ func _update_radar(delta: float) -> void:
 	var blips: Array = []
 	var vehicles := get_node_or_null("/root/Main/Vehicles")
 	if vehicles:
-		for e: Node in vehicles.get_children():
+		for e in vehicles.get_children():
 			if e == v or not (e is Node3D):
 				continue
 			var f: Variant = e.get("faction")
@@ -817,10 +817,10 @@ func _update_radar(delta: float) -> void:
 	_radar.queue_redraw()
 
 # Есть ли у машины блок RADAR (тогда показываем радар-карту).
-func _has_radar(v: Node) -> bool:
+func _has_radar(v) -> bool:
 	if v == null or not ("block_map_node" in v) or v.block_map_node == null:
 		return false
-	for b: Node in v.block_map_node.get_children():
+	for b in v.block_map_node.get_children():
 		if "block" in b and int(b.block) == G.Block.RADAR:
 			return true
 	return false
@@ -944,7 +944,7 @@ func _player_vehicles() -> Array:
 func _rebuild_vehicle_list() -> void:
 	if _vehicle_list == null:
 		return
-	for c: Node in _vehicle_list.get_children():
+	for c in _vehicle_list.get_children():
 		c.queue_free()
 	var cur: Node = current_vehicle
 	var cc: Node = $".."
@@ -978,7 +978,7 @@ func _select_vehicle(v: Node) -> void:
 # ── Прятать/возвращать игровой HUD под инвентарём ─────────────────────────────
 func _collect_game_controls() -> void:
 	_game_controls.clear()
-	for n: String in ["Movement", "Building", "Take", "TakeOff", "Attack",
+	for n in ["Movement", "Building", "Take", "TakeOff", "Attack",
 			"Joystick_movement", "Joystick_camera", "Label"]:
 		var node: Node = get_node_or_null(n)
 		if node:

@@ -84,7 +84,7 @@ static func decide(p: Dictionary, current: int) -> int:
 	if current >= 0 and current < s.size():
 		s[current] += HYSTERESIS
 	var best: int = 0
-	for i: int in range(1, s.size()):
+	for i in range(1, s.size()):
 		if s[i] > s[best]:
 			best = i
 	return best

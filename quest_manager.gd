@@ -15,7 +15,7 @@ func _ready() -> void:
 	if g:
 		# Выполненные СЮЖЕТНЫЕ квесты персистятся (G.quests_done) — иначе награды
 		# (XP/ДИ/$ сохраняются!) фармились бы перезапуском. Дейлики повторяемы намеренно.
-		for q: Dictionary in quests:
+		for q in quests:
 			# Сюжет И обучение — одноразовые (персист в G.quests_done), иначе награды/шаги
 			# фармились бы перезапуском. Дейлики повторяемы намеренно.
 			if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
@@ -111,7 +111,7 @@ func report(event: String, amount: int = 1) -> void:
 			add_progress(q["id"], amount)
 
 func _find(id: String) -> Dictionary:
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["id"] == id:
 			return q
 	return {}
@@ -176,7 +176,7 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	var what := "new blocks" if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
 	var extra_line := ""
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
 			extra_line = " And new quests have arrived."
 			break
@@ -245,7 +245,7 @@ func active_quests() -> Array[Dictionary]:
 	var cur := _current_story()
 	if not cur.is_empty():
 		out.append(cur)
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
 	return out
@@ -259,7 +259,7 @@ func _current_tutorial() -> Dictionary:
 
 func _sorted_tutorial() -> Array[Dictionary]:
 	var s: Array[Dictionary] = []
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["type"] == Type.TUTORIAL:
 			s.append(q)
 	s.sort_custom(func(a, b): return a["order"] < b["order"])
@@ -292,7 +292,7 @@ func visible_quests() -> Array[Dictionary]:
 		out.append(q)
 		if not q["done"]:
 			break
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["type"] == Type.DAILY:
 			out.append(q)
 	return out
@@ -307,7 +307,7 @@ func _current_story() -> Dictionary:
 
 func _sorted_story() -> Array[Dictionary]:
 	var s: Array[Dictionary] = []
-	for q: Dictionary in quests:
+	for q in quests:
 		if q["type"] == Type.STORY:
 			s.append(q)
 	s.sort_custom(func(a, b): return a["order"] < b["order"])

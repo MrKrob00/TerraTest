@@ -13,14 +13,14 @@ const ZONE_Y_FRAC: float = 0.60   # активна только часть НИ�
 
 @onready var screen_size = get_viewport().get_visible_rect().size
 
-func _ready() -> void:
+func _ready():
 	knob_pos = stick_center
 
 func _draw() -> void:
 	draw_circle(Vector2.ZERO, max_distance, Color.WHITE, false, 12)
 	draw_circle(knob_pos, max_distance / 2.0, Color.GHOST_WHITE, true)
 
-func _input(event: InputEvent) -> void:
+func _input(event):
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			if active_touch_index == -1 and is_touch_outside(event.position):

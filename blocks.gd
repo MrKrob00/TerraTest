@@ -92,11 +92,11 @@ func _ready() -> void:
 # ─── Инициализация ────────────────────────────────────────────────────────────
 func _init_map() -> void:
 	map = []
-	for x: int in range(MAP_SIZE_X):
+	for x in range(MAP_SIZE_X):
 		var plane: Array = []
-		for y: int in range(MAP_SIZE_Y):
+		for y in range(MAP_SIZE_Y):
 			var row: Array = []
-			for z: int in range(MAP_SIZE_Z):
+			for z in range(MAP_SIZE_Z):
 				row.append(G.Block.EMPTY)
 			plane.append(row)
 		map.append(plane)
@@ -169,9 +169,9 @@ func _wheels_6() -> void:
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
-	for x: int in range(MAP_SIZE_X):
-		for y: int in range(MAP_SIZE_Y):
-			for z: int in range(MAP_SIZE_Z):
+	for x in range(MAP_SIZE_X):
+		for y in range(MAP_SIZE_Y):
+			for z in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				# Только якорные клетки — иначе многоклеточный блок заспавнится 8 раз.
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
@@ -187,16 +187,16 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 # остальные блоки — одну клетку. Те же 8 клеток, что проверял старый код.
 func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 	if block == G.Block.PROCESSOR or block == G.Block.SELLER:
-		var cells: Array[Vector3i] = []
-		for dx: int in [-1, 0]:
-			for dy: int in [0, 1]:
-				for dz: int in [-1, 0]:
+		var cells: Array = []
+		for dx in [-1, 0]:
+			for dy in [0, 1]:
+				for dz in [-1, 0]:
 					cells.append(Vector3i(x + dx, y + dy, z + dz))
 		return cells
 	if block == G.Block.COAL_GEN:
-		var cells2: Array[Vector3i] = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
-		for dx: int in [-1, 0]:
-			for dz: int in [-1, 0]:
+		var cells2: Array = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
+		for dx in [-1, 0]:
+			for dz in [-1, 0]:
 				cells2.append(Vector3i(x + dx, y, z + dz))
 		return cells2
 	if block == G.Block.BLOCK2:
@@ -213,7 +213,7 @@ func can_place(block: int, x: int, y: int, z: int) -> bool:
 # ─── Запись / чтение ──────────────────────────────────────────────────────────
 # Возвращает true, если блок реально поставлен (footprint был свободен).
 # rot принимает float (только yaw — старый формат) ИЛИ Vector3 (полный поворот с наклоном).
-func set_block(x: int, y: int, z: int, block: G.Block, rot: Variant = 0.0) -> bool:
+func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 	if not _in_bounds(x, y, z):
 		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
 		return false
@@ -357,7 +357,7 @@ func _detach_orphans() -> void:
 	var reachable := _reachable_cells()
 	if reachable.is_empty():
 		return   # корня нет (кабина/база уничтожена) — этим займётся смерть машины (_scatter_blocks)
-	var orphans: Array[Vector3i] = []
+	var orphans: Array = []
 	for anchor in node_map.keys():
 		var parts: PackedStringArray = anchor.split(",")
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
@@ -397,9 +397,9 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 
 func save_layout() -> void:
 	var blocks_array: Array = []
-	for x: int in range(MAP_SIZE_X):
-		for y: int in range(MAP_SIZE_Y):
-			for z: int in range(MAP_SIZE_Z):
+	for x in range(MAP_SIZE_X):
+		for y in range(MAP_SIZE_Y):
+			for z in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
@@ -422,7 +422,7 @@ func load_layout() -> void:
 		push_warning("Файл сохранения не найден: ", SAVE_PATH)
 		return
 
-	for child: Node in get_children():
+	for child in get_children():
 		child.queue_free()
 	node_map.clear()
 	rotation_map.clear()
@@ -443,9 +443,9 @@ func load_layout() -> void:
 
 func get_layout() -> Array:
 	var blocks_array: Array = []
-	for x: int in range(MAP_SIZE_X):
-		for y: int in range(MAP_SIZE_Y):
-			for z: int in range(MAP_SIZE_Z):
+	for x in range(MAP_SIZE_X):
+		for y in range(MAP_SIZE_Y):
+			for z in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
@@ -490,7 +490,7 @@ func _clear_block_collisions() -> void:
 	var parent := get_parent()
 	if parent == null:
 		return
-	for c: Node in parent.get_children():
+	for c in parent.get_children():
 		if c is CollisionShape3D and c.is_in_group("block_collision"):
 			c.queue_free()
 

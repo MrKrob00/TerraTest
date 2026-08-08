@@ -50,8 +50,8 @@ func accepts_from(from_dir: Vector3i) -> bool:
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
 func face_dirs(mask: int) -> Array:
-	var out: Array[Vector3i] = []
-	for i: int in FACE_VECS.size():
+	var out: Array = []
+	for i in FACE_VECS.size():
 		if mask & (1 << i) == 0:
 			continue
 		var v: Vector3 = (basis * FACE_VECS[i]).normalized()
@@ -130,7 +130,7 @@ func push_item(item: Node3D) -> bool:
 	var targets := _valid_targets()
 	if targets.is_empty() or item == null or not is_instance_valid(item):
 		return false
-	for i: int in targets.size():
+	for i in targets.size():
 		var t: FactoryBlock = targets[(_out_turn + i) % targets.size()]
 		if t.try_receive(item):
 			_out_turn = (_out_turn + i + 1) % targets.size()
