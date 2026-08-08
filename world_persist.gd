@@ -63,6 +63,7 @@ func _process(delta: float) -> void:
 
 # Кэш ноды рельефа (у неё есть terrain_height_at).
 var _terrain_node: Node = null
+var _warned_no_terrain: bool = false
 
 func _terrain() -> Node:
 	if _terrain_node != null and is_instance_valid(_terrain_node):
@@ -101,20 +102,33 @@ func _ready_terrain() -> Node:
 # СТРАХОВКА: если машина оказалась заметно НИЖЕ рельефа, она провалилась сквозь него (коллизия
 # рельефа стриминговая — под только что телепортированным телом её может ещё не быть). Без этого
 # машина падала бесконечно, а камера уезжала за ней на километры вниз — экран становился пустым.
+# Абсолютный пол мира: ниже него тело падает в пустоту, и никакой рельеф для этого
+# вывода не нужен. Нужен именно такой запасной путь — страховка не должна зависеть от
+# готовности карты, иначе она молча выключается ровно тогда, когда нужнее всего.
+const WORLD_FLOOR := -300.0
+
 func _rescue_fallen() -> void:
-	var terr := _ready_terrain()
-	if terr == null:
-		return
+	# ВНИМАНИЕ: здесь _terrain(), а не _ready_terrain(). Гейт по готовности отключал
+	# страховку без единого слова в логе — и провалившаяся машина падала вечно.
+	var terr := _terrain()
+	var ready_terr := _ready_terrain()
+	if terr == null and not _warned_no_terrain:
+		_warned_no_terrain = true
+		push_warning("world_persist: узел рельефа не найден — страховка работает только "
+				+ "по абсолютному полу %.0f" % WORLD_FLOOR)
 	var lifted: Array[RigidBody3D] = []
 	for n in _fall_candidates():
 		var n3 := n as Node3D
 		if n3 == null or not is_instance_valid(n3):
 			continue
-		var ground: float = terr.terrain_height_at(n3.global_position)
-		if n3.global_position.y > ground - FALL_LIMIT:
+		# Земля известна только если карта уже прочитала высоты; иначе судим по полу мира.
+		var ground: float = ready_terr.terrain_height_at(n3.global_position) if ready_terr != null else 0.0
+		var fell: bool = (ready_terr != null and n3.global_position.y < ground - FALL_LIMIT) \
+				or n3.global_position.y < WORLD_FLOOR
+		if not fell:
 			continue
 		var diag: String = ""
-		if terr.has_method("collision_debug_at"):
+		if terr != null and terr.has_method("collision_debug_at"):
 			diag = " | " + str(terr.call("collision_debug_at", n3.global_position))
 		push_warning("world_persist: %s провалился под рельеф (y=%.1f, земля %.1f)%s"
 				% [n3.name, n3.global_position.y, ground, diag])
@@ -124,8 +138,9 @@ func _rescue_fallen() -> void:
 			rb.linear_velocity = Vector3.ZERO
 			rb.angular_velocity = Vector3.ZERO
 			lifted.append(rb)
-		n3.global_position = Vector3(n3.global_position.x,
-				ground + SAFE_CLEARANCE + 2.0, n3.global_position.z)
+		# Без готового рельефа поднимаем повыше и даём упасть на землю самому.
+		var lift_y: float = (ground + SAFE_CLEARANCE + 2.0) if ready_terr != null else 200.0
+		n3.global_position = Vector3(n3.global_position.x, lift_y, n3.global_position.z)
 	if lifted.is_empty():
 		return
 	# Стриминговая коллизия рельефа строится ВОКРУГ тел, то есть уже после того, как тело
@@ -376,7 +391,12 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 		if terr != null:
 			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
 		else:
-			push_warning("world_persist: рельеф не готов, позиция из сейва без проверки высоты")
+			# Высоту из сейва без проверки ставить НЕЛЬЗЯ: если она с прошлого бага под
+			# землёй, машина стартует внутри мира и падает. Берём только X/Z, а высоту
+			# оставляем спавновую — она заведомо над рельефом, и машина просто сядет.
+			pos.y = maxf(veh.global_position.y, pos.y)
+			push_warning("world_persist: рельеф не готов — беру из сейва только X/Z, "
+					+ "высоту оставляю спавновую")
 		veh.global_position = pos
 	await get_tree().process_frame
 	await get_tree().process_frame
