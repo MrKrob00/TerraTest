@@ -38,11 +38,11 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 	body.freeze = true
 	fix_position_resources.call_deferred(body)
 
-func fix_position_resources(body:Node3D):
+func fix_position_resources(body: Node3D) -> void:
 	body.position = Vector3(0,inventory.find(body)+1,0)
 
 func _on_resources_child_order_changed() -> void:
-	for i in inventory:
+	for i: Variant in inventory:
 		if i.get_parent() != $resources:
 			inventory.erase(i)
 		else: i.position = Vector3(0,inventory.find(i)+1,0)

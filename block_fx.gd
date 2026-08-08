@@ -30,7 +30,7 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 		q.collision_mask = 2                                # слой блоков (VehicleBlock.collision_layer=2)
 		q.collide_with_bodies = true
 		var seen := {}
-		for hit in world.direct_space_state.intersect_shape(q, 48):
+		for hit: Variant in world.direct_space_state.intersect_shape(q, 48):
 			var b: Variant = hit.get("collider")
 			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
 				continue
@@ -109,7 +109,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	if count <= 0:
 		cloud.queue_free()
 		return
-	for i in count:
+	for i: int in count:
 		var card := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2.ONE
@@ -138,7 +138,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 	tw.tween_callback(cloud.queue_free)
 
 static func _set_cards_progress(p: float, mats: Array) -> void:
-	for m in mats:
+	for m: Variant in mats:
 		if is_instance_valid(m):
 			(m as ShaderMaterial).set_shader_parameter("progress", p)
 
@@ -155,7 +155,7 @@ static func hit(block: Node3D, faces: int = 2) -> void:
 	var aabb := _local_aabb(block)
 	var dirs: Array = [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.DOWN, Vector3.FORWARD, Vector3.BACK]
 	dirs.shuffle()
-	for i in mini(faces, dirs.size()):
+	for i: Variant in mini(faces, dirs.size()):
 		_spawn_hit_flash(block, aabb, dirs[i])
 
 static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:
@@ -237,12 +237,12 @@ static func _local_aabb(block: Node3D) -> AABB:
 			continue                       # скрытая ветка (FX) — не считаем и не спускаемся
 		if n is Area3D and n != block:
 			continue                       # триггер/индикатор дальности — не тело блока
-		for c in n.get_children():
+		for c: Node in n.get_children():
 			stack.append(c)
 		if n is MeshInstance3D and n.mesh != null:
 			var la: AABB = n.get_aabb()
 			var xf: Transform3D = inv * n.global_transform
-			for i in 8:
+			for i: int in 8:
 				var corner := la.position + Vector3(
 						la.size.x * float(i & 1),
 						la.size.y * float((i >> 1) & 1),

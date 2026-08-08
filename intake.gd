@@ -33,7 +33,7 @@ func _accept_item(item: Node3D) -> void:
 
 func _fix_positions() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
-	for i in inventory:
+	for i: Variant in inventory:
 		var tween: Tween = create_tween()
 		tween.tween_property(i, "position", Vector3(0, inventory.find(i) + 1, 0), 0.3)
 
@@ -66,7 +66,7 @@ func _on_timer_timeout() -> void:
 		return
 	vehicles_in_zone = vehicles_in_zone.filter(func(v): return is_instance_valid(v))
 	if inventory.size() < capacity:
-		for vehicle in vehicles_in_zone:
+		for vehicle: Variant in vehicles_in_zone:
 			if _take_from_vehicle(vehicle):
 				break
 	_update_take_timer()
@@ -115,7 +115,7 @@ func _take_from_vehicle(vehicle: RigidBody3D) -> Node3D:
 	# Забираем руду у КОЛЛЕКТОРОВ машины. Тип блока проверяем явно, поэтому «пропустить
 	# первого ребёнка» (прежний произвольный костыль) не нужно — он мог отбросить настоящий
 	# коллектор, если тот оказывался первым в списке.
-	for b in vehicle.get_node("blocks").get_children():
+	for b: Variant in vehicle.get_node("blocks").get_children():
 		if b.get("block") != G.Block.COLLECTOR or not b.has_node("resources"):
 			continue
 		var resources: Node = b.get_node("resources")

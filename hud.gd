@@ -160,7 +160,7 @@ class RadarHUD extends Control:
 		draw_line(c - Vector2(0, r), c + Vector2(0, r), Color(0.2, 0.5, 0.55, 0.22), 1.0)
 		# блипы
 		var scale := r / maxf(range_world, 1.0)
-		for b in blips:
+		for b: Variant in blips:
 			var pix: Vector2 = c + (b["p"] as Vector2) * scale
 			if pix.distance_to(c) > r - 2.0:
 				continue
@@ -213,7 +213,7 @@ func _build_settings_panel() -> void:
 	_settings_panel.visible = false
 	add_child(_settings_panel)
 	var m := MarginContainer.new()
-	for s in ["left", "right", "top", "bottom"]:
+	for s: Variant in ["left", "right", "top", "bottom"]:
 		m.add_theme_constant_override("margin_" + s, 18)
 	_settings_panel.add_child(m)
 	var vb := VBoxContainer.new()
@@ -344,7 +344,7 @@ class RadialWheel extends Control:
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var c := size * 0.5
 		var n := items.size()
-		for i in n:
+		for i: Variant in n:
 			var ang := -PI / 2 + TAU * float(i) / float(n)
 			var mid := c + Vector2(cos(ang), sin(ang)) * ((outer + inner) * 0.53)
 			var icon := Label.new()
@@ -384,15 +384,15 @@ class RadialWheel extends Control:
 			var a0 := -PI / 2 + TAU * (float(hovered) - 0.5) / float(n)
 			var steps := 22
 			var pts := PackedVector2Array()
-			for s in steps + 1:
+			for s: Variant in steps + 1:
 				var a := a0 + TAU / float(n) * float(s) / float(steps)
 				pts.append(c + Vector2(cos(a), sin(a)) * outer)
-			for s in steps + 1:
+			for s: Variant in steps + 1:
 				var a := a0 + TAU / float(n) * float(steps - s) / float(steps)
 				pts.append(c + Vector2(cos(a), sin(a)) * inner)
 			draw_colored_polygon(pts, Color(0.18, 0.25, 0.34, 0.95))
 		# разделители секторов
-		for i in n:
+		for i: Variant in n:
 			var ab := -PI / 2 + TAU * (float(i) - 0.5) / float(n)
 			var dv := Vector2(cos(ab), sin(ab))
 			draw_line(c + dv * inner, c + dv * outer, Color(1, 1, 1, 0.10), 2.0)
@@ -467,7 +467,7 @@ func _vmenu_pick(pos: Vector2) -> int:
 		return -1
 	var best := 0
 	var best_d := INF
-	for i in _vmenu_count:
+	for i: int in _vmenu_count:
 		var ang := -PI / 2 + TAU * float(i) / float(_vmenu_count)
 		var d: float = absf(angle_difference(v.angle(), ang))
 		if d < best_d:
@@ -801,7 +801,7 @@ func _update_radar(delta: float) -> void:
 	var blips: Array = []
 	var vehicles := get_node_or_null("/root/Main/Vehicles")
 	if vehicles:
-		for e in vehicles.get_children():
+		for e: Node in vehicles.get_children():
 			if e == v or not (e is Node3D):
 				continue
 			var f: Variant = e.get("faction")
@@ -810,17 +810,17 @@ func _update_radar(delta: float) -> void:
 				blips.append({"p": Vector2(rel.x, rel.z), "c": Color(1.0, 0.32, 0.32)})
 	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
 	if rn and rn.has_method("active_positions"):
-		for wp in rn.active_positions():
+		for wp: Variant in rn.active_positions():
 			var rel2: Vector3 = (wp as Vector3) - origin
 			blips.append({"p": Vector2(rel2.x, rel2.z), "c": Color(1.0, 0.82, 0.25)})
 	_radar.blips = blips
 	_radar.queue_redraw()
 
 # Есть ли у машины блок RADAR (тогда показываем радар-карту).
-func _has_radar(v) -> bool:
+func _has_radar(v: Node) -> bool:
 	if v == null or not ("block_map_node" in v) or v.block_map_node == null:
 		return false
-	for b in v.block_map_node.get_children():
+	for b: Node in v.block_map_node.get_children():
 		if "block" in b and int(b.block) == G.Block.RADAR:
 			return true
 	return false
@@ -930,7 +930,7 @@ func _on_tech_ui_visibility() -> void:
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).
 	# Уводим трекер квестов вниз, чтобы не перекрывал статистику и кнопку закрытия.
-	for q in get_tree().get_nodes_in_group("quests"):
+	for q: Variant in get_tree().get_nodes_in_group("quests"):
 		if q.has_method("set_inventory_open"):
 			q.set_inventory_open(open)
 
@@ -944,14 +944,14 @@ func _player_vehicles() -> Array:
 func _rebuild_vehicle_list() -> void:
 	if _vehicle_list == null:
 		return
-	for c in _vehicle_list.get_children():
+	for c: Node in _vehicle_list.get_children():
 		c.queue_free()
 	var cur: Node = current_vehicle
 	var cc: Node = $".."
 	if cc and "current_vehicle" in cc:
 		cur = cc.current_vehicle
 	var i := 0
-	for v in _player_vehicles():
+	for v: Variant in _player_vehicles():
 		if not is_instance_valid(v):
 			continue
 		i += 1
@@ -978,7 +978,7 @@ func _select_vehicle(v: Node) -> void:
 # ── Прятать/возвращать игровой HUD под инвентарём ─────────────────────────────
 func _collect_game_controls() -> void:
 	_game_controls.clear()
-	for n in ["Movement", "Building", "Take", "TakeOff", "Attack",
+	for n: String in ["Movement", "Building", "Take", "TakeOff", "Attack",
 			"Joystick_movement", "Joystick_camera", "Label"]:
 		var node: Node = get_node_or_null(n)
 		if node:
@@ -998,7 +998,7 @@ func _collect_game_controls() -> void:
 var _controls_hidden: bool = false
 func _set_game_controls_hidden(hidden: bool) -> void:
 	_controls_hidden = hidden
-	for n in _game_controls:
+	for n: Variant in _game_controls:
 		if is_instance_valid(n):
 			n.visible = not hidden
 	# При закрытии инвентаря возвращаем кнопки в правильный режим машины

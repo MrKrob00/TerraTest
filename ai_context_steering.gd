@@ -23,18 +23,18 @@ var _dirs: PackedVector3Array = PackedVector3Array()
 func _init() -> void:
 	interest.resize(SLOTS)
 	danger.resize(SLOTS)
-	for i in SLOTS:
+	for i: int in SLOTS:
 		var a: float = TAU * float(i) / float(SLOTS)
 		_dirs.append(Vector3(sin(a), 0.0, cos(a)))
 
 # Интерес пересчитывается каждый кадр (16 скалярных произведений — копейки), а карта
 # опасности переснимается реже: она зависит от мира, а не от текущего желания агента.
 func clear_interest() -> void:
-	for i in SLOTS:
+	for i: int in SLOTS:
 		interest[i] = 0.0
 
 func clear_danger() -> void:
-	for i in SLOTS:
+	for i: int in SLOTS:
 		danger[i] = 0.0
 
 func begin() -> void:
@@ -50,7 +50,7 @@ func seek(dir: Vector3, weight: float = 1.0) -> void:
 	if d.length_squared() < 0.0001:
 		return
 	d = d.normalized()
-	for i in SLOTS:
+	for i: int in SLOTS:
 		interest[i] += maxf(0.0, _dirs[i].dot(d)) * weight
 
 # Опасность в направлении. Мажем на соседние слоты (не только на точное попадание),
@@ -60,7 +60,7 @@ func add_danger(dir: Vector3, weight: float) -> void:
 	if d.length_squared() < 0.0001:
 		return
 	d = d.normalized()
-	for i in SLOTS:
+	for i: int in SLOTS:
 		var k: float = _dirs[i].dot(d)
 		if k > 0.35:
 			danger[i] = maxf(danger[i], weight * k)
@@ -71,12 +71,12 @@ func set_danger(i: int, weight: float) -> void:
 # Самое интересное направление среди наименее опасных.
 func choose(fallback: Vector3) -> Vector3:
 	var min_danger: float = danger[0]
-	for i in range(1, SLOTS):
+	for i: int in range(1, SLOTS):
 		min_danger = minf(min_danger, danger[i])
 
 	var best: int = -1
 	var best_interest: float = -INF
-	for i in SLOTS:
+	for i: int in SLOTS:
 		if danger[i] > min_danger + 0.05:
 			continue                      # есть направления безопаснее — это не рассматриваем
 		if interest[i] > best_interest:

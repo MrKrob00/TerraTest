@@ -97,7 +97,7 @@ func _gen_fill_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var row := z * w
-	for x in w:
+	for x: Variant in w:
 		var fx := float(x)
 		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
 		var continental:float = pow(base, gen_power)
@@ -131,7 +131,7 @@ func _gen_carve_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var terr: float = maxf(gen_canyon_terrace, 0.5)
-	for x in w:
+	for x: Variant in w:
 		var idx := z * w + x
 		var wx := float(x) - hw
 		var wz := fz - hd
@@ -567,10 +567,10 @@ func _load_settings() -> void:
 # ─────────────────────────────────────────────────
 # Node selection
 # ─────────────────────────────────────────────────
-func _handles(object) -> bool:
+func _handles(object: Object) -> bool:
 	return object is StaticBody3D or object is CollisionShape3D
 
-func _edit(object) -> void:
+func _edit(object: Object) -> void:
 	# Смена выбранного узла обрывает незакоммиченный мазок — чтобы снимок «до» одного
 	# террейна не применился к другому.
 	_stroke_active = false
@@ -679,7 +679,7 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 			mode_int = 1 if raise else -1
 		var dirty: PackedInt32Array = sculpt_node.apply_brush(
 				hit_pos, brush_radius, brush_strength, mode_int)
-		for ci in dirty:
+		for ci: int in dirty:
 			_dirty_chunks[ci] = true
 		return
 
@@ -708,8 +708,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 	if sculpt_mode == "flatten":
 		var avg_height: float = 0.0
 		var count: int = 0
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
+		for z: int in range(z_min, z_max + 1):
+			for x: int in range(x_min, x_max + 1):
 				var dx = x - cx
 				var dz = z - cz
 				if sqrt(dx*dx + dz*dz) <= brush_radius:
@@ -717,8 +717,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 					count += 1
 		if count > 0:
 			avg_height /= count
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
+		for z: int in range(z_min, z_max + 1):
+			for x: int in range(x_min, x_max + 1):
 				var dx   = x - cx
 				var dz   = z - cz
 				var dist = sqrt(dx*dx + dz*dz)
@@ -729,8 +729,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 					# «перелетал» среднее при большой силе и ломал карту.
 					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * brush_strength, 0.0, 1.0))
 	else:
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
+		for z: int in range(z_min, z_max + 1):
+			for x: int in range(x_min, x_max + 1):
 				var dx   = x - cx
 				var dz   = z - cz
 				var dist = sqrt(dx*dx + dz*dz)
@@ -759,8 +759,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 		var cx_center = int(local_pos.x + map_w / 2.0) / cs
 		var cz_center = int(local_pos.z + map_d / 2.0) / cs
 		var cr        = int(ceil(brush_radius / cs)) + 1
-		for dz in range(-cr, cr + 1):
-			for dx in range(-cr, cr + 1):
+		for dz: int in range(-cr, cr + 1):
+			for dx: int in range(-cr, cr + 1):
 				var ci = (cz_center + dz) * chunks_x + (cx_center + dx)
 				if ci >= 0 and ci < total_chunks:
 					_dirty_chunks[ci] = true
@@ -965,14 +965,14 @@ func _generate_png() -> void:
 
 	var mn := INF
 	var mx := -INF
-	for h in data:
+	for h: float in data:
 		mn = minf(mn, h)
 		mx = maxf(mx, h)
 	var rng := maxf(mx - mn, 0.0001)
 
 	var img := Image.create(width, depth, false, Image.FORMAT_L8)
-	for z in depth:
-		for x in width:
+	for z: int in depth:
+		for x: int in width:
 			var v := (data[z * width + x] - mn) / rng
 			img.set_pixel(x, z, Color(v, v, v))
 
@@ -1076,10 +1076,10 @@ func _generate_noise() -> void:
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
 	# Each pass slightly reduces aliasing without destroying ridges.
-	for _p in gen_smooth:
+	for _p: int in gen_smooth:
 		var buf = new_data.duplicate()
-		for z in range(1, depth - 1):
-			for x in range(1, width - 1):
+		for z: int in range(1, depth - 1):
+			for x: int in range(1, width - 1):
 				buf[z * width + x] = (
 					new_data[z * width + x]         +
 					new_data[z * width + (x - 1)]   +

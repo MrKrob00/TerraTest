@@ -65,7 +65,7 @@ func _update_current_target() -> void:
 
 	var closest: Node3D = null
 	var closest_dist: float = INF
-	for t in _targets:
+	for t: Node3D in _targets:
 		var d: float = pivot.global_position.distance_to(t.global_position)
 		if d < closest_dist:
 			closest_dist = d
@@ -175,7 +175,7 @@ func _recycle_bullet(b: Area3D) -> void:
 func _on_bullet_expired(b: Area3D) -> void:
 	_recycle_bullet(b)
 
-func fire_bullet():
+func fire_bullet() -> void:
 	if ammo == null:
 		return
 	if free_bullet.is_empty():
@@ -227,7 +227,7 @@ func _aim_point_for(body: Node3D) -> Vector3:
 			return body.get_node("CollisionShape3D").global_position
 		return body.global_position
 	var cabin: Node3D = null
-	for b in blocks.get_children():
+	for b: Node in blocks.get_children():
 		if b.get("block") == G.Block.CABIN and b is Node3D:
 			cabin = b
 			break
@@ -235,7 +235,7 @@ func _aim_point_for(body: Node3D) -> Vector3:
 		return cabin.global_position
 	var best: Node3D = null
 	var bd := INF
-	for b in blocks.get_children():
+	for b: Node in blocks.get_children():
 		if not ("block" in b) or not (b is Node3D):
 			continue
 		var d: float = pivot.global_position.distance_squared_to((b as Node3D).global_position)

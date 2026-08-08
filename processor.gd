@@ -18,12 +18,12 @@ func _ready() -> void:
 
 func _on_item_received() -> void:
 	_set_processing_visual(true)
-	for i in 4:
+	for i: int in 4:
 		timer_visual.start()
 		await timer_visual.timeout
 	# Визуально — можно покрутить или поменять цвет пока идёт обработка
 
-func _on_timer_visual_timeout():
+func _on_timer_visual_timeout() -> void:
 	if !current_item: return 
 	var item: Node3D = current_item
 	var target: Vector3 = Vector3.ZERO

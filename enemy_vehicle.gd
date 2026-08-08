@@ -105,14 +105,14 @@ func _connect_cabin() -> void:
 	var blocks_node := get_node_or_null("blocks")
 	if blocks_node == null:
 		return
-	for b in blocks_node.get_children():
+	for b: Node in blocks_node.get_children():
 		if b.get("block") == G.Block.CABIN:
 			_cabin = b
 			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
 				b.destroyed.connect(_on_cabin_destroyed)
 			return
 
-func _on_cabin_destroyed(_b = null) -> void:
+func _on_cabin_destroyed(_b: Variant = null) -> void:
 	_die()
 
 func _die() -> void:
@@ -134,7 +134,7 @@ func _eject_blocks() -> void:
 	var cabin_pos: Vector3 = global_position
 	if _cabin != null and is_instance_valid(_cabin) and _cabin is Node3D:
 		cabin_pos = (_cabin as Node3D).global_position
-	for b in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
+	for b: Node in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
 		if b.get("block") == G.Block.CABIN:
 			continue                              # кабина уничтожена — не роняем
 		if b is Node3D:
@@ -171,7 +171,7 @@ func _setup_patrol_points() -> void:
 		_patrol_targets = patrol_points.duplicate()
 		return
 	_patrol_targets.clear()
-	for i in patrol_points_count:
+	for i: Variant in patrol_points_count:
 		var ang: float = (TAU / patrol_points_count) * i + randf_range(-0.5, 0.5)
 		var dist: float = patrol_radius * randf_range(0.5, 1.0)
 		_patrol_targets.append(_start_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
@@ -221,7 +221,7 @@ func _scan_for_targets() -> void:
 		return
 	var best: Node3D = null
 	var best_d: float = INF
-	for b in _detect_area.get_overlapping_bodies():
+	for b: Variant in _detect_area.get_overlapping_bodies():
 		if not _is_enemy(b) or not (b is Node3D):
 			continue
 		var d: float = global_position.distance_to((b as Node3D).global_position)
@@ -317,7 +317,7 @@ func _sense() -> Dictionary:
 # attack_range, не связанный с тем, чем машина реально вооружена.
 func _own_weapon_range() -> float:
 	var r: float = 0.0
-	for b in _weapon_blocks():
+	for b: Variant in _weapon_blocks():
 		if not is_instance_valid(b):
 			continue
 		var wr: Variant = b.get("weapon_range")
@@ -517,7 +517,7 @@ func _sample_danger() -> void:
 	var here: float = global_position.y
 	var origin: Vector3 = global_position + Vector3.UP * 0.5
 
-	for i in ContextSteering.SLOTS:
+	for i: Variant in ContextSteering.SLOTS:
 		var d: Vector3 = _steering.direction(i)
 		if terr != null:
 			var h_near: float = terr.terrain_height_at(global_position + d * PROBE_NEAR)
@@ -547,13 +547,13 @@ func _weapon_blocks() -> Array:
 	if bl.get_child_count() != _atk_n:
 		_atk_n = bl.get_child_count()
 		_atk_cache.clear()
-		for b in bl.get_children():
+		for b: Node in bl.get_children():
 			if b.has_method("attack"):
 				_atk_cache.append(b)
 	return _atk_cache
 
 func _do_attack() -> void:
-	for b in _weapon_blocks():
+	for b: Variant in _weapon_blocks():
 		if not is_instance_valid(b):
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш
 			continue
@@ -570,7 +570,7 @@ func _lose_target() -> void:
 func _nearest_patrol_index() -> int:
 	var best_i: int = 0
 	var best_dist: float = INF
-	for i in _patrol_targets.size():
+	for i: int in _patrol_targets.size():
 		var d: float = global_position.distance_to(_patrol_targets[i])
 		if d < best_dist:
 			best_dist = d
@@ -657,7 +657,7 @@ func _find_terrain() -> Node:
 	var scn := get_tree().current_scene
 	if scn == null:
 		return null
-	for c in scn.get_children():
+	for c: Node in scn.get_children():
 		if c.has_method("terrain_height_at"):
 			_terrain_cache = c
 			return c

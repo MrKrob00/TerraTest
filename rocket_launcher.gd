@@ -61,7 +61,7 @@ func _explode(pos: Vector3) -> void:
 	q.collide_with_bodies = true
 	var own := _vehicle_root()
 	var seen := {}                                             # один блок — один урон (много шейпов)
-	for hit in world.direct_space_state.intersect_shape(q, 48):
+	for hit: Variant in world.direct_space_state.intersect_shape(q, 48):
 		var b: Variant = hit.get("collider")
 		if b == null or seen.has(b) or not b.has_method("hurt"):
 			continue

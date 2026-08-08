@@ -43,15 +43,15 @@ var waiting_for_next: bool = false
 # Принимает ли блок ресурс, приходящий с направления from_dir (вектор в осях РОДИТЕЛЯ,
 # указывает ОТ соседа К нам). Зовётся из blocks.rebuild_factory_links.
 func accepts_from(from_dir: Vector3i) -> bool:
-	for dir in face_dirs(input_faces):
+	for dir: Variant in face_dirs(input_faces):
 		if dir == -from_dir:              # сторона ввода смотрит навстречу приходящему ресурсу
 			return true
 	return false
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
 func face_dirs(mask: int) -> Array:
-	var out: Array = []
-	for i in FACE_VECS.size():
+	var out: Array[Vector3i] = []
+	for i: int in FACE_VECS.size():
 		if mask & (1 << i) == 0:
 			continue
 		var v: Vector3 = (basis * FACE_VECS[i]).normalized()
@@ -130,7 +130,7 @@ func push_item(item: Node3D) -> bool:
 	var targets := _valid_targets()
 	if targets.is_empty() or item == null or not is_instance_valid(item):
 		return false
-	for i in targets.size():
+	for i: int in targets.size():
 		var t: FactoryBlock = targets[(_out_turn + i) % targets.size()]
 		if t.try_receive(item):
 			_out_turn = (_out_turn + i + 1) % targets.size()
@@ -140,7 +140,7 @@ func push_item(item: Node3D) -> bool:
 
 func _valid_targets() -> Array:
 	var out: Array = []
-	for t in next_blocks:
+	for t: Variant in next_blocks:
 		if t != null and is_instance_valid(t):
 			out.append(t)
 	return out
