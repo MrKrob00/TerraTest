@@ -170,11 +170,16 @@ def orient_outward(poly):
     return poly, normal
 
 
+EDGE_EPS = 0.01      # отступ от края ячейки, чтобы nearest не заглянул в соседнюю
+
+
 def cell_uv(cell, u, v):
-    """Выборка в ЦЕНТР текселя: край ячейки при nearest ушёл бы в соседнюю."""
+    """u,v на ПОЛНУЮ ширину ячейки: при выборке в центры крайних текселей им доставалась
+    вдвое меньшая доля u, и ободок на грани выходил тоньше остальных полос."""
     cx, cy = cell
-    au = (cx * CELL + 0.5 + min(max(u, 0.0), 1.0) * (CELL - 1)) / ATLAS
-    av = (cy * CELL + 0.5 + min(max(v, 0.0), 1.0) * (CELL - 1)) / ATLAS
+    span = CELL - 2.0 * EDGE_EPS
+    au = (cx * CELL + EDGE_EPS + min(max(u, 0.0), 1.0) * span) / ATLAS
+    av = (cy * CELL + EDGE_EPS + min(max(v, 0.0), 1.0) * span) / ATLAS
     return au, av
 
 
