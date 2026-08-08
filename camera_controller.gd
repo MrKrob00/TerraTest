@@ -147,7 +147,7 @@ func _ready() -> void:
 		if current_vehicle.has_method("set_active"):
 			current_vehicle.set_active(true)
 
-func _physics_process(delta:float) -> void:
+func _physics_process(delta: float) -> void:
 	if not current_vehicle: return
 
 	# 1. Smoothly move the entire controller to the car's
@@ -160,7 +160,7 @@ func _physics_process(delta:float) -> void:
 var locked_angle: float = 0.0
 var is_locked: bool = false
 
-func camera_movement(_delta:float):
+func camera_movement(_delta: float) -> void:
 	# Поворот/наклон камеры — от СВАЙПА (тач) и мыши (ПКМ-драг на ПК). Оба уже в пикселях,
 	# накоплены за кадр (_touch_look_* в _unhandled_input, _mouse_look_* в _input). Джойстик
 	# камеры убран (был костылём). Жест кругового меню гасит оба источника.
@@ -246,7 +246,7 @@ func _terrain_height(world_pos: Vector3) -> float:
 	return _terrain.terrain_height_at(world_pos)
 
 # Machine change function 
-func switch_to_vehicle(new_vehicle: RigidBody3D) ->void:
+func switch_to_vehicle(new_vehicle: RigidBody3D) -> void:
 	if current_vehicle and current_vehicle.has_method("set_active"):
 		current_vehicle._on_take_off_pressed()
 		current_vehicle.set_active(false)
