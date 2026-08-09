@@ -1047,6 +1047,46 @@ func _build_settings_tab() -> void:
 	inv.toggled.connect(func(on: bool) -> void: G.cam_invert_y = on; G.save_settings())
 	_extra_vb.add_child(inv)
 
+	# — СБРОС — отдельной секцией внизу: кнопка необратимая, ей не место среди ползунков.
+	_extra_header("— RESET —")
+	var wipe_hint := Label.new()
+	wipe_hint.text = "Wipes progress, vehicle and world. Graphics and camera settings stay."
+	wipe_hint.add_theme_font_size_override("font_size", 12)
+	wipe_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	wipe_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(wipe_hint)
+	var wipe_btn := Button.new()
+	wipe_btn.text = "Reset save and start over"
+	wipe_btn.add_theme_font_size_override("font_size", 14)
+	wipe_btn.add_theme_color_override("font_color", Color(1.0, 0.55, 0.5))
+	wipe_btn.pressed.connect(_ask_wipe_save)
+	_extra_vb.add_child(wipe_btn)
+
+# ── Сброс сейва ───────────────────────────────────────────────────────────────
+# Действие необратимое, поэтому через подтверждение. Диалог создаём один раз и держим:
+# вкладка настроек пересобирается при каждом открытии, а он к ней не привязан.
+var _wipe_dialog: ConfirmationDialog = null
+
+func _ask_wipe_save() -> void:
+	if _wipe_dialog == null:
+		_wipe_dialog = ConfirmationDialog.new()
+		_wipe_dialog.title = "Reset save"
+		_wipe_dialog.dialog_text = "This deletes your progress, money, research, vehicle and the world.\nThe game restarts from the very beginning.\n\nThis cannot be undone."
+		_wipe_dialog.ok_button_text = "Reset"
+		_wipe_dialog.cancel_button_text = "Cancel"
+		_wipe_dialog.confirmed.connect(_do_wipe_save)
+		add_child(_wipe_dialog)
+	_wipe_dialog.popup_centered()
+
+func _do_wipe_save() -> void:
+	G.wipe_save()
+	var q: Node = get_node_or_null("/root/Q")
+	if q and q.has_method("reset_all"):
+		q.reset_all()
+	# Через загрузочный экран, а не reload_current_scene: тот же путь, что и при обычном
+	# старте игры, поэтому мир собирается ровно как на новом сейве.
+	get_tree().change_scene_to_file("res://loading.tscn")
+
 # Строка «подпись + ползунок + значение» для настроек камеры (0.2..3.0).
 func _cam_slider(label: String, value: float, on_change: Callable) -> Control:
 	var row := HBoxContainer.new()

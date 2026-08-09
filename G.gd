@@ -270,6 +270,35 @@ func _flush_progress() -> void:
 		}))
 		f.close()
 
+# ── Сброс сейва (кнопка в НАСТРОЙКАХ гаража) ──────────────────────────────────
+# Стираем ПРОГРЕСС и МИР; настройки устройства (settings.json, музыкальные предпочтения)
+# остаются — это конфиг, а не сейв, и сбрасывать чувствительность камеры вместе с игрой
+# незачем. Обнуляем и то, что уже в памяти: G — автолоад, он переживёт смену сцены и без
+# этого записал бы старые деньги/исследования поверх только что удалённых файлов.
+const WIPE_PATHS := [
+	PROGRESS_PATH,
+	BUILDS_PATH,
+	"user://world_save.json",
+	"user://world_save.bad.json",
+	"user://vehicle_layout.json",
+]
+
+func wipe_save() -> void:
+	_progress_dirty = false             # чтобы отложенный флеш не воскресил старый прогресс
+	for p in WIPE_PATHS:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+	money = 500
+	block_inventory = []
+	saved_builds = {}
+	faction_xp = {"start": 0}
+	research_points = 0
+	researched = START_RESEARCHED.duplicate()
+	quests_done = []
+	killed_kinds = []
+	money_changed.emit()
+	progress_changed.emit()
+
 func _load_progress() -> void:
 	researched = START_RESEARCHED.duplicate()
 	if not FileAccess.file_exists(PROGRESS_PATH):

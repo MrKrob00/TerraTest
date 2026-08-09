@@ -110,6 +110,16 @@ func report(event: String, amount: int = 1) -> void:
 		if q.get("event", "") == event and not q["done"]:
 			add_progress(q["id"], amount)
 
+# Сброс сейва (кнопка в настройках): G уже вычистил quests_done, а здесь в памяти лежат
+# те же квесты с done/progress. Без этого после перезапуска сцены обучение считалось бы
+# пройденным — автолоад Q смену сцены переживает.
+func reset_all() -> void:
+	for q in quests:
+		q["progress"] = 0
+		q["done"] = false
+	tracked_id = ""
+	changed.emit()
+
 func _find(id: String) -> Dictionary:
 	for q in quests:
 		if q["id"] == id:
