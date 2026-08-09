@@ -91,6 +91,22 @@ fill_to = Vector2(0, 1)
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_6iypd"]
 size = Vector2(200, 100)
 
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_mode"]
+gradient = SubResource("Gradient_jsk3o")
+width = 176
+height = 72
+fill_to = Vector2(0, 1)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture2D_modep"]
+gradient = SubResource("Gradient_4arys")
+width = 176
+height = 72
+fill_from = Vector2(0, 0.801217)
+fill_to = Vector2(0, 1)
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_mode"]
+size = Vector2(176, 72)
+
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_tereu"]
 size = Vector2(200, 100)
 
@@ -201,40 +217,19 @@ position = Vector2(1163, 141)
 shape = SubResource("CircleShape2D_a202f")
 script = ExtResource("4_r3fl7")
 
-[node name="Movement" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD" unique_id=1876794863]
-texture_normal = SubResource("GradientTexture2D_4arys")
-texture_pressed = SubResource("GradientTexture2D_6iypd")
-shape = SubResource("RectangleShape2D_6iypd")
-action = "Movement"
+[node name="ModeToggle" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD" unique_id=1876794863]
+position = Vector2(96, 12)
+texture_normal = SubResource("GradientTexture2D_mode")
+texture_pressed = SubResource("GradientTexture2D_modep")
+shape = SubResource("RectangleShape2D_mode")
+action = "ModeToggle"
 
-[node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/Movement" unique_id=1851734277]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
-theme_override_font_sizes/font_size = 32
-text = "Movement"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="Building" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD" unique_id=31151730]
-position = Vector2(200, 0)
-texture_normal = SubResource("GradientTexture2D_4arys")
-texture_pressed = SubResource("GradientTexture2D_6iypd")
-shape = SubResource("RectangleShape2D_6iypd")
-action = "Building"
-
-[node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/Building" unique_id=232250765]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
-theme_override_font_sizes/font_size = 32
-text = "Building"
+[node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/ModeToggle" unique_id=1851734277]
+offset_right = 176.0
+offset_bottom = 72.0
+theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
+theme_override_font_sizes/font_size = 26
+text = "MOVE"
 horizontal_alignment = 1
 vertical_alignment = 1
 
@@ -389,7 +384,6 @@ multimesh = SubResource("MultiMesh_5t8nk")
 script = ExtResource("28_worldpersist")
 
 [connection signal="body_entered" from="Vehicles/Camera Controller/SpringArm3D/Camera3D/Raycast" to="Vehicles/Camera Controller" method="_on_raycast_body_entered"]
-[connection signal="pressed" from="Vehicles/Camera Controller/HUD/Movement" to="Vehicles/Camera Controller/HUD" method="_on_movement_pressed"]
-[connection signal="pressed" from="Vehicles/Camera Controller/HUD/Building" to="Vehicles/Camera Controller/HUD" method="_on_building_pressed"]
+[connection signal="pressed" from="Vehicles/Camera Controller/HUD/ModeToggle" to="Vehicles/Camera Controller/HUD" method="_on_mode_toggle_pressed"]
 [connection signal="pressed" from="Vehicles/Camera Controller/HUD/Take/Take" to="Vehicles/Camera Controller/HUD" method="_on_take_pressed"]
 [connection signal="pressed" from="Vehicles/Camera Controller/HUD/TakeOff/TakeOff" to="Vehicles/Camera Controller/HUD" method="_on_take_off_pressed"]

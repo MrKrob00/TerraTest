@@ -123,6 +123,10 @@ Building={
 "deadzone": 0.2,
 "events": []
 }
+ModeToggle={
+"deadzone": 0.2,
+"events": []
+}
 
 [layer_names]
 
