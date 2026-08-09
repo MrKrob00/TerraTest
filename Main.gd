@@ -85,6 +85,7 @@ func _setup_pc_input_map() -> void:
 	_bind_key("TakeOff", KEY_Q)
 	_bind_key("Building", KEY_B)
 	_bind_key("Movement", KEY_ESCAPE)
+	_bind_key("ModeToggle", KEY_TAB)    # то же, что тап по единственной кнопке режима на HUD
 	_bind_key("Attack", KEY_CTRL)
 	_bind_key("move_forward", KEY_W)
 	_bind_key("move_back", KEY_S)

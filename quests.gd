@@ -11,29 +11,32 @@ extends CanvasLayer
 
 var _tracker_top0: float = 0.0        # исходное положение трекера (чтобы вернуть)
 var _tracker_bot0: float = 0.0
+var _list_top0: float = 0.0           # то же для панели списка — она едет за трекером
 
 func _ready() -> void:
-	add_to_group("quests")            # чтобы HUD мог увести трекер вниз при открытом инвентаре
+	add_to_group("quests")            # HUD через группу двигает трекер и прячет его в гараже
 	_tracker_top0 = _tracker.offset_top
 	_tracker_bot0 = _tracker.offset_bottom
+	_list_top0 = _list_panel.offset_top
 	_tracker.pressed.connect(_toggle_list)
 	%Close.pressed.connect(func(): _list_panel.visible = false)
 	Q.changed.connect(_refresh)       # Q — автолоад, всегда готов к моменту нашего _ready
 	_refresh()
 
-# HUD зовёт при открытии/закрытии инвентаря: при открытом уводим трекер вниз (из-под панели
-# статистики) и делаем его прозрачным для тача, чтобы он не перекрывал кнопку закрытия.
+# HUD зовёт при открытии/закрытии инвентаря. Гараж — полноэкранный, и трекер поверх него
+# всё равно ничего не отслеживает: раньше его уводили вниз на 0.55 экрана, и он налезал на
+# нижнюю часть панели. Просто убираем на время инвентаря.
 func set_inventory_open(open: bool) -> void:
 	_list_panel.visible = false
-	if open:
-		var shift: float = get_viewport().get_visible_rect().size.y * 0.55
-		_tracker.offset_top = _tracker_top0 + shift
-		_tracker.offset_bottom = _tracker_bot0 + shift
-		_tracker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	else:
-		_tracker.offset_top = _tracker_top0
-		_tracker.offset_bottom = _tracker_bot0
-		_tracker.mouse_filter = Control.MOUSE_FILTER_STOP
+	_tracker.visible = not open
+
+# HUD зовёт, когда появляется/пропадает радар: они оба живут в правом верхнем углу и
+# накладывались друг на друга. y = нижняя кромка занятой области (0 — угол свободен).
+func set_top_offset(y: float) -> void:
+	var top: float = _tracker_top0 if y <= 0.0 else y
+	_tracker.offset_top = top
+	_tracker.offset_bottom = top + (_tracker_bot0 - _tracker_top0)
+	_list_panel.offset_top = _list_top0 + (top - _tracker_top0)
 
 func _toggle_list() -> void:
 	_list_panel.visible = not _list_panel.visible
