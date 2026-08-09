@@ -141,7 +141,7 @@ func _spawn_one() -> void:
 ## дистанцию spawn_min_dist (270 м), чтобы не наваливаться; здесь наоборот нужно, чтобы
 ## игрок его сразу увидел, поэтому кольцо своё и слабая сборка (preset 0).
 ## Возвращает врага или null, если рядом не нашлось ровного места.
-func spawn_scout_near_player(min_d: float = 55.0, max_d: float = 90.0) -> Node3D:
+func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
 	if enemy_scenes.is_empty():
 		return null
 	var map: Node = _find_map()
