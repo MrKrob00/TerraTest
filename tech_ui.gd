@@ -117,6 +117,7 @@ func _build_filter_column() -> void:
 
 func _set_shop_filter(key: String) -> void:
 	_shop_filter = key
+	Q.report("garage_filter", 1)          # шаг обучения «попробовать фильтр категорий»
 	for k in _filter_buttons:
 		_filter_buttons[k].button_pressed = (k == key)
 	_load_items()
@@ -537,6 +538,12 @@ func _buy(block_type: int, price: int) -> void:
 # ── Вкладки ───────────────────────────────────────────────────────────────────
 func _select_tab(idx: int) -> void:
 	_tab = idx
+	# Шаги обучения по вкладкам. TAB_INVENTORY не докладываем: её открывает сам _ready,
+	# и шаг закрылся бы раньше, чем игрок что-то увидел.
+	match idx:
+		TAB_SHOP:  Q.report("garage_shop", 1)
+		TAB_TECH:  Q.report("garage_tech", 1)
+		TAB_MUSIC: Q.report("garage_music", 1)
 	for i in _tab_buttons.size():
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
@@ -565,6 +572,21 @@ func _select_tab(idx: int) -> void:
 		return
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
+
+# ── Цели для обучающего пальца ────────────────────────────────────────────────
+# Наставник (tutorial_director.gd) не лазит по внутренностям гаража — спрашивает узел
+# по ключу. Так перестановка панелей внутри не ломает обучение.
+func tutorial_target(key: String) -> Control:
+	match key:
+		"tab_inventory": return _tab_buttons[TAB_INVENTORY] as Control
+		"tab_shop":      return _tab_buttons[TAB_SHOP] as Control
+		"tab_tech":      return _tab_buttons[TAB_TECH] as Control
+		"tab_music":     return _tab_buttons[TAB_MUSIC] as Control
+		"filters":
+			if _filter_col != null and _filter_col.get_child_count() > 0:
+				return _filter_col.get_child(0) as Control
+			return null
+	return null
 
 # ── Поиск активной машины ─────────────────────────────────────────────────────
 func _get_vehicle() -> Node:
