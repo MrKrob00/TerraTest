@@ -800,6 +800,8 @@ func _process(_delta: float) -> void:
 
 func _on_movement_pressed() -> void:
 	_return_hand_to_inventory()   # выход из стройки — блок из руки возвращаем в инвентарь
+	if Building:
+		Q.report("mode_movement", 1)          # шаг обучения «выйти из стройки»
 	Building = false
 	ghost_block.visible = false
 	if not is_station:            # станция всегда на якоре — Movement не должен её размораживать
@@ -822,6 +824,7 @@ func _on_building_pressed() -> void:
 	if not is_instance_valid(ghost_block):
 		push_warning("ghost_block недоступен — постройка невозможна")
 		return
+	Q.report("mode_building", 1)              # шаг обучения «войти в стройку»
 	ghost_block.visible = true
 	# top_level → трансформ призрака мировой, не наследует машину. Так позиция точная и не
 	# «плывёт» относительно блоков, когда машина двигается (см. _place_ghost — ставим global).
@@ -1248,6 +1251,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 		body.linear_velocity = Vector3.ZERO
 		body.angular_velocity = Vector3.ZERO
 	block_body = body
+	Q.report("block_taken_world", 1)          # шаг обучения «подобрать блок из мира»
 	block_take = true
 	_hand_from_inventory = false                   # из мира, не из инвентаря — без авто-добора
 	build_basis = Basis()

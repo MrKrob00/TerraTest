@@ -137,6 +137,43 @@ func _spawn_one() -> void:
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
 
+## Разведчик РЯДОМ с игроком — сюжетный спавн после обучения. Обычный поток врагов держит
+## дистанцию spawn_min_dist (270 м), чтобы не наваливаться; здесь наоборот нужно, чтобы
+## игрок его сразу увидел, поэтому кольцо своё и слабая сборка (preset 0).
+## Возвращает врага или null, если рядом не нашлось ровного места.
+func spawn_scout_near_player(min_d: float = 55.0, max_d: float = 90.0) -> Node3D:
+	if enemy_scenes.is_empty():
+		return null
+	var map: Node = _find_map()
+	var player: Node3D = _player()
+	var vehicles: Node = _vehicles_root()
+	if map == null or player == null or vehicles == null:
+		return null
+	var center: Vector3 = player.global_position
+	var pos = null
+	var base: float = randf() * TAU
+	for i in 24:
+		var ang: float = base + TAU * float(i) / 24.0
+		var dist: float = randf_range(min_d, max_d)
+		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+		var h: float = map.terrain_height_at(world)
+		if h < min_height or _slope_at(map, world) > max_slope:
+			continue
+		pos = Vector3(world.x, h + ground_offset, world.z)
+		break
+	if pos == null:
+		return null
+	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+	var blocks := enemy.get_node_or_null("blocks")
+	if blocks and "layout_preset" in blocks:
+		blocks.layout_preset = 0            # базовая сборка: первый бой должен быть посильным
+	vehicles.add_child(enemy)
+	enemy.global_position = pos
+	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
+		enemy.died.connect(_on_enemy_died)
+	_enemies.append(enemy)
+	return enemy
+
 func _on_enemy_died(_enemy: Node) -> void:
 	pass    # _process сам подчистит список по is_instance_valid и дозаспавнит
 

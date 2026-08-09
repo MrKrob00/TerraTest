@@ -32,6 +32,13 @@ enum Aim {
 const WORLD_HOLE_R: float = 130.0     # радиус разрешённой зоны вокруг цели в мире
 const HOLE_PAD: float = 8.0           # запас вокруг кнопки, чтобы палец не промахивался
 
+# Насколько глухо блокируем ввод на время шага.
+enum Gate {
+	TARGET,   # нажать можно ТОЛЬКО цель: заглушка с дыркой + тач-кнопки выключены
+	WORLD,    # мир открыт (шаг «собери всё»), тач-кнопки выключены; UI гасит наставник
+	OFF,      # ничего не блокируем
+}
+
 var _aim: int = Aim.NONE
 var _target_node: CanvasItem = null
 var _world_pos: Callable = Callable()  # () -> Vector3 (пересчитываем каждый кадр: цель движется)
@@ -43,6 +50,8 @@ var _hand: Hand = null
 var _bubble: PanelContainer = null
 var _bubble_label: Label = null
 var _gated: Array[Node] = []           # TouchScreenButton'ы, которым выключили ввод
+# Где искать тач-кнопки: палец живёт под наставником, а кнопки — у HUD, ссылку дают снаружи.
+var _hud: Node = null
 
 # ── Полноэкранная заглушка с дыркой ──────────────────────────────────────────
 class Blocker extends Control:
@@ -173,8 +182,8 @@ func _bubble_style() -> StyleBoxFlat:
 	return s
 
 # ── Публичный интерфейс ──────────────────────────────────────────────────────
-## Показать палец на узел UI. gate=true — всё, кроме него, нажать нельзя.
-func point_at_node(node: CanvasItem, text: String, double_tap: bool = false, gate: bool = true) -> void:
+## Показать палец на узел UI. gate — насколько глухо блокируем остальное (см. Gate).
+func point_at_node(node: CanvasItem, text: String, double_tap: bool = false, gate: int = Gate.TARGET) -> void:
 	_aim = Aim.NODE
 	_target_node = node
 	_world_pos = Callable()
@@ -183,7 +192,7 @@ func point_at_node(node: CanvasItem, text: String, double_tap: bool = false, gat
 	_start(gate)
 
 ## Показать палец на точку мира. getter возвращает Vector3 (цель может двигаться).
-func point_at_world(getter: Callable, text: String, double_tap: bool = true, gate: bool = true) -> void:
+func point_at_world(getter: Callable, text: String, double_tap: bool = true, gate: int = Gate.TARGET) -> void:
 	_aim = Aim.WORLD
 	_target_node = null
 	_world_pos = getter
@@ -202,20 +211,26 @@ func clear() -> void:
 	_bubble.visible = false
 	_ungate_touch_buttons()
 
+## Наставник отдаёт HUD, у которого лежат тач-кнопки (сам палец висит на слое поверх всего).
+func bind_hud(h: Node) -> void:
+	_hud = h
+
 func is_active() -> bool:
 	return _aim != Aim.NONE
 
-func _start(gate: bool) -> void:
+func _start(gate: int) -> void:
 	_hand.double_tap = _double_tap
 	_hand.visible = true
 	_bubble_label.text = _text
 	_bubble.visible = _text != ""
-	_blocker.visible = gate
-	_blocker.mouse_filter = Control.MOUSE_FILTER_STOP if gate else Control.MOUSE_FILTER_IGNORE
-	if gate:
-		_gate_touch_buttons()
-	else:
+	_bubble.reset_size()          # размер нужен уже сейчас: по нему считаем, где встать
+	var block_ui: bool = gate == Gate.TARGET
+	_blocker.visible = block_ui
+	_blocker.mouse_filter = Control.MOUSE_FILTER_STOP if block_ui else Control.MOUSE_FILTER_IGNORE
+	if gate == Gate.OFF:
 		_ungate_touch_buttons()
+	else:
+		_gate_touch_buttons()
 	set_process(true)
 	_tick()
 
@@ -299,15 +314,19 @@ func _project_world():
 # ── Гашение тач-кнопок (они опережают GUI, дыркой их не остановить) ───────────
 func _gate_touch_buttons() -> void:
 	_ungate_touch_buttons()
-	var hud := get_parent()
-	if hud == null:
-		return
-	for c in hud.get_children():
-		if not (c is TouchScreenButton) or c == _target_node:
+	if _hud != null:
+		_gate_subtree(_hud)
+
+# Рекурсивно: часть тач-кнопок вложена в Control-обёртки (Attack/Take/TakeOff — это
+# TextureButton с TouchScreenButton внутри), и обход только прямых детей их пропускал.
+func _gate_subtree(n: Node) -> void:
+	for c in n.get_children():
+		if c is TouchScreenButton and c != _target_node:
+			c.process_mode = Node.PROCESS_MODE_DISABLED
+			(c as CanvasItem).modulate.a = 0.35
+			_gated.append(c)
 			continue
-		c.process_mode = Node.PROCESS_MODE_DISABLED
-		(c as CanvasItem).modulate.a = 0.35
-		_gated.append(c)
+		_gate_subtree(c)
 
 func _ungate_touch_buttons() -> void:
 	for c in _gated:

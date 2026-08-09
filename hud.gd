@@ -56,6 +56,8 @@ func _ready() -> void:
 	_build_radar()
 	# _build_settings_panel()   # настройки камеры переехали в гараж (tech_ui)
 	_collect_game_controls()
+	# Наставник обучения (палец + блокировка). Ставим ПОСЛЕ сборки кнопок: он их ищет.
+	add_child(preload("res://tutorial_director.gd").new())
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
 	# экрана — их надо пере-разложить, иначе при expand они «отлипнут» от краёв.
@@ -868,6 +870,27 @@ class MenuIcon extends Control:
 		draw_line(Vector2(ax, ay + 5.0 * dir), Vector2(ax + 5.0, ay), arrow, 2.5)
 
 var _menu_icon: MenuIcon = null
+var _inventory_btn: Button = null
+
+# ── Цели и блокировка для обучающего пальца ──────────────────────────────────
+# Наставник (tutorial_director.gd) спрашивает узлы по имени, а не лезет внутрь HUD.
+func tutorial_target(key: String) -> Control:
+	match key:
+		"menu":      return _menu_btn
+		"inventory": return _inventory_btn
+		"garage":    return _tech_ui       # null, пока гараж ни разу не открывали
+	return null
+
+func menu_is_open() -> bool:
+	return _menu_open
+
+## На шагах со свободным миром (собери все блоки) тапы по миру нужны, а UI — нет.
+## Заглушка обучения тут не годится: она бы съела и мировой тап вместе с UI.
+func set_ui_locked(locked: bool) -> void:
+	if _menu_btn:
+		_menu_btn.disabled = locked
+	if locked:
+		_set_menu(false)
 
 # ── Сборка меню целиком в коде (тема — как у tech_ui) ─────────────────────────
 func _build_menu_panel() -> void:
@@ -905,7 +928,8 @@ func _build_menu_panel() -> void:
 	title.add_theme_font_size_override("font_size", 22)
 	vb.add_child(title)
 
-	vb.add_child(_make_drawer_button("Inventory", _toggle_inventory))
+	_inventory_btn = _make_drawer_button("Inventory", _toggle_inventory)
+	vb.add_child(_inventory_btn)
 	# «Настройки» переехали в ГАРАЖ (tech_ui, вкладка НАСТРОЙКИ → секция КАМЕРА).
 
 	var veh_label := Label.new()
@@ -987,6 +1011,8 @@ func _on_tech_ui_visibility() -> void:
 		var focused := get_viewport().gui_get_focus_owner()
 		if focused != null:
 			focused.release_focus()
+	if open:
+		Q.report("garage_opened", 1)   # шаг обучения «зайти в гараж»
 	_set_game_controls_hidden(open)
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).

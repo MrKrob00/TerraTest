@@ -1,6 +1,9 @@
 extends Node
 
 signal changed
+## Последний шаг обучения закрыт — наставник по этому сигналу заканчивает вводную и
+## запускает сюжет (спавнит первого врага).
+signal tutorial_finished
 
 enum Type { STORY, DAILY, TUTORIAL }
 # TUTORIAL — обучение: последовательное (по order), идёт ПЕРВЫМ (до сюжета), ведёт «за руку» —
@@ -41,19 +44,40 @@ func _seed_demo() -> void:
 	# ── ОБУЧЕНИЕ (идёт первым, ведёт за руку; hint — что нажать) ──────────────────
 	# Пока на существующих событиях (build/ore/sell/kill); остальные шаги (камера, движение,
 	# якорь, сбор, энерго, фабрика) добавятся, когда докинем их события — см. docs/QUESTS_DESIGN.
-	add_quest("tut_build", "Tutorial: Building", "Place 3 blocks", Type.TUTORIAL, 3, 0, "block_placed", 0, 0, 0, 1,
-			"Open building mode — the globe button at the bottom. Take a block and place it on the vehicle. That's how machines are built.")
-	add_quest("tut_ore",   "Tutorial: Mining",    "Drill 5 ore", Type.TUTORIAL, 5, 1, "ore_mined",    0, 0, 0, 1,
-			"Drive right up to the ore with your DRILL and stay close — the drill digs by itself. Ore will drop.")
-	add_quest("tut_sell",  "Tutorial: Selling",   "Earn 30$",   Type.TUTORIAL, 30, 2, "money_earned", 0, 0, 0, 1,
-			"Take the ore you collected to the seller (SELLER) — you'll get money. Spend it on blocks.")
-	add_quest("tut_fight", "Tutorial: Combat",       "Destroy an enemy cabin", Type.TUTORIAL, 1, 3, "enemy_killed", 0, 0, 0, 1,
-			"Aim at the enemy and press Attack. Target its CABIN: break it and the vehicle falls apart.")
+	# Шаги ведёт «рука с пальцем» (tutorial_director.gd): она показывает, куда нажать, и на
+	# время шага не даёт нажать никуда больше. hint — реплика Механика при активации шага;
+	# развёрнутые объяснения (магазин, древо, музыка) живут в самом наставнике.
+	add_quest("tut_mode_build", "Tutorial: Build mode", "Enter building mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
+			"Everything starts in building mode. Tap the mode button.")
+	add_quest("tut_take_world", "Tutorial: Pick up", "Pick up a block", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
+			"Your starting blocks are lying around the cabin. Double-tap one to take it into your hand.")
+	add_quest("tut_place_first", "Tutorial: First block", "Place the block", Type.TUTORIAL, 1, 2, "block_placed", 0, 0, 0, 1,
+			"Now double-tap the vehicle where the block should sit.")
+	# Событие пустое: прогресс СТАВИТ наставник по числу блоков на машине. По событию
+	# block_placed его накручивали бы циклом «поставил — снял — поставил».
+	add_quest("tut_place_all", "Tutorial: Assembly", "Mount every starting block", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
+			"Same for the rest: pick up, place. Wheels on the sides, the drill facing forward.")
+	add_quest("tut_mode_move", "Tutorial: Driving", "Leave building mode", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
+			"Assembled? Tap the same button to drop back to driving.")
+	add_quest("tut_quests", "Tutorial: Quests", "Open the quest list", Type.TUTORIAL, 1, 5, "quests_opened", 0, 0, 0, 1,
+			"Top right is the quest tracker. Tap it to see the whole list.")
+	add_quest("tut_garage", "Tutorial: Garage", "Open the garage", Type.TUTORIAL, 1, 6, "garage_opened", 0, 0, 0, 1,
+			"The menu is the icon in the top-left corner. Inventory opens the garage.")
+	add_quest("tut_filters", "Tutorial: Inventory", "Use a category filter", Type.TUTORIAL, 1, 7, "garage_filter", 0, 0, 0, 1,
+			"These are your blocks. The buttons on the left filter them by category.")
+	add_quest("tut_shop", "Tutorial: Shop", "Open the shop", Type.TUTORIAL, 1, 8, "garage_shop", 0, 0, 0, 1,
+			"The SHOP tab is where blocks are bought.")
+	add_quest("tut_tech", "Tutorial: Research", "Open the tech tree", Type.TUTORIAL, 1, 9, "garage_tech", 0, 0, 0, 1,
+			"The TECH tab is where blocks are unlocked.")
+	add_quest("tut_music", "Tutorial: Music", "Open the music tab", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
+			"Last one — the music tab.")
 	# ── STORY ────────────────────────────────────────────────────────────────────
-	add_quest("story_build", "Build a Vehicle",  "Place 5 blocks",          Type.STORY, 5,   0, "block_placed", 20, 20, 5)
-	add_quest("story_ore",   "Mine Ore",         "Drill 10 ore",            Type.STORY, 10,  1, "ore_mined",    30, 30, 8)
-	add_quest("story_sell",  "Earn Money",       "Earn 100$",               Type.STORY, 100, 2, "money_earned", 50, 40, 10)
-	add_quest("story_kill",  "First Fight",      "Destroy an enemy cabin",  Type.STORY, 1,   3, "enemy_killed", 40, 50, 15)
+	# Первый сюжетный — сразу после обучения: наставник спавнит разведчика рядом с игроком.
+	add_quest("story_first_blood", "First Blood", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 30, 25, 5)
+	add_quest("story_build", "Build a Vehicle",  "Place 5 blocks",          Type.STORY, 5,   1, "block_placed", 20, 20, 5)
+	add_quest("story_ore",   "Mine Ore",         "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    30, 30, 8)
+	add_quest("story_sell",  "Earn Money",       "Earn 100$",               Type.STORY, 100, 3, "money_earned", 50, 40, 10)
+	add_quest("story_kill",  "First Fight",      "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 40, 50, 15)
 	# Grade 2: mastering mining-production and the first weapon.
 	add_quest("g2_ore",   "Miner II",         "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
 	add_quest("g2_kill",  "Hunter",           "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
@@ -169,7 +193,8 @@ func _on_completed(q: Dictionary) -> void:
 	_say("System", _completion_message(str(q["title"]), reward))
 	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 	if int(q["type"]) == Type.TUTORIAL:
-		_announce_tutorial()
+		if not _announce_tutorial():
+			tutorial_finished.emit()
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
