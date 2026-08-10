@@ -1,30 +1,30 @@
-# map.gd — узел террейна LiteTerrain: StaticBody3D + HeightMapShape3D-коллизия + ArrayMesh,
-# с LOD/quadtree, стримингом коллизии и травяным шейдером. Плагин LiteTerrain собирает его
-# кнопкой и умеет генерить/лепить/бейкать. class_name — чтобы использовать как тип.
+# map.gd — the LiteTerrain terrain node: a StaticBody3D with HeightMapShape3D collision and an
+# ArrayMesh, plus quadtree LOD, streaming collision and the grass shader. The LiteTerrain dock
+# creates one at the press of a button and can generate, sculpt and bake it.
 @tool
 class_name LiteTerrain
 extends StaticBody3D
 
-## Камера для LOD и куллинга. МОЖНО НЕ ЗАДАВАТЬ: по умолчанию берётся текущая активная
-## камера (get_viewport().get_camera_3d()), и террейн следует за ней даже при переключении
-## камер. Задай вручную, только если LOD нужно считать от ДРУГОЙ камеры, не активной.
+## The camera LOD and culling are measured from. LEAVE IT EMPTY unless you need something
+## unusual: by default the currently active camera is used, so the terrain follows it even
+## across camera switches. Set it only to drive LOD from a camera that is NOT the active one.
 @export var camera: Camera3D
 
-# Эффективная камера этого кадра: ручная (если задана и жива) или текущая активная.
-# Обновляется каждый кадр в _process, поэтому назначать ничего не нужно.
+# The camera in effect this frame: the manual override if one is set and still alive, else the
+# active one. Refreshed every frame in _process, so nothing needs assigning.
 var _cam: Camera3D = null
 
-## Материал поверхности. По умолчанию — шейдер террейна из аддона (цвета зон + трава), чтобы
-## свежесозданная нода сразу выглядела нормально. Можешь подставить свой ShaderMaterial.
+## The surface material. Defaults to the addon's terrain shader (biome colours plus grass) so
+## a freshly created node looks right immediately. Swap in your own ShaderMaterial if you like.
 ##
-## ВНЕШНИЙ ВИД (тайл-текстура, texture_blend, tile_world_size, цвета зон, трава, low_quality)
-## настраивается ПРЯМО НА МАТЕРИАЛЕ, в его Shader Parameters — это не дублируется в инспекторе
-## ноды. Дефолты лежат в самом шейдере (glsl.gdshader) и в этом материале.
+## APPEARANCE (tile texture, texture_blend, tile_world_size, low_quality) is configured ON THE
+## MATERIAL itself, under its Shader Parameters — the node does not duplicate those. Biome
+## colours and grass come from the biomes resource below and overwrite the material's copies.
 @export var surface_material: Material = preload("res://addons/LiteTerrain/terrain_shader.res")
 
-# Прячем в инспекторе настройки того, что выключено (чистый UX).
+# Hide the settings of anything switched off, to keep the inspector clean.
 func _validate_property(property: Dictionary) -> void:
-	# heightmap_path нужен только в image-режиме.
+	# heightmap_path only matters in image mode.
 	if property.name == "heightmap_path" and not use_image_data:
 		property.usage = PROPERTY_USAGE_NO_EDITOR
 @export_range(-0.5, 0.5, 0.01) var frustum_margin: float = -0.05
@@ -51,16 +51,16 @@ func _validate_property(property: Dictionary) -> void:
 
 @export var chunk_size: int = 16
 
-## Настройки биомов: пороги и масштабы шума (форма и раскладка) + цвета и трава. Один ресурс
-## на весь конвейер — его читают и генератор рельефа, и маски, и материал. Если не задать,
-## нода заводит набор по умолчанию; чтобы настроить, сохрани его в .tres и правь там.
+## Biome settings: noise thresholds and scales (shape and layout) plus colours and grass. One
+## resource for the whole pipeline — the landform generator, the masks and the material all
+## read it. Leave it empty and the node makes a default set; save it as a .tres to edit.
 @export var biomes: TerrainBiomes = null : set = _set_biomes
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
 	_push_biomes_to_materials()
 
-# Ресурс всегда есть: без него пришлось бы дублировать дефолты по всем формулам.
+# There is always a resource; without one the defaults would have to be repeated in every formula.
 func _biomes() -> TerrainBiomes:
 	if biomes == null:
 		biomes = TerrainBiomes.new()
@@ -83,9 +83,9 @@ func _push_biomes_to_materials() -> void:
 #   dist < lod_distance_1  →  LOD 1  (step=2, ¼ tris, ~128/chunk)
 #   dist < lod_distance_2  →  LOD 2  (step=4, 1/16 tris, ~32/chunk)
 #   dist ≥ lod_distance_2  →  LOD 3  (step=8, 1/64 tris, ~8/chunk)
-## Насколько чанк может отходить от «двух больших граней», чтобы всё равно считаться РОВНЫМ
-## (в единицах мира). Ровные площадки и ровные склоны рисуются крупными треугольниками —
-## на глаз разницы нет, а вершин уходит в разы меньше. 0 = выключить (всё по дистанции).
+## How far a chunk may deviate from a simple four-corner surface and still count as FLAT, in
+## world units. Flat ground and even slopes are drawn with large triangles: no visible
+## difference, a fraction of the vertices. 0 disables it and LOD goes purely by distance.
 @export var flat_lod_error: float = 0.35
 @export var lod_distance_0: float = 40.0
 @export var lod_distance_1: float = 80.0
@@ -94,14 +94,14 @@ func _push_biomes_to_materials() -> void:
 # Vertex sampling step per LOD level (index = LOD level)
 const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never shown at runtime
 
-## РАЗМЕР ТРЕУГОЛЬНИКА в единицах мира (сторона клетки сетки на самом детальном LOD).
-## 1 — вершина на каждую клетку карты высот; 2 — вчетверо меньше вершин, 4 — в шестнадцать раз.
-## Внимание: трава — это смещённая вершина, поэтому укрупнение прореживает и её.
-## Множит ВСЮ иерархию сразу (чанки, макро-меши, коарс-меши квадродерева), так что сшивание
-## швов между разными LOD продолжает совпадать.
-@export_enum("1 (детально)", "2 (рекомендуется)", "4 (максимум FPS)") var triangle_size: int = 0
+## TRIANGLE SIZE in world units — the grid cell side at the finest LOD.
+## 1 puts a vertex on every heightmap cell; 2 is a quarter of the vertices, 4 a sixteenth.
+## Note that grass is a displaced vertex, so coarsening thins the grass along with the mesh.
+## It scales the WHOLE hierarchy at once (chunks, macro meshes, quadtree coarse meshes), so
+## the seam stitching between differing LODs still lines up.
+@export_enum("1 (detailed)", "2 (recommended)", "4 (max FPS)") var triangle_size: int = 0
 
-# Шаг сетки для уровня lod с учётом triangle_size.
+# Grid step for the given LOD level, scaled by triangle_size.
 func _step_for(lod: int) -> int:
 	return LOD_STEPS[clampi(lod, 0, LOD_STEPS.size() - 1)] * (1 << triangle_size)
 const LOD_COUNT: int        = 3
@@ -144,7 +144,7 @@ const MACRO_SIZE: int = 4
 @export var use_image_data: bool = true:
 	set(v):
 		use_image_data = v
-		notify_property_list_changed()   # прячет/показывает heightmap_path
+		notify_property_list_changed()   # shows or hides heightmap_path
 
 # ── Streaming collision settings ──────────────────────────────────────────────
 ## Master switch. OFF (default) = current behaviour: the embedded HeightMapShape3D is
@@ -164,22 +164,22 @@ const MACRO_SIZE: int = 4
 ## collision_radius as needed; bodies sharing a cell share its window.
 @export_range(16, 256, 8) var collision_cell:   int = 16   # heightmap cells per collision tile
 @export_range(4, 256, 4)  var collision_radius: int = 8    # cells covered around each tracked body
-## На сколько отсчётов плитка заходит на соседнюю. Кромка поля высот для Jolt — активное
-## ребро, и колесо об неё тормозит; перекрытие кладёт поверх этой кромки настоящую
-## поверхность соседа. Высоты в перекрытии настоящие — «юбку» (опущенное кольцо) сюда
-## ставить нельзя, см. _make_cell_tile.
+## How many samples a tile reaches into its neighbour. Jolt treats a heightfield's outer edge
+## as an active edge and a wheel catches on it; the overlap lays the neighbour's real surface
+## over that edge. The overlap carries real heights — a dropped skirt does not work here, see
+## _make_cell_tile.
 @export_range(0, 32, 1) var collision_overlap: int = 8
 
-# Дочерние ноды больше НЕ обязательны в сцене — нода создаёт их сама (см. _ensure_children),
-# так что LiteTerrain можно просто добавить одной нодой, без ручной сборки CollisionShape3D +
-# MeshInstance3D. Если они уже есть в сцене — берём существующие.
+# The child nodes no longer have to be in the scene — the node creates them itself (see
+# _ensure_children), so LiteTerrain can be added as a single node with no manual assembly of a
+# CollisionShape3D and a MeshInstance3D. Existing ones are reused if the scene already has them.
 var collision: CollisionShape3D = null
 var mesh_instance: MeshInstance3D = null
 
-# Гарантирует наличие CollisionShape3D и MeshInstance3D. Создаёт их как ВНУТРЕННИЕ
-# (INTERNAL_MODE_BACK): они не показываются в дереве сцены, не сохраняются в .tscn и
-# управляются самой нодой — так что LiteTerrain остаётся одной чистой нодой. get_node
-# по-прежнему находит их по имени, поэтому повторный вызов не плодит дубликаты.
+# Guarantees a CollisionShape3D and a MeshInstance3D exist, creating them as INTERNAL children
+# (INTERNAL_MODE_BACK): they stay out of the scene tree, are not saved into the .tscn and are
+# managed by the node itself, so LiteTerrain remains one clean node. get_node still finds them
+# by name, so calling this again does not produce duplicates.
 func _ensure_children() -> void:
 	collision = get_node_or_null("CollisionShape3D") as CollisionShape3D
 	if collision == null:
@@ -202,7 +202,7 @@ var _chunk_meshes:   Array = []
 
 # Current LOD level that is actually displayed for each chunk
 var _chunk_lod:      Array[int] = []
-var _chunk_flat_err: PackedFloat32Array = PackedFloat32Array()   # отклонение чанка от плоскости
+var _chunk_flat_err: PackedFloat32Array = PackedFloat32Array()   # how far each chunk departs from flat
 
 # Per-chunk "stitch signature": encodes the chunk's LOD step plus the snap step
 # on each of its 4 borders (see _stitch_signature). the quadtree LOD pass (_qt_apply) rebuilds a chunk
@@ -313,11 +313,12 @@ var _editor_settle_t:   float    = 0.0
 var _mat_lod0:     Material = null  # lod_grass_enabled = 1.0  (LOD 0, close)
 var _mat_lod_high: Material = null  # lod_grass_enabled = 0.0  (LOD 1+, distant)
 
-signal terrain_ready                 # ближний террейн построен (для экрана загрузки)
+signal terrain_ready                 # the near terrain is built (for a loading screen)
 var terrain_is_ready: bool = false
 
-# Сколько узлов создавать за один кадр при стартовой сборке (add_child = вход в дерево + создание
-# рендер-инстанса; сотни за кадр = видимый фриз, поэтому режем на порции и отдаём кадр между ними).
+# How many nodes to create per frame during the initial build. add_child both enters the tree
+# and creates a render instance, so hundreds in one frame is a visible freeze; we do them in
+# batches and yield a frame in between.
 const NODE_BATCH := 64
 
 # ── Heightmap (the data the whole system reads) ───────────────────────────────
@@ -335,10 +336,10 @@ func _ready() -> void:
 	_ensure_children()
 	if Engine.is_editor_hint():
 		if use_image_data and _load_heightmap_image() != null:
-			# Image-режим: R32F terrain_height.res — источник истины. Внутренний MeshInstance3D
-			# в сцену не сохраняется, поэтому если превью-меша ещё нет — строим его из карты
-			# высот. Если меш уже задан (старые сцены с внешним terrain_mesh.res) — не трогаем,
-			# чтобы не вшить большой меш в .tscn.
+			# Image mode: the R32F terrain_height.res is the source of truth. The internal
+			# MeshInstance3D is not saved into the scene, so if no preview mesh exists yet we
+			# build one from the heightmap. If a mesh is already assigned (older scenes with an
+			# external terrain_mesh.res) we leave it alone, to avoid embedding a huge mesh.
 			_load_heightmap()
 			if mesh_instance.mesh == null:
 				_rebuild_editor_full()
@@ -354,11 +355,11 @@ func _ready() -> void:
 	await get_tree().process_frame
 	_cam = _active_camera()
 	if use_image_data or enable_streaming_collision:
-		await _prewarm_heightmap()          # тянем 15+ МБ карты высот в ФОНЕ (иначе load() морозит кадр)
+		await _prewarm_heightmap()          # pull the heightmap in the BACKGROUND; load() would stall the frame
 		_load_heightmap()
-		# Отдаём кадр МЕЖДУ тяжёлыми фазами: сама распаковка карты высот (to_float32_array — ~31 МБ
-		# копирования) и постройка коллизий (обход всей сцены + heightfield-тайлы в Jolt) внутри не
-		# прерываются, но между ними экран загрузки успевает нарисовать кадр и не выглядит зависшим.
+		# Yield a frame BETWEEN the heavy phases. Unpacking the heightmap (to_float32_array copies
+		# tens of megabytes) and building the collision (a full scene walk plus Jolt heightfield
+		# tiles) are each uninterruptible, but between them a loading screen gets to draw.
 		await get_tree().process_frame
 		_setup_streaming_collision()        # small sliding collision window
 		await get_tree().process_frame
@@ -370,17 +371,17 @@ func _ready() -> void:
 			md = collision.shape.map_data
 		else:
 			push_error("LiteTerrain: legacy mode needs a HeightMapShape3D on CollisionShape3D. Turn on use_image_data (default) or generate/bake terrain from the LiteTerrain dock.")
-			terrain_is_ready = true         # иначе экран загрузки ждал бы сигнала вечно
+			terrain_is_ready = true         # otherwise a loading screen would wait forever
 			terrain_ready.emit()
 			return
 	_chunks_x = ceili(float(w - 1) / chunk_size)
-	await _build_mask_lattice()      # до потоков: дальше её читают рабочие потоки только на чтение
+	await _build_mask_lattice()      # before the threads: from here they only read it
 	await _build_chunks_from_map_data()
 	if _cam:
-		await get_tree().process_frame   # кадр ПЕРЕД полным сканом (он тяжёлый и неразрывный)
+		await get_tree().process_frame   # a frame BEFORE the full scan, which is heavy and unbroken
 		_full_scan()
-	await get_tree().process_frame       # и кадр после — чтобы фейд экрана начался уже без хича
-	terrain_is_ready = true          # ближний террейн построен → экран загрузки может уходить
+	await get_tree().process_frame       # and one after, so a screen fade starts without a hitch
+	terrain_is_ready = true          # the near terrain is up; a loading screen can leave
 	terrain_ready.emit()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -407,27 +408,28 @@ func _load_heightmap() -> void:
 		md = collision.shape.map_data
 		_recompute_height_bound()
 	if md.is_empty():
-		# Без высот нет ни рельефа, ни коллизии — тело проваливается в пустоту.
-		push_error("LiteTerrain: карта высот не загружена (%s отсутствует, встроенного "
+		# With no heights there is neither terrain nor collision — bodies fall through nothing.
+		push_error("LiteTerrain: no heightmap loaded (%s is missing and there is no embedded "
 				% heightmap_path
-				+ "HeightMapShape3D тоже нет). Коллизии и рельефа не будет. "
-				+ "terrain_height.res лежит в .gitignore — пересбейкай террейн в доке "
-				+ "LiteTerrain («Bake heightmap → image») или положи файл на место.")
+				+ "HeightMapShape3D either). There will be no collision and no terrain. "
+				+ "Re-bake the terrain from the LiteTerrain dock (\"Bake -> files\") or put "
+				+ "the file back.")
 
-# Подтягивает файл карты высот (десятки МБ R32F) в ФОНОВОМ потоке, отдавая кадры. Дальше
-# обычный load() в _load_heightmap_image() берёт его из кеша мгновенно. Путь задан строкой,
-# то есть зависимостью сцены файл НЕ является и фоновая загрузка сцены его не подхватывает.
+# Pulls the heightmap file (tens of megabytes of R32F) on a BACKGROUND thread, yielding frames.
+# The ordinary load() in _load_heightmap_image() then takes it from the cache instantly. The
+# path is a plain string, so the file is NOT a scene dependency and threaded scene loading
+# does not pick it up on its own.
 func _prewarm_heightmap() -> void:
 	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
 		return
 	if ResourceLoader.load_threaded_request(heightmap_path) != OK:
-		return                               # не вышло — _load_heightmap() отработает обычным load()
+		return                               # no luck; _load_heightmap() falls back to a plain load()
 	while true:
 		var st := ResourceLoader.load_threaded_get_status(heightmap_path)
 		if st != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
 			break
 		await get_tree().process_frame
-	ResourceLoader.load_threaded_get(heightmap_path)   # забираем (кладётся в кеш ресурсов)
+	ResourceLoader.load_threaded_get(heightmap_path)   # collect it; this puts it in the resource cache
 
 func _load_heightmap_image() -> Image:
 	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
@@ -518,9 +520,9 @@ var _warned_no_heights: bool = false
 
 func _update_collision_cells() -> void:
 	if md.is_empty() and _col_active and not _warned_no_heights:
-		_warned_no_heights = true      # один раз, а не каждый кадр
-		push_error("LiteTerrain: коллизия не строится — карта высот пуста (w=%d d=%d). "
-				% [w, d] + "См. сообщение при загрузке карты высот выше.")
+		_warned_no_heights = true      # once, not every frame
+		push_error("LiteTerrain: no collision is being built — the heightmap is empty (w=%d d=%d). "
+				% [w, d] + "See the heightmap loading message above.")
 	if not _col_active or md.is_empty() or collision_cell <= 0:
 		return
 	var cells_x := (w + collision_cell - 1) / collision_cell
@@ -554,14 +556,14 @@ func _update_collision_cells() -> void:
 	if dead:
 		_prune_dead_bodies()
 
-## Состояние стриминговой коллизии в точке. Зовётся страховкой world_persist в момент,
-## когда тело поймано под рельефом: одна строка в логе отвечает, была ли там коллизия
-## вообще — вместо перебора гипотез по коду.
+## The state of the streaming collision at a point. Meant for a fall-through safety net to
+## call when it catches a body below the terrain: one log line answers whether there was any
+## collision there at all, instead of guessing from the code.
 func collision_debug_at(world_pos: Vector3) -> String:
 	if md.is_empty():
-		return "карта высот ПУСТА (w=%d d=%d) — коллизии нет ни в каком виде" % [w, d]
+		return "the heightmap is EMPTY (w=%d d=%d) — there is no collision of any kind" % [w, d]
 	if not _col_active:
-		return "стриминг ВЫКЛЮЧЕН, работает встроенная коллизия (disabled=%s)" % str(collision.disabled)
+		return "streaming is OFF, the embedded collision is in use (disabled=%s)" % str(collision.disabled)
 	var cells_x: int = (w + collision_cell - 1) / collision_cell
 	var cells_z: int = (d + collision_cell - 1) / collision_cell
 	var local: Vector3 = global_transform.affine_inverse() * world_pos
@@ -570,11 +572,11 @@ func collision_debug_at(world_pos: Vector3) -> String:
 	var cx: int = clampi(bx / collision_cell, 0, cells_x - 1)
 	var cz: int = clampi(bz / collision_cell, 0, cells_z - 1)
 	var key: int = cz * cells_x + cx
-	return "клетка (%d,%d) key=%d — тайл %s | тайлов %d | отслеживается тел %d | внутри карты %s" % [
+	return "cell (%d,%d) key=%d — tile %s | tiles %d | bodies tracked %d | inside the map %s" % [
 			cx, cz, key,
-			"ЕСТЬ" if _col_cells.has(key) else "ОТСУТСТВУЕТ",
+			"present" if _col_cells.has(key) else "MISSING",
 			_col_cells.size(), _col_bodies.size(),
-			"да" if (bx >= 0 and bx < w and bz >= 0 and bz < d) else "НЕТ"]
+			"yes" if (bx >= 0 and bx < w and bz >= 0 and bz < d) else "NO"]
 
 func _prune_dead_bodies() -> void:
 	var kept := []
@@ -586,14 +588,14 @@ func _prune_dead_bodies() -> void:
 func _make_cell_tile(key: int, cells_x: int) -> void:
 	var cx := key % cells_x
 	var cz := key / cells_x
-	# Плитка ВЛАДЕЕТ отсчётами [ox, ox+collision_cell] включительно, то есть делит с каждым
-	# соседом ровно одну граничную строку — ни зазора, ни дыры.
+	# A tile OWNS samples [ox, ox+collision_cell] inclusive, so it shares exactly one boundary
+	# row with each neighbour — no gap and no hole.
 	var ox := cx * collision_cell
 	var oz := cz * collision_cell
-	# Форма плитки растянута на collision_overlap во все стороны, чтобы накрыть живую кромку
-	# соседа; высоты в перекрытии НАСТОЯЩИЕ. Опущенное вниз кольцо («юбка») здесь работать не
-	# может: сосед при стриминге бывает ещё не загружен, и кольцо становится единственной
-	# поверхностью — то есть ямой.
+	# The tile's shape is grown by collision_overlap on every side to cover the neighbour's live
+	# edge, and the overlap carries REAL heights. A skirt (a ring dropped downwards) cannot work
+	# here: while streaming, the neighbour is sometimes not loaded yet, and the ring becomes the
+	# only surface there — that is, a pit.
 	var sx0 := maxi(ox - collision_overlap, 0)
 	var sz0 := maxi(oz - collision_overlap, 0)
 	var sx1 := mini(ox + collision_cell + collision_overlap, w - 1)
@@ -707,10 +709,10 @@ func _sample_height_local(lx: float, lz: float) -> float:
 	var h1: float = lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
 	return lerp(h0, h1, fz)
 
-# Верхняя граница высот карты (локальные единицы). Нужна только редакторному
-# raycast_heightmap: выше неё террейна заведомо нет, поэтому пустой воздух над самым
-# высоким пиком можно промотать без сэмплов. Держим её всегда ≥ реального максимума —
-# точный пересчёт на загрузке/генерации/undo, а кисть-подъём лишь поднимает её.
+# Upper bound of the map's heights, in local units. Only the editor's raycast_heightmap needs
+# it: there is definitely no terrain above it, so the empty air over the tallest peak can be
+# skipped without sampling. It is kept at or above the real maximum — recomputed exactly on
+# load, generation and undo, while the raise brush only ever pushes it up.
 var _md_max := 0.0
 
 func _recompute_height_bound() -> void:
@@ -732,9 +734,9 @@ func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
 	var dir := (inv.basis * dir_world).normalized()
 	var max_t := float(maxi(w, d)) * 2.0
 	var t := 0.0
-	# Промотка пустого воздуха: пока луч идёт вниз и выше самого высокого пика (_md_max),
-	# сэмплить нечего — прыгаем сразу к плоскости y = _md_max (минус 1, чтобы стартовать
-	# чуть выше и сохранить prev_gap > 0). Безопасно: выше _md_max террейна нет.
+	# Skip the empty air: while the ray is heading down and still above the tallest peak
+	# (_md_max) there is nothing to sample, so jump straight to the y = _md_max plane (minus one,
+	# to start slightly above it and keep prev_gap > 0). Safe, since no terrain exists above.
 	if dir.y < -1e-6 and o.y > _md_max:
 		t = maxf(0.0, (o.y - _md_max) / -dir.y - 1.0)
 	var p0 := o + dir * t
@@ -772,9 +774,9 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 	var x_max := clampi(cx + r, 0, w - 1)
 	var z_min := clampi(cz - r, 0, d - 1)
 	var z_max := clampi(cz + r, 0, d - 1)
-	# Горячий путь — крутится на КАЖДОЕ движение мыши по (2r+1)² ячейкам. Поэтому:
-	# сравниваем квадраты расстояний (sqrt только для принятых ячеек, не в отсеве);
-	# без аллокаций Vector2; выносим за цикл базу строки (row) и постоянные множители.
+	# Hot path: it runs on EVERY mouse move across (2r+1)² cells. Hence squared distances for the
+	# rejection test (sqrt only for cells that pass), no Vector2 allocations, and the row base
+	# and constant factors hoisted out of the loop.
 	var r2 := radius * radius
 	var inv_r := 1.0 / radius
 	var avg := 0.0
@@ -792,7 +794,7 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 		if cnt > 0:
 			avg /= float(cnt)
 
-	var add := float(mode) * strength      # raise/lower: постоянная часть — вне цикла
+	var add := float(mode) * strength      # raise/lower: the constant part, hoisted out
 	for z in range(z_min, z_max + 1):
 		var dz := z - cz
 		var dz2 := dz * dz
@@ -805,12 +807,13 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 			var falloff := 1.0 - sqrt(float(d2)) * inv_r
 			var idx := row + x
 			if mode == 0:
-				# Flatten: тянем к среднему. Вес в [0,1] (falloff≤1, strength≤1); кламп —
-				# страховка от strength>1, чтобы lerp не «перелетал» среднее и не ломал карту.
+				# Flatten pulls towards the average. The weight is in [0,1] (falloff <= 1,
+				# strength <= 1); the clamp guards against strength > 1, which would make the
+				# lerp overshoot the average and wreck the map.
 				md[idx] = lerp(md[idx], avg, clampf(falloff * strength, 0.0, 1.0))
 			else:
 				md[idx] += add * falloff
-				if md[idx] > _md_max:      # держим верхнюю границу высот актуальной (для raycast)
+				if md[idx] > _md_max:      # keep the height bound current, for the raycast
 					_md_max = md[idx]
 	# Touched editor chunks (so the plugin can rebuild just those).
 	if _ed_cx > 0:
@@ -1042,7 +1045,7 @@ func _apply_editor_cache() -> void:
 			all_colors.append_array(cols)
 		else:
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
+				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # fallback: no canyon (.g), no mountains (.a)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1118,9 +1121,9 @@ func _build_chunks_from_map_data() -> void:
 		var x0 := cx * chunk_size;  var x1 := mini(x0 + chunk_size, w - 1)
 		var z0 := cz * chunk_size;  var z1 := mini(z0 + chunk_size, d - 1)
 		var min_h := INF;  var max_h := -INF
-		# Заодно считаем ПЛОСКОСТНУЮ ОШИБКУ чанка: насколько его рельеф отходит от простой
-		# натянутой на 4 угла поверхности (то есть от версии «две большие треугольные грани»).
-		# Ровная площадка или ровный склон дают ошибку ≈0 — такому чанку густая сетка не нужна.
+		# While we are here, measure the chunk's FLATNESS ERROR: how far its terrain departs from
+		# a simple surface stretched across its four corners. Flat ground or an even slope gives
+		# an error near zero, and such a chunk has no use for a dense mesh.
 		var h00 := float(md[z0 * w + x0])
 		var h10 := float(md[z0 * w + x1])
 		var h01 := float(md[z1 * w + x0])
@@ -1145,8 +1148,8 @@ func _build_chunks_from_map_data() -> void:
 			Vector3(x1 - x0, max_h - min_h, z1 - z0))
 	var aabb_gid := WorkerThreadPool.add_group_task(aabb_task, total, -1, true)
 	while not WorkerThreadPool.is_group_task_completed(aabb_gid):
-		await get_tree().process_frame          # уступаем кадры: скан читает ~4.4М клеток карты высот
-	WorkerThreadPool.wait_for_group_task_completion(aabb_gid)   # мгновенный join
+		await get_tree().process_frame          # yield frames: the scan reads millions of heightmap cells
+	WorkerThreadPool.wait_for_group_task_completion(aabb_gid)   # immediate join
 
 	# ── Materials + macro meshes (the always-resident far representation) ──────
 	var mat := _get_material()
@@ -1155,8 +1158,8 @@ func _build_chunks_from_map_data() -> void:
 	# Macro meshes are built directly from the heightmap (one merged step-4 mesh per group),
 	# so they need NO individual chunks to exist — that's what lets us instantiate chunks
 	# only near the camera. AABBs come from Phase 0.
-	await _build_macro_chunks()   # await: внутри уступает кадры (чтобы не морозить экран загрузки)
-	await _build_quadtree()       # тоже уступает: джойн потоков + сотни add_child порциями
+	await _build_macro_chunks()   # awaited: it yields frames inside, so a loading screen animates
+	await _build_quadtree()       # also yields: a thread join plus hundreds of add_child in batches
 
 	# ── Initial resident set: only chunks of macros near the camera ───────────
 	# Every other chunk of the map is left uninstantiated; its macro mesh covers it until
@@ -1179,9 +1182,9 @@ func _build_chunks_from_map_data() -> void:
 			_build_chunk_worker(near_chunks[i], cxl)
 		var gid := WorkerThreadPool.add_group_task(build_task, near_chunks.size(), -1, true)
 		while not WorkerThreadPool.is_group_task_completed(gid):
-			await get_tree().process_frame          # уступаем кадры, пока потоки строят ближние чанки
-		WorkerThreadPool.wait_for_group_task_completion(gid)   # мгновенный join
-		await _apply_built_results(near_chunks, mat, NODE_BATCH)   # ~380 узлов — порциями
+			await get_tree().process_frame          # yield while the threads build the near chunks
+		WorkerThreadPool.wait_for_group_task_completion(gid)   # immediate join
+		await _apply_built_results(near_chunks, mat, NODE_BATCH)   # hundreds of nodes, in batches
 		var done := 0
 		for ci in near_chunks:
 			if ci >= 0 and ci < _chunk_instances.size() and _chunk_instances[ci]:
@@ -1219,8 +1222,8 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 # Creates a MeshInstance3D for each ci in indices whose _stream_results[ci] is ready.
 # MUST run on the main thread — adds nodes to the scene tree. Instances are created
 # hidden; the quadtree's next descend decides their visibility and LOD.
-# batch>0 — отдавать кадр каждые batch созданных узлов, чтобы сотни add_child не встали одним
-# фризом (нужно только стартовой сборке; стриминг зовёт с batch=0, пачки там и так мелкие).
+# batch > 0 yields a frame every batch nodes, so hundreds of add_child calls do not land as one
+# freeze. Only the initial build needs it; streaming passes 0, since its batches are small.
 func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void:
 	var made := 0
 	for ci in indices:
@@ -1378,8 +1381,8 @@ func _build_macro_chunks() -> void:
 	_chunk_macro_idx.resize(_chunk_instances.size())
 
 	# ── Pass A: group structure + merged AABB (main thread) ───────────────────
-	# Комментарий «cheap» верен для маленьких карт, но при 124×124 чанках это ~15 000 итераций
-	# с AABB.merge и append одним куском. Отдаём кадр после каждого РЯДА макро-групп.
+	# Cheap on small maps, but at 124x124 chunks this is some 15,000 iterations of AABB.merge and
+	# append in one go. Yield a frame after each ROW of macro groups.
 	for mz in _macro_cz:
 		if mz > 0:
 			await get_tree().process_frame
@@ -1421,12 +1424,13 @@ func _build_macro_chunks() -> void:
 			_build_macro_worker(mi, cxl)
 		var mgid := WorkerThreadPool.add_group_task(macro_task, macro_n, -1, true)
 		while not WorkerThreadPool.is_group_task_completed(mgid):
-			await get_tree().process_frame          # уступаем кадры (экран загрузки анимируется, не морозится)
-		WorkerThreadPool.wait_for_group_task_completion(mgid)   # мгновенный join
+			await get_tree().process_frame          # yield frames, so a loading screen animates
+		WorkerThreadPool.wait_for_group_task_completion(mgid)   # immediate join
 
 	# ── Pass C: create the macro MeshInstance3D nodes (main thread) ───────────
-	# Узлов сотни (≈961 при 124×124 чанках). add_child = вход в дерево + создание рендер-инстанса,
-	# всё в одном кадре = многосекундный фриз. Создаём порциями по NODE_BATCH, между ними отдаём кадр.
+	# There are hundreds of nodes (around 961 at 124x124 chunks). add_child both enters the tree
+	# and creates a render instance, so doing them all in one frame is a multi-second freeze.
+	# Create them in NODE_BATCH-sized batches, yielding a frame between them.
 	for mi in macro_n:
 		var inst := MeshInstance3D.new()
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -1501,7 +1505,7 @@ func _build_macro_mesh(chunk_indices: Array, lod_level: int) -> ArrayMesh:
 		else:
 			# Source lacks colours — treat as all-interior so grass behaves as before.
 			for _i in verts.size():
-				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # фолбэк: без каньона(.g)/гор(.a)
+				all_colors.append(Color(1.0, 0.0, 0.0, 0.0))   # fallback: no canyon (.g), no mountains (.a)
 		for raw_idx in idxs:
 			all_idx.append(raw_idx + v_offset)
 		v_offset += verts.size()
@@ -1614,13 +1618,12 @@ func _cv_noise(p: Vector2) -> float:
 	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
 	var dh := _cv_hash2d(i + Vector2(1.0, 1.0))
 	return lerpf(lerpf(a, b, f.x), lerpf(c, dh, f.x), f.y)
-# Мировые XZ ровно как в генераторе (plugin.gd): grid − размер/2 (совпадение до 0.5 клетки).
-# ── Маски биомов: считаем РАЗ на разреженной решётке, дальше читаем с интерполяцией ──────
-# Раскладка биомов — чистая функция от (x,z), на статичной карте не меняется. Маски очень
-# плавные (масштаб в сотни единиц мира), поэтому решётки с шагом MASK_STEP хватает: на порядки
-# меньше вызовов шума, чем «на каждую вершину», разницы не видно.
-# Решётку строим ДО многопоточной сборки и больше не меняем — чтение PackedFloat32Array из
-# рабочих потоков безопасно (в отличие от Dictionary-кеша, который дал бы гонку).
+# ── Biome masks: computed ONCE on a sparse lattice, then read back with interpolation ────
+# The biome layout is a pure function of (x,z) and never changes on a static map. The masks are
+# very smooth (hundreds of world units across), so a lattice with a MASK_STEP spacing is plenty:
+# orders of magnitude fewer noise calls than one per vertex, with no visible difference.
+# The lattice is built BEFORE the threaded build and never touched again — reading a
+# PackedFloat32Array from worker threads is safe, unlike a Dictionary cache, which would race.
 const MASK_STEP := 8
 var _mask_lat := PackedFloat32Array()
 var _mask_w: int = 0
@@ -1641,9 +1644,9 @@ func _build_mask_lattice() -> void:
 			_mask_lat[o + 1] = _biome_grass01(gx, gz)
 			_mask_lat[o + 2] = _mountain_mask01(gx, gz)
 		if (j & 15) == 0:
-			await get_tree().process_frame     # не морозим экран загрузки
+			await get_tree().process_frame     # do not freeze a loading screen
 
-# Маски в точке (canyon, grass, mountain). Билинейно с решётки; если её нет — считаем напрямую.
+# The masks at a point (canyon, meadow, mountain), bilinear off the lattice; without one, direct.
 func _masks_at(gx: int, gz: int) -> Vector3:
 	if _mask_lat.is_empty():
 		return Vector3(_canyon_mask01(gx, gz), _biome_grass01(gx, gz), _mountain_mask01(gx, gz))
@@ -1664,12 +1667,12 @@ func _masks_at(gx: int, gz: int) -> Vector3:
 		lerpf(lerpf(_mask_lat[a + 1], _mask_lat[b + 1], tx), lerpf(_mask_lat[c + 1], _mask_lat[e + 1], tx), tz),
 		lerpf(lerpf(_mask_lat[a + 2], _mask_lat[b + 2], tx), lerpf(_mask_lat[c + 2], _mask_lat[e + 2], tx), tz))
 
-# Мировые XZ клетки карты высот — ровно как в генераторе (plugin.gd): grid − размер/2.
+# World XZ of a heightmap cell, exactly as the generator computes it: grid minus size/2.
 func _biome_wp(gx: int, gz: int) -> Vector2:
 	return Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5)
 
-# Маски печём в COLOR вершины: .g — каньон, .b — луг, .a — горы. Шейдер их только читает,
-# поэтому раскладка биомов у цвета и у рельефа заведомо одна и та же.
+# The masks are baked into the vertex COLOR: .g is canyon, .b is meadow, .a is mountains. The
+# shader only reads them, so the biome layout is identical for the colour and the landform.
 func _canyon_mask01(gx: int, gz: int) -> float:
 	return _biomes().canyon_mask(_biome_wp(gx, gz), _cv_noise)
 
@@ -1695,8 +1698,8 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var sz: int = maxi(1, step)
 	var xs: PackedInt32Array = _sample_range(x0, x1, sz)
 	var zs: PackedInt32Array = _sample_range(z0, z1, sz)
-	# Вырожденный чанк (меньше 2×2 сэмплов) — квадов не построить. На маленьких картах это
-	# ловило ошибку сборки меша: возвращаем пусто, такой чанк просто не рисуется.
+	# A degenerate chunk (fewer than 2x2 samples) has no quads to build. On small maps that used
+	# to raise a mesh-build error; return empty instead and the chunk simply is not drawn.
 	if xs.size() < 2 or zs.size() < 2:
 		return []
 
@@ -1712,9 +1715,9 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# Guarantee: chunk_size=16 is divisible by all possible steps (1,2,4,8),
 			# so x0/z0 are always aligned with the neighbour grid — no clamping needed.
 
-			# Соседний сэмпл (x-rem+step / z-rem+step) может выйти за КРАЙ карты на самой
-			# внешней границе (там соседнего чанка нет), давая индекс на строку/столбец за
-			# пределами md — отсюда падало "Invalid access". Верхний индекс клампим к краю.
+			# The neighbouring sample (x-rem+step / z-rem+step) can run off the EDGE of the map
+			# on the outermost border, where there is no neighbouring chunk, giving an index a
+			# row or column past md — which is where "Invalid access" came from. Clamp it.
 
 			# North border (z == z0): snap x to n_step grid
 			if z == z0 and n_step > step:
@@ -1761,7 +1764,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# differs" (see _border_snap). Pass 0 (default build) = grass everywhere.
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
-			# .r = маска травы-шва (0 на шве LOD, иначе 1); .g = КАНЬОН; .b = ЛУГ↔ПУСТЫНЯ; .a = ГОРЫ.
+			# .r = grass seam mask (0 on a LOD seam, else 1); .g = CANYON; .b = MEADOW; .a = MOUNTAINS.
 			var mk := _masks_at(x, z)
 			colors.append(Color(0.0, mk.x, mk.y, mk.z) if seam else Color(1.0, mk.x, mk.y, mk.z))
 
@@ -1813,14 +1816,14 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 # shader-parameter slots consumed, so the GLES3 4096-slot buffer is never touched.
 func _setup_lod_materials(base_mat: Material) -> void:
 	if base_mat is ShaderMaterial:
-		# Дублируем базовый материал: все параметры внешнего вида (тайл-текстура, blend,
-		# tile_world_size, цвета, трава, low_quality) наследуются из него как есть — нода их
-		# не трогает, их настраивают на самом материале. Отличается только lod_grass_enabled.
+		# Duplicate the base material: its appearance parameters (tile texture, blend,
+		# tile_world_size, low_quality) carry over as they are. Only lod_grass_enabled differs
+		# between the two copies; the biome colours are pushed in right after.
 		_mat_lod0 = base_mat.duplicate()
 		(_mat_lod0 as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 1.0)
 		_mat_lod_high = base_mat.duplicate()
 		(_mat_lod_high as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 0.0)
-		_push_biomes_to_materials()      # цвета и трава — из ресурса биомов, не из .res
+		_push_biomes_to_materials()      # colours and grass come from the biomes resource
 	else:
 		# StandardMaterial3D or unknown — no grass parameter, use same ref for both
 		_mat_lod0    = base_mat
@@ -1837,8 +1840,9 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
 
-# Карта состояния корруптации (grass.gd ведёт: пусто→редко +чанк→лечится у игрока навсегда).
-# Ставим на ОБА LOD-материала — глитч виден на любой дальности (лечится вблизи).
+# The corruption state map (maintained by grass.gd: empty at first, occasionally one more
+# chunk, healed permanently near the player). Set on BOTH LOD materials, so the glitch shows at
+# any distance.
 func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
 	for m in [_mat_lod0, _mat_lod_high]:
 		if m is ShaderMaterial:
@@ -1854,7 +1858,7 @@ func _get_material() -> Material:
 		if mat == null:
 			mat = mesh_instance.mesh.surface_get_material(0)
 	if mat == null and surface_material != null:
-		mat = surface_material            # свежая нода → шейдер террейна из аддона
+		mat = surface_material            # a fresh node gets the addon's terrain shader
 	if mat == null:
 		mat = StandardMaterial3D.new()
 	return mat
@@ -1863,9 +1867,9 @@ func _get_material() -> Material:
 # Camera / frustum culling  (runtime only)
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Текущая рабочая камера: ручной оверрайд (если задан и валиден) либо активная камера
-# вьюпорта. get_viewport().get_camera_3d() всегда возвращает ту камеру, которой сейчас
-# рисуется сцена, — включая переключения, spring-arm и т.п. Ничего искать по дереву не надо.
+# The camera currently in use: the manual override if set and valid, otherwise the viewport's
+# active camera. get_viewport().get_camera_3d() always returns whichever camera the scene is
+# being drawn with, including switches and spring arms, so nothing has to be found by path.
 func _active_camera() -> Camera3D:
 	if is_instance_valid(camera):
 		return camera
@@ -1878,16 +1882,16 @@ func _process(delta: float) -> void:
 			_editor_lod_tick(delta)
 		return
 
-	# Текущая активная камера — каждый кадр, без ручного назначения. Следует за
-	# переключением камер (например, смена вида при смерти/пересадке в машину).
+	# The active camera, refreshed every frame with nothing to assign by hand. It follows camera
+	# switches, such as changing view on death or when moving between vehicles.
 	_cam = _active_camera()
 
 	# ── Streaming collision: keep tiled collision cells under the tracked bodies ──
-	# Коллизии камера не нужна — обновляем даже когда активной камеры ещё нет.
+	# Collision does not need a camera, so it updates even before an active one exists.
 	if _col_active:
 		_update_collision_cells()
 
-	# Всё дальше (стриминг чанков, LOD, куллинг) зависит от камеры.
+	# Everything below (chunk streaming, LOD, culling) depends on the camera.
 	if _cam == null:
 		return
 
@@ -1947,9 +1951,9 @@ func _build_quadtree() -> void:
 	if macro_cx <= 0 or macro_cz <= 0:
 		return
 	_qt_build_node(0, 0, macro_cx, macro_cz, macro_cx)
-	# ВНИМАНИЕ: _qt_built включаем только В КОНЦЕ, после создания всех инстансов. Ниже есть await
-	# (джойн потоков + порционный add_child), а _process/_qt_update гейтится этим флагом — иначе
-	# он побежал бы по ещё не заполненному _qt_inst между кадрами.
+	# _qt_built is set only AT THE END, once every instance exists. There are awaits below (a
+	# thread join plus batched add_child) and _process/_qt_update is gated on this flag —
+	# otherwise it would walk a half-filled _qt_inst between frames.
 
 	# ── Build each internal node's coarse merged mesh (threaded), then its instance ──
 	var node_n := _qt_aabb.size()
@@ -1964,8 +1968,8 @@ func _build_quadtree() -> void:
 			_qt_node_worker(internal[i])
 		var ngid := WorkerThreadPool.add_group_task(node_task, internal.size(), -1, true)
 		while not WorkerThreadPool.is_group_task_completed(ngid):
-			await get_tree().process_frame       # уступаем кадры, пока потоки считают коарс-меши узлов
-		WorkerThreadPool.wait_for_group_task_completion(ngid)   # мгновенный join
+			await get_tree().process_frame       # yield while the threads build the coarse node meshes
+		WorkerThreadPool.wait_for_group_task_completion(ngid)   # immediate join
 	var mat := _get_material()
 	var made := 0
 	for n in internal:
@@ -1978,8 +1982,8 @@ func _build_quadtree() -> void:
 			inst.set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
 		add_child(inst)
 		_qt_inst[n] = inst
-		# add_child создаёт инстанс рендера и триггерит вход в дерево — сотни узлов в одном кадре
-		# дают заметный хич. Режем на порции (NODE_BATCH), между ними отдаём кадр.
+		# add_child creates a render instance and triggers tree entry, so hundreds of nodes in a
+		# single frame is a noticeable hitch. Split into NODE_BATCH batches and yield between.
 		made += 1
 		if made % NODE_BATCH == 0:
 			await get_tree().process_frame
@@ -2124,9 +2128,9 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 		var lod := 0
 		if enable_lod and dx * dx + dy * dy + dz * dz >= lod_distance_0 * lod_distance_0:
 			lod = 1
-		# РОВНЫЙ чанк можно рисовать грубее, даже если он под носом: на плоскости или ровном
-		# склоне крупные треугольники повторяют поверхность почти точно, разницы не видно —
-		# а вершин уходит вчетверо/вшестнадцатеро меньше. Ошибка посчитана в фазе 0.
+		# A FLAT chunk can be drawn coarser even right under the camera: on level ground or an
+		# even slope, large triangles follow the surface almost exactly at a quarter or a
+		# sixteenth of the vertices. The error was measured back in phase 0.
 		_qt_des_chunks[ci] = maxi(lod, _flat_lod(ci))
 
 # Diffs the freshly-descended selection against what's currently rendered and toggles
@@ -2187,21 +2191,21 @@ func _qt_apply(do_lod: bool) -> void:
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
 
-# Минимальный (самый грубый) LOD, допустимый по «ровности» чанка. Порог берём из
-# flat_lod_error: чем ровнее чанк, тем крупнее треугольники ему разрешены.
+# The coarsest LOD a chunk's flatness allows. The threshold comes from flat_lod_error: the
+# flatter the chunk, the larger the triangles it may use.
 func _flat_lod(ci: int) -> int:
 	if flat_lod_error <= 0.0 or ci < 0 or ci >= _chunk_flat_err.size():
 		return 0
 	var err := _chunk_flat_err[ci]
 	if err <= flat_lod_error:
-		return LOD_COUNT - 1          # практически плоскость — самая крупная сетка
+		return LOD_COUNT - 1          # effectively flat — the coarsest mesh
 	if err <= flat_lod_error * 3.0:
-		return 1                      # лёгкий рельеф — на ступень грубее
-	return 0                          # изрезанный (каньон, склон горы) — полная детализация
+		return 1                      # gentle relief — one step coarser
+	return 0                          # broken up (a canyon or a mountainside) — full detail
 
-# Квадрат расстояния от точки до AABB в ТРЁХ измерениях (0, если точка внутри). Высоту
-# учитываем наравне с XZ: иначе камера прямо над картой имела бы горизонтальную дистанцию ≈0
-# и тянула бы весь рельеф на максимальной детализации.
+# Squared distance from a point to an AABB in THREE dimensions (0 if the point is inside).
+# Height counts as much as XZ: otherwise a camera directly above the map would have a
+# horizontal distance near zero and pull the whole terrain in at full detail.
 func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var mn := aabb.position
 	var mx := aabb.position + aabb.size
