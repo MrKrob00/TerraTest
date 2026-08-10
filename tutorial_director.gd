@@ -48,6 +48,7 @@ func _ready() -> void:
 	_guide = GUIDE.new()
 	add_child(_guide)
 	_guide.bind_hud(get_parent())
+	_guide.skip_pressed.connect(Q.skip_tutorial)
 	Q.changed.connect(_on_quests_changed)
 	Q.tutorial_finished.connect(_on_tutorial_finished)
 	set_process(true)
@@ -199,7 +200,9 @@ func _vehicle_point() -> Vector3:
 		return Vector3.ZERO
 	return (v as Node3D).global_position + Vector3.UP
 
-# Ближайший СВОБОДНЫЙ блок в мире — на него показываем в шаге «подбери блок».
+# Ближайший ПОДБИРАЕМЫЙ блок в мире — на него показываем в шаге «подбери блок».
+# Отбор ровно тот же, что у _grab_world_block: кабину и стационарные блоки взять нельзя,
+# и палец на них показывал тупик — игрок тапал, ничего не происходило.
 func _nearest_loose_block() -> Vector3:
 	var objects: Node = get_node_or_null("/root/Main/objects")
 	var v: Node = _vehicle()
@@ -210,6 +213,9 @@ func _nearest_loose_block() -> Vector3:
 	var best_d: float = INF
 	for c in objects.get_children():
 		if not ("block" in c) or not (c is Node3D):
+			continue
+		var bt: int = int(c.get("block"))
+		if bt == G.Block.CABIN or G.is_stationary(bt):
 			continue
 		var d: float = origin.distance_squared_to((c as Node3D).global_position)
 		if d < best_d:
