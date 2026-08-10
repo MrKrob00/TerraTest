@@ -214,6 +214,7 @@ func sense_ground(delta: float) -> void:
 	_sync_mass(delta)
 
 func drive_physics(delta: float) -> void:
+	_apply_suspension()
 	if _on_ground:
 		_apply_engine()
 		_apply_grip()
@@ -223,6 +224,49 @@ func drive_physics(delta: float) -> void:
 	_apply_anti_roll(delta, 1.0 if _on_ground else air_stability)
 	_apply_upright(delta)
 	_limit_speed()
+
+# ══════════════════════════════════════════
+# ПОДВЕСКА
+# ══════════════════════════════════════════
+# Колёса ПРИПОДНИМАЮТ кузов на свой радиус, поэтому днище не чиркает по земле, а большое
+# колесо само даёт больший клиренс — ride_height у него больше.
+#
+# Пружина ДОБАВОЧНАЯ: коллизии блоков (в том числе самих колёс) никуда не делись и остаются
+# полом на случай, если её не хватит. Так худший исход при плохой настройке — сегодняшнее
+# поведение, а не машина, провалившаяся сквозь мир.
+#
+# Жёсткость не константа, а считается от нагрузки: пружина обязана держать mass*g, делённую
+# на число колёс, просев на SUSP_SAG своего хода. Иначе гружёная машина ложилась бы на днище,
+# а пустая скакала бы на тех же числах.
+## Какую долю радиуса подвеска проседает под собственным весом машины в покое.
+const SUSP_SAG: float = 0.35
+## Демпфирование как доля от критического: 1.0 — без единого качка, меньше — мягче и живее.
+const SUSP_DAMP: float = 0.75
+
+func _apply_suspension() -> void:
+	if _wheel_count <= 0:
+		return
+	var load_per: float = mass * _gravity_accel() / float(_wheel_count)
+	var up: Vector3 = global_transform.basis.y
+	for w in Wheels:
+		if not is_instance_valid(w) or not w.grounded:
+			continue
+		if w.ride_height <= 0.0:
+			continue                        # подвеска выключена (верхнее колесо смотрит вверх)
+		var sag: float = w.suspension_sag()
+		if sag <= 0.0:
+			continue                        # колесо вывешено — держать нечего
+		# k подобрана так, чтобы в покое просело ровно SUSP_SAG хода.
+		var travel: float = maxf(w.suspension_travel, 0.01)
+		var k: float = load_per / (travel * SUSP_SAG)
+		# Скорость точки крепления вдоль вертикали — её и гасим.
+		var arm: Vector3 = w.global_position - global_position
+		var vel_at: Vector3 = linear_velocity + angular_velocity.cross(arm)
+		var c: float = 2.0 * SUSP_DAMP * sqrt(k * maxf(mass / float(_wheel_count), 0.001))
+		var force: float = k * sag - c * vel_at.dot(up)
+		if force <= 0.0:
+			continue                        # тянуть кузов ВНИЗ подвеска не должна
+		apply_force(up * force, arm)
 
 # Газ и руль уходят в колёсные блоки — они от этого крутятся и поворачиваются визуально.
 func push_drive_input(steer_norm: float) -> void:
