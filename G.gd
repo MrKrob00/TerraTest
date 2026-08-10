@@ -117,6 +117,12 @@ const TECH_PARENT := {
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
 
+## Базовый набор блоков: выдаётся на новом сейве и при возрождении после гибели кабины.
+## Блоки кружат вокруг машины и осыпаются рядом (reward_orbiter.gd) — игрок собирает сам.
+## Один список на оба места, чтобы «начало игры» и «после смерти» не разъезжались.
+const STARTER_KIT := [Block.BLOCK, Block.BLOCK, Block.WHEEL, Block.WHEEL,
+		Block.WHEEL, Block.WHEEL, Block.DRILL, Block.GUN]
+
 var faction_xp := {"start": 0}
 var research_points := 0               # ДИ — валюта дерева
 var researched: Array = []             # изученные Block (int)
