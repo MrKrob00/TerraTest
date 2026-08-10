@@ -171,9 +171,19 @@ func _aim_current_step() -> void:
 		"tut_mode_build":
 			_aim_node(_hud_node("ModeToggle"), "Tap here — this is BUILD mode")
 		"tut_take_world":
-			_aim_world(_nearest_loose_block, "Double-tap the block to take it into your hand")
+			# Рука уже занята (блок взяли раньше, чем шаг стал текущим) — засчитываем сразу.
+			# Иначе тупик: поставить нельзя (цель — блок на земле), взять нечем.
+			var vt: Node = _vehicle()
+			if vt != null and "block_take" in vt and vt.block_take:
+				Q.report("block_taken_world", 1)
+				return
+			# Gate.WORLD, а не круг вокруг цели: игрок берёт не тот блок, промахивается мимо
+			# круга, и любой из этих случаев запирал его насмерть. Мир открыт целиком, UI — нет.
+			_aim_world(_nearest_loose_block, "Double-tap a block to take it into your hand",
+					TutorialGuide.Gate.WORLD)
 		"tut_place_first":
-			_aim_world(_vehicle_point, "Double-tap the vehicle where the block should go")
+			_aim_world(_vehicle_point, "Double-tap the vehicle where the block should go",
+					TutorialGuide.Gate.WORLD)
 		"tut_place_all":
 			# Свободный шаг: мир открыт, UI — нет. Палец не висит на машине всё время, а
 			# показывает, что делать СЕЙЧАС: блок в руке — куда ставить, рука пуста — что брать.

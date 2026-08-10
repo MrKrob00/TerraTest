@@ -49,7 +49,9 @@ func _seed_demo() -> void:
 	# развёрнутые объяснения (магазин, древо, музыка) живут в самом наставнике.
 	add_quest("tut_mode_build", "Tutorial: Build mode", "Enter building mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
 			"Everything starts in building mode. Tap the mode button.")
-	add_quest("tut_take_world", "Tutorial: Pick up", "Pick up a block", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
+	# Закрывается ЛЮБЫМ способом взять блок в руку (с земли, с машины, из инвентаря): игрок
+	# считает, что «подобрал», и шаг обязан это засчитать.
+	add_quest("tut_take_world", "Tutorial: Pick up", "Take a block in hand", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
 			"Your starting blocks are lying around the cabin. Double-tap one to take it into your hand.")
 	add_quest("tut_place_first", "Tutorial: First block", "Place the block", Type.TUTORIAL, 1, 2, "block_placed", 0, 0, 0, 1,
 			"Now double-tap the vehicle where the block should sit.")
@@ -139,6 +141,11 @@ func report(event: String, amount: int = 1) -> void:
 ## перезапуска обучение началось бы заново.
 ## Нужно не только нетерпеливым: если шаг стал непроходимым (например, сейв старый и
 ## стартовые блоки в мир уже не выдадутся), это единственный выход.
+## Идёт ли ещё обучение. Спавнер врагов держит мир пустым, пока игрок учится: разбираться
+## с рейдером в середине вводной незачем, а первого врага сюжет приводит сам.
+func tutorial_active() -> bool:
+	return not _current_tutorial().is_empty()
+
 func skip_tutorial() -> void:
 	var g = get_node_or_null("/root/G")
 	var any := false

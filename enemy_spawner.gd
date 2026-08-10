@@ -112,7 +112,7 @@ func _relocate_enemy(enemy: Node3D, map: Node, player: Node3D) -> void:
 	enemy.global_position = pos
 
 func _spawn_one() -> void:
-	if enemy_scenes.is_empty():
+	if enemy_scenes.is_empty() or _tutorial_active():
 		return
 	var map: Node = _find_map()
 	var player: Node3D = _player()
@@ -173,6 +173,13 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
 	return enemy
+
+# Пока обучение не закончено, случайный поток врагов и проверки сектора молчат: игрока
+# ведут за руку, и рейдер посреди вводной только мешает. Первого врага приводит сюжет
+# (tutorial_director после закрытия последнего шага) — он спавнится в обход этого гейта.
+func _tutorial_active() -> bool:
+	var q: Node = get_node_or_null("/root/Q")
+	return q != null and q.has_method("tutorial_active") and q.tutorial_active()
 
 func _on_enemy_died(_enemy: Node) -> void:
 	pass    # _process сам подчистит список по is_instance_valid и дозаспавнит
