@@ -1,25 +1,11 @@
 extends VehicleBlock
 
-# Меш блока — обычный ассет res://blocks/armor.blockgen: плагин addons/blockgen импортирует
-# его в ресурс Mesh, который видно в файловой панели и можно перетащить в поле Mesh любого
-# MeshInstance3D. Здесь он просто грузится по пути.
+# Меш блока берётся ИЗ СЦЕНЫ — тот, что положил художник. Скрипт его больше не трогает.
 #
-# Если плагин выключен и ассета нет, меш строится на лету тем же BlockBuilder: игра не
-# должна ломаться из-за настроек редактора. Меш общий на все экземпляры — блоков десятки.
-const MESH_PATH: String = "res://blocks/armor.blockgen"
-
-static var _mesh: Mesh = null
-
-func _ready() -> void:
-	super._ready()
-	var mi: MeshInstance3D = get_node_or_null("Block") as MeshInstance3D
-	if mi != null:
-		mi.mesh = _block_mesh()
-
-static func _block_mesh() -> Mesh:
-	if _mesh == null:
-		if ResourceLoader.exists(MESH_PATH):
-			_mesh = load(MESH_PATH) as Mesh
-		if _mesh == null:
-			_mesh = BlockBuilder.from_file(MESH_PATH)
-	return _mesh
+# Раньше здесь меш подменялся сгенерированным (res://blocks/armor.blockgen) прямо в _ready.
+# Скрипт висит на ШЕСТИ сценах (block, block2, battery, radar, solar, support), так что
+# подменялись все шесть — любая модель из сцены затиралась одной и той же болванкой.
+#
+# Генератор никуда не делся: плагин addons/blockgen импортирует .blockgen в обычный ресурс
+# Mesh, его видно в файловой панели, и его можно перетащить в поле Mesh любого
+# MeshInstance3D вручную — как и любой другой меш.
