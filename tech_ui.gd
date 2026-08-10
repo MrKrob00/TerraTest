@@ -582,9 +582,18 @@ func tutorial_target(key: String) -> Control:
 		"tab_shop":      return _tab_buttons[TAB_SHOP] as Control
 		"tab_tech":      return _tab_buttons[TAB_TECH] as Control
 		"tab_music":     return _tab_buttons[TAB_MUSIC] as Control
+		"grid":          return _grid
+		"currency":      return (%Currency as Control) if has_node("%Currency") else null
+		"progress":      return _prog_label
+		"extra":         return _extra_scroll
+		"tech":          return _tech_root
 		"filters":
 			if _filter_col != null and _filter_col.get_child_count() > 0:
 				return _filter_col.get_child(0) as Control
+			return null
+		"slot":
+			if _grid != null and _grid.get_child_count() > 0:
+				return _grid.get_child(0) as Control
 			return null
 	return null
 

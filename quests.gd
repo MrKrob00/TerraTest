@@ -38,9 +38,21 @@ func set_top_offset(y: float) -> void:
 	_tracker.offset_bottom = top + (_tracker_bot0 - _tracker_top0)
 	_list_panel.offset_top = _list_top0 + (top - _tracker_top0)
 
-# Цель для обучающего пальца (шаг «открой список заданий»).
+# Цели для обучающего пальца.
 func tracker_node() -> Control:
 	return _tracker
+
+func tutorial_target(key: String) -> Control:
+	match key:
+		"tracker": return _tracker
+		"list":    return _list_panel
+		"star":
+			# Первая звёздочка в списке — по ней объясняем, что она делает.
+			for row in _list.get_children():
+				if row is HBoxContainer and row.get_child_count() > 0:
+					return row.get_child(0) as Control
+			return _list_panel
+	return null
 
 func _toggle_list() -> void:
 	_list_panel.visible = not _list_panel.visible
