@@ -169,7 +169,7 @@ func _drive_assembly_progress() -> void:
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
-			_aim_node(_hud_node("ModeToggle"), "Tap here — this is BUILD mode")
+			_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button says where it takes you")
 		"tut_take_world":
 			# Рука уже занята (блок взяли раньше, чем шаг стал текущим) — засчитываем сразу.
 			# Иначе тупик: поставить нельзя (цель — блок на земле), взять нечем.
@@ -196,7 +196,7 @@ func _aim_current_step() -> void:
 				_aim_world(_nearest_loose_block, "Pick up the next block",
 						TutorialGuide.Gate.WORLD)
 		"tut_mode_move":
-			_aim_node(_hud_node("ModeToggle"), "Tap again — back to driving")
+			_aim_node(_hud_node("ModeToggle"), "Tap MOVE to get back behind the wheel")
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your quest tracker. Tap it")
 		"tut_garage":

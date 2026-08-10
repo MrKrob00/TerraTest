@@ -48,7 +48,7 @@ func _seed_demo() -> void:
 	# время шага не даёт нажать никуда больше. hint — реплика Механика при активации шага;
 	# развёрнутые объяснения (магазин, древо, музыка) живут в самом наставнике.
 	add_quest("tut_mode_build", "Tutorial: Build mode", "Enter building mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
-			"Everything starts in building mode. Tap the mode button.")
+			"Everything starts in building mode. The button reads BUILD — tap it.")
 	# Закрывается ЛЮБЫМ способом взять блок в руку (с земли, с машины, из инвентаря): игрок
 	# считает, что «подобрал», и шаг обязан это засчитать.
 	add_quest("tut_take_world", "Tutorial: Pick up", "Take a block in hand", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
@@ -60,7 +60,7 @@ func _seed_demo() -> void:
 	add_quest("tut_place_all", "Tutorial: Assembly", "Mount every starting block", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
 			"Same for the rest: pick up, place. Wheels on the sides, the drill facing forward.")
 	add_quest("tut_mode_move", "Tutorial: Driving", "Leave building mode", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
-			"Assembled? Tap the same button to drop back to driving.")
+			"Assembled? The same button now reads MOVE — tap it to drive.")
 	add_quest("tut_quests", "Tutorial: Quests", "Open the quest list", Type.TUTORIAL, 1, 5, "quests_opened", 0, 0, 0, 1,
 			"Top right is the quest tracker. Tap it to see the whole list.")
 	add_quest("tut_garage", "Tutorial: Garage", "Open the garage", Type.TUTORIAL, 1, 6, "garage_opened", 0, 0, 0, 1,
