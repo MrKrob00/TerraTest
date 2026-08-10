@@ -43,35 +43,33 @@ var gen_size:             int   = 0      # image-mode target size (0 = keep curr
 # Форма каньонов привязана к ТОМУ ЖЕ шуму, что красит биом каньона в шейдере (glsl.gdshader:
 # canyon_scale/threshold/edge, оффсет +(101,53)) — цвет и рельеф совпадают автоматически.
 var gen_canyon_enable:    bool  = true
-var gen_canyon_scale:     float = 250.0  # = shader canyon_scale (мельче → МНОГО отдельных мес, а не пара глыб)
-var gen_canyon_threshold: float = 0.70   # = shader canyon_threshold (~21% карты)
-var gen_canyon_edge:      float = 0.05   # = shader canyon_edge (уже → отвеснее внешняя стена)
 var gen_canyon_plateau:   float = 46.0   # верх САМЫХ высоких мес (ниже — по шуму-бьютту → иерархия высот)
 var gen_canyon_floor:     float = 6.0    # уровень дна каньонов (абсолютный)
-var gen_canyon_terrace:   float = 6.0    # высота одной страты-ступени, м (== shader canyon_band_h)
 var gen_canyon_riser:     float = 0.30   # доля ступени под крутым уступом (0.30 → 70% плоский проезжий тред)
 var gen_canyon_gorge:     float = 70.0   # частота сети ущелий (меньше → чаще русла)
 var gen_canyon_width:     float = 0.10   # ширина дна ущелий (в единицах шума; больше → шире)
 # Меса строятся АБСОЛЮТНО (плато на своей высоте, варьируется по бьютту) + ТЕРРАСИРОВАНИЕ (ступени-
 # страты) — иконка badlands. Воды нет, биомы по региону (см. шейдер). Ридж гор в регионе гасим.
-const CANYON_SNOW_SAFE := 62.0           # < shader height_snow_start (70): плато не в снег
-const CANYON_BUTTE_SCALE := 110.0        # масштаб вариации высоты мес (крупные бьютты)
 # ---------- Дюны пустыни (в песчаном биоме) ----------
 # Биом-регион ТЕМ ЖЕ CPU-шумом, что цвет в map.gd (_biome_grass01) → дюны совпадают с песком.
-# ДЕРЖАТЬ В СИНХРОНЕ с map.gd (BIOME_*) и glsl.gdshader (biome_scale/bias/blend).
-const GEN_BIOME_SCALE := 230.0
-const GEN_BIOME_BIAS := 0.5
-const GEN_BIOME_BLEND := 0.07
-const GEN_BIOME_CONTRAST := 1.8          # растяжка контраста шума → чётче песок↔трава (совпад. с map.gd)
-const GEN_DUNE_AMP := 9.0                # высота дюн, м (заметные гряды пустыни)
-const GEN_DUNE_WAVELEN := 34.0           # длина волны гряд дюн, м
-const GEN_DESERT_FLATTEN := 0.4          # насколько сплющить холмы в пустыне (0=плоско, 1=как луг)
 # ---------- Биом ГОР (снежные, высокие, проезжаемые) ----------
-# Свой регион-шум (оффсет), СИНХРОН с map.gd (MTN_*). Плавный купол → высоко, но склоны пологие.
-const GEN_MTN_SCALE := 420.0
-const GEN_MTN_THRESHOLD := 0.72
-const GEN_MTN_EDGE := 0.05
-const GEN_MOUNTAIN_RISE := 48.0          # высота гор, м
+# Биомы (масштабы, пороги, дюны, высота гор, терраса каньона) берём с ноды террейна —
+# TerrainBiomes. Снимок делаем ДО раскидывания строк по потокам: они только читают.
+var _gen_biomes: TerrainBiomes = null
+# Если террейн не выбран (панель открыта до создания ноды) — свой набор по умолчанию,
+# чтобы генератор не падал и давал тот же результат, что нода со свежим ресурсом.
+var _gen_biomes_fallback: TerrainBiomes = null
+
+# Ресурс биомов ВЫБРАННОЙ ноды террейна. Слайдеры панели правят именно его, поэтому форма
+# рельефа и цвет биома не могут разъехаться.
+func _biomes() -> TerrainBiomes:
+	if sculpt_node != null and "biomes" in sculpt_node:
+		if sculpt_node.biomes == null:
+			sculpt_node.biomes = TerrainBiomes.new()
+		return sculpt_node.biomes
+	if _gen_biomes_fallback == null:
+		_gen_biomes_fallback = TerrainBiomes.new()
+	return _gen_biomes_fallback
 
 # ── Многопоточная генерация (WorkerThreadPool) ────────────────────────────────
 # Два тяжёлых noise-цикла (заливка высот + карвинг каньонов) — построчно параллельны (строки
@@ -106,22 +104,20 @@ func _gen_fill_row(z: int) -> void:
 		var ridge_term = ridge * gen_mountain_amount * mountain_mask
 		var wx := fx - hw
 		var wz := fz - hd
-		if gen_canyon_enable and ridge_term > 0.001:
-			var cnn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
-			ridge_term *= 1.0 - smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cnn)
-		var bnn := _cv_noise(Vector2(wx, wz) / GEN_BIOME_SCALE)
-		bnn = clampf((bnn - 0.5) * GEN_BIOME_CONTRAST + 0.5, 0.0, 1.0)
-		var sand_m := 1.0 - smoothstep(GEN_BIOME_BIAS - GEN_BIOME_BLEND, GEN_BIOME_BIAS + GEN_BIOME_BLEND, bnn)
-		var mraw := _cv_noise(Vector2(wx, wz) / GEN_MTN_SCALE + Vector2(211.0, 77.0))
-		var mtn_mask := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, GEN_MTN_THRESHOLD + GEN_MTN_EDGE, mraw)
-		var mtn_dome := smoothstep(GEN_MTN_THRESHOLD - GEN_MTN_EDGE, 0.95, mraw)
+		var wp := Vector2(wx, wz)
+		var b := _gen_biomes
+		if b.canyon_enabled and ridge_term > 0.001:
+			ridge_term *= 1.0 - b.canyon_mask(wp, _cv_noise)
+		var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
+		var mtn_mask := b.mountain_mask(wp, _cv_noise)
+		var mtn_dome := b.mountain_dome(wp, _cv_noise)
 		var not_mtn := 1.0 - mtn_mask
 		var land_sand := sand_m * not_mtn
-		var cont_biome := continental * lerpf(1.0, GEN_DESERT_FLATTEN, land_sand)
+		var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
 		var h = cont_biome + ridge_term * not_mtn
-		var duneph := wx / GEN_DUNE_WAVELEN + _gen_dune.get_noise_2d(fx, fz) * 3.5
-		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * GEN_DUNE_AMP * land_sand
-		var mtn_rise := mtn_dome * GEN_MOUNTAIN_RISE + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
+		var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(fx, fz) * 3.5
+		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * b.dune_amp * land_sand
+		var mtn_rise := mtn_dome * b.mountain_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
 
 # Одна строка z карвинга каньонов (читает _gen_base_in, пишет _gen_carved).
@@ -130,16 +126,18 @@ func _gen_carve_row(z: int) -> void:
 	var hw := float(w) * 0.5
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
-	var terr: float = maxf(gen_canyon_terrace, 0.5)
+	var b := _gen_biomes
+	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
 		var idx := z * w + x
 		var wx := float(x) - hw
 		var wz := fz - hd
-		var cn := _cv_noise(Vector2(wx, wz) / gen_canyon_scale + Vector2(101.0, 53.0))
-		if smoothstep(gen_canyon_threshold - gen_canyon_edge, gen_canyon_threshold + gen_canyon_edge, cn) <= 0.001:
+		var wp := Vector2(wx, wz)
+		if b.canyon_mask(wp, _cv_noise) <= 0.001:
 			continue
-		var hmask := smoothstep(gen_canyon_threshold - 0.02, gen_canyon_threshold + 0.02, cn)
-		var bt := _cv_noise(Vector2(wx, wz) / CANYON_BUTTE_SCALE + Vector2(300.0, 300.0))
+		var cn := _cv_noise(wp / b.canyon_scale + TerrainBiomes.CANYON_OFFSET)
+		var hmask := smoothstep(b.canyon_threshold - 0.02, b.canyon_threshold + 0.02, cn)
+		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0))
 		var mesa_top: float = lerpf(_gen_mesa_min, gen_canyon_plateau, bt)
 		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
 		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
@@ -410,11 +408,11 @@ func _enter_tree() -> void:
 	floor_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(floor_sl)
 
-	var terr_lbl = _lbl("  Высота страты (терраса): " + str(snapped(gen_canyon_terrace, 0.5)))
+	var terr_lbl = _lbl("  Высота страты (терраса): " + str(snapped(_biomes().canyon_band_height, 0.5)))
 	panel.add_child(terr_lbl)
-	var terr_sl = _slider(2.0, 12.0, gen_canyon_terrace, 0.5)
+	var terr_sl = _slider(2.0, 12.0, _biomes().canyon_band_height, 0.5)
 	terr_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_terrace = v
+		_biomes().canyon_band_height = v      # та же величина красит полосы в шейдере
 		terr_lbl.text = "  Высота страты (терраса): " + str(snapped(v, 0.5))
 	)
 	terr_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
@@ -531,7 +529,6 @@ func _save_settings() -> void:
 		"gen_canyon_enable":    gen_canyon_enable,
 		"gen_canyon_plateau":   gen_canyon_plateau,
 		"gen_canyon_floor":     gen_canyon_floor,
-		"gen_canyon_terrace":   gen_canyon_terrace,
 		"gen_canyon_riser":     gen_canyon_riser,
 		"gen_canyon_gorge":     gen_canyon_gorge,
 		"gen_canyon_width":     gen_canyon_width,
@@ -559,7 +556,6 @@ func _load_settings() -> void:
 	gen_canyon_enable    = bool(d.get("gen_canyon_enable",    gen_canyon_enable))
 	gen_canyon_plateau   = float(d.get("gen_canyon_plateau",   gen_canyon_plateau))
 	gen_canyon_floor     = float(d.get("gen_canyon_floor",     gen_canyon_floor))
-	gen_canyon_terrace   = float(d.get("gen_canyon_terrace",   gen_canyon_terrace))
 	gen_canyon_riser     = float(d.get("gen_canyon_riser",     gen_canyon_riser))
 	gen_canyon_gorge     = float(d.get("gen_canyon_gorge",     gen_canyon_gorge))
 	gen_canyon_width     = float(d.get("gen_canyon_width",     gen_canyon_width))
@@ -1063,6 +1059,7 @@ func _generate_noise() -> void:
 	# члены-поля (потоки читают их только для чтения). Пишем в _gen_out (refcount=1 → без CoW).
 	_gen_w = width
 	_gen_d = depth
+	_gen_biomes = _biomes()        # снимок ДО потоков: дальше только чтение
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
@@ -1093,7 +1090,9 @@ func _generate_noise() -> void:
 	# BADLANDS: плато-меса на АБСОЛЮТНОЙ высоте (варьируется по бьютту → иерархия высот, а не одна
 	# плита), с ТЕРРАСИРОВАНИЕМ (плоские треды + резкие уступы-страты) — иконка каньонов. Плюс сеть
 	# ущелий и редкие рампы-съезды. Регион = тот же шум, что красит биом каньона в шейдере.
-	if gen_canyon_enable:
+	# Каньоны режем, только если включены И в панели, и в биомах: иначе рельеф был бы
+	# изрезан там, где цвет каньона выключен.
+	if gen_canyon_enable and _gen_biomes.canyon_enabled:
 		# Сеть русел: abs(fbm) ≈ 0 вдоль ветвящихся линий (как ridge, но каналами вниз).
 		var gorge_noise := FastNoiseLite.new()
 		gorge_noise.seed          = gen_seed + 91
