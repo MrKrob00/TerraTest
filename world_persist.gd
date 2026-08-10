@@ -244,10 +244,8 @@ func _fresh_start() -> void:
 	var primary = _primary_machine()
 	if primary == null or not primary.has_method("award_block_list"):
 		return
-	# Базовый набор: 2 блока, 4 колеса, 1 бур, 1 пушка — глючно КРУЖАТ вокруг игрока (как награда),
-	# затем осыпаются в мир (reward_orbiter.gd). Игрок подбирает их в стройке.
-	primary.award_block_list([G.Block.BLOCK, G.Block.BLOCK, G.Block.WHEEL, G.Block.WHEEL,
-			G.Block.WHEEL, G.Block.WHEEL, G.Block.DRILL, G.Block.GUN])
+	# Базовый набор кружит вокруг игрока и осыпается в мир (reward_orbiter.gd) — подбирает сам.
+	primary.award_block_list(G.STARTER_KIT)
 
 # ── Сохранение / загрузка ─────────────────────────────────────────────────────
 func _save_world() -> void:

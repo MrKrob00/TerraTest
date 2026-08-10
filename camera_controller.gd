@@ -270,8 +270,13 @@ func on_vehicle_died(dead: Node) -> void:
 			alive.append(v)
 	if alive.is_empty():
 		var starter: Node = _spawn_starter_vehicle(origin)
-		if starter:
-			switch_to_vehicle(starter)
+		if starter == null:
+			push_error("camera_controller: возрождение не удалось — игрок остался без машины")
+			return
+		switch_to_vehicle(starter)
+		# Камера СНАПАЕТСЯ: возрождение уносит на 60-100 м от места гибели, и обычный lerp
+		# полз бы туда через всю карту, показывая по дороге пустой рельеф.
+		global_position = (starter as Node3D).global_position
 		return
 	var best: RigidBody3D = alive[0]
 	var best_d := INF
@@ -282,17 +287,75 @@ func on_vehicle_died(dead: Node) -> void:
 			best = v
 	switch_to_vehicle(best)
 
+# ── Возрождение ──────────────────────────────────────────────────────────────
+## Кольцо вокруг точки гибели, в котором ищем место для новой кабины.
+const RESPAWN_MIN_DIST: float = 60.0
+const RESPAWN_MAX_DIST: float = 100.0
+## Не ближе этого ни к одному врагу — иначе возрождение сразу под огнём.
+const RESPAWN_ENEMY_CLEAR: float = 40.0
+const RESPAWN_TRIES: int = 24
+const RESPAWN_CLEARANCE: float = 3.0    # над рельефом
+
 func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
 	if scene == null:
 		push_error("camera_controller: нет player_vehicle.tscn для стартовой машины")
 		return null
 	var v: Node3D = scene.instantiate()
+	# Возрождаемся ГОЛОЙ КАБИНОЙ, как в самом начале игры: базовый набор прилетит орбитой и
+	# осыплется рядом. layout_preset ставим ДО add_child — раскладку blocks строит в _ready.
+	var blocks: Node = v.get_node_or_null("blocks")
+	if blocks != null and "layout_preset" in blocks:
+		blocks.layout_preset = 4           # _layout_cabin_only
 	get_parent().add_child(v)              # под Vehicles — карта даст стриминговую коллизию
-	v.global_position = pos + Vector3(0, 3, 0)
+	v.global_position = _respawn_point(pos)
 	if not vehicles.has(v):
 		vehicles.append(v)
+	# Отложенно: машина только что вошла в дерево, а орбитеры цепляются за неё.
+	if v.has_method("award_block_list"):
+		v.award_block_list.call_deferred(G.STARTER_KIT)
 	return v
+
+## Точка возрождения: случайная в кольце RESPAWN_MIN..MAX от места гибели, не ближе
+## RESPAWN_ENEMY_CLEAR к любому врагу, посаженная на рельеф. Если ни одна проба не
+## удовлетворяет условию по врагам — берём САМУЮ БЕЗОПАСНУЮ из просмотренных, а не
+## первую попавшуюся: лучше возродиться в 25 м от врага, чем в двух.
+func _respawn_point(death_pos: Vector3) -> Vector3:
+	var enemies: Array = _enemy_positions()
+	var best: Vector3 = death_pos + Vector3(0.0, RESPAWN_CLEARANCE, 0.0)
+	var best_clear: float = -INF
+	var base: float = randf() * TAU
+	for i in RESPAWN_TRIES:
+		var ang: float = base + TAU * float(i) / float(RESPAWN_TRIES)
+		var dist: float = randf_range(RESPAWN_MIN_DIST, RESPAWN_MAX_DIST)
+		var p := death_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+		var h: float = _terrain_height(p)
+		p.y = (h if h > -INF else death_pos.y) + RESPAWN_CLEARANCE
+		var clear: float = _min_enemy_dist(p, enemies)
+		if clear >= RESPAWN_ENEMY_CLEAR:
+			return p                       # годная — угол уже случайный, перебирать нечего
+		if clear > best_clear:
+			best_clear = clear
+			best = p
+	return best
+
+# Расстояние по горизонтали до ближайшего врага (INF, если врагов нет).
+func _min_enemy_dist(p: Vector3, enemies: Array) -> float:
+	var best: float = INF
+	for e in enemies:
+		var d := Vector2(p.x - (e as Vector3).x, p.z - (e as Vector3).z)
+		best = minf(best, d.length())
+	return best
+
+func _enemy_positions() -> Array:
+	var out: Array = []
+	var root: Node = get_parent()          # Vehicles
+	if root == null:
+		return out
+	for c in root.get_children():
+		if c is Node3D and "faction" in c and int(c.get("faction")) != 0:
+			out.append((c as Node3D).global_position)
+	return out
 
 func _on_raycast_body_entered(body: Node3D) -> void:
 	if body.get_parent().name == "objects" and !current_vehicle.block_take:
