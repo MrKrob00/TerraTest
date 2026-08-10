@@ -51,6 +51,29 @@ func _validate_property(property: Dictionary) -> void:
 
 @export var chunk_size: int = 16
 
+## Настройки биомов: пороги и масштабы шума (форма и раскладка) + цвета и трава. Один ресурс
+## на весь конвейер — его читают и генератор рельефа, и маски, и материал. Если не задать,
+## нода заводит набор по умолчанию; чтобы настроить, сохрани его в .tres и правь там.
+@export var biomes: TerrainBiomes = null : set = _set_biomes
+
+func _set_biomes(v: TerrainBiomes) -> void:
+	biomes = v
+	_push_biomes_to_materials()
+
+# Ресурс всегда есть: без него пришлось бы дублировать дефолты по всем формулам.
+func _biomes() -> TerrainBiomes:
+	if biomes == null:
+		biomes = TerrainBiomes.new()
+	return biomes
+
+func _push_biomes_to_materials() -> void:
+	if biomes == null:
+		return
+	if _mat_lod0 is ShaderMaterial:
+		biomes.apply_to_material(_mat_lod0 as ShaderMaterial)
+	if _mat_lod_high is ShaderMaterial:
+		biomes.apply_to_material(_mat_lod_high as ShaderMaterial)
+
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
 @export var enable_lod: bool = true
@@ -238,7 +261,7 @@ var _qt_child: Array       = []   # node → Array[int] child node ids ([] = lea
 var _qt_macro: Array[int]  = []   # leaf → macro index; internal node → -1
 var _qt_built: bool        = false
 # Each INTERNAL node also carries one coarse merged mesh (its whole footprint sampled at a
-# step that grows with the node's size — ~constant triangle budget per node, with a skirt).
+# step that grows with the node's size — ~constant triangle budget per node).
 # The descend renders the COARSEST node whose on-screen error is acceptable, so distant
 # terrain collapses into a few big low-poly meshes: you can see to the horizon (mountains)
 # for a handful of draw calls instead of thousands of macros. Leaves keep using the macro
@@ -249,7 +272,6 @@ var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection
 var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
 var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
 const QT_QUALITY: float = 1.1      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
-const QT_SKIRT:   float = 0.0      # 0 = без юбки: она свисает и видна у краёв LOD-узлов
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
 var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered individually)
@@ -1438,7 +1460,7 @@ func _build_macro_worker(mi: int, cxl: int) -> void:
 	var x1  := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
 	var z1  := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
 	# Skirt so the macro↔coarse-node seam (different LOD steps) never shows a crack.
-	var data := _compute_chunk_data(x0, z0, x1, z1, _step_for(2), 0, 0, 0, 0, QT_SKIRT)
+	var data := _compute_chunk_data(x0, z0, x1, z1, _step_for(2))
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
@@ -1576,9 +1598,6 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 		result.append(end)
 	return result
 
-const CANYON_SCALE := 250.0
-const CANYON_THRESHOLD := 0.70
-const CANYON_EDGE := 0.05
 func _cv_fract(v: float) -> float:
 	return v - floor(v)
 func _cv_hash2d(p: Vector2) -> float:
@@ -1645,33 +1664,24 @@ func _masks_at(gx: int, gz: int) -> Vector3:
 		lerpf(lerpf(_mask_lat[a + 1], _mask_lat[b + 1], tx), lerpf(_mask_lat[c + 1], _mask_lat[e + 1], tx), tz),
 		lerpf(lerpf(_mask_lat[a + 2], _mask_lat[b + 2], tx), lerpf(_mask_lat[c + 2], _mask_lat[e + 2], tx), tz))
 
+# Мировые XZ клетки карты высот — ровно как в генераторе (plugin.gd): grid − размер/2.
+func _biome_wp(gx: int, gz: int) -> Vector2:
+	return Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5)
+
+# Маски печём в COLOR вершины: .g — каньон, .b — луг, .a — горы. Шейдер их только читает,
+# поэтому раскладка биомов у цвета и у рельефа заведомо одна и та же.
 func _canyon_mask01(gx: int, gz: int) -> float:
-	var cn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / CANYON_SCALE + Vector2(101.0, 53.0))
-	return smoothstep(CANYON_THRESHOLD - CANYON_EDGE, CANYON_THRESHOLD + CANYON_EDGE, cn)
+	return _biomes().canyon_mask(_biome_wp(gx, gz), _cv_noise)
 
-# Маска ЛУГА (1) ↔ ПУСТЫНИ (0), тем же CPU-шумом, что цвет в шейдере (COLOR.b) и дюны генератора.
-# ПАРАМЕТРЫ ДЕРЖАТЬ В СИНХРОНЕ с plugin.gd (дюны) и glsl.gdshader (biome_scale/bias/blend).
-const BIOME_SCALE := 230.0
-const BIOME_GRASS_BIAS := 0.5
-const BIOME_BLEND := 0.07
-const BIOME_CONTRAST := 1.8              # = plugin.gd GEN_BIOME_CONTRAST (чтобы цвет совпал с формой)
 func _biome_grass01(gx: int, gz: int) -> float:
-	var bn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / BIOME_SCALE)
-	bn = clampf((bn - 0.5) * BIOME_CONTRAST + 0.5, 0.0, 1.0)
-	return smoothstep(BIOME_GRASS_BIAS - BIOME_BLEND, BIOME_GRASS_BIAS + BIOME_BLEND, bn)
+	return _biomes().meadow_mask(_biome_wp(gx, gz), _cv_noise)
 
-# Маска биома ГОР (снежные, высокие, проезжаемые). Свой шум (оффсет). Печём в COLOR.a; шейдер
-# красит в белый/снег. Рельеф поднимает генератор той же маской. СИНХРОН с plugin.gd (GEN_MTN_*).
-const MTN_SCALE := 420.0
-const MTN_THRESHOLD := 0.72
-const MTN_EDGE := 0.05
 func _mountain_mask01(gx: int, gz: int) -> float:
-	var mn := _cv_noise(Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5) / MTN_SCALE + Vector2(211.0, 77.0))
-	return smoothstep(MTN_THRESHOLD - MTN_EDGE, MTN_THRESHOLD + MTN_EDGE, mn)
+	return _biomes().mountain_mask(_biome_wp(gx, gz), _cv_noise)
 
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
-		w_step: int = 0, e_step: int = 0, skirt: float = 0.0) -> Array:
+		w_step: int = 0, e_step: int = 0) -> Array:
 	var vertices: PackedVector3Array = PackedVector3Array()
 	var indices: PackedInt32Array = PackedInt32Array()
 	var normals: PackedVector3Array = PackedVector3Array()
@@ -1783,51 +1793,6 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	if vertices.is_empty() or indices.is_empty():
 		return []
 
-	# ── Optional skirt ────────────────────────────────────────────────────────
-	# A vertical apron dropped `skirt` units below every border edge. It fills the
-	# T-junction cracks where this mesh abuts a neighbour built at a different LOD step
-	# (the multi-level quadtree), so seams never show a gap. Built two-sided (both
-	# windings) so it's visible from any angle, and inline here so the per-frame arrays
-	# stay local (no helper mutating a passed-in Packed array).
-	if skirt > 0.0:
-		var zlast: int = zs[zs.size() - 1]
-		var xlast: int = xs[xs.size() - 1]
-		var bottom := {}
-		var bkeys: Array = []
-		for x in xs:
-			bkeys.append(zs[0] * w + x)
-			bkeys.append(zlast * w + x)
-		for z in zs:
-			bkeys.append(z * w + xs[0])
-			bkeys.append(z * w + xlast)
-		for gk in bkeys:
-			if bottom.has(gk):
-				continue
-			var ti: int = local_idx.get(gk, -1)
-			if ti < 0:
-				continue
-			var tv: Vector3 = vertices[ti]
-			bottom[gk] = vertices.size()
-			vertices.append(Vector3(tv.x, tv.y - skirt, tv.z))
-			normals.append(normals[ti])
-			uvs.append(uvs[ti])
-			colors.append(colors[ti])
-		var edges: Array = []
-		for xi in range(xs.size() - 1):
-			edges.append([zs[0] * w + xs[xi],  zs[0] * w + xs[xi + 1]])
-			edges.append([zlast * w + xs[xi],  zlast * w + xs[xi + 1]])
-		for zi in range(zs.size() - 1):
-			edges.append([zs[zi] * w + xs[0],     zs[zi + 1] * w + xs[0]])
-			edges.append([zs[zi] * w + xlast,     zs[zi + 1] * w + xlast])
-		for e in edges:
-			var a: int  = local_idx.get(e[0], -1)
-			var b: int  = local_idx.get(e[1], -1)
-			var ba: int = bottom.get(e[0], -1)
-			var bb: int = bottom.get(e[1], -1)
-			if a < 0 or b < 0 or ba < 0 or bb < 0:
-				continue
-			indices.append_array([a, b, bb, a, bb, ba])
-			indices.append_array([a, bb, b, a, ba, bb])
 
 	var arr: Array = Array()
 	arr.resize(Mesh.ARRAY_MAX)
@@ -1855,6 +1820,7 @@ func _setup_lod_materials(base_mat: Material) -> void:
 		(_mat_lod0 as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 1.0)
 		_mat_lod_high = base_mat.duplicate()
 		(_mat_lod_high as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 0.0)
+		_push_biomes_to_materials()      # цвета и трава — из ресурса биомов, не из .res
 	else:
 		# StandardMaterial3D or unknown — no grass parameter, use same ref for both
 		_mat_lod0    = base_mat
@@ -2074,10 +2040,10 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	return node_id
 
 # Threaded worker: builds internal node n's coarse merged mesh straight from the heightmap
-# over its whole footprint, sampled at _qt_step[n], with a skirt to hide cross-LOD seams.
+# over its whole footprint, sampled at _qt_step[n].
 func _qt_node_worker(n: int) -> void:
 	var r: Vector4i = _qt_rect[n]
-	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n], 0, 0, 0, 0, QT_SKIRT)
+	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n])
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
@@ -2221,9 +2187,6 @@ func _qt_apply(do_lod: bool) -> void:
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
 
-# Квадрат расстояния от точки до AABB в ТРЁХ измерениях (0, если точка внутри). Высоту
-# учитываем наравне с XZ: иначе камера прямо над картой имела бы горизонтальную дистанцию ≈0
-# и тянула бы весь рельеф на максимальной детализации.
 # Минимальный (самый грубый) LOD, допустимый по «ровности» чанка. Порог берём из
 # flat_lod_error: чем ровнее чанк, тем крупнее треугольники ему разрешены.
 func _flat_lod(ci: int) -> int:
@@ -2236,6 +2199,9 @@ func _flat_lod(ci: int) -> int:
 		return 1                      # лёгкий рельеф — на ступень грубее
 	return 0                          # изрезанный (каньон, склон горы) — полная детализация
 
+# Квадрат расстояния от точки до AABB в ТРЁХ измерениях (0, если точка внутри). Высоту
+# учитываем наравне с XZ: иначе камера прямо над картой имела бы горизонтальную дистанцию ≈0
+# и тянула бы весь рельеф на максимальной детализации.
 func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var mn := aabb.position
 	var mx := aabb.position + aabb.size
@@ -2244,14 +2210,6 @@ func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var dz := maxf(maxf(mn.z - p.z, p.z - mx.z), 0.0)
 	return dx * dx + dy * dy + dz * dz
 
-func _aabb_xz_dist2(aabb: AABB, p: Vector3) -> float:
-	var minx := aabb.position.x
-	var maxx := aabb.position.x + aabb.size.x
-	var minz := aabb.position.z
-	var maxz := aabb.position.z + aabb.size.z
-	var dx := maxf(maxf(minx - p.x, p.x - maxx), 0.0)
-	var dz := maxf(maxf(minz - p.z, p.z - maxz), 0.0)
-	return dx * dx + dz * dz
 
 # ── Chunk residency: stream individual chunks in/out as the camera moves ──────
 

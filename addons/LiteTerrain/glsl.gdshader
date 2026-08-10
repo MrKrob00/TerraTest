@@ -24,36 +24,21 @@ uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
 uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // холодно-серый (каньон-скала контрастнее)
 
 group_uniforms Terrain;
-uniform float height_grass_start : hint_range(-200.0, 500.0) = 20.0;
-uniform float height_snow_start  : hint_range(-200.0, 500.0) = 70.0;
-uniform float zone_blend         : hint_range(0.1,   30.0)   =  5.0;
 uniform float rock_threshold     : hint_range(0.0, 1.0)      = 0.7;
 uniform float rock_blend         : hint_range(0.0, 0.5)      = 0.15;
 uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 
 group_uniforms Biomes;
-uniform float biome_scale       : hint_range(30.0, 1000.0) = 230.0;  // размер пятна биома (мельче → видно несколько биомов на экране)
-uniform float biome_blend       : hint_range(0.02, 0.5)    = 0.07;   // резкость границы биомов (уже → чётче, не «мешанина»)
-uniform float biome_grass_bias  : hint_range(0.0, 1.0)     = 0.5;    // порог (>0.5 = больше песка)
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.0;    // травы в ПУСТЫНЕ нет (сухой песок)
 // КАНЬОН-биом: терракотовые регионы (свой шум). Перекрывает песок/траву, суша, без травы.
 uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);  // терракота (горячее/насыщеннее)
-uniform float canyon_scale      : hint_range(30.0, 1000.0) = 250.0;  // размер пятна каньона (мельче → много мес)
-uniform float canyon_threshold  : hint_range(0.0, 1.0)     = 0.70;   // выше = реже каньоны (~21% при 160)
-uniform float canyon_edge       : hint_range(0.02, 0.5)    = 0.05;   // резкость границы (уже → отвеснее внешняя стена)
 uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // высота страты-полосы (== террасе геометрии в plugin.gd)
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 0.4;
 uniform float grass_height      : hint_range(0.0, 1.0)    = 0.15;
-uniform float grass_min_height  : hint_range(-10.0, 10.0) = -2.0;
-uniform float grass_max_height  : hint_range(-10.0, 10.0) = 5.0;
-uniform float bend_radius       : hint_range(0.1, 10.0)   = 1.5;
 uniform float lod_grass_enabled : hint_range(0.0, 1.0)    = 1.0;
 uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
-// Сколько травы на СНЕГУ относительно травяной зоны (0 = снег голый, 1 = столько же). На снегу
-// трава реже и короче (масштаб высоты = этому же множителю). В песке/воде и на КАМНЕ травы нет.
-uniform float snow_grass        : hint_range(0.0, 1.0)    = 0.35;
 
 group_uniforms Trample;
 // Карта примятия травы (кормит grass.gd через SubViewport). Чёрная по умолчанию = нет
