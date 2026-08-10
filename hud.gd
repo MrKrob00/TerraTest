@@ -1181,7 +1181,8 @@ func _sync_mode_visuals() -> void:
 	if not _controls_hidden:
 		_apply_mode_visibility()
 
-# Подпись на кнопке = ТЕКУЩИЙ режим (зелёный MOVE / оранжевый BUILD).
+# Подпись на кнопке = КУДА она переключит, а не где ты сейчас. С названием текущего режима
+# приходилось жать «MOVE», чтобы попасть в стройку, — читается наоборот.
 func _set_mode_label(text: String, col: Color) -> void:
 	var lbl := get_node_or_null("ModeToggle/Label") as Label
 	if lbl == null:
@@ -1196,7 +1197,7 @@ func _on_movement_pressed() -> void:
 	if _rotate_panel: _rotate_panel.visible = false
 	if _block_globe: _block_globe.visible = false
 	%Joystick_movement.visible=true
-	_set_mode_label("MOVE", Color(0.4, 1.0, 0.6))
+	_set_mode_label("BUILD", Color(1.0, 0.7, 0.25))   # едем → кнопка ведёт в стройку
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
@@ -1207,7 +1208,7 @@ func _on_building_pressed() -> void:
 		_block_globe.visible = true
 		_block_globe.refresh()      # инвентарь мог измениться с прошлого раза в стройке
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
-	_set_mode_label("BUILD", Color(1.0, 0.7, 0.25))
+	_set_mode_label("MOVE", Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
 
 func _on_take_pressed() -> void:
 	if current_vehicle.block_map_node.get_block(current_vehicle.BuildingBlock["x"],current_vehicle.BuildingBlock["y"],current_vehicle.BuildingBlock["z"])!=0:

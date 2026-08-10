@@ -227,9 +227,9 @@ action = "ModeToggle"
 [node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/ModeToggle" unique_id=1851734277]
 offset_right = 176.0
 offset_bottom = 72.0
-theme_override_colors/font_color = Color(0.4, 1, 0.6, 1)
+theme_override_colors/font_color = Color(1, 0.7, 0.25, 1)
 theme_override_font_sizes/font_size = 26
-text = "MOVE"
+text = "BUILD"
 horizontal_alignment = 1
 vertical_alignment = 1
 
