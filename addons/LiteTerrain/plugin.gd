@@ -13,17 +13,17 @@ var mode_label      = null
 var _dirty_chunks: Dictionary = {}
 
 # ── Stroke-level undo/redo (image mode) ──────────────────────────────────────
-# Image-режим правит md на месте — сам по себе он без истории. Чтобы Ctrl+Z/Ctrl+Y
-# работали по-человечески, снимаем снимок высот в НАЧАЛЕ мазка (кнопка нажата) и
-# коммитим ОДИН шаг истории в КОНЦЕ мазка (кнопка отпущена) — не по каждому пикселю.
+# Image mode edits md in place, which on its own leaves no history. To make Ctrl+Z / Ctrl+Y
+# behave, we snapshot the heights at the START of a stroke (button pressed) and commit ONE
+# history step at its END (button released), rather than one per pixel.
 var _stroke_active := false
 var _stroke_before := PackedFloat32Array()
 
 # ── Dab spacing (throttle) ────────────────────────────────────────────────────
-# _sculpt зовётся на КАЖДОЕ движение мыши, а apply_brush крутит (2r+1)² ячеек. При
-# медленном ведении/дрожании это десятки перекрывающихся мазков в одну точку — чистая
-# лишняя работа. Наносим новый даб, только когда курсор отошёл от прошлого хотя бы на
-# долю радиуса (соседние дабы всё равно перекрываются, покрытие не страдает).
+# _sculpt runs on EVERY mouse move, and apply_brush walks (2r+1)² cells. Dragging slowly or
+# just a shaky hand turns that into dozens of overlapping dabs on one spot — pure waste. A new
+# dab is laid down only once the cursor has moved a fraction of the radius from the last one;
+# neighbouring dabs still overlap, so coverage does not suffer.
 const DAB_SPACING_FRAC := 0.25
 var _have_last_dab := false
 var _last_dab_pos  := Vector3.ZERO
@@ -39,29 +39,27 @@ var gen_amplitude:       float  = 30.0   # max height in world units
 var gen_smooth:           int   = 1      # blur passes after generation
 var gen_size:             int   = 0      # image-mode target size (0 = keep current)
 
-# ---------- Canyon carving (запекается в высоту ПОСЛЕ blur, чтобы стены остались отвесными) ----------
-# Форма каньонов привязана к ТОМУ ЖЕ шуму, что красит биом каньона в шейдере (glsl.gdshader:
-# canyon_scale/threshold/edge, оффсет +(101,53)) — цвет и рельеф совпадают автоматически.
+# ---------- Canyon carving (baked into the heights AFTER the blur, so the walls stay sheer) ----------
+# The canyon shape is driven by the same mask as the canyon biome's colour (TerrainBiomes),
+# so the landform and the colour line up on their own.
 var gen_canyon_enable:    bool  = true
-var gen_canyon_plateau:   float = 46.0   # верх САМЫХ высоких мес (ниже — по шуму-бьютту → иерархия высот)
-var gen_canyon_floor:     float = 6.0    # уровень дна каньонов (абсолютный)
-var gen_canyon_riser:     float = 0.30   # доля ступени под крутым уступом (0.30 → 70% плоский проезжий тред)
-var gen_canyon_gorge:     float = 70.0   # частота сети ущелий (меньше → чаще русла)
-var gen_canyon_width:     float = 0.10   # ширина дна ущелий (в единицах шума; больше → шире)
-# Меса строятся АБСОЛЮТНО (плато на своей высоте, варьируется по бьютту) + ТЕРРАСИРОВАНИЕ (ступени-
-# страты) — иконка badlands. Воды нет, биомы по региону (см. шейдер). Ридж гор в регионе гасим.
-# ---------- Дюны пустыни (в песчаном биоме) ----------
-# Биом-регион ТЕМ ЖЕ CPU-шумом, что цвет в map.gd (_biome_grass01) → дюны совпадают с песком.
-# ---------- Биом ГОР (снежные, высокие, проезжаемые) ----------
-# Биомы (масштабы, пороги, дюны, высота гор, терраса каньона) берём с ноды террейна —
-# TerrainBiomes. Снимок делаем ДО раскидывания строк по потокам: они только читают.
+var gen_canyon_plateau:   float = 46.0   # top of the TALLEST mesas (lower ones follow the butte noise)
+var gen_canyon_floor:     float = 6.0    # absolute level of the canyon floor
+var gen_canyon_riser:     float = 0.30   # share of a step taken by the steep riser (0.30 → 70% flat, drivable tread)
+var gen_canyon_gorge:     float = 70.0   # frequency of the gorge network (lower = more channels)
+var gen_canyon_width:     float = 0.10   # width of the gorge floor, in noise units (larger = wider)
+# Mesas are built at ABSOLUTE heights (each plateau at its own level, varied by the butte noise)
+# and TERRACED into strata — the badlands look. No water; biomes come from the region masks.
+# Biome settings (scales, thresholds, dunes, mountain height, canyon terrace) come from the
+# terrain node's TerrainBiomes. Snapshot it BEFORE the rows are spread across threads: they
+# only ever read it.
 var _gen_biomes: TerrainBiomes = null
-# Если террейн не выбран (панель открыта до создания ноды) — свой набор по умолчанию,
-# чтобы генератор не падал и давал тот же результат, что нода со свежим ресурсом.
+# With no terrain selected (the dock is open before a node exists) fall back to our own
+# defaults, so the generator still runs and matches a node with a fresh resource.
 var _gen_biomes_fallback: TerrainBiomes = null
 
-# Ресурс биомов ВЫБРАННОЙ ноды террейна. Слайдеры панели правят именно его, поэтому форма
-# рельефа и цвет биома не могут разъехаться.
+# The biome resource of the SELECTED terrain node. The dock's sliders edit that resource, so
+# the landform and the biome colour cannot drift apart.
 func _biomes() -> TerrainBiomes:
 	if sculpt_node != null and "biomes" in sculpt_node:
 		if sculpt_node.biomes == null:
@@ -71,11 +69,11 @@ func _biomes() -> TerrainBiomes:
 		_gen_biomes_fallback = TerrainBiomes.new()
 	return _gen_biomes_fallback
 
-# ── Многопоточная генерация (WorkerThreadPool) ────────────────────────────────
-# Два тяжёлых noise-цикла (заливка высот + карвинг каньонов) — построчно параллельны (строки
-# независимы). Раскидываем строки по потокам: каждый пишет СВОИ индексы массива (refcount=1 →
-# без copy-on-write гонок), шумы читаются потоками только для чтения (FastNoiseLite/_cv_noise —
-# без изменяемого состояния). Состояние потоковых callable'ов — в этих полях.
+# ── Threaded generation (WorkerThreadPool) ────────────────────────────────────
+# The two heavy noise loops (filling the heights and carving the canyons) parallelise per row,
+# because rows are independent. Each thread writes only ITS OWN array indices (refcount = 1, so
+# no copy-on-write races) and reads the noise objects without mutating them. The state those
+# threaded callables need lives in the fields below.
 var _gen_w: int = 0
 var _gen_d: int = 0
 var _gen_base: FastNoiseLite
@@ -88,7 +86,7 @@ var _gen_base_in: PackedFloat32Array
 var _gen_carved: PackedFloat32Array
 var _gen_mesa_min: float = 0.0
 
-# Одна строка z заливки высот (вызывается WorkerThreadPool.add_group_task на каждую строку).
+# One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
 func _gen_fill_row(z: int) -> void:
 	var w := _gen_w
 	var hw := float(w) * 0.5
@@ -120,7 +118,7 @@ func _gen_fill_row(z: int) -> void:
 		var mtn_rise := mtn_dome * b.mountain_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
 
-# Одна строка z карвинга каньонов (читает _gen_base_in, пишет _gen_carved).
+# One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
 func _gen_carve_row(z: int) -> void:
 	var w := _gen_w
 	var hw := float(w) * 0.5
@@ -163,8 +161,8 @@ func _lbl(t: String) -> Label:
 	l.text = t
 	return l
 
-# Value-noise, ИДЕНТИЧНЫЙ шейдеру (glsl.gdshader hash2D/vnoise) — чтобы маска каньона в
-# генераторе совпадала с терракотовым цветом биома. Меняешь одно — правь и там, и тут.
+# Value noise matching the one map.gd uses for the biome masks, so the generator's canyon
+# region is exactly the region the shader paints terracotta.
 func _cv_fract(x: float) -> float:
 	return x - floor(x)
 
@@ -197,8 +195,8 @@ func _slider(mn: float, mx: float, val: float, step: float = 0.0) -> HSlider:
 # Dock UI
 # ─────────────────────────────────────────────────
 func _enter_tree() -> void:
-	# Подтягиваем сохранённые с прошлого раза настройки дока (кисть + генерация),
-	# чтобы не выставлять их заново при каждом заходе.
+	# Pull back the dock settings saved last time (brush + generation) so they do not have to
+	# be dialled in again on every visit.
 	_load_settings()
 
 	# Wrap everything in a ScrollContainer so the dock is scrollable on tablets
@@ -216,7 +214,7 @@ func _enter_tree() -> void:
 	panel.add_child(_lbl("── Setup ──"))
 	var create_btn = Button.new()
 	create_btn.text = "➕ Create Terrain Node"
-	create_btn.tooltip_text = "Добавляет одну ноду LiteTerrain (image-режим, плоская 128×128). Дети создаются сами."
+	create_btn.tooltip_text = "Adds a single LiteTerrain node (image mode, flat 128x128). It creates its own children."
 	create_btn.pressed.connect(_create_terrain)
 	panel.add_child(create_btn)
 
@@ -377,10 +375,10 @@ func _enter_tree() -> void:
 	)
 	panel.add_child(size_spin)
 
-	# ── Canyons (запекаются в высоту при генерации) ──────────────────────────
+	# ── Canyons (baked into the heights during generation) ───────────────────
 	panel.add_child(_sep())
 	var canyon_cb = CheckBox.new()
-	canyon_cb.text = "Каньоны (меса + ущелья)"
+	canyon_cb.text = "Canyons (mesas + gorges)"
 	canyon_cb.button_pressed = gen_canyon_enable
 	canyon_cb.toggled.connect(func(on: bool) -> void:
 		gen_canyon_enable = on
@@ -388,62 +386,62 @@ func _enter_tree() -> void:
 	)
 	panel.add_child(canyon_cb)
 
-	var mesa_lbl = _lbl("  Высота плато (макс): " + str(int(gen_canyon_plateau)))
+	var mesa_lbl = _lbl("  Plateau height (max): " + str(int(gen_canyon_plateau)))
 	panel.add_child(mesa_lbl)
 	var mesa_sl = _slider(20.0, 60.0, gen_canyon_plateau)
 	mesa_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_plateau = v
-		mesa_lbl.text = "  Высота плато (макс): " + str(int(v))
+		mesa_lbl.text = "  Plateau height (max): " + str(int(v))
 	)
 	mesa_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(mesa_sl)
 
-	var floor_lbl = _lbl("  Дно каньонов: " + str(int(gen_canyon_floor)))
+	var floor_lbl = _lbl("  Canyon floor: " + str(int(gen_canyon_floor)))
 	panel.add_child(floor_lbl)
 	var floor_sl = _slider(0.0, 20.0, gen_canyon_floor)
 	floor_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_floor = v
-		floor_lbl.text = "  Дно каньонов: " + str(int(v))
+		floor_lbl.text = "  Canyon floor: " + str(int(v))
 	)
 	floor_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(floor_sl)
 
-	var terr_lbl = _lbl("  Высота страты (терраса): " + str(snapped(_biomes().canyon_band_height, 0.5)))
+	var terr_lbl = _lbl("  Stratum height (terrace): " + str(snapped(_biomes().canyon_band_height, 0.5)))
 	panel.add_child(terr_lbl)
 	var terr_sl = _slider(2.0, 12.0, _biomes().canyon_band_height, 0.5)
 	terr_sl.value_changed.connect(func(v: float) -> void:
-		_biomes().canyon_band_height = v      # та же величина красит полосы в шейдере
-		terr_lbl.text = "  Высота страты (терраса): " + str(snapped(v, 0.5))
+		_biomes().canyon_band_height = v      # the same number colours the bands in the shader
+		terr_lbl.text = "  Stratum height (terrace): " + str(snapped(v, 0.5))
 	)
 	terr_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(terr_sl)
 
-	var riser_lbl = _lbl("  Крутизна уступа: " + str(snapped(gen_canyon_riser, 0.05)))
+	var riser_lbl = _lbl("  Riser steepness: " + str(snapped(gen_canyon_riser, 0.05)))
 	panel.add_child(riser_lbl)
 	var riser_sl = _slider(0.1, 0.6, gen_canyon_riser, 0.05)
 	riser_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_riser = v
-		riser_lbl.text = "  Крутизна уступа: " + str(snapped(v, 0.05))
+		riser_lbl.text = "  Riser steepness: " + str(snapped(v, 0.05))
 	)
 	riser_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(riser_sl)
 
-	var gwidth_lbl = _lbl("  Ширина ущелий: " + str(snapped(gen_canyon_width, 0.01)))
+	var gwidth_lbl = _lbl("  Gorge width: " + str(snapped(gen_canyon_width, 0.01)))
 	panel.add_child(gwidth_lbl)
 	var gwidth_sl = _slider(0.03, 0.30, gen_canyon_width, 0.01)
 	gwidth_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_width = v
-		gwidth_lbl.text = "  Ширина ущелий: " + str(snapped(v, 0.01))
+		gwidth_lbl.text = "  Gorge width: " + str(snapped(v, 0.01))
 	)
 	gwidth_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(gwidth_sl)
 
-	var gorge_lbl = _lbl("  Частота русел: " + str(int(gen_canyon_gorge)))
+	var gorge_lbl = _lbl("  Channel frequency: " + str(int(gen_canyon_gorge)))
 	panel.add_child(gorge_lbl)
 	var gorge_sl = _slider(30.0, 160.0, gen_canyon_gorge)
 	gorge_sl.value_changed.connect(func(v: float) -> void:
 		gen_canyon_gorge = v
-		gorge_lbl.text = "  Частота русел: " + str(int(v))
+		gorge_lbl.text = "  Channel frequency: " + str(int(v))
 	)
 	gorge_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
 	panel.add_child(gorge_sl)
@@ -453,12 +451,12 @@ func _enter_tree() -> void:
 	gen_btn.pressed.connect(_generate_noise)
 	panel.add_child(gen_btn)
 
-	# ── Runtime Export (одной кнопкой) ───────────────────────────────────────
+	# ── Runtime Export (one button) ──────────────────────────────────────────
 	panel.add_child(_sep())
 	panel.add_child(_lbl("── Runtime Export ──"))
 	var bake_btn = Button.new()
 	bake_btn.text = "💾 Bake → files (height + mesh + PNG)"
-	bake_btn.tooltip_text = "Одной кнопкой: карта высот (.res) + превью-меш (.res) + серый PNG (для миникарты)."
+	bake_btn.tooltip_text = "One click: heightmap (.res) + preview mesh (.res) + greyscale PNG (for a minimap)."
 	bake_btn.pressed.connect(_bake_and_export)
 	panel.add_child(bake_btn)
 
@@ -466,7 +464,7 @@ func _enter_tree() -> void:
 	add_control_to_dock(DOCK_SLOT_LEFT_UL, scroll)
 
 func _exit_tree() -> void:
-	# Сохраняем состояние дока при закрытии редактора / отключении плагина.
+	# Persist the dock state when the editor closes or the plugin is disabled.
 	_save_settings()
 	if panel:
 		var scroll = panel.get_parent()
@@ -503,8 +501,8 @@ func _mode_text() -> String:
 
 # ─────────────────────────────────────────────────
 # Persist the dock's brush + generation settings across editor sessions.
-# Хранится в per-project метаданных редактора (.godot/, не в репозитории), поэтому
-# на каждый заход подтягивается прошлое состояние — не надо выставлять всё заново.
+# Kept in the editor's per-project metadata (.godot/, not the repository), so every visit
+# restores the previous state instead of making you dial everything in again.
 # ─────────────────────────────────────────────────
 const SETTINGS_META_SECTION := "lite_terrain"
 const SETTINGS_META_KEY      := "dock_settings"
@@ -567,8 +565,8 @@ func _handles(object) -> bool:
 	return object is StaticBody3D or object is CollisionShape3D
 
 func _edit(object) -> void:
-	# Смена выбранного узла обрывает незакоммиченный мазок — чтобы снимок «до» одного
-	# террейна не применился к другому.
+	# Switching the selected node drops an uncommitted stroke, so one terrain's "before"
+	# snapshot cannot be applied to another.
 	_stroke_active = false
 	_stroke_before = PackedFloat32Array()
 	_have_last_dab = false
@@ -589,9 +587,9 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		sculpt_node.set_editor_camera(viewport_camera)
 
 	if event is InputEventMouseButton:
-		# Колесо = размер кисти. Диапазон совпадает со слайдером (1..200), иначе прокрутка
-		# сбрасывала выставленный большой радиус до 20. Шаг пропорционален радиусу, чтобы
-		# большие кисти достигались за разумное число прокруток.
+		# The wheel sizes the brush. Its range matches the slider (1..200), otherwise scrolling
+		# would knock a large radius back down to 20. The step scales with the radius so big
+		# brushes are reachable in a sane number of turns.
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			brush_radius = clamp(brush_radius + maxf(1.0, brush_radius * 0.15), 1.0, 200.0)
 			radius_slider.value = brush_radius
@@ -605,10 +603,10 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 			if _dirty_chunks.size() > 0 and sculpt_node and sculpt_node.has_method("update_chunks"):
 				sculpt_node.update_chunks(_dirty_chunks.keys())
 				_dirty_chunks.clear()
-			# Мазок закончен, когда отпущена кнопка и ДРУГАЯ кисть-кнопка не зажата.
+			# The stroke ends when the button is released and no OTHER brush button is held.
 			var other := MOUSE_BUTTON_RIGHT if event.button_index == MOUSE_BUTTON_LEFT else MOUSE_BUTTON_LEFT
 			if not Input.is_mouse_button_pressed(other):
-				_have_last_dab = false            # следующий мазок начнётся с чистого спейсинга
+				_have_last_dab = false            # the next stroke starts with clean spacing
 				if _stroke_active:
 					_commit_stroke_undo()
 			return EditorPlugin.AFTER_GUI_INPUT_PASS
@@ -646,9 +644,9 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		elif sculpt_mode == "raise":
 			raise = true
 
-		# Спейсинг: пропускаем даб, если курсор не отошёл от прошлого на долю радиуса.
-		# Первый даб мазка нанести всегда (_have_last_dab = false). Событие всё равно
-		# гасим (STOP), чтобы камера не ехала во время рисования.
+		# Spacing: skip the dab unless the cursor has moved a fraction of the radius from the
+		# last one. The first dab of a stroke always lands (_have_last_dab = false). The event
+		# is consumed either way (STOP) so the camera does not drift while painting.
 		var spacing := maxf(1.0, brush_radius * DAB_SPACING_FRAC)
 		if _have_last_dab and hit_pos.distance_to(_last_dab_pos) < spacing:
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
@@ -666,7 +664,7 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 	# Image mode: edit the heightmap array directly, no HeightMapShape3D involved.
 	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-		# Начало мазка — снимаем снимок высот ДО правок (один раз на мазок) для undo.
+		# Start of a stroke: snapshot the heights BEFORE any edits, once per stroke, for undo.
 		if not _stroke_active:
 			_stroke_before = sculpt_node.get_heights().duplicate()
 			_stroke_active = true
@@ -721,8 +719,8 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 				if dist <= brush_radius:
 					var falloff = 1.0 - (dist / brush_radius)
 					var index   = z * width + x
-					# Вес lerp в [0,1] — тот же фикс, что и в image-режиме: *5 без клампа
-					# «перелетал» среднее при большой силе и ломал карту.
+					# Keep the lerp weight in [0,1], as in image mode: an unclamped *5 overshot
+					# the average at high strength and wrecked the map.
 					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * brush_strength, 0.0, 1.0))
 	else:
 		for z in range(z_min, z_max + 1):
@@ -763,10 +761,10 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 
 # ─────────────────────────────────────────────────
 # End of an image-mode stroke → one undo/redo step.
-# Snapshot «до» снят в начале мазка; сейчас берём «после» и регистрируем действие,
-# которое перекидывает всю карту высот между этими двумя состояниями. Ctrl+Z вернёт
-# карту к «до», Ctrl+Y — к «после». set_heightmap делает полную пересборку превью,
-# а _persist_heightmap переписывает .res, чтобы диск не отставал от undo/redo.
+# The "before" snapshot was taken when the stroke began; here we take "after" and register an
+# action that swaps the whole heightmap between the two. Ctrl+Z restores "before", Ctrl+Y
+# "after". set_heightmap rebuilds the preview in full, and _persist_heightmap rewrites the
+# .res so the disk keeps up with undo/redo.
 # ─────────────────────────────────────────────────
 func _commit_stroke_undo() -> void:
 	_stroke_active = false
@@ -775,7 +773,7 @@ func _commit_stroke_undo() -> void:
 	var after: PackedFloat32Array = sculpt_node.get_heights().duplicate()
 	if _stroke_before.size() != after.size() or after.is_empty():
 		return
-	if _stroke_before == after:      # мазок ничего не изменил — не мусорим в истории
+	if _stroke_before == after:      # the stroke changed nothing — do not litter the history
 		return
 	var dims: Vector2i = sculpt_node.get_dims()
 	var ur = get_undo_redo()
@@ -784,14 +782,14 @@ func _commit_stroke_undo() -> void:
 	ur.add_do_method(self, "_persist_heightmap")
 	ur.add_undo_method(sculpt_node, "set_heightmap", _stroke_before, dims.x, dims.y)
 	ur.add_undo_method(self, "_persist_heightmap")
-	# execute=false: живое md уже равно «после», незачем гонять полную пересборку сразу.
+	# execute=false: the live md already equals "after", so there is no need to rebuild now.
 	ur.commit_action(false)
-	# …но .res на диске всё ещё «до» — синхронизируем один раз после мазка.
+	# ...but the .res on disk is still "before" — sync it once, after the stroke.
 	_persist_heightmap()
 	_stroke_before = PackedFloat32Array()
 
-# Переписывает R32F-карту высот в файл, который грузит нода (её heightmap_path), чтобы
-# диск не отставал от sculpt/undo/redo. Без этого правки жили бы только в памяти до Bake.
+# Rewrites the R32F heightmap into the file the node loads (its heightmap_path), so the disk
+# keeps up with sculpting and undo/redo. Without it, edits would live in memory until Bake.
 func _persist_heightmap() -> void:
 	if sculpt_node == null or not sculpt_node.has_method("get_heights"):
 		return
@@ -811,9 +809,9 @@ func _persist_heightmap() -> void:
 const HEIGHTMAP_PATH := "res://addons/LiteTerrain/terrain_height.res"
 const MESH_PATH      := "res://addons/LiteTerrain/terrain_mesh.res"
 
-# Куда писать карту высот: ВСЕГДА в heightmap_path выбранной ноды (иначе бейк/генерация
-# сохранят в одно место, а нода грузит из другого — и после переоткрытия террейн пустой).
-# Фолбэк на константу, если у ноды путь пуст.
+# Where the heightmap goes: ALWAYS the selected node's heightmap_path. Otherwise baking and
+# generation write to one place while the node loads from another, and the terrain comes back
+# empty after a reopen. Falls back to the constant when the node's path is blank.
 func _heightmap_target() -> String:
 	if sculpt_node != null:
 		var p := str(sculpt_node.get("heightmap_path"))
@@ -821,12 +819,12 @@ func _heightmap_target() -> String:
 			return p
 	return HEIGHTMAP_PATH
 
-# PNG карты высот кладём рядом с самой картой (в папке heightmap_path), а не в корень
-# проекта — чтобы плагин не мусорил в чужом res://.
+# The heightmap PNG goes next to the heightmap itself (in the heightmap_path folder) rather
+# than the project root, so the plugin does not litter someone else's res://.
 func _heightmap_png_target() -> String:
 	return _heightmap_target().get_base_dir().path_join("terrain_heightmap.png")
 
-# Одна кнопка «Bake → files»: карта высот + превью-меш + PNG за один клик.
+# One "Bake -> files" button: heightmap, preview mesh and PNG in a single click.
 func _bake_and_export() -> void:
 	_bake_heightmap()
 	_generate_png()
@@ -884,8 +882,8 @@ func _bake_heightmap() -> void:
 	else:
 		push_warning("LiteTerrain: MeshInstance3D has no mesh to bake yet")
 
-# Кнопка «Create Terrain Node»: добавляет ОДНУ ноду LiteTerrain. CollisionShape3D и
-# MeshInstance3D она создаёт себе сама (_ensure_children), их вручную не собираем.
+# The "Create Terrain Node" button adds a SINGLE LiteTerrain node. It creates its own
+# CollisionShape3D and MeshInstance3D (_ensure_children); we never assemble those by hand.
 const TERRAIN_SCRIPT   := "res://addons/LiteTerrain/map.gd"
 const NEW_MAP_SIZE     := 128
 const PLUGIN_HEIGHTMAP := "res://addons/LiteTerrain/terrain_height.res"
@@ -893,14 +891,14 @@ const PLUGIN_HEIGHTMAP := "res://addons/LiteTerrain/terrain_height.res"
 func _create_terrain() -> void:
 	var root := EditorInterface.get_edited_scene_root()
 	if root == null:
-		push_warning("LiteTerrain: сначала открой сцену")
+		push_warning("LiteTerrain: open a scene first")
 		return
 	var script := load(TERRAIN_SCRIPT)
 	if script == null:
-		push_error("LiteTerrain: не нашёл %s" % TERRAIN_SCRIPT)
+		push_error("LiteTerrain: could not find %s" % TERRAIN_SCRIPT)
 		return
 
-	# Плоская стартовая карта высот в папку аддона — чтобы image-режим работал из коробки.
+	# A flat starting heightmap in the addon folder, so image mode works out of the box.
 	var flat := PackedFloat32Array()
 	flat.resize(NEW_MAP_SIZE * NEW_MAP_SIZE)
 	var img := Image.create_from_data(NEW_MAP_SIZE, NEW_MAP_SIZE, false, Image.FORMAT_RF, flat.to_byte_array())
@@ -917,8 +915,8 @@ func _create_terrain() -> void:
 	if sel.size() > 0 and sel[0] is Node:
 		parent = sel[0]
 
-	# Одна нода. CollisionShape3D и MeshInstance3D она создаёт себе сама как ВНУТРЕННИЕ
-	# (в дереве сцены их не видно), а превью строит в _ready из запечённой плоской карты.
+	# One node. It creates its CollisionShape3D and MeshInstance3D as INTERNAL children (they
+	# stay out of the scene tree) and builds the preview in _ready from the flat baked map.
 	var ur := get_undo_redo()
 	ur.create_action("Create Terrain")
 	ur.add_do_method(parent, "add_child", body)
@@ -929,15 +927,15 @@ func _create_terrain() -> void:
 
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(body)
-	print("LiteTerrain: создан узел LiteTerrain (%dx%d, image-режим). Дальше — Generate/Sculpt." % [NEW_MAP_SIZE, NEW_MAP_SIZE])
+	print("LiteTerrain: created a LiteTerrain node (%dx%d, image mode). Next: Generate or Sculpt." % [NEW_MAP_SIZE, NEW_MAP_SIZE])
 
 # ─────────────────────────────────────────────────
-# Экспорт карты высот в серый PNG (нормируем высоты в 0..255). Годится для миникарты
-# или правки во внешнем редакторе. Данные берём как при bake (image-mode или из шейпа).
+# Exports the heightmap as a greyscale PNG (heights normalised into 0..255) — useful for a
+# minimap or for editing elsewhere. The data is sourced exactly as baking sources it.
 # ─────────────────────────────────────────────────
 func _generate_png() -> void:
 	if sculpt_node == null:
-		push_warning("LiteTerrain: выбери узел террейна")
+		push_warning("LiteTerrain: select a terrain node")
 		return
 	var width: int
 	var depth: int
@@ -950,13 +948,13 @@ func _generate_png() -> void:
 	else:
 		var col = sculpt_node.get_node_or_null("CollisionShape3D")
 		if col == null or not (col.shape is HeightMapShape3D):
-			push_warning("LiteTerrain: нет HeightMapShape3D")
+			push_warning("LiteTerrain: no HeightMapShape3D")
 			return
 		width = col.shape.map_width
 		depth = col.shape.map_depth
 		data  = col.shape.map_data
 	if width <= 0 or depth <= 0 or data.size() != width * depth:
-		push_error("LiteTerrain: плохая карта высот (%d значений для %dx%d)" % [data.size(), width, depth])
+		push_error("LiteTerrain: bad heightmap (%d values for %dx%d)" % [data.size(), width, depth])
 		return
 
 	var mn := INF
@@ -975,16 +973,16 @@ func _generate_png() -> void:
 	var png_path := _heightmap_png_target()
 	var err := img.save_png(png_path)
 	if err == OK:
-		print("LiteTerrain: PNG карты высот %dx%d -> %s (мин %.1f, макс %.1f)" % [width, depth, png_path, mn, mx])
+		print("LiteTerrain: heightmap PNG %dx%d -> %s (min %.1f, max %.1f)" % [width, depth, png_path, mn, mx])
 		EditorInterface.get_resource_filesystem().scan()
 	else:
-		push_error("LiteTerrain: не удалось сохранить PNG (ошибка %d)" % err)
+		push_error("LiteTerrain: could not save the PNG (error %d)" % err)
 
 # ─────────────────────────────────────────────────
 # Noise terrain generation
 # ─────────────────────────────────────────────────
 func _generate_noise() -> void:
-	_save_settings()   # фиксируем текущие параметры генерации на диск
+	_save_settings()   # commit the current generation parameters to disk
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select a terrain StaticBody3D node first")
 		return
@@ -1015,7 +1013,7 @@ func _generate_noise() -> void:
 		depth = shape.map_depth
 		map_data_old = shape.map_data.duplicate()
 
-	# Минимум по размеру карты — слишком мелкая (< 2 чанков) даёт вырожденные чанки и ошибки.
+	# Minimum map size: anything under two chunks produces degenerate chunks and errors.
 	width  = maxi(width, 32)
 	depth  = maxi(depth, 32)
 
@@ -1031,7 +1029,7 @@ func _generate_noise() -> void:
 	base_noise.fractal_octaves  = gen_octaves
 	base_noise.frequency        = 1.0 / gen_scale
 	base_noise.fractal_lacunarity = 2.0
-	base_noise.fractal_gain     = 0.42   # мягче high-freq → плавные холмистые равнины, а не «рябь»
+	base_noise.fractal_gain     = 0.42   # softer high frequencies: rolling plains, not ripples
 
 	# ── Layer 2: Ridge noise ─────────────────────
 	# A separate FBM sampled at slightly higher frequency.
@@ -1048,27 +1046,28 @@ func _generate_noise() -> void:
 	ridge_noise.fractal_lacunarity = 2.2
 	ridge_noise.fractal_gain      = 0.45
 
-	# Дюны: низкочастотный варп направления гряд (чтобы дюны не были идеально прямыми).
+	# Dunes: a low-frequency warp of the ridge direction, so they are not perfectly straight.
 	var dune_noise := FastNoiseLite.new()
 	dune_noise.seed        = gen_seed + 211
 	dune_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	dune_noise.frequency   = 1.0 / 140.0
 
-	# ── Заливка высот В ПОТОКАХ ───────────────────────────────────────────────
-	# Строки независимы → раскидываем по WorkerThreadPool (ускорение ~× число ядер). Шумы —
-	# члены-поля (потоки читают их только для чтения). Пишем в _gen_out (refcount=1 → без CoW).
+	# ── Height fill, THREADED ─────────────────────────────────────────────────
+	# Rows are independent, so they go to the WorkerThreadPool (roughly a core-count speedup).
+	# The noise objects are fields the threads only read. Output goes to _gen_out (refcount = 1,
+	# so no copy-on-write).
 	_gen_w = width
 	_gen_d = depth
-	_gen_biomes = _biomes()        # снимок ДО потоков: дальше только чтение
+	_gen_biomes = _biomes()        # snapshot BEFORE the threads start; read-only from here
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
 	_gen_out = PackedFloat32Array()
 	_gen_out.resize(width * depth)
-	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: высоты")
+	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: heights")
 	WorkerThreadPool.wait_for_group_task_completion(_fill_gid)
 	var new_data := _gen_out
-	_gen_out = PackedFloat32Array()          # снять ссылку-член (дальше владеет new_data)
+	_gen_out = PackedFloat32Array()          # drop the field's reference; new_data owns it now
 
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
@@ -1086,32 +1085,32 @@ func _generate_noise() -> void:
 				) * 0.2
 		new_data = buf
 
-	# ── Canyon carve (ПОСЛЕ blur — иначе размытие сгладило бы отвесные стены) ──────
-	# BADLANDS: плато-меса на АБСОЛЮТНОЙ высоте (варьируется по бьютту → иерархия высот, а не одна
-	# плита), с ТЕРРАСИРОВАНИЕМ (плоские треды + резкие уступы-страты) — иконка каньонов. Плюс сеть
-	# ущелий и редкие рампы-съезды. Регион = тот же шум, что красит биом каньона в шейдере.
-	# Каньоны режем, только если включены И в панели, и в биомах: иначе рельеф был бы
-	# изрезан там, где цвет каньона выключен.
+	# ── Canyon carve (AFTER the blur, which would otherwise round off the sheer walls) ──
+	# Badlands: mesas at ABSOLUTE heights (varied by the butte noise, so there is a hierarchy
+	# rather than one slab), TERRACED into flat treads and sharp risers, plus a network of
+	# gorges and the occasional ramp down. The region is the canyon biome's own mask.
+	# Carve only when canyons are enabled in BOTH the dock and the biomes, otherwise the
+	# landform would be cut up where the canyon colour is switched off.
 	if gen_canyon_enable and _gen_biomes.canyon_enabled:
-		# Сеть русел: abs(fbm) ≈ 0 вдоль ветвящихся линий (как ridge, но каналами вниз).
+		# Channel network: abs(fbm) is near 0 along branching lines — like ridges, but cut down.
 		var gorge_noise := FastNoiseLite.new()
 		gorge_noise.seed          = gen_seed + 91
 		gorge_noise.noise_type    = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		gorge_noise.fractal_type  = FastNoiseLite.FRACTAL_FBM
 		gorge_noise.fractal_octaves = 3
 		gorge_noise.frequency     = 1.0 / maxf(gen_canyon_gorge, 1.0)
-		# Где рампа велика — стенка пологая (заезд на дно), иначе отвесный обрыв.
+		# Where the ramp value is high the wall is gentle (a way down); elsewhere it is sheer.
 		var ramp_noise := FastNoiseLite.new()
 		ramp_noise.seed        = gen_seed + 143
 		ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 		ramp_noise.frequency   = 1.0 / 55.0
-		# Карвинг каньонов В ПОТОКАХ (строки независимы): читаем базу _gen_base_in, пишем _gen_carved.
+		# Canyon carving, THREADED (rows are independent): read _gen_base_in, write _gen_carved.
 		_gen_gorge = gorge_noise
 		_gen_ramp = ramp_noise
-		_gen_mesa_min = maxf(gen_canyon_plateau - 22.0, gen_canyon_floor + 8.0)   # низ разброса высот мес
+		_gen_mesa_min = maxf(gen_canyon_plateau - 22.0, gen_canyon_floor + 8.0)   # bottom of the mesa-height spread
 		_gen_base_in = new_data
-		_gen_carved = new_data.duplicate()      # refcount=1: потоки пишут свои строки без CoW
-		var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: каньоны")
+		_gen_carved = new_data.duplicate()      # refcount = 1: threads write their own rows, no CoW
+		var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: canyons")
 		WorkerThreadPool.wait_for_group_task_completion(_carve_gid)
 		new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
