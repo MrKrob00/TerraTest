@@ -29,13 +29,9 @@ func _validate_property(property: Dictionary) -> void:
 		property.usage = PROPERTY_USAGE_NO_EDITOR
 @export_range(-0.5, 0.5, 0.01) var frustum_margin: float = -0.05
 @export var enable_frustum_culling: bool = true
-## Macro groups whose XZ centre is farther than this from the camera are simply hidden,
-## skipping the (more expensive) per-macro frustum AABB test. Set roughly to the fog/visibility
-## distance — anything past it isn't visible anyway, so the frustum test would be wasted work.
-## How far terrain is drawn. KEEP THIS ≈ the fog distance: with fog_density 0.002 the
-## terrain is ~fully fogged by ~1500 m, so anything past that is rendered but invisible —
-## pure waste that tanked FPS when looking toward the horizon. Raise it only if you also
-## thin the fog (and accept the FPS cost of drawing more distant terrain).
+## How far terrain is drawn. Anything past this is hidden without a frustum test. Match it to
+## your visibility distance (fog, if you use it): terrain drawn past what the player can make
+## out is pure cost.
 @export var max_render_distance: float = 1400.0
 
 # ── Occlusion culling settings ────────────────────────────────────────────────
@@ -76,12 +72,10 @@ func _validate_property(property: Dictionary) -> void:
 const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never shown at runtime
 
 ## РАЗМЕР ТРЕУГОЛЬНИКА в единицах мира (сторона клетки сетки на самом детальном LOD).
-## 1 — вершина на каждую клетку карты высот (как было): максимум деталей и вершин.
-## 2 — вчетверо меньше вершин, 4 — в шестнадцать раз. Рельеф тут по большей части ровный
-## или с ровным уклоном, поэтому на глаз укрупнение почти не читается, а вершинная нагрузка
-## (а шейдер рельефа делает на вершину реальную работу) падает кратно.
-## Масштабирует ВСЮ иерархию сразу — чанки, макро-меши и коарс-меши квадродерева, — поэтому
-## сшивание швов между разными LOD продолжает совпадать.
+## 1 — вершина на каждую клетку карты высот; 2 — вчетверо меньше вершин, 4 — в шестнадцать раз.
+## Внимание: трава — это смещённая вершина, поэтому укрупнение прореживает и её.
+## Множит ВСЮ иерархию сразу (чанки, макро-меши, коарс-меши квадродерева), так что сшивание
+## швов между разными LOD продолжает совпадать.
 @export_enum("1 (детально)", "2 (рекомендуется)", "4 (максимум FPS)") var triangle_size: int = 0
 
 # Шаг сетки для уровня lod с учётом triangle_size.
@@ -149,11 +143,8 @@ const MACRO_SIZE: int = 4
 @export_range(4, 256, 4)  var collision_radius: int = 8    # cells covered around each tracked body
 ## На сколько отсчётов плитка заходит на соседнюю. Кромка поля высот для Jolt — активное
 ## ребро, и колесо об неё тормозит; перекрытие кладёт поверх этой кромки настоящую
-## поверхность соседа.
-## Значение 8 — то, на котором игра работала. Пробовать умнее уже пробовали: попытка
-## заменить перекрытие «юбкой» (кольцом, опущенным вниз) пробила в мире дыры, потому что
-## соседняя плитка при стриминге грузится не всегда, и опущенное кольцо оставалось там
-## единственной поверхностью. Редкое застревание на шве — меньшее зло, чем ямы.
+## поверхность соседа. Высоты в перекрытии настоящие — «юбку» (опущенное кольцо) сюда
+## ставить нельзя, см. _make_cell_tile.
 @export_range(0, 32, 1) var collision_overlap: int = 8
 
 # Дочерние ноды больше НЕ обязательны в сцене — нода создаёт их сама (см. _ensure_children),
@@ -258,7 +249,7 @@ var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection
 var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
 var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
 const QT_QUALITY: float = 1.1      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
-const QT_SKIRT:   float = 0.0      # юбку убрали (была видна свисающей у краёв LOD-узлов)
+const QT_SKIRT:   float = 0.0      # 0 = без юбки: она свисает и видна у краёв LOD-узлов
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
 var _qt_cur_chunks: Dictionary = {}   # ci → lod  (chunk currently rendered individually)
@@ -272,8 +263,7 @@ var _qt_des_nodes:  Dictionary = {}
 # Individual chunk nodes/meshes are instantiated ONLY for macro groups near the camera.
 # Far terrain is drawn by the always-resident macro meshes (built once, directly from the
 # heightmap — no per-chunk dependency). This bounds resident memory to the play area
-# instead of instantiating every chunk of the whole map at once — which is what blew the
-# node/object/memory counters up and crashed on load. Chunks stream in on demand when the
+# instead of instantiating every chunk of the whole map at once. Chunks stream in on demand when the
 # camera approaches a macro and are freed (evicted) when it leaves.
 var _resident_set:  Dictionary = {}   # mi → true : this macro's chunks are instantiated
 var _queued_chunks: Dictionary = {}   # ci → true : queued for (re)build (dedups enqueues)
@@ -395,19 +385,16 @@ func _load_heightmap() -> void:
 		md = collision.shape.map_data
 		_recompute_height_bound()
 	if md.is_empty():
-		# Без высот НЕТ НИ РЕЛЬЕФА, НИ КОЛЛИЗИИ — игрок просто проваливается в пустоту.
-		# Молчать об этом нельзя: раньше отказ был тихим, и причину искали часами.
+		# Без высот нет ни рельефа, ни коллизии — тело проваливается в пустоту.
 		push_error("LiteTerrain: карта высот не загружена (%s отсутствует, встроенного "
 				% heightmap_path
 				+ "HeightMapShape3D тоже нет). Коллизии и рельефа не будет. "
 				+ "terrain_height.res лежит в .gitignore — пересбейкай террейн в доке "
 				+ "LiteTerrain («Bake heightmap → image») или положи файл на место.")
 
-# Подтягивает файл карты высот (у нас ~15 МБ R32F) в ФОНОВОМ потоке и ждёт, отдавая кадры.
-# После этого обычный load() внутри _load_heightmap_image() достаёт ресурс ИЗ КЕША мгновенно
-# (CACHE_MODE_REUSE — режим по умолчанию), т.е. блокирующего чтения с диска в кадре уже нет.
-# Важно: terrain_height.res НЕ является зависимостью node_3d.tscn (путь задан строкой), поэтому
-# фоновая загрузка сцены его не касалась — он грузился синхронно и морозил экран загрузки.
+# Подтягивает файл карты высот (десятки МБ R32F) в ФОНОВОМ потоке, отдавая кадры. Дальше
+# обычный load() в _load_heightmap_image() берёт его из кеша мгновенно. Путь задан строкой,
+# то есть зависимостью сцены файл НЕ является и фоновая загрузка сцены его не подхватывает.
 func _prewarm_heightmap() -> void:
 	if heightmap_path.is_empty() or not ResourceLoader.exists(heightmap_path):
 		return
@@ -581,10 +568,10 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	# соседом ровно одну граничную строку — ни зазора, ни дыры.
 	var ox := cx * collision_cell
 	var oz := cz * collision_cell
-	# Форма плитки растянута на collision_overlap во все стороны, чтобы накрыть живую
-	# кромку соседа. Высоты в перекрытии — НАСТОЯЩИЕ. Опускать кольцо вниз («юбка»)
-	# нельзя: сосед при стриминге грузится не всегда, и опущенное кольцо остаётся там
-	# единственной поверхностью, то есть ямой в паре десятков метров от игрока.
+	# Форма плитки растянута на collision_overlap во все стороны, чтобы накрыть живую кромку
+	# соседа; высоты в перекрытии НАСТОЯЩИЕ. Опущенное вниз кольцо («юбка») здесь работать не
+	# может: сосед при стриминге бывает ещё не загружен, и кольцо становится единственной
+	# поверхностью — то есть ямой.
 	var sx0 := maxi(ox - collision_overlap, 0)
 	var sz0 := maxi(oz - collision_overlap, 0)
 	var sx1 := mini(ox + collision_cell + collision_overlap, w - 1)
@@ -1210,9 +1197,8 @@ func _build_chunk_worker(ci: int, cxl: int) -> void:
 # Creates a MeshInstance3D for each ci in indices whose _stream_results[ci] is ready.
 # MUST run on the main thread — adds nodes to the scene tree. Instances are created
 # hidden; the quadtree's next descend decides their visibility and LOD.
-# batch>0 (только стартовая сборка) — отдавать кадр каждые batch созданных узлов, чтобы сотни
-# add_child не вставали одним фризом. Стриминг зовёт с batch=0 (пачки там и так маленькие) —
-# его поведение не меняется.
+# batch>0 — отдавать кадр каждые batch созданных узлов, чтобы сотни add_child не встали одним
+# фризом (нужно только стартовой сборке; стриминг зовёт с batch=0, пачки там и так мелкие).
 func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void:
 	var made := 0
 	for ci in indices:
@@ -1611,11 +1597,9 @@ func _cv_noise(p: Vector2) -> float:
 	return lerpf(lerpf(a, b, f.x), lerpf(c, dh, f.x), f.y)
 # Мировые XZ ровно как в генераторе (plugin.gd): grid − размер/2 (совпадение до 0.5 клетки).
 # ── Маски биомов: считаем РАЗ на разреженной решётке, дальше читаем с интерполяцией ──────
-# Раскладка биомов — чистая функция от (x,z) и на статичной карте не меняется, но раньше три
-# шумовые маски вычислялись НА КАЖДУЮ ВЕРШИНУ: макро-меши + узлы квадродерева + ближние чанки
-# дают ~380 тыс. вершин, т.е. больше миллиона вызовов шума на GDScript при каждом запуске —
-# это и есть основная часть долгой загрузки. Маски очень плавные (масштаб 230-420 единиц мира),
-# поэтому решётки с шагом MASK_STEP хватает с запасом: 64× меньше вычислений, разницы не видно.
+# Раскладка биомов — чистая функция от (x,z), на статичной карте не меняется. Маски очень
+# плавные (масштаб в сотни единиц мира), поэтому решётки с шагом MASK_STEP хватает: на порядки
+# меньше вызовов шума, чем «на каждую вершину», разницы не видно.
 # Решётку строим ДО многопоточной сборки и больше не меняем — чтение PackedFloat32Array из
 # рабочих потоков безопасно (в отличие от Dictionary-кеша, который дал бы гонку).
 const MASK_STEP := 8
@@ -2237,12 +2221,9 @@ func _qt_apply(do_lod: bool) -> void:
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
 
-# Squared XZ distance from point p to the nearest point of aabb (0 if p is inside in XZ).
-# Квадрат расстояния от точки до AABB в ТРЁХ измерениях. Отсечение по дальности и выбор LOD
-# считались только по XZ, т.е. ВЫСОТА игнорировалась: камера, оказавшаяся высоко над картой или
-# под ней, имела горизонтальную дистанцию ≈0 — и весь рельеф грузился на максимальной детализации,
-# как будто она стоит на земле. На обычной игре разница ничтожна (камера в 8-20 м над машиной),
-# а вот в горах и при любом виде сверху выбор LOD теперь честный.
+# Квадрат расстояния от точки до AABB в ТРЁХ измерениях (0, если точка внутри). Высоту
+# учитываем наравне с XZ: иначе камера прямо над картой имела бы горизонтальную дистанцию ≈0
+# и тянула бы весь рельеф на максимальной детализации.
 # Минимальный (самый грубый) LOD, допустимый по «ровности» чанка. Порог берём из
 # flat_lod_error: чем ровнее чанк, тем крупнее треугольники ему разрешены.
 func _flat_lod(ci: int) -> int:
