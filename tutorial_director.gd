@@ -15,34 +15,49 @@ const CABIN_BLOCKS: int = 1      # что уже стоит на машине к
 
 var _guide: TutorialGuide = null
 var _step: String = ""           # id текущего шага (пусто — обучение не идёт)
-var _aimed = null                # на что палец наведён сейчас (узел или ключ) — чтобы не пересобирать каждый кадр
+# Ключ текущего наведения: шаг + цель + текст. Именно ТЕКСТ в ключе важен — соседние шаги
+# показывают на одну и ту же точку (машину), и по одной лишь цели палец не обновлялся:
+# после первого поставленного блока подсказка так и висела со старым текстом.
+var _aimed: String = ""
 var _story_started: bool = false
 var _assembly_shown: int = -1    # что уже записано в прогресс шага сборки
 
-# Что Механик говорит, КОГДА ШАГ ЗАКРЫТ: объяснение того, что игрок только что открыл.
-# Подсказка «что нажать» — это hint самого квеста, её говорит Q при активации.
-const DONE_LINES := {
+# Пояснения к ЗАКРЫТОМУ шагу. Каждая реплика показывает пальцем на ТУ САМУЮ часть экрана,
+# о которой говорит, и только когда очередь кончится, палец уходит на следующий шаг. Раньше
+# текст читался, пока палец уже стоял на следующей кнопке, — объясняли одно, показывали другое.
+# t — ключ цели (см. _explain_target), s — что написать в пузыре.
+const EXPLAIN := {
 	"tut_quests": [
-		"This is the full quest list. Tutorial on top, then story, then dailies.",
-		"The star picks which quest the tracker shows. Nothing here is mandatory — look whenever you like.",
+		{"t": "quest_list", "s": "Every quest lives here: tutorial first, then story, then dailies."},
+		{"t": "quest_star", "s": "The star picks which quest the tracker shows. Nothing here is mandatory."},
 	],
 	"tut_filters": [
-		"Inventory holds every block you own. The count sits in the slot corner.",
-		"Tapping a slot takes the block into your hand — then place it on the vehicle in build mode.",
+		{"t": "garage_grid", "s": "These are the blocks you own. The number in the corner is how many."},
+		{"t": "garage_filters", "s": "These buttons filter the list by category."},
 	],
 	"tut_shop": [
-		"This is the shop. Your money is in the header, top right; the price is on the slot's button.",
-		"A locked block means one of two things: not enough money, or it is not researched yet. Research comes first, buying second.",
+		{"t": "garage_currency", "s": "Your money. Everything in the shop is bought with it."},
+		{"t": "garage_slot", "s": "The price sits on the slot's button. Greyed out means you cannot afford it."},
+		{"t": "garage_grid", "s": "A block you have not researched is not sold at all — research comes first."},
 	],
 	"tut_tech": [
-		"The tech tree. RP stands for Research Points — you get them from quests and from the first kill of each enemy type.",
-		"RP unlocks blocks: until a block is researched, the shop will not sell it.",
-		"Grade is your licence level. It rises with faction XP and gates whole branches of the tree and of the story.",
+		{"t": "garage_progress", "s": "RP means Research Points. Quests give them, so does the first kill of each enemy type."},
+		{"t": "garage_tech", "s": "RP unlocks blocks here. Until a block is researched, the shop will not sell it."},
+		{"t": "garage_progress", "s": "Gr is your licence grade. Faction XP raises it, and it gates whole branches."},
 	],
 	"tut_music": [
-		"And the music tab — tracks and volume. Nothing you have to press, just so you know where it is.",
+		{"t": "garage_extra", "s": "Tracks and volume. Nothing you have to press — just so you know it is here."},
 	],
 }
+
+# Очередь пояснений текущего шага. Пока она не пуста, палец на следующий шаг НЕ переходит.
+var _explain: Array = []
+var _explain_t: float = 0.0
+const EXPLAIN_CHARS_PER_SEC: float = 17.0    # медленнее реплик Механика: тут ещё и смотреть надо
+const EXPLAIN_MIN: float = 2.6
+const EXPLAIN_MAX: float = 8.0
+const EXPLAIN_MAX_WAIT: int = 12         # ~3 с ожидания цели, потом реплика пропускается
+var _explain_wait: int = 0
 
 func _ready() -> void:
 	_guide = GUIDE.new()
@@ -59,11 +74,15 @@ func _on_quests_changed() -> void:
 	var id := _current_step_id()
 	if id == _step:
 		return
-	# Шаг сменился — объясняем то, что игрок только что увидел, и переносим палец.
-	if _step != "" and DONE_LINES.has(_step):
-		_say_lines(DONE_LINES[_step])
+	# Шаг сменился. Если у закрытого шага есть пояснения — сначала проговариваем их, показывая
+	# пальцем на разбираемую часть, и только потом наводимся на следующий шаг.
+	var closed := _step
 	_step = id
-	_aimed = null
+	_aimed = ""
+	if closed != "" and EXPLAIN.has(closed):
+		_explain = (EXPLAIN[closed] as Array).duplicate()
+		_show_explain()
+		return
 	if _step == "":
 		_guide.clear()
 		_set_ui_locked(false)
@@ -78,12 +97,58 @@ func _current_step_id() -> String:
 	return ""
 
 # ── Кадр: цель может появиться/переехать (гараж открылся, машина едет) ────────
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if not _explain.is_empty():
+		_explain_tick(delta)
+		return
 	if _step == "":
 		return
 	if _step == "tut_place_all":
 		_drive_assembly_progress()
 	_aim_current_step()
+
+# ── Пояснения ────────────────────────────────────────────────────────────────
+func _explain_tick(delta: float) -> void:
+	_explain_t -= delta
+	if _explain_t > 0.0:
+		return
+	_explain.pop_front()
+	_show_explain()
+
+func _show_explain() -> void:
+	if _explain.is_empty():
+		_aimed = ""                       # очередь кончилась — палец возвращается к шагу
+		if _step == "":
+			_guide.clear()
+			_set_ui_locked(false)
+		return
+	var e: Dictionary = _explain[0]
+	var text := str(e["s"])
+	var node: Control = _explain_target(str(e["t"]))
+	if node == null or not node.is_visible_in_tree():
+		# Цель ещё не построена (панель только открылась) — ждём, но не вечно: заглушка
+		# висит, и застрять перед ней хуже, чем пропустить одну реплику.
+		_explain_wait += 1
+		if _explain_wait > EXPLAIN_MAX_WAIT:
+			_explain_wait = 0
+			_explain.pop_front()
+			_show_explain()
+			return
+		_explain_t = 0.25
+		return
+	_explain_wait = 0
+	_explain_t = clampf(float(text.length()) / EXPLAIN_CHARS_PER_SEC, EXPLAIN_MIN, EXPLAIN_MAX)
+	_guide.point_at_node(node, text)
+
+func _explain_target(key: String) -> Control:
+	if key.begins_with("quest_"):
+		var q: Node = get_tree().get_first_node_in_group("quests")
+		if q == null or not q.has_method("tutorial_target"):
+			return null
+		return q.tutorial_target(key.substr(6))
+	if key.begins_with("garage_"):
+		return _garage_node(key.substr(7))
+	return null
 
 # Прогресс сборки СЧИТАЕМ, а не накапливаем по событию: по block_placed его крутили бы
 # циклом «поставил — снял — поставил». Здесь снятый блок сразу уменьшает прогресс.
@@ -110,8 +175,16 @@ func _aim_current_step() -> void:
 		"tut_place_first":
 			_aim_world(_vehicle_point, "Double-tap the vehicle where the block should go")
 		"tut_place_all":
-			# Свободный шаг: тут много тапов по миру, точку не угадать. Мир открыт, UI — нет.
-			_aim_world(_vehicle_point, "Mount the rest the same way", TutorialGuide.Gate.WORLD)
+			# Свободный шаг: мир открыт, UI — нет. Палец не висит на машине всё время, а
+			# показывает, что делать СЕЙЧАС: блок в руке — куда ставить, рука пуста — что брать.
+			var v: Node = _vehicle()
+			var holding: bool = v != null and "block_take" in v and v.block_take
+			if holding:
+				_aim_world(_vehicle_point, "Now place it on the vehicle",
+						TutorialGuide.Gate.WORLD)
+			else:
+				_aim_world(_nearest_loose_block, "Pick up the next block",
+						TutorialGuide.Gate.WORLD)
 		"tut_mode_move":
 			_aim_node(_hud_node("ModeToggle"), "Tap again — back to driving")
 		"tut_quests":
@@ -138,19 +211,20 @@ func _aim_current_step() -> void:
 # отсутствие цели — не ошибка: просто ждём следующего кадра.
 func _aim_node(node: CanvasItem, text: String) -> void:
 	if node == null or not is_instance_valid(node) or not node.is_visible_in_tree():
-		if _aimed != null:
+		if _aimed != "":
 			_guide.clear()
-			_aimed = null
+			_aimed = ""
 		return
-	if _aimed == node:
+	var key := "%s|%d|%s" % [_step, node.get_instance_id(), text]
+	if _aimed == key:
 		return
-	_aimed = node
+	_aimed = key
 	_set_ui_locked(false)
 	_guide.point_at_node(node, text)
 
 func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.TARGET) -> void:
-	var key: String = str(getter.get_method())
-	if _aimed is String and _aimed == key:
+	var key := "%s|%s|%s" % [_step, getter.get_method(), text]
+	if _aimed == key:
 		return
 	_aimed = key
 	# В режиме WORLD заглушки нет (иначе она съела бы и тап по миру), поэтому меню/гараж
@@ -228,7 +302,7 @@ func _on_tutorial_finished() -> void:
 	if _story_started:
 		return
 	_story_started = true
-	# Реплику про музыку уже сказал _on_quests_changed при смене шага на пустой.
+	_explain.clear()                      # пропуск в середине пояснения не должен держать заглушку
 	_guide.clear()
 	_set_ui_locked(false)
 	_step = ""
