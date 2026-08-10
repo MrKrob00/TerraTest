@@ -365,8 +365,9 @@ func _node_rect(n: CanvasItem) -> Rect2:
 		return Rect2((n as Node2D).global_position - Vector2(32, 32), Vector2(64, 64))
 	return Rect2()
 
-# Проекция цели мира на экран. null — камеры нет, цель за спиной или её больше не существует.
-func _project_world():
+# Проекция цели мира на экран: Vector2 либо null (камеры нет, цель за спиной или её больше
+# не существует). Тип возврата объявлен явно — иначе на стороне вызова `:=` не выводится.
+func _project_world() -> Variant:
 	if not _world_pos.is_valid():
 		return null
 	var wp = _world_pos.call()
