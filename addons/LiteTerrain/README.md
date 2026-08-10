@@ -1,6 +1,6 @@
 # LiteTerrain
 
-**Version 1.1.0** · Godot 4 · tuned for mobile
+**Version 1.2** · Godot 4 · tuned for mobile
 
 Lightweight heightmap terrain. One node builds its own collision body, collision
 shape and render mesh, then keeps a large map affordable through quadtree LOD and
