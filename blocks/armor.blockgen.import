@@ -1,0 +1,14 @@
+[remap]
+
+importer="worldtech.blockgen"
+type="Mesh"
+uid="uid://0vscroht68fb"
+path="res://.godot/imported/armor.blockgen-66c24fa4c6077fb39253f30070efcec5.res"
+
+[deps]
+
+source_file="res://blocks/armor.blockgen"
+dest_files=["res://.godot/imported/armor.blockgen-66c24fa4c6077fb39253f30070efcec5.res"]
+
+[params]
+

@@ -255,7 +255,7 @@ func _tick() -> void:
 			hole = r.grow(HOLE_PAD)
 			tip = r.position + r.size * 0.5
 		Aim.WORLD:
-			var p := _project_world()
+			var p = _project_world()
 			if p == null:
 				# Цель исчезла (блок подобран/уничтожен) — подсказку снимает тот, кто её ставил.
 				return
