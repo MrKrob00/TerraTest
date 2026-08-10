@@ -134,6 +134,31 @@ func report(event: String, amount: int = 1) -> void:
 		if q.get("event", "") == event and not q["done"]:
 			add_progress(q["id"], amount)
 
+## Пропустить обучение целиком (кнопка SKIP). Шаги закрываем МОЛЧА: наград у них нет, а
+## одиннадцать подряд «задание выполнено» — это шум. Персистим как обычно, иначе после
+## перезапуска обучение началось бы заново.
+## Нужно не только нетерпеливым: если шаг стал непроходимым (например, сейв старый и
+## стартовые блоки в мир уже не выдадутся), это единственный выход.
+func skip_tutorial() -> void:
+	var g = get_node_or_null("/root/G")
+	var any := false
+	for q in quests:
+		if int(q["type"]) != Type.TUTORIAL or q["done"]:
+			continue
+		q["progress"] = q["goal"]
+		q["done"] = true
+		any = true
+		if g != null and not g.quests_done.has(q["id"]):
+			g.quests_done.append(q["id"])
+	if not any:
+		return
+	if g != null:
+		g.mark_progress_dirty()
+	_say("Mechanic", "Skipping ahead. Everything's in the menus when you want it.")
+	changed.emit()
+	_auto_track()
+	tutorial_finished.emit()
+
 # Сброс сейва (кнопка в настройках): G уже вычистил quests_done, а здесь в памяти лежат
 # те же квесты с done/progress. Без этого после перезапуска сцены обучение считалось бы
 # пройденным — автолоад Q смену сцены переживает.

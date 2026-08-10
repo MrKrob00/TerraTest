@@ -45,10 +45,14 @@ var _world_pos: Callable = Callable()  # () -> Vector3 (пересчитывае
 var _double_tap: bool = false          # рисовать двойное касание (два кольца)
 var _text: String = ""
 
+## Игрок нажал SKIP — обучение надо закрыть целиком (подписывается наставник).
+signal skip_pressed
+
 var _blocker: Blocker = null
 var _hand: Hand = null
 var _bubble: PanelContainer = null
 var _bubble_label: Label = null
+var _skip_btn: Button = null
 var _gated: Array[Node] = []           # TouchScreenButton'ы, которым выключили ввод
 # Где искать тач-кнопки: палец живёт под наставником, а кнопки — у HUD, ссылку дают снаружи.
 var _hud: Node = null
@@ -167,7 +171,42 @@ func _ready() -> void:
 	_bubble.add_child(_bubble_label)
 	add_child(_bubble)
 
+	# SKIP — ПОСЛЕДНИМ ребёнком, то есть поверх заглушки: она полноэкранная и иначе съедала
+	# бы тап. Нужна не только нетерпеливым: если шаг стал непроходимым (скажем, сейв старый
+	# и стартовые блоки в мир уже не выдадутся), это единственный выход.
+	_skip_btn = Button.new()
+	_skip_btn.text = "SKIP TUTORIAL"
+	_skip_btn.add_theme_font_size_override("font_size", 15)
+	_skip_btn.add_theme_color_override("font_color", Color(0.85, 0.9, 0.92))
+	_skip_btn.add_theme_stylebox_override("normal", _skip_style(false))
+	_skip_btn.add_theme_stylebox_override("hover", _skip_style(false))
+	_skip_btn.add_theme_stylebox_override("pressed", _skip_style(true))
+	_skip_btn.visible = false
+	_skip_btn.pressed.connect(func() -> void: skip_pressed.emit())
+	add_child(_skip_btn)
+
 	set_process(false)
+
+func _skip_style(pressed: bool) -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.2, 0.22, 0.24, 0.9) if pressed else Color(0.08, 0.1, 0.12, 0.8)
+	st.border_color = Color(0.6, 0.65, 0.68, 0.5)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(8)
+	st.content_margin_left = 16
+	st.content_margin_right = 16
+	st.content_margin_top = 9
+	st.content_margin_bottom = 9
+	return st
+
+# Правый нижний угол. Пересчитываем каждый кадр — экран может повернуться.
+func _place_skip() -> void:
+	if _skip_btn == null or not _skip_btn.visible:
+		return
+	_skip_btn.reset_size()
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	_skip_btn.position = Vector2(screen.x - _skip_btn.size.x - 16.0,
+			screen.y - _skip_btn.size.y - 16.0)
 
 func _bubble_style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
@@ -209,6 +248,7 @@ func clear() -> void:
 	_blocker.visible = false
 	_hand.visible = false
 	_bubble.visible = false
+	_skip_btn.visible = false
 	_ungate_touch_buttons()
 
 ## Наставник отдаёт HUD, у которого лежат тач-кнопки (сам палец висит на слое поверх всего).
@@ -219,6 +259,7 @@ func is_active() -> bool:
 	return _aim != Aim.NONE
 
 func _start(gate: int) -> void:
+	_skip_btn.visible = true
 	_hand.double_tap = _double_tap
 	_hand.visible = true
 	_bubble_label.text = _text
@@ -241,6 +282,9 @@ func _process(delta: float) -> void:
 	_tick()
 
 func _tick() -> void:
+	# Кнопку двигаем ПЕРВОЙ: ниже есть ранние выходы (цель ещё не появилась, точка мира за
+	# спиной), а именно в таком застревании SKIP и нужен — не в углу (0,0).
+	_place_skip()
 	var hole := Rect2()
 	var tip := Vector2.ZERO
 	var round_hole := false
@@ -268,22 +312,44 @@ func _tick() -> void:
 	_blocker.hole = hole
 	_blocker.round_hole = round_hole
 	_blocker.queue_redraw()
-	_place_hand(tip)
+	_place_hand(tip, hole)
 
-# Рука встаёт НИЖЕ цели и показывает вверх; если цель у нижнего края — заходит сверху,
-# иначе палец упирался бы за экран.
-func _place_hand(tip: Vector2) -> void:
+# Рука и пузырь встают ВОКРУГ цели, никогда на неё. Считаем от прямоугольника цели, а не
+# от одной точки: у кнопки под верхней кромкой экрана «выше» не влезало, и прежний клампинг
+# клал пузырь ровно на ту кнопку, которую он объясняет.
+const BUBBLE_GAP: float = 22.0     # зазор от цели
+const HAND_SPAN: float = 130.0     # сколько места занимает рука со своей стороны
+
+func _place_hand(tip: Vector2, target: Rect2) -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	var from_below: bool = tip.y < screen.y - 190.0
-	_hand.rotation = 0.0 if from_below else PI
-	_hand.position = tip + (Vector2(14.0, 26.0) if from_below else Vector2(-14.0, -26.0))
-
 	var bw: float = _bubble.size.x
 	var bh: float = _bubble.size.y
+
+	# По умолчанию рука СНИЗУ и показывает вверх; сверху заходит, только если снизу места
+	# нет, а сверху есть — иначе у цели под верхней кромкой она ушла бы за экран.
+	var hand_below: bool = (screen.y - target.end.y) >= HAND_SPAN or target.position.y < HAND_SPAN
+	_hand.rotation = 0.0 if hand_below else PI
+	_hand.position = tip + (Vector2(14.0, 26.0) if hand_below else Vector2(-14.0, -26.0))
+
+	# Пузырь — с противоположной стороны от руки. Не влезает — уводим на сторону руки, но ЗА
+	# неё. Не выходит и так — вбок.
 	var bx: float = clampf(tip.x - bw * 0.5, 12.0, maxf(12.0, screen.x - bw - 12.0))
-	# Пузырь ставим с ПРОТИВОПОЛОЖНОЙ стороны от руки, чтобы она его не закрывала.
-	var by: float = (tip.y - bh - 28.0) if from_below else (tip.y + 28.0)
-	_bubble.position = Vector2(bx, clampf(by, 12.0, maxf(12.0, screen.y - bh - 12.0)))
+	var opposite: float = (target.position.y - bh - BUBBLE_GAP) if hand_below \
+			else (target.end.y + BUBBLE_GAP)
+	var behind_hand: float = (target.end.y + HAND_SPAN + BUBBLE_GAP) if hand_below \
+			else (target.position.y - HAND_SPAN - bh - BUBBLE_GAP)
+	var by: float = INF
+	if opposite >= 12.0 and opposite + bh <= screen.y - 12.0:
+		by = opposite
+	elif behind_hand >= 12.0 and behind_hand + bh <= screen.y - 12.0:
+		by = behind_hand
+	if by == INF:
+		by = clampf(tip.y - bh * 0.5, 12.0, maxf(12.0, screen.y - bh - 12.0))
+		bx = target.end.x + BUBBLE_GAP
+		if bx + bw > screen.x - 12.0:
+			bx = target.position.x - bw - BUBBLE_GAP
+		bx = clampf(bx, 12.0, maxf(12.0, screen.x - bw - 12.0))
+	_bubble.position = Vector2(bx, by)
 
 # Прямоугольник узла на экране. Control знает свой rect; TouchScreenButton — нет, у него
 # считаем по текстуре (её левый верх = позиция ноды), как это делает сам движок.
