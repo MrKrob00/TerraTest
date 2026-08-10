@@ -215,7 +215,7 @@ block = 19
 shape = SubResource("BoxShape3D_uqkpu")
 
 [node name="Wheel_module_small" type="MeshInstance3D" parent="." unique_id=1594599525]
-transform = Transform3D(3.5762787e-07, -0.99999994, 7.5497894e-08, -0.99999994, -3.5762787e-07, 7.549792e-08, -7.5497894e-08, -7.549792e-08, -1, 0.5, 0, 0)
+transform = Transform3D(1.9106853e-15, -4.3711385e-08, 1, -0.99999994, -4.3711385e-08, 0, 4.3711385e-08, -0.99999994, -4.371139e-08, 0, 0, 0.5)
 mesh = SubResource("ArrayMesh_vi615")
 skeleton = NodePath("")
 
