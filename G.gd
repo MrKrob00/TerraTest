@@ -21,7 +21,6 @@ var saved_builds: Dictionary = {}
 const BUILDS_PATH := "user://vehicle_builds.json"
 
 func _ready() -> void:
-	return
 	_load_builds()
 	_load_progress()
 	_load_settings()

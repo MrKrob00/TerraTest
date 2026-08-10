@@ -1209,6 +1209,7 @@ func _pick_selected_block() -> bool:
 	block_body.reparent(camera_controller.camera.get_child(0), false)
 	block_body.position = Vector3.ZERO
 	block_take = true
+	Q.report("block_taken_world", 1)               # шаг обучения: блок в руке, откуда — неважно
 	_hand_from_inventory = false                   # снят с машины, не из инвентаря — без авто-добора
 	build_basis = Basis()
 	_preview_res = null
@@ -1281,7 +1282,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 		body.linear_velocity = Vector3.ZERO
 		body.angular_velocity = Vector3.ZERO
 	block_body = body
-	Q.report("block_taken_world", 1)          # шаг обучения «подобрать блок из мира»
+	Q.report("block_taken_world", 1)          # шаг обучения «взять блок в руку»
 	block_take = true
 	_hand_from_inventory = false                   # из мира, не из инвентаря — без авто-добора
 	build_basis = Basis()
@@ -1393,6 +1394,7 @@ func take_block_into_hand(block_type: int) -> bool:
 		BlockFX.play(instance, false)      # глитч появления блока в руке (как при спавне)
 	block_body = instance
 	block_take = true
+	Q.report("block_taken_world", 1)   # шаг обучения закрывается ЛЮБЫМ способом взять блок
 	_hand_from_inventory = true     # взят из инвентаря → после постановки авто-доберём такой же
 	build_basis = Basis()          # свежий блок — без ручного поворота
 	_preview_res = null
