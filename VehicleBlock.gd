@@ -20,6 +20,12 @@ const BLOCK_HP: Dictionary = {
 	G.Block.REGEN:     60,
 	G.Block.SHIELD:    70,
 	G.Block.ROCKET:    70,
+	G.Block.BLOCK3:    120,      # 3 клетки — и hp втрое от обычного блока
+	G.Block.WEDGE:     70,       # клин: чуть меньше материала, чем в полном кубе
+	G.Block.WEDGE2:    110,
+	G.Block.ARMOR:     240,      # защитная пластина: держит втрое больше блока
+	G.Block.SMALL_DRILL: 50,
+	G.Block.BELT_SPLIT: 40,
 }
 const DEFAULT_HP := 50
 
@@ -29,6 +35,12 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.CABIN:     30.0,
 	G.Block.BLOCK:     12.0,
 	G.Block.BLOCK2:    22.0,
+	G.Block.BLOCK3:    32.0,
+	G.Block.WEDGE:      9.0,     # клин легче куба — часть объёма срезана
+	G.Block.WEDGE2:    17.0,
+	G.Block.ARMOR:     34.0,     # броня тяжёлая: за живучесть платим ходовыми
+	G.Block.SMALL_DRILL: 14.0,
+	G.Block.BELT_SPLIT:  9.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
 	G.Block.INTAKE:    12.0,

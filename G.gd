@@ -95,6 +95,12 @@ const BLOCK_META := {
 	Block.BLOCK2:      {"f": "start", "g": 1, "rp": 5},
 	Block.COAL_GEN:    {"f": "start", "g": 4, "rp": 30},  # большой генератор: уголь→энергия на якоре
 	Block.ROCKET:      {"f": "start", "g": 4, "rp": 35},  # ракетница: снаряд с AOE-взрывом
+	Block.BLOCK3:      {"f": "start", "g": 2, "rp": 10},
+	Block.WEDGE:       {"f": "start", "g": 1, "rp": 5},
+	Block.WEDGE2:      {"f": "start", "g": 2, "rp": 10},
+	Block.ARMOR:       {"f": "start", "g": 2, "rp": 15},
+	Block.SMALL_DRILL: {"f": "start", "g": 1, "rp": 8},
+	Block.BELT_SPLIT:  {"f": "start", "g": 2, "rp": 15},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -112,6 +118,9 @@ const TECH_PARENT := {
 	Block.TOP_WHEEL: Block.WHEEL,   Block.STAB_WHEEL: Block.WHEEL,
 	Block.BLOCK2: Block.BLOCK,      Block.COAL_GEN: Block.GENERATOR,
 	Block.ROCKET: Block.LASER,      # ракетница ветвится от лазера (продвинутое оружие)
+	Block.BLOCK3: Block.BLOCK2,     Block.WEDGE: Block.BLOCK,
+	Block.WEDGE2: Block.WEDGE,      Block.ARMOR: Block.BLOCK,
+	Block.SMALL_DRILL: Block.DRILL, Block.BELT_SPLIT: Block.BELT,
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -430,6 +439,14 @@ enum Block {
 	BLOCK2 = 23,
 	COAL_GEN = 24,
 	ROCKET = 25,
+	# Новые id дописываем В КОНЕЦ: сейв хранит блоки СТРОКОЙ (block_key), но вставка в
+	# середину всё равно сдвинула бы значения и сломала всё, что сравнивает числа.
+	BLOCK3 = 26,        # блок 3×1×1
+	WEDGE = 27,         # клин 1³
+	WEDGE2 = 28,        # клин 2×1×1
+	ARMOR = 29,         # защитная пластина: то же место, втрое больше hp
+	SMALL_DRILL = 30,   # малый бур: слабее и с меньшей зоной
+	BELT_SPLIT = 31,    # развилка конвейера: один вход, три выхода
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -455,7 +472,13 @@ enum Block {
 @onready var stab_wheel_scene: PackedScene = preload("res://stab_wheel.tscn")   # стабилизирующее (90°)
 @onready var block2_scene: PackedScene = preload("res://block2.tscn")           # 2×1×1
 @onready var coal_gen_scene: PackedScene = preload("res://coal_gen.tscn")       # 2×1×2, уголь→энергия на якоре
-@onready var rocket_scene: PackedScene = preload("res://rocket_launcher.tscn")  # ракетница: снаряд с AOE-взрывом
+@onready var rocket_scene: PackedScene = preload("res://rocket_launcher.tscn")
+@onready var block3_scene: PackedScene = preload("res://block3.tscn")
+@onready var wedge_scene: PackedScene = preload("res://wedge.tscn")
+@onready var wedge2_scene: PackedScene = preload("res://wedge2.tscn")
+@onready var armor_scene: PackedScene = preload("res://armor.tscn")
+@onready var small_drill_scene: PackedScene = preload("res://small_drill.tscn")
+@onready var belt_split_scene: PackedScene = preload("res://belt_split.tscn")  # ракетница: снаряд с AOE-взрывом
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -467,10 +490,12 @@ func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
 const BLOCK_CATEGORIES := {
-	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL],
-	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2,
+	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL],
+	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
+		Block.WEDGE, Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL, Block.SUPPORT],
-	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
+	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.PROCESSOR,
+		Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -500,6 +525,12 @@ func get_scene(block: Block) -> PackedScene:
 		Block.BLOCK2: return block2_scene
 		Block.COAL_GEN: return coal_gen_scene
 		Block.ROCKET: return rocket_scene
+		Block.BLOCK3: return block3_scene
+		Block.WEDGE: return wedge_scene
+		Block.WEDGE2: return wedge2_scene
+		Block.ARMOR: return armor_scene
+		Block.SMALL_DRILL: return small_drill_scene
+		Block.BELT_SPLIT: return belt_split_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
