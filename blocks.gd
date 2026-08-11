@@ -187,7 +187,7 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 # Якорь (x,y,z). 2×2×2 (SELLER/PROCESSOR) занимает x-1..x, y..y+1, z-1..z (8 клеток),
 # остальные блоки — одну клетку. Те же 8 клеток, что проверял старый код.
 func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
-	if block == G.Block.PROCESSOR or block == G.Block.SELLER:
+	if block == G.Block.PROCESSOR or block == G.Block.SELLER or block == G.Block.FABRICATOR:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

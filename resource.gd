@@ -61,6 +61,14 @@ func set_tint(c: Color) -> void:
 	_has_tint = true
 	_update_visual()
 
+## Устойчивый ключ «что это за ресурс»: тип плюс цвет жилы, из которой он вышел. Рецептам
+## фабрикатора мало одного Type — слитки разных жил это разные материалы, а различает их
+## только тинт, и он переживает переплавку.
+func kind_key() -> String:
+	if not _has_tint:
+		return str(type)
+	return "%d#%08x" % [type, _tint.to_rgba32()]
+
 # Вызывается Processor-ом
 func upgrade() -> void:
 	match type:
