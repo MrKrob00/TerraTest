@@ -84,6 +84,12 @@ layout_mode = 2
 toggle_mode = true
 text = "INVENTORY"
 
+[node name="TabBuild" type="Button" parent="Root/TopBar/TopRow"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "BUILD"
+
 [node name="TabShop" type="Button" parent="Root/TopBar/TopRow"]
 unique_name_in_owner = true
 layout_mode = 2

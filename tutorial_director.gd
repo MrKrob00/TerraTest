@@ -200,13 +200,7 @@ func _aim_current_step() -> void:
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your quest tracker. Tap it")
 		"tut_garage":
-			# Гараж за два тапа: сначала иконка меню, потом Inventory внутри него.
-			var hud: Node = get_parent()
-			var open: bool = hud != null and hud.has_method("menu_is_open") and hud.menu_is_open()
-			if open:
-				_aim_node(_hud_ui("inventory"), "Inventory — that's the garage")
-			else:
-				_aim_node(_hud_ui("menu"), "The menu lives here now")
+			_aim_node(_hud_ui("menu"), "This icon opens the garage")
 		"tut_filters":
 			_aim_node(_garage_node("filters"), "These filter your blocks by category. Try one")
 		"tut_shop":

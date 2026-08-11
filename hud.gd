@@ -10,16 +10,9 @@ const TECH_UI := preload("res://tech_ui.tscn")
 @onready var current_vehicle = $"..".current_vehicle
 
 # ── Меню (левый верх) ────────────────────────────────────────────────────────
-const MENU_W: float = 250.0
-## Потолок высоты панели: сама она сжимается по содержимому (список техники короткий),
-## но с десятком машин упёрлась бы в кнопки поворота блока у левого края.
-const MENU_MAX_H_RATIO: float = 0.62
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
 const MENU_PAD: float = 12.0                # отступ от углов экрана
-var _menu_panel: PanelContainer
 var _menu_btn: Button
-var _menu_open: bool = false
-var _menu_tween: Tween = null               # чтобы ресайз мог оборвать анимацию раскрытия
 var _tech_ui: Control = null
 var _vehicle_list: VBoxContainer            # список техники в drawer (перестраивается)
 var _rotate_panel: PanelContainer           # кнопки поворота блока (видны в стройке)
@@ -48,7 +41,7 @@ func _set_globe_spin(v: float) -> void:
 var _game_controls: Array = []              # игровые кнопки/джойстики — прячем при инвентаре
 
 func _ready() -> void:
-	_build_menu_panel()
+	_build_menu_button()
 	_build_rotate_panel()
 	_build_hand_panel()
 	_build_block_globe()
@@ -78,27 +71,27 @@ func _relayout() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	if _menu_btn:
 		_menu_btn.position = Vector2(MENU_PAD, MENU_PAD)
-	if _menu_panel:
-		if _menu_tween and _menu_tween.is_valid():
-			_menu_tween.kill()         # ресайз во время раскрытия — снапаем, не даём tween-у доиграть
-		_fit_menu_panel(screen)
-		_menu_panel.position = _menu_panel_pos()
-		_menu_panel.modulate.a = 1.0 if _menu_open else 0.0
-		_menu_panel.visible = _menu_open
+	if _drawer:
+		if _drawer_tween and _drawer_tween.is_valid():
+			_drawer_tween.kill()       # ресайз во время слайда — снапаем, не даём доиграть
+		var dh: float = screen.y * DRAWER_H_RATIO
+		var dy: float = (screen.y - dh) * 0.5
+		_drawer.size = Vector2(DRAWER_W, dh)
+		_drawer.position = Vector2((screen.x - DRAWER_W) if _drawer_open else screen.x, dy)
+		if _handle:
+			_handle.position = Vector2(
+					(screen.x - DRAWER_W - 50.0) if _drawer_open else (screen.x - 50.0),
+					dy + dh * 0.5 - 36.0)
 	# Кнопка режима — правее иконки меню, в один ряд с ней.
 	var mode := get_node_or_null("ModeToggle") as Node2D
 	if mode:
 		mode.position = Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD)
-	if _rotate_panel:
-		_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - _rotate_panel.size.y * 0.5)
 	if _hand_panel:
 		_hand_panel.position = Vector2(
 				screen.x - 98.0 - _hand_panel.size.x * 0.5,
 				screen.y * 0.5 + 49.0 - _hand_panel.size.y - 12.0)
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
-	if _block_globe:
-		_block_globe.position = _globe_pos(screen)
 	if _radar:
 		_radar.position = _radar_pos(screen)
 	# Джойстики и FPS-метка — это ноды сцены с АБСОЛЮТНЫМИ позициями (авторились под одно
@@ -290,8 +283,8 @@ func _toggle_settings() -> void:
 	if _settings_panel == null:
 		return
 	_settings_panel.visible = not _settings_panel.visible
-	if _settings_panel.visible and _menu_open:
-		_set_menu(false)               # открыли настройки — прячем меню
+	if _settings_panel.visible and _drawer_open:
+		_set_drawer(false)             # открыли настройки — прячем ящик техники
 
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
@@ -861,132 +854,130 @@ class MenuIcon extends Control:
 			var y := c.y + (float(i) - 1.0) * w * 0.62
 			var half: float = w if i != 1 else w * 0.66
 			draw_line(Vector2(c.x - w, y), Vector2(c.x + half, y), col, 3.0)
-		# Уголок-стрелка справа: показывает, что панель раскрывается (вниз / вверх).
-		var ax := c.x + w + 5.0
-		var ay: float = c.y + (3.0 if open else -3.0)
-		var dir: float = -1.0 if open else 1.0
-		var arrow := Color(0.45, 0.8, 0.85)
-		draw_line(Vector2(ax - 5.0, ay), Vector2(ax, ay + 5.0 * dir), arrow, 2.5)
-		draw_line(Vector2(ax, ay + 5.0 * dir), Vector2(ax + 5.0, ay), arrow, 2.5)
+		# Уголок-точка справа: значок ведёт в гараж, а не раскрывает панель на месте.
+		draw_circle(Vector2(c.x + w + 6.0, c.y), 2.5, Color(0.45, 0.8, 0.85))
 
 var _menu_icon: MenuIcon = null
-var _inventory_btn: Button = null
 
 # ── Цели и блокировка для обучающего пальца ──────────────────────────────────
 # Наставник (tutorial_director.gd) спрашивает узлы по имени, а не лезет внутрь HUD.
 func tutorial_target(key: String) -> Control:
 	match key:
 		"menu":      return _menu_btn
-		"inventory": return _inventory_btn
+		"inventory": return _menu_btn      # иконка и есть вход в инвентарь
 		"garage":    return _tech_ui       # null, пока гараж ни разу не открывали
 	return null
-
-func menu_is_open() -> bool:
-	return _menu_open
 
 ## На шагах со свободным миром (собери все блоки) тапы по миру нужны, а UI — нет.
 ## Заглушка обучения тут не годится: она бы съела и мировой тап вместе с UI.
 func set_ui_locked(locked: bool) -> void:
 	if _menu_btn:
 		_menu_btn.disabled = locked
+	if _handle:
+		_handle.disabled = locked
 	if locked:
-		_set_menu(false)
+		_set_drawer(false)
 
 # ── Сборка меню целиком в коде (тема — как у tech_ui) ─────────────────────────
-func _build_menu_panel() -> void:
-	# Кнопка-иконка в левом верхнем углу — всегда видна, разворачивает панель под собой.
+func _build_menu_button() -> void:
+	# Одна кнопка-иконка в левом верхнем углу: тап — и сразу гараж. Выпадающего меню больше
+	# нет, содержимое разошлось по вкладкам гаража и по правому ящику с техникой.
 	_menu_btn = Button.new()
-	_menu_btn.tooltip_text = "Menu: inventory and vehicles"
+	_menu_btn.tooltip_text = "Inventory"
 	_menu_btn.custom_minimum_size = Vector2(MENU_BTN, MENU_BTN)
 	_menu_btn.size = Vector2(MENU_BTN, MENU_BTN)
 	_menu_btn.position = Vector2(MENU_PAD, MENU_PAD)
 	_menu_btn.add_theme_stylebox_override("normal", _make_button_style(false))
 	_menu_btn.add_theme_stylebox_override("hover", _make_button_style(false))
 	_menu_btn.add_theme_stylebox_override("pressed", _make_button_style(true))
-	_menu_btn.pressed.connect(_toggle_menu)
+	_menu_btn.pressed.connect(_open_garage)
 	_menu_icon = MenuIcon.new()
 	_menu_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_menu_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu_btn.add_child(_menu_icon)
 	add_child(_menu_btn)
 
-	# Панель под кнопкой. Высота — по содержимому (см. _fit_menu_panel), поэтому с одной
-	# машиной это компактная плашка, а не пустой ящик в пол-экрана.
-	_menu_panel = PanelContainer.new()
-	_menu_panel.add_theme_stylebox_override("panel", _make_float_panel_style())
-	_menu_panel.visible = false
-	_menu_panel.modulate.a = 0.0
-	add_child(_menu_panel)
+	# Правый ящик с ТЕХНИКОЙ — как было до переделки HUD: язычок у края, по тапу выезжает
+	# список машин. В гараж он не переехал: пересаживаться между машинами надо на ходу, а не
+	# через полноэкранное меню.
+	_build_vehicle_drawer()
+
+# ── Правый ящик: смена машины ────────────────────────────────────────────────
+# Вернулся туда, где был до переделки HUD: язычок у правого края, по тапу выезжает список
+# машин. В гараж он не поехал — пересаживаться надо на ходу, а не через полноэкранное меню.
+const DRAWER_W: float = 250.0
+const DRAWER_H_RATIO: float = 0.46
+var _drawer: PanelContainer = null
+var _handle: Button = null
+var _drawer_open: bool = false
+var _drawer_tween: Tween = null
+
+func _build_vehicle_drawer() -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var dh: float = screen.y * DRAWER_H_RATIO
+	var dy: float = (screen.y - dh) * 0.5
+
+	_drawer = PanelContainer.new()
+	_drawer.add_theme_stylebox_override("panel", _make_panel_style())
+	_drawer.size = Vector2(DRAWER_W, dh)
+	_drawer.position = Vector2(screen.x, dy)      # стартует за краем экрана
+	add_child(_drawer)
 
 	var vb := VBoxContainer.new()
 	vb.add_theme_constant_override("separation", 10)
-	_menu_panel.add_child(vb)
+	vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_drawer.add_child(vb)
 
 	var title := Label.new()
-	title.text = "MENU"
+	title.text = "VEHICLES"
 	title.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
-	title.add_theme_font_size_override("font_size", 22)
+	title.add_theme_font_size_override("font_size", 20)
 	vb.add_child(title)
 
-	_inventory_btn = _make_drawer_button("Inventory", _toggle_inventory)
-	vb.add_child(_inventory_btn)
-	# «Настройки» переехали в ГАРАЖ (tech_ui, вкладка НАСТРОЙКИ → секция КАМЕРА).
-
-	var veh_label := Label.new()
-	veh_label.text = "VEHICLES"
-	veh_label.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.8))
-	veh_label.add_theme_font_size_override("font_size", 14)
-	vb.add_child(veh_label)
-
-	# Список техники строится при каждом открытии меню (машины известны только
-	# после _ready камеры-контроллера, который вызывается позже HUD).
+	# Список строится при каждом открытии: машины известны только после _ready
+	# камеры-контроллера, а он отрабатывает позже HUD.
 	_vehicle_list = VBoxContainer.new()
 	_vehicle_list.add_theme_constant_override("separation", 6)
 	vb.add_child(_vehicle_list)
 
-# Левый верх, ровно под кнопкой-иконкой.
-func _menu_panel_pos() -> Vector2:
-	return Vector2(MENU_PAD, MENU_PAD + MENU_BTN + 10.0)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(spacer)
 
-# Ширина фиксированная, высота — по содержимому, но не выше потолка: иначе длинный
-# список техники дотянулся бы до кнопок поворота блока у левого края.
-func _fit_menu_panel(screen: Vector2) -> void:
-	if _menu_panel == null:
+	_handle = Button.new()
+	_handle.text = "<"
+	_handle.add_theme_font_size_override("font_size", 28)
+	_handle.add_theme_stylebox_override("normal", _make_button_style(false))
+	_handle.add_theme_stylebox_override("hover", _make_button_style(false))
+	_handle.add_theme_stylebox_override("pressed", _make_button_style(true))
+	_handle.add_theme_color_override("font_color", Color(0.85, 0.95, 0.97, 1))
+	_handle.custom_minimum_size = Vector2(50, 72)
+	_handle.size = Vector2(50, 72)
+	_handle.position = Vector2(screen.x - 50, dy + dh * 0.5 - 36)
+	_handle.pressed.connect(_toggle_drawer)
+	add_child(_handle)
+
+func _toggle_drawer() -> void:
+	_set_drawer(not _drawer_open)
+
+func _set_drawer(open: bool) -> void:
+	if _drawer == null:
 		return
-	var max_h: float = screen.y * MENU_MAX_H_RATIO
-	_menu_panel.size = Vector2(MENU_W, 0.0)
-	_menu_panel.reset_size()
-	_menu_panel.size = Vector2(MENU_W, minf(_menu_panel.size.y, max_h))
-
-func _toggle_menu() -> void:
-	_set_menu(not _menu_open)
-
-# Раскрытие: короткий выезд вниз + проявление. Раньше панель ехала из-за ПРАВОГО края,
-# но там живут радар и трекер квестов — она их перекрывала.
-func _set_menu(open: bool) -> void:
-	_menu_open = open
-	if _menu_icon:
-		_menu_icon.open = open
-		_menu_icon.queue_redraw()
-	if _menu_panel == null:
-		return
+	_drawer_open = open
 	if open:
 		_rebuild_vehicle_list()
-		_fit_menu_panel(get_viewport().get_visible_rect().size)
-	if _menu_tween and _menu_tween.is_valid():
-		_menu_tween.kill()             # не наслаиваем анимации (в т.ч. после ресайза)
-	var home: Vector2 = _menu_panel_pos()
-	if open:
-		_menu_panel.visible = true
-		_menu_panel.position = home - Vector2(0.0, 14.0)
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var target_x: float = (screen.x - DRAWER_W) if open else screen.x
+	var handle_x: float = (screen.x - DRAWER_W - 50.0) if open else (screen.x - 50.0)
+	if _drawer_tween and _drawer_tween.is_valid():
+		_drawer_tween.kill()
 	var tw := create_tween().set_parallel(true)
-	_menu_tween = tw
+	_drawer_tween = tw
 	tw.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(_menu_panel, "position:y", home.y if open else home.y - 14.0, 0.16)
-	tw.tween_property(_menu_panel, "modulate:a", 1.0 if open else 0.0, 0.16)
-	if not open:
-		# Прячем только после затухания, иначе панель ловила бы тапы невидимой.
-		tw.chain().tween_callback(func(): _menu_panel.visible = false)
+	tw.tween_property(_drawer, "position:x", target_x, 0.22)
+	if _handle:
+		tw.tween_property(_handle, "position:x", handle_x, 0.22)
+		_handle.text = ">" if open else "<"
 
 # ── Действия панели ───────────────────────────────────────────────────────────
 func _toggle_inventory() -> void:
@@ -997,10 +988,44 @@ func _toggle_inventory() -> void:
 		# Один обработчик на открытие И закрытие (в т.ч. крестиком X и при взятии блока):
 		# прячем/возвращаем игровые кнопки, чтобы они не светились сквозь инвентарь.
 		_tech_ui.visibility_changed.connect(_on_tech_ui_visibility)
-	_set_menu(false)
+	_set_drawer(false)
 	_tech_ui.visible = not _tech_ui.visible
 	if _tech_ui.visible and _tech_ui.has_method("refresh"):
 		_tech_ui.refresh()
+
+## Иконка в углу: открыть гараж на ИНВЕНТАРЕ. Отдельно от _toggle_inventory, потому что
+## вход в стройку открывает тот же гараж, но на своей вкладке.
+func _open_garage() -> void:
+	if _tech_ui == null or not _tech_ui.visible:
+		_toggle_inventory()
+	if _tech_ui != null and _tech_ui.has_method("open_tab"):
+		_tech_ui.open_tab(0)               # TAB_INVENTORY
+
+## Вход в режим стройки: тот же гараж, но сразу на вкладке СТРОЙКА. Там лежат глобус
+## выбора блока и кнопки поворота — HUD переносит их туда при первой сборке гаража.
+func _open_build_tab() -> void:
+	if _tech_ui == null or not _tech_ui.visible:
+		_toggle_inventory()
+	_move_build_widgets()
+	if _tech_ui != null and _tech_ui.has_method("open_tab"):
+		_tech_ui.open_tab(6)               # TAB_BUILD
+
+# Глобус и панель поворота переезжают ИЗ HUD в контейнер вкладки СТРОЙКА. Делаем это один
+# раз, когда гараж уже собран: до первого открытия его просто нет.
+var _build_widgets_moved: bool = false
+
+func _move_build_widgets() -> void:
+	if _build_widgets_moved or _tech_ui == null or not _tech_ui.has_method("build_tab_container"):
+		return
+	var host: Control = _tech_ui.build_tab_container()
+	if host == null:
+		return
+	for w in [_rotate_panel, _block_globe]:
+		if w != null and is_instance_valid(w):
+			w.get_parent().remove_child(w)
+			host.add_child(w)
+			(w as Control).visible = true
+	_build_widgets_moved = true
 
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
@@ -1013,6 +1038,12 @@ func _on_tech_ui_visibility() -> void:
 			focused.release_focus()
 	if open:
 		Q.report("garage_opened", 1)   # шаг обучения «зайти в гараж»
+	# Гараж закрыли — выходим из стройки: пока он открыт, машина остаётся левитировать,
+	# на какой бы вкладке игрок ни находился (так и просили).
+	if not open:
+		var v: Node = _menu_vehicle_or_current()
+		if v != null and ("Building" in v) and v.Building and v.has_method("_on_movement_pressed"):
+			v._on_movement_pressed()
 	_set_game_controls_hidden(open)
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).
@@ -1070,8 +1101,10 @@ func _collect_game_controls() -> void:
 		var node: Node = get_node_or_null(n)
 		if node:
 			_game_controls.append(node)
-	# _menu_panel НЕ в общем списке: его видимость — это _menu_open. Скопом выставленный
-	# visible=true вернул бы уже закрытую панель прозрачной, но ловящей тапы.
+	# _drawer НЕ в общем списке: его видимость — это _drawer_open. Скопом выставленный
+	# visible=true вернул бы уже закрытый ящик, ловящий тапы за краем.
+	if _handle:
+		_game_controls.append(_handle)
 	if _menu_btn:
 		_game_controls.append(_menu_btn)
 	if _rotate_panel:
@@ -1086,7 +1119,7 @@ var _controls_hidden: bool = false
 func _set_game_controls_hidden(hidden: bool) -> void:
 	_controls_hidden = hidden
 	if hidden:
-		_set_menu(false)               # под инвентарём меню закрываем, а не просто прячем
+		_set_drawer(false)             # под инвентарём ящик закрываем, а не просто прячем
 	for n in _game_controls:
 		if is_instance_valid(n):
 			n.visible = not hidden
@@ -1194,8 +1227,6 @@ func _on_movement_pressed() -> void:
 	$Attack.visible = true
 	$Take.visible = false
 	$TakeOff.visible = false
-	if _rotate_panel: _rotate_panel.visible = false
-	if _block_globe: _block_globe.visible = false
 	%Joystick_movement.visible=true
 	_set_mode_label("BUILD", Color(1.0, 0.7, 0.25))   # едем → кнопка ведёт в стройку
 
@@ -1203,12 +1234,11 @@ func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
 	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
-	if _rotate_panel: _rotate_panel.visible = true
 	if _block_globe:
-		_block_globe.visible = true
 		_block_globe.refresh()      # инвентарь мог измениться с прошлого раза в стройке
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
 	_set_mode_label("MOVE", Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
+	_open_build_tab.call_deferred()    # стройка живёт в гараже: открываем его на своей вкладке
 
 func _on_take_pressed() -> void:
 	if current_vehicle.block_map_node.get_block(current_vehicle.BuildingBlock["x"],current_vehicle.BuildingBlock["y"],current_vehicle.BuildingBlock["z"])!=0:
