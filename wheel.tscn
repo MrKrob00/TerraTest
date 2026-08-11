@@ -226,7 +226,7 @@ skeleton = NodePath("")
 
 [node name="wheel" type="MeshInstance3D" parent="Wheel_module_medium" unique_id=598945164]
 unique_name_in_owner = true
-transform = Transform3D(3.5762787e-07, -0.99999994, -7.5497894e-08, -0.99999994, -3.5762787e-07, -7.549792e-08, 7.5497894e-08, 7.549792e-08, -1, 0.38479266, 0.5006033, 0)
+transform = Transform3D(-4.3711385e-08, 0.99999994, 0, -0.99999994, -4.3711385e-08, 0, 0, 0, 1, 0.38479266, 0.5006033, 0)
 mesh = SubResource("ArrayMesh_w0tbm")
 skeleton = NodePath("")
 
