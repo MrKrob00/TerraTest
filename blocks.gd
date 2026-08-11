@@ -39,6 +39,7 @@ func _init_contacts() -> void:
 		G.Block.WHEEL: ["left", "right"],    # колесо цепляется слева и справа; постройка сама
 		#                                      разворачивает его по стороне (см. vehicle_body_3d)
 		G.Block.DRILL: ["back"],             # бур: контакт только сзади (ставится на морду, буром вперёд)
+		G.Block.SMALL_DRILL: ["back"],
 		# Варианты колёс: обычные крепятся слева/справа (как WHEEL); ВЕРХНЕЕ — сверху.
 		G.Block.SMALL_WHEEL: ["left", "right"],
 		G.Block.BIG_WHEEL:   ["left", "right"],
@@ -199,8 +200,10 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 			for dz in [-1, 0]:
 				cells2.append(Vector3i(x + dx, y, z + dz))
 		return cells2
-	if block == G.Block.BLOCK2:
+	if block == G.Block.BLOCK2 or block == G.Block.WEDGE2:
 		return [Vector3i(x - 1, y, z), Vector3i(x, y, z)]   # 2×1×1
+	if block == G.Block.BLOCK3:
+		return [Vector3i(x - 1, y, z), Vector3i(x, y, z), Vector3i(x + 1, y, z)]   # 3×1×1
 	return [Vector3i(x, y, z)]
 
 # Можно ли поставить block с якорем (x,y,z): все клетки footprint в границах и пусты.

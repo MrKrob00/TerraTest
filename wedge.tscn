@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://wedgeblk1aaa"]
+
+[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://block.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_mesh"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_s"]
+
+[node name="Wedge" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+block = 27
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_s")
+
+[node name="Block" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_mesh")
