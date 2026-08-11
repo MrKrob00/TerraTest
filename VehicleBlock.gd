@@ -29,6 +29,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.BELT_CROSS: 40,
 	G.Block.ROT_SUPPORT: 70,
 	G.Block.STORAGE:    90,
+	G.Block.AUTO_MINER: 110,
 }
 const DEFAULT_HP := 50
 
@@ -47,6 +48,7 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.BELT_CROSS: 10.0,
 	G.Block.ROT_SUPPORT: 20.0,
 	G.Block.STORAGE:    26.0,
+	G.Block.AUTO_MINER: 40.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
 	G.Block.INTAKE:    12.0,
