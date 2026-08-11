@@ -101,6 +101,9 @@ const BLOCK_META := {
 	Block.ARMOR:       {"f": "start", "g": 2, "rp": 15},
 	Block.SMALL_DRILL: {"f": "start", "g": 1, "rp": 8},
 	Block.BELT_SPLIT:  {"f": "start", "g": 2, "rp": 15},
+	Block.BELT_CROSS:  {"f": "start", "g": 3, "rp": 20},
+	Block.ROT_SUPPORT: {"f": "start", "g": 3, "rp": 20},   # тир выше обычной опоры
+	Block.STORAGE:     {"f": "start", "g": 3, "rp": 25},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -121,6 +124,9 @@ const TECH_PARENT := {
 	Block.BLOCK3: Block.BLOCK2,     Block.WEDGE: Block.BLOCK,
 	Block.WEDGE2: Block.WEDGE,      Block.ARMOR: Block.BLOCK,
 	Block.SMALL_DRILL: Block.DRILL, Block.BELT_SPLIT: Block.BELT,
+	Block.BELT_CROSS: Block.BELT_SPLIT,
+	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
+	Block.STORAGE: Block.INTAKE,
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -447,6 +453,9 @@ enum Block {
 	ARMOR = 29,         # защитная пластина: то же место, втрое больше hp
 	SMALL_DRILL = 30,   # малый бур: слабее и с меньшей зоной
 	BELT_SPLIT = 31,    # развилка конвейера: один вход, три выхода
+	BELT_CROSS = 32,    # перекрёсток: пропускает по очереди север↔юг и запад↔восток
+	ROT_SUPPORT = 33,   # вращающаяся опора: якорь + разворот машины джойстиком
+	STORAGE = 34,       # склад: один тип ресурса, до 20 штук
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -478,7 +487,10 @@ enum Block {
 @onready var wedge2_scene: PackedScene = preload("res://wedge2.tscn")
 @onready var armor_scene: PackedScene = preload("res://armor.tscn")
 @onready var small_drill_scene: PackedScene = preload("res://small_drill.tscn")
-@onready var belt_split_scene: PackedScene = preload("res://belt_split.tscn")  # ракетница: снаряд с AOE-взрывом
+@onready var belt_split_scene: PackedScene = preload("res://belt_split.tscn")
+@onready var belt_cross_scene: PackedScene = preload("res://belt_cross.tscn")
+@onready var rot_support_scene: PackedScene = preload("res://rot_support.tscn")
+@onready var storage_scene: PackedScene = preload("res://storage.tscn")  # ракетница: снаряд с AOE-взрывом
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -493,9 +505,10 @@ const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL],
 	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE, Block.WEDGE2, Block.ARMOR,
-		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL, Block.SUPPORT],
-	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.PROCESSOR,
-		Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
+		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
+		Block.SUPPORT, Block.ROT_SUPPORT],
+	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
+		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -531,6 +544,9 @@ func get_scene(block: Block) -> PackedScene:
 		Block.ARMOR: return armor_scene
 		Block.SMALL_DRILL: return small_drill_scene
 		Block.BELT_SPLIT: return belt_split_scene
+		Block.BELT_CROSS: return belt_cross_scene
+		Block.ROT_SUPPORT: return rot_support_scene
+		Block.STORAGE: return storage_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
