@@ -104,6 +104,7 @@ const BLOCK_META := {
 	Block.BELT_CROSS:  {"f": "start", "g": 3, "rp": 20},
 	Block.ROT_SUPPORT: {"f": "start", "g": 3, "rp": 20},   # тир выше обычной опоры
 	Block.STORAGE:     {"f": "start", "g": 3, "rp": 25},
+	Block.AUTO_MINER:  {"f": "start", "g": 4, "rp": 35},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -127,6 +128,7 @@ const TECH_PARENT := {
 	Block.BELT_CROSS: Block.BELT_SPLIT,
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
 	Block.STORAGE: Block.INTAKE,
+	Block.AUTO_MINER: Block.PROCESSOR,
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -456,6 +458,7 @@ enum Block {
 	BELT_CROSS = 32,    # перекрёсток: пропускает по очереди север↔юг и запад↔восток
 	ROT_SUPPORT = 33,   # вращающаяся опора: якорь + разворот машины джойстиком
 	STORAGE = 34,       # склад: один тип ресурса, до 20 штук
+	AUTO_MINER = 35,    # авто-шахтёр: стационарный, ставится на жилу
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -490,14 +493,16 @@ enum Block {
 @onready var belt_split_scene: PackedScene = preload("res://belt_split.tscn")
 @onready var belt_cross_scene: PackedScene = preload("res://belt_cross.tscn")
 @onready var rot_support_scene: PackedScene = preload("res://rot_support.tscn")
-@onready var storage_scene: PackedScene = preload("res://storage.tscn")  # ракетница: снаряд с AOE-взрывом
+@onready var storage_scene: PackedScene = preload("res://storage.tscn")
+@onready var auto_miner_scene: PackedScene = preload("res://auto_miner.tscn")  # ракетница: снаряд с AOE-взрывом
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
 # ни в одну из категорий ниже.
 # Стационарные блоки (базы): при постановке на ЗЕМЛЮ рождают якорную структуру, на
-# мобильную машину не ставятся (см. docs/STATIONARY_BLOCKS_DESIGN.md). Пока — только продавец.
-const STATIONARY_BLOCKS := [Block.SELLER]
+# мобильную машину не ставятся (см. docs/STATIONARY_BLOCKS_DESIGN.md): продавец и
+# авто-шахтёр — последний вдобавок требует жилы под собой.
+const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER]
 func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
@@ -508,7 +513,8 @@ const BLOCK_CATEGORIES := {
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT],
 	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
-		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN],
+		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
+		Block.AUTO_MINER],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -547,6 +553,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.BELT_CROSS: return belt_cross_scene
 		Block.ROT_SUPPORT: return rot_support_scene
 		Block.STORAGE: return storage_scene
+		Block.AUTO_MINER: return auto_miner_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
