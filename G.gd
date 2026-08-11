@@ -105,6 +105,7 @@ const BLOCK_META := {
 	Block.ROT_SUPPORT: {"f": "start", "g": 3, "rp": 20},   # тир выше обычной опоры
 	Block.STORAGE:     {"f": "start", "g": 3, "rp": 25},
 	Block.AUTO_MINER:  {"f": "start", "g": 4, "rp": 35},
+	Block.FABRICATOR:  {"f": "start", "g": 5, "rp": 40},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -129,6 +130,7 @@ const TECH_PARENT := {
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
 	Block.STORAGE: Block.INTAKE,
 	Block.AUTO_MINER: Block.PROCESSOR,
+	Block.FABRICATOR: Block.PROCESSOR,
 }
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -459,6 +461,7 @@ enum Block {
 	ROT_SUPPORT = 33,   # вращающаяся опора: якорь + разворот машины джойстиком
 	STORAGE = 34,       # склад: один тип ресурса, до 20 штук
 	AUTO_MINER = 35,    # авто-шахтёр: стационарный, ставится на жилу
+	FABRICATOR = 36,    # фабрикатор 2³: два материала на входе, готовый блок на выходе
 }
 @onready var cabin_scene: PackedScene = preload("res://cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://wheel.tscn")
@@ -494,7 +497,8 @@ enum Block {
 @onready var belt_cross_scene: PackedScene = preload("res://belt_cross.tscn")
 @onready var rot_support_scene: PackedScene = preload("res://rot_support.tscn")
 @onready var storage_scene: PackedScene = preload("res://storage.tscn")
-@onready var auto_miner_scene: PackedScene = preload("res://auto_miner.tscn")  # ракетница: снаряд с AOE-взрывом
+@onready var auto_miner_scene: PackedScene = preload("res://auto_miner.tscn")
+@onready var fabricator_scene: PackedScene = preload("res://fabricator.tscn")  # ракетница: снаряд с AOE-взрывом
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -514,7 +518,7 @@ const BLOCK_CATEGORIES := {
 		Block.SUPPORT, Block.ROT_SUPPORT],
 	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
-		Block.AUTO_MINER],
+		Block.AUTO_MINER, Block.FABRICATOR],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -554,6 +558,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.ROT_SUPPORT: return rot_support_scene
 		Block.STORAGE: return storage_scene
 		Block.AUTO_MINER: return auto_miner_scene
+		Block.FABRICATOR: return fabricator_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
