@@ -26,6 +26,9 @@ const BLOCK_HP: Dictionary = {
 	G.Block.ARMOR:     240,      # защитная пластина: держит втрое больше блока
 	G.Block.SMALL_DRILL: 50,
 	G.Block.BELT_SPLIT: 40,
+	G.Block.BELT_CROSS: 40,
+	G.Block.ROT_SUPPORT: 70,
+	G.Block.STORAGE:    90,
 }
 const DEFAULT_HP := 50
 
@@ -41,6 +44,9 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.ARMOR:     34.0,     # броня тяжёлая: за живучесть платим ходовыми
 	G.Block.SMALL_DRILL: 14.0,
 	G.Block.BELT_SPLIT:  9.0,
+	G.Block.BELT_CROSS: 10.0,
+	G.Block.ROT_SUPPORT: 20.0,
+	G.Block.STORAGE:    26.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
 	G.Block.INTAKE:    12.0,

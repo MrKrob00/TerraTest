@@ -252,9 +252,34 @@ func has_support() -> bool:
 	if block_map_node == null:
 		return false
 	for b in block_map_node.get_children():
-		if "block" in b and int(b.block) == G.Block.SUPPORT:
+		if "block" in b and int(b.block) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT]:
 			return true
 	return false
+
+# ВРАЩАЮЩАЯСЯ ОПОРА: тир выше обычной. На якоре ею можно доворачивать машину джойстиком
+# движения — база перестаёт быть намертво приколоченной, и продавца/бур можно навести
+# куда надо, не снимая якорь.
+const ROT_SUPPORT_SPEED: float = 1.2      # рад/с при полностью отклонённом джойстике
+
+func has_rot_support() -> bool:
+	if block_map_node == null:
+		return false
+	for b in block_map_node.get_children():
+		if "block" in b and int(b.block) == G.Block.ROT_SUPPORT:
+			return true
+	return false
+
+# Разворот на якоре. Крутим transform напрямую, а не крутящим моментом: тело заморожено
+# якорем, физика его вращать не станет.
+func _rot_support_tick(delta: float) -> void:
+	if not anchored or is_station or not has_rot_support():
+		return
+	if camera_controller == null or camera_controller.joystick_move == null:
+		return
+	var joy: Vector2 = camera_controller.joystick_move.get_joystick_dir()
+	if absf(joy.x) < 0.15:
+		return
+	global_rotation.y -= joy.x * ROT_SUPPORT_SPEED * delta
 
 # Можно ли этой машине вставать на якорь: она база ИЛИ на ней есть фикс-опора.
 func can_anchor() -> bool:
@@ -585,6 +610,7 @@ func _physics_process(delta: float) -> void:
 	# Энергия тикает ВСЕГДА (даже у неактивной машины): база на якоре копит от солнца.
 	_energy_tick(delta)
 	_cabin_watch(delta)
+	_rot_support_tick(delta)
 	# Защита работает и у НЕактивной машины: стоит и отстреливается от врагов рядом.
 	if defense_mode:
 		_defense_tick(delta)
