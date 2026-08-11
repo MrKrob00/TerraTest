@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://armorplate1a"]
+[gd_scene format=3 uid="uid://rmorplate1a"]
 
 [ext_resource type="Script" uid="uid://du14au5yglscl" path="res://block.gd" id="1_scr"]
 [ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_mesh"]
