@@ -8,13 +8,13 @@ extends Control
 #                 Все значения живые: строки собираются кодом из MachineBody, а не
 #                 лежат в сцене, где часть чисел осталась картинкой со скриншота.
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH, TAB_BUILD }
 
 @onready var _grid:   HFlowContainer = %Grid
 @onready var _search: LineEdit      = %Search
 # ВАЖНО: индекс в массиве = значение enum (bind в _ready) — TabTech последним.
 @onready var _tab_buttons: Array = [
-	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings, %TabTech
+	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings, %TabTech, %TabBuild
 ]
 
 var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
@@ -65,6 +65,7 @@ func _ready() -> void:
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
+	_build_build_panel()
 	_build_stats_panel()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
@@ -552,15 +553,21 @@ func _select_tab(idx: int) -> void:
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
 	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
 	var is_tech: bool = _tab == TAB_TECH
+	var is_build: bool = _tab == TAB_BUILD
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
 	if grid_scroll:
-		grid_scroll.visible = not (extra_list or is_tech)
+		grid_scroll.visible = not (extra_list or is_tech or is_build)
 	if _extra_scroll:
 		_extra_scroll.visible = extra_list
 	if _tech_root:
 		_tech_root.visible = is_tech
+	if _build_root:
+		_build_root.visible = is_build
 	if _search:
-		_search.visible = not (extra_list or is_tech)
+		_search.visible = not (extra_list or is_tech or is_build)
+	_widen_left_panel(is_tech)
+	if is_build:
+		return                       # содержимое вкладки — виджеты HUD, строить нечего
 	if extra_list:
 		if _tab == TAB_MUSIC:
 			_build_music_tab()
@@ -572,6 +579,32 @@ func _select_tab(idx: int) -> void:
 		return
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
+
+# ── Вкладка СТРОЙКА ───────────────────────────────────────────────────────────
+# Сама панель пустая: HUD переносит сюда свои строительные виджеты (глобус выбора блока,
+# кнопки поворота) при первом открытии гаража. Так они живут в одном месте, а не половина
+# на экране, половина в меню.
+var _build_root: HBoxContainer = null
+
+func _build_build_panel() -> void:
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
+		return
+	_build_root = HBoxContainer.new()
+	_build_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_build_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_build_root.add_theme_constant_override("separation", 14)
+	_build_root.alignment = BoxContainer.ALIGNMENT_CENTER
+	_build_root.visible = false
+	body.add_child(_build_root)
+
+## Куда HUD кладёт строительные виджеты. Может вернуться null, если сцена ещё не собрана.
+func build_tab_container() -> Control:
+	return _build_root
+
+## Открыть гараж сразу на нужной вкладке (HUD зовёт при входе в режим стройки).
+func open_tab(idx: int) -> void:
+	_select_tab(idx)
 
 # ── Цели для обучающего пальца ────────────────────────────────────────────────
 # Наставник (tutorial_director.gd) не лазит по внутренностям гаража — спрашивает узел
@@ -596,6 +629,16 @@ func tutorial_target(key: String) -> Control:
 				return _grid.get_child(0) as Control
 			return null
 	return null
+
+# ДРЕВО занимает всю ширину до панели характеристик: граф широкий, а в колонке 430 px от
+# него видно две ветки. Пустой распорке Center на это время расширяться незачем.
+func _widen_left_panel(wide: bool) -> void:
+	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
+	var centre: Control = get_node_or_null("Root/Main/Center") as Control
+	if left != null:
+		left.size_flags_horizontal = Control.SIZE_EXPAND_FILL if wide else Control.SIZE_FILL
+	if centre != null:
+		centre.visible = not wide
 
 # ── Поиск активной машины ─────────────────────────────────────────────────────
 func _get_vehicle() -> Node:
