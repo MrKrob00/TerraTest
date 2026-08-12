@@ -290,9 +290,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var instance: Node3D = scene.instantiate()
 	add_child(instance)
 
-	# ── Подключаем сигнал уничтожения ─────────────────────────────
-	if instance.has_signal("destroyed"):
-		instance.destroyed.connect(_on_block_destroyed.bind(x, y, z))
+	attach_block_signals(instance, x, y, z)
 
 	var key := "%d,%d,%d" % [x, y, z]
 	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
@@ -323,6 +321,20 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	# лишь из _spawn_all: первая машина / загрузка / смена сборки). При ручной постановке
 	# блока его больше не играем (см. vehicle_body_3d._on_take_pressed).
 	BlockFX.play(instance, false)
+
+## Подписать блок на СВОЁ уничтожение: карта обязана очистить его клетки, иначе на месте
+## погибшего блока навсегда остаётся «занято», и новый туда уже не поставить (can_place
+## смотрит именно в карту).
+##
+## Зовут ОБА пути появления блока — и спавн сборки, и постановка игроком
+## (vehicle_body_3d._on_take_pressed). Раньше подписка была вписана прямо в spawn_block, и
+## поставленные игроком блоки её не получали: сгорел такой блок — клетка занята навсегда.
+func attach_block_signals(instance: Node, x: int, y: int, z: int) -> void:
+	if not instance.has_signal("destroyed"):
+		return
+	var cb: Callable = _on_block_destroyed.bind(x, y, z)
+	if not instance.destroyed.is_connected(cb):
+		instance.destroyed.connect(cb)
 
 # ── Обработчик: блок уничтожен ────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:

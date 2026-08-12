@@ -482,7 +482,8 @@ func disassemble() -> void:
 				block_map_node.remove_block(cell.x, cell.y, cell.z)
 			for col in get_children():
 				if col is CollisionShape3D and col.is_in_group("block_collision") \
-						and (col.position == n3.position or col.position == n3.position + Vector3(-0.5, 0.5, -0.5)):
+						and (col.position == n3.position \
+						or col.position == n3.position + BIG_BLOCK_COL_OFFSET):
 					col.queue_free()
 			n3.reparent(objects)
 	Wheels.clear()
@@ -509,6 +510,12 @@ func connect_block_signals(block: Node) -> void:
 	if block.has_signal("destroyed"):
 		block.destroyed.connect(_on_block_destroyed)
 
+## Сдвиг коллизии у блоков 2×2×2 относительно позиции самого блока: коллизия у них
+## описывает куб 2×2×2 и центрируется иначе. Держим одним числом — по нему коллизию и
+## ИЩУТ при разборке и при гибели блока, и разъехавшиеся копии этого сдвига означали бы
+## коллизию, оставшуюся на корпусе.
+const BIG_BLOCK_COL_OFFSET := Vector3(-0.5, 0.5, -0.5)
+
 func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	
 	var keys_to_remove: Array = []
@@ -518,8 +525,12 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
 		if is_instance_valid(collision_shape):
-			# Якщо ця колізія належить знищеному блоку
-			if collision_shape.position == destroyed_block.position:
+			# Якщо ця колізія належить знищеному блоку.
+			# Второй вариант — про блоки 2×2×2 (процессор, продавец): их коллизия ставится
+			# со сдвигом (см. постановку блока), и по точному совпадению позиции она не
+			# находилась — большой блок погибал, а его коллизия оставалась висеть.
+			if collision_shape.position == destroyed_block.position \
+					or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET:
 				
 				
 				# 1. Вимикаємо її у фізичному рушії (стоп колізія)
@@ -1415,13 +1426,20 @@ func _on_take_pressed() -> void:
 		var collision: CollisionShape3D = instance.get_child(0).duplicate()
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		if collision.shape.size == Vector3(2,2,2):
-			collision.position += Vector3(-0.5,0.5,-0.5)
+			collision.position += BIG_BLOCK_COL_OFFSET
 		add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
 		instance.reparent($blocks, false)
 		instance.scale = Vector3.ONE
 		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
 		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
+		# Подписки на уничтожение — ОБЯЗАТЕЛЬНО обе, иначе поставленный игроком блок после
+		# гибели оставляет после себя и занятую клетку карты (новый блок туда не встанет),
+		# и висящую в воздухе коллизию. Блоки из стартовой сборки их получают в spawn_block,
+		# а этот путь про них забывал.
+		block_map_node.attach_block_signals(instance, int(BuildingBlock["x"]),
+				int(BuildingBlock["y"]), int(BuildingBlock["z"]))
+		connect_block_signals(instance)
 		var placed_bt := int(instance.block)
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
