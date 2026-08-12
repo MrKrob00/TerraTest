@@ -649,18 +649,29 @@ func _update_hand_panel() -> void:
 	if _hand_panel == null:
 		return
 	var v: Node = _menu_vehicle_or_current()
-	var show_it: bool = (not _controls_hidden) and v != null and ("block_take" in v) and v.block_take \
+	# Панель гасил общий признак «открыт гараж» — но стройка ИДЁТ с открытым гаражом: взяв
+	# блок, tech_ui не закрывается, а переключается на вкладку СТРОЙКА (см. _take_into_hand).
+	# Поэтому кнопок «в инвентарь» и «в мир» в стройке не было видно вообще никогда — ровно
+	# там, где они и нужны. Гараж на вкладке СТРОЙКА равносилен закрытому: мир кликабелен,
+	# левая панель убрана.
+	var overlay_ok: bool = (not _controls_hidden) or _build_tab_open()
+	var show_it: bool = overlay_ok and v != null and ("block_take" in v) and v.block_take \
 			and ("Building" in v) and v.Building
 	if _hand_panel.visible != show_it:
 		_hand_panel.visible = show_it
+		if show_it:
+			# Гараж добавлен в HUD позже — он рисуется поверх. Поднимаем панель над ним,
+			# как это уже делают глобус и кнопки поворота.
+			move_child(_hand_panel, get_child_count() - 1)
 	if show_it:
-		# Ставим НАД кнопкой Take/Place (справа): все действия «с блоком в руке» — рядом, а не
-		# посреди экрана. Take: anchor right-center, offset_top=49 → её верх на screen.y/2+49,
-		# центр по X на screen.x-98 (offset_left -198 / right 2). Размер знаем после раскладки.
+		# Слева, НАД кнопками поворота: всё, что делается с блоком в руке, — одной колонкой.
+		# Раньше панель липла к кнопке Take справа, но в стройке Take прячет гараж, а правый
+		# край занимает его же панель — кнопки оказывались под ней.
 		var screen: Vector2 = get_viewport().get_visible_rect().size
-		_hand_panel.position = Vector2(
-				screen.x - 98.0 - _hand_panel.size.x * 0.5,
-				screen.y * 0.5 + 49.0 - _hand_panel.size.y - 12.0)
+		var rot_top: float = screen.y * 0.5 - 70.0
+		if _rotate_panel != null and is_instance_valid(_rotate_panel):
+			rot_top = _rotate_panel.position.y
+		_hand_panel.position = Vector2(16.0, rot_top - 12.0 - _hand_panel.size.y)
 
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
@@ -1045,9 +1056,12 @@ func _open_build_tab() -> void:
 
 # Глобус и кнопки поворота видны РОВНО тогда, когда гараж открыт на вкладке СТРОЙКА.
 # Никуда они не переезжали: лежат поверх мира там же, где и раньше.
-func _update_build_widgets() -> void:
-	var on: bool = _tech_ui != null and is_instance_valid(_tech_ui) and _tech_ui.visible \
+func _build_tab_open() -> bool:
+	return _tech_ui != null and is_instance_valid(_tech_ui) and _tech_ui.visible \
 			and _tech_ui.has_method("current_tab") and int(_tech_ui.current_tab()) == TECH_TAB_BUILD
+
+func _update_build_widgets() -> void:
+	var on: bool = _build_tab_open()
 	if _rotate_panel:
 		_rotate_panel.visible = on
 	if _block_globe:
