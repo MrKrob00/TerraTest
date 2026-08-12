@@ -210,8 +210,7 @@ func _rebuild_grid(filter: String) -> void:
 	if _tab == TAB_BUILDS:
 		_build_builds_tab()
 		return
-	for c in _grid.get_children():
-		c.queue_free()
+	_clear_children(_grid)
 	var f := filter.strip_edges().to_lower()
 	var shown := 0
 	for it in _items:
@@ -273,8 +272,7 @@ func _make_slot(it: Dictionary) -> Control:
 
 # ── Вкладка СБОРКИ (сохранённые машины) ───────────────────────────────────────
 func _build_builds_tab() -> void:
-	for c in _grid.get_children():
-		c.queue_free()
+	_clear_children(_grid)
 	_grid.add_child(_make_action_slot("＋ Save\ncurrent", _save_current_build))
 	for build_name in G.saved_builds:
 		_grid.add_child(_make_build_slot(str(build_name)))
@@ -566,6 +564,7 @@ func _select_tab(idx: int) -> void:
 		_search.visible = not (extra_list or is_tech or is_build)
 	_widen_left_panel(is_tech)
 	_show_left_panel(not is_build)
+	_set_world_clickthrough(is_build)
 	tab_changed.emit(_tab)
 	if is_build:
 		return                       # своего содержимого у вкладки нет
@@ -623,6 +622,17 @@ func tutorial_target(key: String) -> Control:
 # него видно две ветки. Пустой распорке Center на это время расширяться незачем.
 # Вкладка СТРОЙКА прячет левую панель целиком: строить надо глядя на машину, а не на сетку
 # инвентаря. Сверху остаются вкладки, справа — вес и характеристики.
+# На вкладке СТРОЙКА тапы должны доходить до мира: игрок ставит и снимает блоки, глядя на
+# машину. Гасим перехват у КОРНЕЙ (сам гараж и его контейнеры) — дети со своим mouse_filter
+# (вкладки сверху, панель справа) кликаются по-прежнему, IGNORE отключает только сам узел.
+func _set_world_clickthrough(on: bool) -> void:
+	var mode: int = Control.MOUSE_FILTER_IGNORE if on else Control.MOUSE_FILTER_STOP
+	mouse_filter = mode
+	for path in ["Root", "Root/Main"]:
+		var n: Control = get_node_or_null(path) as Control
+		if n != null:
+			n.mouse_filter = mode
+
 func _show_left_panel(show: bool) -> void:
 	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
 	if left != null:
@@ -853,7 +863,15 @@ func _music() -> Node:
 	return get_node_or_null("/root/Music")
 
 func _clear_extra() -> void:
-	for c in _extra_vb.get_children():
+	_clear_children(_extra_vb)
+
+# Убираем детей ИЗ ДЕРЕВА сразу, а не одним queue_free: тот удаляет в конце кадра, и вторая
+# пересборка за тот же кадр видела бы старое содержимое и дописывала к нему новое.
+static func _clear_children(host: Node) -> void:
+	if host == null:
+		return
+	for c in host.get_children():
+		host.remove_child(c)
 		c.queue_free()
 
 func _extra_header(text: String) -> void:
