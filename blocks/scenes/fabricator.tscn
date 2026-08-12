@@ -1,0 +1,25 @@
+[gd_scene format=3 uid="uid://fabricator1a"]
+
+[ext_resource type="Script" path="res://blocks/scripts/fabricator.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_mesh"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_s"]
+size = Vector3(2, 2, 2)
+
+[node name="fabricator" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+block = 36
+input_faces = 1
+output_faces = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_s")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+transform = Transform3D(2, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0)
+mesh = ExtResource("2_mesh")
+
+[node name="item_slot" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.2, 0)

@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://bih7xqbn7fn2p"]
+
+[ext_resource type="Script" uid="uid://7ljwaretrs8c" path="res://blocks/scripts/belt.gd" id="1_susb0"]
+[ext_resource type="ArrayMesh" uid="uid://d0dr1622m1m6l" path="res://objects/GSO_Cube_010.res" id="2_rfspg"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rgkw3"]
+
+[node name="belt" type="RigidBody3D" unique_id=442928697]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_susb0")
+block = 7
+input_faces = 2
+output_faces = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1181948980]
+shape = SubResource("BoxShape3D_rgkw3")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=18945696]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.082898885, 0)
+mesh = ExtResource("2_rfspg")
+
+[node name="item_slot" type="Marker3D" parent="." unique_id=1395156610]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)

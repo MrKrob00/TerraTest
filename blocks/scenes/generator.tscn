@@ -1,0 +1,31 @@
+[gd_scene format=3 uid="uid://b7bgcbc27hc6g"]
+
+[ext_resource type="Script" path="res://blocks/scripts/generator.gd" id="1_s"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_a"]
+size = Vector3(1, 1, 1)
+
+[sub_resource type="StandardMaterial3D" id="Mat_a"]
+albedo_color = Color(0.85, 0.5, 0.15, 1)
+roughness = 0.55
+
+[sub_resource type="BoxMesh" id="BoxMesh_a"]
+material = SubResource("Mat_a")
+size = Vector3(1, 1, 1)
+
+[node name="Generator" type="RigidBody3D" unique_id=1382513556]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_s")
+block = 14
+input_faces = 31
+output_faces = 0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1188078453]
+shape = SubResource("BoxShape3D_a")
+
+[node name="Mesh" type="MeshInstance3D" parent="." unique_id=683978112]
+mesh = SubResource("BoxMesh_a")
+
+[node name="item_slot" type="Marker3D" parent="." unique_id=1335144384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
