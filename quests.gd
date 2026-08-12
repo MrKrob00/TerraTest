@@ -12,6 +12,7 @@ extends CanvasLayer
 var _tracker_top0: float = 0.0        # исходное положение трекера (чтобы вернуть)
 var _tracker_bot0: float = 0.0
 var _list_top0: float = 0.0           # то же для панели списка — она едет за трекером
+var _inventory_open: bool = false
 
 func _ready() -> void:
 	add_to_group("quests")            # HUD через группу двигает трекер и прячет его в гараже
@@ -19,20 +20,96 @@ func _ready() -> void:
 	_tracker_bot0 = _tracker.offset_bottom
 	_list_top0 = _list_panel.offset_top
 	_tracker.pressed.connect(_toggle_list)
-	%Close.pressed.connect(func(): _list_panel.visible = false)
+	%Close.pressed.connect(_close_list)
+	# Оба окна плавающие. Трекер таскаем за него самого (он же и кнопка — тап и
+	# перетаскивание различаем по пройденному пути), список — ТОЛЬКО за шапку: внутри него
+	# скролл, и если ловить перетаскивание всей панелью, список перестанет прокручиваться
+	# пальцем.
+	_tracker.gui_input.connect(_drag_input.bind(_tracker, TRACKER_ID))
+	%Header.gui_input.connect(_drag_input.bind(_list_panel, LIST_ID))
+	# Отложенно: сохранённую позицию прижимаем к экрану по РАЗМЕРУ окна, а его контейнеры
+	# досчитывают только после первой раскладки.
+	_restore_pos.call_deferred(_tracker, TRACKER_ID)
+	_restore_pos.call_deferred(_list_panel, LIST_ID)
+	get_viewport().size_changed.connect(_keep_on_screen)
 	Q.changed.connect(_refresh)       # Q — автолоад, всегда готов к моменту нашего _ready
 	_refresh()
+
+# ── Плавающие окна: перетаскивание ────────────────────────────────────────────
+const TRACKER_ID := "quest_tracker"
+const LIST_ID := "quest_list"
+const DRAG_SLOP: float = 8.0          # дальше этого палец уже тащит, а не нажимает
+const SCREEN_PAD: float = 8.0         # окно не заходит за край экрана дальше отступа
+
+var _drag_win: Control = null         # что тащим прямо сейчас
+var _drag_id: String = ""
+var _drag_from: Vector2 = Vector2.ZERO   # позиция окна в момент захвата
+var _drag_ptr: Vector2 = Vector2.ZERO    # где был палец в момент захвата
+var _dragged: bool = false            # тап уехал в перетаскивание — не считать нажатием
+var _moved: Dictionary = {}           # окна, которым игрок сам выбрал место
+
+func _drag_input(ev: InputEvent, win: Control, id: String) -> void:
+	if ev is InputEventMouseButton and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		if (ev as InputEventMouseButton).pressed:
+			_drag_win = win
+			_drag_id = id
+			_drag_from = win.position
+			_drag_ptr = win.get_global_mouse_position()
+			_dragged = false
+		elif _drag_win == win:
+			_drag_win = null
+			if _dragged:
+				G.set_window_pos(id, win.position)   # пишем в конфиг на отпускании, не на каждый кадр
+	elif ev is InputEventMouseMotion and _drag_win == win:
+		var moved: Vector2 = win.get_global_mouse_position() - _drag_ptr
+		if not _dragged and moved.length() < DRAG_SLOP:
+			return                    # дрожание пальца на тапе — это ещё не перетаскивание
+		_dragged = true
+		_moved[id] = true
+		win.position = _clamp_on_screen(win, _drag_from + moved)
+
+func _clamp_on_screen(win: Control, pos: Vector2) -> Vector2:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	# Окно шире экрана прижимаем к левому/верхнему краю, иначе clampf получил бы min > max.
+	return Vector2(
+		clampf(pos.x, SCREEN_PAD, maxf(SCREEN_PAD, vp.x - win.size.x - SCREEN_PAD)),
+		clampf(pos.y, SCREEN_PAD, maxf(SCREEN_PAD, vp.y - win.size.y - SCREEN_PAD)))
+
+func _restore_pos(win: Control, id: String) -> void:
+	var p: Variant = G.window_pos(id)
+	if p == null:
+		return
+	_moved[id] = true
+	win.position = _clamp_on_screen(win, p)
+
+# Поворот экрана или смена разрешения: то, что игрок оставил у правого края, иначе
+# оказалось бы за его пределами и вернуть окно было бы нечем.
+func _keep_on_screen() -> void:
+	for pair in [[_tracker, TRACKER_ID], [_list_panel, LIST_ID]]:
+		var win: Control = pair[0]
+		if _moved.has(pair[1]):
+			win.position = _clamp_on_screen(win, win.position)
 
 # HUD зовёт при открытии/закрытии инвентаря. Гараж — полноэкранный, и трекер поверх него
 # всё равно ничего не отслеживает: раньше его уводили вниз на 0.55 экрана, и он налезал на
 # нижнюю часть панели. Просто убираем на время инвентаря.
 func set_inventory_open(open: bool) -> void:
+	_inventory_open = open
 	_list_panel.visible = false
-	_tracker.visible = not open
+	_apply_visibility()
+
+# Трекер и список — одно и то же, показанное коротко и подробно. Вместе они только
+# загромождают экран и налезают друг на друга, когда игрок растащил их по своим местам:
+# открыт список — трекер прячется, закрыт — возвращается.
+func _apply_visibility() -> void:
+	_tracker.visible = not _inventory_open and not _list_panel.visible
 
 # HUD зовёт, когда появляется/пропадает радар: они оба живут в правом верхнем углу и
 # накладывались друг на друга. y = нижняя кромка занятой области (0 — угол свободен).
 func set_top_offset(y: float) -> void:
+	# Игрок сам положил окна куда хотел — радар их больше не двигает: это его место.
+	if _moved.has(TRACKER_ID) or _moved.has(LIST_ID):
+		return
 	var top: float = _tracker_top0 if y <= 0.0 else y
 	_tracker.offset_top = top
 	_tracker.offset_bottom = top + (_tracker_bot0 - _tracker_top0)
@@ -55,10 +132,20 @@ func tutorial_target(key: String) -> Control:
 	return null
 
 func _toggle_list() -> void:
+	# Трекер — кнопка, и Button шлёт pressed по отпусканию даже после того, как его утащили
+	# пальцем через полэкрана. Переезд нажатием не считаем.
+	if _dragged:
+		_dragged = false
+		return
 	_list_panel.visible = not _list_panel.visible
+	_apply_visibility()
 	if _list_panel.visible:
 		_rebuild_list()
 		Q.report("quests_opened", 1)      # шаг обучения «открыть список заданий»
+
+func _close_list() -> void:
+	_list_panel.visible = false
+	_apply_visibility()
 
 func _refresh() -> void:
 	_update_tracker()

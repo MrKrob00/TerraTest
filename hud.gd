@@ -847,19 +847,44 @@ func _has_radar(v) -> bool:
 # Рисуем нодой, а не текстурой: одна иконка на HUD не стоит атласа, а так она сама
 # подстраивается под размер кнопки и живёт в той же бирюзовой палитре, что и панели.
 class MenuIcon extends Control:
-	var open: bool = false
-
+	# РЮКЗАК, а не три полоски: кнопка ведёт в инвентарь, а «бургер» обещает выпадающее
+	# меню, которого давно нет. Рисуем контуром — как остальные значки HUD.
 	func _draw() -> void:
-		var c := size * 0.5
-		var w := minf(size.x, size.y) * 0.46          # полуширина полос
+		var c: Vector2 = size * 0.5
+		var s: float = minf(size.x, size.y)
 		var col := Color(0.85, 0.95, 0.97)
-		# Три полосы — «меню». Средняя короче: читается как список, а не как знак «равно».
-		for i in 3:
-			var y := c.y + (float(i) - 1.0) * w * 0.62
-			var half: float = w if i != 1 else w * 0.66
-			draw_line(Vector2(c.x - w, y), Vector2(c.x + half, y), col, 3.0)
-		# Уголок-точка справа: значок ведёт в гараж, а не раскрывает панель на месте.
-		draw_circle(Vector2(c.x + w + 6.0, c.y), 2.5, Color(0.45, 0.8, 0.85))
+		var accent := Color(0.45, 0.8, 0.85)
+		var w: float = maxf(2.0, s * 0.042)
+
+		var body_c := Vector2(c.x, c.y + 0.055 * s)
+		var body_sz := Vector2(0.60 * s, 0.62 * s)
+		var body_top: float = body_c.y - body_sz.y * 0.5
+		# Ручка-петля над корпусом: именно она отличает рюкзак от просто коробки.
+		draw_arc(Vector2(c.x, body_top), 0.115 * s, PI, TAU, 16, col, w, true)
+		draw_polyline(_round_rect(body_c, body_sz, 0.15 * s), col, w, true)
+		# Клапан поперёк верхней трети и пряжка на нём.
+		var fy: float = body_top + 0.20 * s
+		draw_line(Vector2(body_c.x - body_sz.x * 0.5, fy), Vector2(body_c.x + body_sz.x * 0.5, fy), col, w)
+		draw_polyline(_round_rect(Vector2(c.x, fy + 0.055 * s), Vector2(0.13 * s, 0.085 * s),
+				0.025 * s), accent, w * 0.8, true)
+		# Передний карман.
+		draw_polyline(_round_rect(Vector2(c.x, body_c.y + 0.17 * s), Vector2(0.34 * s, 0.16 * s),
+				0.04 * s), col, w * 0.8, true)
+
+	# Замкнутый контур скруглённого прямоугольника: четыре угловые дуги подряд.
+	func _round_rect(c: Vector2, sz: Vector2, r: float) -> PackedVector2Array:
+		var h: Vector2 = sz * 0.5
+		var rr: float = minf(r, minf(h.x, h.y))
+		# Углы обходим по часовой, начиная с правого нижнего; каждый — четверть окружности.
+		var corners := [Vector2(h.x - rr, h.y - rr), Vector2(-h.x + rr, h.y - rr),
+				Vector2(-h.x + rr, -h.y + rr), Vector2(h.x - rr, -h.y + rr)]
+		var pts := PackedVector2Array()
+		for k in corners.size():
+			for i in 7:
+				var a: float = PI * 0.5 * (float(k) + float(i) / 6.0)
+				pts.append(c + corners[k] + Vector2(cos(a), sin(a)) * rr)
+		pts.append(pts[0])
+		return pts
 
 var _menu_icon: MenuIcon = null
 
