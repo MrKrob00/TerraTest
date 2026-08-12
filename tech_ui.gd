@@ -65,7 +65,6 @@ func _ready() -> void:
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
-	_build_build_panel()
 	_build_stats_panel()
 	_build_extra_panel()
 	# Ширина сетки может измениться (поворот экрана, ресайз окна, ползунок размера UI) — тогда
@@ -523,7 +522,9 @@ func _take_into_hand(block_type: int) -> void:
 		return                                  # в руке уже что-то есть
 	G.block_inventory.erase(block_type)         # списываем один экземпляр
 	G.mark_progress_dirty()
-	visible = false                             # прячем UI — пора ставить блок на машину
+	# Переключаемся на СТРОЙКУ, а не закрываем гараж. Закрытие теперь выводит машину из
+	# режима постройки, а тот возвращает блок из руки в инвентарь — взять блок было нельзя.
+	_select_tab(TAB_BUILD)
 
 func _buy(block_type: int, price: int) -> void:
 	if G.money < price:
@@ -561,13 +562,13 @@ func _select_tab(idx: int) -> void:
 		_extra_scroll.visible = extra_list
 	if _tech_root:
 		_tech_root.visible = is_tech
-	if _build_root:
-		_build_root.visible = is_build
 	if _search:
 		_search.visible = not (extra_list or is_tech or is_build)
 	_widen_left_panel(is_tech)
+	_show_left_panel(not is_build)
+	tab_changed.emit(_tab)
 	if is_build:
-		return                       # содержимое вкладки — виджеты HUD, строить нечего
+		return                       # своего содержимого у вкладки нет
 	if extra_list:
 		if _tab == TAB_MUSIC:
 			_build_music_tab()
@@ -581,26 +582,14 @@ func _select_tab(idx: int) -> void:
 	_rebuild_grid(_search.text if _search else "")
 
 # ── Вкладка СТРОЙКА ───────────────────────────────────────────────────────────
-# Сама панель пустая: HUD переносит сюда свои строительные виджеты (глобус выбора блока,
-# кнопки поворота) при первом открытии гаража. Так они живут в одном месте, а не половина
-# на экране, половина в меню.
-var _build_root: HBoxContainer = null
+# У вкладки нет своего содержимого: на ней прячется ВСЯ левая панель, чтобы было видно
+# машину, а глобус выбора блока и кнопки поворота остаются там же, где были на HUD.
+# Сверху вкладки, справа — вес и характеристики.
+signal tab_changed(idx: int)
 
-func _build_build_panel() -> void:
-	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
-	if body == null:
-		return
-	_build_root = HBoxContainer.new()
-	_build_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_build_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_build_root.add_theme_constant_override("separation", 14)
-	_build_root.alignment = BoxContainer.ALIGNMENT_CENTER
-	_build_root.visible = false
-	body.add_child(_build_root)
-
-## Куда HUD кладёт строительные виджеты. Может вернуться null, если сцена ещё не собрана.
-func build_tab_container() -> Control:
-	return _build_root
+## Какая вкладка открыта сейчас (HUD смотрит, показывать ли строительные виджеты).
+func current_tab() -> int:
+	return _tab
 
 ## Открыть гараж сразу на нужной вкладке (HUD зовёт при входе в режим стройки).
 func open_tab(idx: int) -> void:
@@ -632,6 +621,13 @@ func tutorial_target(key: String) -> Control:
 
 # ДРЕВО занимает всю ширину до панели характеристик: граф широкий, а в колонке 430 px от
 # него видно две ветки. Пустой распорке Center на это время расширяться незачем.
+# Вкладка СТРОЙКА прячет левую панель целиком: строить надо глядя на машину, а не на сетку
+# инвентаря. Сверху остаются вкладки, справа — вес и характеристики.
+func _show_left_panel(show: bool) -> void:
+	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
+	if left != null:
+		left.visible = show
+
 func _widen_left_panel(wide: bool) -> void:
 	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
 	var centre: Control = get_node_or_null("Root/Main/Center") as Control
