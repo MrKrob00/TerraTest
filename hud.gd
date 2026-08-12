@@ -1029,6 +1029,13 @@ func _update_build_widgets() -> void:
 		_block_globe.visible = on
 		if on:
 			_block_globe.refresh()     # инвентарь мог измениться с прошлого раза
+	if not on:
+		return
+	# Гараж добавлен в HUD ПОЗЖЕ этих виджетов, значит рисуется поверх — его тёмная подложка
+	# гасила блоки в глобусе. Поднимаем их в конец списка детей, чтобы легли на гараж сверху.
+	for w in [_rotate_panel, _block_globe]:
+		if w != null and is_instance_valid(w) and w.get_parent() == self:
+			move_child(w, get_child_count() - 1)
 
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
