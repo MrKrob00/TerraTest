@@ -32,6 +32,18 @@ const SETTINGS_PATH := "user://settings.json"
 var cam_look_sens: float = 1.0     # чувствительность поворота камеры свайпом/мышью
 var cam_zoom_sens: float = 1.0     # чувствительность пинч-зума
 var cam_invert_y: bool = false     # инвертировать вертикаль (наклон взгляда)
+# Куда игрок перетащил плавающие окна: имя окна -> [x, y]. Тоже конфиг, а не прогресс —
+# сброс сейва их не трогает, и окно, которое игрок один раз положил себе под руку, там и
+# остаётся. Пусто = окно ни разу не двигали, стоит на штатном месте из сцены.
+var ui_windows: Dictionary = {}
+
+func window_pos(id: String) -> Variant:
+	var v: Variant = ui_windows.get(id)
+	return Vector2(float(v[0]), float(v[1])) if v is Array and v.size() == 2 else null
+
+func set_window_pos(id: String, pos: Vector2) -> void:
+	ui_windows[id] = [pos.x, pos.y]
+	save_settings()
 
 func save_settings() -> void:
 	var f = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
@@ -40,6 +52,7 @@ func save_settings() -> void:
 			"cam_look_sens": cam_look_sens,
 			"cam_zoom_sens": cam_zoom_sens,
 			"cam_invert_y": cam_invert_y,
+			"ui_windows": ui_windows,
 		}))
 		f.close()
 
@@ -56,6 +69,9 @@ func _load_settings() -> void:
 	cam_look_sens = clampf(float(data.get("cam_look_sens", 1.0)), 0.2, 3.0)
 	cam_zoom_sens = clampf(float(data.get("cam_zoom_sens", 1.0)), 0.2, 3.0)
 	cam_invert_y = bool(data.get("cam_invert_y", false))
+	var w = data.get("ui_windows", {})
+	if w is Dictionary:
+		ui_windows = w
 
 # ═══ Прогрессия: стартовая фракция, грейды, древо технологий ══════════════════════
 # ТЗ: docs/PROGRESSION_DESIGN.md. Сейчас фракция одна («start», имя дадим позже) —

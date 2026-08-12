@@ -79,6 +79,7 @@ text = "objective — 0/0"
 [node name="ListPanel" type="PanelContainer" parent="." unique_id=888738037]
 unique_name_in_owner = true
 visible = false
+mouse_filter = 0
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -94,7 +95,9 @@ layout_mode = 2
 theme_override_constants/separation = 8
 
 [node name="Header" type="HBoxContainer" parent="ListPanel/ListVB" unique_id=2064426118]
+unique_name_in_owner = true
 layout_mode = 2
+mouse_filter = 0
 
 [node name="Title" type="Label" parent="ListPanel/ListVB/Header" unique_id=1894383428]
 layout_mode = 2
@@ -113,7 +116,7 @@ text = "X"
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.45)
 theme_override_font_sizes/font_size = 12
-text = "★ — track at top right"
+text = "★ tracks a quest · drag either window by its header"
 
 [node name="Scroll" type="ScrollContainer" parent="ListPanel/ListVB" unique_id=2125908248]
 layout_mode = 2
