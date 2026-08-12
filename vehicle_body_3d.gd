@@ -1069,31 +1069,43 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		BuildingBlock["x"] = res.x; BuildingBlock["y"] = res.y; BuildingBlock["z"] = res.z
 
 # Имя грани → направление от центра блока наружу. Оно же связывает имена разъёмов
-# (blocks.primary_face) с осями модели.
+# (connect_faces у самого блока) с осями модели.
 const FACE_DIR := {
 	"right": Vector3.RIGHT, "left": Vector3.LEFT,
 	"top": Vector3.UP, "bottom": Vector3.DOWN,
 	"back": Vector3.BACK, "front": Vector3.FORWARD,
 }
 
-# Разворот блока при установке: его РАЗЪЁМ обязан смотреть на соседа. Сосед лежит с той
-# стороны, откуда пришла грань, то есть в направлении −FACE_DIR[face].
+# Разворот блока при установке: одна из его ГРАНЕЙ СТЫКОВКИ обязана смотреть на соседа.
+# Сосед лежит с той стороны, откуда пришла грань, то есть в направлении −FACE_DIR[face].
 #
-# ПО УМОЛЧАНИЮ блок НЕ доворачивается — встаёт ровно и любой стороной, как фабричные.
-# Доворачиваются только те, кому в blocks._init_contacts прописана грань-разъём (колёса,
-# бур, пушка): им направление принципиально. Раньше блок без записи считался «крепящимся
-# подошвой» и на боковой грани заваливался набок, хотя цеплять его можно любой стороной.
+# Грани блок объявляет сам — экспортом connect_faces (галочки в инспекторе его сцены,
+# см. VehicleBlock). Отмечены все шесть (так по умолчанию) — доворачивать не надо, любая
+# сторона уже подходит, блок встаёт ровно. Отмечена одна («Back» у бура) — блок развернётся
+# ею к соседу на какой угодно грани.
+#
+# Из нескольких отмеченных граней берём ТУ, которой поворачивать МЕНЬШЕ ВСЕГО, причём с
+# учётом ручного поворота игрока (build_basis): выкрутил блок в UI как надо — доворот его
+# не сломает.
 #
 # Сам поворот СЧИТАЕТСЯ, а не перечисляется по случаям, поэтому работает на любой из шести
-# граней. Для блоков с разъёмом «подошва» формула даёт ровно те же развороты, что были
-# прописаны тут раньше.
-func _face_orient(face: String, block_type: int) -> Basis:
-	if not FACE_DIR.has(face) or block_map_node == null:
+# граней и для любого набора галочек.
+func _face_orient(face: String, node: Node, manual: Basis = Basis()) -> Basis:
+	if not FACE_DIR.has(face) or not (node is VehicleBlock):
 		return Basis()
-	var socket: String = block_map_node.primary_face(block_type)
-	if not FACE_DIR.has(socket):
-		return Basis()                     # разъём не задан — ставим как есть
-	return _rotation_between(FACE_DIR[socket], -(FACE_DIR[face] as Vector3))
+	var vb := node as VehicleBlock
+	var vecs: Array = vb.connect_vecs()
+	if vecs.is_empty() or vecs.size() >= 6:
+		return Basis()                     # стыкуется чем угодно — ставим как есть
+	var want: Vector3 = -(FACE_DIR[face] as Vector3)
+	var best: Vector3 = vecs[0]
+	var best_dot: float = -2.0
+	for v in vecs:
+		var d: float = (manual * (v as Vector3)).normalized().dot(want)
+		if d > best_dot:
+			best_dot = d
+			best = v
+	return _rotation_between((manual * best).normalized(), want)
 
 # Кратчайший поворот, переводящий направление from_dir в to_dir.
 func _rotation_between(from_dir: Vector3, to_dir: Vector3) -> Basis:
@@ -1122,9 +1134,8 @@ func _preview_held(res: Dictionary) -> void:
 	var gy: float = float(res.y) + ad.y
 	var gz: float = float(res.z) + ad.z
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
-	var neighbor_type: int = block_map_node.get_block(int(res.x), int(res.y), int(res.z))
-	var placeable: bool = block_map_node.can_attach(neighbor_type, instance.block, res.face) \
-			and block_map_node.can_place(instance.block, gx, gy, gz)
+	var placeable: bool = block_map_node.can_attach(int(res.x), int(res.y), int(res.z),
+			instance, res.face) and block_map_node.can_place(instance.block, gx, gy, gz)
 	if not placeable:
 		instance.top_level = false
 		instance.position = Vector3.ZERO       # обратно в руку
@@ -1132,7 +1143,7 @@ func _preview_held(res: Dictionary) -> void:
 		if ghost_block:
 			ghost_block.visible = false
 		return
-	var orient := _face_orient(res.face, instance.block) * build_basis
+	var orient := _face_orient(res.face, instance, build_basis) * build_basis
 	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
 	var world_basis: Basis = (block_map_node.global_transform.basis * orient).orthonormalized()
 	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
@@ -1412,15 +1423,14 @@ func _on_take_pressed() -> void:
 		var pres: Dictionary = _preview_res
 		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
 			return
-		# Точки контакта: можно ли прицепить сюда (пушка сверху нельзя, колесо только справа).
-		var neighbor_type: int = block_map_node.get_block(pres.x, pres.y, pres.z)
-		if not block_map_node.can_attach(neighbor_type, instance.block, pres.face):
+		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
+		if not block_map_node.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
 			return
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
 		instance.top_level = false
 		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
-		var orient := _face_orient(pres.face, instance.block) * build_basis
+		var orient := _face_orient(pres.face, instance, build_basis) * build_basis
 		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"]-5, BuildingBlock["z"]-5)
 		var collision: CollisionShape3D = instance.get_child(0).duplicate()

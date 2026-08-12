@@ -52,6 +52,7 @@ freeze = true
 script = ExtResource("1_0n8n4")
 block = 30
 drill_damage = 10
+connect_faces = 2
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_h01jy")

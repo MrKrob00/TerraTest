@@ -17,22 +17,8 @@ signal slot_freed
 @export_flags("Front (−Z)", "Back (+Z)", "Left (−X)", "Right (+X)", "Top (+Y)", "Bottom (−Y)") \
 		var output_faces: int = FACE_FRONT     ## Стороны, которыми блок ОТДАЁТ ресурс
 
-const FACE_FRONT  := 1
-const FACE_BACK   := 2
-const FACE_LEFT   := 4
-const FACE_RIGHT  := 8
-const FACE_TOP    := 16
-const FACE_BOTTOM := 32
-
-# Локальные направления сторон (в осях самого блока; поворот учитывается в face_dirs).
-const FACE_VECS := [
-	Vector3(0, 0, -1),   # Front
-	Vector3(0, 0, 1),    # Back
-	Vector3(-1, 0, 0),   # Left
-	Vector3(1, 0, 0),    # Right
-	Vector3(0, 1, 0),    # Top
-	Vector3(0, -1, 0),   # Bottom
-]
+# FACE_* , FACE_VECS и face_dirs() живут в VehicleBlock: там же ими описаны грани
+# СТЫКОВКИ, и держать два набора одних и тех же констант — способ их рассинхронить.
 
 var current_item: Node3D = null
 var next_block: FactoryBlock = null       # текущая цель выдачи (одна из next_blocks)
@@ -49,21 +35,6 @@ func accepts_from(from_dir: Vector3i) -> bool:
 	return false
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
-func face_dirs(mask: int) -> Array:
-	var out: Array = []
-	for i in FACE_VECS.size():
-		if mask & (1 << i) == 0:
-			continue
-		var v: Vector3 = (basis * FACE_VECS[i]).normalized()
-		# Прижимаем к ближайшей оси: блок стоит по сетке, поворот кратен 90°.
-		if absf(v.x) >= absf(v.y) and absf(v.x) >= absf(v.z):
-			out.append(Vector3i(int(signf(v.x)), 0, 0))
-		elif absf(v.y) >= absf(v.z):
-			out.append(Vector3i(0, int(signf(v.y)), 0))
-		else:
-			out.append(Vector3i(0, 0, int(signf(v.z))))
-	return out
-
 func _ready() -> void:
 	await get_tree().process_frame
 	super._ready()

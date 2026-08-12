@@ -13,6 +13,7 @@ freeze = true
 script = ExtResource("1_gwn81")
 block = 21
 ride_height = 0.0
+connect_faces = 2
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_uqkpu")
