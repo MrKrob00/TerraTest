@@ -17,8 +17,19 @@ var _title_vp: SubViewport
 var _title_label: Label
 var _title_rect: TextureRect
 var _title_mat: ShaderMaterial
-var _cards: ColorRect
-var _cards_mat: ShaderMaterial
+# Облако карточек — НЕСКОЛЬКО независимых слоёв. Слой был один, и он честно гас целиком
+# перед каждой новой вспышкой: как ни рандомь параметры, видно, что это одна и та же
+# штука мигает по кругу. Слои живут каждый по своему таймеру и в своей полосе экрана,
+# поэтому пока один гаснет, соседний уже разгорается, и пауз «пусто» не остаётся.
+# Полоса слоя: x — смещение верха от центра экрана, y — высота; обе в долях высоты названия.
+const CARD_BANDS: Array[Vector2] = [
+	Vector2(-0.85, 1.50),   # основная полоса — как было
+	Vector2(-1.40, 0.75),   # выше названия
+	Vector2( 0.35, 0.85),   # ниже названия
+	Vector2(-0.45, 0.70),   # узкая, прямо по названию
+]
+var _cards: Array[ColorRect] = []
+var _cards_mat: Array[ShaderMaterial] = []
 var _last_rect: Vector2 = Vector2.ZERO   # следим за сменой размера ВИРТУАЛЬНОГО вьюпорта
 var _load: Label
 var _bar: ColorRect
@@ -30,9 +41,26 @@ var _progress: float = 0.0
 var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
 var _wait: float = 0.0
 var _dissolve: float = 0.0 # 0→1 «глитч-развал» при исчезновении (как снос блока)
-var _burst_t: float = 0.0      # время внутри текущей вспышки глитча
-var _burst_len: float = 0.7    # её длительность
-var _burst_cycle: float = 1.0  # вспышка + пауза = период (обновляется каждый цикл)
+# Таймеры вспышек — ПО СЛОЮ (см. CARD_BANDS): время внутри текущей вспышки, её
+# длительность и период «вспышка + пауза». Каждый слой перезапускается сам по себе.
+var _burst_t := PackedFloat32Array()
+var _burst_len := PackedFloat32Array()
+var _burst_cycle := PackedFloat32Array()
+
+# Новая вспышка слоя: своя длительность, своя пауза и свой рисунок карточек. Паузы РАЗНЫЕ
+# и заметно длиннее прежних — периоды слоёв не кратны друг другу и не сходятся в такт.
+func _reseed_card(i: int) -> void:
+	while _burst_t.size() <= i:
+		_burst_t.append(0.0)
+		_burst_len.append(0.7)
+		_burst_cycle.append(1.0)
+	_burst_len[i] = randf_range(0.45, 1.0)
+	_burst_cycle[i] = _burst_len[i] + randf_range(0.2, 1.4)
+	var m: ShaderMaterial = _cards_mat[i]
+	m.set_shader_parameter("seed", randf() * 100.0)
+	m.set_shader_parameter("grid_cells", randf_range(14.0, 30.0))
+	m.set_shader_parameter("fill_threshold", randf_range(0.45, 0.62))
+	m.set_shader_parameter("cell_aspect", Vector2(1.0, randf_range(0.22, 0.5)))
 
 func _ready() -> void:
 	layer = 200
@@ -91,15 +119,21 @@ func _ready() -> void:
 	_ui.add_child(_title_rect)
 
 	# Облако глитч-карточек ВОКРУГ названия — тот же эффект, что у блоков (порт glitch_card).
-	_cards = ColorRect.new()
-	_cards.color = Color(1, 1, 1, 1)          # цвет даёт шейдер
-	_cards.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var cmat := ShaderMaterial.new()
-	cmat.shader = load("res://loading_glitch.gdshader")
-	cmat.set_shader_parameter("seed", randf() * 100.0)
-	_cards.material = cmat
-	_cards_mat = cmat
-	_ui.add_child(_cards)
+	var shader: Shader = load("res://loading_glitch.gdshader")
+	for i in CARD_BANDS.size():
+		var rect := ColorRect.new()
+		rect.color = Color(1, 1, 1, 1)        # цвет даёт шейдер
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var cmat := ShaderMaterial.new()
+		cmat.shader = shader
+		rect.material = cmat
+		_cards.append(rect)
+		_cards_mat.append(cmat)
+		_ui.add_child(rect)
+		_reseed_card(i)
+		# Стартовая фаза у каждого своя, иначе первый раз все вспыхнут разом и слои
+		# «слипнутся» в одну карточку — ровно то, от чего уходим.
+		_burst_t[i] = randf_range(0.0, _burst_cycle[i])
 
 	_load = _mk("LOADING", 16, CYAN)
 
@@ -139,9 +173,11 @@ func _layout() -> void:
 	_title_label.position = Vector2.ZERO
 	_title_rect.size = Vector2(tw, th)
 	_title_rect.position = Vector2((s.x - tw) * 0.5, s.y * 0.5 - th * 0.62)
-	# Карточки — полосой вокруг названия (чуть шире и выше него).
-	_cards.size = Vector2(s.x, th * 1.5)
-	_cards.position = Vector2(0, s.y * 0.5 - th * 0.85)
+	# Карточки — полосами вокруг названия, у каждого слоя своя (см. CARD_BANDS).
+	for i in _cards.size():
+		var band: Vector2 = CARD_BANDS[i]
+		_cards[i].size = Vector2(s.x, th * band.y)
+		_cards[i].position = Vector2(0, s.y * 0.5 + th * band.x)
 	_load.size = Vector2(s.x, 22); _load.position = Vector2(0, s.y - 84.0)
 	var bw: float = minf(s.x * 0.5, 460.0)
 	_bar_bg.size = Vector2(bw, 4); _bar_bg.position = Vector2((s.x - bw) * 0.5, s.y - 56.0)
@@ -156,26 +192,26 @@ func _process(delta: float) -> void:
 		_layout()
 	var appear: float = clampf(_t / 0.9, 0.0, 1.0)
 
-	_burst_t += delta
-	if _burst_t >= _burst_cycle:
-		_burst_t = 0.0
-		_burst_len = randf_range(0.5, 1.0)                   # сколько длится сама вспышка
-		_burst_cycle = _burst_len + randf_range(0.15, 0.5)   # + короткая пауза до следующей
-		_cards_mat.set_shader_parameter("seed", randf() * 100.0)
-		_cards_mat.set_shader_parameter("grid_cells", randf_range(14.0, 30.0))
-		_cards_mat.set_shader_parameter("fill_threshold", randf_range(0.45, 0.62))
-		_cards_mat.set_shader_parameter("cell_aspect", Vector2(1.0, randf_range(0.22, 0.5)))
-		_title_mat.set_shader_parameter("seed", randf() * 100.0)
-		_title_mat.set_shader_parameter("slices", randf_range(12.0, 30.0))
-	# Прогресс ТЕКУЩЕЙ вспышки 0→1; после её конца остаётся 1 (всё погашено) до нового цикла.
-	var burst_p: float = clampf(_burst_t / maxf(_burst_len, 0.01), 0.0, 1.0)
 	# Сила: максимум при ПОЯВЛЕНИИ экрана и при РАЗВАЛЕ, между ними — ритм вспышек.
 	var edge: float = maxf(1.0 - appear, _dissolve)
-	var pulse: float = 1.0 - absf(burst_p * 2.0 - 1.0)       # 0→1→0 внутри вспышки
-	var gi: float = clampf(maxf(edge, pulse * 0.85), 0.06, 1.0)
+	var pulse_max: float = 0.0
+	for i in _cards.size():
+		_burst_t[i] += delta
+		if _burst_t[i] >= _burst_cycle[i]:
+			_burst_t[i] = 0.0
+			_reseed_card(i)
+			# Название дёргается вместе с любым слоем — иначе оно бы жило своим ритмом.
+			_title_mat.set_shader_parameter("seed", randf() * 100.0)
+			_title_mat.set_shader_parameter("slices", randf_range(12.0, 30.0))
+		# Прогресс ТЕКУЩЕЙ вспышки 0→1; после её конца остаётся 1 (всё погашено) до цикла.
+		var burst_p: float = clampf(_burst_t[i] / maxf(_burst_len[i], 0.01), 0.0, 1.0)
+		var pulse: float = 1.0 - absf(burst_p * 2.0 - 1.0)   # 0→1→0 внутри вспышки
+		pulse_max = maxf(pulse_max, pulse)
+		var m: ShaderMaterial = _cards_mat[i]
+		m.set_shader_parameter("progress", burst_p if edge <= 0.0 else minf(burst_p, 0.5))
+		m.set_shader_parameter("intensity", clampf(maxf(edge, pulse), 0.0, 1.0))
+	var gi: float = clampf(maxf(edge, pulse_max * 0.85), 0.06, 1.0)
 	_title_mat.set_shader_parameter("glitch", gi)
-	_cards_mat.set_shader_parameter("progress", burst_p if edge <= 0.0 else minf(burst_p, 0.5))
-	_cards_mat.set_shader_parameter("intensity", clampf(maxf(edge, pulse), 0.0, 1.0))
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
 	_glitch.queue_redraw()
 
