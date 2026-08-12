@@ -17,9 +17,8 @@ collision_layer = 2
 collision_mask = 21
 freeze = true
 script = ExtResource("1_dhbhs")
+input_faces = 10
 block = 8
-input_faces = 2
-output_faces = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=418799504]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
