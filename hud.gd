@@ -858,42 +858,68 @@ func _has_radar(v) -> bool:
 # Рисуем нодой, а не текстурой: одна иконка на HUD не стоит атласа, а так она сама
 # подстраивается под размер кнопки и живёт в той же бирюзовой палитре, что и панели.
 class MenuIcon extends Control:
-	# РЮКЗАК, а не три полоски: кнопка ведёт в инвентарь, а «бургер» обещает выпадающее
-	# меню, которого давно нет. Рисуем контуром — как остальные значки HUD.
+	# РЮКЗАК В ПРОФИЛЬ, а не три полоски: кнопка ведёт в инвентарь, а «бургер» обещает
+	# выпадающее меню, которого давно нет. Рисуем контуром — как остальные значки HUD.
+	#
+	# Профиль, а не анфас: лямка, уходящая за спинку, даёт глубину и сразу читается как
+	# рюкзак. Перёд (слева) с животиком — верхний левый угол самый круглый, спинка (справа)
+	# прямая. Лямка ПРИЖАТА к спинке намеренно: отведённая от корпуса, она читалась ручкой,
+	# и весь значок превращался в кружку.
 	func _draw() -> void:
 		var c: Vector2 = size * 0.5
 		var s: float = minf(size.x, size.y)
 		var col := Color(0.85, 0.95, 0.97)
 		var accent := Color(0.45, 0.8, 0.85)
 		var w: float = maxf(2.0, s * 0.042)
+		var w2: float = w * 0.75
 
-		var body_c := Vector2(c.x, c.y + 0.055 * s)
-		var body_sz := Vector2(0.60 * s, 0.62 * s)
-		var body_top: float = body_c.y - body_sz.y * 0.5
-		# Ручка-петля над корпусом: именно она отличает рюкзак от просто коробки.
-		draw_arc(Vector2(c.x, body_top), 0.115 * s, PI, TAU, 16, col, w, true)
-		draw_polyline(_round_rect(body_c, body_sz, 0.15 * s), col, w, true)
-		# Клапан поперёк верхней трети и пряжка на нём.
-		var fy: float = body_top + 0.20 * s
-		draw_line(Vector2(body_c.x - body_sz.x * 0.5, fy), Vector2(body_c.x + body_sz.x * 0.5, fy), col, w)
-		draw_polyline(_round_rect(Vector2(c.x, fy + 0.055 * s), Vector2(0.13 * s, 0.085 * s),
-				0.025 * s), accent, w * 0.8, true)
-		# Передний карман.
-		draw_polyline(_round_rect(Vector2(c.x, body_c.y + 0.17 * s), Vector2(0.34 * s, 0.16 * s),
-				0.04 * s), col, w * 0.8, true)
+		var body_c := Vector2(c.x - 0.05 * s, c.y + 0.05 * s)
+		var body_sz := Vector2(0.46 * s, 0.64 * s)
+		var bl: float = body_c.x - body_sz.x * 0.5
+		var br: float = body_c.x + body_sz.x * 0.5
+		var bt: float = body_c.y - body_sz.y * 0.5
+		var bb: float = body_c.y + body_sz.y * 0.5
 
-	# Замкнутый контур скруглённого прямоугольника: четыре угловые дуги подряд.
-	func _round_rect(c: Vector2, sz: Vector2, r: float) -> PackedVector2Array:
-		var h: Vector2 = sz * 0.5
-		var rr: float = minf(r, minf(h.x, h.y))
-		# Углы обходим по часовой, начиная с правого нижнего; каждый — четверть окружности.
-		var corners := [Vector2(h.x - rr, h.y - rr), Vector2(-h.x + rr, h.y - rr),
-				Vector2(-h.x + rr, -h.y + rr), Vector2(h.x - rr, -h.y + rr)]
+		# Плечевая лямка — узкой дугой вдоль спинки, обоими концами упирается в корпус.
+		_ell_arc(Vector2(br + 0.03 * s, body_c.y + 0.02 * s),
+				Vector2(0.08 * s, (body_sz.y - 0.08 * s) * 0.5),
+				deg_to_rad(-85.0), deg_to_rad(88.0), col, w2)
+		# Ручка для переноски — маленькой петлёй по центру верха.
+		_ell_arc(Vector2(body_c.x, bt), Vector2(0.075 * s, 0.075 * s),
+				deg_to_rad(190.0), deg_to_rad(350.0), col, w2)
+		draw_polyline(_round_path(body_c, body_sz,
+				[0.12 * s, 0.16 * s, 0.20 * s, 0.12 * s]), col, w, true)
+		# Клапан через весь верх и пряжка на нём.
+		var fy: float = bt + 0.225 * s
+		draw_line(Vector2(bl, fy), Vector2(br, fy), col, w2)
+		draw_polyline(_round_path(Vector2(body_c.x - 0.02 * s, fy), Vector2(0.11 * s, 0.065 * s),
+				[0.022 * s, 0.022 * s, 0.022 * s, 0.022 * s]), accent, w2, true)
+		# Накладной карман спереди снизу.
+		draw_polyline(_round_path(Vector2(bl + 0.155 * s, bb - 0.155 * s), Vector2(0.26 * s, 0.21 * s),
+				[0.07 * s, 0.07 * s, 0.06 * s, 0.06 * s]), col, w2, true)
+
+	# Дуга ЭЛЛИПСА: draw_arc умеет только окружность, а лямка вытянута вдоль спинки.
+	func _ell_arc(c: Vector2, rad: Vector2, a0: float, a1: float, col: Color, w: float) -> void:
 		var pts := PackedVector2Array()
-		for k in corners.size():
+		for i in 17:
+			var a: float = lerpf(a0, a1, float(i) / 16.0)
+			pts.append(c + Vector2(cos(a) * rad.x, sin(a) * rad.y))
+		draw_polyline(pts, col, w, true)
+
+	# Замкнутый контур скруглённого прямоугольника со СВОИМ радиусом у каждого угла —
+	# им и лепится профиль корпуса. Порядок радиусов: правый нижний, левый нижний,
+	# левый верхний, правый верхний.
+	func _round_path(c: Vector2, sz: Vector2, rad: Array) -> PackedVector2Array:
+		var h: Vector2 = sz * 0.5
+		var dirs := [Vector2(1, 1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, -1)]
+		var pts := PackedVector2Array()
+		for k in dirs.size():
+			var r: float = minf(float(rad[k]), minf(h.x, h.y))
+			var o: Vector2 = c + Vector2((dirs[k] as Vector2).x * (h.x - r),
+					(dirs[k] as Vector2).y * (h.y - r))
 			for i in 7:
 				var a: float = PI * 0.5 * (float(k) + float(i) / 6.0)
-				pts.append(c + corners[k] + Vector2(cos(a), sin(a)) * rr)
+				pts.append(o + Vector2(cos(a), sin(a)) * r)
 		pts.append(pts[0])
 		return pts
 
