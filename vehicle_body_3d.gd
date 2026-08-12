@@ -1057,27 +1057,46 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 	else:
 		BuildingBlock["x"] = res.x; BuildingBlock["y"] = res.y; BuildingBlock["z"] = res.z
 
+# Имя грани → направление от центра блока наружу. Оно же связывает имена разъёмов
+# (blocks.primary_face) с осями модели.
+const FACE_DIR := {
+	"right": Vector3.RIGHT, "left": Vector3.LEFT,
+	"top": Vector3.UP, "bottom": Vector3.DOWN,
+	"back": Vector3.BACK, "front": Vector3.FORWARD,
+}
+
+# Разворот блока при установке: его РАЗЪЁМ обязан смотреть на соседа. Сосед лежит с той
+# стороны, откуда пришла грань, то есть в направлении −FACE_DIR[face].
+#
+# Раньше здесь был разбор по типам с готовыми поворотами на каждый случай, и у бура с
+# колёсами перечислены были не все грани — оттого они и не вставали куда попало. Теперь
+# поворот СЧИТАЕТСЯ, поэтому работает на любой из шести граней и для любого блока, у
+# которого разъём описан. Для обычных блоков разъём — подошва, и формула даёт ровно те же
+# развороты, что стояли тут раньше.
 func _face_orient(face: String, block_type: int) -> Basis:
 	# Фабричные блоки ставим РОВНО (без наклона): связь в цепочке считается по соседству
 	# (rebuild_factory_links), а не по повороту — игроку не нужно их вращать и целиться гранью.
 	if (G.BLOCK_CATEGORIES.get("factory", []) as Array).has(block_type):
 		return Basis()
-	if G.is_wheel(block_type):
-		match face:
-			"right": return Basis(Vector3.UP, -PI / 2)
-			"left":  return Basis(Vector3.UP,  PI / 2)
-			"back":  return Basis(Vector3.UP,  PI)
-			"top":   return Basis(Vector3.RIGHT, PI)   # верхнее колесо: перевёрнуто, свисает вниз
-			_:       return Basis()
-	if block_type == G.Block.DRILL:
-		return Basis()   # контакт «сзади»: ставится только на морду, буром вперёд — без наклона
-	match face:
-		"bottom": return Basis(Vector3.RIGHT, PI)       # под блоком — низ вверх, к соседу
-		"right":  return Basis(Vector3.BACK, -PI / 2)   # низ → -X (влево, к соседу)
-		"left":   return Basis(Vector3.BACK,  PI / 2)   # низ → +X
-		"front":  return Basis(Vector3.RIGHT, -PI / 2)  # низ → +Z
-		"back":   return Basis(Vector3.RIGHT,  PI / 2)  # низ → -Z
-		_:        return Basis()                         # top — как есть
+	if not FACE_DIR.has(face) or block_map_node == null:
+		return Basis()
+	var socket: String = block_map_node.primary_face(block_type)
+	if not FACE_DIR.has(socket):
+		return Basis()
+	return _rotation_between(FACE_DIR[socket], -(FACE_DIR[face] as Vector3))
+
+# Кратчайший поворот, переводящий направление from_dir в to_dir.
+func _rotation_between(from_dir: Vector3, to_dir: Vector3) -> Basis:
+	var a: Vector3 = from_dir.normalized()
+	var b: Vector3 = to_dir.normalized()
+	var d: float = a.dot(b)
+	if d > 0.9999:
+		return Basis()
+	if d < -0.9999:
+		# Строго противоположны: ось поворота не определена, берём любую перпендикулярную.
+		var any: Vector3 = Vector3.UP if absf(a.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
+		return Basis(a.cross(any).normalized(), PI)
+	return Basis(a.cross(b).normalized(), a.angle_to(b))
 
 # Ставим сам взятый блок на выбранную ячейку (превью реальным блоком, не светяшкой).
 func _preview_held(res: Dictionary) -> void:
