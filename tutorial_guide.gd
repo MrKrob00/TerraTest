@@ -98,51 +98,37 @@ class Hand extends Control:
 	var double_tap: bool = false
 
 	# Канон: КОНЧИК УКАЗАТЕЛЬНОГО в (0,0), палец смотрит ВВЕРХ, кулак уходит вниз-ВПРАВО.
-	# Смещение кулака вправо принципиально: когда он центрирован под пальцем, силуэт читается
-	# как средний палец. Здесь указательный идёт по ЛЕВОМУ краю кулака, справа от него —
-	# костяшки сложенных пальцев, слева — подвёрнутый большой.
+	# Рука — готовые картинки, а не рисунок кодом.
 	#
-	# Пропорции взяты с иконки-образца: кисть КОРЕНАСТАЯ — кулак почти квадратный, палец
-	# толстый и короткий (примерно в треть кулака), обводка жирная и тёмная. Тонкая длинная
-	# рука с маленьким кулаком читалась как палка, поэтому все размеры ниже — «мясистые».
-	const FINGER_W: float = 23.0     # толщина указательного
-	const FIST_X: float = 21.0       # центр кулака правее пальца
-	const FIST_SZ := Vector2(50.0, 50.0)
-	const FIST_R: float = 16.0       # скругление кулака (почти как у капсулы)
-	# Костяшки сложенных пальцев — ЧАСТЬ СИЛУЭТА, а не рисунок поверх: три кружка по правому
-	# краю делают кромку гребёнкой, и кулак перестаёт быть просто «шаром».
-	const KNUCKLES: Array[Vector2] = [Vector2(45.0, 60.0), Vector2(47.0, 74.0), Vector2(45.0, 88.0)]
+	# Обе совмещаются ПО КОНЧИКУ ПАЛЬЦА, и это принципиально: кончик — та самая точка, на
+	# которую наставник показывает, поэтому он обязан стоять на цели. У нажатой версии палец
+	# короче, значит при совмещении по кончику к цели подаётся КУЛАК — читается как нажатие.
+	# Совмести их по кулаку, и вместо нажатия получилось бы, что рука отдёргивается от цели.
+	# Координаты кончика промерены по альфе исходников (1920×1920).
+	const TEX_UP := preload("res://images/finger.png")
+	const TEX_DOWN := preload("res://images/finger_click.png")
+	const TIP_UP := Vector2(665.0, 6.0)
+	const TIP_DOWN := Vector2(763.0, 94.0)
+	const SRC_H: float = 1816.0      # высота руки в исходнике
+	const HAND_H: float = 150.0      # и на экране
 
 	func _draw() -> void:
-		var skin := Color(0.98, 0.91, 0.80)
-		var shade := Color(0.80, 0.66, 0.52, 0.85)   # костяшки и складки — на полтона темнее
-		var edge := Color(0.13, 0.10, 0.08, 0.95)
-		var press: float = _press_phase()
-		var off := Vector2(0.0, 18.0 + press * 12.0)   # покачивание вдоль пальца
-
 		_draw_ripple(fmod(t, 1.4) / 1.4)
 		if double_tap:
 			_draw_ripple(fmod(t + 0.28, 1.4) / 1.4)
 
-		# Контур и заливка — два прохода ОДНИХ И ТЕХ ЖЕ форм, только первый раздут на g и
-		# нарисован тёмным. Так силуэт склеивается в одну фигуру с общей обводкой (без возни
-		# с вогнутым полигоном) и читается и на светлом песке, и на тёмной панели гаража.
-		for pass_i in 2:
-			var col: Color = edge if pass_i == 0 else skin
-			var g: float = 4.0 if pass_i == 0 else 0.0
-			_round_rect(Vector2(FIST_X, 78.0) + off, FIST_SZ + Vector2(g, g) * 2.0, FIST_R + g, col)
-			for k in KNUCKLES:
-				draw_circle(k + off, 10.0 + g, col)
-			# Большой палец: короткий и толстый, подвёрнут по кулаку влево-вниз.
-			_capsule(Vector2(6.0, 88.0) + off, Vector2(-14.0, 76.0) + off, 23.0 + g, col)
-			# Указательный: от кончика в (0,0) вниз, по левому краю кулака.
-			_capsule(Vector2(0.0, 12.0) + off, Vector2(0.0, 56.0) + off, FINGER_W + g, col)
-
-		# Прорисовка поверх заливки: сгибы костяшек, контур большого и сустав под ногтем.
-		for k in KNUCKLES:
-			draw_arc(k + off - Vector2(2.0, 0.0), 9.0, -PI * 0.45, PI * 0.45, 12, shade, 2.2)
-		draw_arc(Vector2(0.0, 72.0) + off, 19.0, -PI * 0.72, PI * 0.02, 16, shade, 2.4)
-		draw_arc(Vector2(0.0, 26.0) + off, 9.0, PI * 1.20, PI * 1.80, 12, shade, 2.2)
+		var press: float = _press_phase()
+		# Перевёрнутую руку (наставник заводит её сверху, когда цель у нижней кромки) рисуем
+		# ТОЛЬКО обычной картинкой: на нажатой подписано «click», и вверх ногами эта надпись
+		# читалась бы как брак. Нажатие там показывают круги-волны.
+		var flipped: bool = absf(rotation) > 1.0
+		var down: bool = press > 0.5 and not flipped
+		var tex: Texture2D = TEX_DOWN if down else TEX_UP
+		var tip: Vector2 = TIP_DOWN if down else TIP_UP
+		var k: float = HAND_H / SRC_H
+		var off := Vector2(0.0, 4.0 + press * 10.0)    # покачивание вдоль пальца
+		draw_texture_rect(tex,
+				Rect2(-tip * k + off, Vector2(tex.get_width(), tex.get_height()) * k), false)
 
 	# Фаза «нажатия» 0..1 — рука дважды подаётся вперёд за цикл при двойном тапе.
 	func _press_phase() -> float:
@@ -156,21 +142,6 @@ class Hand extends Control:
 		var r: float = 6.0 + k * 26.0
 		draw_arc(Vector2.ZERO, r, 0.0, TAU, 32, Color(1.0, 0.72, 0.25, (1.0 - k) * 0.9), 2.5)
 
-	func _capsule(a: Vector2, b: Vector2, w: float, col: Color) -> void:
-		draw_line(a, b, col, w)
-		draw_circle(a, w * 0.5, col)
-		draw_circle(b, w * 0.5, col)
-
-	# Скруглённый прямоугольник — крест из двух прямоугольников плюс четыре угловых круга.
-	func _round_rect(c: Vector2, sz: Vector2, r: float, col: Color) -> void:
-		var half: Vector2 = sz * 0.5
-		var rr: float = minf(r, minf(half.x, half.y))
-		draw_rect(Rect2(c - Vector2(half.x, half.y - rr), Vector2(sz.x, sz.y - rr * 2.0)), col)
-		draw_rect(Rect2(c - Vector2(half.x - rr, half.y), Vector2(sz.x - rr * 2.0, sz.y)), col)
-		for sx in [-1.0, 1.0]:
-			for sy in [-1.0, 1.0]:
-				draw_circle(c + Vector2(sx * (half.x - rr), sy * (half.y - rr)), rr, col)
-
 # ── Сборка ───────────────────────────────────────────────────────────────────
 func _ready() -> void:
 	layer = LAYER
@@ -183,7 +154,7 @@ func _ready() -> void:
 
 	_hand = Hand.new()
 	_hand.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hand.size = Vector2(120, 120)
+	_hand.size = Vector2(160, 170)
 	_hand.visible = false
 	add_child(_hand)
 
@@ -346,7 +317,7 @@ func _tick() -> void:
 # от одной точки: у кнопки под верхней кромкой экрана «выше» не влезало, и прежний клампинг
 # клал пузырь ровно на ту кнопку, которую он объясняет.
 const BUBBLE_GAP: float = 22.0     # зазор от цели
-const HAND_SPAN: float = 130.0     # сколько места занимает рука со своей стороны
+const HAND_SPAN: float = 165.0     # сколько места занимает рука со своей стороны (высота картинки + качание)
 
 func _place_hand(tip: Vector2, target: Rect2) -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
