@@ -969,6 +969,8 @@ func _handle_click(screen_pos: Vector2) -> void:
 	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
 	var ray_dir: Vector3 = (space_node.global_transform.basis.inverse() * world_dir).normalized()
 	var res: Dictionary = _find_nearest_block_on_ray(ray_origin, ray_dir)
+	if not res["hit"]:
+		res = _cell_from_physics(screen_pos)   # DDA промахнулся — спрашиваем физику (см. ниже)
 	if block_take:
 		# Больше НЕ светяшка: двигаем сам взятый блок на выбранную ячейку (превью), тап Take ставит.
 		if res["hit"]: _preview_held(res)
@@ -993,6 +995,45 @@ func _handle_click(screen_pos: Vector2) -> void:
 	elif !block_take:
 		block_body = null                # тап/ховер мимо блока — снимаем выделение, иначе тап-захват
 		if ghost_block: ghost_block.visible = false   # взял бы устаревший block_body по промаху
+
+# Запасная наводка на клетку — ФИЗИКОЙ. У взятия блока такой путь есть давно
+# (_grab_world_block), у постановки не было: промахнулся луч по сетке — блок молча оставался
+# в руке, и поставить его было нечем. DDA идёт по данным карты и промахивается, когда луч
+# скользит по грани или машина наклонена; физический луч бьёт по реальным коллизиям блоков.
+# Точка удара + нормаль дают ровно то же, что DDA: занятую клетку (уходим на пол-клетки
+# ВНУТРЬ по нормали) и грань, к которой цепляемся (направление самой нормали).
+func _cell_from_physics(screen_pos: Vector2) -> Dictionary:
+	var miss := {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
+	if camera_controller == null or camera_controller.camera == null or block_map_node == null:
+		return miss
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty() or hit.get("collider") != self:
+		return miss                        # попали не в машину (земля, чужой блок) — это не наводка
+	var basis_inv: Basis = block_map_node.global_transform.basis.inverse()
+	var n: Vector3 = (basis_inv * (hit["normal"] as Vector3)).normalized()
+	var p: Vector3 = block_map_node.to_local(hit["position"] as Vector3) - n * 0.5
+	var cx := int(round(p.x)) + 5
+	var cy := int(round(p.y)) + 5
+	var cz := int(round(p.z)) + 5
+	if not _in_bounds(cx, cy, cz):
+		return miss
+	var block: int = block_map_node.get_block(cx, cy, cz)
+	if block == 0:
+		return miss
+	# Имена граней = НАПРАВЛЕНИЕ наружу (см. _place_ghost: "right" → x+1). Берём ось, по
+	# которой нормаль длиннее всего: у куба она и есть та грань, в которую ткнули.
+	var face := ""
+	if absf(n.x) >= absf(n.y) and absf(n.x) >= absf(n.z):
+		face = "right" if n.x > 0.0 else "left"
+	elif absf(n.y) >= absf(n.z):
+		face = "top" if n.y > 0.0 else "bottom"
+	else:
+		face = "back" if n.z > 0.0 else "front"
+	return {"hit": true, "x": cx, "y": cy, "z": cz,
+			"block_name": _get_block_name(block), "face": face}
 
 func _place_ghost(res: Dictionary, face: bool) -> void:
 	if ghost_block == null: return
