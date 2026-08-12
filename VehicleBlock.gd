@@ -4,6 +4,66 @@ extends RigidBody3D
 
 @export var block: G.Block
 
+# ── ГРАНИ СТЫКОВКИ ────────────────────────────────────────────────────────────
+# Настраиваются В ИНСПЕКТОРЕ для КАЖДОЙ сцены блока — как input/output у фабричных, только
+# про механическое крепление, а не про поток ресурса. Отмечаешь галочками, какими своими
+# сторонами блок стыкуется с другими; вписывать ничего не надо.
+#
+# Грани заданы в СОБСТВЕННЫХ осях блока и едут вместе с его поворотом:
+#   front = −Z (морда), back = +Z, right = +X, left = −X, top = +Y, bottom = −Y
+#
+# Работает в ОБЕ стороны, одним и тем же списком:
+#   • ставя блок, постройка доворачивает его так, чтобы одна из этих граней смотрела на
+#     соседа (бур с одной галочкой «Back» всегда встанет буром наружу);
+#   • цепляя что-то К этому блоку, сосед может пристыковаться ТОЛЬКО к отмеченной грани —
+#     к остальным нельзя (на коронку бура ничего не навесить).
+# По умолчанию отмечены все шесть: обычный блок стыкуется чем угодно и куда угодно.
+@export_flags("Front (−Z)", "Back (+Z)", "Left (−X)", "Right (+X)", "Top (+Y)", "Bottom (−Y)") \
+		var connect_faces: int = FACE_ALL   ## Стороны, которыми блок стыкуется с соседями
+
+const FACE_FRONT  := 1
+const FACE_BACK   := 2
+const FACE_LEFT   := 4
+const FACE_RIGHT  := 8
+const FACE_TOP    := 16
+const FACE_BOTTOM := 32
+const FACE_ALL    := 63
+
+# Локальные направления сторон (в осях самого блока; поворот учитывает face_dirs).
+const FACE_VECS := [
+	Vector3(0, 0, -1),   # Front
+	Vector3(0, 0, 1),    # Back
+	Vector3(-1, 0, 0),   # Left
+	Vector3(1, 0, 0),    # Right
+	Vector3(0, 1, 0),    # Top
+	Vector3(0, -1, 0),   # Bottom
+]
+
+# Отмеченные в маске стороны — в направлениях РОДИТЕЛЯ, с учётом поворота блока.
+# Прижимаем к ближайшей оси: блок стоит по сетке, поворот кратен 90°.
+func face_dirs(mask: int) -> Array:
+	var out: Array = []
+	for i in FACE_VECS.size():
+		if mask & (1 << i) == 0:
+			continue
+		var v: Vector3 = (basis * FACE_VECS[i]).normalized()
+		if absf(v.x) >= absf(v.y) and absf(v.x) >= absf(v.z):
+			out.append(Vector3i(int(signf(v.x)), 0, 0))
+		elif absf(v.y) >= absf(v.z):
+			out.append(Vector3i(0, int(signf(v.y)), 0))
+		else:
+			out.append(Vector3i(0, 0, int(signf(v.z))))
+	return out
+
+# Стороны стыковки в ЛОКАЛЬНЫХ осях блока — по ним постройка выбирает, каким боком его
+# повернуть к соседу (поворот ещё не применён, поэтому basis тут не при чём).
+func connect_vecs() -> Array:
+	var out: Array = []
+	for i in FACE_VECS.size():
+		if connect_faces & (1 << i) != 0:
+			out.append(FACE_VECS[i])
+	return out
+
 const BLOCK_HP: Dictionary = {
 	G.Block.CABIN:     150,
 	G.Block.WHEEL:     60,

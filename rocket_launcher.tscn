@@ -62,6 +62,7 @@ freeze = true
 script = ExtResource("1_rl0")
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
+connect_faces = 32
 Area_Range = NodePath("Area3D")
 block = 25
 
