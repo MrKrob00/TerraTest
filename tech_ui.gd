@@ -210,110 +210,177 @@ func _rebuild_grid(filter: String) -> void:
 	if _tab == TAB_BUILDS:
 		_build_builds_tab()
 		return
-	_clear_children(_grid)
+	var side := _slot_side()
 	var f := filter.strip_edges().to_lower()
 	var shown := 0
 	for it in _items:
 		if f != "" and not str(it["name"]).to_lower().contains(f):
 			continue
-		_grid.add_child(_make_slot(it))
+		_fill_item_slot(_slot_at(shown), it, side)
 		shown += 1
-	if shown == 0:
-		var empty := Label.new()
-		empty.modulate = Color(1, 1, 1, 0.5)
-		if not _items.is_empty():
-			empty.text = "Nothing found"
-		elif _tab == TAB_SHOP:
-			empty.text = "Shop empty"
-		else:
-			empty.text = "Inventory empty"
-		_grid.add_child(empty)
-
-func _make_slot(it: Dictionary) -> Control:
-	# Слот = кнопка с названием блока. INVENTORY: в углу ×count, клик → блок в руку.
-	# SHOP: в углу цена, клик → купить (выключена, если не хватает денег).
-	var btn := Button.new()
-	var _side := _slot_side()
-	btn.custom_minimum_size = Vector2(_side, _side)
-	btn.clip_text = true
-	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	btn.text = str(it["name"])
-	btn.add_theme_font_size_override("font_size", 13)
-	var corner := Label.new()
-	corner.add_theme_font_size_override("font_size", 14)
-	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	corner.offset_left = -44
-	corner.offset_top = -24
-	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var block_type: int = int(it["type"])
-	if _tab == TAB_SHOP:
-		var price: int = int(it["price"])
-		if not G.is_block_shop_unlocked(block_type):
-			# Замок: блок виден (мотивация), но не покупается. Причина в углу и тултипе:
-			# не исследован в древе / не хватает грейда лицензии.
-			var m: Dictionary = G.BLOCK_META.get(block_type, {})
-			if not m.is_empty() and G.grade(m["f"]) < int(m["g"]):
-				corner.text = "gr.%d" % int(m["g"])
-				btn.tooltip_text = "Requires license grade %d" % int(m["g"])
-			else:
-				corner.text = "tree"
-				btn.tooltip_text = "Research in the tech tree"
-			btn.disabled = true
-			btn.modulate = Color(1, 1, 1, 0.45)
-		else:
-			corner.text = "%d$" % price
-			btn.disabled = G.money < price
-			btn.pressed.connect(_buy.bind(block_type, price))
+	_hide_slots_from(shown)
+	if shown > 0:
+		_set_empty_text("")
+	elif not _items.is_empty():
+		_set_empty_text("Nothing found")
+	elif _tab == TAB_SHOP:
+		_set_empty_text("Shop empty")
 	else:
-		corner.text = "×%d" % int(it["count"])
-		btn.pressed.connect(_take_into_hand.bind(block_type))
-	btn.add_child(corner)
-	return btn
+		_set_empty_text("Inventory empty")
+
+# ── Слоты сетки ───────────────────────────────────────────────────────────────
+# Слоты НЕ пересоздаются: их держит пул, а пересборка лишь заполняет первые N и прячет
+# остальные. Так исчезает целый класс багов — удаление ноды в Godot отложено до конца
+# кадра, и вторая пересборка за тот же кадр (покупка меняет деньги, деньги дёргают
+# пересборку) видела бы ещё живых детей и дописывала к ним новых: товары двоились.
+#
+# Слот один на все вкладки: заголовок, уголок с числом (штук / цена / блоков в сборке) и
+# карандашик у сохранённых сборок. Что показать — решает заполнение, поэтому вкладки
+# переключаются без единого new/free.
+class Slot extends Button:
+	var action: StringName = &""      # take / buy / save / load — что делает нажатие
+	var arg: int = 0                  # тип блока для take и buy
+	var price: int = 0
+	var build_name: String = ""       # имя сборки для load
+	var corner: Label = null
+	var pencil: Control = null
+
+var _pool: Array = []
+var _empty_label: Label = null
+
+# Слот номер i: берём из пула, а не хватило — заводим один раз и навсегда.
+func _slot_at(i: int) -> Slot:
+	while _pool.size() <= i:
+		var fresh := _new_slot()
+		_pool.append(fresh)
+		_grid.add_child(fresh)
+	var s: Slot = _pool[i]
+	return s
+
+func _hide_slots_from(n: int) -> void:
+	for i in range(n, _pool.size()):
+		(_pool[i] as Control).visible = false
+
+func _new_slot() -> Slot:
+	var s := Slot.new()
+	s.clip_text = true
+	s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	s.add_theme_font_size_override("font_size", 13)
+	s.corner = Label.new()
+	s.corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	s.corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.add_child(s.corner)
+	# Карандашик — подсказка «у слота есть меню», не кнопка: нажатия пропускает насквозь.
+	s.pencil = PencilIcon.new()
+	s.pencil.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	s.pencil.offset_left = -24.0
+	s.pencil.offset_top = 2.0
+	s.pencil.offset_right = -2.0
+	s.pencil.offset_bottom = 24.0
+	s.pencil.modulate = Color(1, 1, 1, 0.45)
+	s.pencil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.add_child(s.pencil)
+	# Сигналы вешаем ОДИН раз на всю жизнь ноды. Что делать по нажатию — читаем из
+	# slot.action, поэтому при смене вкладки ничего не надо переподключать.
+	s.pressed.connect(_on_slot_pressed.bind(s))
+	s.gui_input.connect(_on_slot_gui_input.bind(s))
+	s.button_up.connect(func() -> void: _hold_name = "")
+	return s
+
+func _on_slot_pressed(s: Slot) -> void:
+	match s.action:
+		&"take": _take_into_hand(s.arg)
+		&"buy":  _buy(s.arg, s.price)
+		&"save": _save_current_build()
+		&"load": _load_build(s.build_name)
+
+# Общая часть: размер, надпись и сброс всего, что мог включить прошлый жилец слота.
+func _reset_slot(s: Slot, label: String, side: float) -> void:
+	s.custom_minimum_size = Vector2(side, side)
+	s.text = label
+	s.tooltip_text = ""
+	s.disabled = false
+	s.modulate = Color(1, 1, 1, 1)
+	s.action = &""
+	s.arg = 0
+	s.price = 0
+	s.build_name = ""
+	s.corner.visible = false
+	s.pencil.visible = false
+	s.visible = true
+
+# ИНВЕНТАРЬ: в углу ×count, клик → блок в руку.
+# МАГАЗИН: в углу цена, клик → купить (выключен, если не хватает денег или блок заперт).
+func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
+	_reset_slot(s, str(it["name"]), side)
+	s.arg = int(it["type"])
+	s.corner.visible = true
+	s.corner.add_theme_font_size_override("font_size", 14)
+	s.corner.offset_left = -44
+	s.corner.offset_top = -24
+	if _tab != TAB_SHOP:
+		s.action = &"take"
+		s.corner.text = "×%d" % int(it["count"])
+		return
+	s.price = int(it["price"])
+	if not G.is_block_shop_unlocked(s.arg):
+		# Замок: блок виден (мотивация), но не покупается. Причина в углу и тултипе:
+		# не исследован в древе / не хватает грейда лицензии.
+		var m: Dictionary = G.BLOCK_META.get(s.arg, {})
+		if not m.is_empty() and G.grade(m["f"]) < int(m["g"]):
+			s.corner.text = "gr.%d" % int(m["g"])
+			s.tooltip_text = "Requires license grade %d" % int(m["g"])
+		else:
+			s.corner.text = "tree"
+			s.tooltip_text = "Research in the tech tree"
+		s.disabled = true
+		s.modulate = Color(1, 1, 1, 0.45)
+		return
+	s.action = &"buy"
+	s.corner.text = "%d$" % s.price
+	s.disabled = G.money < s.price
+
+# Надпись «пусто» тоже переиспользуем: пустая строка — просто прячем.
+func _set_empty_text(text: String) -> void:
+	if text == "":
+		if _empty_label != null and is_instance_valid(_empty_label):
+			_empty_label.visible = false
+		return
+	if _empty_label == null or not is_instance_valid(_empty_label):
+		_empty_label = Label.new()
+		_empty_label.modulate = Color(1, 1, 1, 0.5)
+		_grid.add_child(_empty_label)
+	_empty_label.text = text
+	_empty_label.visible = true
 
 # ── Вкладка СБОРКИ (сохранённые машины) ───────────────────────────────────────
 func _build_builds_tab() -> void:
-	_clear_children(_grid)
-	_grid.add_child(_make_action_slot("＋ Save\ncurrent", _save_current_build))
+	var side := _slot_side()
+	var n := 0
+	var add: Slot = _slot_at(n)
+	_reset_slot(add, "＋ Save\ncurrent", side)
+	add.action = &"save"
+	n += 1
 	for build_name in G.saved_builds:
-		_grid.add_child(_make_build_slot(str(build_name)))
+		_fill_build_slot(_slot_at(n), str(build_name), side)
+		n += 1
+	_hide_slots_from(n)
+	_set_empty_text("")
 
-func _make_action_slot(label: String, cb: Callable) -> Control:
-	var btn := Button.new()
-	var _side := _slot_side()
-	btn.custom_minimum_size = Vector2(_side, _side)
-	btn.clip_text = true
-	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	btn.text = label
-	btn.add_theme_font_size_override("font_size", 13)
-	btn.pressed.connect(cb)
-	return btn
-
-func _make_build_slot(build_name: String) -> Control:
+func _fill_build_slot(s: Slot, build_name: String, side: float) -> void:
 	var layout: Array = G.saved_builds.get(build_name, [])
-	var btn := _make_action_slot(build_name, _load_build.bind(build_name)) as Button
-	var corner := Label.new()
-	corner.text = "%d bl." % layout.size()
-	corner.add_theme_font_size_override("font_size", 12)
-	corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
-	corner.offset_left = -52
-	corner.offset_top = -22
-	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	btn.add_child(corner)
+	_reset_slot(s, build_name, side)
+	s.action = &"load"
+	s.build_name = build_name
+	s.corner.visible = true
+	s.corner.text = "%d bl." % layout.size()
+	s.corner.add_theme_font_size_override("font_size", 12)
+	s.corner.offset_left = -52
+	s.corner.offset_top = -22
 	# Действия (переименовать/удалить) — по ДОЛГОМУ нажатию (и правой кнопкой на ПК), а не
 	# крошечными иконками в углу: на телефоне в 26 px попасть пальцем невозможно, а увеличить
 	# их прямо в слоте — значит закрыть название сборки. В меню цели крупные и не мешают.
-	btn.gui_input.connect(_on_build_slot_input.bind(build_name))
-	btn.button_up.connect(func() -> void: _hold_name = "")
-	var hint := PencilIcon.new()                       # маленький значок «у слота есть действия»
-	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	hint.offset_left = -24.0
-	hint.offset_top = 2.0
-	hint.offset_right = -2.0
-	hint.offset_bottom = 24.0
-	hint.modulate = Color(1, 1, 1, 0.45)
-	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE    # не перехватывает нажатие — это лишь подсказка
-	btn.add_child(hint)
-	return btn
+	s.pencil.visible = true                            # значок «у слота есть действия»
 
 # ── Долгое нажатие по слоту сборки → меню действий ────────────────────────────
 const HOLD_MS := 450
@@ -323,14 +390,16 @@ var _build_menu: PopupMenu = null
 var _menu_target: String = ""
 var _skip_apply: bool = false
 
-func _on_build_slot_input(event: InputEvent, build_name: String) -> void:
+func _on_slot_gui_input(event: InputEvent, s: Slot) -> void:
+	if s.action != &"load":
+		return                                # долгое нажатие есть только у сохранённых сборок
 	# ПК: правая кнопка открывает меню сразу.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		_open_build_menu(build_name)
+		_open_build_menu(s.build_name)
 		return
 	if event is InputEventMouseButton or event is InputEventScreenTouch:
 		if event.pressed:
-			_hold_name = build_name
+			_hold_name = s.build_name
 			_hold_start = Time.get_ticks_msec()
 		else:
 			_hold_name = ""
@@ -613,8 +682,11 @@ func tutorial_target(key: String) -> Control:
 				return _filter_col.get_child(0) as Control
 			return null
 		"slot":
-			if _grid != null and _grid.get_child_count() > 0:
-				return _grid.get_child(0) as Control
+			# Первый ВИДИМЫЙ: в пуле за ним стоят спрятанные слоты прошлых вкладок.
+			if _grid != null:
+				for c in _grid.get_children():
+					if c is Control and (c as Control).visible:
+						return c as Control
 			return null
 	return null
 
@@ -867,6 +939,7 @@ func _clear_extra() -> void:
 
 # Убираем детей ИЗ ДЕРЕВА сразу, а не одним queue_free: тот удаляет в конце кадра, и вторая
 # пересборка за тот же кадр видела бы старое содержимое и дописывала к нему новое.
+# Сетке слотов это больше не нужно (там пул), а вот панель МУЗЫКА/НАСТРОЙКИ строится так.
 static func _clear_children(host: Node) -> void:
 	if host == null:
 		return
