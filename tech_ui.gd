@@ -774,6 +774,18 @@ func _refresh_stats() -> void:
 		set_load(m)
 		_fill_stats(m)
 
+## Машина изменилась — блок поставили или сняли. Зовёт HUD (см. notify_build_changed).
+## Раньше вес и характеристики считались только при ЗАХОДЕ в гараж, а стройка теперь идёт
+## внутри него: панель справа висела бы со старыми числами всю сборку.
+func notify_build_changed() -> void:
+	if not visible:
+		return
+	_refresh_stats()
+	# Блок ушёл из запаса в машину (или вернулся) — счётчики в инвентаре тоже устарели.
+	if _tab == TAB_INVENTORY:
+		_load_items()
+		_rebuild_grid(_search.text if _search else "")
+
 # ── Публичный API характеристик справа ────────────────────────────────────────
 func set_vehicle_name(n: String) -> void:
 	if has_node("%VehicleName"):
