@@ -54,6 +54,12 @@ var _dying: bool = false
 
 # Поведение выбирает EnemyBrain по полезности — жёсткой машины состояний больше нет.
 var _act: int = EnemyBrain.Act.PATROL
+# Фланг ограничен по времени: за FLANK_CHARGE_TIME манёвра заряд тратится целиком, за
+# FLANK_RECOVER_TIME боя лицом к лицу — восстанавливается. Отсюда ритм «выпад вбок —
+# размен — снова выпад» вместо бесконечной карусели вокруг игрока.
+const FLANK_CHARGE_TIME:  float = 4.0
+const FLANK_RECOVER_TIME: float = 9.0
+var _flank_spent: float = 0.0
 var _percept: Dictionary = {}
 var _decide_t: float = 0.0
 const DECIDE_PERIOD: float = 0.15        # переоценка обстановки ~7 раз в секунду
@@ -254,6 +260,13 @@ func _update_ai(delta: float) -> void:
 
 	_update_stuck(delta)
 
+	# Заряд фланга: тратится, пока враг обходит, и копится обратно, пока он дерётся в лоб.
+	# Это и превращает обход в короткий выпад с паузой на размен — см. EnemyBrain.score_all.
+	if _act == EnemyBrain.Act.FLANK:
+		_flank_spent = minf(_flank_spent + delta / FLANK_CHARGE_TIME, 1.0)
+	else:
+		_flank_spent = maxf(_flank_spent - delta / FLANK_RECOVER_TIME, 0.0)
+
 	# Обстановка переоценивается несколько раз в секунду, а не каждый физкадр: решение
 	# всё равно меняется медленнее, а замеры (HP, огневая мощь, линия огня) не бесплатны.
 	_decide_t -= delta
@@ -311,6 +324,7 @@ func _sense() -> Dictionary:
 		"los": los,
 		"stuck": _stuck01,
 		"facing_us": facing,
+		"flank_spent": _flank_spent,
 	}
 
 # Эффективная дальность = дальность лучшего своего ствола. Раньше это был экспорт
@@ -411,13 +425,15 @@ func _act_engage(delta: float) -> void:
 	elif dist > band_far:
 		_drive(dir, chase_speed_factor, delta)          # поджимаем
 	else:
-		# В коридоре идём по дуге. Сторона выбирается по той, на которой уже находимся,
-		# а не жребием: случайный выбор бросал врага поперёк собственной линии огня.
+		# В коридоре ДЕРЖИМ дистанцию и стреляем, лишь подрабатывая вбок. Раньше здесь была
+		# полноценная дуга (боковая составляющая 0.75 на 0.6 скорости) — вместе с ФЛАНГОМ она
+		# и давала «враг всё время катается вокруг». Сторона берётся та, на которой уже
+		# находимся, а не жребием: случайный выбор бросал врага поперёк своей линии огня.
 		var side: Vector3 = Vector3(dir.z, 0.0, -dir.x)
 		var sgn: float = signf(side.dot(_get_forward()))
 		if absf(sgn) < 0.01:
 			sgn = 1.0
-		_drive((dir + side * (sgn * 0.75)).normalized(), chase_speed_factor * 0.6, delta)
+		_drive((dir + side * (sgn * 0.30)).normalized(), chase_speed_factor * 0.25, delta)
 
 func _act_flank(delta: float) -> void:
 	if not is_instance_valid(_target):
