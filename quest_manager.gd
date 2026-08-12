@@ -219,9 +219,13 @@ func _on_completed(q: Dictionary) -> void:
 		if cc != null and "current_vehicle" in cc and cc.current_vehicle != null \
 				and cc.current_vehicle.has_method("award_blocks"):
 			cc.current_vehicle.award_blocks(rblock, int(q.get("reward_block_count", 1)))
-		if (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) and not g.quests_done.has(q["id"]):
-			g.quests_done.append(q["id"])   # сюжет и обучение — одноразовые (см. _ready)
-			g.mark_progress_dirty()
+	# Одноразовые квесты (сюжет и обучение) помечаем пройденными В СЕЙВЕ. Запись жила
+	# ВНУТРИ ветки «награда блоком», поэтому шаги обучения — а у них награды блоком нет —
+	# не сохранялись вовсе, и после перезапуска обучение начиналось заново.
+	if g != null and (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) \
+			and not g.quests_done.has(q["id"]):
+		g.quests_done.append(q["id"])
+		g.mark_progress_dirty()
 	_say("System", _completion_message(str(q["title"]), reward))
 	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 	if int(q["type"]) == Type.TUTORIAL:
@@ -345,22 +349,23 @@ func _announce_tutorial() -> bool:
 # Что показать в списке: все сюжетные ДО текущего включительно (выполненные + текущее) и
 # все ежедневные. Будущие сюжетные (ещё закрытые) не показываем.
 func visible_quests() -> Array[Dictionary]:
-	# Выполненные сюжетные + ПЕРВЫЙ невыполненный (текущий ЛИБО ждущий грейда — тогда
-	# quests.gd подпишет «откроется на грейде N»). Дальше будущее не светим.
+	# ТОЛЬКО невыполненное: ПЕРВЫЙ незакрытый шаг обучения, ПЕРВЫЙ незакрытый сюжетный
+	# (он же ждущий грейда — тогда quests.gd подпишет «откроется на грейде N») и активные
+	# дейлики. Выполненный квест просто пропадает из списка: галочки копились, и к середине
+	# обучения трекер превращался в простыню из одиннадцати «✓».
 	# ИНВАРИАНТ: quests_done — префикс порядка order (сюжет выполняется последовательно);
 	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
 	var out: Array[Dictionary] = []
-	# Обучение: выполненные + текущий шаг (дальше не светим).
 	for q in _sorted_tutorial():
-		out.append(q)
 		if not q["done"]:
+			out.append(q)
 			break
 	for q in _sorted_story():
-		out.append(q)
 		if not q["done"]:
+			out.append(q)
 			break
 	for q in quests:
-		if q["type"] == Type.DAILY:
+		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
 	return out
 
