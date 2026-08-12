@@ -1242,7 +1242,16 @@ func _pick_selected_block() -> bool:
 	_cabin_ground = null
 	if ghost_block:
 		ghost_block.visible = false                # блок взят в руку — светяшка больше не нужна
+	_notify_build_changed()                        # машина стала легче — панель справа обновляем
 	return true
+
+# Гараж открыт ВСЮ стройку (вкладка СТРОЙКА), поэтому вес и характеристики пересчитываем
+# на каждом блоке, а не только при заходе в инвентарь.
+func _notify_build_changed() -> void:
+	var hud: CanvasLayer = camera_controller.hud \
+			if (camera_controller != null and "hud" in camera_controller) else null
+	if hud != null and hud.has_method("notify_build_changed"):
+		hud.notify_build_changed()
 
 # Авто-добор такого же блока из инвентаря после постановки (серийная стройка).
 func _refill_hand_from_inventory(bt: int) -> void:
@@ -1362,6 +1371,7 @@ func _on_take_pressed() -> void:
 		_rebuild_factory()                      # авто-коннект фабрики сразу после постановки
 		if _hand_from_inventory:
 			_refill_hand_from_inventory(placed_bt)
+		_notify_build_changed()                 # вес/характеристики в гараже — сразу
 	elif block_body != null and is_instance_valid(block_body):
 		_pick_selected_block()
 
@@ -1389,6 +1399,7 @@ func apply_build(layout: Array) -> void:
 		ghost_block.visible = false
 	block_map_node.apply_layout(layout)     # сам чистит коллизии блоков и пересобирает
 	_connect_cabin()                        # новая кабина — заново ловим её гибель
+	_notify_build_changed()                 # сборка сменилась целиком — вес тоже
 
 func _return_hand_to_inventory() -> void:
 	var holder: Node = camera_controller.camera.get_child(0) \

@@ -1037,6 +1037,14 @@ func _update_build_widgets() -> void:
 		if w != null and is_instance_valid(w) and w.get_parent() == self:
 			move_child(w, get_child_count() - 1)
 
+## Машина изменилась (блок поставлен или снят) — зовёт сама машина. Гараж пересчитывает
+## вес и характеристики, глобус — остаток блоков в инвентаре.
+func notify_build_changed() -> void:
+	if _tech_ui != null and is_instance_valid(_tech_ui) and _tech_ui.has_method("notify_build_changed"):
+		_tech_ui.notify_build_changed()
+	if _block_globe != null and is_instance_valid(_block_globe) and _block_globe.visible:
+		_block_globe.refresh()
+
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
 	if not open:
