@@ -82,6 +82,10 @@ func _relayout() -> void:
 			_handle.position = Vector2(
 					(screen.x - DRAWER_W - 50.0) if _drawer_open else (screen.x - 50.0),
 					dy + dh * 0.5 - 36.0)
+	if _rotate_panel:
+		_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - _rotate_panel.size.y * 0.5)
+	if _block_globe:
+		_block_globe.position = _globe_pos(screen)
 	# Кнопка режима — правее иконки меню, в один ряд с ней.
 	var mode := get_node_or_null("ModeToggle") as Node2D
 	if mode:
@@ -988,6 +992,8 @@ func _toggle_inventory() -> void:
 		# Один обработчик на открытие И закрытие (в т.ч. крестиком X и при взятии блока):
 		# прячем/возвращаем игровые кнопки, чтобы они не светились сквозь инвентарь.
 		_tech_ui.visibility_changed.connect(_on_tech_ui_visibility)
+		if _tech_ui.has_signal("tab_changed"):
+			_tech_ui.tab_changed.connect(func(_i: int) -> void: _update_build_widgets())
 	_set_drawer(false)
 	_tech_ui.visible = not _tech_ui.visible
 	if _tech_ui.visible and _tech_ui.has_method("refresh"):
@@ -999,33 +1005,30 @@ func _open_garage() -> void:
 	if _tech_ui == null or not _tech_ui.visible:
 		_toggle_inventory()
 	if _tech_ui != null and _tech_ui.has_method("open_tab"):
-		_tech_ui.open_tab(0)               # TAB_INVENTORY
+		_tech_ui.open_tab(TECH_TAB_INVENTORY)
 
-## Вход в режим стройки: тот же гараж, но сразу на вкладке СТРОЙКА. Там лежат глобус
-## выбора блока и кнопки поворота — HUD переносит их туда при первой сборке гаража.
+const TECH_TAB_INVENTORY: int = 0
+const TECH_TAB_BUILD: int = 6
+
+## Вход в режим стройки: тот же гараж, но сразу на вкладке СТРОЙКА. Она прячет левую панель,
+## чтобы было видно машину; глобус и кнопки поворота остаются на своих местах поверх мира.
 func _open_build_tab() -> void:
 	if _tech_ui == null or not _tech_ui.visible:
 		_toggle_inventory()
-	_move_build_widgets()
 	if _tech_ui != null and _tech_ui.has_method("open_tab"):
-		_tech_ui.open_tab(6)               # TAB_BUILD
+		_tech_ui.open_tab(TECH_TAB_BUILD)
 
-# Глобус и панель поворота переезжают ИЗ HUD в контейнер вкладки СТРОЙКА. Делаем это один
-# раз, когда гараж уже собран: до первого открытия его просто нет.
-var _build_widgets_moved: bool = false
-
-func _move_build_widgets() -> void:
-	if _build_widgets_moved or _tech_ui == null or not _tech_ui.has_method("build_tab_container"):
-		return
-	var host: Control = _tech_ui.build_tab_container()
-	if host == null:
-		return
-	for w in [_rotate_panel, _block_globe]:
-		if w != null and is_instance_valid(w):
-			w.get_parent().remove_child(w)
-			host.add_child(w)
-			(w as Control).visible = true
-	_build_widgets_moved = true
+# Глобус и кнопки поворота видны РОВНО тогда, когда гараж открыт на вкладке СТРОЙКА.
+# Никуда они не переезжали: лежат поверх мира там же, где и раньше.
+func _update_build_widgets() -> void:
+	var on: bool = _tech_ui != null and is_instance_valid(_tech_ui) and _tech_ui.visible \
+			and _tech_ui.has_method("current_tab") and int(_tech_ui.current_tab()) == TECH_TAB_BUILD
+	if _rotate_panel:
+		_rotate_panel.visible = on
+	if _block_globe:
+		_block_globe.visible = on
+		if on:
+			_block_globe.refresh()     # инвентарь мог измениться с прошлого раза
 
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
@@ -1045,6 +1048,7 @@ func _on_tech_ui_visibility() -> void:
 		if v != null and ("Building" in v) and v.Building and v.has_method("_on_movement_pressed"):
 			v._on_movement_pressed()
 	_set_game_controls_hidden(open)
+	_update_build_widgets()
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).
 	# Уводим трекер квестов вниз, чтобы не перекрывал статистику и кнопку закрытия.
@@ -1107,10 +1111,8 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_handle)
 	if _menu_btn:
 		_game_controls.append(_menu_btn)
-	if _rotate_panel:
-		_game_controls.append(_rotate_panel)
-	if _block_globe:
-		_game_controls.append(_block_globe)
+	# _rotate_panel и _block_globe НЕ в общем списке: их видимость — это вкладка СТРОЙКА
+	# в гараже, а скоп «спрятать игровой HUD» её бы затирал.
 	if _radar:
 		_game_controls.append(_radar)
 	# _anchor_btn НЕ в общем списке: его видимостью рулит тик радара (нужна фикс-опора).
@@ -1234,8 +1236,6 @@ func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
 	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
-	if _block_globe:
-		_block_globe.refresh()      # инвентарь мог измениться с прошлого раза в стройке
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
 	_set_mode_label("MOVE", Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
 	_open_build_tab.call_deferred()    # стройка живёт в гараже: открываем его на своей вкладке
