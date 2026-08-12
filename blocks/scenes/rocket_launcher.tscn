@@ -1,0 +1,122 @@
+[gd_scene load_steps=14 format=3 uid="uid://c0rkt1lnchr01"]
+
+[ext_resource type="Script" path="res://blocks/scripts/rocket_launcher.gd" id="1_rl0"]
+[ext_resource type="Script" path="res://blocks/scripts/bullet.gd" id="2_rl0"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_body"]
+size = Vector3(0.9, 0.9, 0.9)
+
+[sub_resource type="StandardMaterial3D" id="Mat_body"]
+albedo_color = Color(0.32, 0.34, 0.38, 1)
+metallic = 0.4
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="Mesh_body"]
+material = SubResource("Mat_body")
+size = Vector3(0.7, 0.5, 0.85)
+
+[sub_resource type="StandardMaterial3D" id="Mat_tube"]
+albedo_color = Color(0.18, 0.19, 0.22, 1)
+metallic = 0.5
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_tube"]
+material = SubResource("Mat_tube")
+size = Vector3(0.26, 0.26, 0.7)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_range"]
+radius = 18.0
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_rocket"]
+size = Vector3(0.16, 0.16, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_rocket"]
+albedo_color = Color(0.85, 0.28, 0.16, 1)
+metallic = 0.2
+roughness = 0.5
+
+[sub_resource type="BoxMesh" id="Mesh_rocket"]
+material = SubResource("Mat_rocket")
+size = Vector3(0.14, 0.14, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="Mat_exhaust"]
+shading_mode = 0
+transparency = 1
+blend_mode = 1
+albedo_color = Color(1, 0.6, 0.2, 0.9)
+emission_enabled = true
+emission = Color(1, 0.55, 0.15, 1)
+emission_energy_multiplier = 5.0
+
+[sub_resource type="SphereMesh" id="Mesh_exhaust"]
+material = SubResource("Mat_exhaust")
+radius = 0.11
+height = 0.22
+radial_segments = 8
+rings = 4
+
+[node name="Rocket" type="RigidBody3D" node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
+collision_layer = 2
+collision_mask = 21
+freeze = true
+script = ExtResource("1_rl0")
+raycast = NodePath("Pivot/RayCast3D")
+pivot = NodePath("Pivot")
+connect_faces = 32
+Area_Range = NodePath("Area3D")
+block = 25
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+visible = false
+shape = SubResource("BoxShape3D_body")
+
+[node name="LauncherBody" type="MeshInstance3D" parent="."]
+mesh = SubResource("Mesh_body")
+
+[node name="Area3D" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Area3D"]
+shape = SubResource("SphereShape3D_range")
+
+[node name="Pivot" type="Node3D" parent="."]
+
+[node name="DrillBody2" type="MeshInstance3D" parent="Pivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, -0.15)
+mesh = SubResource("Mesh_tube")
+
+[node name="Marker3D" type="Marker3D" parent="Pivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, -0.5)
+
+[node name="RayCast3D" type="RayCast3D" parent="Pivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+target_position = Vector3(0, 0, -18)
+collision_mask = 2
+
+[node name="Ammo" type="Node3D" parent="."]
+
+[node name="Bullet" type="Area3D" parent="Ammo"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.18, 0)
+top_level = true
+collision_layer = 0
+collision_mask = 7
+script = ExtResource("2_rl0")
+speed = 42.0
+bullet_gravity = 6.0
+min_y = -300.0
+max_lifetime = 4.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Ammo/Bullet"]
+shape = SubResource("BoxShape3D_rocket")
+
+[node name="RocketMesh" type="MeshInstance3D" parent="Ammo/Bullet"]
+mesh = SubResource("Mesh_rocket")
+
+[node name="Exhaust" type="MeshInstance3D" parent="Ammo/Bullet"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
+mesh = SubResource("Mesh_exhaust")
+
+[connection signal="body_entered" from="Area3D" to="." method="_on_area_3d_body_entered"]
+[connection signal="body_exited" from="Area3D" to="." method="_on_area_3d_body_exited"]
+[connection signal="body_entered" from="Ammo/Bullet" to="." method="_on_bullet_body_entered" flags=18]
