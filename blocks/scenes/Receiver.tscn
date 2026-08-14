@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://xximcpqpe85s"]
 
-[ext_resource type="Script" uid="uid://dm5g1makgcqnc" path="res://blocks/scripts/intake.gd" id="1_kojqx"]
-[ext_resource type="ArrayMesh" uid="uid://dhyew4foa3dk0" path="res://objects/GSO_Cube_013.res" id="2_q6g6n"]
+[ext_resource type="Script" uid="uid://dm5g1makgcqnc" path="res://blocks/scripts/Receiver.gd" id="1_fdjhr"]
+[ext_resource type="ArrayMesh" uid="uid://dhyew4foa3dk0" path="res://objects/GSO_Cube_013.res" id="2_y5o5s"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
 
@@ -36,21 +36,19 @@ material = SubResource("StandardMaterial3D_6hi42")
 inner_radius = 5.1
 outer_radius = 5.0
 
-[node name="Intake" type="RigidBody3D" unique_id=1282227287]
+[node name="Receiver" type="RigidBody3D" unique_id=1282227287]
 collision_layer = 2
 collision_mask = 21
 freeze = true
-script = ExtResource("1_kojqx")
+script = ExtResource("1_fdjhr")
 block = 6
-input_faces = 2
-output_faces = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1317273449]
 shape = SubResource("BoxShape3D_h01jy")
 
 [node name="Block" type="MeshInstance3D" parent="." unique_id=733296483]
 transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
-mesh = ExtResource("2_q6g6n")
+mesh = ExtResource("2_y5o5s")
 skeleton = NodePath("../..")
 
 [node name="Block2" type="MeshInstance3D" parent="Block" unique_id=788153795]

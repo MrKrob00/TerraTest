@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://cstabwheel0022"]
+[gd_scene format=3 uid="uid://bsa5w75t6kre8"]
 
 [ext_resource type="Script" uid="uid://cphbrcsk6c0kc" path="res://blocks/scripts/wheel.gd" id="1_gwn81"]
 [ext_resource type="ArrayMesh" uid="uid://bp8beuuav1ukc" path="res://objects/GSO (2)_Cube_007.res" id="2_mv24a"]
@@ -6,29 +6,29 @@
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_uqkpu"]
 
-[node name="wheel" type="RigidBody3D"]
+[node name="wheel" type="RigidBody3D" unique_id=1417566288]
 collision_layer = 2
 collision_mask = 23
 freeze = true
 script = ExtResource("1_gwn81")
-block = 22
 ride_height = 0.45
 suspension_travel = 0.14
+block = 22
 connect_faces = 8
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=675542920]
 shape = SubResource("BoxShape3D_uqkpu")
 
-[node name="visual" type="Node3D" parent="."]
+[node name="visual" type="Node3D" parent="." unique_id=187262803]
 transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 0, 0, 0)
 
-[node name="wheel" type="MeshInstance3D" parent="visual"]
+[node name="wheel" type="MeshInstance3D" parent="visual" unique_id=2123402404]
 unique_name_in_owner = true
 transform = Transform3D(1.9106855e-15, -4.371139e-08, 1, -1, -4.371139e-08, 0, 4.371139e-08, -1, -4.371139e-08, 0, 0, 0)
 mesh = ExtResource("2_mv24a")
 skeleton = NodePath("../..")
 
-[node name="wheelbody" type="MeshInstance3D" parent="visual"]
+[node name="wheelbody" type="MeshInstance3D" parent="visual" unique_id=1783731787]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0.24)
 mesh = ExtResource("3_3mgug")
 skeleton = NodePath("../..")
