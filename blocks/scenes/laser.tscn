@@ -74,6 +74,7 @@ raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
 Area_Range = NodePath("Area3D")
 block = 10
+connect_faces = 32
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=897101955]
 shape = SubResource("BoxShape3D_6vqwg")

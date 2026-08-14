@@ -46,6 +46,7 @@ collision_mask = 21
 script = ExtResource("1_wdhqu")
 capacity = 10
 block = 5
+connect_faces = 47
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=602967226]
 shape = SubResource("BoxShape3D_h01jy")
