@@ -47,7 +47,7 @@ func _ready() -> void:
 		G.Block.LASER: 40,
 		G.Block.ROCKET: 55,
 		G.Block.COLLECTOR: 15,
-		G.Block.INTAKE: 15,
+		G.Block.RECEIVER: 15,
 		G.Block.BELT: 10,
 		G.Block.PROCESSOR: 30,
 		G.Block.SELLER: 30,

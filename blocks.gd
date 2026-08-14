@@ -136,7 +136,7 @@ func _layout_default() -> void:
 	set_block(5, 5, 4, G.Block.DRILL, 0.0)
 	set_block(5, 6, 5, G.Block.LASER, 0.0)
 	#set_block(5, 1, 5, G.Block.COLLECTOR, 0.0)
-	#set_block(3, 1, 7, G.Block.INTAKE, -PI/2)
+	#set_block(3, 1, 7, G.Block.RECEIVER, -PI/2)
 	#set_block(4, 1, 7, G.Block.BELT, 0.0)
 	#set_block(4, 1, 6, G.Block.PROCESSOR, 0.0)
 	#set_block(4, 1, 4, G.Block.BELT, 0.0)

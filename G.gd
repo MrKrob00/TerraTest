@@ -91,7 +91,7 @@ const BLOCK_META := {
 	Block.WHEEL:     {"f": "start", "g": 1, "rp": 5},
 	Block.DRILL:     {"f": "start", "g": 1, "rp": 10},
 	Block.COLLECTOR: {"f": "start", "g": 1, "rp": 10},
-	Block.INTAKE:    {"f": "start", "g": 2, "rp": 15},
+	Block.RECEIVER:    {"f": "start", "g": 2, "rp": 15},
 	Block.BELT:      {"f": "start", "g": 2, "rp": 15},
 	Block.GUN:       {"f": "start", "g": 2, "rp": 15},
 	Block.SOLAR:     {"f": "start", "g": 2, "rp": 15},
@@ -128,8 +128,8 @@ const TECH_PARENT := {
 	Block.BLOCK: Block.CABIN,     Block.WHEEL: Block.BLOCK,
 	Block.DRILL: Block.CABIN,     Block.GUN: Block.DRILL,
 	Block.LASER: Block.GUN,
-	Block.COLLECTOR: Block.CABIN, Block.INTAKE: Block.COLLECTOR,
-	Block.BELT: Block.INTAKE,     Block.SELLER: Block.BELT,
+	Block.COLLECTOR: Block.CABIN, Block.RECEIVER: Block.COLLECTOR,
+	Block.BELT: Block.RECEIVER,     Block.SELLER: Block.BELT,
 	Block.PROCESSOR: Block.COLLECTOR, Block.GENERATOR: Block.PROCESSOR,
 	Block.SOLAR: Block.CABIN,     Block.BATTERY: Block.SOLAR,
 	Block.SHIELD: Block.BATTERY,  Block.REGEN: Block.SHIELD,
@@ -144,7 +144,7 @@ const TECH_PARENT := {
 	Block.SMALL_DRILL: Block.DRILL, Block.BELT_SPLIT: Block.BELT,
 	Block.BELT_CROSS: Block.BELT_SPLIT,
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
-	Block.STORAGE: Block.INTAKE,
+	Block.STORAGE: Block.RECEIVER,
 	Block.AUTO_MINER: Block.PROCESSOR,
 	Block.FABRICATOR: Block.PROCESSOR,
 }
@@ -222,9 +222,21 @@ func block_key(bt: int) -> String:
 	return "EMPTY"
 
 # Чтение блока из сейва: строка (новый формат) ИЛИ число (старые файлы) — понимаем оба.
+#
+# СТАРЫЕ ИМЕНА. Раз в сейв пишется имя enum, то переименование блока осиротило бы все
+# сохранения: имени в списке больше нет, block_from_key вернул бы EMPTY, и блок молча
+# исчез бы из сохранённых машин и мира. Поэтому у переименованных блоков остаётся здесь
+# запись «как назывался раньше → как называется теперь». Строку НЕ удалять: сейвы с этим
+# именем существуют. Переименовал блок — допиши сюда.
+const LEGACY_BLOCK_KEYS := {
+	"INTAKE": "RECEIVER",       # приёмник, переименован после того, как сейвы уже писались
+}
+
 func block_from_key(v) -> int:
 	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
-		var idx: int = Block.keys().find(str(v))
+		var key: String = str(v)
+		key = String(LEGACY_BLOCK_KEYS.get(key, key))
+		var idx: int = Block.keys().find(key)
 		if idx >= 0:
 			return int(Block.values()[idx])
 		return int(Block.EMPTY)
@@ -445,7 +457,7 @@ enum Block {
 	BLOCK = 3,
 	DRILL = 4,
 	COLLECTOR = 5,
-	INTAKE = 6,
+	RECEIVER = 6,
 	BELT = 7,
 	PROCESSOR = 8,
 	SELLER = 9,
@@ -484,7 +496,7 @@ enum Block {
 @onready var block_scene: PackedScene = preload("res://blocks/scenes/block.tscn")
 @onready var drill_scene: PackedScene = preload("res://blocks/scenes/drill.tscn")
 @onready var collector_scene: PackedScene = preload("res://blocks/scenes/collector.tscn")
-@onready var intake_scene: PackedScene = preload("res://blocks/scenes/intake.tscn")
+@onready var receiver_scene: PackedScene = preload("res://blocks/scenes/Receiver.tscn")
 @onready var belt_scene: PackedScene = preload("res://blocks/scenes/belt.tscn")
 @onready var processor_scene: PackedScene = preload("res://blocks/scenes/processor.tscn")
 @onready var seller_scene: PackedScene = preload("res://blocks/scenes/seller.tscn")
@@ -532,7 +544,7 @@ const BLOCK_CATEGORIES := {
 		Block.WEDGE, Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT],
-	"factory": [Block.COLLECTOR, Block.INTAKE, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
+	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
 		Block.AUTO_MINER, Block.FABRICATOR],
 }
@@ -544,7 +556,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.BLOCK:   return block_scene
 		Block.DRILL:   return drill_scene
 		Block.COLLECTOR:   return collector_scene
-		Block.INTAKE: return intake_scene
+		Block.RECEIVER: return receiver_scene
 		Block.BELT: return belt_scene
 		Block.PROCESSOR: return processor_scene
 		Block.SELLER: return seller_scene
