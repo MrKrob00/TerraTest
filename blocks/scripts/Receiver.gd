@@ -1,4 +1,4 @@
-# intake.gd
+# Receiver.gd
 extends FactoryBlock
 
 @export var take_interval: float = 1.0
