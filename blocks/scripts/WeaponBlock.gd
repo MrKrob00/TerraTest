@@ -47,6 +47,7 @@ func _physics_process(delta: float) -> void:
 		_track_target(delta, false)     # прячет луч и плавно возвращает башню в нейтраль
 		return
 	_update_current_target()
+	_track_velocity(delta)          # ДО наводки: упреждение считается по свежей скорости
 	raycast.force_raycast_update()
 	_track_target(delta, true)
 	_handle_fire(delta)
@@ -238,6 +239,50 @@ func _vehicle_root() -> Node:
 		p = p.get_parent()
 	return p
 
+# ── Скорость цели ─────────────────────────────────────────────────────────────
+# Скорость МЕРЯЕМ по смещению цели, а не спрашиваем у неё linear_velocity.
+#
+# Зона обнаружения оружия смотрит на слой БЛОКОВ (collision_mask = 2), поэтому цель — это
+# блок вражеской машины, а не её корпус. Блок на машине не двигается собственной физикой,
+# его возит родитель, и его linear_velocity равна нулю. Упреждение исправно считалось по
+# нулевой скорости и вырождалось в «целься точно в цель» — то есть не работало вовсе.
+# Замер смещения от этого не зависит: он одинаково верен и для блока, и для корпуса, и для
+# чего угодно ещё, что мы решим сделать целью.
+var _vel_ref: Node3D = null           # за кем меряем (сменилась цель — счётчик с нуля)
+var _vel_last: Vector3 = Vector3.ZERO
+var _target_vel: Vector3 = Vector3.ZERO
+
+## Насколько сглаживаем замер. Разность за один физ-кадр шумит от тряски подвески, отдачи и
+## качания блока на машине; без сглаживания ствол дёргался бы за этим шумом.
+const VEL_SMOOTH: float = 0.25
+
+func _track_velocity(delta: float) -> void:
+	var t: Node3D = _current_target
+	if t == null or not is_instance_valid(t):
+		_vel_ref = null
+		_target_vel = Vector3.ZERO
+		return
+	if t != _vel_ref:
+		# Новая цель: первого замера ещё нет. Стартуем от скорости её МАШИНЫ, если она
+		# известна, — иначе первые доли секунды стреляли бы без упреждения.
+		_vel_ref = t
+		_vel_last = t.global_position
+		_target_vel = _machine_velocity(t)
+		return
+	if delta > 0.0:
+		var raw: Vector3 = (t.global_position - _vel_last) / delta
+		_target_vel = _target_vel.lerp(raw, VEL_SMOOTH)
+	_vel_last = t.global_position
+
+# Скорость машины, которой принадлежит блок: поднимаемся по дереву до первого RigidBody.
+func _machine_velocity(node: Node3D) -> Vector3:
+	var p: Node = node
+	while p != null:
+		if p is RigidBody3D and p != self:
+			return (p as RigidBody3D).linear_velocity
+		p = p.get_parent()
+	return Vector3.ZERO
+
 # ── Баллистика ────────────────────────────────────────────────────────────────
 # Снаряд летит ПО ПРЯМОЙ со своей скоростью и одновременно проседает: за время t он
 # уходит вниз на g·t²/2 (см. bullet.gd), а цель за то же время уезжает на v·t. Целиться
@@ -248,11 +293,7 @@ func _vehicle_root() -> Node:
 # времени. Три прохода сходятся с запасом.
 func _lead_point(target: Node3D, from: Vector3) -> Vector3:
 	var p: Vector3 = _aim_point_for(target)
-	var v: Vector3 = Vector3.ZERO
-	if target is RigidBody3D:
-		v = (target as RigidBody3D).linear_velocity
-	elif target.get_parent() is RigidBody3D:
-		v = (target.get_parent() as RigidBody3D).linear_velocity   # блок на машине едет с ней
+	var v: Vector3 = _target_vel
 	var bal: Vector2 = _ballistics()
 	var t: float = from.distance_to(p) / bal.x
 	var aim: Vector3 = p
