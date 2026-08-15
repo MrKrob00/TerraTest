@@ -1284,12 +1284,47 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 	if block_take:
 		return
+	# 0) ЧУЖОЙ блок — не подбираем, а НАЗНАЧАЕМ ЦЕЛЬЮ. Порядок именно такой: тап по врагу
+	# однозначно означает «бей вот это», подобрать блок с живой вражеской машины всё равно
+	# нельзя, и разбирать её на ходу руками мы не даём.
+	if _mark_enemy_target(screen_pos):
+		return
 	# 1) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
 	if block_body != null and is_instance_valid(block_body) \
 			and block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		_pick_selected_block()
 		return
 	_grab_world_block(screen_pos)
+
+# Двойной тап по блоку ЧУЖОЙ машины = приказ орудиям бить именно его (см.
+# WeaponBlock._update_current_target). Возвращает true, если цель назначена — тогда тап
+# израсходован и подбор блока не запускается.
+func _mark_enemy_target(screen_pos: Vector2) -> bool:
+	if camera_controller == null or camera_controller.camera == null:
+		return false
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	q.collision_mask = 2                            # слой блоков
+	q.exclude = [get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var body = hit.get("collider")
+	if not (body is Node3D) or not ("block" in body):
+		return false
+	# Блок ЧУЖОЙ машины: он лежит под её узлом blocks, а машина — с другой фракцией.
+	var root: Node = body
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root == null or root == self:
+		return false
+	var f = root.get("faction")
+	if f == null or int(f) == faction:
+		return false                                # своя машина — цель назначать не по чему
+	set_priority_target(body as Node3D)
+	BlockFX.hit(body as Node3D, 1)                  # мигнули по блоку: приказ принят
+	return true
 
 # Взять СВОБОДНЫЙ блок из мира (RigidBody-VehicleBlock под /root/Main/objects) в руку по клику.
 func _grab_world_block(screen_pos: Vector2) -> bool:

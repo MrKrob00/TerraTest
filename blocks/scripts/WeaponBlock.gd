@@ -76,21 +76,70 @@ func _is_in_cone(body: Node3D) -> bool:
 		Vector2(dir_local.x, dir_local.z).length())))
 	return yaw <= YAW_LIMIT and pitch <= PITCH_LIMIT
 
-func _update_current_target() -> void:
-	#_targets = _targets.filter(func(t): return is_instance_valid(t) and _is_in_cone(t))
+# Выбор цели. Раньше брался просто БЛИЖАЙШИЙ блок — и орудия грызли то, что подвернулось:
+# колесо с краю вместо кабины, обломок вместо турели, которая по тебе стреляет. Теперь
+# кандидаты оцениваются, и вес каждого слагаемого объясним:
+#
+#   • НАЗНАЧЕННАЯ ИГРОКОМ цель (двойной тап по вражескому блоку) перевешивает всё
+#     остальное — это прямой приказ, а не подсказка;
+#   • блоки ТОЙ ЖЕ машины, что и назначенная цель, идут следом: приказ «бей вон того»
+#     осмысленно продолжать по его же корпусу, когда указанный блок уже сбит;
+#   • КАБИНА — условие победы: сбил её, и машина разваливается целиком;
+#   • ОРУЖИЕ — то, что стреляет в ответ, гасить выгоднее прочего;
+#   • ближе — лучше, но это лишь довесок, а не главный критерий;
+#   • у ТЕКУЩЕЙ цели небольшая прибавка: без неё орудие дёргается между двумя почти
+#     равными кандидатами и не добивает ни одного.
+const SC_PRIORITY := 1000.0
+const SC_PRIORITY_MACHINE := 400.0
+const SC_CABIN := 120.0
+const SC_WEAPON := 60.0
+const SC_STICKY := 40.0
+const SC_NEAR := 100.0        # множитель близости: чем дальше цель, тем меньше добавка
 
+func _update_current_target() -> void:
 	if _targets.is_empty():
 		_current_target = null
 		return
+	var machine: Node = _vehicle_root()
+	var prio: Node3D = null
+	var prio_root: Node = null
+	if machine != null and machine.has_method("priority_alive") and machine.priority_alive():
+		prio = machine.priority_target
+		prio_root = _root_machine_of(prio)
 
-	var closest: Node3D = null
-	var closest_dist: float = INF
+	var best: Node3D = null
+	var best_score: float = -INF
 	for t in _targets:
+		if not is_instance_valid(t):
+			continue
 		var d: float = pivot.global_position.distance_to(t.global_position)
-		if d < closest_dist:
-			closest_dist = d
-			closest = t
-	_current_target = closest
+		var score: float = SC_NEAR * (1.0 - clampf(d / maxf(weapon_range, 1.0), 0.0, 1.0))
+		if prio != null:
+			if t == prio:
+				score += SC_PRIORITY
+			elif prio_root != null and _root_machine_of(t) == prio_root:
+				score += SC_PRIORITY_MACHINE
+		var bt = t.get("block")
+		if bt != null:
+			if int(bt) == G.Block.CABIN:
+				score += SC_CABIN
+			elif t is WeaponBlock:
+				score += SC_WEAPON
+		if t == _current_target:
+			score += SC_STICKY
+		if score > best_score:
+			best_score = score
+			best = t
+	_current_target = best
+
+# Корневая машина, которой принадлежит блок (у свободного блока в мире её нет).
+func _root_machine_of(n: Node) -> Node:
+	var p: Node = n
+	while p != null:
+		if p is MachineBody:
+			return p
+		p = p.get_parent()
+	return null
 
 func _track_target(delta: float, firing: bool) -> void:
 	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
