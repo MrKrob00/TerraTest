@@ -1,19 +1,25 @@
 extends WeaponBlock
-# Лазер = WeaponBlock, но БЕЗ пуль: бьёт hitscan-лучом (мгновенный урон по raycast) и
-# рисует красивый непрерывный луч (толстая светящаяся линия дуло→цель + вспышка у дула +
-# свечение в точке попадания). Переопределяем только _track_target (визуал+наводка) и
-# _handle_fire (урон лучом вместо fire_bullet). Базовый WeaponBlock (общий с пушкой) не трогаем.
+# Лазер = WeaponBlock, стреляющий СГУСТКАМИ: короткие светящиеся болты летят к цели, как
+# пули, только быстрее и без просадки. Раньше это был hitscan — непрерывный луч, наносивший
+# урон мгновенно по raycast. Непрерывный луч не даёт промахнуться и не даёт увернуться:
+# попадание не зависит ни от расстояния, ни от скорости цели, поэтому и упреждение, и
+# уклонение на нём не работают вовсе.
+#
+# Пули, пул и возврат в пул — общие с пушкой (WeaponBlock.fire_bullet). Своё тут только
+# то, как болт выглядит: собираем шаблон кодом, чтобы не заводить отдельную сцену.
 
-const BEAM_COLOR := Color(1.0, 0.15, 0.2)     # цвет луча
-const BEAM_RADIUS := 0.06
-const LASER_RANGE := 16.0
-const LASER_FIRE_RATE := 0.1                  # тик урона (частый = «непрерывный» луч)
-const LASER_DAMAGE := 3                       # урон за тик
+const BEAM_COLOR := Color(1.0, 0.15, 0.2)     # цвет болта и вспышки
+const BOLT_SPEED := 90.0                      # быстрее пушечной пули (120 у пушки — но та с просадкой)
+const BOLT_LENGTH := 1.6                      # вытянутый сгусток, а не шарик: видно направление
+const BOLT_RADIUS := 0.09
+const LASER_RANGE := 40.0                     # дальнобойное оружие 4-го грейда
+## Темп и урон пересчитаны с тика непрерывного луча (3 урона каждые 0.1 с = 30 в секунду)
+## на выстрелы, чтобы урон в секунду остался прежним.
+const LASER_FIRE_RATE := 0.25
+const LASER_DAMAGE := 8
+const BULLET_SCRIPT := preload("res://blocks/scripts/bullet.gd")
 
-var _beam: MeshInstance3D = null
-var _beam_mat: StandardMaterial3D = null
 var _muzzle_glow: MeshInstance3D = null
-var _impact_glow: MeshInstance3D = null
 var _beam_t: float = 0.0
 
 func _ready() -> void:
@@ -22,39 +28,55 @@ func _ready() -> void:
 	fire_rate = LASER_FIRE_RATE
 	damage = LASER_DAMAGE
 	raycast.target_position = Vector3(0, 0, -weapon_range)
-	# Лазер — hitscan (урон лучом в _handle_fire), пуль НЕ пускает. Убираем «спящий» узел
-	# Ammo/Bullet из сцены лазера: его Area3D (top_level, у мировой точки, маска на блоки)
-	# паразитно ловил тела и звал _on_bullet_body_entered, а сценовое соединение без bind
-	# роняло вызов (метод ждёт 2 аргумента, сигнал даёт 1) — та самая «ошибка с ammo».
+	# Узел Ammo из сцены лазера выбрасываем и строим свой: сценовый Bullet был подключён к
+	# _on_bullet_body_entered БЕЗ bind (метод ждёт два аргумента, сигнал даёт один) и ронял
+	# вызов на каждом попадании — та самая «ошибка с ammo». Свой шаблон цепляем правильно.
 	var ammo_node := get_node_or_null("Ammo")
 	if ammo_node:
-		ammo_node.queue_free()
-	_build_beam()
+		ammo_node.free()             # именно free, а не queue_free: имя "Ammo" нужно прямо сейчас
+	_build_bolt_pool()
+	_build_muzzle_glow()
 
-func _build_beam() -> void:
-	# Луч: цилиндр вдоль -Z под raycast (как track_visual пушки, но ярче и толще).
-	_beam = MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = BEAM_RADIUS
-	cyl.bottom_radius = BEAM_RADIUS
-	cyl.height = 1.0
-	cyl.radial_segments = 6
-	_beam_mat = _glow_mat(BEAM_COLOR, 6.0)
-	cyl.material = _beam_mat
-	_beam.mesh = cyl
-	_beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# CylinderMesh идёт вдоль Y → кладём вдоль -Z.
-	_beam.rotation = Vector3(-PI / 2, 0, 0)
-	_beam.visible = false
-	raycast.add_child(_beam)
+# Пул болтов: шаблон под узлом Ammo, дальше им управляет базовый WeaponBlock.fire_bullet —
+# он же дублирует шаблон, когда пул пуст, и возвращает отработавшие болты обратно.
+func _build_bolt_pool() -> void:
+	var holder := Node3D.new()
+	holder.name = "Ammo"
+	add_child(holder)
+	ammo = holder                      # базовый @onready ammo уже отработал (сцена без Ammo)
 
-	# Вспышка у дула (Marker3D) и свечение в точке попадания.
+	var bolt := Area3D.new()
+	bolt.name = "Bullet"
+	bolt.top_level = true              # летит в мировых координатах, а не с башней
+	bolt.collision_layer = 0
+	bolt.collision_mask = 7            # как у пушечной пули: рельеф + блоки
+	bolt.monitoring = false            # в пуле не ловит тела
+	bolt.set_script(BULLET_SCRIPT)
+	bolt.set("speed", BOLT_SPEED)
+	bolt.set("bullet_gravity", 0.0)    # сгусток света не проседает
+	bolt.set("max_lifetime", weapon_range / BOLT_SPEED + 0.4)
+	var col := CollisionShape3D.new()
+	var sph := SphereShape3D.new()
+	sph.radius = 0.22
+	col.shape = sph
+	bolt.add_child(col)
+	var mi := MeshInstance3D.new()
+	var cap := CapsuleMesh.new()
+	cap.radius = BOLT_RADIUS
+	cap.height = BOLT_LENGTH
+	cap.radial_segments = 6
+	cap.material = _glow_mat(BEAM_COLOR, 7.0)
+	mi.mesh = cap
+	mi.rotation = Vector3(-PI / 2, 0, 0)   # капсула растёт по Y, а болт летит по -Z
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	bolt.add_child(mi)
+	holder.add_child(bolt)
+	_rebind_bullet(bolt)
+
+func _build_muzzle_glow() -> void:
 	_muzzle_glow = _make_glow_sphere(0.16, BEAM_COLOR, 7.0)
 	pivot.get_node("Marker3D").add_child(_muzzle_glow)
-	_impact_glow = _make_glow_sphere(0.22, BEAM_COLOR.lerp(Color(1, 1, 1), 0.4), 8.0)
-	add_child(_impact_glow)       # позиционируем в мировой точке попадания
-	_impact_glow.top_level = true
-	_impact_glow.visible = false
+	_muzzle_glow.visible = false
 
 func _glow_mat(col: Color, energy: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -78,20 +100,18 @@ func _make_glow_sphere(r: float, col: Color, energy: float) -> MeshInstance3D:
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return mi
 
-# Наводка турели (как в базе) + рисование луча. Пушечный track_visual тут не используется.
+# Наводка турели. Пушечный track_visual тут не используется, поэтому базовый _track_target
+# (он на нём завязан и без него сразу выходит) заменён своим — но точка прицеливания берётся
+# та же, общая: с упреждением и поправкой на просадку (WeaponBlock._lead_point).
 func _track_target(delta: float, firing: bool) -> void:
 	if not firing:
-		_beam.visible = false
 		_muzzle_glow.visible = false
-		_impact_glow.visible = false
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
 		return
-
-	# Доворот на приоритетную точку цели (незакрытая кабина → ближайший блок), иначе в нейтраль.
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
 	if has_target:
-		var tp := _aim_point_for(_current_target)
+		var tp := _lead_point(_current_target, pivot.global_position)
 		var dl := global_transform.basis.inverse() * (tp - pivot.global_position).normalized()
 		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -YAW_LIMIT, YAW_LIMIT)
 		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
@@ -99,49 +119,16 @@ func _track_target(delta: float, firing: bool) -> void:
 	else:
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
 
-	# Длина луча: до точки попадания или на всю дальность.
-	var hit := raycast.is_colliding()
-	var length := weapon_range
-	if hit:
-		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
+	# Вспышка у дула живёт долю секунды после выстрела — по ней видно ТЕМП стрельбы.
+	# У непрерывного луча темпа не было видно вовсе, он просто горел.
+	_beam_t = maxf(_beam_t - delta, 0.0)
+	_muzzle_glow.visible = _beam_t > 0.0
+	if _muzzle_glow.visible:
+		_muzzle_glow.scale = Vector3.ONE * (0.7 + 1.3 * _beam_t / MUZZLE_FLASH)
 
-	# Пульсация толщины и яркости — «живой» луч.
-	_beam_t += delta
-	var pulse := 0.85 + 0.15 * sin(_beam_t * 45.0)
-	_beam.visible = true
-	(_beam.mesh as CylinderMesh).height = length
-	_beam.position.z = -length * 0.5
-	_beam.scale = Vector3(pulse, 1.0, pulse)
-	_beam_mat.emission_energy_multiplier = 6.0 * pulse
+# Выстрел = вспышка у дула; сам болт пускает базовый WeaponBlock.fire_bullet.
+const MUZZLE_FLASH := 0.09
 
-	_muzzle_glow.visible = true
-	_muzzle_glow.scale = Vector3.ONE * (0.8 + 0.4 * pulse)
-
-	_impact_glow.visible = hit
-	if hit:
-		_impact_glow.global_position = raycast.get_collision_point()
-		_impact_glow.scale = Vector3.ONE * (0.8 + 0.5 * sin(_beam_t * 60.0) * 0.5 + 0.4)
-
-# Урон лучом (hitscan) вместо пуль: по коллайдеру raycast, тиком fire_rate.
-func _handle_fire(delta: float) -> void:
-	if not raycast.is_colliding():
-		return
-	var body = raycast.get_collider()
-	if body == null:
-		return
-	if body == self or body == _vehicle_root():
-		return
-	if body.get_parent() == get_parent():
-		return                                     # блок своей же машины
-	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root():
-		return                                     # свой щит-купол
-	_fire_timer -= delta
-	if _fire_timer > 0.0:
-		return
-	_fire_timer = fire_rate
-	if body.has_method("hurt"):
-		body.hurt(damage)
-
-# Лазер пулями не стреляет — на случай, если базовый путь позовёт.
 func fire_bullet() -> void:
-	pass
+	super.fire_bullet()
+	_beam_t = MUZZLE_FLASH

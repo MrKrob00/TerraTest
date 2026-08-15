@@ -2,13 +2,19 @@ extends VehicleBlock
 class_name WeaponBlock
 
 @export var damage: int = 5
-@export var weapon_range: float = 10.0
+## Дальность. Было 10 при радиусе обнаружения врага в 40: оружие доставало втрое ближе,
+## чем машина видела противника, и убегающего было не достать в принципе. Отсюда же считает
+## свою боевую дистанцию ИИ (enemy_vehicle._own_weapon_range) — короткий ствол заставлял и
+## врага лезть вплотную.
+@export var weapon_range: float = 34.0
 @export var fire_rate: float = 0.2
 @export var raycast: RayCast3D
 @export var pivot: Node3D
 @export var Area_Range: Area3D
-const YAW_LIMIT   = 45.0
-const PITCH_LIMIT = 30.0
+# Сектор наведения башни. Был 45×30 — цель уходила из сектора от одного разворота корпуса,
+# и башня бросала её, хотя ствол физически мог довернуть.
+const YAW_LIMIT   = 75.0
+const PITCH_LIMIT = 40.0
 
 var _fire_timer: float = 0.0
 ## «Огонь» — это не защёлка, а таймер: attack() взводит его, и каждый кадр он гаснет.
@@ -94,8 +100,9 @@ func _track_target(delta: float, firing: bool) -> void:
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
 	if has_target:
-		# Приоритет: незакрытая кабина → ближайший блок машины (см. _aim_point_for).
-		var target_pos: Vector3 = _aim_point_for(_current_target)
+		# Приоритет: незакрытая кабина → ближайший блок машины (см. _aim_point_for),
+		# и УПРЕЖДЕНИЕ с поправкой на просадку (_lead_point) — иначе по убегающему мимо.
+		var target_pos: Vector3 = _lead_point(_current_target, pivot.global_position)
 		var dir_world: Vector3 = (target_pos - pivot.global_position).normalized()
 		var dir_local: Vector3 = global_transform.basis.inverse() * dir_world
 		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
@@ -217,6 +224,37 @@ func _vehicle_root() -> Node:
 	while p != null and not (p is RigidBody3D):
 		p = p.get_parent()
 	return p
+
+# ── Баллистика ────────────────────────────────────────────────────────────────
+# Снаряд летит ПО ПРЯМОЙ со своей скоростью и одновременно проседает: за время t он
+# уходит вниз на g·t²/2 (см. bullet.gd), а цель за то же время уезжает на v·t. Целиться
+# в то место, где цель СЕЙЧАС, — значит гарантированно мазать по всему, что движется,
+# и тем сильнее, чем дальше цель. Раньше делалось именно так.
+#
+# Точку встречи ищем итерацией: время полёта зависит от точки прицеливания, а точка — от
+# времени. Три прохода сходятся с запасом.
+func _lead_point(target: Node3D, from: Vector3) -> Vector3:
+	var p: Vector3 = _aim_point_for(target)
+	var v: Vector3 = Vector3.ZERO
+	if target is RigidBody3D:
+		v = (target as RigidBody3D).linear_velocity
+	elif target.get_parent() is RigidBody3D:
+		v = (target.get_parent() as RigidBody3D).linear_velocity   # блок на машине едет с ней
+	var bal: Vector2 = _ballistics()
+	var t: float = from.distance_to(p) / bal.x
+	var aim: Vector3 = p
+	for _i in 3:
+		aim = p + v * t + Vector3.UP * (0.5 * bal.y * t * t)
+		t = from.distance_to(aim) / bal.x
+	return aim
+
+# Скорость и просадка берутся С САМОГО СНАРЯДА: у ракеты в сцене 42/6, у пушки 120/50.
+# Зашей их сюда числом — прицел считал бы по одним, а летело бы по другим.
+func _ballistics() -> Vector2:
+	var b: Node = get_node_or_null("Ammo/Bullet")
+	if b == null or not ("speed" in b):
+		return Vector2(120.0, 50.0)
+	return Vector2(maxf(float(b.get("speed")), 1.0), float(b.get("bullet_gravity")))
 
 func _aim_point_for(body: Node3D) -> Vector3:
 	var blocks := body.get_node_or_null("blocks")
