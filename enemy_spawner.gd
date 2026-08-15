@@ -8,6 +8,11 @@ extends Node3D
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
 @export var max_enemies: int = 9
 @export var spawn_interval: float = 6.0             # пауза между появлениями
+## Сколько врагов ставится СРАЗУ, как только мир готов (и обучение закончилось). Без этого
+## мир начинался пустым и наполнялся по одному раз в spawn_interval — до первой стычки
+## приходилось ждать и просто кататься. Ставятся по обычным правилам кольца, то есть
+## разнесённые по разным сторонам, а не кучей.
+@export var initial_enemies: int = 3
 ## Кольцо спавна. Было 270–520: враг появлялся ЗА горизонтом восприятия (машина видит на 40,
 ## оружие бьёт на 60) — игрок не встречал его, а натыкался неизвестно где и неизвестно когда.
 ## Теперь чуть дальше видимости: враг приходит «из-за холма», а не из ниоткуда.
@@ -41,6 +46,7 @@ var _clean_t: float = 0.0                           # троттл чистки 
 var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
 var _t: float = 0.0
 var _ready_done: bool = false
+var _seeded: bool = false          # стартовая партия врагов уже поставлена
 
 var _scan_state: int = 0                            # 0 — покой, 1 — идёт предупреждение
 var _scan_t: float = 0.0                            # до следующей проверки
@@ -73,6 +79,13 @@ func _process(delta: float) -> void:
 	_track_far(delta)
 	_scan_tick(delta)                               # редкое событие «проверка сектора»
 	if _enemies.size() >= max_enemies:
+		return
+	# Первый заход: наполняем мир сразу, а не по одному с паузой.
+	if not _seeded and not _tutorial_active():
+		_seeded = true
+		for _i in mini(initial_enemies, max_enemies):
+			_spawn_one()
+		_t = spawn_interval
 		return
 	_t -= delta
 	if _t > 0.0:
