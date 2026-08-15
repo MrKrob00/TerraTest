@@ -97,10 +97,45 @@ func _seed_demo() -> void:
 	add_quest("g5_kill",  "Wasteland Legend", "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
 	add_quest("g5_ore",   "Backbone of Industry", "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
 	add_quest("g5_money", "Empire",           "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	# ── СЮЖЕТ ПОСЛЕ РАЗВЕДЧИКА: ветка выбора ────────────────────────────────────
+	# Три квеста, каждый в двух частях. Первый ведёт к остальным двум, и дальше игрок сам
+	# решает, какой брать: они открываются одновременно и друг друга не ждут.
+	add_quest("arc_power", "Power Up", "", Type.STORY, 1, 5, "", 60, 40, 12)
+	add_stages("arc_power", [
+		{"desc": "Find the solar panel and the anchor block, mount both",
+		 "event": "quest_arc_power_1", "goal": 1,
+		 "hint": "A solar panel and a stationary block turned up out there. Mount them and drop anchor."},
+		{"desc": "Mount the regen block dropped beside you",
+		 "event": "quest_arc_power_2", "goal": 1,
+		 "hint": "A regen block landed right next to you. Put it on — it mends the rest."},
+	])
+	add_quest("arc_radar", "Eyes", "", Type.STORY, 1, 6, "", 70, 45, 14)
+	add_stages("arc_radar", [
+		{"desc": "Find the radar and mount it",
+		 "event": "quest_arc_radar_1", "goal": 1,
+		 "hint": "There is a radar lying out there. Find it — it shows the map further."},
+		{"desc": "Take the radar from the thief",
+		 "event": "quest_arc_radar_2", "goal": 1,
+		 "hint": "Someone drives around with a radar of their own. Take it off them."},
+	])
+	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 70, 45, 14)
+	add_stages("arc_battery", [
+		{"desc": "Find the battery",
+		 "event": "quest_arc_battery_1", "goal": 1,
+		 "hint": "A battery showed up somewhere out there. Go and get it."},
+		{"desc": "Destroy the ore vein holding the battery",
+		 "event": "quest_arc_battery_2", "goal": 1,
+		 "hint": "It is stuck inside an ore vein. Mine the vein out completely to free it."},
+	])
+	requires("arc_power", ["story_first_blood"])
+	requires("story_build", ["story_first_blood"])   # старая нитка тоже висит на первом квесте
+	requires("arc_radar", ["arc_power"])      # развилка: оба открываются вместе,
+	requires("arc_battery", ["arc_power"])    # и порядок между ними выбирает игрок
+
 	# Старый сюжет шёл строго по order, одной ниткой. Порядок сам по себе больше ничего не
 	# значит, поэтому ту же нитку задаём явно — иначе после перехода на зависимости все
 	# восемнадцать заданий открылись бы разом.
-	_chain_story(["story_first_blood", "story_build", "story_ore", "story_sell", "story_kill",
+	_chain_story(["story_build", "story_ore", "story_sell", "story_kill",
 			"g2_ore", "g2_kill", "g2_money", "g2_build",
 			"g3_ore", "g3_kill", "g3_money",
 			"g4_ore", "g4_kill", "g4_money",
