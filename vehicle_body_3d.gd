@@ -715,44 +715,49 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		_touch_count = maxi(_touch_count + (1 if event.pressed else -1), 0)
 		_last_touch_ms = Time.get_ticks_msec()
-	if Building:
-		if (event is InputEventMouseMotion \
-				or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
-				and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
-			# Ховер мыши шлёт до 1000 событий в секунду, и КАЖДОЕ гоняло полный пайплайн наведения
-			# (проверка HUD + DDA-луч по сетке + пересборка превью). Для наведения хватает ~60 Гц;
-			# КЛИК пропускаем всегда, чтобы постановка блока не «проглатывалась» троттлом.
-			var _is_click := event is InputEventMouseButton
-			var _now_ms := Time.get_ticks_msec()
-			if not _is_click and _now_ms - _hover_ms < 16:
-				return
-			_hover_ms = _now_ms
-			# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
-			if not _tap_over_ui(event.position):
-				_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
-				# ДВОЙНОЙ клик мышью = подтверждение: поставить блок из руки / взять наведённый.
-				if event is InputEventMouseButton and event.double_click:
-					_commit_build_tap(event.position)
-		elif event is InputEventScreenTouch:
-			if event.pressed:
-				_build_tap_pos = event.position
-				_build_tap_ms = Time.get_ticks_msec()
-				_build_tap_moved = false
-			elif _touch_count == 0 and not _build_tap_moved \
-					and Time.get_ticks_msec() - _build_tap_ms < 250 \
-					and not _tap_over_ui(event.position):
-				_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
-				# ДВОЙНОЙ тап (второй за ~340мс рядом) = подтверждение: взять/поставить.
-				var _now := Time.get_ticks_msec()
-				if _now - _dbl_tap_ms < 340 and _dbl_tap_pos.distance_to(event.position) < 45.0:
-					_commit_build_tap(event.position)
-					_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
-				else:
-					_dbl_tap_ms = _now
-					_dbl_tap_pos = event.position
-		elif event is InputEventScreenDrag:
-			if _build_tap_pos.distance_to(event.position) > 14.0:
-				_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
+	# Подбор и постановка блока работают В ЛЮБОМ РЕЖИМЕ. Раньше весь разбор тапа лежал под
+	# `if Building`, и вне стройки тап по миру не делал ВООБЩЕ ничего: чтобы поднять блок,
+	# приходилось лезть в режим. Режим стройки остаётся, но теперь он именно то, чем должен
+	# быть, — удобства ради (глобус блоков, повороты, превью), а не пропуск к самому действию.
+	# Конфликтовать здесь не с чем: оружие наводится само, по своей зоне обнаружения, и тап
+	# в него не передаётся; орбита камеры отделена по свайпу (_build_tap_moved).
+	if (event is InputEventMouseMotion \
+			or (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed)) \
+			and Time.get_ticks_msec() - _last_touch_ms > 250:   # не эмулированная-из-тача мышь
+		# Ховер мыши шлёт до 1000 событий в секунду, и КАЖДОЕ гоняло полный пайплайн наведения
+		# (проверка HUD + DDA-луч по сетке + пересборка превью). Для наведения хватает ~60 Гц;
+		# КЛИК пропускаем всегда, чтобы постановка блока не «проглатывалась» троттлом.
+		var _is_click := event is InputEventMouseButton
+		var _now_ms := Time.get_ticks_msec()
+		if not _is_click and _now_ms - _hover_ms < 16:
+			return
+		_hover_ms = _now_ms
+		# Не целимся в мир, когда указатель над интерактивным HUD (см. _tap_over_ui).
+		if not _tap_over_ui(event.position):
+			_handle_click(event.position)          # наводим/подсвечиваем (ховер и клик)
+			# ДВОЙНОЙ клик мышью = подтверждение: поставить блок из руки / взять наведённый.
+			if event is InputEventMouseButton and event.double_click:
+				_commit_build_tap(event.position)
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			_build_tap_pos = event.position
+			_build_tap_ms = Time.get_ticks_msec()
+			_build_tap_moved = false
+		elif _touch_count == 0 and not _build_tap_moved \
+				and Time.get_ticks_msec() - _build_tap_ms < 250 \
+				and not _tap_over_ui(event.position):
+			_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
+			# ДВОЙНОЙ тап (второй за ~340мс рядом) = подтверждение: взять/поставить.
+			var _now := Time.get_ticks_msec()
+			if _now - _dbl_tap_ms < 340 and _dbl_tap_pos.distance_to(event.position) < 45.0:
+				_commit_build_tap(event.position)
+				_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
+			else:
+				_dbl_tap_ms = _now
+				_dbl_tap_pos = event.position
+	elif event is InputEventScreenDrag:
+		if _build_tap_pos.distance_to(event.position) > 14.0:
+			_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
 	# Клавиатурные действия гасим ТОЛЬКО пока печатают в текстовом поле — иначе, если
 	# фокус где-то залип, тач/мышь-кнопки Take/TakeOff/Building/Movement (это тоже
 	# event.is_action_pressed, тач-кнопки шлют его же) перестали бы работать вовсе.
