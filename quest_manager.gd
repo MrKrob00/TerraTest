@@ -227,7 +227,7 @@ func skip_quest(id: String) -> void:
 	q["progress"] = q["goal"]
 	q["done"] = true
 	_persist_done(q)
-	_say("System", "Задание «%s» больше невыполнимо — пропущено." % String(q["title"]))
+	_say("System", "\"%s\" can no longer be completed — skipped." % String(q["title"]))
 	changed.emit()
 	_auto_track()
 
