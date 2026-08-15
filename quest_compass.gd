@@ -1,0 +1,132 @@
+class_name QuestCompass
+extends Control
+# Метка ЦЕЛИ отслеживаемого задания. Пока цель на экране — жёлтый значок висит над ней;
+# ушла за кадр — метка прилипает к ближайшему краю экрана и разворачивается остриём в её
+# сторону. Это и есть весь смысл: не «где-то есть жила», а «жила вон там, поверни туда».
+#
+# Мировой точки у задания нет — она и не нужна: цель выводится из СОБЫТИЯ, которое двигает
+# прогресс. Убить врага → ближайший враг; накопать руды → ближайшая активная жила;
+# заработать → ближайший магазин. Задания, у которых цели в мире нет (собери машину,
+# открой гараж), метку просто не показывают.
+
+const PAD := 46.0            # насколько метка отступает от кромки, когда цель за кадром
+const COL := Color(1.0, 0.82, 0.25)
+
+var _t: float = 0.0
+
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	set_anchors_preset(Control.PRESET_FULL_RECT)
+
+func _process(delta: float) -> void:
+	_t += delta
+	queue_redraw()
+
+# Куда ведёт текущее задание. null — цели в мире нет, метку не рисуем.
+func _target_pos() -> Variant:
+	if get_node_or_null("/root/Q") == null:
+		return null
+	var q: Dictionary = Q.tracked()
+	if q.is_empty() or q.get("done", false):
+		return null
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null:
+		return null
+	var from: Vector3 = cam.global_position
+	match String(q.get("event", "")):
+		"enemy_killed", "daily_kill":
+			return _nearest_enemy(from)
+		"ore_mined", "daily_ore":
+			return _nearest_of(_ore_positions(), from)
+		"money_earned":
+			return _nearest_node(get_tree().get_nodes_in_group("shop"), from)
+	return null
+
+func _nearest_enemy(from: Vector3) -> Variant:
+	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
+	if vehicles == null:
+		return null
+	var list: Array = []
+	for e in vehicles.get_children():
+		var f = e.get("faction")
+		if e is Node3D and f != null and int(f) != 0:
+			list.append(e)
+	return _nearest_node(list, from)
+
+func _nearest_node(nodes: Array, from: Vector3) -> Variant:
+	var pts: Array = []
+	for n in nodes:
+		if n is Node3D and is_instance_valid(n):
+			pts.append((n as Node3D).global_position)
+	return _nearest_of(pts, from)
+
+func _ore_positions() -> Array:
+	var rn: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
+	return rn.active_positions() if rn != null and rn.has_method("active_positions") else []
+
+func _nearest_of(points: Array, from: Vector3) -> Variant:
+	var best: Variant = null
+	var best_d: float = INF
+	for p in points:
+		var d: float = from.distance_squared_to(p as Vector3)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+func _draw() -> void:
+	var tgt: Variant = _target_pos()
+	if tgt == null:
+		return
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var world: Vector3 = tgt
+	# Точка ЗА камерой проецируется зеркально — метка ускакала бы в противоположный край.
+	# Поэтому за спиной вообще не проецируем, а сразу считаем направление по осям камеры.
+	var behind: bool = cam.is_position_behind(world)
+	var p: Vector2 = size * 0.5
+	if not behind:
+		p = cam.unproject_position(world)
+	var r := Rect2(Vector2(PAD, PAD), size - Vector2(PAD, PAD) * 2.0)
+	var off: bool = behind or not r.has_point(p)
+	if off:
+		# За кадром: направление берём в ПЛОСКОСТИ ЭКРАНА от центра и упираем в рамку.
+		var dir: Vector2 = (p - size * 0.5)
+		if behind:
+			var to: Vector3 = world - cam.global_position
+			dir = Vector2((cam.global_transform.basis.x).dot(to), (cam.global_transform.basis.y).dot(to))
+			dir.y = -dir.y                       # экранный Y растёт вниз
+			dir = -dir if dir.length() < 0.001 else dir
+		if dir.length() < 0.001:
+			dir = Vector2.UP
+		dir = dir.normalized()
+		# Пересечение луча из центра с прямоугольником рамки.
+		var half: Vector2 = r.size * 0.5
+		var k: float = INF
+		if absf(dir.x) > 0.0001:
+			k = minf(k, half.x / absf(dir.x))
+		if absf(dir.y) > 0.0001:
+			k = minf(k, half.y / absf(dir.y))
+		p = size * 0.5 + dir * k
+		_draw_arrow(p, dir)
+	_draw_pin(p, off)
+
+func _draw_pin(p: Vector2, off: bool) -> void:
+	var pulse: float = 0.85 + 0.15 * sin(_t * 3.0)
+	var rad: float = (13.0 if off else 15.0) * pulse
+	draw_circle(p, rad + 3.0, Color(0, 0, 0, 0.5))
+	draw_circle(p, rad, COL)
+	var f: Font = ThemeDB.fallback_font
+	var s := "?"
+	var sz: float = rad * 1.5
+	var w: Vector2 = f.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, int(sz))
+	draw_string(f, p + Vector2(-w.x * 0.5, sz * 0.36), s, HORIZONTAL_ALIGNMENT_LEFT, -1,
+			int(sz), Color(0.1, 0.09, 0.05))
+
+# Остриё в сторону цели — по нему и понятно, куда поворачивать.
+func _draw_arrow(p: Vector2, dir: Vector2) -> void:
+	var n := Vector2(-dir.y, dir.x)
+	var tip: Vector2 = p + dir * 26.0
+	draw_colored_polygon(PackedVector2Array([tip, p + n * 9.0 + dir * 10.0,
+			p - n * 9.0 + dir * 10.0]), COL)

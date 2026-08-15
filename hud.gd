@@ -48,6 +48,12 @@ func _ready() -> void:
 	_build_anchor_button()
 	_build_radar()
 	_build_money()
+	# Компас задания (quest_compass.gd): ведёт к цели отслеживаемого квеста и не даёт ей
+	# потеряться за кадром. Добавляем ПОСЛЕ карты, чтобы рисоваться поверх мира, но он
+	# полноэкранный и прозрачный — ничего собой не закрывает.
+	var qc := QuestCompass.new()
+	add_child(qc)
+	_quest_compass = qc
 	# _build_settings_panel()   # настройки камеры переехали в гараж (tech_ui)
 	_collect_game_controls()
 	# Наставник обучения (палец + блокировка). Ставим ПОСЛЕ сборки кнопок: он их ищет.
@@ -200,6 +206,7 @@ const RADAR_SIZE_FULL := 150.0
 const RADAR_RANGE_SMALL := 55.0     # м мира в радиусе карты
 const RADAR_RANGE_FULL := 220.0
 var _radar: RadarHUD = null
+var _quest_compass: Control = null
 var _radar_size: float = RADAR_SIZE_SMALL
 
 func _build_radar() -> void:
@@ -884,6 +891,8 @@ func _update_radar(delta: float) -> void:
 	var live: bool = v != null and v is Node3D and not _controls_hidden
 	if _money_panel:
 		_money_panel.visible = live
+	if _quest_compass:
+		_quest_compass.visible = live
 	if _radar.visible != live:
 		_radar.visible = live
 		_push_quest_top(live)
