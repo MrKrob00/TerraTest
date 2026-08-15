@@ -160,7 +160,7 @@ func _update_tracker() -> void:
 		_objective.text = ""
 		return
 	var star := "▶ " if q["type"] == Q.Type.TUTORIAL else ("★ " if q["type"] == Q.Type.STORY else "◆ ")
-	_title.text = star + str(q["title"])
+	_title.text = star + str(q["title"]) + _stage_suffix(q)
 	if q["done"]:
 		_objective.text = "✓ done"
 	elif _grade_locked(q):
@@ -168,6 +168,12 @@ func _update_tracker() -> void:
 		_objective.text = "Unlocks at license grade %d" % int(q.get("req_grade", 1))
 	else:
 		_objective.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+
+# «· часть 2/2» у многостадийных: без этого две разные части выглядят одним и тем же
+# заданием, у которого почему-то поменялся текст.
+func _stage_suffix(q: Dictionary) -> String:
+	var si: Vector2i = Q.stage_info(q)
+	return "" if si == Vector2i.ZERO else "  · часть %d/%d" % [si.x, si.y]
 
 # Сюжетный квест ждёт грейда лицензии (см. quest_manager._grade_ok).
 func _grade_locked(q: Dictionary) -> bool:
@@ -212,7 +218,7 @@ func _make_row(q: Dictionary) -> Control:
 	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vb.add_theme_constant_override("separation", 1)
 	var t := Label.new()
-	t.text = str(q["title"]) + ("  ✓" if q["done"] else "")
+	t.text = str(q["title"]) + _stage_suffix(q) + ("  ✓" if q["done"] else "")
 	t.add_theme_font_size_override("font_size", 15)
 	t.add_theme_color_override("font_color", Color(0.6, 0.75, 0.6, 1) if q["done"] else Color(0.92, 0.96, 0.98, 1))
 	vb.add_child(t)
