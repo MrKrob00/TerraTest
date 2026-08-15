@@ -32,6 +32,13 @@ func _target_pos() -> Variant:
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	if cam == null:
 		return null
+	# Предмет, положенный в мир этим квестом, — цель ТОЧНАЯ и важнее всякой эвристики
+	# по событию: «найдите солнечную панель» ведёт именно к ней, а не к чему-то похожему.
+	var props: Node = get_tree().get_first_node_in_group("quest_props")
+	if props != null and props.has_method("position_for"):
+		var exact = props.position_for(String(q.get("id", "")))
+		if exact != null:
+			return exact
 	var from: Vector3 = cam.global_position
 	match String(q.get("event", "")):
 		"enemy_killed", "daily_kill":
