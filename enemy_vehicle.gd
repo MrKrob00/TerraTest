@@ -97,6 +97,14 @@ func _ready() -> void:
 	upright_strength = 15.0
 	steer_min_speed = 0.3
 	init_machine_physics()
+	# Метка с именем над машиной (enemy_marker.gd): врага должно быть видно и в толпе, и
+	# за деревом, и понятно, кто именно перед тобой. У машин игрока в этой точке висит
+	# кнопка кругового меню, поэтому метка только у чужих.
+	var mk := Node3D.new()
+	mk.set_script(preload("res://enemy_marker.gd"))
+	mk.vehicle = self
+	mk.position = Vector3(0, 2.6, 0)
+	add_child(mk)
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
