@@ -360,4 +360,9 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
 	if body.has_method("hurt"):
 		body.hurt(damage)
+	# Щит гасит снаряд «в воздухе», на самом куполе: без отметки попадание выглядело как
+	# исчезновение пули из ниоткуда. Глюк рисуем по САМОЙ ПУЛЕ — её габарит крошечный,
+	# поэтому и облако выходит мелким, ровно на точке гашения.
+	if "owner_vehicle" in body and is_instance_valid(source):
+		BlockFX.play(source, false, 0.28)
 	_recycle_bullet(source)

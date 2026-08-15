@@ -79,7 +79,19 @@ static func _boom(root: Node, pos: Vector3, target_r: float, col: Color, energy:
 	tw.tween_property(mat, "emission_energy_multiplier", 0.0, dur)
 	tw.chain().tween_callback(mi.queue_free)
 
-static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
+## Зелёная «матрица» — ремонт. Цвет и есть всё сообщение: тот же эффект в cyan/magenta
+## означает появление и исчезновение блока, и лечение обязано читаться иначе.
+const HEAL_A := Color(0.25, 1.0, 0.45)
+const HEAL_B := Color(0.10, 0.65, 0.30)
+
+## Эффект ремонта блока. Отдельная обёртка, а не «play с цветом» на каждом вызове: лечение
+## зовётся из регена по каждому блоку в радиусе, и подбирать цвета на месте вызова — способ
+## их рассинхронить.
+static func heal(block: Node3D, duration: float = 0.55) -> void:
+	play(block, false, duration, HEAL_A, HEAL_B)
+
+static func play(block: Node3D, destroy: bool, duration: float = -1.0,
+		tint_a: Color = Color(0, 0, 0, 0), tint_b: Color = Color(0, 0, 0, 0)) -> void:
 	if block == null or not block.is_inside_tree():
 		return
 	var host: Node = block
@@ -121,6 +133,11 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0) -> void:
 		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)   # 4×4 или 6×6
 		cmat.set_shader_parameter("fill_threshold", randf_range(0.38, 0.5))      # форма пятна
 		cmat.set_shader_parameter("progress", 0.0)
+		# Прозрачная «пустая» краска = цвета шейдера по умолчанию (cyan/magenta).
+		if tint_a.a > 0.0:
+			cmat.set_shader_parameter("glitch_a", Vector3(tint_a.r, tint_a.g, tint_a.b))
+		if tint_b.a > 0.0:
+			cmat.set_shader_parameter("glitch_b", Vector3(tint_b.r, tint_b.g, tint_b.b))
 		card.material_override = cmat
 		cloud.add_child(card)
 		# позиция вразброс в пределах блока (чуть шире), масштаб случайный → разные размеры/глубины
