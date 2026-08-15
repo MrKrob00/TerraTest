@@ -15,6 +15,7 @@ const COL := Color(1.0, 0.82, 0.25)
 var _t: float = 0.0
 
 func _ready() -> void:
+	add_to_group("quest_compass")   # журнал заданий берёт отсюда расстояние до цели
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
@@ -26,7 +27,11 @@ func _process(delta: float) -> void:
 func _target_pos() -> Variant:
 	if get_node_or_null("/root/Q") == null:
 		return null
-	var q: Dictionary = Q.tracked()
+	return target_of(Q.tracked())
+
+## Цель ЛЮБОГО задания. Публично, потому что журнал показывает по ней расстояние: искать
+## её вторым способом значило бы держать две копии одной логики, которые разъедутся.
+func target_of(q: Dictionary) -> Variant:
 	if q.is_empty() or q.get("done", false):
 		return null
 	var cam: Camera3D = get_viewport().get_camera_3d()

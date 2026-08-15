@@ -21,6 +21,10 @@ func _ready() -> void:
 	_list_top0 = _list_panel.offset_top
 	_tracker.pressed.connect(_toggle_list)
 	%Close.pressed.connect(_close_list)
+	%TrackBtn.pressed.connect(func():
+		if _sel_id != "":
+			Q.track(_sel_id)
+			_rebuild_list())
 	# Оба окна плавающие. Трекер таскаем за него самого (он же и кнопка — тап и
 	# перетаскивание различаем по пройденному пути), список — ТОЛЬКО за шапку: внутри него
 	# скролл, и если ловить перетаскивание всей панелью, список перестанет прокручиваться
@@ -179,14 +183,33 @@ func _stage_suffix(q: Dictionary) -> String:
 func _grade_locked(q: Dictionary) -> bool:
 	return int(q["type"]) == Q.Type.STORY and G.grade("start") < int(q.get("req_grade", 1))
 
-# ── Список всех заданий ───────────────────────────────────────────────────────
+# ── Журнал заданий: слева список, справа подробности ──────────────────────────
+# Прежний список был плоским: у каждой строки своя звёздочка-переключатель и три подписи
+# подряд. Он не оставлял места ни описанию, ни наградам, и чем больше становилось заданий,
+# тем хуже читался. Разложили как журнал: список только выбирает, а всё про выбранное
+# задание живёт справа и не мешает выбору.
+@onready var _detail: VBoxContainer = %Detail
+@onready var _track_btn: Button = %TrackBtn
+
+var _sel_id: String = ""              # выбранное В ЖУРНАЛЕ (не то же, что отслеживаемое)
+
 func _rebuild_list() -> void:
 	for c in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
+	# Ничего не выбрано (или выбранное закрылось) — показываем первое.
+	if _find_vis(vis, _sel_id).is_empty():
+		_sel_id = String(vis[0].get("id", "")) if not vis.is_empty() else ""
 	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
 	_add_section("STORY", vis.filter(func(q): return q["type"] == Q.Type.STORY))
 	_add_section("DAILY", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
+	_rebuild_detail()
+
+func _find_vis(vis: Array, id: String) -> Dictionary:
+	for q in vis:
+		if String(q.get("id", "")) == id:
+			return q
+	return {}
 
 func _add_section(section_name: String, items: Array) -> void:
 	if items.is_empty():
@@ -199,49 +222,110 @@ func _add_section(section_name: String, items: Array) -> void:
 	for q in items:
 		_list.add_child(_make_row(q))
 
+# Строка списка: значок типа, название и РАССТОЯНИЕ до цели. Расстояние берём у компаса —
+# он уже умеет находить точку задания, и второй такой поиск тут был бы копией его логики.
 func _make_row(q: Dictionary) -> Control:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 42)
+	b.toggle_mode = true
+	b.button_pressed = String(q.get("id", "")) == _sel_id
+	b.add_theme_font_size_override("font_size", 15)
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	var mark := "▶" if q["type"] == Q.Type.TUTORIAL else ("★" if q["type"] == Q.Type.STORY else "◆")
+	var dist := _distance_to(q)
+	b.text = "  %s  %s%s" % [mark, str(q["title"]), _stage_suffix(q)]
+	if dist >= 0.0:
+		b.text += "      %d m" % int(dist)
+	if String(q.get("id", "")) == Q.tracked_id:
+		b.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
+	b.pressed.connect(func():
+		_sel_id = String(q.get("id", ""))
+		_rebuild_list())
+	return b
+
+func _distance_to(q: Dictionary) -> float:
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	var hud: Node = get_tree().get_first_node_in_group("quest_compass")
+	if cam == null or hud == null or not hud.has_method("target_of"):
+		return -1.0
+	var p = hud.target_of(q)
+	return -1.0 if p == null else cam.global_position.distance_to(p as Vector3)
+
+# ── Правая половина: всё про выбранное задание ───────────────────────────────
+func _rebuild_detail() -> void:
+	for c in _detail.get_children():
+		c.queue_free()
+	var q: Dictionary = _find_vis(Q.visible_quests(), _sel_id)
+	_track_btn.disabled = q.is_empty() or q["done"] or _grade_locked(q)
+	if q.is_empty():
+		_detail.add_child(_dim("No mission selected."))
+		return
+	var t := Label.new()
+	t.text = str(q["title"])
+	t.add_theme_font_size_override("font_size", 22)
+	t.add_theme_color_override("font_color", Color(0.85, 0.95, 0.98))
+	_detail.add_child(t)
+
+	_detail.add_child(_head("Description:"))
+	var d := Label.new()
+	d.text = String(q.get("hint", "")) if String(q.get("hint", "")) != "" else str(q["desc"])
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.add_theme_font_size_override("font_size", 14)
+	d.add_theme_color_override("font_color", Color(0.88, 0.93, 0.96))
+	_detail.add_child(d)
+
+	_detail.add_child(_head("Objectives:"))
+	var o := Label.new()
+	if _grade_locked(q):
+		o.text = "  ▪ Unlocks at license grade %d" % int(q.get("req_grade", 1))
+	else:
+		o.text = "  ▪ %s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+	o.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	o.add_theme_font_size_override("font_size", 14)
+	o.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
+	_detail.add_child(o)
+
+	_detail.add_child(_head("Rewards:"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	for pair in [["%d XP" % int(q.get("reward_xp", 0)), int(q.get("reward_xp", 0))],
+			["%d $" % int(q.get("reward_money", 0)), int(q.get("reward_money", 0))],
+			["%d RP" % int(q.get("reward_rp", 0)), int(q.get("reward_rp", 0))]]:
+		if int(pair[1]) > 0:
+			row.add_child(_chip(String(pair[0])))
+	if row.get_child_count() == 0:
+		row.add_child(_dim("—"))
+	_detail.add_child(row)
 
-	var is_tracked: bool = (q["id"] == Q.tracked_id)
-	var star := Button.new()
-	star.flat = true
-	star.custom_minimum_size = Vector2(34, 34)
-	star.text = "★" if is_tracked else "☆"
-	star.add_theme_font_size_override("font_size", 20)
-	star.add_theme_color_override("font_color", Color(1, 0.65, 0.2, 1) if is_tracked else Color(0.7, 0.75, 0.78, 1))
-	star.disabled = q["done"] or _grade_locked(q)   # заблокированный не затрекать: прогресс
-	star.pressed.connect(func(): Q.track(q["id"]))  # у него всё равно не капает
-	row.add_child(star)
+func _head(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 15)
+	l.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9))
+	return l
 
-	var vb := VBoxContainer.new()
-	vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vb.add_theme_constant_override("separation", 1)
-	var t := Label.new()
-	t.text = str(q["title"]) + _stage_suffix(q) + ("  ✓" if q["done"] else "")
-	t.add_theme_font_size_override("font_size", 15)
-	t.add_theme_color_override("font_color", Color(0.6, 0.75, 0.6, 1) if q["done"] else Color(0.92, 0.96, 0.98, 1))
-	vb.add_child(t)
-	var o := Label.new()
-	if q["done"]:
-		o.text = "✓ done"
-	else:
-		if _grade_locked(q):
-			# Цепочка ждёт лицензию — вместо прогресса пишем условие (награды как тизер).
-			o.text = "Unlocks at license grade %d" % int(q.get("req_grade", 1))
-		else:
-			o.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
-		var reward: int = int(q.get("reward_money", 0))
-		if reward > 0:
-			o.text += "  ·  +%d$" % reward
-		var rxp: int = int(q.get("reward_xp", 0))
-		if rxp > 0:
-			o.text += "  ·  +%dXP" % rxp
-		var rrp: int = int(q.get("reward_rp", 0))
-		if rrp > 0:
-			o.text += "  ·  +%d RP" % rrp
-	o.add_theme_font_size_override("font_size", 12)
-	o.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
-	vb.add_child(o)
-	row.add_child(vb)
-	return row
+func _dim(text: String) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+	return l
+
+func _chip(text: String) -> Control:
+	var p := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.07, 0.18, 0.21, 0.95)
+	st.border_color = Color(0.25, 0.6, 0.65, 0.7)
+	st.set_border_width_all(1)
+	st.set_corner_radius_all(6)
+	st.content_margin_left = 10
+	st.content_margin_right = 10
+	st.content_margin_top = 4
+	st.content_margin_bottom = 4
+	p.add_theme_stylebox_override("panel", st)
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 14)
+	l.add_theme_color_override("font_color", Color(1, 0.85, 0.35))
+	p.add_child(l)
+	return p
