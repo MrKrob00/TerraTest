@@ -47,6 +47,7 @@ func _ready() -> void:
 	_build_block_globe()
 	_build_anchor_button()
 	_build_radar()
+	_build_money()
 	# _build_settings_panel()   # настройки камеры переехали в гараж (tech_ui)
 	_collect_game_controls()
 	# Наставник обучения (палец + блокировка). Ставим ПОСЛЕ сборки кнопок: он их ищет.
@@ -90,14 +91,13 @@ func _relayout() -> void:
 	var mode := get_node_or_null("ModeToggle") as Node2D
 	if mode:
 		mode.position = Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD)
-	if _hand_panel:
-		_hand_panel.position = Vector2(
-				screen.x - 98.0 - _hand_panel.size.x * 0.5,
-				screen.y * 0.5 + 49.0 - _hand_panel.size.y - 12.0)
+	# Панель «блок в руке» больше не раскладывается здесь: её место считает
+	# _update_hand_panel каждый кадр (она привязана к кнопкам поворота слева).
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
 	if _radar:
 		_radar.position = _radar_pos(screen)
+	_layout_money()
 	# Джойстики и FPS-метка — это ноды сцены с АБСОЛЮТНЫМИ позициями (авторились под одно
 	# разрешение). При expand на не-16:9 экране они «отлипали» от краёв. Прибиваем к краям
 	# от текущего размера (джойстики всё равно прыгают под палец при касании — это лишь
@@ -192,18 +192,74 @@ func _build_energy_gauge() -> void:
 
 # Радар-карта: круг СПРАВА СВЕРХУ. Виден только если у активной машины есть блок RADAR.
 # Энергия показана дугой по его ободу слева-снизу (см. RadarHUD._draw).
-const RADAR_SIZE := 150.0
+# Карта есть ВСЕГДА, но блок RADAR решает, насколько она велика. Без него — маленькая
+# врезка с ближайшим окружением машины (видно, что прямо вокруг тебя); с ним — заметно
+# крупнее и втрое дальше. Раньше без блока карты не было вовсе.
+const RADAR_SIZE_SMALL := 96.0
+const RADAR_SIZE_FULL := 150.0
+const RADAR_RANGE_SMALL := 55.0     # м мира в радиусе карты
+const RADAR_RANGE_FULL := 220.0
 var _radar: RadarHUD = null
+var _radar_size: float = RADAR_SIZE_SMALL
+
 func _build_radar() -> void:
 	_radar = RadarHUD.new()
-	_radar.size = Vector2(RADAR_SIZE, RADAR_SIZE)
+	_radar.size = Vector2(_radar_size, _radar_size)
+	_radar.range_world = RADAR_RANGE_SMALL
 	_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
 	_radar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_radar.visible = false
 	add_child(_radar)
 
 func _radar_pos(screen: Vector2) -> Vector2:
-	return Vector2(screen.x - RADAR_SIZE - 12.0, 12.0)   # справа сверху
+	return Vector2(screen.x - _radar_size - 12.0, 12.0)   # справа сверху
+
+# ── Деньги ────────────────────────────────────────────────────────────────────
+# Постоянная строка под картой, в том же правом верхнем углу. Раньше деньги на HUD не
+# показывались вообще — их было видно только открыв гараж, то есть в бою и на добыче
+# игрок не знал, сколько у него есть.
+const MONEY_H := 30.0
+var _money_lbl: Label = null
+
+func _build_money() -> void:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", _make_float_panel_style())
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_money_lbl = Label.new()
+	_money_lbl.add_theme_font_size_override("font_size", 17)
+	_money_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+	_money_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_money_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(_money_lbl)
+	add_child(p)
+	_money_panel = p
+	_refresh_money()
+	G.money_changed.connect(_refresh_money)   # продавец начисляет пассивно — ловим сигналом
+	_layout_money()
+
+var _money_panel: PanelContainer = null
+
+func _refresh_money() -> void:
+	if _money_lbl:
+		_money_lbl.text = "$ %s" % _thousands(int(G.money))
+
+# 5038 → «5 038»: без разделителя длинные суммы на бегу не читаются.
+func _thousands(v: int) -> String:
+	var s := str(absi(v))
+	var out := ""
+	for i in s.length():
+		if i > 0 and (s.length() - i) % 3 == 0:
+			out += " "
+		out += s[i]
+	return ("-" if v < 0 else "") + out
+
+func _layout_money() -> void:
+	if _money_panel == null:
+		return
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	var w: float = maxf(_radar_size, 96.0)
+	_money_panel.size = Vector2(w, MONEY_H)
+	_money_panel.position = Vector2(screen.x - w - 12.0, 12.0 + _radar_size + 6.0)
 
 # Трекер квестов прибит к тому же углу, что и радар, и лежал прямо на нём. Сообщаем ему
 # нижнюю кромку радара; когда радара нет (нет блока RADAR) — 0, и трекер уезжает обратно
@@ -211,7 +267,7 @@ func _radar_pos(screen: Vector2) -> Vector2:
 func _push_quest_top(radar_on: bool) -> void:
 	var y: float = 0.0
 	if radar_on:
-		y = _radar_pos(get_viewport().get_visible_rect().size).y + RADAR_SIZE + 12.0
+		y = _radar_pos(get_viewport().get_visible_rect().size).y + _radar_size + MONEY_H + 12.0
 	for q in get_tree().get_nodes_in_group("quests"):
 		if q.has_method("set_top_offset"):
 			q.set_top_offset(y)
@@ -815,11 +871,23 @@ func _update_radar(delta: float) -> void:
 	if _anchor_btn:
 		_anchor_btn.visible = (not _controls_hidden) and v != null \
 				and v.has_method("can_anchor") and v.can_anchor()
+	# Размер и охват — по наличию блока RADAR; сама карта видна, пока есть машина.
 	var on: bool = _has_radar(v)
-	if _radar.visible != on:
-		_radar.visible = on
-		_push_quest_top(on)        # радар и трекер квестов делят правый верхний угол
-	if not on:
+	var want: float = RADAR_SIZE_FULL if on else RADAR_SIZE_SMALL
+	if not is_equal_approx(_radar_size, want):
+		_radar_size = want
+		_radar.size = Vector2(want, want)
+		_radar.range_world = RADAR_RANGE_FULL if on else RADAR_RANGE_SMALL
+		_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
+		_layout_money()
+		_push_quest_top(true)      # карта и трекер квестов делят правый верхний угол
+	var live: bool = v != null and v is Node3D and not _controls_hidden
+	if _money_panel:
+		_money_panel.visible = live
+	if _radar.visible != live:
+		_radar.visible = live
+		_push_quest_top(live)
+	if not live:
 		return
 	var origin: Vector3 = (v as Node3D).global_position
 	var fwd: Vector3 = -(v as Node3D).global_transform.basis.z
