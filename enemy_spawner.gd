@@ -206,48 +206,55 @@ func _on_enemy_died(_enemy: Node) -> void:
 # соседом (при телепорте его самого). Возвращает Vector3 или null.
 # Точка спавна в кольце вокруг игрока.
 #
-# Раньше брался ПЕРВЫЙ подходящий кандидат из 36 по кругу. Когда часть направлений
-# отбракована рельефом (вода, обрыв) — а так бывает почти всегда, — все спавны подряд
-# сваливались в один и тот же уцелевший сектор, и враги кучковались. Проверка
-# spawn_separation этого не ловила: она про метры, а не про то, что все пришли с одной
-# стороны.
+# Кольцо поделено на секторы, и новый враг идёт в ТОТ, ГДЕ ИХ СЕЙЧАС МЕНЬШЕ ВСЕГО, —
+# равномерность получается по построению, а не как побочный эффект.
 #
-# Теперь перебираем ВЕСЬ круг и выбираем направление, максимально удалённое ПО УГЛУ от уже
-# живущих врагов, — новый приходит с той стороны, откуда сейчас никого.
+# Так пришлось делать в два захода. Сначала брался первый подходящий кандидат из 36 по
+# кругу: когда часть кольца отбракована водой или обрывом (а это почти всегда), все спавны
+# подряд сваливались в один уцелевший сектор. Потом выбиралось направление, максимально
+# удалённое по углу от живых врагов, — уже лучше, но это ЖАДНЫЙ выбор: он отталкивается
+# только от текущей расстановки и на неудачном рельефе всё равно перекашивал кольцо в одну
+# сторону. Счётчик по секторам этим не страдает: занятый сектор не выберут, пока есть пустые.
+const SPAWN_SECTORS := 8
+
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
-	var taken: Array[float] = []                 # углы (от игрока) уже стоящих врагов
+	# Сколько врагов уже стоит в каждом секторе.
+	var per: Array[int] = []
+	per.resize(SPAWN_SECTORS)
+	per.fill(0)
 	for e in _enemies:
 		if e == exclude or not is_instance_valid(e):
 			continue
 		var d: Vector3 = (e as Node3D).global_position - center
-		if Vector2(d.x, d.z).length() > 0.5:
-			taken.append(atan2(d.z, d.x))
-	var base: float = randf() * TAU
-	var best: Variant = null
-	var best_score: float = -1.0
-	for i in 36:
-		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)
-		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
-		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		var h: float = map.terrain_height_at(world)
-		if h < min_height:
+		if Vector2(d.x, d.z).length() < 0.5:
 			continue
-		if _slope_at(map, world) > max_slope:
-			continue
-		var cand := Vector3(world.x, h + ground_offset, world.z)
-		if _too_close_to_enemy(cand, exclude):
-			continue
-		# Свободных врагов нет — первый подошедший и годится.
-		if taken.is_empty():
+		per[_sector_of(atan2(d.z, d.x))] += 1
+	# Секторы по возрастанию занятости; равные — вперемешку, иначе пустая карта всегда
+	# заполнялась бы с одного и того же боку.
+	var order: Array[int] = []
+	for i in SPAWN_SECTORS:
+		order.append(i)
+	order.shuffle()
+	order.sort_custom(func(a, b): return per[a] < per[b])
+	# Внутри сектора — несколько попыток: рельеф может не пустить в конкретную точку.
+	for sec in order:
+		for _try in 6:
+			var ang: float = (TAU / SPAWN_SECTORS) * (float(sec) + randf())
+			var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
+			var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+			var h: float = map.terrain_height_at(world)
+			if h < min_height:
+				continue
+			if _slope_at(map, world) > max_slope:
+				continue
+			var cand := Vector3(world.x, h + ground_offset, world.z)
+			if _too_close_to_enemy(cand, exclude):
+				continue
 			return cand
-		var score: float = PI
-		for a in taken:
-			var diff: float = absf(wrapf(ang - a, -PI, PI))
-			score = minf(score, diff)
-		if score > best_score:
-			best_score = score
-			best = cand
-	return best
+	return null
+
+func _sector_of(ang: float) -> int:
+	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS
 
 # Есть ли уже враг ближе spawn_separation (по горизонтали) к точке pos.
 func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
