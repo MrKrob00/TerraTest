@@ -535,3 +535,95 @@ func _get_right() -> Vector3:
 
 func _get_up() -> Vector3:
 	return global_transform.basis.y
+
+
+# ══════════════════════════════════════════
+# ОТРЫВ БЛОКОВ В МИР
+# ══════════════════════════════════════════
+# Живёт здесь, в ОБЩЕЙ базе машин, а не у машины игрока. Оторванный блок роняет карта
+# (blocks._detach_one) вызовом veh.detach_block_to_world(), причём через has_method — и у
+# врага этого метода просто не было: проверка молча не проходила, клетка карты очищалась,
+# а сам узел так и оставался висеть в воздухе там, где был. Отсюда и разница, которую было
+# видно в игре: у игрока обломки осыпаются, у врага висят.
+var collision_to_block_map: Dictionary = {}
+
+## Сдвиг коллизии у блоков 2×2×2 относительно позиции самого блока: коллизия у них
+## описывает куб 2×2×2 и центрируется иначе. Держим одним числом — по нему коллизию и
+## ИЩУТ при разборке и при гибели блока, и разъехавшиеся копии этого сдвига означали бы
+## коллизию, оставшуюся на корпусе.
+const BIG_BLOCK_COL_OFFSET := Vector3(-0.5, 0.5, -0.5)
+
+func _on_block_destroyed(destroyed_block: Node3D) -> void:
+	
+	var keys_to_remove: Array = []
+	
+	# Перебираємо всі фізичні форми самого Vehicle
+	for owner_id in get_shape_owners():
+		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
+		
+		if is_instance_valid(collision_shape):
+			# Якщо ця колізія належить знищеному блоку.
+			# Второй вариант — про блоки 2×2×2 (процессор, продавец): их коллизия ставится
+			# со сдвигом (см. постановку блока), и по точному совпадению позиции она не
+			# находилась — большой блок погибал, а его коллизия оставалась висеть.
+			if collision_shape.position == destroyed_block.position \
+					or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET:
+				
+				
+				# 1. Вимикаємо її у фізичному рушії (стоп колізія)
+				shape_owner_set_disabled(owner_id, true)
+				
+				# 2. Очищаємо геометрію форми з фізичного сервера
+				shape_owner_clear_shapes(owner_id)
+				
+				# 3. Видаляємо власника форми з кузова Vehicle
+				remove_shape_owner(owner_id)
+				
+				# 4. Видаляємо сам вузол колізії з кореня Vehicle
+				collision_shape.queue_free()
+				
+				# Запам'ятовуємо ID, щоб підчистити словник урону
+				keys_to_remove.append(owner_id)
+				
+	# Очищаємо словник урону від застарілих ID
+	for key in keys_to_remove:
+		collision_to_block_map.erase(key)
+
+# Блок потерял связь с корнем (кабина/база) и падает в мир (см. blocks._detach_orphans):
+# снимаем его дублированную коллизию с тела машины, репарентим в objects, размораживаем и роняем.
+func detach_block_to_world(node: Node) -> void:
+	if not is_instance_valid(node):
+		return
+	if node is Node3D:
+		_on_block_destroyed(node as Node3D)          # убрать коллизию блока с тела + чистка мапы урона
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or not (node is Node3D):
+		return
+	(node as Node3D).reparent(objects)
+	if node is RigidBody3D:
+		var rb := node as RigidBody3D
+		rb.freeze = false
+		rb.sleeping = false
+		if _blast_force > 0.0 and Time.get_ticks_msec() < _blast_until_ms:
+			# Оторвало ВЗРЫВОМ (напр. батареи) — швыряем от эпицентра сильнее обычного.
+			var away := rb.global_position - _blast_pos
+			if away.length() < 0.1:
+				away = Vector3(randf() - 0.5, 0.3, randf() - 0.5)
+			away = (away.normalized() + Vector3.UP * 0.35).normalized()
+			rb.apply_central_impulse(away * _blast_force * rb.mass)
+		else:
+			var dir := Vector3(randf() - 0.5, 0.0, randf() - 0.5)
+			dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+			rb.apply_central_impulse((dir * 2.0 + Vector3.UP * 2.5) * rb.mass)
+
+# Взрыв на машине (напр. уничтожена батарея): осколки, что оторвутся в ближайшие ~0.3с, летят
+# ОТ эпицентра сильнее обычного (см. detach_block_to_world). Ставится из VehicleBlock.destroy.
+var _blast_pos: Vector3 = Vector3.ZERO
+var _blast_force: float = 0.0
+var _blast_until_ms: int = 0
+
+func register_blast(pos: Vector3, force: float) -> void:
+	_blast_pos = pos
+	_blast_force = force
+	_blast_until_ms = Time.get_ticks_msec() + 300
+
