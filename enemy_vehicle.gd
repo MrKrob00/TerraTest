@@ -17,7 +17,9 @@ var _cabin: Node = null
 var _dying: bool = false
 
 @export_group("ИИ — Обнаружение")
-@export var detection_radius:    float = 40.0
+## Больше дальности оружия (60): иначе враг стреляет дальше, чем замечает, — стоит и молчит,
+## пока в него бьют с 50 метров.
+@export var detection_radius:    float = 85.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
 ## Слои, на которых ИИ ищет цели. Корпус машины (где живёт faction) лежит на слое

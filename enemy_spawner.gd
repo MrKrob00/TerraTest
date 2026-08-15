@@ -8,9 +8,12 @@ extends Node3D
 @export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
 @export var max_enemies: int = 9
 @export var spawn_interval: float = 6.0             # пауза между появлениями
-@export var spawn_min_dist: float = 270.0           # не ближе к игроку (враги появляются далеко)
-@export var spawn_max_dist: float = 520.0           # не дальше (карта 1982² — простора много; < render 1400, виден при спавне)
-@export var spawn_separation: float = 110.0         # не ближе этого к ДРУГИМ врагам (сильно разнесены, не кучкуются)
+## Кольцо спавна. Было 270–520: враг появлялся ЗА горизонтом восприятия (машина видит на 40,
+## оружие бьёт на 60) — игрок не встречал его, а натыкался неизвестно где и неизвестно когда.
+## Теперь чуть дальше видимости: враг приходит «из-за холма», а не из ниоткуда.
+@export var spawn_min_dist: float = 95.0
+@export var spawn_max_dist: float = 230.0
+@export var spawn_separation: float = 70.0          # не ближе этого к ДРУГИМ врагам
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
@@ -188,8 +191,27 @@ func _on_enemy_died(_enemy: Node) -> void:
 # врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
 # точки расходятся по кольцу, а не бьют в одно место. exclude — враг, которого не считаем
 # соседом (при телепорте его самого). Возвращает Vector3 или null.
+# Точка спавна в кольце вокруг игрока.
+#
+# Раньше брался ПЕРВЫЙ подходящий кандидат из 36 по кругу. Когда часть направлений
+# отбракована рельефом (вода, обрыв) — а так бывает почти всегда, — все спавны подряд
+# сваливались в один и тот же уцелевший сектор, и враги кучковались. Проверка
+# spawn_separation этого не ловила: она про метры, а не про то, что все пришли с одной
+# стороны.
+#
+# Теперь перебираем ВЕСЬ круг и выбираем направление, максимально удалённое ПО УГЛУ от уже
+# живущих врагов, — новый приходит с той стороны, откуда сейчас никого.
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
+	var taken: Array[float] = []                 # углы (от игрока) уже стоящих врагов
+	for e in _enemies:
+		if e == exclude or not is_instance_valid(e):
+			continue
+		var d: Vector3 = (e as Node3D).global_position - center
+		if Vector2(d.x, d.z).length() > 0.5:
+			taken.append(atan2(d.z, d.x))
 	var base: float = randf() * TAU
+	var best: Variant = null
+	var best_score: float = -1.0
 	for i in 36:
 		var ang: float = base + TAU * float(i) / 36.0 + randf_range(-0.13, 0.13)
 		var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
@@ -202,8 +224,17 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		var cand := Vector3(world.x, h + ground_offset, world.z)
 		if _too_close_to_enemy(cand, exclude):
 			continue
-		return cand
-	return null
+		# Свободных врагов нет — первый подошедший и годится.
+		if taken.is_empty():
+			return cand
+		var score: float = PI
+		for a in taken:
+			var diff: float = absf(wrapf(ang - a, -PI, PI))
+			score = minf(score, diff)
+		if score > best_score:
+			best_score = score
+			best = cand
+	return best
 
 # Есть ли уже враг ближе spawn_separation (по горизонтали) к точке pos.
 func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
