@@ -2,11 +2,10 @@ extends VehicleBlock
 class_name WeaponBlock
 
 @export var damage: int = 5
-## Дальность. Было 10 при радиусе обнаружения врага в 40: оружие доставало втрое ближе,
-## чем машина видела противника, и убегающего было не достать в принципе. Отсюда же считает
-## свою боевую дистанцию ИИ (enemy_vehicle._own_weapon_range) — короткий ствол заставлял и
-## врага лезть вплотную.
-@export var weapon_range: float = 34.0
+## Дальность. Было 10 — втрое меньше, чем машина видит противника, поэтому убегающего было
+## не достать в принципе. Отсюда же ИИ берёт свою боевую дистанцию
+## (enemy_vehicle._own_weapon_range), так что короткий ствол заставлял и врага лезть вплотную.
+@export var weapon_range: float = 60.0
 @export var fire_rate: float = 0.2
 @export var raycast: RayCast3D
 @export var pivot: Node3D
@@ -29,6 +28,7 @@ var _current_target: Node3D = null
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
+	_sync_detect_radius()
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
 	if has_node("Ammo/Bullet"):
 		_rebind_bullet($Ammo/Bullet)
@@ -53,6 +53,19 @@ func _physics_process(delta: float) -> void:
 
 func attack() -> void:
 	_fire_hold = FIRE_HOLD
+
+# Радиус зоны, в которой турель ВИДИТ цели, = дальность оружия. В сценах он был прибит
+# к 10 (у ракетницы 18) — то есть турель не бралась наводиться дальше десяти метров, сколько
+# ни увеличивай weapon_range. Именно это, а не дальность, и означало «наводятся только вблизи».
+# Форму дублируем: SubResource в сцене общий для всех её экземпляров.
+func _sync_detect_radius() -> void:
+	if Area_Range == null:
+		return
+	for c in Area_Range.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape is SphereShape3D:
+			var sh: SphereShape3D = ((c as CollisionShape3D).shape as SphereShape3D).duplicate()
+			sh.radius = weapon_range
+			(c as CollisionShape3D).shape = sh
 
 func _is_in_cone(body: Node3D) -> bool:
 	var dir_world: Vector3 = (body.global_position - pivot.global_position).normalized()
