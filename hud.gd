@@ -641,8 +641,14 @@ func _build_hand_panel() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	_hand_panel.add_child(row)
-	row.add_child(_hand_btn(InvIcon.new(), "Inventory", "Put the held block into inventory", func(): _hand_action("stash")))
-	row.add_child(_hand_btn(DropIcon.new(), "Drop", "Drop the held block into the world", func(): _hand_action("drop")))
+	# Кнопку «в инвентарь» держим ссылкой: с РЕСУРСОМ в руке она бессмысленна — инвентарь
+	# хранит типы блоков, руде там места нет, — и её надо гасить, а не молча ничего не делать.
+	_stash_btn = _hand_btn(InvIcon.new(), "Inventory", "Put the held block into inventory",
+			func(): _hand_action("stash"))
+	row.add_child(_stash_btn)
+	row.add_child(_hand_btn(DropIcon.new(), "Drop", "Drop the held item into the world", func(): _hand_action("drop")))
+
+var _stash_btn: Button = null
 
 # Кнопка = ИКОНКА сверху + ПОДПИСЬ снизу (подписи чинят «непонятность» иконок — шрифт текст рендерит).
 func _hand_btn(icon: Control, label: String, tip: String, cb: Callable) -> Button:
@@ -728,6 +734,10 @@ func _update_hand_panel() -> void:
 			# Гараж добавлен в HUD позже — он рисуется поверх. Поднимаем панель над ним,
 			# как это уже делают глобус и кнопки поворота.
 			move_child(_hand_panel, get_child_count() - 1)
+	if show_it and _stash_btn != null:
+		var res_in_hand: bool = ("hand_kind" in v) and int(v.hand_kind) == 2   # Hand.RESOURCE
+		_stash_btn.disabled = res_in_hand
+		_stash_btn.modulate = Color(1, 1, 1, 0.35 if res_in_hand else 1.0)
 	if show_it:
 		# Слева, НАД кнопками поворота: всё, что делается с блоком в руке, — одной колонкой.
 		# Раньше панель липла к кнопке Take справа, но в стройке Take прячет гараж, а правый

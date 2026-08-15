@@ -683,6 +683,17 @@ const MAP_SIZE_Y = 11
 const MAP_SIZE_Z = 11
 
 var block_take: bool = false
+## ЧТО именно в руке. Одним понятием, а не проверкой свойств в каждом месте: рука раньше
+## означала строго «блок», и десяток мест читал у содержимого .block, приводил его к
+## VehicleBlock и клал в инвентарь блоков. Ресурс (руда/слиток) ни одного из этих действий
+## не переживает, поэтому развилка должна быть ровно одна и явная.
+enum Hand { EMPTY, BLOCK, RESOURCE }
+var hand_kind: int = Hand.EMPTY
+
+## Ресурс отличается от блока наличием type/kind_key и ОТСУТСТВИЕМ block. Проверяем по
+## наличию свойств, а не по классу: resource.gd не объявляет class_name.
+static func _is_resource(n: Node) -> bool:
+	return n != null and not ("block" in n) and ("type" in n) and n.has_method("kind_key")
 var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # дефолт = центр сетки 11³
 
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
@@ -893,6 +904,10 @@ func _handle_click(screen_pos: Vector2) -> void:
 	if block_take:
 		var holder: Node = camera_controller.camera.get_child(0)
 		if holder.get_child_count() > 0:
+			# Ресурс в руке в сетку не ставится — наводить нечего, выходим сразу. Ниже идёт
+			# чтение .block, которого у ресурса нет.
+			if hand_kind == Hand.RESOURCE:
+				return
 			var held_bt: int = holder.get_child(0).get("block")
 			# Кабина → всегда новая машина на землю. Стационар → новая база на землю, ТОЛЬКО
 			# если сейчас управляем МАШИНОЙ; если управляем СТАНЦИЕЙ — идёт обычным путём
@@ -1139,6 +1154,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 		hud._rebuild_vehicle_list()
 	instance.queue_free()                           # ядро из руки потрачено
 	block_take = false
+	hand_kind = Hand.EMPTY
 	block_body = null
 	_cabin_ground = null
 	_preview_res = null
@@ -1240,6 +1256,7 @@ func _pick_selected_block() -> bool:
 	block_body.reparent(camera_controller.camera.get_child(0), false)
 	block_body.position = Vector3.ZERO
 	block_take = true
+	hand_kind = Hand.BLOCK
 	Q.report("block_taken_world", 1)               # шаг обучения: блок в руке, откуда — неважно
 	_hand_from_inventory = false                   # снят с машины, не из инвентаря — без авто-добора
 	build_basis = Basis()
@@ -1296,6 +1313,36 @@ func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 		return
 	_grab_world_block(screen_pos)
 
+# Взять РЕСУРС в руку. Отдельно от блочного пути намеренно: общего у них только «повесить
+# под камеру», а всё остальное (тип, инвентарь, сетка, стройка, шаг обучения) — блочное и
+# ресурсу не подходит.
+func _grab_resource(body: Node3D) -> bool:
+	_return_hand_to_inventory()                    # рука должна быть пустой
+	body.reparent(camera_controller.camera.get_child(0), false)
+	body.top_level = false
+	body.position = Vector3.ZERO
+	body.rotation = Vector3.ZERO
+	if body is RigidBody3D:
+		var rb := body as RigidBody3D
+		# Заморозка обязательна: незамороженный ресурс продолжал бы падать по своей физике
+		# и вдобавок его подобрал бы собственный коллектор машины (collector.gd пропускает
+		# только freeze-тела).
+		rb.freeze = true
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
+	block_body = body
+	block_take = true
+	hand_kind = Hand.RESOURCE
+	_hand_from_inventory = false
+	build_basis = Basis()
+	_preview_res = null
+	_cabin_ground = null
+	if ghost_block:
+		ghost_block.visible = false
+	# Q.report и режим стройки НЕ трогаем: шаг обучения «возьми блок» ресурсом не
+	# закрывается, и лезть в стройку ради руды незачем.
+	return true
+
 # Двойной тап по блоку ЧУЖОЙ машины = приказ орудиям бить именно его (см.
 # WeaponBlock._update_current_target). Возвращает true, если цель назначена — тогда тап
 # израсходован и подбор блока не запускается.
@@ -1334,15 +1381,23 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var to: Vector3 = from + cam.project_ray_normal(screen_pos) * 500.0
 	var q := PhysicsRayQueryParameters3D.create(from, to)
-	q.collision_mask = 2                           # VehicleBlock.collision_layer = 2 (свободные блоки)
+	# Слой 2 — свободные блоки, слой 8 — ресурсы (руда/слитки). Раньше маска была только 2,
+	# и ресурс лучом подбора не находился вовсе, сколько по нему ни тапай.
+	q.collision_mask = 2 | 8
 	q.exclude = [get_rid()]                         # не цепляем саму машину
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
 	var body: Node3D = hit.get("collider")
 	var objects := get_node_or_null("/root/Main/objects")
-	if objects == null or not (body is Node3D) or body.get_parent() != objects or not ("block" in body):
-		return false                               # только свободный блок, реально лежащий в мире
+	if objects == null or not (body is Node3D) or body.get_parent() != objects:
+		return false                               # только то, что реально лежит в мире
+	# РЕСУРС берётся в руку так же, как блок, но без всего блочного: ни сетки, ни инвентаря,
+	# ни режима стройки — его можно только положить обратно.
+	if _is_resource(body):
+		return _grab_resource(body)
+	if not ("block" in body):
+		return false
 	var bt := int(body.get("block"))
 	if bt == G.Block.CABIN or G.is_stationary(bt):
 		return false
@@ -1359,6 +1414,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	block_body = body
 	Q.report("block_taken_world", 1)          # шаг обучения «взять блок в руку»
 	block_take = true
+	hand_kind = Hand.BLOCK
 	_hand_from_inventory = false                   # из мира, не из инвентаря — без авто-добора
 	build_basis = Basis()
 	_preview_res = null
@@ -1370,6 +1426,11 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 
 func _on_take_pressed() -> void:
 	if block_take:
+		# Кнопка Take с ресурсом в руке = положить его обратно на землю. Строкой ниже
+		# содержимое руки приводится к VehicleBlock — на ресурсе это ошибка выполнения.
+		if hand_kind == Hand.RESOURCE:
+			drop_hand_to_world()
+			return
 		var instance: VehicleBlock = camera_controller.camera.get_child(0).get_child(0)
 		# Кабина → новая машина; стационар (с машины) → новая база. Ставятся В МИР на землю.
 		# Стационар на СТАНЦИИ на землю не идёт (_cabin_ground будет null — превью шло сеткой).
@@ -1409,6 +1470,7 @@ func _on_take_pressed() -> void:
 		block_map_node.attach_block_signals(instance, int(BuildingBlock["x"]),
 				int(BuildingBlock["y"]), int(BuildingBlock["z"]))
 		connect_block_signals(instance)
+		hand_kind = Hand.EMPTY
 		var placed_bt := int(instance.block)
 		block_take = false
 		build_basis = Basis()          # сброс ручного поворота под следующий блок
@@ -1452,6 +1514,13 @@ func _return_hand_to_inventory() -> void:
 			if (camera_controller != null and camera_controller.camera != null) else null
 	if holder != null:
 		for child in holder.get_children():
+			# РЕСУРС в инвентарь блоков не кладётся и уничтожаться не должен: инвентарь
+			# хранит типы блоков, а руда — предмет мира. Раньше сюда попадал любой ребёнок
+			# держателя и БЕЗУСЛОВНО освобождался — ресурс просто исчезал бы из игры при
+			# любом опустошении руки (выход из стройки, взятие другого блока).
+			if _is_resource(child):
+				_put_resource_back(child as Node3D)
+				continue
 			if "block" in child:
 				G.block_inventory.append(int(child.get("block")))
 			holder.remove_child(child)
@@ -1459,7 +1528,34 @@ func _return_hand_to_inventory() -> void:
 		G.mark_progress_dirty()
 	block_body = null
 	block_take = false
+	hand_kind = Hand.EMPTY
 	_preview_res = null
+
+## Положить ресурс из руки обратно в мир — перед камерой, на землю. Ресурс сам ляжет на
+## поверхность (resource._integrate_forces прижимает его к heightmap), поэтому высоту не
+## считаем. Разморозить обязаны ВРУЧНУЮ: у блоков freeze переключается сам по смене
+## родителя (VehicleBlock._on_parent_changed), у ресурса такой логики нет.
+func _put_resource_back(res: Node3D) -> void:
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null or not is_instance_valid(res):
+		return
+	var cam: Camera3D = camera_controller.camera if camera_controller != null else null
+	var drop: Vector3 = global_position + Vector3.UP * 1.5
+	if cam != null:
+		var fwd: Vector3 = -cam.global_transform.basis.z
+		fwd.y = 0.0
+		if fwd.length() > 0.01:
+			drop = global_position + fwd.normalized() * 3.0 + Vector3.UP * 1.5
+	res.top_level = false
+	res.reparent(objects)
+	res.global_position = drop
+	res.scale = Vector3.ONE
+	if res is RigidBody3D:
+		var rb := res as RigidBody3D
+		rb.freeze = false
+		rb.sleeping = false
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
 	if ghost_block:
 		ghost_block.visible = false
 
@@ -1477,6 +1573,7 @@ func take_block_into_hand(block_type: int) -> bool:
 		BlockFX.play(instance, false)      # глитч появления блока в руке (как при спавне)
 	block_body = instance
 	block_take = true
+	hand_kind = Hand.BLOCK
 	Q.report("block_taken_world", 1)   # шаг обучения закрывается ЛЮБЫМ способом взять блок
 	_hand_from_inventory = true     # взят из инвентаря → после постановки авто-доберём такой же
 	build_basis = Basis()          # свежий блок — без ручного поворота
@@ -1492,6 +1589,11 @@ func take_block_into_hand(block_type: int) -> bool:
 func stash_hand_to_inventory() -> void:
 	if not block_take:
 		return
+	# Инвентарь хранит ТИПЫ БЛОКОВ — руде там места нет. Кладём её обратно в мир: это
+	# единственное осмысленное «убрать из руки» для ресурса.
+	if hand_kind == Hand.RESOURCE:
+		drop_hand_to_world()
+		return
 	if block_body != null and is_instance_valid(block_body) and int(block_body.get("block")) == G.Block.CABIN:
 		return                            # кабину (ядро новой машины) не прячем
 	_return_hand_to_inventory()
@@ -1504,8 +1606,18 @@ func drop_hand_to_world() -> void:
 	if holder == null or holder.get_child_count() == 0:
 		block_body = null
 		block_take = false
+		hand_kind = Hand.EMPTY
 		return
 	var instance: Node3D = holder.get_child(0)
+	if _is_resource(instance):
+		_put_resource_back(instance)      # у ресурса нет .block — и размораживать его надо руками
+		block_body = null
+		block_take = false
+		hand_kind = Hand.EMPTY
+		_preview_res = null
+		if ghost_block:
+			ghost_block.visible = false
+		return
 	if int(instance.get("block")) == G.Block.CABIN:
 		return                            # кабину не бросаем в мир (это ядро новой машины)
 	var objects := get_node_or_null("/root/Main/objects")
@@ -1516,6 +1628,7 @@ func drop_hand_to_world() -> void:
 	instance.scale = Vector3.ONE
 	block_body = null
 	block_take = false
+	hand_kind = Hand.EMPTY
 	_preview_res = null
 	if ghost_block:
 		ghost_block.visible = false
