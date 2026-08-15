@@ -173,7 +173,7 @@ func _update_tracker() -> void:
 # заданием, у которого почему-то поменялся текст.
 func _stage_suffix(q: Dictionary) -> String:
 	var si: Vector2i = Q.stage_info(q)
-	return "" if si == Vector2i.ZERO else "  · часть %d/%d" % [si.x, si.y]
+	return "" if si == Vector2i.ZERO else "  · part %d/%d" % [si.x, si.y]
 
 # Сюжетный квест ждёт грейда лицензии (см. quest_manager._grade_ok).
 func _grade_locked(q: Dictionary) -> bool:
