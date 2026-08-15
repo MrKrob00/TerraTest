@@ -33,5 +33,6 @@ func _physics_process(delta: float) -> void:
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
 			break
 		b.current_hp = mini(b.current_hp + REGEN_HP, b.max_hp)
+		BlockFX.heal(b as Node3D)             # зелёная «матрица»: видно, ЧТО именно чинится
 		if b.has_method("_refresh_hp_fx"):
 			b._refresh_hp_fx()               # подлечили → цифр меньше (или блок снова чистый)
