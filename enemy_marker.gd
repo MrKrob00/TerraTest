@@ -13,6 +13,9 @@ const SHOW_DISTANCE := 140.0
 ## Ближе этого метка не нужна — машина и так занимает пол-экрана, а метка лезет в прицел.
 const HIDE_DISTANCE := 6.0
 const COL := Color(1.0, 0.32, 0.30)
+## Цвет НАЗНАЧЕННОЙ цели: приказ «бей вот этого» обязан быть виден, иначе игрок не понимает,
+## сработал тап или нет и по кому сейчас работают орудия.
+const COL_MARKED := Color(1.0, 0.85, 0.2)
 
 # Имя собираем из двух списков по идентификатору узла: одна и та же машина всегда
 # называется одинаково, а сохранять имя никуда не нужно.
@@ -64,6 +67,25 @@ func _process(delta: float) -> void:
 	# но с потолком — вблизи метка не должна закрывать саму машину.
 	var k: float = clampf(d / 26.0, 0.55, 3.0)
 	scale = Vector3.ONE * k
-	# Лёгкая пульсация ромба — метка живая, глаз её находит в куче деревьев.
+	# Лёгкая пульсация ромба — метка живая, глаз её находит в куче деревьев. У назначенной
+	# цели пульсация ЗАМЕТНЕЕ и цвет другой: её видно среди прочих врагов сразу.
 	_t += delta
-	_pin.modulate = COL * (0.85 + 0.15 * sin(_t * 3.0))
+	var marked: bool = _is_marked(cc.current_vehicle)
+	var base: Color = COL_MARKED if marked else COL
+	var amp: float = 0.35 if marked else 0.15
+	_pin.modulate = base * (0.85 + amp * sin(_t * (6.0 if marked else 3.0)))
+	_name.modulate = base
+
+# Назначена ли ЭТА машина (или её блок) приоритетной целью активной машины игрока.
+func _is_marked(player: Node) -> bool:
+	if player == null or not is_instance_valid(player) or not ("priority_target" in player):
+		return false
+	var t = player.priority_target
+	if t == null or not is_instance_valid(t):
+		return false
+	var p: Node = t
+	while p != null:
+		if p == vehicle:
+			return true
+		p = p.get_parent()
+	return false
