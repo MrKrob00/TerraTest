@@ -97,8 +97,21 @@ func _seed_demo() -> void:
 	add_quest("g5_kill",  "Wasteland Legend", "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
 	add_quest("g5_ore",   "Backbone of Industry", "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
 	add_quest("g5_money", "Empire",           "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	# Старый сюжет шёл строго по order, одной ниткой. Порядок сам по себе больше ничего не
+	# значит, поэтому ту же нитку задаём явно — иначе после перехода на зависимости все
+	# восемнадцать заданий открылись бы разом.
+	_chain_story(["story_first_blood", "story_build", "story_ore", "story_sell", "story_kill",
+			"g2_ore", "g2_kill", "g2_money", "g2_build",
+			"g3_ore", "g3_kill", "g3_money",
+			"g4_ore", "g4_kill", "g4_money",
+			"g5_kill", "g5_ore", "g5_money"])
 	add_quest("daily_ore",   "Daily: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
 	add_quest("daily_kill",  "Daily: Enemies",   "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
+
+# Выстроить квесты в цепочку: каждый требует предыдущего.
+func _chain_story(ids: Array) -> void:
+	for i in range(1, ids.size()):
+		requires(String(ids[i]), [ids[i - 1]])
 
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
@@ -112,8 +125,76 @@ func add_quest(id: String, title: String, desc: String, type: int, goal: int,
 		"reward_xp": reward_xp, "reward_rp": reward_rp, "req_grade": req_grade,
 		"hint": hint,        # подсказка Механика (обучение) — говорится при активации шага
 		"reward_block": reward_block, "reward_block_count": reward_block_count,  # награда БЛОКАМИ (кружат→в мир)
+		"stages": [], "stage": 0,   # см. add_stages
+		"requires": [],             # см. requires (пусто = доступен сразу)
+		"skipped": false,           # закрыт «вхолостую», без награды (см. skip_quest)
 	})
 	changed.emit()
+
+## СТАДИИ квеста: «сначала доехать, потом подобрать блок». Один квест, который игрок берёт
+## один раз, и который сам ведёт по шагам — а не три отдельных задания в списке.
+##
+## Каждая стадия — {"desc", "event", "goal", "hint"}. Прогресс и цель квеста ВСЕГДА равны
+## прогрессу и цели текущей стадии: так весь остальной код (трекер, проценты, report)
+## работает как раньше и ничего не знает про стадии.
+func add_stages(id: String, stages: Array) -> void:
+	var q := _find(id)
+	if q.is_empty() or stages.is_empty():
+		return
+	q["stages"] = stages
+	q["stage"] = 0
+	_apply_stage(q)
+
+## Что должно быть выполнено, чтобы квест появился. Пусто — доступен сразу. Заменяет
+## прежний строгий порядок по order: тот пускал сюжет ровно одной цепочкой, а нам нужна
+## развилка «после первого квеста открылись сразу второй и третий, бери любой».
+func requires(id: String, ids: Array) -> void:
+	var q := _find(id)
+	if not q.is_empty():
+		q["requires"] = ids
+
+# Переносим в квест поля ТЕКУЩЕЙ стадии. Прогресс с нуля: у новой стадии своё условие.
+func _apply_stage(q: Dictionary) -> void:
+	var st: Array = q.get("stages", [])
+	var i: int = int(q.get("stage", 0))
+	if i < 0 or i >= st.size():
+		return
+	var s: Dictionary = st[i]
+	q["desc"] = String(s.get("desc", q.get("desc", "")))
+	q["event"] = String(s.get("event", ""))
+	q["goal"] = maxi(int(s.get("goal", 1)), 1)
+	q["hint"] = String(s.get("hint", ""))
+	q["progress"] = 0
+
+## Сколько стадий и на какой мы сейчас — для UI («часть 2 из 2»).
+func stage_info(q: Dictionary) -> Vector2i:
+	var n: int = (q.get("stages", []) as Array).size()
+	return Vector2i(int(q.get("stage", 0)) + 1, n) if n > 1 else Vector2i.ZERO
+
+## Доступен ли квест: все его требования закрыты (выполнены ИЛИ пропущены — пропуск
+## обязан открывать продолжение, иначе одна недоступная ветка вешает всё дерево).
+func unlocked(q: Dictionary) -> bool:
+	for r in q.get("requires", []):
+		var dep := _find(String(r))
+		if dep.is_empty() or not dep["done"]:
+			return false
+	return true
+
+## Закрыть квест ВХОЛОСТУЮ: он считается выполненным (дерево идёт дальше), но награды нет.
+## Нужен там, где цель может исчезнуть не по вине игрока — например, радар вора уничтожен
+## в бою, и отбирать уже нечего. Делать цель неуязвимой было бы хуже: неуязвимость пришлось
+## бы ставить и снимать по всем веткам завершения, а результат тот же.
+func skip_quest(id: String) -> void:
+	var q := _find(id)
+	if q.is_empty() or q["done"]:
+		return
+	q["skipped"] = true
+	q["progress"] = q["goal"]
+	q["done"] = true
+	_persist_done(q)
+	_say("System", "Задание «%s» больше невыполнимо — пропущено." % String(q["title"]))
+	changed.emit()
+	_auto_track()
 
 # Взят ли грейд, нужный квесту (гейт цепочек по лицензии).
 func _grade_ok(q: Dictionary) -> bool:
@@ -190,14 +271,41 @@ func set_progress(id: String, value: int) -> void:
 	if q.is_empty() or q["done"]:
 		return
 	q["progress"] = clampi(value, 0, q["goal"])
-	if q["progress"] >= q["goal"]:
-		q["done"] = true
+	if q["progress"] < q["goal"]:
+		changed.emit()
+		return
+	# Стадия закрыта. Есть следующая — переходим к ней, квест остаётся активным; это и
+	# есть «взял один квест и идёшь по частям». Стадий больше нет — закрыт весь квест.
+	var st: Array = q.get("stages", [])
+	var i: int = int(q.get("stage", 0))
+	if i + 1 < st.size():
+		q["stage"] = i + 1
+		_apply_stage(q)
+		changed.emit()
+		var hint: String = String(q.get("hint", ""))
+		if hint != "":
+			_say("Mechanic", hint)
+		return
+	q["done"] = true
 	changed.emit()
-	if q["done"]:
-		_on_completed(q)
+	_on_completed(q)
 
 func complete(id: String) -> void:
 	set_progress(id, _find(id).get("goal", 1))
+
+# Одноразовые квесты (сюжет и обучение) помечаем пройденными В СЕЙВЕ. Запись когда-то жила
+# ВНУТРИ ветки «награда блоком», поэтому шаги обучения — а у них награды блоком нет — не
+# сохранялись вовсе, и после перезапуска обучение начиналось заново. Пропущенный квест
+# персистится наравне с выполненным: иначе он воскресал бы при каждом запуске.
+func _persist_done(q: Dictionary) -> void:
+	var g = get_node_or_null("/root/G")
+	if g == null:
+		return
+	if int(q["type"]) != Type.STORY and int(q["type"]) != Type.TUTORIAL:
+		return
+	if not g.quests_done.has(q["id"]):
+		g.quests_done.append(q["id"])
+		g.mark_progress_dirty()
 
 func _on_completed(q: Dictionary) -> void:
 	# Награда деньгами. Начисляем НАПРЯМУЮ (g.money += ...), а не через add_money, чтобы
@@ -219,13 +327,7 @@ func _on_completed(q: Dictionary) -> void:
 		if cc != null and "current_vehicle" in cc and cc.current_vehicle != null \
 				and cc.current_vehicle.has_method("award_blocks"):
 			cc.current_vehicle.award_blocks(rblock, int(q.get("reward_block_count", 1)))
-	# Одноразовые квесты (сюжет и обучение) помечаем пройденными В СЕЙВЕ. Запись жила
-	# ВНУТРИ ветки «награда блоком», поэтому шаги обучения — а у них награды блоком нет —
-	# не сохранялись вовсе, и после перезапуска обучение начиналось заново.
-	if g != null and (int(q["type"]) == Type.STORY or int(q["type"]) == Type.TUTORIAL) \
-			and not g.quests_done.has(q["id"]):
-		g.quests_done.append(q["id"])
-		g.mark_progress_dirty()
+	_persist_done(q)
 	_say("System", _completion_message(str(q["title"]), reward))
 	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 	if int(q["type"]) == Type.TUTORIAL:
@@ -313,9 +415,8 @@ func active_quests() -> Array[Dictionary]:
 	var tut := _current_tutorial()
 	if not tut.is_empty():
 		out.append(tut)
-	var cur := _current_story()
-	if not cur.is_empty():
-		out.append(cur)
+	for q in available_story():
+		out.append(q)
 	for q in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
@@ -353,29 +454,38 @@ func visible_quests() -> Array[Dictionary]:
 	# (он же ждущий грейда — тогда quests.gd подпишет «откроется на грейде N») и активные
 	# дейлики. Выполненный квест просто пропадает из списка: галочки копились, и к середине
 	# обучения трекер превращался в простыню из одиннадцати «✓».
-	# ИНВАРИАНТ: quests_done — префикс порядка order (сюжет выполняется последовательно);
-	# новые квесты добавляй ТОЛЬКО с order больше существующих, иначе префикс сломается.
+	# Сюжетных показываем ВСЕ доступные, а не один: дерево ветвится, и игрок выбирает,
+	# какую ветку вести. order остался только порядком показа внутри списка.
 	var out: Array[Dictionary] = []
 	for q in _sorted_tutorial():
 		if not q["done"]:
 			out.append(q)
 			break
-	for q in _sorted_story():
-		if not q["done"]:
-			out.append(q)
-			break
+	for q in available_story():
+		out.append(q)
 	for q in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
 	return out
 
-func _current_story() -> Dictionary:
-	# Первый невыполненный по order. Если его грейд ещё не взят — сюжет НА ПАУЗЕ
-	# (не перескакиваем вперёд): активного сюжетного нет, остаются дейлики.
+# Сюжетные, доступные ПРЯМО СЕЙЧАС: не выполнены, требования закрыты, грейд взят.
+# Раньше отдавался ровно один — первый невыполненный по order, и сюжет шёл одной ниткой.
+# Теперь их может быть несколько сразу: закрыл первый квест — открылись второй и третий,
+# бери любой, как это устроено у дейликов.
+func available_story() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	# Пока идёт обучение, сюжета нет: иначе игрок на первом шаге видел бы список заданий,
+	# для которых у него ещё нет ни машины, ни блоков.
+	if tutorial_active():
+		return out
 	for q in _sorted_story():
-		if not q["done"]:
-			return q if _grade_ok(q) else {}
-	return {}
+		if not q["done"] and unlocked(q) and _grade_ok(q):
+			out.append(q)
+	return out
+
+func _current_story() -> Dictionary:
+	var a := available_story()
+	return a[0] if not a.is_empty() else {}
 
 func _sorted_story() -> Array[Dictionary]:
 	var s: Array[Dictionary] = []
