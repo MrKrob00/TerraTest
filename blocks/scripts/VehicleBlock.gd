@@ -81,7 +81,6 @@ const BLOCK_HP: Dictionary = {
 	G.Block.SHIELD:    70,
 	G.Block.ROCKET:    70,
 	G.Block.BLOCK3:    120,      # 3 клетки — и hp втрое от обычного блока
-	G.Block.WEDGE:     70,       # клин: чуть меньше материала, чем в полном кубе
 	G.Block.WEDGE2:    110,
 	G.Block.ARMOR:     240,      # защитная пластина: держит втрое больше блока
 	# Плиты крупнее — прочность по объёму: 2 клетки вдвое, 4 клетки вчетверо от ARMOR.
@@ -112,7 +111,6 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.BLOCK:     12.0,
 	G.Block.BLOCK2:    22.0,
 	G.Block.BLOCK3:    32.0,
-	G.Block.WEDGE:      9.0,     # клин легче куба — часть объёма срезана
 	G.Block.WEDGE2:    17.0,
 	G.Block.ARMOR:     34.0,
 	G.Block.ARMOR2:    68.0,
