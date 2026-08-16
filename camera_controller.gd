@@ -288,13 +288,28 @@ func on_vehicle_died(dead: Node) -> void:
 	switch_to_vehicle(best)
 
 # ── Возрождение ──────────────────────────────────────────────────────────────
-## Кольцо вокруг точки гибели, в котором ищем место для новой кабины.
-const RESPAWN_MIN_DIST: float = 60.0
-const RESPAWN_MAX_DIST: float = 100.0
-## Не ближе этого ни к одному врагу — иначе возрождение сразу под огнём.
-const RESPAWN_ENEMY_CLEAR: float = 40.0
-const RESPAWN_TRIES: int = 24
+# Возрождаемся ГОЛОЙ КАБИНОЙ: ни оружия, ни брони, а базовый набор ещё только осыпается
+# рядом орбитой. Поэтому «не вплотную к врагу» — недостаточное условие: нужно место, где
+# бой можно вообще НЕ начинать, пока машина не собрана.
+#
+# Раньше точка искалась в 60–100 м от места гибели с запасом 40 м до врага, тогда как зона
+# обнаружения врага — 85 м, а пушка бьёт на 60. Оба числа были меньше его радиуса, то есть
+# кабина ГАРАНТИРОВАННО появлялась внутри чужой зоны агрессии, и следующая смерть шла сразу
+# за предыдущей. Отсюда правило: запас считается ОТ РАДИУСА ВРАГА, а не от круглого числа.
+
+## Кольцо поиска вокруг места гибели. Начинаем близко (гнать игрока через полкарты к своим
+## обломкам — наказание, а не механика) и РАСШИРЯЕМ, пока не найдётся чистая точка.
+const RESPAWN_MIN_DIST: float = 80.0
+const RESPAWN_MAX_DIST: float = 140.0
+const RESPAWN_RING_STEP: float = 90.0   # на столько отодвигаем кольцо за каждый заход
+const RESPAWN_RINGS: int = 4            # до ~350 м от места гибели
+const RESPAWN_TRIES: int = 16           # проб на кольцо
+## Насколько дальше ЗОНЫ ОБНАРУЖЕНИЯ врага надо оказаться. Радиус берём у самого врага
+## (detection_radius), запас — чтобы он не заметил кабину, едва она тронется.
+const RESPAWN_ENEMY_MARGIN: float = 60.0
+const RESPAWN_FALLBACK_DETECT: float = 85.0   # если у врага нет поля — значение по умолчанию
 const RESPAWN_CLEARANCE: float = 3.0    # над рельефом
+const RESPAWN_MIN_HEIGHT: float = 2.0   # ниже — вода: возрождаться туда нельзя
 
 func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
@@ -316,45 +331,58 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 		v.award_block_list.call_deferred(G.STARTER_KIT)
 	return v
 
-## Точка возрождения: случайная в кольце RESPAWN_MIN..MAX от места гибели, не ближе
-## RESPAWN_ENEMY_CLEAR к любому врагу, посаженная на рельеф. Если ни одна проба не
-## удовлетворяет условию по врагам — берём САМУЮ БЕЗОПАСНУЮ из просмотренных, а не
-## первую попавшуюся: лучше возродиться в 25 м от врага, чем в двух.
+## Точка возрождения. Кольца от места гибели наружу; на каждом — несколько проб по кругу.
+## Годная точка это та, где ДО КАЖДОГО врага дальше, чем его зона обнаружения плюс запас;
+## первая такая и возвращается. Если не нашлось ни одной за все кольца — берём САМУЮ
+## БЕЗОПАСНУЮ из просмотренных: лучше возродиться на краю чужого радиуса, чем в его центре.
 func _respawn_point(death_pos: Vector3) -> Vector3:
-	var enemies: Array = _enemy_positions()
+	var threats: Array = _enemy_threats()
 	var best: Vector3 = death_pos + Vector3(0.0, RESPAWN_CLEARANCE, 0.0)
-	var best_clear: float = -INF
-	var base: float = randf() * TAU
-	for i in RESPAWN_TRIES:
-		var ang: float = base + TAU * float(i) / float(RESPAWN_TRIES)
-		var dist: float = randf_range(RESPAWN_MIN_DIST, RESPAWN_MAX_DIST)
-		var p := death_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		var h: float = _terrain_height(p)
-		p.y = (h if h > -INF else death_pos.y) + RESPAWN_CLEARANCE
-		var clear: float = _min_enemy_dist(p, enemies)
-		if clear >= RESPAWN_ENEMY_CLEAR:
-			return p                       # годная — угол уже случайный, перебирать нечего
-		if clear > best_clear:
-			best_clear = clear
-			best = p
+	var best_margin: float = -INF
+	for ring in RESPAWN_RINGS:
+		var lo: float = RESPAWN_MIN_DIST + RESPAWN_RING_STEP * float(ring)
+		var hi: float = RESPAWN_MAX_DIST + RESPAWN_RING_STEP * float(ring)
+		var base: float = randf() * TAU
+		for i in RESPAWN_TRIES:
+			var ang: float = base + TAU * float(i) / float(RESPAWN_TRIES)
+			var dist: float = randf_range(lo, hi)
+			var p := death_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+			var h: float = _terrain_height(p)
+			if h > -INF and h < RESPAWN_MIN_HEIGHT:
+				continue                       # вода — даже как запасной вариант не годится
+			p.y = (h if h > -INF else death_pos.y) + RESPAWN_CLEARANCE
+			var margin: float = _enemy_margin(p, threats)
+			if margin >= 0.0:
+				return p                       # чисто: угол уже случайный, перебирать нечего
+			if margin > best_margin:
+				best_margin = margin
+				best = p
 	return best
 
-# Расстояние по горизонтали до ближайшего врага (INF, если врагов нет).
-func _min_enemy_dist(p: Vector3, enemies: Array) -> float:
-	var best: float = INF
-	for e in enemies:
-		var d := Vector2(p.x - (e as Vector3).x, p.z - (e as Vector3).z)
-		best = minf(best, d.length())
-	return best
+# Насколько точка ДАЛЬШЕ зоны обнаружения самого опасного отсюда врага. Отрицательное — мы
+# внутри чьего-то радиуса. INF — врагов нет вовсе.
+func _enemy_margin(p: Vector3, threats: Array) -> float:
+	var worst: float = INF
+	for t in threats:
+		var e: Vector3 = t["pos"]
+		var d := Vector2(p.x - e.x, p.z - e.z)
+		worst = minf(worst, d.length() - float(t["reach"]))
+	return worst
 
-func _enemy_positions() -> Array:
+# Враги как УГРОЗЫ: позиция плюс дальность, на которой этот конкретный враг нас заметит.
+# Радиус спрашиваем у него самого — у разных сборок он может отличаться, и зашитое число
+# рано или поздно разошлось бы с настройкой врага.
+func _enemy_threats() -> Array:
 	var out: Array = []
 	var root: Node = get_parent()          # Vehicles
 	if root == null:
 		return out
 	for c in root.get_children():
-		if c is Node3D and "faction" in c and int(c.get("faction")) != 0:
-			out.append((c as Node3D).global_position)
+		if not (c is Node3D) or not ("faction" in c) or int(c.get("faction")) == 0:
+			continue
+		var r = c.get("detection_radius")
+		var reach: float = (float(r) if r != null else RESPAWN_FALLBACK_DETECT) + RESPAWN_ENEMY_MARGIN
+		out.append({"pos": (c as Node3D).global_position, "reach": reach})
 	return out
 
 func _on_raycast_body_entered(body: Node3D) -> void:
