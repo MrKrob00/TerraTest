@@ -12,12 +12,24 @@ extends Node3D
 ## мир начинался пустым и наполнялся по одному раз в spawn_interval — до первой стычки
 ## приходилось ждать и просто кататься. Ставятся по обычным правилам кольца, то есть
 ## разнесённые по разным сторонам, а не кучей.
-@export var initial_enemies: int = 3
+@export var initial_enemies: int = 2
+
+## Сколько врагов ОДНОВРЕМЕННО могут вести бой с игроком. Остальные патрулируют, пока место
+## не освободится. Без этого потолка девять машин, заметив игрока, ехали на него все разом —
+## и это не бой, а казнь: отбиться от толпы нечем, а разъехаться она не даёт.
+@export var max_engaging: int = 2
 ## Кольцо спавна. Было 270–520: враг появлялся ЗА горизонтом восприятия (машина видит на 40,
 ## оружие бьёт на 60) — игрок не встречал его, а натыкался неизвестно где и неизвестно когда.
 ## Теперь чуть дальше видимости: враг приходит «из-за холма», а не из ниоткуда.
-@export var spawn_min_dist: float = 95.0
-@export var spawn_max_dist: float = 230.0
+## Ближняя граница ОБЯЗАНА быть заметно больше радиуса обнаружения врага (85): иначе он
+## рождается уже внутри своей зоны агрессии и бросается на игрока в ту же секунду, вместо
+## того чтобы патрулировать, пока к нему не подъедут.
+@export var spawn_min_dist: float = 150.0
+@export var spawn_max_dist: float = 300.0
+## Не появляться ПЕРЕД машиной ближе этого: игрок едет вперёд и не должен видеть, как враг
+## возникает у него по курсу. Сзади и по бокам такого ограничения нет — там появление не видно.
+@export var front_clear_dist: float = 240.0
+@export_range(0.0, 180.0) var front_cone_deg: float = 55.0
 @export var spawn_separation: float = 70.0          # не ближе этого к ДРУГИМ врагам
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
@@ -77,6 +89,7 @@ func _process(delta: float) -> void:
 		_clean_t = 0.5
 		_enemies = _enemies.filter(func(e): return is_instance_valid(e))
 	_track_far(delta)
+	_limit_engagement()
 	_scan_tick(delta)                               # редкое событие «проверка сектора»
 	if _enemies.size() >= max_enemies:
 		return
@@ -92,6 +105,29 @@ func _process(delta: float) -> void:
 		return
 	_t = spawn_interval
 	_spawn_one()
+
+# Кто СЕЙЧАС имеет право драться. Право получают ближайшие к игроку max_engaging врагов из
+# тех, кто его уже заметил; остальным бой запрещён, и они возвращаются к патрулю.
+#
+# Считаем по РАССТОЯНИЮ, а не по очереди «кто первый заметил»: иначе право оставалось бы у
+# врага, который уже уехал за холм, а тот, что дышит игроку в затылок, стоял бы и ждал.
+func _limit_engagement() -> void:
+	var player: Node3D = _player()
+	if player == null:
+		return
+	var seekers: Array = []
+	for e in _enemies:
+		if not is_instance_valid(e) or not e.has_method("set_combat_allowed"):
+			continue
+		if e.get("_target") != null:
+			seekers.append(e)
+		else:
+			e.set_combat_allowed(true)         # цели нет — ограничивать нечего
+	seekers.sort_custom(func(a, b):
+		return player.global_position.distance_squared_to(a.global_position) \
+				< player.global_position.distance_squared_to(b.global_position))
+	for i in seekers.size():
+		seekers[i].set_combat_allowed(i < max_engaging)
 
 # Далёкие враги: кто дальше far_dist от текущей машины дольше far_limit — телепортируется
 # обратно в кольцо возле игрока (нет точки — исчезает). Так стычка не «уезжает» от игрока.
@@ -250,8 +286,27 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 			var cand := Vector3(world.x, h + ground_offset, world.z)
 			if _too_close_to_enemy(cand, exclude):
 				continue
+			if _in_player_view(cand, center):
+				continue                       # по курсу и близко — игрок увидел бы появление
 			return cand
 	return null
+
+# Точка «по курсу» игрока и достаточно близко, чтобы появление было ЗАМЕТНО. Смотрим на
+# направление машины, а не камеры: камеру игрок крутит постоянно, и по ней спавн стал бы
+# случайным, а перед носом машины — то место, куда он едет и куда смотрит чаще всего.
+func _in_player_view(pos: Vector3, center: Vector3) -> bool:
+	var player: Node3D = _player()
+	if player == null:
+		return false
+	var to: Vector3 = pos - center
+	to.y = 0.0
+	if to.length() > front_clear_dist:
+		return false                           # далеко — пусть появляется хоть прямо по курсу
+	var fwd: Vector3 = -player.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length() < 0.01 or to.length() < 0.01:
+		return false
+	return rad_to_deg(fwd.normalized().angle_to(to.normalized())) < front_cone_deg
 
 func _sector_of(ang: float) -> int:
 	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS

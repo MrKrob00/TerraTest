@@ -62,6 +62,8 @@ var _act: int = EnemyBrain.Act.PATROL
 const FLANK_CHARGE_TIME:  float = 4.0
 const FLANK_RECOVER_TIME: float = 9.0
 var _flank_spent: float = 0.0
+## Разрешён ли ЭТОМУ врагу бой прямо сейчас (ставит enemy_spawner._limit_engagement).
+var combat_allowed: bool = true
 var _percept: Dictionary = {}
 var _decide_t: float = 0.0
 const DECIDE_PERIOD: float = 0.15        # переоценка обстановки ~7 раз в секунду
@@ -116,6 +118,9 @@ func _ready() -> void:
 	_setup_detection_area()
 	_setup_patrol_points()
 	_connect_cabin()
+
+func set_combat_allowed(v: bool) -> void:
+	combat_allowed = v
 
 func _connect_cabin() -> void:
 	var blocks_node := get_node_or_null("blocks")
@@ -267,6 +272,12 @@ func _update_ai(delta: float) -> void:
 			_forget_timer = forget_enemy_time
 	elif _target != null:
 		_target = null
+
+	# Бой запрещён спавнером (места в схватке заняты) — цель бросаем и патрулируем. Так на
+	# игрока едут двое, а не девять, при том что мир вокруг остаётся живым: остальные никуда
+	# не делись, они просто заняты своими делами, пока не подойдёт их очередь.
+	if not combat_allowed and _target != null:
+		_lose_target()
 
 	_update_stuck(delta)
 

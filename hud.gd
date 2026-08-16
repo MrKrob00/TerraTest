@@ -1325,10 +1325,21 @@ func _on_mode_toggle_pressed() -> void:
 # попасть и мимо кнопки (клавиша B на ПК, взятие блока в руку из «гироскопа»), и раньше
 # подпись с панелями оставались от прошлого режима до открытия/закрытия гаража.
 var _mode_was_building: bool = false
+var _mode_was_vehicle: Node = null
+
 func _sync_mode_visuals() -> void:
 	var v: Node = _menu_vehicle_or_current()
 	var building: bool = v != null and ("Building" in v) and v.Building
-	if building == _mode_was_building:
+	# СМЕНА МАШИНЫ (пересел, возродился) — состояние сторожа относится к прежней машине и
+	# сравнивать с ним нечего. Раньше этого не проверялось, и после гибели В СТРОЙКЕ флаг
+	# оставался поднятым, новая машина рождалась в движении, а первое нажатие BUILD сторож
+	# считал «ничего не изменилось» — гараж не открывался вовсе.
+	var switched: bool = v != _mode_was_vehicle
+	if switched:
+		_mode_was_vehicle = v
+		current_vehicle = v          # ссылка была захвачена один раз при старте и после
+		#                              возрождения указывала на освобождённый узел
+	if building == _mode_was_building and not switched:
 		return
 	_mode_was_building = building
 	if not _controls_hidden:
