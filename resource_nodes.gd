@@ -1,6 +1,6 @@
 extends Node3D
 # Раскидывает жилы руды по ВСЕЙ карте. Берёт реальную высоту рельефа у родителя-карты
-# (map.terrain_height_at) и ставит жилу на землю; пропускает воду/низины и крутые склоны,
+# (map.terrain_height_at) и ставит жилу на землю; пропускает низины и крутые склоны,
 # держит минимальную дистанцию между жилами. Каждая жила — это и StaticBody-узел (логика/
 # коллизия), и инстанс в двух MultiMesh (видимый меш + канал шейдера истощения).
 
@@ -23,7 +23,7 @@ var ore_colors: Array[Color] = []
 @export var count: int = 2000                # жил по ВСЕЙ карте — «тысячи». Все они лишь ДАННЫЕ
 #                                              (позиция+тип, дёшево); ноды и слоты — только ближним.
 @export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
-@export var min_height: float = 2.0          # ниже — вода/пляж, не спавним
+@export var min_height: float = 2.0          # ниже — самые днища впадин, не спавним (воды в мире нет)
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
 @export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
 
@@ -84,7 +84,7 @@ func _apply_ore_colors() -> void:
 			(mesh.material as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
 # Локальные позиции жил (Y уже на рельефе). Отбираем случайные точки по всей карте,
-# отбраковывая воду, обрывы и слишком близкие друг к другу.
+# отбраковывая днища впадин, обрывы и слишком близкие друг к другу.
 # Отбор идёт ПОРЦИЯМИ (между ними отдаём кадр) — иначе до 24 000 попыток × 5 сэмплов рельефа
 # вставали одним многосекундным фризом поверх экрана загрузки.
 const PICK_BATCH := 400
@@ -108,7 +108,7 @@ func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 		var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
 		var h: float = map.terrain_height_at(world)
 		if h < min_height:
-			continue                                        # под водой / слишком низко
+			continue                                        # слишком низко (дно впадины)
 		if _slope_at(map, lx, lz) > max_slope:
 			continue                                        # обрыв
 		var local_pos: Vector3 = to_local(Vector3(world.x, h + 0.25, world.z))

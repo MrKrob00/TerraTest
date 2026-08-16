@@ -10,7 +10,7 @@ extends Node3D
 @export var cell_size: float = 200.0           # ~один магазин на cell_size×cell_size
 @export var jitter: float = 0.35               # случайный сдвиг от центра клетки (доля клетки)
 @export var edge_margin: float = 60.0
-@export var min_height: float = 2.0            # ниже — вода/пляж, не ставим
+@export var min_height: float = 2.0            # ниже — самые днища впадин, не ставим (воды в мире нет)
 @export var max_slope: float = 6.0             # разброс высот вокруг точки; выше — обрыв
 @export var ground_offset: float = 0.0         # ставим ровно на рельеф (без подъёма +2)
 @export var avoid_existing: float = 90.0       # не ставить ближе этого к уже стоящему магазину

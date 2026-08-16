@@ -309,7 +309,6 @@ const RESPAWN_TRIES: int = 16           # проб на кольцо
 const RESPAWN_ENEMY_MARGIN: float = 60.0
 const RESPAWN_FALLBACK_DETECT: float = 85.0   # если у врага нет поля — значение по умолчанию
 const RESPAWN_CLEARANCE: float = 3.0    # над рельефом
-const RESPAWN_MIN_HEIGHT: float = 2.0   # ниже — вода: возрождаться туда нельзя
 
 func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
@@ -335,6 +334,8 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 ## Годная точка это та, где ДО КАЖДОГО врага дальше, чем его зона обнаружения плюс запас;
 ## первая такая и возвращается. Если не нашлось ни одной за все кольца — берём САМУЮ
 ## БЕЗОПАСНУЮ из просмотренных: лучше возродиться на краю чужого радиуса, чем в его центре.
+## Высоту не фильтруем: в мире НЕТ ВОДЫ (см. addons/LiteTerrain/plugin.gd) — низина это
+## просто низина, и отбраковывать её не за что.
 func _respawn_point(death_pos: Vector3) -> Vector3:
 	var threats: Array = _enemy_threats()
 	var best: Vector3 = death_pos + Vector3(0.0, RESPAWN_CLEARANCE, 0.0)
@@ -348,8 +349,6 @@ func _respawn_point(death_pos: Vector3) -> Vector3:
 			var dist: float = randf_range(lo, hi)
 			var p := death_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 			var h: float = _terrain_height(p)
-			if h > -INF and h < RESPAWN_MIN_HEIGHT:
-				continue                       # вода — даже как запасной вариант не годится
 			p.y = (h if h > -INF else death_pos.y) + RESPAWN_CLEARANCE
 			var margin: float = _enemy_margin(p, threats)
 			if margin >= 0.0:
