@@ -48,6 +48,25 @@ func scrap_block(node: Node) -> bool:
 	node.queue_free()
 	return true
 
+## Приём с КОНВЕЙЕРА. Берём только чанки, и только те, чей блок разбираем: чанк однороден,
+## поэтому решение принимается один раз на весь контейнер и не бывает «половину съел, половину
+## оставил». Неразбираемый чанк не застревает в приёмнике — мы его просто не берём, и он
+## поедет дальше по ленте или полежит на складе, пока для его блока не появится рецепт.
+func try_receive(item: Node3D) -> bool:
+	if not _factory_active() or item == null or not is_instance_valid(item):
+		return false
+	if not ("chunk_block" in item) or int(item.get("type")) != 3:   # 3 = Type.CHUNK
+		return false
+	var bt: int = int(item.get("chunk_block"))
+	var per: int = G.scrap_yield(bt)
+	if per <= 0:
+		return false                       # рецепта нет — чанк не наш, пусть едет дальше
+	var n: int = maxi(int(item.get("chunk_count")), 0)
+	for _i in n * per:
+		_queue.append(1)                   # 1 = Type.INGOT
+	item.queue_free()
+	return true
+
 func _physics_process(delta: float) -> void:
 	if _queue.is_empty():
 		return
