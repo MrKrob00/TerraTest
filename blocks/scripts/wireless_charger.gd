@@ -17,7 +17,8 @@ const RATE := 12.0
 const SCAN_PERIOD := 0.5
 
 var _scan_t: float = 0.0
-var _target: Node = null
+var _target: Node = null            # машина-получатель (ей отдаём энергию)
+var _target_cell: Node3D = null     # её АККУМУЛЯТОР — к нему тянется луч
 var _beam: MeshInstance3D = null
 var _beam_mat: StandardMaterial3D = null
 var _t: float = 0.0
@@ -34,8 +35,10 @@ func _physics_process(delta: float) -> void:
 	_scan_t -= delta
 	if _scan_t <= 0.0:
 		_scan_t = SCAN_PERIOD
-		_target = _find_receiver(mine)
-	if _target == null or not is_instance_valid(_target):
+		_target_cell = _find_battery(mine)
+		_target = _machine_of(_target_cell)
+	if _target == null or not is_instance_valid(_target) \
+			or _target_cell == null or not is_instance_valid(_target_cell):
 		_show_beam(false)
 		return
 	# Берём энергию у СВОЕЙ машины и кладём получателю. Отдаём ровно столько, сколько
@@ -48,14 +51,19 @@ func _physics_process(delta: float) -> void:
 	if _target.has_method("energy_produce"):
 		_target.energy_produce(got)
 	_show_beam(true)
-	_aim_beam((_target as Node3D).global_position)
+	_aim_beam(_target_cell.global_position)
 
-# Ближайшая ЧУЖАЯ машина игрока в радиусе, у которой есть куда класть энергию.
-func _find_receiver(mine: Node) -> Node:
+# Ближайший АККУМУЛЯТОР на чужой машине игрока в радиусе.
+#
+# Ищем сам блок, а не машину: он же и конец луча. Целиться в начало координат машины было
+# неверно — та точка лежит в её геометрическом центре и к аккумулятору отношения не имеет,
+# из-за чего луч упирался в произвольное место корпуса. Заодно расстояние меряется до того,
+# что реально заряжается, а не до центра машины.
+func _find_battery(mine: Node) -> Node3D:
 	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
 	if vehicles == null:
 		return null
-	var best: Node = null
+	var best: Node3D = null
 	var best_d: float = RANGE
 	for v in vehicles.get_children():
 		if v == mine or not (v is Node3D) or not is_instance_valid(v):
@@ -63,13 +71,25 @@ func _find_receiver(mine: Node) -> Node:
 		var f = v.get("faction")
 		if f == null or int(f) != 0:
 			continue                      # только машины ИГРОКА
-		if not v.has_method("energy_cap") or v.energy_cap() <= 0.0:
-			continue                      # нет аккумулятора — некуда лить
-		var d: float = global_position.distance_to((v as Node3D).global_position)
-		if d < best_d:
-			best_d = d
-			best = v
+		var blocks: Node = v.get_node_or_null("blocks")
+		if blocks == null:
+			continue
+		for b in blocks.get_children():
+			if not (b is Node3D) or b.get("block") == null:
+				continue
+			if int(b.get("block")) != G.Block.BATTERY:
+				continue
+			var d: float = global_position.distance_to((b as Node3D).global_position)
+			if d < best_d:
+				best_d = d
+				best = b as Node3D
 	return best
+
+func _machine_of(n: Node) -> Node:
+	var p: Node = n
+	while p != null and not (p is MachineBody):
+		p = p.get_parent()
+	return p
 
 func _machine() -> Node:
 	var p: Node = get_parent()
