@@ -1,19 +1,25 @@
 extends FactoryBlock
 
-# СКЛАД. Принимает ОДИН тип ресурса и держит до CAPACITY штук. Все четыре горизонтальные
+# СКЛАД. Принимает ОДИН ВИД материала и держит до CAPACITY штук. Все четыре горизонтальные
 # грани работают и на вход, и на выход — что именно окажется входом, решает то, с какой
 # стороны подвели конвейер.
 #
 # Внутри лежит НЕ двадцать предметов, а один показательный: физика двух десятков тел на
 # каждом складе — это не про мобилку. Количество читается с таблички рядом.
+#
+# «Вид» — это kind_key ресурса, а не его Type: ферритовый слиток и титанитовый это РАЗНЫЕ
+# вещи, и ссыпать их в одну кучу нельзя — иначе склад отдавал бы наружу не то, что съел,
+# и рецепты собирались бы из воздуха. Раньше здесь стоял именно Type, и все слитки мира
+# были для склада одним предметом.
 
 const CAPACITY: int = 20
 const RESOURCE_SCENE: String = "res://resource.tscn"
 ## Как часто склад пробует отдать наружу. Каждый кадр незачем: приёмник освобождается редко.
 const PUSH_INTERVAL: float = 0.35
 
-var stored_type: int = -1                  # -1 — склад пуст и примет любой тип
+var stored_kind: String = ""               # "" — склад пуст и примет любой вид
 var count: int = 0
+var _chunk_counts: Array[int] = []         # сколько блоков в каждом принятом чанке, по порядку
 
 var _display: Node3D = null                # тот самый один предмет-витрина
 var _label: Label3D = null
@@ -31,13 +37,20 @@ func _ready() -> void:
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active() or item == null or not is_instance_valid(item):
 		return false
-	var t: int = int(item.get("type")) if "type" in item else 0
-	if stored_type >= 0 and t != stored_type:
-		return false                       # склад держит ОДИН тип
+	var k: String = item.kind_key() if item.has_method("kind_key") else ""
+	if k == "":
+		return false                       # не материал — складу такое не положишь
+	if stored_kind != "" and k != stored_kind:
+		return false                       # склад держит ОДИН вид
 	if count >= CAPACITY:
 		return false
-	stored_type = t
+	stored_kind = k
 	count += 1
+	# У ЧАНКА мало знать вид: «chunk:5» говорит, ЧТО внутри, но не СКОЛЬКО. Держим счётчики
+	# по одному на принятый чанк — иначе склад отдал бы наружу пустой контейнер, а блоки в
+	# нём просто исчезли бы.
+	if k.begins_with("chunk:"):
+		_chunk_counts.append(int(item.get("chunk_count")) if "chunk_count" in item else 0)
 	item.queue_free()
 	_refresh_visual()
 	return true
@@ -60,18 +73,26 @@ func _physics_process(delta: float) -> void:
 	item.global_position = global_position
 	if push_item(item):
 		count -= 1
+		if not _chunk_counts.is_empty():
+			_chunk_counts.remove_at(0)     # снимаем счётчик только после УДАЧНОЙ отправки
 		if count == 0:
-			stored_type = -1               # опустел — примет любой тип
+			stored_kind = ""               # опустел — примет любой вид
 		_refresh_visual()
 	else:
 		item.queue_free()                  # никто не принял — не плодим тела в мире
 
+# Предмет по хранимому виду. Счётчик чанка ПОДСМАТРИВАЕМ, а не снимаем: отправка может не
+# состояться (приёмник занят), и тогда предмет уничтожается — снятый счётчик пропал бы с ним.
 func _make_item() -> Node3D:
-	if _res_scene == null or stored_type < 0:
+	if _res_scene == null or stored_kind == "":
 		return null
 	var it: Node3D = _res_scene.instantiate() as Node3D
-	if it != null and "type" in it:
-		it.set("type", stored_type)
+	if it == null:
+		return null
+	if it.has_method("set_kind_key"):
+		it.set_kind_key(stored_kind)
+	if not _chunk_counts.is_empty() and "chunk_count" in it:
+		it.set("chunk_count", _chunk_counts[0])
 	return it
 
 # ── Витрина: один предмет + табличка с количеством ───────────────────────────

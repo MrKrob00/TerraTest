@@ -1,14 +1,12 @@
 # seller.gd
 extends FactoryBlock
 
-@export var sell_interval: float = 0.5  # секунд между продажами
+# ПРОДАВЕЦ. Цена берётся не отсюда, а из G.sell_price по ВИДУ материала (kind_key): раньше
+# здесь лежала своя табличка на три строки — ORE/INGOT/COAL, — и все слитки мира стоили
+# одинаково. С четырьмя металлами и шестью компонентами такая табличка врала бы всегда,
+# поэтому цена живёт там же, где рецепты, и считается от них.
 
-# Цены за каждый тип ресурса
-@export var prices: Dictionary = {
-	"ORE": 10,
-	"INGOT": 50,
-	"COAL": 8,
-}
+@export var sell_interval: float = 0.5  # секунд между продажами
 
 var timer: Timer
 
@@ -29,24 +27,23 @@ func _on_timer_timeout() -> void:
 	if current_item == null:
 		return
 
-	# Получаем цену
-	var item_type = current_item.get("type")
-	var type_name: String = ""
-	if item_type != null:
-		type_name = current_item.Type.keys()[item_type]  # 0 → "ORE"
-	else:
-		type_name = "ORE"
-	var price = prices.get(type_name, 0)
+	var kind: String = current_item.kind_key() if current_item.has_method("kind_key") else ""
+	var price: int = G.sell_price(kind)
+	# Чанк — контейнер: G.sell_price оценивает ОДИН блок внутри, сколько их там, знаем только мы.
+	if kind.begins_with("chunk:") and "chunk_count" in current_item:
+		price *= maxi(int(current_item.get("chunk_count")), 0)
 
-	# Добавляем деньги (G — глобальный синглтон)
 	if G.has_method("add_money"):
 		G.add_money(price)
-	$Label3D.text = str(type_name)+" +"+str(price)+"$\n"+"Cash: %s" % G.money
+	var label: String = G.kind_name(kind)
+	if kind.begins_with("chunk:") and "chunk_count" in current_item:
+		label += " ×" + str(int(current_item.get("chunk_count")))
+	$Label3D.text = label + " +" + str(price) + "$\n" + "Cash: %s" % G.money
 	$GPUParticles3D.emitting = true
 	await $GPUParticles3D.finished
-	current_item.visible=false
+	current_item.visible = false
 
 	# Удаляем ресурс из мира
 	current_item.queue_free()
-	current_item = null 
+	current_item = null
 	slot_freed.emit()

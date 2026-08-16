@@ -1,9 +1,11 @@
 extends FactoryBlock
-# SCRAPPER — разбирает блоки обратно в слитки и отдаёт их в фабричную цепочку.
+# SCRAPPER — разбирает блоки обратно в материалы и отдаёт их в фабричную цепочку.
 #
-# Сколько вернёт — ПОЛОВИНА рецепта блока (G.scrap_yield). Правило привязано к тому, во
-# что блок реально обошёлся в производстве, поэтому балансируется само: подняли цену
-# сборки — вырос и возврат, отдельную таблицу выплат вести не нужно.
+# Сколько и ЧЕГО вернёт — ПОЛОВИНА рецепта блока (G.scrap_yield), материал в материал.
+# Правило привязано к тому, во что блок реально обошёлся в производстве, поэтому
+# балансируется само: подняли цену сборки — вырос и возврат, отдельную таблицу выплат вести
+# не нужно. Возврат идёт ТЕМИ ЖЕ материалами, что ушли в сборку: иначе Scrapper стал бы
+# способом менять один металл на другой в обход рудников.
 #
 # БЛОК БЕЗ РЕЦЕПТА НЕ ПРИНИМАЕТСЯ И НЕ ПОРТИТСЯ. Это не заглушка на время, а правило:
 # рецепты есть пока не у всех блоков, и «съесть» блок, за который нечего вернуть, значило
@@ -17,12 +19,12 @@ extends FactoryBlock
 #     На своей машине тот же жест означает «поставить блок», поэтому там скармливать нельзя.
 
 const RESOURCE_SCENE: String = "res://resource.tscn"
-## Пауза между выдачей слитков. Разбор не мгновенный: иначе шесть тел рождаются в одном
+## Пауза между выдачей материалов. Разбор не мгновенный: иначе шесть тел рождаются в одном
 ## кадре и цепочка захлёбывается, не успевая их принять.
 const EMIT_INTERVAL: float = 0.35
 
 var _res_scene: PackedScene = null
-var _queue: Array[int] = []          # что ещё осталось выдать: тип ресурса на штуку
+var _queue: Array[String] = []       # что ещё осталось выдать: ключ материала на штуку
 var _emit_t: float = 0.0
 
 func _ready() -> void:
@@ -32,18 +34,17 @@ func _ready() -> void:
 ## Можно ли разобрать блок этого типа. Публично: спрашивает и рука игрока, чтобы не
 # скармливать заведомо неразбираемое.
 func can_scrap(block_type: int) -> bool:
-	return G.scrap_yield(block_type) > 0
+	return not G.scrap_yield(block_type).is_empty()
 
 ## Разобрать УЗЕЛ блока. true — блок принят (и уничтожен), false — рецепта нет, блок цел.
 func scrap_block(node: Node) -> bool:
 	if node == null or not is_instance_valid(node) or not ("block" in node):
 		return false
 	var bt: int = int(node.get("block"))
-	var got: int = G.scrap_yield(bt)
-	if got <= 0:
+	var got: Dictionary = G.scrap_yield(bt)
+	if got.is_empty():
 		return false                      # рецепта нет — не трогаем чужое имущество
-	for _i in got:
-		_queue.append(1)                  # 1 = Type.INGOT (см. resource.gd)
+	_enqueue(got, 1)
 	BlockFX.play(node as Node3D, true)    # распад в «матрицу», как при уничтожении
 	node.queue_free()
 	return true
@@ -58,14 +59,19 @@ func try_receive(item: Node3D) -> bool:
 	if not ("chunk_block" in item) or int(item.get("type")) != 3:   # 3 = Type.CHUNK
 		return false
 	var bt: int = int(item.get("chunk_block"))
-	var per: int = G.scrap_yield(bt)
-	if per <= 0:
+	var per: Dictionary = G.scrap_yield(bt)
+	if per.is_empty():
 		return false                       # рецепта нет — чанк не наш, пусть едет дальше
-	var n: int = maxi(int(item.get("chunk_count")), 0)
-	for _i in n * per:
-		_queue.append(1)                   # 1 = Type.INGOT
+	_enqueue(per, maxi(int(item.get("chunk_count")), 0))
 	item.queue_free()
 	return true
+
+# Положить в очередь выдачу за n блоков сразу. Очередь плоская, по одной единице материала:
+# слитки выходят по одному через EMIT_INTERVAL, и порядок «сколько чего» тут не важен.
+func _enqueue(yield_per_block: Dictionary, n: int) -> void:
+	for key in yield_per_block:
+		for _i in int(yield_per_block[key]) * n:
+			_queue.append(String(key))
 
 func _physics_process(delta: float) -> void:
 	if _queue.is_empty():
@@ -75,7 +81,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_emit_t = EMIT_INTERVAL
 	if not _factory_active():
-		return                            # вне якоря фабрика стоит — слитки подождут в очереди
+		return                            # вне якоря фабрика стоит — возврат подождёт в очереди
 	_emit_one()
 
 func _emit_one() -> void:
@@ -85,8 +91,8 @@ func _emit_one() -> void:
 	var item: Node3D = _res_scene.instantiate() as Node3D
 	if item == null:
 		return
-	if "type" in item:
-		item.set("type", _queue[0])
+	if item.has_method("set_kind_key"):
+		item.set_kind_key(_queue[0])      # вид задаётся ключом: "m0" слиток, "c0" компонент
 	# Предмет обязан быть в дереве до try_receive: приёмник его репарентит (как в storage).
 	get_parent().add_child(item)
 	item.global_position = global_position

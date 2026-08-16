@@ -49,6 +49,11 @@ func _eject_one() -> void:
 	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
 	if is_coal and "type" in res:
 		res.type = res.Type.COAL              # уголь: тёмный сам по себе, тинт не нужен
+	elif res.has_method("set_metal"):
+		# ore_type жилы — это и есть индекс металла (G.Metal): спавнер раздаёт типы по тому же
+		# списку цветов, что и G.METAL_COLOR. Цвет ставит сам set_metal, поэтому set_tint здесь
+		# не нужен — иначе жила и её руда могли бы разъехаться по цвету.
+		res.set_metal(ore_type)
 	elif res.has_method("set_tint"):
 		res.set_tint(ore_color)
 	Q.report("ore_mined", 1)                    # прогресс заданий на добычу

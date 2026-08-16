@@ -131,6 +131,7 @@ const BLOCK_META := {
 	Block.MORTAR:      {"f": "start", "g": 4, "rp": 35},
 	Block.POUND_CANNON: {"f": "start", "g": 3, "rp": 25},
 	Block.SHOTGUN:     {"f": "start", "g": 2, "rp": 18},
+	Block.COMP_FACTORY: {"f": "start", "g": 4, "rp": 35},   # компоненты — ступень перед фабрикатором
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -155,7 +156,8 @@ const TECH_PARENT := {
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
 	Block.STORAGE: Block.RECEIVER,
 	Block.AUTO_MINER: Block.PROCESSOR,
-	Block.FABRICATOR: Block.PROCESSOR,
+	Block.FABRICATOR: Block.COMP_FACTORY,   # блоки собираются из компонентов, значит после них
+	Block.COMP_FACTORY: Block.PROCESSOR,
 	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
 	Block.ARMOR2: Block.ARMOR,          Block.ARMOR4: Block.ARMOR2,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
@@ -163,24 +165,200 @@ const TECH_PARENT := {
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
 	Block.MORTAR: Block.ROCKET,         # навесная стрельба ветвится от ракетницы
 }
-## РЕЦЕПТЫ БЛОКОВ: сколько СЛИТКОВ стоит собрать блок. Один источник правды на двоих —
-## по нему фабрикатор собирает, а Scrapper возвращает половину при разборе.
-##
-## Заполнено ТОЛЬКО тем, что фабрикатор реально умеет: он берёт по 3 слитка двух разных
-## видов, то есть обычный блок стоит 6. У остальных блоков рецепта НЕТ НАМЕРЕННО — и это
-## не заглушка, а правило: блок без рецепта Scrapper не принимает и не портит (см.
-## scrapper.gd). Появится рецепт — блок сам станет разбираемым, трогать Scrapper не нужно.
-const BLOCK_RECIPE := {
-	Block.BLOCK: 6,
+# ═══ МАТЕРИАЛЫ: руды, слитки, компоненты ═════════════════════════════════════════
+# Четыре руды плавятся в четыре слитка, уголь не плавится (он топливо). Шесть компонентов
+# собираются каждый ИЗ ДВУХ РАЗНЫХ материалов — это не украшение, а требование движка:
+# фабрикатор различает свои два входа именно по виду материала (первый пришедший занимает
+# слот A, первый отличный — слот B), поэтому рецепт из двух одинаковых собрать нечем.
+#
+# Хранятся не отдельными сценами, а полями на одном ресурсе (resource.gd): вид задаётся
+# парой «тип + индекс», а выглядит по-разному материалом. Шестнадцать сцен ради шестнадцати
+# видов грузили бы память впустую, а модели, когда они появятся, встанут в ту же точку.
+enum Metal { FERRITE, CUPRITE, SILICATE, TITANITE }
+const METAL_NAME := ["Ferrite", "Cuprite", "Silicate", "Titanite"]
+## Цвет руды и слитка. Тот же список лежит у спавнера жил (resource_nodes.ore_colors):
+## жила красится в него же, поэтому по виду залежи понятно, что из неё выйдет.
+const METAL_COLOR := [
+	Color(0.72, 0.44, 0.24),   # Ferrite — ржавый
+	Color(0.90, 0.55, 0.25),   # Cuprite — медный
+	Color(0.45, 0.75, 0.80),   # Silicate — стеклянный
+	Color(0.78, 0.80, 0.86),   # Titanite — белый металл
+]
+
+enum Comp { PLATE, COIL, LENS, SERVO, CIRCUIT, CORE }
+const COMP_NAME := ["Plate", "Coil", "Lens", "Servo", "Circuit", "Core"]
+const COMP_COLOR := [
+	Color(0.70, 0.72, 0.78),   # Plate
+	Color(0.95, 0.62, 0.30),   # Coil
+	Color(0.55, 0.85, 0.95),   # Lens
+	Color(0.60, 0.70, 0.55),   # Servo
+	Color(0.45, 0.90, 0.55),   # Circuit
+	Color(0.85, 0.55, 1.00),   # Core
+]
+
+## Из чего собирается компонент: ровно ДВА РАЗНЫХ материала и сколько штук каждого.
+## Ключ материала — тот же, что возвращает resource.kind_key(): "m<металл>" слиток,
+## "c<компонент>" компонент. Первые три компонента варятся из слитков, вторые три — из
+## компонентов, отсюда и два «яруса»: без первого яруса второй не собрать.
+const COMP_RECIPE := {
+	Comp.PLATE:   {"m0": 2, "m3": 1},   # Ferrite + Titanite
+	Comp.COIL:    {"m1": 2, "m0": 1},   # Cuprite + Ferrite
+	Comp.LENS:    {"m2": 2, "m1": 1},   # Silicate + Cuprite
+	Comp.SERVO:   {"c1": 1, "c0": 1},   # Coil + Plate
+	Comp.CIRCUIT: {"c2": 1, "c1": 1},   # Lens + Coil
+	Comp.CORE:    {"c4": 1, "c3": 1},   # Circuit + Servo
 }
 
-## Сколько слитков стоит блок. 0 — рецепта нет.
-func block_recipe(bt: int) -> int:
-	return int(BLOCK_RECIPE.get(bt, 0))
+## Ключ слитка/компонента для рецептов и складов.
+static func metal_key(m: int) -> String:
+	return "m%d" % m
 
-## Сколько слитков вернёт разбор: ПОЛОВИНА рецепта, вниз. 0 — разбирать нельзя.
-func scrap_yield(bt: int) -> int:
-	return int(block_recipe(bt) / 2)
+static func comp_key(c: int) -> String:
+	return "c%d" % c
+
+## Человеческое имя материала по ключу — для табличек и подсказок.
+## Порядок проверок важен: «coal» и «chunk:» начинаются с той же буквы, что и компоненты.
+func kind_name(key: String) -> String:
+	if key == "coal":
+		return "Coal"
+	if key.begins_with("chunk:"):
+		return block_name(int(key.substr(6)))   # сколько внутри — знает только держатель чанка
+	if key.begins_with("ore"):
+		var o: int = int(key.substr(3))
+		return "%s Ore" % METAL_NAME[o] if o < METAL_NAME.size() else key
+	if key.begins_with("m"):
+		var i: int = int(key.substr(1))
+		return METAL_NAME[i] if i < METAL_NAME.size() else key
+	if key.begins_with("c"):
+		var j: int = int(key.substr(1))
+		return COMP_NAME[j] if j < COMP_NAME.size() else key
+	return key
+
+## РЕЦЕПТЫ БЛОКОВ: {ключ материала → сколько штук}. Один источник правды на двоих — по
+## нему фабрикатор собирает, а Scrapper возвращает половину при разборе.
+##
+## В каждом рецепте РОВНО ДВА разных ключа, и это не стиль, а требование фабрикатора: он
+## различает свои входы по виду материала (слот A — первый пришедший вид, слот B — первый
+## отличный), третьему виду там просто некуда встать. Хотите усложнить блок — поднимайте
+## ярус материала, а не число слагаемых.
+##
+## Блока без рецепта Scrapper не принимает и не портит (см. scrapper.gd), поэтому пустая
+## строка здесь — это не «пока не сделали», а «разбирать нельзя».
+const BLOCK_RECIPE := {
+	# ── Корпус и броня ────────────────────────────────────────────────────────
+	Block.BLOCK:        {"m0": 3, "m3": 3},
+	Block.BLOCK2:       {"m0": 5, "m3": 5},
+	Block.BLOCK3:       {"m0": 7, "m3": 7},
+	Block.WEDGE:        {"m0": 2, "m3": 2},
+	Block.WEDGE2:       {"m0": 4, "m3": 4},
+	Block.HALF_BLOCK:   {"m0": 2, "m3": 1},
+	Block.HALF_BLOCK2:  {"m0": 3, "m3": 2},
+	Block.ARMOR:        {"c0": 2, "m3": 2},
+	Block.ARMOR2:       {"c0": 3, "m3": 4},
+	Block.ARMOR4:       {"c0": 6, "m3": 8},
+	Block.SUPPORT:      {"m0": 4, "m1": 2},
+	Block.ROT_SUPPORT:  {"c3": 2, "m0": 6},
+	Block.CABIN:        {"c5": 1, "c0": 4},
+	# ── Ход ───────────────────────────────────────────────────────────────────
+	Block.WHEEL:        {"c3": 1, "m0": 4},
+	Block.SMALL_WHEEL:  {"c3": 1, "m0": 2},
+	Block.BIG_WHEEL:    {"c3": 2, "m0": 8},
+	Block.TOP_WHEEL:    {"c3": 1, "m0": 3},
+	Block.STAB_WHEEL:   {"c3": 1, "m0": 3},
+	# ── Добыча и фабрика ──────────────────────────────────────────────────────
+	Block.DRILL:        {"c3": 2, "m3": 6},
+	Block.SMALL_DRILL:  {"c3": 1, "m3": 3},
+	Block.COLLECTOR:    {"c1": 2, "m1": 4},
+	Block.RECEIVER:     {"c1": 1, "m1": 3},
+	Block.BELT:         {"c1": 1, "m0": 2},
+	Block.BELT_SPLIT:   {"c1": 2, "m0": 3},
+	Block.BELT_CROSS:   {"c1": 2, "m0": 4},
+	Block.PROCESSOR:    {"c4": 2, "m0": 6},
+	Block.SELLER:       {"c4": 1, "m1": 4},
+	Block.STORAGE:      {"c0": 3, "m0": 6},
+	Block.AUTO_MINER:   {"c5": 1, "c3": 3},
+	Block.FABRICATOR:   {"c5": 1, "c4": 3},
+	Block.COMP_FACTORY: {"c4": 2, "c1": 4},
+	Block.SCRAPPER:     {"c3": 2, "c0": 4},
+	# ── Энергия ───────────────────────────────────────────────────────────────
+	Block.BATTERY:      {"c1": 3, "m1": 4},
+	Block.SOLAR:        {"c2": 3, "m2": 3},
+	Block.GENERATOR:    {"c1": 3, "m0": 5},
+	Block.COAL_GEN:     {"c1": 2, "m0": 6},
+	Block.WIRELESS_CHARGER: {"c4": 2, "c1": 3},
+	# ── Поддержка ─────────────────────────────────────────────────────────────
+	Block.REGEN:        {"c4": 2, "c2": 2},
+	Block.SHIELD:       {"c4": 2, "c2": 3},
+	Block.RADAR:        {"c2": 3, "c4": 1},
+	# ── Оружие ────────────────────────────────────────────────────────────────
+	Block.GUN:          {"c1": 2, "m3": 4},
+	Block.SHOTGUN:      {"c1": 2, "m3": 5},
+	Block.POUND_CANNON: {"c0": 4, "c1": 3},
+	Block.LASER:        {"c2": 3, "c4": 2},
+	Block.ROCKET:       {"c4": 2, "c1": 3},
+	Block.MORTAR:       {"c0": 5, "c4": 2},
+}
+
+## Из чего собирается блок: {ключ материала → штук}. Пустой словарь — рецепта нет.
+func block_recipe(bt: int) -> Dictionary:
+	return BLOCK_RECIPE.get(bt, {})
+
+## Во что обходится блок ВСЕГО, штуками материала. Для прикидок и подписей.
+func recipe_total(bt: int) -> int:
+	var n: int = 0
+	for k in block_recipe(bt):
+		n += int(block_recipe(bt)[k])
+	return n
+
+## ЦЕНА материала у продавца. Задана только у слитков — всё остальное считается ОТ НЕЁ:
+## руда вчетверо дешевле своего слитка (переплавка и есть работа), а компонент стоит сумму
+## своего рецепта с наценкой за сборку. Цены компонентов поэтому не надо балансировать
+## отдельно: поменяли цену металла — вся ветка пересчиталась сама и осталась согласованной.
+## Числа подобраны так, чтобы СРЕДНИЙ слиток стоил примерно те же 50$, что стоил
+## единственный слиток до появления металлов, а руда — те же ~10$. Это не баланс, а
+## сохранение уже настроенного: цены материалов трогать надо отдельным решением, а не
+## заодно с рецептами.
+const METAL_PRICE := [35, 45, 60, 75]      # Ferrite, Cuprite, Silicate, Titanite
+const COAL_PRICE := 8
+const CRAFT_MARKUP := 1.25
+
+func sell_price(key: String) -> int:
+	if key == "coal":
+		return COAL_PRICE
+	if key.begins_with("chunk:"):
+		# Чанк оценивается по тому, во что обошлись лежащие в нём блоки — ЗА ОДИН блок.
+		# Умножить на количество — дело продавца, он один знает, сколько внутри.
+		var bt: int = int(key.substr(6))
+		var sum: int = 0
+		var rec: Dictionary = block_recipe(bt)
+		for k in rec:
+			sum += sell_price(String(k)) * int(rec[k])
+		return sum
+	if key.begins_with("ore"):
+		var mi: int = int(key.substr(3))
+		return int(METAL_PRICE[mi] * 0.25) if mi < METAL_PRICE.size() else 10
+	if key.begins_with("m"):
+		var m: int = int(key.substr(1))
+		return METAL_PRICE[m] if m < METAL_PRICE.size() else 10
+	if key.begins_with("c"):
+		var rec2: Dictionary = COMP_RECIPE.get(int(key.substr(1)), {})
+		var sum2: float = 0.0
+		for k in rec2:
+			sum2 += sell_price(String(k)) * int(rec2[k])
+		return int(sum2 * CRAFT_MARKUP)
+	return 0
+
+## Что вернёт разбор: ПОЛОВИНА каждого материала, вниз. Пустой словарь — разбирать нельзя.
+## Материалы возвращаются ТЕ ЖЕ, что ушли в сборку: разбор — это возврат, а не переплавка
+## во что-то универсальное, иначе Scrapper стал бы способом менять один металл на другой.
+func scrap_yield(bt: int) -> Dictionary:
+	var out: Dictionary = {}
+	var rec: Dictionary = block_recipe(bt)
+	for k in rec:
+		var half: int = int(rec[k]) / 2
+		if half > 0:
+			out[k] = half
+	return out
 
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
@@ -533,6 +711,7 @@ enum Block {
 	MORTAR = 43,        # 8 стволов, залп навесом, БЕЗ башни — бьёт по направлению корпуса
 	POUND_CANNON = 44,  # тяжёлая пушка: бьёт сильно и редко
 	SHOTGUN = 45,       # дробовик: дробь, ближний бой, два выстрела и перезарядка
+	COMP_FACTORY = 46,  # варит КОМПОНЕНТЫ из слитков (см. COMP_RECIPE) и отдаёт их на ленту
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -569,7 +748,17 @@ enum Block {
 @onready var rot_support_scene: PackedScene = preload("res://blocks/scenes/rot_support.tscn")
 @onready var storage_scene: PackedScene = preload("res://blocks/scenes/storage.tscn")
 @onready var auto_miner_scene: PackedScene = preload("res://blocks/scenes/auto_miner.tscn")
-@onready var fabricator_scene: PackedScene = preload("res://blocks/scenes/fabricator.tscn")  # ракетница: снаряд с AOE-взрывом
+@onready var fabricator_scene: PackedScene = preload("res://blocks/scenes/fabricator.tscn")
+@onready var comp_factory_scene: PackedScene = preload("res://blocks/scenes/comp_factory.tscn")
+@onready var scrapper_scene: PackedScene = preload("res://blocks/scenes/scrapper.tscn")
+@onready var armor2_scene: PackedScene = preload("res://blocks/scenes/armor2.tscn")
+@onready var armor4_scene: PackedScene = preload("res://blocks/scenes/armor4.tscn")
+@onready var half_block_scene: PackedScene = preload("res://blocks/scenes/half_block.tscn")
+@onready var half_block2_scene: PackedScene = preload("res://blocks/scenes/half_block2.tscn")
+@onready var wireless_charger_scene: PackedScene = preload("res://blocks/scenes/wireless_charger.tscn")
+@onready var mortar_scene: PackedScene = preload("res://blocks/scenes/mortar.tscn")
+@onready var pound_cannon_scene: PackedScene = preload("res://blocks/scenes/pound_cannon.tscn")
+@onready var shotgun_scene: PackedScene = preload("res://blocks/scenes/shotgun.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -592,7 +781,7 @@ const BLOCK_CATEGORIES := {
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
-		Block.AUTO_MINER, Block.FABRICATOR],
+		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -633,6 +822,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.STORAGE: return storage_scene
 		Block.AUTO_MINER: return auto_miner_scene
 		Block.FABRICATOR: return fabricator_scene
+		Block.COMP_FACTORY: return comp_factory_scene
 		Block.SCRAPPER: return scrapper_scene
 		Block.ARMOR2: return armor2_scene
 		Block.ARMOR4: return armor4_scene
