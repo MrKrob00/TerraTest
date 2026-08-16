@@ -38,30 +38,16 @@ const FILTERS := [
 func _ready() -> void:
 	# ЕДИНСТВЕННЫЙ магазин блоков в игре (мировой магазин продаёт только ресурсы
 	# через чёрную дыру и своего меню не имеет).
-	_prices = {
-		G.Block.BLOCK: 5,
-		G.Block.WHEEL: 10,
-		G.Block.CABIN: 25,
-		G.Block.DRILL: 20,
-		G.Block.GUN: 35,
-		G.Block.LASER: 40,
-		G.Block.ROCKET: 55,
-		G.Block.COLLECTOR: 15,
-		G.Block.RECEIVER: 15,
-		G.Block.BELT: 10,
-		G.Block.PROCESSOR: 30,
-		G.Block.SELLER: 30,
-		G.Block.GENERATOR: 40,
-		G.Block.BATTERY: 30,
-		G.Block.SOLAR: 35,
-		G.Block.REGEN: 45,
-		G.Block.SHIELD: 50,
-	}
-	# Любой блок из дерева, которому не задали цену выше, ВСЁ РАВНО попадает в магазин (цена от
-	# стоимости исследования). Так все блоки — и новые в будущем — автоматически есть в магазине.
+	#
+	# Цены НЕ задаются здесь. Раньше тут лежал список руками (BLOCK 5$, GUN 35$…), и он ни
+	# с чем не сверялся: блок из материалов на три сотни продавался за пятёрку, поэтому
+	# добывать, плавить и собирать было чистым проигрышем — выгоднее продать сырьё и купить
+	# готовое. Теперь цена считается из рецепта (G.shop_price) и всегда ВЫШЕ стоимости
+	# материалов, так что магазин — это удобство, а не способ обойти производство.
+	# Ассортимент прежний: всё, что есть в дереве технологий.
+	_prices = {}
 	for _bt in G.BLOCK_META:
-		if not _prices.has(_bt):
-			_prices[_bt] = maxi(int(G.BLOCK_META[_bt].get("rp", 10)), 5)
+		_prices[_bt] = G.shop_price(int(_bt))
 	# Категории — общие с глобусом стройки (G.BLOCK_CATEGORIES), чтобы не расходились.
 	_categories = G.BLOCK_CATEGORIES
 	_build_filter_column()
