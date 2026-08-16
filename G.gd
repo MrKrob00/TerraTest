@@ -123,6 +123,14 @@ const BLOCK_META := {
 	Block.AUTO_MINER:  {"f": "start", "g": 4, "rp": 35},
 	Block.FABRICATOR:  {"f": "start", "g": 5, "rp": 40},
 	Block.SCRAPPER:    {"f": "start", "g": 3, "rp": 25},   # разбор трофеев — средний тир
+	Block.ARMOR2:      {"f": "start", "g": 2, "rp": 18},
+	Block.ARMOR4:      {"f": "start", "g": 3, "rp": 25},
+	Block.HALF_BLOCK:  {"f": "start", "g": 1, "rp": 5},
+	Block.HALF_BLOCK2: {"f": "start", "g": 1, "rp": 8},
+	Block.WIRELESS_CHARGER: {"f": "start", "g": 4, "rp": 30},
+	Block.MORTAR:      {"f": "start", "g": 4, "rp": 35},
+	Block.POUND_CANNON: {"f": "start", "g": 3, "rp": 25},
+	Block.SHOTGUN:     {"f": "start", "g": 2, "rp": 18},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -149,6 +157,11 @@ const TECH_PARENT := {
 	Block.AUTO_MINER: Block.PROCESSOR,
 	Block.FABRICATOR: Block.PROCESSOR,
 	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
+	Block.ARMOR2: Block.ARMOR,          Block.ARMOR4: Block.ARMOR2,
+	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
+	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
+	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
+	Block.MORTAR: Block.ROCKET,         # навесная стрельба ветвится от ракетницы
 }
 ## РЕЦЕПТЫ БЛОКОВ: сколько СЛИТКОВ стоит собрать блок. Один источник правды на двоих —
 ## по нему фабрикатор собирает, а Scrapper возвращает половину при разборе.
@@ -512,6 +525,14 @@ enum Block {
 	AUTO_MINER = 35,    # авто-шахтёр: стационарный, ставится на жилу
 	FABRICATOR = 36,    # фабрикатор 2³: два материала на входе, готовый блок на выходе
 	SCRAPPER = 37,      # разбирает блоки обратно в слитки: половина рецепта (см. BLOCK_RECIPE)
+	ARMOR2 = 38,        # защитная плита 2×1×1
+	ARMOR4 = 39,        # защитная плита 2×1×2
+	HALF_BLOCK = 40,    # половина блока: занимает ЦЕЛУЮ клетку, просто скошена — ровные края
+	HALF_BLOCK2 = 41,   # две половины подряд, 2×1×1
+	WIRELESS_CHARGER = 42,  # шлёт энергию в аккумулятор ДРУГОЙ машины игрока, свою игнорирует
+	MORTAR = 43,        # 8 стволов, залп навесом, БЕЗ башни — бьёт по направлению корпуса
+	POUND_CANNON = 44,  # тяжёлая пушка: бьёт сильно и редко
+	SHOTGUN = 45,       # дробовик: дробь, ближний бой, два выстрела и перезарядка
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -561,8 +582,10 @@ func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
 const BLOCK_CATEGORIES := {
-	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL],
-	"blocks":  [Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
+	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
+		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN],
+	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.HALF_BLOCK, Block.HALF_BLOCK2,
+		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE, Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT],
@@ -611,6 +634,14 @@ func get_scene(block: Block) -> PackedScene:
 		Block.AUTO_MINER: return auto_miner_scene
 		Block.FABRICATOR: return fabricator_scene
 		Block.SCRAPPER: return scrapper_scene
+		Block.ARMOR2: return armor2_scene
+		Block.ARMOR4: return armor4_scene
+		Block.HALF_BLOCK: return half_block_scene
+		Block.HALF_BLOCK2: return half_block2_scene
+		Block.WIRELESS_CHARGER: return wireless_charger_scene
+		Block.MORTAR: return mortar_scene
+		Block.POUND_CANNON: return pound_cannon_scene
+		Block.SHOTGUN: return shotgun_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
