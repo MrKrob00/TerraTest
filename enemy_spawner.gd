@@ -1,21 +1,32 @@
 extends Node3D
 # Спавнит врагов вокруг игрока и держит их количество: враг погиб/исчез → через интервал
-# появляется новый. Каждый берётся СЛУЧАЙНО из пула сцен, и ему задаётся случайная сборка
-# (layout_preset у его blocks) — «машина из пула». Враги добавляются под узел Vehicles,
+# появляется новый. Сцена берётся случайно из пула, а вот СБОРКА — уже нет: она подбирается
+# под стоимость машины игрока (см. _pick_preset). Враги добавляются под узел Vehicles,
 # чтобы карта дала им стриминговую коллизию (иначе провалятся сквозь рельеф вдали).
+#
+# Плотность и правила взяты из TerraTech, где мир держится на четырёх врагах и сорока
+# секундах паузы. У нас было девять и шесть — вчетверо гуще по машинам и в семь раз по
+# темпу, и мир читался как непрерывная драка. Три правила оттуда же:
+#   • рядом со СВОЕЙ ЗАЯКОРЕННОЙ машиной спавна нет (quiet_radius) — база тихая;
+#   • далёкий враг ЗАСЫПАЕТ, а не возвращается к игроку — из боя можно выйти;
+#   • сила врага подбирается под стоимость машины игрока, а не бросается кубиком.
+# Чего НЕ взял: в TerraTech враг не появляется, пока игрок едет быстро. У нас это отменило
+# бы главное требование к миру — «проехал сотню метров и уже дерёшься».
 
 @export var enemy_scenes: Array[PackedScene]        # пул сцен врагов
-@export var layout_presets: Array[int] = [0, 1, 2]  # пул сборок (см. blocks.gd)
-@export var max_enemies: int = 9
-@export var spawn_interval: float = 6.0             # пауза между появлениями
-## Сколько врагов ставится СРАЗУ, как только мир готов (и обучение закончилось). Без этого
-## мир начинался пустым и наполнялся по одному раз в spawn_interval — до первой стычки
-## приходилось ждать и просто кататься. Ставятся по обычным правилам кольца, то есть
-## разнесённые по разным сторонам, а не кучей.
-@export var initial_enemies: int = 2
+## ПОТОЛОК одновременно БОДРСТВУЮЩИХ врагов. Столько же держит TerraTech, и это не
+## совпадение чисел: девять машин на карте читались как «их слишком много» даже при
+## max_engaging = 2 — дерутся двое, а видно всех.
+@export var max_enemies: int = 4
+## Пауза между появлениями. Было 6 секунд — убитый враг заменялся почти мгновенно, и поток
+## не кончался никогда. Сорок секунд — темп TerraTech: стычка становится событием.
+@export var spawn_interval: float = 40.0
+## Сколько врагов ставится СРАЗУ, как только мир готов (и обучение закончилось). Один:
+## мир не должен встречать игрока пустым, но и толпой тоже.
+@export var initial_enemies: int = 1
 
 ## Сколько врагов ОДНОВРЕМЕННО могут вести бой с игроком. Остальные патрулируют, пока место
-## не освободится. Без этого потолка девять машин, заметив игрока, ехали на него все разом —
+## не освободится. Без этого потолка машины, заметив игрока, ехали на него все разом —
 ## и это не бой, а казнь: отбиться от толпы нечем, а разъехаться она не даёт.
 @export var max_engaging: int = 2
 ## Кольцо спавна. Было 270–520: враг появлялся ЗА горизонтом восприятия (машина видит на 40,
@@ -26,6 +37,14 @@ extends Node3D
 ## того чтобы патрулировать, пока к нему не подъедут.
 @export var spawn_min_dist: float = 150.0
 @export var spawn_max_dist: float = 300.0
+## ТИХАЯ ЗОНА вокруг СВОЕЙ ЗАЯКОРЕННОЙ машины: туда враг не приходит вовсе (правило
+## TerraTech — рядом с якорем игрока спавна нет).
+##
+## Нам оно нужнее, чем ей: вся производственная цепочка — фабрикатор, компонентный завод,
+## склад, продавец — работает ТОЛЬКО под якорем. Без тихой зоны враг рождался в полутора
+## сотнях метров от стоящей фабрики и приезжал ломать её ровно тогда, когда игрок
+## раскладывает конвейер и управлять машиной не может.
+@export var quiet_radius: float = 120.0
 ## Не появляться ПЕРЕД машиной ближе этого: игрок едет вперёд и не должен видеть, как враг
 ## возникает у него по курсу. Сзади и по бокам такого ограничения нет — там появление не видно.
 @export var front_clear_dist: float = 240.0
@@ -34,28 +53,54 @@ extends Node3D
 @export var min_height: float = 2.0                 # не на воде
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
-## Враг дальше far_dist от текущей машины дольше far_limit секунд — телепортируется обратно
-## в кольцо спавна возле игрока (не нашли точку — исчезает). Чтобы бой не «затухал», когда
-## игрок уехал от разбежавшихся врагов.
-@export var far_dist: float = 640.0                 # с запасом над spawn_max_dist, иначе дальние спавны сразу «далеко»
-@export var far_limit: float = 60.0
+
+@export_group("Сон и уборка")
+## Враг дальше sleep_dist от машины игрока дольше sleep_delay секунд — ЗАСЫПАЕТ: физика
+## заморожена, ИИ и оружие не считаются, узел остаётся на месте.
+##
+## Раньше он вместо этого ТЕЛЕПОРТИРОВАЛСЯ обратно в кольцо возле игрока — «чтобы бой не
+## затухал». Это и была главная причина ощущения «их слишком много»: из боя нельзя было
+## выйти, отступление возвращало ту же машину тебе за спину. В TerraTech далёкий враг просто
+## замирает и ждёт; уехал — значит уехал, и это единственный способ разорвать стычку.
+@export var sleep_dist: float = 420.0
+@export var sleep_delay: float = 20.0
+## Спящие не занимают место под потолком, но и копиться до бесконечности не должны: когда их
+## вместе с живыми больше max_total, самый дальний СПЯЩИЙ убирается. Захватчик не убирается
+## никогда (см. ниже).
+@export var max_total: int = 8
 @export var map_node: Node
 
 ## РЕДКОЕ СОБЫТИЕ «Проверка сектора» (лор цифровой симуляции): Система объявляет проверку
-## квадрата вокруг игрока, даёт время сбежать, и если он не покинул квадрат — вызывает
-## усиленный отряд врагов внутрь. Заглянул в квадрат — беги.
+## квадрата вокруг игрока, даёт время сбежать, и если он не покинул квадрат — присылает
+## ЗАХВАТЧИКА. Заглянул в квадрат — беги.
+##
+## Раньше присылала отряд из пяти. Вместе с девятью обычными это давало четырнадцать машин
+## разом — то есть один сценарий отменял весь баланс плотности. Теперь, как invader в
+## TerraTech, он ОДИН: сильный, помнит цель, не деспавнится и ждёт, сколько понадобится.
+## Одна такая машина страшнее пяти обычных и при этом не превращает карту в свалку.
 @export_group("Проверка сектора")
 @export var scan_enabled: bool = true
-@export var scan_min_interval: float = 180.0        # не чаще (сек) — событие редкое
-@export var scan_max_interval: float = 420.0
+## Раз в 10–15 минут — темп invader'а в TerraTech. Было 3–7, и «редкое событие» приходило
+## чаще, чем игрок успевал построить фабрику.
+@export var scan_min_interval: float = 600.0
+@export var scan_max_interval: float = 900.0
 @export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
 @export var scan_warn_time: float = 12.0            # сколько секунд на побег
-@export var scan_squad: int = 5                     # сколько врагов вызывает при провале
 @export var scan_preset: int = 1                    # усиленная сборка (см. blocks.gd layout)
+
+@export_group("Сила врага")
+## Сборки от САМОЙ СЛАБОЙ к самой сильной (номера см. blocks.gd _define_layout). Порядок
+## задан руками, а не стоимостью: по деньгам laser_scout и dual_gun почти равны, но две
+## пушки опаснее одного лазера, и опасность здесь важнее цены.
+@export var preset_tiers: Array[int] = [2, 0, 1]    # laser_scout → default → dual_gun
+## С какой стоимости машины игрока (сумма G.shop_price её блоков) начинается каждая ступень.
+## Стартовая кабина ≈ 1800, готовая боевая машина — тысяч десять.
+@export var tier_from_value: Array[int] = [0, 5000, 9000]
 
 var _enemies: Array = []
 var _clean_t: float = 0.0                           # троттл чистки списка от мёртвых врагов
 var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
+var _invader: Node3D = null                         # единственный захватчик, если он сейчас есть
 var _t: float = 0.0
 var _ready_done: bool = false
 var _seeded: bool = false          # стартовая партия врагов уже поставлена
@@ -88,10 +133,13 @@ func _process(delta: float) -> void:
 	if _clean_t <= 0.0:
 		_clean_t = 0.5
 		_enemies = _enemies.filter(func(e): return is_instance_valid(e))
-	_track_far(delta)
+	_track_dormancy(delta)
 	_limit_engagement()
 	_scan_tick(delta)                               # редкое событие «проверка сектора»
-	if _enemies.size() >= max_enemies:
+	# Потолок считается по БОДРСТВУЮЩИМ. Спящий стоит за горизонтом, ничего не делает и на
+	# ощущение «сколько их вокруг» не влияет — считать его занятым местом значило бы, что
+	# четыре забытые в поле машины навсегда выключают спавн.
+	if _awake_count() >= max_enemies:
 		return
 	# Первый заход: наполняем мир сразу, а не по одному с паузой.
 	if not _seeded and not _tutorial_active():
@@ -119,6 +167,8 @@ func _limit_engagement() -> void:
 	for e in _enemies:
 		if not is_instance_valid(e) or not e.has_method("set_combat_allowed"):
 			continue
+		if _is_asleep(e):
+			continue                           # спящий не дерётся и место в бою не занимает
 		if e.get("_target") != null:
 			seekers.append(e)
 		else:
@@ -129,39 +179,80 @@ func _limit_engagement() -> void:
 	for i in seekers.size():
 		seekers[i].set_combat_allowed(i < max_engaging)
 
-# Далёкие враги: кто дальше far_dist от текущей машины дольше far_limit — телепортируется
-# обратно в кольцо возле игрока (нет точки — исчезает). Так стычка не «уезжает» от игрока.
-func _track_far(delta: float) -> void:
+# Далёкие враги ЗАСЫПАЮТ, а не возвращаются к игроку.
+#
+# Прежняя версия телепортировала их обратно в кольцо спавна, «чтобы стычка не затухала».
+# Именно она и делала бой бесконечным: отступать было некуда — та же машина возникала
+# сзади. В TerraTech далёкий враг просто замирает и ждёт, и отступление снова работает.
+func _track_dormancy(delta: float) -> void:
 	for k in _far_time.keys():
 		if not is_instance_valid(k):
 			_far_time.erase(k)
 	var player: Node3D = _player()
 	if player == null:
 		return
-	var map: Node = _find_map()
 	for e in _enemies:
 		if not is_instance_valid(e):
 			continue
-		if player.global_position.distance_to(e.global_position) > far_dist:
-			_far_time[e] = _far_time.get(e, 0.0) + delta
-			if _far_time[e] >= far_limit:
-				_far_time.erase(e)
-				_relocate_enemy(e, map, player)
+		var d: float = player.global_position.distance_to(e.global_position)
+		if d > sleep_dist:
+			_far_time[e] = float(_far_time.get(e, 0.0)) + delta
+			if _far_time[e] >= sleep_delay:
+				_sleep(e)
 		else:
 			_far_time.erase(e)
+			_wake(e)
+	_trim_sleepers(player)
 
-func _relocate_enemy(enemy: Node3D, map: Node, player: Node3D) -> void:
-	if map == null:
-		enemy.queue_free()
+# Спящий: физика заморожена, ИИ и оружие не тикают. process_mode гасит ВСЮ ветку — иначе
+# турели дочерних блоков продолжали бы крутиться и стрелять за горизонтом.
+func _sleep(e: Node3D) -> void:
+	if bool(e.get_meta("asleep", false)):
 		return
-	var pos = _find_spawn_pos(map, player.global_position, enemy)
-	if pos == null:
-		enemy.queue_free()          # некуда переместить — просто исчезает
+	e.set_meta("asleep", true)
+	if e is RigidBody3D:
+		e.linear_velocity = Vector3.ZERO
+		e.angular_velocity = Vector3.ZERO
+		e.freeze = true
+	e.process_mode = Node.PROCESS_MODE_DISABLED
+
+func _wake(e: Node3D) -> void:
+	if not bool(e.get_meta("asleep", false)):
 		return
-	if enemy is RigidBody3D:
-		enemy.linear_velocity = Vector3.ZERO
-		enemy.angular_velocity = Vector3.ZERO
-	enemy.global_position = pos
+	e.set_meta("asleep", false)
+	e.process_mode = Node.PROCESS_MODE_INHERIT
+	if e is RigidBody3D:
+		e.freeze = false
+		e.sleeping = false
+
+func _is_asleep(e: Node) -> bool:
+	return is_instance_valid(e) and bool(e.get_meta("asleep", false))
+
+func _awake_count() -> int:
+	var n: int = 0
+	for e in _enemies:
+		if is_instance_valid(e) and not _is_asleep(e) and e != _invader:
+			n += 1
+	return n
+
+# Спящие не занимают место под потолком — значит могут копиться, пока игрок колесит по
+# карте. Когда машин суммарно больше max_total, самая дальняя СПЯЩАЯ убирается: бодрствующих
+# трогать нельзя (они в бою), захватчика — тоже (он по определению ждёт сколько угодно).
+func _trim_sleepers(player: Node3D) -> void:
+	if _enemies.size() <= max_total:
+		return
+	var worst: Node3D = null
+	var worst_d: float = -1.0
+	for e in _enemies:
+		if not is_instance_valid(e) or e == _invader or not _is_asleep(e):
+			continue
+		var d: float = player.global_position.distance_to((e as Node3D).global_position)
+		if d > worst_d:
+			worst_d = d
+			worst = e
+	if worst != null:
+		_enemies.erase(worst)
+		worst.queue_free()
 
 func _spawn_one() -> void:
 	if enemy_scenes.is_empty() or _tutorial_active():
@@ -175,10 +266,10 @@ func _spawn_one() -> void:
 		return
 
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
-	# Сборка из пула — ставим ДО add_child (blocks строит машину в своём _ready).
+	# Сборка — ДО add_child (blocks строит машину в своём _ready).
 	var blocks := enemy.get_node_or_null("blocks")
-	if blocks and "layout_preset" in blocks and not layout_presets.is_empty():
-		blocks.layout_preset = layout_presets.pick_random()
+	if blocks and "layout_preset" in blocks:
+		blocks.layout_preset = _pick_preset(player)
 
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
@@ -188,6 +279,37 @@ func _spawn_one() -> void:
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
+
+# Какую сборку прислать. Правило TerraTech: враг примерно того же веса, что твоя машина, —
+# там он подбирается по суммарной стоимости блоков, и у нас такая стоимость наконец есть
+# (G.shop_price считается из рецепта). Раньше сборка бралась кубиком, и в стартовую кабину
+# могли приехать две пушки.
+#
+# Со ступени иногда спускаемся на одну вниз: если сила жёстко следует за игроком, каждый бой
+# одинаково тяжёлый, и расти незачем — лёгкая цель должна иногда попадаться.
+func _pick_preset(player: Node3D) -> int:
+	if preset_tiers.is_empty():
+		return 0
+	var value: int = _machine_value(player)
+	var tier: int = 0
+	for i in mini(preset_tiers.size(), tier_from_value.size()):
+		if value >= int(tier_from_value[i]):
+			tier = i
+	if tier > 0 and randf() < 0.33:
+		tier -= 1
+	return int(preset_tiers[tier])
+
+# Во сколько обходится машина: сумма магазинных цен её блоков. Той же меркой считается всё
+# остальное в игре, поэтому «сильнее» здесь значит ровно то же, что и в гараже.
+func _machine_value(machine: Node3D) -> int:
+	var blocks: Node = machine.get_node_or_null("blocks") if machine != null else null
+	if blocks == null:
+		return 0
+	var v: int = 0
+	for b in blocks.get_children():
+		if "block" in b:
+			v += G.shop_price(int(b.get("block")))
+	return v
 
 ## Разведчик РЯДОМ с игроком — сюжетный спавн после обучения. Обычный поток врагов держит
 ## дистанцию spawn_min_dist (270 м), чтобы не наваливаться; здесь наоборот нужно, чтобы
@@ -218,7 +340,10 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = 0            # базовая сборка: первый бой должен быть посильным
+		# САМАЯ СЛАБАЯ ступень, а не «сборка номер 0»: первый бой должен быть посильным, и
+		# раньше здесь стоял пресет 0 просто потому, что он первый в списке — а он не самый
+		# лёгкий. Теперь порядок ступеней задан в preset_tiers, и слабейшая берётся оттуда.
+		blocks.layout_preset = int(preset_tiers[0]) if not preset_tiers.is_empty() else 0
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
@@ -233,8 +358,11 @@ func _tutorial_active() -> bool:
 	var q: Node = get_node_or_null("/root/Q")
 	return q != null and q.has_method("tutorial_active") and q.tutorial_active()
 
-func _on_enemy_died(_enemy: Node) -> void:
-	pass    # _process сам подчистит список по is_instance_valid и дозаспавнит
+func _on_enemy_died(enemy: Node) -> void:
+	# Список чистит _process по is_instance_valid; здесь важно только освободить слот
+	# захватчика — пока он занят, новая проверка сектора никого не присылает.
+	if enemy == _invader:
+		_invader = null
 
 # Точка спавна: кольцо вокруг игрока, на рельефе, не вода/не обрыв, и НЕ вплотную к другим
 # врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
@@ -288,6 +416,8 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 				continue
 			if _in_player_view(cand, center):
 				continue                       # по курсу и близко — игрок увидел бы появление
+			if _near_anchored_base(cand):
+				continue                       # тихая зона: у заякоренной машины игрока не спавним
 			return cand
 	return null
 
@@ -307,6 +437,30 @@ func _in_player_view(pos: Vector3, center: Vector3) -> bool:
 	if fwd.length() < 0.01 or to.length() < 0.01:
 		return false
 	return rad_to_deg(fwd.normalized().angle_to(to.normalized())) < front_cone_deg
+
+# Точка внутри тихой зоны какой-нибудь ЗАЯКОРЕННОЙ машины игрока?
+#
+# Смотрим именно на якорь, а не на «есть ли рядом моя машина»: катающаяся машина в защите не
+# нуждается — она может уехать. А заякоренная не может: якорь снимается вручную, под ним
+# работает фабрика, и ровно в этот момент игрок занят конвейером, а не рулём.
+#
+# Поле anchored живёт на vehicle_body_3d (машины игрока), у врагов его нет — поэтому читаем
+# через get() и молча пропускаем тех, у кого его нет.
+func _near_anchored_base(pos: Vector3) -> bool:
+	var vehicles: Node = _vehicles_root()
+	if vehicles == null:
+		return false
+	for v in vehicles.get_children():
+		if not (v is Node3D) or not is_instance_valid(v):
+			continue
+		var f = v.get("faction")
+		if f != null and int(f) != 0:
+			continue                           # только машины ИГРОКА
+		if not bool(v.get("anchored")):
+			continue
+		if pos.distance_to((v as Node3D).global_position) < quiet_radius:
+			return true
+	return false
 
 func _sector_of(ang: float) -> int:
 	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS
@@ -383,38 +537,47 @@ func _resolve_scan() -> void:
 	# Система не отслеживает «кто ушёл» — она просто сканирует зону. Есть активность внутри
 	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
 	if p != null and _in_scan_box(p.global_position):
-		_say("System", "⚠ Unauthorized activity detected in the sector. Dispatching handlers.")
-		_spawn_enforcement(p)          # отряд идёт именно за ЗАСЕЧЁННОЙ машиной
+		_say("System", "⚠ Unauthorized activity detected in the sector. Dispatching a handler.")
+		_spawn_invader(p)              # захватчик идёт именно за ЗАСЕЧЁННОЙ машиной
 	else:
 		_say("System", "Sector scan complete. No anomalies detected.")
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
 
-# Усиленный отряд внутрь квадрата (кольцом у края, на рельефе, агрессивно близко).
-func _spawn_enforcement(locked: Node3D = null) -> void:
+# ЗАХВАТЧИК — один, у края квадрата, сразу нацеленный на засеченную машину.
+#
+# Он намеренно не подчиняется обычным правилам: не считается под потолком max_enemies, не
+# убирается уборкой спящих и не забывает цель. Это событие, а не фон, и работать оно должно
+# как событие — пока игрок его не убьёт или не уедет насовсем.
+#
+# Пока предыдущий захватчик жив, нового не присылаем: их одновременно ровно один, как invader
+# в TerraTech. Иначе редкое событие, случившись дважды подряд, снова превращалось бы в толпу.
+func _spawn_invader(locked: Node3D = null) -> void:
+	if _invader != null and is_instance_valid(_invader):
+		return
 	var map: Node = _find_map()
 	var vehicles: Node = _vehicles_root()
 	if map == null or vehicles == null or enemy_scenes.is_empty():
 		return
-	for i in scan_squad:
-		var enemy: Node3D = enemy_scenes.pick_random().instantiate()
-		var blocks := enemy.get_node_or_null("blocks")
-		if blocks and "layout_preset" in blocks:
-			blocks.layout_preset = scan_preset      # усиленная сборка
-		vehicles.add_child(enemy)
-		var ang: float = TAU * float(i) / float(maxi(scan_squad, 1))
-		var r: float = scan_half_size * 0.8
-		var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
-		var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
-		enemy.global_position = Vector3(wp.x, h + ground_offset, wp.z)
-		if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
-			enemy.died.connect(_on_enemy_died)
-		# Отряд по итогам ПРОВЕРКИ СЕКТОРА идёт именно за той машиной, которую засекли: цель
-		# назначаем сразу при спавне и включаем relentless — они её уже не забудут и не
-		# переключатся на другую (обычные враги ищут цель сами и цель могут терять).
-		_lock_on_target(enemy, locked)
-		_enemies.append(enemy)
+	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+	var blocks := enemy.get_node_or_null("blocks")
+	if blocks and "layout_preset" in blocks:
+		blocks.layout_preset = scan_preset      # усиленная сборка
+	vehicles.add_child(enemy)
+	var ang: float = randf() * TAU
+	var r: float = scan_half_size * 0.8
+	var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
+	var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
+	enemy.global_position = Vector3(wp.x, h + ground_offset, wp.z)
+	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
+		enemy.died.connect(_on_enemy_died)
+	# Цель назначаем сразу, не дожидаясь его зоны обнаружения, и включаем relentless: обычный
+	# враг ищет цель сам и может её потерять, а этот приехал именно за той машиной, которую
+	# засекла проверка.
+	_lock_on_target(enemy, locked)
+	_enemies.append(enemy)
+	_invader = enemy
 
 # Жёстко назначить врагу цель (без ожидания сигнала зоны обнаружения) и сделать его невідступным.
 func _lock_on_target(enemy: Node, target: Node3D) -> void:
