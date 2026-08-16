@@ -5,53 +5,52 @@ extends FactoryBlock
 #
 # Два входа различаются НЕ гранью, а материалом: первый пришедший вид занимает слот A,
 # первый ОТЛИЧНЫЙ от него — слот B. Так конвейеры можно свести хоть в одну грань, и рецепт
-# всё равно соберётся правильно.
+# всё равно соберётся правильно. Отсюда же и правило рецептов: ровно два разных материала,
+# третьему тут просто негде встать (см. G.BLOCK_RECIPE).
 #
-# Единственный рецепт пока такой: 3 слитка одного вида + 3 другого = обычный блок 1³.
-# Добавлять новые — строкой в RECIPES; ключ материала даёт resource.kind_key().
+# Что и из чего — НЕ здесь, а в G.BLOCK_RECIPE: тот же словарь читает Scrapper, чтобы вернуть
+# половину. Держать цену сборки в двух местах значит однажды их разойтись.
 
-## Сколько единиц КАЖДОГО из двух материалов нужно на одну сборку.
-@export var per_kind: int = 3
-## Что штампуем (значение G.Block). Пока рецепт один, поэтому и выход один.
-## Тип НЕ G.Block: enum живёт в автолоаде, в @export его не подставить.
+## Что штампуем (значение G.Block). Тип НЕ G.Block: enum живёт в автолоаде, в @export его
+## не подставить. Рецепт подтягивается по этому номеру сам.
 @export var output_block: int = 3        # G.Block.BLOCK
 ## Пауза сборки, секунд.
 @export var craft_time: float = 2.5
-## Принимаем только слитки: руду сперва в переработчик.
-@export var require_ingot: bool = true
 
-var _kind_a: String = ""
-var _kind_b: String = ""
-var _count_a: int = 0
-var _count_b: int = 0
+var _need: Dictionary = {}               # ключ материала → сколько надо (копия рецепта)
+var _have: Dictionary = {}               # ключ материала → сколько уже лежит
 var _crafting: bool = false
+
+func _ready() -> void:
+	super._ready()
+	_need = G.block_recipe(output_block).duplicate()   # копия: словарь рецептов общий на всех
 
 # Фабрикатор ничего не держит в слоте: ресурс сразу засчитывается и исчезает, иначе на
 # каждую из шести единиц пришлось бы гонять анимацию и ждать освобождения.
 func try_receive(item: Node3D) -> bool:
-	if not _factory_active() or _crafting:
+	if not _factory_active() or _crafting or _need.is_empty():
 		return false
 	if item == null or not is_instance_valid(item):
 		return false
-	if require_ingot and "type" in item and int(item.get("type")) != 1:
-		return false                      # 1 = Type.INGOT (см. resource.gd)
-	var kind: String = item.kind_key() if item.has_method("kind_key") else str(item.get("type"))
-
-	if kind == _kind_a and _count_a < per_kind:
-		_count_a += 1
-	elif kind == _kind_b and _count_b < per_kind:
-		_count_b += 1
-	elif _kind_a == "":
-		_kind_a = kind
-		_count_a = 1
-	elif _kind_b == "" and kind != _kind_a:
-		_kind_b = kind
-		_count_b = 1
-	else:
-		return false                      # оба слота заняты другими видами или уже полны
+	var kind: String = item.kind_key() if item.has_method("kind_key") else ""
+	# Материал не из рецепта не принимаем ВОВСЕ — и это заодно отсекает руду: рецепты просят
+	# слитки ("m0"), а у руды ключ другой ("ore0"). Отдельной проверки «только слитки» больше
+	# не нужно, правило целиком живёт в рецепте.
+	if not _need.has(kind):
+		return false
+	var have: int = int(_have.get(kind, 0))
+	if have >= int(_need[kind]):
+		return false                      # этого материала уже достаточно
+	_have[kind] = have + 1
 	item.queue_free()
-	if _count_a >= per_kind and _count_b >= per_kind:
+	if _recipe_full():
 		_start_craft()
+	return true
+
+func _recipe_full() -> bool:
+	for k in _need:
+		if int(_have.get(k, 0)) < int(_need[k]):
+			return false
 	return true
 
 func _start_craft() -> void:
@@ -59,10 +58,7 @@ func _start_craft() -> void:
 	await get_tree().create_timer(craft_time).timeout
 	if not is_instance_valid(self):
 		return
-	_count_a = 0
-	_count_b = 0
-	_kind_a = ""
-	_kind_b = ""
+	_have.clear()
 	_crafting = false
 	_eject_block()
 

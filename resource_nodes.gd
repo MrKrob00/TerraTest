@@ -7,14 +7,12 @@ extends Node3D
 @export var resource_nodes: Array[PackedScene]
 @export var multimesh_nodes: Array[MultiMeshInstance3D]
 
-## Цвета типов жил. Тип выбирается случайно на жилу и красит руду через шейдер (один
-## draw-call на все жилы — бесплатно по FPS). ЧТОБЫ ДОБАВИТЬ НОВЫЙ ЦВЕТ ЖИЛЫ — просто
-## допиши сюда ещё один Color (до 8 штук, см. MAX_ORE_TYPES в resource.gdshader).
-@export var ore_colors: Array[Color] = [
-	Color(1.0, 0.75, 0.0),    # золото (по умолчанию)
-	Color(0.2, 0.8, 0.85),    # бирюза
-	Color(0.85, 0.25, 0.35),  # рубин
-]
+## Цвета типов жил = ЦВЕТА МЕТАЛЛОВ, один в один: тип жилы это и есть металл, который из неё
+## выйдет (G.Metal), и жила обязана выглядеть тем, что даёт. Список НЕ дублируется здесь и не
+## правится в инспекторе — он берётся из G.METAL_COLOR в _ready. Раньше цвета жил жили сами по
+## себе, и добавить металл значило поправить два места, забыв одно.
+## Новый металл — строка в G.Metal/G.METAL_COLOR (до 8 штук, см. MAX_ORE_TYPES в resource.gdshader).
+var ore_colors: Array[Color] = []
 
 ## Доля угольных жил (0..1). Угольная жила тёмная и выбрасывает УГОЛЬ (COAL) —
 ## топливо генератора; слитка у угля нет, процессор его не переплавляет.
@@ -52,6 +50,8 @@ var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
 
 func _ready() -> void:
+	# До любого await: дальше по коду список нужен и шейдеру, и раздаче типов жилам.
+	ore_colors.assign(G.METAL_COLOR)
 	var map: Node = await _await_map()
 	if map == null:
 		push_error("resource_nodes: родитель так и не стал картой (нет terrain_height_at/get_dims)")

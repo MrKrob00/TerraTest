@@ -11,10 +11,18 @@ const ENERGY_INGOT := 80.0
 var _burn_left: float = 0.0
 var _burn_energy: float = 0.0
 
+# КОМПОНЕНТ в топку не берём вовсе. Он не топливо: сжечь деталь, которая стоит двух слитков,
+# ради энергии одной руды — это не выбор игрока, а потеря по невнимательности. Отказ виден:
+# компонент остаётся на ленте и едет дальше.
+func try_receive(item: Node3D) -> bool:
+	if item != null and "type" in item and int(item.get("type")) == 4:   # 4 = Type.COMPONENT
+		return false
+	return super.try_receive(item)
+
 func _on_item_received() -> void:
 	if current_item == null:
 		return
-	# Сколько энергии даст топливо: по типу ресурса (ORE/INGOT).
+	# Сколько энергии даст топливо: по типу ресурса (ORE/INGOT/COAL).
 	_burn_energy = ENERGY_ORE
 	if "type" in current_item and current_item.has_method("upgrade"):
 		var tname: String = current_item.Type.keys()[current_item.type]
