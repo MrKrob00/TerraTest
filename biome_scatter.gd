@@ -17,7 +17,7 @@ const SNOW := 4
 
 @export_group("Размещение")
 @export var edge_margin: float = 48.0        # отступ от края карты
-@export var min_height: float = 2.0          # ниже — вода/пляж, не ставим
+@export var min_height: float = 2.0          # ниже — самые днища впадин, не ставим (воды в мире нет)
 @export var max_slope: float = 6.0           # круче — скала, пропы не ставим (разброс высот вокруг)
 
 @export_group("Стриминг")

@@ -50,7 +50,7 @@ extends Node3D
 @export var front_clear_dist: float = 240.0
 @export_range(0.0, 180.0) var front_cone_deg: float = 55.0
 @export var spawn_separation: float = 70.0          # не ближе этого к ДРУГИМ врагам
-@export var min_height: float = 2.0                 # не на воде
+@export var min_height: float = 2.0                 # ниже — днища впадин (воды в мире НЕТ)
 @export var max_slope: float = 8.0                  # не на обрыве
 @export var ground_offset: float = 3.0
 
@@ -364,7 +364,7 @@ func _on_enemy_died(enemy: Node) -> void:
 	if enemy == _invader:
 		_invader = null
 
-# Точка спавна: кольцо вокруг игрока, на рельефе, не вода/не обрыв, и НЕ вплотную к другим
+# Точка спавна: кольцо вокруг игрока, на рельефе, не на обрыве, и НЕ вплотную к другим
 # врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
 # точки расходятся по кольцу, а не бьют в одно место. exclude — враг, которого не считаем
 # соседом (при телепорте его самого). Возвращает Vector3 или null.
