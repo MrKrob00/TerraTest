@@ -74,33 +74,39 @@ func _seed_demo() -> void:
 	add_quest("tut_music", "Boot: Audio", "Open audio", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
 			"Last one. Even a simulation lets you pick what plays.")
 	# ── STORY ────────────────────────────────────────────────────────────────────
+	# Награды деньгами живут в масштабе МАГАЗИНА, а цены там считаются из рецептов
+	# (G.shop_price): простой блок стоит ~220$, кабина ~1800$. Пока цены были выдуманы
+	# руками (блок за 5$), награды в 50$ выглядели щедро; после привязки к материалам они
+	# стали бы мелочью, поэтому подняты втрое.
+	# ЦЕЛИ «заработай N$» при этом не тронуты: цена руды осталась прежней (10$ за
+	# ферритовую), значит и работа за этими числами ровно та же, что была.
 	# Первый сюжетный — сразу после обучения: наставник спавнит разведчика рядом с игроком.
-	add_quest("story_first_blood", "Noticed", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 30, 25, 5)
-	add_quest("story_build", "Take Shape",  "Attach 5 parts",          Type.STORY, 5,   1, "block_placed", 20, 20, 5)
-	add_quest("story_ore",   "Extraction",  "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    30, 30, 8)
-	add_quest("story_sell",  "Solvency",    "Earn 100$",               Type.STORY, 100, 3, "money_earned", 50, 40, 10)
-	add_quest("story_kill",  "Deletion",    "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 40, 50, 15)
+	add_quest("story_first_blood", "Noticed", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 90, 25, 5)
+	add_quest("story_build", "Take Shape",  "Attach 5 parts",          Type.STORY, 5,   1, "block_placed", 60, 20, 5)
+	add_quest("story_ore",   "Extraction",  "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    90, 30, 8)
+	add_quest("story_sell",  "Solvency",    "Earn 100$",               Type.STORY, 100, 3, "money_earned", 150, 40, 10)
+	add_quest("story_kill",  "Deletion",    "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 120, 50, 15)
 	# Grade 2: mastering mining-production and the first weapon.
-	add_quest("g2_ore",   "Quota",            "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
-	add_quest("g2_kill",  "Cleanup",          "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
-	add_quest("g2_money", "Credit",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
-	add_quest("g2_build", "Iteration",        "Attach 15 parts",       Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
+	add_quest("g2_ore",   "Quota",            "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    180,  30, 8,  2)
+	add_quest("g2_kill",  "Cleanup",          "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 240,  45, 10, 2)
+	add_quest("g2_money", "Credit",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 300, 40, 10, 2)
+	add_quest("g2_build", "Iteration",        "Attach 15 parts",       Type.STORY, 15,   13, "block_placed", 180,  35, 8,  2)
 	# Grade 3: the production chain at full scale.
-	add_quest("g3_ore",   "Throughput",       "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
-	add_quest("g3_kill",  "Purge",            "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
-	add_quest("g3_money", "Leverage",         "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
+	add_quest("g3_ore",   "Throughput",       "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    450, 50, 12, 3)
+	add_quest("g3_kill",  "Purge",            "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 600, 60, 15, 3)
+	add_quest("g3_money", "Leverage",         "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 750, 55, 15, 3)
 	# Grade 4: heavy machinery.
-	add_quest("g4_ore",   "Strip Mine",       "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
-	add_quest("g4_kill",  "Attrition",        "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
-	add_quest("g4_money", "Majority Stake",   "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
+	add_quest("g4_ore",   "Strip Mine",       "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    1200, 80, 18, 4)
+	add_quest("g4_kill",  "Attrition",        "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 1500, 90, 20, 4)
+	add_quest("g4_money", "Majority Stake",   "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 1800, 80, 18, 4)
 	# Grade 5: endgame — XP no longer needed (maxed), focus on RP to finish the tree.
-	add_quest("g5_kill",  "Anomaly",          "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
-	add_quest("g5_ore",   "Core Process",     "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
-	add_quest("g5_money", "Unaccounted For",  "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	add_quest("g5_kill",  "Anomaly",          "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 2400,  0, 30, 5)
+	add_quest("g5_ore",   "Core Process",     "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    2400,  0, 30, 5)
+	add_quest("g5_money", "Unaccounted For",  "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 3000, 0, 25, 5)
 	# ── СЮЖЕТ ПОСЛЕ РАЗВЕДЧИКА: ветка выбора ────────────────────────────────────
 	# Три квеста, каждый в двух частях. Первый ведёт к остальным двум, и дальше игрок сам
 	# решает, какой брать: они открываются одновременно и друг друга не ждут.
-	add_quest("arc_power", "Draw Power", "", Type.STORY, 1, 5, "", 60, 40, 12)
+	add_quest("arc_power", "Draw Power", "", Type.STORY, 1, 5, "", 180, 40, 12)
 	add_stages("arc_power", [
 		{"desc": "Recover the panel and the anchor, attach both",
 		 "event": "quest_arc_power_1", "goal": 1,
@@ -109,7 +115,7 @@ func _seed_demo() -> void:
 		 "event": "quest_arc_power_2", "goal": 1,
 		 "hint": "A repair unit resolved beside you. Attach it — it stitches the rest of you back together."},
 	])
-	add_quest("arc_radar", "Line of Sight", "", Type.STORY, 1, 6, "", 70, 45, 14)
+	add_quest("arc_radar", "Line of Sight", "", Type.STORY, 1, 6, "", 210, 45, 14)
 	add_stages("arc_radar", [
 		{"desc": "Recover the scanner and attach it",
 		 "event": "quest_arc_radar_1", "goal": 1,
@@ -118,7 +124,7 @@ func _seed_demo() -> void:
 		 "event": "quest_arc_radar_2", "goal": 1,
 		 "hint": "Something else out there is carrying one too. It will not hand it over."},
 	])
-	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 70, 45, 14)
+	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 210, 45, 14)
 	add_stages("arc_battery", [
 		{"desc": "Recover the cell",
 		 "event": "quest_arc_battery_1", "goal": 1,
@@ -140,8 +146,8 @@ func _seed_demo() -> void:
 			"g3_ore", "g3_kill", "g3_money",
 			"g4_ore", "g4_kill", "g4_money",
 			"g5_kill", "g5_ore", "g5_money"])
-	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
-	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
+	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
+	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
 
 # Выстроить квесты в цепочку: каждый требует предыдущего.
 func _chain_story(ids: Array) -> void:
