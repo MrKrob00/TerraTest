@@ -122,6 +122,7 @@ const BLOCK_META := {
 	Block.STORAGE:     {"f": "start", "g": 3, "rp": 25},
 	Block.AUTO_MINER:  {"f": "start", "g": 4, "rp": 35},
 	Block.FABRICATOR:  {"f": "start", "g": 5, "rp": 40},
+	Block.SCRAPPER:    {"f": "start", "g": 3, "rp": 25},   # разбор трофеев — средний тир
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -147,7 +148,27 @@ const TECH_PARENT := {
 	Block.STORAGE: Block.RECEIVER,
 	Block.AUTO_MINER: Block.PROCESSOR,
 	Block.FABRICATOR: Block.PROCESSOR,
+	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
 }
+## РЕЦЕПТЫ БЛОКОВ: сколько СЛИТКОВ стоит собрать блок. Один источник правды на двоих —
+## по нему фабрикатор собирает, а Scrapper возвращает половину при разборе.
+##
+## Заполнено ТОЛЬКО тем, что фабрикатор реально умеет: он берёт по 3 слитка двух разных
+## видов, то есть обычный блок стоит 6. У остальных блоков рецепта НЕТ НАМЕРЕННО — и это
+## не заглушка, а правило: блок без рецепта Scrapper не принимает и не портит (см.
+## scrapper.gd). Появится рецепт — блок сам станет разбираемым, трогать Scrapper не нужно.
+const BLOCK_RECIPE := {
+	Block.BLOCK: 6,
+}
+
+## Сколько слитков стоит блок. 0 — рецепта нет.
+func block_recipe(bt: int) -> int:
+	return int(BLOCK_RECIPE.get(bt, 0))
+
+## Сколько слитков вернёт разбор: ПОЛОВИНА рецепта, вниз. 0 — разбирать нельзя.
+func scrap_yield(bt: int) -> int:
+	return int(block_recipe(bt) / 2)
+
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
 const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
 
@@ -490,6 +511,7 @@ enum Block {
 	STORAGE = 34,       # склад: один тип ресурса, до 20 штук
 	AUTO_MINER = 35,    # авто-шахтёр: стационарный, ставится на жилу
 	FABRICATOR = 36,    # фабрикатор 2³: два материала на входе, готовый блок на выходе
+	SCRAPPER = 37,      # разбирает блоки обратно в слитки: половина рецепта (см. BLOCK_RECIPE)
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -545,6 +567,7 @@ const BLOCK_CATEGORIES := {
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
+		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
 		Block.AUTO_MINER, Block.FABRICATOR],
 }
@@ -587,6 +610,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.STORAGE: return storage_scene
 		Block.AUTO_MINER: return auto_miner_scene
 		Block.FABRICATOR: return fabricator_scene
+		Block.SCRAPPER: return scrapper_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
