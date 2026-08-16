@@ -115,7 +115,6 @@ const BLOCK_META := {
 	Block.COAL_GEN:    {"f": "start", "g": 4, "rp": 30},  # большой генератор: уголь→энергия на якоре
 	Block.ROCKET:      {"f": "start", "g": 4, "rp": 35},  # ракетница: снаряд с AOE-взрывом
 	Block.BLOCK3:      {"f": "start", "g": 2, "rp": 10},
-	Block.WEDGE:       {"f": "start", "g": 1, "rp": 5},
 	Block.WEDGE2:      {"f": "start", "g": 2, "rp": 10},
 	Block.ARMOR:       {"f": "start", "g": 2, "rp": 15},
 	Block.SMALL_DRILL: {"f": "start", "g": 1, "rp": 8},
@@ -152,8 +151,8 @@ const TECH_PARENT := {
 	Block.TOP_WHEEL: Block.WHEEL,   Block.STAB_WHEEL: Block.WHEEL,
 	Block.BLOCK2: Block.BLOCK,      Block.COAL_GEN: Block.GENERATOR,
 	Block.ROCKET: Block.LASER,      # ракетница ветвится от лазера (продвинутое оружие)
-	Block.BLOCK3: Block.BLOCK2,     Block.WEDGE: Block.BLOCK,
-	Block.WEDGE2: Block.WEDGE,      Block.ARMOR: Block.BLOCK,
+	Block.BLOCK3: Block.BLOCK2,     Block.ARMOR: Block.BLOCK,
+	Block.WEDGE2: Block.BLOCK2,     # клин 1³ снят, ветка клиньев начинается с 2×1×1
 	Block.SMALL_DRILL: Block.DRILL, Block.BELT_SPLIT: Block.BELT,
 	Block.BELT_CROSS: Block.BELT_SPLIT,
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
@@ -252,7 +251,6 @@ const BLOCK_RECIPE := {
 	Block.BLOCK:        {"m0": 2, "m3": 2},
 	Block.BLOCK2:       {"m0": 4, "m3": 3},
 	Block.BLOCK3:       {"m0": 5, "m3": 5},
-	Block.WEDGE:        {"m0": 1, "m3": 1},
 	Block.WEDGE2:       {"m0": 2, "m3": 2},
 	Block.HALF_BLOCK:   {"m0": 1, "m3": 1},
 	Block.HALF_BLOCK2:  {"m0": 2, "m3": 1},
@@ -474,15 +472,25 @@ const LEGACY_BLOCK_KEYS := {
 	"INTAKE": "RECEIVER",       # приёмник, переименован после того, как сейвы уже писались
 }
 
+## СНЯТЫЕ блоки: что было → чем заменено. Отличается от LEGACY_BLOCK_KEYS тем, что там
+## блок остался и лишь сменил имя, а здесь его больше нет. Просто выкинуть нельзя: он
+## стоит в сохранённых машинах и лежит в инвентаре, и молча исчезнуть — значит отобрать
+## у игрока имущество и продырявить его машину. Заменяем на блок ТОГО ЖЕ размера, иначе
+## сборка не сойдётся по клеткам.
+const RETIRED_BLOCKS := {
+	Block.WEDGE: Block.HALF_BLOCK,   # клин 1³ повторял половинку той же клеткой
+}
+
 func block_from_key(v) -> int:
+	var bt: int = int(v)
 	if typeof(v) == TYPE_STRING or typeof(v) == TYPE_STRING_NAME:
 		var key: String = str(v)
 		key = String(LEGACY_BLOCK_KEYS.get(key, key))
 		var idx: int = Block.keys().find(key)
-		if idx >= 0:
-			return int(Block.values()[idx])
-		return int(Block.EMPTY)
-	return int(v)
+		bt = int(Block.values()[idx]) if idx >= 0 else int(Block.EMPTY)
+	# Подмена снятых — ПОСЛЕ разбора обоих форматов: старые сейвы пишут блок числом, и
+	# правило должно ловить их тоже.
+	return int(RETIRED_BLOCKS.get(bt, bt))
 
 func block_name(bt: int) -> String:
 	var names: Array = Block.keys()
@@ -608,7 +616,11 @@ func _load_progress() -> void:
 	money = int(data.get("money", money))
 	block_inventory = []
 	for b in data.get("block_inventory", []):
-		block_inventory.append(int(b))       # JSON отдаёт float — приводим
+		# Через block_from_key, а не int(): инвентарь пишется числами, и снятый блок иначе
+		# остался бы в нём мёртвым номером. JSON отдаёт float — приведение там же.
+		var bi: int = block_from_key(b)
+		if bi != Block.EMPTY:
+			block_inventory.append(bi)
 	var fx = data.get("faction_xp", {})
 	if fx is Dictionary:
 		for k in fx:
@@ -618,7 +630,11 @@ func _load_progress() -> void:
 	if res is Array and not res.is_empty():
 		researched = []
 		for b in res:
-			researched.append(int(b))
+			# Снятый блок превращается в свою замену: иначе изученным остался бы номер,
+			# которого в дереве больше нет, а замена требовала бы исследовать её заново.
+			var rb: int = block_from_key(b)
+			if rb != Block.EMPTY and not researched.has(rb):
+				researched.append(rb)
 	quests_done = []
 	for q in data.get("quests_done", []):
 		quests_done.append(str(q))
@@ -722,7 +738,9 @@ enum Block {
 	# Новые id дописываем В КОНЕЦ: сейв хранит блоки СТРОКОЙ (block_key), но вставка в
 	# середину всё равно сдвинула бы значения и сломала всё, что сравнивает числа.
 	BLOCK3 = 26,        # блок 3×1×1
-	WEDGE = 27,         # клин 1³
+	WEDGE = 27,         # СНЯТ: повторял half block той же клеткой. Значение не удалять —
+	#                     block_key индексирует Block.keys() по нему, и сдвиг переименует
+	#                     все блоки после. Старые сейвы чинит RETIRED_BLOCKS.
 	WEDGE2 = 28,        # клин 2×1×1
 	ARMOR = 29,         # защитная пластина: то же место, втрое больше hp
 	SMALL_DRILL = 30,   # малый бур: слабее и с меньшей зоной
@@ -769,7 +787,6 @@ enum Block {
 @onready var coal_gen_scene: PackedScene = preload("res://blocks/scenes/coal_gen.tscn")       # 2×1×2, уголь→энергия на якоре
 @onready var rocket_scene: PackedScene = preload("res://blocks/scenes/rocket_launcher.tscn")
 @onready var block3_scene: PackedScene = preload("res://blocks/scenes/block3.tscn")
-@onready var wedge_scene: PackedScene = preload("res://blocks/scenes/wedge.tscn")
 @onready var wedge2_scene: PackedScene = preload("res://blocks/scenes/wedge2.tscn")
 @onready var armor_scene: PackedScene = preload("res://blocks/scenes/armor.tscn")
 @onready var small_drill_scene: PackedScene = preload("res://blocks/scenes/small_drill.tscn")
@@ -805,7 +822,7 @@ const BLOCK_CATEGORIES := {
 		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN],
 	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.HALF_BLOCK, Block.HALF_BLOCK2,
 		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
-		Block.WEDGE, Block.WEDGE2, Block.ARMOR,
+		Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
@@ -842,7 +859,10 @@ func get_scene(block: Block) -> PackedScene:
 		Block.COAL_GEN: return coal_gen_scene
 		Block.ROCKET: return rocket_scene
 		Block.BLOCK3: return block3_scene
-		Block.WEDGE: return wedge_scene
+		# Клин 1³ снят с производства. Отдаём половинку — ту, ради которой он и снят: новых
+		# взяться неоткуда (RETIRED_BLOCKS правит сейвы), но случайный старый номер должен
+		# превратиться в живой блок, а не в null посреди сборки машины.
+		Block.WEDGE: return half_block_scene
 		Block.WEDGE2: return wedge2_scene
 		Block.ARMOR: return armor_scene
 		Block.SMALL_DRILL: return small_drill_scene
