@@ -1301,6 +1301,12 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
 	if block_take:
 		return
+	# 0) Блок в руке + тап по SCRAPPER'у на ЧУЖОЙ машине = скормить. На СВОЕЙ машине тот же
+	# жест означает «поставить блок» (в том числе рядом со Scrapper'ом), а на чужую машину
+	# блок и так не поставить — там жест свободен, его и занимаем. Поэтому разбирать, куда
+	# именно попал луч относительно граней, не нужно вовсе.
+	if block_take and hand_kind == Hand.BLOCK and _feed_foreign_scrapper(screen_pos):
+		return
 	# 0) ЧУЖОЙ блок — не подбираем, а НАЗНАЧАЕМ ЦЕЛЬЮ. Порядок именно такой: тап по врагу
 	# однозначно означает «бей вот это», подобрать блок с живой вражеской машины всё равно
 	# нельзя, и разбирать её на ходу руками мы не даём.
@@ -1341,6 +1347,44 @@ func _grab_resource(body: Node3D) -> bool:
 		ghost_block.visible = false
 	# Q.report и режим стройки НЕ трогаем: шаг обучения «возьми блок» ресурсом не
 	# закрывается, и лезть в стройку ради руды незачем.
+	return true
+
+# Скормить блок из руки Scrapper'у на ЧУЖОЙ машине. true — блок съеден (или отвергнут за
+# отсутствием рецепта, но жест всё равно израсходован: игрок целился именно в Scrapper).
+func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
+	if camera_controller == null or camera_controller.camera == null:
+		return false
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	q.collision_mask = 2                            # слой блоков
+	q.exclude = [get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var target = hit.get("collider")
+	if not (target is Node) or not target.has_method("scrap_block"):
+		return false
+	# Только ЧУЖАЯ машина: на своей этот жест принадлежит постройке.
+	var root: Node = target
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root == self:
+		return false
+	var held: Node3D = _hand_instance()
+	if held == null:
+		return false
+	var bt: int = int(held.get("block")) if ("block" in held) else -1
+	if not target.can_scrap(bt):
+		Dialogue.say("System", "No schematic for this part. It cannot be broken down.")
+		return true                                 # жест израсходован, блок ЦЕЛ и в руке
+	if target.scrap_block(held):
+		block_body = null
+		block_take = false
+		hand_kind = Hand.EMPTY
+		_preview_res = null
+		if ghost_block:
+			ghost_block.visible = false
 	return true
 
 # Двойной тап по блоку ЧУЖОЙ машины = приказ орудиям бить именно его (см.
