@@ -32,6 +32,12 @@ var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (сам
 const UI_BASE := Vector2(1280, 720)  # = window/size/viewport_* в project.godot
 const UI_SCALE_MIN := 0.7
 const UI_SCALE_MAX := 1.4
+## Эталонная диагональ экрана в дюймах — планшет, на котором раскладка выглядит правильно.
+## Меньше эталона (телефон) → интерфейс УВЕЛИЧИВАЕМ, иначе кнопка под пальцем мельчает
+## физически, даже если в пикселях она та же.
+const UI_REF_INCHES := 9.5
+const UI_PHYS_MIN := 0.95
+const UI_PHYS_MAX := 1.55
 var ui_scale: float = 1.0            # ручной множитель размера UI (слайдер)
 var fullscreen: bool = false         # полноэкранный; иначе — плавающее окно (тянется мышью, UI сам подстраивается)
 
@@ -57,10 +63,31 @@ func _apply_ui_scale() -> void:
 	if stretch <= 0.0:
 		stretch = 1.0
 	var target: float = clampf(sqrt(stretch), 0.85, 1.0)
-	var csf: float = (target / stretch) * ui_scale
+	var csf: float = (target / stretch) * ui_scale * _physical_ui_factor()
 	# Guard от возможной петли (смена csf могла бы дёрнуть size_changed).
 	if not is_equal_approx(win.content_scale_factor, csf):
 		win.content_scale_factor = csf
+
+## Поправка на ФИЗИЧЕСКИЙ размер экрана.
+##
+## Масштаб выше считается только от разрешения, а палец меряет не пиксели, а миллиметры.
+## Телефон 2400×1080 и планшет 2000×1200 дают почти одинаковый множитель, но диагональ у
+## них отличается вдвое — и кнопка, удобная на планшете, на телефоне оказывается мелкой.
+## Отсюда правило: чем меньше диагональ, тем крупнее интерфейс. Корень, а не прямая
+## пропорция: иначе на маленьком экране кнопки съели бы его целиком.
+func _physical_ui_factor() -> float:
+	var dpi: int = DisplayServer.screen_get_dpi()
+	# DPI на части платформ приходит заглушкой (72) или мусором — тогда поправку не делаем
+	# вовсе: лучше прежний размер, чем случайный.
+	if dpi < 100 or dpi > 800:
+		return 1.0
+	var px := Vector2(DisplayServer.screen_get_size())
+	if px.x < 1.0 or px.y < 1.0:
+		return 1.0
+	var inches: float = px.length() / float(dpi)
+	if inches < 3.0 or inches > 40.0:
+		return 1.0
+	return clampf(sqrt(UI_REF_INCHES / inches), UI_PHYS_MIN, UI_PHYS_MAX)
 
 # Полноэкранный ↔ ПЛАВАЮЩЕЕ ОКНО (только на ПК; мобилка всегда полноэкранная). В оконном режиме
 # окно свободно тянется мышью, а UI подстраивается сам (size_changed → _apply_ui_scale + expand).
