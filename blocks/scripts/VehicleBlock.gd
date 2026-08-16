@@ -84,6 +84,17 @@ const BLOCK_HP: Dictionary = {
 	G.Block.WEDGE:     70,       # клин: чуть меньше материала, чем в полном кубе
 	G.Block.WEDGE2:    110,
 	G.Block.ARMOR:     240,      # защитная пластина: держит втрое больше блока
+	# Плиты крупнее — прочность по объёму: 2 клетки вдвое, 4 клетки вчетверо от ARMOR.
+	G.Block.ARMOR2:    480,
+	G.Block.ARMOR4:    960,
+	# Половинка — тот же материал, но металла в ней меньше: две трети от блока.
+	G.Block.HALF_BLOCK:  55,
+	G.Block.HALF_BLOCK2: 110,
+	G.Block.WIRELESS_CHARGER: 55,
+	G.Block.MORTAR:      90,
+	G.Block.POUND_CANNON: 95,
+	G.Block.SHOTGUN:     70,
+	G.Block.SCRAPPER:    90,
 	G.Block.SMALL_DRILL: 50,
 	G.Block.BELT_SPLIT: 40,
 	G.Block.BELT_CROSS: 40,
@@ -103,7 +114,16 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.BLOCK3:    32.0,
 	G.Block.WEDGE:      9.0,     # клин легче куба — часть объёма срезана
 	G.Block.WEDGE2:    17.0,
-	G.Block.ARMOR:     34.0,     # броня тяжёлая: за живучесть платим ходовыми
+	G.Block.ARMOR:     34.0,
+	G.Block.ARMOR2:    68.0,
+	G.Block.ARMOR4:    136.0,
+	G.Block.HALF_BLOCK:  7.0,
+	G.Block.HALF_BLOCK2: 14.0,
+	G.Block.WIRELESS_CHARGER: 16.0,
+	G.Block.MORTAR:      34.0,
+	G.Block.POUND_CANNON: 30.0,
+	G.Block.SHOTGUN:     19.0,
+	G.Block.SCRAPPER:    28.0,     # броня тяжёлая: за живучесть платим ходовыми
 	G.Block.SMALL_DRILL: 14.0,
 	G.Block.BELT_SPLIT:  9.0,
 	G.Block.BELT_CROSS: 10.0,

@@ -191,13 +191,20 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 				for dz in [-1, 0]:
 					cells.append(Vector3i(x + dx, y + dy, z + dz))
 		return cells
+	if block == G.Block.ARMOR4:
+		var cells4: Array = []               # 2×1×2 (xyz), как у COAL_GEN
+		for dx in [-1, 0]:
+			for dz in [-1, 0]:
+				cells4.append(Vector3i(x + dx, y, z + dz))
+		return cells4
 	if block == G.Block.COAL_GEN:
 		var cells2: Array = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
 		for dx in [-1, 0]:
 			for dz in [-1, 0]:
 				cells2.append(Vector3i(x + dx, y, z + dz))
 		return cells2
-	if block == G.Block.BLOCK2 or block == G.Block.WEDGE2:
+	if block == G.Block.BLOCK2 or block == G.Block.WEDGE2 \
+			or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
 		return [Vector3i(x - 1, y, z), Vector3i(x, y, z)]   # 2×1×1
 	if block == G.Block.BLOCK3:
 		return [Vector3i(x - 1, y, z), Vector3i(x, y, z), Vector3i(x + 1, y, z)]   # 3×1×1
