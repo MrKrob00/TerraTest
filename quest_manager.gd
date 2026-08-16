@@ -32,7 +32,7 @@ func _ready() -> void:
 	# Пройдено — обычное приветствие.
 	if not _announce_tutorial():
 		_say_lines([
-			["Mechanic", "Welcome back! Check the quest list at the top right."],
+			["Mechanic", "Still running. Directives are top right when you want them."],
 		])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
@@ -47,85 +47,85 @@ func _seed_demo() -> void:
 	# Шаги ведёт «рука с пальцем» (tutorial_director.gd): она показывает, куда нажать, и на
 	# время шага не даёт нажать никуда больше. hint — реплика Механика при активации шага;
 	# развёрнутые объяснения (магазин, древо, музыка) живут в самом наставнике.
-	add_quest("tut_mode_build", "Tutorial: Build mode", "Enter building mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
-			"Everything starts in building mode. The button reads BUILD — tap it.")
+	add_quest("tut_mode_build", "Boot: Assembly", "Enter assembly mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
+			"You came online as a bare cabin. Everything starts in assembly — the button reads BUILD.")
 	# Закрывается ЛЮБЫМ способом взять блок в руку (с земли, с машины, из инвентаря): игрок
 	# считает, что «подобрал», и шаг обязан это засчитать.
-	add_quest("tut_take_world", "Tutorial: Pick up", "Take a block in hand", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
-			"Your starting blocks are lying around the cabin. Double-tap one to take it into your hand.")
-	add_quest("tut_place_first", "Tutorial: First block", "Place the block", Type.TUTORIAL, 1, 2, "block_placed", 0, 0, 0, 1,
-			"Now double-tap the vehicle where the block should sit.")
+	add_quest("tut_take_world", "Boot: Retrieval", "Hold a block", Type.TUTORIAL, 1, 1, "block_taken_world", 0, 0, 0, 1,
+			"Your parts spilled on arrival and are lying around you. Double-tap one to hold it.")
+	add_quest("tut_place_first", "Boot: Attachment", "Attach the block", Type.TUTORIAL, 1, 2, "block_placed", 0, 0, 0, 1,
+			"Now double-tap yourself where it should attach. Any face will take it.")
 	# Событие пустое: прогресс СТАВИТ наставник по числу блоков на машине. По событию
 	# block_placed его накручивали бы циклом «поставил — снял — поставил».
-	add_quest("tut_place_all", "Tutorial: Assembly", "Mount every starting block", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
-			"Same for the rest: pick up, place. Wheels on the sides, the drill facing forward.")
-	add_quest("tut_mode_move", "Tutorial: Driving", "Leave building mode", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
-			"Assembled? The same button now reads MOVE — tap it to drive.")
-	add_quest("tut_quests", "Tutorial: Quests", "Open the quest list", Type.TUTORIAL, 1, 5, "quests_opened", 0, 0, 0, 1,
-			"Top right is the quest tracker. Tap it to see the whole list.")
-	add_quest("tut_garage", "Tutorial: Garage", "Open the garage", Type.TUTORIAL, 1, 6, "garage_opened", 0, 0, 0, 1,
-			"The menu is the icon in the top-left corner. Inventory opens the garage.")
-	add_quest("tut_filters", "Tutorial: Inventory", "Use a category filter", Type.TUTORIAL, 1, 7, "garage_filter", 0, 0, 0, 1,
-			"These are your blocks. The buttons on the left filter them by category.")
-	add_quest("tut_shop", "Tutorial: Shop", "Open the shop", Type.TUTORIAL, 1, 8, "garage_shop", 0, 0, 0, 1,
-			"The SHOP tab is where blocks are bought.")
-	add_quest("tut_tech", "Tutorial: Research", "Open the tech tree", Type.TUTORIAL, 1, 9, "garage_tech", 0, 0, 0, 1,
-			"The TECH tab is where blocks are unlocked.")
-	add_quest("tut_music", "Tutorial: Music", "Open the music tab", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
-			"Last one — the music tab.")
+	add_quest("tut_place_all", "Boot: Assembly", "Attach every part", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
+			"Same for the rest. Wheels to the sides, drill facing out — you decide what you are.")
+	add_quest("tut_mode_move", "Boot: Motion", "Leave assembly", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
+			"Assembled? The same button reads MOVE. Let us see if you hold together.")
+	add_quest("tut_quests", "Boot: Directives", "Open the log", Type.TUTORIAL, 1, 5, "quests_opened", 0, 0, 0, 1,
+			"Directives come from the System. The tracker is top right — tap it for the full log.")
+	add_quest("tut_garage", "Boot: Storage", "Open storage", Type.TUTORIAL, 1, 6, "garage_opened", 0, 0, 0, 1,
+			"Your storage is the pack in the corner. Everything you own is in there.")
+	add_quest("tut_filters", "Boot: Sorting", "Filter the parts", Type.TUTORIAL, 1, 7, "garage_filter", 0, 0, 0, 1,
+			"These are your parts. The buttons on the left sort them by kind.")
+	add_quest("tut_shop", "Boot: Trade", "Open trade", Type.TUTORIAL, 1, 8, "garage_shop", 0, 0, 0, 1,
+			"TRADE is where parts are bought. The System charges for everything it lets you have.")
+	add_quest("tut_tech", "Boot: Research", "Open research", Type.TUTORIAL, 1, 9, "garage_tech", 0, 0, 0, 1,
+			"RESEARCH is where you unlock schematics. Nothing here is given for free.")
+	add_quest("tut_music", "Boot: Audio", "Open audio", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
+			"Last one. Even a simulation lets you pick what plays.")
 	# ── STORY ────────────────────────────────────────────────────────────────────
 	# Первый сюжетный — сразу после обучения: наставник спавнит разведчика рядом с игроком.
-	add_quest("story_first_blood", "First Blood", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 30, 25, 5)
-	add_quest("story_build", "Build a Vehicle",  "Place 5 blocks",          Type.STORY, 5,   1, "block_placed", 20, 20, 5)
-	add_quest("story_ore",   "Mine Ore",         "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    30, 30, 8)
-	add_quest("story_sell",  "Earn Money",       "Earn 100$",               Type.STORY, 100, 3, "money_earned", 50, 40, 10)
-	add_quest("story_kill",  "First Fight",      "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 40, 50, 15)
+	add_quest("story_first_blood", "Noticed", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 30, 25, 5)
+	add_quest("story_build", "Take Shape",  "Attach 5 parts",          Type.STORY, 5,   1, "block_placed", 20, 20, 5)
+	add_quest("story_ore",   "Extraction",  "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    30, 30, 8)
+	add_quest("story_sell",  "Solvency",    "Earn 100$",               Type.STORY, 100, 3, "money_earned", 50, 40, 10)
+	add_quest("story_kill",  "Deletion",    "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 40, 50, 15)
 	# Grade 2: mastering mining-production and the first weapon.
-	add_quest("g2_ore",   "Miner II",         "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
-	add_quest("g2_kill",  "Hunter",           "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
-	add_quest("g2_money", "Trader",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
-	add_quest("g2_build", "Builder II",       "Place 15 blocks",       Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
+	add_quest("g2_ore",   "Quota",            "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    60,  30, 8,  2)
+	add_quest("g2_kill",  "Cleanup",          "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 80,  45, 10, 2)
+	add_quest("g2_money", "Credit",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 100, 40, 10, 2)
+	add_quest("g2_build", "Iteration",        "Attach 15 parts",       Type.STORY, 15,   13, "block_placed", 60,  35, 8,  2)
 	# Grade 3: the production chain at full scale.
-	add_quest("g3_ore",   "Industrialist",    "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
-	add_quest("g3_kill",  "Wasteland Terror", "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
-	add_quest("g3_money", "Capital",          "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
+	add_quest("g3_ore",   "Throughput",       "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    150, 50, 12, 3)
+	add_quest("g3_kill",  "Purge",            "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 200, 60, 15, 3)
+	add_quest("g3_money", "Leverage",         "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 250, 55, 15, 3)
 	# Grade 4: heavy machinery.
-	add_quest("g4_ore",   "Ore Baron",        "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
-	add_quest("g4_kill",  "Veteran",          "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
-	add_quest("g4_money", "Magnate",          "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
+	add_quest("g4_ore",   "Strip Mine",       "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    400, 80, 18, 4)
+	add_quest("g4_kill",  "Attrition",        "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 500, 90, 20, 4)
+	add_quest("g4_money", "Majority Stake",   "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 600, 80, 18, 4)
 	# Grade 5: endgame — XP no longer needed (maxed), focus on RP to finish the tree.
-	add_quest("g5_kill",  "Wasteland Legend", "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
-	add_quest("g5_ore",   "Backbone of Industry", "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
-	add_quest("g5_money", "Empire",           "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
+	add_quest("g5_kill",  "Anomaly",          "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 800,  0, 30, 5)
+	add_quest("g5_ore",   "Core Process",     "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    800,  0, 30, 5)
+	add_quest("g5_money", "Unaccounted For",  "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 1000, 0, 25, 5)
 	# ── СЮЖЕТ ПОСЛЕ РАЗВЕДЧИКА: ветка выбора ────────────────────────────────────
 	# Три квеста, каждый в двух частях. Первый ведёт к остальным двум, и дальше игрок сам
 	# решает, какой брать: они открываются одновременно и друг друга не ждут.
-	add_quest("arc_power", "Power Up", "", Type.STORY, 1, 5, "", 60, 40, 12)
+	add_quest("arc_power", "Draw Power", "", Type.STORY, 1, 5, "", 60, 40, 12)
 	add_stages("arc_power", [
-		{"desc": "Find the solar panel and the anchor block, mount both",
+		{"desc": "Recover the panel and the anchor, attach both",
 		 "event": "quest_arc_power_1", "goal": 1,
-		 "hint": "A solar panel and a stationary block turned up out there. Mount them and drop anchor."},
-		{"desc": "Mount the regen block dropped beside you",
+		 "hint": "Two parts surfaced in the field — a panel and an anchor. Take them, then set down and hold."},
+		{"desc": "Attach the repair unit",
 		 "event": "quest_arc_power_2", "goal": 1,
-		 "hint": "A regen block landed right next to you. Put it on — it mends the rest."},
+		 "hint": "A repair unit resolved beside you. Attach it — it stitches the rest of you back together."},
 	])
-	add_quest("arc_radar", "Eyes", "", Type.STORY, 1, 6, "", 70, 45, 14)
+	add_quest("arc_radar", "Line of Sight", "", Type.STORY, 1, 6, "", 70, 45, 14)
 	add_stages("arc_radar", [
-		{"desc": "Find the radar and mount it",
+		{"desc": "Recover the scanner and attach it",
 		 "event": "quest_arc_radar_1", "goal": 1,
-		 "hint": "There is a radar lying out there. Find it — it shows the map further."},
-		{"desc": "Take the radar from the thief",
+		 "hint": "A scanner is lying out there. It widens what you can see — right now that is almost nothing."},
+		{"desc": "Take the scanner from the other one",
 		 "event": "quest_arc_radar_2", "goal": 1,
-		 "hint": "Someone drives around with a radar of their own. Take it off them."},
+		 "hint": "Something else out there is carrying one too. It will not hand it over."},
 	])
 	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 70, 45, 14)
 	add_stages("arc_battery", [
-		{"desc": "Find the battery",
+		{"desc": "Recover the cell",
 		 "event": "quest_arc_battery_1", "goal": 1,
-		 "hint": "A battery showed up somewhere out there. Go and get it."},
-		{"desc": "Destroy the ore vein holding the battery",
+		 "hint": "A power cell resolved somewhere in the field. Go and take it before something else does."},
+		{"desc": "Break the vein holding the cell",
 		 "event": "quest_arc_battery_2", "goal": 1,
-		 "hint": "It is stuck inside an ore vein. Mine the vein out completely to free it."},
+		 "hint": "It resolved inside a vein — the terrain closed over it. Mine the vein out and it drops free."},
 	])
 	requires("arc_power", ["story_first_blood"])
 	requires("story_build", ["story_first_blood"])   # старая нитка тоже висит на первом квесте
@@ -140,8 +140,8 @@ func _seed_demo() -> void:
 			"g3_ore", "g3_kill", "g3_money",
 			"g4_ore", "g4_kill", "g4_money",
 			"g5_kill", "g5_ore", "g5_money"])
-	add_quest("daily_ore",   "Daily: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
-	add_quest("daily_kill",  "Daily: Enemies",   "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
+	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    25, 15, 3)
+	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 40, 20, 5)
 
 # Выстроить квесты в цепочку: каждый требует предыдущего.
 func _chain_story(ids: Array) -> void:
@@ -227,7 +227,7 @@ func skip_quest(id: String) -> void:
 	q["progress"] = q["goal"]
 	q["done"] = true
 	_persist_done(q)
-	_say("System", "\"%s\" can no longer be completed — skipped." % String(q["title"]))
+	_say("System", "Directive '%s' is no longer resolvable. Dropped." % String(q["title"]))
 	changed.emit()
 	_auto_track()
 
@@ -277,7 +277,7 @@ func skip_tutorial() -> void:
 		return
 	if g != null:
 		g.mark_progress_dirty()
-	_say("Mechanic", "Skipping ahead. Everything's in the menus when you want it.")
+	_say("Mechanic", "Skipping the walkthrough. It is all in the menus when you need it.")
 	changed.emit()
 	_auto_track()
 	tutorial_finished.emit()
@@ -398,17 +398,17 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 func _completion_message(title: String, reward: int) -> String:
 	if reward > 0:
 		var with_reward := [
-			"Quest '%s' complete, reward %d$.",
-			"Quest '%s' done! Here's %d$.",
-			"Nice — '%s' done. Reward: %d$.",
-			"'%s' finished. Your cut — %d$.",
-			"Quest '%s' complete. Credited %d$.",
+			"Directive '%s' resolved. Credited %d$.",
+			"'%s' closed. %d$ posted to you.",
+			"'%s' resolved — %d$.",
+			"Logged: '%s'. Payment %d$.",
+			"'%s' complete. The System credits %d$.",
 		]
 		return with_reward[randi() % with_reward.size()] % [title, reward]
 	var no_reward := [
-		"Quest '%s' complete.",
-		"Quest '%s' done!",
-		"Done — '%s' complete.",
+		"Directive '%s' resolved.",
+		"'%s' closed.",
+		"Logged: '%s'.",
 		"'%s' complete.",
 	]
 	return no_reward[randi() % no_reward.size()] % title

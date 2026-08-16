@@ -28,25 +28,25 @@ var _assembly_shown: int = -1    # что уже записано в прогр�
 # t — ключ цели (см. _explain_target), s — что написать в пузыре.
 const EXPLAIN := {
 	"tut_quests": [
-		{"t": "quest_list", "s": "Every quest lives here: tutorial first, then story, then dailies."},
-		{"t": "quest_star", "s": "The star picks which quest the tracker shows. Nothing here is mandatory."},
+		{"t": "quest_list", "s": "Every directive lands here. Boot steps first, then the System's own, then the cycles."},
+		{"t": "quest_star", "s": "The star picks what the tracker follows. None of it is compulsory — the System only asks."},
 	],
 	"tut_filters": [
-		{"t": "garage_grid", "s": "These are the blocks you own. The number in the corner is how many."},
-		{"t": "garage_filters", "s": "These buttons filter the list by category."},
+		{"t": "garage_grid", "s": "Every part you hold. The corner number is how many of it you have."},
+		{"t": "garage_filters", "s": "These sort the list by kind."},
 	],
 	"tut_shop": [
-		{"t": "garage_currency", "s": "Your money. Everything in the shop is bought with it."},
-		{"t": "garage_slot", "s": "The price sits on the slot's button. Greyed out means you cannot afford it."},
+		{"t": "garage_currency", "s": "Your credit. The System sells you back what it took."},
+		{"t": "garage_slot", "s": "Price is on the slot. Greyed out means you cannot cover it."},
 		{"t": "garage_grid", "s": "A block you have not researched is not sold at all — research comes first."},
 	],
 	"tut_tech": [
 		{"t": "garage_progress", "s": "RP means Research Points. Quests give them, so does the first kill of each enemy type."},
 		{"t": "garage_tech", "s": "RP unlocks blocks here. Until a block is researched, the shop will not sell it."},
-		{"t": "garage_progress", "s": "Gr is your licence grade. Faction XP raises it, and it gates whole branches."},
+		{"t": "garage_progress", "s": "Gr is your clearance. It rises as the System logs your work, and whole branches wait on it."},
 	],
 	"tut_music": [
-		{"t": "garage_extra", "s": "Tracks and volume. Nothing you have to press — just so you know it is here."},
+		{"t": "garage_extra", "s": "Playback and volume. Nothing you have to touch — just so you know it exists."},
 	],
 }
 
@@ -169,7 +169,7 @@ func _drive_assembly_progress() -> void:
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
-			_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button says where it takes you")
+			_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button names where it takes you")
 		"tut_take_world":
 			# Рука уже занята (блок взяли раньше, чем шаг стал текущим) — засчитываем сразу.
 			# Иначе тупик: поставить нельзя (цель — блок на земле), взять нечем.
@@ -179,10 +179,10 @@ func _aim_current_step() -> void:
 				return
 			# Gate.WORLD, а не круг вокруг цели: игрок берёт не тот блок, промахивается мимо
 			# круга, и любой из этих случаев запирал его насмерть. Мир открыт целиком, UI — нет.
-			_aim_world(_nearest_loose_block, "Double-tap a block to take it into your hand",
+			_aim_world(_nearest_loose_block, "Double-tap a part to hold it",
 					TutorialGuide.Gate.WORLD)
 		"tut_place_first":
-			_aim_world(_vehicle_point, "Double-tap the vehicle where the block should go",
+			_aim_world(_vehicle_point, "Double-tap yourself where it attaches",
 					TutorialGuide.Gate.WORLD)
 		"tut_place_all":
 			# Свободный шаг: мир открыт, UI — нет. Палец не висит на машине всё время, а
@@ -190,25 +190,25 @@ func _aim_current_step() -> void:
 			var v: Node = _vehicle()
 			var holding: bool = v != null and "block_take" in v and v.block_take
 			if holding:
-				_aim_world(_vehicle_point, "Now place it on the vehicle",
+				_aim_world(_vehicle_point, "Now attach it",
 						TutorialGuide.Gate.WORLD)
 			else:
-				_aim_world(_nearest_loose_block, "Pick up the next block",
+				_aim_world(_nearest_loose_block, "Take the next part",
 						TutorialGuide.Gate.WORLD)
 		"tut_mode_move":
-			_aim_node(_hud_node("ModeToggle"), "Tap MOVE to get back behind the wheel")
+			_aim_node(_hud_node("ModeToggle"), "Tap MOVE and drive")
 		"tut_quests":
-			_aim_node(_quest_tracker(), "Your quest tracker. Tap it")
+			_aim_node(_quest_tracker(), "Your directive tracker. Tap it")
 		"tut_garage":
-			_aim_node(_hud_ui("menu"), "This icon opens the garage")
+			_aim_node(_hud_ui("menu"), "This opens your storage")
 		"tut_filters":
-			_aim_node(_garage_node("filters"), "These filter your blocks by category. Try one")
+			_aim_node(_garage_node("filters"), "These sort your parts by kind. Try one")
 		"tut_shop":
 			_aim_node(_garage_node("tab_shop"), "SHOP — this is where blocks are bought")
 		"tut_tech":
 			_aim_node(_garage_node("tab_tech"), "TECH — this is where blocks are unlocked")
 		"tut_music":
-			_aim_node(_garage_node("tab_music"), "And the music tab")
+			_aim_node(_garage_node("tab_music"), "And audio")
 
 # ── Наведение ────────────────────────────────────────────────────────────────
 # Цели-кнопки появляются не сразу (гараж инстансится при первом открытии), поэтому
@@ -320,11 +320,11 @@ func _spawn_first_enemy() -> void:
 	if enemy == null:
 		# Ровного места рядом не нашлось — квест всё равно закрываемый: обычный поток
 		# врагов приведёт кого-нибудь сам, просто не так быстро.
-		_say_lines(["That's the basics. Raiders roam out there — the first one you meet is yours."])
+		_say_lines(["That is the whole of it. Other processes run out there, and they were not asked to share."])
 		return
 	_say_lines([
-		"A scout picked up your signal. He's already close.",
-		"Aim at him and hit Attack. Go for the CABIN — break it and the whole vehicle falls apart.",
+		"Something picked up your signal. It is already close.",
+		"Hold Attack — your guns pick their own targets. Go for the CABIN: break it and the rest comes apart.",
 	])
 
 func _say_lines(lines: Array) -> void:
