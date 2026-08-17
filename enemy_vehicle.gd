@@ -49,8 +49,6 @@ var _dying: bool = false
 @export var chase_speed_factor:  float = 1.0
 ## Сколько держим цель ПОСЛЕ того, как она вышла из зоны обнаружения (внутри зоны не забываем).
 @export var forget_enemy_time:   float = 6.0
-## Множитель тяги в погоне. При равном max_speed догнать убегающего нельзя — даём небольшой перевес.
-@export var chase_boost:         float = 1.25
 ## «Невідступний»: цель, назначенная при спавне (напр. отряд от проверки сектора), НИКОГДА не
 ## забывается и не меняется — такой враг ведёт её через всю карту, сколько бы она ни убегала.
 @export var relentless:          bool = false
@@ -84,6 +82,16 @@ var _forget_timer: float   = 0.0
 var _patrol_targets: Array[Vector3] = []
 var _patrol_index:   int   = 0
 var _start_pos:      Vector3
+## Сколько ещё секунд враг НЕ берёт цель по своей воле. Ставится, когда он отступил битым и
+## оторвался: без этого он забывал игрока и тут же возвращался — патрульные точки построены
+## вокруг его же места появления, то есть ровно там, где драка и была. Получался вечный круг
+## «отошёл — вернулся — получил», из которого не выходил ни он, ни игрок.
+var _give_up_t: float = 0.0
+## Сколько длится отказ от боя.
+const GIVE_UP_TIME: float = 25.0
+## Насколько далеко переносится «дом» патруля, когда враг уходит. Возвращаться туда, где
+## только что проиграл, — не поведение, а отсутствие поведения.
+const GIVE_UP_MOVE: float = 90.0
 
 # Локальная навигация: контекстная карта вместо трёх лучей с доворотом.
 var _steering: ContextSteering = ContextSteering.new()
@@ -215,7 +223,11 @@ func _setup_patrol_points() -> void:
 # лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою и
 # патруле лимит обычный, так что вне погони враг быстрее не становится.
 func _speed_cap() -> float:
-	return max_speed * (chase_boost if _act == EnemyBrain.Act.PURSUE else 1.0)
+	# Никаких надбавок в погоне. Раньше PURSUE давал +25% к максималке, и это значило, что
+	# УЕХАТЬ от здорового врага нельзя в принципе — не «трудно», а математически невозможно,
+	# сколько бы колёс и мощности игрок ни навесил. Догонять враг теперь должен машиной, а не
+	# множителем: срезать угол, ловить на развороте, брать числом.
+	return max_speed
 
 func _physics_process(delta: float) -> void:
 	sense_ground(delta)
@@ -308,6 +320,7 @@ func _update_ai(delta: float) -> void:
 	# запускает тот же таймер, а враг едет к последнему известному месту — состояние ПОИСК
 	# в enemy_brain было написано давно и до сих пор почти не включалось.
 	# Невідступный не забывает вообще.
+	_give_up_t = maxf(_give_up_t - delta, 0.0)
 	_refresh_vision(delta)
 	if is_instance_valid(_target):
 		if _can_see_target():
@@ -666,10 +679,28 @@ func _do_attack() -> void:
 func _lose_target() -> void:
 	if relentless and is_instance_valid(_target):
 		return                      # невідступный цель не бросает
+	# Оторвался БИТЫМ — значит проиграл и уходит совсем. Признак берём у той же уверенности,
+	# которой меряется вся осторожность врага (EnemyBrain.confidence), а не заводим новый:
+	# отдельный порог рано или поздно разошёлся бы с тем, по которому он решает отступать.
+	if _has_last_known and not _percept.is_empty() and EnemyBrain.confidence(_percept) < 0.4:
+		_give_up()
 	_target       = null
 	_patrol_index = _nearest_patrol_index()
 	# Поведение не назначаем: оценка сама выберет ПОИСК (мы помним последнее место)
 	# либо ПАТРУЛЬ, если помнить уже нечего.
+
+## Уйти с поля боя: перестать брать цели на GIVE_UP_TIME и перенести «дом» патруля ПРОЧЬ от
+## места, где потеряли цель. Одного таймера мало — по его истечении враг всё равно катался бы
+## вокруг старой точки появления, то есть возвращался бы к игроку сам.
+func _give_up() -> void:
+	_give_up_t = GIVE_UP_TIME
+	var away: Vector3 = global_position - _last_known_pos
+	away.y = 0.0
+	if away.length_squared() < 0.01:
+		away = -_get_forward()
+	_start_pos = global_position + away.normalized() * GIVE_UP_MOVE
+	_has_last_known = false         # искать больше нечего, мы именно УХОДИМ
+	_setup_patrol_points()
 
 func _nearest_patrol_index() -> int:
 	var best_i: int = 0
@@ -698,6 +729,9 @@ func notice_attacker(attacker: Node3D) -> void:
 		return                          # свои: дружественный огонь цель не меняет
 	if relentless and is_instance_valid(_target):
 		return                          # невідступному назначили цель раз и навсегда
+	# По нам стреляют — отказ от боя отменяется. Уйти можно от того, кто тебя отпустил;
+	# добивают — деремся, иначе враг превращался бы в мишень, которая не отвечает.
+	_give_up_t = 0.0
 	if is_instance_valid(_target) and _target != attacker and _can_see_target():
 		return                          # текущего противника видим — не отвлекаемся
 	_target = attacker
@@ -730,6 +764,8 @@ func _on_body_entered(body: Node) -> void:
 func _consider_target(body3d: Node3D) -> bool:
 	if body3d == null or not is_instance_valid(body3d):
 		return false
+	if _give_up_t > 0.0:
+		return false                # сдался и уходит — сам в драку не лезет
 	var d2: float = global_position.distance_squared_to(body3d.global_position)
 	if d2 > detection_radius * detection_radius:
 		return false
