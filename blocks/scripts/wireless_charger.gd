@@ -68,7 +68,7 @@ func _find_battery(mine: Node) -> Node3D:
 	if vehicles == null:
 		return null
 	var best: Node3D = null
-	var best_d: float = RANGE
+	var best_d2: float = RANGE
 	for v in vehicles.get_children():
 		if v == mine or not (v is Node3D) or not is_instance_valid(v):
 			continue
