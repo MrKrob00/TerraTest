@@ -7,10 +7,17 @@ const REGEN_HP := 5            # HP за тик на один блок
 const REGEN_COST := 2.0        # энергии за один подлеченный блок
 const REGEN_INTERVAL := 1.0    # с между тиками
 
+## Прозрачность поля: обычная и «энергии нет». Разница небольшая намеренно — поле показывает
+## РАДИУС, это его работа, а моргать ради привлечения внимания оно не должно.
+const FIELD_ALPHA := 0.09
+const FIELD_ALPHA_DEAD := 0.03
+## За сколько секунд поле переходит между этими двумя состояниями.
+const FIELD_FADE := 0.4
+
 var _timer: float = 0.0
 var _field: MeshInstance3D = null
 var _field_mat: StandardMaterial3D = null
-var _pulse: float = 0.0        # > 0 — только что чинили, поле ярче
+var _alpha: float = FIELD_ALPHA_DEAD
 
 func _ready() -> void:
 	super._ready()
@@ -34,7 +41,7 @@ func _build_field() -> void:
 	_field_mat = StandardMaterial3D.new()
 	_field_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_field_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_field_mat.albedo_color = Color(0.25, 1.0, 0.45, 0.07)   # тот же зелёный, что у BlockFX.heal
+	_field_mat.albedo_color = Color(0.25, 1.0, 0.45, FIELD_ALPHA_DEAD)   # зелёный как у BlockFX.heal
 	# Рисуем ИЗНАНКУ сферы: снаружи она почти прозрачна, а изнутри не закрывает игроку обзор
 	# и не отсекает камеру, когда та въезжает внутрь поля.
 	_field_mat.cull_mode = BaseMaterial3D.CULL_FRONT
@@ -55,11 +62,16 @@ func _physics_process(delta: float) -> void:
 	if vehicle == null or not vehicle.has_method("energy_consume"):
 		_show_field(false)
 		return
-	# Поле видно, только пока машине есть чем чинить: погасшая сфера — честный ответ на
-	# вопрос «почему не лечит», а не молчание.
+	# Нехватку энергии показываем ПРИГЛУШЕНИЕМ, а не включением-выключением.
+	#
+	# Мигало здесь по двум причинам, и обе убраны. Первая: поле вспыхивало на каждый ремонт —
+	# раз в секунду, бесконечно, пока идёт починка. Вторая и куда хуже: видимость гонялась
+	# напрямую от energy_available(), а та скачет через ноль КАЖДЫЙ тик — выработка панели
+	# приходит по капле за кадр, а реген снимает 2.0 разом. Сфера моргала с частотой кадров.
+	# Теперь яркость едет к цели плавно, и дрожание источника до картинки не доходит.
 	var powered: bool = vehicle.has_method("energy_available") and vehicle.energy_available() > 0.0
-	_show_field(powered)
-	_fade_pulse(delta)
+	_show_field(true)          # блок на машине — поле есть; ярче/тусклее решает _fade_field
+	_fade_field(delta, FIELD_ALPHA if powered else FIELD_ALPHA_DEAD)
 	_timer -= delta
 	if _timer > 0.0:
 		return
@@ -80,16 +92,15 @@ func _physics_process(delta: float) -> void:
 		BlockFX.heal(b as Node3D)             # зелёная «матрица»: видно, ЧТО именно чинится
 		if b.has_method("_refresh_hp_fx"):
 			b._refresh_hp_fx()               # подлечили → цифр меньше (или блок снова чистый)
-		_pulse = 1.0                          # что-то починили — поле вспыхивает
 
 func _show_field(on: bool) -> void:
 	if _field != null and _field.visible != on:
 		_field.visible = on
 
-# Вспышка поля в момент ремонта — по ней видно, что блок РАБОТАЕТ, а не просто нарисован.
-func _fade_pulse(delta: float) -> void:
+# Плавный переход яркости к цели. Что блок РАБОТАЕТ, и так видно по зелёным цифрам на самих
+# чинимых блоках (BlockFX.heal) — полю мигать ради этого незачем, оно показывает радиус.
+func _fade_field(delta: float, target: float) -> void:
 	if _field_mat == null:
 		return
-	if _pulse > 0.0:
-		_pulse = maxf(_pulse - delta / 0.6, 0.0)
-	_field_mat.albedo_color.a = 0.07 + 0.13 * _pulse
+	_alpha = move_toward(_alpha, target, delta * (FIELD_ALPHA - FIELD_ALPHA_DEAD) / FIELD_FADE)
+	_field_mat.albedo_color.a = _alpha
