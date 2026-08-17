@@ -114,7 +114,112 @@ func _define_layout() -> void:
 		2: _layout_laser_scout()
 		3: _layout_starter()
 		4: _layout_cabin_only()
+		5: _layout_scout()
+		6: _layout_runner()
+		7: _layout_raider()
+		8: _layout_lancer()
+		9: _layout_breaker()
+		10: _layout_siege()
 		_: _layout_default()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# СБОРКИ ВРАГОВ: от мелкой до тяжёлой (пресеты 5..10)
+# ══════════════════════════════════════════════════════════════════════════════
+# Порядок — по ОПАСНОСТИ и по размеру сразу: чем дальше по списку, тем машина крупнее,
+# бронированнее и злее. Спавнер выбирает ступень по стоимости машины игрока
+# (enemy_spawner._pick_preset), а стоимость убитой машины превращается в ДИ (G.rp_for_kill),
+# поэтому «крупнее» здесь автоматически значит «дороже и ценнее как добыча».
+#
+# ТОЛЬКО ОДНОКЛЕТОЧНЫЕ блоки. У 2×1×1 и 2×1×2 в карте занята одна клетка, а коллизия шире —
+# соседний блок налезал бы на неё корпусом. Разбираться с этим в шести сборках сразу незачем:
+# броня ARMOR и так 1³, а размер набирается количеством, а не габаритом блока.
+#
+# Энергетику врагам не ставим намеренно: солнечная панель питает только машину НА ЯКОРЕ
+# (поле anchored есть лишь у игрока), генератор просит топливо по фабричной цепочке, и
+# реген со щитом на враге просто не заработали бы. Сложность набирается бронёй и стволами.
+
+# Разведчик: самый мелкий. Четыре малых колеса, один ствол, корпус в две клетки.
+func _layout_scout() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(4, 5, 5, G.Block.SMALL_WHEEL, PI / 2)
+	set_block(6, 5, 5, G.Block.SMALL_WHEEL, -PI / 2)
+	set_block(4, 5, 6, G.Block.SMALL_WHEEL, PI / 2)
+	set_block(6, 5, 6, G.Block.SMALL_WHEEL, -PI / 2)
+	set_block(5, 6, 5, G.Block.GUN, 0.0)
+
+# Бегун: те же габариты, но полноразмерные колёса и дробовик — заставляет подпускать близко.
+func _layout_runner() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)          # лоб прикрыт: в упор он и живёт
+	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
+	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
+	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
+	set_block(5, 6, 5, G.Block.SHOTGUN, 0.0)
+
+# Рейдер: шесть колёс, две пушки, борта в броне. Первая машина, которую нельзя перестрелять
+# на подъезде — приходится маневрировать.
+func _layout_raider() -> void:
+	_wheels_6()
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 5, G.Block.GUN, 0.0)
+	set_block(5, 6, 7, G.Block.GUN, 0.0)
+
+# Копейщик: лазер держит на дистанции, пушка добивает вблизи. Брони заметно больше.
+func _layout_lancer() -> void:
+	_wheels_6()
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 5, G.Block.LASER, 0.0)
+	set_block(5, 6, 7, G.Block.GUN, 0.0)
+
+# Таран: большие колёса, тяжёлая пушка и две обычных. Уже КРУПНАЯ машина — заметна издалека.
+func _layout_breaker() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	for z in [5, 6, 7]:
+		set_block(4, 5, z, G.Block.BIG_WHEEL, PI / 2)
+		set_block(6, 5, z, G.Block.BIG_WHEEL, -PI / 2)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 7, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 7, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 5, G.Block.POUND_CANNON, 0.0)
+	set_block(5, 6, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 6, G.Block.GUN, 0.0)
+
+# Осадная: самая большая. Восемь колёс, мортира навесом, ракетница и пара стволов, борта и
+# корма в броне. Встреча с такой — событие, а не рядовая стычка.
+func _layout_siege() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	for z in [5, 6, 7, 8]:
+		set_block(4, 5, z, G.Block.WHEEL, PI / 2)
+		set_block(6, 5, z, G.Block.WHEEL, -PI / 2)
+	for z in [6, 7, 8]:
+		set_block(5, 5, z, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 7, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 7, G.Block.ARMOR, 0.0)
+	set_block(4, 6, 8, G.Block.ARMOR, 0.0)
+	set_block(6, 6, 8, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 5, G.Block.MORTAR, 0.0)
+	set_block(5, 6, 7, G.Block.ROCKET, 0.0)
+	set_block(5, 6, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 6, G.Block.GUN, 0.0)
 
 # Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
 # Ядро в ЦЕНТРЕ сетки (CENTER на всех осях), y-этажи присборок отсчитываются от центра (+5).
