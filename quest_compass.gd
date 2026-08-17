@@ -21,7 +21,22 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_t += delta
+	# Держим узел РОВНО по видимой области. Компас лежит прямо в CanvasLayer, и его
+	# собственный size не обязан совпадать с тем, в чём считает камера, — а рамка «цель на
+	# экране» строилась именно от size. Стоило им разойтись, и рамка выходила крошечной
+	# коробочкой у левого верхнего угла: значок замирал только там, а во всех остальных
+	# местах цель считалась «за кадром» и рисовалась стрелка, даже когда игрок смотрит прямо
+	# на неё. Ниже все расчёты идут от _screen(), из того же источника, что unproject_position.
+	var vs: Vector2 = _screen()
+	if size != vs:
+		size = vs
+		position = Vector2.ZERO
 	queue_redraw()
+
+## Видимая область — ТОТ ЖЕ источник, которым пользуется Camera3D.unproject_position
+## (get_viewport().get_visible_rect().size). Разойтись они поэтому не могут.
+func _screen() -> Vector2:
+	return get_viewport().get_visible_rect().size
 
 # Куда ведёт текущее задание. null — цели в мире нет, метку не рисуем.
 func _target_pos() -> Variant:
@@ -96,15 +111,19 @@ func _draw() -> void:
 	var world: Vector3 = tgt
 	# Точка ЗА камерой проецируется зеркально — метка ускакала бы в противоположный край.
 	# Поэтому за спиной вообще не проецируем, а сразу считаем направление по осям камеры.
+	var vs: Vector2 = _screen()
 	var behind: bool = cam.is_position_behind(world)
-	var p: Vector2 = size * 0.5
+	var p: Vector2 = vs * 0.5
 	if not behind:
 		p = cam.unproject_position(world)
-	var r := Rect2(Vector2(PAD, PAD), size - Vector2(PAD, PAD) * 2.0)
+	# Рамка «цель ещё на экране». Строго от видимой области, не от size узла.
+	var rw: float = maxf(vs.x - PAD * 2.0, 1.0)
+	var rh: float = maxf(vs.y - PAD * 2.0, 1.0)
+	var r := Rect2(Vector2(PAD, PAD), Vector2(rw, rh))
 	var off: bool = behind or not r.has_point(p)
 	if off:
 		# За кадром: направление берём в ПЛОСКОСТИ ЭКРАНА от центра и упираем в рамку.
-		var dir: Vector2 = (p - size * 0.5)
+		var dir: Vector2 = (p - vs * 0.5)
 		if behind:
 			var to: Vector3 = world - cam.global_position
 			dir = Vector2((cam.global_transform.basis.x).dot(to), (cam.global_transform.basis.y).dot(to))
@@ -120,7 +139,7 @@ func _draw() -> void:
 			k = minf(k, half.x / absf(dir.x))
 		if absf(dir.y) > 0.0001:
 			k = minf(k, half.y / absf(dir.y))
-		p = size * 0.5 + dir * k
+		p = vs * 0.5 + dir * k
 		_draw_arrow(p, dir)
 	_draw_pin(p, off)
 
