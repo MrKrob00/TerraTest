@@ -179,7 +179,7 @@ class RadarHUD extends Control:
 				continue
 			draw_circle(pix, 3.0, b["c"])
 		# игрок в центре — треугольник по heading
-		var h: Vector2 = heading if heading.length() > 0.01 else Vector2.UP
+		var h: Vector2 = heading if heading.length_squared() > 0.0001 else Vector2.UP
 		var perp := Vector2(-h.y, h.x)
 		draw_colored_polygon(PackedVector2Array([c + h * 7.0, c - h * 4.0 + perp * 4.0, c - h * 4.0 - perp * 4.0]),
 				Color(0.9, 0.97, 1.0))
@@ -544,7 +544,7 @@ func _input(event: InputEvent) -> void:
 # Какой пункт выбирает точка pos: -1 = мёртвая зона (отмена), иначе индекс по углу.
 func _vmenu_pick(pos: Vector2) -> int:
 	var v := pos - _vmenu_center
-	if v.length() < VMENU_INNER:
+	if v.length_squared() < VMENU_INNER * VMENU_INNER:
 		return -1
 	var best := 0
 	var best_d := INF
@@ -913,7 +913,7 @@ func _update_radar(delta: float) -> void:
 	var origin: Vector3 = (v as Node3D).global_position
 	var fwd: Vector3 = -(v as Node3D).global_transform.basis.z
 	var head := Vector2(fwd.x, fwd.z)
-	_radar.heading = head.normalized() if head.length() > 0.01 else Vector2.UP
+	_radar.heading = head.normalized() if head.length_squared() > 0.0001 else Vector2.UP
 	_radar.fill = v.energy_fill() if v.has_method("energy_fill") else 0.0
 	_radar.has_cap = v.has_method("energy_cap") and v.energy_cap() > 0.0
 	var blips: Array = []

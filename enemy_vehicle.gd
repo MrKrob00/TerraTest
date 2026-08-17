@@ -183,7 +183,7 @@ func _eject_blocks() -> void:
 				var rb := n3 as RigidBody3D
 				var dir := (rb.global_position - cabin_pos)
 				dir.y = 0.0
-				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
+				dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
 				rb.freeze = false
 				rb.sleeping = false
 				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)

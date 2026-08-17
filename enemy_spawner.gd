@@ -428,7 +428,7 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		if _is_asleep(e):
 			continue
 		var d: Vector3 = (e as Node3D).global_position - center
-		if Vector2(d.x, d.z).length() < 0.5:
+		if Vector2(d.x, d.z).length_squared() < 0.25:       # 0.5², только сравнение
 			continue
 		per[_sector_of(atan2(d.z, d.x))] += 1
 	# Секторы по возрастанию занятости; равные — вперемешку, иначе пустая карта всегда
@@ -468,11 +468,11 @@ func _in_player_view(pos: Vector3, center: Vector3) -> bool:
 		return false
 	var to: Vector3 = pos - center
 	to.y = 0.0
-	if to.length() > front_clear_dist:
+	if to.length_squared() > front_clear_dist * front_clear_dist:
 		return false                           # далеко — пусть появляется хоть прямо по курсу
 	var fwd: Vector3 = -player.global_transform.basis.z
 	fwd.y = 0.0
-	if fwd.length() < 0.01 or to.length() < 0.01:
+	if fwd.length_squared() < 0.0001 or to.length_squared() < 0.0001:
 		return false
 	return rad_to_deg(fwd.normalized().angle_to(to.normalized())) < front_cone_deg
 
@@ -509,7 +509,7 @@ func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
 		if e == exclude or not is_instance_valid(e):
 			continue
 		var d := Vector2(pos.x - e.global_position.x, pos.z - e.global_position.z)
-		if d.length() < spawn_separation:
+		if d.length_squared() < spawn_separation * spawn_separation:
 			return true
 	return false
 

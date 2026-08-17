@@ -629,13 +629,13 @@ func detach_block_to_world(node: Node) -> void:
 		if _blast_force > 0.0 and Time.get_ticks_msec() < _blast_until_ms:
 			# Оторвало ВЗРЫВОМ (напр. батареи) — швыряем от эпицентра сильнее обычного.
 			var away := rb.global_position - _blast_pos
-			if away.length() < 0.1:
+			if away.length_squared() < 0.01:            # 0.1², только сравнение
 				away = Vector3(randf() - 0.5, 0.3, randf() - 0.5)
 			away = (away.normalized() + Vector3.UP * 0.35).normalized()
 			rb.apply_central_impulse(away * _blast_force * rb.mass)
 		else:
 			var dir := Vector3(randf() - 0.5, 0.0, randf() - 0.5)
-			dir = dir.normalized() if dir.length() > 0.01 else Vector3.FORWARD
+			dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.FORWARD
 			rb.apply_central_impulse((dir * 2.0 + Vector3.UP * 2.5) * rb.mass)
 
 # Взрыв на машине (напр. уничтожена батарея): осколки, что оторвутся в ближайшие ~0.3с, летят

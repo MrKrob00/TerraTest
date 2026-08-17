@@ -55,8 +55,19 @@ func _label(text: String, font_size: int, y: float) -> Label3D:
 	add_child(l)
 	return l
 
+## Контроллер камеры кешируем. Он один на сцену и не меняется, а поиск по группе шёл
+## КАЖДЫЙ кадр у КАЖДОЙ метки — это обход дерева ради ссылки, которая не менялась с
+## запуска, и стоит он больше любого корня, который мы отсюда убрали.
+var _cc: Node = null
+
+func _camera_controller() -> Node:
+	if _cc != null and is_instance_valid(_cc):
+		return _cc
+	_cc = get_tree().get_first_node_in_group("camera_controller")
+	return _cc
+
 func _process(delta: float) -> void:
-	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	var cc: Node = _camera_controller()
 	if cc == null or not ("current_vehicle" in cc) or cc.current_vehicle == null:
 		visible = false
 		return
