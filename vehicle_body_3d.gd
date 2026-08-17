@@ -1300,10 +1300,18 @@ func _notify_build_changed() -> void:
 		hud.notify_build_changed()
 
 # Авто-добор такого же блока из инвентаря после постановки (серийная стройка).
-func _refill_hand_from_inventory(bt: int) -> void:
+func _refill_hand_from_inventory(bt: int, keep_basis: bool = false) -> void:
 	if not G.block_inventory.has(bt):
 		return
+	# Тот же угол, что у предыдущего: take_block_into_hand сбрасывает build_basis (свежий блок
+	# из инвентаря обычно берут «как есть»), поэтому для авто-добора возвращаем его обратно.
+	var saved: Basis = build_basis
 	if take_block_into_hand(bt):
+		if keep_basis:
+			build_basis = saved
+			var held: Node3D = _hand_instance()
+			if held != null:
+				held.basis = build_basis     # в руке блок сразу висит под тем же углом
 		G.block_inventory.erase(bt)                # списываем экземпляр (как tech_ui._take_into_hand)
 		G.mark_progress_dirty()
 
@@ -1571,12 +1579,19 @@ func _on_take_pressed() -> void:
 		hand_kind = Hand.EMPTY
 		var placed_bt := int(instance.block)
 		block_take = false
-		build_basis = Basis()          # сброс ручного поворота под следующий блок
+		# Ручной поворот СОХРАНЯЕМ, если рука сейчас же доберётся таким же блоком из инвентаря.
+		# Игрок, выкрутивший блок под нужным углом, ставит подряд целый ряд одинаковых — и
+		# сбрасывать угол после каждого значило заставлять его крутить заново по разу на блок.
+		# Когда авто-добора нет (рука опустела), сбрасываем как раньше: следующий блок игрок
+		# возьмёт сам и, скорее всего, другой.
+		var keep_basis: bool = _hand_from_inventory and G.block_inventory.has(placed_bt)
+		if not keep_basis:
+			build_basis = Basis()
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
 		_rebuild_factory()                      # авто-коннект фабрики сразу после постановки
 		if _hand_from_inventory:
-			_refill_hand_from_inventory(placed_bt)
+			_refill_hand_from_inventory(placed_bt, keep_basis)
 		_notify_build_changed()                 # вес/характеристики в гараже — сразу
 	elif block_body != null and is_instance_valid(block_body):
 		_pick_selected_block()

@@ -142,29 +142,26 @@ func _define_layout() -> void:
 func _layout_scout() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(4, 5, 5, G.Block.SMALL_WHEEL, PI / 2)
-	set_block(6, 5, 5, G.Block.SMALL_WHEEL, -PI / 2)
-	set_block(4, 5, 6, G.Block.SMALL_WHEEL, PI / 2)
-	set_block(6, 5, 6, G.Block.SMALL_WHEEL, -PI / 2)
-	set_block(5, 6, 5, G.Block.GUN, 0.0)
+	_side_wheels(G.Block.SMALL_WHEEL, [5, 6])
+	set_block(5, 6, 5, G.Block.GUN, 0.0)          # низом на кабину
 
 # Бегун: те же габариты, но полноразмерные колёса и дробовик — заставляет подпускать близко.
 func _layout_runner() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)          # лоб прикрыт: в упор он и живёт
-	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)        # лоб прикрыт: в упор он и живёт
+	_side_wheels(G.Block.WHEEL, [5, 6])
 	set_block(5, 6, 5, G.Block.SHOTGUN, 0.0)
 
 # Рейдер: шесть колёс, две пушки, борта в броне. Первая машина, которую нельзя перестрелять
 # на подъезде — приходится маневрировать.
 func _layout_raider() -> void:
-	_wheels_6()
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+	_side_wheels(G.Block.WHEEL, [5, 6, 7])
+	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж — к нему и крепятся борта
 	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(5, 6, 5, G.Block.GUN, 0.0)
@@ -172,10 +169,13 @@ func _layout_raider() -> void:
 
 # Копейщик: лазер держит на дистанции, пушка добивает вблизи. Брони заметно больше.
 func _layout_lancer() -> void:
-	_wheels_6()
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
-	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	set_block(5, 6, 4, G.Block.ARMOR, 0.0)        # лоб в два этажа
+	_side_wheels(G.Block.WHEEL, [5, 6, 7])
+	set_block(5, 6, 6, G.Block.BLOCK, 0.0)
 	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(5, 6, 5, G.Block.LASER, 0.0)
@@ -184,98 +184,45 @@ func _layout_lancer() -> void:
 # Таран: большие колёса, тяжёлая пушка и две обычных. Уже КРУПНАЯ машина — заметна издалека.
 func _layout_breaker() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	for z in [5, 6, 7]:
-		set_block(4, 5, z, G.Block.BIG_WHEEL, PI / 2)
-		set_block(6, 5, z, G.Block.BIG_WHEEL, -PI / 2)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
 	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	_side_wheels(G.Block.BIG_WHEEL, [5, 6, 7])
+	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж целиком: на нём стволы и борта
+	set_block(5, 6, 7, G.Block.BLOCK, 0.0)
 	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
 	set_block(4, 6, 7, G.Block.ARMOR, 0.0)
 	set_block(6, 6, 7, G.Block.ARMOR, 0.0)
 	set_block(5, 6, 5, G.Block.POUND_CANNON, 0.0)
-	set_block(5, 6, 6, G.Block.GUN, 0.0)
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 7, G.Block.GUN, 0.0)
 
 # Осадная: самая большая. Восемь колёс, мортира навесом, ракетница и пара стволов, борта и
-# корма в броне. Встреча с такой — событие, а не рядовая стычка.
+# лоб в броне. Встреча с такой — событие, а не рядовая стычка.
 func _layout_siege() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	for z in [5, 6, 7, 8]:
-		set_block(4, 5, z, G.Block.WHEEL, PI / 2)
-		set_block(6, 5, z, G.Block.WHEEL, -PI / 2)
 	for z in [6, 7, 8]:
 		set_block(5, 5, z, G.Block.BLOCK, 0.0)
+		set_block(5, 6, z, G.Block.BLOCK, 0.0)
+		set_block(4, 6, z, G.Block.ARMOR, 0.0)
+		set_block(6, 6, z, G.Block.ARMOR, 0.0)
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
 	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
-	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(4, 6, 7, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 7, G.Block.ARMOR, 0.0)
-	set_block(4, 6, 8, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 8, G.Block.ARMOR, 0.0)
+	_side_wheels(G.Block.WHEEL, [5, 6, 7, 8])
 	set_block(5, 6, 5, G.Block.MORTAR, 0.0)
-	set_block(5, 6, 7, G.Block.ROCKET, 0.0)
-	set_block(5, 6, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 7, G.Block.ROCKET, 0.0)
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 8, G.Block.GUN, 0.0)
 
-# Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
-# Ядро в ЦЕНТРЕ сетки (CENTER на всех осях), y-этажи присборок отсчитываются от центра (+5).
-func _layout_cabin_only() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-
-# Стартовая машина (спавнится бесплатно при гибели): кабина, 4 колеса, пара блоков,
-# пулемёт и бур. Компактнее дефолта.
-func _layout_starter() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 6, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.DRILL, 0.0)
-	set_block(5, 6, 5, G.Block.LASER, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-
-# База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
-func _layout_default() -> void:
-	_wheels_6()
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 4, G.Block.DRILL, 0.0)
-	set_block(5, 6, 5, G.Block.LASER, 0.0)
-	#set_block(5, 1, 5, G.Block.COLLECTOR, 0.0)
-	#set_block(3, 1, 7, G.Block.RECEIVER, -PI/2)
-	#set_block(4, 1, 7, G.Block.BELT, 0.0)
-	#set_block(4, 1, 6, G.Block.PROCESSOR, 0.0)
-	#set_block(4, 1, 4, G.Block.BELT, 0.0)
-	#set_block(4, 1, 3, G.Block.SELLER, 0.0)
-
-# Тяжёлый: две пушки. Разнесены по длине корпуса (5 и 7, а не 5 и 6 рядом) — вес не
-# наваливается на передний край базы колёс, машина реже клюёт носом при торможении/ИИ-реверсе.
-func _layout_dual_gun() -> void:
-	_wheels_6()
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 6, 5, G.Block.GUN, 0.0)
-	set_block(5, 6, 7, G.Block.GUN, 0.0)
-
-func _layout_laser_scout() -> void:
-	_wheels_6()
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 6, 5, G.Block.LASER, 0.0)
-
-func _wheels_6() -> void:
-	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 5, G.Block.WHEEL, -PI / 2)
-	set_block(4, 5, 6, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 6, G.Block.WHEEL, -PI / 2)
-	set_block(4, 5, 7, G.Block.WHEEL, PI / 2)
-	set_block(6, 5, 7, G.Block.WHEEL, -PI / 2)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
+## Колёса по бортам корпуса. Повороты НЕ на глаз: у всех колёс connect_faces = 2, то есть
+## стыкуются они ЗАДОМ (+Z), и к корпусу их надо развернуть именно им. Поворот на ±90° по Y
+## переводит +Z в ∓X — левый борт смотрит вправо, правый влево, оба в корпус.
+func _side_wheels(kind: int, zs: Array) -> void:
+	for z in zs:
+		set_block(4, 5, int(z), kind, PI / 2)
+		set_block(6, 5, int(z), kind, -PI / 2)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
