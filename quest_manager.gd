@@ -74,6 +74,11 @@ func _seed_demo() -> void:
 	add_quest("tut_music", "Boot: Audio", "Open audio", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
 			"Last one. Even a simulation lets you pick what plays.")
 	# ── STORY ────────────────────────────────────────────────────────────────────
+	# ЗДЕСЬ ТОЛЬКО СЮЖЕТ. Раньше сюда же было насыпано семнадцать заданий-счётчиков
+	# («поставь 5 блоков», «накопай 10 руды», «заработай 100$», «убей 3 машины» и так далее
+	# по всем пяти грейдам). Они не рассказывали ничего: то же самое игрок делает и без
+	# задания, а журнал они забивали так, что настоящие сюжетные ветки в нём терялись.
+	# Счётчики остались там, где они уместны, — в ЕЖЕДНЕВКАХ внизу файла.
 	# Награды деньгами живут в масштабе МАГАЗИНА, а цены там считаются из рецептов
 	# (G.shop_price): простой блок стоит ~220$, кабина ~1800$. Пока цены были выдуманы
 	# руками (блок за 5$), награды в 50$ выглядели щедро; после привязки к материалам они
@@ -82,35 +87,14 @@ func _seed_demo() -> void:
 	# ферритовую), значит и работа за этими числами ровно та же, что была.
 	# Первый сюжетный — сразу после обучения: наставник спавнит разведчика рядом с игроком.
 	add_quest("story_first_blood", "Noticed", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 90, 25, 5)
-	add_quest("story_build", "Take Shape",  "Attach 5 parts",          Type.STORY, 5,   1, "block_placed", 60, 20, 5)
-	add_quest("story_ore",   "Extraction",  "Drill 10 ore",            Type.STORY, 10,  2, "ore_mined",    90, 30, 8)
-	add_quest("story_sell",  "Solvency",    "Earn 100$",               Type.STORY, 100, 3, "money_earned", 150, 40, 10)
-	add_quest("story_kill",  "Deletion",    "Destroy an enemy cabin",  Type.STORY, 1,   4, "enemy_killed", 120, 50, 15)
-	# Grade 2: mastering mining-production and the first weapon.
-	add_quest("g2_ore",   "Quota",            "Drill 50 ore",          Type.STORY, 50,   10, "ore_mined",    180,  30, 8,  2)
-	add_quest("g2_kill",  "Cleanup",          "Destroy 3 vehicles",    Type.STORY, 3,    11, "enemy_killed", 240,  45, 10, 2)
-	add_quest("g2_money", "Credit",           "Earn 300$",             Type.STORY, 300,  12, "money_earned", 300, 40, 10, 2)
-	add_quest("g2_build", "Iteration",        "Attach 15 parts",       Type.STORY, 15,   13, "block_placed", 180,  35, 8,  2)
-	# Grade 3: the production chain at full scale.
-	add_quest("g3_ore",   "Throughput",       "Drill 150 ore",         Type.STORY, 150,  20, "ore_mined",    450, 50, 12, 3)
-	add_quest("g3_kill",  "Purge",            "Destroy 10 vehicles",   Type.STORY, 10,   21, "enemy_killed", 600, 60, 15, 3)
-	add_quest("g3_money", "Leverage",         "Earn 1000$",            Type.STORY, 1000, 22, "money_earned", 750, 55, 15, 3)
-	# Grade 4: heavy machinery.
-	add_quest("g4_ore",   "Strip Mine",       "Drill 400 ore",         Type.STORY, 400,  30, "ore_mined",    1200, 80, 18, 4)
-	add_quest("g4_kill",  "Attrition",        "Destroy 25 vehicles",   Type.STORY, 25,   31, "enemy_killed", 1500, 90, 20, 4)
-	add_quest("g4_money", "Majority Stake",   "Earn 3000$",            Type.STORY, 3000, 32, "money_earned", 1800, 80, 18, 4)
-	# Grade 5: endgame — XP no longer needed (maxed), focus on RP to finish the tree.
-	add_quest("g5_kill",  "Anomaly",          "Destroy 50 vehicles",   Type.STORY, 50,   40, "enemy_killed", 2400,  0, 30, 5)
-	add_quest("g5_ore",   "Core Process",     "Drill 1000 ore",    Type.STORY, 1000, 41, "ore_mined",    2400,  0, 30, 5)
-	add_quest("g5_money", "Unaccounted For",  "Earn 10000$",           Type.STORY, 10000,42, "money_earned", 3000, 0, 25, 5)
 	# ── СЮЖЕТ ПОСЛЕ РАЗВЕДЧИКА: ветка выбора ────────────────────────────────────
 	# Три квеста, каждый в двух частях. Первый ведёт к остальным двум, и дальше игрок сам
 	# решает, какой брать: они открываются одновременно и друг друга не ждут.
 	add_quest("arc_power", "Draw Power", "", Type.STORY, 1, 5, "", 180, 40, 12)
 	add_stages("arc_power", [
-		{"desc": "Recover the panel and the anchor, attach both",
+		{"desc": "Recover the panel and the anchor, then hold ground",
 		 "event": "quest_arc_power_1", "goal": 1,
-		 "hint": "Two parts surfaced in the field — a panel and an anchor. Take them, then set down and hold."},
+		 "hint": "Two parts surfaced in the field — a panel and an anchor. Attach both, then set down and hold: the panel only draws power while you are anchored."},
 		{"desc": "Attach the repair unit",
 		 "event": "quest_arc_power_2", "goal": 1,
 		 "hint": "A repair unit resolved beside you. Attach it — it stitches the rest of you back together."},
@@ -134,25 +118,11 @@ func _seed_demo() -> void:
 		 "hint": "It resolved inside a vein — the terrain closed over it. Mine the vein out and it drops free."},
 	])
 	requires("arc_power", ["story_first_blood"])
-	requires("story_build", ["story_first_blood"])   # старая нитка тоже висит на первом квесте
 	requires("arc_radar", ["arc_power"])      # развилка: оба открываются вместе,
 	requires("arc_battery", ["arc_power"])    # и порядок между ними выбирает игрок
 
-	# Старый сюжет шёл строго по order, одной ниткой. Порядок сам по себе больше ничего не
-	# значит, поэтому ту же нитку задаём явно — иначе после перехода на зависимости все
-	# восемнадцать заданий открылись бы разом.
-	_chain_story(["story_build", "story_ore", "story_sell", "story_kill",
-			"g2_ore", "g2_kill", "g2_money", "g2_build",
-			"g3_ore", "g3_kill", "g3_money",
-			"g4_ore", "g4_kill", "g4_money",
-			"g5_kill", "g5_ore", "g5_money"])
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
-
-# Выстроить квесты в цепочку: каждый требует предыдущего.
-func _chain_story(ids: Array) -> void:
-	for i in range(1, ids.size()):
-		requires(String(ids[i]), [ids[i - 1]])
 
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
