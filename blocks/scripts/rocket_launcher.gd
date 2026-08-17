@@ -73,6 +73,7 @@ func _explode(pos: Vector3) -> void:
 		var d: float = (b as Node3D).global_position.distance_to(pos)
 		var f: float = clampf(1.0 - d / aoe_radius, 0.15, 1.0)  # спад урона к краю
 		b.hurt(int(round(aoe_damage * f)))
+		_alert_victim(b)                                   # взрыв тоже выдаёт, кто стрелял
 	_spawn_explosion_fx(pos)
 
 # Корневое тело (RigidBody3D) для узла — чтобы отличить свою машину от чужой.

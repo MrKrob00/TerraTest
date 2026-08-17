@@ -399,6 +399,17 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 		return false
 	return res.position.distance_to(cabin.global_position) <= 0.9
 
+## Сказать подстреленной машине, КТО в неё попал. Урон и осведомлённость разделены
+## намеренно: hurt() зовут ещё бур по жиле, реген и цепная детонация блоков — у них стрелка
+## нет вовсе, и совать его в подпись метода значило бы тащить null через полпроекта.
+## Знает стрелявшего только оружие, здесь и говорим.
+func _alert_victim(body: Node3D) -> void:
+	var m: Node = body
+	while m != null and not (m is MachineBody):
+		m = m.get_parent()
+	if m != null and m.has_method("notice_attacker"):
+		m.notice_attacker(_vehicle_root() as Node3D)
+
 func _on_area_3d_body_exited(body: Node3D) -> void:
 	_targets.erase(body)
 
@@ -409,6 +420,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
 	if body.has_method("hurt"):
 		body.hurt(damage)
+		_alert_victim(body)
 	# Щит гасит снаряд «в воздухе», на самом куполе: без отметки попадание выглядело как
 	# исчезновение пули из ниоткуда. Глюк рисуем по САМОЙ ПУЛЕ — её габарит крошечный,
 	# поэтому и облако выходит мелким, ровно на точке гашения.

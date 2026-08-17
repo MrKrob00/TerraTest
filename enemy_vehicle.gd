@@ -17,9 +17,19 @@ var _cabin: Node = null
 var _dying: bool = false
 
 @export_group("ИИ — Обнаружение")
-## Больше дальности оружия (60): иначе враг стреляет дальше, чем замечает, — стоит и молчит,
-## пока в него бьют с 50 метров.
-@export var detection_radius:    float = 85.0
+## На сколько враг замечает МАШИНУ ГЛАЗАМИ. Меньше дальности его же пушки (60) — и это
+## осознанно, хотя раньше здесь стояло 85 ровно с обратным обоснованием: «иначе стоит и
+## молчит, пока в него бьют с пятидесяти».
+##
+## Ту дыру теперь закрывает не радиус, а notice_attacker: попадание САМО показывает
+## стрелка, на любом расстоянии и сквозь что угодно. Радиус же отвечает только за то,
+## как далеко враг сам кого-то высматривает, и сорок метров дают игроку то, чего не было
+## вовсе, — возможность объехать, не ввязываясь.
+@export var detection_radius:    float = 40.0
+## Ближний круг, в котором цель замечают БЕЗ линии видимости: машина ревёт, лязгает и
+## поднимает пыль, и делать вид, что за камнем в десяти метрах её не существует, — не
+## скрытность, а глухота.
+@export var hear_radius:         float = 15.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
 ## Слои, на которых ИИ ищет цели. Корпус машины (где живёт faction) лежит на слое
@@ -237,6 +247,10 @@ func assign_target(t: Node3D, never_forget: bool = false) -> void:
 	_act = EnemyBrain.Act.PURSUE
 	relentless = never_forget
 
+# Захват цели требует ЛИНИИ ВИДИМОСТИ. Раньше хватало попадания в сферу: враг «видел»
+# сквозь холмы, скалы и что угодно, а луч видимости считался, но влиял лишь на выбор
+# манёвра (enemy_brain: множитель 0.35), но не на то, знает ли враг, где ты. Из-за этого
+# рельеф в бою был чистой декорацией — спрятаться было негде.
 func _scan_for_targets() -> void:
 	if _detect_area == null or not is_instance_valid(_detect_area):
 		return
@@ -246,12 +260,39 @@ func _scan_for_targets() -> void:
 		if not _is_enemy(b) or not (b is Node3D):
 			continue
 		var d: float = global_position.distance_to((b as Node3D).global_position)
-		if d < best_d:
-			best_d = d
-			best = b as Node3D
+		if d >= best_d:
+			continue
+		# Луч считаем ПОСЛЕ отбора по расстоянию: он дороже сравнения чисел, а кандидатов
+		# в сфере обычно один.
+		if d > hear_radius and not _has_line_of_sight(b as Node3D):
+			continue
+		best_d = d
+		best = b as Node3D
 	if best != null:
 		_target = best
 		_forget_timer = forget_enemy_time
+
+## Видим ли цель ПРЯМО СЕЙЧАС: в радиусе и либо вплотную (слышно), либо по прямой линии.
+## Результат луча кешируется — он нужен и забыванию (каждый кадр), и оценке обстановки,
+## а гонять физический запрос по шестьдесят раз в секунду на каждого врага незачем.
+const LOS_PERIOD: float = 0.2
+var _los_t: float = 0.0
+var _los_ok: bool = false
+
+func _refresh_vision(delta: float) -> void:
+	_los_t -= delta
+	if _los_t > 0.0:
+		return
+	_los_t = LOS_PERIOD
+	_los_ok = is_instance_valid(_target) and _has_line_of_sight(_target)
+
+func _can_see_target() -> bool:
+	if not is_instance_valid(_target):
+		return false
+	var d: float = global_position.distance_to(_target.global_position)
+	if d > detection_radius:
+		return false
+	return d <= hear_radius or _los_ok
 
 func _update_ai(delta: float) -> void:
 	# Цель периодически пере-ищется, пока её нет.
@@ -261,15 +302,20 @@ func _update_ai(delta: float) -> void:
 		if not is_instance_valid(_target):
 			_scan_for_targets()
 
-	# Забывание: внутри радиуса обнаружения цель не забывается никогда, снаружи — по
-	# таймеру. Невідступный не забывает вообще.
+	# Забывание: пока цель ВИДНО — не забывается; скрылась (за холм или за радиус) — таймер.
+	# Раньше условием была только дистанция, и внутри радиуса цель не терялась НИКОГДА:
+	# спрятаться в восьмидесяти метрах за скалой не давало ничего. Теперь потеря из виду
+	# запускает тот же таймер, а враг едет к последнему известному месту — состояние ПОИСК
+	# в enemy_brain было написано давно и до сих пор почти не включалось.
+	# Невідступный не забывает вообще.
+	_refresh_vision(delta)
 	if is_instance_valid(_target):
-		if global_position.distance_to(_target.global_position) > detection_radius and not relentless:
+		if _can_see_target():
+			_forget_timer = forget_enemy_time
+		elif not relentless:
 			_forget_timer -= delta
 			if _forget_timer <= 0.0:
 				_lose_target()
-		else:
-			_forget_timer = forget_enemy_time
 	elif _target != null:
 		_target = null
 
@@ -327,7 +373,7 @@ func _sense() -> Dictionary:
 			t_fwd.y = 0.0
 			if t_fwd.length_squared() > 0.0001:
 				facing = clampf(t_fwd.normalized().dot(to_us.normalized()), 0.0, 1.0)
-		los = _has_line_of_sight(_target)
+		los = _los_ok           # тот же кеш, что и у забывания — второй луч ни к чему
 
 	# Подвижность самокалибруется: запоминаем, сколько колёс было в лучшие времена, и
 	# сравниваем с текущим. Не нужно ловить момент сборки машины.
@@ -358,7 +404,11 @@ func _own_weapon_range() -> float:
 		var wr: Variant = b.get("weapon_range")
 		if wr != null:
 			r = maxf(r, float(wr))
-	return r if r > 0.5 else attack_range
+	# ОГРАНИЧИВАЕМ тем, что враг реально видит. Иначе он держит дистанцию по стволу
+	# (weapon_range * 0.85 в _act_engage) — с пушкой на 60 это 51 метр при радиусе 40, то
+	# есть он сам отъезжает за собственную зону обнаружения, теряет цель, возвращается,
+	# снова отъезжает. У мортиры (160) разрыв был бы вчетверо хуже.
+	return minf(r if r > 0.5 else attack_range, detection_radius)
 
 func _power_ratio() -> float:
 	if not is_instance_valid(_target) or not _target.has_method("firepower"):
@@ -613,6 +663,30 @@ func _nearest_patrol_index() -> int:
 			best_dist = d
 			best_i    = i
 	return best_i
+
+## НАС УДАРИЛИ — значит мы знаем, откуда. Зовёт оружие в момент попадания (WeaponBlock,
+## ракетный AOE), передавая СВОЮ машину.
+##
+## Это не зрение и не должно им быть: работает на любой дистанции и сквозь любой холм.
+## Именно поэтому радиус обнаружения удалось опустить до сорока — «стоит и молчит, пока в
+## него бьют издалека» лечится здесь, а не раздуванием сферы до восьмидесяти пяти.
+##
+## Цель не перехватывается на каждом попадании: пока мы ВИДИМ того, с кем уже деремся,
+## новый стрелок ждёт. Иначе перекрёстный огонь двух машин заставлял бы врага дёргаться
+## между ними и не стрелять ни в кого.
+func notice_attacker(attacker: Node3D) -> void:
+	if attacker == null or not is_instance_valid(attacker) or attacker == self:
+		return
+	if not _is_enemy(attacker):
+		return                          # свои: дружественный огонь цель не меняет
+	if relentless and is_instance_valid(_target):
+		return                          # невідступному назначили цель раз и навсегда
+	if is_instance_valid(_target) and _target != attacker and _can_see_target():
+		return                          # текущего противника видим — не отвлекаемся
+	_target = attacker
+	_forget_timer = forget_enemy_time
+	_last_known_pos = attacker.global_position
+	_has_last_known = true
 
 func _is_enemy(body: Node) -> bool:
 	if body == self: return false
