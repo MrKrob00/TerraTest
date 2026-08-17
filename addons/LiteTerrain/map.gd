@@ -956,13 +956,14 @@ func _editor_lod_tick(delta: float) -> void:
 	if _editor_cam == null or _ed_cx <= 0:
 		return
 	var pos := _editor_cam.global_position
-	if pos.distance_to(_editor_track_pos) > 2.0:
+	if pos.distance_squared_to(_editor_track_pos) > 4.0:      # 2², корень не нужен
 		_editor_track_pos = pos
 		_editor_settle_t  = 0.0
 		return
 	_editor_settle_t += delta
 	if _editor_settle_t >= 0.35 \
-			and _editor_track_pos.distance_to(_editor_build_pos) > float(chunk_size) * 0.5:
+			and _editor_track_pos.distance_squared_to(_editor_build_pos) \
+					> float(chunk_size) * 0.5 * float(chunk_size) * 0.5:
 		_editor_rebuild_lod()
 
 # Picks each chunk's LOD by its XZ distance to the editor camera (same thresholds as
@@ -977,10 +978,12 @@ func _editor_rebuild_lod() -> void:
 			var ccz := (cz + 0.5) * chunk_size - d * 0.5
 			var dx := ccx - cam_local.x
 			var dz := ccz - cam_local.z
-			var dist := sqrt(dx * dx + dz * dz)
+			# Квадраты: обе строчки ниже — сравнения с порогами, корень им не нужен, а
+			# перебор идёт по всем чанкам карты на каждой пересборке.
+			var dist2 := dx * dx + dz * dz
 			var lod := 0
-			if dist >= lod_distance_1:   lod = 2   # LOD3 (step 8) removed — unused at runtime
-			elif dist >= lod_distance_0: lod = 1
+			if dist2 >= lod_distance_1 * lod_distance_1:   lod = 2   # LOD3 (step 8) removed — unused at runtime
+			elif dist2 >= lod_distance_0 * lod_distance_0: lod = 1
 			_ed_lod[cz * _ed_cx + cx] = lod
 	for cz in _ed_cz:
 		for cx in _ed_cx:
@@ -2107,8 +2110,11 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 	else:
 		# Internal node: if far enough that its coarse mesh is good enough, render it and
 		# stop (one big low-poly mesh for the whole subtree). Otherwise descend for detail.
-		var nearest := sqrt(_aabb_dist2(world_aabb, cam))
-		if nearest >= _qt_size[node] * QT_QUALITY:
+		# _aabb_dist2 уже возвращает КВАДРАТ; корень тут брался лишь ради сравнения, а порог
+		# возвести в квадрат дешевле. Обход идёт по всем узлам дерева КАЖДЫЙ кадр, и строкой
+		# выше (порог lod_distance_1) файл уже так и делает.
+		var lim: float = _qt_size[node] * QT_QUALITY
+		if _aabb_dist2(world_aabb, cam) >= lim * lim:
 			_qt_des_nodes[node] = true
 		else:
 			for ch in _qt_child[node]:
@@ -2437,10 +2443,13 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 	var center  := aabb.get_center()
 	var dx      := center.x - cam_local.x
 	var dz      := center.z - cam_local.z
-	var dist_xz := sqrt(dx * dx + dz * dz)
-
-	if dist_xz < occlusion_min_dist:
+	# Ранний выход считаем по КВАДРАТУ: ближние чанки отсеиваются здесь, и для них корень
+	# не нужен вовсе. Дальше он всё-таки берётся — dist_xz идёт в формулу (шаг выборки и
+	# угол к горизонту), а не в сравнение.
+	var d2_xz := dx * dx + dz * dz
+	if d2_xz < occlusion_min_dist * occlusion_min_dist:
 		return false
+	var dist_xz := sqrt(d2_xz)
 
 	# Biased AABB top — the target elevation we try to see over
 	var target_y := aabb.position.y + aabb.size.y + occlusion_bias
