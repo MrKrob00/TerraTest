@@ -138,7 +138,12 @@ func _ready() -> void:
 	_title_vp = SubViewport.new()
 	_title_vp.transparent_bg = true
 	_title_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
-	_title_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# Перерисовываем вьюпорт ОДИН РАЗ, а не каждый кадр. В нём лежит неподвижная строка: рвёт
+	# и красит её ШЕЙДЕР на TextureRect, который читает уже готовую текстуру. UPDATE_ALWAYS
+	# заставлял движок гонять целый дополнительный проход рендера на каждый кадр загрузки —
+	# ровно тогда, когда кадров и так не хватает, потому что рядом строится рельеф.
+	# Перерисовку заказываем заново при смене раскладки (см. _layout).
+	_title_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(_title_vp)
 
 	_title_label = Label.new()
@@ -240,6 +245,7 @@ func _layout() -> void:
 	_title_label.position = Vector2.ZERO
 	_title_rect.size = Vector2(tw, th)
 	_title_rect.position = Vector2((s.x - tw) * 0.5, s.y * 0.5 - th * 0.62)
+	_title_vp.render_target_update_mode = SubViewport.UPDATE_ONCE   # размер/шрифт сменились — переснять
 	# Карточки — полосами вокруг названия (см. CARD_BANDS), но НЕ во всю ширину: полоса от
 	# края до края читается как шов, а не как разрыв. Держим их в колонке названия с запасом.
 	var cw: float = minf(s.x, tw * 1.35)
