@@ -136,9 +136,36 @@ func _ready() -> void:
 	_setup_detection_area()
 	_setup_patrol_points()
 	_connect_cabin()
+	_measure_build()          # стоимость сборки — пока машина цела (см. _pay_out)
 
 func set_combat_allowed(v: bool) -> void:
 	combat_allowed = v
+
+## Во что обошлась ЭТА машина — считается ОДИН РАЗ при рождении, пока она цела. Считать в
+## момент смерти было бы неверно вдвойне: к тому времени половина блоков уже сбита, и награда
+## зависела бы от того, насколько аккуратно игрок её разбирал.
+var build_value: int = 0
+
+func _measure_build() -> void:
+	var blocks_node := get_node_or_null("blocks")
+	if blocks_node == null:
+		return
+	var v: int = 0
+	for b in blocks_node.get_children():
+		if b.get("block") != null:
+			v += G.shop_price(int(b.get("block")))
+	build_value = v
+
+# Награда за машину: ДИ по её стоимости (G.rp_for_kill). Система сообщает об этом сама —
+# без строки игрок бы вообще не заметил, что за бой что-то начислили.
+func _pay_out() -> void:
+	if faction == 0 or build_value <= 0:
+		return
+	var rp: int = G.rp_for_kill(build_value)
+	G.add_research_points(rp)
+	var d: Node = get_node_or_null("/root/Dialogue")
+	if d != null and d.has_method("say"):
+		d.say("System", "Wreck catalogued. +%d RP." % rp)
 
 func _connect_cabin() -> void:
 	var blocks_node := get_node_or_null("blocks")
@@ -158,6 +185,7 @@ func _die() -> void:
 	if _dying:
 		return
 	_dying = true
+	_pay_out()
 	Q.report("enemy_killed", 1)             # прогресс боевых заданий
 	died.emit(self)
 	_eject_blocks()

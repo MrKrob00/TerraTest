@@ -91,13 +91,13 @@ extends Node3D
 @export var scan_preset: int = 1                    # усиленная сборка (см. blocks.gd layout)
 
 @export_group("Сила врага")
-## Сборки от САМОЙ СЛАБОЙ к самой сильной (номера см. blocks.gd _define_layout). Порядок
-## задан руками, а не стоимостью: по деньгам laser_scout и dual_gun почти равны, но две
-## пушки опаснее одного лазера, и опасность здесь важнее цены.
-@export var preset_tiers: Array[int] = [2, 0, 1]    # laser_scout → default → dual_gun
+## Сборки от САМОЙ СЛАБОЙ к самой сильной (номера см. blocks.gd _define_layout): разведчик,
+## бегун, рейдер, копейщик, таран, осадная. Ступени растут и по опасности, и по РАЗМЕРУ —
+## по машине на горизонте сразу понятно, во что ввязываешься.
+@export var preset_tiers: Array[int] = [5, 6, 7, 8, 9, 10]   # scout → runner → raider → lancer → breaker → siege
 ## С какой стоимости машины игрока (сумма G.shop_price её блоков) начинается каждая ступень.
 ## Стартовая кабина ≈ 1800, готовая боевая машина — тысяч десять.
-@export var tier_from_value: Array[int] = [0, 5000, 9000]
+@export var tier_from_value: Array[int] = [0, 6000, 9000, 13000, 18000, 26000]
 
 var _enemies: Array = []
 var _clean_t: float = 0.0                           # троттл чистки списка от мёртвых врагов
