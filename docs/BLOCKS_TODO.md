@@ -113,8 +113,19 @@
 - **4 металла + уголь.** `G.Metal`: Ferrite, Cuprite, Silicate, Titanite. Руда плавится в
   слиток СВОЕГО металла, уголь не плавится (топливо). Тип жилы = индекс металла: список
   цветов жил больше не дублируется, `resource_nodes` берёт его из `G.METAL_COLOR`.
-- **6 компонентов в два яруса** (`G.Comp`): Plate, Coil, Lens — из слитков; Servo, Circuit,
-  Core — из компонентов первого яруса.
+- **21 компонент в два яруса** (`G.Comp`), по правилу «все пары»:
+  - **простые (Basic), 6 штук** — каждая пара металлов, C(4,2)=6: Wound Coil, Cast Plating,
+    Braced Strut, Etched Wafer, Contact Ring, Prism Lens;
+  - **сложные (Advanced), 15 штук** — каждая пара простых, C(6,2)=15: Shielded Winding,
+    Torque Motor, Signal Relay, Dynamo Rotor, Pulse Emitter, Armour Segment, Logic Housing,
+    Sealed Bearing, Optic Shroud, Servo Arm, Drive Axle, Sight Mount, Control Chip,
+    Optic Sensor, Focus Cell.
+  - Списки НЕ пишутся руками, а перебираются (`_build_comp_recipes`): рукописный список из
+    двадцати одной строки однажды потерял бы пару молча, перебор потерять её не может.
+  - Цвет компонента — смесь цветов его родителей, а не назначенный: деталь видно, из чего
+    она. Двадцать один подобранный вручную цвет всё равно разъехался бы с рецептами.
+  - Ярусы и стиль имён — из TerraTech (Basic → Advanced → Complex → Exotic, компоненты
+    зовутся деталями: Fibre Plating, Ion Pulse Cells, Thermo Jet), но имена свои.
 - **Почему в каждом рецепте РОВНО ДВА разных материала.** Это не стиль, а движок:
   фабрикатор различает свои два входа по ВИДУ материала (слот A — первый пришедший,
   слот B — первый отличный от него). Третьему виду там негде встать, а рецепт из двух

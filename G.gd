@@ -24,6 +24,7 @@ var saved_builds: Dictionary = {}
 const BUILDS_PATH := "user://vehicle_builds.json"
 
 func _ready() -> void:
+	_build_comp_recipes()      # до загрузки: рецепты нужны ценам, а цены — магазину
 	_load_builds()
 	_load_progress()
 	_load_settings()
@@ -187,29 +188,92 @@ const METAL_COLOR := [
 	Color(0.78, 0.80, 0.86),   # Titanite — белый металл
 ]
 
-enum Comp { PLATE, COIL, LENS, SERVO, CIRCUIT, CORE }
-const COMP_NAME := ["Plate", "Coil", "Lens", "Servo", "Circuit", "Core"]
-const COMP_COLOR := [
-	Color(0.70, 0.72, 0.78),   # Plate
-	Color(0.95, 0.62, 0.30),   # Coil
-	Color(0.55, 0.85, 0.95),   # Lens
-	Color(0.60, 0.70, 0.55),   # Servo
-	Color(0.45, 0.90, 0.55),   # Circuit
-	Color(0.85, 0.55, 1.00),   # Core
+# ── КОМПОНЕНТЫ: все ПАРЫ, без исключений ────────────────────────────────────────
+# Правило одно на оба яруса: компонент — это ПАРА разного сырья, и берутся ВСЕ сочетания.
+#   простой  = пара МЕТАЛЛОВ:     C(4,2) = 6
+#   сложный  = пара ПРОСТЫХ:      C(6,2) = 15
+# Списки поэтому не пишутся руками, а ПЕРЕБИРАЮТСЯ (_build_comp_recipes): выдуманный от
+# руки список из двадцати одной строки однажды потерял бы пару и никто бы не заметил, а
+# перебор потерять её не может. Порядок — лексикографический: (0,1),(0,2),(0,3),(1,2)…
+#
+# Пара, а не тройка — требование движка: и фабрикатор, и компонентный завод различают свои
+# два входа по ВИДУ материала (слот A — первый пришедший, слот B — первый отличный).
+# Третьему виду там негде встать, а два одинаковых неразличимы.
+#
+# Ярусы названы как в TerraTech (Basic → Advanced), и деталями, а не минералами: там
+# компоненты зовутся Fibre Plating, Ion Pulse Cells, Thermo Jet. Руды у нас уже на «-ite»
+# по той же причине.
+enum Comp {
+	# ── ПРОСТЫЕ (Basic): пары металлов ──
+	COIL,        # 0  Ferrite  + Cuprite
+	PLATING,     # 1  Ferrite  + Silicate
+	STRUT,       # 2  Ferrite  + Titanite
+	WAFER,       # 3  Cuprite  + Silicate
+	RING,        # 4  Cuprite  + Titanite
+	LENS,        # 5  Silicate + Titanite
+	# ── СЛОЖНЫЕ (Advanced): пары простых ──
+	WINDING,     # 6  Coil + Plating
+	MOTOR,       # 7  Coil + Strut
+	RELAY,       # 8  Coil + Wafer
+	ROTOR,       # 9  Coil + Ring
+	EMITTER,     # 10 Coil + Lens
+	SEGMENT,     # 11 Plating + Strut
+	HOUSING,     # 12 Plating + Wafer
+	BEARING,     # 13 Plating + Ring
+	SHROUD,      # 14 Plating + Lens
+	SERVO,       # 15 Strut + Wafer
+	AXLE,        # 16 Strut + Ring
+	MOUNT,       # 17 Strut + Lens
+	CHIP,        # 18 Wafer + Ring
+	SENSOR,      # 19 Wafer + Lens
+	FOCUS,       # 20 Ring + Lens
+}
+## Сколько компонентов первого яруса. Всё, что дальше, — второй ярус.
+const COMP_SIMPLE_COUNT := 6
+## Сколько штук каждого из двух входов уходит на компонент.
+const COMP_SIMPLE_PER := 2      # простой: по два слитка каждого металла
+const COMP_COMPLEX_PER := 1     # сложный: по одному простому каждого вида
+
+## Имена в порядке enum. Единственное, что здесь написано руками, — сами рецепты и цвета
+## выводятся из пар.
+const COMP_NAME := [
+	"Wound Coil", "Cast Plating", "Braced Strut", "Etched Wafer", "Contact Ring", "Prism Lens",
+	"Shielded Winding", "Torque Motor", "Signal Relay", "Dynamo Rotor", "Pulse Emitter",
+	"Armour Segment", "Logic Housing", "Sealed Bearing", "Optic Shroud", "Servo Arm",
+	"Drive Axle", "Sight Mount", "Control Chip", "Optic Sensor", "Focus Cell",
 ]
 
-## Из чего собирается компонент: ровно ДВА РАЗНЫХ материала и сколько штук каждого.
-## Ключ материала — тот же, что возвращает resource.kind_key(): "m<металл>" слиток,
-## "c<компонент>" компонент. Первые три компонента варятся из слитков, вторые три — из
-## компонентов, отсюда и два «яруса»: без первого яруса второй не собрать.
-const COMP_RECIPE := {
-	Comp.PLATE:   {"m0": 2, "m3": 1},   # Ferrite + Titanite
-	Comp.COIL:    {"m1": 2, "m0": 1},   # Cuprite + Ferrite
-	Comp.LENS:    {"m2": 2, "m1": 1},   # Silicate + Cuprite
-	Comp.SERVO:   {"c1": 1, "c0": 1},   # Coil + Plate
-	Comp.CIRCUIT: {"c2": 1, "c1": 1},   # Lens + Coil
-	Comp.CORE:    {"c4": 1, "c3": 1},   # Circuit + Servo
-}
+## Из чего собирается компонент: {ключ материала → штук}. Заполняется в _ready перебором
+## пар, поэтому это var, а не const.
+var COMP_RECIPE: Dictionary = {}
+## Пара-родитель компонента: [индекс, индекс] в своём ярусе. Нужна цвету и подсказкам.
+var COMP_PARENT: Array = []
+## Цвет компонента — СМЕСЬ цветов того, из чего он сделан, и считается, а не назначается.
+## Так деталь видно, чем она была: обмотка отдаёт медью, линза — стеклом. Двадцать один
+## цвет, подобранный вручную, всё равно бы такого не дал и разъехался бы с рецептами.
+var COMP_COLOR: Array = []
+
+func _build_comp_recipes() -> void:
+	COMP_RECIPE.clear()
+	COMP_PARENT.clear()
+	COMP_COLOR.clear()
+	COMP_PARENT.resize(COMP_NAME.size())
+	COMP_COLOR.resize(COMP_NAME.size())
+	# Первый ярус: все пары металлов.
+	var i: int = 0
+	for a in range(METAL_NAME.size()):
+		for b in range(a + 1, METAL_NAME.size()):
+			COMP_RECIPE[i] = {metal_key(a): COMP_SIMPLE_PER, metal_key(b): COMP_SIMPLE_PER}
+			COMP_PARENT[i] = [a, b]
+			COMP_COLOR[i] = METAL_COLOR[a].lerp(METAL_COLOR[b], 0.5).lightened(0.08)
+			i += 1
+	# Второй ярус: все пары первого.
+	for a in range(COMP_SIMPLE_COUNT):
+		for b in range(a + 1, COMP_SIMPLE_COUNT):
+			COMP_RECIPE[i] = {comp_key(a): COMP_COMPLEX_PER, comp_key(b): COMP_COMPLEX_PER}
+			COMP_PARENT[i] = [a, b]
+			COMP_COLOR[i] = (COMP_COLOR[a] as Color).lerp(COMP_COLOR[b], 0.5).lightened(0.10)
+			i += 1
 
 ## Ключ слитка/компонента для рецептов и складов.
 static func metal_key(m: int) -> String:
@@ -247,57 +311,60 @@ func kind_name(key: String) -> String:
 ## Блока без рецепта Scrapper не принимает и не портит (см. scrapper.gd), поэтому пустая
 ## строка здесь — это не «пока не сделали», а «разбирать нельзя».
 const BLOCK_RECIPE := {
+	# Ключи — те же, что возвращает resource.kind_key(): "m<металл>", "c<компонент>".
+	# В комментарии — что это за компонент: по "c17" не догадаешься, а enum в ключ словаря
+	# не подставить (ключ обязан быть строкой ключа вида).
 	# ── Корпус и броня ────────────────────────────────────────────────────────
-	Block.BLOCK:        {"m0": 2, "m3": 2},
+	Block.BLOCK:        {"m0": 2, "m3": 2},    # Ferrite + Titanite
 	Block.BLOCK2:       {"m0": 4, "m3": 3},
 	Block.BLOCK3:       {"m0": 5, "m3": 5},
 	Block.WEDGE2:       {"m0": 2, "m3": 2},
 	Block.HALF_BLOCK:   {"m0": 1, "m3": 1},
 	Block.HALF_BLOCK2:  {"m0": 2, "m3": 1},
-	Block.ARMOR:        {"c0": 2, "m3": 2},
-	Block.ARMOR2:       {"c0": 3, "m3": 4},
-	Block.ARMOR4:       {"c0": 6, "m3": 8},
-	Block.SUPPORT:      {"m0": 4, "m1": 2},
-	Block.ROT_SUPPORT:  {"c3": 2, "m0": 6},
-	Block.CABIN:        {"c5": 1, "c0": 4},
+	Block.ARMOR:        {"c1": 2, "m3": 2},    # Cast Plating + Titanite
+	Block.ARMOR2:       {"c1": 3, "m3": 4},
+	Block.ARMOR4:       {"c11": 3, "c1": 4},   # Armour Segment + Cast Plating
+	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
+	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
+	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
 	# ── Ход ───────────────────────────────────────────────────────────────────
-	Block.WHEEL:        {"c3": 1, "m0": 4},
-	Block.SMALL_WHEEL:  {"c3": 1, "m0": 2},
-	Block.BIG_WHEEL:    {"c3": 2, "m0": 8},
-	Block.TOP_WHEEL:    {"c3": 1, "m0": 3},
-	Block.STAB_WHEEL:   {"c3": 1, "m0": 3},
+	Block.WHEEL:        {"c16": 1, "m0": 4},   # Drive Axle + Ferrite
+	Block.SMALL_WHEEL:  {"c16": 1, "m0": 2},
+	Block.BIG_WHEEL:    {"c16": 2, "m0": 8},
+	Block.TOP_WHEEL:    {"c4": 2, "m0": 3},    # Contact Ring + Ferrite
+	Block.STAB_WHEEL:   {"c13": 1, "m0": 3},   # Sealed Bearing + Ferrite
 	# ── Добыча и фабрика ──────────────────────────────────────────────────────
-	Block.DRILL:        {"c3": 2, "m3": 6},
-	Block.SMALL_DRILL:  {"c3": 1, "m3": 3},
-	Block.COLLECTOR:    {"c1": 2, "m1": 4},
-	Block.RECEIVER:     {"c1": 1, "m1": 3},
-	Block.BELT:         {"c1": 1, "m0": 2},
-	Block.BELT_SPLIT:   {"c1": 2, "m0": 3},
-	Block.BELT_CROSS:   {"c1": 2, "m0": 4},
-	Block.PROCESSOR:    {"c4": 2, "m0": 6},
-	Block.SELLER:       {"c4": 1, "m1": 4},
-	Block.STORAGE:      {"c0": 3, "m0": 6},
-	Block.AUTO_MINER:   {"c5": 1, "c3": 3},
-	Block.FABRICATOR:   {"c5": 1, "c4": 3},
-	Block.COMP_FACTORY: {"c4": 2, "c1": 4},
-	Block.SCRAPPER:     {"c3": 2, "c0": 4},
+	Block.DRILL:        {"c7": 2, "m3": 6},    # Torque Motor + Titanite
+	Block.SMALL_DRILL:  {"c7": 1, "m3": 3},
+	Block.COLLECTOR:    {"c0": 2, "m1": 4},    # Wound Coil + Cuprite
+	Block.RECEIVER:     {"c0": 1, "m1": 3},
+	Block.BELT:         {"c0": 1, "m0": 2},
+	Block.BELT_SPLIT:   {"c0": 2, "m0": 3},
+	Block.BELT_CROSS:   {"c3": 1, "m0": 4},    # Etched Wafer + Ferrite
+	Block.PROCESSOR:    {"c7": 2, "m0": 6},    # Torque Motor + Ferrite
+	Block.SELLER:       {"c8": 2, "m1": 4},    # Signal Relay + Cuprite
+	Block.STORAGE:      {"c1": 3, "m0": 6},    # Cast Plating + Ferrite
+	Block.AUTO_MINER:   {"c7": 3, "c15": 2},   # Torque Motor + Servo Arm
+	Block.FABRICATOR:   {"c18": 2, "c15": 3},  # Control Chip + Servo Arm
+	Block.COMP_FACTORY: {"c18": 2, "c12": 2},  # Control Chip + Logic Housing
+	Block.SCRAPPER:     {"c15": 2, "c11": 2},  # Servo Arm + Armour Segment
 	# ── Энергия ───────────────────────────────────────────────────────────────
-	Block.BATTERY:      {"c1": 4, "m1": 5},
-	Block.SOLAR:        {"c2": 4, "m2": 4},
-	Block.GENERATOR:    {"c1": 4, "m0": 6},
-	Block.COAL_GEN:     {"c1": 2, "m0": 6},
-	Block.WIRELESS_CHARGER: {"c4": 2, "c1": 3},
+	Block.BATTERY:      {"c9": 2, "m1": 5},    # Dynamo Rotor + Cuprite
+	Block.SOLAR:        {"c5": 3, "m2": 4},    # Prism Lens + Silicate
+	Block.GENERATOR:    {"c9": 3, "m0": 6},
+	Block.COAL_GEN:     {"c9": 2, "m0": 6},
+	Block.WIRELESS_CHARGER: {"c6": 3, "c20": 2},   # Shielded Winding + Focus Cell
 	# ── Поддержка ─────────────────────────────────────────────────────────────
-	Block.REGEN:        {"c4": 2, "c2": 2},
-	Block.SHIELD:       {"c4": 2, "c2": 3},
-	Block.RADAR:        {"c2": 3, "c4": 1},
+	Block.REGEN:        {"c14": 2, "c20": 2},  # Optic Shroud + Focus Cell
+	Block.SHIELD:       {"c20": 3, "c6": 2},   # Focus Cell + Shielded Winding
+	Block.RADAR:        {"c19": 3, "c8": 1},   # Optic Sensor + Signal Relay
 	# ── Оружие ────────────────────────────────────────────────────────────────
-	Block.GUN:          {"c1": 3, "m3": 6},
-	Block.SHOTGUN:      {"c1": 3, "m3": 5},
-	Block.POUND_CANNON: {"c0": 4, "c1": 3},
-	Block.LASER:        {"c2": 3, "c4": 2},
-	Block.ROCKET:       {"c4": 3, "c1": 3},
-	Block.MORTAR:       {"c0": 5, "c4": 2},
+	Block.GUN:          {"c17": 2, "m3": 6},   # Sight Mount + Titanite
+	Block.SHOTGUN:      {"c17": 2, "m3": 5},
+	Block.POUND_CANNON: {"c11": 3, "c17": 2},  # Armour Segment + Sight Mount
+	Block.LASER:        {"c10": 3, "c19": 2},  # Pulse Emitter + Optic Sensor
+	Block.ROCKET:       {"c10": 3, "c8": 3},   # Pulse Emitter + Signal Relay
+	Block.MORTAR:       {"c11": 3, "c18": 2},  # Armour Segment + Control Chip
 }
 
 ## Из чего собирается блок: {ключ материала → штук}. Пустой словарь — рецепта нет.
