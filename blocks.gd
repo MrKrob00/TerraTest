@@ -437,7 +437,19 @@ func _deferred_rebuild() -> void:
 
 # ── Структурная целостность ───────────────────────────────────────────────────
 # Корень постройки: КАБИНА (мобильная машина) или СТАЦИОНАРНЫЙ блок (база). Всё, что не
-# добирается до корня по грани-к-грани, — оторвано. Один BFS ловит сразу целый оторванный кусок.
+# добирается до корня, — оторвано. Один BFS ловит сразу целый оторванный кусок.
+#
+# ПО ТОЧКАМ СТЫКОВКИ, а не просто по соприкосновению. Раньше обход шёл по любым соседним
+# занятым клеткам, и грани в нём не участвовали вовсе — из-за чего сбитый снизу ствол
+# ОСТАВАЛСЯ ВИСЕТЬ: он касался боком какого-нибудь блока, обход это засчитывал за связь, и
+# блок не считался оторванным. А по правилам стыковки связи там нет: у ствола отмечен только
+# низ, и вбок он не крепится ни к чему.
+#
+# Условие ребра то же, что и у постройки (can_attach): направление d должно быть среди
+# граней стыковки А, и обратное −d — среди граней B. Односторонней связи не бывает.
+const BFS_DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0),
+		Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+
 func _reachable_cells() -> Dictionary:
 	var seen: Dictionary = {}
 	var queue: Array = []
@@ -450,10 +462,13 @@ func _reachable_cells() -> Dictionary:
 					if not seen.has(k):
 						seen[k] = true
 						queue.append(Vector3i(x, y, z))
-	var DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0), Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
+	# Грани блока считаем ОДИН РАЗ на узел: face_dirs строит новый массив на каждый вызов, а
+	# обход спрашивает по шесть направлений на клетку.
+	var dirs_cache: Dictionary = {}
 	while not queue.is_empty():
 		var c: Vector3i = queue.pop_back()
-		for d in DIRS:
+		var a: Node = find_block(c.x, c.y, c.z)
+		for d in BFS_DIRS:
 			var n: Vector3i = c + d
 			if not _in_bounds(n.x, n.y, n.z):
 				continue
@@ -462,9 +477,27 @@ func _reachable_cells() -> Dictionary:
 			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
 			if seen.has(nk):
 				continue
+			if not _cells_linked(a, find_block(n.x, n.y, n.z), d, dirs_cache):
+				continue
 			seen[nk] = true
 			queue.append(n)
 	return seen
+
+## Есть ли РЕАЛЬНАЯ стыковка между соседними клетками в направлении d.
+func _cells_linked(a: Node, b: Node, d: Vector3i, cache: Dictionary) -> bool:
+	if a == b:
+		return true                        # две клетки одного многоклеточного блока
+	if a == null or b == null:
+		return true                        # узла нет (ещё не заспавнен) — не рвём связь на пустом месте
+	if not (a is VehicleBlock) or not (b is VehicleBlock):
+		return true
+	return _dirs_of(a, cache).has(d) and _dirs_of(b, cache).has(-d)
+
+func _dirs_of(node: Node, cache: Dictionary) -> Array:
+	var id: int = node.get_instance_id()
+	if not cache.has(id):
+		cache[id] = (node as VehicleBlock).face_dirs((node as VehicleBlock).connect_faces)
+	return cache[id]
 
 func _detach_orphans() -> void:
 	if node_map.is_empty():
