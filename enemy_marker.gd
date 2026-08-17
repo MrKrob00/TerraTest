@@ -60,10 +60,14 @@ func _process(delta: float) -> void:
 	if cc == null or not ("current_vehicle" in cc) or cc.current_vehicle == null:
 		visible = false
 		return
-	var d: float = (cc.current_vehicle as Node3D).global_position.distance_to(global_position)
-	visible = d <= SHOW_DISTANCE and d >= HIDE_DISTANCE
+	# Гейт видимости считаем по КВАДРАТУ: _process идёт каждый кадр у каждой метки, а
+	# большинство их невидимо — корень для них считался впустую. Настоящее расстояние
+	# берём ниже, уже только для видимых: там оно нужно значением, а не сравнением.
+	var d2: float = (cc.current_vehicle as Node3D).global_position.distance_squared_to(global_position)
+	visible = d2 <= SHOW_DISTANCE * SHOW_DISTANCE and d2 >= HIDE_DISTANCE * HIDE_DISTANCE
 	if not visible:
 		return
+	var d: float = sqrt(d2)
 	# Размер метки НЕ должен таять с расстоянием: Label3D по умолчанию уменьшается
 	# перспективой, и на боевой дистанции имя превращалось бы в пиксель. Растим сами,
 	# но с потолком — вблизи метка не должна закрывать саму машину.

@@ -159,7 +159,7 @@ const PLACE_BATCH := 400            # попыток на кадр при рас
 
 func _too_close(placed: Array, p: Vector3, spacing: float) -> bool:
 	for q in placed:
-		if (q as Vector3).distance_to(p) < spacing:
+		if (q as Vector3).distance_squared_to(p) < spacing * spacing:
 			return true
 	return false
 
@@ -173,7 +173,7 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float
 			if bucket == null:
 				continue
 			for q in (bucket as Array):
-				if (q as Vector3).distance_to(p) < spacing:
+				if (q as Vector3).distance_squared_to(p) < spacing * spacing:
 					return true
 	return false
 

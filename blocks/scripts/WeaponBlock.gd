@@ -408,7 +408,7 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 		return true
 	if res.collider != body:
 		return false
-	return res.position.distance_to(cabin.global_position) <= 0.9
+	return res.position.distance_squared_to(cabin.global_position) <= 0.81   # 0.9², корень не нужен
 
 ## Сказать подстреленной машине, КТО в неё попал. Урон и осведомлённость разделены
 ## намеренно: hurt() зовут ещё бур по жиле, реген и цепная детонация блоков — у них стрелка

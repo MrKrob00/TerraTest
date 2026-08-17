@@ -45,8 +45,9 @@ func fire_bullet() -> void:
 	var t: Node3D = _current_target
 	if t == null or not is_instance_valid(t):
 		return
-	var d: float = global_position.distance_to(t.global_position)
-	if d < MIN_RANGE or d > MAX_RANGE:
+	# Обе границы — сравнения, значение дальности здесь не нужно: корень не берём.
+	var d2: float = global_position.distance_squared_to(t.global_position)
+	if d2 < MIN_RANGE * MIN_RANGE or d2 > MAX_RANGE * MAX_RANGE:
 		return                       # вне вилки — молчим, и это видно как правило
 	_salvo_t = SALVO_PERIOD
 	for _i in SHELLS:

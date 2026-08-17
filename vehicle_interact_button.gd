@@ -51,7 +51,7 @@ func _process(delta: float) -> void:
 		return
 	var cur: Node3D = cc.current_vehicle
 	var near: bool = cur != null and cur != vehicle \
-			and cur.global_position.distance_to(global_position) <= SHOW_DISTANCE
+			and cur.global_position.distance_squared_to(global_position) <= SHOW_DISTANCE * SHOW_DISTANCE
 	visible = near
 	if not near:
 		_cancel_hold()
@@ -89,7 +89,8 @@ func _cancel_hold() -> void:
 func _input_event(camera: Camera3D, event: InputEvent, _pos: Vector3, _normal: Vector3, _shape: int) -> void:
 	if not visible:
 		return
-	if camera and camera.global_position.distance_to(global_position) > SHOW_DISTANCE + 6.0:
+	var far: float = SHOW_DISTANCE + 6.0
+	if camera and camera.global_position.distance_squared_to(global_position) > far * far:
 		return
 	var pressed: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed) \
 			or (event is InputEventScreenTouch and event.pressed)

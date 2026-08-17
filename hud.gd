@@ -175,7 +175,7 @@ class RadarHUD extends Control:
 		var scale := r / maxf(range_world, 1.0)
 		for b in blips:
 			var pix: Vector2 = c + (b["p"] as Vector2) * scale
-			if pix.distance_to(c) > r - 2.0:
+			if pix.distance_squared_to(c) > (r - 2.0) * (r - 2.0):
 				continue
 			draw_circle(pix, 3.0, b["c"])
 		# игрок в центре — треугольник по heading

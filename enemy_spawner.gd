@@ -199,8 +199,10 @@ func _track_dormancy(delta: float) -> void:
 	for e in _enemies:
 		if not is_instance_valid(e):
 			continue
-		var d: float = player.global_position.distance_to(e.global_position)
-		if d > sleep_dist:
+		# Квадраты: порог сравнивается с порогом, корень ничего не меняет. Цикл идёт по ВСЕМ
+		# врагам каждый кадр — здесь это самый горячий distance в проекте.
+		var d2: float = player.global_position.distance_squared_to(e.global_position)
+		if d2 > sleep_dist * sleep_dist:
 			_far_time[e] = float(_far_time.get(e, 0.0)) + delta
 			if _far_time[e] >= sleep_delay:
 				_sleep(e)
@@ -222,7 +224,8 @@ func _release_lost_invader(player: Node3D) -> void:
 		return
 	if not _is_asleep(_invader):
 		return
-	if player.global_position.distance_to(_invader.global_position) < sleep_dist * INVADER_GIVE_UP:
+	var give_up: float = sleep_dist * INVADER_GIVE_UP
+	if player.global_position.distance_squared_to(_invader.global_position) < give_up * give_up:
 		return
 	_enemies.erase(_invader)
 	_invader.queue_free()
@@ -266,15 +269,15 @@ func _trim_sleepers(player: Node3D) -> void:
 	if _enemies.size() <= max_total:
 		return
 	var worst: Node3D = null
-	var worst_d: float = -1.0
+	var worst_d2: float = -1.0
 	for e in _enemies:
 		if not is_instance_valid(e) or e == _invader or not _is_asleep(e):
 			continue
 		if bool(e.get_meta("story", false)):
 			continue                           # враг, приведённый квестом: его ждёт задание
-		var d: float = player.global_position.distance_to((e as Node3D).global_position)
-		if d > worst_d:
-			worst_d = d
+		var d2: float = player.global_position.distance_squared_to((e as Node3D).global_position)
+		if d2 > worst_d2:
+			worst_d2 = d2
 			worst = e
 	if worst != null:
 		_enemies.erase(worst)
@@ -488,7 +491,7 @@ func _near_anchored_base(pos: Vector3) -> bool:
 			continue                           # только машины ИГРОКА
 		if not bool(v.get("anchored")):
 			continue
-		if pos.distance_to((v as Node3D).global_position) < quiet_radius:
+		if pos.distance_squared_to((v as Node3D).global_position) < quiet_radius * quiet_radius:
 			return true
 	return false
 

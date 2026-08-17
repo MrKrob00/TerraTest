@@ -131,7 +131,10 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
 			if bucket == null:
 				continue
 			for q in (bucket as Array):
-				if (q as Vector3).distance_to(p) < min_spacing:
+				# Квадраты: на генерации карты сюда приходит до двадцати четырёх тысяч
+				# кандидатов, у каждого по девять клеток соседей — корень стоит заметного
+				# времени на загрузке, а решает здесь только сравнение с порогом.
+				if (q as Vector3).distance_squared_to(p) < min_spacing * min_spacing:
 					return true
 	return false
 
