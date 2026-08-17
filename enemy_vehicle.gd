@@ -260,17 +260,13 @@ func _scan_for_targets() -> void:
 		if not _is_enemy(b) or not (b is Node3D):
 			continue
 		var d: float = global_position.distance_to((b as Node3D).global_position)
-		if d >= best_d:
-			continue
-		# Луч считаем ПОСЛЕ отбора по расстоянию: он дороже сравнения чисел, а кандидатов
-		# в сфере обычно один.
-		if d > hear_radius and not _has_line_of_sight(b as Node3D):
-			continue
-		best_d = d
-		best = b as Node3D
+		if d < best_d:
+			best_d = d
+			best = b as Node3D
+	# Ближайшего пропускаем через общее правило видимости — луч дороже сравнения чисел,
+	# поэтому считаем его один раз, а не для каждого кандидата.
 	if best != null:
-		_target = best
-		_forget_timer = forget_enemy_time
+		_consider_target(best)
 
 ## Видим ли цель ПРЯМО СЕЙЧАС: в радиусе и либо вплотную (слышно), либо по прямой линии.
 ## Результат луча кешируется — он нужен и забыванию (каждый кадр), и оценке обстановки,
@@ -432,7 +428,8 @@ func _has_line_of_sight(t: Node3D) -> bool:
 	if _los_q == null:
 		_los_q = PhysicsRayQueryParameters3D.new()
 		_los_q.collision_mask = 1        # только рельеф: чужие блоки укрытием не считаем
-	_los_q.exclude = [self, t]
+	# exclude НЕ заполняем: он принимает RID'ы, а не узлы, и при маске «только рельеф»
+	# исключать некого — ни мы, ни цель на первом слое не лежим (машины на пятом).
 	_los_q.from = global_position + Vector3.UP
 	_los_q.to = t.global_position + Vector3.UP
 	return get_world_3d().direct_space_state.intersect_ray(_los_q).is_empty()
@@ -714,20 +711,39 @@ func _is_enemy(body: Node) -> bool:
 # СИГНАЛЫ AREA3D
 # ══════════════════════════════════════════
 
+# ВХОД В ЗОНУ — второй путь захвата, и он обязан подчиняться тому же правилу видимости, что
+# и периодический поиск. Раньше не подчинялся: сигнал ставил цель напрямую, и достаточно было
+# пересечь границу сферы, чтобы враг увидел сквозь холм. Поиск при этом работает, только пока
+# цели НЕТ, так что на практике почти всё захватывалось именно здесь — то есть проверка
+# видимости обходилась в большинстве случаев.
 func _on_body_entered(body: Node) -> void:
-	if !_is_enemy(body): return
-	var body3d: Node3D = body as Node3D
-	if !is_instance_valid(_target):
-		_target       = body3d
+	if not _is_enemy(body) or not (body is Node3D):
+		return
+	_consider_target(body as Node3D)
+
+## Взять ли это в цель. ЕДИНСТВЕННОЕ место с правилом «кого враг может заметить»: и вход в
+## зону, и периодический поиск ходят сюда, поэтому разъехаться им негде.
+func _consider_target(body3d: Node3D) -> bool:
+	if body3d == null or not is_instance_valid(body3d):
+		return false
+	var d: float = global_position.distance_to(body3d.global_position)
+	if d > detection_radius:
+		return false
+	if d > hear_radius and not _has_line_of_sight(body3d):
+		return false                # за укрытием и не слышно — не видим
+	if not is_instance_valid(_target):
+		_target = body3d
 		_forget_timer = forget_enemy_time
-	elif relentless:
-		return                      # цель зафиксирована при спавне — на других не отвлекаемся
-	else:
-		var d_new: float = global_position.distance_to(body3d.global_position)
-		var d_cur: float = global_position.distance_to(_target.global_position)
-		if d_new < d_cur:
-			_target = body3d
-			_forget_timer = forget_enemy_time
+		return true
+	if relentless:
+		return false                # цель зафиксирована при спавне — на других не отвлекаемся
+	# Уже с кем-то деремся: меняем цель только на БОЛЕЕ БЛИЗКУЮ, иначе две машины рядом
+	# перебрасывали бы врага между собой на каждом пересечении границы.
+	if d < global_position.distance_to(_target.global_position):
+		_target = body3d
+		_forget_timer = forget_enemy_time
+		return true
+	return false
 
 func _on_body_exited(body: Node) -> void:
 	if body == _target:
