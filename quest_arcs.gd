@@ -41,10 +41,21 @@ func _arc_power_1(q: Dictionary) -> void:
 	var key := "power_1"
 	if not _dropped.has(key):
 		_dropped[key] = true
+		# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
+		# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело
+		# это как «якорь не выдали вовсе».
 		_props.drop_for("arc_power", G.Block.SOLAR)
-		_props.drop_for("arc_power+", G.Block.SUPPORT)
-	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT):
+		_props.drop_for("arc_power", G.Block.SUPPORT)
+	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
+	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
+	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
+	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
 		Q.report(String(q["event"]), 1)
+
+## Машина игрока СЕЙЧАС на якоре. Через get(), потому что поле есть только у машин игрока.
+func _is_anchored() -> bool:
+	var p: Node3D = _player()
+	return p != null and p.get("anchored") == true
 
 func _arc_power_2(q: Dictionary) -> void:
 	var key := "power_2"
