@@ -29,7 +29,8 @@ var _assembly_shown: int = -1    # что уже записано в прогр�
 const EXPLAIN := {
 	"tut_quests": [
 		{"t": "quest_list", "s": "Every directive lands here. Boot steps first, then the System's own, then the cycles."},
-		{"t": "quest_star", "s": "The star picks what the tracker follows. None of it is compulsory — the System only asks."},
+		{"t": "quest_list", "s": "A directive can run in parts — finish one and the next opens under the same entry."},
+		{"t": "quest_star", "s": "The star picks what the tracker follows, and a marker leads you to it. None of it is compulsory — the System only asks."},
 	],
 	"tut_filters": [
 		{"t": "garage_grid", "s": "Every part you hold. The corner number is how many of it you have."},
@@ -41,7 +42,7 @@ const EXPLAIN := {
 		{"t": "garage_grid", "s": "A block you have not researched is not sold at all — research comes first."},
 	],
 	"tut_tech": [
-		{"t": "garage_progress", "s": "RP means Research Points. Quests give them, so does the first kill of each enemy type."},
+		{"t": "garage_progress", "s": "RP means Research Points. Every wreck you leave behind pays them — the bigger the machine was, the more it pays."},
 		{"t": "garage_tech", "s": "RP unlocks blocks here. Until a block is researched, the shop will not sell it."},
 		{"t": "garage_progress", "s": "Gr is your clearance. It rises as the System logs your work, and whole branches wait on it."},
 	],
@@ -176,22 +177,33 @@ func _drive_assembly_progress() -> void:
 	_assembly_shown = want               # список квестов пересобирался бы каждый кадр
 	Q.set_progress("tut_place_all", want)
 
-## Сколько блоков ещё ЖДЁТ установки: свободные в мире, лежащие в инвентаре и тот, что в руке.
-## Кабину и стационарные блоки не считаем — их на машину и не поставить.
+## Сколько блоков СТАРТОВОГО НАБОРА ещё ждёт установки: в инвентаре, в руке и лежащие
+## РЯДОМ С МАШИНОЙ. Кабину и стационарные не считаем — их на машину и не поставить.
+##
+## Радиус тут обязателен. Считать все свободные блоки мира было ошибкой: там валяются обломки
+## сбитых врагов, предметы квестов и всё, что игрок когда-либо выбросил, — счётчик не
+## обнулялся никогда, и запасной выход из шага не срабатывал вовсе. Стартовый набор падает
+## орбитой прямо у машины (award_block_list), так что смотреть дальше незачем.
+const PENDING_RADIUS := 40.0
+
 func _pending_blocks() -> int:
 	var n: int = G.block_inventory.size()
 	var v: Node = _vehicle()
 	if v != null and v.get("block_take") == true and v.get("block_body") != null:
 		n += 1                           # блок в руке — он ещё не на машине, но и не потерян
 	var objects: Node = get_node_or_null("/root/Main/objects")
-	if objects != null:
-		for c in objects.get_children():
-			if not ("block" in c):
-				continue
-			var bt: int = int(c.get("block"))
-			if bt == G.Block.CABIN or G.is_stationary(bt):
-				continue
-			n += 1
+	if objects == null or not (v is Node3D):
+		return n
+	var from: Vector3 = (v as Node3D).global_position
+	for c in objects.get_children():
+		if not ("block" in c) or not (c is Node3D):
+			continue
+		var bt: int = int(c.get("block"))
+		if bt == G.Block.CABIN or G.is_stationary(bt):
+			continue
+		if from.distance_squared_to((c as Node3D).global_position) > PENDING_RADIUS * PENDING_RADIUS:
+			continue                     # это не наш набор, а чужой хлам где-то в мире
+		n += 1
 	return n
 
 func _aim_current_step() -> void:
@@ -224,7 +236,14 @@ func _aim_current_step() -> void:
 				_aim_world(_nearest_loose_block, "Take the next part",
 						TutorialGuide.Gate.WORLD)
 		"tut_mode_move":
-			_aim_node(_hud_node("ModeToggle"), "Tap MOVE and drive")
+			# Пока открыт гараж, кнопки режима на экране НЕТ — она спрятана вместе со всем
+			# игровым управлением. Палец показывал в пустоту, подсказка не менялась, и шаг
+			# выглядел так, будто обучение всё ещё просит навесить блок. Сначала выводим
+			# из гаража, и только потом показываем на переключатель режима.
+			if _garage_open():
+				_aim_node(_hud_ui("menu"), "Assembled. Close storage")
+			else:
+				_aim_node(_hud_node("ModeToggle"), "Tap MOVE and drive")
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your directive tracker. Tap it")
 		"tut_garage":
@@ -281,6 +300,12 @@ func _hud_ui(key: String) -> Control:
 	if hud == null or not hud.has_method("tutorial_target"):
 		return null
 	return hud.tutorial_target(key)
+
+## Открыт ли гараж прямо сейчас. Пока он открыт, игровые кнопки скрыты (hud._set_game_controls_hidden),
+## и наводиться на них бессмысленно.
+func _garage_open() -> bool:
+	var g: Control = _hud_ui("garage")
+	return g != null and g.visible
 
 func _garage_node(key: String) -> Control:
 	var g: Node = _hud_ui("garage")
