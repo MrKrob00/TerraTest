@@ -39,6 +39,7 @@ func _ready() -> void:
 	_pin = _label("◆", 150, 0.0)
 	_name = _label(name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id()),
 			64, -0.55)
+	_build_plate()
 
 func _label(text: String, font_size: int, y: float) -> Label3D:
 	var l := Label3D.new()
@@ -52,8 +53,58 @@ func _label(text: String, font_size: int, y: float) -> Label3D:
 	l.outline_size = 22
 	l.outline_modulate = Color(0, 0, 0, 0.85)
 	l.position.y = y
+	l.render_priority = 1          # текст поверх своей подложки (та идёт с приоритетом ниже)
 	add_child(l)
 	return l
+
+# ── Подложка под именем ──────────────────────────────────────────────────────
+# Одной обводки не хватало: на светлом склоне или на небе чёрный контур сливается, и имя
+# читается через раз. Тёмная плашка решает это надёжно — тем же приёмом, что панели HUD.
+#
+# Размер считаем ОДИН РАЗ по реальной ширине строки: имя машины не меняется за всю её жизнь,
+# и мерить его каждый кадр незачем. Шрифт берём ThemeDB.fallback_font — именно им Label3D и
+# рисует, когда своего font ему не задали (в тему Control он не смотрит, это 3D-узел).
+const PLATE_PAD := Vector2(26.0, 10.0)      # запас вокруг текста, в пикселях шрифта
+const PLATE_BG := Color(0.02, 0.06, 0.07, 0.72)
+
+var _plate: MeshInstance3D = null
+var _plate_line: MeshInstance3D = null
+
+func _build_plate() -> void:
+	var f: Font = _name.font if _name.font != null else ThemeDB.fallback_font
+	if f == null:
+		return
+	var px: Vector2 = f.get_string_size(_name.text, HORIZONTAL_ALIGNMENT_CENTER, -1, _name.font_size)
+	var w: float = (px.x + PLATE_PAD.x) * _name.pixel_size
+	var h: float = (px.y + PLATE_PAD.y) * _name.pixel_size
+	_plate = _quad(Vector2(w, h), PLATE_BG, -2)
+	_plate.position.y = _name.position.y
+	# Тонкая полоска снизу в цвете метки — она же красится в жёлтый, когда цель назначена.
+	# Плашка от неё перестаёт быть безликим прямоугольником и читается как часть метки.
+	_plate_line = _quad(Vector2(w, h * 0.12), COL, -1)
+	_plate_line.position.y = _name.position.y - h * 0.5
+
+# Билборд-квад под текстом. Порядок рисования задаём render_priority, а не сдвигом по Z:
+# у билборда вершины разворачивает шейдер, и локальный сдвиг «назад» камера не увидит.
+func _quad(sz: Vector2, col: Color, priority: int) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = sz
+	mi.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = col
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Depth-тест как у самих надписей: плашка обязана прятаться за рельефом вместе с ними,
+	# иначе враг за холмом «просвечивал» бы теперь ещё и подложкой.
+	m.no_depth_test = false
+	m.render_priority = priority
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	return mi
 
 ## Контроллер камеры кешируем. Он один на сцену и не меняется, а поиск по группе шёл
 ## КАЖДЫЙ кадр у КАЖДОЙ метки — это обход дерева ради ссылки, которая не менялась с
@@ -92,6 +143,9 @@ func _process(delta: float) -> void:
 	var amp: float = 0.35 if marked else 0.15
 	_pin.modulate = base * (0.85 + amp * sin(_t * (6.0 if marked else 3.0)))
 	_name.modulate = base
+	# Полоска под именем живёт тем же цветом: назначенная цель желтеет целиком, а не наполовину.
+	if _plate_line != null:
+		(_plate_line.material_override as StandardMaterial3D).albedo_color = base
 
 # Назначена ли ЭТА машина (или её блок) приоритетной целью активной машины игрока.
 func _is_marked(player: Node) -> bool:
