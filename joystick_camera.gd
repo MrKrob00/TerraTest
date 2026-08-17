@@ -63,7 +63,7 @@ func _input(event):
 			# Тап = короткое нажатие почти без движения ручки; драг и пинч-зум — не тап.
 			var now := Time.get_ticks_msec()
 			if now - _press_ms < 250 and not zoom \
-					and (knob_pos - stick_center).length() < max_distance * 0.3:
+					and (knob_pos - stick_center).length_squared() < max_distance * 0.3 * max_distance * 0.3:
 				if _had_pending:
 					$"../..".reset_gaze()   # второй быстрый тап подряд — сброс взгляда
 				else:
@@ -84,15 +84,16 @@ func _input(event):
 			second_touch_pos = event.position
 
 func is_touch_inside(touch_pos: Vector2):
-	return (touch_pos - global_position).length() <= max_distance /10
+	return (touch_pos - global_position).length_squared() <= (max_distance / 10.0) * (max_distance / 10.0)
 
 func is_touch_outside(touch_pos: Vector2):
 	screen_size = get_viewport().get_visible_rect().size
-	return (touch_pos - global_position).length() > max_distance/10 and touch_pos.x > screen_size.x/3*2 and touch_pos.y <screen_size.y/2
+	var r: float = max_distance / 10.0
+	return (touch_pos - global_position).length_squared() > r * r and touch_pos.x > screen_size.x/3*2 and touch_pos.y <screen_size.y/2
 
 func is_touch_outside_2(touch_pos: Vector2):
 	screen_size = get_viewport().get_visible_rect().size
-	return (touch_pos - global_position).length() > max_distance and touch_pos.x > screen_size.x/2 and touch_pos.y <screen_size.y/2
+	return (touch_pos - global_position).length_squared() > max_distance * max_distance and touch_pos.x > screen_size.x/2 and touch_pos.y <screen_size.y/2
 
 func update_knob_position(touch_pos: Vector2):
 	var dir = touch_pos - global_position

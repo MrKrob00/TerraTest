@@ -42,11 +42,11 @@ func _input(event):
 		queue_redraw()
 
 func is_touch_inside(touch_pos: Vector2) -> bool:
-	return (touch_pos - global_position).length() <= max_distance
+	return (touch_pos - global_position).length_squared() <= max_distance * max_distance
 
 func is_touch_outside(touch_pos: Vector2) -> bool:
 	screen_size = get_viewport().get_visible_rect().size
-	return (touch_pos - global_position).length() > max_distance \
+	return (touch_pos - global_position).length_squared() > max_distance * max_distance \
 		and touch_pos.x < screen_size.x * ZONE_X_FRAC \
 		and touch_pos.y > screen_size.y * ZONE_Y_FRAC
 

@@ -213,7 +213,7 @@ func _scatter_blocks() -> void:
 				var rb := n3 as RigidBody3D
 				var dir := (rb.global_position - cabin_pos)
 				dir.y = 0.0
-				dir = dir.normalized() if dir.length() > 0.01 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
+				dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
 				rb.freeze = false
 				rb.sleeping = false
 				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
@@ -430,17 +430,19 @@ func _build_move_dir() -> Vector3:
 		joy = camera_controller.joystick_move.get_joystick_dir()
 	if not _typing_in_ui():
 		joy = (joy + Input.get_vector("move_left", "move_right", "move_forward", "move_back")).limit_length(1.0)
-	if joy.length() < 0.12:
+	if joy.length_squared() < 0.0144:                   # 0.12², мёртвая зона стика
 		return Vector3.ZERO
 	var cam: Camera3D = camera_controller.camera if camera_controller != null else null
 	if cam == null:
 		return Vector3.ZERO
 	var cf := -cam.global_transform.basis.z; cf.y = 0.0
 	var cr := cam.global_transform.basis.x;  cr.y = 0.0
-	if cf.length() > 0.01: cf = cf.normalized()
-	if cr.length() > 0.01: cr = cr.normalized()
+	# Проверка «вектор не вырожден» — сравнение, корень ей не нужен; normalized() ниже
+	# возьмёт свой, и это уже по делу.
+	if cf.length_squared() > 0.0001: cf = cf.normalized()
+	if cr.length_squared() > 0.0001: cr = cr.normalized()
 	var m := cr * joy.x + cf * (-joy.y)   # joy.y вверх = -1 → вперёд (от камеры)
-	return m.normalized() if m.length() > 1.0 else m
+	return m.normalized() if m.length_squared() > 1.0 else m   # 1² = 1
 
 # ── Действия кругового меню (вызывает hud.open_vehicle_menu) ─────────────────
 
@@ -1629,7 +1631,7 @@ func _put_resource_back(res: Node3D) -> void:
 	if cam != null:
 		var fwd: Vector3 = -cam.global_transform.basis.z
 		fwd.y = 0.0
-		if fwd.length() > 0.01:
+		if fwd.length_squared() > 0.0001:
 			drop = global_position + fwd.normalized() * 3.0 + Vector3.UP * 1.5
 	res.top_level = false
 	res.reparent(objects)

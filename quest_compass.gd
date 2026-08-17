@@ -109,8 +109,8 @@ func _draw() -> void:
 			var to: Vector3 = world - cam.global_position
 			dir = Vector2((cam.global_transform.basis.x).dot(to), (cam.global_transform.basis.y).dot(to))
 			dir.y = -dir.y                       # экранный Y растёт вниз
-			dir = -dir if dir.length() < 0.001 else dir
-		if dir.length() < 0.001:
+			dir = -dir if dir.length_squared() < 0.000001 else dir
+		if dir.length_squared() < 0.000001:
 			dir = Vector2.UP
 		dir = dir.normalized()
 		# Пересечение луча из центра с прямоугольником рамки.

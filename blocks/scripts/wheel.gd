@@ -135,10 +135,10 @@ func _part_geometry(n3: Node3D, hub: Vector3) -> Dictionary:
 	var pivot: Vector3 = e0 if e0.distance_squared_to(hub) > e1.distance_squared_to(hub) else e1
 	var outer: Vector3 = e1 if pivot == e0 else e0
 	var arm: Vector3 = outer - pivot
-	if arm.length() < 0.05:
+	if arm.length_squared() < 0.0025:                # 0.05²
 		return {}                          # деталь без выраженной длины — двигать нечего
 	var axis: Vector3 = _up_local.cross(arm)
-	if axis.length() < 0.001:
+	if axis.length_squared() < 0.000001:             # 0.001²
 		axis = Vector3.RIGHT               # строго вертикальная деталь: уйдёт в стойки, ось не нужна
 	return {"node": n3, "pivot": pivot, "axis": axis.normalized(), "len": arm.length(),
 			"dir": arm.normalized(), "basis": n3.transform.basis, "pos": n3.position}

@@ -66,7 +66,7 @@ func _drag_input(ev: InputEvent, win: Control, id: String) -> void:
 				G.set_window_pos(id, win.position)   # пишем в конфиг на отпускании, не на каждый кадр
 	elif ev is InputEventMouseMotion and _drag_win == win:
 		var moved: Vector2 = win.get_global_mouse_position() - _drag_ptr
-		if not _dragged and moved.length() < DRAG_SLOP:
+		if not _dragged and moved.length_squared() < DRAG_SLOP * DRAG_SLOP:
 			return                    # дрожание пальца на тапе — это ещё не перетаскивание
 		_dragged = true
 		_moved[id] = true

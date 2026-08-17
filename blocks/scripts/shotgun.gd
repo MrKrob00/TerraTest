@@ -56,7 +56,7 @@ func _spread_last() -> void:
 	# Вертикальный разброс вдвое меньше горизонтального: широкая по земле «метла» читается
 	# лучше, чем облако, часть которого уходит в небо впустую.
 	var side: Vector3 = d.cross(Vector3.UP).normalized()
-	if side.length() > 0.01:
+	if side.length_squared() > 0.0001:
 		d = d.rotated(side, randf_range(-a * 0.5, a * 0.5))
 	b.dir = d.normalized()
 
