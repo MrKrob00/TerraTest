@@ -83,9 +83,9 @@ func _find_battery(mine: Node) -> Node3D:
 				continue
 			if int(b.get("block")) != G.Block.BATTERY:
 				continue
-			var d: float = global_position.distance_to((b as Node3D).global_position)
-			if d < best_d:
-				best_d = d
+			var d2: float = global_position.distance_squared_to((b as Node3D).global_position)
+			if d2 < best_d2:
+				best_d2 = d2
 				best = b as Node3D
 	return best
 

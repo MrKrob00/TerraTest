@@ -126,6 +126,6 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 
 func _too_close(placed: Array[Vector3], p: Vector3) -> bool:
 	for q in placed:
-		if Vector2(q.x, q.z).distance_to(Vector2(p.x, p.z)) < avoid_existing:
+		if Vector2(q.x, q.z).distance_squared_to(Vector2(p.x, p.z)) < avoid_existing * avoid_existing:
 			return true
 	return false

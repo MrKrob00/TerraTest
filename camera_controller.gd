@@ -279,11 +279,11 @@ func on_vehicle_died(dead: Node) -> void:
 		global_position = (starter as Node3D).global_position
 		return
 	var best: RigidBody3D = alive[0]
-	var best_d := INF
+	var best_d2 := INF
 	for v in alive:
-		var d: float = origin.distance_to((v as Node3D).global_position)
-		if d < best_d:
-			best_d = d
+		var d2: float = origin.distance_squared_to((v as Node3D).global_position)
+		if d2 < best_d2:
+			best_d2 = d2
 			best = v
 	switch_to_vehicle(best)
 

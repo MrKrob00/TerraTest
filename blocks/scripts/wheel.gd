@@ -131,7 +131,8 @@ func _part_geometry(n3: Node3D, hub: Vector3) -> Dictionary:
 	e1[ax] = ab.position[ax] + ab.size[ax]
 	e0 = n3.transform * e0
 	e1 = n3.transform * e1
-	var pivot: Vector3 = e0 if e0.distance_to(hub) > e1.distance_to(hub) else e1
+	# Который из концов дальше — сравнение, а не измерение: два корня здесь лишние.
+	var pivot: Vector3 = e0 if e0.distance_squared_to(hub) > e1.distance_squared_to(hub) else e1
 	var outer: Vector3 = e1 if pivot == e0 else e0
 	var arm: Vector3 = outer - pivot
 	if arm.length() < 0.05:

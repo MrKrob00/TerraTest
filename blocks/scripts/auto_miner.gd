@@ -98,7 +98,8 @@ func _loose_resources() -> Array:
 		if holder == null:
 			continue
 		for c in holder.get_children():
-			if c is Node3D and "type" in c and global_position.distance_to((c as Node3D).global_position) <= pickup_radius:
+			if c is Node3D and "type" in c \
+					and global_position.distance_squared_to((c as Node3D).global_position) <= pickup_radius * pickup_radius:
 				out.append(c)
 	return out
 

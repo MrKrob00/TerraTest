@@ -134,7 +134,7 @@ func _process(delta: float) -> void:
 		var p := Vector2(bp.x, bp.z)
 		live.append(p)
 		var last: Vector2 = b.get_meta("_last_print", Vector2(INF, INF))
-		if last.distance_to(p) >= footprint_spacing:
+		if last.distance_squared_to(p) >= footprint_spacing * footprint_spacing:
 			b.set_meta("_last_print", p)
 			_footprints.append({"pos": p, "born": _time})
 

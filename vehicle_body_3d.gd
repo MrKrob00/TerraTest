@@ -237,7 +237,7 @@ func _defense_tick(delta: float) -> void:
 		var f = v.get("faction")
 		if f == null or f == faction:
 			continue
-		if global_position.distance_to((v as Node3D).global_position) <= DEFENSE_RANGE:
+		if global_position.distance_squared_to((v as Node3D).global_position) <= DEFENSE_RANGE * DEFENSE_RANGE:
 			_on_attack_timeout()      # attack() у всех блоков с оружием
 			return
 

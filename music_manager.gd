@@ -162,7 +162,7 @@ func _enemy_near() -> bool:
 		if v is Node3D and v != me:
 			var f = v.get("faction")
 			if f != null and int(f) != 0 \
-					and me.global_position.distance_to((v as Node3D).global_position) <= BATTLE_RADIUS:
+					and me.global_position.distance_squared_to((v as Node3D).global_position) <= BATTLE_RADIUS * BATTLE_RADIUS:
 				return true
 	return false
 

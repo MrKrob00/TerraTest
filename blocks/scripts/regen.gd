@@ -27,7 +27,7 @@ func _physics_process(delta: float) -> void:
 			continue
 		if b.current_hp >= b.max_hp:
 			continue
-		if global_position.distance_to((b as Node3D).global_position) > REGEN_RADIUS:
+		if global_position.distance_squared_to((b as Node3D).global_position) > REGEN_RADIUS * REGEN_RADIUS:
 			continue
 		# Платим за каждый блок отдельно: не хватило на этого — дальше смысла нет.
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:

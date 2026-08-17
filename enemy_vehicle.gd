@@ -254,14 +254,17 @@ func assign_target(t: Node3D, never_forget: bool = false) -> void:
 func _scan_for_targets() -> void:
 	if _detect_area == null or not is_instance_valid(_detect_area):
 		return
+	# КВАДРАТЫ расстояний, а не расстояния: distance_to берёт корень, а для «кто ближе»
+	# он ничего не решает — порядок у d и d² один и тот же. Здесь это перебор всех тел в
+	# сфере несколько раз в секунду у каждого врага, и корень тут чистая трата.
 	var best: Node3D = null
-	var best_d: float = INF
+	var best_d2: float = INF
 	for b in _detect_area.get_overlapping_bodies():
 		if not _is_enemy(b) or not (b is Node3D):
 			continue
-		var d: float = global_position.distance_to((b as Node3D).global_position)
-		if d < best_d:
-			best_d = d
+		var d2: float = global_position.distance_squared_to((b as Node3D).global_position)
+		if d2 < best_d2:
+			best_d2 = d2
 			best = b as Node3D
 	# Ближайшего пропускаем через общее правило видимости — луч дороже сравнения чисел,
 	# поэтому считаем его один раз, а не для каждого кандидата.
@@ -285,10 +288,11 @@ func _refresh_vision(delta: float) -> void:
 func _can_see_target() -> bool:
 	if not is_instance_valid(_target):
 		return false
-	var d: float = global_position.distance_to(_target.global_position)
-	if d > detection_radius:
+	# Сравниваем квадраты — пороги возводим в квадрат, корень не нужен (зовётся каждый физкадр).
+	var d2: float = global_position.distance_squared_to(_target.global_position)
+	if d2 > detection_radius * detection_radius:
 		return false
-	return d <= hear_radius or _los_ok
+	return d2 <= hear_radius * hear_radius or _los_ok
 
 func _update_ai(delta: float) -> void:
 	# Цель периодически пере-ищется, пока её нет.
@@ -461,7 +465,7 @@ func _act_patrol(delta: float) -> void:
 		_drive(_get_forward(), 0.0, delta)
 		return
 	var goal: Vector3 = _patrol_targets[_patrol_index]
-	if global_position.distance_to(goal) < waypoint_reach_dist:
+	if global_position.distance_squared_to(goal) < waypoint_reach_dist * waypoint_reach_dist:
 		_patrol_index = (_patrol_index + 1) % _patrol_targets.size()
 		goal = _patrol_targets[_patrol_index]
 	_drive_to(goal, patrol_speed_factor, delta)
@@ -470,7 +474,7 @@ func _act_investigate(delta: float) -> void:
 	if not _has_last_known:
 		_act_patrol(delta)
 		return
-	if global_position.distance_to(_last_known_pos) < waypoint_reach_dist:
+	if global_position.distance_squared_to(_last_known_pos) < waypoint_reach_dist * waypoint_reach_dist:
 		_has_last_known = false          # дошли, никого нет — обратно к патрулю
 		return
 	_drive_to(_last_known_pos, chase_speed_factor, delta)
@@ -669,12 +673,12 @@ func _lose_target() -> void:
 
 func _nearest_patrol_index() -> int:
 	var best_i: int = 0
-	var best_dist: float = INF
+	var best_d2: float = INF
 	for i in _patrol_targets.size():
-		var d: float = global_position.distance_to(_patrol_targets[i])
-		if d < best_dist:
-			best_dist = d
-			best_i    = i
+		var d2: float = global_position.distance_squared_to(_patrol_targets[i])
+		if d2 < best_d2:
+			best_d2 = d2
+			best_i  = i
 	return best_i
 
 ## НАС УДАРИЛИ — значит мы знаем, откуда. Зовёт оружие в момент попадания (WeaponBlock,
@@ -726,10 +730,10 @@ func _on_body_entered(body: Node) -> void:
 func _consider_target(body3d: Node3D) -> bool:
 	if body3d == null or not is_instance_valid(body3d):
 		return false
-	var d: float = global_position.distance_to(body3d.global_position)
-	if d > detection_radius:
+	var d2: float = global_position.distance_squared_to(body3d.global_position)
+	if d2 > detection_radius * detection_radius:
 		return false
-	if d > hear_radius and not _has_line_of_sight(body3d):
+	if d2 > hear_radius * hear_radius and not _has_line_of_sight(body3d):
 		return false                # за укрытием и не слышно — не видим
 	if not is_instance_valid(_target):
 		_target = body3d
@@ -739,7 +743,7 @@ func _consider_target(body3d: Node3D) -> bool:
 		return false                # цель зафиксирована при спавне — на других не отвлекаемся
 	# Уже с кем-то деремся: меняем цель только на БОЛЕЕ БЛИЗКУЮ, иначе две машины рядом
 	# перебрасывали бы врага между собой на каждом пересечении границы.
-	if d < global_position.distance_to(_target.global_position):
+	if d2 < global_position.distance_squared_to(_target.global_position):
 		_target = body3d
 		_forget_timer = forget_enemy_time
 		return true
