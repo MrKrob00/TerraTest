@@ -98,13 +98,15 @@ func _current_step_id() -> String:
 
 # ── Кадр: цель может появиться/переехать (гараж открылся, машина едет) ────────
 func _process(delta: float) -> void:
+	# Прогресс сборки считаем ВСЕГДА, в том числе пока идёт очередь пояснений. Раньше эта
+	# ветка выходила раньше счётчика, и всё, что игрок навесил за время реплик, не считалось.
+	if _step == "tut_place_all":
+		_drive_assembly_progress()
 	if not _explain.is_empty():
 		_explain_tick(delta)
 		return
 	if _step == "":
 		return
-	if _step == "tut_place_all":
-		_drive_assembly_progress()
 	_aim_current_step()
 
 # ── Пояснения ────────────────────────────────────────────────────────────────
@@ -161,10 +163,36 @@ func _drive_assembly_progress() -> void:
 		if "block" in b:
 			n += 1                       # у меша-призрака поля block нет — он не считается
 	var want: int = clampi(n - CABIN_BLOCKS, 0, STARTER_BLOCKS)
+	# ШАГ ЗАКРЫВАЕТСЯ, КОГДА ВЕШАТЬ БОЛЬШЕ НЕЧЕГО, а не когда навешено ровно восемь.
+	#
+	# Жёсткая восьмёрка делала шаг непроходимым от любой мелочи: блок укатился под текстуру,
+	# сгорел, был продан, потерялся при возрождении — и обучение вставало навсегда, потому что
+	# восьмого блока в мире физически не существует. Считать «сколько осталось» надёжнее, чем
+	# «сколько поставлено»: пусто — значит собрал, сколько бы их ни оказалось на самом деле.
+	if _pending_blocks() <= 0:
+		want = STARTER_BLOCKS
 	if want == _assembly_shown:
 		return                           # set_progress шлёт changed БЕЗУСЛОВНО — иначе весь
 	_assembly_shown = want               # список квестов пересобирался бы каждый кадр
 	Q.set_progress("tut_place_all", want)
+
+## Сколько блоков ещё ЖДЁТ установки: свободные в мире, лежащие в инвентаре и тот, что в руке.
+## Кабину и стационарные блоки не считаем — их на машину и не поставить.
+func _pending_blocks() -> int:
+	var n: int = G.block_inventory.size()
+	var v: Node = _vehicle()
+	if v != null and v.get("block_take") == true and v.get("block_body") != null:
+		n += 1                           # блок в руке — он ещё не на машине, но и не потерян
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects != null:
+		for c in objects.get_children():
+			if not ("block" in c):
+				continue
+			var bt: int = int(c.get("block"))
+			if bt == G.Block.CABIN or G.is_stationary(bt):
+				continue
+			n += 1
+	return n
 
 func _aim_current_step() -> void:
 	match _step:
