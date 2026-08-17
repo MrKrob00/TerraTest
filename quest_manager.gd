@@ -339,11 +339,18 @@ func _on_completed(q: Dictionary) -> void:
 				and cc.current_vehicle.has_method("award_blocks"):
 			cc.current_vehicle.award_blocks(rblock, int(q.get("reward_block_count", 1)))
 	_persist_done(q)
-	_say("System", _completion_message(str(q["title"]), reward))
-	# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
+	# ШАГИ ОБУЧЕНИЯ ЗАКРЫВАЮТСЯ МОЛЧА. Их одиннадцать подряд, наград у них нет, и «директива
+	# выполнена» после каждого — это одиннадцать реплик, которые отталкивают ровно ту
+	# подсказку, ради которой обучение и существует: следующий шаг объявляется строкой ниже,
+	# и раньше он выходил ВТОРЫМ, после поздравления ни с чем.
+	# Ровно так же молча закрывает их кнопка SKIP (см. skip_tutorial) — теперь это одно правило
+	# на оба пути, а не исключение для пропуска.
 	if int(q["type"]) == Type.TUTORIAL:
+		# Обучение ведёт за руку: закрыл шаг — сразу подсказываем следующий.
 		if not _announce_tutorial():
 			tutorial_finished.emit()
+	else:
+		_say("System", _completion_message(str(q["title"]), reward))
 	# Сюжет двигается сам (visible_quests покажет следующее). Отслеживаемое могло закрыться —
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
