@@ -422,6 +422,11 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 	for e in _enemies:
 		if e == exclude or not is_instance_valid(e):
 			continue
+		# Спящих НЕ считаем: смысл счётчика — «где вокруг игрока уже есть кто-то живой», а
+		# заснувший за полкарты в этом секторе не стоит и близко. Считая его, мы запрещали
+		# спавн в целой восьмой кольца из-за машины, которую игрок оставил позади час назад.
+		if _is_asleep(e):
+			continue
 		var d: Vector3 = (e as Node3D).global_position - center
 		if Vector2(d.x, d.z).length() < 0.5:
 			continue

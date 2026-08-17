@@ -534,6 +534,15 @@ func _update_collision_cells() -> void:
 		if body == null or not is_instance_valid(body):
 			dead = true
 			continue
+		# GAME HOOK (TerraTest): a body flagged "asleep" gets no ground. Dormant enemies are
+		# frozen and their whole branch is process-disabled (enemy_spawner._sleep), yet they
+		# were still holding a full collision window open on the far side of the map — the
+		# exact cost dormancy exists to avoid. They cannot fall while frozen, and this loop
+		# runs every frame, so the window is back the moment they wake.
+		# Deliberately keyed on our own meta rather than on `freeze`: plenty of frozen bodies
+		# in this project (an anchored base, carried items) still want ground under them.
+		if body.get_meta("asleep", false):
+			continue
 		var r: int = collision_radius
 		var local := global_transform.affine_inverse() * body.global_position
 		var bx := int(round(local.x + float(w) * 0.5 - 0.5))
