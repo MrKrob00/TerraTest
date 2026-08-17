@@ -983,6 +983,16 @@ func set_ui_locked(locked: bool) -> void:
 		_set_drawer(false)
 
 # ── Сборка меню целиком в коде (тема — как у tech_ui) ─────────────────────────
+## Открыть выбор продукта фабричного блока (длинный тап по нему, см.
+## vehicle_body_3d._try_open_factory_ui). Второй раз не открываем — окно одно.
+var _factory_picker: Control = null
+
+func open_factory_picker(block: Node) -> bool:
+	if is_instance_valid(_factory_picker):
+		_factory_picker.queue_free()
+	_factory_picker = FactoryPicker.open_for(self, block)
+	return _factory_picker != null
+
 func _build_menu_button() -> void:
 	# Одна кнопка-иконка в левом верхнем углу: тап — и сразу гараж. Выпадающего меню больше
 	# нет, содержимое разошлось по вкладкам гаража и по правому ящику с техникой.

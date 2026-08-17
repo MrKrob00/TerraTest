@@ -300,6 +300,14 @@ func kind_name(key: String) -> String:
 		return COMP_NAME[j] if j < COMP_NAME.size() else key
 	return key
 
+## Рецепт словами: «2× Ferrite + 2× Cuprite». Одна точка на все подписи — и в выборе
+## продукта фабрики, и где ещё понадобится.
+func recipe_text(rec: Dictionary) -> String:
+	var parts: PackedStringArray = []
+	for k in rec:
+		parts.append("%d× %s" % [int(rec[k]), kind_name(String(k))])
+	return " + ".join(parts)
+
 ## РЕЦЕПТЫ БЛОКОВ: {ключ материала → сколько штук}. Один источник правды на двоих — по
 ## нему фабрикатор собирает, а Scrapper возвращает половину при разборе.
 ##

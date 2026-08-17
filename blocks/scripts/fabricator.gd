@@ -47,6 +47,18 @@ func try_receive(item: Node3D) -> bool:
 		_start_craft()
 	return true
 
+## Продукт сменили (см. blocks.set_factory_output) — перечитываем рецепт. Уже набранное НЕ
+## выбрасываем: материал того же вида, который нужен и новому рецепту, остаётся зачтённым, а
+## лишнее подрезается по новой норме. Обнулять всё было бы проще, но это молча съело бы
+## ресурсы, которые игрок уже отправил в цепочку.
+func reload_recipe() -> void:
+	_need = G.block_recipe(output_block).duplicate()
+	for k in _have.keys():
+		if _need.has(k):
+			_have[k] = mini(int(_have[k]), int(_need[k]))
+		else:
+			_have.erase(k)
+
 func _recipe_full() -> bool:
 	for k in _need:
 		if int(_have.get(k, 0)) < int(_need[k]):

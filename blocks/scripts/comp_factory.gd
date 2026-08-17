@@ -16,7 +16,8 @@ const RESOURCE_SCENE: String = "res://resource.tscn"
 const PUSH_INTERVAL: float = 0.35
 
 ## Что варим — индекс G.Comp. Не тип G.Comp: enum живёт в автолоаде, в @export его не
-## подставить. Игрок переключает это на блоке (пока — в инспекторе).
+## подставить. В игре это переключает игрок — долгое нажатие по блоку открывает выбор
+## (factory_picker.gd), а сам выбор хранится в карте машины, чтобы пережить сейв.
 @export var output_comp: int = 0
 ## Пауза варки, секунд.
 @export var craft_time: float = 2.0
@@ -49,6 +50,16 @@ func try_receive(item: Node3D) -> bool:
 	if _recipe_full():
 		_start_craft()
 	return true
+
+## Продукт сменили — перечитываем рецепт, уже набранное сохраняем по тем же правилам,
+## что и у фабрикатора (см. fabricator.reload_recipe).
+func reload_recipe() -> void:
+	_need = (G.COMP_RECIPE.get(output_comp, {}) as Dictionary).duplicate()
+	for k in _have.keys():
+		if _need.has(k):
+			_have[k] = mini(int(_have[k]), int(_need[k]))
+		else:
+			_have.erase(k)
 
 func _recipe_full() -> bool:
 	for k in _need:
