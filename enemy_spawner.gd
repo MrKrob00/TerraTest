@@ -494,7 +494,11 @@ func _near_anchored_base(pos: Vector3) -> bool:
 		var f = v.get("faction")
 		if f != null and int(f) != 0:
 			continue                           # только машины ИГРОКА
-		if not bool(v.get("anchored")):
+		# Сравнение с true, а НЕ bool(...): у машины без такого поля get() возвращает null, а
+		# bool(null) в Godot 4 не конструируется — «Invalid call. Nonexistent bool constructor»
+		# прямо в рантайме. Поле anchored живёт только на машинах игрока (vehicle_body_3d), и
+		# сюда приходят чужие узлы тоже.
+		if v.get("anchored") != true:
 			continue
 		if pos.distance_squared_to((v as Node3D).global_position) < quiet_radius * quiet_radius:
 			return true

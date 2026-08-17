@@ -48,7 +48,9 @@ func _factory_active() -> bool:
 	if p == null or p.name != "blocks":
 		return false                      # блок валяется в мире — фабрика не работает
 	var vehicle := p.get_parent()
-	return vehicle != null and bool(vehicle.get("anchored"))
+	# == true, а не bool(): у машины без поля anchored (враги его не имеют) get() вернёт null,
+	# а bool(null) роняет вызов в рантайме.
+	return vehicle != null and vehicle.get("anchored") == true
 
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active():
