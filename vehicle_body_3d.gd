@@ -755,6 +755,13 @@ func _input(event: InputEvent) -> void:
 			_build_tap_ms = Time.get_ticks_msec()
 			_build_tap_moved = false
 		elif _touch_count == 0 and not _build_tap_moved \
+				and Time.get_ticks_msec() - _build_tap_ms >= LONG_PRESS_MS \
+				and not _tap_over_ui(event.position):
+			# ДОЛГОЕ УДЕРЖАНИЕ = настройки блока. Жест был свободен: короткий путь ниже требует
+			# уложиться в 250 мс, и всё, что дольше, до этого просто терялось. Двойной тап
+			# занять было нельзя — он означает «взять блок в руку».
+			_try_open_factory_ui(event.position)
+		elif _touch_count == 0 and not _build_tap_moved \
 				and Time.get_ticks_msec() - _build_tap_ms < 250 \
 				and not _tap_over_ui(event.position):
 			_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
@@ -774,6 +781,10 @@ func _input(event: InputEvent) -> void:
 	# event.is_action_pressed, тач-кнопки шлют его же) перестали бы работать вовсе.
 	if event is InputEventKey and _typing_in_ui():
 		return
+	# На ПК длинного удержания нет — там та же настройка вешается на правую кнопку.
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed \
+			and not _tap_over_ui(event.position):
+		_try_open_factory_ui(event.position)
 	if event.is_action_pressed("Take"):     _on_take_pressed()
 	if event.is_action_pressed("TakeOff"):  _on_take_off_pressed()
 	if event.is_action_pressed("Building"): _on_building_pressed()
@@ -1386,6 +1397,36 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 		if ghost_block:
 			ghost_block.visible = false
 	return true
+
+## Сколько держать, чтобы это считалось длинным нажатием.
+const LONG_PRESS_MS: int = 500
+
+# Длинное нажатие по СВОЕМУ фабричному блоку = окно «что производить». Только по своему:
+# на чужой машине настройки нам не принадлежат, а лезть в них через полкарты — не механика.
+# Возвращает true, если окно открылось.
+func _try_open_factory_ui(screen_pos: Vector2) -> bool:
+	if camera_controller == null or camera_controller.camera == null:
+		return false
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	q.collision_mask = 2                            # слой блоков
+	q.exclude = [get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var target = hit.get("collider")
+	if not (target is Node):
+		return false
+	var root: Node = target
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root != self:
+		return false                                # чужая машина или свободный блок в мире
+	var hud: CanvasLayer = camera_controller.hud if ("hud" in camera_controller) else null
+	if hud == null or not hud.has_method("open_factory_picker"):
+		return false
+	return hud.open_factory_picker(target)
 
 # Двойной тап по блоку ЧУЖОЙ машины = приказ орудиям бить именно его (см.
 # WeaponBlock._update_current_target). Возвращает true, если цель назначена — тогда тап

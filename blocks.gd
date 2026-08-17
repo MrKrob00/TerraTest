@@ -82,6 +82,13 @@ func can_attach(nx: int, ny: int, nz: int, new_node: Node, attach_face: String) 
 ## для врагов («машина из пула»). Спавнер врагов ставит случайный пресет ДО добавления в дерево.
 @export var layout_preset: int = 0
 
+# ЧТО ПРОИЗВОДИТ фабричный блок, стоящий в этой клетке: "x,y,z" → номер (G.Comp у
+# компонентного завода, G.Block у фабрикатора). Живёт ЗДЕСЬ, а не только на самом узле,
+# по одной причине: настройка обязана пережить сохранение. Раскладка машины хранит клетки,
+# а не узлы, и выбор игрока, оставшись полем экземпляра, сбрасывался бы при каждой загрузке
+# на значение из сцены — то есть каждый вход в игру возвращал бы завод к первому компоненту.
+var output_map: Dictionary = {}
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
@@ -248,6 +255,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
 	node_map.erase(anchor)
 	rotation_map.erase(anchor)
+	output_map.erase(anchor)
 
 func get_block(x: int, y: int, z: int) -> G.Block:
 	if _in_bounds(x, y, z):
@@ -299,6 +307,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	get_parent().add_child(collision)
 	collision.add_to_group("block_collision")   # чтобы смена сборки могла их убрать
 	node_map[key] = instance
+	_apply_output(instance, key)
 
 	instance.position = Vector3(
 		(x - CENTER) * CELL_SIZE,
@@ -310,6 +319,41 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	# лишь из _spawn_all: первая машина / загрузка / смена сборки). При ручной постановке
 	# блока его больше не играем (см. vehicle_body_3d._on_take_pressed).
 	BlockFX.play(instance, false)
+
+# Проставить блоку сохранённый выбор продукта. Имя поля разное у двух фабрик, поэтому
+# проверяем оба: общего интерфейса у них нет и заводить его ради одного числа незачем.
+func _apply_output(inst: Node, key: String) -> void:
+	if not output_map.has(key) or inst == null:
+		return
+	var v: int = int(output_map[key])
+	if "output_comp" in inst:
+		inst.set("output_comp", v)
+	elif "output_block" in inst:
+		inst.set("output_block", v)
+
+## Клетка, в которой стоит этот узел ("x,y,z"), или "" — узел не наш.
+func cell_of_node(inst: Node) -> String:
+	for k in node_map:
+		if node_map[k] == inst:
+			return String(k)
+	return ""
+
+## Задать фабричному блоку, ЧТО он производит: и узлу сейчас, и карте — чтобы пережило сейв.
+## Возвращает false, если узел не наш или это вообще не фабрика с выбором.
+func set_factory_output(inst: Node, value: int) -> bool:
+	var key: String = cell_of_node(inst)
+	if key == "":
+		return false
+	if "output_comp" in inst:
+		inst.set("output_comp", value)
+	elif "output_block" in inst:
+		inst.set("output_block", value)
+	else:
+		return false
+	output_map[key] = value
+	if inst.has_method("reload_recipe"):
+		inst.reload_recipe()            # фабрика пересобирает рецепт под новый продукт
+	return true
 
 ## Подписать блок на СВОЁ уничтожение: карта обязана очистить его клетки, иначе на месте
 ## погибшего блока навсегда остаётся «занято», и новый туда уже не поставить (can_place
@@ -468,11 +512,16 @@ func get_layout() -> Array:
 				var block: G.Block = map[x][y][z]
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					var key: String = "%d,%d,%d" % [x, y, z]
-					blocks_array.append({
+					var entry: Dictionary = {
 						"x": x, "y": y, "z": z,
 						"block": G.block_key(block),
 						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
-					})
+					}
+					# "out" пишем ТОЛЬКО у фабрик, которым его меняли: лишнее поле в каждой
+					# из полусотни клеток раздуло бы сейв ради значения по умолчанию.
+					if output_map.has(key):
+						entry["out"] = int(output_map[key])
+					blocks_array.append(entry)
 	return blocks_array
 
 func _rot_array(v: Vector3) -> Array:
@@ -499,8 +548,12 @@ func apply_layout(blocks_array: Array) -> void:
 	rotation_map.clear()
 	cell_owner.clear()
 	_init_map()
+	output_map.clear()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
+		# Выбор продукта кладём в карту ДО _spawn_all: узлы читают его при рождении.
+		if entry.has("out"):
+			output_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = int(entry["out"])
 	_spawn_all()
 
 # Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,
