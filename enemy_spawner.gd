@@ -207,7 +207,26 @@ func _track_dormancy(delta: float) -> void:
 		else:
 			_far_time.erase(e)
 			_wake(e)
+	_release_lost_invader(player)
 	_trim_sleepers(player)
+
+# Захватчик занимает свой слот, пока жив, и уборкой спящих не трогается — иначе он не был бы
+# событием. Но «пока жив» без оговорок означало бы «навсегда»: игрок уехал, тот заснул за
+# горизонтом, и проверка сектора больше НИКОГДА никого не присылает, потому что слот занят
+# машиной, которую никто уже не встретит. Считаем такого отставшим: он гнался и потерял.
+const INVADER_GIVE_UP: float = 2.0        # во сколько раз дальше sleep_dist — уже не догонит
+
+func _release_lost_invader(player: Node3D) -> void:
+	if _invader == null or not is_instance_valid(_invader):
+		_invader = null
+		return
+	if not _is_asleep(_invader):
+		return
+	if player.global_position.distance_to(_invader.global_position) < sleep_dist * INVADER_GIVE_UP:
+		return
+	_enemies.erase(_invader)
+	_invader.queue_free()
+	_invader = null
 
 # Спящий: физика заморожена, ИИ и оружие не тикают. process_mode гасит ВСЮ ветку — иначе
 # турели дочерних блоков продолжали бы крутиться и стрелять за горизонтом.
@@ -251,6 +270,8 @@ func _trim_sleepers(player: Node3D) -> void:
 	for e in _enemies:
 		if not is_instance_valid(e) or e == _invader or not _is_asleep(e):
 			continue
+		if bool(e.get_meta("story", false)):
+			continue                           # враг, приведённый квестом: его ждёт задание
 		var d: float = player.global_position.distance_to((e as Node3D).global_position)
 		if d > worst_d:
 			worst_d = d
@@ -351,6 +372,10 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 		blocks.layout_preset = int(preset_tiers[0]) if not preset_tiers.is_empty() else 0
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
+	# Метка «сюжетный»: уборка спящих его не удалит. Без неё квест «уничтожь разведчика» мог
+	# бы стать невыполнимым молча — игрок уехал, разведчик заснул, уборка сняла его как самого
+	# дальнего, а задание осталось висеть с целью, которой больше нет.
+	enemy.set_meta("story", true)
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
@@ -526,6 +551,12 @@ func _start_scan() -> void:
 	var p := _player()
 	if p == null:
 		_scan_t = 30.0                              # игрока нет — попробуем позже
+		return
+	# Захватчик уже в мире — проверку не объявляем ВОВСЕ. Иначе Система обещала бы прислать
+	# обработчика, а _spawn_invader молча отказывал бы по правилу «один за раз»: игрок видел
+	# бы разметку квадрата, таймер, угрозу — и ничего. Пустое обещание хуже, чем тишина.
+	if _invader != null and is_instance_valid(_invader):
+		_scan_t = 60.0
 		return
 	_scan_center = p.global_position
 	_scan_state = 1
