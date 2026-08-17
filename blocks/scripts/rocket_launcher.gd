@@ -13,9 +13,8 @@ class_name RocketLauncher
 
 func _ready() -> void:
 	super._ready()
-	weapon_range = 18.0                       # ракеты бьют дальше пушки
-	fire_rate = 1.6                           # но реже (тяжёлый снаряд)
-	raycast.target_position = Vector3(0, 0, -weapon_range)
+	weapon_range = 18.0                       # сеттер сам подтянет зону обнаружения и луч
+	fire_rate = 1.6                           # реже пушки: тяжёлый снаряд
 
 # Наводка турели БЕЗ прицельного луча (у пушки тут рисовался track_visual). Копия аиминга
 # из базы, но без визуала — иначе база при отсутствии track_visual вообще не доворачивала бы.
