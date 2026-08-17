@@ -6,6 +6,15 @@ extends CanvasLayer
 ## не построит ближний террейн (map.terrain_ready) → гаснем и удаляемся. Так экран крутится ВСЁ время
 ## загрузки: и парсинг ресурсов, и ~15с генерации террейна (раньше она шла на чёрном экране, т.к.
 ## происходит в _ready карты уже ПОСЛЕ смены сцены). Всё рисуется в коде, без ассетов.
+##
+## СЛОИ СНИЗУ ВВЕРХ: градиент → каркас (сетка, скобки, линейки) → виньетка → глитч-срезы →
+## название → карточки → низ (статус, процент, полоса).
+##
+## Главное правило композиции: экран должен быть СПОКОЕН большую часть времени. Раньше всё
+## двигалось одновременно и постоянно — рвался титр, мигали четыре слоя карточек, сыпал
+## срезами фон, а поверх всего лежала сплошная штриховка скан-линий. Глитчу было нечего
+## ломать, и вместе это читалось как грязь, а не как сбой. Теперь есть неподвижная геометрия
+## (каркас) и длинные паузы между вспышками, и сбой снова работает акцентом.
 
 var next_scene: String = "res://node_3d.tscn"
 
@@ -32,10 +41,17 @@ var _cards: Array[ColorRect] = []
 var _cards_mat: Array[ShaderMaterial] = []
 var _last_rect: Vector2 = Vector2.ZERO   # следим за сменой размера ВИРТУАЛЬНОГО вьюпорта
 var _load: Label
+var _pct: Label
 var _bar: ColorRect
 var _bar_bg: ColorRect
-var _glitch: Control
-var _scanlines: Control
+var _bar_head: ColorRect
+# Типы — ИМЕННО внутренние классы, а не Control: ниже мы зовём их собственные поля
+# (intensity/focus_y/tick, title_rect/bar_rect). При статическом типе Control компилятор
+# GDScript такого не пропустит — «Cannot find property», причём уже на загрузке сцены.
+var _glitch: _GlitchFx
+var _bg: TextureRect
+var _vignette: TextureRect
+var _frame: _Frame
 var _t: float = 0.0
 var _progress: float = 0.0
 var _phase: int = 0        # 0=грузим ресурс, 1=ждём террейн, 2=гаснем
@@ -54,8 +70,11 @@ func _reseed_card(i: int) -> void:
 		_burst_t.append(0.0)
 		_burst_len.append(0.7)
 		_burst_cycle.append(1.0)
-	_burst_len[i] = randf_range(0.45, 1.0)
-	_burst_cycle[i] = _burst_len[i] + randf_range(0.2, 1.4)
+	# Вспышки КОРОЧЕ, а паузы ДЛИННЕЕ прежних. Раньше четыре слоя с паузами 0.2–1.4 с давали
+	# почти непрерывное мигание: глитч переставал быть событием и превращался в фон. Сбой
+	# работает как акцент, только если между сбоями экран спокоен.
+	_burst_len[i] = randf_range(0.25, 0.6)
+	_burst_cycle[i] = _burst_len[i] + randf_range(1.2, 3.4)
 	var m: ShaderMaterial = _cards_mat[i]
 	m.set_shader_parameter("seed", randf() * 100.0)
 	m.set_shader_parameter("grid_cells", randf_range(14.0, 30.0))
@@ -71,16 +90,39 @@ func _ready() -> void:
 	_ui.mouse_filter = Control.MOUSE_FILTER_STOP           # блокируем ввод под экраном
 	add_child(_ui)
 
-	var bg := ColorRect.new()
-	bg.color = Color(0.02, 0.03, 0.06)
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ui.add_child(bg)
+	# ФОН — вертикальный градиент, а не плоская заливка. Плоский чёрный не даёт глубины:
+	# экран выглядит выключенным, а не «включающимся». Верх холоднее и светлее низа —
+	# получается горизонт, к которому и привязана вся композиция.
+	_bg = TextureRect.new()
+	_bg.texture = _gradient([Color(0.03, 0.07, 0.11), Color(0.01, 0.02, 0.04)],
+			Vector2(0.5, 0.0), Vector2(0.5, 1.0), false)
+	# Растяжение задаём ЯВНО: у TextureRect по умолчанию размер считается от текстуры, а она
+	# у нас крошечная (градиент не нужен в большом разрешении) — без этих двух строк фон лёг
+	# бы заплаткой в углу вместо всего экрана.
+	_bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bg.stretch_mode = TextureRect.STRETCH_SCALE
+	_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_bg)
 
-	_scanlines = _Scanlines.new()                 # статичный слой: рисуется один раз
-	_scanlines.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_scanlines.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_ui.add_child(_scanlines)
+	# Каркас: сетка, угловые скобки и две линейки вокруг названия. Это и есть та СПОКОЙНАЯ
+	# часть, без которой глитч не работает: сбой читается сбоем только тогда, когда есть
+	# ровная геометрия, которую он ломает. Рисуется один раз на раскладку.
+	_frame = _Frame.new()
+	_frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_frame)
+
+	# Виньетка поверх сетки: края темнее центра. Она собирает взгляд к названию и прячет
+	# то, что сетка на широком экране уходит в бесконечность.
+	_vignette = TextureRect.new()
+	_vignette.texture = _gradient([Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.55)],
+			Vector2(0.5, 0.5), Vector2(1.0, 0.5), true)
+	_vignette.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_vignette.stretch_mode = TextureRect.STRETCH_SCALE
+	_vignette.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_vignette)
 
 	_glitch = _GlitchFx.new()
 	_glitch.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -135,25 +177,50 @@ func _ready() -> void:
 		# «слипнутся» в одну карточку — ровно то, от чего уходим.
 		_burst_t[i] = randf_range(0.0, _burst_cycle[i])
 
-	_load = _mk("LOADING", 16, CYAN)
+	# Внизу — строка состояния и процент по краям полосы, а не «LOADING...» по центру.
+	# Точки не говорят ничего; «GENERATING TERRAIN 62%» говорит, что происходит и сколько
+	# осталось, и заодно объясняет, почему пятнадцать секунд ничего не двигается.
+	_load = _mk("LOADING ASSETS", 15, Color(0.55, 0.78, 0.86), HORIZONTAL_ALIGNMENT_LEFT)
+	_pct = _mk("0%", 15, CYAN, HORIZONTAL_ALIGNMENT_RIGHT)
 
 	_bar_bg = ColorRect.new()
-	_bar_bg.color = Color(1, 1, 1, 0.08)
+	_bar_bg.color = Color(0.35, 0.62, 0.70, 0.16)
 	_bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(_bar_bg)
 	_bar = ColorRect.new()
 	_bar.color = CYAN
 	_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ui.add_child(_bar)
+	# «Голова» полосы — короткий яркий блик на её конце. По нему видно, что загрузка ИДЁТ,
+	# даже когда процент стоит на месте: без него замерший бар выглядит зависшим.
+	_bar_head = ColorRect.new()
+	_bar_head.color = Color(0.85, 0.98, 1.0)
+	_bar_head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ui.add_child(_bar_head)
 
 	_layout()
 	get_viewport().size_changed.connect(_layout)
 	ResourceLoader.load_threaded_request(next_scene)
 
-func _mk(txt: String, fsize: int, col: Color) -> Label:
+## Плоский градиент как текстура — дешевле собственного шейдера и не требует файла.
+## radial=true даёт виньетку (от центра наружу), иначе линейный переход.
+func _gradient(cols: Array, from: Vector2, to: Vector2, radial: bool) -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, cols[0])
+	g.set_color(1, cols[1])
+	var t := GradientTexture2D.new()
+	t.gradient = g
+	t.fill = GradientTexture2D.FILL_RADIAL if radial else GradientTexture2D.FILL_LINEAR
+	t.fill_from = from
+	t.fill_to = to
+	t.width = 8 if not radial else 128
+	t.height = 128
+	return t
+
+func _mk(txt: String, fsize: int, col: Color, align: int = HORIZONTAL_ALIGNMENT_CENTER) -> Label:
 	var l := Label.new()
 	l.text = txt
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.horizontal_alignment = align
 	l.add_theme_font_size_override("font_size", fsize)
 	l.add_theme_color_override("font_color", col)
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -173,15 +240,29 @@ func _layout() -> void:
 	_title_label.position = Vector2.ZERO
 	_title_rect.size = Vector2(tw, th)
 	_title_rect.position = Vector2((s.x - tw) * 0.5, s.y * 0.5 - th * 0.62)
-	# Карточки — полосами вокруг названия, у каждого слоя своя (см. CARD_BANDS).
+	# Карточки — полосами вокруг названия (см. CARD_BANDS), но НЕ во всю ширину: полоса от
+	# края до края читается как шов, а не как разрыв. Держим их в колонке названия с запасом.
+	var cw: float = minf(s.x, tw * 1.35)
 	for i in _cards.size():
 		var band: Vector2 = CARD_BANDS[i]
-		_cards[i].size = Vector2(s.x, th * band.y)
-		_cards[i].position = Vector2(0, s.y * 0.5 + th * band.x)
-	_load.size = Vector2(s.x, 22); _load.position = Vector2(0, s.y - 84.0)
-	var bw: float = minf(s.x * 0.5, 460.0)
-	_bar_bg.size = Vector2(bw, 4); _bar_bg.position = Vector2((s.x - bw) * 0.5, s.y - 56.0)
-	_bar.size = Vector2(0, 4);     _bar.position = _bar_bg.position
+		_cards[i].size = Vector2(cw, th * band.y)
+		_cards[i].position = Vector2((s.x - cw) * 0.5, s.y * 0.5 + th * band.x)
+	# Низ: одна колонка шириной с полосу — статус слева, процент справа, полоса под ними.
+	# Раньше подпись и полоса были разной ширины и не выравнивались ни по чему.
+	var bw: float = clampf(s.x * 0.62, 240.0, 620.0)
+	var bx: float = (s.x - bw) * 0.5
+	var by: float = s.y - maxf(s.y * 0.12, 64.0)
+	var bh: float = maxf(s.y * 0.008, 5.0)
+	_load.size = Vector2(bw, 20);  _load.position = Vector2(bx, by - 26.0)
+	_pct.size  = Vector2(bw, 20);  _pct.position  = Vector2(bx, by - 26.0)
+	_bar_bg.size = Vector2(bw, bh); _bar_bg.position = Vector2(bx, by)
+	_bar.size = Vector2(0, bh);     _bar.position = _bar_bg.position
+	_bar_head.size = Vector2(maxf(bh * 0.6, 3.0), bh); _bar_head.position = _bar_bg.position
+	# Каркасу говорим, где название и где полоса: линейки и скобки строятся по ним, а не по
+	# выдуманным координатам, поэтому при любом экране всё остаётся на своих местах.
+	_frame.title_rect = _title_rect.get_rect()
+	_frame.bar_rect = Rect2(Vector2(bx, by), Vector2(bw, bh))
+	_frame.queue_redraw()
 
 func _process(delta: float) -> void:
 	_t += delta
@@ -212,7 +293,11 @@ func _process(delta: float) -> void:
 		m.set_shader_parameter("intensity", clampf(maxf(edge, pulse), 0.0, 1.0))
 	var gi: float = clampf(maxf(edge, pulse_max * 0.85), 0.06, 1.0)
 	_title_mat.set_shader_parameter("glitch", gi)
-	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
+	# Что именно сейчас происходит. Генерация рельефа занимает секунд пятнадцать, и без
+	# подписи это выглядит зависанием — самая частая причина «игра сломалась» на загрузке.
+	var stage: String = ["LOADING ASSETS", "GENERATING TERRAIN", "READY"][_phase]
+	_load.text = stage + ".".repeat(int(_t * 2.0) % 4 if _phase < 2 else 0)
+	_pct.text = "%d%%" % int(round((1.0 if _phase == 2 else _progress) * 100.0))
 	# Фон дышит тем же `gi`, что название и карточки, и знает, где надпись, — срезы кучнее
 	# у центра композиции, а не размазаны по всему экрану.
 	_glitch.intensity = gi
@@ -244,6 +329,8 @@ func _process(delta: float) -> void:
 			_finish()                                       # жёсткий фолбэк, если сигнала так и нет
 
 	_bar.size.x = _bar_bg.size.x * (1.0 if _phase == 2 else _progress)
+	_bar_head.position.x = _bar_bg.position.x + maxf(_bar.size.x - _bar_head.size.x, 0.0)
+	_bar_head.modulate.a = 0.55 + 0.45 * sin(_t * 7.0)   # блик дышит — видно, что не зависло
 
 func _swap() -> void:
 	if _phase != 0:
@@ -297,15 +384,70 @@ func _finish() -> void:
 	tw.set_parallel(false)
 	tw.tween_callback(queue_free)
 
-class _Scanlines extends Control:
+# КАРКАС — спокойная геометрия экрана: сетка, угловые скобки, линейки вокруг названия и
+# засечки у полосы загрузки.
+#
+# Он здесь не для украшения. Раньше на экране НЕ БЫЛО ничего неподвижного: рвался титр,
+# мигали четыре слоя карточек, сыпал срезами фон — и глитчу было нечего ломать, поэтому всё
+# вместе читалось как рябь. Сбой выглядит сбоем только рядом с ровной линией.
+#
+# Скан-линии, что были тут раньше, эту роль не тянули: сплошная штриховка через каждые три
+# пикселя — это не структура, а грязь, и на телефоне с дробным content_scale она вдобавок
+# лесенкой муарит. Редкая сетка даёт структуру и почти ничего не стоит.
+class _Frame extends Control:
+	const GRID := Color(0.25, 0.55, 0.62, 0.10)
+	const LINE := Color(0.35, 0.75, 0.85, 0.55)
+	const BRACKET := Color(0.15, 0.85, 1.0, 0.75)
+
+	var title_rect: Rect2 = Rect2()
+	var bar_rect: Rect2 = Rect2()
+
 	func _draw() -> void:
 		var s := size
-		var y: float = 0.0
+		if s.x < 2.0:
+			return
+		# Сетка. Шаг от высоты экрана, а не в пикселях: на телефоне и на планшете плотность
+		# должна выглядеть одинаково, а не превращаться в кашу на одном из них.
+		var step: float = maxf(s.y / 18.0, 28.0)
+		var x: float = step
+		while x < s.x:
+			draw_line(Vector2(x, 0), Vector2(x, s.y), GRID, 1.0)
+			x += step
+		var y: float = step
 		while y < s.y:
-			draw_line(Vector2(0, y), Vector2(s.x, y), Color(0, 0, 0, 0.13), 1.0)
-			y += 3.0
+			draw_line(Vector2(0, y), Vector2(s.x, y), GRID, 1.0)
+			y += step
 
-# Только анимируемая часть: несколько сине-голубых полос (≤6 draw_rect за кадр).
+		# Угловые скобки — рамка кадра. Дёшево и сразу задаёт «это интерфейс системы».
+		var m: float = maxf(s.y * 0.045, 22.0)
+		var l: float = maxf(s.y * 0.055, 26.0)
+		for c in [Vector2(m, m), Vector2(s.x - m, m), Vector2(m, s.y - m), Vector2(s.x - m, s.y - m)]:
+			var sx: float = 1.0 if c.x < s.x * 0.5 else -1.0
+			var sy: float = 1.0 if c.y < s.y * 0.5 else -1.0
+			draw_line(c, c + Vector2(l * sx, 0.0), BRACKET, 2.0)
+			draw_line(c, c + Vector2(0.0, l * sy), BRACKET, 2.0)
+
+		# Линейки над и под названием: они превращают надпись в ЛОГОТИП, а не в текст,
+		# висящий в пустоте, и дают глитчу что ломать.
+		if title_rect.size.x > 1.0:
+			var pad: float = title_rect.size.x * 0.06
+			var x0: float = title_rect.position.x - pad
+			var x1: float = title_rect.end.x + pad
+			for ty in [title_rect.position.y + title_rect.size.y * 0.16,
+					title_rect.end.y - title_rect.size.y * 0.16]:
+				draw_line(Vector2(x0, ty), Vector2(x1, ty), LINE, 1.0)
+				# Короткие засечки на концах — линия «заканчивается», а не обрывается.
+				draw_line(Vector2(x0, ty - 5.0), Vector2(x0, ty + 5.0), LINE, 1.0)
+				draw_line(Vector2(x1, ty - 5.0), Vector2(x1, ty + 5.0), LINE, 1.0)
+
+		# Засечки под полосой загрузки — четверти пути. Полоса перестаёт быть просто чертой:
+		# по ним видно, сколько пройдено, даже боковым зрением.
+		if bar_rect.size.x > 1.0:
+			for i in range(1, 4):
+				var tx: float = bar_rect.position.x + bar_rect.size.x * (float(i) / 4.0)
+				draw_line(Vector2(tx, bar_rect.end.y + 3.0), Vector2(tx, bar_rect.end.y + 8.0),
+						Color(0.35, 0.75, 0.85, 0.35), 1.0)
+
 # Глитч-полосы фона.
 #
 # Было две беды, и обе делали из эффекта грязь. Первая — ширина `s.x + 60`: каждая полоса
@@ -361,7 +503,8 @@ class _GlitchFx extends Control:
 			# вернуть ту же рябь, от которой уходим.
 			"dx": randf_range(-5.0, 5.0) if randf() < 0.35 else 0.0,
 			"a": randf_range(0.10, 0.26),
-			"on": randf() < 0.25 + intensity * 0.65,
+			# В спокойные моменты срезов почти нет — они приходят вместе со вспышкой.
+			"on": randf() < 0.08 + intensity * 0.70,
 			"life": randf_range(0.06, 0.22),
 		}
 
