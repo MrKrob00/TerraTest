@@ -79,16 +79,43 @@ static func _boom(root: Node, pos: Vector3, target_r: float, col: Color, energy:
 	tw.tween_property(mat, "emission_energy_multiplier", 0.0, dur)
 	tw.chain().tween_callback(mi.queue_free)
 
-## Зелёная «матрица» — ремонт. Цвет и есть всё сообщение: тот же эффект в cyan/magenta
-## означает появление и исчезновение блока, и лечение обязано читаться иначе.
+## Зелёный «матрицы» ремонта. Различает эффекты не только цвет, но и ФОРМА: ремонт — это
+## цифры 0/1 по всей оболочке, а появление и распад блока — облако глитч-карточек. Одного
+## цвета было мало, карточки узнаются по силуэту и в зелёном читались всё тем же распадом.
 const HEAL_A := Color(0.25, 1.0, 0.45)
-const HEAL_B := Color(0.10, 0.65, 0.30)
 
-## Эффект ремонта блока. Отдельная обёртка, а не «play с цветом» на каждом вызове: лечение
-## зовётся из регена по каждому блоку в радиусе, и подбирать цвета на месте вызова — способ
-## их рассинхронить.
+## Эффект ремонта блока: ЗЕЛЁНЫЕ ЦИФРЫ 0/1 по всей оболочке блока — та же «матрица», что
+## показывает урон (block_matrix.gdshader, mode 2), только зелёная и по всему блоку сразу.
+##
+## Раньше heal звал play(), а play строит облако ГЛИТЧ-КАРТОЧЕК — тот эффект, которым блок
+## появляется и разваливается. Ремонт от него читался как «блок сейчас сломается», то есть
+## ровно наоборот. Цвет тут ничего не решал: карточки узнаются по форме, а не по оттенку.
+##
+## Оболочка — один куб на блок, а не шесть пластин, как у попадания (_spawn_hit_flash):
+## попадание приходит В ГРАНЬ, и его показывают на грани, а чинится блок целиком.
 static func heal(block: Node3D, duration: float = 0.55) -> void:
-	play(block, false, duration, HEAL_A, HEAL_B)
+	if block == null or not block.is_inside_tree():
+		return
+	var aabb := _local_aabb(block)
+	var fx := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	fx.mesh = bm
+	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER
+	mat.set_shader_parameter("mode", 2)              # цифры 0/1
+	mat.set_shader_parameter("color_damage", HEAL_A) # ...но зелёные: та же матрица, другой смысл
+	mat.set_shader_parameter("damage_cells", 10.0)   # мельче, чем у урона: ремонт «шьёт», а не бьёт
+	mat.set_shader_parameter("progress", 0.0)
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	fx.material_override = mat
+	block.add_child(fx)
+	# Чуть больше самого блока, иначе цифры z-борются с его поверхностью и мерцают.
+	fx.transform = Transform3D(Basis().scaled(aabb.size * 1.04), aabb.get_center())
+	var tw := fx.create_tween()
+	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, duration)
+	tw.tween_callback(fx.queue_free)
 
 static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 		tint_a: Color = Color(0, 0, 0, 0), tint_b: Color = Color(0, 0, 0, 0)) -> void:
