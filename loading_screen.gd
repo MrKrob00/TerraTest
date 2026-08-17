@@ -213,7 +213,12 @@ func _process(delta: float) -> void:
 	var gi: float = clampf(maxf(edge, pulse_max * 0.85), 0.06, 1.0)
 	_title_mat.set_shader_parameter("glitch", gi)
 	_load.text = "LOADING" + ".".repeat(int(_t * 2.0) % 4)
-	_glitch.queue_redraw()
+	# Фон дышит тем же `gi`, что название и карточки, и знает, где надпись, — срезы кучнее
+	# у центра композиции, а не размазаны по всему экрану.
+	_glitch.intensity = gi
+	_glitch.focus_y = _title_rect.position.y + _title_rect.size.y * 0.5
+	_glitch.focus_h = maxf(_title_rect.size.y * 0.9, 60.0)
+	_glitch.tick(delta)
 
 	# --- логика загрузки ---
 	if _phase == 0:
@@ -301,11 +306,76 @@ class _Scanlines extends Control:
 			y += 3.0
 
 # Только анимируемая часть: несколько сине-голубых полос (≤6 draw_rect за кадр).
+# Глитч-полосы фона.
+#
+# Было две беды, и обе делали из эффекта грязь. Первая — ширина `s.x + 60`: каждая полоса
+# шла ОТ КРАЯ ДО КРАЯ, а сплошная линия через весь экран не читается как сбой, она читается
+# как криво нарисованный прямоугольник. Вторая — полосы перебирались заново КАЖДЫЙ кадр, то
+# есть мигали шестьдесят раз в секунду: это рябь телевизора, а не глитч.
+#
+# Теперь полоса — КОРОТКИЙ срез (6–30% ширины экрана) в случайном месте, и он ЖИВЁТ
+# десятые доли секунды. Разрыв, который держится, выглядит намеренным; разрыв, который
+# меняется каждый кадр, — шумом. Плотность и яркость идут от той же `intensity`, что и
+# карточки с названием, поэтому фон дышит вместе с ними, а не живёт своим ритмом.
 class _GlitchFx extends Control:
-	func _draw() -> void:
+	const COUNT := 9
+	## Палитра та же, что у всей заставки: голубой и синий, магенты здесь нет намеренно.
+	const C_CYAN := Color(0.15, 0.85, 1.0)
+	const C_BLUE := Color(0.35, 0.55, 1.0)
+
+	var intensity: float = 0.0      # 0..1 — общий ритм заставки
+	var focus_y: float = 0.0        # середина надписи: около неё срезы гуще
+	var focus_h: float = 120.0
+
+	var _sl: Array = []
+
+	func tick(delta: float) -> void:
+		if size.x <= 1.0:
+			return
+		while _sl.size() < COUNT:
+			_sl.append(_born())
+		for i in _sl.size():
+			var d: Dictionary = _sl[i]
+			d["life"] = float(d["life"]) - delta
+			if d["life"] <= 0.0:
+				_sl[i] = _born()
+		queue_redraw()
+
+	# Новый срез. Ширина НИКОГДА не доходит до полного экрана — в этом вся разница.
+	func _born() -> Dictionary:
 		var s := size
-		for i in 6:
-			if randf() < 0.5:
-				var col := Color(0.15, 0.85, 1.0) if randf() < 0.5 else Color(0.35, 0.55, 1.0)
-				col.a = randf_range(0.05, 0.16)
-				draw_rect(Rect2(randf_range(-30.0, 30.0), randf() * s.y, s.x + 60.0, randf_range(2.0, 9.0)), col)
+		var w: float = s.x * randf_range(0.06, 0.30)
+		# Три четверти срезов ложатся полосой вокруг надписи, остальные — где угодно.
+		# Равномерно по всему экрану выглядит как загрязнение, у центра — как композиция.
+		var y: float = focus_y + randf_range(-focus_h, focus_h) if randf() < 0.75 else randf() * s.y
+		var cyan_first: bool = randf() < 0.55
+		return {
+			"x": randf() * maxf(s.x - w, 1.0),
+			"y": clampf(y, 0.0, maxf(s.y - 2.0, 1.0)),
+			"w": w,
+			"h": randf_range(1.5, 7.0),
+			"col": C_CYAN if cyan_first else C_BLUE,
+			"col2": C_BLUE if cyan_first else C_CYAN,
+			# Развод каналов: сдвинутый дубль другим цветом. Именно он и читается как сбой
+			# картинки. Сдвиг ФИКСИРУЕМ при рождении — дёргать его каждый кадр значило бы
+			# вернуть ту же рябь, от которой уходим.
+			"dx": randf_range(-5.0, 5.0) if randf() < 0.35 else 0.0,
+			"a": randf_range(0.10, 0.26),
+			"on": randf() < 0.25 + intensity * 0.65,
+			"life": randf_range(0.06, 0.22),
+		}
+
+	func _draw() -> void:
+		var k: float = clampf(0.35 + intensity, 0.0, 1.0)
+		for d in _sl:
+			if not bool(d["on"]):
+				continue
+			var col: Color = d["col"]
+			col.a = float(d["a"]) * k
+			var r := Rect2(float(d["x"]), float(d["y"]), float(d["w"]), float(d["h"]))
+			draw_rect(r, col)
+			var dx: float = float(d["dx"])
+			if dx != 0.0:
+				var c2: Color = d["col2"]
+				c2.a = col.a * 0.7
+				draw_rect(Rect2(r.position + Vector2(dx, 0.0), r.size), c2)

@@ -495,7 +495,7 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	_vmenu.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_vmenu.mouse_filter = Control.MOUSE_FILTER_IGNORE   # ввод ловит hud._input, не UI
 	add_child(_vmenu)
-	var defense_on: bool = bool(vehicle.get("defense_mode"))
+	var defense_on: bool = vehicle.get("defense_mode") == true   # == true: bool(null) роняет вызов
 	var wheel := RadialWheel.new()
 	wheel.outer = VMENU_OUTER
 	wheel.inner = VMENU_INNER
@@ -568,7 +568,7 @@ func _do_vmenu_action(idx: int, vehicle: Node) -> void:
 				vehicle.disassemble()
 		2:
 			if vehicle.has_method("set_defense"):
-				vehicle.set_defense(not bool(vehicle.get("defense_mode")))
+				vehicle.set_defense(vehicle.get("defense_mode") != true)
 		3:
 			# Сменить камеру: садимся управлять этой машиной/станцией.
 			var cc: Node = get_tree().get_first_node_in_group("camera_controller")
