@@ -92,8 +92,8 @@ const FACTIONS := {
 const BLOCK_META := {
 	Block.CABIN:     {"f": "start", "g": 1, "rp": 0},
 	Block.BLOCK:     {"f": "start", "g": 1, "rp": 5},
-	Block.WHEEL:     {"f": "start", "g": 1, "rp": 5},
-	Block.DRILL:     {"f": "start", "g": 1, "rp": 10},
+	Block.WHEEL:     {"f": "start", "g": 1, "rp": 8},    # шаг ВВЕРХ от малого колеса
+	Block.DRILL:     {"f": "start", "g": 1, "rp": 12},   # шаг ВВЕРХ от малого бура
 	Block.COLLECTOR: {"f": "start", "g": 1, "rp": 10},
 	Block.RECEIVER:    {"f": "start", "g": 2, "rp": 15},
 	Block.BELT:      {"f": "start", "g": 2, "rp": 15},
@@ -108,7 +108,7 @@ const BLOCK_META := {
 	Block.SHIELD:    {"f": "start", "g": 5, "rp": 40},
 	Block.RADAR:     {"f": "start", "g": 2, "rp": 15},   # утилита: включает карту-радар на машине
 	Block.SUPPORT:   {"f": "start", "g": 1, "rp": 5},    # фикс-опора: без неё нельзя встать на якорь
-	Block.SMALL_WHEEL: {"f": "start", "g": 1, "rp": 5},
+	Block.SMALL_WHEEL: {"f": "start", "g": 1, "rp": 5},  # корень ветки хода
 	Block.BIG_WHEEL:   {"f": "start", "g": 2, "rp": 15},
 	Block.TOP_WHEEL:   {"f": "start", "g": 2, "rp": 15},
 	Block.STAB_WHEEL:  {"f": "start", "g": 2, "rp": 15},
@@ -118,7 +118,7 @@ const BLOCK_META := {
 	Block.BLOCK3:      {"f": "start", "g": 2, "rp": 10},
 	Block.WEDGE2:      {"f": "start", "g": 2, "rp": 10},
 	Block.ARMOR:       {"f": "start", "g": 2, "rp": 15},
-	Block.SMALL_DRILL: {"f": "start", "g": 1, "rp": 8},
+	Block.SMALL_DRILL: {"f": "start", "g": 1, "rp": 8},  # корень ветки добычи
 	Block.BELT_SPLIT:  {"f": "start", "g": 2, "rp": 15},
 	Block.BELT_CROSS:  {"f": "start", "g": 3, "rp": 20},
 	Block.ROT_SUPPORT: {"f": "start", "g": 3, "rp": 20},   # тир выше обычной опоры
@@ -138,8 +138,8 @@ const BLOCK_META := {
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
-	Block.BLOCK: Block.CABIN,     Block.WHEEL: Block.BLOCK,
-	Block.DRILL: Block.CABIN,     Block.GUN: Block.DRILL,
+	Block.BLOCK: Block.CABIN,     Block.SMALL_WHEEL: Block.BLOCK,
+	Block.SMALL_DRILL: Block.CABIN, Block.GUN: Block.SMALL_DRILL,
 	Block.LASER: Block.GUN,
 	Block.COLLECTOR: Block.CABIN, Block.RECEIVER: Block.COLLECTOR,
 	Block.BELT: Block.RECEIVER,     Block.SELLER: Block.BELT,
@@ -148,13 +148,16 @@ const TECH_PARENT := {
 	Block.SHIELD: Block.BATTERY,  Block.REGEN: Block.SHIELD,
 	Block.RADAR: Block.CABIN,     # утилита ветвится от кабины (ранняя QoL 2-го грейда)
 	Block.SUPPORT: Block.CABIN,   # опора — ранняя, чтобы якорь был доступен с начала
-	Block.SMALL_WHEEL: Block.WHEEL, Block.BIG_WHEEL: Block.WHEEL,
+	# Малое колесо и малый бур — НАЧАЛО веток, а не ответвление от полноразмерных: с них
+	# игрок и начинает игру (STARTER_KIT), и открывать их вторым шагом было бы враньём про
+	# порядок. Тяжёлые варианты по-прежнему растут из обычного колеса.
+	Block.WHEEL: Block.SMALL_WHEEL, Block.BIG_WHEEL: Block.WHEEL,
 	Block.TOP_WHEEL: Block.WHEEL,   Block.STAB_WHEEL: Block.WHEEL,
 	Block.BLOCK2: Block.BLOCK,      Block.COAL_GEN: Block.GENERATOR,
 	Block.ROCKET: Block.LASER,      # ракетница ветвится от лазера (продвинутое оружие)
 	Block.BLOCK3: Block.BLOCK2,     Block.ARMOR: Block.BLOCK,
 	Block.WEDGE2: Block.BLOCK2,     # клин 1³ снят, ветка клиньев начинается с 2×1×1
-	Block.SMALL_DRILL: Block.DRILL, Block.BELT_SPLIT: Block.BELT,
+	Block.DRILL: Block.SMALL_DRILL, Block.BELT_SPLIT: Block.BELT,
 	Block.BELT_CROSS: Block.BELT_SPLIT,
 	Block.ROT_SUPPORT: Block.SUPPORT,   # апгрейд опоры: обычная всё равно нужна
 	Block.STORAGE: Block.RECEIVER,
@@ -479,13 +482,14 @@ func scrap_yield(bt: int) -> Dictionary:
 	return out
 
 # Исследовано с самого начала — иначе не собрать машину и нет цикла денег.
-const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.WHEEL, Block.DRILL, Block.COLLECTOR, Block.SUPPORT]
+const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.SMALL_WHEEL, Block.SMALL_DRILL,
+		Block.COLLECTOR, Block.SUPPORT]
 
 ## Базовый набор блоков: выдаётся на новом сейве и при возрождении после гибели кабины.
 ## Блоки кружат вокруг машины и осыпаются рядом (reward_orbiter.gd) — игрок собирает сам.
 ## Один список на оба места, чтобы «начало игры» и «после смерти» не разъезжались.
-const STARTER_KIT := [Block.BLOCK, Block.BLOCK, Block.WHEEL, Block.WHEEL,
-		Block.WHEEL, Block.WHEEL, Block.DRILL, Block.GUN]
+const STARTER_KIT := [Block.BLOCK, Block.BLOCK, Block.SMALL_WHEEL, Block.SMALL_WHEEL,
+		Block.SMALL_WHEEL, Block.SMALL_WHEEL, Block.SMALL_DRILL, Block.GUN]
 
 var faction_xp := {"start": 0}
 var research_points := 0               # ДИ — валюта дерева
