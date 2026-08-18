@@ -73,26 +73,28 @@ extends Node3D
 @export var max_total: int = 8
 @export var map_node: Node
 
-## РЕДКОЕ СОБЫТИЕ: Система присылает ЗАХВАТЧИКА — одну усиленную машину, которая приезжает
-## именно за игроком и цель не забывает.
+## РЕДКОЕ СОБЫТИЕ «Проверка сектора» (лор цифровой симуляции): Система объявляет проверку
+## квадрата вокруг игрока, даёт время сбежать, и если он не покинул квадрат — присылает
+## ЗАХВАТЧИКА. Заглянул в квадрат — беги.
 ##
-## Раньше это была «Проверка сектора»: Система объявляла квадрат вокруг игрока, ставила по
-## углам светящиеся столбы, отсчитывала двенадцать секунд и присылала машину К КРАЮ КВАДРАТА.
-## Квадрат строился вокруг того места, где игрок СТОЯЛ, поэтому стоящему на месте захватчик
-## вылезал метрах в двадцати шести — внутри своей зоны обнаружения — и бил сразу, без единого
-## шанса заметить его заранее. Вся церемония с разметкой и таймером существовала ради этого
-## одного невыгодного спавна и убрана целиком.
-##
-## Теперь он приходит по обычному кольцу спавна, как все, но ДЕСАНТИРУЕТСЯ с высоты: падает
-## с DROP_HEIGHT над землёй. Это и есть всё объявление — машина, рухнувшая с неба, читается
-## сама, без столбов и обратного отсчёта.
-@export_group("Захватчик")
-@export var invader_enabled: bool = true
-## Раз в 10–15 минут.
-@export var invader_min_interval: float = 600.0
-@export var invader_max_interval: float = 900.0
-@export var invader_preset: int = 9                 # тяжёлая сборка (см. blocks.gd layout)
-## С какой высоты над землёй он падает.
+## Раньше присылала отряд из пяти. Вместе с девятью обычными это давало четырнадцать машин
+## разом — то есть один сценарий отменял весь баланс плотности. Теперь, как invader в
+## TerraTech, он ОДИН: сильный, помнит цель, не деспавнится и ждёт, сколько понадобится.
+## Одна такая машина страшнее пяти обычных и при этом не превращает карту в свалку.
+@export_group("Проверка сектора")
+@export var scan_enabled: bool = true
+## Раз в 10–15 минут — темп invader'а в TerraTech. Было 3–7, и «редкое событие» приходило
+## чаще, чем игрок успевал построить фабрику.
+@export var scan_min_interval: float = 600.0
+@export var scan_max_interval: float = 900.0
+@export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
+@export var scan_warn_time: float = 12.0            # сколько секунд на побег
+@export var scan_preset: int = 9                    # тяжёлая сборка (см. blocks.gd layout)
+## С какой высоты над землёй захватчик ПАДАЕТ. Он появляется у края квадрата, то есть рядом
+## с игроком, и раньше просто возникал там на земле — стоящему на месте это выглядело как
+## «машина материализовалась в двадцати метрах и сразу открыла огонь». Падение с высоты даёт
+## те секунды, за которые его видно и слышно, и превращает прибытие в событие, а не в подмену
+## кадра. Само событие при этом остаётся на месте: оно в игре единственное.
 @export var invader_drop_height: float = 10.0
 
 @export_group("Сила врага")
@@ -112,7 +114,11 @@ var _t: float = 0.0
 var _ready_done: bool = false
 var _seeded: bool = false          # стартовая партия врагов уже поставлена
 
-var _invader_t: float = 0.0                         # до следующего захватчика
+var _scan_state: int = 0                            # 0 — покой, 1 — идёт предупреждение
+var _scan_t: float = 0.0                            # до следующей проверки
+var _scan_left: float = 0.0                         # осталось до зачистки
+var _scan_center: Vector3 = Vector3.ZERO
+var _scan_marker: Node3D = null
 
 func _ready() -> void:
 	# Ждём загрузку рельефа (map грузит md после своего await).
@@ -123,7 +129,7 @@ func _ready() -> void:
 		map = _find_map()
 		guard += 1
 	_ready_done = map != null and map.has_method("get_dims") and map.get_dims().x > 0
-	_invader_t = randf_range(invader_min_interval, invader_max_interval)
+	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 
 func _process(delta: float) -> void:
 	if not _ready_done:
@@ -138,7 +144,7 @@ func _process(delta: float) -> void:
 		_enemies = _enemies.filter(func(e): return is_instance_valid(e))
 	_track_dormancy(delta)
 	_limit_engagement()
-	_invader_tick(delta)                            # редкое событие: десант захватчика
+	_scan_tick(delta)                               # редкое событие «проверка сектора»
 	# Потолок считается по БОДРСТВУЮЩИМ. Спящий стоит за горизонтом, ничего не делает и на
 	# ощущение «сколько их вокруг» не влияет — считать его занятым местом значило бы, что
 	# четыре забытые в поле машины навсегда выключают спавн.
@@ -548,71 +554,140 @@ func _player() -> Node3D:
 		return cc.current_vehicle
 	return null
 
-# ── Захватчик (редкое событие) ────────────────────────────────────────────────
-func _invader_tick(delta: float) -> void:
-	if not invader_enabled:
+# ── Проверка сектора (редкое событие) ─────────────────────────────────────────
+func _scan_tick(delta: float) -> void:
+	if not scan_enabled:
 		return
-	_invader_t -= delta
-	if _invader_t > 0.0:
-		return
-	# Пока предыдущий жив — нового не присылаем: их одновременно ровно ОДИН. Проверяем ДО
-	# объявления, иначе Система обещала бы то, чего не будет.
-	if _invader != null and is_instance_valid(_invader):
-		_invader_t = 60.0
-		return
-	if _spawn_invader(_player()):
-		_invader_t = randf_range(invader_min_interval, invader_max_interval)
+	if _scan_state == 0:
+		_scan_t -= delta
+		if _scan_t <= 0.0:
+			_start_scan()
 	else:
-		_invader_t = 30.0                  # не нашли места — попробуем позже
+		_scan_left -= delta
+		_pulse_marker()
+		if _scan_left <= 0.0:
+			_resolve_scan()
 
-# ЗАХВАТЧИК: усиленная машина, ДЕСАНТИРУЕТСЯ с высоты и сразу знает, за кем пришла.
+func _start_scan() -> void:
+	var p := _player()
+	if p == null:
+		_scan_t = 30.0                              # игрока нет — попробуем позже
+		return
+	# Захватчик уже в мире — проверку не объявляем ВОВСЕ. Иначе Система обещала бы прислать
+	# обработчика, а _spawn_invader молча отказывал бы по правилу «один за раз»: игрок видел
+	# бы разметку квадрата, таймер, угрозу — и ничего. Пустое обещание хуже, чем тишина.
+	if _invader != null and is_instance_valid(_invader):
+		_scan_t = 60.0
+		return
+	_scan_center = p.global_position
+	_scan_state = 1
+	_scan_left = scan_warn_time
+	_build_marker()
+	# Обманка: Система ВЕЖЛИВО просит НЕ выходить — кто послушается, того зачистка :)
+	_say("System", "🔍 Scheduled sector scan. Please do NOT leave the scan zone. This will take %d sec. Thank you for your cooperation." % int(scan_warn_time))
+
+func _resolve_scan() -> void:
+	_scan_state = 0
+	_scan_t = randf_range(scan_min_interval, scan_max_interval)
+	_clear_marker()
+	var p := _player()
+	# Система не отслеживает «кто ушёл» — она просто сканирует зону. Есть активность внутри
+	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
+	if p != null and _in_scan_box(p.global_position):
+		_say("System", "⚠ Unauthorized activity detected in the sector. Dispatching a handler.")
+		_spawn_invader(p)              # захватчик идёт именно за ЗАСЕЧЁННОЙ машиной
+	else:
+		_say("System", "Sector scan complete. No anomalies detected.")
+
+func _in_scan_box(pos: Vector3) -> bool:
+	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
+
+# ЗАХВАТЧИК — один, ДЕСАНТИРУЕТСЯ у края квадрата, сразу нацеленный на засеченную машину.
 #
-# Точку берём обычную, из кольца спавна (_find_spawn_pos) — ту же, что у рядовых врагов, со
-# всеми её правилами: не в тихой зоне у якоря, не по курсу игрока, не вплотную к другим.
-# Раньше он появлялся у края квадрата вокруг игрока, то есть в паре десятков метров, и
-# начинал бой в ту же секунду.
+# Он намеренно не подчиняется обычным правилам: не считается под потолком max_enemies, не
+# убирается уборкой спящих и не забывает цель. Это событие, а не фон, и работать оно должно
+# как событие — пока игрок его не убьёт или не уедет насовсем.
 #
-# Он намеренно не подчиняется остальным правилам: не считается под потолком max_enemies, не
-# убирается уборкой спящих и цель не забывает. Это событие, а не фон.
-func _spawn_invader(locked: Node3D) -> bool:
-	if enemy_scenes.is_empty():
-		return false
+# Пока предыдущий захватчик жив, нового не присылаем: их одновременно ровно один, как invader
+# в TerraTech. Иначе редкое событие, случившись дважды подряд, снова превращалось бы в толпу.
+func _spawn_invader(locked: Node3D = null) -> void:
+	if _invader != null and is_instance_valid(_invader):
+		return
 	var map: Node = _find_map()
 	var vehicles: Node = _vehicles_root()
-	var player: Node3D = _player()
-	if map == null or vehicles == null or player == null:
-		return false
-	var pos = _find_spawn_pos(map, player.global_position)
-	if pos == null:
-		return false
+	if map == null or vehicles == null or enemy_scenes.is_empty():
+		return
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = invader_preset
+		blocks.layout_preset = scan_preset      # усиленная сборка
 	vehicles.add_child(enemy)
-	# ПАДАЕТ с высоты: обычный спавн ставит машину на ground_offset над землёй, а этот —
-	# на invader_drop_height. Удар о землю машина переживает (подвеска + _flip_recover),
-	# зато прибытие видно и слышно, и это всё объявление, которое ему нужно.
-	enemy.global_position = (pos as Vector3) + Vector3.UP * invader_drop_height
+	var ang: float = randf() * TAU
+	var r: float = scan_half_size * 0.8
+	var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
+	var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
+	# ПАДАЕТ с высоты, а не возникает на земле. Появляется он у края квадрата, то есть рядом
+	# с игроком; стоящему на месте это выглядело как «машина материализовалась в двадцати
+	# метрах и сразу открыла огонь». Падение даёт те секунды, за которые её видно и слышно.
+	enemy.global_position = Vector3(wp.x, h + invader_drop_height, wp.z)
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	# Цель назначаем сразу, не дожидаясь его зоны обнаружения, и включаем relentless: обычный
-	# враг ищет цель сам и может её потерять, а этот приехал именно за той машиной.
+	# враг ищет цель сам и может её потерять, а этот приехал именно за той машиной, которую
+	# засекла проверка.
 	_lock_on_target(enemy, locked)
 	_enemies.append(enemy)
 	_invader = enemy
-	_say("System", "⚠ Handler dispatched to your position.")
-	return true
 
-# Жёстко назначить врагу цель (без ожидания сигнала зоны обнаружения) и сделать его
-# невідступным: обычный враг цель ищет сам и может её потерять, захватчик — нет.
+# Жёстко назначить врагу цель (без ожидания сигнала зоны обнаружения) и сделать его невідступным.
 func _lock_on_target(enemy: Node, target: Node3D) -> void:
 	if target == null or not is_instance_valid(target):
 		return
 	if enemy.has_method("assign_target"):
 		enemy.assign_target(target, true)
+
+# Маркер квадрата: 4 светящихся столба по углам (переживают неровный рельеф). Пульсируют,
+# к концу таймера краснеют — тревога.
+func _build_marker() -> void:
+	_clear_marker()
+	_scan_marker = Node3D.new()
+	get_tree().current_scene.add_child(_scan_marker)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = Color(0.2, 0.9, 1.0)
+	mat.emission_enabled = true
+	mat.emission = Color(0.2, 0.9, 1.0)
+	var map: Node = _find_map()
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var pillar := MeshInstance3D.new()
+			var bm := BoxMesh.new()
+			bm.size = Vector3(1.4, 60.0, 1.4)
+			pillar.mesh = bm
+			pillar.material_override = mat
+			pillar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			var wx: float = _scan_center.x + sx * scan_half_size
+			var wz: float = _scan_center.z + sz * scan_half_size
+			var h: float = map.terrain_height_at(Vector3(wx, 0.0, wz)) if (map and map.has_method("terrain_height_at")) else _scan_center.y
+			pillar.position = Vector3(wx, h + 28.0, wz)
+			_scan_marker.add_child(pillar)
+	_scan_marker.set_meta("mat", mat)
+
+func _pulse_marker() -> void:
+	if _scan_marker == null or not _scan_marker.has_meta("mat"):
+		return
+	var mat: StandardMaterial3D = _scan_marker.get_meta("mat")
+	var t: float = 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.008)
+	var danger: float = 1.0 - clampf(_scan_left / maxf(scan_warn_time, 0.01), 0.0, 1.0)
+	mat.emission = Color(0.2 + danger * 0.8, 0.9 - danger * 0.7, 1.0 - danger * 0.85)
+	mat.emission_energy_multiplier = 1.0 + t * 2.0 + danger * 3.0
+
+func _clear_marker() -> void:
+	if _scan_marker != null and is_instance_valid(_scan_marker):
+		_scan_marker.queue_free()
+	_scan_marker = null
 
 func _say(speaker: String, text: String) -> void:
 	var d: Node = get_node_or_null("/root/Dialogue")
