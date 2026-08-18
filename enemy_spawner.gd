@@ -53,9 +53,15 @@ extends Node3D
 @export var front_clear_dist: float = 240.0
 @export_range(0.0, 180.0) var front_cone_deg: float = 55.0
 @export var spawn_separation: float = 70.0          # не ближе этого к ДРУГИМ врагам
-@export var min_height: float = 2.0                 # ниже — днища впадин (воды в мире НЕТ)
-@export var max_slope: float = 8.0                  # не на обрыве
-@export var ground_offset: float = 3.0
+## ВСЕ враги ДЕСАНТИРУЮТСЯ: появляются на этой высоте над рельефом и падают.
+##
+## Отсюда же и то, чего здесь БОЛЬШЕ НЕТ — отбраковки точек по высоте и уклону. Она искала
+## ровное место, чтобы машина не возникла в стене обрыва, и стоила пяти сэмплов рельефа на
+## каждого кандидата (высота плюс четыре вокруг для уклона), а кандидатов до сорока восьми.
+## Падающей машине ровное место не нужно: она сама скатится с уклона, а перевернётся —
+## встанет (_flip_recover в enemy_vehicle). Проверять землю, чтобы аккуратно поставить туда
+## то, что и так прилетит сверху, смысла нет.
+@export var drop_height: float = 10.0
 
 @export_group("Сон и уборка")
 ## Враг дальше sleep_dist от машины игрока дольше sleep_delay секунд — ЗАСЫПАЕТ: физика
@@ -90,12 +96,9 @@ extends Node3D
 @export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
 @export var scan_warn_time: float = 12.0            # сколько секунд на побег
 @export var scan_preset: int = 9                    # тяжёлая сборка (см. blocks.gd layout)
-## С какой высоты над землёй захватчик ПАДАЕТ. Он появляется у края квадрата, то есть рядом
-## с игроком, и раньше просто возникал там на земле — стоящему на месте это выглядело как
-## «машина материализовалась в двадцати метрах и сразу открыла огонь». Падение с высоты даёт
-## те секунды, за которые его видно и слышно, и превращает прибытие в событие, а не в подмену
-## кадра. Само событие при этом остаётся на месте: оно в игре единственное.
-@export var invader_drop_height: float = 10.0
+## Захватчик десантируется с той же высоты, что и все (drop_height): у него это особенно
+## важно — появляется он у края квадрата, то есть рядом с игроком, и без падения читалось как
+## «машина возникла в двадцати метрах и сразу открыла огонь».
 
 @export_group("Сила врага")
 ## Сборки от САМОЙ СЛАБОЙ к самой сильной (номера см. blocks.gd _define_layout): разведчик,
@@ -314,6 +317,8 @@ func _spawn_one() -> void:
 		return
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
+	if enemy is RigidBody3D:
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # падает своим весом, а не броском
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
@@ -369,9 +374,7 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 		var dist: float = randf_range(min_d, max_d)
 		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		var h: float = map.terrain_height_at(world)
-		if h < min_height or _slope_at(map, world) > max_slope:
-			continue
-		pos = Vector3(world.x, h + ground_offset, world.z)
+		pos = Vector3(world.x, h + drop_height, world.z)
 		break
 	if pos == null:
 		return null
@@ -384,6 +387,8 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 		blocks.layout_preset = int(preset_tiers[0]) if not preset_tiers.is_empty() else 0
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
+	if enemy is RigidBody3D:
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # падает своим весом
 	# Метка «сюжетный»: уборка спящих его не удалит. Без неё квест «уничтожь разведчика» мог
 	# бы стать невыполнимым молча — игрок уехал, разведчик заснул, уборка сняла его как самого
 	# дальнего, а задание осталось висеть с целью, которой больше нет.
@@ -447,18 +452,14 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		order.append(i)
 	order.shuffle()
 	order.sort_custom(func(a, b): return per[a] < per[b])
-	# Внутри сектора — несколько попыток: рельеф может не пустить в конкретную точку.
+	# Внутри сектора — несколько попыток: точку может занять сосед, курс игрока или тихая зона.
 	for sec in order:
 		for _try in 6:
 			var ang: float = (TAU / SPAWN_SECTORS) * (float(sec) + randf())
 			var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
 			var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 			var h: float = map.terrain_height_at(world)
-			if h < min_height:
-				continue
-			if _slope_at(map, world) > max_slope:
-				continue
-			var cand := Vector3(world.x, h + ground_offset, world.z)
+			var cand := Vector3(world.x, h + drop_height, world.z)
 			if _too_close_to_enemy(cand, exclude):
 				continue
 			if _in_player_view(cand, center):
@@ -525,14 +526,6 @@ func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
 		if d.length_squared() < spawn_separation * spawn_separation:
 			return true
 	return false
-
-func _slope_at(map: Node, world: Vector3) -> float:
-	var s: float = 3.0
-	var hx1: float = map.terrain_height_at(world + Vector3(s, 0, 0))
-	var hx2: float = map.terrain_height_at(world + Vector3(-s, 0, 0))
-	var hz1: float = map.terrain_height_at(world + Vector3(0, 0, s))
-	var hz2: float = map.terrain_height_at(world + Vector3(0, 0, -s))
-	return maxf(maxf(hx1, hx2), maxf(hz1, hz2)) - minf(minf(hx1, hx2), minf(hz1, hz2))
 
 func _find_map() -> Node:
 	if map_node:
@@ -629,7 +622,7 @@ func _spawn_invader(locked: Node3D = null) -> void:
 	# ПАДАЕТ с высоты, а не возникает на земле. Появляется он у края квадрата, то есть рядом
 	# с игроком; стоящему на месте это выглядело как «машина материализовалась в двадцати
 	# метрах и сразу открыла огонь». Падение даёт те секунды, за которые её видно и слышно.
-	enemy.global_position = Vector3(wp.x, h + invader_drop_height, wp.z)
+	enemy.global_position = Vector3(wp.x, h + drop_height, wp.z)
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
