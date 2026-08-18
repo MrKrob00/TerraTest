@@ -157,13 +157,22 @@ func _refresh() -> void:
 		_rebuild_list()
 
 # ── Трекер (одно задание вверху справа) ───────────────────────────────────────
+## Значок типа задания. Одна точка на трекер и журнал: раньше строка выбора была написана
+## дважды, и добавление типа требовало вспомнить про оба места.
+func _type_mark(q: Dictionary) -> String:
+	match int(q["type"]):
+		Q.Type.TUTORIAL: return "▶"
+		Q.Type.STORY:    return "★"
+		Q.Type.EVENT:    return "!"      # не эмодзи: шрифт проекта их не рендерит
+		_:               return "◆"
+
 func _update_tracker() -> void:
 	var q: Dictionary = Q.tracked()
 	if q.is_empty():
 		_title.text = "No active quests"
 		_objective.text = ""
 		return
-	var star := "▶ " if q["type"] == Q.Type.TUTORIAL else ("★ " if q["type"] == Q.Type.STORY else "◆ ")
+	var star := _type_mark(q) + " "
 	_title.text = star + str(q["title"]) + _stage_suffix(q)
 	if q["done"]:
 		_objective.text = "✓ done"
@@ -202,6 +211,7 @@ func _rebuild_list() -> void:
 		_sel_id = String(vis[0].get("id", "")) if not vis.is_empty() else ""
 	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
 	_add_section("STORY", vis.filter(func(q): return q["type"] == Q.Type.STORY))
+	_add_section("EVENT", vis.filter(func(q): return q["type"] == Q.Type.EVENT))
 	_add_section("DAILY", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
 	_rebuild_detail()
 
@@ -231,7 +241,7 @@ func _make_row(q: Dictionary) -> Control:
 	b.button_pressed = String(q.get("id", "")) == _sel_id
 	b.add_theme_font_size_override("font_size", 15)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	var mark := "▶" if q["type"] == Q.Type.TUTORIAL else ("★" if q["type"] == Q.Type.STORY else "◆")
+	var mark := _type_mark(q)
 	var dist := _distance_to(q)
 	b.text = "  %s  %s%s" % [mark, str(q["title"]), _stage_suffix(q)]
 	if dist >= 0.0:

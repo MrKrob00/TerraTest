@@ -5,7 +5,11 @@ signal changed
 ## запускает сюжет (спавнит первого врага).
 signal tutorial_finished
 
-enum Type { STORY, DAILY, TUTORIAL }
+## EVENT — разовые СОБЫТИЯ мира: не сюжет (не двигают историю и не ждут грейда) и не
+## ежедневка (не считают штуки). Появляются сами, повторяются, живут своей веткой в журнале.
+## Дописан В КОНЕЦ: значения enum лежат в сохранённых списках, вставка в середину сдвинула бы
+## всё после себя.
+enum Type { STORY, DAILY, TUTORIAL, EVENT }
 # TUTORIAL — обучение: последовательное (по order), идёт ПЕРВЫМ (до сюжета), ведёт «за руку» —
 # при активации шага Механик подсказывает, что сделать (поле hint). Награды символические.
 
@@ -21,6 +25,8 @@ func _ready() -> void:
 		for q in quests:
 			# Сюжет И обучение — одноразовые (персист в G.quests_done), иначе награды/шаги
 			# фармились бы перезапуском. Дейлики повторяемы намеренно.
+			# EVENT сюда НЕ попадает намеренно: событие должно случаться снова, как дейлик,
+			# иначе оно бы отработало один раз за всю игру и исчезло.
 			if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
 				q["done"] = true
 				q["progress"] = q["goal"]
@@ -121,6 +127,18 @@ func _seed_demo() -> void:
 	requires("arc_radar", ["arc_power"])      # развилка: оба открываются вместе,
 	requires("arc_battery", ["arc_power"])    # и порядок между ними выбирает игрок
 
+	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
+	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
+	# доехать и победить. Повторяется: quest_arcs перезаряжает его после остывания.
+	add_quest("event_duel", "Crossfire", "", Type.EVENT, 1, 0, "", 260, 30, 6)
+	add_stages("event_duel", [
+		{"desc": "Reach the contact coordinates",
+		 "event": "quest_duel_1", "goal": 1,
+		 "hint": "Two units are shooting at each other out there. The System would rather neither of them finished."},
+		{"desc": "Be the one that drives away",
+		 "event": "quest_duel_2", "goal": 1,
+		 "hint": "Neither of them cares which of you it is. Take both, or wait and take what is left."},
+	])
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
 
@@ -301,6 +319,19 @@ func set_progress(id: String, value: int) -> void:
 	changed.emit()
 	_on_completed(q)
 
+## Открыть квест ЗАНОВО (события повторяются). Прогресс и стадию откатываем в начало — иначе
+## перезаряженное событие сразу оказалось бы на своей второй части.
+func reset_quest(id: String) -> void:
+	var q := _find(id)
+	if q.is_empty():
+		return
+	q["done"] = false
+	q["progress"] = 0
+	if q.has("stages") and not (q["stages"] as Array).is_empty():
+		q["stage"] = 0
+		_apply_stage(q)
+	changed.emit()
+
 func complete(id: String) -> void:
 	set_progress(id, _find(id).get("goal", 1))
 
@@ -436,7 +467,11 @@ func active_quests() -> Array[Dictionary]:
 	for q in available_story():
 		out.append(q)
 	for q in quests:
-		if q["type"] == Type.DAILY and not q["done"]:
+		# СОБЫТИЯ во время обучения не предлагаем: игроку ещё нечем ехать за двести метров,
+		# и наставник ведёт его за руку — вторая цель в журнале только сбивает.
+		if q["type"] == Type.EVENT and tutorial_active():
+			continue
+		if (q["type"] == Type.DAILY or q["type"] == Type.EVENT) and not q["done"]:
 			out.append(q)
 	return out
 
@@ -482,7 +517,11 @@ func visible_quests() -> Array[Dictionary]:
 	for q in available_story():
 		out.append(q)
 	for q in quests:
-		if q["type"] == Type.DAILY and not q["done"]:
+		# СОБЫТИЯ во время обучения не предлагаем: игроку ещё нечем ехать за двести метров,
+		# и наставник ведёт его за руку — вторая цель в журнале только сбивает.
+		if q["type"] == Type.EVENT and tutorial_active():
+			continue
+		if (q["type"] == Type.DAILY or q["type"] == Type.EVENT) and not q["done"]:
 			out.append(q)
 	return out
 

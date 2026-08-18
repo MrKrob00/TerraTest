@@ -195,10 +195,15 @@ func _limit_engagement() -> void:
 			continue
 		if _is_asleep(e):
 			continue                           # спящий не дерётся и место в бою не занимает
-		if e.get("_target") != null:
+		# Считаем только тех, кто идёт НА ИГРОКА. Ограничение существует, чтобы на него не
+		# наваливались толпой; двое врагов, стреляющих ДРУГ В ДРУГА (событие «Crossfire»),
+		# к игроку отношения не имеют, и запрещать одному из них бой значило бы гасить драку,
+		# ради которой событие и придумано.
+		var t = e.get("_target")
+		if t != null and t == player:
 			seekers.append(e)
 		else:
-			e.set_combat_allowed(true)         # цели нет — ограничивать нечего
+			e.set_combat_allowed(true)         # цели нет или цель не игрок — не ограничиваем
 	seekers.sort_custom(func(a, b):
 		return player.global_position.distance_squared_to(a.global_position) \
 				< player.global_position.distance_squared_to(b.global_position))
@@ -401,6 +406,35 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	# Метка «сюжетный»: уборка спящих его не удалит. Без неё квест «уничтожь разведчика» мог
 	# бы стать невыполнимым молча — игрок уехал, разведчик заснул, уборка сняла его как самого
 	# дальнего, а задание осталось висеть с целью, которой больше нет.
+	enemy.set_meta("story", true)
+	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
+		enemy.died.connect(_on_enemy_died)
+	_enemies.append(enemy)
+	return enemy
+
+## Поставить врага В КОНКРЕТНУЮ ТОЧКУ с заданной сборкой и ФРАКЦИЕЙ. Нужен событиям: там
+## машины воюют не только с игроком, но и между собой, а «свой-чужой» решается именно
+## фракцией (enemy_vehicle._is_enemy сравнивает её, и 1 против 2 — уже враги).
+##
+## Помечается как сюжетный: уборка спящих не должна унести участника события, пока игрок до
+## него едет. В общий поток он при этом попадает как обычный враг — считается, засыпает,
+## подчиняется лимиту боя.
+func spawn_at(pos: Vector3, preset: int, faction_id: int = 1) -> Node3D:
+	if enemy_scenes.is_empty():
+		return null
+	var vehicles: Node = _vehicles_root()
+	if vehicles == null:
+		return null
+	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+	var blocks := enemy.get_node_or_null("blocks")
+	if blocks and "layout_preset" in blocks:
+		blocks.layout_preset = preset
+	if "faction" in enemy:
+		enemy.set("faction", faction_id)
+	vehicles.add_child(enemy)
+	enemy.global_position = pos + Vector3.UP * drop_height     # десант, как и все остальные
+	if enemy is RigidBody3D:
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	enemy.set_meta("story", true)
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
