@@ -39,6 +39,9 @@ extends Node3D
 ##
 ## Запас нужен сверх обзора: враг должен ещё какое-то время патрулировать, чтобы игрок успел
 ## его заметить и решить — объехать или подраться.
+##
+## Тем же запасом меряется расстояние до ДРУГИХ врагов при выборе точки (_too_close_to_enemy):
+## «безопасно» — величина одна, и держать её двумя числами значит однажды их разойти.
 @export var spawn_safe_margin: float = 40.0
 ## Радиус обзора берём у ЖИВОГО врага (он же может отличаться у сборок). Пока врагов нет —
 ## брать неоткуда, поэтому значение по умолчанию.
@@ -56,7 +59,9 @@ extends Node3D
 ## возникает у него по курсу. Сзади и по бокам такого ограничения нет — там появление не видно.
 @export var front_clear_dist: float = 240.0
 @export_range(0.0, 180.0) var front_cone_deg: float = 55.0
-@export var spawn_separation: float = 70.0          # не ближе этого к ДРУГИМ врагам
+# Запас до ДРУГИХ врагов — тот же spawn_safe_margin, что и до игрока. Одно число на оба
+# правила намеренно: это одна и та же величина «насколько далеко считается безопасно», и
+# двумя экспортами она рано или поздно разъехалась бы. Было 70 отдельным числом.
 ## ВСЕ враги ДЕСАНТИРУЮТСЯ: появляются на этой высоте над рельефом и падают.
 ##
 ## Отсюда же и то, чего здесь БОЛЬШЕ НЕТ — отбраковки точек по высоте и уклону. Она искала
@@ -543,13 +548,14 @@ func _enemy_detect_radius() -> float:
 func _sector_of(ang: float) -> int:
 	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS
 
-# Есть ли уже враг ближе spawn_separation (по горизонтали) к точке pos.
+# Есть ли уже враг ближе spawn_safe_margin (по горизонтали) к точке pos. Без этого запаса
+# новый десант падал бы на голову тому, кто уже стоит в этом секторе.
 func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
 	for e in _enemies:
 		if e == exclude or not is_instance_valid(e):
 			continue
 		var d := Vector2(pos.x - e.global_position.x, pos.z - e.global_position.z)
-		if d.length_squared() < spawn_separation * spawn_separation:
+		if d.length_squared() < spawn_safe_margin * spawn_safe_margin:
 			return true
 	return false
 
