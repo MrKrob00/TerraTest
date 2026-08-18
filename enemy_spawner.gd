@@ -31,15 +31,19 @@ extends Node3D
 ## ОДИН: бой один на один читается и выигрывается, а второй нападающий превращает его
 ## в свалку, где решает не умение, а количество.
 @export var max_engaging: int = 1
-## Кольцо спавна. Было 270–520: враг появлялся ЗА горизонтом восприятия (машина видит на 40,
-## оружие бьёт на 60) — игрок не встречал его, а натыкался неизвестно где и неизвестно когда.
-## Теперь чуть дальше видимости: враг приходит «из-за холма», а не из ниоткуда.
-## Ближняя граница ОБЯЗАНА быть заметно больше радиуса обнаружения врага (40): иначе он
-## рождается уже внутри своей зоны агрессии и бросается на игрока в ту же секунду, вместо
-## того чтобы патрулировать, пока к нему не подъедут. Двести — с пятикратным запасом: стоящий
-## на месте игрок не должен обнаруживать рядом с собой машину, которой минуту назад не было.
-@export var spawn_min_dist: float = 200.0
-@export var spawn_max_dist: float = 300.0
+## Кольцо спавна. Ближняя граница НЕ ЗАДАЁТСЯ ЧИСЛОМ, а СЧИТАЕТСЯ: радиус обзора врага плюс
+## запас (_spawn_min_dist). Смысл в том, что спавн ближе «сколько враг видит» — это машина,
+## которая родилась и в ту же секунду поехала драться, а игрок даже не понял, откуда она
+## взялась. Зашитое число тут разъезжалось бы с обзором при первой же его правке: радиус уже
+## менялся с 85 на 40, и граница про это не знала.
+##
+## Запас нужен сверх обзора: враг должен ещё какое-то время патрулировать, чтобы игрок успел
+## его заметить и решить — объехать или подраться.
+@export var spawn_safe_margin: float = 40.0
+## Радиус обзора берём у ЖИВОГО врага (он же может отличаться у сборок). Пока врагов нет —
+## брать неоткуда, поэтому значение по умолчанию.
+@export var enemy_detect_fallback: float = 40.0
+@export var spawn_max_dist: float = 160.0
 ## ТИХАЯ ЗОНА вокруг СВОЕЙ ЗАЯКОРЕННОЙ машины: туда враг не приходит вовсе (правило
 ## TerraTech — рядом с якорем игрока спавна нет).
 ##
@@ -355,7 +359,7 @@ func _machine_value(machine: Node3D) -> int:
 	return v
 
 ## Разведчик РЯДОМ с игроком — сюжетный спавн после обучения. Обычный поток врагов держит
-## дистанцию spawn_min_dist (270 м), чтобы не наваливаться; здесь наоборот нужно, чтобы
+## дистанцию «обзор врага + запас», чтобы не наваливаться; здесь наоборот нужно, чтобы
 ## игрок его сразу увидел, поэтому кольцо своё и слабая сборка (preset 0).
 ## Возвращает врага или null, если рядом не нашлось ровного места.
 func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
@@ -452,11 +456,14 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		order.append(i)
 	order.shuffle()
 	order.sort_custom(func(a, b): return per[a] < per[b])
+	# Границы кольца считаем ОДИН РАЗ на поиск: обзор врага за время перебора не меняется.
+	var near: float = _spawn_min_dist()
+	var far: float = maxf(spawn_max_dist, near + 20.0)   # кольцо не может быть вывернутым
 	# Внутри сектора — несколько попыток: точку может занять сосед, курс игрока или тихая зона.
 	for sec in order:
 		for _try in 6:
 			var ang: float = (TAU / SPAWN_SECTORS) * (float(sec) + randf())
-			var dist: float = randf_range(spawn_min_dist, spawn_max_dist)
+			var dist: float = randf_range(near, far)
 			var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 			var h: float = map.terrain_height_at(world)
 			var cand := Vector3(world.x, h + drop_height, world.z)
@@ -513,6 +520,25 @@ func _near_anchored_base(pos: Vector3) -> bool:
 		if pos.distance_squared_to((v as Node3D).global_position) < quiet_radius * quiet_radius:
 			return true
 	return false
+
+## Ближняя граница кольца: НАСКОЛЬКО ДАЛЕКО ВРАГ ВИДИТ плюс запас.
+func _spawn_min_dist() -> float:
+	return _enemy_detect_radius() + spawn_safe_margin
+
+## Радиус обзора врага. Спрашиваем у живого — сборки могут отличаться, и зашивать сюда копию
+## числа из enemy_vehicle значило бы однажды их разойти. Кешируем: за кадр он не меняется.
+var _detect_cache: float = -1.0
+
+func _enemy_detect_radius() -> float:
+	if _detect_cache > 0.0:
+		return _detect_cache
+	for e in _enemies:
+		if is_instance_valid(e):
+			var r = e.get("detection_radius")
+			if r != null and float(r) > 0.0:
+				_detect_cache = float(r)
+				return _detect_cache
+	return enemy_detect_fallback
 
 func _sector_of(ang: float) -> int:
 	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS
