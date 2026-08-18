@@ -17,6 +17,7 @@ var _dropped: Dictionary = {}      # какие стадии уже выложи
 var _thief: Node3D = null
 
 func _ready() -> void:
+	add_to_group("quest_arcs")     # компас берёт отсюда координаты события
 	_props = QuestProps.new()
 	add_child(_props)
 
@@ -27,6 +28,7 @@ func _process(delta: float) -> void:
 	_t = POLL
 	if get_node_or_null("/root/Q") == null:
 		return
+	_duel_cooldown(POLL)
 	for q in Q.active_quests():
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
@@ -35,6 +37,8 @@ func _process(delta: float) -> void:
 			"quest_arc_radar_2":   _arc_radar_2(q)
 			"quest_arc_battery_1": _arc_battery_1(q)
 			"quest_arc_battery_2": _arc_battery_2(q)
+			"quest_duel_1":        _duel_1(q)
+			"quest_duel_2":        _duel_2(q)
 
 # ── Ветка «энергия»: солнечная панель + опора, затем реген ───────────────────
 func _arc_power_1(q: Dictionary) -> void:
@@ -111,6 +115,88 @@ func _arc_battery_2(q: Dictionary) -> void:
 		_dropped[key] = true
 	if _has_block(G.Block.BATTERY):
 		Q.report(String(q["event"]), 1)
+
+# ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
+# Часть 1 — доехать до точки. Часть 2 — победить.
+#
+# Точка ставится не рядом и не за горизонтом: ровно настолько далеко, чтобы это была
+# ПОЕЗДКА, а не поворот головы, и чтобы по дороге игрок успел решить, ввязываться ли.
+const DUEL_DIST := 200.0
+## На каком подлёте стычка начинается. Двести метров ехать в пустоту скучно; на пятидесяти
+## бой уже слышно и видно, и игрок приезжает НА идущую драку, а не на пустое поле, где
+## машины возникнут у него на глазах.
+const DUEL_TRIGGER := 50.0
+## Насколько дуэлянты стоят друг от друга.
+const DUEL_GAP := 18.0
+## Сколько ждать перед тем, как событие может случиться снова.
+const DUEL_COOLDOWN := 420.0
+
+var _duel_point: Variant = null      # куда ехать (Vector3) или null — точки ещё нет
+var _duel_a: Node3D = null
+var _duel_b: Node3D = null
+var _duel_cool: float = 0.0
+
+## Куда ведёт компас по этому событию. Публично — компас спрашивает отсюда, потому что цель
+## тут не предмет в мире (QuestProps), а просто координаты.
+func duel_point() -> Variant:
+	return _duel_point
+
+func _duel_1(q: Dictionary) -> void:
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if _duel_point == null:
+		# Направление случайное, дистанция фиксированная: событие должно уводить игрока с его
+		# маршрута, а не подворачиваться там, куда он и так ехал.
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * DUEL_DIST, 0.0, sin(ang) * DUEL_DIST)
+		var map: Node = get_node_or_null("/root/Main/map")
+		if map != null and map.has_method("terrain_height_at"):
+			wp.y = map.terrain_height_at(wp)
+		_duel_point = wp
+		return
+	if p.global_position.distance_squared_to(_duel_point as Vector3) > DUEL_TRIGGER * DUEL_TRIGGER:
+		return
+	# Подъехали — стычка начинается. Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
+	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
+	if not _spawn_duel(_duel_point as Vector3):
+		return
+	Q.report(String(q["event"]), 1)
+
+func _spawn_duel(center: Vector3) -> bool:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null or not sp.has_method("spawn_at"):
+		return false
+	var side: Vector3 = Vector3(DUEL_GAP * 0.5, 0.0, 0.0)
+	_duel_a = sp.spawn_at(center - side, 7, 1)     # рейдер
+	_duel_b = sp.spawn_at(center + side, 8, 2)     # копейщик другой фракции
+	if _duel_a == null or _duel_b == null:
+		return false
+	# Цели назначаем сразу и накрепко: пока игрок доедет, они уже должны драться, а не
+	# искать друг друга по своим зонам обнаружения.
+	if _duel_a.has_method("assign_target"):
+		_duel_a.assign_target(_duel_b, true)
+	if _duel_b.has_method("assign_target"):
+		_duel_b.assign_target(_duel_a, true)
+	return true
+
+func _duel_2(q: Dictionary) -> void:
+	# Победа = поля боя больше нет. Если они добьют друг друга сами — тоже победа: игрок
+	# приехал и дождался, это его решение, а не поблажка.
+	if is_instance_valid(_duel_a) or is_instance_valid(_duel_b):
+		return
+	Q.report(String(q["event"]), 1)
+	_duel_cool = DUEL_COOLDOWN
+	_duel_point = null
+
+## Перезарядка события: отлежалось — открываем заново. Без этого «событие» случилось бы
+## ровно один раз за всю игру и навсегда осталось выполненным.
+func _duel_cooldown(delta: float) -> void:
+	if _duel_cool <= 0.0:
+		return
+	_duel_cool -= delta
+	if _duel_cool <= 0.0:
+		Q.reset_quest("event_duel")
 
 # ── Помощники ────────────────────────────────────────────────────────────────
 func _player() -> Node3D:

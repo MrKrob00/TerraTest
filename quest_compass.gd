@@ -59,6 +59,12 @@ func target_of(q: Dictionary) -> Variant:
 		var exact = props.position_for(String(q.get("id", "")))
 		if exact != null:
 			return exact
+	# Событие ведёт не к предмету, а к КООРДИНАТАМ — их держит quest_arcs.
+	if String(q.get("event", "")) == "quest_duel_1":
+		var arcs: Node = get_tree().get_first_node_in_group("quest_arcs")
+		if arcs != null and arcs.has_method("duel_point"):
+			return arcs.duel_point()
+		return null
 	var from: Vector3 = cam.global_position
 	match String(q.get("event", "")):
 		"enemy_killed", "daily_kill":
