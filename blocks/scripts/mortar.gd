@@ -15,10 +15,14 @@ const MIN_RANGE := 20.0        # решение игрока
 const MAX_RANGE := 160.0
 const SHELLS := 8              # залпом, одновременно
 const SHELL_DAMAGE := 12
-const SALVO_PERIOD := 4.0      # пауза между залпами
+const SALVO_PERIOD := 1.0      # пауза между залпами (решение игрока)
 const SPREAD := 6.0            # разброс по земле, метров
-const SHELL_SPEED := 55.0
 const SHELL_GRAVITY := 30.0
+## Угол броска — ФИКСИРОВАННЫЙ. Раньше он считался по настильной ветви (½·asin(g·d/v²)) и на
+## близких целях вырождался почти в ноль: мортира стреляла прямой наводкой, как пушка, и
+## «навеса» в ней не было вовсе. Теперь угол задан, а под дальность подбирается СКОРОСТЬ —
+## так навес виден всегда и одинаков на любой дистанции.
+const ARC_DEG := 45.0
 
 var _salvo_t: float = 0.0
 
@@ -54,16 +58,16 @@ func fire_bullet() -> void:
 		super.fire_bullet()
 		_arc_last(t)
 
-# Отправить последний снаряд НАВЕСОМ в точку цели с разбросом. Угол берём из баллистики:
-# для настильной ветви угол броска = ½·asin(g·d / v²) — то есть чем дальше цель, тем круче
-# ствол. Дальше MAX_RANGE решения нет вовсе, поэтому туда и не стреляем.
+# Отправить последний снаряд НАВЕСОМ в точку цели с разбросом.
+#
+# Угол ФИКСИРОВАН (ARC_DEG), а под дальность подбирается скорость. Из d = v²·sin(2θ)/g при
+# θ = 45° следует v = √(g·d) — то есть по ближней цели снаряд летит медленно и высоко, по
+# дальней быстро, но дуга одна и та же. Так и должна выглядеть мортира: навес не «включается»
+# на дальних дистанциях, он у неё всегда.
 func _arc_last(target: Node3D) -> void:
 	var b: Area3D = _last_bullet()
 	if b == null or not ("dir" in b):
 		return
-	b.set("speed", SHELL_SPEED)
-	b.set("bullet_gravity", SHELL_GRAVITY)
-	b.set("max_lifetime", 12.0)          # навес летит долго: пуля успела бы истечь в воздухе
 	var aim: Vector3 = target.global_position
 	aim.x += randf_range(-SPREAD, SPREAD)
 	aim.z += randf_range(-SPREAD, SPREAD)
@@ -72,8 +76,13 @@ func _arc_last(target: Node3D) -> void:
 	var dist: float = flat.length()
 	if dist < 0.1:
 		return
-	var s: float = clampf(SHELL_GRAVITY * dist / (SHELL_SPEED * SHELL_SPEED), -1.0, 1.0)
-	var ang: float = 0.5 * asin(s)
+	var ang: float = deg_to_rad(ARC_DEG)
+	# sin(2θ) при 45° равен единице, но пишем формулу целиком: поменяют ARC_DEG — скорость
+	# пересчитается сама, а не разъедется с углом.
+	var speed: float = sqrt(SHELL_GRAVITY * dist / maxf(sin(2.0 * ang), 0.01))
+	b.set("speed", speed)
+	b.set("bullet_gravity", SHELL_GRAVITY)
+	b.set("max_lifetime", 12.0)          # навес летит долго: пуля успела бы истечь в воздухе
 	var horiz: Vector3 = flat / dist
 	b.dir = (horiz * cos(ang) + Vector3.UP * sin(ang)).normalized()
 	if absf(b.dir.dot(Vector3.UP)) < 0.99:
