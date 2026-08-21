@@ -788,6 +788,74 @@ func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
 		prev_gap = gap
 	return null
 
+# ── ПЛОЩАДКА ПОД ПОСТРОЙКУ ───────────────────────────────────────────────────
+# Выровнять кусок рельефа В ИГРЕ: высоты, меш и коллизия. Нужно всему, что «встраивается» в
+# мир, а не ставится на него, — базе из квеста, будущим вышкам, любой постройке, которой
+# нужен ровный пол.
+#
+# Область ПРЯМОУГОЛЬНАЯ, а не круглая, и это не мелочь: постройки у нас вытянутые (линия
+# конвейера — шесть клеток в одну сторону и две вбок), а круг под такую площадку пришлось бы
+# брать по её диагонали и срывать втрое больше земли, чем нужно.
+#
+# Порядок работы важен: сперва высоты, потом меши задетых чанков, потом коллизия. Коллизия
+# стриминговая — её тайлы нарезаются ИЗ md вокруг тел, поэтому старые надо снести, иначе
+# машина продолжит ездить по прежнему рельефу, которого уже не видно.
+#
+# Правка живёт только в памяти: карта высот в сейв мира не попадает, и после перезапуска
+# площадка вернётся к исходному рельефу. Тому, кто её звал, и решать, повторить ли правку
+# при загрузке.
+#
+# half_extent — половина размера площадки в мировых единицах (X и Z), feather — насколько
+# плавно она сходит на нет за своим краем.
+func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
+		feather: float = 4.0) -> void:
+	if md.is_empty() or w <= 0:
+		return
+	var inv := global_transform.affine_inverse()
+	var local: Vector3 = inv * center_world
+	# Целевую высоту переводим в ЛОКАЛЬНУЮ: md хранит высоты в осях самой карты, а звать нас
+	# будут мировыми координатами (там же, где стоит постройка).
+	var target: float = (inv * Vector3(center_world.x, height, center_world.z)).y
+	var cx: float = local.x + float(w) * 0.5 - 0.5      # та же формула, что в _compute_chunk_data
+	var cz: float = local.z + float(d) * 0.5 - 0.5
+	var ex: float = maxf(half_extent.x, 0.0)
+	var ez: float = maxf(half_extent.y, 0.0)
+	var fe: float = maxf(feather, 0.001)
+	var x0 := clampi(int(floor(cx - ex - fe)), 0, w - 1)
+	var x1 := clampi(int(ceil(cx + ex + fe)), 0, w - 1)
+	var z0 := clampi(int(floor(cz - ez - fe)), 0, d - 1)
+	var z1 := clampi(int(ceil(cz + ez + fe)), 0, d - 1)
+	if x1 < x0 or z1 < z0:
+		return
+	for z in range(z0, z1 + 1):
+		var dz: float = maxf(absf(float(z) - cz) - ez, 0.0)   # 0 внутри площадки
+		var row := z * w
+		for x in range(x0, x1 + 1):
+			var dx: float = maxf(absf(float(x) - cx) - ex, 0.0)
+			# Вес по расстоянию ДО ПРЯМОУГОЛЬНИКА: внутри — единица (ровно), дальше плавно
+			# к нулю, чтобы площадка не обрывалась стеной.
+			var dist: float = sqrt(dx * dx + dz * dz)
+			if dist >= fe:
+				continue
+			var k: float = 1.0 - dist / fe
+			md[row + x] = lerp(md[row + x], target, clampf(k, 0.0, 1.0))
+	_md_max = maxf(_md_max, target)          # граница высот нужна лучу по рельефу
+	# Меши: собираем задетые чанки и просим перестроить только их.
+	var cxl: int = ceili(float(w - 1) / chunk_size)
+	var dirty: Array = []
+	var seen: Dictionary = {}
+	for czz in range(z0 / chunk_size, z1 / chunk_size + 1):
+		for cxx in range(x0 / chunk_size, x1 / chunk_size + 1):
+			var ci: int = czz * cxl + cxx
+			if not seen.has(ci):
+				seen[ci] = true
+				dirty.append(ci)
+	update_chunks(dirty)
+	# Коллизия: тайлы нарезаны из СТАРЫХ высот — сносим и даём построиться заново.
+	if _col_active:
+		_clear_collision_cells()
+		_update_collision_cells()
+
 # In-place brush on md around a world centre; returns the editor chunk indices touched.
 # mode: 1 = raise, -1 = lower, 0 = flatten.
 func apply_brush(center_world: Vector3, radius: float, strength: float, mode: int) -> PackedInt32Array:

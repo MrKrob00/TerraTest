@@ -352,6 +352,7 @@ func _line_2(q: Dictionary) -> void:
 
 ## Площадка целиком: заякоренный продавец с лентой + набор на земле рядом.
 func _spawn_line_kit(at: Vector3) -> void:
+	_flatten_line_site(at)
 	_line_base = _spawn_station(at, [
 		{"x": 5, "y": 5, "z": 5, "block": G.Block.SELLER, "rot": [0.0, 0.0, 0.0]},
 		{"x": 5, "y": 5, "z": 6, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
@@ -361,6 +362,23 @@ func _spawn_line_kit(at: Vector3) -> void:
 		_props.drop_near("arc_line", G.Block.BELT, at)
 	_show_plan(LINE_PLAN)
 	Dialogue.say("System", "Seller is anchored and live, one belt already on it. The rest of the line is on the ground — the white outlines show where each piece goes.")
+
+## РОВНАЯ ПЛОЩАДКА под линию. Постройка ВСТРАИВАЕТСЯ в мир, а не ставится на него: линия
+## длинная — шесть клеток по оси конвейера и две вбок под процессор, — и на склоне её просто
+## не собрать: с одного конца блоки уходят в землю, с другого висят в воздухе.
+##
+## Площадка ПРЯМОУГОЛЬНАЯ и вытянута ПО НАПРАВЛЕНИЮ КОНВЕЙЕРА (+Z базы, она ставится без
+## поворота). Круглая по той же длине срыла бы втрое больше земли ради коридора в две клетки.
+const LINE_SITE_HALF := Vector2(3.0, 5.0)     # полуразмер площадки: X — ширина, Z — вдоль линии
+const LINE_SITE_AHEAD := 2.0                  # центр смещён вперёд по линии, а не по продавцу
+const LINE_SITE_FEATHER := 5.0                # на сколько метров площадка сходит на нет за краем
+
+func _flatten_line_site(at: Vector3) -> void:
+	var map: Node = get_node_or_null("/root/Main/map")
+	if map == null or not map.has_method("flatten_area"):
+		return
+	map.flatten_area(at + Vector3(0.0, 0.0, LINE_SITE_AHEAD), LINE_SITE_HALF, at.y,
+			LINE_SITE_FEATHER)
 
 ## Стационарная постройка ОТ КВЕСТА. Делает ровно то же, что постановка ядра игроком
 ## (vehicle_body_3d._place_ground_structure), но без руки и превью: машина из сцены, раскладка,
