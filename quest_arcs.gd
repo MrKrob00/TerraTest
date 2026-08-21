@@ -37,6 +37,12 @@ func _process(delta: float) -> void:
 			"quest_arc_radar_2":   _arc_radar_2(q)
 			"quest_arc_battery_1": _arc_battery_1(q)
 			"quest_arc_battery_2": _arc_battery_2(q)
+			"quest_salvage_1":     _salvage_1(q)
+			"quest_salvage_2":     _salvage_2(q)
+			"quest_line_1":        _line_1(q)
+			"quest_line_2":        _line_2(q)
+			"quest_hold_1":        _hold_1(q)
+			"quest_hold_2":        _hold_2(q)
 			"quest_duel_1":        _duel_1(q)
 			"quest_duel_2":        _duel_2(q)
 
@@ -115,6 +121,110 @@ func _arc_battery_2(q: Dictionary) -> void:
 		_dropped[key] = true
 	if _has_block(G.Block.BATTERY):
 		Q.report(String(q["event"]), 1)
+
+# ── «Salvage Run»: сбитый груз под охраной ───────────────────────────────────
+# Замена станции из оригинала. Магазинов у нас нет, поэтому «доехать до станции и отбить её»
+# превращается в «доехать до груза и отбить его», а наградой становится КОЛЛЕКТОР — блок, без
+# которого не собрать производственную цепочку в следующем квесте.
+const SALVAGE_DIST := 180.0
+const SALVAGE_REACH := 45.0
+
+var _salvage_point: Variant = null
+var _salvage_guard: Node3D = null
+
+## Куда ведёт компас на первой стадии. Цель — координаты, а не предмет, поэтому мимо QuestProps.
+func salvage_point() -> Variant:
+	return _salvage_point
+
+func _salvage_1(q: Dictionary) -> void:
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if _salvage_point == null:
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * SALVAGE_DIST, 0.0, sin(ang) * SALVAGE_DIST)
+		var map: Node = get_node_or_null("/root/Main/map")
+		if map != null and map.has_method("terrain_height_at"):
+			wp.y = map.terrain_height_at(wp)
+		_salvage_point = wp
+		return
+	if p.global_position.distance_squared_to(_salvage_point as Vector3) > SALVAGE_REACH * SALVAGE_REACH:
+		return
+	# Подъехали — груз на месте, и он не бесхозный. Охранник появляется ЗДЕСЬ, а не ждал сутки
+	# на точке: спавн по прибытии дешевле и надёжнее, чем машина, живущая где-то с начала игры.
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp != null and sp.has_method("spawn_at") and not is_instance_valid(_salvage_guard):
+		_salvage_guard = sp.spawn_at(_salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1)
+		if _salvage_guard != null and _salvage_guard.has_method("assign_target"):
+			_salvage_guard.assign_target(p, true)
+	Q.report(String(q["event"]), 1)
+
+func _salvage_2(q: Dictionary) -> void:
+	if is_instance_valid(_salvage_guard):
+		return
+	# Охрана кончилась — груз наш. Коллектор кладём В МИР рядом с точкой, а не молча в
+	# инвентарь: игрок должен его увидеть и подобрать, как любой трофей.
+	if not _dropped.has("salvage"):
+		_dropped["salvage"] = true
+		_props.drop_near("arc_salvage", G.Block.COLLECTOR, _salvage_point)
+		return                              # даём кадр, чтобы предмет появился
+	if _has_block(G.Block.COLLECTOR):
+		Q.report(String(q["event"]), 1)
+		_salvage_point = null
+
+# ── «Production Line»: собрать цепочку и включить её ─────────────────────────
+# Условие — НАБОР БЛОКОВ НА МАШИНЕ плюс якорь, а не «поставь пять блоков»: цепочка либо есть
+# целиком, либо не работает вовсе (_factory_active у всех фабричных блоков смотрит на якорь).
+const LINE_CORE := [G.Block.COLLECTOR, G.Block.RECEIVER, G.Block.BELT, G.Block.PROCESSOR]
+
+func _line_1(q: Dictionary) -> void:
+	for bt in LINE_CORE:
+		if not _has_block(int(bt)):
+			return
+	Q.report(String(q["event"]), 1)
+
+func _line_2(q: Dictionary) -> void:
+	if not _has_block(G.Block.SELLER) or not _is_anchored():
+		return
+	Q.report(String(q["event"]), 1)
+
+# ── «Hold the Line»: налёт на СВОЮ базу ──────────────────────────────────────
+# В оригинале это турели у чужой станции. Станций у нас нет, поэтому защищаем то, что игрок
+# построил сам, — и защищать приходится СТОЯ: заякоренная машина уехать не может.
+const HOLD_COUNT := 2
+const HOLD_RANGE := 70.0
+
+var _hold: Array = []
+
+func _hold_1(q: Dictionary) -> void:
+	if not _is_anchored():
+		return                              # ждём, пока игрок встанет: налёт идёт на базу
+	var p: Node3D = _player()
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if p == null or sp == null or not sp.has_method("spawn_at"):
+		return
+	_hold.clear()
+	for i in HOLD_COUNT:
+		var ang: float = TAU * float(i) / float(HOLD_COUNT) + randf()
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * HOLD_RANGE, 0.0, sin(ang) * HOLD_RANGE)
+		var map: Node = get_node_or_null("/root/Main/map")
+		if map != null and map.has_method("terrain_height_at"):
+			wp.y = map.terrain_height_at(wp)
+		var e = sp.spawn_at(wp, 8, 1)
+		if e != null:
+			if e.has_method("assign_target"):
+				e.assign_target(p, true)    # идут именно за базой и цель не бросают
+			_hold.append(e)
+	if _hold.is_empty():
+		return
+	Q.report(String(q["event"]), 1)
+
+func _hold_2(q: Dictionary) -> void:
+	for e in _hold:
+		if is_instance_valid(e):
+			return
+	Q.report(String(q["event"]), 1)
+	_hold.clear()
 
 # ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
 # Часть 1 — доехать до точки. Часть 2 — победить.
