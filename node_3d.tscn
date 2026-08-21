@@ -334,6 +334,7 @@ theme_override_font_sizes/font_size = 48
 text = "30 FPS"
 
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
+constant_angular_velocity = Vector3(-0.0015882496, 0, 0)
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 triangle_size = 1
