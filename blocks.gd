@@ -211,7 +211,7 @@ func _layout_scout() -> void:
 func _layout_runner() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)        # лоб прикрыт: в упор он и живёт
+	_front_armor()                                # лоб прикрыт: в упор он и живёт
 	_side_wheels(G.Block.WHEEL, [5, 6])
 	set_block(5, 6, 5, G.Block.SHOTGUN, 0.0)
 
@@ -221,11 +221,9 @@ func _layout_raider() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
 	_side_wheels(G.Block.WHEEL, [5, 6, 7])
 	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж — к нему и крепятся борта
-	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	_side_armor(6)
 	set_block(5, 6, 5, G.Block.GUN, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
@@ -234,12 +232,10 @@ func _layout_lancer() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
-	set_block(5, 6, 4, G.Block.ARMOR, 0.0)        # лоб в два этажа
+	_front_armor()
 	_side_wheels(G.Block.WHEEL, [5, 6, 7])
 	set_block(5, 6, 6, G.Block.BLOCK, 0.0)
-	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
+	_side_armor(6)
 	set_block(5, 6, 5, G.Block.LASER, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
@@ -248,15 +244,11 @@ func _layout_breaker() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
-	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
 	_side_wheels(G.Block.BIG_WHEEL, [5, 6, 7])
 	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж целиком: на нём стволы и борта
 	set_block(5, 6, 7, G.Block.BLOCK, 0.0)
-	set_block(4, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 6, G.Block.ARMOR, 0.0)
-	set_block(4, 6, 7, G.Block.ARMOR, 0.0)
-	set_block(6, 6, 7, G.Block.ARMOR, 0.0)
+	_side_armor(6)
+	_side_armor(7)
 	set_block(5, 6, 5, G.Block.POUND_CANNON, 0.0)
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
 	set_block(5, 7, 7, G.Block.GUN, 0.0)
@@ -268,10 +260,9 @@ func _layout_siege() -> void:
 	for z in [6, 7, 8]:
 		set_block(5, 5, z, G.Block.BLOCK, 0.0)
 		set_block(5, 6, z, G.Block.BLOCK, 0.0)
-		set_block(4, 6, z, G.Block.ARMOR, 0.0)
-		set_block(6, 6, z, G.Block.ARMOR, 0.0)
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
-	set_block(5, 6, 4, G.Block.ARMOR, 0.0)
+	_front_armor()
+	_side_armor(6)
+	_side_armor(7)
 	_side_wheels(G.Block.WHEEL, [5, 6, 7, 8])
 	set_block(5, 6, 5, G.Block.MORTAR, 0.0)
 	set_block(5, 7, 7, G.Block.ROCKET, 0.0)
@@ -285,6 +276,22 @@ func _side_wheels(kind: int, zs: Array) -> void:
 	for z in zs:
 		set_block(4, 5, int(z), kind, PI / 2)
 		set_block(6, 5, int(z), kind, -PI / 2)
+
+## Пара бортовых пластин на ВТОРОЙ ЭТАЖ, в клетку z. Плита стыкуется ЗАДОМ, как колесо
+## (connect_faces = 2), поэтому её так же доворачивают к корпусу: без поворота её единственная
+## грань смотрела бы в пустоту наружу, и связность (_reachable_cells) считала бы плиту
+## оторванной — при рождении машины она просто падала бы на землю.
+##
+## Клетка (5, 6, z) обязана быть КОРПУСОМ: у ствола connect_faces = 32 (только низ), к его
+## борту не крепится ничего.
+func _side_armor(z: int) -> void:
+	set_block(4, 6, z, G.Block.ARMOR, PI / 2)
+	set_block(6, 6, z, G.Block.ARMOR, -PI / 2)
+
+## Лобовая пластина перед кабиной. Поворот нулевой: её задняя грань (+Z) и так смотрит в
+## кабину — та принимает соседей всеми сторонами.
+func _front_armor() -> void:
+	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
