@@ -244,7 +244,16 @@ func _spawn_world_block(bt: int, pos: Vector3, rot, age_s: float = 0.0) -> Node:
 	return b
 
 # ── Новый старт ───────────────────────────────────────────────────────────────
+## Новая игра начинается на ЗАВОДСКОЙ карте. Запечённый рельеф — это ямы и площадки прошлого
+## прохождения, и оставлять их новому старту значит отдать игроку чужие постройки без построек.
+##
+## Файл удаляем, но высоты в ПАМЯТИ уже прочитаны — эта сессия доигрывает на них, а заводская
+## карта вернётся со следующего запуска. Перечитывать 15 МБ и пересобирать все чанки посреди
+## игры ради редкого случая (сейв удалён или испорчен) дороже, чем один раз доиграть.
 func _fresh_start() -> void:
+	var terr := _terrain()
+	if terr != null and terr.has_method("reset_heights"):
+		terr.reset_heights()
 	var o := _objects()
 	if o != null:
 		for c in o.get_children():
@@ -349,7 +358,15 @@ func _load_world() -> void:
 	# воздухе (или утонула, если площадку срезали). Ждём высоты карты — по нулевым не выровнять.
 	var terr0: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
 	if terr0 != null and terr0.has_method("apply_ground_edits"):
-		terr0.apply_ground_edits(data.get("ground", []))
+		var edits: Array = data.get("ground", [])
+		terr0.apply_ground_edits(edits)
+		# И СРАЗУ ЗАПЕКАЕМ. Дамп карты высот — это её полный размер (15 МБ на нашей карте),
+		# на ходу такая запись видна рывком, а здесь мы ещё под экраном загрузки, где игрок и
+		# так ждёт. После запекания рельеф САМ такой, и повторять правки больше не нужно —
+		# список внутри карты чистится, а те, что остались в сейве, отсекутся по номеру
+		# запечённой правки (см. map.bake_heights).
+		if not edits.is_empty() and terr0.has_method("bake_heights"):
+			terr0.bake_heights()
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])
