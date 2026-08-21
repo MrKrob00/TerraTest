@@ -101,6 +101,11 @@ const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never show
 ## the seam stitching between differing LODs still lines up.
 @export_enum("1 (detailed)", "2 (recommended)", "4 (max FPS)") var triangle_size: int = 0
 
+## How far the LOD-seam skirt hangs below the border (world units). Big enough to cover the
+## height difference a coarser neighbour can have across one of its cells; it lives under the
+## surface, so being generous costs nothing. 0 disables the skirt.
+const SKIRT_DEPTH: float = 4.0
+
 # Grid step for the given LOD level, scaled by triangle_size.
 func _step_for(lod: int) -> int:
 	return LOD_STEPS[clampi(lod, 0, LOD_STEPS.size() - 1)] * (1 << triangle_size)
@@ -1818,6 +1823,70 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 				continue
 			indices.append_array([i00, i10, i11])
 			indices.append_array([i00, i11, i01])
+
+	# ── SKIRT ALONG LOD SEAMS (GAME HOOK: TerraTest) ──────────────────────────
+	# Border snapping alone leaves gaps you can see the sky through. It only lines the two
+	# meshes up once BOTH have been rebuilt, and a chunk is rebuilt a frame or two after its
+	# neighbour changed LOD; in that window the seam is open. Rounding of the snapped heights
+	# leaves hairline cracks even after it settles.
+	#
+	# A skirt closes them with geometry: a vertical wall dropped from the border, hidden under
+	# the surface, visible only through a crack. It is built ONLY on edges that actually touch
+	# a different LOD (n/s/w/e_step != 0) — that is where cracks are, and a skirt around every
+	# chunk would cost a quarter of the terrain's triangles for nothing.
+	if SKIRT_DEPTH > 0.0:
+		var lastz: int = zs[zs.size() - 1]
+		var lastx: int = xs[xs.size() - 1]
+		var edges: Array = []
+		if n_step != 0:
+			var keys: Array = []
+			for x in xs: keys.append(zs[0] * w + x)
+			edges.append([keys, Vector3(0.0, 0.0, -1.0)])
+		if s_step != 0:
+			var keys2: Array = []
+			for x in xs: keys2.append(lastz * w + x)
+			edges.append([keys2, Vector3(0.0, 0.0, 1.0)])
+		if w_step != 0:
+			var keys3: Array = []
+			for z in zs: keys3.append(z * w + xs[0])
+			edges.append([keys3, Vector3(-1.0, 0.0, 0.0)])
+		if e_step != 0:
+			var keys4: Array = []
+			for z in zs: keys4.append(z * w + lastx)
+			edges.append([keys4, Vector3(1.0, 0.0, 0.0)])
+		var drop := Vector3(0.0, SKIRT_DEPTH, 0.0)
+		for e in edges:
+			var ks: Array = e[0]
+			var outward: Vector3 = e[1]
+			for i in range(ks.size() - 1):
+				var t0: int = local_idx.get(ks[i], -1)
+				var t1: int = local_idx.get(ks[i + 1], -1)
+				if t0 < 0 or t1 < 0:
+					continue
+				var p0: Vector3 = vertices[t0]
+				var p1: Vector3 = vertices[t1]
+				var b0: int = vertices.size()
+				vertices.append(p0 - drop)
+				vertices.append(p1 - drop)
+				normals.append(outward)
+				normals.append(outward)
+				uvs.append(uvs[t0])
+				uvs.append(uvs[t1])
+				# .r = 0: no grass on the wall (it is meant to stay unnoticed).
+				colors.append(Color(0.0, colors[t0].g, colors[t0].b, colors[t0].a))
+				colors.append(Color(0.0, colors[t1].g, colors[t1].b, colors[t1].a))
+				# Winding so the wall faces OUTWARD. Godot shows the side the RHR normal
+				# points AWAY from — check it against the terrain's own triangles: for
+				# (i00, i10, i11) the cross product points down while the surface faces up.
+				var vis: Vector3 = -((p1 - p0).cross(-drop))
+				if vis.dot(outward) >= 0.0:
+					indices.append_array([t0, t1, b0 + 1])
+					indices.append_array([t0, b0 + 1, b0])
+				else:
+					indices.append_array([t1, t0, b0])
+					indices.append_array([t1, b0, b0 + 1])
+		if not edges.is_empty():
+			aabb_min.y -= SKIRT_DEPTH      # иначе стенку срежет отсечение по AABB
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
