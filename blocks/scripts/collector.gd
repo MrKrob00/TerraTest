@@ -36,13 +36,10 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 	if inventory.has(body): return  # ← уже в инвентаре, игнорируем
 	elif body.freeze:
 		return
-	# СВОБОДНЫЙ БЛОК пакуем в чанк, а не тащим как есть. Коллектор и раньше засасывал блоки
-	# (они в мире незаморожены и проходят проверку выше), но нёс их целиком — тяжёлое тело с
-	# коллизией занимало слот. Теперь блок исчезает, а в инвентаре растёт счётчик чанка: на
-	# ленту уедет ОДИН предмет, даже если в нём двадцать четыре блока.
-	if "block" in body:
-		_pack_block(body)
-		return
+	# СВОБОДНЫЕ БЛОКИ — не его работа, для них есть упаковщик (packer.gd). Здесь стояла
+	# ветка упаковки, но зона коллектора имеет маску 8 (ТОЛЬКО ресурсы), так что блока она не
+	# видела никогда: код был мёртвый, а комментарий рядом с ним утверждал обратное.
+	# Готовые ЧАНКИ коллектор берёт как обычный ресурс — они лежат на том же слое.
 	if inventory.size()>=capacity:
 		return
 	body.reparent($resources)
@@ -50,13 +47,6 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 	inventory.append(body)
 	body.freeze = true
 	fix_position_resources.call_deferred(body)
-
-# Упаковка — общая с приёмником (VehicleBlock.pack_block_into): правило одно, и разъехаться
-# двум копиям негде.
-func _pack_block(body: RigidBody3D) -> void:
-	if pack_block_into(inventory, $resources, body, capacity):
-		if not inventory.is_empty():
-			fix_position_resources.call_deferred(inventory[inventory.size() - 1])
 
 ## Отдать предмет приёмнику. Он это уже зовёт (Receiver._take_from_vehicle), но метода не
 ## было, и вызов молча пропускался: список чистился лишь потом, сигналом child_order_changed.

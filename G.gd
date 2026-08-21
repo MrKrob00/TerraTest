@@ -135,6 +135,7 @@ const BLOCK_META := {
 	Block.POUND_CANNON: {"f": "start", "g": 3, "rp": 25},
 	Block.SHOTGUN:     {"f": "start", "g": 2, "rp": 18},
 	Block.COMP_FACTORY: {"f": "start", "g": 4, "rp": 35},   # компоненты — ступень перед фабрикатором
+	Block.PACKER:      {"f": "start", "g": 3, "rp": 22},    # сбор трофеев — ступень после коллектора
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -164,6 +165,7 @@ const TECH_PARENT := {
 	Block.AUTO_MINER: Block.PROCESSOR,
 	Block.FABRICATOR: Block.COMP_FACTORY,   # блоки собираются из компонентов, значит после них
 	Block.COMP_FACTORY: Block.PROCESSOR,
+	Block.PACKER: Block.COLLECTOR,      # тот же сбор с земли, только блоков
 	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
 	Block.ARMOR2: Block.ARMOR,          Block.ARMOR4: Block.ARMOR2,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
@@ -358,6 +360,7 @@ const BLOCK_RECIPE := {
 	Block.AUTO_MINER:   {"c7": 3, "c15": 2},   # Torque Motor + Servo Arm
 	Block.FABRICATOR:   {"c18": 2, "c15": 3},  # Control Chip + Servo Arm
 	Block.COMP_FACTORY: {"c18": 2, "c12": 2},  # Control Chip + Logic Housing
+	Block.PACKER:       {"c0": 3, "m1": 4},    # Wound Coil + Cuprite: магнит это катушки
 	Block.SCRAPPER:     {"c15": 2, "c11": 2},  # Servo Arm + Armour Segment
 	# ── Энергия ───────────────────────────────────────────────────────────────
 	Block.BATTERY:      {"c9": 2, "m1": 5},    # Dynamo Rotor + Cuprite
@@ -854,6 +857,7 @@ enum Block {
 	POUND_CANNON = 44,  # тяжёлая пушка: бьёт сильно и редко
 	SHOTGUN = 45,       # дробовик: дробь, ближний бой, два выстрела и перезарядка
 	COMP_FACTORY = 46,  # варит КОМПОНЕНТЫ из слитков (см. COMP_RECIPE) и отдаёт их на ленту
+	PACKER = 47,        # магнитит свободные блоки и пакует их в чанки: на ленту или в мир
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -891,6 +895,7 @@ enum Block {
 @onready var auto_miner_scene: PackedScene = preload("res://blocks/scenes/auto_miner.tscn")
 @onready var fabricator_scene: PackedScene = preload("res://blocks/scenes/fabricator.tscn")
 @onready var comp_factory_scene: PackedScene = preload("res://blocks/scenes/comp_factory.tscn")
+@onready var packer_scene: PackedScene = preload("res://blocks/scenes/packer.tscn")
 @onready var scrapper_scene: PackedScene = preload("res://blocks/scenes/scrapper.tscn")
 @onready var armor2_scene: PackedScene = preload("res://blocks/scenes/armor2.tscn")
 @onready var armor4_scene: PackedScene = preload("res://blocks/scenes/armor4.tscn")
@@ -922,7 +927,7 @@ const BLOCK_CATEGORIES := {
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
-		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY],
+		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY, Block.PACKER],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -967,6 +972,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.AUTO_MINER: return auto_miner_scene
 		Block.FABRICATOR: return fabricator_scene
 		Block.COMP_FACTORY: return comp_factory_scene
+		Block.PACKER: return packer_scene
 		Block.SCRAPPER: return scrapper_scene
 		Block.ARMOR2: return armor2_scene
 		Block.ARMOR4: return armor4_scene
