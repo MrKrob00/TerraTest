@@ -35,6 +35,10 @@ func _ready() -> void:
 	# досчитывают только после первой раскладки.
 	_restore_pos.call_deferred(_tracker, TRACKER_ID)
 	_restore_pos.call_deferred(_list_panel, LIST_ID)
+	# Журнал закрывается тем же жестом, что и гараж: от нижней кромки экрана вверх по центру.
+	# Вешаем на СЛОЙ, а не на саму панель: жест начинается у края экрана, а панель игрок
+	# таскает куда хочет — подсказка-полоска обязана остаться внизу, а не уехать с окном.
+	SwipeClose.attach(self, _close_list, func(): return _list_panel.visible)
 	get_viewport().size_changed.connect(_keep_on_screen)
 	Q.changed.connect(_refresh)       # Q — автолоад, всегда готов к моменту нашего _ready
 	_refresh()

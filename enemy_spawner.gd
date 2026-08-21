@@ -432,7 +432,12 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1) -> Node3D:
 	if "faction" in enemy:
 		enemy.set("faction", faction_id)
 	vehicles.add_child(enemy)
-	enemy.global_position = pos + Vector3.UP * drop_height     # десант, как и все остальные
+	# ДЕСАНТ отмеряем ОТ РЕЛЬЕФА В ЭТОЙ ТОЧКЕ, а не от высоты переданной точки. Зовут нас
+	# со смещением («охранник в двенадцати метрах от груза», «дуэлянты по бокам центра»), и
+	# высота там своя: на склоне десять метров запаса съедаются холмом, и машина появлялась
+	# ВНУТРИ земли. Кольцевой спавн так и делал с самого начала — здесь этого не хватало.
+	var ground: float = G.ground_y(pos, pos.y)
+	enemy.global_position = Vector3(pos.x, maxf(pos.y, ground) + drop_height, pos.z)
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	enemy.set_meta("story", true)

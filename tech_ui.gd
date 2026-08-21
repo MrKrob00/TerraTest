@@ -77,6 +77,10 @@ func _ready() -> void:
 		row.move_child(_prog_label, (%Currency as Node).get_index())
 	G.progress_changed.connect(_on_progress_changed)   # XP/ДИ: замки могли открыться
 	G.money_changed.connect(_on_money_changed)         # пассивный доход при открытом гараже
+	# Закрыть гараж можно и ЖЕСТОМ — протянуть от нижней кромки экрана вверх по центру.
+	# Крестик остаётся, но он в дальнем углу, а гараж закрывают чаще всего сразу после
+	# того, как что-то взяли, — то есть пальцем, который и так внизу экрана.
+	SwipeClose.attach(self, hide, func(): return visible)
 	_select_tab(TAB_INVENTORY)
 	_refresh_stats()
 	_update_currency()
