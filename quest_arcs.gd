@@ -202,9 +202,103 @@ var _line_base: Node3D = null          # заякоренная база-про�
 var _line_gift_t: float = -1.0         # обратный отсчёт до выдачи процессора (−1 — не идёт)
 var _line_gifted: bool = false
 
+## СХЕМА ЛИНИИ в клетках базы (сетка 11³, центр 5). Лента идёт от продавца ПРЯМО, одной
+## полосой по +Z, а приёмник стоит в её конце — так линия читается с одного взгляда и учит
+## главному: материал едет ОТ приёмника К продавцу.
+##
+## Ни одного поворота здесь нет намеренно. У ленты вход сзади (+Z), выход спереди (−Z) —
+## значит, выложенная по оси Z полоса гонит груз к продавцу сама, и объяснять игроку, каким
+## боком ставить блок, на первой же фабрике не нужно.
+##
+## Клетка (5,5,6) в списке есть, но её ставит сам квест: подсказка на неё не появится, зато
+## схема остаётся ЦЕЛОЙ — по ней же проверяется, что линия сложена так, как задумано.
+const LINE_PLAN := [
+	{"cell": Vector3i(5, 5, 6),  "block": G.Block.BELT},
+	{"cell": Vector3i(5, 5, 7),  "block": G.Block.BELT},
+	{"cell": Vector3i(5, 5, 8),  "block": G.Block.BELT},
+	{"cell": Vector3i(5, 5, 9),  "block": G.Block.BELT},
+	{"cell": Vector3i(5, 5, 10), "block": G.Block.RECEIVER},
+]
+## Куда врезается процессор: СЕРЕДИНА линии. Его футпринт 2×2×2 занимает x∈{4,5}, z∈{7,8} —
+## то есть две клетки самой линии и две СЛЕВА от неё, корпусом в сторону. Вход у него сзади
+## (+Z), выход спереди (−Z), как у ленты, поэтому поток не разворачивается.
+const LINE_PROC_PLAN := [
+	{"cell": Vector3i(5, 5, 8), "block": G.Block.PROCESSOR},
+]
+
+var _hints: Array = []
+
 ## Куда ведёт компас, пока площадка не появилась.
 func line_point() -> Variant:
 	return _line_point
+
+## Разметка: белый призрак блока в каждой клетке схемы (build_hint.gd). Показывает форму,
+## клетку и поворот — то, чего текст задания сказать не может.
+func _show_plan(plan: Array) -> void:
+	_clear_plan()
+	if _line_base == null or not is_instance_valid(_line_base):
+		return
+	var bm = _line_base.get("block_map_node")
+	if bm == null or not is_instance_valid(bm):
+		return
+	for e in plan:
+		var cell: Vector3i = e["cell"]
+		# Клетка уже занята нужным блоком (её поставил квест) — разметка ей не нужна.
+		if bm.has_method("get_block") and int(bm.get_block(cell.x, cell.y, cell.z)) == int(e["block"]):
+			continue
+		var h := BuildHint.create(bm, cell, int(e["block"]))
+		if h != null:
+			_hints.append(h)
+
+func _clear_plan() -> void:
+	for h in _hints:
+		if is_instance_valid(h):
+			(h as Node).queue_free()
+	_hints.clear()
+	_point_finger("")
+
+## Палец наставника на БЛИЖАЙШУЮ незакрытую клетку схемы. Тот же палец, что в обучении:
+## второй такой указатель заводить незачем, а привычка у игрока уже есть.
+##
+## Пустой текст — убрать. Ничего не блокируем (Gate.OFF) и не предлагаем пропустить
+## обучение: это сюжетное задание, а не вводная.
+var _finger_text: String = ""
+
+func _point_finger(text: String) -> void:
+	var guide: Node = get_tree().get_first_node_in_group("tutorial_guide")
+	if guide == null:
+		return
+	if text == "" or _next_hint() == null:
+		if _finger_text != "" and guide.has_method("is_active") and guide.is_active():
+			guide.clear()
+		_finger_text = ""
+		return
+	if not guide.has_method("point_at_world"):
+		return
+	# Взводим ОДИН РАЗ на текст: сам палец каждый кадр спрашивает у нас точку заново (см.
+	# getter ниже), поэтому переставлять его на каждом опросе незачем — он от этого мигал бы.
+	if _finger_text == text and guide.has_method("is_active") and guide.is_active():
+		return
+	_finger_text = text
+	guide.point_at_world(func() -> Vector3:
+		var h = _next_hint()
+		return (h as Node3D).global_position if h != null else Vector3.ZERO,
+		text, false, TutorialGuide.Gate.OFF, false)
+
+## Ближайшая к игроку живая подсказка (или null, если разметка закрыта целиком).
+func _next_hint():
+	_hints = _hints.filter(func(h): return is_instance_valid(h))
+	var p: Node3D = _player()
+	var best = null
+	var best_d: float = INF
+	for h in _hints:
+		if p == null:
+			return h
+		var d: float = p.global_position.distance_squared_to((h as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
 
 func _line_1(q: Dictionary) -> void:
 	var p: Node3D = _player()
@@ -227,7 +321,9 @@ func _line_1(q: Dictionary) -> void:
 	# Готово, когда цепочка РЕАЛЬНО собрана: от приёмника есть путь до продавца.
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	if recv == null or not _chain_reaches(recv, G.Block.SELLER):
+		_point_finger("Belt by belt along the line — receiver goes at the far end.")
 		return
+	_clear_plan()
 	_drop_ore_over(recv, LINE_ORE)      # линия жива — вот ей и работа
 	_line_gift_t = LINE_GIFT_DELAY
 	Q.report(String(q["event"]), 1)
@@ -243,11 +339,14 @@ func _line_2(q: Dictionary) -> void:
 			return
 		_line_gifted = true
 		_award(G.Block.PROCESSOR)
-		Dialogue.say("System", "Processor delivered. Cut it into the line from the side: it takes on the lower left of its right face and gives out on the lower right.")
+		_show_plan(LINE_PROC_PLAN)
+		Dialogue.say("System", "Processor delivered. It goes into the middle of the line — its body sticks out to the left, and the two belts in that spot have to come out first.")
 		return
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	if recv == null or not _chain_reaches(recv, G.Block.PROCESSOR):
+		_point_finger("Processor here: pull the two belts in the middle and drop it in their place.")
 		return                          # процессор ещё не врезан в линию
+	_clear_plan()
 	_drop_ore_over(recv, LINE_ORE)      # и снова руда — проверить, что линия не развалилась
 	Q.report(String(q["event"]), 1)
 
@@ -255,12 +354,13 @@ func _line_2(q: Dictionary) -> void:
 func _spawn_line_kit(at: Vector3) -> void:
 	_line_base = _spawn_station(at, [
 		{"x": 5, "y": 5, "z": 5, "block": G.Block.SELLER, "rot": [0.0, 0.0, 0.0]},
-		{"x": 6, "y": 5, "z": 5, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
+		{"x": 5, "y": 5, "z": 6, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
 	])
 	_props.drop_near("arc_line", G.Block.RECEIVER, at)
 	for _i in (LINE_BELTS - 1):
 		_props.drop_near("arc_line", G.Block.BELT, at)
-	Dialogue.say("System", "Salvaged seller is anchored and live. The rest of the line is on the ground — put it together.")
+	_show_plan(LINE_PLAN)
+	Dialogue.say("System", "Seller is anchored and live, one belt already on it. The rest of the line is on the ground — the white outlines show where each piece goes.")
 
 ## Стационарная постройка ОТ КВЕСТА. Делает ровно то же, что постановка ядра игроком
 ## (vehicle_body_3d._place_ground_structure), но без руки и превью: машина из сцены, раскладка,

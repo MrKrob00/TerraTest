@@ -221,21 +221,29 @@ func _bubble_style() -> StyleBoxFlat:
 
 # ── Публичный интерфейс ──────────────────────────────────────────────────────
 ## Показать палец на узел UI. gate — насколько глухо блокируем остальное (см. Gate).
-func point_at_node(node: CanvasItem, text: String, double_tap: bool = false, gate: int = Gate.TARGET) -> void:
+func point_at_node(node: CanvasItem, text: String, double_tap: bool = false, gate: int = Gate.TARGET,
+		show_skip: bool = true) -> void:
 	_aim = Aim.NODE
 	_target_node = node
 	_world_pos = Callable()
 	_text = text
 	_double_tap = double_tap
+	_show_skip = show_skip
 	_start(gate)
 
 ## Показать палец на точку мира. getter возвращает Vector3 (цель может двигаться).
-func point_at_world(getter: Callable, text: String, double_tap: bool = true, gate: int = Gate.TARGET) -> void:
+##
+## show_skip — рисовать ли кнопку «SKIP TUTORIAL». Палец нужен не только обучению: им же
+## показывает клетку сюжетный квест (см. quest_arcs, разметка линии), а предлагать там
+## пропустить обучение — врать про то, что происходит.
+func point_at_world(getter: Callable, text: String, double_tap: bool = true, gate: int = Gate.TARGET,
+		show_skip: bool = true) -> void:
 	_aim = Aim.WORLD
 	_target_node = null
 	_world_pos = getter
 	_text = text
 	_double_tap = double_tap
+	_show_skip = show_skip
 	_start(gate)
 
 ## Убрать подсказку и вернуть управление.
@@ -257,8 +265,10 @@ func bind_hud(h: Node) -> void:
 func is_active() -> bool:
 	return _aim != Aim.NONE
 
+var _show_skip: bool = true
+
 func _start(gate: int) -> void:
-	_skip_btn.visible = true
+	_skip_btn.visible = _show_skip
 	_hand.double_tap = _double_tap
 	_hand.visible = true
 	_bubble_label.text = _text
