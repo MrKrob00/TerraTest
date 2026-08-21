@@ -7,28 +7,15 @@ class_name PortPicker
 # блока 2×2×2 одна сторона это ЧЕТЫРЕ клетки, и настройка «вход слева» означала «вход во все
 # четыре левые клетки сразу»: подвести две разные ленты с одной стороны было нельзя.
 #
-# Окно показывает СТОРОНУ ЦЕЛИКОМ, сеткой её клеток, и каждая клетка переключается по кругу
-# ВЫКЛ → ВХОД → ВЫХОД. Так видно всю сторону разом, а не по одному порту, и понятно, что
-# именно куда подключится.
+# Окно показывает САМ БЛОК кубиком (port_cube.gd) и переключает грань его клетки по кругу
+# ВЫКЛ → ВХОД → ВЫХОД. Кубов два, они смотрят с противоположных углов, поэтому все шесть
+# сторон видны сразу и вертеть ничего не нужно.
 #
-# Стороны перечислены в осях КАРТЫ, как и сами порты (см. FactoryBlock): футпринт
-# многоклеточного блока от поворота не зависит, и показывать его в локальных осях значило бы
-# врать игроку про то, где у блока «лево».
+# Грани здесь — в осях КАРТЫ, как и сами порты (см. FactoryBlock): футпринт многоклеточного
+# блока от поворота не зависит, и показывать его в локальных осях значило бы врать игроку
+# про то, где у блока «лево».
 
 const PANEL_W: float = 460.0
-const CELL: float = 54.0
-
-## Стороны и как раскладывать их клетки в сетку: по каким осям идут столбцы и строки.
-## Порядок именно такой — сперва четыре боковых, потом верх и низ: боковые и есть те самые
-## «4 стороны», ради которых всё затевалось, а верх с низом нужны реже.
-const SIDES := [
-	{"name": "FRONT  −Z", "dir": Vector3i(0, 0, -1), "col": Vector3i(1, 0, 0), "row": Vector3i(0, 1, 0)},
-	{"name": "BACK  +Z",  "dir": Vector3i(0, 0, 1),  "col": Vector3i(1, 0, 0), "row": Vector3i(0, 1, 0)},
-	{"name": "LEFT  −X",  "dir": Vector3i(-1, 0, 0), "col": Vector3i(0, 0, 1), "row": Vector3i(0, 1, 0)},
-	{"name": "RIGHT +X",  "dir": Vector3i(1, 0, 0),  "col": Vector3i(0, 0, 1), "row": Vector3i(0, 1, 0)},
-	{"name": "TOP   +Y",  "dir": Vector3i(0, 1, 0),  "col": Vector3i(1, 0, 0), "row": Vector3i(0, 0, 1)},
-	{"name": "BOTTOM −Y", "dir": Vector3i(0, -1, 0), "col": Vector3i(1, 0, 0), "row": Vector3i(0, 0, 1)},
-]
 
 const COL_NONE := Color(0.082, 0.235, 0.275, 0.95)
 const COL_IN := Color(0.25, 0.72, 0.95, 1.0)
@@ -97,26 +84,28 @@ func _build() -> void:
 	col.add_child(title)
 
 	var hint := Label.new()
-	hint.text = "Tap a cell: off → in → out. Both sides must agree for a link."
+	hint.text = "Tap a face: off → in → out. Both sides must agree for a link."
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.add_theme_color_override("font_color", Color(0.55, 0.72, 0.76))
 	col.add_child(hint)
 	col.add_child(_legend())
 
-	var scroll := ScrollContainer.new()
-	# Высота списка — от ЭКРАНА, а не круглым числом: сторон шесть, они длиннее любого окна,
-	# и зашитая высота на низком экране выгоняла кнопку CLOSE за его край.
-	scroll.custom_minimum_size = Vector2(0.0, clampf(vp.y - 240.0, 180.0, 460.0))
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 4)
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list)
-
-	for side in SIDES:
-		_build_side(list, side)
+	# САМ БЛОК, а не список сторон. Шесть подписанных сеток заставляли держать в голове, где
+	# у блока «зад» и «низ», и сверять это с тем, как он стоит на машине. На кубе тыкаешь в
+	# ту грань, которую видишь; два куба смотрят с противоположных углов, поэтому видны все
+	# шесть сторон сразу и крутить ничего не надо.
+	var cube := PortCube.new()
+	cube.cells = _offsets
+	cube.custom_minimum_size = Vector2(0.0, clampf(vp.y - 260.0, 170.0, 380.0))
+	cube.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	cube.state_of = func(off: Vector3i, di: int) -> int:
+		return _block.port_state(off, di) if is_instance_valid(_block) else 0
+	cube.on_click = func(off: Vector3i, di: int) -> void:
+		# По кругу: ВЫКЛ → ВХОД → ВЫХОД. Три состояния и один жест — выбирать «режим», а
+		# потом тыкать в грани было бы на одно действие больше на каждую правку.
+		if is_instance_valid(_block) and is_instance_valid(_blocks_root):
+			_blocks_root.set_block_port(_block, off, di, (_block.port_state(off, di) + 1) % 3)
+	col.add_child(cube)
 
 	var close_btn := Button.new()
 	close_btn.text = "CLOSE"
@@ -125,94 +114,6 @@ func _build() -> void:
 	close_btn.add_theme_stylebox_override("normal", _cell_style(COL_NONE))
 	close_btn.pressed.connect(close)
 	col.add_child(close_btn)
-
-# Клетки ОДНОЙ стороны: те из футпринта, у которых сосед в направлении стороны уже снаружи.
-# Внутренние клетки на этой стороне портов иметь не могут — им некуда выходить.
-func _build_side(list: VBoxContainer, side: Dictionary) -> void:
-	var d: Vector3i = side["dir"]
-	var outer: Array = []
-	for o in _offsets:
-		if not _offsets.has((o as Vector3i) + d):
-			outer.append(o)
-	if outer.is_empty():
-		return
-	var cap := Label.new()
-	cap.text = String(side["name"])
-	cap.add_theme_font_size_override("font_size", 13)
-	cap.add_theme_color_override("font_color", Color(0.40, 0.66, 0.70))
-	var m := MarginContainer.new()
-	m.add_theme_constant_override("margin_top", 8)
-	m.add_child(cap)
-	list.add_child(m)
-
-	# Раскладываем в сетку по осям стороны, чтобы кнопки стояли так же, как клетки в мире.
-	var ca: Vector3i = side["col"]
-	var ra: Vector3i = side["row"]
-	var cols: Array = []
-	var rows: Array = []
-	for o in outer:
-		var cv: int = _axis(o, ca)
-		var rv: int = _axis(o, ra)
-		if not cols.has(cv):
-			cols.append(cv)
-		if not rows.has(rv):
-			rows.append(rv)
-	cols.sort()
-	rows.sort()
-	rows.reverse()                 # верхний ряд сетки — верхняя клетка блока
-	var grid := GridContainer.new()
-	grid.columns = maxi(cols.size(), 1)
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 4)
-	list.add_child(grid)
-	for rv in rows:
-		for cv in cols:
-			var found: Variant = null
-			for o in outer:
-				if _axis(o, ca) == cv and _axis(o, ra) == rv:
-					found = o
-					break
-			if found == null:
-				var gap := Control.new()
-				gap.custom_minimum_size = Vector2(CELL, CELL)
-				grid.add_child(gap)
-				continue
-			grid.add_child(_cell_button(found as Vector3i, d))
-
-func _axis(o: Vector3i, a: Vector3i) -> int:
-	return o.x * a.x + o.y * a.y + o.z * a.z
-
-func _cell_button(off: Vector3i, d: Vector3i) -> Button:
-	var b := Button.new()
-	b.custom_minimum_size = Vector2(CELL, CELL)
-	b.add_theme_font_size_override("font_size", 14)
-	b.add_theme_color_override("font_color", Color(0.05, 0.10, 0.12))
-	var di: int = _block._idx_of(d)
-	_paint(b, off, di)
-	b.pressed.connect(func():
-		# По кругу: ВЫКЛ → ВХОД → ВЫХОД. Три состояния и один жест — выбирать «режим», а
-		# потом тыкать в клетки было бы на одно действие больше на каждую правку.
-		var next: int = (_block.port_state(off, di) + 1) % 3
-		if _blocks_root.set_block_port(_block, off, di, next):
-			_paint(b, off, di))
-	return b
-
-func _paint(b: Button, off: Vector3i, di: int) -> void:
-	var st: int = _block.port_state(off, di)
-	var c: Color = COL_NONE
-	var t := "—"
-	if st == FactoryBlock.PORT_IN:
-		c = COL_IN
-		t = "IN"
-	elif st == FactoryBlock.PORT_OUT:
-		c = COL_OUT
-		t = "OUT"
-	b.text = t
-	b.add_theme_stylebox_override("normal", _cell_style(c))
-	b.add_theme_stylebox_override("hover", _cell_style(c))
-	b.add_theme_stylebox_override("pressed", _cell_style(c))
-	b.add_theme_color_override("font_color",
-			Color(0.05, 0.10, 0.12) if st != FactoryBlock.PORT_NONE else Color(0.55, 0.75, 0.80))
 
 func _legend() -> Control:
 	var row := HBoxContainer.new()

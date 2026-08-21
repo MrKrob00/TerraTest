@@ -139,9 +139,9 @@ func _seed_demo() -> void:
 	])
 	add_quest("arc_line", "Production Line", "", Type.STORY, 1, 9, "", 300, 55, 16)
 	add_stages("arc_line", [
-		{"desc": "Build the chain: collector, receiver, belt, processor",
+		{"desc": "Build the chain: receiver, belt, processor",
 		 "event": "quest_line_1", "goal": 1,
-		 "hint": "Ore is worth little as ore. Collector picks it up, belt carries it, processor smelts it — and none of it runs unless you are anchored."},
+		 "hint": "Ore is worth little as ore. The receiver takes it off the ground, the belt carries it, the processor smelts it — and none of it runs unless you are anchored."},
 		{"desc": "Add a seller and hold ground",
 		 "event": "quest_line_2", "goal": 1,
 		 "hint": "The last link turns metal into credit. Set down and hold: the whole line only works under anchor."},
@@ -149,9 +149,9 @@ func _seed_demo() -> void:
 	add_quest("arc_solvent", "Solvent", "Earn 600$ through the line", Type.STORY, 600, 10, "money_earned", 400, 60, 18)
 	add_quest("arc_hold", "Hold the Line", "", Type.STORY, 1, 11, "", 450, 70, 20)
 	add_stages("arc_hold", [
-		{"desc": "Anchor down and wait for them",
+		{"desc": "They are coming for the line",
 		 "event": "quest_hold_1", "goal": 1,
-		 "hint": "Something logged your production. They are coming for the machine, not for you."},
+		 "hint": "Something logged your production. They are coming for the machine that makes it, not for you."},
 		{"desc": "Destroy the raid",
 		 "event": "quest_hold_2", "goal": 1,
 		 "hint": "Two of them. Your base cannot drive away — this one you finish standing."},

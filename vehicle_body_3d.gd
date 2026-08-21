@@ -555,6 +555,12 @@ func _physics_process(delta: float) -> void:
 		_defense_tick(delta)
 	if !is_active:
 		return
+	# ОГОНЬ РАЗБИРАЕМ ДО ВСЕХ РАННИХ ВЫХОДОВ. Он висел ниже, за проверкой якоря, и уходил
+	# вместе с ней: игрок, вставший на якорь ради фабрики, оказывался безоружным ровно там и
+	# ровно тогда, когда на него и нападают. Якорь запрещает ЕЗДУ, а не стрельбу.
+	var typing := _typing_in_ui()
+	if Input.is_action_pressed("Attack") and not typing:
+		_on_attack_timeout()
 	if anchored:
 		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
@@ -585,10 +591,6 @@ func _physics_process(delta: float) -> void:
 			global_basis = global_basis.orthonormalized().slerp(target, clampf(delta * 8.0, 0.0, 1.0)).orthonormalized()
 		angular_velocity = Vector3.ZERO
 		return
-
-	var typing := _typing_in_ui()
-	if Input.is_action_pressed("Attack") and not typing:
-		_on_attack_timeout()
 
 	var joy: Vector2 = camera_controller.joystick_move.get_joystick_dir()
 	# ПК: WASD/стрелки дают тот же Vector2, что и тач-джойстик (см. _process_input ниже).
@@ -1143,6 +1145,34 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if scene == null:
 		push_error("vehicle: нет player_vehicle.tscn для новой структуры")
 		return
+	# АВТО-ШАХТЁР СТАВИТСЯ ТОЛЬКО НА ЖИЛУ. Он умеет ровно одно — бить жилу под собой
+	# (auto_miner._find_vein светит лучом вниз), и посреди поля это дорогой памятник: стоит,
+	# ест энергию, не добывает ничего. Поэтому не «можно и так», а нельзя: не нашли жилу
+	# рядом — блок ОСТАЁТСЯ В РУКЕ, игрок доносит его до залежи.
+	if core == G.Block.AUTO_MINER:
+		# Радиус спрашиваем у САМОГО блока: правило «дотягивается до жилы» должно быть одно
+		# и то же и при постановке, и при добыче (auto_miner.vein_reach).
+		var reach: float = float(instance.get("vein_reach")) if ("vein_reach" in instance) \
+				else VEIN_SNAP_FALLBACK
+		var vein: Node3D = _vein_near(_cabin_ground, reach)
+		if vein == null:
+			Dialogue.say("System", "The Auto Miner works on an ore vein. Place it right on one.")
+			return
+		# Встаём РОВНО НА ЖИЛУ, а не туда, куда попал палец: луч вниз достаёт всего на
+		# vein_reach, и промах в пару метров означал бы блок, который жилы не видит.
+		_cabin_ground = Vector3(vein.global_position.x, _cabin_ground.y, vein.global_position.z)
+	# ЯДРО ИЗ РУКИ УБИРАЕМ ДО СОЗДАНИЯ МАШИНЫ, а не одним queue_free в конце. Держатель руки
+	# ОБЩИЙ (он висит под камерой), а _ready новой машины первым делом зовёт
+	# _on_movement_pressed → _return_hand_to_inventory: тот проходит по детям держателя и
+	# кладёт в инвентарь всё, что там висит. Ядро, ещё не убранное из руки, уезжало в
+	# инвентарь — блок ставился на землю И дублировался. queue_free от этого не спасает: узел
+	# живёт до конца кадра.
+	var hand_holder: Node = instance.get_parent()
+	if hand_holder != null:
+		hand_holder.remove_child(instance)
+	block_take = false
+	hand_kind = Hand.EMPTY
+	block_body = null
 	var v: Node3D = scene.instantiate()
 	var vehicles_root: Node = get_node_or_null("/root/Main/Vehicles")
 	if vehicles_root == null:
@@ -1176,15 +1206,36 @@ func _place_ground_structure(instance: Node3D) -> void:
 	var hud: CanvasLayer = camera_controller.hud if (camera_controller and "hud" in camera_controller) else null
 	if hud and hud.has_method("_rebuild_vehicle_list"):
 		hud._rebuild_vehicle_list()
-	instance.queue_free()                           # ядро из руки потрачено
-	block_take = false
-	hand_kind = Hand.EMPTY
-	block_body = null
+	instance.queue_free()                           # ядро из руки потрачено (из руки уже снято выше)
 	_cabin_ground = null
 	_preview_res = null
 	build_basis = Basis()
 	if ghost_block:
 		ghost_block.visible = false
+
+## Жила рядом с точкой (по XZ). Ищем перебором стримнутых залежей, а не лучом: луч превью
+## бьёт по маске 1 (рельеф), а жила стоит НА рельефе — палец почти всегда попадает в землю
+## рядом с ней, а не в неё саму. Радиус берём у самого шахтёра (vein_reach), чтобы правило
+## «дотягивается» было ОДНО: поставили — значит и добывать сможет.
+const VEIN_SNAP_FALLBACK := 3.0
+
+func _vein_near(at, reach: float = VEIN_SNAP_FALLBACK) -> Node3D:
+	if not (at is Vector3):
+		return null
+	var rn: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
+	if rn == null:
+		return null
+	var best: Node3D = null
+	var best_d: float = reach * reach
+	for c in rn.get_children():
+		if not (c is Node3D) or not ("instance_id" in c) or not c.has_method("hurt"):
+			continue                    # жила — единственное, у чего есть и то, и другое
+		var d: Vector3 = (c as Node3D).global_position - (at as Vector3)
+		var d2: float = d.x * d.x + d.z * d.z      # по XZ: жила «под ногами», высота не важна
+		if d2 <= best_d:
+			best_d = d2
+			best = c as Node3D
+	return best
 
 # Взятый в руку блок (child takepos-маркера под камерой) или null, если рука пуста.
 func _hand_instance() -> Node3D:
@@ -1455,10 +1506,25 @@ func _try_open_factory_ui(screen_pos: Vector2) -> bool:
 	var root: Node = target
 	while root != null and not (root is MachineBody):
 		root = root.get_parent()
-	if root != self:
-		return false                                # чужая машина или свободный блок в мире
 	var hud: CanvasLayer = camera_controller.hud if ("hud" in camera_controller) else null
-	if hud == null or not hud.has_method("open_factory_picker"):
+	if hud == null:
+		return false
+	# ДРУГАЯ СВОЯ машина (или база) — открываем её круговое меню: в инвентарь / разобрать /
+	# защита / взять под управление.
+	#
+	# Тем же меню заведует значок ⚙ над машиной, но он висит на физическом пикинге вьюпорта
+	# (Area3D._input_event): туда событие доходит, только если ДО этого его никто не пометил
+	# обработанным — а поверх мира лежит HUD, гараж и наш собственный разбор тапа. Меню в
+	# итоге не открывалось. Длинное нажатие идёт тем же путём, что и настройка фабрики, то
+	# есть работает всегда; значок остаётся подсказкой, что с машиной можно что-то сделать.
+	if root != null and root != self and root.get("faction") != null and int(root.get("faction")) == faction:
+		if hud.has_method("open_vehicle_menu"):
+			hud.open_vehicle_menu(root, screen_pos)
+			return true
+		return false
+	if root != self:
+		return false                                # враг или свободный блок в мире
+	if not hud.has_method("open_factory_picker"):
 		return false
 	return hud.open_factory_picker(target)
 
@@ -1647,6 +1713,10 @@ func _return_hand_to_inventory() -> void:
 			if (camera_controller != null and camera_controller.camera != null) else null
 	if holder != null:
 		for child in holder.get_children():
+			# Узел, уже отправленный на удаление, живёт до конца кадра — но он ПОТРАЧЕН
+			# (ядро ушло в новую машину), и класть его тип в инвентарь значит выдать копию.
+			if not is_instance_valid(child) or child.is_queued_for_deletion():
+				continue
 			# РЕСУРС в инвентарь блоков не кладётся и уничтожаться не должен: инвентарь
 			# хранит типы блоков, а руда — предмет мира. Раньше сюда попадал любой ребёнок
 			# держателя и БЕЗУСЛОВНО освобождался — ресурс просто исчезал бы из игры при

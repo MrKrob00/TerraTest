@@ -509,9 +509,19 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	_vmenu.add_child(wheel)
 	_vmenu_wheel = wheel
 	_vmenu_count = wheel.items.size()
+	_vmenu_open_ms = Time.get_ticks_msec()
 	VehicleInteractButton.camera_block = true   # жест меню не должен крутить камеру
 
 # Пока меню открыто — весь ввод сюда: движение подсвечивает сектор, отпускание выбирает.
+#
+# Меню открывают ДВУМЯ способами, и оба должны работать одним и тем же кодом: удержанием
+# значка ⚙ (палец в этот момент ЕЩЁ на экране — тянешь к пункту и отпускаешь) и длинным
+# нажатием по машине (палец УЖЕ отпущен — тогда пункт выбирают обычным тапом). Разница
+# ровно одна: у второго способа то самое отпускание, которым меню открыли, прилетает сюда
+# же и закрыло бы его в тот же миг. Поэтому первые VMENU_GRACE_MS отпускание игнорируем.
+const VMENU_GRACE_MS: int = 300
+var _vmenu_open_ms: int = 0
+
 func _input(event: InputEvent) -> void:
 	if _vmenu == null:
 		return
@@ -535,6 +545,9 @@ func _input(event: InputEvent) -> void:
 			_vmenu_wheel.queue_redraw()
 		get_viewport().set_input_as_handled()
 	elif is_release:
+		if Time.get_ticks_msec() - _vmenu_open_ms < VMENU_GRACE_MS:
+			get_viewport().set_input_as_handled()
+			return                            # это отпускание ОТКРЫЛО меню, а не выбрало пункт
 		var vehicle := _vmenu_vehicle
 		close_vehicle_menu()
 		if idx >= 0:
@@ -1143,6 +1156,10 @@ func _build_tab_open() -> bool:
 
 func _update_build_widgets() -> void:
 	var on: bool = _build_tab_open()
+	# Джойстики держатся на том же признаке (см. BUILD_KEEP): переключили вкладку — сразу
+	# пересчитываем, иначе на СТРОЙКУ попадали бы уже без управления.
+	if _controls_hidden:
+		_set_game_controls_hidden(true)
 	if _rotate_panel:
 		_rotate_panel.visible = on
 	if _block_globe:
@@ -1252,14 +1269,22 @@ func _collect_game_controls() -> void:
 		_game_controls.append(_radar)
 	# _anchor_btn НЕ в общем списке: его видимостью рулит тик радара (нужна фикс-опора).
 
+## Что остаётся на экране, когда гараж открыт на вкладке СТРОЙКА. Она равносильна закрытому
+## гаражу: мир кликабелен, левая панель убрана, машина левитирует — и по ней надо ЕЗДИТЬ
+## (медленное перемещение платформы, vehicle_body_3d._build_move_dir) и крутить камеру.
+## Джойстики уходили вместе со всем игровым HUD, потому что стройка живёт в гараже, а гараж
+## прячет управление скопом — и медленное перемещение стало нечем задавать.
+const BUILD_KEEP := ["Joystick_movement", "Joystick_camera"]
+
 var _controls_hidden: bool = false
 func _set_game_controls_hidden(hidden: bool) -> void:
 	_controls_hidden = hidden
 	if hidden:
 		_set_drawer(false)             # под инвентарём ящик закрываем, а не просто прячем
+	var build_tab: bool = hidden and _build_tab_open()
 	for n in _game_controls:
 		if is_instance_valid(n):
-			n.visible = not hidden
+			n.visible = (not hidden) or (build_tab and BUILD_KEEP.has(String(n.name)))
 	# При закрытии инвентаря возвращаем кнопки в правильный режим машины
 	# (мог поменяться, если игрок взял блок в руку → стройка).
 	if not hidden:
