@@ -45,12 +45,12 @@ static func open_for(host: Node, block: Node) -> FactoryPicker:
 	return p
 
 func _build() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	PortPicker._fill_parent(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP     # окно ловит тапы, мир под ним не трогаем
 
 	# Затемнение: и читаемость, и «клик мимо окна = закрыть».
 	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	PortPicker._fill_parent(dim)
 	dim.color = Color(0.0, 0.03, 0.04, 0.55)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.gui_input.connect(func(e: InputEvent):
@@ -58,13 +58,18 @@ func _build() -> void:
 			close())
 	add_child(dim)
 
+	# По центру — контейнером, а не якорями: панель растёт до минимального размера уже после
+	# того, как смещения посчитаны, и на якорях окно оказывалось в левом верхнем углу.
+	var center := CenterContainer.new()
+	PortPicker._fill_parent(center)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(center)
+
+	var vp: Vector2 = get_viewport_rect().size
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
-	panel.custom_minimum_size = Vector2(PANEL_W, 0.0)
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(panel)
+	panel.custom_minimum_size = Vector2(minf(PANEL_W, vp.x - 48.0), 0.0)
+	center.add_child(panel)
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
@@ -82,7 +87,9 @@ func _build() -> void:
 	col.add_child(hint)
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0.0, PANEL_MAX_H)
+	# Список ограничен ЭКРАНОМ: двадцать один компонент или четыре десятка блоков длиннее
+	# любого окна, а зашитая высота на низком экране выносила кнопку CLOSE за край.
+	scroll.custom_minimum_size = Vector2(0.0, clampf(vp.y - 240.0, 180.0, PANEL_MAX_H))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)

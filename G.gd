@@ -280,6 +280,23 @@ func _build_comp_recipes() -> void:
 			COMP_COLOR[i] = (COMP_COLOR[a] as Color).lerp(COMP_COLOR[b], 0.5).lightened(0.10)
 			i += 1
 
+## ПРЕДМЕТ ЛЕЖИТ В МИРЕ — не стоит на машине, не лежит в накопителе блока и не висит в руке.
+##
+## Проверять родителя по имени ("objects") оказалось мало. Руда падает из жилы РЯДОМ С ЖИЛОЙ,
+## то есть в узел стриминга залежей, а не в objects: по имени родителя её не видел ни подбор
+## в руку, ни приёмник — тапай сколько хочешь, ничего не происходило. Признак у всего
+## лежащего в мире один и надёжный: тело НЕ ЗАМОРОЖЕНО. И на машине, и в коллекторе, и в
+## руке предмет держат freeze = true — ровно по этому признаку его отличает коллектор,
+## который единственный из всех и работал.
+static func is_loose_item(n: Node) -> bool:
+	if n == null or not is_instance_valid(n) or not (n is RigidBody3D):
+		return false
+	if (n as RigidBody3D).freeze:
+		return false
+	var p: Node = n.get_parent()
+	# Имена держателей: blocks — сборка машины, resources — накопитель коллектора/приёмника.
+	return p != null and p.name != "blocks" and p.name != "resources"
+
 ## Ключ слитка/компонента для рецептов и складов.
 static func metal_key(m: int) -> String:
 	return "m%d" % m

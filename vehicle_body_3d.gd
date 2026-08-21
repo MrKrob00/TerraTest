@@ -1262,6 +1262,8 @@ func _get_block_name(block: int) -> String:
 func _pick_selected_block() -> bool:
 	if block_body == null or not is_instance_valid(block_body):
 		return false
+	if not ("block" in block_body):
+		return false                              # наведён РЕСУРС: у него нет .block, int(null) роняет вызов
 	var bt := int(block_body.get("block"))
 	if bt == G.Block.CABIN or G.is_stationary(bt):
 		return false                              # ядро сборки не снимаем
@@ -1506,9 +1508,11 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	if hit.is_empty():
 		return false
 	var body: Node3D = hit.get("collider")
-	var objects := get_node_or_null("/root/Main/objects")
-	if objects == null or not (body is Node3D) or body.get_parent() != objects:
-		return false                               # только то, что реально лежит в мире
+	# Только то, что реально ЛЕЖИТ В МИРЕ (см. G.is_loose_item). Проверка по родителю-objects
+	# здесь мимо: руда из жилы падает в узел стриминга залежей, и по ней тап в руду не делал
+	# ничего вообще.
+	if not (body is Node3D) or not G.is_loose_item(body):
+		return false
 	# РЕСУРС берётся в руку так же, как блок, но без всего блочного: ни сетки, ни инвентаря,
 	# ни режима стройки — его можно только положить обратно.
 	if _is_resource(body):
