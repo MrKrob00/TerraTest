@@ -89,6 +89,11 @@ func can_attach(nx: int, ny: int, nz: int, new_node: Node, attach_face: String) 
 # на значение из сцены — то есть каждый вход в игру возвращал бы завод к первому компоненту.
 var output_map: Dictionary = {}
 
+# ПОРТЫ фабричных блоков: "x,y,z" клетки-якоря → словарь портов этого блока
+# (FactoryBlock.ports). Здесь по той же причине, что и output_map: настройка игрока обязана
+# пережить сейв, а раскладка хранит клетки, не узлы.
+var port_map: Dictionary = {}
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
@@ -364,6 +369,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	node_map.erase(anchor)
 	rotation_map.erase(anchor)
 	output_map.erase(anchor)
+	port_map.erase(anchor)
 
 func get_block(x: int, y: int, z: int) -> G.Block:
 	if _in_bounds(x, y, z):
@@ -431,6 +437,8 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 # Проставить блоку сохранённый выбор продукта. Имя поля разное у двух фабрик, поэтому
 # проверяем оба: общего интерфейса у них нет и заводить его ради одного числа незачем.
 func _apply_output(inst: Node, key: String) -> void:
+	if inst is FactoryBlock and port_map.has(key):
+		(inst as FactoryBlock).ports = (port_map[key] as Dictionary).duplicate()
 	if not output_map.has(key) or inst == null:
 		return
 	var v: int = int(output_map[key])
@@ -439,12 +447,43 @@ func _apply_output(inst: Node, key: String) -> void:
 	elif "output_block" in inst:
 		inst.set("output_block", v)
 
+## Смещения клеток блока от его якоря. Одна клетка — обычный блок, восемь — 2×2×2.
+## Публично: по ним окно портов (port_picker) рисует стороны, а считать футпринт заново на
+## стороне UI значило бы завести вторую копию правила о размерах блоков.
+func footprint_offsets(inst: Node) -> Array:
+	var key: String = cell_of_node(inst)
+	if key == "":
+		return []
+	var parts: PackedStringArray = key.split(",")
+	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
+	if not _in_bounds(ax, ay, az):
+		return []
+	var anchor := Vector3i(ax, ay, az)
+	var out: Array = []
+	for c in _block_footprint(int(map[ax][ay][az]), ax, ay, az):
+		out.append((c as Vector3i) - anchor)
+	return out
+
 ## Клетка, в которой стоит этот узел ("x,y,z"), или "" — узел не наш.
 func cell_of_node(inst: Node) -> String:
 	for k in node_map:
 		if node_map[k] == inst:
 			return String(k)
 	return ""
+
+## Задать порт фабричному блоку: и узлу сейчас, и карте — чтобы пережило сейв.
+## state: FactoryBlock.PORT_NONE / PORT_IN / PORT_OUT.
+func set_block_port(inst: Node, off: Vector3i, dir_idx: int, state: int) -> bool:
+	if not (inst is FactoryBlock):
+		return false
+	var key: String = cell_of_node(inst)
+	if key == "":
+		return false
+	var fb := inst as FactoryBlock
+	fb.set_port(off, dir_idx, state)
+	port_map[key] = fb.ports.duplicate()
+	rebuild_factory_links()          # цепочка меняется прямо сейчас, а не при следующей правке
+	return true
 
 ## Задать фабричному блоку, ЧТО он производит: и узлу сейчас, и карте — чтобы пережило сейв.
 ## Возвращает false, если узел не наш или это вообще не фабрика с выбором.
@@ -662,6 +701,10 @@ func get_layout() -> Array:
 					# из полусотни клеток раздуло бы сейв ради значения по умолчанию.
 					if output_map.has(key):
 						entry["out"] = int(output_map[key])
+					# Порты пишем ТОЛЬКО у блоков, где игрок их менял: у остальных работает
+					# правило по умолчанию (маски граней), и хранить пустоту незачем.
+					if port_map.has(key) and not (port_map[key] as Dictionary).is_empty():
+						entry["ports"] = port_map[key]
 					blocks_array.append(entry)
 	return blocks_array
 
@@ -690,11 +733,14 @@ func apply_layout(blocks_array: Array) -> void:
 	cell_owner.clear()
 	_init_map()
 	output_map.clear()
+	port_map.clear()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 		# Выбор продукта кладём в карту ДО _spawn_all: узлы читают его при рождении.
 		if entry.has("out"):
 			output_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = int(entry["out"])
+		if entry.has("ports") and entry["ports"] is Dictionary:
+			port_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = entry["ports"]
 	_spawn_all()
 
 # Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,
@@ -735,6 +781,7 @@ func attach_delta(block_type: int, face: String) -> Vector3i:
 func rebuild_factory_links() -> void:
 	var facs: Array = []
 	var cells: Dictionary = {}                    # node → клетки его футпринта
+	var anchors: Dictionary = {}                  # node → его якорная клетка
 	for k in node_map.keys():
 		var n = node_map[k]
 		if n == null or not is_instance_valid(n) or not (n is FactoryBlock):
@@ -744,27 +791,37 @@ func rebuild_factory_links() -> void:
 		if not _in_bounds(ax, ay, az):
 			continue
 		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
+		anchors[n] = Vector3i(ax, ay, az)     # смещения клеток считаем от якоря
 		facs.append(n)
+	# Связи считаются ПОКЛЕТОЧНО. Раньше перебирались отмеченные ГРАНИ блока, и для каждой
+	# брался ПЕРВЫЙ подходящий сосед по всему футпринту (там стоял break). У односкеточного
+	# блока разницы нет, а у 2×2×2 сторона это четыре клетки: подвести к ней две разные ленты
+	# было нельзя — вторая молча игнорировалась, потому что первая уже «заняла» грань.
+	#
+	# Теперь пара «клетка + направление» рассматривается сама по себе, и обе стороны обязаны
+	# согласиться: у нас в этой клетке ВЫХОД, у соседа в его клетке ВХОД навстречу.
 	for n in facs:
 		n.next_blocks = []
 		n.next_block = null
 		var own: Array = cells[n]
-		# Собираем ВСЕ подключённые приёмники, а не первый попавшийся: блок может иметь
-		# несколько выходов (делитель) — тогда он раздаёт по кругу (FactoryBlock.push_item).
-		for d in n.face_dirs(n.output_faces):
-			if d == Vector3i.ZERO:
-				continue
-			for c in own:
+		var anchor: Vector3i = anchors.get(n, Vector3i.ZERO)
+		for c in own:
+			var off: Vector3i = c - anchor
+			for di in 6:
+				var d: Vector3i = n._dir_of(di)
+				if d == Vector3i.ZERO or not n.outputs_at(off, d):
+					continue
 				var t: Vector3i = c + d
 				if not _in_bounds(t.x, t.y, t.z):
 					continue
 				var nb = find_block(t.x, t.y, t.z)
 				if nb == null or nb == n or not cells.has(nb):
 					continue                      # не фабричный сосед — ресурс туда не идёт
-				if not nb.accepts_from(d):
-					continue                      # у соседа с этой стороны нет стороны ВВОДА
+				# У СОСЕДА спрашиваем про ЕГО клетку: у многоклеточного блока вход может быть
+				# в одной клетке стороны и отсутствовать в соседней.
+				if not nb.accepts_at(t - Vector3i(anchors.get(nb, t)), d):
+					continue                      # у соседа в этой клетке нет входа навстречу
 				if not n.next_blocks.has(nb):
 					n.next_blocks.append(nb)
-				break
 		if not n.next_blocks.is_empty():
 			n.next_block = n.next_blocks[0]
