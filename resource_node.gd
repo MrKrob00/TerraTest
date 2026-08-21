@@ -45,7 +45,14 @@ func _eject_one() -> void:
 	if resource_tscn == null:
 		return
 	var res: Node3D = resource_tscn.instantiate()
-	get_parent().add_child(res)
+	# Выброшенная руда обязана лечь в /root/Main/objects — там живут ВСЕ свободные предметы
+	# мира, и по этому родителю их узнают приёмник, упаковщик, подбор в руку и сохранение
+	# мира. Раньше она падала под жилу, то есть в узел СТРИМИНГА залежей: формально в мире,
+	# а по факту невидимая для всего, кроме коллектора (он смотрит на freeze, а не на имя).
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects == null:
+		objects = get_parent()                # мира ещё нет (тест сцены) — как раньше, под жилу
+	objects.add_child(res)
 	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
 	if is_coal and "type" in res:
 		res.type = res.Type.COAL              # уголь: тёмный сам по себе, тинт не нужен

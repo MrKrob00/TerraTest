@@ -59,11 +59,11 @@ static func open_for(host: Node, block: Node) -> PortPicker:
 	return p
 
 func _build() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fill_parent(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 
 	var dim := ColorRect.new()
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fill_parent(dim)
 	dim.color = Color(0.0, 0.03, 0.04, 0.55)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.gui_input.connect(func(e: InputEvent):
@@ -71,13 +71,20 @@ func _build() -> void:
 			close())
 	add_child(dim)
 
+	# Окно ставит по центру КОНТЕЙНЕР, а не якоря. На якорях оно уезжало в левый верхний угол
+	# и наполовину за экран: панель растёт до своего минимального размера уже ПОСЛЕ того, как
+	# смещения посчитаны, и пересчитывать их под новый размер некому. CenterContainer делает
+	# это сам на каждое изменение содержимого, и от порядка вызовов не зависит.
+	var center := CenterContainer.new()
+	_fill_parent(center)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE   # тап мимо окна обязан дойти до затемнения
+	add_child(center)
+
+	var vp: Vector2 = get_viewport_rect().size
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
-	panel.custom_minimum_size = Vector2(PANEL_W, 0.0)
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
-	add_child(panel)
+	panel.custom_minimum_size = Vector2(minf(PANEL_W, vp.x - 48.0), 0.0)
+	center.add_child(panel)
 
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
@@ -97,7 +104,9 @@ func _build() -> void:
 	col.add_child(_legend())
 
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0.0, 460.0)
+	# Высота списка — от ЭКРАНА, а не круглым числом: сторон шесть, они длиннее любого окна,
+	# и зашитая высота на низком экране выгоняла кнопку CLOSE за его край.
+	scroll.custom_minimum_size = Vector2(0.0, clampf(vp.y - 240.0, 180.0, 460.0))
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(scroll)
@@ -222,6 +231,19 @@ func _legend() -> Control:
 
 func close() -> void:
 	queue_free()
+
+## Растянуть узел на весь родитель ЯВНО, числами. Пресеты считают смещения от ТЕКУЩЕГО
+## прямоугольника узла, а у только что созданного Control он нулевой — окно так и оставалось
+## размером 0×0 в углу экрана вместе со всем, что в нём лежит.
+static func _fill_parent(c: Control) -> void:
+	c.anchor_left = 0.0
+	c.anchor_top = 0.0
+	c.anchor_right = 1.0
+	c.anchor_bottom = 1.0
+	c.offset_left = 0.0
+	c.offset_top = 0.0
+	c.offset_right = 0.0
+	c.offset_bottom = 0.0
 
 func _panel_style() -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()

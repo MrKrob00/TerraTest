@@ -43,8 +43,7 @@ func _ready() -> void:
 func _on_intake(body: Node3D) -> void:
 	if body == null or not is_instance_valid(body) or not ("block" in body):
 		return
-	var p: Node = body.get_parent()
-	if p == null or p.name != "objects":
+	if not G.is_loose_item(body):
 		return
 	if pack_block_into(_chunks, $resources, body, capacity):
 		_idle = 0.0
