@@ -20,6 +20,52 @@ signal slot_freed
 # FACE_* , FACE_VECS и face_dirs() живут в VehicleBlock: там же ими описаны грани
 # СТЫКОВКИ, и держать два набора одних и тех же констант — способ их рассинхронить.
 
+# ── ПОРТЫ: настройка ПОКЛЕТОЧНО (для блоков 2×2×2 и больше) ───────────────────
+# У односкеточного блока грань и есть коннектор — шесть штук, галочек хватает. А у
+# фабрикатора 2×2×2 одна сторона это ЧЕТЫРЕ клетки, и «вход слева» означало «вход во все
+# четыре левых клетки сразу»: подвести к такому блоку две разные ленты с одной стороны было
+# нельзя, а именно так и строят настоящие цепочки.
+#
+# Порт — это пара «КЛЕТКА + НАПРАВЛЕНИЕ». Ключ хранится в осях КАРТЫ, а не блока, и вот
+# почему: футпринт многоклеточного блока (blocks._block_footprint) тоже строится по осям
+# карты и от поворота не зависит. Держать половину описания в локальных осях, а половину в
+# мировых — самый быстрый способ получить порт, который «есть, но не там».
+#
+# Пусто по ключу — работает СТАРОЕ правило (маски граней). Поэтому все существующие блоки,
+# сцены и сейвы продолжают вести себя ровно как раньше, пока игрок ничего не трогал.
+const PORT_NONE := 0
+const PORT_IN := 1
+const PORT_OUT := 2
+
+## "dx,dy,dz|d" → PORT_*. dx/dy/dz — смещение клетки от якоря, d — индекс направления в
+## FACE_VECS. Живёт также в раскладке машины (blocks.port_map), чтобы пережить сейв.
+var ports: Dictionary = {}
+
+static func port_key(off: Vector3i, dir_idx: int) -> String:
+	return "%d,%d,%d|%d" % [off.x, off.y, off.z, dir_idx]
+
+## Что делает эта клетка в эту сторону. Не задано — отвечаем по маскам граней, как раньше.
+func port_state(off: Vector3i, dir_idx: int) -> int:
+	var k := port_key(off, dir_idx)
+	if ports.has(k):
+		return int(ports[k])
+	var d: Vector3i = _dir_of(dir_idx)
+	if face_dirs(output_faces).has(d):
+		return PORT_OUT
+	if face_dirs(input_faces).has(d):
+		return PORT_IN
+	return PORT_NONE
+
+func set_port(off: Vector3i, dir_idx: int, state: int) -> void:
+	ports[port_key(off, dir_idx)] = state
+
+## Направление по индексу — в осях КАРТЫ и прижатое к оси, тем же способом, что face_dirs.
+func _dir_of(dir_idx: int) -> Vector3i:
+	if dir_idx < 0 or dir_idx >= FACE_VECS.size():
+		return Vector3i.ZERO
+	var v: Vector3 = FACE_VECS[dir_idx]
+	return Vector3i(int(signf(v.x)), int(signf(v.y)), int(signf(v.z)))
+
 var current_item: Node3D = null
 var next_block: FactoryBlock = null       # текущая цель выдачи (одна из next_blocks)
 var next_blocks: Array = []               # ВСЕ подключённые приёмники (многовыходный блок)
@@ -33,6 +79,24 @@ func accepts_from(from_dir: Vector3i) -> bool:
 		if dir == -from_dir:              # сторона ввода смотрит навстречу приходящему ресурсу
 			return true
 	return false
+
+## То же, но для КОНКРЕТНОЙ клетки многоклеточного блока: ресурс приходит В клетку off с
+## направления from_dir. Порт этой клетки должен смотреть навстречу — то есть быть входом
+## в сторону −from_dir.
+func accepts_at(off: Vector3i, from_dir: Vector3i) -> bool:
+	var idx: int = _idx_of(-from_dir)
+	return idx >= 0 and port_state(off, idx) == PORT_IN
+
+## Отдаёт ли клетка off в сторону dir.
+func outputs_at(off: Vector3i, dir: Vector3i) -> bool:
+	var idx: int = _idx_of(dir)
+	return idx >= 0 and port_state(off, idx) == PORT_OUT
+
+func _idx_of(dir: Vector3i) -> int:
+	for i in FACE_VECS.size():
+		if _dir_of(i) == dir:
+			return i
+	return -1
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
 func _ready() -> void:

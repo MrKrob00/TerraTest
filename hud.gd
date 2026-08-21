@@ -990,6 +990,13 @@ var _factory_picker: Control = null
 func open_factory_picker(block: Node) -> bool:
 	if is_instance_valid(_factory_picker):
 		_factory_picker.queue_free()
+	# У МНОГОКЛЕТОЧНОГО фабричного блока ДЛИННОЕ нажатие открывает настройку ПОРТОВ: там
+	# сторона это несколько клеток, и она интереснее выбора продукта (продукт есть не у всех,
+	# а порты — у каждого). У односкеточных PortPicker сам вернёт null, и откроется выбор
+	# продукта, как раньше.
+	_factory_picker = PortPicker.open_for(self, block)
+	if _factory_picker != null:
+		return true
 	_factory_picker = FactoryPicker.open_for(self, block)
 	return _factory_picker != null
 
