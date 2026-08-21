@@ -160,6 +160,15 @@ func _fall_candidates() -> Array:
 	return out
 
 # ── Узлы сцены ────────────────────────────────────────────────────────────────
+## Правки рельефа, которые надо сохранить. Живут они в самой карте: ровнять землю может кто
+## угодно (квест, будущая постройка), и держать список здесь значило бы просить каждого
+## отчитываться перед сейвом отдельно.
+func _ground_edits() -> Array:
+	var terr := _terrain()
+	if terr != null and terr.has_method("ground_edits"):
+		return terr.ground_edits()
+	return []
+
 func _objects() -> Node:
 	return get_node_or_null("/root/Main/objects")
 
@@ -303,6 +312,10 @@ func _save_world() -> void:
 			"version": G.SAVE_FORMAT,
 			"machines": machines,
 			"world_blocks": blocks,
+			# ПРАВКИ РЕЛЬЕФА (выровненные площадки). Саму карту высот не пишем — это мегабайты
+			# чисел на каждое сохранение; правка же это четыре числа, и по ней земля
+			# получается ровно такой же (см. map.flatten_area).
+			"ground": _ground_edits(),
 		}))
 		f.close()
 
@@ -331,6 +344,12 @@ func _load_world() -> void:
 		_quarantine_save("раскладка машины повреждена")
 		_fresh_start()
 		return
+	# РЕЛЬЕФ ПЕРВЫМ. Выровненные площадки надо повторить ДО того, как в мир вернутся машины:
+	# база из квеста стоит на ровной земле, и восстановленная раньше правки она повисла бы в
+	# воздухе (или утонула, если площадку срезали). Ждём высоты карты — по нулевым не выровнять.
+	var terr0: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
+	if terr0 != null and terr0.has_method("apply_ground_edits"):
+		terr0.apply_ground_edits(data.get("ground", []))
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])

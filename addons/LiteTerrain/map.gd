@@ -808,9 +808,72 @@ func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
 # half_extent — половина размера площадки в мировых единицах (X и Z), feather — насколько
 # плавно она сходит на нет за своим краем.
 func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
-		feather: float = 4.0) -> void:
-	if md.is_empty() or w <= 0:
+		feather: float = 4.0, record: bool = true) -> void:
+	var dirty: Array = _flatten_heights(center_world, half_extent, height, feather)
+	if dirty.is_empty():
 		return
+	# ЗАПОМИНАЕМ правку. Карта высот в сейв не пишется (мегабайты float на каждую запись),
+	# зато сама правка — это четыре числа, и по ним рельеф повторяется при загрузке точно
+	# таким же. record = false у повтора, иначе список рос бы с каждым входом в игру.
+	if record:
+		_flat_edits.append({
+			"c": [center_world.x, center_world.y, center_world.z],
+			"h": [half_extent.x, half_extent.y],
+			"y": height, "f": feather,
+		})
+		if _flat_edits.size() > FLAT_EDITS_MAX:
+			_flat_edits.remove_at(0)
+	update_chunks(dirty)
+	_refresh_ground_collision()
+
+## Сколько правок рельефа помним. Каждая — четыре числа, но список не должен расти вечно:
+## квест может ровнять новую площадку каждый прогон.
+const FLAT_EDITS_MAX := 64
+var _flat_edits: Array = []
+
+## Правки рельефа для сейва мира и обратно. Список — простые словари, готовые к JSON.
+func ground_edits() -> Array:
+	return _flat_edits.duplicate(true)
+
+## Повторить сохранённые правки. Зовётся ОДИН РАЗ при загрузке, ПОСЛЕ того как высоты карты
+## прочитаны и ДО того, как в мир вернут машины: база обязана встать на уже ровную землю.
+func apply_ground_edits(list: Array) -> void:
+	if list.is_empty():
+		return
+	var seen: Dictionary = {}
+	for e in list:
+		if not (e is Dictionary) or not (e.get("c") is Array) or not (e.get("h") is Array):
+			continue
+		var c: Array = e["c"]
+		var hh: Array = e["h"]
+		if c.size() < 3 or hh.size() < 2:
+			continue
+		var dirty: Array = _flatten_heights(
+				Vector3(float(c[0]), float(c[1]), float(c[2])),
+				Vector2(float(hh[0]), float(hh[1])),
+				float(e.get("y", 0.0)), float(e.get("f", 4.0)))
+		for ci in dirty:
+			seen[ci] = true
+		_flat_edits.append(e)
+	if seen.is_empty():
+		return
+	# Меши и коллизию трогаем ОДИН РАЗ на все правки: перестройка чанка и пересборка
+	# коллизионных тайлов дороги, а площадок при загрузке может оказаться несколько.
+	update_chunks(seen.keys())
+	_refresh_ground_collision()
+
+func _refresh_ground_collision() -> void:
+	# Тайлы нарезаны из СТАРЫХ высот — сносим и даём построиться заново. Без этого машина
+	# продолжит ездить по прежнему рельефу, которого уже не видно.
+	if _col_active:
+		_clear_collision_cells()
+		_update_collision_cells()
+
+## Сама правка высот: возвращает индексы задетых чанков и НИЧЕГО не перестраивает.
+func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float,
+		feather: float) -> Array:
+	if md.is_empty() or w <= 0:
+		return []
 	var inv := global_transform.affine_inverse()
 	var local: Vector3 = inv * center_world
 	# Целевую высоту переводим в ЛОКАЛЬНУЮ: md хранит высоты в осях самой карты, а звать нас
@@ -826,7 +889,7 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 	var z0 := clampi(int(floor(cz - ez - fe)), 0, d - 1)
 	var z1 := clampi(int(ceil(cz + ez + fe)), 0, d - 1)
 	if x1 < x0 or z1 < z0:
-		return
+		return []
 	for z in range(z0, z1 + 1):
 		var dz: float = maxf(absf(float(z) - cz) - ez, 0.0)   # 0 внутри площадки
 		var row := z * w
@@ -840,7 +903,6 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 			var k: float = 1.0 - dist / fe
 			md[row + x] = lerp(md[row + x], target, clampf(k, 0.0, 1.0))
 	_md_max = maxf(_md_max, target)          # граница высот нужна лучу по рельефу
-	# Меши: собираем задетые чанки и просим перестроить только их.
 	var cxl: int = ceili(float(w - 1) / chunk_size)
 	var dirty: Array = []
 	var seen: Dictionary = {}
@@ -850,11 +912,7 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 			if not seen.has(ci):
 				seen[ci] = true
 				dirty.append(ci)
-	update_chunks(dirty)
-	# Коллизия: тайлы нарезаны из СТАРЫХ высот — сносим и даём построиться заново.
-	if _col_active:
-		_clear_collision_cells()
-		_update_collision_cells()
+	return dirty
 
 # In-place brush on md around a world centre; returns the editor chunk indices touched.
 # mode: 1 = raise, -1 = lower, 0 = flatten.
