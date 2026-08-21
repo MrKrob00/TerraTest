@@ -43,6 +43,9 @@ func _ready() -> void:
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
 	if has_node("Ammo/Bullet"):
 		_rebind_bullet($Ammo/Bullet)
+		# Просадку считаем и ШАБЛОНУ: по нему прицел берёт баллистику (_ballistics), и без
+		# этого башня целилась бы по одной траектории, а пуля летела бы по другой.
+		_apply_flat_range($Ammo/Bullet)
 
 # ФИЗ-ТИК, а не кадр отрисовки: force_raycast_update() — это запрос к физическому серверу (луч
 # наведения), а выстрел рождает физические тела (пули/ракеты). На кадре отрисовки такой запрос
@@ -276,6 +279,7 @@ func fire_bullet():
 		muzzle = $Pivot/Marker3D
 	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
+	_apply_flat_range(bullet)
 	if absf(dir.dot(Vector3.UP)) < 0.99:        # look_at падает, если dir почти вертикальна
 		bullet.look_at(bullet.global_position + dir)
 	bullet.monitoring = true                    # в полёте ловит попадания
@@ -391,6 +395,23 @@ func _lead_point(target: Node3D, from: Vector3) -> Vector3:
 		aim = p + v * t + Vector3.UP * (0.5 * bal.y * t * t)
 		t = from.distance_to(aim) / bal.x
 	return aim
+
+## СКОЛЬКО МЕТРОВ ПО ЗЕМЛЕ пролетает снаряд, выпущенный ПРЯМО. Ноль — просадка берётся из
+## сцены снаряда как есть (ракета летит настильно, и ей это правильно).
+##
+## Задавать просадку числом бесполезно: она имеет смысл только вместе со скоростью снаряда и
+## высотой ствола, а обе меняются. Пушка стоит примерно в MUZZLE_HEIGHT над землёй, и её
+## пуля должна доставать землю в flat_range метрах — отсюда g = 2·h·v²/R². Поменяли скорость
+## пули — дальность падения осталась той же, и целиться игроку по-прежнему привычно.
+@export var flat_range: float = 0.0
+## Высота ствола над землёй: пушка на третьем этаже сборки — это примерно 3.5 м.
+const MUZZLE_HEIGHT := 3.5
+
+func _apply_flat_range(b: Node) -> void:
+	if flat_range <= 0.0 or b == null or not ("bullet_gravity" in b) or not ("speed" in b):
+		return
+	var v: float = maxf(float(b.get("speed")), 1.0)
+	b.set("bullet_gravity", 2.0 * MUZZLE_HEIGHT * v * v / (flat_range * flat_range))
 
 # Скорость и просадка берутся С САМОГО СНАРЯДА: у ракеты в сцене 42/6, у пушки 120/50.
 # Зашей их сюда числом — прицел считал бы по одним, а летело бы по другим.

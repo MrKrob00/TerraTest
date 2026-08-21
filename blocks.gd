@@ -64,9 +64,10 @@ func _allowed_on_station(bt: int) -> bool:
 ## поворота грань «зад» ничего не значит, блок на машине развёрнут как попало.
 func can_attach(nx: int, ny: int, nz: int, new_node: Node, attach_face: String) -> bool:
 	var new_type: int = int(new_node.get("block")) if new_node != null else G.Block.EMPTY
-	# Стационарный блок нельзя на мобильную машину, только на стационарную базу (2A).
-	if G.is_stationary(new_type) and not is_station:
-		return false
+	# СТАЦИОНАРНЫЙ блок на машину — МОЖНО. Запрет был лишним: такой блок и так работает
+	# только под якорем (_factory_active), а машина, которая его везёт, получает право
+	# вставать на якорь (vehicle_body_3d.has_stationary). Возить продавца с собой и
+	# останавливаться, чтобы продать, — нормальная игра, а не обход правила.
 	# На стационарную базу — только разрешённые типы (3Б).
 	if is_station and not _allowed_on_station(new_type):
 		return false

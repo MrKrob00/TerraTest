@@ -62,7 +62,10 @@ const VIEWS := [
 var _quads: Array = []          # [{poly, off, dir}] — построены последней отрисовкой
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(320, 190)
+	# Размер ставим, только если его не задали снаружи: окно портов считает высоту от экрана,
+	# и затирать её своим числом значит ломать ровно ту раскладку, ради которой её считали.
+	if custom_minimum_size.y <= 0.0:
+		custom_minimum_size.y = 190.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	# Сверяем порядок направлений с оригиналом. Разъехавшись, эти два списка молча
 	# перепутали бы грани местами, и кнопка «верх» настраивала бы, скажем, зад.
@@ -176,26 +179,62 @@ func _state(o: Vector3i, di: int) -> int:
 	return int(v) if v != null else 0
 
 # ── Клик ─────────────────────────────────────────────────────────────────────
-# Грани перебираем В ОБРАТНОМ порядке отрисовки: последняя нарисованная лежит сверху, и
-# именно в неё игрок целился, если квадраты где-то накладываются.
+# Ввод берём в _input, а НЕ в _gui_input. Кубик лежит в окне, которое само по себе Control с
+# mouse_filter STOP, поверх него — затемнение и панель, а над всем этим ещё и разбор тапа
+# машиной: до gui_input событие может просто не дойти, и кубик оказывался «только показывает».
+# _input у узлов вызывается ДО разбора GUI, поэтому попадание проверяем сами по своему
+# прямоугольнику. Ровно так же в проекте сделаны круговое меню и жест закрытия окна.
+#
+# gui_input оставлен запасным путём для РЕДАКТОРА: там инспектор раздаёт ввод по-своему.
+# Двойной обработки не будет — сработавший _input гасит событие, а совпадающие по времени и
+# месту касания отсекает _dedup (тач и эмулированная из него мышь приходят ПАРОЙ).
+const DEDUP_MS: int = 120
+var _last_ms: int = 0
+var _last_pos: Vector2 = Vector2(-9999, -9999)
+
+func _input(event: InputEvent) -> void:
+	if not is_visible_in_tree():
+		return
+	var pos: Variant = _press_pos(event)
+	if pos == null or not get_global_rect().has_point(pos):
+		return
+	if _hit(pos as Vector2 - global_position):
+		get_viewport().set_input_as_handled()
+
 func _gui_input(event: InputEvent) -> void:
-	var pos := Vector2.ZERO
+	var pos: Variant = _press_pos(event)
+	if pos == null:
+		return
+	if _hit(pos as Vector2):
+		accept_event()
+
+## Позиция НАЖАТИЯ или null, если это не оно. Отпускание не трогаем: грань должна
+## переключаться в момент касания, как кнопка.
+func _press_pos(event: InputEvent) -> Variant:
 	if event is InputEventMouseButton and (event as InputEventMouseButton).pressed \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
-		pos = (event as InputEventMouseButton).position
-	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
-		pos = (event as InputEventScreenTouch).position
-	else:
-		return
+		return (event as InputEventMouseButton).position
+	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
+		return (event as InputEventScreenTouch).position
+	return null
+
+## Попадание по грани. Перебираем В ОБРАТНОМ порядке отрисовки: последняя нарисованная лежит
+## сверху, и именно в неё игрок целился, если квадраты где-то накладываются.
+func _hit(local: Vector2) -> bool:
+	var now: int = Time.get_ticks_msec()
+	if now - _last_ms < DEDUP_MS and _last_pos.distance_squared_to(local) < 25.0:
+		return true                   # тот же тап пришёл вторым событием — гасим, но не крутим
 	for i in range(_quads.size() - 1, -1, -1):
 		var q: Dictionary = _quads[i]
-		if not _inside(q["poly"], pos):
+		if not _inside(q["poly"], local):
 			continue
+		_last_ms = now
+		_last_pos = local
 		if on_click.is_valid():
 			on_click.call(q["off"], int(q["dir"]))
 		queue_redraw()
-		accept_event()
-		return
+		return true
+	return false
 
 ## Точка внутри параллелограмма: раскладываем её по двум сторонам грани. Общий алгоритм для
 ## произвольного многоугольника здесь не нужен — все грани куба параллелограммы по построению.

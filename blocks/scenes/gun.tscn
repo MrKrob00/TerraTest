@@ -134,6 +134,7 @@ script = ExtResource("1_vk1bi")
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
 Area_Range = NodePath("Area3D")
+flat_range = 20.0
 block = 11
 connect_faces = 32
 

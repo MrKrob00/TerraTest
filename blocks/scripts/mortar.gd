@@ -46,17 +46,37 @@ func _track_target(_delta: float, _firing: bool) -> void:
 func fire_bullet() -> void:
 	if _salvo_t > 0.0:
 		return
-	var t: Node3D = _current_target
-	if t == null or not is_instance_valid(t):
+	var aim: Variant = _aim_ground()
+	if aim == null:
 		return
-	# Обе границы — сравнения, значение дальности здесь не нужно: корень не берём.
-	var d2: float = global_position.distance_squared_to(t.global_position)
-	if d2 < MIN_RANGE * MIN_RANGE or d2 > MAX_RANGE * MAX_RANGE:
-		return                       # вне вилки — молчим, и это видно как правило
 	_salvo_t = SALVO_PERIOD
 	for _i in SHELLS:
 		super.fire_bullet()
-		_arc_last(t)
+		_arc_last(aim as Vector3)
+
+## КУДА кладём залп. Есть цель — по цели, как раньше, и по-прежнему только в своей вилке
+## дальности. НЕТ цели — ПРЯМО ПЕРЕД СОБОЙ, на MIN_RANGE: по кнопке Attack все остальные
+## стволы бьют вперёд, и одна молчащая мортира читалась как сломанный блок. Дистанция взята
+## не с потолка — это её же ближняя граница: ближе навесом попасть нельзя, а значит «вперёд»
+## для мортиры и есть двадцать метров.
+##
+## Возвращает Vector3 или null (молчим): точка на ЗЕМЛЕ, потому что снаряд навесной и
+## приходит сверху — целиться в воздух перед собой бессмысленно.
+func _aim_ground() -> Variant:
+	var t: Node3D = _current_target
+	if t != null and is_instance_valid(t):
+		# Обе границы — сравнения, значение дальности здесь не нужно: корень не берём.
+		var d2: float = global_position.distance_squared_to(t.global_position)
+		if d2 < MIN_RANGE * MIN_RANGE or d2 > MAX_RANGE * MAX_RANGE:
+			return null              # вне вилки — молчим, и это видно как правило
+		return t.global_position
+	var fwd: Vector3 = -global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		return null                  # ствол смотрит строго вверх/вниз — направления нет
+	var p: Vector3 = global_position + fwd.normalized() * MIN_RANGE
+	p.y = G.ground_y(p, global_position.y)
+	return p
 
 # Отправить последний снаряд НАВЕСОМ в точку цели с разбросом.
 #
@@ -64,11 +84,11 @@ func fire_bullet() -> void:
 # θ = 45° следует v = √(g·d) — то есть по ближней цели снаряд летит медленно и высоко, по
 # дальней быстро, но дуга одна и та же. Так и должна выглядеть мортира: навес не «включается»
 # на дальних дистанциях, он у неё всегда.
-func _arc_last(target: Node3D) -> void:
+func _arc_last(point: Vector3) -> void:
 	var b: Area3D = _last_bullet()
 	if b == null or not ("dir" in b):
 		return
-	var aim: Vector3 = target.global_position
+	var aim: Vector3 = point
 	aim.x += randf_range(-SPREAD, SPREAD)
 	aim.z += randf_range(-SPREAD, SPREAD)
 	var flat: Vector3 = aim - global_position
