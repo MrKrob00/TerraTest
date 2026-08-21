@@ -143,9 +143,7 @@ func _salvage_1(q: Dictionary) -> void:
 	if _salvage_point == null:
 		var ang: float = randf() * TAU
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * SALVAGE_DIST, 0.0, sin(ang) * SALVAGE_DIST)
-		var map: Node = get_node_or_null("/root/Main/map")
-		if map != null and map.has_method("terrain_height_at"):
-			wp.y = map.terrain_height_at(wp)
+		wp.y = G.ground_y(wp, p.global_position.y)
 		_salvage_point = wp
 		return
 	if p.global_position.distance_squared_to(_salvage_point as Vector3) > SALVAGE_REACH * SALVAGE_REACH:
@@ -207,9 +205,7 @@ func _hold_1(q: Dictionary) -> void:
 	for i in HOLD_COUNT:
 		var ang: float = TAU * float(i) / float(HOLD_COUNT) + randf()
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * HOLD_RANGE, 0.0, sin(ang) * HOLD_RANGE)
-		var map: Node = get_node_or_null("/root/Main/map")
-		if map != null and map.has_method("terrain_height_at"):
-			wp.y = map.terrain_height_at(wp)
+		wp.y = G.ground_y(wp, p.global_position.y)
 		var e = sp.spawn_at(wp, 8, 1)
 		if e != null:
 			if e.has_method("assign_target"):
@@ -260,9 +256,7 @@ func _duel_1(q: Dictionary) -> void:
 		# маршрута, а не подворачиваться там, куда он и так ехал.
 		var ang: float = randf() * TAU
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * DUEL_DIST, 0.0, sin(ang) * DUEL_DIST)
-		var map: Node = get_node_or_null("/root/Main/map")
-		if map != null and map.has_method("terrain_height_at"):
-			wp.y = map.terrain_height_at(wp)
+		wp.y = G.ground_y(wp, p.global_position.y)
 		_duel_point = wp
 		return
 	if p.global_position.distance_squared_to(_duel_point as Vector3) > DUEL_TRIGGER * DUEL_TRIGGER:

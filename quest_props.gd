@@ -37,7 +37,11 @@ func drop_near(quest_id: String, block_type: int, at: Variant) -> Node3D:
 	var objects: Node = get_node_or_null("/root/Main/objects")
 	if scene == null or objects == null:
 		return null
-	var pos: Vector3 = (at as Vector3) + Vector3(randf_range(-3.0, 3.0), 1.2, randf_range(-3.0, 3.0))
+	# Высоту берём У РЕЛЬЕФА В ТОЧКЕ ПАДЕНИЯ, а не у той точки, от которой отмеряли. Разброс
+	# в три метра на склоне — это метры высоты, и груз Salvage Run оказывался под землёй:
+	# точка квеста считалась на ровном месте, а предмет ложился рядом, где холм выше.
+	var pos: Vector3 = (at as Vector3) + Vector3(randf_range(-3.0, 3.0), 0.0, randf_range(-3.0, 3.0))
+	pos.y = G.ground_y(pos, (at as Vector3).y) + 1.2
 	var node: Node3D = scene.instantiate()
 	objects.add_child(node)
 	node.global_position = pos
@@ -63,9 +67,7 @@ func drop_for(quest_id: String, block_type: int) -> Node3D:
 	if first != null:
 		pos = first.global_position + Vector3(randf_range(-SIBLING_SPREAD, SIBLING_SPREAD),
 				0.0, randf_range(-SIBLING_SPREAD, SIBLING_SPREAD))
-		var map: Node = get_node_or_null("/root/Main/map")
-		if map != null and map.has_method("terrain_height_at"):
-			pos.y = map.terrain_height_at(pos) + 1.2
+		pos.y = G.ground_y(pos, first.global_position.y) + 1.2
 	var node: Node3D = scene.instantiate()
 	objects.add_child(node)
 	node.global_position = pos
@@ -109,14 +111,10 @@ func _first_loose(quest_id: String) -> Node3D:
 	return best
 
 func _ground_spot(center: Vector3) -> Vector3:
-	var map: Node = get_node_or_null("/root/Main/map")
 	var ang: float = randf() * TAU
 	var dist: float = randf_range(DROP_MIN, DROP_MAX)
 	var p: Vector3 = center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-	if map != null and map.has_method("terrain_height_at"):
-		p.y = map.terrain_height_at(p) + 1.2
-	else:
-		p.y = center.y + 1.2
+	p.y = G.ground_y(p, center.y) + 1.2
 	return p
 
 func _player() -> Node3D:

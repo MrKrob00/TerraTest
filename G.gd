@@ -280,6 +280,25 @@ func _build_comp_recipes() -> void:
 			COMP_COLOR[i] = (COMP_COLOR[a] as Color).lerp(COMP_COLOR[b], 0.5).lightened(0.10)
 			i += 1
 
+## ВЫСОТА РЕЛЬЕФА в точке (по её XZ). Одна точка на всю игру: спавн врага, предмет от
+## квеста и подъём провалившегося тела спрашивают одно и то же, а спрашивали в четырёх
+## местах по-разному — где-то с проверкой, где-то без, а где-то и вовсе брали высоту той
+## точки, ОТ КОТОРОЙ отмеряли (так груз из Salvage Run и оказывался под землёй: точку
+## считали на ровном месте, а клали за двенадцать метров, где холм).
+##
+## `fallback` возвращается, если карты нет ИЛИ высоты ещё не прочитаны: пока heightmap не
+## загружен, terrain_height_at отдаёт ноль, и по этому нулю предмет уезжает под рельеф
+## везде, где тот выше нуля.
+var _map_cache: Node = null
+func ground_y(pos: Vector3, fallback: float) -> float:
+	if _map_cache == null or not is_instance_valid(_map_cache):
+		_map_cache = get_node_or_null("/root/Main/map")
+	if _map_cache == null or not _map_cache.has_method("terrain_height_at"):
+		return fallback
+	if _map_cache.has_method("get_dims") and _map_cache.get_dims().x <= 0:
+		return fallback                   # карта есть, а высот в ней ещё нет
+	return _map_cache.terrain_height_at(pos)
+
 ## ПРЕДМЕТ ЛЕЖИТ В МИРЕ — не стоит на машине, не лежит в накопителе блока и не висит в руке.
 ##
 ## Проверять родителя по имени ("objects") оказалось мало. Руда падает из жилы РЯДОМ С ЖИЛОЙ,
