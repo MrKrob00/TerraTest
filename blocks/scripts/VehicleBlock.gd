@@ -64,6 +64,49 @@ func connect_vecs() -> Array:
 			out.append(FACE_VECS[i])
 	return out
 
+## УПАКОВКА БЛОКА В ЧАНК — общая для коллектора и приёмника.
+##
+## Свободный блок это RigidBody с коллизией и весом; двадцать четыре штуки на ленте — это
+## двадцать четыре физических тела. В чанке на ленте всегда ОДИН предмет, сколько бы блоков в
+## нём ни лежало (см. resource.gd). Правило одно на оба блока намеренно: две копии одной
+## упаковки разъехались бы при первой же правке вместимости.
+##
+## Блок ДРУГОГО типа начинает новый чанк, а не отбрасывается: выброшенный трофей — это тихая
+## потеря добычи. Возвращает true, если блок принят (и уничтожен).
+const CHUNK_SCENE: String = "res://resource.tscn"
+static var _chunk_scene: PackedScene = null
+
+static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) -> bool:
+	if body == null or not is_instance_valid(body) or not ("block" in body) or holder == null:
+		return false
+	var bt: int = int(body.get("block"))
+	for it in inv:
+		if not is_instance_valid(it):
+			continue
+		if int(it.get("type")) == 3 and int(it.get("chunk_block")) == bt \
+				and int(it.get("chunk_count")) < 24:          # 3 = Type.CHUNK
+			it.set("chunk_count", int(it.get("chunk_count")) + 1)
+			body.queue_free()
+			return true
+	if inv.size() >= cap:
+		return false                                          # места нет — блок остаётся лежать
+	if _chunk_scene == null:
+		_chunk_scene = load(CHUNK_SCENE) as PackedScene
+	if _chunk_scene == null:
+		return false
+	var chunk: Node3D = _chunk_scene.instantiate() as Node3D
+	if chunk == null:
+		return false
+	chunk.set("type", 3)                                      # Type.CHUNK
+	chunk.set("chunk_block", bt)
+	chunk.set("chunk_count", 1)
+	holder.add_child(chunk)
+	if chunk is RigidBody3D:
+		(chunk as RigidBody3D).freeze = true
+	inv.append(chunk)
+	body.queue_free()
+	return true
+
 const BLOCK_HP: Dictionary = {
 	G.Block.CABIN:     150,
 	G.Block.WHEEL:     60,
