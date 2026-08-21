@@ -302,7 +302,7 @@ func _check_ground() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if _ground_q == null:
 		_ground_q = PhysicsRayQueryParameters3D.new()
-		_ground_q.exclude = [self]          # состав не меняется — задаём один раз
+		_ground_q.exclude = [get_rid()]     # RID, не узел; состав не меняется — задаём один раз
 		_ground_q.collision_mask = 1
 
 	_grounded_wheels = 0

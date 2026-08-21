@@ -99,7 +99,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				if _cam_touches.size() == 1 and not _tap_moved \
 						and Time.get_ticks_msec() - _tap_down_ms < 250:
 					var now := Time.get_ticks_msec()
-					if now - _last_tap_ms < DOUBLE_TAP_MS and not _in_build():
+					# Гейт `not _in_build()` больше не нужен и был неверен: подбор блока и
+					# ресурса давно работает В ЛЮБОМ режиме, а не только в стройке. Сработавший
+					# двойной тап теперь гасится машиной (vehicle_body_3d._commit_build_tap →
+					# set_input_as_handled), и сюда просто не доходит — а если дошёл, значит
+					# тапнули в пустоту, и сброс взгляда там уместен.
+					if now - _last_tap_ms < DOUBLE_TAP_MS:
 						reset_gaze()
 						_last_tap_ms = -10000
 					else:

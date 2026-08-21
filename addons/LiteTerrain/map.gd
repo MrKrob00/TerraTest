@@ -543,6 +543,20 @@ func _update_collision_cells() -> void:
 		# in this project (an anchored base, carried items) still want ground under them.
 		if body.get_meta("asleep", false):
 			continue
+		# GAME HOOK (TerraTest): a body ASLEEP UNDER ITS OWN PHYSICS gets no window either.
+		# Every RigidBody3D asks for a full collision_radius window, and this game leaves loose
+		# blocks lying all over the ground — dozens of them, each demanding its own patch of
+		# heightfield. The desired set explodes, tiles are built and freed every frame, and the
+		# ground under the machine the player is actually driving stops being refreshed.
+		#
+		# A body resting on the ground does not move, so it does not need fresh ground; when
+		# something disturbs it, it wakes and gets its window back on the very next frame,
+		# because this loop runs every frame.
+		#
+		# FROZEN bodies are deliberately NOT skipped: freeze is not rest. An anchored base is
+		# frozen, and skipping it would leave the player's own factory floor without collision.
+		if body is RigidBody3D and (body as RigidBody3D).sleeping and not (body as RigidBody3D).freeze:
+			continue
 		var r: int = collision_radius
 		var local := global_transform.affine_inverse() * body.global_position
 		var bx := int(round(local.x + float(w) * 0.5 - 0.5))
