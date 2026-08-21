@@ -1,4 +1,10 @@
 extends VehicleBlock
+# КОЛЛЕКТОР — подбирает с земли, и всё. По ленте он НИЧЕГО НЕ ПЕРЕДАЁТ: это VehicleBlock, а не
+# FactoryBlock, значит у него нет ни выходов, ни push_item. Забрать у него добычу может только
+# приёмник (Receiver._take_from_vehicle), и вот он уже работает лишь на якоре.
+#
+# Сам коллектор якоря НЕ ТРЕБУЕТ намеренно: собирать руду на ходу — его единственная работа,
+# и запрет на это сделал бы блок бессмысленным.
 
 var is_on_vehicle: bool = false
 var inventory:Array = []
@@ -26,9 +32,6 @@ func _process(delta: float) -> void:
 	$collector/MeshInstance3D.rotation.y += deg_to_rad(360)*delta/6
 	$collector/MeshInstance3D.global_position.y = get_parent().global_position.y
 
-const RESOURCE_SCENE: String = "res://resource.tscn"
-var _res_scene: PackedScene = null
-
 func _on_collector_body_entered(body: RigidBody3D) -> void:
 	if inventory.has(body): return  # ← уже в инвентаре, игнорируем
 	elif body.freeze:
@@ -48,37 +51,18 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 	body.freeze = true
 	fix_position_resources.call_deferred(body)
 
-# Положить блок в чанк: в подходящий уже собранный, иначе завести новый.
-#
-# Блок ДРУГОГО типа начинает новый чанк, а не отбрасывается: выброшенный трофей — это
-# молчаливая потеря добычи, то есть ровно тот сорт бага, которого мы избегаем везде.
+# Упаковка — общая с приёмником (VehicleBlock.pack_block_into): правило одно, и разъехаться
+# двум копиям негде.
 func _pack_block(body: RigidBody3D) -> void:
-	var bt: int = int(body.get("block"))
-	for it in inventory:
-		if not is_instance_valid(it):
-			continue
-		if int(it.get("type")) == 3 and int(it.get("chunk_block")) == bt \
-				and int(it.get("chunk_count")) < 24:          # 3 = Type.CHUNK
-			it.set("chunk_count", int(it.get("chunk_count")) + 1)
-			body.queue_free()
-			return
-	if inventory.size() >= capacity:
-		return                                                # места нет — блок остаётся лежать
-	if _res_scene == null:
-		_res_scene = load(RESOURCE_SCENE) as PackedScene
-	if _res_scene == null:
-		return
-	var chunk: Node3D = _res_scene.instantiate() as Node3D
-	if chunk == null:
-		return
-	chunk.set("type", 3)                                      # Type.CHUNK
-	chunk.set("chunk_block", bt)
-	chunk.set("chunk_count", 1)
-	$resources.add_child(chunk)
-	chunk.freeze = true
-	inventory.append(chunk)
-	body.queue_free()
-	fix_position_resources.call_deferred(chunk)
+	if pack_block_into(inventory, $resources, body, capacity):
+		if not inventory.is_empty():
+			fix_position_resources.call_deferred(inventory[inventory.size() - 1])
+
+## Отдать предмет приёмнику. Он это уже зовёт (Receiver._take_from_vehicle), но метода не
+## было, и вызов молча пропускался: список чистился лишь потом, сигналом child_order_changed.
+## Пока он не сработал, коллектор считал слот занятым и мог не взять следующую руду.
+func remove_from_inventory(item: Node) -> void:
+	inventory.erase(item)
 
 func fix_position_resources(body:Node3D):
 	body.position = Vector3(0,inventory.find(body)+1,0)

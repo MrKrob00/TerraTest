@@ -1,5 +1,14 @@
 # Receiver.gd
 extends FactoryBlock
+# ПРИЁМНИК — универсальный вход цепочки, но ТОЛЬКО НА ЯКОРЕ.
+#
+# Берёт из двух источников: с земли (что лежит в его зоне) и из КОЛЛЕКТОРОВ машин, попавших в
+# зону. Дальше отдаёт по ленте (push_item). Коллектор ничего этого не умеет: он лишь копит
+# добытое и отдать может только приёмнику.
+#
+# Якорь обязателен на ВСЕХ путях: и на заборе у коллекторов, и на подъёме с земли. Вся фабрика
+# работает под якорем (_factory_active), и вход в неё не может быть исключением — иначе
+# цепочка начиналась бы на ходу и обрывалась на первом же следующем блоке.
 
 @export var take_interval: float = 1.0
 @export var capacity: int = 4
@@ -40,7 +49,36 @@ func _fix_positions() -> void:
 func _on_body_entered(body: Node3D) -> void:
 	if body is RigidBody3D and not vehicles_in_zone.has(body):
 		vehicles_in_zone.append(body)
+	_try_take_world(body)          # лежит на земле — берём сразу, не дожидаясь тика
 	_update_take_timer()
+
+## Свободный предмет с ЗЕМЛИ. Именно «с земли»: берём только то, что лежит под /root/Main/objects,
+## — так отсекаются и блоки чужих машин, и предмет в руке игрока (он висит под камерой).
+##
+## Раньше приёмник этого не умел вовсе, и не по логике, а по маске: зона стояла на 16 (только
+## корпуса машин), то есть ни ресурса, ни блока в мире она физически не видела.
+func _try_take_world(body: Node3D) -> bool:
+	if not _factory_active():
+		return false                          # без якоря вход в цепочку закрыт
+	if body == null or not is_instance_valid(body) or not (body is RigidBody3D):
+		return false
+	var p: Node = body.get_parent()
+	if p == null or p.name != "objects":
+		return false
+	if inventory.size() >= capacity:
+		return false
+	# БЛОК пакуем в чанк — на ленте это один предмет вместо тяжёлого тела с коллизией
+	# (правило общее с коллектором, см. VehicleBlock.pack_block_into).
+	if "block" in body:
+		if pack_block_into(inventory, $resources, body, capacity):
+			_push_from_inventory()
+			_update_take_timer()
+			return true
+		return false
+	if not body.has_method("kind_key"):
+		return false                          # не ресурс и не блок — не наше дело
+	_accept_item(body)
+	return true
 
 func _on_body_exited(body: Node3D) -> void:
 	if body is RigidBody3D:
@@ -66,8 +104,12 @@ func _on_timer_timeout() -> void:
 		return
 	vehicles_in_zone = vehicles_in_zone.filter(func(v): return is_instance_valid(v))
 	if inventory.size() < capacity:
-		for vehicle in vehicles_in_zone:
-			if _take_from_vehicle(vehicle):
+		for body in vehicles_in_zone:
+			# Сначала земля: предмет, уже лежащий в зоне, забирать некому, кроме нас, а
+			# коллектор свою добычу никуда не денет и подождёт.
+			if _try_take_world(body):
+				break
+			if _take_from_vehicle(body):
 				break
 	_update_take_timer()
 
