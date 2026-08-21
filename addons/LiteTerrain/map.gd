@@ -396,6 +396,11 @@ func _ready() -> void:
 # Loads the master heightmap into w / d / md. Prefers the R32F image (scales to huge
 # maps); falls back to the embedded HeightMapShape3D so the game still runs pre-bake.
 func _load_heightmap() -> void:
+	# СНАЧАЛА СВОЙ ФАЙЛ. Если рельеф уже правили (площадки под постройки) и правки запекли,
+	# истина лежит в user:// — пакетный res:// после этого только «заводская» карта, к которой
+	# возвращает новая игра.
+	if _load_user_heights():
+		return
 	var img := _load_heightmap_image()
 	if img != null:
 		w  = img.get_width()
@@ -419,6 +424,82 @@ func _load_heightmap() -> void:
 				+ "HeightMapShape3D either). There will be no collision and no terrain. "
 				+ "Re-bake the terrain from the LiteTerrain dock (\"Bake -> files\") or put "
 				+ "the file back.")
+
+# ── ЗАПЕЧЁННЫЙ РЕЛЬЕФ (правки игрока) ────────────────────────────────────────
+# Правки высот живут двумя способами сразу, и это не дублирование, а разделение труда:
+#
+#   • СПИСОК ПРАВОК (ground_edits) — на время сессии. Записать четыре числа стоит ноль, и
+#     они переживут даже вылет игры: список уезжает в сейв мира при первом же автосейве.
+#   • ЗАПЕЧЁННЫЙ ФАЙЛ — при загрузке. Правки применяются к высотам и сбрасываются в
+#     user:// одним куском, после чего список пуст: рельеф САМ стал таким.
+#
+# Почему запекаем именно на загрузке: дамп карты высот — это её полный размер (у карты
+# 1984×1984 это 15 МБ), и на ходу такая запись видна рывком. А загрузка и так долгая, там
+# лишние доли секунды не заметны — это ровно то место, где такой работе и место.
+#
+# Формат простейший: заголовок с размерами и сырые float. Ни сжатия, ни картинки: PNG хранит
+# высоту восемью битами (256 ступеней на всю карту — рельеф стал бы ступенчатым), а EXR надо
+# кодировать. Сырые float читаются мгновенно и без потерь.
+const USER_HEIGHTS := "user://terrain_height.bin"
+const USER_HEIGHTS_MAGIC := 0x4C544831        # "LTH1"
+
+## Прочитать запечённый рельеф. false — файла нет или он от другой карты (тогда берём
+## пакетный, а этот игнорируем: подсунуть высоты не того размера значит развалить всё).
+func _load_user_heights() -> bool:
+	if not FileAccess.file_exists(USER_HEIGHTS):
+		return false
+	var f := FileAccess.open(USER_HEIGHTS, FileAccess.READ)
+	if f == null:
+		return false
+	if f.get_32() != USER_HEIGHTS_MAGIC:
+		return false
+	var uw := f.get_32()
+	var ud := f.get_32()
+	var useq := f.get_32()
+	if uw <= 0 or ud <= 0:
+		return false
+	var bytes := f.get_buffer(uw * ud * 4)
+	if bytes.size() != uw * ud * 4:
+		push_warning("LiteTerrain: %s обрезан — беру заводскую карту" % USER_HEIGHTS)
+		return false
+	w = uw
+	d = ud
+	md = bytes.to_float32_array()
+	_baked_seq = useq
+	_edit_seq = useq             # новые правки продолжают нумерацию, а не начинают её заново
+	_recompute_height_bound()
+	return true
+
+## Запечь текущие высоты в user://. Зовётся ПОСЛЕ применения правок при загрузке.
+func bake_heights() -> bool:
+	if md.is_empty() or w <= 0 or d <= 0:
+		return false
+	var f := FileAccess.open(USER_HEIGHTS, FileAccess.WRITE)
+	if f == null:
+		push_warning("LiteTerrain: не удалось записать %s — правки останутся списком" % USER_HEIGHTS)
+		return false
+	f.store_32(USER_HEIGHTS_MAGIC)
+	f.store_32(w)
+	f.store_32(d)
+	# НОМЕР ПОСЛЕДНЕЙ ЗАПЕЧЁННОЙ ПРАВКИ. Без него правка, оставшаяся в сейве мира (игрок
+	# закрыл игру раньше первого автосейва), применилась бы ВТОРОЙ РАЗ поверх уже ровной
+	# земли — и край площадки с каждым разом становился бы круче. С номером повтор просто
+	# пропускается: рельеф уже такой.
+	f.store_32(_edit_seq)
+	f.store_buffer(md.to_byte_array())
+	f.close()
+	_baked_seq = _edit_seq
+	_flat_edits.clear()          # они теперь ВНУТРИ файла, повторять их больше не нужно
+	return true
+
+## Забыть все правки рельефа: удалить запечённый файл и список. Новая игра начинается на
+## заводской карте, а не на чужих ямах.
+func reset_heights() -> void:
+	_flat_edits.clear()
+	_baked_seq = 0
+	_edit_seq = 0
+	if FileAccess.file_exists(USER_HEIGHTS):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(USER_HEIGHTS))
 
 # Pulls the heightmap file (tens of megabytes of R32F) on a BACKGROUND thread, yielding frames.
 # The ordinary load() in _load_heightmap_image() then takes it from the cache instantly. The
@@ -816,10 +897,11 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 	# зато сама правка — это четыре числа, и по ним рельеф повторяется при загрузке точно
 	# таким же. record = false у повтора, иначе список рос бы с каждым входом в игру.
 	if record:
+		_edit_seq += 1
 		_flat_edits.append({
 			"c": [center_world.x, center_world.y, center_world.z],
 			"h": [half_extent.x, half_extent.y],
-			"y": height, "f": feather,
+			"y": height, "f": feather, "n": _edit_seq,
 		})
 		if _flat_edits.size() > FLAT_EDITS_MAX:
 			_flat_edits.remove_at(0)
@@ -830,6 +912,10 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 ## квест может ровнять новую площадку каждый прогон.
 const FLAT_EDITS_MAX := 64
 var _flat_edits: Array = []
+## Сквозной номер правки и номер последней ЗАПЕЧЁННОЙ. По ним повтор при загрузке отличает
+## «эту правку земля уже помнит» от «эту надо применить».
+var _edit_seq: int = 0
+var _baked_seq: int = 0
 
 ## Правки рельефа для сейва мира и обратно. Список — простые словари, готовые к JSON.
 func ground_edits() -> Array:
@@ -844,6 +930,9 @@ func apply_ground_edits(list: Array) -> void:
 	for e in list:
 		if not (e is Dictionary) or not (e.get("c") is Array) or not (e.get("h") is Array):
 			continue
+		# Уже запечена в файл высот — земля её помнит, применять второй раз нельзя.
+		if int(e.get("n", 0)) > 0 and int(e["n"]) <= _baked_seq:
+			continue
 		var c: Array = e["c"]
 		var hh: Array = e["h"]
 		if c.size() < 3 or hh.size() < 2:
@@ -855,6 +944,7 @@ func apply_ground_edits(list: Array) -> void:
 		for ci in dirty:
 			seen[ci] = true
 		_flat_edits.append(e)
+		_edit_seq = maxi(_edit_seq, int(e.get("n", 0)))
 	if seen.is_empty():
 		return
 	# Меши и коллизию трогаем ОДИН РАЗ на все правки: перестройка чанка и пересборка
