@@ -60,6 +60,11 @@ func target_of(q: Dictionary) -> Variant:
 		if exact != null:
 			return exact
 	# Событие ведёт не к предмету, а к КООРДИНАТАМ — их держит quest_arcs.
+	if String(q.get("event", "")) == "quest_salvage_1":
+		var a: Node = get_tree().get_first_node_in_group("quest_arcs")
+		if a != null and a.has_method("salvage_point"):
+			return a.salvage_point()
+		return null
 	if String(q.get("event", "")) == "quest_duel_1":
 		var arcs: Node = get_tree().get_first_node_in_group("quest_arcs")
 		if arcs != null and arcs.has_method("duel_point"):

@@ -27,6 +27,28 @@ const DROP_MAX := 130.0
 ## второй, и не надо второй раз ехать через полкарты по компасу.
 const SIBLING_SPREAD := 4.0
 
+## Положить блок РЯДОМ С ЗАДАННОЙ ТОЧКОЙ, а не по кругу вокруг игрока. Нужно квестам, где
+## место уже определено сюжетом (сбитый груз): ронять награду в случайную сторону от игрока
+## значило бы отправить его искать во второй раз то, за чем он только что приехал.
+func drop_near(quest_id: String, block_type: int, at: Variant) -> Node3D:
+	if not (at is Vector3):
+		return drop_for(quest_id, block_type)
+	var scene: PackedScene = G.get_scene(block_type)
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if scene == null or objects == null:
+		return null
+	var pos: Vector3 = (at as Vector3) + Vector3(randf_range(-3.0, 3.0), 1.2, randf_range(-3.0, 3.0))
+	var node: Node3D = scene.instantiate()
+	objects.add_child(node)
+	node.global_position = pos
+	if node is RigidBody3D:
+		(node as RigidBody3D).freeze = false
+	BlockFX.play(node, false)
+	if not _props.has(quest_id):
+		_props[quest_id] = []
+	(_props[quest_id] as Array).append(node)
+	return node
+
 # Положить блок в мир по кругу вокруг игрока. Возвращает узел (или null, если не вышло).
 func drop_for(quest_id: String, block_type: int) -> Node3D:
 	var scene: PackedScene = G.get_scene(block_type)

@@ -123,9 +123,49 @@ func _seed_demo() -> void:
 		 "event": "quest_arc_battery_2", "goal": 1,
 		 "hint": "It resolved inside a vein — the terrain closed over it. Mine the vein out and it drops free."},
 	])
+	# ── Продолжение: груз, производство, оборона ────────────────────────────────
+	# Скелет взят у GSO-кампании TerraTech, но переложен на наши механики — см.
+	# docs/STORY_ROADMAP.md. Главное отличие: у нас НЕТ торговых станций и не будет, поэтому
+	# всё, что в оригинале крутилось вокруг станции (миссион-борд, продажа, хранилище),
+	# заменено на СВОЮ БАЗУ: продаёт блок на машине, задания шлёт Система напрямую.
+	add_quest("arc_salvage", "Salvage Run", "", Type.STORY, 1, 8, "", 240, 45, 14)
+	add_stages("arc_salvage", [
+		{"desc": "Reach the downed cargo",
+		 "event": "quest_salvage_1", "goal": 1,
+		 "hint": "A GSO drop came down short and something is already sitting on it. The System would like it back."},
+		{"desc": "Clear the scavenger and take the collector",
+		 "event": "quest_salvage_2", "goal": 1,
+		 "hint": "Whatever is guarding it does not own it either. The collector inside is yours once it is gone."},
+	])
+	add_quest("arc_line", "Production Line", "", Type.STORY, 1, 9, "", 300, 55, 16)
+	add_stages("arc_line", [
+		{"desc": "Build the chain: collector, receiver, belt, processor",
+		 "event": "quest_line_1", "goal": 1,
+		 "hint": "Ore is worth little as ore. Collector picks it up, belt carries it, processor smelts it — and none of it runs unless you are anchored."},
+		{"desc": "Add a seller and hold ground",
+		 "event": "quest_line_2", "goal": 1,
+		 "hint": "The last link turns metal into credit. Set down and hold: the whole line only works under anchor."},
+	])
+	add_quest("arc_solvent", "Solvent", "Earn 600$ through the line", Type.STORY, 600, 10, "money_earned", 400, 60, 18)
+	add_quest("arc_hold", "Hold the Line", "", Type.STORY, 1, 11, "", 450, 70, 20)
+	add_stages("arc_hold", [
+		{"desc": "Anchor down and wait for them",
+		 "event": "quest_hold_1", "goal": 1,
+		 "hint": "Something logged your production. They are coming for the machine, not for you."},
+		{"desc": "Destroy the raid",
+		 "event": "quest_hold_2", "goal": 1,
+		 "hint": "Two of them. Your base cannot drive away — this one you finish standing."},
+	])
+
 	requires("arc_power", ["story_first_blood"])
 	requires("arc_radar", ["arc_power"])      # развилка: оба открываются вместе,
 	requires("arc_battery", ["arc_power"])    # и порядок между ними выбирает игрок
+	# Дальше ветки сходятся: груз даёт коллектор, без него цепочку не построить, а без
+	# цепочки нечего оборонять. Порядок здесь ЖЁСТКИЙ и по делу, а не по привычке.
+	requires("arc_salvage", ["arc_radar", "arc_battery"])
+	requires("arc_line", ["arc_salvage"])
+	requires("arc_solvent", ["arc_line"])
+	requires("arc_hold", ["arc_solvent"])
 
 	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
 	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
