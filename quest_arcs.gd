@@ -173,7 +173,10 @@ func _salvage_2(q: Dictionary) -> void:
 # ── «Production Line»: собрать цепочку и включить её ─────────────────────────
 # Условие — НАБОР БЛОКОВ НА МАШИНЕ плюс якорь, а не «поставь пять блоков»: цепочка либо есть
 # целиком, либо не работает вовсе (_factory_active у всех фабричных блоков смотрит на якорь).
-const LINE_CORE := [G.Block.COLLECTOR, G.Block.RECEIVER, G.Block.BELT, G.Block.PROCESSOR]
+## КОЛЛЕКТОРА здесь нет намеренно. Он в цепочку не входит: по ленте он ничего не передаёт
+## (это VehicleBlock, без выходов и push_item), а только собирает руду с земли — приёмник и
+## сам берёт её из мира. Требовать его значило требовать блок, без которого линия работает.
+const LINE_CORE := [G.Block.RECEIVER, G.Block.BELT, G.Block.PROCESSOR]
 
 func _line_1(q: Dictionary) -> void:
 	for bt in LINE_CORE:
@@ -194,10 +197,28 @@ const HOLD_RANGE := 70.0
 
 var _hold: Array = []
 
+## Кого приезжают бить. Сначала БАЗА (стационарная постройка): налёт идёт за производством,
+## а производство стоит на ней, и она по определению на якоре. Базы нет — заякоренная
+## машина, нет и её — та, которой игрок управляет.
+##
+## Ждать якоря, как раньше, было незачем: стадия требовала от игрока встать, хотя нападают
+## именно на то, что и так стоит. Игрок в этот момент занят конвейером, а квест повторял ему
+## пройденное и до тех пор не начинался вовсе.
+func _hold_target() -> Node3D:
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	var anchored_one: Node3D = null
+	if vr != null:
+		for c in vr.get_children():
+			if not (c is Node3D) or c.get("faction") == null or int(c.get("faction")) != 0:
+				continue
+			if c.get("is_station") == true:
+				return c as Node3D
+			if anchored_one == null and c.get("anchored") == true:
+				anchored_one = c as Node3D
+	return anchored_one if anchored_one != null else _player()
+
 func _hold_1(q: Dictionary) -> void:
-	if not _is_anchored():
-		return                              # ждём, пока игрок встанет: налёт идёт на базу
-	var p: Node3D = _player()
+	var p: Node3D = _hold_target()
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	if p == null or sp == null or not sp.has_method("spawn_at"):
 		return
