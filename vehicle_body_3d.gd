@@ -289,7 +289,18 @@ func _rot_support_tick(delta: float) -> void:
 
 # Можно ли этой машине вставать на якорь: она база ИЛИ на ней есть фикс-опора.
 func can_anchor() -> bool:
-	return is_station or has_support()
+	return is_station or has_support() or has_stationary()
+
+## Есть ли на машине СТАЦИОНАРНЫЙ блок (продавец, авто-шахтёр). Он и есть повод для якоря:
+## такая техника работает ТОЛЬКО под якорем, и машина, которая её везёт, обязана уметь
+## вставать — даже если отдельной фикс-опоры на ней нет.
+func has_stationary() -> bool:
+	if block_map_node == null:
+		return false
+	for b in block_map_node.get_children():
+		if ("block" in b) and G.is_stationary(int(b.get("block"))):
+			return true
+	return false
 
 func toggle_anchor() -> bool:
 	if is_station:
@@ -713,6 +724,7 @@ var _rc_cache: Node3D = null       # кеш узла Camera3D/Raycast (find_chil
 var _hover_ms: int = 0             # троттл наведения мышью (ховер шлёт до 1000 событий/с)
 var _preview_res = null            # последний res для превью (чтобы переприменить при повороте)
 var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ставим кабину (новая машина)
+var _ground_core := false          # в руке ядро, которое МОЖЕТ уйти на землю (кабина/стационар)
 var _hand_from_inventory := false  # блок в руке взят из инвентаря (а не снят с машины) — для авто-добора
 
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,
@@ -935,12 +947,15 @@ func _handle_click(screen_pos: Vector2) -> void:
 			if hand_kind == Hand.RESOURCE:
 				return
 			var held_bt: int = holder.get_child(0).get("block")
-			# Кабина → всегда новая машина на землю. Стационар → новая база на землю, ТОЛЬКО
-			# если сейчас управляем МАШИНОЙ; если управляем СТАНЦИЕЙ — идёт обычным путём
-			# сетки (прикрепляется к базе, can_attach разрешает стационар-на-стационар).
-			if held_bt == G.Block.CABIN or (G.is_stationary(held_bt) and not is_station):
+			# КАБИНА — всегда новая машина на земле: на машину её не поставить.
+			if held_bt == G.Block.CABIN:
 				_preview_cabin_ground(world_origin, world_dir)
 				return
+			# СТАЦИОНАРНЫЙ блок (продавец, авто-шахтёр) ставится И НА МАШИНУ, и на землю.
+			# Решает ПОПАДАНИЕ ЛУЧА, а не тип блока: целишься в машину — обычная сетка,
+			# целишься мимо — новая база на земле. Раньше он уходил на землю ВСЕГДА, и
+			# поставить продавца на свою машину было нельзя вовсе.
+			_ground_core = G.is_stationary(held_bt) and not is_station
 	var space_node: Node3D = block_map_node if block_map_node else self
 	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
 	var ray_dir: Vector3 = (space_node.global_transform.basis.inverse() * world_dir).normalized()
@@ -948,6 +963,11 @@ func _handle_click(screen_pos: Vector2) -> void:
 	if not res["hit"]:
 		res = _cell_from_physics(screen_pos)   # DDA промахнулся — спрашиваем физику (см. ниже)
 	if block_take:
+		# Ядро в руке и луч мимо машины — значит, ставим на землю (новая машина/база).
+		if not res["hit"] and _ground_core:
+			_preview_cabin_ground(world_origin, world_dir)
+			return
+		_cabin_ground = null     # целимся в машину: это обычная постановка в сетку, не база
 		# Больше НЕ светяшка: двигаем сам взятый блок на выбранную ячейку (превью), тап Take ставит.
 		if res["hit"]: _preview_held(res)
 		return

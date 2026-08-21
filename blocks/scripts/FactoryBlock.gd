@@ -44,17 +44,45 @@ var ports: Dictionary = {}
 static func port_key(off: Vector3i, dir_idx: int) -> String:
 	return "%d,%d,%d|%d" % [off.x, off.y, off.z, dir_idx]
 
-## Что делает эта клетка в эту сторону. Не задано — отвечаем по маскам граней, как раньше.
+## ПОРТЫ ПО УМОЛЧАНИЮ — ключ той же формы, но в ЛОКАЛЬНЫХ осях блока и с ЛОКАЛЬНЫМ
+## смещением клетки. Разница с ports принципиальная: ports правит игрок на конкретной машине,
+## и они живут в осях КАРТЫ (там видно, куда реально идёт лента), а defaults описывают САМ
+## БЛОК — «снизу слева забираю, снизу справа отдаю» — и обязаны поворачиваться вместе с ним.
+## Иначе повёрнутый процессор ждал бы ленту не с той клетки.
+var port_defaults: Dictionary = {}
+## Центр футпринта В СМЕЩЕНИЯХ от якоря (у 2×2×2 это (-0.5, 0.5, -0.5)). Вокруг него и
+## крутим клетку при переводе в свои оси: смещения считаются от УГЛОВОЙ клетки, и поворот
+## вокруг неё уводил бы клетки за пределы блока.
+var cells_center := Vector3.ZERO
+
+## Что делает эта клетка в эту сторону. Порядок ответов: правка игрока → умолчание сцены →
+## маски граней. Не задано ничего — блок ведёт себя ровно как до появления портов.
 func port_state(off: Vector3i, dir_idx: int) -> int:
 	var k := port_key(off, dir_idx)
 	if ports.has(k):
 		return int(ports[k])
+	var def: int = _default_state(off, dir_idx)
+	if def >= 0:
+		return def
 	var d: Vector3i = _dir_of(dir_idx)
 	if face_dirs(output_faces).has(d):
 		return PORT_OUT
 	if face_dirs(input_faces).has(d):
 		return PORT_IN
 	return PORT_NONE
+
+## Умолчание для этой клетки и стороны, переведённое в СВОИ оси блока, или -1 (нет такого).
+func _default_state(off: Vector3i, dir_idx: int) -> int:
+	if port_defaults.is_empty():
+		return -1
+	var inv: Basis = basis.inverse()
+	var ld: Vector3 = (inv * Vector3(_dir_of(dir_idx))).round()
+	var li: int = _idx_of(Vector3i(int(ld.x), int(ld.y), int(ld.z)))
+	if li < 0:
+		return -1
+	var lo: Vector3 = (inv * (Vector3(off) - cells_center) + cells_center).round()
+	var lk := port_key(Vector3i(int(lo.x), int(lo.y), int(lo.z)), li)
+	return int(port_defaults[lk]) if port_defaults.has(lk) else -1
 
 func set_port(off: Vector3i, dir_idx: int, state: int) -> void:
 	ports[port_key(off, dir_idx)] = state

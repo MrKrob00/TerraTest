@@ -5,9 +5,31 @@ extends FactoryBlock
 
 var timer_visual: Timer
 
+## Индекс стороны +X в FACE_VECS (см. VehicleBlock): «правый борт» процессора.
+const FACE_RIGHT_IDX := 3
+
 func _ready() -> void:
 	super._ready()
 	_set_processing_visual(false)
+	# ПРАВЫЙ БОРТ настроен ПОКЛЕТОЧНО, а не маской. Смотрим прямо на правую сторону: снизу
+	# СЛЕВА процессор забирает с ленты, снизу СПРАВА отдаёт на ленту. Так он встраивается в
+	# линию, идущую ВДОЛЬ борта, и её не надо разворачивать вокруг него; вход сзади и выход
+	# вперёд при этом никуда не делись — это по-прежнему маски граней.
+	#
+	# Верхние две клетки правого борта закрыты ЯВНО: маска input_faces включает всю сторону
+	# целиком, и без этого «нет» они принимали бы ленту тоже — то есть настройка снизу
+	# ничего бы не значила.
+	#
+	# Смещения — от якоря, а он у 2×2×2 в углу (blocks._block_footprint: x,z ∈ {-1,0},
+	# y ∈ {0,1}). Отсюда и центр футпринта, вокруг которого умолчания поворачиваются вместе
+	# с блоком.
+	cells_center = Vector3(-0.5, 0.5, -0.5)
+	port_defaults = {
+		port_key(Vector3i(0, 0, 0), FACE_RIGHT_IDX): PORT_IN,     # низ, ближняя к +Z клетка
+		port_key(Vector3i(0, 0, -1), FACE_RIGHT_IDX): PORT_OUT,   # низ, дальняя
+		port_key(Vector3i(0, 1, 0), FACE_RIGHT_IDX): PORT_NONE,
+		port_key(Vector3i(0, 1, -1), FACE_RIGHT_IDX): PORT_NONE,
+	}
 
 	timer_visual = Timer.new()
 	timer_visual.wait_time = process_time/4
