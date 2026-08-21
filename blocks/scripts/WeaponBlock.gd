@@ -432,7 +432,9 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, cabin.global_position)
 	var own := _vehicle_root()
-	q.exclude = [self, own] if own != null else [self]
+	# RID'ы, а не узлы: Array[RID] не принимает Object, и список молча оставался пустым.
+	var own_rid = (own as CollisionObject3D).get_rid() if own is CollisionObject3D else null
+	q.exclude = [get_rid(), own_rid] if own_rid != null else [get_rid()]
 	var res := space.intersect_ray(q)
 	if res.is_empty():
 		return true

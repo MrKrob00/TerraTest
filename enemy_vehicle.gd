@@ -650,7 +650,7 @@ func _sample_danger() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if _obst_q == null:
 		_obst_q = PhysicsRayQueryParameters3D.new()
-		_obst_q.exclude = [self]
+		_obst_q.exclude = [get_rid()]      # exclude принимает RID, а не узел
 		_obst_q.collision_mask = 1
 	var here: float = global_position.y
 	var origin: Vector3 = global_position + Vector3.UP * 0.5

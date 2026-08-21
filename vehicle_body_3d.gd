@@ -1125,7 +1125,7 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(world_origin, world_origin + world_dir * 200.0)
 	q.collision_mask = 1
-	q.exclude = [self]
+	q.exclude = [get_rid()]        # exclude — это RID'ы, не узлы
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return
@@ -1323,33 +1323,44 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 	if now - _last_commit_ms < 250:
 		return                           # антидубль: на мобилке тач И эмулированная мышь дают двойной
 	_last_commit_ms = now
+	var used: bool = false
 	if block_take:
 		_on_take_pressed()               # поставить блок из руки (или наземное ядро — кабина/база)
+		used = true                      # блок в руке — жест наш в любом случае
 	else:
-		_maybe_grab_on_tap(screen_pos)   # взять наведённый блок машины / свободный блок из мира
+		used = _maybe_grab_on_tap(screen_pos)   # взять блок машины / свободный блок или ресурс
+	# СЪЕДАЕМ событие, если жест сработал. Иначе тот же двойной тап доходит до камеры
+	# (camera_controller._unhandled_input) и та СБРАСЫВАЕТ ВЗГЛЯД: игрок тапает по ресурсу,
+	# ресурс уходит в руку, а камера в тот же миг разворачивается — и выглядит это как
+	# «подобрать не вышло, зато камера дёрнулась». Гейт `not _in_build()` у камеры этой
+	# задачи не решал: подбор давно работает В ЛЮБОМ режиме, а не только в стройке.
+	if used:
+		get_viewport().set_input_as_handled()
 
 # Взять В РУКУ наведённый блок машины (block_body из _handle_click) ИЛИ свободный блок из мира
 # (физ-луч из точки тапа). Зовётся из _commit_build_tap по двойному тапу, когда рука пуста.
-func _maybe_grab_on_tap(screen_pos: Vector2) -> void:
+## true — жест ИЗРАСХОДОВАН (что-то взяли, назначили цель, скормили). Ответ нужен вызывающему:
+## по нему он гасит событие, чтобы тот же двойной тап не отработал ещё и камерой.
+func _maybe_grab_on_tap(screen_pos: Vector2) -> bool:
 	if block_take:
-		return
+		return false
 	# 0) Блок в руке + тап по SCRAPPER'у на ЧУЖОЙ машине = скормить. На СВОЕЙ машине тот же
 	# жест означает «поставить блок» (в том числе рядом со Scrapper'ом), а на чужую машину
 	# блок и так не поставить — там жест свободен, его и занимаем. Поэтому разбирать, куда
 	# именно попал луч относительно граней, не нужно вовсе.
 	if block_take and hand_kind == Hand.BLOCK and _feed_foreign_scrapper(screen_pos):
-		return
+		return true
 	# 0) ЧУЖОЙ блок — не подбираем, а НАЗНАЧАЕМ ЦЕЛЬЮ. Порядок именно такой: тап по врагу
 	# однозначно означает «бей вот это», подобрать блок с живой вражеской машины всё равно
 	# нельзя, и разбирать её на ходу руками мы не даём.
 	if _mark_enemy_target(screen_pos):
-		return
+		return true
 	# 1) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
 	if block_body != null and is_instance_valid(block_body) \
 			and block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		_pick_selected_block()
-		return
-	_grab_world_block(screen_pos)
+		return true
+	return _grab_world_block(screen_pos)
 
 # Взять РЕСУРС в руку. Отдельно от блочного пути намеренно: общего у них только «повесить
 # под камеру», а всё остальное (тип, инвентарь, сетка, стройка, шаг обучения) — блочное и
