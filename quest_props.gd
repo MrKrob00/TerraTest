@@ -53,6 +53,24 @@ func drop_near(quest_id: String, block_type: int, at: Variant) -> Node3D:
 	(_props[quest_id] as Array).append(node)
 	return node
 
+## Уронить МАТЕРИАЛ (руду, слиток, компонент) в заданную точку. Вид задаётся ключом
+## resource.kind_key() — тем же, каким написаны рецепты, чтобы квест не знал внутреннего
+## устройства ресурса. Нужен «Production Line»: слитки сыплются прямо на приёмник, и видно,
+## как собранная линия их проглатывает.
+func drop_resource(kind_key: String, at: Vector3) -> Node3D:
+	var scene: PackedScene = load("res://resource.tscn")
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if scene == null or objects == null:
+		return null
+	var res: Node3D = scene.instantiate()
+	objects.add_child(res)
+	res.global_position = at
+	if res.has_method("set_kind_key"):
+		res.set_kind_key(kind_key)
+	if res is RigidBody3D:
+		(res as RigidBody3D).freeze = false     # лежащий в мире предмет не заморожен (G.is_loose_item)
+	return res
+
 # Положить блок в мир по кругу вокруг игрока. Возвращает узел (или null, если не вышло).
 func drop_for(quest_id: String, block_type: int) -> Node3D:
 	var scene: PackedScene = G.get_scene(block_type)

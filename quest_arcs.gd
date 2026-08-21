@@ -29,6 +29,7 @@ func _process(delta: float) -> void:
 	if get_node_or_null("/root/Q") == null:
 		return
 	_duel_cooldown(POLL)
+	_ev_cooldowns(POLL)
 	for q in Q.active_quests():
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
@@ -45,6 +46,16 @@ func _process(delta: float) -> void:
 			"quest_hold_2":        _hold_2(q)
 			"quest_duel_1":        _duel_1(q)
 			"quest_duel_2":        _duel_2(q)
+			"quest_gang_1":        _gang_1(q)
+			"quest_gang_2":        _gang_2(q)
+			"quest_supply_1":      _supply_1(q)
+			"quest_supply_2":      _supply_2(q)
+			"quest_defend_1":      _defend_1(q)
+			"quest_defend_2":      _defend_2(q)
+			"quest_waves_1":       _waves_1(q)
+			"quest_waves_2":       _waves_2(q)
+			"quest_camp_1":        _camp_1(q)
+			"quest_camp_2":        _camp_2(q)
 
 # ── Ветка «энергия»: солнечная панель + опора, затем реген ───────────────────
 func _arc_power_1(q: Dictionary) -> void:
@@ -171,23 +182,151 @@ func _salvage_2(q: Dictionary) -> void:
 		_salvage_point = null
 
 # ── «Production Line»: собрать цепочку и включить её ─────────────────────────
-# Условие — НАБОР БЛОКОВ НА МАШИНЕ плюс якорь, а не «поставь пять блоков»: цепочка либо есть
-# целиком, либо не работает вовсе (_factory_active у всех фабричных блоков смотрит на якорь).
-## КОЛЛЕКТОРА здесь нет намеренно. Он в цепочку не входит: по ленте он ничего не передаёт
-## (это VehicleBlock, без выходов и push_item), а только собирает руду с земли — приёмник и
-## сам берёт её из мира. Требовать его значило требовать блок, без которого линия работает.
-const LINE_CORE := [G.Block.RECEIVER, G.Block.BELT, G.Block.PROCESSOR]
+## ПЛОЩАДКА, А НЕ СПИСОК ПОКУПОК. Раньше стадия просто ждала, пока нужные блоки окажутся на
+## машине игрока, — то есть требовала купить их и ничему не учила. Теперь квест САМ кладёт
+## в мир всё, что нужно: заякоренного продавца с одной лентой (готовый «выход» линии) и
+## рядом на земле — приёмник и остальные ленты. Собрать из этого работающую цепочку и есть
+## задание, а проверяется оно по РЕАЛЬНОЙ связи блоков, а не по их наличию.
+##
+## КОЛЛЕКТОРА в наборе нет намеренно. В цепочку он не входит: по ленте не передаёт ничего
+## (это VehicleBlock, без выходов и push_item), а руду с земли приёмник берёт и сам.
+const LINE_DIST := 70.0        # как далеко от игрока появляется площадка
+const LINE_REACH := 50.0       # ближе этого — материализуем; дальше игрок её и не видит
+const LINE_BELTS := 5          # всего лент в наборе, одна из них уже стоит на продавце
+const LINE_ORE := 3            # сколько слитков падает на приёмник за раз
+const LINE_GIFT_DELAY := 8.0   # через сколько секунд после сборки выдаём процессор
+const LINE_ORE_KIND := "m1"    # средний материал: медный слиток
+
+var _line_point: Variant = null
+var _line_base: Node3D = null          # заякоренная база-продавец, которую положил квест
+var _line_gift_t: float = -1.0         # обратный отсчёт до выдачи процессора (−1 — не идёт)
+var _line_gifted: bool = false
+
+## Куда ведёт компас, пока площадка не появилась.
+func line_point() -> Variant:
+	return _line_point
 
 func _line_1(q: Dictionary) -> void:
-	for bt in LINE_CORE:
-		if not _has_block(int(bt)):
-			return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if _line_point == null:
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * LINE_DIST, 0.0, sin(ang) * LINE_DIST)
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_line_point = wp
+		return
+	# Материализуем ТОЛЬКО когда игрок рядом. База — это машина со своей физикой и фабрикой;
+	# ставить её за горизонт значит держать всё это работающим там, куда игрок ещё не доехал.
+	if p.global_position.distance_squared_to(_line_point as Vector3) > LINE_REACH * LINE_REACH:
+		return
+	if not _dropped.has("line_kit"):
+		_dropped["line_kit"] = true
+		_spawn_line_kit(_line_point as Vector3)
+		return                          # даём кадр, чтобы база собралась
+	# Готово, когда цепочка РЕАЛЬНО собрана: от приёмника есть путь до продавца.
+	var recv: Node = _find_in_base(G.Block.RECEIVER)
+	if recv == null or not _chain_reaches(recv, G.Block.SELLER):
+		return
+	_drop_ore_over(recv, LINE_ORE)      # линия жива — вот ей и работа
+	_line_gift_t = LINE_GIFT_DELAY
 	Q.report(String(q["event"]), 1)
 
 func _line_2(q: Dictionary) -> void:
-	if not _has_block(G.Block.SELLER) or not _is_anchored():
+	# Процессор выдаём НЕ сразу: игрок должен увидеть, как первая партия проехала по ленте и
+	# продалась. Подарок посреди этого зрелища его бы и перебил.
+	if not _line_gifted:
+		if _line_gift_t < 0.0:
+			_line_gift_t = LINE_GIFT_DELAY
+		_line_gift_t -= POLL
+		if _line_gift_t > 0.0:
+			return
+		_line_gifted = true
+		_award(G.Block.PROCESSOR)
+		Dialogue.say("System", "Processor delivered. Cut it into the line from the side: it takes on the lower left of its right face and gives out on the lower right.")
 		return
+	var recv: Node = _find_in_base(G.Block.RECEIVER)
+	if recv == null or not _chain_reaches(recv, G.Block.PROCESSOR):
+		return                          # процессор ещё не врезан в линию
+	_drop_ore_over(recv, LINE_ORE)      # и снова руда — проверить, что линия не развалилась
 	Q.report(String(q["event"]), 1)
+
+## Площадка целиком: заякоренный продавец с лентой + набор на земле рядом.
+func _spawn_line_kit(at: Vector3) -> void:
+	_line_base = _spawn_station(at, [
+		{"x": 5, "y": 5, "z": 5, "block": G.Block.SELLER, "rot": [0.0, 0.0, 0.0]},
+		{"x": 6, "y": 5, "z": 5, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
+	])
+	_props.drop_near("arc_line", G.Block.RECEIVER, at)
+	for _i in (LINE_BELTS - 1):
+		_props.drop_near("arc_line", G.Block.BELT, at)
+	Dialogue.say("System", "Salvaged seller is anchored and live. The rest of the line is on the ground — put it together.")
+
+## Стационарная постройка ОТ КВЕСТА. Делает ровно то же, что постановка ядра игроком
+## (vehicle_body_3d._place_ground_structure), но без руки и превью: машина из сцены, раскладка,
+## флаг станции и якорь. Держать это в двух местах нельзя — база, собранная «почти так же»,
+## разваливается сторожем кабины при первой же загрузке.
+func _spawn_station(at: Vector3, layout: Array) -> Node3D:
+	var scene: PackedScene = load("res://player_vehicle.tscn")
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	if scene == null or vr == null:
+		return null
+	var v: Node3D = scene.instantiate()
+	vr.add_child(v)
+	if v is RigidBody3D:
+		(v as RigidBody3D).freeze = true       # морозим ДО позиции: телепорт живого тела физика откатит
+		(v as RigidBody3D).linear_velocity = Vector3.ZERO
+	v.global_position = at + Vector3.UP * 1.2
+	if v.has_method("apply_build"):
+		v.apply_build(layout)
+	if "is_station" in v:
+		v.is_station = true
+		if v.get("block_map_node") != null and "is_station" in v.block_map_node:
+			v.block_map_node.is_station = true
+	if v.has_method("_anchor_station"):
+		v.call_deferred("_anchor_station")
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
+		cc.vehicles.append(v)                  # чтобы на неё можно было переключиться
+	return v
+
+## Блок нужного типа на базе, которую положил квест.
+func _find_in_base(bt: int) -> Node:
+	if _line_base == null or not is_instance_valid(_line_base):
+		return null
+	var bm = _line_base.get("block_map_node")
+	if bm == null or not is_instance_valid(bm):
+		return null
+	for b in bm.get_children():
+		if ("block" in b) and int(b.get("block")) == bt:
+			return b
+	return null
+
+## Есть ли ПУТЬ ПО ЛЕНТЕ от блока до блока такого типа. Проверяем связи (next_blocks), а не
+## наличие блоков: «поставил рядом» и «подключил» — разные вещи, и учит квест второму.
+func _chain_reaches(from: Node, target_bt: int) -> bool:
+	var seen: Dictionary = {}
+	var stack: Array = [from]
+	while not stack.is_empty():
+		var n = stack.pop_back()
+		if n == null or not is_instance_valid(n) or seen.has(n):
+			continue
+		seen[n] = true
+		if ("block" in n) and int(n.get("block")) == target_bt and n != from:
+			return true
+		if "next_blocks" in n:
+			for x in n.next_blocks:
+				stack.append(x)
+	return false
+
+## Уронить слитки ПРЯМО НАД приёмником — он их и подберёт. Показать линию в работе проще,
+## чем объяснить: игрок видит, как материал уезжает по ленте и превращается в деньги.
+func _drop_ore_over(recv: Node, count: int) -> void:
+	if recv == null or not (recv is Node3D):
+		return
+	for i in count:
+		_props.drop_resource(LINE_ORE_KIND,
+				(recv as Node3D).global_position + Vector3(0.0, 2.0 + float(i) * 0.8, 0.0))
 
 # ── «Hold the Line»: налёт на СВОЮ базу ──────────────────────────────────────
 # В оригинале это турели у чужой станции. Станций у нас нет, поэтому защищаем то, что игрок
@@ -369,3 +508,289 @@ func _spawn_thief() -> Node3D:
 	if blocks != null and blocks.has_method("set_block"):
 		blocks.set_block(5, 6, 5, G.Block.RADAR, 0.0)
 	return e as Node3D
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ПОВТОРЯЕМЫЕ СОБЫТИЯ (в оригинале — задания с борда станции)
+# ══════════════════════════════════════════════════════════════════════════════
+# Борда у нас нет и не будет: задания объявляет Система напрямую. Всё остальное взято
+# оттуда — типы («банда», «груз», «оборона союзника», «волны», «лагерь»), повторяемость по
+# остыванию и правило «уехал далеко — задание снято».
+#
+# Общего у них ровно три вещи, и они вынесены сюда, чтобы каждое новое событие не тащило
+# свою копию: ТОЧКА (куда ехать), СПИСОК УЧАСТНИКОВ (по нему считается победа) и ОТМЕНА
+# ПО РАССТОЯНИЮ. Без последней брошенное событие висело бы в журнале навсегда, а его
+# участники — в мире.
+const EV_ABANDON := 500.0      # уехал дальше — событие снимается (как в оригинале)
+const EV_COOLDOWN := 420.0     # сколько остывает, прежде чем случиться снова
+const EV_TRIGGER := 60.0       # на каком подлёте событие «начинается»
+
+var _ev_point: Dictionary = {}   # id события → Vector3, куда ехать
+var _ev_mobs: Dictionary = {}    # id события → Array участников
+var _ev_cool: Dictionary = {}    # id события → сколько ещё остывать
+
+## Куда ведёт компас по этому событию. ОДНА точка входа на все события с координатами:
+## разбирать их по одному в компасе значило бы вспоминать про него при каждом новом.
+func quest_point(ev: String) -> Variant:
+	match ev:
+		"quest_salvage_1": return _salvage_point
+		"quest_duel_1":    return _duel_point
+		"quest_line_1":    return _line_point
+	return _ev_point.get(_ev_key(ev))
+
+## Ключ события по имени его стадии: "quest_gang_1" → "gang". Точка и участники общие для
+## обеих стадий, поэтому и ключ должен быть общим.
+func _ev_key(ev: String) -> String:
+	var s := ev.trim_prefix("quest_")
+	var cut := s.rfind("_")
+	return s.substr(0, cut) if cut > 0 else s
+
+## Точка события: выбираем один раз и держим. Возвращает null, пока игрока нет.
+func _ev_get_point(key: String, dist: float) -> Variant:
+	if _ev_point.has(key):
+		return _ev_point[key]
+	var p: Node3D = _player()
+	if p == null:
+		return null
+	var ang: float = randf() * TAU
+	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	wp.y = G.ground_y(wp, p.global_position.y)
+	_ev_point[key] = wp
+	return wp
+
+## Игрок доехал до точки события?
+func _ev_reached(key: String) -> bool:
+	var p: Node3D = _player()
+	if p == null or not _ev_point.has(key):
+		return false
+	return p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_TRIGGER * EV_TRIGGER
+
+## УЕХАЛ — снимаем. Возвращает true, если событие снято: вызывающий сразу выходит.
+## Проверяем ТОЛЬКО когда участники уже в мире: пока их нет, «далеко» — это нормальное
+## состояние только что объявленного задания.
+func _ev_abandoned(q: Dictionary, key: String) -> bool:
+	var p: Node3D = _player()
+	if p == null or not _ev_point.has(key) or not _ev_mobs.has(key):
+		return false
+	if p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_ABANDON * EV_ABANDON:
+		return false
+	_ev_clear(key)
+	# Остывание ставим и здесь: снятое событие обязано вернуться, иначе «уехал один раз» —
+	# и этот тип задания больше не случается никогда.
+	_ev_cool[String(q["id"])] = EV_COOLDOWN
+	Q.skip_quest(String(q["id"]))
+	return true
+
+## Убрать за собой: участники, точка, метка. Уводим их из мира, а не бросаем — иначе поле
+## постепенно зарастает машинами от заданий, которые игрок даже не начал.
+func _ev_clear(key: String) -> void:
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m):
+			(m as Node).queue_free()
+	_ev_mobs.erase(key)
+	_ev_point.erase(key)
+
+## Все участники события уничтожены?
+func _ev_all_dead(key: String) -> bool:
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m):
+			return false
+	return true
+
+## Событие завершено: остывает и через EV_COOLDOWN открывается снова.
+func _ev_done(q: Dictionary, key: String) -> void:
+	Q.report(String(q["event"]), 1)
+	_ev_cool[String(q["id"])] = EV_COOLDOWN
+	_ev_mobs.erase(key)
+	_ev_point.erase(key)
+
+## Остывание всех событий разом (зовётся из _process рядом с дуэльным).
+func _ev_cooldowns(delta: float) -> void:
+	for id in _ev_cool.keys():
+		_ev_cool[id] = float(_ev_cool[id]) - delta
+		if _ev_cool[id] <= 0.0:
+			_ev_cool.erase(id)
+			Q.reset_quest(id)
+
+## Спавн отряда вокруг точки. Пресеты — те же ступени опасности, что у обычных врагов.
+func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
+		lock_on: Node3D = null) -> Array:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null or not sp.has_method("spawn_at"):
+		return []
+	var out: Array = []
+	for i in presets.size():
+		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
+		var pos: Vector3 = at + Vector3(cos(ang) * 10.0, 0.0, sin(ang) * 10.0)
+		var e = sp.spawn_at(pos, int(presets[i]), faction_id)
+		if e == null:
+			continue
+		if lock_on != null and e.has_method("assign_target"):
+			e.assign_target(lock_on, true)
+		out.append(e)
+	var have: Array = _ev_mobs.get(key, [])
+	have.append_array(out)
+	_ev_mobs[key] = have
+	return out
+
+# ── «Tech Gang»: банда стоит лагерем, её надо разогнать ──────────────────────
+const GANG_DIST := 180.0
+
+func _gang_1(q: Dictionary) -> void:
+	var key := "gang"
+	if _ev_abandoned(q, key):
+		return
+	if _ev_get_point(key, GANG_DIST) == null or not _ev_reached(key):
+		return
+	if not _ev_mobs.has(key):
+		# Цель НЕ назначаем: банда стоит на месте, и первым ходом должен быть выстрел игрока.
+		# Так у него остаётся выбор — подъехать, посмотреть и уехать.
+		_ev_spawn(key, _ev_point[key] as Vector3, [5, 6, 7])
+		Dialogue.say("System", "Three units, no transponders. They are not ours.")
+	Q.report(String(q["event"]), 1)
+
+func _gang_2(q: Dictionary) -> void:
+	var key := "gang"
+	if _ev_abandoned(q, key) or not _ev_all_dead(key):
+		return
+	_ev_done(q, key)
+
+# ── «Supply Drop»: ящик снабжения, иногда с засадой ─────────────────────────
+const SUPPLY_DIST := 150.0
+## Что бывает в ящике. Список короткий и намеренно полезный: событие должно быть поводом
+## съездить, а не лотереей с мусором.
+const SUPPLY_LOOT := [G.Block.BATTERY, G.Block.SOLAR, G.Block.BELT, G.Block.ARMOR2, G.Block.REGEN]
+
+func _supply_1(q: Dictionary) -> void:
+	var key := "supply"
+	if _ev_abandoned(q, key):
+		return
+	if _ev_get_point(key, SUPPLY_DIST) == null or not _ev_reached(key):
+		return
+	if not _ev_mobs.has(key):
+		_ev_mobs[key] = []                      # событие началось, даже если засады не будет
+		var at: Vector3 = _ev_point[key] as Vector3
+		_props.drop_near("event_supply", int(SUPPLY_LOOT.pick_random()), at)
+		# ЗАСАДА через раз. Всегда — и груз перестаёт быть грузом, превращаясь в бой;
+		# никогда — и ехать за ним нечем рисковать.
+		if randf() < 0.5:
+			_ev_spawn(key, at, [6, 7], 1, _player())
+			Dialogue.say("System", "Crate located. Movement around it — you are not the only one who got the signal.")
+		else:
+			Dialogue.say("System", "Crate located and quiet. Take it.")
+	Q.report(String(q["event"]), 1)
+
+func _supply_2(q: Dictionary) -> void:
+	var key := "supply"
+	if _ev_abandoned(q, key):
+		return
+	# Победа — ГРУЗ У ИГРОКА, а не «убей всех»: засада тут помеха, а не цель.
+	if _props.position_for("event_supply") != null:
+		return
+	_ev_done(q, key)
+
+# ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
+const DEFEND_DIST := 120.0
+
+func _defend_1(q: Dictionary) -> void:
+	var key := "defend"
+	if _ev_abandoned(q, key):
+		return
+	if _ev_get_point(key, DEFEND_DIST) == null or not _ev_reached(key):
+		return
+	if not _ev_mobs.has(key):
+		var at: Vector3 = _ev_point[key] as Vector3
+		# СОЮЗНИК — обычная машина ИИ нашей фракции (0). Фракция и решает всё: чужие видят в
+		# ней врага и бьют её, а по игроку она не стреляет (enemy_vehicle._is_enemy сравнивает
+		# именно фракцию). Отдельной «дружественной» сущности заводить незачем.
+		var ally: Array = _ev_spawn(key, at, [6], 0)
+		if ally.is_empty():
+			Q.skip_quest(String(q["id"]))
+			return
+		_ev_ally = ally[0]
+		_ev_spawn(key, at + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
+		Dialogue.say("System", "Friendly unit under fire. It will not last alone.")
+	Q.report(String(q["event"]), 1)
+
+var _ev_ally: Node3D = null
+
+func _defend_2(q: Dictionary) -> void:
+	var key := "defend"
+	if _ev_abandoned(q, key):
+		return
+	# Союзника добили — защищать больше некого. Это не поражение с наказанием, а снятое
+	# задание: цель исчезла не по вине игрока (см. Q.skip_quest).
+	if not is_instance_valid(_ev_ally):
+		_ev_clear(key)
+		Q.skip_quest(String(q["id"]))
+		return
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m) and m != _ev_ally:
+			return
+	_ev_ally = null
+	_ev_done(q, key)
+
+# ── «Enemy Waves»: волны прямо по твоей позиции ─────────────────────────────
+const WAVES_COUNT := 2
+
+func _waves_1(q: Dictionary) -> void:
+	var key := "waves"
+	var p: Node3D = _player()
+	if p == null:
+		return
+	# Точка — ГДЕ СТОИТ ИГРОК: волны приходят к нему, ехать никуда не надо. Она нужна не для
+	# компаса, а для правила «уехал на 500 м — задание снято».
+	if not _ev_point.has(key):
+		_ev_point[key] = p.global_position
+	if _ev_abandoned(q, key):
+		return
+	if not _ev_mobs.has(key):
+		_ev_spawn(key, p.global_position, [5, 6], 1, p)
+		Dialogue.say("System", "Contacts inbound on your position. First wave.")
+	if not _ev_all_dead(key):
+		return
+	_ev_mobs.erase(key)                        # первая волна кончилась, вторую пустит стадия 2
+	Q.report(String(q["event"]), 1)
+
+func _waves_2(q: Dictionary) -> void:
+	var key := "waves"
+	if _ev_abandoned(q, key):
+		return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if not _ev_mobs.has(key):
+		_ev_spawn(key, p.global_position, [7, 8], 1, p)
+		Dialogue.say("System", "Second wave. Heavier.")
+		return
+	if not _ev_all_dead(key):
+		return
+	_ev_done(q, key)
+
+# ── «Take the Camp»: лагерь с охраной и трофеем ─────────────────────────────
+# Это наш ответ на Capture Enemy Base. Захватывать БАЗУ пока нечего — статичной постройки
+# как сущности в игре нет (она же нужна отложенным Watchtower/SAM, см. docs/STORY_ROADMAP.md).
+# Смысл при этом сохранён: укреплённая точка, охрана, и трофей достаётся тому, кто её взял.
+const CAMP_DIST := 220.0
+
+func _camp_1(q: Dictionary) -> void:
+	var key := "camp"
+	if _ev_abandoned(q, key):
+		return
+	if _ev_get_point(key, CAMP_DIST) == null or not _ev_reached(key):
+		return
+	if not _ev_mobs.has(key):
+		var at: Vector3 = _ev_point[key] as Vector3
+		_ev_spawn(key, at, [7, 8, 9], 1, _player())
+		_props.drop_near("event_camp", G.Block.PACKER, at)
+		Dialogue.say("System", "That is a staging point, not a patrol. Take it apart.")
+	Q.report(String(q["event"]), 1)
+
+func _camp_2(q: Dictionary) -> void:
+	var key := "camp"
+	if _ev_abandoned(q, key):
+		return
+	if not _ev_all_dead(key):
+		return
+	if _props.position_for("event_camp") != null:
+		return                                  # охрана кончилась, трофей ещё лежит
+	_ev_done(q, key)

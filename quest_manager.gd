@@ -139,12 +139,12 @@ func _seed_demo() -> void:
 	])
 	add_quest("arc_line", "Production Line", "", Type.STORY, 1, 9, "", 300, 55, 16)
 	add_stages("arc_line", [
-		{"desc": "Build the chain: receiver, belt, processor",
+		{"desc": "Reach the salvage site and build the line",
 		 "event": "quest_line_1", "goal": 1,
-		 "hint": "Ore is worth little as ore. The receiver takes it off the ground, the belt carries it, the processor smelts it — and none of it runs unless you are anchored."},
-		{"desc": "Add a seller and hold ground",
+		 "hint": "A seller is already anchored there with one belt on it. The receiver and the rest of the belts are on the ground — link them up. Standing next to each other is not the same as connected."},
+		{"desc": "Cut the processor into the line",
 		 "event": "quest_line_2", "goal": 1,
-		 "hint": "The last link turns metal into credit. Set down and hold: the whole line only works under anchor."},
+		 "hint": "Ore sells for scraps; metal does not. The processor takes on the lower left of its right face and gives out on the lower right — so it drops into a belt run along the side."},
 	])
 	add_quest("arc_solvent", "Solvent", "Earn 600$ through the line", Type.STORY, 600, 10, "money_earned", 400, 60, 18)
 	add_quest("arc_hold", "Hold the Line", "", Type.STORY, 1, 11, "", 450, 70, 20)
@@ -179,6 +179,56 @@ func _seed_demo() -> void:
 		 "event": "quest_duel_2", "goal": 1,
 		 "hint": "Neither of them cares which of you it is. Take both, or wait and take what is left."},
 	])
+
+	# Пять типов с борда оригинала. Борда у нас нет — их объявляет Система, а повторяются они
+	# по остыванию, как «Crossfire» (см. quest_arcs, раздел «ПОВТОРЯЕМЫЕ СОБЫТИЯ»). Общее
+	# правило у всех одно: уехал от цели за 500 м — задание снято.
+	add_quest("event_gang", "Tech Gang", "", Type.EVENT, 1, 0, "", 320, 40, 8)
+	add_stages("event_gang", [
+		{"desc": "Reach the reported camp",
+		 "event": "quest_gang_1", "goal": 1,
+		 "hint": "Three unmarked units parked together. They are not going anywhere on their own."},
+		{"desc": "Break the gang",
+		 "event": "quest_gang_2", "goal": 1,
+		 "hint": "They stand until someone shoots. That someone is you."},
+	])
+	add_quest("event_supply", "Supply Drop", "", Type.EVENT, 1, 0, "", 200, 25, 5)
+	add_stages("event_supply", [
+		{"desc": "Reach the drop",
+		 "event": "quest_supply_1", "goal": 1,
+		 "hint": "A crate came down intact. Whether anyone else got the signal is the interesting part."},
+		{"desc": "Take the crate",
+		 "event": "quest_supply_2", "goal": 1,
+		 "hint": "The crate is the objective. Whatever is guarding it is only in the way."},
+	])
+	add_quest("event_defend", "Cover the Convoy", "", Type.EVENT, 1, 0, "", 300, 35, 7)
+	add_stages("event_defend", [
+		{"desc": "Reach the friendly unit",
+		 "event": "quest_defend_1", "goal": 1,
+		 "hint": "One of ours is pinned down and will not hold long."},
+		{"desc": "Drive the raiders off",
+		 "event": "quest_defend_2", "goal": 1,
+		 "hint": "It survives or it does not. There is no partial credit for this one."},
+	])
+	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9)
+	add_stages("event_waves", [
+		{"desc": "Survive the first wave",
+		 "event": "quest_waves_1", "goal": 1,
+		 "hint": "They are coming to you. Pick your ground before they arrive."},
+		{"desc": "Survive the second wave",
+		 "event": "quest_waves_2", "goal": 1,
+		 "hint": "Heavier than the first. Repairs, if you have them, happen now."},
+	])
+	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12)
+	add_stages("event_camp", [
+		{"desc": "Reach the staging point",
+		 "event": "quest_camp_1", "goal": 1,
+		 "hint": "Not a patrol — a place they come back to. Three units hold it."},
+		{"desc": "Clear it and take what is left",
+		 "event": "quest_camp_2", "goal": 1,
+		 "hint": "The point is not taken until the crate on it is yours."},
+	])
+
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
 
@@ -507,13 +557,32 @@ func active_quests() -> Array[Dictionary]:
 	for q in available_story():
 		out.append(q)
 	for q in quests:
-		# СОБЫТИЯ во время обучения не предлагаем: игроку ещё нечем ехать за двести метров,
-		# и наставник ведёт его за руку — вторая цель в журнале только сбивает.
-		if q["type"] == Type.EVENT and tutorial_active():
-			continue
-		if (q["type"] == Type.DAILY or q["type"] == Type.EVENT) and not q["done"]:
+		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
+	var ev := _current_event()
+	if not ev.is_empty():
+		out.append(ev)
 	return out
+
+## СОБЫТИЕ ПОКАЗЫВАЕМ ОДНО ЗА РАЗ. Их пять, все повторяемые, и появись они разом — журнал
+## превратился бы в список поручений, а «событие» перестало бы что-либо значить. Берём то,
+## которое УЖЕ НАЧАТО (игрок доехал, дерётся), иначе первое доступное по списку; закончилось —
+## следующее откроется само, когда это остынет (quest_arcs._ev_cooldowns).
+##
+## Во время обучения событий нет вовсе: игроку ещё нечем ехать за двести метров, и наставник
+## ведёт его за руку — вторая цель в журнале только сбивает.
+func _current_event() -> Dictionary:
+	if tutorial_active():
+		return {}
+	var first: Dictionary = {}
+	for q in quests:
+		if q["type"] != Type.EVENT or q["done"]:
+			continue
+		if int(q.get("stage", 0)) > 0 or int(q.get("progress", 0)) > 0:
+			return q                      # это уже идёт — его и держим
+		if first.is_empty():
+			first = q
+	return first
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
@@ -557,12 +626,11 @@ func visible_quests() -> Array[Dictionary]:
 	for q in available_story():
 		out.append(q)
 	for q in quests:
-		# СОБЫТИЯ во время обучения не предлагаем: игроку ещё нечем ехать за двести метров,
-		# и наставник ведёт его за руку — вторая цель в журнале только сбивает.
-		if q["type"] == Type.EVENT and tutorial_active():
-			continue
-		if (q["type"] == Type.DAILY or q["type"] == Type.EVENT) and not q["done"]:
+		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
+	var ev := _current_event()
+	if not ev.is_empty():
+		out.append(ev)
 	return out
 
 # Сюжетные, доступные ПРЯМО СЕЙЧАС: не выполнены, требования закрыты, грейд взят.

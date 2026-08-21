@@ -59,17 +59,15 @@ func target_of(q: Dictionary) -> Variant:
 		var exact = props.position_for(String(q.get("id", "")))
 		if exact != null:
 			return exact
-	# Событие ведёт не к предмету, а к КООРДИНАТАМ — их держит quest_arcs.
-	if String(q.get("event", "")) == "quest_salvage_1":
-		var a: Node = get_tree().get_first_node_in_group("quest_arcs")
-		if a != null and a.has_method("salvage_point"):
-			return a.salvage_point()
-		return null
-	if String(q.get("event", "")) == "quest_duel_1":
-		var arcs: Node = get_tree().get_first_node_in_group("quest_arcs")
-		if arcs != null and arcs.has_method("duel_point"):
-			return arcs.duel_point()
-		return null
+	# Событие ведёт не к предмету, а к КООРДИНАТАМ — их держит quest_arcs, и спрашиваем мы их
+	# ОДНИМ вопросом. Разбирать события по одному здесь нельзя: их уже под десяток, и каждое
+	# новое пришлось бы вспоминать ещё и тут (так площадка фабрики и осталась без метки).
+	var ev := String(q.get("event", ""))
+	var arcs: Node = get_tree().get_first_node_in_group("quest_arcs")
+	if arcs != null and arcs.has_method("quest_point"):
+		var pt = arcs.quest_point(ev)
+		if pt != null:
+			return pt
 	var from: Vector3 = cam.global_position
 	match String(q.get("event", "")):
 		"enemy_killed", "daily_kill":
