@@ -250,7 +250,15 @@ func _fresh_start() -> void:
 # ── Сохранение / загрузка ─────────────────────────────────────────────────────
 func _save_world() -> void:
 	var machines: Array = []
-	for m in _player_machines():
+	# ПЕРВОЙ пишем ту машину, которой игрок управляет: загрузка кладёт machines[0] на неё
+	# (_load_world → _restore_machine(primary, ...)), а порядок детей в Vehicles ничего про
+	# это не знает — база, оказавшаяся в списке раньше, приезжала бы игроку под управление.
+	var ordered: Array = _player_machines()
+	var prim = _primary_machine()
+	if prim != null and ordered.has(prim):
+		ordered.erase(prim)
+		ordered.insert(0, prim)
+	for m in ordered:
 		if m.block_map_node == null or not m.block_map_node.has_method("get_layout"):
 			continue
 		var gp: Vector3 = (m as Node3D).global_position
@@ -265,6 +273,11 @@ func _save_world() -> void:
 			"layout": m.block_map_node.get_layout(),
 			"pos": [gp.x, gp.y, gp.z],
 			"rot": [gr.x, gr.y, gr.z],
+			# СТАЦИОНАРНАЯ БАЗА отличается от машины не раскладкой, а флагом: у неё нет
+			# кабины и она всегда на якоре. Без него база возвращалась обычной машиной —
+			# и сторож кабины сносил её через полсекунды после загрузки (см. _restore_machine).
+			# == true, а не bool(): у машины без поля get() вернёт null, а bool(null) роняет вызов.
+			"station": m.get("is_station") == true,
 		})
 	var blocks: Array = []
 	var o := _objects()
@@ -361,8 +374,36 @@ func _quarantine_save(reason: String) -> void:
 			d.remove(BAD_SAVE_PATH.get_file())
 		d.rename(SAVE_PATH.get_file(), BAD_SAVE_PATH.get_file())
 
+## СТАЦИОНАРНАЯ ли это структура. Основной путь — флаг из сейва, но у файлов, записанных до
+## его появления, флага нет, и база в них уже лежит. Для них судим по РАСКЛАДКЕ: стационарное
+## ядро есть, кабины нет. Ошибиться в другую сторону нельзя — у машины кабина есть всегда.
+func _is_station_data(mdata: Dictionary) -> bool:
+	if mdata.get("station", false) == true:
+		return true
+	var has_core := false
+	for e in mdata.get("layout", []):
+		if not (e is Dictionary):
+			continue
+		var bt: int = G.block_from_key(e.get("block", 0))
+		if bt == G.Block.CABIN:
+			return false
+		if G.is_stationary(bt):
+			has_core = true
+	return has_core
+
 func _restore_machine(veh, mdata: Dictionary) -> void:
+	if not is_instance_valid(veh):
+		return
+	# СТАЦИОНАРНУЮ БАЗУ помечаем ДО раскладки. Она отличается от машины не блоками, а этим
+	# флагом: кабины у базы нет, и без флага сторож кабины (vehicle_body_3d._cabin_watch)
+	# принимал её за машину с выбитой кабиной — база рассыпалась в блоки через полсекунды
+	# после каждой загрузки, а восстановление падало на уже освобождённом узле.
+	var station: bool = _is_station_data(mdata)
+	if station and "is_station" in veh:
+		veh.is_station = true
 	veh.apply_build(mdata.get("layout", []))
+	if station and veh.get("block_map_node") != null and "is_station" in veh.block_map_node:
+		veh.block_map_node.is_station = true
 	var p = mdata.get("pos", null)
 	var r = mdata.get("rot", null)
 	if not (veh is Node3D):
@@ -372,6 +413,11 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	# Не дождались — ставим как в сейве: страховка _rescue_fallen крутится раз в секунду и
 	# поднимет машину, если та окажется под землёй.
 	var terr: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
+	# Ждали до 120 кадров — за это время машины может уже не быть (погибла, снесена уборкой
+	# лишних). Ссылка на освобождённый узел НЕ равна null, поэтому проверяем только
+	# is_instance_valid: сравнение с null здесь молча пропускает мёртвый узел дальше.
+	if not is_instance_valid(veh):
+		return
 
 	# Машина — RigidBody3D, и ПРЯМОЙ телепорт незамороженного тела физика откатывает, а под новой
 	# точкой ещё нет стриминговой коллизии рельефа (её тайлы строятся вокруг тела уже ПОСЛЕ того,
@@ -398,7 +444,15 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 		veh.global_position = pos
 	await get_tree().process_frame
 	await get_tree().process_frame
-	if rb != null:
+	if not is_instance_valid(veh):
+		return
+	# БАЗУ не отпускаем: она стоит на якоре по определению, и разморозка означала бы, что
+	# постройка поехала. _anchor_station сам вернёт заморозку, столб якоря и подписку на ядро.
+	if station:
+		if veh.has_method("_anchor_station"):
+			veh._anchor_station()
+		return
+	if is_instance_valid(rb):
 		rb.freeze = false
 
 func _spawn_machine(mdata: Dictionary) -> void:
@@ -408,10 +462,23 @@ func _spawn_machine(mdata: Dictionary) -> void:
 		return
 	var v = scene.instantiate()
 	vr.add_child(v)
-	await get_tree().process_frame                 # даём _ready машины отработать до apply_build
-	await get_tree().process_frame
+	# Ждём готовности машины так же, как _ready ждёт основную: стартовые блоки доезжают
+	# ОТЛОЖЕННО (blocks.spawn_block ждёт ready родителя), и раскладка из сейва, положенная
+	# раньше, затиралась догоняющими корутинами.
+	var guard: int = 0
+	while guard < 600 and is_instance_valid(v) \
+			and not (v.is_node_ready() and v.get("block_map_node") != null):
+		await get_tree().process_frame
+		guard += 1
+	# После КАЖДОГО ожидания машина может быть уже освобождена — восстановление идёт кадрами,
+	# а машина за это время успевает и погибнуть, и попасть под уборку. Освобождённая ссылка
+	# не равна null (обращение к ней роняет вызов), поэтому проверка одна: is_instance_valid.
+	if not is_instance_valid(v):
+		return
 	if v.has_method("apply_build"):
 		await _restore_machine(v, mdata)
+	if not is_instance_valid(v):
+		return
 	var cc = _camera()
 	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
 		cc.vehicles.append(v)
