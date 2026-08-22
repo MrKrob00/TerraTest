@@ -1,6 +1,6 @@
 # LiteTerrain
 
-**Version 1.2** · Godot 4 · tuned for mobile
+**Version 1.3** · Godot 4 · tuned for mobile
 
 Lightweight heightmap terrain. One node builds its own collision body, collision
 shape and render mesh, then keeps a large map affordable through quadtree LOD and
@@ -162,6 +162,39 @@ collision at a point — whether a tile exists there, how many are live, how man
 bodies are tracked. Useful when something falls through and you want a fact rather
 than a guess.
 
+### Editing the ground at runtime
+
+```gdscript
+terrain.flatten_area(center: Vector3, half_extent: Vector2, height: float,
+                     feather := 4.0, record := true) -> void
+terrain.ground_edits() -> Array          # the edits so far, plain dictionaries, JSON-ready
+terrain.apply_ground_edits(list: Array)  # replay them, once, on load
+terrain.bake_heights() -> bool           # write the current heights to user://terrain_height.bin
+terrain.reset_heights()                  # forget every edit and go back to the shipped map
+```
+
+`flatten_area` levels a **rectangular** pad — buildings are oblong, and a circle sized
+to fit one strips three times as much ground. It edits the heights, rebuilds the chunks
+it touched and drops the streaming collision there so it is re-cut against the new
+surface.
+
+Persistence is deliberately two mechanisms, not one. The **edit list** is four numbers
+per edit, costs nothing to keep, and survives a crash, so it is what a game saves during
+a session. The **baked file** is the whole heightmap, so it is written once at load time
+— after the edits have been replayed — and afterwards the list is empty because the
+ground itself is now shaped that way. A long loading screen is the right place for a
+15 MB dump; mid-session it shows up as a hitch.
+
+Replay edits **before** you restore anything that stands on them, or a building put back
+first ends up hovering. Every edit carries a running sequence number and the baked file
+remembers the last one it contains: without that, an edit still sitting in a game save
+(the player quit before the first autosave) would be applied a second time on top of
+already-flat ground, and the pad's rim would get steeper every session.
+
+The baked file lives in `user://`, so it is per-device application data: it is never in
+the project and never in an exported PCK. `res://` keeps the shipped map, and
+`reset_heights()` returns to it.
+
 The node also exposes the sculpt and data API the dock uses (`is_image_mode`,
 `get_heights`, `set_heightmap`, `apply_brush`, `raycast_heightmap`, `apply_heightmap`)
 if you want to build your own tooling.
@@ -297,6 +330,16 @@ stitch signature encoding its own step and the step on each of its four borders,
 is rebuilt whenever that signature changes. This makes stitching self-healing
 regardless of the order events arrive in.
 
+Stitching alone is not enough, though: the two sides only agree once **both** chunks
+have been rebuilt, and a frame or two passes between an LOD change and the rebuild. Sky
+was visible through that gap. So a chunk whose neighbour sits at a different LOD also
+drops a vertical **skirt** `SKIRT_DEPTH` deep along that border (`_compute_chunk_data`),
+which covers the crack at any point of the transition. The chunk's AABB is lowered by
+the same amount, or the wall gets cut away by AABB culling.
+
+This is a per-border seam skirt, and is unrelated to the old quadtree-node skirt
+removed in 1.1 — that one hung visibly off the edges of quadtree nodes.
+
 ### Macro chunks
 
 Groups of `MACRO_SIZE` × `MACRO_SIZE` chunks (4×4 = 16) merge into one MeshInstance3D
@@ -313,6 +356,11 @@ Tiles are grown by `collision_overlap` cells on each side so they overlap, buryi
 tile's boundary edge under the neighbour's real surface. The overlap carries real
 heights: a dropped skirt cannot be used here, because a neighbour is sometimes not
 streamed in yet and the skirt would become the only surface there — a pit.
+
+A tracked body carrying the metadata flag `asleep` is skipped and gets no ground under
+it. That is the hook a game uses for dormant far-away actors: they are frozen anyway, so
+paying for a collision window under each of them is waste. Clear the flag before you
+wake one, or it will fall.
 
 ### Biome masks
 
@@ -433,6 +481,15 @@ into the material at build time. Edit the resource.
 
 **A biome's shape did not change.** Shape parameters are baked into the heightmap and
 the vertex colours. Re-run **Generate Terrain**.
+
+## What is new in 1.3
+
+- **Runtime ground editing**: `flatten_area`, plus the two-mechanism persistence around it
+  (`ground_edits` / `apply_ground_edits` / `bake_heights` / `reset_heights`). See
+  [Runtime API](#runtime-api).
+- **LOD seam skirts**: a chunk bordering a different LOD drops a vertical wall along that
+  border, so no sky shows through during the frame or two before both sides are rebuilt.
+- **`asleep` bodies get no collision window**: a hook for dormant far-away actors.
 
 ## Upgrading from 1.0
 
