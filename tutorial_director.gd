@@ -23,33 +23,21 @@ var _story_started: bool = false
 var _assembly_shown: int = -1    # что уже записано в прогресс шага сборки
 
 # Пояснения к ЗАКРЫТОМУ шагу. Каждая реплика показывает пальцем на ТУ САМУЮ часть экрана,
-# о которой говорит, и только когда очередь кончится, палец уходит на следующий шаг. Раньше
-# текст читался, пока палец уже стоял на следующей кнопке, — объясняли одно, показывали другое.
+# о которой говорит, и только когда очередь кончится, палец уходит на следующий шаг.
+#
+# Сейчас таблица ПУСТА, и это не забывчивость: все прежние пояснения были про журнал, склад,
+# магазин, древо и звук — то есть про кнопки, которые игрок и так нажимает сам. Механизм
+# остался для тех механик, которые правда требуют слов; появится такая — впишется сюда.
 # t — ключ цели (см. _explain_target), s — что написать в пузыре.
-const EXPLAIN := {
-	"tut_quests": [
-		{"t": "quest_list", "s": "Every directive lands here. Boot steps first, then the System's own, then the cycles."},
-		{"t": "quest_list", "s": "A directive can run in parts — finish one and the next opens under the same entry."},
-		{"t": "quest_star", "s": "The star picks what the tracker follows, and a marker leads you to it. None of it is compulsory — the System only asks."},
-	],
-	"tut_filters": [
-		{"t": "garage_grid", "s": "Every part you hold. The corner number is how many of it you have."},
-		{"t": "garage_filters", "s": "These sort the list by kind."},
-	],
-	"tut_shop": [
-		{"t": "garage_currency", "s": "Your credit. The System sells you back what it took."},
-		{"t": "garage_slot", "s": "Price is on the slot. Greyed out means you cannot cover it."},
-		{"t": "garage_grid", "s": "A block you have not researched is not sold at all — research comes first."},
-	],
-	"tut_tech": [
-		{"t": "garage_progress", "s": "RP means Research Points. Every wreck you leave behind pays them — the bigger the machine was, the more it pays."},
-		{"t": "garage_tech", "s": "RP unlocks blocks here. Until a block is researched, the shop will not sell it."},
-		{"t": "garage_progress", "s": "Gr is your clearance. It rises as the System logs your work, and whole branches wait on it."},
-	],
-	"tut_music": [
-		{"t": "garage_extra", "s": "Playback and volume. Nothing you have to touch — just so you know it exists."},
-	],
-}
+const EXPLAIN := {}
+
+## Что говорит Механик, когда обучение закончилось. Это ровно те две вещи, которых НЕ УГАДАТЬ
+## и которым негде научиться по ходу: длинное нажатие по своему блоку (настройки фабрики и
+## меню чужой машины) и жест закрытия большого окна. Всё остальное объясняет само себя.
+const FINAL_HINTS := [
+	"Hold a finger on one of your own blocks for its settings — that is where a factory picks what it makes and which side it feeds.",
+	"A full-screen window closes with a swipe up from the bottom edge. The cross in the corner works too.",
+]
 
 # Очередь пояснений текущего шага. Пока она не пуста, палец на следующий шаг НЕ переходит.
 var _explain: Array = []
@@ -87,6 +75,8 @@ func _on_quests_changed() -> void:
 	if _step == "":
 		_guide.clear()
 		_set_ui_locked(false)
+		_clear_blueprint()          # обучение кончилось — чертёж больше не нужен
+		_say_final_hints()
 
 func _current_step_id() -> String:
 	for q in Q.quests:
@@ -206,6 +196,88 @@ func _pending_blocks() -> int:
 		n += 1
 	return n
 
+# ── ЧЕРТЁЖ СТАРТОВОЙ МАШИНЫ ──────────────────────────────────────────────────
+# Сборка — единственное, чего в этой игре не угадать: блоки стыкуются ГРАНЯМИ, у каждого они
+# свои, и «поставь как хочешь» на первой машине оборачивается колесом на стволе и кабиной без
+# колёс. Поэтому обучение показывает ЧЕРТЁЖ: белый призрак блока стоит в той клетке, куда он
+# и должен встать (build_hint.gd), а палец ведёт к ближайшей незакрытой.
+#
+# Раскладка — ровно стартовый набор (G.STARTER_KIT: два блока, четыре малых колеса, малый бур
+# и пушка) вокруг кабины, которая уже стоит в центре сетки. Ни одного лишнего блока: чертёж,
+# в котором чего-то не хватает, читается как ошибка игрока, а не как подсказка.
+#
+# Повороты колёс не на глаз: у колеса connect_faces = 2 (стыкуется задом, +Z), и к корпусу
+# его разворачивают ±90° по Y — те же числа, что в сборках врага (blocks._side_wheels).
+const BLUEPRINT := [
+	{"cell": Vector3i(5, 5, 6), "block": G.Block.BLOCK,       "yaw": 0.0},
+	{"cell": Vector3i(4, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
+	{"cell": Vector3i(6, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
+	{"cell": Vector3i(4, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
+	{"cell": Vector3i(6, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
+	{"cell": Vector3i(5, 5, 4), "block": G.Block.SMALL_DRILL, "yaw": 0.0},
+	{"cell": Vector3i(5, 6, 5), "block": G.Block.GUN,         "yaw": 0.0},
+	{"cell": Vector3i(5, 6, 6), "block": G.Block.BLOCK,       "yaw": 0.0},
+]
+
+var _hints: Array = []
+
+## Разложить чертёж на машине игрока. Зовётся, когда обучение дошло до сборки, и ровно один
+## раз: призрак гаснет сам, когда в его клетке появился нужный блок.
+func _show_blueprint() -> void:
+	if not _hints.is_empty():
+		return
+	var v: Node = _vehicle()
+	if v == null or v.get("block_map_node") == null:
+		return
+	var bm = v.block_map_node
+	for e in BLUEPRINT:
+		var cell: Vector3i = e["cell"]
+		if bm.has_method("get_block") and int(bm.get_block(cell.x, cell.y, cell.z)) == int(e["block"]):
+			continue
+		var h := BuildHint.create(bm, cell, int(e["block"]), Vector3(0.0, float(e["yaw"]), 0.0))
+		if h != null:
+			_hints.append(h)
+
+func _clear_blueprint() -> void:
+	for h in _hints:
+		if is_instance_valid(h):
+			(h as Node).queue_free()
+	_hints.clear()
+
+## Ближайшая к машине незакрытая клетка чертежа (или null — чертёж собран).
+func _next_hint():
+	_hints = _hints.filter(func(h): return is_instance_valid(h))
+	var v: Node = _vehicle()
+	var best = null
+	var best_d: float = INF
+	for h in _hints:
+		if not (v is Node3D):
+			return h
+		var d: float = (v as Node3D).global_position.distance_squared_to((h as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
+
+## Точка чертежа для пальца: ближайшая незакрытая клетка, а нет такой — сама машина.
+func _blueprint_point() -> Vector3:
+	var h = _next_hint()
+	if h != null:
+		return (h as Node3D).global_position
+	return _vehicle_point()
+
+## Две неочевидные механики В КОНЦЕ обучения, репликой, а не шагом: заставлять игрока
+## «сделай длинное нажатие» на пустом месте нечего, а знать про них надо — сами эти жесты
+## нигде не подписаны.
+var _final_said: bool = false
+
+func _say_final_hints() -> void:
+	if _final_said:
+		return
+	_final_said = true
+	for line in FINAL_HINTS:
+		Dialogue.say("Mechanic", String(line))
+
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
@@ -222,15 +294,17 @@ func _aim_current_step() -> void:
 			_aim_world(_nearest_loose_block, "Double-tap a part to hold it",
 					TutorialGuide.Gate.WORLD)
 		"tut_place_first":
-			_aim_world(_vehicle_point, "Double-tap yourself where it attaches",
+			_show_blueprint()
+			_aim_world(_blueprint_point, "Double-tap the outlined cell to attach it there",
 					TutorialGuide.Gate.WORLD)
 		"tut_place_all":
 			# Свободный шаг: мир открыт, UI — нет. Палец не висит на машине всё время, а
 			# показывает, что делать СЕЙЧАС: блок в руке — куда ставить, рука пуста — что брать.
+			_show_blueprint()
 			var v: Node = _vehicle()
 			var holding: bool = v != null and "block_take" in v and v.block_take
 			if holding:
-				_aim_world(_vehicle_point, "Now attach it",
+				_aim_world(_blueprint_point, "Now attach it — the outline shows where",
 						TutorialGuide.Gate.WORLD)
 			else:
 				_aim_world(_nearest_loose_block, "Take the next part",
