@@ -130,11 +130,7 @@ func _ready() -> void:
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
-	_start_pos = global_position
-	_move_ref  = global_position
-
 	_setup_detection_area()
-	_setup_patrol_points()
 	_connect_cabin()
 	_measure_build()          # стоимость сборки — пока машина цела (см. _pay_out)
 
@@ -233,6 +229,20 @@ func _setup_detection_area() -> void:
 	area.body_entered.connect(_on_body_entered)
 	area.body_exited.connect(_on_body_exited)
 
+## ТОЧКУ РОЖДЕНИЯ ЗАПОМИНАЕМ НЕ В _ready, А НА ПЕРВОМ ФИЗ-ТИКЕ — и это не придирка.
+## _ready срабатывает на add_child, то есть ДО того, как спавнер поставит машину на место:
+## в этот момент она стоит в начале координат. Патруль строился вокруг него, и все враги
+## карты ездили патрулировать ЕЁ ЦЕНТР, где бы они ни появились.
+var _spawn_captured: bool = false
+
+func _capture_spawn() -> void:
+	if _spawn_captured:
+		return
+	_spawn_captured = true
+	_start_pos = global_position
+	_move_ref = global_position
+	_setup_patrol_points()
+
 func _setup_patrol_points() -> void:
 	if patrol_points.size() > 0:
 		_patrol_targets = patrol_points.duplicate()
@@ -264,6 +274,7 @@ const SUNK_LIMIT := 6.0
 const SUNK_LIFT := 2.0
 
 func _physics_process(delta: float) -> void:
+	_capture_spawn()          # первый тик: машина уже на своём месте, можно строить патруль
 	_unsink()
 	sense_ground(delta)
 	# Перевернулся — включаем тот же приём, что у игрока в СТРОЙКЕ: приподнимаем над рельефом и

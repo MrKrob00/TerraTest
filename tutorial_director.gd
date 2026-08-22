@@ -208,15 +208,18 @@ func _pending_blocks() -> int:
 #
 # Повороты колёс не на глаз: у колеса connect_faces = 2 (стыкуется задом, +Z), и к корпусу
 # его разворачивают ±90° по Y — те же числа, что в сборках врага (blocks._side_wheels).
+## Машина растёт ВДОЛЬ, а не вверх: корпус спереди и сзади кабины, на переднем — бур.
+## Второй этаж тут ни к чему — бур, поставленный на крышу, до земли не достаёт, а игрок с
+## первой же машины должен увидеть рабочую схему: чем копать впереди, чем ехать, чем бить.
 const BLUEPRINT := [
-	{"cell": Vector3i(5, 5, 6), "block": G.Block.BLOCK,       "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 4), "block": G.Block.BLOCK,       "yaw": 0.0},   # корпус ПЕРЕД кабиной
+	{"cell": Vector3i(5, 5, 6), "block": G.Block.BLOCK,       "yaw": 0.0},   # и позади — под колёса
 	{"cell": Vector3i(4, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
 	{"cell": Vector3i(6, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
 	{"cell": Vector3i(4, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
 	{"cell": Vector3i(6, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
-	{"cell": Vector3i(5, 5, 4), "block": G.Block.SMALL_DRILL, "yaw": 0.0},
-	{"cell": Vector3i(5, 6, 5), "block": G.Block.GUN,         "yaw": 0.0},
-	{"cell": Vector3i(5, 6, 6), "block": G.Block.BLOCK,       "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 3), "block": G.Block.SMALL_DRILL, "yaw": 0.0},   # бур НА переднем блоке
+	{"cell": Vector3i(5, 6, 5), "block": G.Block.GUN,         "yaw": 0.0},   # ствол на кабине
 ]
 
 var _hints: Array = []

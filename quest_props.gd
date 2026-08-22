@@ -15,8 +15,48 @@ extends Node
 ## первого, без метки, — и для игрока это выглядело так, что второй предмет вообще не выдали.
 var _props: Dictionary = {}
 
+## МЕТКА КВЕСТОВОГО ПРЕДМЕТА. Она нужна не для красоты: по ней предмет узнают все, кто про
+## квесты ничего не знает, — уборка мира (не выкидывает его по таймеру), сохранение (пишет
+## метку рядом с блоком) и мы сами после перезахода, когда список в памяти пуст, а предмет в
+## мире уже восстановлен. Без метки квестовый груз ничем не отличался от мусора и исчезал
+## через десять минут, а квест ждал его вечно.
+const META := "quest_id"
+
 func _ready() -> void:
 	add_to_group("quest_props")      # компас находит нас через группу, а не по пути
+
+## Пометить и запомнить предмет.
+func _register(quest_id: String, node: Node3D) -> Node3D:
+	if node == null:
+		return null
+	node.set_meta(META, quest_id)
+	if not _props.has(quest_id):
+		_props[quest_id] = []
+	var list: Array = _props[quest_id]
+	if not list.has(node):
+		list.append(node)
+	return node
+
+## Собрать в список то, что уже лежит в мире с нашей меткой. После перезахода список в памяти
+## пуст, а предметы восстановлены сейвом — без этого квест считал бы их потерянными и клал
+## бы вторые такие же.
+func _rescan(quest_id: String) -> void:
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects == null:
+		return
+	for c in objects.get_children():
+		if c is Node3D and c.has_meta(META) and String(c.get_meta(META)) == quest_id:
+			_register(quest_id, c as Node3D)
+
+## ГАРАНТИРОВАТЬ предмет: лежит в мире — берём его, нет — кладём новый. Именно этого и просит
+## правило «если квестового предмета нет, он спавнится заново»: перезаход, случайная гибель,
+## провал под рельеф — причина не важна, важно, что цель у квеста снова есть.
+func ensure(quest_id: String, block_type: int, at: Variant = null) -> Node3D:
+	_rescan(quest_id)
+	var have: Node3D = _first_loose(quest_id)
+	if have != null and int(have.get("block")) == block_type:
+		return have
+	return drop_near(quest_id, block_type, at) if at is Vector3 else drop_for(quest_id, block_type)
 
 ## Где положить: не под колёсами и не за горизонтом. Ближе — игрок наступит на предмет
 ## случайно и не поймёт, что это была цель; дальше — поедет искать по компасу, что и нужно.
@@ -48,10 +88,7 @@ func drop_near(quest_id: String, block_type: int, at: Variant) -> Node3D:
 	if node is RigidBody3D:
 		(node as RigidBody3D).freeze = false
 	BlockFX.play(node, false)
-	if not _props.has(quest_id):
-		_props[quest_id] = []
-	(_props[quest_id] as Array).append(node)
-	return node
+	return _register(quest_id, node)
 
 ## Уронить МАТЕРИАЛ (руду, слиток, компонент) в заданную точку. Вид задаётся ключом
 ## resource.kind_key() — тем же, каким написаны рецепты, чтобы квест не знал внутреннего
@@ -93,10 +130,7 @@ func drop_for(quest_id: String, block_type: int) -> Node3D:
 	if node is RigidBody3D:
 		(node as RigidBody3D).freeze = false
 	BlockFX.play(node, false)              # «глюк появления» — предмет возник, а не лежал всегда
-	if not _props.has(quest_id):
-		_props[quest_id] = []
-	(_props[quest_id] as Array).append(node)
-	return node
+	return _register(quest_id, node)
 
 # Куда ведёт компас по этому квесту: к БЛИЖАЙШЕМУ ещё не подобранному предмету стадии.
 # null — подбирать больше нечего.
@@ -108,6 +142,9 @@ func position_for(quest_id: String) -> Variant:
 ## из objects (в руку, потом на машину) — по родителю это и видно.
 func _first_loose(quest_id: String) -> Node3D:
 	var list = _props.get(quest_id)
+	if not (list is Array) or (list as Array).is_empty():
+		_rescan(quest_id)                  # список пуст: перезашли, а предмет в мире уже есть
+		list = _props.get(quest_id)
 	if not (list is Array):
 		return null
 	var from: Node3D = _player()
