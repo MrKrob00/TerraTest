@@ -289,6 +289,60 @@ func hurt(damage: int = 10) -> void:
 	_play_hit_effect()
 	if current_hp <= 0:
 		destroy()
+		return
+	_check_critical()
+
+# ── Избитый блок ──────────────────────────────────────────────────────────────
+# Блок не обязан держаться до последнего хп: ниже DROP_FRAC крепления уже не держат, и
+# каждое попадание может сорвать его в мир, а ниже FUSE_FRAC он обречён — мигает и
+# взрывается сам. Это делает бой зрелищным и даёт причину отступить: машина начинает
+# разваливаться ДО того, как её добили.
+const DROP_FRAC := 0.20        # доля хп, ниже которой блок может сорваться с машины
+const DROP_CHANCE := 0.30      # шанс срыва НА КАЖДОЕ попадание в таком состоянии
+const FUSE_FRAC := 0.05        # доля хп, ниже которой блок обречён и взрывается сам
+const FUSE_BLINKS := 6
+const FUSE_STEP := 0.09        # с: полмигания; полный фитиль = FUSE_BLINKS * 2 * FUSE_STEP
+const SELF_BLAST_RADIUS := 3.0
+const SELF_BLAST_DAMAGE := 30
+const SELF_BLAST_FORCE := 7.0
+var _fuse_lit: bool = false
+
+func _check_critical() -> void:
+	if _destroyed or _fuse_lit:
+		return
+	var frac: float = float(current_hp) / float(maxi(max_hp, 1))
+	if frac < FUSE_FRAC:
+		_light_fuse()
+	elif frac < DROP_FRAC and _map_node() != null and randf() < DROP_CHANCE:
+		_map_node().detach_node(self)
+
+## Карта машины, на которой стоит блок. null — блок уже свободный (лежит в мире, в руке, в
+## коллекторе): срывать его неоткуда.
+func _map_node() -> Node:
+	var p: Node = get_parent()
+	if p != null and p.has_method("detach_node"):
+		return p
+	return null
+
+## Фитиль: блок мигает, а потом взрывается. Мигаем ВИДИМОСТЬЮ всего узла, а не подкраской
+## материалов: у блоков с моделью материалов много, они общие между экземплярами (правка
+## покрасила бы все такие блоки в игре), и вернуть их обратно потом нечем.
+func _light_fuse() -> void:
+	_fuse_lit = true
+	var tw := create_tween()          # твин узла: блок уничтожат раньше — твин умрёт вместе с ним
+	tw.set_loops(FUSE_BLINKS)
+	tw.tween_callback(func() -> void: visible = false)
+	tw.tween_interval(FUSE_STEP)
+	tw.tween_callback(func() -> void: visible = true)
+	tw.tween_interval(FUSE_STEP)
+	tw.chain().tween_callback(_fuse_blow)
+
+func _fuse_blow() -> void:
+	if _destroyed or not is_inside_tree():
+		return
+	visible = true
+	current_hp = 0
+	destroy()
 
 # Постоянный показ хп красными «матричными» цифрами (см. block_fx.hp_overlay / mode 3).
 # Зовём ТОЛЬКО при изменении хп (урон/реген), не по кадрам: анимацию гонит сам шейдер от
@@ -339,13 +393,27 @@ func destroy() -> void:
 	if _destroyed:                    # защита от двойного вызова (цепные взрывы, урон в кадре гибели)
 		return
 	_destroyed = true
-	# Батарея ВОЛАТИЛЬНА: при уничтожении — AOE-урон блокам вокруг (~3 м) + пометка «бласт», чтобы
-	# осколки, оторвавшиеся из-за её гибели, разлетелись СИЛЬНЕЕ обычного (см. detach_block_to_world).
+	# ЧТО ВЗРЫВАЕТСЯ. Батарея — ВОЛАТИЛЬНА (свои числа, они крупнее). Кабина уносит машину с
+	# собой и обязана рвануть тоже — иначе гибель машины выглядит как «блоки просто осыпались».
+	# И блок, догоревший до конца фитиля (см. _light_fuse), взрывается по определению.
+	# Пометка «бласт» на машине нужна, чтобы осколки, оторвавшиеся ИЗ-ЗА взрыва, разлетелись
+	# сильнее обычного (см. detach_block_to_world), а push толкает уже свободные блоки вокруг.
+	var blast_r: float = 0.0
+	var blast_d: int = 0
+	var blast_f: float = 0.0
 	if block == G.Block.BATTERY:
+		blast_r = BATTERY_BLAST_RADIUS
+		blast_d = BATTERY_BLAST_DAMAGE
+		blast_f = BATTERY_BLAST_FORCE
+	elif block == G.Block.CABIN or _fuse_lit:
+		blast_r = SELF_BLAST_RADIUS
+		blast_d = SELF_BLAST_DAMAGE
+		blast_f = SELF_BLAST_FORCE
+	if blast_r > 0.0:
 		var veh := _root_body()
 		if veh != null and veh.has_method("register_blast"):
-			veh.register_blast(global_position, BATTERY_BLAST_FORCE)
-		BlockFX.explosion(self, global_position, BATTERY_BLAST_RADIUS, BATTERY_BLAST_DAMAGE)
+			veh.register_blast(global_position, blast_f)
+		BlockFX.explosion(self, global_position, blast_r, blast_d, null, blast_f)
 	BlockFX.play(self, true)          # эффект «матрицы» уничтожения (красные + глюк)
 	emit_signal("destroyed", self)
 	queue_free()

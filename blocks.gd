@@ -651,6 +651,30 @@ func _detach_orphans() -> void:
 	for o in orphans:
 		_detach_one(o.x, o.y, o.z)
 
+## Сорвать в мир КОНКРЕТНЫЙ узел блока. Зовёт сам блок, когда его добили почти до нуля и
+## крепления не держат (VehicleBlock._check_critical). Клетку ищем по node_map: блок своих
+## координат не знает, а карта и так хранит обратную связь якорь → узел.
+##
+## Отрывать откладываем на конец кадра: срыв идёт из hurt(), а hurt зовут прямо из обхода
+## физики (AOE-взрыв перебирает тела запросом к пространству) — репарент и снятие коллизии
+## посреди такого обхода трогают физический сервер, когда он занят.
+func detach_node(node: Node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	for anchor in node_map.keys():
+		if node_map[anchor] != node:
+			continue
+		var parts: PackedStringArray = String(anchor).split(",")
+		if parts.size() < 3:
+			return
+		call_deferred("_detach_one", int(parts[0]), int(parts[1]), int(parts[2]))
+		# И следом пересчёт: на сорвавшемся блоке могло висеть полмашины (call_deferred —
+		# очередь, поэтому пересчёт пойдёт уже ПОСЛЕ срыва).
+		if not _rebuild_queued:
+			_rebuild_queued = true
+			call_deferred("_deferred_rebuild")
+		return
+
 # Оторвать блок в мир: снять сигналы разрушения (чтобы гибель уже свободного блока не трогала
 # карту машины), очистить карту, и поручить машине уронить узел (коллизия + репарент + импульс).
 func _detach_one(ax: int, ay: int, az: int) -> void:

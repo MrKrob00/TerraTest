@@ -54,12 +54,67 @@ func _notification(what: int) -> void:
 		_save_world()
 
 func _process(delta: float) -> void:
+	_cull_tick(delta)                              # гасим то, что за спиной (свой период, чаще)
 	_tick += delta
 	if _tick < 1.0:
 		return
 	_tick = 0.0
 	_expire_world_blocks()                         # деспавн свободных блоков старше 10 мин
 	_rescue_fallen()                               # машина провалилась сквозь рельеф — вернуть наверх
+
+# ── Отсечение того, что ЗА СПИНОЙ ────────────────────────────────────────────
+# Свободный блок в мире — это не только меш (его движок и так не рисует за камерой), но и
+# ЖИВОЙ СКРИПТ: лежащий на земле коллектор всё так же перебирает ресурсы вокруг, лента
+# двигает предметы, зарядник каждые полсекунды обходит все машины. Полсотни таких блоков за
+# спиной стоят ровно столько же, сколько перед носом, а пользы от них ноль.
+#
+# Гасим ТОЛЬКО СПЯЩИЕ тела: у спящего физика и так не считается, и остановить ему скрипт
+# безопасно. Летящий/катящийся блок не трогаем совсем — иначе он замер бы в воздухе и
+# доехал бы вниз рывком, когда игрок обернётся.
+#
+# Ближний пузырь оставляем активным в любую сторону: то, что рядом, участвует в игре
+# (магнит упаковщика, приёмник, подбор рукой), и гасить его по направлению взгляда нельзя.
+const CULL_PERIOD := 0.25
+const CULL_KEEP_RADIUS := 25.0       # м: ближе этого блок активен, куда бы ни смотрела камера
+const CULL_VIEW_COS := -0.15         # чуть шире полусферы перед камерой — край не мигает
+const CULL_META := "culled"
+var _cull_t: float = 0.0
+
+func _cull_tick(delta: float) -> void:
+	_cull_t -= delta
+	if _cull_t > 0.0:
+		return
+	_cull_t = CULL_PERIOD
+	var o := _objects()
+	if o == null:
+		return
+	var cam := get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam == null:
+		return
+	var cam_pos: Vector3 = cam.global_position
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	var keep2: float = CULL_KEEP_RADIUS * CULL_KEEP_RADIUS
+	for c in o.get_children():
+		var n := c as Node3D
+		if n == null:
+			continue
+		var was: bool = n.has_meta(CULL_META)
+		var to: Vector3 = n.global_position - cam_pos
+		var d2: float = to.length_squared()
+		var behind: bool = d2 > keep2 and to.normalized().dot(fwd) < CULL_VIEW_COS
+		if behind == was:
+			continue
+		if behind:
+			var rb := n as RigidBody3D
+			if rb != null and not rb.sleeping and not rb.freeze:
+				continue                    # ещё едет/падает — досчитаем, погасим в следующий раз
+			n.set_meta(CULL_META, true)
+			n.visible = false
+			n.process_mode = Node.PROCESS_MODE_DISABLED
+		else:
+			n.remove_meta(CULL_META)
+			n.visible = true
+			n.process_mode = Node.PROCESS_MODE_INHERIT
 
 # Кэш ноды рельефа (у неё есть terrain_height_at).
 var _terrain_node: Node = null
