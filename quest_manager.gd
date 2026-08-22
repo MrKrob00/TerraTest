@@ -52,7 +52,7 @@ func _seed_demo() -> void:
 	# якорь, сбор, энерго, фабрика) добавятся, когда докинем их события — см. docs/QUESTS_DESIGN.
 	# Шаги ведёт «рука с пальцем» (tutorial_director.gd): она показывает, куда нажать, и на
 	# время шага не даёт нажать никуда больше. hint — реплика Механика при активации шага;
-	# развёрнутые объяснения (магазин, древо, музыка) живут в самом наставнике.
+	# Шагов ровно пять, и все они про сборку: остальное игрок понимает сам (см. ниже).
 	add_quest("tut_mode_build", "Boot: Assembly", "Enter assembly mode", Type.TUTORIAL, 1, 0, "mode_building", 0, 0, 0, 1,
 			"You came online as a bare cabin. Everything starts in assembly — the button reads BUILD.")
 	# Закрывается ЛЮБЫМ способом взять блок в руку (с земли, с машины, из инвентаря): игрок
@@ -67,18 +67,15 @@ func _seed_demo() -> void:
 			"Same for the rest. Wheels to the sides, drill facing out — you decide what you are.")
 	add_quest("tut_mode_move", "Boot: Motion", "Leave assembly", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
 			"Assembled? The same button reads MOVE. Let us see if you hold together.")
-	add_quest("tut_quests", "Boot: Directives", "Open the log", Type.TUTORIAL, 1, 5, "quests_opened", 0, 0, 0, 1,
-			"Directives come from the System. The tracker is top right — tap it for the full log.")
-	add_quest("tut_garage", "Boot: Storage", "Open storage", Type.TUTORIAL, 1, 6, "garage_opened", 0, 0, 0, 1,
-			"Your storage is the pack in the corner. Everything you own is in there.")
-	add_quest("tut_filters", "Boot: Sorting", "Filter the parts", Type.TUTORIAL, 1, 7, "garage_filter", 0, 0, 0, 1,
-			"These are your parts. The buttons on the left sort them by kind.")
-	add_quest("tut_shop", "Boot: Trade", "Open trade", Type.TUTORIAL, 1, 8, "garage_shop", 0, 0, 0, 1,
-			"TRADE is where parts are bought. The System charges for everything it lets you have.")
-	add_quest("tut_tech", "Boot: Research", "Open research", Type.TUTORIAL, 1, 9, "garage_tech", 0, 0, 0, 1,
-			"RESEARCH is where you unlock schematics. Nothing here is given for free.")
-	add_quest("tut_music", "Boot: Audio", "Open audio", Type.TUTORIAL, 1, 10, "garage_music", 0, 0, 0, 1,
-			"Last one. Even a simulation lets you pick what plays.")
+	# ЖУРНАЛ, СКЛАД, МАГАЗИН, ДРЕВО И ЗВУК ИЗ ОБУЧЕНИЯ УБРАНЫ. Это шесть шагов «нажми на
+	# кнопку, которая и так на виду»: игрок открывает их сам в первую минуту, а обучение из-за
+	# них тянулось вдвое дольше и запирало интерфейс ровно там, где ничего сложного нет.
+	# Обучение осталось про ОДНО — про сборку машины, потому что этого не угадать: блоки
+	# стыкуются гранями, у каждого свои, и ставятся двойным тапом по клетке.
+	#
+	# Механики, которые действительно неочевидны, объясняются ТАМ, ГДЕ ВСТРЕЧАЮТСЯ: якорь —
+	# сюжетным заданием про панель, фабрика и порты — заданием про линию, жесты — репликой
+	# Механика в конце сборки (см. tutorial_director.FINAL_HINTS).
 	# ── STORY ────────────────────────────────────────────────────────────────────
 	# ЗДЕСЬ ТОЛЬКО СЮЖЕТ. Раньше сюда же было насыпано семнадцать заданий-счётчиков
 	# («поставь 5 блоков», «накопай 10 руды», «заработай 100$», «убей 3 машины» и так далее
