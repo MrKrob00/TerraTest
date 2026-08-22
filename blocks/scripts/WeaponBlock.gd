@@ -71,36 +71,58 @@ func attack() -> void:
 	_fire_hold = FIRE_HOLD
 
 # ── НАВОДКА ПО МОДЕЛИ ────────────────────────────────────────────────────────
-# Модель турели собрана из трёх частей, и у каждой своя работа:
-#   • ПЛАТФОРМА (turret / rocketgun) — приколочена к блоку, не двигается вообще;
-#   • *_head — поворотная часть: ходит ВЛЕВО-ВПРАВО (рыскание);
-#   • *_head_001 — ствол: ходит ВВЕРХ-ВНИЗ (наклон).
+# Модель турели собрана ЦЕПОЧКОЙ, как и колесо: платформа → поворотная часть → ствол.
+#
+#   • ПЛАТФОРМА — приколочена к блоку, не двигается вообще;
+#   • ПОВОРОТНАЯ ЧАСТЬ (первый ребёнок платформы) — ходит ВЛЕВО-ВПРАВО;
+#   • СТВОЛ (её ребёнок) — ходит ВВЕРХ-ВНИЗ.
 #
 # Раньше не двигалось НИЧЕГО: код доворачивал узел Pivot, а он к модели отношения не имеет —
 # по нему летит снаряд и смотрит луч. Турель стреляла куда надо, но выглядела намертво
 # приваренной.
 #
-# Ищем по СУФФИКСУ имени, а не по точному: у пушки это turret_head, у ракетницы
-# rocketgun_head — часть одна и та же по смыслу, префикс у каждой модели свой. Нет таких
-# узлов (лазер: в его .glb только плоскости и куб) — просто ничего не доворачиваем.
+# Части ищем ПО СТРОЕНИЮ, а не по именам. Имена у моделей разные и уже разъехались: у пушки
+# turret → turret_head → turret_head_001, у ракетницы rocketgun_head, у лазера вовсе
+# lazer_neck_002 → lazer_head. Поиск по имени пришлось бы дописывать на каждую новую модель,
+# а цепочка у всех одна и та же.
+#
+# Берём только MeshInstance3D: Pivot, Ammo и зона обнаружения тоже узлы с детьми, но к
+# модели не относятся. Нет цепочки (у дробовика и мортиры платформа без частей) — просто
+# ничего не доворачиваем.
 const TURRET_TRACK: float = 12.0       # скорость доворота модели, как у Pivot
 
-var _yaw_part: Node3D = null           # *_head: влево-вправо
-var _pitch_part: Node3D = null         # *_head_001: вверх-вниз
+var _yaw_part: Node3D = null           # поворотная часть: влево-вправо
+var _pitch_part: Node3D = null         # ствол: вверх-вниз
 var _yaw_rest: Basis = Basis()
 var _pitch_rest: Basis = Basis()
 
 func _find_turret_parts() -> void:
-	for n in find_children("*_head", "Node3D", true, false):
-		_yaw_part = n as Node3D
-		break
-	for n in find_children("*_head_001", "Node3D", true, false):
-		_pitch_part = n as Node3D
-		break
+	for c in get_children():
+		var platform := c as MeshInstance3D
+		if platform == null:
+			continue
+		var yaw_part := _first_mesh_child(platform)
+		if yaw_part == null:
+			continue
+		var pitch_part := _first_mesh_child(yaw_part)
+		# Полная цепочка (есть и ствол) перевешивает: у платформы может оказаться и
+		# декоративный меш-ребёнок, а крутить надо ту ветку, что ведёт к стволу.
+		if pitch_part != null or _yaw_part == null:
+			_yaw_part = yaw_part
+			_pitch_part = pitch_part
+		if pitch_part != null:
+			break
 	if _yaw_part != null:
 		_yaw_rest = _yaw_part.transform.basis
 	if _pitch_part != null:
 		_pitch_rest = _pitch_part.transform.basis
+
+func _first_mesh_child(n: Node) -> MeshInstance3D:
+	for c in n.get_children():
+		var m := c as MeshInstance3D
+		if m != null:
+			return m
+	return null
 
 ## Довернуть модель на те же углы, куда смотрит Pivot (радианы). Углы уже ограничены конусом
 ## турели: у ствола своего предела нет, он показывает ровно то, куда полетит снаряд.
