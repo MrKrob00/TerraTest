@@ -48,6 +48,8 @@ const DIRS := [
 	Vector3i(1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0),
 ]
 const DIR_NAME := ["FRONT −Z", "BACK +Z", "LEFT −X", "RIGHT +X", "TOP +Y", "BOTTOM −Y"]
+## Короткое имя стороны — его пишем ПРЯМО НА ГРАНИ, под состоянием.
+const SHORT_NAME := ["front", "back", "left", "right", "top", "bottom"]
 
 ## Две изометрии, смотрящие с противоположных углов. Базис задан образами осей X/Y/Z на
 ## экране; ядро этого отображения — (1,1,1), то есть смотрим ровно вдоль диагонали куба, и
@@ -141,6 +143,7 @@ func _draw() -> void:
 	_quads.clear()
 	var font: Font = get_theme_default_font()
 	var fs: int = maxi(get_theme_default_font_size() - 2, 9)
+	var fn: int = maxi(fs - 3, 7)          # имя стороны мельче состояния: оно подпись, а не кнопка
 	for vi in VIEWS.size():
 		var g: Dictionary = _geom(vi)
 		for di in (g["v"]["faces"] as Array):
@@ -161,9 +164,16 @@ func _draw() -> void:
 					var mid: Vector2 = (poly[0] + poly[1] + poly[2] + poly[3]) * 0.25
 					var t: String = String(labels[clampi(st, 0, labels.size() - 1)])
 					var w: float = font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-					draw_string(font, mid + Vector2(-w * 0.5, fs * 0.35), t,
-							HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
-							Color(0.05, 0.10, 0.12) if st != 0 else Color(0.55, 0.75, 0.80))
+					var ink: Color = Color(0.05, 0.10, 0.12) if st != 0 else Color(0.55, 0.75, 0.80)
+					draw_string(font, mid + Vector2(-w * 0.5, -1.0), t,
+							HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ink)
+					# ИМЯ СТОРОНЫ ПОД СОСТОЯНИЕМ. Без него по картинке не понять, которая из
+					# трёх видимых граней «right», а которая «back»: подпись под кубиком
+					# перечисляет их разом, а какая где — приходится угадывать.
+					var nm: String = String(SHORT_NAME[int(di)])
+					var nw: float = font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, fn).x
+					draw_string(font, mid + Vector2(-nw * 0.5, fn + 2.0), nm,
+							HORIZONTAL_ALIGNMENT_LEFT, -1, fn, ink * Color(1, 1, 1, 0.75))
 				_quads.append({"poly": poly, "off": o, "dir": int(di)})
 		if font != null:
 			var cap: String = String(g["v"]["cap"])
