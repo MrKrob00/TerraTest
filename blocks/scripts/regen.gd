@@ -69,9 +69,14 @@ func _physics_process(delta: float) -> void:
 	# напрямую от energy_available(), а та скачет через ноль КАЖДЫЙ тик — выработка панели
 	# приходит по капле за кадр, а реген снимает 2.0 разом. Сфера моргала с частотой кадров.
 	# Теперь яркость едет к цели плавно, и дрожание источника до картинки не доходит.
+	# БЕЗ ЭНЕРГИИ ПОЛЯ НЕТ ВОВСЕ. Раньше оно лишь тускнело, и обесточенный реген выглядел
+	# работающим: игрок видел купол и ждал починки, которой не будет. Показываем ровно то,
+	# что происходит, — как это делает щит (shield.gd прячет свой купол по тому же признаку).
 	var powered: bool = vehicle.has_method("energy_available") and vehicle.energy_available() > 0.0
-	_show_field(true)          # блок на машине — поле есть; ярче/тусклее решает _fade_field
-	_fade_field(delta, FIELD_ALPHA if powered else FIELD_ALPHA_DEAD)
+	_show_field(powered)
+	if not powered:
+		return
+	_fade_field(delta, FIELD_ALPHA)
 	_timer -= delta
 	if _timer > 0.0:
 		return

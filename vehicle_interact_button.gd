@@ -39,6 +39,10 @@ func _ready() -> void:
 	_label.font_size = 220
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.no_depth_test = true
+	# ПОВЕРХ ВСЕГО, включая прозрачные поля регена и щита. Одного no_depth_test мало:
+	# прозрачное рисуется последним и по своей глубине, поэтому зелёная сфера регена ложилась
+	# на значок сверху — кнопка была видна как пятно, и попасть в неё игрок не мог.
+	_label.render_priority = 20
 	_label.modulate = COL_IDLE
 	_label.outline_size = 24
 	add_child(_label)

@@ -1252,8 +1252,11 @@ func _select_vehicle(v: Node) -> void:
 # ── Прятать/возвращать игровой HUD под инвентарём ─────────────────────────────
 func _collect_game_controls() -> void:
 	_game_controls.clear()
+	# Joystick_camera здесь НЕТ намеренно: он заменён свайпом по миру и выключен в
+	# camera_controller._ready. Стоило внести его в общий список — и «показать игровой HUD»
+	# после закрытия гаража возвращало его на экран.
 	for n in ["ModeToggle", "Take", "TakeOff", "Attack",
-			"Joystick_movement", "Joystick_camera", "Label"]:
+			"Joystick_movement", "Label"]:
 		var node: Node = get_node_or_null(n)
 		if node:
 			_game_controls.append(node)
@@ -1274,7 +1277,7 @@ func _collect_game_controls() -> void:
 ## (медленное перемещение платформы, vehicle_body_3d._build_move_dir) и крутить камеру.
 ## Джойстики уходили вместе со всем игровым HUD, потому что стройка живёт в гараже, а гараж
 ## прячет управление скопом — и медленное перемещение стало нечем задавать.
-const BUILD_KEEP := ["Joystick_movement", "Joystick_camera"]
+const BUILD_KEEP := ["Joystick_movement"]
 
 var _controls_hidden: bool = false
 func _set_game_controls_hidden(hidden: bool) -> void:
