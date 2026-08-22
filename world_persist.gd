@@ -223,6 +223,11 @@ func _expire_world_blocks() -> void:
 	for c in o.get_children():
 		if not _is_world_block(c):
 			continue
+		# КВЕСТОВЫЙ ПРЕДМЕТ НЕ ПРОПАДАЕТ ПО ТАЙМЕРУ. Он помечен (QuestProps.META), и метка
+		# здесь и нужна: уборка мира про квесты ничего не знает, а десять минут — обычное
+		# время дороги до цели. Груз, растаявший по пути, оставлял квест без цели навсегда.
+		if c.has_meta("quest_id"):
+			continue
 		if not c.has_meta("world_spawn_s"):
 			c.set_meta("world_spawn_s", now)           # первый раз увидели — стартуем его таймер
 			continue
@@ -309,12 +314,17 @@ func _save_world() -> void:
 				age = now - float(c.get_meta("world_spawn_s"))
 			var bp: Vector3 = (c as Node3D).global_position
 			var br: Vector3 = (c as Node3D).global_rotation
-			blocks.append({
+			var entry := {
 				"block": G.block_key(int(c.get("block"))),
 				"pos": [bp.x, bp.y, bp.z],
 				"rot": [br.x, br.y, br.z],
 				"age": age,
-			})
+			}
+			# Метку квеста сохраняем ВМЕСТЕ с блоком: без неё восстановленный груз становится
+			# обычным мусором — его съедает уборка, а квест ищет цель, которой уже нет.
+			if c.has_meta("quest_id"):
+				entry["quest"] = String(c.get_meta("quest_id"))
+			blocks.append(entry)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({
@@ -379,8 +389,10 @@ func _load_world() -> void:
 	for wb in data.get("world_blocks", []):
 		var p = wb.get("pos", [0, 0, 0])
 		var r = wb.get("rot", [0, 0, 0])
-		_spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
+		var b := _spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
+		if b != null and String(wb.get("quest", "")) != "":
+			b.set_meta("quest_id", String(wb["quest"]))   # снова квестовый, а не мусор
 
 # Проверка раскладки ДО применения: одна битая запись роняла бы сборку молча, а игрок получал
 # пустую машину и не понимал почему. Требуем массив словарей с координатами в пределах сетки

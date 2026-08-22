@@ -59,14 +59,19 @@ func _process(delta: float) -> void:
 
 # ── Ветка «энергия»: солнечная панель + опора, затем реген ───────────────────
 func _arc_power_1(q: Dictionary) -> void:
-	var key := "power_1"
-	if not _dropped.has(key):
-		_dropped[key] = true
-		# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
-		# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело
-		# это как «якорь не выдали вовсе».
-		_props.drop_for("arc_power", G.Block.SOLAR)
-		_props.drop_for("arc_power", G.Block.SUPPORT)
+	# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
+	# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело это
+	# как «якорь не выдали вовсе».
+	#
+	# Проверяем КАЖДЫЙ опрос, а не «положили один раз и забыли». ensure берёт то, что уже
+	# лежит в мире (после перезахода предмет помечен и восстановлен сейвом), и кладёт новый,
+	# только если цели действительно нет — сгорела, провалилась под рельеф, потерялась.
+	# Условие «пока у игрока этого блока нет» обязательно: иначе подобранный предмет тут же
+	# выдавался бы вторым.
+	if not _player_owns(G.Block.SOLAR):
+		_props.ensure("arc_power", G.Block.SOLAR)
+	if not _player_owns(G.Block.SUPPORT):
+		_props.ensure("arc_power", G.Block.SUPPORT)
 	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
 	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
 	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
@@ -89,10 +94,8 @@ func _arc_power_2(q: Dictionary) -> void:
 
 # ── Ветка «радар»: найти свой, затем отобрать у вора ─────────────────────────
 func _arc_radar_1(q: Dictionary) -> void:
-	var key := "radar_1"
-	if not _dropped.has(key):
-		_dropped[key] = true
-		_props.drop_for("arc_radar", G.Block.RADAR)
+	if not _player_owns(G.Block.RADAR):
+		_props.ensure("arc_radar", G.Block.RADAR)
 	if _has_block(G.Block.RADAR):
 		Q.report(String(q["event"]), 1)
 
@@ -118,10 +121,8 @@ func _arc_radar_2(q: Dictionary) -> void:
 
 # ── Ветка «аккумулятор»: найти, затем выбить из жилы ─────────────────────────
 func _arc_battery_1(q: Dictionary) -> void:
-	var key := "battery_1"
-	if not _dropped.has(key):
-		_dropped[key] = true
-		_props.drop_for("arc_battery", G.Block.BATTERY)
+	if not _player_owns(G.Block.BATTERY):
+		_props.ensure("arc_battery", G.Block.BATTERY)
 	if _has_block(G.Block.BATTERY):
 		Q.report(String(q["event"]), 1)
 
@@ -161,25 +162,42 @@ func _salvage_1(q: Dictionary) -> void:
 		return
 	# Подъехали — груз на месте, и он не бесхозный. Охранник появляется ЗДЕСЬ, а не ждал сутки
 	# на точке: спавн по прибытии дешевле и надёжнее, чем машина, живущая где-то с начала игры.
-	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp != null and sp.has_method("spawn_at") and not is_instance_valid(_salvage_guard):
-		_salvage_guard = sp.spawn_at(_salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1)
-		if _salvage_guard != null and _salvage_guard.has_method("assign_target"):
-			_salvage_guard.assign_target(p, true)
+	_salvage_spawn_guard()
 	Q.report(String(q["event"]), 1)
+
+var _salvage_killed: bool = false
+
+## Охрана груза. Отдельной функцией, потому что зовут её ДВА раза: при первом приезде и
+## тогда, когда охраны не стало не от выстрелов (перезаход, вылет — врагов мы не сохраняем).
+func _salvage_spawn_guard() -> void:
+	if is_instance_valid(_salvage_guard) or not (_salvage_point is Vector3):
+		return
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null or not sp.has_method("spawn_at"):
+		return
+	_salvage_guard = sp.spawn_at(_salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1)
+	if _salvage_guard == null:
+		return
+	if _salvage_guard.has_method("assign_target"):
+		_salvage_guard.assign_target(_player(), true)
+	# Смерть ЗАПОМИНАЕМ. Пустая ссылка сама по себе не означает победу: после загрузки она
+	# пуста всегда, и без этого флага квест проходился бы выходом в меню.
+	if _salvage_guard.has_signal("died"):
+		_salvage_guard.died.connect(func(_e = null): _salvage_killed = true, CONNECT_ONE_SHOT)
 
 func _salvage_2(q: Dictionary) -> void:
 	if is_instance_valid(_salvage_guard):
 		return
+	if not _salvage_killed:
+		_salvage_spawn_guard()      # охрана пропала не от выстрелов — присылаем снова
+		return
 	# Охрана кончилась — груз наш. Коллектор кладём В МИР рядом с точкой, а не молча в
 	# инвентарь: игрок должен его увидеть и подобрать, как любой трофей.
-	if not _dropped.has("salvage"):
-		_dropped["salvage"] = true
-		_props.drop_near("arc_salvage", G.Block.COLLECTOR, _salvage_point)
+	if not _player_owns(G.Block.COLLECTOR):
+		_props.ensure("arc_salvage", G.Block.COLLECTOR, _salvage_point)
 		return                              # даём кадр, чтобы предмет появился
-	if _has_block(G.Block.COLLECTOR):
-		Q.report(String(q["event"]), 1)
-		_salvage_point = null
+	Q.report(String(q["event"]), 1)
+	_salvage_point = null
 
 # ── «Production Line»: собрать цепочку и включить её ─────────────────────────
 ## ПЛОЩАДКА, А НЕ СПИСОК ПОКУПОК. Раньше стадия просто ждала, пока нужные блоки окажутся на
@@ -357,7 +375,7 @@ func _spawn_line_kit(at: Vector3) -> void:
 		{"x": 5, "y": 5, "z": 5, "block": G.Block.SELLER, "rot": [0.0, 0.0, 0.0]},
 		{"x": 5, "y": 5, "z": 6, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
 	])
-	_props.drop_near("arc_line", G.Block.RECEIVER, at)
+	_props.ensure("arc_line", G.Block.RECEIVER, at)
 	for _i in (LINE_BELTS - 1):
 		_props.drop_near("arc_line", G.Block.BELT, at)
 	_show_plan(LINE_PLAN)
@@ -594,6 +612,21 @@ func _player() -> Node3D:
 func _has_block(bt: int) -> bool:
 	return _count_block(bt) > 0
 
+## Есть ли блок У ИГРОКА где угодно: на машине, в инвентаре или в руке. Пока есть — выдавать
+## его заново не надо, иначе «предмет потерялся» и «игрок его уже подобрал» становятся для
+## квеста одним и тем же, и мир зарастает копиями награды.
+func _player_owns(bt: int) -> bool:
+	if _has_block(bt):
+		return true
+	if G.block_inventory.has(bt):
+		return true
+	var p: Node3D = _player()
+	if p == null:
+		return false
+	var held = p.get("block_body")
+	return held != null and is_instance_valid(held) and ("block" in held) \
+			and int(held.get("block")) == bt
+
 func _count_block(bt: int) -> int:
 	return _machine_count(_player(), bt)
 
@@ -713,6 +746,10 @@ func _ev_clear(key: String) -> void:
 
 ## Все участники события уничтожены?
 func _ev_all_dead(key: String) -> bool:
+	# НЕТ ЗАПИСИ — не «все мертвы», а «мы про них ничего не знаем» (перезаход: события в сейв
+	# не идут). Считать это победой значило бы закрывать задание выходом в меню.
+	if not _ev_mobs.has(key):
+		return false
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m):
 			return false
@@ -772,7 +809,14 @@ func _gang_1(q: Dictionary) -> void:
 
 func _gang_2(q: Dictionary) -> void:
 	var key := "gang"
-	if _ev_abandoned(q, key) or not _ev_all_dead(key):
+	if _ev_abandoned(q, key):
+		return
+	if not _ev_mobs.has(key):
+		var at = _ev_get_point(key, GANG_DIST)      # состояние потеряно — банда снова на месте
+		if at != null:
+			_ev_spawn(key, at as Vector3, [5, 6, 7])
+		return
+	if not _ev_all_dead(key):
 		return
 	_ev_done(q, key)
 
@@ -791,7 +835,7 @@ func _supply_1(q: Dictionary) -> void:
 	if not _ev_mobs.has(key):
 		_ev_mobs[key] = []                      # событие началось, даже если засады не будет
 		var at: Vector3 = _ev_point[key] as Vector3
-		_props.drop_near("event_supply", int(SUPPLY_LOOT.pick_random()), at)
+		_props.ensure("event_supply", int(SUPPLY_LOOT.pick_random()), at)
 		# ЗАСАДА через раз. Всегда — и груз перестаёт быть грузом, превращаясь в бой;
 		# никогда — и ехать за ним нечем рисковать.
 		if randf() < 0.5:
@@ -838,6 +882,16 @@ var _ev_ally: Node3D = null
 func _defend_2(q: Dictionary) -> void:
 	var key := "defend"
 	if _ev_abandoned(q, key):
+		return
+	if not _ev_mobs.has(key):
+		# Состояние потеряно (перезаход): союзник и налётчики появляются заново, иначе
+		# пустая ссылка на союзника читалась бы как «его добили».
+		var at = _ev_get_point(key, DEFEND_DIST)
+		if at != null:
+			var ally: Array = _ev_spawn(key, at as Vector3, [6], 0)
+			if not ally.is_empty():
+				_ev_ally = ally[0]
+				_ev_spawn(key, (at as Vector3) + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
 		return
 	# Союзника добили — защищать больше некого. Это не поражение с наказанием, а снятое
 	# задание: цель исчезла не по вине игрока (см. Q.skip_quest).
@@ -903,13 +957,18 @@ func _camp_1(q: Dictionary) -> void:
 	if not _ev_mobs.has(key):
 		var at: Vector3 = _ev_point[key] as Vector3
 		_ev_spawn(key, at, [7, 8, 9], 1, _player())
-		_props.drop_near("event_camp", G.Block.PACKER, at)
+		_props.ensure("event_camp", G.Block.PACKER, at)
 		Dialogue.say("System", "That is a staging point, not a patrol. Take it apart.")
 	Q.report(String(q["event"]), 1)
 
 func _camp_2(q: Dictionary) -> void:
 	var key := "camp"
 	if _ev_abandoned(q, key):
+		return
+	if not _ev_mobs.has(key):
+		var at = _ev_get_point(key, CAMP_DIST)      # состояние потеряно — охрана снова на точке
+		if at != null:
+			_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())
 		return
 	if not _ev_all_dead(key):
 		return
