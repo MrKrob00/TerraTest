@@ -29,14 +29,23 @@ var _mouse_look_dx: float = 0.0   # накопленный сдвиг мыши �
 var _mouse_look_dy: float = 0.0   # то же по Y — наклон взгляда
 
 const PITCH_SPEED := 1.4          # рад/с от джойстика
-const PITCH_MIN := -0.35          # ~−20°: смотреть вниз
-const PITCH_MAX := 0.66           # ~+38°: смотреть вдаль, к горизонту
+## ВЗГЛЯД СИММЕТРИЧЕН: вниз ровно столько же, сколько вверх. Раньше вниз было всего −20° при
+## +38° вверх — ограничение стояло «на всякий случай», а на деле мешало: под колёса, на
+## клетку перед носом и на разложенный конвейер посмотреть было нельзя, камера упиралась.
+const PITCH_MAX := 0.66           # ~±38°: вверх к горизонту и настолько же вниз, под машину
+const PITCH_MIN := -PITCH_MAX
 var gaze_pitch: float = 0.0
-# В СТРОЙКЕ разрешаем заглянуть ПОД машину (ставить блоки снизу): смотрим сильнее вверх, и чем
-# выше взгляд — тем ниже уходит камера (под днище). Машина в стройке парит, поэтому камере можно
-# опуститься ближе к земле, чем обычные 8 м.
-const BUILD_PITCH_MAX := 1.4      # ~+80° вверх в стройке
+## Взгляд ВНИЗ ещё и ПРИПОДНИМАЕТ камеру: одним наклоном машина закрыла бы собой ровно то
+## место, куда игрок смотрит. Метры при полном наклоне.
+const PITCH_DOWN_LIFT := 3.5
+# В СТРОЙКЕ взгляд двигает камеру ПО ВЫСОТЕ вокруг машины, а не наклоняет вид: вверх — под
+# днище (ставить блоки снизу), вниз — НАД машиной (ставить на крышу). Машину в кадре в обе
+# стороны держит look_at сам, поэтому доворачивать вид не нужно. Машина в стройке парит,
+# поэтому камере можно опуститься ближе к земле, чем обычные 8 м.
+const BUILD_PITCH_MAX := 1.4      # ~+80°: полностью под машину
+const BUILD_PITCH_MIN := -1.0     # ~−57°: полностью над машиной
 const BUILD_UNDER_DROP := 5.0     # насколько камера уходит НИЖЕ машины при полном взгляде вверх
+const BUILD_OVER_LIFT := 9.0      # и насколько ВЫШЕ при полном взгляде вниз
 const BUILD_MIN_CLEARANCE := 1.5  # в стройке камере можно ближе к земле
 
 const TOUCH_LOOK_SENS := 0.006    # рад/пиксель свайпа (тач крупнее мыши)
@@ -185,9 +194,10 @@ func camera_movement(_delta):
 	if G.cam_invert_y:
 		pitch = -pitch                     # инверсия вертикали (настройка)
 	var pmax := BUILD_PITCH_MAX if _in_build() else PITCH_MAX
+	var pmin := BUILD_PITCH_MIN if _in_build() else PITCH_MIN
 	if pitch != 0.0:
-		gaze_pitch = clampf(gaze_pitch + pitch, PITCH_MIN, pmax)
-	gaze_pitch = clampf(gaze_pitch, PITCH_MIN, pmax)   # ре-кламп при смене режима (вышел из стройки)
+		gaze_pitch = clampf(gaze_pitch + pitch, pmin, pmax)
+	gaze_pitch = clampf(gaze_pitch, pmin, pmax)        # ре-кламп при смене режима (вышел из стройки)
 	if turn != 0.0:
 		angle += turn
 		is_locked = false
@@ -201,10 +211,16 @@ func camera_movement(_delta):
 	var cam_h := CAM_HEIGHT
 	var min_clear := MIN_GROUND_CLEARANCE
 	if _in_build():
-		# Заглянуть ПОД машину: чем выше смотрим (gaze_pitch↑), тем ниже уходит камера (под днище).
+		# Камера ЕЗДИТ ПО ВЫСОТЕ вокруг машины: вверх взгляд — уходит под днище, вниз —
+		# поднимается над крышей. Машину в кадре держит look_at, поэтому вид не доворачиваем.
 		var under := clampf(gaze_pitch / BUILD_PITCH_MAX, 0.0, 1.0)
-		cam_h = lerpf(CAM_HEIGHT, -BUILD_UNDER_DROP, under)
+		var over := clampf(-gaze_pitch / -BUILD_PITCH_MIN, 0.0, 1.0)
+		cam_h = lerpf(CAM_HEIGHT, -BUILD_UNDER_DROP, under) + BUILD_OVER_LIFT * over
 		min_clear = BUILD_MIN_CLEARANCE
+	elif gaze_pitch < 0.0:
+		# Смотрим ВНИЗ — приподнимаем камеру, иначе на землю перед машиной смотришь сквозь
+		# саму машину: она закрывает ровно то место, ради которого наклон и делали.
+		cam_h += PITCH_DOWN_LIFT * clampf(-gaze_pitch / -PITCH_MIN, 0.0, 1.0)
 	var offset := Vector3(RADIUS * sin(angle), cam_h, RADIUS * cos(angle))
 	# Минимум min_clear над террейном: если точку камеры поджал рельеф — поднимаем её вертикально
 	# (взгляд всё равно на машину). В стройке порог ниже, чтобы камера могла уйти под парящую машину.

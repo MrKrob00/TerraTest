@@ -175,6 +175,7 @@ script = ExtResource("2_dk5gl")
 shape = SubResource("BoxShape3D_vk1bi")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=1109012443]
+cast_shadow = 0
 mesh = SubResource("PlaneMesh_8iju2")
 
 [node name="turret" type="MeshInstance3D" parent="." unique_id=88448033]
