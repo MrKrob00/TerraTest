@@ -905,33 +905,45 @@ func _process(delta: float) -> void:
 	_sync_mode_visuals()      # дешёвый сторож: работает только когда режим реально сменился
 	Perf.mark("hud", _pf)
 	if _perf_panel != null and _perf_panel.visible:
-		_update_perf_panel()
+		_update_perf_panel(delta)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ПАНЕЛЬ ПРОФИЛЯ (тап по счётчику FPS, на ПК — F3)
+# PROFILER PANEL  (tap the FPS counter; F3 on desktop)
 # ══════════════════════════════════════════════════════════════════════════════
-# Отвечает на два вопроса, на которые нельзя ответить спором: «это физика или рендер» и
-# «что именно съедает кадр». Первый решают счётчики ДВИЖКА (время процесса и физики против
-# времени кадра), второй — наши метки по системам (perf.gd).
+# Answers the two questions an argument cannot: "is it physics or rendering" and "which
+# system eats the frame". The engine answers the first (process vs physics vs frame time),
+# our own marks (perf.gd) answer the second.
 #
-# Читать так:
-#   • proc + phys ≈ frame  → упёрлись в ПРОЦЕССОР, и виновник виден в таблице снизу;
-#   • proc + phys ≪ frame  → упёрлись в ВИДЕО (draw calls, перерисовка, шейдеры) либо
-#     в саму физику внутри движка (её время сюда не входит: TIME_PHYSICS_PROCESS — это
-#     только наши _physics_process, а не решение контактов). Тогда смотри phys3d: active
-#     и pairs — при развале машины именно они и взлетают.
+# How to read it:
+#   • process ≈ frame        → the frame IS the idle step: our scripts and everything else
+#                              that runs there. The breakdown below says what exactly.
+#   • process ≪ frame        → the cost is elsewhere: the GPU, or waiting on vsync.
+#   • "не учтено" is large   → the time goes to code that carries no mark yet. That number
+#                              existing at all is the point: without it the table looks
+#                              complete while accounting for a fifth of the frame.
 #
-# Панель СТОИТ денег, поэтому замер включается только вместе с ней.
+# Physics time is NOT added to process time, and there is no percentage of the frame: a
+# physics tick is not a frame, it runs at its own rate (60 Hz), so a sum of the two could
+# exceed the frame and did — it read "140% кадра", which is nonsense.
+#
+# Measuring costs something, so it is enabled only while the panel is open.
 var _perf_panel: PanelContainer = null
 var _perf_label: Label = null
+## Marks taken inside _physics_process — they belong to the physics budget, not the idle one.
+const PERF_PHYS_KEYS := ["machines", "enemies", "weapons", "wheels", "factory", "bullets", "camera"]
+## The panel is refreshed a few times per second, not every frame: numbers that change 60
+## times a second cannot be read, and the panel itself would distort what it measures.
+const PERF_REFRESH := 0.25
+var _perf_t: float = 0.0
 
 func _toggle_perf_panel() -> void:
 	if _perf_panel == null:
 		_build_perf_panel()
 	_perf_panel.visible = not _perf_panel.visible
 	Perf.enabled = _perf_panel.visible
-	# Рельеф — ЧУЖОЙ аддон и про наш профайлер не знает: он зовёт Callable, который ему дают
-	# снаружи. Пустой Callable = замер выключен, поэтому снимаем его вместе с панелью.
+	# The terrain is a SELF-CONTAINED addon and knows nothing about our profiler: it calls a
+	# Callable handed to it from outside. An empty one means measuring is off, so it goes away
+	# together with the panel.
 	var terr := get_node_or_null("/root/Main/map")
 	if terr != null and "perf_sink" in terr:
 		terr.set("perf_sink", Perf.mark if Perf.enabled else Callable())
@@ -941,7 +953,7 @@ func _toggle_perf_panel() -> void:
 func _build_perf_panel() -> void:
 	_perf_panel = PanelContainer.new()
 	_perf_panel.add_theme_stylebox_override("panel", _make_panel_style())
-	_perf_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # сквозь панель должно нажиматься
+	_perf_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # taps must pass through the panel
 	_perf_panel.position = Vector2(8, 8)
 	_perf_panel.visible = false
 	_perf_label = Label.new()
@@ -951,26 +963,40 @@ func _build_perf_panel() -> void:
 	_perf_panel.add_child(_perf_label)
 	add_child(_perf_panel)
 
-func _update_perf_panel() -> void:
+func _update_perf_panel(delta: float) -> void:
+	_perf_t -= delta
+	if _perf_t > 0.0:
+		return
+	_perf_t = PERF_REFRESH
 	var frame_ms: float = 1000.0 / maxf(Engine.get_frames_per_second(), 1.0)
 	var proc_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
 	var phys_ms: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
 	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
 	var objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
 	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
-	var p_active: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS))
-	var p_pairs: int = int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))
 	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+
+	# Per-system marks, split into the two budgets they were taken in.
+	var snap: Dictionary = Perf.snapshot()
+	var proc_marked: float = 0.0
+	var phys_marked: float = 0.0
+	for k in snap:
+		var ms: float = float(snap[k]) / 1000.0
+		if PERF_PHYS_KEYS.has(String(k)):
+			phys_marked += ms
+		elif not String(k).contains("."):     # "terrain.lod" is part of "terrain", not extra
+			proc_marked += ms
 
 	var lines: Array[String] = []
 	lines.append("%d FPS · кадр %.1f мс" % [int(Engine.get_frames_per_second()), frame_ms])
-	# ГЛАВНАЯ строка: сколько кадра забрали НАШИ скрипты. Остаток — движок: рендер, решение
-	# контактов, драйвер. Именно эта разница и отвечает «физика или рендер».
-	lines.append("скрипты: process %.1f + physics %.1f = %.1f мс (%.0f%% кадра)"
-			% [proc_ms, phys_ms, proc_ms + phys_ms, 100.0 * (proc_ms + phys_ms) / maxf(frame_ms, 0.01)])
+	lines.append("process %.1f мс (учтено %.1f, не учтено %.1f)"
+			% [proc_ms, proc_marked, maxf(proc_ms - proc_marked, 0.0)])
+	lines.append("physics %.1f мс/тик (учтено %.1f, не учтено %.1f) — в него входит и сам Jolt"
+			% [phys_ms, phys_marked, maxf(phys_ms - phys_marked, 0.0)])
 	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
-	lines.append("физика3D: %d активных · %d пар контактов" % [p_active, p_pairs])
 
+	# Bodies are counted BY HAND. Godot's PHYSICS_3D_* monitors stay at zero under Jolt, and a
+	# line of zeros is worse than no line: it reads as "physics is idle" when it is not.
 	var o := get_node_or_null("/root/Main/objects")
 	if o != null:
 		var awake := 0
@@ -983,22 +1009,29 @@ func _update_perf_panel() -> void:
 				culled += 1
 		lines.append("в мире: %d предметов (%d не спят, %d погашено)"
 				% [o.get_child_count(), awake, culled])
+	var vehicles := get_node_or_null("/root/Main/Vehicles")
+	if vehicles != null:
+		var blocks_total := 0
+		for v in vehicles.get_children():
+			var bl := v.get_node_or_null("blocks")
+			if bl != null:
+				blocks_total += bl.get_child_count()
+		lines.append("машин: %d (блоков на них %d)" % [vehicles.get_child_count(), blocks_total])
 
-	# Плитки коллизии рельефа: каждое НЕспящее тело держит свой кусок heightfield, и на
-	# развале машины их число взлетает — по этой строке видно, оно или нет.
+	# Terrain collision tiles: every non-sleeping body holds its own patch of heightfield open,
+	# so this line is what tells a terrain problem apart from a loose-block problem.
 	var terr := get_node_or_null("/root/Main/map")
 	if terr != null and terr.has_method("collision_stats"):
 		var cs: Vector2i = terr.collision_stats()
 		lines.append("коллизия рельефа: %d плиток под %d телами" % [cs.x, cs.y])
 
-	var snap: Dictionary = Perf.snapshot()
 	var keys: Array = snap.keys()
 	keys.sort_custom(func(a, b): return float(snap[a]) > float(snap[b]))
 	var parts: Array[String] = []
 	for k in keys:
-		var ms: float = float(snap[k]) / 1000.0
-		if ms >= 0.05:
-			parts.append("%s %.1f" % [k, ms])
+		var ms2: float = float(snap[k]) / 1000.0
+		if ms2 >= 0.05:
+			parts.append("%s %.1f" % [k, ms2])
 	lines.append("по системам, мс: " + (", ".join(parts) if not parts.is_empty() else "—"))
 	lines.append("узлов %d" % nodes)
 	_perf_label.text = "\n".join(lines)

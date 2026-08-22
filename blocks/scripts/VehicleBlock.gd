@@ -278,7 +278,32 @@ func _on_parent_changed() -> void:
 	await get_tree().process_frame
 	if get_parent() == null:
 		return
-	freeze = not (get_parent().name == "objects")
+	var loose: bool = get_parent().name == "objects"
+	freeze = not loose
+	_set_debris_render(loose)
+
+## A block lying in the world is DEBRIS, and debris is rendered cheaply.
+##
+## Measured on a phone: a loose block costs about five draw calls, and fifty of them on the
+## ground took the frame from 50 fps to 15. Half of that is the shadow pass — every casting
+## mesh is drawn a second time into the shadow map — and the damage overlay adds one more draw
+## with its own shader on top.
+##
+## Neither is worth anything on a pile of debris: nobody reads hit points off scrap, and the
+## shadow of a small block lying on the ground is a few dark pixels. Both come back the moment
+## the block is bolted onto a machine again, where they do matter.
+func _set_debris_render(loose: bool) -> void:
+	if is_instance_valid(_hp_fx):
+		_hp_fx.visible = not loose and current_hp < max_hp
+	_set_shadows(self, not loose)
+
+func _set_shadows(n: Node, on: bool) -> void:
+	var mi := n as GeometryInstance3D
+	if mi != null and mi != _hp_fx:
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_set_shadows(c, on)
 
 func hurt(damage: int = 10) -> void:
 	current_hp -= damage
@@ -350,7 +375,9 @@ func _fuse_blow() -> void:
 # оверлей создаётся лениво на первом уроне, чтобы целые блоки не плодили узлы.
 func _refresh_hp_fx() -> void:
 	var dmg := 1.0 - float(current_hp) / float(maxi(max_hp, 1))
-	if dmg <= 0.001:
+	# Debris carries no damage overlay (see _set_debris_render): an extra draw call and a
+	# shader each, on numbers nobody reads off a pile of scrap.
+	if dmg <= 0.001 or (get_parent() != null and get_parent().name == "objects"):
 		if is_instance_valid(_hp_fx):
 			_hp_fx.visible = false
 		return

@@ -98,6 +98,11 @@ func _make_stamp_texture() -> Texture2D:
 	return ImageTexture.create_from_image(img)
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_grass(delta)
+	Perf.mark("grass", _pf)
+
+func _tick_grass(delta: float) -> void:
 	if not _initialized:
 		return
 	_time += delta

@@ -218,6 +218,14 @@ var _chunk_stitch_sig: Array[int] = []
 
 var _chunks_x:      int = 0
 var _lod_timer:     float = 0.0
+## Throttle for the quadtree descend (culling + LOD selection). See _process for why it does
+## not have to run every frame.
+const QT_MAX_HZ:    float = 30.0
+const QT_STILL_EPS2: float = 0.04     # 0.2 m, squared: below this the camera counts as still
+const QT_STILL_COS:  float = 0.9995   # ~1.8 degrees of turn
+var _qt_timer:      float = 0.0
+var _qt_last_pos:   Vector3 = Vector3(1e9, 1e9, 1e9)
+var _qt_last_fwd:   Vector3 = Vector3.FORWARD
 
 # ── Streaming collision runtime state ─────────────────────────────────────────
 var _col_active: bool       = false
@@ -2259,15 +2267,30 @@ func _process(delta: float) -> void:
 		_pf_mark("terrain.stream", _pf)
 
 	# ── Quadtree frustum culling + LOD selection ──────────────────────────────
-	# One descend from the root each frame handles culling AND macro/chunk LOD; the
-	# heavier work (per-chunk LOD reassignment + seam-stitch rebuilds) is throttled.
+	# One descend from the root handles culling AND macro/chunk LOD; the heavier work
+	# (per-chunk LOD reassignment + seam-stitch rebuilds) is throttled on top of that.
 	_lod_timer += delta
 	var do_lod := _lod_timer >= LOD_UPDATE_INTERVAL
 	if do_lod:
 		_lod_timer = 0.0
-	var _pf_qt := _pf_now()
-	_qt_update(do_lod)
-	_pf_mark("terrain.lod", _pf_qt)
+	# The descend walks the whole tree in GDScript and was the single most expensive thing the
+	# terrain did per frame (2-3 ms measured). It does NOT have to run at frame rate: the
+	# frustum test already carries a macro-sized margin, which is exactly the slack that covers
+	# a frame or two of lag at the screen edge. So cap it at QT_MAX_HZ, and skip it entirely
+	# while the camera is not moving — a still camera cannot change what is visible.
+	# Streaming is the exception: during a load new chunks must be shown as they arrive.
+	_qt_timer += delta
+	var cam_pos: Vector3 = _cam.global_position
+	var cam_fwd: Vector3 = -_cam.global_transform.basis.z
+	var still: bool = cam_pos.distance_squared_to(_qt_last_pos) < QT_STILL_EPS2 \
+			and cam_fwd.dot(_qt_last_fwd) > QT_STILL_COS
+	if do_lod or _is_streaming or (_qt_timer >= 1.0 / QT_MAX_HZ and not still):
+		_qt_timer = 0.0
+		_qt_last_pos = cam_pos
+		_qt_last_fwd = cam_fwd
+		var _pf_qt := _pf_now()
+		_qt_update(do_lod)
+		_pf_mark("terrain.lod", _pf_qt)
 
 	# ── Occlusion culling (throttled) ─────────────────────────────────────────
 	if enable_occlusion_culling:

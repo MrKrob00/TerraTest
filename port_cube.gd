@@ -51,13 +51,19 @@ const DIR_NAME := ["FRONT −Z", "BACK +Z", "LEFT −X", "RIGHT +X", "TOP +Y", "
 ## Короткое имя стороны — его пишем ПРЯМО НА ГРАНИ, под состоянием.
 const SHORT_NAME := ["front", "back", "left", "right", "top", "bottom"]
 
-## Две изометрии, смотрящие с противоположных углов. Базис задан образами осей X/Y/Z на
-## экране; ядро этого отображения — (1,1,1), то есть смотрим ровно вдоль диагонали куба, и
-## видно ровно три грани. Второй вид — тот же базис со сменённым знаком: видно другие три.
+## Two isometric views from opposite corners. The basis is given as the screen images of the
+## X/Y/Z axes; its kernel is (1,1,1), i.e. we look straight down the cube diagonal and see
+## exactly three faces. The second view flips the two HORIZONTAL axes only, which walks the
+## camera around and under the block — the other three faces.
+##
+## Y IS UP IN BOTH VIEWS (ay = (0,-1); screen Y grows downwards). The second view used to
+## negate ay as well, which was a point reflection rather than a viewpoint: the block came out
+## upside down, its bottom face drawn where the top belongs, and nothing lined up with the
+## block as it stands in the world. Now the bottom face is seen FROM BELOW, at the bottom.
 const VIEWS := [
 	{"ax": Vector2(0.866, 0.5), "ay": Vector2(0.0, -1.0), "az": Vector2(-0.866, 0.5),
 	 "faces": [3, 4, 1], "cap": "right · top · back"},
-	{"ax": Vector2(-0.866, -0.5), "ay": Vector2(0.0, 1.0), "az": Vector2(0.866, -0.5),
+	{"ax": Vector2(-0.866, -0.5), "ay": Vector2(0.0, -1.0), "az": Vector2(0.866, -0.5),
 	 "faces": [2, 5, 0], "cap": "left · bottom · front"},
 ]
 
