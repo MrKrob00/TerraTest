@@ -32,8 +32,10 @@ func _track_target(delta: float, firing: bool) -> void:
 		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -YAW_LIMIT, YAW_LIMIT)
 		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
 		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 12.0 * delta)
+		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)   # та же наводка по модели, что у пушки
 	else:
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
+		_aim_model(0.0, 0.0, delta)
 
 # Ракета во что-то попала → ВЗРЫВ (AOE), а не одиночный урон базового WeaponBlock.
 func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:

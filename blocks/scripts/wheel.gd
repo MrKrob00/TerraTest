@@ -46,14 +46,20 @@ var contact_distance: float = INF
 # %wheel — это ПОКРЫШКА внутри модуля колеса; её родитель и есть модуль. Катим покрышку,
 # рулим модулем. Ссылки берём один раз: has_node("%wheel") каждый физкадр — лишний поиск.
 var _tyre: Node3D = null
+var _tyre_rest: Basis = Basis()
+var _spin: float = 0.0                 # накопленный угол качения покрышки
 var _module: Node3D = null
 var _module_rest: Basis = Basis()
 var _module_rest_pos: Vector3 = Vector3.ZERO
+## Части, которые ПОВОРАЧИВАЮТСЯ ПРИ РУЛЕНИИ: {node, rest}. В модели это стойка
+## Wheel_susp_high — она и есть поворотный кулак.
+var _steer_parts: Array[Dictionary] = []
 
 func _ready() -> void:
 	super._ready()
 	_tyre = get_node_or_null("%wheel") as Node3D
 	if _tyre != null:
+		_tyre_rest = _tyre.transform.basis
 		var p: Node = _tyre.get_parent()
 		# Родитель — модуль, только если это не сам корень колеса: рулить корнем нельзя,
 		# на нём висит коллизия.
@@ -96,6 +102,13 @@ func _collect_suspension() -> void:
 		if n3 == null or n3 == _tyre:
 			continue
 		var nm: String = n3.name.to_lower()
+		# ПОВОРОТНЫЙ КУЛАК: при рулении крутится он, а не весь модуль (см. _steer_wheel).
+		# Заодно он всегда идёт в «стойки» — ходит по вертикали и НЕ разбирается как рычаг:
+		# рычаг правит и поворот, и позицию, то есть затирал бы руление.
+		if nm.contains("susp_high"):
+			_steer_parts.append({"node": n3, "rest": n3.transform.basis})
+			_riders.append({"node": n3, "rest": n3.position, "factor": STRUT_FACTOR})
+			continue
 		# Ось держит колесо — идёт с ним целиком, без всякой геометрии.
 		if nm.contains("axle"):
 			_riders.append({"node": n3, "rest": n3.position, "factor": 1.0})
@@ -223,7 +236,7 @@ func _physics_process(delta: float) -> void:
 	var target_angle: float = deg_to_rad(steer_input * MAX_STEER_ANGLE)
 	current_steer_angle = lerp(current_steer_angle, target_angle, STEER_SPEED * delta)
 
-	_steer_module()
+	_steer_wheel()
 	_apply_suspension_visual()
 	if throttle_input != 0.0 and _tyre != null:
 		# Колесо крепится то через грань "left", то "right" (±90° по Y, см. _face_orient
@@ -232,18 +245,27 @@ func _physics_process(delta: float) -> void:
 		# Компенсируем знаком по стороне (X-позиция колеса от центра машины, см. _on_take_pressed:
 		# position = Vector3(x-5, y-5, z-5) относительно $blocks — сетка 11³, центр 5).
 		var side := -1.0 if position.x < 0.0 else 1.0
-		_tyre.rotation.y += side * throttle_input * delta * SPIN_SPEED
+		# Покрышка катится вокруг СВОЕЙ оси X: вперёд +x, назад −x (так собрана модель).
+		# Угол копим сами и умножаем базис справа, а не пишем rotation.x: у покрышки в сцене
+		# запечён свой разворот, и присваивание одной эйлеровой компоненты его бы разрушило.
+		_spin += side * throttle_input * delta * SPIN_SPEED
+		_tyre.transform.basis = _tyre_rest * Basis(Vector3.RIGHT, _spin)
 
-# Рулим ВЕСЬ модуль колеса (шина + ось + подвеска), а не одну шину: иначе покрышка
-# отворачивалась, а подвеска оставалась смотреть прямо.
+# РУЛИТ ПОВОРОТНЫЙ КУЛАК (Wheel_susp_high), а не весь модуль. Модуль — это крепление к
+# кузову, оно приколочено намертво и разворачиваться вместе с колесом не должно: раньше при
+# повороте руля уезжала вся стойка вместе с точкой крепления.
 #
-# Поворачиваем от ЗАПОМНЕННОГО положения покоя вокруг вертикали РОДИТЕЛЯ, а не через
-# rotation.y: у модуля в сцене запечён свой разворот (художник ориентировал модель), и
-# присваивание одной эйлеровой компоненты его бы разрушило.
-func _steer_module() -> void:
-	if _module == null:
-		return
-	_module.transform.basis = _module_rest.rotated(Vector3.UP, current_steer_angle)
+# Ось поворота — СВОЯ Z кулака: влево −Z, вправо +Z (так собрана модель). Знак минус потому,
+# что положительный current_steer_angle — это поворот ВЛЕВО (он же крутил модуль на +Y, а
+# +Y уводит нос машины, смотрящий в −Z, влево).
+#
+# Крутим от ЗАПОМНЕННОГО покоя и умножением справа: у детали свой запечённый разворот и
+# неединичный масштаб, и присваивание rotation.z разрушило бы и то, и другое.
+func _steer_wheel() -> void:
+	for s in _steer_parts:
+		var n: Node3D = s["node"]
+		if is_instance_valid(n):
+			n.transform.basis = (s["rest"] as Basis) * Basis(Vector3.BACK, -current_steer_angle)
 
 # Ход подвески ВИЗУАЛЬНО: кузов ходит вверх-вниз, а колесо обязано остаться на земле.
 # Раньше на эту величину дёргался ВЕСЬ модуль — вместе с креплением, которое приколочено к
