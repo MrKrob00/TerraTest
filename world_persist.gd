@@ -54,13 +54,16 @@ func _notification(what: int) -> void:
 		_save_world()
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()                          # метка для панели профиля (perf.gd)
 	_cull_tick(delta)                              # гасим то, что за спиной (свой период, чаще)
 	_tick += delta
 	if _tick < 1.0:
+		Perf.mark("world", _pf)
 		return
 	_tick = 0.0
 	_expire_world_blocks()                         # деспавн свободных блоков старше 10 мин
 	_rescue_fallen()                               # машина провалилась сквозь рельеф — вернуть наверх
+	Perf.mark("world", _pf)
 
 # ── Отсечение того, что ЗА СПИНОЙ ────────────────────────────────────────────
 # Свободный блок в мире — это не только меш (его движок и так не рисует за камерой), но и

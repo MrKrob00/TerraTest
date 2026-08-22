@@ -251,6 +251,7 @@ func _process(delta: float) -> void:
 	if _cull_t > 0.0:
 		return
 	_cull_t = cull_interval
+	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
@@ -269,6 +270,7 @@ func _process(delta: float) -> void:
 			_stream_in(v)
 		elif not near and shown:
 			_stream_out(v)
+	Perf.mark("veins", _pf)
 
 
 # Родитель, умеющий отвечать как карта. null, если не дождались.

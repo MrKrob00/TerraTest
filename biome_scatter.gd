@@ -184,6 +184,7 @@ func _process(delta: float) -> void:
 	_cull_t -= delta
 	if _cull_t > 0.0:
 		return
+	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
 	_cull_t = cull_interval
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
@@ -197,6 +198,7 @@ func _process(delta: float) -> void:
 			_spawn(v)
 		elif not near and has:
 			_despawn(v)
+	Perf.mark("props", _pf)
 
 func _spawn(v: Dictionary) -> void:
 	var node: Node3D = (v["scene"] as PackedScene).instantiate()
