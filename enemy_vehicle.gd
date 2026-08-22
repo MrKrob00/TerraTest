@@ -184,33 +184,8 @@ func _die() -> void:
 	_pay_out()
 	Q.report("enemy_killed", 1)             # прогресс боевых заданий
 	died.emit(self)
-	_eject_blocks()
+	scatter_blocks(_cabin)    # общий разлёт из MachineBody: у игрока он тот же
 	queue_free()
-
-# Роняем уцелевшие блоки в мир С РАЗЛЁТОМ от кабины — как у машины игрока
-# (vehicle_body_3d._scatter_blocks): reparent -> freeze=false -> импульс напрямую.
-func _eject_blocks() -> void:
-	var objects := get_node_or_null("/root/Main/objects")
-	var blocks_node := get_node_or_null("blocks")
-	if objects == null or blocks_node == null:
-		return
-	var cabin_pos: Vector3 = global_position
-	if _cabin != null and is_instance_valid(_cabin) and _cabin is Node3D:
-		cabin_pos = (_cabin as Node3D).global_position
-	for b in blocks_node.get_children():          # get_children() — снимок, reparent безопасен
-		if b.get("block") == G.Block.CABIN:
-			continue                              # кабина уничтожена — не роняем
-		if b is Node3D:
-			var n3 := b as Node3D
-			n3.reparent(objects)                  # keep_global_transform=true → блок на месте
-			if n3 is RigidBody3D:
-				var rb := n3 as RigidBody3D
-				var dir := (rb.global_position - cabin_pos)
-				dir.y = 0.0
-				dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
-				rb.freeze = false
-				rb.sleeping = false
-				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
 func _setup_detection_area() -> void:
 	var area: Area3D = Area3D.new()
