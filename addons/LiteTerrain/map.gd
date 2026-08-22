@@ -616,10 +616,14 @@ func _update_collision_cells() -> void:
 	var desired := {}
 	var dead := false
 	for b in _col_bodies:
-		var body: Node3D = b["body"]
-		if body == null or not is_instance_valid(body):
+		# БЕЗ ТИПА: присваивание освобождённого узла типизированной переменной падает САМО
+		# («Trying to assign invalid previously freed instance») — до всякой проверки ниже.
+		# Ссылка на удалённый узел не равна null, поэтому и проверка нужна именно такая.
+		var raw = b["body"]
+		if raw == null or not is_instance_valid(raw):
 			dead = true
 			continue
+		var body: Node3D = raw
 		# GAME HOOK (TerraTest): a body flagged "asleep" gets no ground. Dormant enemies are
 		# frozen and their whole branch is process-disabled (enemy_spawner._sleep), yet they
 		# were still holding a full collision window open on the far side of the map — the

@@ -390,7 +390,16 @@ func find_block(x: int, y: int, z: int) -> Node3D:
 		return null
 	# Любая клетка многоклеточного блока ведёт к его якорному узлу.
 	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
-	return node_map.get(anchor, null)
+	var n = node_map.get(anchor, null)
+	# УЗЕЛ МОГ БЫТЬ УЖЕ УДАЛЁН, а запись о нём в карте — остаться: блок гибнет через
+	# queue_free, и путей к этому несколько (взрыв, разбор, смена сборки). Ссылка на
+	# освобождённый узел НЕ равна null, и возврат её из типизированной функции роняет вызов
+	# («Trying to return a previously freed instance») — именно так падал обход связности
+	# после отрыва блоков. Заодно ЧИСТИМ запись: иначе следующий вызов споткнётся о неё же.
+	if n != null and not is_instance_valid(n):
+		node_map.erase(anchor)
+		return null
+	return n
 
 func _in_bounds(x: int, y: int, z: int) -> bool:
 	return (
