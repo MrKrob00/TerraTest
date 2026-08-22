@@ -120,6 +120,7 @@ script = ExtResource("3_bullet")
 shape = SubResource("SeparationRayShape3D_6vqwg")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=2103590166]
+cast_shadow = 0
 mesh = SubResource("PlaneMesh_g6b45")
 
 [node name="lazer" parent="." unique_id=1802065757 instance=ExtResource("4_7vci3")]

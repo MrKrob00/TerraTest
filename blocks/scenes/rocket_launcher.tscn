@@ -234,11 +234,13 @@ max_lifetime = 4.0
 shape = SubResource("BoxShape3D_rocket")
 
 [node name="RocketMesh" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=1152120349]
+cast_shadow = 0
 transform = Transform3D(0.8233606, -0.043246478, 0, 0.043246478, 0.8233606, 0, 0, 0, 0.8244958, 0.0029559883, 0.07498054, 0.08012262)
 mesh = SubResource("ArrayMesh_f8ae5")
 skeleton = NodePath("")
 
 [node name="Exhaust" type="MeshInstance3D" parent="Ammo/Bullet" unique_id=1232411930]
+cast_shadow = 0
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.3)
 mesh = SubResource("Mesh_exhaust")
 

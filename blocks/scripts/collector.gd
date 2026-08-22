@@ -55,10 +55,26 @@ func remove_from_inventory(item: Node) -> void:
 	inventory.erase(item)
 
 func fix_position_resources(body:Node3D):
-	body.position = Vector3(0,inventory.find(body)+1,0)
+	if not is_instance_valid(body):
+		return                     # предмет забрали и уничтожили, пока вызов ждал кадра
+	body.position = Vector3(0, maxi(inventory.find(body), 0) + 1, 0)
 
+# Столбик добычи над блоком. Сперва ЧИСТИМ список, потом раскладываем — и в таком порядке
+# по двум причинам.
+#
+# Во-первых, ссылка на освобождённый узел НЕ равна null: руду у коллектора забирает приёмник,
+# дальше она уезжает по ленте и может быть переплавлена или продана — то есть узла уже нет, а
+# в списке он ещё есть. Проверять его через get_parent() значило падать на мёртвом узле
+# («Attempt to call function 'get_parent' in base 'previously freed'»), поэтому фильтруем
+# по is_instance_valid.
+#
+# Во-вторых, erase ПРЯМО В ЦИКЛЕ по тому же массиву сдвигает хвост, и обход пропускает
+# элемент за каждым удалённым — часть добычи оставалась лежать друг в друге.
 func _on_resources_child_order_changed() -> void:
-	for i in inventory:
-		if i.get_parent() != $resources:
-			inventory.erase(i)
-		else: i.position = Vector3(0,inventory.find(i)+1,0)
+	var holder := $resources
+	inventory = inventory.filter(func(i):
+		return is_instance_valid(i) and i.get_parent() == holder)
+	for idx in inventory.size():
+		var n := inventory[idx] as Node3D
+		if n != null:
+			n.position = Vector3(0, idx + 1, 0)
