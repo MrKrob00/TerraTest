@@ -54,12 +54,18 @@ func node_accepts_face(node: Node, face: String, cell: Vector3i = Vector3i.ZERO)
 # true, если структура — стационарная база (ставит vehicle при спавне с якорным ядром).
 var is_station: bool = false
 
-# Что можно ставить на СТАЦИОНАРНУЮ базу: другие стационары + обычные фабричные + каркас
-# (3Б — база-фабрика). Оружие/колёса/кабину на базу не ставим.
+# Что можно ставить на СТАЦИОНАРНУЮ базу. Запрещено ровно то, что базе физически не нужно:
+# КАБИНА (у базы своё ядро, вторая сделала бы из неё машину) и КОЛЁСА с опорами (база не
+# едет, и подвеска ей ни к чему).
+#
+# Оружие раньше тоже было в запрете, и это была ошибка проектирования, а не защита: игру
+# просят оборонять СВОЮ базу (квест «Hold the Line»), а поставить на неё турель было нельзя.
+# Всё остальное — фабрика, броня, каркас, энергетика — на базе осмысленно и разрешено.
+const _STATION_BANNED := [G.Block.CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL,
+		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL, G.Block.SUPPORT, G.Block.ROT_SUPPORT]
+
 func _allowed_on_station(bt: int) -> bool:
-	if G.is_stationary(bt) or bt == G.Block.BLOCK:
-		return true
-	return (G.BLOCK_CATEGORIES.get("factory", []) as Array).has(bt)
+	return not _STATION_BANNED.has(bt)
 
 ## Можно ли прицепить блок new_node к грани attach_face того, что стоит в клетке (nx,ny,nz).
 ## Клетку берём, а не тип: по ней достаём САМ УЗЕЛ соседа, а значит и его поворот — без

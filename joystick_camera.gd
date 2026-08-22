@@ -65,7 +65,7 @@ func _input(event):
 			if now - _press_ms < 250 and not zoom \
 					and (knob_pos - stick_center).length_squared() < max_distance * 0.3 * max_distance * 0.3:
 				if _had_pending:
-					$"../..".reset_gaze()   # второй быстрый тап подряд — сброс взгляда
+					pass   # сброс взгляда убран: двойной тап занят подбором блока
 				else:
 					_tap_ready_ms = now     # первый тап — ждём второго (третий не сдвоится)
 			_had_pending = false

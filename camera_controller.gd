@@ -85,8 +85,6 @@ func _input(event: InputEvent) -> void:
 			RADIUS = clampf(RADIUS - ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			RADIUS = clampf(RADIUS + ZOOM_STEP, ZOOM_MIN, ZOOM_MAX)
-		elif event.button_index == MOUSE_BUTTON_RIGHT and event.double_click:
-			reset_gaze()             # двойная ПКМ — взгляд снова ровно на машину
 
 # Тач-камера: сюда доходят только касания, НЕ съеденные UI (кнопки/глобус — Control-ы с
 # mouse_filter STOP их поглощают). Палец джойстика движения тоже пропускаем (по его индексу),
@@ -106,20 +104,10 @@ func _unhandled_input(event: InputEvent) -> void:
 				_tap_moved = false
 		else:
 			if _cam_touches.has(event.index):
-				# короткое касание без свайпа = тап; два тапа подряд — сброс взгляда на машину.
-				if _cam_touches.size() == 1 and not _tap_moved \
-						and Time.get_ticks_msec() - _tap_down_ms < 250:
-					var now := Time.get_ticks_msec()
-					# Гейт `not _in_build()` больше не нужен и был неверен: подбор блока и
-					# ресурса давно работает В ЛЮБОМ режиме, а не только в стройке. Сработавший
-					# двойной тап теперь гасится машиной (vehicle_body_3d._commit_build_tap →
-					# set_input_as_handled), и сюда просто не доходит — а если дошёл, значит
-					# тапнули в пустоту, и сброс взгляда там уместен.
-					if now - _last_tap_ms < DOUBLE_TAP_MS:
-						reset_gaze()
-						_last_tap_ms = -10000
-					else:
-						_last_tap_ms = now
+				# АВТО-ВОЗВРАТ ВЗГЛЯДА ПО ДВОЙНОМУ ТАПУ УБРАН. Двойной тап в этой игре значит
+				# «взять/поставить блок», и он же сбрасывал наклон камеры: игрок подбирал
+				# ресурс, а вид в тот же миг разворачивался. Вернуть взгляд ровно на машину
+				# по-прежнему можно (reset_gaze) — просто не жестом, занятым под другое.
 				_cam_touches.erase(event.index)
 			if _cam_touches.size() < 2:
 				_pinch_last = -1.0
