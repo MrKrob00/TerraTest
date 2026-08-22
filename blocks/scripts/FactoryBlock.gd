@@ -41,8 +41,10 @@ const PORT_OUT := 2
 ## FACE_VECS. Живёт также в раскладке машины (blocks.port_map), чтобы пережить сейв.
 var ports: Dictionary = {}
 
+## Ключ порта — тот же, что у стыковки (VehicleBlock.side_key): «клетка + сторона». Имя
+## оставлено своим, потому что им пользуются сцены блоков и окно портов.
 static func port_key(off: Vector3i, dir_idx: int) -> String:
-	return "%d,%d,%d|%d" % [off.x, off.y, off.z, dir_idx]
+	return VehicleBlock.side_key(off, dir_idx)
 
 ## ПОРТЫ ПО УМОЛЧАНИЮ — ключ той же формы, но в ЛОКАЛЬНЫХ осях блока и с ЛОКАЛЬНЫМ
 ## смещением клетки. Разница с ports принципиальная: ports правит игрок на конкретной машине,
@@ -52,11 +54,6 @@ static func port_key(off: Vector3i, dir_idx: int) -> String:
 ## ЭКСПОРТ, а не просто поле: их настраивают В РЕДАКТОРЕ, кубиком в инспекторе
 ## (addons/blockfaces), и значение обязано лежать в сцене блока, а не в коде.
 @export var port_defaults: Dictionary = {}
-## Центр футпринта В СМЕЩЕНИЯХ от якоря (у 2×2×2 это (-0.5, 0.5, -0.5)). Вокруг него и
-## крутим клетку при переводе в свои оси: смещения считаются от УГЛОВОЙ клетки, и поворот
-## вокруг неё уводил бы клетки за пределы блока.
-@export var cells_center := Vector3.ZERO
-
 ## Что делает эта клетка в эту сторону. Порядок ответов: правка игрока → умолчание сцены →
 ## маски граней. Не задано ничего — блок ведёт себя ровно как до появления портов.
 func port_state(off: Vector3i, dir_idx: int) -> int:
@@ -66,7 +63,7 @@ func port_state(off: Vector3i, dir_idx: int) -> int:
 	var def: int = _default_state(off, dir_idx)
 	if def >= 0:
 		return def
-	var d: Vector3i = _dir_of(dir_idx)
+	var d: Vector3i = dir_of(dir_idx)
 	if face_dirs(output_faces).has(d):
 		return PORT_OUT
 	if face_dirs(input_faces).has(d):
@@ -77,24 +74,13 @@ func port_state(off: Vector3i, dir_idx: int) -> int:
 func _default_state(off: Vector3i, dir_idx: int) -> int:
 	if port_defaults.is_empty():
 		return -1
-	var inv: Basis = basis.inverse()
-	var ld: Vector3 = (inv * Vector3(_dir_of(dir_idx))).round()
-	var li: int = _idx_of(Vector3i(int(ld.x), int(ld.y), int(ld.z)))
-	if li < 0:
-		return -1
-	var lo: Vector3 = (inv * (Vector3(off) - cells_center) + cells_center).round()
-	var lk := port_key(Vector3i(int(lo.x), int(lo.y), int(lo.z)), li)
-	return int(port_defaults[lk]) if port_defaults.has(lk) else -1
+	# Перевод «клетка + сторона» из осей карты в свои — общий с настройками стыковки
+	# (VehicleBlock._local_side): правило одно, и разъезжаться ему негде.
+	var lk := _local_side(off, dir_of(dir_idx))
+	return int(port_defaults[lk]) if lk != "" and port_defaults.has(lk) else -1
 
 func set_port(off: Vector3i, dir_idx: int, state: int) -> void:
 	ports[port_key(off, dir_idx)] = state
-
-## Направление по индексу — в осях КАРТЫ и прижатое к оси, тем же способом, что face_dirs.
-func _dir_of(dir_idx: int) -> Vector3i:
-	if dir_idx < 0 or dir_idx >= FACE_VECS.size():
-		return Vector3i.ZERO
-	var v: Vector3 = FACE_VECS[dir_idx]
-	return Vector3i(int(signf(v.x)), int(signf(v.y)), int(signf(v.z)))
 
 var current_item: Node3D = null
 var next_block: FactoryBlock = null       # текущая цель выдачи (одна из next_blocks)
@@ -114,19 +100,13 @@ func accepts_from(from_dir: Vector3i) -> bool:
 ## направления from_dir. Порт этой клетки должен смотреть навстречу — то есть быть входом
 ## в сторону −from_dir.
 func accepts_at(off: Vector3i, from_dir: Vector3i) -> bool:
-	var idx: int = _idx_of(-from_dir)
+	var idx: int = idx_of(-from_dir)
 	return idx >= 0 and port_state(off, idx) == PORT_IN
 
 ## Отдаёт ли клетка off в сторону dir.
 func outputs_at(off: Vector3i, dir: Vector3i) -> bool:
-	var idx: int = _idx_of(dir)
+	var idx: int = idx_of(dir)
 	return idx >= 0 and port_state(off, idx) == PORT_OUT
-
-func _idx_of(dir: Vector3i) -> int:
-	for i in FACE_VECS.size():
-		if _dir_of(i) == dir:
-			return i
-	return -1
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
 func _ready() -> void:

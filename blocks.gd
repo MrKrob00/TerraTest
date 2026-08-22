@@ -38,15 +38,17 @@ const FACE_DIR := {
 	"back": Vector3i(0, 0, 1), "front": Vector3i(0, 0, -1),
 }
 
-## Пускает ли УЖЕ СТОЯЩИЙ блок соседа к своей грани face. Грани берём повёрнутыми
-## (face_dirs), потому что блок на машине развёрнут, и «зад» у него смотрит куда угодно.
-func node_accepts_face(node: Node, face: String) -> bool:
+## Пускает ли УЖЕ СТОЯЩИЙ блок соседа к своей грани face. Грани берём повёрнутыми и
+## ПОКЛЕТОЧНО (VehicleBlock.connects_at): блок на машине развёрнут, «зад» у него смотрит
+## куда угодно, а у крупного блока каждая клетка стороны может решать за себя.
+##
+## cell — клетка, к которой пристыковываются (у обычного блока она же и якорь).
+func node_accepts_face(node: Node, face: String, cell: Vector3i = Vector3i.ZERO) -> bool:
 	if node == null or not is_instance_valid(node) or not (node is VehicleBlock):
 		return true                        # не блок (или уже уничтожен) — не мешаем
 	if not FACE_DIR.has(face):
 		return true
-	return (node as VehicleBlock).face_dirs((node as VehicleBlock).connect_faces) \
-			.has(FACE_DIR[face] as Vector3i)
+	return (node as VehicleBlock).connects_at(cell - _anchor_of(cell), FACE_DIR[face] as Vector3i)
 
 # Можно ли прицепить new_type к грани attach_face блока neighbor_type.
 # true, если структура — стационарная база (ставит vehicle при спавне с якорным ядром).
@@ -77,7 +79,7 @@ func can_attach(nx: int, ny: int, nz: int, new_node: Node, attach_face: String) 
 	if new_node is VehicleBlock and (new_node as VehicleBlock).connect_faces == 0:
 		return false
 	# А вот СОСЕД решает, пускать ли к своей грани: на коронку бура ничего не навесить.
-	return node_accepts_face(find_block(nx, ny, nz), attach_face)
+	return node_accepts_face(find_block(nx, ny, nz), attach_face, Vector3i(nx, ny, nz))
 
 ## Пресет стартовой сборки. 0 — обычная машина (как у игрока, НЕ трогаем). 1+ — варианты
 ## для врагов («машина из пула»). Спавнер врагов ставит случайный пресет ДО добавления в дерево.
@@ -574,9 +576,6 @@ func _reachable_cells() -> Dictionary:
 					if not seen.has(k):
 						seen[k] = true
 						queue.append(Vector3i(x, y, z))
-	# Грани блока считаем ОДИН РАЗ на узел: face_dirs строит новый массив на каждый вызов, а
-	# обход спрашивает по шесть направлений на клетку.
-	var dirs_cache: Dictionary = {}
 	while not queue.is_empty():
 		var c: Vector3i = queue.pop_back()
 		var a: Node = find_block(c.x, c.y, c.z)
@@ -589,27 +588,37 @@ func _reachable_cells() -> Dictionary:
 			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
 			if seen.has(nk):
 				continue
-			if not _cells_linked(a, find_block(n.x, n.y, n.z), d, dirs_cache):
+			if not _cells_linked(a, find_block(n.x, n.y, n.z), c, n, d):
 				continue
 			seen[nk] = true
 			queue.append(n)
 	return seen
 
-## Есть ли РЕАЛЬНАЯ стыковка между соседними клетками в направлении d.
-func _cells_linked(a: Node, b: Node, d: Vector3i, cache: Dictionary) -> bool:
+## Есть ли РЕАЛЬНАЯ стыковка между соседними КЛЕТКАМИ ca и cb в направлении d.
+##
+## Спрашиваем именно клетки, а не блоки: у блока крупнее одной клетки сторона состоит из
+## нескольких клеток, и «стыкуется левой стороной» больше не значит «всеми левыми клетками
+## сразу» (см. VehicleBlock.connects_at). У обычного блока клетка и есть сторона, поэтому
+## для него ответ тот же, что и был.
+func _cells_linked(a: Node, b: Node, ca: Vector3i, cb: Vector3i, d: Vector3i) -> bool:
 	if a == b:
 		return true                        # две клетки одного многоклеточного блока
 	if a == null or b == null:
 		return true                        # узла нет (ещё не заспавнен) — не рвём связь на пустом месте
 	if not (a is VehicleBlock) or not (b is VehicleBlock):
 		return true
-	return _dirs_of(a, cache).has(d) and _dirs_of(b, cache).has(-d)
+	return (a as VehicleBlock).connects_at(ca - _anchor_of(ca), d) \
+			and (b as VehicleBlock).connects_at(cb - _anchor_of(cb), -d)
 
-func _dirs_of(node: Node, cache: Dictionary) -> Array:
-	var id: int = node.get_instance_id()
-	if not cache.has(id):
-		cache[id] = (node as VehicleBlock).face_dirs((node as VehicleBlock).connect_faces)
-	return cache[id]
+## Якорная клетка, которой принадлежит клетка c. Смещение от неё и есть «какая это клетка
+## блока» — тот же ключ, которым описаны поклеточные настройки.
+func _anchor_of(c: Vector3i) -> Vector3i:
+	var key := "%d,%d,%d" % [c.x, c.y, c.z]
+	var anchor: String = cell_owner.get(key, key)
+	var parts: PackedStringArray = anchor.split(",")
+	if parts.size() < 3:
+		return c
+	return Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
 
 func _detach_orphans() -> void:
 	if node_map.is_empty():
@@ -825,7 +834,7 @@ func rebuild_factory_links() -> void:
 		for c in own:
 			var off: Vector3i = c - anchor
 			for di in 6:
-				var d: Vector3i = n._dir_of(di)
+				var d: Vector3i = n.dir_of(di)
 				if d == Vector3i.ZERO or not n.outputs_at(off, d):
 					continue
 				var t: Vector3i = c + d

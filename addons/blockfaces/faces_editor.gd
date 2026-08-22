@@ -14,12 +14,13 @@ extends VBoxContainer
 #
 # ЧТО ИМЕННО НАСТРАИВАЕТСЯ, зависит от режима и от размера:
 #
-#   CONNECT — стороны СТЫКОВКИ (connect_faces). Это маска ГРАНИ целиком и по клеткам не
-#             делится: связность машины считается по граням, а не по клеткам.
-#   IN/OUT  — у односкеточного блока это тоже маски (input_faces / output_faces).
-#   PORTS   — у блока крупнее: поклеточные умолчания (port_defaults), где у каждой клетки
-#             своя сторона. Маски при этом остаются базой — клетка без своей настройки
-#             ведёт себя по маске, как и раньше.
+#   CONNECT — стороны СТЫКОВКИ. У односкеточного блока это маска connect_faces, у крупного —
+#             ПОКЛЕТОЧНЫЕ умолчания (connect_defaults): к процессору 2×2×2 теперь можно
+#             пристыковаться одной клеткой стороны, а не всеми четырьмя сразу.
+#   IN/OUT  — у односкеточного блока маски (input_faces / output_faces).
+#   PORTS   — у крупного: поклеточные умолчания (port_defaults), где у каждой клетки своя
+#             сторона. Маски при этом остаются базой — клетка без своей настройки ведёт
+#             себя по маске, как и раньше.
 #
 # Почему поклеточное — это УМОЛЧАНИЕ, а не «порт». Порт игрока (FactoryBlock.ports) живёт в
 # осях КАРТЫ и принадлежит конкретной машине; сцена же не знает, каким боком её поставят,
@@ -138,6 +139,12 @@ func _footprint_center() -> Vector3:
 func _state(off: Vector3i, di: int) -> int:
 	if _block == null or not is_instance_valid(_block):
 		return 0
+	if _mode == MODE_CONNECT and _cells.size() > 1:
+		var cd: Dictionary = _block.get("connect_defaults")
+		var ck := _port_key(off, di)
+		if cd != null and cd.has(ck):
+			return 1 if bool(cd[ck]) else 0
+		return _bit("connect_faces", di)          # клетка не настроена — работает маска
 	if _mode == MODE_PORTS:
 		var key := _port_key(off, di)
 		var d: Dictionary = _block.get("port_defaults")
@@ -173,6 +180,8 @@ func _toggle(off: Vector3i, di: int) -> void:
 		return
 	if _mode == MODE_PORTS:
 		_toggle_port(off, di)
+	elif _mode == MODE_CONNECT and _cells.size() > 1:
+		_toggle_connect_cell(off, di)
 	else:
 		_toggle_mask(di)
 	_sync()
@@ -184,6 +193,15 @@ func _toggle_mask(di: int) -> void:
 	if old == null:
 		return
 	_commit(prop, int(old) ^ (1 << di), "Block faces: %s" % prop)
+
+## Поклеточная СТЫКОВКА: включаем или выключаем ровно эту клетку этой стороны. Маска при
+## этом остаётся базой для клеток, которых в словаре нет, поэтому старые сцены не меняются.
+func _toggle_connect_cell(off: Vector3i, di: int) -> void:
+	var cd: Dictionary = (_block.get("connect_defaults") as Dictionary).duplicate()
+	var key := _port_key(off, di)
+	cd[key] = _state(off, di) == 0            # было выключено — включаем, и наоборот
+	_commit("cells_center", _footprint_center(), "Block connect: cells_center")
+	_commit("connect_defaults", cd, "Block connect")
 
 ## Поклеточное умолчание: по кругу НЕТ → ВХОД → ВЫХОД. Пишем СЛОВАРЁМ целиком — редактор
 ## сохраняет свойство, а не его отдельный ключ.
@@ -237,4 +255,6 @@ func _mode_hint() -> String:
 		MODE_PORTS: return "tap a cell: off -> in -> out (per-cell defaults)"
 		MODE_IN:    return "tap a face: input side"
 		MODE_OUT:   return "tap a face: output side"
+	if _cells.size() > 1:
+		return "tap a cell: this cell attaches to a neighbour"
 	return "tap a face: attaches to neighbours"

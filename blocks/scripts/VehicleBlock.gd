@@ -64,6 +64,66 @@ func connect_vecs() -> Array:
 			out.append(FACE_VECS[i])
 	return out
 
+# ── СТЫКОВКА ПО КЛЕТКАМ (для блоков крупнее одной клетки) ────────────────────
+# Маска connect_faces — это сторона ЦЕЛИКОМ. У обычного блока сторона и есть клетка, и
+# вопроса нет; а у процессора 2×2×2 сторона — это ЧЕТЫРЕ клетки, и «стыкуется левой
+# стороной» означало «всеми четырьмя левыми клетками сразу». Пристыковать к нему что-то
+# одной клеткой было нельзя вовсе.
+#
+# Поэтому у крупного блока есть УМОЛЧАНИЯ ПО КЛЕТКАМ: ключ «смещение клетки + сторона» в
+# ЛОКАЛЬНЫХ осях блока, значение — стыкуется или нет. Клетка, которой в словаре нет,
+# работает по маске, как и раньше, поэтому все существующие сцены ведут себя как прежде.
+#
+# Оси именно локальные: словарь описывает САМ БЛОК, а он поворачивается вместе с машиной.
+# Перевод из осей карты в свои делает _local_side (крутим вокруг центра футпринта, иначе
+# поворот уводит клетки за его границы).
+##
+## Ключ порта/стыковки: смещение клетки от якоря + индекс стороны в FACE_VECS.
+static func side_key(off: Vector3i, dir_idx: int) -> String:
+	return "%d,%d,%d|%d" % [off.x, off.y, off.z, dir_idx]
+
+## Направление стороны по индексу, прижатое к оси и БЕЗ поворота блока (локальное).
+func dir_of(dir_idx: int) -> Vector3i:
+	if dir_idx < 0 or dir_idx >= FACE_VECS.size():
+		return Vector3i.ZERO
+	var v: Vector3 = FACE_VECS[dir_idx]
+	return Vector3i(int(signf(v.x)), int(signf(v.y)), int(signf(v.z)))
+
+## Индекс стороны по локальному направлению (обратное к dir_of).
+func idx_of(dir: Vector3i) -> int:
+	for i in FACE_VECS.size():
+		if dir_of(i) == dir:
+			return i
+	return -1
+
+## Клетка + сторона В ОСЯХ КАРТЫ → тот же ключ, но в СВОИХ осях блока. Пустая строка —
+## такой стороны у блока нет (поворот не кратен 90°, чего быть не должно).
+func _local_side(off: Vector3i, dir: Vector3i) -> String:
+	var inv: Basis = basis.inverse()
+	var ld: Vector3 = (inv * Vector3(dir)).round()
+	var li: int = idx_of(Vector3i(int(ld.x), int(ld.y), int(ld.z)))
+	if li < 0:
+		return ""
+	var lo: Vector3 = (inv * (Vector3(off) - cells_center) + cells_center).round()
+	return side_key(Vector3i(int(lo.x), int(lo.y), int(lo.z)), li)
+
+## Центр футпринта В СМЕЩЕНИЯХ от якоря (у 2×2×2 это (-0.5, 0.5, -0.5)). Вокруг него
+## поворачиваются поклеточные умолчания. Настраивается кубиком в инспекторе.
+@export var cells_center := Vector3.ZERO
+## Поклеточные умолчания СТЫКОВКИ: "dx,dy,dz|сторона" (локальные оси) → true/false.
+## Пусто — блок целиком работает по маске connect_faces.
+@export var connect_defaults: Dictionary = {}
+
+## Стыкуется ли ЭТА клетка блока в ЭТУ сторону (обе в осях карты). Порядок ответов:
+## поклеточное умолчание → маска грани. Это и есть «связность по граням», просто грань у
+## крупного блока теперь можно разложить на клетки.
+func connects_at(off: Vector3i, dir: Vector3i) -> bool:
+	if not connect_defaults.is_empty():
+		var k := _local_side(off, dir)
+		if k != "" and connect_defaults.has(k):
+			return bool(connect_defaults[k])
+	return face_dirs(connect_faces).has(dir)
+
 ## УПАКОВКА БЛОКА В ЧАНК. Живёт здесь, а не в упаковщике, чтобы правило («сколько влезает»,
 ## «блок другого типа начинает новый чанк») было одно на всех, кто когда-либо станет паковать.
 ##
