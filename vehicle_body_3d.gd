@@ -574,6 +574,11 @@ func award_block_list(types: Array) -> void:
 # ══════════════════════════════════════════
 
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # метка для панели профиля (perf.gd): цена машин игрока
+	_physics_body(delta)
+	Perf.mark("machines", _pf)
+
+func _physics_body(delta: float) -> void:
 	# Энергия тикает ВСЕГДА (даже у неактивной машины): база на якоре копит от солнца.
 	_energy_tick(delta)
 	_cabin_watch(delta)

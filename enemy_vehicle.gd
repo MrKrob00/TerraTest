@@ -274,6 +274,11 @@ const SUNK_LIMIT := 6.0
 const SUNK_LIFT := 2.0
 
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # метка для панели профиля (perf.gd): цена ИИ врагов
+	_physics_ai(delta)
+	Perf.mark("enemies", _pf)
+
+func _physics_ai(delta: float) -> void:
 	_capture_spawn()          # первый тик: машина уже на своём месте, можно строить патруль
 	_unsink()
 	sense_ground(delta)

@@ -222,6 +222,10 @@ var _lod_timer:     float = 0.0
 # ── Streaming collision runtime state ─────────────────────────────────────────
 var _col_active: bool       = false
 var _col_bodies: Array      = []   # [{body:Node3D}]  every moving body we give ground to
+## Когда каждая плитка коллизии последний раз была нужна (ключ клетки → секунды). По ней
+## работает отсрочка удаления: пересоздавать height field каждый кадр дороже, чем подержать.
+var _col_seen: Dictionary   = {}
+const COL_TILE_GRACE: float = 3.0
 var _col_cells:  Dictionary = {}   # cell_key -> CollisionShape3D (one tile per active cell)
 
 # ── Occlusion culling runtime state ──────────────────────────────────────────
@@ -599,6 +603,7 @@ func _clear_collision_cells() -> void:
 		if is_instance_valid(_col_cells[key]):
 			_col_cells[key].queue_free()
 	_col_cells.clear()
+	_col_seen.clear()
 
 # Recompute the set of grid cells needed (union of all bodies' footprints) and create /
 # free cell tiles to match. Diff-only, so static bodies cause zero churn.
@@ -658,16 +663,34 @@ func _update_collision_cells() -> void:
 		for cz in range(cz0, cz1 + 1):
 			for cx in range(cx0, cx1 + 1):
 				desired[cz * cells_x + cx] = true
+	# Плитки ЖИВУТ ЕЩЁ НЕМНОГО после того, как стали не нужны (COL_TILE_GRACE). Причина —
+	# цена создания: каждая плитка это HeightMapShape3D, и физический движок печёт по ней
+	# height field. Без задержки машина, едущая вдоль границы клеток, заставляла удалять и
+	# тут же создавать одни и те же плитки каждый кадр, а десяток разлетевшихся блоков —
+	# сразу пачку. Держать готовую плитку почти бесплатно: она статична и в широкой фазе
+	# ничего не стоит.
+	var now_s: float = float(Time.get_ticks_msec()) * 0.001
 	for key in desired:
+		_col_seen[key] = now_s
 		if not _col_cells.has(key):
 			_make_cell_tile(key, cells_x)
 	for key in _col_cells.keys():
-		if not desired.has(key):
-			if is_instance_valid(_col_cells[key]):
-				_col_cells[key].queue_free()
-			_col_cells.erase(key)
+		if desired.has(key):
+			continue
+		if now_s - float(_col_seen.get(key, 0.0)) < COL_TILE_GRACE:
+			continue
+		if is_instance_valid(_col_cells[key]):
+			_col_cells[key].queue_free()
+		_col_cells.erase(key)
+		_col_seen.erase(key)
 	if dead:
 		_prune_dead_bodies()
+
+## GAME HOOK (TerraTest): счётчики для панели профиля — сколько сейчас ЖИВЫХ плиток коллизии
+## и сколько тел их просит. Одно число объясняет просадку на развале машины: каждое
+## незаснувшее тело держит свой кусок heightfield, и плитки нарезаются заново каждый кадр.
+func collision_stats() -> Vector2i:
+	return Vector2i(_col_cells.size(), _col_bodies.size())
 
 ## The state of the streaming collision at a point. Meant for a fall-through safety net to
 ## call when it catches a body below the terrain: one log line answers whether there was any
@@ -2191,11 +2214,27 @@ func _active_camera() -> Camera3D:
 	var vp := get_viewport()
 	return vp.get_camera_3d() if vp != null else null
 
+## GAME HOOK: приёмник замеров времени, `func(key: String, usec_start: int)`. Пока он пуст,
+## замер выключен и не стоит ничего. Именно Callable, а не прямая ссылка на класс игры: аддон
+## обязан работать в пустом проекте, где никакого профайлера нет.
+var perf_sink: Callable = Callable()
+
+func _pf_now() -> int:
+	return Time.get_ticks_usec() if not perf_sink.is_null() else 0
+
+func _pf_mark(key: String, t0: int) -> void:
+	if t0 != 0 and not perf_sink.is_null():
+		perf_sink.call(key, t0)
+
 func _process(delta: float) -> void:
 	if Engine.is_editor_hint():
 		if editor_lod:
 			_editor_lod_tick(delta)
 		return
+
+	# GAME HOOK: пометки для внешнего профайлера (см. perf_sink). Пока приёмник не задан,
+	# _pf_now() возвращает ноль и всё это стоит одной проверки Callable на вызов.
+	var _pf_all := _pf_now()
 
 	# The active camera, refreshed every frame with nothing to assign by hand. It follows camera
 	# switches, such as changing view on death or when moving between vehicles.
@@ -2204,15 +2243,20 @@ func _process(delta: float) -> void:
 	# ── Streaming collision: keep tiled collision cells under the tracked bodies ──
 	# Collision does not need a camera, so it updates even before an active one exists.
 	if _col_active:
+		var _pf := _pf_now()
 		_update_collision_cells()
+		_pf_mark("terrain.collision", _pf)
 
 	# Everything below (chunk streaming, LOD, culling) depends on the camera.
 	if _cam == null:
+		_pf_mark("terrain", _pf_all)
 		return
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
+		var _pf := _pf_now()
 		_stream_tick(delta)
+		_pf_mark("terrain.stream", _pf)
 
 	# ── Quadtree frustum culling + LOD selection ──────────────────────────────
 	# One descend from the root each frame handles culling AND macro/chunk LOD; the
@@ -2221,17 +2265,23 @@ func _process(delta: float) -> void:
 	var do_lod := _lod_timer >= LOD_UPDATE_INTERVAL
 	if do_lod:
 		_lod_timer = 0.0
+	var _pf_qt := _pf_now()
 	_qt_update(do_lod)
+	_pf_mark("terrain.lod", _pf_qt)
 
 	# ── Occlusion culling (throttled) ─────────────────────────────────────────
 	if enable_occlusion_culling:
 		_occlusion_timer += delta
 		if _occlusion_timer >= OCCLUSION_UPDATE_INTERVAL:
 			_occlusion_timer = 0.0
+			var _pf_oc := _pf_now()
 			_update_occlusion()
+			_pf_mark("terrain.occl", _pf_oc)
 	elif not (_occluded_chunks.is_empty() and _occluded_macros.is_empty() and _occluded_nodes.is_empty()):
 		# Occlusion was just toggled off — restore full quadtree-based visibility
 		_clear_occlusion()
+
+	_pf_mark("terrain", _pf_all)
 
 func _full_scan() -> void:
 	# Initial selection: one stateless quadtree descend picks the first frame's

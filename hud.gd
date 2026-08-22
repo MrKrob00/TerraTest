@@ -72,6 +72,16 @@ func _ready() -> void:
 	var music := get_node_or_null("/root/Music")
 	if music:
 		music.track_changed.connect(_show_music_toast)
+	# Счётчик FPS открывает ПАНЕЛЬ ПРОФИЛЯ по тапу. Label по умолчанию не берёт ввод вовсе,
+	# поэтому фильтр ставим руками; отдельной кнопки отладки на экране быть не должно.
+	var fps_lbl := get_node_or_null("Label") as Control
+	if fps_lbl:
+		fps_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+		fps_lbl.gui_input.connect(func(e: InputEvent) -> void:
+			if (e is InputEventScreenTouch and e.pressed) \
+					or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
+				_toggle_perf_panel()
+				get_viewport().set_input_as_handled())
 
 # Пере-раскладка построенных в коде элементов HUD под текущий размер экрана. Всё, что
 # прибито к краям (меню, кнопка режима, панель поворота, кнопка якоря, «шар» блоков), пересчитываем
@@ -523,6 +533,13 @@ const VMENU_GRACE_MS: int = 300
 var _vmenu_open_ms: int = 0
 
 func _input(event: InputEvent) -> void:
+	# F3 — панель профиля (на ПК). На телефоне её открывает ТАП ПО СЧЁТЧИКУ FPS: отдельной
+	# кнопки для отладки на экране быть не должно, а счётчик и так стоит наверху.
+	if event is InputEventKey and event.pressed and not event.echo \
+			and (event as InputEventKey).keycode == KEY_F3:
+		_toggle_perf_panel()
+		get_viewport().set_input_as_handled()
+		return
 	if _vmenu == null:
 		return
 	var pos := Vector2.ZERO
@@ -881,10 +898,110 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 		v.rotate_build(axis, ang)
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()     # метка для панели профиля (perf.gd): цена самого HUD
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
 	_update_radar(delta)
 	_update_hand_panel()
 	_sync_mode_visuals()      # дешёвый сторож: работает только когда режим реально сменился
+	Perf.mark("hud", _pf)
+	if _perf_panel != null and _perf_panel.visible:
+		_update_perf_panel()
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ПАНЕЛЬ ПРОФИЛЯ (тап по счётчику FPS, на ПК — F3)
+# ══════════════════════════════════════════════════════════════════════════════
+# Отвечает на два вопроса, на которые нельзя ответить спором: «это физика или рендер» и
+# «что именно съедает кадр». Первый решают счётчики ДВИЖКА (время процесса и физики против
+# времени кадра), второй — наши метки по системам (perf.gd).
+#
+# Читать так:
+#   • proc + phys ≈ frame  → упёрлись в ПРОЦЕССОР, и виновник виден в таблице снизу;
+#   • proc + phys ≪ frame  → упёрлись в ВИДЕО (draw calls, перерисовка, шейдеры) либо
+#     в саму физику внутри движка (её время сюда не входит: TIME_PHYSICS_PROCESS — это
+#     только наши _physics_process, а не решение контактов). Тогда смотри phys3d: active
+#     и pairs — при развале машины именно они и взлетают.
+#
+# Панель СТОИТ денег, поэтому замер включается только вместе с ней.
+var _perf_panel: PanelContainer = null
+var _perf_label: Label = null
+
+func _toggle_perf_panel() -> void:
+	if _perf_panel == null:
+		_build_perf_panel()
+	_perf_panel.visible = not _perf_panel.visible
+	Perf.enabled = _perf_panel.visible
+	# Рельеф — ЧУЖОЙ аддон и про наш профайлер не знает: он зовёт Callable, который ему дают
+	# снаружи. Пустой Callable = замер выключен, поэтому снимаем его вместе с панелью.
+	var terr := get_node_or_null("/root/Main/map")
+	if terr != null and "perf_sink" in terr:
+		terr.set("perf_sink", Perf.mark if Perf.enabled else Callable())
+	if not Perf.enabled:
+		Perf.reset()
+
+func _build_perf_panel() -> void:
+	_perf_panel = PanelContainer.new()
+	_perf_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_perf_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # сквозь панель должно нажиматься
+	_perf_panel.position = Vector2(8, 8)
+	_perf_panel.visible = false
+	_perf_label = Label.new()
+	_perf_label.add_theme_font_size_override("font_size", 12)
+	_perf_label.add_theme_color_override("font_color", Color(0.75, 0.95, 1.0))
+	_perf_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_perf_panel.add_child(_perf_label)
+	add_child(_perf_panel)
+
+func _update_perf_panel() -> void:
+	var frame_ms: float = 1000.0 / maxf(Engine.get_frames_per_second(), 1.0)
+	var proc_ms: float = Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0
+	var phys_ms: float = Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	var draws: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	var objs: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME))
+	var prims: int = int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var p_active: int = int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS))
+	var p_pairs: int = int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS))
+	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
+
+	var lines: Array[String] = []
+	lines.append("%d FPS · кадр %.1f мс" % [int(Engine.get_frames_per_second()), frame_ms])
+	# ГЛАВНАЯ строка: сколько кадра забрали НАШИ скрипты. Остаток — движок: рендер, решение
+	# контактов, драйвер. Именно эта разница и отвечает «физика или рендер».
+	lines.append("скрипты: process %.1f + physics %.1f = %.1f мс (%.0f%% кадра)"
+			% [proc_ms, phys_ms, proc_ms + phys_ms, 100.0 * (proc_ms + phys_ms) / maxf(frame_ms, 0.01)])
+	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
+	lines.append("физика3D: %d активных · %d пар контактов" % [p_active, p_pairs])
+
+	var o := get_node_or_null("/root/Main/objects")
+	if o != null:
+		var awake := 0
+		var culled := 0
+		for c in o.get_children():
+			var rb := c as RigidBody3D
+			if rb != null and not rb.sleeping and not rb.freeze:
+				awake += 1
+			if c.has_meta("culled"):
+				culled += 1
+		lines.append("в мире: %d предметов (%d не спят, %d погашено)"
+				% [o.get_child_count(), awake, culled])
+
+	# Плитки коллизии рельефа: каждое НЕспящее тело держит свой кусок heightfield, и на
+	# развале машины их число взлетает — по этой строке видно, оно или нет.
+	var terr := get_node_or_null("/root/Main/map")
+	if terr != null and terr.has_method("collision_stats"):
+		var cs: Vector2i = terr.collision_stats()
+		lines.append("коллизия рельефа: %d плиток под %d телами" % [cs.x, cs.y])
+
+	var snap: Dictionary = Perf.snapshot()
+	var keys: Array = snap.keys()
+	keys.sort_custom(func(a, b): return float(snap[a]) > float(snap[b]))
+	var parts: Array[String] = []
+	for k in keys:
+		var ms: float = float(snap[k]) / 1000.0
+		if ms >= 0.05:
+			parts.append("%s %.1f" % [k, ms])
+	lines.append("по системам, мс: " + (", ".join(parts) if not parts.is_empty() else "—"))
+	lines.append("узлов %d" % nodes)
+	_perf_label.text = "\n".join(lines)
 
 # Радар обновляем не каждый кадр (сбор блипов — O(враги+жилы)): раз в 0.15с. Виден только
 # если у активной машины есть блок RADAR. Блипы: враги (красные), активные жилы (жёлтые).
