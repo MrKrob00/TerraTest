@@ -43,118 +43,52 @@ var grounded: bool = false
 ## Расстояние от центра блока до земли по лучу. INF — под колесом ничего нет.
 var contact_distance: float = INF
 
-# %wheel — это ПОКРЫШКА внутри модуля колеса; её родитель и есть модуль. Катим покрышку,
-# рулим модулем. Ссылки берём один раз: has_node("%wheel") каждый физкадр — лишний поиск.
+# ── ЧАСТИ МОДЕЛИ ──────────────────────────────────────────────────────────────
+# Модель колеса собрана ЦЕПОЧКОЙ, и в этом весь смысл: крепление → поворотный кулак →
+# стойки → ось → покрышка. Каждая часть висит на предыдущей, поэтому двигать надо ровно
+# одну, а остальное едет за ней само:
+#
+#   • Wheel_module — КРЕПЛЕНИЕ к соседнему блоку. Не двигается вообще: оно приколочено к
+#     кузову, и разворачивать его при рулении значило возить точку крепления по машине.
+#   • *susp_high* — ПОВОРОТНЫЙ КУЛАК: рулит вокруг своей Z (влево −Z, вправо +Z), и вместе
+#     с ним поворачивается вся нога, включая покрышку.
+#   • *axle* — ОСЬ: на ней отыгрывается ход подвески (кузов ходит вверх-вниз, колесо
+#     остаётся на земле).
+#   • %wheel — ПОКРЫШКА: катится вокруг своей X (вперёд +x, назад −x).
+#
+# Части ищем ПО ИМЕНИ и по всему поддереву: у трёх размеров колеса имена с суффиксами
+# (_small/_medium/_big), а глубина вложенности одинаковая. У опорных колёс (top_wheel,
+# stab_wheel) ни кулака, ни оси нет — там просто нечего рулить, а ход отыгрывает сама
+# покрышка.
 var _tyre: Node3D = null
 var _tyre_rest: Basis = Basis()
 var _spin: float = 0.0                 # накопленный угол качения покрышки
-var _module: Node3D = null
-var _module_rest: Basis = Basis()
-var _module_rest_pos: Vector3 = Vector3.ZERO
-## Части, которые ПОВОРАЧИВАЮТСЯ ПРИ РУЛЕНИИ: {node, rest}. В модели это стойка
-## Wheel_susp_high — она и есть поворотный кулак.
-var _steer_parts: Array[Dictionary] = []
+var _steer: Node3D = null              # поворотный кулак
+var _steer_rest: Basis = Basis()
+var _hub: Node3D = null                # ось (или сама покрышка, если оси нет)
+var _hub_rest: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	super._ready()
 	_tyre = get_node_or_null("%wheel") as Node3D
-	if _tyre != null:
-		_tyre_rest = _tyre.transform.basis
-		var p: Node = _tyre.get_parent()
-		# Родитель — модуль, только если это не сам корень колеса: рулить корнем нельзя,
-		# на нём висит коллизия.
-		if p is Node3D and p != self:
-			_module = p as Node3D
-			_module_rest = _module.transform.basis
-			_module_rest_pos = _module.position
-			_collect_suspension()
+	if _tyre == null:
+		return
+	_tyre_rest = _tyre.transform.basis
+	_steer = _find_part("susp_high")
+	if _steer != null:
+		_steer_rest = _steer.transform.basis
+	_hub = _find_part("axle")
+	if _hub == null:
+		_hub = _tyre                   # опорное колесо: ход отыгрывает сама покрышка
+	_hub_rest = _hub.position
 
-# ── Разбор модуля колеса на части ─────────────────────────────────────────────
-# Wheel_module — КРЕПЛЕНИЕ к соседнему блоку: оно приколочено к кузову и не двигается вообще.
-# Остальное разбираем ПО ГЕОМЕТРИИ, а не по именам, потому что имена тут обманывают: в
-# wheel.tscn «susp_mid» — это горизонтальный РЫЧАГ от крепления до самой оси колеса (его
-# дальний конец в 0.11 м от неё), а «susp_high» и «susp_low» — вертикальные СТОЙКИ, на 95%
-# стоящие вдоль вертикали. Считать их всех рычагами и качать вокруг опоры — вывернуть
-# стойки набок.
-#
-# Оси модели тоже не угадываются: у модуля в сцене запечён разворот (вертикаль блока — это
-# его локальное −Z), а у деталей вдобавок неединичный масштаб. Поэтому вертикаль берём
-# пересчётом из пространства блока, а концы детали — из AABB её меша.
-#
-# Итог: ось с покрышкой идут на полный ход; рычаг ПОВОРАЧИВАЕТСЯ вокруг того конца, что
-# дальше от колеса (он прикручен к креплению); стойка сжимается между неподвижным верхом и
-# подвижным низом, поэтому проходит полхода.
-const STRUT_COS: float = 0.7           # |cos| с вертикалью выше этого — деталь стоит, а не лежит
-const STRUT_FACTOR: float = 0.5        # какую долю хода проходит стойка
-
-var _riders: Array[Dictionary] = []    # едут вертикально: {node, rest, factor}
-var _arms: Array[Dictionary] = []      # качаются вокруг опоры: {node, pivot, axis, len, basis, pos}
-var _up_local: Vector3 = Vector3.UP    # вертикаль блока в системе координат модуля
-
-func _collect_suspension() -> void:
-	# Поворот руля вращает модуль ВОКРУГ этой же вертикали, значит на пересчёт она не влияет
-	# и её достаточно взять один раз в покое.
-	_up_local = (_module_rest.inverse() * Vector3.UP).normalized()
-	var hub: Vector3 = _tyre.position          # центр колеса в системе координат модуля
-	_riders.append({"node": _tyre, "rest": _tyre.position, "factor": 1.0})
-	for ch in _module.get_children():
-		var n3 := ch as Node3D
-		if n3 == null or n3 == _tyre:
-			continue
-		var nm: String = n3.name.to_lower()
-		# ПОВОРОТНЫЙ КУЛАК: при рулении крутится он, а не весь модуль (см. _steer_wheel).
-		# Заодно он всегда идёт в «стойки» — ходит по вертикали и НЕ разбирается как рычаг:
-		# рычаг правит и поворот, и позицию, то есть затирал бы руление.
-		if nm.contains("susp_high"):
-			_steer_parts.append({"node": n3, "rest": n3.transform.basis})
-			_riders.append({"node": n3, "rest": n3.position, "factor": STRUT_FACTOR})
-			continue
-		# Ось держит колесо — идёт с ним целиком, без всякой геометрии.
-		if nm.contains("axle"):
-			_riders.append({"node": n3, "rest": n3.position, "factor": 1.0})
-			continue
-		# Всё остальное разбираем, только если это ЯВНО деталь подвески. У top_wheel и
-		# stab_wheel рядом с покрышкой лежит wheelbody — целый корпус колеса, и растащить
-		# его как рычаг значило бы разобрать модель.
-		if not nm.contains("susp"):
-			continue
-		var g: Dictionary = _part_geometry(n3, hub)
-		if g.is_empty():
-			continue
-		if absf((g["dir"] as Vector3).dot(_up_local)) > STRUT_COS:
-			_riders.append({"node": n3, "rest": n3.position, "factor": STRUT_FACTOR})
-		else:
-			_arms.append(g)
-
-# Концы детали берём из AABB её меша по самой длинной оси. ОПОРОЙ считаем тот конец, что
-# дальше от колеса: он и прикручен к креплению, вокруг него деталь качается.
-func _part_geometry(n3: Node3D, hub: Vector3) -> Dictionary:
-	var vis := n3 as VisualInstance3D
-	if vis == null:
-		return {}
-	var ab: AABB = vis.get_aabb()
-	var ax: int = 0
-	if ab.size.y > ab.size[ax]:
-		ax = 1
-	if ab.size.z > ab.size[ax]:
-		ax = 2
-	var e0: Vector3 = ab.get_center()
-	var e1: Vector3 = e0
-	e0[ax] = ab.position[ax]
-	e1[ax] = ab.position[ax] + ab.size[ax]
-	e0 = n3.transform * e0
-	e1 = n3.transform * e1
-	# Который из концов дальше — сравнение, а не измерение: два корня здесь лишние.
-	var pivot: Vector3 = e0 if e0.distance_squared_to(hub) > e1.distance_squared_to(hub) else e1
-	var outer: Vector3 = e1 if pivot == e0 else e0
-	var arm: Vector3 = outer - pivot
-	if arm.length_squared() < 0.0025:                # 0.05²
-		return {}                          # деталь без выраженной длины — двигать нечего
-	var axis: Vector3 = _up_local.cross(arm)
-	if axis.length_squared() < 0.000001:             # 0.001²
-		axis = Vector3.RIGHT               # строго вертикальная деталь: уйдёт в стойки, ось не нужна
-	return {"node": n3, "pivot": pivot, "axis": axis.normalized(), "len": arm.length(),
-			"dir": arm.normalized(), "basis": n3.transform.basis, "pos": n3.position}
+## Первая часть модели, в имени которой есть слово. Ищем по всему поддереву: цепочка
+## вложена на несколько уровней, а имена у трёх размеров колеса отличаются суффиксом.
+func _find_part(word: String) -> Node3D:
+	for n in find_children("*", "Node3D", true, false):
+		if (n as Node3D).name.to_lower().contains(word):
+			return n as Node3D
+	return null
 
 # Регистрация идёт по ВХОДУ В ДЕРЕВО, а не в _ready. Блок, который игрок ставит руками,
 # сначала инстансится в держатель у камеры (take_block_into_hand), там у него отрабатывает
@@ -251,45 +185,30 @@ func _physics_process(delta: float) -> void:
 		_spin += side * throttle_input * delta * SPIN_SPEED
 		_tyre.transform.basis = _tyre_rest * Basis(Vector3.RIGHT, _spin)
 
-# РУЛИТ ПОВОРОТНЫЙ КУЛАК (Wheel_susp_high), а не весь модуль. Модуль — это крепление к
-# кузову, оно приколочено намертво и разворачиваться вместе с колесом не должно: раньше при
-# повороте руля уезжала вся стойка вместе с точкой крепления.
+# РУЛИТ ПОВОРОТНЫЙ КУЛАК (*susp_high*), а не весь модуль. Модуль — это крепление к кузову,
+# оно приколочено намертво; раньше при повороте руля уезжала вся стойка вместе с точкой
+# крепления. Кулак стоит в цепочке выше оси и покрышки, поэтому поворачивается вся нога.
 #
 # Ось поворота — СВОЯ Z кулака: влево −Z, вправо +Z (так собрана модель). Знак минус потому,
-# что положительный current_steer_angle — это поворот ВЛЕВО (он же крутил модуль на +Y, а
-# +Y уводит нос машины, смотрящий в −Z, влево).
+# что положительный current_steer_angle — это поворот ВЛЕВО.
 #
 # Крутим от ЗАПОМНЕННОГО покоя и умножением справа: у детали свой запечённый разворот и
 # неединичный масштаб, и присваивание rotation.z разрушило бы и то, и другое.
 func _steer_wheel() -> void:
-	for s in _steer_parts:
-		var n: Node3D = s["node"]
-		if is_instance_valid(n):
-			n.transform.basis = (s["rest"] as Basis) * Basis(Vector3.BACK, -current_steer_angle)
+	if _steer == null or not is_instance_valid(_steer):
+		return
+	_steer.transform.basis = _steer_rest * Basis(Vector3.BACK, -current_steer_angle)
 
 # Ход подвески ВИЗУАЛЬНО: кузов ходит вверх-вниз, а колесо обязано остаться на земле.
-# Раньше на эту величину дёргался ВЕСЬ модуль — вместе с креплением, которое приколочено к
-# соседнему блоку: крепление ездило внутрь кузова и наружу. Теперь ходят только те части,
-# что и должны ходить, а крепление стоит на месте.
+# Двигаем ОДНУ деталь — ось, — и всё, что на ней висит, едет само. Раньше на эту величину
+# дёргался весь модуль вместе с креплением, и оно ездило внутрь кузова и наружу.
 func _apply_suspension_visual() -> void:
-	if _module == null:
+	if _hub == null or not is_instance_valid(_hub):
 		return
-	var sag: float = suspension_sag()
-	# Колёса без разобранного модуля (top_wheel, stab_wheel — там внутри просто visual и
-	# покрышка) двигаем по-старому целиком: лучше грубый ход, чем неподвижная подвеска.
-	if _riders.size() <= 1 and _arms.is_empty():
-		_module.position.y = _module_rest_pos.y + sag
+	var p := _hub.get_parent() as Node3D
+	if p == null:
 		return
-	var lift: Vector3 = _up_local * sag
-	for r in _riders:
-		(r["node"] as Node3D).position = (r["rest"] as Vector3) + lift * float(r["factor"])
-	for a in _arms:
-		# Дальний конец рычага обязан подняться ровно на sag, значит рычаг поворачивается
-		# на asin(sag / плечо). Знак минус — потому что ось вращения построена как
-		# «вертикаль × плечо»: положительный поворот вокруг неё опускает дальний конец.
-		var theta: float = -asin(clampf(sag / float(a["len"]), -0.95, 0.95))
-		var rot := Basis(a["axis"] as Vector3, theta)
-		var node: Node3D = a["node"]
-		var pivot: Vector3 = a["pivot"]
-		node.transform.basis = rot * (a["basis"] as Basis)
-		node.position = pivot + rot * ((a["pos"] as Vector3) - pivot)
+	# Ход задан в МИРОВЫХ метрах, а класть его надо в оси родителя: в цепочке модели есть
+	# неединичный масштаб, и прибавить sag прямо к локальной координате значило бы уехать
+	# не на столько, сколько нужно.
+	_hub.position = _hub_rest + p.global_transform.basis.inverse() * (Vector3.UP * suspension_sag())
