@@ -54,6 +54,11 @@ func _ready() -> void:
 # частота стрельбы тоже становилась зависимой от FPS. Наведение башни оставляем здесь же — физ-тик
 # 60 Гц даёт ровное вращение и башня не отстаёт от тела, на котором стоит.
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_weapon(delta)
+	Perf.mark("weapons", _pf)
+
+func _tick_weapon(delta: float) -> void:
 	_fire_hold = maxf(_fire_hold - delta, 0.0)
 	var firing := _fire_hold > 0.0
 	if not firing:

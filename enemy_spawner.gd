@@ -144,6 +144,11 @@ func _ready() -> void:
 	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_spawner(delta)
+	Perf.mark("spawner", _pf)
+
+func _tick_spawner(delta: float) -> void:
 	if not _ready_done:
 		return
 	# Чистка списка — раз в 0.5с, а не каждый кадр: .filter() создавал новую Callable + новый

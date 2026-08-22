@@ -167,6 +167,11 @@ func suspension_sag() -> float:
 	return clampf(_ride_effective - contact_distance, -suspension_travel, suspension_travel)
 
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_wheel(delta)
+	Perf.mark("wheels", _pf)
+
+func _tick_wheel(delta: float) -> void:
 	var target_angle: float = deg_to_rad(steer_input * MAX_STEER_ANGLE)
 	current_steer_angle = lerp(current_steer_angle, target_angle, STEER_SPEED * delta)
 

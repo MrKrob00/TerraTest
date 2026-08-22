@@ -48,6 +48,11 @@ func _ready() -> void:
 	add_child(_label)
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_button(delta)
+	Perf.mark("ui", _pf)
+
+func _tick_button(delta: float) -> void:
 	# Показ: машина не под управлением игрока И активная машина рядом.
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
 	if cc == null or vehicle == null or not ("current_vehicle" in cc):

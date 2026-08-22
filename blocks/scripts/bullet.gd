@@ -20,6 +20,11 @@ var dir: Vector3 = Vector3.ZERO
 var t: float = 0.0
 
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_bullet(delta)
+	Perf.mark("bullets", _pf)
+
+func _tick_bullet(delta: float) -> void:
 	if dir == Vector3.ZERO:          # в пуле — не двигаемся
 		t = 0.0
 		return

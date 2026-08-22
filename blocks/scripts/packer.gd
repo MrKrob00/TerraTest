@@ -58,6 +58,11 @@ func _stack_chunks() -> void:
 
 # ── Отправка ─────────────────────────────────────────────────────────────────
 func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_packer(delta)
+	Perf.mark("factory", _pf)
+
+func _tick_packer(delta: float) -> void:
 	_chunks = _chunks.filter(func(c): return is_instance_valid(c))
 	if _chunks.is_empty():
 		_idle = 0.0

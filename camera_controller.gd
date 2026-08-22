@@ -152,6 +152,11 @@ func _ready():
 			current_vehicle.set_active(true)
 
 func _physics_process(delta):
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_camera(delta)
+	Perf.mark("camera", _pf)
+
+func _tick_camera(delta) -> void:
 	if not current_vehicle: return
 
 	# 1. Smoothly move the entire controller to the car's

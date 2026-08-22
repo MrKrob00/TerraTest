@@ -20,6 +20,11 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_compass(delta)
+	Perf.mark("ui", _pf)
+
+func _tick_compass(delta: float) -> void:
 	_t += delta
 	# Держим узел РОВНО по видимой области. Компас лежит прямо в CanvasLayer, и его
 	# собственный size не обязан совпадать с тем, в чём считает камера, — а рамка «цель на

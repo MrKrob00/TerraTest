@@ -503,6 +503,11 @@ func _stack_settled() -> bool:
 	return true
 
 func _process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_globe(delta)
+	Perf.mark("globe", _pf)
+
+func _tick_globe(delta: float) -> void:
 	if not visible or _root == null:
 		return
 	if not _dragging and G.block_inventory.size() != _inv_seen and _stack_settled():
