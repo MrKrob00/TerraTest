@@ -9,9 +9,8 @@
 collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_susb0")
+input_faces = 14
 block = 7
-input_faces = 2
-output_faces = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1181948980]
 shape = SubResource("BoxShape3D_rgkw3")

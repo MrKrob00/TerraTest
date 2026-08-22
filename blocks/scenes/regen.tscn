@@ -1,9 +1,8 @@
 [gd_scene format=3 uid="uid://bcgba3aca7cee"]
 
-[ext_resource type="Script" path="res://blocks/scripts/regen.gd" id="1_s"]
+[ext_resource type="Script" uid="uid://ci0a8rxxhwu36" path="res://blocks/scripts/regen.gd" id="1_s"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
-size = Vector3(1, 1, 1)
 
 [sub_resource type="StandardMaterial3D" id="Mat_a"]
 albedo_color = Color(0.9, 0.35, 0.55, 1)
@@ -11,7 +10,6 @@ roughness = 0.55
 
 [sub_resource type="BoxMesh" id="BoxMesh_a"]
 material = SubResource("Mat_a")
-size = Vector3(1, 1, 1)
 
 [node name="Regen" type="RigidBody3D" unique_id=265452729]
 collision_layer = 2
