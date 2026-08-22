@@ -226,24 +226,18 @@ func _root_machine_of(n: Node) -> Node:
 	return null
 
 func _track_target(delta: float, firing: bool) -> void:
-	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
-	if track_visual == null:
-		return
-	var track_mat: Material = track_visual.get_active_material(0)
-
-	# ── НЕ стреляем → луч полностью скрыт (ни цвета, ни геометрии) ────────────
+	# НАВОДКА СНАЧАЛА, УКРАШЕНИЯ ПОТОМ. Раньше функция начиналась с поиска трассера
+	# (track_visual у луча) и без него сразу выходила — то есть пушка с новой моделью, где
+	# этого меша нет, НЕ ДОВОРАЧИВАЛАСЬ ВООБЩЕ и стреляла прямо перед собой. Трассер — это
+	# картинка, и решать, целится ли орудие, он не может.
 	if not firing:
-		if track_visual.visible:
-			track_visual.visible = false
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
+		_aim_model(0.0, 0.0, delta)
+		_show_tracer(false, delta)
 		return
-
-	# ── Стреляем → показываем и «оживляем» луч ───────────────────────────────
-	track_visual.visible = true
 	_anim_t += delta
-
 	# Если в конусе есть цель — доворачиваем турель на неё, иначе плавно в нейтраль
-	# (стрельба «в воздух» — луч всё равно бьёт прямо, видно что оружие работает).
+	# (стрельба «в воздух» — снаряд всё равно летит прямо, видно что оружие работает).
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
 	if has_target:
@@ -259,7 +253,21 @@ func _track_target(delta: float, firing: bool) -> void:
 	else:
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
 		_aim_model(0.0, 0.0, delta)          # цели нет — модель возвращается в покой
+	_show_tracer(true, delta)
 
+## ТРАССЕР — только картинка: цилиндр под лучом наводки, который тянется до точки попадания
+## и пульсирует, пока орудие стреляет. Его может не быть вовсе (у новых моделей его нет), и
+## это ни на что не влияет, кроме внешнего вида.
+func _show_tracer(firing: bool, _delta: float) -> void:
+	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
+	if track_visual == null:
+		return
+	if not firing:
+		if track_visual.visible:
+			track_visual.visible = false
+		return
+	track_visual.visible = true
+	var track_mat: Material = track_visual.get_active_material(0)
 	# Длина луча: до точки попадания, иначе на всю дальность (бьёт в воздух).
 	var hit := raycast.is_colliding()
 	var length := weapon_range
@@ -270,7 +278,6 @@ func _track_target(delta: float, firing: bool) -> void:
 		if absf(cyl.height - length) > 0.05:
 			cyl.height = length
 		track_visual.position.z = -length * 0.5
-
 	# Анимация «рабочего» луча: пульсация яркости. По цели — горячий (бело-красный), в
 	# воздух — оранжево-красный поспокойнее. Луч материал unshaded, поэтому пульсируем
 	# именно albedo (на unshaded виден он, а не emission); emission ставим заодно для
@@ -283,7 +290,7 @@ func _track_target(delta: float, firing: bool) -> void:
 		m.albedo_color = base * pulse
 		m.emission_enabled = true
 		m.emission = base
-		m.emission_energy_multiplier = (3.0 if hit else 1.5) * pulse
+		m.emission_energy_multiplier = 1.5 + 1.5 * pulse
 
 func _handle_fire(delta: float) -> void:
 	var body: Node3D = raycast.get_collider()

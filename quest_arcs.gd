@@ -394,7 +394,11 @@ func _spawn_station(at: Vector3, layout: Array) -> Node3D:
 	if v is RigidBody3D:
 		(v as RigidBody3D).freeze = true       # морозим ДО позиции: телепорт живого тела физика откатит
 		(v as RigidBody3D).linear_velocity = Vector3.ZERO
-	v.global_position = at + Vector3.UP * 1.2
+	# ВЫСОТА: нижний ряд блоков должен ЛЕЖАТЬ НА ЗЕМЛЕ. Клетка — метр, блок нижнего ряда
+	# стоит в самом начале координат машины, значит его низ на полметра ниже — отсюда и
+	# половина. Со старыми 1.2 база висела над землёй, и вместе с ней висела в воздухе вся
+	# линия конвейера: у неё под собой ничего нет, она держится соседями.
+	v.global_position = at + Vector3.UP * 0.5
 	if v.has_method("apply_build"):
 		v.apply_build(layout)
 	if "is_station" in v:
