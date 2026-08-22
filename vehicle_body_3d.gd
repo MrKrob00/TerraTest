@@ -86,13 +86,25 @@ func _energy_tick(delta: float) -> void:
 	if _cap_timer <= 0.0:
 		_cap_timer = 0.5
 		var batteries := 0
+		var anchors := 0
 		_solar_count = 0
 		if block_map_node != null:
 			for b in block_map_node.get_children():
-				match b.get("block"):
+				var bt = b.get("block")
+				match bt:
 					G.Block.BATTERY: batteries += 1
 					G.Block.SOLAR:   _solar_count += 1
+				# Чем машина держится на якоре: фикс-опора ИЛИ любой стационарный блок —
+				# ровно то, что разрешало якорь в can_anchor().
+				if bt != null and (int(bt) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT] or G.is_stationary(int(bt))):
+					anchors += 1
 		_battery_cap = BASE_ENERGY_CAP + batteries * BATTERY_CAP
+		# ЯКОРЬ ДЕРЖИТСЯ НА БЛОКЕ. Сбили опору — машина обязана свалиться с якоря: иначе
+		# сбитая насмерть база продолжала висеть замороженной в воздухе, и снять её было нечем
+		# (кнопка якоря проверяет ту же опору, которой уже нет). База (is_station) — исключение:
+		# у неё опора и есть весь смысл, она стоит на стационарном ядре.
+		if anchored and not is_station and anchors == 0:
+			_release_anchor()
 	# Ёмкость пересчитываем КАЖДЫЙ тик, а не раз в секунду вместе с блоками: она зависит от
 	# якоря, а якорь снимают мгновенно, и буфер обязан пропасть тогда же.
 	_energy_cap = _battery_cap + (_solar_count * SOLAR_RATE if anchored else 0.0)

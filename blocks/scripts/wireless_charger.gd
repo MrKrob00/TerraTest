@@ -45,6 +45,11 @@ func _physics_process(delta: float) -> void:
 			or _target_cell == null or not is_instance_valid(_target_cell):
 		_show_beam(false)
 		return
+	# Полному получателю не льём: всё, что не влезло в его ёмкость, просто сгорает в его же
+	# тике, а у донора энергия при этом уже списана — вечная утечка на стоящей рядом машине.
+	if _target.has_method("energy_fill") and _target.energy_fill() >= 0.999:
+		_show_beam(false)
+		return
 	# Берём энергию у СВОЕЙ машины и кладём получателю. Отдаём ровно столько, сколько
 	# реально сняли: energy_consume возвращает выданное, и если у нас пусто — перелива нет.
 	var want: float = RATE * delta
@@ -68,7 +73,9 @@ func _find_battery(mine: Node) -> Node3D:
 	if vehicles == null:
 		return null
 	var best: Node3D = null
-	var best_d2: float = RANGE
+	# В КВАДРАТЕ: сравниваем с distance_squared_to. Здесь стояло само RANGE, то есть радиус
+	# на деле был √6 ≈ 2.4 м — машины почти вплотную, и зарядка «не работала».
+	var best_d2: float = RANGE * RANGE
 	for v in vehicles.get_children():
 		if v == mine or not (v is Node3D) or not is_instance_valid(v):
 			continue

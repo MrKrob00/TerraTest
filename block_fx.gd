@@ -17,7 +17,12 @@ const CARD_SPREAD := 1.25       # насколько шире блока раз�
 # AOE-взрыв: урон блокам в радиусе (спад от центра) + дешёвый огненный эффект (два additive-меша,
 # без частиц/света — легко для мобильного GPU). Батарея зовёт это при уничтожении. exclude_root —
 # машина, которую НЕ бить (напр. ракета не бьёт свою); для батареи null — взрывает всё вокруг.
-static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: int, exclude_root: Node = null) -> void:
+#
+# push — импульс СВОБОДНЫМ блокам (тем, что уже лежат в мире, freeze = false). Блоки на машине
+# толкать нечем: их держит родитель, и импульс телу блока физика просто игнорирует. Те, что
+# оторвутся ИЗ-ЗА этого взрыва, разлетаются по метке machine_body.register_blast — её ставит
+# тот, кто взрывается.
+static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: int, exclude_root: Node = null, push: float = 0.0) -> void:
 	if not is_instance_valid(anchor):
 		return
 	var world := anchor.get_world_3d()
@@ -39,6 +44,13 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 			seen[b] = true
 			var dist: float = (b as Node3D).global_position.distance_to(world_pos)
 			var f: float = clampf(1.0 - dist / radius, 0.15, 1.0)   # спад урона к краю
+			# Толкаем ДО урона: hurt может убить блок, а мёртвому импульс уже не нужен.
+			if push > 0.0 and b is RigidBody3D and not (b as RigidBody3D).freeze:
+				var away: Vector3 = (b as Node3D).global_position - world_pos
+				if away.length_squared() < 0.01:                     # 0.1², только сравнение
+					away = Vector3(randf() - 0.5, 0.4, randf() - 0.5)
+				away = (away.normalized() + Vector3.UP * 0.35).normalized()
+				(b as RigidBody3D).apply_central_impulse(away * push * f * (b as RigidBody3D).mass)
 			b.hurt(int(round(dmg * f)))
 	var tree := anchor.get_tree()
 	if tree != null and tree.current_scene != null:

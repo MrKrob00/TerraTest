@@ -35,6 +35,13 @@ var ore_colors: Array[Color] = []
 ## В радиусе 160 при 2000 жилах на карту 1982² их ~40-60; 180 — с большим запасом.
 @export var max_visible: int = 180
 @export var cull_interval: float = 0.25      # как часто пересчитывать стриминг (сек)
+## Жилы ЗА СПИНОЙ не держим. Жила — это не только инстанс MultiMesh, но и узел с коллизией и
+## своей логикой добычи; за камерой от него нет никакой пользы, а слот в буфере он занимает.
+## Отвернулся — отдали слот тому, что впереди, и в радиусе стало видно дальше.
+## keep_radius — ближний пузырь: рядом жила активна в любую сторону, иначе та, в которую уже
+## вгрызся бур, гасла бы, стоило отвести камеру.
+@export var keep_radius: float = 40.0
+@export var view_cos: float = -0.15          # чуть шире полусферы перед камерой — край не мигает
 
 # Все жилы карты как данные: {pos, scene, ore_type, coal, slot(-1=не показана), node(null)}.
 var _data: Array = []
@@ -205,12 +212,24 @@ func _stream_in(v: Dictionary) -> void:
 		add_child(node)
 		v["node"] = node
 
-# Мировые позиции сейчас активных (стримнутых) жил — для блипов на радаре (hud.gd).
-func active_positions() -> Array:
+# Мировые позиции жил ВОКРУГ ТОЧКИ — для блипов на радаре (hud.gd).
+#
+# Раньше отдавались «сейчас стримнутые» жилы, и это совпадало с радиусом радара само собой.
+# Теперь стриминг отсекает то, что за спиной, а радар смотрит СВЕРХУ и во все стороны сразу:
+# по нему как раз и разворачиваются к жиле, которой не видно. Поэтому здесь считаем по данным
+# и по расстоянию, а не по тому, нарисована ли жила.
+func active_positions(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Array:
+	var center: Vector3 = around
+	if center == Vector3.INF:
+		var cam := get_viewport().get_camera_3d()
+		center = cam.global_position if cam != null else Vector3.ZERO
+	var r2: float = (radius if radius > 0.0 else render_distance)
+	r2 *= r2
 	var out: Array = []
 	for v in _data:
-		if int(v["slot"]) >= 0:
-			out.append(to_global(v["pos"]))
+		var p: Vector3 = to_global(v["pos"])
+		if center.distance_squared_to(p) <= r2:
+			out.append(p)
 	return out
 
 # Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.
@@ -236,9 +255,15 @@ func _process(delta: float) -> void:
 	if cam == null:
 		return
 	var cam_pos: Vector3 = cam.global_position
+	var fwd: Vector3 = -cam.global_transform.basis.z
 	var d2: float = render_distance * render_distance
+	var keep2: float = keep_radius * keep_radius
 	for v in _data:
-		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
+		var to: Vector3 = to_global(v["pos"]) - cam_pos
+		var dist2: float = to.length_squared()
+		# В радиусе И (близко ИЛИ впереди). Направление считаем только для дальних: у жилы
+		# под колёсами направление вырождается, да и гасить её нельзя.
+		var near: bool = dist2 <= d2 and (dist2 <= keep2 or to.normalized().dot(fwd) >= view_cos)
 		var shown: bool = int(v["slot"]) >= 0
 		if near and not shown:
 			_stream_in(v)
