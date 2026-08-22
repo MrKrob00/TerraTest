@@ -40,6 +40,7 @@ func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()
+	_find_turret_parts()
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
 	if has_node("Ammo/Bullet"):
 		_rebind_bullet($Ammo/Bullet)
@@ -68,6 +69,53 @@ func _physics_process(delta: float) -> void:
 
 func attack() -> void:
 	_fire_hold = FIRE_HOLD
+
+# ── НАВОДКА ПО МОДЕЛИ ────────────────────────────────────────────────────────
+# Модель турели собрана из трёх частей, и у каждой своя работа:
+#   • ПЛАТФОРМА (turret / rocketgun) — приколочена к блоку, не двигается вообще;
+#   • *_head — поворотная часть: ходит ВЛЕВО-ВПРАВО (рыскание);
+#   • *_head_001 — ствол: ходит ВВЕРХ-ВНИЗ (наклон).
+#
+# Раньше не двигалось НИЧЕГО: код доворачивал узел Pivot, а он к модели отношения не имеет —
+# по нему летит снаряд и смотрит луч. Турель стреляла куда надо, но выглядела намертво
+# приваренной.
+#
+# Ищем по СУФФИКСУ имени, а не по точному: у пушки это turret_head, у ракетницы
+# rocketgun_head — часть одна и та же по смыслу, префикс у каждой модели свой. Нет таких
+# узлов (лазер: в его .glb только плоскости и куб) — просто ничего не доворачиваем.
+const TURRET_TRACK: float = 12.0       # скорость доворота модели, как у Pivot
+
+var _yaw_part: Node3D = null           # *_head: влево-вправо
+var _pitch_part: Node3D = null         # *_head_001: вверх-вниз
+var _yaw_rest: Basis = Basis()
+var _pitch_rest: Basis = Basis()
+
+func _find_turret_parts() -> void:
+	for n in find_children("*_head", "Node3D", true, false):
+		_yaw_part = n as Node3D
+		break
+	for n in find_children("*_head_001", "Node3D", true, false):
+		_pitch_part = n as Node3D
+		break
+	if _yaw_part != null:
+		_yaw_rest = _yaw_part.transform.basis
+	if _pitch_part != null:
+		_pitch_rest = _pitch_part.transform.basis
+
+## Довернуть модель на те же углы, куда смотрит Pivot (радианы). Углы уже ограничены конусом
+## турели: у ствола своего предела нет, он показывает ровно то, куда полетит снаряд.
+##
+## Крутим ОТ ПОЛОЖЕНИЯ ПОКОЯ и умножением справа (локальная ось узла), а не присваиванием
+## rotation.y/x: у частей модели свой запечённый разворот, и присваивание одной эйлеровой
+## компоненты его бы разрушило.
+func _aim_model(yaw: float, pitch: float, delta: float) -> void:
+	var k: float = clampf(delta * TURRET_TRACK, 0.0, 1.0)
+	if _yaw_part != null:
+		_yaw_part.transform.basis = _yaw_part.transform.basis.orthonormalized().slerp(
+				(_yaw_rest * Basis(Vector3.UP, yaw)).orthonormalized(), k)
+	if _pitch_part != null:
+		_pitch_part.transform.basis = _pitch_part.transform.basis.orthonormalized().slerp(
+				(_pitch_rest * Basis(Vector3.RIGHT, pitch)).orthonormalized(), k)
 
 # Радиус зоны, в которой турель ВИДИТ цели, = дальность оружия. В сценах он был прибит
 # к 10 (у ракетницы 18) — то есть турель не бралась наводиться дальше десяти метров, сколько
@@ -185,8 +233,10 @@ func _track_target(delta: float, firing: bool) -> void:
 		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
 		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
 		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
+		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)
 	else:
 		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
+		_aim_model(0.0, 0.0, delta)          # цели нет — модель возвращается в покой
 
 	# Длина луча: до точки попадания, иначе на всю дальность (бьёт в воздух).
 	var hit := raycast.is_colliding()
