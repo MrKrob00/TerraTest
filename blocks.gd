@@ -631,7 +631,7 @@ func _detach_orphans() -> void:
 		return
 	var reachable := _reachable_cells()
 	if reachable.is_empty():
-		return   # корня нет (кабина/база уничтожена) — этим займётся смерть машины (_scatter_blocks)
+		return   # корня нет (кабина/база уничтожена) — этим займётся смерть машины (MachineBody.scatter_blocks)
 	var orphans: Array = []
 	for anchor in node_map.keys():
 		var parts: PackedStringArray = anchor.split(",")

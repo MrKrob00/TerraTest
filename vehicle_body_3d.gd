@@ -206,41 +206,10 @@ func _die() -> void:
 	if _dying:
 		return
 	_dying = true
-	_scatter_blocks()
+	scatter_blocks()          # общий разлёт из MachineBody: у врага он тот же
 	if camera_controller and camera_controller.has_method("on_vehicle_died"):
 		camera_controller.on_vehicle_died(self)
 	queue_free()
-
-func _scatter_blocks() -> void:
-	var objects := get_node_or_null("/root/Main/objects")
-	if objects == null or block_map_node == null:
-		return
-	
-	var cabin_pos: Vector3 = global_position  # Центр разлёта
-	for b in block_map_node.get_children():
-		if b.get("block") == G.Block.CABIN and b is Node3D:
-			cabin_pos = (b as Node3D).global_position
-			break
-	for b in block_map_node.get_children():
-		if not ("block" in b):
-			continue      # пропускаем меш-призрак
-		if b.get("block") == G.Block.CABIN:
-			continue      # кабина разрушена
-		if b is Node3D:
-			var n3 := b as Node3D
-			n3.reparent(objects)
-			if n3 is RigidBody3D:
-				# Толчок сразу и напрямую: размораживаем САМИ (не ждём, пока VehicleBlock
-				# сделает это сигналом кадром позже), будим и даём импульс. freeze=false и
-				# apply_central_impulse — прямые вызовы физсервера, выполняются по порядку.
-				# Поздний _on_parent_changed поставит freeze=false ещё раз — без вреда.
-				var rb := n3 as RigidBody3D
-				var dir := (rb.global_position - cabin_pos)
-				dir.y = 0.0
-				dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3(randf() - 0.5, 0, randf() - 0.5).normalized()
-				rb.freeze = false
-				rb.sleeping = false
-				rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
 
 # ══════════════════════════════════════════
 # ЗАЩИТА / ЯКОРЬ / ДЕЙСТВИЯ КРУГОВОГО МЕНЮ

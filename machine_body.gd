@@ -644,6 +644,48 @@ var _blast_pos: Vector3 = Vector3.ZERO
 var _blast_force: float = 0.0
 var _blast_until_ms: int = 0
 
+## РАЗЛЁТ БЛОКОВ ПРИ ГИБЕЛИ МАШИНЫ. Живёт в ОБЩЕЙ базе, потому что нужен обоим: у игрока это
+## был `_scatter_blocks`, у врага — `_eject_blocks`, и они разошлись бы при первой же правке
+## (у врага, например, не пропускались меш-призраки подсказок). Ровно та ловушка, про которую
+## написано в CLAUDE.md: механика, нужная обеим машинам, не должна лежать у одной из них.
+##
+## cabin — узел, от которого считается ЭПИЦЕНТР разлёта. У врага ссылка на кабину есть под
+## рукой, у игрока её ищут перебором; поэтому параметр, а не поиск в одном стиле для обоих.
+## Импульс даём НАПРЯМУЮ и сразу: размораживаем сами, не дожидаясь, пока VehicleBlock сделает
+## это сигналом кадром позже — иначе блок успевает провалиться сквозь пол, пока не разморожен.
+func scatter_blocks(cabin: Node = null) -> void:
+	var objects := get_node_or_null("/root/Main/objects")
+	var bl: Node = get("block_map_node") if get("block_map_node") != null else get_node_or_null("blocks")
+	if objects == null or bl == null:
+		return
+	var center: Vector3 = global_position
+	if cabin != null and is_instance_valid(cabin) and cabin is Node3D:
+		center = (cabin as Node3D).global_position
+	else:
+		for b in bl.get_children():
+			if b.get("block") == G.Block.CABIN and b is Node3D:
+				center = (b as Node3D).global_position
+				break
+	for b in bl.get_children():                   # get_children() — снимок, reparent безопасен
+		if not ("block" in b):
+			continue                              # меш-призрак подсказки: у него нет типа блока
+		if b.get("block") == G.Block.CABIN:
+			continue                              # кабина уничтожена — не роняем
+		if not (b is Node3D):
+			continue
+		var n3 := b as Node3D
+		n3.reparent(objects)                      # keep_global_transform=true → блок на месте
+		var rb := n3 as RigidBody3D
+		if rb == null:
+			continue
+		var dir := rb.global_position - center
+		dir.y = 0.0
+		dir = dir.normalized() if dir.length_squared() > 0.0001 \
+				else Vector3(randf() - 0.5, 0.0, randf() - 0.5).normalized()
+		rb.freeze = false
+		rb.sleeping = false
+		rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
+
 func register_blast(pos: Vector3, force: float) -> void:
 	_blast_pos = pos
 	_blast_force = force
