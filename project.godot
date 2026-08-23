@@ -153,7 +153,4 @@ shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
 scaling_3d/scale=0.75
 environment/glow/upscale_mode=0
-# Своё отсечение по горизонту делает рельеф (LiteTerrain.enable_occlusion_culling) по карте
-# высот. Движковое требует ЗАПЕЧЁННЫХ OccluderInstance3D, а их в проекте нет ни одного —
-# то есть оно только держало поток окклюзии и не отсекало ничего.
-occlusion_culling/use_occlusion_culling=false
+"#Ð¡Ð²Ð¾ÑÐ¾ÑÑÐµÑÐµÐ½Ð¸ÐµÐ¿Ð¾Ð³Ð¾ÑÐ¸Ð·Ð¾Ð½ÑÑÐ´ÐµÐ»Ð°ÐµÑÑÐµÐ»ÑÐµÑ(LiteTerrain.enable_occlusion_culling)Ð¿Ð¾ÐºÐ°ÑÑÐµ#Ð²ÑÑÐ¾Ñ.ÐÐ²Ð¸Ð¶ÐºÐ¾Ð²Ð¾ÐµÑÑÐµÐ±ÑÐµÑÐÐÐÐÐ§ÐÐÐÐ«Ð¥OccluderInstance3D,Ð°Ð¸ÑÐ²Ð¿ÑÐ¾ÐµÐºÑÐµÐ½ÐµÑÐ½Ð¸Ð¾Ð´Ð½Ð¾Ð³Ð¾â#ÑÐ¾ÐµÑÑÑÐ¾Ð½Ð¾ÑÐ¾Ð»ÑÐºÐ¾Ð´ÐµÑÐ¶Ð°Ð»Ð¾Ð¿Ð¾ÑÐ¾ÐºÐ¾ÐºÐºÐ»ÑÐ·Ð¸Ð¸Ð¸Ð½ÐµÐ¾ÑÑÐµÐºÐ°Ð»Ð¾Ð½Ð¸ÑÐµÐ³Ð¾.occlusion_culling/use_occlusion_culling"=false
