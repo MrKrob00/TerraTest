@@ -136,6 +136,8 @@ func _define_layout() -> void:
 		8: _layout_lancer()
 		9: _layout_breaker()
 		10: _layout_siege()
+		11: _layout_outpost()
+		12: _layout_fort()
 		_: _layout_default()
 
 # Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
@@ -302,6 +304,41 @@ func _side_armor(z: int) -> void:
 ## кабину — та принимает соседей всеми сторонами.
 func _front_armor() -> void:
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+
+## ВРАЖЕСКИЕ БАЗЫ (пресеты 11-12). Ядро — ОПОРА, а не кабина: база не едет, и держится она
+## тем же, чем наша (G.STATIONARY_BLOCKS). Кабины у неё нет намеренно — смерть базы решает
+## сторож ядра в MachineBody, ровно как у станции игрока.
+##
+## Колёс нет вовсе, поэтому корпус можно тянуть в стороны свободно; зато стволы, как и везде,
+## стыкуются ТОЛЬКО низом (connect_faces = 32) — значит каждый стоит НА блоке, а не в воздухе.
+## Броня стыкуется задом (+Z), отсюда те же ±90° по бортам, что и у машин.
+
+## Аванпост: опора, пара блоков, два ствола и борта. Первая база, которую встретит игрок.
+func _layout_outpost() -> void:
+	set_block(5, 5, 5, G.Block.SUPPORT, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
+	set_block(5, 6, 5, G.Block.BLOCK, 0.0)
+	_side_armor(5)
+	set_block(5, 7, 5, G.Block.GUN, 0.0)
+	set_block(5, 6, 6, G.Block.GUN, 0.0)
+
+## Форт: шире, выше, с ракетницей и аккумулятором. Аккумулятор здесь не для энергии (базе она
+## не нужна), а ради взрыва: добить форт в упор должно быть опасно.
+func _layout_fort() -> void:
+	set_block(5, 5, 5, G.Block.SUPPORT, 0.0)
+	for z in [4, 6]:
+		set_block(5, 5, z, G.Block.BLOCK, 0.0)
+		set_block(5, 6, z, G.Block.BLOCK, 0.0)
+	set_block(4, 5, 5, G.Block.BLOCK, 0.0)
+	set_block(6, 5, 5, G.Block.BLOCK, 0.0)
+	set_block(5, 6, 5, G.Block.BATTERY, 0.0)
+	_side_armor(4)
+	_side_armor(6)
+	set_block(5, 7, 4, G.Block.GUN, 0.0)
+	set_block(5, 7, 6, G.Block.ROCKET, 0.0)
+	set_block(4, 6, 5, G.Block.GUN, PI / 2)
+	set_block(6, 6, 5, G.Block.GUN, -PI / 2)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
