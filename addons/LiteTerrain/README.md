@@ -363,6 +363,16 @@ Snapping is also guarded by alignment (`_snap_ok`): it interpolates between two 
 the coarse neighbour is assumed to have, which holds on the chunk grid but not for every
 quadtree step, and moving a border to a height nothing matches is worse than the crack.
 
+**Flat ground is merged into big quads.** A canyon floor or a mesa top used to cost two
+triangles per cell for a surface one quad describes exactly, so the chunk builder runs a greedy
+pass: a run of cells that is FLAT AT THE SAME HEIGHT becomes a single quad, the way block-world
+renderers merge their faces. Only exact flatness qualifies (`MERGE_EPS`, a millimetre) — the
+dropped interior samples were already lying in that plane, so nothing moves, the surface cannot
+drift away from the collision, and no T-junction can open a crack. Anything sloped, and any
+sand carrying wind ripples, is not flat and is left alone. The chunk's outer ring never merges:
+those vertices are the seam. Vertices nothing points at afterwards are dropped in one remap
+pass, so the saving is in memory as well as in triangles.
+
 **Every step is a power of two, and that is what makes the seam exact.** Snapping reads the
 two coarse samples a border vertex falls between, which is only meaningful if the coarse
 grid is a superset of the fine one and starts on it. Chunk steps (2/4/8 at

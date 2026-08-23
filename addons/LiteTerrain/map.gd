@@ -2101,6 +2101,24 @@ const ROCK_ROUGH: float = 0.45
 const ROCK_NOISE_LEN: float = 7.0
 const ROCK_SLOPE_MIN: float = 0.6    # height difference per cell where rock starts reading as rock
 
+## Longest side of a merged flat rectangle, in cells. Unbounded merging would draw a whole
+## canyon floor as one quad — correct geometrically, but the biome colour lives in the VERTICES,
+## so the shading would be interpolated across a hundred metres from four corners.
+const MERGE_MAX: int = 16
+## How equal is "flat". The heights come from a float texture, so exact comparison is wrong;
+## a millimetre is far below anything visible and far below what would move the surface off
+## the collision.
+const MERGE_EPS: float = 0.001
+
+## Are all four corners of cell (cx, cz) at height h0? Vertices are laid out row-major over the
+## sample grid, so the index arithmetic is direct — no dictionary lookup per corner.
+func _cell_flat(verts: PackedVector3Array, nx: int, cx: int, cz: int, h0: float) -> bool:
+	var i: int = cz * nx + cx
+	return absf(verts[i].y - h0) < MERGE_EPS \
+			and absf(verts[i + 1].y - h0) < MERGE_EPS \
+			and absf(verts[i + nx].y - h0) < MERGE_EPS \
+			and absf(verts[i + nx + 1].y - h0) < MERGE_EPS
+
 ## How much detail this vertex may take: full inside the chunk, zero at its border.
 func _detail_weight(x: int, z: int, x0: int, z0: int, x1: int, z1: int) -> float:
 	var dx: float = minf(float(x - x0), float(x1 - x))
@@ -2142,8 +2160,6 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var normals: PackedVector3Array = PackedVector3Array()
 	var uvs: PackedVector2Array = PackedVector2Array()
 	var colors: PackedColorArray = PackedColorArray()   # .r = grass mask: 0 on chunk borders, 1 inside
-	var local_idx: Dictionary = {}
-	var idx: int = 0
 	var aabb_min: Vector3 = Vector3(INF,  INF,  INF)
 	var aabb_max: Vector3 = Vector3(-INF, -INF, -INF)
 
@@ -2262,27 +2278,107 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# the hottest loop in the build for nothing.
 			normals.append(Vector3(hl0 - hr0 - dhx, 2.0 * sz, hu0 - hd0 - dhz).normalized())
 
-			local_idx[z * w + x] = idx
-			idx += 1
+			# Индекс вершины нигде не хранится: вершины пишутся строка за строкой, значит он
+			# и так равен zi * xs.size() + xi — ровно так их и адресует сборка треугольников.
+			# Прежний словарь стоил вставку на КАЖДУЮ вершину в самом горячем цикле сборки,
+			# и ради арифметики, которая помещается в одну строку.
 
-	# ── Triangles ─────────────────────────────────────────────────────────────
-	# Iterate over the sample-position arrays — no manual index arithmetic,
-	# so we always connect exactly the vertices we generated above.
-	for zi in range(zs.size() - 1):
-		for xi in range(xs.size() - 1):
-			var i00: int = local_idx.get(zs[zi]     * w + xs[xi],     -1)
-			var i10: int = local_idx.get(zs[zi]     * w + xs[xi + 1], -1)
-			var i01: int = local_idx.get(zs[zi + 1] * w + xs[xi],     -1)
-			var i11: int = local_idx.get(zs[zi + 1] * w + xs[xi + 1], -1)
-			if i00 < 0 or i10 < 0 or i01 < 0 or i11 < 0:
+	# ── Triangles: FLAT AREAS ARE MERGED INTO BIG QUADS ───────────────────────
+	# A canyon floor is dead flat and used to cost two triangles per METRE, for a surface that
+	# a single quad describes exactly. This is greedy meshing, the same idea block-world
+	# renderers use on their faces: walk the cells, and wherever a run of them is FLAT AT THE
+	# SAME HEIGHT, emit one quad over the whole rectangle instead of two triangles per cell.
+	#
+	# WHY EXACT FLATNESS AND NOTHING ELSE. Dropping the vertices inside a merged rectangle is
+	# only free if they were already lying on it. On a plateau they are — every corner has the
+	# same height, so the interior samples sit exactly in the plane of the big quad and the
+	# merge changes nothing at all, not even by a millimetre. Merge anything merely "gentle" and
+	# the interior would be pulled onto a chord: the ground would visibly flatten, and worse, the
+	# terrain would drift away from the collision, which is still cut from the raw heights.
+	#
+	# Flatness is judged on the FINAL vertex heights, after border snapping and after the visual
+	# detail — so sand carrying ripples is never flat and never merges, which is exactly right.
+	#
+	# The chunk's OUTER RING is never merged: those vertices are the seam with the neighbour
+	# (snapped to its grid), and every one of them has to stay in the mesh.
+	var nx: int = xs.size()
+	var nz: int = zs.size()
+	var cells_x: int = nx - 1
+	var cells_z: int = nz - 1
+	var taken := PackedByteArray()
+	taken.resize(cells_x * cells_z)
+	for cz in cells_z:
+		for cx in cells_x:
+			if taken[cz * cells_x + cx] != 0:
 				continue
-			indices.append_array([i00, i10, i11])
-			indices.append_array([i00, i11, i01])
+			var i00: int = cz * nx + cx
+			var i10: int = cz * nx + cx + 1
+			var i01: int = (cz + 1) * nx + cx
+			var i11: int = (cz + 1) * nx + cx + 1
+			var edge: bool = cx == 0 or cz == 0 or cx == cells_x - 1 or cz == cells_z - 1
+			var h0: float = vertices[i00].y
+			if edge or not _cell_flat(vertices, nx, cx, cz, h0):
+				indices.append_array([i00, i10, i11])
+				indices.append_array([i00, i11, i01])
+				continue
+			# Grow right, then down — the plain greedy rectangle. Capped so one quad never
+			# spans so much ground that the biome colour, which is per-vertex, visibly drifts
+			# across it.
+			var rw: int = 1
+			while rw < MERGE_MAX and cx + rw < cells_x - 1 \
+					and taken[cz * cells_x + cx + rw] == 0 \
+					and _cell_flat(vertices, nx, cx + rw, cz, h0):
+				rw += 1
+			var rh: int = 1
+			while rh < MERGE_MAX and cz + rh < cells_z - 1:
+				var row_ok: bool = true
+				for k in rw:
+					if taken[(cz + rh) * cells_x + cx + k] != 0 \
+							or not _cell_flat(vertices, nx, cx + k, cz + rh, h0):
+						row_ok = false
+						break
+				if not row_ok:
+					break
+				rh += 1
+			for jz in rh:
+				for jx in rw:
+					taken[(cz + jz) * cells_x + cx + jx] = 1
+			var a: int = cz * nx + cx
+			var b: int = cz * nx + cx + rw
+			var c: int = (cz + rh) * nx + cx + rw
+			var e: int = (cz + rh) * nx + cx
+			indices.append_array([a, b, c])
+			indices.append_array([a, c, e])
 
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
 
+	# ── Drop the vertices the merge left unused ───────────────────────────────
+	# Inside a merged rectangle nothing points at the interior samples any more. Keeping them
+	# would waste memory and upload bandwidth for geometry that draws nothing — and on a machine
+	# where the rasteriser runs on the CPU, every vertex that survives is work somebody does.
+	# One pass over the indices builds the remap, so this costs a fraction of what it saves.
+	var remap := PackedInt32Array()
+	remap.resize(vertices.size())
+	remap.fill(-1)
+	var kv := PackedVector3Array()
+	var kn := PackedVector3Array()
+	var ku := PackedVector2Array()
+	var kc := PackedColorArray()
+	for k in indices.size():
+		var oi: int = indices[k]
+		if remap[oi] < 0:
+			remap[oi] = kv.size()
+			kv.append(vertices[oi])
+			kn.append(normals[oi])
+			ku.append(uvs[oi])
+			kc.append(colors[oi])
+		indices[k] = remap[oi]
+	vertices = kv
+	normals = kn
+	uvs = ku
+	colors = kc
 
 	var arr: Array = Array()
 	arr.resize(Mesh.ARRAY_MAX)
