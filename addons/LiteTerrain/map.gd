@@ -2024,6 +2024,67 @@ func _biome_grass01(gx: int, gz: int) -> float:
 func _mountain_mask01(gx: int, gz: int) -> float:
 	return _biomes().mountain_mask(_biome_wp(gx, gz), _cv_noise)
 
+# ── VISUAL DETAIL THE COLLISION DOES NOT HAVE ────────────────────────────────
+# Collision is cut straight from the heights (md); the render mesh is built separately. That
+# gap is room to spend on looks: wind ripples across sand, roughness on rock, without a single
+# extra collision shape and without the wheels feeling any of it. The ground a machine drives
+# on stays exactly the ground the physics knows.
+#
+# Three rules, and none of them is optional:
+#   1. NEAR CHUNKS ONLY (step <= DETAIL_MAX_STEP). At distance the detail is invisible anyway,
+#      and paying for it across the whole map is how a terrain gets slow.
+#   2. ZERO AT THE CHUNK BORDER (DETAIL_FADE cells). The neighbour may sit at another LOD, and
+#      any height we add that it does not add is the seam crack all over again.
+#   3. A PURE FUNCTION OF WORLD XZ AND BIOME. Two chunks evaluating the same point must get the
+#      same answer, or the detail itself becomes a seam.
+const DETAIL_MAX_STEP: int = 2       # LOD 0 at triangle_size 1
+const DETAIL_FADE: float = 2.0       # cells over which the detail fades out towards a border
+## Sand ripples: wind-blown waves across the dunes. Amplitude stays below a wheel radius — this
+## is meant to catch the light, not to be terrain.
+##
+## THE WAVELENGTH IS SET BY THE VERTEX SPACING, not by taste. LOD 0 puts a vertex every
+## `triangle_size` units (2 by default), and a wave shorter than about four of those cannot be
+## drawn at all — it aliases into noise that crawls as the camera moves. Nine units gives four
+## samples per crest and reads as drifting sand at the scale of our machines.
+## Kept small on purpose: the machine drives on the PHYSICAL surface, so on a crest a wheel
+## sinks into the drawn one by exactly this much. A fifth of a metre is a shadow; half a metre
+## is a wheel buried to the axle.
+const RIPPLE_AMP: float = 0.20
+const RIPPLE_LEN: float = 9.0        # world units between crests
+const RIPPLE_DIR := Vector2(0.82, 0.57)     # wind direction (normalised below)
+const RIPPLE_CROSS: float = 0.45     # a slow wave across the first — kills the corduroy look
+## Rock roughness: chiselled instead of smoothed-over. Applied by SLOPE, so it lands on canyon
+## walls and mountain faces and never on a floor a machine parks on. Same wavelength rule as
+## the ripples — value noise, not per-vertex hash, or it turns into shimmering static.
+const ROCK_ROUGH: float = 0.45
+const ROCK_NOISE_LEN: float = 7.0
+const ROCK_SLOPE_MIN: float = 0.6    # height difference per cell where rock starts reading as rock
+
+## How much detail this vertex may take: full inside the chunk, zero at its border.
+func _detail_weight(x: int, z: int, x0: int, z0: int, x1: int, z1: int) -> float:
+	var dx: float = minf(float(x - x0), float(x1 - x))
+	var dz: float = minf(float(z - z0), float(z1 - z))
+	return clampf(minf(dx, dz) / DETAIL_FADE, 0.0, 1.0)
+
+## Height the MESH adds on top of the real terrain at this point. masks = (canyon, meadow,
+## mountains); sand is what is left. Returns 0 for anything that is not sand or rock.
+func _detail_height(wx: float, wz: float, masks: Vector3, slope: float) -> float:
+	var out: float = 0.0
+	var sand: float = clampf(1.0 - maxf(masks.x, maxf(masks.y, masks.z)), 0.0, 1.0)
+	if sand > 0.01:
+		var dir: Vector2 = RIPPLE_DIR.normalized()
+		var t: float = (wx * dir.x + wz * dir.y) / RIPPLE_LEN
+		var u: float = (wx * -dir.y + wz * dir.x) / (RIPPLE_LEN * 7.0)
+		# Ripples ride on a long cross-wave, so the field reads as drifting sand rather than
+		# corduroy: crests bend and fade instead of running dead straight to the horizon.
+		out += sand * RIPPLE_AMP * sin(t * TAU + sin(u * TAU) * RIPPLE_CROSS)
+	var rock: float = clampf((slope - ROCK_SLOPE_MIN) / ROCK_SLOPE_MIN, 0.0, 1.0)
+	if rock > 0.01:
+		# Smooth value noise (the same one the canyon carve uses), so rock detail is stable per
+		# world point and identical in every chunk that evaluates it.
+		out += rock * ROCK_ROUGH * (_cv_noise(Vector2(wx, wz) / ROCK_NOISE_LEN) - 0.5) * 2.0
+	return out
+
 ## May a border be snapped to the neighbour's coarser grid? Only if the neighbour IS coarser
 ## and its grid is a superset of ours, so the two samples we interpolate between are vertices
 ## it really built. Every step in the system is a power of two (chunks 2/4/8, nodes 8…64 — see
@@ -2103,6 +2164,33 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(md[mini(z - rem + e_step, d - 1) * w + x]),
 							 float(rem) / float(e_step))
 
+			# ── Visual-only detail (see _detail_height) ───────────────────────
+			# Added AFTER border snapping and faded to nothing at the chunk edge, so neither the
+			# seam nor the collision knows about it. Masks are read once here and reused for the
+			# colour below.
+			var mk := _masks_at(x, z)
+			var hl0: float = md[z * w + maxi(x - sz, 0)]
+			var hr0: float = md[z * w + mini(x + sz, w - 1)]
+			var hu0: float = md[maxi(z - sz, 0) * w + x]
+			var hd0: float = md[mini(z + sz, d - 1) * w + x]
+			var slope: float = (absf(hr0 - hl0) + absf(hd0 - hu0)) / (2.0 * float(sz))
+			# The normal has to follow the detail, or the ripples are geometry nobody can see:
+			# the terrain is lambert-shaded, so it is the normal that catches the light, not the
+			# height. Two extra samples per axis, on near chunks only.
+			var dhx: float = 0.0
+			var dhz: float = 0.0
+			if sz <= DETAIL_MAX_STEP:
+				var dw: float = _detail_weight(x, z, x0, z0, x1, z1)
+				if dw > 0.001:
+					var wx: float = float(x) - w * 0.5 + 0.5
+					var wz: float = float(z) - d * 0.5 + 0.5
+					h += dw * _detail_height(wx, wz, mk, slope)
+					const E: float = 0.6
+					dhx = dw * (_detail_height(wx + E, wz, mk, slope) - _detail_height(wx - E, wz, mk, slope))
+					dhz = dw * (_detail_height(wx, wz + E, mk, slope) - _detail_height(wx, wz - E, mk, slope))
+					dhx *= float(sz) / E
+					dhz *= float(sz) / E
+
 			var pos: Vector3 = Vector3(x - w * 0.5 + 0.5, h, z - d * 0.5 + 0.5)
 			vertices.append(pos)
 			aabb_min = aabb_min.min(pos)
@@ -2117,16 +2205,14 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			var seam := (z == z0 and n_step != 0) or (z == z1 and s_step != 0) \
 					 or (x == x0 and w_step != 0) or (x == x1 and e_step != 0)
 			# .r = grass seam mask (0 on a LOD seam, else 1); .g = CANYON; .b = MEADOW; .a = MOUNTAINS.
-			var mk := _masks_at(x, z)
+			# mk was read above for the detail pass — masks cost noise lookups, once per vertex is enough.
 			colors.append(Color(0.0, mk.x, mk.y, mk.z) if seam else Color(1.0, mk.x, mk.y, mk.z))
 
 			# Finite-difference normal — uses step-wide neighbours so normals
-			# remain smooth at lower LODs instead of having discontinuities.
-			var hl: float = md[z * w + maxi(x - sz, 0)]
-			var hr: float = md[z * w + mini(x + sz, w - 1)]
-			var hu: float = md[maxi(z - sz, 0) * w + x]
-			var hd: float = md[mini(z + sz, d - 1) * w + x]
-			normals.append(Vector3(hl - hr, 2.0 * sz, hu - hd).normalized())
+			# remain smooth at lower LODs instead of having discontinuities. The same four
+			# samples already served the slope above; re-reading them would double the cost of
+			# the hottest loop in the build for nothing.
+			normals.append(Vector3(hl0 - hr0 - dhx, 2.0 * sz, hu0 - hd0 - dhz).normalized())
 
 			local_idx[z * w + x] = idx
 			idx += 1
