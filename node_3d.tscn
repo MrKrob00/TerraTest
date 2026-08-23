@@ -346,6 +346,7 @@ occlusion_min_dist = 80.0
 occlusion_samples = 14
 biomes = SubResource("Resource_s0gvp")
 triangle_size = 1
+editor_lod = true
 heightmap_path = "res://terrain_height.res"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
