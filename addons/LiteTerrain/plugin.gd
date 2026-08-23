@@ -90,6 +90,12 @@ var _gen_ramp: FastNoiseLite
 var _gen_out: PackedFloat32Array
 var _gen_base_in: PackedFloat32Array
 var _gen_carved: PackedFloat32Array
+## Длина буферов ЧИСЛОМ. Потоки обязаны проверять границы, но НЕ ТРОГАЯ сам массив: любое
+## обращение к нему как к объекту (хоть .size()) на миг создаёт вторую ссылку, а Packed-массив
+## при записи со второй ссылкой делает КОПИЮ — поле начинает указывать на копию, записи
+## остальных потоков уходят в никуда, и дальше начинается ровно то, что мы видели в логе:
+## «out of bounds» по адресам, которых в целом массиве быть не может.
+var _gen_len: int = 0
 var _gen_mesa_min: float = 0.0
 
 # One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
@@ -110,10 +116,8 @@ func _gen_alloc(n: int, what: String) -> PackedFloat32Array:
 func _gen_blur_row(z: int) -> void:
 	var w := _gen_w
 	var row := z * w
-	# Строка молча ничего не делает, если буфер короче карты. Без этой проверки ошибка
-	# «out of bounds» летит из КАЖДОГО потока по разу на строку — тридцать строк лога, в
-	# которых не видно, что именно не выделилось (см. _gen_alloc).
-	if _gen_out.size() < row + w or _gen_base_in.size() < row + w:
+	# Границы проверяем ПО ЧИСЛУ (см. _gen_len), а не по .size() массива.
+	if _gen_len <= 0 or row + w > _gen_len:
 		return
 	if z == 0 or z == _gen_d - 1:
 		for x in w:
@@ -169,8 +173,8 @@ func _gen_carve_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var b := _gen_biomes
-	if b == null or _gen_carved.size() < z * w + w or _gen_base_in.size() < z * w + w:
-		return                       # то же, что и в _gen_blur_row: не пишем в короткий буфер
+	if b == null or _gen_len <= 0 or z * w + w > _gen_len:
+		return                       # то же, что и в _gen_blur_row: границы по числу
 	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
 		var idx := z * w + x
@@ -1132,8 +1136,10 @@ func _generate_noise() -> void:
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
-	_gen_out = _gen_alloc(width * depth, "карту высот")
+	_gen_len = width * depth
+	_gen_out = _gen_alloc(_gen_len, "карту высот")
 	if _gen_out.is_empty():
+		_gen_len = 0
 		return
 	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: heights")
 	WorkerThreadPool.wait_for_group_task_completion(_fill_gid)

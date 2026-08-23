@@ -121,6 +121,14 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 ## mesh is only rebuilt after the editor camera STOPS moving (no per-move lag), and on
 ## sculpt. Seams are snapped just like at runtime, so no LOD cracks.
 @export var editor_lod: bool = false
+## КАК ДАЛЕКО РЕДАКТОР ВООБЩЕ СТРОИТ МЕШ (0 = вся карта, как раньше).
+##
+## Превью в редакторе строилось на ВСЮ карту: на 1984² это пятнадцать тысяч чанков и четыре
+## миллиона вершин — за один заход, и заново после каждого движения камеры. Отсюда и минуты
+## на «Generate Terrain». Смотреть на всю карту разом всё равно незачем: за шестьсот метров от
+## камеры видно контур, а не рельеф. Дальние чанки просто не строятся — в игре они, как и
+## раньше, стримятся сами.
+@export_range(0.0, 4000.0, 50.0) var editor_view_distance: float = 600.0
 
 # ── Streaming settings ────────────────────────────────────────────────────────
 ## How many chunks are meshed per streaming batch. Lower = fewer frame hitches.
@@ -1304,7 +1312,13 @@ func _rebuild_editor_full() -> void:
 	var total: int = _ed_cx * _ed_cz
 	if total > 0:
 		var cxl: int = _ed_cx
+		var far2: float = editor_view_distance * editor_view_distance
+		var cam_local := global_transform.affine_inverse() * (_editor_cam.global_position \
+				if _editor_cam else global_position)
 		var task := func(i: int) -> void:
+			if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
+				_ed_cache[i] = []          # дальше горизонта редактора — не строим вовсе
+				return
 			_ed_cache[i] = _chunk_surface_arrays(i % cxl, i / cxl)
 		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks")
 		WorkerThreadPool.wait_for_group_task_completion(gid)
@@ -1369,7 +1383,11 @@ func _editor_rebuild_lod() -> void:
 	var total: int = _ed_cx * _ed_cz
 	if total > 0:
 		var cxl: int = _ed_cx
+		var far2: float = editor_view_distance * editor_view_distance
 		var task := func(i: int) -> void:
+			if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
+				_ed_cache[i] = []          # дальше горизонта редактора — не строим вовсе
+				return
 			_ed_cache[i] = _chunk_surface_arrays_lod(i % cxl, i / cxl)
 		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks (LOD)")
 		WorkerThreadPool.wait_for_group_task_completion(gid)
@@ -1403,6 +1421,14 @@ func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 			ws if ws != step else 0,
 			es if es != step else 0)
 	return [] if res.is_empty() else res[0]
+
+## Квадрат расстояния от камеры редактора до центра чанка, в локальных осях карты.
+func _ed_chunk_dist2(cx: int, cz: int, cam_local: Vector3) -> float:
+	var ccx: float = (float(cx) + 0.5) * chunk_size - w * 0.5
+	var ccz: float = (float(cz) + 0.5) * chunk_size - d * 0.5
+	var dx: float = ccx - cam_local.x
+	var dz: float = ccz - cam_local.z
+	return dx * dx + dz * dz
 
 # Editor full-res chunk arrays (used when editor_lod is OFF).
 func _chunk_surface_arrays(cx: int, cz: int) -> Array:
