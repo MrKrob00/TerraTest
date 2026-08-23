@@ -961,11 +961,14 @@ func _build_perf_panel() -> void:
 	# The panel TAKES taps: tapping it runs the resolution test (see _cycle_render_scale).
 	# It only exists while profiling, so covering that corner of the screen costs nothing.
 	_perf_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Гасим событие через ВЬЮПОРТ, а не accept_event(): лямбда живёт в hud.gd, а он CanvasLayer,
+	# и метода Control'а у неё нет вовсе — скрипт из-за этого не парсился целиком, то есть HUD
+	# не грузился. Панель — Control, но self внутри лямбды это по-прежнему HUD.
 	_perf_panel.gui_input.connect(func(e: InputEvent) -> void:
 		if (e is InputEventScreenTouch and e.pressed) \
 				or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
 			_cycle_render_scale()
-			accept_event())
+			get_viewport().set_input_as_handled())
 	_perf_panel.position = Vector2(8, 8)
 	_perf_panel.visible = false
 	_perf_label = Label.new()
