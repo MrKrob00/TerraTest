@@ -103,7 +103,12 @@ func _nearest_node(nodes: Array, from: Vector3) -> Variant:
 
 func _ore_positions() -> Array:
 	var rn: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
-	return rn.active_positions() if rn != null and rn.has_method("active_positions") else []
+	if rn == null or not rn.has_method("active_blips"):
+		return []
+	var out: Array = []
+	for b in rn.active_blips():          # компасу нужна только точка, цвет металла — радару
+		out.append(b["p"])
+	return out
 
 func _nearest_of(points: Array, from: Vector3) -> Variant:
 	var best: Variant = null
