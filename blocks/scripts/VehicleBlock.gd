@@ -317,16 +317,26 @@ func hurt(damage: int = 10) -> void:
 		return
 	_check_critical()
 
-# ── Избитый блок ──────────────────────────────────────────────────────────────
-# Блок не обязан держаться до последнего хп: ниже DROP_FRAC крепления уже не держат, и
-# каждое попадание может сорвать его в мир, а ниже FUSE_FRAC он обречён — мигает и
-# взрывается сам. Это делает бой зрелищным и даёт причину отступить: машина начинает
-# разваливаться ДО того, как её добили.
-const DROP_FRAC := 0.20        # доля хп, ниже которой блок может сорваться с машины
-const DROP_CHANCE := 0.30      # шанс срыва НА КАЖДОЕ попадание в таком состоянии
-const FUSE_FRAC := 0.05        # доля хп, ниже которой блок обречён и взрывается сам
-const FUSE_BLINKS := 6
-const FUSE_STEP := 0.09        # с: полмигания; полный фитиль = FUSE_BLINKS * 2 * FUSE_STEP
+# ── A BATTERED BLOCK ─────────────────────────────────────────────────────────
+# A block does not hang on to its last hit point. Below DROP_FRAC the mounts no longer hold and
+# every hit can tear it off; below FUSE_FRAC it is doomed — it comes off for certain, blinks,
+# and blows up on its own. That is what makes a fight readable and gives a reason to retreat:
+# the machine starts coming apart BEFORE it is finished off.
+#
+# THE CABIN IS EXEMPT FROM TEARING OFF, and this is not cosmetic. The cabin is the root the
+# whole structure hangs from, and a block torn into the world has its `destroyed` connections
+# cut (blocks._detach_one) — so a detached cabin left the machine with no root and no death
+# signal at once: everything else fell off as orphans and a live, empty hull kept driving
+# around, unkillable. It still explodes when destroyed, it just never leaves the machine.
+const DROP_FRAC := 0.20        # below this share of hp a hit can tear the block off
+const DROP_CHANCE := 0.30      # chance PER HIT while in that state
+const FUSE_FRAC := 0.05        # below this the block is doomed: it detaches and burns down
+## How long the fuse burns. Long on purpose: a doomed block has to be a WARNING, something you
+## can drive away from or shoot off, not an instant explosion the player never saw coming.
+const FUSE_TIME_MIN := 4.0
+const FUSE_TIME_MAX := 6.0
+const FUSE_BLINK_SLOW := 0.34  # seconds per blink at the start
+const FUSE_BLINK_FAST := 0.07  # ...and at the end, so the last second reads as "now"
 const SELF_BLAST_RADIUS := 3.0
 const SELF_BLAST_DAMAGE := 30
 const SELF_BLAST_FORCE := 7.0
@@ -336,31 +346,43 @@ func _check_critical() -> void:
 	if _destroyed or _fuse_lit:
 		return
 	var frac: float = float(current_hp) / float(maxi(max_hp, 1))
+	if frac >= DROP_FRAC:
+		return
+	var is_cabin: bool = block == G.Block.CABIN
 	if frac < FUSE_FRAC:
+		# Doomed: off the machine FOR CERTAIN (the 30% roll above may well have never come up),
+		# and the fuse is lit either way.
+		if not is_cabin and _map_node() != null:
+			_map_node().detach_node(self)
 		_light_fuse()
-	elif frac < DROP_FRAC and _map_node() != null and randf() < DROP_CHANCE:
+	elif not is_cabin and _map_node() != null and randf() < DROP_CHANCE:
 		_map_node().detach_node(self)
 
-## Карта машины, на которой стоит блок. null — блок уже свободный (лежит в мире, в руке, в
-## коллекторе): срывать его неоткуда.
+## The block map of the machine this block sits on. null → the block is already loose (lying in
+## the world, in a collector, in the player's hand): there is nothing to tear it off.
 func _map_node() -> Node:
 	var p: Node = get_parent()
 	if p != null and p.has_method("detach_node"):
 		return p
 	return null
 
-## Фитиль: блок мигает, а потом взрывается. Мигаем ВИДИМОСТЬЮ всего узла, а не подкраской
-## материалов: у блоков с моделью материалов много, они общие между экземплярами (правка
-## покрасила бы все такие блоки в игре), и вернуть их обратно потом нечем.
+## The fuse: the block blinks, faster and faster, then explodes. We blink the node's VISIBILITY
+## rather than tinting it: models share their materials between instances, so tinting one block
+## would tint every block of that kind in the game, and there is nothing to restore them from.
 func _light_fuse() -> void:
 	_fuse_lit = true
-	var tw := create_tween()          # твин узла: блок уничтожат раньше — твин умрёт вместе с ним
-	tw.set_loops(FUSE_BLINKS)
-	tw.tween_callback(func() -> void: visible = false)
-	tw.tween_interval(FUSE_STEP)
-	tw.tween_callback(func() -> void: visible = true)
-	tw.tween_interval(FUSE_STEP)
-	tw.chain().tween_callback(_fuse_blow)
+	var total: float = randf_range(FUSE_TIME_MIN, FUSE_TIME_MAX)
+	var tw := create_tween()          # a node tween: destroy the block earlier and it dies too
+	var t: float = 0.0
+	while t < total:
+		var k: float = t / total
+		var step: float = lerpf(FUSE_BLINK_SLOW, FUSE_BLINK_FAST, k * k)
+		tw.tween_callback(func() -> void: visible = false)
+		tw.tween_interval(step * 0.5)
+		tw.tween_callback(func() -> void: visible = true)
+		tw.tween_interval(step * 0.5)
+		t += step
+	tw.tween_callback(_fuse_blow)
 
 func _fuse_blow() -> void:
 	if _destroyed or not is_inside_tree():
@@ -411,9 +433,15 @@ func _play_hit_effect() -> void:
 	# в красный цвет (см. block_matrix.gdshader mode 2 / BlockFX.hit).
 	BlockFX.hit(self)
 
-const BATTERY_BLAST_RADIUS := 3.0
-const BATTERY_BLAST_DAMAGE := 35
-const BATTERY_BLAST_FORCE := 7.0
+# The battery and the cabin blow up HARDER than an ordinary block: one is a charged cell, the
+# other takes the whole machine with it. Same 3-metre-ish reach so the rule stays readable —
+# what differs is how much it hurts and how far it throws.
+const BATTERY_BLAST_RADIUS := 3.5
+const BATTERY_BLAST_DAMAGE := 45
+const BATTERY_BLAST_FORCE := 8.0
+const CABIN_BLAST_RADIUS := 3.5
+const CABIN_BLAST_DAMAGE := 55
+const CABIN_BLAST_FORCE := 9.0
 var _destroyed: bool = false
 
 func destroy() -> void:
@@ -432,7 +460,11 @@ func destroy() -> void:
 		blast_r = BATTERY_BLAST_RADIUS
 		blast_d = BATTERY_BLAST_DAMAGE
 		blast_f = BATTERY_BLAST_FORCE
-	elif block == G.Block.CABIN or _fuse_lit:
+	elif block == G.Block.CABIN:
+		blast_r = CABIN_BLAST_RADIUS
+		blast_d = CABIN_BLAST_DAMAGE
+		blast_f = CABIN_BLAST_FORCE
+	elif _fuse_lit:
 		blast_r = SELF_BLAST_RADIUS
 		blast_d = SELF_BLAST_DAMAGE
 		blast_f = SELF_BLAST_FORCE

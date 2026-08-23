@@ -13,8 +13,6 @@ extends MachineBody
 ## а не по корпусу. Ловим destroyed КАБИНЫ → машина гибнет, шлёт died (спавнер поднимает
 ## нового) и роняет остальные блоки в мир (reparent в objects → они сами оживают).
 signal died(enemy: Node)
-var _cabin: Node = null
-var _dying: bool = false
 
 @export_group("ИИ — Обнаружение")
 ## На сколько враг замечает МАШИНУ ГЛАЗАМИ. Меньше дальности его же пушки (60) — и это
@@ -163,19 +161,6 @@ func _pay_out() -> void:
 	if d != null and d.has_method("say"):
 		d.say("System", "Wreck catalogued. +%d RP." % rp)
 
-func _connect_cabin() -> void:
-	var blocks_node := get_node_or_null("blocks")
-	if blocks_node == null:
-		return
-	for b in blocks_node.get_children():
-		if b.get("block") == G.Block.CABIN:
-			_cabin = b
-			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
-				b.destroyed.connect(_on_cabin_destroyed)
-			return
-
-func _on_cabin_destroyed(_b = null) -> void:
-	_die()
 
 func _die() -> void:
 	if _dying:

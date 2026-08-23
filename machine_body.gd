@@ -644,6 +644,67 @@ var _blast_pos: Vector3 = Vector3.ZERO
 var _blast_force: float = 0.0
 var _blast_until_ms: int = 0
 
+# ══════════════════════════════════════════
+# CABIN WATCHDOG — the machine is dead when its cabin is gone
+# ══════════════════════════════════════════
+# Lives in the SHARED base because both machines need it, and only the player had it. What that
+# cost: the cabin's `destroyed` signal is the fast path, but it is not a reliable one. A block
+# torn off into the world has ALL its `destroyed` connections cut (blocks._detach_one) so that
+# a loose block no longer edits the map of the machine it came from — and with the signal gone,
+# an enemy whose cabin left the machine simply never died. What was left was a live hull with
+# no blocks on it, still driving, still a target, impossible to kill.
+#
+# So death is decided by the FACT that no cabin is present, and the signal only makes it fast.
+var _dying: bool = false
+var _cabin: Node = null            # current cabin; invalid → the build changed or it was killed
+var _had_cabin: bool = false       # did it ever have one (stations have none and never die)
+const CABIN_WATCH_INTERVAL: float = 0.5
+var _cabin_watch_t: float = 0.0
+
+## The node holding the block map. The player names it in the inspector; everyone else has it
+## as a child called "blocks".
+func blocks_node() -> Node:
+	var n = get("block_map_node")
+	return n if n != null else get_node_or_null("blocks")
+
+func _connect_cabin() -> void:
+	var bl := blocks_node()
+	if bl == null:
+		return
+	for b in bl.get_children():
+		if b.get("block") == G.Block.CABIN:
+			_cabin = b
+			_had_cabin = true
+			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
+				b.destroyed.connect(_on_cabin_destroyed)
+			return
+	_cabin = null
+
+func _on_cabin_destroyed(_b = null) -> void:
+	_die()
+
+func cabin_watch(delta: float) -> void:
+	# `is_station` only exists on the player's machine, and get() on a missing field returns
+	# null — bool(null) is a runtime crash, so compare instead of casting (see CLAUDE.md).
+	if _dying or get("is_station") == true:
+		return
+	_cabin_watch_t -= delta
+	if _cabin_watch_t > 0.0:
+		return
+	_cabin_watch_t = CABIN_WATCH_INTERVAL
+	if is_instance_valid(_cabin):
+		return
+	_connect_cabin()                       # build changed — re-subscribe
+	if is_instance_valid(_cabin):
+		return
+	if _had_cabin:
+		_die()                             # no cabin, and no signal came
+
+## Overridden by both machines: the player hands the camera over, the enemy pays out and
+## reports the kill. The base only decides WHEN it happens.
+func _die() -> void:
+	pass
+
 ## РАЗЛЁТ БЛОКОВ ПРИ ГИБЕЛИ МАШИНЫ. Живёт в ОБЩЕЙ базе, потому что нужен обоим: у игрока это
 ## был `_scatter_blocks`, у врага — `_eject_blocks`, и они разошлись бы при первой же правке
 ## (у врага, например, не пропускались меш-призраки подсказок). Ровно та ловушка, про которую
