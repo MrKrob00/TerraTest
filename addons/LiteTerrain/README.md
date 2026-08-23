@@ -346,14 +346,20 @@ Snapping is also guarded by alignment (`_snap_ok`): it interpolates between two 
 the coarse neighbour is assumed to have, which holds on the chunk grid but not for every
 quadtree step, and moving a border to a height nothing matches is worse than the crack.
 
-Stitching alone is not enough either: the two sides only agree once **both** have been
-rebuilt, and a frame or two passes between an LOD change and the rebuild. Sky was visible
-through that gap. So a border that touches a different step also drops a vertical
-**skirt** along itself (`_compute_chunk_data`), which covers the crack at any point of the
-transition — including where snapping was skipped. Its depth scales with the step
-(`SKIRT_DEPTH` up to 60 m): four metres means nothing against a mesh whose quads span a
-hundred. A coarse node mesh skirts all four of its borders, since nothing else can stitch
-to it. The AABB is lowered to match, or the wall gets cut away by AABB culling.
+**Every step is a power of two, and that is what makes the seam exact.** Snapping reads the
+two coarse samples a border vertex falls between, which is only meaningful if the coarse
+grid is a superset of the fine one and starts on it. Chunk steps (2/4/8 at
+`triangle_size = 1`) divide `chunk_size`, and node steps are rounded DOWN to a power of two
+capped at the macro origin granularity (`_qt_step`), so both hold everywhere. A node with a
+three-macro span used to take step 24, the assumption broke, and the seam simply did not
+meet. Rounding down leaves such a node slightly denser than it needs to be — a root node
+goes from ~64 quads to ~960, which costs nothing.
+
+There is deliberately **no skirt**: a dropped wall along every seam costs triangles across
+the whole terrain and looks wrong wherever it peeks. The seam is closed by making the two
+meshes meet, not by hiding the gap. The other half of that is timing — a chunk re-stitches
+in the same pass in which a neighbouring node or macro appears (`_qt_apply` forces the
+stitch loop when the coarse set changed), instead of waiting for the throttled LOD pass.
 
 This is a per-border seam skirt, and is unrelated to the old quadtree-node skirt
 removed in 1.1 — that one hung visibly off the edges of quadtree nodes.

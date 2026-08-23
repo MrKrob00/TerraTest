@@ -101,10 +101,6 @@ const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never show
 ## the seam stitching between differing LODs still lines up.
 @export_enum("1 (detailed)", "2 (recommended)", "4 (max FPS)") var triangle_size: int = 0
 
-## How far the LOD-seam skirt hangs below the border (world units). Big enough to cover the
-## height difference a coarser neighbour can have across one of its cells; it lives under the
-## surface, so being generous costs nothing. 0 disables the skirt.
-const SKIRT_DEPTH: float = 4.0
 
 # Grid step for the given LOD level, scaled by triangle_size.
 func _step_for(lod: int) -> int:
@@ -1637,8 +1633,8 @@ func _neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
 	# THE COARSE QUADTREE MESH COMES FIRST. There are THREE representations of the ground —
 	# chunk meshes, merged macro meshes, and the internal quadtree nodes' single coarse mesh —
 	# and this function used to know only the first two. Where a chunk bordered a region drawn
-	# as a quadtree node, neither side knew the other's step: no height snapping, no seam skirt,
-	# and the step gap there is the largest in the whole system (a node can be 64 or 128 samples
+	# as a quadtree node, neither side knew the other's step, so no height snapping happened at
+	# all — and the step gap there is the largest in the whole system (a node is 8 to 64 samples
 	# per quad against the chunk's 1). That is the hole you can see the sky through.
 	#
 	# A chunk hidden under such a node also keeps a STALE _chunk_lod, so asking it was not just
@@ -2011,10 +2007,12 @@ func _mountain_mask01(gx: int, gz: int) -> float:
 	return _biomes().mountain_mask(_biome_wp(gx, gz), _cv_noise)
 
 ## May a border be snapped to the neighbour's coarser grid? Only if the neighbour IS coarser
-## and its grid has a sample at this border's origin — otherwise the two interpolation ends we
-## would read are not vertices the neighbour built.
-func _snap_ok(n_step: int, step: int, origin: int) -> bool:
-	return n_step > step and (origin % n_step) == 0
+## and its grid is a superset of ours, so the two samples we interpolate between are vertices
+## it really built. Every step in the system is a power of two (chunks 2/4/8, nodes 8…64 — see
+## _qt_step), and every mesh origin is a multiple of the largest of them, so this holds by
+## construction; the check is here to fail loudly-by-doing-nothing if that ever stops being true.
+func _snap_ok(n_step: int, step: int) -> bool:
+	return n_step > step and (n_step % step) == 0
 
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
@@ -2053,14 +2051,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# on the outermost border, where there is no neighbouring chunk, giving an index a
 			# row or column past md — which is where "Invalid access" came from. Clamp it.
 
-			# ALIGNMENT GUARD (see _snap_ok): snapping assumes the coarse neighbour has a
-			# sample exactly at this border's origin. That holds between chunks, but a quadtree
-			# node's step is derived from how many macros it spans and is not always a divisor
-			# of the chunk grid — interpolating against samples the neighbour does not actually
-			# have would move our border to a height nothing matches, which is worse than the
-			# crack. When it does not line up we skip the snap and let the skirt close the seam.
+			# There is no skirt behind this any more (it cost triangles and looked bad): the
+			# seam has to MEET, so snapping is the only thing closing it. See _snap_ok.
 			# North border (z == z0): snap x to n_step grid
-			if z == z0 and _snap_ok(n_step, step, x0):
+			if z == z0 and _snap_ok(n_step, step):
 				var rem: int = x % n_step
 				if rem != 0:
 					h = lerp(float(md[z * w + x - rem]),
@@ -2068,7 +2062,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(n_step))
 
 			# South border (z == z1): snap x to s_step grid
-			elif z == z1 and _snap_ok(s_step, step, x0):
+			elif z == z1 and _snap_ok(s_step, step):
 				var rem: int = x % s_step
 				if rem != 0:
 					h = lerp(float(md[z * w + x - rem]),
@@ -2076,7 +2070,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(s_step))
 
 			# West border (x == x0): snap z to w_step grid
-			if x == x0 and _snap_ok(w_step, step, z0):
+			if x == x0 and _snap_ok(w_step, step):
 				var rem: int = z % w_step
 				if rem != 0:
 					h = lerp(float(md[(z - rem) * w + x]),
@@ -2084,7 +2078,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(w_step))
 
 			# East border (x == x1): snap z to e_step grid
-			elif x == x1 and _snap_ok(e_step, step, z0):
+			elif x == x1 and _snap_ok(e_step, step):
 				var rem: int = z % e_step
 				if rem != 0:
 					h = lerp(float(md[(z - rem) * w + x]),
@@ -2133,74 +2127,6 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			indices.append_array([i00, i10, i11])
 			indices.append_array([i00, i11, i01])
 
-	# ── SKIRT ALONG LOD SEAMS (GAME HOOK: TerraTest) ──────────────────────────
-	# Border snapping alone leaves gaps you can see the sky through. It only lines the two
-	# meshes up once BOTH have been rebuilt, and a chunk is rebuilt a frame or two after its
-	# neighbour changed LOD; in that window the seam is open. Rounding of the snapped heights
-	# leaves hairline cracks even after it settles.
-	#
-	# A skirt closes them with geometry: a vertical wall dropped from the border, hidden under
-	# the surface, visible only through a crack. It is built ONLY on edges that actually touch
-	# a different LOD (n/s/w/e_step != 0) — that is where cracks are, and a skirt around every
-	# chunk would cost a quarter of the terrain's triangles for nothing.
-	if SKIRT_DEPTH > 0.0:
-		# Deep enough to cover the height difference the seam can actually have, which grows
-		# with the step: between a step-1 chunk and a step-64 node mesh the two surfaces can be
-		# tens of metres apart on a mountainside. The wall lives under the ground and is seen
-		# only through the crack it closes, so being generous costs nothing but its own AABB.
-		var skirt: float = clampf(float(sz) * 3.0, SKIRT_DEPTH, 60.0)
-		var lastz: int = zs[zs.size() - 1]
-		var lastx: int = xs[xs.size() - 1]
-		var edges: Array = []
-		if n_step != 0:
-			var keys: Array = []
-			for x in xs: keys.append(zs[0] * w + x)
-			edges.append([keys, Vector3(0.0, 0.0, -1.0)])
-		if s_step != 0:
-			var keys2: Array = []
-			for x in xs: keys2.append(lastz * w + x)
-			edges.append([keys2, Vector3(0.0, 0.0, 1.0)])
-		if w_step != 0:
-			var keys3: Array = []
-			for z in zs: keys3.append(z * w + xs[0])
-			edges.append([keys3, Vector3(-1.0, 0.0, 0.0)])
-		if e_step != 0:
-			var keys4: Array = []
-			for z in zs: keys4.append(z * w + lastx)
-			edges.append([keys4, Vector3(1.0, 0.0, 0.0)])
-		var drop := Vector3(0.0, skirt, 0.0)
-		for e in edges:
-			var ks: Array = e[0]
-			var outward: Vector3 = e[1]
-			for i in range(ks.size() - 1):
-				var t0: int = local_idx.get(ks[i], -1)
-				var t1: int = local_idx.get(ks[i + 1], -1)
-				if t0 < 0 or t1 < 0:
-					continue
-				var p0: Vector3 = vertices[t0]
-				var p1: Vector3 = vertices[t1]
-				var b0: int = vertices.size()
-				vertices.append(p0 - drop)
-				vertices.append(p1 - drop)
-				normals.append(outward)
-				normals.append(outward)
-				uvs.append(uvs[t0])
-				uvs.append(uvs[t1])
-				# .r = 0: no grass on the wall (it is meant to stay unnoticed).
-				colors.append(Color(0.0, colors[t0].g, colors[t0].b, colors[t0].a))
-				colors.append(Color(0.0, colors[t1].g, colors[t1].b, colors[t1].a))
-				# Winding so the wall faces OUTWARD. Godot shows the side the RHR normal
-				# points AWAY from — check it against the terrain's own triangles: for
-				# (i00, i10, i11) the cross product points down while the surface faces up.
-				var vis: Vector3 = -((p1 - p0).cross(-drop))
-				if vis.dot(outward) >= 0.0:
-					indices.append_array([t0, t1, b0 + 1])
-					indices.append_array([t0, b0 + 1, b0])
-				else:
-					indices.append_array([t1, t0, b0])
-					indices.append_array([t1, b0, b0 + 1])
-		if not edges.is_empty():
-			aabb_min.y -= skirt            # or AABB culling clips the wall away
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
@@ -2457,7 +2383,19 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 	var rz1 := mini((mz0 + hsz) * MACRO_SIZE * chunk_size, d - 1)
 	_qt_rect.append(Vector4i(rx0, rz0, rx1, rz1))
 	# Step grows with node size → ~constant triangle budget per node regardless of level.
-	_qt_step.append(maxi(wsz, hsz) * MACRO_SIZE * (1 << triangle_size))
+	# THE STEP MUST DIVIDE THE GRID, not just be big. A node's samples start at its rect
+	# origin, which is a multiple of MACRO_SIZE * chunk_size; a finer neighbour snaps its border
+	# vertices by assuming coarse samples sit at multiples of the step. Both hold only when the
+	# step is a power of two no larger than that origin granularity — with a span of, say, three
+	# macros the old formula gave step 24, the assumption broke, and the seam did not meet.
+	# Rounding DOWN keeps a node slightly denser than it strictly needs to be: a root node goes
+	# from ~64 quads to ~960, which is nothing, and in exchange every seam is exact.
+	var span := maxi(wsz, hsz)
+	var pow2 := 1
+	while pow2 * 2 <= span:
+		pow2 *= 2
+	pow2 = mini(pow2, chunk_size / (1 << triangle_size))
+	_qt_step.append(maxi(pow2, 1) * MACRO_SIZE * (1 << triangle_size))
 	_qt_size.append(float(maxi(rx1 - rx0, rz1 - rz0)))
 
 	if wsz <= 1 and hsz <= 1:
@@ -2498,13 +2436,10 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 # over its whole footprint, sampled at _qt_step[n].
 func _qt_node_worker(n: int) -> void:
 	var r: Vector4i = _qt_rect[n]
-	# All four borders marked as seams (same value as our own step, so it asks for a SKIRT
-	# without any height snapping — see _snap_ok). A node mesh always borders something finer,
-	# and it is the one representation nothing else can stitch to: its own wall is what closes
-	# that seam. Also the reason the skirt depth scales with the step below — a wall four metres
-	# deep means nothing next to a mesh whose quads span a hundred.
-	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n],
-			_qt_step[n], _qt_step[n], _qt_step[n], _qt_step[n])
+	# Plain build, no border flags: a node mesh is the COARSEST thing on any seam it takes part
+	# in, so it never snaps to anyone — the finer side snaps to it, and that is now exact
+	# because _qt_step is a power of two on the same grid (see above).
+	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n])
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
@@ -2597,6 +2532,23 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 # only the instances that changed. do_lod additionally commits per-chunk LOD and
 # rebuilds any chunk whose seam-stitch signature went stale.
 func _qt_apply(do_lod: bool) -> void:
+	# Did the COARSE set change this pass? Chunk LOD only moves on a do_lod pass, but a node or
+	# macro can appear between two of them, and the seam next to it is then unstitched until the
+	# next one — up to 150 ms of open crack. There is no skirt to hide that any more, so a change
+	# here forces the stitch pass below regardless of do_lod.
+	var coarse_changed: bool = _qt_des_nodes.size() != _qt_cur_nodes.size() \
+			or _qt_des_macros.size() != _qt_cur_macros.size()
+	if not coarse_changed:
+		for node in _qt_des_nodes:
+			if not _qt_cur_nodes.has(node):
+				coarse_changed = true
+				break
+	if not coarse_changed:
+		for mi in _qt_des_macros:
+			if not _qt_cur_macros.has(mi):
+				coarse_changed = true
+				break
+
 	# ── Coarse internal nodes (the far, low-poly representation) ───────────────
 	for node in _qt_des_nodes:
 		var ninst: MeshInstance3D = _qt_inst[node]
@@ -2643,7 +2595,7 @@ func _qt_apply(do_lod: bool) -> void:
 	# _chunk_lod is now current for every visible chunk, so _stitch_signature reflects
 	# neighbour LODs (including step=4 for chunks inside an active macro). Rebuild only
 	# the chunks whose signature changed — usually none once the view settles.
-	if do_lod:
+	if do_lod or coarse_changed:
 		var mat := _get_material()
 		for ci in _qt_cur_chunks:
 			if ci >= _chunk_instances.size() or not _chunk_instances[ci]:
