@@ -52,8 +52,11 @@ towards performance.
    the `LiteTerrain` script with the terrain shader already applied. It starts in
    image mode with streaming collision on.
 3. Select the node and shape it:
-   - **Generate Terrain** builds noise-based terrain. Set seed, scale, octaves,
-     amplitude, map size and the canyon parameters first.
+   - **Generate Terrain** builds noise-based terrain. The dock shows the five settings
+     that decide what a world is — seed, size, height, feature size, and which biomes
+     exist — and folds the rest away under **Advanced** (octaves, plains power, ridge
+     sharpness, smoothing and the canyon shape). Generate rebuilds the whole heightmap,
+     so hand sculpting is lost.
    - Or sculpt by hand with **Raise**, **Lower** and **Flatten**. Paint with the left
      mouse button in the viewport; radius and strength are in the dock. Each stroke is
      one undo step (Ctrl+Z / Ctrl+Y).
