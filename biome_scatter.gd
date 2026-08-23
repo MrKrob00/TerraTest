@@ -184,6 +184,11 @@ func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float
 	return false
 
 # ── Стриминг: ноды только для ближних пропов ──────────────────────────────────
+## Та же клетка пересчёта, что у жил (см. resource_nodes): пропы стримятся ТОЛЬКО по
+## расстоянию, поэтому им хватает проверки «камера ушла из клетки», без направления.
+const RESCAN_CELL := 12.0
+var _last_cell := Vector2i(1 << 30, 1 << 30)
+
 func _process(delta: float) -> void:
 	if _data.is_empty():
 		return
@@ -192,6 +197,14 @@ func _process(delta: float) -> void:
 		return
 	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
 	_cull_t = cull_interval
+	var cam0 := get_viewport().get_camera_3d()
+	if cam0 != null:
+		var cell := Vector2i(int(floor(cam0.global_position.x / RESCAN_CELL)),
+				int(floor(cam0.global_position.z / RESCAN_CELL)))
+		if cell == _last_cell:
+			Perf.mark("props", _pf)
+			return
+		_last_cell = cell
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return

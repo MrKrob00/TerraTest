@@ -469,6 +469,35 @@ of chunks would overflow instantly.
 Dock settings live in the editor's per-project metadata (inside `.godot/`, not your
 repository), so each machine keeps its own values across sessions.
 
+## Why this addon is shaped differently from HTerrain and Terrain3D
+
+Both of the well-known Godot terrains build the mesh ONCE and never rebuild it. HTerrain keeps
+a shared mesh per (LOD, seam) pair and Terrain3D uses a geometry clipmap re-centred on the
+camera; in both, the heights arrive as a TEXTURE READ IN THE VERTEX SHADER, so editing terrain
+costs a texture update and nothing else.
+
+That is the better design — on a GPU. It trades CPU mesh building for a texture fetch per
+vertex per frame, which is free on hardware and is the whole budget on a software rasteriser.
+This addon targets devices where the rasteriser may BE the CPU, so it does the opposite trade:
+build a real mesh per chunk once, keep it until the LOD changes, and spend the build on merging
+flat ground away (greedy meshing) so the rasteriser has less to do every frame. That is also
+why a heightmap texture is not used for displacement here — the heights live in a plain array
+the mesh builder reads, and the shader only colours.
+
+What was worth taking from them:
+
+- **Recompute when the viewer crosses a cell, not on a timer** (HTerrain's detail layer). A
+  full pass over every scattered object several times a second answers the same question over
+  and over while the player stands still.
+- **Pool instances instead of freeing them** — HTerrain recycles its MultiMesh instances rather
+  than allocating per chunk.
+- **A time budget in microseconds for pending work**, so a queue drains at whatever rate the
+  frame can afford instead of a fixed count that is too slow on a good frame and a hitch on a
+  bad one.
+- **Detail/foliage as MultiMesh per chunk** — one draw call per type per chunk instead of a
+  node per bush. Ore veins here already work that way; scattered props still do not, and that
+  is the next thing to change once there are prop models to look at.
+
 ## Property reference
 
 Culling and drawing:

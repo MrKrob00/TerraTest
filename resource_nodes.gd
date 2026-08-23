@@ -51,6 +51,7 @@ var _cull_t: float = 0.0
 const OCCL_SLICES := 4
 const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
 var _occl_cursor: int = 0
+var _last_fwd: Vector3 = Vector3.FORWARD
 # Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
 var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
@@ -295,6 +296,13 @@ func _stream_out(v: Dictionary) -> void:
 	_free.append(slot)
 
 # ── Стриминг: держим отрисованными/активными только жилы в render_distance ─────
+## КЛЕТКА ПЕРЕСЧЁТА. Приём взят у HTerrain (hterrain_detail_layer): он пересобирает свои
+## куски не по таймеру, а когда наблюдатель ПЕРЕСЁК границу клетки. Полный проход по двум
+## тысячам жил четыре раза в секунду не нужен, пока игрок стоит в гараже или ползёт по
+## стройке: ответ не может измениться, если камера не сдвинулась ощутимо.
+const RESCAN_CELL := 12.0
+var _last_cell := Vector2i(1 << 30, 1 << 30)
+
 func _process(delta: float) -> void:
 	if _data.is_empty():
 		return
@@ -303,6 +311,19 @@ func _process(delta: float) -> void:
 		return
 	_cull_t = cull_interval
 	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
+	# Камера не ушла из своей клетки — пересчитывать нечего. Направление взгляда сюда НЕ
+	# входит намеренно: жила гаснет и зажигается по направлению, и пропустить поворот значило
+	# бы держать за спиной то, что мы только что научились гасить.
+	var cam0 := get_viewport().get_camera_3d()
+	if cam0 != null:
+		var cell := Vector2i(int(floor(cam0.global_position.x / RESCAN_CELL)),
+				int(floor(cam0.global_position.z / RESCAN_CELL)))
+		var fwd0: Vector3 = -cam0.global_transform.basis.z
+		if cell == _last_cell and fwd0.dot(_last_fwd) > 0.999:
+			Perf.mark("veins", _pf)
+			return
+		_last_cell = cell
+		_last_fwd = fwd0
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
