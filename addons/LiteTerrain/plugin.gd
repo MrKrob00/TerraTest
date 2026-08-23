@@ -875,6 +875,62 @@ func _bake_heightmap() -> void:
 		print("LiteTerrain: baked heightmap %dx%d -> %s" % [width, depth, hm_path])
 	else:
 		push_error("LiteTerrain: failed to save heightmap (error %d)" % err)
+	_bake_stream_file(width, depth, data)
+
+## STREAMABLE COPY OF THE HEIGHTS, next to the .res image.
+##
+## An Image resource can only be loaded WHOLE: to read the heights around the player you must
+## first hold the entire map in memory, which is what caps the map size. This file is raw rows
+## of float32 with a header, so any rectangle is a seek and a read — that is the whole point,
+## and it is why the runtime prefers it even today, when it still reads all of it: a raw read
+## costs one allocation instead of "load resource → convert format → to_float32_array".
+##
+## It also carries a per-chunk MIN/MAX table. Whoever streams regions still has to know how
+## high the ground is everywhere — the LOD tree needs a bounding box per chunk before a single
+## height near it is loaded — and a table of two floats per chunk is a rounding error next to
+## the heights themselves (some 120 KB for a 1984² map).
+const STREAM_MAGIC := 0x4C545331          # "LTS1"
+const STREAM_EXT := ".bin"
+
+func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void:
+	var path: String = _heightmap_target().get_basename() + STREAM_EXT
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		push_error("LiteTerrain: не удалось записать %s" % path)
+		return
+	var cs: int = 16
+	if sculpt_node != null and "chunk_size" in sculpt_node:
+		cs = maxi(int(sculpt_node.chunk_size), 1)
+	var cx: int = ceili(float(width - 1) / float(cs))
+	var cz: int = ceili(float(depth - 1) / float(cs))
+	f.store_32(STREAM_MAGIC)
+	f.store_32(width)
+	f.store_32(depth)
+	f.store_32(cs)
+	# Таблица «мин/макс на чанк» идёт ДО высот: её читают целиком и сразу, а высоты — кусками.
+	var mins := PackedFloat32Array()
+	var maxs := PackedFloat32Array()
+	mins.resize(cx * cz)
+	maxs.resize(cx * cz)
+	for i in cx * cz:
+		mins[i] = INF
+		maxs[i] = -INF
+	for z in depth:
+		var row := z * width
+		var czi: int = mini(z / cs, cz - 1)
+		for x in width:
+			var h: float = data[row + x]
+			var ci: int = czi * cx + mini(x / cs, cx - 1)
+			if h < mins[ci]:
+				mins[ci] = h
+			if h > maxs[ci]:
+				maxs[ci] = h
+	f.store_buffer(mins.to_byte_array())
+	f.store_buffer(maxs.to_byte_array())
+	f.store_buffer(data.to_byte_array())
+	f.close()
+	print("LiteTerrain: streamable heights %dx%d (chunk %d) -> %s (%.1f МБ)"
+			% [width, depth, cs, path, float(data.size()) * 4.0 / 1048576.0])
 
 	# ── Visual: editor preview mesh → external .res ──────────────────────────────
 	# Without this the generated ArrayMesh is unique-to-scene and gets embedded into the
