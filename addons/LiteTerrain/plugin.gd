@@ -86,6 +86,27 @@ var _gen_base_in: PackedFloat32Array
 var _gen_carved: PackedFloat32Array
 var _gen_mesa_min: float = 0.0
 
+# One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
+# thread ever reads what another is writing. The border rows are copied through untouched — the
+# 5-tap kernel has no neighbours there.
+func _gen_blur_row(z: int) -> void:
+	var w := _gen_w
+	var row := z * w
+	if z == 0 or z == _gen_d - 1:
+		for x in w:
+			_gen_out[row + x] = _gen_base_in[row + x]
+		return
+	_gen_out[row] = _gen_base_in[row]
+	_gen_out[row + w - 1] = _gen_base_in[row + w - 1]
+	for x in range(1, w - 1):
+		_gen_out[row + x] = (
+			_gen_base_in[row + x] +
+			_gen_base_in[row + x - 1] +
+			_gen_base_in[row + x + 1] +
+			_gen_base_in[row - w + x] +
+			_gen_base_in[row + w + x]
+		) * 0.2
+
 # One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
 func _gen_fill_row(z: int) -> void:
 	var w := _gen_w
@@ -1072,18 +1093,18 @@ func _generate_noise() -> void:
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
 	# Each pass slightly reduces aliasing without destroying ridges.
+	# THREADED, like the fill and the carve above: a blur pass is a full sweep of the map, and on
+	# a big one that was seconds of main thread per pass, twice over — once here and once as the
+	# `duplicate()` it needed to avoid reading its own output.
 	for _p in gen_smooth:
-		var buf = new_data.duplicate()
-		for z in range(1, depth - 1):
-			for x in range(1, width - 1):
-				buf[z * width + x] = (
-					new_data[z * width + x]         +
-					new_data[z * width + (x - 1)]   +
-					new_data[z * width + (x + 1)]   +
-					new_data[(z - 1) * width + x]   +
-					new_data[(z + 1) * width + x]
-				) * 0.2
-		new_data = buf
+		_gen_base_in = new_data
+		_gen_out = PackedFloat32Array()
+		_gen_out.resize(width * depth)
+		var blur_gid := WorkerThreadPool.add_group_task(_gen_blur_row, depth, -1, false, "LiteTerrain: blur")
+		WorkerThreadPool.wait_for_group_task_completion(blur_gid)
+		new_data = _gen_out
+		_gen_out = PackedFloat32Array()
+		_gen_base_in = PackedFloat32Array()
 
 	# ── Canyon carve (AFTER the blur, which would otherwise round off the sheer walls) ──
 	# Badlands: mesas at ABSOLUTE heights (varied by the butte noise, so there is a hierarchy

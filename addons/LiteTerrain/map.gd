@@ -1198,9 +1198,21 @@ func _rebuild_editor_full() -> void:
 	if editor_lod:
 		_editor_rebuild_lod()
 		return
-	for cz in _ed_cz:
-		for cx in _ed_cx:
-			_ed_cache[cz * _ed_cx + cx] = _chunk_surface_arrays(cx, cz)
+	# The biome lattice FIRST: without it every vertex computes three noise masks of its own,
+	# and that alone is the bulk of a full rebuild (see _build_mask_lattice_sync).
+	if _mask_lat.is_empty() or _mask_w != int(ceil(float(w) / float(MASK_STEP))) + 1:
+		_build_mask_lattice_sync()
+	# Chunks are independent, so they go to the WorkerThreadPool — the same pattern the runtime
+	# build uses. Threads only WRITE into their own slot of a pre-sized array and only READ the
+	# heights and the lattice; nothing here touches the scene tree, which is the one thing a
+	# worker may not do.
+	var total: int = _ed_cx * _ed_cz
+	if total > 0:
+		var cxl: int = _ed_cx
+		var task := func(i: int) -> void:
+			_ed_cache[i] = _chunk_surface_arrays(i % cxl, i / cxl)
+		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks")
+		WorkerThreadPool.wait_for_group_task_completion(gid)
 	_apply_editor_cache()
 
 func _editor_ensure_cache_sized() -> void:
@@ -1254,9 +1266,18 @@ func _editor_rebuild_lod() -> void:
 			if dist2 >= lod_distance_1 * lod_distance_1:   lod = 2   # LOD3 (step 8) removed — unused at runtime
 			elif dist2 >= lod_distance_0 * lod_distance_0: lod = 1
 			_ed_lod[cz * _ed_cx + cx] = lod
-	for cz in _ed_cz:
-		for cx in _ed_cx:
-			_ed_cache[cz * _ed_cx + cx] = _chunk_surface_arrays_lod(cx, cz)
+	# Same treatment as the full rebuild: the lattice first (or every vertex re-derives its
+	# biome from noise), then the chunks in parallel. The LOD pass above must finish first —
+	# a chunk's mesh depends on its neighbours' LOD, so those numbers have to be settled.
+	if _mask_lat.is_empty() or _mask_w != int(ceil(float(w) / float(MASK_STEP))) + 1:
+		_build_mask_lattice_sync()
+	var total: int = _ed_cx * _ed_cz
+	if total > 0:
+		var cxl: int = _ed_cx
+		var task := func(i: int) -> void:
+			_ed_cache[i] = _chunk_surface_arrays_lod(i % cxl, i / cxl)
+		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks (LOD)")
+		WorkerThreadPool.wait_for_group_task_completion(gid)
 	_apply_editor_cache()
 	_editor_build_pos = cam_pos
 
@@ -1955,6 +1976,26 @@ const MASK_STEP := 8
 var _mask_lat := PackedFloat32Array()
 var _mask_w: int = 0
 var _mask_h: int = 0
+
+## The lattice, built WITHOUT yielding — for the editor, where a rebuild is one blocking call
+## and there is no loading screen to keep alive. It is small by construction: with MASK_STEP 8
+## a 1982² map is about 250×250 points, so ~190 thousand noise calls once, against three per
+## VERTEX (some twelve million) if it is missing. That absence is why "Generate Terrain" took
+## minutes: the masks were being recomputed from noise for every vertex of the whole map.
+func _build_mask_lattice_sync() -> void:
+	if w <= 0 or d <= 0:
+		return
+	_mask_w = int(ceil(float(w) / float(MASK_STEP))) + 1
+	_mask_h = int(ceil(float(d) / float(MASK_STEP))) + 1
+	_mask_lat.resize(_mask_w * _mask_h * 3)
+	for j in _mask_h:
+		var gz := j * MASK_STEP
+		for i in _mask_w:
+			var gx := i * MASK_STEP
+			var o := (j * _mask_w + i) * 3
+			_mask_lat[o]     = _canyon_mask01(gx, gz)
+			_mask_lat[o + 1] = _biome_grass01(gx, gz)
+			_mask_lat[o + 2] = _mountain_mask01(gx, gz)
 
 func _build_mask_lattice() -> void:
 	if w <= 0 or d <= 0:

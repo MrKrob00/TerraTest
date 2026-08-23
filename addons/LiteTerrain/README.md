@@ -237,6 +237,20 @@ Select the terrain node, pick a mode in the dock and paint with the left mouse b
 In image mode the preview mesh and the heightmap file update on mouse-up, so undo and
 redo stay in sync with what is on disk.
 
+## Why generation is fast (and what to keep that way)
+
+Every full-map sweep in the addon is threaded through `WorkerThreadPool.add_group_task`, one
+task per ROW or per CHUNK: the noise fill, the canyon carve, the blur passes, the runtime chunk
+builds, the macro merges and the editor rebuilds. The rule that makes it safe is always the
+same — a worker writes only into its own slice of an array that was sized beforehand, reads
+data nobody mutates, and never touches the scene tree.
+
+The other half is not threading at all but **not doing the work twice**. Biome masks come from
+a lattice sampled every `MASK_STEP` cells and read back bilinearly; without it every vertex
+derives its biome from three noise calls of its own, which on a 1982² map is around twelve
+million calls against a hundred and ninety thousand. The editor rebuild used to skip building
+that lattice, and that alone was most of the minutes a full generate took.
+
 ## Generating terrain
 
 **Generate Terrain** fills the map with layered noise, then carves canyons into the
