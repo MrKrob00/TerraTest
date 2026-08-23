@@ -278,6 +278,27 @@ Both heavy noise passes run across the WorkerThreadPool, one row per task.
 Generation replaces the whole heightmap and writes it to the R32F file, so both the
 runtime and a reopened editor load the new terrain.
 
+## Streaming heights (the .bin next to the .res)
+
+**Bake → files** writes one more file beside the heightmap resource: `terrain_height.bin` —
+the same heights as raw float32 rows behind a small header, plus a per-chunk min/max table.
+
+The reason is the size ceiling. An `Image` resource loads WHOLE, so the map has to fit in
+memory before a single vertex is built; a raw file gives any rectangle for a seek and a read
+(`read_height_rect`). The runtime prefers the `.bin` even while it still reads all of it,
+because a raw read is one allocation against "load resource → convert format →
+`to_float32_array`".
+
+The min/max table is what makes region streaming possible at all: the LOD tree needs a
+bounding box for every chunk before any height near it exists in memory. Two floats per chunk
+is ~120 KB on a 1984² map, against 16 MB of heights.
+
+Heights are float32 — four bytes per world unit. That is the format `HeightMapShape3D` takes
+for collision, so anything narrower would have to be widened again for every collision tile.
+Halving it is possible (16-bit fixed point at millimetre resolution covers any terrain range),
+and it halves the file, the RAM and the load time — but every read then costs a decode, and in
+GDScript that lands in the hottest loop there is.
+
 ## Baking and shipping a big map
 
 1. Keep `use_image_data` on (the default).

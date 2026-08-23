@@ -412,6 +412,8 @@ func _load_heightmap() -> void:
 	# возвращает новая игра.
 	if _load_user_heights():
 		return
+	if _load_stream_heights():
+		return
 	var img := _load_heightmap_image()
 	if img != null:
 		w  = img.get_width()
@@ -435,6 +437,99 @@ func _load_heightmap() -> void:
 				+ "HeightMapShape3D either). There will be no collision and no terrain. "
 				+ "Re-bake the terrain from the LiteTerrain dock (\"Bake -> files\") or put "
 				+ "the file back.")
+
+# ── ПОТОКОВЫЙ ФАЙЛ ВЫСОТ (res://…​.bin рядом с .res) ──────────────────────────
+# Сырые строки float32 с заголовком и таблицей «мин/макс на чанк». Зачем он, если .res уже
+# есть: ресурс-картинку можно загрузить только ЦЕЛИКОМ, и это упирает размер карты в память —
+# а из сырого файла любой прямоугольник берётся seek'ом и чтением. Сейчас мы всё равно читаем
+# его целиком, и даже так он выигрывает: одно выделение вместо «загрузить ресурс → сконвертить
+# формат → to_float32_array».
+#
+# Таблица мин/макс идёт ПЕРЕД высотами, потому что читают её всю и сразу: тому, кто грузит
+# регионы, всё равно надо знать габариты каждого чанка ДО того, как рядом с ним прочитана хоть
+# одна высота (иначе нечем строить дерево отсечения). Два float на чанк — это ~120 КБ на карту
+# 1984², рядом с 16 МБ высот это ничто.
+const STREAM_MAGIC := 0x4C545331          # "LTS1"
+## Габариты чанков из файла: минимум и максимум высоты. Пусто, пока файла нет.
+var _chunk_min: PackedFloat32Array = PackedFloat32Array()
+var _chunk_max: PackedFloat32Array = PackedFloat32Array()
+
+func _stream_path() -> String:
+	return heightmap_path.get_basename() + ".bin" if not heightmap_path.is_empty() else ""
+
+## Открыть файл и прочитать заголовок. Возвращает [file, w, d, chunk, data_offset] или пусто.
+func _stream_open() -> Array:
+	var path := _stream_path()
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return []
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null or f.get_32() != STREAM_MAGIC:
+		return []
+	var sw := f.get_32()
+	var sd := f.get_32()
+	var cs := f.get_32()
+	if sw <= 0 or sd <= 0 or cs <= 0:
+		return []
+	var cx: int = ceili(float(sw - 1) / float(cs))
+	var cz: int = ceili(float(sd - 1) / float(cs))
+	var table_bytes: int = cx * cz * 4 * 2
+	return [f, sw, sd, cs, 16 + table_bytes, cx, cz]
+
+func _load_stream_heights() -> bool:
+	var o := _stream_open()
+	if o.is_empty():
+		return false
+	var f: FileAccess = o[0]
+	var sw: int = o[1]
+	var sd: int = o[2]
+	var cells: int = int(o[5]) * int(o[6])
+	_chunk_min = f.get_buffer(cells * 4).to_float32_array()
+	_chunk_max = f.get_buffer(cells * 4).to_float32_array()
+	var bytes := f.get_buffer(sw * sd * 4)
+	f.close()
+	if bytes.size() != sw * sd * 4:
+		push_warning("LiteTerrain: %s обрезан — беру запечённую картинку" % _stream_path())
+		return false
+	w = sw
+	d = sd
+	md = bytes.to_float32_array()
+	_recompute_height_bound()
+	return true
+
+## ПРОЧИТАТЬ ПРЯМОУГОЛЬНИК ВЫСОТ, не поднимая карту целиком. Ради этого файл и заведён:
+## отсюда вырастет подгрузка регионов вокруг игрока. Читаем построчно — строка в файле лежит
+## непрерывно, значит на строку приходится один seek и одно чтение.
+##
+## Возвращает массив (x1-x0+1) × (z1-z0+1) в порядке строк, или пустой, если файла нет.
+func read_height_rect(x0: int, z0: int, x1: int, z1: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	var o := _stream_open()
+	if o.is_empty():
+		return out
+	var f: FileAccess = o[0]
+	var sw: int = o[1]
+	var sd: int = o[2]
+	var base: int = o[4]
+	var cx0: int = clampi(x0, 0, sw - 1)
+	var cx1: int = clampi(x1, 0, sw - 1)
+	var cz0: int = clampi(z0, 0, sd - 1)
+	var cz1: int = clampi(z1, 0, sd - 1)
+	var rw: int = cx1 - cx0 + 1
+	if rw <= 0 or cz1 < cz0:
+		f.close()
+		return out
+	for z in range(cz0, cz1 + 1):
+		f.seek(base + (z * sw + cx0) * 4)
+		out.append_array(f.get_buffer(rw * 4).to_float32_array())
+	f.close()
+	return out
+
+## Габариты чанка из таблицы файла: (min, max) высоты. Нужны тому, кто строит дерево
+## отсечения, не загрузив ни одной высоты рядом.
+func chunk_height_bounds(ci: int) -> Vector2:
+	if ci < 0 or ci >= _chunk_min.size():
+		return Vector2(0.0, 0.0)
+	return Vector2(_chunk_min[ci], _chunk_max[ci])
 
 # ── ЗАПЕЧЁННЫЙ РЕЛЬЕФ (правки игрока) ────────────────────────────────────────
 # Правки высот живут двумя способами сразу, и это не дублирование, а разделение труда:
