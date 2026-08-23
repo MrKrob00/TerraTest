@@ -157,48 +157,9 @@ func _ready() -> void:
 		ib.collision_mask = 0
 		add_child(ib)
 
-# Смерть машины = уничтожена КАБИНА. Ловим её destroyed. При смене сборки зовём заново.
-var _dying: bool = false
-var _cabin: Node = null            # текущая кабина; невалидна → сборка сменилась или её снесли
-var _had_cabin: bool = false       # была ли кабина хоть раз (станции её не имеют — они не гибнут)
-
-func _connect_cabin() -> void:
-	if block_map_node == null:
-		return
-	for b in block_map_node.get_children():
-		if b.get("block") == G.Block.CABIN:
-			_cabin = b
-			_had_cabin = true
-			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
-				b.destroyed.connect(_on_cabin_destroyed)
-			return
-	_cabin = null
-
-# Сторож кабины. Один сигнал — ненадёжная опора: _connect_cabin молча ничего не делает,
-# если в момент вызова кабины среди детей ещё/уже нет (сборка перестраивается корутинами,
-# сейв применяется позже _ready). Промах означал машину БЕЗ кабины, которую нельзя убить:
-# оставался голый кузов с коллизией, камера на нём, возрождение не запускалось.
-# Здесь смерть определяется по ФАКТУ отсутствия кабины, а сигнал остаётся быстрым путём.
-const CABIN_WATCH_INTERVAL: float = 0.5
-var _cabin_watch_t: float = 0.0
-
-func _cabin_watch(delta: float) -> void:
-	if _dying or is_station:
-		return
-	_cabin_watch_t -= delta
-	if _cabin_watch_t > 0.0:
-		return
-	_cabin_watch_t = CABIN_WATCH_INTERVAL
-	if is_instance_valid(_cabin):
-		return
-	_connect_cabin()                       # сборка сменилась — переподписываемся
-	if is_instance_valid(_cabin):
-		return
-	if _had_cabin:
-		_die()                             # кабины нет, а сигнал не пришёл
-
-func _on_cabin_destroyed(_b = null) -> void:
-	_die()
+# Death = the cabin is gone. The watchdog, the subscription and the flags all live in
+# MachineBody now: the enemy had none of it, so an enemy whose cabin was torn off never died.
+# Only _die() itself stays here — handing the camera over is the player's business.
 
 # Кабина уничтожена → машина разваливается (блоки падают в мир), камера уходит к другой
 # машине (а если её нет — спавнит бесплатную стартовую), эта машина удаляется.
@@ -550,7 +511,7 @@ func _physics_process(delta: float) -> void:
 func _physics_body(delta: float) -> void:
 	# Энергия тикает ВСЕГДА (даже у неактивной машины): база на якоре копит от солнца.
 	_energy_tick(delta)
-	_cabin_watch(delta)
+	cabin_watch(delta)
 	_rot_support_tick(delta)
 	# Защита работает и у НЕактивной машины: стоит и отстреливается от врагов рядом.
 	if defense_mode:
