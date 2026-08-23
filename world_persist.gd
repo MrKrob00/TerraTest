@@ -109,8 +109,13 @@ func _cull_tick(delta: float) -> void:
 		var was: bool = n.has_meta(CULL_META)
 		var to: Vector3 = n.global_position - cam_pos
 		var d2: float = to.length_squared()
-		var behind: bool = d2 > keep2 and to.normalized().dot(fwd) < CULL_VIEW_COS
-		if not behind and d2 > keep2 and can_occlude:
+		# Ближний пузырь — вокруг ЛЮБОЙ живой точки (G.active_points), не только камеры: рядом
+		# с чужой машиной игрока лежащие блоки участвуют в игре (магнит упаковщика, приёмник),
+		# и гасить их потому, что камера смотрит в другую сторону, — значит останавливать
+		# фабрику на базе, к которой игрок сейчас не подъехал.
+		var kept: bool = d2 <= keep2 or G.near_active(n.global_position, CULL_KEEP_RADIUS)
+		var behind: bool = not kept and to.normalized().dot(fwd) < CULL_VIEW_COS
+		if not behind and not kept and can_occlude:
 			behind = terr.is_point_hidden(n.global_position, 1.0)
 		if behind == was:
 			continue

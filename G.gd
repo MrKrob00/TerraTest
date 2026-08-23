@@ -290,6 +290,49 @@ func _build_comp_recipes() -> void:
 ## загружен, terrain_height_at отдаёт ноль, и по этому нулю предмет уезжает под рельеф
 ## везде, где тот выше нуля.
 var _map_cache: Node = null
+## LIVE POINTS OF THE WORLD: the camera plus EVERY machine of the player's.
+##
+## Anything that streams or switches things off has to measure to the NEAREST of these, not to
+## the camera alone. The camera is about what is SEEN; a machine is about what WORKS. An
+## anchored base on the far side of the map runs a factory, its drill chews an ore vein, its
+## packer magnets loose blocks — and none of that may stop because the player is looking
+## somewhere else. Culling by camera only is correct for pure visuals (props), and wrong for
+## anything a mechanic touches.
+##
+## Cached per frame: several systems ask this within the same tick and the answer cannot change
+## between them.
+var _live_pts: Array = []
+var _live_pts_frame: int = -1
+
+func active_points() -> Array:
+	var f: int = Engine.get_process_frames()
+	if f == _live_pts_frame:
+		return _live_pts
+	_live_pts_frame = f
+	_live_pts = []
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return _live_pts
+	var vp := tree.root.get_viewport() if tree.root else null
+	var cam := vp.get_camera_3d() if vp else null
+	if cam != null:
+		_live_pts.append(cam.global_position)
+	var vehicles := tree.root.get_node_or_null("/root/Main/Vehicles")
+	if vehicles != null:
+		for v in vehicles.get_children():
+			if v is Node3D and v.get("faction") == 0:
+				_live_pts.append((v as Node3D).global_position)
+	return _live_pts
+
+## Is `p` within `radius` of any live point? The one question every streaming system actually
+## has, so it is not spelled out four times.
+func near_active(p: Vector3, radius: float) -> bool:
+	var r2: float = radius * radius
+	for q in active_points():
+		if (q as Vector3).distance_squared_to(p) <= r2:
+			return true
+	return false
+
 func ground_y(pos: Vector3, fallback: float) -> float:
 	if _map_cache == null or not is_instance_valid(_map_cache):
 		_map_cache = get_node_or_null("/root/Main/map")
