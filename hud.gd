@@ -911,20 +911,25 @@ func _process(delta: float) -> void:
 # PROFILER PANEL  (tap the FPS counter; F3 on desktop)
 # ══════════════════════════════════════════════════════════════════════════════
 # Answers the two questions an argument cannot: "is it physics or rendering" and "which
-# system eats the frame". The engine answers the first (process vs physics vs frame time),
-# our own marks (perf.gd) answer the second.
+# system eats the frame".
 #
-# How to read it:
-#   • process ≈ frame        → the frame IS the idle step: our scripts and everything else
-#                              that runs there. The breakdown below says what exactly.
-#   • process ≪ frame        → the cost is elsewhere: the GPU, or waiting on vsync.
-#   • "не учтено" is large   → the time goes to code that carries no mark yet. That number
-#                              existing at all is the point: without it the table looks
-#                              complete while accounting for a fifth of the frame.
+# READ "process" CAREFULLY. Godot measures it around the WHOLE idle step, and that step ends
+# with RenderingServer::draw() — so the time it takes to draw the frame is INSIDE this number,
+# not next to it. (A 2019 pull request proposed splitting "visual time" out of it; it was
+# closed unmerged, and the engine still reports visual + idle as one figure.) On a device whose
+# GL is emulated on the CPU, that draw IS the rasterizer, and it can be most of the frame while
+# every script in the table below is nearly free.
 #
-# Physics time is NOT added to process time, and there is no percentage of the frame: a
-# physics tick is not a frame, it runs at its own rate (60 Hz), so a sum of the two could
-# exceed the frame and did — it read "140% кадра", which is nonsense.
+# Hence the layout: "не учтено" = process minus everything our marks account for. Big and
+# growing with draw calls → the cost is drawing, not logic. Big and steady while draw calls
+# stay flat → some unmarked script. The adapter line says which case is even possible.
+#
+# Physics time is NOT added to process, and there is no percentage of the frame: a physics tick
+# is not a frame (60 Hz against, say, 47 fps), so the sum could exceed the frame and did — the
+# panel read "140% кадра", which is nonsense.
+#
+# The RESOLUTION TEST settles it outright: tap the panel to cycle the 3D scale. If fps moves a
+# lot while the per-system numbers do not, the frame is spent rasterizing pixels.
 #
 # Measuring costs something, so it is enabled only while the panel is open.
 var _perf_panel: PanelContainer = null
@@ -953,7 +958,14 @@ func _toggle_perf_panel() -> void:
 func _build_perf_panel() -> void:
 	_perf_panel = PanelContainer.new()
 	_perf_panel.add_theme_stylebox_override("panel", _make_panel_style())
-	_perf_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE   # taps must pass through the panel
+	# The panel TAKES taps: tapping it runs the resolution test (see _cycle_render_scale).
+	# It only exists while profiling, so covering that corner of the screen costs nothing.
+	_perf_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	_perf_panel.gui_input.connect(func(e: InputEvent) -> void:
+		if (e is InputEventScreenTouch and e.pressed) \
+				or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
+			_cycle_render_scale()
+			accept_event())
 	_perf_panel.position = Vector2(8, 8)
 	_perf_panel.visible = false
 	_perf_label = Label.new()
@@ -1033,8 +1045,52 @@ func _update_perf_panel(delta: float) -> void:
 		if ms2 >= 0.05:
 			parts.append("%s %.1f" % [k, ms2])
 	lines.append("по системам, мс: " + (", ".join(parts) if not parts.is_empty() else "—"))
+	# WHAT IS DRAWING THIS. On a device with no real GPU the adapter name says so outright
+	# (llvmpipe, SwiftShader, Mesa softpipe), and then "process" is mostly the rasterizer.
+	var vp := get_viewport()
+	var vs: Vector2 = vp.get_visible_rect().size
+	lines.append("рендер: %s · %s" % [_render_method(), RenderingServer.get_video_adapter_name()])
+	# Auto-FPS is shown because the resolution test switches it OFF and that is written to
+	# settings: without this line the game just stays blurry later and nobody remembers why.
+	var main_node := get_node_or_null("/root/Main")
+	var auto_fps: bool = main_node != null and main_node.get("auto_fps") == true
+	lines.append("экран %dx%d · 3D scale %.2f → %dx%d · авто-FPS %s (тап по панели — сменить)"
+			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
+			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
+			"вкл" if auto_fps else "ВЫКЛ"])
 	lines.append("узлов %d" % nodes)
 	_perf_label.text = "\n".join(lines)
+
+func _render_method() -> String:
+	if RenderingServer.has_method("get_current_rendering_method"):
+		return String(RenderingServer.call("get_current_rendering_method"))
+	return String(ProjectSettings.get_setting("rendering/renderer/rendering_method", "?"))
+
+## THE RESOLUTION TEST, one tap. Cycles the 3D render scale and turns auto-FPS off so the
+## scale stays where it is put (Main would otherwise pull it back within a second).
+##
+## What it proves: pixels are the only thing that changes. If fps climbs steeply as the scale
+## drops while the per-system table barely moves, the frame is going into rasterizing — and on
+## a machine without a GPU that lands inside "process", looking exactly like slow logic.
+## If fps does not move, drawing is not the bottleneck and the table is where to look.
+const PERF_SCALES := [1.0, 0.75, 0.5, 0.35]
+
+func _cycle_render_scale() -> void:
+	var vp := get_viewport()
+	var cur: float = vp.scaling_3d_scale
+	var idx := 0
+	for i in PERF_SCALES.size():
+		if absf(float(PERF_SCALES[i]) - cur) < 0.03:
+			idx = i
+			break
+	var next: float = float(PERF_SCALES[(idx + 1) % PERF_SCALES.size()])
+	var main := get_node_or_null("/root/Main")
+	if main != null and main.has_method("set_auto_fps") and main.has_method("set_manual_scale"):
+		main.set_auto_fps(false)          # or the auto-scaler pulls it back within a second
+		main.set_manual_scale(next)
+	else:
+		vp.scaling_3d_scale = next
+	_perf_t = 0.0
 
 # Радар обновляем не каждый кадр (сбор блипов — O(враги+жилы)): раз в 0.15с. Виден только
 # если у активной машины есть блок RADAR. Блипы: враги (красные), активные жилы (жёлтые).
