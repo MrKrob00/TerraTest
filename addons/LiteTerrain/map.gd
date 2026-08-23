@@ -1629,12 +1629,58 @@ func _get_chunk_idx(cx: int, cz: int) -> int:
 # Macro groups report step=4 (their merged mesh uses LOD 2).
 # Map-edge neighbours return 1 (same as LOD 0, so no snap triggered).
 func _neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
-	var ni := _get_chunk_idx(cx + dcx, cz + dcz)
+	var nx := cx + dcx
+	var nz := cz + dcz
+	var ni := _get_chunk_idx(nx, nz)
 	if ni < 0 or ni >= _chunk_lod.size():
 		return 1   # map boundary or not-yet-built chunk — no snap
+	# THE COARSE QUADTREE MESH COMES FIRST. There are THREE representations of the ground —
+	# chunk meshes, merged macro meshes, and the internal quadtree nodes' single coarse mesh —
+	# and this function used to know only the first two. Where a chunk bordered a region drawn
+	# as a quadtree node, neither side knew the other's step: no height snapping, no seam skirt,
+	# and the step gap there is the largest in the whole system (a node can be 64 or 128 samples
+	# per quad against the chunk's 1). That is the hole you can see the sky through.
+	#
+	# A chunk hidden under such a node also keeps a STALE _chunk_lod, so asking it was not just
+	# incomplete, it answered with a number that meant nothing.
+	var node_step := _node_step_covering(nx, nz)
+	if node_step > 0:
+		return node_step
 	if _chunk_macro_idx.size() > ni and _macro_active[_chunk_macro_idx[ni]]:
 		return _step_for(2)   # macro group uses LOD-2 step
 	return _step_for(_chunk_lod[ni])
+
+## Sample step of the coarse quadtree mesh currently covering chunk (cx, cz), or 0 if that
+## area is drawn as chunks/macros. Walks down from the root instead of keeping a per-chunk
+## table: the tree is a handful of levels deep, and the question is only ever asked for the
+## few chunks sitting on a seam.
+func _node_step_covering(cx: int, cz: int) -> int:
+	if not _qt_built or _qt_cur_nodes.is_empty():
+		return 0
+	var px := cx * chunk_size
+	var pz := cz * chunk_size
+	var node := 0
+	for _guard in 32:
+		if node < 0 or node >= _qt_rect.size():
+			return 0
+		var r: Vector4i = _qt_rect[node]
+		if px < r.x or px > r.z or pz < r.y or pz > r.w:
+			return 0                       # outside this subtree entirely
+		if _qt_cur_nodes.has(node):
+			return _qt_step[node]          # this node's coarse mesh is what draws here
+		var kids: Array = _qt_child[node]
+		if kids.is_empty():
+			return 0                       # leaf macro — handled by the macro/chunk branches
+		var nxt := -1
+		for ch in kids:
+			var cr: Vector4i = _qt_rect[ch]
+			if px >= cr.x and px <= cr.z and pz >= cr.y and pz <= cr.w:
+				nxt = ch
+				break
+		if nxt < 0:
+			return 0
+		node = nxt
+	return 0
 
 # Returns the mesh at `preferred_lod`, falling back to the next finer LOD
 # if the preferred one happens to be null (tiny edge-chunks may skip coarse LODs).
@@ -1964,6 +2010,12 @@ func _biome_grass01(gx: int, gz: int) -> float:
 func _mountain_mask01(gx: int, gz: int) -> float:
 	return _biomes().mountain_mask(_biome_wp(gx, gz), _cv_noise)
 
+## May a border be snapped to the neighbour's coarser grid? Only if the neighbour IS coarser
+## and its grid has a sample at this border's origin — otherwise the two interpolation ends we
+## would read are not vertices the neighbour built.
+func _snap_ok(n_step: int, step: int, origin: int) -> bool:
+	return n_step > step and (origin % n_step) == 0
+
 func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 		n_step: int = 0, s_step: int = 0,
 		w_step: int = 0, e_step: int = 0) -> Array:
@@ -2001,8 +2053,14 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# on the outermost border, where there is no neighbouring chunk, giving an index a
 			# row or column past md — which is where "Invalid access" came from. Clamp it.
 
+			# ALIGNMENT GUARD (see _snap_ok): snapping assumes the coarse neighbour has a
+			# sample exactly at this border's origin. That holds between chunks, but a quadtree
+			# node's step is derived from how many macros it spans and is not always a divisor
+			# of the chunk grid — interpolating against samples the neighbour does not actually
+			# have would move our border to a height nothing matches, which is worse than the
+			# crack. When it does not line up we skip the snap and let the skirt close the seam.
 			# North border (z == z0): snap x to n_step grid
-			if z == z0 and n_step > step:
+			if z == z0 and _snap_ok(n_step, step, x0):
 				var rem: int = x % n_step
 				if rem != 0:
 					h = lerp(float(md[z * w + x - rem]),
@@ -2010,7 +2068,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(n_step))
 
 			# South border (z == z1): snap x to s_step grid
-			elif z == z1 and s_step > step:
+			elif z == z1 and _snap_ok(s_step, step, x0):
 				var rem: int = x % s_step
 				if rem != 0:
 					h = lerp(float(md[z * w + x - rem]),
@@ -2018,7 +2076,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(s_step))
 
 			# West border (x == x0): snap z to w_step grid
-			if x == x0 and w_step > step:
+			if x == x0 and _snap_ok(w_step, step, z0):
 				var rem: int = z % w_step
 				if rem != 0:
 					h = lerp(float(md[(z - rem) * w + x]),
@@ -2026,7 +2084,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 							 float(rem) / float(w_step))
 
 			# East border (x == x1): snap z to e_step grid
-			elif x == x1 and e_step > step:
+			elif x == x1 and _snap_ok(e_step, step, z0):
 				var rem: int = z % e_step
 				if rem != 0:
 					h = lerp(float(md[(z - rem) * w + x]),
@@ -2086,6 +2144,11 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	# a different LOD (n/s/w/e_step != 0) — that is where cracks are, and a skirt around every
 	# chunk would cost a quarter of the terrain's triangles for nothing.
 	if SKIRT_DEPTH > 0.0:
+		# Deep enough to cover the height difference the seam can actually have, which grows
+		# with the step: between a step-1 chunk and a step-64 node mesh the two surfaces can be
+		# tens of metres apart on a mountainside. The wall lives under the ground and is seen
+		# only through the crack it closes, so being generous costs nothing but its own AABB.
+		var skirt: float = clampf(float(sz) * 3.0, SKIRT_DEPTH, 60.0)
 		var lastz: int = zs[zs.size() - 1]
 		var lastx: int = xs[xs.size() - 1]
 		var edges: Array = []
@@ -2105,7 +2168,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			var keys4: Array = []
 			for z in zs: keys4.append(z * w + lastx)
 			edges.append([keys4, Vector3(1.0, 0.0, 0.0)])
-		var drop := Vector3(0.0, SKIRT_DEPTH, 0.0)
+		var drop := Vector3(0.0, skirt, 0.0)
 		for e in edges:
 			var ks: Array = e[0]
 			var outward: Vector3 = e[1]
@@ -2137,7 +2200,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 					indices.append_array([t1, t0, b0])
 					indices.append_array([t1, b0, b0 + 1])
 		if not edges.is_empty():
-			aabb_min.y -= SKIRT_DEPTH      # иначе стенку срежет отсечение по AABB
+			aabb_min.y -= skirt            # or AABB culling clips the wall away
 
 	if vertices.is_empty() or indices.is_empty():
 		return []
@@ -2435,7 +2498,13 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 # over its whole footprint, sampled at _qt_step[n].
 func _qt_node_worker(n: int) -> void:
 	var r: Vector4i = _qt_rect[n]
-	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n])
+	# All four borders marked as seams (same value as our own step, so it asks for a SKIRT
+	# without any height snapping — see _snap_ok). A node mesh always borders something finer,
+	# and it is the one representation nothing else can stitch to: its own wall is what closes
+	# that seam. Also the reason the skirt depth scales with the step below — a wall four metres
+	# deep means nothing next to a mesh whose quads span a hundred.
+	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n],
+			_qt_step[n], _qt_step[n], _qt_step[n], _qt_step[n])
 	if data.is_empty():
 		return
 	var am := ArrayMesh.new()
