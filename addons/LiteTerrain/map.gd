@@ -2107,6 +2107,13 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var aabb_max: Vector3 = Vector3(-INF, -INF, -INF)
 
 	var sz: int = maxi(1, step)
+	# DETAIL IS A RUNTIME-ONLY THING, and the flag is computed ONCE per chunk rather than per
+	# vertex. In the editor the map is rebuilt in FULL at step 1, in one go, on the main thread:
+	# a 1982² map is some fifteen thousand chunks, and five extra noise evaluations per vertex
+	# turned "Generate Terrain" into a freeze the OS eventually kills. The editor also has the
+	# better reason to show the bare surface — that is the one the sculpt brush and the collision
+	# actually work with.
+	var detail_on: bool = sz <= DETAIL_MAX_STEP and not Engine.is_editor_hint()
 	var xs: PackedInt32Array = _sample_range(x0, x1, sz)
 	var zs: PackedInt32Array = _sample_range(z0, z1, sz)
 	# A degenerate chunk (fewer than 2x2 samples) has no quads to build. On small maps that used
@@ -2179,7 +2186,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# height. Two extra samples per axis, on near chunks only.
 			var dhx: float = 0.0
 			var dhz: float = 0.0
-			if sz <= DETAIL_MAX_STEP:
+			if detail_on:
 				var dw: float = _detail_weight(x, z, x0, z0, x1, z1)
 				if dw > 0.001:
 					var wx: float = float(x) - w * 0.5 + 0.5
