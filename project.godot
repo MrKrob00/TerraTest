@@ -153,4 +153,3 @@ shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
 scaling_3d/scale=0.75
 environment/glow/upscale_mode=0
-occlusion_culling/use_occlusion_culling=false
