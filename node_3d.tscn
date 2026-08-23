@@ -336,6 +336,8 @@ text = "30 FPS"
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 constant_angular_velocity = Vector3(-0.0015882496, 0, 0)
 script = ExtResource("17_tuemg")
+enable_occlusion_culling = true
+occlusion_samples = 14
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 triangle_size = 1
 stream_batch_size = 4

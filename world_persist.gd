@@ -97,6 +97,11 @@ func _cull_tick(delta: float) -> void:
 	var cam_pos: Vector3 = cam.global_position
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var keep2: float = CULL_KEEP_RADIUS * CULL_KEEP_RADIUS
+	# ЗА ХРЕБТОМ — то же самое, что за спиной. Рельеф отвечает по своей карте высот
+	# (map.is_point_hidden), и это дёшево: сотня лежащих блоков за горой стоит столько же,
+	# сколько сотня перед носом, а видно из них ноль.
+	var terr := get_node_or_null("/root/Main/map")
+	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
 	for c in o.get_children():
 		var n := c as Node3D
 		if n == null:
@@ -105,6 +110,8 @@ func _cull_tick(delta: float) -> void:
 		var to: Vector3 = n.global_position - cam_pos
 		var d2: float = to.length_squared()
 		var behind: bool = d2 > keep2 and to.normalized().dot(fwd) < CULL_VIEW_COS
+		if not behind and d2 > keep2 and can_occlude:
+			behind = terr.is_point_hidden(n.global_position, 1.0)
 		if behind == was:
 			continue
 		if behind:

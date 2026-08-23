@@ -2873,6 +2873,24 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 	# Terrain horizon is above the chunk top → chunk is occluded
 	return max_terrain_angle > chunk_angle
 
+## IS THIS POINT HIDDEN BY THE TERRAIN? The same horizon walk as the chunk test, exposed for
+## everything else in the world: props, ore veins, loose blocks, machines.
+##
+## The reason it is public is fill rate. Terrain chunks are a few dozen objects; the props,
+## veins and debris standing ON that terrain are hundreds, and every one of them behind a ridge
+## is drawn in full. On a device where the rasterizer runs on the CPU that is the whole budget.
+##
+## height is how tall the thing is (its top is what has to clear the ridge), so a boulder does
+## not get culled while its own peak is still in view. Cheap and conservative: on any doubt —
+## no heightmap yet, camera above the object, too close — it answers "visible".
+func is_point_hidden(world_pos: Vector3, height: float = 1.0) -> bool:
+	if not enable_occlusion_culling or md.is_empty() or not is_instance_valid(_cam):
+		return false
+	var inv: Transform3D = global_transform.affine_inverse()
+	var local: Vector3 = inv * world_pos
+	return _is_aabb_occluded(AABB(local - Vector3(0.5, 0.0, 0.5),
+			Vector3(1.0, maxf(height, 0.1), 1.0)), inv * _cam.global_position)
+
 func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
 	var bmin: Vector3 = aabb.position
 	var bmax: Vector3 = aabb.position + aabb.size
