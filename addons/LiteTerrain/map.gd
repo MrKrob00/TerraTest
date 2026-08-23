@@ -48,6 +48,9 @@ func _validate_property(property: Dictionary) -> void:
 @export_range(0.0, 10.0, 0.5) var occlusion_bias: float = 1.5
 ## Heightmap samples taken along each camera→chunk ray. More = fewer misses, more CPU.
 @export_range(2, 24, 1) var occlusion_samples: int = 8
+## Metres between horizon samples. The sample count is derived from the ray length and this
+## (see _is_aabb_occluded), so a long ray is not read any coarser than a short one.
+const OCCLUSION_STRIDE: float = 6.0
 
 @export var chunk_size: int = 16
 
@@ -2864,10 +2867,21 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 
 	var max_terrain_angle := -PI * 0.5   # start maximally below the horizon
 
+	# HOW MANY SAMPLES: by DISTANCE, not a fixed count. The heights themselves are exact — md is
+	# the full-resolution map, one float per world unit, and no separate "picture" is involved —
+	# but a fixed count spread the same samples over any ray length, so at 40 m it read the
+	# ground every three metres and at 300 m every twenty. A ridge thinner than the gap is
+	# stepped over, and the thing behind it is drawn for nothing.
+	#
+	# So: one sample per OCCLUSION_STRIDE metres, with occlusion_samples as the floor and four
+	# times that as the ceiling. A missed ridge only costs a draw call; the opposite error would
+	# cost a popping hole, and that is why the stride is small rather than clever.
+	var steps: int = clampi(int(dist_xz / OCCLUSION_STRIDE), occlusion_samples, occlusion_samples * 4)
+
 	# Sample at t ∈ [10 %, 90 %] of the distance so we skip the camera's own
 	# foot and the chunk's own geometry, reading only the terrain between them.
-	for si in range(1, occlusion_samples):
-		var t           := float(si) / float(occlusion_samples) * 0.9
+	for si in range(1, steps):
+		var t           := float(si) / float(steps) * 0.9
 		var sample_dist := t * dist_xz
 
 		var lx := cam_local.x + dir_x * sample_dist

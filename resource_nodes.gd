@@ -280,10 +280,17 @@ func _process(delta: float) -> void:
 		var dist2: float = to.length_squared()
 		# В радиусе И (близко ИЛИ впереди). Направление считаем только для дальних: у жилы
 		# под колёсами направление вырождается, да и гасить её нельзя.
-		var near: bool = dist2 <= d2 and (dist2 <= keep2 or to.normalized().dot(fwd) >= view_cos)
-		if near and can_occlude and dist2 > keep2 and i >= slice_from and i < slice_to:
+		# БЛИЖНИЙ ПУЗЫРЬ СЧИТАЕТСЯ ОТ ЛЮБОЙ ЖИВОЙ ТОЧКИ (G.active_points), а не от камеры: жила
+		# это не картинка, а узел с коллизией, по которому работают бур и авто-шахтёр. У базы
+		# на другом конце карты бур грызёт свою жилу, пока игрок ездит другой машиной, — и если
+		# мерить только от камеры, жила под ним исчезнет вместе с добычей.
+		var kept: bool = dist2 <= keep2 or G.near_active(to_global(v["pos"]), keep_radius)
+		# kept идёт ПЕРВЫМ и без оглядки на радиус камеры: жила у базы за пятьсот метров всё
+		# равно обязана быть узлом, иначе стоящий на ней авто-шахтёр добывает воздух.
+		var near: bool = kept or (dist2 <= d2 and to.normalized().dot(fwd) >= view_cos)
+		if near and can_occlude and not kept and i >= slice_from and i < slice_to:
 			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_VEIN_HEIGHT)
-		if near and dist2 > keep2 and v.get("hidden", false):
+		if near and not kept and v.get("hidden", false):
 			near = false
 		var shown: bool = int(v["slot"]) >= 0
 		if near and not shown:
