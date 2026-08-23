@@ -219,7 +219,8 @@ func _process(delta: float) -> void:
 		if near and can_occlude and i >= slice_from and i < slice_to:
 			# Only far ones: close up the horizon walk is meaningless (and _is_aabb_occluded
 			# refuses anyway below occlusion_min_dist), and a prop underfoot must never blink.
-			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_PROP_HEIGHT * float(v["scale"]))
+			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_PROP_HEIGHT * float(v["scale"]),
+					v.get("hidden", false))
 		if near and v.get("hidden", false):
 			near = false                      # behind a ridge — same as out of range
 		if near and not has and _shown < max_visible:

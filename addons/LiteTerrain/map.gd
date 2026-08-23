@@ -2779,6 +2779,29 @@ func _qt_expand_macro(mi: int, frustum: Array[Plane], cam: Vector3, margin: floa
 # Diffs the freshly-descended selection against what's currently rendered and toggles
 # only the instances that changed. do_lod additionally commits per-chunk LOD and
 # rebuilds any chunk whose seam-stitch signature went stale.
+## Occlusion for the pieces that appear THIS pass. Everything else keeps the answer the
+## throttled pass gave it; these have no answer at all yet, and "no answer" used to mean
+## "visible" for up to a fifth of a second.
+func _occlude_newcomers() -> void:
+	if not enable_occlusion_culling or not _cam:
+		return
+	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
+	for ci in _qt_des_chunks:
+		if _qt_cur_chunks.has(ci):
+			continue
+		if ci < _chunk_aabbs.size() and _is_aabb_occluded(_chunk_aabbs[ci], cam_local):
+			_occluded_chunks[ci] = true
+	for mi in _qt_des_macros:
+		if _qt_cur_macros.has(mi):
+			continue
+		if mi < _macro_aabbs.size() and _is_aabb_occluded(_macro_aabbs[mi], cam_local):
+			_occluded_macros[mi] = true
+	for node in _qt_des_nodes:
+		if _qt_cur_nodes.has(node):
+			continue
+		if node < _qt_aabb.size() and _is_aabb_occluded(_qt_aabb[node], cam_local):
+			_occluded_nodes[node] = true
+
 func _qt_apply(do_lod: bool) -> void:
 	# Did the COARSE set change this pass? Chunk LOD only moves on a do_lod pass, but a node or
 	# macro can appear between two of them, and the seam next to it is then unstitched until the
@@ -2796,6 +2819,15 @@ func _qt_apply(do_lod: bool) -> void:
 			if not _qt_cur_macros.has(mi):
 				coarse_changed = true
 				break
+
+	# NEWCOMERS ARE TESTED FOR OCCLUSION ON THE SPOT. The occlusion pass is throttled to a fifth
+	# of a second, and until it runs a piece that just entered the view counts as "not occluded"
+	# — so turning the camera showed a chunk behind a mountain and then took it away again. What
+	# the player sees is geometry blinking into existence and vanishing, which reads as a bug
+	# even though both states were "correct" at the time.
+	#
+	# Only what CHANGED is tested here, which is a handful of pieces per pass, not the world.
+	_occlude_newcomers()
 
 	# ── Coarse internal nodes (the far, low-poly representation) ───────────────
 	for node in _qt_des_nodes:
@@ -2971,20 +3003,20 @@ func _update_occlusion() -> void:
 		# Chunks in an active macro group are covered by the macro test below
 		if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
 			continue
-		if _is_aabb_occluded(_chunk_aabbs[ci], cam_local):
+		if _is_aabb_occluded(_chunk_aabbs[ci], cam_local, _occluded_chunks.has(ci)):
 			new_occ_chunks[ci] = true
 
 	# ── Active macro groups ───────────────────────────────────────────────────
 	for mi in _macro_instances.size():
 		if not _macro_active[mi]:
 			continue
-		if _is_aabb_occluded(_macro_aabbs[mi], cam_local):
+		if _is_aabb_occluded(_macro_aabbs[mi], cam_local, _occluded_macros.has(mi)):
 			new_occ_macros[mi] = true
 
 	# ── Far coarse quadtree meshes ────────────────────────────────────────────
 	# The far, low-poly representation behind a ridge was still being drawn; test it too.
 	for node in _qt_cur_nodes:
-		if node < _qt_aabb.size() and _is_aabb_occluded(_qt_aabb[node], cam_local):
+		if node < _qt_aabb.size() and _is_aabb_occluded(_qt_aabb[node], cam_local, _occluded_nodes.has(node)):
 			new_occ_nodes[node] = true
 
 	# ── Apply visibility — only when the occluded/clear state changes ─────────
@@ -3073,7 +3105,14 @@ func _clear_occlusion() -> void:
 # The occlusion_bias term raises the effective target so only terrain that
 # clearly dominates the skyline triggers culling, reducing false-positives
 # (popping) when the camera barely grazes a ridge.
-func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
+## HYSTERESIS, in radians of horizon angle. Without a dead band a piece sitting exactly on the
+## threshold flips on every occlusion pass — five times a second — and blinking geometry reads
+## as a bug even though each individual answer is correct. Hiding something visible needs the
+## terrain to clear its top by this much; showing something hidden needs it to fall below by the
+## same amount, so the two thresholds cannot chase each other.
+const OCCL_HYST: float = 0.012
+
+func _is_aabb_occluded(aabb: AABB, cam_local: Vector3, was_occluded: bool = false) -> bool:
 	# Guard: w must be positive and md must be populated before we read it.
 	# md is refreshed by update_chunks() but w/d are @onready — they can
 	# temporarily disagree with md.size() after a map resize.  Derive the
@@ -3150,8 +3189,8 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 		if terrain_angle > max_terrain_angle:
 			max_terrain_angle = terrain_angle
 
-	# Terrain horizon is above the chunk top → chunk is occluded
-	return max_terrain_angle > chunk_angle
+	# Terrain horizon is above the chunk top → chunk is occluded (with the dead band above).
+	return max_terrain_angle > chunk_angle + (-OCCL_HYST if was_occluded else OCCL_HYST)
 
 ## IS THIS POINT HIDDEN BY THE TERRAIN? The same horizon walk as the chunk test, exposed for
 ## everything else in the world: props, ore veins, loose blocks, machines.
@@ -3163,13 +3202,13 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3) -> bool:
 ## height is how tall the thing is (its top is what has to clear the ridge), so a boulder does
 ## not get culled while its own peak is still in view. Cheap and conservative: on any doubt —
 ## no heightmap yet, camera above the object, too close — it answers "visible".
-func is_point_hidden(world_pos: Vector3, height: float = 1.0) -> bool:
+func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool = false) -> bool:
 	if not enable_occlusion_culling or md.is_empty() or not is_instance_valid(_cam):
 		return false
 	var inv: Transform3D = global_transform.affine_inverse()
 	var local: Vector3 = inv * world_pos
 	return _is_aabb_occluded(AABB(local - Vector3(0.5, 0.0, 0.5),
-			Vector3(1.0, maxf(height, 0.1), 1.0)), inv * _cam.global_position)
+			Vector3(1.0, maxf(height, 0.1), 1.0)), inv * _cam.global_position, was_hidden)
 
 func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
 	var bmin: Vector3 = aabb.position
