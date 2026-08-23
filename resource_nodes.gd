@@ -47,6 +47,10 @@ var ore_colors: Array[Color] = []
 var _data: Array = []
 var _free: Array[int] = []                   # свободные слоты MultiMesh (пул)
 var _cull_t: float = 0.0
+## Окклюзия спрашивается порциями (см. _process): за тик — 1/OCCL_SLICES списка.
+const OCCL_SLICES := 4
+const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
+var _occl_cursor: int = 0
 # Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
 var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
@@ -259,12 +263,28 @@ func _process(delta: float) -> void:
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var d2: float = render_distance * render_distance
 	var keep2: float = keep_radius * keep_radius
+	# Жилу за хребтом не рисуем и не оживляем: узел с коллизией и слот MultiMesh стоят одинаково
+	# что перед горой, что за ней. Спрашиваем у рельефа по карте высот (map.is_point_hidden) и
+	# ПОРЦИЯМИ — ответ меняется только от движения камеры, а жил тысячи.
+	var terr: Node = get_parent()
+	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	var n: int = _data.size()
+	var slice_from: int = _occl_cursor
+	var step: int = maxi(n / OCCL_SLICES, 1)
+	_occl_cursor = (_occl_cursor + step) % maxi(n, 1)
+	var slice_to: int = slice_from + step
+	var i: int = -1
 	for v in _data:
+		i += 1
 		var to: Vector3 = to_global(v["pos"]) - cam_pos
 		var dist2: float = to.length_squared()
 		# В радиусе И (близко ИЛИ впереди). Направление считаем только для дальних: у жилы
 		# под колёсами направление вырождается, да и гасить её нельзя.
 		var near: bool = dist2 <= d2 and (dist2 <= keep2 or to.normalized().dot(fwd) >= view_cos)
+		if near and can_occlude and dist2 > keep2 and i >= slice_from and i < slice_to:
+			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_VEIN_HEIGHT)
+		if near and dist2 > keep2 and v.get("hidden", false):
+			near = false
 		var shown: bool = int(v["slot"]) >= 0
 		if near and not shown:
 			_stream_in(v)

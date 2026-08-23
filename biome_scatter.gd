@@ -44,6 +44,12 @@ const SNOW := 4
 var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
 var _cull_t: float = 0.0
 var _shown: int = 0
+## Occlusion is re-asked for a slice of the props per tick, not for all of them. See _process.
+const OCCL_SLICES := 4
+## Assumed prop height for the horizon test. Props vary, but their SCALE is known, and being
+## generous here only means a prop is culled slightly later than it could be.
+const OCCL_PROP_HEIGHT := 4.0
+var _occl_cursor: int = 0
 
 # _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
 # момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
@@ -191,9 +197,31 @@ func _process(delta: float) -> void:
 		return
 	var cam_pos: Vector3 = cam.global_position
 	var d2: float = render_distance * render_distance
+	# HIDDEN BEHIND A RIDGE = NOT SPAWNED. A prop is a whole node with its own meshes, and there
+	# are hundreds of them in range; on a CPU rasterizer the ones standing behind a mountain cost
+	# exactly as much as the ones in front. The terrain answers this from its heightmap
+	# (map.is_point_hidden), which is why the test is cheap enough to run on props at all.
+	#
+	# Checked ROUND-ROBIN, a slice of the list per tick: the answer changes only as the camera
+	# moves, so re-asking for every prop several times a second buys nothing. The stride also
+	# keeps a slow prop from being tested while it is still the near one.
+	var terr: Node = get_parent()
+	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	var n: int = _data.size()
+	var slice_from: int = _occl_cursor
+	_occl_cursor = (_occl_cursor + maxi(n / OCCL_SLICES, 1)) % maxi(n, 1)
+	var slice_to: int = slice_from + maxi(n / OCCL_SLICES, 1)
+	var i: int = -1
 	for v in _data:
+		i += 1
 		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
 		var has: bool = v["node"] != null
+		if near and can_occlude and i >= slice_from and i < slice_to:
+			# Only far ones: close up the horizon walk is meaningless (and _is_aabb_occluded
+			# refuses anyway below occlusion_min_dist), and a prop underfoot must never blink.
+			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_PROP_HEIGHT * float(v["scale"]))
+		if near and v.get("hidden", false):
+			near = false                      # behind a ridge — same as out of range
 		if near and not has and _shown < max_visible:
 			_spawn(v)
 		elif not near and has:
