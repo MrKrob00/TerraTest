@@ -84,22 +84,38 @@ extends Resource
 const CANYON_OFFSET := Vector2(101.0, 53.0)
 const MOUNTAIN_OFFSET := Vector2(211.0, 77.0)
 
+## WHERE THE BIOMES SIT, moved by the SEED. The masks come from a hash-based value noise with
+## fixed constants, so without this every seed produced new hills in exactly the same desert,
+## with the canyon in exactly the same corner — the world changed shape but not geography.
+##
+## It lives in the RESOURCE and not in the generator because two different places read these
+## masks: the generator carves the landform by them, and the terrain colours and ore veins by
+## the same call at runtime. One offset, one answer, no way for them to disagree.
+@export var mask_offset: Vector2 = Vector2.ZERO
+
+## Offset from a seed. Any deterministic spread does; this one just has to be far enough that
+## neighbouring seeds do not overlap their patterns.
+static func offset_for_seed(seed_value: int) -> Vector2:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	return Vector2(rng.randf_range(-4000.0, 4000.0), rng.randf_range(-4000.0, 4000.0))
+
 ## 0 is desert, 1 is meadow. wp is world XZ.
 func meadow_mask(wp: Vector2, noise: Callable) -> float:
-	var n: float = noise.call(wp / biome_scale)
+	var n: float = noise.call(wp / biome_scale + mask_offset)
 	n = clampf((n - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
 	return smoothstep(biome_bias - biome_blend, biome_bias + biome_blend, n)
 
 func canyon_mask(wp: Vector2, noise: Callable) -> float:
 	if not canyon_enabled:
 		return 0.0
-	var n: float = noise.call(wp / canyon_scale + CANYON_OFFSET)
+	var n: float = noise.call(wp / canyon_scale + CANYON_OFFSET + mask_offset)
 	return smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge, n)
 
 func mountain_mask(wp: Vector2, noise: Callable) -> float:
 	if not mountain_enabled:
 		return 0.0
-	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET)
+	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, mountain_threshold + mountain_edge, n)
 
 ## The mountain dome — not the mask but its interior: it ramps up smoothly from the
@@ -108,7 +124,7 @@ func mountain_mask(wp: Vector2, noise: Callable) -> float:
 func mountain_dome(wp: Vector2, noise: Callable) -> float:
 	if not mountain_enabled:
 		return 0.0
-	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET)
+	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, 0.95, n)
 
 # ── Handing values to the shader ──────────────────────────────────────────────
