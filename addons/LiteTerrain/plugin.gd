@@ -7,8 +7,14 @@ var brush_strength  = 0.1
 var sculpt_mode     = "raise"
 var panel           = null
 var radius_slider   = null
+# Живые ссылки на те виджеты, значения которых живут НЕ в плагине, а в биом-ресурсе выбранной
+# ноды. Их надо пере-читать при смене выделения (см. _sync_dock), иначе галочка показывает
+# состояние предыдущего рельефа — или вовсе запасного ресурса, если при открытии дока ничего
+# выбрано не было.
+var _cb_canyon: CheckBox = null
+var _cb_mountain: CheckBox = null
+var _sl_stratum: HSlider = null
 var strength_slider = null
-var mode_label      = null
 
 var _dirty_chunks: Dictionary = {}
 
@@ -203,6 +209,47 @@ func _cv_noise(p: Vector2) -> float:
 	var dd := _cv_hash2d(i + Vector2(1.0, 1.0))
 	return lerpf(lerpf(a, b, f.x), lerpf(c, dd, f.x), f.y)
 
+## Label of a fixed width, so every row in the dock lines its control up at the same x.
+func _lbl_fixed(t: String) -> Label:
+	var l := Label.new()
+	l.text = t
+	l.custom_minimum_size = Vector2(76, 0)
+	return l
+
+## One setting = ONE ROW: name on the left, control on the right. The dock used to spend two
+## rows on every slider (a label line, then the slider), which is what made eighteen settings
+## look like a wall.
+func _row(text: String, ctrl: Control) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_child(_lbl_fixed(text))
+	ctrl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(ctrl)
+	return h
+
+## A slider row with its live value on the right. `apply` writes the value where it belongs;
+## saving happens on drag end, not on every pixel of the drag.
+func _slider_row(parent: Control, text: String, mn: float, mx: float, val: float, step: float,
+		apply: Callable, digits: int) -> HSlider:
+	var h := HBoxContainer.new()
+	h.add_child(_lbl_fixed(text))
+	var sl := _slider(mn, mx, val, step)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(sl)
+	var val_lbl := Label.new()
+	val_lbl.custom_minimum_size = Vector2(38, 0)
+	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val_lbl.text = _fmt(val, digits)
+	h.add_child(val_lbl)
+	sl.value_changed.connect(func(v: float) -> void:
+		apply.call(v)
+		val_lbl.text = _fmt(v, digits))
+	sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
+	parent.add_child(h)
+	return sl
+
+func _fmt(v: float, digits: int) -> String:
+	return str(int(round(v))) if digits <= 0 else str(snappedf(v, pow(0.1, digits)))
+
 func _slider(mn: float, mx: float, val: float, step: float = 0.0) -> HSlider:
 	var sl = HSlider.new()
 	sl.min_value = mn
@@ -231,252 +278,175 @@ func _enter_tree() -> void:
 	panel.custom_minimum_size = Vector2(220, 0)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	# ── Setup: one-click terrain node ───────────
-	panel.add_child(_lbl("── Setup ──"))
+	# THE DOCK IS TWO LISTS, not one. Everything above "Advanced" is what actually changes a
+	# world — seed, size, height, feature size, which biomes exist. Everything below is dialled
+	# in once and then never touched, so it starts folded away: eighteen sliders in a row read
+	# as "this is complicated", and the five that matter drown in them.
+	#
+	# Each setting is ONE ROW (label + control on the same line) rather than a label above its
+	# slider. Same information, half the height, and the dock stops needing a scrollbar.
+
+	# ── Setup ────────────────────────────────────────────────────────────────
 	var create_btn = Button.new()
 	create_btn.text = "➕ Create Terrain Node"
 	create_btn.tooltip_text = "Adds a single LiteTerrain node (image mode, flat 128x128). It creates its own children."
 	create_btn.pressed.connect(_create_terrain)
 	panel.add_child(create_btn)
 
-	# ── Sculpt ──────────────────────────────────
+	# ── Sculpt ───────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
-	panel.add_child(_lbl("── Terrain Sculpt ──"))
+	panel.add_child(_lbl("── Sculpt ──"))
+	var modes := HBoxContainer.new()
+	modes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var group := ButtonGroup.new()
+	for m in [["▲", "raise"], ["▼", "lower"], ["⬛", "flatten"]]:
+		var b := Button.new()
+		b.text = String(m[0])
+		b.tooltip_text = String(m[1]).capitalize()
+		b.toggle_mode = true
+		b.button_group = group
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.button_pressed = sculpt_mode == String(m[1])
+		var mode_name := String(m[1])
+		b.pressed.connect(func() -> void:
+			sculpt_mode = mode_name
+			_save_settings())
+		modes.add_child(b)
+	panel.add_child(modes)
+	radius_slider = _slider_row(panel, "Radius", 1.0, 200.0, brush_radius, 1.0,
+			func(v: float) -> void: brush_radius = v, 0)
+	strength_slider = _slider_row(panel, "Strength", 1.0, 1000.0, brush_strength * 1000.0, 1.0,
+			func(v: float) -> void: brush_strength = v / 1000.0, 0)
 
-	panel.add_child(_lbl("Mode:"))
-	mode_label = _lbl(_mode_text())
-	panel.add_child(mode_label)
-
-	var raise_btn = Button.new()
-	raise_btn.text = "▲ Raise"
-	raise_btn.pressed.connect(_on_raise)
-	panel.add_child(raise_btn)
-
-	var lower_btn = Button.new()
-	lower_btn.text = "▼ Lower"
-	lower_btn.pressed.connect(_on_lower)
-	panel.add_child(lower_btn)
-
-	var flatten_btn = Button.new()
-	flatten_btn.text = "⬛ Flatten"
-	flatten_btn.pressed.connect(_on_flatten)
-	panel.add_child(flatten_btn)
-
-	var radius_label = _lbl("Radius: " + str(snapped(brush_radius, 0.5)))
-	panel.add_child(radius_label)
-	radius_slider = _slider(1.0, 200.0, brush_radius)
-	radius_slider.value_changed.connect(func(v: float) -> void:
-		brush_radius = v
-		radius_label.text = "Radius: " + str(snapped(v, 0.5))
-	)
-	radius_slider.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(radius_slider)
-
-	var strength_label = _lbl("Strength: " + str(int(round(brush_strength * 1000.0))))
-	panel.add_child(strength_label)
-	strength_slider = _slider(1.0, 1000.0, brush_strength * 1000.0)
-	strength_slider.value_changed.connect(func(v: float) -> void:
-		brush_strength = v / 1000.0
-		strength_label.text = "Strength: " + str(int(v))
-	)
-	strength_slider.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(strength_slider)
-
-	# ── Noise Generation ─────────────────────────
+	# ── World ────────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
-	panel.add_child(_lbl("── Noise Generation ──"))
+	panel.add_child(_lbl("── World ──"))
 
-	var seed_lbl = _lbl("Seed: " + str(gen_seed))
-	panel.add_child(seed_lbl)
+	var seed_row := HBoxContainer.new()
 	var seed_spin = SpinBox.new()
 	seed_spin.min_value = 0
 	seed_spin.max_value = 99999
 	seed_spin.value     = gen_seed
+	seed_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	seed_spin.value_changed.connect(func(v: float) -> void:
 		gen_seed = int(v)
-		seed_lbl.text = "Seed: " + str(gen_seed)
-		_save_settings()
-	)
-	panel.add_child(seed_spin)
+		_save_settings())
+	var dice := Button.new()
+	dice.text = "🎲"
+	dice.tooltip_text = "Random seed"
+	dice.pressed.connect(func() -> void:
+		seed_spin.value = float(randi() % 100000))     # value_changed does the rest
+	seed_row.add_child(_lbl_fixed("Seed"))
+	seed_row.add_child(seed_spin)
+	seed_row.add_child(dice)
+	panel.add_child(seed_row)
 
-	# Scale (continental frequency)
-	var scale_lbl = _lbl("Scale: " + str(int(gen_scale)))
-	panel.add_child(scale_lbl)
-	var scale_sl = _slider(10.0, 600.0, gen_scale)
-	scale_sl.value_changed.connect(func(v: float) -> void:
-		gen_scale = v
-		scale_lbl.text = "Scale: " + str(int(v))
-	)
-	scale_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(scale_sl)
+	var size_spin = SpinBox.new()
+	size_spin.min_value = 0
+	size_spin.max_value = 4096
+	size_spin.step      = 64
+	size_spin.value     = gen_size
+	size_spin.tooltip_text = "Map side in cells (0 = keep the current size). One cell is one world unit."
+	size_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	size_spin.value_changed.connect(func(v: float) -> void:
+		gen_size = int(v)
+		_save_settings())
+	panel.add_child(_row("Size", size_spin))
 
-	var oct_lbl = _lbl("Octaves: " + str(gen_octaves))
-	panel.add_child(oct_lbl)
+	_slider_row(panel, "Height", 1.0, 300.0, gen_amplitude, 1.0,
+			func(v: float) -> void: gen_amplitude = v, 0)
+	_slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
+			func(v: float) -> void: gen_scale = v, 0)
+
+	var canyon_cb = CheckBox.new()
+	canyon_cb.text = "Canyons"
+	canyon_cb.button_pressed = gen_canyon_enable
+	_cb_canyon = canyon_cb
+	canyon_cb.toggled.connect(func(on: bool) -> void:
+		gen_canyon_enable = on
+		# The same flag drives the COLOUR: the biome resource is what the shader reads, so a
+		# world without carved canyons has no terracotta either.
+		_biomes().canyon_enabled = on
+		_save_settings())
+	panel.add_child(canyon_cb)
+
+	var mtn_cb = CheckBox.new()
+	mtn_cb.text = "Mountains"
+	mtn_cb.button_pressed = _biomes().mountain_enabled
+	_cb_mountain = mtn_cb
+	mtn_cb.toggled.connect(func(on: bool) -> void:
+		_biomes().mountain_enabled = on)
+	panel.add_child(mtn_cb)
+
+	# ── Advanced (folded) ────────────────────────────────────────────────────
+	var adv_body := VBoxContainer.new()
+	adv_body.visible = false
+	var adv_btn := Button.new()
+	adv_btn.text = "▸ Advanced"
+	adv_btn.toggle_mode = true
+	adv_btn.toggled.connect(func(on: bool) -> void:
+		adv_body.visible = on
+		adv_btn.text = ("▾ " if on else "▸ ") + "Advanced")
+	panel.add_child(adv_btn)
+	panel.add_child(adv_body)
+
 	var oct_spin = SpinBox.new()
 	oct_spin.min_value = 1
 	oct_spin.max_value = 8
 	oct_spin.value     = gen_octaves
+	oct_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	oct_spin.value_changed.connect(func(v: float) -> void:
 		gen_octaves = int(v)
-		oct_lbl.text = "Octaves: " + str(gen_octaves)
-		_save_settings()
-	)
-	panel.add_child(oct_spin)
+		_save_settings())
+	adv_body.add_child(_row("Octaves", oct_spin))
 
-	# Power curve  (^N — higher = flatter plains, sharper peaks)
-	var pow_lbl = _lbl("Plains Power (^N): " + str(snapped(gen_power, 0.1)))
-	panel.add_child(pow_lbl)
-	var pow_sl = _slider(1.0, 8.0, gen_power, 0.1)
-	pow_sl.value_changed.connect(func(v: float) -> void:
-		gen_power = v
-		pow_lbl.text = "Plains Power (^N): " + str(snapped(v, 0.1))
-	)
-	pow_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(pow_sl)
+	_slider_row(adv_body, "Plains power", 1.0, 8.0, gen_power, 0.1,
+			func(v: float) -> void: gen_power = v, 1)
+	_slider_row(adv_body, "Mountain amt", 0.0, 1.0, gen_mountain_amount, 0.01,
+			func(v: float) -> void: gen_mountain_amount = v, 2)
+	_slider_row(adv_body, "Ridge sharp", 1.0, 8.0, gen_ridge_sharpness, 0.1,
+			func(v: float) -> void: gen_ridge_sharpness = v, 1)
 
-	# Mountain ridge amount
-	var mount_lbl = _lbl("Mountains: " + str(int(gen_mountain_amount * 100)) + " %")
-	panel.add_child(mount_lbl)
-	var mount_sl = _slider(0.0, 1.0, gen_mountain_amount, 0.01)
-	mount_sl.value_changed.connect(func(v: float) -> void:
-		gen_mountain_amount = v
-		mount_lbl.text = "Mountains: " + str(int(v * 100)) + " %"
-	)
-	mount_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(mount_sl)
-
-	# Ridge sharpness  (higher = knife-edge ridges)
-	var ridge_lbl = _lbl("Ridge Sharpness: " + str(snapped(gen_ridge_sharpness, 0.1)))
-	panel.add_child(ridge_lbl)
-	var ridge_sl = _slider(1.0, 8.0, gen_ridge_sharpness, 0.1)
-	ridge_sl.value_changed.connect(func(v: float) -> void:
-		gen_ridge_sharpness = v
-		ridge_lbl.text = "Ridge Sharpness: " + str(snapped(v, 0.1))
-	)
-	ridge_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(ridge_sl)
-
-	# Amplitude (max height in world units)
-	var amp_lbl = _lbl("Amplitude: " + str(int(gen_amplitude)))
-	panel.add_child(amp_lbl)
-	var amp_sl = _slider(1.0, 300.0, gen_amplitude)
-	amp_sl.value_changed.connect(func(v: float) -> void:
-		gen_amplitude = v
-		amp_lbl.text = "Amplitude: " + str(int(v))
-	)
-	amp_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(amp_sl)
-
-	# Smooth passes (simple box-blur after generation)
-	var smooth_lbl = _lbl("Smooth Passes: " + str(gen_smooth))
-	panel.add_child(smooth_lbl)
 	var smooth_spin = SpinBox.new()
 	smooth_spin.min_value = 0
-	smooth_spin.max_value = 12
+	smooth_spin.max_value = 5
 	smooth_spin.value     = gen_smooth
+	smooth_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	smooth_spin.value_changed.connect(func(v: float) -> void:
 		gen_smooth = int(v)
-		smooth_lbl.text = "Smooth Passes: " + str(gen_smooth)
-		_save_settings()
-	)
-	panel.add_child(smooth_spin)
+		_save_settings())
+	adv_body.add_child(_row("Smoothing", smooth_spin))
 
-	# Map size (image mode only). 0 = keep the current size.
-	var size_lbl = _lbl("Map Size (0 = keep): " + str(gen_size))
-	panel.add_child(size_lbl)
-	var size_spin = SpinBox.new()
-	size_spin.min_value = 0
-	size_spin.max_value = 8192
-	size_spin.step      = 64
-	size_spin.value     = gen_size
-	size_spin.value_changed.connect(func(v: float) -> void:
-		gen_size = int(v)
-		size_lbl.text = "Map Size (0 = keep): " + str(gen_size)
-		_save_settings()
-	)
-	panel.add_child(size_spin)
+	adv_body.add_child(_lbl("Canyon shape"))
+	_slider_row(adv_body, "Mesa top", 20.0, 60.0, gen_canyon_plateau, 1.0,
+			func(v: float) -> void: gen_canyon_plateau = v, 0)
+	_slider_row(adv_body, "Floor", 0.0, 20.0, gen_canyon_floor, 1.0,
+			func(v: float) -> void: gen_canyon_floor = v, 0)
+	# The terrace height lives in the BIOME RESOURCE: the shader colours its strata by the same
+	# number, and two copies of it would drift apart into stripes that miss the steps.
+	_sl_stratum = _slider_row(adv_body, "Stratum", 2.0, 12.0, _biomes().canyon_band_height, 0.5,
+			func(v: float) -> void: _biomes().canyon_band_height = v, 1)
+	_slider_row(adv_body, "Riser", 0.1, 0.6, gen_canyon_riser, 0.05,
+			func(v: float) -> void: gen_canyon_riser = v, 2)
+	_slider_row(adv_body, "Gorge width", 0.03, 0.30, gen_canyon_width, 0.01,
+			func(v: float) -> void: gen_canyon_width = v, 2)
+	_slider_row(adv_body, "Channels", 30.0, 160.0, gen_canyon_gorge, 1.0,
+			func(v: float) -> void: gen_canyon_gorge = v, 0)
 
-	# ── Canyons (baked into the heights during generation) ───────────────────
+	# ── Actions ──────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
-	var canyon_cb = CheckBox.new()
-	canyon_cb.text = "Canyons (mesas + gorges)"
-	canyon_cb.button_pressed = gen_canyon_enable
-	canyon_cb.toggled.connect(func(on: bool) -> void:
-		gen_canyon_enable = on
-		_save_settings()
-	)
-	panel.add_child(canyon_cb)
-
-	var mesa_lbl = _lbl("  Plateau height (max): " + str(int(gen_canyon_plateau)))
-	panel.add_child(mesa_lbl)
-	var mesa_sl = _slider(20.0, 60.0, gen_canyon_plateau)
-	mesa_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_plateau = v
-		mesa_lbl.text = "  Plateau height (max): " + str(int(v))
-	)
-	mesa_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(mesa_sl)
-
-	var floor_lbl = _lbl("  Canyon floor: " + str(int(gen_canyon_floor)))
-	panel.add_child(floor_lbl)
-	var floor_sl = _slider(0.0, 20.0, gen_canyon_floor)
-	floor_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_floor = v
-		floor_lbl.text = "  Canyon floor: " + str(int(v))
-	)
-	floor_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(floor_sl)
-
-	var terr_lbl = _lbl("  Stratum height (terrace): " + str(snapped(_biomes().canyon_band_height, 0.5)))
-	panel.add_child(terr_lbl)
-	var terr_sl = _slider(2.0, 12.0, _biomes().canyon_band_height, 0.5)
-	terr_sl.value_changed.connect(func(v: float) -> void:
-		_biomes().canyon_band_height = v      # the same number colours the bands in the shader
-		terr_lbl.text = "  Stratum height (terrace): " + str(snapped(v, 0.5))
-	)
-	terr_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(terr_sl)
-
-	var riser_lbl = _lbl("  Riser steepness: " + str(snapped(gen_canyon_riser, 0.05)))
-	panel.add_child(riser_lbl)
-	var riser_sl = _slider(0.1, 0.6, gen_canyon_riser, 0.05)
-	riser_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_riser = v
-		riser_lbl.text = "  Riser steepness: " + str(snapped(v, 0.05))
-	)
-	riser_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(riser_sl)
-
-	var gwidth_lbl = _lbl("  Gorge width: " + str(snapped(gen_canyon_width, 0.01)))
-	panel.add_child(gwidth_lbl)
-	var gwidth_sl = _slider(0.03, 0.30, gen_canyon_width, 0.01)
-	gwidth_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_width = v
-		gwidth_lbl.text = "  Gorge width: " + str(snapped(v, 0.01))
-	)
-	gwidth_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(gwidth_sl)
-
-	var gorge_lbl = _lbl("  Channel frequency: " + str(int(gen_canyon_gorge)))
-	panel.add_child(gorge_lbl)
-	var gorge_sl = _slider(30.0, 160.0, gen_canyon_gorge)
-	gorge_sl.value_changed.connect(func(v: float) -> void:
-		gen_canyon_gorge = v
-		gorge_lbl.text = "  Channel frequency: " + str(int(v))
-	)
-	gorge_sl.drag_ended.connect(func(_c: bool) -> void: _save_settings())
-	panel.add_child(gorge_sl)
-
 	var gen_btn = Button.new()
 	gen_btn.text = "🌍 Generate Terrain"
+	gen_btn.tooltip_text = "Rebuilds the whole heightmap from the settings above. Hand sculpting is lost."
 	gen_btn.pressed.connect(_generate_noise)
 	panel.add_child(gen_btn)
+	var warn := _lbl("rebuilds everything — sculpting is lost")
+	warn.add_theme_font_size_override("font_size", 10)
+	warn.modulate = Color(1, 1, 1, 0.6)
+	panel.add_child(warn)
 
-	# ── Runtime Export (one button) ──────────────────────────────────────────
-	panel.add_child(_sep())
-	panel.add_child(_lbl("── Runtime Export ──"))
 	var bake_btn = Button.new()
-	bake_btn.text = "💾 Bake → files (height + mesh + PNG)"
+	bake_btn.text = "💾 Bake → files"
 	bake_btn.tooltip_text = "One click: heightmap (.res) + preview mesh (.res) + greyscale PNG (for a minimap)."
 	bake_btn.pressed.connect(_bake_and_export)
 	panel.add_child(bake_btn)
@@ -499,26 +469,8 @@ func _exit_tree() -> void:
 # ─────────────────────────────────────────────────
 # Sculpt mode callbacks
 # ─────────────────────────────────────────────────
-func _on_raise() -> void:
-	sculpt_mode = "raise"
-	mode_label.text = _mode_text()
-	_save_settings()
-
-func _on_lower() -> void:
-	sculpt_mode = "lower"
-	mode_label.text = _mode_text()
-	_save_settings()
-
-func _on_flatten() -> void:
-	sculpt_mode = "flatten"
-	mode_label.text = _mode_text()
-	_save_settings()
-
-func _mode_text() -> String:
-	match sculpt_mode:
-		"lower":   return "▼ Lower"
-		"flatten": return "⬛ Flatten"
-		_:         return "▲ Raise"
+# Режим показывают сами кнопки (они в ButtonGroup, нажата ровно одна), поэтому отдельной
+# строки-статуса и трёх функций-обёрток больше нет.
 
 # ─────────────────────────────────────────────────
 # Persist the dock's brush + generation settings across editor sessions.
@@ -595,6 +547,23 @@ func _edit(object) -> void:
 		sculpt_node = object
 	elif object is CollisionShape3D:
 		sculpt_node = object.get_parent()
+	_sync_dock()
+
+## Пере-читать в док то, что хранится в БИОМ-РЕСУРСЕ выбранной ноды. Всё остальное в доке —
+## настройки самого плагина, они общие и живут в метаданных проекта.
+func _sync_dock() -> void:
+	var b := _biomes()
+	if _cb_canyon != null and is_instance_valid(_cb_canyon):
+		_cb_canyon.set_pressed_no_signal(b.canyon_enabled)
+		# У флага каньонов ДВА владельца: ресурс красит, генератор режет. Синхронизируем и
+		# вторую половину, иначе галочка снята, а генерация всё равно вырезает меса.
+		gen_canyon_enable = b.canyon_enabled
+	if _cb_mountain != null and is_instance_valid(_cb_mountain):
+		_cb_mountain.set_pressed_no_signal(b.mountain_enabled)
+	if _sl_stratum != null and is_instance_valid(_sl_stratum):
+		# Через .value, а НЕ set_value_no_signal: подпись со значением обновляет обработчик
+		# сигнала, и без него ползунок встанет на место, а число рядом останется старым.
+		_sl_stratum.value = b.canyon_band_height
 
 # ─────────────────────────────────────────────────
 # Viewport input (sculpting)
