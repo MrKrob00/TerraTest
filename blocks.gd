@@ -434,15 +434,31 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
 	instance.rotation = rot
 
-	var collision = instance.get_child(0).duplicate()
+	# Коллизию ищем ПЕРЕБОРОМ, а не по первому ребёнку: порядок узлов в сцене блока меняют,
+	# не задумываясь, и промах здесь ронял бы спавн всей сборки (та же грабля, что в
+	# vehicle_body_3d._first_collision).
+	var src_col: CollisionShape3D = null
+	for ch in instance.get_children():
+		var cs := ch as CollisionShape3D
+		if cs != null and cs.shape != null:
+			src_col = cs
+			break
+	if src_col == null:
+		push_error("blocks: у блока %s нет CollisionShape3D" % G.block_name(int(instance.get("block"))))
+		return
+	var collision: CollisionShape3D = src_col.duplicate()
 	collision.position = Vector3(x - CENTER, y - CENTER, z - CENTER)
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
-	if collision.shape.size == Vector3(2,2,2):
-		collision.position += Vector3(-0.5,0.5,-0.5)
-	elif collision.shape.size == Vector3(2,1,1):
-		collision.position += Vector3(-0.5,0.0,0.0)       # BLOCK2: центрируем 2-широкую коллизию
-	elif collision.shape.size == Vector3(2,1,2):
-		collision.position += Vector3(-0.5,0.0,-0.5)      # COAL_GEN: 2×1×2
+	# Смещение только у КОРОБОК: у любой другой формы поля .size нет, и обращение к нему
+	# оборвало бы спавн на полпути.
+	var box: BoxShape3D = collision.shape as BoxShape3D
+	if box != null:
+		if box.size == Vector3(2,2,2):
+			collision.position += Vector3(-0.5,0.5,-0.5)
+		elif box.size == Vector3(2,1,1):
+			collision.position += Vector3(-0.5,0.0,0.0)   # BLOCK2: центрируем 2-широкую коллизию
+		elif box.size == Vector3(2,1,2):
+			collision.position += Vector3(-0.5,0.0,-0.5)  # COAL_GEN: 2×1×2
 	if !get_parent().is_node_ready():
 		await get_parent().ready
 	get_parent().add_child(collision)
