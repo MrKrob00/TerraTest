@@ -95,9 +95,26 @@ var _gen_mesa_min: float = 0.0
 # One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
 # thread ever reads what another is writing. The border rows are copied through untouched — the
 # 5-tap kernel has no neighbours there.
+## Выделить буфер на всю карту и УБЕДИТЬСЯ, что он выделился. resize() при нехватке памяти
+## возвращает ошибку и оставляет массив ПУСТЫМ — а дальше потоки пишут в пустоту, и в логе
+## оказывается ворох «out of bounds» вместо одной внятной строки о том, что не хватило памяти.
+## На планшете с парой гигабайт и картой 1984² (по 16 МБ на буфер) это не теория.
+func _gen_alloc(n: int, what: String) -> PackedFloat32Array:
+	var a := PackedFloat32Array()
+	if a.resize(n) != OK or a.size() != n:
+		push_error("LiteTerrain: не удалось выделить %s на %d значений (%.1f МБ) — не хватило памяти"
+				% [what, n, float(n) * 4.0 / 1048576.0])
+		return PackedFloat32Array()
+	return a
+
 func _gen_blur_row(z: int) -> void:
 	var w := _gen_w
 	var row := z * w
+	# Строка молча ничего не делает, если буфер короче карты. Без этой проверки ошибка
+	# «out of bounds» летит из КАЖДОГО потока по разу на строку — тридцать строк лога, в
+	# которых не видно, что именно не выделилось (см. _gen_alloc).
+	if _gen_out.size() < row + w or _gen_base_in.size() < row + w:
+		return
 	if z == 0 or z == _gen_d - 1:
 		for x in w:
 			_gen_out[row + x] = _gen_base_in[row + x]
@@ -152,6 +169,8 @@ func _gen_carve_row(z: int) -> void:
 	var hd := float(_gen_d) * 0.5
 	var fz := float(z)
 	var b := _gen_biomes
+	if b == null or _gen_carved.size() < z * w + w or _gen_base_in.size() < z * w + w:
+		return                       # то же, что и в _gen_blur_row: не пишем в короткий буфер
 	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
 		var idx := z * w + x
@@ -1049,11 +1068,17 @@ func _generate_noise() -> void:
 	_gen_w = width
 	_gen_d = depth
 	_gen_biomes = _biomes()        # snapshot BEFORE the threads start; read-only from here
+	# СИД ДВИГАЕТ И БИОМЫ. Их маски строятся на хеш-шуме с постоянными смещениями, поэтому
+	# раньше новый сид давал новые холмы В ТОЙ ЖЕ пустыне и каньон в том же углу: мир менял
+	# форму, но не географию. Смещение кладём в РЕСУРС — по нему потом красит шейдер и
+	# раскладывает жилы игра, и разъехаться с генератором они не могут.
+	_gen_biomes.mask_offset = TerrainBiomes.offset_for_seed(gen_seed)
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
-	_gen_out = PackedFloat32Array()
-	_gen_out.resize(width * depth)
+	_gen_out = _gen_alloc(width * depth, "карту высот")
+	if _gen_out.is_empty():
+		return
 	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: heights")
 	WorkerThreadPool.wait_for_group_task_completion(_fill_gid)
 	var new_data := _gen_out
@@ -1067,8 +1092,9 @@ func _generate_noise() -> void:
 	# `duplicate()` it needed to avoid reading its own output.
 	for _p in gen_smooth:
 		_gen_base_in = new_data
-		_gen_out = PackedFloat32Array()
-		_gen_out.resize(width * depth)
+		_gen_out = _gen_alloc(width * depth, "буфер размытия")
+		if _gen_out.is_empty():
+			break                      # без буфера просто не размываем — карта уже есть
 		var blur_gid := WorkerThreadPool.add_group_task(_gen_blur_row, depth, -1, false, "LiteTerrain: blur")
 		WorkerThreadPool.wait_for_group_task_completion(blur_gid)
 		new_data = _gen_out
@@ -1099,10 +1125,19 @@ func _generate_noise() -> void:
 		_gen_ramp = ramp_noise
 		_gen_mesa_min = maxf(gen_canyon_plateau - 22.0, gen_canyon_floor + 8.0)   # bottom of the mesa-height spread
 		_gen_base_in = new_data
-		_gen_carved = new_data.duplicate()      # refcount = 1: threads write their own rows, no CoW
-		var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: canyons")
-		WorkerThreadPool.wait_for_group_task_completion(_carve_gid)
-		new_data = _gen_carved
+		# duplicate() и ПРОВЕРКА размера: при нехватке памяти он вернёт пустой массив, и без
+		# проверки потоки начнут писать в пустоту — тридцать «out of bounds» вместо одной
+		# внятной строки. Копировать поэлементно нельзя: четыре миллиона присваиваний в
+		# GDScript это секунды на ровном месте.
+		_gen_carved = new_data.duplicate()
+		if _gen_carved.size() != width * depth:
+			push_error("LiteTerrain: не хватило памяти на буфер каньонов (%d значений, %.1f МБ) — каньоны пропущены"
+					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
+			_gen_carved = PackedFloat32Array()
+		else:
+			var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: canyons")
+			WorkerThreadPool.wait_for_group_task_completion(_carve_gid)
+			new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
 
