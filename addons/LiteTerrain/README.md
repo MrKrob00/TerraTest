@@ -330,12 +330,30 @@ stitch signature encoding its own step and the step on each of its four borders,
 is rebuilt whenever that signature changes. This makes stitching self-healing
 regardless of the order events arrive in.
 
-Stitching alone is not enough, though: the two sides only agree once **both** chunks
-have been rebuilt, and a frame or two passes between an LOD change and the rebuild. Sky
-was visible through that gap. So a chunk whose neighbour sits at a different LOD also
-drops a vertical **skirt** `SKIRT_DEPTH` deep along that border (`_compute_chunk_data`),
-which covers the crack at any point of the transition. The chunk's AABB is lowered by
-the same amount, or the wall gets cut away by AABB culling.
+**The ground is drawn three different ways at once**, and the seam contract has to cover
+all three: individual chunk meshes (steps 1/2/4), one merged mesh per macro group
+(step 4), and one coarse mesh per internal quadtree node (step = its macro span, so 8,
+16, 64… samples per quad). A fourth exists but never renders at runtime — the editor's
+single full-map mesh.
+
+`_neighbour_step()` is where a border learns what is on the other side, and it must
+answer for whichever of the three actually draws that area right now — the quadtree node
+first (`_node_step_covering` walks down from the root), then an active macro, then the
+chunk itself. A chunk hidden under a node keeps a stale LOD, so asking it directly
+returns a number that means nothing.
+
+Snapping is also guarded by alignment (`_snap_ok`): it interpolates between two samples
+the coarse neighbour is assumed to have, which holds on the chunk grid but not for every
+quadtree step, and moving a border to a height nothing matches is worse than the crack.
+
+Stitching alone is not enough either: the two sides only agree once **both** have been
+rebuilt, and a frame or two passes between an LOD change and the rebuild. Sky was visible
+through that gap. So a border that touches a different step also drops a vertical
+**skirt** along itself (`_compute_chunk_data`), which covers the crack at any point of the
+transition — including where snapping was skipped. Its depth scales with the step
+(`SKIRT_DEPTH` up to 60 m): four metres means nothing against a mesh whose quads span a
+hundred. A coarse node mesh skirts all four of its borders, since nothing else can stitch
+to it. The AABB is lowered to match, or the wall gets cut away by AABB culling.
 
 This is a per-border seam skirt, and is unrelated to the old quadtree-node skirt
 removed in 1.1 — that one hung visibly off the edges of quadtree nodes.
