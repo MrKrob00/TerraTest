@@ -25,6 +25,23 @@ extends Node3D
 ## мир не должен встречать игрока пустым, но и толпой тоже.
 @export var initial_enemies: int = 1
 
+@export_group("Вражеские базы")
+## ВРАЖЕСКИЕ БАЗЫ — то, ради чего на карте есть куда ехать. Это обычная машина врага с
+## флагом is_base: заякорена, не ездит, отстреливается, разбирается по блокам и платит ДИ по
+## своей стоимости, как всё остальное. Держим их отдельным списком, а НЕ в общем потоке
+## врагов: потолок бодрствующих (max_enemies) считает тех, кто ездит и ищет игрока, и
+## стоящая за холмом постройка не должна занимать это место — иначе две базы в округе
+## выключали бы весь остальной мир.
+@export var max_bases: int = 2
+## Кольцо, в котором базы живут вокруг игрока. Ближняя граница заметно больше обзора врага:
+## база не должна «появиться» на глазах, её надо ВСТРЕТИТЬ.
+@export var base_min_dist: float = 260.0
+@export var base_max_dist: float = 520.0
+## Как часто пробуем поставить недостающую базу. Редко: это не поток врагов, а обстановка.
+@export var base_interval: float = 40.0
+## Пресеты баз (blocks.gd): аванпост и форт. Порядок — по опасности, как у машин.
+@export var base_presets: Array[int] = [11, 12]
+
 ## Сколько врагов ОДНОВРЕМЕННО могут вести бой с игроком. Остальные патрулируют, пока место
 ## не освободится. Без этого потолка машины, заметив игрока, ехали на него все разом —
 ## и это не бой, а казнь: отбиться от толпы нечем, а разъехаться она не даёт.
@@ -162,6 +179,7 @@ func _tick_spawner(delta: float) -> void:
 	_track_dormancy(delta)
 	_limit_engagement()
 	_scan_tick(delta)                               # редкое событие «проверка сектора»
+	_bases_tick(delta)                              # обстановка на карте: вражеские базы
 	# Потолок считается по БОДРСТВУЮЩИМ. Спящий стоит за горизонтом, ничего не делает и на
 	# ощущение «сколько их вокруг» не влияет — считать его занятым местом значило бы, что
 	# четыре забытые в поле машины навсегда выключают спавн.
@@ -227,7 +245,12 @@ func _track_dormancy(delta: float) -> void:
 	var player: Node3D = _player()
 	if player == null:
 		return
-	for e in _enemies:
+	# БАЗЫ ЗАСЫПАЮТ ПО ТЕМ ЖЕ ПРАВИЛАМ. Они не ездят, но на каждой стоит по несколько турелей,
+	# а WeaponBlock тикает каждый физкадр — три базы за горизонтом это десяток стволов, которые
+	# ищут цель в пустоте. Спящая ветка выключена целиком (_sleep), и это ровно то, ради чего
+	# дремота и придумана. В потолок бодрствующих (max_enemies) базы при этом не входят: там
+	# считаются те, кто едет к игроку.
+	for e in _enemies + _bases:
 		if not is_instance_valid(e):
 			continue
 		# Квадраты: порог сравнивается с порогом, корень ничего не меняет. Цикл идёт по ВСЕМ
@@ -279,7 +302,10 @@ func _wake(e: Node3D) -> void:
 		return
 	e.set_meta("asleep", false)
 	e.process_mode = Node.PROCESS_MODE_INHERIT
-	if e is RigidBody3D:
+	# БАЗУ НЕ РАЗМОРАЖИВАЕМ. Она стоит на якоре по своей природе, а не потому, что спит:
+	# сняв freeze, мы бы уронили постройку без колёс на первом же физ-шаге — у неё коллизия
+	# off-центровая, и её кренит (та же грабля, что у нашей станции при постановке).
+	if e is RigidBody3D and e.get("is_base") != true:
 		e.freeze = false
 		e.sleeping = false
 
@@ -341,6 +367,83 @@ func _spawn_one() -> void:
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
+
+# ── ВРАЖЕСКИЕ БАЗЫ ────────────────────────────────────────────────────────────
+var _bases: Array = []
+var _base_t: float = 0.0
+
+func _bases_tick(delta: float) -> void:
+	_base_t -= delta
+	if _base_t > 0.0:
+		return
+	_base_t = base_interval
+	if _tutorial_active():
+		return
+	var player: Node3D = _player()
+	if player == null:
+		return
+	# Базу, оставшуюся далеко за спиной, УБИРАЕМ и ставим новую впереди. Сохранять их негде
+	# (врагов сейв не пишет вовсе), а держать на другом конце карты — платить за то, чего
+	# игрок уже не увидит. Порог заметно больше кольца спавна: база, к которой игрок только
+	# что ехал, не должна исчезать у него за спиной.
+	var drop_d2: float = (base_max_dist * 1.6) * (base_max_dist * 1.6)
+	var kept: Array = []
+	for b in _bases:
+		if not is_instance_valid(b):
+			continue
+		if (b as Node3D).global_position.distance_squared_to(player.global_position) > drop_d2:
+			(b as Node3D).queue_free()
+			continue
+		kept.append(b)
+	_bases = kept
+	if _bases.size() >= max_bases:
+		return
+	_spawn_base(player)
+
+func _spawn_base(player: Node3D) -> void:
+	if base_presets.is_empty() or enemy_scenes.is_empty():
+		return
+	var map: Node = _find_map()
+	if map == null:
+		return
+	# Место ищем в своём кольце и подальше от чужих баз — иначе две подряд читаются как одна
+	# укреплённая зона, а не как две встречи.
+	for _try in 12:
+		var ang: float = randf() * TAU
+		var dist: float = randf_range(base_min_dist, base_max_dist)
+		var p: Vector3 = player.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+		if _too_close_to_bases(p):
+			continue
+		var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+		enemy.set("is_base", true)                  # ДО add_child: _ready по нему морозит тело
+		var blocks := enemy.get_node_or_null("blocks")
+		if blocks and "layout_preset" in blocks:
+			blocks.layout_preset = int(base_presets.pick_random())
+			if "is_station" in blocks:
+				blocks.is_station = true            # на базу нельзя ставить кабину и колёса
+		var vehicles: Node = _vehicles_root()
+		if vehicles == null:
+			return
+		vehicles.add_child(enemy)
+		# СТАВИМ НА ЗЕМЛЮ, а не десантируем: база заморожена и падать не умеет. Высоту берём
+		# через G.ground_y — он же отвечает «не знаю», пока карта высот не прочитана.
+		enemy.global_position = Vector3(p.x, G.ground_y(p, player.global_position.y) + 0.5, p.z)
+		if enemy is Node3D:
+			enemy.rotation.y = randf() * TAU
+		if enemy.has_signal("died") and not enemy.died.is_connected(_on_base_died):
+			enemy.died.connect(_on_base_died)
+		_bases.append(enemy)
+		return
+
+func _too_close_to_bases(p: Vector3) -> bool:
+	var gap2: float = base_min_dist * base_min_dist
+	for b in _bases:
+		if is_instance_valid(b) and (b as Node3D).global_position.distance_squared_to(p) < gap2:
+			return true
+	return false
+
+func _on_base_died(b: Node) -> void:
+	_bases.erase(b)
 
 # Какую сборку прислать. Правило TerraTech: враг примерно того же веса, что твоя машина, —
 # там он подбирается по суммарной стоимости блоков, и у нас такая стоимость наконец есть

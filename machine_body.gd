@@ -684,14 +684,22 @@ func _on_cabin_destroyed(_b = null) -> void:
 	_die()
 
 func cabin_watch(delta: float) -> void:
-	# `is_station` only exists on the player's machine, and get() on a missing field returns
-	# null — bool(null) is a runtime crash, so compare instead of casting (see CLAUDE.md).
-	if _dying or get("is_station") == true:
+	if _dying:
 		return
 	_cabin_watch_t -= delta
 	if _cabin_watch_t > 0.0:
 		return
 	_cabin_watch_t = CABIN_WATCH_INTERVAL
+	# A BASE HAS NO CABIN — it stands on its stationary core, so that is what gets watched.
+	# Same rule underneath: a machine dies when it loses the root everything hangs from. The
+	# player's station used to rely on the core's `destroyed` signal alone, and an enemy base
+	# has no cabin at all, so without this branch it would either never die or die instantly.
+	# `is_station` only exists on machines that can be one, and get() on a missing field returns
+	# null — bool(null) is a runtime crash, so compare instead of casting (see CLAUDE.md).
+	if get("is_station") == true:
+		if not _has_core():
+			_die()
+		return
 	if is_instance_valid(_cabin):
 		return
 	_connect_cabin()                       # build changed — re-subscribe
@@ -699,6 +707,19 @@ func cabin_watch(delta: float) -> void:
 		return
 	if _had_cabin:
 		_die()                             # no cabin, and no signal came
+
+## Is a stationary block still standing on this machine — the core a base holds on to.
+## Counted rather than remembered by reference: a base can carry several, and losing one of
+## them is not death.
+func _has_core() -> bool:
+	var bl := blocks_node()
+	if bl == null:
+		return true                        # build not applied yet — do not kill it on a guess
+	for b in bl.get_children():
+		var bt = b.get("block")
+		if bt != null and G.is_stationary(int(bt)):
+			return true
+	return false
 
 ## Overridden by both machines: the player hands the camera over, the enemy pays out and
 ## reports the kill. The base only decides WHEN it happens.

@@ -129,6 +129,14 @@ func _ready() -> void:
 	angular_damp  = 4.0
 
 	_setup_detection_area()
+	# БАЗА ЗАМОРОЖЕНА С САМОГО НАЧАЛА. Не «останавливаем движение», а именно freeze: у неё нет
+	# колёс, а незамороженный корпус с off-центровой коллизией кренится за первый же физ-шаг —
+	# ровно та же грабля, что была у нашей станции при постановке на якорь.
+	if is_base:
+		is_station = true      # сторож в MachineBody следит за ядром, а не за кабиной
+		freeze = true
+		linear_velocity = Vector3.ZERO
+		angular_velocity = Vector3.ZERO
 	_connect_cabin()
 	_measure_build()          # стоимость сборки — пока машина цела (см. _pay_out)
 
@@ -238,7 +246,19 @@ func _physics_process(delta: float) -> void:
 	_physics_ai(delta)
 	Perf.mark("enemies", _pf)
 
+## ВРАЖЕСКАЯ БАЗА — тот же враг, только без ходовой: заякорена, не ездит, стреляет по тому,
+## что подъехало. Отдельного класса нет намеренно: от машины она отличается ровно тем же, чем
+## наша база от нашей машины (нет кабины, стоит на якоре), а весь бой у них общий — цель,
+## видимость, забывание, турели.
+@export var is_base: bool = false
+## Читает сторож ядра в MachineBody: у базы вместо кабины следят за стационарным блоком.
+## Имя то же, что у машины игрока, потому что и смысл тот же.
+var is_station: bool = false
+
 func _physics_ai(delta: float) -> void:
+	if is_base:
+		_base_tick(delta)
+		return
 	_capture_spawn()          # первый тик: машина уже на своём месте, можно строить патруль
 	_unsink()
 	sense_ground(delta)
@@ -250,6 +270,30 @@ func _physics_ai(delta: float) -> void:
 	_update_ai(delta)
 	drive_physics(delta)
 	push_drive_input(-_steer_angle / deg_to_rad(steer_max_angle))
+
+## Тик базы: только «увидел — стреляй». Ни езды, ни патруля, ни подъёма с бока — стоящей
+## постройке всё это не нужно, а гонять их вхолостую значит платить за каждую базу на карте.
+##
+## Запрет боя (combat_allowed) на базу НЕ распространяется: он придуман, чтобы на игрока не
+## наваливались все ездящие враги сразу, а база никуда не едет — молчащая турель, мимо которой
+## можно спокойно проехать, читается как поломка.
+func _base_tick(delta: float) -> void:
+	_reacquire_t -= delta
+	if _reacquire_t <= 0.0:
+		_reacquire_t = 0.3
+		if not is_instance_valid(_target):
+			_scan_for_targets()
+	_refresh_vision(delta)
+	if not is_instance_valid(_target):
+		_target = null
+		return
+	if _can_see_target():
+		_forget_timer = forget_enemy_time
+		_do_attack()
+		return
+	_forget_timer -= delta
+	if _forget_timer <= 0.0:
+		_lose_target()
 
 # ПРОВАЛИЛСЯ СКВОЗЬ РЕЛЬЕФ — поднимаем обратно. Коллизия рельефа стриминговая: её тайлы
 # строятся ВОКРУГ тела и уже после того, как оно там окажется, а все враги десантируются с
