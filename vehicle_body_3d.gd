@@ -1215,6 +1215,15 @@ func _vein_near(at, reach: float = VEIN_SNAP_FALLBACK) -> Node3D:
 			best = c as Node3D
 	return best
 
+## Первая CollisionShape3D среди детей блока. Именно она дублируется на корпус машины при
+## постановке — блок на машине заморожен, а форму за него держит кузов.
+func _first_collision(node: Node) -> CollisionShape3D:
+	for c in node.get_children():
+		var cs := c as CollisionShape3D
+		if cs != null and cs.shape != null:
+			return cs
+	return null
+
 # Взятый в руку блок (child takepos-маркера под камерой) или null, если рука пуста.
 func _hand_instance() -> Node3D:
 	if camera_controller == null or camera_controller.camera == null:
@@ -1618,9 +1627,20 @@ func _on_take_pressed() -> void:
 		var orient := _face_orient(pres.face, instance, build_basis) * build_basis
 		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"]-5, BuildingBlock["z"]-5)
-		var collision: CollisionShape3D = instance.get_child(0).duplicate()
+		# ИЩЕМ КОЛЛИЗИЮ ПЕРЕБОРОМ, а не get_child(0). Порядок детей в сцене блока — вещь,
+		# которую художник меняет не задумываясь, а типизированное присваивание чужого узла в
+		# CollisionShape3D падает прямо здесь, посреди постановки: блок остаётся в руке, в
+		# консоли ошибка, и выглядит это как «этот блок почему-то не ставится».
+		var src_col: CollisionShape3D = _first_collision(instance)
+		if src_col == null:
+			push_error("vehicle: у блока %s нет CollisionShape3D — ставить нечего" % G.block_name(int(instance.block)))
+			return
+		var collision: CollisionShape3D = src_col.duplicate()
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
-		if collision.shape.size == Vector3(2,2,2):
+		# .size есть только у коробки. У любой другой формы обращение к нему роняло бы
+		# постановку ровно так же — молча и на полпути.
+		var box: BoxShape3D = collision.shape as BoxShape3D
+		if box != null and box.size == Vector3(2, 2, 2):
 			collision.position += BIG_BLOCK_COL_OFFSET
 		add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
