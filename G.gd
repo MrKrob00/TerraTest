@@ -995,6 +995,17 @@ const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER]
 func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
+## ЯДРО БАЗЫ — шире, чем «стационарный блок». База это машина без кабины, стоящая на якоре;
+## значит ядром может быть всё, чем машина за якорь ДЕРЖИТСЯ, а не только то, что работает
+## лишь под якорем. Фикс-опора и есть буквально «то, чем стоят»: с неё естественно начинать
+## площадку и уже потом обвешивать её фабрикой, а раньше её можно было поставить только на
+## машину — на землю она просто не ставилась, и построить базу с нуля было нечем.
+##
+## Кабина сюда не входит намеренно: она рождает ЕЗДЯЩУЮ машину, это отдельный путь.
+const STATION_CORE_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block.ROT_SUPPORT]
+func can_be_station_core(bt: int) -> bool:
+	return STATION_CORE_BLOCKS.has(int(bt))
+
 const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
 		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN],

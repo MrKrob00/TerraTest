@@ -911,7 +911,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 			# Решает ПОПАДАНИЕ ЛУЧА, а не тип блока: целишься в машину — обычная сетка,
 			# целишься мимо — новая база на земле. Раньше он уходил на землю ВСЕГДА, и
 			# поставить продавца на свою машину было нельзя вовсе.
-			_ground_core = G.is_stationary(held_bt) and not is_station
+			_ground_core = G.can_be_station_core(held_bt) and not is_station
 	var space_node: Node3D = block_map_node if block_map_node else self
 	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
 	var ray_dir: Vector3 = (space_node.global_transform.basis.inverse() * world_dir).normalized()
@@ -1160,7 +1160,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 	# до позиции = база не падает и не наклоняется, выравниванию уже не с чем драться.
 	# Кабину-МАШИНУ НЕ морозим: freeze снимает только кнопка Movement, а switch_to_vehicle его
 	# не трогает — иначе только что поставленная машина не поедет.
-	if v is RigidBody3D and G.is_stationary(core):
+	if v is RigidBody3D and G.can_be_station_core(core):
 		v.freeze = true
 		v.linear_velocity = Vector3.ZERO
 		v.angular_velocity = Vector3.ZERO
@@ -1169,8 +1169,10 @@ func _place_ground_structure(instance: Node3D) -> void:
 		v.global_rotation.y = build_basis.get_euler().y   # уважаем ручной поворот игрока (как в превью)
 	if v.has_method("apply_build"):
 		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # ядро в ЦЕНТРЕ сетки 11³
-	# Стационарное ядро → база на якоре (нельзя ехать/снять якорь).
-	if G.is_stationary(core) and "is_station" in v:
+	# Ядро базы → машина на якоре (нельзя ехать/снять якорь). Опора здесь равноправна с
+	# продавцом: база отличается от машины не набором блоков, а тем, что у неё нет кабины и
+	# она стоит.
+	if G.can_be_station_core(core) and "is_station" in v:
 		v.is_station = true
 		if "block_map_node" in v and v.block_map_node != null and "is_station" in v.block_map_node:
 			v.block_map_node.is_station = true
@@ -1598,7 +1600,7 @@ func _on_take_pressed() -> void:
 		# Кабина → новая машина; стационар (с машины) → новая база. Ставятся В МИР на землю.
 		# Стационар на СТАНЦИИ на землю не идёт (_cabin_ground будет null — превью шло сеткой).
 		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN \
-				or (G.is_stationary(instance.get("block")) and not is_station)):
+				or (G.can_be_station_core(instance.get("block")) and not is_station)):
 			_place_ground_structure(instance)
 			return
 		if _preview_res == null:
