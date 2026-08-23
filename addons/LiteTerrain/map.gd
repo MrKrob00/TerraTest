@@ -1994,6 +1994,21 @@ func _masks_at(gx: int, gz: int) -> Vector3:
 		lerpf(lerpf(_mask_lat[a + 1], _mask_lat[b + 1], tx), lerpf(_mask_lat[c + 1], _mask_lat[e + 1], tx), tz),
 		lerpf(lerpf(_mask_lat[a + 2], _mask_lat[b + 2], tx), lerpf(_mask_lat[c + 2], _mask_lat[e + 2], tx), tz))
 
+## BIOME WEIGHTS UNDER A WORLD POINT: (canyon, meadow, mountains), each 0..1. What is left over
+## — 1 minus the strongest of them — is desert, the base layer everything else is painted on.
+##
+## Public because the world above the terrain wants the same answer the terrain paints with: ore
+## veins that belong to a biome, props that only grow in one, spawn rules that avoid the rocks.
+## Reading it from the same lattice the colours come from is the whole point — a second guess at
+## "where the canyon is" would drift away from the canyon you can see.
+func biome_at(world_pos: Vector3) -> Vector3:
+	if md.is_empty() or w <= 0 or d <= 0:
+		return Vector3.ZERO
+	var local: Vector3 = global_transform.affine_inverse() * world_pos
+	var gx: int = clampi(int(round(local.x + float(w) * 0.5 - 0.5)), 0, w - 1)
+	var gz: int = clampi(int(round(local.z + float(d) * 0.5 - 0.5)), 0, d - 1)
+	return _masks_at(gx, gz)
+
 # World XZ of a heightmap cell, exactly as the generator computes it: grid minus size/2.
 func _biome_wp(gx: int, gz: int) -> Vector2:
 	return Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5)

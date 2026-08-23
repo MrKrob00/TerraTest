@@ -180,19 +180,59 @@ func _init_veins(positions: Array[Vector3]) -> void:
 	for s in range(cap - 1, -1, -1):
 		_free.append(s)                             # слоты cap-1..0 свободны
 
-	var type_count: int = maxi(ore_colors.size(), 1)
 	var scene: PackedScene = resource_nodes.pick_random() if not resource_nodes.is_empty() else null
+	var map: Node = get_parent()
+	var can_biome: bool = map != null and map.has_method("biome_at")
 	_data.clear()
 	for p in positions:
 		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
 		var coal: bool = randf() < coal_chance
-		var ore_type: int = ore_colors.size() if coal else randi() % type_count
+		var ore_type: int = ore_colors.size() if coal else _metal_for(p, map, can_biome)
 		_data.append({
 			"pos": p,
 			"scene": resource_nodes.pick_random() if not resource_nodes.is_empty() else scene,
 			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
 		})
 	_cull_t = 0.0                                    # первый стриминг — сразу
+
+## КАКОЙ МЕТАЛЛ ЛЕЖИТ В ЭТОЙ ТОЧКЕ.
+##
+## Раньше тип жилы был просто `randi() % 4`, и это молча обесценивало всю карту: титанит с
+## равной вероятностью лежал под колёсами и за тремя хребтами, значит ехать было незачем —
+## копай где стоишь. Теперь металл принадлежит БИОМУ, и дорогой лежит там, куда труднее
+## добраться:
+##
+##   пустыня (базовый слой) → феррит, самый дешёвый и самый частый;
+##   луг                    → куприт;
+##   каньон                 → силикат;
+##   горы                   → титанит, самый дорогой.
+##
+## Веса, а не жёсткое соответствие. Во-первых, биомы у нас плавно переходят друг в друга
+## (маски дробные), и резкая граница «здесь только титанит» выглядела бы нарисованной. Во-
+## вторых, `WILD_CHANCE` оставляет долю жил вопреки правилу: карта, разложенная по полочкам
+## идеально, читается как таблица, а не как местность, и случайная богатая жила под боком —
+## это маленький подарок, ради которого игрок и смотрит по сторонам.
+const WILD_CHANCE := 0.15
+
+func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
+	var types: int = maxi(ore_colors.size(), 1)
+	if not can_biome or randf() < WILD_CHANCE:
+		return randi() % types
+	# biome_at отдаёт (каньон, луг, горы); пустыня — это то, что осталось.
+	var m: Vector3 = map.biome_at(to_global(local_pos))
+	var desert: float = clampf(1.0 - maxf(m.x, maxf(m.y, m.z)), 0.0, 1.0)
+	var weights := [desert, m.y, m.x, m.z]        # феррит, куприт, силикат, титанит
+	var total: float = 0.0
+	for i in mini(weights.size(), types):
+		total += maxf(float(weights[i]), 0.0)
+	if total <= 0.001:
+		return 0                                   # ни один биом не выражен — базовый металл
+	var roll: float = randf() * total
+	for i in mini(weights.size(), types):
+		roll -= maxf(float(weights[i]), 0.0)
+		if roll <= 0.0:
+			return i
+	return 0
 
 # Жила вошла в радиус: берём слот из пула, рисуем инстанс + создаём узел (добыча/коллизия).
 func _stream_in(v: Dictionary) -> void:
@@ -216,13 +256,18 @@ func _stream_in(v: Dictionary) -> void:
 		add_child(node)
 		v["node"] = node
 
-# Мировые позиции жил ВОКРУГ ТОЧКИ — для блипов на радаре (hud.gd).
+# Жилы ВОКРУГ ТОЧКИ для блипов на радаре (hud.gd): позиция и ЦВЕТ МЕТАЛЛА.
+#
+# Цвет здесь не украшение. С тех пор как металл принадлежит биому (_metal_for), «съездить за
+# титанитом» стало осмысленным действием — но только если игрок видит, за чем едет. Одинаково
+# жёлтые точки этого не говорят, а цвет жилы в мире и цвет её блипа — это один и тот же
+# G.METAL_COLOR, так что радар не может соврать про то, что стоит на земле.
 #
 # Раньше отдавались «сейчас стримнутые» жилы, и это совпадало с радиусом радара само собой.
-# Теперь стриминг отсекает то, что за спиной, а радар смотрит СВЕРХУ и во все стороны сразу:
-# по нему как раз и разворачиваются к жиле, которой не видно. Поэтому здесь считаем по данным
-# и по расстоянию, а не по тому, нарисована ли жила.
-func active_positions(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Array:
+# Теперь стриминг отсекает то, что за спиной и за хребтом, а радар смотрит СВЕРХУ и во все
+# стороны сразу: по нему как раз и разворачиваются к жиле, которой не видно. Поэтому считаем
+# по данным и по расстоянию, а не по тому, нарисована ли жила.
+func active_blips(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Array:
 	var center: Vector3 = around
 	if center == Vector3.INF:
 		var cam := get_viewport().get_camera_3d()
@@ -232,8 +277,10 @@ func active_positions(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Ar
 	var out: Array = []
 	for v in _data:
 		var p: Vector3 = to_global(v["pos"])
-		if center.distance_squared_to(p) <= r2:
-			out.append(p)
+		if center.distance_squared_to(p) > r2:
+			continue
+		var t: int = int(v["ore_type"])
+		out.append({"p": p, "c": coal_color if t >= ore_colors.size() else ore_colors[t]})
 	return out
 
 # Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.

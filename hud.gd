@@ -1146,12 +1146,14 @@ func _update_radar(delta: float) -> void:
 				var rel: Vector3 = (e as Node3D).global_position - origin
 				blips.append({"p": Vector2(rel.x, rel.z), "c": Color(1.0, 0.32, 0.32)})
 	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
-	if rn and rn.has_method("active_positions"):
+	if rn and rn.has_method("active_blips"):
 		# Спрашиваем ВОКРУГ МАШИНЫ и на охват радара: жилы стримятся по взгляду камеры, а
 		# радар смотрит сверху во все стороны — по нему и разворачиваются к тому, чего не видно.
-		for wp in rn.active_positions(origin, _radar.range_world):
-			var rel2: Vector3 = (wp as Vector3) - origin
-			blips.append({"p": Vector2(rel2.x, rel2.z), "c": Color(1.0, 0.82, 0.25)})
+		# Цвет блипа — цвет МЕТАЛЛА: с тех пор как металл принадлежит биому, «за чем именно я
+		# еду» должно читаться с радара, а не выясняться буром.
+		for b in rn.active_blips(origin, _radar.range_world):
+			var rel2: Vector3 = (b["p"] as Vector3) - origin
+			blips.append({"p": Vector2(rel2.x, rel2.z), "c": b["c"]})
 	_radar.blips = blips
 	_radar.queue_redraw()
 
