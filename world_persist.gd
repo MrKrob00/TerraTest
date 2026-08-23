@@ -116,7 +116,7 @@ func _cull_tick(delta: float) -> void:
 		var kept: bool = d2 <= keep2 or G.near_active(n.global_position, CULL_KEEP_RADIUS)
 		var behind: bool = not kept and to.normalized().dot(fwd) < CULL_VIEW_COS
 		if not behind and not kept and can_occlude:
-			behind = terr.is_point_hidden(n.global_position, 1.0)
+			behind = terr.is_point_hidden(n.global_position, 1.0, was)
 		if behind == was:
 			continue
 		if behind:

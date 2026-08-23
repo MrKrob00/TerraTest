@@ -336,7 +336,7 @@ func _process(delta: float) -> void:
 		# равно обязана быть узлом, иначе стоящий на ней авто-шахтёр добывает воздух.
 		var near: bool = kept or (dist2 <= d2 and to.normalized().dot(fwd) >= view_cos)
 		if near and can_occlude and not kept and i >= slice_from and i < slice_to:
-			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_VEIN_HEIGHT)
+			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_VEIN_HEIGHT, v.get("hidden", false))
 		if near and not kept and v.get("hidden", false):
 			near = false
 		var shown: bool = int(v["slot"]) >= 0
