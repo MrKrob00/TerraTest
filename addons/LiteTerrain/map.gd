@@ -796,6 +796,24 @@ func _update_collision_cells() -> void:
 	if dead:
 		_prune_dead_bodies()
 
+## GAME HOOK (TerraTest): ЧТО ИМЕННО СЕЙЧАС РИСУЕТСЯ. Панель профиля показывает общее число
+## объектов и вызовов отрисовки, но не говорит, чьи они, — а резать надо по самой большой доле,
+## а не по догадке. Возвращает (чанки, макро-группы, грубые узлы) из того, что реально видно.
+func render_stats() -> Vector3i:
+	var chunks: int = 0
+	for ci in _qt_cur_chunks:
+		if ci < _chunk_instances.size() and _chunk_instances[ci] and _chunk_instances[ci].visible:
+			chunks += 1
+	var macros: int = 0
+	for mi in _qt_cur_macros:
+		if mi < _macro_instances.size() and _macro_instances[mi] and _macro_instances[mi].visible:
+			macros += 1
+	var nodes: int = 0
+	for n in _qt_cur_nodes:
+		if n < _qt_inst.size() and _qt_inst[n] and _qt_inst[n].visible:
+			nodes += 1
+	return Vector3i(chunks, macros, nodes)
+
 ## GAME HOOK (TerraTest): счётчики для панели профиля — сколько сейчас ЖИВЫХ плиток коллизии
 ## и сколько тел их просит. Одно число объясняет просадку на развале машины: каждое
 ## незаснувшее тело держит свой кусок heightfield, и плитки нарезаются заново каждый кадр.
@@ -1659,7 +1677,13 @@ func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void
 		_stream_results[ci]   = null
 
 		var inst := MeshInstance3D.new()
-		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		# ЧАНК НЕ ОТБРАСЫВАЕТ ТЕНЬ, но принимает её. Отбрасывание — это второй проход по той же
+		# геометрии в карту теней, то есть удвоение самого многочисленного типа мешей в кадре.
+		# Платить за это нечем и незачем: макро-группы и грубые узлы тени не отбрасывали НИКОГДА,
+		# значит дальше восьмидесяти метров тень от рельефа и так обрывалась — видно было не
+		# «горы отбрасывают тень», а границу, где это кончается. Тени машин и блоков на землю
+		# остаются: принимать тень чанк по-прежнему умеет.
+		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inst.visible     = false
 		add_child(inst)
 		_chunk_instances[ci] = inst

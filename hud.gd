@@ -1039,6 +1039,15 @@ func _update_perf_panel(delta: float) -> void:
 	if terr != null and terr.has_method("collision_stats"):
 		var cs: Vector2i = terr.collision_stats()
 		lines.append("коллизия рельефа: %d плиток под %d телами" % [cs.x, cs.y])
+	# ЧЬИ объекты в кадре. Общее число ни о чём не говорит, пока не видно долей: резать надо
+	# самую большую, а не ту, на которую первой подумал.
+	if terr != null and terr.has_method("render_stats"):
+		var rs: Vector3i = terr.render_stats()
+		lines.append("рельеф: %d чанков + %d макро + %d грубых = %d мешей"
+				% [rs.x, rs.y, rs.z, rs.x + rs.y + rs.z])
+	var props := get_node_or_null("/root/Main/map/BiomeProps")
+	if props != null:
+		lines.append("пропов: %d" % props.get_child_count())
 
 	var keys: Array = snap.keys()
 	keys.sort_custom(func(a, b): return float(snap[a]) > float(snap[b]))
