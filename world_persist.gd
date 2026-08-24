@@ -102,6 +102,7 @@ func _cull_tick(delta: float) -> void:
 	# сколько сотня перед носом, а видно из них ноль.
 	var terr := get_node_or_null("/root/Main/map")
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	_shadow_tick(cam_pos)
 	for c in o.get_children():
 		var n := c as Node3D
 		if n == null:
@@ -130,6 +131,36 @@ func _cull_tick(delta: float) -> void:
 			n.remove_meta(CULL_META)
 			n.visible = true
 			n.process_mode = Node.PROCESS_MODE_INHERIT
+
+## ТЕНЬ ОТ СВОИХ МАШИН — ТОЛЬКО ВБЛИЗИ. У машины тридцать-сорок отдельных блоков, и каждый
+## отбрасывающий тень рисуется ВТОРОЙ РАЗ в карту теней. У базы на другом конце поля тень
+## занимает пару пикселей, а стоит столько же, сколько у машины под носом. Врагам то же самое
+## делает enemy_spawner; здесь — машины игрока, которых он не видит.
+##
+## Переключаем ТОЛЬКО на смене состояния: обход блоков не бесплатный, а расстояние плавное.
+const SHADOW_DIST := 90.0
+
+func _shadow_tick(cam_pos: Vector3) -> void:
+	var vehicles := get_node_or_null("/root/Main/Vehicles")
+	if vehicles == null:
+		return
+	var far2: float = SHADOW_DIST * SHADOW_DIST
+	for v in vehicles.get_children():
+		if not (v is Node3D):
+			continue
+		var want: bool = (v as Node3D).global_position.distance_squared_to(cam_pos) < far2
+		if bool(v.get_meta("shadows_on", true)) == want:
+			continue
+		v.set_meta("shadows_on", want)
+		_set_shadows(v, want)
+
+func _set_shadows(n: Node, on: bool) -> void:
+	var gi := n as GeometryInstance3D
+	if gi != null:
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_set_shadows(c, on)
 
 # Кэш ноды рельефа (у неё есть terrain_height_at).
 var _terrain_node: Node = null

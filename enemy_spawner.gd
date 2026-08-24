@@ -256,6 +256,14 @@ func _track_dormancy(delta: float) -> void:
 		# Квадраты: порог сравнивается с порогом, корень ничего не меняет. Цикл идёт по ВСЕМ
 		# врагам каждый кадр — здесь это самый горячий distance в проекте.
 		var d2: float = player.global_position.distance_squared_to(e.global_position)
+		# ТЕНЬ — ТОЛЬКО ВБЛИЗИ. Отбрасывание тени это второй проход по всей геометрии машины, а у
+		# неё тридцать-сорок отдельных блоков. За сотню метров тень от машины — пятно в пару
+		# пикселей, и платить за него удвоением её вызовов отрисовки бессмысленно. Переключаем
+		# ТОЛЬКО на смене состояния: обход блоков стоит денег, а расстояние меняется плавно.
+		var want_shadow: bool = d2 < SHADOW_DIST * SHADOW_DIST
+		if bool(e.get_meta("shadows_on", true)) != want_shadow:
+			e.set_meta("shadows_on", want_shadow)
+			_set_shadows(e, want_shadow)
 		if d2 > sleep_dist * sleep_dist:
 			_far_time[e] = float(_far_time.get(e, 0.0)) + delta
 			if _far_time[e] >= sleep_delay:
@@ -287,6 +295,18 @@ func _release_lost_invader(player: Node3D) -> void:
 
 # Спящий: физика заморожена, ИИ и оружие не тикают. process_mode гасит ВСЮ ветку — иначе
 # турели дочерних блоков продолжали бы крутиться и стрелять за горизонтом.
+## Дальше этого расстояния машина перестаёт отбрасывать тень (принимать — продолжает).
+const SHADOW_DIST: float = 90.0
+
+## Проставить отбрасывание тени всей ветке узла. Зовётся на смене состояния, не по кадрам.
+func _set_shadows(n: Node, on: bool) -> void:
+	var gi := n as GeometryInstance3D
+	if gi != null:
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
+				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_set_shadows(c, on)
+
 func _sleep(e: Node3D) -> void:
 	if bool(e.get_meta("asleep", false)):
 		return
@@ -296,12 +316,18 @@ func _sleep(e: Node3D) -> void:
 		e.angular_velocity = Vector3.ZERO
 		e.freeze = true
 	e.process_mode = Node.PROCESS_MODE_DISABLED
+	# И ПРЯЧЕМ. Выключенный process не убирает машину из кадра: спящий враг за четыреста
+	# метров — это несколько пикселей на экране и тридцать-сорок ОТДЕЛЬНЫХ мешей в счётчике
+	# вызовов отрисовки, у каждого свой блок. Он заморожен и ничего не делает; рисовать его
+	# незачем. Просыпается — показывается обратно.
+	e.visible = false
 
 func _wake(e: Node3D) -> void:
 	if not bool(e.get_meta("asleep", false)):
 		return
 	e.set_meta("asleep", false)
 	e.process_mode = Node.PROCESS_MODE_INHERIT
+	e.visible = true
 	# БАЗУ НЕ РАЗМОРАЖИВАЕМ. Она стоит на якоре по своей природе, а не потому, что спит:
 	# сняв freeze, мы бы уронили постройку без колёс на первом же физ-шаге — у неё коллизия
 	# off-центровая, и её кренит (та же грабля, что у нашей станции при постановке).
