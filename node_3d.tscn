@@ -108,6 +108,7 @@ size = Vector2(200, 100)
 
 [sub_resource type="Resource" id="Resource_s0gvp"]
 script = ExtResource("12_lggff")
+mask_offset = Vector2(3392.3472, -1930.5754)
 
 [sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
@@ -341,12 +342,10 @@ text = "30 FPS"
 constant_angular_velocity = Vector3(-0.0015882496, 0, 0)
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
-enable_occlusion_culling = true
 occlusion_min_dist = 80.0
 occlusion_samples = 14
 biomes = SubResource("Resource_s0gvp")
 triangle_size = 1
-editor_lod = true
 heightmap_path = "res://terrain_height.res"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
