@@ -390,16 +390,41 @@ func _anchor_station() -> void:
 
 # 4A: гибель стационарного ЯДРА (SELLER) = структура разваливается (как кабина у машины).
 # Спавн блоков асинхронный (spawn_block ждёт ready) — ретраим, пока ядро не появится.
+# Подписываемся ИМЕННО НА ЯДРО (station_core), а не на первый попавшийся стационарный блок:
+# на базе их бывает несколько, и подписка на шахтёра рядом с продавцом означала бы, что база
+# рассыпается от гибели ГРУЗА, а не опоры.
 func _connect_station_core(tries: int = 0) -> void:
 	if block_map_node == null:
 		return
-	for b in block_map_node.get_children():
-		if "block" in b and G.is_stationary(int(b.block)):
-			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
-				b.destroyed.connect(_on_cabin_destroyed)
-			return
+	var core: Node3D = station_core()
+	if core != null:
+		if core.has_signal("destroyed") and not core.destroyed.is_connected(_on_cabin_destroyed):
+			core.destroyed.connect(_on_cabin_destroyed)
+		return
 	if tries < 5:
 		get_tree().create_timer(0.1).timeout.connect(_connect_station_core.bind(tries + 1))
+
+## Гибель ЯДРА базы — ещё не гибель базы. Стационарных на ней бывает несколько (шахтёр рядом с
+## продавцом), и пока стоит хоть один, база держится: ровно это и считает сторож
+## (`MachineBody._has_core`). Два правила про одно и то же расходиться не должны, иначе база
+## умирала бы от сбитого ядра, имея под собой вторую опору. Переподписку даём ЧЕРЕЗ ТАЙМЕР:
+## сбитый блок в момент сигнала ещё в дереве, и выбирать нового главного по нему рано.
+func _on_cabin_destroyed(b = null) -> void:
+	if is_station and _other_stationary(b):
+		get_tree().create_timer(0.2).timeout.connect(_connect_station_core.bind(0))
+		return
+	super._on_cabin_destroyed(b)
+
+## Остался ли на базе стационарный блок, КРОМЕ этого.
+func _other_stationary(exclude) -> bool:
+	if block_map_node == null:
+		return false
+	for c in block_map_node.get_children():
+		if c == exclude or not is_instance_valid(c) or not ("block" in c):
+			continue
+		if G.is_stationary(int(c.get("block"))):
+			return true
+	return false
 
 func _find_terrain() -> Node:
 	for c in get_tree().current_scene.get_children():
