@@ -249,6 +249,36 @@ func has_stationary() -> bool:
 			return true
 	return false
 
+## ЯДРО БАЗЫ — ОДИН стационарный блок, а не каждый. Пока правило было «стационарный = ядро»,
+## база с шахтёром и продавцом запирала оба: снять было нельзя ни один, хотя держится она на
+## одном. Главным считаем ПЕРВЫЙ поставленный, а это блок в ЦЕНТРЕ сетки — туда его кладёт
+## _place_ground_structure, и его же локальная позиция равна нулю. Центр пуст (ядро сбили,
+## старый сейв) — берём первого стационарного из детей: порядок детей и есть порядок постановки.
+##
+## У МОБИЛЬНОЙ машины ядро — кабина, а стационарный блок она просто везёт; поэтому здесь
+## null, и снимается такой блок как обычный.
+func station_core() -> Node3D:
+	if block_map_node == null or not is_station:
+		return null
+	var first: Node3D = null
+	for b in block_map_node.get_children():
+		if not (b is Node3D) or not ("block" in b) or not G.is_stationary(int(b.get("block"))):
+			continue
+		var n3 := b as Node3D
+		if n3.position.is_zero_approx():
+			return n3
+		if first == null:
+			first = n3
+	return first
+
+## Этот ли блок держит машину: кабина у машины, ядро у базы. Снимать его руками нельзя.
+func is_core_block(b: Node) -> bool:
+	if b == null or not is_instance_valid(b) or not ("block" in b):
+		return false
+	if int(b.get("block")) == G.Block.CABIN:
+		return true
+	return b == station_core()
+
 func toggle_anchor() -> bool:
 	if is_station:
 		return true                        # стационарная база всегда на якоре — снять нельзя
@@ -433,12 +463,14 @@ func disassemble() -> void:
 	for b in block_map_node.get_children():
 		if not ("block" in b) or b.get("block") == G.Block.CABIN:
 			continue
-		# Ядро СТАНЦИИ (стационарный блок, напр. SELLER) — как кабина у машины: остаётся на
-		# якоре и НЕ выпадает. Пропускаем ДО remove_block/коллизии/reparent, чтобы клетки карты,
-		# коллизия и сам узел ядра сохранились и база продолжала стоять. SELLER 2×2×2 — один
-		# якорный узел, так что пропуска узла хватает на все 8 клеток. Гард по G.is_stationary
-		# (мобильная машина стационарный блок носить не может — can_attach это запрещает).
-		if G.is_stationary(int(b.get("block"))):
+		# Ядро СТАНЦИИ (первый стационарный блок, напр. SELLER) — как кабина у машины: остаётся
+		# на якоре и НЕ выпадает. Пропускаем ДО remove_block/коллизии/reparent, чтобы клетки
+		# карты, коллизия и сам узел ядра сохранились и база продолжала стоять. SELLER 2×2×2 —
+		# один якорный узел, так что пропуска узла хватает на все 8 клеток. Спрашиваем именно
+		# ЯДРО, а не «любой стационарный»: на базе их бывает несколько (шахтёр рядом с
+		# продавцом), и остальные — обычный груз, они обязаны выпасть; а мобильная машина
+		# стационарный блок ВЕЗЁТ, и висеть в воздухе после разбора ему тем более незачем.
+		if is_core_block(b):
 			continue
 		if b is Node3D:
 			var n3 := b as Node3D
@@ -1134,9 +1166,13 @@ func _place_ground_structure(instance: Node3D) -> void:
 		if vein == null:
 			Dialogue.say("System", "The Auto Miner works on an ore vein. Place it right on one.")
 			return
-		# Встаём РОВНО НА ЖИЛУ, а не туда, куда попал палец: луч вниз достаёт всего на
-		# vein_reach, и промах в пару метров означал бы блок, который жилы не видит.
+		# Встаём РОВНО НА ЖИЛУ, а не туда, куда попал палец: искать жилу шахтёр будет от себя
+		# и всего на vein_reach, и промах в пару метров означал бы блок, который жилы не видит.
+		# Высоту берём В ТОЧКЕ, КУДА ВСТАЁМ (общее правило проекта, G.ground_y): палец попадает
+		# в землю РЯДОМ с жилой, а на склоне это метры разницы — база уезжала под рельеф или
+		# зависала над ним, и выглядело это как «шахтёр стоит сбоку от руды».
 		_cabin_ground = Vector3(vein.global_position.x, _cabin_ground.y, vein.global_position.z)
+		_cabin_ground.y = G.ground_y(_cabin_ground, _cabin_ground.y)
 	# ЯДРО ИЗ РУКИ УБИРАЕМ ДО СОЗДАНИЯ МАШИНЫ, а не одним queue_free в конце. Держатель руки
 	# ОБЩИЙ (он висит под камерой), а _ready новой машины первым делом зовёт
 	# _on_movement_pressed → _return_hand_to_inventory: тот проходит по детям держателя и
@@ -1302,9 +1338,8 @@ func _pick_selected_block() -> bool:
 		return false
 	if not ("block" in block_body):
 		return false                              # наведён РЕСУРС: у него нет .block, int(null) роняет вызов
-	var bt := int(block_body.get("block"))
-	if bt == G.Block.CABIN or G.is_stationary(bt):
-		return false                              # ядро сборки не снимаем
+	if is_core_block(block_body):
+		return false                              # ядро сборки не снимаем (кабина / ядро базы)
 	if block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
@@ -1572,8 +1607,11 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 		return _grab_resource(body)
 	if not ("block" in body):
 		return false
-	var bt := int(body.get("block"))
-	if bt == G.Block.CABIN or G.is_stationary(bt):
+	# СТАЦИОНАРНЫЙ блок из мира БЕРЁТСЯ В РУКУ. Раньше он был в одном запрете с кабиной, и это
+	# ломало ровно то, ради чего его в мир и кладут: сюжет выдаёт опору («найдите её»), сбитая
+	# база рассыпается опорами и продавцами — а поднять их было нечем, тап по ним не делал
+	# ничего. Кабина остаётся исключением: это ядро ЧУЖОЙ машины, поднимать её незачем.
+	if int(body.get("block")) == G.Block.CABIN:
 		return false
 	_return_hand_to_inventory()                    # рука должна быть пустой (перестраховка от лишних блоков)
 	body.reparent(camera_controller.camera.get_child(0), false)   # в takepos под камерой

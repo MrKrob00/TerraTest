@@ -53,8 +53,8 @@ func _rescan(quest_id: String) -> void:
 ## провал под рельеф — причина не важна, важно, что цель у квеста снова есть.
 func ensure(quest_id: String, block_type: int, at: Variant = null) -> Node3D:
 	_rescan(quest_id)
-	var have: Node3D = _first_loose(quest_id)
-	if have != null and int(have.get("block")) == block_type:
+	var have: Node3D = _first_loose(quest_id, block_type)
+	if have != null:
 		return have
 	return drop_near(quest_id, block_type, at) if at is Vector3 else drop_for(quest_id, block_type)
 
@@ -140,7 +140,14 @@ func position_for(quest_id: String) -> Variant:
 
 ## Ближайший к игроку предмет стадии, который ВСЁ ЕЩЁ лежит в мире. Подобранный узел уезжает
 ## из objects (в руку, потом на машину) — по родителю это и видно.
-func _first_loose(quest_id: String) -> Node3D:
+## Ближайший СВОБОДНО ЛЕЖАЩИЙ предмет этого квеста, при желании — ЗАДАННОГО ТИПА.
+##
+## Тип обязателен, и вот почему. Одна стадия кладёт в мир НЕСКОЛЬКО разных блоков под ОДНИМ
+## id (панель и опора в arc_power — иначе у второго не было бы метки, и уборка мира его бы
+## выкинула). Пока тип не проверялся, ensure спрашивал «лежит ли что-нибудь этого квеста»,
+## получал ЧУЖОЙ блок, считал, что нужного нет, и клал ещё один. Каждый опрос, то есть раз в
+## секунду, по блоку на каждый тип — поле вокруг игрока зарастало панелями и опорами.
+func _first_loose(quest_id: String, block_type: int = -1) -> Node3D:
 	var list = _props.get(quest_id)
 	if not (list is Array) or (list as Array).is_empty():
 		_rescan(quest_id)                  # список пуст: перезашли, а предмет в мире уже есть
@@ -158,6 +165,8 @@ func _first_loose(quest_id: String) -> Node3D:
 		var p: Node = (n as Node3D).get_parent()
 		if p == null or p.name != "objects":
 			continue                       # уже подобрали
+		if block_type >= 0 and int(n.get("block")) != block_type:
+			continue                       # предмет того же квеста, но не тот, о котором спросили
 		var d2: float = 0.0 if from == null else from.global_position.distance_squared_to((n as Node3D).global_position)
 		if d2 < best_d2:
 			best_d2 = d2
