@@ -2452,6 +2452,17 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var cells_z: int = nz - 1
 	var taken := PackedByteArray()
 	taken.resize(cells_x * cells_z)
+	# ТРАВА НЕ РАСТЁТ ПО КРАЮ СКЛЕЕННОГО КВАДА, и это не украшательство, а условие того, что
+	# склейка вообще законна. Большой квад описан ЧЕТЫРЬМЯ углами, а у соседних несклеенных
+	# клеток на его кромке остаются свои вершины — это Т-стык. Пока все они лежат в одной
+	# плоскости, стыка не видно (ради этого и склеиваем только строго ровное). Но траву
+	# поднимает ВЕРШИННЫЙ ШЕЙДЕР, по вершине за раз: серединная вершина соседа уезжает вверх,
+	# а кромка большого квада остаётся прямой линией между углами — и в ровном поле открывается
+	# ЩЕЛЬ. Ровно на это и жаловались: «на ровных участках трава прогибается и видны дыры».
+	# Поэтому помечаем ВЕСЬ периметр склейки (углы тоже: поднятый угол наклонил бы кромку так
+	# же), а шейдер по COLOR.r = 0 такие вершины не двигает — тот же флаг, что на шве LOD.
+	var no_grass := PackedByteArray()
+	no_grass.resize(nx * nz)
 	for cz in cells_z:
 		for cx in cells_x:
 			if taken[cz * cells_x + cx] != 0:
@@ -2488,6 +2499,13 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			for jz in rh:
 				for jx in rw:
 					taken[(cz + jz) * cells_x + cx + jx] = 1
+			# Периметр склейки (см. выше): по вершине на каждый шаг вдоль всех четырёх сторон.
+			for jx in rw + 1:
+				no_grass[cz * nx + cx + jx] = 1
+				no_grass[(cz + rh) * nx + cx + jx] = 1
+			for jz in rh + 1:
+				no_grass[(cz + jz) * nx + cx] = 1
+				no_grass[(cz + jz) * nx + cx + rw] = 1
 			var a: int = cz * nx + cx
 			var b: int = cz * nx + cx + rw
 			var c: int = (cz + rh) * nx + cx + rw
@@ -2518,7 +2536,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			kv.append(vertices[oi])
 			kn.append(normals[oi])
 			ku.append(uvs[oi])
-			kc.append(colors[oi])
+			var col: Color = colors[oi]
+			if no_grass[oi] != 0:
+				col.r = 0.0                 # кромка склеенного квада — траву тут не поднимаем
+			kc.append(col)
 		indices[k] = remap[oi]
 	vertices = kv
 	normals = kn
