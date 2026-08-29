@@ -23,6 +23,7 @@
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
 [ext_resource type="Script" path="res://outposts.gd" id="29_outposts"]
 [ext_resource type="Script" path="res://contracts.gd" id="30_contracts"]
+[ext_resource type="Script" path="res://raids.gd" id="31_raids"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
@@ -394,6 +395,9 @@ script = ExtResource("29_outposts")
 
 [node name="Contracts" type="Node" parent="." unique_id=3615115]
 script = ExtResource("30_contracts")
+
+[node name="Raids" type="Node" parent="." unique_id=3615116]
+script = ExtResource("31_raids")
 
 [connection signal="body_entered" from="Vehicles/Camera Controller/SpringArm3D/Camera3D/Raycast" to="Vehicles/Camera Controller" method="_on_raycast_body_entered"]
 [connection signal="pressed" from="Vehicles/Camera Controller/HUD/ModeToggle" to="Vehicles/Camera Controller/HUD" method="_on_mode_toggle_pressed"]
