@@ -379,9 +379,14 @@ func _spawn_one() -> void:
 
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	# Сборка — ДО add_child (blocks строит машину в своём _ready).
+	var tier: int = _enemy_tier(player)
 	var blocks := enemy.get_node_or_null("blocks")
-	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = _pick_preset(player)
+	if blocks and "layout_preset" in blocks and not preset_tiers.is_empty():
+		blocks.layout_preset = int(preset_tiers[tier])
+	# Уровень едет на самой машине: метка над врагом показывает его игроку, и «во что я
+	# ввязываюсь» становится видно ДО боя, а не по числу обломков после.
+	if "enemy_tier" in enemy:
+		enemy.enemy_tier = tier + 1
 
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
@@ -476,19 +481,27 @@ func _on_base_died(b: Node) -> void:
 # (G.shop_price считается из рецепта). Раньше сборка бралась кубиком, и в стартовую кабину
 # могли приехать две пушки.
 #
-# Со ступени иногда спускаемся на одну вниз: если сила жёстко следует за игроком, каждый бой
-# одинаково тяжёлый, и расти незачем — лёгкая цель должна иногда попадаться.
-func _pick_preset(player: Node3D) -> int:
+# СТОИМОСТЬ МАШИНЫ ЗАДАЁТ ПОТОЛОК, А НЕ САМУ СБОРКУ. Уровень врага бросается СЛУЧАЙНО от
+# первого до этого потолка: игрок третьего уровня встречает и первый, и второй, и третий.
+#
+# Раньше ступень жёстко следовала за игроком (с шансом в треть спуститься на одну), и из
+# этого выходило две беды сразу. Каждый бой был одинаково тяжёлым — расти незачем, награда
+# та же. И мир не различался: что бы ни стояло на горизонте, это всегда «ровня». Разброс
+# возвращает и лёгкие стычки по дороге, и тяжёлые встречи, ради которых стоит собраться.
+func _enemy_tier(player: Node3D) -> int:
 	if preset_tiers.is_empty():
 		return 0
 	var value: int = _machine_value(player)
-	var tier: int = 0
+	var cap: int = 0
 	for i in mini(preset_tiers.size(), tier_from_value.size()):
 		if value >= int(tier_from_value[i]):
-			tier = i
-	if tier > 0 and randf() < 0.33:
-		tier -= 1
-	return int(preset_tiers[tier])
+			cap = i
+	return randi() % (cap + 1)
+
+func _pick_preset(player: Node3D) -> int:
+	if preset_tiers.is_empty():
+		return 0
+	return int(preset_tiers[_enemy_tier(player)])
 
 # Во сколько обходится машина: сумма магазинных цен её блоков. Той же меркой считается всё
 # остальное в игре, поэтому «сильнее» здесь значит ровно то же, что и в гараже.
