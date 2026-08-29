@@ -21,9 +21,9 @@
 [ext_resource type="CapsuleMesh" uid="uid://b385jequj3mbb" path="res://resources/core.tres" id="26_j3e5s"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
-[ext_resource type="Script" path="res://outposts.gd" id="29_outposts"]
-[ext_resource type="Script" path="res://contracts.gd" id="30_contracts"]
-[ext_resource type="Script" path="res://raids.gd" id="31_raids"]
+[ext_resource type="Script" uid="uid://b3qqxwdgaomiq" path="res://outposts.gd" id="29_outposts"]
+[ext_resource type="Script" uid="uid://bq3bdpvqfhkje" path="res://contracts.gd" id="30_contracts"]
+[ext_resource type="Script" uid="uid://dibabavec7win" path="res://raids.gd" id="31_raids"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
