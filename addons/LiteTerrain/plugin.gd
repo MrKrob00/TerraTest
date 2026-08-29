@@ -131,10 +131,12 @@ func _gen_blur_row(z: int) -> void:
 	var row := z * w
 	# Границы проверяем ПО ЧИСЛУ (см. _gen_len), а не по .size() массива.
 	if _gen_len <= 0 or row + w > _gen_len:
+		_gen_row_done()
 		return
 	if z == 0 or z == _gen_d - 1:
 		for x in w:
 			_gen_out[row + x] = _gen_base_in[row + x]
+		_gen_row_done()
 		return
 	_gen_out[row] = _gen_base_in[row]
 	_gen_out[row + w - 1] = _gen_base_in[row + w - 1]
@@ -146,6 +148,112 @@ func _gen_blur_row(z: int) -> void:
 			_gen_base_in[row - w + x] +
 			_gen_base_in[row + w + x]
 		) * 0.2
+	_gen_row_done()
+
+# ─────────────────────────────────────────────────
+# ЭКРАН ГЕНЕРАЦИИ
+# ─────────────────────────────────────────────────
+# Генерация карты — это десятки секунд, в течение которых редактор просто не отвечает. Без
+# окна это читается как «Godot завис»: человек не знает, идёт работа или всё сломалось, и
+# закрывает редактор на середине. Плагин уходит в общий доступ, а там это первое, обо что
+# спотыкается новый пользователь.
+#
+# Считаем ЧЕСТНО, а не «полоской, которая куда-то ползёт»: каждая обработанная строка карты
+# увеличивает счётчик, поэтому проценты показывают реальную работу. Счётчик трогают ПОТОКИ,
+# отсюда мьютекс — инкремент из нескольких потоков без него теряет значения.
+#
+# Само окно — обычный Control поверх редактора (EditorInterface.get_base_control): своего
+# диалога прогресса GDScript-плагину не выдают, а этот способ работает и в редакторе, и при
+# запуске плагина из другого проекта.
+var _prog_root: Control = null
+var _prog_step: Label = null
+var _prog_note: Label = null
+var _prog_bar: ProgressBar = null
+var _gen_rows_done: int = 0
+var _gen_mutex := Mutex.new()
+var _generating: bool = false
+
+## Строка обработана — зовётся из КАЖДОГО потока в конце его работы.
+func _gen_row_done() -> void:
+	_gen_mutex.lock()
+	_gen_rows_done += 1
+	_gen_mutex.unlock()
+
+func _progress_open() -> void:
+	if _prog_root != null and is_instance_valid(_prog_root):
+		return
+	var base: Control = EditorInterface.get_base_control()
+	if base == null:
+		return
+	_prog_root = Control.new()
+	_prog_root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_prog_root.mouse_filter = Control.MOUSE_FILTER_STOP   # окно модальное: тыкать мимо незачем
+	base.add_child(_prog_root)
+	# Затемнение: без него панель висит в воздухе и не читается как «сейчас идёт работа».
+	var dim := ColorRect.new()
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.color = Color(0, 0, 0, 0.55)
+	_prog_root.add_child(dim)
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.custom_minimum_size = Vector2(420, 0)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	_prog_root.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	panel.add_child(box)
+	var title := Label.new()
+	title.text = "LiteTerrain — генерация мира"
+	title.add_theme_font_size_override("font_size", 18)
+	box.add_child(title)
+	_prog_step = Label.new()
+	_prog_step.text = "…"
+	box.add_child(_prog_step)
+	_prog_bar = ProgressBar.new()
+	_prog_bar.min_value = 0.0
+	_prog_bar.max_value = 1.0
+	_prog_bar.value = 0.0
+	_prog_bar.custom_minimum_size = Vector2(0, 18)
+	box.add_child(_prog_bar)
+	_prog_note = Label.new()
+	_prog_note.text = "Это делается ОДИН раз: в игре карта уже готовая, читается из файла."
+	_prog_note.add_theme_font_size_override("font_size", 11)
+	_prog_note.modulate = Color(1, 1, 1, 0.6)
+	box.add_child(_prog_note)
+
+func _progress_close() -> void:
+	_generating = false
+	if _prog_root != null and is_instance_valid(_prog_root):
+		_prog_root.queue_free()
+	_prog_root = null
+	_prog_step = null
+	_prog_bar = null
+	_prog_note = null
+
+func _progress_say(step: String, frac: float) -> void:
+	if _prog_step != null and is_instance_valid(_prog_step):
+		_prog_step.text = step
+	if _prog_bar != null and is_instance_valid(_prog_bar):
+		_prog_bar.value = clampf(frac, 0.0, 1.0)
+
+## ПРОГОН ОДНОГО ПРОХОДА С ПОКАЗОМ ПРОГРЕССА. Раньше каждый проход стоял на
+## wait_for_group_task_completion — это блокировка главного потока, при которой окно не
+## перерисуется, каким бы красивым оно ни было. Здесь мы ждём В ЦИКЛЕ, отдавая кадр редактору,
+## и обновляем полосу по числу готовых строк.
+##
+## step_from/step_to — доля общей работы, которую занимает этот проход: полоса должна идти
+## слева направо ОДИН раз за генерацию, а не прыгать с нуля на каждом этапе.
+func _run_rows(task: Callable, rows: int, label: String, step_from: float, step_to: float) -> void:
+	_gen_rows_done = 0
+	var gid := WorkerThreadPool.add_group_task(task, rows, -1, false, "LiteTerrain")
+	while not WorkerThreadPool.is_group_task_completed(gid):
+		var done: float = float(_gen_rows_done) / float(maxi(rows, 1))
+		_progress_say("%s — %d%%" % [label, int(done * 100.0)],
+				lerpf(step_from, step_to, done))
+		await get_tree().process_frame
+	WorkerThreadPool.wait_for_group_task_completion(gid)
+	_progress_say("%s — готово" % label, step_to)
 
 # One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
 func _gen_fill_row(z: int) -> void:
@@ -178,6 +286,7 @@ func _gen_fill_row(z: int) -> void:
 		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * b.dune_amp * land_sand
 		var mtn_rise := mtn_dome * b.mountain_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
+	_gen_row_done()
 
 # ─────────────────────────────────────────────────
 # ЭРОЗИЯ БЕЗ СИМУЛЯЦИИ (техника «erosion filter», Clay John → Fuse → Rune Vision)
@@ -237,6 +346,7 @@ func _gen_slope_at(x: int, z: int) -> Vector2:
 func _gen_erode_row(z: int) -> void:
 	var w := _gen_w
 	if _gen_len <= 0 or z * w + w > _gen_len:
+		_gen_row_done()
 		return
 	for x in w:
 		var idx := z * w + x
@@ -276,6 +386,7 @@ func _gen_erode_row(z: int) -> void:
 			cell *= 0.5
 			amp *= 0.5
 		_gen_ero_out[idx] = h
+	_gen_row_done()
 
 ## Узор полос вокруг центра КЛЕТКИ, размазанный между четырьмя соседними клетками.
 ## Возвращает (значение, dx, dz): само значение и его производные по X и Z.
@@ -321,6 +432,7 @@ func _gen_carve_row(z: int) -> void:
 	var fz := float(z)
 	var b := _gen_biomes
 	if b == null or _gen_len <= 0 or z * w + w > _gen_len:
+		_gen_row_done()
 		return                       # то же, что и в _gen_blur_row: границы по числу
 	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
@@ -344,6 +456,7 @@ func _gen_carve_row(z: int) -> void:
 		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, lvl - li)
 		canyon_h = (li + riser) * terr
 		_gen_carved[idx] = lerpf(_gen_base_in[idx], canyon_h, hmask)
+	_gen_row_done()
 
 # ─────────────────────────────────────────────────
 # Helper builders
@@ -1268,6 +1381,17 @@ func _generate_noise() -> void:
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select a terrain StaticBody3D node first")
 		return
+	# ВТОРОЙ ЗАПУСК ПОВЕРХ ПЕРВОГО — верный способ получить кашу: генерация теперь идёт кадрами,
+	# и оба прохода писали бы в одни и те же буферы. Флаг снимает _progress_close, поэтому он
+	# сбрасывается на любом выходе, включая ошибочный.
+	if _generating:
+		return
+	_generating = true
+	# Окно открываем ДО первой тяжёлой строки: генерация идёт кадрами (см. _run_rows), и всё,
+	# что ниже, обязано закрывать его на каждом выходе — иначе редактор останется перекрытым.
+	_progress_open()
+	_progress_say("Подготовка", 0.0)
+	await get_tree().process_frame
 
 	var image_mode: bool = sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()
 	var width: int
@@ -1286,10 +1410,12 @@ func _generate_noise() -> void:
 		var col_shape = sculpt_node.get_node_or_null("CollisionShape3D")
 		if col_shape == null:
 			push_warning("LiteTerrain: no CollisionShape3D child found")
+			_progress_close()
 			return
 		shape = col_shape.shape
 		if not shape is HeightMapShape3D:
 			push_warning("LiteTerrain: shape is not a HeightMapShape3D")
+			_progress_close()
 			return
 		width = shape.map_width
 		depth = shape.map_depth
@@ -1353,9 +1479,9 @@ func _generate_noise() -> void:
 	_gen_out = _gen_alloc(_gen_len, "карту высот")
 	if _gen_out.is_empty():
 		_gen_len = 0
+		_progress_close()
 		return
-	var _fill_gid := WorkerThreadPool.add_group_task(_gen_fill_row, depth, -1, false, "LiteTerrain: heights")
-	WorkerThreadPool.wait_for_group_task_completion(_fill_gid)
+	await _run_rows(_gen_fill_row, depth, "Высоты", 0.02, 0.45)
 	var new_data := _gen_out
 	_gen_out = PackedFloat32Array()          # drop the field's reference; new_data owns it now
 
@@ -1370,8 +1496,7 @@ func _generate_noise() -> void:
 		_gen_out = _gen_alloc(width * depth, "буфер размытия")
 		if _gen_out.is_empty():
 			break                      # без буфера просто не размываем — карта уже есть
-		var blur_gid := WorkerThreadPool.add_group_task(_gen_blur_row, depth, -1, false, "LiteTerrain: blur")
-		WorkerThreadPool.wait_for_group_task_completion(blur_gid)
+		await _run_rows(_gen_blur_row, depth, "Сглаживание", 0.45, 0.55)
 		new_data = _gen_out
 		_gen_out = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
@@ -1410,8 +1535,7 @@ func _generate_noise() -> void:
 					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
 			_gen_carved = PackedFloat32Array()
 		else:
-			var _carve_gid := WorkerThreadPool.add_group_task(_gen_carve_row, depth, -1, false, "LiteTerrain: canyons")
-			WorkerThreadPool.wait_for_group_task_completion(_carve_gid)
+			await _run_rows(_gen_carve_row, depth, "Каньоны", 0.55, 0.7)
 			new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
@@ -1426,8 +1550,7 @@ func _generate_noise() -> void:
 		if _gen_ero_out.is_empty():
 			push_warning("LiteTerrain: не хватило памяти на буфер эрозии — пропущена")
 		else:
-			var _ero_gid := WorkerThreadPool.add_group_task(_gen_erode_row, depth, -1, false, "LiteTerrain: erosion")
-			WorkerThreadPool.wait_for_group_task_completion(_ero_gid)
+			await _run_rows(_gen_erode_row, depth, "Эрозия", 0.7, 0.95)
 			new_data = _gen_ero_out
 		_gen_ero_in = PackedFloat32Array()
 		_gen_ero_out = PackedFloat32Array()
@@ -1435,6 +1558,8 @@ func _generate_noise() -> void:
 	if image_mode:
 		# Set md + size, rebuild the editor preview, and write the heightmap image so the
 		# runtime (and re-opening the editor) loads it. No undo here — it's a full regen.
+		_progress_say("Сборка карты и запись файла", 0.96)
+		await get_tree().process_frame
 		sculpt_node.set_heightmap(new_data, width, depth)
 		var img := Image.create_from_data(width, depth, false, Image.FORMAT_RF, new_data.to_byte_array())
 		var gm_path := _heightmap_target()
@@ -1443,6 +1568,9 @@ func _generate_noise() -> void:
 			print("LiteTerrain: generated %dx%d -> %s" % [width, depth, gm_path])
 		else:
 			push_error("LiteTerrain: failed to save generated heightmap (error %d)" % gerr)
+		_progress_say("Готово", 1.0)
+		await get_tree().process_frame
+		_progress_close()
 		return
 
 	# ── Legacy (shape) undo/redo + apply ─────────
@@ -1455,3 +1583,4 @@ func _generate_noise() -> void:
 	ur.add_do_method(sculpt_node, "apply_heightmap", new_data)
 	ur.add_undo_method(sculpt_node, "apply_heightmap", map_data_old)
 	ur.commit_action()
+	_progress_close()
