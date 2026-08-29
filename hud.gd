@@ -1243,6 +1243,14 @@ func _update_radar(delta: float) -> void:
 			if f != null and int(f) != 0:
 				var rel: Vector3 = (e as Node3D).global_position - origin
 				blips.append({"p": Vector2(rel.x, rel.z), "c": Color(1.0, 0.32, 0.32)})
+	# УКРЕПЛЁННЫЕ ТОЧКИ на радаре — по ДАННЫМ (outposts.blips), а не по узлам: постройка
+	# материализуется только вблизи, и по узлам радар показывал бы лишь то, что и так видно
+	# из окна. Ради этого точки и заводились: чтобы на карте было куда ехать.
+	var op: Node = get_tree().get_first_node_in_group("outposts")
+	if op != null and op.has_method("blips"):
+		for bp in op.blips(origin, _radar.range_world):
+			var relo: Vector3 = (bp as Vector3) - origin
+			blips.append({"p": Vector2(relo.x, relo.z), "c": Color(1.0, 0.55, 0.15)})
 	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
 	if rn and rn.has_method("active_blips"):
 		# Спрашиваем ВОКРУГ МАШИНЫ и на охват радара: жилы стримятся по взгляду камеры, а
