@@ -318,6 +318,8 @@ func _gen_fill_row(z: int) -> void:
 # что задумал шум — а значит не ломает ни каньоны, ни границу воды, ни высоту гор.
 ## Мельче этого клетки не дробим (метры): полоса шириной в пару клеток сетки — уже не яр.
 const CELL_MIN := 16.0
+## Наклон, при котором эрозия работает в полную силу (тангенс: 0.25 ≈ 14°).
+const SLOPE_REF := 0.25
 
 var _gen_ero_in := PackedFloat32Array()
 var _gen_ero_out := PackedFloat32Array()
@@ -364,7 +366,12 @@ func _gen_erode_row(z: int) -> void:
 			var res: Vector3 = _stripe(p, g, cell)
 			# Крутой склон режется сильнее пологого: подъём крутизны в степень — это тот самый
 			# «erosion slope power», которым правят остроту хребтов.
-			var steep: float = pow(clampf(g.length(), 0.0, 1.0), gen_erosion_slope_power)
+			# КРУТИЗНУ МЕРЯЕМ ОТНОСИТЕЛЬНО, а не по «единице». Наклон 1.0 — это 45°, и такого на
+			# карте почти нет: пологие холмы дают 0.03-0.08, то есть при сравнении с единицей
+			# эрозия получала множитель в сотые доли и не была видна вовсе — ровно то, что
+			# выходило на мягких настройках. SLOPE_REF — наклон, который считается «полным
+			# склоном»: около 14°, дальше эрозия работает в полную силу.
+			var steep: float = pow(clampf(g.length() / SLOPE_REF, 0.0, 1.0), gen_erosion_slope_power)
 			# ПЛОСКОЕ ПРОПУСКАЕМ ЦЕЛИКОМ. Половина карты — равнина и дно каньона, где эрозии
 			# почти нет, а считать её всё равно приходилось бы: четыре октавы по четыре клетки
 			# с синусом и косинусом на каждую. Ранний выход снимает эту работу там, где её
@@ -651,18 +658,29 @@ func _enter_tree() -> void:
 	preset.text = "Natural preset"
 	preset.tooltip_text = "Крупные массивы, проходимые склоны, мелкий рисунок за эрозией. После — Generate Terrain."
 	preset.pressed.connect(func() -> void:
-		gen_amplitude       = 110.0
-		gen_scale           = 520.0
-		gen_power           = 2.6
+		gen_amplitude       = 130.0
+		# МАСШТАБ РЕЛЬЕФА БЕРЁМ У БИОМОВ, а не выдумываем. Маски биомов живут в своих
+		# масштабах (mountain_scale и прочие), и если рельеф крупнее их, снежная шапка ложится
+		# не на гору, а пятном на равнину: цвет и форма перестают совпадать. Один масштаб на
+		# оба — и «горный район» снова там, где действительно горы.
+		var b := _biomes()
+		gen_scale           = b.mountain_scale if b != null else 420.0
+		gen_power           = 2.8
 		gen_octaves         = 6
-		gen_mountain_amount = 0.8
-		gen_ridge_sharpness = 2.2
-		gen_smooth          = 2
+		gen_mountain_amount = 0.9
+		gen_ridge_sharpness = 2.6
+		# РАЗМЫТИЕ — ОДИН ПРОХОД. Каждый следующий срезает именно то, ради чего всё делалось:
+		# пять проходов превращают карту в блины, и никакая эрозия этого уже не вернёт.
+		gen_smooth          = 1
+		if b != null:
+			# Горы должны быть ГОРАМИ: подъём маски задаётся в метрах и от высоты карты не
+			# зависит, поэтому при амплитуде 130 прежние 48 м читались как бугор под снегом.
+			b.mountain_rise = maxf(b.mountain_rise, 95.0)
 		gen_erosion_enable      = true
-		gen_erosion_strength    = 5.0
-		gen_erosion_scale       = 130.0
+		gen_erosion_strength    = 6.0
+		gen_erosion_scale       = 110.0
 		gen_erosion_octaves     = 3
-		gen_erosion_slope_power = 1.4
+		gen_erosion_slope_power = 1.2
 		_save_settings()
 		# Ручки двигаем сами: без этого ползунок показывает старое число, а генерация идёт по
 		# новому — расхождение, которое ищется дольше, чем правится.
@@ -671,7 +689,8 @@ func _enter_tree() -> void:
 		var vals := [gen_erosion_strength, gen_erosion_scale, float(gen_erosion_octaves), gen_erosion_slope_power]
 		for i in mini(_sl_ero.size(), vals.size()):
 			if _sl_ero[i] != null and is_instance_valid(_sl_ero[i]):
-				_sl_ero[i].value = float(vals[i]))
+				_sl_ero[i].value = float(vals[i])
+		_sync_dock())
 	panel.add_child(preset)
 
 	var canyon_cb = CheckBox.new()

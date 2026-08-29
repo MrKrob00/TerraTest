@@ -22,6 +22,13 @@ group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // warm golden sand (desert)
 uniform vec4 color_grass : source_color = vec4(0.33, 0.56, 0.23, 1.0);  // lush green (meadow)
 uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
+// SNOW FOLLOWS HEIGHT, not just the mountain mask. The mask says WHERE the mountain region is;
+// it says nothing about how high the ground actually got there. Painting by the mask alone put
+// white patches on flat ground inside that region — the colour and the landform disagreed, and
+// the map read as broken. snow_line is the world height where snow starts, snow_blend the
+// softness of that edge.
+uniform float snow_line  : hint_range(-100.0, 400.0) = 60.0;
+uniform float snow_blend : hint_range(1.0, 120.0)    = 25.0;
 uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // cold grey (contrasts with canyon rock)
 
 group_uniforms Terrain;
@@ -113,7 +120,8 @@ void vertex() {
                            clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);  // desert ↔ meadow
     zone          = mix(zone,           canyon_col,       canyon);      // canyon on top
-    zone          = mix(zone,           color_snow.rgb,   mountain);    // snowy mountains on top
+    float snow    = mountain * smoothstep(snow_line - snow_blend, snow_line + snow_blend, wy);
+    zone          = mix(zone,           color_snow.rgb,   snow);        // snow only up high
     float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
     float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
     vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // canyon cliffs are darker
