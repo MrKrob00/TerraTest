@@ -45,6 +45,15 @@ var gen_amplitude:       float  = 30.0   # max height in world units
 var gen_smooth:           int   = 1      # blur passes after generation
 var gen_size:             int   = 0      # image-mode target size (0 = keep current)
 
+# ---------- Эрозия (фильтр поверх готовых высот; см. _gen_erode_row) ----------
+# Все четыре числа — то, чем правят вид: сколько метров срезать, какого размера яры,
+# сколько уровней ветвления и насколько эрозия любит крутизну.
+var gen_erosion_enable:     bool  = true
+var gen_erosion_strength:  float  = 9.0    # м: глубина яров первой октавы
+var gen_erosion_scale:     float  = 90.0   # м: размер клетки (крупные яры) — дальше делится вдвое
+var gen_erosion_octaves:     int  = 4      # уровней ветвления
+var gen_erosion_slope_power: float = 0.6   # >1 — эрозия только на крутом, <1 — заметна и на пологом
+
 # ---------- Canyon carving (baked into the heights AFTER the blur, so the walls stay sheer) ----------
 # The canyon shape is driven by the same mask as the canyon biome's colour (TerrainBiomes),
 # so the landform and the colour line up on their own.
@@ -165,6 +174,116 @@ func _gen_fill_row(z: int) -> void:
 		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * b.dune_amp * land_sand
 		var mtn_rise := mtn_dome * b.mountain_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
+
+# ─────────────────────────────────────────────────
+# ЭРОЗИЯ БЕЗ СИМУЛЯЦИИ (техника «erosion filter», Clay John → Fuse → Rune Vision)
+# ─────────────────────────────────────────────────
+# Настоящая гидравлическая эрозия — это миллионы капель, которые надо прогнать по всей карте;
+# она не считается в точке, поэтому её нельзя ни разложить по потокам как есть, ни применить к
+# куску карты отдельно. Здесь другое: ФИЛЬТР, который накладывается ПОВЕРХ готовой высоты и
+# вычисляется В КАЖДОЙ ТОЧКЕ НЕЗАВИСИМО. Отсюда всё остальное — он раскладывается по строкам в
+# те же потоки, что и остальные проходы, и стоит один раз при генерации, а не в игре.
+#
+# Идея: у нас есть высота И НАКЛОН. Вдоль наклона рисуем полосы — чередование хребтов и яров,
+# ровно так, как вода режет склон. Каждая следующая октава кладёт полосы помельче ВДОЛЬ УЖЕ
+# ИЗМЕНЁННОГО наклона, поэтому яры ветвятся сами собой, без всякой симуляции.
+#
+# Три вещи, без которых это не работает (все три — из разбора Rune Vision):
+#
+#   • ПОЛОСЫ НЕЛЬЗЯ ПОВОРАЧИВАТЬ ВОКРУГ ОДНОЙ ТОЧКИ. Поворот вокруг далёкого центра сдвигает
+#     рисунок тем сильнее, чем дальше точка, и узор расползается. Плоскость режется на КЛЕТКИ,
+#     у каждой свой центр поворота, а между четырьмя соседними клетками значение смешивается.
+#   • ПИК ОБЯЗАН ОСТАТЬСЯ ПИКОМ. На вершине наклон равен нулю, направление полос там не
+#     определено, и вершину «срезало» случайным яром. Поэтому частота полос падает вместе с
+#     крутизной: на плоском полоса становится шире клетки, и в центре клетки всегда гребень.
+#   • ГРАДИЕНТ ВЕДЁТСЯ ВМЕСТЕ С ВЫСОТОЙ. Производная полосы известна аналитически, и её надо
+#     прибавлять к наклону — иначе следующая октава считает направление по старому рельефу и
+#     ветвления не выходит.
+#
+# Эрозия работает ТОЛЬКО ВНИЗ (h += amp * (cos − 1) ≤ 0): она вырезает яры, а не насыпает
+# хребты. Так гребень остаётся на исходной высоте, и фильтр не может поднять карту выше того,
+# что задумал шум — а значит не ломает ни каньоны, ни границу воды, ни высоту гор.
+var _gen_ero_in := PackedFloat32Array()
+var _gen_ero_out := PackedFloat32Array()
+
+## Наклон рельефа в точке сетки — центральными разностями по соседям (метр на метр).
+func _gen_slope_at(x: int, z: int) -> Vector2:
+	var w := _gen_w
+	var d := _gen_d
+	var xm := maxi(x - 1, 0)
+	var xp := mini(x + 1, w - 1)
+	var zm := maxi(z - 1, 0)
+	var zp := mini(z + 1, d - 1)
+	var gx: float = (_gen_ero_in[z * w + xp] - _gen_ero_in[z * w + xm]) * 0.5
+	var gz: float = (_gen_ero_in[zp * w + x] - _gen_ero_in[zm * w + x]) * 0.5
+	return Vector2(gx, gz)
+
+# Одна строка прохода эрозии.
+func _gen_erode_row(z: int) -> void:
+	var w := _gen_w
+	if _gen_len <= 0 or z * w + w > _gen_len:
+		return
+	for x in w:
+		var idx := z * w + x
+		var h: float = _gen_ero_in[idx]
+		var g: Vector2 = _gen_slope_at(x, z)
+		var p := Vector2(float(x), float(z))
+		var cell: float = maxf(gen_erosion_scale, 2.0)
+		var amp: float = gen_erosion_strength
+		for _o in maxi(gen_erosion_octaves, 1):
+			var res: Vector3 = _stripe(p, g, cell)
+			# Крутой склон режется сильнее пологого: подъём крутизны в степень — это тот самый
+			# «erosion slope power», которым правят остроту хребтов.
+			var steep: float = pow(clampf(g.length(), 0.0, 1.0), gen_erosion_slope_power)
+			# ПЛОСКОЕ ПРОПУСКАЕМ ЦЕЛИКОМ. Половина карты — равнина и дно каньона, где эрозии
+			# почти нет, а считать её всё равно приходилось бы: четыре октавы по четыре клетки
+			# с синусом и косинусом на каждую. Ранний выход снимает эту работу там, где её
+			# результат всё равно тонет в тысячных долях метра.
+			if steep < 0.005:
+				break
+			var k: float = amp * steep
+			h += k * (res.x - 1.0) * 0.5          # (cos − 1) ≤ 0: только вниз
+			# Производная полосы — в наклон, чтобы следующая октава шла уже по новым склонам.
+			g += Vector2(res.y, res.z) * k * 0.5
+			cell *= 0.5
+			amp *= 0.5
+		_gen_ero_out[idx] = h
+
+## Узор полос вокруг центра КЛЕТКИ, размазанный между четырьмя соседними клетками.
+## Возвращает (значение, dx, dz): само значение и его производные по X и Z.
+func _stripe(p: Vector2, g: Vector2, cell: float) -> Vector3:
+	# Направление полос — вдоль наклона; фаза меряется ПОПЕРЁК него.
+	var len_g: float = g.length()
+	var dir: Vector2 = (g / len_g) if len_g > 0.0001 else Vector2(1.0, 0.0)
+	var n := Vector2(-dir.y, dir.x)
+	# ЧАСТОТА ПАДАЕТ ВМЕСТЕ С КРУТИЗНОЙ — так вершина остаётся вершиной (см. шапку).
+	var freq: float = TAU / cell * clampf(len_g * 2.0, 0.15, 1.0)
+	var cx: float = floor(p.x / cell)
+	var cz: float = floor(p.y / cell)
+	var fx: float = p.x / cell - cx
+	var fz: float = p.y / cell - cz
+	# Плавные веса (smoothstep), иначе на границах клеток видны швы.
+	var wx: float = fx * fx * (3.0 - 2.0 * fx)
+	var wz: float = fz * fz * (3.0 - 2.0 * fz)
+	var acc_c: float = 0.0
+	var acc_s: float = 0.0
+	for i in 4:
+		var ox: float = float(i & 1)
+		var oz: float = float((i >> 1) & 1)
+		var centre := Vector2((cx + ox + 0.5) * cell, (cz + oz + 0.5) * cell)
+		var phase: float = (p - centre).dot(n) * freq
+		var wgt: float = (wx if ox > 0.5 else 1.0 - wx) * (wz if oz > 0.5 else 1.0 - wz)
+		acc_c += cos(phase) * wgt
+		acc_s += sin(phase) * wgt
+	# НОРМАЛИЗАЦИЯ пары (cos, sin): интерполяция двух невыровненных синусоид даёт синусоиду
+	# МЕНЬШЕЙ амплитуды, и без этого яры между клетками мельчали. Пара — это точка на
+	# окружности, её длину и возвращаем к единице (порог, чтобы не делить на ноль в узлах).
+	var l: float = sqrt(acc_c * acc_c + acc_s * acc_s)
+	if l > 0.25:
+		acc_c /= l
+		acc_s /= l
+	# Производная cos(phase) по точке: −sin(phase) * freq * n.
+	return Vector3(acc_c, -acc_s * freq * n.x, -acc_s * freq * n.y)
 
 # One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
 func _gen_carve_row(z: int) -> void:
@@ -456,6 +575,27 @@ func _enter_tree() -> void:
 	_slider_row(adv_body, "Channels", 30.0, 160.0, gen_canyon_gorge, 1.0,
 			func(v: float) -> void: gen_canyon_gorge = v, 0)
 
+	# ── Эрозия ───────────────────────────────────────────────────────────────
+	# Четыре числа на весь фильтр. Больше здесь и не нужно: остальное (частота полос, размер
+	# клеток по октавам, поправка на крутизну) выводится из них — по той же причине, по которой
+	# в доке пять настроек, а не восемнадцать.
+	var ero_chk := CheckBox.new()
+	ero_chk.text = "Erosion"
+	ero_chk.button_pressed = gen_erosion_enable
+	ero_chk.tooltip_text = "Ветвящиеся яры и хребты поверх готового рельефа. Считается при генерации, в игре бесплатно."
+	ero_chk.toggled.connect(func(v: bool) -> void:
+		gen_erosion_enable = v
+		_save_settings())
+	adv_body.add_child(ero_chk)
+	_slider_row(adv_body, "Gully depth", 0.0, 25.0, gen_erosion_strength, 0.5,
+			func(v: float) -> void: gen_erosion_strength = v, 1)
+	_slider_row(adv_body, "Gully size", 20.0, 200.0, gen_erosion_scale, 5.0,
+			func(v: float) -> void: gen_erosion_scale = v, 0)
+	_slider_row(adv_body, "Branching", 1.0, 6.0, float(gen_erosion_octaves), 1.0,
+			func(v: float) -> void: gen_erosion_octaves = int(v), 0)
+	_slider_row(adv_body, "Slope bias", 0.2, 2.0, gen_erosion_slope_power, 0.1,
+			func(v: float) -> void: gen_erosion_slope_power = v, 1)
+
 	# ── Actions ──────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
 	var gen_btn = Button.new()
@@ -526,6 +666,11 @@ func _save_settings() -> void:
 		"gen_canyon_riser":     gen_canyon_riser,
 		"gen_canyon_gorge":     gen_canyon_gorge,
 		"gen_canyon_width":     gen_canyon_width,
+		"gen_erosion_enable":      gen_erosion_enable,
+		"gen_erosion_strength":    gen_erosion_strength,
+		"gen_erosion_scale":       gen_erosion_scale,
+		"gen_erosion_octaves":     gen_erosion_octaves,
+		"gen_erosion_slope_power": gen_erosion_slope_power,
 	})
 
 func _load_settings() -> void:
@@ -553,6 +698,11 @@ func _load_settings() -> void:
 	gen_canyon_riser     = float(d.get("gen_canyon_riser",     gen_canyon_riser))
 	gen_canyon_gorge     = float(d.get("gen_canyon_gorge",     gen_canyon_gorge))
 	gen_canyon_width     = float(d.get("gen_canyon_width",     gen_canyon_width))
+	gen_erosion_enable      = bool(d.get("gen_erosion_enable",      gen_erosion_enable))
+	gen_erosion_strength    = float(d.get("gen_erosion_strength",   gen_erosion_strength))
+	gen_erosion_scale       = float(d.get("gen_erosion_scale",      gen_erosion_scale))
+	gen_erosion_octaves     = int(d.get("gen_erosion_octaves",      gen_erosion_octaves))
+	gen_erosion_slope_power = float(d.get("gen_erosion_slope_power", gen_erosion_slope_power))
 
 # ─────────────────────────────────────────────────
 # Node selection
@@ -1202,6 +1352,22 @@ func _generate_noise() -> void:
 			new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
+
+	# ── Эрозия: ПОСЛЕДНИМ проходом, поверх всего остального ──────────────────────────────
+	# Она читает НАКЛОН готового рельефа, поэтому и должна идти после того, как рельеф
+	# окончательно сложился: сделай её раньше — и каньон, вырезанный следом, срежет её яры,
+	# а размытие сгладит именно то, ради чего она нужна.
+	if gen_erosion_enable and gen_erosion_strength > 0.01:
+		_gen_ero_in = new_data
+		_gen_ero_out = _gen_alloc(width * depth, "буфер эрозии")
+		if _gen_ero_out.is_empty():
+			push_warning("LiteTerrain: не хватило памяти на буфер эрозии — пропущена")
+		else:
+			var _ero_gid := WorkerThreadPool.add_group_task(_gen_erode_row, depth, -1, false, "LiteTerrain: erosion")
+			WorkerThreadPool.wait_for_group_task_completion(_ero_gid)
+			new_data = _gen_ero_out
+		_gen_ero_in = PackedFloat32Array()
+		_gen_ero_out = PackedFloat32Array()
 
 	if image_mode:
 		# Set md + size, rebuild the editor preview, and write the heightmap image so the
