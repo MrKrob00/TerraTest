@@ -242,11 +242,19 @@ const LINE_PLAN := [
 	{"cell": Vector3i(5, 5, 9),  "block": G.Block.BELT},
 	{"cell": Vector3i(5, 5, 10), "block": G.Block.RECEIVER},
 ]
-## Куда врезается процессор: СЕРЕДИНА линии. Его футпринт 2×2×2 занимает x∈{4,5}, z∈{7,8} —
-## то есть две клетки самой линии и две СЛЕВА от неё, корпусом в сторону. Вход у него сзади
-## (+Z), выход спереди (−Z), как у ленты, поэтому поток не разворачивается.
+## Куда встаёт процессор: СБОКУ ОТ ЛИНИИ, а не в её разрыв. Якорь (4,5,8), футпринт 2×2×2
+## занимает x∈{3,4}, z∈{7,8} — все четыре клетки СЛЕВА от ленты, сама линия остаётся целой.
+##
+## Так это и работает в TerraTech: конвейер идёт своей полосой, станок стоит возле него и
+## снимает груз с неё. Раньше процессор занимал две клетки самой линии, то есть вставал ВМЕСТО
+## ленты, и собранная линия рвалась ровно там, где игрок ставил станок.
+##
+## Обмен идёт правым бортом процессора (+X), и обе клетки борта уже настроены в сцене:
+## ближняя к приёмнику (4,5,8) — ВХОД (маска input_faces), дальняя (4,5,7) — ВЫХОД
+## (port_defaults). Значит груз сходит с ленты в станок и возвращается на ленту НА КЛЕТКУ
+## БЛИЖЕ к продавцу, то есть поток никуда не разворачивается.
 const LINE_PROC_PLAN := [
-	{"cell": Vector3i(5, 5, 8), "block": G.Block.PROCESSOR},
+	{"cell": Vector3i(4, 5, 8), "block": G.Block.PROCESSOR},
 ]
 
 var _hints: Array = []
@@ -363,11 +371,11 @@ func _line_2(q: Dictionary) -> void:
 		_line_gifted = true
 		_award(G.Block.PROCESSOR)
 		_show_plan(LINE_PROC_PLAN)
-		Dialogue.say("System", "Processor delivered. It goes into the middle of the line — its body sticks out to the left, and the two belts in that spot have to come out first.")
+		Dialogue.say("System", "Processor delivered. It stands BESIDE the line, left of the middle belt — the belts stay where they are. It takes ore off the belt and puts the ingot back on it.")
 		return
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	if recv == null or not _chain_reaches(recv, G.Block.PROCESSOR):
-		_point_finger("Processor here: pull the two belts in the middle and drop it in their place.")
+		_point_finger("Processor goes here — beside the line, not into it.")
 		return                          # процессор ещё не врезан в линию
 	_clear_plan()
 	_drop_ore_over(recv, LINE_ORE)      # и снова руда — проверить, что линия не развалилась
