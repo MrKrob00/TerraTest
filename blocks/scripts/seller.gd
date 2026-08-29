@@ -35,6 +35,12 @@ func _on_timer_timeout() -> void:
 
 	if G.has_method("add_money"):
 		G.add_money(price)
+	# КОНТРАКТ СЧИТАЕТСЯ ЗДЕСЬ, у продавца: только он знает, что материал действительно ушёл
+	# за деньги. Считать «по складу» было бы неверно — руду можно набрать и просто возить с
+	# собой, а заказ Системы закрывается поставкой (contracts.gd слушает это событие).
+	# Чанк не считаем: в нём лежат БЛОКИ, а заказывают материалы.
+	if kind != "" and not kind.begins_with("chunk:"):
+		Q.report("sold_" + kind, 1)
 	var label: String = G.kind_name(kind)
 	if kind.begins_with("chunk:") and "chunk_count" in current_item:
 		label += " ×" + str(int(current_item.get("chunk_count")))

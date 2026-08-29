@@ -316,6 +316,19 @@ func _rebuild_detail() -> void:
 	d.add_theme_color_override("font_color", Color(0.88, 0.93, 0.96))
 	_detail.add_child(d)
 
+	# СРОК — только у контракта: это единственное задание, которое ИСТЕКАЕТ (contracts.gd),
+	# и без строки со временем игрок узнаёт о просрочке только по сообщению «снято».
+	var contracts: Node = get_tree().get_first_node_in_group("contracts")
+	if contracts != null and contracts.has_method("seconds_left") \
+			and String(q.get("id", "")) == String(contracts.active_quest_id()):
+		var left: int = int(contracts.seconds_left())
+		if left > 0:
+			_detail.add_child(_head("Time left:"))
+			var tl := Label.new()
+			tl.text = "  %d:%02d" % [left / 60, left % 60]
+			tl.add_theme_font_size_override("font_size", 14)
+			tl.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
+			_detail.add_child(tl)
 	_detail.add_child(_head("Objectives:"))
 	var o := Label.new()
 	if _grade_locked(q):
