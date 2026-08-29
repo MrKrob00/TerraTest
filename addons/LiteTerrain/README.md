@@ -273,7 +273,42 @@ result.
 | Canyons | on | Master switch for carving. Canyons also need `canyon_enabled` in the biomes. |
 | Plateau height / Canyon floor / Stratum height / Riser steepness / Gorge width / Channel frequency | — | Badlands shaping. Stratum height edits `canyon_band_height` on the biome resource. |
 
-Both heavy noise passes run across the WorkerThreadPool, one row per task.
+**Natural preset** sets a consistent set of these in one click. Height and feature size are
+tied to each other, and the tie is hard to guess by eye: 300 units of height with 150-unit
+features means slopes steeper than 45° everywhere, and the map reads as a pincushion no matter
+what else you do. The preset picks large land masses, drivable slopes, and leaves the fine
+detail to erosion — which is what erosion is for.
+
+### Erosion
+
+A filter laid over the finished height, not a simulation. Real hydraulic erosion means running
+millions of droplets across the map: it cannot be evaluated at a point, so it cannot be split
+across threads or applied to one chunk. This one is evaluated **at each point independently** —
+stripes drawn along the slope, which read as alternating ridges and gullies, and each further
+octave lays finer stripes along the *already changed* slope, so the gullies branch on their own.
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| Erosion | on | Master switch. |
+| Gully depth | 5 | Metres cut by the first octave; each next one halves it. |
+| Gully size | 130 | Cell size in metres — how wide the largest gullies are. |
+| Branching | 3 | Octaves. Each halves the cell, down to a 16 m floor. |
+| Slope bias | 1.4 | Above 1 the erosion keeps to steep ground; below 1 it shows on gentle slopes too. |
+
+Three details make or break it, and all three are in the code: stripes rotate around the centre
+of **their own cell** (rotating around one point smears the pattern across the map), the stripe
+frequency **falls with the slope** (otherwise a peak, where there is no slope, gets cut by a
+random gully), and the stripe's derivative is **added back into the slope** (otherwise the next
+octave still follows the old terrain and nothing branches). It only ever cuts **down**, so it
+cannot raise the map above what the noise intended.
+
+The slope itself is measured over 6 metres, not between neighbouring cells: at one-metre steps
+you measure the noise ripple rather than the hillside, the stripe direction jitters from cell to
+cell, and the result is a field of needles.
+
+All heavy passes run across the WorkerThreadPool, one row per task, and a progress window
+reports which pass is running and how far it got — a full generate is tens of seconds, and
+without the window that reads as a frozen editor.
 
 Generation replaces the whole heightmap and writes it to the R32F file, so both the
 runtime and a reopened editor load the new terrain.
