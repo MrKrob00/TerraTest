@@ -76,16 +76,10 @@ func _ready() -> void:
 
 	_connect_cabin()
 
-	# Кнопка взаимодействия (только на машинах игрока): подъехал другой машиной,
-	# зажал ~1с → круговое меню (в инвентарь / разобрать / защита).
-	if faction == 0:
-		var ib := Area3D.new()
-		ib.set_script(preload("res://vehicle_interact_button.gd"))
-		ib.vehicle = self
-		ib.position = Vector3(0, 2.2, 0)
-		ib.collision_layer = 16     # свой слой: луч тапа его видит, физика машин — нет
-		ib.collision_mask = 0
-		add_child(ib)
+	# Кнопка взаимодействия с ЭТОЙ машиной (круговое меню) живёт в HUD, а не здесь: значок в
+	# мире закрывали собственные блоки, а ввод к нему не доходил — его перехватывал любой
+	# коллайдер, оказавшийся ближе (зона регена, купол щита, магнит упаковщика). См. hud.gd,
+	# «Кнопка машины: 2D, ПОВЕРХ ВСЕГО».
 
 # Death = the cabin is gone. The watchdog, the subscription and the flags all live in
 # MachineBody now: the enemy had none of it, so an enemy whose cabin was torn off never died.

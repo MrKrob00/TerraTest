@@ -68,9 +68,9 @@ var is_active: bool = false
 var _terrain: Node = null   # кэш ноды террейна (terrain_height_at)
 
 func _input(event: InputEvent) -> void:
-	# Жест кругового меню (см. VehicleInteractButton) не должен ещё и крутить камеру —
+	# Жест интерфейса (кнопка машины, круговое меню — см. G.ui_grab) не должен ещё и крутить камеру —
 	# тот же гейт, что уже стоит у тач-джойстика камеры.
-	if VehicleInteractButton.camera_block:
+	if G.ui_grab:
 		return
 	# Мышь над любым UI (гараж, HUD-кнопки) не должна ещё и вертеть/зумить мировую камеру —
 	# иначе прокрутка списка в гараже или ПКМ-драг над панелью крутили бы камеру под ней.
@@ -90,7 +90,7 @@ func _input(event: InputEvent) -> void:
 # mouse_filter STOP их поглощают). Палец джойстика движения тоже пропускаем (по его индексу),
 # в стройке камеру не крутим (там драги ставят блоки).
 func _unhandled_input(event: InputEvent) -> void:
-	if VehicleInteractButton.camera_block:
+	if G.ui_grab:
 		return
 	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
 	if event is InputEventScreenTouch:
@@ -173,7 +173,7 @@ func camera_movement(_delta):
 	# Поворот/наклон камеры — от СВАЙПА (тач) и мыши (ПКМ-драг на ПК). Оба уже в пикселях,
 	# накоплены за кадр (_touch_look_* в _unhandled_input, _mouse_look_* в _input). Джойстик
 	# камеры убран (был костылём). Жест кругового меню гасит оба источника.
-	if VehicleInteractButton.camera_block:
+	if G.ui_grab:
 		_mouse_look_dx = 0.0
 		_mouse_look_dy = 0.0
 		_touch_look_dx = 0.0

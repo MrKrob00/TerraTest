@@ -14,6 +14,10 @@ var radius_slider   = null
 var _cb_canyon: CheckBox = null
 var _cb_mountain: CheckBox = null
 var _sl_stratum: HSlider = null
+## Ползунки, которые двигает пресет: их надо обновить, иначе ручка врёт про значение.
+var _sl_height: HSlider = null
+var _sl_features: HSlider = null
+var _sl_ero: Array[HSlider] = []
 var strength_slider = null
 
 var _dirty_chunks: Dictionary = {}
@@ -49,10 +53,10 @@ var gen_size:             int   = 0      # image-mode target size (0 = keep curr
 # Все четыре числа — то, чем правят вид: сколько метров срезать, какого размера яры,
 # сколько уровней ветвления и насколько эрозия любит крутизну.
 var gen_erosion_enable:     bool  = true
-var gen_erosion_strength:  float  = 9.0    # м: глубина яров первой октавы
-var gen_erosion_scale:     float  = 90.0   # м: размер клетки (крупные яры) — дальше делится вдвое
-var gen_erosion_octaves:     int  = 4      # уровней ветвления
-var gen_erosion_slope_power: float = 0.6   # >1 — эрозия только на крутом, <1 — заметна и на пологом
+var gen_erosion_strength:  float  = 5.0    # м: глубина яров первой октавы
+var gen_erosion_scale:     float  = 130.0  # м: размер клетки (крупные яры) — дальше делится вдвое
+var gen_erosion_octaves:     int  = 3      # уровней ветвления
+var gen_erosion_slope_power: float = 1.4   # >1 — эрозия только на крутом, <1 — заметна и на пологом
 
 # ---------- Canyon carving (baked into the heights AFTER the blur, so the walls stay sheer) ----------
 # The canyon shape is driven by the same mask as the canyon biome's colour (TerrainBiomes),
@@ -203,19 +207,30 @@ func _gen_fill_row(z: int) -> void:
 # Эрозия работает ТОЛЬКО ВНИЗ (h += amp * (cos − 1) ≤ 0): она вырезает яры, а не насыпает
 # хребты. Так гребень остаётся на исходной высоте, и фильтр не может поднять карту выше того,
 # что задумал шум — а значит не ломает ни каньоны, ни границу воды, ни высоту гор.
+## Мельче этого клетки не дробим (метры): полоса шириной в пару клеток сетки — уже не яр.
+const CELL_MIN := 16.0
+
 var _gen_ero_in := PackedFloat32Array()
 var _gen_ero_out := PackedFloat32Array()
 
-## Наклон рельефа в точке сетки — центральными разностями по соседям (метр на метр).
+## НАКЛОН БЕРЁМ КРУПНЫМ ПЛАНОМ, а не по соседней клетке. Разность соседей на шаге в метр
+## меряет не склон горы, а рябь шума на нём: направление скачет от клетки к клетке, полосы
+## разворачиваются вместе с ним, и вместо яров выходит игольчатая каша — ровно то, что было
+## видно на первой генерации. Шаг в SLOPE_STEP метров даёт направление СКЛОНА, по которому
+## вода и текла бы.
+const SLOPE_STEP := 6
+
 func _gen_slope_at(x: int, z: int) -> Vector2:
 	var w := _gen_w
 	var d := _gen_d
-	var xm := maxi(x - 1, 0)
-	var xp := mini(x + 1, w - 1)
-	var zm := maxi(z - 1, 0)
-	var zp := mini(z + 1, d - 1)
-	var gx: float = (_gen_ero_in[z * w + xp] - _gen_ero_in[z * w + xm]) * 0.5
-	var gz: float = (_gen_ero_in[zp * w + x] - _gen_ero_in[zm * w + x]) * 0.5
+	var xm := maxi(x - SLOPE_STEP, 0)
+	var xp := mini(x + SLOPE_STEP, w - 1)
+	var zm := maxi(z - SLOPE_STEP, 0)
+	var zp := mini(z + SLOPE_STEP, d - 1)
+	var dx: float = float(maxi(xp - xm, 1))
+	var dz: float = float(maxi(zp - zm, 1))
+	var gx: float = (_gen_ero_in[z * w + xp] - _gen_ero_in[z * w + xm]) / dx
+	var gz: float = (_gen_ero_in[zp * w + x] - _gen_ero_in[zm * w + x]) / dz
 	return Vector2(gx, gz)
 
 # Одна строка прохода эрозии.
@@ -228,9 +243,14 @@ func _gen_erode_row(z: int) -> void:
 		var h: float = _gen_ero_in[idx]
 		var g: Vector2 = _gen_slope_at(x, z)
 		var p := Vector2(float(x), float(z))
-		var cell: float = maxf(gen_erosion_scale, 2.0)
+		var cell: float = maxf(gen_erosion_scale, CELL_MIN)
 		var amp: float = gen_erosion_strength
 		for _o in maxi(gen_erosion_octaves, 1):
+			# МЕЛЬЧЕ CELL_MIN НЕ ДРОБИМ. Клетка в несколько метров — это полоса шириной в
+			# пару клеток сетки, то есть уже не яр, а пиксельный шум, который к тому же
+			# ловит алиасинг на LOD и мерцает в движении.
+			if cell < CELL_MIN:
+				break
 			var res: Vector3 = _stripe(p, g, cell)
 			# Крутой склон режется сильнее пологого: подъём крутизны в степень — это тот самый
 			# «erosion slope power», которым правят остроту хребтов.
@@ -244,7 +264,15 @@ func _gen_erode_row(z: int) -> void:
 			var k: float = amp * steep
 			h += k * (res.x - 1.0) * 0.5          # (cos − 1) ≤ 0: только вниз
 			# Производная полосы — в наклон, чтобы следующая октава шла уже по новым склонам.
-			g += Vector2(res.y, res.z) * k * 0.5
+			# ПРИДЕРЖИВАЕМ вклад: без ограничения он на порядок перебивает наклон самой горы,
+			# и следующая октава разворачивается уже не по склону, а по предыдущей полосе —
+			# ветвление превращается в вихрь.
+			var dg := Vector2(res.y, res.z) * k * 0.5
+			var dl: float = dg.length()
+			var cap: float = maxf(g.length() * 0.5, 0.05)
+			if dl > cap:
+				dg *= cap / dl
+			g += dg
 			cell *= 0.5
 			amp *= 0.5
 		_gen_ero_out[idx] = h
@@ -495,10 +523,43 @@ func _enter_tree() -> void:
 		_save_settings())
 	panel.add_child(_row("Size", size_spin))
 
-	_slider_row(panel, "Height", 1.0, 300.0, gen_amplitude, 1.0,
+	_sl_height = _slider_row(panel, "Height", 1.0, 300.0, gen_amplitude, 1.0,
 			func(v: float) -> void: gen_amplitude = v, 0)
-	_slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
+	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
+
+	# ── Пресет «природный» ───────────────────────────────────────────────────
+	# Кнопка нужна не для лени: у настроек ЕСТЬ СОГЛАСОВАННОСТЬ, и на глаз её не поймать.
+	# Высота и размер деталей связаны: 300 м высоты при деталях в 150 м — это склоны круче
+	# сорока пяти градусов на каждом шагу, и карта читается как игольница, что бы ни делала
+	# эрозия. Пресет ставит пропорцию, при которой массивы крупные, склоны проходимые, а
+	# мелкий рисунок отдан эрозии — ей это и положено.
+	var preset := Button.new()
+	preset.text = "Natural preset"
+	preset.tooltip_text = "Крупные массивы, проходимые склоны, мелкий рисунок за эрозией. После — Generate Terrain."
+	preset.pressed.connect(func() -> void:
+		gen_amplitude       = 110.0
+		gen_scale           = 520.0
+		gen_power           = 2.6
+		gen_octaves         = 6
+		gen_mountain_amount = 0.8
+		gen_ridge_sharpness = 2.2
+		gen_smooth          = 2
+		gen_erosion_enable      = true
+		gen_erosion_strength    = 5.0
+		gen_erosion_scale       = 130.0
+		gen_erosion_octaves     = 3
+		gen_erosion_slope_power = 1.4
+		_save_settings()
+		# Ручки двигаем сами: без этого ползунок показывает старое число, а генерация идёт по
+		# новому — расхождение, которое ищется дольше, чем правится.
+		if _sl_height != null: _sl_height.value = gen_amplitude
+		if _sl_features != null: _sl_features.value = gen_scale
+		var vals := [gen_erosion_strength, gen_erosion_scale, float(gen_erosion_octaves), gen_erosion_slope_power]
+		for i in mini(_sl_ero.size(), vals.size()):
+			if _sl_ero[i] != null and is_instance_valid(_sl_ero[i]):
+				_sl_ero[i].value = float(vals[i]))
+	panel.add_child(preset)
 
 	var canyon_cb = CheckBox.new()
 	canyon_cb.text = "Canyons"
@@ -587,14 +648,16 @@ func _enter_tree() -> void:
 		gen_erosion_enable = v
 		_save_settings())
 	adv_body.add_child(ero_chk)
-	_slider_row(adv_body, "Gully depth", 0.0, 25.0, gen_erosion_strength, 0.5,
-			func(v: float) -> void: gen_erosion_strength = v, 1)
-	_slider_row(adv_body, "Gully size", 20.0, 200.0, gen_erosion_scale, 5.0,
-			func(v: float) -> void: gen_erosion_scale = v, 0)
-	_slider_row(adv_body, "Branching", 1.0, 6.0, float(gen_erosion_octaves), 1.0,
-			func(v: float) -> void: gen_erosion_octaves = int(v), 0)
-	_slider_row(adv_body, "Slope bias", 0.2, 2.0, gen_erosion_slope_power, 0.1,
-			func(v: float) -> void: gen_erosion_slope_power = v, 1)
+	_sl_ero = [
+		_slider_row(adv_body, "Gully depth", 0.0, 25.0, gen_erosion_strength, 0.5,
+				func(v: float) -> void: gen_erosion_strength = v, 1),
+		_slider_row(adv_body, "Gully size", 40.0, 260.0, gen_erosion_scale, 5.0,
+				func(v: float) -> void: gen_erosion_scale = v, 0),
+		_slider_row(adv_body, "Branching", 1.0, 5.0, float(gen_erosion_octaves), 1.0,
+				func(v: float) -> void: gen_erosion_octaves = int(v), 0),
+		_slider_row(adv_body, "Slope bias", 0.4, 3.0, gen_erosion_slope_power, 0.1,
+				func(v: float) -> void: gen_erosion_slope_power = v, 1),
+	]
 
 	# ── Actions ──────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
