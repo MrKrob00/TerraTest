@@ -373,6 +373,12 @@ func reset_all() -> void:
 	tracked_id = ""
 	changed.emit()
 
+## Квест по id — ПУБЛИЧНО. Нужен тем, кто квест не создаёт, а ВЕДЁТ: контракты (contracts.gd)
+## переписывают один и тот же слот вместо того, чтобы плодить задания. Лезть за этим в
+## приватный _find значит однажды переименовать его и молча сломать чужой код.
+func find_quest(id: String) -> Dictionary:
+	return _find(id)
+
 func _find(id: String) -> Dictionary:
 	for q in quests:
 		if q["id"] == id:
