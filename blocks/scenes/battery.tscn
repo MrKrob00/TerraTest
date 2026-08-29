@@ -1,6 +1,6 @@
 [gd_scene format=4 uid="uid://bae56chf456bh"]
 
-[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://blocks/scripts/block.gd" id="1_s"]
+[ext_resource type="Script" path="res://blocks/scripts/battery.gd" id="1_s"]
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="2_ct8vg"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]

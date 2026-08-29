@@ -105,6 +105,12 @@ var output_map: Dictionary = {}
 # пережить сейв, а раскладка хранит клетки, не узлы.
 var port_map: Dictionary = {}
 
+# ЗАРЯД АККУМУЛЯТОРА, стоящего в этой клетке: "x,y,z" → сколько в нём энергии. Здесь по той
+# же причине, что output_map и port_map: заряд — свойство БЛОКА (battery.gd), а сейв хранит
+# клетки, не узлы. Без этой карты полный аккумулятор возвращался бы после перезахода пустым,
+# то есть ровно тем же способом, каким он раньше пустел при снятии с машины.
+var charge_map: Dictionary = {}
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
@@ -425,6 +431,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	rotation_map.erase(anchor)
 	output_map.erase(anchor)
 	port_map.erase(anchor)
+	charge_map.erase(anchor)
 
 func get_block(x: int, y: int, z: int) -> G.Block:
 	if _in_bounds(x, y, z):
@@ -517,6 +524,8 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 # Проставить блоку сохранённый выбор продукта. Имя поля разное у двух фабрик, поэтому
 # проверяем оба: общего интерфейса у них нет и заводить его ради одного числа незачем.
 func _apply_output(inst: Node, key: String) -> void:
+	if charge_map.has(key) and inst != null and ("charge" in inst):
+		inst.set("charge", float(charge_map[key]))     # аккумулятор родился с сохранённым зарядом
 	if inst is FactoryBlock and port_map.has(key):
 		(inst as FactoryBlock).ports = (port_map[key] as Dictionary).duplicate()
 	if not output_map.has(key) or inst == null:
@@ -822,6 +831,12 @@ func get_layout() -> Array:
 					# правило по умолчанию (маски граней), и хранить пустоту незачем.
 					if port_map.has(key) and not (port_map[key] as Dictionary).is_empty():
 						entry["ports"] = port_map[key]
+					# Заряд спрашиваем У ЖИВОГО УЗЛА: он тратится и копится каждую секунду, а
+					# карта — лишь то, с чем блок родился. Пустой аккумулятор поля не пишет.
+					var bnode: Node = node_map.get(key)
+					if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
+							and float(bnode.get("charge")) > 0.01:
+						entry["chg"] = float(bnode.get("charge"))
 					blocks_array.append(entry)
 	return blocks_array
 
@@ -851,6 +866,7 @@ func apply_layout(blocks_array: Array) -> void:
 	_init_map()
 	output_map.clear()
 	port_map.clear()
+	charge_map.clear()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 		# Выбор продукта кладём в карту ДО _spawn_all: узлы читают его при рождении.
