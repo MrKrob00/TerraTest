@@ -436,8 +436,18 @@ func _save_world() -> void:
 			# чисел на каждое сохранение; правка же это четыре числа, и по ней земля
 			# получается ровно такой же (см. map.flatten_area).
 			"ground": _ground_edits(),
+			# ЗАЧИЩЕННЫЕ УКРЕПЛЁННЫЕ ТОЧКИ — только их номера (outposts.gd). Координаты
+			# выводятся из постоянного зерна и всегда одни и те же; писать в сейв то, что и
+			# так вычисляется, значит однажды получить сейв, спорящий с кодом.
+			"outposts": _outposts_state(),
 		}))
 		f.close()
+
+## Состояние укреплённых точек — через группу, а не по пути: узел живёт в сцене мира, и
+## искать его строкой значило бы завязать сейв на раскладку сцены.
+func _outposts_state() -> Array:
+	var o: Node = get_tree().get_first_node_in_group("outposts")
+	return o.save_state() if (o != null and o.has_method("save_state")) else []
 
 func _load_world() -> void:
 	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
@@ -478,6 +488,11 @@ func _load_world() -> void:
 		# запечённой правки (см. map.bake_heights).
 		if not edits.is_empty() and terr0.has_method("bake_heights"):
 			terr0.bake_heights()
+	# Зачищенные точки восстанавливаем ДО машин: точка, которую игрок уже снёс, не должна
+	# успеть материализоваться заново, пока грузится всё остальное.
+	var op: Node = get_tree().get_first_node_in_group("outposts")
+	if op != null and op.has_method("load_state"):
+		op.load_state(data.get("outposts", []))
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])
