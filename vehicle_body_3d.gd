@@ -872,25 +872,84 @@ func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
 	return false
 
 # ══════════════════════════════════════════
-# ЦЕЛЬ ПОСТРОЙКИ — ВСЕГДА СВОЯ МАШИНА
+# СТРОЙКА НА ДРУГОЙ СВОЕЙ МАШИНЕ — ЧЕРЕЗ НЕЁ САМУ
 # ══════════════════════════════════════════
-# Здесь стоял второй механизм: луч тапа выбирал, на какой машине строить, и весь разбор
-# (сетка, превью, постановка, снятие) шёл через выбранную цель. Задумка была правильная —
-# достроить базу, не пересаживаясь, — но получилось ДВА разных пути постройки, и вести себя
-# они стали по-разному: наводка на соседнюю машину промахивалась мимо клеток, превью и
-# результат расходились. Один путь и одна машина: чтобы строить на базе, в неё пересаживаются
-# (круговое меню это уже умеет).
+# Строить на соседней своей машине (достроить фабрику, не пересаживаясь) удобно, но делать
+# это «отсюда» — плохая идея, и мы уже пробовали: цель протаскивалась через сетку, превью,
+# кузов под коллизию, обе подписки и пересборку связей, то есть получалась ВТОРАЯ реализация
+# постройки, которая вела себя иначе, чем первая.
 #
-# Функции оставлены как ЕДИНАЯ точка ответа «на чём строим»: весь остальной код спрашивает
-# через них, поэтому вернуть выбор цели, когда он будет продуман до конца, — это правка в
-# двух строках, а не снова по всему файлу.
+# Здесь наоборот: своего кода для этого случая НЕТ ВООБЩЕ. Луч нашёл другую машину игрока —
+# и мы просто просим ЕЁ обработать тот же тап. У неё тот же скрипт и те же методы, так что
+# она строит у себя ровно так же, как строила бы, сидй игрок в ней: её сетка, её призрак, её
+# коллизии, её подписки. Никакой разницы в ощущениях быть не может — код буквально один.
+#
+# Делегирует ТОЛЬКО активная машина (is_active). Это и защита от цепочки: цель, получив вызов,
+# сама уже никуда его не передаст, даже если её собственный луч во что-то упрётся.
+const BUILD_REACH := 30.0                # дальше этого чужая машина целью не становится
+
 func _bt() -> Node3D:
 	return self
 
 func _btm() -> Node:
 	return block_map_node
 
+## Другая машина ИГРОКА под лучом тапа — или null. «Своя» определяется списком машин у камеры:
+## faction тут мало (у баз он свой), а список камеры и есть ответ на вопрос, чем игрок владеет.
+func _player_machine_under(screen_pos: Vector2) -> Node:
+	if not is_active or camera_controller == null or camera_controller.camera == null:
+		return null
+	if not ("vehicles" in camera_controller):
+		return null
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	q.collision_mask = 2                          # слой блоков
+	q.exclude = [get_rid()]                       # себя не ищем: по себе и так строим
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return null
+	var root: Node = hit.get("collider")
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root == null or root == self or not (root is Node3D):
+		return null
+	if not camera_controller.vehicles.has(root):
+		return null                               # чужая машина — на ней не строим
+	if global_position.distance_squared_to((root as Node3D).global_position) > BUILD_REACH * BUILD_REACH:
+		return null
+	return root
+
+## Передать жест другой машине. РУКА ОБЩАЯ (держатель висит под камерой, один на всех), а вот
+## ФЛАГИ руки — block_take, что именно в ней, ручной поворот, откуда она взялась — у каждой
+## машины свои. Без переноса цель решила бы, что рука пуста, и вместо постановки блока сняла бы
+## с себя тот, на который навели. Обратно забираем по той же причине: блок мог уйти из руки
+## (поставили) или прийти в неё (сняли), и знать об этом должна та машина, которой рулят.
+func _delegate_build(other: Node, screen_pos: Vector2, commit: bool) -> void:
+	other.block_take = block_take
+	other.hand_kind = hand_kind
+	other.build_basis = build_basis
+	other._hand_from_inventory = _hand_from_inventory
+	if commit:
+		other._commit_build_tap(screen_pos)
+	else:
+		other._handle_click(screen_pos)
+	block_take = other.block_take
+	hand_kind = other.hand_kind
+	build_basis = other.build_basis
+	_hand_from_inventory = other._hand_from_inventory
+	# Своя подсветка гаснет: наводились не на нас, и оставленный на прошлой клетке призрак
+	# читался бы как «сюда тоже можно».
+	if ghost_block != null and is_instance_valid(ghost_block):
+		ghost_block.visible = false
+	block_body = null
+
 func _handle_click(screen_pos: Vector2) -> void:
+	# Тап пришёлся по другой своей машине — пусть наводится она сама (см. шапку раздела).
+	var other: Node = _player_machine_under(screen_pos)
+	if other != null:
+		_delegate_build(other, screen_pos, false)
+		return
 	var camera: Camera3D = camera_controller.camera
 	var world_origin: Vector3 = camera.project_ray_origin(screen_pos)
 	var world_dir: Vector3 = camera.project_ray_normal(screen_pos)
@@ -1466,6 +1525,12 @@ func _refill_hand_from_inventory(bt: int, keep_basis: bool = false) -> void:
 # его; рука пуста → БЕРЁМ наведённый блок. Одиночный тап только наводит/подсвечивает (_handle_click).
 var _last_commit_ms: int = 0
 func _commit_build_tap(screen_pos: Vector2) -> void:
+	# Подтверждение уходит туда же, куда ушло наведение: ставит и снимает блок ТА машина, по
+	# которой попал луч. Иначе наведение было бы у неё, а постановка у нас.
+	var other: Node = _player_machine_under(screen_pos)
+	if other != null:
+		_delegate_build(other, screen_pos, true)
+		return
 	var now := Time.get_ticks_msec()
 	if now - _last_commit_ms < 250:
 		return                           # антидубль: на мобилке тач И эмулированная мышь дают двойной
