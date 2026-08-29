@@ -206,7 +206,31 @@ func _grade_locked(q: Dictionary) -> bool:
 
 var _sel_id: String = ""              # выбранное В ЖУРНАЛЕ (не то же, что отслеживаемое)
 
+## Строки списка: {btn, q, base} — чтобы дописывать к ним расстояние, не пересобирая журнал.
+var _rows: Array = []
+var _dist_t: float = 0.0
+const DIST_INTERVAL := 0.5      # с: чаще незачем — цифра в метрах, а машина не телепортируется
+
+func _process(delta: float) -> void:
+	if _list_panel == null or not _list_panel.visible or _rows.is_empty():
+		return
+	_dist_t -= delta
+	if _dist_t > 0.0:
+		return
+	_dist_t = DIST_INTERVAL
+	for r in _rows:
+		_apply_distance(r)
+
+func _apply_distance(row: Dictionary) -> void:
+	var b = row.get("btn")
+	if not (b is Button) or not is_instance_valid(b):
+		return
+	var d: float = _distance_to(row["q"])
+	(b as Button).text = String(row["base"]) if d < 0.0 \
+			else String(row["base"]) + "      %d m" % int(d)
+
 func _rebuild_list() -> void:
+	_rows.clear()
 	for c in _list.get_children():
 		c.queue_free()
 	var vis: Array = Q.visible_quests()
@@ -246,10 +270,14 @@ func _make_row(q: Dictionary) -> Control:
 	b.add_theme_font_size_override("font_size", 15)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	var mark := _type_mark(q)
-	var dist := _distance_to(q)
-	b.text = "  %s  %s%s" % [mark, str(q["title"]), _stage_suffix(q)]
-	if dist >= 0.0:
-		b.text += "      %d m" % int(dist)
+	var base: String = "  %s  %s%s" % [mark, str(q["title"]), _stage_suffix(q)]
+	b.text = base
+	# Строку запоминаем, чтобы РАССТОЯНИЕ обновлялось на месте (см. _process). Пересобирать
+	# ради цифры весь список нельзя: список пересобирается только по событию квеста, а игрок
+	# едет к цели с открытым журналом — и метры в нём стояли намертво, показывая расстояние на
+	# момент открытия.
+	_rows.append({"btn": b, "q": q, "base": base})
+	_apply_distance(_rows[_rows.size() - 1])
 	if String(q.get("id", "")) == Q.tracked_id:
 		b.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
 	b.pressed.connect(func():

@@ -539,8 +539,8 @@ const DUEL_DIST := 200.0
 const DUEL_TRIGGER := 50.0
 ## Насколько дуэлянты стоят друг от друга.
 const DUEL_GAP := 18.0
-## Сколько ждать перед тем, как событие может случиться снова.
-const DUEL_COOLDOWN := 420.0
+## Сколько ждать перед тем, как событие может случиться снова, — общее для всех событий
+## (см. _event_cooldown в разделе «ПОВТОРЯЕМЫЕ СОБЫТИЯ»).
 
 var _duel_point: Variant = null      # куда ехать (Vector3) или null — точки ещё нет
 var _duel_a: Node3D = null
@@ -595,7 +595,7 @@ func _duel_2(q: Dictionary) -> void:
 	if is_instance_valid(_duel_a) or is_instance_valid(_duel_b):
 		return
 	Q.report(String(q["event"]), 1)
-	_duel_cool = DUEL_COOLDOWN
+	_duel_cool = _event_cooldown()   # дуэль — такое же событие, пауза общая
 	_duel_point = null
 
 ## Перезарядка события: отлежалось — открываем заново. Без этого «событие» случилось бы
@@ -691,7 +691,15 @@ func _spawn_thief() -> Node3D:
 # ПО РАССТОЯНИЮ. Без последней брошенное событие висело бы в журнале навсегда, а его
 # участники — в мире.
 const EV_ABANDON := 500.0      # уехал дальше — событие снимается (как в оригинале)
-const EV_COOLDOWN := 420.0     # сколько остывает, прежде чем случиться снова
+## ОСТЫВАНИЕ — МИНУТА-ДВЕ, а не семь. Семь минут означало, что между событиями игрок едет по
+## пустой карте: события — это и есть то, ЧТО с ним происходит, пока он не занят сюжетом.
+## Разброс, а не одно число: одинаковая пауза читается как расписание.
+const EV_COOLDOWN_MIN := 60.0
+const EV_COOLDOWN_MAX := 120.0
+
+func _event_cooldown() -> float:
+	return randf_range(EV_COOLDOWN_MIN, EV_COOLDOWN_MAX)
+
 const EV_TRIGGER := 60.0       # на каком подлёте событие «начинается»
 
 var _ev_point: Dictionary = {}   # id события → Vector3, куда ехать
@@ -734,19 +742,22 @@ func _ev_reached(key: String) -> bool:
 		return false
 	return p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_TRIGGER * EV_TRIGGER
 
-## УЕХАЛ — снимаем. Возвращает true, если событие снято: вызывающий сразу выходит.
-## Проверяем ТОЛЬКО когда участники уже в мире: пока их нет, «далеко» — это нормальное
-## состояние только что объявленного задания.
+## УЕХАЛ ЗА EV_ABANDON — снимаем. Возвращает true, если событие снято: вызывающий сразу выходит.
+##
+## Меряем от ТОЧКИ СОБЫТИЯ, и участники для этого не нужны. Раньше проверка ждала, пока они
+## появятся в мире (а появляются они, только когда игрок доедет), и объявленное событие, к
+## которому игрок так и не поехал, висело в журнале вечно — занимая место, которое теперь
+## делят всего два события.
 func _ev_abandoned(q: Dictionary, key: String) -> bool:
 	var p: Node3D = _player()
-	if p == null or not _ev_point.has(key) or not _ev_mobs.has(key):
+	if p == null or not _ev_point.has(key):
 		return false
 	if p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_ABANDON * EV_ABANDON:
 		return false
 	_ev_clear(key)
 	# Остывание ставим и здесь: снятое событие обязано вернуться, иначе «уехал один раз» —
 	# и этот тип задания больше не случается никогда.
-	_ev_cool[String(q["id"])] = EV_COOLDOWN
+	_ev_cool[String(q["id"])] = _event_cooldown()
 	Q.skip_quest(String(q["id"]))
 	return true
 
@@ -770,10 +781,10 @@ func _ev_all_dead(key: String) -> bool:
 			return false
 	return true
 
-## Событие завершено: остывает и через EV_COOLDOWN открывается снова.
+## Событие завершено: остывает и через минуту-две открывается снова.
 func _ev_done(q: Dictionary, key: String) -> void:
 	Q.report(String(q["event"]), 1)
-	_ev_cool[String(q["id"])] = EV_COOLDOWN
+	_ev_cool[String(q["id"])] = _event_cooldown()
 	_ev_mobs.erase(key)
 	_ev_point.erase(key)
 
