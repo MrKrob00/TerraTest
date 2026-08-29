@@ -119,7 +119,15 @@ var _anchor_tween: Tween = null
 # Стационарная структура (база): спавнится сразу на якоре, снять якорь/ехать нельзя.
 # Ставится флаг при спавне через _place_ground_structure (ядро — стационарный блок).
 var is_station: bool = false
-const ANCHOR_MAX_RISE := 0.5      # м: максимальный перепад земли под машиной для фиксации
+## РОВНОСТЬ ПЛОЩАДКИ МЕРИТСЯ ДВУМЯ РАЗНЫМИ ЧИСЛАМИ, и это главное здесь. Раньше был один порог
+## на перепад высот в 0.5 м по пятну 4×4 — то есть уклон 7°, — и на естественном рельефе таких
+## мест почти нет: якорь ставился «не на всякой равнине, надо было выбирать идеал». Но склон и
+## бугор мешают ПО-РАЗНОМУ. Ровный СКЛОН машине не мешает: на якоре она всё равно выравнивается
+## в 0° и поднимается на полметра, ей нужно место, а не горизонт. А вот БУГОР или яма под днищем
+## — мешают по-настоящему: машина упирается в них корпусом. Поэтому уклон разрешён щедро
+## (ANCHOR_MAX_RISE), а отклонение середины от плоскости углов — нет (ANCHOR_MAX_BUMP).
+const ANCHOR_MAX_RISE := 1.4      # м: перепад земли по пятну ±2 м, то есть уклон около 20°
+const ANCHOR_MAX_BUMP := 0.45     # м: насколько середина пятна может выпирать из плоскости углов
 const ANCHOR_MAX_HEIGHT := 2.5    # м: выше этого над землёй якорить нельзя (прыжок/полёт)
 
 
@@ -279,6 +287,35 @@ func is_core_block(b: Node) -> bool:
 		return true
 	return b == station_core()
 
+## ГОДИТСЯ ЛИ МЕСТО ПОД ЯКОРЬ ПРЯМО СЕЙЧАС. Отдельной функцией, потому что ответ нужен ДВОИМ:
+## самой постановке и кнопке в HUD, которая должна гореть ЗАРАНЕЕ — иначе игрок узнаёт про
+## отказ единственным способом, каким его показывает игра: подкидыванием машины. Считать одно
+## и то же в двух местах нельзя: пороги разъедутся, и кнопка начнёт врать.
+##
+## Высоту спрашиваем через G.ground_y — она же отвечает «не знаю» (отдаёт запасное), пока
+## высоты карты не прочитаны; сырой terrain_height_at в этот момент возвращает ноль, и по нему
+## любая площадка выглядит обрывом.
+func anchor_spot_ok() -> bool:
+	var here: float = G.ground_y(global_position, global_position.y - 1.5)
+	# (1) Высоко над землёй (прыжок/полёт/обрыв) — не якорим.
+	if global_position.y - here > ANCHOR_MAX_HEIGHT:
+		return false
+	# (2) Площадка: четыре угла пятна ±2 м плюс середина.
+	var hs: Array[float] = []
+	for off in [Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
+		hs.append(G.ground_y(global_position + off, here))
+	var mn: float = hs[0]
+	var mx: float = hs[0]
+	var sum: float = 0.0
+	for h in hs:
+		mn = minf(mn, h)
+		mx = maxf(mx, h)
+		sum += h
+	if mx - mn > ANCHOR_MAX_RISE:
+		return false                       # слишком крутой склон
+	# Середина не должна выпирать из плоскости углов: это бугор под днищем (или яма).
+	return absf(here - sum / float(hs.size())) <= ANCHOR_MAX_BUMP
+
 func toggle_anchor() -> bool:
 	if is_station:
 		return true                        # стационарная база всегда на якоре — снять нельзя
@@ -288,23 +325,10 @@ func toggle_anchor() -> bool:
 	if not has_support():
 		_anchor_refuse_hop()               # без фикс-опоры якорь не ставится (нужен блок SUPPORT)
 		return false
-	var terr: Node = _find_terrain()
-	var ground_center: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-	# (1) Высоко над землёй (прыжок/полёт/обрыв) — не якорим, просто подкидывает.
-	if global_position.y - ground_center > ANCHOR_MAX_HEIGHT:
+	if not anchor_spot_ok():
 		_anchor_refuse_hop()
 		return false
-	# (2) Ровность: 4 угла + центр (математика по террейну, от подъёма не зависит).
-	if terr != null:
-		var mn := INF
-		var mx := -INF
-		for off in [Vector3.ZERO, Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
-			var h: float = terr.terrain_height_at(global_position + off)
-			mn = minf(mn, h)
-			mx = maxf(mx, h)
-		if mx - mn > ANCHOR_MAX_RISE:
-			_anchor_refuse_hop()
-			return false
+	var terr: Node = _find_terrain()
 	freeze = true
 	anchored = true
 	linear_velocity = Vector3.ZERO
@@ -317,21 +341,39 @@ func toggle_anchor() -> bool:
 	_anchor_tween.parallel().tween_property(self, "global_rotation:z", 0.0, 0.12)
 	# (6) Колонна-упор до земли (размер под конечную высоту).
 	var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-	var depth: float = maxf(target_y - ground_y, 0.4)
-	_anchor_column = MeshInstance3D.new()
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = 0.18
-	cyl.bottom_radius = 0.28
-	cyl.height = depth
-	_anchor_column.mesh = cyl
-	_anchor_column.position = Vector3(0, -depth * 0.5, 0)
-	add_child(_anchor_column)
+	_build_anchor_column(maxf(target_y - ground_y, 0.4))
 	# Контакт-сброс: следим за столкновениями, пока на якоре.
 	contact_monitor = true
 	max_contacts_reported = 4
 	if not body_entered.is_connected(_on_anchor_contact):
 		body_entered.connect(_on_anchor_contact)
 	return true
+
+## КОЛОННА СТАВИТСЯ ПОД ЯДРО, А НЕ ПОД НАЧАЛО КООРДИНАТ МАШИНЫ. У блока 2×2×2 (продавец,
+## фабрикатор, процессор) якорная клетка — УГЛОВАЯ: футпринт растёт от неё в минус по X и Z
+## (blocks._block_footprint), поэтому середина блока смещена на пол-клетки, а начало координат
+## машины остаётся у угла. Столб рисовался в начале координат и торчал рядом с постройкой —
+## ровно то, что видно на скриншоте: «магазин ушёл от якоря». Смещение берём у самого блока
+## (VehicleBlock.cells_center — центр футпринта в его осях) и поворачиваем вместе с ним, чтобы
+## оно осталось верным на повёрнутой базе.
+func _core_center_offset() -> Vector3:
+	var core: Node3D = station_core()
+	if core == null:
+		return Vector3.ZERO                # обычная машина: кабина и так в центре сетки
+	var c = core.get("cells_center")
+	var local: Vector3 = (c as Vector3) if c is Vector3 else Vector3.ZERO
+	return core.position + core.basis * local
+
+func _build_anchor_column(depth: float) -> void:
+	var off: Vector3 = _core_center_offset()
+	_anchor_column = MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.18
+	cyl.bottom_radius = 0.28
+	cyl.height = depth
+	_anchor_column.mesh = cyl
+	_anchor_column.position = Vector3(off.x, -depth * 0.5, off.z)
+	add_child(_anchor_column)
 
 # Отказ якоря (высоко/неровно): без сообщений — машину просто подкидывает вверх,
 # якорь не ставится. Живая обратная связь вместо текста.
@@ -377,15 +419,7 @@ func _anchor_station() -> void:
 	if _anchor_column == null or not is_instance_valid(_anchor_column):
 		var terr: Node = _find_terrain()
 		var ground_y: float = terr.terrain_height_at(global_position) if terr else (global_position.y - 1.5)
-		var depth: float = maxf(global_position.y - ground_y, 0.4)
-		_anchor_column = MeshInstance3D.new()
-		var cyl := CylinderMesh.new()
-		cyl.top_radius = 0.18
-		cyl.bottom_radius = 0.28
-		cyl.height = depth
-		_anchor_column.mesh = cyl
-		_anchor_column.position = Vector3(0, -depth * 0.5, 0)
-		add_child(_anchor_column)
+		_build_anchor_column(maxf(global_position.y - ground_y, 0.4))
 	_connect_station_core()
 
 # 4A: гибель стационарного ЯДРА (SELLER) = структура разваливается (как кабина у машины).
@@ -1168,9 +1202,21 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	_preview_res = null
 	var inst: Node3D = holder.get_child(0)
 	inst.top_level = true
-	inst.global_transform = Transform3D(Basis(Vector3.UP, build_basis.get_euler().y), _cabin_ground + Vector3.UP * 1.2)
+	# Превью показывает блок ТАМ ЖЕ, где он окажется после постановки (_place_ground_structure
+	# вычитает тот же сдвиг): у 2×2×2 начало координат в углу, и без поправки превью стояло на
+	# пол-клетки в стороне от того места, куда блок в итоге вставал.
+	var pyaw: float = build_basis.get_euler().y
+	var poff: Vector3 = Basis(Vector3.UP, pyaw) * _cells_center_of(inst)
+	inst.global_transform = Transform3D(Basis(Vector3.UP, pyaw),
+			_cabin_ground + Vector3.UP * 1.2 - Vector3(poff.x, 0.0, poff.z))
 	if ghost_block:
 		ghost_block.visible = false
+
+## Центр футпринта блока в его собственных осях: у одноклеточного ноль, у 2×2×2 — пол-клетки
+## по X и Z в минус (см. VehicleBlock.cells_center, blocks._block_footprint).
+func _cells_center_of(inst: Node) -> Vector3:
+	var c = inst.get("cells_center") if inst != null else null
+	return (c as Vector3) if c is Vector3 else Vector3.ZERO
 
 func _place_ground_structure(instance: Node3D) -> void:
 	var core: int = int(instance.get("block"))
@@ -1225,9 +1271,16 @@ func _place_ground_structure(instance: Node3D) -> void:
 		v.freeze = true
 		v.linear_velocity = Vector3.ZERO
 		v.angular_velocity = Vector3.ZERO
-	v.global_position = _cabin_ground + Vector3.UP * 1.2
+	# СТАВИМ ТУДА ЯДРО, А НЕ НАЧАЛО КООРДИНАТ МАШИНЫ. У блока 2×2×2 якорная клетка угловая
+	# (футпринт растёт от неё в минус по X и Z), значит середина ядра смещена от начала
+	# координат на пол-клетки. Машина вставала в точку тапа началом координат — и продавец
+	# оказывался в стороне от места, куда его ставили, и от собственного столба якоря. Ровно
+	# этот сдвиг и виден на скриншоте.
+	var yaw: float = build_basis.get_euler().y
+	var core_off: Vector3 = Basis(Vector3.UP, yaw) * _cells_center_of(instance)
+	v.global_position = _cabin_ground + Vector3.UP * 1.2 - Vector3(core_off.x, 0.0, core_off.z)
 	if v is Node3D:
-		v.global_rotation.y = build_basis.get_euler().y   # уважаем ручной поворот игрока (как в превью)
+		v.global_rotation.y = yaw                         # уважаем ручной поворот игрока (как в превью)
 	if v.has_method("apply_build"):
 		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # ядро в ЦЕНТРЕ сетки 11³
 	# Ядро базы → машина на якоре (нельзя ехать/снять якорь). Опора здесь равноправна с

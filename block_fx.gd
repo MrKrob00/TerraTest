@@ -118,7 +118,11 @@ static func heal(block: Node3D, duration: float = 0.55) -> void:
 	mat.shader = SHADER
 	mat.set_shader_parameter("mode", 2)              # цифры 0/1
 	mat.set_shader_parameter("color_damage", HEAL_A) # ...но зелёные: та же матрица, другой смысл
-	mat.set_shader_parameter("damage_cells", 10.0)   # мельче, чем у урона: ремонт «шьёт», а не бьёт
+	# Цифры ТОГО ЖЕ размера, что у оверлея хп (block_hp.gdshader, cells_per_meter = 6): рядом с
+	# крупными красными цифрами повреждения мелкая зелёная сетка (было 10) читалась как шум, а
+	# не как «этот блок сейчас чинят». Два эффекта про одно и то же — хп блока — и мерить их
+	# одной меркой правильнее, чем подбирать каждому свою.
+	mat.set_shader_parameter("damage_cells", 6.0)
 	mat.set_shader_parameter("progress", 0.0)
 	mat.set_shader_parameter("seed", randf() * 100.0)
 	fx.material_override = mat

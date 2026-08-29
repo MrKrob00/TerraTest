@@ -1,5 +1,11 @@
-# regen.gd — блок регенерации: раз в интервал чинит повреждённые блоки СВОЕЙ машины
-# в радиусе, тратя энергию машины (vehicle.energy_consume). Нет энергии — не чинит.
+# regen.gd — блок регенерации: раз в интервал чинит повреждённые блоки В РАДИУСЕ, тратя
+# энергию своей машины (vehicle.energy_consume). Нет энергии — не чинит.
+#
+# ЧИНИТ ВСЁ, ДО ЧЕГО ДОТЯГИВАЕТСЯ, а не только свою машину: блок, лежащий на земле, блок
+# другой твоей машины, блок ВРАЖЕСКОЙ машины — тоже. И наоборот: вражеский реген лечит блоки
+# игрока. Это не недосмотр, а правило — поле маленькое (REGEN_RADIUS), и чтобы им зацепить
+# чужую технику, надо стоять к ней вплотную; зато починить сбитый борт соседней машины или
+# подобранный хлам можно, не разбирая половину сборки.
 extends VehicleBlock
 
 const REGEN_RADIUS := 4.6      # м: как далеко достаёт
@@ -81,22 +87,44 @@ func _physics_process(delta: float) -> void:
 	if _timer > 0.0:
 		return
 	_timer = REGEN_INTERVAL
-	for b in blocks_node.get_children():
+	# Кого чинить, спрашиваем У ФИЗИКИ, а не у своего узла blocks: раньше перебирались только
+	# соседи по машине, и поле, накрывшее лежащий на земле блок или борт стоящей рядом машины,
+	# не делало с ними ничего. Слой 2 — это блоки, все и всюду: на машине, на базе, в мире.
+	for b in _blocks_in_field():
 		# СЕБЯ ТОЖЕ ЧИНИМ. Раньше блок себя пропускал, и пробитый реген оставался пробитым:
 		# чинил всё вокруг, кроме единственного блока, от которого зависит вся починка.
-		if not ("current_hp" in b) or not (b is Node3D):
-			continue
 		if b.current_hp >= b.max_hp:
-			continue
-		if global_position.distance_squared_to((b as Node3D).global_position) > REGEN_RADIUS * REGEN_RADIUS:
 			continue
 		# Платим за каждый блок отдельно: не хватило на этого — дальше смысла нет.
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
 			break
 		b.current_hp = mini(b.current_hp + REGEN_HP, b.max_hp)
-		BlockFX.heal(b as Node3D)             # зелёная «матрица»: видно, ЧТО именно чинится
+		BlockFX.heal(b)                       # зелёная «матрица»: видно, ЧТО именно чинится
 		if b.has_method("_refresh_hp_fx"):
 			b._refresh_hp_fx()               # подлечили → цифр меньше (или блок снова чистый)
+
+## Все блоки в поле — запросом сферой по слою блоков. Потолок в 32 тела берём такой же, как у
+## взрыва: поле маленькое, и упереться в него можно только внутри плотной сборки, где лишний
+## блок починится следующим тиком.
+const FIELD_MAX_BODIES := 32
+
+func _blocks_in_field() -> Array:
+	var world := get_world_3d()
+	if world == null:
+		return []
+	var sphere := SphereShape3D.new()
+	sphere.radius = REGEN_RADIUS
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = sphere
+	q.transform = Transform3D(Basis(), global_position)
+	q.collision_mask = 2                      # слой блоков (VehicleBlock.collision_layer = 2)
+	q.collide_with_bodies = true
+	var out: Array = []
+	for hit in world.direct_space_state.intersect_shape(q, FIELD_MAX_BODIES):
+		var b = hit.get("collider")
+		if b is Node3D and ("current_hp" in b) and ("max_hp" in b):
+			out.append(b)
+	return out
 
 func _show_field(on: bool) -> void:
 	if _field != null and _field.visible != on:
