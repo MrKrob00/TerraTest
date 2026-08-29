@@ -289,6 +289,7 @@ func _base_tick(delta: float) -> void:
 		return
 	if _can_see_target():
 		_forget_timer = forget_enemy_time
+		_turn_to_target(delta)
 		_do_attack()
 		return
 	_forget_timer -= delta
@@ -747,6 +748,60 @@ func _do_attack() -> void:
 			_atk_n = -1                 # блок уничтожили — пересоберём кеш
 			continue
 		b.attack()
+
+## ПОВОРОТНАЯ ОПОРА РАБОТАЕТ И У ВРАГА. У игрока ROT_SUPPORT доворачивает заякоренную машину
+## джойстиком; здесь то же самое делает ИИ — правило одно, разница только в том, кто рулит.
+## Без этого блок на вражеской базе был бы просто кубиком с хитпоинтами.
+##
+## Что это меняет. Турель держит сектор ±YAW_LIMIT, поэтому у глухой постройки (аванпост,
+## форт) за спиной мёртвая зона, и закрывают её только стволами, развёрнутыми в разные
+## стороны. Вращающейся башне хватает одного направления — и на неё наконец имеет смысл
+## ставить МОРТИРУ: она без башни и бьёт строго по курсу корпуса.
+##
+## Крутим ТОЛЬКО по Y и только к видимой цели: наклон базы — это её посадка на рельеф, и
+## трогать его нельзя, иначе постройка начнёт заваливаться от каждого доворота.
+const BASE_TURN_SPEED := 0.8          # рад/с ≈ 45°/с: башня доворачивается, а не щёлкает
+const BASE_TURN_DEAD := 0.02          # мёртвая зона, чтобы не дрожать на почти нулевой разнице
+
+var _rot_support_t: float = 0.0       # когда пересчитывали наличие поворотной опоры
+var _rot_support: bool = false
+
+func _turn_to_target(delta: float) -> void:
+	if not _has_rot_support(delta) or not is_instance_valid(_target):
+		return
+	var to: Vector3 = _target.global_position - global_position
+	to.y = 0.0
+	if to.length_squared() < 0.01:
+		return
+	# Машина смотрит по −Z, значит нужный угол — atan2(−x, −z).
+	var want: float = atan2(-to.x, -to.z)
+	var diff: float = wrapf(want - global_rotation.y, -PI, PI)
+	if absf(diff) < BASE_TURN_DEAD:
+		return
+	var step: float = clampf(diff, -BASE_TURN_SPEED * delta, BASE_TURN_SPEED * delta)
+	global_rotation.y += step
+
+## Стоит ли на базе поворотная опора. Пересчитываем РЕДКО и заново: блок могут сбить, и
+## тогда башня обязана замереть — это и есть способ её обезвредить, не разбирая целиком.
+func _has_rot_support(delta: float) -> bool:
+	_rot_support_t -= delta
+	if _rot_support_t > 0.0:
+		return _rot_support
+	_rot_support_t = 1.0
+	_rot_support = false
+	var bl: Node = get_node_or_null("blocks")
+	if bl == null:
+		return false
+	for b in bl.get_children():
+		if b.get("block") != null and int(b.get("block")) == G.Block.ROT_SUPPORT:
+			_rot_support = true
+			break
+	# КИНЕМАТИЧЕСКАЯ заморозка, а не статическая: статическое тело физика считает НЕПОДВИЖНЫМ
+	# и не переносит его движение на контакты — машина игрока, прижатая к вращающейся башне,
+	# проваливалась бы в неё рывками. Ставим один раз, когда опора нашлась.
+	if _rot_support and freeze_mode != RigidBody3D.FREEZE_MODE_KINEMATIC:
+		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	return _rot_support
 
 func _lose_target() -> void:
 	if relentless and is_instance_valid(_target):
