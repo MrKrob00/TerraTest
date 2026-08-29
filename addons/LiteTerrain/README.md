@@ -279,6 +279,11 @@ features means slopes steeper than 45° everywhere, and the map reads as a pincu
 what else you do. The preset picks large land masses, drivable slopes, and leaves the fine
 detail to erosion — which is what erosion is for.
 
+Snow is painted where the mountain **mask** overlaps ground above `snow_line` (soft over
+`snow_blend`). The mask alone says only *where the mountain region is*, not how high the ground
+got there — painting by it put white patches on flat ground and the colour stopped matching the
+landform.
+
 ### Erosion
 
 A filter laid over the finished height, not a simulation. Real hydraulic erosion means running

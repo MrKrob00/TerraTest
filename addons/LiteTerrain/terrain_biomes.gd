@@ -62,6 +62,11 @@ extends Resource
 # Snow follows the MOUNTAIN biome rather than altitude: the colour comes from its mask.
 @export_group("Snow / rock")
 @export var color_snow: Color = Color(0.94, 0.96, 1.00)
+## С КАКОЙ ВЫСОТЫ ЛОЖИТСЯ СНЕГ (мировые единицы) и насколько мягкая эта граница. Маска гор
+## говорит, ГДЕ горный район, но ничего не говорит о том, насколько там поднялась земля:
+## покрашенный по одной маске снег ложился белыми пятнами на ровное место внутри района.
+@export_range(-100.0, 400.0, 1.0) var snow_line: float = 60.0
+@export_range(1.0, 120.0, 1.0) var snow_blend: float = 25.0
 @export var color_rock: Color = Color(0.40, 0.41, 0.43)
 ## How steep a slope has to be before the surface turns to rock.
 @export_range(0.0, 1.0, 0.01) var rock_threshold: float = 0.7
@@ -140,6 +145,8 @@ func apply_to_material(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("color_canyon", color_canyon)
 	mat.set_shader_parameter("canyon_band_h", canyon_band_height)
 	mat.set_shader_parameter("color_snow", color_snow)
+	mat.set_shader_parameter("snow_line", snow_line)
+	mat.set_shader_parameter("snow_blend", snow_blend)
 	mat.set_shader_parameter("color_rock", color_rock)
 	mat.set_shader_parameter("rock_threshold", rock_threshold)
 	mat.set_shader_parameter("rock_blend", rock_blend)
