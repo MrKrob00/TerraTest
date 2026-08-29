@@ -40,14 +40,8 @@ static func name_for(id: int) -> String:
 
 func _ready() -> void:
 	_pin = _label("◆", 150, 0.0)
-	# Имя плюс УРОВЕНЬ: разброс сил у врагов имеет смысл, только если игрок видит, кто перед
-	# ним, — иначе одинаковые на вид машины дерутся по-разному без объяснения. Уровня нет
-	# (база, квестовый враг) — показываем одно имя, как раньше.
-	var who: String = name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id())
-	var lvl: int = int(vehicle.get("enemy_tier")) if (vehicle != null and vehicle.get("enemy_tier") != null) else 0
-	if lvl > 0:
-		who += "  lv %d" % lvl
-	_name = _label(who, 64, -0.55)
+	_name = _label(name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id()),
+			64, -0.55)
 	_build_plate()
 
 func _label(text: String, font_size: int, y: float) -> Label3D:
