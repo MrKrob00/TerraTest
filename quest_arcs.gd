@@ -429,7 +429,12 @@ func _spawn_station(at: Vector3, layout: Array) -> Node3D:
 	# стоит в самом начале координат машины, значит его низ на полметра ниже — отсюда и
 	# половина. Со старыми 1.2 база висела над землёй, и вместе с ней висела в воздухе вся
 	# линия конвейера: у неё под собой ничего нет, она держится соседями.
-	v.global_position = at + Vector3.UP * 0.5
+	# СТАВИМ В ТОЧКУ ЦЕНТР ЯДРА, А НЕ НАЧАЛО КООРДИНАТ. У блока 2×2×2 (продавец) якорная клетка
+	# УГЛОВАЯ: футпринт растёт от неё в минус по X и Z, поэтому машина, поставленная в `at`
+	# началом координат, оказывается смещённой на пол-клетки — постройка стоит не в середине
+	# выровненной площадки, а её угол. То же самое делает ручная постановка базы
+	# (vehicle_body_3d._place_ground_structure), и правило обязано быть одним.
+	v.global_position = at + Vector3.UP * 0.5 - _core_xz_offset(layout)
 	if v.has_method("apply_build"):
 		v.apply_build(layout)
 	if "is_station" in v:
@@ -442,6 +447,25 @@ func _spawn_station(at: Vector3, layout: Array) -> Node3D:
 	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
 		cc.vehicles.append(v)                  # чтобы на неё можно было переключиться
 	return v
+
+## Сдвиг центра ЯДРА относительно начала координат машины, по XZ. Ядром считаем блок в центре
+## сетки (5,5,5) — туда его кладут все раскладки баз. Смещение спрашиваем у самой сцены блока
+## (VehicleBlock.cells_center): второй таблицы размеров рядом с blocks._block_footprint быть
+## не должно.
+func _core_xz_offset(layout: Array) -> Vector3:
+	for e in layout:
+		if int(e.get("x", -1)) != 5 or int(e.get("y", -1)) != 5 or int(e.get("z", -1)) != 5:
+			continue
+		var scene: PackedScene = G.get_scene(int(e.get("block", 0)))
+		if scene == null:
+			return Vector3.ZERO
+		var inst: Node = scene.instantiate()
+		var c = inst.get("cells_center")
+		inst.free()                            # орфан: в дерево не попадал, _ready не отработал
+		if c is Vector3:
+			return Vector3((c as Vector3).x, 0.0, (c as Vector3).z)
+		return Vector3.ZERO
+	return Vector3.ZERO
 
 ## Блок нужного типа на базе, которую положил квест.
 func _find_in_base(bt: int) -> Node:
