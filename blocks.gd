@@ -144,6 +144,7 @@ func _define_layout() -> void:
 		10: _layout_siege()
 		11: _layout_outpost()
 		12: _layout_fort()
+		13: _layout_turret_post()
 		_: _layout_default()
 
 # Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
@@ -345,6 +346,20 @@ func _layout_fort() -> void:
 	set_block(5, 7, 6, G.Block.ROCKET, 0.0)
 	set_block(4, 6, 5, G.Block.GUN, PI / 2)
 	set_block(6, 6, 5, G.Block.GUN, -PI / 2)
+
+## ПОВОРОТНАЯ БАШНЯ: ядро — ROT_SUPPORT, и это меняет саму постройку. У аванпоста и форта
+## корпус приколочен, поэтому им нужны стволы, РАЗВЁРНУТЫЕ в разные стороны: турель держит
+## сектор ±YAW_LIMIT, и глухая коробка иначе имеет мёртвую зону за спиной. Здесь корпус сам
+## доворачивается к цели (enemy_vehicle._turn_to_target), значит хватает одного направления —
+## зато сюда становится осмысленной МОРТИРА: она без башни и бьёт строго по курсу корпуса,
+## то есть на неподвижной базе почти бесполезна, а на вращающейся наконец работает.
+func _layout_turret_post() -> void:
+	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)
+	set_block(5, 6, 5, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	_side_armor(5)
+	set_block(5, 7, 5, G.Block.GUN, 0.0)
+	set_block(5, 6, 6, G.Block.MORTAR, 0.0)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:
