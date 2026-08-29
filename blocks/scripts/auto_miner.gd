@@ -77,7 +77,7 @@ func _take_energy() -> bool:
 	# ни аккумуляторов: ёмкость ноль, выработка ноль, и списать с неё нельзя НИКОГДА. Шахтёр
 	# молча не добывал ничего, а сказать об этом ему нечем — блок читался как сломанный.
 	# Появилась панель — появилась и плата за цикл, правило «фабрика ест энергию» в силе.
-	if v.has_method("energy_capacity") and float(v.energy_capacity()) <= 0.0:
+	if v.has_method("energy_cap") and float(v.energy_cap()) <= 0.0:
 		return true
 	var need: float = energy_per_sec * mine_interval
 	return v.energy_consume(need) >= need - 0.001
