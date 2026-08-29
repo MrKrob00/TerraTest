@@ -369,13 +369,15 @@ func _toggle_settings() -> void:
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
 class AnchorIcon extends Control:
 	var active := false          # машина СЕЙЧАС на якоре
-	var ready := true            # место годится: нажатие сработает, а не подкинет машину
+	## Место годится: нажатие сработает, а не подкинет машину. Имя НЕ `ready` — так называется
+	## сигнал самого Node, и поле с этим именем не даёт скрипту загрузиться вовсе.
+	var spot_ok := true
 	func _draw() -> void:
 		var c := size * 0.5
 		# Три состояния одним цветом: зелёный — стоим на якоре, светлый — можно встать здесь,
 		# приглушённый — место не годится (уклон, бугор, высоко над землёй).
 		var col := Color(0.3, 1.0, 0.5) if active \
-				else (Color(0.88, 0.96, 0.98) if ready else Color(0.5, 0.56, 0.6, 0.55))
+				else (Color(0.88, 0.96, 0.98) if spot_ok else Color(0.5, 0.56, 0.6, 0.55))
 		var lw := 3.0
 		draw_arc(c + Vector2(0, -14), 5.0, 0.0, TAU, 16, col, lw)          # кольцо
 		draw_line(c + Vector2(0, -9), c + Vector2(0, 14), col, lw)          # шток
@@ -1133,9 +1135,9 @@ func _update_radar(delta: float) -> void:
 			var on_anchor: bool = v.get("anchored") == true
 			var ready_here: bool = on_anchor or not v.has_method("anchor_spot_ok") \
 					or v.anchor_spot_ok()
-			if _anchor_icon.active != on_anchor or _anchor_icon.ready != ready_here:
+			if _anchor_icon.active != on_anchor or _anchor_icon.spot_ok != ready_here:
 				_anchor_icon.active = on_anchor
-				_anchor_icon.ready = ready_here
+				_anchor_icon.spot_ok = ready_here
 				_anchor_icon.queue_redraw()
 	# Размер и охват — по наличию блока RADAR; сама карта видна, пока есть машина.
 	var on: bool = _has_radar(v)
