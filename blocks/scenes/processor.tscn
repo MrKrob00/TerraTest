@@ -67,5 +67,5 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8374919, 0.92944515, -0.96
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.005, 0.95, -0.982)
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1489926572]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+transform = Transform3D(0.97528, 0, 0, 0, 0.94429, 0, 0, 0, 0.94402, -0.47528, 0.44429, -0.5)
 mesh = ExtResource("2_nxtql")

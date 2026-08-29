@@ -51,16 +51,6 @@ var _anchor_tween: Tween = null
 # Стационарная структура (база): спавнится сразу на якоре, снять якорь/ехать нельзя.
 # Ставится флаг при спавне через _place_ground_structure (ядро — стационарный блок).
 var is_station: bool = false
-## РОВНОСТЬ ПЛОЩАДКИ МЕРИТСЯ ДВУМЯ РАЗНЫМИ ЧИСЛАМИ, и это главное здесь. Раньше был один порог
-## на перепад высот в 0.5 м по пятну 4×4 — то есть уклон 7°, — и на естественном рельефе таких
-## мест почти нет: якорь ставился «не на всякой равнине, надо было выбирать идеал». Но склон и
-## бугор мешают ПО-РАЗНОМУ. Ровный СКЛОН машине не мешает: на якоре она всё равно выравнивается
-## в 0° и поднимается на полметра, ей нужно место, а не горизонт. А вот БУГОР или яма под днищем
-## — мешают по-настоящему: машина упирается в них корпусом. Поэтому уклон разрешён щедро
-## (ANCHOR_MAX_RISE), а отклонение середины от плоскости углов — нет (ANCHOR_MAX_BUMP).
-const ANCHOR_MAX_RISE := 1.4      # м: перепад земли по пятну ±2 м, то есть уклон около 20°
-const ANCHOR_MAX_BUMP := 0.45     # м: насколько середина пятна может выпирать из плоскости углов
-const ANCHOR_MAX_HEIGHT := 2.5    # м: выше этого над землёй якорить нельзя (прыжок/полёт)
 
 
 # Словник: { shape_owner_id (int) : block_node (Node) }
@@ -219,35 +209,6 @@ func is_core_block(b: Node) -> bool:
 		return true
 	return b == station_core()
 
-## ГОДИТСЯ ЛИ МЕСТО ПОД ЯКОРЬ ПРЯМО СЕЙЧАС. Отдельной функцией, потому что ответ нужен ДВОИМ:
-## самой постановке и кнопке в HUD, которая должна гореть ЗАРАНЕЕ — иначе игрок узнаёт про
-## отказ единственным способом, каким его показывает игра: подкидыванием машины. Считать одно
-## и то же в двух местах нельзя: пороги разъедутся, и кнопка начнёт врать.
-##
-## Высоту спрашиваем через G.ground_y — она же отвечает «не знаю» (отдаёт запасное), пока
-## высоты карты не прочитаны; сырой terrain_height_at в этот момент возвращает ноль, и по нему
-## любая площадка выглядит обрывом.
-func anchor_spot_ok() -> bool:
-	var here: float = G.ground_y(global_position, global_position.y - 1.5)
-	# (1) Высоко над землёй (прыжок/полёт/обрыв) — не якорим.
-	if global_position.y - here > ANCHOR_MAX_HEIGHT:
-		return false
-	# (2) Площадка: четыре угла пятна ±2 м плюс середина.
-	var hs: Array[float] = []
-	for off in [Vector3(2, 0, 2), Vector3(2, 0, -2), Vector3(-2, 0, 2), Vector3(-2, 0, -2)]:
-		hs.append(G.ground_y(global_position + off, here))
-	var mn: float = hs[0]
-	var mx: float = hs[0]
-	var sum: float = 0.0
-	for h in hs:
-		mn = minf(mn, h)
-		mx = maxf(mx, h)
-		sum += h
-	if mx - mn > ANCHOR_MAX_RISE:
-		return false                       # слишком крутой склон
-	# Середина не должна выпирать из плоскости углов: это бугор под днищем (или яма).
-	return absf(here - sum / float(hs.size())) <= ANCHOR_MAX_BUMP
-
 func toggle_anchor() -> bool:
 	if is_station:
 		return true                        # стационарная база всегда на якоре — снять нельзя
@@ -257,9 +218,11 @@ func toggle_anchor() -> bool:
 	if not has_support():
 		_anchor_refuse_hop()               # без фикс-опоры якорь не ставится (нужен блок SUPPORT)
 		return false
-	if not anchor_spot_ok():
-		_anchor_refuse_hop()
-		return false
+	# МЕСТО БОЛЬШЕ НЕ ПРОВЕРЯЕТСЯ. Здесь стояла оценка площадки (уклон, бугор под днищем,
+	# высота над землёй), и она отказывала там, где машина стоит совершенно нормально: игрок
+	# жал кнопку, машину подкидывало, и почему — оставалось гадать. Единственное условие
+	# якоря — наличие опоры на самой машине; всё остальное решает выравнивание, которое и так
+	# ставит машину в 0° и поднимает на полметра.
 	var terr: Node = _find_terrain()
 	freeze = true
 	anchored = true
@@ -909,68 +872,28 @@ func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
 	return false
 
 # ══════════════════════════════════════════
-# СТРОИМ НЕ ТОЛЬКО НА СЕБЕ
+# ЦЕЛЬ ПОСТРОЙКИ — ВСЕГДА СВОЯ МАШИНА
 # ══════════════════════════════════════════
-# Игрок сидит в машине, а рядом стоит его база-фабрика — и достроить её раньше было нельзя:
-# весь разбор тапа (сетка, превью, постановка, снятие) был ЖЁСТКО про self. Приходилось
-# пересаживаться в базу, строить, пересаживаться обратно.
+# Здесь стоял второй механизм: луч тапа выбирал, на какой машине строить, и весь разбор
+# (сетка, превью, постановка, снятие) шёл через выбранную цель. Задумка была правильная —
+# достроить базу, не пересаживаясь, — но получилось ДВА разных пути постройки, и вести себя
+# они стали по-разному: наводка на соседнюю машину промахивалась мимо клеток, превью и
+# результат расходились. Один путь и одна машина: чтобы строить на базе, в неё пересаживаются
+# (круговое меню это уже умеет).
 #
-# ЦЕЛЬ ВЫБИРАЕТ ЛУЧ, а не кнопка и не меню: тапнул по своей другой машине — строишь на ней,
-# тапнул по себе или мимо — на себе. Ровно так игрок и думает про постройку, и лишнего режима
-# заводить не пришлось. Цель запоминается на время жеста, потому что наведение и подтверждение
-# приходят разными событиями: пересчитать её заново в момент тапа значило бы иногда ставить
-# блок не туда, куда игрок целился.
-#
-# «Своя машина» — та, что числится у камеры (camera_controller.vehicles). Проверять по faction
-# мало: у баз он свой, а список камеры и есть ответ на вопрос «чем игрок владеет».
-var build_target: Node = null            # null — строим на себе
-const BUILD_REACH := 30.0                # дальше этого чужая машина целью не становится
-
-## Машина, НА КОТОРОЙ сейчас строим (по умолчанию — эта).
+# Функции оставлены как ЕДИНАЯ точка ответа «на чём строим»: весь остальной код спрашивает
+# через них, поэтому вернуть выбор цели, когда он будет продуман до конца, — это правка в
+# двух строках, а не снова по всему файлу.
 func _bt() -> Node3D:
-	return build_target as Node3D if (build_target != null and is_instance_valid(build_target)) else self
+	return self
 
-## Её сетка блоков.
 func _btm() -> Node:
-	var v: Node3D = _bt()
-	if v == self:
-		return block_map_node
-	var n = v.get("block_map_node")
-	return n if n != null else v.get_node_or_null("blocks")
-
-## Обновить цель по лучу тапа. Зовётся ОДИН раз за жест — из _handle_click.
-func _update_build_target(screen_pos: Vector2) -> void:
-	build_target = null
-	if camera_controller == null or camera_controller.camera == null:
-		return
-	if not ("vehicles" in camera_controller):
-		return
-	var cam: Camera3D = camera_controller.camera
-	var from: Vector3 = cam.project_ray_origin(screen_pos)
-	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
-	q.collision_mask = 2                          # слой блоков
-	q.exclude = [get_rid()]                       # себя не ищем: цель по умолчанию и так self
-	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if hit.is_empty():
-		return
-	var root: Node = hit.get("collider")
-	while root != null and not (root is MachineBody):
-		root = root.get_parent()
-	if root == null or root == self or not (root is Node3D):
-		return
-	if not camera_controller.vehicles.has(root):
-		return                                    # чужая машина — на ней не строим
-	if global_position.distance_squared_to((root as Node3D).global_position) > BUILD_REACH * BUILD_REACH:
-		return
-	if root.get("block_map_node") == null and root.get_node_or_null("blocks") == null:
-		return
-	build_target = root
+	return block_map_node
 
 func _handle_click(screen_pos: Vector2) -> void:
 	var camera: Camera3D = camera_controller.camera
 	var world_origin: Vector3 = camera.project_ray_origin(screen_pos)
 	var world_dir: Vector3 = camera.project_ray_normal(screen_pos)
-	_update_build_target(screen_pos)
 	# Луч надо перевести из мира в ЛОКАЛЬНУЮ сетку блоков. Старый код вычитал только
 	# position (без учёта поворота машины и трансформа родителя) и НЕ поворачивал
 	# направление — поэтому, как только машина повёрнута (а в Building остаётся поворот
@@ -995,7 +918,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 			# Решает ПОПАДАНИЕ ЛУЧА, а не тип блока: целишься в машину — обычная сетка,
 			# целишься мимо — новая база на земле. Раньше он уходил на землю ВСЕГДА, и
 			# поставить продавца на свою машину было нельзя вовсе.
-			_ground_core = G.is_stationary(held_bt) and not is_station and build_target == null
+			_ground_core = G.is_stationary(held_bt) and not is_station
 	var bm: Node = _btm()
 	var space_node: Node3D = bm as Node3D if bm != null else _bt()
 	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
@@ -1802,9 +1725,8 @@ func _on_take_pressed() -> void:
 		if _preview_res == null:
 			return
 		var pres: Dictionary = _preview_res
-		# КУДА СТАВИМ — решено ещё при наведении (_update_build_target): на себя или на
-		# соседнюю свою машину. Дальше всё идёт через эту цель: и карта клеток, и кузов, на
-		# который вешается коллизия, и узел blocks, в который блок переезжает.
+		# Машина, её сетка и её узел blocks — всё через одну точку (_bt/_btm), чтобы «на чём
+		# строим» спрашивалось в одном месте, а не выводилось заново в каждой ветке.
 		var tgt: Node3D = _bt()
 		var bmn: Node = _btm()
 		var tgt_blocks: Node = tgt.get_node_or_null("blocks")
