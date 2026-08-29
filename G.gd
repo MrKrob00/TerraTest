@@ -494,7 +494,68 @@ const CRAFT_MARKUP := 1.25
 ## а именно так и было: блок стоил в магазине 5$ при материалах на 300$.
 const SHOP_MARKUP := 1.3
 
+# ── РЫНОК: скидки и наценки ───────────────────────────────────────────────────
+# Цены сырья не стоят на месте: часть видов сейчас берут дороже базовой, часть дешевле, и
+# держится это MARKET_WINDOW. Смысл не в числах, а в том, что у ВОЗКИ появляется решение:
+# что копить, что везти продавцу сейчас, а что подождать. Пока все цены были постоянными,
+# производственная цепочка работала «в пустоту» — руду можно было продавать в любом порядке,
+# и разницы не было никакой.
+#
+# Трогаем только СЫРЬЁ (руда, слитки, уголь) — девять позиций, из них четыре под модификатором:
+# две вниз, две вверх. Компоненты в список не входят намеренно: их цена выводится из рецепта
+# (sell_price спускается по нему рекурсивно), поэтому подорожавший металл сам поднимает всё,
+# что из него варят, — и решение «варить или продать сырьём» тоже становится живым.
+const MARKET_WINDOW := 900.0        # 15 минут: окно должно пережить дорогу до продавца и назад
+const MARKET_UP := 1.35
+const MARKET_DOWN := 0.7
+const MARKET_UP_COUNT := 2
+const MARKET_DOWN_COUNT := 2
+
+signal market_changed
+
+var market_mods: Dictionary = {}    # kind_key → множитель цены (только там, где он есть)
+var _market_left: float = 0.0
+
+func _process(delta: float) -> void:
+	_market_left -= delta
+	if _market_left <= 0.0:
+		_roll_market()
+
+## Сколько секунд до следующей смены цен — для UI (панель рынка показывает таймер).
+func market_seconds_left() -> float:
+	return maxf(_market_left, 0.0)
+
+## Все виды, которые участвуют в торгах. Порядок постоянный: из него же берётся выборка.
+func market_keys() -> Array:
+	var out: Array = ["coal"]
+	for i in METAL_PRICE.size():
+		out.append("ore%d" % i)
+		out.append("m%d" % i)
+	return out
+
+func _roll_market() -> void:
+	_market_left = MARKET_WINDOW
+	market_mods.clear()
+	var pool: Array = market_keys()
+	pool.shuffle()
+	var n: int = 0
+	for k in pool:
+		if n < MARKET_DOWN_COUNT:
+			market_mods[k] = MARKET_DOWN
+		elif n < MARKET_DOWN_COUNT + MARKET_UP_COUNT:
+			market_mods[k] = MARKET_UP
+		else:
+			break
+		n += 1
+	market_changed.emit()
+
 func sell_price(key: String) -> int:
+	return int(round(base_price(key) * float(market_mods.get(key, 1.0))))
+
+## Цена БЕЗ рыночной поправки. Отдельной функцией, потому что UI показывает и то, и другое:
+## «сколько стоит вообще» и «сколько дают сейчас» — это разные числа, и панель рынка без
+## первого не может сказать, насколько цена ушла.
+func base_price(key: String) -> int:
 	if key == "coal":
 		return COAL_PRICE
 	if key.begins_with("chunk:"):
@@ -504,7 +565,7 @@ func sell_price(key: String) -> int:
 		var sum: int = 0
 		var rec: Dictionary = block_recipe(bt)
 		for k in rec:
-			sum += sell_price(String(k)) * int(rec[k])
+			sum += base_price(String(k)) * int(rec[k])
 		return sum
 	if key.begins_with("ore"):
 		var mi: int = int(key.substr(3))
@@ -513,6 +574,10 @@ func sell_price(key: String) -> int:
 		var m: int = int(key.substr(1))
 		return METAL_PRICE[m] if m < METAL_PRICE.size() else 10
 	if key.begins_with("c"):
+		# Компонент считается от ЖИВЫХ цен своих материалов (sell_price, с рынком): подорожал
+		# металл — подорожало и всё, что из него варят. Ради этого компоненты и не внесены в
+		# список торгуемых: их цена и так следует за сырьём, а собственный модификатор поверх
+		# означал бы наценку на наценку.
 		var rec2: Dictionary = COMP_RECIPE.get(int(key.substr(1)), {})
 		var sum2: float = 0.0
 		for k in rec2:
@@ -542,13 +607,17 @@ func rp_for_kill(value: int) -> int:
 ##
 ## Теперь цена = стоимость материалов × SHOP_MARKUP, то есть магазин ВСЕГДА дороже сборки.
 ## Новый блок получает осмысленную цену сам, как только у него появился рецепт.
+## ЦЕНА В МАГАЗИНЕ СЧИТАЕТСЯ ПО БАЗОВЫМ ценам, а не по рыночным. Магазин — это не биржа:
+## по этой же цене меряется стоимость машины (уровень врага, ДИ за убитую), и если бы она
+## гуляла вместе с рынком, вместе с ней гулял бы весь баланс, включая то, какого противника
+## тебе присылают. Плавает ТОЛЬКО продажа — то есть решение «что везти сейчас».
 func shop_price(bt: int) -> int:
 	var rec: Dictionary = block_recipe(bt)
 	if rec.is_empty():
 		return 5                     # рецепта нет — блок не из материалов, ставим минимум
 	var sum: float = 0.0
 	for k in rec:
-		sum += sell_price(String(k)) * int(rec[k])
+		sum += base_price(String(k)) * int(rec[k])
 	return maxi(int(sum * SHOP_MARKUP), 5)
 
 ## Что вернёт разбор: ПОЛОВИНА каждого материала, вниз. Пустой словарь — разбирать нельзя.
