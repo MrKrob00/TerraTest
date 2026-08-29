@@ -868,15 +868,26 @@ func cabin_watch(delta: float) -> void:
 ## Is a stationary block still standing on this machine — the core a base holds on to.
 ## Counted rather than remembered by reference: a base can carry several, and losing one of
 ## them is not death.
+## СБОРКА МОГЛА ЕЩЁ НЕ ПРИМЕНИТЬСЯ. Блоки спавнятся асинхронно (blocks.spawn_block ждёт ready
+## родителя), а сторож включается с первого же физкадра — и «детей нет» в этот момент значит
+## «ещё не построена», а не «ядро сбито». Флаг помнит, что блоки У ЭТОЙ МАШИНЫ хоть раз были:
+## после этого пустой список — уже настоящая смерть, а не гонка при рождении.
+var _had_blocks: bool = false
+
 func _has_core() -> bool:
 	var bl := blocks_node()
 	if bl == null:
 		return true                        # build not applied yet — do not kill it on a guess
+	var any := false
 	for b in bl.get_children():
 		var bt = b.get("block")
-		if bt != null and G.is_stationary(int(bt)):
+		if bt == null:
+			continue
+		any = true
+		_had_blocks = true
+		if G.is_stationary(int(bt)):
 			return true
-	return false
+	return not any and not _had_blocks
 
 ## Overridden by both machines: the player hands the camera over, the enemy pays out and
 ## reports the kill. The base only decides WHEN it happens.
