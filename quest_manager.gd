@@ -556,30 +556,39 @@ func active_quests() -> Array[Dictionary]:
 	for q in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
-	var ev := _current_event()
-	if not ev.is_empty():
+	for ev in current_events():
 		out.append(ev)
 	return out
 
-## СОБЫТИЕ ПОКАЗЫВАЕМ ОДНО ЗА РАЗ. Их пять, все повторяемые, и появись они разом — журнал
-## превратился бы в список поручений, а «событие» перестало бы что-либо значить. Берём то,
-## которое УЖЕ НАЧАТО (игрок доехал, дерётся), иначе первое доступное по списку; закончилось —
-## следующее откроется само, когда это остынет (quest_arcs._ev_cooldowns).
+## СОБЫТИЙ В ЖУРНАЛЕ НЕ БОЛЬШЕ ДВУХ. Их шесть, все повторяемые, и появись они разом — журнал
+## превратился бы в список поручений, а «событие» перестало бы что-либо значить. Два — это
+## выбор («еду на груз или разгоняю банду») без превращения журнала в доску объявлений.
+##
+## НАЧАТЫЕ ИДУТ ПЕРВЫМИ: то, куда игрок уже едет и где дерётся, не должно вытесняться свежим
+## объявлением. Остальные места добираем по списку; закончилось — следующее откроется само,
+## когда это остынет (quest_arcs._ev_cooldowns, минута-две).
 ##
 ## Во время обучения событий нет вовсе: игроку ещё нечем ехать за двести метров, и наставник
 ## ведёт его за руку — вторая цель в журнале только сбивает.
-func _current_event() -> Dictionary:
+const EVENT_SLOTS := 2
+
+func current_events() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
 	if tutorial_active():
-		return {}
-	var first: Dictionary = {}
+		return out
+	var rest: Array[Dictionary] = []
 	for q in quests:
 		if q["type"] != Type.EVENT or q["done"]:
 			continue
 		if int(q.get("stage", 0)) > 0 or int(q.get("progress", 0)) > 0:
-			return q                      # это уже идёт — его и держим
-		if first.is_empty():
-			first = q
-	return first
+			out.append(q)                 # это уже идёт — держим в любом случае
+		else:
+			rest.append(q)
+	for q in rest:
+		if out.size() >= EVENT_SLOTS:
+			break
+		out.append(q)
+	return out.slice(0, EVENT_SLOTS)
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
@@ -625,8 +634,7 @@ func visible_quests() -> Array[Dictionary]:
 	for q in quests:
 		if q["type"] == Type.DAILY and not q["done"]:
 			out.append(q)
-	var ev := _current_event()
-	if not ev.is_empty():
+	for ev in current_events():
 		out.append(ev)
 	return out
 
