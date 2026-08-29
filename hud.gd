@@ -47,6 +47,7 @@ func _ready() -> void:
 	_build_block_globe()
 	_build_anchor_button()
 	_build_market()
+	_build_vehicle_button()
 	_build_radar()
 	_build_money()
 	# Компас задания (quest_compass.gd): ведёт к цели отслеживаемого квеста и не даёт ей
@@ -554,6 +555,150 @@ class RadialWheel extends Control:
 		draw_arc(c, inner, 0, TAU, 64, Color(0.42, 0.58, 0.76, 0.9), 3.5)
 		draw_arc(c, outer, 0, TAU, 64, Color(0, 0, 0, 0.35), 2.0)
 
+# ── Кнопка машины: 2D, ПОВЕРХ ВСЕГО ───────────────────────────────────────────
+# Была Area3D со значком в мире, и обе её беды росли из одного корня — она жила В СЦЕНЕ:
+#   • её ЗАКРЫВАЛИ БЛОКИ: значок висел на фиксированной высоте 2.2 м, а машина растёт вверх,
+#     и на высокой сборке он оказывался внутри корпуса;
+#   • её ПЕРЕКРЫВАЛ ЛЮБОЙ КОЛЛАЙДЕР: ввод шёл физическим пикингом вьюпорта, то есть попадал
+#     в ближайшее тело по лучу — а перед значком постоянно оказывались невидимые зоны
+#     (сфера регена, купол щита, магнит упаковщика, зоны обнаружения).
+# Теперь это обычная кнопка интерфейса, спроецированная в экранную точку над машиной. Она
+# рисуется последней (CanvasLayer поверх 3D) и ловит ввод как элемент UI, поэтому «перекрыть»
+# её нечем в принципе: коллайдеры до интерфейса не дотягиваются.
+#
+# Точка ЯКОРЯ считается по САМОМУ ВЕРХНЕМУ БЛОКУ машины, а не от её начала координат — иначе
+# кнопка снова тонула бы в высоких сборках.
+const VBTN_SHOW_DIST := 14.0     # м: дальше кнопка не показывается
+const VBTN_HOLD := 1.0           # с: сколько держать до кругового меню
+const VBTN_SIZE := 64.0
+const VBTN_TOP_PERIOD := 0.5     # как часто пересчитывать верх машины (блоки не прыгают)
+
+## Значок шестерёнки, нарисованный кодом: шрифт проекта эмодзи не рендерит (прецедент ♥/✖).
+class GearIcon extends Control:
+	var fill: float = 0.0        # 0..1 — прогресс удержания
+	func _draw() -> void:
+		var c := size * 0.5
+		var r: float = minf(size.x, size.y) * 0.30
+		var col := Color(0.55, 0.95, 1.0).lerp(Color(1.0, 0.9, 0.25), fill)
+		# Подложка, чтобы значок читался и на светлом песке, и на тёмном корпусе.
+		draw_circle(c, r * 1.75, Color(0.03, 0.09, 0.11, 0.55))
+		draw_arc(c, r * 1.75, 0.0, TAU, 24, col, 2.0, true)
+		# Зубцы: восемь коротких лучей по кругу.
+		for i in 8:
+			var a: float = TAU * float(i) / 8.0
+			var d := Vector2(cos(a), sin(a))
+			draw_line(c + d * r * 0.95, c + d * r * 1.45, col, 5.0, true)
+		draw_arc(c, r, 0.0, TAU, 24, col, 6.0, true)
+		draw_circle(c, r * 0.34, col)
+		# Прогресс удержания — дуга по внешнему кругу: видно, сколько ещё держать.
+		if fill > 0.001:
+			draw_arc(c, r * 1.75, -PI * 0.5, -PI * 0.5 + TAU * fill, 32, Color(1.0, 0.9, 0.25), 4.0, true)
+
+var _vbtn: GearIcon = null
+var _vbtn_target: Node3D = null      # машина, к которой сейчас привязана кнопка
+var _vbtn_hold: float = 0.0
+var _vbtn_holding: bool = false
+var _vbtn_top_t: float = 0.0
+var _vbtn_top_y: float = 2.2         # высота якоря над началом координат машины
+
+func _build_vehicle_button() -> void:
+	_vbtn = GearIcon.new()
+	_vbtn.custom_minimum_size = Vector2(VBTN_SIZE, VBTN_SIZE)
+	_vbtn.size = Vector2(VBTN_SIZE, VBTN_SIZE)
+	_vbtn.mouse_filter = Control.MOUSE_FILTER_STOP   # кнопка ловит ввод сама, как всякий UI
+	_vbtn.visible = false
+	_vbtn.gui_input.connect(_on_vbtn_input)
+	add_child(_vbtn)
+
+func _on_vbtn_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT \
+			and (event as InputEventMouseButton).pressed) \
+			or (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed)
+	# Тач приходит дважды (само касание и эмулированная из него мышь) — второй раз прогресс
+	# обнулять нельзя, иначе удержание не наберётся никогда.
+	if pressed and not _vbtn_holding:
+		_vbtn_holding = true
+		_vbtn_hold = 0.0
+		G.ui_grab = true                  # жест удержания не должен ещё и крутить камеру
+		get_viewport().set_input_as_handled()
+
+func _vbtn_cancel() -> void:
+	if _vbtn_holding and _vmenu == null:
+		G.ui_grab = false
+	_vbtn_holding = false
+	_vbtn_hold = 0.0
+	if _vbtn != null:
+		_vbtn.fill = 0.0
+		_vbtn.queue_redraw()
+
+func _update_vehicle_button(delta: float) -> void:
+	if _vbtn == null:
+		return
+	# Меню уже открыто, гараж поверх экрана или управлять нечем — кнопки нет.
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	var cur = cc.current_vehicle if (cc != null and "current_vehicle" in cc) else null
+	if _vmenu != null or _controls_hidden or cur == null or not (cur is Node3D):
+		_vbtn.visible = false
+		_vbtn_cancel()
+		return
+	# Ближайшая ДРУГАЯ машина игрока в радиусе.
+	var best: Node3D = null
+	var best_d: float = VBTN_SHOW_DIST * VBTN_SHOW_DIST
+	if "vehicles" in cc:
+		for v in cc.vehicles:
+			if v == null or not is_instance_valid(v) or v == cur or not (v is Node3D):
+				continue
+			var d: float = (cur as Node3D).global_position.distance_squared_to((v as Node3D).global_position)
+			if d < best_d:
+				best_d = d
+				best = v as Node3D
+	if best == null:
+		_vbtn.visible = false
+		_vbtn_cancel()
+		return
+	if best != _vbtn_target:
+		_vbtn_target = best
+		_vbtn_top_t = 0.0
+		_vbtn_cancel()
+	# Верх машины пересчитываем редко: перебор блоков каждый кадр ради одной высоты не нужен.
+	_vbtn_top_t -= delta
+	if _vbtn_top_t <= 0.0:
+		_vbtn_top_t = VBTN_TOP_PERIOD
+		_vbtn_top_y = _vehicle_top_y(best)
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	var world: Vector3 = best.global_position + Vector3.UP * _vbtn_top_y
+	if cam == null or cam.is_position_behind(world):
+		_vbtn.visible = false
+		_vbtn_cancel()
+		return
+	_vbtn.visible = true
+	_vbtn.position = cam.unproject_position(world) - Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+	if not _vbtn_holding:
+		return
+	# Палец ещё на экране? Тач эмулирует левую кнопку мыши, поэтому состояние надёжно и при
+	# перетаскивании, и когда палец ушёл с самой кнопки.
+	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+		_vbtn_cancel()
+		return
+	_vbtn_hold += delta
+	_vbtn.fill = clampf(_vbtn_hold / VBTN_HOLD, 0.0, 1.0)
+	_vbtn.queue_redraw()
+	if _vbtn_hold >= VBTN_HOLD:
+		var at: Vector2 = _vbtn.position + Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+		_vbtn_cancel()
+		open_vehicle_menu(best, at)        # меню раскрывается вокруг кнопки, палец ещё зажат
+
+## Высота САМОГО ВЕРХНЕГО блока машины над её началом координат — чтобы кнопка не тонула в
+## высокой сборке. Плюс запас, иначе значок ложится прямо на крышу.
+func _vehicle_top_y(v: Node3D) -> float:
+	var bl: Node = v.get_node_or_null("blocks")
+	var top: float = 1.2
+	if bl != null:
+		for b in bl.get_children():
+			if b is Node3D:
+				top = maxf(top, (b as Node3D).position.y)
+	return top + 1.4
+
 func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> void:
 	close_vehicle_menu()
 	var screen: Vector2 = get_viewport().get_visible_rect().size
@@ -582,7 +727,7 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	_vmenu_wheel = wheel
 	_vmenu_count = wheel.items.size()
 	_vmenu_open_ms = Time.get_ticks_msec()
-	VehicleInteractButton.camera_block = true   # жест меню не должен крутить камеру
+	G.ui_grab = true                            # жест меню не должен крутить камеру
 
 # Пока меню открыто — весь ввод сюда: движение подсвечивает сектор, отпускание выбирает.
 #
@@ -673,7 +818,7 @@ func close_vehicle_menu() -> void:
 	_vmenu = null
 	_vmenu_wheel = null
 	_vmenu_vehicle = null
-	VehicleInteractButton.camera_block = false
+	G.ui_grab = false
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
 # Сетка 2×2: верхний ряд — НАКЛОН влево/вправо (крен вокруг Z), нижний ряд —
@@ -963,6 +1108,7 @@ func _process(delta: float) -> void:
 	var _pf := Perf.now()     # метка для панели профиля (perf.gd): цена самого HUD
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
 	_update_radar(delta)
+	_update_vehicle_button(delta)
 	_update_hand_panel()
 	_sync_mode_visuals()      # дешёвый сторож: работает только когда режим реально сменился
 	Perf.mark("hud", _pf)
