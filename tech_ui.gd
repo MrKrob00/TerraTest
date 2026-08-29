@@ -1351,7 +1351,19 @@ func _build_tech_tab() -> void:
 	_tech_scroll.scroll_horizontal = int(keep.x)
 	_tech_scroll.scroll_vertical = int(keep.y)
 
-# Каркас вкладки (создаётся один раз): фикс. шапка+инфо+кнопка, ниже — граф в 2D-скролле.
+# Каркас вкладки (создаётся один раз): шапка сверху, ГРАФ НА ВСЮ ПЛОЩАДЬ, а карточка
+# выбранного узла с кнопкой «Research» — ПОВЕРХ графа В ПРАВОМ НИЖНЕМ УГЛУ.
+#
+# Раньше карточка стояла строкой между шапкой и графом, и это было неудобно дважды: она
+# съедала верх экрана, где как раз начинается дерево, а кнопка оказывалась у самого верха —
+# то есть дальше всего от пальца, которым игрок только что тыкал в узел. Внизу справа она
+# попадает под большой палец и не закрывает дерево, которое разрастается влево-вверх.
+#
+# Из-за оверлея между шапкой и графом появился слой-Control: контейнер разложил бы карточку
+# в столбец, а нам нужно, чтобы она ЛЕЖАЛА НА графе по якорям.
+const TECH_CARD_W := 330.0
+const TECH_CARD_MARGIN := 12.0
+
 func _tech_build_shell(body: Node) -> void:
 	_tech_root = VBoxContainer.new()
 	_tech_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1364,28 +1376,87 @@ func _tech_build_shell(body: Node) -> void:
 	_tech_head.add_theme_font_size_override("font_size", 16)
 	_tech_root.add_child(_tech_head)
 
+	var area := Control.new()
+	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	area.clip_contents = true
+	_tech_root.add_child(area)
+
+	_tech_scroll = ScrollContainer.new()
+	_tech_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_tech_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_tech_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	area.add_child(_tech_scroll)
+	_tech_graph = TechGraph.new()
+	_tech_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг скролла проходит сквозь холст
+	_tech_scroll.add_child(_tech_graph)
+
 	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _tech_card_style())
+	# Правый нижний угол: растём вверх и влево от него, поэтому размер задаём отрицательными
+	# отступами, а не size — иначе карточка уедет за край, когда текст станет длиннее.
+	panel.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT, true)
+	panel.offset_right = -TECH_CARD_MARGIN
+	panel.offset_bottom = -TECH_CARD_MARGIN
+	panel.offset_left = -TECH_CARD_W - TECH_CARD_MARGIN
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	area.add_child(panel)
+
 	var pv := VBoxContainer.new()
+	pv.add_theme_constant_override("separation", 8)
 	panel.add_child(pv)
 	_tech_info = Label.new()
 	_tech_info.add_theme_font_size_override("font_size", 13)
 	_tech_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tech_info.custom_minimum_size = Vector2(TECH_CARD_W - 24.0, 0)
 	pv.add_child(_tech_info)
 	_tech_btn = Button.new()
-	_tech_btn.custom_minimum_size = Vector2(0, 40)
+	_tech_btn.custom_minimum_size = Vector2(0, 46)
+	_tech_btn.add_theme_font_size_override("font_size", 16)
 	_tech_btn.pressed.connect(_tech_do_research)
 	pv.add_child(_tech_btn)
-	_tech_root.add_child(panel)
 
-	_tech_scroll = ScrollContainer.new()
-	_tech_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_tech_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_tech_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_tech_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_tech_root.add_child(_tech_scroll)
-	_tech_graph = TechGraph.new()
-	_tech_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг скролла проходит сквозь холст
-	_tech_scroll.add_child(_tech_graph)
+## Стиль карточки: та же тёмно-бирюзовая палитра, что у остального интерфейса (hud.gd).
+func _tech_card_style() -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color(0.05, 0.13, 0.16, 0.95)
+	st.border_color = Color(0.25, 0.65, 0.7, 0.8)
+	st.set_border_width_all(2)
+	st.set_corner_radius_all(10)
+	st.content_margin_left = 12
+	st.content_margin_right = 12
+	st.content_margin_top = 10
+	st.content_margin_bottom = 10
+	st.shadow_color = Color(0, 0, 0, 0.45)
+	st.shadow_size = 8
+	return st
+
+## Стиль узла дерева. Цвет говорит СОСТОЯНИЕ: изучено — зелёный контур, доступно — бирюзовый,
+## не хватает ДИ — янтарный, закрыто — блёклое. Раньше это делалось modulate по всей кнопке,
+## и «закрыто» выглядело просто полупрозрачной кнопкой без формы.
+func _tech_node_style(state: int, selected: bool) -> StyleBoxFlat:
+	var st := StyleBoxFlat.new()
+	st.set_corner_radius_all(8)
+	st.set_border_width_all(3 if selected else 2)
+	match state:
+		0:                                            # изучено
+			st.bg_color = Color(0.07, 0.20, 0.15, 0.95)
+			st.border_color = Color(0.35, 0.95, 0.6, 0.9)
+		1:                                            # можно изучить прямо сейчас
+			st.bg_color = Color(0.06, 0.16, 0.20, 0.95)
+			st.border_color = Color(0.3, 0.8, 0.9, 0.9)
+		2:                                            # не хватает ДИ
+			st.bg_color = Color(0.16, 0.13, 0.05, 0.95)
+			st.border_color = Color(0.95, 0.8, 0.35, 0.8)
+		_:                                            # закрыто требованием
+			st.bg_color = Color(0.07, 0.09, 0.10, 0.9)
+			st.border_color = Color(0.35, 0.4, 0.45, 0.5)
+	if selected:
+		st.border_color = Color(1.0, 0.85, 0.35, 1.0)
+	st.content_margin_left = 6
+	st.content_margin_right = 6
+	return st
 
 # Позиции всех нод дерева (px). x = глубина·TCOL_W; y = ряд·TROW_H (лист по счётчику,
 # родитель — среднее детей: классическая аккуратная раскладка дерева).
@@ -1442,34 +1513,54 @@ func _make_tech_node(bt: int, at: Vector2) -> Control:
 	var meta: Dictionary = G.BLOCK_META[bt]
 	# Статусы ТЕКСТОМ: юникод-значки шрифт проекта не рендерит (прецедент ♥/✖).
 	var status := ""
+	var state := 3
 	if G.researched.has(bt):
 		status = "researched"
-		btn.modulate = Color(0.72, 1.0, 0.82)
+		state = 0
 	else:
 		var why: String = G.research_lock_reason(bt)
 		if why == "":
 			status = "%d RP" % int(meta["rp"])
+			state = 1
 		elif why.begins_with("need RP"):
 			status = "%d RP (short)" % int(meta["rp"])
-			btn.modulate = Color(1.0, 0.93, 0.65, 0.9)
+			state = 2
 		else:
 			status = "locked"
-			btn.modulate = Color(1, 1, 1, 0.45)
 	btn.text = "%s\n%s" % [_block_name(bt), status]
-	if bt == _tech_selected:
-		btn.toggle_mode = true
-		btn.button_pressed = true
+	var sel: bool = bt == _tech_selected
+	var st := _tech_node_style(state, sel)
+	btn.add_theme_stylebox_override("normal", st)
+	btn.add_theme_stylebox_override("hover", st)
+	btn.add_theme_stylebox_override("focus", st)
+	btn.add_theme_stylebox_override("pressed", _tech_node_style(state, true))
+	if state == 3:
+		btn.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.6))
+	# ДВОЙНОЙ ТАП ПО УЗЛУ = ИЗУЧИТЬ СРАЗУ. Считаем время сами, а не полагаемся на
+	# double_click у события: на планшете сюда приходит эмулированная из тача мышь, и ловить
+	# её флаг — значит зависеть от настройки эмуляции. Первый тап при этом работает как
+	# работал (выбор + карточка), поэтому случайно ничего не изучится: нужен именно второй.
 	btn.pressed.connect(func() -> void:
+		var now: int = Time.get_ticks_msec()
+		var quick: bool = bt == _tech_last_bt and now - _tech_last_ms <= TECH_DOUBLE_MS
+		_tech_last_bt = bt
+		_tech_last_ms = now
 		_tech_selected = bt
-		_tech_update_info())
+		_tech_update_info()
+		if quick:
+			_tech_do_research())
 	return btn
+
+const TECH_DOUBLE_MS := 400
+var _tech_last_bt: int = -1
+var _tech_last_ms: int = 0
 
 # Текст инфо-панели и состояние кнопки «Исследовать» по выбранной ноде.
 func _tech_update_info() -> void:
 	if _tech_info == null or _tech_btn == null:
 		return
 	if _tech_selected < 0 or not G.BLOCK_META.has(_tech_selected):
-		_tech_info.text = "Select a block in the tree to see details."
+		_tech_info.text = "Tap a block to see what it needs.\nTap it twice to research it right away."
 		_tech_btn.text = "Research"
 		_tech_btn.disabled = true
 		return
