@@ -130,6 +130,9 @@ func _build_label() -> void:
 # Табличка ОБЛЕТАЕТ предмет вслед за игроком: она всегда снизу-справа ОТ КАМЕРЫ, а не с
 # фиксированной стороны блока — иначе с половины ракурсов она пряталась бы за самим складом.
 func _process(_delta: float) -> void:
+	# Свой _process заслоняет базовый (FactoryBlock), поэтому его тик зовём сами: без него
+	# склад с готовым грузом никогда не повторил бы попытку отдать (см. push_retry_tick).
+	push_retry_tick(_delta)
 	if _label == null or not _label.visible:
 		return
 	var cam: Camera3D = get_viewport().get_camera_3d()

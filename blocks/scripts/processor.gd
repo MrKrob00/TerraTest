@@ -47,12 +47,27 @@ func _ready() -> void:
 		port_key(Vector3i(0, 1, -1), FACE_RIGHT_IDX): PORT_NONE,
 	}
 
+## ПЕРЕРАБОТКА СЧИТАЕТСЯ ПО ВРЕМЕНИ, А НЕ ПО АНИМАЦИИ. Раньше и превращение руды в слиток, и
+## команда «отдать дальше» висели на том, доехал ли предмет по слотам: слоты ищутся по
+## БЛИЖАЙШЕМУ, и стоило твину не отработать (блок повернули, машину пересобрали, предмет
+## прицепили другим путём) — как процессор оставался с грузом навсегда, горя зелёным. Ровно
+## этот симптом и был. Теперь слоты — чистая картинка: цикл отсчитал четыре такта, значит
+## переработка закончена, и груз уходит независимо от того, куда его довёз твин.
+var _upgraded: bool = false
+
 func _on_item_received() -> void:
 	_set_processing_visual(true)
+	_upgraded = false
 	for i in 4:
 		timer_visual.start()
 		await timer_visual.timeout
-	# Визуально — можно покрутить или поменять цвет пока идёт обработка
+	if not is_instance_valid(current_item):
+		_set_processing_visual(false)
+		return
+	if not _upgraded and current_item.has_method("upgrade"):
+		current_item.upgrade()               # анимация не довезла — превращаем сами
+		_upgraded = true
+	_try_push()
 
 # Шаг конвейера внутри процессора: предмет переезжает от слота к слоту, посередине пути
 # превращаясь из руды в слиток (upgrade).
@@ -75,18 +90,28 @@ func _on_timer_visual_timeout() -> void:
 			best = d
 			idx = i
 	if idx >= slots.size() - 1:
-		_set_processing_visual(false)
-		call_deferred("_try_push")
-		return
-	if idx == 1 and item.has_method("upgrade"):
+		return                               # доехал до конца — выдачей займётся _on_item_received
+	if idx == 1 and not _upgraded and item.has_method("upgrade"):
 		item.upgrade()                       # ровно посередине пути: руда стала слитком
+		_upgraded = true
 	var tween: Tween = create_tween()
 	tween.tween_property(item, "position", (slots[idx + 1] as Node3D).position, 0.3)
 
+## ЛАМПА ПОКАЗЫВАЕТ СОСТОЯНИЕ, А НЕ МОМЕНТ. Зелёный ставился на приём и гасился только в конце
+## цикла обработки, поэтому «горит зелёным и стоит» означало сразу три разные вещи: обрабатываю,
+## обработал но некуда отдать, и сломался. Теперь зелёный = внутри лежит груз, красный = пусто,
+## и оба состояния переключаются там же, где груз реально появляется и уходит.
+func _try_push() -> void:
+	super._try_push()
+	_set_processing_visual(current_item != null)
+
+## Материал КЕШИРУЕМ. Он ставится на свой MeshInstance через material_override, но создавать
+## его заново на каждый вызов нельзя: с повторными попытками отдать (FactoryBlock.push_retry_tick)
+## вызов идёт раз в секунду, и каждый раз рождался бы новый StandardMaterial3D.
+var _lamp: StandardMaterial3D = null
+
 func _set_processing_visual(active: bool) -> void:
-	var mat: StandardMaterial3D = StandardMaterial3D.new()
-	mat.albedo_color = Color.GREEN if active else Color.RED
-	$MeshInstance3D.material_override = mat
-	# Например мигание или вращение меша процессора
-	# Переопределяй под свой визуал
-	pass
+	if _lamp == null:
+		_lamp = StandardMaterial3D.new()
+		$MeshInstance3D.material_override = _lamp
+	_lamp.albedo_color = Color.GREEN if active else Color.RED

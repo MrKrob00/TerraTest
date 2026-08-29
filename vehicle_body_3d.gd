@@ -807,7 +807,9 @@ func _process(_delta: float) -> void:
 	# Подсветка блока для подбора (ghost_block, top_level) следит за самим блоком: позиция И
 	# ориентация — не отстаёт, если блок/машина сдвинулись.
 	if ghost_block != null and block_body != null and is_instance_valid(block_body):
-		ghost_block.global_transform = block_body.global_transform
+		# По ВСЕМУ блоку (см. _ghost_fit): у 2×2×2 трансформ узла — это его угловая клетка,
+		# и подсветка по нему садилась на четверть постройки.
+		_ghost_fit(block_body)
 
 func _on_movement_pressed() -> void:
 	_return_hand_to_inventory()   # выход из стройки — блок из руки возвращаем в инвентарь
@@ -1025,8 +1027,9 @@ func _handle_click(screen_pos: Vector2) -> void:
 			_rc.process_mode = Node.PROCESS_MODE_INHERIT
 	if !block_take and res["hit"]:
 		_place_ghost(res, false)
-		var bmn: Node = _btm()
-		block_body = bmn.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+		var bmn2: Node = _btm()
+		block_body = bmn2.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+		_ghost_fit(block_body)                 # подсветка по ВСЕМУ блоку, а не по одной клетке
 		res["hit"] = false
 	elif !block_take:
 		block_body = null                # тап/ховер мимо блока — снимаем выделение, иначе тап-захват
@@ -1101,6 +1104,52 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	else:
 		BuildingBlock["x"] = res.x; BuildingBlock["y"] = res.y; BuildingBlock["z"] = res.z
+
+## ПОДСВЕТКА НАКРЫВАЕТ ВЕСЬ БЛОК, А НЕ ОДНУ КЛЕТКУ.
+##
+## Куб подсветки размером в клетку садился в ту клетку, куда попал луч, — и у блока крупнее
+## одной клетки это выглядело как ошибка: у продавца 2×2×2 якорь стоит в УГЛОВОЙ клетке
+## (футпринт растёт от него в минус по X и Z, в плюс по Y), поэтому подсветка оказывалась на
+## задней правой нижней четверти постройки, а не на ней самой. Игрок читает это буквально:
+## «блок не там, где показывают».
+##
+## Размер и центр берём у САМОГО блока — по клеткам его футпринта (blocks.footprint_offsets),
+## а не по мешу: меш у моделей бывает и крупнее, и мельче своих клеток, а подсветка обязана
+## говорить про КЛЕТКИ — именно их занимает блок и именно их освободит снятие.
+## Форму КЕШИРУЕМ на узел: подсветка следует за наведённым блоком каждый кадр, а
+## footprint_offsets перебирает карту машины и режет строку ключа. Клетки блока при этом не
+## меняются, пока он стоит, — значит и считать их каждый кадр незачем.
+var _ghost_of: Node = null
+var _ghost_size: Vector3 = Vector3.ONE
+var _ghost_mid: Vector3 = Vector3.ZERO
+
+func _ghost_fit(b: Node) -> void:
+	if ghost_block == null or not is_instance_valid(ghost_block):
+		return
+	var grid: Node = _btm()
+	if b == null or not is_instance_valid(b) or not (b is Node3D) or grid == null:
+		return
+	if not grid.has_method("footprint_offsets"):
+		return
+	if b != _ghost_of:
+		_ghost_of = b
+		var mn := Vector3.ZERO
+		var mx := Vector3.ZERO
+		for o in grid.footprint_offsets(b):
+			var v := Vector3(o)
+			mn = mn.min(v)
+			mx = mx.max(v)
+		_ghost_size = mx - mn + Vector3.ONE
+		_ghost_mid = (mn + mx) * 0.5                # центр футпринта в клетках от якоря
+	var size: Vector3 = _ghost_size
+	var mid: Vector3 = _ghost_mid
+	var gnode: Node3D = grid as Node3D
+	var b3: Node3D = b as Node3D
+	if ghost_block.top_level:
+		ghost_block.global_transform = Transform3D(
+				gnode.global_transform.basis.scaled(size), gnode.to_global(b3.position + mid))
+	else:
+		ghost_block.transform = Transform3D(Basis().scaled(size), b3.position + mid)
 
 # Имя грани → направление от центра блока наружу. Оно же связывает имена разъёмов
 # (connect_faces у самого блока) с осями модели.
@@ -1388,10 +1437,16 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	var tm_y: float = ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
 	var tm_z: float = ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
 	var last_face := ""
+	# Клетки читаем у ЦЕЛИ ПОСТРОЙКИ, а не у себя: луч выше уже переведён в её пространство
+	# (_handle_click), и спрашивать при этом СВОЮ карту значило бы наводиться по чужой сетке —
+	# на соседней машине подсветка садилась бы в клетку, вычисленную по нашей сборке.
+	var bmn: Node = _btm()
+	if bmn == null:
+		return result
 	for _i in range(128):
 		# Проверяем ТЕКУЩУЮ ячейку (включая стартовую) ещё до шага.
 		if _in_bounds(cx, cy, cz):
-			var block: int = block_map_node.get_block(cx, cy, cz)
+			var block: int = bmn.get_block(cx, cy, cz)
 			if block != 0:
 				result["hit"] = true
 				result["x"] = cx; result["y"] = cy; result["z"] = cz

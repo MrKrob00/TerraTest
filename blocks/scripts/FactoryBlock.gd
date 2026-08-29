@@ -134,6 +134,7 @@ func try_receive(item: Node3D) -> bool:
 	if not is_instance_valid(item):
 		return false
 	current_item = item
+	_push_pending = false                 # новый груз: прошлая неудача к нему отношения не имеет
 	if item is RigidBody3D:
 		item.freeze = true
 	# Запоминаем мировую позицию ДО reparent
@@ -156,20 +157,53 @@ func _on_item_received() -> void:
 
 func _try_push() -> void:
 	if not _factory_active():
-		return                            # без якоря дальше не передаём
+		_push_pending = true              # без якоря дальше не передаём, но попытку не теряем
+		return
 	if current_item == null or not is_instance_valid(current_item):
 		current_item = null
+		_push_pending = false
 		return
 	if push_item(current_item):
 		current_item = null
 		waiting_for_next = false
+		_push_pending = false
 		slot_freed.emit()
 		return
-	# Никто не принял — ждём, когда освободится первый занятый приёмник.
+	# Никто не принял. Ждём, когда освободится первый занятый приёмник...
 	var wait_on := _first_valid_target()
 	if wait_on != null and not waiting_for_next:
 		waiting_for_next = true
 		wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
+	# ...и В ЛЮБОМ СЛУЧАЕ помечаем, что отдать не удалось (см. push_retry_tick).
+	_push_pending = true
+
+## ПОВТОРНАЯ ПОПЫТКА ОТДАТЬ — иначе блок с готовым грузом застревает НАВСЕГДА.
+##
+## Единственным способом попробовать ещё раз была подписка на slot_freed ПЕРВОГО подключённого
+## приёмника. Значит: соседей нет вовсе (игрок ещё не положил ленту, её сбили, цепочку
+## пересобрали) — подписываться не на кого, и блок стоял с грузом до конца игры, даже когда
+## ленту наконец ставили. То же самое, если приёмник появился уже ПОСЛЕ неудачной попытки:
+## его slot_freed мы не слушаем, потому что подписка ушла в другой узел.
+##
+## Ретраим ТОЛЬКО то, что уже пыталось уйти (_push_pending). Это важно: процессор ведёт
+## предмет по слотам две секунды, и ретрай «просто по таймеру» отдал бы руду дальше НЕДОДЕЛАННОЙ.
+const PUSH_RETRY := 1.0
+var _push_pending: bool = false
+var _retry_t: float = 0.0
+
+func _process(delta: float) -> void:
+	push_retry_tick(delta)
+
+## Вынесено отдельным методом, потому что наследник может определить свой _process и заслонить
+## базовый (так делает storage.gd) — тогда он зовёт этот тик сам.
+func push_retry_tick(delta: float) -> void:
+	if not _push_pending or current_item == null or waiting_for_next:
+		return
+	_retry_t -= delta
+	if _retry_t > 0.0:
+		return
+	_retry_t = PUSH_RETRY
+	_try_push()
 
 # Отдать предмет ЛЮБОМУ из подключённых приёмников. Обходим их ПО КРУГУ (_out_turn), поэтому
 # блок с несколькими выходами работает делителем и раздаёт поровну, а не забивает первый.
