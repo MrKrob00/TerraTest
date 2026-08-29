@@ -368,10 +368,14 @@ func _toggle_settings() -> void:
 # ── Кнопка якоря (фиксация машины к миру, как блок-якорь в TerraTech) ──────────
 # Иконка рисуется нодами (AnchorIcon._draw): кольцо + шток + лапы, картинка сразу понятна.
 class AnchorIcon extends Control:
-	var active := false
+	var active := false          # машина СЕЙЧАС на якоре
+	var ready := true            # место годится: нажатие сработает, а не подкинет машину
 	func _draw() -> void:
 		var c := size * 0.5
-		var col := Color(0.3, 1.0, 0.5) if active else Color(0.88, 0.96, 0.98)
+		# Три состояния одним цветом: зелёный — стоим на якоре, светлый — можно встать здесь,
+		# приглушённый — место не годится (уклон, бугор, высоко над землёй).
+		var col := Color(0.3, 1.0, 0.5) if active \
+				else (Color(0.88, 0.96, 0.98) if ready else Color(0.5, 0.56, 0.6, 0.55))
 		var lw := 3.0
 		draw_arc(c + Vector2(0, -14), 5.0, 0.0, TAU, 16, col, lw)          # кольцо
 		draw_line(c + Vector2(0, -9), c + Vector2(0, 14), col, lw)          # шток
@@ -1121,6 +1125,18 @@ func _update_radar(delta: float) -> void:
 	if _anchor_btn:
 		_anchor_btn.visible = (not _controls_hidden) and v != null \
 				and v.has_method("can_anchor") and v.can_anchor()
+		# ГОДИТСЯ ЛИ МЕСТО — ВИДНО ЗАРАНЕЕ. Отказ якоря игра показывает единственным способом:
+		# подкидывает машину. Игрок жал кнопку, машина подпрыгивала, и почему — оставалось
+		# гадать. Теперь якорь на кнопке горит, только когда встать МОЖНО прямо здесь: тот же
+		# ответ, который даст сама постановка (vehicle.anchor_spot_ok), спрошенный заранее.
+		if _anchor_btn.visible and _anchor_icon != null:
+			var on_anchor: bool = v.get("anchored") == true
+			var ready_here: bool = on_anchor or not v.has_method("anchor_spot_ok") \
+					or v.anchor_spot_ok()
+			if _anchor_icon.active != on_anchor or _anchor_icon.ready != ready_here:
+				_anchor_icon.active = on_anchor
+				_anchor_icon.ready = ready_here
+				_anchor_icon.queue_redraw()
 	# Размер и охват — по наличию блока RADAR; сама карта видна, пока есть машина.
 	var on: bool = _has_radar(v)
 	var want: float = RADAR_SIZE_FULL if on else RADAR_SIZE_SMALL
