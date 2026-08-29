@@ -1032,10 +1032,69 @@ func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
 		return (center if b.shape_centered else o + Vector2(r, r)).distance_to(pos) <= r
 	return false
 
+# ══════════════════════════════════════════
+# СТРОИМ НЕ ТОЛЬКО НА СЕБЕ
+# ══════════════════════════════════════════
+# Игрок сидит в машине, а рядом стоит его база-фабрика — и достроить её раньше было нельзя:
+# весь разбор тапа (сетка, превью, постановка, снятие) был ЖЁСТКО про self. Приходилось
+# пересаживаться в базу, строить, пересаживаться обратно.
+#
+# ЦЕЛЬ ВЫБИРАЕТ ЛУЧ, а не кнопка и не меню: тапнул по своей другой машине — строишь на ней,
+# тапнул по себе или мимо — на себе. Ровно так игрок и думает про постройку, и лишнего режима
+# заводить не пришлось. Цель запоминается на время жеста, потому что наведение и подтверждение
+# приходят разными событиями: пересчитать её заново в момент тапа значило бы иногда ставить
+# блок не туда, куда игрок целился.
+#
+# «Своя машина» — та, что числится у камеры (camera_controller.vehicles). Проверять по faction
+# мало: у баз он свой, а список камеры и есть ответ на вопрос «чем игрок владеет».
+var build_target: Node = null            # null — строим на себе
+const BUILD_REACH := 30.0                # дальше этого чужая машина целью не становится
+
+## Машина, НА КОТОРОЙ сейчас строим (по умолчанию — эта).
+func _bt() -> Node3D:
+	return build_target as Node3D if (build_target != null and is_instance_valid(build_target)) else self
+
+## Её сетка блоков.
+func _btm() -> Node:
+	var v: Node3D = _bt()
+	if v == self:
+		return block_map_node
+	var n = v.get("block_map_node")
+	return n if n != null else v.get_node_or_null("blocks")
+
+## Обновить цель по лучу тапа. Зовётся ОДИН раз за жест — из _handle_click.
+func _update_build_target(screen_pos: Vector2) -> void:
+	build_target = null
+	if camera_controller == null or camera_controller.camera == null:
+		return
+	if not ("vehicles" in camera_controller):
+		return
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	q.collision_mask = 2                          # слой блоков
+	q.exclude = [get_rid()]                       # себя не ищем: цель по умолчанию и так self
+	var hit := get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return
+	var root: Node = hit.get("collider")
+	while root != null and not (root is MachineBody):
+		root = root.get_parent()
+	if root == null or root == self or not (root is Node3D):
+		return
+	if not camera_controller.vehicles.has(root):
+		return                                    # чужая машина — на ней не строим
+	if global_position.distance_squared_to((root as Node3D).global_position) > BUILD_REACH * BUILD_REACH:
+		return
+	if root.get("block_map_node") == null and root.get_node_or_null("blocks") == null:
+		return
+	build_target = root
+
 func _handle_click(screen_pos: Vector2) -> void:
 	var camera: Camera3D = camera_controller.camera
 	var world_origin: Vector3 = camera.project_ray_origin(screen_pos)
 	var world_dir: Vector3 = camera.project_ray_normal(screen_pos)
+	_update_build_target(screen_pos)
 	# Луч надо перевести из мира в ЛОКАЛЬНУЮ сетку блоков. Старый код вычитал только
 	# position (без учёта поворота машины и трансформа родителя) и НЕ поворачивал
 	# направление — поэтому, как только машина повёрнута (а в Building остаётся поворот
@@ -1060,8 +1119,9 @@ func _handle_click(screen_pos: Vector2) -> void:
 			# Решает ПОПАДАНИЕ ЛУЧА, а не тип блока: целишься в машину — обычная сетка,
 			# целишься мимо — новая база на земле. Раньше он уходил на землю ВСЕГДА, и
 			# поставить продавца на свою машину было нельзя вовсе.
-			_ground_core = G.is_stationary(held_bt) and not is_station
-	var space_node: Node3D = block_map_node if block_map_node else self
+			_ground_core = G.is_stationary(held_bt) and not is_station and build_target == null
+	var bm: Node = _btm()
+	var space_node: Node3D = bm as Node3D if bm != null else _bt()
 	var ray_origin: Vector3 = space_node.to_local(world_origin) + Vector3(5, 5, 5)
 	var ray_dir: Vector3 = (space_node.global_transform.basis.inverse() * world_dir).normalized()
 	var res: Dictionary = _find_nearest_block_on_ray(ray_origin, ray_dir)
@@ -1091,7 +1151,8 @@ func _handle_click(screen_pos: Vector2) -> void:
 			_rc.process_mode = Node.PROCESS_MODE_INHERIT
 	if !block_take and res["hit"]:
 		_place_ghost(res, false)
-		block_body = block_map_node.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+		var bmn: Node = _btm()
+		block_body = bmn.find_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		res["hit"] = false
 	elif !block_take:
 		block_body = null                # тап/ховер мимо блока — снимаем выделение, иначе тап-захват
@@ -1105,23 +1166,26 @@ func _handle_click(screen_pos: Vector2) -> void:
 # ВНУТРЬ по нормали) и грань, к которой цепляемся (направление самой нормали).
 func _cell_from_physics(screen_pos: Vector2) -> Dictionary:
 	var miss := {"hit": false, "x": 0, "y": 0, "z": 0, "block_name": "", "face": ""}
-	if camera_controller == null or camera_controller.camera == null or block_map_node == null:
+	var bmn: Node = _btm()
+	if camera_controller == null or camera_controller.camera == null or bmn == null:
 		return miss
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
-	if hit.is_empty() or hit.get("collider") != self:
-		return miss                        # попали не в машину (земля, чужой блок) — это не наводка
-	var basis_inv: Basis = block_map_node.global_transform.basis.inverse()
+	# Попали в ту машину, НА КОТОРОЙ строим (обычно в себя, но может быть и соседняя своя).
+	if hit.is_empty() or hit.get("collider") != _bt():
+		return miss                        # попали не в неё (земля, чужой блок) — это не наводка
+	var grid: Node3D = bmn as Node3D
+	var basis_inv: Basis = grid.global_transform.basis.inverse()
 	var n: Vector3 = (basis_inv * (hit["normal"] as Vector3)).normalized()
-	var p: Vector3 = block_map_node.to_local(hit["position"] as Vector3) - n * 0.5
+	var p: Vector3 = grid.to_local(hit["position"] as Vector3) - n * 0.5
 	var cx := int(round(p.x)) + 5
 	var cy := int(round(p.y)) + 5
 	var cz := int(round(p.z)) + 5
 	if not _in_bounds(cx, cy, cz):
 		return miss
-	var block: int = block_map_node.get_block(cx, cy, cz)
+	var block: int = bmn.get_block(cx, cy, cz)
 	if block == 0:
 		return miss
 	# Имена граней = НАПРАВЛЕНИЕ наружу (см. _place_ghost: "right" → x+1). Берём ось, по
@@ -1148,9 +1212,15 @@ func _place_ghost(res: Dictionary, face: bool) -> void:
 		"back":   gz += 1
 		"front":  gz -= 1
 	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
-	if ghost_block.top_level and block_map_node:
+	var gm: Node = _btm()
+	# Строим на ЧУЖОЙ (своей же, но другой) машине — подсветка обязана жить в мировых
+	# координатах: как ребёнок этой машины она уехала бы вместе с ней, а клетка не здесь.
+	if gm != null and gm != block_map_node:
+		ghost_block.top_level = true
+	if ghost_block.top_level and gm != null:
 		# Мировой трансформ ячейки (позиция + поворот машины) — призрак не отстаёт при движении.
-		ghost_block.global_transform = block_map_node.global_transform * Transform3D(Basis(), local_pos)
+		# Берём сетку ЦЕЛИ: строить можно и на соседней своей машине, и подсветка обязана быть там же.
+		ghost_block.global_transform = (gm as Node3D).global_transform * Transform3D(Basis(), local_pos)
 	else:
 		ghost_block.position = local_pos
 	if BuildingBlock["build"]:
@@ -1219,13 +1289,16 @@ func _preview_held(res: Dictionary) -> void:
 	_preview_res = res
 	# Сдвиг якоря к выбранной грани — с учётом РАЗМЕРА блока (attach_delta), чтобы многоклеточные
 	# (процессор/продавец) вставали и СБОКУ, а не только наверх (см. blocks.attach_delta).
-	var ad :Vector3 = block_map_node.attach_delta(int(instance.block), String(res.face))
+	var bmn: Node = _btm()            # строим на СЕБЕ или на соседней своей машине — решил луч
+	if bmn == null:
+		return
+	var ad :Vector3 = bmn.attach_delta(int(instance.block), String(res.face))
 	var gx: float = float(res.x) + ad.x
 	var gy: float = float(res.y) + ad.y
 	var gz: float = float(res.z) + ad.z
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
-	var placeable: bool = block_map_node.can_attach(int(res.x), int(res.y), int(res.z),
-			instance, res.face) and block_map_node.can_place(instance.block, gx, gy, gz)
+	var placeable: bool = bmn.can_attach(int(res.x), int(res.y), int(res.z),
+			instance, res.face) and bmn.can_place(instance.block, gx, gy, gz)
 	if not placeable:
 		instance.top_level = false
 		instance.position = Vector3.ZERO       # обратно в руку
@@ -1235,11 +1308,12 @@ func _preview_held(res: Dictionary) -> void:
 		return
 	var orient := _face_orient(res.face, instance, build_basis) * build_basis
 	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
-	var world_basis: Basis = (block_map_node.global_transform.basis * orient).orthonormalized()
+	var grid: Node3D = bmn as Node3D
+	var world_basis: Basis = (grid.global_transform.basis * orient).orthonormalized()
 	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
 	# камерой; без этого при повороте камеры он «смотрел» на неё).
 	instance.top_level = true
-	instance.global_transform = Transform3D(world_basis, block_map_node.to_global(local_pos))
+	instance.global_transform = Transform3D(world_basis, grid.to_global(local_pos))
 	if ghost_block:
 		ghost_block.visible = false
 
@@ -1474,17 +1548,22 @@ func _pick_selected_block() -> bool:
 		return false
 	if not ("block" in block_body):
 		return false                              # наведён РЕСУРС: у него нет .block, int(null) роняет вызов
-	if is_core_block(block_body):
+	# ЯДРО СПРАШИВАЕМ У ТОЙ МАШИНЫ, С КОТОРОЙ СНИМАЕМ. is_core_block — метод машины, а снимать
+	# мы можем и с соседней своей: спросив себя, мы защитили бы своё ядро, а не её.
+	var owner_v: Node = _bt()
+	if owner_v.has_method("is_core_block") and owner_v.is_core_block(block_body):
 		return false                              # ядро сборки не снимаем (кабина / ядро базы)
-	if block_body.get_parent() != null and block_body.get_parent().name == "blocks":
-		block_map_node.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
+	var bmn: Node = _btm()
+	if bmn != null and block_body.get_parent() != null and block_body.get_parent().name == "blocks":
+		bmn.remove_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"])
 		# Структурная целостность и В СТРОЙКЕ: сняли блок → сосед, потерявший ВСЕ связи с
 		# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
-		if block_map_node.has_method("_detach_orphans"):
-			block_map_node.call_deferred("_detach_orphans")
+		if bmn.has_method("_detach_orphans"):
+			bmn.call_deferred("_detach_orphans")
 	# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
 	# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
-	for i in get_children():
+	# Коллизии блоков живут на КУЗОВЕ машины-владельца — у неё их и ищем.
+	for i in owner_v.get_children():
 		if i is CollisionShape3D and (i.position == block_body.position \
 				or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
 			i.queue_free()
@@ -1789,10 +1868,18 @@ func _on_take_pressed() -> void:
 		if _preview_res == null:
 			return
 		var pres: Dictionary = _preview_res
-		if not block_map_node.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
+		# КУДА СТАВИМ — решено ещё при наведении (_update_build_target): на себя или на
+		# соседнюю свою машину. Дальше всё идёт через эту цель: и карта клеток, и кузов, на
+		# который вешается коллизия, и узел blocks, в который блок переезжает.
+		var tgt: Node3D = _bt()
+		var bmn: Node = _btm()
+		var tgt_blocks: Node = tgt.get_node_or_null("blocks")
+		if bmn == null or tgt_blocks == null:
+			return
+		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
 			return
 		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
-		if not block_map_node.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
+		if not bmn.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
 			return
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
@@ -1816,19 +1903,23 @@ func _on_take_pressed() -> void:
 		var box: BoxShape3D = collision.shape as BoxShape3D
 		if box != null and box.size == Vector3(2, 2, 2):
 			collision.position += BIG_BLOCK_COL_OFFSET
-		add_child(collision)
+		tgt.add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
-		instance.reparent($blocks, false)
+		instance.reparent(tgt_blocks, false)
 		instance.scale = Vector3.ONE
-		block_map_node.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
-		block_map_node.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
+		bmn.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)
+		bmn.node_map["%d,%d,%d" % [BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]]] = instance
 		# Подписки на уничтожение — ОБЯЗАТЕЛЬНО обе, иначе поставленный игроком блок после
 		# гибели оставляет после себя и занятую клетку карты (новый блок туда не встанет),
 		# и висящую в воздухе коллизию. Блоки из стартовой сборки их получают в spawn_block,
 		# а этот путь про них забывал.
-		block_map_node.attach_block_signals(instance, int(BuildingBlock["x"]),
+		bmn.attach_block_signals(instance, int(BuildingBlock["x"]),
 				int(BuildingBlock["y"]), int(BuildingBlock["z"]))
-		connect_block_signals(instance)
+		# Подписку на гибель ставит ТА машина, на которой блок теперь стоит: обе подписки
+		# обязаны быть у одного хозяина, иначе сбитый блок чистит клетку у одной машины, а
+		# коллизию оставляет висеть на другой.
+		if tgt.has_method("connect_block_signals"):
+			tgt.connect_block_signals(instance)
 		hand_kind = Hand.EMPTY
 		var placed_bt := int(instance.block)
 		block_take = false
@@ -1842,7 +1933,8 @@ func _on_take_pressed() -> void:
 			build_basis = Basis()
 		_preview_res = null
 		Q.report("block_placed", 1)             # прогресс заданий на сборку
-		_rebuild_factory()                      # авто-коннект фабрики сразу после постановки
+		if bmn.has_method("rebuild_factory_links"):
+			bmn.rebuild_factory_links()         # авто-коннект фабрики ЦЕЛИ сразу после постановки
 		if _hand_from_inventory:
 			_refill_hand_from_inventory(placed_bt, keep_basis)
 		_notify_build_changed()                 # вес/характеристики в гараже — сразу
