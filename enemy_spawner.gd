@@ -368,14 +368,9 @@ func _spawn_one() -> void:
 
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	# Сборка — ДО add_child (blocks строит машину в своём _ready).
-	var tier: int = _enemy_tier(player)
 	var blocks := enemy.get_node_or_null("blocks")
-	if blocks and "layout_preset" in blocks and not preset_tiers.is_empty():
-		blocks.layout_preset = int(preset_tiers[tier])
-	# Уровень едет на самой машине: метка над врагом показывает его игроку, и «во что я
-	# ввязываюсь» становится видно ДО боя, а не по числу обломков после.
-	if "enemy_tier" in enemy:
-		enemy.enemy_tier = tier + 1
+	if blocks and "layout_preset" in blocks:
+		blocks.layout_preset = _pick_preset(player)
 
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
