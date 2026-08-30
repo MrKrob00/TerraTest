@@ -126,6 +126,35 @@ mesh = ExtResource("25_5t8nk")
 transform_format = 1
 mesh = ExtResource("26_j3e5s")
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hudpanel"]
+content_margin_left = 14.0
+content_margin_top = 12.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+bg_color = Color(0.043, 0.122, 0.149, 0.95)
+border_width_left = 2
+border_width_top = 1
+border_width_bottom = 1
+border_color = Color(0.247, 0.6, 0.65, 0.5)
+corner_radius_top_left = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hudfloat"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.043, 0.122, 0.149, 0.95)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.247, 0.6, 0.65, 0.5)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
 [node name="Main" type="Node3D" unique_id=1697367741]
 script = ExtResource("1_ealrb")
 
@@ -343,6 +372,79 @@ offset_bottom = 71.0
 theme_override_colors/font_color = Color(0.55, 0.85, 0.9, 1)
 theme_override_font_sizes/font_size = 48
 text = "30 FPS"
+
+[node name="Money" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000101]
+unique_name_in_owner = true
+offset_right = 96.0
+offset_bottom = 30.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hudfloat")
+
+[node name="MoneyValue" type="Label" parent="Vehicles/Camera Controller/HUD/Money" unique_id=411000102]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.35, 1)
+theme_override_font_sizes/font_size = 17
+text = "$ 0"
+horizontal_alignment = 1
+
+[node name="Market" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000103]
+unique_name_in_owner = true
+visible = false
+offset_right = 96.0
+offset_bottom = 60.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_hudfloat")
+
+[node name="MarketRows" type="VBoxContainer" parent="Vehicles/Camera Controller/HUD/Market" unique_id=411000104]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 1
+
+[node name="PerfPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000105]
+unique_name_in_owner = true
+visible = false
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 208.0
+offset_bottom = 108.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hudpanel")
+
+[node name="PerfText" type="Label" parent="Vehicles/Camera Controller/HUD/PerfPanel" unique_id=411000106]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.75, 0.95, 1, 1)
+theme_override_font_sizes/font_size = 12
+
+[node name="HandPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000107]
+unique_name_in_owner = true
+visible = false
+offset_right = 200.0
+offset_bottom = 92.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hudfloat")
+
+[node name="HandRow" type="HBoxContainer" parent="Vehicles/Camera Controller/HUD/HandPanel" unique_id=411000108]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="RotatePanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000109]
+unique_name_in_owner = true
+visible = false
+offset_left = 16.0
+offset_right = 196.0
+offset_bottom = 140.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_hudfloat")
+
+[node name="RotateGrid" type="GridContainer" parent="Vehicles/Camera Controller/HUD/RotatePanel" unique_id=411000110]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/h_separation = 8
+theme_override_constants/v_separation = 8
+columns = 2
 
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 constant_angular_velocity = Vector3(-0.0015882496, 0, 0)
