@@ -484,8 +484,20 @@ func _machine_value(machine: Node3D) -> int:
 
 ## Разведчик РЯДОМ с игроком — сюжетный спавн после обучения. Обычный поток врагов держит
 ## дистанцию «обзор врага + запас», чтобы не наваливаться; здесь наоборот нужно, чтобы
-## игрок его сразу увидел, поэтому кольцо своё и слабая сборка (preset 0).
-## Возвращает врага или null, если рядом не нашлось ровного места.
+## игрок его сразу увидел, поэтому и дистанция своя, и слабейшая сборка.
+##
+## СТАВИМ ПО КУРСУ МАШИНЫ, а не в случайную сторону кольца. Это ЕДИНСТВЕННОЕ место, где
+## правило общего потока (`front_clear_dist` — перед игроком не появляться) вывернуто наизнанку,
+## и намеренно: там врага не должно быть видно ВОЗНИКАЮЩИМ, а здесь наоборот — это первая
+## машина в жизни игрока, она десантируется с неба, и всё представление проходит впустую, если
+## случайный угол поставил её за спиной. Игрок в этот момент ещё не знает, что камерой можно
+## крутить, и первым признаком врага оказывалась стрельба откуда-то сзади.
+##
+## Курс берём из ВЕКТОРА ВПЕРЁД, прижатого к горизонту, а не из global_rotation.y: у машины на
+## склоне эйлеров угол — не курс (то же правило, что у камеры, см. CLAUDE.md).
+const SCOUT_FRONT_SPREAD := 0.42            # ±24°: чуть в сторону, чтобы не падал ровно на нос
+## Возвращает врага или null, если сцены/карты/игрока в мире нет (место не проверяем: он
+## десантируется и сам скатится с уклона — то же правило, что у кольцевого спавна).
 func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
 	if enemy_scenes.is_empty():
 		return null
@@ -495,17 +507,17 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	if map == null or player == null or vehicles == null:
 		return null
 	var center: Vector3 = player.global_position
-	var pos = null
-	var base: float = randf() * TAU
-	for i in 24:
-		var ang: float = base + TAU * float(i) / 24.0
-		var dist: float = randf_range(min_d, max_d)
-		var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		var h: float = map.terrain_height_at(world)
-		pos = Vector3(world.x, h + drop_height, world.z)
-		break
-	if pos == null:
-		return null
+	var fwd: Vector3 = -player.global_transform.basis.z
+	fwd.y = 0.0
+	# Машина, поставленная носом строго вверх (перевернулась, висит в воздухе), даёт нулевой
+	# горизонтальный курс — тогда любое направление одинаково честно, берём случайное.
+	var base: float = atan2(fwd.z, fwd.x) if fwd.length_squared() > 0.0001 else randf() * TAU
+	var ang: float = base + randf_range(-SCOUT_FRONT_SPREAD, SCOUT_FRONT_SPREAD)
+	var dist: float = randf_range(min_d, max_d)
+	var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	# Высоту спрашиваем ОДНОЙ функцией (правило проекта): пока высоты карты не прочитаны, сырой
+	# terrain_height_at отдаёт ноль, и разведчик десантировался бы под землю.
+	var pos := Vector3(world.x, G.ground_y(world, center.y) + drop_height, world.z)
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
