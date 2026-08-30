@@ -177,7 +177,7 @@ snow_blend = 15.6
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
-mask_offset = Vector2(3996.8843, -2676.6948)
+mask_offset = Vector2(-594.0425, -407.9839)
 
 [sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
@@ -550,6 +550,7 @@ flat_lod_error = 0.003
 triangle_size = 1
 editor_lod = true
 editor_view_distance = 4000.0
+editor_detail = true
 heightmap_path = "res://terrain_height.res"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
