@@ -358,6 +358,11 @@ of seconds, and without the window that reads as a frozen editor. The estimate i
 whole run rather than per pass: the passes differ several-fold in cost, so a per-pass number would
 promise a new total at every stage.
 
+**Bake → files** runs under the same window (without Stop — there is nothing to undo once a
+file is written). It writes four things in a row, three of which are full sweeps of the map, and
+before the window that was tens of seconds of a frozen editor with no way to tell which file it
+was on.
+
 **Stop** abandons the run. A group task already running cannot be un-scheduled, so instead the
 remaining rows return immediately, the current pass ends in milliseconds and the generation stops
 between passes — with the map and the file on disk exactly as they were. Nothing is ever written
@@ -365,6 +370,13 @@ half-generated.
 
 Generation replaces the whole heightmap and writes it to the R32F file, so both the
 runtime and a reopened editor load the new terrain.
+
+The **last stage is the longest**, and it is driven step by step for that reason: setting the
+heights used to rebuild the whole editor preview inside `set_heightmap`, in one blocking call,
+with the bar frozen at 96 % — indistinguishable from a hang. The preview rebuild is now started
+by the plugin (`editor_rebuild_begin` / `_done` / `_progress` / `_apply`), which polls it and
+hands a frame back to the editor between polls, so the bar moves per chunk. Only the final mesh
+merge is still one blocking call.
 
 ## Streaming heights (the .bin next to the .res)
 
