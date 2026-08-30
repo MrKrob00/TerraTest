@@ -46,10 +46,10 @@ func _ready() -> void:
 	_build_hand_panel()
 	_build_block_globe()
 	_build_anchor_button()
-	_build_market()
+	_bind_market()
 	_build_vehicle_button()
 	_build_radar()
-	_build_money()
+	_bind_money()
 	# Компас задания (quest_compass.gd): ведёт к цели отслеживаемого квеста и не даёт ей
 	# потеряться за кадром. Добавляем ПОСЛЕ карты, чтобы рисоваться поверх мира, но он
 	# полноэкранный и прозрачный — ничего собой не закрывает.
@@ -242,18 +242,20 @@ func _radar_pos(screen: Vector2) -> Vector2:
 const MONEY_H := 30.0
 var _money_lbl: Label = null
 
-func _build_money() -> void:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", _make_float_panel_style())
-	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_money_lbl = Label.new()
-	_money_lbl.add_theme_font_size_override("font_size", 17)
-	_money_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
-	_money_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_money_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	p.add_child(_money_lbl)
-	add_child(p)
-	_money_panel = p
+# ── ПАНЕЛИ ЖИВУТ В СЦЕНЕ, А НЕ В КОДЕ ─────────────────────────────────────────
+# Деньги, рынок, панель профиля, «блок в руке» и кнопки поворота собраны узлами в node_3d.tscn
+# (под HUD), а сюда приходят по уникальным именам. Раньше их строил код: чтобы поправить отступ
+# или цвет, надо было искать нужный .new() среди двух тысяч строк и запускать игру, чтобы
+# увидеть результат. Теперь структура и стиль — в инспекторе, а в коде остаётся то, чего нодой
+# не выразить: ТЕКСТ, ВИДИМОСТЬ и ПОЛОЖЕНИЕ у краёв экрана (его считает _relayout).
+#
+# ЧТО НЕ ПЕРЕЕХАЛО и почему: иконки (MenuIcon, AnchorIcon, RotIcon, InvIcon, DropIcon,
+# EnergyGauge, RadarHUD, GearIcon) — это _draw(), процедурная отрисовка, у неё нет узлового
+# представления вовсе; строки рынка, список техники и содержимое профиля строятся ПО ДАННЫМ и
+# меняются каждый кадр или каждое событие. Их место в коде.
+func _bind_money() -> void:
+	_money_panel = %Money
+	_money_lbl = %MoneyValue
 	_refresh_money()
 	G.money_changed.connect(_refresh_money)   # продавец начисляет пассивно — ловим сигналом
 	_layout_money()
@@ -271,17 +273,9 @@ const MARKET_ROW_H := 18.0
 var _market_panel: PanelContainer = null
 var _market_box: VBoxContainer = null
 
-func _build_market() -> void:
-	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", _make_float_panel_style())
-	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	p.visible = false
-	_market_box = VBoxContainer.new()
-	_market_box.add_theme_constant_override("separation", 1)
-	_market_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	p.add_child(_market_box)
-	add_child(p)
-	_market_panel = p
+func _bind_market() -> void:
+	_market_panel = %Market
+	_market_box = %MarketRows
 	G.market_changed.connect(_refresh_market)
 	_refresh_market()
 
@@ -883,13 +877,10 @@ class RotIcon extends Control:
 # кнопкой Take/Place, когда в руке есть блок. Стиль — палитра tech_ui, как у остальных панелей.
 var _hand_panel: PanelContainer
 func _build_hand_panel() -> void:
-	_hand_panel = PanelContainer.new()
-	_hand_panel.add_theme_stylebox_override("panel", _make_float_panel_style())
-	_hand_panel.visible = false
-	add_child(_hand_panel)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
-	_hand_panel.add_child(row)
+	_hand_panel = %HandPanel
+	var row: HBoxContainer = %HandRow
+	# Кнопки строит код, а не сцена: у каждой внутри РИСОВАННАЯ иконка (InvIcon/DropIcon —
+	# обычный Control с _draw), а её узлом не опишешь. Рамка и отступы при этом уже нодовые.
 	# Кнопку «в инвентарь» держим ссылкой: с РЕСУРСОМ в руке она бессмысленна — инвентарь
 	# хранит типы блоков, руде там места нет, — и её надо гасить, а не молча ничего не делать.
 	_stash_btn = _hand_btn(InvIcon.new(), "Inventory", "Put the held block into inventory",
@@ -999,18 +990,11 @@ func _update_hand_panel() -> void:
 
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	_rotate_panel = PanelContainer.new()
-	_rotate_panel.add_theme_stylebox_override("panel", _make_float_panel_style())
-	_rotate_panel.visible = false
-	var pw: float = 180.0
-	_rotate_panel.size = Vector2(pw, 140)
+	_rotate_panel = %RotatePanel
+	# Место у левого края считает код (оно зависит от высоты экрана), а размер, рамку и сетку
+	# 2×2 держит сцена. Кнопки — кодом: внутри рисованная RotIcon.
 	_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - 70.0)
-	add_child(_rotate_panel)
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 8)
-	_rotate_panel.add_child(grid)
+	var grid: GridContainer = %RotateGrid
 	# верхний ряд — наклон (крен вокруг оси Z), нижний — поворот (вокруг Y)
 	grid.add_child(_rot_btn("tilt_left",  "Tilt left",   Vector3.BACK,  PI / 2))
 	grid.add_child(_rot_btn("tilt_right", "Tilt right",  Vector3.BACK, -PI / 2))
@@ -1176,11 +1160,12 @@ func _toggle_perf_panel() -> void:
 		Perf.reset()
 
 func _build_perf_panel() -> void:
-	_perf_panel = PanelContainer.new()
-	_perf_panel.add_theme_stylebox_override("panel", _make_panel_style())
+	_perf_panel = %PerfPanel
+	_perf_label = %PerfText
 	# The panel TAKES taps: tapping it runs the resolution test (see _cycle_render_scale).
 	# It only exists while profiling, so covering that corner of the screen costs nothing.
-	_perf_panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Фильтр мыши у него нодовый (STOP по умолчанию у Control), а вот ОБРАБОТЧИК — только тут:
+	# сигнал на лямбду в сцене не сохранить.
 	# Гасим событие через ВЬЮПОРТ, а не accept_event(): лямбда живёт в hud.gd, а он CanvasLayer,
 	# и метода Control'а у неё нет вовсе — скрипт из-за этого не парсился целиком, то есть HUD
 	# не грузился. Панель — Control, но self внутри лямбды это по-прежнему HUD.
@@ -1189,14 +1174,11 @@ func _build_perf_panel() -> void:
 				or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
 			_cycle_render_scale()
 			get_viewport().set_input_as_handled())
-	_perf_panel.position = Vector2(8, 8)
-	_perf_panel.visible = false
-	_perf_label = Label.new()
-	_perf_label.add_theme_font_size_override("font_size", 12)
-	_perf_label.add_theme_color_override("font_color", Color(0.75, 0.95, 1.0))
-	_perf_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_perf_panel.add_child(_perf_label)
-	add_child(_perf_panel)
+	# ПОДНИМАЕМ НАД ВСЕМ. Панель стоит в том же углу, что и кнопка меню, и раньше была последним
+	# добавленным ребёнком (её создавали по первому нажатию), то есть рисовалась поверх. Теперь
+	# она живёт в сцене и идёт по списку РАНЬШЕ кнопок, которые строит код, — без этой строки
+	# «бургер» лёг бы поверх цифр профиля.
+	move_child(_perf_panel, get_child_count() - 1)
 
 func _update_perf_panel(delta: float) -> void:
 	_perf_t -= delta
@@ -1363,7 +1345,7 @@ func _update_radar(delta: float) -> void:
 	if _money_panel:
 		_money_panel.visible = live
 	if _market_panel:
-		# Только под якорем (см. _build_market): цены важны там, где торгуют и производят.
+		# Только под якорем (см. _bind_market): цены важны там, где торгуют и производят.
 		var show_market: bool = live and v != null and v.get("anchored") == true
 		var changed: bool = show_market != _market_panel.visible
 		_market_panel.visible = show_market
