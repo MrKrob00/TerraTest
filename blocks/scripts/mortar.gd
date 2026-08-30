@@ -30,6 +30,10 @@ func _ready() -> void:
 	super._ready()
 	weapon_range = MAX_RANGE
 	damage = SHELL_DAMAGE
+	# Базовый конус разброса мортире не нужен: _arc_last всё равно задаёт направление снаряда
+	# заново, от точки падения, и свой разброс у неё МЕТРАМИ ПО ЗЕМЛЕ (SPREAD) — так и должно
+	# быть у навесного оружия, которое целится в место, а не в тело.
+	spread_deg = 0.0
 	fire_rate = SALVO_PERIOD
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()

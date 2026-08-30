@@ -18,6 +18,16 @@ class_name WeaponBlock
 		if raycast != null:
 			raycast.target_position = Vector3(0, 0, -v)
 @export var fire_rate: float = 0.2
+## РАЗБРОС (половина угла конуса, градусы). Наводка у турели автоматическая — игрок только
+## держит Attack, — и без разброса это чистый аимбот: каждая пуля ложится в одну точку, а бой
+## сводится к «кто первым навёлся». Разброс тут УГЛОВОЙ, и это ровно то, что нужно: на пятнадцати
+## метрах это сантиметры, на предельной дальности — метры, то есть очередь ложится ПО МАШИНЕ, а
+## не в одну заклёпку.
+##
+## Сверх того он РАСТЁТ С ДИСТАНЦИЕЙ до цели (см. _apply_spread): у машины под боком ствол
+## по-прежнему точен. Иначе «небольшой разброс» пришлось бы делать заметным и вблизи, где он
+## только раздражает.
+@export var spread_deg: float = 1.4
 @export var raycast: RayCast3D
 @export var pivot: Node3D
 @export var Area_Range: Area3D
@@ -384,9 +394,35 @@ func fire_bullet():
 	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
 	_apply_flat_range(bullet)
-	if absf(dir.dot(Vector3.UP)) < 0.99:        # look_at падает, если dir почти вертикальна
-		bullet.look_at(bullet.global_position + dir)
+	_apply_spread(bullet)                       # ДО look_at: пуля обязана смотреть туда, куда летит
+	var shot: Vector3 = bullet.dir
+	if absf(shot.dot(Vector3.UP)) < 0.99:       # look_at падает, если dir почти вертикальна
+		bullet.look_at(bullet.global_position + shot)
 	bullet.monitoring = true                    # в полёте ловит попадания
+
+## Довернуть выпущенную пулю в конусе разброса. ОДИН конус на все стволы: подклассы меняют
+## только угол (`spread_deg`), а мортира и дробовик, у которых разброс свой по смыслу, ставят
+## ноль и считают сами.
+func _apply_spread(b: Node3D) -> void:
+	if spread_deg <= 0.0 or not ("dir" in b):
+		return
+	var d: Vector3 = b.dir
+	if d == Vector3.ZERO:
+		return
+	# Доля дальности до цели: вблизи конус сжимается, у предела — полный. Цели нет (стрельба
+	# «в никуда» по кнопке) — берём полный, там всё равно не по кому мазать.
+	var k: float = 1.0
+	if _current_target != null and is_instance_valid(_current_target):
+		k = clampf(pivot.global_position.distance_to(_current_target.global_position)
+				/ maxf(weapon_range, 1.0), 0.2, 1.0)
+	var a: float = deg_to_rad(spread_deg) * k
+	d = d.rotated(Vector3.UP, randf_range(-a, a))
+	# По вертикали вдвое уже, как у дробовика: промах вбок читается как «мажет», а вверх — как
+	# «стреляет в небо», хотя пуля ушла на те же полметра.
+	var side: Vector3 = d.cross(Vector3.UP).normalized()
+	if side.length_squared() > 0.0001:
+		d = d.rotated(side, randf_range(-a * 0.5, a * 0.5))
+	b.dir = d.normalized()
 
 func _on_area_3d_body_entered(body: Node3D) -> void:
 	if body == self or body.get_parent() == get_parent():
