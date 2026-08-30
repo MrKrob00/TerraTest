@@ -72,7 +72,7 @@ mesh = ExtResource("2_gks3k")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.006866634, 0.946612, 0.046955764)
 
 [node name="Label3D" type="Label3D" parent="." unique_id=1527277196]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0.5683485, 1.2713568, -1.0061349)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0.57667756, 1.2713568, -1.0061349)
 offset = Vector2(0, -50)
 modulate = Color(0, 1, 0.078431375, 1)
 text = "Cash: 0$"

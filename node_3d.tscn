@@ -114,7 +114,7 @@ script = ExtResource("12_lggff")
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
-mask_offset = Vector2(-3425.7754, 2901.5806)
+mask_offset = Vector2(3796.0571, -2670.9553)
 
 [sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
@@ -352,7 +352,6 @@ occlusion_min_dist = 80.0
 occlusion_samples = 14
 biomes = SubResource("Resource_s0gvp")
 triangle_size = 1
-editor_lod = true
 editor_view_distance = 4000.0
 heightmap_path = "res://terrain_height.res"
 
