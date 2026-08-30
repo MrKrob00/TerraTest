@@ -256,44 +256,47 @@ that lattice, and that alone was most of the minutes a full generate took.
 
 ## Generating terrain
 
-**Generate Terrain** fills the map with layered noise, then carves canyons into the
-result.
+**Generate Terrain** fills the map with layered noise, then carves canyons into the result and
+finally runs the erosion filter over it.
+
+**Six knobs, not seventeen.** A setting earns its place only if you can predict what it will
+change; everything else you turn blind and cannot reproduce. Three kinds of clutter were removed:
+values with one sensible answer became constants (noise octaves, blur passes — more octaves is
+noise, fewer is mush, and a second blur pass shaves off the very relief you built), values that
+always move together were merged into one knob (ridge height with ridge sharpness; gully depth,
+size, branching and slope bias), and values that must *follow* the map height are now derived
+from it instead of being set apart (mountain rise, dunes, mesa top, canyon floor, snow line —
+these lived in metres and broke silently whenever `Height` moved).
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| Seed | 42 | Same seed, same terrain. |
-| Scale | 150 | Size of the land masses. |
-| Octaves | 6 | Detail layers in the base noise. |
-| Plains Power | 2.6 | Higher flattens the plains and sharpens the peaks. |
-| Mountains | 0.8 | How strongly ridges are added on high ground. |
-| Ridge Sharpness | 2.5 | How knife-edged the ridges are. |
-| Amplitude | 30 | Maximum height in world units. |
-| Smooth Passes | 1 | Box-blur passes, to soften spikes. |
-| Map Size | 0 | Target size in image mode. `0` keeps the current size — this is how the map grows. |
+| Seed | 42 | Same seed, same terrain — landform and biome geography both. |
+| Size | 0 | Target size in image mode. `0` keeps the current size — this is how the map grows. |
+| Height | 30 | Maximum height in world units. Everything measured in metres follows this. |
+| Features | 150 | Size of the land masses. Keep it near the biome `mountain_scale`, or the snow cap lands beside the mountain instead of on it. |
+| Mountains | 0.6 | 0 — rolling hills, 1 — knife-edged ridges. Drives ridge amount and sharpness together. |
+| Erosion | 0.5 | 0 — off, 1 — the map is cut by gullies. Drives depth, cell size, branching and slope bias together. |
 | Canyons | on | Master switch for carving. Canyons also need `canyon_enabled` in the biomes. |
-| Plateau height / Canyon floor / Stratum height / Riser steepness / Gorge width / Channel frequency | — | Badlands shaping. Stratum height edits `canyon_band_height` on the biome resource. |
 
-**Natural preset** sets a consistent set of these in one click. Height and feature size are
-tied to each other, and the tie is hard to guess by eye: 300 units of height with 150-unit
-features means slopes steeper than 45° everywhere, and the map reads as a pincushion no matter
-what else you do. The preset picks large land masses, drivable slopes, and leaves the fine
-detail to erosion — which is what erosion is for.
+Under **Advanced** only what cannot be derived: `Plains power` (how flat the plains are) and the
+canyon shape — `Stratum`, `Riser`, `Gorge width`, `Channels`.
 
-### Fit metres to height
+**Natural preset** sets a consistent starting point and takes the feature size straight from the
+biome resource.
 
-Half of the terrain settings are **fractions** (noise, plains power, ridge sharpness) and half
-are **absolute metres**: mountain rise, dune amplitude, mesa top, canyon floor, the snow line.
-Move `Height` and the second half stays where it was — mountains turn into bumps under snow, the
-canyon becomes either a ditch or an abyss, snow either floods the map or disappears. With this
-box ticked the metre values are derived from `Height`; untick it and the sliders below take over.
-The sliders are never overwritten, so what you set is what you see.
+### Passes that used to fight each other
 
-Two more passes were quietly fighting each other, and both are fixed in the generator itself:
-the canyon pass **replaces** height with its terraces, so the fill pass no longer raises mountain
-domes or draws dunes inside the canyon mask (that work was thrown away, and its ragged edges
-stuck out of the canyon walls); and erosion now almost skips the canyon — its walls are the
-steepest ground on the map, so the filter cut there hardest and dissolved the clean strata that
-badlands are recognised by.
+Three couplings are now explicit in the generator, because the passes run in order and each one
+rewrites what the previous produced:
+
+- the canyon pass **replaces** height with its terraces, so the fill pass no longer raises
+  mountain domes or draws dunes inside the canyon mask — that work was thrown away, and its
+  ragged leftovers stuck out of the canyon walls;
+- **erosion almost skips the canyon**: its walls are the steepest ground on the map, so the
+  filter cut hardest exactly there and dissolved the clean strata badlands are recognised by;
+- every metre value is derived from `Height` (mountain rise 0.75, mesa top 0.42, canyon floor
+  0.06, snow line 0.55, dunes 0.05). Moving one slider used to break the other half of the
+  settings without showing it.
 
 Snow is painted where the mountain **mask** overlaps ground above `snow_line` (soft over
 `snow_blend`). The mask alone says only *where the mountain region is*, not how high the ground

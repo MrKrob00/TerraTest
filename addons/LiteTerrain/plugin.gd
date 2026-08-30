@@ -17,7 +17,8 @@ var _sl_stratum: HSlider = null
 ## Ползунки, которые двигает пресет: их надо обновить, иначе ручка врёт про значение.
 var _sl_height: HSlider = null
 var _sl_features: HSlider = null
-var _sl_ero: Array[HSlider] = []
+var _sl_mountains: HSlider = null
+var _sl_erosion: HSlider = null
 var strength_slider = null
 
 var _dirty_chunks: Dictionary = {}
@@ -39,43 +40,48 @@ var _have_last_dab := false
 var _last_dab_pos  := Vector3.ZERO
 
 # ---------- Noise generation parameters ----------
+# ШЕСТЬ РУЧЕК НА ВЕСЬ РЕЛЬЕФ, и это осознанное сокращение с семнадцати. Настройка имеет право
+# на существование, только если игрок может ПРЕДСКАЗАТЬ, что она изменит; всё остальное он
+# крутит наугад и получает результат, который не умеет повторить. Здесь выброшено три вида
+# лишнего:
+#   • то, что имело один разумный ответ (октавы шума, число проходов размытия) — стало
+#     константой: больше октав это шум, меньше — мыло; второй проход размытия срезает ровно
+#     то, ради чего рельеф и строили;
+#   • то, что всегда крутится ВМЕСТЕ (высота хребтов и их острота; глубина яров, их размер,
+#     ветвление и склонность к крутизне) — свелось к одной ручке на группу;
+#   • то, что обязано СЛЕДОВАТЬ за высотой карты (верх меса, дно каньона, подъём гор, дюны,
+#     снеговая линия) — считается от неё, а не задаётся отдельно. Раньше эти числа жили в
+#     метрах и молча ломались от любого движения Height.
 var gen_seed:             int   = 42
 var gen_scale:           float  = 150.0   # continental frequency scale
-var gen_octaves:          int   = 6       # FBM octaves
-var gen_power:           float  = 2.6
-var gen_mountain_amount: float  = 0.8    # ridge contribution
-var gen_ridge_sharpness: float  = 2.5    # how knife-sharp ridges are
-var gen_amplitude:       float  = 30.0   # max height in world units
-var gen_smooth:           int   = 1      # blur passes after generation
-var gen_size:             int   = 0      # image-mode target size (0 = keep current)
+var gen_power:           float  = 2.6     # выше — равнины площе, вершины резче
+var gen_amplitude:       float  = 30.0    # max height in world units
+var gen_mountains01:     float  = 0.6     # 0 — пологие холмы, 1 — острые хребты
+var gen_erosion01:       float  = 0.5     # 0 — эрозии нет, 1 — карта изрезана ярами
+var gen_size:             int   = 0       # image-mode target size (0 = keep current)
 
-# ---------- Эрозия (фильтр поверх готовых высот; см. _gen_erode_row) ----------
-# Все четыре числа — то, чем правят вид: сколько метров срезать, какого размера яры,
-# сколько уровней ветвления и насколько эрозия любит крутизну.
-## СВЯЗАТЬ МЕТРЫ С ВЫСОТОЙ КАРТЫ. Половина настроек рельефа задана в ДОЛЯХ (шум, степень
-## равнин, острота хребтов), а половина — в АБСОЛЮТНЫХ МЕТРАХ: подъём гор, амплитуда дюн,
-## верх меса и дно каньона, высота снеговой линии. Стоит подвинуть Height — и вторая половина
-## остаётся на месте: горы превращаются в бугры под снегом, каньон становится то канавой, то
-## пропастью, снег заливает карту целиком или пропадает совсем. Это и есть «настройки, которые
-## убивают друг друга». С этой галочкой метровые числа считаются ОТ Height, а ползунки под ней
-## работают, когда её снимают.
-var gen_fit_height:         bool  = true
+## Числа, у которых один разумный ответ. Ручку они не заслуживают, а объяснение — да.
+const GEN_OCTAVES := 6        # больше — высокочастотный шум, меньше — размытые пятна
+const GEN_SMOOTH_PASSES := 1  # один проход убирает пики шума; второй уже срезает рельеф
 
-var gen_erosion_enable:     bool  = true
-var gen_erosion_strength:  float  = 5.0    # м: глубина яров первой октавы
-var gen_erosion_scale:     float  = 130.0  # м: размер клетки (крупные яры) — дальше делится вдвое
-var gen_erosion_octaves:     int  = 3      # уровней ветвления
-var gen_erosion_slope_power: float = 1.4   # >1 — эрозия только на крутом, <1 — заметна и на пологом
+## Производные от gen_mountains01: две величины всегда двигались вместе, и порознь их
+## крутили только чтобы получить либо частокол, либо блины.
+func _mtn_amount() -> float:
+	return lerpf(0.25, 1.1, gen_mountains01)
+
+func _ridge_sharp() -> float:
+	return lerpf(1.6, 3.6, gen_mountains01)
 
 # ---------- Canyon carving (baked into the heights AFTER the blur, so the walls stay sheer) ----------
 # The canyon shape is driven by the same mask as the canyon biome's colour (TerrainBiomes),
 # so the landform and the colour line up on their own.
 var gen_canyon_enable:    bool  = true
-var gen_canyon_plateau:   float = 46.0   # top of the TALLEST mesas (lower ones follow the butte noise)
-var gen_canyon_floor:     float = 6.0    # absolute level of the canyon floor
 var gen_canyon_riser:     float = 0.30   # share of a step taken by the steep riser (0.30 → 70% flat, drivable tread)
 var gen_canyon_gorge:     float = 70.0   # frequency of the gorge network (lower = more channels)
 var gen_canyon_width:     float = 0.10   # width of the gorge floor, in noise units (larger = wider)
+# Верх меса и дно каньона В МЕТРАХ НЕ ЗАДАЮТСЯ: они считаются от Height (см. _generate_noise).
+# Пока это были свои ползунки, каньон при каждой правке высоты становился то канавой в ровном
+# поле, то пропастью глубже самих гор — и чинить это приходилось вручную, вслепую.
 # Mesas are built at ABSOLUTE heights (each plateau at its own level, varied by the butte noise)
 # and TERRACED into strata — the badlands look. No water; biomes come from the region masks.
 # Biome settings (scales, thresholds, dunes, mountain height, canyon terrace) come from the
@@ -275,9 +281,9 @@ func _gen_fill_row(z: int) -> void:
 		var fx := float(x)
 		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
 		var continental:float = pow(base, gen_power)
-		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), gen_ridge_sharpness)
+		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), _gen_ridge_sharp)
 		var mountain_mask = smoothstep(0.52, 0.78, continental)
-		var ridge_term = ridge * gen_mountain_amount * mountain_mask
+		var ridge_term = ridge * _gen_mtn_amount * mountain_mask
 		var wx := fx - hw
 		var wz := fz - hd
 		var wp := Vector2(wx, wz)
@@ -337,12 +343,19 @@ const CELL_MIN := 16.0
 ## Наклон, при котором эрозия работает в полную силу (тангенс: 0.25 ≈ 14°).
 const SLOPE_REF := 0.25
 
-## Метровые величины на ЭТУ генерацию: либо из настроек, либо пересчитанные от Height
-## (см. gen_fit_height). Держим отдельно, чтобы не переписывать то, что выставил человек.
+## Всё, что выведено ИЗ ШЕСТИ РУЧЕК на эту генерацию: метровые величины (от Height) и то, что
+## раньше стояло отдельными ползунками. Считается один раз, до первого прохода, — потоки эти
+## поля только читают.
 var _gen_mtn_rise: float = 48.0
 var _gen_dune_amp: float = 6.0
 var _gen_plateau: float = 46.0
 var _gen_floor: float = 6.0
+var _gen_mtn_amount: float = 0.8
+var _gen_ridge_sharp: float = 2.5
+var _gen_ero_strength: float = 6.0
+var _gen_ero_cell: float = 130.0
+var _gen_ero_octaves: int = 3
+var _gen_ero_slope: float = 1.2
 
 var _gen_ero_in := PackedFloat32Array()
 var _gen_ero_out := PackedFloat32Array()
@@ -389,9 +402,9 @@ func _gen_erode_row(z: int) -> void:
 			if ero_k < 0.05:
 				_gen_ero_out[idx] = h
 				continue
-		var cell: float = maxf(gen_erosion_scale, CELL_MIN)
-		var amp: float = gen_erosion_strength
-		for _o in maxi(gen_erosion_octaves, 1):
+		var cell: float = maxf(_gen_ero_cell, CELL_MIN)
+		var amp: float = _gen_ero_strength
+		for _o in maxi(_gen_ero_octaves, 1):
 			# МЕЛЬЧЕ CELL_MIN НЕ ДРОБИМ. Клетка в несколько метров — это полоса шириной в
 			# пару клеток сетки, то есть уже не яр, а пиксельный шум, который к тому же
 			# ловит алиасинг на LOD и мерцает в движении.
@@ -405,7 +418,7 @@ func _gen_erode_row(z: int) -> void:
 			# эрозия получала множитель в сотые доли и не была видна вовсе — ровно то, что
 			# выходило на мягких настройках. SLOPE_REF — наклон, который считается «полным
 			# склоном»: около 14°, дальше эрозия работает в полную силу.
-			var steep: float = pow(clampf(g.length() / SLOPE_REF, 0.0, 1.0), gen_erosion_slope_power)
+			var steep: float = pow(clampf(g.length() / SLOPE_REF, 0.0, 1.0), _gen_ero_slope)
 			# ПЛОСКОЕ ПРОПУСКАЕМ ЦЕЛИКОМ. Половина карты — равнина и дно каньона, где эрозии
 			# почти нет, а считать её всё равно приходилось бы: четыре октавы по четыре клетки
 			# с синусом и косинусом на каждую. Ранний выход снимает эту работу там, где её
@@ -681,58 +694,37 @@ func _enter_tree() -> void:
 			func(v: float) -> void: gen_amplitude = v, 0)
 	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
-
-	var fit := CheckBox.new()
-	fit.text = "Fit metres to height"
-	fit.button_pressed = gen_fit_height
-	fit.tooltip_text = "Подъём гор, дюны, верх меса, дно каньона и снеговую линию считать от Height. Сними — работают ползунки ниже."
-	fit.toggled.connect(func(v: bool) -> void:
-		gen_fit_height = v
-		_save_settings())
-	panel.add_child(fit)
+	# ОДНА РУЧКА НА ГОРЫ и одна на эрозию: их составляющие всегда двигались вместе, а порознь
+	# давали только рассогласование (частокол при острых хребтах на низкой карте, невидимая
+	# эрозия при мягком уклоне). Что именно они тянут — см. _mtn_amount и расчёт в генерации.
+	_sl_mountains = _slider_row(panel, "Mountains", 0.0, 1.0, gen_mountains01, 0.05,
+			func(v: float) -> void: gen_mountains01 = v, 2)
+	_sl_erosion = _slider_row(panel, "Erosion", 0.0, 1.0, gen_erosion01, 0.05,
+			func(v: float) -> void: gen_erosion01 = v, 2)
 
 	# ── Пресет «природный» ───────────────────────────────────────────────────
-	# Кнопка нужна не для лени: у настроек ЕСТЬ СОГЛАСОВАННОСТЬ, и на глаз её не поймать.
-	# Высота и размер деталей связаны: 300 м высоты при деталях в 150 м — это склоны круче
-	# сорока пяти градусов на каждом шагу, и карта читается как игольница, что бы ни делала
-	# эрозия. Пресет ставит пропорцию, при которой массивы крупные, склоны проходимые, а
-	# мелкий рисунок отдан эрозии — ей это и положено.
+	# Высота и размер деталей связаны, и на глаз эту связь не поймать: 300 м высоты при деталях
+	# в 150 м — это склоны круче сорока пяти градусов на каждом шагу, и карта читается как
+	# игольница, что бы ни делала эрозия. Пресет ставит пропорцию, при которой массивы крупные,
+	# склоны проходимые, а мелкий рисунок отдан эрозии — ей это и положено. Масштаб берём У
+	# БИОМОВ: когда рельеф крупнее их масок, снежная шапка ложится не на гору, а рядом с ней.
 	var preset := Button.new()
 	preset.text = "Natural preset"
 	preset.tooltip_text = "Крупные массивы, проходимые склоны, мелкий рисунок за эрозией. После — Generate Terrain."
 	preset.pressed.connect(func() -> void:
-		gen_amplitude       = 130.0
-		# МАСШТАБ РЕЛЬЕФА БЕРЁМ У БИОМОВ, а не выдумываем. Маски биомов живут в своих
-		# масштабах (mountain_scale и прочие), и если рельеф крупнее их, снежная шапка ложится
-		# не на гору, а пятном на равнину: цвет и форма перестают совпадать. Один масштаб на
-		# оба — и «горный район» снова там, где действительно горы.
 		var b := _biomes()
-		gen_scale           = b.mountain_scale if b != null else 420.0
-		gen_power           = 2.8
-		gen_octaves         = 6
-		gen_mountain_amount = 0.9
-		gen_ridge_sharpness = 2.6
-		# РАЗМЫТИЕ — ОДИН ПРОХОД. Каждый следующий срезает именно то, ради чего всё делалось:
-		# пять проходов превращают карту в блины, и никакая эрозия этого уже не вернёт.
-		gen_smooth          = 1
-		# Метровые величины (подъём гор, дюны, каньон, снеговая линия) НЕ трогаем руками:
-		# за них отвечает «Fit metres to height», и второе место, где их правят, — верный
-		# способ однажды получить пресет, спорящий с галочкой.
-		gen_fit_height      = true
-		gen_erosion_enable      = true
-		gen_erosion_strength    = 6.0
-		gen_erosion_scale       = 110.0
-		gen_erosion_octaves     = 3
-		gen_erosion_slope_power = 1.2
+		gen_amplitude   = 130.0
+		gen_scale       = b.mountain_scale if b != null else 420.0
+		gen_power       = 2.8
+		gen_mountains01 = 0.65
+		gen_erosion01   = 0.5
 		_save_settings()
 		# Ручки двигаем сами: без этого ползунок показывает старое число, а генерация идёт по
 		# новому — расхождение, которое ищется дольше, чем правится.
 		if _sl_height != null: _sl_height.value = gen_amplitude
 		if _sl_features != null: _sl_features.value = gen_scale
-		var vals := [gen_erosion_strength, gen_erosion_scale, float(gen_erosion_octaves), gen_erosion_slope_power]
-		for i in mini(_sl_ero.size(), vals.size()):
-			if _sl_ero[i] != null and is_instance_valid(_sl_ero[i]):
-				_sl_ero[i].value = float(vals[i])
+		if _sl_mountains != null: _sl_mountains.value = gen_mountains01
+		if _sl_erosion != null: _sl_erosion.value = gen_erosion01
 		_sync_dock())
 	panel.add_child(preset)
 
@@ -768,38 +760,14 @@ func _enter_tree() -> void:
 	panel.add_child(adv_btn)
 	panel.add_child(adv_body)
 
-	var oct_spin = SpinBox.new()
-	oct_spin.min_value = 1
-	oct_spin.max_value = 8
-	oct_spin.value     = gen_octaves
-	oct_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	oct_spin.value_changed.connect(func(v: float) -> void:
-		gen_octaves = int(v)
-		_save_settings())
-	adv_body.add_child(_row("Octaves", oct_spin))
-
+	# Здесь ТОЛЬКО то, что нельзя вывести из шести ручек наверху: характер равнин и форма
+	# каньона. Всё остальное отсюда уехало — октавы и размытие стали константами (у них один
+	# разумный ответ), высота с остротой хребтов свелись в «Mountains», четыре числа эрозии —
+	# в «Erosion», а верх меса и дно каньона считаются от Height.
 	_slider_row(adv_body, "Plains power", 1.0, 8.0, gen_power, 0.1,
 			func(v: float) -> void: gen_power = v, 1)
-	_slider_row(adv_body, "Mountain amt", 0.0, 1.0, gen_mountain_amount, 0.01,
-			func(v: float) -> void: gen_mountain_amount = v, 2)
-	_slider_row(adv_body, "Ridge sharp", 1.0, 8.0, gen_ridge_sharpness, 0.1,
-			func(v: float) -> void: gen_ridge_sharpness = v, 1)
-
-	var smooth_spin = SpinBox.new()
-	smooth_spin.min_value = 0
-	smooth_spin.max_value = 5
-	smooth_spin.value     = gen_smooth
-	smooth_spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	smooth_spin.value_changed.connect(func(v: float) -> void:
-		gen_smooth = int(v)
-		_save_settings())
-	adv_body.add_child(_row("Smoothing", smooth_spin))
 
 	adv_body.add_child(_lbl("Canyon shape"))
-	_slider_row(adv_body, "Mesa top", 20.0, 60.0, gen_canyon_plateau, 1.0,
-			func(v: float) -> void: gen_canyon_plateau = v, 0)
-	_slider_row(adv_body, "Floor", 0.0, 20.0, gen_canyon_floor, 1.0,
-			func(v: float) -> void: gen_canyon_floor = v, 0)
 	# The terrace height lives in the BIOME RESOURCE: the shader colours its strata by the same
 	# number, and two copies of it would drift apart into stripes that miss the steps.
 	_sl_stratum = _slider_row(adv_body, "Stratum", 2.0, 12.0, _biomes().canyon_band_height, 0.5,
@@ -810,29 +778,6 @@ func _enter_tree() -> void:
 			func(v: float) -> void: gen_canyon_width = v, 2)
 	_slider_row(adv_body, "Channels", 30.0, 160.0, gen_canyon_gorge, 1.0,
 			func(v: float) -> void: gen_canyon_gorge = v, 0)
-
-	# ── Эрозия ───────────────────────────────────────────────────────────────
-	# Четыре числа на весь фильтр. Больше здесь и не нужно: остальное (частота полос, размер
-	# клеток по октавам, поправка на крутизну) выводится из них — по той же причине, по которой
-	# в доке пять настроек, а не восемнадцать.
-	var ero_chk := CheckBox.new()
-	ero_chk.text = "Erosion"
-	ero_chk.button_pressed = gen_erosion_enable
-	ero_chk.tooltip_text = "Ветвящиеся яры и хребты поверх готового рельефа. Считается при генерации, в игре бесплатно."
-	ero_chk.toggled.connect(func(v: bool) -> void:
-		gen_erosion_enable = v
-		_save_settings())
-	adv_body.add_child(ero_chk)
-	_sl_ero = [
-		_slider_row(adv_body, "Gully depth", 0.0, 25.0, gen_erosion_strength, 0.5,
-				func(v: float) -> void: gen_erosion_strength = v, 1),
-		_slider_row(adv_body, "Gully size", 40.0, 260.0, gen_erosion_scale, 5.0,
-				func(v: float) -> void: gen_erosion_scale = v, 0),
-		_slider_row(adv_body, "Branching", 1.0, 5.0, float(gen_erosion_octaves), 1.0,
-				func(v: float) -> void: gen_erosion_octaves = int(v), 0),
-		_slider_row(adv_body, "Slope bias", 0.4, 3.0, gen_erosion_slope_power, 0.1,
-				func(v: float) -> void: gen_erosion_slope_power = v, 1),
-	]
 
 	# ── Actions ──────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
@@ -891,25 +836,15 @@ func _save_settings() -> void:
 		"sculpt_mode":         sculpt_mode,
 		"gen_seed":            gen_seed,
 		"gen_scale":           gen_scale,
-		"gen_octaves":         gen_octaves,
 		"gen_power":           gen_power,
-		"gen_mountain_amount": gen_mountain_amount,
-		"gen_ridge_sharpness": gen_ridge_sharpness,
 		"gen_amplitude":       gen_amplitude,
-		"gen_smooth":          gen_smooth,
+		"gen_mountains01":     gen_mountains01,
+		"gen_erosion01":       gen_erosion01,
 		"gen_size":            gen_size,
-		"gen_canyon_enable":    gen_canyon_enable,
-		"gen_canyon_plateau":   gen_canyon_plateau,
-		"gen_canyon_floor":     gen_canyon_floor,
-		"gen_canyon_riser":     gen_canyon_riser,
-		"gen_canyon_gorge":     gen_canyon_gorge,
-		"gen_canyon_width":     gen_canyon_width,
-		"gen_fit_height":          gen_fit_height,
-		"gen_erosion_enable":      gen_erosion_enable,
-		"gen_erosion_strength":    gen_erosion_strength,
-		"gen_erosion_scale":       gen_erosion_scale,
-		"gen_erosion_octaves":     gen_erosion_octaves,
-		"gen_erosion_slope_power": gen_erosion_slope_power,
+		"gen_canyon_enable":   gen_canyon_enable,
+		"gen_canyon_riser":    gen_canyon_riser,
+		"gen_canyon_gorge":    gen_canyon_gorge,
+		"gen_canyon_width":    gen_canyon_width,
 	})
 
 func _load_settings() -> void:
@@ -919,30 +854,20 @@ func _load_settings() -> void:
 	var d = es.get_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {})
 	if typeof(d) != TYPE_DICTIONARY:
 		return
-	brush_radius        = float(d.get("brush_radius",        brush_radius))
-	brush_strength      = float(d.get("brush_strength",      brush_strength))
-	sculpt_mode         = str(d.get("sculpt_mode",           sculpt_mode))
-	gen_seed            = int(d.get("gen_seed",              gen_seed))
-	gen_scale           = float(d.get("gen_scale",           gen_scale))
-	gen_octaves         = int(d.get("gen_octaves",           gen_octaves))
-	gen_power           = float(d.get("gen_power",           gen_power))
-	gen_mountain_amount = float(d.get("gen_mountain_amount", gen_mountain_amount))
-	gen_ridge_sharpness = float(d.get("gen_ridge_sharpness", gen_ridge_sharpness))
-	gen_amplitude       = float(d.get("gen_amplitude",       gen_amplitude))
-	gen_smooth          = int(d.get("gen_smooth",            gen_smooth))
-	gen_size            = int(d.get("gen_size",              gen_size))
-	gen_canyon_enable    = bool(d.get("gen_canyon_enable",    gen_canyon_enable))
-	gen_canyon_plateau   = float(d.get("gen_canyon_plateau",   gen_canyon_plateau))
-	gen_canyon_floor     = float(d.get("gen_canyon_floor",     gen_canyon_floor))
-	gen_canyon_riser     = float(d.get("gen_canyon_riser",     gen_canyon_riser))
-	gen_canyon_gorge     = float(d.get("gen_canyon_gorge",     gen_canyon_gorge))
-	gen_canyon_width     = float(d.get("gen_canyon_width",     gen_canyon_width))
-	gen_fit_height          = bool(d.get("gen_fit_height",          gen_fit_height))
-	gen_erosion_enable      = bool(d.get("gen_erosion_enable",      gen_erosion_enable))
-	gen_erosion_strength    = float(d.get("gen_erosion_strength",   gen_erosion_strength))
-	gen_erosion_scale       = float(d.get("gen_erosion_scale",      gen_erosion_scale))
-	gen_erosion_octaves     = int(d.get("gen_erosion_octaves",      gen_erosion_octaves))
-	gen_erosion_slope_power = float(d.get("gen_erosion_slope_power", gen_erosion_slope_power))
+	brush_radius     = float(d.get("brush_radius",     brush_radius))
+	brush_strength   = float(d.get("brush_strength",   brush_strength))
+	sculpt_mode      = str(d.get("sculpt_mode",        sculpt_mode))
+	gen_seed         = int(d.get("gen_seed",           gen_seed))
+	gen_scale        = float(d.get("gen_scale",        gen_scale))
+	gen_power        = float(d.get("gen_power",        gen_power))
+	gen_amplitude    = float(d.get("gen_amplitude",    gen_amplitude))
+	gen_mountains01  = float(d.get("gen_mountains01",  gen_mountains01))
+	gen_erosion01    = float(d.get("gen_erosion01",    gen_erosion01))
+	gen_size         = int(d.get("gen_size",           gen_size))
+	gen_canyon_enable = bool(d.get("gen_canyon_enable", gen_canyon_enable))
+	gen_canyon_riser  = float(d.get("gen_canyon_riser", gen_canyon_riser))
+	gen_canyon_gorge  = float(d.get("gen_canyon_gorge", gen_canyon_gorge))
+	gen_canyon_width  = float(d.get("gen_canyon_width", gen_canyon_width))
 
 # ─────────────────────────────────────────────────
 # Node selection
@@ -1498,7 +1423,7 @@ func _generate_noise() -> void:
 	base_noise.seed             = gen_seed
 	base_noise.noise_type       = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	base_noise.fractal_type     = FastNoiseLite.FRACTAL_FBM
-	base_noise.fractal_octaves  = gen_octaves
+	base_noise.fractal_octaves  = GEN_OCTAVES
 	base_noise.frequency        = 1.0 / gen_scale
 	base_noise.fractal_lacunarity = 2.0
 	base_noise.fractal_gain     = 0.42   # softer high frequencies: rolling plains, not ripples
@@ -1513,7 +1438,7 @@ func _generate_noise() -> void:
 	ridge_noise.seed              = gen_seed + 17
 	ridge_noise.noise_type        = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	ridge_noise.fractal_type      = FastNoiseLite.FRACTAL_FBM
-	ridge_noise.fractal_octaves   = maxi(gen_octaves - 1, 1)
+	ridge_noise.fractal_octaves   = GEN_OCTAVES - 1
 	ridge_noise.frequency         = 1.0 / (gen_scale * 0.55)
 	ridge_noise.fractal_lacunarity = 2.2
 	ridge_noise.fractal_gain      = 0.45
@@ -1536,24 +1461,29 @@ func _generate_noise() -> void:
 	# форму, но не географию. Смещение кладём в РЕСУРС — по нему потом красит шейдер и
 	# раскладывает жилы игра, и разъехаться с генератором они не могут.
 	_gen_biomes.mask_offset = TerrainBiomes.offset_for_seed(gen_seed)
-	# МЕТРОВЫЕ ВЕЛИЧИНЫ — ОДНИМ МЕСТОМ, ДО ПЕРВОГО ПРОХОДА. Либо берём как выставил человек,
-	# либо считаем от Height (gen_fit_height): доли подобраны так, чтобы гора была вдвое выше
-	# холмов вокруг, дно каньона лежало у самой земли, а снег начинался ближе к вершинам.
-	# Ползунки при этом НЕ переписываем: снял галочку — работают твои числа, и ты видишь их
-	# ровно там, где оставил.
-	_gen_mtn_rise = _gen_biomes.mountain_rise
-	_gen_dune_amp = _gen_biomes.dune_amp
-	_gen_plateau = gen_canyon_plateau
-	_gen_floor = gen_canyon_floor
-	if gen_fit_height:
-		_gen_mtn_rise = gen_amplitude * 0.75
-		_gen_dune_amp = clampf(gen_amplitude * 0.05, 1.0, 14.0)
-		_gen_plateau = gen_amplitude * 0.42
-		_gen_floor = gen_amplitude * 0.06
-		# Снеговая линия живёт в РЕСУРСЕ: её читает шейдер, а не генератор, и держать её
-		# «на эту генерацию» негде — карту красит уже игра.
-		_gen_biomes.snow_line = gen_amplitude * 0.55
-		_gen_biomes.snow_blend = maxf(gen_amplitude * 0.12, 8.0)
+	# ВСЁ ПРОИЗВОДНОЕ — ОДНИМ МЕСТОМ, ДО ПЕРВОГО ПРОХОДА. Дальше идут потоки, и они эти поля
+	# только читают.
+	_gen_mtn_amount = _mtn_amount()
+	_gen_ridge_sharp = _ridge_sharp()
+	# ЭРОЗИЯ ОДНОЙ РУЧКОЙ. Четыре её числа всегда двигались вместе: сильнее — значит и глубже,
+	# и мельче ячейка, и больше ветвлений, и меньше разборчивости к крутизне. Порознь их можно
+	# было только рассогласовать.
+	_gen_ero_strength = lerpf(0.0, 12.0, gen_erosion01)
+	_gen_ero_cell = lerpf(170.0, 90.0, gen_erosion01)
+	_gen_ero_octaves = 2 + int(round(gen_erosion01 * 2.0))
+	_gen_ero_slope = lerpf(1.8, 0.9, gen_erosion01)
+	# МЕТРЫ — ВСЕГДА ОТ HEIGHT. Отдельными ползунками они молча ломались от любого движения
+	# высоты: горы становились бугром под снегом, каньон — канавой или пропастью, снег заливал
+	# карту целиком. Доли подобраны так, чтобы гора была заметно выше холмов вокруг, дно
+	# каньона лежало у самой земли, а снег начинался ближе к вершинам.
+	_gen_mtn_rise = gen_amplitude * 0.75
+	_gen_dune_amp = clampf(gen_amplitude * 0.05, 1.0, 14.0)
+	_gen_plateau = gen_amplitude * 0.42
+	_gen_floor = gen_amplitude * 0.06
+	# Снеговая линия живёт в РЕСУРСЕ: её читает шейдер, а не генератор, и держать её «на эту
+	# генерацию» негде — карту красит уже игра.
+	_gen_biomes.snow_line = gen_amplitude * 0.55
+	_gen_biomes.snow_blend = maxf(gen_amplitude * 0.12, 8.0)
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
@@ -1573,7 +1503,7 @@ func _generate_noise() -> void:
 	# THREADED, like the fill and the carve above: a blur pass is a full sweep of the map, and on
 	# a big one that was seconds of main thread per pass, twice over — once here and once as the
 	# `duplicate()` it needed to avoid reading its own output.
-	for _p in gen_smooth:
+	for _p in GEN_SMOOTH_PASSES:
 		_gen_base_in = new_data
 		_gen_out = _gen_alloc(width * depth, "буфер размытия")
 		if _gen_out.is_empty():
@@ -1626,7 +1556,7 @@ func _generate_noise() -> void:
 	# Она читает НАКЛОН готового рельефа, поэтому и должна идти после того, как рельеф
 	# окончательно сложился: сделай её раньше — и каньон, вырезанный следом, срежет её яры,
 	# а размытие сгладит именно то, ради чего она нужна.
-	if gen_erosion_enable and gen_erosion_strength > 0.01:
+	if _gen_ero_strength > 0.01:
 		_gen_ero_in = new_data
 		_gen_ero_out = _gen_alloc(width * depth, "буфер эрозии")
 		if _gen_ero_out.is_empty():
