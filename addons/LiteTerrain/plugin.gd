@@ -1057,10 +1057,12 @@ func _ray_ground(cam: Camera3D, screen_pos: Vector2) -> Variant:
 	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
 		# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
 		return sculpt_node.raycast_heightmap(ray_origin, ray_dir)
-	var space := sculpt_node.get_world_3d().direct_space_state
+	# sculpt_node is untyped (it is whatever the editor selected), so nothing here can be
+	# inferred with := — the parser refuses to guess a type off a Variant call.
+	var space: PhysicsDirectSpaceState3D = sculpt_node.get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_dir * 1000.0)
 	query.collide_with_bodies = true
-	var result := space.intersect_ray(query)
+	var result: Dictionary = space.intersect_ray(query)
 	if result.is_empty():
 		return null
 	return result.position
