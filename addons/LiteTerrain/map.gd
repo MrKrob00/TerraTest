@@ -90,9 +90,16 @@ func _push_biomes_to_materials() -> void:
 ## world units. Flat ground and even slopes are drawn with large triangles: no visible
 ## difference, a fraction of the vertices. 0 disables it and LOD goes purely by distance.
 @export var flat_lod_error: float = 0.35
-@export var lod_distance_0: float = 40.0
-@export var lod_distance_1: float = 80.0
-@export var lod_distance_2: float = 160.0
+## ГЛАВНОЕ ОТЛИЧИЕ ИГРЫ ОТ РЕДАКТОРА — ВОТ ЭТИ ТРИ ЧИСЛА. В редакторе превью строится целиком
+## на шаге 1 (LOD там выключен по умолчанию, см. editor_lod), а в игре за сорок метров от
+## камеры чанк уже шёл вчетверо грубее, за восемьдесят — в шестнадцать раз. Отсюда и «в
+## редакторе красиво, а в игре нет»: карта одна и та же, а геометрия под ногами разная.
+## Сорок метров — это меньше, чем машина проезжает за три секунды, то есть игрок всё время
+## смотрел на упрощённый рельеф. Раздвинуто до шестидесяти; если на слабом устройстве просядет
+## кадр — числа вернуть, они для того и экспорты.
+@export var lod_distance_0: float = 60.0
+@export var lod_distance_1: float = 120.0
+@export var lod_distance_2: float = 240.0
 
 # Vertex sampling step per LOD level (index = LOD level)
 const LOD_STEPS: Array[int] = [1, 2, 4]   # LOD3 (step 8) dropped — never shown at runtime
@@ -953,7 +960,11 @@ func terrain_height_at(world_pos: Vector3) -> float:
 # Replaces the whole heightmap AND its dimensions (used by 'generate' to make a bigger
 # map). Editor-side: rebuilds the LOD preview at the new size. The plugin saves md to
 # the R32F image afterwards; runtime then loads that image — no giant shape anywhere.
-func set_heightmap(data: PackedFloat32Array, width: int, depth: int) -> void:
+## `rebuild = false` — ЗАБРАТЬ ТОЛЬКО ДАННЫЕ, без пересборки превью. Нужно тому, кто хочет
+## показать прогресс: пересборка на большой карте это десятки секунд одним блокирующим вызовом,
+## и звать её изнутри значит отдать это время в никуда. Плагин вместо этого ведёт её сам —
+## editor_rebuild_begin / _done / _apply, — отдавая кадр редактору между шагами.
+func set_heightmap(data: PackedFloat32Array, width: int, depth: int, rebuild: bool = true) -> void:
 	if width <= 0 or depth <= 0 or data.size() != width * depth:
 		push_error("map.gd: set_heightmap got %d values for %dx%d" % [data.size(), width, depth])
 		return
@@ -962,7 +973,7 @@ func set_heightmap(data: PackedFloat32Array, width: int, depth: int) -> void:
 	d  = depth
 	_chunks_x = ceili(float(w - 1) / chunk_size)
 	_recompute_height_bound()
-	if Engine.is_editor_hint():
+	if rebuild and Engine.is_editor_hint():
 		_rebuild_editor_full()
 
 # Bilinear local-space height at local XZ. Clamps to the edge outside the map.
@@ -1325,27 +1336,72 @@ func _rebuild_editor_full() -> void:
 	if editor_lod:
 		_editor_rebuild_lod()
 		return
+	# ОДНА РЕАЛИЗАЦИЯ НА ДВА РЕЖИМА. Тот же самый проход умеет идти шагами (для окна прогресса
+	# плагина) и одним куском (всё остальное: загрузка, мазок кисти, undo). Второй копии здесь
+	# быть не должно — она молча разъехалась бы с первой.
+	editor_rebuild_begin()
+	editor_rebuild_apply()
+
+# ── ПЕРЕСБОРКА ПРЕВЬЮ ШАГАМИ ─────────────────────────────────────────────────
+# Пересборка большой карты — это десятки секунд, и одним вызовом она блокирует главный поток:
+# окно прогресса всё это время не перерисовывается, то есть висит на одном числе. Со стороны
+# это неотличимо от зависания, и ровно на это жаловались. Здесь работа разложена так, чтобы
+# ждущий мог отдавать кадр редактору: поставить задачу → опрашивать готовность → применить.
+var _ed_job: int = -1
+var _ed_done: int = 0
+var _ed_total: int = 0
+var _ed_mutex := Mutex.new()
+
+## Поставить задачу на сборку чанков. Возвращает, сколько их всего.
+func editor_rebuild_begin() -> int:
+	_editor_ensure_cache_sized()
 	# The biome lattice FIRST: without it every vertex computes three noise masks of its own,
 	# and that alone is the bulk of a full rebuild (see _build_mask_lattice_sync).
 	if _mask_lat.is_empty() or _mask_w != int(ceil(float(w) / float(MASK_STEP))) + 1:
 		_build_mask_lattice_sync()
+	_ed_total = _ed_cx * _ed_cz
+	_ed_done = 0
+	if _ed_total <= 0:
+		return 0
 	# Chunks are independent, so they go to the WorkerThreadPool — the same pattern the runtime
 	# build uses. Threads only WRITE into their own slot of a pre-sized array and only READ the
 	# heights and the lattice; nothing here touches the scene tree, which is the one thing a
 	# worker may not do.
-	var total: int = _ed_cx * _ed_cz
-	if total > 0:
-		var cxl: int = _ed_cx
-		var far2: float = editor_view_distance * editor_view_distance
-		var cam_local := global_transform.affine_inverse() * (_editor_cam.global_position \
-				if _editor_cam else global_position)
-		var task := func(i: int) -> void:
-			if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
-				_ed_cache[i] = []          # past the editor horizon: not built at all
-				return
+	var cxl: int = _ed_cx
+	var far2: float = editor_view_distance * editor_view_distance
+	var cam_local := global_transform.affine_inverse() * (_editor_cam.global_position \
+			if _editor_cam else global_position)
+	var task := func(i: int) -> void:
+		if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
+			_ed_cache[i] = []          # past the editor horizon: not built at all
+		else:
 			_ed_cache[i] = _chunk_surface_arrays(i % cxl, i / cxl)
-		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks")
-		WorkerThreadPool.wait_for_group_task_completion(gid)
+		# Счётчик трогают ПОТОКИ, отсюда мьютекс: инкремент из нескольких потоков без него
+		# теряет значения, и полоса прогресса не доходила бы до конца.
+		_ed_mutex.lock()
+		_ed_done += 1
+		_ed_mutex.unlock()
+	_ed_job = WorkerThreadPool.add_group_task(task, _ed_total, -1, true, "LiteTerrain: editor chunks")
+	return _ed_total
+
+## Готовы ли чанки. Задачи нет — считаем, что готовы: звать apply можно всегда.
+func editor_rebuild_done() -> bool:
+	return _ed_job < 0 or WorkerThreadPool.is_group_task_completed(_ed_job)
+
+## Доля собранных чанков, 0..1 — для полосы прогресса.
+func editor_rebuild_progress() -> float:
+	if _ed_total <= 0:
+		return 1.0
+	_ed_mutex.lock()
+	var n: int = _ed_done
+	_ed_mutex.unlock()
+	return clampf(float(n) / float(_ed_total), 0.0, 1.0)
+
+## Дождаться потоков и склеить меш. Блокирующая часть здесь ОДНА и последняя.
+func editor_rebuild_apply() -> void:
+	if _ed_job >= 0:
+		WorkerThreadPool.wait_for_group_task_completion(_ed_job)
+		_ed_job = -1
 	_apply_editor_cache()
 
 func _editor_ensure_cache_sized() -> void:
@@ -2255,10 +2311,31 @@ const RIPPLE_CROSS: float = 0.45     # a slow wave across the first — kills th
 ## Rock roughness: chiselled instead of smoothed-over. Applied by SLOPE, so it lands on canyon
 ## walls and mountain faces and never on a floor a machine parks on. Same wavelength rule as
 ## the ripples — value noise, not per-vertex hash, or it turns into shimmering static.
+## ШЕРШАВОСТЬ СКАЛ — ЕДИНСТВЕННОЕ, ЧЕМ ИГРА ОТЛИЧАЕТСЯ ОТ РЕДАКТОРА ПО ФОРМЕ, и отсюда жалоба
+## «в редакторе красиво, а в игре залупа»: карта та же, высоты те же, но в игре поверх них
+## лежит вот этот шум, а в редакторе — нет (см. editor_detail). При 0.45 м на волне в 7 м он
+## перестаёт быть шершавостью и становится смятой бумагой: почти метр перепада на каждые семь,
+## да ещё и по ЛЮБОМУ склону круче 0.6, то есть по всем холмам сразу. Плюс граница ближних
+## чанков превращалась в видимую границу «мятого» и гладкого.
+##
+## Теперь по умолчанию вчетверо тише, волна длиннее, и берётся только НАСТОЯЩАЯ круть (обрыв,
+## стенка каньона), а не всякий склон. Множители — экспорты: их видно в инспекторе рядом с
+## травой, и вкус здесь решает не код.
 const ROCK_ROUGH: float = 0.45
-const ROCK_NOISE_LEN: float = 7.0
-const ROCK_SLOPE_MIN: float = 0.6    # height difference per cell where rock starts reading as rock
+const ROCK_NOISE_LEN: float = 11.0
+const ROCK_SLOPE_MIN: float = 0.9    # height difference per cell where rock starts reading as rock
+## Сила ряби по песку (0 — выключить). Её просили видеть, поэтому по умолчанию полная.
+@export_range(0.0, 1.0, 0.05) var detail_ripples: float = 1.0
+## Сила шершавости скал (0 — выключить). Полная величина ROCK_ROUGH — это уже «мятая бумага».
+@export_range(0.0, 1.0, 0.05) var detail_rock: float = 0.25
 
+## СКЛЕЙКА ПЛОСКОГО — ВЫКЛЮЧАЕМАЯ. У склеенного квада остаются только ЧЕТЫРЕ угла, а цвет
+## биома лежит В ВЕРШИНАХ: на квадрате 16×16 м он растягивается между четырьмя точками, и
+## переход песок→трава превращается в крупную фасетку. Геометрия при этом честная (все
+## выброшенные вершины лежали в той же плоскости), поэтому дыр не будет — вопрос только в
+## заливке. Выключить — значит вернуть по два треугольника на клетку: больше вершин, но цвет
+## считается в каждой.
+@export var merge_flat: bool = true
 ## Longest side of a merged flat rectangle, in cells. Unbounded merging would draw a whole
 ## canyon floor as one quad — correct geometrically, but the biome colour lives in the VERTICES,
 ## so the shading would be interpolated across a hundred metres from four corners.
@@ -2287,7 +2364,7 @@ func _detail_weight(x: int, z: int, x0: int, z0: int, x1: int, z1: int) -> float
 ## mountains); sand is what is left. Returns 0 for anything that is not sand or rock.
 func _detail_height(wx: float, wz: float, masks: Vector3, slope: float) -> float:
 	var out: float = 0.0
-	var sand: float = clampf(1.0 - maxf(masks.x, maxf(masks.y, masks.z)), 0.0, 1.0)
+	var sand: float = clampf(1.0 - maxf(masks.x, maxf(masks.y, masks.z)), 0.0, 1.0) * detail_ripples
 	if sand > 0.01:
 		var dir: Vector2 = RIPPLE_DIR.normalized()
 		var t: float = (wx * dir.x + wz * dir.y) / RIPPLE_LEN
@@ -2295,7 +2372,7 @@ func _detail_height(wx: float, wz: float, masks: Vector3, slope: float) -> float
 		# Ripples ride on a long cross-wave, so the field reads as drifting sand rather than
 		# corduroy: crests bend and fade instead of running dead straight to the horizon.
 		out += sand * RIPPLE_AMP * sin(t * TAU + sin(u * TAU) * RIPPLE_CROSS)
-	var rock: float = clampf((slope - ROCK_SLOPE_MIN) / ROCK_SLOPE_MIN, 0.0, 1.0)
+	var rock: float = clampf((slope - ROCK_SLOPE_MIN) / ROCK_SLOPE_MIN, 0.0, 1.0) * detail_rock
 	if rock > 0.01:
 		# Smooth value noise (the same one the canyon carve uses), so rock detail is stable per
 		# world point and identical in every chunk that evaluates it.
@@ -2327,7 +2404,8 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	# rebuilt chunk — and the editor rebuilds after every sculpt dab, so it is off unless somebody
 	# asks for it with `editor_detail` (the dock's "Preview detail"). Either way the near-chunk
 	# rule stands: past a couple of metres per triangle there is nothing to see anyway.
-	var detail_on: bool = sz <= DETAIL_MAX_STEP and (editor_detail or not Engine.is_editor_hint())
+	var detail_on: bool = sz <= DETAIL_MAX_STEP and (editor_detail or not Engine.is_editor_hint()) \
+			and (detail_ripples > 0.0 or detail_rock > 0.0)   # выключено — значит и не считаем
 	var xs: PackedInt32Array = _sample_range(x0, x1, sz)
 	var zs: PackedInt32Array = _sample_range(z0, z1, sz)
 	# A degenerate chunk (fewer than 2x2 samples) has no quads to build. On small maps that used
@@ -2486,7 +2564,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			var i11: int = (cz + 1) * nx + cx + 1
 			var edge: bool = cx == 0 or cz == 0 or cx == cells_x - 1 or cz == cells_z - 1
 			var h0: float = vertices[i00].y
-			if edge or not _cell_flat(vertices, nx, cx, cz, h0):
+			if edge or not merge_flat or not _cell_flat(vertices, nx, cx, cz, h0):
 				indices.append_array([i00, i10, i11])
 				indices.append_array([i00, i11, i01])
 				continue

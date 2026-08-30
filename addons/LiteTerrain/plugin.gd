@@ -271,7 +271,9 @@ func _gen_drop_row() -> bool:
 	_gen_row_done()
 	return true
 
-func _progress_open() -> void:
+## `can_stop = false` — окно БЕЗ кнопки «Стоп». У запекания отменять нечего: оно пишет файлы
+## один за другим, и «стоп» посреди уже записанного heightmap'а не вернул бы старый.
+func _progress_open(can_stop: bool = true) -> void:
 	if _prog_root != null and is_instance_valid(_prog_root):
 		return
 	var base: Control = EditorInterface.get_base_control()
@@ -320,6 +322,8 @@ func _progress_open() -> void:
 	box.add_child(_prog_note)
 	# STOP, because "wait it out or kill the editor" is not a choice anybody should be given: a
 	# 4096² map on a slow machine is minutes, and a wrong seed is visible in the first seconds.
+	if not can_stop:
+		return
 	_prog_stop = Button.new()
 	_prog_stop.text = "Stop"
 	_prog_stop.tooltip_text = "Abandon this generation. The map and the file on disk stay as they were."
@@ -396,6 +400,24 @@ func _run_rows(task: Callable, rows: int, label: String, step_from: float, step_
 	WorkerThreadPool.wait_for_group_task_completion(gid)
 	if not _gen_cancel:
 		_progress_say("%s — done" % label, step_to)
+
+## ПЕРЕСБОРКА ПРЕВЬЮ С ПОЛОСОЙ. Та же работа, что и внутри map.set_heightmap, только ведём её
+## сами: ставим задачу, каждый кадр спрашиваем долю готовых чанков и отдаём кадр редактору. Стоп
+## здесь НЕ ПРЕДЛАГАЕМ: карта уже посчитана и записана в файл, бросить сборку превью значило бы
+## оставить в сцене меш от прошлой карты — то есть картинку, которая врёт про то, что на диске.
+func _rebuild_preview_with_progress(step_from: float, step_to: float) -> void:
+	if sculpt_node == null or not sculpt_node.has_method("editor_rebuild_begin"):
+		return
+	var total: int = sculpt_node.editor_rebuild_begin()
+	while not sculpt_node.editor_rebuild_done():
+		var done: float = sculpt_node.editor_rebuild_progress()
+		_progress_say("Building the preview — %d%% of %d chunks" % [int(done * 100.0), total],
+				lerpf(step_from, step_to, done))
+		await get_tree().process_frame
+	# Склейка одного меша из всех чанков — единственная часть, которую нельзя разложить на кадры.
+	_progress_say("Merging the mesh", step_to)
+	await get_tree().process_frame
+	sculpt_node.editor_rebuild_apply()
 
 # One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
 func _gen_fill_row(z: int) -> void:
@@ -643,23 +665,33 @@ func _gen_carve_row(z: int) -> void:
 		# Now both ends are measured FROM THE LOCAL SURFACE, so a canyon in high ground is a deep
 		# gorge in high ground and one on a plain is a shallow badland — always a cut, never a slab.
 		var surface: float = _gen_base_in[idx]
-		# Never below the old absolute floor (that keeps heights positive), and never ABOVE the
-		# local surface: on ground already lower than the floor a "cut" that raises land is not a
-		# canyon, it is a bump wearing canyon colours.
+		# ДНО И ВЕРХ — ПЛОСКИЕ, А НЕ ПОВТОРЯЮТ ХОЛМ. Оба конца снимаются на СЕТКУ ТЕРРАС (terr,
+		# та же, которой шейдер красит слои). Пока они шли за местной поверхностью след в след,
+		# верх меса выходил куполом, а дно — чашей, и вся область читалась как оплывший бугор,
+		# крашенный в терракоту. Столовую гору узнают по ПЛОСКОМУ верху и ПЛОСКОМУ дну,
+		# разделённым отвесной стенкой; остальное — холм.
+		#
+		# Ограничения прежние: не ниже абсолютного дна (высоты обязаны остаться положительными)
+		# и не выше местной поверхности — «врез», который поднимает землю, это не каньон.
 		var floor_h: float = minf(maxf(surface - _gen_plateau, _gen_floor), surface)
-		# Mesa tops keep a hierarchy, but around the local level: some stand a little proud of the
-		# old plain, some are already eaten a quarter of the way down.
-		var mesa_top: float = surface + lerpf(-(surface - floor_h) * 0.25, _gen_floor, bt)
+		floor_h = floor(floor_h / terr) * terr
+		# Верх меса тоже на сетке: иерархия столовых гор остаётся (bt двигает их на ступень-две
+		# вверх), но каждая отдельная гора стоит РОВНО.
+		var mesa_top: float = floor((surface + _gen_floor * bt) / terr) * terr
+		if mesa_top < floor_h + terr:
+			mesa_top = floor_h + terr          # хотя бы одна ступень, иначе стенки нет вовсе
 		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
 		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
 		# THE GORGE FLOOR HAS TO BE A REAL SHARE OF THE REGION. |fbm| runs mostly over 0..0.4 with
 		# a mean near 0.2, and the old thresholds (floor below 0.055, rim at 0.10) left ~80 % of
 		# every canyon standing at mesa height: the network read as a plateau with two scratches
-		# in it. Gorge width now means the share of the region that is floor, and the rim sits a
-		# fixed distance above it — sheer normally, drawn out where the ramp noise says "a way
-		# down". Same slider, same range, a shape that actually branches.
+		# in it. Gorge width now means the share of the region that is floor.
 		var floor_t: float = gen_canyon_width * 2.0
-		var wall_hi: float = floor_t + lerpf(0.06, 0.22, ramp)
+		# А ВОТ СТЕНКА ОБЯЗАНА БЫТЬ ОТВЕСНОЙ, и это отдельное число. Подъём от дна к верху идёт
+		# по УЗКОЙ полосе шума: широкая (0.06…0.22, как было) размазывала стенку на сотню метров,
+		# и каньон превращался в пологую воронку — ровно то, что было видно на карте. Пандус
+		# (ramp) полосу расширяет — это и есть съезд вниз, но и он остаётся склоном, а не полем.
+		var wall_hi: float = floor_t + lerpf(0.02, 0.09, ramp)
 		var wall_t := smoothstep(floor_t, wall_hi, gv)
 		var canyon_h := lerpf(floor_h, mesa_top, wall_t)
 		# Terraces stay on the ABSOLUTE scale: the shader paints its strata by world height, and
@@ -1415,9 +1447,31 @@ func _heightmap_png_target() -> String:
 	return _heightmap_target().get_base_dir().path_join("terrain_heightmap.png")
 
 # One "Bake -> files" button: heightmap, preview mesh and PNG in a single click.
+## ЗАПЕКАНИЕ ТОЖЕ ПОД ОКНОМ. Оно пишет четыре файла подряд, и три из них — полный проход по
+## карте (таблица мин/макс на чанк, дамп высот, перевод высот в серый PNG). На 1984² это
+## секунды-десятки секунд молчания с застывшим редактором, неотличимые от зависания; а кнопка
+## одна, и понять, на каком она файле, было неоткуда. Между файлами отдаём кадр редактору —
+## тогда полоса и подпись успевают перерисоваться.
+##
+## Тот же флаг _generating, что и у генерации: окно прогресса одно на двоих, и запустить
+## запекание поверх генерации значило бы, что один закроет окно другого.
 func _bake_and_export() -> void:
+	if sculpt_node == null:
+		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
+		return
+	if _generating:
+		return
+	_generating = true
+	_progress_open(false)
+	_progress_say("Heightmap (.res)", 0.0)
+	await get_tree().process_frame
 	_bake_heightmap()
+	_progress_say("Greyscale PNG", 0.75)
+	await get_tree().process_frame
 	_generate_png()
+	_progress_say("Done", 1.0)
+	await get_tree().process_frame
+	_progress_close()
 
 func _bake_heightmap() -> void:
 	if sculpt_node == null:
@@ -1611,11 +1665,16 @@ func _generate_png() -> void:
 		mx = maxf(mx, h)
 	var rng := maxf(mx - mn, 0.0001)
 
-	var img := Image.create(width, depth, false, Image.FORMAT_L8)
-	for z in depth:
-		for x in width:
-			var v := (data[z * width + x] - mn) / rng
-			img.set_pixel(x, z, Color(v, v, v))
+	# ЧЕРЕЗ БАЙТОВЫЙ БУФЕР, А НЕ set_pixel. Тот на каждый пиксель собирает Color и уходит в
+	# движок через Variant: на карте 1984² это без малого четыре миллиона таких вызовов, то
+	# есть минуты — и всё это молча, потому что до окна прогресса дело не доходило. Здесь
+	# байты пишутся в заранее выделенный массив, а картинка собирается из него одним вызовом.
+	var bytes := PackedByteArray()
+	bytes.resize(width * depth)
+	var k: float = 255.0 / rng
+	for i in width * depth:
+		bytes[i] = clampi(int((data[i] - mn) * k), 0, 255)
+	var img := Image.create_from_data(width, depth, false, Image.FORMAT_L8, bytes)
 
 	var png_path := _heightmap_png_target()
 	var err := img.save_png(png_path)
@@ -1845,11 +1904,14 @@ func _generate_noise() -> void:
 		_gen_ero_out = PackedFloat32Array()
 
 	if image_mode:
-		# Set md + size, rebuild the editor preview, and write the heightmap image so the
-		# runtime (and re-opening the editor) loads it. No undo here — it's a full regen.
-		_progress_say("Building the map and writing the file", 0.96)
+		# THE LAST STAGE IS THE LONGEST ONE, and it used to be a single blocking call with the bar
+		# frozen at 96 %: setting the heights rebuilt the whole editor preview inside
+		# set_heightmap, and nothing could redraw meanwhile. Indistinguishable from a hang — which
+		# is exactly what it was reported as. Now it is split, and every part says what it is
+		# doing: heights, file, chunks (with a moving bar), mesh.
+		_progress_say("Writing the heights", 0.955)
 		await get_tree().process_frame
-		sculpt_node.set_heightmap(new_data, width, depth)
+		sculpt_node.set_heightmap(new_data, width, depth, false)   # false: превью соберём сами
 		var img := Image.create_from_data(width, depth, false, Image.FORMAT_RF, new_data.to_byte_array())
 		var gm_path := _heightmap_target()
 		var gerr := ResourceSaver.save(img, gm_path)
@@ -1857,6 +1919,7 @@ func _generate_noise() -> void:
 			print("LiteTerrain: generated %dx%d -> %s" % [width, depth, gm_path])
 		else:
 			push_error("LiteTerrain: failed to save generated heightmap (error %d)" % gerr)
+		await _rebuild_preview_with_progress(0.96, 0.99)
 		_progress_say("Done", 1.0)
 		await get_tree().process_frame
 		_progress_close()
