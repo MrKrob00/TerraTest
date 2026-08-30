@@ -319,7 +319,19 @@ func _layout_market() -> void:
 	var w: float = maxf(_radar_size, 96.0)
 	var rows: int = maxi(_market_box.get_child_count(), 1)
 	_market_panel.size = Vector2(w, MARKET_ROW_H * rows + 12.0)
-	_market_panel.position = Vector2(screen.x - w - 12.0, 12.0 + _radar_size + 6.0 + MONEY_H + 6.0)
+	_market_panel.position = Vector2(screen.x - w - 12.0, _money_bottom())
+
+## ПРАВЫЙ ВЕРХНИЙ УГОЛ — ЭТО СТОПКА, И СЧИТАЕТ ЕЁ ОДИН КОД. Там живут радар, деньги, рынок и
+## трекер квестов, и каждый когда-то считал своё место сам. Так рынок и лёг под трекер: тот
+## знал про радар и деньги, а про появившуюся между ними панель — нет, и стоило машине встать
+## на якорь, как две панели оказывались друг на друге.
+func _money_bottom() -> float:
+	return 12.0 + _radar_size + 6.0 + MONEY_H + 6.0
+
+func _market_bottom() -> float:
+	if _market_panel == null or not _market_panel.visible:
+		return _money_bottom()
+	return _money_bottom() + _market_panel.size.y + 6.0
 
 func _refresh_money() -> void:
 	if _money_lbl:
@@ -349,7 +361,7 @@ func _layout_money() -> void:
 func _push_quest_top(radar_on: bool) -> void:
 	var y: float = 0.0
 	if radar_on:
-		y = _radar_pos(get_viewport().get_visible_rect().size).y + _radar_size + MONEY_H + 12.0
+		y = _market_bottom()          # под всей стопкой, включая рынок (см. _money_bottom)
 	for q in get_tree().get_nodes_in_group("quests"):
 		if q.has_method("set_top_offset"):
 			q.set_top_offset(y)
@@ -1352,9 +1364,15 @@ func _update_radar(delta: float) -> void:
 		_money_panel.visible = live
 	if _market_panel:
 		# Только под якорем (см. _build_market): цены важны там, где торгуют и производят.
-		_market_panel.visible = live and v != null and v.get("anchored") == true
-		if _market_panel.visible:
+		var want: bool = live and v != null and v.get("anchored") == true
+		var changed: bool = want != _market_panel.visible
+		_market_panel.visible = want
+		if want:
 			_layout_market()
+		if changed:
+			# Панель появилась или пропала — стопка стала другой высоты, и трекер квестов
+			# обязан переехать сейчас же, иначе он либо ляжет на рынок, либо повиснет с дырой.
+			_push_quest_top(_has_radar(v))
 	if _quest_compass:
 		_quest_compass.visible = live
 	if _radar.visible != live:
