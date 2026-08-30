@@ -246,6 +246,11 @@ Select the terrain node, pick a mode in the dock and paint with the left mouse b
   has run down to zero, and the inner one (a tenth of it) is the core that moves by the full
   step — the same ten-to-one ratio the strength rule uses.
 - Each stroke, mouse-down to mouse-up, is one Undo/Redo step.
+- **Preview detail** shows the mesh-only detail (sand ripples, rock roughness) in the editor. It
+  is off by default: the detail is five extra noise evaluations per vertex and the editor rebuilds
+  every visible chunk after each dab, so leave it off while sculpting and turn it on to look. In
+  game it is always on for near chunks, which is why a freshly generated desert can look perfectly
+  smooth in the editor and have waves in play.
 
 In image mode the preview mesh and the heightmap file update on mouse-up, so undo and
 redo stay in sync with what is on disk.
@@ -302,6 +307,12 @@ rewrites what the previous produced:
 - the canyon pass **replaces** height with its terraces, so the fill pass no longer raises
   mountain domes or draws dunes inside the canyon mask — that work was thrown away, and its
   ragged leftovers stuck out of the canyon walls;
+- **a canyon is a cut into whatever land is already there.** Mesa tops and the gorge floor are
+  measured from the local surface, not in absolute metres. While they were absolute, a canyon
+  region that happened to sit at mesa height came out as a flat coloured field with no walls, and
+  one on low ground came out as a raised block. The gorge floor is a real share of the region as
+  well: `Gorge width` now means that share, because the old thresholds left about 80 % of every
+  canyon standing at mesa height — which reads as a plateau with two scratches in it;
 - **erosion almost skips the canyon**: its walls are the steepest ground on the map, so the
   filter cut hardest exactly there and dissolved the clean strata badlands are recognised by;
 - every metre value is derived from `Height` (mountain rise 0.75, mesa top 0.42, canyon floor
@@ -321,13 +332,14 @@ across threads or applied to one chunk. This one is evaluated **at each point in
 stripes drawn along the slope, which read as alternating ridges and gullies, and each further
 octave lays finer stripes along the *already changed* slope, so the gullies branch on their own.
 
-| Parameter | Default | Meaning |
-|---|---|---|
-| Erosion | on | Master switch. |
-| Gully depth | 5 | Metres cut by the first octave; each next one halves it. |
-| Gully size | 130 | Cell size in metres — how wide the largest gullies are. |
-| Branching | 3 | Octaves. Each halves the cell, down to a 16 m floor. |
-| Slope bias | 1.4 | Above 1 the erosion keeps to steep ground; below 1 it shows on gentle slopes too. |
+One knob drives all four numbers, because they always moved together — stronger erosion means
+deeper gullies, a smaller cell, more branching and less fussiness about steepness:
+
+| Erosion | Cut | Cell | Octaves | Slope bias |
+|---|---|---|---|---|
+| 0.0 | 0 m | — | — | off |
+| 0.5 | 6 m | 130 m | 3 | 1.35 |
+| 1.0 | 12 m | 90 m | 4 | 0.9 |
 
 Three details make or break it, and all three are in the code: stripes rotate around the centre
 of **their own cell** (rotating around one point smears the pattern across the map), the stripe
@@ -341,8 +353,15 @@ you measure the noise ripple rather than the hillside, the stripe direction jitt
 cell, and the result is a field of needles.
 
 All heavy passes run across the WorkerThreadPool, one row per task, and a progress window
-reports which pass is running and how far it got — a full generate is tens of seconds, and
-without the window that reads as a frozen editor.
+reports which pass is running, how far it got and **how long is left** — a full generate is tens
+of seconds, and without the window that reads as a frozen editor. The estimate is taken over the
+whole run rather than per pass: the passes differ several-fold in cost, so a per-pass number would
+promise a new total at every stage.
+
+**Stop** abandons the run. A group task already running cannot be un-scheduled, so instead the
+remaining rows return immediately, the current pass ends in milliseconds and the generation stops
+between passes — with the map and the file on disk exactly as they were. Nothing is ever written
+half-generated.
 
 Generation replaces the whole heightmap and writes it to the R32F file, so both the
 runtime and a reopened editor load the new terrain.

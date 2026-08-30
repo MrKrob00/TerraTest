@@ -1,9 +1,9 @@
 @tool
 extends EditorPlugin
 
-# Добавляет в инспектор БЛОКА кубик с кнопками (см. faces_editor.gd). Больше плагин ничего
-# не делает: он только регистрирует свой EditorInspectorPlugin и отдаёт ему общий стек
-# отмены редактора — правка граней обязана отменяться Ctrl+Z, как любая другая.
+# Adds a button-covered cube to a BLOCK's inspector (see faces_editor.gd). The plugin does
+# nothing else: it registers its EditorInspectorPlugin and hands it the editor's shared undo
+# stack — editing faces has to be undoable with Ctrl+Z like any other change.
 
 var _ip: EditorInspectorPlugin = null
 

@@ -121,14 +121,21 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 ## mesh is only rebuilt after the editor camera STOPS moving (no per-move lag), and on
 ## sculpt. Seams are snapped just like at runtime, so no LOD cracks.
 @export var editor_lod: bool = false
-## КАК ДАЛЕКО РЕДАКТОР ВООБЩЕ СТРОИТ МЕШ (0 = вся карта, как раньше).
+## HOW FAR THE EDITOR BUILDS A MESH AT ALL (0 = the whole map, as it used to).
 ##
-## Превью в редакторе строилось на ВСЮ карту: на 1984² это пятнадцать тысяч чанков и четыре
-## миллиона вершин — за один заход, и заново после каждого движения камеры. Отсюда и минуты
-## на «Generate Terrain». Смотреть на всю карту разом всё равно незачем: за шестьсот метров от
-## камеры видно контур, а не рельеф. Дальние чанки просто не строятся — в игре они, как и
-## раньше, стримятся сами.
+## The editor preview used to be built for the WHOLE map: at 1984² that is fifteen thousand
+## chunks and four million vertices, in one go, and again after every camera move. That was
+## where the minutes on "Generate Terrain" went. There is nothing to see in the whole map at
+## once anyway — past six hundred metres you read an outline, not terrain. Distant chunks are
+## simply not built; in game they stream in as they always did.
 @export_range(0.0, 4000.0, 50.0) var editor_view_distance: float = 600.0
+## SHOW THE VISUAL-ONLY DETAIL IN THE EDITOR TOO (sand ripples, rock roughness — see
+## _detail_height). OFF by default, and that is not timidity: the detail is five extra noise
+## evaluations per vertex, and the editor rebuilds every visible chunk after every sculpt dab,
+## which turns a brush stroke into a slideshow. The editor also has the better reason to show
+## the bare surface — that is the one the brush and the collision actually work with. Turn it on
+## to LOOK at the map, off to work on it.
+@export var editor_detail: bool = false
 
 # ── Streaming settings ────────────────────────────────────────────────────────
 ## How many chunks are meshed per streaming batch. Lower = fewer frame hitches.
@@ -237,8 +244,8 @@ var _qt_last_fwd:   Vector3 = Vector3.FORWARD
 # ── Streaming collision runtime state ─────────────────────────────────────────
 var _col_active: bool       = false
 var _col_bodies: Array      = []   # [{body:Node3D}]  every moving body we give ground to
-## Когда каждая плитка коллизии последний раз была нужна (ключ клетки → секунды). По ней
-## работает отсрочка удаления: пересоздавать height field каждый кадр дороже, чем подержать.
+## When each collision tile was last needed (cell key -> seconds). It drives the delayed removal:
+## rebuilding a height field every frame costs more than holding one for a while.
 var _col_seen: Dictionary   = {}
 const COL_TILE_GRACE: float = 3.0
 var _col_cells:  Dictionary = {}   # cell_key -> CollisionShape3D (one tile per active cell)
@@ -415,9 +422,9 @@ func _ready() -> void:
 # Loads the master heightmap into w / d / md. Prefers the R32F image (scales to huge
 # maps); falls back to the embedded HeightMapShape3D so the game still runs pre-bake.
 func _load_heightmap() -> void:
-	# СНАЧАЛА СВОЙ ФАЙЛ. Если рельеф уже правили (площадки под постройки) и правки запекли,
-	# истина лежит в user:// — пакетный res:// после этого только «заводская» карта, к которой
-	# возвращает новая игра.
+	# OUR OWN FILE FIRST. Once the terrain has been edited (levelled building sites) and the edits
+	# baked, the truth lives in user:// — the packaged res:// is from then on only the factory map,
+	# the one a new game returns to.
 	if _load_user_heights():
 		return
 	if _load_stream_heights():
@@ -446,26 +453,25 @@ func _load_heightmap() -> void:
 				+ "Re-bake the terrain from the LiteTerrain dock (\"Bake -> files\") or put "
 				+ "the file back.")
 
-# ── ПОТОКОВЫЙ ФАЙЛ ВЫСОТ (res://…​.bin рядом с .res) ──────────────────────────
-# Сырые строки float32 с заголовком и таблицей «мин/макс на чанк». Зачем он, если .res уже
-# есть: ресурс-картинку можно загрузить только ЦЕЛИКОМ, и это упирает размер карты в память —
-# а из сырого файла любой прямоугольник берётся seek'ом и чтением. Сейчас мы всё равно читаем
-# его целиком, и даже так он выигрывает: одно выделение вместо «загрузить ресурс → сконвертить
-# формат → to_float32_array».
+# ── STREAMABLE HEIGHT FILE (res://….bin beside the .res) ─────────────────────
+# Raw float32 rows with a header and a per-chunk min/max table. Why, when the .res already
+# exists: an image resource can only be loaded WHOLE, which pins the map size to memory — while
+# any rectangle of a raw file is a seek and a read. We still read it whole today, and even so it
+# wins: one allocation instead of "load a resource -> convert the format -> to_float32_array".
 #
-# Таблица мин/макс идёт ПЕРЕД высотами, потому что читают её всю и сразу: тому, кто грузит
-# регионы, всё равно надо знать габариты каждого чанка ДО того, как рядом с ним прочитана хоть
-# одна высота (иначе нечем строить дерево отсечения). Два float на чанк — это ~120 КБ на карту
-# 1984², рядом с 16 МБ высот это ничто.
+# The min/max table comes BEFORE the heights because it is read whole and at once: anything
+# loading regions has to know each chunk's bounds BEFORE a single height near it has been read
+# (there is nothing to build a culling tree from otherwise). Two floats per chunk is ~120 KB on a
+# 1984² map — nothing beside 16 MB of heights.
 const STREAM_MAGIC := 0x4C545331          # "LTS1"
-## Габариты чанков из файла: минимум и максимум высоты. Пусто, пока файла нет.
+## Per-chunk bounds from the file: minimum and maximum height. Empty while there is no file.
 var _chunk_min: PackedFloat32Array = PackedFloat32Array()
 var _chunk_max: PackedFloat32Array = PackedFloat32Array()
 
 func _stream_path() -> String:
 	return heightmap_path.get_basename() + ".bin" if not heightmap_path.is_empty() else ""
 
-## Открыть файл и прочитать заголовок. Возвращает [file, w, d, chunk, data_offset] или пусто.
+## Open the file and read the header. Returns [file, w, d, chunk, data_offset] or an empty array.
 func _stream_open() -> Array:
 	var path := _stream_path()
 	if path.is_empty() or not FileAccess.file_exists(path):
@@ -496,7 +502,7 @@ func _load_stream_heights() -> bool:
 	var bytes := f.get_buffer(sw * sd * 4)
 	f.close()
 	if bytes.size() != sw * sd * 4:
-		push_warning("LiteTerrain: %s обрезан — беру запечённую картинку" % _stream_path())
+		push_warning("LiteTerrain: %s is truncated — falling back to the baked image" % _stream_path())
 		return false
 	w = sw
 	d = sd
@@ -504,11 +510,11 @@ func _load_stream_heights() -> bool:
 	_recompute_height_bound()
 	return true
 
-## ПРОЧИТАТЬ ПРЯМОУГОЛЬНИК ВЫСОТ, не поднимая карту целиком. Ради этого файл и заведён:
-## отсюда вырастет подгрузка регионов вокруг игрока. Читаем построчно — строка в файле лежит
-## непрерывно, значит на строку приходится один seek и одно чтение.
+## READ A RECTANGLE OF HEIGHTS without bringing up the whole map. That is what the file exists
+## for: region streaming around the player grows from here. Read row by row — a row is contiguous
+## in the file, so a row costs one seek and one read.
 ##
-## Возвращает массив (x1-x0+1) × (z1-z0+1) в порядке строк, или пустой, если файла нет.
+## Returns an (x1-x0+1) x (z1-z0+1) array in row order, or an empty one if there is no file.
 func read_height_rect(x0: int, z0: int, x1: int, z1: int) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	var o := _stream_open()
@@ -532,33 +538,33 @@ func read_height_rect(x0: int, z0: int, x1: int, z1: int) -> PackedFloat32Array:
 	f.close()
 	return out
 
-## Габариты чанка из таблицы файла: (min, max) высоты. Нужны тому, кто строит дерево
-## отсечения, не загрузив ни одной высоты рядом.
+## A chunk's bounds from the file's table: (min, max) height. Needed by anything that builds a
+## culling tree without having loaded a single height near it.
 func chunk_height_bounds(ci: int) -> Vector2:
 	if ci < 0 or ci >= _chunk_min.size():
 		return Vector2(0.0, 0.0)
 	return Vector2(_chunk_min[ci], _chunk_max[ci])
 
-# ── ЗАПЕЧЁННЫЙ РЕЛЬЕФ (правки игрока) ────────────────────────────────────────
-# Правки высот живут двумя способами сразу, и это не дублирование, а разделение труда:
+# ── BAKED TERRAIN (the player's edits) ───────────────────────────────────────
+# Height edits live in two ways at once, and that is a division of labour, not duplication:
 #
-#   • СПИСОК ПРАВОК (ground_edits) — на время сессии. Записать четыре числа стоит ноль, и
-#     они переживут даже вылет игры: список уезжает в сейв мира при первом же автосейве.
-#   • ЗАПЕЧЁННЫЙ ФАЙЛ — при загрузке. Правки применяются к высотам и сбрасываются в
-#     user:// одним куском, после чего список пуст: рельеф САМ стал таким.
+#   • THE EDIT LIST (ground_edits) — for the session. Writing four numbers costs nothing, and
+#     they survive even a crash: the list goes into the world save at the first autosave.
+#   • THE BAKED FILE — at load. The edits are applied to the heights and flushed to user:// in one
+#     piece, after which the list is empty: the terrain ITSELF has become that shape.
 #
-# Почему запекаем именно на загрузке: дамп карты высот — это её полный размер (у карты
-# 1984×1984 это 15 МБ), и на ходу такая запись видна рывком. А загрузка и так долгая, там
-# лишние доли секунды не заметны — это ровно то место, где такой работе и место.
+# Why bake at load: dumping the heightmap is its full size (15 MB on a 1984×1984 map), and mid-play
+# that write shows as a hitch. Loading is slow anyway, and a fraction of a second more is invisible
+# there — which is exactly where such work belongs.
 #
-# Формат простейший: заголовок с размерами и сырые float. Ни сжатия, ни картинки: PNG хранит
-# высоту восемью битами (256 ступеней на всю карту — рельеф стал бы ступенчатым), а EXR надо
-# кодировать. Сырые float читаются мгновенно и без потерь.
+# The format is as simple as it gets: a header with the dimensions and raw floats. No compression,
+# no image: a PNG stores height in eight bits (256 steps for the whole map — the terrain would come
+# out stepped), and an EXR has to be encoded. Raw floats read instantly and losslessly.
 const USER_HEIGHTS := "user://terrain_height.bin"
 const USER_HEIGHTS_MAGIC := 0x4C544831        # "LTH1"
 
-## Прочитать запечённый рельеф. false — файла нет или он от другой карты (тогда берём
-## пакетный, а этот игнорируем: подсунуть высоты не того размера значит развалить всё).
+## Read the baked terrain. false = there is no file, or it belongs to another map (in which case
+## we take the packaged one and ignore this: feeding in heights of the wrong size wrecks everything).
 func _load_user_heights() -> bool:
 	if not FileAccess.file_exists(USER_HEIGHTS):
 		return false
@@ -574,40 +580,40 @@ func _load_user_heights() -> bool:
 		return false
 	var bytes := f.get_buffer(uw * ud * 4)
 	if bytes.size() != uw * ud * 4:
-		push_warning("LiteTerrain: %s обрезан — беру заводскую карту" % USER_HEIGHTS)
+		push_warning("LiteTerrain: %s is truncated — falling back to the factory map" % USER_HEIGHTS)
 		return false
 	w = uw
 	d = ud
 	md = bytes.to_float32_array()
 	_baked_seq = useq
-	_edit_seq = useq             # новые правки продолжают нумерацию, а не начинают её заново
+	_edit_seq = useq             # new edits continue the numbering instead of restarting it
 	_recompute_height_bound()
 	return true
 
-## Запечь текущие высоты в user://. Зовётся ПОСЛЕ применения правок при загрузке.
+## Bake the current heights into user://. Called AFTER the edits have been applied at load.
 func bake_heights() -> bool:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return false
 	var f := FileAccess.open(USER_HEIGHTS, FileAccess.WRITE)
 	if f == null:
-		push_warning("LiteTerrain: не удалось записать %s — правки останутся списком" % USER_HEIGHTS)
+		push_warning("LiteTerrain: could not write %s — the edits stay a list" % USER_HEIGHTS)
 		return false
 	f.store_32(USER_HEIGHTS_MAGIC)
 	f.store_32(w)
 	f.store_32(d)
-	# НОМЕР ПОСЛЕДНЕЙ ЗАПЕЧЁННОЙ ПРАВКИ. Без него правка, оставшаяся в сейве мира (игрок
-	# закрыл игру раньше первого автосейва), применилась бы ВТОРОЙ РАЗ поверх уже ровной
-	# земли — и край площадки с каждым разом становился бы круче. С номером повтор просто
-	# пропускается: рельеф уже такой.
+	# THE NUMBER OF THE LAST BAKED EDIT. Without it an edit still sitting in the world save (the
+	# player quit before the first autosave) would be applied A SECOND TIME on top of ground that
+	# is already level — and the edge of the site would get steeper every time. With the number the
+	# repeat is simply skipped: the terrain is already that shape.
 	f.store_32(_edit_seq)
 	f.store_buffer(md.to_byte_array())
 	f.close()
 	_baked_seq = _edit_seq
-	_flat_edits.clear()          # они теперь ВНУТРИ файла, повторять их больше не нужно
+	_flat_edits.clear()          # they are INSIDE the file now; there is nothing left to replay
 	return true
 
-## Забыть все правки рельефа: удалить запечённый файл и список. Новая игра начинается на
-## заводской карте, а не на чужих ямах.
+## Forget every terrain edit: delete the baked file and the list. A new game starts on the factory
+## map, not in somebody else's holes.
 func reset_heights() -> void:
 	_flat_edits.clear()
 	_baked_seq = 0
@@ -731,9 +737,9 @@ func _update_collision_cells() -> void:
 	var desired := {}
 	var dead := false
 	for b in _col_bodies:
-		# БЕЗ ТИПА: присваивание освобождённого узла типизированной переменной падает САМО
-		# («Trying to assign invalid previously freed instance») — до всякой проверки ниже.
-		# Ссылка на удалённый узел не равна null, поэтому и проверка нужна именно такая.
+		# UNTYPED ON PURPOSE: assigning a freed node to a typed variable throws by ITSELF
+		# ("Trying to assign invalid previously freed instance") — before any check below runs.
+		# A reference to a deleted node is not null, which is why the check has to look like this.
 		var raw = b["body"]
 		if raw == null or not is_instance_valid(raw):
 			dead = true
@@ -773,12 +779,11 @@ func _update_collision_cells() -> void:
 		for cz in range(cz0, cz1 + 1):
 			for cx in range(cx0, cx1 + 1):
 				desired[cz * cells_x + cx] = true
-	# Плитки ЖИВУТ ЕЩЁ НЕМНОГО после того, как стали не нужны (COL_TILE_GRACE). Причина —
-	# цена создания: каждая плитка это HeightMapShape3D, и физический движок печёт по ней
-	# height field. Без задержки машина, едущая вдоль границы клеток, заставляла удалять и
-	# тут же создавать одни и те же плитки каждый кадр, а десяток разлетевшихся блоков —
-	# сразу пачку. Держать готовую плитку почти бесплатно: она статична и в широкой фазе
-	# ничего не стоит.
+	# TILES LIVE ON A LITTLE after they stop being needed (COL_TILE_GRACE). The reason is the cost
+	# of creating one: every tile is a HeightMapShape3D, and the physics engine bakes a height
+	# field from it. Without the delay a machine driving along a cell border made the same tiles
+	# be destroyed and recreated every frame, and a dozen scattered blocks made a batch of them.
+	# Holding a finished tile is nearly free: it is static and costs nothing in the broad phase.
 	var now_s: float = float(Time.get_ticks_msec()) * 0.001
 	for key in desired:
 		_col_seen[key] = now_s
@@ -796,9 +801,9 @@ func _update_collision_cells() -> void:
 	if dead:
 		_prune_dead_bodies()
 
-## GAME HOOK (TerraTest): ЧТО ИМЕННО СЕЙЧАС РИСУЕТСЯ. Панель профиля показывает общее число
-## объектов и вызовов отрисовки, но не говорит, чьи они, — а резать надо по самой большой доле,
-## а не по догадке. Возвращает (чанки, макро-группы, грубые узлы) из того, что реально видно.
+## GAME HOOK (TerraTest): WHAT EXACTLY IS BEING DRAWN. The profile panel shows the total object
+## and draw-call counts but not whose they are — and you cut the largest share, not the one you
+## guessed at. Returns (chunks, macro groups, coarse nodes) out of what is actually visible.
 func render_stats() -> Vector3i:
 	var chunks: int = 0
 	for ci in _qt_cur_chunks:
@@ -814,9 +819,10 @@ func render_stats() -> Vector3i:
 			nodes += 1
 	return Vector3i(chunks, macros, nodes)
 
-## GAME HOOK (TerraTest): счётчики для панели профиля — сколько сейчас ЖИВЫХ плиток коллизии
-## и сколько тел их просит. Одно число объясняет просадку на развале машины: каждое
-## незаснувшее тело держит свой кусок heightfield, и плитки нарезаются заново каждый кадр.
+## GAME HOOK (TerraTest): counters for the profile panel — how many collision tiles are LIVE and
+## how many bodies are asking for them. One number explains the frame drop when a machine falls
+## apart: every awake body holds its own piece of heightfield, and the tiles are re-cut every
+## frame.
 func collision_stats() -> Vector2i:
 	return Vector2i(_col_cells.size(), _col_bodies.size())
 
@@ -1024,33 +1030,33 @@ func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
 		prev_gap = gap
 	return null
 
-# ── ПЛОЩАДКА ПОД ПОСТРОЙКУ ───────────────────────────────────────────────────
-# Выровнять кусок рельефа В ИГРЕ: высоты, меш и коллизия. Нужно всему, что «встраивается» в
-# мир, а не ставится на него, — базе из квеста, будущим вышкам, любой постройке, которой
-# нужен ровный пол.
+# ── A LEVELLED BUILDING SITE ─────────────────────────────────────────────────
+# Level a piece of terrain IN GAME: heights, mesh and collision. Needed by everything that is
+# built INTO the world rather than placed on it — a quest base, future towers, any structure that
+# needs a flat floor.
 #
-# Область ПРЯМОУГОЛЬНАЯ, а не круглая, и это не мелочь: постройки у нас вытянутые (линия
-# конвейера — шесть клеток в одну сторону и две вбок), а круг под такую площадку пришлось бы
-# брать по её диагонали и срывать втрое больше земли, чем нужно.
+# The area is RECTANGULAR, not round, and that is not a detail: our structures are long (a
+# conveyor line is six cells one way and two across), and a circle around one would have to be
+# taken along its diagonal and would strip three times more ground than needed.
 #
-# Порядок работы важен: сперва высоты, потом меши задетых чанков, потом коллизия. Коллизия
-# стриминговая — её тайлы нарезаются ИЗ md вокруг тел, поэтому старые надо снести, иначе
-# машина продолжит ездить по прежнему рельефу, которого уже не видно.
+# The order matters: heights first, then the meshes of the touched chunks, then collision.
+# Collision is streamed — its tiles are cut FROM md around bodies, so the old ones must go or a
+# machine keeps driving on terrain that is no longer drawn.
 #
-# Правка живёт только в памяти: карта высот в сейв мира не попадает, и после перезапуска
-# площадка вернётся к исходному рельефу. Тому, кто её звал, и решать, повторить ли правку
-# при загрузке.
+# The edit lives in memory only: the heightmap is not written to the world save, so after a
+# restart the site returns to the original terrain. Whether to replay the edit at load is up to
+# whoever asked for it.
 #
-# half_extent — половина размера площадки в мировых единицах (X и Z), feather — насколько
-# плавно она сходит на нет за своим краем.
+# half_extent is half the site size in world units (X and Z); feather is how softly it fades out
+# past its edge.
 func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 		feather: float = 4.0, record: bool = true) -> void:
 	var dirty: Array = _flatten_heights(center_world, half_extent, height, feather)
 	if dirty.is_empty():
 		return
-	# ЗАПОМИНАЕМ правку. Карта высот в сейв не пишется (мегабайты float на каждую запись),
-	# зато сама правка — это четыре числа, и по ним рельеф повторяется при загрузке точно
-	# таким же. record = false у повтора, иначе список рос бы с каждым входом в игру.
+	# REMEMBER the edit. The heightmap is not written to the save (megabytes of floats per write),
+	# but the edit itself is four numbers, and from them the terrain is reproduced exactly at load.
+	# record = false on a replay, or the list would grow every time the game is entered.
 	if record:
 		_edit_seq += 1
 		_flat_edits.append({
@@ -1063,21 +1069,21 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 	update_chunks(dirty)
 	_refresh_ground_collision()
 
-## Сколько правок рельефа помним. Каждая — четыре числа, но список не должен расти вечно:
-## квест может ровнять новую площадку каждый прогон.
+## How many terrain edits we keep. Each is four numbers, but the list must not grow for ever: a
+## quest may level a new site on every run.
 const FLAT_EDITS_MAX := 64
 var _flat_edits: Array = []
-## Сквозной номер правки и номер последней ЗАПЕЧЁННОЙ. По ним повтор при загрузке отличает
-## «эту правку земля уже помнит» от «эту надо применить».
+## The running edit number and the number of the last BAKED one. From those a replay at load tells
+## "the ground already remembers this edit" from "this one still has to be applied".
 var _edit_seq: int = 0
 var _baked_seq: int = 0
 
-## Правки рельефа для сейва мира и обратно. Список — простые словари, готовые к JSON.
+## Terrain edits, out to the world save and back. The list is plain dictionaries, ready for JSON.
 func ground_edits() -> Array:
 	return _flat_edits.duplicate(true)
 
-## Повторить сохранённые правки. Зовётся ОДИН РАЗ при загрузке, ПОСЛЕ того как высоты карты
-## прочитаны и ДО того, как в мир вернут машины: база обязана встать на уже ровную землю.
+## Replay the saved edits. Called ONCE at load, AFTER the map heights have been read and BEFORE
+## the machines are restored: a base has to land on ground that is already level.
 func apply_ground_edits(list: Array) -> void:
 	if list.is_empty():
 		return
@@ -1085,7 +1091,7 @@ func apply_ground_edits(list: Array) -> void:
 	for e in list:
 		if not (e is Dictionary) or not (e.get("c") is Array) or not (e.get("h") is Array):
 			continue
-		# Уже запечена в файл высот — земля её помнит, применять второй раз нельзя.
+		# Already baked into the height file — the ground remembers it; applying it twice is wrong.
 		if int(e.get("n", 0)) > 0 and int(e["n"]) <= _baked_seq:
 			continue
 		var c: Array = e["c"]
@@ -1102,29 +1108,29 @@ func apply_ground_edits(list: Array) -> void:
 		_edit_seq = maxi(_edit_seq, int(e.get("n", 0)))
 	if seen.is_empty():
 		return
-	# Меши и коллизию трогаем ОДИН РАЗ на все правки: перестройка чанка и пересборка
-	# коллизионных тайлов дороги, а площадок при загрузке может оказаться несколько.
+	# Meshes and collision are touched ONCE for all the edits: rebuilding a chunk and re-cutting the
+	# collision tiles is expensive, and a load may bring several sites at once.
 	update_chunks(seen.keys())
 	_refresh_ground_collision()
 
 func _refresh_ground_collision() -> void:
-	# Тайлы нарезаны из СТАРЫХ высот — сносим и даём построиться заново. Без этого машина
-	# продолжит ездить по прежнему рельефу, которого уже не видно.
+	# The tiles were cut from the OLD heights — drop them and let them be rebuilt. Without this a
+	# machine keeps driving on terrain that is no longer drawn.
 	if _col_active:
 		_clear_collision_cells()
 		_update_collision_cells()
 
-## Сама правка высот: возвращает индексы задетых чанков и НИЧЕГО не перестраивает.
+## The height edit itself: returns the indices of the touched chunks and rebuilds NOTHING.
 func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float,
 		feather: float) -> Array:
 	if md.is_empty() or w <= 0:
 		return []
 	var inv := global_transform.affine_inverse()
 	var local: Vector3 = inv * center_world
-	# Целевую высоту переводим в ЛОКАЛЬНУЮ: md хранит высоты в осях самой карты, а звать нас
-	# будут мировыми координатами (там же, где стоит постройка).
+	# The target height is converted to LOCAL: md stores heights in the map's own axes, while we
+	# are called with world coordinates (the ones the structure stands at).
 	var target: float = (inv * Vector3(center_world.x, height, center_world.z)).y
-	var cx: float = local.x + float(w) * 0.5 - 0.5      # та же формула, что в _compute_chunk_data
+	var cx: float = local.x + float(w) * 0.5 - 0.5      # the same formula as in _compute_chunk_data
 	var cz: float = local.z + float(d) * 0.5 - 0.5
 	var ex: float = maxf(half_extent.x, 0.0)
 	var ez: float = maxf(half_extent.y, 0.0)
@@ -1136,18 +1142,18 @@ func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float
 	if x1 < x0 or z1 < z0:
 		return []
 	for z in range(z0, z1 + 1):
-		var dz: float = maxf(absf(float(z) - cz) - ez, 0.0)   # 0 внутри площадки
+		var dz: float = maxf(absf(float(z) - cz) - ez, 0.0)   # 0 inside the site
 		var row := z * w
 		for x in range(x0, x1 + 1):
 			var dx: float = maxf(absf(float(x) - cx) - ex, 0.0)
-			# Вес по расстоянию ДО ПРЯМОУГОЛЬНИКА: внутри — единица (ровно), дальше плавно
-			# к нулю, чтобы площадка не обрывалась стеной.
+			# Weight by distance TO THE RECTANGLE: one inside (dead level), then smoothly to zero
+			# so the site does not end in a wall.
 			var dist: float = sqrt(dx * dx + dz * dz)
 			if dist >= fe:
 				continue
 			var k: float = 1.0 - dist / fe
 			md[row + x] = lerp(md[row + x], target, clampf(k, 0.0, 1.0))
-	_md_max = maxf(_md_max, target)          # граница высот нужна лучу по рельефу
+	_md_max = maxf(_md_max, target)          # the height bound is what the terrain raycast needs
 	var cxl: int = ceili(float(w - 1) / chunk_size)
 	var dirty: Array = []
 	var seen: Dictionary = {}
@@ -1335,7 +1341,7 @@ func _rebuild_editor_full() -> void:
 				if _editor_cam else global_position)
 		var task := func(i: int) -> void:
 			if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
-				_ed_cache[i] = []          # дальше горизонта редактора — не строим вовсе
+				_ed_cache[i] = []          # past the editor horizon: not built at all
 				return
 			_ed_cache[i] = _chunk_surface_arrays(i % cxl, i / cxl)
 		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks")
@@ -1352,6 +1358,13 @@ func _editor_ensure_cache_sized() -> void:
 	if _ed_lod.size() != total:
 		_ed_lod.resize(total)
 
+# Rebuild the editor preview from scratch. The dock calls it after a setting that changes HOW
+# the mesh is built (detail on or off) rather than what it is built from — nothing in md moved,
+# so there is nothing to save, and the heights the brush edits are untouched.
+func rebuild_preview() -> void:
+	if Engine.is_editor_hint():
+		_rebuild_editor_full()
+
 # Plugin feeds the editor camera here; the actual LOD rebuild is driven by _process so
 # it can wait for the camera to settle (no rebuild churn while you fly around).
 func set_editor_camera(c: Camera3D) -> void:
@@ -1364,7 +1377,7 @@ func _editor_lod_tick(delta: float) -> void:
 	if _editor_cam == null or _ed_cx <= 0:
 		return
 	var pos := _editor_cam.global_position
-	if pos.distance_squared_to(_editor_track_pos) > 4.0:      # 2², корень не нужен
+	if pos.distance_squared_to(_editor_track_pos) > 4.0:      # 2², no square root needed
 		_editor_track_pos = pos
 		_editor_settle_t  = 0.0
 		return
@@ -1386,8 +1399,8 @@ func _editor_rebuild_lod() -> void:
 			var ccz := (cz + 0.5) * chunk_size - d * 0.5
 			var dx := ccx - cam_local.x
 			var dz := ccz - cam_local.z
-			# Квадраты: обе строчки ниже — сравнения с порогами, корень им не нужен, а
-			# перебор идёт по всем чанкам карты на каждой пересборке.
+			# Squared: both lines below are threshold comparisons, which need no root, and the
+			# sweep runs over every chunk of the map on every rebuild.
 			var dist2 := dx * dx + dz * dz
 			var lod := 0
 			if dist2 >= lod_distance_1 * lod_distance_1:   lod = 2   # LOD3 (step 8) removed — unused at runtime
@@ -1404,7 +1417,7 @@ func _editor_rebuild_lod() -> void:
 		var far2: float = editor_view_distance * editor_view_distance
 		var task := func(i: int) -> void:
 			if editor_view_distance > 0.0 and _ed_chunk_dist2(i % cxl, i / cxl, cam_local) > far2:
-				_ed_cache[i] = []          # дальше горизонта редактора — не строим вовсе
+				_ed_cache[i] = []          # past the editor horizon: not built at all
 				return
 			_ed_cache[i] = _chunk_surface_arrays_lod(i % cxl, i / cxl)
 		var gid := WorkerThreadPool.add_group_task(task, total, -1, true, "LiteTerrain: editor chunks (LOD)")
@@ -1440,7 +1453,7 @@ func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 			es if es != step else 0)
 	return [] if res.is_empty() else res[0]
 
-## Квадрат расстояния от камеры редактора до центра чанка, в локальных осях карты.
+## Squared distance from the editor camera to a chunk centre, in the map's local axes.
 func _ed_chunk_dist2(cx: int, cz: int, cam_local: Vector3) -> float:
 	var ccx: float = (float(cx) + 0.5) * chunk_size - w * 0.5
 	var ccz: float = (float(cz) + 0.5) * chunk_size - d * 0.5
@@ -1677,12 +1690,12 @@ func _apply_built_results(indices: Array, mat: Material, batch: int = 0) -> void
 		_stream_results[ci]   = null
 
 		var inst := MeshInstance3D.new()
-		# ЧАНК НЕ ОТБРАСЫВАЕТ ТЕНЬ, но принимает её. Отбрасывание — это второй проход по той же
-		# геометрии в карту теней, то есть удвоение самого многочисленного типа мешей в кадре.
-		# Платить за это нечем и незачем: макро-группы и грубые узлы тени не отбрасывали НИКОГДА,
-		# значит дальше восьмидесяти метров тень от рельефа и так обрывалась — видно было не
-		# «горы отбрасывают тень», а границу, где это кончается. Тени машин и блоков на землю
-		# остаются: принимать тень чанк по-прежнему умеет.
+		# A CHUNK CASTS NO SHADOW but receives one. Casting means a second pass over the same
+		# geometry into the shadow map — a doubling of the most numerous mesh type in the frame.
+		# There is nothing to pay for that with and no reason to: macro groups and coarse nodes
+		# NEVER cast shadows, so past eighty metres the terrain shadow cut off anyway, and what you
+		# saw was not "mountains cast shadows" but the line where that stops. Shadows of machines
+		# and blocks on the ground stay: a chunk still receives them.
 		inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		inst.visible     = false
 		add_child(inst)
@@ -2309,13 +2322,12 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var aabb_max: Vector3 = Vector3(-INF, -INF, -INF)
 
 	var sz: int = maxi(1, step)
-	# DETAIL IS A RUNTIME-ONLY THING, and the flag is computed ONCE per chunk rather than per
-	# vertex. In the editor the map is rebuilt in FULL at step 1, in one go, on the main thread:
-	# a 1982² map is some fifteen thousand chunks, and five extra noise evaluations per vertex
-	# turned "Generate Terrain" into a freeze the OS eventually kills. The editor also has the
-	# better reason to show the bare surface — that is the one the sculpt brush and the collision
-	# actually work with.
-	var detail_on: bool = sz <= DETAIL_MAX_STEP and not Engine.is_editor_hint()
+	# DETAIL IS A RUNTIME THING BY DEFAULT, and the flag is computed ONCE per chunk rather than
+	# per vertex. In the editor it costs five extra noise evaluations on every vertex of every
+	# rebuilt chunk — and the editor rebuilds after every sculpt dab, so it is off unless somebody
+	# asks for it with `editor_detail` (the dock's "Preview detail"). Either way the near-chunk
+	# rule stands: past a couple of metres per triangle there is nothing to see anyway.
+	var detail_on: bool = sz <= DETAIL_MAX_STEP and (editor_detail or not Engine.is_editor_hint())
 	var xs: PackedInt32Array = _sample_range(x0, x1, sz)
 	var zs: PackedInt32Array = _sample_range(z0, z1, sz)
 	# A degenerate chunk (fewer than 2x2 samples) has no quads to build. On small maps that used
@@ -2423,10 +2435,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			# the hottest loop in the build for nothing.
 			normals.append(Vector3(hl0 - hr0 - dhx, 2.0 * sz, hu0 - hd0 - dhz).normalized())
 
-			# Индекс вершины нигде не хранится: вершины пишутся строка за строкой, значит он
-			# и так равен zi * xs.size() + xi — ровно так их и адресует сборка треугольников.
-			# Прежний словарь стоил вставку на КАЖДУЮ вершину в самом горячем цикле сборки,
-			# и ради арифметики, которая помещается в одну строку.
+			# The vertex index is stored nowhere: vertices are written row after row, so it is
+			# already zi * xs.size() + xi — exactly how the triangle assembly addresses them. The
+			# dictionary that used to be here cost an insert for EVERY vertex in the hottest loop
+			# of the build, for arithmetic that fits on one line.
 
 	# ── Triangles: FLAT AREAS ARE MERGED INTO BIG QUADS ───────────────────────
 	# A canyon floor is dead flat and used to cost two triangles per METRE, for a surface that
@@ -2452,15 +2464,16 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var cells_z: int = nz - 1
 	var taken := PackedByteArray()
 	taken.resize(cells_x * cells_z)
-	# ТРАВА НЕ РАСТЁТ ПО КРАЮ СКЛЕЕННОГО КВАДА, и это не украшательство, а условие того, что
-	# склейка вообще законна. Большой квад описан ЧЕТЫРЬМЯ углами, а у соседних несклеенных
-	# клеток на его кромке остаются свои вершины — это Т-стык. Пока все они лежат в одной
-	# плоскости, стыка не видно (ради этого и склеиваем только строго ровное). Но траву
-	# поднимает ВЕРШИННЫЙ ШЕЙДЕР, по вершине за раз: серединная вершина соседа уезжает вверх,
-	# а кромка большого квада остаётся прямой линией между углами — и в ровном поле открывается
-	# ЩЕЛЬ. Ровно на это и жаловались: «на ровных участках трава прогибается и видны дыры».
-	# Поэтому помечаем ВЕСЬ периметр склейки (углы тоже: поднятый угол наклонил бы кромку так
-	# же), а шейдер по COLOR.r = 0 такие вершины не двигает — тот же флаг, что на шве LOD.
+	# GRASS DOES NOT GROW ALONG THE EDGE OF A MERGED QUAD, and that is not decoration but the
+	# condition under which merging is legal at all. A big quad is described by FOUR corners, while
+	# the neighbouring unmerged cells along its edge keep vertices of their own — a T-junction. As
+	# long as they all lie in one plane the junction is invisible (which is why only dead-flat
+	# ground is merged). But grass is lifted by the VERTEX SHADER, one vertex at a time: the
+	# neighbour's middle vertex rises while the big quad's edge stays a straight line between its
+	# corners — and a HOLE opens in a flat field. That is exactly what was reported: "on flat
+	# ground the grass sags and holes show". So the WHOLE perimeter of the merge is marked (corners
+	# included: a lifted corner would tilt the edge just the same), and by COLOR.r = 0 the shader
+	# leaves those vertices where they are — the same flag the LOD seam uses.
 	var no_grass := PackedByteArray()
 	no_grass.resize(nx * nz)
 	for cz in cells_z:
@@ -2499,7 +2512,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			for jz in rh:
 				for jx in rw:
 					taken[(cz + jz) * cells_x + cx + jx] = 1
-			# Периметр склейки (см. выше): по вершине на каждый шаг вдоль всех четырёх сторон.
+			# The merge perimeter (see above): one vertex per step along all four sides.
 			for jx in rw + 1:
 				no_grass[cz * nx + cx + jx] = 1
 				no_grass[(cz + rh) * nx + cx + jx] = 1
@@ -2538,7 +2551,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			ku.append(uvs[oi])
 			var col: Color = colors[oi]
 			if no_grass[oi] != 0:
-				col.r = 0.0                 # кромка склеенного квада — траву тут не поднимаем
+				col.r = 0.0                 # merged-quad edge: no grass lifted here
 			kc.append(col)
 		indices[k] = remap[oi]
 	vertices = kv
@@ -2625,9 +2638,9 @@ func _active_camera() -> Camera3D:
 	var vp := get_viewport()
 	return vp.get_camera_3d() if vp != null else null
 
-## GAME HOOK: приёмник замеров времени, `func(key: String, usec_start: int)`. Пока он пуст,
-## замер выключен и не стоит ничего. Именно Callable, а не прямая ссылка на класс игры: аддон
-## обязан работать в пустом проекте, где никакого профайлера нет.
+## GAME HOOK: a sink for timing samples, `func(key: String, usec_start: int)`. While it is empty
+## the timing is off and costs nothing. A Callable rather than a direct reference to a game class:
+## the addon has to work in an empty project where no profiler exists.
 var perf_sink: Callable = Callable()
 
 func _pf_now() -> int:
@@ -2643,8 +2656,8 @@ func _process(delta: float) -> void:
 			_editor_lod_tick(delta)
 		return
 
-	# GAME HOOK: пометки для внешнего профайлера (см. perf_sink). Пока приёмник не задан,
-	# _pf_now() возвращает ноль и всё это стоит одной проверки Callable на вызов.
+	# GAME HOOK: markers for an external profiler (see perf_sink). While no sink is set _pf_now()
+	# returns zero and the whole thing costs one Callable check per call.
 	var _pf_all := _pf_now()
 
 	# The active camera, refreshed every frame with nothing to assign by hand. It follows camera
@@ -2904,9 +2917,9 @@ func _qt_descend(node: int, frustum: Array[Plane], cam: Vector3, margin: float, 
 	else:
 		# Internal node: if far enough that its coarse mesh is good enough, render it and
 		# stop (one big low-poly mesh for the whole subtree). Otherwise descend for detail.
-		# _aabb_dist2 уже возвращает КВАДРАТ; корень тут брался лишь ради сравнения, а порог
-		# возвести в квадрат дешевле. Обход идёт по всем узлам дерева КАЖДЫЙ кадр, и строкой
-		# выше (порог lod_distance_1) файл уже так и делает.
+		# _aabb_dist2 already returns the SQUARE; the root was taken here only for a comparison,
+		# and squaring the threshold is cheaper. The walk covers every node of the tree EVERY
+		# frame, and the line above (the lod_distance_1 threshold) already does it this way.
 		var lim: float = _qt_size[node] * QT_QUALITY
 		if _aabb_dist2(world_aabb, cam) >= lim * lim:
 			_qt_des_nodes[node] = true
@@ -3293,9 +3306,9 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3, was_occluded: bool = fals
 	var center  := aabb.get_center()
 	var dx      := center.x - cam_local.x
 	var dz      := center.z - cam_local.z
-	# Ранний выход считаем по КВАДРАТУ: ближние чанки отсеиваются здесь, и для них корень
-	# не нужен вовсе. Дальше он всё-таки берётся — dist_xz идёт в формулу (шаг выборки и
-	# угол к горизонту), а не в сравнение.
+	# The early out works on the SQUARE: near chunks are rejected here and never need a root. One
+	# is taken further down — there dist_xz goes into a formula (the sampling step and the angle to
+	# the horizon), not into a comparison.
 	var d2_xz := dx * dx + dz * dz
 	if d2_xz < occlusion_min_dist * occlusion_min_dist:
 		return false

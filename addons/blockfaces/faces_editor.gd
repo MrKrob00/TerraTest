@@ -1,30 +1,31 @@
 @tool
 extends VBoxContainer
 
-# КУБИК В ИНСПЕКТОРЕ. Тот же виджет, что и в игре (port_cube.gd), только настраивает он не
-# порты конкретной машины, а САМУ СЦЕНУ блока.
+# THE CUBE IN THE INSPECTOR. The same widget as in game (port_cube.gd), except that here it
+# configures THE BLOCK'S SCENE rather than one machine's ports.
 #
-# Кубик СМОТРИТ НА РАЗМЕР блока и делится на столько клеток, сколько их у блока на самом деле:
-# у обычного 1³ это шесть граней, у процессора 2³ — шесть сторон по четыре клетки, то есть
-# двадцать четыре кнопки. Иначе настройка «вход слева» у большого блока означала бы «вход во
-# все четыре левые клетки сразу», а именно ради разных клеток одной стороны всё и затевалось.
+# The cube LOOKS AT THE BLOCK'S SIZE and splits into as many cells as the block really has: six
+# faces for an ordinary 1³, six sides of four cells for the 2³ processor — twenty-four buttons.
+# Otherwise "input on the left" on a big block would mean "input into all four left cells at
+# once", and telling the cells of one side apart is the whole point.
 #
-# Размер берём из КОЛЛИЗИИ блока, а не из таблицы в коде: коллизия и есть то, чем блок занимает
-# место в мире, и держать рядом второй список размеров — способ их рассинхронить.
+# The size comes from the block's COLLISION, not from a table in code: the collision IS how the
+# block takes up space in the world, and keeping a second list of sizes beside it is a way to let
+# the two drift apart.
 #
-# ЧТО ИМЕННО НАСТРАИВАЕТСЯ, зависит от режима и от размера:
+# WHAT EXACTLY IS BEING SET depends on the mode and the size:
 #
-#   CONNECT — стороны СТЫКОВКИ. У односкеточного блока это маска connect_faces, у крупного —
-#             ПОКЛЕТОЧНЫЕ умолчания (connect_defaults): к процессору 2×2×2 теперь можно
-#             пристыковаться одной клеткой стороны, а не всеми четырьмя сразу.
-#   IN/OUT  — у односкеточного блока маски (input_faces / output_faces).
-#   PORTS   — у крупного: поклеточные умолчания (port_defaults), где у каждой клетки своя
-#             сторона. Маски при этом остаются базой — клетка без своей настройки ведёт
-#             себя по маске, как и раньше.
+#   CONNECT — CONNECTION sides. On a single-cell block that is the connect_faces mask; on a large
+#             one, PER-CELL defaults (connect_defaults): a 2×2×2 processor can now be joined by
+#             one cell of a side instead of all four at once.
+#   IN/OUT  — on a single-cell block, the masks (input_faces / output_faces).
+#   PORTS   — on a large one: per-cell defaults (port_defaults), where each cell has its own
+#             side. The masks remain the base — a cell with no setting of its own behaves by the
+#             mask, as before.
 #
-# Почему поклеточное — это УМОЛЧАНИЕ, а не «порт». Порт игрока (FactoryBlock.ports) живёт в
-# осях КАРТЫ и принадлежит конкретной машине; сцена же не знает, каким боком её поставят,
-# поэтому здесь всё в СВОИХ осях блока, а поворот учитывается при чтении.
+# Why the per-cell data is a DEFAULT and not a "port". A player's port (FactoryBlock.ports) lives
+# in MAP axes and belongs to one machine; a scene has no idea which way round it will be placed,
+# so everything here is in the BLOCK'S OWN axes and rotation is applied when it is read.
 
 const MODE_CONNECT := 0
 const MODE_IN := 1
@@ -58,10 +59,11 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	add_child(row)
 	_add_mode_button(row, MODE_CONNECT, "CONNECT")
-	# Вход и выход есть только у фабричного блока — у обычного эти кнопки нечему было бы менять.
+	# Only a factory block has inputs and outputs — on an ordinary one these buttons would have
+	# nothing to change.
 	if _block is FactoryBlock:
 		if _cells.size() > 1:
-			_add_mode_button(row, MODE_PORTS, "PORTS")     # поклеточно: off → in → out
+			_add_mode_button(row, MODE_PORTS, "PORTS")     # per cell: off -> in -> out
 		else:
 			_add_mode_button(row, MODE_IN, "IN")
 			_add_mode_button(row, MODE_OUT, "OUT")
@@ -91,11 +93,12 @@ func _add_mode_button(row: HBoxContainer, mode: int, text: String) -> void:
 	row.add_child(b)
 	_buttons.append({"btn": b, "mode": mode})
 
-# ── Размер блока ─────────────────────────────────────────────────────────────
-## Клетки блока в тех же осях и с тем же началом отсчёта, что и в игре
-## (`blocks._block_footprint`): по X и Z футпринт растёт ОТ ЯКОРЯ В МИНУС, по Y — В ПЛЮС.
-## Отсюда и формулы: у ширины n клетки идут от −(n/2) до n−n/2, а по высоте просто 0..n−1.
-## Разъедется с игрой — поклеточная настройка будет попадать не в те клетки.
+# ── Block size ───────────────────────────────────────────────────────────────
+## The block's cells in the same axes and with the same origin as in game
+## (`blocks._block_footprint`): along X and Z the footprint grows FROM THE ANCHOR INTO THE
+## NEGATIVE, along Y INTO THE POSITIVE. Hence the formulas: for width n the cells run from -(n/2)
+## to n-n/2, while in height they are simply 0..n-1. Let this drift from the game and the per-cell
+## settings land in the wrong cells.
 func _footprint() -> Array:
 	var sz: Vector3 = _collision_size()
 	var nx: int = maxi(int(round(sz.x)), 1)
@@ -108,8 +111,9 @@ func _footprint() -> Array:
 				out.append(Vector3i(dx, dy, dz))
 	return out
 
-## Размер коллизии блока в клетках. Берём первый BoxShape3D: у всех блоков коллизия — коробка,
-## и её размер и есть занимаемое место (1³ у обычного, 2³ у процессора, 2×1×1 у длинного).
+## The block's collision size in cells. The first BoxShape3D is taken: every block's collision is
+## a box, and its size IS the space occupied (1³ for an ordinary one, 2³ for the processor, 2×1×1
+## for a long one).
 func _collision_size() -> Vector3:
 	if _block == null or not is_instance_valid(_block):
 		return Vector3.ONE
@@ -122,8 +126,8 @@ func _collision_size() -> Vector3:
 			return box.size
 	return Vector3.ONE
 
-## Центр футпринта в смещениях — его же кладём блоку (cells_center), чтобы поклеточные
-## умолчания поворачивались вместе с блоком.
+## The footprint centre in offsets — written onto the block as well (cells_center), so the
+## per-cell defaults rotate together with the block.
 func _footprint_center() -> Vector3:
 	var lo := Vector3(INF, INF, INF)
 	var hi := Vector3(-INF, -INF, -INF)
@@ -133,9 +137,9 @@ func _footprint_center() -> Vector3:
 		hi = Vector3(maxf(hi.x, v.x), maxf(hi.y, v.y), maxf(hi.z, v.z))
 	return (lo + hi) * 0.5
 
-# ── Состояние клетки ─────────────────────────────────────────────────────────
-## Что показывать на грани клетки: в режиме масок — бит грани (0/1), в поклеточном —
-## состояние порта (нет / вход / выход), с откатом на маску, как и в игре.
+# ── Cell state ───────────────────────────────────────────────────────────────
+## What to show on a cell's face: in mask mode the face bit (0/1), in per-cell mode the port state
+## (none / in / out), falling back to the mask exactly as the game does.
 func _state(off: Vector3i, di: int) -> int:
 	if _block == null or not is_instance_valid(_block):
 		return 0
@@ -144,13 +148,13 @@ func _state(off: Vector3i, di: int) -> int:
 		var ck := _port_key(off, di)
 		if cd != null and cd.has(ck):
 			return 1 if bool(cd[ck]) else 0
-		return _bit("connect_faces", di)          # клетка не настроена — работает маска
+		return _bit("connect_faces", di)          # cell not configured: the mask applies
 	if _mode == MODE_PORTS:
 		var key := _port_key(off, di)
 		var d: Dictionary = _block.get("port_defaults")
 		if d != null and d.has(key):
 			return int(d[key])
-		# Не задано — работает маска, как и в рантайме (FactoryBlock.port_state).
+		# Not set: the mask applies, exactly as at runtime (FactoryBlock.port_state).
 		if _bit("output_faces", di) == 1:
 			return 2
 		if _bit("input_faces", di) == 1:
@@ -167,14 +171,14 @@ func _bit(prop: String, di: int) -> int:
 func _port_key(off: Vector3i, di: int) -> String:
 	return "%d,%d,%d|%d" % [off.x, off.y, off.z, di]
 
-## Какое свойство правим в режимах масок.
+## Which property the mask modes edit.
 func _prop() -> String:
 	match _mode:
 		MODE_IN: return "input_faces"
 		MODE_OUT: return "output_faces"
 	return "connect_faces"
 
-# ── Правка ───────────────────────────────────────────────────────────────────
+# ── Editing ──────────────────────────────────────────────────────────────────
 func _toggle(off: Vector3i, di: int) -> void:
 	if _block == null or not is_instance_valid(_block):
 		return
@@ -186,7 +190,7 @@ func _toggle(off: Vector3i, di: int) -> void:
 		_toggle_mask(di)
 	_sync()
 
-## Маска грани: клетка тут ни при чём, грань включается целиком.
+## A face mask: the cell plays no part here, the whole face is switched at once.
 func _toggle_mask(di: int) -> void:
 	var prop := _prop()
 	var old = _block.get(prop)
@@ -194,28 +198,28 @@ func _toggle_mask(di: int) -> void:
 		return
 	_commit(prop, int(old) ^ (1 << di), "Block faces: %s" % prop)
 
-## Поклеточная СТЫКОВКА: включаем или выключаем ровно эту клетку этой стороны. Маска при
-## этом остаётся базой для клеток, которых в словаре нет, поэтому старые сцены не меняются.
+## Per-cell CONNECTION: switch exactly this cell of this side. The mask stays the base for cells
+## that are not in the dictionary, so existing scenes do not change.
 func _toggle_connect_cell(off: Vector3i, di: int) -> void:
 	var cd: Dictionary = (_block.get("connect_defaults") as Dictionary).duplicate()
 	var key := _port_key(off, di)
-	cd[key] = _state(off, di) == 0            # было выключено — включаем, и наоборот
+	cd[key] = _state(off, di) == 0            # off becomes on, and the other way round
 	_commit("cells_center", _footprint_center(), "Block connect: cells_center")
 	_commit("connect_defaults", cd, "Block connect")
 
-## Поклеточное умолчание: по кругу НЕТ → ВХОД → ВЫХОД. Пишем СЛОВАРЁМ целиком — редактор
-## сохраняет свойство, а не его отдельный ключ.
+## A per-cell default, cycling NONE -> IN -> OUT. Written as a WHOLE DICTIONARY — the editor
+## saves a property, not one key inside it.
 func _toggle_port(off: Vector3i, di: int) -> void:
 	var d: Dictionary = (_block.get("port_defaults") as Dictionary).duplicate()
 	var key := _port_key(off, di)
 	d[key] = (_state(off, di) + 1) % 3
-	# Центр футпринта кладём заодно: без него поворот блока увёл бы клетки за его пределы,
-	# а вручную это число никто не впишет.
+	# The footprint centre is written along with it: without it rotating the block would take the
+	# cells outside it, and nobody is going to type that number in by hand.
 	_commit("cells_center", _footprint_center(), "Block ports: cells_center")
 	_commit("port_defaults", d, "Block ports")
 
-## Через стек редактора, а не прямым присваиванием: правка должна попадать в Ctrl+Z и
-## помечать сцену изменённой, иначе она молча теряется при закрытии вкладки.
+## Through the editor's stack rather than a direct assignment: the change has to land in Ctrl+Z
+## and mark the scene dirty, or it is silently lost when the tab is closed.
 func _commit(prop: String, value, action: String) -> void:
 	var old = _block.get(prop)
 	if _ur != null:
@@ -226,8 +230,8 @@ func _commit(prop: String, value, action: String) -> void:
 	else:
 		_block.set(prop, value)
 
-## Цвет «включённой» грани у каждого режима свой: перепутать, что именно ты сейчас
-## красишь — стыковку или вход, — иначе слишком легко.
+## Each mode has its own colour for an "on" face: otherwise it is far too easy to lose track of
+## whether you are painting a connection or an input.
 func _sync() -> void:
 	for e in _buttons:
 		(e["btn"] as Button).button_pressed = int(e["mode"]) == _mode

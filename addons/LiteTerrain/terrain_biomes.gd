@@ -62,9 +62,9 @@ extends Resource
 # Snow follows the MOUNTAIN biome rather than altitude: the colour comes from its mask.
 @export_group("Snow / rock")
 @export var color_snow: Color = Color(0.94, 0.96, 1.00)
-## С КАКОЙ ВЫСОТЫ ЛОЖИТСЯ СНЕГ (мировые единицы) и насколько мягкая эта граница. Маска гор
-## говорит, ГДЕ горный район, но ничего не говорит о том, насколько там поднялась земля:
-## покрашенный по одной маске снег ложился белыми пятнами на ровное место внутри района.
+## FROM WHAT HEIGHT SNOW LIES (world units) and how soft that line is. The mountain mask says
+## WHERE the mountain region is, but says nothing about how far the ground actually rose there:
+## snow painted from the mask alone landed as white patches on flat ground inside the region.
 @export_range(-100.0, 400.0, 1.0) var snow_line: float = 60.0
 @export_range(1.0, 120.0, 1.0) var snow_blend: float = 25.0
 @export var color_rock: Color = Color(0.40, 0.41, 0.43)

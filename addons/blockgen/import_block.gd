@@ -1,13 +1,13 @@
 @tool
 extends EditorImportPlugin
 
-# Файл .blockgen (небольшой JSON с параметрами блока) импортируется как ресурс Mesh.
-# Благодаря этому блок ведёт себя как любой другой ассет: лежит в файловой панели,
-# перетаскивается в поле Mesh любого MeshInstance3D и ПЕРЕСОБИРАЕТСЯ САМ, стоит поправить
-# описание или BlockBuilder. Ни сцены-обёртки, ни скрипта на ноде, ни ручной «выпечки».
+# A .blockgen file (a small JSON of block parameters) is imported as a Mesh resource. That makes
+# a block behave like any other asset: it sits in the file dock, drags into the Mesh field of any
+# MeshInstance3D, and REBUILDS ITSELF as soon as the description or BlockBuilder changes. No
+# wrapper scene, no script on the node, no baking by hand.
 #
-# Материал (текстура в памяти + фильтр nearest) кладётся внутрь меша и сохраняется вместе
-# с ним, поэтому ассет остаётся резким, куда бы его ни назначили.
+# The material (an in-memory texture plus a nearest filter) is put inside the mesh and saved with
+# it, so the asset stays crisp wherever it is assigned.
 
 func _get_importer_name() -> String:
 	return "worldtech.blockgen"
@@ -46,14 +46,14 @@ func _import(source_file: String, save_path: String, _options: Dictionary,
 		_platform_variants: Array[String], _gen_files: Array[String]) -> Error:
 	var text: String = FileAccess.get_file_as_string(source_file)
 	if text.is_empty():
-		push_error("BlockGen: не удалось прочитать %s" % source_file)
+		push_error("BlockGen: could not read %s" % source_file)
 		return ERR_CANT_OPEN
 	var parsed: Variant = JSON.parse_string(text)
 	if not (parsed is Dictionary):
-		push_error("BlockGen: %s — ожидался объект JSON" % source_file)
+		push_error("BlockGen: %s — expected a JSON object" % source_file)
 		return ERR_PARSE_ERROR
 	var mesh: ArrayMesh = BlockBuilder.new(parsed).build()
 	if mesh == null:
-		push_error("BlockGen: не удалось собрать меш из %s" % source_file)
+		push_error("BlockGen: could not build a mesh from %s" % source_file)
 		return ERR_CANT_CREATE
 	return ResourceSaver.save(mesh, "%s.%s" % [save_path, _get_save_extension()])
