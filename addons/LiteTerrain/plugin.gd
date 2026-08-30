@@ -3,7 +3,7 @@ extends EditorPlugin
 
 var sculpt_node     = null
 var brush_radius    = 3.0
-var brush_strength  = 0.1
+var brush_power     = 0.5      # 0..1 — the Strength slider, shown as 0..100 %
 var sculpt_mode     = "raise"
 var panel           = null
 var radius_slider   = null
@@ -20,6 +20,8 @@ var _sl_features: HSlider = null
 var _sl_mountains: HSlider = null
 var _sl_erosion: HSlider = null
 var strength_slider = null
+## Подпись под ползунками кисти: сколько метров даёт мазок ПРЯМО СЕЙЧАС.
+var _brush_hint: Label = null
 
 var _dirty_chunks: Dictionary = {}
 
@@ -38,6 +40,55 @@ var _stroke_before := PackedFloat32Array()
 const DAB_SPACING_FRAC := 0.25
 var _have_last_dab := false
 var _last_dab_pos  := Vector3.ZERO
+
+# ── Brush strength is a PERCENTAGE, not metres ───────────────────────────────
+# Strength used to be the height of one dab in world units (a 1..1000 slider holding
+# thousandths), and there was no way to reason about it. The same number built a mountain on a
+# 30 m map and did nothing on a 300 m one; worse, it meant the SAME rise for a three-metre brush
+# and a two-hundred-metre one, so a wide dab came out as a flat pancake and a narrow one as a
+# needle through the map.
+#
+# Now strength is a fraction of the MAP HEIGHT (the Height knob), and it scales WITH THE RADIUS:
+# at 100 % a radius-100 brush lifts by 10 % of the height, a radius-10 brush by 1 %. The dab
+# therefore keeps the same SLOPE whatever the brush size — a hill comes out shaped like a hill.
+const SCULPT_REF_RADIUS := 100.0   # the radius at which 100 % power == SCULPT_REF_FRAC of height
+const SCULPT_REF_FRAC   := 0.10
+
+## Metres per dab for raise/lower.
+func _brush_step() -> float:
+	return gen_amplitude * SCULPT_REF_FRAC * (brush_radius / SCULPT_REF_RADIUS) * brush_power
+
+## Weight for flatten. That one is a blend towards the average height, not metres, so it does
+## NOT scale with the radius: "smooth it halfway" has to mean the same thing at any brush size.
+func _brush_weight() -> float:
+	return clampf(brush_power, 0.0, 1.0)
+
+# Slider handlers are named methods rather than lambdas because they now do two things (write
+# the value and refresh the hint), and a multi-statement lambda in the middle of a call's
+# argument list is exactly the kind of code the parser trips over.
+func _set_brush_radius(v: float) -> void:
+	brush_radius = v
+	_update_brush_hint()
+	update_overlays()
+
+func _set_brush_power(v: float) -> void:
+	brush_power = v / 100.0
+	_update_brush_hint()
+
+func _set_gen_amplitude(v: float) -> void:
+	gen_amplitude = v
+	_update_brush_hint()   # brush metres are a share of the map height — they move with it
+
+## The percentage is predictable, but the world is built in metres: without this line "40 %"
+## says nothing about what one dab actually does.
+func _update_brush_hint() -> void:
+	if _brush_hint == null or not is_instance_valid(_brush_hint):
+		return
+	var pct := int(round(brush_power * 100.0))
+	if sculpt_mode == "flatten":
+		_brush_hint.text = "%d%% towards the average" % pct
+	else:
+		_brush_hint.text = "%d%% · %s m per dab" % [pct, _fmt(_brush_step(), 2)]
 
 # ---------- Noise generation parameters ----------
 # ШЕСТЬ РУЧЕК НА ВЕСЬ РЕЛЬЕФ, и это осознанное сокращение с семнадцати. Настройка имеет право
@@ -647,13 +698,19 @@ func _enter_tree() -> void:
 		var mode_name := String(m[1])
 		b.pressed.connect(func() -> void:
 			sculpt_mode = mode_name
+			_update_brush_hint()
+			update_overlays()
 			_save_settings())
 		modes.add_child(b)
 	panel.add_child(modes)
 	radius_slider = _slider_row(panel, "Radius", 1.0, 200.0, brush_radius, 1.0,
-			func(v: float) -> void: brush_radius = v, 0)
-	strength_slider = _slider_row(panel, "Strength", 1.0, 1000.0, brush_strength * 1000.0, 1.0,
-			func(v: float) -> void: brush_strength = v / 1000.0, 0)
+			_set_brush_radius, 0)
+	strength_slider = _slider_row(panel, "Strength", 0.0, 100.0, brush_power * 100.0, 1.0,
+			_set_brush_power, 0)
+	_brush_hint = _lbl("")
+	_brush_hint.modulate = Color(1, 1, 1, 0.6)   # a caption under the sliders, not a setting
+	panel.add_child(_brush_hint)
+	_update_brush_hint()
 
 	# ── World ────────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
@@ -691,7 +748,7 @@ func _enter_tree() -> void:
 	panel.add_child(_row("Size", size_spin))
 
 	_sl_height = _slider_row(panel, "Height", 1.0, 300.0, gen_amplitude, 1.0,
-			func(v: float) -> void: gen_amplitude = v, 0)
+			_set_gen_amplitude, 0)
 	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
 	# ОДНА РУЧКА НА ГОРЫ и одна на эрозию: их составляющие всегда двигались вместе, а порознь
@@ -832,7 +889,10 @@ func _save_settings() -> void:
 		return
 	es.set_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {
 		"brush_radius":        brush_radius,
-		"brush_strength":      brush_strength,
+		# НОВЫЙ КЛЮЧ, а не старый brush_strength: там лежали МЕТРЫ на мазок, здесь — доля 0..1.
+		# Числа совпадают по диапазону, поэтому старое значение прочиталось бы молча и дало бы
+		# силу, о которой никто не просил.
+		"brush_power":         brush_power,
 		"sculpt_mode":         sculpt_mode,
 		"gen_seed":            gen_seed,
 		"gen_scale":           gen_scale,
@@ -855,7 +915,7 @@ func _load_settings() -> void:
 	if typeof(d) != TYPE_DICTIONARY:
 		return
 	brush_radius     = float(d.get("brush_radius",     brush_radius))
-	brush_strength   = float(d.get("brush_strength",   brush_strength))
+	brush_power      = clampf(float(d.get("brush_power", brush_power)), 0.0, 1.0)
 	sculpt_mode      = str(d.get("sculpt_mode",        sculpt_mode))
 	gen_seed         = int(d.get("gen_seed",           gen_seed))
 	gen_scale        = float(d.get("gen_scale",        gen_scale))
@@ -881,6 +941,10 @@ func _edit(object) -> void:
 	_stroke_active = false
 	_stroke_before = PackedFloat32Array()
 	_have_last_dab = false
+	# The rings belong to the terrain that WAS selected: keep them and they would hang over the
+	# viewport pointing at nothing until the next mouse move.
+	_brush_hit_ok = false
+	update_overlays()
 	if object is StaticBody3D:
 		sculpt_node = object
 	elif object is CollisionShape3D:
@@ -914,13 +978,24 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 	if sculpt_node.has_method("set_editor_camera"):
 		sculpt_node.set_editor_camera(viewport_camera)
 
+	# Track the point under the cursor even with no button held: that is what the brush rings
+	# are drawn around. Doing it here (and not only while painting) is the whole point — the
+	# brush has to be visible BEFORE the click, otherwise its size is a guess.
+	if event is InputEventMouseMotion:
+		_brush_cam = viewport_camera
+		var over = _ray_ground(viewport_camera, event.position)
+		_brush_hit_ok = over != null
+		if _brush_hit_ok:
+			_brush_hit = over
+		update_overlays()
+
 	if event is InputEventMouseButton:
 		# The wheel sizes the brush. Its range matches the slider (1..200), otherwise scrolling
 		# would knock a large radius back down to 20. The step scales with the radius so big
 		# brushes are reachable in a sane number of turns.
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
 			brush_radius = clamp(brush_radius + maxf(1.0, brush_radius * 0.15), 1.0, 200.0)
-			radius_slider.value = brush_radius
+			radius_slider.value = brush_radius   # its handler refreshes the hint and the rings
 			return EditorPlugin.AFTER_GUI_INPUT_STOP
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
 			brush_radius = clamp(brush_radius - maxf(1.0, brush_radius * 0.15), 1.0, 200.0)
@@ -946,25 +1021,10 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 		if not left and not right:
 			return EditorPlugin.AFTER_GUI_INPUT_PASS
 
-		var ray_origin = viewport_camera.project_ray_origin(event.position)
-		var ray_dir    = viewport_camera.project_ray_normal(event.position)
-
-		var hit_pos
-		if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-			# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
-			var rh = sculpt_node.raycast_heightmap(ray_origin, ray_dir)
-			if rh == null:
-				return EditorPlugin.AFTER_GUI_INPUT_PASS
-			hit_pos = rh
-		else:
-			var space = sculpt_node.get_world_3d().direct_space_state
-			var query = PhysicsRayQueryParameters3D.create(
-				ray_origin, ray_origin + ray_dir * 1000.0)
-			query.collide_with_bodies = true
-			var result = space.intersect_ray(query)
-			if result.is_empty():
-				return EditorPlugin.AFTER_GUI_INPUT_PASS
-			hit_pos = result.position
+		var hit = _ray_ground(viewport_camera, event.position)
+		if hit == null:
+			return EditorPlugin.AFTER_GUI_INPUT_PASS
+		var hit_pos: Vector3 = hit
 
 		var raise = left
 		if sculpt_mode == "lower":
@@ -986,6 +1046,79 @@ func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
 
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
 
+## The ground point under a viewport position, or null. ONE function for both worlds: the dab
+## and the brush cursor have to agree on where the brush is, and two copies of this would drift
+## apart the moment one of the two modes changed.
+func _ray_ground(cam: Camera3D, screen_pos: Vector2) -> Variant:
+	if sculpt_node == null or cam == null:
+		return null
+	var ray_origin := cam.project_ray_origin(screen_pos)
+	var ray_dir    := cam.project_ray_normal(screen_pos)
+	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
+		# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
+		return sculpt_node.raycast_heightmap(ray_origin, ray_dir)
+	var space := sculpt_node.get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_dir * 1000.0)
+	query.collide_with_bodies = true
+	var result := space.intersect_ray(query)
+	if result.is_empty():
+		return null
+	return result.position
+
+# ─────────────────────────────────────────────────
+# Brush cursor: TWO rings, drawn OVER the viewport
+# ─────────────────────────────────────────────────
+# There was no brush cursor at all: the radius was a number in the dock, and where it landed was
+# only visible after the dab. Rings are drawn as 2D over the viewport rather than as a mesh in
+# the scene — a mesh would need a node, a material and a place in the tree of somebody else's
+# scene, and would still be hidden by the very hill being sculpted.
+#
+# TWO rings, because strength now depends on the radius (see SCULPT_REF_RADIUS): the outer one is
+# the reach, where the falloff has run down to zero, and the inner one is the core that moves by
+# the full step. The inner one is a TENTH of the outer, which is exactly the ratio in the
+# strength rule — a radius-100 brush shows what a radius-10 brush would cover.
+const BRUSH_CORE_FRAC := 0.1
+const BRUSH_RING_SEGS := 56
+
+var _brush_cam: Camera3D = null
+var _brush_hit: Vector3 = Vector3.ZERO
+var _brush_hit_ok := false
+
+func _forward_3d_draw_over_viewport(overlay: Control) -> void:
+	if not _brush_hit_ok or sculpt_node == null:
+		return
+	if _brush_cam == null or not is_instance_valid(_brush_cam):
+		return
+	var col := Color(0.35, 1.0, 0.55, 0.9)          # raise
+	if sculpt_mode == "lower":
+		col = Color(1.0, 0.5, 0.25, 0.9)
+	elif sculpt_mode == "flatten":
+		col = Color(0.45, 0.75, 1.0, 0.9)
+	_draw_ring(overlay, brush_radius, col, 2.0)
+	_draw_ring(overlay, brush_radius * BRUSH_CORE_FRAC, Color(col, 0.45), 1.0)
+
+## One ring, laid ON the ground rather than on a flat disc: on a slope a flat circle sinks into
+## the hill and stops saying anything about what the brush will touch.
+func _draw_ring(overlay: Control, radius: float, col: Color, width: float) -> void:
+	if radius < 0.05:
+		return
+	var pts := PackedVector2Array()
+	for i in BRUSH_RING_SEGS + 1:
+		var a := TAU * float(i) / float(BRUSH_RING_SEGS)
+		var p := _brush_hit + Vector3(cos(a) * radius, 0.0, sin(a) * radius)
+		if sculpt_node.has_method("terrain_height_at"):
+			p.y = sculpt_node.terrain_height_at(p)
+		# A point BEHIND the camera unprojects to a mirrored dot in front of it, and joining it
+		# to its neighbours throws a stray line across the whole viewport. Break the line there.
+		if _brush_cam.is_position_behind(p):
+			if pts.size() > 1:
+				overlay.draw_polyline(pts, col, width)
+			pts = PackedVector2Array()
+			continue
+		pts.append(_brush_cam.unproject_position(p))
+	if pts.size() > 1:
+		overlay.draw_polyline(pts, col, width)
+
 # ─────────────────────────────────────────────────
 # Sculpt brush
 # ─────────────────────────────────────────────────
@@ -999,8 +1132,11 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 		var mode_int := 0
 		if sculpt_mode != "flatten":
 			mode_int = 1 if raise else -1
+		# Two different quantities behind one argument: metres for raise/lower, a blend weight
+		# for flatten. apply_brush uses it accordingly, so pick it here by mode.
+		var power: float = _brush_weight() if mode_int == 0 else _brush_step()
 		var dirty: PackedInt32Array = sculpt_node.apply_brush(
-				hit_pos, brush_radius, brush_strength, mode_int)
+				hit_pos, brush_radius, power, mode_int)
 		for ci in dirty:
 			_dirty_chunks[ci] = true
 		return
@@ -1049,8 +1185,9 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 					var index   = z * width + x
 					# Keep the lerp weight in [0,1], as in image mode: an unclamped *5 overshot
 					# the average at high strength and wrecked the map.
-					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * brush_strength, 0.0, 1.0))
+					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * _brush_weight(), 0.0, 1.0))
 	else:
+		var step := _brush_step()
 		for z in range(z_min, z_max + 1):
 			for x in range(x_min, x_max + 1):
 				var dx   = x - cx
@@ -1060,9 +1197,9 @@ func _sculpt(hit_pos: Vector3, raise: bool) -> void:
 					var falloff = 1.0 - (dist / brush_radius)
 					var index   = z * width + x
 					if raise:
-						map_data[index] += brush_strength * falloff
+						map_data[index] += step * falloff
 					else:
-						map_data[index] -= brush_strength * falloff
+						map_data[index] -= step * falloff
 
 	var ur = get_undo_redo()
 	ur.create_action("Sculpt Terrain", UndoRedo.MERGE_ALL)
