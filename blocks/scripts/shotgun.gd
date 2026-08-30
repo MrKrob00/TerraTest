@@ -20,6 +20,10 @@ func _ready() -> void:
 	super._ready()
 	weapon_range = SHOTGUN_RANGE
 	damage = PELLET_DAMAGE
+	# БАЗОВЫЙ РАЗБРОС ВЫКЛЮЧАЕМ: у дробовика он свой и, главное, ПОСТОЯННЫЙ. Базовый сжимается
+	# по мере приближения к цели (WeaponBlock._apply_spread) — для пушки это правильно, а тут
+	# сузило бы дробь ровно там, где широкая «метла» и есть весь смысл оружия.
+	spread_deg = 0.0
 	fire_rate = 0.35
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()          # дальность своя — зона обнаружения должна за ней следовать
