@@ -430,6 +430,25 @@ func _machine_faction(n: Node):
 		p = p.get_parent()
 	return null
 
+## Урон с учётом множителя своей машины (`MachineBody.damage_scale`). Считаем В МОМЕНТ
+## ПОПАДАНИЯ, а не в _ready: ствол переезжает с машины на машину (сорвало в мир, подобрали,
+## поставили на свою), и запомненное при рождении число уехало бы вместе с ним.
+##
+## `get()` у узла БЕЗ такого поля возвращает null (см. грабли GDScript в CLAUDE.md), поэтому
+## проверяем тип, а не пишем float(...) — у свободного ствола в мире машины нет вовсе.
+##
+## Через эту функцию обязан идти ВЕСЬ урон оружия, включая свои числа подклассов (у ракетницы
+## это aoe_damage): иначе «ослабленный» враг ослаблен только пулями.
+func _scale_damage(v: float) -> int:
+	var machine := _vehicle_root()
+	var k = machine.get("damage_scale") if machine != null else null
+	if not (k is float or k is int):
+		return maxi(1, int(round(v)))
+	return maxi(1, int(round(v * float(k))))
+
+func _shot_damage() -> int:
+	return _scale_damage(float(damage))
+
 # Корневое тело машины, на которой стоит это оружие.
 func _vehicle_root() -> Node:
 	var p := get_parent()
@@ -587,7 +606,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	# Свой щит-купол пропускает СВОИ пули (вылетают изнутри купола) — не поглощаем.
 	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
 	if body.has_method("hurt"):
-		body.hurt(damage)
+		body.hurt(_shot_damage())
 		_alert_victim(body)
 	# Щит гасит снаряд «в воздухе», на самом куполе: без отметки попадание выглядело как
 	# исчезновение пули из ниоткуда. Глюк рисуем по САМОЙ ПУЛЕ — её габарит крошечный,
