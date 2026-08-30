@@ -428,15 +428,15 @@ func _gen_fill_row(z: int) -> void:
 		var wz := fz - hd
 		var wp := Vector2(wx, wz)
 		var b := _gen_biomes
-		# THE CANYON SUPPRESSES WHATEVER IT WILL LATER CUT AWAY. The canyon pass replaces the
-		# height with its own terraces, so raising a mountain dome or drawing dunes inside its
-		# region is work the next pass throws away. Worse, it throws it away INCOMPLETELY: torn
-		# scraps of mountain and dune stick out of the canyon walls along the mask edge. The mask
-		# is evaluated ONCE per point — it used to be taken twice here and once more in the carve.
-		var cany: float = b.canyon_mask(wp, _cv_noise) if b.canyon_enabled else 0.0
-		var not_cany: float = 1.0 - cany
-		if ridge_term > 0.001:
-			ridge_term *= not_cany
+		# КАНЬОН БОЛЬШЕ НИЧЕГО НЕ ГАСИТ, и это следствие смены его модели. Пока он ЗАМЕЩАЛ высоту
+		# своими абсолютными террасами, поднимать под ним горный купол и рисовать дюны было
+		# работой на выброс, и её глушили множителем (1 − маска). Но глушение — это ступень
+		# ровно такой высоты, какую оно снимает: подъём гор — 0.75 высоты карты, то есть под
+		# краем каньонной маски в горах открывалась яма почти в сто метров. «В горах иногда
+		# резкие углубления, в которых можно застрять» — это она.
+		#
+		# Теперь каньон РЕЖЕТ уже готовую землю (см. _gen_carve_row): что бы здесь ни подняли,
+		# врез считается от этого же уровня. Гасить нечего, и ступеней от гашения нет.
 		var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
 		var mtn_mask := b.mountain_mask(wp, _cv_noise)
 		var mtn_dome := b.mountain_dome(wp, _cv_noise)
@@ -445,8 +445,8 @@ func _gen_fill_row(z: int) -> void:
 		var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
 		var h = cont_biome + ridge_term * not_mtn
 		var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(fx, fz) * 3.5
-		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand * not_cany
-		var mtn_rise := (mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask) * not_cany
+		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
+		var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
 	_gen_row_done()
 
@@ -643,11 +643,21 @@ func _gen_carve_row(z: int) -> void:
 		var wx := float(x) - hw
 		var wz := fz - hd
 		var wp := Vector2(wx, wz)
-		if b.canyon_mask(wp, _cv_noise) <= 0.001:
+		# МАСКА ОБЛАСТИ — ТА ЖЕ САМАЯ, ЧТО У ЦВЕТА, И БЕРЁТСЯ ОДНИМ ВЫЗОВОМ. Здесь была вторая
+		# копия её формулы, и она молча разошлась с оригиналом: `canyon_mask` сдвигает шум на
+		# `mask_offset` (это смещение двигает ВСЮ географию при смене сида), а копия про него не
+		# знала. То есть врез считался НЕ ТАМ, где каньон покрашен: настоящая область оставалась
+		# нетронутой («каньоны выглядят как обычный рельеф»), а по карте — в пустыне, в горах,
+		# где угодно — вылезали ямы там, где сдвинутый шум случайно перевалил порог.
+		#
+		# Вторая половина той же беды — ШИРИНА края. Копия размывала границу на ±0.02, а цвет
+		# фадится по `canyon_edge` (0.05): даже там, где они совпадали, у ямы был почти отвесный
+		# борт, а терракота растекалась мягко. Теперь и форма, и цвет идут по одному числу.
+		var hmask: float = b.canyon_mask(wp, _cv_noise)
+		if hmask <= 0.001:
 			continue
-		var cn := _cv_noise(wp / b.canyon_scale + TerrainBiomes.CANYON_OFFSET)
-		var hmask := smoothstep(b.canyon_threshold - 0.02, b.canyon_threshold + 0.02, cn)
-		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0))
+		# Смещение сида и здесь: иначе иерархия столовых гор осталась бы одинаковой на всех сидах.
+		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
 		# КАНЬОН — ЭТО СТОЛОВАЯ ЗЕМЛЯ, ПРОРЕЗАННАЯ УЩЕЛЬЯМИ, а не яма и не отдельная плита.
 		# Через три захода это единственная модель, которая сходится со всеми симптомами:
 		#
