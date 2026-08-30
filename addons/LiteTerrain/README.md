@@ -233,8 +233,18 @@ Select the terrain node, pick a mode in the dock and paint with the left mouse b
 
 - **Raise** and **Lower** move the surface under the brush.
 - **Flatten** pulls towards the average height inside the brush without overshooting.
-- Radius and Strength come from the dock sliders. Radius also responds to the mouse
-  wheel over the viewport while the terrain is selected, over the same range.
+- Radius comes from the dock slider and from the mouse wheel over the viewport while the
+  terrain is selected, over the same range (1..200).
+- **Strength is a percentage of the map height, and it scales with the radius.** At 100 %
+  a radius-100 brush lifts the ground by 10 % of the Height knob, and a radius-10 brush by
+  1 %; between those it is linear. That keeps the SLOPE of a dab the same at any brush
+  size, so a wide brush builds a hill instead of a pancake and a narrow one stops punching
+  needles through the map. The line under the sliders shows what one dab does right now, in
+  metres. For Flatten the percentage is the blend towards the average instead, and it does
+  not scale with the radius — "halfway" means the same at any size.
+- Two rings follow the cursor on the ground: the outer one is the reach, where the falloff
+  has run down to zero, and the inner one (a tenth of it) is the core that moves by the full
+  step — the same ten-to-one ratio the strength rule uses.
 - Each stroke, mouse-down to mouse-up, is one Undo/Redo step.
 
 In image mode the preview mesh and the heightmap file update on mouse-up, so undo and
