@@ -242,6 +242,17 @@ func _radar_pos(screen: Vector2) -> Vector2:
 const MONEY_H := 30.0
 var _money_lbl: Label = null
 
+## ВЗЯТЬ УЗЕЛ ИЗ СЦЕНЫ И ПОДНЯТЬ ЕГО В КОНЕЦ СПИСКА ДЕТЕЙ. Порядок детей в CanvasLayer — это
+## порядок отрисовки, и раньше все эти панели СОЗДАВАЛИСЬ кодом в _ready, то есть ложились
+## поверх джойстиков и кнопок Take/TakeOff/Attack, которые стоят в сцене с самого начала.
+## Оставить их там, где они лежат в файле сцены, значило бы молча уронить их ПОД эти кнопки:
+## ящик техники выезжал бы под Take, а кнопка якоря пряталась под джойстиком. Поднимаем в том
+## же порядке, в каком их строил код, — тогда картинка совпадает с прежней до пикселя.
+func _lift(n: Node) -> Node:
+	if n != null and n.get_parent() == self:
+		move_child(n, get_child_count() - 1)
+	return n
+
 # ── ПАНЕЛИ ЖИВУТ В СЦЕНЕ, А НЕ В КОДЕ ─────────────────────────────────────────
 # Деньги, рынок, панель профиля, «блок в руке» и кнопки поворота собраны узлами в node_3d.tscn
 # (под HUD), а сюда приходят по уникальным именам. Раньше их строил код: чтобы поправить отступ
@@ -254,7 +265,7 @@ var _money_lbl: Label = null
 # представления вовсе; строки рынка, список техники и содержимое профиля строятся ПО ДАННЫМ и
 # меняются каждый кадр или каждое событие. Их место в коде.
 func _bind_money() -> void:
-	_money_panel = %Money
+	_money_panel = _lift(%Money)
 	_money_lbl = %MoneyValue
 	_refresh_money()
 	G.money_changed.connect(_refresh_money)   # продавец начисляет пассивно — ловим сигналом
@@ -274,7 +285,7 @@ var _market_panel: PanelContainer = null
 var _market_box: VBoxContainer = null
 
 func _bind_market() -> void:
-	_market_panel = %Market
+	_market_panel = _lift(%Market)
 	_market_box = %MarketRows
 	G.market_changed.connect(_refresh_market)
 	_refresh_market()
@@ -453,20 +464,15 @@ var _anchor_btn: Button = null
 var _anchor_icon: AnchorIcon = null
 func _build_anchor_button() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	_anchor_btn = Button.new()
-	_anchor_btn.tooltip_text = "Anchor: lock the vehicle (level, 0°)"
-	_anchor_btn.custom_minimum_size = Vector2(64, 64)
-	_anchor_btn.add_theme_stylebox_override("normal", _make_button_style(false))
-	_anchor_btn.add_theme_stylebox_override("hover", _make_button_style(false))
-	_anchor_btn.add_theme_stylebox_override("pressed", _make_button_style(true))
+	# Кнопка в сцене (спрятанная: появится, когда на машине есть фикс-опора — тик радара),
+	# кодом — место у нижнего края, рисованная иконка и подписка.
+	_anchor_btn = _lift(%AnchorButton)
 	_anchor_btn.position = Vector2(16, screen.y - 170)
 	_anchor_btn.pressed.connect(_on_anchor_pressed)
 	_anchor_icon = AnchorIcon.new()
 	_anchor_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_anchor_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_anchor_btn.add_child(_anchor_icon)
-	_anchor_btn.visible = false        # появится, когда на машине есть фикс-опора (тик радара)
-	add_child(_anchor_btn)
 
 func _on_anchor_pressed() -> void:
 	var v: Node = _menu_vehicle_or_current()
@@ -877,7 +883,7 @@ class RotIcon extends Control:
 # кнопкой Take/Place, когда в руке есть блок. Стиль — палитра tech_ui, как у остальных панелей.
 var _hand_panel: PanelContainer
 func _build_hand_panel() -> void:
-	_hand_panel = %HandPanel
+	_hand_panel = _lift(%HandPanel)
 	var row: HBoxContainer = %HandRow
 	# Кнопки строит код, а не сцена: у каждой внутри РИСОВАННАЯ иконка (InvIcon/DropIcon —
 	# обычный Control с _draw), а её узлом не опишешь. Рамка и отступы при этом уже нодовые.
@@ -990,7 +996,7 @@ func _update_hand_panel() -> void:
 
 func _build_rotate_panel() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	_rotate_panel = %RotatePanel
+	_rotate_panel = _lift(%RotatePanel)
 	# Место у левого края считает код (оно зависит от высоты экрана), а размер, рамку и сетку
 	# 2×2 держит сцена. Кнопки — кодом: внутри рисованная RotIcon.
 	_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - 70.0)
@@ -1160,7 +1166,7 @@ func _toggle_perf_panel() -> void:
 		Perf.reset()
 
 func _build_perf_panel() -> void:
-	_perf_panel = %PerfPanel
+	_perf_panel = _lift(%PerfPanel)
 	_perf_label = %PerfText
 	# The panel TAKES taps: tapping it runs the resolution test (see _cycle_render_scale).
 	# It only exists while profiling, so covering that corner of the screen costs nothing.
@@ -1174,11 +1180,7 @@ func _build_perf_panel() -> void:
 				or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
 			_cycle_render_scale()
 			get_viewport().set_input_as_handled())
-	# ПОДНИМАЕМ НАД ВСЕМ. Панель стоит в том же углу, что и кнопка меню, и раньше была последним
-	# добавленным ребёнком (её создавали по первому нажатию), то есть рисовалась поверх. Теперь
-	# она живёт в сцене и идёт по списку РАНЬШЕ кнопок, которые строит код, — без этой строки
-	# «бургер» лёг бы поверх цифр профиля.
-	move_child(_perf_panel, get_child_count() - 1)
+
 
 func _update_perf_panel(delta: float) -> void:
 	_perf_t -= delta
@@ -1467,20 +1469,14 @@ func open_factory_picker(block: Node) -> bool:
 func _build_menu_button() -> void:
 	# Одна кнопка-иконка в левом верхнем углу: тап — и сразу гараж. Выпадающего меню больше
 	# нет, содержимое разошлось по вкладкам гаража и по правому ящику с техникой.
-	_menu_btn = Button.new()
-	_menu_btn.tooltip_text = "Inventory"
-	_menu_btn.custom_minimum_size = Vector2(MENU_BTN, MENU_BTN)
-	_menu_btn.size = Vector2(MENU_BTN, MENU_BTN)
-	_menu_btn.position = Vector2(MENU_PAD, MENU_PAD)
-	_menu_btn.add_theme_stylebox_override("normal", _make_button_style(false))
-	_menu_btn.add_theme_stylebox_override("hover", _make_button_style(false))
-	_menu_btn.add_theme_stylebox_override("pressed", _make_button_style(true))
+	# Сама кнопка — нодовая (размер, рамка, три стиля); кодом остаётся ИКОНКА: это _draw(),
+	# узлом её не выразить, и подписка на нажатие — сигнал на метод скрипта.
+	_menu_btn = _lift(%MenuButton)
 	_menu_btn.pressed.connect(_open_garage)
 	_menu_icon = MenuIcon.new()
 	_menu_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_menu_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_menu_btn.add_child(_menu_icon)
-	add_child(_menu_btn)
 
 	# Правый ящик с ТЕХНИКОЙ — как было до переделки HUD: язычок у края, по тапу выезжает
 	# список машин. В гараж он не переехал: пересаживаться между машинами надо на ходу, а не
@@ -1502,45 +1498,18 @@ func _build_vehicle_drawer() -> void:
 	var dh: float = screen.y * DRAWER_H_RATIO
 	var dy: float = (screen.y - dh) * 0.5
 
-	_drawer = PanelContainer.new()
-	_drawer.add_theme_stylebox_override("panel", _make_panel_style())
+	# Ящик и язычок — узлы сцены (рамка, шапка, отступы, три стиля кнопки). Кодом остаётся то,
+	# что зависит от РАЗМЕРА ЭКРАНА (высота ящика — доля экрана) и от состояния: стартовая
+	# позиция за правым краем, выезд твином, содержимое списка.
+	_drawer = _lift(%Drawer)
 	_drawer.size = Vector2(DRAWER_W, dh)
 	_drawer.position = Vector2(screen.x, dy)      # стартует за краем экрана
-	add_child(_drawer)
-
-	var vb := VBoxContainer.new()
-	vb.add_theme_constant_override("separation", 10)
-	vb.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_drawer.add_child(vb)
-
-	var title := Label.new()
-	title.text = "VEHICLES"
-	title.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
-	title.add_theme_font_size_override("font_size", 20)
-	vb.add_child(title)
-
 	# Список строится при каждом открытии: машины известны только после _ready
 	# камеры-контроллера, а он отрабатывает позже HUD.
-	_vehicle_list = VBoxContainer.new()
-	_vehicle_list.add_theme_constant_override("separation", 6)
-	vb.add_child(_vehicle_list)
-
-	var spacer := Control.new()
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	vb.add_child(spacer)
-
-	_handle = Button.new()
-	_handle.text = "<"
-	_handle.add_theme_font_size_override("font_size", 28)
-	_handle.add_theme_stylebox_override("normal", _make_button_style(false))
-	_handle.add_theme_stylebox_override("hover", _make_button_style(false))
-	_handle.add_theme_stylebox_override("pressed", _make_button_style(true))
-	_handle.add_theme_color_override("font_color", Color(0.85, 0.95, 0.97, 1))
-	_handle.custom_minimum_size = Vector2(50, 72)
-	_handle.size = Vector2(50, 72)
+	_vehicle_list = %VehicleList
+	_handle = _lift(%DrawerHandle)
 	_handle.position = Vector2(screen.x - 50, dy + dh * 0.5 - 36)
 	_handle.pressed.connect(_toggle_drawer)
-	add_child(_handle)
 
 func _toggle_drawer() -> void:
 	_set_drawer(not _drawer_open)
