@@ -246,11 +246,11 @@ Select the terrain node, pick a mode in the dock and paint with the left mouse b
   has run down to zero, and the inner one (a tenth of it) is the core that moves by the full
   step — the same ten-to-one ratio the strength rule uses.
 - Each stroke, mouse-down to mouse-up, is one Undo/Redo step.
-- **Preview detail** shows the mesh-only detail (sand ripples, rock roughness) in the editor. It
-  is off by default: the detail is five extra noise evaluations per vertex and the editor rebuilds
-  every visible chunk after each dab, so leave it off while sculpting and turn it on to look. In
-  game it is always on for near chunks, which is why a freshly generated desert can look perfectly
-  smooth in the editor and have waves in play.
+- The mesh-only detail (sand ripples, rock roughness) is **off in the editor** by default: it is
+  five extra noise evaluations per vertex and the editor rebuilds every visible chunk after each
+  dab. Turn it on with `editor_detail` on the node (group **Editor only**) — the preview rebuilds
+  on the click. In game it is always on for near chunks, which is why a freshly generated desert
+  can look perfectly smooth in the editor and have waves in play.
 
 In image mode the preview mesh and the heightmap file update on mouse-up, so undo and
 redo stay in sync with what is on disk.
@@ -601,6 +601,12 @@ What was worth taking from them:
   is the next thing to change once there are prop models to look at.
 
 ## Property reference
+
+**Where a setting lives tells you what it does.** The dock builds the map — seed, size, shape,
+brush, bake — and holds nothing about how the map is displayed. The node holds the display, in
+groups, and nothing about generation. Inside the node one group is special: **Editor only**
+(`editor_lod`, `editor_view_distance`, `editor_detail`) does not exist in a built game at all —
+it is the editor preview. Every other group changes what the player sees.
 
 Culling and drawing:
 
