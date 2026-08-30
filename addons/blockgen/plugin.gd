@@ -1,8 +1,8 @@
 @tool
 extends EditorPlugin
 
-# Регистрирует импортёр .blockgen. Больше плагин ничего не делает: вся работа в
-# import_block.gd, а форму блока строит BlockBuilder.
+# Registers the .blockgen importer. The plugin does nothing else: the work is in
+# import_block.gd, and the block's shape is built by BlockBuilder.
 
 var _importer: EditorImportPlugin = null
 

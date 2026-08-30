@@ -7,20 +7,21 @@ var brush_power     = 0.5      # 0..1 — the Strength slider, shown as 0..100 %
 var sculpt_mode     = "raise"
 var panel           = null
 var radius_slider   = null
-# Живые ссылки на те виджеты, значения которых живут НЕ в плагине, а в биом-ресурсе выбранной
-# ноды. Их надо пере-читать при смене выделения (см. _sync_dock), иначе галочка показывает
-# состояние предыдущего рельефа — или вовсе запасного ресурса, если при открытии дока ничего
-# выбрано не было.
+# Live references to the widgets whose value does NOT live in the plugin but in the selected
+# node's biome resource. They have to be re-read when the selection changes (see _sync_dock), or
+# the box shows the previous terrain's state — or the fallback resource's, if nothing was
+# selected when the dock opened.
 var _cb_canyon: CheckBox = null
 var _cb_mountain: CheckBox = null
+var _cb_detail: CheckBox = null
 var _sl_stratum: HSlider = null
-## Ползунки, которые двигает пресет: их надо обновить, иначе ручка врёт про значение.
+## Sliders the preset moves: they must be updated too, or the handle lies about its value.
 var _sl_height: HSlider = null
 var _sl_features: HSlider = null
 var _sl_mountains: HSlider = null
 var _sl_erosion: HSlider = null
 var strength_slider = null
-## Подпись под ползунками кисти: сколько метров даёт мазок ПРЯМО СЕЙЧАС.
+## Caption under the brush sliders: how many metres one dab moves RIGHT NOW.
 var _brush_hint: Label = null
 
 var _dirty_chunks: Dictionary = {}
@@ -75,6 +76,16 @@ func _set_brush_power(v: float) -> void:
 	brush_power = v / 100.0
 	_update_brush_hint()
 
+## Preview detail lives ON THE NODE, not in the dock's settings: it changes how that terrain's
+## mesh is built, and two terrains in one scene may want different answers.
+func _on_preview_detail(on: bool) -> void:
+	if sculpt_node == null:
+		push_warning("LiteTerrain: select a terrain node first")
+		return
+	sculpt_node.set("editor_detail", on)
+	if sculpt_node.has_method("rebuild_preview"):
+		sculpt_node.rebuild_preview()
+
 func _set_gen_amplitude(v: float) -> void:
 	gen_amplitude = v
 	_update_brush_hint()   # brush metres are a share of the map height — they move with it
@@ -91,32 +102,31 @@ func _update_brush_hint() -> void:
 		_brush_hint.text = "%d%% · %s m per dab" % [pct, _fmt(_brush_step(), 2)]
 
 # ---------- Noise generation parameters ----------
-# ШЕСТЬ РУЧЕК НА ВЕСЬ РЕЛЬЕФ, и это осознанное сокращение с семнадцати. Настройка имеет право
-# на существование, только если игрок может ПРЕДСКАЗАТЬ, что она изменит; всё остальное он
-# крутит наугад и получает результат, который не умеет повторить. Здесь выброшено три вида
-# лишнего:
-#   • то, что имело один разумный ответ (октавы шума, число проходов размытия) — стало
-#     константой: больше октав это шум, меньше — мыло; второй проход размытия срезает ровно
-#     то, ради чего рельеф и строили;
-#   • то, что всегда крутится ВМЕСТЕ (высота хребтов и их острота; глубина яров, их размер,
-#     ветвление и склонность к крутизне) — свелось к одной ручке на группу;
-#   • то, что обязано СЛЕДОВАТЬ за высотой карты (верх меса, дно каньона, подъём гор, дюны,
-#     снеговая линия) — считается от неё, а не задаётся отдельно. Раньше эти числа жили в
-#     метрах и молча ломались от любого движения Height.
+# SIX KNOBS FOR THE WHOLE TERRAIN, cut down from seventeen on purpose. A setting earns its place
+# only if the user can PREDICT what it will change; everything else gets turned at random and
+# produces a result nobody can reproduce. Three kinds of surplus went out:
+#   • what had one sensible answer (noise octaves, number of blur passes) — now a constant: more
+#     octaves is noise, fewer is mush; a second blur pass shaves off exactly what the terrain was
+#     built for;
+#   • what always moved TOGETHER (ridge height with ridge sharpness; gully depth, size, branching
+#     and taste for steepness) — one knob per group;
+#   • what has to FOLLOW the map height (mesa tops, canyon floor, mountain rise, dunes, snow line)
+#     — derived from it instead of set apart. Those numbers used to live in metres and broke
+#     silently on any move of Height.
 var gen_seed:             int   = 42
 var gen_scale:           float  = 150.0   # continental frequency scale
-var gen_power:           float  = 2.6     # выше — равнины площе, вершины резче
+var gen_power:           float  = 2.6     # higher = flatter plains, sharper peaks
 var gen_amplitude:       float  = 30.0    # max height in world units
-var gen_mountains01:     float  = 0.6     # 0 — пологие холмы, 1 — острые хребты
-var gen_erosion01:       float  = 0.5     # 0 — эрозии нет, 1 — карта изрезана ярами
+var gen_mountains01:     float  = 0.6     # 0 = rolling hills, 1 = sharp ridges
+var gen_erosion01:       float  = 0.5     # 0 = no erosion, 1 = the map is cut up by gullies
 var gen_size:             int   = 0       # image-mode target size (0 = keep current)
 
-## Числа, у которых один разумный ответ. Ручку они не заслуживают, а объяснение — да.
-const GEN_OCTAVES := 6        # больше — высокочастотный шум, меньше — размытые пятна
-const GEN_SMOOTH_PASSES := 1  # один проход убирает пики шума; второй уже срезает рельеф
+## Numbers with one sensible answer. They do not deserve a knob; they do deserve an explanation.
+const GEN_OCTAVES := 6        # more = high-frequency noise, fewer = blurred blobs
+const GEN_SMOOTH_PASSES := 1  # one pass kills noise spikes; a second one starts eating terrain
 
-## Производные от gen_mountains01: две величины всегда двигались вместе, и порознь их
-## крутили только чтобы получить либо частокол, либо блины.
+## Derived from gen_mountains01: the two always moved together, and setting them apart only ever
+## produced either a picket fence or pancakes.
 func _mtn_amount() -> float:
 	return lerpf(0.25, 1.1, gen_mountains01)
 
@@ -130,9 +140,10 @@ var gen_canyon_enable:    bool  = true
 var gen_canyon_riser:     float = 0.30   # share of a step taken by the steep riser (0.30 → 70% flat, drivable tread)
 var gen_canyon_gorge:     float = 70.0   # frequency of the gorge network (lower = more channels)
 var gen_canyon_width:     float = 0.10   # width of the gorge floor, in noise units (larger = wider)
-# Верх меса и дно каньона В МЕТРАХ НЕ ЗАДАЮТСЯ: они считаются от Height (см. _generate_noise).
-# Пока это были свои ползунки, каньон при каждой правке высоты становился то канавой в ровном
-# поле, то пропастью глубже самих гор — и чинить это приходилось вручную, вслепую.
+# Mesa tops and the canyon floor ARE NOT SET IN METRES: they are derived from Height (see
+# _generate_noise). While they had sliders of their own, every change of height turned the canyon
+# into either a ditch in a flat field or a chasm deeper than the mountains, and fixing that was a
+# manual, blind job.
 # Mesas are built at ABSOLUTE heights (each plateau at its own level, varied by the butte noise)
 # and TERRACED into strata — the badlands look. No water; biomes come from the region masks.
 # Biome settings (scales, thresholds, dunes, mountain height, canyon terrace) come from the
@@ -169,33 +180,34 @@ var _gen_ramp: FastNoiseLite
 var _gen_out: PackedFloat32Array
 var _gen_base_in: PackedFloat32Array
 var _gen_carved: PackedFloat32Array
-## Длина буферов ЧИСЛОМ. Потоки обязаны проверять границы, но НЕ ТРОГАЯ сам массив: любое
-## обращение к нему как к объекту (хоть .size()) на миг создаёт вторую ссылку, а Packed-массив
-## при записи со второй ссылкой делает КОПИЮ — поле начинает указывать на копию, записи
-## остальных потоков уходят в никуда, и дальше начинается ровно то, что мы видели в логе:
-## «out of bounds» по адресам, которых в целом массиве быть не может.
+## Buffer length AS A NUMBER. Threads must bounds-check, but WITHOUT TOUCHING the array itself:
+## any access to it as an object (even .size()) briefly creates a second reference, and a Packed
+## array written through with a second reference alive makes a COPY — the field then points at the
+## copy, every other thread's writes go nowhere, and what follows is exactly what the log showed:
+## "out of bounds" at addresses the whole array could never have.
 var _gen_len: int = 0
-var _gen_mesa_min: float = 0.0
 
 # One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
 # thread ever reads what another is writing. The border rows are copied through untouched — the
 # 5-tap kernel has no neighbours there.
-## Выделить буфер на всю карту и УБЕДИТЬСЯ, что он выделился. resize() при нехватке памяти
-## возвращает ошибку и оставляет массив ПУСТЫМ — а дальше потоки пишут в пустоту, и в логе
-## оказывается ворох «out of bounds» вместо одной внятной строки о том, что не хватило памяти.
-## На планшете с парой гигабайт и картой 1984² (по 16 МБ на буфер) это не теория.
+## Allocate a whole-map buffer and MAKE SURE it was allocated. Out of memory, resize() returns an
+## error and leaves the array EMPTY — after which the threads write into nothing and the log fills
+## with "out of bounds" instead of one clear line saying memory ran out. On a tablet with a couple
+## of gigabytes and a 1984² map (16 MB per buffer) that is not a hypothetical.
 func _gen_alloc(n: int, what: String) -> PackedFloat32Array:
 	var a := PackedFloat32Array()
 	if a.resize(n) != OK or a.size() != n:
-		push_error("LiteTerrain: не удалось выделить %s на %d значений (%.1f МБ) — не хватило памяти"
+		push_error("LiteTerrain: could not allocate %s for %d values (%.1f MB) — out of memory"
 				% [what, n, float(n) * 4.0 / 1048576.0])
 		return PackedFloat32Array()
 	return a
 
 func _gen_blur_row(z: int) -> void:
+	if _gen_drop_row():
+		return
 	var w := _gen_w
 	var row := z * w
-	# Границы проверяем ПО ЧИСЛУ (см. _gen_len), а не по .size() массива.
+	# Bounds are checked AGAINST THE NUMBER (see _gen_len), never against the array's .size().
 	if _gen_len <= 0 or row + w > _gen_len:
 		_gen_row_done()
 		return
@@ -217,33 +229,47 @@ func _gen_blur_row(z: int) -> void:
 	_gen_row_done()
 
 # ─────────────────────────────────────────────────
-# ЭКРАН ГЕНЕРАЦИИ
+# GENERATION SCREEN
 # ─────────────────────────────────────────────────
-# Генерация карты — это десятки секунд, в течение которых редактор просто не отвечает. Без
-# окна это читается как «Godot завис»: человек не знает, идёт работа или всё сломалось, и
-# закрывает редактор на середине. Плагин уходит в общий доступ, а там это первое, обо что
-# спотыкается новый пользователь.
+# Generating a map is tens of seconds during which the editor answers nothing. With no window
+# that reads as "Godot has hung": you cannot tell work from a crash, so people kill the editor
+# halfway through. The addon is going public, and this is the first thing a new user trips over.
 #
-# Считаем ЧЕСТНО, а не «полоской, которая куда-то ползёт»: каждая обработанная строка карты
-# увеличивает счётчик, поэтому проценты показывают реальную работу. Счётчик трогают ПОТОКИ,
-# отсюда мьютекс — инкремент из нескольких потоков без него теряет значения.
+# The bar is HONEST, not "something crawling to the right": every finished map row bumps a
+# counter, so the percentage is real work. THREADS touch that counter, hence the mutex — an
+# increment from several threads without one loses values.
 #
-# Само окно — обычный Control поверх редактора (EditorInterface.get_base_control): своего
-# диалога прогресса GDScript-плагину не выдают, а этот способ работает и в редакторе, и при
-# запуске плагина из другого проекта.
+# The window itself is a plain Control over the editor (EditorInterface.get_base_control): a
+# GDScript plugin gets no progress dialog of its own, and this way works both in the editor and
+# when the addon runs inside somebody else's project.
 var _prog_root: Control = null
 var _prog_step: Label = null
 var _prog_note: Label = null
+var _prog_eta: Label = null
 var _prog_bar: ProgressBar = null
+var _prog_stop: Button = null
 var _gen_rows_done: int = 0
 var _gen_mutex := Mutex.new()
 var _generating: bool = false
+## Stop was pressed. Read by every row task and between passes.
+var _gen_cancel: bool = false
+## When this generation started (ms). The only input the estimate has.
+var _gen_t0: int = 0
 
-## Строка обработана — зовётся из КАЖДОГО потока в конце его работы.
+## One row is done — called from EVERY thread at the end of its work.
 func _gen_row_done() -> void:
 	_gen_mutex.lock()
 	_gen_rows_done += 1
 	_gen_mutex.unlock()
+
+## Should this row give up? A group task that is already running cannot be un-scheduled, so Stop
+## works the other way round: every remaining row returns at once, the pass ends in milliseconds
+## and the generation stops between passes, with the map on disk untouched.
+func _gen_drop_row() -> bool:
+	if not _gen_cancel:
+		return false
+	_gen_row_done()
+	return true
 
 func _progress_open() -> void:
 	if _prog_root != null and is_instance_valid(_prog_root):
@@ -251,11 +277,13 @@ func _progress_open() -> void:
 	var base: Control = EditorInterface.get_base_control()
 	if base == null:
 		return
+	_gen_cancel = false
+	_gen_t0 = Time.get_ticks_msec()
 	_prog_root = Control.new()
 	_prog_root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_prog_root.mouse_filter = Control.MOUSE_FILTER_STOP   # окно модальное: тыкать мимо незачем
+	_prog_root.mouse_filter = Control.MOUSE_FILTER_STOP   # modal: clicking past it does nothing
 	base.add_child(_prog_root)
-	# Затемнение: без него панель висит в воздухе и не читается как «сейчас идёт работа».
+	# The dim. Without it the panel floats in mid-air and does not read as "work in progress".
 	var dim := ColorRect.new()
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.color = Color(0, 0, 0, 0.55)
@@ -270,7 +298,7 @@ func _progress_open() -> void:
 	box.add_theme_constant_override("separation", 10)
 	panel.add_child(box)
 	var title := Label.new()
-	title.text = "LiteTerrain — генерация мира"
+	title.text = "LiteTerrain — generating the world"
 	title.add_theme_font_size_override("font_size", 18)
 	box.add_child(title)
 	_prog_step = Label.new()
@@ -282,34 +310,81 @@ func _progress_open() -> void:
 	_prog_bar.value = 0.0
 	_prog_bar.custom_minimum_size = Vector2(0, 18)
 	box.add_child(_prog_bar)
+	_prog_eta = Label.new()
+	_prog_eta.text = "estimating…"
+	box.add_child(_prog_eta)
 	_prog_note = Label.new()
-	_prog_note.text = "Это делается ОДИН раз: в игре карта уже готовая, читается из файла."
+	_prog_note.text = "Done ONCE: in game the map is already built and read from a file."
 	_prog_note.add_theme_font_size_override("font_size", 11)
 	_prog_note.modulate = Color(1, 1, 1, 0.6)
 	box.add_child(_prog_note)
+	# STOP, because "wait it out or kill the editor" is not a choice anybody should be given: a
+	# 4096² map on a slow machine is minutes, and a wrong seed is visible in the first seconds.
+	_prog_stop = Button.new()
+	_prog_stop.text = "Stop"
+	_prog_stop.tooltip_text = "Abandon this generation. The map and the file on disk stay as they were."
+	_prog_stop.pressed.connect(_on_gen_stop)
+	box.add_child(_prog_stop)
+
+func _on_gen_stop() -> void:
+	_gen_cancel = true
+	if _prog_stop != null and is_instance_valid(_prog_stop):
+		_prog_stop.disabled = true
+	if _prog_step != null and is_instance_valid(_prog_step):
+		_prog_step.text = "Stopping — letting the running pass finish"
+	if _prog_eta != null and is_instance_valid(_prog_eta):
+		_prog_eta.text = ""
 
 func _progress_close() -> void:
 	_generating = false
+	_gen_cancel = false
+	# Let the buffers go HERE and not at each caller: a stopped generation leaves whole-map
+	# arrays behind (16 MB apiece at 1984²), and the next run would allocate its own on top.
+	_gen_out = PackedFloat32Array()
+	_gen_base_in = PackedFloat32Array()
+	_gen_carved = PackedFloat32Array()
+	_gen_ero_in = PackedFloat32Array()
+	_gen_ero_out = PackedFloat32Array()
+	_gen_len = 0
 	if _prog_root != null and is_instance_valid(_prog_root):
 		_prog_root.queue_free()
 	_prog_root = null
 	_prog_step = null
 	_prog_bar = null
 	_prog_note = null
+	_prog_eta = null
+	_prog_stop = null
 
 func _progress_say(step: String, frac: float) -> void:
 	if _prog_step != null and is_instance_valid(_prog_step):
 		_prog_step.text = step
 	if _prog_bar != null and is_instance_valid(_prog_bar):
 		_prog_bar.value = clampf(frac, 0.0, 1.0)
+	if _prog_eta != null and is_instance_valid(_prog_eta) and not _gen_cancel:
+		_prog_eta.text = _eta_text(frac)
 
-## ПРОГОН ОДНОГО ПРОХОДА С ПОКАЗОМ ПРОГРЕССА. Раньше каждый проход стоял на
-## wait_for_group_task_completion — это блокировка главного потока, при которой окно не
-## перерисуется, каким бы красивым оно ни было. Здесь мы ждём В ЦИКЛЕ, отдавая кадр редактору,
-## и обновляем полосу по числу готовых строк.
+## Time left, from the share done and the time it took to get there. A per-pass estimate would be
+## WORSE, not better: the passes differ several-fold in cost, so each one would start by promising
+## a new total. Measured over the whole run the number settles within the first couple of seconds
+## and only tightens after that.
+func _eta_text(frac: float) -> String:
+	if _gen_t0 == 0 or frac <= 0.02:
+		return "estimating…"
+	var elapsed: float = float(Time.get_ticks_msec() - _gen_t0) / 1000.0
+	var left: float = elapsed * (1.0 - frac) / frac
+	if left < 1.5:
+		return "almost done"
+	if left < 90.0:
+		return "≈ %d s left" % int(round(left))
+	return "≈ %d min %02d s left" % [int(left) / 60, int(left) % 60]
+
+## RUN ONE PASS WITH THE BAR MOVING. Every pass used to sit on wait_for_group_task_completion —
+## that blocks the main thread, and a blocked main thread redraws nothing, however pretty the
+## window is. Here we wait IN A LOOP, handing a frame back to the editor, and update the bar from
+## the number of finished rows.
 ##
-## step_from/step_to — доля общей работы, которую занимает этот проход: полоса должна идти
-## слева направо ОДИН раз за генерацию, а не прыгать с нуля на каждом этапе.
+## step_from/step_to is the share of the whole job this pass takes: the bar has to travel left to
+## right ONCE per generation, not jump back to zero at every stage.
 func _run_rows(task: Callable, rows: int, label: String, step_from: float, step_to: float) -> void:
 	_gen_rows_done = 0
 	var gid := WorkerThreadPool.add_group_task(task, rows, -1, false, "LiteTerrain")
@@ -319,10 +394,13 @@ func _run_rows(task: Callable, rows: int, label: String, step_from: float, step_
 				lerpf(step_from, step_to, done))
 		await get_tree().process_frame
 	WorkerThreadPool.wait_for_group_task_completion(gid)
-	_progress_say("%s — готово" % label, step_to)
+	if not _gen_cancel:
+		_progress_say("%s — done" % label, step_to)
 
 # One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
 func _gen_fill_row(z: int) -> void:
+	if _gen_drop_row():
+		return
 	var w := _gen_w
 	var hw := float(w) * 0.5
 	var hd := float(_gen_d) * 0.5
@@ -339,11 +417,11 @@ func _gen_fill_row(z: int) -> void:
 		var wz := fz - hd
 		var wp := Vector2(wx, wz)
 		var b := _gen_biomes
-		# КАНЬОН ГАСИТ ВСЁ, ЧТО ОН ПОТОМ СРЕЖЕТ. Проход каньонов замещает высоту своими
-		# террасами, поэтому поднимать в его области горный купол и рисовать дюны — работа,
-		# которую следующий проход выбросит. Хуже того, выбросит НЕ ПОЛНОСТЬЮ: по краю маски
-		# остаются рваные обрывки гор и дюн, торчащие из стенок каньона. Маску считаем ОДИН
-		# раз на точку — раньше её брали дважды за проход и ещё раз в carve.
+		# THE CANYON SUPPRESSES WHATEVER IT WILL LATER CUT AWAY. The canyon pass replaces the
+		# height with its own terraces, so raising a mountain dome or drawing dunes inside its
+		# region is work the next pass throws away. Worse, it throws it away INCOMPLETELY: torn
+		# scraps of mountain and dune stick out of the canyon walls along the mask edge. The mask
+		# is evaluated ONCE per point — it used to be taken twice here and once more in the carve.
 		var cany: float = b.canyon_mask(wp, _cv_noise) if b.canyon_enabled else 0.0
 		var not_cany: float = 1.0 - cany
 		if ridge_term > 0.001:
@@ -362,41 +440,43 @@ func _gen_fill_row(z: int) -> void:
 	_gen_row_done()
 
 # ─────────────────────────────────────────────────
-# ЭРОЗИЯ БЕЗ СИМУЛЯЦИИ (техника «erosion filter», Clay John → Fuse → Rune Vision)
+# EROSION WITHOUT A SIMULATION (the "erosion filter" technique, Clay John -> Fuse -> Rune Vision)
 # ─────────────────────────────────────────────────
-# Настоящая гидравлическая эрозия — это миллионы капель, которые надо прогнать по всей карте;
-# она не считается в точке, поэтому её нельзя ни разложить по потокам как есть, ни применить к
-# куску карты отдельно. Здесь другое: ФИЛЬТР, который накладывается ПОВЕРХ готовой высоты и
-# вычисляется В КАЖДОЙ ТОЧКЕ НЕЗАВИСИМО. Отсюда всё остальное — он раскладывается по строкам в
-# те же потоки, что и остальные проходы, и стоит один раз при генерации, а не в игре.
+# Real hydraulic erosion is millions of droplets run across the whole map; it cannot be evaluated
+# at a point, so it can be neither split across threads as-is nor applied to one piece of the map
+# on its own. This is something else: a FILTER laid OVER the finished height and computed AT EACH
+# POINT INDEPENDENTLY. Everything else follows from that — it splits into rows across the same
+# threads as the other passes, and it is paid for once at generation, never in game.
 #
-# Идея: у нас есть высота И НАКЛОН. Вдоль наклона рисуем полосы — чередование хребтов и яров,
-# ровно так, как вода режет склон. Каждая следующая октава кладёт полосы помельче ВДОЛЬ УЖЕ
-# ИЗМЕНЁННОГО наклона, поэтому яры ветвятся сами собой, без всякой симуляции.
+# The idea: we have a height AND A SLOPE. Along the slope we draw stripes — ridges alternating
+# with gullies, the way water cuts a hillside. Each next octave lays finer stripes ALONG THE
+# ALREADY MODIFIED slope, so the gullies branch on their own, with no simulation anywhere.
 #
-# Три вещи, без которых это не работает (все три — из разбора Rune Vision):
+# Three things without which it does not work (all three from the Rune Vision breakdown):
 #
-#   • ПОЛОСЫ НЕЛЬЗЯ ПОВОРАЧИВАТЬ ВОКРУГ ОДНОЙ ТОЧКИ. Поворот вокруг далёкого центра сдвигает
-#     рисунок тем сильнее, чем дальше точка, и узор расползается. Плоскость режется на КЛЕТКИ,
-#     у каждой свой центр поворота, а между четырьмя соседними клетками значение смешивается.
-#   • ПИК ОБЯЗАН ОСТАТЬСЯ ПИКОМ. На вершине наклон равен нулю, направление полос там не
-#     определено, и вершину «срезало» случайным яром. Поэтому частота полос падает вместе с
-#     крутизной: на плоском полоса становится шире клетки, и в центре клетки всегда гребень.
-#   • ГРАДИЕНТ ВЕДЁТСЯ ВМЕСТЕ С ВЫСОТОЙ. Производная полосы известна аналитически, и её надо
-#     прибавлять к наклону — иначе следующая октава считает направление по старому рельефу и
-#     ветвления не выходит.
+#   • STRIPES MUST NOT ROTATE AROUND A SINGLE POINT. Rotating about a distant centre shifts the
+#     pattern the further out you go, and the whole thing smears. The plane is cut into CELLS,
+#     each with its own centre of rotation, and the value is blended between the four neighbours.
+#   • A PEAK MUST STAY A PEAK. On a summit the slope is zero, the stripe direction is undefined
+#     there, and the peak used to be sheared off by a random gully. So the stripe frequency falls
+#     with steepness: on flat ground a stripe grows wider than the cell, and the cell centre is
+#     always a crest.
+#   • THE GRADIENT IS CARRIED ALONG WITH THE HEIGHT. The stripe's derivative is known
+#     analytically and has to be added to the slope — otherwise the next octave reads the
+#     direction off the old terrain and nothing branches.
 #
-# Эрозия работает ТОЛЬКО ВНИЗ (h += amp * (cos − 1) ≤ 0): она вырезает яры, а не насыпает
-# хребты. Так гребень остаётся на исходной высоте, и фильтр не может поднять карту выше того,
-# что задумал шум — а значит не ломает ни каньоны, ни границу воды, ни высоту гор.
-## Мельче этого клетки не дробим (метры): полоса шириной в пару клеток сетки — уже не яр.
+# Erosion only ever works DOWNWARD (h += amp * (cos - 1) <= 0): it cuts gullies, it does not pile
+# up ridges. The crest stays at its original height, so the filter cannot lift the map above what
+# the noise intended — and therefore breaks neither the canyons, nor a waterline, nor peak height.
+## Cells are never subdivided finer than this (metres): a stripe a couple of grid cells wide is
+## not a gully any more.
 const CELL_MIN := 16.0
-## Наклон, при котором эрозия работает в полную силу (тангенс: 0.25 ≈ 14°).
+## The slope at which erosion works at full strength (a tangent: 0.25 ~ 14 degrees).
 const SLOPE_REF := 0.25
 
-## Всё, что выведено ИЗ ШЕСТИ РУЧЕК на эту генерацию: метровые величины (от Height) и то, что
-## раньше стояло отдельными ползунками. Считается один раз, до первого прохода, — потоки эти
-## поля только читают.
+## Everything DERIVED FROM THE SIX KNOBS for this generation: the metre values (from Height) and
+## what used to sit on sliders of its own. Computed once, before the first pass — the threads only
+## read these fields.
 var _gen_mtn_rise: float = 48.0
 var _gen_dune_amp: float = 6.0
 var _gen_plateau: float = 46.0
@@ -411,11 +491,11 @@ var _gen_ero_slope: float = 1.2
 var _gen_ero_in := PackedFloat32Array()
 var _gen_ero_out := PackedFloat32Array()
 
-## НАКЛОН БЕРЁМ КРУПНЫМ ПЛАНОМ, а не по соседней клетке. Разность соседей на шаге в метр
-## меряет не склон горы, а рябь шума на нём: направление скачет от клетки к клетке, полосы
-## разворачиваются вместе с ним, и вместо яров выходит игольчатая каша — ровно то, что было
-## видно на первой генерации. Шаг в SLOPE_STEP метров даёт направление СКЛОНА, по которому
-## вода и текла бы.
+## THE SLOPE IS MEASURED WIDE, not against the next cell. A difference between neighbours one
+## metre apart measures the noise ripple on the hillside, not the hillside: the direction jumps
+## from cell to cell, the stripes turn with it, and instead of gullies you get a bed of needles —
+## exactly what the first generation looked like. A step of SLOPE_STEP metres gives the direction
+## of the SLOPE, the one water would actually run down.
 const SLOPE_STEP := 6
 
 func _gen_slope_at(x: int, z: int) -> Vector2:
@@ -431,8 +511,10 @@ func _gen_slope_at(x: int, z: int) -> Vector2:
 	var gz: float = (_gen_ero_in[zp * w + x] - _gen_ero_in[zm * w + x]) / dz
 	return Vector2(gx, gz)
 
-# Одна строка прохода эрозии.
+# One row of the erosion pass.
 func _gen_erode_row(z: int) -> void:
+	if _gen_drop_row():
+		return
 	var w := _gen_w
 	if _gen_len <= 0 or z * w + w > _gen_len:
 		_gen_row_done()
@@ -442,10 +524,10 @@ func _gen_erode_row(z: int) -> void:
 		var h: float = _gen_ero_in[idx]
 		var g: Vector2 = _gen_slope_at(x, z)
 		var p := Vector2(float(x), float(z))
-		# КАНЬОН ЭРОЗИЯ ПОЧТИ НЕ ТРОГАЕТ. Его стенки отвесные, то есть для фильтра это самое
-		# «крутое» место на карте, и он резал там в полную силу — ровные ступени, ради которых
-		# каньон и вырезан, расплывались в те же яры, что и везде. Badlands тем и узнаются, что
-		# слои у них ЧИСТЫЕ.
+		# EROSION BARELY TOUCHES THE CANYON. Its walls are sheer, which to the filter makes them
+		# the "steepest" place on the map, so it cut there at full strength — and the clean steps
+		# the canyon was carved for smeared into the same gullies as everywhere else. Badlands are
+		# recognisable precisely because their strata are CLEAN.
 		var ero_k: float = 1.0
 		if _gen_biomes != null and _gen_biomes.canyon_enabled:
 			var wpp := Vector2(float(x) - float(w) * 0.5, float(z) - float(_gen_d) * 0.5)
@@ -456,32 +538,32 @@ func _gen_erode_row(z: int) -> void:
 		var cell: float = maxf(_gen_ero_cell, CELL_MIN)
 		var amp: float = _gen_ero_strength
 		for _o in maxi(_gen_ero_octaves, 1):
-			# МЕЛЬЧЕ CELL_MIN НЕ ДРОБИМ. Клетка в несколько метров — это полоса шириной в
-			# пару клеток сетки, то есть уже не яр, а пиксельный шум, который к тому же
-			# ловит алиасинг на LOD и мерцает в движении.
+			# NEVER FINER THAN CELL_MIN. A cell a few metres across is a stripe a couple of grid
+			# cells wide — not a gully any more but pixel noise, which on top of that aliases
+			# against the LOD and shimmers as the camera moves.
 			if cell < CELL_MIN:
 				break
 			var res: Vector3 = _stripe(p, g, cell)
-			# Крутой склон режется сильнее пологого: подъём крутизны в степень — это тот самый
-			# «erosion slope power», которым правят остроту хребтов.
-			# КРУТИЗНУ МЕРЯЕМ ОТНОСИТЕЛЬНО, а не по «единице». Наклон 1.0 — это 45°, и такого на
-			# карте почти нет: пологие холмы дают 0.03-0.08, то есть при сравнении с единицей
-			# эрозия получала множитель в сотые доли и не была видна вовсе — ровно то, что
-			# выходило на мягких настройках. SLOPE_REF — наклон, который считается «полным
-			# склоном»: около 14°, дальше эрозия работает в полную силу.
+			# A steep slope is cut harder than a gentle one: raising steepness to a power is the
+			# familiar "erosion slope power" that controls how sharp the ridges come out.
+			# STEEPNESS IS MEASURED RELATIVELY, not against "one". A slope of 1.0 is 45 degrees and
+			# barely exists on a map: rolling hills give 0.03-0.08, so compared against one the
+			# erosion got a factor of a few hundredths and was invisible — exactly what happened on
+			# gentle settings. SLOPE_REF is the slope that counts as a "full" one: about 14
+			# degrees, beyond which erosion works at full strength.
 			var steep: float = pow(clampf(g.length() / SLOPE_REF, 0.0, 1.0), _gen_ero_slope)
-			# ПЛОСКОЕ ПРОПУСКАЕМ ЦЕЛИКОМ. Половина карты — равнина и дно каньона, где эрозии
-			# почти нет, а считать её всё равно приходилось бы: четыре октавы по четыре клетки
-			# с синусом и косинусом на каждую. Ранний выход снимает эту работу там, где её
-			# результат всё равно тонет в тысячных долях метра.
+			# FLAT GROUND IS SKIPPED OUTRIGHT. Half the map is plain and canyon floor where there
+			# is almost no erosion, yet it would still be computed: four octaves times four cells
+			# with a sine and a cosine each. The early out drops that work exactly where its
+			# result drowns in thousandths of a metre anyway.
 			if steep < 0.005:
 				break
 			var k: float = amp * steep * ero_k
-			h += k * (res.x - 1.0) * 0.5          # (cos − 1) ≤ 0: только вниз
-			# Производная полосы — в наклон, чтобы следующая октава шла уже по новым склонам.
-			# ПРИДЕРЖИВАЕМ вклад: без ограничения он на порядок перебивает наклон самой горы,
-			# и следующая октава разворачивается уже не по склону, а по предыдущей полосе —
-			# ветвление превращается в вихрь.
+			h += k * (res.x - 1.0) * 0.5          # (cos - 1) <= 0: downward only
+			# The stripe's derivative goes into the slope, so the next octave follows the new
+			# hillsides. The contribution is HELD BACK: unbounded it outweighs the mountain's own
+			# slope by an order of magnitude, and the next octave then turns along the previous
+			# stripe rather than the hillside — branching becomes a vortex.
 			var dg := Vector2(res.y, res.z) * k * 0.5
 			var dl: float = dg.length()
 			var cap: float = maxf(g.length() * 0.5, 0.05)
@@ -493,20 +575,20 @@ func _gen_erode_row(z: int) -> void:
 		_gen_ero_out[idx] = h
 	_gen_row_done()
 
-## Узор полос вокруг центра КЛЕТКИ, размазанный между четырьмя соседними клетками.
-## Возвращает (значение, dx, dz): само значение и его производные по X и Z.
+## The stripe pattern around a CELL centre, blended across the four neighbouring cells.
+## Returns (value, dx, dz): the value itself and its derivatives along X and Z.
 func _stripe(p: Vector2, g: Vector2, cell: float) -> Vector3:
-	# Направление полос — вдоль наклона; фаза меряется ПОПЕРЁК него.
+	# The stripes run along the slope; the phase is measured ACROSS it.
 	var len_g: float = g.length()
 	var dir: Vector2 = (g / len_g) if len_g > 0.0001 else Vector2(1.0, 0.0)
 	var n := Vector2(-dir.y, dir.x)
-	# ЧАСТОТА ПАДАЕТ ВМЕСТЕ С КРУТИЗНОЙ — так вершина остаётся вершиной (см. шапку).
+	# FREQUENCY FALLS WITH STEEPNESS — that is what keeps a summit a summit (see the header).
 	var freq: float = TAU / cell * clampf(len_g * 2.0, 0.15, 1.0)
 	var cx: float = floor(p.x / cell)
 	var cz: float = floor(p.y / cell)
 	var fx: float = p.x / cell - cx
 	var fz: float = p.y / cell - cz
-	# Плавные веса (smoothstep), иначе на границах клеток видны швы.
+	# Smooth weights (smoothstep), or the cell borders show as seams.
 	var wx: float = fx * fx * (3.0 - 2.0 * fx)
 	var wz: float = fz * fz * (3.0 - 2.0 * fz)
 	var acc_c: float = 0.0
@@ -519,18 +601,21 @@ func _stripe(p: Vector2, g: Vector2, cell: float) -> Vector3:
 		var wgt: float = (wx if ox > 0.5 else 1.0 - wx) * (wz if oz > 0.5 else 1.0 - wz)
 		acc_c += cos(phase) * wgt
 		acc_s += sin(phase) * wgt
-	# НОРМАЛИЗАЦИЯ пары (cos, sin): интерполяция двух невыровненных синусоид даёт синусоиду
-	# МЕНЬШЕЙ амплитуды, и без этого яры между клетками мельчали. Пара — это точка на
-	# окружности, её длину и возвращаем к единице (порог, чтобы не делить на ноль в узлах).
+	# NORMALISE the (cos, sin) pair: interpolating two sinusoids that are out of phase yields a
+	# sinusoid of SMALLER amplitude, and without this the gullies grew shallow between cells. The
+	# pair is a point on a circle, so its length is brought back to one (with a floor, to avoid
+	# dividing by zero at the nodes).
 	var l: float = sqrt(acc_c * acc_c + acc_s * acc_s)
 	if l > 0.25:
 		acc_c /= l
 		acc_s /= l
-	# Производная cos(phase) по точке: −sin(phase) * freq * n.
+	# Derivative of cos(phase) with respect to the point: -sin(phase) * freq * n.
 	return Vector3(acc_c, -acc_s * freq * n.x, -acc_s * freq * n.y)
 
 # One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
 func _gen_carve_row(z: int) -> void:
+	if _gen_drop_row():
+		return
 	var w := _gen_w
 	var hw := float(w) * 0.5
 	var hd := float(_gen_d) * 0.5
@@ -538,7 +623,7 @@ func _gen_carve_row(z: int) -> void:
 	var b := _gen_biomes
 	if b == null or _gen_len <= 0 or z * w + w > _gen_len:
 		_gen_row_done()
-		return                       # то же, что и в _gen_blur_row: границы по числу
+		return                       # as in _gen_blur_row: bounds checked against the number
 	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
 		var idx := z * w + x
@@ -550,12 +635,36 @@ func _gen_carve_row(z: int) -> void:
 		var cn := _cv_noise(wp / b.canyon_scale + TerrainBiomes.CANYON_OFFSET)
 		var hmask := smoothstep(b.canyon_threshold - 0.02, b.canyon_threshold + 0.02, cn)
 		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0))
-		var mesa_top: float = lerpf(_gen_mesa_min, _gen_plateau, bt)
+		# A CANYON IS A CUT INTO WHATEVER LAND IS ALREADY THERE, not a slab at a fixed height.
+		# Mesa tops and the gorge floor used to be ABSOLUTE metres, and the whole region was
+		# replaced by them: where the surrounding land happened to sit at mesa height the result
+		# was a flat terracotta field with no walls at all, and where the land was low the canyon
+		# came out as a raised block. That is exactly the "not everywhere a canyon" on the map.
+		# Now both ends are measured FROM THE LOCAL SURFACE, so a canyon in high ground is a deep
+		# gorge in high ground and one on a plain is a shallow badland — always a cut, never a slab.
+		var surface: float = _gen_base_in[idx]
+		# Never below the old absolute floor (that keeps heights positive), and never ABOVE the
+		# local surface: on ground already lower than the floor a "cut" that raises land is not a
+		# canyon, it is a bump wearing canyon colours.
+		var floor_h: float = minf(maxf(surface - _gen_plateau, _gen_floor), surface)
+		# Mesa tops keep a hierarchy, but around the local level: some stand a little proud of the
+		# old plain, some are already eaten a quarter of the way down.
+		var mesa_top: float = surface + lerpf(-(surface - floor_h) * 0.25, _gen_floor, bt)
 		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
 		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
-		var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
-		var wall_t := smoothstep(gen_canyon_width * 0.55, wall_hi, gv)
-		var canyon_h := lerpf(_gen_floor, mesa_top, wall_t)
+		# THE GORGE FLOOR HAS TO BE A REAL SHARE OF THE REGION. |fbm| runs mostly over 0..0.4 with
+		# a mean near 0.2, and the old thresholds (floor below 0.055, rim at 0.10) left ~80 % of
+		# every canyon standing at mesa height: the network read as a plateau with two scratches
+		# in it. Gorge width now means the share of the region that is floor, and the rim sits a
+		# fixed distance above it — sheer normally, drawn out where the ramp noise says "a way
+		# down". Same slider, same range, a shape that actually branches.
+		var floor_t: float = gen_canyon_width * 2.0
+		var wall_hi: float = floor_t + lerpf(0.06, 0.22, ramp)
+		var wall_t := smoothstep(floor_t, wall_hi, gv)
+		var canyon_h := lerpf(floor_h, mesa_top, wall_t)
+		# Terraces stay on the ABSOLUTE scale: the shader paints its strata by world height, and
+		# steps measured from a floor that moves would run across the colour bands instead of with
+		# them.
 		var lvl: float = canyon_h / terr
 		var li: float = floor(lvl)
 		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, lvl - li)
@@ -711,6 +820,14 @@ func _enter_tree() -> void:
 	_brush_hint.modulate = Color(1, 1, 1, 0.6)   # a caption under the sliders, not a setting
 	panel.add_child(_brush_hint)
 	_update_brush_hint()
+	# The sand ripples and the rock roughness are baked into the MESH only (see map._detail_height),
+	# and in the editor they are off by default, which is why a freshly generated desert looks
+	# perfectly smooth here while it has waves in game. This shows them without going in-game.
+	_cb_detail = CheckBox.new()
+	_cb_detail.text = "Preview detail"
+	_cb_detail.tooltip_text = "Sand ripples and rock roughness in the editor preview. Always on in game near the camera; here they cost a rebuild, so keep them off while sculpting."
+	_cb_detail.toggled.connect(_on_preview_detail)
+	panel.add_child(_cb_detail)
 
 	# ── World ────────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
@@ -751,23 +868,24 @@ func _enter_tree() -> void:
 			_set_gen_amplitude, 0)
 	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
-	# ОДНА РУЧКА НА ГОРЫ и одна на эрозию: их составляющие всегда двигались вместе, а порознь
-	# давали только рассогласование (частокол при острых хребтах на низкой карте, невидимая
-	# эрозия при мягком уклоне). Что именно они тянут — см. _mtn_amount и расчёт в генерации.
+	# ONE KNOB FOR MOUNTAINS and one for erosion: their parts always moved together, and apart
+	# they only ever produced a mismatch (a picket fence when sharp ridges met a low map, invisible
+	# erosion on a gentle slope). What each pulls: see _mtn_amount and the generation maths.
 	_sl_mountains = _slider_row(panel, "Mountains", 0.0, 1.0, gen_mountains01, 0.05,
 			func(v: float) -> void: gen_mountains01 = v, 2)
 	_sl_erosion = _slider_row(panel, "Erosion", 0.0, 1.0, gen_erosion01, 0.05,
 			func(v: float) -> void: gen_erosion01 = v, 2)
 
-	# ── Пресет «природный» ───────────────────────────────────────────────────
-	# Высота и размер деталей связаны, и на глаз эту связь не поймать: 300 м высоты при деталях
-	# в 150 м — это склоны круче сорока пяти градусов на каждом шагу, и карта читается как
-	# игольница, что бы ни делала эрозия. Пресет ставит пропорцию, при которой массивы крупные,
-	# склоны проходимые, а мелкий рисунок отдан эрозии — ей это и положено. Масштаб берём У
-	# БИОМОВ: когда рельеф крупнее их масок, снежная шапка ложится не на гору, а рядом с ней.
+	# ── The "natural" preset ─────────────────────────────────────────────────
+	# Height and feature size are linked, and the link is not something you can eyeball: 300 m of
+	# height with 150 m features means slopes steeper than forty-five degrees at every step, and
+	# the map reads as a pincushion whatever erosion does. The preset sets the proportion where
+	# the masses are large, the slopes drivable, and the fine pattern is left to erosion, which is
+	# its job. The scale is taken FROM THE BIOMES: when the terrain is larger than their masks,
+	# the snow cap lands next to the mountain instead of on it.
 	var preset := Button.new()
 	preset.text = "Natural preset"
-	preset.tooltip_text = "Крупные массивы, проходимые склоны, мелкий рисунок за эрозией. После — Generate Terrain."
+	preset.tooltip_text = "Large masses, drivable slopes, fine detail left to erosion. Then press Generate Terrain."
 	preset.pressed.connect(func() -> void:
 		var b := _biomes()
 		gen_amplitude   = 130.0
@@ -776,8 +894,8 @@ func _enter_tree() -> void:
 		gen_mountains01 = 0.65
 		gen_erosion01   = 0.5
 		_save_settings()
-		# Ручки двигаем сами: без этого ползунок показывает старое число, а генерация идёт по
-		# новому — расхождение, которое ищется дольше, чем правится.
+		# The handles are moved by hand: without this the slider shows the old number while the
+		# generation runs on the new one — a mismatch that takes longer to find than to fix.
 		if _sl_height != null: _sl_height.value = gen_amplitude
 		if _sl_features != null: _sl_features.value = gen_scale
 		if _sl_mountains != null: _sl_mountains.value = gen_mountains01
@@ -817,10 +935,11 @@ func _enter_tree() -> void:
 	panel.add_child(adv_btn)
 	panel.add_child(adv_body)
 
-	# Здесь ТОЛЬКО то, что нельзя вывести из шести ручек наверху: характер равнин и форма
-	# каньона. Всё остальное отсюда уехало — октавы и размытие стали константами (у них один
-	# разумный ответ), высота с остротой хребтов свелись в «Mountains», четыре числа эрозии —
-	# в «Erosion», а верх меса и дно каньона считаются от Height.
+	# ONLY what cannot be derived from the six knobs above lives here: the character of the plains
+	# and the shape of the canyon. Everything else has moved out — octaves and blur became
+	# constants (they have one sensible answer), ridge height and sharpness collapsed into
+	# "Mountains", the four erosion numbers into "Erosion", and mesa tops and canyon floor are
+	# derived from Height.
 	_slider_row(adv_body, "Plains power", 1.0, 8.0, gen_power, 0.1,
 			func(v: float) -> void: gen_power = v, 1)
 
@@ -872,8 +991,8 @@ func _exit_tree() -> void:
 # ─────────────────────────────────────────────────
 # Sculpt mode callbacks
 # ─────────────────────────────────────────────────
-# Режим показывают сами кнопки (они в ButtonGroup, нажата ровно одна), поэтому отдельной
-# строки-статуса и трёх функций-обёрток больше нет.
+# The buttons show the mode themselves (they share a ButtonGroup, exactly one is pressed), which
+# is why there is no status line and no three wrapper functions any more.
 
 # ─────────────────────────────────────────────────
 # Persist the dock's brush + generation settings across editor sessions.
@@ -889,9 +1008,9 @@ func _save_settings() -> void:
 		return
 	es.set_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {
 		"brush_radius":        brush_radius,
-		# НОВЫЙ КЛЮЧ, а не старый brush_strength: там лежали МЕТРЫ на мазок, здесь — доля 0..1.
-		# Числа совпадают по диапазону, поэтому старое значение прочиталось бы молча и дало бы
-		# силу, о которой никто не просил.
+		# A NEW KEY rather than the old brush_strength: that one held METRES per dab, this one a
+		# 0..1 share. The two overlap in range, so the old value would be read silently and give a
+		# strength nobody asked for.
 		"brush_power":         brush_power,
 		"sculpt_mode":         sculpt_mode,
 		"gen_seed":            gen_seed,
@@ -951,20 +1070,24 @@ func _edit(object) -> void:
 		sculpt_node = object.get_parent()
 	_sync_dock()
 
-## Пере-читать в док то, что хранится в БИОМ-РЕСУРСЕ выбранной ноды. Всё остальное в доке —
-## настройки самого плагина, они общие и живут в метаданных проекта.
+## Re-read into the dock whatever lives in the selected node's BIOME RESOURCE. Everything else in
+## the dock belongs to the plugin itself: shared, and kept in the project metadata.
 func _sync_dock() -> void:
 	var b := _biomes()
 	if _cb_canyon != null and is_instance_valid(_cb_canyon):
 		_cb_canyon.set_pressed_no_signal(b.canyon_enabled)
-		# У флага каньонов ДВА владельца: ресурс красит, генератор режет. Синхронизируем и
-		# вторую половину, иначе галочка снята, а генерация всё равно вырезает меса.
+		# The canyon flag has TWO owners: the resource paints, the generator carves. Sync the
+		# second half too, or the box is unchecked while generation still cuts mesas.
 		gen_canyon_enable = b.canyon_enabled
 	if _cb_mountain != null and is_instance_valid(_cb_mountain):
 		_cb_mountain.set_pressed_no_signal(b.mountain_enabled)
+	# Preview detail is a property of the NODE, so it is re-read on every selection change like
+	# the biome flags above — otherwise the box shows the previous terrain's answer.
+	if _cb_detail != null and is_instance_valid(_cb_detail):
+		_cb_detail.set_pressed_no_signal(sculpt_node != null and sculpt_node.get("editor_detail") == true)
 	if _sl_stratum != null and is_instance_valid(_sl_stratum):
-		# Через .value, а НЕ set_value_no_signal: подпись со значением обновляет обработчик
-		# сигнала, и без него ползунок встанет на место, а число рядом останется старым.
+		# Through .value and NOT set_value_no_signal: the number beside the slider is updated by
+		# the signal handler, so without it the handle moves and the label keeps the old value.
 		_sl_stratum.value = b.canyon_band_height
 
 # ─────────────────────────────────────────────────
@@ -1354,7 +1477,7 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 	var path: String = _heightmap_target().get_basename() + STREAM_EXT
 	var f := FileAccess.open(path, FileAccess.WRITE)
 	if f == null:
-		push_error("LiteTerrain: не удалось записать %s" % path)
+		push_error("LiteTerrain: could not write %s" % path)
 		return
 	var cs: int = 16
 	if sculpt_node != null and "chunk_size" in sculpt_node:
@@ -1365,7 +1488,8 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 	f.store_32(width)
 	f.store_32(depth)
 	f.store_32(cs)
-	# Таблица «мин/макс на чанк» идёт ДО высот: её читают целиком и сразу, а высоты — кусками.
+	# The per-chunk min/max table comes BEFORE the heights: it is read whole and at once, while the
+	# heights are read in pieces.
 	var mins := PackedFloat32Array()
 	var maxs := PackedFloat32Array()
 	mins.resize(cx * cz)
@@ -1387,7 +1511,7 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 	f.store_buffer(maxs.to_byte_array())
 	f.store_buffer(data.to_byte_array())
 	f.close()
-	print("LiteTerrain: streamable heights %dx%d (chunk %d) -> %s (%.1f МБ)"
+	print("LiteTerrain: streamable heights %dx%d (chunk %d) -> %s (%.1f MB)"
 			% [width, depth, cs, path, float(data.size()) * 4.0 / 1048576.0])
 
 	# ── Visual: editor preview mesh → external .res ──────────────────────────────
@@ -1509,16 +1633,16 @@ func _generate_noise() -> void:
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select a terrain StaticBody3D node first")
 		return
-	# ВТОРОЙ ЗАПУСК ПОВЕРХ ПЕРВОГО — верный способ получить кашу: генерация теперь идёт кадрами,
-	# и оба прохода писали бы в одни и те же буферы. Флаг снимает _progress_close, поэтому он
-	# сбрасывается на любом выходе, включая ошибочный.
+	# A SECOND RUN ON TOP OF THE FIRST is a reliable way to get mush: generation now proceeds in
+	# frames, and both runs would write into the same buffers. _progress_close clears the flag, so
+	# it is reset on every exit, error paths included.
 	if _generating:
 		return
 	_generating = true
-	# Окно открываем ДО первой тяжёлой строки: генерация идёт кадрами (см. _run_rows), и всё,
-	# что ниже, обязано закрывать его на каждом выходе — иначе редактор останется перекрытым.
+	# The window opens BEFORE the first heavy line: generation runs in frames (see _run_rows), and
+	# everything below has to close it on every exit or the editor stays covered.
 	_progress_open()
-	_progress_say("Подготовка", 0.0)
+	_progress_say("Preparing", 0.0)
 	await get_tree().process_frame
 
 	var image_mode: bool = sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()
@@ -1595,44 +1719,50 @@ func _generate_noise() -> void:
 	_gen_w = width
 	_gen_d = depth
 	_gen_biomes = _biomes()        # snapshot BEFORE the threads start; read-only from here
-	# СИД ДВИГАЕТ И БИОМЫ. Их маски строятся на хеш-шуме с постоянными смещениями, поэтому
-	# раньше новый сид давал новые холмы В ТОЙ ЖЕ пустыне и каньон в том же углу: мир менял
-	# форму, но не географию. Смещение кладём в РЕСУРС — по нему потом красит шейдер и
-	# раскладывает жилы игра, и разъехаться с генератором они не могут.
+	# THE SEED MOVES THE BIOMES TOO. Their masks are built on hash noise with fixed offsets, so a
+	# new seed used to give new hills IN THE SAME desert with the canyon in the same corner: the
+	# world changed shape but not geography. The offset is stored in the RESOURCE — the shader
+	# paints from it and the game lays out its ore veins from it, so they cannot drift apart from
+	# the generator.
 	_gen_biomes.mask_offset = TerrainBiomes.offset_for_seed(gen_seed)
-	# ВСЁ ПРОИЗВОДНОЕ — ОДНИМ МЕСТОМ, ДО ПЕРВОГО ПРОХОДА. Дальше идут потоки, и они эти поля
-	# только читают.
+	# EVERYTHING DERIVED IN ONE PLACE, BEFORE THE FIRST PASS. Threads come next, and they only
+	# read these fields.
 	_gen_mtn_amount = _mtn_amount()
 	_gen_ridge_sharp = _ridge_sharp()
-	# ЭРОЗИЯ ОДНОЙ РУЧКОЙ. Четыре её числа всегда двигались вместе: сильнее — значит и глубже,
-	# и мельче ячейка, и больше ветвлений, и меньше разборчивости к крутизне. Порознь их можно
-	# было только рассогласовать.
+	# EROSION ON ONE KNOB. Its four numbers always moved together: stronger means deeper, and a
+	# smaller cell, and more branching, and less fussiness about steepness. Apart they could only
+	# be knocked out of agreement.
 	_gen_ero_strength = lerpf(0.0, 12.0, gen_erosion01)
 	_gen_ero_cell = lerpf(170.0, 90.0, gen_erosion01)
 	_gen_ero_octaves = 2 + int(round(gen_erosion01 * 2.0))
 	_gen_ero_slope = lerpf(1.8, 0.9, gen_erosion01)
-	# МЕТРЫ — ВСЕГДА ОТ HEIGHT. Отдельными ползунками они молча ломались от любого движения
-	# высоты: горы становились бугром под снегом, каньон — канавой или пропастью, снег заливал
-	# карту целиком. Доли подобраны так, чтобы гора была заметно выше холмов вокруг, дно
-	# каньона лежало у самой земли, а снег начинался ближе к вершинам.
+	# METRES ALWAYS COME FROM HEIGHT. As sliders of their own they broke silently on any move of
+	# the height: mountains became a bump under snow, the canyon a ditch or a chasm, snow flooded
+	# the whole map. The fractions are picked so a mountain stands well above the hills around it,
+	# the canyon floor sits close to the ground, and snow starts nearer the summits.
 	_gen_mtn_rise = gen_amplitude * 0.75
 	_gen_dune_amp = clampf(gen_amplitude * 0.05, 1.0, 14.0)
 	_gen_plateau = gen_amplitude * 0.42
 	_gen_floor = gen_amplitude * 0.06
-	# Снеговая линия живёт в РЕСУРСЕ: её читает шейдер, а не генератор, и держать её «на эту
-	# генерацию» негде — карту красит уже игра.
+	# The snow line lives in the RESOURCE: the shader reads it, not the generator, and there is
+	# nowhere to keep it "for this generation" — the map is painted by the game later.
 	_gen_biomes.snow_line = gen_amplitude * 0.55
 	_gen_biomes.snow_blend = maxf(gen_amplitude * 0.12, 8.0)
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
 	_gen_len = width * depth
-	_gen_out = _gen_alloc(_gen_len, "карту высот")
+	_gen_out = _gen_alloc(_gen_len, "the heightmap")
 	if _gen_out.is_empty():
 		_gen_len = 0
 		_progress_close()
 		return
-	await _run_rows(_gen_fill_row, depth, "Высоты", 0.02, 0.45)
+	await _run_rows(_gen_fill_row, depth, "Heights", 0.02, 0.45)
+	# STOP IS CHECKED BETWEEN PASSES, and every check leaves without writing anything: a map
+	# half-generated is worse than the old one, and the file on disk must stay usable.
+	if _gen_cancel:
+		_progress_close()
+		return
 	var new_data := _gen_out
 	_gen_out = PackedFloat32Array()          # drop the field's reference; new_data owns it now
 
@@ -1644,10 +1774,13 @@ func _generate_noise() -> void:
 	# `duplicate()` it needed to avoid reading its own output.
 	for _p in GEN_SMOOTH_PASSES:
 		_gen_base_in = new_data
-		_gen_out = _gen_alloc(width * depth, "буфер размытия")
+		_gen_out = _gen_alloc(width * depth, "the blur buffer")
 		if _gen_out.is_empty():
-			break                      # без буфера просто не размываем — карта уже есть
-		await _run_rows(_gen_blur_row, depth, "Сглаживание", 0.45, 0.55)
+			break                      # no buffer, no blur — the map itself already exists
+		await _run_rows(_gen_blur_row, depth, "Smoothing", 0.45, 0.55)
+		if _gen_cancel:
+			_progress_close()
+			return
 		new_data = _gen_out
 		_gen_out = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
@@ -1674,34 +1807,39 @@ func _generate_noise() -> void:
 		# Canyon carving, THREADED (rows are independent): read _gen_base_in, write _gen_carved.
 		_gen_gorge = gorge_noise
 		_gen_ramp = ramp_noise
-		_gen_mesa_min = maxf(_gen_plateau - _gen_plateau * 0.45, _gen_floor + 8.0)   # bottom of the mesa-height spread
 		_gen_base_in = new_data
-		# duplicate() и ПРОВЕРКА размера: при нехватке памяти он вернёт пустой массив, и без
-		# проверки потоки начнут писать в пустоту — тридцать «out of bounds» вместо одной
-		# внятной строки. Копировать поэлементно нельзя: четыре миллиона присваиваний в
-		# GDScript это секунды на ровном месте.
+		# duplicate() AND a size CHECK: out of memory it returns an empty array, and without the
+		# check the threads would start writing into nothing — thirty "out of bounds" lines instead
+		# of one clear one. Copying element by element is not an option: four million assignments
+		# in GDScript is seconds for nothing.
 		_gen_carved = new_data.duplicate()
 		if _gen_carved.size() != width * depth:
-			push_error("LiteTerrain: не хватило памяти на буфер каньонов (%d значений, %.1f МБ) — каньоны пропущены"
+			push_error("LiteTerrain: out of memory for the canyon buffer (%d values, %.1f MB) — canyons skipped"
 					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
 			_gen_carved = PackedFloat32Array()
 		else:
-			await _run_rows(_gen_carve_row, depth, "Каньоны", 0.55, 0.7)
+			await _run_rows(_gen_carve_row, depth, "Canyons", 0.55, 0.7)
+			if _gen_cancel:
+				_progress_close()
+				return
 			new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
 
-	# ── Эрозия: ПОСЛЕДНИМ проходом, поверх всего остального ──────────────────────────────
-	# Она читает НАКЛОН готового рельефа, поэтому и должна идти после того, как рельеф
-	# окончательно сложился: сделай её раньше — и каньон, вырезанный следом, срежет её яры,
-	# а размытие сгладит именно то, ради чего она нужна.
+	# ── Erosion: the LAST pass, on top of everything else ────────────────────────────────
+	# It reads the SLOPE of the finished terrain, so it has to come after the terrain has settled
+	# into its final shape: run it earlier and the canyon carved afterwards cuts its gullies away,
+	# while the blur smooths off exactly what it was there for.
 	if _gen_ero_strength > 0.01:
 		_gen_ero_in = new_data
-		_gen_ero_out = _gen_alloc(width * depth, "буфер эрозии")
+		_gen_ero_out = _gen_alloc(width * depth, "the erosion buffer")
 		if _gen_ero_out.is_empty():
-			push_warning("LiteTerrain: не хватило памяти на буфер эрозии — пропущена")
+			push_warning("LiteTerrain: out of memory for the erosion buffer — erosion skipped")
 		else:
-			await _run_rows(_gen_erode_row, depth, "Эрозия", 0.7, 0.95)
+			await _run_rows(_gen_erode_row, depth, "Erosion", 0.7, 0.95)
+			if _gen_cancel:
+				_progress_close()
+				return
 			new_data = _gen_ero_out
 		_gen_ero_in = PackedFloat32Array()
 		_gen_ero_out = PackedFloat32Array()
@@ -1709,7 +1847,7 @@ func _generate_noise() -> void:
 	if image_mode:
 		# Set md + size, rebuild the editor preview, and write the heightmap image so the
 		# runtime (and re-opening the editor) loads it. No undo here — it's a full regen.
-		_progress_say("Сборка карты и запись файла", 0.96)
+		_progress_say("Building the map and writing the file", 0.96)
 		await get_tree().process_frame
 		sculpt_node.set_heightmap(new_data, width, depth)
 		var img := Image.create_from_data(width, depth, false, Image.FORMAT_RF, new_data.to_byte_array())
@@ -1719,7 +1857,7 @@ func _generate_noise() -> void:
 			print("LiteTerrain: generated %dx%d -> %s" % [width, depth, gm_path])
 		else:
 			push_error("LiteTerrain: failed to save generated heightmap (error %d)" % gerr)
-		_progress_say("Готово", 1.0)
+		_progress_say("Done", 1.0)
 		await get_tree().process_frame
 		_progress_close()
 		return

@@ -1,11 +1,11 @@
 @tool
 extends EditorInspectorPlugin
 
-# Ставит кубик первым делом в инспекторе любого блока (VehicleBlock и всё, что от него
-# наследуется). Галочки граней остаются на своих местах ниже — кубик их не подменяет, а
-# показывает то же самое так, чтобы не приходилось держать в голове, где у блока «зад».
+# Puts the cube at the very top of any block's inspector (VehicleBlock and everything derived
+# from it). The face checkboxes stay where they are below — the cube does not replace them, it
+# shows the same thing in a way that does not require remembering which side is the block's back.
 
-var undo_redo = null      # EditorUndoRedoManager, отдаёт плагин при регистрации
+var undo_redo = null      # EditorUndoRedoManager, handed over by the plugin at registration
 
 func _can_handle(object: Object) -> bool:
 	return object is VehicleBlock
