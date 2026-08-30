@@ -1260,10 +1260,14 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if scene == null:
 		push_error("vehicle: нет player_vehicle.tscn для новой структуры")
 		return
-	# АВТО-ШАХТЁР СТАВИТСЯ ТОЛЬКО НА ЖИЛУ. Он умеет ровно одно — бить жилу под собой
-	# (auto_miner._find_vein светит лучом вниз), и посреди поля это дорогой памятник: стоит,
-	# ест энергию, не добывает ничего. Поэтому не «можно и так», а нельзя: не нашли жилу
-	# рядом — блок ОСТАЁТСЯ В РУКЕ, игрок доносит его до залежи.
+	# АВТО-ШАХТЁР СТАВИТСЯ ТОЛЬКО К ВЫРАБОТАННОЙ ЖИЛЕ. Он умеет ровно одно — выскребать пустую
+	# жилу рядом с собой, и посреди поля это дорогой памятник: стоит, ест энергию, не добывает
+	# ничего. Поэтому не «можно и так», а нельзя: не нашли подходящую жилу — блок ОСТАЁТСЯ В
+	# РУКЕ, игрок доносит его до залежи.
+	#
+	# ПУСТАЯ, А НЕ ЛЮБАЯ: пока в жиле есть руда, она принадлежит буру. Шахтёр забирает её себе
+	# навсегда (жила под ним больше не восстанавливается), и отдавать ему полную значило бы
+	# отменить выбор — поставил и забыл, копать руками больше незачем.
 	if core == G.Block.AUTO_MINER:
 		# Радиус спрашиваем у САМОГО блока: правило «дотягивается до жилы» должно быть одно
 		# и то же и при постановке, и при добыче (auto_miner.vein_reach).
@@ -1271,15 +1275,34 @@ func _place_ground_structure(instance: Node3D) -> void:
 				else VEIN_SNAP_FALLBACK
 		var vein: Node3D = _vein_near(_cabin_ground, reach)
 		if vein == null:
-			Dialogue.say("System", "The Auto Miner works on an ore vein. Place it right on one.")
+			Dialogue.say("System", "The Auto Miner works an ore vein. Place it next to one.")
 			return
-		# Встаём РОВНО НА ЖИЛУ, а не туда, куда попал палец: искать жилу шахтёр будет от себя
-		# и всего на vein_reach, и промах в пару метров означал бы блок, который жилы не видит.
-		# Высоту берём В ТОЧКЕ, КУДА ВСТАЁМ (общее правило проекта, G.ground_y): палец попадает
-		# в землю РЯДОМ с жилой, а на склоне это метры разницы — база уезжала под рельеф или
-		# зависала над ним, и выглядело это как «шахтёр стоит сбоку от руды».
-		_cabin_ground = Vector3(vein.global_position.x, _cabin_ground.y, vein.global_position.z)
+		if vein.has_method("is_depleted") and not vein.is_depleted():
+			Dialogue.say("System", "Mine this vein out first — the Auto Miner only works a spent one.")
+			return
+		if vein.get("claimed_by") != null:
+			Dialogue.say("System", "Another Auto Miner already works this vein.")
+			return
+		# СТАВИМ РЯДОМ, БУРОМ К ЖИЛЕ, а не поверх неё. Рабочая сторона у модели одна — передняя
+		# (−Z, как у ручного бура), и блок, накрывший жилу собой, выглядит как коробка на руде.
+		# Сторону выбирает САМ ИГРОК: берём направление от жилы к точке, куда он ткнул. Тапнул
+		# ровно в жилу (направление нулевое) — становимся со стороны машины, лишь бы не наугад.
+		var side: Vector3 = _cabin_ground - vein.global_position
+		side.y = 0.0
+		if side.length_squared() < 0.01:
+			side = global_position - vein.global_position
+			side.y = 0.0
+		if side.length_squared() < 0.01:
+			side = Vector3.BACK
+		side = side.normalized()
+		_cabin_ground = vein.global_position + side * MINER_MOUNT_DIST
+		# Высоту берём В ТОЧКЕ, КУДА ВСТАЁМ (общее правило проекта, G.ground_y): жила и место
+		# рядом с ней на склоне отличаются на метры — база уезжала под рельеф или зависала.
 		_cabin_ground.y = G.ground_y(_cabin_ground, _cabin_ground.y)
+		# Разворачиваем −Z на жилу и ПЕРЕБИВАЕМ ручной поворот игрока: ставить шахтёр буром в
+		# другую сторону нельзя, а объяснять это некому. Модель смотрит −Z, поэтому нужный курс
+		# даёт направление ОТ блока К жиле.
+		build_basis = Basis(Vector3.UP, atan2(side.x, side.z))
 	# ЯДРО ИЗ РУКИ УБИРАЕМ ДО СОЗДАНИЯ МАШИНЫ, а не одним queue_free в конце. Держатель руки
 	# ОБЩИЙ (он висит под камерой), а _ready новой машины первым делом зовёт
 	# _on_movement_pressed → _return_hand_to_inventory: тот проходит по детям держателя и
@@ -1346,6 +1369,9 @@ func _place_ground_structure(instance: Node3D) -> void:
 ## рядом с ней, а не в неё саму. Радиус берём у самого шахтёра (vein_reach), чтобы правило
 ## «дотягивается» было ОДНО: поставили — значит и добывать сможет.
 const VEIN_SNAP_FALLBACK := 3.0
+## На сколько метров шахтёр отходит от жилы. Меньше vein_reach у самого блока — иначе он
+## встанет так, что своей же жилы не увидит.
+const MINER_MOUNT_DIST := 1.4
 
 func _vein_near(at, reach: float = VEIN_SNAP_FALLBACK) -> Node3D:
 	if not (at is Vector3):

@@ -17,6 +17,44 @@ var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающ�
 var is_coal: bool = false                           # угольная жила: выброс = COAL, без тинта
 var _available: int = MAX_RESOURCES                 # сколько руды осталось в жиле (логически)
 
+## КТО ЗАНЯЛ ЖИЛУ (авто-шахтёр). Пока он стоит, жила НЕ ВОССТАНАВЛИВАЕТСЯ: выбирать надо —
+## либо выработанную жилу медленно и вечно скребёт шахтёр, либо она отдыхает пять секунд и
+## снова отдаётся буру. Обе награды сразу с одной точки — это не выбор, а бесплатный апгрейд.
+var claimed_by: Node = null
+
+## Жила выработана: руды в ней сейчас нет (идёт отдых или её занял шахтёр).
+func is_depleted() -> bool:
+	return _available <= 0
+
+## Занять ВЫРАБОТАННУЮ жилу. Отказ — если в ней ещё есть руда (сначала выкопай) или её уже
+## занял другой шахтёр. Отдых при этом останавливаем: пока стоит шахтёр, жиле нечего
+## восстанавливать.
+func claim(by: Node) -> bool:
+	if by == null or not is_depleted():
+		return false
+	if claimed_by != null and is_instance_valid(claimed_by) and claimed_by != by:
+		return false
+	claimed_by = by
+	$RestTimer.stop()
+	return true
+
+## Шахтёра не стало — жила снова живёт своей жизнью и начинает отдых с этой секунды.
+func release(by: Node) -> void:
+	if claimed_by != by:
+		return
+	claimed_by = null
+	if _available <= 0:
+		$RestTimer.start()
+
+## Выдать одну руду ПО ТРЕБОВАНИЮ занявшего шахтёра. Ни HP, ни _available не трогаем
+## намеренно: шахтёр не оживляет жилу, он выскребает то, что бур достать уже не может, и
+## для всех остальных она остаётся пустой.
+func mine_for_claimer(by: Node) -> bool:
+	if claimed_by != by or not is_depleted():
+		return false
+	_eject_one()
+	return true
+
 # Второй MultiMesh — в него пишем состояние жилы для шейдера истощения.
 @onready var _depletion_mm: MultiMeshInstance3D = get_node_or_null("../MultiMeshInstance3D2")
 
@@ -67,6 +105,10 @@ func _eject_one() -> void:
 
 # Жила восстановилась: снова полна руды, HP сброшен.
 func _on_rest_timer_timeout() -> void:
+	# ЗАНЯТАЯ ЖИЛА НЕ ВОССТАНАВЛИВАЕТСЯ. Таймер мы останавливаем в claim(), но он мог уже
+	# тикать в момент постановки — и тогда жила налилась бы рудой прямо под шахтёром.
+	if claimed_by != null and is_instance_valid(claimed_by):
+		return
 	_available = MAX_RESOURCES
 	current_hp = max_hp
 	# B — время респавна (рост), G=1 → жила целая, A — тип.
