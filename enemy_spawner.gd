@@ -24,6 +24,17 @@ extends Node3D
 ## Сколько врагов ставится СРАЗУ, как только мир готов (и обучение закончилось). Один:
 ## мир не должен встречать игрока пустым, но и толпой тоже.
 @export var initial_enemies: int = 1
+## ПАУЗА ПОСЛЕ ОБУЧЕНИЯ, прежде чем мир вообще начнёт присылать врагов. Раньше наполнение шло
+## в тот же кадр, где закрылся последний шаг: игрок только что собрал первую машину и ни разу
+## на ней не проехал, а к нему уже едут. Несколько секунд «просто покататься» — это не отдых,
+## а возможность попробовать то, чему научили, до того как это проверят боем.
+##
+## ЧИСЛО ЗДЕСЬ ОДНО НА ОБА ПУТИ: сюжетного разведчика после обучения приводит
+## tutorial_director, и он спрашивает задержку у этого поля. Двумя числами они разъехались бы,
+## и «пара секунд на покататься» кончалась бы тем, что первым приезжает кто-то из общего
+## потока, пока разведчик ещё ждёт.
+@export var first_spawn_delay: float = 8.0
+var _seed_grace: float = -1.0
 
 # ВРАЖЕСКИЕ БАЗЫ ЖИВУТ НЕ ЗДЕСЬ, а в outposts.gd — они СТОЯТ НА КАРТЕ, в постоянных точках,
 # и переживают отъезд. Спавнер раньше держал их сам, в кольце вокруг игрока: постройка
@@ -175,7 +186,16 @@ func _tick_spawner(delta: float) -> void:
 	if _awake_count() >= max_enemies:
 		return
 	# Первый заход: наполняем мир сразу, а не по одному с паузой.
-	if not _seeded and not _tutorial_active():
+	if not _seeded:
+		if _tutorial_active():
+			return                      # обучение идёт — мир молчит и отсчёт не начат
+		# Отсчёт стартует В МОМЕНТ, когда обучение закончилось (или сразу, если его не было:
+		# загруженный сейв, пропуск). Ставим его здесь, а не в _ready, ровно поэтому.
+		if _seed_grace < 0.0:
+			_seed_grace = first_spawn_delay
+		_seed_grace -= delta
+		if _seed_grace > 0.0:
+			return
 		_seeded = true
 		for _i in mini(initial_enemies, max_enemies):
 			_spawn_one()
@@ -355,6 +375,28 @@ func _trim_sleepers(player: Node3D) -> void:
 		_enemies.erase(worst)
 		worst.queue_free()
 
+## ПЕРВЫЙ ВРАГ В САВЕ БЬЁТ ВПОЛСИЛЫ. Игрок встречает его сразу после обучения, на машине из
+## стартового набора: одна пушка, ни одного исследования, ни щита, ни второго ствола. Полный
+## урон в этот момент означает «собрал первую машину и смотришь, как её разбирают», причём
+## непонятно, что делать иначе, — а первая драка обязана быть выигранной.
+##
+## Ослаблен именно УРОН, а не хп: враг должен разбираться так же (иначе первый бой ничему не
+## учит и ощущается ватным), просто у игрока есть время понять, что происходит.
+const FIRST_ENEMY_DAMAGE := 0.5
+
+## Скидка достаётся ПЕРВОМУ, кто пришёл ЗА ИГРОКОМ, — обычному спавну и разведчику из сюжета.
+## Событийным машинам (spawn_at: дуэлянты «Crossfire», рейд) её не даём: они приезжают уже
+## после первой драки, а дуэлянты вообще воюют между собой, и потратить на них «первого»
+## значило бы отдать поблажку тому, кто в игрока даже не целится.
+##
+## Флаг персистится в сейве (G.first_enemy_met): после перезахода «первый» не выдаётся заново.
+func _mark_first_enemy(enemy: Node) -> void:
+	if enemy == null or G == null or G.first_enemy_met:
+		return
+	G.first_enemy_met = true
+	G.mark_progress_dirty()
+	enemy.set("damage_scale", FIRST_ENEMY_DAMAGE)
+
 func _spawn_one() -> void:
 	if enemy_scenes.is_empty() or _tutorial_active():
 		return
@@ -381,6 +423,7 @@ func _spawn_one() -> void:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # падает своим весом, а не броском
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
+	_mark_first_enemy(enemy)          # обучение можно и пропустить — тогда первый придёт отсюда
 	_enemies.append(enemy)
 
 # ── ВРАЖЕСКИЕ БАЗЫ: только сон и тени ─────────────────────────────────────────
@@ -480,6 +523,7 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	enemy.set_meta("story", true)
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
+	_mark_first_enemy(enemy)          # обычный путь: этого разведчика приводит конец обучения
 	_enemies.append(enemy)
 	return enemy
 

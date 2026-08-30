@@ -441,7 +441,33 @@ func _on_tutorial_finished() -> void:
 	_guide.clear()
 	_set_ui_locked(false)
 	_step = ""
-	_spawn_first_enemy.call_deferred()
+	_say_lines(["That is the whole of it. Take it for a drive — the ground here is not level anywhere."])
+	_first_enemy_after_delay()
+
+## СКОЛЬКО ИГРОК ЕЗДИТ ОДИН, прежде чем приедет первый враг. Раньше разведчик появлялся В ТОТ
+## ЖЕ КАДР, где закрылся последний шаг обучения: собрал машину — и сразу дерёшься, ни разу не
+## тронувшись с места, то есть первое, что игрок узнаёт о своей машине, — это как её ломают.
+## Пауза не «передышка», а возможность попробовать то, чему только что научили; к ней сверху
+## добавляется падение врага с drop_height и его дорога до игрока.
+##
+## САМО ЧИСЛО ЖИВЁТ У СПАВНЕРА (`first_spawn_delay`): ту же паузу держит и общий поток врагов,
+## и двумя числами они разъехались бы — «покататься» кончалось бы тем, что вместо разведчика
+## первым приезжает кто-то другой. Здесь только запасное значение на случай, если спавнера в
+## сцене нет вовсе.
+const FIRST_ENEMY_DELAY_FALLBACK := 8.0
+
+func _first_enemy_after_delay() -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	var delay: float = FIRST_ENEMY_DELAY_FALLBACK
+	var d = sp.get("first_spawn_delay") if sp != null else null
+	if d is float or d is int:
+		delay = float(d)
+	await get_tree().create_timer(delay).timeout
+	# ПОСЛЕ КАЖДОГО await — проверка (правило из CLAUDE.md): за восемь секунд игрок мог выйти
+	# в меню или погибнуть с перезагрузкой сцены, и режиссёра к этому моменту уже нет.
+	if not is_inside_tree():
+		return
+	_spawn_first_enemy()
 
 func _spawn_first_enemy() -> void:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
@@ -451,7 +477,7 @@ func _spawn_first_enemy() -> void:
 	if enemy == null:
 		# Ровного места рядом не нашлось — квест всё равно закрываемый: обычный поток
 		# врагов приведёт кого-нибудь сам, просто не так быстро.
-		_say_lines(["That is the whole of it. Other processes run out there, and they were not asked to share."])
+		_say_lines(["Other processes run out there, and they were not asked to share."])
 		return
 	_say_lines([
 		"Something picked up your signal. It is already close.",

@@ -653,6 +653,13 @@ var faction_xp := {"start": 0}
 var research_points := 0               # ДИ — валюта дерева
 var researched: Array = []             # изученные Block (int)
 var quests_done: Array = []            # id выполненных квестов (подключим на этапе 3)
+## ПЕРВОГО ВРАГА В ЖИЗНИ САВА игрок встречает сразу после обучения — на машине из стартового
+## набора, с одной пушкой и без единого исследования. Полный урон в этот момент означает
+## «собрал первую машину и тут же смотришь, как её разбирают»: у него нет ни щита, ни второго
+## ствола, ни понимания, что от боя можно уехать. Поэтому первый бьёт вполсилы
+## (`enemy_spawner.FIRST_ENEMY_DAMAGE`), а флаг персистится: после перезахода «первый» не
+## выдаётся заново.
+var first_enemy_met: bool = false
 
 # Текущий грейд фракции по накопленному XP (1..grades).
 func grade(f: String) -> int:
@@ -822,6 +829,7 @@ func _flush_progress() -> void:
 			"researched": researched,
 			"quests_done": quests_done,
 			"killed_kinds": killed_kinds,
+			"first_enemy_met": first_enemy_met,
 		}))
 		f.close()
 
@@ -851,6 +859,7 @@ func wipe_save() -> void:
 	researched = START_RESEARCHED.duplicate()
 	quests_done = []
 	killed_kinds = []
+	first_enemy_met = false
 	money_changed.emit()
 	progress_changed.emit()
 
@@ -893,6 +902,7 @@ func _load_progress() -> void:
 	killed_kinds = []
 	for k2 in data.get("killed_kinds", []):
 		killed_kinds.append(str(k2))
+	first_enemy_met = data.get("first_enemy_met", false) == true
 
 func _notification(what: int) -> void:
 	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем
