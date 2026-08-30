@@ -851,6 +851,15 @@ func wipe_save() -> void:
 	for p in WIPE_PATHS:
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(p)
+	# ЗАПЕЧЁННЫЙ РЕЛЬЕФ СБРАСЫВАЕМ ЗДЕСЬ ЖЕ. Он лежит отдельным файлом в user:// и перекрывает
+	# заводскую карту (map._load_heightmap читает его ПЕРВЫМ), поэтому без этой строки сброс
+	# сейва оставлял игрока на старом рельефе: свой файл никуда не делся. Убирал его только
+	# world_persist._fresh_start на следующем запуске, то есть новую карту игрок видел лишь
+	# с ТРЕТЬЕГО захода — сбросил, перезашёл (файл удалён, но высоты уже прочитаны), и только
+	# потом. Путь не дублируем: чистит себя сама нода (map.reset_heights).
+	var terr := get_node_or_null("/root/Main/map")
+	if terr != null and terr.has_method("reset_heights"):
+		terr.reset_heights()
 	money = 500
 	block_inventory = []
 	saved_builds = {}
