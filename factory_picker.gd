@@ -8,9 +8,14 @@ class_name FactoryPicker
 # С двадцатью одним компонентом это перестало быть мелким неудобством: без выбора недоступны
 # двадцать из них и почти все рецепты блоков.
 #
-# Окно строится КОДОМ, как и остальной UI проекта (шрифт не рендерит эмодзи, иконки рисуем
-# сами). Цветной квадратик слева — это цвет самого материала (G.COMP_COLOR), тот же, каким
-# деталь выглядит на ленте: выбирать по цвету быстрее, чем читать двадцать одно название.
+# ОКНО — СЦЕНА (factory_picker.tscn): затемнение, центрирование, панель, заголовок, подсказка,
+# прокрутка и кнопка CLOSE стоят узлами. Кодом остаётся СПИСОК: он строится по данным (двадцать
+# один компонент или четыре десятка блоков, разделы по категориям, подсветка текущего выбора),
+# и узлами его не выразить. Цветной квадратик слева — цвет самого материала (G.COMP_COLOR), тот
+# же, каким деталь выглядит на ленте: выбирать по цвету быстрее, чем читать двадцать одно имя.
+## Ленивая загрузка, а не preload: сцена держит ЭТОТ ЖЕ скрипт, и preload из него дал бы цикл
+## «скрипт → сцена → скрипт» при компиляции. load() ходит в кеш ResourceLoader.
+const SCENE_PATH := "res://factory_picker.tscn"
 
 const PANEL_W: float = 460.0
 const PANEL_MAX_H: float = 560.0
@@ -36,7 +41,7 @@ static func open_for(host: Node, block: Node) -> FactoryPicker:
 		root = root.get_parent()
 	if root == null:
 		return null
-	var p := FactoryPicker.new()
+	var p: FactoryPicker = (load(SCENE_PATH) as PackedScene).instantiate()
 	p._block = block
 	p._blocks_root = root
 	p._is_comp = comp
@@ -45,69 +50,22 @@ static func open_for(host: Node, block: Node) -> FactoryPicker:
 	return p
 
 func _build() -> void:
-	PortPicker._fill_parent(self)
-	mouse_filter = Control.MOUSE_FILTER_STOP     # окно ловит тапы, мир под ним не трогаем
+	var vp: Vector2 = get_viewport_rect().size
+	# Панель НЕ ШИРЕ ЭКРАНА, а список ограничен ЕГО ВЫСОТОЙ: двадцать один компонент или четыре
+	# десятка блоков длиннее любого окна, и зашитая высота на низком экране выносила кнопку
+	# CLOSE за край. Оба числа зависят от вьюпорта, поэтому и остались в коде.
+	(%Panel as PanelContainer).custom_minimum_size = Vector2(minf(PANEL_W, vp.x - 48.0), 0.0)
+	(%Scroll as ScrollContainer).custom_minimum_size = \
+			Vector2(0.0, clampf(vp.y - 240.0, 180.0, PANEL_MAX_H))
+	_title = %Title
+	_list = %List
 
-	# Затемнение: и читаемость, и «клик мимо окна = закрыть».
-	var dim := ColorRect.new()
-	PortPicker._fill_parent(dim)
-	dim.color = Color(0.0, 0.03, 0.04, 0.55)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	dim.gui_input.connect(func(e: InputEvent):
+	# Затемнение: и читаемость, и «клик мимо окна = закрыть». Тап ловит именно оно, а не корень:
+	# корень тоже STOP, но он лежит под окном целиком, и клик по самой панели тогда закрывал бы её.
+	(%Dim as ColorRect).gui_input.connect(func(e: InputEvent):
 		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
 			close())
-	add_child(dim)
-
-	# По центру — контейнером, а не якорями: панель растёт до минимального размера уже после
-	# того, как смещения посчитаны, и на якорях окно оказывалось в левом верхнем углу.
-	var center := CenterContainer.new()
-	PortPicker._fill_parent(center)
-	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(center)
-
-	var vp: Vector2 = get_viewport_rect().size
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _panel_style())
-	panel.custom_minimum_size = Vector2(minf(PANEL_W, vp.x - 48.0), 0.0)
-	center.add_child(panel)
-
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
-	panel.add_child(col)
-
-	_title = Label.new()
-	_title.add_theme_font_size_override("font_size", 20)
-	_title.add_theme_color_override("font_color", Color(0.62, 0.92, 0.96))
-	col.add_child(_title)
-
-	var hint := Label.new()
-	hint.text = "Pick what this machine produces."
-	hint.add_theme_font_size_override("font_size", 13)
-	hint.add_theme_color_override("font_color", Color(0.55, 0.72, 0.76))
-	col.add_child(hint)
-
-	var scroll := ScrollContainer.new()
-	# Список ограничен ЭКРАНОМ: двадцать один компонент или четыре десятка блоков длиннее
-	# любого окна, а зашитая высота на низком экране выносила кнопку CLOSE за край.
-	scroll.custom_minimum_size = Vector2(0.0, clampf(vp.y - 240.0, 180.0, PANEL_MAX_H))
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(scroll)
-
-	_list = VBoxContainer.new()
-	_list.add_theme_constant_override("separation", 4)
-	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_list)
-
-	var close_btn := Button.new()
-	close_btn.text = "CLOSE"
-	close_btn.add_theme_font_size_override("font_size", 16)
-	close_btn.add_theme_color_override("font_color", Color(0.88, 0.96, 0.98))
-	close_btn.add_theme_stylebox_override("normal", _button_style(false))
-	close_btn.add_theme_stylebox_override("hover", _button_style(true))
-	close_btn.add_theme_stylebox_override("pressed", _button_style(true))
-	close_btn.pressed.connect(close)
-	col.add_child(close_btn)
+	(%CloseButton as Button).pressed.connect(close)
 
 	if _is_comp:
 		_fill_components()
@@ -221,20 +179,8 @@ static func _swatch(c: Color) -> ImageTexture:
 	_swatches[key] = tex
 	return tex
 
-# Палитра и скругления — как у плавающих панелей HUD (_make_float_panel_style): окно должно
-# выглядеть частью того же интерфейса, а не гостем из другого проекта.
-func _panel_style() -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = Color(0.043, 0.122, 0.149, 0.97)
-	s.border_color = Color(0.247, 0.6, 0.65, 0.5)
-	s.set_border_width_all(2)
-	s.set_corner_radius_all(14)
-	s.content_margin_left = 14
-	s.content_margin_right = 14
-	s.content_margin_top = 12
-	s.content_margin_bottom = 12
-	return s
-
+# Стиль строк списка: они рождаются кодом, значит и стиль им ставит код. Палитра и скругления
+# те же, что у окна в сцене, — оно должно выглядеть частью того же интерфейса.
 func _button_style(active: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = Color(0.247, 0.6, 0.65, 1.0) if active else Color(0.082, 0.235, 0.275, 0.95)
