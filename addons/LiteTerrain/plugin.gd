@@ -490,7 +490,9 @@ const SLOPE_REF := 0.25
 ## read these fields.
 var _gen_mtn_rise: float = 48.0
 var _gen_dune_amp: float = 6.0
-var _gen_plateau: float = 46.0
+## Глубина ущелья ниже местной земли (метры, от Height). Раньше поле значило «высота меса» —
+## пока верх меса задавался абсолютом; теперь абсолютов в каньоне нет вовсе.
+var _gen_gorge_depth: float = 40.0
 var _gen_floor: float = 6.0
 var _gen_mtn_amount: float = 0.8
 var _gen_ridge_sharp: float = 2.5
@@ -646,50 +648,42 @@ func _gen_carve_row(z: int) -> void:
 		var cn := _cv_noise(wp / b.canyon_scale + TerrainBiomes.CANYON_OFFSET)
 		var hmask := smoothstep(b.canyon_threshold - 0.02, b.canyon_threshold + 0.02, cn)
 		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0))
-		# A CANYON IS A CUT INTO WHATEVER LAND IS ALREADY THERE, not a slab at a fixed height.
-		# Mesa tops and the gorge floor used to be ABSOLUTE metres, and the whole region was
-		# replaced by them: where the surrounding land happened to sit at mesa height the result
-		# was a flat terracotta field with no walls at all, and where the land was low the canyon
-		# came out as a raised block. That is exactly the "not everywhere a canyon" on the map.
-		# Now both ends are measured FROM THE LOCAL SURFACE, so a canyon in high ground is a deep
-		# gorge in high ground and one on a plain is a shallow badland — always a cut, never a slab.
-		var surface: float = _gen_base_in[idx]
-		# ДНО И ВЕРХ — ПЛОСКИЕ, А НЕ ПОВТОРЯЮТ ХОЛМ. Оба конца снимаются на СЕТКУ ТЕРРАС (terr,
-		# та же, которой шейдер красит слои). Пока они шли за местной поверхностью след в след,
-		# верх меса выходил куполом, а дно — чашей, и вся область читалась как оплывший бугор,
-		# крашенный в терракоту. Столовую гору узнают по ПЛОСКОМУ верху и ПЛОСКОМУ дну,
-		# разделённым отвесной стенкой; остальное — холм.
+		# КАНЬОН — ЭТО СТОЛОВАЯ ЗЕМЛЯ, ПРОРЕЗАННАЯ УЩЕЛЬЯМИ, а не яма и не отдельная плита.
+		# Через три захода это единственная модель, которая сходится со всеми симптомами:
 		#
-		# Ограничения прежние: не ниже абсолютного дна (высоты обязаны остаться положительными)
-		# и не выше местной поверхности — «врез», который поднимает землю, это не каньон.
-		var floor_h: float = minf(maxf(surface - _gen_plateau, _gen_floor), surface)
-		floor_h = floor(floor_h / terr) * terr
-		# Верх меса тоже на сетке: иерархия столовых гор остаётся (bt двигает их на ступень-две
-		# вверх), но каждая отдельная гора стоит РОВНО.
-		var mesa_top: float = floor((surface + _gen_floor * bt) / terr) * terr
-		if mesa_top < floor_h + terr:
-			mesa_top = floor_h + terr          # хотя бы одна ступень, иначе стенки нет вовсе
+		#   • верх — ЭТО МЕСТНАЯ ЗЕМЛЯ (surface). Пока он задавался абсолютом, область то торчала
+		#     плитой над равниной, то тонула в ней ровным терракотовым полем без единой стенки;
+		#   • ущелья — МЕНЬШИНСТВО площади. Когда я сделал дно половиной области, вся она ушла
+		#     вниз от окрестной земли: получилась чаша с обрывом по всей границе, куда не въехать
+		#     и откуда не выехать. «Плато с парой царапин» было верным симптомом НЕВЕРНОЙ высоты
+		#     верха, а не ширины ущелий;
+		#   • ступени — ТОЛЬКО НА СТЕНКЕ. Квантование дна и верха давало горизонтали по всей
+		#     области: обрыв в шесть метров посреди ровного места, ездить невозможно.
+		#
+		# Отсюда и граница области перестаёт быть обрывом: наверху canyon_h равен surface, и
+		# смешивание по hmask ничего не двигает — каньон входит в окрестную землю незаметно.
+		var surface: float = _gen_base_in[idx]
+		var floor_h: float = minf(maxf(surface - _gen_gorge_depth, _gen_floor), surface)
+		var mesa_top: float = surface + _gen_floor * bt
 		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
 		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
-		# THE GORGE FLOOR HAS TO BE A REAL SHARE OF THE REGION. |fbm| runs mostly over 0..0.4 with
-		# a mean near 0.2, and the old thresholds (floor below 0.055, rim at 0.10) left ~80 % of
-		# every canyon standing at mesa height: the network read as a plateau with two scratches
-		# in it. Gorge width now means the share of the region that is floor.
-		var floor_t: float = gen_canyon_width * 2.0
-		# А ВОТ СТЕНКА ОБЯЗАНА БЫТЬ ОТВЕСНОЙ, и это отдельное число. Подъём от дна к верху идёт
-		# по УЗКОЙ полосе шума: широкая (0.06…0.22, как было) размазывала стенку на сотню метров,
-		# и каньон превращался в пологую воронку — ровно то, что было видно на карте. Пандус
-		# (ramp) полосу расширяет — это и есть съезд вниз, но и он остаётся склоном, а не полем.
-		var wall_hi: float = floor_t + lerpf(0.02, 0.09, ramp)
-		var wall_t := smoothstep(floor_t, wall_hi, gv)
-		var canyon_h := lerpf(floor_h, mesa_top, wall_t)
-		# Terraces stay on the ABSOLUTE scale: the shader paints its strata by world height, and
-		# steps measured from a floor that moves would run across the colour bands instead of with
-		# them.
-		var lvl: float = canyon_h / terr
-		var li: float = floor(lvl)
-		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, lvl - li)
-		canyon_h = (li + riser) * terr
+		# |fbm| близок к нулю ВДОЛЬ ВЕТВЯЩИХСЯ ЛИНИЙ — это и есть русла. Дно там, где значение
+		# ниже gen_canyon_width; выше — стенка, и она узкая, то есть отвесная. Пандус (ramp)
+		# растягивает её в съезд: без таких мест в ущелье нельзя было бы попасть.
+		var wall_lo: float = gen_canyon_width * 0.55
+		var wall_hi: float = lerpf(gen_canyon_width, gen_canyon_width * 3.5, ramp)
+		var wall_t := smoothstep(wall_lo, wall_hi, gv)
+		# ТЕРРАСИМ ПОДЪЁМ, А НЕ ВЫСОТУ. Раньше на сетку снималась сама высота — то есть и ровное
+		# дно, и верх меса, где никаких ступеней быть не должно. Теперь ступени нарезаются на
+		# ДОЛЕ подъёма от дна к верху: внизу ровно дно, наверху ровно верх, а между ними столько
+		# ступеней, сколько раз terr укладывается в перепад. Высота ступени та же ≈ terr, значит
+		# и с цветными слоями шейдера (он красит по мировой высоте) они по-прежнему в лад.
+		var span: float = maxf(mesa_top - floor_h, 0.0)
+		var steps: float = maxf(1.0, floor(span / terr))
+		var t: float = wall_t * steps
+		var ti: float = floor(t)
+		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, t - ti)
+		var canyon_h: float = floor_h + (ti + riser) * (span / steps)
 		_gen_carved[idx] = lerpf(_gen_base_in[idx], canyon_h, hmask)
 	_gen_row_done()
 
@@ -1783,7 +1777,9 @@ func _generate_noise() -> void:
 	# the canyon floor sits close to the ground, and snow starts nearer the summits.
 	_gen_mtn_rise = gen_amplitude * 0.75
 	_gen_dune_amp = clampf(gen_amplitude * 0.05, 1.0, 14.0)
-	_gen_plateau = gen_amplitude * 0.42
+	# Треть высоты карты: ущелье должно быть заметным, но по его стенке ещё можно спуститься по
+	# террасам, а на 0.42 это была пропасть, вокруг которой оставалось только ездить.
+	_gen_gorge_depth = gen_amplitude * 0.30
 	_gen_floor = gen_amplitude * 0.06
 	# The snow line lives in the RESOURCE: the shader reads it, not the generator, and there is
 	# nowhere to keep it "for this generation" — the map is painted by the game later.

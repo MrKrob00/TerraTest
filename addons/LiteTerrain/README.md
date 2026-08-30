@@ -307,12 +307,15 @@ rewrites what the previous produced:
 - the canyon pass **replaces** height with its terraces, so the fill pass no longer raises
   mountain domes or draws dunes inside the canyon mask — that work was thrown away, and its
   ragged leftovers stuck out of the canyon walls;
-- **a canyon is a cut into whatever land is already there.** Mesa tops and the gorge floor are
-  measured from the local surface, not in absolute metres. While they were absolute, a canyon
-  region that happened to sit at mesa height came out as a flat coloured field with no walls, and
-  one on low ground came out as a raised block. The gorge floor is a real share of the region as
-  well: `Gorge width` now means that share, because the old thresholds left about 80 % of every
-  canyon standing at mesa height — which reads as a plateau with two scratches in it;
+- **a canyon is tableland cut by gorges**, not a pit and not a slab. Three things follow, and
+  each was learnt the hard way. The mesa top IS the local surface: while it was an absolute
+  height, the region either stood proud of the plain as a slab or sank into it as a flat coloured
+  field with no walls at all. The gorges are a MINORITY of the area: making the floor half the
+  region dropped the whole thing below its surroundings, leaving a bowl with a cliff around the
+  entire border — nothing could drive in or out. And the terraces are cut into the RISE, not into
+  the height: quantising floor and top put contour steps across the open ground, a six-metre drop
+  in the middle of a flat field. Because the top equals the surface, the region's border stops
+  being a cliff — the blend at the mask edge moves nothing;
 - **erosion almost skips the canyon**: its walls are the steepest ground on the map, so the
   filter cut hardest exactly there and dissolved the clean strata badlands are recognised by;
 - every metre value is derived from `Height` (mountain rise 0.75, mesa top 0.42, canyon floor
