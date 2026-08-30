@@ -1364,10 +1364,10 @@ func _update_radar(delta: float) -> void:
 		_money_panel.visible = live
 	if _market_panel:
 		# Только под якорем (см. _build_market): цены важны там, где торгуют и производят.
-		var want: bool = live and v != null and v.get("anchored") == true
-		var changed: bool = want != _market_panel.visible
-		_market_panel.visible = want
-		if want:
+		var show_market: bool = live and v != null and v.get("anchored") == true
+		var changed: bool = show_market != _market_panel.visible
+		_market_panel.visible = show_market
+		if show_market:
 			_layout_market()
 		if changed:
 			# Панель появилась или пропала — стопка стала другой высоты, и трекер квестов
