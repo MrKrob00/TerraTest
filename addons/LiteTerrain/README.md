@@ -279,6 +279,22 @@ features means slopes steeper than 45° everywhere, and the map reads as a pincu
 what else you do. The preset picks large land masses, drivable slopes, and leaves the fine
 detail to erosion — which is what erosion is for.
 
+### Fit metres to height
+
+Half of the terrain settings are **fractions** (noise, plains power, ridge sharpness) and half
+are **absolute metres**: mountain rise, dune amplitude, mesa top, canyon floor, the snow line.
+Move `Height` and the second half stays where it was — mountains turn into bumps under snow, the
+canyon becomes either a ditch or an abyss, snow either floods the map or disappears. With this
+box ticked the metre values are derived from `Height`; untick it and the sliders below take over.
+The sliders are never overwritten, so what you set is what you see.
+
+Two more passes were quietly fighting each other, and both are fixed in the generator itself:
+the canyon pass **replaces** height with its terraces, so the fill pass no longer raises mountain
+domes or draws dunes inside the canyon mask (that work was thrown away, and its ragged edges
+stuck out of the canyon walls); and erosion now almost skips the canyon — its walls are the
+steepest ground on the map, so the filter cut there hardest and dissolved the clean strata that
+badlands are recognised by.
+
 Snow is painted where the mountain **mask** overlaps ground above `snow_line` (soft over
 `snow_blend`). The mask alone says only *where the mountain region is*, not how high the ground
 got there — painting by it put white patches on flat ground and the colour stopped matching the
