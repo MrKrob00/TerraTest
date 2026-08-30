@@ -5,6 +5,16 @@
 class_name LiteTerrain
 extends StaticBody3D
 
+# ── ГРУППЫ ЭКСПОРТОВ: ЧТО ВИДИТ ИГРА, А ЧТО ТОЛЬКО РЕДАКТОР ────────────────────
+# Настройки ноды разложены по группам, и одна из них — «Editor only». Правило простое: там
+# лежит то, что НЕ СУЩЕСТВУЕТ в собранной игре (превью редактора: как далеко оно строится, с
+# каким LOD, показывать ли мешевые детали). Всё остальное — про игру, и меняет то, что увидит
+# игрок. Раньше список был один и плоский, и понять, какая настройка на что влияет, можно было
+# только по комментарию.
+#
+# Создание карты сюда не входит вовсе: сид, размер, форма рельефа и кисть живут в ДОКЕ плагина.
+# У ноды нет ни одной настройки генерации, у дока — ни одной настройки показа.
+@export_group("Terrain")
 ## The camera LOD and culling are measured from. LEAVE IT EMPTY unless you need something
 ## unusual: by default the currently active camera is used, so the terrain follows it even
 ## across camera switches. Set it only to drive LOD from a camera that is NOT the active one.
@@ -27,6 +37,7 @@ func _validate_property(property: Dictionary) -> void:
 	# heightmap_path only matters in image mode.
 	if property.name == "heightmap_path" and not use_image_data:
 		property.usage = PROPERTY_USAGE_NO_EDITOR
+@export_group("Visibility")
 @export_range(-0.5, 0.5, 0.01) var frustum_margin: float = -0.05
 @export var enable_frustum_culling: bool = true
 ## How far terrain is drawn. Anything past this is hidden without a frustum test. Match it to
@@ -52,6 +63,7 @@ func _validate_property(property: Dictionary) -> void:
 ## (see _is_aabb_occluded), so a long ray is not read any coarser than a short one.
 const OCCLUSION_STRIDE: float = 6.0
 
+@export_group("Map data")
 @export var chunk_size: int = 16
 
 ## Biome settings: noise thresholds and scales (shape and layout) plus colours and grass. One
@@ -79,6 +91,7 @@ func _push_biomes_to_materials() -> void:
 
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
+@export_group("LOD")
 @export var enable_lod: bool = true
 
 # XZ distance thresholds (in world units) at which LOD switches:
@@ -123,11 +136,16 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 # ── Editor view settings ──────────────────────────────────────────────────────
 ## OFF (default): the editor bakes ONE full-resolution merged mesh for the whole map
 ## (current behaviour — fine for small maps, heavy for huge ones).
+@export_group("Editor only")
 ## ON: the editor builds the WHOLE map but with LOD — distant chunks low-poly, near
 ## chunks full-res — using the same lod_distance_* thresholds as the game. The merged
 ## mesh is only rebuilt after the editor camera STOPS moving (no per-move lag), and on
 ## sculpt. Seams are snapped just like at runtime, so no LOD cracks.
-@export var editor_lod: bool = false
+@export var editor_lod: bool = false:
+	set(v):
+		editor_lod = v
+		if Engine.is_editor_hint() and is_inside_tree():
+			rebuild_preview()
 ## HOW FAR THE EDITOR BUILDS A MESH AT ALL (0 = the whole map, as it used to).
 ##
 ## The editor preview used to be built for the WHOLE map: at 1984² that is fifteen thousand
@@ -142,11 +160,16 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 ## which turns a brush stroke into a slideshow. The editor also has the better reason to show
 ## the bare surface — that is the one the brush and the collision actually work with. Turn it on
 ## to LOOK at the map, off to work on it.
-@export var editor_detail: bool = false
-
-# ── Streaming settings ────────────────────────────────────────────────────────
-## How many chunks are meshed per streaming batch. Lower = fewer frame hitches.
-@export_range(4, 128, 4) var stream_batch_size: int = 8
+##
+## ПЕРЕСОБИРАЕМ ПРЯМО В СЕТТЕРЕ: раньше это была кнопка в доке плагина, которая ставила флаг и
+## тут же звала пересборку. Настройка показа доку не место (он про создание карты), но и терять
+## «нажал — увидел» нельзя: галочка в инспекторе, у которой результат появляется только после
+## следующего мазка кистью, выглядит сломанной.
+@export var editor_detail: bool = false:
+	set(v):
+		editor_detail = v
+		if Engine.is_editor_hint() and is_inside_tree():
+			rebuild_preview()
 
 # ── Macro-chunk settings ──────────────────────────────────────────────────────
 # Groups of MACRO_SIZE×MACRO_SIZE individual chunks are merged into one
@@ -155,6 +178,7 @@ const LOD_UPDATE_INTERVAL: float = 0.15
 const MACRO_SIZE: int = 4
 
 # ── Heightmap data source ─────────────────────────────────────────────────────
+@export_group("Heightmap")
 ## Master heightmap (R32F Image saved as .res), the single source of truth for both
 ## the visual chunks and the streaming collision. Bake it from the editor terrain via
 ## the plugin's "Bake heightmap → image" button. If missing, falls back at runtime to
@@ -173,6 +197,9 @@ const MACRO_SIZE: int = 4
 		notify_property_list_changed()   # shows or hides heightmap_path
 
 # ── Streaming collision settings ──────────────────────────────────────────────
+@export_group("Collision")
+## Сколько чанков меша строится за один заход стриминга. Меньше — реже рывок кадра.
+@export_range(4, 128, 4) var stream_batch_size: int = 8
 ## Master switch. OFF (default) = current behaviour: the embedded HeightMapShape3D is
 ## both the data and the collision (whole map). ON = data comes from the R32F image and
 ## collision becomes a small window that follows the player — required for huge maps.
@@ -2324,6 +2351,7 @@ const RIPPLE_CROSS: float = 0.45     # a slow wave across the first — kills th
 const ROCK_ROUGH: float = 0.45
 const ROCK_NOISE_LEN: float = 11.0
 const ROCK_SLOPE_MIN: float = 0.9    # height difference per cell where rock starts reading as rock
+@export_group("Mesh detail")
 ## Сила ряби по песку (0 — выключить). Её просили видеть, поэтому по умолчанию полная.
 @export_range(0.0, 1.0, 0.05) var detail_ripples: float = 1.0
 ## Сила шершавости скал (0 — выключить). Полная величина ROCK_ROUGH — это уже «мятая бумага».

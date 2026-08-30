@@ -13,7 +13,6 @@ var radius_slider   = null
 # selected when the dock opened.
 var _cb_canyon: CheckBox = null
 var _cb_mountain: CheckBox = null
-var _cb_detail: CheckBox = null
 var _sl_stratum: HSlider = null
 ## Sliders the preset moves: they must be updated too, or the handle lies about its value.
 var _sl_height: HSlider = null
@@ -75,16 +74,6 @@ func _set_brush_radius(v: float) -> void:
 func _set_brush_power(v: float) -> void:
 	brush_power = v / 100.0
 	_update_brush_hint()
-
-## Preview detail lives ON THE NODE, not in the dock's settings: it changes how that terrain's
-## mesh is built, and two terrains in one scene may want different answers.
-func _on_preview_detail(on: bool) -> void:
-	if sculpt_node == null:
-		push_warning("LiteTerrain: select a terrain node first")
-		return
-	sculpt_node.set("editor_detail", on)
-	if sculpt_node.has_method("rebuild_preview"):
-		sculpt_node.rebuild_preview()
 
 func _set_gen_amplitude(v: float) -> void:
 	gen_amplitude = v
@@ -852,14 +841,11 @@ func _enter_tree() -> void:
 	_brush_hint.modulate = Color(1, 1, 1, 0.6)   # a caption under the sliders, not a setting
 	panel.add_child(_brush_hint)
 	_update_brush_hint()
-	# The sand ripples and the rock roughness are baked into the MESH only (see map._detail_height),
-	# and in the editor they are off by default, which is why a freshly generated desert looks
-	# perfectly smooth here while it has waves in game. This shows them without going in-game.
-	_cb_detail = CheckBox.new()
-	_cb_detail.text = "Preview detail"
-	_cb_detail.tooltip_text = "Sand ripples and rock roughness in the editor preview. Always on in game near the camera; here they cost a rebuild, so keep them off while sculpting."
-	_cb_detail.toggled.connect(_on_preview_detail)
-	panel.add_child(_cb_detail)
+	# ЗДЕСЬ НЕТ И НЕ ДОЛЖНО БЫТЬ НАСТРОЕК ПОКАЗА. Док — это инструмент СОЗДАНИЯ карты: сид,
+	# размер, форма, кисть, запекание. Всё, что решает, как карта ВЫГЛЯДИТ (в редакторе или в
+	# игре), живёт на самой ноде, в её группах экспортов. Отсюда уехала галочка «Preview detail»:
+	# она правила свойство ноды, то есть была здесь гостем. Теперь это `editor_detail` в группе
+	# «Editor only», и превью пересобирается прямо по клику в инспекторе.
 
 	# ── World ────────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
@@ -1113,10 +1099,6 @@ func _sync_dock() -> void:
 		gen_canyon_enable = b.canyon_enabled
 	if _cb_mountain != null and is_instance_valid(_cb_mountain):
 		_cb_mountain.set_pressed_no_signal(b.mountain_enabled)
-	# Preview detail is a property of the NODE, so it is re-read on every selection change like
-	# the biome flags above — otherwise the box shows the previous terrain's answer.
-	if _cb_detail != null and is_instance_valid(_cb_detail):
-		_cb_detail.set_pressed_no_signal(sculpt_node != null and sculpt_node.get("editor_detail") == true)
 	if _sl_stratum != null and is_instance_valid(_sl_stratum):
 		# Through .value and NOT set_value_no_signal: the number beside the slider is updated by
 		# the signal handler, so without it the handle moves and the label keeps the old value.
