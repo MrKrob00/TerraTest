@@ -368,8 +368,10 @@ remaining rows return immediately, the current pass ends in milliseconds and the
 between passes — with the map and the file on disk exactly as they were. Nothing is ever written
 half-generated.
 
-Generation replaces the whole heightmap and writes it to the R32F file, so both the
-runtime and a reopened editor load the new terrain.
+Generation replaces the whole heightmap and writes BOTH files the runtime may read — the R32F
+image and the streamable `.bin` beside it — so a reopened editor and the game load the same
+terrain. They have to move together: the runtime prefers the `.bin`, so updating only the image
+used to leave the game running on the previous map with no sign of it anywhere in the editor.
 
 The **last stage is the longest**, and it is driven step by step for that reason: setting the
 heights used to rebuild the whole editor preview inside `set_heightmap`, in one blocking call,

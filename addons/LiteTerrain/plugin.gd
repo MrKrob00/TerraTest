@@ -1919,6 +1919,13 @@ func _generate_noise() -> void:
 			print("LiteTerrain: generated %dx%d -> %s" % [width, depth, gm_path])
 		else:
 			push_error("LiteTerrain: failed to save generated heightmap (error %d)" % gerr)
+		# ПОТОКОВЫЙ .bin ПИШЕМ ЗДЕСЬ ЖЕ. Игра читает его РАНЬШЕ картинки (см. map._load_heightmap:
+		# user:// → res://….bin → res://….res), поэтому генерация, обновлявшая только .res,
+		# оставляла на диске СТАРУЮ карту: в редакторе новая, в игре прежняя, и понять это можно
+		# было только по коду. Два файла об одной карте обязаны меняться вместе.
+		_progress_say("Streamable heights (.bin)", 0.955)
+		await get_tree().process_frame
+		_bake_stream_file(width, depth, new_data)
 		await _rebuild_preview_with_progress(0.96, 0.99)
 		_progress_say("Done", 1.0)
 		await get_tree().process_frame
