@@ -1275,6 +1275,10 @@ func _update_perf_panel(delta: float) -> void:
 			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
 			"вкл" if auto_fps else "ВЫКЛ"])
 	lines.append("узлов %d" % nodes)
+	# НОМЕР СБОРКИ — ради тестеров. Без него отчёт «у меня падает» не привязать к версии, а
+	# у беты это единственный способ понять, о какой сборке речь. Панель профиля для этого и
+	# годится: она открывается тапом по счётчику FPS, то есть тестеру достаточно одного жеста.
+	lines.append("сборка %s" % str(ProjectSettings.get_setting("application/config/version", "?")))
 	_perf_label.text = "\n".join(lines)
 
 func _render_method() -> String:
