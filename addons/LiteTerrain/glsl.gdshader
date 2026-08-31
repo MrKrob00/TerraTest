@@ -77,11 +77,10 @@ group_uniforms;
 // fewer vertices than pixels. The fragment stage keeps only what has to be per-pixel — the
 // noise and the tile texture.
 varying vec2  v_pixel_uv;    // quantised (floored to the grid) — for steady noise and grass
-varying vec2  v_tile_uv;     // SMOOTH — for the tile texture: the mip level comes from its
-                             // derivatives, and a quantised one would give stepped derivatives.
 varying vec3  v_base_col;
 varying float v_is_grass;
-varying vec2  v_world_xz;     // world XZ — for the per-cell corruption glitch in the fragment
+varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
+varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
 varying float v_corrupt;      // strength of the corrupted zone (0..1)
 
 float hash2D(vec2 p) {
@@ -93,12 +92,16 @@ float hash2D(vec2 p) {
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
-    v_tile_uv  = world_pos.xz / tile_world_size;                                  // smooth (texture + mip)
-    v_pixel_uv = floor(v_tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;            // quantised (noise / grass)
+    // По XZ и КВАНТОВАННО — это сетка ТРАВЫ: она растёт в вершинном этапе и только на пологом,
+    // поэтому проекции по стенке ей не нужно. Текстура и попиксельный шум считают свои UV во
+    // фрагменте (см. wall_uv там же).
+    vec2 tile_uv = world_pos.xz / tile_world_size;
+    v_pixel_uv = floor(tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+    v_wpos     = world_pos.xyz;
+    v_wnrm     = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
     // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
-    v_world_xz  = world_pos.xz;
     float cstate = 0.0;
     // Uniform branch: with corrupt_amount == 0 there is no vertex texture fetch at all.
     if (corrupt_amount > 0.001) {
@@ -152,10 +155,29 @@ void fragment() {
     vec3 base_col = v_base_col;
 
     // Per-pixel only: colour noise plus the tile texture. low_quality skips both to save fill.
+    //
+    // UV БЕРЁМ ПО ПЛОСКОСТИ, В КОТОРУЮ ГРАНЬ СМОТРИТ, а не всегда по XZ. Земля почти везде
+    // горизонтальна, и XZ ей подходит; но на стенке каньона или на скале нормаль ложится
+    // набок, XZ там вырождается — и текстура с попиксельным шумом растягиваются в вертикальные
+    // полосы. На отвесах это видно как гладкая смазь вместо камня.
+    //
+    // Плоскость выбираем ЖЁСТКО, а не смешиваем три проекции: полный трипланар — это три
+    // выборки текстуры на пиксель, а мы fill-bound на Adreno 610. Переключение приходится на
+    // грани круче 45°, где обе проекции дают почти одно и то же, поэтому шва не видно.
+    //
+    // И считаем это ВО ФРАГМЕНТЕ, а не в вершине: выбор на вершину означал бы, что у одного
+    // треугольника углы посчитаны в разных плоскостях, а интерполяция между ними — каша.
+    // Вершинный v_pixel_uv при этом остаётся прежним (по XZ) — на нём растёт трава, а трава
+    // и так бывает только на пологом.
     if (!low_quality) {
-        base_col = clamp(base_col + (hash2D(v_pixel_uv) - 0.5) * color_variation, 0.0, 1.0);
+        vec2 wall_uv = abs(v_wnrm.y) > 0.5
+                ? v_wpos.xz                                                  // пол и склоны
+                : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
+        wall_uv /= tile_world_size;
+        vec2 noise_uv = floor(wall_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+        base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
         if (texture_blend > 0.001) {
-            base_col = mix(base_col, texture(tile_texture, v_tile_uv).rgb, texture_blend);
+            base_col = mix(base_col, texture(tile_texture, wall_uv).rgb, texture_blend);
         }
     }
 
@@ -169,7 +191,7 @@ void fragment() {
     // it flicker) into cyan / magenta / a dark "bit". Patchy via a second hash, and it glows.
     EMISSION = vec3(0.0);
     if (v_corrupt > 0.01) {
-        vec2 cell = floor(v_world_xz / glitch_cell);
+        vec2 cell = floor(v_wpos.xz / glitch_cell);
         float t = floor(TIME * glitch_speed);
         float n = hash2D(cell + vec2(t * 1.7, t * 0.9));
         vec3 g = (n < 0.42) ? corrupt_cyan : (n < 0.84 ? corrupt_magenta : vec3(0.02, 0.02, 0.05));
