@@ -226,7 +226,7 @@ layout_mode = 2
 
 [node name="WeightIcon" type="Label" parent="Root/Main/RightPanel/RightVB/WeightRow"]
 layout_mode = 2
-text = "⚖"
+text = "MASS"
 
 [node name="WeightValue" type="Label" parent="Root/Main/RightPanel/RightVB/WeightRow"]
 unique_name_in_owner = true
@@ -243,24 +243,24 @@ theme_override_constants/separation = 24
 
 [node name="H1" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "👆 Tap a block — take it in hand"
+text = "Tap a block — take it in hand"
 
 [node name="H2" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🛒 SHOP — buy blocks"
+text = "SHOP — buy blocks"
 
 [node name="H3" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🔍 Search — filter by name"
+text = "Search — filter by name"
 
 [node name="H4" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🚗 Tap the vehicle — place a block"
+text = "Tap the vehicle — place a block"
 
 [node name="H5" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "✋ Drag — rotate camera"
+text = "Drag — rotate camera"
 
 [node name="H6" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "🤏 Two fingers — zoom"
+text = "Two fingers — zoom"

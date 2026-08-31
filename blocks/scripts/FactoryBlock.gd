@@ -129,6 +129,13 @@ func _factory_active() -> bool:
 	# а bool(null) роняет вызов в рантайме.
 	return vehicle != null and vehicle.get("anchored") == true
 
+## ГОТОВ ЛИ ПРИНЯТЬ ЕЩЁ ОДИН ПРЕДМЕТ. Спрашивают СНАРУЖИ, до того как отдавать (так авто-шахтёр
+## выбирает, кому вручить добычу). У обычного блока ответ — «ячейка пуста», но у станка с
+## внутренней очередью (процессор) он свой: занятость выхода не значит, что вход занят.
+## Поэтому вопрос отдельным методом, а не проверкой current_item у чужого блока.
+func can_accept() -> bool:
+	return _factory_active() and current_item == null
+
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active():
 		return false                      # без якоря цепочка стоит

@@ -510,7 +510,12 @@ var _vmenu_count: int = 0
 var _vmenu_vehicle: Node = null
 
 class RadialWheel extends Control:
-	var items: Array = []        # [[иконка, подпись], ...]
+	## [[КЛЮЧ РИСУНКА, подпись], ...]. Первый элемент — не текст, а имя глифа: иконки в этом
+	## проекте РИСУЮТСЯ (_draw), потому что шрифт не рендерит эмодзи — вместо значка выходил
+	## пустой квадрат. Тут стояли 📦 🔧 🛡 🎥, и это была моя ошибка: правило записано в
+	## CLAUDE.md ровно для таких случаев.
+	var items: Array = []
+	var _icon_at: Array = []     # центры иконок, посчитаны в _ready вместе с подписями
 	var hovered: int = -1
 	var outer := 175.0
 	var inner := 64.0
@@ -523,14 +528,7 @@ class RadialWheel extends Control:
 		for i in n:
 			var ang := -PI / 2 + TAU * float(i) / float(n)
 			var mid := c + Vector2(cos(ang), sin(ang)) * ((outer + inner) * 0.53)
-			var icon := Label.new()
-			icon.text = items[i][0]
-			icon.add_theme_font_size_override("font_size", 30)
-			icon.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			icon.size = Vector2(120, 36)
-			icon.position = mid - Vector2(60, 32)
-			icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			add_child(icon)
+			_icon_at.append(mid - Vector2(0.0, 12.0))   # рисуем сами, см. _draw_glyph
 			var txt := Label.new()
 			txt.text = items[i][1]
 			txt.add_theme_font_size_override("font_size", 14)
@@ -576,6 +574,43 @@ class RadialWheel extends Control:
 		draw_circle(c, inner, Color(0.05, 0.065, 0.095, 0.97))
 		draw_arc(c, inner, 0, TAU, 64, Color(0.42, 0.58, 0.76, 0.9), 3.5)
 		draw_arc(c, outer, 0, TAU, 64, Color(0, 0, 0, 0.35), 2.0)
+		for i in mini(items.size(), _icon_at.size()):
+			var col := Color(1.0, 0.85, 0.45) if i == hovered else Color(0.86, 0.93, 1.0)
+			_draw_glyph(String(items[i][0]), _icon_at[i], col)
+
+	## ЗНАЧКИ ДЕЙСТВИЙ, нарисованные по смыслу. Тонкая светлая обводка — тот же язык, что у
+	## AnchorIcon, RotIcon и остальных иконок проекта: рисуем контур, а не заливку, чтобы значок
+	## читался на любом фоне и не спорил с подсветкой сектора.
+	func _draw_glyph(kind: String, at: Vector2, col: Color) -> void:
+		var w := 2.0
+		match kind:
+			"inventory":                       # стрелка ВНИЗ в открытую коробку
+				var box := Rect2(at + Vector2(-11, -2), Vector2(22, 13))
+				draw_rect(box, col, false, w)
+				draw_line(at + Vector2(-11, -2), at + Vector2(-16, -8), col, w)
+				draw_line(at + Vector2(11, -2), at + Vector2(16, -8), col, w)
+				draw_line(at + Vector2(0, -14), at + Vector2(0, -5), col, w)
+				draw_line(at + Vector2(-5, -9), at + Vector2(0, -4), col, w)
+				draw_line(at + Vector2(5, -9), at + Vector2(0, -4), col, w)
+			"disassemble":                     # блок, распадающийся надвое
+				draw_rect(Rect2(at + Vector2(-13, -12), Vector2(11, 11)), col, false, w)
+				draw_rect(Rect2(at + Vector2(3, 1), Vector2(11, 11)), col, false, w)
+				draw_line(at + Vector2(-2, 1), at + Vector2(4, -5), col, 1.0)
+				draw_line(at + Vector2(-6, 5), at + Vector2(0, -1), col, 1.0)
+			"shield":                          # щит: плечи и остриё
+				var pts := PackedVector2Array([
+					at + Vector2(0, -13), at + Vector2(12, -8), at + Vector2(12, 2),
+					at + Vector2(0, 13), at + Vector2(-12, 2), at + Vector2(-12, -8)])
+				for k in pts.size():
+					draw_line(pts[k], pts[(k + 1) % pts.size()], col, w)
+			"camera":                          # корпус камеры с объективом
+				draw_rect(Rect2(at + Vector2(-13, -8), Vector2(21, 16)), col, false, w)
+				draw_arc(at + Vector2(-2, 0), 4.5, 0, TAU, 20, col, w)
+				draw_line(at + Vector2(8, -5), at + Vector2(14, -9), col, w)
+				draw_line(at + Vector2(8, 5), at + Vector2(14, 9), col, w)
+				draw_line(at + Vector2(14, -9), at + Vector2(14, 9), col, w)
+			_:
+				draw_arc(at, 9.0, 0, TAU, 20, col, w)
 
 # ── Кнопка машины: 2D, ПОВЕРХ ВСЕГО ───────────────────────────────────────────
 # Была Area3D со значком в мире, и обе её беды росли из одного корня — она жила В СЦЕНЕ:
@@ -739,10 +774,10 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	wheel.outer = VMENU_OUTER
 	wheel.inner = VMENU_INNER
 	wheel.items = [
-		["📦", "To inventory"],
-		["🔧", "Disassemble"],
-		["🛡", "Defense: OFF" if defense_on else "Defense: ON"],
-		["🎥", "Control"],           # сменить камеру на эту машину/станцию
+		["inventory", "To inventory"],
+		["disassemble", "Disassemble"],
+		["shield", "Defense: OFF" if defense_on else "Defense: ON"],
+		["camera", "Control"],           # сменить камеру на эту машину/станцию
 	]
 	wheel.position = center - Vector2(VMENU_OUTER, VMENU_OUTER)
 	_vmenu.add_child(wheel)
