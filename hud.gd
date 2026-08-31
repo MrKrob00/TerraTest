@@ -10,6 +10,10 @@ const TECH_UI := preload("res://tech_ui.tscn")
 @onready var current_vehicle = $"..".current_vehicle
 
 # ── Меню (левый верх) ────────────────────────────────────────────────────────
+## Площадь счётчика FPS: он же кнопка панели профиля, и мерить её надо пальцем, а не текстом.
+## Шире, но НЕ выше прежнего: метка ловит тапы (mouse_filter STOP), то есть это ещё и мёртвая
+## зона для постройки — растить её вниз, в рабочую часть экрана, нельзя.
+const FPS_HIT := Vector2(240.0, 72.0)
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
 const MENU_PAD: float = 12.0                # отступ от углов экрана
 var _menu_btn: Button
@@ -130,7 +134,13 @@ func _relayout() -> void:
 		jc.position = Vector2(screen.x - 117, 141)         # право-сверху (реген у базы 1280 = x 1163)
 	var fps := get_node_or_null("Label") as Control
 	if fps:
-		fps.position = Vector2(screen.x * 0.5 - 75.0, 4.0) # по центру сверху
+		# ПЛОЩАДЬ ПОД ПАЛЕЦ, А НЕ ПОД ТЕКСТ. Метка приехала из сцены размером 149×67, а шрифт у
+		# неё 48: цифры вылезали за свой прямоугольник, и тапалось только то, что попало внутрь —
+		# отсюда «кликается через раз». Плюс y = 4 это самая кромка экрана, где на телефоне тап
+		# перехватывает система. Задаём размер сами (метка лежит прямо в CanvasLayer, контейнер
+		# её не перезапишет) и опускаем на десяток пикселей.
+		fps.size = Vector2(FPS_HIT.x, FPS_HIT.y)
+		fps.position = Vector2(screen.x * 0.5 - FPS_HIT.x * 0.5, 10.0)   # по центру сверху
 
 # ── Круглый индикатор энергии (аккумулятор + %) ────────────────────────────────
 # Рисуется нодами: тёмный круг, дуга-прогресс по окружности (заполненность аккумуляторов),
@@ -1168,18 +1178,12 @@ func _toggle_perf_panel() -> void:
 func _build_perf_panel() -> void:
 	_perf_panel = _lift(%PerfPanel)
 	_perf_label = %PerfText
-	# The panel TAKES taps: tapping it runs the resolution test (see _cycle_render_scale).
-	# It only exists while profiling, so covering that corner of the screen costs nothing.
-	# Фильтр мыши у него нодовый (STOP по умолчанию у Control), а вот ОБРАБОТЧИК — только тут:
-	# сигнал на лямбду в сцене не сохранить.
-	# Гасим событие через ВЬЮПОРТ, а не accept_event(): лямбда живёт в hud.gd, а он CanvasLayer,
-	# и метода Control'а у неё нет вовсе — скрипт из-за этого не парсился целиком, то есть HUD
-	# не грузился. Панель — Control, но self внутри лямбды это по-прежнему HUD.
-	_perf_panel.gui_input.connect(func(e: InputEvent) -> void:
-		if (e is InputEventScreenTouch and e.pressed) \
-				or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
-			_cycle_render_scale()
-			get_viewport().set_input_as_handled())
+	# ДВЕ ПОДПИСАННЫЕ КНОПКИ вместо «тапни по панели». Раньше панель ловила тап целиком и по
+	# нему меняла разрешение 3D, а закрывалась она вторым тапом по счётчику FPS — то есть оба
+	# действия были невидимыми жестами, и «закрыть вообще хз» было честной оценкой. Тестеру,
+	# который открыл панель впервые, должно быть видно, чем её закрыть.
+	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
+	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
 
 
 func _update_perf_panel(delta: float) -> void:
@@ -1270,7 +1274,7 @@ func _update_perf_panel(delta: float) -> void:
 	# settings: without this line the game just stays blurry later and nobody remembers why.
 	var main_node := get_node_or_null("/root/Main")
 	var auto_fps: bool = main_node != null and main_node.get("auto_fps") == true
-	lines.append("экран %dx%d · 3D scale %.2f → %dx%d · авто-FPS %s (тап по панели — сменить)"
+	lines.append("экран %dx%d · 3D scale %.2f → %dx%d · авто-FPS %s"
 			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
 			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
 			"вкл" if auto_fps else "ВЫКЛ"])
