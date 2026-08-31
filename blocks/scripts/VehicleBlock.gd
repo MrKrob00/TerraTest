@@ -313,6 +313,16 @@ func _set_shadows(n: Node, on: bool) -> void:
 		_set_shadows(c, on)
 
 func hurt(damage: int = 10) -> void:
+	# Debug switch (Main → Отладка → Игрок): blocks of the player's machines take no damage.
+	# Guarded here, at the single door damage comes through — a weapon-side check would miss the
+	# drill, the AOE from block_fx and every future source. A loose block in the world has no
+	# machine over it and stays breakable: "invulnerable" is about the player's build.
+	if damage > 0 and G.debug(&"player_invulnerable", false):
+		var body: Node = _root_body()
+		# `== 0` on the Variant, not int(...): a body without the field returns null, and int(null)
+		# throws right here (the same trap as bool(null), see CLAUDE.md).
+		if body != null and body.get("faction") == 0:
+			return
 	current_hp -= damage
 	# Оверлей хп строим ДО хит-эффекта: _local_aabb внутри hp_overlay иначе прихватил бы
 	# только что заспавненные пластины вспышки (mode 2) и раздул бы коробку навсегда.

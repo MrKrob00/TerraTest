@@ -167,6 +167,12 @@ func energy_produce(amount: float) -> void:
 # Порядок трат: свежая выработка → солнечный буфер → аккумуляторы. Сначала тратится то, что
 # всё равно пропадёт (выработка этого тика и буфер, который исчезнет со снятием якоря).
 func energy_consume(amount: float) -> float:
+	# Debug switch (Main → Отладка → Игрок): the player's machines pay nothing. Guarded at the
+	# single till — shield, regen, factory and miner all ask through here, so none of them needs
+	# its own check. Enemies keep paying: a tower whose shield never runs out cannot be cracked
+	# open, and that is the only way to take one down.
+	if amount > 0.0 and get("faction") == 0 and G.debug(&"infinite_energy", false):
+		return amount
 	var given: float = 0.0
 	var from_prod: float = minf(amount, _tick_prod)
 	_tick_prod -= from_prod

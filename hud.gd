@@ -88,6 +88,11 @@ func _ready() -> void:
 					or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
 				_toggle_perf_panel()
 				get_viewport().set_input_as_handled())
+	# Debug switch (Main → Отладка → Мир): open the profiler right away. Through the same toggle
+	# and DEFERRED — the panel lives in the scene and is bound by _build_perf_panel, which pulls
+	# it out with %-names; calling it mid-_ready would race the rest of the HUD binding.
+	if G.debug(&"profiler_on_start", false):
+		_toggle_perf_panel.call_deferred()
 
 # Пере-раскладка построенных в коде элементов HUD под текущий размер экрана. Всё, что
 # прибито к краям (меню, кнопка режима, панель поворота, кнопка якоря, «шар» блоков), пересчитываем

@@ -66,6 +66,10 @@ func _process(delta: float) -> void:
 	if _t > 0.0:
 		return
 	_t = TICK
+	# Debug switch (Main → Отладка → Враги). Cuts the whole system off, layout included: with the
+	# points never built, nothing materialises and nothing is written to the world save either.
+	if not G.debug(&"outposts"):
+		return
 	if not _ready_done:
 		_build_points()
 		return
