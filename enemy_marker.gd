@@ -21,6 +21,13 @@ const COL := Color(1.0, 0.32, 0.30)
 ## Цвет НАЗНАЧЕННОЙ цели: приказ «бей вот этого» обязан быть виден, иначе игрок не понимает,
 ## сработал тап или нет и по кому сейчас работают орудия.
 const COL_MARKED := Color(1.0, 0.85, 0.2)
+## СЮЖЕТНЫЙ УЧАСТНИК — свой цвет и своя дальность. Его ставит задание (spawn_at помечает такие
+## машины мета-флагом "story"), и НАЙТИ его — часть задания: игрок возвращается к нему после
+## гибели с другой стороны карты, а обычная метка к тому моменту давно погасла по дальности.
+## Отличать его от прочих врагов надо и цветом: в поле, где едут двое, «который из них
+## квестовый» иначе не прочесть.
+const COL_QUEST := Color(0.45, 0.85, 1.0)
+const SHOW_DISTANCE_QUEST := 600.0
 
 # Имя собираем из двух списков по идентификатору узла: одна и та же машина всегда
 # называется одинаково, а сохранять имя никуда не нужно.
@@ -134,7 +141,9 @@ func _tick_marker(delta: float) -> void:
 	# большинство их невидимо — корень для них считался впустую. Настоящее расстояние
 	# берём ниже, уже только для видимых: там оно нужно значением, а не сравнением.
 	var d2: float = (cc.current_vehicle as Node3D).global_position.distance_squared_to(global_position)
-	visible = d2 <= SHOW_DISTANCE * SHOW_DISTANCE and d2 >= HIDE_DISTANCE * HIDE_DISTANCE
+	var quest: bool = vehicle != null and is_instance_valid(vehicle) and vehicle.has_meta("story")
+	var show_d: float = SHOW_DISTANCE_QUEST if quest else SHOW_DISTANCE
+	visible = d2 <= show_d * show_d and d2 >= HIDE_DISTANCE * HIDE_DISTANCE
 	if not visible:
 		return
 	var d: float = sqrt(d2)
@@ -146,15 +155,17 @@ func _tick_marker(delta: float) -> void:
 	# мы её до 220: на всей дальней половине дистанции имя опять сжималось в точку и читалось
 	# только вблизи. Теперь потолок ВЫВЕДЕН из SHOW_DISTANCE и по построению не даёт метке
 	# мельчать нигде в зоне видимости.
-	var k: float = clampf(d / NAME_REF_DIST, 0.55, SHOW_DISTANCE / NAME_REF_DIST)
+	var k: float = clampf(d / NAME_REF_DIST, 0.55, show_d / NAME_REF_DIST)
 	scale = Vector3.ONE * k
 	# Лёгкая пульсация ромба — метка живая, глаз её находит в куче деревьев. У назначенной
 	# цели пульсация ЗАМЕТНЕЕ и цвет другой: её видно среди прочих врагов сразу.
 	_t += delta
 	var marked: bool = _is_marked(cc.current_vehicle)
-	var base: Color = COL_MARKED if marked else COL
-	var amp: float = 0.35 if marked else 0.15
-	_pin.modulate = base * (0.85 + amp * sin(_t * (6.0 if marked else 3.0)))
+	# Порядок важен: НАЗНАЧЕННАЯ цель важнее сюжетной. Игрок сам ткнул в эту машину — значит
+	# сейчас он смотрит именно на неё, и подменять его приказ пометкой задания нельзя.
+	var base: Color = COL_MARKED if marked else (COL_QUEST if quest else COL)
+	var amp: float = 0.35 if marked else (0.3 if quest else 0.15)
+	_pin.modulate = base * (0.85 + amp * sin(_t * (6.0 if marked else (5.0 if quest else 3.0))))
 	_name.modulate = base
 	# Полоска под именем живёт тем же цветом: назначенная цель желтеет целиком, а не наполовину.
 	if _plate_line != null:

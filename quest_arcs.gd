@@ -845,6 +845,14 @@ var _ev_cool: Dictionary = {}    # id события → сколько ещё �
 ## Куда ведёт компас по этому событию. ОДНА точка входа на все события с координатами:
 ## разбирать их по одному в компасе значило бы вспоминать про него при каждом новом.
 func quest_point(ev: String) -> Variant:
+	# ЖИВОЙ УЧАСТНИК ВАЖНЕЕ ТОЧКИ, и это не мелочь. Точка выбирается ОДИН РАЗ, при объявлении,
+	# а враги ездят: к началу драки противник уже не там, а после гибели игрока (возрождение
+	# уводит его в сторону) метка и вовсе вела в пустое поле — «квесты со спавном врагов без
+	# метки». Пока участник жив, метка едет за НИМ, и только когда живых не осталось —
+	# возвращаемся к точке.
+	var live = _live_target(ev)
+	if live != null:
+		return live
 	match ev:
 		"quest_salvage_1": return _salvage_point
 		"quest_duel_1":    return _duel_point
@@ -856,6 +864,33 @@ func quest_point(ev: String) -> Variant:
 	if _tower_point.has(key):
 		return _tower_point[key]
 	return _ev_point.get(key)
+
+## Позиция ближайшего ЖИВОГО участника квеста или null. Участники лежат по своим полям (у
+## каждой ветки они свои), поэтому здесь один список на все случаи: добавить новый квест со
+## спавном — значит дописать сюда строку, иначе его метка снова будет вести в поле.
+func _live_target(ev: String) -> Variant:
+	var key := _ev_key(ev)
+	var list: Array = []
+	list.append_array(_ev_mobs.get(key, []))
+	if _tower_node.has(key):
+		list.append(_tower_node[key])
+	match key:
+		"hold":      list.append_array(_hold)
+		"salvage":   list.append(_salvage_guard)
+		"duel":      list.append_array([_duel_a, _duel_b])
+		"arc_radar": list.append(_thief)          # «вор» с радаром — тоже цель квеста
+	var p: Node3D = _player()
+	var best: Variant = null
+	var best_d: float = INF
+	for m in list:
+		if m == null or not is_instance_valid(m) or not (m is Node3D):
+			continue
+		var pos: Vector3 = (m as Node3D).global_position
+		var d: float = pos.distance_squared_to(p.global_position) if p != null else 0.0
+		if d < best_d:
+			best_d = d
+			best = pos
+	return best
 
 ## Ключ события по имени его стадии: "quest_gang_1" → "gang". Точка и участники общие для
 ## обеих стадий, поэтому и ключ должен быть общим.

@@ -101,7 +101,9 @@ func _physics_process(delta: float) -> void:
 # Первый подключённый приёмник со свободным слотом.
 func _free_target() -> FactoryBlock:
 	for t in next_blocks:
-		if t != null and is_instance_valid(t) and t.current_item == null:
+		# Спрашиваем can_accept(), а не current_item: у процессора внутри очередь на три клетки,
+		# и «выход занят» там не значит «брать не готов».
+		if t != null and is_instance_valid(t) and t.can_accept():
 			return t
 	return null
 
