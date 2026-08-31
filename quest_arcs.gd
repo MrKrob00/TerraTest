@@ -49,6 +49,10 @@ func _tick_arcs(delta: float) -> void:
 			"quest_line_2":        _line_2(q)
 			"quest_hold_1":        _hold_1(q)
 			"quest_hold_2":        _hold_2(q)
+			"quest_tower_1":       _tower_1(q, TOWER_WATCH)
+			"quest_tower_2":       _tower_2(q, TOWER_WATCH)
+			"quest_sam_1":         _tower_1(q, TOWER_SAM)
+			"quest_sam_2":         _tower_2(q, TOWER_SAM)
 			"quest_duel_1":        _duel_1(q)
 			"quest_duel_2":        _duel_2(q)
 			"quest_gang_1":        _gang_1(q)
@@ -559,6 +563,106 @@ func _hold_2(q: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 	_hold.clear()
 
+# ── ВЫШКА ПОД ЩИТОМ: Charlie Watchtower и SAM Site Ridge ────────────────────
+# ОДНА реализация на два квеста, и это не экономия строк: они и по замыслу одно и то же —
+# цель под куполом, купол держат зарядные башни вокруг. Разными их делают ровно три числа
+# (пресет вышки, сколько башен, тексты), и держать под это две копии значило бы однажды
+# починить одну и забыть вторую.
+#
+# ГЛАВНОЕ: связка «башни держат щит» СОБИРАЕТСЯ САМА, обычными правилами игры. У вышки нет
+# панелей (blocks._layout_shielded_tower), значит своей выработки ноль; зарядные башни рядом
+# льют в неё энергию блоком WIRELESS_CHARGER. Квест не знает про щит вообще ничего — он
+# ставит машины и ждёт, пока вышка умрёт. Убил башни → у вышки кончается запас → купол гаснет
+# сам, и её можно ломать. Игроку это видно по лучам зарядки, а не по строчке в журнале.
+const TOWER_DIST := 260.0      # далеко: это поездка, а не поворот головы
+const TOWER_REACH := 55.0      # ближе этого считаем, что доехал
+## Радиус кольца зарядных башен. Считается, а не подбирается на глаз: башня обязана
+## ДОТЯГИВАТЬСЯ до аккумулятора вышки (wireless_charger.RANGE = 6 м) и при этом стоять СНАРУЖИ
+## купола (shield.SHIELD_RADIUS = 4 м) — иначе её саму не расстрелять, а в этом вся задача.
+## На 5.5 м зарядник тянется 4.9 м до ближнего аккумулятора и стоит в полутора метрах от купола.
+const TOWER_RING := 5.5
+## Пресет вышки, сколько зарядных башен, и что говорит Система, когда игрок доехал.
+const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 3, "award": G.Block.SHIELD,
+		"say": "That dome is not the tower's own. Something else is paying for it."}
+const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.ROCKET,
+		"say": "Same trick, dug in harder. The batteries will not wait for you to think."}
+
+var _tower_point: Dictionary = {}      # ключ → Vector3, куда ехать
+var _tower_node: Dictionary = {}       # ключ → сама вышка
+var _tower_dead: Dictionary = {}       # ключ → true, если вышку уже добили
+
+func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
+	var key: String = String(cfg["key"])
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if not _tower_point.has(key):
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * TOWER_DIST, 0.0, sin(ang) * TOWER_DIST)
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_tower_point[key] = wp
+	var at: Vector3 = _tower_point[key]
+	# Ставим ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ. Иначе вышка с башнями живёт на другом конце карты:
+	# зарядники тикают, ИИ ищет цели, а смотреть на это некому — то же правило, по которому
+	# спавнер не держит врагов за горизонтом.
+	if p.global_position.distance_squared_to(at) > TOWER_REACH * TOWER_REACH:
+		return
+	if not _tower_node.has(key):
+		if not _tower_build(key, cfg, at):
+			return
+		Dialogue.say("System", String(cfg["say"]))
+	Q.report(String(q["event"]), 1)
+
+func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
+	var key: String = String(cfg["key"])
+	# СОСТОЯНИЕ МОГЛО ПОТЕРЯТЬСЯ (перезаход: квестовые машины в сейв не идут). Пустая ссылка
+	# сама по себе не победа — то же правило, что у событий: ставим постройку заново.
+	if not _tower_node.has(key):
+		if _tower_point.has(key):
+			var p: Node3D = _player()
+			var at: Vector3 = _tower_point[key]
+			if p != null and p.global_position.distance_squared_to(at) <= TOWER_REACH * TOWER_REACH:
+				_tower_build(key, cfg, at)
+		return
+	if not bool(_tower_dead.get(key, false)):
+		return
+	# Вышка мертва. Зарядные башни, если ещё стоят, остаются в мире обычными базами: добивать
+	# их ради галочки незачем, а бросать посреди боя — тем более.
+	_award(int(cfg["award"]))
+	Dialogue.say("System", "Ridge is clear. The hardware it was guarding is yours.")
+	Q.report(String(q["event"]), 1)
+	_tower_node.erase(key)
+	_tower_dead.erase(key)
+
+## Собрать точку: вышка в центре, зарядные башни кольцом вокруг неё.
+##
+## Радиус кольца — НЕ ВКУС: у зарядника дальность 6 м (wireless_charger.RANGE), и башня должна
+## дотягиваться до аккумулятора вышки, но стоять СНАРУЖИ купола (радиус 4 м), иначе её не
+## расстрелять — а в этом вся задача.
+func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null or not sp.has_method("spawn_at"):
+		return false
+	var tower = sp.spawn_at(at, int(cfg["preset"]), 1, true)
+	if tower == null:
+		return false
+	if tower.has_signal("died"):
+		tower.died.connect(_on_tower_died.bind(key))
+	_tower_node[key] = tower
+	# Зарядные башни ссылками НЕ ДЕРЖИМ намеренно: квест про них ничего не спрашивает. Живы они
+	# или нет, видно по самому щиту — а список, который никто не читает, однажды разойдётся с
+	# миром (башню убрали, ссылка осталась) и начнёт врать.
+	var n: int = int(cfg["guards"])
+	for i in n:
+		var ang: float = TAU * float(i) / float(n)
+		var wp: Vector3 = at + Vector3(cos(ang) * TOWER_RING, 0.0, sin(ang) * TOWER_RING)
+		wp.y = G.ground_y(wp, at.y)
+		sp.spawn_at(wp, 18, 1, true)
+	return true
+
+func _on_tower_died(_who, key: String) -> void:
+	_tower_dead[key] = true
+
 # ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
 # Часть 1 — доехать до точки. Часть 2 — победить.
 #
@@ -745,7 +849,13 @@ func quest_point(ev: String) -> Variant:
 		"quest_salvage_1": return _salvage_point
 		"quest_duel_1":    return _duel_point
 		"quest_line_1":    return _line_point
-	return _ev_point.get(_ev_key(ev))
+	# Вышки под щитом держат свои точки в отдельном словаре, но ключ у них ТОТ ЖЕ, что у
+	# событий ("quest_tower_1" → "tower"), поэтому перечислять их по одной здесь не нужно —
+	# ровно то, от чего предостерегает комментарий у компаса.
+	var key := _ev_key(ev)
+	if _tower_point.has(key):
+		return _tower_point[key]
+	return _ev_point.get(key)
 
 ## Ключ события по имени его стадии: "quest_gang_1" → "gang". Точка и участники общие для
 ## обеих стадий, поэтому и ключ должен быть общим.
