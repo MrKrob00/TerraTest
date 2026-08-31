@@ -54,6 +54,11 @@ func _process(delta: float) -> void:
 	_tick()
 
 func _tick() -> void:
+	# Debug switch (Main → Отладка → Враги). Checked in _tick and not in _process on purpose: a
+	# raid already announced has to finish its countdown, otherwise the warning hangs on screen
+	# forever with nobody coming.
+	if not G.debug(&"raids"):
+		return
 	_squad = _squad.filter(func(e): return is_instance_valid(e))
 	if not _squad.is_empty():
 		return                       # предыдущая волна ещё жива — второй сверху не шлём

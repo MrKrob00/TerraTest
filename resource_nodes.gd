@@ -189,6 +189,11 @@ func _init_veins(positions: Array[Vector3]) -> void:
 		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
 		var coal: bool = randf() < coal_chance
 		var ore_type: int = ore_colors.size() if coal else _metal_for(p, map, can_biome)
+		# ОТЛАДКА: выключенный тип НЕ ПОДМЕНЯЕТСЯ другим, жила просто не кладётся. Подмена
+		# соврала бы про плотность: на карте оказалось бы столько же жил, только все одного
+		# типа, и «сколько тут титанита» стало бы не проверить.
+		if not _ore_enabled(ore_type, coal):
+			continue
 		_data.append({
 			"pos": p,
 			"scene": resource_nodes.pick_random() if not resource_nodes.is_empty() else scene,
@@ -214,6 +219,15 @@ func _init_veins(positions: Array[Vector3]) -> void:
 ## идеально, читается как таблица, а не как местность, и случайная богатая жила под боком —
 ## это маленький подарок, ради которого игрок и смотрит по сторонам.
 const WILD_CHANCE := 0.15
+
+## Разрешён ли этот тип жилы отладочными флажками Main. Порядок металлов тот же, что в
+## G.Metal и в ore_colors: феррит, куприт, силикат, титанит; уголь идёт следом отдельным типом.
+const ORE_FLAGS := [&"ore_ferrite", &"ore_cuprite", &"ore_silicate", &"ore_titanite"]
+
+func _ore_enabled(ore_type: int, coal: bool) -> bool:
+	if coal:
+		return G.debug(&"ore_coal")
+	return G.debug(ORE_FLAGS[ore_type]) if ore_type < ORE_FLAGS.size() else true
 
 func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
 	var types: int = maxi(ore_colors.size(), 1)

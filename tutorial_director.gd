@@ -57,6 +57,12 @@ func _ready() -> void:
 	Q.tutorial_finished.connect(_on_tutorial_finished)
 	set_process(true)
 	_on_quests_changed()
+	# Debug switch (Main → Отладка → Мир). Closing the steps through skip_tutorial, not by
+	# refusing to show them: the rest of the game asks Q.tutorial_active() — the enemy spawner
+	# keeps the world empty, the story waits for tutorial_finished — so a walkthrough merely
+	# hidden would leave the world frozen with no way out of it.
+	if not G.debug(&"tutorial") and Q.tutorial_active():
+		Q.skip_tutorial()
 
 # ── Текущий шаг ──────────────────────────────────────────────────────────────
 func _on_quests_changed() -> void:

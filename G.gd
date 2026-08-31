@@ -808,6 +808,27 @@ func research(bt: int) -> bool:
 const PROGRESS_PATH := "user://progress.json"
 var _progress_dirty := false
 
+# ══════════════════════════════════════════════════════════════════════════════
+# ОТЛАДОЧНЫЕ ФЛАГИ (список — на узле Main, см. его группу «Отладка»)
+# ══════════════════════════════════════════════════════════════════════════════
+# Спрашивают их ОТСЮДА, а не у Main напрямую, по двум причинам. Первая: половина читателей —
+# жилы, спавнер, ИИ врага, рейды — обязана работать и там, где Main нет вовсе (тестовая сцена,
+# редактор, ранний кадр загрузки), и «узла нет» обязано значить «веди себя как обычно», а не
+# «выключено». Вторая: путь к узлу знает одно место, а не десять.
+var _dbg_main: Node = null
+
+## Значение отладочного флага. `def` — что вернуть, если отладка выключена или спросить не у
+## кого; для «кусков мира» это true (всё на месте), для поблажек игроку — false.
+func debug(flag: StringName, def: bool = true) -> bool:
+	if _dbg_main == null or not is_instance_valid(_dbg_main):
+		_dbg_main = get_node_or_null("/root/Main")
+	if _dbg_main == null or _dbg_main.get("debug_overrides") != true:
+		return def
+	var v = _dbg_main.get(flag)
+	# Не bool(v): у узла без такого поля get() возвращает null, а bool(null) роняет вызов
+	# в рантайме (см. грабли GDScript в CLAUDE.md).
+	return v if v is bool else def
+
 func mark_progress_dirty() -> void:
 	if _progress_dirty:
 		return
