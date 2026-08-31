@@ -26,6 +26,26 @@ extends FactoryBlock
 ## Секунд на одну руду. Бур с руки достаёт из живой жилы пять штук за полторы секунды и ждёт
 ## пять; шахтёр медленнее, зато сам и без перерыва.
 @export var mine_interval: float = 2.0
+
+# ── КАЧАЛКА ──────────────────────────────────────────────────────────────────
+# Модель шахтёра — это станок-качалка: кривошип, шатун, коромысло и бур в лунку, подвешенные
+# на костях (Skeleton3D в сцене). Анимацию к ним не выдумываем: она уже сделана художником в
+# Blender и лежит в objects/Assets.glb (действие Armature.001Action, 2.5 с). Оттуда её ключи
+# перенесены в blocks/scenes/auto_miner_pump.tres — четыре трека поворота на четыре кости,
+# которые реально двигаются (пятая, Bone.003, в действии стоит на месте, и трека у неё нет).
+#
+# ДВИЖЕНИЕ = РАБОТА, И ЭТО ГЛАВНОЕ ПРАВИЛО. Качалка ходит РОВНО тогда, когда цикл добычи
+# прошёл целиком: есть энергия, есть занятая жила, есть куда деть руду. Крутящаяся вхолостую
+# машина врёт игроку дважды — она и «работает», и не даёт понять, почему нет руды; замершая
+# сразу показывает, что чего-то не хватает, и остаётся посмотреть, чего именно.
+const ANIM_LEN := 2.5
+## Дальше этого качалку останавливаем: рига в два метра за сотню метров не разглядеть, а
+## анимация тянет за собой пересчёт поз скелета и всех BoneAttachment3D каждый кадр. Гасим
+## ПО РАССТОЯНИЮ, а не по направлению взгляда: правило проекта — ближний пузырь активен в любую
+## сторону, иначе обернулся и увидел замершую машину, которая «только что работала».
+const RIG_VIEW_DIST := 120.0
+@onready var _anim: AnimationPlayer = get_node_or_null("AnimationPlayer")
+var _rig_on: bool = false
 ## Энергии в секунду. 12 — это две солнечные панели (SOLAR_RATE 6.0 у каждой).
 @export var energy_per_sec: float = 12.0
 ## Как далеко под собой искать жилу и в каком радиусе подбирать выпавшее.
@@ -40,6 +60,7 @@ var _vein_retry: float = 0.0
 
 func _physics_process(delta: float) -> void:
 	if not _factory_active():
+		_set_rig(false)
 		return
 	_t -= delta
 	if _t > 0.0:
@@ -50,17 +71,23 @@ func _physics_process(delta: float) -> void:
 	var target: FactoryBlock = _free_target()
 	var before: Array = _loose_resources()
 	if target == null and before.size() >= GROUND_LIMIT:
+		_set_rig(false)
 		return
 	# 2. Энергия. Списываем за весь цикл сразу; не хватило — цикл пропущен.
 	if not _take_energy():
+		_set_rig(false)
 		return
 	# 3. Жила.
 	var vein: Node3D = _find_vein(delta)
 	if vein == null or not vein.has_method("mine_for_claimer"):
+		_set_rig(false)
 		return
 	# Что уже валяется рядом, мы запомнили ВЫШЕ: новым будет то, чего в том списке нет.
 	if not vein.mine_for_claimer(self):
+		_set_rig(false)
 		return                            # жилу занял кто-то другой или она вдруг ожила
+	# Цикл прошёл целиком — качалка ходит (если есть кому на неё смотреть).
+	_set_rig(_seen_by_player())
 	if target == null:
 		return                            # руда осталась у жилы — её подберут коллектор или игрок
 	# Жила штампует руду сразу в _eject_one, так что искать можно тем же кадром.
@@ -145,6 +172,35 @@ func _loose_resources() -> Array:
 					and global_position.distance_squared_to((c as Node3D).global_position) <= pickup_radius * pickup_radius:
 				out.append(c)
 	return out
+
+## Пуск и остановка качалки. Плеер трогаем ТОЛЬКО НА СМЕНЕ состояния: _physics_process зовётся
+## каждый физкадр, и play() на работающей анимации сбрасывал бы её в начало — вместо хода
+## качалки получилась бы дрожь на первом кадре цикла.
+##
+## Останавливаем pause(), а не stop(): качалка замирает там, где её застали, и с того же места
+## продолжает, когда работа возобновится. stop() отбрасывал бы её в исходную позу, и каждый
+## перебой энергии выглядел бы как рывок.
+func _set_rig(on: bool) -> void:
+	if on == _rig_on or _anim == null:
+		return
+	_rig_on = on
+	if on:
+		# Темп СЛЕДУЕТ ЗА ПРОИЗВОДСТВОМ: один проход анимации = одна руда. Число одно
+		# (mine_interval), и если его поменять в инспекторе, качалка поедет соответственно —
+		# иначе визуальный ритм и реальный разъедутся, и станок будет махать вхолостую.
+		_anim.speed_scale = ANIM_LEN / maxf(mine_interval, 0.05)
+		_anim.play("pump")
+	else:
+		_anim.pause()
+
+## Есть ли кому смотреть. Камеру спрашиваем у вьюпорта — ту же, по которой рельеф считает LOD;
+## своей ссылки на игрока блоку не нужно.
+func _seen_by_player() -> bool:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return true
+	return cam.global_position.distance_squared_to(global_position) \
+			<= RIG_VIEW_DIST * RIG_VIEW_DIST
 
 ## Блока не стало (снесли, взорвали, разобрали базу) — жила снова свободна и начинает отдых.
 ## Через NOTIFICATION_PREDELETE, а не tree_exiting: блок ВРЕМЕННО выходит из дерева при
