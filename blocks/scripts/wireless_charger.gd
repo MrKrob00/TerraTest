@@ -1,8 +1,15 @@
 extends VehicleBlock
-# WIRELESS CHARGER — переливает энергию в аккумулятор ДРУГОЙ машины игрока.
+# WIRELESS CHARGER — переливает энергию в аккумулятор ДРУГОЙ машины СВОЕЙ ФРАКЦИИ.
 #
 # Свою машину игнорирует намеренно: внутри одной машины энергия и так общая
 # (MachineBody.energy_produce/consume), заряжать самого себя нечего.
+#
+# «СВОЕЙ ФРАКЦИИ», А НЕ «ИГРОКА»: раньше здесь было зашито faction == 0, то есть блок работал
+# только в руках игрока. Это ровно та ловушка, о которой предупреждает CLAUDE.md, — механика,
+# которой у врага молча нет. Блоки у нас общие: враг ездит на тех же колёсах и стреляет из тех
+# же пушек, и заряжать своих он тоже должен уметь. На этом стоит вышка под щитом (квесты
+# Watchtower и SAM): щит держат зарядные башни вокруг неё, и держат они его САМИ, обычным
+# переливом энергии, а не специальным кодом квеста.
 #
 # Получателю ОБЯЗАТЕЛЕН аккумулятор — без него энергию некуда положить: ёмкость машины
 # складывается из батарей, и у машины без них energy_cap() равен нулю, то есть перелив ушёл
@@ -76,12 +83,14 @@ func _find_battery(mine: Node) -> Node3D:
 	# В КВАДРАТЕ: сравниваем с distance_squared_to. Здесь стояло само RANGE, то есть радиус
 	# на деле был √6 ≈ 2.4 м — машины почти вплотную, и зарядка «не работала».
 	var best_d2: float = RANGE * RANGE
+	var my_f = mine.get("faction")
+	var mine_faction: int = int(my_f) if my_f != null else 0
 	for v in vehicles.get_children():
 		if v == mine or not (v is Node3D) or not is_instance_valid(v):
 			continue
 		var f = v.get("faction")
-		if f == null or int(f) != 0:
-			continue                      # только машины ИГРОКА
+		if f == null or int(f) != mine_faction:
+			continue                      # только машины СВОЕЙ фракции
 		var blocks: Node = v.get_node_or_null("blocks")
 		if blocks == null:
 			continue

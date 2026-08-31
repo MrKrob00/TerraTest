@@ -546,19 +546,38 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 ## Помечается как сюжетный: уборка спящих не должна унести участника события, пока игрок до
 ## него едет. В общий поток он при этом попадает как обычный враг — считается, засыпает,
 ## подчиняется лимиту боя.
-func spawn_at(pos: Vector3, preset: int, faction_id: int = 1) -> Node3D:
+## `as_base = true` — не машина, а ПОСТРОЙКА: замороженный корпус, раскладка без кабины,
+## присмотр спавнера. Флаг обязан встать ДО add_child: по нему `_ready` морозит тело, а
+## поставленный после он опоздал бы — незамороженный корпус с off-центровой коллизией кренится
+## за первый же физ-шаг. И десант постройке не нужен: замороженное тело не падает, оно просто
+## осталось бы висеть на высоте drop_height.
+func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false) -> Node3D:
 	if enemy_scenes.is_empty():
 		return null
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
 		return null
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+	if as_base:
+		enemy.set("is_base", true)
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
 		blocks.layout_preset = preset
+		if as_base and "is_station" in blocks:
+			blocks.is_station = true
 	if "faction" in enemy:
 		enemy.set("faction", faction_id)
 	vehicles.add_child(enemy)
+	if as_base:
+		enemy.global_position = Vector3(pos.x, G.ground_y(pos, pos.y) + 0.5, pos.z)
+		if enemy is RigidBody3D:
+			(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
+		enemy.set_meta("story", true)
+		if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
+			enemy.died.connect(_on_enemy_died)
+		_enemies.append(enemy)
+		register_base(enemy)          # сон и тени — общее правило для всего, что стреляет
+		return enemy
 	# ДЕСАНТ отмеряем ОТ РЕЛЬЕФА В ЭТОЙ ТОЧКЕ, а не от высоты переданной точки. Зовут нас
 	# со смещением («охранник в двенадцати метрах от груза», «дуэлянты по бокам центра»), и
 	# высота там своя: на склоне десять метров запаса съедаются холмом, и машина появлялась

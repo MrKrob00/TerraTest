@@ -147,6 +147,9 @@ func _define_layout() -> void:
 		13: _layout_turret_post(G.Block.GUN)
 		14: _layout_turret_post(G.Block.SHOTGUN)
 		15: _layout_turret_post(G.Block.LASER)
+		16: _layout_shielded_tower(G.Block.GUN)      # Charlie Watchtower
+		17: _layout_shielded_tower(G.Block.ROCKET)   # SAM Site Ridge
+		18: _layout_charge_tower()                   # зарядная башня к ним обеим
 		_: _layout_default()
 
 # Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
@@ -382,6 +385,44 @@ func _layout_turret_post(weapon: int) -> void:
 	set_block(4, 7, 5, weapon, 0.0)                  # стволы по бокам
 	set_block(6, 7, 5, weapon, 0.0)
 	set_block(5, 8, 5, G.Block.SHIELD, 0.0)          # купол накрывает всю башню
+
+# ── ВЫШКА ПОД ЩИТОМ (пресеты 16-17) и ЗАРЯДНАЯ БАШНЯ к ней (18) ──────────────
+# Пара для сюжетных Watchtower и SAM. Задумка одна: цель под куполом, который держат ЧУЖИЕ
+# машины вокруг, и пока жива хоть одна из них, купол не гаснет.
+#
+# Держится это НА ОБЫЧНЫХ ПРАВИЛАХ, без единой строки кода в квесте. У вышки есть щит и
+# аккумуляторы, но НЕТ НИ ОДНОЙ ПАНЕЛИ: своей выработки у неё ноль, и каждое попадание в купол
+# тратит запас, который взять неоткуда. Рядом стоят зарядные башни — панели, аккумулятор и
+# WIRELESS_CHARGER, который переливает энергию соседу СВОЕЙ фракции (это и чинилось в блоке:
+# раньше он умел лить только машинам игрока). Пока хоть одна башня цела, вышка получает ток и
+# купол стоит; сбили все — запас вышки тает под огнём, и щит гаснет сам.
+#
+# Игроку это видно без единой подсказки: от каждой башни к вышке тянется луч зарядки.
+func _layout_shielded_tower(weapon: int) -> void:
+	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)     # ядро: его доворачивает ИИ
+	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	# ДВА аккумулятора вместо панелей: это ЁМКОСТЬ, а не выработка. Без ёмкости заряднику
+	# некуда лить (wireless_charger ищет у цели именно блок аккумулятора), и вся связка
+	# «башни держат щит» не собралась бы.
+	set_block(4, 5, 5, G.Block.BATTERY, 0.0)
+	set_block(6, 5, 5, G.Block.BATTERY, 0.0)
+	set_block(5, 6, 5, G.Block.BLOCK, 0.0)           # мачта
+	set_block(4, 6, 5, G.Block.BLOCK, 0.0)           # консоли под стволы
+	set_block(6, 6, 5, G.Block.BLOCK, 0.0)
+	set_block(5, 7, 5, G.Block.BLOCK, 0.0)
+	set_block(4, 7, 5, weapon, 0.0)                  # стволы низом на консолях (connect_faces = 32)
+	set_block(6, 7, 5, weapon, 0.0)
+	set_block(5, 8, 5, G.Block.SHIELD, 0.0)          # купол накрывает всю вышку
+
+func _layout_charge_tower() -> void:
+	set_block(5, 5, 5, G.Block.SUPPORT, 0.0)         # ядро: стационарное, никуда не едет
+	set_block(4, 5, 5, G.Block.BLOCK, 0.0)           # опоры под панели: у SOLAR
+	set_block(6, 5, 5, G.Block.BLOCK, 0.0)           # connect_faces = 32, ей нужен блок СНИЗУ
+	set_block(4, 6, 5, G.Block.SOLAR, 0.0)
+	set_block(6, 6, 5, G.Block.SOLAR, 0.0)
+	set_block(5, 6, 5, G.Block.BATTERY, 0.0)         # свой запас — из него и льём
+	set_block(5, 7, 5, G.Block.WIRELESS_CHARGER, 0.0)
 
 # ─── Спавн всех блоков ────────────────────────────────────────────────────────
 func _spawn_all() -> void:

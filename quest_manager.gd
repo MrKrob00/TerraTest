@@ -160,9 +160,39 @@ func _seed_demo() -> void:
 	# Дальше ветки сходятся: груз даёт коллектор, без него цепочку не построить, а без
 	# цепочки нечего оборонять. Порядок здесь ЖЁСТКИЙ и по делу, а не по привычке.
 	requires("arc_salvage", ["arc_radar", "arc_battery"])
+	# ── ВЫШКИ ПОД ЩИТОМ: Charlie Watchtower и SAM Site Ridge ────────────────────
+	# Оба из плана GSO-кампании (docs/STORY_ROADMAP.md, №11 и №13) и оба про ОДНО: цель стоит
+	# под куполом, купол держат зарядные башни вокруг, и пока жива хоть одна, вышку не тронуть.
+	# Разница между ними только в цене входа: у SAM вместо пулемётов ракетницы и на одну башню
+	# больше, то есть та же задача на шаг выше.
+	#
+	# Порядок ЖЁСТКИЙ и по делу: сюда игрок приходит после «Hold the Line», где впервые дрался
+	# за неподвижную постройку. Вышка — то же самое наоборот: теперь неподвижную постройку надо
+	# СНЕСТИ, и лобовой размен с ней не работает.
+	add_quest("arc_tower", "Charlie Watchtower", "", Type.STORY, 1, 12, "", 500, 80, 22)
+	add_stages("arc_tower", [
+		{"desc": "Reach the watchtower",
+		 "event": "quest_tower_1", "goal": 1,
+		 "hint": "Something is holding a ridge out there under a shield. The System wants the ridge."},
+		{"desc": "Cut its power, then bring it down",
+		 "event": "quest_tower_2", "goal": 1,
+		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
+	])
+	add_quest("arc_sam", "SAM Site Ridge", "", Type.STORY, 1, 13, "", 700, 100, 26)
+	add_stages("arc_sam", [
+		{"desc": "Reach the missile site",
+		 "event": "quest_sam_1", "goal": 1,
+		 "hint": "The same trick, dug in harder: rocket batteries under the dome and one more charging tower."},
+		{"desc": "Take the site apart",
+		 "event": "quest_sam_2", "goal": 1,
+		 "hint": "Same order as before — the towers hold the shield, the shield holds the site."},
+	])
+
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])
 	requires("arc_hold", ["arc_solvent"])
+	requires("arc_tower", ["arc_hold"])
+	requires("arc_sam", ["arc_tower"])
 
 	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
 	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
