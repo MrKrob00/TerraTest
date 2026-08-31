@@ -445,11 +445,42 @@ offset_right = 208.0
 offset_bottom = 108.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_hudpanel")
 
-[node name="PerfText" type="Label" parent="Vehicles/Camera Controller/HUD/PerfPanel" unique_id=411000106]
+[node name="PerfBox" type="VBoxContainer" parent="Vehicles/Camera Controller/HUD/PerfPanel" unique_id=411000119]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PerfText" type="Label" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox" unique_id=411000106]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.95, 1, 1)
 theme_override_font_sizes/font_size = 12
+
+[node name="PerfButtons" type="HBoxContainer" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox" unique_id=411000120]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="PerfScale" type="Button" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox/PerfButtons" unique_id=411000121]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
+text = "3D SCALE"
+
+[node name="PerfClose" type="Button" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox/PerfButtons" unique_id=411000122]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(110, 44)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
+text = "ЗАКРЫТЬ"
 
 [node name="HandPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000107]
 unique_name_in_owner = true
