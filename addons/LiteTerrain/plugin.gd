@@ -18,7 +18,6 @@ var _sl_stratum: HSlider = null
 var _sl_height: HSlider = null
 var _sl_features: HSlider = null
 var _sl_mountains: HSlider = null
-var _sl_erosion: HSlider = null
 var strength_slider = null
 ## Caption under the brush sliders: how many metres one dab moves RIGHT NOW.
 var _brush_hint: Label = null
@@ -91,7 +90,7 @@ func _update_brush_hint() -> void:
 		_brush_hint.text = "%d%% · %s m per dab" % [pct, _fmt(_brush_step(), 2)]
 
 # ---------- Noise generation parameters ----------
-# SIX KNOBS FOR THE WHOLE TERRAIN, cut down from seventeen on purpose. A setting earns its place
+# FIVE KNOBS FOR THE WHOLE TERRAIN, cut down from seventeen on purpose. A setting earns its place
 # only if the user can PREDICT what it will change; everything else gets turned at random and
 # produces a result nobody can reproduce. Three kinds of surplus went out:
 #   • what had one sensible answer (noise octaves, number of blur passes) — now a constant: more
@@ -107,7 +106,6 @@ var gen_scale:           float  = 150.0   # continental frequency scale
 var gen_power:           float  = 2.6     # higher = flatter plains, sharper peaks
 var gen_amplitude:       float  = 30.0    # max height in world units
 var gen_mountains01:     float  = 0.6     # 0 = rolling hills, 1 = sharp ridges
-var gen_erosion01:       float  = 0.5     # 0 = no erosion, 1 = the map is cut up by gullies
 var gen_size:             int   = 0       # image-mode target size (0 = keep current)
 
 ## Numbers with one sensible answer. They do not deserve a knob; they do deserve an explanation.
@@ -336,8 +334,6 @@ func _progress_close() -> void:
 	_gen_out = PackedFloat32Array()
 	_gen_base_in = PackedFloat32Array()
 	_gen_carved = PackedFloat32Array()
-	_gen_ero_in = PackedFloat32Array()
-	_gen_ero_out = PackedFloat32Array()
 	_gen_len = 0
 	if _prog_root != null and is_instance_valid(_prog_root):
 		_prog_root.queue_free()
@@ -450,42 +446,7 @@ func _gen_fill_row(z: int) -> void:
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
 	_gen_row_done()
 
-# ─────────────────────────────────────────────────
-# EROSION WITHOUT A SIMULATION (the "erosion filter" technique, Clay John -> Fuse -> Rune Vision)
-# ─────────────────────────────────────────────────
-# Real hydraulic erosion is millions of droplets run across the whole map; it cannot be evaluated
-# at a point, so it can be neither split across threads as-is nor applied to one piece of the map
-# on its own. This is something else: a FILTER laid OVER the finished height and computed AT EACH
-# POINT INDEPENDENTLY. Everything else follows from that — it splits into rows across the same
-# threads as the other passes, and it is paid for once at generation, never in game.
-#
-# The idea: we have a height AND A SLOPE. Along the slope we draw stripes — ridges alternating
-# with gullies, the way water cuts a hillside. Each next octave lays finer stripes ALONG THE
-# ALREADY MODIFIED slope, so the gullies branch on their own, with no simulation anywhere.
-#
-# Three things without which it does not work (all three from the Rune Vision breakdown):
-#
-#   • STRIPES MUST NOT ROTATE AROUND A SINGLE POINT. Rotating about a distant centre shifts the
-#     pattern the further out you go, and the whole thing smears. The plane is cut into CELLS,
-#     each with its own centre of rotation, and the value is blended between the four neighbours.
-#   • A PEAK MUST STAY A PEAK. On a summit the slope is zero, the stripe direction is undefined
-#     there, and the peak used to be sheared off by a random gully. So the stripe frequency falls
-#     with steepness: on flat ground a stripe grows wider than the cell, and the cell centre is
-#     always a crest.
-#   • THE GRADIENT IS CARRIED ALONG WITH THE HEIGHT. The stripe's derivative is known
-#     analytically and has to be added to the slope — otherwise the next octave reads the
-#     direction off the old terrain and nothing branches.
-#
-# Erosion only ever works DOWNWARD (h += amp * (cos - 1) <= 0): it cuts gullies, it does not pile
-# up ridges. The crest stays at its original height, so the filter cannot lift the map above what
-# the noise intended — and therefore breaks neither the canyons, nor a waterline, nor peak height.
-## Cells are never subdivided finer than this (metres): a stripe a couple of grid cells wide is
-## not a gully any more.
-const CELL_MIN := 16.0
-## The slope at which erosion works at full strength (a tangent: 0.25 ~ 14 degrees).
-const SLOPE_REF := 0.25
-
-## Everything DERIVED FROM THE SIX KNOBS for this generation: the metre values (from Height) and
+## Everything DERIVED FROM THE FIVE KNOBS for this generation: the metre values (from Height) and
 ## what used to sit on sliders of its own. Computed once, before the first pass — the threads only
 ## read these fields.
 var _gen_mtn_rise: float = 48.0
@@ -496,134 +457,6 @@ var _gen_gorge_depth: float = 40.0
 var _gen_floor: float = 6.0
 var _gen_mtn_amount: float = 0.8
 var _gen_ridge_sharp: float = 2.5
-var _gen_ero_strength: float = 6.0
-var _gen_ero_cell: float = 130.0
-var _gen_ero_octaves: int = 3
-var _gen_ero_slope: float = 1.2
-
-var _gen_ero_in := PackedFloat32Array()
-var _gen_ero_out := PackedFloat32Array()
-
-## THE SLOPE IS MEASURED WIDE, not against the next cell. A difference between neighbours one
-## metre apart measures the noise ripple on the hillside, not the hillside: the direction jumps
-## from cell to cell, the stripes turn with it, and instead of gullies you get a bed of needles —
-## exactly what the first generation looked like. A step of SLOPE_STEP metres gives the direction
-## of the SLOPE, the one water would actually run down.
-const SLOPE_STEP := 6
-
-func _gen_slope_at(x: int, z: int) -> Vector2:
-	var w := _gen_w
-	var d := _gen_d
-	var xm := maxi(x - SLOPE_STEP, 0)
-	var xp := mini(x + SLOPE_STEP, w - 1)
-	var zm := maxi(z - SLOPE_STEP, 0)
-	var zp := mini(z + SLOPE_STEP, d - 1)
-	var dx: float = float(maxi(xp - xm, 1))
-	var dz: float = float(maxi(zp - zm, 1))
-	var gx: float = (_gen_ero_in[z * w + xp] - _gen_ero_in[z * w + xm]) / dx
-	var gz: float = (_gen_ero_in[zp * w + x] - _gen_ero_in[zm * w + x]) / dz
-	return Vector2(gx, gz)
-
-# One row of the erosion pass.
-func _gen_erode_row(z: int) -> void:
-	if _gen_drop_row():
-		return
-	var w := _gen_w
-	if _gen_len <= 0 or z * w + w > _gen_len:
-		_gen_row_done()
-		return
-	for x in w:
-		var idx := z * w + x
-		var h: float = _gen_ero_in[idx]
-		var g: Vector2 = _gen_slope_at(x, z)
-		var p := Vector2(float(x), float(z))
-		# EROSION BARELY TOUCHES THE CANYON. Its walls are sheer, which to the filter makes them
-		# the "steepest" place on the map, so it cut there at full strength — and the clean steps
-		# the canyon was carved for smeared into the same gullies as everywhere else. Badlands are
-		# recognisable precisely because their strata are CLEAN.
-		var ero_k: float = 1.0
-		if _gen_biomes != null and _gen_biomes.canyon_enabled:
-			var wpp := Vector2(float(x) - float(w) * 0.5, float(z) - float(_gen_d) * 0.5)
-			ero_k = 1.0 - 0.85 * _gen_biomes.canyon_mask(wpp, _cv_noise)
-			if ero_k < 0.05:
-				_gen_ero_out[idx] = h
-				continue
-		var cell: float = maxf(_gen_ero_cell, CELL_MIN)
-		var amp: float = _gen_ero_strength
-		for _o in maxi(_gen_ero_octaves, 1):
-			# NEVER FINER THAN CELL_MIN. A cell a few metres across is a stripe a couple of grid
-			# cells wide — not a gully any more but pixel noise, which on top of that aliases
-			# against the LOD and shimmers as the camera moves.
-			if cell < CELL_MIN:
-				break
-			var res: Vector3 = _stripe(p, g, cell)
-			# A steep slope is cut harder than a gentle one: raising steepness to a power is the
-			# familiar "erosion slope power" that controls how sharp the ridges come out.
-			# STEEPNESS IS MEASURED RELATIVELY, not against "one". A slope of 1.0 is 45 degrees and
-			# barely exists on a map: rolling hills give 0.03-0.08, so compared against one the
-			# erosion got a factor of a few hundredths and was invisible — exactly what happened on
-			# gentle settings. SLOPE_REF is the slope that counts as a "full" one: about 14
-			# degrees, beyond which erosion works at full strength.
-			var steep: float = pow(clampf(g.length() / SLOPE_REF, 0.0, 1.0), _gen_ero_slope)
-			# FLAT GROUND IS SKIPPED OUTRIGHT. Half the map is plain and canyon floor where there
-			# is almost no erosion, yet it would still be computed: four octaves times four cells
-			# with a sine and a cosine each. The early out drops that work exactly where its
-			# result drowns in thousandths of a metre anyway.
-			if steep < 0.005:
-				break
-			var k: float = amp * steep * ero_k
-			h += k * (res.x - 1.0) * 0.5          # (cos - 1) <= 0: downward only
-			# The stripe's derivative goes into the slope, so the next octave follows the new
-			# hillsides. The contribution is HELD BACK: unbounded it outweighs the mountain's own
-			# slope by an order of magnitude, and the next octave then turns along the previous
-			# stripe rather than the hillside — branching becomes a vortex.
-			var dg := Vector2(res.y, res.z) * k * 0.5
-			var dl: float = dg.length()
-			var cap: float = maxf(g.length() * 0.5, 0.05)
-			if dl > cap:
-				dg *= cap / dl
-			g += dg
-			cell *= 0.5
-			amp *= 0.5
-		_gen_ero_out[idx] = h
-	_gen_row_done()
-
-## The stripe pattern around a CELL centre, blended across the four neighbouring cells.
-## Returns (value, dx, dz): the value itself and its derivatives along X and Z.
-func _stripe(p: Vector2, g: Vector2, cell: float) -> Vector3:
-	# The stripes run along the slope; the phase is measured ACROSS it.
-	var len_g: float = g.length()
-	var dir: Vector2 = (g / len_g) if len_g > 0.0001 else Vector2(1.0, 0.0)
-	var n := Vector2(-dir.y, dir.x)
-	# FREQUENCY FALLS WITH STEEPNESS — that is what keeps a summit a summit (see the header).
-	var freq: float = TAU / cell * clampf(len_g * 2.0, 0.15, 1.0)
-	var cx: float = floor(p.x / cell)
-	var cz: float = floor(p.y / cell)
-	var fx: float = p.x / cell - cx
-	var fz: float = p.y / cell - cz
-	# Smooth weights (smoothstep), or the cell borders show as seams.
-	var wx: float = fx * fx * (3.0 - 2.0 * fx)
-	var wz: float = fz * fz * (3.0 - 2.0 * fz)
-	var acc_c: float = 0.0
-	var acc_s: float = 0.0
-	for i in 4:
-		var ox: float = float(i & 1)
-		var oz: float = float((i >> 1) & 1)
-		var centre := Vector2((cx + ox + 0.5) * cell, (cz + oz + 0.5) * cell)
-		var phase: float = (p - centre).dot(n) * freq
-		var wgt: float = (wx if ox > 0.5 else 1.0 - wx) * (wz if oz > 0.5 else 1.0 - wz)
-		acc_c += cos(phase) * wgt
-		acc_s += sin(phase) * wgt
-	# NORMALISE the (cos, sin) pair: interpolating two sinusoids that are out of phase yields a
-	# sinusoid of SMALLER amplitude, and without this the gullies grew shallow between cells. The
-	# pair is a point on a circle, so its length is brought back to one (with a floor, to avoid
-	# dividing by zero at the nodes).
-	var l: float = sqrt(acc_c * acc_c + acc_s * acc_s)
-	if l > 0.25:
-		acc_c /= l
-		acc_s /= l
-	# Derivative of cos(phase) with respect to the point: -sin(phase) * freq * n.
-	return Vector3(acc_c, -acc_s * freq * n.x, -acc_s * freq * n.y)
 
 # One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
 func _gen_carve_row(z: int) -> void:
@@ -890,38 +723,33 @@ func _enter_tree() -> void:
 			_set_gen_amplitude, 0)
 	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
-	# ONE KNOB FOR MOUNTAINS and one for erosion: their parts always moved together, and apart
-	# they only ever produced a mismatch (a picket fence when sharp ridges met a low map, invisible
-	# erosion on a gentle slope). What each pulls: see _mtn_amount and the generation maths.
+	# ONE KNOB FOR MOUNTAINS: ridge height and ridge sharpness always moved together, and apart
+	# they only ever produced a mismatch — a picket fence when sharp ridges met a low map.
+	# What it pulls: see _mtn_amount and _ridge_sharp.
 	_sl_mountains = _slider_row(panel, "Mountains", 0.0, 1.0, gen_mountains01, 0.05,
 			func(v: float) -> void: gen_mountains01 = v, 2)
-	_sl_erosion = _slider_row(panel, "Erosion", 0.0, 1.0, gen_erosion01, 0.05,
-			func(v: float) -> void: gen_erosion01 = v, 2)
 
 	# ── The "natural" preset ─────────────────────────────────────────────────
 	# Height and feature size are linked, and the link is not something you can eyeball: 300 m of
 	# height with 150 m features means slopes steeper than forty-five degrees at every step, and
-	# the map reads as a pincushion whatever erosion does. The preset sets the proportion where
-	# the masses are large, the slopes drivable, and the fine pattern is left to erosion, which is
-	# its job. The scale is taken FROM THE BIOMES: when the terrain is larger than their masks,
-	# the snow cap lands next to the mountain instead of on it.
+	# the map reads as a pincushion. The preset sets the proportion where the masses are large and
+	# the slopes are drivable. The scale is taken FROM THE BIOMES: when the terrain is larger than
+	# their masks, the snow cap lands next to the mountain instead of on it.
 	var preset := Button.new()
 	preset.text = "Natural preset"
-	preset.tooltip_text = "Large masses, drivable slopes, fine detail left to erosion. Then press Generate Terrain."
+	preset.tooltip_text = "Large masses and drivable slopes. Then press Generate Terrain."
 	preset.pressed.connect(func() -> void:
 		var b := _biomes()
 		gen_amplitude   = 130.0
 		gen_scale       = b.mountain_scale if b != null else 420.0
 		gen_power       = 2.8
 		gen_mountains01 = 0.65
-		gen_erosion01   = 0.5
 		_save_settings()
 		# The handles are moved by hand: without this the slider shows the old number while the
 		# generation runs on the new one — a mismatch that takes longer to find than to fix.
 		if _sl_height != null: _sl_height.value = gen_amplitude
 		if _sl_features != null: _sl_features.value = gen_scale
 		if _sl_mountains != null: _sl_mountains.value = gen_mountains01
-		if _sl_erosion != null: _sl_erosion.value = gen_erosion01
 		_sync_dock())
 	panel.add_child(preset)
 
@@ -957,11 +785,10 @@ func _enter_tree() -> void:
 	panel.add_child(adv_btn)
 	panel.add_child(adv_body)
 
-	# ONLY what cannot be derived from the six knobs above lives here: the character of the plains
+	# ONLY what cannot be derived from the five knobs above lives here: the character of the plains
 	# and the shape of the canyon. Everything else has moved out — octaves and blur became
 	# constants (they have one sensible answer), ridge height and sharpness collapsed into
-	# "Mountains", the four erosion numbers into "Erosion", and mesa tops and canyon floor are
-	# derived from Height.
+	# "Mountains", and mesa tops and canyon floor are derived from Height.
 	_slider_row(adv_body, "Plains power", 1.0, 8.0, gen_power, 0.1,
 			func(v: float) -> void: gen_power = v, 1)
 
@@ -1040,7 +867,6 @@ func _save_settings() -> void:
 		"gen_power":           gen_power,
 		"gen_amplitude":       gen_amplitude,
 		"gen_mountains01":     gen_mountains01,
-		"gen_erosion01":       gen_erosion01,
 		"gen_size":            gen_size,
 		"gen_canyon_enable":   gen_canyon_enable,
 		"gen_canyon_riser":    gen_canyon_riser,
@@ -1063,7 +889,6 @@ func _load_settings() -> void:
 	gen_power        = float(d.get("gen_power",        gen_power))
 	gen_amplitude    = float(d.get("gen_amplitude",    gen_amplitude))
 	gen_mountains01  = float(d.get("gen_mountains01",  gen_mountains01))
-	gen_erosion01    = float(d.get("gen_erosion01",    gen_erosion01))
 	gen_size         = int(d.get("gen_size",           gen_size))
 	gen_canyon_enable = bool(d.get("gen_canyon_enable", gen_canyon_enable))
 	gen_canyon_riser  = float(d.get("gen_canyon_riser", gen_canyon_riser))
@@ -1774,13 +1599,6 @@ func _generate_noise() -> void:
 	# read these fields.
 	_gen_mtn_amount = _mtn_amount()
 	_gen_ridge_sharp = _ridge_sharp()
-	# EROSION ON ONE KNOB. Its four numbers always moved together: stronger means deeper, and a
-	# smaller cell, and more branching, and less fussiness about steepness. Apart they could only
-	# be knocked out of agreement.
-	_gen_ero_strength = lerpf(0.0, 12.0, gen_erosion01)
-	_gen_ero_cell = lerpf(170.0, 90.0, gen_erosion01)
-	_gen_ero_octaves = 2 + int(round(gen_erosion01 * 2.0))
-	_gen_ero_slope = lerpf(1.8, 0.9, gen_erosion01)
 	# METRES ALWAYS COME FROM HEIGHT. As sliders of their own they broke silently on any move of
 	# the height: mountains became a bump under snow, the canyon a ditch or a chasm, snow flooded
 	# the whole map. The fractions are picked so a mountain stands well above the hills around it,
@@ -1804,7 +1622,7 @@ func _generate_noise() -> void:
 		_gen_len = 0
 		_progress_close()
 		return
-	await _run_rows(_gen_fill_row, depth, "Heights", 0.02, 0.45)
+	await _run_rows(_gen_fill_row, depth, "Heights", 0.02, 0.5)
 	# STOP IS CHECKED BETWEEN PASSES, and every check leaves without writing anything: a map
 	# half-generated is worse than the old one, and the file on disk must stay usable.
 	if _gen_cancel:
@@ -1824,7 +1642,7 @@ func _generate_noise() -> void:
 		_gen_out = _gen_alloc(width * depth, "the blur buffer")
 		if _gen_out.is_empty():
 			break                      # no buffer, no blur — the map itself already exists
-		await _run_rows(_gen_blur_row, depth, "Smoothing", 0.45, 0.55)
+		await _run_rows(_gen_blur_row, depth, "Smoothing", 0.5, 0.62)
 		if _gen_cancel:
 			_progress_close()
 			return
@@ -1865,31 +1683,13 @@ func _generate_noise() -> void:
 					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
 			_gen_carved = PackedFloat32Array()
 		else:
-			await _run_rows(_gen_carve_row, depth, "Canyons", 0.55, 0.7)
+			await _run_rows(_gen_carve_row, depth, "Canyons", 0.62, 0.95)
 			if _gen_cancel:
 				_progress_close()
 				return
 			new_data = _gen_carved
 		_gen_carved = PackedFloat32Array()
 		_gen_base_in = PackedFloat32Array()
-
-	# ── Erosion: the LAST pass, on top of everything else ────────────────────────────────
-	# It reads the SLOPE of the finished terrain, so it has to come after the terrain has settled
-	# into its final shape: run it earlier and the canyon carved afterwards cuts its gullies away,
-	# while the blur smooths off exactly what it was there for.
-	if _gen_ero_strength > 0.01:
-		_gen_ero_in = new_data
-		_gen_ero_out = _gen_alloc(width * depth, "the erosion buffer")
-		if _gen_ero_out.is_empty():
-			push_warning("LiteTerrain: out of memory for the erosion buffer — erosion skipped")
-		else:
-			await _run_rows(_gen_erode_row, depth, "Erosion", 0.7, 0.95)
-			if _gen_cancel:
-				_progress_close()
-				return
-			new_data = _gen_ero_out
-		_gen_ero_in = PackedFloat32Array()
-		_gen_ero_out = PackedFloat32Array()
 
 	if image_mode:
 		# THE LAST STAGE IS THE LONGEST ONE, and it used to be a single blocking call with the bar

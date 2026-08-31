@@ -271,15 +271,20 @@ that lattice, and that alone was most of the minutes a full generate took.
 
 ## Generating terrain
 
-**Generate Terrain** fills the map with layered noise, then carves canyons into the result and
-finally runs the erosion filter over it.
+**Generate Terrain** fills the map with layered noise, smooths it, then carves canyons into the
+result.
 
-**Six knobs, not seventeen.** A setting earns its place only if you can predict what it will
+An erosion filter used to run as a last pass (branching gullies drawn along the slope, the Clay
+John -> Fuse -> Rune Vision technique). It was removed on purpose: it made the map look richer
+but gave frequent height changes on every hillside, and this addon was built for a game where
+you drive across that ground all the time. It is in the git history if you want it back.
+
+**Five knobs, not seventeen.** A setting earns its place only if you can predict what it will
 change; everything else you turn blind and cannot reproduce. Three kinds of clutter were removed:
 values with one sensible answer became constants (noise octaves, blur passes — more octaves is
 noise, fewer is mush, and a second blur pass shaves off the very relief you built), values that
-always move together were merged into one knob (ridge height with ridge sharpness; gully depth,
-size, branching and slope bias), and values that must *follow* the map height are now derived
+always move together were merged into one knob (ridge height with ridge sharpness), and values
+that must *follow* the map height are now derived
 from it instead of being set apart (mountain rise, dunes, mesa top, canyon floor, snow line —
 these lived in metres and broke silently whenever `Height` moved).
 
@@ -290,7 +295,6 @@ these lived in metres and broke silently whenever `Height` moved).
 | Height | 30 | Maximum height in world units. Everything measured in metres follows this. |
 | Features | 150 | Size of the land masses. Keep it near the biome `mountain_scale`, or the snow cap lands beside the mountain instead of on it. |
 | Mountains | 0.6 | 0 — rolling hills, 1 — knife-edged ridges. Drives ridge amount and sharpness together. |
-| Erosion | 0.5 | 0 — off, 1 — the map is cut by gullies. Drives depth, cell size, branching and slope bias together. |
 | Canyons | on | Master switch for carving. Canyons also need `canyon_enabled` in the biomes. |
 
 Under **Advanced** only what cannot be derived: `Plains power` (how flat the plains are) and the
@@ -316,8 +320,6 @@ rewrites what the previous produced:
   the height: quantising floor and top put contour steps across the open ground, a six-metre drop
   in the middle of a flat field. Because the top equals the surface, the region's border stops
   being a cliff — the blend at the mask edge moves nothing;
-- **erosion almost skips the canyon**: its walls are the steepest ground on the map, so the
-  filter cut hardest exactly there and dissolved the clean strata badlands are recognised by;
 - every metre value is derived from `Height` (mountain rise 0.75, mesa top 0.42, canyon floor
   0.06, snow line 0.55, dunes 0.05). Moving one slider used to break the other half of the
   settings without showing it.
@@ -326,34 +328,6 @@ Snow is painted where the mountain **mask** overlaps ground above `snow_line` (s
 `snow_blend`). The mask alone says only *where the mountain region is*, not how high the ground
 got there — painting by it put white patches on flat ground and the colour stopped matching the
 landform.
-
-### Erosion
-
-A filter laid over the finished height, not a simulation. Real hydraulic erosion means running
-millions of droplets across the map: it cannot be evaluated at a point, so it cannot be split
-across threads or applied to one chunk. This one is evaluated **at each point independently** —
-stripes drawn along the slope, which read as alternating ridges and gullies, and each further
-octave lays finer stripes along the *already changed* slope, so the gullies branch on their own.
-
-One knob drives all four numbers, because they always moved together — stronger erosion means
-deeper gullies, a smaller cell, more branching and less fussiness about steepness:
-
-| Erosion | Cut | Cell | Octaves | Slope bias |
-|---|---|---|---|---|
-| 0.0 | 0 m | — | — | off |
-| 0.5 | 6 m | 130 m | 3 | 1.35 |
-| 1.0 | 12 m | 90 m | 4 | 0.9 |
-
-Three details make or break it, and all three are in the code: stripes rotate around the centre
-of **their own cell** (rotating around one point smears the pattern across the map), the stripe
-frequency **falls with the slope** (otherwise a peak, where there is no slope, gets cut by a
-random gully), and the stripe's derivative is **added back into the slope** (otherwise the next
-octave still follows the old terrain and nothing branches). It only ever cuts **down**, so it
-cannot raise the map above what the noise intended.
-
-The slope itself is measured over 6 metres, not between neighbouring cells: at one-metre steps
-you measure the noise ripple rather than the hillside, the stripe direction jitters from cell to
-cell, and the result is a field of needles.
 
 All heavy passes run across the WorkerThreadPool, one row per task, and a progress window
 reports which pass is running, how far it got and **how long is left** — a full generate is tens
