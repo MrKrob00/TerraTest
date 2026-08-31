@@ -60,7 +60,7 @@ towards performance.
    - Or sculpt by hand with **Raise**, **Lower** and **Flatten**. Paint with the left
      mouse button in the viewport; radius and strength are in the dock. Each stroke is
      one undo step (Ctrl+Z / Ctrl+Y).
-4. Press **Bake → files** to write everything the runtime needs at once: the heightmap
+4. Press **Bake to files** to write everything the runtime needs at once: the heightmap
    (`terrain_height.res`), a preview mesh (`terrain_mesh.res`) and a greyscale PNG
    (`terrain_heightmap.png`, useful for a minimap).
 
@@ -335,7 +335,7 @@ of seconds, and without the window that reads as a frozen editor. The estimate i
 whole run rather than per pass: the passes differ several-fold in cost, so a per-pass number would
 promise a new total at every stage.
 
-**Bake → files** runs under the same window (without Stop — there is nothing to undo once a
+**Bake to files** runs under the same window (without Stop — there is nothing to undo once a
 file is written). It writes four things in a row, three of which are full sweeps of the map, and
 before the window that was tens of seconds of a frozen editor with no way to tell which file it
 was on.
@@ -359,7 +359,7 @@ merge is still one blocking call.
 
 ## Streaming heights (the .bin next to the .res)
 
-**Bake → files** writes one more file beside the heightmap resource: `terrain_height.bin` —
+**Bake to files** writes one more file beside the heightmap resource: `terrain_height.bin` —
 the same heights as raw float32 rows behind a small header, plus a per-chunk min/max table.
 
 The reason is the size ceiling. An `Image` resource loads WHOLE, so the map has to fit in
@@ -381,7 +381,7 @@ GDScript that lands in the hottest loop there is.
 ## Baking and shipping a big map
 
 1. Keep `use_image_data` on (the default).
-2. Press **Bake → files** to write `terrain_height.res`, `terrain_mesh.res` and the PNG.
+2. Press **Bake to files** to write `terrain_height.res`, `terrain_mesh.res` and the PNG.
 3. Save the scene.
 
 The runtime loads the baked `.res` and streams a small collision window under tracked
@@ -650,7 +650,7 @@ from the biomes resource at build time — edit them there, not here.
 
 **The map is flat or wrong after reopening the project.** In image mode the runtime
 loads `heightmap_path`. If that file is missing the node warns in the output and falls
-back to the embedded shape. Press **Bake → files**.
+back to the embedded shape. Press **Bake to files**.
 
 **A body falls through the terrain.** With streaming collision on, ground only exists
 inside a window under a tracked body. Only moving bodies are tracked (RigidBody3D,

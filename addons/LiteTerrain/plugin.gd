@@ -643,7 +643,7 @@ func _enter_tree() -> void:
 
 	# ── Setup ────────────────────────────────────────────────────────────────
 	var create_btn = Button.new()
-	create_btn.text = "➕ Create Terrain Node"
+	create_btn.text = "Create Terrain Node"
 	create_btn.tooltip_text = "Adds a single LiteTerrain node (image mode, flat 128x128). It creates its own children."
 	create_btn.pressed.connect(_create_terrain)
 	panel.add_child(create_btn)
@@ -654,7 +654,11 @@ func _enter_tree() -> void:
 	var modes := HBoxContainer.new()
 	modes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var group := ButtonGroup.new()
-	for m in [["▲", "raise"], ["▼", "lower"], ["⬛", "flatten"]]:
+	# ПОДПИСИ СЛОВАМИ, А НЕ ЗНАЧКАМИ. Здесь стояли ▲ ▼ ⬛, и у шрифта редактора их нет — на
+	# экране выходили пустые квадраты. Отрисовать их, как иконки в игре, тут нечем: это
+	# обычные Button в доке, а не свой Control с _draw; слово же читается всегда и на любой
+	# системе. Внутреннее имя режима (второй элемент) при этом не меняется.
+	for m in [["RAISE", "raise"], ["LOWER", "lower"], ["FLATTEN", "flatten"]]:
 		var b := Button.new()
 		b.text = String(m[0])
 		b.tooltip_text = String(m[1]).capitalize()
@@ -698,7 +702,7 @@ func _enter_tree() -> void:
 		gen_seed = int(v)
 		_save_settings())
 	var dice := Button.new()
-	dice.text = "🎲"
+	dice.text = "RND"
 	dice.tooltip_text = "Random seed"
 	dice.pressed.connect(func() -> void:
 		seed_spin.value = float(randi() % 100000))     # value_changed does the rest
@@ -807,7 +811,7 @@ func _enter_tree() -> void:
 	# ── Actions ──────────────────────────────────────────────────────────────
 	panel.add_child(_sep())
 	var gen_btn = Button.new()
-	gen_btn.text = "🌍 Generate Terrain"
+	gen_btn.text = "Generate Terrain"
 	gen_btn.tooltip_text = "Rebuilds the whole heightmap from the settings above. Hand sculpting is lost."
 	gen_btn.pressed.connect(_generate_noise)
 	panel.add_child(gen_btn)
@@ -817,7 +821,7 @@ func _enter_tree() -> void:
 	panel.add_child(warn)
 
 	var bake_btn = Button.new()
-	bake_btn.text = "💾 Bake → files"
+	bake_btn.text = "Bake to files"
 	bake_btn.tooltip_text = "One click: heightmap (.res) + preview mesh (.res) + greyscale PNG (for a minimap)."
 	bake_btn.pressed.connect(_bake_and_export)
 	panel.add_child(bake_btn)
