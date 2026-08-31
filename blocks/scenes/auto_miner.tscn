@@ -2,6 +2,12 @@
 
 [ext_resource type="Script" uid="uid://bkyjdk17bbcts" path="res://blocks/scripts/auto_miner.gd" id="1_scr"]
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="2_82ybg"]
+[ext_resource type="Animation" path="res://blocks/scenes/auto_miner_pump.tres" id="3_pump"]
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_miner"]
+_data = {
+&"pump": ExtResource("3_pump")
+}
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_s"]
 size = Vector3(1, 2, 2)
@@ -476,6 +482,9 @@ shape = SubResource("BoxShape3D_s")
 
 [node name="item_slot" type="Marker3D" parent="." unique_id=1109687998]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.19161846, -0.03297639, -0.705765)
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1490002001]
+libraries/ = SubResource("AnimationLibrary_miner")
 
 [node name="Auto Miner" type="MeshInstance3D" parent="." unique_id=2037058585]
 mesh = SubResource("ArrayMesh_n6523")
