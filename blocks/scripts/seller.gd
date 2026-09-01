@@ -8,6 +8,13 @@ extends FactoryBlock
 
 @export var sell_interval: float = 0.5  # секунд между продажами
 
+## Краски глитча продажи: золото и зелень денег. Отличать эффекты обязан не только цвет,
+## но и ФОРМА — карточки говорят «предмет исчез», цифры 0/1 говорят «хп меняется», — и
+## продажа это именно исчезновение, поэтому карточки.
+const SELL_A := Color(1.0, 0.82, 0.22)
+const SELL_B := Color(0.45, 1.0, 0.55)
+const SELL_FX_TIME := 0.45
+
 var timer: Timer
 
 func _ready() -> void:
@@ -45,8 +52,16 @@ func _on_timer_timeout() -> void:
 	if kind.begins_with("chunk:") and "chunk_count" in current_item:
 		label += " ×" + str(int(current_item.get("chunk_count")))
 	$Label3D.text = label + " +" + str(price) + "$\n" + "Cash: %s" % G.money
-	$GPUParticles3D.emitting = true
-	await $GPUParticles3D.finished
+	# ПРОДАЖА — ЭТО ГЛИТЧ-КАРТОЧКИ, а не GPUParticles3D. В сцене висел эмиттер на 512 частиц
+	# с турбулентностью и трейлом на 34.9 секунды — и всё это на КАЖДУЮ продажу, то есть
+	# раз в полсекунды, пока идёт линия. На мобильном GPU это была самая дорогая мелочь в
+	# игре, а выглядела она облачком искр из другой игры: у нас появление и распад предмета
+	# говорят карточками. Золото с зеленью — та же матрица, только про деньги.
+	#
+	# И БЕЗ AWAIT. Раньше ждали сигнала finished у эмиттера, то есть логика продажи висела
+	# на анимации: сбилась она — предмет не удалён, ячейка не освобождена, линия встала.
+	# Ровно та беда, из-за которой переписывали процессор.
+	BlockFX.play(current_item, true, SELL_FX_TIME, SELL_A, SELL_B)
 	current_item.visible = false
 
 	# Удаляем ресурс из мира
