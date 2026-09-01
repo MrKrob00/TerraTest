@@ -310,6 +310,8 @@ var _macro_aabbs:      Array[AABB]           = []
 var _macro_to_chunks:  Array                 = []
 var _chunk_macro_idx:  Array[int]            = []
 var _macro_active:     Array[bool]           = []
+## Seam signature of the mesh each macro currently carries — same idea as _chunk_stitch_sig.
+var _macro_stitch_sig: Array[int]            = []
 
 # ── Quadtree (runtime frustum + LOD selection) ────────────────────────────────
 # Spatial hierarchy over the MACRO grid: each leaf = one macro group (4×4 chunks);
@@ -336,6 +338,7 @@ var _qt_step:  Array[int]   = []   # node → sample step of its coarse mesh
 var _qt_size:  Array[float] = []   # node → max world XZ extent (LOD-selection metric)
 var _qt_inst:  Array        = []   # node → MeshInstance3D (internal nodes only; null for leaves)
 var _qt_node_results: Array = []   # threaded coarse-mesh build scratch
+var _qt_stitch_sig: Array[int] = []   # node → seam signature of the mesh it currently carries
 const QT_QUALITY: float = 1.1      # render a node coarsely once dist ≥ size * this (lower = coarser/faster)
 # Currently-rendered selection, kept for cheap show/hide diffing each frame.
 var _qt_cur_macros: Dictionary = {}   # mi → true (macro mesh currently visible)
@@ -1858,11 +1861,16 @@ func _border_snap(cx: int, cz: int, dcx: int, dcz: int, my_step: int) -> int:
 	var s := _neighbour_step(cx, cz, dcx, dcz)
 	return s if s != my_step else 0
 
-# Packs a chunk's LOD step and its 4 border snap steps into one int. Two chunks with
-# the same signature produce byte-identical meshes, so the quadtree LOD pass only rebuilds when
-# the signature actually changes. Each value is ≤ 8, so 4 bits per field is plenty.
+# Packs a mesh's own LOD step and its 4 border snap steps into one int. Two meshes with
+# the same signature produce byte-identical geometry, so the quadtree LOD pass only rebuilds when
+# the signature actually changes.
+#
+# EIGHT BITS PER FIELD, not four. A neighbour can be a quadtree NODE, whose step goes up to 64
+# (_qt_step) — that overflowed a 4-bit field and spilled into the next one, so two genuinely
+# different neighbourhoods could encode to the SAME number and the mesh was never rebuilt. A
+# stitch that silently does not happen looks exactly like a stitch that does not work.
 func _encode_sig(my_step: int, n_snap: int, s_snap: int, w_snap: int, e_snap: int) -> int:
-	return my_step | (n_snap << 4) | (s_snap << 8) | (w_snap << 12) | (e_snap << 16)
+	return my_step | (n_snap << 8) | (s_snap << 16) | (w_snap << 24) | (e_snap << 32)
 
 # Current required signature for chunk ci (its LOD step + the snap step each border
 # needs given its neighbours right now). Compared against _chunk_stitch_sig to decide
@@ -1890,26 +1898,34 @@ func _get_chunk_idx(cx: int, cz: int) -> int:
 # Macro groups report step=4 (their merged mesh uses LOD 2).
 # Map-edge neighbours return 1 (same as LOD 0, so no snap triggered).
 func _neighbour_step(cx: int, cz: int, dcx: int, dcz: int) -> int:
-	var nx := cx + dcx
-	var nz := cz + dcz
-	var ni := _get_chunk_idx(nx, nz)
-	if ni < 0 or ni >= _chunk_lod.size():
-		return 1   # map boundary or not-yet-built chunk — no snap
 	# THE COARSE QUADTREE MESH COMES FIRST. There are THREE representations of the ground —
 	# chunk meshes, merged macro meshes, and the internal quadtree nodes' single coarse mesh —
 	# and this function used to know only the first two. Where a chunk bordered a region drawn
 	# as a quadtree node, neither side knew the other's step, so no height snapping happened at
 	# all — and the step gap there is the largest in the whole system (a node is 8 to 64 samples
 	# per quad against the chunk's 1). That is the hole you can see the sky through.
-	#
-	# A chunk hidden under such a node also keeps a STALE _chunk_lod, so asking it was not just
-	# incomplete, it answered with a number that meant nothing.
-	var node_step := _node_step_covering(nx, nz)
+	# The order now lives in _drawn_step_at, which every stitching side asks.
+	var s := _drawn_step_at(cx + dcx, cz + dcz)
+	return s if s > 0 else 1   # map boundary or not-yet-built chunk — no snap
+
+## Sample step of whatever is ACTUALLY DRAWN over chunk cell (cx, cz) right now, or 0 outside
+## the map. Three representations answer here in a strict order — coarse quadtree node, merged
+## macro, individual chunk — because a chunk hidden under a node or a macro keeps a STALE
+## _chunk_lod: asking it is not merely incomplete, it answers with a number that means nothing.
+##
+## Everything that stitches asks THIS ONE function: chunks (_neighbour_step), macro meshes and
+## node meshes. Three copies of the order would drift apart, and a seam is exactly the place
+## where two sides have to agree on the same answer.
+func _drawn_step_at(cx: int, cz: int) -> int:
+	var ci := _get_chunk_idx(cx, cz)
+	if ci < 0 or ci >= _chunk_lod.size():
+		return 0
+	var node_step := _node_step_covering(cx, cz)
 	if node_step > 0:
 		return node_step
-	if _chunk_macro_idx.size() > ni and _macro_active[_chunk_macro_idx[ni]]:
+	if _chunk_macro_idx.size() > ci and _macro_active[_chunk_macro_idx[ci]]:
 		return _step_for(2)   # macro group uses LOD-2 step
-	return _step_for(_chunk_lod[ni])
+	return _step_for(_chunk_lod[ci])
 
 ## Sample step of the coarse quadtree mesh currently covering chunk (cx, cz), or 0 if that
 ## area is drawn as chunks/macros. Walks down from the root instead of keeping a per-chunk
@@ -1942,6 +1958,147 @@ func _node_step_covering(cx: int, cz: int) -> int:
 			return 0
 		node = nxt
 	return 0
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Seam stitching for the two COARSE representations
+# ─────────────────────────────────────────────────────────────────────────────
+# Individual chunks have snapped their border to a coarser neighbour for a long time. The MACRO
+# mesh and the NODE mesh never did, because both are built ONCE at load — before anything has
+# been selected for drawing, when there is no neighbour to ask. That left open the two seams
+# with the LARGEST step gap in the whole system:
+#
+#   • macro (step 4) ↔ node (step 8…64). The macro is the FINER side, so it is the one that has
+#     to snap, and it never did. Up to sixty metres of ground between two samples on the coarse
+#     side means the gap is metres tall on a mountainside.
+#   • node ↔ node. A quadtree draws neighbouring regions ONE LEVEL APART by design — that is
+#     what a quadtree is for — so a step-8 node beside a step-16 one is the normal case, not a
+#     corner case. The old note in _qt_node_worker claimed a node is always the coarsest thing
+#     on any seam it takes part in and therefore never has to snap. The other side of that seam
+#     is usually another node, which did not snap either, so nobody closed it.
+#
+# Both now go through the same signature machinery the chunks use: ask what is drawn across each
+# border, rebuild only when that answer changes. The rebuild is cheap on purpose — a node's step
+# grows with its size, so every coarse mesh is about 16×16 quads no matter which level it is.
+
+## Macro grid position (macro columns/rows) of macro mi.
+func _macro_grid(mi: int) -> Vector2i:
+	var cxl := ceili(float(w - 1) / chunk_size)
+	var first_ci: int = (_macro_to_chunks[mi] as Array)[0]
+	return Vector2i((first_ci % cxl) / MACRO_SIZE, (first_ci / cxl) / MACRO_SIZE)
+
+## Chunk cell to probe when asking what is drawn across a border. Deliberately ONE CHUNK PAST
+## the boundary column, never on it: sibling node rects SHARE their boundary (A's far edge ==
+## B's near edge), and the descent in _node_step_covering takes the first child that contains
+## the point — on the boundary itself that is the wrong side of the seam, which reads back as
+## our own step, i.e. "nothing to snap". `base` is the first chunk of the near macro, `span` the
+## macro's width in chunks.
+func _probe_cell(base: int, dir: int, span: int) -> int:
+	if dir > 0:
+		return base + span + 1     # first macro past the border, one chunk in
+	if dir < 0:
+		return base - 1            # last chunk of the macro before us
+	return base + 1                # perpendicular axis: anywhere strictly inside
+
+## The four border snap steps for macro mi, in N/S/W/E order. One probe per side is enough: the
+## four chunks along a macro border all belong to ONE neighbouring macro, and a node always
+## covers whole macros — the far side of a macro border is never mixed.
+func _macro_snaps(g: Vector2i, my_step: int) -> Array[int]:
+	var out: Array[int] = []
+	for dir in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		var cx := _probe_cell(g.x * MACRO_SIZE, dir.x, MACRO_SIZE)
+		var cz := _probe_cell(g.y * MACRO_SIZE, dir.y, MACRO_SIZE)
+		var s := _drawn_step_at(cx, cz)
+		out.append(s if s > 0 and s != my_step else 0)
+	return out
+
+func _macro_signature(mi: int) -> int:
+	var my := _step_for(2)
+	var sn := _macro_snaps(_macro_grid(mi), my)
+	return _encode_sig(my, sn[0], sn[1], sn[2], sn[3])
+
+## Rebuild macro mi's merged mesh with its border snapped to whatever is drawn around it now.
+func _restitch_macro(mi: int) -> void:
+	if mi < 0 or mi >= _macro_instances.size() or _macro_instances[mi] == null:
+		return
+	var g := _macro_grid(mi)
+	var my := _step_for(2)
+	var sn := _macro_snaps(g, my)
+	if mi < _macro_stitch_sig.size():
+		_macro_stitch_sig[mi] = _encode_sig(my, sn[0], sn[1], sn[2], sn[3])
+	var x0 := g.x * MACRO_SIZE * chunk_size
+	var z0 := g.y * MACRO_SIZE * chunk_size
+	var x1 := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
+	var z1 := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
+	var data := _compute_chunk_data(x0, z0, x1, z1, my, sn[0], sn[1], sn[2], sn[3])
+	if data.is_empty():
+		return
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
+	_macro_instances[mi].mesh = am
+
+## The four border snap steps for quadtree node nd. A node side is LONG — it can span many
+## macros — so it is sampled along its whole length, at macro granularity (node rects are
+## macro-aligned, so that misses nothing). A step is returned only if the WHOLE side agrees;
+## a mixed side keeps the old behaviour of not snapping, which is honest: snapping half a border
+## to a grid the other half does not have would open a new seam to close an old one.
+## Cells off the map answer 0 and are ignored — there is no neighbour there to meet.
+func _node_snaps(nd: int, my_step: int) -> Array[int]:
+	var r: Vector4i = _qt_rect[nd]
+	var ms := MACRO_SIZE * chunk_size                    # cells per macro
+	var mx0 := r.x / ms
+	var mz0 := r.y / ms
+	var mx1 := (r.z + ms - 1) / ms                       # exclusive, rounded up past a clamped edge
+	var mz1 := (r.w + ms - 1) / ms
+	mx1 = maxi(mx1, mx0 + 1)
+	mz1 = maxi(mz1, mz0 + 1)
+	var out: Array[int] = []
+	for dir in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		# The axis the direction points along is fixed at the node's near or far macro; the
+		# other one sweeps the whole side.
+		var fixed_x: int = mx0 if dir.x <= 0 else mx1 - 1
+		var fixed_z: int = mz0 if dir.y <= 0 else mz1 - 1
+		var from: int = mz0 if dir.x != 0 else mx0
+		var to: int   = mz1 if dir.x != 0 else mx1
+		var agreed := 0
+		var mixed := false
+		for m in range(from, to):
+			var bx: int = (fixed_x if dir.x != 0 else m) * MACRO_SIZE
+			var bz: int = (m if dir.x != 0 else fixed_z) * MACRO_SIZE
+			var s := _drawn_step_at(_probe_cell(bx, dir.x, MACRO_SIZE),
+					_probe_cell(bz, dir.y, MACRO_SIZE))
+			if s <= 0:
+				continue                  # off the map — no neighbour there to meet
+			if agreed == 0:
+				agreed = s
+			elif agreed != s:
+				mixed = true
+				break
+		out.append(0 if mixed or agreed == my_step else agreed)
+	return out
+
+func _node_signature(nd: int) -> int:
+	var my: int = _qt_step[nd]
+	var sn := _node_snaps(nd, my)
+	return _encode_sig(my, sn[0], sn[1], sn[2], sn[3])
+
+## Rebuild node nd's coarse mesh with its border snapped to its coarser neighbours.
+func _restitch_node(nd: int) -> void:
+	if nd < 0 or nd >= _qt_inst.size():
+		return
+	var inst: MeshInstance3D = _qt_inst[nd]
+	if inst == null:
+		return
+	var r: Vector4i = _qt_rect[nd]
+	var my: int = _qt_step[nd]
+	var sn := _node_snaps(nd, my)
+	if nd < _qt_stitch_sig.size():
+		_qt_stitch_sig[nd] = _encode_sig(my, sn[0], sn[1], sn[2], sn[3])
+	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, my, sn[0], sn[1], sn[2], sn[3])
+	if data.is_empty():
+		return
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data[0])
+	inst.mesh = am
 
 # Returns the mesh at `preferred_lod`, falling back to the next finer LOD
 # if the preferred one happens to be null (tiny edge-chunks may skip coarse LODs).
@@ -2008,6 +2165,10 @@ func _build_macro_chunks() -> void:
 	var macro_n := _macro_instances_target_count()
 	_macro_results.clear()
 	_macro_results.resize(macro_n)
+	# Signature of the state _build_macro_worker actually produces: own step, no border snapped.
+	_macro_stitch_sig.clear()
+	_macro_stitch_sig.resize(macro_n)
+	_macro_stitch_sig.fill(_encode_sig(_step_for(2), 0, 0, 0, 0))
 	if macro_n > 0:
 		var macro_task := func(mi: int) -> void:
 			_build_macro_worker(mi, cxl)
@@ -2052,7 +2213,9 @@ func _build_macro_worker(mi: int, cxl: int) -> void:
 	var z0  := mgz * MACRO_SIZE * chunk_size
 	var x1  := mini(x0 + MACRO_SIZE * chunk_size, w - 1)
 	var z1  := mini(z0 + MACRO_SIZE * chunk_size, d - 1)
-	# Skirt so the macro↔coarse-node seam (different LOD steps) never shows a crack.
+	# No border flags here, and that is not an omission: this runs once at load, when nothing has
+	# been selected for drawing yet and there is no neighbour to ask. The seam is closed later,
+	# per frame, by _restitch_macro — see the comment there.
 	var data := _compute_chunk_data(x0, z0, x1, z1, _step_for(2))
 	if data.is_empty():
 		return
@@ -2459,6 +2622,13 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 
 			# There is no skirt behind this any more (it cost triangles and looked bad): the
 			# seam has to MEET, so snapping is the only thing closing it. See _snap_ok.
+			#
+			# A CORNER vertex sits on two seams at once, and the W/E block below rewrites what
+			# the N/S block decided. That is only reachable when BOTH neighbours are coarser AND
+			# our origin is not a multiple of their step — i.e. a chunk (origin every 16 cells)
+			# with a quadtree node (step up to 64) on two sides. It is one vertex, and the two
+			# constraints genuinely cannot both hold: the two coarse edges do not meet there.
+			# Macro and node meshes are immune — their origins are multiples of 64.
 			# North border (z == z0): snap x to n_step grid
 			if z == z0 and _snap_ok(n_step, step):
 				var rem: int = x % n_step
@@ -2869,6 +3039,12 @@ func _build_quadtree() -> void:
 	var node_n := _qt_aabb.size()
 	_qt_inst.resize(node_n)
 	_qt_node_results.resize(node_n)
+	# Same as macros: the worker below builds every node with no border snapped, so that is the
+	# signature each node starts out carrying.
+	_qt_stitch_sig.clear()
+	_qt_stitch_sig.resize(node_n)
+	for n in node_n:
+		_qt_stitch_sig[n] = _encode_sig(_qt_step[n], 0, 0, 0, 0)
 	var internal: Array[int] = []
 	for n in node_n:
 		if _qt_macro[n] < 0:
@@ -2969,9 +3145,10 @@ func _qt_build_node(mx0: int, mz0: int, wsz: int, hsz: int, macro_cx: int) -> in
 # over its whole footprint, sampled at _qt_step[n].
 func _qt_node_worker(n: int) -> void:
 	var r: Vector4i = _qt_rect[n]
-	# Plain build, no border flags: a node mesh is the COARSEST thing on any seam it takes part
-	# in, so it never snaps to anyone — the finer side snaps to it, and that is now exact
-	# because _qt_step is a power of two on the same grid (see above).
+	# Plain build, no border flags — not because a node never needs to snap (it does: the region
+	# next door is usually another node ONE LEVEL finer or coarser, that is what a quadtree is),
+	# but because nothing has been selected for drawing yet at load time and there is no
+	# neighbour to ask. The seam is closed per frame by _restitch_node.
 	var data := _compute_chunk_data(r.x, r.y, r.z, r.w, _qt_step[n])
 	if data.is_empty():
 		return
@@ -3167,6 +3344,17 @@ func _qt_apply(do_lod: bool) -> void:
 				continue
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
+		# ── The same pass for the two COARSE representations ──────────────────
+		# Macro and node meshes are built once at load with no border snapped, so without this
+		# their seams stayed open — and those are the two seams with the largest step gap in the
+		# system (see the section above _macro_grid). All three read the selection that was
+		# committed a few lines up, so order between them does not matter.
+		for nd in _qt_cur_nodes:
+			if nd < _qt_stitch_sig.size() and _qt_stitch_sig[nd] != _node_signature(nd):
+				_restitch_node(nd)
+		for mi in _qt_cur_macros:
+			if mi < _macro_stitch_sig.size() and _macro_stitch_sig[mi] != _macro_signature(mi):
+				_restitch_macro(mi)
 
 # The coarsest LOD a chunk's flatness allows. The threshold comes from flat_lod_error: the
 # flatter the chunk, the larger the triangles it may use.
