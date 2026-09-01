@@ -429,7 +429,7 @@ func _on_area_3d_body_entered(body: Node3D) -> void:
 		return
 	if body == _vehicle_root():
 		return                        # своя машина — не цель
-	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root():
+	if G.is_friendly_dome(body, _vehicle_root()):
 		return                        # свой щит-купол — не цель
 	if body.get_parent() != null and body.get_parent().name == "objects":
 		return                        # свободные блоки/объекты в мире — не цели
@@ -640,7 +640,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if body == self: return
 	if body.get_parent() == get_parent(): return
 	# Свой щит-купол пропускает СВОИ пули (вылетают изнутри купола) — не поглощаем.
-	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
+	if G.is_friendly_dome(body, _vehicle_root()): return
 	if body.has_method("hurt"):
 		body.hurt(_shot_damage())
 		_alert_victim(body)

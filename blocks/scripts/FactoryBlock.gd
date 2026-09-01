@@ -38,6 +38,15 @@ signal slot_freed
 const PORT_NONE := 0
 const PORT_IN := 1
 const PORT_OUT := 2
+## СТОРОНА БЫВАЕТ И ВХОДОМ, И ВЫХОДОМ СРАЗУ — и это не редкость, а то, на чём держится вся
+## раскладка «станок стоит ВОЗЛЕ ленты». У ленты борт отмечен в ОБЕИХ масках (output_faces 13,
+## input_faces 14): она отдаёт грузом вбок станку и принимает от него обратно.
+##
+## Пока состояний было три, `port_state` отвечал на такую сторону ПЕРВЫМ подходящим — выходом,
+## — и accepts_at, который требует ровно PORT_IN, для борта ленты всегда говорил «нет». Отсюда
+## и жалоба: процессор берёт с ленты справа, а вернуть на неё не может; вперёд, где у ленты
+## чистый вход в зад, всё работало. Порт — это ПАРА масок, и enum обязан уметь их обе.
+const PORT_BOTH := 3
 
 ## "dx,dy,dz|d" → PORT_*. dx/dy/dz — смещение клетки от якоря, d — индекс направления в
 ## FACE_VECS. Живёт также в раскладке машины (blocks.port_map), чтобы пережить сейв.
@@ -67,9 +76,14 @@ func port_state(off: Vector3i, dir_idx: int) -> int:
 	if def >= 0:
 		return def
 	var d: Vector3i = dir_of(dir_idx)
-	if face_dirs(output_faces).has(d):
+	# Обе маски, а не «первая подошедшая»: сторона, отмеченная в обеих, — это PORT_BOTH.
+	var is_out: bool = face_dirs(output_faces).has(d)
+	var is_in: bool = face_dirs(input_faces).has(d)
+	if is_out and is_in:
+		return PORT_BOTH
+	if is_out:
 		return PORT_OUT
-	if face_dirs(input_faces).has(d):
+	if is_in:
 		return PORT_IN
 	return PORT_NONE
 
@@ -104,12 +118,18 @@ func accepts_from(from_dir: Vector3i) -> bool:
 ## в сторону −from_dir.
 func accepts_at(off: Vector3i, from_dir: Vector3i) -> bool:
 	var idx: int = idx_of(-from_dir)
-	return idx >= 0 and port_state(off, idx) == PORT_IN
+	if idx < 0:
+		return false
+	var st: int = port_state(off, idx)
+	return st == PORT_IN or st == PORT_BOTH
 
 ## Отдаёт ли клетка off в сторону dir.
 func outputs_at(off: Vector3i, dir: Vector3i) -> bool:
 	var idx: int = idx_of(dir)
-	return idx >= 0 and port_state(off, idx) == PORT_OUT
+	if idx < 0:
+		return false
+	var st: int = port_state(off, idx)
+	return st == PORT_OUT or st == PORT_BOTH
 
 # Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
 func _ready() -> void:

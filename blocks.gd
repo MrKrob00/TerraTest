@@ -639,7 +639,7 @@ func cell_of_node(inst: Node) -> String:
 	return ""
 
 ## Задать порт фабричному блоку: и узлу сейчас, и карте — чтобы пережило сейв.
-## state: FactoryBlock.PORT_NONE / PORT_IN / PORT_OUT.
+## state: FactoryBlock.PORT_NONE / PORT_IN / PORT_OUT / PORT_BOTH.
 func set_block_port(inst: Node, off: Vector3i, dir_idx: int, state: int) -> bool:
 	if not (inst is FactoryBlock):
 		return false

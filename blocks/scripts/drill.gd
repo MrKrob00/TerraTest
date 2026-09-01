@@ -68,5 +68,10 @@ func _dig() -> void:
 	for body in $drill.get_overlapping_bodies():
 		if body == self: continue
 		if body.get_parent() == get_parent(): continue   # свои блоки не бурим
+		# Купол своего щита бур тоже не грызёт: он лежит на слое блоков, а родитель у него —
+		# сам блок щита, а не blocks, поэтому проверка выше его не ловила.
+		# _root_body(), а не _vehicle_root(): второй живёт в WeaponBlock и в shield, а бур —
+		# обычный VehicleBlock, и вызова с чужим именем хватило бы, чтобы скрипт не загрузился.
+		if G.is_friendly_dome(body, _root_body()): continue
 		if body.has_method("hurt"):
 			body.hurt(drill_damage)

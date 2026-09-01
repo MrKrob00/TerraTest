@@ -41,7 +41,7 @@ func _track_target(delta: float, firing: bool) -> void:
 func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	if body == self: return
 	if body.get_parent() == get_parent(): return               # блок своей же машины
-	if "owner_vehicle" in body and body.owner_vehicle == _vehicle_root(): return
+	if G.is_friendly_dome(body, _vehicle_root()): return
 	_explode(source.global_position)
 	_recycle_bullet(source)
 

@@ -366,6 +366,32 @@ static func is_loose_item(n: Node) -> bool:
 	# Имена держателей: blocks — сборка машины, resources — накопитель коллектора/приёмника.
 	return p != null and p.name != "blocks" and p.name != "resources"
 
+## КУПОЛ ЩИТА, ПРИНАДЛЕЖАЩИЙ СВОИМ, — не цель и не преграда.
+##
+## Купол (shield_dome.gd) лежит на слое блоков, поэтому его видит ВСЁ, что бьёт по блокам:
+## пуля, болт лазера, ракета, AOE взрыва и бур. И каждое попадание списывает энергию машины,
+## то есть стрелять изнутри собственного купола значило жечь свой же запас — а купол вокруг
+## машины стоит всегда, значит и каждый выстрел с неё.
+##
+## Правило одно на всех источников урона, поэтому и живёт здесь, а не копией в каждом стволе:
+## копий уже было три (пушка, ракетница, отдельная ветка в пуле), и ровно те источники, где
+## её забыли — AOE и бур, — щит и жгли.
+##
+## Считаем по ФРАКЦИИ, а не по «той же машине»: у игрока машин бывает несколько, и палить
+## сквозь купол своей базы должно быть можно так же, как сквозь свой собственный.
+static func is_friendly_dome(body: Node, shooter_root: Node) -> bool:
+	if body == null or shooter_root == null or not is_instance_valid(body):
+		return false
+	var ov = body.get("owner_vehicle")     # есть только у купола; у прочих тел вернётся null
+	if ov == null or not is_instance_valid(ov):
+		return false
+	if ov == shooter_root:
+		return true
+	# get() у машины без поля faction отдаёт null, и два null сравнялись бы в «свои».
+	var fa = ov.get("faction")
+	var fb = shooter_root.get("faction")
+	return fa != null and fb != null and fa == fb
+
 ## Ключ слитка/компонента для рецептов и складов.
 static func metal_key(m: int) -> String:
 	return "m%d" % m

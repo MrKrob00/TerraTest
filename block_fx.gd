@@ -4,6 +4,10 @@ extends RefCounted
 const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, красные цифры) — hit()
 const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
+## Скрипт автолоада G, а не сам автолоад: всё в этом файле — СТАТИЧЕСКИЕ функции, а к
+## синглтону по имени из статики обращаться нельзя. Нужен отсюда только is_friendly_dome,
+## и она тоже статическая, поэтому хватает ссылки на скрипт. Цикла нет — G про эффекты не знает.
+const PROGRESS := preload("res://G.gd")
 const CARD_COUNT := 28          # сколько карточек в «хмаре» (много; часть видна по ходу анимации)
 # Потолок карточек, которые можно создать за ОДИН кадр по всей игре. Сборка машины зовёт play()
 # на каждый блок сразу: 40 блоков × 28 = 1120 MeshInstance3D + столько же QuadMesh и
@@ -40,6 +44,12 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
 				continue
 			if exclude_root != null and _root_of(b) == exclude_root:
+				continue
+			# КУПОЛ СВОЕГО ЩИТА AOE НЕ БЬЁТ. Проверки выше его не ловят: _root_of идёт вверх до
+			# первого RigidBody3D, а у купола это САМ БЛОК ЩИТА, а не машина. Поэтому своя же
+			# ракета, взорвавшись рядом, списывала энергию с собственного щита — и тем сильнее,
+			# чем ближе цель, то есть ровно тогда, когда игрок обороняется.
+			if PROGRESS.is_friendly_dome(b, exclude_root):
 				continue
 			seen[b] = true
 			var dist: float = (b as Node3D).global_position.distance_to(world_pos)
