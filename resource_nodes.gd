@@ -271,6 +271,21 @@ func _stream_in(v: Dictionary) -> void:
 		add_child(node)
 		v["node"] = node
 
+## ЖИВАЯ ЖИЛА ВОЗЛЕ ТОЧКИ — узел, а не запись в _data. Спрашивать можно только про то, что
+## сейчас стримнуто: узел с коллизией существует лишь рядом с камерой. Это ровно то, что нужно
+## сюжету — он ищет жилу тогда, когда игрок до неё доехал, а не когда объявляет задание.
+func node_near(world_pos: Vector3, radius: float = 25.0) -> Node:
+	var best: Node = null
+	var best_d2: float = radius * radius
+	for c in get_children():
+		if not (c is Node3D) or not c.has_method("is_depleted"):
+			continue
+		var d2: float = (c as Node3D).global_position.distance_squared_to(world_pos)
+		if d2 <= best_d2:
+			best_d2 = d2
+			best = c
+	return best
+
 # Жилы ВОКРУГ ТОЧКИ для блипов на радаре (hud.gd): позиция и ЦВЕТ МЕТАЛЛА.
 #
 # Цвет здесь не украшение. С тех пор как металл принадлежит биому (_metal_for), «съездить за

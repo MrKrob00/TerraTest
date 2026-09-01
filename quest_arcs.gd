@@ -67,6 +67,23 @@ func _tick_arcs(delta: float) -> void:
 			"quest_camp_2":        _camp_2(q)
 
 # ── Ветка «энергия»: солнечная панель + опора, затем реген ───────────────────
+## КУДА ИХ СТАВИТЬ — ПОКАЗЫВАЕТ ЧЕРТЁЖ, а не текст. «Прикрепите панель и опору» игрок читает
+## как «повесьте куда влезет», вешает панель на борт, встаёт на якорь — и ничего не происходит,
+## потому что опоры под панелью нет. Порядок здесь смысловой: ОПОРА СЗАДИ на корпус, ПАНЕЛЬ
+## СВЕРХУ НА ОПОРУ — так видно, что одно держит другое.
+##
+## Клетки считаны от кабины (5,5,5) по чертежу обучения: (5,5,6) — задний блок корпуса, на нём
+## и растёт эта надстройка.
+const POWER_PLAN_1 := [
+	{"cell": Vector3i(5, 5, 7), "block": G.Block.SUPPORT},
+	{"cell": Vector3i(5, 6, 7), "block": G.Block.SOLAR},
+]
+## Реген — ЧУТЬ ВПЕРЕДИ ПАНЕЛИ, на том же ярусе: он лечит по радиусу вокруг себя, и место в
+## середине машины покрывает её всю, а на самом хвосте половина корпуса остаётся снаружи.
+const POWER_PLAN_2 := [
+	{"cell": Vector3i(5, 6, 6), "block": G.Block.REGEN},
+]
+
 func _arc_power_1(q: Dictionary) -> void:
 	# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
 	# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело это
@@ -84,8 +101,16 @@ func _arc_power_1(q: Dictionary) -> void:
 	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
 	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
 	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
+	_show_plan_on(_player_blocks(), POWER_PLAN_1)
+	_point_finger("Anchor at the back, panel on top of it")
 	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
+		_clear_plan()
 		Q.report(String(q["event"]), 1)
+
+## Карта блоков машины, которой игрок управляет, — то, на чём рисуется разметка.
+func _player_blocks():
+	var p: Node3D = _player()
+	return p.get("block_map_node") if p != null else null
 
 ## Машина игрока СЕЙЧАС на якоре. Через get(), потому что поле есть только у машин игрока.
 func _is_anchored() -> bool:
@@ -98,14 +123,100 @@ func _arc_power_2(q: Dictionary) -> void:
 		_dropped[key] = true
 		# «Рядом с вами появился» — блок падает прямо у машины, искать не надо.
 		_award(G.Block.REGEN)
+	_show_plan_on(_player_blocks(), POWER_PLAN_2)
+	_point_finger("Repair unit just ahead of the panel")
 	if _has_block(G.Block.REGEN):
+		_clear_plan()
 		Q.report(String(q["event"]), 1)
 
-# ── Ветка «радар»: найти свой, затем отобрать у вора ─────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# БЛОК ВЕЗЁТ ВРАГ: не «съезди и подбери», а «отбери»
+# ══════════════════════════════════════════════════════════════════════════════
+# Сюжетный блок лежал в чистом поле: игрок ехал по компасу и подбирал его, ни с кем не
+# встретившись, — то есть задание было дорогой, а не задачей. Теперь его ВОЗИТ вражеская
+# машина, и получить блок можно только разобрав её.
+#
+# ГЛАВНОЕ ПРАВИЛО: убитый носитель обязан ОСТАВИТЬ блок, даже если тот сгорел в бою. Иначе
+# ветка вешается насмерть из-за случайного попадания, а игрок этого не поймёт — он сделал
+# ровно то, о чём просили. Поэтому в точке смерти блок ГАРАНТИРУЕТСЯ: лежит настоящий,
+# сорванный с носителя, — берём его; не осталось ничего — кладём новый (QuestProps.claim_or_drop).
+#
+# Носитель появляется, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ, — то же правило, что у вышек: машина,
+# которая с начала игры ездит на другом конце карты, ничего не добавляет, а тикает и стреляет.
+const CARRIER_DIST := 170.0     # далеко: это поездка, а не поворот головы
+const CARRIER_REACH := 60.0     # ближе — считаем, что доехал
+
+var _carrier: Dictionary = {}        # ключ → машина-носитель
+var _carrier_spot: Dictionary = {}   # ключ → куда ехать; после боя — где упадёт блок
+var _carrier_dead: Dictionary = {}   # ключ → носителя добили
+
+## Куда ведёт компас по этой стадии. Пока носитель жив, точка ЕДЕТ ЗА НИМ: он не стоит на
+## месте, и метка, оставшаяся там, где его объявили, ведёт в пустое поле (то же правило, что
+## у _live_target для событий).
+func carrier_point(key: String) -> Variant:
+	var m = _carrier.get(key)
+	if m != null and is_instance_valid(m) and m is Node3D:
+		_carrier_spot[key] = (m as Node3D).global_position
+	return _carrier_spot.get(key, null)
+
+## Стадия «отбери блок у врага». true — блок уже стоит на машине игрока.
+func _carry_stage(key: String, block: int, preset: int) -> bool:
+	if _has_block(block):
+		return true
+	var p: Node3D = _player()
+	if p == null:
+		return false
+	if not _carrier_spot.has(key):
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * CARRIER_DIST, 0.0, sin(ang) * CARRIER_DIST)
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_carrier_spot[key] = wp
+		return false
+	# Носителя добили — блок его пережил (или мы кладём такой же на его место).
+	if bool(_carrier_dead.get(key, false)):
+		if not _player_owns(block):
+			_props.claim_or_drop(key, block, _carrier_spot[key])
+		return false
+	var at: Vector3 = _carrier_spot[key]
+	if is_instance_valid(_carrier.get(key)):
+		return false                                  # едет и дерётся — ждём
+	if p.global_position.distance_squared_to(at) > CARRIER_REACH * CARRIER_REACH:
+		return false
+	_carrier_spawn(key, block, preset, at)
+	return false
+
+func _carrier_spawn(key: String, block: int, preset: int, at: Vector3) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null or not sp.has_method("spawn_at"):
+		return
+	var e = sp.spawn_at(at, preset, 1)
+	if e == null or not (e is Node3D):
+		return
+	# Блок ставим НА КАБИНУ (5,6,5): он должен быть виден снаружи, иначе «вон та машина везёт
+	# радар» игроку неоткуда узнать, а метка над врагом об этом не говорит.
+	var bl: Node = (e as Node3D).get_node_or_null("blocks")
+	if bl != null and bl.has_method("set_block"):
+		bl.set_block(5, 6, 5, block, 0.0)
+	if e.has_method("assign_target"):
+		e.assign_target(_player(), true)
+	if e.has_signal("died"):
+		e.died.connect(func(_x = null): _on_carrier_died(key), CONNECT_ONE_SHOT)
+	_carrier[key] = e
+
+func _on_carrier_died(key: String) -> void:
+	# Точку смерти запоминаем ЗДЕСЬ: carrier_point обновляет её каждый опрос, пока носитель жив,
+	# но после гибели узел уже освобождён и спросить его не у кого.
+	var m = _carrier.get(key)
+	if m != null and is_instance_valid(m) and m is Node3D:
+		_carrier_spot[key] = (m as Node3D).global_position
+	_carrier_dead[key] = true
+	_carrier.erase(key)
+
+# ── Ветка «радар»: отобрать у того, кто его возит, затем у вора ──────────────
 func _arc_radar_1(q: Dictionary) -> void:
-	if not _player_owns(G.Block.RADAR):
-		_props.ensure("arc_radar", G.Block.RADAR)
-	if _has_block(G.Block.RADAR):
+	# Пресет 5 — разведчик, самая слабая сборка: это первая машина, которую игрок разбирает
+	# ради трофея, и проиграть ей означало бы застрять на второй ступени сюжета.
+	if _carry_stage("arc_radar", G.Block.RADAR, 5):
 		Q.report(String(q["event"]), 1)
 
 func _arc_radar_2(q: Dictionary) -> void:
@@ -128,19 +239,89 @@ func _arc_radar_2(q: Dictionary) -> void:
 	if _count_block(G.Block.RADAR) >= 2:      # свой + отобранный
 		Q.report(String(q["event"]), 1)
 
-# ── Ветка «аккумулятор»: найти, затем выбить из жилы ─────────────────────────
-func _arc_battery_1(q: Dictionary) -> void:
-	if not _player_owns(G.Block.BATTERY):
-		_props.ensure("arc_battery", G.Block.BATTERY)
+# ── Ветка «аккумулятор»: жила его ДЕРЖИТ, пока её не выработают ──────────────
+# Аккумулятор лежал в поле, как и всё остальное, и «Buried Charge» ничем не отличался от
+# прогулки по компасу. Теперь он ВНУТРИ ЖИЛЫ: пока в ней есть руда, блока нет — выкопай её
+# досуха, и он выпадет. Это и единственный сюжетный повод взять бур в руки после обучения.
+#
+# ЖИЛУ НЕ ДЕРЖИМ ССЫЛКОЙ, только точку. Жилы стримятся (узел живёт лишь рядом с камерой), и
+# ссылка на неё после отъезда протухает; точка же верна всегда, а узел по ней находится тогда,
+# когда игрок рядом, — то есть ровно когда его и надо спрашивать.
+const BATTERY_DIST := 140.0
+const BATTERY_REACH := 60.0
+
+var _bat_spot: Variant = null       # где стоит «та самая» жила
+var _bat_free: bool = false         # её выработали, блок выпал
+
+## Куда ведёт компас по этой ветке.
+func battery_point() -> Variant:
+	return _bat_spot
+
+## Общая половина обеих стадий: довести игрока до жилы и дождаться, пока он её выскребет.
+## true — аккумулятор уже стоит на машине.
+func _battery_stage() -> bool:
 	if _has_block(G.Block.BATTERY):
+		return true
+	var p: Node3D = _player()
+	if p == null:
+		return false
+	if _bat_spot == null:
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * BATTERY_DIST, 0.0, sin(ang) * BATTERY_DIST)
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_bat_spot = wp
+		return false
+	var at: Vector3 = _bat_spot as Vector3
+	if _bat_free:
+		if not _player_owns(G.Block.BATTERY):
+			_props.claim_or_drop("arc_battery", G.Block.BATTERY, at)
+		return false
+	if p.global_position.distance_squared_to(at) > BATTERY_REACH * BATTERY_REACH:
+		return false
+	# Доехал. Настоящая жила рядом с объявленной точкой — к ней и подтягиваем метку, иначе
+	# компас указывает на пустую землю в паре метров от того, что надо бурить.
+	var rn: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
+	if rn == null:
+		rn = _find_resource_nodes()
+	if rn == null or not rn.has_method("node_near"):
+		_bat_free = true                      # жил в мире нет вовсе — не держим игрока
+		return false
+	var vein: Node = rn.node_near(at, BATTERY_REACH)
+	if vein == null:
+		return false                          # ещё не стримнулась — подождём следующий опрос
+	_bat_spot = (vein as Node3D).global_position
+	if vein.call("is_depleted"):
+		_bat_free = true
+	return false
+
+## Узел стриминга жил. Путь в сцене не зашиваем: он уже переезжал, а группы у узла нет —
+## ищем по методу, которого больше ни у кого нет.
+func _find_resource_nodes() -> Node:
+	var main: Node = get_node_or_null("/root/Main")
+	if main == null:
+		return null
+	for c in main.get_children():
+		if c.has_method("active_blips"):
+			return c
+		for g in c.get_children():
+			if g.has_method("active_blips"):
+				return g
+	return null
+
+func _arc_battery_1(q: Dictionary) -> void:
+	# Первая стадия — ДОЕХАТЬ до жилы: до неё полтораста метров, и это отдельный шаг, иначе
+	# «найди и выкопай» закрывается одним событием и читается как одна кнопка.
+	if _battery_stage():
+		Q.report(String(q["event"]), 1)   # аккумулятор уже стоит — «доехать» закрываем сразу
+		return
+	var p: Node3D = _player()
+	if p != null and _bat_spot is Vector3 \
+			and p.global_position.distance_squared_to(_bat_spot as Vector3) \
+				<= BATTERY_REACH * BATTERY_REACH:
 		Q.report(String(q["event"]), 1)
 
 func _arc_battery_2(q: Dictionary) -> void:
-	# Жила «держит» аккумулятор: выработал её досуха — блок падает рядом.
-	var key := "battery_2"
-	if not _dropped.has(key):
-		_dropped[key] = true
-	if _has_block(G.Block.BATTERY):
+	if _battery_stage():
 		Q.report(String(q["event"]), 1)
 
 # ── «Salvage Run»: сбитый груз под охраной ───────────────────────────────────
@@ -187,6 +368,13 @@ func _salvage_spawn_guard() -> void:
 	_salvage_guard = sp.spawn_at(_salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1)
 	if _salvage_guard == null:
 		return
+	# КОЛЛЕКТОР ВЕЗЁТ САМ ОХРАННИК, а не лежит рядом с ним. Груз, валяющийся у ног побеждённого,
+	# читается как «награда за галочку»; блок, снятый с машины, которую пришлось разобрать, —
+	# как трофей. Ставим на кабину, чтобы его было видно ещё на подъезде (см. _carrier_spawn:
+	# правило одно и то же, разница только в том, что охранника ставит своя функция).
+	var gb: Node = _salvage_guard.get_node_or_null("blocks")
+	if gb != null and gb.has_method("set_block"):
+		gb.set_block(5, 6, 5, G.Block.COLLECTOR, 0.0)
 	if _salvage_guard.has_method("assign_target"):
 		_salvage_guard.assign_target(_player(), true)
 	# Смерть ЗАПОМИНАЕМ. Пустая ссылка сама по себе не означает победу: после загрузки она
@@ -200,10 +388,11 @@ func _salvage_2(q: Dictionary) -> void:
 	if not _salvage_killed:
 		_salvage_spawn_guard()      # охрана пропала не от выстрелов — присылаем снова
 		return
-	# Охрана кончилась — груз наш. Коллектор кладём В МИР рядом с точкой, а не молча в
-	# инвентарь: игрок должен его увидеть и подобрать, как любой трофей.
+	# Охрана кончилась — коллектор наш. Он ЕХАЛ НА НЕЙ, поэтому обычно уже лежит там же,
+	# сорванный с корпуса: claim_or_drop усыновляет такой, а кладёт новый, только если блок
+	# сгорел в бою. Молча в инвентарь не отдаём — трофей игрок должен увидеть и подобрать.
 	if not _player_owns(G.Block.COLLECTOR):
-		_props.ensure("arc_salvage", G.Block.COLLECTOR, _salvage_point)
+		_props.claim_or_drop("arc_salvage", G.Block.COLLECTOR, _salvage_point as Vector3)
 		return                              # даём кадр, чтобы предмет появился
 	Q.report(String(q["event"]), 1)
 	_salvage_point = null
@@ -270,12 +459,27 @@ func line_point() -> Variant:
 ## Разметка: белый призрак блока в каждой клетке схемы (build_hint.gd). Показывает форму,
 ## клетку и поворот — то, чего текст задания сказать не может.
 func _show_plan(plan: Array) -> void:
-	_clear_plan()
 	if _line_base == null or not is_instance_valid(_line_base):
+		_clear_plan()
 		return
-	var bm = _line_base.get("block_map_node")
+	_show_plan_on(_line_base.get("block_map_node"), plan)
+
+## То же самое, но на ЛЮБОЙ машине. Разметка сначала умела только площадку фабрики, потому что
+## только там квест сам расставлял блоки. А объяснить «опора сзади, панель НА опоре» текстом
+## нельзя вовсе: игрок читает «прикрепите панель», вешает её на борт, и она не работает —
+## панель даёт ток только на якоре, а якорь держится на опоре. Призрак говорит это молча.
+func _show_plan_on(bm, plan: Array) -> void:
 	if bm == null or not is_instance_valid(bm):
+		_clear_plan()
 		return
+	# Пересобираем только когда РАЗМЕТКА ДРУГАЯ. Условия квестов опрашиваются раз в секунду, а
+	# _clear_plan убивает узлы: без этой проверки призраки пересоздавались бы каждый опрос и
+	# заметно мигали, да и палец наставника сбрасывался бы вместе с ними.
+	var sig := "%s|%s" % [bm.get_instance_id(), plan]
+	if sig == _plan_sig:
+		return
+	_plan_sig = sig
+	_clear_plan()
 	for e in plan:
 		var cell: Vector3i = e["cell"]
 		# Клетка уже занята нужным блоком (её поставил квест) — разметка ей не нужна.
@@ -285,11 +489,14 @@ func _show_plan(plan: Array) -> void:
 		if h != null:
 			_hints.append(h)
 
+var _plan_sig: String = ""
+
 func _clear_plan() -> void:
 	for h in _hints:
 		if is_instance_valid(h):
 			(h as Node).queue_free()
 	_hints.clear()
+	_plan_sig = ""
 	_point_finger("")
 
 ## Палец наставника на БЛИЖАЙШУЮ незакрытую клетку схемы. Тот же палец, что в обучении:
@@ -857,6 +1064,11 @@ func quest_point(ev: String) -> Variant:
 		"quest_salvage_1": return _salvage_point
 		"quest_duel_1":    return _duel_point
 		"quest_line_1":    return _line_point
+		# Ветки с носителем и с жилой: точка едет за живым носителем (carrier_point сама
+		# обновляет её), а после боя указывает туда, где упал блок.
+		"quest_arc_radar_1":   return carrier_point("arc_radar")
+		"quest_arc_battery_1": return battery_point()
+		"quest_arc_battery_2": return battery_point()
 	# Вышки под щитом держат свои точки в отдельном словаре, но ключ у них ТОТ ЖЕ, что у
 	# событий ("quest_tower_1" → "tower"), поэтому перечислять их по одной здесь не нужно —
 	# ровно то, от чего предостерегает комментарий у компаса.
@@ -879,6 +1091,9 @@ func _live_target(ev: String) -> Variant:
 		"salvage":   list.append(_salvage_guard)
 		"duel":      list.append_array([_duel_a, _duel_b])
 		"arc_radar": list.append(_thief)          # «вор» с радаром — тоже цель квеста
+	# Носитель сюжетного блока — такой же живой участник: пока он ездит, метка едет за ним.
+	if _carrier.has(key):
+		list.append(_carrier[key])
 	var p: Node3D = _player()
 	var best: Variant = null
 	var best_d: float = INF
