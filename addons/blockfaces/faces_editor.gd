@@ -36,6 +36,7 @@ const COL_OFF := Color(0.16, 0.20, 0.22, 1.0)
 const COL_CONNECT := Color(0.35, 0.85, 0.45, 1.0)
 const COL_IN := Color(0.25, 0.72, 0.95, 1.0)
 const COL_OUT := Color(1.0, 0.72, 0.25, 1.0)
+const COL_BOTH := Color(0.55, 0.85, 0.45, 1.0)
 
 var _block: VehicleBlock = null
 var _ur = null
@@ -154,10 +155,15 @@ func _state(off: Vector3i, di: int) -> int:
 		var d: Dictionary = _block.get("port_defaults")
 		if d != null and d.has(key):
 			return int(d[key])
-		# Not set: the mask applies, exactly as at runtime (FactoryBlock.port_state).
-		if _bit("output_faces", di) == 1:
+		# Not set: the mask applies, exactly as at runtime (FactoryBlock.port_state) — and that
+		# means BOTH masks, not the first one that matches. A side marked in each is PORT_BOTH.
+		var out_bit: int = _bit("output_faces", di)
+		var in_bit: int = _bit("input_faces", di)
+		if out_bit == 1 and in_bit == 1:
+			return 3
+		if out_bit == 1:
 			return 2
-		if _bit("input_faces", di) == 1:
+		if in_bit == 1:
 			return 1
 		return 0
 	return _bit(_prop(), di)
@@ -241,8 +247,11 @@ func _sync() -> void:
 		return
 	match _mode:
 		MODE_PORTS:
-			_cube.labels = ["—", "IN", "OUT"]
-			_cube.colors = [COL_OFF, COL_IN, COL_OUT]
+			# Четвёртое состояние — сторона, отмеченная в ОБЕИХ масках сразу
+			# (FactoryBlock.PORT_BOTH). У ленты так устроен борт, и без своей подписи он
+			# показывался бы чистым выходом.
+			_cube.labels = ["—", "IN", "OUT", "I/O"]
+			_cube.colors = [COL_OFF, COL_IN, COL_OUT, COL_BOTH]
 		MODE_IN:
 			_cube.labels = ["—", "ON", "ON"]
 			_cube.colors = [COL_OFF, COL_IN, COL_IN]
