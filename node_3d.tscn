@@ -467,8 +467,8 @@ size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
-theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 text = "3D SCALE"
 
 [node name="PerfClose" type="Button" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox/PerfButtons" unique_id=411000122]
@@ -478,8 +478,8 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
-theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 text = "ЗАКРЫТЬ"
 
 [node name="HandPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000107]
@@ -578,9 +578,9 @@ occlusion_min_dist = 80.0
 occlusion_samples = 14
 biomes = SubResource("Resource_s0gvp")
 flat_lod_error = 0.003
+triangle_size = 1
 editor_lod = true
-editor_view_distance = 4000.0
-editor_detail = true
+editor_view_distance = 550.0
 heightmap_path = "res://terrain_height.res"
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
