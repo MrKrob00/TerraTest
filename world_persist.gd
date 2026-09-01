@@ -55,6 +55,7 @@ func _notification(what: int) -> void:
 
 func _process(delta: float) -> void:
 	var _pf := Perf.now()                          # метка для панели профиля (perf.gd)
+	_vehicle_render_tick()                         # машины вне кадра не рисуем (КАЖДЫЙ кадр)
 	_cull_tick(delta)                              # гасим то, что за спиной (свой период, чаще)
 	_tick += delta
 	if _tick < 1.0:
@@ -139,6 +140,66 @@ func _cull_tick(delta: float) -> void:
 ##
 ## Переключаем ТОЛЬКО на смене состояния: обход блоков не бесплатный, а расстояние плавное.
 const SHADOW_DIST := 90.0
+
+# ── МАШИНА ВНЕ КАДРА НЕ РИСУЕТСЯ ─────────────────────────────────────────────
+# Движок отсекает каждый MeshInstance3D сам, но платить всё равно приходится: у машины
+# тридцать-сорок отдельных инстансов, у каждого свой AABB, и все они проходят отбор каждый
+# кадр — а вокруг игрока таких машин бывает с десяток. Дешевле один раз спросить про машину
+# целиком и погасить ветку, чем сорок раз про её блоки.
+#
+# ГАСИМ ТОЛЬКО РИСОВАНИЕ. process_mode не трогаем совсем: враг за спиной обязан продолжать
+# ехать, стрелять и считать энергию — это его сон решает (enemy_spawner), а не кадр камеры.
+# visible у Node3D на физику не влияет: коллизия живёт своим полем disabled.
+#
+# Проверка КАЖДЫЙ КАДР, а не по таймеру уборки: появиться машина обязана в тот же кадр, когда
+# камера на неё повернулась. Машин единицы, а тест — шесть скалярных произведений.
+const VEH_CULL_RADIUS := 9.0     # сфера вокруг машины: 11³ клеток по диагонали с запасом
+## Высота коробки для запроса окклюзии. Радиус сферы сюда не годится: is_point_hidden строит
+## столбик 1×height×1, и девятиметровый столб торчал бы над любым холмом — «за хребтом» не
+## случалось бы никогда. Четыре метра — машина с башней и запасом.
+const VEH_OCCL_HEIGHT := 4.0
+
+func _vehicle_render_tick() -> void:
+	var vehicles := get_node_or_null("/root/Main/Vehicles")
+	if vehicles == null:
+		return
+	var cam := get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam == null:
+		return
+	var frustum: Array[Plane] = cam.get_frustum()
+	var active: Node = _primary_machine()
+	var terr := _terrain()
+	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	for v in vehicles.get_children():
+		if not (v is Node3D):
+			continue
+		var n := v as Node3D
+		# СВОЮ АКТИВНУЮ МАШИНУ НЕ ГАСИМ НИКОГДА. Камера висит на ней и смотрит на неё, так что
+		# тест она и так проходит, — но цена ошибки здесь несимметрична: лишний кадр отрисовки
+		# не заметен, а исчезнувшая под игроком машина выглядит как поломка игры.
+		if n == active:
+			_set_vehicle_visible(n, true)
+			continue
+		var pos: Vector3 = n.global_position
+		var shown: bool = _in_frustum(frustum, pos, VEH_CULL_RADIUS)
+		if shown and can_occlude:
+			# За хребтом — то же самое, что за спиной. Гистерезис внутри is_point_hidden берёт
+			# прошлое состояние, чтобы машина на самой кромке холма не мигала.
+			shown = not terr.is_point_hidden(pos, VEH_OCCL_HEIGHT, not n.visible)
+		_set_vehicle_visible(n, shown)
+
+func _set_vehicle_visible(n: Node3D, on: bool) -> void:
+	if n.visible != on:
+		n.visible = on
+
+## Пересекает ли сфера (центр, радиус) пирамиду видимости. Планы приходят из Camera3D.get_frustum
+## в МИРОВЫХ координатах и смотрят внутрь, поэтому «снаружи» — это distance_to больше радиуса
+## хотя бы у одной. Ранний выход: чаще всего первая же плоскость и отвечает.
+func _in_frustum(frustum: Array[Plane], center: Vector3, radius: float) -> bool:
+	for pl in frustum:
+		if pl.distance_to(center) > radius:
+			return false
+	return true
 
 func _shadow_tick(cam_pos: Vector3) -> void:
 	var vehicles := get_node_or_null("/root/Main/Vehicles")

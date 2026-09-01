@@ -18,8 +18,9 @@ static var _cards_frame: int = -1
 static var _cards_used: int = 0
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
-# AOE-взрыв: урон блокам в радиусе (спад от центра) + дешёвый огненный эффект (два additive-меша,
-# без частиц/света — легко для мобильного GPU). Батарея зовёт это при уничтожении. exclude_root —
+# AOE-взрыв: урон блокам в радиусе (спад от центра) + красное облако глитч-карточек
+# (blast_cards, без частиц и света — легко для мобильного GPU). Батарея зовёт это при
+# уничтожении. exclude_root —
 # машина, которую НЕ бить (напр. ракета не бьёт свою); для батареи null — взрывает всё вокруг.
 #
 # push — импульс СВОБОДНЫМ блокам (тем, что уже лежат в мире, freeze = false). Блоки на машине
@@ -64,8 +65,7 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 			b.hurt(int(round(dmg * f)))
 	var tree := anchor.get_tree()
 	if tree != null and tree.current_scene != null:
-		_boom(tree.current_scene, world_pos, radius, Color(1.0, 0.55, 0.15), 4.0, 0.38)   # огненный шар
-		_boom(tree.current_scene, world_pos, radius * 0.55, Color(1.0, 0.95, 0.7), 6.0, 0.22)  # горячее ядро
+		blast_cards(tree.current_scene, world_pos, radius)
 
 static func _root_of(n: Node) -> Node:
 	var p: Node = n
@@ -73,33 +73,72 @@ static func _root_of(n: Node) -> Node:
 		p = p.get_parent()
 	return p
 
-static func _boom(root: Node, pos: Vector3, target_r: float, col: Color, energy: float, dur: float) -> void:
-	var mi := MeshInstance3D.new()
-	var sm := SphereMesh.new()
-	sm.radius = 0.5
-	sm.height = 1.0
-	sm.radial_segments = 10
-	sm.rings = 6
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.albedo_color = Color(col.r, col.g, col.b, 1.0)
-	mat.emission_enabled = true
-	mat.emission = col
-	mat.emission_energy_multiplier = energy
-	sm.material = mat
-	mi.mesh = sm
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	root.add_child(mi)
-	mi.global_position = pos
-	mi.scale = Vector3.ONE * 0.25
-	var tw := mi.create_tween()
+## КРАСНЫЙ МАТРИЧНЫЙ ВЗРЫВ. Раньше здесь надувались две additive-сферы — оранжевый шар и
+## белое ядро. Выглядело это чужеродно: во всей игре появление, гибель, урон и ремонт говорят
+## ГЛИТЧ-КАРТОЧКАМИ и матричными цифрами, и только взрыв был мультяшным огоньком из другой
+## игры. Теперь он из того же словаря — облако красных карточек, разлетающееся на радиус
+## поражения, то есть заодно и ЧЕСТНО ПОКАЗЫВАЮЩЕЕ, докуда достаёт урон.
+const BLAST_A := Color(1.0, 0.16, 0.12)     # алый
+const BLAST_B := Color(1.0, 0.62, 0.10)     # и раскалённый край: две краски глитча
+const BLAST_CARDS := 34
+const BLAST_DUR := 0.55
+
+static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
+	if root == null or not is_instance_valid(root):
+		return
+	var count: int = _take_card_budget(BLAST_CARDS)
+	if count <= 0:
+		return
+	var cloud := Node3D.new()
+	root.add_child(cloud)
+	cloud.global_position = pos
+	var mats: Array = []
+	for i in count:
+		var card := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		card.mesh = q
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var cmat := ShaderMaterial.new()
+		cmat.shader = CARD_SHADER
+		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
+		cmat.set_shader_parameter("fill_threshold", randf_range(0.34, 0.5))
+		cmat.set_shader_parameter("progress", 0.0)
+		cmat.set_shader_parameter("glitch_a", Vector3(BLAST_A.r, BLAST_A.g, BLAST_A.b))
+		cmat.set_shader_parameter("glitch_b", Vector3(BLAST_B.r, BLAST_B.g, BLAST_B.b))
+		card.material_override = cmat
+		cloud.add_child(card)
+		# Точки по ШАРУ, а не по кубу: у взрыва есть радиус, и облако обязано быть круглым —
+		# иначе углы куба торчат за границу поражения и врут про неё.
+		var dir := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5)
+		dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.UP
+		# Кубический корень от равномерного числа даёт РАВНОМЕРНУЮ плотность по объёму;
+		# без него карточки сбивались бы в центр, и края взрыва оставались пустыми.
+		card.position = dir * radius * pow(randf(), 1.0 / 3.0)
+		var s := randf_range(radius * 0.18, radius * 0.5)
+		card.scale = Vector3(s, s, 1.0)
+		mats.append(cmat)
+	var tw := cloud.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(mi, "scale", Vector3.ONE * (target_r / 0.5), dur).set_ease(Tween.EASE_OUT)
-	tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
-	tw.tween_property(mat, "emission_energy_multiplier", 0.0, dur)
-	tw.chain().tween_callback(mi.queue_free)
+	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, BLAST_DUR)
+	# Само облако РАЗЛЕТАЕТСЯ: карточки стоят на своих местах внутри него, а масштабируется
+	# узел целиком — один твин вместо тридцати четырёх.
+	cloud.scale = Vector3.ONE * 0.35
+	tw.tween_property(cloud, "scale", Vector3.ONE, BLAST_DUR).set_ease(Tween.EASE_OUT)
+	tw.chain().tween_callback(cloud.queue_free)
+
+## Сколько карточек можно создать в этом кадре (общий потолок на всю игру, см. CARDS_PER_FRAME).
+## Вынесено из play(), потому что считать бюджет обязаны ВСЕ, кто их создаёт: цепной взрыв
+## рвёт по десятку блоков сразу, и без общего счёта это тысяча узлов в одном кадре.
+static func _take_card_budget(want: int) -> int:
+	var frame := Engine.get_frames_drawn()
+	if frame != _cards_frame:
+		_cards_frame = frame
+		_cards_used = 0
+	var n: int = mini(want, maxi(CARDS_PER_FRAME - _cards_used, 0))
+	_cards_used += n
+	return n
 
 ## Зелёный «матрицы» ремонта. Различает эффекты не только цвет, но и ФОРМА: ремонт — это
 ## цифры 0/1 по всей оболочке, а появление и распад блока — облако глитч-карточек. Одного
@@ -163,14 +202,8 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 	cloud.global_transform = block.global_transform * Transform3D(Basis(), aabb.get_center())
 	var half := aabb.size * 0.5
 	var mats: Array = []
-	# Бюджет карточек на кадр (см. CARDS_PER_FRAME): считаем кадры по счётчику движка.
-	var frame := Engine.get_frames_drawn()
-	if frame != _cards_frame:
-		_cards_frame = frame
-		_cards_used = 0
-	var budget: int = maxi(CARDS_PER_FRAME - _cards_used, 0)
-	var count: int = mini(CARD_COUNT, budget)
-	_cards_used += count
+	# Бюджет карточек на кадр (см. CARDS_PER_FRAME) — общий с взрывом, поэтому в одной функции.
+	var count: int = _take_card_budget(CARD_COUNT)
 	if count <= 0:
 		cloud.queue_free()
 		return
@@ -211,6 +244,44 @@ static func _set_cards_progress(p: float, mats: Array) -> void:
 	for m in mats:
 		if is_instance_valid(m):
 			(m as ShaderMaterial).set_shader_parameter("progress", p)
+
+## ФИТИЛЬ: КРАСНАЯ МАТРИЦА, КОТОРАЯ РАЗГОРАЕТСЯ. Догорающий блок раньше просто МИГАЛ
+## видимостью, всё быстрее, — и это был компромисс, а не замысел: подкрасить сам блок нельзя,
+## материалы у моделей ОБЩИЕ между экземплярами, и покрасить один значило покрасить все такие
+## в игре. Оболочка эту проблему снимает целиком: это отдельный меш со своим материалом, как у
+## ремонта, только красный.
+##
+## Гоним progress ОТ 1 К 0: в mode 2 шейдера альфа считается как (1 − progress), то есть
+## единица — это «ничего не видно», а ноль — полная сила. С EASE_IN первую половину фитиля
+## блок едва тлеет, а к концу заливается красным — ровно то, что должен сообщать фитиль:
+## «время ещё есть» и «времени больше нет».
+const FUSE_COL := Color(1.0, 0.14, 0.10)
+
+static func fuse(block: Node3D, duration: float) -> void:
+	if block == null or not block.is_inside_tree() or duration <= 0.0:
+		return
+	var aabb := _local_aabb(block)
+	var fx := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3.ONE
+	fx.mesh = bm
+	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = SHADER
+	mat.set_shader_parameter("mode", 2)                 # цифры 0/1 по всей оболочке
+	mat.set_shader_parameter("color_damage", FUSE_COL)
+	mat.set_shader_parameter("damage_cells", 6.0)       # та же плотность, что у ремонта и оверлея хп
+	mat.set_shader_parameter("progress", 1.0)
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	fx.material_override = mat
+	block.add_child(fx)
+	# Чуть больше блока — иначе цифры z-борются с его поверхностью и мерцают.
+	fx.transform = Transform3D(Basis().scaled(aabb.size * 1.04), aabb.get_center())
+	# Твин на САМОЙ оболочке: блок добьют раньше срока — она умрёт вместе с ним, и обращаться
+	# к освобождённому материалу будет некому.
+	var tw := fx.create_tween()
+	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p),
+			1.0, 0.0, duration).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
 
 const HIT_THICKNESS := 0.08   # толщина пластины вспышки попадания
 const HIT_DURATION := 0.3
@@ -297,14 +368,21 @@ const MAX_EXTENT := 2.0
 #     пропуска коробка коллектора раздувалась под гигантское кольцо и обрезалась
 #     страховкой MAX_EXTENT до случайного размера вместо настоящих габаритов блока.
 static func _local_aabb(block: Node3D) -> AABB:
+	# ВНЕ ДЕРЕВА global_transform НЕ СУЩЕСТВУЕТ — движок ругается и возвращает единичный. Сюда
+	# такой блок попадает по-настоящему: блок отрывается в мир (detach_block_to_world репарентит
+	# его в objects), и ровно в этот момент в него прилетает пуля — hurt → destroy → play. Кадр
+	# смерти важнее коробки, поэтому не падаем, а отдаём пустую: эффект просто выйдет размером
+	# по умолчанию.
+	if not block.is_inside_tree():
+		return AABB()
 	var inv := block.global_transform.affine_inverse()
 	var acc := AABB()
 	var has := false
 	var stack: Array = [block]
 	while not stack.is_empty():
 		var n = stack.pop_back()
-		if n is Node3D and not (n as Node3D).visible:
-			continue                       # скрытая ветка (FX) — не считаем и не спускаемся
+		if n is Node3D and (not (n as Node3D).visible or not (n as Node3D).is_inside_tree()):
+			continue                       # скрытая ветка (FX) или узел вне дерева — пропускаем
 		if n is Area3D and n != block:
 			continue                       # триггер/индикатор дальности — не тело блока
 		for c in n.get_children():

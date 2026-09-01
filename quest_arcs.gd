@@ -84,6 +84,26 @@ const POWER_PLAN_2 := [
 	{"cell": Vector3i(5, 6, 6), "block": G.Block.REGEN},
 ]
 
+## ЧЕРТЁЖ ПОКАЗЫВАЕМ, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ ДО БЛОКОВ. Разметка, зажигающаяся в момент
+## объявления задания, — это призраки, висящие на пустом месте всю дорогу до цели: ставить в них
+## нечего, и к тому моменту, когда они наконец нужны, игрок перестаёт их замечать. Двадцать
+## метров — это «блоки уже видно», то есть ровно тот момент, когда вопрос «куда их вешать»
+## впервые становится настоящим.
+##
+## Подобранный предмет из мира уходит, и position_for отдаёт null — с этой минуты чертёж горит
+## всегда: подбирать больше нечего, остался только вопрос «куда», а он и есть ответ.
+const PLAN_SHOW_DIST := 20.0
+
+func _plan_visible(quest_id: String) -> bool:
+	var at = _props.position_for(quest_id)
+	if at == null:
+		return true
+	var p: Node3D = _player()
+	if p == null:
+		return false
+	return p.global_position.distance_squared_to(at as Vector3) \
+			<= PLAN_SHOW_DIST * PLAN_SHOW_DIST
+
 func _arc_power_1(q: Dictionary) -> void:
 	# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
 	# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело это
@@ -101,8 +121,11 @@ func _arc_power_1(q: Dictionary) -> void:
 	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
 	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
 	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
-	_show_plan_on(_player_blocks(), POWER_PLAN_1)
-	_point_finger("Anchor at the back, panel on top of it")
+	if _plan_visible("arc_power"):
+		_show_plan_on(_player_blocks(), POWER_PLAN_1)
+		_point_finger("Anchor at the back, panel on top of it")
+	else:
+		_clear_plan()
 	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
