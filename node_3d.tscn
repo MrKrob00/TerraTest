@@ -422,20 +422,6 @@ theme_override_font_sizes/font_size = 17
 text = "$ 0"
 horizontal_alignment = 1
 
-[node name="Market" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000103]
-unique_name_in_owner = true
-visible = false
-offset_right = 96.0
-offset_bottom = 60.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_hudfloat")
-
-[node name="MarketRows" type="VBoxContainer" parent="Vehicles/Camera Controller/HUD/Market" unique_id=411000104]
-unique_name_in_owner = true
-layout_mode = 2
-mouse_filter = 2
-theme_override_constants/separation = 1
-
 [node name="PerfPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000105]
 unique_name_in_owner = true
 visible = false
