@@ -177,7 +177,7 @@ snow_blend = 15.6
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
-mask_offset = Vector2(-1333.5161, 274.4048)
+mask_offset = Vector2(1578.8726, -156.10547)
 
 [sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
