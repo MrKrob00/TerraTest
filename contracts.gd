@@ -4,8 +4,8 @@ extends Node
 #
 # Зачем. Продавец брал всё подряд и по одной цене, поэтому производственная цепочка работала
 # в пустоту: собрал линию — и дальше просто копишь деньги, ни одного решения. Контракт даёт
-# цепочке ЦЕЛЬ на ближайшие минуты («нужен куприт, значит еду на луг и гоню слитки»), а
-# вместе с рынком (G.market_mods) — ещё и выбор: везти дорогое сейчас или закрывать заказ.
+# цепочке ЦЕЛЬ на ближайшие минуты («нужен куприт, значит еду на луг и гоню слитки») и срок,
+# в который в неё надо успеть.
 #
 # КОНТРАКТ — ЭТО ОБЫЧНЫЙ КВЕСТ, а не вторая система заданий. Слот в журнале один и тот же
 # (SLOT_ID), у него переписываются название, цель и событие. Иначе пришлось бы заводить второй
@@ -42,6 +42,9 @@ var _gap: float = 30.0            # первый заказ — через по�
 var _left: float = 0.0            # сколько осталось на текущий заказ
 var _active: bool = false
 var _kind: String = ""
+var _count: int = 0               # сколько заказали
+var _pay: int = 0                 # сколько за это дают
+var _shown_min: int = -1          # какая минута сейчас написана в описании квеста
 
 func _ready() -> void:
 	add_to_group("contracts")
@@ -73,13 +76,24 @@ func _offer() -> void:
 	var count: int = _count_for(_kind)
 	var pay: int = int(round(G.base_price(_kind) * count * PAY_MARKUP))
 	var title: String = "Contract: %s" % G.kind_name(_kind)
-	var desc: String = "Sell %d × %s" % [count, G.kind_name(_kind)]
+	# СРОК И ПЛАТА — В ОПИСАНИИ КВЕСТА, А НЕ В РЕПЛИКЕ. Реплика проговаривается один раз и
+	# уезжает; числа, которые надо помнить всю дорогу, обязаны лежать там, куда за ними
+	# возвращаются, — в журнале. Систему игрок слушает не ради арифметики, а чтобы понять, что
+	# от него хотят и насколько это срочно.
+	_count = count
+	_pay = pay
+	_shown_min = int(ceil(TIME_LIMIT / 60.0))
 	# Событие своё на каждый вид: продавец шлёт ровно его (см. seller.gd).
-	_write_slot(title, desc, count, "sold_" + _kind, pay)
+	_write_slot(title, _desc_text(_shown_min), count, "sold_" + _kind, pay)
 	_active = true
 	_left = TIME_LIMIT
-	Dialogue.say("System", "%s. Payment %d$ on delivery — you have %d minutes."
-			% [desc, pay, int(TIME_LIMIT / 60.0)])
+	Dialogue.say("System", "We need %s. Urgently." % G.kind_name(_kind))
+
+## Строка в журнале: что везти, сколько осталось и сколько заплатят. Срок ЖИВОЙ — заказ имеет
+## смысл ровно до тех пор, пока в него можно успеть, и «8 минут» в неподвижной строке отвечает
+## не на тот вопрос, который игрок задаёт на четвёртой минуте.
+func _desc_text(mins: int) -> String:
+	return "Sell %d × %s — %d min left, %d$" % [_count, G.kind_name(_kind), maxi(mins, 0), _pay]
 
 ## Заполнить слот-квест. Квеста может ещё не быть (первый заказ) — тогда создаём.
 func _write_slot(title: String, desc: String, goal: int, event: String, pay: int) -> void:
@@ -108,7 +122,15 @@ func _tick_active(delta: float) -> void:
 		_gap = randf_range(GAP_MIN, GAP_MAX)
 		return
 	_left -= delta
+	# Переписываем описание только НА СМЕНЕ МИНУТЫ: q["desc"] показывается через Q.changed, а
+	# тот пересобирает весь журнал — делать это каждый кадр значит перестраивать список
+	# шестьдесят раз в секунду ради одной строки.
 	if _left > 0.0:
+		var mins: int = int(ceil(_left / 60.0))
+		if mins != _shown_min:
+			_shown_min = mins
+			q["desc"] = _desc_text(mins)
+			Q.changed.emit()
 		return
 	# СРОК ВЫШЕЛ — заказ снимается, а не висит вечно. skip_quest закрывает его без награды и
 	# говорит об этом сам; следующий придёт после обычной паузы.

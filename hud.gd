@@ -50,7 +50,6 @@ func _ready() -> void:
 	_build_hand_panel()
 	_build_block_globe()
 	_build_anchor_button()
-	_bind_market()
 	_build_vehicle_button()
 	_build_radar()
 	_bind_money()
@@ -288,70 +287,15 @@ func _bind_money() -> void:
 
 var _money_panel: PanelContainer = null
 
-# ── Рынок: что сейчас берут дороже, а что дешевле ─────────────────────────────
-# Панель под деньгами, и появляется она ТОЛЬКО ПОД ЯКОРЕМ. Причина простая: цены важны
-# ровно тогда, когда игрок торгует и производит, а это и есть якорь — вся фабрика работает
-# только на нём. В дороге эти четыре строки были бы шумом поверх боя.
-#
-# Без панели вся механика была бы невидимой: продавец начисляет деньги молча, и понять,
-# что титанит сейчас берут на треть дороже, игроку было бы неоткуда.
-const MARKET_ROW_H := 18.0
-var _market_panel: PanelContainer = null
-var _market_box: VBoxContainer = null
-
-func _bind_market() -> void:
-	_market_panel = _lift(%Market)
-	_market_box = %MarketRows
-	G.market_changed.connect(_refresh_market)
-	_refresh_market()
-
-func _refresh_market() -> void:
-	if _market_box == null:
-		return
-	for c in _market_box.get_children():
-		c.queue_free()
-	var head := Label.new()
-	head.text = "MARKET"
-	head.add_theme_font_size_override("font_size", 11)
-	head.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 0.9))
-	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_market_box.add_child(head)
-	# Сначала наценки, потом скидки: сперва «что везти», потом «что придержать».
-	var rows: Array = []
-	for k in G.market_mods:
-		rows.append([String(k), float(G.market_mods[k])])
-	rows.sort_custom(func(a, b): return float(a[1]) > float(b[1]))
-	for r in rows:
-		var mult: float = float(r[1])
-		var l := Label.new()
-		l.text = "%s  %+d%%" % [G.kind_name(String(r[0])), int(round((mult - 1.0) * 100.0))]
-		l.add_theme_font_size_override("font_size", 13)
-		l.add_theme_color_override("font_color",
-				Color(0.45, 1.0, 0.55) if mult > 1.0 else Color(1.0, 0.6, 0.45))
-		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_market_box.add_child(l)
-	_layout_market()
-
-func _layout_market() -> void:
-	if _market_panel == null:
-		return
-	var screen: Vector2 = get_viewport().get_visible_rect().size
-	var w: float = maxf(_radar_size, 96.0)
-	var rows: int = maxi(_market_box.get_child_count(), 1)
-	_market_panel.size = Vector2(w, MARKET_ROW_H * rows + 12.0)
-	_market_panel.position = Vector2(screen.x - w - 12.0, _money_bottom())
-
-## ПРАВЫЙ ВЕРХНИЙ УГОЛ — ЭТО СТОПКА, И СЧИТАЕТ ЕЁ ОДИН КОД. Там живут радар, деньги, рынок и
-## трекер квестов, и каждый когда-то считал своё место сам. Так рынок и лёг под трекер: тот
-## знал про радар и деньги, а про появившуюся между ними панель — нет, и стоило машине встать
-## на якорь, как две панели оказывались друг на друге.
+## ПРАВЫЙ ВЕРХНИЙ УГОЛ — ЭТО СТОПКА, И СЧИТАЕТ ЕЁ ОДИН КОД. Там живут радар, деньги и трекер
+## квестов, и каждый когда-то считал своё место сам — так панель рынка и легла под трекер: тот
+## знал про радар и деньги, а про появившуюся между ними панель — нет.
+##
+## Самой панели рынка больше нет: механика переехала в магазин (см. G, «РАСПРОДАЖА В МАГАЗИНЕ»).
+## Правило про одну точку счёта осталось — оно и было причиной, по которой её удалось выдернуть
+## отсюда, ничего не сломав.
 func _money_bottom() -> float:
 	return 12.0 + _radar_size + 6.0 + MONEY_H + 6.0
-
-func _market_bottom() -> float:
-	if _market_panel == null or not _market_panel.visible:
-		return _money_bottom()
-	return _money_bottom() + _market_panel.size.y + 6.0
 
 func _refresh_money() -> void:
 	if _money_lbl:
@@ -381,7 +325,7 @@ func _layout_money() -> void:
 func _push_quest_top(radar_on: bool) -> void:
 	var y: float = 0.0
 	if radar_on:
-		y = _market_bottom()          # под всей стопкой, включая рынок (см. _money_bottom)
+		y = _money_bottom()           # под всей стопкой правого верхнего угла
 	for q in get_tree().get_nodes_in_group("quests"):
 		if q.has_method("set_top_offset"):
 			q.set_top_offset(y)
@@ -1389,22 +1333,10 @@ func _update_radar(delta: float) -> void:
 		_radar.range_world = RADAR_RANGE_FULL if on else RADAR_RANGE_SMALL
 		_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
 		_layout_money()
-		_layout_market()
 		_push_quest_top(true)      # карта и трекер квестов делят правый верхний угол
 	var live: bool = v != null and v is Node3D and not _controls_hidden
 	if _money_panel:
 		_money_panel.visible = live
-	if _market_panel:
-		# Только под якорем (см. _bind_market): цены важны там, где торгуют и производят.
-		var show_market: bool = live and v != null and v.get("anchored") == true
-		var changed: bool = show_market != _market_panel.visible
-		_market_panel.visible = show_market
-		if show_market:
-			_layout_market()
-		if changed:
-			# Панель появилась или пропала — стопка стала другой высоты, и трекер квестов
-			# обязан переехать сейчас же, иначе он либо ляжет на рынок, либо повиснет с дырой.
-			_push_quest_top(_has_radar(v))
 	if _quest_compass:
 		_quest_compass.visible = live
 	if _radar.visible != live:

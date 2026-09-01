@@ -24,6 +24,9 @@ var _prices: Dictionary = {}              # G.Block -> цена (что прод
 # ── Фильтры вкладки SHOP (гараж — единственный магазин блоков) ────────────────
 var _categories: Dictionary = {}          # ключ → Array типов
 var _shop_filter: String = "all"
+## Цвет ценника на распродаже. Тёплый, а не зелёный: зелёный в этой игре занят ремонтом и
+## «хватает денег», и скидка в нём читалась бы как «можно купить», а не как «стало дешевле».
+const SALE_COL := Color(1.0, 0.82, 0.22)
 var _last_slot_side: float = 0.0        # чтобы пересобирать сетку только при реальной смене ширины
 var _filter_col: VBoxContainer = null     # колонка кнопок слева от сетки (видна в SHOP)
 var _filter_buttons: Dictionary = {}
@@ -77,6 +80,9 @@ func _ready() -> void:
 		row.move_child(_prog_label, (%Currency as Node).get_index())
 	G.progress_changed.connect(_on_progress_changed)   # XP/ДИ: замки могли открыться
 	G.money_changed.connect(_on_money_changed)         # пассивный доход при открытом гараже
+	# Витрина обязана обновиться в тот же миг, когда сменилась распродажа: гараж бывает открыт
+	# как раз в эту минуту, и цена под пальцем не имеет права разойтись с той, что спишут.
+	G.shop_sales_changed.connect(_on_money_changed)
 	# Закрыть гараж можно и ЖЕСТОМ — протянуть от нижней кромки экрана вверх по центру.
 	# Крестик остаётся, но он в дальнем углу, а гараж закрывают чаще всего сразу после
 	# того, как что-то взяли, — то есть пальцем, который и так внизу экрана.
@@ -149,11 +155,16 @@ func _load_items() -> void:
 		for block_type in _prices:
 			if not _passes_filter(int(block_type)):
 				continue
+			# Цена СЧИТАЕТСЯ ЗДЕСЬ, а не берётся из кеша _prices: раз в SALE_WINDOW часть
+			# блоков уходит на распродажу, и витрина обязана показывать то, что с игрока
+			# спишут. _prices остаётся базовой — рядом со скидкой мы показываем и её,
+			# иначе «−30 %» не от чего отсчитать.
 			_items.append({
 				"type": int(block_type),
 				"name": _block_name(int(block_type)),
 				"count": 0,
-				"price": int(_prices[block_type]),
+				"price": G.shop_price_now(int(block_type)),
+				"was": int(_prices[block_type]),
 			})
 		return
 	var counts: Dictionary = {}
@@ -296,6 +307,9 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.price = 0
 	s.build_name = ""
 	s.corner.visible = false
+	# Цвет ценника СБРАСЫВАЕМ: слоты живут в пуле и переиспользуются, поэтому жёлтый ярлык
+	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
+	s.corner.remove_theme_color_override("font_color")
 	s.pencil.visible = false
 	s.visible = true
 
@@ -327,7 +341,16 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		s.modulate = Color(1, 1, 1, 0.45)
 		return
 	s.action = &"buy"
-	s.corner.text = "%d$" % s.price
+	var off: int = G.shop_sale_pct(s.arg)
+	if off > 0:
+		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой и процент прямо в углу, старая
+		# цена — в подсказке. Процент обязателен: без него игрок не отличит скидку от блока,
+		# который просто дешевле соседнего, а угол слота — единственное место, куда он смотрит.
+		s.corner.text = "%d$  −%d%%" % [s.price, off]
+		s.corner.add_theme_color_override("font_color", SALE_COL)
+		s.tooltip_text = "On sale: %d$ instead of %d$" % [s.price, int(it.get("was", s.price))]
+	else:
+		s.corner.text = "%d$" % s.price
 	s.disabled = G.money < s.price
 
 # Надпись «пусто» тоже переиспользуем: пустая строка — просто прячем.
