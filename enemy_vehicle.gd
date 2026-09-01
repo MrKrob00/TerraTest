@@ -760,7 +760,10 @@ func _weapon_blocks() -> Array:
 # отходе»), и отступающий враг без цели поливал воздух — WeaponBlock.attack() лишь взводит
 # таймер, а стреляет он независимо от того, есть ли кого бить.
 func _do_attack() -> void:
-	if not combat_allowed or not is_instance_valid(_target):
+	# Запрет боя НЕ ДЕЙСТВУЕТ НА БАЗУ — то же правило, что и в _base_tick выше. Спавнер уже не
+	# ставит его постройкам, но держим и здесь: это единственная точка, где взводится оружие,
+	# и «база стреляет всегда» должно быть верно, кто бы флаг ни выставил.
+	if not (combat_allowed or is_base) or not is_instance_valid(_target):
 		return
 	for b in _weapon_blocks():
 		if not is_instance_valid(b):
