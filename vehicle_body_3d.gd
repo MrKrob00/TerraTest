@@ -774,7 +774,13 @@ func _on_movement_pressed() -> void:
 		Q.report("mode_movement", 1)          # шаг обучения «выйти из стройки»
 	Building = false
 	ghost_block.visible = false
-	if not is_station:            # станция всегда на якоре — Movement не должен её размораживать
+	# ЯКОРЬ ПЕРЕЖИВАЕТ ВЫХОД ИЗ СТРОЙКИ. Условие было «не станция», и заякоренная обычная
+	# машина размораживалась: она сползала с колонны-упора, физика возобновлялась, первый же
+	# контакт уходил в _on_anchor_contact и снимал якорь. Со стороны это выглядело так, будто
+	# якорь отцепляет ЗАКРЫТИЕ ГАРАЖА, — его закрытие и зовёт этот метод (hud._on_tech_ui_
+	# visibility). Держит машину именно freeze, поэтому размораживать её, пока anchored,
+	# нельзя ничем: снять якорь можно только кнопкой якоря.
+	if not is_station and not anchored:
 		freeze = false
 	var up: Vector3 = global_transform.basis.y
 	if up.dot(Vector3.UP) < 0.3:

@@ -316,24 +316,67 @@ func _purge_extra_machines() -> void:
 func _is_world_block(n) -> bool:
 	return n is RigidBody3D and "block" in n
 
+## Лежащий в мире РЕСУРС (руда, слиток, уголь, компонент, чанк). Признак тот же, которым его
+## отличает подбор в руку (vehicle_body_3d): не блок, есть поле type и есть kind_key().
+func _is_world_item(n) -> bool:
+	return n is RigidBody3D and not ("block" in n) and ("type" in n) and n.has_method("kind_key")
+
+# ── УБОРКА ПО РАССТОЯНИЮ ─────────────────────────────────────────────────────
+# Одного TTL мало. Игрок разбирает базу на другом конце карты, уезжает — и десять минут в
+# памяти живут полсотни тел с коллизией и скриптами, до которых он уже не вернётся. А поле
+# боя, где он стоит и чинится, наоборот, вычищается по таймеру прямо под ним.
+#
+# Поэтому расстояние меряется не от камеры, а от БЛИЖАЙШЕЙ МАШИНЫ ИГРОКА: камера крутится
+# вокруг, а база с конвейером стоит на месте, и всё, что лежит возле неё, обязано дожить до
+# возвращения хозяина. У ресурсов порог вдвое короче: их на порядок больше (жила отдаёт руду
+# пачками), а ценность каждого штучная — за отдельной рудой за полтораста метров не ездят.
+const CULL_DIST_BLOCK := 300.0
+const CULL_DIST_ITEM := 150.0
+
 func _expire_world_blocks() -> void:
 	var o := _objects()
 	if o == null:
 		return
 	var now := _now()
+	# Позиции машин игрока считаем ОДИН РАЗ на проход, а не на каждый предмет: их единицы,
+	# предметов — сотни.
+	var homes: Array[Vector3] = []
+	for m in _player_machines():
+		if m is Node3D:
+			homes.append((m as Node3D).global_position)
 	for c in o.get_children():
-		if not _is_world_block(c):
+		var is_block: bool = _is_world_block(c)
+		if not is_block and not _is_world_item(c):
 			continue
-		# КВЕСТОВЫЙ ПРЕДМЕТ НЕ ПРОПАДАЕТ ПО ТАЙМЕРУ. Он помечен (QuestProps.META), и метка
-		# здесь и нужна: уборка мира про квесты ничего не знает, а десять минут — обычное
-		# время дороги до цели. Груз, растаявший по пути, оставлял квест без цели навсегда.
+		# КВЕСТОВЫЙ ПРЕДМЕТ НЕ ПРОПАДАЕТ НИ ПО ТАЙМЕРУ, НИ ПО РАССТОЯНИЮ. Он помечен
+		# (QuestProps.META), и метка здесь и нужна: уборка мира про квесты ничего не знает,
+		# а десять минут — обычное время дороги до цели, и она же бывает дальше трёхсот
+		# метров. Груз, растаявший по пути, оставлял квест без цели навсегда.
 		if c.has_meta("quest_id"):
 			continue
+		var limit: float = CULL_DIST_BLOCK if is_block else CULL_DIST_ITEM
+		if _too_far(c as Node3D, homes, limit):
+			c.queue_free()
+			continue
+		if not is_block:
+			continue                                   # у ресурсов TTL нет — только расстояние
 		if not c.has_meta("world_spawn_s"):
 			c.set_meta("world_spawn_s", now)           # первый раз увидели — стартуем его таймер
 			continue
 		if now - float(c.get_meta("world_spawn_s")) > BLOCK_TTL:
 			c.queue_free()
+
+## Дальше ли предмет, чем limit, от КАЖДОЙ машины игрока. Пустой список машин (игрок погиб,
+## сцена ещё грузится) — значит «не знаем», и тогда не убираем: уборка по незнанию однажды
+## вынесет всё поле.
+func _too_far(n: Node3D, homes: Array[Vector3], limit: float) -> bool:
+	if n == null or homes.is_empty():
+		return false
+	var lim2: float = limit * limit
+	for h in homes:
+		if h.distance_squared_to(n.global_position) <= lim2:
+			return false
+	return true
 
 func _spawn_world_block(bt: int, pos: Vector3, rot, age_s: float = 0.0) -> Node:
 	var scene: PackedScene = G.get_scene(bt)
