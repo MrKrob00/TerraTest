@@ -453,7 +453,12 @@ func _map_block_collisions(block: Node) -> void:
 			child.set_meta("block_owner", block)
 
 func connect_block_signals(block: Node) -> void:
-	if block.has_signal("destroyed"):
+	# ПОДПИСЫВАЕМСЯ ОДИН РАЗ. Узел блока переживает снятие с машины: подобрал в руку, поставил
+	# обратно — и это ТОТ ЖЕ объект, которому _on_take_pressed снова раздаёт подписки. Вторая
+	# connect роняет ошибку движка, а если бы прошла — коллизию снимали бы дважды, то есть
+	# ровно та беда, от которой чуть ниже страхуется _on_block_destroyed.
+	# То же правило и той же строкой стоит в blocks.attach_block_signals.
+	if block.has_signal("destroyed") and not block.destroyed.is_connected(_on_block_destroyed):
 		block.destroyed.connect(_on_block_destroyed)
 
 # Награда блоками (подача): count блоков ГЛЮЧНО возникают и КРУЖАТ вокруг машины, следуя за ней,

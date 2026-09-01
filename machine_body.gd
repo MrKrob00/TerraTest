@@ -753,13 +753,21 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	for owner_id in get_shape_owners():
 		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
-		if is_instance_valid(collision_shape):
-			# Якщо ця колізія належить знищеному блоку.
-			# Второй вариант — про блоки 2×2×2 (процессор, продавец): их коллизия ставится
-			# со сдвигом (см. постановку блока), и по точному совпадению позиции она не
-			# находилась — большой блок погибал, а его коллизия оставалась висеть.
-			if collision_shape.position == destroyed_block.position \
-					or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET:
+		# УЖЕ СНЯТУЮ ФОРМУ ПРОПУСКАЕМ. Этот обработчик зовут ДВА пути: напрямую из
+		# detach_block_to_world и сигналом destroyed, — и они сходятся на одном блоке, когда его
+		# добивают прямо во время отрыва (пуля попадает в момент репарента). Второй
+		# remove_shape_owner на том же владельце роняет ошибку движка «!shapes.has(owner)».
+		# Признак «уже сняли» берём у самого узла: queue_free его пометил, а удалит в конце кадра.
+		if is_instance_valid(collision_shape) and not collision_shape.is_queued_for_deletion():
+			# Чья это коллизия. По МЕТКЕ, если она есть (её ставит дублирование коллизии при
+			# постановке блока), и только иначе — по позиции: позиция врёт у блоков 2×2×2
+			# (коллизия ставится со сдвигом) и у двух блоков, оказавшихся в одной локальной
+			# точке после пересборки. Запасной путь по позиции нужен машинам врага — там метки нет.
+			var owner_block = collision_shape.get_meta("block_owner", null)
+			var mine: bool = (owner_block == destroyed_block) if owner_block != null \
+					else (collision_shape.position == destroyed_block.position \
+						or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET)
+			if mine:
 				
 				
 				# 1. Вимикаємо її у фізичному рушії (стоп колізія)

@@ -336,7 +336,7 @@ func hurt(damage: int = 10) -> void:
 
 # ── A BATTERED BLOCK ─────────────────────────────────────────────────────────
 # A block does not hang on to its last hit point. Below DROP_FRAC the mounts no longer hold and
-# every hit can tear it off; below FUSE_FRAC it is doomed — it comes off for certain, blinks,
+# every hit can tear it off; below FUSE_FRAC it is doomed — it comes off for certain, burns red,
 # and blows up on its own. That is what makes a fight readable and gives a reason to retreat:
 # the machine starts coming apart BEFORE it is finished off.
 #
@@ -352,8 +352,6 @@ const FUSE_FRAC := 0.05        # below this the block is doomed: it detaches and
 ## can drive away from or shoot off, not an instant explosion the player never saw coming.
 const FUSE_TIME_MIN := 4.0
 const FUSE_TIME_MAX := 6.0
-const FUSE_BLINK_SLOW := 0.34  # seconds per blink at the start
-const FUSE_BLINK_FAST := 0.07  # ...and at the end, so the last second reads as "now"
 const SELF_BLAST_RADIUS := 3.0
 const SELF_BLAST_DAMAGE := 30
 const SELF_BLAST_FORCE := 7.0
@@ -383,22 +381,17 @@ func _map_node() -> Node:
 		return p
 	return null
 
-## The fuse: the block blinks, faster and faster, then explodes. We blink the node's VISIBILITY
-## rather than tinting it: models share their materials between instances, so tinting one block
-## would tint every block of that kind in the game, and there is nothing to restore them from.
+## The fuse: a red matrix shell that burns BRIGHTER AND BRIGHTER until the block goes off
+## (BlockFX.fuse). It used to blink the node's VISIBILITY instead, and that was a workaround
+## rather than a design: models share their materials between instances, so tinting one block
+## would tint every block of that kind in the game. A separate shell has its own material and
+## does not touch the model at all — the same trick the repair effect has always used.
 func _light_fuse() -> void:
 	_fuse_lit = true
 	var total: float = randf_range(FUSE_TIME_MIN, FUSE_TIME_MAX)
+	BlockFX.fuse(self, total)
 	var tw := create_tween()          # a node tween: destroy the block earlier and it dies too
-	var t: float = 0.0
-	while t < total:
-		var k: float = t / total
-		var step: float = lerpf(FUSE_BLINK_SLOW, FUSE_BLINK_FAST, k * k)
-		tw.tween_callback(func() -> void: visible = false)
-		tw.tween_interval(step * 0.5)
-		tw.tween_callback(func() -> void: visible = true)
-		tw.tween_interval(step * 0.5)
-		t += step
+	tw.tween_interval(total)
 	tw.tween_callback(_fuse_blow)
 
 func _fuse_blow() -> void:
