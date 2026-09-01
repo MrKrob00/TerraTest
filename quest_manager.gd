@@ -104,21 +104,21 @@ func _seed_demo() -> void:
 	])
 	add_quest("arc_radar", "Line of Sight", "", Type.STORY, 1, 6, "", 210, 45, 14)
 	add_stages("arc_radar", [
-		{"desc": "Recover the scanner and attach it",
+		{"desc": "Take the scanner off the machine carrying it",
 		 "event": "quest_arc_radar_1", "goal": 1,
-		 "hint": "A scanner is lying out there. It widens what you can see — right now that is almost nothing."},
+		 "hint": "Something out there is driving around with a scanner bolted to its roof. Take it apart and the scanner is yours — it widens what you can see, which right now is almost nothing."},
 		{"desc": "Take the scanner from the other one",
 		 "event": "quest_arc_radar_2", "goal": 1,
 		 "hint": "Something else out there is carrying one too. It will not hand it over."},
 	])
 	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 210, 45, 14)
 	add_stages("arc_battery", [
-		{"desc": "Recover the cell",
+		{"desc": "Reach the vein holding the cell",
 		 "event": "quest_arc_battery_1", "goal": 1,
-		 "hint": "A power cell resolved somewhere in the field. Go and take it before something else does."},
-		{"desc": "Break the vein holding the cell",
+		 "hint": "A power cell resolved inside a vein and the terrain closed over it. Drive out to the vein first."},
+		{"desc": "Mine the vein out and attach the cell",
 		 "event": "quest_arc_battery_2", "goal": 1,
-		 "hint": "It resolved inside a vein — the terrain closed over it. Mine the vein out and it drops free."},
+		 "hint": "Nothing comes loose while there is ore left in it. Drill the vein dry and the cell drops free."},
 	])
 	# ── Продолжение: груз, производство, оборона ────────────────────────────────
 	# Скелет взят у GSO-кампании TerraTech, но переложен на наши механики — см.
@@ -132,7 +132,7 @@ func _seed_demo() -> void:
 		 "hint": "A GSO drop came down short and something is already sitting on it. The System would like it back."},
 		{"desc": "Clear the scavenger and take the collector",
 		 "event": "quest_salvage_2", "goal": 1,
-		 "hint": "Whatever is guarding it does not own it either. The collector inside is yours once it is gone."},
+		 "hint": "Whatever is sitting on it is wearing the collector. Take the machine apart and pick the block out of the wreck."},
 	])
 	add_quest("arc_line", "Production Line", "", Type.STORY, 1, 9, "", 300, 55, 16)
 	add_stages("arc_line", [

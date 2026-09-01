@@ -220,8 +220,12 @@ func _pending_blocks() -> int:
 const BLUEPRINT := [
 	{"cell": Vector3i(5, 5, 4), "block": G.Block.BLOCK,       "yaw": 0.0},   # корпус ПЕРЕД кабиной
 	{"cell": Vector3i(5, 5, 6), "block": G.Block.BLOCK,       "yaw": 0.0},   # и позади — под колёса
-	{"cell": Vector3i(4, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
-	{"cell": Vector3i(6, 5, 5), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
+	# ПЕРЕДНЯЯ ПАРА — У ПЕРЕДНЕГО БЛОКА (z = 4), а не по бокам кабины. Стояли обе пары через
+	# клетку, кабина оказывалась в свесе, и собранная по чертежу машина клевала носом на первом
+	# же бугре. Разнесённая по краям корпуса база — это ещё и то, как машина выглядит: игрок
+	# копирует чертёж и дальше строит по его образцу.
+	{"cell": Vector3i(4, 5, 4), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
+	{"cell": Vector3i(6, 5, 4), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
 	{"cell": Vector3i(4, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": PI / 2},
 	{"cell": Vector3i(6, 5, 6), "block": G.Block.SMALL_WHEEL, "yaw": -PI / 2},
 	{"cell": Vector3i(5, 5, 3), "block": G.Block.SMALL_DRILL, "yaw": 0.0},   # бур НА переднем блоке

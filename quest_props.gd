@@ -58,6 +58,30 @@ func ensure(quest_id: String, block_type: int, at: Variant = null) -> Node3D:
 		return have
 	return drop_near(quest_id, block_type, at) if at is Vector3 else drop_for(quest_id, block_type)
 
+## ГАРАНТИРОВАТЬ блок В ТОЧКЕ, УСЫНОВИВ уже лежащий рядом.
+##
+## Нужно там, где блок роняет не квест, а бой: носителя разобрали, и его блоки разлетелись в
+## мир обычными телами — без нашей метки, и ensure их не видит. Положить сверху ещё один
+## значило бы бросить рядом два одинаковых блока, из которых цель только один. А не положить
+## нельзя: блок мог и сгореть в бою, и тогда ветка вешается намертво из-за случайного
+## попадания — игрок сделал ровно то, о чём просили, и остался ни с чем.
+func claim_or_drop(quest_id: String, block_type: int, at: Vector3, radius: float = 30.0) -> Node3D:
+	_rescan(quest_id)
+	var have: Node3D = _first_loose(quest_id, block_type)
+	if have != null:
+		return have
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects != null:
+		var r2: float = radius * radius
+		for c in objects.get_children():
+			if not (c is Node3D) or c.has_meta(META):
+				continue
+			if c.get("block") == null or int(c.get("block")) != block_type:
+				continue
+			if (c as Node3D).global_position.distance_squared_to(at) <= r2:
+				return _register(quest_id, c as Node3D)
+	return drop_near(quest_id, block_type, at)
+
 ## Где положить: не под колёсами и не за горизонтом. Ближе — игрок наступит на предмет
 ## случайно и не поймёт, что это была цель; дальше — поедет искать по компасу, что и нужно.
 const DROP_MIN := 60.0
