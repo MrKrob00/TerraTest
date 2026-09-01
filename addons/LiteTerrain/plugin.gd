@@ -242,6 +242,9 @@ var _generating: bool = false
 var _gen_cancel: bool = false
 ## When this generation started (ms). The only input the estimate has.
 var _gen_t0: int = 0
+## Сглаженная оценка остатка в секундах; −1 — ещё не считали (см. _eta_text).
+var _eta_smooth: float = -1.0
+const ETA_SMOOTH := 0.08
 
 ## One row is done — called from EVERY thread at the end of its work.
 func _gen_row_done() -> void:
@@ -268,6 +271,7 @@ func _progress_open(can_stop: bool = true) -> void:
 		return
 	_gen_cancel = false
 	_gen_t0 = Time.get_ticks_msec()
+	_eta_smooth = -1.0
 	_prog_root = Control.new()
 	_prog_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_prog_root.mouse_filter = Control.MOUSE_FILTER_STOP   # modal: clicking past it does nothing
@@ -352,15 +356,94 @@ func _progress_say(step: String, frac: float) -> void:
 	if _prog_eta != null and is_instance_valid(_prog_eta) and not _gen_cancel:
 		_prog_eta.text = _eta_text(frac)
 
-## Time left, from the share done and the time it took to get there. A per-pass estimate would be
-## WORSE, not better: the passes differ several-fold in cost, so each one would start by promising
-## a new total. Measured over the whole run the number settles within the first couple of seconds
-## and only tightens after that.
+# ── ПЛАН ПРОГОНА: СКОЛЬКО РАБОТЫ В КАЖДОМ ПРОХОДЕ ────────────────────────────
+# Полоса и оценка времени делили прогон по ЗАШИТЫМ долям (Heights 0.02..0.5, Smoothing
+# 0.5..0.62, Canyons 0.62..0.95), и это врало тремя способами сразу:
+#
+#   • РАЗМЫТИЙ БЫВАЕТ НЕСКОЛЬКО (GEN_SMOOTH_PASSES), а доля у них одна на всех: полоса
+#     проходила 0.5→0.62, откатывалась назад и шла заново. Это и есть «перед каньонами
+#     что-то пролетело»;
+#   • КАНЬОНЫ МОГУТ БЫТЬ ВЫКЛЮЧЕНЫ — тогда треть шкалы просто перепрыгивалась;
+#   • ЗАПИСЬ И ПЕРЕСБОРКА ПРЕВЬЮ занимали последние 4.5 % шкалы, хотя превью — самая долгая
+#     стадия во всём прогоне.
+#
+# А оценка времени считается как elapsed × (1 − frac) / frac, то есть она честна ровно
+# настолько, насколько ПОЛОСА ПРОПОРЦИОНАЛЬНА РАБОТЕ. С долями на глаз она и не могла не врать
+# с самого начала.
+#
+# Поэтому план собирается ДО прогона: каждый проход объявляет свою цену, доли шкалы получаются
+# делением, и «сколько осталось» становится правдой с первых секунд.
+#
+# ЦЕНА МЕРЯЕТСЯ В ВЫЗОВАХ ШУМА НА СЭМПЛ — их и считаем, потому что в этих проходах шум занимает
+# почти всё время, а пара smoothstep и умножений на его фоне теряется. Числа не на глаз, а
+# пересчитаны по коду самой строки (см. ссылки):
+const CV_NOISE_COST := 5.0     ## _cv_noise написан на GDScript и стоит примерно впятеро дороже
+                               ## нативного FastNoiseLite.get_noise_2d — отсюда множитель.
+## _gen_fill_row: base + ridge + dune×2 = 4 нативных, meadow_mask + mountain_mask + mountain_dome
+## = 3 вызова _cv_noise. 4 + 3×5 = 19.
+const COST_HEIGHTS := 19.0
+## _gen_blur_row: шума нет вовсе, пять чтений массива на сэмпл. Против одного вызова шума это
+## заметно меньше единицы.
+const COST_SMOOTH := 0.5
+## _gen_carve_row: canyon_mask (1×_cv_noise) — и ВЫХОД, если маска нулевая. Каньон занимает малую
+## долю карты, поэтому полная цена (mountain_mask + butte + gorge + ramp ≈ 17) платится только на
+## CANYON_SHARE площади: 5 + 17×0.2 ≈ 8.
+const COST_CANYON := 8.0
+const CANYON_SHARE := 0.2
+## Запись .res + .bin + ПЕРЕСБОРКА ПРЕВЬЮ. Шума здесь нет, но есть полный обход карты с постройкой
+## мешей всех чанков, и по времени это сопоставимо с проходом высот. Число — оценка, а не подсчёт
+## вызовов: считать нечего, стадия не наша (map.editor_rebuild_*).
+const COST_BAKE := 6.0
+
+var _plan: Array = []            # [{label, units}] СТРОГО в порядке запуска
+var _plan_total: float = 0.0
+var _plan_done: float = 0.0      # units уже отданных проходов
+var _plan_i: int = 0
+
+## Собрать план под конкретный прогон. do_canyons/blur_passes — ровно те условия, по которым
+## проходы и запускаются ниже: план, разошедшийся с прогоном, врёт не меньше зашитых долей.
+func _plan_build(width: int, depth: int, blur_passes: int, do_canyons: bool, do_bake: bool) -> void:
+	var samples: float = float(width) * float(depth)
+	_plan = [{"label": "Heights", "units": samples * COST_HEIGHTS}]
+	for _i in blur_passes:
+		_plan.append({"label": "Smoothing", "units": samples * COST_SMOOTH})
+	if do_canyons:
+		_plan.append({"label": "Canyons", "units": samples * COST_CANYON})
+	if do_bake:
+		_plan.append({"label": "Bake", "units": samples * COST_BAKE})
+	_plan_total = 0.0
+	for e in _plan:
+		_plan_total += float(e["units"])
+	_plan_done = 0.0
+	_plan_i = 0
+
+## Доля шкалы под СЛЕДУЮЩИЙ проход плана; курсор сдвигается. Идём строго по порядку — план
+## построен ровно в том, в каком проходы и запускаются.
+func _plan_slice() -> Vector2:
+	var a: float = _plan_done / maxf(_plan_total, 1.0)
+	if _plan_i >= _plan.size() or _plan_total <= 0.0:
+		return Vector2(a, 1.0)
+	_plan_done += float(_plan[_plan_i]["units"])
+	_plan_i += 1
+	return Vector2(a, _plan_done / _plan_total)
+
+## Time left, from the share done and the time it took to get there. Честна ровно потому, что
+## доля считается по ПЛАНУ РАБОТ (см. выше), а не по долям, подобранным на глаз.
 func _eta_text(frac: float) -> String:
 	if _gen_t0 == 0 or frac <= 0.02:
 		return "estimating…"
 	var elapsed: float = float(Time.get_ticks_msec() - _gen_t0) / 1000.0
-	var left: float = elapsed * (1.0 - frac) / frac
+	var raw: float = elapsed * (1.0 - frac) / frac
+	# СГЛАЖИВАЕМ. Даже с честным планом оценка дёргается на кадрах: внутри одного прохода строки
+	# не равны по цене — в каньоне строка с ущельем считает впятеро больше соседней, где маска
+	# нулевая и работа обрывается сразу. Голое число прыгало бы каждый кадр; сглаженное читается
+	# как обратный отсчёт. Расти ему не запрещаем: оценка, которая только уменьшается, — это уже
+	# не оценка.
+	if _eta_smooth < 0.0:
+		_eta_smooth = raw
+	else:
+		_eta_smooth = lerpf(_eta_smooth, raw, ETA_SMOOTH)
+	var left: float = _eta_smooth
 	if left < 1.5:
 		return "almost done"
 	if left < 90.0:
@@ -374,7 +457,13 @@ func _eta_text(frac: float) -> String:
 ##
 ## step_from/step_to is the share of the whole job this pass takes: the bar has to travel left to
 ## right ONCE per generation, not jump back to zero at every stage.
-func _run_rows(task: Callable, rows: int, label: String, step_from: float, step_to: float) -> void:
+func _run_rows(task: Callable, rows: int, label: String) -> void:
+	# Долю шкалы НЕ ПЕРЕДАЁМ: её знает план (_plan_slice). Пока границы приходили аргументами,
+	# они были зашитыми числами в месте вызова — и разъезжались с тем, сколько проходов реально
+	# запустится.
+	var slice := _plan_slice()
+	var step_from: float = slice.x
+	var step_to: float = slice.y
 	_gen_rows_done = 0
 	var gid := WorkerThreadPool.add_group_task(task, rows, -1, false, "LiteTerrain")
 	while not WorkerThreadPool.is_group_task_completed(gid):
@@ -1648,7 +1737,12 @@ func _generate_noise() -> void:
 		_gen_len = 0
 		_progress_close()
 		return
-	await _run_rows(_gen_fill_row, depth, "Heights", 0.02, 0.5)
+	# ПЛАН СТРОИМ ЗДЕСЬ, по тем же условиям, по которым проходы и запускаются ниже. Каньоны
+	# спрашиваем у обеих сторон — у дока и у ресурса биомов: врез идёт только когда включены обе,
+	# и план, посчитавший каньон включённым, оставил бы в конце шкалы непройденную треть.
+	var will_carve: bool = gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled
+	_plan_build(width, depth, GEN_SMOOTH_PASSES, will_carve, image_mode)
+	await _run_rows(_gen_fill_row, depth, "Heights")
 	# STOP IS CHECKED BETWEEN PASSES, and every check leaves without writing anything: a map
 	# half-generated is worse than the old one, and the file on disk must stay usable.
 	if _gen_cancel:
@@ -1668,7 +1762,7 @@ func _generate_noise() -> void:
 		_gen_out = _gen_alloc(width * depth, "the blur buffer")
 		if _gen_out.is_empty():
 			break                      # no buffer, no blur — the map itself already exists
-		await _run_rows(_gen_blur_row, depth, "Smoothing", 0.5, 0.62)
+		await _run_rows(_gen_blur_row, depth, "Smoothing")
 		if _gen_cancel:
 			_progress_close()
 			return
@@ -1709,7 +1803,7 @@ func _generate_noise() -> void:
 					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
 			_gen_carved = PackedFloat32Array()
 		else:
-			await _run_rows(_gen_carve_row, depth, "Canyons", 0.62, 0.95)
+			await _run_rows(_gen_carve_row, depth, "Canyons")
 			if _gen_cancel:
 				_progress_close()
 				return
@@ -1723,7 +1817,12 @@ func _generate_noise() -> void:
 		# set_heightmap, and nothing could redraw meanwhile. Indistinguishable from a hang — which
 		# is exactly what it was reported as. Now it is split, and every part says what it is
 		# doing: heights, file, chunks (with a moving bar), mesh.
-		_progress_say("Writing the heights", 0.955)
+		# Последняя стадия тоже идёт ПО ПЛАНУ: раньше на запись и пересборку превью приходились
+		# последние 4.5 % шкалы, хотя превью — самая долгая часть всего прогона, и полоса
+		# застревала под самым концом.
+		var bake := _plan_slice()
+		var bake_mid: float = lerpf(bake.x, bake.y, 0.08)
+		_progress_say("Writing the heights", bake.x)
 		await get_tree().process_frame
 		sculpt_node.set_heightmap(new_data, width, depth, false)   # false: превью соберём сами
 		var img := Image.create_from_data(width, depth, false, Image.FORMAT_RF, new_data.to_byte_array())
@@ -1737,10 +1836,10 @@ func _generate_noise() -> void:
 		# user:// → res://….bin → res://….res), поэтому генерация, обновлявшая только .res,
 		# оставляла на диске СТАРУЮ карту: в редакторе новая, в игре прежняя, и понять это можно
 		# было только по коду. Два файла об одной карте обязаны меняться вместе.
-		_progress_say("Streamable heights (.bin)", 0.955)
+		_progress_say("Streamable heights (.bin)", bake_mid)
 		await get_tree().process_frame
 		_bake_stream_file(width, depth, new_data)
-		await _rebuild_preview_with_progress(0.96, 0.99)
+		await _rebuild_preview_with_progress(lerpf(bake.x, bake.y, 0.16), bake.y)
 		_progress_say("Done", 1.0)
 		await get_tree().process_frame
 		_progress_close()
