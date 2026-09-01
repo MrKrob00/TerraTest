@@ -662,6 +662,10 @@ func tutorial_target(key: String) -> Control:
 		"tab_shop":      return _tab_buttons[TAB_SHOP] as Control
 		"tab_tech":      return _tab_buttons[TAB_TECH] as Control
 		"tab_music":     return _tab_buttons[TAB_MUSIC] as Control
+		# Крестик окна. Нужен обучению: пока гараж открыт, кнопка меню на HUD СПРЯТАНА вместе
+		# со всем игровым управлением, и показывать «закрой склад» было не на что — палец не
+		# ставился вовсе, а на экране оставалась подсказка прошлого шага.
+		"close":         return (%Close as Control) if has_node("%Close") else null
 		"grid":          return _grid
 		"currency":      return (%Currency as Control) if has_node("%Currency") else null
 		"progress":      return _prog_label

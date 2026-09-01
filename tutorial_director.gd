@@ -104,6 +104,11 @@ func _process(delta: float) -> void:
 		return
 	if _step == "":
 		return
+	# ЧЕРТЁЖ СТОИТ С ПЕРВОГО ШАГА, а не с того, где начинают ставить блоки. Раньше его
+	# показывали только в tut_place_first, и на «нажми BUILD» и «возьми деталь» игрок смотрел
+	# на голую кабину: он не знал, ЧТО собирает, и брал блоки наугад. Чертёж — это картинка
+	# цели, а цель полагается видеть с самого начала, а не после третьего шага.
+	_show_blueprint()
 	_aim_current_step()
 
 # ── Пояснения ────────────────────────────────────────────────────────────────
@@ -257,22 +262,65 @@ func _clear_blueprint() -> void:
 			(h as Node).queue_free()
 	_hints.clear()
 
-## Ближайшая к машине незакрытая клетка чертежа (или null — чертёж собран).
+## Незакрытая клетка чертежа, куда показывать палец, — или null, если чертёж собран.
+##
+## ПАЛЕЦ ПОКАЗЫВАЕТ МЕСТО ИМЕННО ТОГО БЛОКА, ЧТО В РУКЕ. Раньше он брал ближайшую к машине
+## клетку какую попало, и это было хуже, чем ничего: игрок держит колесо, палец показывает на
+## клетку корпуса, тап туда не срабатывает (колесо стыкуется только задом), и остаётся гадать,
+## что не так — рука, место или сам жест. Плюс все восемь клеток чертежа лежат в паре метров от
+## центра машины, поэтому «ближайшая» каждый раз оказывалась примерно одной и той же, у самой
+## кабины: палец упирался в середину и на дальние клетки (бур, задние колёса) не уходил вовсе.
+##
+## Рука пуста — показываем ближайшую к КАМЕРЕ, а не к машине: игрок смотрит на машину с одной
+## стороны, и вести его на клетку за корпусом значит показывать сквозь него.
 func _next_hint():
 	_hints = _hints.filter(func(h): return is_instance_valid(h))
-	var v: Node = _vehicle()
+	if _hints.is_empty():
+		return null
+	var want: int = _held_block()
+	var from: Vector3 = _aim_origin()
 	var best = null
 	var best_d: float = INF
 	for h in _hints:
-		if not (v is Node3D):
-			return h
-		var d: float = (v as Node3D).global_position.distance_squared_to((h as Node3D).global_position)
+		if want >= 0 and int((h as BuildHint).block_type) != want:
+			continue
+		var d: float = from.distance_squared_to((h as Node3D).global_position)
 		if d < best_d:
 			best_d = d
 			best = h
+	if best != null:
+		return best
+	# В руке блок, которого в чертеже уже нет (игрок поднял лишнее или подобрал обломок) —
+	# показываем на ближайшую свободную клетку: врать про «сюда не встанет» тут нечем, а
+	# оставить палец висеть в воздухе хуже.
+	if want >= 0:
+		for h in _hints:
+			var d2: float = from.distance_squared_to((h as Node3D).global_position)
+			if d2 < best_d:
+				best_d = d2
+				best = h
 	return best
 
-## Точка чертежа для пальца: ближайшая незакрытая клетка, а нет такой — сама машина.
+## Тип блока В РУКЕ или -1, если рука пуста. Спрашиваем у самого тела, а не у флага: флаг
+## говорит лишь «что-то держим».
+func _held_block() -> int:
+	var v: Node = _vehicle()
+	if v == null or v.get("block_take") != true:
+		return -1
+	var body = v.get("block_body")
+	if body == null or not is_instance_valid(body) or body.get("block") == null:
+		return -1
+	return int(body.get("block"))
+
+## Откуда мерить «ближе»: от камеры, если она есть, иначе от машины.
+func _aim_origin() -> Vector3:
+	var cam := get_viewport().get_camera_3d() if get_viewport() != null else null
+	if cam != null:
+		return cam.global_position
+	var v: Node = _vehicle()
+	return (v as Node3D).global_position if v is Node3D else Vector3.ZERO
+
+## Точка чертежа для пальца: нужная клетка, а нет такой — сама машина.
 func _blueprint_point() -> Vector3:
 	var h = _next_hint()
 	if h != null:
@@ -294,7 +342,12 @@ func _say_final_hints() -> void:
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
-			_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button names where it takes you")
+			# Тот же капкан, что у tut_mode_move: открытый гараж прячет ВСЁ игровое управление,
+			# включая кнопку режима, и шаг оставался без цели.
+			if _garage_open():
+				_aim_node(_garage_node("close"), "Close the garage first")
+			else:
+				_aim_node(_hud_node("ModeToggle"), "Tap BUILD — the button names where it takes you")
 		"tut_take_world":
 			# Рука уже занята (блок взяли раньше, чем шаг стал текущим) — засчитываем сразу.
 			# Иначе тупик: поставить нельзя (цель — блок на земле), взять нечем.
@@ -324,11 +377,16 @@ func _aim_current_step() -> void:
 						TutorialGuide.Gate.WORLD)
 		"tut_mode_move":
 			# Пока открыт гараж, кнопки режима на экране НЕТ — она спрятана вместе со всем
-			# игровым управлением. Палец показывал в пустоту, подсказка не менялась, и шаг
-			# выглядел так, будто обучение всё ещё просит навесить блок. Сначала выводим
-			# из гаража, и только потом показываем на переключатель режима.
+			# игровым управлением. Сначала выводим из гаража, и только потом показываем на
+			# переключатель режима.
+			#
+			# И показываем на КРЕСТИК САМОГО ОКНА, а не на кнопку меню HUD: та спрятана ровно
+			# тогда, когда открыт гараж, то есть цель отсутствовала как раз в том случае, ради
+			# которого ветку и писали. Палец не ставился, а на экране оставался пузырь ПРОШЛОГО
+			# шага — «Now attach it», хотя вешать уже нечего. Крестик виден всегда, пока окно
+			# открыто, и рядом с ним живёт подсказка про свайп снизу вверх.
 			if _garage_open():
-				_aim_node(_hud_ui("menu"), "Assembled. Close storage")
+				_aim_node(_garage_node("close"), "Assembled. Close the garage")
 			else:
 				_aim_node(_hud_node("ModeToggle"), "Tap MOVE and drive")
 		"tut_quests":
@@ -349,9 +407,13 @@ func _aim_current_step() -> void:
 # отсутствие цели — не ошибка: просто ждём следующего кадра.
 func _aim_node(node: CanvasItem, text: String) -> void:
 	if node == null or not is_instance_valid(node) or not node.is_visible_in_tree():
-		if _aimed != "":
+		# ЧУЖОЙ ПУЗЫРЬ ГАСИМ ВСЕГДА, а не только если наводились сами. Смена шага сбрасывает
+		# _aimed в пустую строку, и по старому условию подсказка ПРОШЛОГО шага оставалась
+		# висеть, пока цель нового не появится: игрок дочитывал «поставь блок» в тот момент,
+		# когда обучение уже ждало от него совсем другого.
+		_aimed = ""
+		if _guide.is_active():
 			_guide.clear()
-			_aimed = ""
 		return
 	var key := "%s|%d|%s" % [_step, node.get_instance_id(), text]
 	if _aimed == key:
