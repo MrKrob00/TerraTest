@@ -1383,9 +1383,14 @@ func _place_ground_structure(instance: Node3D) -> void:
 	# координат на пол-клетки. Машина вставала в точку тапа началом координат — и продавец
 	# оказывался в стороне от места, куда его ставили, и от собственного столба якоря. Ровно
 	# этот сдвиг и виден на скриншоте.
+	# ВЫСОТА — ПОЛКЛЕТКИ, а не 1.2. Блок нижнего ряда стоит в самом начале координат машины, а
+	# его коллизия спускается на полметра ниже — значит ровно на столько и надо поднять машину,
+	# чтобы низ лёг на землю. Со старыми 1.2 замороженная база висела над грунтом на семьдесят
+	# сантиметров и упасть уже не могла. Число то же, что у постановки от квеста
+	# (quest_arcs._spawn_station): это ОДНО И ТО ЖЕ действие, и расходиться им нечем.
 	var yaw: float = build_basis.get_euler().y
 	var core_off: Vector3 = Basis(Vector3.UP, yaw) * _cells_center_of(instance)
-	v.global_position = _cabin_ground + Vector3.UP * 1.2 - Vector3(core_off.x, 0.0, core_off.z)
+	v.global_position = _cabin_ground + Vector3.UP * 0.5 - Vector3(core_off.x, 0.0, core_off.z)
 	if v is Node3D:
 		v.global_rotation.y = yaw                         # уважаем ручной поворот игрока (как в превью)
 	if v.has_method("apply_build"):
