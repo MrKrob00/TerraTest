@@ -42,6 +42,10 @@ const SNOW := 4
 @export var mtn_edge: float = 0.05
 
 var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
+## Раскладка пропов детерминирована СИДОМ МИРА, как и жилы (см. resource_nodes): камень, мимо
+## которого игрок ездит каждый день, обязан стоять на месте, а не переезжать при перезаходе.
+## Свой генератор, а не глобальный: тот в общем пользовании у всей игры.
+var _rng := RandomNumberGenerator.new()
 var _cull_t: float = 0.0
 var _shown: int = 0
 ## Occlusion is re-asked for a slice of the props per tick, not for all of them. See _process.
@@ -68,6 +72,9 @@ func _ready() -> void:
 		guard += 1
 	if map.get_dims().x <= 0:
 		return
+	# Свой сид, а не G.world_seed один в один: жилы и пропы засеваются из одного числа, и
+	# одинаковый поток дал бы им одинаковые точки — камни встали бы ровно на жилы.
+	_rng.seed = int(G.world_seed) ^ 0x5EED
 	await _place(map, map.get_dims())      # расстановка уступает кадры (см. PLACE_BATCH)
 	_cull_t = 0.0
 
@@ -127,8 +134,8 @@ func _place(map: Node, dims: Vector2i) -> void:
 			if since_yield >= PLACE_BATCH:
 				since_yield = 0
 				await get_tree().process_frame
-			var lx: float = randf_range(-half_x, half_x)
-			var lz: float = randf_range(-half_z, half_z)
+			var lx: float = _rng.randf_range(-half_x, half_x)
+			var lz: float = _rng.randf_range(-half_z, half_z)
 			var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
 			var h: float = map.terrain_height_at(world)
 			if h < min_height:
@@ -147,9 +154,9 @@ func _place(map: Node, dims: Vector2i) -> void:
 			(grid[key] as Array).append(local_pos)
 			_data.append({
 				"pos": local_pos,
-				"scene": setp.scenes.pick_random(),
-				"scale": randf_range(setp.min_scale, setp.max_scale),
-				"yaw": randf() * TAU if setp.random_yaw else 0.0,
+				"scene": setp.scenes[_rng.randi() % setp.scenes.size()],
+				"scale": _rng.randf_range(setp.min_scale, setp.max_scale),
+				"yaw": _rng.randf() * TAU if setp.random_yaw else 0.0,
 				"node": null,
 			})
 

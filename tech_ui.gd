@@ -1251,6 +1251,13 @@ func _build_settings_tab() -> void:
 	wipe_btn.add_theme_color_override("font_color", Color(1.0, 0.55, 0.5))
 	wipe_btn.pressed.connect(_ask_wipe_save)
 	_extra_vb.add_child(wipe_btn)
+	# ВЫХОД В МЕНЮ — единственный способ сменить слот, не перезапуская приложение. Без него
+	# три мира есть, а попасть из одного в другой нельзя.
+	var menu_btn := Button.new()
+	menu_btn.text = "Main menu (switch world)"
+	menu_btn.add_theme_font_size_override("font_size", 14)
+	menu_btn.pressed.connect(_to_main_menu)
+	_extra_vb.add_child(menu_btn)
 
 # ── Сброс сейва ───────────────────────────────────────────────────────────────
 # Действие необратимое, поэтому через подтверждение. Диалог создаём один раз и держим:
@@ -1267,6 +1274,15 @@ func _ask_wipe_save() -> void:
 		_wipe_dialog.confirmed.connect(_do_wipe_save)
 		add_child(_wipe_dialog)
 	_wipe_dialog.popup_centered()
+
+## В МЕНЮ. Сначала СОХРАНЯЕМ мир: смена сцены освобождает world_persist, и без явного вызова
+## всё, что игрок настроил после последнего автосейва, осталось бы в прошлом слоте.
+func _to_main_menu() -> void:
+	var wp: Node = get_tree().get_first_node_in_group("world_persist")
+	if wp != null and wp.has_method("_save_world"):
+		wp._save_world()
+	G.save_now()
+	get_tree().change_scene_to_file("res://menu.tscn")
 
 func _do_wipe_save() -> void:
 	G.wipe_save()

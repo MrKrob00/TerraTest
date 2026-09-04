@@ -52,6 +52,17 @@ const OCCL_SLICES := 4
 const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
 var _occl_cursor: int = 0
 var _last_fwd: Vector3 = Vector3.FORWARD
+## РАСКЛАДКА ЖИЛ ДЕТЕРМИНИРОВАНА СИДОМ МИРА (G.world_seed). Раньше и точки, и типы брались из
+## ГЛОБАЛЬНОГО randf, то есть заново при каждом запуске: игрок возвращался к своей базе, а жилы,
+## вокруг которых он её строил, оказывались в другом месте — и авто-шахтёр стоял в пустом поле.
+## Сохранять две тысячи координат ради этого не нужно: одно число даёт ту же раскладку, и
+## сохранять его нечем дороже, чем строкой в файле мира.
+##
+## СВОЙ RandomNumberGenerator, а не seed() на глобальном: глобальным пользуется вся остальная
+## игра (разброс пуль, выбор сборки врага, награды), и засеять его значило бы сделать
+## предсказуемым и это тоже — а заодно сломать раскладку от любого чужого вызова randf между
+## нашими.
+var _rng := RandomNumberGenerator.new()
 # Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
 var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
@@ -79,6 +90,9 @@ func _ready() -> void:
 		return
 
 	_apply_ore_colors()
+	# Засеваем ДО раскладки и ровно один раз: и точки, и типы жил тянутся из одного потока
+	# чисел, поэтому одинаковый сид даёт одинаковую карту жил до последней штуки.
+	_rng.seed = int(G.world_seed)
 	var positions: Array[Vector3] = await _pick_positions(map, dims)
 	_init_veins(positions)
 
@@ -115,8 +129,8 @@ func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
 		if since_yield >= PICK_BATCH:
 			since_yield = 0
 			await get_tree().process_frame
-		var lx: float = randf_range(-half_x, half_x)
-		var lz: float = randf_range(-half_z, half_z)
+		var lx: float = _rng.randf_range(-half_x, half_x)
+		var lz: float = _rng.randf_range(-half_z, half_z)
 		var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
 		var h: float = map.terrain_height_at(world)
 		if h < min_height:
@@ -187,7 +201,7 @@ func _init_veins(positions: Array[Vector3]) -> void:
 	_data.clear()
 	for p in positions:
 		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
-		var coal: bool = randf() < coal_chance
+		var coal: bool = _rng.randf() < coal_chance
 		var ore_type: int = ore_colors.size() if coal else _metal_for(p, map, can_biome)
 		# ОТЛАДКА: выключенный тип НЕ ПОДМЕНЯЕТСЯ другим, жила просто не кладётся. Подмена
 		# соврала бы про плотность: на карте оказалось бы столько же жил, только все одного
@@ -236,8 +250,8 @@ func _ore_enabled(ore_type: int, coal: bool) -> bool:
 
 func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
 	var types: int = maxi(ore_colors.size(), 1)
-	if not can_biome or randf() < WILD_CHANCE:
-		return randi() % types
+	if not can_biome or _rng.randf() < WILD_CHANCE:
+		return _rng.randi() % types
 	# biome_at отдаёт (каньон, луг, горы); пустыня — это то, что осталось.
 	var m: Vector3 = map.biome_at(to_global(local_pos))
 	var desert: float = clampf(1.0 - maxf(m.x, maxf(m.y, m.z)), 0.0, 1.0)
@@ -247,7 +261,7 @@ func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
 		total += maxf(float(weights[i]), 0.0)
 	if total <= 0.001:
 		return 0                                   # ни один биом не выражен — базовый металл
-	var roll: float = randf() * total
+	var roll: float = _rng.randf() * total
 	for i in mini(weights.size(), types):
 		roll -= maxf(float(weights[i]), 0.0)
 		if roll <= 0.0:

@@ -409,6 +409,14 @@ var md: PackedFloat32Array = PackedFloat32Array()
 
 func _ready() -> void:
 	_ensure_children()
+	# GAME HOOK (TerraTest): запечённые правки рельефа принадлежат СЛОТУ СОХРАНЕНИЯ, а не
+	# устройству — иначе площадка, выровненная в первом мире, окажется под базой второго. Путь
+	# СПРАШИВАЕМ У G сами, а не ждём, что нам его положат: слот выбирается в меню, до того как
+	# эта сцена вообще существует, и класть его было бы некому. Нет G (редактор, тестовая
+	# сцена) — остаётся прежний общий файл, и аддон работает как раньше.
+	var _g := get_node_or_null("/root/G")
+	if _g != null and _g.has_method("slot_path"):
+		user_heights_path = _g.slot_path("terrain_height.bin")
 	if Engine.is_editor_hint():
 		if use_image_data and _load_heightmap_image() != null:
 			# Image mode: the R32F terrain_height.res is the source of truth. The internal
@@ -604,15 +612,19 @@ func chunk_height_bounds(ci: int) -> Vector2:
 # The format is as simple as it gets: a header with the dimensions and raw floats. No compression,
 # no image: a PNG stores height in eight bits (256 steps for the whole map — the terrain would come
 # out stepped), and an EXR has to be encoded. Raw floats read instantly and losslessly.
-const USER_HEIGHTS := "user://terrain_height.bin"
+## GAME HOOK (TerraTest): куда пишутся ЗАПЕЧЁННЫЕ ПРАВКИ РЕЛЬЕФА. Переменная, а не константа,
+## потому что у игры три слота сохранения, и площадка, выровненная в первом, не должна
+## оказаться под базой второго. Путь ставит G.use_slot; по умолчанию — прежний файл, чтобы
+## аддон работал и без игры (в редакторе, в тестовой сцене).
+var user_heights_path: String = "user://terrain_height.bin"
 const USER_HEIGHTS_MAGIC := 0x4C544831        # "LTH1"
 
 ## Read the baked terrain. false = there is no file, or it belongs to another map (in which case
 ## we take the packaged one and ignore this: feeding in heights of the wrong size wrecks everything).
 func _load_user_heights() -> bool:
-	if not FileAccess.file_exists(USER_HEIGHTS):
+	if not FileAccess.file_exists(user_heights_path):
 		return false
-	var f := FileAccess.open(USER_HEIGHTS, FileAccess.READ)
+	var f := FileAccess.open(user_heights_path, FileAccess.READ)
 	if f == null:
 		return false
 	if f.get_32() != USER_HEIGHTS_MAGIC:
@@ -624,7 +636,7 @@ func _load_user_heights() -> bool:
 		return false
 	var bytes := f.get_buffer(uw * ud * 4)
 	if bytes.size() != uw * ud * 4:
-		push_warning("LiteTerrain: %s is truncated — falling back to the factory map" % USER_HEIGHTS)
+		push_warning("LiteTerrain: %s is truncated — falling back to the factory map" % user_heights_path)
 		return false
 	w = uw
 	d = ud
@@ -638,9 +650,9 @@ func _load_user_heights() -> bool:
 func bake_heights() -> bool:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return false
-	var f := FileAccess.open(USER_HEIGHTS, FileAccess.WRITE)
+	var f := FileAccess.open(user_heights_path, FileAccess.WRITE)
 	if f == null:
-		push_warning("LiteTerrain: could not write %s — the edits stay a list" % USER_HEIGHTS)
+		push_warning("LiteTerrain: could not write %s — the edits stay a list" % user_heights_path)
 		return false
 	f.store_32(USER_HEIGHTS_MAGIC)
 	f.store_32(w)
@@ -662,8 +674,8 @@ func reset_heights() -> void:
 	_flat_edits.clear()
 	_baked_seq = 0
 	_edit_seq = 0
-	if FileAccess.file_exists(USER_HEIGHTS):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(USER_HEIGHTS))
+	if FileAccess.file_exists(user_heights_path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(user_heights_path))
 
 # Pulls the heightmap file (tens of megabytes of R32F) on a BACKGROUND thread, yielding frames.
 # The ordinary load() in _load_heightmap_image() then takes it from the cache instantly. The
