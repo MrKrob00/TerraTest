@@ -194,8 +194,13 @@ func _init_veins(positions: Array[Vector3]) -> void:
 		# типа, и «сколько тут титанита» стало бы не проверить.
 		if not _ore_enabled(ore_type, coal):
 			continue
+		# gpos — МИРОВАЯ позиция, посчитанная ОДИН РАЗ. Жила не двигается никогда, а стриминг
+		# спрашивал у неё to_global ТРИЖДЫ на каждую жилу каждый тик: расстояние, ближний пузырь
+		# и окклюзия. Шесть тысяч умножений матрицы на вектор в секунду ради числа, которое
+		# известно с загрузки.
 		_data.append({
 			"pos": p,
+			"gpos": to_global(p),
 			"scene": resource_nodes.pick_random() if not resource_nodes.is_empty() else scene,
 			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
 		})
@@ -306,7 +311,7 @@ func active_blips(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Array:
 	r2 *= r2
 	var out: Array = []
 	for v in _data:
-		var p: Vector3 = to_global(v["pos"])
+		var p: Vector3 = v["gpos"]
 		if center.distance_squared_to(p) > r2:
 			continue
 		var t: int = int(v["ore_type"])
@@ -373,7 +378,8 @@ func _process(delta: float) -> void:
 	var i: int = -1
 	for v in _data:
 		i += 1
-		var to: Vector3 = to_global(v["pos"]) - cam_pos
+		var gp: Vector3 = v["gpos"]
+		var to: Vector3 = gp - cam_pos
 		var dist2: float = to.length_squared()
 		# В радиусе И (близко ИЛИ впереди). Направление считаем только для дальних: у жилы
 		# под колёсами направление вырождается, да и гасить её нельзя.
@@ -381,12 +387,12 @@ func _process(delta: float) -> void:
 		# это не картинка, а узел с коллизией, по которому работают бур и авто-шахтёр. У базы
 		# на другом конце карты бур грызёт свою жилу, пока игрок ездит другой машиной, — и если
 		# мерить только от камеры, жила под ним исчезнет вместе с добычей.
-		var kept: bool = dist2 <= keep2 or G.near_active(to_global(v["pos"]), keep_radius)
+		var kept: bool = dist2 <= keep2 or G.near_active(gp, keep_radius)
 		# kept идёт ПЕРВЫМ и без оглядки на радиус камеры: жила у базы за пятьсот метров всё
 		# равно обязана быть узлом, иначе стоящий на ней авто-шахтёр добывает воздух.
 		var near: bool = kept or (dist2 <= d2 and to.normalized().dot(fwd) >= view_cos)
 		if near and can_occlude and not kept and i >= slice_from and i < slice_to:
-			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_VEIN_HEIGHT, v.get("hidden", false))
+			v["hidden"] = terr.is_point_hidden(gp, OCCL_VEIN_HEIGHT, v.get("hidden", false))
 		if near and not kept and v.get("hidden", false):
 			near = false
 		var shown: bool = int(v["slot"]) >= 0

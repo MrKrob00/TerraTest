@@ -268,7 +268,14 @@ var _chunks_x:      int = 0
 var _lod_timer:     float = 0.0
 ## Throttle for the quadtree descend (culling + LOD selection). See _process for why it does
 ## not have to run every frame.
-const QT_MAX_HZ:    float = 30.0
+## Сколько мешей разрешено пересобрать за ОДИН проход сшивки (см. _qt_apply). Четыре — это
+## меньше миллисекунды; всё, что не влезло, догоняется следующим проходом.
+const STITCH_BUDGET: int = 4
+## Потолок частоты обхода дерева. Был 30 Гц, и это дорого: сам обход меряли в 2-3 мс, то есть
+## при повороте камеры он один съедал десятую часть всего времени — а «падает вдвое, когда
+## кручу камерой» именно про это. Пятнадцать раз в секунду хватает с запасом: у проверки
+## пирамиды есть поле в половину макро-группы (32 м), и оно перекрывает эти 66 мс с лихвой.
+const QT_MAX_HZ:    float = 15.0
 const QT_STILL_EPS2: float = 0.04     # 0.2 m, squared: below this the camera counts as still
 const QT_STILL_COS:  float = 0.9995   # ~1.8 degrees of turn
 var _qt_timer:      float = 0.0
@@ -3375,23 +3382,42 @@ func _qt_apply(do_lod: bool) -> void:
 	# neighbour LODs (including step=4 for chunks inside an active macro). Rebuild only
 	# the chunks whose signature changed — usually none once the view settles.
 	if do_lod or coarse_changed:
+		# БЮДЖЕТ ПЕРЕСБОРОК НА ПРОХОД. Пересчитать подпись дёшево (четыре спуска по дереву),
+		# а вот пересобрать меш — это _compute_chunk_data на ТРИСТА вершин с масками биома,
+		# деталью и нормалями, да ещё и на главном потоке. Пока бюджета не было, поворот камеры
+		# приводил в кадр сразу десятки чанков, и все они перестраивались В ОДНОМ КАДРЕ: полка
+		# на ровном месте, ровно в тот момент, когда игрок крутит камерой.
+		#
+		# Остаток догоняется следующим проходом — их до тридцати в секунду. Шов, не сшитый
+		# кадр-другой, это волосяная щель на краю экрана в разгар поворота; провал кадра на
+		# том же повороте виден куда лучше.
+		var budget: int = STITCH_BUDGET
 		var mat := _get_material()
 		for ci in _qt_cur_chunks:
+			if budget <= 0:
+				break
 			if ci >= _chunk_instances.size() or not _chunk_instances[ci]:
 				continue
 			if _chunk_stitch_sig[ci] != _stitch_signature(ci):
 				_apply_lod_mesh(ci, mat)
+				budget -= 1
 		# ── The same pass for the two COARSE representations ──────────────────
 		# Macro and node meshes are built once at load with no border snapped, so without this
 		# their seams stayed open — and those are the two seams with the largest step gap in the
 		# system (see the section above _macro_grid). All three read the selection that was
 		# committed a few lines up, so order between them does not matter.
 		for nd in _qt_cur_nodes:
+			if budget <= 0:
+				break
 			if nd < _qt_stitch_sig.size() and _qt_stitch_sig[nd] != _node_signature(nd):
 				_restitch_node(nd)
+				budget -= 1
 		for mi in _qt_cur_macros:
+			if budget <= 0:
+				break
 			if mi < _macro_stitch_sig.size() and _macro_stitch_sig[mi] != _macro_signature(mi):
 				_restitch_macro(mi)
+				budget -= 1
 
 # The coarsest LOD a chunk's flatness allows. The threshold comes from flat_lod_error: the
 # flatter the chunk, the larger the triangles it may use.
@@ -3602,20 +3628,25 @@ func _clear_occlusion() -> void:
 # Returns true when the given local-space AABB is fully hidden behind terrain
 # as seen from cam_local (also in local space).
 #
-# Algorithm — elevation angle / terrain horizon method:
+# Algorithm — terrain horizon method, on SLOPES rather than angles:
 #   Cast an XZ ray from the camera toward the chunk's AABB centre.
 #   For each heightmap sample along the ray compute:
-#       terrain_angle = atan2(terrain_height − cam_y, horizontal_dist)
-#   Track max_terrain_angle across all samples.
+#       terrain_slope = (terrain_height − cam_y) / horizontal_dist
+#   Track max_terrain_slope across all samples.
 #   Separately compute:
-#       chunk_angle = atan2(aabb_top + occlusion_bias − cam_y, dist_to_chunk)
-#   If max_terrain_angle > chunk_angle the terrain horizon is above the chunk
+#       chunk_slope = (aabb_top + occlusion_bias − cam_y) / dist_to_chunk
+#   If max_terrain_slope > chunk_slope the terrain horizon is above the chunk
 #   top → the chunk cannot be seen → return true.
+#   Slopes, not atan2: the comparison is identical (atan2 is monotone in dy/dist)
+#   and it saves 33 trigonometry calls per tested piece.
 #
 # The occlusion_bias term raises the effective target so only terrain that
 # clearly dominates the skyline triggers culling, reducing false-positives
 # (popping) when the camera barely grazes a ridge.
-## HYSTERESIS, in radians of horizon angle. Without a dead band a piece sitting exactly on the
+## HYSTERESIS, В НАКЛОНАХ (dy/dist), а не в радианах: с тех пор как сравнение считается на
+## наклонах, а не на углах, и мёртвая зона живёт в тех же единицах. Число не меняли — у пологих
+## углов, а окклюзия случается именно у горизонта, tan(x) ≈ x, и полоса вышла та же.
+## Without a dead band a piece sitting exactly on the
 ## threshold flips on every occlusion pass — five times a second — and blinking geometry reads
 ## as a bug even though each individual answer is correct. Hiding something visible needs the
 ## terrain to clear its top by this much; showing something hidden needs it to fall below by the
@@ -3652,14 +3683,19 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3, was_occluded: bool = fals
 	if cam_local.y >= target_y:
 		return false
 
-	# Elevation angle from the camera to the (biased) chunk top
-	var chunk_angle := atan2(target_y - cam_local.y, dist_xz)
+	# УГЛОВ ЗДЕСЬ БОЛЬШЕ НЕТ — ТОЛЬКО НАКЛОНЫ. Считался atan2 на КАЖДЫЙ сэмпл луча, а сэмплов до
+	# occlusion_samples × 4 = тридцати двух, и всё это ради СРАВНЕНИЯ углов. atan2 строго
+	# монотонен по dy/dist при dist > 0, значит порядок у углов и у наклонов один и тот же и
+	# сравнение не меняется ни на йоту — а тридцать три вызова тригонометрии на каждый
+	# проверяемый кусок исчезают. Функция зовётся для каждого чанка, макро, узла, пропа, жилы и
+	# свободного блока, то есть сотни раз за проход.
+	var chunk_slope := (target_y - cam_local.y) / dist_xz
 
 	var inv_dist := 1.0 / dist_xz
 	var dir_x    := dx * inv_dist
 	var dir_z    := dz * inv_dist
 
-	var max_terrain_angle := -PI * 0.5   # start maximally below the horizon
+	var max_terrain_slope := -1e20       # start maximally below the horizon
 
 	# HOW MANY SAMPLES: by DISTANCE, not a fixed count. The heights themselves are exact — md is
 	# the full-resolution map, one float per world unit, and no separate "picture" is involved —
@@ -3694,13 +3730,13 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3, was_occluded: bool = fals
 			continue
 
 		var terrain_h     := float(md[idx])
-		var terrain_angle := atan2(terrain_h - cam_local.y, sample_dist)
+		var terrain_slope := (terrain_h - cam_local.y) / sample_dist
 
-		if terrain_angle > max_terrain_angle:
-			max_terrain_angle = terrain_angle
+		if terrain_slope > max_terrain_slope:
+			max_terrain_slope = terrain_slope
 
 	# Terrain horizon is above the chunk top → chunk is occluded (with the dead band above).
-	return max_terrain_angle > chunk_angle + (-OCCL_HYST if was_occluded else OCCL_HYST)
+	return max_terrain_slope > chunk_slope + (-OCCL_HYST if was_occluded else OCCL_HYST)
 
 ## IS THIS POINT HIDDEN BY THE TERRAIN? The same horizon walk as the chunk test, exposed for
 ## everything else in the world: props, ore veins, loose blocks, machines.
