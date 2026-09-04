@@ -431,7 +431,10 @@ func _salvage_2(q: Dictionary) -> void:
 ## (это VehicleBlock, без выходов и push_item), а руду с земли приёмник берёт и сам.
 const LINE_DIST := 70.0        # как далеко от игрока появляется площадка
 const LINE_REACH := 50.0       # ближе этого — материализуем; дальше игрок её и не видит
-const LINE_BELTS := 5          # всего лент в наборе, одна из них уже стоит на продавце
+## Сколько лент КЛАСТЬ НА ЗЕМЛЮ — считается ПО СХЕМЕ, а не задаётся числом. Было отдельной
+## константой (LINE_BELTS = 5, минус одна на продавце = четыре), а в схеме лент четыре, одна из
+## которых уже стоит: игроку выдавали ЛИШНЮЮ, и она оставалась валяться у площадки как деталь,
+## которой некуда встать. Два числа про одно и то же однажды разъезжаются — это и был тот раз.
 const LINE_ORE := 3            # сколько слитков падает на приёмник за раз
 const LINE_GIFT_DELAY := 8.0   # через сколько секунд после сборки выдаём процессор
 const LINE_ORE_KIND := "m1"    # средний материал: медный слиток
@@ -474,6 +477,17 @@ const LINE_PROC_PLAN := [
 ]
 
 var _hints: Array = []
+
+## Сколько лент не хватает на земле: все ленты схемы минус те, что квест уже поставил на базу.
+func _belts_to_drop() -> int:
+	var need: int = 0
+	for e in LINE_PLAN:
+		if int(e["block"]) == G.Block.BELT:
+			need += 1
+	return maxi(need - LINE_PREPLACED_BELTS, 0)
+
+## Сколько лент стоит на базе с самого начала (см. _spawn_line_kit): готовый «выход» линии.
+const LINE_PREPLACED_BELTS := 1
 
 ## Куда ведёт компас, пока площадка не появилась.
 func line_point() -> Variant:
@@ -623,7 +637,7 @@ func _spawn_line_kit(at: Vector3) -> void:
 		{"x": 5, "y": 5, "z": 6, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
 	])
 	_props.ensure("arc_line", G.Block.RECEIVER, at)
-	for _i in (LINE_BELTS - 1):
+	for _i in _belts_to_drop():
 		_props.drop_near("arc_line", G.Block.BELT, at)
 	_show_plan(LINE_PLAN)
 	Dialogue.say("System", "Seller is anchored and live, one belt already on it. The rest of the line is on the ground — the white outlines show where each piece goes.")
