@@ -430,6 +430,7 @@ func _ready() -> void:
 		if collision.shape is HeightMapShape3D:
 			w  = collision.shape.map_width      # legacy: data from the embedded shape
 			d  = collision.shape.map_depth
+			_center_window()   # окно без начала координат не значит ничего
 			md = collision.shape.map_data
 			_recompute_height_bound()
 		update()
@@ -451,6 +452,7 @@ func _ready() -> void:
 		if collision.shape is HeightMapShape3D:
 			w  = collision.shape.map_width
 			d  = collision.shape.map_depth
+			_center_window()   # окно без начала координат не значит ничего
 			md = collision.shape.map_data
 		else:
 			push_error("LiteTerrain: legacy mode needs a HeightMapShape3D on CollisionShape3D. Turn on use_image_data (default) or generate/bake terrain from the LiteTerrain dock.")
@@ -485,6 +487,7 @@ func _load_heightmap() -> void:
 	if img != null:
 		w  = img.get_width()
 		d  = img.get_height()
+		_center_window()   # окно без начала координат не значит ничего
 		if img.get_format() != Image.FORMAT_RF:
 			img.convert(Image.FORMAT_RF)
 		md = img.get_data().to_float32_array()
@@ -495,6 +498,7 @@ func _load_heightmap() -> void:
 	if collision.shape is HeightMapShape3D:
 		w  = collision.shape.map_width
 		d  = collision.shape.map_depth
+		_center_window()   # окно без начала координат не значит ничего
 		md = collision.shape.map_data
 		_recompute_height_bound()
 	if md.is_empty():
@@ -558,6 +562,7 @@ func _load_stream_heights() -> bool:
 		return false
 	w = sw
 	d = sd
+	_center_window()   # окно без начала координат не значит ничего
 	md = bytes.to_float32_array()
 	_recompute_height_bound()
 	return true
@@ -640,6 +645,7 @@ func _load_user_heights() -> bool:
 		return false
 	w = uw
 	d = ud
+	_center_window()   # окно без начала координат не значит ничего
 	md = bytes.to_float32_array()
 	_baked_seq = useq
 	_edit_seq = useq             # new edits continue the numbering instead of restarting it
@@ -826,8 +832,8 @@ func _update_collision_cells() -> void:
 			continue
 		var r: int = collision_radius
 		var local := global_transform.affine_inverse() * body.global_position
-		var bx := int(round(local.x + float(w) * 0.5 - 0.5))
-		var bz := int(round(local.z + float(d) * 0.5 - 0.5))
+		var bx := int(round(local.x + _cell_ox() - 0.5))
+		var bz := int(round(local.z + _cell_oz() - 0.5))
 		var cx0 := clampi((bx - r) / collision_cell, 0, cells_x - 1)
 		var cx1 := clampi((bx + r) / collision_cell, 0, cells_x - 1)
 		var cz0 := clampi((bz - r) / collision_cell, 0, cells_z - 1)
@@ -893,8 +899,8 @@ func collision_debug_at(world_pos: Vector3) -> String:
 	var cells_x: int = (w + collision_cell - 1) / collision_cell
 	var cells_z: int = (d + collision_cell - 1) / collision_cell
 	var local: Vector3 = global_transform.affine_inverse() * world_pos
-	var bx: int = int(round(local.x + float(w) * 0.5 - 0.5))
-	var bz: int = int(round(local.z + float(d) * 0.5 - 0.5))
+	var bx: int = int(round(local.x + _cell_ox() - 0.5))
+	var bz: int = int(round(local.z + _cell_oz() - 0.5))
 	var cx: int = clampi(bx / collision_cell, 0, cells_x - 1)
 	var cz: int = clampi(bz / collision_cell, 0, cells_z - 1)
 	var key: int = cz * cells_x + cx
@@ -962,6 +968,7 @@ func update() -> void:
 	if Engine.is_editor_hint() and not use_image_data and collision.shape is HeightMapShape3D:
 		w  = collision.shape.map_width
 		d  = collision.shape.map_depth
+		_center_window()   # окно без начала координат не значит ничего
 		md = collision.shape.map_data
 	if md.size() == 0:
 		return
@@ -1020,6 +1027,7 @@ func set_heightmap(data: PackedFloat32Array, width: int, depth: int, rebuild: bo
 	md = data
 	w  = width
 	d  = depth
+	_center_window()   # окно без начала координат не значит ничего
 	_chunks_x = ceili(float(w - 1) / chunk_size)
 	_recompute_height_bound()
 	if rebuild and Engine.is_editor_hint():
@@ -1029,12 +1037,12 @@ func set_heightmap(data: PackedFloat32Array, width: int, depth: int, rebuild: bo
 func _sample_height_local(lx: float, lz: float) -> float:
 	if md.is_empty() or w <= 0:
 		return 0.0
-	var x0 := clampi(int(floor(lx + float(w) * 0.5 - 0.5)), 0, w - 1)
-	var z0 := clampi(int(floor(lz + float(d) * 0.5 - 0.5)), 0, d - 1)
+	var x0 := clampi(int(floor(lx + _cell_ox() - 0.5)), 0, w - 1)
+	var z0 := clampi(int(floor(lz + _cell_oz() - 0.5)), 0, d - 1)
 	var x1 := mini(x0 + 1, w - 1)
 	var z1 := mini(z0 + 1, d - 1)
-	var fx := clampf((lx + float(w) * 0.5 - 0.5) - float(x0), 0.0, 1.0)
-	var fz := clampf((lz + float(d) * 0.5 - 0.5) - float(z0), 0.0, 1.0)
+	var fx := clampf((lx + _cell_ox() - 0.5) - float(x0), 0.0, 1.0)
+	var fz := clampf((lz + _cell_oz() - 0.5) - float(z0), 0.0, 1.0)
 	var h0: float = lerp(md[z0 * w + x0], md[z0 * w + x1], fx)
 	var h1: float = lerp(md[z1 * w + x0], md[z1 * w + x1], fx)
 	return lerp(h0, h1, fz)
@@ -1044,6 +1052,38 @@ func _sample_height_local(lx: float, lz: float) -> float:
 # skipped without sampling. It is kept at or above the real maximum — recomputed exactly on
 # load, generation and undo, while the raise brush only ever pushes it up.
 var _md_max := 0.0
+
+# ── ОКНО ВЫСОТ ───────────────────────────────────────────────────────────────
+# md — не «вся карта», а ОКНО в мире: массив w×d, левый верхний угол которого лежит в мировой
+# клетке (_win_x, _win_z). Пока окно центрировано на нуле, это ровно прежнее поведение —
+# _win_x = −w/2, и вся арифметика ниже даёт те же числа, что и раньше.
+#
+# ЗАЧЕМ. Держать в памяти всю карту нельзя ни при каком размере, кроме нынешнего: 8192² высот —
+# это 268 МБ только под них. Значит земля обязана считаться КУСКАМИ вокруг игрока, а массив —
+# ездить за ним. Всё, что читает md, работает в клетках МАССИВА и продолжит работать; меняется
+# только перевод «точка мира → клетка», и он обязан быть в ОДНОМ месте.
+#
+# Раньше этот перевод был написан двадцать один раз подряд как `local.x + w * 0.5 − 0.5`. Двадцать
+# одна копия одного правила — это двадцать одно место, где окно однажды не сдвинется.
+var _win_x: int = 0
+var _win_z: int = 0
+
+## Смещение окна в клетках: то самое `w * 0.5`, что стояло в тех двадцати одном месте.
+func _cell_ox() -> float:
+	return -float(_win_x)
+
+func _cell_oz() -> float:
+	return -float(_win_z)
+
+## Поставить окно по центру мира — прежнее поведение и умолчание для карты, прочитанной файлом.
+## Зовётся везде, где меняются w/d: окно без начала координат не значит ничего.
+##
+## У НЕЧЁТНОГО размера центр сдвигается на полклетки: клетка-начало обязана быть целой, а w/2
+## целым не делится. Раньше здесь стояло `w * 0.5`, то есть полклетки учитывались, — разница
+## незаметна глазу и есть только у карт нечётного размера, каких в проекте нет ни одной.
+func _center_window() -> void:
+	_win_x = -int(w / 2)
+	_win_z = -int(d / 2)
 
 func _recompute_height_bound() -> void:
 	if not Engine.is_editor_hint():
@@ -1190,8 +1230,8 @@ func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float
 	# The target height is converted to LOCAL: md stores heights in the map's own axes, while we
 	# are called with world coordinates (the ones the structure stands at).
 	var target: float = (inv * Vector3(center_world.x, height, center_world.z)).y
-	var cx: float = local.x + float(w) * 0.5 - 0.5      # the same formula as in _compute_chunk_data
-	var cz: float = local.z + float(d) * 0.5 - 0.5
+	var cx: float = local.x + _cell_ox() - 0.5      # the same formula as in _compute_chunk_data
+	var cz: float = local.z + _cell_oz() - 0.5
 	var ex: float = maxf(half_extent.x, 0.0)
 	var ez: float = maxf(half_extent.y, 0.0)
 	var fe: float = maxf(feather, 0.001)
@@ -1232,8 +1272,8 @@ func apply_brush(center_world: Vector3, radius: float, strength: float, mode: in
 	if md.is_empty() or w <= 0:
 		return dirty
 	var local := global_transform.affine_inverse() * center_world
-	var cx := int(round(local.x + float(w) * 0.5 - 0.5))
-	var cz := int(round(local.z + float(d) * 0.5 - 0.5))
+	var cx := int(round(local.x + _cell_ox() - 0.5))
+	var cz := int(round(local.z + _cell_oz() - 0.5))
 	var r := int(ceil(radius))
 	var x_min := clampi(cx - r, 0, w - 1)
 	var x_max := clampi(cx + r, 0, w - 1)
@@ -1500,8 +1540,8 @@ func _editor_rebuild_lod() -> void:
 	var cam_local := global_transform.affine_inverse() * cam_pos
 	for cz in _ed_cz:
 		for cx in _ed_cx:
-			var ccx := (cx + 0.5) * chunk_size - w * 0.5
-			var ccz := (cz + 0.5) * chunk_size - d * 0.5
+			var ccx := (cx + 0.5) * chunk_size - _cell_ox()
+			var ccz := (cz + 0.5) * chunk_size - _cell_oz()
 			var dx := ccx - cam_local.x
 			var dz := ccz - cam_local.z
 			# Squared: both lines below are threshold comparisons, which need no root, and the
@@ -1560,8 +1600,8 @@ func _chunk_surface_arrays_lod(cx: int, cz: int) -> Array:
 
 ## Squared distance from the editor camera to a chunk centre, in the map's local axes.
 func _ed_chunk_dist2(cx: int, cz: int, cam_local: Vector3) -> float:
-	var ccx: float = (float(cx) + 0.5) * chunk_size - w * 0.5
-	var ccz: float = (float(cz) + 0.5) * chunk_size - d * 0.5
+	var ccx: float = (float(cx) + 0.5) * chunk_size - _cell_ox()
+	var ccz: float = (float(cz) + 0.5) * chunk_size - _cell_oz()
 	var dx: float = ccx - cam_local.x
 	var dz: float = ccz - cam_local.z
 	return dx * dx + dz * dz
@@ -1703,7 +1743,7 @@ func _build_chunks_from_map_data() -> void:
 			return
 		_chunk_flat_err[ci] = err
 		_chunk_aabbs[ci] = AABB(
-			Vector3(x0 - float(w) * 0.5 + 0.5, min_h, z0 - float(d) * 0.5 + 0.5),
+			Vector3(x0 - _cell_ox() + 0.5, min_h, z0 - _cell_oz() + 0.5),
 			Vector3(x1 - x0, max_h - min_h, z1 - z0))
 	var aabb_gid := WorkerThreadPool.add_group_task(aabb_task, total, -1, true)
 	while not WorkerThreadPool.is_group_task_completed(aabb_gid):
@@ -2469,13 +2509,13 @@ func biome_at(world_pos: Vector3) -> Vector3:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return Vector3.ZERO
 	var local: Vector3 = global_transform.affine_inverse() * world_pos
-	var gx: int = clampi(int(round(local.x + float(w) * 0.5 - 0.5)), 0, w - 1)
-	var gz: int = clampi(int(round(local.z + float(d) * 0.5 - 0.5)), 0, d - 1)
+	var gx: int = clampi(int(round(local.x + _cell_ox() - 0.5)), 0, w - 1)
+	var gz: int = clampi(int(round(local.z + _cell_oz() - 0.5)), 0, d - 1)
 	return _masks_at(gx, gz)
 
 # World XZ of a heightmap cell, exactly as the generator computes it: grid minus size/2.
 func _biome_wp(gx: int, gz: int) -> Vector2:
-	return Vector2(float(gx) - w * 0.5, float(gz) - d * 0.5)
+	return Vector2(float(gx) - _cell_ox(), float(gz) - _cell_oz())
 
 # The masks are baked into the vertex COLOR: .g is canyon, .b is meadow, .a is mountains. The
 # shader only reads them, so the biome layout is identical for the colour and the landform.
@@ -2746,8 +2786,8 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 			if detail_on:
 				var dw: float = _detail_weight(x, z, x0, z0, x1, z1)
 				if dw > 0.001:
-					var wx: float = float(x) - w * 0.5 + 0.5
-					var wz: float = float(z) - d * 0.5 + 0.5
+					var wx: float = float(x) - _cell_ox() + 0.5
+					var wz: float = float(z) - _cell_oz() + 0.5
 					h += dw * _detail_height(wx, wz, mk, slope)
 					const E: float = 0.6
 					dhx = dw * (_detail_height(wx + E, wz, mk, slope) - _detail_height(wx - E, wz, mk, slope))
@@ -2755,7 +2795,7 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 					dhx *= float(sz) / E
 					dhz *= float(sz) / E
 
-			var pos: Vector3 = Vector3(x - w * 0.5 + 0.5, h, z - d * 0.5 + 0.5)
+			var pos: Vector3 = Vector3(x - _cell_ox() + 0.5, h, z - _cell_oz() + 0.5)
 			vertices.append(pos)
 			aabb_min = aabb_min.min(pos)
 			aabb_max = aabb_max.max(pos)
@@ -3734,8 +3774,8 @@ func _is_aabb_occluded(aabb: AABB, cam_local: Vector3, was_occluded: bool = fals
 		# Inverse: x = lx + w*0.5 − 0.5
 		# Use actual_d (derived from md.size()) instead of cached d to avoid
 		# stale-cache OOB when the map was resized after _ready().
-		var hx  := clampi(int(round(lx + float(w)        * 0.5 - 0.5)), 0, w        - 1)
-		var hz  := clampi(int(round(lz + float(actual_d) * 0.5 - 0.5)), 0, actual_d - 1)
+		var hx  := clampi(int(round(lx + _cell_ox() - 0.5)), 0, w        - 1)
+		var hz  := clampi(int(round(lz + _cell_oz() - 0.5)), 0, actual_d - 1)
 		var idx: int = hz * w + hx
 		# Final safety net — prevents any remaining edge-case OOB
 		if idx < 0 or idx >= md_size:
