@@ -2527,10 +2527,20 @@ const ROCK_SLOPE_MIN: float = 0.9    # height difference per cell where rock sta
 ## заливке. Выключить — значит вернуть по два треугольника на клетку: больше вершин, но цвет
 ## считается в каждой.
 @export var merge_flat: bool = true
-## Longest side of a merged flat rectangle, in cells. Unbounded merging would draw a whole
-## canyon floor as one quad — correct geometrically, but the biome colour lives in the VERTICES,
-## so the shading would be interpolated across a hundred metres from four corners.
-const MERGE_MAX: int = 16
+## Longest side of a merged flat rectangle, in cells. NO CAP ANY MORE: a flat area is meant to
+## come out as ONE quad, not as a grid of tidy squares, and a rectangle may be a long thin strip
+## just as well — whatever shape the flat cells actually make.
+##
+## The old cap was 16 and bought one thing: the biome colour lives in the VERTICES, so a huge quad
+## interpolates its shading from four corners and the biome transition stretches across it. That
+## is the price, and it is paid on purpose — a canyon floor drawn as one quad instead of a hundred
+## is the whole reason greedy merging is here.
+##
+## Note what actually limits the merge, and it is not this number: a chunk is chunk_size cells
+## across and its OUTER RING never merges (those vertices are the seam with the neighbour), so a
+## dead-flat chunk already comes out as one big quad plus a one-cell frame. Merging past a chunk
+## border is impossible by construction — chunks are separate meshes with their own LOD.
+const MERGE_MAX: int = 1 << 20
 ## How equal is "flat". The heights come from a float texture, so exact comparison is wrong;
 ## a millimetre is far below anything visible and far below what would move the surface off
 ## the collision.
@@ -2766,9 +2776,10 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 				indices.append_array([i00, i10, i11])
 				indices.append_array([i00, i11, i01])
 				continue
-			# Grow right, then down — the plain greedy rectangle. Capped so one quad never
-			# spans so much ground that the biome colour, which is per-vertex, visibly drifts
-			# across it.
+			# Grow right AS FAR AS IT GOES, then down — the plain greedy rectangle. Growing right
+			# first is what turns a flat strip one cell tall into a single long quad instead of a
+			# row of squares; growing down afterwards squares it off only where the flatness
+			# really extends that way.
 			var rw: int = 1
 			while rw < MERGE_MAX and cx + rw < cells_x - 1 \
 					and taken[cz * cells_x + cx + rw] == 0 \

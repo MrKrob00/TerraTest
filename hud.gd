@@ -818,6 +818,24 @@ func _do_vmenu_action(idx: int, vehicle: Node) -> void:
 			if cc and cc.has_method("switch_to_vehicle"):
 				cc.switch_to_vehicle(vehicle)
 
+## ИГРОК ПЕРЕСЕЛ НА ДРУГУЮ МАШИНУ (camera_controller.switch_to_vehicle зовёт это сразу).
+##
+## Всё, что HUD помнил про жест, относилось к ПРЕЖНЕЙ машине и пересадку переживать не должно:
+## открытое круговое меню (его пункт «Control» пересадку и вызвал), недобранное удержание значка
+## ⚙ и захваченный ими G.ui_grab. Сам HUD замечал смену машины только по расхождению ссылок в
+## своём тике — то есть кадром позже и не целиком, а этот мусор оставался.
+func on_vehicle_switched(v: Node) -> void:
+	close_vehicle_menu()          # он же снимает G.ui_grab
+	_vbtn_holding = false
+	_vbtn_hold = 0.0
+	_vbtn_target = null           # цель кнопки считается заново: прежняя стала текущей
+	if _vbtn != null and is_instance_valid(_vbtn):
+		_vbtn.fill = 0.0
+		_vbtn.visible = false
+	G.ui_grab = false
+	current_vehicle = v
+	_update_build_widgets()       # режим у новой машины свой — кнопки под него
+
 func close_vehicle_menu() -> void:
 	if _vmenu != null and is_instance_valid(_vmenu):
 		_vmenu.queue_free()

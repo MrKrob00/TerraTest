@@ -624,6 +624,16 @@ func _process_input(joy: Vector2, delta: float) -> void:
 func set_active(active: bool) -> void:
 	is_active = active
 	Building = false
+	# ЖЕСТ ОБРЫВАЕТСЯ ПОСРЕДИ СЕБЯ, и его следы надо стереть. _input начинается с
+	# `if !is_active: return`, а активность переключается ПРЯМО ВНУТРИ разбора события: игрок
+	# держит палец на другой машине, выбирает в круговом меню «Control», и до отпускания эта
+	# машина уже неактивна — отпускания она не увидит НИКОГДА. _touch_count так и остаётся
+	# единицей, а длинное нажатие требует ровно нуля (`_touch_count == 0`), то есть круговое
+	# меню с этой машины больше не открывается вообще ничем. Ровно это и выглядело как
+	# «пересел, и меню пропало насовсем».
+	_touch_count = 0
+	_build_tap_moved = false
+	_dbl_tap_ms = 0
 	if active:
 		defense_mode = false     # игрок сел за руль — авто-оборона больше не рулит оружием
 
@@ -930,7 +940,18 @@ func _player_machine_under(screen_pos: Vector2) -> Node:
 ## машины свои. Без переноса цель решила бы, что рука пуста, и вместо постановки блока сняла бы
 ## с себя тот, на который навели. Обратно забираем по той же причине: блок мог уйти из руки
 ## (поставили) или прийти в неё (сняли), и знать об этом должна та машина, которой рулят.
+## КОМУ МЫ ПЕРЕДАЛИ НАВОДКУ В ПРОШЛЫЙ РАЗ. Нужен ровно затем, чтобы её ПОГАСИТЬ.
+##
+## Подсветка живёт на той машине, которая наводилась, — у неё свой block_body и свой призрак.
+## Пока луч попадает в неё, всё честно; но стоит тапнуть по земле, и мы гасим ТОЛЬКО СВОЮ
+## подсветку, а на соседней машине блок остаётся подсвеченным навсегда: сказать ей об этом
+## некому — делегирования в этот кадр не было вовсе. Помним ссылку и снимаем.
+var _delegated_to: Node = null
+
 func _delegate_build(other: Node, screen_pos: Vector2, commit: bool) -> void:
+	if _delegated_to != other:
+		_clear_delegated_highlight()          # навелись на ДРУГУЮ машину — прежнюю гасим
+	_delegated_to = other
 	other.block_take = block_take
 	other.hand_kind = hand_kind
 	other.build_basis = build_basis
@@ -949,12 +970,28 @@ func _delegate_build(other: Node, screen_pos: Vector2, commit: bool) -> void:
 		ghost_block.visible = false
 	block_body = null
 
+## Погасить подсветку на машине, которой мы делегировали наводку прошлый раз. Зовём ровно
+## тогда, когда луч в неё больше не попадает.
+func _clear_delegated_highlight() -> void:
+	var o: Node = _delegated_to
+	_delegated_to = null
+	if o == null or not is_instance_valid(o):
+		return
+	o.set("block_body", null)
+	var g = o.get("ghost_block")
+	if g != null and is_instance_valid(g) and g is Node3D:
+		(g as Node3D).visible = false
+
 func _handle_click(screen_pos: Vector2) -> void:
 	# Тап пришёлся по другой своей машине — пусть наводится она сама (см. шапку раздела).
 	var other: Node = _player_machine_under(screen_pos)
 	if other != null:
 		_delegate_build(other, screen_pos, false)
 		return
+	# Луч мимо всех машин (земля, небо, враг) — гасим подсветку и у СОСЕДНЕЙ тоже. Своя гаснет
+	# ниже сама, и до этой правки в этом и была вся разница: на текущей машине тап по земле
+	# подсветку снимал, а на второй она оставалась висеть.
+	_clear_delegated_highlight()
 	var camera: Camera3D = camera_controller.camera
 	var world_origin: Vector3 = camera.project_ray_origin(screen_pos)
 	var world_dir: Vector3 = camera.project_ray_normal(screen_pos)
