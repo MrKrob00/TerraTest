@@ -32,6 +32,20 @@ var gen_canyon_width: float = 0.18
 var mtn_amount: float = 0.8
 var ridge_sharp: float = 2.5
 
+# ── МИРОВЫЕ КООРДИНАТЫ ───────────────────────────────────────────────────────
+# Высота обязана зависеть ТОЛЬКО от мировой точки, и ни от чего больше. Раньше базовый шум брался
+# по ИНДЕКСУ клетки в массиве (fx, fz), то есть один и тот же мировой метр на карте 1982² и 4096²
+# давал разный рельеф, а кусок, посчитанный со смещением, не сходился с соседним по шву. Для
+# скользящего окна это смертельно: окно как раз и считает куски по разным смещениям.
+#
+# origin_* — мировая клетка, которой соответствует локальный (0,0) считаемого куска.
+var origin_x: int = 0
+var origin_z: int = 0
+## СДВИГ ШУМА, в мировых клетках. Нужен, чтобы ВОСПРОИЗВЕСТИ старую карту байт в байт: для неё
+## шум брался по индексу, то есть ровно по мировой координате плюс половина размера карты.
+## generate() ставит его сам; порегионному вызову он не нужен и остаётся нулём.
+var noise_offset := Vector2.ZERO
+
 ## Куда сообщать о ходе работ: on_progress.call(step: String, frac: float). Пусто — молча.
 var on_progress: Callable = Callable()
 ## Есть ли у вызывающего СВОЯ последняя стадия (запись файлов, пересборка превью). План строит
@@ -250,19 +264,19 @@ func _gen_fill_row(z: int) -> void:
 	if _gen_drop_row():
 		return
 	var w := _gen_w
-	var hw := float(w) * 0.5
-	var hd := float(_gen_d) * 0.5
-	var fz := float(z)
+	# МИРОВАЯ координата строки, а не индекс в массиве: кусок, посчитанный по любому смещению,
+	# обязан дать те же высоты (см. «МИРОВЫЕ КООРДИНАТЫ» вверху файла).
+	var wz := float(origin_z + z)
+	var nz := wz + noise_offset.y
 	var row := z * w
 	for x in w:
-		var fx := float(x)
-		var base = (_gen_base.get_noise_2d(fx, fz) + 1.0) * 0.5
+		var wx := float(origin_x + x)
+		var nx := wx + noise_offset.x
+		var base = (_gen_base.get_noise_2d(nx, nz) + 1.0) * 0.5
 		var continental:float = pow(base, gen_power)
-		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(fx, fz)), _gen_ridge_sharp)
+		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(nx, nz)), _gen_ridge_sharp)
 		var mountain_mask = smoothstep(0.52, 0.78, continental)
 		var ridge_term = ridge * _gen_mtn_amount * mountain_mask
-		var wx := fx - hw
-		var wz := fz - hd
 		var wp := Vector2(wx, wz)
 		var b := _gen_biomes
 		# КАНЬОН БОЛЬШЕ НИЧЕГО НЕ ГАСИТ, и это следствие смены его модели. Пока он ЗАМЕЩАЛ высоту
@@ -281,9 +295,9 @@ func _gen_fill_row(z: int) -> void:
 		var land_sand := sand_m * not_mtn
 		var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
 		var h = cont_biome + ridge_term * not_mtn
-		var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(fx, fz) * 3.5
+		var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(nx, nz) * 3.5
 		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
-		var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(fx * 1.7, fz * 1.7) * 4.0 * mtn_mask
+		var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
 		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
 	_gen_row_done()
 
@@ -304,9 +318,7 @@ func _gen_carve_row(z: int) -> void:
 	if _gen_drop_row():
 		return
 	var w := _gen_w
-	var hw := float(w) * 0.5
-	var hd := float(_gen_d) * 0.5
-	var fz := float(z)
+	var wz := float(origin_z + z)
 	var b := _gen_biomes
 	if b == null or _gen_len <= 0 or z * w + w > _gen_len:
 		_gen_row_done()
@@ -314,8 +326,7 @@ func _gen_carve_row(z: int) -> void:
 	var terr: float = maxf(b.canyon_band_height, 0.5)
 	for x in w:
 		var idx := z * w + x
-		var wx := float(x) - hw
-		var wz := fz - hd
+		var wx := float(origin_x + x)
 		var wp := Vector2(wx, wz)
 		# МАСКА ОБЛАСТИ — ТА ЖЕ САМАЯ, ЧТО У ЦВЕТА, И БЕРЁТСЯ ОДНИМ ВЫЗОВОМ. Здесь была вторая
 		# копия её формулы, и она молча разошлась с оригиналом: `canyon_mask` сдвигает шум на
@@ -425,6 +436,15 @@ func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Arr
 	# Минимальный размер: меньше двух чанков даёт вырожденные чанки и ошибки сборки.
 	width = maxi(width, 32)
 	depth = maxi(depth, 32)
+	# КАРТА ЦЕЛИКОМ — ЭТО КУСОК С НАЧАЛОМ В ЛЕВОМ ВЕРХНЕМ УГЛУ. Мир у нас центрирован на нуле
+	# (map.gd ставит вершины в `x − w/2`), поэтому мировая клетка локального (0,0) — это минус
+	# половина размера. А сдвиг шума равен ровно той же половине: так генератор, перешедший на
+	# мировые координаты, воспроизводит прежнюю карту байт в байт, а не «почти такую же».
+	origin_x = -int(width / 2)
+	origin_z = -int(depth / 2)
+	# Сдвиг выводим ИЗ НАЧАЛА КУСКА, а не из размера: тогда nx = wx − origin_x = x, то есть шум
+	# берётся ровно в той же точке, что и раньше, при любой чётности размера.
+	noise_offset = Vector2(float(-origin_x), float(-origin_z))
 	# ── Layer 1: Continental FBM ─────────────────
 	# Low-frequency simplex FBM defines the overall land masses.
 	# After remapping to [0,1], we raise to gen_power (e.g. ^4):
