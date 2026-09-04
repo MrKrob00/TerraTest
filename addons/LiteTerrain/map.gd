@@ -2527,24 +2527,62 @@ const ROCK_SLOPE_MIN: float = 0.9    # height difference per cell where rock sta
 ## заливке. Выключить — значит вернуть по два треугольника на клетку: больше вершин, но цвет
 ## считается в каждой.
 @export var merge_flat: bool = true
-## Longest side of a merged flat rectangle, in cells. NO CAP ANY MORE: a flat area is meant to
-## come out as ONE quad, not as a grid of tidy squares, and a rectangle may be a long thin strip
-## just as well — whatever shape the flat cells actually make.
-##
-## The old cap was 16 and bought one thing: the biome colour lives in the VERTICES, so a huge quad
-## interpolates its shading from four corners and the biome transition stretches across it. That
-## is the price, and it is paid on purpose — a canyon floor drawn as one quad instead of a hundred
-## is the whole reason greedy merging is here.
-##
-## Note what actually limits the merge, and it is not this number: a chunk is chunk_size cells
-## across and its OUTER RING never merges (those vertices are the seam with the neighbour), so a
-## dead-flat chunk already comes out as one big quad plus a one-cell frame. Merging past a chunk
-## border is impossible by construction — chunks are separate meshes with their own LOD.
-const MERGE_MAX: int = 1 << 20
 ## How equal is "flat". The heights come from a float texture, so exact comparison is wrong;
 ## a millimetre is far below anything visible and far below what would move the surface off
 ## the collision.
 const MERGE_EPS: float = 0.001
+
+## САМЫЙ КРУПНЫЙ ПЛОСКИЙ ПРЯМОУГОЛЬНИК от клетки (cx, cz).
+##
+## Область плоских клеток вправе иметь ЛЮБУЮ форму — её и накрываем, просто не одним куском, а
+## несколькими: внешний цикл продолжает засеивать прямоугольники в том, что осталось не занято.
+## Прямоугольниками, а не многоугольником по контуру, ровно по счёту треугольников: прямоугольник
+## это всегда ДВА треугольника независимо от площади, а честный многоугольник с рваной границей в
+## сорок вершин — тридцать восемь. На плоскости прямоугольники не проигрывают, они выигрывают.
+##
+## А вот ПОРЯДОК РОСТА решает много. «Сначала вправо, потом вниз» и «сначала вниз, потом вправо»
+## дают на одной и той же области РАЗНЫЕ прямоугольники: узкая первая строка обрезает высоту,
+## узкий первый столбец — ширину. Считаем оба и берём тот, что накрывает больше клеток; чем
+## крупнее каждый кусок, тем меньше их нужно на всю область.
+func _flat_rect(verts: PackedVector3Array, taken: PackedByteArray, nx: int,
+		cells_x: int, cells_z: int, cx: int, cz: int, h0: float, cap: int) -> Vector2i:
+	var a := _grow_rect(verts, taken, nx, cells_x, cells_z, cx, cz, h0, cap, true)
+	var b := _grow_rect(verts, taken, nx, cells_x, cells_z, cx, cz, h0, cap, false)
+	return a if a.x * a.y >= b.x * b.y else b
+
+func _grow_rect(verts: PackedVector3Array, taken: PackedByteArray, nx: int,
+		cells_x: int, cells_z: int, cx: int, cz: int, h0: float, cap: int,
+		wide_first: bool) -> Vector2i:
+	var rw: int = 1
+	var rh: int = 1
+	if wide_first:
+		while rw < cap and cx + rw < cells_x - 1 \
+				and taken[cz * cells_x + cx + rw] == 0 \
+				and _cell_flat(verts, nx, cx + rw, cz, h0):
+			rw += 1
+		while rh < cap and cz + rh < cells_z - 1 \
+				and _span_flat(verts, taken, nx, cells_x, cx, cz + rh, rw, true, h0):
+			rh += 1
+	else:
+		while rh < cap and cz + rh < cells_z - 1 \
+				and taken[(cz + rh) * cells_x + cx] == 0 \
+				and _cell_flat(verts, nx, cx, cz + rh, h0):
+			rh += 1
+		while rw < cap and cx + rw < cells_x - 1 \
+				and _span_flat(verts, taken, nx, cells_x, cx + rw, cz, rh, false, h0):
+			rw += 1
+	return Vector2i(rw, rh)
+
+## Свободна ли и плоска ли ЦЕЛИКОМ полоса длиной n от клетки (cx, cz): по строке (horiz) или по
+## столбцу. Одна функция на оба порядка роста — два её экземпляра однажды разъехались бы.
+func _span_flat(verts: PackedVector3Array, taken: PackedByteArray, nx: int, cells_x: int,
+		cx: int, cz: int, n: int, horiz: bool, h0: float) -> bool:
+	for k in n:
+		var qx: int = cx + k if horiz else cx
+		var qz: int = cz if horiz else cz + k
+		if taken[qz * cells_x + qx] != 0 or not _cell_flat(verts, nx, qx, qz, h0):
+			return false
+	return true
 
 ## Are all four corners of cell (cx, cz) at height h0? Vertices are laid out row-major over the
 ## sample grid, so the index arithmetic is direct — no dictionary lookup per corner.
@@ -2750,6 +2788,11 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 	var cells_z: int = nz - 1
 	var taken := PackedByteArray()
 	taken.resize(cells_x * cells_z)
+	# ПОТОЛОК СКЛЕЙКИ — ЧАНК. Для меша самого чанка он ничего не режет (внутри и так остаётся
+	# chunk_size − 2 клетки), а вот грубый меш узла квадродерева накрывает десятки чанков сразу,
+	# и без потолка один квад растянулся бы на километр: биомный цвет живёт в ВЕРШИНАХ, и на
+	# таком кваде переход интерполировался бы между четырьмя углами через полкарты.
+	var merge_cap: int = maxi(chunk_size, 2)
 	# GRASS DOES NOT GROW ALONG THE EDGE OF A MERGED QUAD, and that is not decoration but the
 	# condition under which merging is legal at all. A big quad is described by FOUR corners, while
 	# the neighbouring unmerged cells along its edge keep vertices of their own — a T-junction. As
@@ -2776,26 +2819,9 @@ func _compute_chunk_data(x0: int, z0: int, x1: int, z1: int, step: int = 1,
 				indices.append_array([i00, i10, i11])
 				indices.append_array([i00, i11, i01])
 				continue
-			# Grow right AS FAR AS IT GOES, then down — the plain greedy rectangle. Growing right
-			# first is what turns a flat strip one cell tall into a single long quad instead of a
-			# row of squares; growing down afterwards squares it off only where the flatness
-			# really extends that way.
-			var rw: int = 1
-			while rw < MERGE_MAX and cx + rw < cells_x - 1 \
-					and taken[cz * cells_x + cx + rw] == 0 \
-					and _cell_flat(vertices, nx, cx + rw, cz, h0):
-				rw += 1
-			var rh: int = 1
-			while rh < MERGE_MAX and cz + rh < cells_z - 1:
-				var row_ok: bool = true
-				for k in rw:
-					if taken[(cz + rh) * cells_x + cx + k] != 0 \
-							or not _cell_flat(vertices, nx, cx + k, cz + rh, h0):
-						row_ok = false
-						break
-				if not row_ok:
-					break
-				rh += 1
+			var rect := _flat_rect(vertices, taken, nx, cells_x, cells_z, cx, cz, h0, merge_cap)
+			var rw: int = rect.x
+			var rh: int = rect.y
 			for jz in rh:
 				for jx in rw:
 					taken[(cz + jz) * cells_x + cx + jx] = 1
