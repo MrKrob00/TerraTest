@@ -103,11 +103,21 @@ func _cull_tick(delta: float) -> void:
 	# сколько сотня перед носом, а видно из них ноль.
 	var terr := get_node_or_null("/root/Main/map")
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	var frustum: Array[Plane] = cam.get_frustum()
 	_shadow_tick(cam_pos)
 	for c in o.get_children():
 		var n := c as Node3D
 		if n == null:
 			continue
+		_settle_tick(n)
+		# РИСОВАНИЕ И СКРИПТ РЕШАЮТСЯ ПОРОЗНЬ, и это не педантизм.
+		#
+		# Рисовать вне кадра нечего вообще — тут годится точная пирамида видимости, та же, что
+		# у машин. А вот СКРИПТ по ней гасить нельзя: лежащий на базе коллектор в тридцати
+		# метрах сбоку по кадру не проходит, и фабрика вставала бы каждый раз, когда игрок
+		# отвернул камеру. Скрипту поэтому оставлено прежнее, гораздо более мягкое правило —
+		# «строго за спиной или за хребтом».
+		n.visible = _in_frustum(frustum, n.global_position, ITEM_CULL_RADIUS)
 		var was: bool = n.has_meta(CULL_META)
 		var to: Vector3 = n.global_position - cam_pos
 		var d2: float = to.length_squared()
@@ -126,12 +136,48 @@ func _cull_tick(delta: float) -> void:
 			if rb != null and not rb.sleeping and not rb.freeze:
 				continue                    # ещё едет/падает — досчитаем, погасим в следующий раз
 			n.set_meta(CULL_META, true)
-			n.visible = false
 			n.process_mode = Node.PROCESS_MODE_DISABLED
 		else:
 			n.remove_meta(CULL_META)
-			n.visible = true
 			n.process_mode = Node.PROCESS_MODE_INHERIT
+
+# ── УЛЁГСЯ — ЗНАЧИТ СПИТ ─────────────────────────────────────────────────────
+# Каждое НЕспящее RigidBody3D просит у рельефа своё окно стриминговой коллизии
+# (map._update_collision_cells), а в этой игре по земле разбросаны десятки свободных блоков и
+# кусков руды. Godot усыпляет тело сам, но лежащий на стриминговом хайтфилде блок умеет дрожать
+# на пороге сна бесконечно: микро-скорость держит его бодрым, бодрый держит окно, окно держит
+# землю, земля держит дрожь. Круг замкнут, и блок так и не засыпает НИКОГДА.
+#
+# Поэтому усыпляем сами: медленнее SETTLE_SPEED дольше SETTLE_TIME — ставим sleeping. Дальше
+# всё делает физика: контакт, толчок взрывом или проехавшая машина будят тело сами, и окно
+# возвращается в тот же кадр (цикл рельефа идёт каждый кадр).
+#
+# ИМЕННО sleeping, А НЕ freeze. Замороженное тело для этой игры значит «не лежит в мире»:
+# G.is_loose_item отличает лежащее от держимого ровно по freeze, и замороженный блок перестал бы
+# подбираться рукой, коллектором и приёмником. Плюс импульс взрыва замороженным телам не
+# применяется вовсе (block_fx.explosion) — блоки перестали бы разлетаться.
+const SETTLE_SPEED := 0.35        # м/с — медленнее считаем, что тело уже легло
+const SETTLE_TIME := 3.5          # столько секунд подряд, чтобы не усыпить подброшенное в апогее
+const SETTLE_META := "settled_s"
+
+func _settle_tick(n: Node3D) -> void:
+	var rb := n as RigidBody3D
+	if rb == null or rb.freeze or rb.sleeping:
+		return
+	var v2: float = rb.linear_velocity.length_squared() + rb.angular_velocity.length_squared()
+	if v2 > SETTLE_SPEED * SETTLE_SPEED:
+		rb.remove_meta(SETTLE_META)
+		return
+	var t: float = float(rb.get_meta(SETTLE_META, 0.0)) + CULL_PERIOD
+	if t < SETTLE_TIME:
+		rb.set_meta(SETTLE_META, t)
+		return
+	rb.remove_meta(SETTLE_META)
+	rb.sleeping = true
+
+## Радиус сферы вокруг свободного предмета для проверки кадра. Блок — метровый куб, руда мельче;
+## полтора метра дают запас, чтобы предмет на самой кромке экрана не мигал.
+const ITEM_CULL_RADIUS := 1.5
 
 ## ТЕНЬ ОТ СВОИХ МАШИН — ТОЛЬКО ВБЛИЗИ. У машины тридцать-сорок отдельных блоков, и каждый
 ## отбрасывающий тень рисуется ВТОРОЙ РАЗ в карту теней. У базы на другом конце поля тень
