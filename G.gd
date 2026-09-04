@@ -21,13 +21,172 @@ var block_inventory = []
 # ─── Сохранённые сборки машины ────────────────────────────────────────────────
 # name -> layout (массив {x,y,z,block,rot_y}, как blocks.get_layout()). Персистится в user://.
 var saved_builds: Dictionary = {}
-const BUILDS_PATH := "user://vehicle_builds.json"
+## Имя файла, а не путь: он лежит В ПАПКЕ СЛОТА (см. G.slot_path) — сборки принадлежат миру,
+## в котором их собрали, а не устройству.
+const BUILDS_FILE := "vehicle_builds.json"
 
 func _ready() -> void:
 	_build_comp_recipes()      # до загрузки: рецепты нужны ценам, а цены — магазину
+	_load_settings()           # конфиг устройства общий на все слоты — читаем до выбора слота
+	use_slot(last_slot())      # слот подхватывается сам: сцену можно запускать из редактора
+
+# ══════════════════════════════════════════════════════════════════════════════
+# СЛОТЫ СОХРАНЕНИЯ
+# ══════════════════════════════════════════════════════════════════════════════
+# Три независимых мира. Слот — это ПРЕФИКС ПУТИ, а не отдельный формат: каждый пишет свои
+# файлы в user://sN/, и весь остальной код продолжает работать с теми же именами. Так слоты
+# не потребовали ни одной новой ветки в сохранении и загрузке.
+#
+# ЧТО В СЛОТЕ И ЧТО ВНЕ ЕГО. В слоте всё, что принадлежит ЭТОМУ миру: прогресс, машины, блоки
+# в мире, сохранённые сборки и запечённые правки рельефа. Вне слота — конфиг УСТРОЙСТВА
+# (settings.json: масштаб интерфейса, тени, чувствительность камеры): он про телефон, а не про
+# прохождение, и обнулять его вместе с миром было бы наказанием ни за что.
+const SLOT_COUNT := 3
+const LAST_SLOT_PATH := "user://last_slot.txt"
+var slot: int = 0
+
+## Папка активного слота. Создаётся при первом обращении: DirAccess.make_dir_recursive_absolute
+## на существующей папке — не ошибка, поэтому проверять нечего.
+func slot_dir(n: int = -1) -> String:
+	var i: int = slot if n < 0 else n
+	return "user://s%d/" % clampi(i, 0, SLOT_COUNT - 1)
+
+func slot_path(name: String, n: int = -1) -> String:
+	return slot_dir(n) + name
+
+## СИД МИРА. От него зависит всё, что раскладывается по карте случайно: жилы руды, укреплённые
+## точки, пропы. Без него раскладка бралась из незасеянного randf — то есть МЕНЯЛАСЬ КАЖДЫЙ
+## ЗАПУСК: игрок возвращался к своей базе, а жилы, вокруг которых он её строил, оказывались в
+## другом месте. Высоты рельефа сидом не управляются: они лежат готовым файлом (см. CLAUDE.md,
+## «КАРТУ ЧИТАЮТ ТРИ ФАЙЛА»), и пересчитывать их в игре нечем.
+##
+## У ПЕРВОГО СЛОТА СИД ПОСТОЯННЫЙ, у остальных — свой при создании. Первый и есть «наша карта»:
+## тот, кто уже играл, вернётся к знакомой раскладке, а новый слот — это новый мир.
+const FIRST_SLOT_SEED := 20260901
+var world_seed: int = FIRST_SLOT_SEED
+
+## Последний слот, в котором играли. Меню открывает «Продолжить» именно им.
+func last_slot() -> int:
+	if not FileAccess.file_exists(LAST_SLOT_PATH):
+		return 0
+	var f := FileAccess.open(LAST_SLOT_PATH, FileAccess.READ)
+	return clampi(int(f.get_as_text().strip_edges()), 0, SLOT_COUNT - 1) if f else 0
+
+## Есть ли в слоте сохранённая игра. Смотрим на файл прогресса: мир без него — это не мир,
+## а пустая папка, оставшаяся от отменённого создания.
+func slot_used(n: int) -> bool:
+	return FileAccess.file_exists(slot_path("progress.json", n))
+
+## Короткая сводка для меню: деньги и сколько блоков изучено. Читаем файл напрямую, не трогая
+## текущее состояние — меню показывает ВСЕ три слота, а загружен из них может быть только один.
+func slot_info(n: int) -> Dictionary:
+	if not slot_used(n):
+		return {}
+	var f := FileAccess.open(slot_path("progress.json", n), FileAccess.READ)
+	if f == null:
+		return {}
+	var d = JSON.parse_string(f.get_as_text())
+	if not (d is Dictionary):
+		return {}
+	var res = d.get("researched", [])
+	return {
+		"money": int(d.get("money", 0)),
+		"researched": (res as Array).size() if res is Array else 0,
+		"quests": (d.get("quests_done", []) as Array).size(),
+	}
+
+## ПЕРЕКЛЮЧИТЬСЯ НА СЛОТ. Зовётся из меню ДО загрузки игровой сцены и из _ready (чтобы сцену
+## можно было запустить прямо из редактора, без меню). Всё, что читается с диска, читается
+## заново — G автолоад и переживает смену сцены, поэтому старый мир иначе остался бы в памяти.
+func use_slot(n: int) -> void:
+	slot = clampi(n, 0, SLOT_COUNT - 1)
+	DirAccess.make_dir_recursive_absolute(slot_dir())
+	_migrate_legacy()
+	var f := FileAccess.open(LAST_SLOT_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(str(slot))
+		f.close()
+	_load_world_seed()
+	_reset_state()
 	_load_builds()
 	_load_progress()
-	_load_settings()
+
+## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид. Первый слот особенный —
+## у него сид постоянный, это «наша» карта.
+func new_game(n: int) -> void:
+	var dir := slot_dir(n)
+	for name in ["progress.json", "vehicle_builds.json", "world_save.json",
+			"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin", "world.json"]:
+		if FileAccess.file_exists(dir + name):
+			DirAccess.remove_absolute(dir + name)
+	use_slot(n)
+	world_seed = FIRST_SLOT_SEED if n == 0 else int(randi()) | 1
+	_save_world_seed()
+
+## ПЕРЕЕЗД СТАРОГО СЕЙВА В ПЕРВЫЙ СЛОТ. До слотов всё лежало прямо в user:// — и у того, кто
+## уже играл, эти файлы никуда не делись. Без переезда он открыл бы меню и увидел три пустых
+## мира вместо своего прохождения. Переносим ОДИН РАЗ и только в первый слот: он и есть «наша»
+## карта, тот же постоянный сид, что был у всех до появления слотов.
+##
+## ПЕРЕИМЕНОВЫВАЕМ, А НЕ КОПИРУЕМ: копия оставила бы в user:// вторую правду о том же мире, и
+## следующая версия однажды прочитала бы её вместо слота.
+const LEGACY_FILES := {
+	"user://progress.json": "progress.json",
+	"user://vehicle_builds.json": "vehicle_builds.json",
+	"user://world_save.json": "world_save.json",
+	"user://vehicle_layout.json": "vehicle_layout.json",
+	"user://terrain_height.bin": "terrain_height.bin",
+}
+
+func _migrate_legacy() -> void:
+	if slot != 0 or slot_used(0):
+		return                       # не первый слот или он уже занят — переносить нечего
+	var d := DirAccess.open("user://")
+	if d == null:
+		return
+	for src in LEGACY_FILES:
+		if FileAccess.file_exists(src):
+			d.rename(String(src).get_file(), "s0/" + String(LEGACY_FILES[src]))
+
+const WORLD_META := "world.json"
+
+func _load_world_seed() -> void:
+	world_seed = FIRST_SLOT_SEED if slot == 0 else FIRST_SLOT_SEED + slot * 7919
+	var p := slot_path(WORLD_META)
+	if not FileAccess.file_exists(p):
+		_save_world_seed()             # первый заход в слот — фиксируем сид сразу
+		return
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return
+	var d = JSON.parse_string(f.get_as_text())
+	if d is Dictionary and d.has("seed"):
+		world_seed = int(d["seed"])
+
+func _save_world_seed() -> void:
+	var f := FileAccess.open(slot_path(WORLD_META), FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"seed": world_seed}))
+		f.close()
+
+## Обнулить всё, что живёт в памяти между слотами. G переживает смену сцены, и без этого
+## деньги и исследования прошлого слота дописались бы в новый при первом же автосейве.
+func _reset_state() -> void:
+	_progress_dirty = false
+	money = 500
+	block_inventory = []
+	saved_builds = {}
+	faction_xp = {"start": 0}
+	research_points = 0
+	researched = START_RESEARCHED.duplicate()
+	quests_done = []
+	killed_kinds = []
+	first_enemy_met = false
+	shop_sales = {}
+
+## Путь к запечённым правкам рельефа этого слота. СПРАШИВАЕТ ЕГО САМА КАРТА (map._ready): слот
+## выбирается в меню, когда игровой сцены ещё нет, и положить ей путь было бы некому. Одна
+## дверь вместо двух — иначе однажды разъедутся.
 
 # ═══ Настройки игрока (чувствительность камеры и т.п.) ════════════════════════════
 # Отдельный файл от прогресса — это конфиг, не сейв. Множители к базовым константам
@@ -837,7 +996,7 @@ func research(bt: int) -> bool:
 # Debounce ~1с: mark_progress_dirty() зови после КАЖДОЙ мутации money/block_inventory
 # извне (tech_ui/hud/black_hole/vehicle_body_3d уже зовут). Сворачивание приложения
 # (мобайл!) и закрытие окна пишут немедленно.
-const PROGRESS_PATH := "user://progress.json"
+const PROGRESS_FILE := "progress.json"     # в папке слота, см. slot_path
 var _progress_dirty := false
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -867,11 +1026,17 @@ func mark_progress_dirty() -> void:
 	_progress_dirty = true
 	get_tree().create_timer(1.0).timeout.connect(_flush_progress)
 
+## ЗАПИСАТЬ ПРОГРЕСС ПРЯМО СЕЙЧАС, не дожидаясь debounce. Нужно там, где сцена вот-вот
+## сменится и отложенный флеш просто не успеет: выход в меню, смена слота.
+func save_now() -> void:
+	_progress_dirty = true
+	_flush_progress()
+
 func _flush_progress() -> void:
 	if not _progress_dirty:
 		return
 	_progress_dirty = false
-	var f = FileAccess.open(PROGRESS_PATH, FileAccess.WRITE)
+	var f = FileAccess.open(slot_path(PROGRESS_FILE), FileAccess.WRITE)
 	if f:
 		# Имена ключей = имена полей (ТЗ §1): формат «навсегда», меняем осознанно.
 		f.store_string(JSON.stringify({
@@ -891,17 +1056,21 @@ func _flush_progress() -> void:
 # остаются — это конфиг, а не сейв, и сбрасывать чувствительность камеры вместе с игрой
 # незачем. Обнуляем и то, что уже в памяти: G — автолоад, он переживёт смену сцены и без
 # этого записал бы старые деньги/исследования поверх только что удалённых файлов.
-const WIPE_PATHS := [
-	PROGRESS_PATH,
-	BUILDS_PATH,
-	"user://world_save.json",
-	"user://world_save.bad.json",
-	"user://vehicle_layout.json",
+## Файлы МИРА — все в папке активного слота. Список именами, а не путями: путь собирает
+## slot_path, и второй копии префикса быть не должно.
+const WIPE_FILES := [
+	PROGRESS_FILE,
+	BUILDS_FILE,
+	"world_save.json",
+	"world_save.bad.json",
+	"vehicle_layout.json",
+	"terrain_height.bin",
 ]
 
 func wipe_save() -> void:
 	_progress_dirty = false             # чтобы отложенный флеш не воскресил старый прогресс
-	for p in WIPE_PATHS:
+	for name in WIPE_FILES:
+		var p: String = slot_path(name)
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(p)
 	# ЗАПЕЧЁННЫЙ РЕЛЬЕФ СБРАСЫВАЕМ ЗДЕСЬ ЖЕ. Он лежит отдельным файлом в user:// и перекрывает
@@ -927,9 +1096,9 @@ func wipe_save() -> void:
 
 func _load_progress() -> void:
 	researched = START_RESEARCHED.duplicate()
-	if not FileAccess.file_exists(PROGRESS_PATH):
+	if not FileAccess.file_exists(slot_path(PROGRESS_FILE)):
 		return
-	var f = FileAccess.open(PROGRESS_PATH, FileAccess.READ)
+	var f = FileAccess.open(slot_path(PROGRESS_FILE), FileAccess.READ)
 	if f == null:
 		return
 	var data = JSON.parse_string(f.get_as_text())
@@ -1004,15 +1173,15 @@ func rename_build(old_name: String, new_name: String) -> bool:
 	return true
 
 func _persist_builds() -> void:
-	var f = FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
+	var f = FileAccess.open(slot_path(BUILDS_FILE), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(saved_builds))
 		f.close()
 
 func _load_builds() -> void:
-	if not FileAccess.file_exists(BUILDS_PATH):
+	if not FileAccess.file_exists(slot_path(BUILDS_FILE)):
 		return
-	var f = FileAccess.open(BUILDS_PATH, FileAccess.READ)
+	var f = FileAccess.open(slot_path(BUILDS_FILE), FileAccess.READ)
 	if f == null:
 		return
 	var data = JSON.parse_string(f.get_as_text())

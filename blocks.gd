@@ -16,7 +16,9 @@ var rotation_map: Dictionary = {}
 # помечены занятыми (другой блок туда уже не встанет).
 var cell_owner: Dictionary = {}
 
-const SAVE_PATH = "user://vehicle_layout.json"
+## Имя файла, а не путь: раскладка принадлежит СЛОТУ (см. G.slot_path), как и всё остальное
+## состояние мира.
+const SAVE_FILE = "vehicle_layout.json"
 
 # ─── Точки контакта (какими гранями блок стыкуется) ───────────────────────────
 # Список граней теперь живёт НЕ здесь, а экспортом connect_faces на самом блоке
@@ -859,14 +861,14 @@ func save_layout() -> void:
 					})
 
 	var json_string: String = JSON.stringify(blocks_array, "\t")
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var file: FileAccess = FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.WRITE)
 	file.store_string(json_string)
 	file.close()
-	print("Машина сохранена: ", SAVE_PATH)
+	print("Машина сохранена: ", G.slot_path(SAVE_FILE))
 
 func load_layout() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		push_warning("Файл сохранения не найден: ", SAVE_PATH)
+	if not FileAccess.file_exists(G.slot_path(SAVE_FILE)):
+		push_warning("Файл сохранения не найден: ", G.slot_path(SAVE_FILE))
 		return
 
 	for child in get_children():
@@ -876,7 +878,7 @@ func load_layout() -> void:
 	cell_owner.clear()
 	_init_map()
 
-	var file: FileAccess = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var file: FileAccess = FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.READ)
 	var json: JSON = JSON.new()
 	json.parse(file.get_as_text())
 	file.close()

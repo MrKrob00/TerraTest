@@ -6,8 +6,10 @@ extends Node
 #  • ВРАГИ не сохраняются (только машины faction 0).
 # Загрузка при любой ошибке откатывается на новый старт (сейв игру не ломает).
 
-const SAVE_PATH := "user://world_save.json"
-const BAD_SAVE_PATH := "user://world_save.bad.json"   # сюда уезжает сейв, который не удалось загрузить
+## Имена файлов, а не пути: мир принадлежит СЛОТУ, и префикс собирает G.slot_path — второй
+## копии этого префикса в проекте быть не должно.
+const SAVE_FILE := "world_save.json"
+const BAD_SAVE_FILE := "world_save.bad.json"          # сюда уезжает сейв, который не удалось загрузить
 const SAFE_CLEARANCE := 2.0         # на сколько поднимаем машину над рельефом при восстановлении
 # Рельеф — карта высот, под поверхностью нет ничего, так что провалившееся тело улетает
 # на сотни метров вниз. Порог держим с запасом: terrain_height_at берёт высоту в точке XZ
@@ -22,6 +24,9 @@ const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейв
 var _tick: float = 0.0
 
 func _ready() -> void:
+	# Через группу нас находит выход в меню (tech_ui): узел живёт в сцене, а не автолоадом, и
+	# пути к нему в проекте быть не должно — сцену переставляли уже не раз.
+	add_to_group("world_persist")
 	# ЖДЁМ, пока машина реально достроится. Мало двух кадров: blocks.spawn_block внутри делает
 	# `await get_parent().ready`, т.е. стартовые блоки доезжают ОТЛОЖЕННО. Если применить
 	# сохранённую сборку в этот момент, apply_layout вычистит node_map, а «догоняющие» корутины
@@ -37,7 +42,7 @@ func _ready() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_purge_extra_machines()                        # оставляем только ОСНОВНУЮ машину игрока
-	if FileAccess.file_exists(SAVE_PATH):
+	if FileAccess.file_exists(G.slot_path(SAVE_FILE)):
 		await _load_world()        # внутри есть await (разморозка после телепорта) — дожидаемся
 	else:
 		_fresh_start()
@@ -576,7 +581,7 @@ func _save_world() -> void:
 			if c.has_meta("quest_id"):
 				entry["quest"] = String(c.get_meta("quest_id"))
 			blocks.append(entry)
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.WRITE)
 	if f != null:
 		f.store_string(JSON.stringify({
 			"version": G.SAVE_FORMAT,
@@ -600,7 +605,7 @@ func _outposts_state() -> Array:
 	return o.save_state() if (o != null and o.has_method("save_state")) else []
 
 func _load_world() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.READ)
 	if f == null:
 		_fresh_start()
 		return
@@ -681,12 +686,15 @@ func _layout_ok(layout) -> bool:
 # Битый сейв НЕ удаляем, а отодвигаем в сторону: игра стартует заново и больше не залипает,
 # а файл остаётся — по нему можно понять, что именно сломалось.
 func _quarantine_save(reason: String) -> void:
-	push_warning("world_persist: сейв не загружен (%s) → откладываю в %s" % [reason, BAD_SAVE_PATH])
-	var d := DirAccess.open("user://")
+	var bad: String = G.slot_path(BAD_SAVE_FILE)
+	push_warning("world_persist: сейв не загружен (%s) → откладываю в %s" % [reason, bad])
+	# Открываем ПАПКУ СЛОТА, а не user://: файлы мира лежат в ней, и rename по голым именам
+	# работает только относительно того каталога, который открыли.
+	var d := DirAccess.open(G.slot_dir())
 	if d != null:
-		if d.file_exists(BAD_SAVE_PATH.get_file()):
-			d.remove(BAD_SAVE_PATH.get_file())
-		d.rename(SAVE_PATH.get_file(), BAD_SAVE_PATH.get_file())
+		if d.file_exists(BAD_SAVE_FILE):
+			d.remove(BAD_SAVE_FILE)
+		d.rename(SAVE_FILE, BAD_SAVE_FILE)
 
 ## СТАЦИОНАРНАЯ ли это структура. Основной путь — флаг из сейва, но у файлов, записанных до
 ## его появления, флага нет, и база в них уже лежит. Для них судим по РАСКЛАДКЕ: стационарное
