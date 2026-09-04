@@ -438,13 +438,50 @@ func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Arr
 	depth = maxi(depth, 32)
 	# КАРТА ЦЕЛИКОМ — ЭТО КУСОК С НАЧАЛОМ В ЛЕВОМ ВЕРХНЕМ УГЛУ. Мир у нас центрирован на нуле
 	# (map.gd ставит вершины в `x − w/2`), поэтому мировая клетка локального (0,0) — это минус
-	# половина размера. А сдвиг шума равен ровно той же половине: так генератор, перешедший на
-	# мировые координаты, воспроизводит прежнюю карту байт в байт, а не «почти такую же».
+	# половина размера.
 	origin_x = -int(width / 2)
 	origin_z = -int(depth / 2)
 	# Сдвиг выводим ИЗ НАЧАЛА КУСКА, а не из размера: тогда nx = wx − origin_x = x, то есть шум
-	# берётся ровно в той же точке, что и раньше, при любой чётности размера.
+	# берётся ровно в той же точке, что и раньше, при любой чётности размера. Так генератор,
+	# перешедший на мировые координаты, воспроизводит прежнюю карту байт в байт, а не «почти».
 	noise_offset = Vector2(float(-origin_x), float(-origin_z))
+	return await _run_passes(width, depth)
+
+## КУСОК МИРА ПО МИРОВЫМ КООРДИНАТАМ — то, ради чего всё и затевалось. Скользящее окно считает
+## землю кусками по мере движения игрока, и каждый кусок обязан сойтись с соседним по шву.
+##
+## ФАРТУК. Размытие читает соседние клетки, поэтому по краю куска ему читать нечего: без запаса
+## там осталась бы полоса НЕразмытой земли — ровно на шве, где её видно лучше всего. Считаем с
+## запасом в GEN_SMOOTH_PASSES клеток по каждой стороне и обрезаем: столько раз размытие и
+## заглядывает за край, по одной клетке за проход.
+##
+## noise_offset здесь НОЛЬ: шум берётся прямо по мировой клетке. Сдвиг нужен только карте
+## целиком, и только чтобы повторить старую.
+func generate_region(x0: int, z0: int, w: int, h: int, biomes: TerrainBiomes) -> PackedFloat32Array:
+	_gen_cancel = false
+	_gen_biomes = biomes
+	noise_offset = Vector2.ZERO
+	var pad: int = maxi(GEN_SMOOTH_PASSES, 1)
+	origin_x = x0 - pad
+	origin_z = z0 - pad
+	var pw: int = w + pad * 2
+	var ph: int = h + pad * 2
+	var padded: PackedFloat32Array = await _run_passes(pw, ph)
+	if padded.is_empty():
+		return padded
+	var out := _gen_alloc(w * h, "the region")
+	if out.is_empty():
+		return out
+	for z in h:
+		var src_row: int = (z + pad) * pw + pad
+		var dst_row: int = z * w
+		for x in w:
+			out[dst_row + x] = padded[src_row + x]
+	return out
+
+## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
+## заданы полями origin_*/noise_offset — проходы читают только их.
+func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	# ── Layer 1: Continental FBM ─────────────────
 	# Low-frequency simplex FBM defines the overall land masses.
 	# After remapping to [0,1], we raise to gen_power (e.g. ^4):
