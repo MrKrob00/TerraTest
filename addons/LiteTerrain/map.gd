@@ -656,6 +656,13 @@ func _load_user_heights() -> bool:
 func bake_heights() -> bool:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return false
+	# С ЖИВЫМ ОКНОМ ЗАПЕКАТЬ НЕЧЕГО И НЕКУДА. Файл — это дамп ВСЕЙ карты, а окно покрывает лишь
+	# кусок мира вокруг игрока: записав его, мы объявили бы «вот вся земля», и при следующем
+	# запуске всё, что снаружи окна, оказалось бы срезанным по его краю. Правки при этом никуда
+	# не деваются — они и так живут списком (_flat_edits) в сейве мира, и по нему земля
+	# восстанавливается точно, сколько бы её ни было.
+	if world_gen != null and is_instance_valid(world_gen):
+		return false
 	var f := FileAccess.open(user_heights_path, FileAccess.WRITE)
 	if f == null:
 		push_warning("LiteTerrain: could not write %s — the edits stay a list" % user_heights_path)
@@ -1187,6 +1194,13 @@ func recenter_window(new_x: int, new_z: int) -> void:
 	md = fresh
 	_win_x = new_x
 	_win_z = new_z
+	# ПРАВКИ ИГРОКА — ЕДИНСТВЕННОЕ, ЧЕГО НЕТ В СИДЕ. Генератор считает землю по мировой точке и
+	# ничего не знает про площадки, выровненные под базы; их помнит список _flat_edits. Свежая
+	# полоса пришла «дикой», и правки на неё надо положить заново — но ТОЛЬКО на неё: в
+	# скопированной половине они уже стоят, и второй проход притянул бы спад по краю к цели ещё
+	# раз, то есть сделал бы площадку глубже с каждым переездом.
+	for r in strips:
+		_replay_edits_in(r)
 	_recompute_height_bound()
 	# Земля стала другой ПОД ВСЕМ: и меши, и коллизия построены по старым высотам.
 	_reindex_collision(dx, dz)
@@ -1209,6 +1223,21 @@ func recenter_window(new_x: int, new_z: int) -> void:
 ## Просто выбросить их (_clear_collision_cells) было бы правильно, но опасно: под машиной на
 ## один-два кадра не осталось бы земли, а этого хватает, чтобы провалиться. Тайл, под которым
 ## земля не изменилась, обязан пережить переезд.
+## Заново положить сохранённые правки рельефа на прямоугольник клеток окна.
+func _replay_edits_in(clip: Rect2i) -> void:
+	if clip.size.x <= 0 or clip.size.y <= 0:
+		return
+	for e in _flat_edits:
+		if not (e is Dictionary) or not (e.get("c") is Array) or not (e.get("h") is Array):
+			continue
+		var c: Array = e["c"]
+		var hh: Array = e["h"]
+		if c.size() < 3 or hh.size() < 2:
+			continue
+		_flatten_heights(Vector3(float(c[0]), float(c[1]), float(c[2])),
+				Vector2(float(hh[0]), float(hh[1])),
+				float(e.get("y", 0.0)), float(e.get("f", 4.0)), clip)
+
 func _reindex_collision(dx: int, dz: int) -> void:
 	if collision_cell <= 0:
 		return
@@ -1410,9 +1439,11 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 	update_chunks(dirty)
 	_refresh_ground_collision()
 
-## How many terrain edits we keep. Each is four numbers, but the list must not grow for ever: a
-## quest may level a new site on every run.
-const FLAT_EDITS_MAX := 64
+## Сколько правок рельефа помним. Раньше 64 — этого хватало на карту в два километра, где
+## площадок физически некуда поставить больше. В мире без края правка — единственная память о
+## том, что игрок здесь строил, и потерять её значит вернуть базу на склон. Каждая запись это
+## семь чисел, так что тысяча их стоит меньше одного чанка.
+const FLAT_EDITS_MAX := 1024
 var _flat_edits: Array = []
 ## The running edit number and the number of the last BAKED one. From those a replay at load tells
 ## "the ground already remembers this edit" from "this one still has to be applied".
@@ -1462,8 +1493,13 @@ func _refresh_ground_collision() -> void:
 		_update_collision_cells()
 
 ## The height edit itself: returns the indices of the touched chunks and rebuilds NOTHING.
+## clip — ПРЯМОУГОЛЬНИК КЛЕТОК, за который выходить нельзя. Пустой — правим всё окно, как и
+## раньше. Нужен подвижке окна: правка, попавшая на шов, в скопированной половине УЖЕ применена
+## (её применили тогда, когда игрок её сделал), а во вновь посчитанной — ещё нет. Без клипа
+## пришлось бы либо применить её к скопированной половине второй раз (спад по краю притянулся бы
+## к цели ещё раз, и площадка стала бы глубже), либо не применять к новой вовсе.
 func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float,
-		feather: float) -> Array:
+		feather: float, clip: Rect2i = Rect2i()) -> Array:
 	if md.is_empty() or w <= 0:
 		return []
 	var inv := global_transform.affine_inverse()
@@ -1476,10 +1512,21 @@ func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float
 	var ex: float = maxf(half_extent.x, 0.0)
 	var ez: float = maxf(half_extent.y, 0.0)
 	var fe: float = maxf(feather, 0.001)
-	var x0 := clampi(int(floor(cx - ex - fe)), 0, w - 1)
-	var x1 := clampi(int(ceil(cx + ex + fe)), 0, w - 1)
-	var z0 := clampi(int(floor(cz - ez - fe)), 0, d - 1)
-	var z1 := clampi(int(ceil(cz + ez + fe)), 0, d - 1)
+	var lo_x: int = 0
+	var lo_z: int = 0
+	var hi_x: int = w - 1
+	var hi_z: int = d - 1
+	if clip.size.x > 0 and clip.size.y > 0:
+		lo_x = maxi(lo_x, clip.position.x)
+		lo_z = maxi(lo_z, clip.position.y)
+		hi_x = mini(hi_x, clip.position.x + clip.size.x - 1)
+		hi_z = mini(hi_z, clip.position.y + clip.size.y - 1)
+		if hi_x < lo_x or hi_z < lo_z:
+			return []
+	var x0 := clampi(int(floor(cx - ex - fe)), lo_x, hi_x)
+	var x1 := clampi(int(ceil(cx + ex + fe)), lo_x, hi_x)
+	var z0 := clampi(int(floor(cz - ez - fe)), lo_z, hi_z)
+	var z1 := clampi(int(ceil(cz + ez + fe)), lo_z, hi_z)
 	if x1 < x0 or z1 < z0:
 		return []
 	for z in range(z0, z1 + 1):
