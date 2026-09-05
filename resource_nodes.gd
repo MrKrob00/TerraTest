@@ -20,9 +20,9 @@ var ore_colors: Array[Color] = []
 @export var coal_color: Color = Color(0.13, 0.13, 0.15)
 
 @export_group("Расстановка")
-@export var count: int = 2000                # жил по ВСЕЙ карте — «тысячи». Все они лишь ДАННЫЕ
-#                                              (позиция+тип, дёшево); ноды и слоты — только ближним.
-@export var edge_margin: float = 48.0        # отступ от края карты (в юнитах рельефа)
+## СЧЁТЧИКА ЖИЛ НА ВСЮ КАРТУ БОЛЬШЕ НЕТ: у мира без края нет «всей карты». Плотность задаётся
+## на РЕГИОН (VEINS_PER_REGION), и прежние 2000 жил на 1982² — это ровно то число, из которого
+## она и выведена. Отступа от края тоже нет: края нет.
 @export var min_height: float = 2.0          # ниже — самые днища впадин, не спавним (воды в мире нет)
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
 @export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
@@ -52,17 +52,6 @@ const OCCL_SLICES := 4
 const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
 var _occl_cursor: int = 0
 var _last_fwd: Vector3 = Vector3.FORWARD
-## РАСКЛАДКА ЖИЛ ДЕТЕРМИНИРОВАНА СИДОМ МИРА (G.world_seed). Раньше и точки, и типы брались из
-## ГЛОБАЛЬНОГО randf, то есть заново при каждом запуске: игрок возвращался к своей базе, а жилы,
-## вокруг которых он её строил, оказывались в другом месте — и авто-шахтёр стоял в пустом поле.
-## Сохранять две тысячи координат ради этого не нужно: одно число даёт ту же раскладку, и
-## сохранять его нечем дороже, чем строкой в файле мира.
-##
-## СВОЙ RandomNumberGenerator, а не seed() на глобальном: глобальным пользуется вся остальная
-## игра (разброс пуль, выбор сборки врага, награды), и засеять его значило бы сделать
-## предсказуемым и это тоже — а заодно сломать раскладку от любого чужого вызова randf между
-## нашими.
-var _rng := RandomNumberGenerator.new()
 # Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
 var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
@@ -90,11 +79,10 @@ func _ready() -> void:
 		return
 
 	_apply_ore_colors()
-	# Засеваем ДО раскладки и ровно один раз: и точки, и типы жил тянутся из одного потока
-	# чисел, поэтому одинаковый сид даёт одинаковую карту жил до последней штуки.
-	_rng.seed = int(G.world_seed)
-	var positions: Array[Vector3] = await _pick_positions(map, dims)
-	_init_veins(positions)
+	# ЖИЛЫ БОЛЬШЕ НЕ РАСКЛАДЫВАЮТСЯ ОДНИМ КУСКОМ. Пул слотов заводим здесь, а сами жилы рождают
+	# регионы по мере того, как игрок к ним подъезжает (_regions_tick).
+	_init_slots()
+	_regions_tick()
 
 # Заливаем список цветов в шейдер руды (общий материал core.tres → один раз на всех).
 func _apply_ore_colors() -> void:
@@ -109,43 +97,109 @@ func _apply_ore_colors() -> void:
 		if mesh is PrimitiveMesh and mesh.material is ShaderMaterial:
 			(mesh.material as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
-# Локальные позиции жил (Y уже на рельефе). Отбираем случайные точки по всей карте,
-# отбраковывая днища впадин, обрывы и слишком близкие друг к другу.
-# Отбор идёт ПОРЦИЯМИ (между ними отдаём кадр) — иначе до 24 000 попыток × 5 сэмплов рельефа
-# вставали одним многосекундным фризом поверх экрана загрузки.
-const PICK_BATCH := 400
+# ── РЕГИОНЫ: ЖИЛЫ РОЖДАЮТСЯ КУСКАМИ, А НЕ ВСЕЙ КАРТОЙ СРАЗУ ──────────────────
+# Раньше две тысячи жил раскладывались ОДИН РАЗ при загрузке, перебором по всей карте. В мире
+# без края так нельзя дважды: перебирать нечего (карта не кончается) и держать нечего (список
+# рос бы вместе с пройденным путём).
+#
+# Поэтому мир нарезан на РЕГИОНЫ по REGION клеток, и каждый рождает свои жилы САМ — из сида мира
+# и собственных координат. Отсюда два свойства, ради которых всё и делается: регион всегда даёт
+# одни и те же жилы, сколько бы раз игрок в него ни вернулся, и соседний регион можно посчитать,
+# ничего не зная про этот.
+#
+# ВЫСОТУ СПРАШИВАЕМ У КАРТЫ, а она знает только то, что внутри окна. Поэтому регион рождается,
+# лишь когда игрок к нему подъехал: снаружи окна ответа всё равно нет.
+const REGION := 256
+## Сколько жил в регионе. Не на глаз: прежняя плотность — 2000 жил на карту 1982², то есть одна
+## на ~1964 клетки². На регион 256² (65 536 клеток²) это ровно тридцать три.
+const VEINS_PER_REGION := 33
+## На сколько регионов вокруг игрока держим жилы. Один в каждую сторону — это 768 клеток по
+## диагонали, вдвое больше дальности отрисовки: жила успевает родиться задолго до того, как её
+## станет видно.
+const REGION_KEEP := 1
 
-func _pick_positions(map: Node, dims: Vector2i) -> Array[Vector3]:
-	var positions: Array[Vector3] = []
-	var half_x: float = dims.x * 0.5 - edge_margin
-	var half_z: float = dims.y * 0.5 - edge_margin
-	var attempts: int = count * 12
+var _regions: Dictionary = {}          # Vector2i региона → Array записей жил
+var _region_center := Vector2i(999999, 999999)
+
+## Ключ региона по мировой точке.
+func _region_of(gp: Vector3) -> Vector2i:
+	return Vector2i(floori(gp.x / REGION), floori(gp.z / REGION))
+
+## Держать вокруг игрока квадрат регионов; ушедшие — забыть вместе с их жилами.
+func _regions_tick() -> void:
+	var here := _region_of(_player_point())
+	if here == _region_center:
+		return
+	_region_center = here
+	var want := {}
+	for dz in range(-REGION_KEEP, REGION_KEEP + 1):
+		for dx in range(-REGION_KEEP, REGION_KEEP + 1):
+			want[here + Vector2i(dx, dz)] = true
+	for k in _regions.keys():
+		if not want.has(k):
+			for v in _regions[k]:
+				if int(v["slot"]) >= 0:
+					_stream_out(v)          # слот и узел отдаём до того, как забудем запись
+			_regions.erase(k)
+	for k in want:
+		if not _regions.has(k):
+			_regions[k] = _build_region(k)
+	_rebuild_data()
+
+func _player_point() -> Vector3:
+	var pts: Array = G.active_points()
+	return pts[0] if not pts.is_empty() else Vector3.ZERO
+
+## _data — это просто ВСЕ жилы живых регионов, склеенные в один список: стриминг ходит по нему
+## каждый тик, и перебирать словарь словарей на каждом кадре было бы дороже, чем пересобрать
+## список тогда, когда набор регионов реально сменился.
+func _rebuild_data() -> void:
+	_data.clear()
+	for k in _regions:
+		_data.append_array(_regions[k])
+
+## Жилы ОДНОГО региона. Своё зерно от сида мира и координат: соседний регион считается
+## независимо, а этот всегда даёт одно и то же.
+func _build_region(rk: Vector2i) -> Array:
+	var map: Node = get_parent()
+	if map == null or not map.has_method("terrain_height_at"):
+		return []
+	var can_biome: bool = map.has_method("biome_at")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(Vector3i(rk.x, rk.y, int(G.world_seed)))
+	var out: Array = []
 	var grid: Dictionary = {}
 	var cell: float = maxf(min_spacing, 0.001)
-	var since_yield: int = 0
-	while positions.size() < count and attempts > 0:
-		attempts -= 1
-		since_yield += 1
-		if since_yield >= PICK_BATCH:
-			since_yield = 0
-			await get_tree().process_frame
-		var lx: float = _rng.randf_range(-half_x, half_x)
-		var lz: float = _rng.randf_range(-half_z, half_z)
-		var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
+	var tries: int = VEINS_PER_REGION * 12
+	while out.size() < VEINS_PER_REGION and tries > 0:
+		tries -= 1
+		var gx: float = float(rk.x * REGION) + rng.randf() * REGION
+		var gz: float = float(rk.y * REGION) + rng.randf() * REGION
+		var world := Vector3(gx, 0.0, gz)
 		var h: float = map.terrain_height_at(world)
 		if h < min_height:
-			continue                                        # слишком низко (дно впадины)
-		if _slope_at(map, lx, lz) > max_slope:
-			continue                                        # обрыв
-		var local_pos: Vector3 = to_local(Vector3(world.x, h + 0.25, world.z))
-		if _too_close_hashed(grid, cell, local_pos):
 			continue
-		positions.append(local_pos)
-		var key := Vector2i(floori(local_pos.x / cell), floori(local_pos.z / cell))
+		var lp: Vector3 = to_local(Vector3(gx, h + 0.25, gz))
+		if _slope_at(map, lp.x, lp.z) > max_slope:
+			continue
+		if _too_close_hashed(grid, cell, lp):
+			continue
+		var key := Vector2i(floori(lp.x / cell), floori(lp.z / cell))
 		if not grid.has(key):
 			grid[key] = [] as Array[Vector3]
-		(grid[key] as Array).append(local_pos)
-	return positions
+		(grid[key] as Array).append(lp)
+		var coal: bool = rng.randf() < coal_chance
+		var ore_type: int = ore_colors.size() if coal else _metal_for(lp, map, can_biome, rng)
+		if not _ore_enabled(ore_type, coal):
+			continue
+		out.append({
+			"pos": lp,
+			"gpos": Vector3(gx, h + 0.25, gz),
+			"scene": resource_nodes[rng.randi() % resource_nodes.size()] \
+					if not resource_nodes.is_empty() else null,
+			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
+		})
+	return out
 
 # Есть ли принятая точка ближе min_spacing? Смотрим только свою и 8 соседних ячеек решётки.
 func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
@@ -179,10 +233,14 @@ func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
 			return true
 	return false
 
-# Готовим ДАННЫЕ всех жил (дёшево) + буфер MultiMesh на max_visible слотов (все схлопнуты).
-# Узлы и видимые инстансы появляются позже, в _process, только для ближних (стриминг).
-func _init_veins(positions: Array[Vector3]) -> void:
-	var cap: int = mini(max_visible, positions.size())
+# Буфер MultiMesh на max_visible слотов, все схлопнуты. ДАННЫЕ жил сюда больше не входят: их
+# рождают регионы по мере приближения игрока (_build_region), а здесь только пул слотов, который
+# они делят между собой.
+#
+# Потолок берём ровно max_visible, а не «сколько жил насчитали»: жил в мире без края бесконечно
+# много, а одновременно нарисованных — столько, сколько влезает в радиус.
+func _init_slots() -> void:
+	var cap: int = maxi(max_visible, 1)
 	var big := AABB(Vector3(-2000.0, -2000.0, -2000.0), Vector3(4000.0, 4000.0, 4000.0))
 	for mm in multimesh_nodes:
 		mm.custom_aabb = big
@@ -194,31 +252,6 @@ func _init_veins(positions: Array[Vector3]) -> void:
 	_free.clear()
 	for s in range(cap - 1, -1, -1):
 		_free.append(s)                             # слоты cap-1..0 свободны
-
-	var scene: PackedScene = resource_nodes.pick_random() if not resource_nodes.is_empty() else null
-	var map: Node = get_parent()
-	var can_biome: bool = map != null and map.has_method("biome_at")
-	_data.clear()
-	for p in positions:
-		# Тип решаем один раз на жилу: с шансом coal_chance — угольная (последний индекс).
-		var coal: bool = _rng.randf() < coal_chance
-		var ore_type: int = ore_colors.size() if coal else _metal_for(p, map, can_biome)
-		# ОТЛАДКА: выключенный тип НЕ ПОДМЕНЯЕТСЯ другим, жила просто не кладётся. Подмена
-		# соврала бы про плотность: на карте оказалось бы столько же жил, только все одного
-		# типа, и «сколько тут титанита» стало бы не проверить.
-		if not _ore_enabled(ore_type, coal):
-			continue
-		# gpos — МИРОВАЯ позиция, посчитанная ОДИН РАЗ. Жила не двигается никогда, а стриминг
-		# спрашивал у неё to_global ТРИЖДЫ на каждую жилу каждый тик: расстояние, ближний пузырь
-		# и окклюзия. Шесть тысяч умножений матрицы на вектор в секунду ради числа, которое
-		# известно с загрузки.
-		_data.append({
-			"pos": p,
-			"gpos": to_global(p),
-			"scene": resource_nodes.pick_random() if not resource_nodes.is_empty() else scene,
-			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
-		})
-	_cull_t = 0.0                                    # первый стриминг — сразу
 
 ## КАКОЙ МЕТАЛЛ ЛЕЖИТ В ЭТОЙ ТОЧКЕ.
 ##
@@ -248,10 +281,10 @@ func _ore_enabled(ore_type: int, coal: bool) -> bool:
 		return G.debug(&"ore_coal")
 	return G.debug(ORE_FLAGS[ore_type]) if ore_type < ORE_FLAGS.size() else true
 
-func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
+func _metal_for(local_pos: Vector3, map: Node, can_biome: bool, rng: RandomNumberGenerator) -> int:
 	var types: int = maxi(ore_colors.size(), 1)
-	if not can_biome or _rng.randf() < WILD_CHANCE:
-		return _rng.randi() % types
+	if not can_biome or rng.randf() < WILD_CHANCE:
+		return rng.randi() % types
 	# biome_at отдаёт (каньон, луг, горы); пустыня — это то, что осталось.
 	var m: Vector3 = map.biome_at(to_global(local_pos))
 	var desert: float = clampf(1.0 - maxf(m.x, maxf(m.y, m.z)), 0.0, 1.0)
@@ -261,7 +294,7 @@ func _metal_for(local_pos: Vector3, map: Node, can_biome: bool) -> int:
 		total += maxf(float(weights[i]), 0.0)
 	if total <= 0.001:
 		return 0                                   # ни один биом не выражен — базовый металл
-	var roll: float = _rng.randf() * total
+	var roll: float = rng.randf() * total
 	for i in mini(weights.size(), types):
 		roll -= maxf(float(weights[i]), 0.0)
 		if roll <= 0.0:
@@ -359,6 +392,7 @@ func _process(delta: float) -> void:
 		return
 	_cull_t = cull_interval
 	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
+	_regions_tick()                # игрок мог переехать в соседний регион — родим его жилы
 	# Камера не ушла из своей клетки — пересчитывать нечего. Направление взгляда сюда НЕ
 	# входит намеренно: жила гаснет и зажигается по направлению, и пропустить поворот значило
 	# бы держать за спиной то, что мы только что научились гасить.
