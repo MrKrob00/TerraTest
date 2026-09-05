@@ -117,25 +117,39 @@ func _biome_at(wx: float, wz: float, wy: float) -> int:
 	return GRASS if _ss(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, bn) > 0.5 else SAND
 
 # ── Расстановка: для каждого набора набираем count точек в его биоме ───────────
+## ПРОПЫ РАСКЛАДЫВАЮТСЯ ВОКРУГ ИГРОКА, А НЕ ПО ВСЕЙ КАРТЕ. В мире без края «вся карта» это не
+## величина, а высоту рельефа спрашивать можно только внутри окна. Поэтому область раскладки —
+## квадрат PLACE_SPAN вокруг точки, где игрок начал; дальше её продолжают регионы жил и точек,
+## а камни — самое мелкое, что есть в мире, и их отсутствие за горизонтом никто не заметит.
+##
+## Плотность при этом СОХРАНЕНА: setp.count был числом на карту 1982², и здесь он масштабируется
+## по площади, иначе тот же счётчик на меньшем квадрате дал бы кашу из камней.
+const PLACE_SPAN := 1600.0
+
 func _place(map: Node, dims: Vector2i) -> void:
-	var half_x: float = dims.x * 0.5 - edge_margin
-	var half_z: float = dims.y * 0.5 - edge_margin
+	var pts: Array = G.active_points()
+	var home: Vector3 = pts[0] if not pts.is_empty() else Vector3.ZERO
+	var half_x: float = PLACE_SPAN * 0.5
+	var half_z: float = PLACE_SPAN * 0.5
+	# Доля площади от прежней карты — во столько же раз меньше и пропов.
+	var area_k: float = (PLACE_SPAN * PLACE_SPAN) / maxf(float(dims.x) * float(dims.y), 1.0)
 	for setp in biome_props:
 		if setp == null or setp.scenes.is_empty():
 			continue
 		var placed: Array = []
-		var attempts: int = setp.count * 12
+		var want: int = maxi(int(round(float(setp.count) * area_k)), 1)
+		var attempts: int = want * 12
 		var grid: Dictionary = {}
 		var cell: float = maxf(setp.min_spacing, 0.001)
 		var since_yield: int = 0
-		while placed.size() < setp.count and attempts > 0:
+		while placed.size() < want and attempts > 0:
 			attempts -= 1
 			since_yield += 1
 			if since_yield >= PLACE_BATCH:
 				since_yield = 0
 				await get_tree().process_frame
-			var lx: float = _rng.randf_range(-half_x, half_x)
-			var lz: float = _rng.randf_range(-half_z, half_z)
+			var lx: float = home.x + _rng.randf_range(-half_x, half_x)
+			var lz: float = home.z + _rng.randf_range(-half_z, half_z)
 			var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
 			var h: float = map.terrain_height_at(world)
 			if h < min_height:
