@@ -438,7 +438,18 @@ func _ready() -> void:
 	mesh_instance.visible = false
 	await get_tree().process_frame
 	_cam = _active_camera()
-	if use_image_data or enable_streaming_collision:
+	# GAME HOOK (TerraTest): МИР МОЖЕТ БЫТЬ ПРОЦЕДУРНЫМ. Тогда высот на диске нет вовсе — земля
+	# считается из сида, и читать файлы не только не нужно, но и вредно: прочитанная карта задала
+	# бы окну чужой размер и чужие высоты. Спрашиваем у G сами: слот выбирается в меню, до того
+	# как эта сцена появилась, и положить нам ответ было некому.
+	var _g := get_node_or_null("/root/G")
+	var _proc: bool = _g != null and _g.get("world_procedural") == true
+	if _proc:
+		await setup_procedural(int(_g.get("world_seed")))
+		await get_tree().process_frame
+		_setup_streaming_collision()
+		await get_tree().process_frame
+	elif use_image_data or enable_streaming_collision:
 		await _prewarm_heightmap()          # pull the heightmap in the BACKGROUND; load() would stall the frame
 		_load_heightmap()
 		# Yield a frame BETWEEN the heavy phases. Unpacking the heightmap (to_float32_array copies
@@ -1096,6 +1107,53 @@ func _cell_oz() -> float:
 func _center_window() -> void:
 	_win_x = -int(w / 2)
 	_win_z = -int(d / 2)
+
+# ── ПРОЦЕДУРНЫЙ МИР ──────────────────────────────────────────────────────────
+# Мир без края: земля не читается файлом, а СЧИТАЕТСЯ из сида по мере того, как игрок едет.
+# Ручки те же, что у дока плагина, и значения по умолчанию те же — чтобы новый мир был из того
+# же теста, что и «наша» карта, а не из другого генератора.
+@export_group("Procedural")
+## Сторона окна высот в клетках. 2048² — это 16 МБ, ровно столько же, сколько занимала вся
+## карта раньше: память не выросла, а мир перестал кончаться.
+@export var window_size: int = 2048
+@export var proc_scale: float = 150.0
+@export var proc_power: float = 2.6
+@export var proc_amplitude: float = 30.0
+@export var proc_mountains01: float = 0.6
+@export var proc_canyon_enable: bool = true
+@export var proc_canyon_riser: float = 0.35
+@export var proc_canyon_gorge: float = 90.0
+@export var proc_canyon_width: float = 0.18
+@export_group("")
+
+## Поднять процедурный мир: собрать генератор, поставить окно вокруг точки и посчитать первую
+## землю. Зовёт игра, когда слот процедурный; после этого файлы высот не читаются вовсе.
+func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
+	var gen := LiteTerrainGen.new()
+	add_child(gen)
+	gen.gen_seed = seed_value
+	gen.gen_scale = proc_scale
+	gen.gen_power = proc_power
+	gen.gen_amplitude = proc_amplitude
+	gen.gen_canyon_enable = proc_canyon_enable
+	gen.gen_canyon_riser = proc_canyon_riser
+	gen.gen_canyon_gorge = proc_canyon_gorge
+	gen.gen_canyon_width = proc_canyon_width
+	# Те же две производные, что док считает из одной ручки «Mountains»: держать их порознь
+	# незачем — они всегда двигались вместе (см. plugin._mtn_amount/_ridge_sharp).
+	gen.mtn_amount = lerpf(0.25, 1.1, proc_mountains01)
+	gen.ridge_sharp = lerpf(1.6, 3.6, proc_mountains01)
+	world_gen = gen
+	w = window_size
+	d = window_size
+	_win_x = int(floor(around.x)) - int(w / 2)
+	_win_z = int(floor(around.z)) - int(d / 2)
+	md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
+	if md.size() != w * d:
+		push_error("LiteTerrain: не хватило памяти на окно %d×%d — мир не поднят" % [w, d])
+		world_gen = null
+		return
+	_recompute_height_bound()
 
 # ── ПОДВИЖКА ОКНА ────────────────────────────────────────────────────────────
 # Игрок уезжает — окно едет за ним. Считать заново весь массив на каждый сдвиг нельзя: это
@@ -3335,6 +3393,14 @@ func _process(delta: float) -> void:
 	if _cam == null:
 		_pf_mark("terrain", _pf_all)
 		return
+
+	# ── Окно едет за камерой ──────────────────────────────────────────────────
+	# Спрашиваем КАЖДЫЙ кадр, но _window_target отвечает «никуда» почти всегда: подвижка
+	# случается раз в несколько сотен метров пути.
+	if world_gen != null and is_instance_valid(world_gen) and not _win_busy:
+		var want := _window_target(global_transform.affine_inverse() * _cam.global_position)
+		if want.x != _win_x or want.y != _win_z:
+			recenter_window(want.x, want.y)
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:

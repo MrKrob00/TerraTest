@@ -26,7 +26,12 @@ extends Node3D
 @export_group("Корруптация")
 @export var corr_spread_interval: float = 120.0     # раз в пару минут +1 чанк
 @export var corr_heal_dist: float = 240.0           # радиус лечения (3× прежних 80), НАВСЕГДА
-@export var corr_map_size: float = 1984.0           # мировой размер карты (единиц)
+## Мировой размер области заражения. РАНЬШЕ это был размер карты, и брался он у неё
+## (get_dims). С окном такой вопрос потерял смысл: get_dims отдаёт размер ОКНА, то есть куска
+## вокруг игрока, и текстура заражения ездила бы вместе с ним, стирая память о том, где зараза
+## уже была. Поэтому область фиксированная и центрирована на нуле мира: заражение — механика
+## про начальные окрестности, а не про весь бесконечный мир.
+@export var corr_map_size: float = 1984.0
 
 const VP_SIZE: int = 512
 const CORR_GRID: int = 64                           # текстура состояния (клеток на сторону)
@@ -198,10 +203,6 @@ func _corr_init() -> void:
 	_corr_tex = ImageTexture.create_from_image(_corr_img)
 	if map_node is Node3D:
 		_corr_center = Vector2((map_node as Node3D).global_position.x, (map_node as Node3D).global_position.z)
-	if map_node and map_node.has_method("get_dims"):
-		var d: Vector2i = map_node.get_dims()
-		if d.x > 0:
-			corr_map_size = float(d.x)
 	_corr_spread_t = corr_spread_interval
 	if map_node.has_method("set_corruption_map"):
 		map_node.set_corruption_map(_corr_tex, _corr_center, corr_map_size)

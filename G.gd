@@ -64,6 +64,13 @@ func slot_path(name: String, n: int = -1) -> String:
 ## тот, кто уже играл, вернётся к знакомой раскладке, а новый слот — это новый мир.
 const FIRST_SLOT_SEED := 20260901
 var world_seed: int = FIRST_SLOT_SEED
+## ПРОЦЕДУРНЫЙ ЛИ ЭТОТ МИР. Первый слот — «наша» карта: она лежит готовым файлом, к ней
+## возвращается тот, кто уже играл, и трогать её нельзя. Остальные считаются из сида и не имеют
+## края вовсе.
+##
+## Флаг лежит В ФАЙЛЕ МИРА, а не выводится из номера слота: это свойство мира, а не ячейки, в
+## которой он оказался. Иначе «пересоздать первый слот процедурным» было бы нечем выразить.
+var world_procedural: bool = false
 
 ## Последний слот, в котором играли. Меню открывает «Продолжить» именно им.
 func last_slot() -> int:
@@ -121,6 +128,7 @@ func new_game(n: int) -> void:
 			DirAccess.remove_absolute(dir + name)
 	use_slot(n)
 	world_seed = FIRST_SLOT_SEED if n == 0 else int(randi()) | 1
+	world_procedural = n != 0
 	_save_world_seed()
 
 ## ПЕРЕЕЗД СТАРОГО СЕЙВА В ПЕРВЫЙ СЛОТ. До слотов всё лежало прямо в user:// — и у того, кто
@@ -152,6 +160,7 @@ const WORLD_META := "world.json"
 
 func _load_world_seed() -> void:
 	world_seed = FIRST_SLOT_SEED if slot == 0 else FIRST_SLOT_SEED + slot * 7919
+	world_procedural = slot != 0
 	var p := slot_path(WORLD_META)
 	if not FileAccess.file_exists(p):
 		_save_world_seed()             # первый заход в слот — фиксируем сид сразу
@@ -160,13 +169,15 @@ func _load_world_seed() -> void:
 	if f == null:
 		return
 	var d = JSON.parse_string(f.get_as_text())
-	if d is Dictionary and d.has("seed"):
-		world_seed = int(d["seed"])
+	if d is Dictionary:
+		if d.has("seed"):
+			world_seed = int(d["seed"])
+		world_procedural = d.get("proc", world_procedural) == true
 
 func _save_world_seed() -> void:
 	var f := FileAccess.open(slot_path(WORLD_META), FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"seed": world_seed}))
+		f.store_string(JSON.stringify({"seed": world_seed, "proc": world_procedural}))
 		f.close()
 
 ## Обнулить всё, что живёт в памяти между слотами. G переживает смену сцены, и без этого
