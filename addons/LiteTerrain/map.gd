@@ -414,9 +414,12 @@ func _ready() -> void:
 	# СПРАШИВАЕМ У G сами, а не ждём, что нам его положат: слот выбирается в меню, до того как
 	# эта сцена вообще существует, и класть его было бы некому. Нет G (редактор, тестовая
 	# сцена) — остаётся прежний общий файл, и аддон работает как раньше.
-	var _g := get_node_or_null("/root/G")
-	if _g != null and _g.has_method("slot_path"):
-		user_heights_path = _g.slot_path("terrain_height.bin")
+	# Автолоад прогресса игры. Берём ОДИН РАЗ на весь _ready: ниже у него спрашивают ещё и то,
+	# процедурный ли это мир, а второе объявление в той же области видимости GDScript не пускает
+	# вовсе — скрипт с ним не грузится целиком.
+	var game: Node = get_node_or_null("/root/G")
+	if game != null and game.has_method("slot_path"):
+		user_heights_path = game.slot_path("terrain_height.bin")
 	if Engine.is_editor_hint():
 		if use_image_data and _load_heightmap_image() != null:
 			# Image mode: the R32F terrain_height.res is the source of truth. The internal
@@ -442,10 +445,9 @@ func _ready() -> void:
 	# считается из сида, и читать файлы не только не нужно, но и вредно: прочитанная карта задала
 	# бы окну чужой размер и чужие высоты. Спрашиваем у G сами: слот выбирается в меню, до того
 	# как эта сцена появилась, и положить нам ответ было некому.
-	var _g := get_node_or_null("/root/G")
-	var _proc: bool = _g != null and _g.get("world_procedural") == true
-	if _proc:
-		await setup_procedural(int(_g.get("world_seed")))
+	var proc_world: bool = game != null and game.get("world_procedural") == true
+	if proc_world:
+		await setup_procedural(int(game.get("world_seed")))
 		await get_tree().process_frame
 		_setup_streaming_collision()
 		await get_tree().process_frame
