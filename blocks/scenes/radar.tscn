@@ -1,0 +1,20 @@
+[gd_scene format=3 uid="uid://3eysq21v4sj4"]
+
+[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://blocks/scripts/block.gd" id="1_im0tn"]
+[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_xfwl5"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
+
+[node name="Radar" type="RigidBody3D" unique_id=1629215319]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_im0tn")
+block = 17
+connect_faces = 32
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=512521952]
+shape = SubResource("BoxShape3D_h01jy")
+
+[node name="Block" type="MeshInstance3D" parent="." unique_id=515504045]
+mesh = ExtResource("2_xfwl5")
+skeleton = NodePath("../..")

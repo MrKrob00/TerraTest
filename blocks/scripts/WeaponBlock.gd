@@ -1,0 +1,652 @@
+extends VehicleBlock
+class_name WeaponBlock
+
+@export var damage: int = 5
+## Дальность. Было 10 — втрое меньше, чем машина видит противника, поэтому убегающего было
+## не достать в принципе. Отсюда же ИИ берёт свою боевую дистанцию
+## (enemy_vehicle._own_weapon_range), так что короткий ствол заставлял и врага лезть вплотную.
+## Дальность — с СЕТТЕРОМ намеренно: от неё зависят зона обнаружения турели и длина луча
+## наводки, и держать их в синхроне вручную оказалось нельзя. Подклассы меняют дальность в
+## своём _ready ПОСЛЕ super._ready(), то есть после того, как база уже синхронизировала
+## сферу по старому значению; ракетница на этом и попалась — ствол на 18 м при зоне
+## обнаружения 60, из-за чего она бросала цель под боком и лупила по машине за пятьдесят
+## метров, куда всё равно не доставала. Теперь забыть пересинхронизировать невозможно.
+@export var weapon_range: float = 60.0:
+	set(v):
+		weapon_range = v
+		_sync_detect_radius()
+		if raycast != null:
+			raycast.target_position = Vector3(0, 0, -v)
+@export var fire_rate: float = 0.2
+## РАЗБРОС (половина угла конуса, градусы). Наводка у турели автоматическая — игрок только
+## держит Attack, — и без разброса это чистый аимбот: каждая пуля ложится в одну точку, а бой
+## сводится к «кто первым навёлся». Разброс тут УГЛОВОЙ, и это ровно то, что нужно: на пятнадцати
+## метрах это сантиметры, на предельной дальности — метры, то есть очередь ложится ПО МАШИНЕ, а
+## не в одну заклёпку.
+##
+## Сверх того он РАСТЁТ С ДИСТАНЦИЕЙ до цели (см. _apply_spread): у машины под боком ствол
+## по-прежнему точен. Иначе «небольшой разброс» пришлось бы делать заметным и вблизи, где он
+## только раздражает.
+@export var spread_deg: float = 1.4
+@export var raycast: RayCast3D
+@export var pivot: Node3D
+@export var Area_Range: Area3D
+# Сектор наведения башни. Был 45×30 — цель уходила из сектора от одного разворота корпуса,
+# и башня бросала её, хотя ствол физически мог довернуть.
+const YAW_LIMIT   = 75.0
+const PITCH_LIMIT = 40.0
+
+var _fire_timer: float = 0.0
+## «Огонь» — это не защёлка, а таймер: attack() взводит его, и каждый кадр он гаснет.
+## Пока стрелок (игрок держит Attack / ИИ в атаке) зовёт attack() каждый кадр — оружие
+## стреляет; перестал звать → через FIRE_HOLD выключается. Так луч/трасер сами гаснут,
+## когда атака закончилась (раньше для ИИ _firing залипал в true навсегда).
+const FIRE_HOLD: float = 0.15
+var _fire_hold: float = 0.0
+var _anim_t: float = 0.0
+var _targets: Array[Node3D] = []
+var _current_target: Node3D = null
+func _ready() -> void:
+	super._ready()
+	raycast.target_position = Vector3(0, 0, -weapon_range)
+	_sync_detect_radius()
+	_find_turret_parts()
+	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
+	if has_node("Ammo/Bullet"):
+		_rebind_bullet($Ammo/Bullet)
+		# Просадку считаем и ШАБЛОНУ: по нему прицел берёт баллистику (_ballistics), и без
+		# этого башня целилась бы по одной траектории, а пуля летела бы по другой.
+		_apply_flat_range($Ammo/Bullet)
+
+# ФИЗ-ТИК, а не кадр отрисовки: force_raycast_update() — это запрос к физическому серверу (луч
+# наведения), а выстрел рождает физические тела (пули/ракеты). На кадре отрисовки такой запрос
+# читает состояние физики в произвольной точке шага и лишний раз гоняет её на быстрых экранах;
+# частота стрельбы тоже становилась зависимой от FPS. Наведение башни оставляем здесь же — физ-тик
+# 60 Гц даёт ровное вращение и башня не отстаёт от тела, на котором стоит.
+func _physics_process(delta: float) -> void:
+	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_weapon(delta)
+	Perf.mark("weapons", _pf)
+
+func _tick_weapon(delta: float) -> void:
+	_fire_hold = maxf(_fire_hold - delta, 0.0)
+	var firing := _fire_hold > 0.0
+	if not firing:
+		if _current_target != null:
+			_current_target = null
+		_track_target(delta, false)     # прячет луч и плавно возвращает башню в нейтраль
+		return
+	_update_current_target()
+	_track_velocity(delta)          # ДО наводки: упреждение считается по свежей скорости
+	raycast.force_raycast_update()
+	_track_target(delta, true)
+	_handle_fire(delta)
+
+func attack() -> void:
+	_fire_hold = FIRE_HOLD
+
+# ── НАВОДКА ПО МОДЕЛИ ────────────────────────────────────────────────────────
+# Модель турели собрана ЦЕПОЧКОЙ, как и колесо: платформа → поворотная часть → ствол.
+#
+#   • ПЛАТФОРМА — приколочена к блоку, не двигается вообще;
+#   • ПОВОРОТНАЯ ЧАСТЬ (первый ребёнок платформы) — ходит ВЛЕВО-ВПРАВО;
+#   • СТВОЛ (её ребёнок) — ходит ВВЕРХ-ВНИЗ.
+#
+# Раньше не двигалось НИЧЕГО: код доворачивал узел Pivot, а он к модели отношения не имеет —
+# по нему летит снаряд и смотрит луч. Турель стреляла куда надо, но выглядела намертво
+# приваренной.
+#
+# Части ищем ПО СТРОЕНИЮ, а не по именам. Имена у моделей разные и уже разъехались: у пушки
+# turret → turret_head → turret_head_001, у ракетницы rocketgun_head, у лазера вовсе
+# lazer_neck_002 → lazer_head. Поиск по имени пришлось бы дописывать на каждую новую модель,
+# а цепочка у всех одна и та же.
+#
+# Берём только MeshInstance3D: Pivot, Ammo и зона обнаружения тоже узлы с детьми, но к
+# модели не относятся. Нет цепочки (у дробовика и мортиры платформа без частей) — просто
+# ничего не доворачиваем.
+const TURRET_TRACK: float = 12.0       # скорость доворота модели, как у Pivot
+
+var _yaw_part: Node3D = null           # поворотная часть: влево-вправо
+var _pitch_part: Node3D = null         # ствол: вверх-вниз
+var _yaw_rest: Basis = Basis()
+var _pitch_rest: Basis = Basis()
+
+func _find_turret_parts() -> void:
+	for c in get_children():
+		var platform := c as MeshInstance3D
+		if platform == null:
+			continue
+		var yaw_part := _first_mesh_child(platform)
+		if yaw_part == null:
+			continue
+		var pitch_part := _first_mesh_child(yaw_part)
+		# Полная цепочка (есть и ствол) перевешивает: у платформы может оказаться и
+		# декоративный меш-ребёнок, а крутить надо ту ветку, что ведёт к стволу.
+		if pitch_part != null or _yaw_part == null:
+			_yaw_part = yaw_part
+			_pitch_part = pitch_part
+		if pitch_part != null:
+			break
+	if _yaw_part != null:
+		_yaw_rest = _yaw_part.transform.basis
+	if _pitch_part != null:
+		_pitch_rest = _pitch_part.transform.basis
+
+func _first_mesh_child(n: Node) -> MeshInstance3D:
+	for c in n.get_children():
+		var m := c as MeshInstance3D
+		if m != null:
+			return m
+	return null
+
+## Довернуть модель на те же углы, куда смотрит Pivot (радианы). Углы уже ограничены конусом
+## турели: у ствола своего предела нет, он показывает ровно то, куда полетит снаряд.
+##
+## Крутим ОТ ПОЛОЖЕНИЯ ПОКОЯ и умножением справа (локальная ось узла), а не присваиванием
+## rotation.y/x: у частей модели свой запечённый разворот, и присваивание одной эйлеровой
+## компоненты его бы разрушило.
+func _aim_model(yaw: float, pitch: float, delta: float) -> void:
+	var k: float = clampf(delta * TURRET_TRACK, 0.0, 1.0)
+	if _yaw_part != null:
+		_yaw_part.transform.basis = _yaw_part.transform.basis.orthonormalized().slerp(
+				(_yaw_rest * Basis(Vector3.UP, yaw)).orthonormalized(), k)
+	if _pitch_part != null:
+		_pitch_part.transform.basis = _pitch_part.transform.basis.orthonormalized().slerp(
+				(_pitch_rest * Basis(Vector3.RIGHT, pitch)).orthonormalized(), k)
+
+# Радиус зоны, в которой турель ВИДИТ цели, = дальность оружия. В сценах он был прибит
+# к 10 (у ракетницы 18) — то есть турель не бралась наводиться дальше десяти метров, сколько
+# ни увеличивай weapon_range. Именно это, а не дальность, и означало «наводятся только вблизи».
+# Форму дублируем: SubResource в сцене общий для всех её экземпляров.
+func _sync_detect_radius() -> void:
+	if Area_Range == null:
+		return
+	for c in Area_Range.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape is SphereShape3D:
+			var sh: SphereShape3D = ((c as CollisionShape3D).shape as SphereShape3D).duplicate()
+			sh.radius = weapon_range
+			(c as CollisionShape3D).shape = sh
+
+func _is_in_cone(body: Node3D) -> bool:
+	var dir_world: Vector3 = (body.global_position - pivot.global_position).normalized()
+	var dir_local: Vector3 = pivot.global_transform.basis.inverse() * dir_world
+	var yaw: float = abs(rad_to_deg(atan2(-dir_local.x, -dir_local.z)))
+	var pitch: float = abs(rad_to_deg(atan2(dir_local.y,
+		Vector2(dir_local.x, dir_local.z).length())))
+	return yaw <= YAW_LIMIT and pitch <= PITCH_LIMIT
+
+# Выбор цели. Раньше брался просто БЛИЖАЙШИЙ блок — и орудия грызли то, что подвернулось:
+# колесо с краю вместо кабины, обломок вместо турели, которая по тебе стреляет. Теперь
+# кандидаты оцениваются, и вес каждого слагаемого объясним:
+#
+#   • НАЗНАЧЕННАЯ ИГРОКОМ цель (двойной тап по вражескому блоку) перевешивает всё
+#     остальное — это прямой приказ, а не подсказка;
+#   • блоки ТОЙ ЖЕ машины, что и назначенная цель, идут следом: приказ «бей вон того»
+#     осмысленно продолжать по его же корпусу, когда указанный блок уже сбит;
+#   • КАБИНА — условие победы: сбил её, и машина разваливается целиком;
+#   • ОРУЖИЕ — то, что стреляет в ответ, гасить выгоднее прочего;
+#   • ближе — лучше, но это лишь довесок, а не главный критерий;
+#   • у ТЕКУЩЕЙ цели небольшая прибавка: без неё орудие дёргается между двумя почти
+#     равными кандидатами и не добивает ни одного.
+#
+# ЦЕНА КАБИНЫ СНИЖЕНА, И ЭТО БАЛАНС, А НЕ ПРАВКА ВЕСОВ РАДИ АККУРАТНОСТИ. При SC_CABIN 120
+# против SC_NEAR 100 кабина перевешивала близость ВСЕГДА: все стволы с первого же залпа
+# сходились на ней, машина разваливалась целиком, бой длился секунды, а игроку доставалась
+# горстка блоков вместо разобранного корпуса. Теперь кабина по-прежнему самая ценная цель, но
+# ближний борт может её перебить — и машину приходится разбирать, а не срезать.
+const SC_PRIORITY := 1000.0
+const SC_PRIORITY_MACHINE := 400.0
+const SC_CABIN := 55.0
+const SC_WEAPON := 45.0
+const SC_STICKY := 40.0
+const SC_NEAR := 100.0        # множитель близости: чем дальше цель, тем меньше добавка
+## «ВКУС» СТВОЛА — постоянная надбавка, своя у каждой пары «эта турель / этот блок». Ради неё
+## всё и затевалось: без неё соседние стволы считают ОДНУ И ТУ ЖЕ сумму и бьют в один блок,
+## сколько бы их ни стояло. Надбавка МЕНЬШЕ веса кабины (иначе она бы его и заменила) и
+## ПОСТОЯННА — считается от id блока и от собственного зерна, поэтому цель не пляшет по кадрам.
+const SC_TASTE := 35.0
+var _taste_seed: int = 0
+
+func _update_current_target() -> void:
+	if _targets.is_empty():
+		_current_target = null
+		return
+	var machine: Node = _vehicle_root()
+	var prio: Node3D = null
+	var prio_root: Node = null
+	if machine != null and machine.has_method("priority_alive") and machine.priority_alive():
+		prio = machine.priority_target
+		prio_root = _root_machine_of(prio)
+
+	var best: Node3D = null
+	var best_score: float = -INF
+	for t in _targets:
+		if not is_instance_valid(t):
+			continue
+		var d: float = pivot.global_position.distance_to(t.global_position)
+		var score: float = SC_NEAR * (1.0 - clampf(d / maxf(weapon_range, 1.0), 0.0, 1.0))
+		if prio != null:
+			if t == prio:
+				score += SC_PRIORITY
+			elif prio_root != null and _root_machine_of(t) == prio_root:
+				score += SC_PRIORITY_MACHINE
+		var bt = t.get("block")
+		if bt != null:
+			if int(bt) == G.Block.CABIN:
+				score += SC_CABIN
+			elif t is WeaponBlock:
+				score += SC_WEAPON
+		if t == _current_target:
+			score += SC_STICKY
+		score += SC_TASTE * _taste(t)
+		if score > best_score:
+			best_score = score
+			best = t
+	_current_target = best
+
+## Постоянная псевдослучайная надбавка в 0..1 для пары «этот ствол — этот блок».
+func _taste(t: Node) -> float:
+	if _taste_seed == 0:
+		_taste_seed = int(get_instance_id()) | 1     # своё зерно, ненулевое
+	var h: int = (int(t.get_instance_id()) * 2654435761) ^ _taste_seed
+	return float(absi(h) % 997) / 997.0
+
+# Корневая машина, которой принадлежит блок (у свободного блока в мире её нет).
+func _root_machine_of(n: Node) -> Node:
+	var p: Node = n
+	while p != null:
+		if p is MachineBody:
+			return p
+		p = p.get_parent()
+	return null
+
+func _track_target(delta: float, firing: bool) -> void:
+	# НАВОДКА СНАЧАЛА, УКРАШЕНИЯ ПОТОМ. Раньше функция начиналась с поиска трассера
+	# (track_visual у луча) и без него сразу выходила — то есть пушка с новой моделью, где
+	# этого меша нет, НЕ ДОВОРАЧИВАЛАСЬ ВООБЩЕ и стреляла прямо перед собой. Трассер — это
+	# картинка, и решать, целится ли орудие, он не может.
+	if not firing:
+		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
+		_aim_model(0.0, 0.0, delta)
+		_show_tracer(false, delta)
+		return
+	_anim_t += delta
+	# Если в конусе есть цель — доворачиваем турель на неё, иначе плавно в нейтраль
+	# (стрельба «в воздух» — снаряд всё равно летит прямо, видно что оружие работает).
+	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
+			and _is_in_cone(_current_target)
+	if has_target:
+		# Приоритет: незакрытая кабина → ближайший блок машины (см. _aim_point_for),
+		# и УПРЕЖДЕНИЕ с поправкой на просадку (_lead_point) — иначе по убегающему мимо.
+		var target_pos: Vector3 = _lead_point(_current_target, pivot.global_position)
+		var dir_world: Vector3 = (target_pos - pivot.global_position).normalized()
+		var dir_local: Vector3 = global_transform.basis.inverse() * dir_world
+		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
+		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
+		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)
+	else:
+		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
+		_aim_model(0.0, 0.0, delta)          # цели нет — модель возвращается в покой
+	_show_tracer(true, delta)
+
+## ТРАССЕР — только картинка: цилиндр под лучом наводки, который тянется до точки попадания
+## и пульсирует, пока орудие стреляет. Его может не быть вовсе (у новых моделей его нет), и
+## это ни на что не влияет, кроме внешнего вида.
+func _show_tracer(firing: bool, _delta: float) -> void:
+	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
+	if track_visual == null:
+		return
+	if not firing:
+		if track_visual.visible:
+			track_visual.visible = false
+		return
+	track_visual.visible = true
+	var track_mat: Material = track_visual.get_active_material(0)
+	# Длина луча: до точки попадания, иначе на всю дальность (бьёт в воздух).
+	var hit := raycast.is_colliding()
+	var length := weapon_range
+	if hit:
+		length = minf(raycast.global_position.distance_to(raycast.get_collision_point()), weapon_range)
+	if track_visual.mesh is CylinderMesh:
+		var cyl := track_visual.mesh as CylinderMesh
+		if absf(cyl.height - length) > 0.05:
+			cyl.height = length
+		track_visual.position.z = -length * 0.5
+	# Анимация «рабочего» луча: пульсация яркости. По цели — горячий (бело-красный), в
+	# воздух — оранжево-красный поспокойнее. Луч материал unshaded, поэтому пульсируем
+	# именно albedo (на unshaded виден он, а не emission); emission ставим заодно для
+	# материалов с обычным шейдингом. Видно, что оружие именно СТРЕЛЯЕТ.
+	var pulse := 0.7 + 0.3 * sin(_anim_t * 40.0)
+	var base := Color(1.0, 0.85, 0.7) if hit else Color(1.0, 0.4, 0.1)
+	raycast.debug_shape_custom_color = Color(1, 0, 0) if hit else Color(1, 0.5, 0)
+	if track_mat is StandardMaterial3D:
+		var m := track_mat as StandardMaterial3D
+		m.albedo_color = base * pulse
+		m.emission_enabled = true
+		m.emission = base
+		m.emission_energy_multiplier = 1.5 + 1.5 * pulse
+
+func _handle_fire(delta: float) -> void:
+	var body: Node3D = raycast.get_collider()
+	if body:
+		if body == self or body.get_parent() == get_parent():
+			return
+	_fire_timer -= delta
+	if _fire_timer > 0.0:
+		return
+	_fire_timer = fire_rate
+	fire_bullet()
+
+# Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
+@onready var ammo: Node3D = get_node_or_null("Ammo")
+@onready var free_bullet: Array[Area3D]
+
+# Сценовое соединение Ammo/Bullet.body_entered → _on_bullet_body_entered БЕЗ bind давало
+# нехватку аргумента (source) и роняло вызов на КАЖДОМ попадании. Перецепляем с bind(самой
+# пули), чтобы source приходил корректно (нужен для возврата пули в пул).
+func _rebind_bullet(b: Area3D) -> void:
+	if b.body_entered.is_connected(_on_bullet_body_entered):
+		b.body_entered.disconnect(_on_bullet_body_entered)
+	var cb := _on_bullet_body_entered.bind(b)
+	if not b.body_entered.is_connected(cb):
+		b.body_entered.connect(cb)
+	# Пуля улетела за окно коллизий (ушла ниже min_y / вышло время) → вернуть в пул.
+	if b.has_signal("expired") and not b.expired.is_connected(_on_bullet_expired):
+		b.expired.connect(_on_bullet_expired)
+
+# Пуля отработала (попадание ИЛИ истечение полёта) — паркуем в пул инертной.
+func _recycle_bullet(b: Area3D) -> void:
+	if not is_instance_valid(b):
+		return
+	if "dir" in b:
+		b.dir = Vector3.ZERO
+	# _recycle_bullet зовётся ИЗ сигнала body_entered пули — прямая смена monitoring в этот момент
+	# заблокирована движком (Area заблокирована на время in/out-сигнала). set_deferred применит её
+	# в конце кадра. Без этого рецикл срывался: пуля оставалась monitoring=true у центра мира и
+	# продолжала ловить тела/слать сигналы (спам и возможные каскадные падения).
+	b.set_deferred("monitoring", false)         # в пуле (у центра) повторно не ловит тела
+	b.global_position = Vector3.ZERO
+	if not free_bullet.has(b):
+		free_bullet.append(b)
+
+func _on_bullet_expired(b: Area3D) -> void:
+	_recycle_bullet(b)
+
+func fire_bullet():
+	if ammo == null:
+		return
+	if free_bullet.is_empty():
+		var new_bullet: Area3D = $Ammo/Bullet.duplicate()
+		ammo.add_child(new_bullet)
+		_rebind_bullet(new_bullet)              # дубликат унаследовал сценовое соединение без bind
+		free_bullet.append(new_bullet)
+	var bullet:Area3D = free_bullet.pop_back()
+	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
+	if not ("dir" in bullet):
+		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
+		return
+	# Дуло: у пушки это DrillBody2, у лазера такого узла нет — берём Marker3D как запасной,
+	# иначе $Pivot/DrillBody2 = null и падало "global_position on null instance".
+	var muzzle: Node3D = $Pivot.get_node_or_null("DrillBody2")
+	if muzzle == null:
+		muzzle = $Pivot/Marker3D
+	bullet.global_position = muzzle.global_position
+	bullet.dir = dir
+	_apply_flat_range(bullet)
+	_apply_spread(bullet)                       # ДО look_at: пуля обязана смотреть туда, куда летит
+	var shot: Vector3 = bullet.dir
+	if absf(shot.dot(Vector3.UP)) < 0.99:       # look_at падает, если dir почти вертикальна
+		bullet.look_at(bullet.global_position + shot)
+	bullet.monitoring = true                    # в полёте ловит попадания
+
+## Довернуть выпущенную пулю в конусе разброса. ОДИН конус на все стволы: подклассы меняют
+## только угол (`spread_deg`), а мортира и дробовик, у которых разброс свой по смыслу, ставят
+## ноль и считают сами.
+func _apply_spread(b: Node3D) -> void:
+	if spread_deg <= 0.0 or not ("dir" in b):
+		return
+	var d: Vector3 = b.dir
+	if d == Vector3.ZERO:
+		return
+	# Доля дальности до цели: вблизи конус сжимается, у предела — полный. Цели нет (стрельба
+	# «в никуда» по кнопке) — берём полный, там всё равно не по кому мазать.
+	var k: float = 1.0
+	if _current_target != null and is_instance_valid(_current_target):
+		k = clampf(pivot.global_position.distance_to(_current_target.global_position)
+				/ maxf(weapon_range, 1.0), 0.2, 1.0)
+	var a: float = deg_to_rad(spread_deg) * k
+	d = d.rotated(Vector3.UP, randf_range(-a, a))
+	# По вертикали вдвое уже, как у дробовика: промах вбок читается как «мажет», а вверх — как
+	# «стреляет в небо», хотя пуля ушла на те же полметра.
+	var side: Vector3 = d.cross(Vector3.UP).normalized()
+	if side.length_squared() > 0.0001:
+		d = d.rotated(side, randf_range(-a * 0.5, a * 0.5))
+	b.dir = d.normalized()
+
+func _on_area_3d_body_entered(body: Node3D) -> void:
+	if body == self or body.get_parent() == get_parent():
+		return
+	if body == _vehicle_root():
+		return                        # своя машина — не цель
+	if G.is_friendly_dome(body, _vehicle_root()):
+		return                        # свой щит-купол — не цель
+	if body.get_parent() != null and body.get_parent().name == "objects":
+		return                        # свободные блоки/объекты в мире — не цели
+	if not _is_hostile(body):
+		return                        # своя фракция — не цель, даже если это ДРУГАЯ машина
+	if not _targets.has(body):
+		_targets.append(body)
+
+## Чужой ли это блок ПО ФРАКЦИИ. Проверок «не своя машина» выше НЕ ХВАТАЛО: они отсекали
+## только ту машину, на которой стоит сама турель. Всё остальное годилось в цели — и вторая
+## машина игрока, и напарник по фракции.
+##
+## Что это давало: два врага, дерущиеся с игроком, брали блоки ДРУГ ДРУГА, когда те выигрывали
+## по оценке (чужая кабина даёт +120 на любой дистанции, а обычный блок игрока не больше 100),
+## и игрок смотрел, как они расстреливают друг друга. У игрока — зеркально: турель в режиме
+## обороны выбирала его же вторую машину, стоящую рядом, и разбирала её.
+##
+## Урон при этом односторонний: жертва не отвечает, потому что enemy_vehicle.notice_attacker
+## своих отбрасывает. То есть правило «свои не воюют» в проекте УЖЕ было — просто жило только
+## в половине кода, отвечающей за реакцию на удар, а не за выбор цели.
+func _is_hostile(body: Node) -> bool:
+	var mine = _machine_faction(_vehicle_root())
+	var theirs = _machine_faction(body)
+	if mine == null or theirs == null:
+		return true                   # чья-то принадлежность неизвестна — решает прежняя логика
+	return int(mine) != int(theirs)
+
+func _machine_faction(n: Node):
+	var p: Node = n
+	while p != null:
+		var f = p.get("faction")
+		if f != null:
+			return f
+		p = p.get_parent()
+	return null
+
+## Урон с учётом множителя своей машины (`MachineBody.damage_scale`). Считаем В МОМЕНТ
+## ПОПАДАНИЯ, а не в _ready: ствол переезжает с машины на машину (сорвало в мир, подобрали,
+## поставили на свою), и запомненное при рождении число уехало бы вместе с ним.
+##
+## `get()` у узла БЕЗ такого поля возвращает null (см. грабли GDScript в CLAUDE.md), поэтому
+## проверяем тип, а не пишем float(...) — у свободного ствола в мире машины нет вовсе.
+##
+## Через эту функцию обязан идти ВЕСЬ урон оружия, включая свои числа подклассов (у ракетницы
+## это aoe_damage): иначе «ослабленный» враг ослаблен только пулями.
+func _scale_damage(v: float) -> int:
+	var machine := _vehicle_root()
+	var k = machine.get("damage_scale") if machine != null else null
+	if not (k is float or k is int):
+		return maxi(1, int(round(v)))
+	return maxi(1, int(round(v * float(k))))
+
+func _shot_damage() -> int:
+	return _scale_damage(float(damage))
+
+# Корневое тело машины, на которой стоит это оружие.
+func _vehicle_root() -> Node:
+	var p := get_parent()
+	while p != null and not (p is RigidBody3D):
+		p = p.get_parent()
+	return p
+
+# ── Скорость цели ─────────────────────────────────────────────────────────────
+# Скорость МЕРЯЕМ по смещению цели, а не спрашиваем у неё linear_velocity.
+#
+# Зона обнаружения оружия смотрит на слой БЛОКОВ (collision_mask = 2), поэтому цель — это
+# блок вражеской машины, а не её корпус. Блок на машине не двигается собственной физикой,
+# его возит родитель, и его linear_velocity равна нулю. Упреждение исправно считалось по
+# нулевой скорости и вырождалось в «целься точно в цель» — то есть не работало вовсе.
+# Замер смещения от этого не зависит: он одинаково верен и для блока, и для корпуса, и для
+# чего угодно ещё, что мы решим сделать целью.
+var _vel_ref: Node3D = null           # за кем меряем (сменилась цель — счётчик с нуля)
+var _vel_last: Vector3 = Vector3.ZERO
+var _target_vel: Vector3 = Vector3.ZERO
+
+## Насколько сглаживаем замер. Разность за один физ-кадр шумит от тряски подвески, отдачи и
+## качания блока на машине; без сглаживания ствол дёргался бы за этим шумом.
+const VEL_SMOOTH: float = 0.25
+
+func _track_velocity(delta: float) -> void:
+	var t: Node3D = _current_target
+	if t == null or not is_instance_valid(t):
+		_vel_ref = null
+		_target_vel = Vector3.ZERO
+		return
+	if t != _vel_ref:
+		# Новая цель: первого замера ещё нет. Стартуем от скорости её МАШИНЫ, если она
+		# известна, — иначе первые доли секунды стреляли бы без упреждения.
+		_vel_ref = t
+		_vel_last = t.global_position
+		_target_vel = _machine_velocity(t)
+		return
+	if delta > 0.0:
+		var raw: Vector3 = (t.global_position - _vel_last) / delta
+		_target_vel = _target_vel.lerp(raw, VEL_SMOOTH)
+	_vel_last = t.global_position
+
+# Скорость машины, которой принадлежит блок: поднимаемся по дереву до первого RigidBody.
+func _machine_velocity(node: Node3D) -> Vector3:
+	var p: Node = node
+	while p != null:
+		if p is RigidBody3D and p != self:
+			return (p as RigidBody3D).linear_velocity
+		p = p.get_parent()
+	return Vector3.ZERO
+
+# ── Баллистика ────────────────────────────────────────────────────────────────
+# Снаряд летит ПО ПРЯМОЙ со своей скоростью и одновременно проседает: за время t он
+# уходит вниз на g·t²/2 (см. bullet.gd), а цель за то же время уезжает на v·t. Целиться
+# в то место, где цель СЕЙЧАС, — значит гарантированно мазать по всему, что движется,
+# и тем сильнее, чем дальше цель. Раньше делалось именно так.
+#
+# Точку встречи ищем итерацией: время полёта зависит от точки прицеливания, а точка — от
+# времени. Три прохода сходятся с запасом.
+func _lead_point(target: Node3D, from: Vector3) -> Vector3:
+	var p: Vector3 = _aim_point_for(target)
+	var v: Vector3 = _target_vel
+	var bal: Vector2 = _ballistics()
+	var t: float = from.distance_to(p) / bal.x
+	var aim: Vector3 = p
+	for _i in 3:
+		aim = p + v * t + Vector3.UP * (0.5 * bal.y * t * t)
+		t = from.distance_to(aim) / bal.x
+	return aim
+
+## СКОЛЬКО МЕТРОВ ПО ЗЕМЛЕ пролетает снаряд, выпущенный ПРЯМО. Ноль — просадка берётся из
+## сцены снаряда как есть (ракета летит настильно, и ей это правильно).
+##
+## Задавать просадку числом бесполезно: она имеет смысл только вместе со скоростью снаряда и
+## высотой ствола, а обе меняются. Пушка стоит примерно в MUZZLE_HEIGHT над землёй, и её
+## пуля должна доставать землю в flat_range метрах — отсюда g = 2·h·v²/R². Поменяли скорость
+## пули — дальность падения осталась той же, и целиться игроку по-прежнему привычно.
+@export var flat_range: float = 0.0
+## Высота ствола над землёй: пушка на третьем этаже сборки — это примерно 3.5 м.
+const MUZZLE_HEIGHT := 3.5
+
+func _apply_flat_range(b: Node) -> void:
+	if flat_range <= 0.0 or b == null or not ("bullet_gravity" in b) or not ("speed" in b):
+		return
+	var v: float = maxf(float(b.get("speed")), 1.0)
+	b.set("bullet_gravity", 2.0 * MUZZLE_HEIGHT * v * v / (flat_range * flat_range))
+
+# Скорость и просадка берутся С САМОГО СНАРЯДА: у ракеты в сцене 42/6, у пушки 120/50.
+# Зашей их сюда числом — прицел считал бы по одним, а летело бы по другим.
+func _ballistics() -> Vector2:
+	var b: Node = get_node_or_null("Ammo/Bullet")
+	if b == null or not ("speed" in b):
+		return Vector2(120.0, 50.0)
+	return Vector2(maxf(float(b.get("speed")), 1.0), float(b.get("bullet_gravity")))
+
+func _aim_point_for(body: Node3D) -> Vector3:
+	var blocks := body.get_node_or_null("blocks")
+	if blocks == null:
+		if body is MeshInstance3D:
+			return (body as MeshInstance3D).get_aabb().get_center() + body.global_position
+		if body.has_node("CollisionShape3D"):
+			return body.get_node("CollisionShape3D").global_position
+		return body.global_position
+	var cabin: Node3D = null
+	for b in blocks.get_children():
+		if b.get("block") == G.Block.CABIN and b is Node3D:
+			cabin = b
+			break
+	if cabin != null and _cabin_exposed(body, cabin):
+		return cabin.global_position
+	var best: Node3D = null
+	var bd := INF
+	for b in blocks.get_children():
+		if not ("block" in b) or not (b is Node3D):
+			continue
+		var d: float = pivot.global_position.distance_squared_to((b as Node3D).global_position)
+		if d < bd:
+			bd = d
+			best = b
+	return best.global_position if best != null else body.global_position
+
+# Кабина «не закрыта» = луч от оружия до кабины первым делом попадает в саму машину
+# рядом с кабиной (а не в другой её блок и не в постороннее препятствие).
+func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, cabin.global_position)
+	var own := _vehicle_root()
+	# RID'ы, а не узлы: Array[RID] не принимает Object, и список молча оставался пустым.
+	var own_rid = (own as CollisionObject3D).get_rid() if own is CollisionObject3D else null
+	q.exclude = [get_rid(), own_rid] if own_rid != null else [get_rid()]
+	var res := space.intersect_ray(q)
+	if res.is_empty():
+		return true
+	if res.collider != body:
+		return false
+	return res.position.distance_squared_to(cabin.global_position) <= 0.81   # 0.9², корень не нужен
+
+## Сказать подстреленной машине, КТО в неё попал. Урон и осведомлённость разделены
+## намеренно: hurt() зовут ещё бур по жиле, реген и цепная детонация блоков — у них стрелка
+## нет вовсе, и совать его в подпись метода значило бы тащить null через полпроекта.
+## Знает стрелявшего только оружие, здесь и говорим.
+func _alert_victim(body: Node3D) -> void:
+	var m: Node = body
+	while m != null and not (m is MachineBody):
+		m = m.get_parent()
+	if m != null and m.has_method("notice_attacker"):
+		m.notice_attacker(_vehicle_root() as Node3D)
+
+func _on_area_3d_body_exited(body: Node3D) -> void:
+	_targets.erase(body)
+
+func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
+	if body == self: return
+	if body.get_parent() == get_parent(): return
+	# Свой щит-купол пропускает СВОИ пули (вылетают изнутри купола) — не поглощаем.
+	if G.is_friendly_dome(body, _vehicle_root()): return
+	if body.has_method("hurt"):
+		body.hurt(_shot_damage())
+		_alert_victim(body)
+	# Щит гасит снаряд «в воздухе», на самом куполе: без отметки попадание выглядело как
+	# исчезновение пули из ниоткуда. Глюк рисуем по САМОЙ ПУЛЕ — её габарит крошечный,
+	# поэтому и облако выходит мелким, ровно на точке гашения.
+	if "owner_vehicle" in body and is_instance_valid(source):
+		BlockFX.play(source, false, 0.28)
+	_recycle_bullet(source)

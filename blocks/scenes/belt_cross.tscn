@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://beltcross1aa"]
+
+[ext_resource type="Script" uid="uid://dliur6ny1ir84" path="res://blocks/scripts/belt_cross.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" uid="uid://d0dr1622m1m6l" path="res://objects/GSO_Cube_010.res" id="2_vcmfb"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_s"]
+
+[node name="belt_cross" type="RigidBody3D" unique_id=1463185773]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+input_faces = 15
+output_faces = 15
+block = 32
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=455297089]
+shape = SubResource("BoxShape3D_s")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1105147700]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.14, 0)
+mesh = ExtResource("2_vcmfb")
+
+[node name="item_slot" type="Marker3D" parent="." unique_id=927449208]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.95, 0)

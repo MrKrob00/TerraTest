@@ -1,0 +1,124 @@
+[gd_scene format=3 uid="uid://cportpickr0001"]
+
+[ext_resource type="Script" path="res://port_picker.gd" id="1_pp"]
+[ext_resource type="Script" path="res://port_cube.gd" id="2_cube"]
+
+[sub_resource type="StyleBoxFlat" id="panel"]
+content_margin_left = 14.0
+content_margin_top = 12.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+bg_color = Color(0.043, 0.122, 0.149, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.247, 0.6, 0.65, 0.5)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="closebtn"]
+bg_color = Color(0.082, 0.235, 0.275, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.247, 0.6, 0.65, 0.45)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="PortPicker" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_pp")
+
+[node name="Dim" type="ColorRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0.03, 0.04, 0.55)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(460, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("panel")
+
+[node name="Col" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="Center/Panel/Col"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.62, 0.92, 0.96, 1)
+theme_override_font_sizes/font_size = 20
+text = "PORTS"
+
+[node name="Hint" type="Label" parent="Center/Panel/Col"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.72, 0.76, 1)
+theme_override_font_sizes/font_size = 13
+text = "View only — ports are set on the block itself. Both sides must agree for a link."
+
+[node name="Legend" type="HBoxContainer" parent="Center/Panel/Col"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="InSwatch" type="ColorRect" parent="Center/Panel/Col/Legend"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+color = Color(0.25, 0.72, 0.95, 1)
+
+[node name="InLabel" type="Label" parent="Center/Panel/Col/Legend"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.72, 0.76, 1)
+theme_override_font_sizes/font_size = 12
+text = "IN — takes from here"
+
+[node name="OutSwatch" type="ColorRect" parent="Center/Panel/Col/Legend"]
+custom_minimum_size = Vector2(14, 14)
+layout_mode = 2
+color = Color(1, 0.72, 0.25, 1)
+
+[node name="OutLabel" type="Label" parent="Center/Panel/Col/Legend"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.55, 0.72, 0.76, 1)
+theme_override_font_sizes/font_size = 12
+text = "OUT — sends from here"
+
+[node name="Cube" type="Control" parent="Center/Panel/Col"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 260)
+layout_mode = 2
+size_flags_vertical = 3
+script = ExtResource("2_cube")
+
+[node name="CloseButton" type="Button" parent="Center/Panel/Col"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
+theme_override_font_sizes/font_size = 16
+theme_override_styles/normal = SubResource("closebtn")
+text = "CLOSE"

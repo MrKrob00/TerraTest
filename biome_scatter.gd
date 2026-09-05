@@ -1,0 +1,294 @@
+extends Node3D
+# Раскидывает пропы 3D-художника ПО БИОМАМ и стримит их (как жилы руды): все пропы — лишь
+# данные (позиция+сцена), а ноды создаются только для БЛИЖНИХ (render_distance), дальние не
+# грузят систему. Художнику достаточно: положить ноду ребёнком карты (map/terrain), заполнить
+# biome_props в инспекторе (для каждого биома — свои сцены + count) — и всё расставится само.
+#
+# Биом в точке определяется ТЕМИ ЖЕ формулами, что в шейдере террейна (glsl.gdshader): смотри,
+# чтобы параметры ниже совпадали с параметрами МАТЕРИАЛА (по умолчанию совпадают).
+
+const ANY := 0
+const SAND := 1
+const GRASS := 2
+const CANYON := 3
+const SNOW := 4
+
+@export var biome_props: Array[BiomePropSet] = []
+
+@export_group("Размещение")
+@export var edge_margin: float = 48.0        # отступ от края карты
+@export var min_height: float = 2.0          # ниже — самые днища впадин, не ставим (воды в мире нет)
+@export var max_slope: float = 6.0           # круче — скала, пропы не ставим (разброс высот вокруг)
+
+@export_group("Стриминг")
+@export var render_distance: float = 220.0   # рендерятся/активны только пропы в этом радиусе
+@export var max_visible: int = 260           # потолок одновременно отрисованных
+@export var cull_interval: float = 0.3
+
+## Параметры БИОМА — держать синхронно с материалом террейна (glsl.gdshader → group Biomes/Terrain).
+@export_group("Биом (синхронно с шейдером)")
+@export var height_grass_start: float = 20.0
+@export var height_snow_start: float = 70.0
+@export var zone_blend: float = 5.0
+@export var biome_scale: float = 230.0
+@export var biome_blend: float = 0.07
+@export var biome_grass_bias: float = 0.5
+@export var biome_contrast: float = 1.8
+@export var canyon_scale: float = 250.0
+@export var canyon_threshold: float = 0.70
+@export var canyon_edge: float = 0.05
+@export var mtn_scale: float = 420.0
+@export var mtn_threshold: float = 0.72
+@export var mtn_edge: float = 0.05
+
+var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
+## Раскладка пропов детерминирована СИДОМ МИРА, как и жилы (см. resource_nodes): камень, мимо
+## которого игрок ездит каждый день, обязан стоять на месте, а не переезжать при перезаходе.
+## Свой генератор, а не глобальный: тот в общем пользовании у всей игры.
+var _rng := RandomNumberGenerator.new()
+var _cull_t: float = 0.0
+var _shown: int = 0
+## Occlusion is re-asked for a slice of the props per tick, not for all of them. See _process.
+const OCCL_SLICES := 4
+## Assumed prop height for the horizon test. Props vary, but their SCALE is known, and being
+## generous here only means a prop is culled slightly later than it could be.
+const OCCL_PROP_HEIGHT := 4.0
+var _occl_cursor: int = 0
+
+# _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
+# момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
+# Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
+# делал return, из-за чего узел не инициализировался за весь сеанс.
+const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+
+func _ready() -> void:
+	var map: Node = await _await_map()
+	if map == null:
+		push_error("BiomeScatter: родитель так и не стал картой (нет terrain_height_at/get_dims)")
+		return
+	var guard: int = 0
+	while map.get_dims().x <= 0 and guard < 300:
+		await get_tree().process_frame
+		guard += 1
+	if map.get_dims().x <= 0:
+		return
+	# Свой сид, а не G.world_seed один в один: жилы и пропы засеваются из одного числа, и
+	# одинаковый поток дал бы им одинаковые точки — камни встали бы ровно на жилы.
+	_rng.seed = int(G.world_seed) ^ 0x5EED
+	await _place(map, map.get_dims())      # расстановка уступает кадры (см. PLACE_BATCH)
+	_cull_t = 0.0
+
+# ── Биом в мировой точке (зеркалит шейдер) ────────────────────────────────────
+func _fract(x: float) -> float:
+	return x - floor(x)
+
+func _hash2d(p: Vector2) -> float:
+	p = Vector2(_fract(p.x * 123.34), _fract(p.y * 456.21))
+	var d: float = p.dot(p + Vector2(45.32, 45.32))
+	p += Vector2(d, d)
+	return _fract(p.x * p.y)
+
+func _vnoise(p: Vector2) -> float:
+	var i := Vector2(floor(p.x), floor(p.y))
+	var f := p - i
+	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _hash2d(i)
+	var b := _hash2d(i + Vector2(1.0, 0.0))
+	var c := _hash2d(i + Vector2(0.0, 1.0))
+	var d := _hash2d(i + Vector2(1.0, 1.0))
+	return lerpf(lerpf(a, b, f.x), lerpf(c, d, f.x), f.y)
+
+func _ss(a: float, b: float, x: float) -> float:
+	return smoothstep(a, b, x)
+
+func _biome_at(wx: float, wz: float, wy: float) -> int:
+	# Биом ЧИСТО по региону (шум), на любой высоте — воды/снега-по-высоте нет (см. glsl.gdshader).
+	# Порядок как в шейдере (верхний слой побеждает): ГОРЫ(снег) → КАНЬОН → трава/песок.
+	var mtn := _ss(mtn_threshold - mtn_edge, mtn_threshold + mtn_edge,
+			_vnoise(Vector2(wx, wz) / mtn_scale + Vector2(211.0, 77.0)))
+	if mtn > 0.5:
+		return SNOW
+	var canyon := _ss(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
+			_vnoise(Vector2(wx, wz) / canyon_scale + Vector2(101.0, 53.0)))
+	if canyon > 0.5:
+		return CANYON
+	var bn := _vnoise(Vector2(wx, wz) / biome_scale)
+	bn = clampf((bn - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
+	return GRASS if _ss(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, bn) > 0.5 else SAND
+
+# ── Расстановка: для каждого набора набираем count точек в его биоме ───────────
+## ПРОПЫ РАСКЛАДЫВАЮТСЯ ВОКРУГ ИГРОКА, А НЕ ПО ВСЕЙ КАРТЕ. В мире без края «вся карта» это не
+## величина, а высоту рельефа спрашивать можно только внутри окна. Поэтому область раскладки —
+## квадрат PLACE_SPAN вокруг точки, где игрок начал; дальше её продолжают регионы жил и точек,
+## а камни — самое мелкое, что есть в мире, и их отсутствие за горизонтом никто не заметит.
+##
+## Плотность при этом СОХРАНЕНА: setp.count был числом на карту 1982², и здесь он масштабируется
+## по площади, иначе тот же счётчик на меньшем квадрате дал бы кашу из камней.
+const PLACE_SPAN := 1600.0
+
+func _place(map: Node, dims: Vector2i) -> void:
+	var pts: Array = G.active_points()
+	var home: Vector3 = pts[0] if not pts.is_empty() else Vector3.ZERO
+	var half_x: float = PLACE_SPAN * 0.5
+	var half_z: float = PLACE_SPAN * 0.5
+	# Доля площади от прежней карты — во столько же раз меньше и пропов.
+	var area_k: float = (PLACE_SPAN * PLACE_SPAN) / maxf(float(dims.x) * float(dims.y), 1.0)
+	for setp in biome_props:
+		if setp == null or setp.scenes.is_empty():
+			continue
+		var placed: Array = []
+		var want: int = maxi(int(round(float(setp.count) * area_k)), 1)
+		var attempts: int = want * 12
+		var grid: Dictionary = {}
+		var cell: float = maxf(setp.min_spacing, 0.001)
+		var since_yield: int = 0
+		while placed.size() < want and attempts > 0:
+			attempts -= 1
+			since_yield += 1
+			if since_yield >= PLACE_BATCH:
+				since_yield = 0
+				await get_tree().process_frame
+			var lx: float = home.x + _rng.randf_range(-half_x, half_x)
+			var lz: float = home.z + _rng.randf_range(-half_z, half_z)
+			var world: Vector3 = map.global_transform * Vector3(lx, 0.0, lz)
+			var h: float = map.terrain_height_at(world)
+			if h < min_height:
+				continue
+			if _slope_at(map, lx, lz) > max_slope:
+				continue
+			if int(setp.biome) != ANY and _biome_at(world.x, world.z, h) != int(setp.biome):
+				continue
+			var local_pos: Vector3 = to_local(Vector3(world.x, h + setp.y_offset, world.z))
+			if _too_close_hashed(grid, cell, local_pos, setp.min_spacing):
+				continue
+			placed.append(local_pos)
+			var key := Vector2i(floori(local_pos.x / cell), floori(local_pos.z / cell))
+			if not grid.has(key):
+				grid[key] = [] as Array[Vector3]
+			(grid[key] as Array).append(local_pos)
+			_data.append({
+				"pos": local_pos,
+				"scene": setp.scenes[_rng.randi() % setp.scenes.size()],
+				"scale": _rng.randf_range(setp.min_scale, setp.max_scale),
+				"yaw": _rng.randf() * TAU if setp.random_yaw else 0.0,
+				"node": null,
+			})
+
+func _slope_at(map: Node, lx: float, lz: float) -> float:
+	var s: float = 3.0
+	var h1: float = map.terrain_height_at(map.global_transform * Vector3(lx + s, 0.0, lz))
+	var h2: float = map.terrain_height_at(map.global_transform * Vector3(lx - s, 0.0, lz))
+	var h3: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz + s))
+	var h4: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz - s))
+	return maxf(maxf(h1, h2), maxf(h3, h4)) - minf(minf(h1, h2), minf(h3, h4))
+
+const PLACE_BATCH := 400            # попыток на кадр при расстановке пропов
+
+func _too_close(placed: Array, p: Vector3, spacing: float) -> bool:
+	for q in placed:
+		if (q as Vector3).distance_squared_to(p) < spacing * spacing:
+			return true
+	return false
+
+# O(1)-версия: смотрим только свою и 8 соседних ячеек решётки со стороной spacing.
+func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3, spacing: float) -> bool:
+	var cx := floori(p.x / cell)
+	var cz := floori(p.z / cell)
+	for dx in [-1, 0, 1]:
+		for dz in [-1, 0, 1]:
+			var bucket = grid.get(Vector2i(cx + dx, cz + dz), null)
+			if bucket == null:
+				continue
+			for q in (bucket as Array):
+				if (q as Vector3).distance_squared_to(p) < spacing * spacing:
+					return true
+	return false
+
+# ── Стриминг: ноды только для ближних пропов ──────────────────────────────────
+## Та же клетка пересчёта, что у жил (см. resource_nodes): пропы стримятся ТОЛЬКО по
+## расстоянию, поэтому им хватает проверки «камера ушла из клетки», без направления.
+const RESCAN_CELL := 12.0
+var _last_cell := Vector2i(1 << 30, 1 << 30)
+
+func _process(delta: float) -> void:
+	if _data.is_empty():
+		return
+	_cull_t -= delta
+	if _cull_t > 0.0:
+		return
+	var _pf := Perf.now()          # метка для панели профиля (perf.gd)
+	_cull_t = cull_interval
+	var cam0 := get_viewport().get_camera_3d()
+	if cam0 != null:
+		var cell := Vector2i(int(floor(cam0.global_position.x / RESCAN_CELL)),
+				int(floor(cam0.global_position.z / RESCAN_CELL)))
+		if cell == _last_cell:
+			Perf.mark("props", _pf)
+			return
+		_last_cell = cell
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return
+	var cam_pos: Vector3 = cam.global_position
+	var d2: float = render_distance * render_distance
+	# HIDDEN BEHIND A RIDGE = NOT SPAWNED. A prop is a whole node with its own meshes, and there
+	# are hundreds of them in range; on a CPU rasterizer the ones standing behind a mountain cost
+	# exactly as much as the ones in front. The terrain answers this from its heightmap
+	# (map.is_point_hidden), which is why the test is cheap enough to run on props at all.
+	#
+	# Checked ROUND-ROBIN, a slice of the list per tick: the answer changes only as the camera
+	# moves, so re-asking for every prop several times a second buys nothing. The stride also
+	# keeps a slow prop from being tested while it is still the near one.
+	var terr: Node = get_parent()
+	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	var n: int = _data.size()
+	var slice_from: int = _occl_cursor
+	_occl_cursor = (_occl_cursor + maxi(n / OCCL_SLICES, 1)) % maxi(n, 1)
+	var slice_to: int = slice_from + maxi(n / OCCL_SLICES, 1)
+	var i: int = -1
+	for v in _data:
+		i += 1
+		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
+		var has: bool = v["node"] != null
+		if near and can_occlude and i >= slice_from and i < slice_to:
+			# Only far ones: close up the horizon walk is meaningless (and _is_aabb_occluded
+			# refuses anyway below occlusion_min_dist), and a prop underfoot must never blink.
+			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_PROP_HEIGHT * float(v["scale"]),
+					v.get("hidden", false))
+		if near and v.get("hidden", false):
+			near = false                      # behind a ridge — same as out of range
+		if near and not has and _shown < max_visible:
+			_spawn(v)
+		elif not near and has:
+			_despawn(v)
+	Perf.mark("props", _pf)
+
+func _spawn(v: Dictionary) -> void:
+	var node: Node3D = (v["scene"] as PackedScene).instantiate()
+	add_child(node)
+	node.position = v["pos"]
+	var s: float = v["scale"]
+	node.scale = Vector3(s, s, s)
+	if node is Node3D:
+		node.rotation.y = v["yaw"]
+	v["node"] = node
+	_shown += 1
+
+func _despawn(v: Dictionary) -> void:
+	if v["node"] != null and is_instance_valid(v["node"]):
+		(v["node"] as Node).queue_free()
+	v["node"] = null
+	_shown -= 1
+
+
+# Родитель, умеющий отвечать как карта. null, если не дождались.
+func _await_map() -> Node:
+	var map: Node = get_parent()
+	var guard: int = 0
+	while guard < MAP_WAIT_FRAMES:
+		if map != null and map.has_method("terrain_height_at") and map.has_method("get_dims"):
+			return map
+		await get_tree().process_frame
+		guard += 1
+		map = get_parent()
+	return null
