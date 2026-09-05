@@ -1185,7 +1185,7 @@ func recenter_window(new_x: int, new_z: int) -> void:
 	_recompute_height_bound()
 	# Земля стала другой ПОД ВСЕМ: и меши, и коллизия построены по старым высотам.
 	_clear_collision_cells()
-	_rebuild_after_window_move()
+	_rebuild_after_window_move(dx, dz)
 	_win_busy = false
 
 ## ЗЕМЛЯ ПОД ВСЕМ СТАЛА ДРУГОЙ. Массив уехал, значит меши чанков, их AABB, оценка плоскости и
@@ -1196,25 +1196,97 @@ func recenter_window(new_x: int, new_z: int) -> void:
 ## содержимое просто переехало на другой индекс, можно не считать заново, а ПЕРЕАДРЕСОВАТЬ —
 ## шаг подвижки кратен макро-группе как раз для этого. Переадресация — следующая задача; здесь
 ## сначала должно быть ПРАВИЛЬНО, а потом быстро.
-func _rebuild_after_window_move() -> void:
-	# ОЦЕНКУ ПЛОСКОСТИ ОБНУЛЯЕМ: она посчитана по высотам, которых в этих клетках больше нет, а
-	# протухшая выдала бы горному чанку LOD ровного места. Пустая читается как «не знаю» (см.
-	# _flat_lod) — чанк просто рисуется в полной детализации, что честно и безопасно.
-	# _chunk_min/_chunk_max не трогаем: они приходят из потокового файла и живут своей жизнью.
-	_chunk_flat_err = PackedFloat32Array()
-	var live: Array = []
-	for ci in _chunk_instances.size():
-		if _chunk_instances[ci] != null:
-			live.append(ci)
-	update_chunks(live)
-	# Подписи швов обнуляем: сшивка сравнивает их с текущим окружением и без сброса решила бы,
-	# что пересобирать нечего.
+func _rebuild_after_window_move(dx: int, dz: int) -> void:
+	# ЧАНК, ЧЬЁ СОДЕРЖИМОЕ ПРОСТО ПЕРЕЕХАЛО, НЕ СЧИТАЕМ ЗАНОВО — ПЕРЕАДРЕСУЕМ.
+	#
+	# Меш чанка построен в ЛОКАЛЬНЫХ координатах ноды: вершина лежит в `x − _cell_ox() + 0.5`.
+	# После сдвига окна на dx клетка x_new = x_old − dx, а смещение ox_new = ox_old − dx, и
+	# разность не меняется: тот же меш стоит ровно там, где стоял, и описывает ту же землю.
+	# Значит трогать его не надо вовсе — надо лишь переложить ссылку в другую ячейку массива.
+	# Ради этого шаг подвижки и сделан кратным макро-группе (см. _window_target).
+	#
+	# СТРУКТУРНОЕ НЕ ТРОГАЕМ. Кто в какой макро-группе (_chunk_macro_idx, _macro_to_chunks) и
+	# прямоугольники квадродерева зависят только от НАРЕЗКИ массива, а она при кратном сдвиге
+	# та же самая. Переносить надо ровно то, что зависит от ВЫСОТ.
+	var cxl: int = ceili(float(w - 1) / chunk_size)
+	var czl: int = ceili(float(d - 1) / chunk_size)
+	var dcx: int = dx / chunk_size
+	var dcz: int = dz / chunk_size
+	var total: int = _chunk_instances.size()
+	var n_inst: Array[MeshInstance3D] = []; n_inst.resize(total)
+	var n_aabb: Array[AABB] = [];          n_aabb.resize(total)
+	var n_mesh: Array = [];                n_mesh.resize(total)
+	var n_lod: Array[int] = [];            n_lod.resize(total)
+	var n_flat := PackedFloat32Array();    n_flat.resize(_chunk_flat_err.size())
+	var fresh: Array = []                  # чанки, под которыми земля новая
+	for cz in czl:
+		for cx in cxl:
+			var ci: int = cz * cxl + cx
+			if ci >= total:
+				continue
+			var sx: int = cx + dcx
+			var sz: int = cz + dcz
+			if sx < 0 or sx >= cxl or sz < 0 or sz >= czl:
+				fresh.append(ci)
+				continue                   # эта клетка выехала из-за края — земля под ней новая
+			var si: int = sz * cxl + sx
+			if si < 0 or si >= total:
+				fresh.append(ci)
+				continue
+			n_inst[ci] = _chunk_instances[si]
+			n_aabb[ci] = _chunk_aabbs[si]
+			n_mesh[ci] = _chunk_meshes[si]
+			n_lod[ci] = _chunk_lod[si] if si < _chunk_lod.size() else 0
+			if si < _chunk_flat_err.size() and ci < n_flat.size():
+				n_flat[ci] = _chunk_flat_err[si]
+	# Инстансы, которым не нашлось нового места, уезжают вместе с землёй: они описывают кусок
+	# мира, который окно больше не покрывает. Переживших собираем В МНОЖЕСТВО, а не ищем
+	# перебором: чанков на карте бывают тысячи, и «для каждого пройти по всем» — это квадрат.
+	var kept := {}
+	for k in total:
+		if n_inst[k] != null:
+			kept[n_inst[k].get_instance_id()] = true
+	for ci in total:
+		var old_inst: MeshInstance3D = _chunk_instances[ci]
+		if old_inst != null and not kept.has(old_inst.get_instance_id()):
+			old_inst.queue_free()
+	_chunk_instances = n_inst
+	_chunk_aabbs = n_aabb
+	_chunk_meshes = n_mesh
+	_chunk_lod = n_lod
+	_chunk_flat_err = n_flat
+	# Свежие клетки: меша нет, резидентность их макро-групп снимаем — стриминг создаст их заново
+	# по новым высотам (_request_resident).
+	for ci in fresh:
+		# РОВНО LOD_COUNT пустых уровней, а не пустой массив: _best_available_mesh адресует
+		# lod_meshes[lod] напрямую, и на пустом это выход за границы, а не «меша нет».
+		var empty: Array = []
+		empty.resize(LOD_COUNT)
+		_chunk_meshes[ci] = empty
+		if ci < _chunk_macro_idx.size():
+			_resident_set.erase(_chunk_macro_idx[ci])
+	# ПОДПИСИ ШВОВ ОБНУЛЯЕМ ЦЕЛИКОМ. Сшивка сравнивает подпись с текущим окружением, и без
+	# сброса решила бы, что пересобирать нечего, — а у макро и узлов меш ещё и покрывает землю,
+	# которой там больше нет: нулевая подпись заставит их пересобраться (по бюджету, не разом).
 	for i in _chunk_stitch_sig.size():
 		_chunk_stitch_sig[i] = 0
 	for i in _macro_stitch_sig.size():
 		_macro_stitch_sig[i] = 0
 	for i in _qt_stitch_sig.size():
 		_qt_stitch_sig[i] = 0
+	# AABB макро-групп собраны из чанковых и после переезда врут — пересчитываем по свежим.
+	for mi in _macro_to_chunks.size():
+		var box := AABB()
+		var first := true
+		for ci in _macro_to_chunks[mi]:
+			if ci < 0 or ci >= _chunk_aabbs.size():
+				continue
+			if first:
+				box = _chunk_aabbs[ci]; first = false
+			else:
+				box = box.merge(_chunk_aabbs[ci])
+		if not first and mi < _macro_aabbs.size():
+			_macro_aabbs[mi] = box
 
 func _recompute_height_bound() -> void:
 	if not Engine.is_editor_hint():
