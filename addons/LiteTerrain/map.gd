@@ -1085,6 +1085,137 @@ func _center_window() -> void:
 	_win_x = -int(w / 2)
 	_win_z = -int(d / 2)
 
+# ── ПОДВИЖКА ОКНА ────────────────────────────────────────────────────────────
+# Игрок уезжает — окно едет за ним. Считать заново весь массив на каждый сдвиг нельзя: это
+# секунды главного потока на ровном месте. Поэтому пересечение старого и нового окна КОПИРУЕТСЯ,
+# а считается только та полоса, которой раньше не было, — при шаге в 256 клеток это восьмая
+# часть работы вместо целой.
+#
+# ГЕНЕРАТОР СТАВИТ ИГРА (world_gen). Пока он не задан, окно неподвижно и всё работает как
+# раньше: карта прочитана файлом, двигать её некуда и не из чего. Так аддон остаётся рабочим
+# и в редакторе, и в старом режиме с запечённой картой.
+var world_gen: LiteTerrainGen = null
+## Ближе этого к краю окна — двигаем. Запас должен перекрывать всё, что читает высоты дальше
+## машины: дальность отсечения по горизонту и радиус коллизии.
+@export var window_margin: int = 192
+## Идёт ли подвижка прямо сейчас. Вторая поверх первой писала бы в тот же массив.
+var _win_busy: bool = false
+
+## Нужно ли двигать окно под эту мировую точку, и куда. Возвращает новое начало окна или
+## текущее, если двигать не надо.
+func _window_target(local_pos: Vector3) -> Vector2i:
+	var c := Vector2(local_pos.x + _cell_ox() - 0.5, local_pos.z + _cell_oz() - 0.5)
+	var nx: int = _win_x
+	var nz: int = _win_z
+	# Двигаем СРАЗУ НА ПОЛОКНА, а не на шаг за край: иначе игрок, едущий вдоль границы, вызывал
+	# бы подвижку каждые несколько метров, и полоса пересчитывалась бы без остановки.
+	# ШАГ КРАТЕН МАКРО-ГРУППЕ, и это не аккуратность ради аккуратности: чанки и макро нарезаны от
+	# начала массива, и сдвиг на произвольное число клеток сместил бы каждую границу — то есть
+	# сделал бы недействительными все меши разом. Кратный шаг оставляет нарезку на месте.
+	var step_x: int = maxi(int(w / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE
+	var step_z: int = maxi(int(d / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE
+	if c.x < float(window_margin):
+		nx -= step_x
+	elif c.x > float(w - window_margin):
+		nx += step_x
+	if c.y < float(window_margin):
+		nz -= step_z
+	elif c.y > float(d - window_margin):
+		nz += step_z
+	return Vector2i(nx, nz)
+
+## Сдвинуть окно так, чтобы точка снова оказалась в его середине. Корутина: генерация полосы
+## отдаёт кадры, иначе подвижка выглядит как зависание.
+func recenter_window(new_x: int, new_z: int) -> void:
+	if _win_busy or world_gen == null or not is_instance_valid(world_gen):
+		return
+	if new_x == _win_x and new_z == _win_z:
+		return
+	if md.size() != w * d:
+		return                        # массив ещё не готов — двигать нечего
+	_win_busy = true
+	var dx: int = new_x - _win_x
+	var dz: int = new_z - _win_z
+	var fresh := PackedFloat32Array()
+	if fresh.resize(w * d) != OK:
+		_win_busy = false
+		return                        # памяти нет — остаёмся там, где стояли
+	# 1. ПЕРЕКРЫТИЕ СТАРОГО И НОВОГО — копируем как есть. В новых координатах клетка (x,z) это
+	#    старая (x+dx, z+dz), и берём только те, что попадают в прежний массив.
+	var sx0: int = maxi(0, dx)
+	var sx1: int = mini(w, w + dx)
+	var sz0: int = maxi(0, dz)
+	var sz1: int = mini(d, d + dz)
+	for z in range(sz0, sz1):
+		var src: int = z * w
+		var dst: int = (z - dz) * w - dx
+		for x in range(sx0, sx1):
+			fresh[dst + x] = md[src + x]
+	# 2. НОВОЕ — двумя прямоугольниками, вертикальным и горизонтальным. Именно двумя, а не
+	#    Г-образной областью: прямоугольник умеет считать сам генератор, а разбирать «букву Г»
+	#    пришлось бы здесь, и это была бы третья копия правила о том, что где лежит.
+	var strips: Array = []
+	if dx > 0:
+		strips.append(Rect2i(w - dx, 0, dx, d))
+	elif dx < 0:
+		strips.append(Rect2i(0, 0, -dx, d))
+	if dz > 0:
+		strips.append(Rect2i(0, d - dz, w - absi(dx), dz) if dx > 0 \
+				else Rect2i(absi(dx), d - dz, w - absi(dx), dz))
+	elif dz < 0:
+		strips.append(Rect2i(0, 0, w - absi(dx), -dz) if dx > 0 \
+				else Rect2i(absi(dx), 0, w - absi(dx), -dz))
+	for r in strips:
+		var rr: Rect2i = r
+		if rr.size.x <= 0 or rr.size.y <= 0:
+			continue
+		var part: PackedFloat32Array = await world_gen.generate_region(
+				new_x + rr.position.x, new_z + rr.position.y, rr.size.x, rr.size.y, _biomes())
+		if part.size() != rr.size.x * rr.size.y:
+			_win_busy = false
+			return                    # не сложилось — окно не двигаем вовсе, старое цело
+		for z in rr.size.y:
+			var dst_row: int = (rr.position.y + z) * w + rr.position.x
+			var src_row: int = z * rr.size.x
+			for x in rr.size.x:
+				fresh[dst_row + x] = part[src_row + x]
+	md = fresh
+	_win_x = new_x
+	_win_z = new_z
+	_recompute_height_bound()
+	# Земля стала другой ПОД ВСЕМ: и меши, и коллизия построены по старым высотам.
+	_clear_collision_cells()
+	_rebuild_after_window_move()
+	_win_busy = false
+
+## ЗЕМЛЯ ПОД ВСЕМ СТАЛА ДРУГОЙ. Массив уехал, значит меши чанков, их AABB, оценка плоскости и
+## подписи швов посчитаны по высотам, которых в этих клетках больше нет.
+##
+## Пересобираем ТОЛЬКО РЕЗИДЕНТНЫЕ чанки — у остальных и меша-то нет (update_chunks их
+## пропускает), а появятся они уже по новым высотам. Это всё ещё дороже, чем нужно: чанк, чьё
+## содержимое просто переехало на другой индекс, можно не считать заново, а ПЕРЕАДРЕСОВАТЬ —
+## шаг подвижки кратен макро-группе как раз для этого. Переадресация — следующая задача; здесь
+## сначала должно быть ПРАВИЛЬНО, а потом быстро.
+func _rebuild_after_window_move() -> void:
+	# ОЦЕНКУ ПЛОСКОСТИ ОБНУЛЯЕМ: она посчитана по высотам, которых в этих клетках больше нет, а
+	# протухшая выдала бы горному чанку LOD ровного места. Пустая читается как «не знаю» (см.
+	# _flat_lod) — чанк просто рисуется в полной детализации, что честно и безопасно.
+	# _chunk_min/_chunk_max не трогаем: они приходят из потокового файла и живут своей жизнью.
+	_chunk_flat_err = PackedFloat32Array()
+	var live: Array = []
+	for ci in _chunk_instances.size():
+		if _chunk_instances[ci] != null:
+			live.append(ci)
+	update_chunks(live)
+	# Подписи швов обнуляем: сшивка сравнивает их с текущим окружением и без сброса решила бы,
+	# что пересобирать нечего.
+	for i in _chunk_stitch_sig.size():
+		_chunk_stitch_sig[i] = 0
+	for i in _macro_stitch_sig.size():
+		_macro_stitch_sig[i] = 0
+	for i in _qt_stitch_sig.size():
+		_qt_stitch_sig[i] = 0
+
 func _recompute_height_bound() -> void:
 	if not Engine.is_editor_hint():
 		return
