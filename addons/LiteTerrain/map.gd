@@ -950,7 +950,12 @@ func _make_cell_tile(key: int, cells_x: int) -> void:
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
 	# position so the shape's cell (i,j) lands on the visual master cell (sx0+i, sz0+j).
-	cs.position = Vector3(sx0 + float(W - w) * 0.5, 0.0, sz0 + float(H - d) * 0.5)
+	# ЧЕРЕЗ _cell_ox/_cell_oz, а не через w/d: это была ДВАДЦАТЬ ШЕСТАЯ копия правила перевода
+	# «клетка → точка», спрятанная в записи `(W − w) * 0.5`. Пока окно центрировано, она давала
+	# то же число; стоило окну поехать — и вся коллизия встала бы со сдвигом относительно земли,
+	# то есть машина ездила бы по невидимому рельефу в стороне от видимого.
+	cs.position = Vector3(sx0 + float(W) * 0.5 - _cell_ox(), 0.0,
+			sz0 + float(H) * 0.5 - _cell_oz())
 	add_child(cs)
 	_col_cells[key] = cs
 
@@ -1184,7 +1189,7 @@ func recenter_window(new_x: int, new_z: int) -> void:
 	_win_z = new_z
 	_recompute_height_bound()
 	# Земля стала другой ПОД ВСЕМ: и меши, и коллизия построены по старым высотам.
-	_clear_collision_cells()
+	_reindex_collision(dx, dz)
 	_rebuild_after_window_move(dx, dz)
 	_win_busy = false
 
@@ -1196,6 +1201,39 @@ func recenter_window(new_x: int, new_z: int) -> void:
 ## содержимое просто переехало на другой индекс, можно не считать заново, а ПЕРЕАДРЕСОВАТЬ —
 ## шаг подвижки кратен макро-группе как раз для этого. Переадресация — следующая задача; здесь
 ## сначала должно быть ПРАВИЛЬНО, а потом быстро.
+## ТАЙЛЫ КОЛЛИЗИИ ПЕРЕЕЗЖАЮТ, А НЕ ПЕРЕСТРАИВАЮТСЯ — по той же причине, что и меши чанков:
+## тайл стоит в локальных координатах ноды, и после сдвига окна его место не меняется, меняется
+## только ключ, под которым он лежит. Шаг подвижки кратен макро-группе (64), а тайл — 16 клеток,
+## поэтому границы тайлов при сдвиге совпадают сами собой.
+##
+## Просто выбросить их (_clear_collision_cells) было бы правильно, но опасно: под машиной на
+## один-два кадра не осталось бы земли, а этого хватает, чтобы провалиться. Тайл, под которым
+## земля не изменилась, обязан пережить переезд.
+func _reindex_collision(dx: int, dz: int) -> void:
+	if collision_cell <= 0:
+		return
+	var cells_x: int = (w + collision_cell - 1) / collision_cell
+	var cells_z: int = (d + collision_cell - 1) / collision_cell
+	var dcx: int = dx / collision_cell
+	var dcz: int = dz / collision_cell
+	var moved := {}
+	var seen := {}
+	for key in _col_cells:
+		var cx: int = int(key) % cells_x
+		var cz: int = int(key) / cells_x
+		var nx: int = cx - dcx
+		var nz: int = cz - dcz
+		if nx < 0 or nx >= cells_x or nz < 0 or nz >= cells_z:
+			if is_instance_valid(_col_cells[key]):
+				_col_cells[key].queue_free()     # выехал за окно вместе с землёй
+			continue
+		var nk: int = nz * cells_x + nx
+		moved[nk] = _col_cells[key]
+		if _col_seen.has(key):
+			seen[nk] = _col_seen[key]
+	_col_cells = moved
+	_col_seen = seen
+
 func _rebuild_after_window_move(dx: int, dz: int) -> void:
 	# ЧАНК, ЧЬЁ СОДЕРЖИМОЕ ПРОСТО ПЕРЕЕХАЛО, НЕ СЧИТАЕМ ЗАНОВО — ПЕРЕАДРЕСУЕМ.
 	#
