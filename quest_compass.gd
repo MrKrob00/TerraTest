@@ -83,16 +83,27 @@ func target_of(q: Dictionary) -> Variant:
 			return _nearest_node(get_tree().get_nodes_in_group("shop"), from)
 	return null
 
+## Дальше этого метка на «убей» не ставится: цели ещё нет, и стрелка в горизонт врёт.
+const KILL_MARK_DIST := 400.0
+
 func _nearest_enemy(from: Vector3) -> Variant:
+	# СЮЖЕТНАЯ МАШИНА ВАЖНЕЕ БЛИЖНЕЙ и берётся на любой дистанции: «уничтожь разведчика» ведёт
+	# именно к нему. Нет ни одной цели в пределах KILL_MARK_DIST — метки НЕТ вовсе: до спавна
+	# разведчика стрелка показывала на случайного врага за полкарты, то есть на пустое поле.
 	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
 	if vehicles == null:
 		return null
-	var list: Array = []
+	var story: Array = []
+	var near: Array = []
 	for e in vehicles.get_children():
 		var f = e.get("faction")
-		if e is Node3D and f != null and int(f) != 0:
-			list.append(e)
-	return _nearest_node(list, from)
+		if not (e is Node3D) or f == null or int(f) == 0:
+			continue
+		if (e as Node3D).has_meta("story"):
+			story.append(e)
+		elif (e as Node3D).global_position.distance_squared_to(from) <= KILL_MARK_DIST * KILL_MARK_DIST:
+			near.append(e)
+	return _nearest_node(story if not story.is_empty() else near, from)
 
 func _nearest_node(nodes: Array, from: Vector3) -> Variant:
 	var pts: Array = []

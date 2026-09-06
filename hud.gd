@@ -50,6 +50,7 @@ func _ready() -> void:
 	_build_hand_panel()
 	_build_block_globe()
 	_build_anchor_button()
+	_build_swap_button()
 	_build_vehicle_button()
 	_build_radar()
 	_bind_money()
@@ -123,6 +124,8 @@ func _relayout() -> void:
 	# _update_hand_panel каждый кадр (она привязана к кнопкам поворота слева).
 	if _anchor_btn:
 		_anchor_btn.position = Vector2(16, screen.y - 170)
+	if _swap_btn:
+		_swap_btn.position = Vector2(16, screen.y - 232)
 	if _radar:
 		_radar.position = _radar_pos(screen)
 	_layout_money()
@@ -432,6 +435,38 @@ func _build_anchor_button() -> void:
 	_anchor_icon.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_anchor_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_anchor_btn.add_child(_anchor_icon)
+
+# ── Быстрая пересадка между своими машинами ──────────────────────────────────
+# Круговое меню требует ПОДЪЕХАТЬ к машине и удержать по ней палец. До базы, оставленной у жилы
+# или у линии, так не переключишься вовсе — а нужна она чаще всего именно издалека. Кнопка
+# перебирает свои машины по кругу одним тапом; подпись «2/3» показывает, где ты в этом кругу.
+var _swap_btn: Button = null
+
+func _build_swap_button() -> void:
+	_swap_btn = _make_drawer_button("1/1", _on_swap_pressed)
+	_swap_btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_swap_btn.custom_minimum_size = Vector2(64, 44)
+	_swap_btn.size = Vector2(64, 44)
+	_swap_btn.visible = false
+	add_child(_swap_btn)
+
+func _own_machines() -> Array:
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc == null or not ("vehicles" in cc):
+		return []
+	var out: Array = []
+	for m in cc.vehicles:
+		if is_instance_valid(m):
+			out.append(m)
+	return out
+
+func _on_swap_pressed() -> void:
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	var list: Array = _own_machines()
+	if cc == null or list.size() < 2 or not cc.has_method("switch_to_vehicle"):
+		return
+	var i: int = list.find(cc.current_vehicle)
+	cc.switch_to_vehicle(list[(i + 1) % list.size()])
 
 func _on_anchor_pressed() -> void:
 	var v: Node = _menu_vehicle_or_current()
@@ -1342,6 +1377,13 @@ func _update_radar(delta: float) -> void:
 			if _anchor_icon.active != on_anchor:
 				_anchor_icon.active = on_anchor
 				_anchor_icon.queue_redraw()
+	if _swap_btn:
+		var own: Array = _own_machines()
+		_swap_btn.visible = (not _controls_hidden) and own.size() > 1
+		if _swap_btn.visible:
+			var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+			var i: int = own.find(cc.current_vehicle) if cc != null else -1
+			_swap_btn.text = "%d/%d" % [i + 1, own.size()]
 	# Размер и охват — по наличию блока RADAR; сама карта видна, пока есть машина.
 	var on: bool = _has_radar(v)
 	var want: float = RADAR_SIZE_FULL if on else RADAR_SIZE_SMALL

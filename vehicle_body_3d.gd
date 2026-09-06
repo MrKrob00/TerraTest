@@ -126,37 +126,58 @@ func _defense_tick(delta: float) -> void:
 # Сброс: пока на якоре, любой контакт НЕ с террейном снимает фиксацию.
 # Есть ли на машине блок ФИКС-ОПОРЫ (SUPPORT). Без него якорь недоступен (по ТЗ).
 func has_support() -> bool:
+	return support_block() != null
+
+## Сам блок опоры. Нужен ДВОИМ: колонна-упор рисуется под ним (а не под кабиной), и вокруг
+## него же крутится поворотная опора. Обычная в приоритете только по порядку обхода — на
+## машине их всё равно ставят по одной.
+func support_block() -> Node3D:
 	if block_map_node == null:
-		return false
+		return null
 	for b in block_map_node.get_children():
-		if "block" in b and int(b.block) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT]:
-			return true
-	return false
+		if b is Node3D and "block" in b and int(b.block) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT]:
+			return b as Node3D
+	return null
 
 # ВРАЩАЮЩАЯСЯ ОПОРА: тир выше обычной. На якоре ею можно доворачивать машину джойстиком
 # движения — база перестаёт быть намертво приколоченной, и продавца/бур можно навести
 # куда надо, не снимая якорь.
 const ROT_SUPPORT_SPEED: float = 1.2      # рад/с при полностью отклонённом джойстике
 
-func has_rot_support() -> bool:
+func rot_support_block() -> Node3D:
 	if block_map_node == null:
-		return false
+		return null
 	for b in block_map_node.get_children():
-		if "block" in b and int(b.block) == G.Block.ROT_SUPPORT:
-			return true
-	return false
+		if b is Node3D and "block" in b and int(b.block) == G.Block.ROT_SUPPORT:
+			return b as Node3D
+	return null
 
-# Разворот на якоре. Крутим transform напрямую, а не крутящим моментом: тело заморожено
-# якорем, физика его вращать не станет.
+func has_rot_support() -> bool:
+	return rot_support_block() != null
+
+# Разворот на якоре. Крутим transform напрямую, а не моментом: тело заморожено якорем.
+#
+# ВОКРУГ САМОЙ ОПОРЫ, а не вокруг начала координат машины. Начало — центр сетки 11³ (кабина),
+# и при опоре где-нибудь на краю база ездила по дуге радиусом в полкорпуса: колонна стоит на
+# месте, а постройку уносит вбок. Крутим точку: сдвигаем origin вокруг мировой позиции блока и
+# домножаем базис.
 func _rot_support_tick(delta: float) -> void:
-	if not anchored or is_station or not has_rot_support():
+	if not anchored or is_station:
+		return
+	var sup: Node3D = rot_support_block()
+	if sup == null:
 		return
 	if camera_controller == null or camera_controller.joystick_move == null:
 		return
 	var joy: Vector2 = camera_controller.joystick_move.get_joystick_dir()
 	if absf(joy.x) < 0.15:
 		return
-	global_rotation.y -= joy.x * ROT_SUPPORT_SPEED * delta
+	var da: float = -joy.x * ROT_SUPPORT_SPEED * delta
+	var pivot: Vector3 = sup.global_position
+	var t: Transform3D = global_transform
+	t.origin = pivot + (t.origin - pivot).rotated(Vector3.UP, da)
+	t.basis = Basis(Vector3.UP, da) * t.basis
+	global_transform = t
 
 # Можно ли этой машине вставать на якорь: она база ИЛИ на ней есть фикс-опора.
 func can_anchor() -> bool:
@@ -246,9 +267,13 @@ func toggle_anchor() -> bool:
 ## (VehicleBlock.cells_center — центр футпринта в его осях) и поворачиваем вместе с ним, чтобы
 ## оно осталось верным на повёрнутой базе.
 func _core_center_offset() -> Vector3:
+	# У обычной машины упор стоит под ОПОРОЙ: она и есть то, чем машина упирается в землю.
+	# Колонна под кабиной при опоре на краю выглядела как подпорка не под тем блоком.
 	var core: Node3D = station_core()
 	if core == null:
-		return Vector3.ZERO                # обычная машина: кабина и так в центре сетки
+		core = support_block()
+	if core == null:
+		return Vector3.ZERO
 	var c = core.get("cells_center")
 	var local: Vector3 = (c as Vector3) if c is Vector3 else Vector3.ZERO
 	return core.position + core.basis * local
