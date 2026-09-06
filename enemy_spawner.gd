@@ -656,11 +656,33 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		per[_sector_of(atan2(d.z, d.x))] += 1
 	# Секторы по возрастанию занятости; равные — вперемешку, иначе пустая карта всегда
 	# заполнялась бы с одного и того же боку.
+	#
+	# ПРИ РАВНОЙ ЗАНЯТОСТИ БЕРЁМ ТЫЛ. Запрет «не появляться по курсу» (_in_player_view) говорит
+	# только про МОМЕНТ появления: враг возник сбоку в восьмидесяти метрах — правило соблюдено, —
+	# а через десять секунд игрок довернул к метке задания, и тот же враг оказался ровно на
+	# дороге. С двумя бодрствующими на кольце в 80..160 м это выходило КАЖДЫЙ раз и читалось как
+	# «они меня ждут». Сзади и по бокам-сзади враг догоняет, а не преграждает: встреча случается
+	# тогда, когда игрок сам решит остановиться и принять бой.
+	var back: Array[int] = []
+	back.resize(SPAWN_SECTORS)
+	back.fill(0)
+	var pl: Node3D = _player()
+	if pl != null:
+		var fwd: Vector3 = -pl.global_transform.basis.z
+		if Vector2(fwd.x, fwd.z).length_squared() > 0.0001:
+			var head: float = atan2(fwd.z, fwd.x)
+			for i in SPAWN_SECTORS:
+				var mid: float = (TAU / SPAWN_SECTORS) * (float(i) + 0.5)
+				# 1 — сектор смотрит вперёд (хуже), 0 — назад и вбок-назад (лучше).
+				back[i] = 1 if absf(wrapf(mid - head, -PI, PI)) < deg_to_rad(100.0) else 0
 	var order: Array[int] = []
 	for i in SPAWN_SECTORS:
 		order.append(i)
 	order.shuffle()
-	order.sort_custom(func(a, b): return per[a] < per[b])
+	order.sort_custom(func(a, b):
+		if per[a] != per[b]:
+			return per[a] < per[b]
+		return back[a] < back[b])
 	# Границы кольца считаем ОДИН РАЗ на поиск: обзор врага за время перебора не меняется.
 	var near: float = _spawn_min_dist()
 	var far: float = maxf(spawn_max_dist, near + 20.0)   # кольцо не может быть вывернутым
