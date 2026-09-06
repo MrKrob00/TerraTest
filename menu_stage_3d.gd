@@ -7,17 +7,22 @@ extends Node3D
 ## one flat mesh with fog, not LiteTerrain.
 ##
 ## Motion is a CIRCLE, deliberately. Steering with a turn-rate limit looked like the whole model
-## being yanked left and right; a machine on rails reads as driving and never jerks. Only the
-## TURRETS track the opponent — that is the part that must look alive.
+## being yanked left and right; a machine on rails reads as driving and never jerks. The TURRETS
+## track the opponent and the tyres roll - the same two parts that move in game.
+##
+## Sun, environment, camera and ground are NODES in menu.tscn: they stand still, so they belong
+## in the scene where they can be tweaked without touching code. Everything built from data -
+## rocks, machines, tracers, cards - is created here.
 ##
 ## Every ROUND_TIME the round restarts: another biome palette and another pair of builds, so the
 ## menu is not one looping scene.
 ##
 ## All randomness comes from a local RNG; global `randf` belongs to the game.
 
-const GROUND_SIZE := 420.0
 ## Wheel bottom is half a cell below the block centre — lower and the wheels sink into the floor.
 const GROUND_Y := 0.62
+## Tyre radius, for turning metres per second into radians per second.
+const WHEEL_RADIUS := 0.45
 const ROUND_TIME := 30.0
 
 const TRACER_COL := Color(0.35, 0.95, 1.0)
@@ -50,13 +55,17 @@ var _rng := RandomNumberGenerator.new()
 var _t: float = 0.0
 var _round_t: float = 0.0
 var _biome: int = 0
-var _cam: Camera3D = null
+@onready var _cam: Camera3D = %MenuCamera
+@onready var _ground: MeshInstance3D = %Ground
+@onready var _rocks_root: Node3D = %Rocks
+@onready var _machines_root: Node3D = %Machines
+@onready var _fx_root: Node3D = %Effects
 var _env: Environment = null
 var _sky_mat: ProceduralSkyMaterial = null
 var _ground_mat: StandardMaterial3D = null
 var _rock_mat: StandardMaterial3D = null
 var _rocks: Array = []
-## Two machines: {node, ring, speed, phase, turrets, fire_t, burst, next}.
+## Two machines: {node, ring, speed, phase, turrets, wheels, fire_t, burst, next}.
 var _mach: Array = []
 ## Pools, allocated once and reused by the `on` flag.
 var _tracers: Array = []
@@ -64,60 +73,19 @@ var _cards: Array = []
 
 func _ready() -> void:
 	_rng.seed = 0x7A11
-	_build_environment()
-	_build_ground()
+	# Sky and ground materials come from the scene and are mutated per round (palette). They are
+	# instances of this running scene, so nothing is written back to disk.
+	var we := %MenuEnv as WorldEnvironment
+	_env = we.environment if we != null else null
+	if _env != null and _env.sky != null:
+		_sky_mat = _env.sky.sky_material as ProceduralSkyMaterial
+	_ground_mat = _ground.material_override as StandardMaterial3D
+	_build_rocks()
 	_build_pools()
 	_new_round()
 	set_process(true)
 
-# ── Scene ────────────────────────────────────────────────────────────────────
-func _build_environment() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-42.0, 128.0, 0.0)
-	# Block models are lit, not unshaded: sun plus full sky ambient blew them out to white.
-	sun.light_energy = 0.85
-	sun.light_color = Color(1.0, 0.96, 0.90)
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 60.0
-	add_child(sun)
-
-	var we := WorldEnvironment.new()
-	_env = Environment.new()
-	_env.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	_sky_mat = ProceduralSkyMaterial.new()
-	_sky_mat.sky_top_color = Color(0.20, 0.42, 0.60)
-	_sky_mat.ground_bottom_color = Color(0.26, 0.24, 0.20)
-	sky.sky_material = _sky_mat
-	_env.sky = sky
-	_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	_env.ambient_light_energy = 0.28
-	# Filmic keeps highlights from clipping: with the linear mapper light hull faces went pure white.
-	_env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	_env.tonemap_exposure = 0.9
-	_env.fog_enabled = true
-	_env.fog_density = 0.004
-	_env.fog_aerial_perspective = 0.3
-	we.environment = _env
-	add_child(we)
-
-	_cam = Camera3D.new()
-	_cam.fov = 52.0
-	_cam.far = 600.0
-	_cam.current = true
-	add_child(_cam)
-
-func _build_ground() -> void:
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(GROUND_SIZE, GROUND_SIZE)
-	var mi := MeshInstance3D.new()
-	mi.mesh = pm
-	_ground_mat = StandardMaterial3D.new()
-	_ground_mat.roughness = 1.0
-	mi.material_override = _ground_mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-
+func _build_rocks() -> void:
 	# Rocks and distant hills. Not decoration: on a bare plane there is nothing to measure the
 	# machines' speed or distance against, and the motion reads as sliding.
 	var lump := SphereMesh.new()
@@ -132,7 +100,7 @@ func _build_ground() -> void:
 		rock.mesh = lump
 		rock.material_override = _rock_mat
 		rock.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		add_child(rock)
+		_rocks_root.add_child(rock)
 		_rocks.append(rock)
 
 ## Scatter rocks and hills anew: same meshes, another layout — that is what "another map" means here.
@@ -222,11 +190,16 @@ func _new_round() -> void:
 	_round_t = ROUND_TIME
 	_biome = (_biome + _rng.randi_range(1, BIOMES.size() - 1)) % BIOMES.size()
 	var b: Dictionary = BIOMES[_biome]
-	_ground_mat.albedo_color = b["ground"]
-	_rock_mat.albedo_color = b["rock"]
-	_env.fog_light_color = b["fog"]
-	_sky_mat.sky_horizon_color = b["sky"]
-	_sky_mat.ground_horizon_color = Color(b["ground"]).lerp(Color(b["fog"]), 0.5)
+	# Guarded: the scene may have been edited and a material or the environment removed.
+	if _ground_mat != null:
+		_ground_mat.albedo_color = b["ground"]
+	if _rock_mat != null:
+		_rock_mat.albedo_color = b["rock"]
+	if _env != null:
+		_env.fog_light_color = b["fog"]
+	if _sky_mat != null:
+		_sky_mat.sky_horizon_color = b["sky"]
+		_sky_mat.ground_horizon_color = Color(b["ground"]).lerp(Color(b["fog"]), 0.5)
 	_scatter()
 
 	for m in _mach:
@@ -236,25 +209,27 @@ func _new_round() -> void:
 	picks.shuffle()
 	for side in 2:
 		var n := Node3D.new()
-		add_child(n)
-		var turrets: Array = _assemble(n, picks[side])
+		_machines_root.add_child(n)
+		var parts: Dictionary = _assemble(n, picks[side])
 		_mach.append({
 			"node": n,
+			"wheels": parts["wheels"],
 			# Two rings with different radii and speeds: the distance between them keeps changing
 			# without anyone steering.
 			"ring": 12.0 if side == 0 else 15.5,
 			"speed": (0.16 if side == 0 else -0.13),
 			"phase": 0.0 if side == 0 else PI,
-			"turrets": turrets,
+			"turrets": parts["turrets"],
 			"fire_t": _rng.randf_range(0.2, 1.0),
 			"burst": 0,
 			"next": 0,
 		})
 
-## Assemble and return THIS build's turrets: the hull rides its circle, the gun tracks the enemy —
-## same split as `WeaponBlock` in game.
-func _assemble(root: Node3D, layout: Array) -> Array:
+## Assemble and return the moving parts of THIS build: turrets track the enemy, tyres roll.
+## Same split as in game - the hull carries them, they move on their own.
+func _assemble(root: Node3D, layout: Array) -> Dictionary:
 	var turrets: Array = []
+	var wheels: Array = []
 	for e in layout:
 		var bt: int = int(e[1])
 		var scene: PackedScene = G.get_scene(bt)
@@ -276,7 +251,15 @@ func _assemble(root: Node3D, layout: Array) -> Array:
 			glow.visible = false
 			holder.add_child(glow)
 			turrets.append({"node": holder, "glow": glow, "flash": 0.0})
-	return turrets
+		elif bt == G.Block.WHEEL or bt == G.Block.SMALL_WHEEL or bt == G.Block.BIG_WHEEL:
+			# The tyre is the copy of the node named "wheel" (wheel.gd spins that same one). It
+			# rolls around its OWN X, and the mount is mirrored left/right, hence the side sign.
+			for c in holder.get_children():
+				if String(c.name).to_lower() != "wheel":
+					continue
+				wheels.append({"node": c, "rest": (c as Node3D).transform.basis,
+						"side": -1.0 if cell.x < 5 else 1.0, "spin": 0.0})
+	return {"turrets": turrets, "wheels": wheels}
 
 ## Copy the visible part with its OWN materials. `build_hint` paints its copy white; here the
 ## machine must look exactly like it does in game.
@@ -287,6 +270,7 @@ func _copy_meshes(node: Node, dst: Node3D, xform: Transform3D) -> void:
 	var src_mi := node as MeshInstance3D
 	if src_mi != null and src_mi.mesh != null and src_mi.visible:
 		var mi := MeshInstance3D.new()
+		mi.name = src_mi.name          # the tyre is found by name, see _assemble
 		mi.mesh = src_mi.mesh
 		mi.material_override = src_mi.material_override
 		mi.transform = here
@@ -305,7 +289,7 @@ func _build_pools() -> void:
 		mi.material_override = tmat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.visible = false
-		add_child(mi)
+		_fx_root.add_child(mi)
 		_tracers.append({"mi": mi, "on": false, "from": Vector3.ZERO, "to": Vector3.ZERO, "p": 0.0})
 
 	# A hit is RED GLITCH CARDS — the same vocabulary the game uses for damage (BlockFX).
@@ -321,7 +305,7 @@ func _build_pools() -> void:
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.visible = false
-		add_child(mi)
+		_fx_root.add_child(mi)
 		_cards.append({"mi": mi, "mat": mat, "on": false, "t": 0.0,
 				"pos": Vector3.ZERO, "dir": Vector3.UP})
 
@@ -370,6 +354,12 @@ func _drive(i: int) -> void:
 	var n: Node3D = m["node"]
 	n.position = Vector3(p.x, GROUND_Y + sin(_t * 4.6 + float(i)) * 0.02, p.y)
 	n.rotation = Vector3(0.0, atan2(-f.x, -f.y), -0.05 * signf(float(m["speed"])))
+	# Tyres roll at the speed the hull actually travels. Multiplying the basis instead of writing
+	# rotation.x: the model has its own baked orientation and one Euler component would break it.
+	var roll: float = absf(float(m["speed"])) * r / WHEEL_RADIUS
+	for w in m["wheels"]:
+		w["spin"] = float(w["spin"]) + float(w["side"]) * roll * get_process_delta_time()
+		(w["node"] as Node3D).transform.basis = Basis(w["rest"]) * Basis(Vector3.RIGHT, float(w["spin"]))
 
 ## Turrets track the opponent by themselves — same split as in game: the hull drives its own way,
 ## the gun holds the target.

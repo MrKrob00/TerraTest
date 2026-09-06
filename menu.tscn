@@ -1,6 +1,328 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://menu.gd" id="1_menu"]
+[ext_resource type="Script" path="res://menu_stage_3d.gd" id="2_stage"]
+
+[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
+sky_top_color = Color(0.2, 0.42, 0.6, 1)
+sky_horizon_color = Color(0.68, 0.7, 0.64, 1)
+ground_horizon_color = Color(0.55, 0.5, 0.4, 1)
+ground_bottom_color = Color(0.26, 0.24, 0.2, 1)
+
+[sub_resource type="Sky" id="Sky_res"]
+sky_material = SubResource("Sky_mat")
+
+[sub_resource type="Environment" id="Env_res"]
+background_mode = 2
+sky = SubResource("Sky_res")
+ambient_light_source = 3
+ambient_light_energy = 0.28
+tonemap_mode = 3
+tonemap_exposure = 0.9
+fog_enabled = true
+fog_light_color = Color(0.62, 0.6, 0.52, 1)
+fog_density = 0.004
+fog_aerial_perspective = 0.3
+
+[sub_resource type="PlaneMesh" id="Ground_mesh"]
+size = Vector2(420, 420)
+
+[sub_resource type="StandardMaterial3D" id="Ground_mat"]
+albedo_color = Color(0.46, 0.39, 0.28, 1)
+roughness = 1.0
+
+[sub_resource type="StyleBoxFlat" id="Panel_style"]
+content_margin_left = 10.0
+content_margin_top = 10.0
+content_margin_right = 10.0
+content_margin_bottom = 10.0
+bg_color = Color(0.055, 0.125, 0.141, 0.78)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.85, 0.92, 0.28)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="Btn_style"]
+content_margin_left = 6.0
+content_margin_top = 6.0
+content_margin_right = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.02, 0.05, 0.06, 0.72)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.85, 0.92, 0.45)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="Btn_style_hot"]
+content_margin_left = 6.0
+content_margin_top = 6.0
+content_margin_right = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.35, 0.85, 0.92, 0.26)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.35, 0.85, 0.92, 0.45)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [node name="Menu" type="Node3D"]
 script = ExtResource("1_menu")
+
+[node name="Stage" type="Node3D" parent="."]
+unique_name_in_owner = true
+script = ExtResource("2_stage")
+
+[node name="Sun" type="DirectionalLight3D" parent="Stage"]
+unique_name_in_owner = true
+transform = Transform3D(-0.61566, -0.51983, 0.59245, 0, 0.75184, 0.65934, -0.78801, 0.40597, -0.46281, 0, 0, 0)
+light_color = Color(1, 0.96, 0.9, 1)
+light_energy = 0.85
+shadow_enabled = true
+directional_shadow_max_distance = 60.0
+
+[node name="MenuEnv" type="WorldEnvironment" parent="Stage"]
+unique_name_in_owner = true
+environment = SubResource("Env_res")
+
+[node name="MenuCamera" type="Camera3D" parent="Stage"]
+unique_name_in_owner = true
+fov = 52.0
+far = 600.0
+current = true
+
+[node name="Ground" type="MeshInstance3D" parent="Stage"]
+unique_name_in_owner = true
+cast_shadow = 0
+mesh = SubResource("Ground_mesh")
+material_override = SubResource("Ground_mat")
+
+[node name="Rocks" type="Node3D" parent="Stage"]
+unique_name_in_owner = true
+
+[node name="Machines" type="Node3D" parent="Stage"]
+unique_name_in_owner = true
+
+[node name="Effects" type="Node3D" parent="Stage"]
+unique_name_in_owner = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Root" type="MarginContainer" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/margin_left = 22
+theme_override_constants/margin_top = 22
+theme_override_constants/margin_right = 22
+theme_override_constants/margin_bottom = 22
+
+[node name="Col" type="VBoxContainer" parent="UI/Root"]
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Top" type="HBoxContainer" parent="UI/Root/Col"]
+layout_mode = 2
+size_flags_vertical = 0
+mouse_filter = 2
+
+[node name="Title" type="VBoxContainer" parent="UI/Root/Col/Top"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = -4
+
+[node name="TitleName" type="Label" parent="UI/Root/Col/Top/Title"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "WORLDTECH"
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_colors/font_outline_color = Color(0.02, 0.05, 0.06, 0.85)
+theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 40
+
+[node name="TitleVersion" type="Label" parent="UI/Root/Col/Top/Title"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "v"
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 0.75)
+theme_override_colors/font_outline_color = Color(0.02, 0.05, 0.06, 0.8)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 12
+
+[node name="TopSpacer" type="Control" parent="UI/Root/Col/Top"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="News" type="PanelContainer" parent="UI/Root/Col/Top"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+size_flags_horizontal = 8
+size_flags_vertical = 0
+theme_override_styles/panel = SubResource("Panel_style")
+
+[node name="NewsBox" type="VBoxContainer" parent="UI/Root/Col/Top/News"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="NewsHead" type="Label" parent="UI/Root/Col/Top/News/NewsBox"]
+layout_mode = 2
+text = "NEWS"
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 0.9)
+theme_override_font_sizes/font_size = 11
+
+[node name="NewsScroll" type="ScrollContainer" parent="UI/Root/Col/Top/News/NewsBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(380, 300)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="NewsList" type="VBoxContainer" parent="UI/Root/Col/Top/News/NewsBox/NewsScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 10
+
+[node name="MidSpacer" type="Control" parent="UI/Root/Col"]
+layout_mode = 2
+size_flags_vertical = 3
+mouse_filter = 2
+
+[node name="Bottom" type="HBoxContainer" parent="UI/Root/Col"]
+layout_mode = 2
+size_flags_vertical = 8
+mouse_filter = 2
+
+[node name="Left" type="VBoxContainer" parent="UI/Root/Col/Bottom"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+size_flags_horizontal = 0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="BottomSpacer" type="Control" parent="UI/Root/Col/Bottom"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+
+[node name="Settings" type="CenterContainer" parent="UI"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="UI/Settings"]
+custom_minimum_size = Vector2(380, 0)
+layout_mode = 2
+theme_override_styles/panel = SubResource("Panel_style")
+
+[node name="Box" type="VBoxContainer" parent="UI/Settings/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Head" type="Label" parent="UI/Settings/Panel/Box"]
+layout_mode = 2
+text = "CAMERA SETTINGS"
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+theme_override_font_sizes/font_size = 16
+
+[node name="LookRow" type="VBoxContainer" parent="UI/Settings/Panel/Box"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LookRow"]
+layout_mode = 2
+text = "Rotation sensitivity"
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 13
+
+[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/LookRow"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="LookSlider" type="HSlider" parent="UI/Settings/Panel/Box/LookRow/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.2
+max_value = 3.0
+step = 0.05
+value = 1.0
+
+[node name="LookValue" type="Label" parent="UI/Settings/Panel/Box/LookRow/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "1.00"
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+
+[node name="ZoomRow" type="VBoxContainer" parent="UI/Settings/Panel/Box"]
+layout_mode = 2
+theme_override_constants/separation = 2
+
+[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/ZoomRow"]
+layout_mode = 2
+text = "Zoom sensitivity"
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 13
+
+[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/ZoomRow"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="ZoomSlider" type="HSlider" parent="UI/Settings/Panel/Box/ZoomRow/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(220, 32)
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.2
+max_value = 3.0
+step = 0.05
+value = 1.0
+
+[node name="ZoomValue" type="Label" parent="UI/Settings/Panel/Box/ZoomRow/Row"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 0)
+layout_mode = 2
+text = "1.00"
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+
+[node name="InvertY" type="CheckButton" parent="UI/Settings/Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Invert vertical"
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+
+[node name="CloseSettings" type="Button" parent="UI/Settings/Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(88, 48)
+layout_mode = 2
+text = "CLOSE"
+theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
+theme_override_colors/font_hover_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_colors/font_pressed_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("Btn_style")
+theme_override_styles/hover = SubResource("Btn_style_hot")
+theme_override_styles/pressed = SubResource("Btn_style_hot")
