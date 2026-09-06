@@ -116,6 +116,7 @@ unique_name_in_owner = true
 
 [node name="LiteTerrain" type="StaticBody3D" parent="Stage" unique_id=1897739102 node_paths=PackedStringArray("camera")]
 script = ExtResource("3_4hy44")
+follow_world_settings = false
 camera = NodePath("../MenuCamera")
 biomes = SubResource("Resource_l48gv")
 metadata/_custom_type_script = "uid://ckpss4psgcjt4"
