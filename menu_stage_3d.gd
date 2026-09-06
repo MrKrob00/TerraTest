@@ -6,10 +6,12 @@ extends Node3D
 ## them, of DIFFERENT factions, so they treat each other as enemies exactly the way the game
 ## decides that (enemy_vehicle._is_enemy compares faction).
 ##
-## A round lasts ROUND_TIME. The NEXT map is generated in the background while the current fight
-## runs, and the swap happens only once it is ready: old map, machines and everything they spawned
-## go away, the new map takes their place and a new pair of builds starts over. Generation is also
-## kicked off early if one side has already lost all its weapons - there is nothing left to watch.
+## A round runs ROUND_TIME, and only THEN does the next map start generating - the fight keeps
+## going while it does. When generation finishes the round resets: old map, machines and everything
+## they spawned go away, the new map takes their place and a new pair of builds starts over.
+## Generation also starts early when one side has lost all its weapons: there is nothing left to
+## watch. Only ever one generation at a time (_gen_busy), or a second round would queue up behind
+## the first and the swap would happen twice.
 ##
 ## The demo machines carry `demo = true`: no rewards, no quest progress on death, and no way out of
 ## the fight (see enemy_vehicle). A backdrop where both sides drive apart shows nothing.
@@ -33,6 +35,8 @@ const PRESETS := [5, 6, 7, 8, 9, 10]
 const CAM_HEIGHT := 26.0
 const CAM_DIST := 34.0
 const CAM_ORBIT := 0.06          # rad/s
+## Never closer than this to whatever is directly under the camera.
+const CAM_CLEARANCE := 8.0
 
 var _rng := RandomNumberGenerator.new()
 var _t: float = 0.0
@@ -49,8 +53,8 @@ var _swapping: bool = false
 
 func _ready() -> void:
 	_rng.randomize()
+	set_process(true)       # the camera works while the first map is still being generated
 	await _open_round()
-	set_process(true)
 
 # ── Rounds ───────────────────────────────────────────────────────────────────
 ## Build a map, wait for its terrain, put two machines on it and start the next map at once.
@@ -61,7 +65,7 @@ func _open_round() -> void:
 	_map.set_collision_streaming(true)
 	_spawn_pair()
 	_round_t = ROUND_TIME
-	_prepare_next()
+	_move_camera()          # first frame already looks at the fight, not at the origin
 
 ## A map generated from its own seed. `force_procedural` keeps it away from G: the slot's seed
 ## belongs to the save, this one is scenery.
@@ -84,11 +88,15 @@ func _make_map() -> Node3D:
 		await get_tree().process_frame
 		guard += 1
 	if not (is_instance_valid(m) and m.terrain_is_ready):
+		push_warning("menu: map generation gave up after %d frames" % guard)
+		if is_instance_valid(m):
+			m.queue_free()
 		return null
 	return m
 
-## Generation of the NEXT map runs while the current fight is on screen: it takes seconds, and
-## doing it at the moment of the swap would freeze the menu on a still picture.
+## Start the NEXT map. Runs while the current fight is still on screen, so nothing freezes; the
+## round is only reset once this finishes. Guarded twice - a map already waiting, or a run already
+## going - because both _process and the "no weapons left" check can ask for it in the same frame.
 func _prepare_next() -> void:
 	if _next_map != null or _gen_busy:
 		return
@@ -155,8 +163,8 @@ func _swap_round() -> void:
 		_map.set_collision_streaming(true)
 	_spawn_pair()
 	_round_t = ROUND_TIME
+	_move_camera()
 	_swapping = false
-	_prepare_next()
 
 # ── Tick ─────────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
@@ -164,14 +172,17 @@ func _process(delta: float) -> void:
 	_move_camera()
 	if _swapping or _map == null:
 		return
-	_round_t -= delta
-	# Nothing left to watch: one side has no weapons or is already gone. Start the next map early
-	# if it is not on its way yet, and cut the round short once it is ready.
-	if _fight_over():
-		_round_t = minf(_round_t, 2.0)
-		_prepare_next()
-	if _round_t <= 0.0 and _next_ready:
+	# A map is ready and waiting - reset the round now.
+	if _next_map != null:
 		_swap_round()
+		return
+	# Generation is running: the fight carries on until it lands. No second run is started.
+	if _gen_busy:
+		return
+	_round_t -= delta
+	# Time is up, or one side has no weapons left and there is nothing left to watch.
+	if _round_t <= 0.0 or _fight_over():
+		_prepare_next()
 
 ## Is the fight decided? Either machine dead, or one of them with no weapon blocks left.
 func _fight_over() -> bool:
@@ -192,8 +203,12 @@ func _weapon_count(m: Node3D) -> int:
 			n += 1
 	return n
 
-## The camera watches the middle of the fight from above and orbits slowly. Height is fixed: the
-## machines drive, and a camera that also chased them would turn the backdrop into a shaky cam.
+## The camera watches the middle of the fight from above and orbits slowly.
+##
+## Height is counted FROM THE GROUND under that middle, not from the machines: hills here reach
+## tens of metres, and a fixed altitude put the camera inside a slope - the menu opened on a black
+## screen. Before the first machines exist the middle is the map centre, so the ground is still
+## what the height is measured against.
 func _move_camera() -> void:
 	var mid := Vector3.ZERO
 	var live: int = 0
@@ -203,6 +218,13 @@ func _move_camera() -> void:
 			live += 1
 	if live > 0:
 		mid /= float(live)
+	# No map yet (the first one is still generating): sit above everything the generator can build,
+	# so the ground appears in frame the moment it exists instead of somewhere behind the camera.
+	var gy: float = _ground_y(mid) if _map != null and is_instance_valid(_map) else 100.0
 	var a: float = _t * CAM_ORBIT
-	_cam.position = Vector3(mid.x + cos(a) * CAM_DIST, mid.y + CAM_HEIGHT, mid.z + sin(a) * CAM_DIST)
-	_cam.look_at(mid + Vector3.UP * 1.5, Vector3.UP)
+	var eye := Vector3(mid.x + cos(a) * CAM_DIST, gy + CAM_HEIGHT, mid.z + sin(a) * CAM_DIST)
+	# The orbit point may land on a hill higher than the camera itself - then the eye goes under the
+	# ground and the screen fills with the inside of a slope. Keep it above whatever is under it.
+	eye.y = maxf(eye.y, _ground_y(eye) + CAM_CLEARANCE)
+	_cam.position = eye
+	_cam.look_at(Vector3(mid.x, gy + 2.0, mid.z), Vector3.UP)

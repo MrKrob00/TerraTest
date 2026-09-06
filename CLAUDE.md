@@ -223,10 +223,13 @@ project: read it before claiming how anything works.
   parked next to the machine.
 - Menu backdrop is a REAL fight: a 512-cell procedural LiteTerrain map with streamed collision and
   two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo machines
-  carry `demo = true` (no rewards, no quest progress, no retreat). The next map is generated in the
-  background and swapped in when ready - together with the old machines and their wreckage; a side
-  losing all weapons starts that generation early. Collision on a prepared map stays OFF until it is
-  the visible one (`map.set_collision_streaming`), or two heightfields fight over the same bodies.
+  carry `demo = true` (no rewards, no quest progress, no retreat). A round runs 30 s and only THEN
+  starts generating the next map, with the fight continuing meanwhile; the reset happens when that
+  generation finishes. Never two generations at once - a side losing all weapons only starts one
+  early. Collision on a prepared map stays OFF until it is the visible one
+  (`map.set_collision_streaming`), or two heightfields fight over the same bodies. Camera height is
+  measured FROM THE GROUND under its look point and kept clear of whatever is under the eye: a fixed
+  altitude put it inside a hill, which reads as a white screen with stray polygons.
 
 ### Input
 
