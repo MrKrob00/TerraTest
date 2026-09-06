@@ -445,9 +445,12 @@ func _ready() -> void:
 	# считается из сида, и читать файлы не только не нужно, но и вредно: прочитанная карта задала
 	# бы окну чужой размер и чужие высоты. Спрашиваем у G сами: слот выбирается в меню, до того
 	# как эта сцена появилась, и положить нам ответ было некому.
-	var proc_world: bool = game != null and game.get("world_procedural") == true
+	# GAME HOOK (TerraTest): the MENU builds its own procedural map - its own seed, its own window
+	# size - and must not ask G, whose seed belongs to the save slot.
+	var proc_world: bool = force_procedural or (game != null and game.get("world_procedural") == true)
 	if proc_world:
-		await setup_procedural(int(game.get("world_seed")))
+		var seed_value: int = forced_seed if force_procedural else int(game.get("world_seed"))
+		await setup_procedural(seed_value)
 		await get_tree().process_frame
 		_setup_streaming_collision()
 		await get_tree().process_frame
@@ -734,6 +737,17 @@ func _load_heightmap_image() -> Image:
 # HeightMapShape3D is created per needed cell. Cells TILE (no overlap → no doubled
 # collision and no catchy edges inside the driving area), and bodies that share a cell
 # share its window. Bodies are discovered via node_added/node_removed signals.
+## Turn streamed collision on or off at runtime. The menu backdrop needs it: the map it prepares in
+## the background sits at the same origin as the one on screen, and two heightfields under the same
+## machines fight each other. Collision comes on only when the map becomes the visible one.
+func set_collision_streaming(on: bool) -> void:
+	if on:
+		_setup_streaming_collision()
+		return
+	_col_active = false
+	_clear_collision_cells()
+	_col_bodies.clear()
+
 func _setup_streaming_collision() -> void:
 	if md.is_empty() or w <= 0 or d <= 0:
 		return
@@ -1117,6 +1131,10 @@ func _center_window() -> void:
 @export_group("Procedural")
 ## Сторона окна высот в клетках. 2048² — это 16 МБ, ровно столько же, сколько занимала вся
 ## карта раньше: память не выросла, а мир перестал кончаться.
+## Set by whoever builds the map instead of the game world (the menu backdrop): generate from
+## forced_seed without asking G. Must be set BEFORE the node enters the tree.
+@export var force_procedural: bool = false
+@export var forced_seed: int = 0
 @export var window_size: int = LiteTerrainGen.DEF_WINDOW
 @export var proc_scale: float = LiteTerrainGen.DEF_SCALE
 @export var proc_power: float = LiteTerrainGen.DEF_POWER

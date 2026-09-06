@@ -221,9 +221,12 @@ project: read it before claiming how anything works.
   flattened to the horizon, never from `global_rotation.y`.
 - Switching between your machines is a button (`hud._swap_btn`), because the radial menu needs you
   parked next to the machine.
-- Menu backdrop is a real 3D scene with no game scripts: machines are copies of real block meshes,
-  they ride a circle, only turrets track, and the round restarts every 30 s with another palette and
-  another pair of builds.
+- Menu backdrop is a REAL fight: a 512-cell procedural LiteTerrain map with streamed collision and
+  two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo machines
+  carry `demo = true` (no rewards, no quest progress, no retreat). The next map is generated in the
+  background and swapped in when ready - together with the old machines and their wreckage; a side
+  losing all weapons starts that generation early. Collision on a prepared map stays OFF until it is
+  the visible one (`map.set_collision_streaming`), or two heightfields fight over the same bodies.
 
 ### Input
 
