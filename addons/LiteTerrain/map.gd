@@ -417,7 +417,7 @@ func _ready() -> void:
 	# Автолоад прогресса игры. Берём ОДИН РАЗ на весь _ready: ниже у него спрашивают ещё и то,
 	# процедурный ли это мир, а второе объявление в той же области видимости GDScript не пускает
 	# вовсе — скрипт с ним не грузится целиком.
-	var game: Node = get_node_or_null("/root/G")
+	var game: Node = get_node_or_null("/root/G") if follow_world_settings else null
 	if game != null and game.has_method("slot_path"):
 		user_heights_path = game.slot_path("terrain_height.bin")
 	if Engine.is_editor_hint():
@@ -1139,6 +1139,10 @@ func _center_window() -> void:
 ## not on screen yet (the menu backdrop): during the seconds it spends building chunks its
 ## heightfield would otherwise appear under bodies standing on the map that IS on screen.
 @export var start_without_collision: bool = false
+## Ask G about the world at all. The menu backdrop turns this off: its map is baked and belongs to
+## no save slot, while G answers for the slot the player last opened - a procedural slot would make
+## the menu generate its own terrain instead of loading the authored one.
+@export var follow_world_settings: bool = true
 @export var force_procedural: bool = false
 @export var forced_seed: int = 0
 @export var window_size: int = LiteTerrainGen.DEF_WINDOW

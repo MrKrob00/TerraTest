@@ -222,7 +222,10 @@ project: read it before claiming how anything works.
   flattened to the horizon, never from `global_rotation.y`.
 - Switching between your machines is a button (`hud._swap_btn`), because the radial menu needs you
   parked next to the machine.
-- Menu backdrop is a REAL fight: a 512-cell procedural LiteTerrain map with streamed collision and
+- Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
+  (`Stage/LiteTerrain`, a baked 512-cell heightmap) so the menu opens on a world instead of on sky;
+  it carries `follow_world_settings = false`, or G would hand it the save slot's procedural seed.
+  Every map after it is generated: a 512-cell procedural LiteTerrain map with streamed collision and
   two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo machines
   carry `demo = true` (no rewards, no quest progress, no retreat). A round runs 30 s and only THEN
   starts generating the next map, with the fight continuing meanwhile; the reset happens when that

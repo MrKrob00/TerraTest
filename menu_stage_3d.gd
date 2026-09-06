@@ -16,8 +16,12 @@ extends Node3D
 ## The demo machines carry `demo = true`: no rewards, no quest progress on death, and no way out of
 ## the fight (see enemy_vehicle). A backdrop where both sides drive apart shows nothing.
 ##
-## The map is 512 cells: big enough for a fight, small enough to generate in a couple of seconds
-## while the previous one is still on screen.
+## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`): a baked 512-cell heightmap
+## made with the plugin. It loads in a moment, so the menu opens on a real world instead of on an
+## empty sky while the first generation runs. Every map after it is generated here.
+##
+## 512 cells: big enough for a fight, small enough to generate in a couple of seconds while the
+## previous one is still on screen.
 
 const ENEMY_SCENE := preload("res://enemy.tscn")
 const MAP_SCRIPT := preload("res://addons/LiteTerrain/map.gd")
@@ -57,12 +61,18 @@ func _ready() -> void:
 	await _open_round()
 
 # ── Rounds ───────────────────────────────────────────────────────────────────
-## Build a map, wait for its terrain, put two machines on it and start the next map at once.
+## Open the first round on the scene map; if it is gone (someone deleted the node), generate one.
 func _open_round() -> void:
-	_map = await _make_map()
+	_map = get_node_or_null("LiteTerrain") as Node3D
+	if _map != null:
+		# The scene map loads its own baked heightmap and sets up its own collision in _ready.
+		if not await _wait_terrain(_map):
+			_map = null
 	if _map == null:
-		return
-	_map.set_collision_streaming(true)
+		_map = await _make_map()
+		if _map == null:
+			return
+		_map.set_collision_streaming(true)
 	_spawn_pair()
 	_round_t = ROUND_TIME
 	_move_camera()          # first frame already looks at the fight, not at the origin
@@ -81,18 +91,24 @@ func _make_map() -> Node3D:
 	# on in the frame this map becomes the visible one.
 	m.start_without_collision = true
 	add_child(m)
-	# Polled rather than awaiting terrain_ready: a generation that never finishes (empty heights,
-	# a freed node) would leave this coroutine hanging forever, and with it the whole round loop.
-	var guard: int = 0
-	while is_instance_valid(m) and not m.terrain_is_ready and guard < 3600:
-		await get_tree().process_frame
-		guard += 1
-	if not (is_instance_valid(m) and m.terrain_is_ready):
-		push_warning("menu: map generation gave up after %d frames" % guard)
+	if not await _wait_terrain(m):
 		if is_instance_valid(m):
 			m.queue_free()
 		return null
 	return m
+
+## Wait until a map has its terrain up. Polled rather than awaiting terrain_ready: a map that never
+## finishes (empty heights, a freed node) would leave this coroutine hanging forever, and with it
+## the whole round loop.
+func _wait_terrain(m: Node3D) -> bool:
+	var guard: int = 0
+	while is_instance_valid(m) and not m.terrain_is_ready and guard < 3600:
+		await get_tree().process_frame
+		guard += 1
+	if is_instance_valid(m) and m.terrain_is_ready:
+		return true
+	push_warning("menu: terrain never became ready (%d frames)" % guard)
+	return false
 
 ## Start the NEXT map. Runs while the current fight is still on screen, so nothing freezes; the
 ## round is only reset once this finishes. Guarded twice - a map already waiting, or a run already
