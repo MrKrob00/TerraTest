@@ -11,6 +11,18 @@ extends Node
 
 const POLL := 1.0
 
+## ДИСТАНЦИЯ СПАВНА КВЕСТОВЫХ МАШИН — одна на все ветки. Раньше у каждой была своя (170..260),
+## и разницы между ними игрок всё равно не видел, а держать восемь чисел про одно и то же значит
+## однажды получить квест, начинающийся в двадцати метрах.
+##
+## УЧАСТНИКИ ПОЯВЛЯЮТСЯ СРАЗУ, а не когда игрок доедет. Отложенный спавн читался как «метка
+## ведёт в пустое поле, доедешь — тогда и появятся»: до приезда там нечего было увидеть даже в
+## бинокль. Далеко они всё равно ничего не стоят — спавнер их усыпляет (sleep_dist).
+const EV_SPAWN_DIST := Vector2(250.0, 300.0)
+
+func _quest_dist() -> float:
+	return randf_range(EV_SPAWN_DIST.x, EV_SPAWN_DIST.y)
+
 var _t: float = 0.0
 var _props: QuestProps = null
 var _dropped: Dictionary = {}      # какие стадии уже выложили своё добро в мир
@@ -74,16 +86,47 @@ func _tick_arcs(delta: float) -> void:
 ##
 ## Клетки считаны от кабины (5,5,5) по чертежу обучения: (5,5,6) — задний блок корпуса, на нём
 ## и растёт эта надстройка.
-const POWER_PLAN_1 := [
-	{"cell": Vector3i(5, 5, 7), "block": G.Block.SUPPORT},
-	{"cell": Vector3i(5, 6, 7), "block": G.Block.SOLAR},
-]
-## Реген — ЧУТЬ ВПЕРЕДИ ПАНЕЛИ, на том же ярусе: он лечит по радиусу вокруг себя, и место в
-## середине машины покрывает её всю, а на самом хвосте половина корпуса остаётся снаружи.
-const POWER_PLAN_2 := [
-	{"cell": Vector3i(5, 6, 6), "block": G.Block.REGEN},
-]
+## Куда предлагаем опору, ПОКА ЕЁ НЕТ на машине. Дальше чертёж считается от того места, куда
+## игрок её поставил на самом деле: фиксированные клетки требовали ставить опору именно сюда, а
+## поставленная в другое место оставляла призрак панели висеть в пустоте на другом конце корпуса.
+const POWER_SUPPORT_CELL := Vector3i(5, 5, 7)
+## Куда пробуем положить реген относительно ОПОРЫ, по порядку. Первая свободная клетка и берётся.
+const POWER_REGEN_TRY := [Vector3i(0, 1, -1), Vector3i(1, 1, 0), Vector3i(-1, 1, 0), Vector3i(0, 1, 1)]
 
+## Клетка опоры на машине игрока или null.
+func _support_cell() -> Variant:
+	var p: Node3D = _player()
+	if p == null or not p.has_method("support_block"):
+		return null
+	var s = p.support_block()
+	if s == null or not (s is Node3D):
+		return null
+	var pos: Vector3 = (s as Node3D).position
+	return Vector3i(roundi(pos.x) + 5, roundi(pos.y) + 5, roundi(pos.z) + 5)
+
+func _cell_empty(c: Vector3i) -> bool:
+	var bm = _player_blocks()
+	if bm == null or not bm.has_method("get_block"):
+		return false
+	return int(bm.get_block(c.x, c.y, c.z)) == G.Block.EMPTY
+
+## Стадия 1: панель СВЕРХУ НА ОПОРУ. Опоры ещё нет — показываем и её, в клетке по умолчанию.
+func _power_plan_1() -> Array:
+	var sc = _support_cell()
+	if sc == null:
+		return [{"cell": POWER_SUPPORT_CELL, "block": G.Block.SUPPORT},
+				{"cell": POWER_SUPPORT_CELL + Vector3i(0, 1, 0), "block": G.Block.SOLAR}]
+	return [{"cell": (sc as Vector3i) + Vector3i(0, 1, 0), "block": G.Block.SOLAR}]
+
+## Стадия 2: реген рядом с панелью. Реген лечит по радиусу вокруг себя, поэтому ближе к
+## середине корпуса лучше — отсюда и порядок попыток.
+func _power_plan_2() -> Array:
+	var sc = _support_cell()
+	var base: Vector3i = (sc as Vector3i) if sc != null else POWER_SUPPORT_CELL
+	for d in POWER_REGEN_TRY:
+		if _cell_empty(base + d):
+			return [{"cell": base + d, "block": G.Block.REGEN}]
+	return [{"cell": base + Vector3i(0, 1, -1), "block": G.Block.REGEN}]
 ## ЧЕРТЁЖ ПОКАЗЫВАЕМ, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ ДО БЛОКОВ. Разметка, зажигающаяся в момент
 ## объявления задания, — это призраки, висящие на пустом месте всю дорогу до цели: ставить в них
 ## нечего, и к тому моменту, когда они наконец нужны, игрок перестаёт их замечать. Двадцать
@@ -122,8 +165,8 @@ func _arc_power_1(q: Dictionary) -> void:
 	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
 	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
 	if _plan_visible("arc_power"):
-		_show_plan_on(_player_blocks(), POWER_PLAN_1)
-		_point_finger("Anchor at the back, panel on top of it")
+		_show_plan_on(_player_blocks(), _power_plan_1())
+		_point_finger("Panel goes on top of the anchor")
 	else:
 		_clear_plan()
 	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
@@ -146,8 +189,8 @@ func _arc_power_2(q: Dictionary) -> void:
 		_dropped[key] = true
 		# «Рядом с вами появился» — блок падает прямо у машины, искать не надо.
 		_award(G.Block.REGEN)
-	_show_plan_on(_player_blocks(), POWER_PLAN_2)
-	_point_finger("Repair unit just ahead of the panel")
+	_show_plan_on(_player_blocks(), _power_plan_2())
+	_point_finger("Repair unit beside the panel")
 	if _has_block(G.Block.REGEN):
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
@@ -166,8 +209,6 @@ func _arc_power_2(q: Dictionary) -> void:
 #
 # Носитель появляется, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ, — то же правило, что у вышек: машина,
 # которая с начала игры ездит на другом конце карты, ничего не добавляет, а тикает и стреляет.
-const CARRIER_DIST := 170.0     # далеко: это поездка, а не поворот головы
-const CARRIER_REACH := 60.0     # ближе — считаем, что доехал
 
 var _carrier: Dictionary = {}        # ключ → машина-носитель
 var _carrier_spot: Dictionary = {}   # ключ → куда ехать; после боя — где упадёт блок
@@ -191,7 +232,8 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 		return false
 	if not _carrier_spot.has(key):
 		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * CARRIER_DIST, 0.0, sin(ang) * CARRIER_DIST)
+		var dist: float = _quest_dist()
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		wp.y = G.ground_y(wp, p.global_position.y)
 		_carrier_spot[key] = wp
 		return false
@@ -203,8 +245,6 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 	var at: Vector3 = _carrier_spot[key]
 	if is_instance_valid(_carrier.get(key)):
 		return false                                  # едет и дерётся — ждём
-	if p.global_position.distance_squared_to(at) > CARRIER_REACH * CARRIER_REACH:
-		return false
 	_carrier_spawn(key, block, preset, at)
 	return false
 
@@ -351,8 +391,6 @@ func _arc_battery_2(q: Dictionary) -> void:
 # Замена станции из оригинала. Магазинов у нас нет, поэтому «доехать до станции и отбить её»
 # превращается в «доехать до груза и отбить его», а наградой становится КОЛЛЕКТОР — блок, без
 # которого не собрать производственную цепочку в следующем квесте.
-const SALVAGE_DIST := 180.0
-const SALVAGE_REACH := 45.0
 
 var _salvage_point: Variant = null
 var _salvage_guard: Node3D = null
@@ -367,14 +405,11 @@ func _salvage_1(q: Dictionary) -> void:
 		return
 	if _salvage_point == null:
 		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * SALVAGE_DIST, 0.0, sin(ang) * SALVAGE_DIST)
+		var dist: float = _quest_dist()
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		wp.y = G.ground_y(wp, p.global_position.y)
 		_salvage_point = wp
 		return
-	if p.global_position.distance_squared_to(_salvage_point as Vector3) > SALVAGE_REACH * SALVAGE_REACH:
-		return
-	# Подъехали — груз на месте, и он не бесхозный. Охранник появляется ЗДЕСЬ, а не ждал сутки
-	# на точке: спавн по прибытии дешевле и надёжнее, чем машина, живущая где-то с начала игры.
 	_salvage_spawn_guard()
 	Q.report(String(q["event"]), 1)
 
@@ -818,8 +853,6 @@ func _hold_2(q: Dictionary) -> void:
 # льют в неё энергию блоком WIRELESS_CHARGER. Квест не знает про щит вообще ничего — он
 # ставит машины и ждёт, пока вышка умрёт. Убил башни → у вышки кончается запас → купол гаснет
 # сам, и её можно ломать. Игроку это видно по лучам зарядки, а не по строчке в журнале.
-const TOWER_DIST := 260.0      # далеко: это поездка, а не поворот головы
-const TOWER_REACH := 55.0      # ближе этого считаем, что доехал
 ## Радиус кольца зарядных башен. Считается, а не подбирается на глаз: башня обязана
 ## ДОТЯГИВАТЬСЯ до аккумулятора вышки (wireless_charger.RANGE = 6 м) и при этом стоять СНАРУЖИ
 ## купола (shield.SHIELD_RADIUS = 4 м) — иначе её саму не расстрелять, а в этом вся задача.
@@ -842,15 +875,11 @@ func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
 		return
 	if not _tower_point.has(key):
 		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * TOWER_DIST, 0.0, sin(ang) * TOWER_DIST)
+		var dist: float = _quest_dist()
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		wp.y = G.ground_y(wp, p.global_position.y)
 		_tower_point[key] = wp
 	var at: Vector3 = _tower_point[key]
-	# Ставим ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ. Иначе вышка с башнями живёт на другом конце карты:
-	# зарядники тикают, ИИ ищет цели, а смотреть на это некому — то же правило, по которому
-	# спавнер не держит врагов за горизонтом.
-	if p.global_position.distance_squared_to(at) > TOWER_REACH * TOWER_REACH:
-		return
 	if not _tower_node.has(key):
 		if not _tower_build(key, cfg, at):
 			return
@@ -865,7 +894,7 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 		if _tower_point.has(key):
 			var p: Node3D = _player()
 			var at: Vector3 = _tower_point[key]
-			if p != null and p.global_position.distance_squared_to(at) <= TOWER_REACH * TOWER_REACH:
+			if p != null:
 				_tower_build(key, cfg, at)
 		return
 	if not bool(_tower_dead.get(key, false)):
@@ -912,11 +941,9 @@ func _on_tower_died(_who, key: String) -> void:
 #
 # Точка ставится не рядом и не за горизонтом: ровно настолько далеко, чтобы это была
 # ПОЕЗДКА, а не поворот головы, и чтобы по дороге игрок успел решить, ввязываться ли.
-const DUEL_DIST := 200.0
 ## На каком подлёте стычка начинается. Двести метров ехать в пустоту скучно; на пятидесяти
 ## бой уже слышно и видно, и игрок приезжает НА идущую драку, а не на пустое поле, где
 ## машины возникнут у него на глазах.
-const DUEL_TRIGGER := 50.0
 ## Насколько дуэлянты стоят друг от друга.
 const DUEL_GAP := 18.0
 ## Сколько ждать перед тем, как событие может случиться снова, — общее для всех событий
@@ -940,13 +967,12 @@ func _duel_1(q: Dictionary) -> void:
 		# Направление случайное, дистанция фиксированная: событие должно уводить игрока с его
 		# маршрута, а не подворачиваться там, куда он и так ехал.
 		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * DUEL_DIST, 0.0, sin(ang) * DUEL_DIST)
+		var dist: float = _quest_dist()
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		wp.y = G.ground_y(wp, p.global_position.y)
 		_duel_point = wp
 		return
-	if p.global_position.distance_squared_to(_duel_point as Vector3) > DUEL_TRIGGER * DUEL_TRIGGER:
-		return
-	# Подъехали — стычка начинается. Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
+	# Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
 	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
 	if not _spawn_duel(_duel_point as Vector3):
 		return
@@ -1080,7 +1106,6 @@ const EV_COOLDOWN_MAX := 120.0
 func _event_cooldown() -> float:
 	return randf_range(EV_COOLDOWN_MIN, EV_COOLDOWN_MAX)
 
-const EV_TRIGGER := 60.0       # на каком подлёте событие «начинается»
 
 var _ev_point: Dictionary = {}   # id события → Vector3, куда ехать
 var _ev_mobs: Dictionary = {}    # id события → Array участников
@@ -1152,7 +1177,10 @@ func _ev_key(ev: String) -> String:
 	return s.substr(0, cut) if cut > 0 else s
 
 ## Точка события: выбираем один раз и держим. Возвращает null, пока игрока нет.
-func _ev_get_point(key: String, dist: float) -> Variant:
+## dist <= 0 — общее правило спавна квестов (_quest_dist).
+func _ev_get_point(key: String, dist: float = 0.0) -> Variant:
+	if dist <= 0.0:
+		dist = _quest_dist()
 	if _ev_point.has(key):
 		return _ev_point[key]
 	var p: Node3D = _player()
@@ -1163,13 +1191,6 @@ func _ev_get_point(key: String, dist: float) -> Variant:
 	wp.y = G.ground_y(wp, p.global_position.y)
 	_ev_point[key] = wp
 	return wp
-
-## Игрок доехал до точки события?
-func _ev_reached(key: String) -> bool:
-	var p: Node3D = _player()
-	if p == null or not _ev_point.has(key):
-		return false
-	return p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_TRIGGER * EV_TRIGGER
 
 ## УЕХАЛ ЗА EV_ABANDON — снимаем. Возвращает true, если событие снято: вызывающий сразу выходит.
 ##
@@ -1247,13 +1268,12 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	return out
 
 # ── «Tech Gang»: банда стоит лагерем, её надо разогнать ──────────────────────
-const GANG_DIST := 180.0
 
 func _gang_1(q: Dictionary) -> void:
 	var key := "gang"
 	if _ev_abandoned(q, key):
 		return
-	if _ev_get_point(key, GANG_DIST) == null or not _ev_reached(key):
+	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
 		# Цель НЕ назначаем: банда стоит на месте, и первым ходом должен быть выстрел игрока.
@@ -1267,7 +1287,7 @@ func _gang_2(q: Dictionary) -> void:
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key, GANG_DIST)      # состояние потеряно — банда снова на месте
+		var at = _ev_get_point(key)      # состояние потеряно — банда снова на месте
 		if at != null:
 			_ev_spawn(key, at as Vector3, [5, 6, 7])
 		return
@@ -1276,7 +1296,6 @@ func _gang_2(q: Dictionary) -> void:
 	_ev_done(q, key)
 
 # ── «Supply Drop»: ящик снабжения, иногда с засадой ─────────────────────────
-const SUPPLY_DIST := 150.0
 ## Что бывает в ящике. Список короткий и намеренно полезный: событие должно быть поводом
 ## съездить, а не лотереей с мусором.
 const SUPPLY_LOOT := [G.Block.BATTERY, G.Block.SOLAR, G.Block.BELT, G.Block.ARMOR2, G.Block.REGEN]
@@ -1285,7 +1304,7 @@ func _supply_1(q: Dictionary) -> void:
 	var key := "supply"
 	if _ev_abandoned(q, key):
 		return
-	if _ev_get_point(key, SUPPLY_DIST) == null or not _ev_reached(key):
+	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
 		_ev_mobs[key] = []                      # событие началось, даже если засады не будет
@@ -1310,13 +1329,12 @@ func _supply_2(q: Dictionary) -> void:
 	_ev_done(q, key)
 
 # ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
-const DEFEND_DIST := 120.0
 
 func _defend_1(q: Dictionary) -> void:
 	var key := "defend"
 	if _ev_abandoned(q, key):
 		return
-	if _ev_get_point(key, DEFEND_DIST) == null or not _ev_reached(key):
+	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
 		var at: Vector3 = _ev_point[key] as Vector3
@@ -1341,7 +1359,7 @@ func _defend_2(q: Dictionary) -> void:
 	if not _ev_mobs.has(key):
 		# Состояние потеряно (перезаход): союзник и налётчики появляются заново, иначе
 		# пустая ссылка на союзника читалась бы как «его добили».
-		var at = _ev_get_point(key, DEFEND_DIST)
+		var at = _ev_get_point(key)
 		if at != null:
 			var ally: Array = _ev_spawn(key, at as Vector3, [6], 0)
 			if not ally.is_empty():
@@ -1401,13 +1419,12 @@ func _waves_2(q: Dictionary) -> void:
 # Это наш ответ на Capture Enemy Base. Захватывать БАЗУ пока нечего — статичной постройки
 # как сущности в игре нет (она же нужна отложенным Watchtower/SAM, см. docs/STORY_ROADMAP.md).
 # Смысл при этом сохранён: укреплённая точка, охрана, и трофей достаётся тому, кто её взял.
-const CAMP_DIST := 220.0
 
 func _camp_1(q: Dictionary) -> void:
 	var key := "camp"
 	if _ev_abandoned(q, key):
 		return
-	if _ev_get_point(key, CAMP_DIST) == null or not _ev_reached(key):
+	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
 		var at: Vector3 = _ev_point[key] as Vector3
@@ -1421,7 +1438,7 @@ func _camp_2(q: Dictionary) -> void:
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key, CAMP_DIST)      # состояние потеряно — охрана снова на точке
+		var at = _ev_get_point(key)      # состояние потеряно — охрана снова на точке
 		if at != null:
 			_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())
 		return
