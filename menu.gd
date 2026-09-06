@@ -41,6 +41,22 @@ const NEWS_H_FRAC := 0.42
 
 var _left: VBoxContainer = null          # колонка в левом нижнем углу
 var _settings: CenterContainer = null
+
+# ── Создание мира ─────────────────────────────────────────────────────────────
+# Землю нового слота считает МЕНЮ, а не первый кадр игры: прогон идёт минуту и дольше, и под
+# экраном загрузки он неотличим от зависания. Здесь у него полоса, оценка остатка и СТОП, а
+# слот стирается только по «играть» — прервал на середине, старый мир цел.
+var _gen: LiteTerrainGen = null
+var _gen_slot: int = -1
+var _gen_seed: int = 0
+var _gen_t0: float = 0.0
+var _gen_frac: float = 0.0
+var _gen_eta: float = -1.0
+var _gen_label: String = ""
+var _gen_done: bool = false
+var _c_stage: Label = null
+var _c_bar: ProgressBar = null
+var _c_eta: Label = null
 ## Открыт ли выбор слота. Первый экран — PLAY / SETTINGS, второй — три мира.
 var _slots_open: bool = false
 ## Какой слот ждёт подтверждения перезаписи. −1 — никто не ждёт. Второй тап по той же кнопке
@@ -220,6 +236,9 @@ func _news_panel() -> Control:
 func _rebuild_left() -> void:
 	for c in _left.get_children():
 		c.queue_free()
+	if _gen_slot >= 0:
+		_left.add_child(_create_panel())
+		return
 	if _slots_open:
 		_left.add_child(_slots_panel())
 		# Именованный метод, а не лямбда: однострочная лямбда кончается на переносе строки, и
@@ -230,6 +249,125 @@ func _rebuild_left() -> void:
 	_left.add_child(_button("SETTINGS", DIM, func(): _settings.visible = true))
 	if OS.has_feature("pc"):
 		_left.add_child(_button("QUIT", DIM, func(): get_tree().quit()))
+
+## Панель прогона. Виджеты держим ссылками: их подписи меняются каждый кадр, а пересобирать
+## панель по тридцать раз в секунду — это мигающая кнопка под пальцем.
+func _create_panel() -> Control:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style())
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var head := Label.new()
+	head.text = "CREATING WORLD · SLOT %d" % (_gen_slot + 1)
+	head.add_theme_font_size_override("font_size", 13)
+	head.add_theme_color_override("font_color", ACCENT)
+	box.add_child(head)
+
+	_c_stage = Label.new()
+	_c_stage.add_theme_font_size_override("font_size", 12)
+	_c_stage.add_theme_color_override("font_color", DIM)
+	box.add_child(_c_stage)
+
+	_c_bar = ProgressBar.new()
+	_c_bar.min_value = 0.0
+	_c_bar.max_value = 1.0
+	_c_bar.step = 0.001
+	_c_bar.show_percentage = false
+	_c_bar.custom_minimum_size = Vector2(COL_W, 10)
+	box.add_child(_c_bar)
+
+	_c_eta = Label.new()
+	_c_eta.add_theme_font_size_override("font_size", 12)
+	_c_eta.add_theme_color_override("font_color", DIM)
+	box.add_child(_c_eta)
+
+	if _gen_done:
+		box.add_child(_big_button("PLAY", _play_created))
+	else:
+		box.add_child(_button("STOP", DANGER, _stop_create))
+	_update_create()
+	return panel
+
+func _process(_delta: float) -> void:
+	if _gen_slot >= 0:
+		_update_create()
+
+func _update_create() -> void:
+	if _c_stage == null or not is_instance_valid(_c_stage):
+		return
+	if _gen_done:
+		_c_stage.text = "World ready · seed %d" % _gen_seed
+		_c_bar.value = 1.0
+		_c_eta.text = "Press PLAY to enter"
+		return
+	_c_stage.text = _gen_label
+	_c_bar.value = _gen_frac
+	# Оценка по всему прогону (elapsed × (1−frac)/frac) и СГЛАЖЕННАЯ: строки внутри прохода
+	# неравноценны, голое число прыгало бы каждый кадр.
+	var el: float = float(Time.get_ticks_msec()) / 1000.0 - _gen_t0
+	if _gen_frac > 0.02:
+		var raw: float = el * (1.0 - _gen_frac) / _gen_frac
+		_gen_eta = raw if _gen_eta < 0.0 else lerpf(_gen_eta, raw, 0.08)
+	_c_eta.text = "%d%%   ·   %s left" % [int(_gen_frac * 100.0), _time_text(_gen_eta)]
+
+func _time_text(sec: float) -> String:
+	if sec < 0.0:
+		return "estimating"
+	if sec < 60.0:
+		return "%ds" % int(sec)
+	return "%d:%02d" % [int(sec) / 60, int(sec) % 60]
+
+## Прогон. Сид уже выбран, но слот ещё цел — стираем его только в _play_created.
+func _begin_create(i: int) -> void:
+	_gen_slot = i
+	_gen_seed = G.roll_world_seed()
+	_gen_done = false
+	_gen_frac = 0.0
+	_gen_eta = -1.0
+	_gen_label = "starting"
+	_gen_t0 = float(Time.get_ticks_msec()) / 1000.0
+	_rebuild_left()
+
+	var gen := LiteTerrainGen.new()
+	add_child(gen)
+	gen.gen_seed = _gen_seed
+	var params: Dictionary = LiteTerrainGen.default_params()
+	gen.apply_params(params)
+	gen.on_progress = func(step: String, frac: float) -> void:
+		_gen_label = step
+		_gen_frac = frac
+	_gen = gen
+	var size: int = LiteTerrainGen.DEF_WINDOW
+	var x0: int = -size / 2
+	var z0: int = -size / 2
+	# Биомы по умолчанию. На высоты влияют только поля МАСОК (scale/threshold/edge), а карта в
+	# node_3d.tscn правит лишь раскраску (snow_line, grass_*) — совпадает. Тронешь маску в сцене
+	# карты — здесь появится шов между тем, что посчитало меню, и досчитанной на ходу полосой.
+	var md: PackedFloat32Array = await gen.generate_region(x0, z0, size, size, TerrainBiomes.new())
+	var ok: bool = not gen.cancelled() and md.size() == size * size
+	gen.queue_free()
+	_gen = null
+	if not ok:
+		_gen_slot = -1
+		_rebuild_left()
+		return
+	G.set_pending_world(_gen_seed, Vector2i(x0, z0), size, md, params)
+	_gen_done = true
+	_rebuild_left()
+
+func _stop_create() -> void:
+	if _gen != null and is_instance_valid(_gen):
+		_gen.stop()          # прогон встанет между проходами и вернёт пусто
+		return
+	_gen_slot = -1
+	_rebuild_left()
+
+func _play_created() -> void:
+	var i: int = _gen_slot
+	_gen_slot = -1
+	G.new_game(i, _gen_seed)
+	_start_game()
 
 func _close_slots() -> void:
 	_slots_open = false
@@ -404,13 +542,19 @@ func _on_play(i: int) -> void:
 ## НОВАЯ ИГРА. По пустому слоту начинает сразу; по занятому первый тап только СПРАШИВАЕТ —
 ## перезапись стирает мир, и промах пальцем по кнопке рядом с PLAY не должен этого делать.
 func _on_new(i: int) -> void:
+	if _gen_slot >= 0:
+		return                       # прогон уже идёт
 	if G.slot_used(i) and _confirm_slot != i:
 		_confirm_slot = i
 		_rebuild_left()
 		return
 	_confirm_slot = -1
-	G.new_game(i)
-	_start_game()
+	# Первый слот — заводская карта из файла, считать нечего.
+	if i == 0:
+		G.new_game(0)
+		_start_game()
+		return
+	_begin_create(i)
 
 ## Игровая сцена грузится ТЕМ ЖЕ стойким оверлеем, что и раньше (loading_boot.gd): он живёт
 ## соседом current_scene, поэтому переживает смену сцены и держится сверху, пока карта не

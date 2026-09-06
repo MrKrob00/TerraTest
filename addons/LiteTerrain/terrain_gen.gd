@@ -54,6 +54,37 @@ var on_progress: Callable = Callable()
 ## полоса добежала бы до конца раньше самой долгой части прогона.
 var plan_bake: bool = false
 
+# Умолчания процедурного мира. Читают ДВОЕ: map.gd и menu.gd (меню считает землю нового слота
+# до того, как карта появится). Две копии чисел = шов между тем, что посчитало меню, и тем,
+# что досчитает окно на ходу.
+const DEF_WINDOW := 2048
+const DEF_SCALE := 150.0
+const DEF_POWER := 2.6
+const DEF_AMPLITUDE := 30.0
+const DEF_MOUNTAINS := 0.6
+const DEF_CANYON := true
+const DEF_CANYON_RISER := 0.35
+const DEF_CANYON_GORGE := 90.0
+const DEF_CANYON_WIDTH := 0.18
+
+static func default_params() -> Dictionary:
+	return {"scale": DEF_SCALE, "power": DEF_POWER, "amplitude": DEF_AMPLITUDE,
+			"mountains": DEF_MOUNTAINS, "canyon": DEF_CANYON, "riser": DEF_CANYON_RISER,
+			"gorge": DEF_CANYON_GORGE, "width": DEF_CANYON_WIDTH}
+
+## Одна дверь для карты и меню. mountains → две производные, как в доке (plugin._mtn_amount).
+func apply_params(p: Dictionary) -> void:
+	gen_scale = float(p.get("scale", DEF_SCALE))
+	gen_power = float(p.get("power", DEF_POWER))
+	gen_amplitude = float(p.get("amplitude", DEF_AMPLITUDE))
+	gen_canyon_enable = p.get("canyon", DEF_CANYON) == true
+	gen_canyon_riser = float(p.get("riser", DEF_CANYON_RISER))
+	gen_canyon_gorge = float(p.get("gorge", DEF_CANYON_GORGE))
+	gen_canyon_width = float(p.get("width", DEF_CANYON_WIDTH))
+	var m: float = float(p.get("mountains", DEF_MOUNTAINS))
+	mtn_amount = lerpf(0.25, 1.1, m)
+	ridge_sharp = lerpf(1.6, 3.6, m)
+
 ## Доля шкалы под следующий проход плана. Публично ради той самой последней стадии.
 func next_slice() -> Vector2:
 	return _plan_slice()

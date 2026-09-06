@@ -120,16 +120,38 @@ func use_slot(n: int) -> void:
 
 ## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид. Первый слот особенный —
 ## у него сид постоянный, это «наша» карта.
-func new_game(n: int) -> void:
+func new_game(n: int, seed_value: int = 0) -> void:
 	var dir := slot_dir(n)
 	for name in ["progress.json", "vehicle_builds.json", "world_save.json",
 			"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin", "world.json"]:
 		if FileAccess.file_exists(dir + name):
 			DirAccess.remove_absolute(dir + name)
 	use_slot(n)
-	world_seed = FIRST_SLOT_SEED if n == 0 else int(randi()) | 1
+	# Сид может прийти снаружи: меню сначала СЧИТАЕТ мир по нему (полоса + стоп) и только потом,
+	# по «играть», стирает слот. Без этого стоп на середине уже уничтожил бы старый мир.
+	world_seed = FIRST_SLOT_SEED if n == 0 else (seed_value if seed_value != 0 else int(randi()) | 1)
 	world_procedural = n != 0
 	_save_world_seed()
+
+func roll_world_seed() -> int:
+	return int(randi()) | 1
+
+# ── Мир, посчитанный в меню ───────────────────────────────────────────────────
+# Единственное, что переживает смену сцены: карты в момент расчёта ещё нет. 16 МБ живут до
+# первого кадра игры — map.setup_procedural забирает их и обнуляет.
+var pending_world: Dictionary = {}
+
+func set_pending_world(seed_value: int, win: Vector2i, size: int,
+		md: PackedFloat32Array, params: Dictionary) -> void:
+	pending_world = {"seed": seed_value, "win": win, "size": size, "md": md, "params": params}
+
+## Забрать НАСОВСЕМ и только под свой сид/размер окна: чужое отдавать нельзя, второй раз не нужно.
+func take_pending_world(seed_value: int, size: int) -> Dictionary:
+	if int(pending_world.get("seed", 0)) != seed_value or int(pending_world.get("size", 0)) != size:
+		return {}
+	var out: Dictionary = pending_world
+	pending_world = {}
+	return out
 
 ## ПЕРЕЕЗД СТАРОГО СЕЙВА В ПЕРВЫЙ СЛОТ. До слотов всё лежало прямо в user:// — и у того, кто
 ## уже играл, эти файлы никуда не делись. Без переезда он открыл бы меню и увидел три пустых

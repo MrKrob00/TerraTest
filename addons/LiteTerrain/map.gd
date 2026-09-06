@@ -1117,16 +1117,21 @@ func _center_window() -> void:
 @export_group("Procedural")
 ## Сторона окна высот в клетках. 2048² — это 16 МБ, ровно столько же, сколько занимала вся
 ## карта раньше: память не выросла, а мир перестал кончаться.
-@export var window_size: int = 2048
-@export var proc_scale: float = 150.0
-@export var proc_power: float = 2.6
-@export var proc_amplitude: float = 30.0
-@export var proc_mountains01: float = 0.6
-@export var proc_canyon_enable: bool = true
-@export var proc_canyon_riser: float = 0.35
-@export var proc_canyon_gorge: float = 90.0
-@export var proc_canyon_width: float = 0.18
+@export var window_size: int = LiteTerrainGen.DEF_WINDOW
+@export var proc_scale: float = LiteTerrainGen.DEF_SCALE
+@export var proc_power: float = LiteTerrainGen.DEF_POWER
+@export var proc_amplitude: float = LiteTerrainGen.DEF_AMPLITUDE
+@export var proc_mountains01: float = LiteTerrainGen.DEF_MOUNTAINS
+@export var proc_canyon_enable: bool = LiteTerrainGen.DEF_CANYON
+@export var proc_canyon_riser: float = LiteTerrainGen.DEF_CANYON_RISER
+@export var proc_canyon_gorge: float = LiteTerrainGen.DEF_CANYON_GORGE
+@export var proc_canyon_width: float = LiteTerrainGen.DEF_CANYON_WIDTH
 @export_group("")
+
+func _proc_params() -> Dictionary:
+	return {"scale": proc_scale, "power": proc_power, "amplitude": proc_amplitude,
+			"mountains": proc_mountains01, "canyon": proc_canyon_enable,
+			"riser": proc_canyon_riser, "gorge": proc_canyon_gorge, "width": proc_canyon_width}
 
 ## Что генератор делает ПРЯМО СЕЙЧАС и насколько продвинулся (0..1). Пустая подпись = мир не
 ## считается: он либо уже посчитан, либо прочитан файлом. Спрашивает экран загрузки.
@@ -1136,25 +1141,31 @@ var gen_frac: float = 0.0
 ## Поднять процедурный мир: собрать генератор, поставить окно вокруг точки и посчитать первую
 ## землю. Зовёт игра, когда слот процедурный; после этого файлы высот не читаются вовсе.
 func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
+	# Готовая земля из меню, если она есть (menu.gd считает её ДО входа в игру, с полосой и
+	# стопом). Параметры берём ОТТУДА же: окно потом досчитывает полосы своим генератором, и
+	# разойдись они с теми, по которым посчитано начало, — на границе был бы шов.
+	var handoff: Dictionary = {}
+	var game: Node = get_node_or_null("/root/G")
+	if game != null and game.has_method("take_pending_world"):
+		handoff = game.take_pending_world(seed_value, window_size)
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
-	gen.gen_scale = proc_scale
-	gen.gen_power = proc_power
-	gen.gen_amplitude = proc_amplitude
-	gen.gen_canyon_enable = proc_canyon_enable
-	gen.gen_canyon_riser = proc_canyon_riser
-	gen.gen_canyon_gorge = proc_canyon_gorge
-	gen.gen_canyon_width = proc_canyon_width
-	# Те же две производные, что док считает из одной ручки «Mountains»: держать их порознь
-	# незачем — они всегда двигались вместе (см. plugin._mtn_amount/_ridge_sharp).
-	gen.mtn_amount = lerpf(0.25, 1.1, proc_mountains01)
-	gen.ridge_sharp = lerpf(1.6, 3.6, proc_mountains01)
+	gen.apply_params(handoff.get("params", _proc_params()))
 	world_gen = gen
 	w = window_size
 	d = window_size
 	_win_x = int(floor(around.x)) - int(w / 2)
 	_win_z = int(floor(around.z)) - int(d / 2)
+	if not handoff.is_empty():
+		var win: Vector2i = handoff["win"]
+		_win_x = win.x
+		_win_z = win.y
+		md = handoff["md"]
+		# Обычно смещение биомов ставит сам прогон (terrain_gen._run_passes). Тут прогона нет.
+		_biomes().mask_offset = TerrainBiomes.offset_for_seed(seed_value)
+		_recompute_height_bound()
+		return
 	# ХОД ГЕНЕРАЦИИ — НАРУЖУ, и это не отладка. В новом слоте земли на диске нет вовсе: она
 	# считается здесь и сейчас, и это единственная стадия загрузки, которая может идти минуту.
 	# Без живой доли экран загрузки не отличает её от чтения готового файла — и снимает себя
