@@ -969,4 +969,3 @@ func register_blast(pos: Vector3, force: float) -> void:
 	_blast_pos = pos
 	_blast_force = force
 	_blast_until_ms = Time.get_ticks_msec() + 300
-
