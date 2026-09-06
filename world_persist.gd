@@ -1,37 +1,36 @@
 extends Node
-# Персист МИРА игрока (не путать с G — там прогресс: деньги/исследования). Здесь — состояние мира:
-#  • Новый старт: у игрока ОДНА кабина, рядом падает базовый набор блоков; других машин нет.
-#  • Любой свободный блок в мире пропадает через BLOCK_TTL (10 мин).
-#  • Каждые AUTOSAVE_EVERY (5 мин) — автосейв всех машин игрока + блоков мира + их позиций.
-#  • ВРАГИ не сохраняются (только машины faction 0).
-# Загрузка при любой ошибке откатывается на новый старт (сейв игру не ломает).
+# Player WORLD persistence (not to be confused with G, which holds progress: money, research):
+#  - New game: the player has ONE cabin with the starter kit dropping nearby, no other machines.
+#  - Any loose block in the world disappears after BLOCK_TTL (10 min).
+#  - Every AUTOSAVE_EVERY (5 min): all player machines, world blocks and their positions.
+#  - ENEMIES are not saved (faction 0 only).
+# Any load error falls back to a new game, so a broken save cannot break the game.
 
-## Имена файлов, а не пути: мир принадлежит СЛОТУ, и префикс собирает G.slot_path — второй
-## копии этого префикса в проекте быть не должно.
+## File names, not paths: the world belongs to the SLOT and the prefix comes from G.slot_path.
+## There must be no second copy of that prefix in the project.
 const SAVE_FILE := "world_save.json"
-const BAD_SAVE_FILE := "world_save.bad.json"          # сюда уезжает сейв, который не удалось загрузить
-const SAFE_CLEARANCE := 2.0         # на сколько поднимаем машину над рельефом при восстановлении
-# Рельеф — карта высот, под поверхностью нет ничего, так что провалившееся тело улетает
-# на сотни метров вниз. Порог держим с запасом: terrain_height_at берёт высоту в точке XZ
-# тела, и у подножия обрыва она бывает заметно выше того места, где тело законно стоит —
-# со слишком чутким порогом страховка начала бы телепортировать технику на ровном месте.
-# Прежние 60 м были слишком грубы (машину, застрявшую в толще холма, не замечали вовсе),
-# 15 ловит и это, и настоящее падение, не срабатывая на рельефе.
+const BAD_SAVE_FILE := "world_save.bad.json"          # a save that failed to load is moved here
+const SAFE_CLEARANCE := 2.0         # lift above terrain when restoring
+# The terrain is a heightmap with nothing under the surface, so a body that falls through drops
+# hundreds of metres. The threshold is generous: terrain_height_at samples at the body's XZ, and at
+# the foot of a cliff that is noticeably higher than where the body legitimately stands - too
+# sensitive a threshold would start teleporting machines on flat ground. 60 m was too coarse (a
+# machine stuck inside a hill went unnoticed); 15 catches both that and a real fall.
 const FALL_LIMIT := 15.0
-const BLOCK_TTL := 600.0            # 10 мин — время жизни свободного блока в мире
-const AUTOSAVE_EVERY := 60.0        # 1 мин — период автосейва (машины, блоки мира, позиции)
+const BLOCK_TTL := 600.0            # 10 min: how long a loose block lives in the world
+const AUTOSAVE_EVERY := 60.0        # 1 min: autosave period (machines, world blocks, positions)
 
 var _tick: float = 0.0
 
 func _ready() -> void:
-	# Через группу нас находит выход в меню (tech_ui): узел живёт в сцене, а не автолоадом, и
-	# пути к нему в проекте быть не должно — сцену переставляли уже не раз.
+	# The group is how "exit to menu" (tech_ui) finds us: this node lives in the scene, not as an
+	# autoload, and there must be no path to it in code - the scene has been rearranged more than once.
 	add_to_group("world_persist")
-	# ЖДЁМ, пока машина реально достроится. Мало двух кадров: blocks.spawn_block внутри делает
-	# `await get_parent().ready`, т.е. стартовые блоки доезжают ОТЛОЖЕННО. Если применить
-	# сохранённую сборку в этот момент, apply_layout вычистит node_map, а «догоняющие» корутины
-	# потом допишут коллизии и позиции уже освобождённым узлам — сборка из сейва затиралась
-	# стартовой (и могло падать). Ждём готовности машины + пару кадров на догон корутин.
+	# WAIT until the machine is actually built. Two frames are not enough: blocks.spawn_block does
+	# `await get_parent().ready` inside, so starter blocks arrive LATE. Applying the saved build at that
+	# moment lets apply_layout clear node_map while the catching-up coroutines then write colliders and
+	# positions to freed nodes - the saved build was overwritten by the starter one (and could crash).
+	# So: wait for the machine to be ready plus a couple of frames for the coroutines.
 	var guard := 0
 	while guard < 600:
 		var v = _primary_machine()
@@ -41,9 +40,9 @@ func _ready() -> void:
 		guard += 1
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_purge_extra_machines()                        # оставляем только ОСНОВНУЮ машину игрока
+	_purge_extra_machines()                        # keep the primary player machine only
 	if FileAccess.file_exists(G.slot_path(SAVE_FILE)):
-		await _load_world()        # внутри есть await (разморозка после телепорта) — дожидаемся
+		await _load_world()        # it awaits inside (unfreeze after teleport), so wait for it
 	else:
 		_fresh_start()
 	var t := Timer.new()
@@ -59,30 +58,30 @@ func _notification(what: int) -> void:
 		_save_world()
 
 func _process(delta: float) -> void:
-	var _pf := Perf.now()                          # метка для панели профиля (perf.gd)
-	_vehicle_render_tick()                         # машины вне кадра не рисуем (КАЖДЫЙ кадр)
-	_cull_tick(delta)                              # гасим то, что за спиной (свой период, чаще)
+	var _pf := Perf.now()                          # profiler mark (perf.gd)
+	_vehicle_render_tick()                         # machines out of frame are not drawn (EVERY frame)
+	_cull_tick(delta)                              # disable what is behind you (its own, more frequent period)
 	_tick += delta
 	if _tick < 1.0:
 		Perf.mark("world", _pf)
 		return
 	_tick = 0.0
-	_expire_world_blocks()                         # деспавн свободных блоков старше 10 мин
+	_expire_world_blocks()                         # despawn loose blocks older than the TTL
 	_rescue_fallen()                               # машина провалилась сквозь рельеф — вернуть наверх
 	Perf.mark("world", _pf)
 
-# ── Отсечение того, что ЗА СПИНОЙ ────────────────────────────────────────────
-# Свободный блок в мире — это не только меш (его движок и так не рисует за камерой), но и
-# ЖИВОЙ СКРИПТ: лежащий на земле коллектор всё так же перебирает ресурсы вокруг, лента
-# двигает предметы, зарядник каждые полсекунды обходит все машины. Полсотни таких блоков за
-# спиной стоят ровно столько же, сколько перед носом, а пользы от них ноль.
+# ── Culling what is BEHIND YOU ───────────────────────────────────────────────
+# A loose block in the world is not only a mesh (the engine already skips drawing it behind the
+# camera) but a LIVE SCRIPT: a collector lying on the ground still iterates resources around it, a
+# belt still moves items, a charger walks every machine twice a second. Fifty such blocks behind
+# you cost exactly as much as fifty in front, and give nothing.
 #
-# Гасим ТОЛЬКО СПЯЩИЕ тела: у спящего физика и так не считается, и остановить ему скрипт
-# безопасно. Летящий/катящийся блок не трогаем совсем — иначе он замер бы в воздухе и
-# доехал бы вниз рывком, когда игрок обернётся.
+# Only SLEEPING bodies are disabled: physics is not running for them anyway, so stopping the script
+# is safe. A flying or rolling block is never touched, or it would freeze in mid-air and jerk down
+# when the player turns around.
 #
-# Ближний пузырь оставляем активным в любую сторону: то, что рядом, участвует в игре
-# (магнит упаковщика, приёмник, подбор рукой), и гасить его по направлению взгляда нельзя.
+# The near bubble stays active in every direction: what is close takes part in the game (packer
+# magnet, receiver, picking up by hand) and must not be gated by view direction.
 const CULL_PERIOD := 0.25
 const CULL_KEEP_RADIUS := 25.0       # м: ближе этого блок активен, куда бы ни смотрела камера
 const CULL_VIEW_COS := -0.15         # чуть шире полусферы перед камерой — край не мигает
@@ -103,9 +102,8 @@ func _cull_tick(delta: float) -> void:
 	var cam_pos: Vector3 = cam.global_position
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var keep2: float = CULL_KEEP_RADIUS * CULL_KEEP_RADIUS
-	# ЗА ХРЕБТОМ — то же самое, что за спиной. Рельеф отвечает по своей карте высот
-	# (map.is_point_hidden), и это дёшево: сотня лежащих блоков за горой стоит столько же,
-	# сколько сотня перед носом, а видно из них ноль.
+	# Behind a ridge is the same as behind you. The terrain answers from its own heightmap
+	# (map.is_point_hidden), and that is cheap.
 	var terr := get_node_or_null("/root/Main/map")
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
 	var frustum: Array[Plane] = cam.get_frustum()
@@ -115,21 +113,19 @@ func _cull_tick(delta: float) -> void:
 		if n == null:
 			continue
 		_settle_tick(n)
-		# РИСОВАНИЕ И СКРИПТ РЕШАЮТСЯ ПОРОЗНЬ, и это не педантизм.
+		# DRAWING AND SCRIPT ARE DECIDED SEPARATELY, and that is not pedantry.
 		#
-		# Рисовать вне кадра нечего вообще — тут годится точная пирамида видимости, та же, что
-		# у машин. А вот СКРИПТ по ней гасить нельзя: лежащий на базе коллектор в тридцати
-		# метрах сбоку по кадру не проходит, и фабрика вставала бы каждый раз, когда игрок
-		# отвернул камеру. Скрипту поэтому оставлено прежнее, гораздо более мягкое правило —
-		# «строго за спиной или за хребтом».
+		# There is nothing to draw off-frame at all, so the exact frustum test fits - the same one machines
+		# use. The SCRIPT must not follow it: a collector lying at the base thirty metres to the side fails
+		# the frustum, and the factory would stall every time the player turned the camera. The script keeps
+		# the old, much softer rule - strictly behind you or behind a ridge.
 		n.visible = _in_frustum(frustum, n.global_position, ITEM_CULL_RADIUS)
 		var was: bool = n.has_meta(CULL_META)
 		var to: Vector3 = n.global_position - cam_pos
 		var d2: float = to.length_squared()
-		# Ближний пузырь — вокруг ЛЮБОЙ живой точки (G.active_points), не только камеры: рядом
-		# с чужой машиной игрока лежащие блоки участвуют в игре (магнит упаковщика, приёмник),
-		# и гасить их потому, что камера смотрит в другую сторону, — значит останавливать
-		# фабрику на базе, к которой игрок сейчас не подъехал.
+		# The near bubble surrounds ANY live point (G.active_points), not just the camera: blocks lying
+		# next to another of the player's machines take part in the game (packer magnet, receiver), and
+		# disabling them because the camera looks elsewhere would stop the factory at a base.
 		var kept: bool = d2 <= keep2 or G.near_active(n.global_position, CULL_KEEP_RADIUS)
 		var behind: bool = not kept and to.normalized().dot(fwd) < CULL_VIEW_COS
 		if not behind and not kept and can_occlude:
@@ -146,21 +142,21 @@ func _cull_tick(delta: float) -> void:
 			n.remove_meta(CULL_META)
 			n.process_mode = Node.PROCESS_MODE_INHERIT
 
-# ── УЛЁГСЯ — ЗНАЧИТ СПИТ ─────────────────────────────────────────────────────
-# Каждое НЕспящее RigidBody3D просит у рельефа своё окно стриминговой коллизии
-# (map._update_collision_cells), а в этой игре по земле разбросаны десятки свободных блоков и
-# кусков руды. Godot усыпляет тело сам, но лежащий на стриминговом хайтфилде блок умеет дрожать
-# на пороге сна бесконечно: микро-скорость держит его бодрым, бодрый держит окно, окно держит
-# землю, земля держит дрожь. Круг замкнут, и блок так и не засыпает НИКОГДА.
+# ── SETTLED MEANS ASLEEP ─────────────────────────────────────────────────────
+# Every non-sleeping RigidBody3D asks the terrain for its own streamed collision window
+# (map._update_collision_cells), and this game scatters dozens of loose blocks and ore pieces on the
+# ground. Godot sleeps bodies itself, but a block resting on a streamed heightfield can jitter at
+# the sleep threshold forever: micro-velocity keeps it awake, awake keeps the window, the window
+# keeps the ground, the ground keeps the jitter. The loop closes and the block NEVER sleeps.
 #
-# Поэтому усыпляем сами: медленнее SETTLE_SPEED дольше SETTLE_TIME — ставим sleeping. Дальше
-# всё делает физика: контакт, толчок взрывом или проехавшая машина будят тело сами, и окно
-# возвращается в тот же кадр (цикл рельефа идёт каждый кадр).
+# So we sleep it ourselves: slower than SETTLE_SPEED for longer than SETTLE_TIME sets sleeping.
+# Physics does the rest - a contact, a blast impulse or a passing machine wakes it, and the window
+# comes back the same frame.
 #
-# ИМЕННО sleeping, А НЕ freeze. Замороженное тело для этой игры значит «не лежит в мире»:
-# G.is_loose_item отличает лежащее от держимого ровно по freeze, и замороженный блок перестал бы
-# подбираться рукой, коллектором и приёмником. Плюс импульс взрыва замороженным телам не
-# применяется вовсе (block_fx.explosion) — блоки перестали бы разлетаться.
+# sleeping, NOT freeze. A frozen body means "not lying in the world" for this game: G.is_loose_item
+# tells lying from held by exactly that flag, so a frozen block would stop being picked up by hand,
+# collector and receiver. Blast impulses are not applied to frozen bodies at all
+# (block_fx.explosion), so blocks would stop scattering.
 const SETTLE_SPEED := 0.35        # м/с — медленнее считаем, что тело уже легло
 const SETTLE_TIME := 3.5          # столько секунд подряд, чтобы не усыпить подброшенное в апогее
 const SETTLE_META := "settled_s"
@@ -180,34 +176,33 @@ func _settle_tick(n: Node3D) -> void:
 	rb.remove_meta(SETTLE_META)
 	rb.sleeping = true
 
-## Радиус сферы вокруг свободного предмета для проверки кадра. Блок — метровый куб, руда мельче;
-## полтора метра дают запас, чтобы предмет на самой кромке экрана не мигал.
+## Sphere radius around a loose item for the frustum test. A block is a one-metre cube and ore is
+## smaller; 1.5 m gives enough margin that an item on the very screen edge does not flicker.
 const ITEM_CULL_RADIUS := 1.5
 
-## ТЕНЬ ОТ СВОИХ МАШИН — ТОЛЬКО ВБЛИЗИ. У машины тридцать-сорок отдельных блоков, и каждый
-## отбрасывающий тень рисуется ВТОРОЙ РАЗ в карту теней. У базы на другом конце поля тень
-## занимает пару пикселей, а стоит столько же, сколько у машины под носом. Врагам то же самое
-## делает enemy_spawner; здесь — машины игрока, которых он не видит.
+## SHADOWS FROM YOUR OWN MACHINES ONLY UP CLOSE. A machine has 30-40 separate blocks and each
+## shadow caster is drawn a SECOND time into the shadow map. A base across the field casts a few
+## pixels and costs as much as the machine under your nose. enemy_spawner does the same for enemies;
+## here it is the player's machines, which it does not see.
 ##
-## Переключаем ТОЛЬКО на смене состояния: обход блоков не бесплатный, а расстояние плавное.
+## Toggled ON STATE CHANGE only: walking the blocks is not free and distance changes smoothly.
 const SHADOW_DIST := 90.0
 
-# ── МАШИНА ВНЕ КАДРА НЕ РИСУЕТСЯ ─────────────────────────────────────────────
-# Движок отсекает каждый MeshInstance3D сам, но платить всё равно приходится: у машины
-# тридцать-сорок отдельных инстансов, у каждого свой AABB, и все они проходят отбор каждый
-# кадр — а вокруг игрока таких машин бывает с десяток. Дешевле один раз спросить про машину
-# целиком и погасить ветку, чем сорок раз про её блоки.
+# ── A MACHINE OUT OF FRAME IS NOT DRAWN ──────────────────────────────────────
+# The engine culls each MeshInstance3D itself, but it still costs: a machine has 30-40 instances,
+# each with its own AABB, all tested every frame - and there can be a dozen machines around. One
+# test for the whole machine plus disabling the branch is cheaper than forty for its blocks.
 #
-# ГАСИМ ТОЛЬКО РИСОВАНИЕ. process_mode не трогаем совсем: враг за спиной обязан продолжать
-# ехать, стрелять и считать энергию — это его сон решает (enemy_spawner), а не кадр камеры.
-# visible у Node3D на физику не влияет: коллизия живёт своим полем disabled.
+# ONLY DRAWING IS DISABLED. process_mode is never touched: an enemy behind you must keep driving,
+# shooting and counting energy - that is decided by its sleep (enemy_spawner), not by the camera.
+# visible does not affect physics; collision has its own disabled flag.
 #
-# Проверка КАЖДЫЙ КАДР, а не по таймеру уборки: появиться машина обязана в тот же кадр, когда
-# камера на неё повернулась. Машин единицы, а тест — шесть скалярных произведений.
+# The check runs EVERY FRAME rather than on the cleanup timer: a machine must appear the same frame
+# the camera turns to it. There are only a few machines and the test is six dot products.
 const VEH_CULL_RADIUS := 9.0     # сфера вокруг машины: 11³ клеток по диагонали с запасом
-## Высота коробки для запроса окклюзии. Радиус сферы сюда не годится: is_point_hidden строит
-## столбик 1×height×1, и девятиметровый столб торчал бы над любым холмом — «за хребтом» не
-## случалось бы никогда. Четыре метра — машина с башней и запасом.
+## Box height for the occlusion query. The sphere radius does not fit here: is_point_hidden builds a
+## 1 x height x 1 column, and a nine-metre column would stick out above any hill, so "behind a ridge"
+## would never happen. Four metres is a machine with a turret plus margin.
 const VEH_OCCL_HEIGHT := 4.0
 
 func _vehicle_render_tick() -> void:
@@ -225,17 +220,17 @@ func _vehicle_render_tick() -> void:
 		if not (v is Node3D):
 			continue
 		var n := v as Node3D
-		# СВОЮ АКТИВНУЮ МАШИНУ НЕ ГАСИМ НИКОГДА. Камера висит на ней и смотрит на неё, так что
-		# тест она и так проходит, — но цена ошибки здесь несимметрична: лишний кадр отрисовки
-		# не заметен, а исчезнувшая под игроком машина выглядит как поломка игры.
+		# NEVER hide your own active machine. The camera hangs on it and looks at it, so it passes the test
+		# anyway - but the cost of an error is asymmetric: one extra drawn frame is invisible, a machine
+		# vanishing under the player looks like a broken game.
 		if n == active:
 			_set_vehicle_visible(n, true)
 			continue
 		var pos: Vector3 = n.global_position
 		var shown: bool = _in_frustum(frustum, pos, VEH_CULL_RADIUS)
 		if shown and can_occlude:
-			# За хребтом — то же самое, что за спиной. Гистерезис внутри is_point_hidden берёт
-			# прошлое состояние, чтобы машина на самой кромке холма не мигала.
+			# Behind a ridge is the same as behind you. The hysteresis inside is_point_hidden uses the previous
+			# state so a machine on the very edge of a hill does not flicker.
 			shown = not terr.is_point_hidden(pos, VEH_OCCL_HEIGHT, not n.visible)
 		_set_vehicle_visible(n, shown)
 
@@ -243,9 +238,9 @@ func _set_vehicle_visible(n: Node3D, on: bool) -> void:
 	if n.visible != on:
 		n.visible = on
 
-## Пересекает ли сфера (центр, радиус) пирамиду видимости. Планы приходят из Camera3D.get_frustum
-## в МИРОВЫХ координатах и смотрят внутрь, поэтому «снаружи» — это distance_to больше радиуса
-## хотя бы у одной. Ранний выход: чаще всего первая же плоскость и отвечает.
+## Does the sphere (centre, radius) intersect the view frustum? Planes come from
+## Camera3D.get_frustum in WORLD space and face inward, so "outside" means distance_to greater than
+## the radius for at least one. Early exit: usually the first plane answers.
 func _in_frustum(frustum: Array[Plane], center: Vector3, radius: float) -> bool:
 	for pl in frustum:
 		if pl.distance_to(center) > radius:
@@ -274,7 +269,7 @@ func _set_shadows(n: Node, on: bool) -> void:
 	for c in n.get_children():
 		_set_shadows(c, on)
 
-# Кэш ноды рельефа (у неё есть terrain_height_at).
+# Cached terrain node (the one with terrain_height_at).
 var _terrain_node: Node = null
 var _warned_no_terrain: bool = false
 
@@ -290,11 +285,9 @@ func _terrain() -> Node:
 			return c
 	return null
 
-# Рельеф, у которого УЖЕ загружены высоты. Пока карта не прочитала heightmap, get_dims()
-# нулевой, а terrain_height_at возвращает бессмысленный ноль — и подъём «над рельефом» по
-# такому нулю ставит машину внутрь холма. Именно так позиция и оказывалась под картой.
-# Сколько ждём готовности рельефа при восстановлении. Держать дольше нельзя: всё это время
-# машина заморожена, а игрок смотрит на неподвижную картинку.
+# Terrain that has ALREADY loaded its heights. Until the map reads the heightmap get_dims() is zero
+# and terrain_height_at returns a meaningless zero - and lifting "above terrain" by that zero puts
+# the machine inside a hill. That is exactly how positions ended up under the map.
 const TERRAIN_WAIT_FRAMES: int = 120
 
 func _await_terrain(max_frames: int) -> Node:
@@ -312,29 +305,29 @@ func _ready_terrain() -> Node:
 		return null
 	return terr if terr.get_dims().x > 0 else null
 
-# СТРАХОВКА: если машина оказалась заметно НИЖЕ рельефа, она провалилась сквозь него (коллизия
-# рельефа стриминговая — под только что телепортированным телом её может ещё не быть). Без этого
-# машина падала бесконечно, а камера уезжала за ней на километры вниз — экран становился пустым.
-# Абсолютный пол мира: ниже него тело падает в пустоту, и никакой рельеф для этого
-# вывода не нужен. Нужен именно такой запасной путь — страховка не должна зависеть от
-# готовности карты, иначе она молча выключается ровно тогда, когда нужнее всего.
+# SAFETY NET: a machine noticeably BELOW the terrain has fallen through it (terrain collision is
+# streamed and may not exist yet under a body that was just teleported). Without this the machine
+# fell forever and the camera followed it kilometres down into an empty screen.
+## Absolute world floor: below it a body is falling through nothing, and no terrain is needed for
+## that conclusion. The fallback must not depend on the map being ready, or it silently switches
+## off exactly when it is needed most.
 const WORLD_FLOOR := -300.0
 
 func _rescue_fallen() -> void:
-	# ВНИМАНИЕ: здесь _terrain(), а не _ready_terrain(). Гейт по готовности отключал
-	# страховку без единого слова в логе — и провалившаяся машина падала вечно.
+	# Note _terrain(), not _ready_terrain(): gating on readiness disabled the safety net without a word
+	# in the log, and a fallen machine dropped forever.
 	var terr := _terrain()
 	var ready_terr := _ready_terrain()
 	if terr == null and not _warned_no_terrain:
 		_warned_no_terrain = true
-		push_warning("world_persist: узел рельефа не найден — страховка работает только "
-				+ "по абсолютному полу %.0f" % WORLD_FLOOR)
+		push_warning("world_persist: no terrain node - the safety net works off the absolute "
+				+ "floor %.0f only" % WORLD_FLOOR)
 	var lifted: Array[RigidBody3D] = []
 	for n in _fall_candidates():
 		var n3 := n as Node3D
 		if n3 == null or not is_instance_valid(n3):
 			continue
-		# Земля известна только если карта уже прочитала высоты; иначе судим по полу мира.
+		# Ground is known only once the map has read its heights; otherwise judge by the world floor.
 		var ground: float = ready_terr.terrain_height_at(n3.global_position) if ready_terr != null else 0.0
 		var fell: bool = (ready_terr != null and n3.global_position.y < ground - FALL_LIMIT) \
 				or n3.global_position.y < WORLD_FLOOR
@@ -351,20 +344,20 @@ func _rescue_fallen() -> void:
 			rb.linear_velocity = Vector3.ZERO
 			rb.angular_velocity = Vector3.ZERO
 			lifted.append(rb)
-		# Без готового рельефа поднимаем повыше и даём упасть на землю самому.
+		# With no terrain ready, lift higher and let it fall to the ground by itself.
 		var lift_y: float = (ground + SAFE_CLEARANCE + 2.0) if ready_terr != null else 200.0
 		n3.global_position = Vector3(n3.global_position.x, lift_y, n3.global_position.z)
 	if lifted.is_empty():
 		return
-	# Стриминговая коллизия рельефа строится ВОКРУГ тел, то есть уже после того, как тело
-	# окажется на новом месте. Отпускаем через пару кадров, иначе провалится снова.
+	# Streamed terrain collision is built AROUND bodies, i.e. only after the body is at its new place.
+	# Release after a couple of frames or it falls through again.
 	await get_tree().process_frame
 	await get_tree().process_frame
 	for rb in lifted:
 		if is_instance_valid(rb):
 			rb.freeze = false
 
-# Всё, что может провалиться: машины и свободные блоки/ресурсы в мире.
+# Everything that can fall through: machines and loose blocks/resources in the world.
 func _fall_candidates() -> Array:
 	var out: Array = _player_machines().duplicate()
 	var o := _objects()
@@ -372,10 +365,9 @@ func _fall_candidates() -> Array:
 		out.append_array(o.get_children())
 	return out
 
-# ── Узлы сцены ────────────────────────────────────────────────────────────────
-## Правки рельефа, которые надо сохранить. Живут они в самой карте: ровнять землю может кто
-## угодно (квест, будущая постройка), и держать список здесь значило бы просить каждого
-## отчитываться перед сейвом отдельно.
+# ── Scene nodes ─────────────────────────────────────────────────────────────
+## Terrain edits to save. They live in the map itself: anyone may level ground (a quest, a future
+## building), and keeping the list here would mean asking each of them to report to the save.
 func _ground_edits() -> Array:
 	var terr := _terrain()
 	if terr != null and terr.has_method("ground_edits"):
@@ -394,7 +386,7 @@ func _camera():
 func _now() -> float:
 	return float(Time.get_ticks_msec()) / 1000.0
 
-# Машины ИГРОКА (faction 0, есть block_map_node). Враги (faction != 0) исключены.
+# PLAYER machines (faction 0, have block_map_node). Enemies (faction != 0) are excluded.
 func _player_machines() -> Array:
 	var out: Array = []
 	var vr := _vehicles_root()
@@ -413,7 +405,7 @@ func _primary_machine():
 	var m := _player_machines()
 	return m[0] if not m.is_empty() else null
 
-# Убрать лишние машины игрока (в сцене их бывает несколько для теста) — оставить только основную.
+# Remove extra player machines (test scenes have several) and keep the primary one.
 func _purge_extra_machines() -> void:
 	var primary = _primary_machine()
 	var cc = _camera()
@@ -424,24 +416,24 @@ func _purge_extra_machines() -> void:
 			cc.vehicles.erase(m)
 		m.queue_free()
 
-# ── Свободные блоки в мире ────────────────────────────────────────────────────
+# ── Loose blocks in the world ───────────────────────────────────────────────
 func _is_world_block(n) -> bool:
 	return n is RigidBody3D and "block" in n
 
-## Лежащий в мире РЕСУРС (руда, слиток, уголь, компонент, чанк). Признак тот же, которым его
-## отличает подбор в руку (vehicle_body_3d): не блок, есть поле type и есть kind_key().
+## A RESOURCE lying in the world (ore, ingot, coal, component, chunk). Same test the pick-up uses
+## (vehicle_body_3d): not a block, has a type field and a kind_key().
 func _is_world_item(n) -> bool:
 	return n is RigidBody3D and not ("block" in n) and ("type" in n) and n.has_method("kind_key")
 
-# ── УБОРКА ПО РАССТОЯНИЮ ─────────────────────────────────────────────────────
-# Одного TTL мало. Игрок разбирает базу на другом конце карты, уезжает — и десять минут в
-# памяти живут полсотни тел с коллизией и скриптами, до которых он уже не вернётся. А поле
-# боя, где он стоит и чинится, наоборот, вычищается по таймеру прямо под ним.
+# ── DISTANCE CLEANUP ─────────────────────────────────────────────────────────
+# TTL alone is not enough. The player dismantles a base across the map, drives away, and for ten
+# minutes fifty bodies with colliders and scripts live in memory he will never return to. Meanwhile
+# the battlefield he is standing on is cleared by the timer right under him.
 #
-# Поэтому расстояние меряется не от камеры, а от БЛИЖАЙШЕЙ МАШИНЫ ИГРОКА: камера крутится
-# вокруг, а база с конвейером стоит на месте, и всё, что лежит возле неё, обязано дожить до
-# возвращения хозяина. У ресурсов порог вдвое короче: их на порядок больше (жила отдаёт руду
-# пачками), а ценность каждого штучная — за отдельной рудой за полтораста метров не ездят.
+# So distance is measured not from the camera but from the NEAREST PLAYER MACHINE: the camera spins
+# around while a base with a conveyor stands still, and everything lying near it must survive until
+# its owner comes back. Resources use half the range: there are an order of magnitude more of them
+# (a vein ejects ore in batches) and each one is worth little.
 const CULL_DIST_BLOCK := 300.0
 const CULL_DIST_ITEM := 150.0
 
@@ -450,8 +442,8 @@ func _expire_world_blocks() -> void:
 	if o == null:
 		return
 	var now := _now()
-	# Позиции машин игрока считаем ОДИН РАЗ на проход, а не на каждый предмет: их единицы,
-	# предметов — сотни.
+	# Player machine positions are computed ONCE per pass, not per item: there are a few machines and
+	# hundreds of items.
 	var homes: Array[Vector3] = []
 	for m in _player_machines():
 		if m is Node3D:
@@ -460,10 +452,10 @@ func _expire_world_blocks() -> void:
 		var is_block: bool = _is_world_block(c)
 		if not is_block and not _is_world_item(c):
 			continue
-		# КВЕСТОВЫЙ ПРЕДМЕТ НЕ ПРОПАДАЕТ НИ ПО ТАЙМЕРУ, НИ ПО РАССТОЯНИЮ. Он помечен
-		# (QuestProps.META), и метка здесь и нужна: уборка мира про квесты ничего не знает,
-		# а десять минут — обычное время дороги до цели, и она же бывает дальше трёхсот
-		# метров. Груз, растаявший по пути, оставлял квест без цели навсегда.
+		# A QUEST ITEM NEVER DISAPPEARS, by timer or by distance. It is tagged (QuestProps.META) and that
+		# is what the tag is for: world cleanup knows nothing about quests, ten minutes is an ordinary trip
+		# to a target, and that target is often more than three hundred metres away. Cargo melting away en
+		# route left the quest without a goal forever.
 		if c.has_meta("quest_id"):
 			continue
 		var limit: float = CULL_DIST_BLOCK if is_block else CULL_DIST_ITEM
@@ -478,9 +470,9 @@ func _expire_world_blocks() -> void:
 		if now - float(c.get_meta("world_spawn_s")) > BLOCK_TTL:
 			c.queue_free()
 
-## Дальше ли предмет, чем limit, от КАЖДОЙ машины игрока. Пустой список машин (игрок погиб,
-## сцена ещё грузится) — значит «не знаем», и тогда не убираем: уборка по незнанию однажды
-## вынесет всё поле.
+## Is the item farther than limit from EVERY player machine? An empty machine list (the player died,
+## the scene is still loading) means "we do not know", and then nothing is removed: cleanup out of
+## ignorance would eventually wipe the whole field.
 func _too_far(n: Node3D, homes: Array[Vector3], limit: float) -> bool:
 	if n == null or homes.is_empty():
 		return false
@@ -504,13 +496,10 @@ func _spawn_world_block(bt: int, pos: Vector3, rot, age_s: float = 0.0) -> Node:
 	b.set_meta("world_spawn_s", _now() - age_s)         # остаток жизни = TTL − age
 	return b
 
-# ── Новый старт ───────────────────────────────────────────────────────────────
-## Новая игра начинается на ЗАВОДСКОЙ карте. Запечённый рельеф — это ямы и площадки прошлого
-## прохождения, и оставлять их новому старту значит отдать игроку чужие постройки без построек.
-##
-## Файл удаляем, но высоты в ПАМЯТИ уже прочитаны — эта сессия доигрывает на них, а заводская
-## карта вернётся со следующего запуска. Перечитывать 15 МБ и пересобирать все чанки посреди
-## игры ради редкого случая (сейв удалён или испорчен) дороже, чем один раз доиграть.
+# ── New game ────────────────────────────────────────────────────────────────
+## A new game starts on the FACTORY map. Baked terrain is the pits and pads of a previous
+## playthrough. The file is deleted but the heights are already in MEMORY - this session finishes
+## on them and the factory map returns on the next launch.
 func _fresh_start() -> void:
 	var terr := _terrain()
 	if terr != null and terr.has_method("reset_heights"):
@@ -523,15 +512,15 @@ func _fresh_start() -> void:
 	var primary = _primary_machine()
 	if primary == null or not primary.has_method("award_block_list"):
 		return
-	# Базовый набор кружит вокруг игрока и осыпается в мир (reward_orbiter.gd) — подбирает сам.
+	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	primary.award_block_list(G.STARTER_KIT)
 
-# ── Сохранение / загрузка ─────────────────────────────────────────────────────
+# ── Save / load ─────────────────────────────────────────────────────────────
 func _save_world() -> void:
 	var machines: Array = []
-	# ПЕРВОЙ пишем ту машину, которой игрок управляет: загрузка кладёт machines[0] на неё
-	# (_load_world → _restore_machine(primary, ...)), а порядок детей в Vehicles ничего про
-	# это не знает — база, оказавшаяся в списке раньше, приезжала бы игроку под управление.
+	# The machine the player CONTROLS is written FIRST: loading puts machines[0] on it
+	# (_load_world -> _restore_machine(primary, ...)), and child order in Vehicles knows nothing about
+	# that - a base earlier in the list would arrive under the player's control.
 	var ordered: Array = _player_machines()
 	var prim = _primary_machine()
 	if prim != null and ordered.has(prim):
@@ -542,9 +531,8 @@ func _save_world() -> void:
 			continue
 		var gp: Vector3 = (m as Node3D).global_position
 		var gr: Vector3 = (m as Node3D).global_rotation
-		# В сейв не должна попасть точка ПОД рельефом. Иначе одна неудачная автосохранёнка
-		# закрепляется навсегда: каждая следующая загрузка возвращает машину туда же, и
-		# игрок падает снова и снова, сколько ни перезапускай.
+		# A point UNDER the terrain must never reach the save. Otherwise one unlucky autosave locks in
+		# forever: every load returns the machine there and the player falls again and again.
 		var terr_save := _ready_terrain()
 		if terr_save != null:
 			gp.y = maxf(gp.y, terr_save.terrain_height_at(gp) + SAFE_CLEARANCE)
@@ -552,10 +540,10 @@ func _save_world() -> void:
 			"layout": m.block_map_node.get_layout(),
 			"pos": [gp.x, gp.y, gp.z],
 			"rot": [gr.x, gr.y, gr.z],
-			# СТАЦИОНАРНАЯ БАЗА отличается от машины не раскладкой, а флагом: у неё нет
-			# кабины и она всегда на якоре. Без него база возвращалась обычной машиной —
-			# и сторож кабины сносил её через полсекунды после загрузки (см. _restore_machine).
-			# == true, а не bool(): у машины без поля get() вернёт null, а bool(null) роняет вызов.
+			# A STATIONARY BASE differs from a machine by a flag, not by layout: it has no cabin and is always
+			# anchored. Without it a base came back as an ordinary machine and the cabin watchdog removed it
+			# half a second after loading (see _restore_machine). Compared with == true rather than bool():
+			# get() returns null on a machine without the field, and bool(null) crashes the call.
 			"station": m.get("is_station") == true,
 		})
 	var blocks: Array = []
@@ -576,8 +564,8 @@ func _save_world() -> void:
 				"rot": [br.x, br.y, br.z],
 				"age": age,
 			}
-			# Метку квеста сохраняем ВМЕСТЕ с блоком: без неё восстановленный груз становится
-			# обычным мусором — его съедает уборка, а квест ищет цель, которой уже нет.
+			# The quest tag is saved WITH the block: without it restored cargo becomes ordinary litter - the
+			# cleanup eats it while the quest looks for a target that no longer exists.
 			if c.has_meta("quest_id"):
 				entry["quest"] = String(c.get_meta("quest_id"))
 			blocks.append(entry)
@@ -587,19 +575,18 @@ func _save_world() -> void:
 			"version": G.SAVE_FORMAT,
 			"machines": machines,
 			"world_blocks": blocks,
-			# ПРАВКИ РЕЛЬЕФА (выровненные площадки). Саму карту высот не пишем — это мегабайты
-			# чисел на каждое сохранение; правка же это четыре числа, и по ней земля
-			# получается ровно такой же (см. map.flatten_area).
+			# TERRAIN EDITS (levelled pads). The heightmap itself is not written - that is megabytes per save,
+			# while an edit is four numbers that reproduce the same ground (map.flatten_area).
 			"ground": _ground_edits(),
-			# ЗАЧИЩЕННЫЕ УКРЕПЛЁННЫЕ ТОЧКИ — только их номера (outposts.gd). Координаты
-			# выводятся из постоянного зерна и всегда одни и те же; писать в сейв то, что и
-			# так вычисляется, значит однажды получить сейв, спорящий с кодом.
+			# CLEARED FORTIFIED POINTS - indices only (outposts.gd). Coordinates derive from the constant seed
+			# and are always the same; writing derivable data into a save eventually gives a save that argues
+			# with the code.
 			"outposts": _outposts_state(),
 		}))
 		f.close()
 
-## Состояние укреплённых точек — через группу, а не по пути: узел живёт в сцене мира, и
-## искать его строкой значило бы завязать сейв на раскладку сцены.
+## Fortified point state comes through a group, not a path: the node lives in the world scene, and
+## finding it by string would tie the save to the scene layout.
 func _outposts_state() -> Array:
 	var o: Node = get_tree().get_first_node_in_group("outposts")
 	return o.save_state() if (o != null and o.has_method("save_state")) else []
@@ -620,8 +607,8 @@ func _load_world() -> void:
 	var machines: Array = data.get("machines", [])
 	var primary = _primary_machine()
 	if machines.is_empty() or primary == null or not primary.has_method("apply_build"):
-		# Сейв есть, но машины в нём нет (например, записался до того, как машина появилась).
-		# Молча оставить игрока с голой кабиной и без блоков = тупик, поэтому — новый старт.
+		# The save exists but holds no machine (written before the machine appeared, say). Silently leaving
+		# the player with a bare cabin and no blocks is a dead end, so: new game.
 		_quarantine_save("в сейве нет машин")
 		_fresh_start()
 		return
@@ -629,29 +616,28 @@ func _load_world() -> void:
 		_quarantine_save("раскладка машины повреждена")
 		_fresh_start()
 		return
-	# РЕЛЬЕФ ПЕРВЫМ. Выровненные площадки надо повторить ДО того, как в мир вернутся машины:
-	# база из квеста стоит на ровной земле, и восстановленная раньше правки она повисла бы в
-	# воздухе (или утонула, если площадку срезали). Ждём высоты карты — по нулевым не выровнять.
+	# TERRAIN FIRST. Levelled pads must be replayed BEFORE machines return: a quest base stands on flat
+	# ground, and restored before its edit it would hang in the air (or sink, if the pad was cut down).
+	# Wait for the map's heights - zeros cannot level anything.
 	var terr0: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
 	if terr0 != null and terr0.has_method("apply_ground_edits"):
 		var edits: Array = data.get("ground", [])
 		terr0.apply_ground_edits(edits)
-		# И СРАЗУ ЗАПЕКАЕМ. Дамп карты высот — это её полный размер (15 МБ на нашей карте),
-		# на ходу такая запись видна рывком, а здесь мы ещё под экраном загрузки, где игрок и
-		# так ждёт. После запекания рельеф САМ такой, и повторять правки больше не нужно —
-		# список внутри карты чистится, а те, что остались в сейве, отсекутся по номеру
-		# запечённой правки (см. map.bake_heights).
+		# And BAKE right away. A heightmap dump is the map's full size (15 MB here); mid-game such a write
+		# shows as a hitch, while here we are still under the loading screen. After baking the terrain IS
+		# that shape and the edits need no replay - the list inside the map is cleared, and any left in the
+		# save are cut off by the baked edit number (map.bake_heights).
 		if not edits.is_empty() and terr0.has_method("bake_heights"):
 			terr0.bake_heights()
-	# Зачищенные точки восстанавливаем ДО машин: точка, которую игрок уже снёс, не должна
-	# успеть материализоваться заново, пока грузится всё остальное.
+	# Cleared points are restored BEFORE machines: a point the player already destroyed must not
+	# materialise again while the rest is loading.
 	var op: Node = get_tree().get_first_node_in_group("outposts")
 	if op != null and op.has_method("load_state"):
 		op.load_state(data.get("outposts", []))
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])
-	# Убираем предустановленные в сцене тест-блоки, иначе они копятся поверх сохранённых.
+	# Remove blocks preset in the scene for testing, or they pile on top of the saved ones.
 	var o := _objects()
 	if o != null:
 		for c in o.get_children():
@@ -665,9 +651,9 @@ func _load_world() -> void:
 		if b != null and String(wb.get("quest", "")) != "":
 			b.set_meta("quest_id", String(wb["quest"]))   # снова квестовый, а не мусор
 
-# Проверка раскладки ДО применения: одна битая запись роняла бы сборку молча, а игрок получал
-# пустую машину и не понимал почему. Требуем массив словарей с координатами в пределах сетки
-# и известным типом блока.
+# The layout is validated BEFORE it is applied: one broken entry would silently break the build and
+# the player would get an empty machine with no explanation. We require an array of dictionaries
+# with coordinates inside the grid and a known block type.
 func _layout_ok(layout) -> bool:
 	if not (layout is Array) or (layout as Array).is_empty():
 		return false
@@ -683,22 +669,22 @@ func _layout_ok(layout) -> bool:
 			return false                      # неизвестный блок (переименовали/удалили тип)
 	return true
 
-# Битый сейв НЕ удаляем, а отодвигаем в сторону: игра стартует заново и больше не залипает,
-# а файл остаётся — по нему можно понять, что именно сломалось.
+# A broken save is NOT deleted but moved aside: the game starts fresh and stops getting stuck, and
+# the file stays so it can be examined.
 func _quarantine_save(reason: String) -> void:
 	var bad: String = G.slot_path(BAD_SAVE_FILE)
 	push_warning("world_persist: сейв не загружен (%s) → откладываю в %s" % [reason, bad])
-	# Открываем ПАПКУ СЛОТА, а не user://: файлы мира лежат в ней, и rename по голым именам
-	# работает только относительно того каталога, который открыли.
+	# Open the SLOT FOLDER, not user://: world files live in it, and rename by bare names works only
+	# relative to the directory that was opened.
 	var d := DirAccess.open(G.slot_dir())
 	if d != null:
 		if d.file_exists(BAD_SAVE_FILE):
 			d.remove(BAD_SAVE_FILE)
 		d.rename(SAVE_FILE, BAD_SAVE_FILE)
 
-## СТАЦИОНАРНАЯ ли это структура. Основной путь — флаг из сейва, но у файлов, записанных до
-## его появления, флага нет, и база в них уже лежит. Для них судим по РАСКЛАДКЕ: стационарное
-## ядро есть, кабины нет. Ошибиться в другую сторону нельзя — у машины кабина есть всегда.
+## Is this a stationary structure? The main path is the flag from the save; files written before it
+## existed have no flag but do contain bases. For those we judge by LAYOUT: a stationary core and no
+## cabin. The opposite mistake is impossible - a machine always has a cabin.
 func _is_station_data(mdata: Dictionary) -> bool:
 	if mdata.get("station", false) == true:
 		return true
@@ -716,10 +702,10 @@ func _is_station_data(mdata: Dictionary) -> bool:
 func _restore_machine(veh, mdata: Dictionary) -> void:
 	if not is_instance_valid(veh):
 		return
-	# СТАЦИОНАРНУЮ БАЗУ помечаем ДО раскладки. Она отличается от машины не блоками, а этим
-	# флагом: кабины у базы нет, и без флага сторож кабины (vehicle_body_3d._cabin_watch)
-	# принимал её за машину с выбитой кабиной — база рассыпалась в блоки через полсекунды
-	# после каждой загрузки, а восстановление падало на уже освобождённом узле.
+	# A STATIONARY BASE is flagged BEFORE the layout. It differs from a machine by this flag, not by
+	# blocks: it has no cabin, and without the flag the cabin watchdog (vehicle_body_3d._cabin_watch)
+	# took it for a machine with its cabin shot out - the base fell apart into blocks half a second
+	# after every load, and restoring crashed on an already freed node.
 	var station: bool = _is_station_data(mdata)
 	if station and "is_station" in veh:
 		veh.is_station = true
@@ -730,21 +716,21 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	var r = mdata.get("rot", null)
 	if not (veh is Node3D):
 		return
-	# Рельеф ждём ДО заморозки и недолго. Раньше машину морозили и держали так до 600 кадров,
-	# и если рельеф не успевал прочитать высоты, игрок десять секунд стоял неподвижным кирпичом.
-	# Не дождались — ставим как в сейве: страховка _rescue_fallen крутится раз в секунду и
-	# поднимет машину, если та окажется под землёй.
+	# The terrain is awaited BEFORE freezing, and briefly. Machines used to be frozen and held for up
+	# to 600 frames, and if the terrain did not read its heights in time the player stood as a brick for
+	# ten seconds. If it does not arrive, place as saved: _rescue_fallen runs once a second and lifts
+	# the machine if it ends up underground.
 	var terr: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
-	# Ждали до 120 кадров — за это время машины может уже не быть (погибла, снесена уборкой
-	# лишних). Ссылка на освобождённый узел НЕ равна null, поэтому проверяем только
-	# is_instance_valid: сравнение с null здесь молча пропускает мёртвый узел дальше.
+	# After waiting up to 120 frames the machine may be gone (destroyed, removed as an extra). A
+	# reference to a freed node is NOT null, so only is_instance_valid is checked: comparing with null
+	# silently lets a dead node through.
 	if not is_instance_valid(veh):
 		return
 
-	# Машина — RigidBody3D, и ПРЯМОЙ телепорт незамороженного тела физика откатывает, а под новой
-	# точкой ещё нет стриминговой коллизии рельефа (её тайлы строятся вокруг тела уже ПОСЛЕ того,
-	# как оно там окажется). Поэтому: замораживаем → ставим позицию НЕ НИЖЕ рельефа → ждём пару
-	# кадров, пока построится коллизия → отпускаем.
+	# A machine is a RigidBody3D and a DIRECT teleport of an unfrozen body is rolled back by physics,
+	# while under the new point there is no streamed terrain collision yet (tiles are built around a
+	# body only AFTER it is there). So: freeze, place NOT BELOW the terrain, wait a couple of frames for
+	# collision, release.
 	var rb := veh as RigidBody3D
 	if rb != null:
 		rb.freeze = true
@@ -757,9 +743,9 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 		if terr != null:
 			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
 		else:
-			# Высоту из сейва без проверки ставить НЕЛЬЗЯ: если она с прошлого бага под
-			# землёй, машина стартует внутри мира и падает. Берём только X/Z, а высоту
-			# оставляем спавновую — она заведомо над рельефом, и машина просто сядет.
+			# The saved height must not be applied unchecked: if a past bug left it underground the machine
+			# starts inside the world and falls. Take X/Z only and keep the spawn height, which is safely above
+			# the terrain.
 			pos.y = maxf(veh.global_position.y, pos.y)
 			push_warning("world_persist: рельеф не готов — беру из сейва только X/Z, "
 					+ "высоту оставляю спавновую")
@@ -768,8 +754,8 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	await get_tree().process_frame
 	if not is_instance_valid(veh):
 		return
-	# БАЗУ не отпускаем: она стоит на якоре по определению, и разморозка означала бы, что
-	# постройка поехала. _anchor_station сам вернёт заморозку, столб якоря и подписку на ядро.
+	# A BASE is never released: it is anchored by definition, and unfreezing would mean the building
+	# drove off. _anchor_station restores the freeze, the anchor column and the core subscription.
 	if station:
 		if veh.has_method("_anchor_station"):
 			veh._anchor_station()
@@ -784,17 +770,17 @@ func _spawn_machine(mdata: Dictionary) -> void:
 		return
 	var v = scene.instantiate()
 	vr.add_child(v)
-	# Ждём готовности машины так же, как _ready ждёт основную: стартовые блоки доезжают
-	# ОТЛОЖЕННО (blocks.spawn_block ждёт ready родителя), и раскладка из сейва, положенная
-	# раньше, затиралась догоняющими корутинами.
+	# Wait for the machine the same way _ready waits for the primary one: starter blocks arrive LATE
+	# (blocks.spawn_block awaits the parent's ready), and a saved layout applied earlier was overwritten
+	# by the catching-up coroutines.
 	var guard: int = 0
 	while guard < 600 and is_instance_valid(v) \
 			and not (v.is_node_ready() and v.get("block_map_node") != null):
 		await get_tree().process_frame
 		guard += 1
-	# После КАЖДОГО ожидания машина может быть уже освобождена — восстановление идёт кадрами,
-	# а машина за это время успевает и погибнуть, и попасть под уборку. Освобождённая ссылка
-	# не равна null (обращение к ней роняет вызов), поэтому проверка одна: is_instance_valid.
+	# After EVERY await the machine may already be freed - restoring runs across frames and the machine
+	# can die or be cleaned up meanwhile. A freed reference is not null (touching it crashes the call),
+	# so the one check is is_instance_valid.
 	if not is_instance_valid(v):
 		return
 	if v.has_method("apply_build"):
