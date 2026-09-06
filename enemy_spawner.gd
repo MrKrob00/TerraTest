@@ -1,136 +1,81 @@
 extends Node3D
-# Спавнит врагов вокруг игрока и держит их количество: враг погиб/исчез → через интервал
-# появляется новый. Сцена берётся случайно из пула, а вот СБОРКА — уже нет: она подбирается
-# под стоимость машины игрока (см. _pick_preset). Враги добавляются под узел Vehicles,
-# чтобы карта дала им стриминговую коллизию (иначе провалятся сквозь рельеф вдали).
+# Keeps enemies around the player: one dies or despawns, another arrives after the interval.
+# The scene is random from the pool, the BUILD is not - it follows the player machine's value
+# (_pick_preset). Enemies go under Vehicles so the map gives them streamed collision.
 #
-# Плотность и правила взяты из TerraTech, где мир держится на четырёх врагах и сорока
-# секундах паузы. У нас было девять и шесть — вчетверо гуще по машинам и в семь раз по
-# темпу, и мир читался как непрерывная драка. Три правила оттуда же:
-#   • рядом со СВОЕЙ ЗАЯКОРЕННОЙ машиной спавна нет (quiet_radius) — база тихая;
-#   • далёкий враг ЗАСЫПАЕТ, а не возвращается к игроку — из боя можно выйти;
-#   • сила врага подбирается под стоимость машины игрока, а не бросается кубиком.
-# Чего НЕ взял: в TerraTech враг не появляется, пока игрок едет быстро. У нас это отменило
-# бы главное требование к миру — «проехал сотню метров и уже дерёшься».
+# Density rules taken from TerraTech: quiet zone around the player's anchored machine, a far
+# enemy SLEEPS instead of being teleported back (so combat can be left), strength follows the
+# player's machine value. Not taken: "no spawns while driving fast" - that would cancel the one
+# thing the world must do, meet you within a hundred metres.
 
 @export var enemy_scenes: Array[PackedScene]        # пул сцен врагов
-## ПОТОЛОК одновременно БОДРСТВУЮЩИХ врагов. Было девять, потом четыре (как в TerraTech) —
-## и всё равно оказалось густо. Двое: столько же держит любая встреча на дороге, но мир
-## перестаёт быть непрерывной дракой.
+## Cap on AWAKE enemies. Nine, then four, still crowded; two is what a road encounter holds.
 @export var max_enemies: int = 2
-## Пауза между появлениями. Было 6 секунд (убитый заменялся мгновенно), потом 40. Минута с
-## четвертью: после стычки должен быть слышен перерыв, а не следующая стычка.
+## Pause between spawns. After a fight there must be an audible break, not the next fight.
 @export var spawn_interval: float = 75.0
-## Сколько врагов ставится СРАЗУ, как только мир готов (и обучение закончилось). Один:
-## мир не должен встречать игрока пустым, но и толпой тоже.
+## Enemies placed at once when the world is ready: not empty, not a crowd.
 @export var initial_enemies: int = 1
-## ПАУЗА ПОСЛЕ ОБУЧЕНИЯ, прежде чем мир вообще начнёт присылать врагов. Раньше наполнение шло
-## в тот же кадр, где закрылся последний шаг: игрок только что собрал первую машину и ни разу
-## на ней не проехал, а к нему уже едут. Несколько секунд «просто покататься» — это не отдых,
-## а возможность попробовать то, чему научили, до того как это проверят боем.
-##
-## ЧИСЛО ЗДЕСЬ ОДНО НА ОБА ПУТИ: сюжетного разведчика после обучения приводит
-## tutorial_director, и он спрашивает задержку у этого поля. Двумя числами они разъехались бы,
-## и «пара секунд на покататься» кончалась бы тем, что первым приезжает кто-то из общего
-## потока, пока разведчик ещё ждёт.
+## Grace after the tutorial before the world sends anyone: a few seconds to try what was just
+## taught. ONE number for both paths - tutorial_director asks this field for the story scout,
+## and two numbers would let the regular stream arrive first.
 @export var first_spawn_delay: float = 8.0
 var _seed_grace: float = -1.0
 
-# ВРАЖЕСКИЕ БАЗЫ ЖИВУТ НЕ ЗДЕСЬ, а в outposts.gd — они СТОЯТ НА КАРТЕ, в постоянных точках,
-# и переживают отъезд. Спавнер раньше держал их сам, в кольце вокруг игрока: постройка
-# появлялась за холмом и исчезала за спиной, то есть была декорацией, едущей следом, а не
-# местом, к которому можно вернуться. Здесь у баз осталась ровно одна обязанность — общая с
-# врагами: СОН и тени (см. register_base). Турели базы тикают каждый физкадр, и за горизонтом
-# это десяток стволов, ищущих цель в пустоте.
+# Enemy BASES live in outposts.gd: they stand at fixed map points and survive driving away.
+# Here they keep one duty shared with enemies - sleep and shadows (register_base), because base
+# turrets tick every physics frame and past the horizon that is ten guns aiming at nothing.
 
-## Сколько врагов ОДНОВРЕМЕННО могут вести бой с игроком. Остальные патрулируют, пока место
-## не освободится. Без этого потолка машины, заметив игрока, ехали на него все разом —
-## и это не бой, а казнь: отбиться от толпы нечем, а разъехаться она не даёт.
-## ОДИН: бой один на один читается и выигрывается, а второй нападающий превращает его
-## в свалку, где решает не умение, а количество.
+## How many may ENGAGE at once; the rest patrol until a slot frees. Without the cap everyone
+## who noticed the player drove in together, which is an execution rather than a fight.
 @export var max_engaging: int = 1
-## Кольцо спавна. Ближняя граница НЕ ЗАДАЁТСЯ ЧИСЛОМ, а СЧИТАЕТСЯ: радиус обзора врага плюс
-## запас (_spawn_min_dist). Смысл в том, что спавн ближе «сколько враг видит» — это машина,
-## которая родилась и в ту же секунду поехала драться, а игрок даже не понял, откуда она
-## взялась. Зашитое число тут разъезжалось бы с обзором при первой же его правке: радиус уже
-## менялся с 85 на 40, и граница про это не знала.
-##
-## Запас нужен сверх обзора: враг должен ещё какое-то время патрулировать, чтобы игрок успел
-## его заметить и решить — объехать или подраться.
-##
-## Тем же запасом меряется расстояние до ДРУГИХ врагов при выборе точки (_too_close_to_enemy):
-## «безопасно» — величина одна, и держать её двумя числами значит однажды их разойти.
+## Spawn ring. The inner edge is COMPUTED, not a number: enemy vision + this margin
+## (_spawn_min_dist). Closer than vision means a machine that spawns and immediately attacks.
+## The same margin measures clearance from OTHER enemies - "safe" is one quantity.
 @export var spawn_safe_margin: float = 40.0
-## Радиус обзора берём у ЖИВОГО врага (он же может отличаться у сборок). Пока врагов нет —
-## брать неоткуда, поэтому значение по умолчанию.
+## Vision radius is asked from a LIVE enemy (builds may differ); this is the fallback.
 @export var enemy_detect_fallback: float = 40.0
 @export var spawn_max_dist: float = 160.0
-## ТИХАЯ ЗОНА вокруг СВОЕЙ ЗАЯКОРЕННОЙ машины: туда враг не приходит вовсе (правило
-## TerraTech — рядом с якорем игрока спавна нет).
-##
-## Нам оно нужнее, чем ей: вся производственная цепочка — фабрикатор, компонентный завод,
-## склад, продавец — работает ТОЛЬКО под якорем. Без тихой зоны враг рождался в полутора
-## сотнях метров от стоящей фабрики и приезжал ломать её ровно тогда, когда игрок
-## раскладывает конвейер и управлять машиной не может.
+## QUIET ZONE around your own anchored machine: no spawns there. The whole production chain
+## only runs while anchored, so without it enemies arrive exactly while the player is laying out
+## a conveyor and not steering.
 @export var quiet_radius: float = 120.0
-## Не появляться ПЕРЕД машиной ближе этого: игрок едет вперёд и не должен видеть, как враг
-## возникает у него по курсу. Сзади и по бокам такого ограничения нет — там появление не видно.
+## Never appear within this distance IN FRONT: the player must not watch an enemy materialise
+## on his heading. Behind and to the sides it is not visible anyway.
 @export var front_clear_dist: float = 240.0
 @export_range(0.0, 180.0) var front_cone_deg: float = 55.0
-# Запас до ДРУГИХ врагов — тот же spawn_safe_margin, что и до игрока. Одно число на оба
-# правила намеренно: это одна и та же величина «насколько далеко считается безопасно», и
-# двумя экспортами она рано или поздно разъехалась бы. Было 70 отдельным числом.
-## ВСЕ враги ДЕСАНТИРУЮТСЯ: появляются на этой высоте над рельефом и падают.
-##
-## Отсюда же и то, чего здесь БОЛЬШЕ НЕТ — отбраковки точек по высоте и уклону. Она искала
-## ровное место, чтобы машина не возникла в стене обрыва, и стоила пяти сэмплов рельефа на
-## каждого кандидата (высота плюс четыре вокруг для уклона), а кандидатов до сорока восьми.
-## Падающей машине ровное место не нужно: она сама скатится с уклона, а перевернётся —
-## встанет (_flip_recover в enemy_vehicle). Проверять землю, чтобы аккуратно поставить туда
-## то, что и так прилетит сверху, смысла нет.
+## Everyone DROPS IN from this height. Hence no height/slope rejection of candidate points: it
+## cost five terrain samples per candidate across dozens of them, and a falling machine does not
+## need flat ground - it rolls off a slope and rights itself (_flip_recover).
 @export var drop_height: float = 10.0
 
 @export_group("Сон и уборка")
-## Враг дальше sleep_dist от машины игрока дольше sleep_delay секунд — ЗАСЫПАЕТ: физика
-## заморожена, ИИ и оружие не считаются, узел остаётся на месте.
-##
-## Раньше он вместо этого ТЕЛЕПОРТИРОВАЛСЯ обратно в кольцо возле игрока — «чтобы бой не
-## затухал». Это и была главная причина ощущения «их слишком много»: из боя нельзя было
-## выйти, отступление возвращало ту же машину тебе за спину. В TerraTech далёкий враг просто
-## замирает и ждёт; уехал — значит уехал, и это единственный способ разорвать стычку.
+## Past sleep_dist for sleep_delay seconds an enemy SLEEPS: physics frozen, AI and weapons off,
+## node stays where it is. It used to be teleported back to the player instead, which made
+## retreat impossible - the same machine reappeared behind you.
 @export var sleep_dist: float = 420.0
 @export var sleep_delay: float = 20.0
-## Спящие не занимают место под потолком, но и копиться до бесконечности не должны: когда их
-## вместе с живыми больше max_total, самый дальний СПЯЩИЙ убирается. Захватчик не убирается
-## никогда (см. ниже).
+## Sleepers do not count against the cap but must not pile up: over max_total the farthest
+## SLEEPER is removed. The invader never is.
 @export var max_total: int = 8
 @export var map_node: Node
 
-## РЕДКОЕ СОБЫТИЕ «Проверка сектора» (лор цифровой симуляции): Система объявляет проверку
-## квадрата вокруг игрока, даёт время сбежать, и если он не покинул квадрат — присылает
-## ЗАХВАТЧИКА. Заглянул в квадрат — беги.
-##
-## Раньше присылала отряд из пяти. Вместе с девятью обычными это давало четырнадцать машин
-## разом — то есть один сценарий отменял весь баланс плотности. Теперь, как invader в
-## TerraTech, он ОДИН: сильный, помнит цель, не деспавнится и ждёт, сколько понадобится.
-## Одна такая машина страшнее пяти обычных и при этом не превращает карту в свалку.
+## Rare event "sector scan": the System announces a square around the player, gives him time to
+## leave, and sends an INVADER if he stays. ONE machine, not a squad: strong, never forgets its
+## target, never despawns. A squad of five cancelled the whole density balance.
 @export_group("Проверка сектора")
 @export var scan_enabled: bool = true
-## Раз в 10–15 минут — темп invader'а в TerraTech. Было 3–7, и «редкое событие» приходило
-## чаще, чем игрок успевал построить фабрику.
+## Every 10-15 min. At 3-7 the "rare event" came faster than a factory could be built.
 @export var scan_min_interval: float = 600.0
 @export var scan_max_interval: float = 900.0
 @export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
 @export var scan_warn_time: float = 12.0            # сколько секунд на побег
 @export var scan_preset: int = 9                    # тяжёлая сборка (см. blocks.gd layout)
-## Захватчик десантируется с той же высоты, что и все (drop_height): у него это особенно
-## важно — появляется он у края квадрата, то есть рядом с игроком, и без падения читалось как
-## «машина возникла в двадцати метрах и сразу открыла огонь».
+## The invader drops from the usual drop_height: it appears at the square's edge, i.e. close,
+## and without the fall it read as "a machine materialised twenty metres away and opened fire".
 
 @export_group("Сила врага")
-## Сборки от САМОЙ СЛАБОЙ к самой сильной (номера см. blocks.gd _define_layout): разведчик,
-## бегун, рейдер, копейщик, таран, осадная. Ступени растут и по опасности, и по РАЗМЕРУ —
-## по машине на горизонте сразу понятно, во что ввязываешься.
+## Builds from weakest to strongest (see blocks.gd _define_layout). Tiers grow in danger and in
+## SIZE: the silhouette on the horizon tells you what you are getting into.
 @export var preset_tiers: Array[int] = [5, 6, 7, 8, 9, 10]   # scout → runner → raider → lancer → breaker → siege
 ## С какой стоимости машины игрока (сумма G.shop_price её блоков) начинается каждая ступень.
 ## Стартовая кабина ≈ 1800, готовая боевая машина — тысяч десять.
@@ -169,15 +114,12 @@ func _process(delta: float) -> void:
 func _tick_spawner(delta: float) -> void:
 	if not _ready_done:
 		return
-	# ОТЛАДКА: общий поток можно выключить (Main → Отладка → enemy_spawn). Квестовых машин это
-	# не касается — их ставит spawn_at по прямому вызову задания, и задание, которое молча не
-	# начинается, отлаживать хуже, чем лишнего врага в поле.
+	# Debug gate for the regular stream only. Quest machines go through spawn_at and are never
+	# gated: a quest that silently refuses to start is worse to debug than one extra enemy.
 	if not G.debug(&"enemy_spawn"):
 		return
-	# Чистка списка — раз в 0.5с, а не каждый кадр: .filter() создавал новую Callable + новый
-	# Array и звал is_instance_valid на всех врагах 60 раз в секунду ради события, которое
-	# случается редко (смерть врага). На счёт лимита это не влияет — проверка ниже переживёт
-	# полсекунды с мёртвой записью.
+	# Twice a second, not per frame: .filter() allocates a Callable and an Array and walks every
+	# enemy, all for a rare event. A stale entry for half a second changes nothing.
 	_clean_t -= delta
 	if _clean_t <= 0.0:
 		_clean_t = 0.5
@@ -186,17 +128,16 @@ func _tick_spawner(delta: float) -> void:
 	_limit_engagement()
 	if G.debug(&"sector_scan"):
 		_scan_tick(delta)                           # редкое событие «проверка сектора»
-	# Потолок считается по БОДРСТВУЮЩИМ. Спящий стоит за горизонтом, ничего не делает и на
-	# ощущение «сколько их вокруг» не влияет — считать его занятым местом значило бы, что
-	# четыре забытые в поле машины навсегда выключают спавн.
+	# The cap counts AWAKE ones: a sleeper past the horizon does nothing, and counting it would
+	# let four forgotten machines disable spawning forever.
 	if _awake_count() >= max_enemies:
 		return
 	# Первый заход: наполняем мир сразу, а не по одному с паузой.
 	if not _seeded:
 		if _tutorial_active():
 			return                      # обучение идёт — мир молчит и отсчёт не начат
-		# Отсчёт стартует В МОМЕНТ, когда обучение закончилось (или сразу, если его не было:
-		# загруженный сейв, пропуск). Ставим его здесь, а не в _ready, ровно поэтому.
+		# The grace starts when the tutorial ends (or at once if there was none), which is why
+		# it is set here and not in _ready.
 		if _seed_grace < 0.0:
 			_seed_grace = first_spawn_delay
 		_seed_grace -= delta
@@ -213,16 +154,11 @@ func _tick_spawner(delta: float) -> void:
 	_t = spawn_interval
 	_spawn_one()
 
-# Кто СЕЙЧАС имеет право драться. Право получают ближайшие к игроку max_engaging врагов из
-# тех, кто его уже заметил; остальным бой запрещён, и они ведут себя как патрульные.
-#
-# Считаем по РАССТОЯНИЮ, а не по очереди «кто первый заметил»: иначе право оставалось бы у
-# врага, который уже уехал за холм, а тот, что дышит игроку в затылок, стоял бы и ждал.
-#
-# Признак «желает драться» — наличие цели, и это работает только потому, что запрет её больше
-# НЕ СБРАСЫВАЕТ (см. enemy_vehicle._update_ai). Когда сбрасывал, признак зависел от того, что
-# сам же запрет и уничтожал: враг мгновенно снова считался свободным, право возвращалось,
-# цель находилась заново — и так триста раз в минуту, со стрельбой на каждом витке.
+# Who may fight right now: the max_engaging nearest enemies that already noticed the player.
+# By DISTANCE, not by who noticed first, or the right would stay with someone already behind a
+# hill. "Wants to fight" means having a target, and that only works because the ban no longer
+# CLEARS the target (enemy_vehicle._update_ai) - when it did, the flag destroyed its own input
+# and the enemy re-acquired hundreds of times a minute, firing on every cycle.
 func _limit_engagement() -> void:
 	var player: Node3D = _player()
 	if player == null:
@@ -257,11 +193,7 @@ func _limit_engagement() -> void:
 	for i in seekers.size():
 		seekers[i].set_combat_allowed(i < max_engaging)
 
-# Далёкие враги ЗАСЫПАЮТ, а не возвращаются к игроку.
-#
-# Прежняя версия телепортировала их обратно в кольцо спавна, «чтобы стычка не затухала».
-# Именно она и делала бой бесконечным: отступать было некуда — та же машина возникала
-# сзади. В TerraTech далёкий враг просто замирает и ждёт, и отступление снова работает.
+# Far enemies SLEEP instead of being returned to the player: that is what makes retreat work.
 func _track_dormancy(delta: float) -> void:
 	for k in _far_time.keys():
 		if not is_instance_valid(k):
@@ -269,11 +201,8 @@ func _track_dormancy(delta: float) -> void:
 	var player: Node3D = _player()
 	if player == null:
 		return
-	# БАЗЫ ЗАСЫПАЮТ ПО ТЕМ ЖЕ ПРАВИЛАМ. Они не ездят, но на каждой стоит по несколько турелей,
-	# а WeaponBlock тикает каждый физкадр — три базы за горизонтом это десяток стволов, которые
-	# ищут цель в пустоте. Спящая ветка выключена целиком (_sleep), и это ровно то, ради чего
-	# дремота и придумана. В потолок бодрствующих (max_enemies) базы при этом не входят: там
-	# считаются те, кто едет к игроку.
+	# Bases sleep by the same rules: each carries several turrets, and WeaponBlock ticks every
+	# physics frame. They do not count against max_enemies - that cap is about who drives at you.
 	for e in _enemies + _bases:
 		if not is_instance_valid(e):
 			continue
@@ -298,10 +227,9 @@ func _track_dormancy(delta: float) -> void:
 	_release_lost_invader(player)
 	_trim_sleepers(player)
 
-# Захватчик занимает свой слот, пока жив, и уборкой спящих не трогается — иначе он не был бы
-# событием. Но «пока жив» без оговорок означало бы «навсегда»: игрок уехал, тот заснул за
-# горизонтом, и проверка сектора больше НИКОГДА никого не присылает, потому что слот занят
-# машиной, которую никто уже не встретит. Считаем такого отставшим: он гнался и потерял.
+# The invader holds its slot while alive and is never trimmed. Unqualified that means forever:
+# the player drives off, it sleeps past the horizon, and the sector scan can never fire again.
+# Far beyond sleep_dist it counts as having lost the chase.
 const INVADER_GIVE_UP: float = 2.0        # во сколько раз дальше sleep_dist — уже не догонит
 
 func _release_lost_invader(player: Node3D) -> void:
@@ -317,9 +245,9 @@ func _release_lost_invader(player: Node3D) -> void:
 	_invader.queue_free()
 	_invader = null
 
-# Спящий: физика заморожена, ИИ и оружие не тикают. process_mode гасит ВСЮ ветку — иначе
-# турели дочерних блоков продолжали бы крутиться и стрелять за горизонтом.
-## Дальше этого расстояния машина перестаёт отбрасывать тень (принимать — продолжает).
+# Asleep: physics frozen, AI and weapons not ticking. process_mode disables the WHOLE branch,
+# or child turrets would keep turning and firing past the horizon.
+## Beyond this distance a machine stops casting shadows (receiving them continues).
 const SHADOW_DIST: float = 90.0
 
 ## Проставить отбрасывание тени всей ветке узла. Зовётся на смене состояния, не по кадрам.
@@ -352,9 +280,8 @@ func _wake(e: Node3D) -> void:
 	e.set_meta("asleep", false)
 	e.process_mode = Node.PROCESS_MODE_INHERIT
 	e.visible = true
-	# БАЗУ НЕ РАЗМОРАЖИВАЕМ. Она стоит на якоре по своей природе, а не потому, что спит:
-	# сняв freeze, мы бы уронили постройку без колёс на первом же физ-шаге — у неё коллизия
-	# off-центровая, и её кренит (та же грабля, что у нашей станции при постановке).
+	# Never unfreeze a BASE: it is anchored by nature, not by sleep. Unfrozen, a wheel-less
+	# building with off-centre collision tips over on the first physics step.
 	if e is RigidBody3D and e.get("is_base") != true:
 		e.freeze = false
 		e.sleeping = false
@@ -369,9 +296,8 @@ func _awake_count() -> int:
 			n += 1
 	return n
 
-# Спящие не занимают место под потолком — значит могут копиться, пока игрок колесит по
-# карте. Когда машин суммарно больше max_total, самая дальняя СПЯЩАЯ убирается: бодрствующих
-# трогать нельзя (они в бою), захватчика — тоже (он по определению ждёт сколько угодно).
+# Sleepers accumulate while the player roams. Over max_total the farthest SLEEPER goes; awake
+# ones are in combat and the invader waits as long as it likes.
 func _trim_sleepers(player: Node3D) -> void:
 	if _enemies.size() <= max_total:
 		return
@@ -390,21 +316,14 @@ func _trim_sleepers(player: Node3D) -> void:
 		_enemies.erase(worst)
 		worst.queue_free()
 
-## ПЕРВЫЙ ВРАГ В САВЕ БЬЁТ ВПОЛСИЛЫ. Игрок встречает его сразу после обучения, на машине из
-## стартового набора: одна пушка, ни одного исследования, ни щита, ни второго ствола. Полный
-## урон в этот момент означает «собрал первую машину и смотришь, как её разбирают», причём
-## непонятно, что делать иначе, — а первая драка обязана быть выигранной.
-##
-## Ослаблен именно УРОН, а не хп: враг должен разбираться так же (иначе первый бой ничему не
-## учит и ощущается ватным), просто у игрока есть время понять, что происходит.
+## The first enemy of a save deals half damage: the player meets it right after the tutorial on
+## the starter kit, with no research. DAMAGE, not HP - it must still break apart the same way,
+## the player just gets time to understand what is happening.
 const FIRST_ENEMY_DAMAGE := 0.5
 
-## Скидка достаётся ПЕРВОМУ, кто пришёл ЗА ИГРОКОМ, — обычному спавну и разведчику из сюжета.
-## Событийным машинам (spawn_at: дуэлянты «Crossfire», рейд) её не даём: они приезжают уже
-## после первой драки, а дуэлянты вообще воюют между собой, и потратить на них «первого»
-## значило бы отдать поблажку тому, кто в игрока даже не целится.
-##
-## Флаг персистится в сейве (G.first_enemy_met): после перезахода «первый» не выдаётся заново.
+## Goes to the first one that came FOR THE PLAYER (regular stream, story scout), never to event
+## machines: duellists fight each other, so spending "the first" on them helps nobody. The flag
+## persists in the save.
 func _mark_first_enemy(enemy: Node) -> void:
 	if enemy == null or G == null or G.first_enemy_met:
 		return
