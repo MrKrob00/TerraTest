@@ -10,107 +10,98 @@ const CELL_SIZE = 1.0
 var map: Array = []
 var node_map: Dictionary = {}
 var rotation_map: Dictionary = {}
-# Многоклеточные блоки (SELLER/PROCESSOR 2×2×2) занимают 8 клеток, но узел/поворот живут
-# на ОДНОЙ якорной клетке. cell_owner: "x,y,z" любой занятой клетки → "ax,ay,az" якоря.
-# Так любая из 8 клеток ведёт к одному блоку (выбор/удаление с любой стороны), а все 8
-# помечены занятыми (другой блок туда уже не встанет).
+# Multi-cell blocks (SELLER/PROCESSOR 2x2x2) occupy 8 cells but node and rotation live on ONE
+# anchor cell. cell_owner: "x,y,z" of any occupied cell -> "ax,ay,az" of the anchor. So any of the
+# 8 leads to the same block (select or remove from any side) and all 8 read as occupied.
 var cell_owner: Dictionary = {}
 
-## Имя файла, а не путь: раскладка принадлежит СЛОТУ (см. G.slot_path), как и всё остальное
-## состояние мира.
+## A file name, not a path: the layout belongs to the SLOT (G.slot_path), like the rest of the
+## world state.
 const SAVE_FILE = "vehicle_layout.json"
 
-# ─── Точки контакта (какими гранями блок стыкуется) ───────────────────────────
-# Список граней теперь живёт НЕ здесь, а экспортом connect_faces на самом блоке
-# (VehicleBlock) — галочками в инспекторе каждой сцены, как input/output у фабричных.
-# Здесь остаётся только правило, как их читать.
-#
-# Раньше это была таблица в коде, по типу блока и в неповёрнутых осях: чтобы поправить одну
-# грань бура, надо было лезть в скрипт, а поворот блока в проверке не участвовал вовсе.
+# ── Attach faces (which sides a block joins with) ────────────────────────────
+# The face list lives on the BLOCK itself (VehicleBlock.connect_faces), edited per scene in the
+# inspector like factory in/out. Only the rule for reading them stays here. It used to be a table
+# in code, keyed by block type in unrotated axes: fixing one drill face meant editing a script,
+# and block rotation took no part in the check at all.
 const ALL_FACES := ["top", "bottom", "left", "right", "front", "back"]
 const OPPOSITE := {
 	"top": "bottom", "bottom": "top",
 	"left": "right", "right": "left",
 	"front": "back", "back": "front",
 }
-# Имя грани → направление наружу. Совпадает с FACE_VECS в VehicleBlock.
+# Face name -> outward direction. Matches FACE_VECS in VehicleBlock.
 const FACE_DIR := {
 	"right": Vector3i(1, 0, 0), "left": Vector3i(-1, 0, 0),
 	"top": Vector3i(0, 1, 0), "bottom": Vector3i(0, -1, 0),
 	"back": Vector3i(0, 0, 1), "front": Vector3i(0, 0, -1),
 }
 
-## Пускает ли УЖЕ СТОЯЩИЙ блок соседа к своей грани face. Грани берём повёрнутыми и
-## ПОКЛЕТОЧНО (VehicleBlock.connects_at): блок на машине развёрнут, «зад» у него смотрит
-## куда угодно, а у крупного блока каждая клетка стороны может решать за себя.
+## Does the block ALREADY STANDING here accept a neighbour at face `face`? Faces are taken rotated
+## and PER CELL (VehicleBlock.connects_at): a mounted block faces anywhere, and on a large block
+## each cell of a side may answer for itself.
 ##
-## cell — клетка, к которой пристыковываются (у обычного блока она же и якорь).
+## cell is the cell being attached to (for a normal block that is also its anchor).
 func node_accepts_face(node: Node, face: String, cell: Vector3i = Vector3i.ZERO) -> bool:
 	if node == null or not is_instance_valid(node) or not (node is VehicleBlock):
-		return true                        # не блок (или уже уничтожен) — не мешаем
+		return true                        # not a block (or already destroyed): do not block it
 	if not FACE_DIR.has(face):
 		return true
 	return (node as VehicleBlock).connects_at(cell - _anchor_of(cell), FACE_DIR[face] as Vector3i)
 
-# Можно ли прицепить new_type к грани attach_face блока neighbor_type.
-# true, если структура — стационарная база (ставит vehicle при спавне с якорным ядром).
+# Can new_type attach to face attach_face of neighbor_type?
 var is_station: bool = false
 
-# Что можно ставить на СТАЦИОНАРНУЮ базу. Запрещено ровно то, что базе физически не нужно:
-# КАБИНА (у базы своё ядро, вторая сделала бы из неё машину) и КОЛЁСА (база не едет).
+# What may be placed on a STATIONARY base. Forbidden is exactly what a base physically has no use
+# for: a CABIN (it has its own core, a second one would make it a machine) and WHEELS (it does not
+# drive).
 #
-# Оружие раньше тоже было в запрете, и это была ошибка проектирования, а не защита: игру
-# просят оборонять СВОЮ базу (квест «Hold the Line»), а поставить на неё турель было нельзя.
-# Опоры тоже были запрещены — и это противоречило самому себе с тех пор, как опора стала
-# СТАЦИОНАРНЫМ блоком (G.STATIONARY_BLOCKS), то есть возможным ядром базы: на базу из опоры
-# нельзя было поставить вторую опору.
-# Всё остальное — фабрика, броня, каркас, энергетика, оружие — на базе осмысленно.
+# Weapons used to be forbidden too, which was a design mistake rather than protection: the game
+# asks you to defend YOUR base (quest "Hold the Line") and a turret could not be placed on it.
+# Supports were forbidden as well - self-contradictory ever since a support became a STATIONARY
+# block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
+# power, weapons - makes sense on a base.
 const _STATION_BANNED := [G.Block.CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL,
 		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
 	return not _STATION_BANNED.has(bt)
 
-## Можно ли прицепить блок new_node к грани attach_face того, что стоит в клетке (nx,ny,nz).
-## Клетку берём, а не тип: по ней достаём САМ УЗЕЛ соседа, а значит и его поворот — без
-## поворота грань «зад» ничего не значит, блок на машине развёрнут как попало.
+## Can new_node attach to face attach_face of whatever stands in cell (nx,ny,nz)? We take the CELL,
+## not a type: through it we reach the neighbour NODE and therefore its rotation - without rotation
+## "rear face" means nothing, since a mounted block faces any which way.
 func can_attach(nx: int, ny: int, nz: int, new_node: Node, attach_face: String) -> bool:
 	var new_type: int = int(new_node.get("block")) if new_node != null else G.Block.EMPTY
-	# СТАЦИОНАРНЫЙ блок на машину — МОЖНО. Запрет был лишним: такой блок и так работает
-	# только под якорем (_factory_active), а машина, которая его везёт, получает право
-	# вставать на якорь (vehicle_body_3d.has_stationary). Возить продавца с собой и
-	# останавливаться, чтобы продать, — нормальная игра, а не обход правила.
-	# На стационарную базу — только разрешённые типы (3Б).
+	# A STATIONARY block ON a machine is ALLOWED. The ban was redundant: such a block only works while
+	# anchored (_factory_active), and a machine carrying one earns the right to anchor
+	# (vehicle_body_3d.has_stationary). Hauling a seller around and stopping to sell is normal play.
 	if is_station and not _allowed_on_station(new_type):
 		return false
-	# У НОВОГО блока грань не проверяем: постройка сама доворачивает его отмеченной стороной
-	# к соседу (_face_orient), поэтому «стыковаться нужной гранью» выполнимо на любой грани.
-	# Не может он только одного — если галочек не стоит вовсе.
+	# The NEW block's own face is not checked: building rotates it so its marked side meets the
+	# neighbour (_face_orient), so "join with the right face" is satisfiable from any face. The only
+	# failing case is having no faces marked at all.
 	if new_node is VehicleBlock and (new_node as VehicleBlock).connect_faces == 0:
 		return false
-	# А вот СОСЕД решает, пускать ли к своей грани: на коронку бура ничего не навесить.
+	# The NEIGHBOUR does decide whether to accept: nothing mounts on a drill head.
 	return node_accepts_face(find_block(nx, ny, nz), attach_face, Vector3i(nx, ny, nz))
 
-## Пресет стартовой сборки. 0 — обычная машина (как у игрока, НЕ трогаем). 1+ — варианты
-## для врагов («машина из пула»). Спавнер врагов ставит случайный пресет ДО добавления в дерево.
+## Starting build preset. 0 is the ordinary machine (the player's - do not touch), 1+ are enemy
+## variants. The enemy spawner sets a preset BEFORE adding the node to the tree.
 @export var layout_preset: int = 0
 
-# ЧТО ПРОИЗВОДИТ фабричный блок, стоящий в этой клетке: "x,y,z" → номер (G.Comp у
-# компонентного завода, G.Block у фабрикатора). Живёт ЗДЕСЬ, а не только на самом узле,
-# по одной причине: настройка обязана пережить сохранение. Раскладка машины хранит клетки,
-# а не узлы, и выбор игрока, оставшись полем экземпляра, сбрасывался бы при каждой загрузке
-# на значение из сцены — то есть каждый вход в игру возвращал бы завод к первому компоненту.
+# WHAT the factory block in this cell produces: "x,y,z" -> index (G.Comp for the component
+# factory, G.Block for the fabricator). It lives HERE rather than only on the node for one reason:
+# the choice must survive saving. The layout stores cells, not nodes, so an instance field would
+# reset to the scene value on every load.
 var output_map: Dictionary = {}
 
-# ПОРТЫ фабричных блоков: "x,y,z" клетки-якоря → словарь портов этого блока
-# (FactoryBlock.ports). Здесь по той же причине, что и output_map: настройка игрока обязана
-# пережить сейв, а раскладка хранит клетки, не узлы.
+# Factory block PORTS: anchor cell "x,y,z" -> that block's port dictionary (FactoryBlock.ports).
+# Here for the same reason as output_map: the player's setting must survive the save.
 var port_map: Dictionary = {}
 
-# ЗАРЯД АККУМУЛЯТОРА, стоящего в этой клетке: "x,y,z" → сколько в нём энергии. Здесь по той
-# же причине, что output_map и port_map: заряд — свойство БЛОКА (battery.gd), а сейв хранит
-# клетки, не узлы. Без этой карты полный аккумулятор возвращался бы после перезахода пустым,
-# то есть ровно тем же способом, каким он раньше пустел при снятии с машины.
+# BATTERY CHARGE in this cell: "x,y,z" -> stored energy. Same reason as output_map and port_map:
+# charge is a property of the BLOCK (battery.gd) while the save stores cells. Without this map a
+# full battery came back empty after a reload - the same way it used to empty when removed.
 var charge_map: Dictionary = {}
 
 func _ready() -> void:
@@ -118,7 +109,7 @@ func _ready() -> void:
 	_define_layout()
 	_spawn_all()
 
-# ─── Инициализация ────────────────────────────────────────────────────────────
+# ── Init ────────────────────────────────────────────────────────────────────
 func _init_map() -> void:
 	map = []
 	for x in range(MAP_SIZE_X):
@@ -130,8 +121,7 @@ func _init_map() -> void:
 			plane.append(row)
 		map.append(plane)
 
-# ─── Раскладка ────────────────────────────────────────────────────────────────
-# Пресет выбирает сборку. 0 — базовая (у игрока), 1/2 — варианты врагов из пула.
+# ── Layouts ─────────────────────────────────────────────────────────────────
 func _define_layout() -> void:
 	match layout_preset:
 		1: _layout_dual_gun()
@@ -154,13 +144,13 @@ func _define_layout() -> void:
 		18: _layout_charge_tower()                   # зарядная башня к ним обеим
 		_: _layout_default()
 
-# Новый старт игры: ОДНА кабина (базовый набор блоков падает рядом в мир — см. world_persist.gd).
-# Ядро в ЦЕНТРЕ сетки (CENTER на всех осях), y-этажи присборок отсчитываются от центра (+5).
+# New game: ONE cabin (the starter kit drops into the world nearby, see world_persist.gd). The
+# core sits at the grid CENTRE, and add-on floors count from it (+5).
 func _layout_cabin_only() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 
-# Стартовая машина (спавнится бесплатно при гибели): кабина, 4 колеса, пара блоков,
-# пулемёт и бур. Компактнее дефолта.
+# Starter machine (spawned for free on death): cabin, 4 wheels, a couple of blocks, a gun and a
+# drill. More compact than the default.
 func _layout_starter() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(4, 5, 5, G.Block.WHEEL, PI / 2)
@@ -174,7 +164,7 @@ func _layout_starter() -> void:
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 
-# База: кабина, 6 колёс, дрель, пушка (стартовая машина игрока — НЕ меняем).
+# Base build: cabin, 6 wheels, drill, gun - the player's starting machine, do not change.
 func _layout_default() -> void:
 	_wheels_6()
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -187,8 +177,8 @@ func _layout_default() -> void:
 	#set_block(4, 1, 4, G.Block.BELT, 0.0)
 	#set_block(4, 1, 3, G.Block.SELLER, 0.0)
 
-# Тяжёлый: две пушки. Разнесены по длине корпуса (5 и 7, а не 5 и 6 рядом) — вес не
-# наваливается на передний край базы колёс, машина реже клюёт носом при торможении/ИИ-реверсе.
+# Heavy: two guns, spread along the hull (5 and 7, not 5 and 6) so the weight does not sit on the
+# front of the wheelbase and the machine noses down less under braking or AI reverse.
 func _layout_dual_gun() -> void:
 	_wheels_6()
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -211,29 +201,27 @@ func _wheels_6() -> void:
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# СБОРКИ ВРАГОВ: от мелкой до тяжёлой (пресеты 5..10)
+# ENEMY BUILDS: small to heavy (presets 5..10)
 # ══════════════════════════════════════════════════════════════════════════════
-# Порядок — по ОПАСНОСТИ и по размеру сразу: чем дальше по списку, тем машина крупнее,
-# бронированнее и злее. Спавнер выбирает ступень по стоимости машины игрока
-# (enemy_spawner._pick_preset), а стоимость убитой машины превращается в ДИ (G.rp_for_kill),
-# поэтому «крупнее» здесь автоматически значит «дороже и ценнее как добыча».
+# Ordered by DANGER and by size at once: further down the list means bigger, better armoured and
+# meaner. The spawner picks a tier by the player machine's value (enemy_spawner._pick_preset) and a
+# killed machine's value becomes RP (G.rp_for_kill), so "bigger" automatically means "worth more".
 #
-# ТОЛЬКО ОДНОКЛЕТОЧНЫЕ блоки. У 2×1×1 и 2×1×2 в карте занята одна клетка, а коллизия шире —
-# соседний блок налезал бы на неё корпусом. Разбираться с этим в шести сборках сразу незачем:
-# броня ARMOR и так 1³, а размер набирается количеством, а не габаритом блока.
+# SINGLE-CELL BLOCKS ONLY. A 2x1x1 or 2x1x2 occupies one grid cell but has a wider collider, so a
+# neighbour would clip into it. Size is gained by count, not by block dimensions.
 #
-# Энергетику врагам не ставим намеренно: солнечная панель питает только машину НА ЯКОРЕ
-# (поле anchored есть лишь у игрока), генератор просит топливо по фабричной цепочке, и
-# реген со щитом на враге просто не заработали бы. Сложность набирается бронёй и стволами.
+# No power blocks on enemies, deliberately: a solar panel only feeds a machine ON ANCHOR (the
+# anchored field exists on the player only), a generator wants fuel through the factory chain, and
+# repair field and shield simply would not run. Difficulty comes from armour and guns.
 
-# Разведчик: самый мелкий. Четыре малых колеса, один ствол, корпус в две клетки.
+# Scout: the smallest. Four small wheels, one gun, a two-cell hull.
 func _layout_scout() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	_side_wheels(G.Block.SMALL_WHEEL, [5, 6])
 	set_block(5, 6, 5, G.Block.GUN, 0.0)          # низом на кабину
 
-# Бегун: те же габариты, но полноразмерные колёса и дробовик — заставляет подпускать близко.
+# Runner: same size but full wheels and a shotgun, so it has to be let close.
 func _layout_runner() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -241,8 +229,8 @@ func _layout_runner() -> void:
 	_side_wheels(G.Block.WHEEL, [5, 6])
 	set_block(5, 6, 5, G.Block.SHOTGUN, 0.0)
 
-# Рейдер: шесть колёс, две пушки, борта в броне. Первая машина, которую нельзя перестрелять
-# на подъезде — приходится маневрировать.
+# Raider: six wheels, two guns, armoured flanks. The first machine that cannot be shot down on
+# approach - it has to be out-manoeuvred.
 func _layout_raider() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -253,7 +241,7 @@ func _layout_raider() -> void:
 	set_block(5, 6, 5, G.Block.GUN, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
-# Копейщик: лазер держит на дистанции, пушка добивает вблизи. Брони заметно больше.
+# Lancer: the laser keeps you at range, the gun finishes up close. Noticeably more armour.
 func _layout_lancer() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -265,7 +253,7 @@ func _layout_lancer() -> void:
 	set_block(5, 6, 5, G.Block.LASER, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
-# Таран: большие колёса, тяжёлая пушка и две обычных. Уже КРУПНАЯ машина — заметна издалека.
+# Breaker: big wheels, a heavy gun and two regular ones. Already a LARGE machine, visible far off.
 func _layout_breaker() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -279,8 +267,8 @@ func _layout_breaker() -> void:
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
 	set_block(5, 7, 7, G.Block.GUN, 0.0)
 
-# Осадная: самая большая. Восемь колёс, мортира навесом, ракетница и пара стволов, борта и
-# лоб в броне. Встреча с такой — событие, а не рядовая стычка.
+# Siege: the largest. Eight wheels, a mortar lobbing over cover, a rocket launcher and a pair of
+# guns, armour on flanks and front. Meeting one is an event, not a routine skirmish.
 func _layout_siege() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	for z in [6, 7, 8]:
@@ -295,39 +283,39 @@ func _layout_siege() -> void:
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
 	set_block(5, 7, 8, G.Block.GUN, 0.0)
 
-## Колёса по бортам корпуса. Повороты НЕ на глаз: у всех колёс connect_faces = 2, то есть
-## стыкуются они ЗАДОМ (+Z), и к корпусу их надо развернуть именно им. Поворот на ±90° по Y
-## переводит +Z в ∓X — левый борт смотрит вправо, правый влево, оба в корпус.
+## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
+## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z
+## into -+X, so the left row looks right and the right row looks left, both into the hull.
 func _side_wheels(kind: int, zs: Array) -> void:
 	for z in zs:
 		set_block(4, 5, int(z), kind, PI / 2)
 		set_block(6, 5, int(z), kind, -PI / 2)
 
-## Пара бортовых пластин на ВТОРОЙ ЭТАЖ, в клетку z. Плита стыкуется ЗАДОМ, как колесо
-## (connect_faces = 2), поэтому её так же доворачивают к корпусу: без поворота её единственная
-## грань смотрела бы в пустоту наружу, и связность (_reachable_cells) считала бы плиту
-## оторванной — при рождении машины она просто падала бы на землю.
+## A pair of side plates on the SECOND FLOOR, in cell z. The plate joins with its REAR like a wheel
+## (connect_faces = 2), so it is turned the same way: unrotated, its only face would point outward
+## into nothing, connectivity (_reachable_cells) would call it detached, and the machine would drop
+## it on birth.
 ##
-## Клетка (5, 6, z) обязана быть КОРПУСОМ: у ствола connect_faces = 32 (только низ), к его
-## борту не крепится ничего.
+## Cell (5, 6, z) must be HULL: a gun has connect_faces = 32 (bottom only), nothing mounts on its
+## side.
 func _side_armor(z: int) -> void:
 	set_block(4, 6, z, G.Block.ARMOR, PI / 2)
 	set_block(6, 6, z, G.Block.ARMOR, -PI / 2)
 
-## Лобовая пластина перед кабиной. Поворот нулевой: её задняя грань (+Z) и так смотрит в
-## кабину — та принимает соседей всеми сторонами.
+## Front plate ahead of the cabin. Zero rotation: its rear face (+Z) already looks into the cabin,
+## which accepts neighbours on every side.
 func _front_armor() -> void:
 	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
 
-## ВРАЖЕСКИЕ БАЗЫ (пресеты 11-12). Ядро — ОПОРА, а не кабина: база не едет, и держится она
-## тем же, чем наша (G.STATIONARY_BLOCKS). Кабины у неё нет намеренно — смерть базы решает
-## сторож ядра в MachineBody, ровно как у станции игрока.
+## ENEMY BASES (presets 11-12). The core is a SUPPORT, not a cabin: a base does not drive and holds
+## on to the same thing ours does (G.STATIONARY_BLOCKS). It has no cabin on purpose - its death is
+## decided by the core watchdog in MachineBody, exactly like the player's station.
 ##
-## Колёс нет вовсе, поэтому корпус можно тянуть в стороны свободно; зато стволы, как и везде,
-## стыкуются ТОЛЬКО низом (connect_faces = 32) — значит каждый стоит НА блоке, а не в воздухе.
-## Броня стыкуется задом (+Z), отсюда те же ±90° по бортам, что и у машин.
+## There are no wheels, so the hull can spread sideways freely; guns, as everywhere, join with the
+## BOTTOM only (connect_faces = 32), so each one stands ON a block rather than in the air. Armour
+## joins with its rear (+Z), hence the same +-90 deg on the flanks as on machines.
 
-## Аванпост: опора, пара блоков, два ствола и борта. Первая база, которую встретит игрок.
+## Outpost: support, a couple of blocks, two guns and flank armour. The first base the player meets.
 func _layout_outpost() -> void:
 	set_block(5, 5, 5, G.Block.SUPPORT, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -337,8 +325,8 @@ func _layout_outpost() -> void:
 	set_block(5, 7, 5, G.Block.GUN, 0.0)
 	set_block(5, 6, 6, G.Block.GUN, 0.0)
 
-## Форт: шире, выше, с ракетницей и аккумулятором. Аккумулятор здесь не для энергии (базе она
-## не нужна), а ради взрыва: добить форт в упор должно быть опасно.
+## Fort: wider, taller, with a rocket launcher and a battery. The battery is not there for energy (a
+## base needs none) but for the blast: finishing a fort off at point blank should be dangerous.
 func _layout_fort() -> void:
 	set_block(5, 5, 5, G.Block.SUPPORT, 0.0)
 	for z in [4, 6]:
@@ -354,24 +342,24 @@ func _layout_fort() -> void:
 	set_block(4, 6, 5, G.Block.GUN, PI / 2)
 	set_block(6, 6, 5, G.Block.GUN, -PI / 2)
 
-## ПОВОРОТНАЯ БАШНЯ — оборонительная вышка, как укреплённые точки в TerraTech: высокая мачта,
-## щит сверху, панели и аккумулятор в основании, стволы на консолях по бокам.
+## ROTATING TOWER - a defensive tower like TerraTech's fortified points: a tall mast, shield on top,
+## panels and battery at the base, guns on side consoles.
 ##
-## Ядро — ROT_SUPPORT, и это меняет саму постройку. У аванпоста и форта корпус приколочен,
-## поэтому им нужны стволы, РАЗВЁРНУТЫЕ в разные стороны: турель держит сектор ±YAW_LIMIT, и
-## глухая коробка иначе имеет мёртвую зону за спиной. Здесь корпус сам доворачивается к цели
-## (enemy_vehicle._turn_to_target), поэтому оба ствола смотрят вперёд и бьют по одному месту.
+## The core is ROT_SUPPORT, and that changes the build itself. An outpost and a fort have a bolted
+## hull, so they need guns pointing DIFFERENT ways: a turret covers +-YAW_LIMIT and a fixed box
+## otherwise has a dead zone behind it. Here the hull turns to the target itself
+## (enemy_vehicle._turn_to_target), so both guns face forward and hit the same spot.
 ##
-## ЭНЕРГИЯ ЗДЕСЬ НАСТОЯЩАЯ. Панели и аккумулятор работают у врага так же, как у игрока
-## (энергосистема живёт в MachineBody), и щит тратит на каждое попадание энергию машины.
-## Отсюда и способ её вскрыть: сбить панели или аккумулятор — и купол гаснет сам.
+## THE ENERGY HERE IS REAL. Panels and battery work on an enemy exactly as on the player (the energy
+## system lives in MachineBody) and the shield spends machine energy on every hit. Hence the way in:
+## shoot the panels or the battery and the dome dies by itself.
 ##
-## Высоту держат ЧЕТЫРЕ этажа: башню видно издалека, а купол радиусом 4 м накрывает её целиком.
-## Стволы стыкуются только низом (connect_faces = 32), поэтому под каждым стоит блок-консоль;
-## панель — тоже низом, поэтому она на блоке основания, а не на голом ядре.
+## FOUR floors hold the height: the tower is visible from afar and a 4 m dome covers it whole. Guns
+## join with the bottom only (connect_faces = 32), so each has a console block under it; the panel
+## likewise, so it sits on a base block rather than on the bare core.
 ##
-## Оружие задаётся ПАРАМЕТРОМ: пушка, дробовик и лазер дают три разные башни при одной
-## раскладке — дальний огонь, ближний веер и непрерывный луч.
+## The weapon is a PARAMETER: gun, shotgun and laser give three different towers from one layout -
+## long range, close spread and a continuous beam.
 func _layout_turret_post(weapon: int) -> void:
 	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)     # ядро: его и доворачивает ИИ
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
@@ -388,25 +376,25 @@ func _layout_turret_post(weapon: int) -> void:
 	set_block(6, 7, 5, weapon, 0.0)
 	set_block(5, 8, 5, G.Block.SHIELD, 0.0)          # купол накрывает всю башню
 
-# ── ВЫШКА ПОД ЩИТОМ (пресеты 16-17) и ЗАРЯДНАЯ БАШНЯ к ней (18) ──────────────
-# Пара для сюжетных Watchtower и SAM. Задумка одна: цель под куполом, который держат ЧУЖИЕ
-# машины вокруг, и пока жива хоть одна из них, купол не гаснет.
+# ── SHIELDED TOWER (presets 16-17) and its CHARGING TOWERS (18) ──────────────
+# The pair behind the story Watchtower and SAM. One idea: a target under a dome held up by OTHER
+# machines around it, and while one of them lives the dome stays.
 #
-# Держится это НА ОБЫЧНЫХ ПРАВИЛАХ, без единой строки кода в квесте. У вышки есть щит и
-# аккумуляторы, но НЕТ НИ ОДНОЙ ПАНЕЛИ: своей выработки у неё ноль, и каждое попадание в купол
-# тратит запас, который взять неоткуда. Рядом стоят зарядные башни — панели, аккумулятор и
-# WIRELESS_CHARGER, который переливает энергию соседу СВОЕЙ фракции (это и чинилось в блоке:
-# раньше он умел лить только машинам игрока). Пока хоть одна башня цела, вышка получает ток и
-# купол стоит; сбили все — запас вышки тает под огнём, и щит гаснет сам.
+# It runs ON ORDINARY RULES, without a line of code in the quest. The tower has a shield and
+# batteries but NOT ONE PANEL: its own production is zero, and every hit on the dome spends a
+# reserve it cannot refill. Charging towers stand around it - panels, battery and a
+# WIRELESS_CHARGER that pours energy into a neighbour of ITS OWN faction (that is what was fixed in
+# the block: it used to feed player machines only). While one tower lives the shielded one gets
+# current and the dome holds; kill them all and the reserve drains under fire.
 #
-# Игроку это видно без единой подсказки: от каждой башни к вышке тянется луч зарядки.
+# The player sees this without a hint: a charging beam runs from each tower to the shielded one.
 func _layout_shielded_tower(weapon: int) -> void:
 	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)     # ядро: его доворачивает ИИ
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	# ДВА аккумулятора вместо панелей: это ЁМКОСТЬ, а не выработка. Без ёмкости заряднику
-	# некуда лить (wireless_charger ищет у цели именно блок аккумулятора), и вся связка
-	# «башни держат щит» не собралась бы.
+	# TWO batteries instead of panels: this is CAPACITY, not production. Without capacity the charger
+	# has nowhere to pour (wireless_charger looks for a battery block on the target) and the whole
+	# "towers hold the shield" chain would not assemble.
 	set_block(4, 5, 5, G.Block.BATTERY, 0.0)
 	set_block(6, 5, 5, G.Block.BATTERY, 0.0)
 	set_block(5, 6, 5, G.Block.BLOCK, 0.0)           # мачта
@@ -426,24 +414,24 @@ func _layout_charge_tower() -> void:
 	set_block(5, 6, 5, G.Block.BATTERY, 0.0)         # свой запас — из него и льём
 	set_block(5, 7, 5, G.Block.WIRELESS_CHARGER, 0.0)
 
-# ─── Спавн всех блоков ────────────────────────────────────────────────────────
+# ── Spawning all blocks ─────────────────────────────────────────────────────
 func _spawn_all() -> void:
 	for x in range(MAP_SIZE_X):
 		for y in range(MAP_SIZE_Y):
 			for z in range(MAP_SIZE_Z):
 				var block: G.Block = map[x][y][z]
-				# Только якорные клетки — иначе многоклеточный блок заспавнится 8 раз.
+				# anchor cells only, or a multi-cell block spawns eight times
 				if block != G.Block.EMPTY and _is_anchor(x, y, z):
 					spawn_block(block, x, y, z)
 
-# True, если (x,y,z) — якорная клетка своего блока (для одноклеточных всегда true).
+# True if (x,y,z) is its block's anchor cell (always true for single-cell blocks).
 func _is_anchor(x: int, y: int, z: int) -> bool:
 	var key := "%d,%d,%d" % [x, y, z]
 	return cell_owner.get(key, key) == key
 
-# ─── Клетки, которые занимает блок ────────────────────────────────────────────
-# Якорь (x,y,z). 2×2×2 (SELLER/PROCESSOR) занимает x-1..x, y..y+1, z-1..z (8 клеток),
-# остальные блоки — одну клетку. Те же 8 клеток, что проверял старый код.
+# ── Cells a block occupies ──────────────────────────────────────────────────
+# Anchor (x,y,z). A 2x2x2 (SELLER/PROCESSOR) takes x-1..x, y..y+1, z-1..z (8 cells); everything
+# else takes one.
 func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 	if block == G.Block.PROCESSOR or block == G.Block.SELLER or block == G.Block.FABRICATOR:
 		var cells: Array = []
@@ -471,22 +459,20 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 		return [Vector3i(x - 1, y, z), Vector3i(x, y, z), Vector3i(x + 1, y, z)]   # 3×1×1
 	return [Vector3i(x, y, z)]
 
-# Можно ли поставить block с якорем (x,y,z): все клетки footprint в границах и пусты.
+# Can `block` be placed with anchor (x,y,z)? All footprint cells in bounds and empty.
 func can_place(block: int, x: int, y: int, z: int) -> bool:
 	for c in _block_footprint(block, x, y, z):
 		if not _in_bounds(c.x, c.y, c.z) or map[c.x][c.y][c.z] != G.Block.EMPTY:
 			return false
 	return true
 
-# ─── Запись / чтение ──────────────────────────────────────────────────────────
-# Возвращает true, если блок реально поставлен (footprint был свободен).
-# rot принимает float (только yaw — старый формат) ИЛИ Vector3 (полный поворот с наклоном).
+# ── Write / read ────────────────────────────────────────────────────────────
 func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 	if not _in_bounds(x, y, z):
-		push_warning("set_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
+		push_warning("set_block: cell (%d,%d,%d) is out of bounds" % [x, y, z])
 		return false
 	if not can_place(block, x, y, z):
-		return false   # перекрытие/край → не ставим
+		return false   # overlap or edge: refuse
 	var anchor := "%d,%d,%d" % [x, y, z]
 	for c in _block_footprint(block, x, y, z):
 		map[c.x][c.y][c.z] = block
@@ -497,7 +483,7 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 func remove_block(x: int, y: int, z: int) -> void:
 	if not _in_bounds(x, y, z):
 		return
-	# Удаляем весь блок, даже если тапнули по не-якорной клетке многоклеточного блока.
+	# Removes the whole block even if a non-anchor cell of it was tapped.
 	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
 	var parts := anchor.split(",")
 	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
@@ -520,16 +506,16 @@ func get_block(x: int, y: int, z: int) -> G.Block:
 
 func find_block(x: int, y: int, z: int) -> Node3D:
 	if not _in_bounds(x, y, z):
-		push_warning("find_block: координаты (%d,%d,%d) вне границ!" % [x, y, z])
+		push_warning("find_block: cell (%d,%d,%d) is out of bounds" % [x, y, z])
 		return null
-	# Любая клетка многоклеточного блока ведёт к его якорному узлу.
+	# Any cell of a multi-cell block leads to its anchor node.
 	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
 	var n = node_map.get(anchor, null)
-	# УЗЕЛ МОГ БЫТЬ УЖЕ УДАЛЁН, а запись о нём в карте — остаться: блок гибнет через
-	# queue_free, и путей к этому несколько (взрыв, разбор, смена сборки). Ссылка на
-	# освобождённый узел НЕ равна null, и возврат её из типизированной функции роняет вызов
-	# («Trying to return a previously freed instance») — именно так падал обход связности
-	# после отрыва блоков. Заодно ЧИСТИМ запись: иначе следующий вызов споткнётся о неё же.
+	# THE NODE MAY ALREADY BE FREED while the map entry survives: blocks die through queue_free and
+	# several paths lead there (blast, disassembly, build change). A reference to a freed instance is
+	# NOT null, and returning it from a typed function crashes the call ("Trying to return a previously
+	# freed instance") - that is exactly how the connectivity walk fell over after blocks were torn
+	# off. The entry is cleaned here too, or the next call trips over the same one.
 	if n != null and not is_instance_valid(n):
 		node_map.erase(anchor)
 		return null
@@ -542,7 +528,7 @@ func _in_bounds(x: int, y: int, z: int) -> bool:
 		z >= 0 and z < MAP_SIZE_Z
 	)
 
-# ─── Спавн одного блока ───────────────────────────────────────────────────────
+# ── Spawning one block ──────────────────────────────────────────────────────
 func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var scene: PackedScene = G.get_scene(block)
 	if scene == null:
@@ -558,8 +544,8 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
 	instance.rotation = rot
 
-	# Коллизию ищем ПЕРЕБОРОМ, а не по первому ребёнку: порядок узлов в сцене блока меняют,
-	# не задумываясь, и промах здесь ронял бы спавн всей сборки (та же грабля, что в
+	# The collider is found by SEARCH, not as the first child: node order inside block scenes gets
+	# changed without thinking, and a miss here would break the whole build's spawn (same rake as
 	# vehicle_body_3d._first_collision).
 	var src_col: CollisionShape3D = null
 	for ch in instance.get_children():
@@ -573,8 +559,8 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var collision: CollisionShape3D = src_col.duplicate()
 	collision.position = Vector3(x - CENTER, y - CENTER, z - CENTER)
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
-	# Смещение только у КОРОБОК: у любой другой формы поля .size нет, и обращение к нему
-	# оборвало бы спавн на полпути.
+	# Offset applies to BOXES only: any other shape has no .size, and touching it would abort the
+	# spawn halfway.
 	var box: BoxShape3D = collision.shape as BoxShape3D
 	if box != null:
 		if box.size == Vector3(2,2,2):
@@ -596,13 +582,12 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		(z - CENTER) * CELL_SIZE
 	)
 
-	# Эффект «матрицы»-появления — только когда машина строится с НУЛЯ (spawn_block зовётся
-	# лишь из _spawn_all: первая машина / загрузка / смена сборки). При ручной постановке
-	# блока его больше не играем (см. vehicle_body_3d._on_take_pressed).
+	# The matrix spawn effect plays only when a machine is built FROM SCRATCH (spawn_block is called
+	# from _spawn_all only: first machine, load, build change). Manual placement no longer plays it.
 	BlockFX.play(instance, false)
 
-# Проставить блоку сохранённый выбор продукта. Имя поля разное у двух фабрик, поэтому
-# проверяем оба: общего интерфейса у них нет и заводить его ради одного числа незачем.
+# Apply the saved product choice to a block. The field name differs between the two factories, so
+# both are checked: they share no interface and adding one for a single number is not worth it.
 func _apply_output(inst: Node, key: String) -> void:
 	if charge_map.has(key) and inst != null and ("charge" in inst):
 		inst.set("charge", float(charge_map[key]))     # аккумулятор родился с сохранённым зарядом
@@ -616,9 +601,9 @@ func _apply_output(inst: Node, key: String) -> void:
 	elif "output_block" in inst:
 		inst.set("output_block", v)
 
-## Смещения клеток блока от его якоря. Одна клетка — обычный блок, восемь — 2×2×2.
-## Публично: по ним окно портов (port_picker) рисует стороны, а считать футпринт заново на
-## стороне UI значило бы завести вторую копию правила о размерах блоков.
+## Cell offsets of a block from its anchor. One cell for a normal block, eight for a 2x2x2. Public:
+## the port window (port_picker) draws sides from these, and recomputing the footprint on the UI
+## side would mean a second copy of the block-size rule.
 func footprint_offsets(inst: Node) -> Array:
 	var key: String = cell_of_node(inst)
 	if key == "":
@@ -633,14 +618,14 @@ func footprint_offsets(inst: Node) -> Array:
 		out.append((c as Vector3i) - anchor)
 	return out
 
-## Клетка, в которой стоит этот узел ("x,y,z"), или "" — узел не наш.
+## The cell this node stands in ("x,y,z"), or "" if the node is not ours.
 func cell_of_node(inst: Node) -> String:
 	for k in node_map:
 		if node_map[k] == inst:
 			return String(k)
 	return ""
 
-## Задать порт фабричному блоку: и узлу сейчас, и карте — чтобы пережило сейв.
+## Set a factory block's port on the node now and in the map, so it survives the save.
 ## state: FactoryBlock.PORT_NONE / PORT_IN / PORT_OUT / PORT_BOTH.
 func set_block_port(inst: Node, off: Vector3i, dir_idx: int, state: int) -> bool:
 	if not (inst is FactoryBlock):
@@ -654,8 +639,8 @@ func set_block_port(inst: Node, off: Vector3i, dir_idx: int, state: int) -> bool
 	rebuild_factory_links()          # цепочка меняется прямо сейчас, а не при следующей правке
 	return true
 
-## Задать фабричному блоку, ЧТО он производит: и узлу сейчас, и карте — чтобы пережило сейв.
-## Возвращает false, если узел не наш или это вообще не фабрика с выбором.
+## Set WHAT a factory block produces, on the node now and in the map so it survives the save.
+## Returns false if the node is not ours or is not a factory with a choice.
 func set_factory_output(inst: Node, value: int) -> bool:
 	var key: String = cell_of_node(inst)
 	if key == "":
@@ -671,13 +656,12 @@ func set_factory_output(inst: Node, value: int) -> bool:
 		inst.reload_recipe()            # фабрика пересобирает рецепт под новый продукт
 	return true
 
-## Подписать блок на СВОЁ уничтожение: карта обязана очистить его клетки, иначе на месте
-## погибшего блока навсегда остаётся «занято», и новый туда уже не поставить (can_place
-## смотрит именно в карту).
+## Subscribe a block to its OWN destruction: the map must clear its cells, otherwise the dead
+## block's spot stays "occupied" forever and nothing can be placed there (can_place reads the map).
 ##
-## Зовут ОБА пути появления блока — и спавн сборки, и постановка игроком
-## (vehicle_body_3d._on_take_pressed). Раньше подписка была вписана прямо в spawn_block, и
-## поставленные игроком блоки её не получали: сгорел такой блок — клетка занята навсегда.
+## Called on BOTH paths a block appears by - build spawn and player placement
+## (vehicle_body_3d._on_take_pressed). The subscription used to live inside spawn_block, so
+## player-placed blocks never got it: burn one and its cell was occupied forever.
 func attach_block_signals(instance: Node, x: int, y: int, z: int) -> void:
 	if not instance.has_signal("destroyed"):
 		return
@@ -685,7 +669,7 @@ func attach_block_signals(instance: Node, x: int, y: int, z: int) -> void:
 	if not instance.destroyed.is_connected(cb):
 		instance.destroyed.connect(cb)
 
-# ── Обработчик: блок уничтожен ────────────────────────────────────
+# ── Handler: block destroyed ────────────────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:
 	remove_block(x, y, z)
 	if not _rebuild_queued:
@@ -699,18 +683,17 @@ func _deferred_rebuild() -> void:
 	_detach_orphans()
 	rebuild_factory_links()                  # топология изменилась — пересчитать цепочку фабрики
 
-# ── Структурная целостность ───────────────────────────────────────────────────
-# Корень постройки: КАБИНА (мобильная машина) или СТАЦИОНАРНЫЙ блок (база). Всё, что не
-# добирается до корня, — оторвано. Один BFS ловит сразу целый оторванный кусок.
+# ── Structural integrity ────────────────────────────────────────────────────
+# The root is the CABIN (mobile machine) or a STATIONARY block (base). Anything that cannot reach
+# the root is detached, and one BFS catches a whole detached chunk at once.
 #
-# ПО ТОЧКАМ СТЫКОВКИ, а не просто по соприкосновению. Раньше обход шёл по любым соседним
-# занятым клеткам, и грани в нём не участвовали вовсе — из-за чего сбитый снизу ствол
-# ОСТАВАЛСЯ ВИСЕТЬ: он касался боком какого-нибудь блока, обход это засчитывал за связь, и
-# блок не считался оторванным. А по правилам стыковки связи там нет: у ствола отмечен только
-# низ, и вбок он не крепится ни к чему.
+# BY ATTACH POINTS, not by mere contact. The walk used to run over any neighbouring occupied cell
+# with faces taking no part, which is why a gun with its support shot out KEPT FLOATING: it grazed
+# some block sideways, the walk counted that as a connection, and the block was never called
+# detached. By the attach rules there is no connection there: a gun marks its bottom only.
 #
-# Условие ребра то же, что и у постройки (can_attach): направление d должно быть среди
-# граней стыковки А, и обратное −d — среди граней B. Односторонней связи не бывает.
+# The edge condition is the one building uses (can_attach): direction d must be among A's attach
+# faces and -d among B's. There is no one-sided connection.
 const BFS_DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0),
 		Vector3i(0,-1,0), Vector3i(0,0,1), Vector3i(0,0,-1)]
 
@@ -744,12 +727,11 @@ func _reachable_cells() -> Dictionary:
 			queue.append(n)
 	return seen
 
-## Есть ли РЕАЛЬНАЯ стыковка между соседними КЛЕТКАМИ ca и cb в направлении d.
+## Is there a REAL join between neighbouring CELLS ca and cb along d?
 ##
-## Спрашиваем именно клетки, а не блоки: у блока крупнее одной клетки сторона состоит из
-## нескольких клеток, и «стыкуется левой стороной» больше не значит «всеми левыми клетками
-## сразу» (см. VehicleBlock.connects_at). У обычного блока клетка и есть сторона, поэтому
-## для него ответ тот же, что и был.
+## Cells are asked, not blocks: on a block larger than one cell a side consists of several cells, and
+## "joins with its left side" no longer means "with all left cells at once" (VehicleBlock.connects_at).
+## For an ordinary block the cell is the side, so the answer is what it always was.
 func _cells_linked(a: Node, b: Node, ca: Vector3i, cb: Vector3i, d: Vector3i) -> bool:
 	if a == b:
 		return true                        # две клетки одного многоклеточного блока
@@ -760,8 +742,8 @@ func _cells_linked(a: Node, b: Node, ca: Vector3i, cb: Vector3i, d: Vector3i) ->
 	return (a as VehicleBlock).connects_at(ca - _anchor_of(ca), d) \
 			and (b as VehicleBlock).connects_at(cb - _anchor_of(cb), -d)
 
-## Якорная клетка, которой принадлежит клетка c. Смещение от неё и есть «какая это клетка
-## блока» — тот же ключ, которым описаны поклеточные настройки.
+## The anchor cell that cell c belongs to. The offset from it is "which cell of the block this is" -
+## the same key per-cell settings are described by.
 func _anchor_of(c: Vector3i) -> Vector3i:
 	var key := "%d,%d,%d" % [c.x, c.y, c.z]
 	var anchor: String = cell_owner.get(key, key)
@@ -795,13 +777,13 @@ func _detach_orphans() -> void:
 	for o in orphans:
 		_detach_one(o.x, o.y, o.z)
 
-## Сорвать в мир КОНКРЕТНЫЙ узел блока. Зовёт сам блок, когда его добили почти до нуля и
-## крепления не держат (VehicleBlock._check_critical). Клетку ищем по node_map: блок своих
-## координат не знает, а карта и так хранит обратную связь якорь → узел.
+## Tear a SPECIFIC block node into the world. Called by the block itself when it is beaten near zero
+## and its mounts do not hold (VehicleBlock._check_critical). The cell is found through node_map: a
+## block does not know its own coordinates, and the map already keeps anchor -> node.
 ##
-## Отрывать откладываем на конец кадра: срыв идёт из hurt(), а hurt зовут прямо из обхода
-## физики (AOE-взрыв перебирает тела запросом к пространству) — репарент и снятие коллизии
-## посреди такого обхода трогают физический сервер, когда он занят.
+## The tear is deferred to end of frame: it comes from hurt(), and hurt is called from inside a
+## physics traversal (an AOE blast queries bodies from space) - reparenting and removing colliders
+## mid-traversal touch the physics server while it is busy.
 func detach_node(node: Node) -> void:
 	if node == null or not is_instance_valid(node):
 		return
@@ -812,20 +794,20 @@ func detach_node(node: Node) -> void:
 		if parts.size() < 3:
 			return
 		call_deferred("_detach_one", int(parts[0]), int(parts[1]), int(parts[2]))
-		# И следом пересчёт: на сорвавшемся блоке могло висеть полмашины (call_deferred —
-		# очередь, поэтому пересчёт пойдёт уже ПОСЛЕ срыва).
+		# Then a recount: half a machine could have been hanging on the torn block (call_deferred is a
+		# queue, so the recount runs AFTER the tear).
 		if not _rebuild_queued:
 			_rebuild_queued = true
 			call_deferred("_deferred_rebuild")
 		return
 
-# Оторвать блок в мир: снять сигналы разрушения (чтобы гибель уже свободного блока не трогала
-# карту машины), очистить карту, и поручить машине уронить узел (коллизия + репарент + импульс).
+# Tear a block into the world: drop the destruction signals (so a now-loose block's death does not
+# touch the machine map), clear the map, and let the machine drop the node (collider, reparent,
+# impulse).
 func _detach_one(ax: int, ay: int, az: int) -> void:
-	# КАБИНУ НЕ РОНЯЕМ НИКОГДА. Она корень, на котором держится вся сборка, а у сорванного
-	# блока рвутся подписки на его гибель (ниже) — вместе они означали машину без корня и без
-	# сигнала смерти: остальное осыпалось как оторванное, а живой пустой корпус продолжал
-	# ездить, и убить его было нечем.
+	# NEVER drop the CABIN. It is the root the whole build hangs on, and a torn block loses its death
+	# subscriptions (below) - together that meant a machine with no root and no death signal: the rest
+	# fell off as detached while a live empty hull kept driving with nothing able to kill it.
 	if _in_bounds(ax, ay, az) and map[ax][ay][az] == G.Block.CABIN:
 		return
 	var anchor := "%d,%d,%d" % [ax, ay, az]
@@ -841,7 +823,7 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 		veh.detach_block_to_world(node)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# СОХРАНЕНИЕ / ЗАГРУЗКА
+# SAVE / LOAD
 # ══════════════════════════════════════════════════════════════════════════════
 
 func save_layout() -> void:
@@ -903,16 +885,16 @@ func get_layout() -> Array:
 						"block": G.block_key(block),
 						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
 					}
-					# "out" пишем ТОЛЬКО у фабрик, которым его меняли: лишнее поле в каждой
-					# из полусотни клеток раздуло бы сейв ради значения по умолчанию.
+					# "out" is written ONLY for factories whose choice was changed: an extra field in each of fifty
+					# cells would bloat the save for a default value.
 					if output_map.has(key):
 						entry["out"] = int(output_map[key])
-					# Порты пишем ТОЛЬКО у блоков, где игрок их менял: у остальных работает
-					# правило по умолчанию (маски граней), и хранить пустоту незачем.
+					# Ports are written ONLY where the player changed them: the rest run on the default rule (face
+					# masks), and storing emptiness is pointless.
 					if port_map.has(key) and not (port_map[key] as Dictionary).is_empty():
 						entry["ports"] = port_map[key]
-					# Заряд спрашиваем У ЖИВОГО УЗЛА: он тратится и копится каждую секунду, а
-					# карта — лишь то, с чем блок родился. Пустой аккумулятор поля не пишет.
+					# Charge is asked FROM THE LIVE NODE: it is spent and gained every second while the map only holds
+					# what the block was born with. An empty battery writes no field.
 					var bnode: Node = node_map.get(key)
 					if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
 							and float(bnode.get("charge")) > 0.01:
@@ -923,7 +905,7 @@ func get_layout() -> Array:
 func _rot_array(v: Vector3) -> Array:
 	return [v.x, v.y, v.z]
 
-# Читает поворот из записи раскладки: новый формат "rot":[x,y,z] или старый "rot_y":float.
+# Reads rotation from a layout entry: the new format "rot":[x,y,z] or the old "rot_y":float.
 func _read_rot(entry: Dictionary) -> Vector3:
 	if entry.has("rot"):
 		var r: Array = entry["rot"]
@@ -933,9 +915,9 @@ func _read_rot(entry: Dictionary) -> Vector3:
 	return Vector3.ZERO
 
 func apply_layout(blocks_array: Array) -> void:
-	# Освобождаем только инстансы блоков (они лежат в node_map), а НЕ всех детей —
-	# среди детей есть призрак постройки (blocks/MeshInstance3D, ghost_block у машины),
-	# который освобождать нельзя, иначе _on_building_pressed крашится на freed-объекте.
+	# Free block instances only (they live in node_map), NOT all children: among the children is the
+	# build ghost (blocks/MeshInstance3D, the machine's ghost_block), and freeing it crashes
+	# _on_building_pressed on a freed object.
 	for inst in node_map.values():
 		if is_instance_valid(inst):
 			inst.queue_free()
@@ -949,15 +931,15 @@ func apply_layout(blocks_array: Array) -> void:
 	charge_map.clear()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
-		# Выбор продукта кладём в карту ДО _spawn_all: узлы читают его при рождении.
+		# Product choices go into the map BEFORE _spawn_all: nodes read them at birth.
 		if entry.has("out"):
 			output_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = int(entry["out"])
 		if entry.has("ports") and entry["ports"] is Dictionary:
 			port_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = entry["ports"]
 	_spawn_all()
 
-# Удаляет коллизии блоков (группа block_collision) с кузова-родителя — при смене сборки,
-# иначе от старой машины остаются висеть коллайдеры.
+# Removes block colliders (group block_collision) from the parent body on a build change, or the
+# old machine's colliders keep hanging around.
 func _clear_block_collisions() -> void:
 	var parent := get_parent()
 	if parent == null:
@@ -966,9 +948,10 @@ func _clear_block_collisions() -> void:
 		if c is CollisionShape3D and c.is_in_group("block_collision"):
 			c.queue_free()
 
-# Смещение ЯКОРЯ при пристыковке блока к грани соседа. Для МНОГОКЛЕТОЧНЫХ блоков (процессор/
-# продавец 2×2×2) простого ±1 мало: футпринт растёт в одну сторону, и на «положительных» гранях
-# он налезал бы на соседа. Считаем сдвиг по реальным границам футпринта. Для 1×1×1 даёт ±1.
+# ANCHOR offset when attaching a block to a neighbour's face. For MULTI-CELL blocks (processor,
+# seller 2x2x2) a plain +-1 is not enough: the footprint grows one way, so on "positive" faces it
+# would clip into the neighbour. The shift is computed from the real footprint bounds; for 1x1x1
+# it gives +-1.
 func attach_delta(block_type: int, face: String) -> Vector3i:
 	var lo := Vector3i(0, 0, 0)
 	var hi := Vector3i(0, 0, 0)
@@ -985,12 +968,12 @@ func attach_delta(block_type: int, face: String) -> Vector3i:
 	return Vector3i.ZERO
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ФАБРИЧНЫЕ СВЯЗИ
+# FACTORY LINKS
 # ══════════════════════════════════════════════════════════════════════════════
-# Куда блок отдаёт ресурс, задают ЕГО СОБСТВЕННЫЕ грани (FactoryBlock.output_faces /
-# input_faces, настраиваются в инспекторе сцены блока) с учётом его поворота.
-# Связь A→B есть, когда: у A грань вывода смотрит на клетку B И у B грань ввода смотрит
-# навстречу. Многоклеточные блоки (2×2×2) отдают/принимают с любой своей клетки.
+# Where a block hands resources is set by ITS OWN faces (FactoryBlock.output_faces / input_faces,
+# edited in the block scene) with its rotation applied. A link A->B exists when A's output face
+# looks at cell B AND B's input face looks back. Multi-cell blocks (2x2x2) give and take from any
+# of their cells.
 func rebuild_factory_links() -> void:
 	var facs: Array = []
 	var cells: Dictionary = {}                    # node → клетки его футпринта
@@ -1006,13 +989,13 @@ func rebuild_factory_links() -> void:
 		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
 		anchors[n] = Vector3i(ax, ay, az)     # смещения клеток считаем от якоря
 		facs.append(n)
-	# Связи считаются ПОКЛЕТОЧНО. Раньше перебирались отмеченные ГРАНИ блока, и для каждой
-	# брался ПЕРВЫЙ подходящий сосед по всему футпринту (там стоял break). У односкеточного
-	# блока разницы нет, а у 2×2×2 сторона это четыре клетки: подвести к ней две разные ленты
-	# было нельзя — вторая молча игнорировалась, потому что первая уже «заняла» грань.
+	# Links are computed PER CELL. The old code walked the block's marked FACES and took the FIRST
+	# matching neighbour across the whole footprint (there was a break). For a single-cell block that
+	# is the same thing, but on a 2x2x2 a side is four cells: two different belts could not be brought
+	# to it - the second was silently ignored because the first had already "taken" the face.
 	#
-	# Теперь пара «клетка + направление» рассматривается сама по себе, и обе стороны обязаны
-	# согласиться: у нас в этой клетке ВЫХОД, у соседа в его клетке ВХОД навстречу.
+	# Now a "cell + direction" pair is considered on its own and both sides must agree: an OUTPUT in
+	# our cell, an INPUT in the neighbour's cell facing back.
 	for n in facs:
 		n.next_blocks = []
 		n.next_block = null
@@ -1030,8 +1013,8 @@ func rebuild_factory_links() -> void:
 				var nb = find_block(t.x, t.y, t.z)
 				if nb == null or nb == n or not cells.has(nb):
 					continue                      # не фабричный сосед — ресурс туда не идёт
-				# У СОСЕДА спрашиваем про ЕГО клетку: у многоклеточного блока вход может быть
-				# в одной клетке стороны и отсутствовать в соседней.
+				# The NEIGHBOUR is asked about ITS cell: on a multi-cell block an input may exist in one cell of a
+				# side and not in the next.
 				if not nb.accepts_at(t - Vector3i(anchors.get(nb, t)), d):
 					continue                      # у соседа в этой клетке нет входа навстречу
 				if not n.next_blocks.has(nb):
