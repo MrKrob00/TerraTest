@@ -16,17 +16,17 @@ extends Node3D
 ## The demo machines carry `demo = true`: no rewards, no quest progress on death, and no way out of
 ## the fight (see enemy_vehicle). A backdrop where both sides drive apart shows nothing.
 ##
-## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`): a baked 512-cell heightmap
-## made with the plugin. It loads in a moment, so the menu opens on a real world instead of on an
-## empty sky while the first generation runs. Every map after it is generated here.
-##
-## 512 cells: big enough for a fight, small enough to generate in a couple of seconds while the
-## previous one is still on screen.
+## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`): a baked heightmap made with
+## the plugin. It loads in a moment, so the menu opens on a real world instead of on an empty sky
+## while the first generation runs. Every map after it is generated here, at MAP_SIZE.
 
 const ENEMY_SCENE := preload("res://enemy.tscn")
 const MAP_SCRIPT := preload("res://addons/LiteTerrain/map.gd")
 
-const MAP_SIZE := 512
+## Generated rounds use a 256-cell map: a fight needs a couple of hundred metres, and a quarter of
+## the cells means a quarter of the noise and of the chunk meshes - the run finishes well inside a
+## round, on a phone too. The authored first map keeps whatever size it was baked at.
+const MAP_SIZE := 256
 const ROUND_TIME := 30.0
 ## Distance between the two machines at the start: they must see each other (enemy vision is 40 m)
 ## and still have room to manoeuvre.
