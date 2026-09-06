@@ -742,14 +742,16 @@ func _load_heightmap_image() -> Image:
 ## machines fight each other. Collision comes on only when the map becomes the visible one.
 func set_collision_streaming(on: bool) -> void:
 	if on:
+		start_without_collision = false
 		_setup_streaming_collision()
 		return
+	start_without_collision = true
 	_col_active = false
 	_clear_collision_cells()
 	_col_bodies.clear()
 
 func _setup_streaming_collision() -> void:
-	if md.is_empty() or w <= 0 or d <= 0:
+	if start_without_collision or md.is_empty() or w <= 0 or d <= 0:
 		return
 	collision.disabled = true            # the scene's CollisionShape3D is unused at runtime
 	_clear_collision_cells()
@@ -1133,6 +1135,10 @@ func _center_window() -> void:
 ## карта раньше: память не выросла, а мир перестал кончаться.
 ## Set by whoever builds the map instead of the game world (the menu backdrop): generate from
 ## forced_seed without asking G. Must be set BEFORE the node enters the tree.
+## Build without collision. Set before the node enters the tree by whoever prepares a map that is
+## not on screen yet (the menu backdrop): during the seconds it spends building chunks its
+## heightfield would otherwise appear under bodies standing on the map that IS on screen.
+@export var start_without_collision: bool = false
 @export var force_procedural: bool = false
 @export var forced_seed: int = 0
 @export var window_size: int = LiteTerrainGen.DEF_WINDOW

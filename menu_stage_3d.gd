@@ -72,6 +72,10 @@ func _make_map() -> Node3D:
 	m.forced_seed = _rng.randi() | 1
 	m.window_size = MAP_SIZE
 	m.use_image_data = false
+	# Collision OFF from the start: while this map builds its chunks it stands at the same origin as
+	# the one on screen, and two heightfields under the same machines fight each other. It is turned
+	# on in the frame this map becomes the visible one.
+	m.start_without_collision = true
 	add_child(m)
 	# Polled rather than awaiting terrain_ready: a generation that never finishes (empty heights,
 	# a freed node) would leave this coroutine hanging forever, and with it the whole round loop.
@@ -81,9 +85,6 @@ func _make_map() -> Node3D:
 		guard += 1
 	if not (is_instance_valid(m) and m.terrain_is_ready):
 		return null
-	# Collision OFF until this map is the one on screen: while it is being prepared it stands at the
-	# same origin as the current one, and two heightfields under the same machines fight each other.
-	m.set_collision_streaming(false)
 	return m
 
 ## Generation of the NEXT map runs while the current fight is on screen: it takes seconds, and
