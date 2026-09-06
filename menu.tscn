@@ -1,13 +1,13 @@
-[gd_scene load_steps=9 format=3 uid="uid://cmenu0orca0001"]
+[gd_scene format=3 uid="uid://c3ig7keayyiuq"]
 
-[ext_resource type="Script" path="res://menu.gd" id="1_menu"]
-[ext_resource type="Script" path="res://menu_stage_3d.gd" id="2_stage"]
+[ext_resource type="Script" uid="uid://wks43d8edlk4" path="res://menu.gd" id="1_menu"]
+[ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
 
 [sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
 sky_top_color = Color(0.2, 0.42, 0.6, 1)
 sky_horizon_color = Color(0.68, 0.7, 0.64, 1)
-ground_horizon_color = Color(0.55, 0.5, 0.4, 1)
 ground_bottom_color = Color(0.26, 0.24, 0.2, 1)
+ground_horizon_color = Color(0.55, 0.5, 0.4, 1)
 
 [sub_resource type="Sky" id="Sky_res"]
 sky_material = SubResource("Sky_mat")
@@ -72,14 +72,14 @@ corner_radius_top_right = 4
 corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
-[node name="Menu" type="Node3D"]
+[node name="Menu" type="Node3D" unique_id=1740406578]
 script = ExtResource("1_menu")
 
-[node name="Stage" type="Node3D" parent="."]
+[node name="Stage" type="Node3D" parent="." unique_id=872619680]
 unique_name_in_owner = true
 script = ExtResource("2_stage")
 
-[node name="Sun" type="DirectionalLight3D" parent="Stage"]
+[node name="Sun" type="DirectionalLight3D" parent="Stage" unique_id=385704076]
 unique_name_in_owner = true
 transform = Transform3D(-0.61566, -0.51983, 0.59245, 0, 0.75184, 0.65934, -0.78801, 0.40597, -0.46281, 0, 0, 0)
 light_color = Color(1, 0.96, 0.9, 1)
@@ -87,23 +87,22 @@ light_energy = 0.85
 shadow_enabled = true
 directional_shadow_max_distance = 60.0
 
-[node name="MenuEnv" type="WorldEnvironment" parent="Stage"]
+[node name="MenuEnv" type="WorldEnvironment" parent="Stage" unique_id=1172585365]
 unique_name_in_owner = true
 environment = SubResource("Env_res")
 
-[node name="MenuCamera" type="Camera3D" parent="Stage"]
+[node name="MenuCamera" type="Camera3D" parent="Stage" unique_id=6332954]
 unique_name_in_owner = true
+current = true
 fov = 52.0
 far = 600.0
-current = true
 
-[node name="Machines" type="Node3D" parent="Stage"]
+[node name="Machines" type="Node3D" parent="Stage" unique_id=664629790]
 unique_name_in_owner = true
 
-[node name="UI" type="CanvasLayer" parent="."]
+[node name="UI" type="CanvasLayer" parent="." unique_id=1736074321]
 
-[node name="Root" type="MarginContainer" parent="UI"]
-layout_mode = 3
+[node name="Root" type="MarginContainer" parent="UI" unique_id=2070914517]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -115,83 +114,83 @@ theme_override_constants/margin_top = 22
 theme_override_constants/margin_right = 22
 theme_override_constants/margin_bottom = 22
 
-[node name="Col" type="VBoxContainer" parent="UI/Root"]
+[node name="Col" type="VBoxContainer" parent="UI/Root" unique_id=763372772]
 layout_mode = 2
 mouse_filter = 2
 
-[node name="Top" type="HBoxContainer" parent="UI/Root/Col"]
+[node name="Top" type="HBoxContainer" parent="UI/Root/Col" unique_id=1133992931]
 layout_mode = 2
 size_flags_vertical = 0
 mouse_filter = 2
 
-[node name="Title" type="VBoxContainer" parent="UI/Root/Col/Top"]
+[node name="Title" type="VBoxContainer" parent="UI/Root/Col/Top" unique_id=1436921086]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = -4
 
-[node name="TitleName" type="Label" parent="UI/Root/Col/Top/Title"]
+[node name="TitleName" type="Label" parent="UI/Root/Col/Top/Title" unique_id=1912322428]
 unique_name_in_owner = true
 layout_mode = 2
-text = "WORLDTECH"
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_colors/font_outline_color = Color(0.02, 0.05, 0.06, 0.85)
 theme_override_constants/outline_size = 6
 theme_override_font_sizes/font_size = 40
+text = "WORLDTECH"
 
-[node name="TitleVersion" type="Label" parent="UI/Root/Col/Top/Title"]
+[node name="TitleVersion" type="Label" parent="UI/Root/Col/Top/Title" unique_id=35046023]
 unique_name_in_owner = true
 layout_mode = 2
-text = "v"
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 0.75)
 theme_override_colors/font_outline_color = Color(0.02, 0.05, 0.06, 0.8)
 theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 12
+text = "v"
 
-[node name="TopSpacer" type="Control" parent="UI/Root/Col/Top"]
+[node name="TopSpacer" type="Control" parent="UI/Root/Col/Top" unique_id=1690755153]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="News" type="PanelContainer" parent="UI/Root/Col/Top"]
+[node name="News" type="PanelContainer" parent="UI/Root/Col/Top" unique_id=831078108]
 custom_minimum_size = Vector2(380, 0)
 layout_mode = 2
 size_flags_horizontal = 8
 size_flags_vertical = 0
 theme_override_styles/panel = SubResource("Panel_style")
 
-[node name="NewsBox" type="VBoxContainer" parent="UI/Root/Col/Top/News"]
+[node name="NewsBox" type="VBoxContainer" parent="UI/Root/Col/Top/News" unique_id=827277800]
 layout_mode = 2
 theme_override_constants/separation = 4
 
-[node name="NewsHead" type="Label" parent="UI/Root/Col/Top/News/NewsBox"]
+[node name="NewsHead" type="Label" parent="UI/Root/Col/Top/News/NewsBox" unique_id=905405568]
 layout_mode = 2
-text = "NEWS"
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 0.9)
 theme_override_font_sizes/font_size = 11
+text = "NEWS"
 
-[node name="NewsScroll" type="ScrollContainer" parent="UI/Root/Col/Top/News/NewsBox"]
+[node name="NewsScroll" type="ScrollContainer" parent="UI/Root/Col/Top/News/NewsBox" unique_id=468310590]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(380, 300)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
-[node name="NewsList" type="VBoxContainer" parent="UI/Root/Col/Top/News/NewsBox/NewsScroll"]
+[node name="NewsList" type="VBoxContainer" parent="UI/Root/Col/Top/News/NewsBox/NewsScroll" unique_id=2000519015]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
-[node name="MidSpacer" type="Control" parent="UI/Root/Col"]
+[node name="MidSpacer" type="Control" parent="UI/Root/Col" unique_id=1907698520]
 layout_mode = 2
 size_flags_vertical = 3
 mouse_filter = 2
 
-[node name="Bottom" type="HBoxContainer" parent="UI/Root/Col"]
+[node name="Bottom" type="HBoxContainer" parent="UI/Root/Col" unique_id=2055665294]
 layout_mode = 2
 size_flags_vertical = 8
 mouse_filter = 2
 
-[node name="Left" type="VBoxContainer" parent="UI/Root/Col/Bottom"]
+[node name="Left" type="VBoxContainer" parent="UI/Root/Col/Bottom" unique_id=580206752]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
@@ -199,13 +198,12 @@ size_flags_horizontal = 0
 mouse_filter = 2
 theme_override_constants/separation = 8
 
-[node name="BottomSpacer" type="Control" parent="UI/Root/Col/Bottom"]
+[node name="BottomSpacer" type="Control" parent="UI/Root/Col/Bottom" unique_id=1089757340]
 layout_mode = 2
 size_flags_horizontal = 3
 mouse_filter = 2
 
-[node name="Settings" type="CenterContainer" parent="UI"]
-layout_mode = 3
+[node name="Settings" type="CenterContainer" parent="UI" unique_id=1543918650]
 unique_name_in_owner = true
 visible = false
 anchors_preset = 15
@@ -214,36 +212,36 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Panel" type="PanelContainer" parent="UI/Settings"]
+[node name="Panel" type="PanelContainer" parent="UI/Settings" unique_id=1152079607]
 custom_minimum_size = Vector2(380, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("Panel_style")
 
-[node name="Box" type="VBoxContainer" parent="UI/Settings/Panel"]
+[node name="Box" type="VBoxContainer" parent="UI/Settings/Panel" unique_id=581829687]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Head" type="Label" parent="UI/Settings/Panel/Box"]
+[node name="Head" type="Label" parent="UI/Settings/Panel/Box" unique_id=928907405]
 layout_mode = 2
-text = "CAMERA SETTINGS"
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
 theme_override_font_sizes/font_size = 16
+text = "CAMERA SETTINGS"
 
-[node name="LookRow" type="VBoxContainer" parent="UI/Settings/Panel/Box"]
+[node name="LookRow" type="VBoxContainer" parent="UI/Settings/Panel/Box" unique_id=240687542]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LookRow"]
+[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LookRow" unique_id=1620807708]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 13
 text = "Rotation sensitivity"
-theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
-theme_override_font_sizes/font_size = 13
 
-[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/LookRow"]
+[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/LookRow" unique_id=1105877678]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="LookSlider" type="HSlider" parent="UI/Settings/Panel/Box/LookRow/Row"]
+[node name="LookSlider" type="HSlider" parent="UI/Settings/Panel/Box/LookRow/Row" unique_id=834065702]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
@@ -253,28 +251,28 @@ max_value = 3.0
 step = 0.05
 value = 1.0
 
-[node name="LookValue" type="Label" parent="UI/Settings/Panel/Box/LookRow/Row"]
+[node name="LookValue" type="Label" parent="UI/Settings/Panel/Box/LookRow/Row" unique_id=1858621452]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(52, 0)
 layout_mode = 2
-text = "1.00"
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+text = "1.00"
 
-[node name="ZoomRow" type="VBoxContainer" parent="UI/Settings/Panel/Box"]
+[node name="ZoomRow" type="VBoxContainer" parent="UI/Settings/Panel/Box" unique_id=2018153649]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/ZoomRow"]
+[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/ZoomRow" unique_id=832379863]
 layout_mode = 2
-text = "Zoom sensitivity"
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_font_sizes/font_size = 13
+text = "Zoom sensitivity"
 
-[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/ZoomRow"]
+[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/ZoomRow" unique_id=392058463]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="ZoomSlider" type="HSlider" parent="UI/Settings/Panel/Box/ZoomRow/Row"]
+[node name="ZoomSlider" type="HSlider" parent="UI/Settings/Panel/Box/ZoomRow/Row" unique_id=434952249]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(220, 32)
 layout_mode = 2
@@ -284,28 +282,28 @@ max_value = 3.0
 step = 0.05
 value = 1.0
 
-[node name="ZoomValue" type="Label" parent="UI/Settings/Panel/Box/ZoomRow/Row"]
+[node name="ZoomValue" type="Label" parent="UI/Settings/Panel/Box/ZoomRow/Row" unique_id=1715848877]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(52, 0)
 layout_mode = 2
-text = "1.00"
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+text = "1.00"
 
-[node name="InvertY" type="CheckButton" parent="UI/Settings/Panel/Box"]
+[node name="InvertY" type="CheckButton" parent="UI/Settings/Panel/Box" unique_id=11089756]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Invert vertical"
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+text = "Invert vertical"
 
-[node name="CloseSettings" type="Button" parent="UI/Settings/Panel/Box"]
+[node name="CloseSettings" type="Button" parent="UI/Settings/Panel/Box" unique_id=1632485721]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(88, 48)
 layout_mode = 2
-text = "CLOSE"
 theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
-theme_override_colors/font_hover_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_colors/font_pressed_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_colors/font_hover_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("Btn_style")
-theme_override_styles/hover = SubResource("Btn_style_hot")
 theme_override_styles/pressed = SubResource("Btn_style_hot")
+theme_override_styles/hover = SubResource("Btn_style_hot")
+text = "CLOSE"
