@@ -1,25 +1,24 @@
 class_name MachineBody
 extends RigidBody3D
 
-# Общая физика езды: одна реализация для машины игрока и для машин врагов.
-# Раньше это были две дословные копии в vehicle_body_3d.gd и enemy_vehicle.gd, и любая
-# правка приезжала только в одну из них.
+# Shared driving physics: one implementation for the player machine and for enemies. It used
+# to be two verbatim copies (vehicle_body_3d, enemy_vehicle) and every fix reached only one.
 #
-# Что оставлено наследникам: ввод (джойстик у игрока, ИИ у врага), оружие, постройка,
-# смерть. Наследник заполняет _throttle и _steer_angle, а дальше зовёт готовые шаги:
-#   sense_ground(delta)    — контакт колёс с землёй, масса, центр масс
-#   drive_physics(delta)   — тяга, сцепление, поворот, стабилизация, лимит скорости
-#   push_drive_input(steer) — раздать газ и руль колёсным блокам (визуал вращения)
+# Subclasses own input (joystick or AI), weapons, building and death. They fill _throttle and
+# _steer_angle and then call the ready steps:
+#   sense_ground(delta)     - wheel contact, mass, centre of mass
+#   drive_physics(delta)    - traction, grip, steering, stabilisation, speed cap
+#   push_drive_input(steer) - hand throttle and steering to the wheel blocks (visuals)
 #
-# Точки переопределения: _speed_cap() и _blocks_root().
+# Override points: _speed_cap() and _blocks_root().
 
 @export_group("Двигатель")
-## Общий множитель тяги. Сама тяга берётся из колёс (Wheel.wheel_power), это лишь
-## ручка для настройки всей машины разом: ускорение = engine_force * Σтяга / масса.
+## Overall traction multiplier. The traction itself comes from the wheels (Wheel.wheel_power);
+## this is the one knob for the whole machine: acceleration = engine_force * sum(power) / mass.
 @export var engine_force: float = 1.0
-## Собственная тяга ГОЛОЙ кабины — когда на ней нет ни одного навесного блока.
-## Нужна, чтобы в начале игры доползти до блоков, лежащих рядом. Стоит навесить хоть
-## что-то — тяга пропадает, и машина не поедет, пока на неё не поставят колёса.
+## Traction of a BARE cabin - with no attached block at all. It exists so the first minutes work:
+## crawl to the blocks lying nearby. Attach anything and it disappears, so the machine needs
+## wheels.
 @export var chassis_power: float = 1100.0
 @export var max_speed: float = 20.0
 @export var engine_brake: float = 0.3
@@ -32,8 +31,8 @@ extends RigidBody3D
 @export var steer_speed: float = 10.0
 @export var turn_response: float = 4.0
 @export var speed_steer_reduction: float = 0.5
-## Ниже этой скорости руль отпускается. У ИИ порог выше — иначе враг дёргает рулём,
-## почти остановившись.
+## Below this speed the steering releases. The AI uses a higher threshold, otherwise an enemy
+## saws at the wheel while nearly stopped.
 @export var steer_min_speed: float = 0.05
 
 @export_group("Сцепление шин")
@@ -43,22 +42,21 @@ extends RigidBody3D
 @export_group("Стабилизация")
 @export var anti_roll: float = 6.0
 @export var upright_strength: float = 12.0
-## Доля гашения крена, работающая в воздухе. Без контакта колёс демпфировать нечем,
-## но полностью отключать нельзя — иначе машина после трамплина крутится неуправляемо.
+## Share of roll damping that still works airborne. With no wheel contact there is nothing to
+## damp against, but switching it off entirely leaves the machine spinning after a jump.
 @export_range(0.0, 1.0) var air_stability: float = 0.35
 
 @export_group("Масса и физика")
 @export var base_weight: float = 40.0
 @export var gravity_mult: float = 2.5
-## Насколько центр масс опущен ниже оси колёс. Низкий центр масс — то, чем реальные
-## машины держатся от переворота; заодно тяга перестаёт создавать опрокидывающий момент.
+## How far the centre of mass sits below the wheel axle. A low centre of mass is what keeps real
+## cars from tipping, and it also removes the pitch-up moment from traction.
 @export var com_drop: float = 0.40
 
-## МНОЖИТЕЛЬ УРОНА ВСЕГО ОРУЖИЯ ЭТОЙ МАШИНЫ. Живёт здесь, в общей базе, а не у врага: правило
-## «механика нужна обеим машинам — значит она в MachineBody» (см. CLAUDE.md), и стволы игрока
-## читают то же поле тем же кодом. Пока его трогает только спавнер, ослабляя ПЕРВОГО врага
-## (`enemy_spawner.FIRST_ENEMY_DAMAGE`) — у игрока в этот момент одна пушка из стартового
-## набора и ни одного исследования.
+## Damage multiplier for every weapon on this machine. It lives in the shared base by the rule
+## "a mechanic both machines need belongs to MachineBody": the player's guns read the same field
+## through the same code. Only the spawner touches it, halving the FIRST enemy
+## (enemy_spawner.FIRST_ENEMY_DAMAGE).
 var damage_scale: float = 1.0
 
 var Wheels: Array = []
@@ -75,26 +73,26 @@ var _mass_timer: float = 0.0
 var _drive_cache: Array = []
 var _drive_n: int = -1
 
-# Низ машины в локальных координатах (отрицательный) — нужен проверке земли без колёс.
+# Bottom of the machine in local space (negative) - used by the ground check when no wheels are left.
 var _body_drop: float = -0.5
-# Сколько на машине блоков помимо кабины. 0 = голая кабина, ей разрешено ползти самой.
+# Blocks besides the cabin. 0 = a bare cabin, which is allowed to crawl on its own.
 var _extra_blocks: int = 0
 var _wheelbase: float = 2.0
 
 # ══════════════════════════════════════════
-# НАГРУЖЕННОСТЬ (для гаража)
+# LOAD RATING (for the garage)
 # ══════════════════════════════════════════
 
-# Пороги заданы через УСКОРЕНИЕ, а не через массу: сколько машина утащит, зависит от её
-# же тяги, поэтому «предела в килограммах» как константы не существует — он растёт вместе
-# с колёсами. Время выхода на максималку ≈ max_speed / ускорение (демпфирования у тела
-# нет, linear_damp обнуляется в _ready). 25 м/с² — это ~0.8 с, отклик сразу; 10 м/с² —
-# 2 с, уже тяжело; ниже 10 игрок считает машину неподвижной.
+# Thresholds are ACCELERATION, not mass: how much a machine can haul depends on its own
+# traction, so a constant "limit in kilograms" does not exist - it grows with the wheels. Time to
+# top speed is roughly max_speed / acceleration (the body has no damping, linear_damp is zeroed
+# in _ready). 25 m/s^2 is ~0.8 s and feels instant; 10 m/s^2 is 2 s and already heavy; below 10
+# the player calls the machine stuck.
 const ACCEL_BRISK: float = 25.0
 const ACCEL_CRAWL: float = 10.0
 
-## Паспортная тяга: то же, что _drive_power, но без требования касаться земли —
-## в гараже машина висит в воздухе, а знать её возможности всё равно нужно.
+## Rated traction: same as _drive_power but without requiring ground contact - in the garage the
+## machine hangs in the air and its capabilities still have to be shown.
 func rated_power() -> float:
 	var power: float = 0.0
 	for w in Wheels:
@@ -104,46 +102,43 @@ func rated_power() -> float:
 		power += chassis_power
 	return power * engine_force
 
-## До какой массы машина остаётся бодрой.
+## Mass up to which the machine still feels brisk.
 func mass_comfort() -> float:
 	return rated_power() / ACCEL_BRISK
 
-## Предельная масса, которую эта сборка ещё стронет с места.
+## Heaviest mass this build will still get moving.
 func mass_limit() -> float:
 	return rated_power() / ACCEL_CRAWL
 
-# ── ЭНЕРГОСИСТЕМА (общая для игрока и врага) ──────────────────────────────────
-# Живёт ЗДЕСЬ, а не у игрока, ровно по правилу «главной ловушки»: щит, реген и солнечная
-# панель спрашивают энергию у своей машины, и пока система была только в vehicle_body_3d,
-# на вражеской постройке все три висели мёртвым грузом — блок есть, а работать ему не с чем.
-# _tick_prod — энергия, произведённая В ЭТОМ тике (солнечные/генератор): потребители
-# (реген/щит) едят СНАЧАЛА её, потом запас. Остаток в начале следующего тика утекает в
-# аккумуляторы; если аккумуляторов нет — сгорает. Так «без аккума работает, но не больше,
-# чем производится» получается само собой.
+# ── ENERGY (shared by player and enemy) ──────────────────────────────────────
+# Lives HERE by the main-trap rule: shield, repair field and solar panel ask their own machine for
+# energy, and while the system existed only in vehicle_body_3d all three were dead weight on an
+# enemy build - the block was there with nothing to run on.
 #
-# ЗАПАС ЛЕЖИТ В САМИХ АККУМУЛЯТОРАХ (blocks/scripts/battery.gd), а машина только складывает
-# их и раздаёт по ним. Пока запас был одним числом машины, снятый и возвращённый аккумулятор
-# приходил пустым: ёмкость возвращалась, а заряд машина уже потеряла — заряженную батарею
-# нельзя было ни отложить, ни перенести на другую машину.
+# _tick_prod is what was produced THIS tick (solar, generator): consumers eat that first, then the
+# stored charge. Whatever is left at the start of the next tick flows into the batteries, or burns
+# off if there are none. "Works without a battery, but never above what is produced" falls out of
+# that by itself.
 #
-# _energy — то, что аккумуляторами НЕ хранится: буфер солнечных панелей под якорем. Он живёт
-# у машины, потому что и появляется от неё (якорь), и исчезает вместе с ним.
-const BATTERY_CAP := 100.0        # запасная ёмкость для блока без своей (старые сцены)
-## СОБСТВЕННОГО ЗАПАСА У МАШИНЫ НЕТ. Ёмкость даёт только то, что для неё поставлено:
-## аккумулятор — постоянно, солнечная панель — ПОКА МАШИНА НА ЯКОРЕ, и ровно столько,
-## сколько панель вырабатывает за секунду. Съехал с якоря — этот буфер исчезает вместе с
-## выработкой, и остаётся то, что реально хранит аккумулятор.
-##
-## Так честнее прежних «двадцати пяти из воздуха»: запас перестал быть свойством самого
-## факта существования машины и стал следствием того, что на ней стоит.
+# THE CHARGE LIVES IN THE BATTERIES (blocks/scripts/battery.gd); the machine only collects and
+# distributes across them. While it was one machine-level number, a battery removed and refitted
+# came back empty - capacity returned, charge did not, so a charged battery could neither be
+# stored nor moved to another machine.
+#
+# _energy is what batteries do NOT hold: the solar buffer under anchor. It belongs to the machine
+# because it appears with the anchor and disappears with it.
+const BATTERY_CAP := 100.0        # fallback capacity for blocks without one (old scenes)
+## A machine has NO capacity of its own. Capacity comes only from what is mounted: a battery
+## always, a solar panel only WHILE ANCHORED and only as much as it produces in a second. Leave the
+## anchor and that buffer goes with the production, leaving whatever the battery really holds.
 const BASE_ENERGY_CAP := 0.0
-const SOLAR_RATE := 6.0          # энергии в секунду с одной панели (только на якоре)
+const SOLAR_RATE := 6.0          # energy per second per panel (anchored only)
 var _energy: float = 0.0
 var _tick_prod: float = 0.0
 var _energy_cap: float = 0.0
-var _battery_cap: float = 0.0        # часть ёмкости от аккумуляторов (считается раз в секунду)
+var _battery_cap: float = 0.0        # battery share of capacity (recounted twice a second)
 var _cap_timer: float = 0.0
-var _solar_count: int = 0            # кеш числа солнечных блоков (обновляется вместе с _cap_timer)
+var _solar_count: int = 0            # cached solar block count (refreshed with _cap_timer)
 
 func energy_cap() -> float:
 	return _energy_cap
@@ -151,23 +146,23 @@ func energy_cap() -> float:
 func energy_stored() -> float:
 	return _energy + _bat_stored()
 
-# Доля заполнения аккумуляторов для HUD (0..1). Нет аккумуляторов — 0.
+# Battery fill for the HUD (0..1). No batteries - 0.
 func energy_fill() -> float:
 	return energy_stored() / _energy_cap if _energy_cap > 0.0 else 0.0
 
-# Есть ли сейчас хоть какая-то энергия (запас или свежая выработка).
+# Any energy at all right now (stored or freshly produced).
 func energy_available() -> float:
 	return energy_stored() + _tick_prod
 
-# Источники (солнечная, генератор) добавляют выработку сюда.
+# Sources (solar, generator) add their production here.
 func energy_produce(amount: float) -> void:
 	_tick_prod += amount
 
-# Потребители (реген/щит) просят энергию; возвращается сколько реально выдано.
-# Порядок трат: свежая выработка → солнечный буфер → аккумуляторы. Сначала тратится то, что
-# всё равно пропадёт (выработка этого тика и буфер, который исчезнет со снятием якоря).
+# Consumers (repair field, shield) ask for energy; returns how much was actually given.
+# Spending order: fresh production -> solar buffer -> batteries. What would be lost anyway goes
+# first (this tick's production, and the buffer that dies with the anchor).
 func energy_consume(amount: float) -> float:
-	# Debug switch (Main → Отладка → Игрок): the player's machines pay nothing. Guarded at the
+	# Debug switch (Main -> Debug -> Player): the player's machines pay nothing. Guarded at the
 	# single till — shield, regen, factory and miner all ask through here, so none of them needs
 	# its own check. Enemies keep paying: a tower whose shield never runs out cannot be cracked
 	# open, and that is the only way to take one down.
@@ -183,10 +178,10 @@ func energy_consume(amount: float) -> float:
 	given += _bat_take(amount - given)
 	return given
 
-## ── Аккумуляторы как хранилища ───────────────────────────────────────────────
-## Кеш узлов: перебирать сборку на каждый глоток энергии нельзя — energy_consume зовут
-## реген, щит, шахтёр и фабрика, каждый в свой тик. Список обновляется там же, где считается
-## ёмкость (раз в полсекунды), и там же чистится от освобождённых узлов.
+## ── Batteries as storage ─────────────────────────────────────────────────────
+## Node cache: walking the build on every sip of energy is not an option - energy_consume is called
+## by repair field, shield, miner and factory, each on its own tick. The list is refreshed where
+## capacity is counted (twice a second) and cleaned of freed nodes there too.
 var _batteries: Array = []
 
 func _bat_stored() -> float:
@@ -196,7 +191,7 @@ func _bat_stored() -> float:
 			s += float(b.get("charge"))
 	return s
 
-## Долить по блокам. Возвращает, сколько НЕ влезло (это и сгорит, если некуда).
+## Top up across blocks. Returns what did NOT fit (that is what burns off if there is nowhere).
 func _bat_add(amount: float) -> float:
 	var left: float = amount
 	for b in _batteries:
@@ -206,7 +201,7 @@ func _bat_add(amount: float) -> float:
 			left = b.charge_add(left)
 	return left
 
-## Взять по блокам. Возвращает, сколько реально удалось взять.
+## Draw across blocks. Returns how much was actually taken.
 func _bat_take(amount: float) -> float:
 	var need: float = amount
 	var got: float = 0.0
@@ -219,11 +214,11 @@ func _bat_take(amount: float) -> float:
 			need -= g
 	return got
 
-# Тик энергии: остаток прошлого тика → в аккумуляторы (без них сгорает), пересчёт
-# ёмкости (раз в 0.5с), выработка солнечных панелей (только на якоре).
+# Energy tick: last tick's leftover into batteries (burns off without them), capacity recount
+# (twice a second), solar production (only while anchored).
 func _energy_tick(delta: float) -> void:
-	# Непотраченная выработка сперва заряжает АККУМУЛЯТОРЫ (там она хранится долго), и только
-	# остаток ложится в солнечный буфер, который исчезнет вместе с якорем.
+	# Unspent production charges the BATTERIES first (long-term storage) and only the remainder goes
+	# into the solar buffer, which dies with the anchor.
 	_energy = minf(_energy + _bat_add(_tick_prod), _solar_buf_cap())
 	_tick_prod = 0.0
 	_cap_timer -= delta
@@ -239,48 +234,47 @@ func _energy_tick(delta: float) -> void:
 				var bt = b.get("block")
 				if bt == G.Block.BATTERY:
 					_batteries.append(b)
-					# Ёмкость спрашиваем У БЛОКА: она его свойство (battery.gd), а BATTERY_CAP
-					# здесь только запасной ответ для сцен, где скрипта аккумулятора ещё нет.
+					# Capacity is asked FROM THE BLOCK: it is its property (battery.gd). BATTERY_CAP here is only
+					# a fallback for scenes without the battery script.
 					var cap = b.get("capacity")
 					_battery_cap += float(cap) if cap != null else BATTERY_CAP
 				elif bt == G.Block.SOLAR:
 					_solar_count += 1
-				# Чем машина держится на якоре: фикс-опора ИЛИ любой стационарный блок —
-				# ровно то, что разрешало якорь в can_anchor().
+				# What holds the machine on its anchor: a support block OR any stationary block - exactly what
+				# allowed anchoring in can_anchor().
 				if bt != null and (int(bt) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT] or G.is_stationary(int(bt))):
 					anchors += 1
-		# Что делать, если опор не осталось, решает НАСЛЕДНИК: у игрока машина падает с якоря,
-		# а вражеской базе падать неоткуда. Считаем опоры здесь, потому что это тот же обход
-		# блоков, и второй такой ради одного числа заводить незачем.
+		# What to do when no supports remain is up to the SUBCLASS: the player's machine drops off the
+		# anchor, an enemy base has nowhere to drop. Counted here because it is the same block walk.
 		_after_power_scan(anchors)
-	# Ёмкость пересчитываем КАЖДЫЙ тик, а не раз в секунду вместе с блоками: она зависит от
-	# якоря, а якорь снимают мгновенно, и буфер обязан пропасть тогда же.
+	# Capacity is recomputed EVERY tick, not once a second with the blocks: it depends on the anchor,
+	# the anchor is released instantly, and the buffer must vanish at the same moment.
 	_energy_cap = _battery_cap + _solar_buf_cap()
 	_energy = minf(_energy, _solar_buf_cap())
 	if power_anchored() and _solar_count > 0:
 		energy_produce(_solar_count * SOLAR_RATE * delta)
 
-## Буфер солнечных панелей: он есть ТОЛЬКО под якорем и равен их секундной выработке.
-## Аккумуляторы к нему отношения не имеют — их запас снятие якоря не трогает.
+## Solar buffer: exists ONLY while anchored and equals one second of panel output. Batteries have
+## nothing to do with it - releasing the anchor does not touch their charge.
 func _solar_buf_cap() -> float:
 	return _solar_count * SOLAR_RATE if power_anchored() else 0.0
 
-## Стоит ли машина так, что панели работают. У ВРАГА-базы ответ всегда «да»: она заякорена
-## по своей природе и снять якорь ей нечем. Игрок переопределяет это своим полем anchored.
+## Are the panels working? For an enemy BASE the answer is always yes: it is anchored by nature and
+## has no way to release. The player overrides this with its own anchored field.
 func power_anchored() -> bool:
 	return true
 
-## Крючок после пересчёта блоков: сколько на машине опор (SUPPORT/стационарных). Базе всё
-## равно, игроку — нет (см. vehicle_body_3d).
+## Hook after the block scan: how many supports (SUPPORT/stationary) the machine has. A base does
+## not care, the player does (see vehicle_body_3d).
 func _after_power_scan(_anchors: int) -> void:
 	pass
 
-# ── Общие показатели машины ───────────────────────────────────────────────────
-# Живут здесь, а не у врага, потому что описывают ЛЮБУЮ машину: ИИ по ним решает,
-# стоит ли драться, а гараж их же показывает игроку. Считаются в одном месте, значит
-# панель не может разойтись с тем, что видит ИИ.
+# ── Machine-wide stats ───────────────────────────────────────────────────────
+# They live here rather than on the enemy because they describe ANY machine: the AI decides
+# whether to fight by them and the garage shows the same numbers to the player. One place, so the
+# panel cannot disagree with what the AI sees.
 
-## Текущий и максимальный HP всех блоков.
+## Current and maximum HP of all blocks.
 func hp_totals() -> Vector2i:
 	var bl: Node = _blocks_root()
 	if bl == null:
@@ -297,7 +291,7 @@ func health_ratio() -> float:
 	var hp: Vector2i = hp_totals()
 	return clampf(float(hp.x) / float(hp.y), 0.0, 1.0)
 
-## Грубый урон в секунду всех орудий — для сравнения «кто кого перестреляет».
+## Rough damage per second of all guns - for "who out-shoots whom" comparisons.
 func firepower() -> float:
 	var bl: Node = _blocks_root()
 	if bl == null:
@@ -310,7 +304,7 @@ func firepower() -> float:
 			p += float(dmg) / float(rate)
 	return p
 
-## Сколько на машине колёс: x — всего, y — ведущих.
+## Wheels on the machine: x total, y driven.
 func wheel_counts() -> Vector2i:
 	var total: int = 0
 	var driven: int = 0
@@ -321,33 +315,32 @@ func wheel_counts() -> Vector2i:
 				driven += 1
 	return Vector2i(total, driven)
 
-## Пересчитать массу и центр масс немедленно. Нужно гаражу: у неактивной машины
-## _physics_process выходит досрочно, и _sync_mass там не вызывается — без этого
-## панель показывала бы данные на момент последней поездки.
+## Recompute mass and centre of mass right now. The garage needs it: an inactive machine leaves
+## _physics_process early, so _sync_mass never runs and the panel would show the last drive.
 func refresh_mass() -> void:
 	_mass_timer = 0.0
 	_mass_wheels_n = -1
 	_sync_mass()
 
 # ══════════════════════════════════════════
-# ТОЧКИ ПЕРЕОПРЕДЕЛЕНИЯ
+# OVERRIDE POINTS
 # ══════════════════════════════════════════
 
-# Потолок скорости. Врагу в погоне нужен запас, иначе догнать убегающего математически
-# невозможно — у него тот же max_speed.
+# Speed cap. A chasing enemy needs headroom, otherwise catching a runaway is mathematically
+# impossible - it has the same max_speed.
 func _speed_cap() -> float:
 	return max_speed
 
-# Узел, под которым висят блоки машины.
+# The node the machine's blocks hang under.
 func _blocks_root() -> Node:
 	return get_node_or_null("blocks")
 
 # ══════════════════════════════════════════
-# ИНИЦИАЛИЗАЦИЯ
+# INITIALISATION
 # ══════════════════════════════════════════
 
-## Трение корпуса о рельеф. Задаём ЯВНО: от него напрямую зависит, тронется ли машина
-## с места, и оставлять здесь молчаливое умолчание движка нельзя.
+## Body friction against terrain. Set EXPLICITLY: whether the machine moves at all depends on it,
+## and a silent engine default has no business deciding that.
 const GROUND_FRICTION: float = 0.35
 
 func init_machine_physics() -> void:
@@ -356,15 +349,14 @@ func init_machine_physics() -> void:
 	mat.friction = GROUND_FRICTION
 	physics_material_override = mat
 
-# Эффективное ускорение свободного падения с учётом gravity_scale.
+# Effective gravity with gravity_scale applied.
 func _gravity_accel() -> float:
 	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * gravity_scale
 
-# Сила сопротивления качению, которую двигатель обязан перебить, прежде чем машина
-# вообще стронется. Коэффициент берём как корень из своего трения: движок сводит
-# трение двух тел, а у рельефа материал не задан (то есть 1.0), и при усреднении по
-# среднему геометрическому получается sqrt(нашего). Это ПЕССИМИСТИЧНАЯ оценка — если
-# правило сведения окажется другим, мы скомпенсируем с запасом, а не недодадим.
+# Rolling drag the engine must beat before the machine moves at all. The coefficient is the square
+# root of our own friction: the engine combines two bodies' friction, the terrain has no material
+# (i.e. 1.0), and a geometric mean gives sqrt(ours). Pessimistic on purpose - if the combine rule
+# turns out different, we overshoot rather than undershoot.
 func _rolling_drag() -> float:
 	return sqrt(GROUND_FRICTION) * mass * _gravity_accel()
 
@@ -376,7 +368,7 @@ func erase_wheel(wheel: Node) -> void:
 	Wheels.erase(wheel)
 
 # ══════════════════════════════════════════
-# ШАГИ ФИЗИЧЕСКОГО КАДРА
+# PHYSICS FRAME STEPS
 # ══════════════════════════════════════════
 
 func sense_ground(delta: float) -> void:
@@ -389,28 +381,28 @@ func drive_physics(delta: float) -> void:
 		_apply_engine()
 		_apply_grip()
 		_apply_steering(delta)
-	# Крен гасим и в воздухе, но слабее: без контакта колёс демпфировать физически
-	# нечем, а полностью отпустив машину, получаем неуправляемое вращение после трамплина.
+	# Roll is damped in the air too, but weaker: with no wheel contact there is nothing to damp
+	# against, and releasing the machine entirely gives uncontrollable spin after a jump.
 	_apply_anti_roll(delta, 1.0 if _on_ground else air_stability)
 	_apply_upright(delta)
 	_limit_speed()
 
 # ══════════════════════════════════════════
-# ПОДВЕСКА
+# SUSPENSION
 # ══════════════════════════════════════════
-# Колёса ПРИПОДНИМАЮТ кузов на свой радиус, поэтому днище не чиркает по земле, а большое
-# колесо само даёт больший клиренс — ride_height у него больше.
+# Wheels LIFT the body by their radius, so the hull does not scrape and a bigger wheel gives more
+# clearance by itself (its ride_height is larger).
 #
-# Пружина ДОБАВОЧНАЯ: коллизии блоков (в том числе самих колёс) никуда не делись и остаются
-# полом на случай, если её не хватит. Так худший исход при плохой настройке — сегодняшнее
-# поведение, а не машина, провалившаяся сквозь мир.
+# The spring is ADDITIONAL: block colliders (wheels included) are still there as a floor in case it
+# is not enough. The worst case of a bad tune is today's behaviour, not a machine falling through
+# the world.
 #
-# Жёсткость не константа, а считается от нагрузки: пружина обязана держать mass*g, делённую
-# на число колёс, просев на SUSP_SAG своего хода. Иначе гружёная машина ложилась бы на днище,
-# а пустая скакала бы на тех же числах.
-## Какую долю радиуса подвеска проседает под собственным весом машины в покое.
+# Stiffness is not a constant but derived from load: the spring must hold mass*g divided by the
+# wheel count while sagging SUSP_SAG of its travel. Otherwise a loaded machine sits on its belly
+# and an empty one bounces on the same numbers.
+## Share of travel the suspension sags under the machine own weight at rest.
 const SUSP_SAG: float = 0.35
-## Демпфирование как доля от критического: 1.0 — без единого качка, меньше — мягче и живее.
+## Damping as a share of critical: 1.0 is no bounce at all, less is softer and livelier.
 const SUSP_DAMP: float = 0.75
 
 func _apply_suspension() -> void:
@@ -422,32 +414,32 @@ func _apply_suspension() -> void:
 		if not is_instance_valid(w) or not w.grounded:
 			continue
 		if w.ride_height <= 0.0:
-			continue                        # подвеска выключена (верхнее колесо смотрит вверх)
+			continue                        # suspension off (a top wheel points up)
 		var sag: float = w.suspension_sag()
 		if sag <= 0.0:
-			continue                        # колесо вывешено — держать нечего
-		# k подобрана так, чтобы в покое просело ровно SUSP_SAG хода.
+			continue                        # wheel hanging: nothing to hold
+		# k is chosen so that at rest the sag is exactly SUSP_SAG of travel.
 		var travel: float = maxf(w.suspension_travel, 0.01)
 		var k: float = load_per / (travel * SUSP_SAG)
-		# Скорость точки крепления вдоль вертикали — её и гасим.
+		# Vertical speed of the mount point - that is what gets damped.
 		var arm: Vector3 = w.global_position - global_position
 		var vel_at: Vector3 = linear_velocity + angular_velocity.cross(arm)
 		var c: float = 2.0 * SUSP_DAMP * sqrt(k * maxf(mass / float(_wheel_count), 0.001))
 		var force: float = k * sag - c * vel_at.dot(up)
 		if force <= 0.0:
-			continue                        # тянуть кузов ВНИЗ подвеска не должна
+			continue                        # suspension must never pull the body DOWN
 		apply_force(up * force, arm)
 
-# Газ и руль уходят в колёсные блоки — они от этого крутятся и поворачиваются визуально.
+# Throttle and steering go to the wheel blocks: that is what makes them spin and turn visually.
 func push_drive_input(steer_norm: float) -> void:
 	for block in _drive_blocks():
 		if not is_instance_valid(block):
-			_drive_n = -1               # блок уничтожили — заставляем пересобрать кеш
+			_drive_n = -1               # block destroyed: force a cache rebuild
 			continue
 		block.set_throttle(_throttle)
 		block.set_steer(steer_norm)
 
-# Блоки, принимающие газ/руль (колёса). Кеш инвалидируется по числу детей блок-узла.
+# Blocks that accept throttle and steering (wheels). The cache is invalidated by child count.
 func _drive_blocks() -> Array:
 	var bl: Node = _blocks_root()
 	if bl == null:
@@ -461,18 +453,21 @@ func _drive_blocks() -> Array:
 	return _drive_cache
 
 # ══════════════════════════════════════════
-# КОНТАКТ С ЗЕМЛЁЙ
+# GROUND CONTACT
 # ══════════════════════════════════════════
 
-# Землю щупает КАЖДОЕ колесо у себя под собой. Прежний вариант — один луч из центра
-# корпуса на 1.4 — ломался, как только машина становилась выше кабины: центр уезжал
-# вверх вместе с постройкой, луч переставал доставать, и вместе с `_on_ground`
-# отключались разом тяга, сцепление и поворот. Колёса же всегда там, где контакт.
+# ══════════════════════════════════════════
+# GROUND CONTACT
+# ══════════════════════════════════════════
+# EVERY wheel probes the ground under itself. The old single ray from the body centre broke the
+# moment a machine grew taller than the cabin: the centre rose with the build, the ray stopped
+# reaching, and _on_ground took traction, grip and steering down with it. Wheels are always where
+# the contact is.
 func _check_ground() -> void:
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if _ground_q == null:
 		_ground_q = PhysicsRayQueryParameters3D.new()
-		_ground_q.exclude = [get_rid()]     # RID, не узел; состав не меняется — задаём один раз
+		_ground_q.exclude = [get_rid()]     # RIDs, not nodes; the set never changes, so set it once
 		_ground_q.collision_mask = 1
 
 	_grounded_wheels = 0
@@ -488,26 +483,29 @@ func _check_ground() -> void:
 		_on_ground = _grounded_wheels > 0
 		return
 
-	# Колёс нет (сбили все, или это стационарная база) — щупаем от НИЗА машины,
-	# а не от центра, чтобы длина луча не зависела от высоты постройки.
+	# No wheels (all shot off, or this is a stationary base) - probe from the BOTTOM of the machine,
+	# not the centre, so ray length does not depend on build height.
 	_ground_q.from = global_position + global_transform.basis.y * _body_drop
 	_ground_q.to = _ground_q.from + Vector3.DOWN * 0.5
 	_on_ground = not space.intersect_ray(_ground_q).is_empty()
 
-# Доля колёс на земле: 1.0 — вся машина в контакте, 0.25 — висит на одном колесе.
-# Без колёс возвращаем 1.0, иначе стационарные постройки лишились бы сцепления.
+# Share of wheels on the ground: 1.0 is full contact, 0.25 is hanging on one. With no wheels
+# return 1.0, or stationary builds would lose grip.
 func _contact_ratio() -> float:
 	if _wheel_count <= 0:
 		return 1.0
 	return float(_grounded_wheels) / float(_wheel_count)
 
 # ══════════════════════════════════════════
-# МАССА, ЦЕНТР МАСС, ГЕОМЕТРИЯ КОЛЁС
+# MASS, CENTRE OF MASS, WHEEL GEOMETRY
 # ══════════════════════════════════════════
 
-# Пересчитывает массу, центр масс, низ корпуса и оси за один проход по блокам.
-# Массу дают ВСЕ блоки, а не только колёса: иначе постройка не влияла бы ни на разгон,
-# ни на инерцию, и сборка машины ничего не решала.
+# ══════════════════════════════════════════
+# MASS, CENTRE OF MASS, WHEEL GEOMETRY
+# ══════════════════════════════════════════
+# Recomputes mass, centre of mass, hull bottom and axles in one pass over the blocks. ALL blocks
+# add mass, not just wheels: otherwise the build would affect neither acceleration nor inertia and
+# assembling a machine would decide nothing.
 func _sync_mass(delta: float = 0.0) -> void:
 	_mass_timer -= delta
 	if Wheels.size() == _mass_wheels_n and _mass_timer > 0.0:
@@ -536,11 +534,10 @@ func _sync_mass(delta: float = 0.0) -> void:
 	_body_drop = lowest
 	_extra_blocks = extra
 
-	# Центр масс опускаем ниже оси колёс. Это не подкрутка «чтобы не падало», а то же
-	# самое, чем реальные машины держатся от переворота: чем ниже центр масс над пятном
-	# контакта, тем больший угол крена нужен, чтобы вертикаль вышла за опору. Побочно
-	# исчезает опрокидывающий момент от тяги — apply_central_force бьёт в центр масс,
-	# и пока он был высоко, разгон подкидывал нос.
+	# The centre of mass is dropped below the axle. Not a fudge: it is what keeps real cars upright -
+	# the lower it sits above the contact patch, the greater the roll angle needed to push the vertical
+	# outside the base. It also removes the pitch-up moment from traction, since apply_central_force
+	# pushes through the centre of mass.
 	var axle_y: float = 0.0
 	var sum_z_w: float = 0.0
 	var min_z: float = INF
@@ -560,20 +557,18 @@ func _sync_mass(delta: float = 0.0) -> void:
 		axle_y = lowest + 0.5
 		_wheelbase = 2.0
 
-	# Делим на ПОЛНУЮ массу: base_weight — это шасси, оно лежит в начале координат и
-	# тянет центр масс к середине. Без него несимметричная постройка смещала бы центр
-	# сильнее, чем есть на самом деле.
+	# Divided by TOTAL mass: base_weight is the chassis, it sits at the origin and pulls the centre
+	# toward the middle. Without it an asymmetric build would shift the centre more than it really does.
 	center_of_mass_mode = RigidBody3D.CENTER_OF_MASS_MODE_CUSTOM
 	center_of_mass = Vector3(sum_x / total, axle_y - com_drop, sum_z / total)
 
-# Кто передний, а кто задний, определяется РАСПОЛОЖЕНИЕМ колёс, а не флагом is_front:
-# этот флаг нигде не выставлялся и у всех колёс оставался true, из-за чего база всегда
-# была заглушкой 2.0, и длина машины никак не влияла на радиус поворота.
-# Вперёд у нас -Z (см. _get_forward), поэтому переднее колесо — то, у которого z меньше.
+# Front and rear are decided by wheel POSITION, not by the is_front flag: nothing ever set that
+# flag, every wheel stayed true, the wheelbase was a hardcoded 2.0 and machine length had no effect
+# on turning radius. Forward is -Z (see _get_forward), so the front wheel is the one with lower z.
 func _update_axles(mid_z: float, min_z: float, max_z: float) -> void:
 	var spread: float = max_z - min_z
 	_wheelbase = maxf(spread, 0.5)
-	# Колёса в один ряд — руль отдаём всем, иначе поворачивать было бы нечем.
+	# Wheels in a single row - give steering to all of them, or there is nothing to turn with.
 	var single_row: bool = spread < 0.5
 	for w in Wheels:
 		if is_instance_valid(w):
@@ -583,17 +578,20 @@ func _get_wheelbase() -> float:
 	return _wheelbase
 
 # ══════════════════════════════════════════
-# ТЯГА
+# TRACTION
 # ══════════════════════════════════════════
 
-# Суммарная тяга ведущих колёс, СТОЯЩИХ на земле. Колесо в воздухе не толкает.
+# ══════════════════════════════════════════
+# TRACTION
+# ══════════════════════════════════════════
+# Total traction of driven wheels that are ON THE GROUND. A wheel in the air pushes nothing.
 func _drive_power() -> float:
 	var power: float = 0.0
 	for w in Wheels:
 		if is_instance_valid(w) and w.is_drive and w.grounded:
 			power += w.wheel_power
-	# Своим ходом ползёт ТОЛЬКО голая кабина. Навесил хоть один блок — теперь это
-	# машина, и она обязана стоять на колёсах, иначе никуда не поедет.
+	# Only a BARE cabin crawls on its own. Attach one block and it is a machine, which means it has to
+	# stand on wheels or it goes nowhere.
 	if _extra_blocks == 0:
 		power += chassis_power
 	return power
@@ -602,33 +600,35 @@ func _apply_engine() -> void:
 	var fwd: Vector3 = _get_forward()
 	var vel_fwd: float = fwd.dot(linear_velocity)
 
-	# Раньше сила умножалась на массу, из-за чего масса сокращалась и ускорение выходило
-	# постоянным: машина из пяти блоков и из ста разгонялись одинаково, а лишние колёса
-	# не давали ничего. Теперь сила — это сумма тяги колёс, а ускорение получается
-	# делением на массу самим физдвижком, как в жизни.
+	# Force used to be multiplied by mass, so mass cancelled out and acceleration was constant: a
+	# five-block machine and a hundred-block machine accelerated the same, and extra wheels gave
+	# nothing. Now force is the sum of wheel traction and the physics engine divides by mass, as in
+	# life.
 	var power: float = _drive_power()
 	if abs(_throttle) > 0.01 and power > 0.0:
 		var speed_factor: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
-		# Двигатель отдельно перебивает СОБСТВЕННОЕ сопротивление качению, а Σтяга колёс
-		# остаётся чистым избытком на разгон. Без этого тяга конкурировала с трением,
-		# которое растёт с массой: при 296 кг трение (~7250 Н) почти в точности равнялось
-		# тяге четырёх колёс, и машина стояла, хотя расчёт обещал 24 м/с². Старая модель
-		# этой беды не знала лишь потому, что умножала тягу на массу и трение сокращалось.
-		# Теперь ускорение действительно равно Σтяга / масса — ровно то, что в гараже.
+		# The engine separately covers its OWN rolling drag, so the wheel traction sum stays pure surplus
+		# for acceleration. Without that, traction competed with friction that grows with mass: at 296 kg
+		# the drag (~7250 N) almost exactly equalled four wheels' traction and the machine stood still
+		# while the maths promised 24 m/s^2. The old model hid this only because it multiplied traction by
+		# mass and the friction cancelled.
 		var surplus: float = power * engine_force * speed_factor
 		apply_central_force(fwd * _throttle * (surplus + _rolling_drag()))
 	elif abs(vel_fwd) > 0.1:
-		apply_central_force(-fwd * vel_fwd * engine_brake * mass)   # накат
+		apply_central_force(-fwd * vel_fwd * engine_brake * mass)   # coasting
 
 # ══════════════════════════════════════════
-# СЦЕПЛЕНИЕ
+# GRIP
 # ══════════════════════════════════════════
 
 func _apply_grip() -> void:
 	var right: Vector3 = _get_right()
 	var fwd: Vector3 = _get_forward()
-	# Держит машину ровно столько колёс, сколько реально касается земли: повиснув на
-	# двух колёсах из шести, машина должна скользить, а не ехать как по рельсам.
+	# ══════════════════════════════════════════
+	# GRIP
+	# ══════════════════════════════════════════
+	# Grip scales with how many wheels actually touch: hanging on two of six, the machine must slide
+	# rather than drive on rails.
 	var contact: float = _contact_ratio()
 
 	var vel_lat: float = right.dot(linear_velocity)
@@ -639,7 +639,7 @@ func _apply_grip() -> void:
 		apply_central_force(-fwd * vel_fwd * longitudinal_grip * mass * contact)
 
 # ══════════════════════════════════════════
-# ПОВОРОТ (формула Аккермана через angular_velocity)
+# STEERING (Ackermann through angular_velocity)
 # ══════════════════════════════════════════
 
 func _apply_steering(delta: float) -> void:
@@ -660,7 +660,7 @@ func _apply_steering(delta: float) -> void:
 	angular_velocity.y = lerp(angular_velocity.y, target_yaw, turn_response * delta)
 
 # ══════════════════════════════════════════
-# СТАБИЛИЗАЦИЯ
+# STABILISATION
 # ══════════════════════════════════════════
 
 func _apply_anti_roll(delta: float, scale: float = 1.0) -> void:
@@ -694,7 +694,7 @@ func _limit_speed() -> void:
 		linear_velocity.y = 10.0
 
 # ══════════════════════════════════════════
-# ОСИ МАШИНЫ
+# MACHINE AXES
 # ══════════════════════════════════════════
 
 func _get_forward() -> Vector3:
@@ -708,21 +708,20 @@ func _get_up() -> Vector3:
 
 
 # ══════════════════════════════════════════
-# ПРИОРИТЕТНАЯ ЦЕЛЬ
+# PRIORITY TARGET
 # ══════════════════════════════════════════
-# Что игрок назначил бить в первую очередь (двойной тап по вражескому блоку). Живёт на
-# МАШИНЕ, а не на стволе: назначил один раз — довернулись все орудия, иначе пришлось бы
-# указывать цель каждому.
+# What the player marked to hit first (double tap on an enemy block). It lives on the MACHINE, not
+# on the gun: mark once and every weapon turns, instead of instructing each one.
 #
-# Держим сам БЛОК, а не машину: у врага можно осмысленно выбивать конкретное — сбить
-# турель, которая тебя достаёт, или бур, которым он копает, — а не только кабину.
+# It holds the BLOCK, not the machine: on an enemy it is worth picking something specific - the
+# turret that reaches you, or the drill it digs with - not only the cabin.
 var priority_target: Node3D = null
 
 func set_priority_target(t: Node3D) -> void:
 	priority_target = t
 
-# Цель ещё жива? Уничтоженный блок иначе держал бы приоритет вечно, и орудия игнорировали
-# бы всё остальное, целясь в пустоту.
+# Is the target still alive? A destroyed block would otherwise hold priority forever and the guns
+# would ignore everything else, aiming at nothing.
 func priority_alive() -> bool:
 	if priority_target == null or not is_instance_valid(priority_target):
 		priority_target = null
@@ -730,39 +729,38 @@ func priority_alive() -> bool:
 	return true
 
 # ══════════════════════════════════════════
-# ОТРЫВ БЛОКОВ В МИР
+# TEARING BLOCKS INTO THE WORLD
 # ══════════════════════════════════════════
-# Живёт здесь, в ОБЩЕЙ базе машин, а не у машины игрока. Оторванный блок роняет карта
-# (blocks._detach_one) вызовом veh.detach_block_to_world(), причём через has_method — и у
-# врага этого метода просто не было: проверка молча не проходила, клетка карты очищалась,
-# а сам узел так и оставался висеть в воздухе там, где был. Отсюда и разница, которую было
-# видно в игре: у игрока обломки осыпаются, у врага висят.
+# Lives in the SHARED base, not on the player machine. A torn block is dropped by the grid
+# (blocks._detach_one) calling veh.detach_block_to_world() through has_method - and the enemy
+# simply did not have the method: the check silently failed, the grid cell was cleared and the node
+# kept hanging in the air. That was the visible difference: the player's wreckage fell, the
+# enemy's floated.
 var collision_to_block_map: Dictionary = {}
 
-## Сдвиг коллизии у блоков 2×2×2 относительно позиции самого блока: коллизия у них
-## описывает куб 2×2×2 и центрируется иначе. Держим одним числом — по нему коллизию и
-## ИЩУТ при разборке и при гибели блока, и разъехавшиеся копии этого сдвига означали бы
-## коллизию, оставшуюся на корпусе.
+## Collider offset of 2x2x2 blocks relative to the block position: their collider describes a
+## 2x2x2 cube and centres differently. Kept as one number - the collider is FOUND by it both when
+## disassembling and when a block dies, and diverging copies would leave a collider on the hull.
 const BIG_BLOCK_COL_OFFSET := Vector3(-0.5, 0.5, -0.5)
 
 func _on_block_destroyed(destroyed_block: Node3D) -> void:
 	
 	var keys_to_remove: Array = []
 	
-	# Перебираємо всі фізичні форми самого Vehicle
+	# Walk every shape owner of the Vehicle body
 	for owner_id in get_shape_owners():
 		var collision_shape: CollisionShape3D = shape_owner_get_owner(owner_id) as CollisionShape3D
 		
-		# УЖЕ СНЯТУЮ ФОРМУ ПРОПУСКАЕМ. Этот обработчик зовут ДВА пути: напрямую из
-		# detach_block_to_world и сигналом destroyed, — и они сходятся на одном блоке, когда его
-		# добивают прямо во время отрыва (пуля попадает в момент репарента). Второй
-		# remove_shape_owner на том же владельце роняет ошибку движка «!shapes.has(owner)».
-		# Признак «уже сняли» берём у самого узла: queue_free его пометил, а удалит в конце кадра.
+		# Skip an already removed shape. This handler is reached by TWO paths - directly from
+		# detach_block_to_world and via the destroyed signal - and they meet on the same block when it is
+		# finished off during the tear (a bullet lands mid-reparent). A second remove_shape_owner on the
+		# same owner raises the engine error "!shapes.has(owner)". "Already removed" is read from the node
+		# itself: queue_free marked it and deletes at end of frame.
 		if is_instance_valid(collision_shape) and not collision_shape.is_queued_for_deletion():
-			# Чья это коллизия. По МЕТКЕ, если она есть (её ставит дублирование коллизии при
-			# постановке блока), и только иначе — по позиции: позиция врёт у блоков 2×2×2
-			# (коллизия ставится со сдвигом) и у двух блоков, оказавшихся в одной локальной
-			# точке после пересборки. Запасной путь по позиции нужен машинам врага — там метки нет.
+			# Whose collider is this. By the META tag when present (set when the collider is duplicated on
+			# placement), and only otherwise by position: position lies for 2x2x2 blocks (the collider is
+			# offset) and for two blocks that ended up at the same local point after a rebuild. The positional
+			# fallback is for enemy machines, which have no tag.
 			var owner_block = collision_shape.get_meta("block_owner", null)
 			var mine: bool = (owner_block == destroyed_block) if owner_block != null \
 					else (collision_shape.position == destroyed_block.position \
@@ -770,32 +768,33 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 			if mine:
 				
 				
-				# 1. Вимикаємо її у фізичному рушії (стоп колізія)
+				# 1. disable it in the physics engine
 				shape_owner_set_disabled(owner_id, true)
 				
-				# 2. Очищаємо геометрію форми з фізичного сервера
+				# 2. clear the shape geometry from the physics server
 				shape_owner_clear_shapes(owner_id)
 				
-				# 3. Видаляємо власника форми з кузова Vehicle
+				# 3. remove the shape owner from the Vehicle body
 				remove_shape_owner(owner_id)
 				
-				# 4. Видаляємо сам вузол колізії з кореня Vehicle
+				# 4. free the collider node itself
 				collision_shape.queue_free()
 				
-				# Запам'ятовуємо ID, щоб підчистити словник урону
+				# remember the id so the damage map can be cleaned
 				keys_to_remove.append(owner_id)
 				
-	# Очищаємо словник урону від застарілих ID
+	# drop stale ids from the damage map
 	for key in keys_to_remove:
 		collision_to_block_map.erase(key)
 
-# Блок потерял связь с корнем (кабина/база) и падает в мир (см. blocks._detach_orphans):
-# снимаем его дублированную коллизию с тела машины, репарентим в objects, размораживаем и роняем.
+# A block lost its connection to the core (cabin or base) and falls into the world (see
+# blocks._detach_orphans): remove its duplicated collider from the machine body, reparent into
+# objects, unfreeze and drop.
 func detach_block_to_world(node: Node) -> void:
 	if not is_instance_valid(node):
 		return
 	if node is Node3D:
-		_on_block_destroyed(node as Node3D)          # убрать коллизию блока с тела + чистка мапы урона
+		_on_block_destroyed(node as Node3D)          # drop the block collider and clean the damage map
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or not (node is Node3D):
 		return
@@ -805,9 +804,9 @@ func detach_block_to_world(node: Node) -> void:
 		rb.freeze = false
 		rb.sleeping = false
 		if _blast_force > 0.0 and Time.get_ticks_msec() < _blast_until_ms:
-			# Оторвало ВЗРЫВОМ (напр. батареи) — швыряем от эпицентра сильнее обычного.
+			# Torn off by a BLAST (a battery, say) - thrown from the epicentre harder than usual.
 			var away := rb.global_position - _blast_pos
-			if away.length_squared() < 0.01:            # 0.1², только сравнение
+			if away.length_squared() < 0.01:            # 0.1 squared, comparison only
 				away = Vector3(randf() - 0.5, 0.3, randf() - 0.5)
 			away = (away.normalized() + Vector3.UP * 0.35).normalized()
 			rb.apply_central_impulse(away * _blast_force * rb.mass)
@@ -816,8 +815,8 @@ func detach_block_to_world(node: Node) -> void:
 			dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.FORWARD
 			rb.apply_central_impulse((dir * 2.0 + Vector3.UP * 2.5) * rb.mass)
 
-# Взрыв на машине (напр. уничтожена батарея): осколки, что оторвутся в ближайшие ~0.3с, летят
-# ОТ эпицентра сильнее обычного (см. detach_block_to_world). Ставится из VehicleBlock.destroy.
+# A blast on the machine (a destroyed battery, say): fragments torn off in the next ~0.2 s fly
+# FROM the epicentre harder than usual (see detach_block_to_world). Set from VehicleBlock.destroy.
 var _blast_pos: Vector3 = Vector3.ZERO
 var _blast_force: float = 0.0
 var _blast_until_ms: int = 0
@@ -886,13 +885,10 @@ func cabin_watch(delta: float) -> void:
 	if _had_cabin:
 		_die()                             # no cabin, and no signal came
 
-## Is a stationary block still standing on this machine — the core a base holds on to.
-## Counted rather than remembered by reference: a base can carry several, and losing one of
-## them is not death.
-## СБОРКА МОГЛА ЕЩЁ НЕ ПРИМЕНИТЬСЯ. Блоки спавнятся асинхронно (blocks.spawn_block ждёт ready
-## родителя), а сторож включается с первого же физкадра — и «детей нет» в этот момент значит
-## «ещё не построена», а не «ядро сбито». Флаг помнит, что блоки У ЭТОЙ МАШИНЫ хоть раз были:
-## после этого пустой список — уже настоящая смерть, а не гонка при рождении.
+## THE BUILD MAY NOT BE APPLIED YET. Blocks spawn asynchronously (blocks.spawn_block waits for the
+## parent to be ready) while the watchdog runs from the first physics frame, so "no children" means
+## "not built yet", not "core destroyed". The flag remembers that THIS machine did have blocks; an
+## empty list after that is a real death, not a birth race.
 var _had_blocks: bool = false
 
 func _has_core() -> bool:
@@ -915,15 +911,15 @@ func _has_core() -> bool:
 func _die() -> void:
 	pass
 
-## РАЗЛЁТ БЛОКОВ ПРИ ГИБЕЛИ МАШИНЫ. Живёт в ОБЩЕЙ базе, потому что нужен обоим: у игрока это
-## был `_scatter_blocks`, у врага — `_eject_blocks`, и они разошлись бы при первой же правке
-## (у врага, например, не пропускались меш-призраки подсказок). Ровно та ловушка, про которую
-## написано в CLAUDE.md: механика, нужная обеим машинам, не должна лежать у одной из них.
+## BLOCKS SCATTER WHEN THE MACHINE DIES. Lives in the SHARED base because both need it: the player
+## had `_scatter_blocks`, the enemy `_eject_blocks`, and they would diverge on the first edit (the
+## enemy's already missed hint ghosts). Exactly the trap CLAUDE.md warns about.
 ##
-## cabin — узел, от которого считается ЭПИЦЕНТР разлёта. У врага ссылка на кабину есть под
-## рукой, у игрока её ищут перебором; поэтому параметр, а не поиск в одном стиле для обоих.
-## Импульс даём НАПРЯМУЮ и сразу: размораживаем сами, не дожидаясь, пока VehicleBlock сделает
-## это сигналом кадром позже — иначе блок успевает провалиться сквозь пол, пока не разморожен.
+## `cabin` is the node the EPICENTRE is measured from: the enemy has a cabin reference at hand, the
+## player searches for it, hence a parameter instead of one search style for both.
+##
+## The impulse is applied DIRECTLY and at once: we unfreeze here rather than waiting for
+## VehicleBlock to do it a frame later via signal, or the block falls through the floor first.
 func scatter_blocks(cabin: Node = null) -> void:
 	var objects := get_node_or_null("/root/Main/objects")
 	var bl: Node = get("block_map_node") if get("block_map_node") != null else get_node_or_null("blocks")
@@ -937,15 +933,15 @@ func scatter_blocks(cabin: Node = null) -> void:
 			if b.get("block") == G.Block.CABIN and b is Node3D:
 				center = (b as Node3D).global_position
 				break
-	for b in bl.get_children():                   # get_children() — снимок, reparent безопасен
+	for b in bl.get_children():                   # get_children() is a snapshot, so reparent is safe
 		if not ("block" in b):
-			continue                              # меш-призрак подсказки: у него нет типа блока
+			continue                              # hint ghost mesh: it has no block type
 		if b.get("block") == G.Block.CABIN:
-			continue                              # кабина уничтожена — не роняем
+			continue                              # the cabin is destroyed, do not drop it
 		if not (b is Node3D):
 			continue
 		var n3 := b as Node3D
-		n3.reparent(objects)                      # keep_global_transform=true → блок на месте
+		n3.reparent(objects)                      # keep_global_transform=true keeps the block in place
 		var rb := n3 as RigidBody3D
 		if rb == null:
 			continue
