@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://yufe2ra6o710"]
 
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="1_ngwxq"]
+[ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="2_okcvv"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_q5y4r"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -21,6 +22,12 @@ glow_enabled = true
 
 [sub_resource type="BoxMesh" id="BoxMesh_exyub"]
 
+[sub_resource type="Resource" id="Resource_cf20j"]
+script = ExtResource("2_okcvv")
+snow_line = 71.5
+snow_blend = 15.6
+mask_offset = Vector2(3469.2437, 2619.1934)
+
 [node name="LiteTerrain test" type="Node3D" unique_id=366729401]
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1309118974]
@@ -33,7 +40,7 @@ environment = SubResource("Environment_qk6f0")
 camera_attributes = SubResource("CameraAttributesPractical_tdfyi")
 
 [node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=660702212]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.4996643, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 126.03192, 0)
 
 [node name="Camera3D" type="Camera3D" parent="RigidBody3D" unique_id=630556343]
 transform = Transform3D(1, 0, 0, 0, 0.82214403, 0.56927955, 0, -0.56927955, 0.82214403, 0, 5, 5)
@@ -47,3 +54,5 @@ mesh = SubResource("BoxMesh_exyub")
 [node name="LiteTerrain" type="StaticBody3D" parent="." unique_id=1365503108 node_paths=PackedStringArray("camera")]
 script = ExtResource("1_ngwxq")
 camera = NodePath("../RigidBody3D/Camera3D")
+biomes = SubResource("Resource_cf20j")
+triangle_size = 1
