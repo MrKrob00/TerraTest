@@ -1,42 +1,40 @@
 extends MachineBody
 
 # ══════════════════════════════════════════
-# ЭКСПОРТ — ИИ
+# EXPORTS - AI
 # ══════════════════════════════════════════
 
 @export_group("ИИ — Фракция")
-## 0 = игрок, 1+ = враги. Атакует всех с другим faction.
+## 0 = player, 1+ = enemies. Attacks anything with a different faction.
 @export var faction: int = 1
 
 @export_group("ИИ — Живучесть")
-## Блоки — отдельные RigidBody (слой 2) со своим HP; пули игрока (mask 3) бьют по ним,
-## а не по корпусу. Ловим destroyed КАБИНЫ → машина гибнет, шлёт died (спавнер поднимает
-## нового) и роняет остальные блоки в мир (reparent в objects → они сами оживают).
+## Blocks are separate RigidBodies (layer 2) with their own HP; player bullets (mask 3) hit them,
+## not the hull. Catching the CABIN's destroyed signal kills the machine: it emits died (the spawner
+## sends a new one) and drops the rest of the blocks into the world.
 signal died(enemy: Node)
 
 @export_group("ИИ — Обнаружение")
-## На сколько враг замечает МАШИНУ ГЛАЗАМИ. Меньше дальности его же пушки (60) — и это
-## осознанно, хотя раньше здесь стояло 85 ровно с обратным обоснованием: «иначе стоит и
-## молчит, пока в него бьют с пятидесяти».
+## How far an enemy notices a MACHINE BY SIGHT. Smaller than its own gun range on purpose, though
+## this used to be 85 with the opposite reasoning ("otherwise it stands there while being shot from
+## fifty metres").
 ##
-## Ту дыру теперь закрывает не радиус, а notice_attacker: попадание САМО показывает
-## стрелка, на любом расстоянии и сквозь что угодно. Радиус же отвечает только за то,
-## как далеко враг сам кого-то высматривает, и сорок метров дают игроку то, чего не было
-## вовсе, — возможность объехать, не ввязываясь.
+## That hole is now closed by notice_attacker instead of by radius: a hit reveals the shooter at any
+## distance and through anything. The radius only decides how far an enemy spots someone by itself,
+## and forty metres give the player what he never had - the option to drive around a fight.
 @export var detection_radius:    float = 40.0
-## Ближний круг, в котором цель замечают БЕЗ линии видимости: машина ревёт, лязгает и
-## поднимает пыль, и делать вид, что за камнем в десяти метрах её не существует, — не
-## скрытность, а глухота.
+## Close ring where a target is noticed WITHOUT line of sight: a machine roars, clanks and raises
+## dust, so pretending it does not exist behind a rock ten metres away is deafness, not stealth.
 @export var hear_radius:         float = 15.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
-## Слои, на которых ИИ ищет цели. Корпус машины (где живёт faction) лежит на слое
-## «machine» (5 → значение 16). Старое значение 1|2 ловило рельеф и блоки, но НЕ сам
-## корпус — поэтому ИИ не видел игрока. По умолчанию = слой machine.
+## Layers the AI searches for targets on. A machine hull (where faction lives) sits on the "machine"
+## layer (5 -> value 16). The old 1|2 caught terrain and blocks but NOT the hull, so the AI could not
+## see the player.
 @export_flags_3d_physics var detection_mask: int = 16
 
 @export_group("ИИ — Патруль")
-## Кастомные точки. Если пусто — генерируются случайные.
+## Custom patrol points; random ones are generated when empty.
 @export var patrol_points:       Array[Vector3] = []
 @export var patrol_radius:       float = 30.0
 @export var patrol_points_count: int   = 4
@@ -45,34 +43,38 @@ signal died(enemy: Node)
 @export_group("ИИ — Поведение")
 @export var patrol_speed_factor: float = 0.5
 @export var chase_speed_factor:  float = 1.0
-## Сколько держим цель ПОСЛЕ того, как она вышла из зоны обнаружения (внутри зоны не забываем).
+## How long a target is kept AFTER it leaves the detection zone (inside it, never forgotten).
 @export var forget_enemy_time:   float = 6.0
-## «Невідступний»: цель, назначенная при спавне (напр. отряд от проверки сектора), НИКОГДА не
-## забывается и не меняется — такой враг ведёт её через всю карту, сколько бы она ни убегала.
+## Relentless: a target assigned at spawn (a sector-scan squad, say) is NEVER forgotten or changed -
+## such an enemy follows it across the whole map.
 @export var relentless:          bool = false
 
 @export_group("ИИ — Препятствия")
-## Дальность лучей контекстной карты. Углы больше не задаются: направления берутся
-## из 16 секторов ContextSteering, а не из пары «влево/вправо на N градусов».
+## Ray length of the context map. Angles are no longer configurable: directions come from the 16
+## ContextSteering sectors rather than a left/right pair at N degrees.
 @export var obstacle_ray_length: float = 5.0
 
 # ══════════════════════════════════════════
-# СОСТОЯНИЯ
+# STATES
 # ══════════════════════════════════════════
 
-# Поведение выбирает EnemyBrain по полезности — жёсткой машины состояний больше нет.
+# Behaviour is chosen by EnemyBrain on utility - there is no rigid state machine any more.
+#
+# Flanking is time-limited: FLANK_CHARGE_TIME of manoeuvring spends the charge, FLANK_RECOVER_TIME
+# of fighting face to face restores it. Hence the rhythm "dart sideways, trade, dart again" instead
+# of an endless carousel around the player.
 var _act: int = EnemyBrain.Act.PATROL
-# Фланг ограничен по времени: за FLANK_CHARGE_TIME манёвра заряд тратится целиком, за
-# FLANK_RECOVER_TIME боя лицом к лицу — восстанавливается. Отсюда ритм «выпад вбок —
-# размен — снова выпад» вместо бесконечной карусели вокруг игрока.
+# Flanking is time-limited: FLANK_CHARGE_TIME of manoeuvring spends the charge, FLANK_RECOVER_TIME
+# of fighting face to face restores it. Hence "dart sideways, trade, dart again" instead of an
+# endless carousel around the player.
 const FLANK_CHARGE_TIME:  float = 4.0
 const FLANK_RECOVER_TIME: float = 9.0
 var _flank_spent: float = 0.0
-## Разрешён ли ЭТОМУ врагу бой прямо сейчас (ставит enemy_spawner._limit_engagement).
+## Is THIS enemy allowed to fight right now (set by enemy_spawner._limit_engagement).
 var combat_allowed: bool = true
 var _percept: Dictionary = {}
 var _decide_t: float = 0.0
-const DECIDE_PERIOD: float = 0.15        # переоценка обстановки ~7 раз в секунду
+const DECIDE_PERIOD: float = 0.15        # re-score the situation ~7 times a second
 
 var _target:       Node3D  = null
 var _forget_timer: float   = 0.0
@@ -80,46 +82,45 @@ var _forget_timer: float   = 0.0
 var _patrol_targets: Array[Vector3] = []
 var _patrol_index:   int   = 0
 var _start_pos:      Vector3
-## Сколько ещё секунд враг НЕ берёт цель по своей воле. Ставится, когда он отступил битым и
-## оторвался: без этого он забывал игрока и тут же возвращался — патрульные точки построены
-## вокруг его же места появления, то есть ровно там, где драка и была. Получался вечный круг
-## «отошёл — вернулся — получил», из которого не выходил ни он, ни игрок.
+## Seconds during which the enemy takes no target of its own accord. Set when it retreated damaged
+## and broke contact: without it the enemy forgot the player and came straight back, because patrol
+## points are built around its own spawn place - exactly where the fight was.
 var _give_up_t: float = 0.0
-## Сколько длится отказ от боя.
+## How long the give-up lasts.
 const GIVE_UP_TIME: float = 25.0
-## Насколько далеко переносится «дом» патруля, когда враг уходит. Возвращаться туда, где
-## только что проиграл, — не поведение, а отсутствие поведения.
+## How far the patrol "home" is moved when the enemy leaves. Returning to where it just lost is not
+## behaviour, it is the absence of behaviour.
 const GIVE_UP_MOVE: float = 90.0
 
-# Локальная навигация: контекстная карта вместо трёх лучей с доворотом.
+# Local navigation: a context map instead of three rays with a correction turn.
 var _steering: ContextSteering = ContextSteering.new()
 var _ctx_t: float = 0.0
 var _obst_q: PhysicsRayQueryParameters3D = null
 
-# Замер застревания
+# Stuck measurement.
 var _stuck01: float = 0.0
 var _move_ref: Vector3 = Vector3.ZERO
 var _move_t: float = 0.0
 
-# Самокалибровка подвижности: сколько колёс было в лучшие времена.
+# Mobility self-calibration: how many wheels there were in better days.
 var _wheels_peak: int = 1
 
 # ══════════════════════════════════════════
-# ИНИЦИАЛИЗАЦИЯ
+# INITIALISATION
 # ══════════════════════════════════════════
 
 func _ready() -> void:
 	mass          = base_weight
-	# Врагу нужны свои значения, а не игроковские: ИИ не контр-рулит при опрокидывании,
-	# поэтому запас устойчивости больше, а порог руля выше — иначе он дёргает рулём,
-	# почти остановившись. Сборки врагов к тому же часто кладут оружие на y=1.
+	# The enemy needs its own numbers, not the player's: the AI does not counter-steer when tipping, so
+	# the stability margin is larger and the steering threshold higher - otherwise it saws at the wheel
+	# while nearly stopped. Enemy builds also often carry weapons at y=1.
 	anti_roll = 8.0
 	upright_strength = 15.0
 	steer_min_speed = 0.3
 	init_machine_physics()
-	# Метка с именем над машиной (enemy_marker.gd): врага должно быть видно и в толпе, и
-	# за деревом, и понятно, кто именно перед тобой. У машин игрока в этой точке висит
-	# кнопка кругового меню, поэтому метка только у чужих.
+	# The name marker above a machine (enemy_marker.gd): an enemy must be visible in a crowd and behind
+	# a tree, and it must be clear who it is. Player machines carry the radial menu button at that spot,
+	# so the marker is for others only.
 	var mk := Node3D.new()
 	mk.set_script(preload("res://enemy_marker.gd"))
 	mk.vehicle = self
@@ -129,23 +130,23 @@ func _ready() -> void:
 	angular_damp  = 4.0
 
 	_setup_detection_area()
-	# БАЗА ЗАМОРОЖЕНА С САМОГО НАЧАЛА. Не «останавливаем движение», а именно freeze: у неё нет
-	# колёс, а незамороженный корпус с off-центровой коллизией кренится за первый же физ-шаг —
-	# ровно та же грабля, что была у нашей станции при постановке на якорь.
+	# A BASE IS FROZEN FROM THE START. Not "stop moving" but freeze: it has no wheels, and an unfrozen
+	# hull with off-centre collision tips over on the first physics step - the same rake our own station
+	# hit when anchoring.
 	if is_base:
-		is_station = true      # сторож в MachineBody следит за ядром, а не за кабиной
+		is_station = true      # the MachineBody watchdog follows the core, not a cabin
 		freeze = true
 		linear_velocity = Vector3.ZERO
 		angular_velocity = Vector3.ZERO
 	_connect_cabin()
-	_measure_build()          # стоимость сборки — пока машина цела (см. _pay_out)
+	_measure_build()          # build value while the machine is whole (see _pay_out)
 
 func set_combat_allowed(v: bool) -> void:
 	combat_allowed = v
 
-## Во что обошлась ЭТА машина — считается ОДИН РАЗ при рождении, пока она цела. Считать в
-## момент смерти было бы неверно вдвойне: к тому времени половина блоков уже сбита, и награда
-## зависела бы от того, насколько аккуратно игрок её разбирал.
+## What THIS machine cost, computed ONCE at birth while it is whole. Computing it at death would be
+## wrong twice over: half the blocks are gone by then, so the reward would depend on how neatly the
+## player took it apart.
 var build_value: int = 0
 
 func _measure_build() -> void:
@@ -158,8 +159,8 @@ func _measure_build() -> void:
 			v += G.shop_price(int(b.get("block")))
 	build_value = v
 
-# Награда за машину: ДИ по её стоимости (G.rp_for_kill). Система сообщает об этом сама —
-# без строки игрок бы вообще не заметил, что за бой что-то начислили.
+# Kill reward: RP by machine value (G.rp_for_kill). The System announces it - without the line the
+# player would not notice anything was granted.
 func _pay_out() -> void:
 	if faction == 0 or build_value <= 0:
 		return
@@ -175,16 +176,16 @@ func _die() -> void:
 		return
 	_dying = true
 	_pay_out()
-	Q.report("enemy_killed", 1)             # прогресс боевых заданий
+	Q.report("enemy_killed", 1)             # combat quest progress
 	died.emit(self)
-	scatter_blocks(_cabin)    # общий разлёт из MachineBody: у игрока он тот же
+	scatter_blocks(_cabin)    # shared scatter from MachineBody: the player uses the same one
 	queue_free()
 
 func _setup_detection_area() -> void:
 	var area: Area3D = Area3D.new()
 	area.name             = "DetectionArea"
 	area.collision_layer  = 0
-	area.collision_mask   = detection_mask  # по умолчанию слой machine (корпуса машин)
+	area.collision_mask   = detection_mask  # machine layer by default (machine hulls)
 
 	var col: CollisionShape3D = CollisionShape3D.new()
 	var sph: SphereShape3D = SphereShape3D.new()
@@ -192,15 +193,14 @@ func _setup_detection_area() -> void:
 	col.shape  = sph
 	area.add_child(col)
 	add_child(area)
-	_detect_area = area                     # держим ссылку: по ней ПЕРИОДИЧЕСКИ пере-ищем цель
+	_detect_area = area                     # kept: the periodic re-search runs through it
 
 	area.body_entered.connect(_on_body_entered)
 	area.body_exited.connect(_on_body_exited)
 
-## ТОЧКУ РОЖДЕНИЯ ЗАПОМИНАЕМ НЕ В _ready, А НА ПЕРВОМ ФИЗ-ТИКЕ — и это не придирка.
-## _ready срабатывает на add_child, то есть ДО того, как спавнер поставит машину на место:
-## в этот момент она стоит в начале координат. Патруль строился вокруг него, и все враги
-## карты ездили патрулировать ЕЁ ЦЕНТР, где бы они ни появились.
+## The SPAWN POINT is remembered on the first physics tick, not in _ready. _ready fires on add_child,
+## i.e. BEFORE the spawner places the machine: at that moment it stands at the origin. Patrols were
+## built around it, so every enemy on the map patrolled THE MAP CENTRE wherever it appeared.
 var _spawn_captured: bool = false
 
 func _capture_spawn() -> void:
@@ -222,80 +222,81 @@ func _setup_patrol_points() -> void:
 		_patrol_targets.append(_start_pos + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
 
 # ══════════════════════════════════════════
-# ГЛАВНЫЙ ЦИКЛ
+# MAIN LOOP
 # ══════════════════════════════════════════
 
-# В ПОГОНЕ потолок скорости выше: у врага и игрока max_speed одинаковый, поэтому с общим
-# лимитом догнать убегающего невозможно математически — он всегда отрывается. В бою и
-# патруле лимит обычный, так что вне погони враг быстрее не становится.
+# No chase bonus. PURSUE used to add 25% to top speed, which meant escaping a healthy enemy was not
+# hard but mathematically impossible, however many wheels the player fitted. An enemy must catch up
+# by driving - cutting corners, catching you on a turn, using numbers.
 func _speed_cap() -> float:
-	# Никаких надбавок в погоне. Раньше PURSUE давал +25% к максималке, и это значило, что
-	# УЕХАТЬ от здорового врага нельзя в принципе — не «трудно», а математически невозможно,
-	# сколько бы колёс и мощности игрок ни навесил. Догонять враг теперь должен машиной, а не
-	# множителем: срезать угол, ловить на развороте, брать числом.
+	# No chase bonus. PURSUE used to add 25% to top speed, which made escaping a healthy enemy
+	# mathematically impossible however many wheels the player fitted. An enemy must catch up by
+	# driving: cutting corners, catching you on a turn, using numbers.
 	return max_speed
 
-## На сколько ниже рельефа надо оказаться, чтобы это считалось провалом, и на сколько
-## поднимаем обратно. Порог с запасом: у подножия обрыва высота в точке XZ бывает заметно
-## выше того места, где машина законно стоит, и чуткий порог дёргал бы её на ровном месте.
+## How far below the terrain counts as falling through, and how far back up. The threshold is
+## generous: at the foot of a cliff the height at that XZ is noticeably above where a machine legally
+## stands, and a sensitive threshold would jerk it around on flat ground.
 const SUNK_LIMIT := 6.0
 const SUNK_LIFT := 2.0
 
 func _physics_process(delta: float) -> void:
-	var _pf := Perf.now()          # метка для панели профиля (perf.gd): цена ИИ врагов
+	var _pf := Perf.now()          # profiler mark (perf.gd): cost of enemy AI
 	_physics_ai(delta)
 	Perf.mark("enemies", _pf)
 
-## ВРАЖЕСКАЯ БАЗА — тот же враг, только без ходовой: заякорена, не ездит, стреляет по тому,
-## что подъехало. Отдельного класса нет намеренно: от машины она отличается ровно тем же, чем
-## наша база от нашей машины (нет кабины, стоит на якоре), а весь бой у них общий — цель,
-## видимость, забывание, турели.
+## An ENEMY BASE is the same enemy without a drivetrain: anchored, does not drive, shoots whatever
+## comes near. No separate class on purpose: it differs from a machine exactly as our base differs
+## from our machine (no cabin, always anchored), and all the combat code is shared - target,
+## visibility, forgetting, turrets.
+##
+## Read by the core watchdog in MachineBody: for a base it watches the stationary block instead of a
+## cabin. Same name as on the player machine because it means the same thing.
 @export var is_base: bool = false
-## Читает сторож ядра в MachineBody: у базы вместо кабины следят за стационарным блоком.
-## Имя то же, что у машины игрока, потому что и смысл тот же.
+## Read by the core watchdog in MachineBody: for a base it watches the stationary block instead of
+## a cabin. Same name as on the player machine because it means the same thing.
 var is_station: bool = false
 
 func _physics_ai(delta: float) -> void:
-	# СТОРОЖ ЯДРА — И У ВРАГА ТОЖЕ. Он живёт в MachineBody, но звал его только игрок, и из
-	# этого выходили две тихие беды. У БАЗЫ нет кабины, значит подписка на её гибель пустая:
-	# постройку можно было разобрать до последнего блока, и она не умирала — оставался
-	# невидимый корпус, который не платил ДИ и не сообщал спавнеру с точками, что зачищен.
-	# У ездящей машины кабину может СОРВАТЬ в мир целой (DROP_FRAC), а не уничтожить: сигнала
-	# destroyed нет, и враг продолжал ездить без кабины. Сторож ловит оба случая, потому что
-	# спрашивает не «пришёл ли сигнал», а «есть ли ещё то, на чём машина держится».
+	# THE CORE WATCHDOG RUNS FOR ENEMIES TOO. It lives in MachineBody but only the player called it,
+	# and two silent bugs followed. A BASE has no cabin, so the death subscription was empty: the
+	# building could be stripped to the last block without dying, leaving an invisible hull that paid no
+	# RP and never told the points system it was cleared. On a driving machine the cabin can be TORN
+	# into the world whole (DROP_FRAC) instead of destroyed: no destroyed signal, and the enemy kept
+	# driving cabinless. The watchdog catches both because it asks "is anything still holding this
+	# machine together", not "did a signal arrive".
 	cabin_watch(delta)
-	# ОТЛАДКА (Main → Отладка → Враги): выключенный ИИ оставляет машину ЦЕЛОЙ и на месте — по ней
-	# удобно смотреть сборку, попадания и разброс. Стоит гейт ПОСЛЕ сторожа ядра, а не в начале
-	# функции: сторож — не часть ИИ, а единственное, что убирает корпус, разобранный до последнего
-	# блока. Выключив его вместе с ИИ, мы бы получили невидимую машину, которую нечем добить.
+	# Debug (Main -> Debug -> Enemies): disabled AI leaves the machine WHOLE and in place, which is
+	# convenient for inspecting builds, hits and spread. The gate sits AFTER the core watchdog, not at
+	# the top: the watchdog is not part of the AI and is the only thing that removes a hull stripped to
+	# the last block.
 	if not G.debug(&"enemy_ai"):
 		return
 	if is_base:
 		_base_tick(delta)
 		return
-	_capture_spawn()          # первый тик: машина уже на своём месте, можно строить патруль
+	_capture_spawn()          # first tick: the machine is in place, patrol can be built
 	_unsink()
 	sense_ground(delta)
-	# Перевернулся — включаем тот же приём, что у игрока в СТРОЙКЕ: приподнимаем над рельефом и
-	# плавно доворачиваем «ровно». _apply_upright сам по себе перевёрнутую машину на колёсах часто
-	# не поднимает (крутящий момент упирается в землю), и враг оставался лежать навсегда.
+	# Flipped over: the same trick the player uses in BUILD mode - lift above the terrain and rotate
+	# smoothly to level. _apply_upright alone often fails to right a machine on its back (the torque
+	# pushes into the ground) and the enemy stayed there forever.
 	if _flip_recover(delta):
-		return                    # пока встаём — ИИ и обычная физика движения не мешают
+		return                    # while righting itself, AI and normal drive physics stay out
 	_update_ai(delta)
 	drive_physics(delta)
 	push_drive_input(-_steer_angle / deg_to_rad(steer_max_angle))
 
-## Тик базы: только «увидел — стреляй». Ни езды, ни патруля, ни подъёма с бока — стоящей
-## постройке всё это не нужно, а гонять их вхолостую значит платить за каждую базу на карте.
+## Base tick: see and shoot, nothing else. No driving, no patrol, no righting itself - a standing
+## building needs none of that, and running them idle costs for every base on the map.
 ##
-## Запрет боя (combat_allowed) на базу НЕ распространяется: он придуман, чтобы на игрока не
-## наваливались все ездящие враги сразу, а база никуда не едет — молчащая турель, мимо которой
-## можно спокойно проехать, читается как поломка.
+## The engagement ban (combat_allowed) does not apply to a base: it exists so driving enemies do not
+## pile on, and a silent turret you can drive past reads as broken.
 func _base_tick(delta: float) -> void:
-	# ЭНЕРГИЮ БАЗА СЧИТАЕТ, а ездящий враг — нет. На постройке стоят панели, аккумулятор и щит
-	# (пресеты поворотных башен), и без этого тика все трое были бы мёртвым грузом: щит
-	# спрашивает energy_available, панель кладёт выработку через energy_produce. У машин на
-	# колёсах энергетики нет по дизайну, поэтому и платить за обход их блоков незачем.
+	# A BASE TICKS ENERGY, a driving enemy does not. Buildings carry panels, a battery and a shield
+	# (rotating tower presets), and without this tick all three would be dead weight: the shield asks
+	# energy_available, the panel adds output through energy_produce. Wheeled machines have no power
+	# system by design, so walking their blocks would be paid for nothing.
 	_energy_tick(delta)
 	_reacquire_t -= delta
 	if _reacquire_t <= 0.0:
@@ -315,16 +316,15 @@ func _base_tick(delta: float) -> void:
 	if _forget_timer <= 0.0:
 		_lose_target()
 
-# ПРОВАЛИЛСЯ СКВОЗЬ РЕЛЬЕФ — поднимаем обратно. Коллизия рельефа стриминговая: её тайлы
-# строятся ВОКРУГ тела и уже после того, как оно там окажется, а все враги десантируются с
-# высоты — если тайл не успел, машина пролетает карту насквозь и падает бесконечно. Под
-# поверхностью нет ничего, так что «ниже рельефа на SUNK_LIMIT» ни с чем не путается.
-# У игрока то же самое делает world_persist._rescue_fallen, но врагов он не трогает: их не
-# сохраняют, и в его список машин они не попадают.
+# FELL THROUGH THE TERRAIN - put it back. Terrain collision is streamed: tiles are built AROUND a
+# body and only after it is there, while every enemy drops in from height - if the tile is late the
+# machine passes through the map and falls forever. There is nothing under the surface, so "below
+# the terrain by SUNK_LIMIT" cannot be confused with anything else. world_persist._rescue_fallen
+# does the same for the player but never touches enemies: they are not saved and not in its list.
 func _unsink() -> void:
-	# Через G.ground_y: пока высоты карты не прочитаны, он вернёт нашу же высоту, и проверка
-	# сама собой выключится. С сырым terrain_height_at там был бы ноль — и мы бы «спасали»
-	# машину, стоящую в законной низине.
+	# Through G.ground_y: until the map's heights are read it returns our own height and the check
+	# disables itself. With raw terrain_height_at it would be zero and we would "rescue" a machine
+	# standing in a legitimate hollow.
 	var h: float = G.ground_y(global_position, global_position.y)
 	if global_position.y > h - SUNK_LIMIT:
 		return
@@ -333,7 +333,7 @@ func _unsink() -> void:
 	angular_velocity = Vector3.ZERO
 
 # ══════════════════════════════════════════
-# ИИ — ДИСПЕТЧЕР
+# AI - DISPATCH
 # ══════════════════════════════════════════
 
 var _detect_area: Area3D = null
@@ -341,8 +341,8 @@ var _reacquire_t: float = 0.0
 var _last_known_pos: Vector3 = Vector3.ZERO
 var _has_last_known: bool = false
 
-# Назначить цель ИЗВНЕ (отряд от проверки сектора). Спавнер раньше писал приватные поля напрямую
-# и ставил номер состояния числом — при любой правке enum это молча ломалось бы.
+# Assign a target FROM OUTSIDE (a sector-scan squad). The spawner used to write private fields
+# directly and set the state by number, which would break silently on any enum edit.
 func assign_target(t: Node3D, never_forget: bool = false) -> void:
 	if t == null or not is_instance_valid(t):
 		return
@@ -351,16 +351,15 @@ func assign_target(t: Node3D, never_forget: bool = false) -> void:
 	_act = EnemyBrain.Act.PURSUE
 	relentless = never_forget
 
-# Захват цели требует ЛИНИИ ВИДИМОСТИ. Раньше хватало попадания в сферу: враг «видел»
-# сквозь холмы, скалы и что угодно, а луч видимости считался, но влиял лишь на выбор
-# манёвра (enemy_brain: множитель 0.35), но не на то, знает ли враг, где ты. Из-за этого
-# рельеф в бою был чистой декорацией — спрятаться было негде.
+# Acquiring a target requires LINE OF SIGHT. Being inside the sphere used to be enough: an enemy
+# "saw" through hills and rocks while the sight ray was computed but only affected the manoeuvre
+# choice (enemy_brain: a 0.35 multiplier). Terrain in combat was pure decoration - there was nowhere
+# to hide.
 func _scan_for_targets() -> void:
 	if _detect_area == null or not is_instance_valid(_detect_area):
 		return
-	# КВАДРАТЫ расстояний, а не расстояния: distance_to берёт корень, а для «кто ближе»
-	# он ничего не решает — порядок у d и d² один и тот же. Здесь это перебор всех тел в
-	# сфере несколько раз в секунду у каждого врага, и корень тут чистая трата.
+	# SQUARED distances: distance_to takes a root and "who is closer" does not care - the ordering is
+	# the same. This walks every body in the sphere several times a second for every enemy.
 	var best: Node3D = null
 	var best_d2: float = INF
 	for b in _detect_area.get_overlapping_bodies():
@@ -370,14 +369,14 @@ func _scan_for_targets() -> void:
 		if d2 < best_d2:
 			best_d2 = d2
 			best = b as Node3D
-	# Ближайшего пропускаем через общее правило видимости — луч дороже сравнения чисел,
-	# поэтому считаем его один раз, а не для каждого кандидата.
+	# The nearest candidate goes through the shared visibility rule - a ray costs more than comparing
+	# numbers, so it is cast once rather than per candidate.
 	if best != null:
 		_consider_target(best)
 
-## Видим ли цель ПРЯМО СЕЙЧАС: в радиусе и либо вплотную (слышно), либо по прямой линии.
-## Результат луча кешируется — он нужен и забыванию (каждый кадр), и оценке обстановки,
-## а гонять физический запрос по шестьдесят раз в секунду на каждого врага незачем.
+## Is the target visible RIGHT NOW: in radius and either close enough to hear or in direct line. The
+## ray result is cached - it is needed by forgetting (every frame) and by situation scoring, and a
+## physics query sixty times a second per enemy is not worth it.
 const LOS_PERIOD: float = 0.2
 var _los_t: float = 0.0
 var _los_ok: bool = false
@@ -392,26 +391,25 @@ func _refresh_vision(delta: float) -> void:
 func _can_see_target() -> bool:
 	if not is_instance_valid(_target):
 		return false
-	# Сравниваем квадраты — пороги возводим в квадрат, корень не нужен (зовётся каждый физкадр).
+	# Squared comparison; thresholds are squared too (this runs every physics frame).
 	var d2: float = global_position.distance_squared_to(_target.global_position)
 	if d2 > detection_radius * detection_radius:
 		return false
 	return d2 <= hear_radius * hear_radius or _los_ok
 
 func _update_ai(delta: float) -> void:
-	# Цель периодически пере-ищется, пока её нет.
+	# The target is re-searched periodically while there is none.
 	_reacquire_t -= delta
 	if _reacquire_t <= 0.0:
 		_reacquire_t = 0.3
 		if not is_instance_valid(_target):
 			_scan_for_targets()
 
-	# Забывание: пока цель ВИДНО — не забывается; скрылась (за холм или за радиус) — таймер.
-	# Раньше условием была только дистанция, и внутри радиуса цель не терялась НИКОГДА:
-	# спрятаться в восьмидесяти метрах за скалой не давало ничего. Теперь потеря из виду
-	# запускает тот же таймер, а враг едет к последнему известному месту — состояние ПОИСК
-	# в enemy_brain было написано давно и до сих пор почти не включалось.
-	# Невідступный не забывает вообще.
+	# Forgetting: while the target is VISIBLE it is never forgotten; once out of sight (behind a hill or
+	# out of radius) the timer runs. The condition used to be distance only, so inside the radius a
+	# target was NEVER lost and hiding behind a rock at eighty metres gained nothing. Now losing sight
+	# starts the same timer and the enemy drives to the last known place - the SEARCH behaviour in
+	# enemy_brain was written long ago and almost never triggered. A relentless enemy never forgets.
 	_give_up_t = maxf(_give_up_t - delta, 0.0)
 	_refresh_vision(delta)
 	if is_instance_valid(_target):
@@ -424,34 +422,31 @@ func _update_ai(delta: float) -> void:
 	elif _target != null:
 		_target = null
 
-	# Бой запрещён спавнером (места в схватке заняты). Цель при этом ПОМНИМ — раньше её здесь
-	# бросали, и это заводило спавнер в круг: он записывает во «желающие драться» по признаку
-	# `_target != null`, запрет обнулял цель, на следующем кадре враг считался незанятым и
-	# запрет снимался, через 0.3 с цель возвращалась — и снова запрет. Триста колебаний в
-	# минуту, причём такт переоценки поведения (0.15 с) с такте пере-поиска (0.3 с) сцеплены
-	# ровно два к одному, поэтому на КАЖДОМ возврате цели враг успевал дать очередь: скамейка
-	# мигала прицельными лучами и постреливала — ровно то, против чего max_engaging и введён.
-	# Что делать вместо боя, решает ниже сам диспетчер.
+	# Combat is banned by the spawner (engagement slots are taken). The target is still REMEMBERED -
+	# dropping it here put the spawner in a loop: it lists "wants to fight" by `_target != null`, the ban
+	# cleared the target, next frame the enemy counted as free, the ban lifted, 0.3 s later the target
+	# returned, ban again. Three hundred oscillations a minute, and since the behaviour tick (0.15 s)
+	# and the re-search tick (0.3 s) are exactly two to one, the enemy managed a burst on EVERY return.
 
 	_update_stuck(delta)
 
-	# Заряд фланга: тратится, пока враг обходит, и копится обратно, пока он дерётся в лоб.
-	# Это и превращает обход в короткий выпад с паузой на размен — см. EnemyBrain.score_all.
+	# Flank charge: spent while flanking, recovered while fighting head on. That is what turns the
+	# flank into a short dart with a trade in between (EnemyBrain.score_all).
 	if _act == EnemyBrain.Act.FLANK:
 		_flank_spent = minf(_flank_spent + delta / FLANK_CHARGE_TIME, 1.0)
 	else:
 		_flank_spent = maxf(_flank_spent - delta / FLANK_RECOVER_TIME, 0.0)
 
-	# Обстановка переоценивается несколько раз в секунду, а не каждый физкадр: решение
-	# всё равно меняется медленнее, а замеры (HP, огневая мощь, линия огня) не бесплатны.
+	# The situation is re-scored a few times a second rather than every physics frame: the decision
+	# changes more slowly anyway and the measurements (HP, firepower, line of fire) are not free.
 	_decide_t -= delta
 	if _decide_t <= 0.0:
 		_decide_t = DECIDE_PERIOD
 		_percept = _sense()
 		_act = EnemyBrain.decide(_percept, _act)
 
-	# Запрет боя выполняется ЗДЕСЬ, а не вычищением цели: враг ведёт себя как патрульный, но
-	# помнит, за кем пришёл, и возвращается в бой в тот кадр, когда место освободится.
+	# The ban is enforced HERE rather than by clearing the target: the enemy behaves like a patrol but
+	# remembers who it came for and returns to the fight the frame a slot frees.
 	if not combat_allowed:
 		_act_patrol(delta)
 		return
@@ -466,7 +461,7 @@ func _update_ai(delta: float) -> void:
 		EnemyBrain.Act.UNSTICK:     _act_unstick(delta)
 
 # ══════════════════════════════════════════
-# ВОСПРИЯТИЕ
+# PERCEPTION
 # ══════════════════════════════════════════
 
 const NO_TARGET_DIST: float = 1.0e6
@@ -487,10 +482,10 @@ func _sense() -> Dictionary:
 			t_fwd.y = 0.0
 			if t_fwd.length_squared() > 0.0001:
 				facing = clampf(t_fwd.normalized().dot(to_us.normalized()), 0.0, 1.0)
-		los = _los_ok           # тот же кеш, что и у забывания — второй луч ни к чему
+		los = _los_ok           # same cache as forgetting uses: no second ray
 
-	# Подвижность самокалибруется: запоминаем, сколько колёс было в лучшие времена, и
-	# сравниваем с текущим. Не нужно ловить момент сборки машины.
+	# Mobility self-calibrates: remember how many wheels there were at best and compare with now. No
+	# need to catch the moment the machine was assembled.
 	_wheels_peak = maxi(_wheels_peak, _wheel_count)
 	var wheels01: float = float(_wheel_count) / float(maxi(_wheels_peak, 1))
 
@@ -508,8 +503,8 @@ func _sense() -> Dictionary:
 		"flank_spent": _flank_spent,
 	}
 
-# Эффективная дальность = дальность лучшего своего ствола. Раньше это был экспорт
-# attack_range, не связанный с тем, чем машина реально вооружена.
+# Effective range is the best gun's range. It used to be an export (attack_range) unrelated to what
+# the machine actually carries.
 func _own_weapon_range() -> float:
 	var r: float = 0.0
 	for b in _weapon_blocks():
@@ -518,10 +513,10 @@ func _own_weapon_range() -> float:
 		var wr: Variant = b.get("weapon_range")
 		if wr != null:
 			r = maxf(r, float(wr))
-	# ОГРАНИЧИВАЕМ тем, что враг реально видит. Иначе он держит дистанцию по стволу
-	# (weapon_range * 0.85 в _act_engage) — с пушкой на 60 это 51 метр при радиусе 40, то
-	# есть он сам отъезжает за собственную зону обнаружения, теряет цель, возвращается,
-	# снова отъезжает. У мортиры (160) разрыв был бы вчетверо хуже.
+	# LIMITED by what the enemy can actually see. Otherwise it keeps gun distance (weapon_range * 0.85
+	# in _act_engage) - with a 60 m gun that is 51 m against a 40 m radius, so it backs out of its own
+	# detection zone, loses the target, returns, backs out again. With a mortar (160) it would be four
+	# times worse.
 	return minf(r if r > 0.5 else attack_range, detection_radius)
 
 func _power_ratio() -> float:
@@ -536,16 +531,16 @@ var _los_q: PhysicsRayQueryParameters3D = null
 func _has_line_of_sight(t: Node3D) -> bool:
 	if _los_q == null:
 		_los_q = PhysicsRayQueryParameters3D.new()
-		_los_q.collision_mask = 1        # только рельеф: чужие блоки укрытием не считаем
-	# exclude НЕ заполняем: он принимает RID'ы, а не узлы, и при маске «только рельеф»
-	# исключать некого — ни мы, ни цель на первом слое не лежим (машины на пятом).
+		_los_q.collision_mask = 1        # terrain only: other machines' blocks do not count as cover
+	# exclude is left empty: it takes RIDs rather than nodes, and with a terrain-only mask there is
+	# nobody to exclude - neither we nor the target sit on layer 1 (machines are on layer 5).
 	_los_q.from = global_position + Vector3.UP
 	_los_q.to = t.global_position + Vector3.UP
 	return get_world_3d().direct_space_state.intersect_ray(_los_q).is_empty()
 
-# Застревание — это «командую ехать, а не еду». Плавная величина, а не флаг: растёт,
-# пока машина стоит под газом, и падает, как только поехала. Отдельного режима
-# восстановления с таймером больше нет, решение принимает та же оценка полезности.
+# Stuck means "commanded to drive and not driving". A continuous value, not a flag: it grows while
+# the machine stands under throttle and falls as soon as it moves. There is no separate recovery
+# mode with a timer - the same utility scoring decides.
 const STUCK_WINDOW: float = 1.2
 const STUCK_MIN_MOVE: float = 0.8
 
@@ -562,7 +557,7 @@ func _update_stuck(delta: float) -> void:
 		_stuck01 = maxf(0.0, _stuck01 - 0.5)
 
 # ══════════════════════════════════════════
-# ПОВЕДЕНИЯ
+# BEHAVIOURS
 # ══════════════════════════════════════════
 
 func _act_patrol(delta: float) -> void:
@@ -580,14 +575,14 @@ func _act_investigate(delta: float) -> void:
 		_act_patrol(delta)
 		return
 	if global_position.distance_squared_to(_last_known_pos) < waypoint_reach_dist * waypoint_reach_dist:
-		_has_last_known = false          # дошли, никого нет — обратно к патрулю
+		_has_last_known = false          # arrived and nobody is there: back to patrol
 		return
 	_drive_to(_last_known_pos, chase_speed_factor, delta)
 
 func _act_pursue(delta: float) -> void:
 	if not is_instance_valid(_target):
 		return
-	# Турель наводится сама в своём конусе, поэтому стреляем на ходу, не дожидаясь боя.
+	# The turret aims itself within its cone, so we fire on the move without waiting to face the target.
 	if float(_percept.get("dist", NO_TARGET_DIST)) <= _own_weapon_range() * 1.15:
 		_do_attack()
 	_drive_to(_target.global_position, chase_speed_factor, delta)
@@ -607,14 +602,14 @@ func _act_engage(delta: float) -> void:
 	var band_far: float = rng * 0.85
 
 	if dist < band_near:
-		_drive(dir, -0.35, delta)                       # пятимся, нос держим на цели
+		_drive(dir, -0.35, delta)                       # back off keeping the nose on the target
 	elif dist > band_far:
-		_drive(dir, chase_speed_factor, delta)          # поджимаем
+		_drive(dir, chase_speed_factor, delta)          # close in
 	else:
-		# В коридоре ДЕРЖИМ дистанцию и стреляем, лишь подрабатывая вбок. Раньше здесь была
-		# полноценная дуга (боковая составляющая 0.75 на 0.6 скорости) — вместе с ФЛАНГОМ она
-		# и давала «враг всё время катается вокруг». Сторона берётся та, на которой уже
-		# находимся, а не жребием: случайный выбор бросал врага поперёк своей линии огня.
+		# In the corridor we HOLD distance and shoot, working sideways only slightly. This used to be a full
+		# arc (0.75 lateral at 0.6 speed) which, together with FLANK, produced "the enemy circles you
+		# forever". The side is the one we are already on, not a coin flip: a random choice threw the enemy
+		# across its own line of fire.
 		var side: Vector3 = Vector3(dir.z, 0.0, -dir.x)
 		var sgn: float = signf(side.dot(_get_forward()))
 		if absf(sgn) < 0.01:
@@ -625,8 +620,8 @@ func _act_flank(delta: float) -> void:
 	if not is_instance_valid(_target):
 		return
 	_do_attack()
-	# Уходим из лобового сектора цели, оставаясь в своём: точка сбоку-сзади от неё, с той
-	# стороны, где мы уже находимся, чтобы не пересекать линию её огня.
+	# Leave the target's frontal sector while staying in ours: a point to its side and rear, on the side
+	# we are already on, so we do not cross its line of fire.
 	var t_fwd: Vector3 = -_target.global_transform.basis.z
 	t_fwd.y = 0.0
 	if t_fwd.length_squared() < 0.0001:
@@ -644,7 +639,7 @@ func _act_flank(delta: float) -> void:
 	_drive_to(spot, chase_speed_factor * 0.9, delta)
 
 func _act_retreat(delta: float) -> void:
-	_do_attack()                                        # турели работают и на отходе
+	_do_attack()                                        # turrets keep working while retreating
 	var away: Vector3 = global_position - _last_known_pos
 	if is_instance_valid(_target):
 		away = global_position - _target.global_position
@@ -654,12 +649,12 @@ func _act_retreat(delta: float) -> void:
 	_drive(away.normalized(), chase_speed_factor, delta)
 
 func _act_unstick(delta: float) -> void:
-	# Задний ход, но направление выбирает та же контекстная карта — она видит, где сзади
-	# свободно. Фиксированного «пятиться 2 секунды и рулить вбок» больше нет.
+	# Reverse, but the direction is chosen by the same context map - it sees where the space behind is.
+	# There is no fixed "back up for two seconds then steer aside" any more.
 	_drive(_get_forward(), -0.7, delta)
 
 # ══════════════════════════════════════════
-# ДВИЖЕНИЕ ЧЕРЕЗ КОНТЕКСТНУЮ КАРТУ
+# MOVEMENT THROUGH THE CONTEXT MAP
 # ══════════════════════════════════════════
 
 func _drive_to(pos: Vector3, speed: float, delta: float) -> void:
@@ -669,7 +664,7 @@ func _drive_to(pos: Vector3, speed: float, delta: float) -> void:
 		return
 	_drive(to.normalized(), speed, delta)
 
-# nose_dir — куда хотим смотреть, speed — знаковая скорость (минус = задний ход).
+# nose_dir is where we want to look, speed is signed (negative is reverse).
 func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
 	var travel: Vector3 = nose_dir if speed >= 0.0 else -nose_dir
 	_refresh_context(travel, delta)
@@ -687,15 +682,15 @@ func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle = lerp(_steer_angle, steer_input * angle_limit, steer_speed * delta)
 
-	# На резком повороте сбрасываем газ, но не в ноль — иначе машина не доворачивает.
+	# On a sharp turn the throttle drops but not to zero, or the machine stops completing the turn.
 	var turn_factor: float = clampf(1.0 - absf(ang) / PI, 0.4, 1.0)
 	_throttle = lerp(_throttle, speed * turn_factor, 4.0 * delta)
 
 const CTX_PERIOD: float = 0.12
 const PROBE_NEAR: float = 3.0
 const PROBE_FAR: float = 7.0
-const MAX_CLIMB: float = 2.5     # подъём круче этого машина не вытянет
-const MAX_DROP: float = 3.5      # спуск круче этого — обрыв, туда не едем
+const MAX_CLIMB: float = 2.5     # steeper than this and the machine will not climb
+const MAX_DROP: float = 3.5      # steeper than this is a cliff: do not drive there
 
 func _refresh_context(travel: Vector3, delta: float) -> void:
 	_ctx_t -= delta
@@ -705,16 +700,16 @@ func _refresh_context(travel: Vector3, delta: float) -> void:
 	_steering.clear_interest()
 	_steering.seek(travel)
 
-# Опасность по всем 16 направлениям. Рельеф считается математикой (terrain_height_at,
-# без физики) — поэтому щупаем все стороны; лучами проверяем каждую вторую, этого хватает,
-# а стоят они куда дороже.
+# Danger across all 16 directions. Terrain is evaluated mathematically (terrain_height_at, no
+# physics), so every side is sampled; rays check every second one, which is enough and costs far
+# more.
 func _sample_danger() -> void:
 	_steering.clear_danger()
 	var terr: Node = _find_terrain()
 	var space: PhysicsDirectSpaceState3D = get_world_3d().direct_space_state
 	if _obst_q == null:
 		_obst_q = PhysicsRayQueryParameters3D.new()
-		_obst_q.exclude = [get_rid()]      # exclude принимает RID, а не узел
+		_obst_q.exclude = [get_rid()]      # exclude takes RIDs, not nodes
 		_obst_q.collision_mask = 1
 	var here: float = global_position.y
 	var origin: Vector3 = global_position + Vector3.UP * 0.5
@@ -741,7 +736,7 @@ func _sample_danger() -> void:
 var _atk_cache: Array = []
 var _atk_n: int = -1
 
-# Кеш оружейных блоков: нужен и для стрельбы, и для оценки своей дальности/мощи.
+# Weapon block cache: needed both for firing and for scoring our own range and firepower.
 func _weapon_blocks() -> Array:
 	var bl := get_node_or_null("blocks")
 	if bl == null:
@@ -754,38 +749,38 @@ func _weapon_blocks() -> Array:
 				_atk_cache.append(b)
 	return _atk_cache
 
-# Единственная точка, где взводится оружие, — здесь и стоят оба запрета.
+# The only place weapons are triggered, so both bans live here.
 #
-# Цель обязательна: _act_retreat зовёт атаку без всякой проверки («турели работают и на
-# отходе»), и отступающий враг без цели поливал воздух — WeaponBlock.attack() лишь взводит
-# таймер, а стреляет он независимо от того, есть ли кого бить.
+# A target is mandatory: _act_retreat calls attack without any check ("turrets work while
+# retreating"), and a retreating enemy with no target sprayed the air - WeaponBlock.attack() only
+# arms the timer and it fires regardless of whether there is anything to hit.
 func _do_attack() -> void:
-	# Запрет боя НЕ ДЕЙСТВУЕТ НА БАЗУ — то же правило, что и в _base_tick выше. Спавнер уже не
-	# ставит его постройкам, но держим и здесь: это единственная точка, где взводится оружие,
-	# и «база стреляет всегда» должно быть верно, кто бы флаг ни выставил.
+	# The ban does NOT apply to a BASE - same rule as in _base_tick. The spawner no longer sets it for
+	# buildings, but it is kept here too: this is the single place weapons are armed, and "a base always
+	# shoots" must hold whoever set the flag.
 	if not (combat_allowed or is_base) or not is_instance_valid(_target):
 		return
 	for b in _weapon_blocks():
 		if not is_instance_valid(b):
-			_atk_n = -1                 # блок уничтожили — пересоберём кеш
+			_atk_n = -1                 # block destroyed: rebuild the cache
 			continue
 		b.attack()
 
-## ПОВОРОТНАЯ ОПОРА РАБОТАЕТ И У ВРАГА. У игрока ROT_SUPPORT доворачивает заякоренную машину
-## джойстиком; здесь то же самое делает ИИ — правило одно, разница только в том, кто рулит.
-## Без этого блок на вражеской базе был бы просто кубиком с хитпоинтами.
+## THE ROTATING SUPPORT WORKS FOR ENEMIES TOO. On the player machine ROT_SUPPORT turns an anchored
+## machine with the joystick; here the AI does the same - one rule, only the driver differs. Without
+## it the block on an enemy base would be a cube with hit points.
 ##
-## Что это меняет. Турель держит сектор ±YAW_LIMIT, поэтому у глухой постройки (аванпост,
-## форт) за спиной мёртвая зона, и закрывают её только стволами, развёрнутыми в разные
-## стороны. Вращающейся башне хватает одного направления — и на неё наконец имеет смысл
-## ставить МОРТИРУ: она без башни и бьёт строго по курсу корпуса.
+## What it changes: a turret covers +-YAW_LIMIT, so a fixed building (outpost, fort) has a dead zone
+## behind it and can only cover it with guns pointing different ways. A rotating tower needs one
+## direction - and a MORTAR finally makes sense on it, since a mortar has no turret and fires along
+## the hull.
 ##
-## Крутим ТОЛЬКО по Y и только к видимой цели: наклон базы — это её посадка на рельеф, и
-## трогать его нельзя, иначе постройка начнёт заваливаться от каждого доворота.
-const BASE_TURN_SPEED := 0.8          # рад/с ≈ 45°/с: башня доворачивается, а не щёлкает
-const BASE_TURN_DEAD := 0.02          # мёртвая зона, чтобы не дрожать на почти нулевой разнице
+## Rotation is Y ONLY and only toward a visible target: the base's tilt is how it sits on the terrain,
+## and touching it would make the building topple with every turn.
+const BASE_TURN_SPEED := 0.8          # rad/s (~45 deg/s): the tower turns rather than snaps
+const BASE_TURN_DEAD := 0.02          # dead zone so it does not jitter on a near-zero difference
 
-var _rot_support_t: float = 0.0       # когда пересчитывали наличие поворотной опоры
+var _rot_support_t: float = 0.0       # when the rotating support was last looked for
 var _rot_support: bool = false
 
 func _turn_to_target(delta: float) -> void:
@@ -795,7 +790,7 @@ func _turn_to_target(delta: float) -> void:
 	to.y = 0.0
 	if to.length_squared() < 0.01:
 		return
-	# Машина смотрит по −Z, значит нужный угол — atan2(−x, −z).
+	# The machine looks along -Z, so the angle is atan2(-x, -z).
 	var want: float = atan2(-to.x, -to.z)
 	var diff: float = wrapf(want - global_rotation.y, -PI, PI)
 	if absf(diff) < BASE_TURN_DEAD:
@@ -803,10 +798,10 @@ func _turn_to_target(delta: float) -> void:
 	var step: float = clampf(diff, -BASE_TURN_SPEED * delta, BASE_TURN_SPEED * delta)
 	global_rotation.y += step
 
-## Стоит ли на базе поворотная опора. Пересчитываем РЕДКО и заново, потому что вращаются не
-## все базы: у аванпоста и форта ядро — обычная опора, и им этот ответ «нет» на всю жизнь.
-## А если опору сбили, башня перестаёт крутиться в ту же секунду — и почти сразу гибнет сама:
-## опора у неё единственный стационарный блок, то есть ядро (сторож cabin_watch).
+## Does this base have a rotating support? Re-checked RARELY and from scratch, because not all bases
+## rotate: an outpost and a fort have an ordinary support as their core and the answer is "no" for
+## life. And if the support is shot out the tower stops turning that second - and dies almost at once,
+## since the support is its only stationary block, i.e. its core (cabin_watch).
 func _has_rot_support(delta: float) -> bool:
 	_rot_support_t -= delta
 	if _rot_support_t > 0.0:
@@ -820,29 +815,29 @@ func _has_rot_support(delta: float) -> bool:
 		if b.get("block") != null and int(b.get("block")) == G.Block.ROT_SUPPORT:
 			_rot_support = true
 			break
-	# КИНЕМАТИЧЕСКАЯ заморозка, а не статическая: статическое тело физика считает НЕПОДВИЖНЫМ
-	# и не переносит его движение на контакты — машина игрока, прижатая к вращающейся башне,
-	# проваливалась бы в неё рывками. Ставим один раз, когда опора нашлась.
+	# KINEMATIC freeze, not static: physics treats a static body as motionless and does not carry its
+	# motion into contacts, so a player machine pressed against a rotating tower would sink into it in
+	# jerks. Set once, when the support is found.
 	if _rot_support and freeze_mode != RigidBody3D.FREEZE_MODE_KINEMATIC:
 		freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	return _rot_support
 
 func _lose_target() -> void:
 	if relentless and is_instance_valid(_target):
-		return                      # невідступный цель не бросает
-	# Оторвался БИТЫМ — значит проиграл и уходит совсем. Признак берём у той же уверенности,
-	# которой меряется вся осторожность врага (EnemyBrain.confidence), а не заводим новый:
-	# отдельный порог рано или поздно разошёлся бы с тем, по которому он решает отступать.
+		return                      # a relentless enemy never drops its target
+	# Broke contact while DAMAGED means it lost and leaves for good. The test uses the same confidence
+	# that measures all of the enemy's caution (EnemyBrain.confidence) rather than a new threshold,
+	# which would sooner or later disagree with the one it retreats by.
 	if _has_last_known and not _percept.is_empty() and EnemyBrain.confidence(_percept) < 0.4:
 		_give_up()
 	_target       = null
 	_patrol_index = _nearest_patrol_index()
-	# Поведение не назначаем: оценка сама выберет ПОИСК (мы помним последнее место)
-	# либо ПАТРУЛЬ, если помнить уже нечего.
+	# No behaviour is assigned: scoring picks SEARCH (we remember the last place) or PATROL if there is
+	# nothing left to remember.
 
-## Уйти с поля боя: перестать брать цели на GIVE_UP_TIME и перенести «дом» патруля ПРОЧЬ от
-## места, где потеряли цель. Одного таймера мало — по его истечении враг всё равно катался бы
-## вокруг старой точки появления, то есть возвращался бы к игроку сам.
+## Leave the field: take no targets for GIVE_UP_TIME and move the patrol "home" AWAY from where the
+## target was lost. A timer alone is not enough - when it expires the enemy would still be circling
+## its old spawn point, i.e. coming back to the player by itself.
 func _give_up() -> void:
 	_give_up_t = GIVE_UP_TIME
 	var away: Vector3 = global_position - _last_known_pos
@@ -850,7 +845,7 @@ func _give_up() -> void:
 	if away.length_squared() < 0.01:
 		away = -_get_forward()
 	_start_pos = global_position + away.normalized() * GIVE_UP_MOVE
-	_has_last_known = false         # искать больше нечего, мы именно УХОДИМ
+	_has_last_known = false         # nothing left to search for: we are leaving
 	_setup_patrol_points()
 
 func _nearest_patrol_index() -> int:
@@ -863,28 +858,28 @@ func _nearest_patrol_index() -> int:
 			best_i  = i
 	return best_i
 
-## НАС УДАРИЛИ — значит мы знаем, откуда. Зовёт оружие в момент попадания (WeaponBlock,
-## ракетный AOE), передавая СВОЮ машину.
+## WE WERE HIT, so we know from where. Called by the weapon at the moment of impact (WeaponBlock,
+## rocket AOE) passing ITS machine.
 ##
-## Это не зрение и не должно им быть: работает на любой дистанции и сквозь любой холм.
-## Именно поэтому радиус обнаружения удалось опустить до сорока — «стоит и молчит, пока в
-## него бьют издалека» лечится здесь, а не раздуванием сферы до восьмидесяти пяти.
+## This is not sight and must not be: it works at any distance and through any hill. That is exactly
+## why the detection radius could drop to forty - "stands there while being shot from afar" is cured
+## here rather than by inflating the sphere to eighty-five.
 ##
-## Цель не перехватывается на каждом попадании: пока мы ВИДИМ того, с кем уже деремся,
-## новый стрелок ждёт. Иначе перекрёстный огонь двух машин заставлял бы врага дёргаться
-## между ними и не стрелять ни в кого.
+## The target is not hijacked on every hit: while we can SEE whoever we are already fighting, a new
+## shooter waits. Otherwise crossfire between two machines made the enemy flip between them and shoot
+## at neither.
 func notice_attacker(attacker: Node3D) -> void:
 	if attacker == null or not is_instance_valid(attacker) or attacker == self:
 		return
 	if not _is_enemy(attacker):
-		return                          # свои: дружественный огонь цель не меняет
+		return                          # same faction: friendly fire does not change the target
 	if relentless and is_instance_valid(_target):
-		return                          # невідступному назначили цель раз и навсегда
-	# По нам стреляют — отказ от боя отменяется. Уйти можно от того, кто тебя отпустил;
-	# добивают — деремся, иначе враг превращался бы в мишень, которая не отвечает.
+		return                          # a relentless enemy was given its target once and for all
+	# Being shot at cancels the give-up. You can walk away from someone who let you go; being finished
+	# off means fighting back, or the enemy would become a target that does not answer.
 	_give_up_t = 0.0
 	if is_instance_valid(_target) and _target != attacker and _can_see_target():
-		return                          # текущего противника видим — не отвлекаемся
+		return                          # we can see our current opponent: do not switch
 	_target = attacker
 	_forget_timer = forget_enemy_time
 	_last_known_pos = attacker.global_position
@@ -897,39 +892,38 @@ func _is_enemy(body: Node) -> bool:
 	return f != faction
 
 # ══════════════════════════════════════════
-# СИГНАЛЫ AREA3D
+# AREA3D SIGNALS
 # ══════════════════════════════════════════
 
-# ВХОД В ЗОНУ — второй путь захвата, и он обязан подчиняться тому же правилу видимости, что
-# и периодический поиск. Раньше не подчинялся: сигнал ставил цель напрямую, и достаточно было
-# пересечь границу сферы, чтобы враг увидел сквозь холм. Поиск при этом работает, только пока
-# цели НЕТ, так что на практике почти всё захватывалось именно здесь — то есть проверка
-# видимости обходилась в большинстве случаев.
+# ENTERING THE ZONE is the second acquisition path and must obey the same visibility rule as the
+# periodic search. It used not to: the signal set the target directly, so crossing the sphere border
+# was enough to see through a hill. The search only runs while there is NO target, so in practice
+# almost everything was acquired here - i.e. the visibility check was skipped most of the time.
 func _on_body_entered(body: Node) -> void:
 	if not _is_enemy(body) or not (body is Node3D):
 		return
 	_consider_target(body as Node3D)
 
-## Взять ли это в цель. ЕДИНСТВЕННОЕ место с правилом «кого враг может заметить»: и вход в
-## зону, и периодический поиск ходят сюда, поэтому разъехаться им негде.
+## Should this become the target? The ONE place with the rule "who an enemy may notice": both the
+## zone signal and the periodic search come here, so they cannot diverge.
 func _consider_target(body3d: Node3D) -> bool:
 	if body3d == null or not is_instance_valid(body3d):
 		return false
 	if _give_up_t > 0.0:
-		return false                # сдался и уходит — сам в драку не лезет
+		return false                # gave up and is leaving: it starts no fights
 	var d2: float = global_position.distance_squared_to(body3d.global_position)
 	if d2 > detection_radius * detection_radius:
 		return false
 	if d2 > hear_radius * hear_radius and not _has_line_of_sight(body3d):
-		return false                # за укрытием и не слышно — не видим
+		return false                # behind cover and out of earshot: not seen
 	if not is_instance_valid(_target):
 		_target = body3d
 		_forget_timer = forget_enemy_time
 		return true
 	if relentless:
-		return false                # цель зафиксирована при спавне — на других не отвлекаемся
-	# Уже с кем-то деремся: меняем цель только на БОЛЕЕ БЛИЗКУЮ, иначе две машины рядом
-	# перебрасывали бы врага между собой на каждом пересечении границы.
+		return false                # the target was fixed at spawn: ignore others
+	# Already fighting someone: switch only to a CLOSER target, or two machines side by side would toss
+	# the enemy between them on every border crossing.
 	if d2 < global_position.distance_squared_to(_target.global_position):
 		_target = body3d
 		_forget_timer = forget_enemy_time
@@ -941,23 +935,23 @@ func _on_body_exited(body: Node) -> void:
 		_forget_timer = forget_enemy_time
 
 # ══════════════════════════════════════════
-# САМОВОССТАНОВЛЕНИЕ ПРИ ПЕРЕВОРОТЕ
+# SELF-RIGHTING AFTER A FLIP
 # ══════════════════════════════════════════
-# Ровно то же, что делает машина игрока в режиме СТРОЙКИ: подъём над рельефом на клиренс +
-# плавный доворот к «ровно» (slerp к Basis.looking_at, а не сброс эйлеров — тот гимбалит на
-# перевороте). Держим FLIP_TIME секунд, потом отпускаем в обычную физику.
-const FLIP_DOT := 0.3          # верх машины отклонился больше ~72° → считаем перевёрнутой
-const FLIP_TIME := 2.0         # сколько длится подъём/выравнивание
-const FLIP_CLEARANCE := 3.0    # на сколько поднимаем над рельефом
+# Exactly what the player machine does in BUILD mode: lift above the terrain by the ride height and
+# rotate smoothly to level (slerp to Basis.looking_at, not an Euler reset - that gimbals when
+# upside down). Held for FLIP_TIME seconds, then released to ordinary physics.
+const FLIP_DOT := 0.3          # the machine's up tilted more than ~72 deg: treat as flipped
+const FLIP_TIME := 2.0         # how long the righting takes
+const FLIP_CLEARANCE := 3.0    # how far above the terrain it is lifted
 var _flip_t: float = 0.0
 
 func _flip_recover(delta: float) -> bool:
 	if _flip_t <= 0.0:
 		if _get_up().dot(Vector3.UP) >= FLIP_DOT:
 			return false
-		_flip_t = FLIP_TIME                       # только что перевернулись — запускаем подъём
+		_flip_t = FLIP_TIME                       # just flipped: start righting
 	_flip_t -= delta
-	# Высота: тянемся к рельефу + клиренс (демпфированная пружина, без овершута).
+	# Height: pulled toward terrain + clearance (damped spring, no overshoot).
 	var terr: Node = _find_terrain()
 	var target_y: float = global_position.y
 	if terr != null:
@@ -965,7 +959,7 @@ func _flip_recover(delta: float) -> bool:
 	linear_velocity.y = clampf((target_y - global_position.y) * 6.0, -6.0, 6.0)
 	linear_velocity.x = lerpf(linear_velocity.x, 0.0, clampf(delta * 8.0, 0.0, 1.0))
 	linear_velocity.z = lerpf(linear_velocity.z, 0.0, clampf(delta * 8.0, 0.0, 1.0))
-	# Доворот «ровно», курс (yaw) сохраняем.
+	# Rotate to level, keeping the heading.
 	var fwd := -global_transform.basis.z
 	fwd.y = 0.0
 	if fwd.length_squared() < 0.0001:
@@ -978,7 +972,7 @@ func _flip_recover(delta: float) -> bool:
 	angular_velocity = Vector3.ZERO
 	_throttle = 0.0
 	if _flip_t <= 0.0:
-		_stuck01 = 0.0                            # после подъёма это не застревание
+		_stuck01 = 0.0                            # after righting this is not being stuck
 		_move_ref = global_position
 		_move_t = 0.0
 	return _flip_t > 0.0
@@ -998,12 +992,12 @@ func _find_terrain() -> Node:
 	return null
 
 # ══════════════════════════════════════════
-# ФИЗИКА — МАССА
+# PHYSICS - MASS
 # ══════════════════════════════════════════
 
 
-# Блоки, принимающие газ/руль (колёса). Кеш инвалидируется по числу детей $blocks.
+# Blocks that accept throttle and steering (wheels). The cache is invalidated by $blocks child count.
 
 # ══════════════════════════════════════════
-# ФИЗИКА — БАЗА КОЛЁС
+# PHYSICS - WHEELBASE
 # ══════════════════════════════════════════
