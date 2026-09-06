@@ -551,6 +551,11 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_mark_first_enemy(enemy)          # обычный путь: этого разведчика приводит конец обучения
+	# И НЕЗАВИСИМО ОТ ФЛАГА: разведчика приводит конец обучения, у игрока в этот момент
+	# стартовый набор и ни одного исследования. Если «первый» уже был потрачен на кого-то из
+	# общего потока, скидка сюда всё равно обязана дойти — иначе первая же сюжетная драка
+	# идёт в полную силу против машины, собранной пять минут назад.
+	enemy.set("damage_scale", FIRST_ENEMY_DAMAGE)
 	_enemies.append(enemy)
 	return enemy
 
