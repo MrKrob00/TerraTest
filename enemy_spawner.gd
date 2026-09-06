@@ -8,7 +8,7 @@ extends Node3D
 # player's machine value. Not taken: "no spawns while driving fast" - that would cancel the one
 # thing the world must do, meet you within a hundred metres.
 
-@export var enemy_scenes: Array[PackedScene]        # пул сцен врагов
+@export var enemy_scenes: Array[PackedScene]        # pool of enemy scenes
 ## Cap on AWAKE enemies. Nine, then four, still crowded; two is what a road encounter holds.
 @export var max_enemies: int = 2
 ## Pause between spawns. After a fight there must be an audible break, not the next fight.
@@ -67,9 +67,9 @@ var _seed_grace: float = -1.0
 ## Every 10-15 min. At 3-7 the "rare event" came faster than a factory could be built.
 @export var scan_min_interval: float = 600.0
 @export var scan_max_interval: float = 900.0
-@export var scan_half_size: float = 32.0            # полугабарит квадрата (4×4 чанка по 16 = 64)
-@export var scan_warn_time: float = 12.0            # сколько секунд на побег
-@export var scan_preset: int = 9                    # тяжёлая сборка (см. blocks.gd layout)
+@export var scan_half_size: float = 32.0            # half-size of the square (4x4 chunks of 16 = 64)
+@export var scan_warn_time: float = 12.0            # seconds to escape
+@export var scan_preset: int = 9                    # heavy build (see blocks.gd layouts)
 ## The invader drops from the usual drop_height: it appears at the square's edge, i.e. close,
 ## and without the fall it read as "a machine materialised twenty metres away and opened fire".
 
@@ -77,26 +77,26 @@ var _seed_grace: float = -1.0
 ## Builds from weakest to strongest (see blocks.gd _define_layout). Tiers grow in danger and in
 ## SIZE: the silhouette on the horizon tells you what you are getting into.
 @export var preset_tiers: Array[int] = [5, 6, 7, 8, 9, 10]   # scout → runner → raider → lancer → breaker → siege
-## С какой стоимости машины игрока (сумма G.shop_price её блоков) начинается каждая ступень.
-## Стартовая кабина ≈ 1800, готовая боевая машина — тысяч десять.
+## Player machine value (sum of G.shop_price over its blocks) at which each tier starts. A starter
+## cabin is about 1800, a finished combat machine some ten thousand.
 @export var tier_from_value: Array[int] = [0, 6000, 9000, 13000, 18000, 26000]
 
 var _enemies: Array = []
-var _clean_t: float = 0.0                           # троттл чистки списка от мёртвых врагов
-var _far_time: Dictionary = {}                      # enemy -> сколько секунд он «далеко»
-var _invader: Node3D = null                         # единственный захватчик, если он сейчас есть
+var _clean_t: float = 0.0                           # throttle for pruning dead enemies from the list
+var _far_time: Dictionary = {}                      # enemy -> seconds it has been far away
+var _invader: Node3D = null                         # the single invader, if one exists now
 var _t: float = 0.0
 var _ready_done: bool = false
-var _seeded: bool = false          # стартовая партия врагов уже поставлена
+var _seeded: bool = false          # the initial batch has been placed
 
-var _scan_state: int = 0                            # 0 — покой, 1 — идёт предупреждение
-var _scan_t: float = 0.0                            # до следующей проверки
-var _scan_left: float = 0.0                         # осталось до зачистки
+var _scan_state: int = 0                            # 0 idle, 1 warning in progress
+var _scan_t: float = 0.0                            # until the next scan
+var _scan_left: float = 0.0                         # left until the sweep
 var _scan_center: Vector3 = Vector3.ZERO
 var _scan_marker: Node3D = null
 
 func _ready() -> void:
-	# Ждём загрузку рельефа (map грузит md после своего await).
+	# Wait for the terrain (map loads md after its own await).
 	var guard: int = 0
 	var map: Node = _find_map()
 	while (map == null or not map.has_method("get_dims") or map.get_dims().x <= 0) and guard < 300:
@@ -127,15 +127,15 @@ func _tick_spawner(delta: float) -> void:
 	_track_dormancy(delta)
 	_limit_engagement()
 	if G.debug(&"sector_scan"):
-		_scan_tick(delta)                           # редкое событие «проверка сектора»
+		_scan_tick(delta)                           # the rare sector scan event
 	# The cap counts AWAKE ones: a sleeper past the horizon does nothing, and counting it would
 	# let four forgotten machines disable spawning forever.
 	if _awake_count() >= max_enemies:
 		return
-	# Первый заход: наполняем мир сразу, а не по одному с паузой.
+	# First run: fill the world at once rather than one at a time.
 	if not _seeded:
 		if _tutorial_active():
-			return                      # обучение идёт — мир молчит и отсчёт не начат
+			return                      # tutorial running: the world is silent and the grace has not started
 		# The grace starts when the tutorial ends (or at once if there was none), which is why
 		# it is set here and not in _ready.
 		if _seed_grace < 0.0:
@@ -168,25 +168,21 @@ func _limit_engagement() -> void:
 		if not is_instance_valid(e) or not e.has_method("set_combat_allowed"):
 			continue
 		if _is_asleep(e):
-			continue                           # спящий не дерётся и место в бою не занимает
-		# БАЗЫ В ОЧЕРЕДЬ НЕ ВСТАЮТ. Потолок придуман, чтобы на игрока не наваливались все
-		# ЕЗДЯЩИЕ враги сразу; постройка никуда не едет, и молчащая турель, мимо которой можно
-		# спокойно проехать, читается как поломка. Ровно это и было: у вышки из квеста вокруг
-		# стоят зарядные башни — они тоже базы, тоже держат игрока целью и тоже попадали в
-		# seekers, а при max_engaging = 1 слот доставался ближайшей. Ближайшей же обычно
-		# оказывалась безоружная зарядка, и вышка не стреляла вовсе.
+			continue                           # a sleeper does not fight and takes no engagement slot
+		# BASES DO NOT QUEUE. The cap exists so DRIVING enemies do not pile on; a building goes
+		# nowhere, and a silent turret you can drive past reads as broken. That is what happened:
+		# charging towers around a quest tower are bases too, and with one slot it went to the
+		# nearest one - usually the unarmed charger.
 		if e.get("is_base") == true:
 			e.set_combat_allowed(true)
 			continue
-		# Считаем только тех, кто идёт НА ИГРОКА. Ограничение существует, чтобы на него не
-		# наваливались толпой; двое врагов, стреляющих ДРУГ В ДРУГА (событие «Crossfire»),
-		# к игроку отношения не имеют, и запрещать одному из них бой значило бы гасить драку,
-		# ради которой событие и придумано.
+		# Only those going FOR THE PLAYER. Two enemies shooting each other ("Crossfire") are not
+		# his problem, and banning one of them would kill the fight the event is about.
 		var t = e.get("_target")
 		if t != null and t == player:
 			seekers.append(e)
 		else:
-			e.set_combat_allowed(true)         # цели нет или цель не игрок — не ограничиваем
+			e.set_combat_allowed(true)         # no target, or not the player: no limit
 	seekers.sort_custom(func(a, b):
 		return player.global_position.distance_squared_to(a.global_position) \
 				< player.global_position.distance_squared_to(b.global_position))
@@ -206,13 +202,10 @@ func _track_dormancy(delta: float) -> void:
 	for e in _enemies + _bases:
 		if not is_instance_valid(e):
 			continue
-		# Квадраты: порог сравнивается с порогом, корень ничего не меняет. Цикл идёт по ВСЕМ
-		# врагам каждый кадр — здесь это самый горячий distance в проекте.
+		# Squared: this loop runs over every enemy every frame, the hottest distance here.
 		var d2: float = player.global_position.distance_squared_to(e.global_position)
-		# ТЕНЬ — ТОЛЬКО ВБЛИЗИ. Отбрасывание тени это второй проход по всей геометрии машины, а у
-		# неё тридцать-сорок отдельных блоков. За сотню метров тень от машины — пятно в пару
-		# пикселей, и платить за него удвоением её вызовов отрисовки бессмысленно. Переключаем
-		# ТОЛЬКО на смене состояния: обход блоков стоит денег, а расстояние меняется плавно.
+		# Shadows only up close: casting is a second pass over 30-40 separate block meshes, and at
+		# a hundred metres the shadow is a few pixels. Toggled on state change only.
 		var want_shadow: bool = d2 < SHADOW_DIST * SHADOW_DIST
 		if bool(e.get_meta("shadows_on", true)) != want_shadow:
 			e.set_meta("shadows_on", want_shadow)
@@ -230,7 +223,7 @@ func _track_dormancy(delta: float) -> void:
 # The invader holds its slot while alive and is never trimmed. Unqualified that means forever:
 # the player drives off, it sleeps past the horizon, and the sector scan can never fire again.
 # Far beyond sleep_dist it counts as having lost the chase.
-const INVADER_GIVE_UP: float = 2.0        # во сколько раз дальше sleep_dist — уже не догонит
+const INVADER_GIVE_UP: float = 2.0        # multiple of sleep_dist past which it cannot catch up
 
 func _release_lost_invader(player: Node3D) -> void:
 	if _invader == null or not is_instance_valid(_invader):
@@ -250,7 +243,7 @@ func _release_lost_invader(player: Node3D) -> void:
 ## Beyond this distance a machine stops casting shadows (receiving them continues).
 const SHADOW_DIST: float = 90.0
 
-## Проставить отбрасывание тени всей ветке узла. Зовётся на смене состояния, не по кадрам.
+## Set shadow casting across a whole node branch. Called on state change, not per frame.
 func _set_shadows(n: Node, on: bool) -> void:
 	var gi := n as GeometryInstance3D
 	if gi != null:
@@ -268,10 +261,8 @@ func _sleep(e: Node3D) -> void:
 		e.angular_velocity = Vector3.ZERO
 		e.freeze = true
 	e.process_mode = Node.PROCESS_MODE_DISABLED
-	# И ПРЯЧЕМ. Выключенный process не убирает машину из кадра: спящий враг за четыреста
-	# метров — это несколько пикселей на экране и тридцать-сорок ОТДЕЛЬНЫХ мешей в счётчике
-	# вызовов отрисовки, у каждого свой блок. Он заморожен и ничего не делает; рисовать его
-	# незачем. Просыпается — показывается обратно.
+	# And hide it: a disabled process still draws. A sleeper at four hundred metres is a few
+	# pixels and 30-40 separate meshes in the draw call count.
 	e.visible = false
 
 func _wake(e: Node3D) -> void:
@@ -307,7 +298,7 @@ func _trim_sleepers(player: Node3D) -> void:
 		if not is_instance_valid(e) or e == _invader or not _is_asleep(e):
 			continue
 		if bool(e.get_meta("story", false)):
-			continue                           # враг, приведённый квестом: его ждёт задание
+			continue                           # an enemy brought by a quest: a task is waiting for it
 		var d2: float = player.global_position.distance_squared_to((e as Node3D).global_position)
 		if d2 > worst_d2:
 			worst_d2 = d2
@@ -343,7 +334,7 @@ func _spawn_one() -> void:
 		return
 
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
-	# Сборка — ДО add_child (blocks строит машину в своём _ready).
+	# The build is set BEFORE add_child (blocks assembles in its _ready).
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
 		blocks.layout_preset = _pick_preset(player)
@@ -354,19 +345,18 @@ func _spawn_one() -> void:
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
 	if enemy is RigidBody3D:
-		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # падает своим весом, а не броском
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # falls by its own weight, not thrown
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
-	_mark_first_enemy(enemy)          # обучение можно и пропустить — тогда первый придёт отсюда
+	_mark_first_enemy(enemy)          # the tutorial can be skipped, and then the first enemy comes from here
 	_enemies.append(enemy)
 
 # ── ВРАЖЕСКИЕ БАЗЫ: только сон и тени ─────────────────────────────────────────
-# Список ведём мы, а СТАВИТ базы outposts.gd. Разделение простое: где базе стоять — вопрос
-# карты, а вот «выключить ту, что за горизонтом» — общее правило для всего, что стреляет, и
-# второй такой механизм рядом означал бы, что однажды они разойдутся.
+# We keep the list, outposts.gd PLACES the bases. Simple split: where a base stands is a map
+# question, while "switch off the one past the horizon" is one rule for everything that shoots.
 var _bases: Array = []
 
-## Взять базу под присмотр (зовёт outposts при материализации точки).
+## Take a base under watch (called by outposts when a point materialises).
 func register_base(b: Node) -> void:
 	if b == null or _bases.has(b):
 		return
@@ -377,18 +367,17 @@ func register_base(b: Node) -> void:
 func _on_base_died(b: Node) -> void:
 	_bases.erase(b)
 
-# Какую сборку прислать. Правило TerraTech: враг примерно того же веса, что твоя машина, —
-# там он подбирается по суммарной стоимости блоков, и у нас такая стоимость наконец есть
-# (G.shop_price считается из рецепта). Раньше сборка бралась кубиком, и в стартовую кабину
-# могли приехать две пушки.
+# Which build to send. TerraTech rule: an enemy of roughly your machine's weight, picked there by
+# total block value - and we finally have that value (G.shop_price is derived from the recipe). It
+# used to be a dice roll, so two guns could arrive at a starter cabin.
 #
-# СТОИМОСТЬ МАШИНЫ ЗАДАЁТ ПОТОЛОК, А НЕ САМУ СБОРКУ. Уровень врага бросается СЛУЧАЙНО от
-# первого до этого потолка: игрок третьего уровня встречает и первый, и второй, и третий.
+# VALUE SETS THE CEILING, NOT THE BUILD. The tier is rolled RANDOMLY from the first up to it: a
+# level-three player meets first, second and third alike.
 #
-# Раньше ступень жёстко следовала за игроком (с шансом в треть спуститься на одну), и из
-# этого выходило две беды сразу. Каждый бой был одинаково тяжёлым — расти незачем, награда
-# та же. И мир не различался: что бы ни стояло на горизонте, это всегда «ровня». Разброс
-# возвращает и лёгкие стычки по дороге, и тяжёлые встречи, ради которых стоит собраться.
+# The tier used to follow the player strictly (with a one-in-three chance to drop one), which gave
+# two problems at once. Every fight was equally hard, so growing gained nothing and the reward was
+# the same. And the world had no variety: whatever stood on the horizon was always an equal. The
+# spread brings back both light skirmishes on the road and heavy meetings worth preparing for.
 func _enemy_tier(player: Node3D) -> int:
 	if preset_tiers.is_empty():
 		return 0
@@ -404,8 +393,8 @@ func _pick_preset(player: Node3D) -> int:
 		return 0
 	return int(preset_tiers[_enemy_tier(player)])
 
-# Во сколько обходится машина: сумма магазинных цен её блоков. Той же меркой считается всё
-# остальное в игре, поэтому «сильнее» здесь значит ровно то же, что и в гараже.
+# Machine value: the sum of shop prices of its blocks. Everything else in the game is measured the
+# same way, so "stronger" here means what it means in the garage.
 func _machine_value(machine: Node3D) -> int:
 	var blocks: Node = machine.get_node_or_null("blocks") if machine != null else null
 	if blocks == null:
@@ -416,22 +405,22 @@ func _machine_value(machine: Node3D) -> int:
 			v += G.shop_price(int(b.get("block")))
 	return v
 
-## Разведчик РЯДОМ с игроком — сюжетный спавн после обучения. Обычный поток врагов держит
-## дистанцию «обзор врага + запас», чтобы не наваливаться; здесь наоборот нужно, чтобы
-## игрок его сразу увидел, поэтому и дистанция своя, и слабейшая сборка.
+## A scout CLOSE to the player - the story spawn after the tutorial. The regular stream keeps
+## "enemy vision + margin" so as not to pile on; here the point is that the player sees it at once,
+## hence its own distance and the weakest build.
 ##
-## СТАВИМ ПО КУРСУ МАШИНЫ, а не в случайную сторону кольца. Это ЕДИНСТВЕННОЕ место, где
-## правило общего потока (`front_clear_dist` — перед игроком не появляться) вывернуто наизнанку,
-## и намеренно: там врага не должно быть видно ВОЗНИКАЮЩИМ, а здесь наоборот — это первая
-## машина в жизни игрока, она десантируется с неба, и всё представление проходит впустую, если
-## случайный угол поставил её за спиной. Игрок в этот момент ещё не знает, что камерой можно
-## крутить, и первым признаком врага оказывалась стрельба откуда-то сзади.
+## PLACED ALONG THE MACHINE'S HEADING, not at a random ring angle. This is the ONE place where the
+## regular rule (front_clear_dist: never appear in front) is inverted, and deliberately: there an
+## enemy must not be seen MATERIALISING, here it is the opposite - this is the player's first enemy,
+## it drops from the sky, and the whole show is wasted if a random angle puts it behind him. At that
+## moment he does not yet know the camera can be turned, and the first sign of an enemy was gunfire
+## from somewhere behind.
 ##
-## Курс берём из ВЕКТОРА ВПЕРЁД, прижатого к горизонту, а не из global_rotation.y: у машины на
-## склоне эйлеров угол — не курс (то же правило, что у камеры, см. CLAUDE.md).
-const SCOUT_FRONT_SPREAD := 0.42            # ±24°: чуть в сторону, чтобы не падал ровно на нос
-## Возвращает врага или null, если сцены/карты/игрока в мире нет (место не проверяем: он
-## десантируется и сам скатится с уклона — то же правило, что у кольцевого спавна).
+## The heading comes from the FORWARD VECTOR flattened to the horizon, not from global_rotation.y: on
+## a slope the Euler angle is not a heading (same rule as the camera, see CLAUDE.md).
+const SCOUT_FRONT_SPREAD := 0.42            # +-24 deg: slightly aside so it does not land exactly on the nose
+## Returns the enemy or null if scenes, map or player are missing. The spot is not validated: it
+## drops in and rolls off a slope by itself, the same rule the ring spawn uses.
 func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
 	if enemy_scenes.is_empty():
 		return null
@@ -443,53 +432,53 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	var center: Vector3 = player.global_position
 	var fwd: Vector3 = -player.global_transform.basis.z
 	fwd.y = 0.0
-	# Машина, поставленная носом строго вверх (перевернулась, висит в воздухе), даёт нулевой
-	# горизонтальный курс — тогда любое направление одинаково честно, берём случайное.
+	# A machine standing nose straight up (flipped, hanging in the air) gives a zero horizontal
+	# heading - then any direction is equally fair, so take a random one.
 	var base: float = atan2(fwd.z, fwd.x) if fwd.length_squared() > 0.0001 else randf() * TAU
 	var ang: float = base + randf_range(-SCOUT_FRONT_SPREAD, SCOUT_FRONT_SPREAD)
 	var dist: float = randf_range(min_d, max_d)
 	var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-	# Высоту спрашиваем ОДНОЙ функцией (правило проекта): пока высоты карты не прочитаны, сырой
-	# terrain_height_at отдаёт ноль, и разведчик десантировался бы под землю.
+	# Height through the ONE function (project rule): until the map's heights are read, raw
+	# terrain_height_at returns zero and the scout would drop underground.
 	var pos := Vector3(world.x, G.ground_y(world, center.y) + drop_height, world.z)
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		# САМАЯ СЛАБАЯ ступень, а не «сборка номер 0»: первый бой должен быть посильным, и
-		# раньше здесь стоял пресет 0 просто потому, что он первый в списке — а он не самый
-		# лёгкий. Теперь порядок ступеней задан в preset_tiers, и слабейшая берётся оттуда.
+		# The WEAKEST tier, not "build number 0": the first fight must be winnable, and preset 0 was simply
+		# first in the list rather than the easiest. The order lives in preset_tiers now.
 		blocks.layout_preset = int(preset_tiers[0]) if not preset_tiers.is_empty() else 0
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
 	if enemy is RigidBody3D:
-		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # падает своим весом
-	# Метка «сюжетный»: уборка спящих его не удалит. Без неё квест «уничтожь разведчика» мог
-	# бы стать невыполнимым молча — игрок уехал, разведчик заснул, уборка сняла его как самого
-	# дальнего, а задание осталось висеть с целью, которой больше нет.
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # falls by its own weight
+	# Tagged as story so sleep cleanup cannot remove it. Without the tag the quest "destroy the scout"
+	# could become silently impossible: the player drives off, the scout sleeps, cleanup takes it as the
+	# farthest one, and the quest keeps pointing at a target that no longer exists.
 	enemy.set_meta("story", true)
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
-	_mark_first_enemy(enemy)          # обычный путь: этого разведчика приводит конец обучения
-	# И НЕЗАВИСИМО ОТ ФЛАГА: разведчика приводит конец обучения, у игрока в этот момент
-	# стартовый набор и ни одного исследования. Если «первый» уже был потрачен на кого-то из
-	# общего потока, скидка сюда всё равно обязана дойти — иначе первая же сюжетная драка
-	# идёт в полную силу против машины, собранной пять минут назад.
+	_mark_first_enemy(enemy)          # usual path: the end of the tutorial brings this scout
+	# And REGARDLESS OF THE FLAG: the scout arrives at the end of the tutorial, when the player has the
+	# starter kit and no research. If "the first" was already spent on someone from the regular stream,
+	# the discount must still reach here, or the first story fight runs at full strength against a
+	# machine assembled five minutes ago.
 	enemy.set("damage_scale", FIRST_ENEMY_DAMAGE)
 	_enemies.append(enemy)
 	return enemy
 
-## Поставить врага В КОНКРЕТНУЮ ТОЧКУ с заданной сборкой и ФРАКЦИЕЙ. Нужен событиям: там
-## машины воюют не только с игроком, но и между собой, а «свой-чужой» решается именно
-## фракцией (enemy_vehicle._is_enemy сравнивает её, и 1 против 2 — уже враги).
+## Place an enemy AT A GIVEN POINT with a given build and FACTION. Events need it: there machines
+## fight each other as well as the player, and friend-or-foe is decided by faction
+## (enemy_vehicle._is_enemy compares it, so 1 against 2 are already enemies).
 ##
-## Помечается как сюжетный: уборка спящих не должна унести участника события, пока игрок до
-## него едет. В общий поток он при этом попадает как обычный враг — считается, засыпает,
-## подчиняется лимиту боя.
-## `as_base = true` — не машина, а ПОСТРОЙКА: замороженный корпус, раскладка без кабины,
-## присмотр спавнера. Флаг обязан встать ДО add_child: по нему `_ready` морозит тело, а
-## поставленный после он опоздал бы — незамороженный корпус с off-центровой коллизией кренится
-## за первый же физ-шаг. И десант постройке не нужен: замороженное тело не падает, оно просто
-## осталось бы висеть на высоте drop_height.
+## Tagged as story: sleep cleanup must not remove an event participant while the player drives to it.
+## It still joins the regular stream as an ordinary enemy - counted, put to sleep, subject to the
+## engagement cap.
+##
+## as_base = true means a BUILDING rather than a machine: frozen hull, cabinless layout, spawner
+## supervision. The flag must be set BEFORE add_child - _ready freezes the body by it, and set
+## afterwards it is too late: an unfrozen hull with off-centre collision tips over on the first
+## physics step. A building needs no drop either: a frozen body does not fall, it would simply hang
+## at drop_height.
 func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false) -> Node3D:
 	if enemy_scenes.is_empty():
 		return null
@@ -515,12 +504,12 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 		if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 			enemy.died.connect(_on_enemy_died)
 		_enemies.append(enemy)
-		register_base(enemy)          # сон и тени — общее правило для всего, что стреляет
+		register_base(enemy)          # sleep and shadows: one rule for everything that shoots
 		return enemy
-	# ДЕСАНТ отмеряем ОТ РЕЛЬЕФА В ЭТОЙ ТОЧКЕ, а не от высоты переданной точки. Зовут нас
-	# со смещением («охранник в двенадцати метрах от груза», «дуэлянты по бокам центра»), и
-	# высота там своя: на склоне десять метров запаса съедаются холмом, и машина появлялась
-	# ВНУТРИ земли. Кольцевой спавн так и делал с самого начала — здесь этого не хватало.
+	# The drop is measured FROM THE TERRAIN AT THIS POINT, not from the passed height. We are called
+	# with offsets ("a guard twelve metres from the cargo", "duellists either side of the centre") and
+	# the height there is its own: on a slope ten metres of margin are eaten by the hill and the machine
+	# appeared INSIDE the ground.
 	var ground: float = G.ground_y(pos, pos.y)
 	enemy.global_position = Vector3(pos.x, maxf(pos.y, ground) + drop_height, pos.z)
 	if enemy is RigidBody3D:
@@ -531,62 +520,58 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 	_enemies.append(enemy)
 	return enemy
 
-# Пока обучение не закончено, случайный поток врагов и проверки сектора молчат: игрока
-# ведут за руку, и рейдер посреди вводной только мешает. Первого врага приводит сюжет
-# (tutorial_director после закрытия последнего шага) — он спавнится в обход этого гейта.
+# While the tutorial runs, the regular stream and sector scans stay silent: the player is being led
+# by the hand and a raider mid-lesson only gets in the way. The first enemy is brought by the story
+# (tutorial_director after the last step closes) and spawns around this gate.
 func _tutorial_active() -> bool:
 	var q: Node = get_node_or_null("/root/Q")
 	return q != null and q.has_method("tutorial_active") and q.tutorial_active()
 
 func _on_enemy_died(enemy: Node) -> void:
-	# Список чистит _process по is_instance_valid; здесь важно только освободить слот
-	# захватчика — пока он занят, новая проверка сектора никого не присылает.
+	# _process prunes the list by is_instance_valid; the only thing that matters here is freeing the
+	# invader slot - while it is taken, a new sector scan sends nobody.
 	if enemy == _invader:
 		_invader = null
 
-# Точка спавна: кольцо вокруг игрока, на рельефе, не на обрыве, и НЕ вплотную к другим
-# врагам (чтобы не кучковались). Угол берём с шагом-«секторами» + джиттер: даже под нагрузкой
-# точки расходятся по кольцу, а не бьют в одно место. exclude — враг, которого не считаем
-# соседом (при телепорте его самого). Возвращает Vector3 или null.
-# Точка спавна в кольце вокруг игрока.
+# Spawn point: a ring around the player, on the terrain, not on a cliff and NOT next to other
+# enemies. The ring is divided into sectors and a new enemy goes into the one with the FEWEST right
+# now, so evenness is by construction rather than a side effect.
 #
-# Кольцо поделено на секторы, и новый враг идёт в ТОТ, ГДЕ ИХ СЕЙЧАС МЕНЬШЕ ВСЕГО, —
-# равномерность получается по построению, а не как побочный эффект.
-#
-# Так пришлось делать в два захода. Сначала брался первый подходящий кандидат из 36 по
-# кругу: когда часть кольца отбракована водой или обрывом (а это почти всегда), все спавны
-# подряд сваливались в один уцелевший сектор. Потом выбиралось направление, максимально
-# удалённое по углу от живых врагов, — уже лучше, но это ЖАДНЫЙ выбор: он отталкивается
-# только от текущей расстановки и на неудачном рельефе всё равно перекашивал кольцо в одну
-# сторону. Счётчик по секторам этим не страдает: занятый сектор не выберут, пока есть пустые.
+# It took two attempts. First the first suitable candidate out of 36 around the circle was used:
+# when part of the ring is rejected by water or a cliff (which is almost always), every spawn fell
+# into the one surviving sector. Then the direction farthest in angle from live enemies was chosen -
+# better, but a GREEDY choice: it works off the current arrangement only and on awkward terrain
+# still skewed the ring one way. A per-sector count does not suffer from that: an occupied sector is
+# not picked while empty ones exist. exclude is an enemy not counted as a neighbour (when
+# teleporting that same one).
 const SPAWN_SECTORS := 8
 
 func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
-	# Сколько врагов уже стоит в каждом секторе.
+	# How many enemies already stand in each sector.
 	var per: Array[int] = []
 	per.resize(SPAWN_SECTORS)
 	per.fill(0)
 	for e in _enemies:
 		if e == exclude or not is_instance_valid(e):
 			continue
-		# Спящих НЕ считаем: смысл счётчика — «где вокруг игрока уже есть кто-то живой», а
-		# заснувший за полкарты в этом секторе не стоит и близко. Считая его, мы запрещали
-		# спавн в целой восьмой кольца из-за машины, которую игрок оставил позади час назад.
+		# Sleepers are NOT counted: the point of the counter is "where around the player is someone alive",
+		# and one asleep half a map away is not in this sector in any meaningful sense. Counting them banned
+		# a whole eighth of the ring because of a machine left behind an hour ago.
 		if _is_asleep(e):
 			continue
 		var d: Vector3 = (e as Node3D).global_position - center
-		if Vector2(d.x, d.z).length_squared() < 0.25:       # 0.5², только сравнение
+		if Vector2(d.x, d.z).length_squared() < 0.25:       # 0.5 squared, comparison only
 			continue
 		per[_sector_of(atan2(d.z, d.x))] += 1
-	# Секторы по возрастанию занятости; равные — вперемешку, иначе пустая карта всегда
-	# заполнялась бы с одного и того же боку.
+	# Sectors by ascending occupancy; ties are shuffled, or an empty map would always fill from the same
+	# side.
 	#
-	# ПРИ РАВНОЙ ЗАНЯТОСТИ БЕРЁМ ТЫЛ. Запрет «не появляться по курсу» (_in_player_view) говорит
-	# только про МОМЕНТ появления: враг возник сбоку в восьмидесяти метрах — правило соблюдено, —
-	# а через десять секунд игрок довернул к метке задания, и тот же враг оказался ровно на
-	# дороге. С двумя бодрствующими на кольце в 80..160 м это выходило КАЖДЫЙ раз и читалось как
-	# «они меня ждут». Сзади и по бокам-сзади враг догоняет, а не преграждает: встреча случается
-	# тогда, когда игрок сам решит остановиться и принять бой.
+	# ON EQUAL OCCUPANCY, TAKE THE REAR. The "never appear on his heading" ban (_in_player_view) only
+	# covers the MOMENT of appearing: an enemy shows up eighty metres to the side, the rule is satisfied,
+	# and ten seconds later the player turns toward a quest marker and it is right in the way. With two
+	# awake on a ring of 80..160 m that happened EVERY time and read as "they are waiting for me". From
+	# behind and behind-the-side an enemy catches up instead of blocking: the meeting happens when the
+	# player decides to stop and take it.
 	var back: Array[int] = []
 	back.resize(SPAWN_SECTORS)
 	back.fill(0)
@@ -607,10 +592,11 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 		if per[a] != per[b]:
 			return per[a] < per[b]
 		return back[a] < back[b])
-	# Границы кольца считаем ОДИН РАЗ на поиск: обзор врага за время перебора не меняется.
+	# Ring bounds are computed ONCE per search: enemy vision does not change during the loop.
 	var near: float = _spawn_min_dist()
-	var far: float = maxf(spawn_max_dist, near + 20.0)   # кольцо не может быть вывернутым
-	# Внутри сектора — несколько попыток: точку может занять сосед, курс игрока или тихая зона.
+	var far: float = maxf(spawn_max_dist, near + 20.0)   # the ring cannot be inside out
+	# Several attempts inside a sector: a point may be taken by a neighbour, the player's heading or a
+	# quiet zone.
 	for sec in order:
 		for _try in 6:
 			var ang: float = (TAU / SPAWN_SECTORS) * (float(sec) + randf())
@@ -623,13 +609,13 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 			if _in_player_view(cand, center):
 				continue                       # по курсу и близко — игрок увидел бы появление
 			if _near_anchored_base(cand):
-				continue                       # тихая зона: у заякоренной машины игрока не спавним
+				continue                       # quiet zone: no spawns near an anchored player machine
 			return cand
 	return null
 
-# Точка «по курсу» игрока и достаточно близко, чтобы появление было ЗАМЕТНО. Смотрим на
-# направление машины, а не камеры: камеру игрок крутит постоянно, и по ней спавн стал бы
-# случайным, а перед носом машины — то место, куда он едет и куда смотрит чаще всего.
+# A point on the player's HEADING and close enough for the appearance to be NOTICED. We look at the
+# machine's direction, not the camera's: the camera is turned constantly, which would make the spawn
+# random, while ahead of the machine is where he is driving and looking most of the time.
 func _in_player_view(pos: Vector3, center: Vector3) -> bool:
 	var player: Node3D = _player()
 	if player == null:
@@ -644,14 +630,14 @@ func _in_player_view(pos: Vector3, center: Vector3) -> bool:
 		return false
 	return rad_to_deg(fwd.normalized().angle_to(to.normalized())) < front_cone_deg
 
-# Точка внутри тихой зоны какой-нибудь ЗАЯКОРЕННОЙ машины игрока?
+# Is the point inside the quiet zone of some ANCHORED player machine?
 #
-# Смотрим именно на якорь, а не на «есть ли рядом моя машина»: катающаяся машина в защите не
-# нуждается — она может уехать. А заякоренная не может: якорь снимается вручную, под ним
-# работает фабрика, и ровно в этот момент игрок занят конвейером, а не рулём.
+# We look at the anchor rather than "is one of my machines nearby": a driving machine needs no
+# protection, it can leave. An anchored one cannot: the anchor is released by hand, the factory runs
+# under it, and at exactly that moment the player is busy with the conveyor rather than the wheel.
 #
-# Поле anchored живёт на vehicle_body_3d (машины игрока), у врагов его нет — поэтому читаем
-# через get() и молча пропускаем тех, у кого его нет.
+# anchored lives on vehicle_body_3d (player machines) and enemies do not have it, so it is read
+# through get() and anyone without it is silently skipped.
 func _near_anchored_base(pos: Vector3) -> bool:
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
@@ -661,23 +647,22 @@ func _near_anchored_base(pos: Vector3) -> bool:
 			continue
 		var f = v.get("faction")
 		if f != null and int(f) != 0:
-			continue                           # только машины ИГРОКА
-		# Сравнение с true, а НЕ bool(...): у машины без такого поля get() возвращает null, а
-		# bool(null) в Godot 4 не конструируется — «Invalid call. Nonexistent bool constructor»
-		# прямо в рантайме. Поле anchored живёт только на машинах игрока (vehicle_body_3d), и
-		# сюда приходят чужие узлы тоже.
+			continue                           # PLAYER machines only
+		# Compared with true, NOT bool(...): get() returns null on a machine without the field, and
+		# bool(null) cannot be constructed in Godot 4 - "Invalid call. Nonexistent bool constructor" at
+		# runtime. Foreign nodes reach here too.
 		if v.get("anchored") != true:
 			continue
 		if pos.distance_squared_to((v as Node3D).global_position) < quiet_radius * quiet_radius:
 			return true
 	return false
 
-## Ближняя граница кольца: НАСКОЛЬКО ДАЛЕКО ВРАГ ВИДИТ плюс запас.
+## Inner ring edge: HOW FAR AN ENEMY SEES plus the margin.
 func _spawn_min_dist() -> float:
 	return _enemy_detect_radius() + spawn_safe_margin
 
-## Радиус обзора врага. Спрашиваем у живого — сборки могут отличаться, и зашивать сюда копию
-## числа из enemy_vehicle значило бы однажды их разойти. Кешируем: за кадр он не меняется.
+## Enemy vision radius, asked from a live one - builds may differ, and hardcoding a copy of the
+## number from enemy_vehicle would mean they eventually diverge. Cached: it does not change per frame.
 var _detect_cache: float = -1.0
 
 func _enemy_detect_radius() -> float:
@@ -694,8 +679,8 @@ func _enemy_detect_radius() -> float:
 func _sector_of(ang: float) -> int:
 	return int(wrapf(ang, 0.0, TAU) / (TAU / SPAWN_SECTORS)) % SPAWN_SECTORS
 
-# Есть ли уже враг ближе spawn_safe_margin (по горизонтали) к точке pos. Без этого запаса
-# новый десант падал бы на голову тому, кто уже стоит в этом секторе.
+# Is there already an enemy closer than spawn_safe_margin (horizontally) to pos? Without that margin
+# a new drop would land on someone already standing in this sector.
 func _too_close_to_enemy(pos: Vector3, exclude: Node) -> bool:
 	for e in _enemies:
 		if e == exclude or not is_instance_valid(e):
@@ -762,25 +747,26 @@ func _resolve_scan() -> void:
 	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 	_clear_marker()
 	var p := _player()
-	# Система не отслеживает «кто ушёл» — она просто сканирует зону. Есть активность внутри
-	# (техника игрока) → «что-то подозрительное» → усиленный отряд. Пусто → нейтральный отчёт.
+	# The System does not track who left - it simply scans the area. Activity inside (player machines)
+	# means "something suspicious" and a reinforced unit; empty means a neutral report.
 	if p != null and _in_scan_box(p.global_position):
 		_say("System", "Unauthorized activity detected in the sector. Dispatching a handler.")
-		_spawn_invader(p)              # захватчик идёт именно за ЗАСЕЧЁННОЙ машиной
+		_spawn_invader(p)              # the invader goes for the DETECTED machine
 	else:
 		_say("System", "Sector scan complete. No anomalies detected.")
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size
 
-# ЗАХВАТЧИК — один, ДЕСАНТИРУЕТСЯ у края квадрата, сразу нацеленный на засеченную машину.
+# THE INVADER is a single machine that DROPS IN at the edge of the square, already locked on the
+# detected machine.
 #
-# Он намеренно не подчиняется обычным правилам: не считается под потолком max_enemies, не
-# убирается уборкой спящих и не забывает цель. Это событие, а не фон, и работать оно должно
-# как событие — пока игрок его не убьёт или не уедет насовсем.
+# It deliberately ignores the usual rules: it does not count against max_enemies, is never removed
+# by sleep cleanup and never forgets its target. This is an event, not background, and it must behave
+# like one - until the player kills it or leaves for good.
 #
-# Пока предыдущий захватчик жив, нового не присылаем: их одновременно ровно один, как invader
-# в TerraTech. Иначе редкое событие, случившись дважды подряд, снова превращалось бы в толпу.
+# While the previous invader lives, no new one is sent: exactly one at a time, like TerraTech's
+# invader. Otherwise a rare event happening twice in a row becomes a crowd again.
 func _spawn_invader(locked: Node3D = null) -> void:
 	if _invader != null and is_instance_valid(_invader):
 		return
@@ -791,36 +777,36 @@ func _spawn_invader(locked: Node3D = null) -> void:
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = scan_preset      # усиленная сборка
+		blocks.layout_preset = scan_preset      # reinforced build
 	vehicles.add_child(enemy)
 	var ang: float = randf() * TAU
 	var r: float = scan_half_size * 0.8
 	var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
 	var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
-	# ПАДАЕТ с высоты, а не возникает на земле. Появляется он у края квадрата, то есть рядом
-	# с игроком; стоящему на месте это выглядело как «машина материализовалась в двадцати
-	# метрах и сразу открыла огонь». Падение даёт те секунды, за которые её видно и слышно.
+	# It FALLS from height rather than appearing on the ground. It shows up at the edge of the square,
+	# i.e. near the player; for someone standing still that read as "a machine materialised twenty metres
+	# away and opened fire". The fall gives the seconds in which it can be seen and heard.
 	enemy.global_position = Vector3(wp.x, h + drop_height, wp.z)
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
-	# Цель назначаем сразу, не дожидаясь его зоны обнаружения, и включаем relentless: обычный
-	# враг ищет цель сам и может её потерять, а этот приехал именно за той машиной, которую
-	# засекла проверка.
+	# The target is assigned immediately, without waiting for its detection zone, and relentless is
+	# switched on: an ordinary enemy finds and can lose a target, while this one came for the machine
+	# the scan detected.
 	_lock_on_target(enemy, locked)
 	_enemies.append(enemy)
 	_invader = enemy
 
-# Жёстко назначить врагу цель (без ожидания сигнала зоны обнаружения) и сделать его невідступным.
+# Force a target on an enemy (no waiting for the detection signal) and make it relentless.
 func _lock_on_target(enemy: Node, target: Node3D) -> void:
 	if target == null or not is_instance_valid(target):
 		return
 	if enemy.has_method("assign_target"):
 		enemy.assign_target(target, true)
 
-# Маркер квадрата: 4 светящихся столба по углам (переживают неровный рельеф). Пульсируют,
-# к концу таймера краснеют — тревога.
+# Square marker: four glowing pillars at the corners (they survive uneven terrain). They pulse and
+# turn red toward the end of the countdown - an alarm.
 func _build_marker() -> void:
 	_clear_marker()
 	_scan_marker = Node3D.new()
