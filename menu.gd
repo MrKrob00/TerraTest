@@ -59,10 +59,6 @@ var _c_bar: ProgressBar = null
 var _c_eta: Label = null
 ## Открыт ли выбор слота. Первый экран — PLAY / SETTINGS, второй — три мира.
 var _slots_open: bool = false
-## Какой слот ждёт подтверждения перезаписи. −1 — никто не ждёт. Второй тап по той же кнопке
-## подтверждает: отдельного модального окна тут не нужно, а спросить обязательно — «Новая игра»
-## по занятому слоту стирает мир, и промах пальцем не должен этого делать.
-var _confirm_slot: int = -1
 
 func _ready() -> void:
 	add_child(STAGE.new())
@@ -283,7 +279,9 @@ func _create_panel() -> Control:
 	box.add_child(_c_eta)
 
 	if _gen_done:
+		# ДВА выхода, а не один: игрок мог считать мир ЗАРАНЕЕ, чтобы войти в него позже.
 		box.add_child(_big_button("PLAY", _play_created))
+		box.add_child(_button("BACK TO SLOTS", DIM, _leave_create))
 	else:
 		box.add_child(_button("STOP", DANGER, _stop_create))
 	_update_create()
@@ -320,6 +318,8 @@ func _time_text(sec: float) -> String:
 
 ## Прогон. Сид уже выбран, но слот ещё цел — стираем его только в _play_created.
 func _begin_create(i: int) -> void:
+	if _gen_slot >= 0:
+		return                       # прогон уже идёт
 	_gen_slot = i
 	_gen_seed = G.roll_world_seed()
 	_gen_done = false
@@ -353,6 +353,7 @@ func _begin_create(i: int) -> void:
 		_rebuild_left()
 		return
 	G.set_pending_world(_gen_seed, Vector2i(x0, z0), size, md, params)
+	G.create_world(_gen_slot, _gen_seed, Vector2i(x0, z0), size, md)
 	_gen_done = true
 	_rebuild_left()
 
@@ -366,12 +367,15 @@ func _stop_create() -> void:
 func _play_created() -> void:
 	var i: int = _gen_slot
 	_gen_slot = -1
-	G.new_game(i, _gen_seed)
-	_start_game()
+	_play_slot(i)          # мир уже записан в слот прогоном, стирать нечего
+
+func _leave_create() -> void:
+	_gen_slot = -1
+	_slots_open = true
+	_rebuild_left()
 
 func _close_slots() -> void:
 	_slots_open = false
-	_confirm_slot = -1
 	_rebuild_left()
 
 func _slots_panel() -> Control:
@@ -389,6 +393,15 @@ func _slots_panel() -> Control:
 		box.add_child(_slot_row(i))
 	return panel
 
+## СТРОКА СЛОТА. Мир и прохождение — РАЗНЫЕ сущности, и кнопки идут ровно по их состояниям:
+##   нет мира            → CREATE
+##   мир есть, прогресса нет → PLAY + удаление мира
+##   есть и то и другое   → PLAY + RESET (сбросить прохождение, карту оставить) + удаление мира
+## Первый слот особый: его карта лежит файлом в игре, удалять там нечего.
+##
+## УДАЛЕНИЕ — УДЕРЖАНИЕМ, а не вторым тапом. Тап рядом с PLAY стирает мир, который считался
+## минуту, и «вы уверены?» второй кнопкой ровно так же ловится промахом пальца; удержание
+## промахом не делается вовсе и видно, что оно делает, пока полоса ползёт.
 func _slot_row(i: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -405,31 +418,86 @@ func _slot_row(i: int) -> Control:
 	name_lbl.add_theme_color_override("font_color", TEXT)
 	info.add_child(name_lbl)
 
+	var has_world: bool = i == 0 or G.slot_has_world(i)
+	var d: Dictionary = G.slot_info(i)
 	var desc := Label.new()
 	desc.add_theme_font_size_override("font_size", 12)
 	desc.add_theme_color_override("font_color", DIM)
-	var d: Dictionary = G.slot_info(i)
-	if d.is_empty():
-		# ПЕРВЫЙ СЛОТ ИМЕНОВАН ОТДЕЛЬНО: у него постоянный сид, то есть «наша» карта — та же
-		# раскладка жил и точек, что была всегда. Остальные два — новые миры со своим сидом.
-		desc.text = "Empty · the original world" if i == 0 else "Empty · a new world"
-	else:
+	if not d.is_empty():
 		desc.text = "%d$ · %d blocks · %d directives" \
 				% [int(d.get("money", 0)), int(d.get("researched", 0)), int(d.get("quests", 0))]
+	elif has_world:
+		# Первый слот — «наша» карта: постоянный сид, та же раскладка жил и точек, что всегда.
+		desc.text = "The original world · not started" if i == 0 else "World ready · not started"
+	else:
+		desc.text = "No world yet"
 	info.add_child(desc)
 
-	var used: bool = G.slot_used(i)
-	if used:
-		# Слот, в котором играли последним, назван CONTINUE: у игрока с одним миром «продолжить»
-		# — самое частое действие, и отдельной кнопки для него не нужно.
-		var lbl: String = "CONTINUE" if i == G.last_slot() else "PLAY"
-		row.add_child(_button(lbl, ACCENT, _on_play.bind(i)))
-	# «Новая игра» на занятом слоте — это стирание мира, поэтому она спрашивает. Подтверждение
-	# живёт на самой кнопке (второй тап), а не в отдельном окне: окно поверх меню пришлось бы
-	# строить, гасить ввод под ним и закрывать — ради одного вопроса, который умещается в надпись.
-	var new_label: String = "ERASE?" if (used and _confirm_slot == i) else "NEW"
-	row.add_child(_button(new_label, DANGER if _confirm_slot == i else DIM, _on_new.bind(i)))
+	if not has_world:
+		row.add_child(_button("CREATE", ACCENT, _begin_create.bind(i)))
+		return row
+	# Слот, в котором играли последним, назван CONTINUE: у игрока с одним миром это самое
+	# частое действие, и отдельной кнопки под него не нужно.
+	var lbl: String = "CONTINUE" if (not d.is_empty() and i == G.last_slot()) else "PLAY"
+	row.add_child(_button(lbl, ACCENT, _play_slot.bind(i)))
+	if not d.is_empty():
+		row.add_child(_button("RESET", DIM, _reset_slot.bind(i)))
+	if i != 0:
+		row.add_child(_hold_button("DELETE", _delete_slot.bind(i)))
 	return row
+
+func _play_slot(i: int) -> void:
+	G.use_slot(i)
+	_start_game()
+
+func _reset_slot(i: int) -> void:
+	G.reset_progress(i)
+	_rebuild_left()
+
+func _delete_slot(i: int) -> void:
+	G.delete_world(i)
+	_rebuild_left()
+
+## Кнопка «держи, чтобы сработало». Держит время сама и рисует поверх своего стиля полосу
+## заполнения: пока она не дошла до края, ничего не произошло — отпустил, и сброс.
+class HoldButton extends Button:
+	signal confirmed
+	const HOLD := 1.2
+	var _t: float = 0.0
+	var fill := Color(1.0, 0.45, 0.35, 0.35)
+
+	func _ready() -> void:
+		set_process(false)
+		button_down.connect(func(): _t = 0.0; set_process(true))
+		button_up.connect(func(): _t = 0.0; set_process(false); queue_redraw())
+
+	func _process(delta: float) -> void:
+		_t += delta
+		queue_redraw()
+		if _t >= HOLD:
+			set_process(false)
+			_t = 0.0
+			confirmed.emit()
+
+	func _draw() -> void:
+		if _t <= 0.0:
+			return
+		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x * (_t / HOLD), size.y)), fill, true)
+
+func _hold_button(text: String, cb: Callable) -> Button:
+	var b := HoldButton.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(88, 48)
+	b.add_theme_font_size_override("font_size", 14)
+	b.add_theme_color_override("font_color", DANGER)
+	b.add_theme_color_override("font_hover_color", TEXT)
+	b.add_theme_color_override("font_pressed_color", TEXT)
+	b.add_theme_stylebox_override("normal", _btn_style(false))
+	b.add_theme_stylebox_override("hover", _btn_style(false))
+	b.add_theme_stylebox_override("pressed", _btn_style(true))
+	b.confirmed.connect(cb)
+	b.tooltip_text = "Hold"
+	return b
 
 # ── Настройки ────────────────────────────────────────────────────────────────
 ## Те же три значения, что и в игре (`hud._build_settings_panel`), и хранятся они в тех же полях
@@ -533,28 +601,6 @@ func _btn_style(hot: bool) -> StyleBoxFlat:
 	s.border_color = ACCENT * Color(1, 1, 1, 0.45)
 	s.set_border_width_all(1)
 	return s
-
-# ── Действия ─────────────────────────────────────────────────────────────────
-func _on_play(i: int) -> void:
-	G.use_slot(i)
-	_start_game()
-
-## НОВАЯ ИГРА. По пустому слоту начинает сразу; по занятому первый тап только СПРАШИВАЕТ —
-## перезапись стирает мир, и промах пальцем по кнопке рядом с PLAY не должен этого делать.
-func _on_new(i: int) -> void:
-	if _gen_slot >= 0:
-		return                       # прогон уже идёт
-	if G.slot_used(i) and _confirm_slot != i:
-		_confirm_slot = i
-		_rebuild_left()
-		return
-	_confirm_slot = -1
-	# Первый слот — заводская карта из файла, считать нечего.
-	if i == 0:
-		G.new_game(0)
-		_start_game()
-		return
-	_begin_create(i)
 
 ## Игровая сцена грузится ТЕМ ЖЕ стойким оверлеем, что и раньше (loading_boot.gd): он живёт
 ## соседом current_scene, поэтому переживает смену сцены и держится сверху, пока карта не
