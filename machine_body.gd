@@ -761,7 +761,12 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 			# placement), and only otherwise by position: position lies for 2x2x2 blocks (the collider is
 			# offset) and for two blocks that ended up at the same local point after a rebuild. The positional
 			# fallback is for enemy machines, which have no tag.
-			var owner_block = collision_shape.get_meta("block_owner", null)
+			#
+			# has_meta FIRST: get_meta(name, null) still raises "does not have any meta values" - the
+			# engine treats a null default as "no default given". Enemy colliders have no tag at all,
+			# so every torn-off block printed that error.
+			var owner_block: Variant = collision_shape.get_meta("block_owner") \
+					if collision_shape.has_meta("block_owner") else null
 			var mine: bool = (owner_block == destroyed_block) if owner_block != null \
 					else (collision_shape.position == destroyed_block.position \
 						or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET)
