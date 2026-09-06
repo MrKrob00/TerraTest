@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" path="res://menu_stage_3d.gd" id="2_stage"]
@@ -23,13 +23,6 @@ fog_enabled = true
 fog_light_color = Color(0.62, 0.6, 0.52, 1)
 fog_density = 0.004
 fog_aerial_perspective = 0.3
-
-[sub_resource type="PlaneMesh" id="Ground_mesh"]
-size = Vector2(420, 420)
-
-[sub_resource type="StandardMaterial3D" id="Ground_mat"]
-albedo_color = Color(0.46, 0.39, 0.28, 1)
-roughness = 1.0
 
 [sub_resource type="StyleBoxFlat" id="Panel_style"]
 content_margin_left = 10.0
@@ -104,19 +97,7 @@ fov = 52.0
 far = 600.0
 current = true
 
-[node name="Ground" type="MeshInstance3D" parent="Stage"]
-unique_name_in_owner = true
-cast_shadow = 0
-mesh = SubResource("Ground_mesh")
-material_override = SubResource("Ground_mat")
-
-[node name="Rocks" type="Node3D" parent="Stage"]
-unique_name_in_owner = true
-
 [node name="Machines" type="Node3D" parent="Stage"]
-unique_name_in_owner = true
-
-[node name="Effects" type="Node3D" parent="Stage"]
 unique_name_in_owner = true
 
 [node name="UI" type="CanvasLayer" parent="."]

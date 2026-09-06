@@ -790,12 +790,19 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 # A block lost its connection to the core (cabin or base) and falls into the world (see
 # blocks._detach_orphans): remove its duplicated collider from the machine body, reparent into
 # objects, unfreeze and drop.
+## Where loose blocks go. The world has a node for it; anything else that runs machines (the menu
+## backdrop with its demo fight) has no `/root/Main`, and without a fallback the torn block kept
+## hanging in place with its collider already removed.
+func _loose_sink() -> Node:
+	var objects := get_node_or_null("/root/Main/objects")
+	return objects if objects != null else get_parent()
+
 func detach_block_to_world(node: Node) -> void:
 	if not is_instance_valid(node):
 		return
 	if node is Node3D:
 		_on_block_destroyed(node as Node3D)          # drop the block collider and clean the damage map
-	var objects := get_node_or_null("/root/Main/objects")
+	var objects := _loose_sink()
 	if objects == null or not (node is Node3D):
 		return
 	(node as Node3D).reparent(objects)
@@ -921,7 +928,7 @@ func _die() -> void:
 ## The impulse is applied DIRECTLY and at once: we unfreeze here rather than waiting for
 ## VehicleBlock to do it a frame later via signal, or the block falls through the floor first.
 func scatter_blocks(cabin: Node = null) -> void:
-	var objects := get_node_or_null("/root/Main/objects")
+	var objects := _loose_sink()
 	var bl: Node = get("block_map_node") if get("block_map_node") != null else get_node_or_null("blocks")
 	if objects == null or bl == null:
 		return

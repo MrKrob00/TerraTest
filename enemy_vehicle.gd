@@ -162,7 +162,7 @@ func _measure_build() -> void:
 # Kill reward: RP by machine value (G.rp_for_kill). The System announces it - without the line the
 # player would not notice anything was granted.
 func _pay_out() -> void:
-	if faction == 0 or build_value <= 0:
+	if demo or faction == 0 or build_value <= 0:
 		return
 	var rp: int = G.rp_for_kill(build_value)
 	G.add_research_points(rp)
@@ -176,7 +176,8 @@ func _die() -> void:
 		return
 	_dying = true
 	_pay_out()
-	Q.report("enemy_killed", 1)             # combat quest progress
+	if not demo:
+		Q.report("enemy_killed", 1)         # combat quest progress; a menu duel counts for nothing
 	died.emit(self)
 	scatter_blocks(_cabin)    # shared scatter from MachineBody: the player uses the same one
 	queue_free()
@@ -343,6 +344,12 @@ var _has_last_known: bool = false
 
 # Assign a target FROM OUTSIDE (a sector-scan squad). The spawner used to write private fields
 # directly and set the state by number, which would break silently on any enum edit.
+## DEMO MACHINE (menu backdrop). It fights for show, so two things are switched off: rewards and
+## quest progress on death (the menu must not advance a playthrough), and any way out of the fight -
+## no giving up, no retreat behaviour. There is nowhere to retreat to in a 512 m arena anyway, and a
+## backdrop where both sides drive apart shows nothing.
+var demo: bool = false
+
 func assign_target(t: Node3D, never_forget: bool = false) -> void:
 	if t == null or not is_instance_valid(t):
 		return
@@ -444,6 +451,8 @@ func _update_ai(delta: float) -> void:
 		_decide_t = DECIDE_PERIOD
 		_percept = _sense()
 		_act = EnemyBrain.decide(_percept, _act)
+		if demo and _act == EnemyBrain.Act.RETREAT:
+			_act = EnemyBrain.Act.ENGAGE          # a demo machine has nowhere to fall back to
 
 	# The ban is enforced HERE rather than by clearing the target: the enemy behaves like a patrol but
 	# remembers who it came for and returns to the fight the frame a slot frees.
@@ -839,6 +848,8 @@ func _lose_target() -> void:
 ## target was lost. A timer alone is not enough - when it expires the enemy would still be circling
 ## its old spawn point, i.e. coming back to the player by itself.
 func _give_up() -> void:
+	if demo:
+		return
 	_give_up_t = GIVE_UP_TIME
 	var away: Vector3 = global_position - _last_known_pos
 	away.y = 0.0
