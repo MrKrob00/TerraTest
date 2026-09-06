@@ -67,7 +67,7 @@ func _process(delta: float) -> void:
 		return
 	_tick = 0.0
 	_expire_world_blocks()                         # despawn loose blocks older than the TTL
-	_rescue_fallen()                               # машина провалилась сквозь рельеф — вернуть наверх
+	_rescue_fallen()                               # a machine fell through the terrain: put it back
 	Perf.mark("world", _pf)
 
 # ── Culling what is BEHIND YOU ───────────────────────────────────────────────
@@ -83,8 +83,8 @@ func _process(delta: float) -> void:
 # The near bubble stays active in every direction: what is close takes part in the game (packer
 # magnet, receiver, picking up by hand) and must not be gated by view direction.
 const CULL_PERIOD := 0.25
-const CULL_KEEP_RADIUS := 25.0       # м: ближе этого блок активен, куда бы ни смотрела камера
-const CULL_VIEW_COS := -0.15         # чуть шире полусферы перед камерой — край не мигает
+const CULL_KEEP_RADIUS := 25.0       # m: closer than this a block stays active whatever the camera looks at
+const CULL_VIEW_COS := -0.15         # slightly wider than the hemisphere in front, so the edge does not flicker
 const CULL_META := "culled"
 var _cull_t: float = 0.0
 
@@ -135,7 +135,7 @@ func _cull_tick(delta: float) -> void:
 		if behind:
 			var rb := n as RigidBody3D
 			if rb != null and not rb.sleeping and not rb.freeze:
-				continue                    # ещё едет/падает — досчитаем, погасим в следующий раз
+				continue                    # still moving or falling: leave it, catch it next pass
 			n.set_meta(CULL_META, true)
 			n.process_mode = Node.PROCESS_MODE_DISABLED
 		else:
@@ -157,8 +157,8 @@ func _cull_tick(delta: float) -> void:
 # tells lying from held by exactly that flag, so a frozen block would stop being picked up by hand,
 # collector and receiver. Blast impulses are not applied to frozen bodies at all
 # (block_fx.explosion), so blocks would stop scattering.
-const SETTLE_SPEED := 0.35        # м/с — медленнее считаем, что тело уже легло
-const SETTLE_TIME := 3.5          # столько секунд подряд, чтобы не усыпить подброшенное в апогее
+const SETTLE_SPEED := 0.35        # m/s: slower than this counts as settled
+const SETTLE_TIME := 3.5          # consecutive seconds, so something thrown is not slept at its apex
 const SETTLE_META := "settled_s"
 
 func _settle_tick(n: Node3D) -> void:
@@ -199,7 +199,7 @@ const SHADOW_DIST := 90.0
 #
 # The check runs EVERY FRAME rather than on the cleanup timer: a machine must appear the same frame
 # the camera turns to it. There are only a few machines and the test is six dot products.
-const VEH_CULL_RADIUS := 9.0     # сфера вокруг машины: 11³ клеток по диагонали с запасом
+const VEH_CULL_RADIUS := 9.0     # sphere around a machine: the 11^3 grid diagonal plus margin
 ## Box height for the occlusion query. The sphere radius does not fit here: is_point_hidden builds a
 ## 1 x height x 1 column, and a nine-metre column would stick out above any hill, so "behind a ridge"
 ## would never happen. Four metres is a machine with a turret plus margin.
@@ -340,7 +340,7 @@ func _rescue_fallen() -> void:
 				% [n3.name, n3.global_position.y, ground, diag])
 		var rb := n3 as RigidBody3D
 		if rb != null and not rb.freeze:
-			rb.freeze = true                    # замороженным (база на якоре) не мешаем
+			rb.freeze = true                    # leave frozen ones alone (an anchored base)
 			rb.linear_velocity = Vector3.ZERO
 			rb.angular_velocity = Vector3.ZERO
 			lifted.append(rb)
@@ -463,9 +463,9 @@ func _expire_world_blocks() -> void:
 			c.queue_free()
 			continue
 		if not is_block:
-			continue                                   # у ресурсов TTL нет — только расстояние
+			continue                                   # resources have no TTL, only distance
 		if not c.has_meta("world_spawn_s"):
-			c.set_meta("world_spawn_s", now)           # первый раз увидели — стартуем его таймер
+			c.set_meta("world_spawn_s", now)           # first sighting: start its timer
 			continue
 		if now - float(c.get_meta("world_spawn_s")) > BLOCK_TTL:
 			c.queue_free()
