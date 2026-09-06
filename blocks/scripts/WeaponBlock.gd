@@ -49,6 +49,12 @@ var _current_target: Node3D = null
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
+	# ЛУЧ НАВЕДЕНИЯ НЕ РИСУЕМ. RayCast3D сам чертит свою отладочную линию, когда игра запущена с
+	# видимыми коллизиями, а в сценах стволов ей вдобавок задали толщину 5 и зелёный цвет — и от
+	# ствола через полкарты тянулась жирная полоса, ничего не сообщавшая: наводка видна по самой
+	# башне, а попадания — по трассерам. Гасим ЗДЕСЬ, у единственной двери: сцен со стволами
+	# пять, и шестая однажды приехала бы с той же настройкой.
+	raycast.debug_shape_thickness = 0
 	_sync_detect_radius()
 	_find_turret_parts()
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
@@ -319,7 +325,6 @@ func _show_tracer(firing: bool, _delta: float) -> void:
 	# материалов с обычным шейдингом. Видно, что оружие именно СТРЕЛЯЕТ.
 	var pulse := 0.7 + 0.3 * sin(_anim_t * 40.0)
 	var base := Color(1.0, 0.85, 0.7) if hit else Color(1.0, 0.4, 0.1)
-	raycast.debug_shape_custom_color = Color(1, 0, 0) if hit else Color(1, 0.5, 0)
 	if track_mat is StandardMaterial3D:
 		var m := track_mat as StandardMaterial3D
 		m.albedo_color = base * pulse
