@@ -117,15 +117,29 @@ func use_slot(n: int) -> void:
 	_reset_state()
 	_load_builds()
 	_load_progress()
+	# Q — автолоад: его список квестов помечен done по прогрессу, прочитанному РАНЬШЕ, и смену
+	# слота сам он не заметит. Без этого сброшенный слот открывался с закрытым сюжетом.
+	var q: Node = get_node_or_null("/root/Q")
+	if q != null and q.has_method("reload_from_progress"):
+		q.reload_from_progress()
 
 ## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид. Первый слот особенный —
 ## у него сид постоянный, это «наша» карта.
-func new_game(n: int, seed_value: int = 0) -> void:
+## Файлы ПРОГРЕССА: сброс оставляет мир (сид и посчитанное окно) на месте.
+const PROGRESS_FILES := ["progress.json", "vehicle_builds.json", "world_save.json",
+		"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin"]
+## Файлы МИРА: сид и кеш посчитанного окна.
+const WORLD_FILES := ["world.json", "world_window.bin"]
+
+func _wipe(n: int, names: Array) -> void:
 	var dir := slot_dir(n)
-	for name in ["progress.json", "vehicle_builds.json", "world_save.json",
-			"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin", "world.json"]:
-		if FileAccess.file_exists(dir + name):
-			DirAccess.remove_absolute(dir + name)
+	for name in names:
+		if FileAccess.file_exists(dir + String(name)):
+			DirAccess.remove_absolute(dir + String(name))
+
+func new_game(n: int, seed_value: int = 0) -> void:
+	_wipe(n, PROGRESS_FILES)
+	_wipe(n, WORLD_FILES)
 	use_slot(n)
 	# Сид может прийти снаружи: меню сначала СЧИТАЕТ мир по нему (полоса + стоп) и только потом,
 	# по «играть», стирает слот. Без этого стоп на середине уже уничтожил бы старый мир.
@@ -135,6 +149,70 @@ func new_game(n: int, seed_value: int = 0) -> void:
 
 func roll_world_seed() -> int:
 	return int(randi()) | 1
+
+# ── Мир слота: сид + посчитанное окно ────────────────────────────────────────
+# Мир существует ОТДЕЛЬНО от прогресса: его можно создать заранее и войти позже, сбросить
+# прохождение и остаться на той же карте, или снести целиком. Отсюда три операции.
+const WORLD_WINDOW := "world_window.bin"
+
+func slot_has_world(n: int) -> bool:
+	return FileAccess.file_exists(slot_path(WORLD_META, n))
+
+## Зафиксировать мир слота: сид на диск и КЕШ первого окна рядом с ним. Кеш нужен затем же,
+## зачем меню вообще считает мир заранее, — чтобы вход в него был мгновенным. Он привязан к
+## сиду и размеру, поэтому чужой не подойдёт, а протухший просто не совпадёт.
+func create_world(n: int, seed_value: int, win: Vector2i, size: int,
+		md: PackedFloat32Array) -> void:
+	DirAccess.make_dir_recursive_absolute(slot_dir(n))
+	var f := FileAccess.open(slot_path(WORLD_META, n), FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify({"seed": seed_value, "proc": n != 0}))
+		f.close()
+	if n == 0 or md.size() != size * size:
+		return
+	var w := FileAccess.open(slot_path(WORLD_WINDOW, n), FileAccess.WRITE)
+	if w == null:
+		return
+	# Все числа 64-битными: store_32 читается обратно БЕЗ ЗНАКА, а начало окна отрицательное.
+	w.store_64(seed_value)
+	w.store_64(size)
+	w.store_64(win.x)
+	w.store_64(win.y)
+	w.store_buffer(md.to_byte_array())
+	w.close()
+
+func delete_world(n: int) -> void:
+	_wipe(n, PROGRESS_FILES)
+	_wipe(n, WORLD_FILES)
+
+## Сброс прохождения БЕЗ потери карты. Если сброшен текущий слот — состояние в памяти тоже
+## обнуляем, иначе первый же автосейв запишет старые деньги обратно.
+func reset_progress(n: int) -> void:
+	_wipe(n, PROGRESS_FILES)
+	if n == slot:
+		use_slot(n)
+
+## Кеш первого окна с диска. Пусто — не тот сид/размер или кеша нет: карта посчитает сама.
+func read_world_window(seed_value: int, size: int) -> Dictionary:
+	var p := slot_path(WORLD_WINDOW)
+	if not FileAccess.file_exists(p):
+		return {}
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return {}
+	if f.get_length() < 32:
+		return {}
+	var s_seed: int = f.get_64()
+	var s_size: int = f.get_64()
+	var wx: int = f.get_64()
+	var wz: int = f.get_64()
+	if s_seed != seed_value or s_size != size:
+		return {}
+	var md: PackedFloat32Array = f.get_buffer(size * size * 4).to_float32_array()
+	f.close()
+	if md.size() != size * size:
+		return {}
+	return {"seed": seed_value, "win": Vector2i(wx, wz), "size": size, "md": md}
 
 # ── Мир, посчитанный в меню ───────────────────────────────────────────────────
 # Единственное, что переживает смену сцены: карты в момент расчёта ещё нет. 16 МБ живут до

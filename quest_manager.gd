@@ -403,6 +403,23 @@ func reset_all() -> void:
 	tracked_id = ""
 	changed.emit()
 
+## Пересобрать состояние под ТЕКУЩИЙ прогресс (G.use_slot зовёт это после смены слота). Q —
+## автолоад: он читает quests_done один раз в _ready, и без этого сброшенный или чужой слот
+## открывался с закрытым сюжетом и пройденным обучением.
+func reload_from_progress() -> void:
+	var g = get_node_or_null("/root/G")
+	for q in quests:
+		q["progress"] = 0
+		q["done"] = false
+		if g == null:
+			continue
+		if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
+			q["done"] = true
+			q["progress"] = q["goal"]
+	tracked_id = ""
+	changed.emit()
+	_auto_track()
+
 ## Квест по id — ПУБЛИЧНО. Нужен тем, кто квест не создаёт, а ВЕДЁТ: контракты (contracts.gd)
 ## переписывают один и тот же слот вместо того, чтобы плодить задания. Лезть за этим в
 ## приватный _find значит однажды переименовать его и молча сломать чужой код.

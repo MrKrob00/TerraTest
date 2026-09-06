@@ -1148,6 +1148,9 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	var game: Node = get_node_or_null("/root/G")
 	if game != null and game.has_method("take_pending_world"):
 		handoff = game.take_pending_world(seed_value, window_size)
+	# Памяти нет — берём кеш окна с диска: мир мог быть посчитан в меню в прошлый заход.
+	if handoff.is_empty() and game != null and game.has_method("read_world_window"):
+		handoff = game.read_world_window(seed_value, window_size)
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
