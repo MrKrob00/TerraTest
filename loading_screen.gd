@@ -302,6 +302,13 @@ func _process(delta: float) -> void:
 	# Что именно сейчас происходит. Генерация рельефа занимает секунд пятнадцать, и без
 	# подписи это выглядит зависанием — самая частая причина «игра сломалась» на загрузке.
 	var stage: String = ["LOADING ASSETS", "GENERATING TERRAIN", "READY"][_phase]
+	# НОВЫЙ МИР СЧИТАЕТСЯ, А НЕ ЧИТАЕТСЯ, и это надо сказать словами: в процедурном слоте земли
+	# на диске нет вовсе, стадия идёт в разы дольше обычной загрузки, и общая надпись про
+	# «generating terrain» не отличает одно от другого.
+	if _phase == 1:
+		var step := _gen_step()
+		if step != "":
+			stage = "BUILDING WORLD · " + step.to_upper()
 	_load.text = stage + ".".repeat(int(_t * 2.0) % 4 if _phase < 2 else 0)
 	_pct.text = "%d%%" % int(round((1.0 if _phase == 2 else _progress) * 100.0))
 	# Фон дышит тем же `gi`, что название и карточки, и знает, где надпись, — срезы кучнее
@@ -331,6 +338,14 @@ func _process(delta: float) -> void:
 	elif _phase == 1:
 		_wait += delta
 		_progress = 0.4 + clampf(_wait / 12.0, 0.0, 0.55)   # генерация террейна = остальное (по времени)
+		# ЖИВОЙ ПРОГРЕСС ОТМЕНЯЕТ ФОЛБЭК. Сорок секунд — это страховка от НЕПРИШЕДШЕГО сигнала, а
+		# процедурный мир честно считает землю с нуля и на телефоне может считать её дольше.
+		# Сняв себя посреди генерации, экран показал бы игроку недостроенный мир — ровно то, из-за
+		# чего новый слот выглядел как «карта не сгенерилась».
+		var live: float = _gen_frac()
+		if live >= 0.0:
+			_wait = 0.0
+			_progress = 0.4 + live * 0.55
 		if _wait > 40.0:
 			_finish()                                       # жёсткий фолбэк, если сигнала так и нет
 
@@ -365,10 +380,30 @@ func _find_terrain(n: Node) -> Node:
 			return deep
 	return null
 
+## Карта новой сцены. Держим ССЫЛКУ, а не только подписку на сигнал: пока идёт генерация, у неё
+## спрашивают стадию и долю — сигнал скажет лишь «готово», то есть уже поздно.
+var _map: Node = null
+
+## Что карта считает сейчас (пусто — не считает) и насколько продвинулась (−1 — не считает).
+## Спрашиваем через `get`, а не полем: у карты без этих свойств (чужая нода, старый аддон) `get`
+## вернёт `null`, и экран просто работает по-старому.
+func _gen_step() -> String:
+	if _map == null or not is_instance_valid(_map):
+		return ""
+	var v: Variant = _map.get("gen_step")
+	return String(v) if v is String else ""
+
+func _gen_frac() -> float:
+	if _gen_step() == "":
+		return -1.0
+	var v: Variant = _map.get("gen_frac")
+	return clampf(float(v), 0.0, 1.0) if v is float else -1.0
+
 # Подписываемся на готовность террейна в НОВОЙ игровой сцене (или уходим, если её нет/уже готова).
 func _hook_terrain() -> void:
 	var scn := get_tree().current_scene
 	var map: Node = _find_terrain(scn)              # рекурсивно: карта может лежать не первым уровнем
+	_map = map
 	if map != null and ("terrain_is_ready" in map):
 		if map.terrain_is_ready:
 			_finish()

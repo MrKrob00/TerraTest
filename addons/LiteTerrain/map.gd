@@ -1128,6 +1128,11 @@ func _center_window() -> void:
 @export var proc_canyon_width: float = 0.18
 @export_group("")
 
+## Что генератор делает ПРЯМО СЕЙЧАС и насколько продвинулся (0..1). Пустая подпись = мир не
+## считается: он либо уже посчитан, либо прочитан файлом. Спрашивает экран загрузки.
+var gen_step: String = ""
+var gen_frac: float = 0.0
+
 ## Поднять процедурный мир: собрать генератор, поставить окно вокруг точки и посчитать первую
 ## землю. Зовёт игра, когда слот процедурный; после этого файлы высот не читаются вовсе.
 func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
@@ -1150,7 +1155,19 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	d = window_size
 	_win_x = int(floor(around.x)) - int(w / 2)
 	_win_z = int(floor(around.z)) - int(d / 2)
+	# ХОД ГЕНЕРАЦИИ — НАРУЖУ, и это не отладка. В новом слоте земли на диске нет вовсе: она
+	# считается здесь и сейчас, и это единственная стадия загрузки, которая может идти минуту.
+	# Без живой доли экран загрузки не отличает её от чтения готового файла — и снимает себя
+	# по собственному аварийному таймеру ПОСРЕДИ работы, показывая недостроенный мир.
+	gen.on_progress = func(step: String, frac: float) -> void:
+		gen_step = step
+		gen_frac = frac
+	gen_step = "world"
+	gen_frac = 0.0
+	print("LiteTerrain: процедурный мир, сид %d, окно %d×%d от клетки (%d, %d)"
+			% [seed_value, w, d, _win_x, _win_z])
 	md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
+	gen_step = ""
 	if md.size() != w * d:
 		push_error("LiteTerrain: не хватило памяти на окно %d×%d — мир не поднят" % [w, d])
 		world_gen = null
