@@ -1,125 +1,113 @@
-extends Control
-## ГЛАВНОЕ МЕНЮ — первое, что видит игрок. Собрано КОДОМ, а не сценой, по той же причине, по
-## которой кодом собраны иконки HUD: тут нет ни одного «стоящего» элемента, всё строится ПО
-## ДАННЫМ — три слота, у каждого своя надпись и своё состояние. Нодовая сцена всё равно
-## наполнялась бы из кода, а править пришлось бы два места.
+extends Node3D
+## ГЛАВНОЕ МЕНЮ — первое, что видит игрок.
 ##
-## МЕНЮ ИДЁТ ДО ЗАГРУЗКИ МИРА, и это не косметика. Слот выбирается ЗДЕСЬ, а G.use_slot должен
+## МЕНЮ ИДЁТ ДО ЗАГРУЗКИ МИРА, и это не косметика. Слот выбирается ЗДЕСЬ, а `G.use_slot` должен
 ## отработать раньше, чем карта, машины и жилы начнут читать свои файлы: иначе первый кадр игры
 ## успевает прочитать чужой мир. Поэтому главная сцена проекта — меню, а игровая грузится тем же
-## стойким оверлеем, каким её грузил мини-бут (loading_boot.gd).
+## стойким оверлеем, каким её грузил мини-бут (`loading_boot.gd`).
 ##
-## ── РАСКЛАДКА: ФОН ЖИВОЙ, УПРАВЛЕНИЕ ВНИЗУ ───────────────────────────────────────────────
-## Задник — идущий сам по себе БОЙ МАШИН, и он занимает весь экран. Значит меню обязано не
-## закрывать его: панели прижаты к НИЗУ (там и палец на телефоне), а верх остаётся картинкой.
-## Никакой полупрозрачной простыни поверх всего: она гасит ровно то, ради чего задник и делался.
+## ── ПОЧЕМУ КОРЕНЬ — Node3D ───────────────────────────────────────────────────────────────
+## Задник теперь НАСТОЯЩАЯ 3D-СЦЕНА (`menu_stage_3d.gd`): те же блоки, из которых игрок собирает
+## машину. Значит, меню обязано быть трёхмерным узлом с камерой, а интерфейс живёт на
+## `CanvasLayer` поверх него. `SubViewport` не годится: это лишняя цель рендера на телефоне ради
+## картинки, которую и так рисуют в основной кадр.
 ##
-## Читаемость даёт не заливка, а ГРАДИЕНТ СНИЗУ — тёмная полоса под панелями, сходящая на нет к
-## середине экрана. Текст на ней читается на любом кадре боя, а небо и горы остаются чистыми.
+## ── РАСКЛАДКА: УГЛЫ, А НЕ ПРОСТЫНЯ ───────────────────────────────────────────────────────
+## Центр экрана отдан бою целиком. Управление — В ЛЕВОМ НИЖНЕМ УГЛУ (единственная зона, куда
+## уверенно достаёт большой палец), новости — в ПРАВОМ ВЕРХНЕМ (их читают глазами, а не
+## пальцем). Никакого затемнения поверх всего: читаемость даёт подложка самих панелей и обводка
+## заголовка, а не потушенная картинка — гасить задник значит отменить то, ради чего он сделан.
+##
+## Слоты появляются ТОЛЬКО ПОСЛЕ «PLAY». Первый экран должен отвечать на один вопрос — играть
+## или нет; выбор из трёх миров нужен вторым шагом и не должен встречать игрока сразу.
 const GAME_SCENE := "res://node_3d.tscn"
 const LOADING := preload("res://loading_screen.gd")
-const BATTLE := preload("res://menu_battle.gd")
+const STAGE := preload("res://menu_stage_3d.gd")
 
 # Палитра — та же тёмно-бирюзовая, что во всём интерфейсе (hud.gd, tech_ui.gd): меню обязано
 # выглядеть частью игры, а не отдельным приложением перед ней.
-const PANEL   := Color(0.055, 0.125, 0.141, 0.72)
+const PANEL   := Color(0.055, 0.125, 0.141, 0.78)
 const ACCENT  := Color(0.35, 0.85, 0.92)
 const TEXT    := Color(0.88, 0.97, 0.99)
-const DIM     := Color(0.55, 0.72, 0.76)
+const DIM     := Color(0.62, 0.78, 0.82)
 const DANGER  := Color(1.0, 0.45, 0.35)
 
-## Ширина колонки меню. Ограничена: на планшете растянутый на всю ширину список слотов читается
-## как таблица, а палец всё равно ходит по одной стороне экрана.
-const COL_W := 460.0
-## Сколько высоты экрана занимает тёмный градиент под панелями.
-const FADE_FRAC := 0.62
+## Ширина колонки слотов и панели новостей. Ограничена: на планшете растянутый на всю ширину
+## список читается как таблица, а палец всё равно ходит по одной стороне экрана.
+const COL_W := 420.0
+const NEWS_W := 360.0
 
-var _slots_box: VBoxContainer = null
+var _left: VBoxContainer = null          # колонка в левом нижнем углу
+var _settings: CenterContainer = null
+## Открыт ли выбор слота. Первый экран — PLAY / SETTINGS, второй — три мира.
+var _slots_open: bool = false
 ## Какой слот ждёт подтверждения перезаписи. −1 — никто не ждёт. Второй тап по той же кнопке
 ## подтверждает: отдельного модального окна тут не нужно, а спросить обязательно — «Новая игра»
 ## по занятому слоту стирает мир, и промах пальцем не должен этого делать.
 var _confirm_slot: int = -1
 
 func _ready() -> void:
-	set_anchors_preset(Control.PRESET_FULL_RECT)
-	_build_background()
-	_build_foreground()
+	add_child(STAGE.new())
+	_build_ui()
 
-# ── Задник ───────────────────────────────────────────────────────────────────
-func _build_background() -> void:
-	var battle := BATTLE.new()
-	battle.set_anchors_preset(Control.PRESET_FULL_RECT)
-	battle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(battle)
-	# Градиент снизу. Именно TextureRect с GradientTexture2D, а не ColorRect с альфой: сплошная
-	# заливка либо не даёт читаемости, либо съедает картинку целиком, а плавный переход делает
-	# и то и другое сразу.
-	var fade := TextureRect.new()
-	var g := Gradient.new()
-	g.set_color(0, Color(0.02, 0.05, 0.06, 0.0))
-	g.set_color(1, Color(0.02, 0.05, 0.06, 0.94))
-	var tex := GradientTexture2D.new()
-	tex.gradient = g
-	tex.fill_from = Vector2(0.5, 0.0)
-	tex.fill_to = Vector2(0.5, 1.0)
-	tex.width = 4
-	tex.height = 256
-	fade.texture = tex
-	fade.stretch_mode = TextureRect.STRETCH_SCALE
-	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	fade.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	fade.anchor_top = 1.0 - FADE_FRAC
-	fade.offset_top = 0.0
-	fade.offset_bottom = 0.0
-	add_child(fade)
+# ── Каркас интерфейса ────────────────────────────────────────────────────────
+func _build_ui() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
 
-# ── Передний план ────────────────────────────────────────────────────────────
-func _build_foreground() -> void:
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		margin.add_theme_constant_override(side, 20)
+		margin.add_theme_constant_override(side, 22)
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(margin)
+	layer.add_child(margin)
 
-	# Всё прижато вниз: верх экрана отдан бою. На телефоне это ещё и единственная зона, куда
-	# уверенно достаёт большой палец.
 	var col := VBoxContainer.new()
-	col.alignment = BoxContainer.ALIGNMENT_END
-	col.add_theme_constant_override("separation", 10)
 	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	margin.add_child(col)
 
-	col.add_child(_news_panel())
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 4)
-	col.add_child(spacer)
-	col.add_child(_title_row())
+	# Верх: заголовок слева, новости справа.
+	var top := HBoxContainer.new()
+	top.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(_title_box())
+	top.add_child(_spacer_h())
+	top.add_child(_news_panel())
+	col.add_child(top)
 
-	_slots_box = VBoxContainer.new()
-	_slots_box.add_theme_constant_override("separation", 6)
-	_slots_box.custom_minimum_size = Vector2(COL_W, 0)
-	_slots_box.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	col.add_child(_narrow(_slots_box))
-	_rebuild_slots()
-	col.add_child(_narrow(_footer()))
+	col.add_child(_spacer_v())
 
-## Обёртка, ограничивающая ширину колонки. Контейнер сам решает размер детей, поэтому ширину
-## задаём его собственным минимумом, а не позицией внутри (правило движка: детям контейнера
-## позицию не ставим).
-func _narrow(inner: Control) -> Control:
-	var h := HBoxContainer.new()
-	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	inner.custom_minimum_size = Vector2(COL_W, inner.custom_minimum_size.y)
-	inner.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	h.add_child(inner)
-	var pad := Control.new()
-	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	h.add_child(pad)
-	return h
+	# Низ: колонка управления слева.
+	var bottom := HBoxContainer.new()
+	bottom.size_flags_vertical = Control.SIZE_SHRINK_END
+	bottom.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_left = VBoxContainer.new()
+	_left.add_theme_constant_override("separation", 8)
+	_left.custom_minimum_size = Vector2(COL_W, 0)
+	_left.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bottom.add_child(_left)
+	bottom.add_child(_spacer_h())
+	col.add_child(bottom)
 
-func _title_row() -> Control:
+	_build_settings(layer)
+	_rebuild_left()
+
+func _spacer_h() -> Control:
+	var c := Control.new()
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+func _spacer_v() -> Control:
+	var c := Control.new()
+	c.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return c
+
+## Заголовок без подложки: читаемость даёт ОБВОДКА. Панель под ним закрыла бы кусок задника
+## ради двух слов, а тёмный контур работает и на небе, и на земле.
+func _title_box() -> Control:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", -4)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -127,11 +115,15 @@ func _title_row() -> Control:
 	t.text = "WORLDTECH"
 	t.add_theme_font_size_override("font_size", 40)
 	t.add_theme_color_override("font_color", TEXT)
+	t.add_theme_color_override("font_outline_color", Color(0.02, 0.05, 0.06, 0.85))
+	t.add_theme_constant_override("outline_size", 6)
 	box.add_child(t)
 	var sub := Label.new()
 	sub.text = "v%s" % str(ProjectSettings.get_setting("application/config/version", "dev"))
 	sub.add_theme_font_size_override("font_size", 12)
-	sub.add_theme_color_override("font_color", DIM * Color(1, 1, 1, 0.8))
+	sub.add_theme_color_override("font_color", TEXT * Color(1, 1, 1, 0.75))
+	sub.add_theme_color_override("font_outline_color", Color(0.02, 0.05, 0.06, 0.8))
+	sub.add_theme_constant_override("outline_size", 4)
 	box.add_child(sub)
 	return box
 
@@ -143,17 +135,18 @@ func _title_row() -> Control:
 ## Список ЖИВЁТ ЗДЕСЬ, а не тянется из сети: игра офлайновая, и запрос, которого некому
 ## ответить, — это только задержка на старте и экран с ошибкой.
 const NEWS := [
+	"Меню: настоящие машины на фоне, а не рисунок.",
 	"Три мира: слоты сохранения, у каждого свои жилы и укреплённые точки.",
-	"Взрыв и фитиль переведены на красную матрицу — частиц в игре больше нет ни одной.",
+	"Карта без края: земля считается вокруг игрока, а не читается из файла.",
 	"Скидки переехали из рынка в магазин: три блока со скидкой, пятнадцать минут.",
-	"Сюжетные блоки теперь отбирают у врага и выкапывают из жилы.",
 ]
 
 func _news_panel() -> Control:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
-	panel.custom_minimum_size = Vector2(COL_W, 0)
-	panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	panel.custom_minimum_size = Vector2(NEWS_W, 0)
+	panel.size_flags_horizontal = Control.SIZE_SHRINK_END
+	panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 2)
 	panel.add_child(box)
@@ -169,23 +162,48 @@ func _news_panel() -> Control:
 		l.add_theme_color_override("font_color", DIM)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(l)
-	return _narrow(panel)
+	return panel
 
-# ── Слоты ────────────────────────────────────────────────────────────────────
-## Три ряда. Пересобираются целиком после любого действия: рядов три, а состояний у них два —
-## дешевле построить заново, чем держать ссылки на восемь виджетов и обновлять их по одному.
-func _rebuild_slots() -> void:
-	for c in _slots_box.get_children():
+# ── Левая колонка: два состояния ─────────────────────────────────────────────
+## Пересобирается целиком: состояний два, а виджетов в них по три-четыре — дешевле построить
+## заново, чем держать ссылки и переключать видимость.
+func _rebuild_left() -> void:
+	for c in _left.get_children():
 		c.queue_free()
-	for i in G.SLOT_COUNT:
-		_slots_box.add_child(_slot_row(i))
+	if _slots_open:
+		_left.add_child(_slots_panel())
+		# Именованный метод, а не лямбда: однострочная лямбда кончается на переносе строки, и
+		# перенесённый хвост стал бы ЛИШНИМ АРГУМЕНТОМ вызова — синтаксис при этом верный.
+		_left.add_child(_button("BACK", DIM, _close_slots))
+		return
+	_left.add_child(_big_button("PLAY", func(): _slots_open = true; _rebuild_left()))
+	_left.add_child(_button("SETTINGS", DIM, func(): _settings.visible = true))
+	if OS.has_feature("pc"):
+		_left.add_child(_button("QUIT", DIM, func(): get_tree().quit()))
 
-func _slot_row(i: int) -> Control:
+func _close_slots() -> void:
+	_slots_open = false
+	_confirm_slot = -1
+	_rebuild_left()
+
+func _slots_panel() -> Control:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", _panel_style())
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	var head := Label.new()
+	head.text = "CHOOSE A WORLD"
+	head.add_theme_font_size_override("font_size", 11)
+	head.add_theme_color_override("font_color", ACCENT * Color(1, 1, 1, 0.9))
+	box.add_child(head)
+	for i in G.SLOT_COUNT:
+		box.add_child(_slot_row(i))
+	return panel
+
+func _slot_row(i: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
-	panel.add_child(row)
 
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -214,29 +232,87 @@ func _slot_row(i: int) -> Control:
 
 	var used: bool = G.slot_used(i)
 	if used:
-		row.add_child(_button("PLAY", ACCENT, _on_play.bind(i)))
+		# Слот, в котором играли последним, назван CONTINUE: у игрока с одним миром «продолжить»
+		# — самое частое действие, и отдельной кнопки для него не нужно.
+		var lbl: String = "CONTINUE" if i == G.last_slot() else "PLAY"
+		row.add_child(_button(lbl, ACCENT, _on_play.bind(i)))
 	# «Новая игра» на занятом слоте — это стирание мира, поэтому она спрашивает. Подтверждение
 	# живёт на самой кнопке (второй тап), а не в отдельном окне: окно поверх меню пришлось бы
 	# строить, гасить ввод под ним и закрывать — ради одного вопроса, который умещается в надпись.
 	var new_label: String = "ERASE?" if (used and _confirm_slot == i) else "NEW"
 	row.add_child(_button(new_label, DANGER if _confirm_slot == i else DIM, _on_new.bind(i)))
-	return panel
+	return row
 
-func _footer() -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	# ПРОДОЛЖИТЬ — самая частая кнопка, и она ведёт в последний слот, в котором играли: игрок,
-	# у которого мир один, не должен каждый раз выбирать его из трёх.
-	var last: int = G.last_slot()
-	if G.slot_used(last):
-		var b := _button("CONTINUE · SLOT %d" % (last + 1), ACCENT, _on_play.bind(last))
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(b)
-	if OS.has_feature("pc"):
-		row.add_child(_button("QUIT", DIM, func(): get_tree().quit()))
+# ── Настройки ────────────────────────────────────────────────────────────────
+## Те же три значения, что и в игре (`hud._build_settings_panel`), и хранятся они в тех же полях
+## `G` (settings.json): настройка обязана быть ОДНА, где бы её ни открыли. Здесь она нужна
+## отдельно потому, что до входа в мир HUD ещё не существует.
+func _build_settings(layer: CanvasLayer) -> void:
+	# Окно, собранное кодом, центрируется CenterContainer, а не якорями: минимальный размер
+	# панели меняется после того, как её набьют детьми, и пересчитывать смещения некому.
+	_settings = CenterContainer.new()
+	_settings.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_settings.visible = false
+	layer.add_child(_settings)
+
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _panel_style())
+	panel.custom_minimum_size = Vector2(380, 0)
+	_settings.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 12)
+	panel.add_child(box)
+	var head := Label.new()
+	head.text = "CAMERA SETTINGS"
+	head.add_theme_font_size_override("font_size", 16)
+	head.add_theme_color_override("font_color", ACCENT)
+	box.add_child(head)
+	box.add_child(_slider("Rotation sensitivity", G.cam_look_sens,
+			func(v: float): G.cam_look_sens = v; G.save_settings()))
+	box.add_child(_slider("Zoom sensitivity", G.cam_zoom_sens,
+			func(v: float): G.cam_zoom_sens = v; G.save_settings()))
+	var cb := CheckButton.new()
+	cb.text = "Invert vertical"
+	cb.button_pressed = G.cam_invert_y
+	cb.add_theme_color_override("font_color", TEXT)
+	cb.toggled.connect(func(on: bool): G.cam_invert_y = on; G.save_settings())
+	box.add_child(cb)
+	box.add_child(_button("CLOSE", DIM, func(): _settings.visible = false))
+
+func _slider(label: String, value: float, on_change: Callable) -> Control:
+	var row := VBoxContainer.new()
+	row.add_theme_constant_override("separation", 2)
+	var l := Label.new()
+	l.text = label
+	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_color_override("font_color", TEXT)
+	row.add_child(l)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	var s := HSlider.new()
+	s.min_value = 0.2
+	s.max_value = 3.0
+	s.step = 0.05
+	s.value = value
+	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.custom_minimum_size = Vector2(220, 32)
+	var val := Label.new()
+	val.text = "%.2f" % value
+	val.custom_minimum_size = Vector2(52, 0)
+	val.add_theme_color_override("font_color", ACCENT)
+	s.value_changed.connect(func(v: float): val.text = "%.2f" % v; on_change.call(v))
+	h.add_child(s)
+	h.add_child(val)
+	row.add_child(h)
 	return row
 
 # ── Виджеты ──────────────────────────────────────────────────────────────────
+func _big_button(text: String, cb: Callable) -> Button:
+	var b := _button(text, ACCENT, cb)
+	b.custom_minimum_size = Vector2(COL_W, 64)
+	b.add_theme_font_size_override("font_size", 22)
+	return b
+
 func _button(text: String, col: Color, cb: Callable) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -263,7 +339,7 @@ func _panel_style() -> StyleBoxFlat:
 
 func _btn_style(hot: bool) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
-	s.bg_color = ACCENT * Color(1, 1, 1, 0.26) if hot else Color(0, 0, 0, 0.35)
+	s.bg_color = ACCENT * Color(1, 1, 1, 0.26) if hot else Color(0.02, 0.05, 0.06, 0.72)
 	s.set_corner_radius_all(4)
 	s.set_content_margin_all(6)
 	s.border_color = ACCENT * Color(1, 1, 1, 0.45)
@@ -280,7 +356,7 @@ func _on_play(i: int) -> void:
 func _on_new(i: int) -> void:
 	if G.slot_used(i) and _confirm_slot != i:
 		_confirm_slot = i
-		_rebuild_slots()
+		_rebuild_left()
 		return
 	_confirm_slot = -1
 	G.new_game(i)
