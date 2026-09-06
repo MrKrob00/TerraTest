@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=9 format=3 uid="uid://cmenu0orca0001"]
 
 [ext_resource type="Script" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" path="res://menu_stage_3d.gd" id="2_stage"]
@@ -103,6 +103,7 @@ unique_name_in_owner = true
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="Root" type="MarginContainer" parent="UI"]
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -204,6 +205,7 @@ size_flags_horizontal = 3
 mouse_filter = 2
 
 [node name="Settings" type="CenterContainer" parent="UI"]
+layout_mode = 3
 unique_name_in_owner = true
 visible = false
 anchors_preset = 15
