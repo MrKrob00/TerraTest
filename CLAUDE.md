@@ -12,7 +12,8 @@ project: read it before claiming how anything works.
 3. **No comments in `project.godot`** — Godot rewrites the file and folds `#` into a key name,
    silently killing the setting.
 4. `node.get("field")` returns `null` when there is no such field, and `bool(null)` crashes. Write
-   `v.get("field") == true`.
+   `v.get("field") == true`. Same family: `get_meta(name, null)` still errors when the meta is
+   missing - the engine reads a null default as "no default given", so ask `has_meta` first.
 5. A field named like a native class member ("Member X redefined") stops the script from loading.
    Signals count as members.
 6. A single-line lambda ends at the newline; a wrapped continuation becomes an extra call argument
