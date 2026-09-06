@@ -2,27 +2,39 @@
 
 [ext_resource type="Script" uid="uid://wks43d8edlk4" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
+[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="3_4hy44"]
+[ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="4_ytr4m"]
 
-[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
-sky_top_color = Color(0.2, 0.42, 0.6, 1)
-sky_horizon_color = Color(0.68, 0.7, 0.64, 1)
-ground_bottom_color = Color(0.26, 0.24, 0.2, 1)
-ground_horizon_color = Color(0.55, 0.5, 0.4, 1)
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
+sky_top_color = Color(0.15, 0.3, 0.58, 1)
+sky_horizon_color = Color(0.65, 0.78, 0.9, 1)
+ground_bottom_color = Color(0.42, 0.44, 0.5, 1)
+ground_horizon_color = Color(0.6, 0.72, 0.84, 1)
+ground_curve = 0.1
+sun_angle_max = 12.0
+sun_curve = 0.08
+use_debanding = false
 
-[sub_resource type="Sky" id="Sky_res"]
-sky_material = SubResource("Sky_mat")
+[sub_resource type="Sky" id="Sky_2yde8"]
+sky_material = SubResource("ProceduralSkyMaterial_obt1j")
+process_mode = 2
 
-[sub_resource type="Environment" id="Env_res"]
+[sub_resource type="Environment" id="Environment_id0nj"]
 background_mode = 2
-sky = SubResource("Sky_res")
-ambient_light_source = 3
-ambient_light_energy = 0.28
-tonemap_mode = 3
-tonemap_exposure = 0.9
-fog_enabled = true
-fog_light_color = Color(0.62, 0.6, 0.52, 1)
-fog_density = 0.004
-fog_aerial_perspective = 0.3
+background_color = Color(0.21960784, 0.11372549, 0.5294118, 1)
+sky = SubResource("Sky_2yde8")
+sky_custom_fov = 80.0
+tonemap_agx_contrast = 1.7
+
+[sub_resource type="CameraAttributesPhysical" id="CameraAttributesPhysical_1q667"]
+exposure_aperture = 19.0
+exposure_shutter_speed = 100.485
+
+[sub_resource type="Resource" id="Resource_l48gv"]
+script = ExtResource("4_ytr4m")
+snow_line = 71.5
+snow_blend = 15.6
+mask_offset = Vector2(3469.2437, 2619.1934)
 
 [sub_resource type="StyleBoxFlat" id="Panel_style"]
 content_margin_left = 10.0
@@ -81,15 +93,17 @@ script = ExtResource("2_stage")
 
 [node name="Sun" type="DirectionalLight3D" parent="Stage" unique_id=385704076]
 unique_name_in_owner = true
-transform = Transform3D(-0.61566, -0.51983, 0.59245, 0, 0.75184, 0.65934, -0.78801, 0.40597, -0.46281, 0, 0, 0)
-light_color = Color(1, 0.96, 0.9, 1)
-light_energy = 0.85
+transform = Transform3D(0.45055002, -0.31362796, 0.835848, -0.11317725, 0.90864134, 0.4019477, -0.8855482, -0.2756966, 0.37389272, 25.946136, 20.018013, 3.1658702)
+light_energy = 1.645
 shadow_enabled = true
-directional_shadow_max_distance = 60.0
+directional_shadow_mode = 0
+directional_shadow_fade_start = 0.85
+directional_shadow_max_distance = 80.0
 
 [node name="MenuEnv" type="WorldEnvironment" parent="Stage" unique_id=1172585365]
 unique_name_in_owner = true
-environment = SubResource("Env_res")
+environment = SubResource("Environment_id0nj")
+camera_attributes = SubResource("CameraAttributesPhysical_1q667")
 
 [node name="MenuCamera" type="Camera3D" parent="Stage" unique_id=6332954]
 unique_name_in_owner = true
@@ -99,6 +113,12 @@ far = 600.0
 
 [node name="Machines" type="Node3D" parent="Stage" unique_id=664629790]
 unique_name_in_owner = true
+
+[node name="LiteTerrain" type="StaticBody3D" parent="Stage" unique_id=1897739102 node_paths=PackedStringArray("camera")]
+script = ExtResource("3_4hy44")
+camera = NodePath("../MenuCamera")
+biomes = SubResource("Resource_l48gv")
+metadata/_custom_type_script = "uid://ckpss4psgcjt4"
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1736074321]
 

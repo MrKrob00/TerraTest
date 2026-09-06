@@ -216,7 +216,7 @@ func _gen_drop_row() -> bool:
 # почти всё время, а пара smoothstep и умножений на его фоне теряется. Числа не на глаз, а
 # пересчитаны по коду самой строки (см. ссылки):
 const CV_NOISE_COST := 5.0     ## _cv_noise написан на GDScript и стоит примерно впятеро дороже
-                               ## нативного FastNoiseLite.get_noise_2d — отсюда множитель.
+							   ## нативного FastNoiseLite.get_noise_2d — отсюда множитель.
 ## _gen_fill_row: base + ridge + dune×2 = 4 нативных, meadow_mask + mountain_mask + mountain_dome
 ## = 3 вызова _cv_noise. 4 + 3×5 = 19.
 const COST_HEIGHTS := 19.0
