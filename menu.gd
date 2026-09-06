@@ -35,7 +35,9 @@ const DANGER  := Color(1.0, 0.45, 0.35)
 ## Ширина колонки слотов и панели новостей. Ограничена: на планшете растянутый на всю ширину
 ## список читается как таблица, а палец всё равно ходит по одной стороне экрана.
 const COL_W := 420.0
-const NEWS_W := 360.0
+const NEWS_W := 380.0
+## Какую долю высоты экрана занимает лента новостей. Больше — и она закрывает бой.
+const NEWS_H_FRAC := 0.42
 
 var _left: VBoxContainer = null          # колонка в левом нижнем углу
 var _settings: CenterContainer = null
@@ -128,17 +130,37 @@ func _title_box() -> Control:
 	return box
 
 # ── Новости ──────────────────────────────────────────────────────────────────
-## ЧТО НОВОГО — прямо в меню, одной строкой на пункт. Игрок, вернувшийся через неделю, иначе
-## узнаёт об изменениях только натыкаясь на них; а в бете это ещё и единственный способ сказать
-## тестерам, что именно смотреть.
+## ЧТО НОВОГО — ЛЕНТА ПО ДАТАМ, а не список мелочей. Правило одно: в неё попадает то, что
+## МЕНЯЕТ ИГРУ ДЛЯ ИГРОКА, — новая механика, новый противник, новое правило экономики. Мелкая
+## правка («переписали фон», «поправили отступ») в ленте не значит ничего: игрок пришёл узнать,
+## во что теперь играть, а не что делал разработчик.
 ##
-## Список ЖИВЁТ ЗДЕСЬ, а не тянется из сети: игра офлайновая, и запрос, которого некому
+## Дат несколько, и лента СКРОЛЛИТСЯ: вернувшийся через месяц должен увидеть не последнюю
+## строчку, а всё, что пропустил, — по выпускам, сверху вниз.
+##
+## Живёт список ЗДЕСЬ, а не тянется из сети: игра офлайновая, и запрос, которого некому
 ## ответить, — это только задержка на старте и экран с ошибкой.
 const NEWS := [
-	"Меню: настоящие машины на фоне, а не рисунок.",
-	"Три мира: слоты сохранения, у каждого свои жилы и укреплённые точки.",
-	"Карта без края: земля считается вокруг игрока, а не читается из файла.",
-	"Скидки переехали из рынка в магазин: три блока со скидкой, пятнадцать минут.",
+	{"date": "06.09.2026", "title": "МИР БЕЗ КРАЯ", "lines": [
+		"Земля больше не кончается: она СЧИТАЕТСЯ вокруг машины, а не читается из файла. Едешь в любую сторону — край не найдёшь.",
+		"Три слота сохранения. Первый — та самая карта, второй и третий поднимают свой мир из своего сида: свои жилы, свои форты.",
+		"На фоне этого меню дерутся настоящие машины из настоящих блоков — те же, что собираешь ты.",
+	]},
+	{"date": "23.08.2026", "title": "ОБОРОНА", "lines": [
+		"Укреплённые точки стоят НА КАРТЕ и не переезжают за спиной. Зачистил — навсегда, и сверху падают слитки металла этого биома.",
+		"Поворотные башни: корпус сам доворачивается к цели, стволы держат сектор. Вскрываются через энергию — сбей панели, и щит погаснет сам.",
+		"Рейды на базу: чем дороже постройка, тем короче пауза между налётами. Предупреждение приходит за двадцать секунд.",
+	]},
+	{"date": "07.08.2026", "title": "ПРОИЗВОДСТВО", "lines": [
+		"Скидки переехали из рынка в магазин: три блока дешевле на пятнадцать минут — там, где их и покупают.",
+		"Контракты Системы: привези металл к сроку, платят с наценкой. Срок тикает прямо в описании задания.",
+		"Собрать блок самому теперь ВЫГОДНЕЕ, чем продать материалы и купить его же. Иначе вся линия была чистым проигрышем.",
+	]},
+	{"date": "18.07.2026", "title": "БОЙ", "lines": [
+		"Машина разваливается ДО того, как её добьют: сбитые блоки падают в мир, а догоревший фитиль взрывается вместе с соседями.",
+		"Разброс у стволов угловой и растёт с дистанцией — очередь ложится по машине, а не в одну заклёпку.",
+		"От врага можно УЕХАТЬ: битый теряет интерес и уводит патруль прочь. Добиваешь — снова дерётся.",
+	]},
 ]
 
 func _news_panel() -> Control:
@@ -147,21 +169,49 @@ func _news_panel() -> Control:
 	panel.custom_minimum_size = Vector2(NEWS_W, 0)
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_END
 	panel.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 2)
-	panel.add_child(box)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 4)
+	panel.add_child(outer)
 	var head := Label.new()
-	head.text = "WHAT'S NEW"
+	head.text = "NEWS"
 	head.add_theme_font_size_override("font_size", 11)
 	head.add_theme_color_override("font_color", ACCENT * Color(1, 1, 1, 0.9))
-	box.add_child(head)
-	for line in NEWS:
-		var l := Label.new()
-		l.text = "· " + String(line)
-		l.add_theme_font_size_override("font_size", 12)
-		l.add_theme_color_override("font_color", DIM)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		box.add_child(l)
+	outer.add_child(head)
+
+	# Высота — ДОЛЯ ЭКРАНА, а не число: на телефоне лента высотой в полтысячи пикселей закрыла бы
+	# полкадра, ради которого задник и сделан.
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(NEWS_W,
+			get_viewport().get_visible_rect().size.y * NEWS_H_FRAC)
+	outer.add_child(scroll)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(box)
+
+	for rel in NEWS:
+		var head_row := HBoxContainer.new()
+		head_row.add_theme_constant_override("separation", 8)
+		var date := Label.new()
+		date.text = String(rel["date"])
+		date.add_theme_font_size_override("font_size", 11)
+		date.add_theme_color_override("font_color", DIM * Color(1, 1, 1, 0.75))
+		head_row.add_child(date)
+		var title := Label.new()
+		title.text = String(rel["title"])
+		title.add_theme_font_size_override("font_size", 13)
+		title.add_theme_color_override("font_color", ACCENT)
+		head_row.add_child(title)
+		box.add_child(head_row)
+		for line in rel["lines"]:
+			var l := Label.new()
+			l.text = "· " + String(line)
+			l.add_theme_font_size_override("font_size", 12)
+			l.add_theme_color_override("font_color", TEXT * Color(1, 1, 1, 0.86))
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			box.add_child(l)
 	return panel
 
 # ── Левая колонка: два состояния ─────────────────────────────────────────────
