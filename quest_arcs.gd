@@ -157,10 +157,12 @@ func _arc_power_1(q: Dictionary) -> void:
 	# только если цели действительно нет — сгорела, провалилась под рельеф, потерялась.
 	# Условие «пока у игрока этого блока нет» обязательно: иначе подобранный предмет тут же
 	# выдавался бы вторым.
+	# ОПОРУ СТАВИМ САМИ, панель кладём рядом. Стадия учит одному — «панель работает только на
+	# опоре и только под якорем»; выдав оба блока россыпью, мы вместо этого просили собрать
+	# конструкцию из двух незнакомых деталей, и панель уезжала на борт.
+	_mount_support()
 	if not _player_owns(G.Block.SOLAR):
 		_props.ensure("arc_power", G.Block.SOLAR)
-	if not _player_owns(G.Block.SUPPORT):
-		_props.ensure("arc_power", G.Block.SUPPORT)
 	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
 	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
 	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
@@ -172,6 +174,41 @@ func _arc_power_1(q: Dictionary) -> void:
 	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
+
+## Опора уже стоит на машине? Ставим её сами — один раз за стадию. Не влезла (все клетки заняты)
+## — падает в мир как раньше, иначе ветка встанет намертво.
+func _mount_support() -> void:
+	# _player_owns, а не только _has_block: опора может быть В РУКЕ или в инвентаре — игрок снял
+	# её, чтобы переставить, и второй подарок в этот момент выдал бы дубль.
+	if _has_block(G.Block.ROT_SUPPORT) or _player_owns(G.Block.SUPPORT):
+		return
+	if _mount_on_player(G.Block.SUPPORT, POWER_SUPPORT_CELL):
+		return
+	for d in POWER_REGEN_TRY:
+		if _mount_on_player(G.Block.SUPPORT, POWER_SUPPORT_CELL + d):
+			return
+	if not _player_owns(G.Block.SUPPORT):
+		_props.ensure("arc_power", G.Block.SUPPORT)
+
+## Поставить блок на машину игрока ТЕМ ЖЕ путём, что и постройка: карта + узел + ОБЕ подписки.
+## attach_block_signals делает spawn_block, connect_block_signals снимает коллизию — забыть
+## вторую значит оставить висеть коллизию блока (см. CLAUDE.md, «Блоки и карта»).
+func _mount_on_player(bt: int, cell: Vector3i) -> bool:
+	var p: Node3D = _player()
+	var bm = _player_blocks()
+	if p == null or bm == null or not bm.has_method("set_block"):
+		return false
+	if int(bm.get_block(cell.x, cell.y, cell.z)) != G.Block.EMPTY:
+		return false
+	if not bm.set_block(cell.x, cell.y, cell.z, bt, 0.0):
+		return false
+	bm.spawn_block(bt, cell.x, cell.y, cell.z)
+	var inst = bm.find_block(cell.x, cell.y, cell.z)
+	if inst != null and p.has_method("connect_block_signals"):
+		p.connect_block_signals(inst)
+	if p.has_method("_notify_build_changed"):
+		p._notify_build_changed()          # масса и связи сменились прямо сейчас
+	return true
 
 ## Карта блоков машины, которой игрок управляет, — то, на чём рисуется разметка.
 func _player_blocks():
