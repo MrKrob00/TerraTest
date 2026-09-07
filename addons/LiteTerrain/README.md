@@ -301,7 +301,9 @@ Under **Advanced** only what cannot be derived: `Plains power` (how flat the pla
 canyon shape — `Stratum`, `Riser`, `Gorge width`, `Channels`.
 
 **Natural preset** sets a consistent starting point and takes the feature size straight from the
-biome resource.
+biome resource. Its numbers live in `LiteTerrainGen.natural_params()`, not in the button: the game
+generates maps with the same preset (the menu backdrop does), and a second copy of them here would
+quietly become a different landscape.
 
 ### Passes that used to fight each other
 

@@ -165,6 +165,9 @@ project: read it before claiming how anything works.
 - A world can also be **procedural**: `md` is a window that follows the player, the generator
   computes only the new strip, and chunk meshes plus collision tiles are re-indexed. "World point →
   cell" lives in `_cell_ox`/`_cell_oz` only.
+- `window_margin` is clamped to `(window − step) / 2` per axis: a bigger one puts the point in the
+  opposite forbidden zone right after the shift, and the window ping-pongs every frame (a 256-cell
+  window with the exported 192 recomputed a strip forever).
 - Generation defaults live in `LiteTerrainGen.DEF_*`; the map's exports read from there so the menu
   and the window generator cannot diverge (a divergence is a visible seam).
 
@@ -225,12 +228,18 @@ project: read it before claiming how anything works.
 - Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
   (`Stage/LiteTerrain`, a baked 512-cell heightmap) so the menu opens on a world instead of on sky;
   it carries `follow_world_settings = false`, or G would hand it the save slot's procedural seed.
-  Every map after it is generated: a 256-cell procedural LiteTerrain map with streamed collision and
-  two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo machines
-  carry `demo = true` (no rewards, no quest progress, no retreat). A round runs 30 s and only THEN
-  starts generating the next map, with the fight continuing meanwhile; the reset happens when that
-  generation finishes. Never two generations at once - a side losing all weapons only starts one
-  early. Collision on a prepared map stays OFF until it is the visible one
+  Every map after it is generated: a 256-cell procedural LiteTerrain map on the dock's Natural
+  preset (`LiteTerrainGen.natural_params`, the single copy of those numbers) with streamed collision
+  and two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo
+  machines carry `demo = true` (no rewards, no quest progress, no retreat). A round runs 30 s and
+  only THEN starts generating the next map, with the fight continuing meanwhile; the reset happens
+  when that generation finishes, and never two generations at once. A death or a machine left
+  without weapons does NOT touch the map — it is replaced by another random build beside the
+  survivor (`_replace_fallen`, after `ARM_GRACE`, because a machine has no weapons in the frame it
+  is born). The reset REMOVES EVERYTHING FIRST and adds the new round a frame later, or machines
+  spawn onto collision that is about to vanish. A map being freed is taken off generation first
+  (`map.stop_generation`): its worker rows write into buffers that live in the node.
+  Collision on a prepared map stays OFF until it is the visible one
   (`map.set_collision_streaming`), or two heightfields fight over the same bodies. Camera height is
   measured FROM THE GROUND under its look point and kept clear of whatever is under the eye: a fixed
   altitude put it inside a hill, which reads as a white screen with stray polygons.

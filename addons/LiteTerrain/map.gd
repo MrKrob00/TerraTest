@@ -1232,6 +1232,16 @@ var world_gen: LiteTerrainGen = null
 ## Идёт ли подвижка прямо сейчас. Вторая поверх первой писала бы в тот же массив.
 var _win_busy: bool = false
 
+## СНЯТЬ КАРТУ С ГЕНЕРАЦИИ. Зовёт тот, кто собирается эту карту освободить (меню — при сбросе
+## боя): полоса окна считается в потоках, а буферы под неё живут в ноде генератора, и та уезжает
+## вместе с картой. Без остановки строки дописывают в уже уничтоженный массив.
+##
+## Окно после этого стоит на месте: генератора нет — считать новую полосу нечем.
+func stop_generation() -> void:
+	if world_gen != null and is_instance_valid(world_gen):
+		world_gen.stop()
+	world_gen = null
+
 ## Нужно ли двигать окно под эту мировую точку, и куда. Возвращает новое начало окна или
 ## текущее, если двигать не надо.
 func _window_target(local_pos: Vector3) -> Vector2i:
@@ -1245,13 +1255,21 @@ func _window_target(local_pos: Vector3) -> Vector2i:
 	# сделал бы недействительными все меши разом. Кратный шаг оставляет нарезку на месте.
 	var step_x: int = maxi(int(w / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE
 	var step_z: int = maxi(int(d / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE
-	if c.x < float(window_margin):
+	# ЗАПАС НЕ МОЖЕТ БЫТЬ БОЛЬШЕ ТОГО, ЧТО ОКНО СПОСОБНО ОТЪЕХАТЬ. После сдвига на шаг точка
+	# оказывается в `c ∓ step`, и если запас велик, она сразу попадает в ЗАПРЕТНУЮ ЗОНУ С ДРУГОЙ
+	# СТОРОНЫ — окно едет назад, потом снова вперёд, и так каждый кадр. На окне в 256 клеток с
+	# запасом 192 середина окна нарушает оба условия сразу: полоса пересчитывалась без остановки,
+	# а генерация, которую при этом успевали освободить (меню сбрасывает бой), писала в уже
+	# уничтоженные буферы. Условие «после сдвига точка внутри» даёт ровно (окно − шаг) / 2.
+	var m_x: int = mini(window_margin, maxi((w - step_x) / 2, 0))
+	var m_z: int = mini(window_margin, maxi((d - step_z) / 2, 0))
+	if c.x < float(m_x):
 		nx -= step_x
-	elif c.x > float(w - window_margin):
+	elif c.x > float(w - m_x):
 		nx += step_x
-	if c.y < float(window_margin):
+	if c.y < float(m_z):
 		nz -= step_z
-	elif c.y > float(d - window_margin):
+	elif c.y > float(d - m_z):
 		nz += step_z
 	return Vector2i(nx, nz)
 

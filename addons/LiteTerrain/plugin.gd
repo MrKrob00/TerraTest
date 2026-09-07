@@ -516,11 +516,14 @@ func _enter_tree() -> void:
 	preset.text = "Natural preset"
 	preset.tooltip_text = "Large masses and drivable slopes. Then press Generate Terrain."
 	preset.pressed.connect(func() -> void:
-		var b := _biomes()
-		gen_amplitude   = 130.0
-		gen_scale       = b.mountain_scale if b != null else 420.0
-		gen_power       = 2.8
-		gen_mountains01 = 0.65
+		# The numbers live in the GENERATOR (LiteTerrainGen.natural_params): the game generates its
+		# menu maps with the same preset, and a second copy here would quietly become another
+		# landscape.
+		var np := LiteTerrainGen.natural_params(_biomes())
+		gen_amplitude   = float(np["amplitude"])
+		gen_scale       = float(np["scale"])
+		gen_power       = float(np["power"])
+		gen_mountains01 = float(np["mountains"])
 		_save_settings()
 		# The handles are moved by hand: without this the slider shows the old number while the
 		# generation runs on the new one — a mismatch that takes longer to find than to fix.
