@@ -226,7 +226,8 @@ project: read it before claiming how anything works.
 - Switching between your machines is a button (`hud._swap_btn`), because the radial menu needs you
   parked next to the machine.
 - Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
-  (`Stage/LiteTerrain`, a baked 512-cell heightmap) so the menu opens on a world instead of on sky;
+  (`Stage/LiteTerrain`, a baked heightmap made with the plugin) so the menu opens on a world instead
+  of on sky;
   it carries `follow_world_settings = false`, or G would hand it the save slot's procedural seed.
   Every map after it is generated: a 256-cell procedural LiteTerrain map on the dock's Natural
   preset (`LiteTerrainGen.natural_params`, the single copy of those numbers) with streamed collision
