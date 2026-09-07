@@ -72,6 +72,27 @@ static func default_params() -> Dictionary:
 			"mountains": DEF_MOUNTAINS, "canyon": DEF_CANYON, "riser": DEF_CANYON_RISER,
 			"gorge": DEF_CANYON_GORGE, "width": DEF_CANYON_WIDTH}
 
+## THE DOCK'S "NATURAL PRESET" AS DATA. The button in the editor and the game both call this, so a
+## map generated at runtime is the same land the editor makes - two copies of these four numbers is
+## a visible difference in landscape, not a style question.
+##
+## Height and feature size are LINKED: 130 m of relief over 420 m masses is a slope a machine drives
+## up; the same height over 150 m features is a pincushion. `scale` comes from the biome
+## `mountain_scale` - terrain bigger than the masks puts the snow cap beside the mountain instead of
+## on it. Canyon knobs stay at their defaults: the preset is about the shape of the land.
+const NAT_AMPLITUDE := 130.0
+const NAT_POWER := 2.8
+const NAT_MOUNTAINS := 0.65
+
+static func natural_params(biomes: TerrainBiomes = null) -> Dictionary:
+	var b: TerrainBiomes = biomes if biomes != null else TerrainBiomes.new()
+	var p := default_params()
+	p["amplitude"] = NAT_AMPLITUDE
+	p["power"] = NAT_POWER
+	p["mountains"] = NAT_MOUNTAINS
+	p["scale"] = b.mountain_scale
+	return p
+
 ## Одна дверь для карты и меню. mountains → две производные, как в доке (plugin._mtn_amount).
 func apply_params(p: Dictionary) -> void:
 	gen_scale = float(p.get("scale", DEF_SCALE))
@@ -100,6 +121,11 @@ func _report(step: String, frac: float) -> void:
 ## миллисекунды, а прогон останавливается МЕЖДУ проходами и ничего не отдаёт.
 func stop() -> void:
 	_gen_cancel = true
+	# THE LENGTH GOES TO ZERO IN THE SAME BREATH. Stop is also how a caller that is ABOUT TO FREE the
+	# generator says so (map.stop_generation, when the menu resets its round), and a row that is
+	# already inside the pool would otherwise pass its bounds check and write into buffers that are
+	# being destroyed - "out of bounds set index" on an array that no longer exists.
+	_gen_len = 0
 
 func cancelled() -> bool:
 	return _gen_cancel
