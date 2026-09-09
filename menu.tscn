@@ -32,9 +32,9 @@ exposure_shutter_speed = 100.485
 
 [sub_resource type="Resource" id="Resource_l48gv"]
 script = ExtResource("4_ytr4m")
-snow_line = 71.5
-snow_blend = 15.6
-mask_offset = Vector2(3469.2437, 2619.1934)
+snow_line = 132.0
+snow_blend = 28.799999999999997
+mask_offset = Vector2(-1713.813, 503.81348)
 
 [sub_resource type="StyleBoxFlat" id="Panel_style"]
 content_margin_left = 10.0
@@ -116,9 +116,9 @@ unique_name_in_owner = true
 
 [node name="LiteTerrain" type="StaticBody3D" parent="Stage" unique_id=1897739102 node_paths=PackedStringArray("camera")]
 script = ExtResource("3_4hy44")
-follow_world_settings = false
 camera = NodePath("../MenuCamera")
 biomes = SubResource("Resource_l48gv")
+follow_world_settings = false
 metadata/_custom_type_script = "uid://ckpss4psgcjt4"
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1736074321]
