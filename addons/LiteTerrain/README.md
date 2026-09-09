@@ -103,6 +103,11 @@ Each optional layer has an **enable flag**. Turning one off zeroes its mask, so 
 leaves both the colour and the landform — a world with `canyon_enabled = false` has
 no canyons carved and no terracotta anywhere.
 
+The value noise the masks are built on lives in the same resource
+(`TerrainBiomes.cv_noise`, passed to the mask calls as `biomes.noise`). Callers used to
+carry their own copies of those eight lines — that is how a carved region and a painted
+region stopped being the same region once already.
+
 | Group | Settings |
 |---|---|
 | Desert / Meadow | `biome_scale`, `biome_bias`, `biome_blend`, `biome_contrast`, `color_sand`, `color_grass`, `dune_amp`, `dune_wavelength`, `desert_flatten` |

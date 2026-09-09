@@ -306,6 +306,10 @@ const SETTINGS_PATH := "user://settings.json"
 var cam_look_sens: float = 1.0     # чувствительность поворота камеры свайпом/мышью
 var cam_zoom_sens: float = 1.0     # чувствительность пинч-зума
 var cam_invert_y: bool = false     # инвертировать вертикаль (наклон взгляда)
+## Menu: run the real fight behind the menu, or leave the drawn backdrop alone. It costs a map, two
+## machines and their physics, so a weak phone (or someone who just finds it busy) can switch it off
+## - the menu itself works exactly the same either way.
+var menu_battles: bool = true
 # Куда игрок перетащил плавающие окна: имя окна -> [x, y]. Тоже конфиг, а не прогресс —
 # сброс сейва их не трогает, и окно, которое игрок один раз положил себе под руку, там и
 # остаётся. Пусто = окно ни разу не двигали, стоит на штатном месте из сцены.
@@ -333,6 +337,7 @@ func save_settings() -> void:
 			"cam_look_sens": cam_look_sens,
 			"cam_zoom_sens": cam_zoom_sens,
 			"cam_invert_y": cam_invert_y,
+			"menu_battles": menu_battles,
 			"ui_windows": ui_windows,
 		}))
 		f.close()
@@ -350,6 +355,7 @@ func _load_settings() -> void:
 	cam_look_sens = clampf(float(data.get("cam_look_sens", 1.0)), 0.2, 3.0)
 	cam_zoom_sens = clampf(float(data.get("cam_zoom_sens", 1.0)), 0.2, 3.0)
 	cam_invert_y = bool(data.get("cam_invert_y", false))
+	menu_battles = data.get("menu_battles", true) == true
 	var w = data.get("ui_windows", {})
 	if w is Dictionary:
 		ui_windows = w
