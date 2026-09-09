@@ -252,6 +252,11 @@ project: read it before claiming how anything works.
   once). Its look is a survey chart of the same value noise the terrain is built from — deliberately
   not `loading_screen.gd`'s glitch language. A canvas shader must end with `COLOR.a`, not `1.0`, or
   it throws away the modulate the fade is made of.
+- A generated menu map takes its HEIGHT from the map authored in the scene, not from the preset:
+  `LiteTerrainGen.amplitude_of` reads it back from that map's snow line (the one number the
+  generator writes into the biome resource in proportion to Height). The dock's settings live in
+  editor metadata and do not ship, so this is the only record of what the editor built with — and a
+  menu baked at 240 next to rounds generated at the preset's 130 is visibly two landscapes.
 - A generated menu map AUDITIONS seeds (`_score_seed`): biome masks only, no heights. A 256 m window
   dropped at random lands inside one region, and canyon on the fringe or over desert carves
   scratches a couple of metres deep — the preset was never the problem. Scoring wants canyon over
