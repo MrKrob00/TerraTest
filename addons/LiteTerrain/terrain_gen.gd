@@ -84,6 +84,24 @@ const NAT_AMPLITUDE := 130.0
 const NAT_POWER := 2.8
 const NAT_MOUNTAINS := 0.65
 
+## Snow starts at this share of the map height, and softens over that one. They are named because a
+## finished map is READ BACK through them (see amplitude_of): the snow line is the only number the
+## generator writes into the biome resource in proportion to Height.
+const SNOW_FRAC := 0.55
+const SNOW_BLEND_FRAC := 0.12
+
+## THE HEIGHT A FINISHED MAP WAS GENERATED WITH, recovered from its biomes. Nothing else records it:
+## the heights are a flat array of metres, and the dock's own settings live in the editor's project
+## metadata, which does not ship with the game. The snow line does ship, inside the resource saved
+## next to the map - so a map authored in the editor can still say what Height built it, and the
+## game can generate more land that matches instead of land that is merely similar.
+##
+## 0 when the resource cannot say (no line, or a hand-set one from before this existed).
+static func amplitude_of(biomes: TerrainBiomes) -> float:
+	if biomes == null or biomes.snow_line <= 0.0:
+		return 0.0
+	return biomes.snow_line / SNOW_FRAC
+
 static func natural_params(biomes: TerrainBiomes = null) -> Dictionary:
 	var b: TerrainBiomes = biomes if biomes != null else TerrainBiomes.new()
 	var p := default_params()
@@ -589,8 +607,8 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	_gen_floor = gen_amplitude * 0.06
 	# The snow line lives in the RESOURCE: the shader reads it, not the generator, and there is
 	# nowhere to keep it "for this generation" — the map is painted by the game later.
-	_gen_biomes.snow_line = gen_amplitude * 0.55
-	_gen_biomes.snow_blend = maxf(gen_amplitude * 0.12, 8.0)
+	_gen_biomes.snow_line = gen_amplitude * SNOW_FRAC
+	_gen_biomes.snow_blend = maxf(gen_amplitude * SNOW_BLEND_FRAC, 8.0)
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise

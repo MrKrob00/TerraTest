@@ -189,6 +189,14 @@ func _make_map(report: bool = false) -> Node3D:
 	# own world; the menu wants the land the dock's "Natural preset" makes - big masses, drivable
 	# slopes - and the numbers for it live in the generator, not here.
 	var np := LiteTerrainGen.natural_params(b)
+	# HEIGHT COMES FROM THE MAP IN THE SCENE, not from the preset, whenever that map can say what it
+	# was built with (LiteTerrainGen.amplitude_of reads it back from the snow line). The preset is a
+	# starting point someone then moves: bake the menu map at Height 240 and generate the rounds at
+	# the preset's 130, and the generated ones are visibly flatter - canyons half as deep, mountains
+	# half as tall - next to the one the editor made. Everything else stays the preset.
+	var authored: float = LiteTerrainGen.amplitude_of(_biomes)
+	if authored > 0.0:
+		np["amplitude"] = authored
 	m.proc_scale = float(np["scale"])
 	m.proc_power = float(np["power"])
 	m.proc_amplitude = float(np["amplitude"])
