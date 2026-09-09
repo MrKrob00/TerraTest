@@ -161,6 +161,14 @@ project: read it before claiming how anything works.
   zero at chunk edges, as a function of world position and biome.
 - Layers must not eat each other: metre values derive from `Height`, and dampening a layer by a mask
   makes a step exactly as tall as what it removes — the canyon cuts finished ground instead.
+- The generator NEVER writes into the biome resource except `mask_offset`. The resource is an input;
+  metres that depend on Height (the snow line) are held there as a SHARE and multiplied by
+  `map.world_height()` when the materials are built. A generation pass that edits an authored field
+  is a slider that moves back, a scene diff per run, and a value that is right for one map only.
+- The Height a map was built with is recorded on the terrain node (`map.built_amplitude`, written by
+  the dock) — the heights on disk are bare metres and the dock's settings live in editor metadata,
+  which does not ship. Procedural worlds know it from their own params; anything else falls back to
+  the map's own peak over `PEAK_OVER_HEIGHT`.
 - Heights are read in a strict order: `user://terrain_height.bin` → `res://terrain_height.bin` →
   `res://terrain_height.res`.
 - A world can also be **procedural**: `md` is a window that follows the player, the generator
@@ -252,11 +260,9 @@ project: read it before claiming how anything works.
   once). Its look is a survey chart of the same value noise the terrain is built from — deliberately
   not `loading_screen.gd`'s glitch language. A canvas shader must end with `COLOR.a`, not `1.0`, or
   it throws away the modulate the fade is made of.
-- A generated menu map takes its HEIGHT from the map authored in the scene, not from the preset:
-  `LiteTerrainGen.amplitude_of` reads it back from that map's snow line (the one number the
-  generator writes into the biome resource in proportion to Height). The dock's settings live in
-  editor metadata and do not ship, so this is the only record of what the editor built with — and a
-  menu baked at 240 next to rounds generated at the preset's 130 is visibly two landscapes.
+- A generated menu map takes its HEIGHT from the map authored in the scene (`map.world_height`), not
+  from the preset: a menu baked at 240 next to rounds generated at the preset's 130 is visibly two
+  landscapes.
 - A generated menu map AUDITIONS seeds (`_score_seed`): biome masks only, no heights. A 256 m window
   dropped at random lands inside one region, and canyon on the fringe or over desert carves
   scratches a couple of metres deep — the preset was never the problem. Scoring wants canyon over

@@ -71,6 +71,63 @@ const OCCLUSION_STRIDE: float = 6.0
 ## read it. Leave it empty and the node makes a default set; save it as a .tres to edit.
 @export var biomes: TerrainBiomes = null : set = _set_biomes
 
+## THE HEIGHT THIS GROUND WAS GENERATED WITH (the dock's Height slider, in metres). The dock writes
+## it here after every generation, so it is saved in the scene next to the map it describes.
+##
+## It is needed because heights on disk are bare metres and say nothing about the run that made
+## them, while everything the generator measures in metres is a SHARE of this number - the mountain
+## rise, the canyon floor, the dunes, the snow line. Without the record, the only thing that knew
+## the Height was the dock's own settings, and those live in the editor's project metadata, which
+## does not ship with the game.
+##
+## 0 = nobody recorded it (a hand-sculpted map, or one baked before this field existed); then it is
+## worked back from the tallest ground on the map.
+@export var built_amplitude: float = 0.0
+
+## A generated map's tallest point lands at roughly this multiple of Height: the continental noise
+## reaches about 0.85 of it and the mountain rise adds 0.75 on top, but the two rarely peak in the
+## same cell. Only ever used for a map with no `built_amplitude`.
+const PEAK_OVER_HEIGHT := 1.6
+## Sampling step for that guess. A full sweep of a 2048² window is four million reads in GDScript
+## for one number; the ground is smooth over hundreds of metres, so every eighth cell is plenty.
+const HEIGHT_SCAN_STEP := 8
+
+var _world_height: float = 0.0
+
+## What the biome resource's metre-shares are measured against. Procedural worlds know it exactly -
+## it is the parameter the generator ran with; a baked map has `built_amplitude`; anything else is
+## guessed from its own peak, which still beats painting snow by a number from another world.
+func world_height() -> float:
+	if _world_height > 0.0:
+		return _world_height
+	if built_amplitude > 0.0:
+		_world_height = built_amplitude
+		return _world_height
+	# Guessed - and NOT remembered while there is nothing to measure. This is asked as early as the
+	# scene setting `biomes`, before a single height has been read, and a guess cached from an empty
+	# array would stay the answer for the rest of the session.
+	var peak: float = _sparse_peak()
+	if peak <= 0.0:
+		return LiteTerrainGen.DEF_AMPLITUDE
+	_world_height = peak / PEAK_OVER_HEIGHT
+	return _world_height
+
+func _sparse_peak() -> float:
+	if md.is_empty() or w <= 0 or d <= 0:
+		return 0.0
+	var m: float = -INF
+	var z: int = 0
+	while z < d:
+		var row: int = z * w
+		var x: int = 0
+		while x < w:
+			var h: float = md[row + x]
+			if h > m:
+				m = h
+			x += HEIGHT_SCAN_STEP
+		z += HEIGHT_SCAN_STEP
+	return maxf(m, 0.0)
+
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
 	_push_biomes_to_materials()
@@ -84,10 +141,15 @@ func _biomes() -> TerrainBiomes:
 func _push_biomes_to_materials() -> void:
 	if biomes == null:
 		return
+	# Nothing to push to yet (the scene assigns `biomes` long before the terrain is built): leaving
+	# now also keeps world_height from being asked while there is no map to measure.
+	if not (_mat_lod0 is ShaderMaterial) and not (_mat_lod_high is ShaderMaterial):
+		return
+	var h: float = world_height()
 	if _mat_lod0 is ShaderMaterial:
-		biomes.apply_to_material(_mat_lod0 as ShaderMaterial)
+		biomes.apply_to_material(_mat_lod0 as ShaderMaterial, h)
 	if _mat_lod_high is ShaderMaterial:
-		biomes.apply_to_material(_mat_lod_high as ShaderMaterial)
+		biomes.apply_to_material(_mat_lod_high as ShaderMaterial, h)
 
 # ── LOD settings ─────────────────────────────────────────────────────────────
 # Toggle LOD on/off without changing distances
@@ -1183,6 +1245,10 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	add_child(gen)
 	gen.gen_seed = seed_value
 	gen.apply_params(handoff.get("params", _proc_params()))
+	# A PROCEDURAL WORLD KNOWS ITS OWN HEIGHT: it is the parameter the run uses, whether it came from
+	# the exports or with the world handed over by the menu. Recording it here is what lets the snow
+	# line be right in a slot whose ground was computed somewhere else entirely.
+	_world_height = gen.gen_amplitude
 	world_gen = gen
 	w = window_size
 	d = window_size

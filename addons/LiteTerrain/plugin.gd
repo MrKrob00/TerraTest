@@ -1358,6 +1358,15 @@ func _generate_noise() -> void:
 		_progress_close()
 		return
 
+	# THE NODE RECORDS WHAT BUILT IT. The heights on disk are bare metres and say nothing about the
+	# Height they came from, and these settings live in the editor's project metadata, which does not
+	# ship with the game. So the one number every metre value in the generator is a share of gets
+	# written onto the terrain node, into the scene, next to the map it belongs to. The game reads it
+	# to place the snow line and to generate more land that matches (see map.world_height).
+	sculpt_node.set("built_amplitude", gen_amplitude)
+	if EditorInterface.has_method("mark_scene_as_unsaved"):
+		EditorInterface.mark_scene_as_unsaved()
+
 	if image_mode:
 		# THE LAST STAGE IS THE LONGEST ONE, and it used to be a single blocking call with the bar
 		# frozen at 96 %: setting the heights rebuilt the whole editor preview inside

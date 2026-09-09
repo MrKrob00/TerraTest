@@ -24,8 +24,6 @@ glow_enabled = true
 
 [sub_resource type="Resource" id="Resource_cf20j"]
 script = ExtResource("2_okcvv")
-snow_line = 71.5
-snow_blend = 15.6
 mask_offset = Vector2(3469.2437, 2619.1934)
 
 [node name="LiteTerrain test" type="Node3D" unique_id=366729401]

@@ -113,7 +113,7 @@ region stopped being the same region once already.
 | Desert / Meadow | `biome_scale`, `biome_bias`, `biome_blend`, `biome_contrast`, `color_sand`, `color_grass`, `dune_amp`, `dune_wavelength`, `desert_flatten` |
 | Canyon | `canyon_enabled`, `canyon_scale`, `canyon_threshold`, `canyon_edge`, `color_canyon`, `canyon_band_height`, `canyon_butte_scale` |
 | Mountains | `mountain_enabled`, `mountain_scale`, `mountain_threshold`, `mountain_edge`, `mountain_rise` |
-| Snow / rock | `color_snow`, `color_rock`, `rock_threshold`, `rock_blend` |
+| Snow / rock | `color_snow`, `snow_frac`, `snow_blend_frac`, `color_rock`, `rock_threshold`, `rock_blend` |
 | Grass | `grass_density`, `grass_height`, `sand_grass`, `grass_shade` |
 
 Notes:
@@ -331,10 +331,19 @@ rewrites what the previous produced:
   0.06, snow line 0.55, dunes 0.05). Moving one slider used to break the other half of the
   settings without showing it.
 
-Snow is painted where the mountain **mask** overlaps ground above `snow_line` (soft over
-`snow_blend`). The mask alone says only *where the mountain region is*, not how high the ground
-got there — painting by it put white patches on flat ground and the colour stopped matching the
+Snow is painted where the mountain **mask** overlaps ground above the snow line (soft over the
+blend). The mask alone says only *where the mountain region is*, not how high the ground got
+there — painting by it put white patches on flat ground and the colour stopped matching the
 landform.
+
+The line is held in the biomes as a **share of Height** (`snow_frac`, `snow_blend_frac`) and turned
+into metres by `map.gd` when it fills the material (`TerrainBiomes.snow_line_at`). It used to be
+metres in the resource, written there by the generator on every run: an output stored in an input,
+so the field could not be edited (the next run overwrote it), every generate produced a diff in
+whatever scene held the resource, and any world that did not run the generator at load — a baked
+map, or a procedural slot whose ground was computed elsewhere — got painted by a line belonging to
+some other map. The Height itself is recorded on the terrain node as `built_amplitude`, written by
+the dock after a generate.
 
 All heavy passes run across the WorkerThreadPool, one row per task, and a progress window
 reports which pass is running, how far it got and **how long is left** — a full generate is tens

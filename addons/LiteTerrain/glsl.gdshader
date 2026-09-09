@@ -27,6 +27,10 @@ uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
 // white patches on flat ground inside that region — the colour and the landform disagreed, and
 // the map read as broken. snow_line is the world height where snow starts, snow_blend the
 // softness of that edge.
+//
+// BOTH ARE METRES AND BOTH ARE COMPUTED, not authored: the biome resource holds them as a share of
+// the world's Height and map.gd multiplies (TerrainBiomes.snow_line_at). Metres set by hand only
+// ever match the one map they were set for.
 uniform float snow_line  : hint_range(-100.0, 400.0) = 60.0;
 uniform float snow_blend : hint_range(1.0, 120.0)    = 25.0;
 uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // cold grey (contrasts with canyon rock)

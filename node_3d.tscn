@@ -172,8 +172,6 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="Resource" id="Resource_s0gvp"]
 script = ExtResource("12_lggff")
-snow_line = 71.5
-snow_blend = 15.6
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
@@ -562,6 +560,7 @@ script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 occlusion_min_dist = 80.0
 occlusion_samples = 14
+built_amplitude = 130.0
 biomes = SubResource("Resource_s0gvp")
 flat_lod_error = 0.003
 triangle_size = 1
