@@ -34,8 +34,6 @@ exposure_shutter_speed = 100.485
 
 [sub_resource type="Resource" id="Resource_l48gv"]
 script = ExtResource("4_ytr4m")
-snow_line = 132.0
-snow_blend = 28.799999999999997
 mask_offset = Vector2(-1713.813, 503.81348)
 
 [sub_resource type="ShaderMaterial" id="Chart_mat"]
@@ -121,6 +119,7 @@ unique_name_in_owner = true
 
 [node name="LiteTerrain" type="StaticBody3D" parent="Stage" unique_id=1897739102 node_paths=PackedStringArray("camera")]
 script = ExtResource("3_4hy44")
+built_amplitude = 240.0
 camera = NodePath("../MenuCamera")
 biomes = SubResource("Resource_l48gv")
 follow_world_settings = false

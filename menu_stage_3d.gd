@@ -100,13 +100,16 @@ var _swapping: bool = false
 var _off: bool = false
 ## Biomes for generated maps: the authored map's, so the regions the menu generates are the regions
 ## the map in the scene was made with. Duplicated per map - the generator writes the seed's mask
-## offset and the snow line into it.
+## offset into it.
 var _biomes: TerrainBiomes = null
+## The map authored in the scene, kept for what it can tell about the world it was baked from: its
+## biomes and the Height it was generated with.
+var _scene_map: Node3D = null
 
 func _ready() -> void:
 	_rng.randomize()
-	var scene_map := get_node_or_null("LiteTerrain")
-	var bio: Variant = scene_map.get("biomes") if scene_map != null else null
+	_scene_map = get_node_or_null("LiteTerrain") as Node3D
+	var bio: Variant = _scene_map.get("biomes") if _scene_map != null else null
 	if bio is TerrainBiomes:
 		_biomes = bio
 	set_process(true)       # the camera works while the first map is still being generated
@@ -174,8 +177,7 @@ func _open_round() -> void:
 func _make_map(report: bool = false) -> Node3D:
 	# The biomes are the AUTHORED map's, copied: the regions, their scales and the terrace height all
 	# live in that resource, and a fresh default one would generate a different country under the
-	# same preset. The copy is per map because the generator writes the seed's mask offset and the
-	# snow line into it.
+	# same preset. The copy is per map because the generator writes the seed's mask offset into it.
 	var b: TerrainBiomes = (_biomes.duplicate() as TerrainBiomes) if _biomes != null \
 			else TerrainBiomes.new()
 	var m := StaticBody3D.new()
@@ -189,14 +191,15 @@ func _make_map(report: bool = false) -> Node3D:
 	# own world; the menu wants the land the dock's "Natural preset" makes - big masses, drivable
 	# slopes - and the numbers for it live in the generator, not here.
 	var np := LiteTerrainGen.natural_params(b)
-	# HEIGHT COMES FROM THE MAP IN THE SCENE, not from the preset, whenever that map can say what it
-	# was built with (LiteTerrainGen.amplitude_of reads it back from the snow line). The preset is a
-	# starting point someone then moves: bake the menu map at Height 240 and generate the rounds at
-	# the preset's 130, and the generated ones are visibly flatter - canyons half as deep, mountains
-	# half as tall - next to the one the editor made. Everything else stays the preset.
-	var authored: float = LiteTerrainGen.amplitude_of(_biomes)
-	if authored > 0.0:
-		np["amplitude"] = authored
+	# HEIGHT COMES FROM THE MAP IN THE SCENE, not from the preset. The preset is a starting point
+	# someone then moves: bake the menu map at Height 240 and generate the rounds at the preset's
+	# 130, and the generated ones stand next to it visibly flatter - canyons half as deep, mountains
+	# half as tall. The authored map records what built it (map.built_amplitude, written by the
+	# dock); everything else stays the preset.
+	if is_instance_valid(_scene_map) and _scene_map.has_method("world_height"):
+		var authored: float = float(_scene_map.world_height())
+		if authored > 0.0:
+			np["amplitude"] = authored
 	m.proc_scale = float(np["scale"])
 	m.proc_power = float(np["power"])
 	m.proc_amplitude = float(np["amplitude"])

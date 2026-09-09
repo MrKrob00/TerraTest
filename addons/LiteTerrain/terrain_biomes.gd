@@ -62,11 +62,30 @@ extends Resource
 # Snow follows the MOUNTAIN biome rather than altitude: the colour comes from its mask.
 @export_group("Snow / rock")
 @export var color_snow: Color = Color(0.94, 0.96, 1.00)
-## FROM WHAT HEIGHT SNOW LIES (world units) and how soft that line is. The mountain mask says
-## WHERE the mountain region is, but says nothing about how far the ground actually rose there:
-## snow painted from the mask alone landed as white patches on flat ground inside the region.
-@export_range(-100.0, 400.0, 1.0) var snow_line: float = 60.0
-@export_range(1.0, 120.0, 1.0) var snow_blend: float = 25.0
+## FROM WHAT HEIGHT SNOW LIES, as a SHARE OF THE WORLD'S HEIGHT, and how soft that line is. The
+## mountain mask says WHERE the mountain region is, but says nothing about how far the ground
+## actually rose there: snow painted from the mask alone landed as white patches on flat ground
+## inside the region.
+##
+## A SHARE, not metres, and this is the whole point of these two fields. Metres held here meant a
+## number that only made sense next to the Height that produced it - and that Height is not in this
+## resource. So the generator "helpfully" overwrote the metres on every run: a slider you could drag
+## that moved back, an output stored in an input, a scene diff after every Generate, and a value
+## that reached the shader once and was wrong ever after for any world that did not run the
+## generator at load (see map._push_biomes_to_materials, which now does the arithmetic).
+@export_range(0.0, 1.5, 0.01) var snow_frac: float = 0.55
+@export_range(0.01, 0.6, 0.01) var snow_blend_frac: float = 0.12
+## The softest the snow line may be, in metres. On a low world the fraction alone gives a line so
+## sharp it reads as a cut-out.
+const SNOW_BLEND_MIN := 8.0
+
+## The two in metres, for a world of this Height. One door: the shader, the props and anything else
+## asking "where does snow start" go through here.
+func snow_line_at(world_height: float) -> float:
+	return world_height * snow_frac
+
+func snow_blend_at(world_height: float) -> float:
+	return maxf(world_height * snow_blend_frac, SNOW_BLEND_MIN)
 @export var color_rock: Color = Color(0.40, 0.41, 0.43)
 ## How steep a slope has to be before the surface turns to rock.
 @export_range(0.0, 1.0, 0.01) var rock_threshold: float = 0.7
@@ -165,7 +184,11 @@ func mountain_dome(wp: Vector2, noise: Callable) -> float:
 ## scales do not go here: the CPU (map.gd) computes the biome masks and bakes them into the
 ## vertex COLOR, and the shader only reads those — which is why a disabled biome disappears
 ## on its own, with no flag in the shader.
-func apply_to_material(mat: ShaderMaterial) -> void:
+##
+## `world_height` is the Height the ground was generated with; the snow line is worked out from it
+## here, because the shader compares against a world Y and needs metres. The caller knows the
+## Height (map.world_height), this resource does not and must not guess.
+func apply_to_material(mat: ShaderMaterial, world_height: float) -> void:
 	if mat == null:
 		return
 	mat.set_shader_parameter("color_sand", color_sand)
@@ -173,8 +196,8 @@ func apply_to_material(mat: ShaderMaterial) -> void:
 	mat.set_shader_parameter("color_canyon", color_canyon)
 	mat.set_shader_parameter("canyon_band_h", canyon_band_height)
 	mat.set_shader_parameter("color_snow", color_snow)
-	mat.set_shader_parameter("snow_line", snow_line)
-	mat.set_shader_parameter("snow_blend", snow_blend)
+	mat.set_shader_parameter("snow_line", snow_line_at(world_height))
+	mat.set_shader_parameter("snow_blend", snow_blend_at(world_height))
 	mat.set_shader_parameter("color_rock", color_rock)
 	mat.set_shader_parameter("rock_threshold", rock_threshold)
 	mat.set_shader_parameter("rock_blend", rock_blend)

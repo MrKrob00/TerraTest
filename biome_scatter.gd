@@ -25,21 +25,15 @@ const SNOW := 4
 @export var max_visible: int = 260           # потолок одновременно отрисованных
 @export var cull_interval: float = 0.3
 
-## Параметры БИОМА — держать синхронно с материалом террейна (glsl.gdshader → group Biomes/Terrain).
-@export_group("Биом (синхронно с шейдером)")
-@export var height_grass_start: float = 20.0
-@export var height_snow_start: float = 70.0
-@export var zone_blend: float = 5.0
-@export var biome_scale: float = 230.0
-@export var biome_blend: float = 0.07
-@export var biome_grass_bias: float = 0.5
-@export var biome_contrast: float = 1.8
-@export var canyon_scale: float = 250.0
-@export var canyon_threshold: float = 0.70
-@export var canyon_edge: float = 0.05
-@export var mtn_scale: float = 420.0
-@export var mtn_threshold: float = 0.72
-@export var mtn_edge: float = 0.05
+## БИОМ СПРАШИВАЕТСЯ У КАРТЫ, а не считается здесь по своим числам. Раньше в этом файле лежала
+## копия всех порогов и масштабов масок («держать синхронно с материалом»), и синхронной она,
+## разумеется, не была: в копии не было `mask_offset` — сдвига, которым сид двигает ВСЮ географию.
+## То есть пропы расставлялись по НЕсдвинутым биомам, а земля красилась и резалась по сдвинутым:
+## камни пустыни стояли на лугу тем чаще, чем дальше сид уводил маску.
+##
+## Заодно ушли три мёртвых экспорта (height_grass_start, height_snow_start, zone_blend): биом уже
+## давно определяется регионом, а не высотой, и их никто не читал со времён того перехода.
+var _bio: TerrainBiomes = null
 
 var _data: Array = []                        # [{pos, scene, scale, yaw, node}]
 ## Раскладка пропов детерминирована СИДОМ МИРА, как и жилы (см. resource_nodes): камень, мимо
@@ -75,32 +69,26 @@ func _ready() -> void:
 	# Свой сид, а не G.world_seed один в один: жилы и пропы засеваются из одного числа, и
 	# одинаковый поток дал бы им одинаковые точки — камни встали бы ровно на жилы.
 	_rng.seed = int(G.world_seed) ^ 0x5EED
+	# Маски биомов — КАРТЫ. Тот же ресурс, что резал рельеф и красит его, вместе со сдвигом сида.
+	var bio: Variant = map.get("biomes")
+	if bio is TerrainBiomes:
+		_bio = bio
 	await _place(map, map.get_dims())      # расстановка уступает кадры (см. PLACE_BATCH)
 	_cull_t = 0.0
 
-# ── Biome at a world point (mirrors the shader) ───────────────────────────────
-# The noise itself is TerrainBiomes': props must land in the region the ground was carved and
-# painted for, and a private copy of it is exactly how that stopped being true once.
-func _vnoise(p: Vector2) -> float:
-	return TerrainBiomes.cv_noise(p)
-
-func _ss(a: float, b: float, x: float) -> float:
-	return smoothstep(a, b, x)
-
-func _biome_at(wx: float, wz: float, wy: float) -> int:
-	# Биом ЧИСТО по региону (шум), на любой высоте — воды/снега-по-высоте нет (см. glsl.gdshader).
-	# Порядок как в шейдере (верхний слой побеждает): ГОРЫ(снег) → КАНЬОН → трава/песок.
-	var mtn := _ss(mtn_threshold - mtn_edge, mtn_threshold + mtn_edge,
-			_vnoise(Vector2(wx, wz) / mtn_scale + Vector2(211.0, 77.0)))
-	if mtn > 0.5:
+# ── Biome at a world point ────────────────────────────────────────────────────
+## Биом ЧИСТО по региону, на любой высоте: воды и снега-по-высоте в мире нет (см. glsl.gdshader).
+## Порядок как в шейдере — верхний слой побеждает: ГОРЫ (снег) → КАНЬОН → луг/песок.
+func _biome_at(wx: float, wz: float) -> int:
+	if _bio == null:
+		return ANY
+	var wp := Vector2(wx, wz)
+	var nz: Callable = _bio.noise
+	if _bio.mountain_mask(wp, nz) > 0.5:
 		return SNOW
-	var canyon := _ss(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge,
-			_vnoise(Vector2(wx, wz) / canyon_scale + Vector2(101.0, 53.0)))
-	if canyon > 0.5:
+	if _bio.canyon_mask(wp, nz) > 0.5:
 		return CANYON
-	var bn := _vnoise(Vector2(wx, wz) / biome_scale)
-	bn = clampf((bn - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
-	return GRASS if _ss(biome_grass_bias - biome_blend, biome_grass_bias + biome_blend, bn) > 0.5 else SAND
+	return GRASS if _bio.meadow_mask(wp, nz) > 0.5 else SAND
 
 # ── Расстановка: для каждого набора набираем count точек в его биоме ───────────
 ## ПРОПЫ РАСКЛАДЫВАЮТСЯ ВОКРУГ ИГРОКА, А НЕ ПО ВСЕЙ КАРТЕ. В мире без края «вся карта» это не
@@ -142,7 +130,7 @@ func _place(map: Node, dims: Vector2i) -> void:
 				continue
 			if _slope_at(map, lx, lz) > max_slope:
 				continue
-			if int(setp.biome) != ANY and _biome_at(world.x, world.z, h) != int(setp.biome):
+			if int(setp.biome) != ANY and _biome_at(world.x, world.z) != int(setp.biome):
 				continue
 			var local_pos: Vector3 = to_local(Vector3(world.x, h + setp.y_offset, world.z))
 			if _too_close_hashed(grid, cell, local_pos, setp.min_spacing):
