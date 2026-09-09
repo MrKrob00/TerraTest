@@ -2838,22 +2838,10 @@ func _sample_range(start: int, end: int, step: int) -> PackedInt32Array:
 		result.append(end)
 	return result
 
-func _cv_fract(v: float) -> float:
-	return v - floor(v)
-func _cv_hash2d(p: Vector2) -> float:
-	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
-	var dd: float = p.dot(p + Vector2(45.32, 45.32))
-	p += Vector2(dd, dd)
-	return _cv_fract(p.x * p.y)
+# The mask noise. The maths is in TerrainBiomes and nowhere else; this method exists because the
+# masks and the lattice below take it as a Callable.
 func _cv_noise(p: Vector2) -> float:
-	var i := Vector2(floor(p.x), floor(p.y))
-	var f := p - i
-	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
-	var a := _cv_hash2d(i)
-	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
-	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
-	var dh := _cv_hash2d(i + Vector2(1.0, 1.0))
-	return lerpf(lerpf(a, b, f.x), lerpf(c, dh, f.x), f.y)
+	return TerrainBiomes.cv_noise(p)
 # ── Biome masks: computed ONCE on a sparse lattice, then read back with interpolation ────
 # The biome layout is a pure function of (x,z) and never changes on a static map. The masks are
 # very smooth (hundreds of world units across), so a lattice with a MASK_STEP spacing is plenty:

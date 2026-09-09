@@ -4,6 +4,8 @@
 [ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
 [ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="3_4hy44"]
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="4_ytr4m"]
+[ext_resource type="Script" path="res://menu_backdrop.gd" id="5_backdrop"]
+[ext_resource type="Shader" path="res://menu_backdrop.gdshader" id="6_chart"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
@@ -35,6 +37,9 @@ script = ExtResource("4_ytr4m")
 snow_line = 132.0
 snow_blend = 28.799999999999997
 mask_offset = Vector2(-1713.813, 503.81348)
+
+[sub_resource type="ShaderMaterial" id="Chart_mat"]
+shader = ExtResource("6_chart")
 
 [sub_resource type="StyleBoxFlat" id="Panel_style"]
 content_margin_left = 10.0
@@ -120,6 +125,29 @@ camera = NodePath("../MenuCamera")
 biomes = SubResource("Resource_l48gv")
 follow_world_settings = false
 metadata/_custom_type_script = "uid://ckpss4psgcjt4"
+
+[node name="BackdropLayer" type="CanvasLayer" parent="." unique_id=1900311447]
+layer = 0
+
+[node name="Backdrop" type="Control" parent="BackdropLayer" unique_id=1900311448]
+unique_name_in_owner = true
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_backdrop")
+
+[node name="Pattern" type="ColorRect" parent="BackdropLayer/Backdrop" unique_id=1900311449]
+show_behind_parent = true
+material = SubResource("Chart_mat")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=1736074321]
 
@@ -246,7 +274,7 @@ theme_override_constants/separation = 12
 layout_mode = 2
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
 theme_override_font_sizes/font_size = 16
-text = "CAMERA SETTINGS"
+text = "SETTINGS"
 
 [node name="LookRow" type="VBoxContainer" parent="UI/Settings/Panel/Box" unique_id=240687542]
 layout_mode = 2
@@ -315,6 +343,12 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 text = "Invert vertical"
+
+[node name="MenuFight" type="CheckButton" parent="UI/Settings/Panel/Box" unique_id=11089757]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+text = "Fight behind the menu"
 
 [node name="CloseSettings" type="Button" parent="UI/Settings/Panel/Box" unique_id=1632485721]
 unique_name_in_owner = true

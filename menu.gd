@@ -107,9 +107,12 @@ func _fill_news() -> void:
 			_news_list.add_child(l)
 
 # ── Settings ─────────────────────────────────────────────────────────────────
-## The same three values as in game (`hud._build_settings_panel`) and the same `G` fields
-## (settings.json): one setting, wherever it is opened. A separate copy exists here only because
-## the HUD does not exist before entering a world.
+## The camera values are the same ones as in game (`hud._build_settings_panel`) and the same `G`
+## fields (settings.json): one setting, wherever it is opened. A separate copy exists here only
+## because the HUD does not exist before entering a world.
+##
+## The menu fight switch is the exception - it belongs to this screen alone, and the stage is told
+## about it straight away rather than at the next start.
 func _bind_settings() -> void:
 	var look: HSlider = %LookSlider
 	var zoom: HSlider = %ZoomSlider
@@ -122,6 +125,9 @@ func _bind_settings() -> void:
 	var inv: CheckButton = %InvertY
 	inv.button_pressed = G.cam_invert_y
 	inv.toggled.connect(_on_invert_y)
+	var fight: CheckButton = %MenuFight
+	fight.button_pressed = G.menu_battles
+	fight.toggled.connect(_on_menu_fight)
 	(%CloseSettings as Button).pressed.connect(_close_settings)
 
 func _on_look_sens(v: float) -> void:
@@ -137,6 +143,15 @@ func _on_zoom_sens(v: float) -> void:
 func _on_invert_y(on: bool) -> void:
 	G.cam_invert_y = on
 	G.save_settings()
+
+## Switched here and taken up at once: the fight either starts on the spot or is cleared away with
+## its map. Waiting for a restart to show what a switch did is how a switch gets pressed twice.
+func _on_menu_fight(on: bool) -> void:
+	G.menu_battles = on
+	G.save_settings()
+	var stage := get_node_or_null("%Stage")
+	if stage != null and stage.has_method("set_battles"):
+		stage.set_battles(on)
 
 func _open_settings() -> void:
 	_settings.visible = true

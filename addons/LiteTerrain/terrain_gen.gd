@@ -461,26 +461,11 @@ func _gen_carve_row(z: int) -> void:
 		_gen_carved[idx] = lerpf(_gen_base_in[idx], canyon_h, hmask)
 	_gen_row_done()
 
-# Value noise matching the one map.gd uses for the biome masks, so the generator's canyon
-# region is exactly the region the shader paints terracotta.
-func _cv_fract(x: float) -> float:
-	return x - floor(x)
-
-func _cv_hash2d(p: Vector2) -> float:
-	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
-	var d: float = p.dot(p + Vector2(45.32, 45.32))
-	p += Vector2(d, d)
-	return _cv_fract(p.x * p.y)
-
+# The value noise the biome masks are built on. The maths lives in TerrainBiomes (one copy for the
+# generator, the map and the menu); this stays as a method because the row tasks pass it around as
+# a Callable thousands of times per pass.
 func _cv_noise(p: Vector2) -> float:
-	var i := Vector2(floor(p.x), floor(p.y))
-	var f := p - i
-	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
-	var a := _cv_hash2d(i)
-	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
-	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
-	var dd := _cv_hash2d(i + Vector2(1.0, 1.0))
-	return lerpf(lerpf(a, b, f.x), lerpf(c, dd, f.x), f.y)
+	return TerrainBiomes.cv_noise(p)
 
 ## ПРОГОН ЦЕЛИКОМ: шум → размытие → каньоны. Возвращает высоты или ПУСТОЙ массив, если не
 ## хватило памяти или нажали «стоп». Пустой ответ обязателен именно как ответ, а не как

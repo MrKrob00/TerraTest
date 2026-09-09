@@ -78,25 +78,11 @@ func _ready() -> void:
 	await _place(map, map.get_dims())      # расстановка уступает кадры (см. PLACE_BATCH)
 	_cull_t = 0.0
 
-# ── Биом в мировой точке (зеркалит шейдер) ────────────────────────────────────
-func _fract(x: float) -> float:
-	return x - floor(x)
-
-func _hash2d(p: Vector2) -> float:
-	p = Vector2(_fract(p.x * 123.34), _fract(p.y * 456.21))
-	var d: float = p.dot(p + Vector2(45.32, 45.32))
-	p += Vector2(d, d)
-	return _fract(p.x * p.y)
-
+# ── Biome at a world point (mirrors the shader) ───────────────────────────────
+# The noise itself is TerrainBiomes': props must land in the region the ground was carved and
+# painted for, and a private copy of it is exactly how that stopped being true once.
 func _vnoise(p: Vector2) -> float:
-	var i := Vector2(floor(p.x), floor(p.y))
-	var f := p - i
-	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
-	var a := _hash2d(i)
-	var b := _hash2d(i + Vector2(1.0, 0.0))
-	var c := _hash2d(i + Vector2(0.0, 1.0))
-	var d := _hash2d(i + Vector2(1.0, 1.0))
-	return lerpf(lerpf(a, b, f.x), lerpf(c, d, f.x), f.y)
+	return TerrainBiomes.cv_noise(p)
 
 func _ss(a: float, b: float, x: float) -> float:
 	return smoothstep(a, b, x)

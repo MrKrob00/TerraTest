@@ -98,6 +98,34 @@ const MOUNTAIN_OFFSET := Vector2(211.0, 77.0)
 ## the same call at runtime. One offset, one answer, no way for them to disagree.
 @export var mask_offset: Vector2 = Vector2.ZERO
 
+## THE NOISE THE MASKS ARE BUILT ON, in one place. Every mask above takes it as a Callable because
+## its callers used to each carry their own copy of these eight lines - the generator, the map, the
+## menu backdrop - and a copy is how the painted region and the carved region drifted apart once
+## already. `biomes.noise` below is that Callable; pass it unless you are the shader.
+static func cv_noise(p: Vector2) -> float:
+	var i := Vector2(floor(p.x), floor(p.y))
+	var f := p - i
+	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
+	var a := _cv_hash2d(i)
+	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
+	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
+	var d := _cv_hash2d(i + Vector2(1.0, 1.0))
+	return lerpf(lerpf(a, b, f.x), lerpf(c, d, f.x), f.y)
+
+static func _cv_hash2d(p: Vector2) -> float:
+	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
+	var d: float = p.dot(p + Vector2(45.32, 45.32))
+	p += Vector2(d, d)
+	return _cv_fract(p.x * p.y)
+
+static func _cv_fract(x: float) -> float:
+	return x - floor(x)
+
+## The same function as a Callable to hand to the masks. A static method cannot be passed by name
+## in every Godot build; a method on the resource can.
+func noise(p: Vector2) -> float:
+	return cv_noise(p)
+
 ## Offset from a seed. Any deterministic spread does; this one just has to be far enough that
 ## neighbouring seeds do not overlap their patterns.
 static func offset_for_seed(seed_value: int) -> Vector2:

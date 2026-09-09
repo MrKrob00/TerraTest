@@ -37,8 +37,9 @@ project: read it before claiming how anything works.
     zero before the heightmap is read.
 15. Saves store blocks by **enum name**: renaming needs `LEGACY_BLOCK_KEYS`, removal needs the enum
     value kept plus a same-size entry in `RETIRED_BLOCKS`.
-16. Biome masks are computed in exactly one place, `TerrainBiomes`. A second copy of the formula
-    diverged once and moved a whole region.
+16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
+    too (`TerrainBiomes.cv_noise`, handed to the masks as `biomes.noise`). A second copy of the
+    formula diverged once and moved a whole region.
 17. A loose item is put to sleep with `sleeping`, never `freeze`: `G.is_loose_item` checks `freeze`,
     and a frozen item stops being pickable.
 18. `user://` heights override packaged ones, so a regenerated map needs a fresh save; a procedural
@@ -244,6 +245,17 @@ project: read it before claiming how anything works.
   (`map.set_collision_streaming`), or two heightfields fight over the same bodies. Camera height is
   measured FROM THE GROUND under its look point and kept clear of whatever is under the eye: a fixed
   altitude put it inside a hill, which reads as a white screen with stray polygons.
+- The menu has its OWN loading screen, `%Backdrop` (`menu_backdrop.gd` + `.gdshader`) on a
+  CanvasLayer BELOW the UI: it hides the 3D stage while the ground is computed and leaves PLAY, the
+  slots and the settings working. It also covers the round swap, and stays up permanently when the
+  fight is switched off (`G.menu_battles`, in the settings; `stage.set_battles` takes it up at
+  once). Its look is a survey chart of the same value noise the terrain is built from — deliberately
+  not `loading_screen.gd`'s glitch language. A canvas shader must end with `COLOR.a`, not `1.0`, or
+  it throws away the modulate the fade is made of.
+- A generated menu map AUDITIONS seeds (`_score_seed`): biome masks only, no heights. A 256 m window
+  dropped at random lands inside one region, and canyon on the fringe or over desert carves
+  scratches a couple of metres deep — the preset was never the problem. Scoring wants canyon over
+  MEADOW, some mountain, and a clear middle for the fight.
 
 ### Input
 
