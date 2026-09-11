@@ -224,6 +224,11 @@ func _open_round() -> void:
 		return
 	_opening = false
 	if m == null:
+		# NOTHING TO STAND ON - the map never became ready (the generator gave up, the node died).
+		# Settling into the plain backdrop is the honest end: it is a finished picture rather than a
+		# progress plate that never fills, and the settings switch can ask for a round again.
+		push_warning("menu: no map for the round; the backdrop stays up")
+		_backdrop.cover(false)
 		return
 	if m != _scene_map:
 		m.set_collision_streaming(true)
