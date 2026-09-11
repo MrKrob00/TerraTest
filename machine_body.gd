@@ -92,13 +92,14 @@ const ACCEL_CRAWL: float = 10.0
 ## Rated traction: same as _drive_power but without requiring ground contact - in the garage the
 ## machine hangs in the air and its capabilities still have to be shown.
 ##
-## A wheel that CANNOT REACH THE GROUND is not counted even here. A top wheel points upward and is
-## never grounded, so it used to add its newtons to the shop window and nothing to the world - the
-## panel promised traction that no drive would ever see.
+## A wheel whose GEOMETRY IS NOT AUTHORED YET is not counted even here (Wheel.geometry_ready): a
+## placeholder would otherwise promise the shop window newtons that no drive can deliver. This is
+## about unfinished blocks, not about which way a wheel faces - a top wheel is an ordinary wheel
+## mounted on the roof, and it drives the moment the machine is on its roof with it.
 func rated_power() -> float:
 	var power: float = 0.0
 	for w in Wheels:
-		if is_instance_valid(w) and w.is_drive and w.touches_ground():
+		if is_instance_valid(w) and w.is_drive and w.geometry_ready():
 			power += w.wheel_power
 	if _extra_blocks == 0:
 		power += chassis_power
@@ -113,7 +114,7 @@ func rated_power() -> float:
 func load_capacity() -> float:
 	var cap: float = 0.0
 	for w in Wheels:
-		if is_instance_valid(w) and w.touches_ground():
+		if is_instance_valid(w) and w.geometry_ready():
 			cap += w.load_capacity
 	return cap
 
