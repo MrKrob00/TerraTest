@@ -1395,7 +1395,13 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	for i in presets.size():
 		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
 		var pos: Vector3 = at + Vector3(cos(ang) * 10.0, 0.0, sin(ang) * 10.0)
-		var e = sp.spawn_at(pos, int(presets[i]), faction_id)
+		# ВРАЖДЕБНЫХ участников события просим у спавнера ПО ПОТОЛКУ игрока: событие повторяется
+		# и встречает игрока в любом состоянии, в том числе сразу после того, как его разобрали.
+		# Союзники (faction 0) идут как заказано — слабый союзник помогает ровно никак.
+		var want: int = int(presets[i])
+		if faction_id != 0 and sp.has_method("preset_for_request"):
+			want = int(sp.preset_for_request(want))
+		var e = sp.spawn_at(pos, want, faction_id)
 		if e == null:
 			continue
 		if lock_on != null and e.has_method("assign_target"):

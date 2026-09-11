@@ -241,7 +241,14 @@ func _layout_raider() -> void:
 	set_block(5, 6, 5, G.Block.GUN, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
 
-# Lancer: the laser keeps you at range, the gun finishes up close. Noticeably more armour.
+# Lancer: the laser keeps you at range, the gun finishes up close. Noticeably more armour - and the
+# first enemy to carry POWER: a battery feeding a shield dome.
+#
+# From here on the advanced builds stop being "the same machine with more guns". A shield turns the
+# fight into two stages - drain it, then break the machine - and the battery is what it drains,
+# which is also why the enemy cannot simply wait it out: panels only stand on BASES, so a driving
+# machine spawns with a full battery and has no way to refill it. Its dome is a finite resource -
+# the same door the player already has into a shielded tower.
 func _layout_lancer() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -252,13 +259,23 @@ func _layout_lancer() -> void:
 	_side_armor(6)
 	set_block(5, 6, 5, G.Block.LASER, 0.0)
 	set_block(5, 6, 7, G.Block.GUN, 0.0)
+	# Питание СТОЛБИКОМ на втором этаже: батарея на блоке, купол на батарее. Оба блока стыкуются
+	# любой гранью (connect_faces по умолчанию), поэтому стопка законна и разбирается сверху вниз -
+	# сбил купол, следом батарею, дальше машина уже голая.
+	#
+	# Столбик ставит купол НАД СЕРЕДИНОЙ корпуса, и это не для красоты: щит — сфера радиусом
+	# shield.SHIELD_RADIUS вокруг своего блока, а клетка равна метру. С этой клетки сфера накрывает
+	# всю машину целиком, лобовую плиту включительно, - то есть в копейщика нельзя попасть, не
+	# пройдя сквозь купол.
+	set_block(5, 7, 6, G.Block.BATTERY, 0.0)
+	set_block(5, 8, 6, G.Block.SHIELD, 0.0)
 
 # Breaker: big wheels, a heavy gun and two regular ones. Already a LARGE machine, visible far off.
 func _layout_breaker() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	_side_wheels(G.Block.BIG_WHEEL, [5, 6, 7])
+	_side_wheels(G.Block.BIG_WHEEL, [5, 6, 7, 8])
 	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж целиком: на нём стволы и борта
 	set_block(5, 6, 7, G.Block.BLOCK, 0.0)
 	_side_armor(6)
@@ -266,6 +283,12 @@ func _layout_breaker() -> void:
 	set_block(5, 6, 5, G.Block.POUND_CANNON, 0.0)
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
 	set_block(5, 7, 7, G.Block.GUN, 0.0)
+	# ХВОСТ С ПИТАНИЕМ И РЕМОНТОМ. Реген латает соседние блоки по 12 HP в секунду за энергию из той
+	# же батареи: пока она цела, крушителя приходится разбирать быстрее, чем он чинится, — а значит
+	# бить не куда придётся, а по батарее и регену.
+	set_block(5, 5, 8, G.Block.BLOCK, 0.0)
+	set_block(5, 6, 8, G.Block.BATTERY, 0.0)
+	set_block(5, 7, 8, G.Block.REGEN, 0.0)
 
 # Siege: the largest. Eight wheels, a mortar lobbing over cover, a rocket launcher and a pair of
 # guns, armour on flanks and front. Meeting one is an event, not a routine skirmish.
@@ -277,11 +300,28 @@ func _layout_siege() -> void:
 	_front_armor()
 	_side_armor(6)
 	_side_armor(7)
-	_side_wheels(G.Block.WHEEL, [5, 6, 7, 8])
+	_side_wheels(G.Block.WHEEL, [5, 6, 7, 8, 9])
 	set_block(5, 6, 5, G.Block.MORTAR, 0.0)
 	set_block(5, 7, 7, G.Block.ROCKET, 0.0)
 	set_block(5, 7, 6, G.Block.GUN, 0.0)
-	set_block(5, 7, 8, G.Block.GUN, 0.0)
+	# ВТОРАЯ ПУШКА ЗАМЕНЕНА КУПОЛОМ, и это не ослабление: осадная машина и так бьёт мортирой,
+	# ракетой и стволом. Разменять урон на живучесть — единственный способ сделать её тяжёлой,
+	# а не просто шумной.
+	#
+	# КУПОЛ СТОИТ НЕ НА ХВОСТЕ, И ЭТО ГЕОМЕТРИЯ, А НЕ ВКУС. Щит — это сфера радиусом
+	# shield.SHIELD_RADIUS вокруг СВОЕГО блока (клетка = метр), и защищено не то, что «на машине»,
+	# а то, во что снаряд не попадёт, не пройдя сквозь сферу. Осадная машина длиной шесть клеток:
+	# с хвоста (z=9) сфера накрывает корму, а лобовой выстрел доходит до кабины РАНЬШЕ, чем
+	# входит в купол. С z=8 сфера перекрывает подход к кабине спереди и с боков — то есть щит
+	# наконец щитит.
+	set_block(5, 7, 8, G.Block.SHIELD, 0.0)
+	# Хвост: блок → батарея → реген. Питание снаружи и в одном месте: зайти сзади и «обесточить»
+	# — единственный способ снять купол и ремонт раньше, чем закончится их заряд. Реген достаёт
+	# дальше купола (REGEN_RADIUS), поэтому с хвоста ему видно всё, кроме лобовой плиты, — её и
+	# положено прогрызать.
+	set_block(5, 5, 9, G.Block.BLOCK, 0.0)
+	set_block(5, 6, 9, G.Block.BATTERY, 0.0)
+	set_block(5, 7, 9, G.Block.REGEN, 0.0)
 
 ## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
 ## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z
@@ -346,7 +386,7 @@ func _layout_fort() -> void:
 ## panels and battery at the base, guns on side consoles.
 ##
 ## The core is ROT_SUPPORT, and that changes the build itself. An outpost and a fort have a bolted
-## hull, so they need guns pointing DIFFERENT ways: a turret covers +-YAW_LIMIT and a fixed box
+## hull, so they need guns pointing DIFFERENT ways: a turret covers +-yaw_limit and a fixed box
 ## otherwise has a dead zone behind it. Here the hull turns to the target itself
 ## (enemy_vehicle._turn_to_target), so both guns face forward and hit the same spot.
 ##

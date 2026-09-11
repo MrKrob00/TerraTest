@@ -204,6 +204,30 @@ func _setup_detection_area() -> void:
 ## built around it, so every enemy on the map patrolled THE MAP CENTRE wherever it appeared.
 var _spawn_captured: bool = false
 
+## ВРАГ ПРИЕЗЖАЕТ ЗАРЯЖЕННЫМ. Батарея рождается пустой (battery.charge = 0) — это правильно для
+## игрока, который её добывает и заряжает, и бессмысленно для машины, которая приехала откуда-то
+## воевать: с пустой батареей её купол не включился бы ни разу, а реген не залатал бы ни блока.
+##
+## Заряда ровно столько, сколько в батарее помещается, и пополнить его в бою нечем: панели стоят
+## только на БАЗАХ (blocks.gd, вышки), у ездящих сборок их нет. Значит купол и ремонт —
+## РАСХОДУЕМЫЙ ресурс, и дыра в обороне открывается не «когда-нибудь», а тогда, когда игрок её
+## выбьет.
+## Возвращает true, когда батареи нашлись и залиты. ПОВТОРЯЕМ НЕСКОЛЬКО СЕКУНД: блоки машины
+## появляются не в первом кадре (spawn_block ждёт готовности узла), и одна попытка на первом тике
+## заряжала бы пустоту.
+func _charge_batteries() -> bool:
+	var bl := blocks_node()
+	if bl == null:
+		return false
+	var any := false
+	for b in bl.get_children():
+		if b.has_method("charge_add") and ("capacity" in b):
+			b.charge_add(float(b.get("capacity")))
+			any = true
+	return any
+
+var _charge_t: float = 3.0
+
 func _capture_spawn() -> void:
 	if _spawn_captured:
 		return
@@ -273,10 +297,20 @@ func _physics_ai(delta: float) -> void:
 	# the last block.
 	if not G.debug(&"enemy_ai"):
 		return
+	# ПРИЕХАЛ ЗАРЯЖЕННЫМ — и база, и едущая машина: без тока купол и реген мёртвый груз.
+	if _charge_t > 0.0:
+		_charge_t -= delta
+		if _charge_batteries():
+			_charge_t = 0.0
 	if is_base:
 		_base_tick(delta)
 		return
 	_capture_spawn()          # first tick: the machine is in place, patrol can be built
+	# ЭНЕРГИЮ ТИКАЕТ И ЕДУЩАЯ МАШИНА. Раньше её тикали только базы, и это было верно ровно до тех
+	# пор, пока у ездящих сборок не появились купол, батарея и реген (blocks._layout_lancer и
+	# дальше): без тика щит не поднимался ни разу, а реген не чинил ничего — блоки стояли мёртвым
+	# грузом, то есть продвинутый враг отличался от простого только числом стволов.
+	_energy_tick(delta)
 	_unsink()
 	sense_ground(delta)
 	# Flipped over: the same trick the player uses in BUILD mode - lift above the terrain and rotate
@@ -294,10 +328,8 @@ func _physics_ai(delta: float) -> void:
 ## The engagement ban (combat_allowed) does not apply to a base: it exists so driving enemies do not
 ## pile on, and a silent turret you can drive past reads as broken.
 func _base_tick(delta: float) -> void:
-	# A BASE TICKS ENERGY, a driving enemy does not. Buildings carry panels, a battery and a shield
-	# (rotating tower presets), and without this tick all three would be dead weight: the shield asks
-	# energy_available, the panel adds output through energy_produce. Wheeled machines have no power
-	# system by design, so walking their blocks would be paid for nothing.
+	# Энергию тикают ОБЕ ветки — и база, и едущая машина (см. _physics_ai): купол, батарея и реген
+	# стоят и на тех, и на других.
 	_energy_tick(delta)
 	_reacquire_t -= delta
 	if _reacquire_t <= 0.0:
@@ -779,10 +811,10 @@ func _do_attack() -> void:
 ## machine with the joystick; here the AI does the same - one rule, only the driver differs. Without
 ## it the block on an enemy base would be a cube with hit points.
 ##
-## What it changes: a turret covers +-YAW_LIMIT, so a fixed building (outpost, fort) has a dead zone
+## What it changes: a turret covers +-yaw_limit, so a fixed building (outpost, fort) has a dead zone
 ## behind it and can only cover it with guns pointing different ways. A rotating tower needs one
-## direction - and a MORTAR finally makes sense on it, since a mortar has no turret and fires along
-## the hull.
+## direction - and a MORTAR finally makes sense on it, since its own yaw_limit is only 18 deg: it is
+## aimed by the hull and merely trims.
 ##
 ## Rotation is Y ONLY and only toward a visible target: the base's tilt is how it sits on the terrain,
 ## and touching it would make the building topple with every turn.

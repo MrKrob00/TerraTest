@@ -124,10 +124,21 @@ project: read it before claiming how anything works.
   (`SC_TASTE`) so neighbouring guns do not converge on one block.
 - Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
   their own. Without spread, automatic aiming is an aimbot.
+- The turret sector is per weapon (`WeaponBlock.yaw_limit` / `pitch_limit`, **variables**, not
+  constants): a subclass narrows it in `_ready`, and `_is_in_cone` then gates acquisition and firing
+  with no second check anywhere. Default 75°×40°.
+- The MORTAR is the one weapon aimed by the HULL: `yaw_limit` 18°, so it only trims. It throws along
+  an arc whose angle follows distance (60° near → 30° far) and picks the speed from
+  `v = √(g·d / sin 2θ)`, which is also where the 20 m minimum range comes from — closer is not a
+  ban in code but a fact of the ballistics. Its spread is in METRES ON THE GROUND, not degrees, and
+  that number decides how much of a salvo lands: a wide pattern turns nominal damage into a tenth of
+  it.
 - Damage always goes through `_scale_damage`, subclass numbers included.
 - BLOCK HP IS MEASURED IN SECONDS UNDER FIRE, against the DPS the code actually produces (gun 25/s,
-  laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 40 per salvo cycle, drill 66 at
-  contact; enemy builds run 20-75, siege ~118). The rule the table is tuned to: a cabin survives
+  laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 23-30 — 8 shells × 12 with
+  three or four landing, every 1.6 s — drill 66 at contact; enemy builds run 20-75, siege ~80). The
+  mortar is the one to recheck after touching its spread: the number that matters is how much of a
+  salvo lands, not what the salvo is worth. The rule the table is tuned to: a cabin survives
   six seconds of focused fire from its own tier, an ordinary block three. A weapon without its own
   row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine — which is what the
   enemy aims at.
@@ -147,7 +158,7 @@ project: read it before claiming how anything works.
   travels with the block and survives saving (`blocks.charge_map`). Only the solar buffer belongs to
   the machine and exists while anchored.
 - Enemy energy is real: tower panels, battery and shield all work, which is the way into a shielded
-  tower. Only bases tick energy.
+  tower. Every enemy ticks it, driving machines included — they carry domes and repair fields too.
 
 ### Enemies
 
@@ -174,8 +185,23 @@ project: read it before claiming how anything works.
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
   the tier is rolled under it. `preset_tiers` is ordered by danger. Kill reward is measured once at
   birth.
+- THE CEILING IS ONE FUNCTION, `_tier_cap`, and everything that asks for an enemy goes through it —
+  including a quest event, which names presets but gets them through `preset_for_request`. An event
+  repeats and meets the player in any state, the state right after being taken apart included:
+  without this, losing at grade 5 sent the same siege machine at the starter cabin that replaced
+  the machine. It only ever lowers, and a preset outside the ladder (towers, bases, story carriers)
+  is left alone — there the build is part of the task.
 - Builds must agree with `connect_faces` — nothing attaches to a wheel or a gun. Layouts do not
   check this; the error shows up in game as a floating block.
+- FROM THE LANCER ON, ENEMIES CARRY POWER: battery + shield, battery + repair field, or both. So a
+  driving enemy TICKS ENERGY (`_energy_tick` in `_physics_ai`, not only `_base_tick`) and spawns
+  with its batteries full (`_charge_batteries`, retried for a few seconds because blocks appear
+  later than the first tick). Panels stand only on bases, so that charge is all it gets: the dome
+  and the repairs are a resource the player drains, not a wall.
+- A shield protects what its SPHERE covers, not what is bolted to the machine: `SHIELD_RADIUS`
+  metres around its own block, one cell to the metre. On a long build a dome parked on the tail
+  lets a frontal shot reach the cabin before it ever enters the sphere — check the geometry when
+  moving one.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.

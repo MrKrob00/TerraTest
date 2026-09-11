@@ -120,8 +120,8 @@ func _track_target(delta: float, firing: bool) -> void:
 	if has_target:
 		var tp := _lead_point(_current_target, pivot.global_position)
 		var dl := global_transform.basis.inverse() * (tp - pivot.global_position).normalized()
-		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -YAW_LIMIT, YAW_LIMIT)
-		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -yaw_limit, yaw_limit)
+		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -pitch_limit, pitch_limit)
 		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
 		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)   # доворачиваем саму модель
 	else:
