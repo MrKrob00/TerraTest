@@ -209,7 +209,7 @@ func _open_round() -> void:
 	var m: Node3D = get_node_or_null("LiteTerrain") as Node3D
 	if m != null:
 		# The scene map loads its own baked heightmap and sets up its own collision in _ready.
-		_backdrop.set_progress("reading terrain", -1.0)
+		_backdrop.set_progress(tr("reading terrain"), -1.0)
 		if not await _wait_terrain(m, true):
 			m = null
 		else:
@@ -358,7 +358,7 @@ func _wait_terrain(m: Node3D, report: bool = false) -> bool:
 			# An empty step means the map is not computing anything (it is reading a baked file):
 			# there is no fraction to show, and the meter runs instead of filling.
 			var frac: float = float(fv) if (step != "" and fv is float) else -1.0
-			_backdrop.set_progress(step if step != "" else "reading terrain", frac)
+			_backdrop.set_progress(step if step != "" else tr("reading terrain"), frac)
 		await get_tree().process_frame
 		guard += 1
 	if is_instance_valid(m) and m.terrain_is_ready:

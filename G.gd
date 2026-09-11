@@ -28,6 +28,8 @@ const BUILDS_FILE := "vehicle_builds.json"
 func _ready() -> void:
 	_build_comp_recipes()      # до загрузки: рецепты нужны ценам, а цены — магазину
 	_load_settings()           # конфиг устройства общий на все слоты — читаем до выбора слота
+	_load_translations()       # словари в память до первой сцены: меню уже говорит на своём языке
+	_apply_lang()
 	use_slot(last_slot())      # слот подхватывается сам: сцену можно запускать из редактора
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -310,6 +312,9 @@ var cam_invert_y: bool = false     # инвертировать вертикал
 ## machines and their physics, so a weak phone (or someone who just finds it busy) can switch it off
 ## - the menu itself works exactly the same either way.
 var menu_battles: bool = true
+## ЯЗЫК ИНТЕРФЕЙСА: "en" / "ru" / "uk". Конфиг устройства, а не прогресс — сброс мира его не
+## трогает. Пусто при первом запуске: язык берётся у системы (см. _apply_lang).
+var lang: String = ""
 # Куда игрок перетащил плавающие окна: имя окна -> [x, y]. Тоже конфиг, а не прогресс —
 # сброс сейва их не трогает, и окно, которое игрок один раз положил себе под руку, там и
 # остаётся. Пусто = окно ни разу не двигали, стоит на штатном месте из сцены.
@@ -338,6 +343,7 @@ func save_settings() -> void:
 			"cam_zoom_sens": cam_zoom_sens,
 			"cam_invert_y": cam_invert_y,
 			"menu_battles": menu_battles,
+			"lang": lang,
 			"ui_windows": ui_windows,
 		}))
 		f.close()
@@ -356,9 +362,72 @@ func _load_settings() -> void:
 	cam_zoom_sens = clampf(float(data.get("cam_zoom_sens", 1.0)), 0.2, 3.0)
 	cam_invert_y = bool(data.get("cam_invert_y", false))
 	menu_battles = data.get("menu_battles", true) == true
+	lang = String(data.get("lang", ""))
 	var w = data.get("ui_windows", {})
 	if w is Dictionary:
 		ui_windows = w
+
+# ── ПЕРЕВОД ──────────────────────────────────────────────────────────────────
+## КЛЮЧ ПЕРЕВОДА — САМА АНГЛИЙСКАЯ СТРОКА, как она стоит в коде. Никаких выдуманных имён вроде
+## MENU_PLAY: строка, обёрнутая в tr(), переводится в тот момент, когда в i18n/strings.json
+## появляется её ряд, а необёрнутая продолжает работать как раньше. Так перевод можно вести
+## порциями, не переписывая игру целиком и не ломая её на полпути.
+##
+## Строим Translation в КОДЕ, а не через импорт .csv: импортёр работает только в редакторе, то
+## есть перевод нельзя было бы ни добавить, ни проверить, не открыв Godot.
+const LANG_FILE := "res://i18n/strings.json"
+const LANGS := ["en", "ru", "uk"]
+
+func _load_translations() -> void:
+	if not FileAccess.file_exists(LANG_FILE):
+		return
+	var f := FileAccess.open(LANG_FILE, FileAccess.READ)
+	if f == null:
+		return
+	var data = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (data is Dictionary):
+		push_warning("G: %s is not a dictionary — interface stays English" % LANG_FILE)
+		return
+	# Английского словаря НЕТ намеренно: ключ и есть английская строка, и tr() вернёт её сам.
+	var built: Dictionary = {}
+	for code in LANGS:
+		if code == "en":
+			continue
+		var t := Translation.new()
+		t.locale = code
+		built[code] = t
+	for key in (data as Dictionary):
+		if String(key).begins_with("_"):
+			continue                        # служебные поля файла (_about)
+		var row = (data as Dictionary)[key]
+		if not (row is Dictionary):
+			continue
+		for code in built:
+			var v = (row as Dictionary).get(code, "")
+			if String(v) != "":
+				(built[code] as Translation).add_message(String(key), String(v))
+	for code in built:
+		TranslationServer.add_translation(built[code])
+
+## Поставить язык интерфейса. Пусто — берём системный, если он из наших, иначе английский.
+func set_lang(code: String) -> void:
+	lang = code
+	save_settings()
+	_apply_lang()
+
+func _apply_lang() -> void:
+	var code: String = lang
+	if not LANGS.has(code):
+		code = String(OS.get_locale_language())
+		if not LANGS.has(code):
+			code = "en"
+	TranslationServer.set_locale(code)
+
+## Каким языком интерфейс говорит СЕЙЧАС (для галочки в настройках).
+func current_lang() -> String:
+	var code: String = TranslationServer.get_locale().substr(0, 2)
+	return code if LANGS.has(code) else "en"
 
 # ═══ Прогрессия: стартовая фракция, грейды, древо технологий ══════════════════════
 # ТЗ: docs/PROGRESSION_DESIGN.md. Сейчас фракция одна («start», имя дадим позже) —
