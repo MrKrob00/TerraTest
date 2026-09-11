@@ -153,6 +153,7 @@ func _ready():
 
 func _physics_process(delta):
 	var _pf := Perf.now()          # profiler mark (perf.gd)
+	_tick_death(delta)
 	_tick_camera(delta)
 	Perf.mark("camera", _pf)
 
@@ -322,10 +323,45 @@ func on_vehicle_died(dead: Node) -> void:
 	if current_vehicle != dead:
 		return
 	var origin: Vector3 = (dead as Node3D).global_position if is_instance_valid(dead) else global_position
+	# КТО ЭТО БЫЛ — спрашиваем у погибшей машины, пока она ещё жива (queue_free отложен на конец
+	# кадра, а мы внутри её _die).
+	var killer: String = ""
+	if is_instance_valid(dead) and dead.has_method("last_attacker_name"):
+		killer = String(dead.last_attacker_name())
 	current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
+	# ЭКРАН СМЕРТИ: пересадку откладываем. Камера остаётся там, где стояла (без машины _tick_camera
+	# выходит сразу), то есть смотрит на обломки и на того, кто их сделал.
+	_death_from = origin
+	_death_t = DEATH_PAUSE
+	if hud != null and is_instance_valid(hud) and hud.has_method("show_death"):
+		hud.show_death(killer, DEATH_PAUSE)
+	set_physics_process(true)
+
+## СКОЛЬКО ДЕРЖИМ ЭКРАН СМЕРТИ. Возрождение было мгновенным: тебя разобрали — и ты уже в новой
+## кабине за три сотни метров, без единого кадра на «что это было». Эти секунды и есть тот кадр:
+## обломки на месте, убийца ещё в поле зрения, подпись говорит, кто это был.
+const DEATH_PAUSE := 2.6
+var _death_t: float = 0.0
+var _death_from: Vector3 = Vector3.ZERO
+
+func _tick_death(delta: float) -> void:
+	if _death_t <= 0.0:
+		return
+	_death_t -= delta
+	if _death_t > 0.0:
+		return
+	_death_t = 0.0
+	if hud != null and is_instance_valid(hud) and hud.has_method("hide_death"):
+		hud.hide_death()
+	_respawn_after_death()
+
+## Пересадка после экрана смерти: в ближайшую свою машину С КАБИНОЙ, а если таких нет — в
+## бесплатную стартовую, подальше от врагов.
+func _respawn_after_death() -> void:
+	var origin: Vector3 = _death_from
 	var alive: Array = []
 	for v in vehicles:
-		if v != dead and _drivable(v):
+		if _drivable(v):
 			alive.append(v)
 	if alive.is_empty():
 		var starter: Node = _spawn_starter_vehicle(origin)

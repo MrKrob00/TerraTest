@@ -87,6 +87,23 @@ func _ready() -> void:
 
 # Кабина уничтожена → машина разваливается (блоки падают в мир), камера уходит к другой
 # машине (а если её нет — спавнит бесплатную стартовую), эта машина удаляется.
+## КТО В НАС СТРЕЛЯЛ. У врага это было (enemy_vehicle.notice_attacker), у игрока — нет: оружие
+## честно звало метод, а метода не существовало, и экран смерти не мог сказать, кто именно тебя
+## разобрал. Ровно тот случай, о котором правило 7 в CLAUDE.md.
+var _last_attacker: Node3D = null
+
+func notice_attacker(attacker: Node3D) -> void:
+	if attacker == null or not is_instance_valid(attacker) or attacker == self:
+		return
+	_last_attacker = attacker
+
+## Имя последнего стрелявшего — ТЕМ ЖЕ генератором, каким подписаны метки врагов: на экране смерти
+## должно стоять то самое имя, которое игрок только что видел над машиной.
+func last_attacker_name() -> String:
+	if not is_instance_valid(_last_attacker):
+		return ""
+	return EnemyMarker.name_for(int(_last_attacker.get_instance_id()))
+
 func _die() -> void:
 	if _dying:
 		return
@@ -414,8 +431,26 @@ func _build_move_dir() -> Vector3:
 
 # ── Действия кругового меню (вызывает hud.open_vehicle_menu) ─────────────────
 
+## ПОСТРОЙКА ЗАДАНИЯ НЕ ИМУЩЕСТВО. Всё, что поставил в мир квест (метка quest_id — та же, что у
+## квестовых предметов), нельзя ни унести в инвентарь, ни разобрать, пока его ветка не закрыта:
+## это цель задания. Унеся площадку фабрики в карман, игрок ломает собственную ветку и узнаёт об
+## этом только тем, что задание больше никогда не закрывается.
+##
+## Спрашиваем СЕЙВ (G.quests_done), а не Q: список пройденного — это то, что переживает перезаход,
+## и других источников правды тут быть не должно.
+func quest_locked() -> bool:
+	if not has_meta(QuestProps.META):
+		return false
+	return not G.quests_done.has(String(get_meta(QuestProps.META)))
+
+func _refuse_quest_locked() -> void:
+	Dialogue.say("System", "That build belongs to an open directive. Finish it first.")
+
 # Вся машина → в инвентарь: каждый блок типом в G.block_inventory, машина исчезает.
 func send_to_inventory() -> void:
+	if quest_locked():
+		_refuse_quest_locked()
+		return
 	if block_map_node == null:
 		return
 	for b in block_map_node.get_children():
@@ -430,6 +465,9 @@ func send_to_inventory() -> void:
 # Разобрать: все блоки КРОМЕ ядра выпадают в мир. Ядро остаётся стоять: у машины это кабина,
 # у станции — стационарный блок (SELLER) на якоре.
 func disassemble() -> void:
+	if quest_locked():
+		_refuse_quest_locked()
+		return
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null or block_map_node == null:
 		return
@@ -1605,7 +1643,7 @@ func _notify_build_changed() -> void:
 
 # Авто-добор такого же блока из инвентаря после постановки (серийная стройка).
 func _refill_hand_from_inventory(bt: int, keep_basis: bool = false) -> void:
-	if not G.block_inventory.has(bt):
+	if G.block_available(bt) <= 0:
 		return
 	# Тот же угол, что у предыдущего: take_block_into_hand сбрасывает build_basis (свежий блок
 	# из инвентаря обычно берут «как есть»), поэтому для авто-добора возвращаем его обратно.
@@ -1616,8 +1654,7 @@ func _refill_hand_from_inventory(bt: int, keep_basis: bool = false) -> void:
 			var held: Node3D = _hand_instance()
 			if held != null:
 				held.basis = build_basis     # в руке блок сразу висит под тем же углом
-		G.block_inventory.erase(bt)                # списываем экземпляр (как tech_ui._take_into_hand)
-		G.mark_progress_dirty()
+		G.consume_block(bt)                        # как в гараже: инвентарь, иначе ближайший из мира
 
 # Подтверждение стройки по ДВОЙНОМУ тапу/клику (кнопка Take не нужна): держим блок в руке → СТАВИМ
 # его; рука пуста → БЕРЁМ наведённый блок. Одиночный тап только наводит/подсвечивает (_handle_click).
@@ -1947,7 +1984,7 @@ func _on_take_pressed() -> void:
 		# сбрасывать угол после каждого значило заставлять его крутить заново по разу на блок.
 		# Когда авто-добора нет (рука опустела), сбрасываем как раньше: следующий блок игрок
 		# возьмёт сам и, скорее всего, другой.
-		var keep_basis: bool = _hand_from_inventory and G.block_inventory.has(placed_bt)
+		var keep_basis: bool = _hand_from_inventory and G.block_available(placed_bt) > 0
 		if not keep_basis:
 			build_basis = Basis()
 		_preview_res = null

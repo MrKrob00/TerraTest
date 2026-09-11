@@ -361,6 +361,13 @@ const BATTERY_REACH := 60.0
 
 var _bat_spot: Variant = null       # где стоит «та самая» жила
 var _bat_free: bool = false         # её выработали, блок выпал
+## ПОКАЗАННЫЙ В ЖИЛЕ БЛОК. Задание говорит «он в этой жиле», а на экране до последнего удара была
+## обычная руда: игрок бурил наугад и верил на слово. Кладём настоящий блок сверху на жилу —
+## видно, что именно там лежит и что за это бурят.
+var _bat_shown: Node3D = null
+## На сколько блок приподнят над центром жилы: чтобы читался как торчащий из породы, а не
+## утопленный в ней.
+const BATTERY_SHOW_Y := 1.1
 
 ## Куда ведёт компас по этой ветке.
 func battery_point() -> Variant:
@@ -401,7 +408,38 @@ func _battery_stage() -> bool:
 	_bat_spot = (vein as Node3D).global_position
 	if vein.call("is_depleted"):
 		_bat_free = true
+		_bat_hide()
+	else:
+		_bat_display(vein as Node3D)
 	return false
+
+## Показать блок в жиле. Жилы СТРИМЯТСЯ — узел появляется и исчезает вместе с игроком, — поэтому
+## показ проверяется каждый опрос и восстанавливается, а не ставится один раз.
+##
+## Блок настоящий, но ИНЕРТНЫЙ: слои коллизии сняты уже ПОСЛЕ add_child, потому что VehicleBlock
+## ставит себе второй слой в своём _ready. Без этого его можно было бы подобрать прямо из породы
+## (луч постройки бьёт по второму слою) и по нему стреляли бы враги — цель у оружия ищется там же.
+func _bat_display(vein: Node3D) -> void:
+	if is_instance_valid(_bat_shown) and _bat_shown.get_parent() == vein:
+		return
+	_bat_hide()
+	var scene: PackedScene = G.get_scene(G.Block.BATTERY)
+	if scene == null:
+		return
+	var n: Node3D = scene.instantiate()
+	vein.add_child(n)
+	n.position = Vector3(0.0, BATTERY_SHOW_Y, 0.0)
+	if n is RigidBody3D:
+		var rb := n as RigidBody3D
+		rb.freeze = true
+		rb.collision_layer = 0
+		rb.collision_mask = 0
+	_bat_shown = n
+
+func _bat_hide() -> void:
+	if is_instance_valid(_bat_shown):
+		_bat_shown.queue_free()
+	_bat_shown = null
 
 ## Узел стриминга жил. Путь в сцене не зашиваем: он уже переезжал, а группы у узла нет —
 ## ищем по методу, которого больше ни у кого нет.
