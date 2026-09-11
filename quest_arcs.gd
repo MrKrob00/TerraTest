@@ -154,9 +154,10 @@ func _power_site() -> bool:
 	if is_instance_valid(_power_base):
 		# ТА ЖЕ МЕТКА, ЧТО У КВЕСТОВЫХ ПРЕДМЕТОВ. По ней база узнаётся после перезахода — и уборке
 		# мира, и сейву она означает одно и то же: это не мусор, это цель задания.
+		#
+		# ГОВОРИТ ОДИН. Своя реплика тут повторяла подсказку стадии слово в слово, и задание
+		# читалось как выданное дважды: сначала Механик, следом Система, об одном и том же.
 		_power_base.set_meta(QuestProps.META, "arc_power")
-		Dialogue.say("System", "A support is anchored out there, panel on the ground beside it. "
-				+ "Put the panel on top of the support — a panel only draws power on something that stands.")
 	return false          # даём кадр: блоки базы появляются асинхронно
 
 ## База этого квеста, уже стоящая в мире (перезаход). Ищем по метке, а не по форме: игрок вправе
@@ -206,6 +207,13 @@ func _arc_power_1(q: Dictionary) -> void:
 	# первую в руке.
 	if not _player_owns(G.Block.SOLAR):
 		_props.ensure("arc_power", G.Block.SOLAR, _power_point)
+	# ПАЛЕЦ СНАЧАЛА НА ПАНЕЛЬ, и только потом на клетку. Показывать место установки, пока блок
+	# лежит в траве, — значит просить поставить то, чего у игрока ещё нет; а чертёж в этот момент
+	# и вовсе висит на другом конце площадки.
+	if _props.position_for("arc_power") != null:
+		_drop_hints()
+		_point_finger("Pick the panel up", "arc_power")
+		return
 	if _plan_near(_power_point):
 		_show_plan_on(_power_base.get("block_map_node"),
 				[{"cell": POWER_PANEL_CELL, "block": G.Block.SOLAR}])
@@ -220,10 +228,12 @@ func _arc_power_2(q: Dictionary) -> void:
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
 		return
-	if not _player_owns(G.Block.REGEN):
-		# Рядом с базой, а не «рядом с вами»: ставить его всё равно сюда, и второй раз через поле
-		# за ним ехать незачем.
-		_props.ensure("arc_power", G.Block.REGEN, _power_point)
+	# РЕГЕН ПРИЛЕТАЕТ И КРУЖИТ вокруг машины, как всякая награда (award_blocks → reward_orbiter),
+	# а не появляется под ногами: блок, который просто лёг в траву, читается как мусор, а не как
+	# «вот, держи». Один раз за стадию — иначе каждый опрос выдавал бы ещё один.
+	if not _dropped.has("power_2"):
+		_dropped["power_2"] = true
+		_award(G.Block.REGEN)
 	if _plan_near(_power_point):
 		_show_plan_on(_power_base.get("block_map_node"),
 				[{"cell": _power_regen_cell(), "block": G.Block.REGEN}])
@@ -549,16 +559,19 @@ const LINE_PROC_PLAN := [
 
 var _hints: Array = []
 
-## Сколько лент не хватает на земле: все ленты схемы минус те, что квест уже поставил на базу.
+## Сколько лент выкладывать на землю: СЧИТАЕМ ПО ФАКТУ — клетки схемы, в которых ленты ещё нет.
+##
+## Было две константы про одно и то же (лент в схеме и «сколько уже стоит»), и они разъезжались
+## ровно так, как и положено двум числам об одном: игрок получал не столько лент, сколько просит
+## чертёж. Теперь вопрос задаётся самой базе, и ответ не может разойтись с тем, что на ней стоит.
 func _belts_to_drop() -> int:
 	var need: int = 0
 	for e in LINE_PLAN:
-		if int(e["block"]) == G.Block.BELT:
+		if int(e["block"]) != G.Block.BELT:
+			continue
+		if _base_block(_line_base, e["cell"]) != G.Block.BELT:
 			need += 1
-	return maxi(need - LINE_PREPLACED_BELTS, 0)
-
-## Сколько лент стоит на базе с самого начала (см. _spawn_line_kit): готовый «выход» линии.
-const LINE_PREPLACED_BELTS := 1
+	return need
 
 ## Куда ведёт компас, пока площадка не появилась.
 func line_point() -> Variant:
@@ -600,12 +613,17 @@ func _show_plan_on(bm, plan: Array) -> void:
 var _plan_sig: String = ""
 
 func _clear_plan() -> void:
+	_drop_hints()
+	_point_finger("")
+
+## Убрать только ПРИЗРАКОВ, не трогая палец: пока предмет лежит в мире, чертёж не нужен, а палец
+## нужен — он показывает на сам предмет.
+func _drop_hints() -> void:
 	for h in _hints:
 		if is_instance_valid(h):
 			(h as Node).queue_free()
 	_hints.clear()
 	_plan_sig = ""
-	_point_finger("")
 
 ## Палец наставника на БЛИЖАЙШУЮ незакрытую клетку схемы. Тот же палец, что в обучении:
 ## второй такой указатель заводить незачем, а привычка у игрока уже есть.
@@ -614,26 +632,42 @@ func _clear_plan() -> void:
 ## обучение: это сюжетное задание, а не вводная.
 var _finger_text: String = ""
 
-func _point_finger(text: String) -> void:
+## `prop_quest` — палец наводится на ПРЕДМЕТ этого квеста, пока тот лежит в мире, и только потом
+## на ближайшую клетку чертежа.
+func _point_finger(text: String, prop_quest: String = "") -> void:
 	var guide: Node = get_tree().get_first_node_in_group("tutorial_guide")
 	if guide == null:
 		return
-	if text == "" or _next_hint() == null:
+	_finger_prop = prop_quest
+	if text == "" or (_finger_point_prop() == null and _next_hint() == null):
 		if _finger_text != "" and guide.has_method("is_active") and guide.is_active():
 			guide.clear()
 		_finger_text = ""
 		return
 	if not guide.has_method("point_at_world"):
 		return
-	# Взводим ОДИН РАЗ на текст: сам палец каждый кадр спрашивает у нас точку заново (см.
-	# getter ниже), поэтому переставлять его на каждом опросе незачем — он от этого мигал бы.
-	if _finger_text == text and guide.has_method("is_active") and guide.is_active():
+	# Взводим ОДИН РАЗ на текст: сам палец каждый кадр спрашивает у нас точку заново
+	# (_finger_point), поэтому переставлять его на каждом опросе незачем — он от этого мигал бы.
+	var key := text + "|" + prop_quest
+	if _finger_text == key and guide.has_method("is_active") and guide.is_active():
 		return
-	_finger_text = text
-	guide.point_at_world(func() -> Vector3:
-		var h = _next_hint()
-		return (h as Node3D).global_position if h != null else Vector3.ZERO,
-		text, false, TutorialGuide.Gate.OFF, false)
+	_finger_text = key
+	guide.point_at_world(_finger_point, text, false, TutorialGuide.Gate.OFF, false)
+
+## Куда смотрит палец ПРЯМО СЕЙЧАС. Именованный метод, а не лямбда в списке аргументов: лямбда,
+## перенесённая на вторую строку, становится лишним аргументом вызова, и это валидный синтаксис
+## (см. CLAUDE.md).
+var _finger_prop: String = ""
+
+func _finger_point() -> Vector3:
+	var at = _finger_point_prop()
+	if at != null:
+		return at as Vector3
+	var h = _next_hint()
+	return (h as Node3D).global_position if h != null else Vector3.ZERO
+
+func _finger_point_prop() -> Variant:
+	return _props.position_for(_finger_prop) if _finger_prop != "" else null
 
 ## Ближайшая к игроку живая подсказка (или null, если разметка закрыта целиком).
 func _next_hint():

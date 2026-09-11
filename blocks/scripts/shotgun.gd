@@ -48,9 +48,11 @@ func fire_bullet() -> void:
 		_reload_t = RELOAD
 
 # Базовый fire_bullet пускает пулю строго по стволу — доворачиваем ПОСЛЕДНЮЮ выпущенную.
+# Кто это был, помнит сам базовый класс (last_fired): искать её среди детей нельзя, пули идут
+# из пула не по порядку.
 func _spread_last() -> void:
-	var b: Area3D = _last_bullet()
-	if b == null or not ("dir" in b):
+	var b: Area3D = last_fired
+	if b == null or not is_instance_valid(b) or not ("dir" in b):
 		return
 	var d: Vector3 = b.dir
 	if d == Vector3.ZERO:
@@ -64,12 +66,3 @@ func _spread_last() -> void:
 		d = d.rotated(side, randf_range(-a * 0.5, a * 0.5))
 	b.dir = d.normalized()
 
-# Только что выпущенная пуля — последняя, покинувшая пул: она уже в полёте (dir не ноль).
-func _last_bullet() -> Area3D:
-	if ammo == null:
-		return null
-	for i in range(ammo.get_child_count() - 1, -1, -1):
-		var c = ammo.get_child(i)
-		if c is Area3D and ("dir" in c) and c.dir != Vector3.ZERO:
-			return c as Area3D
-	return null

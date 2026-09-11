@@ -64,7 +64,40 @@ func push_item(item: Node3D) -> bool:
 		if (t as FactoryBlock).try_receive(item):
 			next_block = t
 			return true
-	return super.push_item(item)
+	# ВТОРОЙ ЗАХОД — ЛЕНТЫ, и не всякая: за той, у которой в очереди стоит станок, место
+	# занято (см. side_waiting). Раньше здесь стоял super.push_item, то есть круговой обход
+	# всех целей, — и сквозной поток забирал каждую освободившуюся клетку.
+	for t in _valid_targets():
+		if not _is_belt(t):
+			continue
+		if t.has_method("side_waiting") and t.side_waiting():
+			continue
+		if (t as FactoryBlock).try_receive(item):
+			next_block = t
+			return true
+	return false
+
+## СТАНОК СБОКУ ВПЕРЁД СКВОЗНОГО ПОТОКА — ждёт ли кто-то эту клетку.
+##
+## Станок снимает груз с ленты и возвращает результат НА НЕЁ ЖЕ, клеткой ближе к выходу. За эту
+## клетку он соревнуется с соседней лентой и проигрывает: та отдаёт каждый свой такт, а он ждёт
+## сигнала об освободившемся месте. Пока станок стоит с готовым грузом, он НЕ БЕРЁТ новый — и
+## через несколько ящиков линия встаёт целиком: лента перед станком забита, станок держит выход,
+## отдать некуда.
+##
+## Спрашиваем у соседей по машине, а не держим список: подписчиков у клетки не бывает больше
+## горстки, а вторая структура про то же самое разъехалась бы при первой же пересборке цепочки.
+func side_waiting() -> bool:
+	var host: Node = get_parent()
+	if host == null:
+		return false
+	for b in host.get_children():
+		if b == self or not (b is FactoryBlock) or _is_belt(b):
+			continue
+		var f := b as FactoryBlock
+		if f.current_item != null and f.waiting_for_next and f.next_blocks.has(self):
+			return true
+	return false
 
 func _on_timer_timeout() -> void:
 	_try_push()
