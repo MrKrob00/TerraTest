@@ -47,8 +47,8 @@ towards performance.
 ## Quick start
 
 1. Open a 3D scene.
-2. Press **Create Terrain Node**. This bakes a flat 128×128 heightmap into the addon
-   folder (`terrain_height.res`) and drops in a ready terrain: a StaticBody3D running
+2. Press **Create Terrain Node**. This bakes a flat 128×128 heightmap of its own
+   (`res://terrain/<scene>_<node>.res`) and drops in a ready terrain: a StaticBody3D running
    the `LiteTerrain` script with the terrain shader already applied. It starts in
    image mode with streaming collision on.
 3. Select the node and shape it:
@@ -81,7 +81,7 @@ The properties you will touch most often:
 | `biomes` | auto | The [biome resource](#biomes). Empty means a default set is created at runtime; save it as a `.tres` to edit it. |
 | `surface_material` | addon `terrain_shader.res` | The terrain material. Texture and quality settings live on it. |
 | `use_image_data` | `true` | On: heights live in an R32F image (`heightmap_path`) and collision streams under moving bodies. Off: one HeightMapShape3D holds the whole map. |
-| `heightmap_path` | addon `terrain_height.res` | The R32F resource loaded in image mode. Hidden in the inspector when image mode is off. |
+| `heightmap_path` | addon `terrain_height.res` | The R32F resource loaded in image mode, one file per terrain — the dock gives a new node its own under `res://terrain/`, and moves a node still on this shared default onto one the first time it generates or bakes. Hidden in the inspector when image mode is off. |
 | `triangle_size` | `1 (detailed)` | Grid cell size at the finest LOD. See [Performance tuning](#performance-tuning). |
 | `max_render_distance` | `1400.0` | How far terrain is drawn. Match it to your visibility distance. |
 
