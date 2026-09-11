@@ -143,6 +143,17 @@ project: read it before claiming how anything works.
 
 - `enemy_spawner.gd`: two awake at a time, one engaging, everyone drops in from `drop_height`. The
   inner ring radius is computed from enemy vision plus `spawn_safe_margin`, never hardcoded.
+- THE WORLD RAMPS UP WITH THE PLAYER, from one number: `G.threat_ramp()` (0 at grade 1, 1 at
+  `THREAT_FULL_GRADE` = 4). It scales how many enemies stay awake, how often the next one comes
+  (`_awake_cap` / `_spawn_wait`), the tier ceiling on top of the value one (`_enemy_tier`), the
+  event cooldown (`quest_arcs.EV_COOLDOWN_EARLY_MUL`) and how many events the journal holds
+  (`Q.event_slots`). Grade, not hours in the save: hours can be spent parked in the garage.
+- Event quests are staggered by `req_grade` (1,1,2,2,3,4) in the same order as their rewards, and
+  `current_events` honours it. All six being open from minute one is what "it spawns everyone at
+  once" was: a staging point with four machines could land on a player with one gun.
+- Time → difficulty → reward, in that order. The last two links were already there (the enemy build
+  follows the player's machine value, the payout is measured from that build, and event rewards are
+  a ladder from 200 to 420); the first was missing.
 - On equal sector load the spawn picks the **rear**: the "not in front" ban only covers the moment
   of appearing, and one turn of the wheel later a side spawn is in the way.
 - Beyond `sleep_dist` an enemy sleeps: physics frozen, `process_mode` off, meta flag `asleep` (read

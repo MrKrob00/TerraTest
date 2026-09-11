@@ -204,7 +204,7 @@ func _seed_demo() -> void:
 	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
 	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
 	# доехать и победить. Повторяется: quest_arcs перезаряжает его после остывания.
-	add_quest("event_duel", "Crossfire", "", Type.EVENT, 1, 0, "", 260, 30, 6)
+	add_quest("event_duel", "Crossfire", "", Type.EVENT, 1, 0, "", 260, 30, 6, 1)
 	add_stages("event_duel", [
 		{"desc": "Reach the contact coordinates",
 		 "event": "quest_duel_1", "goal": 1,
@@ -217,7 +217,7 @@ func _seed_demo() -> void:
 	# Пять типов с борда оригинала. Борда у нас нет — их объявляет Система, а повторяются они
 	# по остыванию, как «Crossfire» (см. quest_arcs, раздел «ПОВТОРЯЕМЫЕ СОБЫТИЯ»). Общее
 	# правило у всех одно: уехал от цели за 500 м — задание снято.
-	add_quest("event_gang", "Tech Gang", "", Type.EVENT, 1, 0, "", 320, 40, 8)
+	add_quest("event_gang", "Tech Gang", "", Type.EVENT, 1, 0, "", 320, 40, 8, 2)
 	add_stages("event_gang", [
 		{"desc": "Reach the reported camp",
 		 "event": "quest_gang_1", "goal": 1,
@@ -226,7 +226,7 @@ func _seed_demo() -> void:
 		 "event": "quest_gang_2", "goal": 1,
 		 "hint": "They stand until someone shoots. That someone is you."},
 	])
-	add_quest("event_supply", "Supply Drop", "", Type.EVENT, 1, 0, "", 200, 25, 5)
+	add_quest("event_supply", "Supply Drop", "", Type.EVENT, 1, 0, "", 200, 25, 5, 1)
 	add_stages("event_supply", [
 		{"desc": "Reach the drop",
 		 "event": "quest_supply_1", "goal": 1,
@@ -235,7 +235,7 @@ func _seed_demo() -> void:
 		 "event": "quest_supply_2", "goal": 1,
 		 "hint": "The crate is the objective. Whatever is guarding it is only in the way."},
 	])
-	add_quest("event_defend", "Cover the Convoy", "", Type.EVENT, 1, 0, "", 300, 35, 7)
+	add_quest("event_defend", "Cover the Convoy", "", Type.EVENT, 1, 0, "", 300, 35, 7, 2)
 	add_stages("event_defend", [
 		{"desc": "Reach the friendly unit",
 		 "event": "quest_defend_1", "goal": 1,
@@ -244,7 +244,7 @@ func _seed_demo() -> void:
 		 "event": "quest_defend_2", "goal": 1,
 		 "hint": "It survives or it does not. There is no partial credit for this one."},
 	])
-	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9)
+	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9, 3)
 	add_stages("event_waves", [
 		{"desc": "Survive the first wave",
 		 "event": "quest_waves_1", "goal": 1,
@@ -253,7 +253,7 @@ func _seed_demo() -> void:
 		 "event": "quest_waves_2", "goal": 1,
 		 "hint": "Heavier than the first. Repairs, if you have them, happen now."},
 	])
-	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12)
+	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12, 4)
 	add_stages("event_camp", [
 		{"desc": "Reach the staging point",
 		 "event": "quest_camp_1", "goal": 1,
@@ -630,7 +630,19 @@ func active_quests() -> Array[Dictionary]:
 ##
 ## Во время обучения событий нет вовсе: игроку ещё нечем ехать за двести метров, и наставник
 ## ведёт его за руку — вторая цель в журнале только сбивает.
+## МЕСТ В ЖУРНАЛЕ — ПО ДАВЛЕНИЮ МИРА. Два события сразу — это уже выбор «еду на груз или разгоняю
+## банду», и он хорош, когда есть чем ехать; на первом грейде это просто две беды разом. Пока мир
+## слабый (G.threat_ramp), место одно.
 const EVENT_SLOTS := 2
+const EVENT_SLOTS_EARLY := 1
+## С какого давления открывается второе место.
+const EVENT_SLOTS_AT := 0.6
+
+func event_slots() -> int:
+	var g = get_node_or_null("/root/G")
+	if g == null:
+		return EVENT_SLOTS
+	return EVENT_SLOTS if g.threat_ramp() >= EVENT_SLOTS_AT else EVENT_SLOTS_EARLY
 
 func current_events() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
@@ -642,13 +654,18 @@ func current_events() -> Array[Dictionary]:
 			continue
 		if int(q.get("stage", 0)) > 0 or int(q.get("progress", 0)) > 0:
 			out.append(q)                 # это уже идёт — держим в любом случае
-		else:
+		elif _grade_ok(q):
+			# ГРЕЙД СПРАШИВАЕТСЯ И У СОБЫТИЙ, а не только у сюжета. Раньше все шесть были открыты
+			# с первой минуты, и разнообразие начиналось там же, где кончалось: лагерь с четырьмя
+			# машинами мог выпасть игроку с одной пушкой. Теперь они открываются лесенкой — в том
+			# же порядке, в каком расписаны их награды.
 			rest.append(q)
+	var slots: int = event_slots()
 	for q in rest:
-		if out.size() >= EVENT_SLOTS:
+		if out.size() >= slots:
 			break
 		out.append(q)
-	return out.slice(0, EVENT_SLOTS)
+	return out.slice(0, slots)
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
