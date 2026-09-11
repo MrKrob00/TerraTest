@@ -96,8 +96,17 @@ project: read it before claiming how anything works.
   model on all three wheels — so the value scales with the tyre and nothing else. The tyres measure
   0.6 : 1.0 : 1.3 (small : standard : big); `suspension_travel` follows the same ratio.
 - The garage panel must read the same numbers the physics reads: LOAD is mass against
-  `load_capacity()`, ACCEL is `rated_power()/mass`, and `rated_power()` skips wheels that can never
-  reach the ground (a top wheel points up, `touches_ground()` is false).
+  `load_capacity()`, ACCEL is `rated_power()/mass`. Both skip wheels whose geometry is not authored
+  yet (`Wheel.geometry_ready()`, i.e. `ride_height` still 0) so an unfinished block cannot promise
+  newtons or kilograms.
+- THE TOP AND STABILISER WHEELS ARE ORDINARY WHEELS, differing only in which face they mount on —
+  they drive and they carry. The top one mounts on the ROOF and is what an upside-down machine runs
+  on; nothing special is needed for that, because `probe_ground` always casts down in WORLD axes,
+  so the machine's attitude decides which wheels are the bottom ones. The stabiliser mounts on the
+  REAR (or front) face and looks FORWARD rather than sideways: it is the third support under a
+  nose-heavy or tail-heavy build, where a block used to be propped in and dragged on the ground.
+  Both models are still to come, so their geometry and transmission are placeholders on the
+  standard wheel's numbers.
 
 ### Building
 
