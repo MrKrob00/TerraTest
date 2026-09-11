@@ -125,6 +125,16 @@ project: read it before claiming how anything works.
 - Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
   their own. Without spread, automatic aiming is an aimbot.
 - Damage always goes through `_scale_damage`, subclass numbers included.
+- BLOCK HP IS MEASURED IN SECONDS UNDER FIRE, against the DPS the code actually produces (gun 25/s,
+  laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 40 per salvo cycle, drill 66 at
+  contact; enemy builds run 20-75, siege ~118). The rule the table is tuned to: a cabin survives
+  six seconds of focused fire from its own tier, an ordinary block three. A weapon without its own
+  row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine — which is what the
+  enemy aims at.
+- A BULLET IS SWEPT ALONG ITS SEGMENT (`bullet._sweep`), not left to Area3D overlap: at 120 u/s it
+  moves two metres per physics frame (four at 30 fps) and a block is one metre, so shots stepped
+  over blocks entirely — armour stopped nothing and hits landed on whatever was at the end of the
+  step. One bullet lands one hit; a spent bullet is inert and the handler checks that.
 - A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
   `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
   pool is empty; afterwards bullets come out of it in any order.
