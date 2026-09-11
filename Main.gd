@@ -104,6 +104,12 @@ func _ready() -> void:
 	get_window().size_changed.connect(_apply_ui_scale)
 	_apply_ui_scale()
 	_setup_pc_input_map()
+	# ПРИВЕТСТВИЕ МЕХАНИКА — отсюда, потому что мир это мы. Q — автолоад: он поднимается ещё до
+	# первой сцены, и сказанное им в _ready доставалось главному меню. Отложенно: реплика уходит
+	# в Dialogue, а тот проверяет, что мир уже в дереве.
+	var q: Node = get_node_or_null("/root/Q")
+	if q != null and q.has_method("announce_start"):
+		q.announce_start.call_deferred()
 
 # Пересчёт content_scale_factor под текущее окно. Зовётся на старте и на каждый ресайз.
 func _apply_ui_scale() -> void:
