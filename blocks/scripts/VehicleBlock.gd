@@ -175,45 +175,65 @@ static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) ->
 	body.queue_free()
 	return true
 
+## ПРОЧНОСТЬ МЕРЯЕТСЯ СЕКУНДАМИ ПОД ОГНЁМ, а не «на глаз».
+##
+## Считать надо против ВХОДЯЩЕГО DPS, и вот он, из самих стволов: пушка 25 в секунду (5 за
+## выстрел каждые 0.2), лазер 32, дробовик 20 в среднем (64 за пачку раз в 3.2), тяжёлая пушка 25,
+## ракета 28, бур 66 в упор. Вражеские сборки (blocks.gd): разведчик 25, бегун 20, рейдер 50,
+## копейщик 57, крушитель 75.
+##
+## Со старыми числами это давало «блок в секунду»: кабина 150 против рейдера умирала за три
+## секунды, оружие и колёса (50-60) — за одну, а ниже DROP_FRAC блок и вовсе срывает с креплений.
+## Отсюда «машина не живёт и пяти секунд» — счёт сходился точно.
+##
+## ПРАВИЛО, ПО КОТОРОМУ ЭТИ ЧИСЛА ПОДНЯТЫ: сердце машины (кабина) обязано держать не меньше шести
+## секунд сосредоточенного огня СВОЕГО тира, а рядовой блок — не меньше трёх. Отсюда примерно
+## двойной множитель ко всему боевому; лесенка между блоками сохранена ровно как была (броня
+## втрое от блока, плиты по объёму, половинка две трети).
+##
+## Оружие и лазер раньше не имели строки вовсе и падали на DEFAULT_HP = 50, то есть были САМЫМ
+## хрупким на машине — при том, что именно по ним и стреляют.
 const BLOCK_HP: Dictionary = {
-	G.Block.CABIN:     150,
-	G.Block.WHEEL:     60,
-	G.Block.BLOCK:     80,
-	G.Block.DRILL:     80,
-	G.Block.COLLECTOR: 50,
-	G.Block.RECEIVER:    50,
-	G.Block.BELT:      40,
-	G.Block.PROCESSOR: 100,
-	G.Block.SELLER:    70,
-	G.Block.BATTERY:   60,
-	G.Block.SOLAR:     40,
-	G.Block.GENERATOR: 90,
-	G.Block.REGEN:     60,
-	G.Block.SHIELD:    70,
-	G.Block.ROCKET:    70,
-	G.Block.BLOCK3:    120,      # 3 клетки — и hp втрое от обычного блока
-	G.Block.WEDGE2:    110,
-	G.Block.ARMOR:     240,      # защитная пластина: держит втрое больше блока
+	G.Block.CABIN:     320,      # сердце: пока она цела, машина жива
+	G.Block.WHEEL:     120,
+	G.Block.BLOCK:     160,
+	G.Block.DRILL:     170,      # носовой блок: принимает удар первым, им же и работают
+	G.Block.COLLECTOR: 90,
+	G.Block.RECEIVER:    90,
+	G.Block.BELT:      70,
+	G.Block.PROCESSOR: 180,
+	G.Block.SELLER:    130,
+	G.Block.BATTERY:   110,
+	G.Block.SOLAR:     70,
+	G.Block.GENERATOR: 170,
+	G.Block.REGEN:     110,
+	G.Block.SHIELD:    130,
+	G.Block.GUN:       130,      # по стволам и бьют: своя строка, а не общий потолок
+	G.Block.LASER:     120,
+	G.Block.ROCKET:    130,
+	G.Block.BLOCK3:    240,      # 3 клетки — и hp втрое от обычного блока
+	G.Block.WEDGE2:    220,
+	G.Block.ARMOR:     480,      # защитная пластина: держит втрое больше блока
 	# Плиты крупнее — прочность по объёму: 2 клетки вдвое, 4 клетки вчетверо от ARMOR.
-	G.Block.ARMOR2:    480,
-	G.Block.ARMOR4:    960,
+	G.Block.ARMOR2:    960,
+	G.Block.ARMOR4:    1920,
 	# Половинка — тот же материал, но металла в ней меньше: две трети от блока.
-	G.Block.HALF_BLOCK:  55,
-	G.Block.HALF_BLOCK2: 110,
-	G.Block.WIRELESS_CHARGER: 55,
-	G.Block.MORTAR:      90,
-	G.Block.POUND_CANNON: 95,
-	G.Block.SHOTGUN:     70,
-	G.Block.SCRAPPER:    90,
-	G.Block.SMALL_DRILL: 50,
-	G.Block.BELT_SPLIT: 40,
-	G.Block.BELT_CROSS: 40,
-	G.Block.ROT_SUPPORT: 70,
-	G.Block.STORAGE:    90,
-	G.Block.AUTO_MINER: 110,
-	G.Block.FABRICATOR: 160,
+	G.Block.HALF_BLOCK:  110,
+	G.Block.HALF_BLOCK2: 220,
+	G.Block.WIRELESS_CHARGER: 110,
+	G.Block.MORTAR:      170,
+	G.Block.POUND_CANNON: 180,
+	G.Block.SHOTGUN:     140,
+	G.Block.SCRAPPER:    170,
+	G.Block.SMALL_DRILL: 100,
+	G.Block.BELT_SPLIT: 70,
+	G.Block.BELT_CROSS: 70,
+	G.Block.ROT_SUPPORT: 130,
+	G.Block.STORAGE:    170,
+	G.Block.AUTO_MINER: 210,
+	G.Block.FABRICATOR: 300,
 }
-const DEFAULT_HP := 50
+const DEFAULT_HP := 90
 
 # Вес блока в килограммах. Раньше массу машины составляли только колёса, из-за чего
 # постройка вообще не влияла на ходовые качества. Теперь каждый блок весит.
