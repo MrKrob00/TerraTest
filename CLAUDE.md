@@ -100,13 +100,15 @@ project: read it before claiming how anything works.
   yet (`Wheel.geometry_ready()`, i.e. `ride_height` still 0) so an unfinished block cannot promise
   newtons or kilograms.
 - THE TOP AND STABILISER WHEELS ARE ORDINARY WHEELS, differing only in which face they mount on —
-  they drive and they carry. The top one mounts on the ROOF and is what an upside-down machine runs
-  on; nothing special is needed for that, because `probe_ground` always casts down in WORLD axes,
-  so the machine's attitude decides which wheels are the bottom ones. The stabiliser mounts on the
-  REAR (or front) face and looks FORWARD rather than sideways: it is the third support under a
-  nose-heavy or tail-heavy build, where a block used to be propped in and dragged on the ground.
-  Both models are still to come, so their geometry and transmission are placeholders on the
-  standard wheel's numbers.
+  they drive and they carry. The top one is TerraTech's Riser Wheel: a wheel on an EXTENSION STRUT
+  that bolts on by its TOP face and hangs below whatever it is attached to, so it adds a support
+  point and lifts the machine clear instead of letting it bottom out. In our terms that is
+  `load_capacity` plus a `ride_height` LARGER than the standard wheel's, and `connect_faces` of
+  `FACE_TOP` (16) rather than `FACE_BACK` — neither is set yet. The stabiliser mounts on the REAR
+  (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
+  tail-heavy build, where a block used to be propped in and then dragged along the ground. Both
+  models are still to come, so their geometry, mounting face and transmission are deliberately left
+  as placeholders on the standard wheel's numbers.
 
 ### Building
 
