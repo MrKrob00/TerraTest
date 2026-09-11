@@ -251,6 +251,10 @@ project: read it before claiming how anything works.
   visibility, edge layout, anything built from data). Code fetches nodes by unique name.
 - Icons are `_draw()` classes with no node representation.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
+- NOBODY SPEAKS OUTSIDE THE WORLD. `Dialogue.say` drops the line when `/root/Main` is absent, and
+  clears a visible one when the world goes away: `Q` is an autoload that comes up before the first
+  scene, so its greeting used to land on the main menu. The greeting itself is asked for by the
+  world (`Main._ready` → `Q.announce_start`), not by the autoload.
 - A code-built window is centred by `CenterContainer`, not anchors: its minimum size changes after
   the children are added.
 - A window scene whose own script opens it must use `load()`, not `preload` (compile-time cycle).

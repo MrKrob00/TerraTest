@@ -19,8 +19,21 @@ var _timer: float = 0.0
 func _ready() -> void:
 	_box.visible = false
 
+## РЕПЛИКИ ЗВУЧАТ ТОЛЬКО В МИРЕ. Механик — голос игры: подсказка по заданию, реплика на новый
+## грейд, приветствие на старте. В меню мира нет, и говорить там не о чем — а говорящие про меню
+## не знают и знать не должны: Q поднимается автолоадом ЕЩЁ ДО ПЕРВОЙ СЦЕНЫ и здоровается сразу,
+## задания тикают от своих сигналов, грейд приходит от G. Поэтому дверь одна, и она здесь:
+## нет `/root/Main` — нет мира, реплика молча выбрасывается.
+##
+## Проверять «а где я сейчас» в каждом говорящем — это список, из которого однажды выпадет пункт,
+## и Механик снова заговорит с главным меню.
+func in_world() -> bool:
+	return get_node_or_null("/root/Main") != null
+
 # Добавить одну реплику. duration <= 0 → авто по длине текста.
 func say(speaker: String, text: String, duration: float = 0.0) -> void:
+	if not in_world():
+		return
 	if duration <= 0.0:
 		duration = clampf(text.length() / CHARS_PER_SEC, MIN_DURATION, MAX_DURATION)
 	_queue.append({"speaker": speaker, "text": text, "dur": duration})
@@ -50,6 +63,11 @@ func _advance() -> void:
 
 func _process(delta: float) -> void:
 	if not _box.visible:
+		return
+	# Мир кончился посреди реплики (вышли в меню) — панель гасим вместе с очередью: висящая
+	# поверх меню фраза из прошлой игры выглядит ровно так же неуместно, как новая.
+	if not in_world():
+		clear()
 		return
 	_timer -= delta
 	if _timer <= 0.0:
