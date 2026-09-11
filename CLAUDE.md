@@ -197,7 +197,11 @@ project: read it before claiming how anything works.
 - A story block is taken, not found: carried by an enemy or held by a vein, and a killed carrier
   must leave the block behind (`claim_or_drop`) or the branch dead-locks.
 - Placement is shown by a blueprint (`_show_plan_on`), rebuilt only on plan change (`_plan_sig`).
-  The energy branch mounts the support itself and computes the plan from that support's real cell.
+- A quest may put a BUILDING in the world (`_spawn_station`): no cabin, a stationary core, anchored
+  from birth, the player's faction — so it can be built on and the camera can switch to it. The
+  energy branch is one: an anchored support 50 m out with the panel beside it, then the repair unit.
+  Such a base carries meta `quest_id` and that tag is saved with the machine (`world_persist`), or
+  every load would stand a second base next to the first — the arc's own state is memory only.
 - The tutorial is five steps, assembly only. Non-obvious gestures are a Mechanic line at the end.
 
 ### Saving and slots
