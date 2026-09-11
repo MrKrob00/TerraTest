@@ -128,12 +128,10 @@ func _define_layout() -> void:
 		2: _layout_laser_scout()
 		3: _layout_starter()
 		4: _layout_cabin_only()
-		5: _layout_scout()
-		6: _layout_runner()
-		7: _layout_raider()
-		8: _layout_lancer()
-		9: _layout_breaker()
-		10: _layout_siege()
+		# Enemy machines: the ladder lives in ENEMY_BUILDS, so a new variant is a table row and
+		# one number here, not another _layout_ function.
+		5, 6, 7, 8, 9, 10, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34:
+			_layout_enemy(layout_preset)
 		11: _layout_outpost()
 		12: _layout_fort()
 		13: _layout_turret_post(G.Block.GUN)
@@ -201,135 +199,160 @@ func _wheels_6() -> void:
 	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ENEMY BUILDS: small to heavy (presets 5..10)
+# ENEMY BUILDS: one table, not a function per machine
 # ══════════════════════════════════════════════════════════════════════════════
-# Ordered by DANGER and by size at once: further down the list means bigger, better armoured and
-# meaner. The spawner picks a tier by the player machine's value (enemy_spawner._pick_preset) and a
-# killed machine's value becomes RP (G.rp_for_kill), so "bigger" automatically means "worth more".
+# Ordered by DANGER and by size at once: further down means bigger, better armoured and meaner.
+# The spawner picks a TIER by the player's machine value and the world ramp, then rolls one of the
+# variants inside it (enemy_spawner.PRESET_TIERS), and a killed machine's value becomes RP
+# (G.rp_for_kill) - so "bigger" automatically means "worth more".
+#
+# THREE TO FOUR BUILDS PER STEP, because one machine per tier means the horizon always holds the
+# same silhouette: the player learns a single answer and the whole step is solved. Variants share
+# the chassis and differ in armament and in which of shield / repair field they carry.
 #
 # SINGLE-CELL BLOCKS ONLY. A 2x1x1 or 2x1x2 occupies one grid cell but has a wider collider, so a
 # neighbour would clip into it. Size is gained by count, not by block dimensions.
 #
-# No power blocks on enemies, deliberately: a solar panel only feeds a machine ON ANCHOR (the
-# anchored field exists on the player only), a generator wants fuel through the factory chain, and
-# repair field and shield simply would not run. Difficulty comes from armour and guns.
-
-# Scout: the smallest. Four small wheels, one gun, a two-cell hull.
-func _layout_scout() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	_side_wheels(G.Block.SMALL_WHEEL, [5, 6])
-	set_block(5, 6, 5, G.Block.GUN, 0.0)          # низом на кабину
-
-# Runner: same size but full wheels and a shotgun, so it has to be let close.
-func _layout_runner() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	_front_armor()                                # лоб прикрыт: в упор он и живёт
-	_side_wheels(G.Block.WHEEL, [5, 6])
-	set_block(5, 6, 5, G.Block.SHOTGUN, 0.0)
-
-# Raider: six wheels, two guns, armoured flanks. The first machine that cannot be shot down on
-# approach - it has to be out-manoeuvred.
-func _layout_raider() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	_side_wheels(G.Block.WHEEL, [5, 6, 7])
-	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж — к нему и крепятся борта
-	_side_armor(6)
-	set_block(5, 6, 5, G.Block.GUN, 0.0)
-	set_block(5, 6, 7, G.Block.GUN, 0.0)
-
-# Lancer: the laser keeps you at range, the gun finishes up close. Noticeably more armour - and the
-# first enemy to carry POWER: a battery feeding a shield dome.
+# WHAT GOES WHERE IS A RULE, NOT TASTE, and it is the reverse of what these builds used to do.
+# Value decides depth: cabin, then battery, then shield and repair field, then guns. The battery
+# sits in the MIDDLE OF THE DECK - hull under it, a turret or a dome over it, flank plates on both
+# sides, blocks fore and aft - so it is enclosed on six sides. Guns live on the outside, where they
+# need the firing arc and where the player is meant to be able to strip them. Power used to hang
+# off the tail, which read as a feature ("go round the back and de-power it") and was really one
+# cheap move that deleted the whole shield mechanic.
 #
-# From here on the advanced builds stop being "the same machine with more guns". A shield turns the
-# fight into two stages - drain it, then break the machine - and the battery is what it drains,
-# which is also why the enemy cannot simply wait it out: panels only stand on BASES, so a driving
-# machine spawns with a full battery and has no way to refill it. Its dome is a finite resource -
-# the same door the player already has into a shielded tower.
-func _layout_lancer() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	_front_armor()
-	_side_wheels(G.Block.WHEEL, [5, 6, 7])
-	set_block(5, 6, 6, G.Block.BLOCK, 0.0)
-	_side_armor(6)
-	set_block(5, 6, 5, G.Block.LASER, 0.0)
-	set_block(5, 6, 7, G.Block.GUN, 0.0)
-	# Питание СТОЛБИКОМ на втором этаже: батарея на блоке, купол на батарее. Оба блока стыкуются
-	# любой гранью (connect_faces по умолчанию), поэтому стопка законна и разбирается сверху вниз -
-	# сбил купол, следом батарею, дальше машина уже голая.
-	#
-	# Столбик ставит купол НАД СЕРЕДИНОЙ корпуса, и это не для красоты: щит — сфера радиусом
-	# shield.SHIELD_RADIUS вокруг своего блока, а клетка равна метру. С этой клетки сфера накрывает
-	# всю машину целиком, лобовую плиту включительно, - то есть в копейщика нельзя попасть, не
-	# пройдя сквозь купол.
-	set_block(5, 7, 6, G.Block.BATTERY, 0.0)
-	set_block(5, 8, 6, G.Block.SHIELD, 0.0)
+# A SHIELD PROTECTS WHAT ITS SPHERE COVERS, not what is bolted to the machine, so its cell is
+# geometry: on a long hull a dome parked at the tail lets a frontal shot reach the cabin before it
+# ever enters the sphere. It goes over the battery, near the middle.
 
-# Breaker: big wheels, a heavy gun and two regular ones. Already a LARGE machine, visible far off.
-func _layout_breaker() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
-	set_block(5, 5, 7, G.Block.BLOCK, 0.0)
-	_side_wheels(G.Block.BIG_WHEEL, [5, 6, 7, 8])
-	set_block(5, 6, 6, G.Block.BLOCK, 0.0)        # второй этаж целиком: на нём стволы и борта
-	set_block(5, 6, 7, G.Block.BLOCK, 0.0)
-	_side_armor(6)
-	_side_armor(7)
-	set_block(5, 6, 5, G.Block.POUND_CANNON, 0.0)
-	set_block(5, 7, 6, G.Block.GUN, 0.0)
-	set_block(5, 7, 7, G.Block.GUN, 0.0)
-	# ХВОСТ С ПИТАНИЕМ И РЕМОНТОМ. Реген латает соседние блоки по 12 HP в секунду за энергию из той
-	# же батареи: пока она цела, крушителя приходится разбирать быстрее, чем он чинится, — а значит
-	# бить не куда придётся, а по батарее и регену.
-	set_block(5, 5, 8, G.Block.BLOCK, 0.0)
-	set_block(5, 6, 8, G.Block.BATTERY, 0.0)
-	set_block(5, 7, 8, G.Block.REGEN, 0.0)
+## rows  - floor length in cells, z = 5 .. 5+rows-1 (the cabin takes z=5)
+## wheel - wheel block for both side rows
+## wide  - 3-cell-wide floor (x 4..6) with the wheels moved out to x 3/7. A one-cell spine with
+##         wheels bolted to it is why the machines read as small on an 11-cube grid.
+## nose  - armour plate ahead of the floor
+## deck  - second floor, front to back from z=5. EMPTY leaves the cell open.
+## top   - third floor, front to back from z=6. Needs the deck cell under it filled.
+const ENEMY_BUILDS: Dictionary = {
+	# ── Tier 0: light scouts. Small wheels, one gun, no plating - the machine a first cabin can
+	# actually beat.
+	5:  {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
+		"deck": [G.Block.GUN]},
+	19: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
+		"deck": [G.Block.LASER]},
+	20: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
+		"deck": [G.Block.SHOTGUN]},
 
-# Siege: the largest. Eight wheels, a mortar lobbing over cover, a rocket launcher and a pair of
-# guns, armour on flanks and front. Meeting one is an event, not a routine skirmish.
-func _layout_siege() -> void:
+	# ── Tier 1: runners. Full wheels and a nose plate: they have to be let close, or outrun.
+	6:  {"rows": 3, "wheel": G.Block.WHEEL, "wide": false, "deck": [G.Block.SHOTGUN]},
+	21: {"rows": 3, "wheel": G.Block.WHEEL, "wide": false,
+		"deck": [G.Block.GUN, G.Block.EMPTY, G.Block.GUN]},
+	22: {"rows": 3, "wheel": G.Block.WHEEL, "wide": false, "deck": [G.Block.LASER]},
+
+	# ── Tier 2: raiders. First WIDE hull and flank plates - the first machine that cannot be shot
+	# down on approach and has to be out-manoeuvred.
+	7:  {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.GUN]},
+	23: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.GUN]},
+	24: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.GUN]},
+	25: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.EMPTY]},
+
+	# ── Tier 3: lancers. THE STEP WHERE POWER APPEARS - a battery feeding a dome or a repair field.
+	# The fight becomes two stages, drain it and then break the machine, and the battery is what is
+	# drained: panels stand only on bases, so a driving machine spawns full and never refills.
+	8:  {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
+		"top": [G.Block.EMPTY, G.Block.SHIELD]},
+	26: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
+		"top": [G.Block.EMPTY, G.Block.REGEN]},
+	27: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
+		"top": [G.Block.EMPTY, G.Block.SHIELD]},
+	28: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.LASER],
+		"top": [G.Block.EMPTY, G.Block.REGEN]},
+
+	# ── Tier 4: breakers. Big wheels, heavy barrels, and both kinds of power on some variants.
+	# Already a LARGE machine, read off the horizon.
+	9:  {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.GUN]},
+	29: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN]},
+	30: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.POUND_CANNON],
+		"top": [G.Block.GUN, G.Block.REGEN]},
+	31: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.LASER],
+		"top": [G.Block.GUN, G.Block.SHIELD]},
+
+	# ── Tier 5: siege. The largest: five rows on big wheels, TWO batteries, dome and repair field
+	# together, four barrels. Meeting one is an event, not a routine skirmish.
+	10: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.ROCKET]},
+	32: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY,
+			G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.POUND_CANNON]},
+	33: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN, G.Block.LASER]},
+	34: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.GUN]},
+}
+
+func _layout_enemy(preset: int) -> void:
+	var b: Dictionary = ENEMY_BUILDS.get(preset, {})
+	if b.is_empty():
+		_layout_default()
+		return
+	var rows: int = maxi(int(b.get("rows", 2)), 1)
+	var wide: bool = b.get("wide", false) == true
+	var half: int = 1 if wide else 0
+	var deck: Array = b.get("deck", [])
+	var top: Array = b.get("top", [])
+
+	# FLOOR. The cabin sits at the grid centre because that is the machine's origin (cell_to_local
+	# counts from CENTER); the hull runs backwards from it.
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	for z in [6, 7, 8]:
-		set_block(5, 5, z, G.Block.BLOCK, 0.0)
-		set_block(5, 6, z, G.Block.BLOCK, 0.0)
-	_front_armor()
-	_side_armor(6)
-	_side_armor(7)
-	_side_wheels(G.Block.WHEEL, [5, 6, 7, 8, 9])
-	set_block(5, 6, 5, G.Block.MORTAR, 0.0)
-	set_block(5, 7, 7, G.Block.ROCKET, 0.0)
-	set_block(5, 7, 6, G.Block.GUN, 0.0)
-	# ВТОРАЯ ПУШКА ЗАМЕНЕНА КУПОЛОМ, и это не ослабление: осадная машина и так бьёт мортирой,
-	# ракетой и стволом. Разменять урон на живучесть — единственный способ сделать её тяжёлой,
-	# а не просто шумной.
-	#
-	# КУПОЛ СТОИТ НЕ НА ХВОСТЕ, И ЭТО ГЕОМЕТРИЯ, А НЕ ВКУС. Щит — это сфера радиусом
-	# shield.SHIELD_RADIUS вокруг СВОЕГО блока (клетка = метр), и защищено не то, что «на машине»,
-	# а то, во что снаряд не попадёт, не пройдя сквозь сферу. Осадная машина длиной шесть клеток:
-	# с хвоста (z=9) сфера накрывает корму, а лобовой выстрел доходит до кабины РАНЬШЕ, чем
-	# входит в купол. С z=8 сфера перекрывает подход к кабине спереди и с боков — то есть щит
-	# наконец щитит.
-	set_block(5, 7, 8, G.Block.SHIELD, 0.0)
-	# Хвост: блок → батарея → реген. Питание снаружи и в одном месте: зайти сзади и «обесточить»
-	# — единственный способ снять купол и ремонт раньше, чем закончится их заряд. Реген достаёт
-	# дальше купола (REGEN_RADIUS), поэтому с хвоста ему видно всё, кроме лобовой плиты, — её и
-	# положено прогрызать.
-	set_block(5, 5, 9, G.Block.BLOCK, 0.0)
-	set_block(5, 6, 9, G.Block.BATTERY, 0.0)
-	set_block(5, 7, 9, G.Block.REGEN, 0.0)
+	for i in rows:
+		for x in range(5 - half, 5 + half + 1):
+			if x != 5 or i != 0:
+				set_block(x, 5, 5 + i, G.Block.BLOCK, 0.0)
+	if b.get("nose", true) == true:
+		_front_armor(half)
+	var zs: Array = []
+	for i in rows:
+		zs.append(5 + i)
+	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, 2 if wide else 1)
+
+	for i in deck.size():
+		if int(deck[i]) != G.Block.EMPTY:
+			set_block(5, 6, 5 + i, int(deck[i]), 0.0)
+	# FLANK PLATES cover the MIDDLE of the deck, which is exactly where the power stands. Skipping
+	# the end cells is not laziness: the ends hold guns, and armour must not grow over a barrel.
+	for i in range(1, deck.size() - 1):
+		if int(deck[i]) != G.Block.EMPTY:
+			_side_armor(5 + i)
+	for i in top.size():
+		if int(top[i]) != G.Block.EMPTY:
+			set_block(5, 7, 6 + i, int(top[i]), 0.0)
 
 ## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
 ## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z
 ## into -+X, so the left row looks right and the right row looks left, both into the hull.
-func _side_wheels(kind: int, zs: Array) -> void:
+## dx is how far out the rows sit: 1 against a one-cell spine, 2 against a three-cell floor. Either
+## way the wheel meets the hull cell right beside it, so the rotation does not change with width.
+func _side_wheels(kind: int, zs: Array, dx: int = 1) -> void:
 	for z in zs:
-		set_block(4, 5, int(z), kind, PI / 2)
-		set_block(6, 5, int(z), kind, -PI / 2)
+		set_block(5 - dx, 5, int(z), kind, PI / 2)
+		set_block(5 + dx, 5, int(z), kind, -PI / 2)
 
 ## A pair of side plates on the SECOND FLOOR, in cell z. The plate joins with its REAR like a wheel
 ## (connect_faces = 2), so it is turned the same way: unrotated, its only face would point outward
@@ -344,8 +367,11 @@ func _side_armor(z: int) -> void:
 
 ## Front plate ahead of the cabin. Zero rotation: its rear face (+Z) already looks into the cabin,
 ## which accepts neighbours on every side.
-func _front_armor() -> void:
-	set_block(5, 5, 4, G.Block.ARMOR, 0.0)
+## half widens the plate to match the floor: 0 is a single plate on a spine, 1 covers a three-cell
+## nose. Each plate accepts its neighbour behind it, so every one of them has hull to bolt to.
+func _front_armor(half: int = 0) -> void:
+	for x in range(5 - half, 5 + half + 1):
+		set_block(x, 5, 4, G.Block.ARMOR, 0.0)
 
 ## ENEMY BASES (presets 11-12). The core is a SUPPORT, not a cabin: a base does not drive and holds
 ## on to the same thing ours does (G.STATIONARY_BLOCKS). It has no cabin on purpose - its death is
