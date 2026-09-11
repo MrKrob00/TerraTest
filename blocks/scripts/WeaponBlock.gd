@@ -359,6 +359,10 @@ func _rebind_bullet(b: Area3D) -> void:
 	# Пуля улетела за окно коллизий (ушла ниже min_y / вышло время) → вернуть в пул.
 	if b.has_signal("expired") and not b.expired.is_connected(_on_bullet_expired):
 		b.expired.connect(_on_bullet_expired)
+	# ПОПАДАНИЕ ПО ОТРЕЗКУ (bullet._sweep) приходит сюда же и теми же аргументами: пуля летит
+	# быстрее собственной толщины, и Area ловит далеко не каждое попадание (см. bullet.gd).
+	if b.has_signal("hit") and not b.hit.is_connected(_on_bullet_body_entered):
+		b.hit.connect(_on_bullet_body_entered)
 
 # Пуля отработала (попадание ИЛИ истечение полёта) — паркуем в пул инертной.
 func _recycle_bullet(b: Area3D) -> void:
@@ -409,6 +413,8 @@ func fire_bullet():
 		muzzle = $Pivot/Marker3D
 	bullet.global_position = muzzle.global_position
 	bullet.dir = dir
+	if "shooter_blocks" in bullet:
+		bullet.shooter_blocks = get_parent()   # свип пропускает свой корпус (пуля рождается внутри)
 	_apply_flat_range(bullet)
 	_apply_spread(bullet)                       # ДО look_at: пуля обязана смотреть туда, куда летит
 	var shot: Vector3 = bullet.dir
@@ -654,6 +660,11 @@ func _on_area_3d_body_exited(body: Node3D) -> void:
 	_targets.erase(body)
 
 func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
+	# ОДНА ПУЛЯ — ОДНО ПОПАДАНИЕ. Area3D шлёт body_entered ПО ТЕЛУ: пуля, вошедшая за один шаг в
+	# два блока, наносила урон обоим, а после свипа то же попадание приходило бы ещё и вторым
+	# сигналом. Отработавшая пуля инертна (dir обнулён в _recycle_bullet) — по этому её и узнаём.
+	if not is_instance_valid(source) or ("dir" in source and source.dir == Vector3.ZERO):
+		return
 	if body == self: return
 	if body.get_parent() == get_parent(): return
 	# Свой щит-купол пропускает СВОИ пули (вылетают изнутри купола) — не поглощаем.
