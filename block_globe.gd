@@ -260,9 +260,23 @@ func refresh() -> void:
 	_inv_seen = G.block_inventory.size()
 	for k in CAT_KEYS:
 		(_by_cat[k] as Array).clear()
+	# СЧИТАЕМ ВСЁ, ДО ЧЕГО ДОТЯНЕТСЯ РУКА: инвентарь плюс блоки, лежащие вокруг машины
+	# (G.BUILD_REACH). Шар показывает то, из чего МОЖНО собрать прямо сейчас, — иначе сбитый с
+	# врага блок лежит в трёх метрах, а в списке его нет.
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
 		counts[b] = counts.get(b, 0) + 1
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	var origin = G.build_origin()
+	if objects != null and origin is Vector3:
+		var r2: float = G.BUILD_REACH * G.BUILD_REACH
+		for c in objects.get_children():
+			if not G.is_loose_item(c) or c.get("block") == null:
+				continue
+			if (c as Node3D).global_position.distance_squared_to(origin as Vector3) > r2:
+				continue
+			var bt: int = int(c.get("block"))
+			counts[bt] = counts.get(bt, 0) + 1
 	for block_type in counts:
 		var key := _category_of(int(block_type))
 		(_by_cat[key] as Array).append({"type": int(block_type), "count": int(counts[block_type])})

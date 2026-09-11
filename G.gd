@@ -642,6 +642,67 @@ static func is_loose_item(n: Node) -> bool:
 	# Имена держателей: blocks — сборка машины, resources — накопитель коллектора/приёмника.
 	return p != null and p.name != "blocks" and p.name != "resources"
 
+# ── БЛОКИ ПОД РУКОЙ ──────────────────────────────────────────────────────────
+## РАДИУС, В КОТОРОМ ЛЕЖАЩИЙ В МИРЕ БЛОК СЧИТАЕТСЯ ДОСТУПНЫМ ДЛЯ СБОРКИ.
+##
+## Сборка брала только инвентарь, а всё, что валяется вокруг — сбитое с врага, вытряхнутое из
+## своей же разобранной машины, высыпанное наградой, — надо было подбирать по одному, руками, и
+## только потом ставить. Двадцать метров это «вон те, вокруг машины»: собирать из них так же
+## естественно, как из кармана, а бегать за каждым — работа, а не игра.
+const BUILD_REACH := 20.0
+
+## Сколько блоков этого типа доступно ПРЯМО СЕЙЧАС: инвентарь плюс лежащие рядом.
+func block_available(bt: int) -> int:
+	return block_inventory.count(bt) + loose_blocks_near(bt).size()
+
+## Свободно лежащие блоки этого типа в радиусе руки, БЛИЖНИЕ ПЕРВЫМИ. Лежащий — это не
+## замороженный (is_loose_item): блок на машине, в коллекторе и в руке заморожен, и взять его
+## отсюда нельзя.
+func loose_blocks_near(bt: int) -> Array:
+	var from = build_origin()
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects == null or not (from is Vector3):
+		return []
+	var origin: Vector3 = from
+	var r2: float = BUILD_REACH * BUILD_REACH
+	var out: Array = []
+	for c in objects.get_children():
+		if not is_loose_item(c) or c.get("block") == null or int(c.get("block")) != bt:
+			continue
+		var d2: float = (c as Node3D).global_position.distance_squared_to(origin)
+		if d2 <= r2:
+			out.append({"node": c, "d2": d2})
+	out.sort_custom(func(a, b): return float(a["d2"]) < float(b["d2"]))
+	var nodes: Array = []
+	for e in out:
+		nodes.append(e["node"])
+	return nodes
+
+## Списать ОДИН экземпляр под постройку: сначала из инвентаря, потом ближайший из мира — тот
+## исчезает, он и есть поставленный блок. false — брать нечего.
+##
+## Одна дверь на всех, кто берёт блок в руку (гараж, шар выбора, авто-добор после постановки):
+## иначе «можно ли взять» и «откуда списали» разъедутся, и сборка начнёт брать из воздуха.
+func consume_block(bt: int) -> bool:
+	if block_inventory.has(bt):
+		block_inventory.erase(bt)
+		mark_progress_dirty()
+		return true
+	var near: Array = loose_blocks_near(bt)
+	if near.is_empty():
+		return false
+	(near[0] as Node).queue_free()
+	return true
+
+## От чего меряем радиус — от машины, которой игрок управляет. Публично: тем же вопросом
+## пользуется шар выбора блока, когда показывает, что доступно.
+func build_origin() -> Variant:
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc == null or not ("current_vehicle" in cc):
+		return null
+	var v = cc.current_vehicle
+	return (v as Node3D).global_position if v != null and is_instance_valid(v) and v is Node3D else null
+
 ## КУПОЛ ЩИТА, ПРИНАДЛЕЖАЩИЙ СВОИМ, — не цель и не преграда.
 ##
 ## Купол (shield_dome.gd) лежит на слое блоков, поэтому его видит ВСЁ, что бьёт по блокам:

@@ -120,12 +120,12 @@ func _seed_demo() -> void:
 	])
 	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 210, 45, 14)
 	add_stages("arc_battery", [
-		{"desc": "Reach the vein holding the cell",
+		{"desc": "Drive out to the vein with the cell in it",
 		 "event": "quest_arc_battery_1", "goal": 1,
-		 "hint": "A power cell resolved inside a vein and the terrain closed over it. Drive out to the vein first."},
-		{"desc": "Mine the vein out and attach the cell",
+		 "hint": "A power cell resolved inside an ore vein and the rock closed over it. You will see it sitting in the vein when you get there — drive out first."},
+		{"desc": "Drill the vein dry, then attach the cell",
 		 "event": "quest_arc_battery_2", "goal": 1,
-		 "hint": "Nothing comes loose while there is ore left in it. Drill the vein dry and the cell drops free."},
+		 "hint": "Nothing comes loose while there is ore left around it: drill the vein until it is empty, pick the cell up and attach it. A cell stores charge for whatever you bolt it to."},
 	])
 	# ── Продолжение: груз, производство, оборона ────────────────────────────────
 	# Скелет взят у GSO-кампании TerraTech, но переложен на наши механики — см.

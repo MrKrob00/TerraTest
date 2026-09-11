@@ -592,7 +592,9 @@ func _say(text: String) -> void:
 
 # ── Действия ──────────────────────────────────────────────────────────────────
 func _take_into_hand(block_type: int) -> void:
-	if not G.block_inventory.has(block_type):
+	# Доступен — значит в инвентаре ИЛИ лежит рядом (G.BUILD_REACH). Списывается там же, одной
+	# дверью: спрашивать в одном месте, а вычитать в другом — это разъехаться на первом же блоке.
+	if G.block_available(block_type) <= 0:
 		return
 	var v: Node = _get_vehicle()
 	if v == null or not v.has_method("take_block_into_hand"):
@@ -600,8 +602,7 @@ func _take_into_hand(block_type: int) -> void:
 		return
 	if not v.take_block_into_hand(block_type):
 		return                                  # в руке уже что-то есть
-	G.block_inventory.erase(block_type)         # списываем один экземпляр
-	G.mark_progress_dirty()
+	G.consume_block(block_type)                 # инвентарь, а если там пусто — ближайший из мира
 	# Переключаемся на СТРОЙКУ, а не закрываем гараж. Закрытие теперь выводит машину из
 	# режима постройки, а тот возвращает блок из руки в инвентарь — взять блок было нельзя.
 	_select_tab(TAB_BUILD)

@@ -262,6 +262,70 @@ var _money_lbl: Label = null
 ## Оставить их там, где они лежат в файле сцены, значило бы молча уронить их ПОД эти кнопки:
 ## ящик техники выезжал бы под Take, а кнопка якоря пряталась под джойстиком. Поднимаем в том
 ## же порядке, в каком их строил код, — тогда картинка совпадает с прежней до пикселя.
+## ЭКРАН СМЕРТИ. Секунды между «тебя разобрали» и новой кабиной: без них игрок не видит ни
+## обломков, ни того, кто их сделал — камера просто оказывается в другом месте карты. Держит паузу
+## camera_controller (DEATH_PAUSE), здесь только картинка и подпись.
+##
+## Рисуется кодом, как и остальные значки: ни картинок, ни эмодзи. Ввод ловит на себя — строить и
+## стрелять в эти секунды нечем и незачем.
+class DeathVeil extends Control:
+	const WASH := Color(0.03, 0.01, 0.02, 0.62)
+	const TITLE := Color(1.0, 0.45, 0.35)
+	const SUB := Color(0.88, 0.90, 0.92, 0.80)
+
+	var killer: String = ""
+	var total: float = 1.0
+	var left: float = 0.0
+
+	func _process(delta: float) -> void:
+		if left <= 0.0:
+			return
+		left = maxf(left - delta, 0.0)
+		queue_redraw()
+
+	func _draw() -> void:
+		var s := size
+		if s.x < 2.0:
+			return
+		draw_rect(Rect2(Vector2.ZERO, s), WASH, true)
+		var f := get_theme_default_font()
+		var mid := s.y * 0.44
+		var t := "DESTROYED"
+		var fs: int = 44
+		draw_string(f, Vector2((s.x - f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) * 0.5, mid),
+				t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TITLE)
+		if killer != "":
+			var sub := "by %s" % killer
+			var fs2: int = 18
+			draw_string(f, Vector2((s.x - f.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x) * 0.5,
+					mid + 30.0), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, SUB)
+		# Полоса ожидания: видно, что это пауза, а не зависший кадр.
+		var bw: float = minf(s.x * 0.4, 320.0)
+		var bx: float = (s.x - bw) * 0.5
+		var by: float = mid + 54.0
+		var k: float = clampf(left / maxf(total, 0.01), 0.0, 1.0)
+		draw_rect(Rect2(bx, by, bw, 4.0), Color(1, 1, 1, 0.12), true)
+		draw_rect(Rect2(bx, by, bw * k, 4.0), TITLE * Color(1, 1, 1, 0.85), true)
+
+var _death_veil: DeathVeil = null
+
+func show_death(killer: String, seconds: float) -> void:
+	if not is_instance_valid(_death_veil):
+		_death_veil = DeathVeil.new()
+		_death_veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_death_veil.mouse_filter = Control.MOUSE_FILTER_STOP
+		add_child(_death_veil)
+	_lift(_death_veil)
+	_death_veil.killer = killer
+	_death_veil.total = seconds
+	_death_veil.left = seconds
+	_death_veil.visible = true
+	_death_veil.queue_redraw()
+
+func hide_death() -> void:
+	if is_instance_valid(_death_veil):
+		_death_veil.visible = false
+
 func _lift(n: Node) -> Node:
 	if n != null and n.get_parent() == self:
 		move_child(n, get_child_count() - 1)
@@ -728,12 +792,16 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	_vmenu.mouse_filter = Control.MOUSE_FILTER_IGNORE   # ввод ловит hud._input, не UI
 	add_child(_vmenu)
 	var defense_on: bool = vehicle.get("defense_mode") == true   # == true: bool(null) роняет вызов
+	# ПОСТРОЙКА ЗАДАНИЯ не разбирается и не уносится (vehicle.quest_locked — там же и отказ).
+	# Пункты остаются на месте, но говорят, почему они не сработают: пропавший пункт читается как
+	# сбой меню, а подпись — как правило игры.
+	var locked: bool = vehicle.has_method("quest_locked") and vehicle.quest_locked()
 	var wheel := RadialWheel.new()
 	wheel.outer = VMENU_OUTER
 	wheel.inner = VMENU_INNER
 	wheel.items = [
-		["inventory", "To inventory"],
-		["disassemble", "Disassemble"],
+		["inventory", "Held by directive" if locked else "To inventory"],
+		["disassemble", "Held by directive" if locked else "Disassemble"],
 		["shield", "Defense: OFF" if defense_on else "Defense: ON"],
 		["camera", "Control"],           # сменить камеру на эту машину/станцию
 	]
@@ -1056,8 +1124,7 @@ func _on_globe_block_chosen(block_type: int) -> void:
 		return
 	if not v.take_block_into_hand(block_type):
 		return
-	G.block_inventory.erase(block_type)          # списываем взятый экземпляр (блок из руки вернулся в inv внутри take)
-	G.mark_progress_dirty()
+	G.consume_block(block_type)                  # инвентарь, а если там пусто — ближайший лежащий рядом
 	if _block_globe:
 		_block_globe.refresh()
 

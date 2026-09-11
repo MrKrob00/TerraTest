@@ -74,6 +74,13 @@ project: read it before claiming how anything works.
 - What a factory produces lives in `blocks.output_map`, not on the node: the layout stores cells, so
   an instance field would reset on load.
 
+### Building
+
+- Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
+  — one door, `G.block_available` / `G.consume_block`, used by the garage, the block globe and the
+  serial-build refill. Asking in one place and deducting in another is how a build starts taking
+  blocks out of thin air.
+
 ### Production chain
 
 - Three roles, not three inputs. **Collector** picks resources off the ground, always. **Receiver**
@@ -207,6 +214,9 @@ project: read it before claiming how anything works.
 - A marker without a target is not drawn: kill quests look for a `story` machine first, then the
   nearest enemy within `KILL_MARK_DIST`. While a participant lives the marker follows it, not the
   point.
+- A quest BUILDING cannot be pocketed or dismantled while its branch is open
+  (`vehicle_body_3d.quest_locked`, checked in `send_to_inventory`/`disassemble`): carrying the
+  factory pad away silently dead-locks the player's own branch.
 - Quest items carry meta `quest_id`; that is how cleanup, saving and rescan recognise them. Handing
   out goes through `ensure`, which never duplicates something the player already owns.
 - A story block is taken, not found: carried by an enemy or held by a vein, and a killed carrier
@@ -236,6 +246,10 @@ project: read it before claiming how anything works.
   hold-to-confirm). The in-game settings have no wipe button: one tap, irreversible, among sliders.
 - Autoloads must be told the slot changed: `G.use_slot` calls `Q.reload_from_progress()`, otherwise
   a reset slot opens with the story already finished.
+- Death holds a screen for `DEATH_PAUSE` before the hand-over (`hud.show_death`): the camera stays
+  where it was, so the wreck and whoever made it are still in frame, and the name comes from the
+  same generator the enemy labels use (`EnemyMarker.name_for`, fed by `notice_attacker` — which the
+  player machine now has too, see rule 7).
 - Death hands the camera to the nearest own machine WITH A CABIN, and spawns a starter one (kit
   included) when there is none: `vehicles` also holds stations, and handing over to one of those
   read as "I respawned on my base" — no cabin, nothing to drive.
