@@ -397,7 +397,13 @@ func _on_base_died(b: Node) -> void:
 # two problems at once. Every fight was equally hard, so growing gained nothing and the reward was
 # the same. And the world had no variety: whatever stood on the horizon was always an equal. The
 # spread brings back both light skirmishes on the road and heavy meetings worth preparing for.
-func _enemy_tier(player: Node3D) -> int:
+## ПОТОЛОК ТИРА ДЛЯ ЭТОГО ИГРОКА — по тому, на чём он едет СЕЙЧАС, и по давлению мира.
+##
+## Цена машины отвечает на вопрос «что он потянет», грейд — «сколько он уже играет», и берётся
+## МЕНЬШЕЕ: игрок, вложивший всё в одну дорогую сборку на первом грейде, не должен получать против
+## себя весь список, а игрок пятого грейда, только что потерявший машину и сидящий на стартовой
+## кабине, — тем более.
+func _tier_cap(player: Node3D) -> int:
 	if preset_tiers.is_empty():
 		return 0
 	var value: int = _machine_value(player)
@@ -405,12 +411,29 @@ func _enemy_tier(player: Node3D) -> int:
 	for i in mini(preset_tiers.size(), tier_from_value.size()):
 		if value >= int(tier_from_value[i]):
 			cap = i
-	# ПОТОЛОК ДЕРЖИТ И ДАВЛЕНИЕ МИРА, не только цена машины. Игрок, вложивший всё в одну дорогую
-	# сборку на первом грейде, получал против себя весь список: цена говорит «он может себе такое
-	# позволить», а грейд — «он играет второй час». Берём меньшее из двух.
 	var ramp_cap: int = int(floor(G.threat_ramp() * float(preset_tiers.size() - 1) + 0.001))
-	cap = mini(cap, maxi(ramp_cap, 0))
-	return randi() % (cap + 1)
+	return maxi(mini(cap, ramp_cap), 0)
+
+func _enemy_tier(player: Node3D) -> int:
+	if preset_tiers.is_empty():
+		return 0
+	return randi() % (_tier_cap(player) + 1)
+
+## СБОРКА ПО ЗАПРОСУ, НО НЕ ВЫШЕ ПОТОЛКА. Событие просит конкретные пресеты («лагерь: копейщик,
+## крушитель, осадная») и до сих пор получало их независимо от того, на чём игрок сейчас едет:
+## разобрали на пятом грейде — и через минуту встречает та же осадная машина, только теперь ты на
+## стартовой кабине. Просьба события остаётся просьбой: если игрок потянет — придёт то, что просили,
+## если нет — ближайшее, что он потянет.
+##
+## Пресет не из лестницы (вышки, базы, сюжетные носители) не трогаем: там сборка — часть задания.
+func preset_for_request(preset: int) -> int:
+	var player: Node3D = _player()
+	if player == null or preset_tiers.is_empty():
+		return preset
+	var idx: int = preset_tiers.find(preset)
+	if idx < 0:
+		return preset
+	return int(preset_tiers[mini(idx, _tier_cap(player))])
 
 func _pick_preset(player: Node3D) -> int:
 	if preset_tiers.is_empty():

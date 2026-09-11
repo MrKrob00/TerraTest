@@ -33,8 +33,12 @@ class_name WeaponBlock
 @export var Area_Range: Area3D
 # Сектор наведения башни. Был 45×30 — цель уходила из сектора от одного разворота корпуса,
 # и башня бросала её, хотя ствол физически мог довернуть.
-const YAW_LIMIT   = 75.0
-const PITCH_LIMIT = 40.0
+#
+# ПЕРЕМЕННЫЕ, А НЕ КОНСТАНТЫ: сектор — свойство конкретного ствола, а не всех сразу. У мортиры
+# он узкий (она наводится корпусом и лишь подправляет), и константу подкласс переопределить не
+# может — пришлось бы городить вторую проверку конуса рядом с этой.
+var yaw_limit: float = 75.0
+var pitch_limit: float = 40.0
 
 var _fire_timer: float = 0.0
 ## «Огонь» — это не защёлка, а таймер: attack() взводит его, и каждый кадр он гаснет.
@@ -179,7 +183,7 @@ func _is_in_cone(body: Node3D) -> bool:
 	var yaw: float = abs(rad_to_deg(atan2(-dir_local.x, -dir_local.z)))
 	var pitch: float = abs(rad_to_deg(atan2(dir_local.y,
 		Vector2(dir_local.x, dir_local.z).length())))
-	return yaw <= YAW_LIMIT and pitch <= PITCH_LIMIT
+	return yaw <= yaw_limit and pitch <= pitch_limit
 
 # Выбор цели. Раньше брался просто БЛИЖАЙШИЙ блок — и орудия грызли то, что подвернулось:
 # колесо с краю вместо кабины, обломок вместо турели, которая по тебе стреляет. Теперь
@@ -287,8 +291,8 @@ func _track_target(delta: float, firing: bool) -> void:
 		var target_pos: Vector3 = _lead_point(_current_target, pivot.global_position)
 		var dir_world: Vector3 = (target_pos - pivot.global_position).normalized()
 		var dir_local: Vector3 = global_transform.basis.inverse() * dir_world
-		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -YAW_LIMIT, YAW_LIMIT)
-		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -PITCH_LIMIT, PITCH_LIMIT)
+		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -yaw_limit, yaw_limit)
+		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -pitch_limit, pitch_limit)
 		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
 		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)
 	else:
