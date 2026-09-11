@@ -654,6 +654,7 @@ func _line_1(q: Dictionary) -> void:
 	var p: Node3D = _player()
 	if p == null:
 		return
+	_line_adopt()
 	if _line_point == null:
 		var ang: float = randf() * TAU
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * LINE_DIST, 0.0, sin(ang) * LINE_DIST)
@@ -679,6 +680,7 @@ func _line_1(q: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 
 func _line_2(q: Dictionary) -> void:
+	_line_adopt()
 	# Процессор выдаём НЕ сразу: игрок должен увидеть, как первая партия проехала по ленте и
 	# продалась. Подарок посреди этого зрелища его бы и перебил.
 	if not _line_gifted:
@@ -700,6 +702,18 @@ func _line_2(q: Dictionary) -> void:
 	_drop_ore_over(recv, LINE_ORE)      # и снова руда — проверить, что линия не развалилась
 	Q.report(String(q["event"]), 1)
 
+## ПЛОЩАДКА, УЖЕ СТОЯЩАЯ В МИРЕ. После перезахода сейв возвращает базу раньше, чем квест
+## успевает опомниться: его собственные пометки живут только в памяти, и без этой строки каждый
+## вход в мир ставил бы рядом со старой площадкой вторую, в новом случайном месте.
+func _line_adopt() -> void:
+	if is_instance_valid(_line_base):
+		return
+	_line_base = _adopt_quest_base("arc_line")
+	if not is_instance_valid(_line_base):
+		return
+	_line_point = _line_base.global_position
+	_dropped["line_kit"] = true
+
 ## Площадка целиком: заякоренный продавец с лентой + набор на земле рядом.
 func _spawn_line_kit(at: Vector3) -> void:
 	_flatten_line_site(at)
@@ -707,6 +721,8 @@ func _spawn_line_kit(at: Vector3) -> void:
 		{"x": 5, "y": 5, "z": 5, "block": G.Block.SELLER, "rot": [0.0, 0.0, 0.0]},
 		{"x": 5, "y": 5, "z": 6, "block": G.Block.BELT, "rot": [0.0, 0.0, 0.0]},
 	])
+	if is_instance_valid(_line_base):
+		_line_base.set_meta(QuestProps.META, "arc_line")   # по ней база узнаётся после перезахода
 	_props.ensure("arc_line", G.Block.RECEIVER, at)
 	for _i in _belts_to_drop():
 		_props.drop_near("arc_line", G.Block.BELT, at)
