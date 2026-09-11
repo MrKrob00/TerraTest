@@ -309,8 +309,14 @@ func switch_to_vehicle(new_vehicle: RigidBody3D):
 	if hud != null and is_instance_valid(hud) and hud.has_method("on_vehicle_switched"):
 		hud.on_vehicle_switched(current_vehicle)
 
-# Машина погибла (уничтожена кабина): убираем из списка, садимся в ближайшую живую,
-# а если техники не осталось — спавним бесплатную стартовую и садимся в неё.
+# Машина погибла (уничтожена кабина): убираем из списка, садимся в ближайшую машину С КАБИНОЙ,
+# а если таких не осталось — спавним бесплатную стартовую и садимся в неё.
+#
+# С КАБИНОЙ — это и есть всё правило. Раньше годилась любая запись из vehicles, а там же лежат
+# БАЗЫ: стационарная постройка без кабины, которая никуда не едет. После смерти игрок оказывался
+# «за» своей фабрикой у жилы — камера на месте, управления нет, и выглядело это как возрождение
+# на базе. База остаётся своей и доступной (значок над машиной, круговое меню), но возрождение
+# обязано дать то, на чём можно уехать.
 func on_vehicle_died(dead: Node) -> void:
 	vehicles.erase(dead)
 	if current_vehicle != dead:
@@ -319,7 +325,7 @@ func on_vehicle_died(dead: Node) -> void:
 	current_vehicle = null            # чтобы switch_to_vehicle не дёргал умирающую
 	var alive: Array = []
 	for v in vehicles:
-		if is_instance_valid(v) and v != dead:
+		if v != dead and _drivable(v):
 			alive.append(v)
 	if alive.is_empty():
 		var starter: Node = _spawn_starter_vehicle(origin)
@@ -339,6 +345,25 @@ func on_vehicle_died(dead: Node) -> void:
 			best_d2 = d2
 			best = v
 	switch_to_vehicle(best)
+	# СНАПАЕМ, как и при возрождении: своя вторая машина может стоять за сотню метров, и обычный
+	# lerp полз бы туда через всю карту, показывая по дороге пустой рельеф.
+	global_position = (best as Node3D).global_position
+
+## Машина, за которую МОЖНО СЕСТЬ: со своей кабиной. База (is_station) не годится — кабины у неё
+## нет по определению, она стоит на якоре и не едет.
+func _drivable(v: Node) -> bool:
+	if v == null or not is_instance_valid(v) or not (v is Node3D):
+		return false
+	if v.get("is_station") == true:
+		return false
+	var bl: Node = v.get_node_or_null("blocks")
+	if bl == null:
+		return false
+	for b in bl.get_children():
+		var bt = b.get("block")
+		if bt != null and int(bt) == G.Block.CABIN:
+			return true
+	return false
 
 # ── Возрождение ──────────────────────────────────────────────────────────────
 # Возрождаемся ГОЛОЙ КАБИНОЙ: ни оружия, ни брони, а базовый набор ещё только осыпается
