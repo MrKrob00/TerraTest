@@ -105,6 +105,20 @@ var _biomes: TerrainBiomes = null
 ## The map authored in the scene, kept for what it can tell about the world it was baked from: its
 ## biomes and the Height it was generated with.
 var _scene_map: Node3D = null
+## That Height, remembered while the node is alive. The node itself is freed by the first swap, and
+## asking a freed one later just returns nothing - every map after the first came out at the preset
+## Height instead of the authored one, which is half as tall.
+var _authored_height: float = 0.0
+
+## EVERY ENTRY INTO A ROUND GETS A NUMBER, and that number is the only way to cancel one. A GDScript
+## coroutine cannot be aborted: the one waiting for terrain WILL get it and carry on - into a stage
+## that was switched off meanwhile, or re-opened, or already has a map. Then two of them spawn two
+## pairs of machines onto two maps. Stale number = leave, and take whatever you built with you.
+var _era: int = 0
+## A round is still opening: the tick may not touch the timer or start a generation. Without it the
+## round timer, sitting at zero, started the NEXT map in the menu's very first frame - and the first
+## round ended a few seconds later, the moment that generation landed.
+var _opening: bool = false
 
 func _ready() -> void:
 	_rng.randomize()
@@ -135,38 +149,85 @@ func set_battles(on: bool) -> void:
 	_backdrop.cover(true)
 	await _open_round()
 
-## Take the stage down: everything the fight owns goes, including the map authored in the scene.
-## Keeping it would mean paying for terrain streaming behind an opaque backdrop.
+## Take the stage down: everything the fight owns goes, including the map authored in the scene -
+## THE SCENE ONE TOO, and by name rather than through _map, because the switch can be off before a
+## round ever opened and _map is still empty then. Left standing, it would go on streaming terrain
+## behind an opaque backdrop, which is the exact cost the switch exists to remove.
 func _shutdown() -> void:
+	_era += 1               # whatever is waiting on terrain right now is no longer ours
+	_opening = false
+	_swapping = false
 	for c in _machines_root.get_children():
 		_machines_root.remove_child(c)
 		c.queue_free()
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
-	for m in [_map, _next_map]:
-		if is_instance_valid(m):
-			if m.has_method("stop_generation"):
-				m.stop_generation()
-			remove_child(m)
-			m.queue_free()
+	for m in [_map, _next_map, get_node_or_null("LiteTerrain") as Node3D]:
+		_discard(m)
 	_map = null
 	_next_map = null
+
+## Is the round that started with this number still the current one? A coroutine asks after every
+## await; false means it must leave without touching the stage.
+func _live(era: int) -> bool:
+	return era == _era and not _off
+
+## Take a map off generation and out of the tree. ONE DOOR, because a map can be dropped from four
+## places - the round reset, the switch, a cancelled coroutine, a prepared map nobody needed - and
+## every one of them has to stop its generation first: the worker rows write into buffers that live
+## inside the node being freed.
+func _discard(m: Node3D) -> void:
+	if not is_instance_valid(m):
+		return
+	if m == _scene_map:
+		_authored_h()       # ask it its Height while it can still answer
+		_scene_map = null
+	if m.has_method("stop_generation"):
+		m.stop_generation()
+	var parent: Node = m.get_parent()
+	if parent != null:
+		parent.remove_child(m)
+	m.queue_free()
+
+## Height of the authored map, asked once and kept.
+func _authored_h() -> float:
+	if _authored_height <= 0.0 and is_instance_valid(_scene_map) \
+			and _scene_map.has_method("world_height"):
+		_authored_height = float(_scene_map.world_height())
+	return _authored_height
 
 # ── Rounds ───────────────────────────────────────────────────────────────────
 ## Open the first round on the scene map; if it is gone (someone deleted the node), generate one.
 func _open_round() -> void:
-	_map = get_node_or_null("LiteTerrain") as Node3D
-	if _map != null:
+	_era += 1
+	var era: int = _era
+	_opening = true
+	# The map is a LOCAL until the round is actually open. Assigning it up front let the tick see a
+	# map that was still loading, run its timer down and start generating the next one before the
+	# first had begun.
+	var m: Node3D = get_node_or_null("LiteTerrain") as Node3D
+	if m != null:
 		# The scene map loads its own baked heightmap and sets up its own collision in _ready.
 		_backdrop.set_progress("reading terrain", -1.0)
-		if not await _wait_terrain(_map, true):
-			_map = null
-	if _map == null:
-		_map = await _make_map(true)
-		if _map == null or _off:
-			return
-		_map.set_collision_streaming(true)
+		if not await _wait_terrain(m, true):
+			m = null
+		else:
+			_authored_h()
+	if m == null and _live(era):
+		m = await _make_map(true)
+	if not _live(era):
+		# Switched off, or opened again, while we waited. Take our map with us - the stage has moved
+		# on without it, and nobody else holds a reference.
+		if m != _scene_map:
+			_discard(m)
+		return
+	_opening = false
+	if m == null:
+		return
+	if m != _scene_map:
+		m.set_collision_streaming(true)
+	_map = m
 	_spawn_pair()
 	_round_t = ROUND_TIME
 	_move_camera()          # first frame already looks at the fight, not at the origin
@@ -196,10 +257,9 @@ func _make_map(report: bool = false) -> Node3D:
 	# 130, and the generated ones stand next to it visibly flatter - canyons half as deep, mountains
 	# half as tall. The authored map records what built it (map.built_amplitude, written by the
 	# dock); everything else stays the preset.
-	if is_instance_valid(_scene_map) and _scene_map.has_method("world_height"):
-		var authored: float = float(_scene_map.world_height())
-		if authored > 0.0:
-			np["amplitude"] = authored
+	var authored: float = _authored_h()
+	if authored > 0.0:
+		np["amplitude"] = authored
 	m.proc_scale = float(np["scale"])
 	m.proc_power = float(np["power"])
 	m.proc_amplitude = float(np["amplitude"])
@@ -303,17 +363,14 @@ func _wait_terrain(m: Node3D, report: bool = false) -> bool:
 func _prepare_next() -> void:
 	if _next_map != null or _gen_busy:
 		return
+	var era: int = _era
 	_gen_busy = true
 	var m: Node3D = await _make_map()
 	_gen_busy = false
-	if m == null:
+	if not _live(era):
+		_discard(m)         # switched off or restarted while this was building
 		return
-	if _off:
-		# The fight was switched off while this was building. It has nothing to appear on.
-		if m.has_method("stop_generation"):
-			m.stop_generation()
-		remove_child(m)
-		m.queue_free()
+	if m == null:
 		return
 	m.visible = false
 	_next_map = m
@@ -398,11 +455,15 @@ func _ground_y(p: Vector3) -> float:
 ## nodes freed here. Removing the map from the tree BEFORE it is freed takes its collision away in
 ## this frame rather than at the end of it.
 func _swap_round() -> void:
+	var era: int = _era
 	_swapping = true
 	# The backdrop comes down over the swap. Without it the round ends on a hard cut from one
 	# landscape to another, and the new one is still popping its chunks in as it appears.
 	_backdrop.cover(false)
 	await get_tree().create_timer(SWAP_FADE).timeout
+	if not _live(era):
+		_swapping = false   # switched off while the screen was fading; _shutdown cleared the stage
+		return
 	# ── Remove ──
 	_fighters.clear()
 	_born.clear()
@@ -410,15 +471,14 @@ func _swap_round() -> void:
 	for c in _machines_root.get_children():
 		_machines_root.remove_child(c)       # machines, loose blocks and effects left by the fight
 		c.queue_free()
-	if is_instance_valid(_map):
-		# The map may still be computing a window strip in worker threads, and those buffers live in
-		# the generator node that is about to be freed with it.
-		if _map.has_method("stop_generation"):
-			_map.stop_generation()
-		remove_child(_map)
-		_map.queue_free()
+	_discard(_map)
 	_map = null
 	await get_tree().process_frame           # nothing of the old round is left standing
+	if not _live(era):
+		_discard(_next_map)
+		_next_map = null
+		_swapping = false
+		return
 	# ── Add ──
 	_map = _next_map
 	_next_map = null
@@ -439,7 +499,9 @@ func _process(delta: float) -> void:
 	if _swapping or _off:
 		return
 	_move_camera()
-	if _map == null:
+	# A round that is still opening owns the stage: the tick must not run its timer (it stands at
+	# zero until the round is open) nor start a generation against a map that is not up yet.
+	if _opening or _map == null:
 		return
 	# A map is ready and waiting - reset the round now.
 	if _next_map != null:
