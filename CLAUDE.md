@@ -82,6 +82,11 @@ project: read it before claiming how anything works.
 - A machine stands **beside** the belt, not in a gap in it. Belts never hand sideways to another
   belt, and a non-belt receives before the next belt does (`push_item` round-robins for the
   splitter).
+- A machine beside the line also gets PRIORITY FOR THE FREED CELL (`belt.side_waiting`): it returns
+  its result onto the belt one cell along and loses that cell to through traffic every time, and
+  while it holds its output it takes no input — a few boxes later the line is dead.
+- "Waiting for the next block" is trusted only while the one-shot `slot_freed` subscription is
+  alive (`FactoryBlock._wait_on`), or a destroyed neighbour means waiting forever.
 - Area masks decide as much as scripts: collector layer 8, receiver 24, packer magnet 2.
 - Every recipe has exactly two different materials — the fabricator tells inputs apart by kind.
 
@@ -113,6 +118,9 @@ project: read it before claiming how anything works.
 - Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
   their own. Without spread, automatic aiming is an aimbot.
 - Damage always goes through `_scale_damage`, subclass numbers included.
+- A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
+  `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
+  pool is empty; afterwards bullets come out of it in any order.
 - `_alert_victim` (weapon side) tells the victim who shot; `hurt()` must not, since drills and
   repair fields call the same `hurt`.
 
@@ -171,6 +179,9 @@ project: read it before claiming how anything works.
   the map's own peak over `PEAK_OVER_HEIGHT`.
 - Heights are read in a strict order: `user://` override → the node's `heightmap_path` basename
   + `.bin` → that `.res`.
+- The generator cancels itself on `NOTIFICATION_EXIT_TREE`/`PREDELETE`, and a map does the same for
+  its own (`map._exit_tree` → `stop_generation`). A scene change or a freed map otherwise leaves
+  worker rows writing into destroyed buffers — an "Out of bounds set index" from nowhere.
 - EVERY terrain node owns its heightmap file (`res://terrain/<scene>_<node>.res`, given out by
   `plugin._new_heightmap_path`). The old default pointed every node at the addon's one file, and
   creating or generating a terrain in one scene erased another scene's map — two scenes, one map.
@@ -221,8 +232,13 @@ project: read it before claiming how anything works.
 - Slot 1 is the file-based "original" map and absorbs the pre-slot save once, by renaming.
 - The menu computes a new slot's world with a progress bar, remaining-time estimate and Stop, then
   hands it over through `G.pending_world` plus a disk cache keyed by seed and size.
+- Resetting or deleting a world lives in the MENU, next to the slots (reset keeps the map, delete is
+  hold-to-confirm). The in-game settings have no wipe button: one tap, irreversible, among sliders.
 - Autoloads must be told the slot changed: `G.use_slot` calls `Q.reload_from_progress()`, otherwise
   a reset slot opens with the story already finished.
+- Death hands the camera to the nearest own machine WITH A CABIN, and spawns a starter one (kit
+  included) when there is none: `vehicles` also holds stations, and handing over to one of those
+  read as "I respawned on my base" — no cabin, nothing to drive.
 - `world_persist.gd` saves machines, loose blocks and a 10-minute TTL. A base is a machine with the
   `station` flag; `machines[0]` is the one the player controls; restoring runs across frames, so
   `is_instance_valid` after every `await`.
@@ -240,8 +256,10 @@ project: read it before claiming how anything works.
 - A window scene whose own script opens it must use `load()`, not `preload` (compile-time cycle).
 - Camera: down orbits the camera up, up raises the look point; heading comes from the forward vector
   flattened to the horizon, never from `global_rotation.y`.
-- Switching between your machines is a button (`hud._swap_btn`), because the radial menu needs you
-  parked next to the machine.
+- Switching between your machines is the ICON ABOVE THE MACHINE and its radial menu
+  (`hud._update_vehicle_button` → `open_vehicle_menu`), and nothing else: a second way to do the
+  same thing is a second button in a crowded corner. The icon shows within `VBTN_SHOW_DIST` (60 m),
+  which is what makes a base left at a vein or a quest site reachable at all.
 - Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
   (`Stage/LiteTerrain`, a baked heightmap made with the plugin) so the menu opens on a world instead
   of on sky;
