@@ -351,6 +351,12 @@ of seconds, and without the window that reads as a frozen editor. The estimate i
 whole run rather than per pass: the passes differ several-fold in cost, so a per-pass number would
 promise a new total at every stage.
 
+Each terrain node keeps its heightmap in its OWN file: **Create Terrain Node** hands out
+`res://terrain/<scene>_<node>.res`, and Generate or Bake moves a node still sitting on the addon's
+default onto one before it writes. The default is shared by the whole project, so without this a
+terrain created (or generated) in a second scene overwrote the first scene's map — and creation
+writes a FLAT map, so the first one was simply gone.
+
 **Bake to files** runs under the same window (without Stop — there is nothing to undo once a
 file is written). It writes four things in a row, three of which are full sweeps of the map, and
 before the window that was tens of seconds of a frozen editor with no way to tell which file it

@@ -169,8 +169,12 @@ project: read it before claiming how anything works.
   the dock) — the heights on disk are bare metres and the dock's settings live in editor metadata,
   which does not ship. Procedural worlds know it from their own params; anything else falls back to
   the map's own peak over `PEAK_OVER_HEIGHT`.
-- Heights are read in a strict order: `user://terrain_height.bin` → `res://terrain_height.bin` →
-  `res://terrain_height.res`.
+- Heights are read in a strict order: `user://` override → the node's `heightmap_path` basename
+  + `.bin` → that `.res`.
+- EVERY terrain node owns its heightmap file (`res://terrain/<scene>_<node>.res`, given out by
+  `plugin._new_heightmap_path`). The old default pointed every node at the addon's one file, and
+  creating or generating a terrain in one scene erased another scene's map — two scenes, one map.
+  Generating or baking moves a node still on that default onto its own file and says so.
 - A world can also be **procedural**: `md` is a window that follows the player, the generator
   computes only the new strip, and chunk meshes plus collision tiles are re-indexed. "World point →
   cell" lives in `_cell_ox`/`_cell_oz` only.

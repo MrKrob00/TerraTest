@@ -1032,6 +1032,50 @@ func _heightmap_target() -> String:
 			return p
 	return HEIGHTMAP_PATH
 
+# ONE FILE PER TERRAIN, NOT ONE PER PROJECT.
+#
+# map.gd's `heightmap_path` defaults to the addon's own terrain_height.res, and the "Create
+# Terrain Node" button used to hand every new node that same default - and write a flat map into
+# it on the way. So a second terrain, in a second scene, silently ERASED the first one's heights
+# and then generated on top of them: two scenes, one map, and no way to keep both.
+#
+# A generated map belongs to the scene it stands in, so that is where its name comes from. The
+# suffix loop is for two terrains in one scene, and for a file that is already taken.
+const HEIGHTMAP_DIR := "res://terrain"
+
+func _new_heightmap_path(root: Node, node_name: String) -> String:
+	DirAccess.make_dir_recursive_absolute(HEIGHTMAP_DIR)
+	var scene: String = str(root.scene_file_path)
+	var base: String = scene.get_file().get_basename() if scene != "" else "untitled"
+	var stem: String = "%s/%s_%s" % [HEIGHTMAP_DIR, base, node_name]
+	var path: String = stem + ".res"
+	var n: int = 2
+	while FileAccess.file_exists(path):
+		path = "%s_%d.res" % [stem, n]
+		n += 1
+	return path
+
+## Give this terrain its own file if it is still on the shared default. Runs before a generation
+## or a bake - the only moments a new map is written anyway - so nothing is moved behind the
+## author's back, and the scene is marked unsaved because the new path lives in it.
+##
+## The addon's own demo scene keeps the default: that file IS its map.
+func _ensure_own_heightmap() -> void:
+	if sculpt_node == null:
+		return
+	var p := str(sculpt_node.get("heightmap_path"))
+	if p != "" and p != HEIGHTMAP_PATH:
+		return
+	var root := EditorInterface.get_edited_scene_root()
+	if root == null or str(root.scene_file_path).begins_with("res://addons/LiteTerrain/"):
+		return
+	var np := _new_heightmap_path(root, str(sculpt_node.name))
+	sculpt_node.set("heightmap_path", np)
+	if EditorInterface.has_method("mark_scene_as_unsaved"):
+		EditorInterface.mark_scene_as_unsaved()
+	print("LiteTerrain: this terrain was sharing the addon's default heightmap with every other "
+			+ "scene in the project. It writes to %s from now on — save the scene." % np)
+
 # The heightmap PNG goes next to the heightmap itself (in the heightmap_path folder) rather
 # than the project root, so the plugin does not litter someone else's res://.
 func _heightmap_png_target() -> String:
@@ -1050,6 +1094,7 @@ func _bake_and_export() -> void:
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
 		return
+	_ensure_own_heightmap()   # a map per terrain, not one shared by every scene
 	if _generating:
 		return
 	_generating = true
@@ -1190,17 +1235,20 @@ func _create_terrain() -> void:
 		push_error("LiteTerrain: could not find %s" % TERRAIN_SCRIPT)
 		return
 
-	# A flat starting heightmap in the addon folder, so image mode works out of the box.
+	# A flat starting heightmap OF ITS OWN, so image mode works out of the box - and so creating a
+	# terrain in one scene cannot overwrite the map of another. The path is new by construction
+	# (_new_heightmap_path skips names already on disk), so nothing existing is flattened.
+	var body := StaticBody3D.new()
+	body.name = "LiteTerrain"
+	var hm := _new_heightmap_path(root, body.name)
 	var flat := PackedFloat32Array()
 	flat.resize(NEW_MAP_SIZE * NEW_MAP_SIZE)
 	var img := Image.create_from_data(NEW_MAP_SIZE, NEW_MAP_SIZE, false, Image.FORMAT_RF, flat.to_byte_array())
-	ResourceSaver.save(img, PLUGIN_HEIGHTMAP)
+	ResourceSaver.save(img, hm)
 	EditorInterface.get_resource_filesystem().scan()
 
-	var body := StaticBody3D.new()
-	body.name = "LiteTerrain"
 	body.set_script(script)
-	body.set("heightmap_path", PLUGIN_HEIGHTMAP)
+	body.set("heightmap_path", hm)
 
 	var parent: Node = root
 	var sel := EditorInterface.get_selection().get_selected_nodes()
@@ -1219,7 +1267,8 @@ func _create_terrain() -> void:
 
 	EditorInterface.get_selection().clear()
 	EditorInterface.get_selection().add_node(body)
-	print("LiteTerrain: created a LiteTerrain node (%dx%d, image mode). Next: Generate or Sculpt." % [NEW_MAP_SIZE, NEW_MAP_SIZE])
+	print("LiteTerrain: created a LiteTerrain node (%dx%d, image mode), heightmap %s. Next: Generate or Sculpt."
+			% [NEW_MAP_SIZE, NEW_MAP_SIZE, hm])
 
 # ─────────────────────────────────────────────────
 # Exports the heightmap as a greyscale PNG (heights normalised into 0..255) — useful for a
@@ -1283,6 +1332,7 @@ func _generate_noise() -> void:
 	if sculpt_node == null:
 		push_warning("LiteTerrain: select a terrain StaticBody3D node first")
 		return
+	_ensure_own_heightmap()   # a map per terrain, not one shared by every scene
 	# A SECOND RUN ON TOP OF THE FIRST is a reliable way to get mush: generation now proceeds in
 	# frames, and both runs would write into the same buffers. _progress_close clears the flag, so
 	# it is reset on every exit, error paths included.
