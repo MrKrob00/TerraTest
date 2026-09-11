@@ -1228,11 +1228,17 @@ const EV_ABANDON := 500.0      # уехал дальше — событие сн
 ## ОСТЫВАНИЕ — МИНУТА-ДВЕ, а не семь. Семь минут означало, что между событиями игрок едет по
 ## пустой карте: события — это и есть то, ЧТО с ним происходит, пока он не занят сюжетом.
 ## Разброс, а не одно число: одинаковая пауза читается как расписание.
+##
+## НО НЕ С ПЕРВОЙ МИНУТЫ. Пока мир слабый (G.threat_ramp), пауза растянута: события — это бой, а
+## на первом грейде у игрока одна пушка и ни одного исследования, и «раз в минуту» для него не
+## ритм, а осада. К четвёртому грейду множитель приходит к единице сам.
 const EV_COOLDOWN_MIN := 60.0
 const EV_COOLDOWN_MAX := 120.0
+const EV_COOLDOWN_EARLY_MUL := 2.5
 
 func _event_cooldown() -> float:
-	return randf_range(EV_COOLDOWN_MIN, EV_COOLDOWN_MAX)
+	return randf_range(EV_COOLDOWN_MIN, EV_COOLDOWN_MAX) \
+			* G.threat_lerp(EV_COOLDOWN_EARLY_MUL, 1.0)
 
 
 var _ev_point: Dictionary = {}   # id события → Vector3, куда ехать

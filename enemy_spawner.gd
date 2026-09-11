@@ -130,7 +130,7 @@ func _tick_spawner(delta: float) -> void:
 		_scan_tick(delta)                           # the rare sector scan event
 	# The cap counts AWAKE ones: a sleeper past the horizon does nothing, and counting it would
 	# let four forgotten machines disable spawning forever.
-	if _awake_count() >= max_enemies:
+	if _awake_count() >= _awake_cap():
 		return
 	# First run: fill the world at once rather than one at a time.
 	if not _seeded:
@@ -144,15 +144,34 @@ func _tick_spawner(delta: float) -> void:
 		if _seed_grace > 0.0:
 			return
 		_seeded = true
-		for _i in mini(initial_enemies, max_enemies):
+		for _i in mini(initial_enemies, _awake_cap()):
 			_spawn_one()
-		_t = spawn_interval
+		_t = _spawn_wait()
 		return
 	_t -= delta
 	if _t > 0.0:
 		return
-	_t = spawn_interval
+	_t = _spawn_wait()
 	_spawn_one()
+
+# ── ПОТОК РАСТЁТ ВМЕСТЕ С ИГРОКОМ ────────────────────────────────────────────
+# Сколько врагов не спит и как часто приходит следующий — не константы, а доля от давления мира
+# (G.threat_ramp: 0 на первом грейде, 1 к четвёртому). Раньше поток был одинаков с первой минуты,
+# и первые часы игры выглядели так же, как поздние: пока игрок учится ставить второй блок, к нему
+# уже едут двое, а следом открытые с самого начала события приводят ещё нескольких — «спавнит
+# всех скопом» это оно и есть.
+#
+# Ослабляем именно ПОТОК, а не самих врагов: сборку врага и так подбирает _pick_preset по цене
+# машины игрока, а выкуп за него считается от этой сборки. Время → сложность → награда, в этом
+# порядке, и каждое звено уже на месте — не хватало только первого.
+@export var max_enemies_early: int = 1          ## сколько не спит на первом грейде
+@export var spawn_interval_early_mul: float = 2.2   ## во столько раз реже приходит следующий
+
+func _awake_cap() -> int:
+	return int(round(G.threat_lerp(float(mini(max_enemies_early, max_enemies)), float(max_enemies))))
+
+func _spawn_wait() -> float:
+	return spawn_interval * G.threat_lerp(spawn_interval_early_mul, 1.0)
 
 # Who may fight right now: the max_engaging nearest enemies that already noticed the player.
 # By DISTANCE, not by who noticed first, or the right would stay with someone already behind a
@@ -386,6 +405,11 @@ func _enemy_tier(player: Node3D) -> int:
 	for i in mini(preset_tiers.size(), tier_from_value.size()):
 		if value >= int(tier_from_value[i]):
 			cap = i
+	# ПОТОЛОК ДЕРЖИТ И ДАВЛЕНИЕ МИРА, не только цена машины. Игрок, вложивший всё в одну дорогую
+	# сборку на первом грейде, получал против себя весь список: цена говорит «он может себе такое
+	# позволить», а грейд — «он играет второй час». Берём меньшее из двух.
+	var ramp_cap: int = int(floor(G.threat_ramp() * float(preset_tiers.size() - 1) + 0.001))
+	cap = mini(cap, maxi(ramp_cap, 0))
 	return randi() % (cap + 1)
 
 func _pick_preset(player: Node3D) -> int:
