@@ -78,68 +78,45 @@ func _tick_arcs(delta: float) -> void:
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
 
-# ── Ветка «энергия»: солнечная панель + опора, затем реген ───────────────────
-## КУДА ИХ СТАВИТЬ — ПОКАЗЫВАЕТ ЧЕРТЁЖ, а не текст. «Прикрепите панель и опору» игрок читает
-## как «повесьте куда влезет», вешает панель на борт, встаёт на якорь — и ничего не происходит,
-## потому что опоры под панелью нет. Порядок здесь смысловой: ОПОРА СЗАДИ на корпус, ПАНЕЛЬ
-## СВЕРХУ НА ОПОРУ — так видно, что одно держит другое.
-##
-## Клетки считаны от кабины (5,5,5) по чертежу обучения: (5,5,6) — задний блок корпуса, на нём
-## и растёт эта надстройка.
-## Куда предлагаем опору, ПОКА ЕЁ НЕТ на машине. Дальше чертёж считается от того места, куда
-## игрок её поставил на самом деле: фиксированные клетки требовали ставить опору именно сюда, а
-## поставленная в другое место оставляла призрак панели висеть в пустоте на другом конце корпуса.
-const POWER_SUPPORT_CELL := Vector3i(5, 5, 7)
-## Куда пробуем положить реген относительно ОПОРЫ, по порядку. Первая свободная клетка и берётся.
-const POWER_REGEN_TRY := [Vector3i(0, 1, -1), Vector3i(1, 1, 0), Vector3i(-1, 1, 0), Vector3i(0, 1, 1)]
+# ── Ветка «энергия»: панель на опору, затем реген рядом ──────────────────────
+# THE STAGE IS A PLACE, NOT AN INVENTORY. Handing the player a panel and a support as loose blocks
+# taught nothing: the panel went onto the hull, the machine drove off, and no power appeared -
+# a panel only feeds something that STANDS STILL. So the quest builds the answer in the world
+# instead: an anchored support of its own, fifty metres out, with the panel lying beside it.
+# Mounting that panel on that support is the whole first stage; the repair unit next to it is the
+# second.
+#
+# The site is the factory quest's pattern (_spawn_station): a machine with no cabin, a stationary
+# block as its core, anchored from birth. It belongs to the player's faction, so building on it is
+# the ordinary build-on-another-machine path and the camera can switch to it.
+#
+# The site appears AT ONCE, not when the player drives up - the same rule as every other quest
+# participant (see EV_SPAWN_DIST). Fifty metres is "visible from where you stand", so the task
+# starts as a thing you can see rather than a marker into empty field.
+const POWER_SITE_DIST := 50.0
+## Levelled pad under the base: the build is three cells across at most, and a support on a slope
+## puts the panel over a hole.
+const POWER_SITE_HALF := Vector2(3.0, 3.0)
+const POWER_SITE_FEATHER := 5.0
+## Base cells. The core sits at the centre of the grid - every station layout puts it there, and
+## _spawn_station positions the machine by that cell - the panel goes ON TOP of it.
+const POWER_CORE_CELL := Vector3i(5, 5, 5)
+const POWER_PANEL_CELL := Vector3i(5, 6, 5)
+## Where the repair unit may stand: the four cells around the support. The blueprint points at the
+## first free one, but ANY of them closes the stage - "beside the support" is the requirement, and
+## refusing a neighbouring cell would be a puzzle nobody asked for.
+const POWER_REGEN_CELLS := [Vector3i(5, 5, 6), Vector3i(6, 5, 5), Vector3i(4, 5, 5), Vector3i(5, 5, 4)]
 
-## Клетка опоры на машине игрока или null.
-func _support_cell() -> Variant:
-	var p: Node3D = _player()
-	if p == null or not p.has_method("support_block"):
-		return null
-	var s = p.support_block()
-	if s == null or not (s is Node3D):
-		return null
-	var pos: Vector3 = (s as Node3D).position
-	return Vector3i(roundi(pos.x) + 5, roundi(pos.y) + 5, roundi(pos.z) + 5)
+var _power_point: Variant = null
+var _power_base: Node3D = null
 
-func _cell_empty(c: Vector3i) -> bool:
-	var bm = _player_blocks()
-	if bm == null or not bm.has_method("get_block"):
-		return false
-	return int(bm.get_block(c.x, c.y, c.z)) == G.Block.EMPTY
-
-## Стадия 1: панель СВЕРХУ НА ОПОРУ. Опоры ещё нет — показываем и её, в клетке по умолчанию.
-func _power_plan_1() -> Array:
-	var sc = _support_cell()
-	if sc == null:
-		return [{"cell": POWER_SUPPORT_CELL, "block": G.Block.SUPPORT},
-				{"cell": POWER_SUPPORT_CELL + Vector3i(0, 1, 0), "block": G.Block.SOLAR}]
-	return [{"cell": (sc as Vector3i) + Vector3i(0, 1, 0), "block": G.Block.SOLAR}]
-
-## Стадия 2: реген рядом с панелью. Реген лечит по радиусу вокруг себя, поэтому ближе к
-## середине корпуса лучше — отсюда и порядок попыток.
-func _power_plan_2() -> Array:
-	var sc = _support_cell()
-	var base: Vector3i = (sc as Vector3i) if sc != null else POWER_SUPPORT_CELL
-	for d in POWER_REGEN_TRY:
-		if _cell_empty(base + d):
-			return [{"cell": base + d, "block": G.Block.REGEN}]
-	return [{"cell": base + Vector3i(0, 1, -1), "block": G.Block.REGEN}]
-## ЧЕРТЁЖ ПОКАЗЫВАЕМ, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ ДО БЛОКОВ. Разметка, зажигающаяся в момент
-## объявления задания, — это призраки, висящие на пустом месте всю дорогу до цели: ставить в них
-## нечего, и к тому моменту, когда они наконец нужны, игрок перестаёт их замечать. Двадцать
-## метров — это «блоки уже видно», то есть ровно тот момент, когда вопрос «куда их вешать»
-## впервые становится настоящим.
-##
-## Подобранный предмет из мира уходит, и position_for отдаёт null — с этой минуты чертёж горит
-## всегда: подбирать больше нечего, остался только вопрос «куда», а он и есть ответ.
+## ЧЕРТЁЖ ПОКАЗЫВАЕМ, ТОЛЬКО КОГДА ИГРОК ДОЕХАЛ. Разметка, зажигающаяся в момент объявления
+## задания, — это призраки, висящие на пустом месте всю дорогу до цели: ставить в них нечего, и к
+## тому моменту, когда они наконец нужны, игрок перестаёт их замечать.
 const PLAN_SHOW_DIST := 20.0
 
-func _plan_visible(quest_id: String) -> bool:
-	var at = _props.position_for(quest_id)
-	if at == null:
+func _plan_near(at: Variant) -> bool:
+	if not (at is Vector3):
 		return true
 	var p: Node3D = _player()
 	if p == null:
@@ -147,90 +124,112 @@ func _plan_visible(quest_id: String) -> bool:
 	return p.global_position.distance_squared_to(at as Vector3) \
 			<= PLAN_SHOW_DIST * PLAN_SHOW_DIST
 
+## Площадка ветки: точка и стоящая на ней база. true — база есть, на неё можно строить.
+##
+## Ровно ОДНА база за прохождение, и это стоит трёх строк проверки: точка выбирается один раз,
+## база подхватывается по метке после перезахода (сейв возвращает её раньше, чем квест успевает
+## опомниться), и только если её нет нигде — ставится новая. Без подхвата каждый вход в мир
+## добавлял бы к прежней базе ещё одну, в новом случайном месте.
+func _power_site() -> bool:
+	if is_instance_valid(_power_base):
+		return true
+	_power_base = _adopt_quest_base("arc_power")
+	if is_instance_valid(_power_base):
+		_power_point = _power_base.global_position
+		return true
+	var p: Node3D = _player()
+	if p == null:
+		return false
+	if _power_point == null:
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position \
+				+ Vector3(cos(ang), 0.0, sin(ang)) * POWER_SITE_DIST
+		wp.y = G.ground_y(wp, p.global_position.y)
+		_power_point = wp
+	_flatten_site(_power_point as Vector3, POWER_SITE_HALF, POWER_SITE_FEATHER)
+	_power_base = _spawn_station(_power_point as Vector3, [
+		{"x": POWER_CORE_CELL.x, "y": POWER_CORE_CELL.y, "z": POWER_CORE_CELL.z,
+		 "block": G.Block.SUPPORT, "rot": [0.0, 0.0, 0.0]},
+	])
+	if is_instance_valid(_power_base):
+		# ТА ЖЕ МЕТКА, ЧТО У КВЕСТОВЫХ ПРЕДМЕТОВ. По ней база узнаётся после перезахода — и уборке
+		# мира, и сейву она означает одно и то же: это не мусор, это цель задания.
+		_power_base.set_meta(QuestProps.META, "arc_power")
+		Dialogue.say("System", "A support is anchored out there, panel on the ground beside it. "
+				+ "Put the panel on top of the support — a panel only draws power on something that stands.")
+	return false          # даём кадр: блоки базы появляются асинхронно
+
+## База этого квеста, уже стоящая в мире (перезаход). Ищем по метке, а не по форме: игрок вправе
+## поставить свою собственную опору, и отличать их «по похожести» значило бы однажды выдать чужую
+## постройку за квестовую.
+func _adopt_quest_base(quest_id: String) -> Node3D:
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	if vr == null:
+		return null
+	for c in vr.get_children():
+		if c is Node3D and c.has_meta(QuestProps.META) \
+				and String(c.get_meta(QuestProps.META)) == quest_id:
+			return c as Node3D
+	return null
+
+## Что стоит в клетке базы. EMPTY — базы нет, сетки нет или клетка пуста.
+func _base_block(base: Node3D, cell: Vector3i) -> int:
+	if not is_instance_valid(base):
+		return G.Block.EMPTY
+	var bm = base.get("block_map_node")
+	if bm == null or not is_instance_valid(bm) or not bm.has_method("get_block"):
+		return G.Block.EMPTY
+	return int(bm.get_block(cell.x, cell.y, cell.z))
+
+## Куда показывает чертёж регена: первая свободная клетка рядом с опорой.
+func _power_regen_cell() -> Vector3i:
+	for c in POWER_REGEN_CELLS:
+		if _base_block(_power_base, c) == G.Block.EMPTY:
+			return c
+	return POWER_REGEN_CELLS[0]
+
+func _regen_beside_support() -> bool:
+	for c in POWER_REGEN_CELLS:
+		if _base_block(_power_base, c) == G.Block.REGEN:
+			return true
+	return false
+
 func _arc_power_1(q: Dictionary) -> void:
-	# ОБА предмета под одним id квеста: компас спрашивает именно его, и под ключом
-	# «arc_power+» опора оставалась без метки — лежала где-то в стороне, и выглядело это
-	# как «якорь не выдали вовсе».
-	#
-	# Проверяем КАЖДЫЙ опрос, а не «положили один раз и забыли». ensure берёт то, что уже
-	# лежит в мире (после перезахода предмет помечен и восстановлен сейвом), и кладёт новый,
-	# только если цели действительно нет — сгорела, провалилась под рельеф, потерялась.
-	# Условие «пока у игрока этого блока нет» обязательно: иначе подобранный предмет тут же
-	# выдавался бы вторым.
-	# ОПОРУ СТАВИМ САМИ, панель кладём рядом. Стадия учит одному — «панель работает только на
-	# опоре и только под якорем»; выдав оба блока россыпью, мы вместо этого просили собрать
-	# конструкцию из двух незнакомых деталей, и панель уезжала на борт.
-	_mount_support()
+	if not _power_site():
+		return
+	if _base_block(_power_base, POWER_PANEL_CELL) == G.Block.SOLAR:
+		_clear_plan()
+		Q.report(String(q["event"]), 1)
+		return
+	# Панель лежит у базы, пока её не взяли. Условие «у игрока её нет» обязательно: ensure
+	# спрашивает только про мир, и без него каждый опрос ронял бы вторую панель, пока игрок везёт
+	# первую в руке.
 	if not _player_owns(G.Block.SOLAR):
-		_props.ensure("arc_power", G.Block.SOLAR)
-	# Закрывает стадию ЯКОРЬ, а не наличие двух блоков. Смысл стадии — научить вставать на
-	# опору: панель без якоря энергии не даёт (SOLAR_RATE идёт только на якоре), и засчитывать
-	# «привинтил и поехал» значило бы пропустить ровно то, ради чего стадия существует.
-	if _plan_visible("arc_power"):
-		_show_plan_on(_player_blocks(), _power_plan_1())
-		_point_finger("Panel goes on top of the anchor")
+		_props.ensure("arc_power", G.Block.SOLAR, _power_point)
+	if _plan_near(_power_point):
+		_show_plan_on(_power_base.get("block_map_node"),
+				[{"cell": POWER_PANEL_CELL, "block": G.Block.SOLAR}])
+		_point_finger("Panel goes on top of the support")
 	else:
 		_clear_plan()
-	if _has_block(G.Block.SOLAR) and _has_block(G.Block.SUPPORT) and _is_anchored():
-		_clear_plan()
-		Q.report(String(q["event"]), 1)
-
-## Опора уже стоит на машине? Ставим её сами — один раз за стадию. Не влезла (все клетки заняты)
-## — падает в мир как раньше, иначе ветка встанет намертво.
-func _mount_support() -> void:
-	# _player_owns, а не только _has_block: опора может быть В РУКЕ или в инвентаре — игрок снял
-	# её, чтобы переставить, и второй подарок в этот момент выдал бы дубль.
-	if _has_block(G.Block.ROT_SUPPORT) or _player_owns(G.Block.SUPPORT):
-		return
-	if _mount_on_player(G.Block.SUPPORT, POWER_SUPPORT_CELL):
-		return
-	for d in POWER_REGEN_TRY:
-		if _mount_on_player(G.Block.SUPPORT, POWER_SUPPORT_CELL + d):
-			return
-	if not _player_owns(G.Block.SUPPORT):
-		_props.ensure("arc_power", G.Block.SUPPORT)
-
-## Поставить блок на машину игрока ТЕМ ЖЕ путём, что и постройка: карта + узел + ОБЕ подписки.
-## attach_block_signals делает spawn_block, connect_block_signals снимает коллизию — забыть
-## вторую значит оставить висеть коллизию блока (см. CLAUDE.md, «Блоки и карта»).
-func _mount_on_player(bt: int, cell: Vector3i) -> bool:
-	var p: Node3D = _player()
-	var bm = _player_blocks()
-	if p == null or bm == null or not bm.has_method("set_block"):
-		return false
-	if int(bm.get_block(cell.x, cell.y, cell.z)) != G.Block.EMPTY:
-		return false
-	if not bm.set_block(cell.x, cell.y, cell.z, bt, 0.0):
-		return false
-	bm.spawn_block(bt, cell.x, cell.y, cell.z)
-	var inst = bm.find_block(cell.x, cell.y, cell.z)
-	if inst != null and p.has_method("connect_block_signals"):
-		p.connect_block_signals(inst)
-	if p.has_method("_notify_build_changed"):
-		p._notify_build_changed()          # масса и связи сменились прямо сейчас
-	return true
-
-## Карта блоков машины, которой игрок управляет, — то, на чём рисуется разметка.
-func _player_blocks():
-	var p: Node3D = _player()
-	return p.get("block_map_node") if p != null else null
-
-## Машина игрока СЕЙЧАС на якоре. Через get(), потому что поле есть только у машин игрока.
-func _is_anchored() -> bool:
-	var p: Node3D = _player()
-	return p != null and p.get("anchored") == true
 
 func _arc_power_2(q: Dictionary) -> void:
-	var key := "power_2"
-	if not _dropped.has(key):
-		_dropped[key] = true
-		# «Рядом с вами появился» — блок падает прямо у машины, искать не надо.
-		_award(G.Block.REGEN)
-	_show_plan_on(_player_blocks(), _power_plan_2())
-	_point_finger("Repair unit beside the panel")
-	if _has_block(G.Block.REGEN):
+	if not _power_site():
+		return
+	if _regen_beside_support():
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
+		return
+	if not _player_owns(G.Block.REGEN):
+		# Рядом с базой, а не «рядом с вами»: ставить его всё равно сюда, и второй раз через поле
+		# за ним ехать незачем.
+		_props.ensure("arc_power", G.Block.REGEN, _power_point)
+	if _plan_near(_power_point):
+		_show_plan_on(_power_base.get("block_map_node"),
+				[{"cell": _power_regen_cell(), "block": G.Block.REGEN}])
+		_point_finger("Repair unit beside the support")
+	else:
+		_clear_plan()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # БЛОК ВЕЗЁТ ВРАГ: не «съезди и подбери», а «отбери»
@@ -725,11 +724,15 @@ const LINE_SITE_AHEAD := 2.0                  # центр смещён впер
 const LINE_SITE_FEATHER := 5.0                # на сколько метров площадка сходит на нет за краем
 
 func _flatten_line_site(at: Vector3) -> void:
+	_flatten_site(at + Vector3(0.0, 0.0, LINE_SITE_AHEAD), LINE_SITE_HALF, LINE_SITE_FEATHER)
+
+## РОВНОЕ МЕСТО ПОД ПОСТРОЙКУ КВЕСТА — одной дверью. Каждая площадка своего размера, а вот
+## «спросить карту и не упасть, если её нет» у всех одинаково.
+func _flatten_site(at: Vector3, half: Vector2, feather: float) -> void:
 	var map: Node = get_node_or_null("/root/Main/map")
 	if map == null or not map.has_method("flatten_area"):
 		return
-	map.flatten_area(at + Vector3(0.0, 0.0, LINE_SITE_AHEAD), LINE_SITE_HALF, at.y,
-			LINE_SITE_FEATHER)
+	map.flatten_area(at, half, at.y, feather)
 
 ## Стационарная постройка ОТ КВЕСТА. Делает ровно то же, что постановка ядра игроком
 ## (vehicle_body_3d._place_ground_structure), но без руки и превью: машина из сцены, раскладка,
@@ -1163,6 +1166,11 @@ func quest_point(ev: String) -> Variant:
 		"quest_salvage_1": return _salvage_point
 		"quest_duel_1":    return _duel_point
 		"quest_line_1":    return _line_point
+		# Пока панель (или реген) лежит у базы, компас ведёт к предмету — его отдаёт QuestProps,
+		# и спрашивают его раньше нас. Предмет подобран — цель это САМА БАЗА: ставить его всё
+		# равно туда, а без этой строки метка гасла ровно в тот момент, когда игрок взял блок.
+		"quest_arc_power_1": return _power_point
+		"quest_arc_power_2": return _power_point
 		# Ветки с носителем и с жилой: точка едет за живым носителем (carrier_point сама
 		# обновляет её), а после боя указывает туда, где упал блок.
 		"quest_arc_radar_1":   return carrier_point("arc_radar")

@@ -545,6 +545,11 @@ func _save_world() -> void:
 			# half a second after loading (see _restore_machine). Compared with == true rather than bool():
 			# get() returns null on a machine without the field, and bool(null) crashes the call.
 			"station": m.get("is_station") == true,
+			# THE QUEST TAG TRAVELS WITH THE BUILDING, exactly as it does with a quest block above.
+			# A quest that puts a base in the world (the solar arc's anchored support) has no other
+			# way to recognise it after a load: its own bookkeeping is in memory only, so without the
+			# tag every entry into the world would stand a SECOND base next to the first.
+			"quest": String(m.get_meta("quest_id")) if m.has_meta("quest_id") else "",
 		})
 	var blocks: Array = []
 	var o := _objects()
@@ -709,6 +714,8 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	var station: bool = _is_station_data(mdata)
 	if station and "is_station" in veh:
 		veh.is_station = true
+	if String(mdata.get("quest", "")) != "":
+		veh.set_meta("quest_id", String(mdata["quest"]))   # снова квестовая база, а не чужая постройка
 	veh.apply_build(mdata.get("layout", []))
 	if station and veh.get("block_map_node") != null and "is_station" in veh.block_map_node:
 		veh.block_map_node.is_station = true

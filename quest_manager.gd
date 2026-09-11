@@ -95,12 +95,12 @@ func _seed_demo() -> void:
 	# решает, какой брать: они открываются одновременно и друг друга не ждут.
 	add_quest("arc_power", "Draw Power", "", Type.STORY, 1, 5, "", 180, 40, 12)
 	add_stages("arc_power", [
-		{"desc": "Recover the panel and the anchor, then hold ground",
+		{"desc": "Mount the panel on the support",
 		 "event": "quest_arc_power_1", "goal": 1,
-		 "hint": "Two parts surfaced in the field — a panel and an anchor. Attach both, then set down and hold: the panel only draws power while you are anchored."},
-		{"desc": "Attach the repair unit",
+		 "hint": "A support is anchored out in the field with a solar panel lying beside it. Put the panel on top of the support: a panel only draws power on something that stands still."},
+		{"desc": "Set the repair unit beside the support",
 		 "event": "quest_arc_power_2", "goal": 1,
-		 "hint": "A repair unit resolved beside you. Attach it — it stitches the rest of you back together."},
+		 "hint": "A repair unit turned up at the same site. Set it next to the support — it mends whatever stands inside its radius, the panel included."},
 	])
 	add_quest("arc_radar", "Line of Sight", "", Type.STORY, 1, 6, "", 210, 45, 14)
 	add_stages("arc_radar", [
