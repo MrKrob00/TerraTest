@@ -89,8 +89,8 @@ func _aim_ground() -> Variant:
 # дальней быстро, но дуга одна и та же. Так и должна выглядеть мортира: навес не «включается»
 # на дальних дистанциях, он у неё всегда.
 func _arc_last(point: Vector3) -> void:
-	var b: Area3D = _last_bullet()
-	if b == null or not ("dir" in b):
+	var b: Area3D = last_fired
+	if b == null or not is_instance_valid(b) or not ("dir" in b):
 		return
 	var aim: Vector3 = point
 	aim.x += randf_range(-SPREAD, SPREAD)
@@ -112,11 +112,3 @@ func _arc_last(point: Vector3) -> void:
 	if absf(b.dir.dot(Vector3.UP)) < 0.99:
 		b.look_at(b.global_position + b.dir)
 
-func _last_bullet() -> Area3D:
-	if ammo == null:
-		return null
-	for i in range(ammo.get_child_count() - 1, -1, -1):
-		var c = ammo.get_child(i)
-		if c is Area3D and ("dir" in c) and c.dir != Vector3.ZERO:
-			return c as Area3D
-	return null

@@ -203,6 +203,7 @@ func _try_push() -> void:
 	var wait_on := _first_valid_target()
 	if wait_on != null and not waiting_for_next:
 		waiting_for_next = true
+		_wait_on = wait_on
 		wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
 	# ...и В ЛЮБОМ СЛУЧАЕ помечаем, что отдать не удалось (см. push_retry_tick).
 	_push_pending = true
@@ -226,9 +227,20 @@ func _process(delta: float) -> void:
 
 ## Вынесено отдельным методом, потому что наследник может определить свой _process и заслонить
 ## базовый (так делает storage.gd) — тогда он зовёт этот тик сам.
+## КОГО МЫ СЛУШАЕМ. Подписка одноразовая, и без ссылки нельзя проверить, жива ли она ещё.
+var _wait_on: FactoryBlock = null
+
 func push_retry_tick(delta: float) -> void:
-	if not _push_pending or current_item == null or waiting_for_next:
+	if not _push_pending or current_item == null:
 		return
+	# «ЖДУ СИГНАЛА» ЧТО-ТО ЗНАЧИТ, ТОЛЬКО ПОКА ПОДПИСКА ЖИВА. Приёмник могли сбить вместе с
+	# половиной линии — тогда waiting_for_next означает «жду никогда», и блок стоит с готовым
+	# грузом до конца игры, а линия за ним стоит вместе с ним.
+	if waiting_for_next:
+		if _wait_on != null and is_instance_valid(_wait_on) \
+				and _wait_on.slot_freed.is_connected(_on_next_block_freed):
+			return
+		waiting_for_next = false
 	_retry_t -= delta
 	if _retry_t > 0.0:
 		return
