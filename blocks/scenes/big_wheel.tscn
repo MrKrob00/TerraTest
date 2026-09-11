@@ -209,8 +209,11 @@ collision_layer = 2
 collision_mask = 23
 freeze = true
 script = ExtResource("1_gwn81")
-ride_height = 0.8
-suspension_travel = 0.28
+weight = 34.0
+wheel_power = 3800.0
+load_capacity = 340.0
+ride_height = 1.17
+suspension_travel = 0.29
 block = 20
 connect_faces = 2
 

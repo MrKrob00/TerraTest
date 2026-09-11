@@ -83,32 +83,51 @@ var _wheelbase: float = 2.0
 # LOAD RATING (for the garage)
 # ══════════════════════════════════════════
 
-# Thresholds are ACCELERATION, not mass: how much a machine can haul depends on its own
-# traction, so a constant "limit in kilograms" does not exist - it grows with the wheels. Time to
-# top speed is roughly max_speed / acceleration (the body has no damping, linear_damp is zeroed
-# in _ready). 25 m/s^2 is ~0.8 s and feels instant; 10 m/s^2 is 2 s and already heavy; below 10
-# the player calls the machine stuck.
+# Acceleration bands for the ACCEL readout. Time to top speed is roughly max_speed / acceleration
+# (the body has no damping, linear_damp is zeroed in _ready). 25 m/s^2 is ~0.8 s and feels instant;
+# 10 m/s^2 is 2 s and already heavy; below 10 the player calls the machine stuck.
 const ACCEL_BRISK: float = 25.0
 const ACCEL_CRAWL: float = 10.0
 
 ## Rated traction: same as _drive_power but without requiring ground contact - in the garage the
 ## machine hangs in the air and its capabilities still have to be shown.
+##
+## A wheel that CANNOT REACH THE GROUND is not counted even here. A top wheel points upward and is
+## never grounded, so it used to add its newtons to the shop window and nothing to the world - the
+## panel promised traction that no drive would ever see.
 func rated_power() -> float:
 	var power: float = 0.0
 	for w in Wheels:
-		if is_instance_valid(w) and w.is_drive:
+		if is_instance_valid(w) and w.is_drive and w.touches_ground():
 			power += w.wheel_power
 	if _extra_blocks == 0:
 		power += chassis_power
 	return power * engine_force
 
-## Mass up to which the machine still feels brisk.
-func mass_comfort() -> float:
-	return rated_power() / ACCEL_BRISK
+## HOW MUCH THIS BUILD CAN CARRY, in kilograms: the sum of the wheels' own ratings.
+##
+## The limit is a real number now, not a division. It used to be traction/acceleration, which said
+## "heavy" and meant nothing, because the suspension re-tuned its stiffness to whatever was on it
+## and held any weight at all. Now the spring is rated (see _apply_suspension) and past this figure
+## the machine sits down on its hull.
+func load_capacity() -> float:
+	var cap: float = 0.0
+	for w in Wheels:
+		if is_instance_valid(w) and w.touches_ground():
+			cap += w.load_capacity
+	return cap
 
-## Heaviest mass this build will still get moving.
+## Share of the rating at which the machine still rides high with travel left for bumps. Above it
+## the suspension is near the end of its stroke and every rock reaches the hull.
+const LOAD_COMFORT: float = 0.8
+
+## Mass up to which the machine still rides high with travel to spare.
+func mass_comfort() -> float:
+	return load_capacity() * LOAD_COMFORT
+
+## Heaviest mass the wheels still hold up.
 func mass_limit() -> float:
-	return rated_power() / ACCEL_CRAWL
+	return load_capacity()
 
 # ── ENERGY (shared by player and enemy) ──────────────────────────────────────
 # Lives HERE by the main-trap rule: shield, repair field and solar panel ask their own machine for
@@ -353,13 +372,6 @@ func init_machine_physics() -> void:
 func _gravity_accel() -> float:
 	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * gravity_scale
 
-# Rolling drag the engine must beat before the machine moves at all. The coefficient is the square
-# root of our own friction: the engine combines two bodies' friction, the terrain has no material
-# (i.e. 1.0), and a geometric mean gives sqrt(ours). Pessimistic on purpose - if the combine rule
-# turns out different, we overshoot rather than undershoot.
-func _rolling_drag() -> float:
-	return sqrt(GROUND_FRICTION) * mass * _gravity_accel()
-
 func append_wheel(wheel: Node) -> void:
 	if !Wheels.has(wheel):
 		Wheels.append(wheel)
@@ -408,7 +420,6 @@ const SUSP_DAMP: float = 0.75
 func _apply_suspension() -> void:
 	if _wheel_count <= 0:
 		return
-	var load_per: float = mass * _gravity_accel() / float(_wheel_count)
 	var up: Vector3 = global_transform.basis.y
 	for w in Wheels:
 		if not is_instance_valid(w) or not w.grounded:
@@ -418,14 +429,27 @@ func _apply_suspension() -> void:
 		var sag: float = w.suspension_sag()
 		if sag <= 0.0:
 			continue                        # wheel hanging: nothing to hold
-		# k is chosen so that at rest the sag is exactly SUSP_SAG of travel.
+		# k COMES FROM THE WHEEL'S RATING, not from the load actually on it. That one word is the
+		# whole difference between "wheels are a clearance choice" and "wheels are THE choice":
+		# stiffness derived from real load meant the suspension re-tuned itself to any weight and
+		# held anything at all, so a hundred-block machine rode as high on four small wheels as on
+		# eight big ones. Rated, the spring holds its own kilograms and no more - past that the sag
+		# runs into the end of the travel, the hull settles onto its own colliders and starts
+		# dragging. The punishment for overloading is friction, not a penalty multiplier.
 		var travel: float = maxf(w.suspension_travel, 0.01)
-		var k: float = load_per / (travel * SUSP_SAG)
+		var k: float = w.load_capacity * _gravity_accel() / (travel * SUSP_SAG)
 		# Vertical speed of the mount point - that is what gets damped.
 		var arm: Vector3 = w.global_position - global_position
 		var vel_at: Vector3 = linear_velocity + angular_velocity.cross(arm)
 		var c: float = 2.0 * SUSP_DAMP * sqrt(k * maxf(mass / float(_wheel_count), 0.001))
 		var force: float = k * sag - c * vel_at.dot(up)
+		# A SPRING HOLDS ITS RATING AND NOT A KILOGRAM MORE. Without this ceiling the stroke itself
+		# sets the ceiling, and since full travel is 1/SUSP_SAG of the rated sag, the wheels would
+		# quietly carry nearly three times their rating - "TOO HEAVY" in the garage would still be a
+		# machine riding on its springs. With it the arithmetic is literal: everything above
+		# load_capacity presses on the hull colliders instead, that weight rubs the ground, and the
+		# overloaded build buries itself. That IS the punishment - no penalty multiplier anywhere.
+		force = minf(force, w.load_capacity * _gravity_accel())
 		if force <= 0.0:
 			continue                        # suspension must never pull the body DOWN
 		apply_force(up * force, arm)
@@ -607,13 +631,18 @@ func _apply_engine() -> void:
 	var power: float = _drive_power()
 	if abs(_throttle) > 0.01 and power > 0.0:
 		var speed_factor: float = clamp(1.0 - abs(vel_fwd) / max_speed, 0.05, 1.0)
-		# The engine separately covers its OWN rolling drag, so the wheel traction sum stays pure surplus
-		# for acceleration. Without that, traction competed with friction that grows with mass: at 296 kg
-		# the drag (~7250 N) almost exactly equalled four wheels' traction and the machine stood still
-		# while the maths promised 24 m/s^2. The old model hid this only because it multiplied traction by
-		# mass and the friction cancelled.
-		var surplus: float = power * engine_force * speed_factor
-		apply_central_force(fwd * _throttle * (surplus + _rolling_drag()))
+		# WHAT THE WHEELS PUSH IS ALL THERE IS. There used to be a second term here, sqrt(friction) *
+		# mass * g, added to "cover the machine's own rolling drag" - and because mass cancels out of
+		# force/mass, it was a flat +14.5 m/s^2 handed to every build regardless of weight. Weight
+		# therefore decided nothing, the garage's load verdict could never come true, and the threshold
+		# it drew at "will not move" sat where the machine still pulled 24 m/s^2.
+		#
+		# The drag it compensated is not there for a machine that is properly shod: the suspension
+		# carries the weight (see _apply_suspension), so the hull colliders hang clear of the ground
+		# and there is no normal force to rub. It IS there for an OVERLOADED one, which sits down on
+		# its own hull - and that machine is exactly the one that must struggle. Compensating it was
+		# paying the fine for the player.
+		apply_central_force(fwd * _throttle * power * engine_force * speed_factor)
 	elif abs(vel_fwd) > 0.1:
 		apply_central_force(-fwd * vel_fwd * engine_brake * mass)   # coasting
 

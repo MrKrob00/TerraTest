@@ -74,6 +74,31 @@ project: read it before claiming how anything works.
 - What a factory produces lives in `blocks.output_map`, not on the node: the layout stores cells, so
   an instance field would reset on load.
 
+### Driving and wheels
+
+- The machine is a plain `RigidBody3D`, NOT `VehicleBody3D`. Wheels are not physics constraints and
+  nothing rolls: a wheel probes the ground with a ray (`Wheel.probe_ground`), the suspension is
+  `apply_force` at the wheel offset, and traction, lateral grip and braking are `apply_central_force`
+  through the centre of mass. Jolt only carries the body; the car is written by hand.
+- There is no engine block. Traction is the sum of `wheel_power` over driving wheels **that touch
+  the ground**, times `engine_force`. A bare cabin with no blocks at all gets `chassis_power` so the
+  first minutes work.
+- WHEEL CHOICE IS DECIDED BY `load_capacity`, and everything else follows from it. The spring
+  constant is derived from the wheel's RATING, not from the load actually on it, and the spring
+  force is capped at that rating: below it the machine rides on suspension with its hull clear of
+  the ground, above it the excess presses on the hull colliders, which rub, and the build buries
+  itself. Overload is punished by friction — there is no penalty multiplier, and adding one would
+  be a second implementation of the same rule.
+- Never compensate for that friction in `_apply_engine`. A `sqrt(friction) * mass * g` term used to
+  be added there; mass cancels out of force/mass, so it was a flat +14.5 m/s² handed to every build,
+  weight decided nothing, and the garage's load verdict could not come true at any mass.
+- `ride_height` is the wheel's radius PLUS the drop of the suspension arm, and the arm is the same
+  model on all three wheels — so the value scales with the tyre and nothing else. The tyres measure
+  0.6 : 1.0 : 1.3 (small : standard : big); `suspension_travel` follows the same ratio.
+- The garage panel must read the same numbers the physics reads: LOAD is mass against
+  `load_capacity()`, ACCEL is `rated_power()/mass`, and `rated_power()` skips wheels that can never
+  reach the ground (a top wheel points up, `touches_ground()` is false).
+
 ### Building
 
 - Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
