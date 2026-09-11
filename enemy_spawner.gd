@@ -74,9 +74,20 @@ var _seed_grace: float = -1.0
 ## and without the fall it read as "a machine materialised twenty metres away and opened fire".
 
 @export_group("Сила врага")
-## Builds from weakest to strongest (see blocks.gd _define_layout). Tiers grow in danger and in
-## SIZE: the silhouette on the horizon tells you what you are getting into.
-@export var preset_tiers: Array[int] = [5, 6, 7, 8, 9, 10]   # scout → runner → raider → lancer → breaker → siege
+## THE LADDER: a step per line, several builds per step (see blocks.gd ENEMY_BUILDS). Steps grow in
+## danger and in SIZE, so the silhouette on the horizon tells you what you are getting into, and the
+## variants inside a step keep that silhouette from being one memorised machine with one answer.
+##
+## A const, not an export: it has to agree cell for cell with the build table, and a second copy in
+## the inspector is how the two quietly drift apart.
+const PRESET_TIERS: Array = [
+	[5, 19, 20],            # scouts
+	[6, 21, 22],            # runners
+	[7, 23, 24, 25],        # raiders
+	[8, 26, 27, 28],        # lancers - power appears here
+	[9, 29, 30, 31],        # breakers
+	[10, 32, 33, 34],       # siege
+]
 ## Player machine value (sum of G.shop_price over its blocks) at which each tier starts. A starter
 ## cabin is about 1800, a finished combat machine some ten thousand.
 @export var tier_from_value: Array[int] = [0, 6000, 9000, 13000, 18000, 26000]
@@ -404,20 +415,35 @@ func _on_base_died(b: Node) -> void:
 ## себя весь список, а игрок пятого грейда, только что потерявший машину и сидящий на стартовой
 ## кабине, — тем более.
 func _tier_cap(player: Node3D) -> int:
-	if preset_tiers.is_empty():
+	if PRESET_TIERS.is_empty():
 		return 0
 	var value: int = _machine_value(player)
 	var cap: int = 0
-	for i in mini(preset_tiers.size(), tier_from_value.size()):
+	for i in mini(PRESET_TIERS.size(), tier_from_value.size()):
 		if value >= int(tier_from_value[i]):
 			cap = i
-	var ramp_cap: int = int(floor(G.threat_ramp() * float(preset_tiers.size() - 1) + 0.001))
+	var ramp_cap: int = int(floor(G.threat_ramp() * float(PRESET_TIERS.size() - 1) + 0.001))
 	return maxi(mini(cap, ramp_cap), 0)
 
 func _enemy_tier(player: Node3D) -> int:
-	if preset_tiers.is_empty():
+	if PRESET_TIERS.is_empty():
 		return 0
 	return randi() % (_tier_cap(player) + 1)
+
+## Which step a build belongs to, -1 for anything outside the ladder (towers, bases, story carriers).
+func _tier_of(preset: int) -> int:
+	for i in PRESET_TIERS.size():
+		if (PRESET_TIERS[i] as Array).has(preset):
+			return i
+	return -1
+
+## One build out of a step. WHICH one is rolled every time: the point of several per step is that
+## the player cannot learn a single answer and apply it to the whole grade.
+func _variant(tier: int) -> int:
+	if PRESET_TIERS.is_empty():
+		return 0
+	var row: Array = PRESET_TIERS[clampi(tier, 0, PRESET_TIERS.size() - 1)] as Array
+	return int(row[randi() % row.size()]) if not row.is_empty() else 0
 
 ## СБОРКА ПО ЗАПРОСУ, НО НЕ ВЫШЕ ПОТОЛКА. Событие просит конкретные пресеты («лагерь: копейщик,
 ## крушитель, осадная») и до сих пор получало их независимо от того, на чём игрок сейчас едет:
@@ -428,17 +454,33 @@ func _enemy_tier(player: Node3D) -> int:
 ## Пресет не из лестницы (вышки, базы, сюжетные носители) не трогаем: там сборка — часть задания.
 func preset_for_request(preset: int) -> int:
 	var player: Node3D = _player()
-	if player == null or preset_tiers.is_empty():
+	if player == null or PRESET_TIERS.is_empty():
 		return preset
-	var idx: int = preset_tiers.find(preset)
-	if idx < 0:
+	var tier: int = _tier_of(preset)
+	if tier < 0:
 		return preset
-	return int(preset_tiers[mini(idx, _tier_cap(player))])
+	var cap: int = _tier_cap(player)
+	# Inside the ceiling the event gets EXACTLY what it asked for - a named build is part of how an
+	# encounter is authored. Only when it asks above the ceiling is it answered with a build from the
+	# step the player can actually take, and there the variant is rolled.
+	return preset if tier <= cap else _variant(cap)
 
 func _pick_preset(player: Node3D) -> int:
-	if preset_tiers.is_empty():
+	if PRESET_TIERS.is_empty():
 		return 0
-	return int(preset_tiers[_enemy_tier(player)])
+	return _variant(_enemy_tier(player))
+
+## A build for an arbitrary VALUE. Raids measure the BASE they are coming for, not the machine the
+## player happens to be driving, so they cannot go through _tier_cap - but they must not grow a
+## second copy of the ladder either, which is why this lives here and raids.gd only calls it.
+func preset_for_value(value: float) -> int:
+	if PRESET_TIERS.is_empty():
+		return 0
+	var tier: int = 0
+	for i in mini(PRESET_TIERS.size(), tier_from_value.size()):
+		if value >= float(tier_from_value[i]):
+			tier = i
+	return _variant(tier)
 
 # Machine value: the sum of shop prices of its blocks. Everything else in the game is measured the
 # same way, so "stronger" here means what it means in the garage.
@@ -492,8 +534,10 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
 		# The WEAKEST tier, not "build number 0": the first fight must be winnable, and preset 0 was simply
-		# first in the list rather than the easiest. The order lives in preset_tiers now.
-		blocks.layout_preset = int(preset_tiers[0]) if not preset_tiers.is_empty() else 0
+		# first in the list rather than the easiest. The order lives in PRESET_TIERS now. The variant is
+		# still rolled - every build on the bottom step is winnable by a starter cabin, that is what
+		# makes it the bottom step.
+		blocks.layout_preset = _variant(0)
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
 	if enemy is RigidBody3D:

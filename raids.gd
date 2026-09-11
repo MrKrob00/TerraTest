@@ -116,15 +116,9 @@ func _squad_size(value: float) -> int:
 ## Сборка нападающих — по тем же ступеням, что и обычные враги (спавнер их и экспортирует).
 ## Второй такой таблицы заводить нельзя: она разъедется с первой при первой же правке баланса.
 func _preset_for(sp: Node, value: float) -> int:
-	var tiers: Array = sp.get("preset_tiers") if ("preset_tiers" in sp) else []
-	var from: Array = sp.get("tier_from_value") if ("tier_from_value" in sp) else []
-	if tiers.is_empty():
-		return 7
-	var tier: int = 0
-	for i in mini(tiers.size(), from.size()):
-		if value >= float(from[i]):
-			tier = i
-	return int(tiers[tier])
+	if sp != null and sp.has_method("preset_for_value"):
+		return int(sp.preset_for_value(value))
+	return 7        # спавнера нет: налётчик, середина лестницы
 
 # ── Что считается базой ──────────────────────────────────────────────────────
 ## Самая дорогая ЗАЯКОРЕННАЯ машина игрока. Именно якорь, а не флаг станции: фабрика на

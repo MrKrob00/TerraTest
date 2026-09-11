@@ -219,8 +219,22 @@ project: read it before claiming how anything works.
   discount unconditionally and drops along the player's heading — the one deliberate inversion of
   "never spawn in front".
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
-  the tier is rolled under it. `preset_tiers` is ordered by danger. Kill reward is measured once at
-  birth.
+  the tier is rolled under it. Kill reward is measured once at birth.
+- THE LADDER IS TWO TABLES AND NOTHING ELSE: `enemy_spawner.PRESET_TIERS` (a step per line, 3-4
+  builds per step) and `blocks.ENEMY_BUILDS` (what each build is — rows, wheel, width, deck, top).
+  A new machine is a table row plus its number in `_define_layout`, never another `_layout_` method.
+  Several builds per step is the point: one machine per step means one silhouette, one memorised
+  answer, and the whole grade is solved. The variant is rolled on every spawn.
+- Anything that wants an enemy asks the spawner, which owns the ladder: `_pick_preset` for the
+  stream, `preset_for_request` for quest events, `preset_for_value` for raids (they measure the
+  BASE, not the machine the player is driving). `raids.gd` reading the tier table itself is how the
+  two copies drifted apart last time.
+- WHAT GOES WHERE ON A BUILD IS A RULE: value decides depth — cabin, then battery, then shield and
+  repair field, then guns. The battery sits in the MIDDLE OF THE DECK, enclosed on six sides (hull
+  under, dome or turret over, flank plates both sides, blocks fore and aft); guns go outside, where
+  they need the arc and where the player is meant to strip them. Power hung on the tail reads as a
+  feature ("drive round the back and de-power it") and is really one cheap move that deletes the
+  shield mechanic entirely.
 - THE CEILING IS ONE FUNCTION, `_tier_cap`, and everything that asks for an enemy goes through it —
   including a quest event, which names presets but gets them through `preset_for_request`. An event
   repeats and meets the player in any state, the state right after being taken apart included:
