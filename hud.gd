@@ -290,12 +290,12 @@ class DeathVeil extends Control:
 		draw_rect(Rect2(Vector2.ZERO, s), WASH, true)
 		var f := get_theme_default_font()
 		var mid := s.y * 0.44
-		var t := "DESTROYED"
+		var t := tr("DESTROYED")
 		var fs: int = 44
 		draw_string(f, Vector2((s.x - f.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x) * 0.5, mid),
 				t, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TITLE)
 		if killer != "":
-			var sub := "by %s" % killer
+			var sub := tr("by %s") % killer
 			var fs2: int = 18
 			draw_string(f, Vector2((s.x - f.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2).x) * 0.5,
 					mid + 30.0), sub, HORIZONTAL_ALIGNMENT_LEFT, -1, fs2, SUB)
@@ -800,10 +800,10 @@ func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> 
 	wheel.outer = VMENU_OUTER
 	wheel.inner = VMENU_INNER
 	wheel.items = [
-		["inventory", "Held by directive" if locked else "To inventory"],
-		["disassemble", "Held by directive" if locked else "Disassemble"],
-		["shield", "Defense: OFF" if defense_on else "Defense: ON"],
-		["camera", "Control"],           # сменить камеру на эту машину/станцию
+		["inventory", tr("Held by directive") if locked else tr("To inventory")],
+		["disassemble", tr("Held by directive") if locked else tr("Disassemble")],
+		["shield", tr("Defense: OFF") if defense_on else tr("Defense: ON")],
+		["camera", tr("Control")],       # сменить камеру на эту машину/станцию
 	]
 	wheel.position = center - Vector2(VMENU_OUTER, VMENU_OUTER)
 	_vmenu.add_child(wheel)

@@ -1,0 +1,51 @@
+{
+  "_about": "Key = the ENGLISH string as it stands in the code. No invented key names: a wrapped string is translated the moment a row appears here, and an unwrapped one keeps working untouched. Loaded by G._load_translations at startup; format patterns must keep their placeholders in the same order.",
+
+  "PLAY": {"ru": "ИГРАТЬ", "uk": "ГРАТИ"},
+  "SETTINGS": {"ru": "НАСТРОЙКИ", "uk": "НАЛАШТУВАННЯ"},
+  "QUIT": {"ru": "ВЫХОД", "uk": "ВИХІД"},
+  "BACK": {"ru": "НАЗАД", "uk": "НАЗАД"},
+  "CLOSE": {"ru": "ЗАКРЫТЬ", "uk": "ЗАКРИТИ"},
+  "STOP": {"ru": "СТОП", "uk": "СТОП"},
+  "CREATE": {"ru": "СОЗДАТЬ", "uk": "СТВОРИТИ"},
+  "CONTINUE": {"ru": "ПРОДОЛЖИТЬ", "uk": "ПРОДОВЖИТИ"},
+  "RESET": {"ru": "СБРОС", "uk": "СКИДАННЯ"},
+  "DELETE": {"ru": "УДАЛИТЬ", "uk": "ВИДАЛИТИ"},
+  "Hold": {"ru": "Удерживайте", "uk": "Утримуйте"},
+  "BACK TO SLOTS": {"ru": "К СЛОТАМ", "uk": "ДО СЛОТІВ"},
+
+  "NEWS": {"ru": "НОВОСТИ", "uk": "НОВИНИ"},
+  "CHOOSE A WORLD": {"ru": "ВЫБЕРИТЕ МИР", "uk": "ОБЕРІТЬ СВІТ"},
+  "SLOT %d": {"ru": "СЛОТ %d", "uk": "СЛОТ %d"},
+  "No world yet": {"ru": "Мира ещё нет", "uk": "Світу ще немає"},
+  "World ready · not started": {"ru": "Мир готов · не начат", "uk": "Світ готовий · не розпочато"},
+  "The original world · not started": {"ru": "Изначальный мир · не начат", "uk": "Початковий світ · не розпочато"},
+  "%d$ · %d blocks · %d directives": {"ru": "%d$ · блоков: %d · заданий: %d", "uk": "%d$ · блоків: %d · завдань: %d"},
+  "CREATING WORLD · SLOT %d": {"ru": "СОЗДАНИЕ МИРА · СЛОТ %d", "uk": "СТВОРЕННЯ СВІТУ · СЛОТ %d"},
+  "World ready · seed %d": {"ru": "Мир готов · сид %d", "uk": "Світ готовий · сід %d"},
+  "Press PLAY to enter": {"ru": "Нажмите ИГРАТЬ, чтобы войти", "uk": "Натисніть ГРАТИ, щоб увійти"},
+  "estimating": {"ru": "считаем", "uk": "рахуємо"},
+  "%d%%   ·   %s left": {"ru": "%d%%   ·   осталось %s", "uk": "%d%%   ·   лишилось %s"},
+  "starting": {"ru": "начинаем", "uk": "починаємо"},
+
+  "Rotation sensitivity": {"ru": "Чувствительность поворота", "uk": "Чутливість повороту"},
+  "Zoom sensitivity": {"ru": "Чувствительность зума", "uk": "Чутливість масштабу"},
+  "Invert vertical": {"ru": "Инвертировать вертикаль", "uk": "Інвертувати вертикаль"},
+  "Fight behind the menu": {"ru": "Бой на фоне меню", "uk": "Бій на тлі меню"},
+  "Language": {"ru": "Язык", "uk": "Мова"},
+
+  "SURVEYING TERRAIN": {"ru": "СЪЁМКА МЕСТНОСТИ", "uk": "ЗЙОМКА МІСЦЕВОСТІ"},
+  "reading terrain": {"ru": "читаем землю", "uk": "читаємо землю"},
+
+  "DESTROYED": {"ru": "УНИЧТОЖЕН", "uk": "ЗНИЩЕНО"},
+  "by %s": {"ru": "от %s", "uk": "від %s"},
+
+  "To inventory": {"ru": "В инвентарь", "uk": "До інвентарю"},
+  "Disassemble": {"ru": "Разобрать", "uk": "Розібрати"},
+  "Held by directive": {"ru": "Занято заданием", "uk": "Зайнято завданням"},
+  "Control": {"ru": "Управлять", "uk": "Керувати"},
+  "Defense: ON": {"ru": "Оборона: ВКЛ", "uk": "Оборона: УВІМК"},
+  "Defense: OFF": {"ru": "Оборона: ВЫКЛ", "uk": "Оборона: ВИМК"},
+
+  "Main menu (switch world)": {"ru": "Главное меню (сменить мир)", "uk": "Головне меню (змінити світ)"}
+}

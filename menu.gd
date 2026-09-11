@@ -128,7 +128,31 @@ func _bind_settings() -> void:
 	var fight: CheckButton = %MenuFight
 	fight.button_pressed = G.menu_battles
 	fight.toggled.connect(_on_menu_fight)
+	_bind_lang()
 	(%CloseSettings as Button).pressed.connect(_close_settings)
+
+## ЯЗЫК. Подписи пунктов — на своих языках, а не переведённые: человек, открывший чужой язык по
+## ошибке, должен найти свой в списке, не понимая ни слова вокруг.
+const LANG_NAMES := {"en": "English", "ru": "Русский", "uk": "Українська"}
+
+func _bind_lang() -> void:
+	var pick: OptionButton = %LangPick
+	pick.clear()
+	var cur: String = G.current_lang()
+	for i in G.LANGS.size():
+		var code: String = String(G.LANGS[i])
+		pick.add_item(String(LANG_NAMES.get(code, code)), i)
+		if code == cur:
+			pick.select(i)
+	pick.item_selected.connect(_on_lang_picked)
+
+## Переключение языка ПЕРЕСОБИРАЕТ экран: подписи уже нарисованы, и сами по себе они не меняются —
+## сцена переводится при загрузке, а кнопки слева вообще строятся кодом.
+func _on_lang_picked(idx: int) -> void:
+	if idx < 0 or idx >= G.LANGS.size():
+		return
+	G.set_lang(String(G.LANGS[idx]))
+	_rebuild_left()
 
 func _on_look_sens(v: float) -> void:
 	G.cam_look_sens = v
@@ -170,12 +194,12 @@ func _rebuild_left() -> void:
 		return
 	if _slots_open:
 		_left.add_child(_slots_panel())
-		_left.add_child(_button("BACK", DIM, _close_slots))
+		_left.add_child(_button(tr("BACK"), DIM, _close_slots))
 		return
-	_left.add_child(_big_button("PLAY", _open_slots))
-	_left.add_child(_button("SETTINGS", DIM, _open_settings))
+	_left.add_child(_big_button(tr("PLAY"), _open_slots))
+	_left.add_child(_button(tr("SETTINGS"), DIM, _open_settings))
 	if OS.has_feature("pc"):
-		_left.add_child(_button("QUIT", DIM, func(): get_tree().quit()))
+		_left.add_child(_button(tr("QUIT"), DIM, func(): get_tree().quit()))
 
 func _open_slots() -> void:
 	_slots_open = true
@@ -192,7 +216,7 @@ func _slots_panel() -> Control:
 	box.add_theme_constant_override("separation", 6)
 	panel.add_child(box)
 	var head := Label.new()
-	head.text = "CHOOSE A WORLD"
+	head.text = tr("CHOOSE A WORLD")
 	head.add_theme_font_size_override("font_size", 11)
 	head.add_theme_color_override("font_color", ACCENT * Color(1, 1, 1, 0.9))
 	box.add_child(head)
@@ -220,7 +244,7 @@ func _slot_row(i: int) -> Control:
 	row.add_child(info)
 
 	var name_lbl := Label.new()
-	name_lbl.text = "SLOT %d" % (i + 1)
+	name_lbl.text = tr("SLOT %d") % (i + 1)
 	name_lbl.add_theme_font_size_override("font_size", 16)
 	name_lbl.add_theme_color_override("font_color", TEXT)
 	info.add_child(name_lbl)
@@ -231,25 +255,25 @@ func _slot_row(i: int) -> Control:
 	desc.add_theme_font_size_override("font_size", 12)
 	desc.add_theme_color_override("font_color", DIM)
 	if not d.is_empty():
-		desc.text = "%d$ · %d blocks · %d directives" \
+		desc.text = tr("%d$ · %d blocks · %d directives") \
 				% [int(d.get("money", 0)), int(d.get("researched", 0)), int(d.get("quests", 0))]
 	elif has_world:
 		# Slot one is "our" map: a constant seed, the same veins and points it always had.
-		desc.text = "The original world · not started" if i == 0 else "World ready · not started"
+		desc.text = tr("The original world · not started") if i == 0 else tr("World ready · not started")
 	else:
-		desc.text = "No world yet"
+		desc.text = tr("No world yet")
 	info.add_child(desc)
 
 	if not has_world:
-		row.add_child(_button("CREATE", ACCENT, _begin_create.bind(i)))
+		row.add_child(_button(tr("CREATE"), ACCENT, _begin_create.bind(i)))
 		return row
 	# The slot played last is labelled CONTINUE: with one world that is the most common action.
-	var lbl: String = "CONTINUE" if (not d.is_empty() and i == G.last_slot()) else "PLAY"
+	var lbl: String = tr("CONTINUE") if (not d.is_empty() and i == G.last_slot()) else tr("PLAY")
 	row.add_child(_button(lbl, ACCENT, _play_slot.bind(i)))
 	if not d.is_empty():
-		row.add_child(_button("RESET", DIM, _reset_slot.bind(i)))
+		row.add_child(_button(tr("RESET"), DIM, _reset_slot.bind(i)))
 	if i != 0:
-		row.add_child(_hold_button("DELETE", _delete_slot.bind(i)))
+		row.add_child(_hold_button(tr("DELETE"), _delete_slot.bind(i)))
 	return row
 
 func _play_slot(i: int) -> void:
@@ -302,7 +326,7 @@ func _hold_button(text: String, cb: Callable) -> Button:
 	b.add_theme_stylebox_override("hover", _btn_style(false))
 	b.add_theme_stylebox_override("pressed", _btn_style(true))
 	b.confirmed.connect(cb)
-	b.tooltip_text = "Hold"
+	b.tooltip_text = tr("Hold")
 	return b
 
 # ── Generation panel ─────────────────────────────────────────────────────────
@@ -315,7 +339,7 @@ func _create_panel() -> Control:
 	box.add_theme_constant_override("separation", 6)
 	panel.add_child(box)
 	var head := Label.new()
-	head.text = "CREATING WORLD · SLOT %d" % (_gen_slot + 1)
+	head.text = tr("CREATING WORLD · SLOT %d") % (_gen_slot + 1)
 	head.add_theme_font_size_override("font_size", 13)
 	head.add_theme_color_override("font_color", ACCENT)
 	box.add_child(head)
@@ -340,10 +364,10 @@ func _create_panel() -> Control:
 
 	if _gen_done:
 		# TWO ways out, not one: the world may have been computed to be entered later.
-		box.add_child(_big_button("PLAY", _play_created))
-		box.add_child(_button("BACK TO SLOTS", DIM, _leave_create))
+		box.add_child(_big_button(tr("PLAY"), _play_created))
+		box.add_child(_button(tr("BACK TO SLOTS"), DIM, _leave_create))
 	else:
-		box.add_child(_button("STOP", DANGER, _stop_create))
+		box.add_child(_button(tr("STOP"), DANGER, _stop_create))
 	_update_create()
 	return panel
 
@@ -355,9 +379,9 @@ func _update_create() -> void:
 	if _c_stage == null or not is_instance_valid(_c_stage):
 		return
 	if _gen_done:
-		_c_stage.text = "World ready · seed %d" % _gen_seed
+		_c_stage.text = tr("World ready · seed %d") % _gen_seed
 		_c_bar.value = 1.0
-		_c_eta.text = "Press PLAY to enter"
+		_c_eta.text = tr("Press PLAY to enter")
 		return
 	_c_stage.text = _gen_label
 	_c_bar.value = _gen_frac
@@ -367,11 +391,11 @@ func _update_create() -> void:
 	if _gen_frac > 0.02:
 		var raw: float = el * (1.0 - _gen_frac) / _gen_frac
 		_gen_eta = raw if _gen_eta < 0.0 else lerpf(_gen_eta, raw, 0.08)
-	_c_eta.text = "%d%%   ·   %s left" % [int(_gen_frac * 100.0), _time_text(_gen_eta)]
+	_c_eta.text = tr("%d%%   ·   %s left") % [int(_gen_frac * 100.0), _time_text(_gen_eta)]
 
 func _time_text(sec: float) -> String:
 	if sec < 0.0:
-		return "estimating"
+		return tr("estimating")
 	if sec < 60.0:
 		return "%ds" % int(sec)
 	return "%d:%02d" % [int(sec) / 60, int(sec) % 60]
@@ -386,7 +410,7 @@ func _begin_create(i: int) -> void:
 	_gen_done = false
 	_gen_frac = 0.0
 	_gen_eta = -1.0
-	_gen_label = "starting"
+	_gen_label = tr("starting")
 	_gen_t0 = float(Time.get_ticks_msec()) / 1000.0
 	_rebuild_left()
 

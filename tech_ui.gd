@@ -1245,7 +1245,7 @@ func _build_settings_tab() -> void:
 	# ВЫХОД В МЕНЮ — единственный способ сменить слот, не перезапуская приложение. Без него
 	# три мира есть, а попасть из одного в другой нельзя.
 	var menu_btn := Button.new()
-	menu_btn.text = "Main menu (switch world)"
+	menu_btn.text = tr("Main menu (switch world)")
 	menu_btn.add_theme_font_size_override("font_size", 14)
 	menu_btn.pressed.connect(_to_main_menu)
 	_extra_vb.add_child(menu_btn)

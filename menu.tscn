@@ -344,6 +344,22 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 text = "Invert vertical"
 
+[node name="LangRow" type="HBoxContainer" parent="UI/Settings/Panel/Box" unique_id=11089760]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LangRow" unique_id=11089761]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
+theme_override_font_sizes/font_size = 13
+text = "Language"
+
+[node name="LangPick" type="OptionButton" parent="UI/Settings/Panel/Box/LangRow" unique_id=11089762]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="MenuFight" type="CheckButton" parent="UI/Settings/Panel/Box" unique_id=11089757]
 unique_name_in_owner = true
 layout_mode = 2

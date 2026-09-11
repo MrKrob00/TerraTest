@@ -106,7 +106,7 @@ func _draw() -> void:
 		draw_line(org + c, org + c + Vector2(tick * sx, 0.0), ACCENT * Color(1, 1, 1, 0.7), 1.0)
 		draw_line(org + c, org + c + Vector2(0.0, tick * sy), ACCENT * Color(1, 1, 1, 0.7), 1.0)
 
-	var caption: String = _step.to_upper() if _step != "" else "SURVEYING TERRAIN"
+	var caption: String = _step.to_upper() if _step != "" else tr("SURVEYING TERRAIN")
 	draw_string(font, org + Vector2(2.0, 16.0), caption, HORIZONTAL_ALIGNMENT_LEFT,
 			PLATE.x - 46.0, fs, TEXT)
 	if _frac >= 0.0:
