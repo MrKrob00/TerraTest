@@ -252,6 +252,10 @@ func _make_map(report: bool = false) -> Node3D:
 	m.forced_seed = _pick_seed(b)
 	m.window_size = MAP_SIZE
 	m.use_image_data = false
+	# TWO-METRE QUADS, the same as the game map (node_3d.tscn sets triangle_size = 1). The default
+	# is one metre, four times the triangles, for ground nobody will ever drive on: this map is
+	# scenery behind a menu and it runs on the same phone the game has to.
+	m.triangle_size = 1
 	m.biomes = b
 	# THE SAME PRESET THE EDITOR BUTTON USES. The procedural defaults are a compromise for the game's
 	# own world; the menu wants the land the dock's "Natural preset" makes - big masses, drivable
