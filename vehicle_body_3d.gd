@@ -737,6 +737,40 @@ var _cabin_ground = null           # Vector3|null: куда на ЗЕМЛЮ ст
 var _ground_core := false          # в руке ядро, которое МОЖЕТ уйти на землю (кабина/стационар)
 var _hand_from_inventory := false  # блок в руке взят из инвентаря (а не снят с машины) — для авто-добора
 
+## ЧТО В РУКЕ НА САМОМ ДЕЛЕ — узел в держателе под камерой, или null.
+##
+## block_take — это ФЛАГ, а держатель — ФАКТ, и расходятся они молча. Узел из руки может исчезнуть
+## мимо всех путей очистки: его забрала уборка мира по расстоянию, он уехал вместе с погибшей
+## машиной, его освободил квест. Флаг при этом остаётся поднятым — и дальше подбор из мира умирает
+## НАСОВСЕМ, для любых блоков, старых и новых: _commit_build_tap видит block_take и уходит СТАВИТЬ
+## пустоту, а _maybe_grab_on_tap первой же строкой возвращает false. Ни одного сообщения при этом
+## нет, поэтому со стороны это «блоки вдруг перестали подбираться».
+func hand_node() -> Node:
+	if camera_controller == null or camera_controller.camera == null:
+		return null
+	var cam: Node = camera_controller.camera
+	if cam.get_child_count() == 0:
+		return null
+	var holder: Node = cam.get_child(0)
+	return holder.get_child(0) if holder != null and holder.get_child_count() > 0 else null
+
+## Рука пуста. Одна дверь вместо пяти копий этих же пяти присваиваний.
+func _clear_hand() -> void:
+	block_body = null
+	block_take = false
+	hand_kind = Hand.EMPTY
+	_preview_res = null
+	_cabin_ground = null
+	_ground_core = false
+	if ghost_block:
+		ghost_block.visible = false
+
+## Свести флаг с фактом. Зовётся раз в кадр и перед разбором тапа — дешевле, чем искать, какой
+## именно путь в следующий раз забудет опустить флаг.
+func _sync_hand() -> void:
+	if block_take and hand_node() == null:
+		_clear_hand()
+
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,
 # Take/TakeOff/Building/Movement/Attack — все читаются по сырому состоянию клавиши, в обход
 # фокуса UI) иначе срабатывали бы прямо во время печати.
@@ -830,6 +864,9 @@ func _input(event: InputEvent) -> void:
 		else:        _on_building_pressed()
 
 func _process(_delta: float) -> void:
+	# ДО выхода по Building: подбор из мира работает в любом режиме, а значит и залипшая рука
+	# ломает его в любом режиме — чинить её только в стройке значило бы чинить не там.
+	_sync_hand()
 	if not Building:
 		return
 	if block_take:
@@ -1670,6 +1707,7 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 	if now - _last_commit_ms < 250:
 		return                           # антидубль: на мобилке тач И эмулированная мышь дают двойной
 	_last_commit_ms = now
+	_sync_hand()                         # рука могла опустеть мимо очистки — см. hand_node()
 	var used: bool = false
 	if block_take:
 		_on_take_pressed()               # поставить блок из руки (или наземное ядро — кабина/база)
@@ -1769,12 +1807,7 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 		Dialogue.say("System", "No schematic for this part. It cannot be broken down.")
 		return true                                 # жест израсходован, блок ЦЕЛ и в руке
 	if target.scrap_block(held):
-		block_body = null
-		block_take = false
-		hand_kind = Hand.EMPTY
-		_preview_res = null
-		if ghost_block:
-			ghost_block.visible = false
+		_clear_hand()
 	return true
 
 ## Сколько держать, чтобы это считалось длинным нажатием.
@@ -2049,10 +2082,7 @@ func _return_hand_to_inventory() -> void:
 			holder.remove_child(child)
 			child.queue_free()
 		G.mark_progress_dirty()
-	block_body = null
-	block_take = false
-	hand_kind = Hand.EMPTY
-	_preview_res = null
+	_clear_hand()
 
 ## Положить ресурс из руки обратно в мир — перед камерой, на землю. Ресурс сам ляжет на
 ## поверхность (resource._integrate_forces прижимает его к heightmap), поэтому высоту не
@@ -2149,12 +2179,7 @@ func drop_hand_to_world() -> void:
 	instance.top_level = false            # мог остаться top_level от превью
 	instance.reparent(objects)            # VehicleBlock сам разморозится (parent == "objects")
 	instance.scale = Vector3.ONE
-	block_body = null
-	block_take = false
-	hand_kind = Hand.EMPTY
-	_preview_res = null
-	if ghost_block:
-		ghost_block.visible = false
+	_clear_hand()
 
 # Q на ПК / действие «TakeOff» = быстро бросить блок в мир.
 func _on_take_off_pressed() -> void:

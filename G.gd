@@ -335,18 +335,38 @@ func set_window_pos(id: String, pos: Vector2) -> void:
 	ui_windows[id] = [pos.x, pos.y]
 	save_settings()
 
-func save_settings() -> void:
+## ОДИН ФАЙЛ — ОДНА ЗАПИСЬ, И ОНА СЛИВАЕТ, А НЕ ЗАТИРАЕТ.
+##
+## settings.json пишут двое: этот автолоад (камера, язык, бой в меню) и Main (тени, авто-FPS,
+## масштаб). Каждый делал store_string ЦЕЛИКОМ своим словарём, то есть выкидывал чужие ключи.
+## Со стороны игрока это выглядело так: подвинул ползунок камеры или сменил язык — и на следующем
+## запуске снова включены тени и авто-FPS. Не «не сохранилось», а «сохранилось и было стёрто
+## соседом», причём молча и в обе стороны.
+func settings_merge(patch: Dictionary) -> void:
+	var data: Dictionary = settings_raw()
+	for k in patch:
+		data[k] = patch[k]
 	var f = FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({
-			"cam_look_sens": cam_look_sens,
-			"cam_zoom_sens": cam_zoom_sens,
-			"cam_invert_y": cam_invert_y,
-			"menu_battles": menu_battles,
-			"lang": lang,
-			"ui_windows": ui_windows,
-		}))
+		f.store_string(JSON.stringify(data))
 		f.close()
+
+## Файл как он есть на диске. Пустой словарь, если файла нет или он битый.
+func settings_raw() -> Dictionary:
+	if not FileAccess.file_exists(SETTINGS_PATH):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
+	return d if d is Dictionary else {}
+
+func save_settings() -> void:
+	settings_merge({
+		"cam_look_sens": cam_look_sens,
+		"cam_zoom_sens": cam_zoom_sens,
+		"cam_invert_y": cam_invert_y,
+		"menu_battles": menu_battles,
+		"lang": lang,
+		"ui_windows": ui_windows,
+	})
 
 func _load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
@@ -410,19 +430,22 @@ func _load_translations() -> void:
 	for code in built:
 		TranslationServer.add_translation(built[code])
 
-## Поставить язык интерфейса. Пусто — берём системный, если он из наших, иначе английский.
+## Поставить язык интерфейса. Пусто — АНГЛИЙСКИЙ.
 func set_lang(code: String) -> void:
 	lang = code
 	save_settings()
 	_apply_lang()
 
+## ЯЗЫК ПО УМОЛЧАНИЮ — АНГЛИЙСКИЙ, а не системный.
+##
+## Системный подхватывался автоматически, и это выглядит удобным ровно до первого запуска на
+## устройстве с локалью из нашего списка: игра молча открывалась по-украински, хотя никто её об
+## этом не просил. Русский и украинский — это ВЫБОР в настройках, и пока он не сделан, показываем
+## то, на чём написана игра. Английский к тому же единственный полный: ключ перевода — сама
+## английская строка, непереведённая строка остаётся английской, так что на en интерфейс цел
+## всегда, а на остальных ровно настолько, насколько заполнен i18n/strings.json.
 func _apply_lang() -> void:
-	var code: String = lang
-	if not LANGS.has(code):
-		code = String(OS.get_locale_language())
-		if not LANGS.has(code):
-			code = "en"
-	TranslationServer.set_locale(code)
+	TranslationServer.set_locale(lang if LANGS.has(lang) else "en")
 
 ## Каким языком интерфейс говорит СЕЙЧАС (для галочки в настройках).
 func current_lang() -> String:

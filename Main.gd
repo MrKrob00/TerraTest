@@ -214,16 +214,16 @@ func set_manual_scale(v: float) -> void:
 		get_viewport().scaling_3d_scale = manual_scale
 	_save_settings()
 
+## Пишем ЧЕРЕЗ G: файл общий с ним (камера, язык, бой в меню), и раздельная запись целиком
+## вычищала чужие ключи — тени и авто-FPS «не сохранялись» именно поэтому, см. G.settings_merge.
 func _save_settings() -> void:
-	var f := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify({
-			"auto_fps": auto_fps,
-			"manual_scale": manual_scale,
-			"shadows_enabled": shadows_enabled,
-			"ui_scale": ui_scale,
-			"fullscreen": fullscreen,
-		}))
+	G.settings_merge({
+		"auto_fps": auto_fps,
+		"manual_scale": manual_scale,
+		"shadows_enabled": shadows_enabled,
+		"ui_scale": ui_scale,
+		"fullscreen": fullscreen,
+	})
 
 func _load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
