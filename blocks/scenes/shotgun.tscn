@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://combatshotgn"]
 
-[ext_resource type="Script" path="res://blocks/scripts/shotgun.gd" id="1_vk1bi"]
+[ext_resource type="Script" uid="uid://fqp77v07bg6j" path="res://blocks/scripts/shotgun.gd" id="1_vk1bi"]
 [ext_resource type="Script" uid="uid://b4io8r1rqborh" path="res://blocks/scripts/bullet.gd" id="2_dk5gl"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_6vqwg"]
@@ -44,11 +44,12 @@ collision_layer = 2
 collision_mask = 21
 freeze = true
 script = ExtResource("1_vk1bi")
+fire_rate = 1.0
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
-connect_faces = 32
 Area_Range = NodePath("Area3D")
 block = 45
+connect_faces = 32
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=2131480656]
 visible = false

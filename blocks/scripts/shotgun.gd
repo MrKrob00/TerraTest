@@ -10,7 +10,7 @@ const PELLETS := 8            # дробин в выстреле
 const PELLET_DAMAGE := 4      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
 const SHOTGUN_RANGE := 18.0
 const BURST := 2              # выстрелов до перезарядки
-const RELOAD := 2.5           # секунд
+const RELOAD := 0.4           # секунд
 const SPREAD_DEG := 7.0       # половина угла конуса
 
 var _left: int = BURST

@@ -175,7 +175,7 @@ script = ExtResource("12_lggff")
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
-mask_offset = Vector2(1578.8726, -156.10547)
+mask_offset = Vector2(-3385.2192, 2414.6802)
 
 [sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
@@ -560,8 +560,8 @@ script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 occlusion_min_dist = 80.0
 occlusion_samples = 14
-built_amplitude = 130.0
 biomes = SubResource("Resource_s0gvp")
+built_amplitude = 130.0
 flat_lod_error = 0.003
 triangle_size = 1
 editor_lod = true
