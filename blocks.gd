@@ -227,85 +227,104 @@ func _wheels_6() -> void:
 
 ## rows  - floor length in cells, z = 5 .. 5+rows-1 (the cabin takes z=5)
 ## wheel - wheel block for both side rows
-## wide  - 3-cell-wide floor (x 4..6) with the wheels moved out to x 3/7. A one-cell spine with
+## wide  - three cells wide (x 4..6) on BOTH floors, wheels out at x 3/7. A one-cell spine with
 ##         wheels bolted to it is why the machines read as small on an 11-cube grid.
-## nose  - armour plate ahead of the floor
-## deck  - second floor, front to back from z=5. EMPTY leaves the cell open.
-## top   - third floor, front to back from z=6. Needs the deck cell under it filled.
+## nose  - a single armour plate ahead of the cabin
+## deck  - CENTRE column of the second floor, front to back from z=5. The front cell is a barrel,
+##         the rest is hull and power.
+## top   - CENTRE column of the third floor, front to back from z=6. Only the FIRST cell may be a
+##         barrel; behind it go dome and repair field, which is also where a dome has to sit to
+##         cover the machine at all.
+## wings - one barrel on EACH side of the third floor, at x 4 and x 6, at the front. Wide builds
+##         only - a narrow hull has no shoulders to stand them on.
 const ENEMY_BUILDS: Dictionary = {
-	# ── Tier 0: light scouts. Small wheels, one gun, no plating - the machine a first cabin can
+	# -- Tier 0: light scouts. Small wheels, one gun, no plating - the machine a first cabin can
 	# actually beat.
-	5:  {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
-		"deck": [G.Block.GUN]},
-	19: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
-		"deck": [G.Block.LASER]},
-	20: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "wide": false, "nose": false,
-		"deck": [G.Block.SHOTGUN]},
+	5:  {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.GUN]},
+	19: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.LASER]},
+	20: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.SHOTGUN]},
 
-	# ── Tier 1: runners. Full wheels and a nose plate: they have to be let close, or outrun.
-	6:  {"rows": 3, "wheel": G.Block.WHEEL, "wide": false, "deck": [G.Block.SHOTGUN]},
-	21: {"rows": 3, "wheel": G.Block.WHEEL, "wide": false,
-		"deck": [G.Block.GUN, G.Block.EMPTY, G.Block.GUN]},
-	22: {"rows": 3, "wheel": G.Block.WHEEL, "wide": false, "deck": [G.Block.LASER]},
+	# -- Tier 1: runners. Full wheels and a nose plate: they have to be let close, or outrun.
+	6:  {"rows": 3, "wheel": G.Block.WHEEL,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK]},
+	21: {"rows": 3, "wheel": G.Block.WHEEL,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
+	22: {"rows": 3, "wheel": G.Block.WHEEL,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK]},
 
-	# ── Tier 2: raiders. First WIDE hull and flank plates - the first machine that cannot be shot
-	# down on approach and has to be out-manoeuvred.
+	# -- Tier 2: raiders. First WIDE hull and the first shoulder guns - the first machine that
+	# cannot be shot down on approach and has to be out-manoeuvred.
 	7:  {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.GUN]},
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
 	23: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.GUN]},
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
 	24: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.GUN]},
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
 	25: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.EMPTY]},
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
 
-	# ── Tier 3: lancers. THE STEP WHERE POWER APPEARS - a battery feeding a dome or a repair field.
-	# The fight becomes two stages, drain it and then break the machine, and the battery is what is
-	# drained: panels stand only on bases, so a driving machine spawns full and never refills.
+	# -- Tier 3: lancers. THE STEP WHERE POWER APPEARS - a battery feeding a dome or a repair
+	# field. The fight becomes two stages, drain it and then break the machine, and the battery is
+	# what is drained: panels stand only on bases, so a driving machine spawns full and never
+	# refills.
 	8:  {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
-		"top": [G.Block.EMPTY, G.Block.SHIELD]},
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
 	26: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
-		"top": [G.Block.EMPTY, G.Block.REGEN]},
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.GUN},
 	27: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.GUN],
-		"top": [G.Block.EMPTY, G.Block.SHIELD]},
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
 	28: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
-		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.LASER],
-		"top": [G.Block.EMPTY, G.Block.REGEN]},
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.LASER},
 
-	# ── Tier 4: breakers. Big wheels, heavy barrels, and both kinds of power on some variants.
+	# -- Tier 4: breakers. Big wheels, heavy barrels, dome and repair field on some variants.
 	# Already a LARGE machine, read off the horizon.
 	9:  {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
-		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.GUN]},
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
 	29: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
-		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN]},
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
 	30: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
-		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.POUND_CANNON],
-		"top": [G.Block.GUN, G.Block.REGEN]},
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
 	31: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
-		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.LASER],
-		"top": [G.Block.GUN, G.Block.SHIELD]},
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.LASER},
 
-	# ── Tier 5: siege. The largest: five rows on big wheels, TWO batteries, dome and repair field
+	# -- Tier 5: siege. The largest: five rows on big wheels, TWO batteries, dome and repair field
 	# together, four barrels. Meeting one is an event, not a routine skirmish.
 	10: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
-		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.ROCKET]},
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.ROCKET},
 	32: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY,
 			G.Block.BLOCK],
-		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.POUND_CANNON]},
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
 	33: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
-		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN, G.Block.LASER]},
+		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.LASER},
 	34: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
-		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN, G.Block.GUN]},
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
 }
+
+## PLATES GO WHERE THEY PROTECT SOMETHING, and nowhere else. Armour used to line every middle cell
+## of the deck on both sides plus a three-plate nose - seven to nine plates, which is most of a
+## machine's weight and reads as a wall of armour rather than as a vehicle. Now: one plate on the
+## nose, and a pair opposite each BATTERY. A build with no battery gets a single pair amidships, so
+## a flank still means something.
+func _armor_rows(deck: Array) -> Array:
+	var out: Array = []
+	for i in deck.size():
+		if int(deck[i]) == G.Block.BATTERY:
+			out.append(i)
+	if out.is_empty() and deck.size() >= 3:
+		out.append(deck.size() / 2)
+	return out
 
 func _layout_enemy(preset: int) -> void:
 	var b: Dictionary = ENEMY_BUILDS.get(preset, {})
@@ -317,6 +336,7 @@ func _layout_enemy(preset: int) -> void:
 	var half: int = 1 if wide else 0
 	var deck: Array = b.get("deck", [])
 	var top: Array = b.get("top", [])
+	var wings: int = int(b.get("wings", G.Block.EMPTY))
 
 	# FLOOR. The cabin sits at the grid centre because that is the machine's origin (cell_to_local
 	# counts from CENTER); the hull runs backwards from it.
@@ -326,23 +346,37 @@ func _layout_enemy(preset: int) -> void:
 			if x != 5 or i != 0:
 				set_block(x, 5, 5 + i, G.Block.BLOCK, 0.0)
 	if b.get("nose", true) == true:
-		_front_armor(half)
+		_front_armor()
 	var zs: Array = []
 	for i in rows:
 		zs.append(5 + i)
 	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, 2 if wide else 1)
 
+	# SECOND FLOOR. Centre column from the table; on a wide hull the sides are filled too, which is
+	# what makes the machine three cells wide ALL THE WAY UP instead of a wide pallet with a spine
+	# standing on it.
+	var armor_at: Array = _armor_rows(deck)
 	for i in deck.size():
 		if int(deck[i]) != G.Block.EMPTY:
 			set_block(5, 6, 5 + i, int(deck[i]), 0.0)
-	# FLANK PLATES cover the MIDDLE of the deck, which is exactly where the power stands. Skipping
-	# the end cells is not laziness: the ends hold guns, and armour must not grow over a barrel.
-	for i in range(1, deck.size() - 1):
-		if int(deck[i]) != G.Block.EMPTY:
+		if not wide or int(deck[i]) == G.Block.EMPTY:
+			continue
+		if armor_at.has(i):
 			_side_armor(5 + i)
+		else:
+			set_block(4, 6, 5 + i, G.Block.BLOCK, 0.0)
+			set_block(6, 6, 5 + i, G.Block.BLOCK, 0.0)
+
+	# THIRD FLOOR. A barrel may stand only at the FRONT of the centre column and on the shoulders:
+	# everything else up here is dome and repair field. A gun parked behind them was firing through
+	# its own machine - the sweep lets a bullet past its own blocks, so it did no damage to itself,
+	# it just could not see anything either.
 	for i in top.size():
 		if int(top[i]) != G.Block.EMPTY:
 			set_block(5, 7, 6 + i, int(top[i]), 0.0)
+	if wide and wings != G.Block.EMPTY:
+		set_block(4, 7, 6, wings, 0.0)
+		set_block(6, 7, 6, wings, 0.0)
 
 ## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
 ## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z

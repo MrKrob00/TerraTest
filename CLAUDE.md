@@ -235,6 +235,16 @@ project: read it before claiming how anything works.
   they need the arc and where the player is meant to strip them. Power hung on the tail reads as a
   feature ("drive round the back and de-power it") and is really one cheap move that deletes the
   shield mechanic entirely.
+- A BARREL NEEDS AN EMPTY LINE AHEAD OF IT at its own level, so a build gets guns in exactly three
+  places: the FRONT of the deck, the FRONT of the top column, and the shoulders (`wings`, x 4 and
+  x 6). Everything else on the top column is dome and repair field. A gun parked behind them still
+  fires — the sweep lets a bullet past its own blocks — it simply never sees anything, which reads
+  as a broken turret rather than as a mistake.
+- PLATES GO WHERE THEY PROTECT SOMETHING: one on the nose and a pair opposite each battery
+  (`_armor_rows`). Lining every middle cell gave seven to nine plates, most of the machine's weight,
+  and the silhouette read as a wall rather than a vehicle.
+- A wide build is three cells wide ON BOTH FLOORS. Widening only the floor leaves a spine standing
+  on a pallet, which is what "they still look small" meant.
 - THE CEILING IS ONE FUNCTION, `_tier_cap`, and everything that asks for an enemy goes through it —
   including a quest event, which names presets but gets them through `preset_for_request`. An event
   repeats and meets the player in any state, the state right after being taken apart included:
