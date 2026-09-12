@@ -309,12 +309,28 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 	_carrier_spawn(key, block, preset, at)
 	return false
 
+## МАШИНА ПО ЗАКАЗУ КВЕСТА — ВСЕГДА ЧЕРЕЗ ПОТОЛОК СПАВНЕРА.
+##
+## Правило «всё, что просит врага, идёт через _tier_cap» жило только в _ev_spawn, а квесты просят
+## машины ещё в четырёх местах, и каждое называет пресет ЧИСЛОМ: носитель сюжетного блока, охрана
+## груза, волна на базу и дуэль. Дуэль и встретил игрок в первый час: она зашита на пресет 8, а
+## копейщик — первая ступень с куполом, против стартовой кабины.
+##
+## СОЮЗНИКА (фракция 0) не режем: слабый союзник не помогает вообще никак.
+## БАЗЫ И ВЫШКИ сюда не идут намеренно — там сборка часть задания, и spawn_at зовут напрямую.
+func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> Node3D:
+	if sp == null or not sp.has_method("spawn_at"):
+		return null
+	var want: int = preset
+	if faction_id != 0 and sp.has_method("preset_for_request"):
+		want = int(sp.preset_for_request(preset))
+	var e = sp.spawn_at(at, want, faction_id)
+	return e as Node3D if e is Node3D else null
+
 func _carrier_spawn(key: String, block: int, preset: int, at: Vector3) -> void:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp == null or not sp.has_method("spawn_at"):
-		return
-	var e = sp.spawn_at(at, preset, 1)
-	if e == null or not (e is Node3D):
+	var e: Node3D = _spawn_hostile(sp, at, preset)
+	if e == null:
 		return
 	# Блок ставим НА КАБИНУ (5,6,5): он должен быть виден снаружи, иначе «вон та машина везёт
 	# радар» игроку неоткуда узнать, а метка над врагом об этом не говорит.
@@ -555,9 +571,7 @@ func _salvage_spawn_guard() -> void:
 	if is_instance_valid(_salvage_guard) or not (_salvage_point is Vector3):
 		return
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp == null or not sp.has_method("spawn_at"):
-		return
-	_salvage_guard = sp.spawn_at(_salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1)
+	_salvage_guard = _spawn_hostile(sp, _salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7)
 	if _salvage_guard == null:
 		return
 	# КОЛЛЕКТОР ВЕЗЁТ САМ ОХРАННИК, а не лежит рядом с ним. Груз, валяющийся у ног побеждённого,
@@ -1004,7 +1018,7 @@ func _hold_1(q: Dictionary) -> void:
 		var ang: float = TAU * float(i) / float(HOLD_COUNT) + randf()
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * HOLD_RANGE, 0.0, sin(ang) * HOLD_RANGE)
 		wp.y = G.ground_y(wp, p.global_position.y)
-		var e = sp.spawn_at(wp, 8, 1)
+		var e: Node3D = _spawn_hostile(sp, wp, 8)
 		if e != null:
 			if e.has_method("assign_target"):
 				e.assign_target(p, true)    # идут именно за базой и цель не бросают
@@ -1161,8 +1175,11 @@ func _spawn_duel(center: Vector3) -> bool:
 	if sp == null or not sp.has_method("spawn_at"):
 		return false
 	var side: Vector3 = Vector3(DUEL_GAP * 0.5, 0.0, 0.0)
-	_duel_a = sp.spawn_at(center - side, 7, 1)     # рейдер
-	_duel_b = sp.spawn_at(center + side, 8, 2)     # копейщик другой фракции
+	# ОБА ПО ПОТОЛКУ ИГРОКА. Дуэль — зрелище, на которое игрок приезжает и в которое лезет, и
+	# зашитые сюда 7 и 8 означали копейщика с куполом в первый час игры, против стартовой кабины.
+	# Фракции остаются РАЗНЫМИ (1 и 2) — иначе они друг друга не увидят вовсе.
+	_duel_a = _spawn_hostile(sp, center - side, 7, 1)
+	_duel_b = _spawn_hostile(sp, center + side, 8, 2)
 	if _duel_a == null or _duel_b == null:
 		return false
 	# Цели назначаем сразу и накрепко: пока игрок доедет, они уже должны драться, а не
@@ -1445,13 +1462,7 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	for i in presets.size():
 		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
 		var pos: Vector3 = at + Vector3(cos(ang) * 10.0, 0.0, sin(ang) * 10.0)
-		# ВРАЖДЕБНЫХ участников события просим у спавнера ПО ПОТОЛКУ игрока: событие повторяется
-		# и встречает игрока в любом состоянии, в том числе сразу после того, как его разобрали.
-		# Союзники (faction 0) идут как заказано — слабый союзник помогает ровно никак.
-		var want: int = int(presets[i])
-		if faction_id != 0 and sp.has_method("preset_for_request"):
-			want = int(sp.preset_for_request(want))
-		var e = sp.spawn_at(pos, want, faction_id)
+		var e: Node3D = _spawn_hostile(sp, pos, int(presets[i]), faction_id)
 		if e == null:
 			continue
 		if lock_on != null and e.has_method("assign_target"):
