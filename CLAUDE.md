@@ -245,12 +245,14 @@ project: read it before claiming how anything works.
   and the silhouette read as a wall rather than a vehicle.
 - A wide build is three cells wide ON BOTH FLOORS. Widening only the floor leaves a spine standing
   on a pallet, which is what "they still look small" meant.
-- THE CEILING IS ONE FUNCTION, `_tier_cap`, and everything that asks for an enemy goes through it —
-  including a quest event, which names presets but gets them through `preset_for_request`. An event
-  repeats and meets the player in any state, the state right after being taken apart included:
-  without this, losing at grade 5 sent the same siege machine at the starter cabin that replaced
-  the machine. It only ever lowers, and a preset outside the ladder (towers, bases, story carriers)
-  is left alone — there the build is part of the task.
+- THE CEILING IS ONE FUNCTION, `_tier_cap`, and everything that asks for a DRIVING enemy goes
+  through it. On the quest side that means `quest_arcs._spawn_hostile` — the single door in front of
+  `spawn_at` — and every branch uses it: events, the story-block carrier, the salvage guard, the
+  wave on your base and the crossfire duel. Naming a preset by number is exactly how it went wrong:
+  the duel was hardcoded to 7 and 8, and a lancer is the first build with a dome, so the first hour
+  of a save put one in front of a starter cabin. The cap only ever lowers; an ALLY (faction 0) is
+  never capped, since a weak ally helps with nothing; and a preset outside the ladder — towers,
+  bases, anything spawned `as_base` — is left alone, because there the build is the task.
 - Builds must agree with `connect_faces` — nothing attaches to a wheel or a gun. Layouts do not
   check this; the error shows up in game as a floating block.
 - FROM THE LANCER ON, ENEMIES CARRY POWER: battery + shield, battery + repair field, or both. So a
