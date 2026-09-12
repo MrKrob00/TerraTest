@@ -189,16 +189,30 @@ func _power_regen_cell() -> Vector3i:
 			return c
 	return POWER_REGEN_CELLS[0]
 
-func _regen_beside_support() -> bool:
-	for c in POWER_REGEN_CELLS:
-		if _base_block(_power_base, c) == G.Block.REGEN:
+## ЕСТЬ ЛИ ТАКОЙ БЛОК НА БАЗЕ — ГДЕ УГОДНО, А НЕ В ЗАДУМАННОЙ КЛЕТКЕ.
+##
+## Стадия засчитывалась по ОДНОЙ клетке, и это давало худший из возможных отказов: игрок ставит
+## панель на базу, видит её стоящей — а квест считает, что не поставил, и через секунду роняет
+## рядом ВТОРУЮ (ensure спрашивает только про мир и про руку). Стоило промахнуться мимо клетки —
+## и ветка выдавала панели бесконечно, требуя поставить уже поставленное.
+##
+## Чертёж по-прежнему показывает, КУДА советуют, но засчитываем факт: блок на базе. Задание
+## звучит «поставь панель на опору», а не «попади в клетку (5,6,5)».
+func _base_has(base: Node3D, bt: int) -> bool:
+	if not is_instance_valid(base):
+		return false
+	var bm = base.get("block_map_node")
+	if bm == null or not is_instance_valid(bm):
+		return false
+	for c in (bm as Node).get_children():
+		if c.get("block") != null and int(c.get("block")) == bt:
 			return true
 	return false
 
 func _arc_power_1(q: Dictionary) -> void:
 	if not _power_site():
 		return
-	if _base_block(_power_base, POWER_PANEL_CELL) == G.Block.SOLAR:
+	if _base_has(_power_base, G.Block.SOLAR):
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
 		return
@@ -224,16 +238,17 @@ func _arc_power_1(q: Dictionary) -> void:
 func _arc_power_2(q: Dictionary) -> void:
 	if not _power_site():
 		return
-	if _regen_beside_support():
+	if _base_has(_power_base, G.Block.REGEN):
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
 		return
-	# РЕГЕН ПРИЛЕТАЕТ И КРУЖИТ вокруг машины, как всякая награда (award_blocks → reward_orbiter),
-	# а не появляется под ногами: блок, который просто лёг в траву, читается как мусор, а не как
-	# «вот, держи». Один раз за стадию — иначе каждый опрос выдавал бы ещё один.
-	if not _dropped.has("power_2"):
-		_dropped["power_2"] = true
-		_award(G.Block.REGEN)
+	# РЕГЕН ЖДЁТ У БАЗЫ, А НЕ ЛЕТИТ К ИГРОКУ. Награда, закружившая вокруг машины (award_blocks →
+	# reward_orbiter), уместна, когда её можно везти куда угодно; здесь же её надо поставить ВОТ
+	# НА ЭТУ базу, до которой полсотни метров. Выданный у игрока блок означал «а теперь вези его
+	# обратно», причём в руке, то есть без стрельбы и с риском выронить. Кладём туда, где он
+	# нужен, — тем же ensure, что и панель стадией раньше, и с той же проверкой «в руке уже есть».
+	if not _player_owns(G.Block.REGEN):
+		_props.ensure("arc_power", G.Block.REGEN, _power_point)
 	if _plan_near(_power_point):
 		_show_plan_on(_power_base.get("block_map_node"),
 				[{"cell": _power_regen_cell(), "block": G.Block.REGEN}])
@@ -365,9 +380,23 @@ var _bat_free: bool = false         # её выработали, блок вып
 ## обычная руда: игрок бурил наугад и верил на слово. Кладём настоящий блок сверху на жилу —
 ## видно, что именно там лежит и что за это бурят.
 var _bat_shown: Node3D = null
-## На сколько блок приподнят над центром жилы: чтобы читался как торчащий из породы, а не
-## утопленный в ней.
-const BATTERY_SHOW_Y := 1.1
+## ОН ЛЕЖИТ В ОСНОВАНИИ ЖИЛЫ, А НЕ СТОИТ У НЕЁ НА МАКУШКЕ. Аккуратный блок по центру сверху
+## читается как положенный туда предмет; задание же говорит, что он ПРОЛЕЖАЛ в породе и его
+## оттуда выскребают. Поэтому низко, чуть в сторону, с завалом набок и сильно побитый.
+const BATTERY_SHOW_Y := 0.2
+const BATTERY_SHOW_SPREAD := 0.35      # разброс по горизонтали от центра жилы, м
+const BATTERY_SHOW_TILT := 0.28        # завал набок, рад (~16°)
+## Сколько от него осталось. Тридцать процентов — это и «видно, что он побитый» (красные цифры
+## хп над блоком), и повод дать игроку реген или ремонт, а не бесплатную целую деталь.
+const BATTERY_WORN_FRAC := 0.3
+
+## Посадка блока в жиле, посчитанная ОДИН РАЗ. Жилы стримятся: узел появляется и исчезает вместе
+## с игроком, а _bat_display пересоздаёт блок каждый раз. Считай мы поворот заново — блок бы
+## заметно прыгал при каждом возвращении к жиле.
+var _bat_pose: Variant = null
+## Побитость выдаётся один раз: иначе опрос раз в секунду срезал бы хп заново и починить
+## выпавший аккумулятор было бы нельзя вовсе.
+var _bat_worn: bool = false
 
 ## Куда ведёт компас по этой ветке.
 func battery_point() -> Variant:
@@ -390,7 +419,13 @@ func _battery_stage() -> bool:
 	var at: Vector3 = _bat_spot as Vector3
 	if _bat_free:
 		if not _player_owns(G.Block.BATTERY):
-			_props.claim_or_drop("arc_battery", G.Block.BATTERY, at)
+			# ВЫПАДАЕТ ИЗ ЖИЛЫ, А НЕ ВЫДАЁТСЯ НАГРАДОЙ: claim_or_drop кладёт настоящий блок в мир у
+			# точки жилы, и подобрать его игрок должен сам. Награда квеста — деньги и опыт
+			# (quest_manager: 210/45/14), блоков в ней нет и быть не должно.
+			var dropped: Node3D = _props.claim_or_drop("arc_battery", G.Block.BATTERY, at)
+			if dropped != null and not _bat_worn:
+				_bat_worn = true
+				_wear_battery(dropped)
 		return false
 	if p.global_position.distance_squared_to(at) > BATTERY_REACH * BATTERY_REACH:
 		return false
@@ -428,13 +463,28 @@ func _bat_display(vein: Node3D) -> void:
 		return
 	var n: Node3D = scene.instantiate()
 	vein.add_child(n)
-	n.position = Vector3(0.0, BATTERY_SHOW_Y, 0.0)
+	if _bat_pose == null:
+		_bat_pose = Transform3D(
+			Basis(Vector3.UP, randf() * TAU) * Basis(Vector3.RIGHT, randf_range(-BATTERY_SHOW_TILT, BATTERY_SHOW_TILT)),
+			Vector3(randf_range(-BATTERY_SHOW_SPREAD, BATTERY_SHOW_SPREAD), BATTERY_SHOW_Y,
+				randf_range(-BATTERY_SHOW_SPREAD, BATTERY_SHOW_SPREAD)))
+	n.transform = _bat_pose as Transform3D
 	if n is RigidBody3D:
 		var rb := n as RigidBody3D
 		rb.freeze = true
 		rb.collision_layer = 0
 		rb.collision_mask = 0
+	_wear_battery(n)
 	_bat_shown = n
+
+## Сбить блоку хп до BATTERY_WORN_FRAC и обновить красные цифры над ним. Показанный в жиле блок
+## инертен, так что для него это чистая картинка; выпавшему это реальное состояние.
+func _wear_battery(n: Node) -> void:
+	if n == null or not is_instance_valid(n) or not ("max_hp" in n):
+		return
+	n.set("current_hp", maxi(int(round(float(n.get("max_hp")) * BATTERY_WORN_FRAC)), 1))
+	if n.has_method("_refresh_hp_fx"):
+		n.call("_refresh_hp_fx")
 
 func _bat_hide() -> void:
 	if is_instance_valid(_bat_shown):

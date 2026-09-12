@@ -745,14 +745,15 @@ var _hand_from_inventory := false  # блок в руке взят из инве
 ## НАСОВСЕМ, для любых блоков, старых и новых: _commit_build_tap видит block_take и уходит СТАВИТЬ
 ## пустоту, а _maybe_grab_on_tap первой же строкой возвращает false. Ни одного сообщения при этом
 ## нет, поэтому со стороны это «блоки вдруг перестали подбираться».
-func hand_node() -> Node:
+func _hand_holder() -> Node:
 	if camera_controller == null or camera_controller.camera == null:
 		return null
 	var cam: Node = camera_controller.camera
-	if cam.get_child_count() == 0:
-		return null
-	var holder: Node = cam.get_child(0)
-	return holder.get_child(0) if holder != null and holder.get_child_count() > 0 else null
+	return cam.get_child(0) if cam.get_child_count() > 0 else null
+
+func hand_node() -> Node:
+	var h: Node = _hand_holder()
+	return h.get_child(0) if h != null and h.get_child_count() > 0 else null
 
 ## Рука пуста. Одна дверь вместо пяти копий этих же пяти присваиваний.
 func _clear_hand() -> void:
@@ -768,7 +769,14 @@ func _clear_hand() -> void:
 ## Свести флаг с фактом. Зовётся раз в кадр и перед разбором тапа — дешевле, чем искать, какой
 ## именно путь в следующий раз забудет опустить флаг.
 func _sync_hand() -> void:
-	if block_take and hand_node() == null:
+	# НЕТ КАМЕРЫ — НЕТ ОТВЕТА, и это не то же самое, что «рука пуста». Постройка на чужой машине
+	# делегируется ЕЙ (_delegate_build), а держатель висит под общей камерой: у машины, которой
+	# сейчас не рулят, ссылки на камеру может не быть вовсе. Опустошить флаг в этот момент значило
+	# бы отменить ровно ту постановку, ради которой жест и делегировали.
+	var h: Node = _hand_holder()
+	if h == null:
+		return
+	if block_take and h.get_child_count() == 0:
 		_clear_hand()
 
 # Фокус на текстовом поле (напр. поиск в гараже) — клавиатурные игровые действия (WASD,

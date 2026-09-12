@@ -769,12 +769,18 @@ func _update_vehicle_button(delta: float) -> void:
 
 ## Высота САМОГО ВЕРХНЕГО блока машины над её началом координат — чтобы кнопка не тонула в
 ## высокой сборке. Плюс запас, иначе значок ложится прямо на крышу.
+## СЧИТАЕМ ТОЛЬКО БЛОКИ. Под узлом blocks живёт не только сборка: там же висит ghost_block —
+## подсветка выбранной клетки (в сцене это blocks/MeshInstance3D), и она TOP_LEVEL. У top_level
+## узла position это МИРОВАЯ координата, а не высота над машиной, поэтому стоило подсветке
+## отработать хоть раз — и «верх машины» становился её высотой над уровнем моря. Значок с круговым
+## меню улетал на десяток метров вверх и оставался там; заметнее всего это было после постройки на
+## ЧУЖОЙ машине, где подсветку зажигали ей, а смотрели на неё уже со стороны.
 func _vehicle_top_y(v: Node3D) -> float:
 	var bl: Node = v.get_node_or_null("blocks")
 	var top: float = 1.2
 	if bl != null:
 		for b in bl.get_children():
-			if b is Node3D:
+			if b is VehicleBlock and not (b as Node3D).top_level:
 				top = maxf(top, (b as Node3D).position.y)
 	return top + 1.4
 
