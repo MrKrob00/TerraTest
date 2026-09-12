@@ -8,6 +8,9 @@ var active_touch_index: int = -1
 # Мёртвая зона — движения меньше этого процента игнорируются
 const DEAD_ZONE: float = 0.12
 
+const ZONE_X_FRAC: float = 0.33
+const ZONE_Y_FRAC: float = 0.60   # активна только часть НИЖЕ этой доли высоты
+
 @onready var screen_size = get_viewport().get_visible_rect().size
 
 func _ready():
@@ -39,13 +42,13 @@ func _input(event):
 		queue_redraw()
 
 func is_touch_inside(touch_pos: Vector2) -> bool:
-	return (touch_pos - global_position).length() <= max_distance
+	return (touch_pos - global_position).length_squared() <= max_distance * max_distance
 
 func is_touch_outside(touch_pos: Vector2) -> bool:
 	screen_size = get_viewport().get_visible_rect().size
-	return (touch_pos - global_position).length() > max_distance \
-		and touch_pos.x < screen_size.x / 2.0 \
-		and touch_pos.y > screen_size.y / 2.0
+	return (touch_pos - global_position).length_squared() > max_distance * max_distance \
+		and touch_pos.x < screen_size.x * ZONE_X_FRAC \
+		and touch_pos.y > screen_size.y * ZONE_Y_FRAC
 
 func update_knob_position(touch_pos: Vector2) -> void:
 	var dir = touch_pos - global_position

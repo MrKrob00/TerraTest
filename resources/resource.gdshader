@@ -1,8 +1,10 @@
 shader_type spatial;
 
-// Настройки цвета руды
-uniform vec3 ore_color : source_color = vec3(1.0, 0.75, 0.0); // Желтый
-uniform vec3 emission_color : source_color = vec3(0.4, 0.25, 0.0); // Золотое свечение
+// Цвета типов руды. Тип берётся из INSTANCE_CUSTOM.a (альфа-канал per-instance данных),
+// цвета заливает спавнер (resource_nodes.gd) из своего экспортного списка — чтобы добавить
+// новый цвет жилы, достаточно дописать Color в тот массив. MAX_ORE_TYPES — потолок.
+const int MAX_ORE_TYPES = 8;
+uniform vec3 ore_colors[MAX_ORE_TYPES];   // линейные RGB, заливает resource_nodes.gd
 uniform float emission_amount = 0.5;
 
 // Настройки анимации
@@ -10,16 +12,24 @@ uniform float hit_duration = 0.35;
 uniform float shake_intensity = 0.15;
 uniform float shake_speed = 40.0;
 
-// Переменная-мост для передачи времени удара из vertex во fragment
+// Переменные-мосты из vertex во fragment
 varying float v_last_hit_time;
+varying flat vec3 v_ore_color;
 
 void vertex() {
     float last_hit_time = INSTANCE_CUSTOM.r;
     float hp_percent = INSTANCE_CUSTOM.g; // 1.0 (целая) -> 0.0 (сломана)
     float respawn_time = INSTANCE_CUSTOM.b;
-    
+
+    // Тип руды → цвет. Пустой (нулевой) слот подстраховываем жёлтым по умолчанию.
+    int ore_type = clamp(int(INSTANCE_CUSTOM.a + 0.5), 0, MAX_ORE_TYPES - 1);
+    v_ore_color = ore_colors[ore_type];
+    if (v_ore_color == vec3(0.0)) {
+        v_ore_color = vec3(1.0, 0.75, 0.0);
+    }
+
     v_last_hit_time = last_hit_time;
-    
+
     // Если игра только запустилась, считаем руду целой
     if (hp_percent == 0.0 && last_hit_time == 0.0) {
         hp_percent = 1.0;
@@ -69,10 +79,10 @@ void fragment() {
     vec3 flat_normal = normalize(cross(dFdx(VERTEX), dFdy(VERTEX)));
     NORMAL = (VIEW_MATRIX * vec4(flat_normal, 0.0)).xyz;
 
-    ALBEDO = ore_color;
+    ALBEDO = v_ore_color;
     ROUGHNESS = 0.4;
     METALLIC = 0.2;
-    EMISSION = emission_color * emission_amount;
+    EMISSION = v_ore_color * emission_amount;
     
     // Белая вспышка при получении урона
     float time_since_hit = TIME - v_last_hit_time;

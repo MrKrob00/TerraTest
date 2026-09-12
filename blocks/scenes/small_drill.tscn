@@ -1,0 +1,79 @@
+[gd_scene format=3 uid="uid://smalldrill1a"]
+
+[ext_resource type="Script" uid="uid://c4uu572a8htnl" path="res://blocks/scripts/drill.gd" id="1_0n8n4"]
+[ext_resource type="ArrayMesh" uid="uid://coaxnd5ltbn8j" path="res://objects/GSO (2)_Cube_001.res" id="2_6i236"]
+[ext_resource type="ArrayMesh" uid="uid://cvp2ekfql3wur" path="res://objects/GSO (2)_Cube_011.res" id="3_x3gae"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_6i236"]
+
+[sub_resource type="Animation" id="Animation_xj5j7"]
+length = 0.001
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("drillsharp:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0),
+"transitions": PackedFloat32Array(1),
+"update": 0,
+"values": [Vector3(0, 1.5707964, 0)]
+}
+
+[sub_resource type="Animation" id="Animation_0n8n4"]
+resource_name = "drilling"
+length = 0.4
+tracks/0/type = "value"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("drillsharp:rotation")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = {
+"times": PackedFloat32Array(0, 0.4),
+"transitions": PackedFloat32Array(1, 1),
+"update": 0,
+"values": [Vector3(0, 1.5707964, 0), Vector3(3.1415927, 1.5707964, 0)]
+}
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_6i236"]
+_data = {
+&"RESET": SubResource("Animation_xj5j7"),
+&"drilling": SubResource("Animation_0n8n4")
+}
+
+[node name="SmallDrill" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 23
+freeze = true
+script = ExtResource("1_0n8n4")
+block = 30
+drill_damage = 10
+connect_faces = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("BoxShape3D_h01jy")
+
+[node name="DrillBody" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0.15)
+mesh = ExtResource("2_6i236")
+skeleton = NodePath("../..")
+
+[node name="drill" type="Area3D" parent="."]
+disable_mode = 2
+collision_mask = 6
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="drill"]
+transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, -0.23)
+shape = SubResource("SphereShape3D_6i236")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries/ = SubResource("AnimationLibrary_6i236")
+
+[node name="drillsharp" type="MeshInstance3D" parent="."]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, -0.4)
+mesh = ExtResource("3_x3gae")
