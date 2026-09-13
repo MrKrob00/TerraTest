@@ -222,7 +222,8 @@ func _gradient(cols: Array, from: Vector2, to: Vector2, radial: bool) -> Gradien
 	t.height = 128
 	return t
 
-func _mk(txt: String, fsize: int, col: Color, align: int = HORIZONTAL_ALIGNMENT_CENTER) -> Label:
+func _mk(txt: String, fsize: int, col: Color,
+		align: HorizontalAlignment = HORIZONTAL_ALIGNMENT_CENTER) -> Label:
 	var l := Label.new()
 	l.text = txt
 	l.horizontal_alignment = align

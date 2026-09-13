@@ -398,6 +398,7 @@ func _time_text(sec: float) -> String:
 		return tr("estimating")
 	if sec < 60.0:
 		return "%ds" % int(sec)
+	@warning_ignore("integer_division")
 	return "%d:%02d" % [int(sec) / 60, int(sec) % 60]
 
 ## The run. The seed is picked here, but the slot is only written when it finishes: stopping
@@ -424,8 +425,10 @@ func _begin_create(i: int) -> void:
 		_gen_frac = frac
 	_gen = gen
 	var size: int = LiteTerrainGen.DEF_WINDOW
-	var x0: int = -size / 2
-	var z0: int = -size / 2
+	@warning_ignore("integer_division")
+	var half: int = size / 2
+	var x0: int = -half
+	var z0: int = -half
 	# Default biomes. Only the MASK fields affect heights, and the map scene overrides colouring
 	# only. Touch a mask there and the strips computed later will not meet what the menu produced.
 	var md: PackedFloat32Array = await gen.generate_region(x0, z0, size, size, TerrainBiomes.new())

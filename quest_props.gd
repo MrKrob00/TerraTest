@@ -160,7 +160,9 @@ func drop_for(quest_id: String, block_type: int) -> Node3D:
 # null — подбирать больше нечего.
 func position_for(quest_id: String) -> Variant:
 	var n: Node3D = _first_loose(quest_id)
-	return n.global_position if n != null else null
+	if n == null:
+		return null
+	return n.global_position
 
 ## Ближайший к игроку предмет стадии, который ВСЁ ЕЩЁ лежит в мире. Подобранный узел уезжает
 ## из objects (в руку, потом на машину) — по родителю это и видно.

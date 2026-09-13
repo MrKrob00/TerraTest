@@ -138,9 +138,9 @@ func _section(text: String) -> void:
 	m.add_child(l)
 	_list.add_child(m)
 
-func _row(idx: int, name: String, recipe: String, tint: Color) -> void:
+func _row(idx: int, title: String, recipe: String, tint: Color) -> void:
 	var b := Button.new()
-	b.text = "  %s\n  %s" % [name, recipe]
+	b.text = "  %s\n  %s" % [title, recipe]
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.icon = _swatch(tint)
 	b.expand_icon = false

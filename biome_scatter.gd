@@ -217,8 +217,10 @@ func _process(delta: float) -> void:
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
 	var n: int = _data.size()
 	var slice_from: int = _occl_cursor
-	_occl_cursor = (_occl_cursor + maxi(n / OCCL_SLICES, 1)) % maxi(n, 1)
-	var slice_to: int = slice_from + maxi(n / OCCL_SLICES, 1)
+	@warning_ignore("integer_division")
+	var per_slice: int = maxi(n / OCCL_SLICES, 1)
+	_occl_cursor = (_occl_cursor + per_slice) % maxi(n, 1)
+	var slice_to: int = slice_from + per_slice
 	var i: int = -1
 	for v in _data:
 		i += 1

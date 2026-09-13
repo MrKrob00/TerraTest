@@ -150,11 +150,11 @@ func set_combat_allowed(v: bool) -> void:
 var build_value: int = 0
 
 func _measure_build() -> void:
-	var blocks_node := get_node_or_null("blocks")
-	if blocks_node == null:
+	var bl := get_node_or_null("blocks")
+	if bl == null:
 		return
 	var v: int = 0
-	for b in blocks_node.get_children():
+	for b in bl.get_children():
 		if b.get("block") != null:
 			v += G.shop_price(int(b.get("block")))
 	build_value = v

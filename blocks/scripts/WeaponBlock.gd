@@ -640,8 +640,13 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, cabin.global_position)
 	var own := _vehicle_root()
 	# RID'ы, а не узлы: Array[RID] не принимает Object, и список молча оставался пустым.
-	var own_rid = (own as CollisionObject3D).get_rid() if own is CollisionObject3D else null
-	q.exclude = [get_rid(), own_rid] if own_rid != null else [get_rid()]
+	# СПИСОК СОБИРАЕМ, А НЕ ВЫБИРАЕМ ТЕРНАРНИКОМ: у ветвей «RID» и «null» нет общего типа, и
+	# тернарник на них — предупреждение на ровном месте. RID'ы, а не узлы: Array[RID] не принимает
+	# Object, и список молча оставался пустым.
+	var skip: Array[RID] = [get_rid()]
+	if own is CollisionObject3D:
+		skip.append((own as CollisionObject3D).get_rid())
+	q.exclude = skip
 	var res := space.intersect_ray(q)
 	if res.is_empty():
 		return true
