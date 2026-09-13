@@ -36,18 +36,6 @@ const STEER_SPEED: float = 6.0
 ## Ход подвески: на столько колесо может уйти вверх (сжатие) и вниз (вывешивание) от оси.
 @export var suspension_travel: float = 0.22
 
-## Самый крутой склон, который подвеска ещё отрабатывает: 1/0.6 ≈ 53°. Дальше поправка на
-## наклон росла бы к бесконечности (у отвесной стены нормаль вообще горизонтальна).
-const SLOPE_MAX: float = 1.0 / 0.6
-
-# Луч щупает на радиус + ход + запас, причём радиус берётся с запасом на наклон: на склоне
-# до земли ПО ВЕРТИКАЛИ дальше, чем радиус колеса (см. probe_ground). Без этого запаса луч
-# на косогоре не доставал до земли, и колесо считалось вывешенным прямо на склоне.
-# Дальность луча — не то же, что «колесо на земле»: касание проверяется отдельно, по
-# реальному расстоянию, иначе машина в прыжке получала бы тягу от висящих колёс.
-func _probe_len() -> float:
-	return ride_height * SLOPE_MAX + suspension_travel + 0.15
-
 ## Скорость вращения покрышки, рад/с на единицу газа.
 const SPIN_SPEED: float = 3.0
 
@@ -86,6 +74,12 @@ var _hub_rest: Vector3 = Vector3.ZERO
 func _ready() -> void:
 	super._ready()
 	_tyre = get_node_or_null("%wheel") as Node3D
+	# ЩУП И КОЛЛАЙДЕР СТАВИМ ДО РАЗБОРА МОДЕЛИ. Ниже есть выход по отсутствию покрышки, и раньше
+	# за ним оставалась только визуальная часть; теперь за ним осталась бы и опора на землю —
+	# колесо без %wheel просто никогда не коснулось бы грунта.
+	_measure_tyre()
+	_fit_collider()
+	_make_arm()
 	if _tyre == null:
 		return
 	_tyre_rest = _tyre.transform.basis
@@ -158,48 +152,83 @@ func set_steer(value: float) -> void:
 
 # Земля проверяется у КАЖДОГО колеса, а не одним лучом из центра машины: центр уезжает
 # вверх вместе с постройкой, а колёса по определению остаются там, где контакт.
-## Насколько выше центра блока начинается луч. Колесо, уже въехавшее в склон, пускало луч
-## ИЗНУТРИ рельефа — попаданий нет, подвеска считает колесо вывешенным и не толкает кузов
-## вверх, машина проваливается ещё глубже. Со стартом выше поверхности такое колесо даёт
-## ОТРИЦАТЕЛЬНОЕ расстояние до земли, и пружина выдавливает его обратно.
-const PROBE_LIFT: float = 0.6
+## ЩУП ЗЕМЛИ — SpringArm3D, И ОН НА КОРНЕ БЛОКА. В цепочку модели его вешать нельзя: там у
+## каждого узла запечён свой масштаб, и рука кастила бы в масштабированном пространстве.
+##
+## Каст ФОРМОЙ, а не лучом. Круглое колесо на склоне касается земли не под осью, и одиночный луч
+## про это врал — раньше враньё правили делением радиуса на cos наклона (SLOPE_MAX). Сфера
+## радиусом шины встаёт туда же, куда встало бы колесо, и поправка не нужна вовсе.
+var _arm: SpringArm3D = null
+var _tyre_r: float = 0.5
 
-## Радиус, пересчитанный на наклон поверхности под колесом (см. probe_ground).
-var _ride_effective: float = 0.0
+## РАДИУС ШИНЫ МЕРЯЕТСЯ ПО МОДЕЛИ, а не задаётся числом: иначе это третья константа про один и
+## тот же размер (после меша и коллайдера), и они разъедутся.
+##
+## Отсюда же раскладывается ride_height: это радиус шины ПЛЮС вынос рычага, и полблока (0.5) в
+## нём сидит потому, что у средней шины радиус как раз полметра. Делить ride_height пропорцией
+## размера шины нельзя — делится и вынос, которому до шины дела нет.
+func _measure_tyre() -> void:
+	if _tyre == null or not (_tyre is MeshInstance3D):
+		return
+	var m: Mesh = (_tyre as MeshInstance3D).mesh
+	if m == null:
+		return
+	var t := Transform3D.IDENTITY
+	var n: Node3D = _tyre
+	while n != null and n != self:
+		t = n.transform * t
+		n = n.get_parent() as Node3D
+	var box: AABB = t * m.get_aabb()
+	_tyre_r = maxf(box.size.y * 0.5, 0.05)
 
-func probe_ground(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParameters3D) -> bool:
-	query.from = global_position + Vector3.UP * PROBE_LIFT
-	query.to = global_position + Vector3.DOWN * _probe_len()
-	var hit: Dictionary = space.intersect_ray(query)
-	if hit.is_empty():
+## Коллайдер блока — ЭТО КОЛЕСО, а не клетка сетки. Кубом в полный блок он давал малому колесу
+## габарит втрое больше его самого: мишень для пуль не по модели и брюхо, которое чертит раньше
+## шины. Ставим коробку по шине и опускаем её на вынос рычага — туда, где колесо и находится.
+## Форму ДУБЛИРУЕМ: сцена одна на все экземпляры, и правка на месте поехала бы по всем сразу.
+func _fit_collider() -> void:
+	var cs := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if cs == null or not (cs.shape is BoxShape3D):
+		return
+	var box: BoxShape3D = (cs.shape as BoxShape3D).duplicate()
+	box.size = Vector3(_tyre_r * 2.0, _tyre_r * 2.0, _tyre_r * 2.0)
+	cs.shape = box
+	cs.position = Vector3(0.0, -(ride_height - _tyre_r), 0.0)
+
+func _make_arm() -> void:
+	_arm = SpringArm3D.new()
+	add_child(_arm)
+	_arm.rotation = Vector3(-PI * 0.5, 0.0, 0.0)     # своим -Z рука смотрит вниз
+	_arm.collision_mask = 1                          # только мир: свои блоки щупать незачем
+	_arm.margin = 0.0
+	var sph := SphereShape3D.new()
+	sph.radius = _tyre_r
+	_arm.shape = sph
+	# Докуда рука вообще тянется: центр сферы может опуститься на ход подвески ниже посадки,
+	# и это ровно ride_height + ход, минус радиус — потому что меряем до ЦЕНТРА сферы.
+	_arm.spring_length = maxf(ride_height + suspension_travel - _tyre_r, 0.05)
+
+func probe_ground(_space: PhysicsDirectSpaceState3D, _query: PhysicsRayQueryParameters3D) -> bool:
+	if _arm == null or not is_instance_valid(_arm):
+		grounded = false
+		contact_distance = INF
+		return false
+	var l: float = _arm.get_hit_length()
+	# Рука отдаёт длину до ЦЕНТРА сферы; до земли ещё радиус. Упёрлась в самый конец хода —
+	# значит не нашла ничего: висим.
+	if l >= _arm.spring_length - 0.001:
 		contact_distance = INF
 		grounded = false
-		_ride_effective = ride_height
 	else:
-		# Меряем ПО ВЕРТИКАЛИ от центра блока, а не длину луча: луч теперь стартует выше,
-		# и его длина до земли — это уже не клиренс колеса.
-		contact_distance = global_position.y - (hit["position"] as Vector3).y
-		# Круглое колесо на склоне касается земли НЕ под самой осью: по вертикали от оси до
-		# поверхности выходит радиус / cos(наклона), то есть больше радиуса. Сравнивая с
-		# плоским радиусом, подвеска считала, что до земли ещё есть запас, и не толкала —
-		# поэтому на ровном месте всё было нормально, а на любой возвышенности колесо
-		# уезжало в грунт. Ограничение снизу — чтобы у стены (нормаль почти горизонтальна)
-		# поправка не ушла в бесконечность.
-		var n: Vector3 = hit["normal"] as Vector3
-		_ride_effective = ride_height / clampf(n.dot(Vector3.UP), 1.0 / SLOPE_MAX, 1.0)
-		# Луч намеренно длиннее, чем «колесо касается земли»: касание считаем по расстоянию,
-		# иначе в прыжке машина получала бы тягу и сцепление от висящих в воздухе колёс.
-		grounded = contact_distance <= _ride_effective + suspension_travel + 0.15
-		if not grounded:
-			contact_distance = INF
+		contact_distance = l + _tyre_r
+		grounded = true
 	return grounded
 
-# Сжатие подвески В МЕТРАХ: насколько ось ближе к земле, чем радиус колеса. Отрицательное —
-# колесо вывешено (машина подпрыгнула). Ограничено ходом в обе стороны.
+# Сжатие подвески В МЕТРАХ: насколько ось ближе к земле, чем посадка колеса. Отрицательное —
+# колесо вывешено. Поправки на наклон тут больше нет: её делает сама форма каста.
 func suspension_sag() -> float:
 	if contact_distance == INF:
 		return -suspension_travel
-	return clampf(_ride_effective - contact_distance, -suspension_travel, suspension_travel)
+	return clampf(ride_height - contact_distance, -suspension_travel, suspension_travel)
 
 func _physics_process(delta: float) -> void:
 	var _pf := Perf.now()          # profiler mark (perf.gd)
