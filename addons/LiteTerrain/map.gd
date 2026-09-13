@@ -1238,45 +1238,6 @@ func _proc_params() -> Dictionary:
 var gen_step: String = ""
 var gen_frac: float = 0.0
 
-## ОКНО СЧИТАЕТСЯ ПЛИТКАМИ, А НЕ ОДНИМ КУСКОМ.
-##
-## Считать 2048² разом — это три padded-буфера прохода по 16.8 МБ плюс результат: ~64 МБ подряд,
-## которых телефон не даёт, и resize молча отдаёт пустой массив. Плитка 256² делает проход над
-## 0.26 МБ, поэтому пик равен результату плюс одна плитка — 17 МБ вместо 64, и размер окна снова
-## решает только то, как далеко видно.
-##
-## ШВОВ НЕТ: generate_region считает каждый кусок с ФАРТУКОМ и обрезает его, поэтому размытие
-## непрерывно через границу плитки — ровно то, ради чего фартук там и заведён.
-const GEN_TILE := 256
-
-func _generate_window_tiled(gen: LiteTerrainGen, x0: int, z0: int,
-		ww: int, dd: int) -> PackedFloat32Array:
-	var out := PackedFloat32Array()
-	if out.resize(ww * dd) != OK:
-		return PackedFloat32Array()          # даже результат не влез — окно уполовинят выше
-	var tiles_x: int = ceili(float(ww) / float(GEN_TILE))
-	var tiles_z: int = ceili(float(dd) / float(GEN_TILE))
-	var total: int = maxi(tiles_x * tiles_z, 1)
-	var done: int = 0
-	for tz in tiles_z:
-		for tx in tiles_x:
-			var ox: int = tx * GEN_TILE
-			var oz: int = tz * GEN_TILE
-			var tw: int = mini(GEN_TILE, ww - ox)
-			var th: int = mini(GEN_TILE, dd - oz)
-			var part: PackedFloat32Array = await gen.generate_region(
-					x0 + ox, z0 + oz, tw, th, _biomes())
-			if part.size() != tw * th:
-				return PackedFloat32Array()
-			for z in th:
-				var dst: int = (oz + z) * ww + ox
-				var src: int = z * tw
-				for x in tw:
-					out[dst + x] = part[src + x]
-			done += 1
-			gen_frac = float(done) / float(total)
-	return out
-
 ## КРАЙ ЛЮБОЙ КАРТЫ ПЕРЕСТАЁТ БЫТЬ ОБРЫВОМ.
 ##
 ## Запечённая карта — это только СЕРЕДИНА мира: за её краем земли нет вовсе, и машина уезжает в
@@ -1367,7 +1328,7 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	# и меша, и коллизии, и подвижки окна разом, причём молча: игрок видит воздух. Окно — буфер, и
 	# вдвое меньший буфер означает лишь более частые полосы, а не меньший мир.
 	while true:
-		md = await _generate_window_tiled(gen, _win_x, _win_z, w, d)
+		md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
 		if md.size() == w * d:
 			break
 		if w <= WINDOW_MIN:
@@ -3641,7 +3602,11 @@ func _process(delta: float) -> void:
 	# Спрашиваем КАЖДЫЙ кадр, но _window_target отвечает «никуда» почти всегда: подвижка
 	# случается раз в несколько сотен метров пути.
 	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
-	if world_gen != null and is_instance_valid(world_gen) and not _win_busy:
+	# ПОКА ПЕРВАЯ ЗЕМЛЯ НЕ ПОСЧИТАНА — ОКНО НЕ ТРОГАЕМ. world_gen ставится в начале
+	# setup_procedural, то есть ДО того, как посчитан стартовый массив, а _process к этому моменту
+	# уже крутится. Игрок, вошедший в мир у края окна, запускал второй generate_region на том же
+	# генераторе поверх первого — а буферы прохода у него ОБЩИЕ, и два вызова затирают друг друга.
+	if terrain_is_ready and world_gen != null and is_instance_valid(world_gen) and not _win_busy:
 		var want := _window_target(cam_local)
 		if want.x != _win_x or want.y != _win_z:
 			recenter_window(want.x, want.y)
