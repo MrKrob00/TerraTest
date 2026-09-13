@@ -411,62 +411,95 @@ var _gen_mtn_amount: float = 0.8
 var _gen_ridge_sharp: float = 2.5
 
 # One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
+## ЗЕМЛЯ В ОДНОЙ МИРОВОЙ ТОЧКЕ — шум, размытие, каньон. То же, что даёт проход, только без него.
+##
+## Ради этого и разбирался проход: чанковому хранилищу нужен ответ ПО ТОЧКЕ. Из него получается
+## всё остальное — высоты чанка, высота там, где ничего не загружено, и, главное, выборка ЧЕРЕЗ
+## ШАГ для грубого уровня LOD.
+##
+## РАЗМЫТИЕ СЧИТАЕТСЯ НА ПОЛНОМ РАЗРЕШЕНИИ, пятью отсчётами вокруг точки — теми же, что берёт
+## построчный проход. Это принципиально: взять каждую N-ю клетку и размыть уже разреженную сетку
+## значит получить ДРУГОЕ поле, и на стыке грубого уровня с мелким будет ступень, которую ничем
+## не закрыть. Пять вычислений шума на вершину против одного — на узел в 17×17 это двадцать
+## тысяч, то есть ничто.
+##
+## Края тут не копируются, в отличие от строки: у точки всегда есть соседи. Проход для этого и
+## считает кусок с фартуком.
+func height_at(wx: float, wz: float) -> float:
+	if _gen_base == null:
+		prepare_sampling()
+	var h: float = (raw_height_at(wx, wz)
+			+ raw_height_at(wx - 1.0, wz) + raw_height_at(wx + 1.0, wz)
+			+ raw_height_at(wx, wz - 1.0) + raw_height_at(wx, wz + 1.0)) * 0.2
+	if gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled:
+		h = carve_at(wx, wz, h)
+	return h
+
+## ВРЕЗ КАНЬОНА В ОДНОЙ ТОЧКЕ. surface — уже размытая земля в ней же.
+##
+## Вынесен из построчного прохода по той же причине, что и raw_height_at: грубому уровню LOD и
+## запросу высоты вне загруженных чанков нужен ответ ПО ТОЧКЕ, а не по прямоугольнику. Строка
+## зовёт эту же функцию, копии формулы нет.
+func carve_at(wx: float, wz: float, surface: float) -> float:
+	var b := _gen_biomes
+	if b == null:
+		return surface
+	var terr: float = maxf(b.canyon_band_height, 0.5)
+	var wp := Vector2(wx, wz)
+	# One call, the SAME mask the shader colours with. A second copy of the formula lived here
+	# and missed `mask_offset`, so the cut landed where the canyon was not painted.
+	var hmask: float = b.canyon_mask(wp, _cv_noise)
+	if hmask <= 0.001:
+		return surface
+	# Mountain wins over canyon (shader order: desert/meadow -> canyon -> mountains on top).
+	# Damp the CUT by the mountain mask, never the mountain RISE by the canyon one: damping a
+	# rise leaves a step as tall as what it removed (0.75 of map height), while the cut is 0.3
+	# and fades out with hmask by itself.
+	hmask *= 1.0 - b.mountain_mask(wp, _cv_noise)
+	if hmask <= 0.001:
+		return surface
+	# mask_offset here too, or the butte hierarchy repeats on every seed.
+	var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
+	# MESA LAND CUT BY GORGES, not a pit and not a slab. The top is the LOCAL surface, and that
+	# is what keeps the region border from being a cliff: up there canyon_h equals surface, so
+	# the hmask blend moves nothing. Gorges are a minority of the area, and steps belong on the
+	# wall only - quantise anywhere else and the flat floor gets terraces you cannot drive over.
+
+	var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
+	var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
+	# |fbm| near zero runs along branching lines - those are the channels. Below gen_canyon_width
+	# is floor, above is wall; ramp stretches the wall into a way in.
+	var wall_lo: float = gen_canyon_width * 0.55
+	# Steep, not razor thin: on a 0.02 band a 40 m drop fits in a metre and a half, which reads
+	# as a hole in the mesh and stripes the texture (world-XZ UVs degenerate on a sheer face).
+	var wall_hi: float = wall_lo + lerpf(0.05, 0.14, ramp)
+	var wall_t := smoothstep(wall_lo, wall_hi, gv)
+	# Depth follows HOW FAR under the threshold: full depth only in the channel core. Flat
+	# "anything below the threshold" turned a two-metre dip into a well.
+	var deep_k: float = smoothstep(wall_lo, wall_lo * 0.35, gv)
+	var floor_h: float = minf(maxf(surface - _gen_gorge_depth * deep_k, _gen_floor), surface)
+	var mesa_top: float = surface + _gen_floor * bt
+	# TERRACE THE RISE, NOT THE HEIGHT: quantising height itself also steps the flat floor and
+	# the mesa top. Step height stays ~terr, so the shader's height colour bands still line up.
+	var span: float = maxf(mesa_top - floor_h, 0.0)
+	var steps: float = maxf(1.0, floor(span / terr))
+	var t: float = wall_t * steps
+	var ti: float = floor(t)
+	var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, t - ti)
+	var canyon_h: float = floor_h + (ti + riser) * (span / steps)
+	return lerpf(surface, canyon_h, hmask)
+
 func _gen_carve_row(z: int) -> void:
 	if _gen_drop_row():
 		return
 	var w := _gen_w
 	var wz := float(origin_z + z)
-	var b := _gen_biomes
-	if b == null or _gen_len <= 0 or z * w + w > _gen_len:
+	if _gen_biomes == null or _gen_len <= 0 or z * w + w > _gen_len:
 		_gen_row_done()
-		return                       # as in _gen_blur_row: bounds checked against the number
-	var terr: float = maxf(b.canyon_band_height, 0.5)
+		return
 	for x in w:
 		var idx := z * w + x
-		var wx := float(origin_x + x)
-		var wp := Vector2(wx, wz)
-		# One call, the SAME mask the shader colours with. A second copy of the formula lived here
-		# and missed `mask_offset`, so the cut landed where the canyon was not painted.
-		var hmask: float = b.canyon_mask(wp, _cv_noise)
-		if hmask <= 0.001:
-			continue
-		# Mountain wins over canyon (shader order: desert/meadow -> canyon -> mountains on top).
-		# Damp the CUT by the mountain mask, never the mountain RISE by the canyon one: damping a
-		# rise leaves a step as tall as what it removed (0.75 of map height), while the cut is 0.3
-		# and fades out with hmask by itself.
-		hmask *= 1.0 - b.mountain_mask(wp, _cv_noise)
-		if hmask <= 0.001:
-			continue
-		# mask_offset here too, or the butte hierarchy repeats on every seed.
-		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
-		# MESA LAND CUT BY GORGES, not a pit and not a slab. The top is the LOCAL surface, and that
-		# is what keeps the region border from being a cliff: up there canyon_h equals surface, so
-		# the hmask blend moves nothing. Gorges are a minority of the area, and steps belong on the
-		# wall only - quantise anywhere else and the flat floor gets terraces you cannot drive over.
-		var surface: float = _gen_base_in[idx]
-		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
-		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
-		# |fbm| near zero runs along branching lines - those are the channels. Below gen_canyon_width
-		# is floor, above is wall; ramp stretches the wall into a way in.
-		var wall_lo: float = gen_canyon_width * 0.55
-		# Steep, not razor thin: on a 0.02 band a 40 m drop fits in a metre and a half, which reads
-		# as a hole in the mesh and stripes the texture (world-XZ UVs degenerate on a sheer face).
-		var wall_hi: float = wall_lo + lerpf(0.05, 0.14, ramp)
-		var wall_t := smoothstep(wall_lo, wall_hi, gv)
-		# Depth follows HOW FAR under the threshold: full depth only in the channel core. Flat
-		# "anything below the threshold" turned a two-metre dip into a well.
-		var deep_k: float = smoothstep(wall_lo, wall_lo * 0.35, gv)
-		var floor_h: float = minf(maxf(surface - _gen_gorge_depth * deep_k, _gen_floor), surface)
-		var mesa_top: float = surface + _gen_floor * bt
-		# TERRACE THE RISE, NOT THE HEIGHT: quantising height itself also steps the flat floor and
-		# the mesa top. Step height stays ~terr, so the shader's height colour bands still line up.
-		var span: float = maxf(mesa_top - floor_h, 0.0)
-		var steps: float = maxf(1.0, floor(span / terr))
-		var t: float = wall_t * steps
-		var ti: float = floor(t)
-		var riser: float = smoothstep(1.0 - lerpf(gen_canyon_riser, 0.02, ramp), 1.0, t - ti)
-		var canyon_h: float = floor_h + (ti + riser) * (span / steps)
-		_gen_carved[idx] = lerpf(_gen_base_in[idx], canyon_h, hmask)
+		_gen_carved[idx] = carve_at(float(origin_x + x), wz, _gen_base_in[idx])
 	_gen_row_done()
 
 # The value noise the biome masks are built on. The maths lives in TerrainBiomes (one copy for the
@@ -542,9 +575,27 @@ func generate_region(x0: int, z0: int, w: int, h: int, biomes: TerrainBiomes) ->
 	_gen_running = false
 	return out
 
-## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
-## заданы полями origin_*/noise_offset — проходы читают только их.
-func _run_passes(width: int, depth: int) -> PackedFloat32Array:
+## ПОДГОТОВКА К СЧЁТУ БЕЗ ПРОХОДА: шумы и производные числа.
+##
+## Раньше всё это собиралось внутри _run_passes, то есть существовало ТОЛЬКО во время прохода по
+## массиву. Спросить высоту в точке было нельзя не из-за формулы — та уже вынута (raw_height_at), —
+## а потому, что _gen_base и остальные были пустыми, пока не запущен проход.
+##
+## Зовётся и проходом, и точечными запросами. Дёшево: пять объектов шума и несколько умножений.
+func prepare_sampling() -> void:
+	var gorge_noise := FastNoiseLite.new()
+	gorge_noise.seed          = gen_seed + 91
+	gorge_noise.noise_type    = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	gorge_noise.fractal_type  = FastNoiseLite.FRACTAL_FBM
+	gorge_noise.fractal_octaves = 3
+	gorge_noise.frequency     = 1.0 / maxf(gen_canyon_gorge, 1.0)
+	# Where the ramp value is high the wall is gentle (a way down); elsewhere it is sheer.
+	var ramp_noise := FastNoiseLite.new()
+	ramp_noise.seed        = gen_seed + 143
+	ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	ramp_noise.frequency   = 1.0 / 55.0
+	_gen_gorge = gorge_noise
+	_gen_ramp = ramp_noise
 	# ── Layer 1: Continental FBM ─────────────────
 	# Low-frequency simplex FBM defines the overall land masses.
 	# After remapping to [0,1], we raise to gen_power (e.g. ^4):
@@ -580,12 +631,8 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	dune_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	dune_noise.frequency   = 1.0 / 140.0
 
-	# ── Height fill, THREADED ─────────────────────────────────────────────────
-	# Rows are independent, so they go to the WorkerThreadPool (roughly a core-count speedup).
-	# The noise objects are fields the threads only read. Output goes to _gen_out (refcount = 1,
-	# so no copy-on-write).
-	_gen_w = width
-	_gen_d = depth
+	# Шумы — ПОЛЯ, и потоки прохода их только читают. Поэтому же их можно готовить заранее, вне
+	# всякого прохода: точечным запросам нужны ровно они.
 	# Биомы кладёт вызывающий (док берёт их у выбранной ноды, игра — у своей карты):
 	# генератор про сцену ничего не знает.
 	# THE SEED MOVES THE BIOMES TOO. Their masks are built on hash noise with fixed offsets, so a
@@ -616,6 +663,14 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
+
+
+## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
+## заданы полями origin_*/noise_offset — проходы читают только их.
+func _run_passes(width: int, depth: int) -> PackedFloat32Array:
+	prepare_sampling()
+	_gen_w = width
+	_gen_d = depth
 	_gen_len = width * depth
 	_gen_out = _gen_alloc(_gen_len, "the heightmap")
 	if _gen_out.is_empty():
@@ -660,20 +715,6 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	# landform would be cut up where the canyon colour is switched off.
 	if gen_canyon_enable and _gen_biomes.canyon_enabled:
 		# Channel network: abs(fbm) is near 0 along branching lines — like ridges, but cut down.
-		var gorge_noise := FastNoiseLite.new()
-		gorge_noise.seed          = gen_seed + 91
-		gorge_noise.noise_type    = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		gorge_noise.fractal_type  = FastNoiseLite.FRACTAL_FBM
-		gorge_noise.fractal_octaves = 3
-		gorge_noise.frequency     = 1.0 / maxf(gen_canyon_gorge, 1.0)
-		# Where the ramp value is high the wall is gentle (a way down); elsewhere it is sheer.
-		var ramp_noise := FastNoiseLite.new()
-		ramp_noise.seed        = gen_seed + 143
-		ramp_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
-		ramp_noise.frequency   = 1.0 / 55.0
-		# Canyon carving, THREADED (rows are independent): read _gen_base_in, write _gen_carved.
-		_gen_gorge = gorge_noise
-		_gen_ramp = ramp_noise
 		_gen_base_in = new_data
 		# duplicate() AND a size CHECK: out of memory it returns an empty array, and without the
 		# check the threads would start writing into nothing — thirty "out of bounds" lines instead
