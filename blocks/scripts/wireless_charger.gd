@@ -1,24 +1,18 @@
 extends VehicleBlock
-# WIRELESS CHARGER — переливает энергию в аккумулятор ДРУГОЙ машины СВОЕЙ ФРАКЦИИ.
+# WIRELESS CHARGER: pours energy into the battery of ANOTHER machine of ITS OWN FACTION.
 #
-# Свою машину игнорирует намеренно: внутри одной машины энергия и так общая
-# (MachineBody.energy_produce/consume), заряжать самого себя нечего.
+# Own machine is skipped on purpose - inside one machine energy is already shared.
 #
-# «СВОЕЙ ФРАКЦИИ», А НЕ «ИГРОКА»: раньше здесь было зашито faction == 0, то есть блок работал
-# только в руках игрока. Это ровно та ловушка, о которой предупреждает CLAUDE.md, — механика,
-# которой у врага молча нет. Блоки у нас общие: враг ездит на тех же колёсах и стреляет из тех
-# же пушек, и заряжать своих он тоже должен уметь. На этом стоит вышка под щитом (квесты
-# Watchtower и SAM): щит держат зарядные башни вокруг неё, и держат они его САМИ, обычным
-# переливом энергии, а не специальным кодом квеста.
+# OWN FACTION, not "the player". A hardcoded faction == 0 made this a mechanic the enemy silently
+# lacked (CLAUDE.md rule 7); blocks here are shared, and the shielded tower quests stand on exactly
+# this - charge towers hold the dome up by ordinary energy transfer, not by quest code.
 #
-# Получателю ОБЯЗАТЕЛЕН аккумулятор — без него энергию некуда положить: ёмкость машины
-# складывается из батарей, и у машины без них energy_cap() равен нулю, то есть перелив ушёл
-# бы в пустоту.
+# The receiver MUST have a battery: machine capacity is the sum of its batteries, so without one
+# energy_cap() is zero and the transfer goes nowhere.
 #
-# Ищем при этом именно БЛОК аккумулятора, а не ёмкость машины, хотя проверка ёмкости была бы
-# общее и сама распространялась на будущие накопители. Причина — луч: он обязан упираться в
-# то, что заряжается, а ёмкость машины не говорит, ГДЕ это. Появятся другие накопители —
-# добавлять их сюда придётся руками, и это осознанная плата за верную картинку.
+# We look for the battery BLOCK rather than machine capacity, even though capacity would be the
+# general check: the beam has to end on the thing being charged, and capacity does not say WHERE
+# that is. New storage blocks will have to be added here by hand - the price of a correct picture.
 
 ## Радиус действия в метрах (решение игрока).
 const RANGE := 6.0

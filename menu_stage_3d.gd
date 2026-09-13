@@ -1,33 +1,22 @@
 extends Node3D
-## Menu backdrop: a REAL fight on a REAL map.
+## Menu backdrop: a REAL fight on a REAL map - LiteTerrain with streamed collision, and the game's
+## own enemy scenes with their physics, AI and weapons. The two machines are of DIFFERENT factions,
+## or enemy_vehicle._is_enemy does not see them as enemies at all.
 ##
-## Nothing here is faked any more. The ground is a LiteTerrain map with streamed collision, the
-## machines are the game's enemy scenes with their own physics, AI, weapons and wreckage - two of
-## them, of DIFFERENT factions, so they treat each other as enemies exactly the way the game
-## decides that (enemy_vehicle._is_enemy compares faction).
+## ROUND LIFECYCLE. A round runs ROUND_TIME, and only then does the next map start generating - the
+## fight continues meanwhile. One generation at a time (_gen_busy). On swap EVERYTHING of the old
+## round is removed first and the new one added a frame later, or machines spawn onto collision
+## that is about to vanish.
 ##
-## A round runs ROUND_TIME, and only THEN does the next map start generating - the fight keeps
-## going while it does. When generation finishes the round resets: EVERYTHING of the old round is
-## removed first (map, machines, their wreckage and bullets), and only then is the new one added.
-## Only ever one generation at a time (_gen_busy), or a second round would queue up behind the first
-## and the swap would happen twice.
+## A DEATH DOES NOT TOUCH THE MAP: a kill takes seconds and generation tens of them. A machine that
+## dies or loses its last gun is replaced on the spot (_replace_fallen).
 ##
-## THE MAP IS NOT CHANGED BECAUSE A MACHINE DIED. A kill takes seconds, generation takes tens of
-## them, and tying one to the other meant the ground changed under a fight that had just started.
-## A machine that dies or loses its last gun is simply REPLACED by another random build on the spot
-## (_replace_fallen), so there is always something to watch until the round is up.
+## Demo machines carry `demo = true`: no rewards, no quest progress, no retreat - a backdrop where
+## both sides drive apart shows nothing.
 ##
-## The demo machines carry `demo = true`: no rewards, no quest progress on death, and no way out of
-## the fight (see enemy_vehicle). A backdrop where both sides drive apart shows nothing.
-##
-## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`): a baked heightmap made with
-## the plugin. It loads in a moment, so the menu opens on a real world instead of on an empty sky
-## while the first generation runs. Every map after it is generated here, at MAP_SIZE.
-##
-## Until a map is up the stage is hidden behind `%Backdrop` - the menu's own loading screen, which
-## covers the 3D and NOT the interface: PLAY, the slots and the settings work while the ground is
-## still being computed. The same backdrop covers the swap between rounds, and stays up for good
-## when the fight is switched off in the settings (`G.menu_battles`).
+## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`), so the menu opens on a
+## world rather than on sky while the first generation runs. Until a map is up the stage hides
+## behind `%Backdrop`, which covers the 3D and NOT the interface.
 
 const ENEMY_SCENE := preload("res://enemy.tscn")
 const MAP_SCRIPT := preload("res://addons/LiteTerrain/map.gd")

@@ -1,14 +1,13 @@
 class_name EnemyBrain
 extends RefCounted
 
-# Оценочная часть ИИ врага, вынесенная из машины: чистые функции без узлов и физики.
-# Каждое поведение получает оценку полезности 0..1 от «восприятия» (Dictionary), берётся
-# максимум. Это не машина состояний: нет жёстких переходов, которые надо чинить по одному —
-# поведение само меняется, когда меняется обстановка.
+# Scoring half of the enemy AI: pure functions, no nodes and no physics. Each behaviour gets a
+# 0..1 utility from the perception dictionary and the highest wins. Not a state machine - there
+# are no transitions to fix one at a time; behaviour changes when the situation does.
 #
-# Кривые проверены прогоном сценариев до переноса сюда; при правке коэффициентов
-# сценарии надо перепроверять, иначе легко сломать один случай, чиня другой.
-#
+# The curves were checked against scenario runs. Re-run them when touching the coefficients, or
+# fixing one case quietly breaks another.
+
 # Восприятие (все доли — 0..1):
 #   has_target   есть живая цель
 #   has_memory   помним, где цель была в последний раз
