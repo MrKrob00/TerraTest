@@ -74,28 +74,18 @@ func _seed_demo() -> void:
 			"Same for the rest. Wheels to the sides, drill facing out — you decide what you are.")
 	add_quest("tut_mode_move", "Boot: Motion", "Leave assembly", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
 			"Assembled? The same button reads MOVE. Let us see if you hold together.")
-	# ЖУРНАЛ, СКЛАД, МАГАЗИН, ДРЕВО И ЗВУК ИЗ ОБУЧЕНИЯ УБРАНЫ. Это шесть шагов «нажми на
-	# кнопку, которая и так на виду»: игрок открывает их сам в первую минуту, а обучение из-за
-	# них тянулось вдвое дольше и запирало интерфейс ровно там, где ничего сложного нет.
-	# Обучение осталось про ОДНО — про сборку машины, потому что этого не угадать: блоки
-	# стыкуются гранями, у каждого свои, и ставятся двойным тапом по клетке.
-	#
-	# Механики, которые действительно неочевидны, объясняются ТАМ, ГДЕ ВСТРЕЧАЮТСЯ: якорь —
-	# сюжетным заданием про панель, фабрика и порты — заданием про линию, жесты — репликой
-	# Механика в конце сборки (см. tutorial_director.FINAL_HINTS).
+	# THE TUTORIAL IS ASSEMBLY ONLY. Journal, storage, shop, tree and sound steps were six taps on
+	# buttons already in plain sight; what cannot be guessed is that blocks join by FACES, each with
+	# its own, and go on with a double tap. Genuinely non-obvious mechanics are taught WHERE THEY
+	# COME UP: the anchor by the panel quest, ports by the line quest, gestures by a Mechanic line at
+	# the end (tutorial_director.FINAL_HINTS).
 	# ── STORY ────────────────────────────────────────────────────────────────────
-	# ЗДЕСЬ ТОЛЬКО СЮЖЕТ. Раньше сюда же было насыпано семнадцать заданий-счётчиков
-	# («поставь 5 блоков», «накопай 10 руды», «заработай 100$», «убей 3 машины» и так далее
-	# по всем пяти грейдам). Они не рассказывали ничего: то же самое игрок делает и без
-	# задания, а журнал они забивали так, что настоящие сюжетные ветки в нём терялись.
-	# Счётчики остались там, где они уместны, — в ЕЖЕДНЕВКАХ внизу файла.
-	# Награды деньгами живут в масштабе МАГАЗИНА, а цены там считаются из рецептов
-	# (G.shop_price): простой блок стоит ~220$, кабина ~1800$. Пока цены были выдуманы
-	# руками (блок за 5$), награды в 50$ выглядели щедро; после привязки к материалам они
-	# стали бы мелочью, поэтому подняты втрое.
-	# ЦЕЛИ «заработай N$» при этом не тронуты: цена руды осталась прежней (10$ за
-	# ферритовую), значит и работа за этими числами ровно та же, что была.
-	# Первый сюжетный — сразу после обучения: наставник спавнит разведчика рядом с игроком.
+	# STORY ONLY. Counter quests ("place 5 blocks", "mine 10 ore") live in DAILIES at the bottom of
+	# the file - they tell nothing, and they buried the real branches in the journal.
+	# Money rewards are on the SHOP's scale, and shop prices come from recipes (G.shop_price): a
+	# plain block is ~220$, a cabin ~1800$. "Earn N$" goals are untouched - ore still sells for the
+	# same, so the work behind those numbers has not changed.
+	# First story quest, straight after the tutorial: the mentor spawns a scout beside the player.
 	add_quest("story_first_blood", "Noticed", "Destroy the scout", Type.STORY, 1, 0, "enemy_killed", 90, 25, 5)
 	# ── СЮЖЕТ ПОСЛЕ РАЗВЕДЧИКА: ветка выбора ────────────────────────────────────
 	# Три квеста, каждый в двух частях. Первый ведёт к остальным двум, и дальше игрок сам

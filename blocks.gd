@@ -201,30 +201,23 @@ func _wheels_6() -> void:
 # ══════════════════════════════════════════════════════════════════════════════
 # ENEMY BUILDS: one table, not a function per machine
 # ══════════════════════════════════════════════════════════════════════════════
-# Ordered by DANGER and by size at once: further down means bigger, better armoured and meaner.
-# The spawner picks a TIER by the player's machine value and the world ramp, then rolls one of the
-# variants inside it (enemy_spawner.PRESET_TIERS), and a killed machine's value becomes RP
-# (G.rp_for_kill) - so "bigger" automatically means "worth more".
+# Ordered by danger and by size at once. The spawner picks a TIER from the player's machine value
+# and the world ramp, then rolls a variant inside it (enemy_spawner.PRESET_TIERS); a killed
+# machine's value becomes RP, so "bigger" means "worth more" by itself.
 #
-# THREE TO FOUR BUILDS PER STEP, because one machine per tier means the horizon always holds the
-# same silhouette: the player learns a single answer and the whole step is solved. Variants share
-# the chassis and differ in armament and in which of shield / repair field they carry.
+# THREE TO FOUR BUILDS PER STEP: one machine per tier is one silhouette, one memorised answer, and
+# the whole step is solved. Variants share the chassis and differ in guns and in which of shield /
+# repair field they carry.
 #
-# SINGLE-CELL BLOCKS ONLY. A 2x1x1 or 2x1x2 occupies one grid cell but has a wider collider, so a
-# neighbour would clip into it. Size is gained by count, not by block dimensions.
+# SINGLE-CELL BLOCKS ONLY. A 2x1x1 fills one grid cell but has a wider collider, so a neighbour
+# clips into it. Size comes from count, not from block dimensions.
 #
-# WHAT GOES WHERE IS A RULE, NOT TASTE, and it is the reverse of what these builds used to do.
-# Value decides depth: cabin, then battery, then shield and repair field, then guns. The battery
-# sits in the MIDDLE OF THE DECK - hull under it, a turret or a dome over it, flank plates on both
-# sides, blocks fore and aft - so it is enclosed on six sides. Guns live on the outside, where they
-# need the firing arc and where the player is meant to be able to strip them. Power used to hang
-# off the tail, which read as a feature ("go round the back and de-power it") and was really one
-# cheap move that deleted the whole shield mechanic.
+# DEPTH FOLLOWS VALUE: cabin, battery, shield and repair field, then guns. The battery sits in the
+# middle of the deck, enclosed on six sides; guns go outside, where they need the arc and where the
+# player is meant to strip them.
 #
-# A SHIELD PROTECTS WHAT ITS SPHERE COVERS, not what is bolted to the machine, so its cell is
-# geometry: on a long hull a dome parked at the tail lets a frontal shot reach the cabin before it
-# ever enters the sphere. It goes over the battery, near the middle.
-
+# A shield covers what its SPHERE covers, so its cell is geometry: on a long hull a dome at the tail
+# lets a frontal shot reach the cabin before entering the sphere. It goes over the battery.
 ## rows  - floor length in cells, z = 5 .. 5+rows-1 (the cabin takes z=5)
 ## wheel - wheel block for both side rows
 ## wide  - three cells wide (x 4..6) on BOTH floors, wheels out at x 3/7. A one-cell spine with

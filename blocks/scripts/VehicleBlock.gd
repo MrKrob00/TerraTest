@@ -4,26 +4,17 @@ extends RigidBody3D
 
 @export var block: G.Block
 
-# ── ГРАНИ СТЫКОВКИ ────────────────────────────────────────────────────────────
-# Настраиваются В ИНСПЕКТОРЕ для КАЖДОЙ сцены блока — как input/output у фабричных, только
-# про механическое крепление, а не про поток ресурса. Отмечаешь галочками, какими своими
-# сторонами блок стыкуется с другими; вписывать ничего не надо.
+# ── ATTACH FACES ─────────────────────────────────────────────────────────────
+# Which of its own sides this block joins with. Given in the block's OWN axes and rotating with it:
+#   front = -Z, back = +Z, right = +X, left = -X, top = +Y, bottom = -Y
 #
-# Грани заданы в СОБСТВЕННЫХ осях блока и едут вместе с его поворотом:
-#   front = −Z (морда), back = +Z, right = +X, left = −X, top = +Y, bottom = −Y
+# The same list works both ways: building rotates the block so a marked face meets the neighbour,
+# and a neighbour may attach ONLY to a marked face (nothing mounts on a drill head). Default is all
+# six.
 #
-# Работает в ОБЕ стороны, одним и тем же списком:
-#   • ставя блок, постройка доворачивает его так, чтобы одна из этих граней смотрела на
-#     соседа (бур с одной галочкой «Back» всегда встанет буром наружу);
-#   • цепляя что-то К этому блоку, сосед может пристыковаться ТОЛЬКО к отмеченной грани —
-#     к остальным нельзя (на коронку бура ничего не навесить).
-# По умолчанию отмечены все шесть: обычный блок стыкуется чем угодно и куда угодно.
-#
-# НАСТРАИВАЕТСЯ ТОЛЬКО КУБИКОМ (addons/blockfaces), поэтому `@export_storage`, а не
-# `@export_flags`: значение по-прежнему лежит в сцене блока и грузится как раньше, но своих
-# галочек в инспекторе у него больше нет. Шесть галочек рядом с кубиком — это ВТОРОЙ орган
-# управления тем же числом: два способа задать одно и то же однажды разъезжаются, а главное —
-# галочка «Left» требует помнить, где у блока лево, ради чего кубик и делался.
+# EDITED ONLY ON THE CUBE WIDGET (addons/blockfaces), hence @export_storage rather than
+# @export_flags: a second set of checkboxes for the same number is a second control that drifts,
+# and "Left" requires remembering which way the block faces - the cube exists to answer that.
 @export_storage var connect_faces: int = FACE_ALL   ## Стороны, которыми блок стыкуется с соседями
 
 const FACE_FRONT  := 1

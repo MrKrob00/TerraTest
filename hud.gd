@@ -1214,28 +1214,21 @@ func _process(delta: float) -> void:
 # ══════════════════════════════════════════════════════════════════════════════
 # PROFILER PANEL  (tap the FPS counter; F3 on desktop)
 # ══════════════════════════════════════════════════════════════════════════════
-# Answers the two questions an argument cannot: "is it physics or rendering" and "which
-# system eats the frame".
+# Answers the two questions an argument cannot: physics or rendering, and which system eats the
+# frame.
 #
-# READ "process" CAREFULLY. Godot measures it around the WHOLE idle step, and that step ends
-# with RenderingServer::draw() — so the time it takes to draw the frame is INSIDE this number,
-# not next to it. (A 2019 pull request proposed splitting "visual time" out of it; it was
-# closed unmerged, and the engine still reports visual + idle as one figure.) On a device whose
-# GL is emulated on the CPU, that draw IS the rasterizer, and it can be most of the frame while
-# every script in the table below is nearly free.
+# READ "process" CAREFULLY: Godot measures it around the WHOLE idle step, and that step ENDS with
+# RenderingServer::draw(). Drawing is inside this number, not next to it. On a device whose GL is
+# emulated on the CPU that draw can be most of the frame while every script below is nearly free.
 #
-# Hence the layout: "не учтено" = process minus everything our marks account for. Big and
-# growing with draw calls → the cost is drawing, not logic. Big and steady while draw calls
-# stay flat → some unmarked script. The adapter line says which case is even possible.
+# Hence "не учтено" = process minus everything our marks account for. Growing with draw calls means
+# the cost is drawing; steady while draw calls stay flat means an unmarked script.
 #
-# Physics time is NOT added to process, and there is no percentage of the frame: a physics tick
-# is not a frame (60 Hz against, say, 47 fps), so the sum could exceed the frame and did — the
-# panel read "140% кадра", which is nonsense.
+# Physics time is NOT part of process and gets no percentage: a physics tick is not a frame (60 Hz
+# against ~47 fps), so summing them once read "140% кадра".
 #
-# The RESOLUTION TEST settles it outright: tap the panel to cycle the 3D scale. If fps moves a
-# lot while the per-system numbers do not, the frame is spent rasterizing pixels.
-#
-# Measuring costs something, so it is enabled only while the panel is open.
+# The RESOLUTION TEST settles it: tap the panel to cycle the 3D scale. Big fps change with static
+# per-system numbers means the frame goes on pixels. Measuring costs, so it runs only while open.
 var _perf_panel: PanelContainer = null
 var _perf_label: Label = null
 ## Marks taken inside _physics_process — they belong to the physics budget, not the idle one.

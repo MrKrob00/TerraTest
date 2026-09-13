@@ -397,73 +397,41 @@ func _gen_carve_row(z: int) -> void:
 		var idx := z * w + x
 		var wx := float(origin_x + x)
 		var wp := Vector2(wx, wz)
-		# МАСКА ОБЛАСТИ — ТА ЖЕ САМАЯ, ЧТО У ЦВЕТА, И БЕРЁТСЯ ОДНИМ ВЫЗОВОМ. Здесь была вторая
-		# копия её формулы, и она молча разошлась с оригиналом: `canyon_mask` сдвигает шум на
-		# `mask_offset` (это смещение двигает ВСЮ географию при смене сида), а копия про него не
-		# знала. То есть врез считался НЕ ТАМ, где каньон покрашен: настоящая область оставалась
-		# нетронутой («каньоны выглядят как обычный рельеф»), а по карте — в пустыне, в горах,
-		# где угодно — вылезали ямы там, где сдвинутый шум случайно перевалил порог.
-		#
-		# Вторая половина той же беды — ШИРИНА края. Копия размывала границу на ±0.02, а цвет
-		# фадится по `canyon_edge` (0.05): даже там, где они совпадали, у ямы был почти отвесный
-		# борт, а терракота растекалась мягко. Теперь и форма, и цвет идут по одному числу.
+		# One call, the SAME mask the shader colours with. A second copy of the formula lived here
+		# and missed `mask_offset`, so the cut landed where the canyon was not painted.
 		var hmask: float = b.canyon_mask(wp, _cv_noise)
 		if hmask <= 0.001:
 			continue
-		# ГОРА ГЛАВНЕЕ КАНЬОНА, и это не вкус: в шейдере слои идут «пустыня↔луг → каньон →
-		# ГОРЫ СВЕРХУ», то есть по цвету гора уже перекрывает каньон. Форма обязана говорить то
-		# же самое, иначе выходит то, что и вышло: заснеженная гора, изрезанная терракотовыми
-		# ущельями с отвесными боками.
-		#
-		# Гасим ВРЕЗ по горной маске, а НЕ подъём гор по каньонной, как было раньше. Разница
-		# принципиальная: гашение подъёма — это ступень ровно той высоты, какую оно снимает
-		# (0.75 высоты карты), и по краю маски открывалась стометровая яма. Врез же всего 0.3
-		# высоты и сам по себе плавно сходит на нет по hmask — гасить его безопасно.
+		# Mountain wins over canyon (shader order: desert/meadow -> canyon -> mountains on top).
+		# Damp the CUT by the mountain mask, never the mountain RISE by the canyon one: damping a
+		# rise leaves a step as tall as what it removed (0.75 of map height), while the cut is 0.3
+		# and fades out with hmask by itself.
 		hmask *= 1.0 - b.mountain_mask(wp, _cv_noise)
 		if hmask <= 0.001:
 			continue
-		# Смещение сида и здесь: иначе иерархия столовых гор осталась бы одинаковой на всех сидах.
+		# mask_offset here too, or the butte hierarchy repeats on every seed.
 		var bt := _cv_noise(wp / b.canyon_butte_scale + Vector2(300.0, 300.0) + b.mask_offset)
-		# КАНЬОН — ЭТО СТОЛОВАЯ ЗЕМЛЯ, ПРОРЕЗАННАЯ УЩЕЛЬЯМИ, а не яма и не отдельная плита.
-		# Через три захода это единственная модель, которая сходится со всеми симптомами:
-		#
-		#   • верх — ЭТО МЕСТНАЯ ЗЕМЛЯ (surface). Пока он задавался абсолютом, область то торчала
-		#     плитой над равниной, то тонула в ней ровным терракотовым полем без единой стенки;
-		#   • ущелья — МЕНЬШИНСТВО площади. Когда я сделал дно половиной области, вся она ушла
-		#     вниз от окрестной земли: получилась чаша с обрывом по всей границе, куда не въехать
-		#     и откуда не выехать. «Плато с парой царапин» было верным симптомом НЕВЕРНОЙ высоты
-		#     верха, а не ширины ущелий;
-		#   • ступени — ТОЛЬКО НА СТЕНКЕ. Квантование дна и верха давало горизонтали по всей
-		#     области: обрыв в шесть метров посреди ровного места, ездить невозможно.
-		#
-		# Отсюда и граница области перестаёт быть обрывом: наверху canyon_h равен surface, и
-		# смешивание по hmask ничего не двигает — каньон входит в окрестную землю незаметно.
+		# MESA LAND CUT BY GORGES, not a pit and not a slab. The top is the LOCAL surface, and that
+		# is what keeps the region border from being a cliff: up there canyon_h equals surface, so
+		# the hmask blend moves nothing. Gorges are a minority of the area, and steps belong on the
+		# wall only - quantise anywhere else and the flat floor gets terraces you cannot drive over.
 		var surface: float = _gen_base_in[idx]
 		var gv := absf(_gen_gorge.get_noise_2d(wx, wz))
 		var ramp := smoothstep(0.5, 0.75, (_gen_ramp.get_noise_2d(wx, wz) + 1.0) * 0.5)
-		# |fbm| близок к нулю ВДОЛЬ ВЕТВЯЩИХСЯ ЛИНИЙ — это и есть русла. Дно там, где значение
-		# ниже gen_canyon_width; выше — стенка. Пандус (ramp) растягивает её в съезд: без таких
-		# мест в ущелье нельзя было бы попасть.
+		# |fbm| near zero runs along branching lines - those are the channels. Below gen_canyon_width
+		# is floor, above is wall; ramp stretches the wall into a way in.
 		var wall_lo: float = gen_canyon_width * 0.55
-		# СТЕНКА КРУТАЯ, НО НЕ БРИТВЕННАЯ. На полосе в 0.02 перепад в сорок метров укладывался
-		# в метр-полтора по горизонтали: щель читалась как ДЫРА в меше, а шейдер вдобавок мазал
-		# по ней текстуру полосами (UV берутся из мировых XZ, и на отвесе они вырождаются).
-		# 0.05 даёт те же несколько метров подъёма — уклон всё ещё обрывистый, но это стенка.
+		# Steep, not razor thin: on a 0.02 band a 40 m drop fits in a metre and a half, which reads
+		# as a hole in the mesh and stripes the texture (world-XZ UVs degenerate on a sheer face).
 		var wall_hi: float = wall_lo + lerpf(0.05, 0.14, ramp)
 		var wall_t := smoothstep(wall_lo, wall_hi, gv)
-		# ГЛУБИНА СЛЕДУЕТ ЗА ТЕМ, НАСКОЛЬКО ШУМ УШЁЛ ПОД ПОРОГ. Раньше любое место с gv ниже
-		# порога проваливалось на ПОЛНУЮ глубину — и пятачок в пару метров, где шум случайно
-		# нырнул на волосок, становился колодцем посреди ровной терракоты (те самые чёрные
-		# точки на карте). Теперь полная глубина только в СЕРДЦЕВИНЕ русла, а к его краю
-		# остаётся царапина.
+		# Depth follows HOW FAR under the threshold: full depth only in the channel core. Flat
+		# "anything below the threshold" turned a two-metre dip into a well.
 		var deep_k: float = smoothstep(wall_lo, wall_lo * 0.35, gv)
 		var floor_h: float = minf(maxf(surface - _gen_gorge_depth * deep_k, _gen_floor), surface)
 		var mesa_top: float = surface + _gen_floor * bt
-		# ТЕРРАСИМ ПОДЪЁМ, А НЕ ВЫСОТУ. Раньше на сетку снималась сама высота — то есть и ровное
-		# дно, и верх меса, где никаких ступеней быть не должно. Теперь ступени нарезаются на
-		# ДОЛЕ подъёма от дна к верху: внизу ровно дно, наверху ровно верх, а между ними столько
-		# ступеней, сколько раз terr укладывается в перепад. Высота ступени та же ≈ terr, значит
-		# и с цветными слоями шейдера (он красит по мировой высоте) они по-прежнему в лад.
+		# TERRACE THE RISE, NOT THE HEIGHT: quantising height itself also steps the flat floor and
+		# the mesa top. Step height stays ~terr, so the shader's height colour bands still line up.
 		var span: float = maxf(mesa_top - floor_h, 0.0)
 		var steps: float = maxf(1.0, floor(span / terr))
 		var t: float = wall_t * steps

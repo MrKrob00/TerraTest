@@ -1,33 +1,20 @@
 # processor.gd
 extends FactoryBlock
 
-# ПРОЦЕССОР — ЭТО ВНУТРЕННИЙ КОНВЕЙЕР НА ТРИ КЛЕТКИ, а не одна ячейка с таймером.
+# A PROCESSOR IS A THREE-CELL INTERNAL BELT, not one slot with a timer.
 #
-# Каждый тик (тик = одно движение ленты, см. belt.belt_speed) всё внутри сдвигается на клетку
-# вперёд: руда, вошедшая в первую, выходит из последней через ТРИ тика — уже слитком. Отсюда
-# всё поведение, которое и просили: внутрь помещается три штуки, три подряд вошло — три подряд
-# и выйдет, и на переработку одной уходит три тика.
+# Every tick (a tick is one belt move, belt.belt_speed) the contents shift one cell forward: ore
+# entering the first cell leaves the last three ticks later, as an ingot. Three fit inside, three in
+# a row go in and three in a row come out.
 #
-# ЧТО БЫЛО РАНЬШЕ И ПОЧЕМУ ЭТО ЛОМАЛОСЬ. Ячейка была ОДНА (base.current_item), а «переработка»
-# висела на цепочке из четырёх await'ов по таймеру, которую запускал ТВИН, довозивший предмет
-# до слота. Из этого выходило две беды, и обе видел игрок:
+# NO AWAITS ANYWHERE. The state is an array of cells and movement is a tick; the tween only carries
+# the PICTURE to the next cell. A chain of awaits driven by that tween used to be the whole
+# implementation, and when it broke (machine rebuilt, block rotated, tween cut short) _try_push was
+# never called, _push_pending never set, and the cargo stayed inside for good with a green lamp.
 #
-#   • из трёх выданных на ленту руд процессор брал одну, а две проезжали мимо — брать было
-#     некуда, пока первая не доедет по слотам;
-#   • если цепочка await'ов обрывалась (машину пересобрали, блок повернули, твин не доиграл),
-#     _try_push не звался ВООБЩЕ — а значит и _push_pending не выставлялся, и ретрай из базы
-#     не срабатывал. Груз оставался внутри навсегда, лампа горела зелёным. Ровно то, на что
-#     жаловались: «первую так и не выдал».
-#
-# Теперь состояние — это массив клеток, а движение — тик. Ни одного await, ни одной зависимости
-# от анимации: твин только ВЕЗЁТ картинку в новую клетку, а очередь живёт сама по себе.
-#
-# ОБЯЗАТЕЛЬСТВО ПЕРЕД ЛЕНТОЙ: как только освободилась ВХОДНАЯ клетка, шлём slot_freed. Лента,
-# которой отказали, ставит waiting_for_next и подписывается на этот сигнал — без него она ждёт
-# его вечно и своих повторов не делает (см. FactoryBlock.push_retry_tick).
-
-## Сколько руды помещается внутрь. Оно же — сколько тиков идёт переработка одной штуки:
-## клетка за тик, три клетки — три тика.
+# OBLIGATION TO THE BELT: emit slot_freed the moment the INPUT cell empties. A belt that was refused
+# sets waiting_for_next and subscribes to it - without the signal it waits forever and makes no
+# retries of its own (FactoryBlock.push_retry_tick).
 const CELLS := 3
 ## Длительность тика. Один тик = одно движение ленты, поэтому число то же, что belt_speed в
 ## belt.tscn: процессор, который тикает вдвое реже линии, копит перед собой пробку, а вдвое

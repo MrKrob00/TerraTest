@@ -1,27 +1,21 @@
 extends FactoryBlock
 
-# АВТО-ШАХТЁР. Стационарный блок, который ставят у ВЫРАБОТАННОЙ жилы — и в этом вся механика.
+# AUTO-MINER: a stationary block placed on a WORKED-OUT vein, and that is the whole mechanic.
 #
-# ПОРЯДОК ТАКОЙ: сначала жилу выбирает бур (пять руды залпом), и только пустую её можно занять
-# шахтёром. Дальше жила НЕ ВОССТАНАВЛИВАЕТСЯ, пока он стоит: он медленно выскребает то, что
-# буром уже не достать. Отсюда и выбор, которого раньше не было. Бур — это быстро, вручную и
-# с возвратом каждые пять секунд; шахтёр — медленно, само и навсегда, но жилу он у бура
-# ЗАБИРАЕТ. Раньше он просто бил ту же жилу тем же hurt, то есть был буром, который не устаёт:
-# ставить его имело смысл всегда и везде, а решать было нечего.
+# ORDER MATTERS. The drill takes the vein first (five ore in a burst); only an empty one can be
+# claimed. While the miner stands there the vein NEVER REFILLS - it slowly scrapes out what a drill
+# can no longer reach. That is the choice: the drill is fast, manual and needs you back every few
+# seconds; the miner is slow, unattended and permanent, but it TAKES the vein away from the drill.
+# Hitting the same vein with the same hurt made it a drill that never tires, i.e. no decision.
 #
-# Отсюда же ответ на «а бур тогда что?»: буру достаются ЖИВЫЕ жилы, которых на карте много, и
-# та, что стоит под шахтёром, из этого списка просто выбывает.
+# A receiver is WANTED, not required. Without one the ore simply lies by the vein (same rule as a
+# packer with no belt) for a collector or the player to pick up; refusing to mine at all made the
+# commonest placement - one miner on a vein as its own base core - look like a broken block. To
+# keep it from burying the map while nobody is around, an unreceived miner stops at GROUND_LIMIT.
 #
-# Приёмник ЖЕЛАТЕЛЕН, но не обязателен. Раньше без него шахтёр не бил вовсе («не вытряхивать
-# жилу на землю»), и это делало бесполезным самый частый способ его поставить — ОДИН на жиле,
-# ядром своей базы: он стоял и не делал ничего, что читается как сломанный блок. Теперь без
-# приёмника руда просто остаётся лежать у жилы, как у упаковщика без ленты («ленты нет — падает
-# в мир»): её подберёт коллектор или сам игрок. Чтобы шахтёр не засыпал карту, пока хозяина нет
-# рядом, без приёмника он бьёт только пока невывезенного под ногами меньше GROUND_LIMIT.
-#
-# Всё, что нужно, жила умеет сама (resource_node.gd): claim/release держат её выработанной,
-# mine_for_claimer выдаёт руду её типа и цвета. Тип и цвет руды считает ЖИЛА, а не шахтёр —
-# иначе правило «металл принадлежит биому» пришлось бы знать двоим.
+# The vein does the rest itself (resource_node.gd): claim/release hold it worked out, and
+# mine_for_claimer hands out ore of ITS type and colour - "metal belongs to the biome" must not be
+# a rule two scripts know.
 
 ## Секунд на одну руду. Бур с руки достаёт из живой жилы пять штук за полторы секунды и ждёт
 ## пять; шахтёр медленнее, зато сам и без перерыва.
