@@ -435,6 +435,28 @@ func height_at(wx: float, wz: float) -> float:
 		h = carve_at(wx, wz, h)
 	return h
 
+## ГЕНЕРАТОР ГОТОВ ОТВЕЧАТЬ ПО ТОЧКАМ, без прохода по массиву. Зовёт тот, кто считает землю
+## чанками: шумы собираются один раз на главном потоке, дальше их только читают.
+##
+## Ленивой подготовки внутри height_at для этого мало — её вызвали бы два потока сразу.
+func begin_sampling(b: TerrainBiomes) -> void:
+	_gen_biomes = b
+	noise_offset = Vector2.ZERO      # мировые клетки, как в generate_region
+	prepare_sampling()
+
+## СЕТКА n×n ОТ МИРОВОЙ ТОЧКИ С ШАГОМ step. step = 1 — чанк, step = 2ⁿ — слияние 2ⁿ×2ⁿ чанков
+## в один меш того же размера. Считается синхронно: зовётся из задачи WorkerThreadPool, по одной
+## на чанк, и begin_sampling обязан быть позади.
+func sample_grid(ox: float, oz: float, n: int, step: float) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(n * n)
+	for j in n:
+		var wz := oz + float(j) * step
+		var row := j * n
+		for i in n:
+			out[row + i] = height_at(ox + float(i) * step, wz)
+	return out
+
 ## ВРЕЗ КАНЬОНА В ОДНОЙ ТОЧКЕ. surface — уже размытая земля в ней же.
 ##
 ## Вынесен из построчного прохода по той же причине, что и raw_height_at: грубому уровню LOD и
