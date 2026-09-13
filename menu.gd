@@ -28,20 +28,11 @@ const NEWS_H_FRAC := 0.42
 @onready var _settings: CenterContainer = %Settings
 
 # ── World creation ───────────────────────────────────────────────────────────
-# The menu computes a new slot's ground, not the first frame of the game: the run takes a minute
-# or more and under a loading screen that is indistinguishable from a hang. Here it gets a bar, a
-# remaining-time estimate and a STOP, and the slot itself is only written once the run finishes.
-var _gen: LiteTerrainGen = null
+# Создание мира — это выбор сида. Шкала, оценка времени и STOP тут были, пока земля считалась
+# окном на весь мир вперёд; чанковый рельеф считает её по ходу игры, и ждать стало нечего.
 var _gen_slot: int = -1
 var _gen_seed: int = 0
-var _gen_t0: float = 0.0
-var _gen_frac: float = 0.0
-var _gen_eta: float = -1.0
-var _gen_label: String = ""
-var _gen_done: bool = false
 var _c_stage: Label = null
-var _c_bar: ProgressBar = null
-var _c_eta: Label = null
 ## Is the slot list open? First screen is PLAY / SETTINGS, second is the three worlds.
 var _slots_open: bool = false
 
@@ -347,108 +338,25 @@ func _create_panel() -> Control:
 	_c_stage = Label.new()
 	_c_stage.add_theme_font_size_override("font_size", 12)
 	_c_stage.add_theme_color_override("font_color", DIM)
+	_c_stage.text = tr("World ready · seed %d") % _gen_seed
 	box.add_child(_c_stage)
 
-	_c_bar = ProgressBar.new()
-	_c_bar.min_value = 0.0
-	_c_bar.max_value = 1.0
-	_c_bar.step = 0.001
-	_c_bar.show_percentage = false
-	_c_bar.custom_minimum_size = Vector2(COL_W, 10)
-	box.add_child(_c_bar)
-
-	_c_eta = Label.new()
-	_c_eta.add_theme_font_size_override("font_size", 12)
-	_c_eta.add_theme_color_override("font_color", DIM)
-	box.add_child(_c_eta)
-
-	if _gen_done:
-		# TWO ways out, not one: the world may have been computed to be entered later.
-		box.add_child(_big_button(tr("PLAY"), _play_created))
-		box.add_child(_button(tr("BACK TO SLOTS"), DIM, _leave_create))
-	else:
-		box.add_child(_button(tr("STOP"), DANGER, _stop_create))
-	_update_create()
+	# Две двери, а не одна: мир могли создать, чтобы зайти в него позже.
+	box.add_child(_big_button(tr("PLAY"), _play_created))
+	box.add_child(_button(tr("BACK TO SLOTS"), DIM, _leave_create))
 	return panel
 
-func _process(_delta: float) -> void:
-	if _gen_slot >= 0:
-		_update_create()
-
-func _update_create() -> void:
-	if _c_stage == null or not is_instance_valid(_c_stage):
-		return
-	if _gen_done:
-		_c_stage.text = tr("World ready · seed %d") % _gen_seed
-		_c_bar.value = 1.0
-		_c_eta.text = tr("Press PLAY to enter")
-		return
-	_c_stage.text = _gen_label
-	_c_bar.value = _gen_frac
-	# Estimate over the whole run (elapsed × (1−frac)/frac) and SMOOTHED: rows inside a pass are
-	# not equal, so the raw number jumps every frame.
-	var el: float = float(Time.get_ticks_msec()) / 1000.0 - _gen_t0
-	if _gen_frac > 0.02:
-		var raw: float = el * (1.0 - _gen_frac) / _gen_frac
-		_gen_eta = raw if _gen_eta < 0.0 else lerpf(_gen_eta, raw, 0.08)
-	_c_eta.text = tr("%d%%   ·   %s left") % [int(_gen_frac * 100.0), _time_text(_gen_eta)]
-
-func _time_text(sec: float) -> String:
-	if sec < 0.0:
-		return tr("estimating")
-	if sec < 60.0:
-		return "%ds" % int(sec)
-	@warning_ignore("integer_division")
-	return "%d:%02d" % [int(sec) / 60, int(sec) % 60]
-
-## The run. The seed is picked here, but the slot is only written when it finishes: stopping
-## halfway must leave whatever was there intact.
+## МИР — ЭТО СИД, И БОЛЬШЕ НИЧЕГО. Раньше здесь минуту считалось окно высот на весь мир, со
+## шкалой и оценкой времени. Земля теперь считается чанками по мере того, как игрок по ней едет
+## (addons/LiteTerrain/chunk_terrain.gd), и тот массив не читает никто — значит и ждать нечего.
+##
+## Панель осталась: она называет сид и даёт ту же кнопку PLAY.
 func _begin_create(i: int) -> void:
 	if _gen_slot >= 0:
 		return
 	_gen_slot = i
 	_gen_seed = G.roll_world_seed()
-	_gen_done = false
-	_gen_frac = 0.0
-	_gen_eta = -1.0
-	_gen_label = tr("starting")
-	_gen_t0 = float(Time.get_ticks_msec()) / 1000.0
-	_rebuild_left()
-
-	var gen := LiteTerrainGen.new()
-	add_child(gen)
-	gen.gen_seed = _gen_seed
-	var params: Dictionary = LiteTerrainGen.default_params()
-	gen.apply_params(params)
-	gen.on_progress = func(step: String, frac: float) -> void:
-		_gen_label = step
-		_gen_frac = frac
-	_gen = gen
-	var size: int = LiteTerrainGen.DEF_WINDOW
-	@warning_ignore("integer_division")
-	var half: int = size / 2
-	var x0: int = -half
-	var z0: int = -half
-	# Default biomes. Only the MASK fields affect heights, and the map scene overrides colouring
-	# only. Touch a mask there and the strips computed later will not meet what the menu produced.
-	var md: PackedFloat32Array = await gen.generate_region(x0, z0, size, size, TerrainBiomes.new())
-	var ok: bool = not gen.cancelled() and md.size() == size * size
-	gen.queue_free()
-	_gen = null
-	if not ok:
-		_gen_slot = -1
-		_rebuild_left()
-		return
-	G.set_pending_world(_gen_seed, Vector2i(x0, z0), size, md, params)
-	G.create_world(_gen_slot, _gen_seed, Vector2i(x0, z0), size, md)
-	_gen_done = true
-	_rebuild_left()
-
-func _stop_create() -> void:
-	if _gen != null and is_instance_valid(_gen):
-		_gen.stop()          # the run stops between passes and returns nothing
-		return
-	_gen_slot = -1
+	G.create_world(i, _gen_seed, Vector2i.ZERO, 0, PackedFloat32Array())
 	_rebuild_left()
 
 func _play_created() -> void:

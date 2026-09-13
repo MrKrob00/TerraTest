@@ -368,8 +368,9 @@ project: read it before claiming how anything works.
   own RNG and seed offset. `world_procedural` is stored in the world file, not derived from the slot
   index.
 - Slot 1 is the file-based "original" map and absorbs the pre-slot save once, by renaming.
-- The menu computes a new slot's world with a progress bar, remaining-time estimate and Stop, then
-  hands it over through `G.pending_world` plus a disk cache keyed by seed and size.
+- CREATING A WORLD IS PICKING A SEED, and it is instant. The menu used to compute a window of
+  heights for the whole world first — a minute with a bar, an estimate and a Stop — and the chunked
+  terrain does not read that array at all: it computes the ground as the player drives over it.
 - Resetting or deleting a world lives in the MENU, next to the slots (reset keeps the map, delete is
   hold-to-confirm). The in-game settings have no wipe button: one tap, irreversible, among sliders.
 - Autoloads must be told the slot changed: `G.use_slot` calls `Q.reload_from_progress()`, otherwise
