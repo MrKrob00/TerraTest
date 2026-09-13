@@ -524,6 +524,7 @@ func _ready() -> void:
 		# tiles) are each uninterruptible, but between them a loading screen gets to draw.
 		await get_tree().process_frame
 		_setup_streaming_collision()        # small sliding collision window
+		_ensure_edge_generator()            # край запечённой карты тоже доращивается
 		await get_tree().process_frame
 	else:
 		# Legacy: the embedded HeightMapShape3D is both data and collision.
@@ -1233,6 +1234,42 @@ func _proc_params() -> Dictionary:
 ## считается: он либо уже посчитан, либо прочитан файлом. Спрашивает экран загрузки.
 var gen_step: String = ""
 var gen_frac: float = 0.0
+
+## КРАЙ ЛЮБОЙ КАРТЫ ПЕРЕСТАЁТ БЫТЬ ОБРЫВОМ.
+##
+## Запечённая карта — это только СЕРЕДИНА мира: за её краем земли нет вовсе, и машина уезжает в
+## пустоту, падает, её поднимает спасалка, и так по кругу. Раньше генератор ставил ТОЛЬКО
+## процедурный слот (setup_procedural), а в слоте с файлом world_gen оставался null — то есть
+## подвижка окна была выключена целиком, молча, в самой первой своей проверке.
+##
+## Теперь генератор есть и у файловой карты: сами высоты по-прежнему читаются с диска, но окно
+## доращивает полосы из сида ровно тем же кодом, что и в процедурном мире.
+##
+## ВЫСОТУ БЕРЁМ ТУ, С КОТОРОЙ КАРТА ПЕЧАТАЛАСЬ (world_height → built_amplitude), а не из умолчаний
+## генератора: у запечённой карты это 130, у DEF_AMPLITUDE — 30, и свежая полоса вышла бы вчетверо
+## площе, то есть на стыке встала бы ступень в сотню метров.
+##
+## В редакторе сюда не попадаем (_ready выходит раньше), поэтому запекание из дока не ломается:
+## bake_heights отказывается работать при живом генераторе намеренно.
+func _ensure_edge_generator() -> void:
+	# ТОЛЬКО МИР ИГРЫ. Авторская карта в меню (follow_world_settings = false) никуда не едет и
+	# доращивать её незачем; свои процедурные карты меню поднимает через force_procedural.
+	if not follow_world_settings:
+		return
+	if world_gen != null and is_instance_valid(world_gen):
+		return
+	if md.is_empty() or w <= 0 or d <= 0:
+		return
+	var gen := LiteTerrainGen.new()
+	add_child(gen)
+	var game: Node = get_node_or_null("/root/G")
+	gen.gen_seed = int(game.get("world_seed")) if game != null else 0
+	var p: Dictionary = _proc_params()
+	p["amplitude"] = world_height()
+	gen.apply_params(p)
+	world_gen = gen
+	print("LiteTerrain: край карты доращивается генератором, сид %d, высота %.0f"
+			% [gen.gen_seed, world_height()])
 
 ## Поднять процедурный мир: собрать генератор, поставить окно вокруг точки и посчитать первую
 ## землю. Зовёт игра, когда слот процедурный; после этого файлы высот не читаются вовсе.
