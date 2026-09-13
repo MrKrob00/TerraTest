@@ -524,7 +524,6 @@ func _ready() -> void:
 		# tiles) are each uninterruptible, but between them a loading screen gets to draw.
 		await get_tree().process_frame
 		_setup_streaming_collision()        # small sliding collision window
-		_ensure_edge_generator()            # край запечённой карты тоже доращивается
 		await get_tree().process_frame
 	else:
 		# Legacy: the embedded HeightMapShape3D is both data and collision.
@@ -1238,6 +1237,12 @@ func _proc_params() -> Dictionary:
 var gen_step: String = ""
 var gen_frac: float = 0.0
 
+## СЕЙЧАС НЕ ЗОВЁТСЯ. Ставило генератор файловой карте, чтобы её край доращивался, — но вместе с
+## генератором включалась и ПОДВИЖКА ОКНА у карты, которая двигаться не умеет: при сдвиге меши
+## пересобираются (_rebuild_after_window_move), а коллизия переиндексируется отдельно, и выходило
+## «коллизия есть, картинки нет». Держим до перехода на чанковое хранилище, где сдвига окна не
+## будет вовсе.
+##
 ## КРАЙ ЛЮБОЙ КАРТЫ ПЕРЕСТАЁТ БЫТЬ ОБРЫВОМ.
 ##
 ## Запечённая карта — это только СЕРЕДИНА мира: за её краем земли нет вовсе, и машина уезжает в
