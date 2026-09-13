@@ -272,6 +272,25 @@ project: read it before claiming how anything works.
 
 ### Terrain (LiteTerrain, third-party addon we patched)
 
+- TWO TERRAIN NODES, and they are not interchangeable. The GAME WORLD is `chunk_terrain.gd`
+  (`ChunkTerrain`): no window, no world-sized height array — a chunk asks the generator for its own
+  vertices. `map.gd` (`LiteTerrain`) stays for the MENU backdrop and the editor dock, where the map
+  is a baked file. Everything below about windows, `md` and macro meshes is about `map.gd`.
+- LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
+  is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
+  quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
+  (`LOD_QUALITY` = 2). Details: `docs/CHUNK_TERRAIN.md`.
+- The generator answers BY POINT: `height_at(wx, wz)` is noise, blur and the canyon cut in one world
+  point, and `sample_grid` builds a grid from it. The blur is always taken at FULL resolution, even
+  when the node samples every 32nd cell — blurring an already sparse grid is a different field, and
+  the join with a finer node would step. `begin_sampling` prepares the noises once on the main
+  thread; after that the threads only read.
+- Neighbour level is asked by `_level_of` (six dictionary lookups, not a tree walk), and the finer
+  node lays its extra edge vertices on the segment between the ones it shares with the coarser. A
+  corner vertex is a multiple of any neighbour step, so two snapped edges never argue.
+- A collision tile IS a base chunk, cut from the same heights as the level-0 mesh — under a near
+  chunk it costs nothing. Terrain edits are a LIST applied on top of the generator in one function
+  (mesh, collision and height query all go through it); there is nothing to bake.
 - The ground is drawn three ways at once — chunk meshes, the merged macro mesh, and coarse quadtree
   node meshes — and all three are stitched through one answer, `_drawn_step_at`. Seam signatures are
   eight bits per field; four overflowed.

@@ -9,7 +9,7 @@
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="12_lggff"]
 [ext_resource type="Script" uid="uid://ccy4xql8u7bqc" path="res://camera_controller.gd" id="13_3v7ru"]
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
-[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="17_tuemg"]
+[ext_resource type="Script" path="res://addons/LiteTerrain/chunk_terrain.gd" id="17_tuemg"]
 [ext_resource type="PackedScene" uid="uid://c21ydn7r4eaea" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" uid="uid://bnvf256vo4ij2" path="res://enemy_spawner.gd" id="19_enemyspawn"]
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
@@ -558,15 +558,7 @@ text = "<"
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 occlusion_min_dist = 80.0
-occlusion_samples = 14
 biomes = SubResource("Resource_s0gvp")
-built_amplitude = 130.0
-flat_lod_error = 0.003
-triangle_size = 1
-editor_lod = true
-editor_view_distance = 550.0
-heightmap_path = "res://terrain_height.res"
-force_procedural = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")
