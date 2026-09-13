@@ -62,12 +62,14 @@ var plan_bake: bool = false
 ## окно. Значит размер выбирается не «побольше красивее», а по памяти телефона.
 ##
 ## Пик памяти делают НЕ данные, а буферы прохода: их три, и каждый размером с окно. На 2048² это
-## было ~64 МБ подряд, и на Adreno 610 resize отдавал пустой массив — мира не было вовсе.
+## ~64 МБ подряд, и на Adreno 610 resize отдаёт пустой массив — мира нет вовсе. 1024² даёт ~16 МБ
+## пика и радиус 512 м вокруг игрока.
 ##
-## Поэтому окно считается ПЛИТКАМИ (map._generate_window_tiled): проход работает над плиткой
-## 256², то есть пик это результат плюс одна плитка, ~17 МБ вместо 64. Сам размер окна при этом
-## можно держать большим — он решает, как далеко видно, и резать его ради памяти больше не надо.
-const DEF_WINDOW := 2048
+## РЕЗАТЬ ОКНО НА ПЛИТКИ И СОБИРАТЬ ИЗ НИХ — НЕ РАБОТАЕТ ТУТ, проверено: один проход превращается
+## в шестьдесят четыре, каждый со своей группой задач в пуле потоков, и на слабом устройстве это
+## падает. Дальше видеть надо не большим окном, а настоящим тайловым стримингом хранилища — но
+## это переписывание рендера, а не размер константы.
+const DEF_WINDOW := 1024
 const DEF_SCALE := 150.0
 const DEF_POWER := 2.6
 const DEF_AMPLITUDE := 30.0
@@ -181,6 +183,14 @@ var _gen_carved: PackedFloat32Array
 ## copy, every other thread's writes go nowhere, and what follows is exactly what the log showed:
 ## "out of bounds" at addresses the whole array could never have.
 var _gen_len: int = 0
+## ГЕНЕРАТОР — ОДИН ПРОХОД ЗА РАЗ. Буферы прохода (_gen_out, _gen_base_in, _gen_carved) это поля
+## объекта, общие на все вызовы: второй проход, начатый пока идёт первый, затирает ему данные и
+## сбрасывает _gen_cancel. Ловили это так — игрок входил в мир, стоя у края окна, окно просило
+## полосу поверх ещё не досчитанной стартовой земли, и игра падала.
+##
+## Отказ ПУСТЫМ МАССИВОМ, а не ожиданием: все вызывающие уже умеют его читать как «не сложилось»
+## и не двигают окно, а ждать здесь значило бы держать кадр.
+var _gen_running: bool = false
 
 # One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
 # thread ever reads what another is writing. The border rows are copied through untouched — the
@@ -463,6 +473,10 @@ func _cv_noise(p: Vector2) -> float:
 ##
 ## Окно, файлы, undo и пересборку превью делает вызывающий — здесь только счёт.
 func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Array:
+	if _gen_running:
+		push_warning("LiteTerrain: проход уже идёт — второй запрос отклонён")
+		return PackedFloat32Array()
+	_gen_running = true
 	_gen_cancel = false
 	_gen_biomes = biomes
 	# Минимальный размер: меньше двух чанков даёт вырожденные чанки и ошибки сборки.
@@ -477,7 +491,9 @@ func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Arr
 	# берётся ровно в той же точке, что и раньше, при любой чётности размера. Так генератор,
 	# перешедший на мировые координаты, воспроизводит прежнюю карту байт в байт, а не «почти».
 	noise_offset = Vector2(float(-origin_x), float(-origin_z))
-	return await _run_passes(width, depth)
+	var res: PackedFloat32Array = await _run_passes(width, depth)
+	_gen_running = false
+	return res
 
 ## КУСОК МИРА ПО МИРОВЫМ КООРДИНАТАМ — то, ради чего всё и затевалось. Скользящее окно считает
 ## землю кусками по мере движения игрока, и каждый кусок обязан сойтись с соседним по шву.
@@ -490,6 +506,10 @@ func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Arr
 ## noise_offset здесь НОЛЬ: шум берётся прямо по мировой клетке. Сдвиг нужен только карте
 ## целиком, и только чтобы повторить старую.
 func generate_region(x0: int, z0: int, w: int, h: int, biomes: TerrainBiomes) -> PackedFloat32Array:
+	if _gen_running:
+		push_warning("LiteTerrain: проход уже идёт — второй запрос отклонён")
+		return PackedFloat32Array()
+	_gen_running = true
 	_gen_cancel = false
 	_gen_biomes = biomes
 	noise_offset = Vector2.ZERO
@@ -500,15 +520,18 @@ func generate_region(x0: int, z0: int, w: int, h: int, biomes: TerrainBiomes) ->
 	var ph: int = h + pad * 2
 	var padded: PackedFloat32Array = await _run_passes(pw, ph)
 	if padded.is_empty():
+		_gen_running = false
 		return padded
 	var out := _gen_alloc(w * h, "the region")
 	if out.is_empty():
+		_gen_running = false
 		return out
 	for z in h:
 		var src_row: int = (z + pad) * pw + pad
 		var dst_row: int = z * w
 		for x in w:
 			out[dst_row + x] = padded[src_row + x]
+	_gen_running = false
 	return out
 
 ## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
