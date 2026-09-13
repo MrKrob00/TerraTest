@@ -3549,10 +3549,45 @@ func _process(delta: float) -> void:
 	# ── Окно едет за камерой ──────────────────────────────────────────────────
 	# Спрашиваем КАЖДЫЙ кадр, но _window_target отвечает «никуда» почти всегда: подвижка
 	# случается раз в несколько сотен метров пути.
+	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
 	if world_gen != null and is_instance_valid(world_gen) and not _win_busy:
-		var want := _window_target(global_transform.affine_inverse() * _cam.global_position)
+		var want := _window_target(cam_local)
 		if want.x != _win_x or want.y != _win_z:
 			recenter_window(want.x, want.y)
+	_window_watch(cam_local)
+
+## ПОЧЕМУ ОКНО НЕ ЕДЕТ — ОДНОЙ СТРОКОЙ И РОВНО В МОМЕНТ ОТКАЗА.
+##
+## Гейтов у подвижки четыре (камера, генератор, занятость, готовность массива), и каждый из них
+## молча ничего не делает. Снаружи это выглядит одинаково: мир кончился на краю окна. Печатаем
+## один раз на смену состояния, чтобы в логе была причина, а не её отсутствие.
+var _ww_last: String = ""
+
+func _window_watch(cam_local: Vector3) -> void:
+	var cx: float = cam_local.x + _cell_ox() - 0.5
+	var cz: float = cam_local.z + _cell_oz() - 0.5
+	# Молчим, пока камера далеко от края: запас взят такой же, как у порога подвижки.
+	var edge: float = float(window_margin) + 64.0
+	if cx > edge and cx < float(w) - edge and cz > edge and cz < float(d) - edge:
+		_ww_last = ""
+		return
+	var want := _window_target(cam_local)
+	var why: String = ""
+	if world_gen == null or not is_instance_valid(world_gen):
+		why = "ГЕНЕРАТОРА НЕТ (world_gen == null) — окно не может сдвинуться в принципе"
+	elif _win_busy:
+		why = "полоса считается прямо сейчас (_win_busy)"
+	elif md.size() != w * d:
+		why = "массив высот %d, а окно требует %d — сдвиг отказан" % [md.size(), w * d]
+	elif want.x == _win_x and want.y == _win_z:
+		why = "порог не сработал: запас %d, шаг %d" % [window_margin, maxi(int(w / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE]
+	else:
+		why = "сдвиг запрошен -> (%d, %d)" % [want.x, want.y]
+	if why == _ww_last:
+		return
+	_ww_last = why
+	print("LiteTerrain: край окна, клетка (%d, %d) из %d×%d, окно от (%d, %d) — %s"
+			% [int(cx), int(cz), w, d, _win_x, _win_z, why])
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
