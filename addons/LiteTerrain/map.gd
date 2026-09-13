@@ -544,6 +544,12 @@ func _ready() -> void:
 		await get_tree().process_frame   # a frame BEFORE the full scan, which is heavy and unbroken
 		_full_scan()
 	await get_tree().process_frame       # and one after, so a screen fade starts without a hitch
+	# ОДНА СТРОКА О ТОМ, ЧТО ПОДНЯЛОСЬ. Все отказы тут молчали: пустой md означает и отсутствие
+	# мешей, и отсутствие коллизии (_setup_streaming_collision выходит первой строкой), а в логе
+	# при этом не было НИЧЕГО — ни ошибки, ни признака, каким путём вообще пошли.
+	print("LiteTerrain: %s, %d×%d, высот %d, окно от (%d, %d)%s"
+			% ["процедурный" if proc_world else "из файла", w, d, md.size(), _win_x, _win_z,
+				"  — ПУСТО, земли не будет" if md.is_empty() else ""])
 	terrain_is_ready = true          # the near terrain is up; a loading screen can leave
 	terrain_ready.emit()
 
@@ -1239,8 +1245,14 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	if game != null and game.has_method("take_pending_world"):
 		handoff = game.take_pending_world(seed_value, window_size)
 	# Памяти нет — берём кеш окна с диска: мир мог быть посчитан в меню в прошлый заход.
+	var src: String = "меню" if not handoff.is_empty() else ""
 	if handoff.is_empty() and game != null and game.has_method("read_world_window"):
 		handoff = game.read_world_window(seed_value, window_size)
+		if not handoff.is_empty():
+			src = "кеш слота"
+	if src == "":
+		src = "считаем сейчас"
+	print("LiteTerrain: процедурный мир, сид %d, окно %d, земля — %s" % [seed_value, window_size, src])
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
@@ -1272,8 +1284,6 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 		gen_frac = frac
 	gen_step = "world"
 	gen_frac = 0.0
-	print("LiteTerrain: процедурный мир, сид %d, окно %d×%d от клетки (%d, %d)"
-			% [seed_value, w, d, _win_x, _win_z])
 	md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
 	gen_step = ""
 	if md.size() != w * d:
@@ -1360,7 +1370,8 @@ func recenter_window(new_x: int, new_z: int) -> void:
 	var fresh := PackedFloat32Array()
 	if fresh.resize(w * d) != OK:
 		_win_busy = false
-		return                        # памяти нет — остаёмся там, где стояли
+		push_warning("LiteTerrain: не хватило памяти на окно %d×%d — мир дальше не растёт" % [w, d])
+		return
 	# 1. ПЕРЕКРЫТИЕ СТАРОГО И НОВОГО — копируем как есть. В новых координатах клетка (x,z) это
 	#    старая (x+dx, z+dz), и берём только те, что попадают в прежний массив.
 	var sx0: int = maxi(0, dx)
@@ -1394,7 +1405,9 @@ func recenter_window(new_x: int, new_z: int) -> void:
 				new_x + rr.position.x, new_z + rr.position.y, rr.size.x, rr.size.y, _biomes())
 		if part.size() != rr.size.x * rr.size.y:
 			_win_busy = false
-			return                    # не сложилось — окно не двигаем вовсе, старое цело
+			push_warning("LiteTerrain: полоса %dx%d не посчиталась — окно осталось на месте, мир дальше не растёт"
+					% [rr.size.x, rr.size.y])
+			return
 		for z in rr.size.y:
 			var dst_row: int = (rr.position.y + z) * w + rr.position.x
 			var src_row: int = z * rr.size.x
