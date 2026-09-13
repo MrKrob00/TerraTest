@@ -65,4 +65,3 @@ func _spread_last() -> void:
 	if side.length_squared() > 0.0001:
 		d = d.rotated(side, randf_range(-a * 0.5, a * 0.5))
 	b.dir = d.normalized()
-
