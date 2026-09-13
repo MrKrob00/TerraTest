@@ -349,6 +349,43 @@ func _run_rows(task: Callable, rows: int, label: String) -> void:
 		_report("%s — done" % label, step_to)
 
 # One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
+## ВЫСОТА ДО РАЗМЫТИЯ В ОДНОЙ МИРОВОЙ ТОЧКЕ.
+##
+## Вынесена из построчного прохода, и это не украшательство: пока формула жила внутри цикла по
+## массиву, спросить землю можно было только прямоугольником подряд. Значит ни высоты в точке без
+## загруженного куска, ни выборки ЧЕРЕЗ ШАГ для грубого уровня LOD — а на них стоит всё чанковое
+## хранилище. Строка теперь зовёт эту же функцию, поэтому копии формулы нет.
+func raw_height_at(wx: float, wz: float) -> float:
+	var nx := wx + noise_offset.x
+	var nz := wz + noise_offset.y
+	var base = (_gen_base.get_noise_2d(nx, nz) + 1.0) * 0.5
+	var continental:float = pow(base, gen_power)
+	var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(nx, nz)), _gen_ridge_sharp)
+	var mountain_mask = smoothstep(0.52, 0.78, continental)
+	var ridge_term = ridge * _gen_mtn_amount * mountain_mask
+	var wp := Vector2(wx, wz)
+	var b := _gen_biomes
+	# КАНЬОН БОЛЬШЕ НИЧЕГО НЕ ГАСИТ, и это следствие смены его модели. Пока он ЗАМЕЩАЛ высоту
+	# своими абсолютными террасами, поднимать под ним горный купол и рисовать дюны было
+	# работой на выброс, и её глушили множителем (1 − маска). Но глушение — это ступень
+	# ровно такой высоты, какую оно снимает: подъём гор — 0.75 высоты карты, то есть под
+	# краем каньонной маски в горах открывалась яма почти в сто метров. «В горах иногда
+	# резкие углубления, в которых можно застрять» — это она.
+	#
+	# Теперь каньон РЕЖЕТ уже готовую землю (см. _gen_carve_row): что бы здесь ни подняли,
+	# врез считается от этого же уровня. Гасить нечего, и ступеней от гашения нет.
+	var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
+	var mtn_mask := b.mountain_mask(wp, _cv_noise)
+	var mtn_dome := b.mountain_dome(wp, _cv_noise)
+	var not_mtn := 1.0 - mtn_mask
+	var land_sand := sand_m * not_mtn
+	var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
+	var h = cont_biome + ridge_term * not_mtn
+	var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(nx, nz) * 3.5
+	var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
+	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
+	return h * gen_amplitude + dune + mtn_rise
+
 func _gen_fill_row(z: int) -> void:
 	if _gen_drop_row():
 		return
@@ -356,38 +393,9 @@ func _gen_fill_row(z: int) -> void:
 	# МИРОВАЯ координата строки, а не индекс в массиве: кусок, посчитанный по любому смещению,
 	# обязан дать те же высоты (см. «МИРОВЫЕ КООРДИНАТЫ» вверху файла).
 	var wz := float(origin_z + z)
-	var nz := wz + noise_offset.y
 	var row := z * w
 	for x in w:
-		var wx := float(origin_x + x)
-		var nx := wx + noise_offset.x
-		var base = (_gen_base.get_noise_2d(nx, nz) + 1.0) * 0.5
-		var continental:float = pow(base, gen_power)
-		var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(nx, nz)), _gen_ridge_sharp)
-		var mountain_mask = smoothstep(0.52, 0.78, continental)
-		var ridge_term = ridge * _gen_mtn_amount * mountain_mask
-		var wp := Vector2(wx, wz)
-		var b := _gen_biomes
-		# КАНЬОН БОЛЬШЕ НИЧЕГО НЕ ГАСИТ, и это следствие смены его модели. Пока он ЗАМЕЩАЛ высоту
-		# своими абсолютными террасами, поднимать под ним горный купол и рисовать дюны было
-		# работой на выброс, и её глушили множителем (1 − маска). Но глушение — это ступень
-		# ровно такой высоты, какую оно снимает: подъём гор — 0.75 высоты карты, то есть под
-		# краем каньонной маски в горах открывалась яма почти в сто метров. «В горах иногда
-		# резкие углубления, в которых можно застрять» — это она.
-		#
-		# Теперь каньон РЕЖЕТ уже готовую землю (см. _gen_carve_row): что бы здесь ни подняли,
-		# врез считается от этого же уровня. Гасить нечего, и ступеней от гашения нет.
-		var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
-		var mtn_mask := b.mountain_mask(wp, _cv_noise)
-		var mtn_dome := b.mountain_dome(wp, _cv_noise)
-		var not_mtn := 1.0 - mtn_mask
-		var land_sand := sand_m * not_mtn
-		var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
-		var h = cont_biome + ridge_term * not_mtn
-		var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(nx, nz) * 3.5
-		var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
-		var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
-		_gen_out[row + x] = h * gen_amplitude + dune + mtn_rise
+		_gen_out[row + x] = raw_height_at(float(origin_x + x), wz)
 	_gen_row_done()
 
 ## Everything DERIVED FROM THE FIVE KNOBS for this generation: the metre values (from Height) and
