@@ -195,6 +195,7 @@ func stop_generation() -> void:
 		_group = -1
 	_busy = false
 	_jobs.clear()
+	_pending_dirty.clear()
 	_batch.clear()
 	_out.clear()
 	_queued.clear()
@@ -386,6 +387,7 @@ func _invalidate(area: Rect2) -> void:
 			_col_seen.erase(key)
 
 func reset_heights() -> void:
+	_drain()                      # _hc читают задания пула; чистить его под ними нельзя
 	_flat_edits = []
 	_edit_seq = 0
 	_memo.clear()
@@ -551,6 +553,16 @@ func _enqueue_coll(bcx: int, bcz: int) -> void:
 		"kind": JOB_COLL, "key": key, "lod": 0, "gx": bcx, "gz": bcz, "sig": 0,
 		"edits": _edits_in(bcx * float(CHUNK), bcz * float(CHUNK), float(CHUNK)),
 	})
+
+## ДОЖДАТЬСЯ ЗАХОДА ПУЛА И ПРИНЯТЬ ЕГО. Зовёт тот, кто собирается тронуть то, что задания читают
+## (_hc, список правок). Блокирует кадр, поэтому только на редких событиях — сброс мира.
+func _drain() -> void:
+	if not _busy:
+		return
+	WorkerThreadPool.wait_for_group_task_completion(_group)
+	_group = -1
+	_busy = false
+	_apply_batch()
 
 ## Один заход пула за раз: задания пишут в _out по своему номеру, а второй заход переписал бы
 ## и массив, и поля под первым.
