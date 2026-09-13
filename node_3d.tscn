@@ -566,6 +566,7 @@ triangle_size = 1
 editor_lod = true
 editor_view_distance = 550.0
 heightmap_path = "res://terrain_height.res"
+force_procedural = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
 shape = SubResource("HeightMapShape3D_obt1j")
