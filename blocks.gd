@@ -316,6 +316,7 @@ func _armor_rows(deck: Array) -> Array:
 		if int(deck[i]) == G.Block.BATTERY:
 			out.append(i)
 	if out.is_empty() and deck.size() >= 3:
+		@warning_ignore("integer_division")
 		out.append(deck.size() / 2)
 	return out
 

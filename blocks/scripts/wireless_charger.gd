@@ -144,8 +144,8 @@ func _aim_beam(to: Vector3) -> void:
 		return
 	var from: Vector3 = global_position
 	var mid: Vector3 = (from + to) * 0.5
-	var len: float = from.distance_to(to)
-	if len < 0.05:
+	var beam_len: float = from.distance_to(to)
+	if beam_len < 0.05:
 		_show_beam(false)
 		return
 	_beam.global_position = mid
@@ -155,7 +155,7 @@ func _aim_beam(to: Vector3) -> void:
 	if absf(dir.dot(Vector3.UP)) < 0.99:
 		_beam.look_at(to, Vector3.UP)
 		_beam.rotate_object_local(Vector3.RIGHT, PI * 0.5)
-	(_beam.mesh as CylinderMesh).height = len
+	(_beam.mesh as CylinderMesh).height = beam_len
 	# Пульсация — по ней видно, что энергия ИДЁТ, а не что луч просто нарисован.
 	_t += 0.05
 	_beam_mat.emission_energy_multiplier = 3.0 + 2.0 * sin(_t * 6.0)

@@ -438,11 +438,11 @@ func _set_ui_locked(locked: bool) -> void:
 		hud.set_ui_locked(locked)
 
 # ── Поиск целей ──────────────────────────────────────────────────────────────
-func _hud_node(name: String) -> CanvasItem:
+func _hud_node(node_name: String) -> CanvasItem:
 	var hud: Node = get_parent()
 	if hud == null:
 		return null
-	return hud.get_node_or_null(name) as CanvasItem
+	return hud.get_node_or_null(node_name) as CanvasItem
 
 func _hud_ui(key: String) -> Control:
 	var hud: Node = get_parent()

@@ -60,7 +60,6 @@ var _touch_look_dy: float = 0.0
 var _pinch_last: float = -1.0
 var _tap_down_pos: Vector2 = Vector2.ZERO
 var _tap_down_ms: int = 0
-var _last_tap_ms: int = -10000
 var _tap_moved: bool = false
 
 var angle: float = 0.0

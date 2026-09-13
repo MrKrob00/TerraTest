@@ -174,11 +174,11 @@ func _play_for_context() -> void:
 	if not r.is_empty():
 		_resume.erase(_ctx)
 		if not banned.has(r["file"]):
-			for tr in tracks.get(_ctx, []):
-				if tr["file"] == r["file"]:
-					if tr.get("file", "") == _cur.get("file", "") and _active.playing:
+			for track in tracks.get(_ctx, []):
+				if track["file"] == r["file"]:
+					if track.get("file", "") == _cur.get("file", "") and _active.playing:
 						return
-					_start_track(tr, true, float(r["pos"]))
+					_start_track(track, true, float(r["pos"]))
 					return
 	var t := _pick(_ctx)
 	# Тот же трек уже играет (например, force-пересчёт) — не перезапускаем.
@@ -273,13 +273,13 @@ func _scan_tracks() -> void:
 			var f := dir.get_next()
 			while f != "":
 				if not dir.current_is_dir():
-					var name := f
-					if name.ends_with(".import") or name.ends_with(".remap"):
-						name = name.get_basename()      # отрезали .import/.remap
-					var ext := name.get_extension().to_lower()
-					if ext in ["ogg", "mp3", "wav"] and not seen.has(name):
-						seen[name] = true
-						list.append(_make_track(DIRS[ctx] + "/" + name, name, meta))
+					var base_name := f
+					if base_name.ends_with(".import") or base_name.ends_with(".remap"):
+						base_name = base_name.get_basename()      # отрезали .import/.remap
+					var ext := base_name.get_extension().to_lower()
+					if ext in ["ogg", "mp3", "wav"] and not seen.has(base_name):
+						seen[base_name] = true
+						list.append(_make_track(DIRS[ctx] + "/" + base_name, base_name, meta))
 				f = dir.get_next()
 			dir.list_dir_end()
 		tracks[ctx] = list

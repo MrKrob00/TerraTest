@@ -420,6 +420,7 @@ func _process(delta: float) -> void:
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
 	var n: int = _data.size()
 	var slice_from: int = _occl_cursor
+	@warning_ignore("integer_division")
 	var step: int = maxi(n / OCCL_SLICES, 1)
 	_occl_cursor = (_occl_cursor + step) % maxi(n, 1)
 	var slice_to: int = slice_from + step

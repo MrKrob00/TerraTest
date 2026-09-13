@@ -4,10 +4,13 @@ extends RefCounted
 const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, красные цифры) — hit()
 const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
-## Скрипт автолоада G, а не сам автолоад: всё в этом файле — СТАТИЧЕСКИЕ функции, а к
-## синглтону по имени из статики обращаться нельзя. Нужен отсюда только is_friendly_dome,
-## и она тоже статическая, поэтому хватает ссылки на скрипт. Цикла нет — G про эффекты не знает.
-const PROGRESS := preload("res://G.gd")
+## АВТОЛОАД ИЗ СТАТИКИ БЕРЁТСЯ УЗЛОМ. По имени к нему отсюда не обратиться — в этом файле всё
+## статическое. Раньше здесь лежала ссылка на СКРИПТ G и функция вызывалась от него, что требовало
+## держать её static; из-за этого все девятнадцать обычных вызовов вида G.is_loose_item() были
+## предупреждением «статику зовут от экземпляра». Цикла нет: G про эффекты не знает.
+static func _progress() -> Node:
+	var loop := Engine.get_main_loop() as SceneTree
+	return loop.root.get_node_or_null("/root/G") if loop != null else null
 const CARD_COUNT := 28          # сколько карточек в «хмаре» (много; часть видна по ходу анимации)
 # Потолок карточек, которые можно создать за ОДИН кадр по всей игре. Сборка машины зовёт play()
 # на каждый блок сразу: 40 блоков × 28 = 1120 MeshInstance3D + столько же QuadMesh и
@@ -40,8 +43,8 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 		q.collision_mask = 2                                # слой блоков (VehicleBlock.collision_layer=2)
 		q.collide_with_bodies = true
 		var seen := {}
-		for hit in world.direct_space_state.intersect_shape(q, 48):
-			var b = hit.get("collider")
+		for found in world.direct_space_state.intersect_shape(q, 48):
+			var b = found.get("collider")
 			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
 				continue
 			if exclude_root != null and _root_of(b) == exclude_root:
@@ -50,7 +53,8 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 			# первого RigidBody3D, а у купола это САМ БЛОК ЩИТА, а не машина. Поэтому своя же
 			# ракета, взорвавшись рядом, списывала энергию с собственного щита — и тем сильнее,
 			# чем ближе цель, то есть ровно тогда, когда игрок обороняется.
-			if PROGRESS.is_friendly_dome(b, exclude_root):
+			var g: Node = _progress()
+			if g != null and g.is_friendly_dome(b, exclude_root):
 				continue
 			seen[b] = true
 			var dist: float = (b as Node3D).global_position.distance_to(world_pos)

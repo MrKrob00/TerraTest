@@ -325,6 +325,7 @@ func _rebuild_detail() -> void:
 		if left > 0:
 			_detail.add_child(_head("Time left:"))
 			var tl := Label.new()
+			@warning_ignore("integer_division")
 			tl.text = "  %d:%02d" % [left / 60, left % 60]
 			tl.add_theme_font_size_override("font_size", 14)
 			tl.add_theme_color_override("font_color", Color(1, 0.72, 0.25))

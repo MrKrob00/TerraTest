@@ -1293,6 +1293,7 @@ func _update_perf_panel(delta: float) -> void:
 			% [proc_ms, proc_marked, maxf(proc_ms - proc_marked, 0.0)])
 	lines.append("physics %.1f мс/тик (учтено %.1f, не учтено %.1f) — в него входит и сам Jolt"
 			% [phys_ms, phys_marked, maxf(phys_ms - phys_marked, 0.0)])
+	@warning_ignore("integer_division")
 	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
 
 	# Bodies are counted BY HAND. Godot's PHYSICS_3D_* monitors stay at zero under Jolt, and a

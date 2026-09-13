@@ -53,8 +53,8 @@ func slot_dir(n: int = -1) -> String:
 	var i: int = slot if n < 0 else n
 	return "user://s%d/" % clampi(i, 0, SLOT_COUNT - 1)
 
-func slot_path(name: String, n: int = -1) -> String:
-	return slot_dir(n) + name
+func slot_path(file_name: String, n: int = -1) -> String:
+	return slot_dir(n) + file_name
 
 ## СИД МИРА. От него зависит всё, что раскладывается по карте случайно: жилы руды, укреплённые
 ## точки, пропы. Без него раскладка бралась из незасеянного randf — то есть МЕНЯЛАСЬ КАЖДЫЙ
@@ -135,9 +135,9 @@ const WORLD_FILES := ["world.json", "world_window.bin"]
 
 func _wipe(n: int, names: Array) -> void:
 	var dir := slot_dir(n)
-	for name in names:
-		if FileAccess.file_exists(dir + String(name)):
-			DirAccess.remove_absolute(dir + String(name))
+	for file_name in names:
+		if FileAccess.file_exists(dir + String(file_name)):
+			DirAccess.remove_absolute(dir + String(file_name))
 
 func new_game(n: int, seed_value: int = 0) -> void:
 	_wipe(n, PROGRESS_FILES)
@@ -329,7 +329,9 @@ var ui_grab: bool = false
 
 func window_pos(id: String) -> Variant:
 	var v: Variant = ui_windows.get(id)
-	return Vector2(float(v[0]), float(v[1])) if v is Array and v.size() == 2 else null
+	if not (v is Array) or (v as Array).size() != 2:
+		return null
+	return Vector2(float(v[0]), float(v[1]))
 
 func set_window_pos(id: String, pos: Vector2) -> void:
 	ui_windows[id] = [pos.x, pos.y]
@@ -725,7 +727,7 @@ func ground_y(pos: Vector3, fallback: float) -> float:
 ## лежащего в мире один и надёжный: тело НЕ ЗАМОРОЖЕНО. И на машине, и в коллекторе, и в
 ## руке предмет держат freeze = true — ровно по этому признаку его отличает коллектор,
 ## который единственный из всех и работал.
-static func is_loose_item(n: Node) -> bool:
+func is_loose_item(n: Node) -> bool:
 	if n == null or not is_instance_valid(n) or not (n is RigidBody3D):
 		return false
 	if (n as RigidBody3D).freeze:
@@ -793,7 +795,9 @@ func build_origin() -> Variant:
 	if cc == null or not ("current_vehicle" in cc):
 		return null
 	var v = cc.current_vehicle
-	return (v as Node3D).global_position if v != null and is_instance_valid(v) and v is Node3D else null
+	if v == null or not is_instance_valid(v) or not (v is Node3D):
+		return null
+	return (v as Node3D).global_position
 
 ## КУПОЛ ЩИТА, ПРИНАДЛЕЖАЩИЙ СВОИМ, — не цель и не преграда.
 ##
@@ -808,7 +812,7 @@ func build_origin() -> Variant:
 ##
 ## Считаем по ФРАКЦИИ, а не по «той же машине»: у игрока машин бывает несколько, и палить
 ## сквозь купол своей базы должно быть можно так же, как сквозь свой собственный.
-static func is_friendly_dome(body: Node, shooter_root: Node) -> bool:
+func is_friendly_dome(body: Node, shooter_root: Node) -> bool:
 	if body == null or shooter_root == null or not is_instance_valid(body):
 		return false
 	var ov = body.get("owner_vehicle")     # есть только у купола; у прочих тел вернётся null
@@ -822,10 +826,10 @@ static func is_friendly_dome(body: Node, shooter_root: Node) -> bool:
 	return fa != null and fb != null and fa == fb
 
 ## Ключ слитка/компонента для рецептов и складов.
-static func metal_key(m: int) -> String:
+func metal_key(m: int) -> String:
 	return "m%d" % m
 
-static func comp_key(c: int) -> String:
+func comp_key(c: int) -> String:
 	return "c%d" % c
 
 ## Человеческое имя материала по ключу — для табличек и подсказок.
@@ -1095,6 +1099,7 @@ func scrap_yield(bt: int) -> Dictionary:
 	var out: Dictionary = {}
 	var rec: Dictionary = block_recipe(bt)
 	for k in rec:
+		@warning_ignore("integer_division")
 		var half: int = int(rec[k]) / 2
 		if half > 0:
 			out[k] = half
@@ -1362,8 +1367,8 @@ const WIPE_FILES := [
 
 func wipe_save() -> void:
 	_progress_dirty = false             # чтобы отложенный флеш не воскресил старый прогресс
-	for name in WIPE_FILES:
-		var p: String = slot_path(name)
+	for file_name in WIPE_FILES:
+		var p: String = slot_path(file_name)
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(p)
 	# ЗАПЕЧЁННЫЙ РЕЛЬЕФ СБРАСЫВАЕМ ЗДЕСЬ ЖЕ. Он лежит отдельным файлом в user:// и перекрывает

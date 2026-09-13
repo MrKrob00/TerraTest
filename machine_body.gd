@@ -693,14 +693,14 @@ func _apply_steering(delta: float) -> void:
 # STABILISATION
 # ══════════════════════════════════════════
 
-func _apply_anti_roll(delta: float, scale: float = 1.0) -> void:
+func _apply_anti_roll(delta: float, k: float = 1.0) -> void:
 	var local_av: Vector3 = global_transform.basis.inverse() * angular_velocity
 	var correction: Vector3 = global_transform.basis * Vector3(
 		-local_av.x * anti_roll,
 		0.0,
 		-local_av.z * anti_roll
 	)
-	apply_torque(correction * mass * delta * scale)
+	apply_torque(correction * mass * delta * k)
 
 func _apply_upright(delta: float) -> void:
 	var up: Vector3 = _get_up()

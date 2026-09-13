@@ -716,17 +716,17 @@ func tutorial_target(key: String) -> Control:
 # машину. Гасим перехват у КОРНЕЙ (сам гараж и его контейнеры) — дети со своим mouse_filter
 # (вкладки сверху, панель справа) кликаются по-прежнему, IGNORE отключает только сам узел.
 func _set_world_clickthrough(on: bool) -> void:
-	var mode: int = Control.MOUSE_FILTER_IGNORE if on else Control.MOUSE_FILTER_STOP
+	var mode: Control.MouseFilter = Control.MOUSE_FILTER_IGNORE if on else Control.MOUSE_FILTER_STOP
 	mouse_filter = mode
 	for path in ["Root", "Root/Main"]:
 		var n: Control = get_node_or_null(path) as Control
 		if n != null:
 			n.mouse_filter = mode
 
-func _show_left_panel(show: bool) -> void:
+func _show_left_panel(visible_on: bool) -> void:
 	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
 	if left != null:
-		left.visible = show
+		left.visible = visible_on
 
 func _widen_left_panel(wide: bool) -> void:
 	var left: Control = get_node_or_null("Root/Main/LeftPanel") as Control
@@ -1048,8 +1048,8 @@ func _build_music_tab() -> void:
 			empty.modulate = Color(1, 1, 1, 0.45)
 			_extra_vb.add_child(empty)
 			continue
-		for tr in list:
-			_extra_vb.add_child(_music_row(m, tr, cur))
+		for track in list:
+			_extra_vb.add_child(_music_row(m, track, cur))
 
 # ── Иконки строк музыки: рисуются кодом (юникод-глифы ♥/✖ не рендерились шрифтом) ──
 class HeartIcon extends Control:
