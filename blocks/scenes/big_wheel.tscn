@@ -4,7 +4,6 @@
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="2_d8hx8"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_uqkpu"]
-size = Vector3(1.3, 1.3, 1.3)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
 resource_name = "main"
