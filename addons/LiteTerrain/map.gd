@@ -3830,12 +3830,7 @@ func _qt_update(do_lod: bool) -> void:
 	var margin := chunk_size * MACRO_SIZE * 0.5 * (1.0 + frustum_margin)
 	# Range cull: nodes whose nearest XZ point is past this are hidden without a
 	# frustum test (fog hides them anyway). + a macro footprint of slack.
-	# ДАЛЬШЕ, ЧЕМ ЕСТЬ ЗЕМЛЯ, СМОТРЕТЬ НЕЧЕГО. Окно держит w/2 метров в каждую сторону, а
-	# max_render_distance про это не знает: при окне 2048 и дальности 1400 четыреста метров кадра
-	# уходило на обход узлов, за которыми нет данных. Ограничиваем радиусом окна — картинка не
-	# меняется, а обход дерева и LOD считаются только по тому, что реально построено.
-	var have: float = float(mini(w, d)) * 0.5
-	var max_d := minf(max_render_distance, have) + chunk_size * MACRO_SIZE
+	var max_d := max_render_distance + chunk_size * MACRO_SIZE
 	_qt_des_macros.clear()
 	_qt_des_chunks.clear()
 	_qt_des_nodes.clear()
