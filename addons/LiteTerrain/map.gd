@@ -1215,6 +1215,9 @@ func _center_window() -> void:
 @export var force_procedural: bool = false
 @export var forced_seed: int = 0
 @export var window_size: int = LiteTerrainGen.DEF_WINDOW
+## Меньше этого окно не ужимаем: тут уже не «телефон слабый», а что-то другое, и молча отдавать
+## огрызок мира хуже, чем сказать вслух.
+const WINDOW_MIN := 256
 @export var proc_scale: float = LiteTerrainGen.DEF_SCALE
 @export var proc_power: float = LiteTerrainGen.DEF_POWER
 @export var proc_amplitude: float = LiteTerrainGen.DEF_AMPLITUDE
@@ -1321,12 +1324,24 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 		gen_frac = frac
 	gen_step = "world"
 	gen_frac = 0.0
-	md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
+	# НЕ ХВАТИЛО ПАМЯТИ — БЕРЁМ ОКНО МЕНЬШЕ, А НЕ ОТДАЁМ ПУСТОЙ МИР. Пустой массив это отсутствие
+	# и меша, и коллизии, и подвижки окна разом, причём молча: игрок видит воздух. Окно — буфер, и
+	# вдвое меньший буфер означает лишь более частые полосы, а не меньший мир.
+	while true:
+		md = await gen.generate_region(_win_x, _win_z, w, d, _biomes())
+		if md.size() == w * d:
+			break
+		if w <= WINDOW_MIN:
+			push_error("LiteTerrain: не хватило памяти даже на окно %d×%d — мир не поднят" % [w, d])
+			world_gen = null
+			gen_step = ""
+			return
+		w /= 2
+		d /= 2
+		_win_x = int(floor(around.x)) - int(w / 2)
+		_win_z = int(floor(around.z)) - int(d / 2)
+		push_warning("LiteTerrain: окно %d×%d не влезло в память, пробуем %d×%d" % [w * 2, d * 2, w, d])
 	gen_step = ""
-	if md.size() != w * d:
-		push_error("LiteTerrain: не хватило памяти на окно %d×%d — мир не поднят" % [w, d])
-		world_gen = null
-		return
 	_recompute_height_bound()
 
 # ── ПОДВИЖКА ОКНА ────────────────────────────────────────────────────────────
