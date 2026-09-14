@@ -115,8 +115,6 @@ var gen_mountains01:     float  = 0.6     # 0 = rolling hills, 1 = sharp ridges
 var gen_size:             int   = 0       # image-mode target size (0 = keep current)
 
 ## Numbers with one sensible answer. They do not deserve a knob; they do deserve an explanation.
-const GEN_OCTAVES := 6        # more = high-frequency noise, fewer = blurred blobs
-const GEN_SMOOTH_PASSES := 1  # one pass kills noise spikes; a second one starts eating terrain
 
 ## Derived from gen_mountains01: the two always moved together, and setting them apart only ever
 ## produced either a picket fence or pancakes.
@@ -1312,7 +1310,6 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 # CollisionShape3D and MeshInstance3D (_ensure_children); we never assemble those by hand.
 const TERRAIN_SCRIPT   := "res://addons/LiteTerrain/map.gd"
 const NEW_MAP_SIZE     := 128
-const PLUGIN_HEIGHTMAP := "res://addons/LiteTerrain/terrain_height.res"
 
 func _create_terrain() -> void:
 	var root := EditorInterface.get_edited_scene_root()
