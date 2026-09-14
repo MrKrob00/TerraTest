@@ -25,9 +25,9 @@ var gen_scale: float = 260.0
 var gen_power: float = 3.0
 var gen_amplitude: float = 90.0
 var gen_canyon_enable: bool = true
-var gen_canyon_riser: float = 0.35
-var gen_canyon_gorge: float = 90.0
-var gen_canyon_width: float = 0.18
+var gen_canyon_riser: float = DEF_CANYON_RISER
+var gen_canyon_gorge: float = DEF_CANYON_GORGE
+var gen_canyon_width: float = DEF_CANYON_WIDTH
 ## Готовые производные, которые док считает из своих ручек (см. plugin._mtn_amount/_ridge_sharp).
 var mtn_amount: float = 0.8
 var ridge_sharp: float = 2.5
@@ -76,8 +76,13 @@ const DEF_AMPLITUDE := 30.0
 const DEF_MOUNTAINS := 0.6
 const DEF_CANYON := true
 const DEF_CANYON_RISER := 0.35
-const DEF_CANYON_GORGE := 90.0
-const DEF_CANYON_WIDTH := 0.18
+## ШИРИНА ДНА УЩЕЛЬЯ СКЛАДЫВАЕТСЯ ИЗ ДВУХ ЧИСЕЛ, и в метрах она их произведение: `width` — какая
+## доля значений шума считается дном, `gorge` — длина волны сети каналов, то есть сколько метров
+## в одной такой доле. По 0.18 и 90 дно выходило в пару метров: каньон видно, а проехать по нему
+## нельзя. Подняли оба, каждый в полтора раза, — дно вдвое шире, а каналы заодно реже и крупнее,
+## то есть каньон стал местом, а не царапиной.
+const DEF_CANYON_GORGE := 120.0
+const DEF_CANYON_WIDTH := 0.27
 
 static func default_params() -> Dictionary:
 	return {"scale": DEF_SCALE, "power": DEF_POWER, "amplitude": DEF_AMPLITUDE,

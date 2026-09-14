@@ -129,8 +129,8 @@ func _ridge_sharp() -> float:
 # so the landform and the colour line up on their own.
 var gen_canyon_enable:    bool  = true
 var gen_canyon_riser:     float = 0.30   # share of a step taken by the steep riser (0.30 → 70% flat, drivable tread)
-var gen_canyon_gorge:     float = 70.0   # frequency of the gorge network (lower = more channels)
-var gen_canyon_width:     float = 0.10   # width of the gorge floor, in noise units (larger = wider)
+var gen_canyon_gorge:     float = LiteTerrainGen.DEF_CANYON_GORGE   # длина волны сети каналов
+var gen_canyon_width:     float = LiteTerrainGen.DEF_CANYON_WIDTH   # доля шума, считающаяся дном
 # Mesa tops and the canyon floor ARE NOT SET IN METRES: they are derived from Height (see
 # _generate_noise). While they had sliders of their own, every change of height turned the canyon
 # into either a ditch in a flat field or a chasm deeper than the mountains, and fixing that was a
@@ -630,9 +630,10 @@ func _enter_tree() -> void:
 			func(v: float) -> void: _biomes().canyon_band_height = v, 1)
 	_slider_row(adv_body, "Riser", 0.1, 0.6, gen_canyon_riser, 0.05,
 			func(v: float) -> void: gen_canyon_riser = v, 2)
-	_slider_row(adv_body, "Gorge width", 0.03, 0.30, gen_canyon_width, 0.01,
+	# Ширина дна в МЕТРАХ — произведение этих двух (см. LiteTerrainGen.DEF_CANYON_WIDTH).
+	_slider_row(adv_body, "Gorge width", 0.03, 0.50, gen_canyon_width, 0.01,
 			func(v: float) -> void: gen_canyon_width = v, 2)
-	_slider_row(adv_body, "Channels", 30.0, 160.0, gen_canyon_gorge, 1.0,
+	_slider_row(adv_body, "Channels", 30.0, 240.0, gen_canyon_gorge, 1.0,
 			func(v: float) -> void: gen_canyon_gorge = v, 0)
 
 	# ── Actions ──────────────────────────────────────────────────────────────

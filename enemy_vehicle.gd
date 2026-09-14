@@ -88,6 +88,15 @@ var _start_pos:      Vector3
 var _give_up_t: float = 0.0
 ## How long the give-up lasts.
 const GIVE_UP_TIME: float = 25.0
+## ПО НАМ СТРЕЛЯЮТ — ОТВЕЧАЕМ, СКОЛЬКО БЫ НАС НИ БЫЛО. Ограничение спавнера (combat_allowed)
+## решает, кто НАЧИНАЕТ бой: два десятка машин, палящих в игрока разом, — это не сложность, это
+## каша. Но оно же молчаливо запрещало ОТВЕЧАТЬ: игрок расстреливал врага в упор, а тот стоял
+## вторым в очереди и не стрелял вовсе — «враги через время перестают в меня стрелять».
+##
+## Отвечать можно столько секунд после последнего попадания по нам. Не навсегда: отъехал — и
+## очередь снова решает, кому драться.
+const ANSWER_TIME: float = 8.0
+var _answer_t: float = 0.0
 ## How far the patrol "home" is moved when the enemy leaves. Returning to where it just lost is not
 ## behaviour, it is the absence of behaviour.
 const GIVE_UP_MOVE: float = 90.0
@@ -450,6 +459,7 @@ func _update_ai(delta: float) -> void:
 	# starts the same timer and the enemy drives to the last known place - the SEARCH behaviour in
 	# enemy_brain was written long ago and almost never triggered. A relentless enemy never forgets.
 	_give_up_t = maxf(_give_up_t - delta, 0.0)
+	_answer_t = maxf(_answer_t - delta, 0.0)
 	_refresh_vision(delta)
 	if is_instance_valid(_target):
 		if _can_see_target():
@@ -799,7 +809,7 @@ func _do_attack() -> void:
 	# The ban does NOT apply to a BASE - same rule as in _base_tick. The spawner no longer sets it for
 	# buildings, but it is kept here too: this is the single place weapons are armed, and "a base always
 	# shoots" must hold whoever set the flag.
-	if not (combat_allowed or is_base) or not is_instance_valid(_target):
+	if not (combat_allowed or is_base or _answer_t > 0.0) or not is_instance_valid(_target):
 		return
 	for b in _weapon_blocks():
 		if not is_instance_valid(b):
@@ -921,6 +931,10 @@ func notice_attacker(attacker: Node3D) -> void:
 	# Being shot at cancels the give-up. You can walk away from someone who let you go; being finished
 	# off means fighting back, or the enemy would become a target that does not answer.
 	_give_up_t = 0.0
+	# ...и снимает запрет на бой (см. ANSWER_TIME): очередь спавнера про то, кто начинает, а не
+	# про то, кто отвечает.
+	_answer_t = ANSWER_TIME
+	combat_allowed = true
 	if is_instance_valid(_target) and _target != attacker and _can_see_target():
 		return                          # we can see our current opponent: do not switch
 	_target = attacker

@@ -273,6 +273,10 @@ project: read it before claiming how anything works.
   metres around its own block, one cell to the metre. On a long build a dome parked on the tail
   lets a frontal shot reach the cabin before it ever enters the sphere — check the geometry when
   moving one.
+- THE ENGAGEMENT CAP DECIDES WHO STARTS A FIGHT, NOT WHO ANSWERS ONE. `combat_allowed` (the
+  spawner's queue) kept a shot-at enemy silent while it stood second in line — the player emptied a
+  gun into a machine that never fired back. `notice_attacker` now lifts it for `ANSWER_TIME`, and
+  the spawner leaves such an enemy out of the queue while that runs.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.

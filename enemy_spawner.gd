@@ -206,6 +206,11 @@ func _limit_engagement() -> void:
 		if e.get("is_base") == true:
 			e.set_combat_allowed(true)
 			continue
+		# ПО КОМУ СЕЙЧАС СТРЕЛЯЮТ — ВНЕ ОЧЕРЕДИ. Очередь решает, кто начинает бой; враг, которого
+		# расстреливают в упор, обязан отвечать, иначе он мишень, а не противник.
+		if float(e.get("_answer_t") if e.get("_answer_t") != null else 0.0) > 0.0:
+			e.set_combat_allowed(true)
+			continue
 		# Only those going FOR THE PLAYER. Two enemies shooting each other ("Crossfire") are not
 		# his problem, and banning one of them would kill the fight the event is about.
 		var t = e.get("_target")
