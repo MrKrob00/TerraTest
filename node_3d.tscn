@@ -9,7 +9,7 @@
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="12_lggff"]
 [ext_resource type="Script" uid="uid://ccy4xql8u7bqc" path="res://camera_controller.gd" id="13_3v7ru"]
 [ext_resource type="Script" uid="uid://dosvnj2g4ribv" path="res://hud.gd" id="14_tcnuu"]
-[ext_resource type="Script" path="res://addons/LiteTerrain/chunk_terrain.gd" id="17_tuemg"]
+[ext_resource type="Script" uid="uid://dw8g1d86eonm6" path="res://addons/LiteTerrain/chunk_terrain.gd" id="17_tuemg"]
 [ext_resource type="PackedScene" uid="uid://c21ydn7r4eaea" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" uid="uid://bnvf256vo4ij2" path="res://enemy_spawner.gd" id="19_enemyspawn"]
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
@@ -553,8 +553,9 @@ text = "<"
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
 camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
-occlusion_min_dist = 80.0
 biomes = SubResource("Resource_s0gvp")
+occlusion_min_dist = 80.0
+collision_radius = 48
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
 top_level = true
