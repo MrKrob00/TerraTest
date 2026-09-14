@@ -29,7 +29,9 @@ project: read it before claiming how anything works.
 10. Debug flags are read only through `G.debug(&"flag", default)`; "no `Main` node" must never mean
     "off". Master switch `debug_overrides` is off by default.
 11. **No particles and no emoji anywhere.** Effects are `BlockFX` glitch cards; icons are `_draw()`.
-    The font renders emoji as empty boxes.
+    The font renders emoji as empty boxes. A `BlockFX` node marks itself `block_fx` so
+    `_local_aabb` skips it — without that every hit measured the previous hit's plates and the
+    effect grew with each one.
 12. Never set position or size on a **container child** — the container overwrites it. Only nodes
     directly under a `CanvasLayer` are positioned from code.
 13. Compare distances with `distance_squared_to()`; the square root is only for formulas.
@@ -143,6 +145,11 @@ project: read it before claiming how anything works.
 - Three things explode: battery, cabin (takes the machine with it) and any burnt-out fuse. Damage
   hits blocks, impulse only loose bodies.
 - Block tinting goes through a separate shell: model materials are shared between instances.
+- DAMAGE IS SHOWN AS CELLS, NOT AS A LEVEL (`block_hp.gdshader`): a cell is broken or not, decided
+  by its own hash against the damage share, so a new hit ADDS glyphs to the ones already lit and
+  never reshuffles them; only the symbol flips 0↔1. A repair greens the cells that stopped being
+  broken and they fade over `HEAL_FADE` — there is no separate heal effect, it would draw the same
+  thing twice and say nothing about WHAT was repaired.
 - The anchor spot is **not** validated — the only condition is a support block. Terrain checks were
   removed because they refused on ground the machine stood on fine.
 - The anchor is held by a block: lose the support (and any stationary block) and the machine drops
@@ -432,8 +439,9 @@ project: read it before claiming how anything works.
   flattened to the horizon, never from `global_rotation.y`.
 - Switching between your machines is the ICON ABOVE THE MACHINE and its radial menu
   (`hud._update_vehicle_button` → `open_vehicle_menu`), and nothing else: a second way to do the
-  same thing is a second button in a crowded corner. The icon shows within `VBTN_SHOW_DIST` (60 m),
-  which is what makes a base left at a vein or a quest site reachable at all.
+  same thing is a second button in a crowded corner. The icon shows within `VBTN_SHOW_DIST` (15 m):
+  it is a button over THAT machine, and at sixty it hung over every machine in sight and read as a
+  map marker. The price is that a base left at a vein has to be driven up to.
 - Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
   (`Stage/LiteTerrain`, a baked heightmap made with the plugin) so the menu opens on a world instead
   of on sky;

@@ -94,6 +94,7 @@ static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
 	if count <= 0:
 		return
 	var cloud := Node3D.new()
+	cloud.set_meta("block_fx", true)        # см. _local_aabb
 	root.add_child(cloud)
 	cloud.global_position = pos
 	var mats: Array = []
@@ -144,48 +145,6 @@ static func _take_card_budget(want: int) -> int:
 	_cards_used += n
 	return n
 
-## Зелёный «матрицы» ремонта. Различает эффекты не только цвет, но и ФОРМА: ремонт — это
-## цифры 0/1 по всей оболочке, а появление и распад блока — облако глитч-карточек. Одного
-## цвета было мало, карточки узнаются по силуэту и в зелёном читались всё тем же распадом.
-const HEAL_A := Color(0.25, 1.0, 0.45)
-
-## Эффект ремонта блока: ЗЕЛЁНЫЕ ЦИФРЫ 0/1 по всей оболочке блока — та же «матрица», что
-## показывает урон (block_matrix.gdshader, mode 2), только зелёная и по всему блоку сразу.
-##
-## Раньше heal звал play(), а play строит облако ГЛИТЧ-КАРТОЧЕК — тот эффект, которым блок
-## появляется и разваливается. Ремонт от него читался как «блок сейчас сломается», то есть
-## ровно наоборот. Цвет тут ничего не решал: карточки узнаются по форме, а не по оттенку.
-##
-## Оболочка — один куб на блок, а не шесть пластин, как у попадания (_spawn_hit_flash):
-## попадание приходит В ГРАНЬ, и его показывают на грани, а чинится блок целиком.
-static func heal(block: Node3D, duration: float = 0.55) -> void:
-	if block == null or not block.is_inside_tree():
-		return
-	var aabb := _local_aabb(block)
-	var fx := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3.ONE
-	fx.mesh = bm
-	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
-	mat.set_shader_parameter("mode", 2)              # цифры 0/1
-	mat.set_shader_parameter("color_damage", HEAL_A) # ...но зелёные: та же матрица, другой смысл
-	# Цифры ТОГО ЖЕ размера, что у оверлея хп (block_hp.gdshader, cells_per_meter = 6): рядом с
-	# крупными красными цифрами повреждения мелкая зелёная сетка (было 10) читалась как шум, а
-	# не как «этот блок сейчас чинят». Два эффекта про одно и то же — хп блока — и мерить их
-	# одной меркой правильнее, чем подбирать каждому свою.
-	mat.set_shader_parameter("damage_cells", 6.0)
-	mat.set_shader_parameter("progress", 0.0)
-	mat.set_shader_parameter("seed", randf() * 100.0)
-	fx.material_override = mat
-	block.add_child(fx)
-	# Чуть больше самого блока, иначе цифры z-борются с его поверхностью и мерцают.
-	fx.transform = Transform3D(Basis().scaled(aabb.size * 1.04), aabb.get_center())
-	var tw := fx.create_tween()
-	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, duration)
-	tw.tween_callback(fx.queue_free)
-
 static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 		tint_a: Color = Color(0, 0, 0, 0), tint_b: Color = Color(0, 0, 0, 0)) -> void:
 	if block == null or not block.is_inside_tree():
@@ -202,6 +161,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 	# «Хмара» глитч-карточек: плоские 2D-билборды РАЗНОГО размера на РАЗНОЙ глубине внутри/
 	# вокруг блока, cyan/magenta, мерцают и гаснут (глитч появления/исчезновения — вариант 1).
 	var cloud := Node3D.new()
+	cloud.set_meta("block_fx", true)        # см. _local_aabb
 	host.add_child(cloud)
 	cloud.global_transform = block.global_transform * Transform3D(Basis(), aabb.get_center())
 	var half := aabb.size * 0.5
@@ -269,6 +229,7 @@ static func fuse(block: Node3D, duration: float) -> void:
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE
 	fx.mesh = bm
+	fx.set_meta("block_fx", true)          # см. _local_aabb: свои эффекты в габарит не входят
 	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER
@@ -320,6 +281,7 @@ static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE
 	fx.mesh = bm
+	fx.set_meta("block_fx", true)          # см. _local_aabb: свои эффекты в габарит не входят
 	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER
@@ -346,6 +308,7 @@ static func hp_overlay(block: Node3D) -> MeshInstance3D:
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE
 	fx.mesh = bm
+	fx.set_meta("block_fx", true)          # см. _local_aabb: свои эффекты в габарит не входят
 	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER_HP
@@ -389,6 +352,12 @@ static func _local_aabb(block: Node3D) -> AABB:
 			continue                       # скрытая ветка (FX) или узел вне дерева — пропускаем
 		if n is Area3D and n != block:
 			continue                       # триггер/индикатор дальности — не тело блока
+		# СВОИ ЖЕ ЭФФЕКТЫ В КОРОБКУ НЕ ВХОДЯТ. Пластина вспышки торчит НАРУЖУ грани, оверлей хп
+		# на 4 % шире блока — и каждый следующий замер брал их в объединение. Коробка росла с
+		# каждым попаданием, пластины лезли всё дальше от блока, и так до потолка MAX_EXTENT:
+		# «матрица урона с каждым разом всё больше». Метку ставит тот, кто эффект создал.
+		if n != block and n.has_meta("block_fx"):
+			continue
 		for c in n.get_children():
 			stack.append(c)
 		if n is MeshInstance3D and n.mesh != null:

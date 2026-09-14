@@ -50,7 +50,7 @@ func _build_field() -> void:
 	_field_mat = StandardMaterial3D.new()
 	_field_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_field_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_field_mat.albedo_color = Color(0.25, 1.0, 0.45, FIELD_ALPHA_DEAD)   # зелёный как у BlockFX.heal
+	_field_mat.albedo_color = Color(0.25, 1.0, 0.45, FIELD_ALPHA_DEAD)   # зелёный как у починки на блоках
 	# Рисуем ИЗНАНКУ сферы: снаружи она почти прозрачна, а изнутри не закрывает игроку обзор
 	# и не отсекает камеру, когда та въезжает внутрь поля.
 	_field_mat.cull_mode = BaseMaterial3D.CULL_FRONT
@@ -102,9 +102,11 @@ func _physics_process(delta: float) -> void:
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
 			break
 		b.current_hp = mini(b.current_hp + REGEN_HP, b.max_hp)
-		BlockFX.heal(b)                       # зелёная «матрица»: видно, ЧТО именно чинится
+		# ПОЧИНКУ ПОКАЗЫВАЕТ САМ ОВЕРЛЁЙ ПОВРЕЖДЕНИЙ: цифры, переставшие быть красными, зеленеют
+		# и гаснут. Отдельная зелёная оболочка поверх блока (BlockFX.heal) рисовала то же самое
+		# вторым мешем и не говорила, ЧТО именно починили.
 		if b.has_method("_refresh_hp_fx"):
-			b._refresh_hp_fx()               # подлечили → цифр меньше (или блок снова чистый)
+			b._refresh_hp_fx()
 
 ## Все блоки в поле — запросом сферой по слою блоков. Потолок в 32 тела берём такой же, как у
 ## взрыва: поле маленькое, и упереться в него можно только внутри плотной сборки, где лишний
@@ -134,7 +136,7 @@ func _show_field(on: bool) -> void:
 		_field.visible = on
 
 # Плавный переход яркости к цели. Что блок РАБОТАЕТ, и так видно по зелёным цифрам на самих
-# чинимых блоках (BlockFX.heal) — полю мигать ради этого незачем, оно показывает радиус.
+# чинимых блоках (зелёные цифры) — полю мигать ради этого незачем, оно показывает радиус.
 func _fade_field(delta: float, target: float) -> void:
 	if _field_mat == null:
 		return
