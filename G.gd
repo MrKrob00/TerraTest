@@ -56,23 +56,15 @@ func slot_dir(n: int = -1) -> String:
 func slot_path(file_name: String, n: int = -1) -> String:
 	return slot_dir(n) + file_name
 
-## СИД МИРА. От него зависит всё, что раскладывается по карте случайно: жилы руды, укреплённые
-## точки, пропы. Без него раскладка бралась из незасеянного randf — то есть МЕНЯЛАСЬ КАЖДЫЙ
-## ЗАПУСК: игрок возвращался к своей базе, а жилы, вокруг которых он её строил, оказывались в
-## другом месте. Высоты рельефа сидом не управляются: они лежат готовым файлом (см. CLAUDE.md,
-## «КАРТУ ЧИТАЮТ ТРИ ФАЙЛА»), и пересчитывать их в игре нечем.
+## СИД МИРА. От него зависит ВСЁ: и земля (её считает чанковый рельеф), и всё, что по ней
+## раскладывается, — жилы руды, укреплённые точки, пропы. Без него раскладка бралась из
+## незасеянного randf, то есть менялась каждый запуск: игрок возвращался к своей базе, а жилы,
+## вокруг которых он её строил, оказывались в другом месте.
 ##
-## У ПЕРВОГО СЛОТА СИД ПОСТОЯННЫЙ, у остальных — свой при создании. Первый и есть «наша карта»:
-## тот, кто уже играл, вернётся к знакомой раскладке, а новый слот — это новый мир.
-const FIRST_SLOT_SEED := 20260901
-var world_seed: int = FIRST_SLOT_SEED
-## ПРОЦЕДУРНЫЙ ЛИ ЭТОТ МИР. Первый слот — «наша» карта: она лежит готовым файлом, к ней
-## возвращается тот, кто уже играл, и трогать её нельзя. Остальные считаются из сида и не имеют
-## края вовсе.
-##
-## Флаг лежит В ФАЙЛЕ МИРА, а не выводится из номера слота: это свойство мира, а не ячейки, в
-## которой он оказался. Иначе «пересоздать первый слот процедурным» было бы нечем выразить.
-var world_procedural: bool = false
+## ВСЕ СЛОТЫ ОДИНАКОВЫ: каждый новый мир — новый сид. У первого слота сид был постоянным, пока
+## он означал «нашу» карту из файла; файловых карт в игре больше нет, и слот-исключение означал
+## бы ровно одно — один и тот же мир у того, кто нажал «создать» три раза.
+var world_seed: int = 0
 
 ## Последний слот, в котором играли. Меню открывает «Продолжить» именно им.
 func last_slot() -> int:
@@ -110,7 +102,6 @@ func slot_info(n: int) -> Dictionary:
 func use_slot(n: int) -> void:
 	slot = clampi(n, 0, SLOT_COUNT - 1)
 	DirAccess.make_dir_recursive_absolute(slot_dir())
-	_migrate_legacy()
 	var f := FileAccess.open(LAST_SLOT_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(str(slot))
@@ -139,16 +130,6 @@ func _wipe(n: int, names: Array) -> void:
 		if FileAccess.file_exists(dir + String(file_name)):
 			DirAccess.remove_absolute(dir + String(file_name))
 
-func new_game(n: int, seed_value: int = 0) -> void:
-	_wipe(n, PROGRESS_FILES)
-	_wipe(n, WORLD_FILES)
-	use_slot(n)
-	# Сид может прийти снаружи: меню сначала СЧИТАЕТ мир по нему (полоса + стоп) и только потом,
-	# по «играть», стирает слот. Без этого стоп на середине уже уничтожил бы старый мир.
-	world_seed = FIRST_SLOT_SEED if n == 0 else (seed_value if seed_value != 0 else int(randi()) | 1)
-	world_procedural = n != 0
-	_save_world_seed()
-
 func roll_world_seed() -> int:
 	return int(randi()) | 1
 
@@ -164,7 +145,7 @@ func create_world(n: int, seed_value: int) -> void:
 	DirAccess.make_dir_recursive_absolute(slot_dir(n))
 	var f := FileAccess.open(slot_path(WORLD_META, n), FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"seed": seed_value, "proc": n != 0}))
+		f.store_string(JSON.stringify({"seed": seed_value}))
 		f.close()
 
 ## УДАЛЕНИЕ СЛОТА СТИРАЕТ И МИР, И ПРОХОЖДЕНИЕ — одно действие, потому что мир это сид: заново
@@ -177,53 +158,27 @@ func delete_world(n: int) -> void:
 	if n == slot:
 		use_slot(n)
 
-## ПЕРЕЕЗД СТАРОГО СЕЙВА В ПЕРВЫЙ СЛОТ. До слотов всё лежало прямо в user:// — и у того, кто
-## уже играл, эти файлы никуда не делись. Без переезда он открыл бы меню и увидел три пустых
-## мира вместо своего прохождения. Переносим ОДИН РАЗ и только в первый слот: он и есть «наша»
-## карта, тот же постоянный сид, что был у всех до появления слотов.
-##
-## ПЕРЕИМЕНОВЫВАЕМ, А НЕ КОПИРУЕМ: копия оставила бы в user:// вторую правду о том же мире, и
-## следующая версия однажды прочитала бы её вместо слота.
-const LEGACY_FILES := {
-	"user://progress.json": "progress.json",
-	"user://vehicle_builds.json": "vehicle_builds.json",
-	"user://world_save.json": "world_save.json",
-	"user://vehicle_layout.json": "vehicle_layout.json",
-	"user://terrain_height.bin": "terrain_height.bin",
-}
-
-func _migrate_legacy() -> void:
-	if slot != 0 or slot_used(0):
-		return                       # не первый слот или он уже занят — переносить нечего
-	var d := DirAccess.open("user://")
-	if d == null:
-		return
-	for src in LEGACY_FILES:
-		if FileAccess.file_exists(src):
-			d.rename(String(src).get_file(), "s0/" + String(LEGACY_FILES[src]))
-
 const WORLD_META := "world.json"
 
+## Сид слота с диска. Файла нет — слот открыли мимо меню (запуск сцены прямо из редактора):
+## бросаем новый и записываем, иначе мир менялся бы каждый запуск.
 func _load_world_seed() -> void:
-	world_seed = FIRST_SLOT_SEED if slot == 0 else FIRST_SLOT_SEED + slot * 7919
-	world_procedural = slot != 0
 	var p := slot_path(WORLD_META)
 	if not FileAccess.file_exists(p):
-		_save_world_seed()             # первый заход в слот — фиксируем сид сразу
+		world_seed = roll_world_seed()
+		_save_world_seed()
 		return
 	var f := FileAccess.open(p, FileAccess.READ)
 	if f == null:
 		return
 	var d = JSON.parse_string(f.get_as_text())
-	if d is Dictionary:
-		if d.has("seed"):
-			world_seed = int(d["seed"])
-		world_procedural = d.get("proc", world_procedural) == true
+	if d is Dictionary and d.has("seed"):
+		world_seed = int(d["seed"])
 
 func _save_world_seed() -> void:
 	var f := FileAccess.open(slot_path(WORLD_META), FileAccess.WRITE)
 	if f:
-		f.store_string(JSON.stringify({"seed": world_seed, "proc": world_procedural}))
+		f.store_string(JSON.stringify({"seed": world_seed}))
 		f.close()
 
 ## Обнулить всё, что живёт в памяти между слотами. G переживает смену сцены, и без этого

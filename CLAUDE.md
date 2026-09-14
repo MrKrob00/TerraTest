@@ -34,7 +34,9 @@ project: read it before claiming how anything works.
     directly under a `CanvasLayer` are positioned from code.
 13. Compare distances with `distance_squared_to()`; the square root is only for formulas.
 14. Terrain height is asked through `G.ground_y(point, fallback)` — raw `terrain_height_at` returns
-    zero before the heightmap is read.
+    zero before the terrain is up. `reset_heights` FORGETS THE TERRAIN EDITS and nothing else: the
+    ground comes from the seed, so there is no world to reset, and `world_persist._fresh_start`
+    calls it on the first line of every new save.
 15. Saves store blocks by **enum name**: renaming needs `LEGACY_BLOCK_KEYS`, removal needs the enum
     value kept plus a same-size entry in `RETIRED_BLOCKS`.
 16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
@@ -379,10 +381,11 @@ project: read it before claiming how anything works.
 - World and progress are separate: `WORLD_FILES` (seed + window cache) versus `PROGRESS_FILES`.
   The menu can create a world without starting it, reset a playthrough while keeping the map, or
   delete the world outright.
-- `G.world_seed` drives everything laid out randomly (veins, outposts, props); each consumer has its
-  own RNG and seed offset. `world_procedural` is stored in the world file, not derived from the slot
-  index.
-- Slot 1 is the file-based "original" map and absorbs the pre-slot save once, by renaming.
+- `G.world_seed` drives EVERYTHING: the ground itself (the chunked terrain computes it) and
+  everything laid out on it (veins, outposts, props), each consumer with its own RNG and seed
+  offset. ALL SLOTS ARE THE SAME — every new world is a new seed. Slot 1 used to be the "original"
+  map on a fixed seed, back when it meant a baked file; with no file maps left, a special slot would
+  only mean the same world three times.
 - CREATING A WORLD IS PICKING A SEED, and it is instant — `create_world(slot, seed)` writes one
   line. The menu used to compute a window of heights first (a minute with a bar and a Stop), hand it
   over through `G.pending_world` and cache it on disk; the chunked terrain reads none of that, so
