@@ -287,6 +287,11 @@ project: read it before claiming how anything works.
   a chunk costs (n+2)² raw heights instead of 5n² (`_sample_unit`) — four times less for the same
   answer. `begin_sampling` prepares the noises once on the main thread; after that the threads only
   read.
+- NEAREST FIRST, AND THE FIRST RING IS AROUND THE CAMERA. Both queues are sorted by distance to
+  the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
+  could be built before the one being looked at. Coming back is cheap only while the heights are
+  still cached (`HC_CAP`): rebuilding a mesh from them is vertices and colour, computing them again
+  is four times that from nothing.
 - THE LOADING SCREEN WAITS FOR THE GROUND UNDER THE PLAYER, not for the view distance: the 5×5 ring
   of level-0 chunks and their collision (`READY_RING`), and nothing else. The rest of the ring is
   already queued and arrives behind the fade. Nothing can be baked ahead: the seed is the slot's

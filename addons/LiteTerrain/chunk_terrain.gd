@@ -44,7 +44,7 @@ const LOD_QUALITY := 2.0
 
 @export_group("Build")
 ## Сколько узлов собираем за один заход пула потоков. Заход один — второй писал бы в те же слоты.
-@export_range(1, 64, 1) var build_batch: int = 12
+@export_range(1, 64, 1) var build_batch: int = 24
 ## Пересборок из-за смены соседа за тик. Шов на кадр-другой дешевле просадки.
 @export_range(1, 32, 1) var stitch_budget: int = 6
 @export var lod_interval: float = 0.15
@@ -101,8 +101,13 @@ var _live: Dictionary = {}
 ## key → true. Чего хочет камера в этот тик; из него же берётся уровень соседа.
 var _want: Dictionary = {}
 ## key → PackedFloat32Array(APRON²). Высоты узла. Их же берёт коллизия у уровня 0.
+##
+## ПОТОЛОК ЗДЕСЬ РЕШАЕТ, СКОЛЬКО СТОИТ ВЕРНУТЬСЯ НАЗАД. Пересобрать меш из готовых высот —
+## это вершины и цвет, миллисекунда; посчитать высоты заново — вчетверо дороже и с нуля. Пока
+## кеш был на 768 записей, отъезд на полкилометра и обратно означал пересчёт всего, что проехал.
+## Запись — 1.5 КБ, так что три тысячи их стоят четыре с половиной мегабайта.
 var _hc: Dictionary = {}
-const HC_CAP := 768
+const HC_CAP := 3072
 
 var _jobs: Array = []          # очередь мешей
 ## ОЧЕРЕДЬ ТАЙЛОВ КОЛЛИЗИИ — ОТДЕЛЬНАЯ И ПЕРВАЯ. Пока она была общей с мешами, тайл под колесом
@@ -128,7 +133,13 @@ func _ready() -> void:
 	var seed_value: int = forced_seed
 	if game != null and game.get("world_seed") != null:
 		seed_value = int(game.get("world_seed"))
-	await setup_procedural(seed_value)
+	# ОТ КАМЕРЫ, А НЕ ОТ НУЛЯ. Первое кольцо — это земля, которую игрок увидит в первый кадр, а
+	# ноль мира к ней отношения не имеет: камера уже стоит там, где начнётся игра.
+	_cam = _active_camera()
+	var start := Vector3.ZERO
+	if _cam != null:
+		start = global_transform.affine_inverse() * _cam.global_position
+	await setup_procedural(seed_value, start)
 	set_collision_streaming(true)
 	print("ChunkTerrain: сид %d, чанк %d, уровней %d, кольцо %d×%d за %d мс, узлов %d"
 			% [seed_value, CHUNK, MAX_LOD + 1, READY_RING * 2 + 1, READY_RING * 2 + 1,
@@ -575,6 +586,8 @@ func _enqueue_mesh(lod: int, gx: int, gz: int, sig: int) -> void:
 	_jobs.append({
 		"kind": JOB_MESH, "key": key, "lod": lod, "gx": gx, "gz": gz, "sig": sig,
 		"edits": _edits_in(gx * span, gz * span, span),
+		# Середина узла — по ней очередь потом сортируется от камеры (см. _sort_queues).
+		"cx": gx * span + span * 0.5, "cz": gz * span + span * 0.5, "d2": 0.0,
 	})
 
 func _enqueue_coll(bcx: int, bcz: int) -> void:
@@ -585,6 +598,7 @@ func _enqueue_coll(bcx: int, bcz: int) -> void:
 	_col_jobs.append({
 		"kind": JOB_COLL, "key": key, "lod": 0, "gx": bcx, "gz": bcz, "sig": 0,
 		"edits": _edits_in(bcx * float(CHUNK), bcz * float(CHUNK), float(CHUNK)),
+		"cx": bcx * CHUNK + CHUNK * 0.5, "cz": bcz * CHUNK + CHUNK * 0.5, "d2": 0.0,
 	})
 
 ## ДОЖДАТЬСЯ ЗАХОДА ПУЛА И ПРИНЯТЬ ЕГО. Зовёт тот, кто собирается тронуть то, что задания читают
@@ -596,6 +610,22 @@ func _drain() -> void:
 	_group = -1
 	_busy = false
 	_apply_batch()
+
+## БЛИЖНЕЕ СЧИТАЕТСЯ ПЕРВЫМ. Очередь набирается обходом дерева, то есть в порядке клеток верхнего
+## уровня, и без сортировки узел в километре мог родиться раньше того, на который игрок смотрит:
+## земля вокруг проявлялась кусками откуда попало.
+func _sort_queues(cam: Vector3) -> void:
+	for q in [_col_jobs, _jobs]:
+		if q.size() < 2:
+			continue
+		for j in q:
+			var dx: float = j["cx"] - cam.x
+			var dz: float = j["cz"] - cam.z
+			j["d2"] = dx * dx + dz * dz
+		q.sort_custom(_nearer)
+
+func _nearer(a: Dictionary, b: Dictionary) -> bool:
+	return a["d2"] < b["d2"]
 
 ## Один заход пула за раз: задания пишут в _out по своему номеру, а второй заход переписал бы
 ## и массив, и поля под первым.
@@ -812,7 +842,7 @@ var _col: Dictionary = {}        # key → CollisionShape3D
 var _col_seen: Dictionary = {}   # key → когда тайл был нужен в последний раз
 var _col_bodies: Array = []
 var _col_active: bool = false
-const COL_TILE_GRACE := 3.0
+const COL_TILE_GRACE := 6.0
 
 func set_collision_streaming(on: bool) -> void:
 	_col_active = on and enable_streaming_collision
@@ -1126,14 +1156,15 @@ func _process(delta: float) -> void:
 				_enqueue_mesh(n["lod"], n["gx"], n["gz"], sig)
 				left -= 1
 	_retire(now)
+	_sort_queues(cam_local)
 	_pf_mark("terrain_lod", t0)
 
 ## УШЕДШЕЕ ИЗ КАДРА ПРЯЧЕМ, А НЕ ВЫБРАСЫВАЕМ. Поворот камеры меняет половину видимого набора, и
 ## освобождать меши сразу значит собирать ту же сотню узлов заново через секунду — терраса за
 ## спиной появлялась бы кусками. Меш живёт NODE_GRACE секунд после того, как перестал быть
 ## нужен, и выбрасывается раньше только когда их накопилось больше LIVE_CAP.
-const NODE_GRACE := 8.0
-const LIVE_CAP := 320
+const NODE_GRACE := 15.0
+const LIVE_CAP := 420
 
 func _retire(now: float) -> void:
 	var over: int = _live.size() - LIVE_CAP
