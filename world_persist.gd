@@ -11,6 +11,25 @@ extends Node
 const SAVE_FILE := "world_save.json"
 const BAD_SAVE_FILE := "world_save.bad.json"          # a save that failed to load is moved here
 const SAFE_CLEARANCE := 2.0         # lift above terrain when restoring
+## ВЫШЕ ЭТОГО НАД ЗЕМЛЁЙ — ЗНАЧИТ ЗЕМЛЯ ПОД НИМ СТАЛА ДРУГОЙ. Мир считается из сида ВМЕСТЕ С
+## ПАРАМЕТРАМИ генератора: правка формы каньонов или высоты — и в старом слоте вся земля другая, а
+## сохранённый y остаётся прежним. База оказывается либо внутри холма, либо висит над ямой.
+##
+## Поэтому из сейва берём X/Z как есть, а высоту СВЕРЯЕМ С ЗЕМЛЁЙ: не совпало — сажаем на неё.
+## Четыре метра — это запас на склон и на то, что высота спрашивается в начале координат машины,
+## а не под каждым колесом; «стоял на возвышении» столько не даёт.
+const MAX_CLEARANCE := 4.0
+
+## Высота по земле: из сейва X/Z, y — от рельефа. Одна дверь для машин и для лежащих блоков.
+func _over_ground(pos: Vector3, terr: Node) -> Vector3:
+	if terr == null or not terr.has_method("terrain_height_at"):
+		return pos
+	var ground: float = terr.terrain_height_at(pos)
+	if pos.y > ground + MAX_CLEARANCE:
+		pos.y = ground + SAFE_CLEARANCE        # мир под ним другой — сажаем
+	else:
+		pos.y = maxf(pos.y, ground + SAFE_CLEARANCE)
+	return pos
 # The terrain is a heightmap with nothing under the surface, so a body that falls through drops
 # hundreds of metres. The threshold is generous: terrain_height_at samples at the body's XZ, and at
 # the foot of a cliff that is noticeably higher than where the body legitimately stands - too
@@ -651,7 +670,10 @@ func _load_world() -> void:
 	for wb in data.get("world_blocks", []):
 		var p = wb.get("pos", [0, 0, 0])
 		var r = wb.get("rot", [0, 0, 0])
-		var b := _spawn_world_block(G.block_from_key(wb.get("block", 0)), Vector3(p[0], p[1], p[2]),
+		# Лежащий блок — по той же сверке с землёй, что и машина: иначе после правки генерации
+		# половина мира оказывается закопанной, а вторая висит.
+		var b := _spawn_world_block(G.block_from_key(wb.get("block", 0)),
+				_over_ground(Vector3(p[0], p[1], p[2]), _ready_terrain()),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
 		if b != null and String(wb.get("quest", "")) != "":
 			b.set_meta("quest_id", String(wb["quest"]))   # снова квестовый, а не мусор
@@ -748,7 +770,7 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	if p != null:
 		var pos := Vector3(p[0], p[1], p[2])
 		if terr != null:
-			pos.y = maxf(pos.y, terr.terrain_height_at(pos) + SAFE_CLEARANCE)
+			pos = _over_ground(pos, terr)
 		else:
 			# The saved height must not be applied unchecked: if a past bug left it underground the machine
 			# starts inside the world and falls. Take X/Z only and keep the spawn height, which is safely above

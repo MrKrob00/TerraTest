@@ -436,7 +436,12 @@ func _refresh_hp_fx() -> void:
 	_hp_dmg = dmg
 	# Debris carries no damage overlay (see _set_debris_render): an extra draw call and a
 	# shader each, on numbers nobody reads off a pile of scrap.
-	var debris: bool = get_parent() != null and get_parent().name == "objects"
+	#
+	# КВЕСТОВЫЙ БЛОК — ИСКЛЮЧЕНИЕ. Его состояние и есть задание: аккумулятор из жилы побит
+	# намеренно, и «в жиле побитый, а выпал целым» — это не починка, это цифры, спрятанные ровно
+	# в тот момент, когда блок стал лежащим. Таких блоков в мире единицы.
+	var debris: bool = get_parent() != null and get_parent().name == "objects" \
+			and not has_meta("quest_id")
 	if debris or (dmg <= 0.001 and healed <= 0.001):
 		if is_instance_valid(_hp_fx):
 			_hp_fx.visible = false
