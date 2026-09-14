@@ -1718,6 +1718,12 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 	_sync_hand()                         # рука могла опустеть мимо очистки — см. hand_node()
 	var used: bool = false
 	if block_take:
+		# НАВОДИМСЯ ЗАНОВО, ПО ЭТОМУ ЖЕ ТАПУ. Постановка читает _preview_res и BuildingBlock —
+		# то, что оставил ПОСЛЕДНИЙ проход наводки. На мобилке подтверждение приходит вторым
+		# тапом, палец к этому моменту мог сдвинуться, а машине-делегату отдельного прохода
+		# наводки в этот кадр могло не прийти вовсе: ставили туда, куда показывали РАНЬШЕ, а
+		# отказ (клетка занята) выглядел как «блок просто не ставится».
+		_handle_click(screen_pos)
 		_on_take_pressed()               # поставить блок из руки (или наземное ядро — кабина/база)
 		used = true                      # блок в руке — жест наш в любом случае
 	else:
@@ -1973,10 +1979,16 @@ func _on_take_pressed() -> void:
 		var tgt_blocks: Node = tgt.get_node_or_null("blocks")
 		if bmn == null or tgt_blocks == null:
 			return
+		# ОТКАЗ ГОВОРИТ ПРИЧИНУ. Молчаливый return здесь читается одинаково с «я промахнулся»
+		# и с «блок в руке остался»: игрок видит призрак на месте и не понимает, поставлен блок
+		# или только примерен — а в гараже он потом ещё и «пропадает в инвентарь» (закрытие
+		# гаража возвращает руку в инвентарь).
 		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
+			Dialogue.say("System", "That cell is taken.")
 			return
 		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
 		if not bmn.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
+			Dialogue.say("System", "Nothing to bolt onto there.")
 			return
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
