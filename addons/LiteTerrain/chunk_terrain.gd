@@ -51,8 +51,13 @@ const LOD_QUALITY := 2.0
 
 @export_group("Collision")
 @export var enable_streaming_collision: bool = true
-## Клеток вокруг тела, которым даём землю.
-@export_range(4, 256, 4) var collision_radius: int = 10
+## Клеток вокруг тела, которым даём землю. Радиус должен покрывать не только то, где тело стоит,
+## но и то, куда оно едет: тайл теперь СЧИТАЕТСЯ, а не режется из готового массива, и просить его
+## в момент въезда — значит въехать в пустоту.
+@export_range(4, 256, 4) var collision_radius: int = 12
+## На сколько секунд вперёд смотрим по скорости тела. Машина на 15 м/с за это время проезжает
+## больше чанка, и тайл успевает родиться до того, как под колесом кончится земля.
+@export_range(0.0, 3.0, 0.1) var collision_lookahead: float = 1.2
 
 @export_group("Procedural")
 @export var world_seed: int = 0
@@ -95,7 +100,11 @@ var _want: Dictionary = {}
 var _hc: Dictionary = {}
 const HC_CAP := 768
 
-var _jobs: Array = []          # очередь заданий (меш или тайл коллизии)
+var _jobs: Array = []          # очередь мешей
+## ОЧЕРЕДЬ ТАЙЛОВ КОЛЛИЗИИ — ОТДЕЛЬНАЯ И ПЕРВАЯ. Пока она была общей с мешами, тайл под колесом
+## ждал, когда посчитаются десятки узлов, которые игрок только увидит: земля под машиной
+## кончалась каждые несколько метров. Меш — это то, на что смотрят, тайл — то, по чему едут.
+var _col_jobs: Array = []
 var _batch: Array = []         # то, что считает пул прямо сейчас
 var _out: Array = []           # результаты пула, по одному на задание
 var _group: int = -1
@@ -213,6 +222,7 @@ func stop_generation() -> void:
 		_group = -1
 	_busy = false
 	_jobs.clear()
+	_col_jobs.clear()
 	_pending_dirty.clear()
 	_batch.clear()
 	_out.clear()
@@ -568,7 +578,7 @@ func _enqueue_coll(bcx: int, bcz: int) -> void:
 	if _col.has(key) or _queued.has(key | (1 << 50)):
 		return
 	_queued[key | (1 << 50)] = true
-	_jobs.append({
+	_col_jobs.append({
 		"kind": JOB_COLL, "key": key, "lod": 0, "gx": bcx, "gz": bcz, "sig": 0,
 		"edits": _edits_in(bcx * float(CHUNK), bcz * float(CHUNK), float(CHUNK)),
 	})
@@ -595,10 +605,15 @@ func _job_tick() -> void:
 		_apply_batch()
 		while not _pending_dirty.is_empty():
 			_invalidate(_pending_dirty.pop_front())
-	if _jobs.is_empty() or _gen == null:
+	if _gen == null or (_jobs.is_empty() and _col_jobs.is_empty()):
 		return
-	_batch = _jobs.slice(0, build_batch)
-	_jobs = _jobs.slice(_batch.size())
+	# Сначала коллизия, целиком: её очередь короткая (тайлы вокруг тел), а ждать её нельзя.
+	_batch = _col_jobs.slice(0, build_batch)
+	_col_jobs = _col_jobs.slice(_batch.size())
+	if _batch.size() < build_batch:
+		var rest: int = build_batch - _batch.size()
+		_batch.append_array(_jobs.slice(0, rest))
+		_jobs = _jobs.slice(mini(rest, _jobs.size()))
 	_out.clear()
 	_out.resize(_batch.size())
 	_busy = true
@@ -628,7 +643,7 @@ func _build_job(i: int) -> void:
 
 ## Задание пула, снаружи: сколько узлов ждёт сборки.
 func pending_jobs() -> int:
-	return _jobs.size() + (_batch.size() if _busy else 0)
+	return _jobs.size() + _col_jobs.size() + (_batch.size() if _busy else 0)
 
 func _apply_batch() -> void:
 	for i in _batch.size():
@@ -871,11 +886,18 @@ func _col_tick() -> void:
 			continue
 		if body is RigidBody3D and (body as RigidBody3D).sleeping and not (body as RigidBody3D).freeze:
 			continue
-		var p: Vector3 = inv * body.global_position
-		var bx0: int = int(floor((p.x - r) / CHUNK))
-		var bx1: int = int(floor((p.x + r) / CHUNK))
-		var bz0: int = int(floor((p.z - r) / CHUNK))
-		var bz1: int = int(floor((p.z + r) / CHUNK))
+		# КОРИДОР, А НЕ ТОЧКА: землю просим и там, где тело стоит, и там, где оно окажется через
+		# collision_lookahead секунд. Тайл теперь считается, и просить его в момент въезда значит
+		# въехать в пустоту. Сдвигать окно целиком вперёд нельзя — на большой скорости тело
+		# выпало бы из собственного окна.
+		var p0: Vector3 = inv * body.global_position
+		var p1: Vector3 = p0
+		if collision_lookahead > 0.0 and body is RigidBody3D:
+			p1 += inv.basis * ((body as RigidBody3D).linear_velocity * collision_lookahead)
+		var bx0: int = int(floor((minf(p0.x, p1.x) - r) / CHUNK))
+		var bx1: int = int(floor((maxf(p0.x, p1.x) + r) / CHUNK))
+		var bz0: int = int(floor((minf(p0.z, p1.z) - r) / CHUNK))
+		var bz1: int = int(floor((maxf(p0.z, p1.z) + r) / CHUNK))
 		for bz in range(bz0, bz1 + 1):
 			for bx in range(bx0, bx1 + 1):
 				want[_key(0, bx, bz)] = Vector2i(bx, bz)

@@ -295,7 +295,11 @@ project: read it before claiming how anything works.
   node lays its extra edge vertices on the segment between the ones it shares with the coarser. A
   corner vertex is a multiple of any neighbour step, so two snapped edges never argue.
 - A collision tile IS a base chunk, cut from the same heights as the level-0 mesh — under a near
-  chunk it costs nothing. Terrain edits are a LIST applied on top of the generator in one function
+  chunk it costs nothing. ITS QUEUE IS SEPARATE AND FIRST: a tile is what the machine drives on, a
+  mesh is what it looks at, and behind one shared queue the ground ran out every few metres. Tiles
+  are asked for along the body's CORRIDOR (where it is plus where it will be in
+  `collision_lookahead` seconds), never by moving the window ahead — at speed the body would leave
+  its own window. Terrain edits are a LIST applied on top of the generator in one function
   (mesh, collision and height query all go through it); there is nothing to bake.
 - The ground is drawn three ways at once — chunk meshes, the merged macro mesh, and coarse quadtree
   node meshes — and all three are stitched through one answer, `_drawn_step_at`. Seam signatures are
