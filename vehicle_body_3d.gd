@@ -402,6 +402,49 @@ const BUILD_MOVE_SPEED := 4.0         # медленно (u/с) — это не 
 const BUILD_HOVER_CLEARANCE := 4.0    # высота парения над рельефом в стройке
 var _terr_cache: Node = null
 
+## ГАБАРИТ МАШИНЫ ПО XZ, в метрах и в её собственных осях. Нужен парению в стройке: высоту надо
+## мерить ПОД ВСЕЙ МАШИНОЙ, а начало координат — это кабина.
+##
+## Считаем по занятым КЛЕТКАМ, а не по мешам: клетка и есть габарит блока, а модель бывает и
+## крупнее, и мельче своей клетки.
+var _bmin: Vector2 = Vector2(-0.5, -0.5)
+var _bmax: Vector2 = Vector2(0.5, 0.5)
+
+func _measure_footprint() -> void:
+	_bmin = Vector2(-0.5, -0.5)
+	_bmax = Vector2(0.5, 0.5)
+	if block_map_node == null or not is_instance_valid(block_map_node):
+		return
+	var mn := Vector2(INF, INF)
+	var mx := Vector2(-INF, -INF)
+	for b in block_map_node.get_children():
+		if not (b is Node3D):
+			continue
+		var p: Vector3 = (b as Node3D).position
+		mn = Vector2(minf(mn.x, p.x), minf(mn.y, p.z))
+		mx = Vector2(maxf(mx.x, p.x), maxf(mx.y, p.z))
+	if mn.x > mx.x:
+		return
+	_bmin = mn - Vector2(0.5, 0.5)
+	_bmax = mx + Vector2(0.5, 0.5)
+
+## САМАЯ ВЫСОКАЯ ЗЕМЛЯ ПОД МАШИНОЙ — по её углам и середине, а не под началом координат.
+##
+## Под кабиной земля может быть низкой, а хвост в это время упирается в склон: машина «цеплялась»
+## за гору и дальше не поднималась. Пять отсчётов, и высоты они спрашивают через запомненные узлы
+## сетки, так что это почти бесплатно.
+func _ground_under_machine() -> float:
+	var terr := _get_terrain()
+	if terr == null or not terr.has_method("terrain_height_at"):
+		return global_position.y - BUILD_HOVER_CLEARANCE
+	var mid := (_bmin + _bmax) * 0.5
+	var corners := [_bmin, Vector2(_bmax.x, _bmin.y), Vector2(_bmin.x, _bmax.y), _bmax, mid]
+	var top: float = -INF
+	for c in corners:
+		var wp: Vector3 = global_position + global_transform.basis * Vector3(c.x, 0.0, c.y)
+		top = maxf(top, terr.terrain_height_at(wp))
+	return top
+
 func _get_terrain() -> Node:
 	if _terr_cache == null or not is_instance_valid(_terr_cache):
 		_terr_cache = _find_terrain()
@@ -576,9 +619,7 @@ func _physics_body(delta: float) -> void:
 		return                      # на якоре не ездим (freeze держит тело)
 	if Building:
 		if not is_station:
-			var terr := _get_terrain()
-			if terr != null:
-				map = terr.terrain_height_at(global_position) + BUILD_HOVER_CLEARANCE
+			map = _ground_under_machine() + BUILD_HOVER_CLEARANCE
 		var err := map - global_position.y
 		linear_velocity.y = clampf(err * 6.0, -6.0, 6.0)
 		var h := clampf(delta * 8.0, 0.0, 1.0)
@@ -938,8 +979,12 @@ func _on_building_pressed() -> void:
 	# сдвиг координаты просто ТЕЛЕПОРТИРУЕТ машину вверх, где она и повисает — Movement высоту
 	# не возвращает. Проверять хватало is_station (наземная база), но машина на ОПОРЕ станцией
 	# не является: подобрал блок в руку → включилась стройка → база с фабрикой улетела вверх.
+	_measure_footprint()
 	if not is_station and not anchored:
-		global_position.y += 4          # подброс для стройки в воздухе; выравнивание — плавно в _physics_process
+		# ПОДБРАСЫВАЕМ НАД САМОЙ ВЫСОКОЙ ЗЕМЛЁЙ ПОД МАШИНОЙ, а не на четыре метра от того места,
+		# где стояли. У горы это разные вещи: под кабиной низко, под хвостом склон.
+		var want: float = _ground_under_machine() + BUILD_HOVER_CLEARANCE
+		global_position.y = maxf(global_position.y + 4.0, want)
 	map = global_position.y
 
 # Интерактивные узлы HUD, тап по которым НЕ должен наводить блок в мир.
@@ -1681,6 +1726,7 @@ func _pick_selected_block() -> bool:
 # Гараж открыт ВСЮ стройку (вкладка СТРОЙКА), поэтому вес и характеристики пересчитываем
 # на каждом блоке, а не только при заходе в инвентарь.
 func _notify_build_changed() -> void:
+	_measure_footprint()            # габарит поменялся — парение в стройке меряет по нему
 	var hud: CanvasLayer = camera_controller.hud \
 			if (camera_controller != null and "hud" in camera_controller) else null
 	if hud != null and hud.has_method("notify_build_changed"):

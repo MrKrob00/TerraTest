@@ -116,6 +116,10 @@ project: read it before claiming how anything works.
 
 ### Building
 
+- BUILD MODE HOVERS OVER THE HIGHEST GROUND UNDER THE MACHINE, sampled at the corners and centre of
+  its cell footprint — not under the origin, which is the cabin. Against a mountain those are
+  different numbers: low under the cabin, a slope under the tail, and the machine caught on the hill
+  instead of rising over it.
 - Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
   — one door, `G.block_available` / `G.consume_block`, used by the garage, the block globe and the
   serial-build refill. Asking in one place and deducting in another is how a build starts taking
