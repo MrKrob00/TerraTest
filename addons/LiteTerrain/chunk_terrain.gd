@@ -46,7 +46,7 @@ const LOD_QUALITY := 2.0
 ## Сколько узлов собираем за один заход пула потоков. Заход один — второй писал бы в те же слоты.
 @export_range(1, 64, 1) var build_batch: int = 24
 ## Пересборок из-за смены соседа за тик. Шов на кадр-другой дешевле просадки.
-@export_range(1, 32, 1) var stitch_budget: int = 6
+@export_range(1, 64, 1) var stitch_budget: int = 16
 @export var lod_interval: float = 0.15
 
 @export_group("Collision")
@@ -141,9 +141,11 @@ func _ready() -> void:
 		start = global_transform.affine_inverse() * _cam.global_position
 	await setup_procedural(seed_value, start)
 	set_collision_streaming(true)
-	print("ChunkTerrain: сид %d, чанк %d, уровней %d, кольцо %d×%d за %d мс, узлов %d"
-			% [seed_value, CHUNK, MAX_LOD + 1, READY_RING * 2 + 1, READY_RING * 2 + 1,
-				_ready_ms, _live.size()])
+	# ГОВОРИМ, ТОЛЬКО ЕСЛИ ЗАГРУЗКА БЫЛА ДОЛГОЙ. Строка о каждом удачном входе — это строка,
+	# которую перестают читать; число нужно ровно тогда, когда кольцо не уложилось в мгновение.
+	if _ready_ms > READY_SLOW_MS:
+		print("ChunkTerrain: кольцо %d×%d за %d мс, сид %d"
+				% [READY_RING * 2 + 1, READY_RING * 2 + 1, _ready_ms, seed_value])
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
@@ -190,6 +192,8 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 ## больше ничего. Остальное кольцо к этому моменту уже в очереди (его просит _process), но ждать
 ## его под экраном загрузки незачем: оно доедет за спиной у затемнения. Пока условием выхода была
 ## пустая очередь, загрузка держалась до последнего узла на всю дальность видимости.
+## Дольше этого — повод сказать об этом в лог.
+const READY_SLOW_MS := 400
 const READY_RING := 2        # чанков в каждую сторону: 5×5 по 16 м = 80 м вокруг точки старта
 
 ## Сколько заняло первое кольцо, мс. Печатается при входе в мир: «быстро или медленно» — это не
@@ -485,7 +489,17 @@ func _level_of(bcx: int, bcz: int) -> int:
 			return l
 	return -1
 
-func _side_k(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
+## ЧТО У НАС ПО ЭТУ СТОРОНУ. Младшие четыре бита — насколько сосед КРУПНЕЕ (к его решётке надо
+## притянуть край), бит 4 — уровни просто РАЗНЫЕ, в любую сторону.
+##
+## Второе нужно ровно из-за травы. Шейдер поднимает травинку, двигая вершину, и на шве это
+## законно только если обе стороны двигают её одинаково. Крупный сосед о мелком не знает, его
+## край никто не притягивает — значит он поднимал свои вершины, мелкий свои нет, и вдоль шва
+## открывалась щель. Поэтому траву гасят ОБЕ стороны, а не только притянутая.
+const SIDE_BITS := 8
+const SIDE_DIFF := 0x10
+
+func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
 	var n: int = 1 << lod
 	var bx: int = gx * n
 	var bz: int = gz * n
@@ -500,18 +514,23 @@ func _side_k(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
 		a = Vector2i(bx, pz)
 		b = Vector2i(bx + n - 1, pz)
 	var k := 0
+	var diff := false
 	for p in [a, b]:
 		var l := _level_of(p.x, p.y)
+		if l < 0:
+			continue                       # там ничего не рисуется — шва нет
+		if l != lod:
+			diff = true
 		if l > lod:
 			k = maxi(k, l - lod)
-	return mini(k, 4)
+	return mini(k, 4) | (SIDE_DIFF if diff else 0)
 
-## Четыре соседа в одном числе: по четыре бита на сторону — насколько сосед КРУПНЕЕ.
+## Четыре соседа в одном числе, по байту на сторону: север, юг, запад, восток.
 func _signature(lod: int, gx: int, gz: int) -> int:
-	return _side_k(lod, gx, gz, 0, -1) \
-		| (_side_k(lod, gx, gz, 0, 1) << 4) \
-		| (_side_k(lod, gx, gz, -1, 0) << 8) \
-		| (_side_k(lod, gx, gz, 1, 0) << 12)
+	return _side_info(lod, gx, gz, 0, -1) \
+		| (_side_info(lod, gx, gz, 0, 1) << SIDE_BITS) \
+		| (_side_info(lod, gx, gz, -1, 0) << (SIDE_BITS * 2)) \
+		| (_side_info(lod, gx, gz, 1, 0) << (SIDE_BITS * 3))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Спуск по дереву: что рисовать в этот тик
@@ -751,10 +770,14 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 	# ПРИТЯГИВАНИЕ КРАЯ К КРУПНОМУ СОСЕДУ. Его вершины стоят через r наших, и лишние мы кладём
 	# на прямую между ними — ту самую, которой сосед и рисует свой край. Угловые вершины кратны
 	# любому r, так что два края в углу друг другу не мешают.
-	var kn: int = sig & 0xF
-	var ks: int = (sig >> 4) & 0xF
-	var kw: int = (sig >> 8) & 0xF
-	var ke: int = (sig >> 12) & 0xF
+	var sn: int = sig & 0xFF
+	var ss: int = (sig >> SIDE_BITS) & 0xFF
+	var sw: int = (sig >> (SIDE_BITS * 2)) & 0xFF
+	var se: int = (sig >> (SIDE_BITS * 3)) & 0xFF
+	var kn: int = sn & 0xF
+	var ks: int = ss & 0xF
+	var kw: int = sw & 0xF
+	var ke: int = se & 0xF
 	if kn > 0:
 		_snap_row(vh, 0, 1 << kn, true)
 	if ks > 0:
@@ -791,8 +814,11 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 			var wp := Vector2(x0 + float(i) * step, wz)
 			# .r — трава (0 там, где вершину притянули: поднятая травинка снова раскрыла бы шов),
 			# .g каньон, .b луг, .a горы. Цвет земли живёт в вершинах, шейдер их только читает.
-			var seam := (j == 0 and kn > 0) or (j == VERTS - 1 and ks > 0) \
-					or (i == 0 and kw > 0) or (i == VERTS - 1 and ke > 0)
+			# Шов — это РАЗНЫЕ уровни, а не только «сосед крупнее»: траву гасят обе стороны.
+			var seam := (j == 0 and (sn & SIDE_DIFF) != 0) \
+					or (j == VERTS - 1 and (ss & SIDE_DIFF) != 0) \
+					or (i == 0 and (sw & SIDE_DIFF) != 0) \
+					or (i == VERTS - 1 and (se & SIDE_DIFF) != 0)
 			cols[vi] = Color(0.0 if seam else 1.0,
 					b.canyon_mask(wp, nz_cb), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
 

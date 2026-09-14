@@ -940,7 +940,6 @@ func save_layout() -> void:
 	var file: FileAccess = FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.WRITE)
 	file.store_string(json_string)
 	file.close()
-	print("Машина сохранена: ", G.slot_path(SAVE_FILE))
 
 func load_layout() -> void:
 	if not FileAccess.file_exists(G.slot_path(SAVE_FILE)):
@@ -964,7 +963,6 @@ func load_layout() -> void:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 
 	_spawn_all()
-	print("Машина загружена!")
 
 func get_layout() -> Array:
 	var blocks_array: Array = []

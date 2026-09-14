@@ -544,12 +544,10 @@ func _ready() -> void:
 		await get_tree().process_frame   # a frame BEFORE the full scan, which is heavy and unbroken
 		_full_scan()
 	await get_tree().process_frame       # and one after, so a screen fade starts without a hitch
-	# ОДНА СТРОКА О ТОМ, ЧТО ПОДНЯЛОСЬ. Все отказы тут молчали: пустой md означает и отсутствие
-	# мешей, и отсутствие коллизии (_setup_streaming_collision выходит первой строкой), а в логе
-	# при этом не было НИЧЕГО — ни ошибки, ни признака, каким путём вообще пошли.
-	print("LiteTerrain: %s, %d×%d, высот %d, окно от (%d, %d)%s"
-			% ["процедурный" if proc_world else "из файла", w, d, md.size(), _win_x, _win_z,
-				"  — ПУСТО, земли не будет" if md.is_empty() else ""])
+	# ПУСТОЙ md — ЭТО МОЛЧАЛИВЫЙ ОТКАЗ: нет ни мешей, ни коллизии. Об этом говорим, об удачном
+	# подъёме — нет: карты меню поднимаются раз в тридцать секунд, и строка о каждой была спамом.
+	if md.is_empty():
+		push_warning("LiteTerrain: %d×%d, высот нет — земли не будет" % [w, d])
 	terrain_is_ready = true          # the near terrain is up; a loading screen can leave
 	terrain_ready.emit()
 
@@ -1242,66 +1240,17 @@ var gen_frac: float = 0.0
 ## пересобираются (_rebuild_after_window_move), а коллизия переиндексируется отдельно, и выходило
 ## «коллизия есть, картинки нет». Держим до перехода на чанковое хранилище, где сдвига окна не
 ## будет вовсе.
-##
-## КРАЙ ЛЮБОЙ КАРТЫ ПЕРЕСТАЁТ БЫТЬ ОБРЫВОМ.
-##
-## Запечённая карта — это только СЕРЕДИНА мира: за её краем земли нет вовсе, и машина уезжает в
-## пустоту, падает, её поднимает спасалка, и так по кругу. Раньше генератор ставил ТОЛЬКО
-## процедурный слот (setup_procedural), а в слоте с файлом world_gen оставался null — то есть
-## подвижка окна была выключена целиком, молча, в самой первой своей проверке.
-##
-## Теперь генератор есть и у файловой карты: сами высоты по-прежнему читаются с диска, но окно
-## доращивает полосы из сида ровно тем же кодом, что и в процедурном мире.
-##
-## ВЫСОТУ БЕРЁМ ТУ, С КОТОРОЙ КАРТА ПЕЧАТАЛАСЬ (world_height → built_amplitude), а не из умолчаний
-## генератора: у запечённой карты это 130, у DEF_AMPLITUDE — 30, и свежая полоса вышла бы вчетверо
-## площе, то есть на стыке встала бы ступень в сотню метров.
-##
-## В редакторе сюда не попадаем (_ready выходит раньше), поэтому запекание из дока не ломается:
-## bake_heights отказывается работать при живом генераторе намеренно.
-func _ensure_edge_generator() -> void:
-	# ТОЛЬКО МИР ИГРЫ. Авторская карта в меню (follow_world_settings = false) никуда не едет и
-	# доращивать её незачем; свои процедурные карты меню поднимает через force_procedural.
-	if not follow_world_settings:
-		return
-	if world_gen != null and is_instance_valid(world_gen):
-		return
-	if md.is_empty() or w <= 0 or d <= 0:
-		return
-	var gen := LiteTerrainGen.new()
-	add_child(gen)
-	var game: Node = get_node_or_null("/root/G")
-	gen.gen_seed = int(game.get("world_seed")) if game != null else 0
-	var p: Dictionary = _proc_params()
-	p["amplitude"] = world_height()
-	gen.apply_params(p)
-	world_gen = gen
-	print("LiteTerrain: край карты доращивается генератором, сид %d, высота %.0f"
-			% [gen.gen_seed, world_height()])
 
 ## Поднять процедурный мир: собрать генератор, поставить окно вокруг точки и посчитать первую
-## землю. Зовёт игра, когда слот процедурный; после этого файлы высот не читаются вовсе.
+## землю. Зовёт меню для своих раундов; земля игры живёт в chunk_terrain.gd и сюда не заходит.
 func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
-	# Готовая земля из меню, если она есть (menu.gd считает её ДО входа в игру, с полосой и
-	# стопом). Параметры берём ОТТУДА же: окно потом досчитывает полосы своим генератором, и
-	# разойдись они с теми, по которым посчитано начало, — на границе был бы шов.
-	var handoff: Dictionary = {}
-	var game: Node = get_node_or_null("/root/G")
-	if game != null and game.has_method("take_pending_world"):
-		handoff = game.take_pending_world(seed_value, window_size)
-	# Памяти нет — берём кеш окна с диска: мир мог быть посчитан в меню в прошлый заход.
-	var src: String = "меню" if not handoff.is_empty() else ""
-	if handoff.is_empty() and game != null and game.has_method("read_world_window"):
-		handoff = game.read_world_window(seed_value, window_size)
-		if not handoff.is_empty():
-			src = "кеш слота"
-	if src == "":
-		src = "считаем сейчас"
-	print("LiteTerrain: процедурный мир, сид %d, окно %d, земля — %s" % [seed_value, window_size, src])
+	# ГОТОВОЙ ЗЕМЛИ СНАРУЖИ БОЛЬШЕ НЕ БЫВАЕТ. Меню считало мир нового слота заранее и передавало
+	# его сюда (G.pending_world) плюс кешем на диске. Землю игры теперь считает чанковый рельеф по
+	# ходу движения, тот массив не читает никто, и передавать нечего: карта считает своё окно сама.
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
-	gen.apply_params(handoff.get("params", _proc_params()))
+	gen.apply_params(_proc_params())
 	# A PROCEDURAL WORLD KNOWS ITS OWN HEIGHT: it is the parameter the run uses, whether it came from
 	# the exports or with the world handed over by the menu. Recording it here is what lets the snow
 	# line be right in a slot whose ground was computed somewhere else entirely.
@@ -1311,15 +1260,6 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	d = window_size
 	_win_x = int(floor(around.x)) - int(w / 2)
 	_win_z = int(floor(around.z)) - int(d / 2)
-	if not handoff.is_empty():
-		var win: Vector2i = handoff["win"]
-		_win_x = win.x
-		_win_z = win.y
-		md = handoff["md"]
-		# Обычно смещение биомов ставит сам прогон (terrain_gen._run_passes). Тут прогона нет.
-		_biomes().mask_offset = TerrainBiomes.offset_for_seed(seed_value)
-		_recompute_height_bound()
-		return
 	# ХОД ГЕНЕРАЦИИ — НАРУЖУ, и это не отладка. В новом слоте земли на диске нет вовсе: она
 	# считается здесь и сейчас, и это единственная стадия загрузки, которая может идти минуту.
 	# Без живой доли экран загрузки не отличает её от чтения готового файла — и снимает себя
@@ -3615,7 +3555,6 @@ func _process(delta: float) -> void:
 		var want := _window_target(cam_local)
 		if want.x != _win_x or want.y != _win_z:
 			recenter_window(want.x, want.y)
-	_window_watch(cam_local)
 
 	# ── Background chunk streaming ────────────────────────────────────────────
 	if _is_streaming:
@@ -4387,36 +4326,3 @@ func _aabb_in_frustum(aabb: AABB, frustum: Array[Plane], margin: float) -> bool:
 		if plane.distance_to(Vector3(nx, ny, nz)) > margin:
 			return false
 	return true
-
-## ПОЧЕМУ ОКНО НЕ ЕДЕТ — ОДНОЙ СТРОКОЙ И РОВНО В МОМЕНТ ОТКАЗА.
-##
-## Гейтов у подвижки четыре (камера, генератор, занятость, готовность массива), и каждый из них
-## молча ничего не делает. Снаружи это выглядит одинаково: мир кончился на краю окна. Печатаем
-## один раз на смену состояния, чтобы в логе была причина, а не её отсутствие.
-var _ww_last: String = ""
-
-func _window_watch(cam_local: Vector3) -> void:
-	var cx: float = cam_local.x + _cell_ox() - 0.5
-	var cz: float = cam_local.z + _cell_oz() - 0.5
-	# Молчим, пока камера далеко от края: запас взят такой же, как у порога подвижки.
-	var edge: float = float(window_margin) + 64.0
-	if cx > edge and cx < float(w) - edge and cz > edge and cz < float(d) - edge:
-		_ww_last = ""
-		return
-	var want := _window_target(cam_local)
-	var why: String = ""
-	if world_gen == null or not is_instance_valid(world_gen):
-		why = "ГЕНЕРАТОРА НЕТ (world_gen == null) — окно не может сдвинуться в принципе"
-	elif _win_busy:
-		why = "полоса считается прямо сейчас (_win_busy)"
-	elif md.size() != w * d:
-		why = "массив высот %d, а окно требует %d — сдвиг отказан" % [md.size(), w * d]
-	elif want.x == _win_x and want.y == _win_z:
-		why = "порог не сработал: запас %d, шаг %d" % [window_margin, maxi(int(w / 4) / (chunk_size * MACRO_SIZE), 1) * chunk_size * MACRO_SIZE]
-	else:
-		why = "сдвиг запрошен -> (%d, %d)" % [want.x, want.y]
-	if why == _ww_last:
-		return
-	_ww_last = why
-	print("LiteTerrain: край окна, клетка (%d, %d) из %d×%d, окно от (%d, %d) — %s"
-			% [int(cx), int(cz), w, d, _win_x, _win_z, why])
