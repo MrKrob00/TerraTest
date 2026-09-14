@@ -308,9 +308,11 @@ project: read it before claiming how anything works.
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
   stood — that is what "chunks disappear while I drive" was. Cover counts only a tree neighbour the
-  frame WANTS and that is already BUILT. `frustum_margin` is METRES and widens (it used to be
-  -0.05, i.e. a slight over-cull), and the selection is recomputed on camera movement, not only on
-  `lod_interval`.
+  frame WANTS and that is already BUILT. `frustum_margin` is METRES and widens, but ONLY ON THE SIDE
+  PLANES — on the near plane a positive margin means literally "draw what is behind the camera",
+  which is why it once had to be pushed negative (it applied to all six at once). Near and far are
+  told apart by their normal against the camera's forward, never by index. The selection is
+  recomputed on camera movement, not only on `lod_interval`.
 - NEAREST FIRST, AND THE FIRST RING IS AROUND THE CAMERA. Both queues are sorted by distance to
   the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
   could be built before the one being looked at. Coming back is cheap only while the heights are

@@ -35,10 +35,16 @@ const LOD_QUALITY := 2.0
 @export_group("Visibility")
 @export var view_distance: float = 1400.0
 @export var enable_frustum_culling: bool = true
-## ЗАПАС ЗА КРАЕМ КАДРА, В МЕТРАХ. Держим узлы, которые чуть-чуть за экраном: пока игрок едет,
-## они успевают посчитаться ДО того, как выедут в кадр. Раньше тут стояло −0.05 — то есть не
-## запас, а наоборот: узел на самом краю экрана отсекался.
-@export_range(0.0, 128.0, 1.0) var frustum_margin: float = 24.0
+## ЗАПАС ЗА КРАЕМ ЭКРАНА, В МЕТРАХ, И ТОЛЬКО У БОКОВЫХ ПЛОСКОСТЕЙ.
+##
+## У ближней плоскости запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит
+## назад, и любой плюс пускает землю за спиной. Пока запас применялся ко всем шести плоскостям
+## сразу, положительным его ставить было нельзя — отсюда и прежние −0.05, то есть не запас, а
+## лёгкое ПЕРЕотсечение, которым гасили землю за камерой ценой узлов на краю экрана.
+##
+## Теперь ближняя и дальняя считаются точно, а боковым даётся честный запас: узел, который
+## вот-вот выедет в кадр сбоку, успевает посчитаться заранее.
+@export_range(0.0, 64.0, 1.0) var frustum_margin: float = 12.0
 ## Заслонённость рельефом для того, что на нём стоит. По умолчанию выключена, как и была: луч
 ## по земле стоит дороже, чем рисование куста, который всё равно за бугром.
 @export var enable_occlusion_culling: bool = false
@@ -549,6 +555,10 @@ func _select(cam_local: Vector3) -> void:
 		var inv := global_transform.affine_inverse()
 		for pl in _cam.get_frustum():
 			planes.append(inv * pl)
+		# Куда смотрит камера, в наших осях: по нему отличаем ближнюю и дальнюю плоскости от
+		# боковых (см. frustum_margin). По номеру в массиве — нельзя: порядок плоскостей это
+		# деталь движка, а нормаль говорит сама за себя.
+		_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
 	var top := CHUNK << MAX_LOD
 	var r: int = int(ceil(view_distance / float(top)))
 	var g0x: int = int(floor(cam_local.x / float(top)))
@@ -584,6 +594,13 @@ func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var dz: float = maxf(maxf(aabb.position.z - p.z, 0.0), p.z - mx.z)
 	return dx * dx + dz * dz
 
+## Куда смотрит камера, в осях ноды. Ставится в _select, читается проверкой плоскостей.
+var _cam_fwd_local: Vector3 = Vector3.FORWARD
+## Выше этого |n·вперёд| плоскость считается ближней или дальней — им запас не даём. У бокового
+## угол к оси взгляда это половина поля зрения плюс прямой, то есть скалярное произведение сильно
+## меньше; спутать нельзя.
+const AXIAL_DOT := 0.9
+
 func _aabb_in_frustum(aabb: AABB, planes: Array[Plane], margin: float) -> bool:
 	var bmin: Vector3 = aabb.position
 	var bmax: Vector3 = aabb.position + aabb.size
@@ -591,7 +608,9 @@ func _aabb_in_frustum(aabb: AABB, planes: Array[Plane], margin: float) -> bool:
 		var nx: float = bmin.x if plane.normal.x >= 0.0 else bmax.x
 		var ny: float = bmin.y if plane.normal.y >= 0.0 else bmax.y
 		var nz: float = bmin.z if plane.normal.z >= 0.0 else bmax.z
-		if plane.distance_to(Vector3(nx, ny, nz)) > margin:
+		# Ближней и дальней — точно, без запаса: плюс у ближней это земля за спиной.
+		var m: float = 0.0 if absf(plane.normal.dot(_cam_fwd_local)) > AXIAL_DOT else margin
+		if plane.distance_to(Vector3(nx, ny, nz)) > m:
 			return false
 	return true
 
