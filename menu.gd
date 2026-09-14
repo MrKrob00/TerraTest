@@ -236,7 +236,7 @@ func _slot_row(i: int) -> Control:
 	name_lbl.add_theme_color_override("font_color", TEXT)
 	info.add_child(name_lbl)
 
-	var has_world: bool = i == 0 or G.slot_has_world(i)
+	var has_world: bool = G.slot_has_world(i)
 	var d: Dictionary = G.slot_info(i)
 	var desc := Label.new()
 	desc.add_theme_font_size_override("font_size", 12)
@@ -245,8 +245,7 @@ func _slot_row(i: int) -> Control:
 		desc.text = tr("%d$ · %d blocks · %d directives") \
 				% [int(d.get("money", 0)), int(d.get("researched", 0)), int(d.get("quests", 0))]
 	elif has_world:
-		# Slot one is "our" map: a constant seed, the same veins and points it always had.
-		desc.text = tr("The original world · not started") if i == 0 else tr("World ready · not started")
+		desc.text = tr("World ready · not started")
 	else:
 		desc.text = tr("No world yet")
 	info.add_child(desc)

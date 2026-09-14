@@ -434,18 +434,21 @@ func _invalidate(area: Rect2) -> void:
 			_col.erase(key)
 			_col_seen.erase(key)
 
+## ЗАБЫТЬ ПРАВКИ РЕЛЬЕФА — и только их. Земля считается из сида, сбрасывать в ней нечего: она и
+## так та, какой родилась. Пересчитываем ровно те чанки, которых правки касались.
+##
+## ЭТО НЕ СБРОС МИРА. Написанная как «выбросить всё и собрать заново», эта функция убивала новый
+## сейв: world_persist._fresh_start зовёт её первой строкой, и под игроком в тот же миг исчезала
+## коллизия — ровно тогда, когда ему выдают стартовый набор.
 func reset_heights() -> void:
-	_drain()                      # _hc читают задания пула; чистить его под ними нельзя
+	if _flat_edits.is_empty():
+		return
+	var area := _edit_rect(_flat_edits[0])
+	for e in _flat_edits:
+		area = area.merge(_edit_rect(e))
 	_flat_edits = []
 	_edit_seq = 0
-	_memo.clear()
-	_hc.clear()
-	for key in _live.keys():
-		var n: Dictionary = _live[key]
-		if is_instance_valid(n["inst"]):
-			n["inst"].queue_free()
-	_live.clear()
-	_clear_collision()
+	_invalidate(area)
 
 ## Запекать в чанковом мире нечего: земля и так считается из сида, а правки лежат в сохранении.
 func bake_heights() -> bool:
@@ -619,16 +622,6 @@ func _enqueue_coll(bcx: int, bcz: int) -> void:
 		"edits": _edits_in(bcx * float(CHUNK), bcz * float(CHUNK), float(CHUNK)),
 		"cx": bcx * CHUNK + CHUNK * 0.5, "cz": bcz * CHUNK + CHUNK * 0.5, "d2": 0.0,
 	})
-
-## ДОЖДАТЬСЯ ЗАХОДА ПУЛА И ПРИНЯТЬ ЕГО. Зовёт тот, кто собирается тронуть то, что задания читают
-## (_hc, список правок). Блокирует кадр, поэтому только на редких событиях — сброс мира.
-func _drain() -> void:
-	if not _busy:
-		return
-	WorkerThreadPool.wait_for_group_task_completion(_group)
-	_group = -1
-	_busy = false
-	_apply_batch()
 
 ## БЛИЖНЕЕ СЧИТАЕТСЯ ПЕРВЫМ. Очередь набирается обходом дерева, то есть в порядке клеток верхнего
 ## уровня, и без сортировки узел в километре мог родиться раньше того, на который игрок смотрит:
