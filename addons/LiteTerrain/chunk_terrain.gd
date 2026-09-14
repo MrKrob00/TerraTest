@@ -105,11 +105,19 @@ var _queued: Dictionary = {}   # key → true, чтобы не заводить 
 func _ready() -> void:
 	collision_layer = 1
 	collision_mask = 0
-	# Старая коллизия из сцены — это запечённое поле высот прежней карты. Оставить её значит
-	# положить поверх процедурной земли невидимый кусок чужой.
+	# ЧТО ОСТАЛОСЬ В СЦЕНЕ ОТ ЗАПЕЧЁННОЙ КАРТЫ — УБРАТЬ. Нода рельефа носит с собой двоих:
+	# CollisionShape3D с полем высот прежней карты и MeshInstance3D с её же превью-мешем. Первое
+	# кладёт поверх процедурной земли невидимый кусок чужой, второе рисует ВТОРУЮ КАРТУ, без
+	# коллизии — ту самую, что висит рядом с настоящей. map.gd прятал меш в своём _ready; мы тоже.
+	#
+	# Меш гасим видимостью, а не удалением: на этом узле живёт grass.gd (трава и корруптация), и
+	# невидимость его не останавливает. Своих мешей у нас на этот момент ещё нет — они рождаются
+	# в _build_around.
 	for c in get_children():
 		if c is CollisionShape3D and (c as CollisionShape3D).shape is HeightMapShape3D:
 			(c as CollisionShape3D).shape = null
+		elif c is MeshInstance3D:
+			(c as MeshInstance3D).visible = false
 	if Engine.is_editor_hint():
 		return
 	await get_tree().process_frame
