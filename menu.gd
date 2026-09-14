@@ -30,9 +30,6 @@ const NEWS_H_FRAC := 0.42
 # ── World creation ───────────────────────────────────────────────────────────
 # Создание мира — это выбор сида. Шкала, оценка времени и STOP тут были, пока земля считалась
 # окном на весь мир вперёд; чанковый рельеф считает её по ходу игры, и ждать стало нечего.
-var _gen_slot: int = -1
-var _gen_seed: int = 0
-var _c_stage: Label = null
 ## Is the slot list open? First screen is PLAY / SETTINGS, second is the three worlds.
 var _slots_open: bool = false
 
@@ -180,9 +177,6 @@ func _close_settings() -> void:
 func _rebuild_left() -> void:
 	for c in _left.get_children():
 		c.queue_free()
-	if _gen_slot >= 0:
-		_left.add_child(_create_panel())
-		return
 	if _slots_open:
 		_left.add_child(_slots_panel())
 		_left.add_child(_button(tr("BACK"), DIM, _close_slots))
@@ -215,15 +209,17 @@ func _slots_panel() -> Control:
 		box.add_child(_slot_row(i))
 	return panel
 
-## A SLOT ROW. World and playthrough are separate things, so the buttons follow their states:
-##   no world              -> CREATE
-##   world, no progress    -> PLAY + delete
-##   world and progress    -> PLAY + RESET (wipe the playthrough, keep the map) + delete
-## Slot one is special: its map ships with the game, there is nothing to delete.
+## A SLOT ROW: нет мира — CREATE, есть — PLAY и DELETE.
 ##
-## Deleting is HOLD, not a second tap. A tap next to PLAY erases a world that took a minute to
-## compute, and a confirm button is caught by the same mis-tap; a hold cannot be mis-tapped and
-## shows what it is doing while the bar fills.
+## СБРОСА ПРОХОЖДЕНИЯ ОТДЕЛЬНОЙ КНОПКОЙ БОЛЬШЕ НЕТ. Он существовал, пока мир был дорогим: карту
+## считали минуту, и терять её из-за «начать заново» было жалко. Мир теперь это сид, создание
+## мгновенное, и две кнопки про одно и то же («стереть прохождение» рядом со «стереть мир»)
+## отличались только тем, чего игрок не видит.
+##
+## Удаление — УДЕРЖАНИЕ, потом вопрос. Тап рядом с PLAY стирает слот, а удержание не нажимается
+## случайно и показывает, что делает, пока ползёт полоса; вопрос после него называет слот вслух.
+## Первый слот не исключение: карта у него своя, постоянная, и удаление стирает прохождение —
+## мир на том же сиде вернётся при следующем входе.
 func _slot_row(i: int) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -261,22 +257,34 @@ func _slot_row(i: int) -> Control:
 	# The slot played last is labelled CONTINUE: with one world that is the most common action.
 	var lbl: String = tr("CONTINUE") if (not d.is_empty() and i == G.last_slot()) else tr("PLAY")
 	row.add_child(_button(lbl, ACCENT, _play_slot.bind(i)))
-	if not d.is_empty():
-		row.add_child(_button(tr("RESET"), DIM, _reset_slot.bind(i)))
-	if i != 0:
-		row.add_child(_hold_button(tr("DELETE"), _delete_slot.bind(i)))
+	row.add_child(_hold_button(tr("DELETE"), _ask_delete.bind(i)))
 	return row
 
 func _play_slot(i: int) -> void:
 	G.use_slot(i)
 	_start_game()
 
-func _reset_slot(i: int) -> void:
-	G.reset_progress(i)
-	_rebuild_left()
+## Удержание довели до конца — спрашиваем словами. Одно и то же действие стирает и мир, и
+## сохранение: с тех пор как мир это сид, отдельного «сбросить прохождение» нет.
+var _del_dialog: ConfirmationDialog = null
+var _del_slot: int = -1
 
-func _delete_slot(i: int) -> void:
-	G.delete_world(i)
+func _ask_delete(i: int) -> void:
+	_del_slot = i
+	if _del_dialog == null or not is_instance_valid(_del_dialog):
+		_del_dialog = ConfirmationDialog.new()
+		_del_dialog.title = tr("Delete world")
+		_del_dialog.ok_button_text = tr("DELETE")
+		_del_dialog.confirmed.connect(_delete_slot)
+		add_child(_del_dialog)
+	_del_dialog.dialog_text = tr("Slot %d: the world and the save are erased. This cannot be undone.") % (i + 1)
+	_del_dialog.popup_centered(Vector2i(380, 140))
+
+func _delete_slot() -> void:
+	if _del_slot < 0:
+		return
+	G.delete_world(_del_slot)
+	_del_slot = -1
 	_rebuild_left()
 
 ## Hold-to-fire button: it keeps its own timer and draws the fill over its own style. Until the
@@ -320,53 +328,13 @@ func _hold_button(text: String, cb: Callable) -> Button:
 	b.tooltip_text = tr("Hold")
 	return b
 
-# ── Generation panel ─────────────────────────────────────────────────────────
-## Widgets are kept by reference: their captions change every frame, and rebuilding the panel
-## thirty times a second is a button flickering under the finger.
-func _create_panel() -> Control:
-	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", _panel_style())
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 6)
-	panel.add_child(box)
-	var head := Label.new()
-	head.text = tr("CREATING WORLD · SLOT %d") % (_gen_slot + 1)
-	head.add_theme_font_size_override("font_size", 13)
-	head.add_theme_color_override("font_color", ACCENT)
-	box.add_child(head)
-
-	_c_stage = Label.new()
-	_c_stage.add_theme_font_size_override("font_size", 12)
-	_c_stage.add_theme_color_override("font_color", DIM)
-	_c_stage.text = tr("World ready · seed %d") % _gen_seed
-	box.add_child(_c_stage)
-
-	# Две двери, а не одна: мир могли создать, чтобы зайти в него позже.
-	box.add_child(_big_button(tr("PLAY"), _play_created))
-	box.add_child(_button(tr("BACK TO SLOTS"), DIM, _leave_create))
-	return panel
-
-## МИР — ЭТО СИД, И БОЛЬШЕ НИЧЕГО. Раньше здесь минуту считалось окно высот на весь мир, со
-## шкалой и оценкой времени. Земля теперь считается чанками по мере того, как игрок по ней едет
-## (addons/LiteTerrain/chunk_terrain.gd), и тот массив не читает никто — значит и ждать нечего.
-##
-## Панель осталась: она называет сид и даёт ту же кнопку PLAY.
+## СОЗДАНИЕ МИРА — ЭТО ВЫБОР СИДА, и экрана у него больше нет. Раньше здесь минуту считалось
+## окно высот на весь мир — со шкалой, оценкой времени и кнопкой «Стоп», — и в конце показывалась
+## панель с выбором «играть» или «назад к слотам». Землю теперь считает чанковый рельеф по ходу
+## игры, ждать нечего, и выбирать после мгновенного действия тоже нечего: слот появляется в том
+## же списке, где на него и нажали.
 func _begin_create(i: int) -> void:
-	if _gen_slot >= 0:
-		return
-	_gen_slot = i
-	_gen_seed = G.roll_world_seed()
-	G.create_world(i, _gen_seed, Vector2i.ZERO, 0, PackedFloat32Array())
-	_rebuild_left()
-
-func _play_created() -> void:
-	var i: int = _gen_slot
-	_gen_slot = -1
-	_play_slot(i)          # the world is already written, there is nothing to wipe
-
-func _leave_create() -> void:
-	_gen_slot = -1
-	_slots_open = true
+	G.create_world(i, G.roll_world_seed(), Vector2i.ZERO, 0, PackedFloat32Array())
 	_rebuild_left()
 
 # ── Widgets built from data ──────────────────────────────────────────────────
