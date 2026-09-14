@@ -283,8 +283,14 @@ project: read it before claiming how anything works.
 - The generator answers BY POINT: `height_at(wx, wz)` is noise, blur and the canyon cut in one world
   point, and `sample_grid` builds a grid from it. The blur is always taken at FULL resolution, even
   when the node samples every 32nd cell — blurring an already sparse grid is a different field, and
-  the join with a finer node would step. `begin_sampling` prepares the noises once on the main
-  thread; after that the threads only read.
+  the join with a finer node would step. At STEP 1 those five taps are the neighbouring vertices, so
+  a chunk costs (n+2)² raw heights instead of 5n² (`_sample_unit`) — four times less for the same
+  answer. `begin_sampling` prepares the noises once on the main thread; after that the threads only
+  read.
+- THE LOADING SCREEN WAITS FOR THE GROUND UNDER THE PLAYER, not for the view distance: the 5×5 ring
+  of level-0 chunks and their collision (`READY_RING`), and nothing else. The rest of the ring is
+  already queued and arrives behind the fade. Nothing can be baked ahead: the seed is the slot's
+  own, so precomputing chunks is the same work moved earlier.
 - Neighbour level is asked by `_level_of` (six dictionary lookups, not a tree walk), and the finer
   node lays its extra edge vertices on the segment between the ones it shares with the coarser. A
   corner vertex is a multiple of any neighbour step, so two snapped edges never argue.

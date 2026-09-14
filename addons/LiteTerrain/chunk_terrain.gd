@@ -119,8 +119,9 @@ func _ready() -> void:
 		seed_value = int(game.get("world_seed"))
 	await setup_procedural(seed_value)
 	set_collision_streaming(true)
-	print("ChunkTerrain: сид %d, чанк %d, уровней %d, узлов на старте %d"
-			% [seed_value, CHUNK, MAX_LOD + 1, _live.size()])
+	print("ChunkTerrain: сид %d, чанк %d, уровней %d, кольцо %d×%d за %d мс, узлов %d"
+			% [seed_value, CHUNK, MAX_LOD + 1, READY_RING * 2 + 1, READY_RING * 2 + 1,
+				_ready_ms, _live.size()])
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
@@ -161,29 +162,45 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	terrain_is_ready = true
 	terrain_ready.emit()
 
-## Ждём, пока под точкой встанут чанки уровня 0 и их тайлы коллизии.
+## Ждём ЗЕМЛЮ ПОД ИГРОКОМ — квадрат чанков уровня 0 вокруг точки и их тайлы коллизии, — и
+## больше ничего. Остальное кольцо к этому моменту уже в очереди (его просит _process), но ждать
+## его под экраном загрузки незачем: оно доедет за спиной у затемнения. Пока условием выхода была
+## пустая очередь, загрузка держалась до последнего узла на всю дальность видимости.
+const READY_RING := 2        # чанков в каждую сторону: 5×5 по 16 м = 80 м вокруг точки старта
+
+## Сколько заняло первое кольцо, мс. Печатается при входе в мир: «быстро или медленно» — это не
+## отчёт, а число — отчёт.
+var _ready_ms: int = 0
+
 func _build_around(around: Vector3) -> void:
+	var t0 := Time.get_ticks_msec()
 	gen_step = "world"
 	gen_frac = 0.0
 	var bx := int(floor(around.x / CHUNK))
 	var bz := int(floor(around.z / CHUNK))
-	for dz in range(-2, 3):
-		for dx in range(-2, 3):
-			# В _want тоже: готовый меш кладётся только в то, что кадр просит, а первого спуска
-			# по дереву ещё не было.
-			_want[_key(0, bx + dx, bz + dz)] = true
+	var need: Array[int] = []
+	for dz in range(-READY_RING, READY_RING + 1):
+		for dx in range(-READY_RING, READY_RING + 1):
+			var key := _key(0, bx + dx, bz + dz)
+			# В _want тоже: готовый меш показывается только там, где его просит кадр, а первого
+			# спуска по дереву ещё не было.
+			_want[key] = true
+			need.append(key)
 			_enqueue_mesh(0, bx + dx, bz + dz, 0)
 			_enqueue_coll(bx + dx, bz + dz)
-	# Очередь растёт на ходу: _process уже спускается по дереву и просит остальное кольцо.
-	# Поэтому доля считается от НАИБОЛЬШЕЙ длины очереди, а не от первой.
-	var total: float = 1.0
 	var guard := 0
-	while (not _jobs.is_empty() or _busy) and guard < 600:
+	while guard < 600:
 		_job_tick()
-		total = maxf(total, float(_jobs.size()))
-		gen_frac = clampf(1.0 - float(_jobs.size()) / total, 0.0, 1.0)
+		var done := 0
+		for k in need:
+			if _live.has(k) and _col.has(k):
+				done += 1
+		gen_frac = float(done) / float(need.size())
+		if done >= need.size():
+			break
 		await get_tree().process_frame
 		guard += 1
+	_ready_ms = Time.get_ticks_msec() - t0
 	gen_step = ""
 	gen_frac = 0.0
 

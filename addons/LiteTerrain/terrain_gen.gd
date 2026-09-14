@@ -454,6 +454,8 @@ func begin_sampling(b: TerrainBiomes) -> void:
 ## в один меш того же размера. Считается синхронно: зовётся из задачи WorkerThreadPool, по одной
 ## на чанк, и begin_sampling обязан быть позади.
 func sample_grid(ox: float, oz: float, n: int, step: float) -> PackedFloat32Array:
+	if step == 1.0:
+		return _sample_unit(ox, oz, n)
 	var out := PackedFloat32Array()
 	out.resize(n * n)
 	for j in n:
@@ -461,6 +463,38 @@ func sample_grid(ox: float, oz: float, n: int, step: float) -> PackedFloat32Arra
 		var row := j * n
 		for i in n:
 			out[row + i] = height_at(ox + float(i) * step, wz)
+	return out
+
+## ТО ЖЕ, НО С ШАГОМ 1 И БЕЗ ПОВТОРНОГО СЧЁТА ШУМА. Размытие берёт пять отсчётов вокруг вершины,
+## а на сетке с шагом 1 эти отсчёты — соседние вершины: сырых высот хватает (n+2)² вместо 5n².
+## Вчетверо меньше работы на чанк при том же ответе до бита, и это ровно те чанки, по которым
+## игрок ездит и на которых стоит загрузка.
+##
+## Для грубых уровней так нельзя: там шаг больше метра, а размытие всё равно считается по
+## соседям В МЕТРЕ — иначе поле было бы другим и на стыке с мелким уровнем встала бы ступень.
+func _sample_unit(ox: float, oz: float, n: int) -> PackedFloat32Array:
+	var m: int = n + 2
+	var raw := PackedFloat32Array()
+	raw.resize(m * m)
+	for j in m:
+		var wz := oz + float(j - 1)
+		var row := j * m
+		for i in m:
+			raw[row + i] = raw_height_at(ox + float(i - 1), wz)
+	var carve: bool = gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled
+	var out := PackedFloat32Array()
+	out.resize(n * n)
+	for j in n:
+		var c: int = (j + 1) * m
+		var u: int = j * m
+		var d: int = (j + 2) * m
+		var wz := oz + float(j)
+		for i in n:
+			var h: float = (raw[c + i + 1] + raw[c + i] + raw[c + i + 2]
+					+ raw[u + i + 1] + raw[d + i + 1]) * 0.2
+			if carve:
+				h = carve_at(ox + float(i), wz, h)
+			out[j * n + i] = h
 	return out
 
 ## ВРЕЗ КАНЬОНА В ОДНОЙ ТОЧКЕ. surface — уже размытая земля в ней же.
