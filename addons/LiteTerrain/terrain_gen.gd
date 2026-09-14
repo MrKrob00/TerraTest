@@ -212,8 +212,11 @@ func _gen_blur_row(z: int) -> void:
 		return
 	var w := _gen_w
 	var row := z * w
-	# Bounds are checked AGAINST THE NUMBER (see _gen_len), never against the array's .size().
-	if _gen_len <= 0 or row + w > _gen_len:
+	# ГРАНИЦЫ СПРАШИВАЕМ У САМИХ МАССИВОВ. Раньше тут стояла только длина прохода (_gen_len), а
+	# она переживает буфер: стоило проходу отпустить массив, как строка, всё ещё живущая в пуле,
+	# проходила проверку и писала в пустоту — «Out of bounds set index» ни к чему в кадре.
+	if _gen_len <= 0 or row + w > _gen_len \
+			or row + w > _gen_out.size() or row + w > _gen_base_in.size():
 		_gen_row_done()
 		return
 	if z == 0 or z == _gen_d - 1:
@@ -394,6 +397,9 @@ func _gen_fill_row(z: int) -> void:
 	# обязан дать те же высоты (см. «МИРОВЫЕ КООРДИНАТЫ» вверху файла).
 	var wz := float(origin_z + z)
 	var row := z * w
+	if _gen_len <= 0 or row + w > _gen_out.size():
+		_gen_row_done()
+		return
 	for x in w:
 		_gen_out[row + x] = raw_height_at(float(origin_x + x), wz)
 	_gen_row_done()
@@ -516,7 +522,8 @@ func _gen_carve_row(z: int) -> void:
 		return
 	var w := _gen_w
 	var wz := float(origin_z + z)
-	if _gen_biomes == null or _gen_len <= 0 or z * w + w > _gen_len:
+	if _gen_biomes == null or _gen_len <= 0 or z * w + w > _gen_len \
+			or z * w + w > _gen_carved.size() or z * w + w > _gen_base_in.size():
 		_gen_row_done()
 		return
 	for x in w:
@@ -689,7 +696,16 @@ func prepare_sampling() -> void:
 
 ## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
 ## заданы полями origin_*/noise_offset — проходы читают только их.
+## БУФЕРЫ ПРОХОДА ОТПУСКАЕМ ТОЛЬКО ЗДЕСЬ, перед новым прогоном — то есть в момент, когда в пуле
+## заведомо ничего не считает. Раньше каждый проход обнулял их сразу после себя, и строка, ещё
+## живущая в пуле, писала в отпущенный массив.
+func _free_pass_buffers() -> void:
+	_gen_out = PackedFloat32Array()
+	_gen_base_in = PackedFloat32Array()
+	_gen_carved = PackedFloat32Array()
+
 func _run_passes(width: int, depth: int) -> PackedFloat32Array:
+	_free_pass_buffers()
 	prepare_sampling()
 	_gen_w = width
 	_gen_d = depth
@@ -709,7 +725,6 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 	if _gen_cancel:
 		return PackedFloat32Array()
 	var new_data := _gen_out
-	_gen_out = PackedFloat32Array()          # drop the field's reference; new_data owns it now
 
 	# ── Optional blur passes ─────────────────────
 	# Simple 5-tap box blur to soften extreme spikes.
@@ -726,8 +741,6 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 		if _gen_cancel:
 			return PackedFloat32Array()
 		new_data = _gen_out
-		_gen_out = PackedFloat32Array()
-		_gen_base_in = PackedFloat32Array()
 
 	# ── Canyon carve (AFTER the blur, which would otherwise round off the sheer walls) ──
 	# Badlands: mesas at ABSOLUTE heights (varied by the butte noise, so there is a hierarchy
@@ -752,7 +765,5 @@ func _run_passes(width: int, depth: int) -> PackedFloat32Array:
 			if _gen_cancel:
 				return PackedFloat32Array()
 			new_data = _gen_carved
-		_gen_carved = PackedFloat32Array()
-		_gen_base_in = PackedFloat32Array()
 
 	return new_data
