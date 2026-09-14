@@ -335,8 +335,6 @@ func hurt(damage: int = 10) -> void:
 		if body != null and body.get("faction") == 0:
 			return
 	current_hp -= damage
-	# Оверлей хп строим ДО хит-эффекта: _local_aabb внутри hp_overlay иначе прихватил бы
-	# только что заспавненные пластины вспышки (mode 2) и раздул бы коробку навсегда.
 	if current_hp > 0:
 		_refresh_hp_fx()
 	_play_hit_effect()
@@ -419,15 +417,27 @@ func _fuse_blow() -> void:
 	_fuse_done = true                 # именно ДОГОРЕЛ — только теперь взрыв заслужен
 	destroy()
 
-# Постоянный показ хп красными «матричными» цифрами (см. block_fx.hp_overlay / mode 3).
-# Зовём ТОЛЬКО при изменении хп (урон/реген), не по кадрам: анимацию гонит сам шейдер от
-# TIME, GDScript лишь пишет юниформ `damage`. Полный хп → узел спрятан (нулевая цена);
-# оверлей создаётся лениво на первом уроне, чтобы целые блоки не плодили узлы.
+## ПОВРЕЖДЕНИЕ БЛОКА ЦИФРАМИ 0/1 (block_hp.gdshader). Клетка либо пробита, либо нет, и решает это
+## её собственный хеш против доли урона: новый удар ДОБАВЛЯЕТ цифры к горящим, а не перекладывает
+## их. Меняется в клетке только сам символ.
+##
+## ПОЧИНКУ ПОКАЗЫВАЮТ ТЕ ЖЕ ЦИФРЫ: клетки между новым уроном и прежним зеленеют и гаснут за
+## HEAL_FADE. Отдельного зелёного эффекта поверх блока нет — он рисовал бы то же самое второй раз.
+##
+## Зовём ТОЛЬКО при изменении хп, не по кадрам: мигание цифр гонит сам шейдер от TIME, а возраст
+## починки — твин, и только пока зелёные не догорят.
+const HEAL_FADE := 1.4
+var _hp_dmg: float = 0.0
+var _heal_tw: Tween = null
+
 func _refresh_hp_fx() -> void:
 	var dmg := 1.0 - float(current_hp) / float(maxi(max_hp, 1))
+	var healed: float = maxf(_hp_dmg - dmg, 0.0)
+	_hp_dmg = dmg
 	# Debris carries no damage overlay (see _set_debris_render): an extra draw call and a
 	# shader each, on numbers nobody reads off a pile of scrap.
-	if dmg <= 0.001 or (get_parent() != null and get_parent().name == "objects"):
+	var debris: bool = get_parent() != null and get_parent().name == "objects"
+	if debris or (dmg <= 0.001 and healed <= 0.001):
 		if is_instance_valid(_hp_fx):
 			_hp_fx.visible = false
 		return
@@ -436,7 +446,25 @@ func _refresh_hp_fx() -> void:
 			return
 		_hp_fx = BlockFX.hp_overlay(self)
 	_hp_fx.visible = true
-	(_hp_fx.material_override as ShaderMaterial).set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
+	var mat := _hp_fx.material_override as ShaderMaterial
+	mat.set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))
+	if healed <= 0.001:
+		return
+	mat.set_shader_parameter("heal_from", clampf(dmg + healed, 0.0, 1.0))
+	if is_instance_valid(_heal_tw):
+		_heal_tw.kill()                # реген чинит тиками: каждый следующий начинает отсчёт заново
+	_heal_tw = create_tween()
+	_heal_tw.tween_method(_set_heal_age, 0.0, HEAL_FADE, HEAL_FADE)
+	_heal_tw.tween_callback(_heal_done)
+
+func _set_heal_age(t: float) -> void:
+	if is_instance_valid(_hp_fx):
+		(_hp_fx.material_override as ShaderMaterial).set_shader_parameter("heal_age", t)
+
+## Зелёные догорели. Блок при этом мог уже стать целым — тогда оверлею больше нечего рисовать.
+func _heal_done() -> void:
+	if is_instance_valid(_hp_fx) and _hp_dmg <= 0.001:
+		_hp_fx.visible = false
 
 var _hit_fx_ms: int = 0
 const HIT_FX_COOLDOWN := 120        # мс между визуальными откликами на попадание
