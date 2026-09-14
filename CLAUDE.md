@@ -482,6 +482,17 @@ project: read it before claiming how anything works.
   against taps through the HUD, and a double tap that fired is swallowed.
 - Building on another of your machines is delegated to that machine (`_delegate_build`) — there is
   no second build implementation. Only the active machine delegates; hand flags move with the tap.
+- THE CONFIRMING TAP RE-AIMS. Placing reads `_preview_res` and `BuildingBlock`, i.e. what the LAST
+  aiming pass left; on a phone the confirmation is the second tap of a double, the finger has moved,
+  and a delegate machine may have had no aiming pass that frame at all. So `_commit_build_tap` aims
+  again at its own tap position before placing.
+- A REFUSED PLACEMENT SAYS WHY. Silent `return` reads exactly like "I missed": the ghost is still
+  on the cell, the block is still in hand, and closing the garage then returns it to the inventory —
+  from the outside that is "the block I placed vanished".
+- WHAT IS IN THE HAND IS `hand_node()`. `block_body` is the block being AIMED AT on a machine, and
+  it is already counted by whoever counts machines. Asking `block_body` for "does the player have
+  this block" made a block in the hand belong to nobody — the energy branch dropped a second panel
+  every second while the player carried the first one to the support.
 - `PhysicsRayQueryParameters3D.exclude` takes RIDs, not nodes.
 
 ### Economy

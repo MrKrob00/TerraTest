@@ -1236,10 +1236,13 @@ func _player_owns(bt: int) -> bool:
 				return true
 	elif _has_block(bt):
 		return true
+	# РУКА — ЭТО hand_node(), А НЕ block_body. block_body — это блок, НА КОТОРЫЙ НАВЕДЕНЫ (он и так
+	# посчитан выше, вместе с машиной, на которой стоит). Пока спрашивали его, блок в руке не
+	# считался ничьим: игрок вёз панель к опоре, а ветка каждую секунду роняла ему вторую.
 	var p: Node3D = _player()
-	if p == null:
+	if p == null or not p.has_method("hand_node"):
 		return false
-	var held = p.get("block_body")
+	var held = p.hand_node()
 	return held != null and is_instance_valid(held) and ("block" in held) \
 			and int(held.get("block")) == bt
 
