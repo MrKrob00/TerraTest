@@ -383,11 +383,13 @@ project: read it before claiming how anything works.
   own RNG and seed offset. `world_procedural` is stored in the world file, not derived from the slot
   index.
 - Slot 1 is the file-based "original" map and absorbs the pre-slot save once, by renaming.
-- CREATING A WORLD IS PICKING A SEED, and it is instant. The menu used to compute a window of
-  heights for the whole world first — a minute with a bar, an estimate and a Stop — and the chunked
-  terrain does not read that array at all: it computes the ground as the player drives over it.
-- Resetting or deleting a world lives in the MENU, next to the slots (reset keeps the map, delete is
-  hold-to-confirm). The in-game settings have no wipe button: one tap, irreversible, among sliders.
+- CREATING A WORLD IS PICKING A SEED, and it is instant — `create_world(slot, seed)` writes one
+  line. The menu used to compute a window of heights first (a minute with a bar and a Stop), hand it
+  over through `G.pending_world` and cache it on disk; the chunked terrain reads none of that, so
+  the handoff, the cache and the reset-progress button are all gone. Deleting a slot erases the
+  world and the save together.
+- Deleting a world lives in the MENU, next to the slots: hold, then a question that names the slot.
+  The in-game settings have no wipe button: one tap, irreversible, among sliders.
 - Autoloads must be told the slot changed: `G.use_slot` calls `Q.reload_from_progress()`, otherwise
   a reset slot opens with the story already finished.
 - Death holds a screen for `DEATH_PAUSE` before the hand-over (`hud.show_death`): the camera stays

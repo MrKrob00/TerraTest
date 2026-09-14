@@ -334,7 +334,7 @@ func _hold_button(text: String, cb: Callable) -> Button:
 ## игры, ждать нечего, и выбирать после мгновенного действия тоже нечего: слот появляется в том
 ## же списке, где на него и нажали.
 func _begin_create(i: int) -> void:
-	G.create_world(i, G.roll_world_seed(), Vector2i.ZERO, 0, PackedFloat32Array())
+	G.create_world(i, G.roll_world_seed())
 	_rebuild_left()
 
 # ── Widgets built from data ──────────────────────────────────────────────────
