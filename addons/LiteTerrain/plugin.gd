@@ -678,8 +678,17 @@ func _load_settings() -> void:
 # ─────────────────────────────────────────────────
 # Node selection
 # ─────────────────────────────────────────────────
+## НОДА С КАРТОЙ ВЫСОТ, а не любой StaticBody3D. Спрашиваем по методам: с тех пор как земля игры
+## стала чанковой (chunk_terrain.gd), в сцене есть StaticBody3D БЕЗ карты высот вовсе — и док,
+## подхватив его, честно считал рельеф и писал в никуда: «Generate» заканчивался невалидным
+## Callable в undo и ошибками из потоков.
+func _is_terrain(n) -> bool:
+	return n != null and n.has_method("set_heightmap") and n.has_method("apply_heightmap")
+
 func _handles(object) -> bool:
-	return object is StaticBody3D or object is CollisionShape3D
+	if _is_terrain(object):
+		return true
+	return object is CollisionShape3D and _is_terrain(object.get_parent())
 
 func _edit(object) -> void:
 	# Switching the selected node drops an uncommitted stroke, so one terrain's "before"
@@ -691,9 +700,11 @@ func _edit(object) -> void:
 	# viewport pointing at nothing until the next mouse move.
 	_brush_hit_ok = false
 	update_overlays()
-	if object is StaticBody3D:
+	# Выделили не рельеф — прежний остаётся выбранным. Перевести док на ноду без карты высот
+	# нельзя: у неё нечего ни читать, ни писать.
+	if _is_terrain(object):
 		sculpt_node = object
-	elif object is CollisionShape3D:
+	elif object is CollisionShape3D and _is_terrain(object.get_parent()):
 		sculpt_node = object.get_parent()
 	_sync_dock()
 
@@ -1330,7 +1341,9 @@ func _generate_png() -> void:
 func _generate_noise() -> void:
 	_save_settings()   # commit the current generation parameters to disk
 	if sculpt_node == null:
-		push_warning("LiteTerrain: select a terrain StaticBody3D node first")
+		push_warning("LiteTerrain: выдели ноду с картой высот (LiteTerrain). У чанковой земли "
+				+ "(ChunkTerrain в node_3d.tscn) карты высот нет — она считается из сида на ходу, "
+				+ "и генерировать для неё нечего.")
 		return
 	_ensure_own_heightmap()   # a map per terrain, not one shared by every scene
 	# A SECOND RUN ON TOP OF THE FIRST is a reliable way to get mush: generation now proceeds in
