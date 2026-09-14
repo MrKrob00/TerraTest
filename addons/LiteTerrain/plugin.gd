@@ -2,6 +2,12 @@
 extends EditorPlugin
 
 var sculpt_node     = null
+## Выбранная ЧАНКОВАЯ земля (chunk_terrain.gd). Держим отдельно от sculpt_node: у неё нет ни
+## карты высот, ни кисти, ни запекания — из дока ей нужен только сид и превью.
+var chunk_node      = null
+var _chunk_ui: VBoxContainer = null
+var _map_ui: VBoxContainer = null
+var _chunk_seed: SpinBox = null
 var brush_radius    = 3.0
 var brush_power     = 0.5      # 0..1 — the Strength slider, shown as 0..100 %
 var sculpt_mode     = "raise"
@@ -421,9 +427,56 @@ func _enter_tree() -> void:
 	create_btn.pressed.connect(_create_terrain)
 	panel.add_child(create_btn)
 
+	# ── World preview (чанковая земля) ───────────────────────────────────────
+	# У ЧАНКОВОЙ ЗЕМЛИ КАРТЫ ВЫСОТ НЕТ: она считается из сида на ходу. Значит «сгенерировать» у
+	# неё нечего и записывать некуда — можно только ПОСМОТРЕТЬ, что даёт сид, не запуская игру.
+	# Поэтому вместо всего остального дока тут две кнопки.
+	_chunk_ui = VBoxContainer.new()
+	_chunk_ui.visible = false
+	panel.add_child(_chunk_ui)
+	_chunk_ui.add_child(_sep())
+	_chunk_ui.add_child(_lbl("── World preview ──"))
+	var cseed_row := HBoxContainer.new()
+	_chunk_seed = SpinBox.new()
+	_chunk_seed.min_value = 0
+	_chunk_seed.max_value = 99999
+	_chunk_seed.value = gen_seed
+	_chunk_seed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var cdice := Button.new()
+	cdice.text = "RND"
+	cdice.tooltip_text = "Random seed"
+	cdice.pressed.connect(func() -> void:
+		_chunk_seed.value = float(randi() % 100000))
+	cseed_row.add_child(_lbl_fixed("Seed"))
+	cseed_row.add_child(_chunk_seed)
+	cseed_row.add_child(cdice)
+	_chunk_ui.add_child(cseed_row)
+
+	var show_btn := Button.new()
+	show_btn.text = "Show world"
+	show_btn.tooltip_text = "Строит вокруг камеры ту же землю, что увидит игра с этим сидом. В сцену не пишется ничего."
+	show_btn.pressed.connect(_preview_world)
+	_chunk_ui.add_child(show_btn)
+
+	var clear_btn := Button.new()
+	clear_btn.text = "Clear"
+	clear_btn.pressed.connect(func() -> void:
+		if _is_chunk_terrain(chunk_node):
+			chunk_node.preview_clear())
+	_chunk_ui.add_child(clear_btn)
+
+	var cnote := _lbl("землю задаёт сид; карты высот у неё нет")
+	cnote.add_theme_font_size_override("font_size", 10)
+	cnote.modulate = Color(1, 1, 1, 0.6)
+	_chunk_ui.add_child(cnote)
+
+	# ── Всё остальное — про ЗАПЕЧЁННУЮ карту (фон меню, карты из файла) ──────
+	_map_ui = VBoxContainer.new()
+	panel.add_child(_map_ui)
+
 	# ── Sculpt ───────────────────────────────────────────────────────────────
-	panel.add_child(_sep())
-	panel.add_child(_lbl("── Sculpt ──"))
+	_map_ui.add_child(_sep())
+	_map_ui.add_child(_lbl("── Sculpt ──"))
 	var modes := HBoxContainer.new()
 	modes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var group := ButtonGroup.new()
@@ -446,14 +499,14 @@ func _enter_tree() -> void:
 			update_overlays()
 			_save_settings())
 		modes.add_child(b)
-	panel.add_child(modes)
-	radius_slider = _slider_row(panel, "Radius", 1.0, 200.0, brush_radius, 1.0,
+	_map_ui.add_child(modes)
+	radius_slider = _slider_row(_map_ui, "Radius", 1.0, 200.0, brush_radius, 1.0,
 			_set_brush_radius, 0)
-	strength_slider = _slider_row(panel, "Strength", 0.0, 100.0, brush_power * 100.0, 1.0,
+	strength_slider = _slider_row(_map_ui, "Strength", 0.0, 100.0, brush_power * 100.0, 1.0,
 			_set_brush_power, 0)
 	_brush_hint = _lbl("")
 	_brush_hint.modulate = Color(1, 1, 1, 0.6)   # a caption under the sliders, not a setting
-	panel.add_child(_brush_hint)
+	_map_ui.add_child(_brush_hint)
 	_update_brush_hint()
 	# ЗДЕСЬ НЕТ И НЕ ДОЛЖНО БЫТЬ НАСТРОЕК ПОКАЗА. Док — это инструмент СОЗДАНИЯ карты: сид,
 	# размер, форма, кисть, запекание. Всё, что решает, как карта ВЫГЛЯДИТ (в редакторе или в
@@ -462,8 +515,8 @@ func _enter_tree() -> void:
 	# «Editor only», и превью пересобирается прямо по клику в инспекторе.
 
 	# ── World ────────────────────────────────────────────────────────────────
-	panel.add_child(_sep())
-	panel.add_child(_lbl("── World ──"))
+	_map_ui.add_child(_sep())
+	_map_ui.add_child(_lbl("── World ──"))
 
 	var seed_row := HBoxContainer.new()
 	var seed_spin = SpinBox.new()
@@ -482,7 +535,7 @@ func _enter_tree() -> void:
 	seed_row.add_child(_lbl_fixed("Seed"))
 	seed_row.add_child(seed_spin)
 	seed_row.add_child(dice)
-	panel.add_child(seed_row)
+	_map_ui.add_child(seed_row)
 
 	var size_spin = SpinBox.new()
 	size_spin.min_value = 0
@@ -494,16 +547,16 @@ func _enter_tree() -> void:
 	size_spin.value_changed.connect(func(v: float) -> void:
 		gen_size = int(v)
 		_save_settings())
-	panel.add_child(_row("Size", size_spin))
+	_map_ui.add_child(_row("Size", size_spin))
 
-	_sl_height = _slider_row(panel, "Height", 1.0, 300.0, gen_amplitude, 1.0,
+	_sl_height = _slider_row(_map_ui, "Height", 1.0, 300.0, gen_amplitude, 1.0,
 			_set_gen_amplitude, 0)
-	_sl_features = _slider_row(panel, "Features", 10.0, 600.0, gen_scale, 1.0,
+	_sl_features = _slider_row(_map_ui, "Features", 10.0, 600.0, gen_scale, 1.0,
 			func(v: float) -> void: gen_scale = v, 0)
 	# ONE KNOB FOR MOUNTAINS: ridge height and ridge sharpness always moved together, and apart
 	# they only ever produced a mismatch — a picket fence when sharp ridges met a low map.
 	# What it pulls: see _mtn_amount and _ridge_sharp.
-	_sl_mountains = _slider_row(panel, "Mountains", 0.0, 1.0, gen_mountains01, 0.05,
+	_sl_mountains = _slider_row(_map_ui, "Mountains", 0.0, 1.0, gen_mountains01, 0.05,
 			func(v: float) -> void: gen_mountains01 = v, 2)
 
 	# ── The "natural" preset ─────────────────────────────────────────────────
@@ -531,7 +584,7 @@ func _enter_tree() -> void:
 		if _sl_features != null: _sl_features.value = gen_scale
 		if _sl_mountains != null: _sl_mountains.value = gen_mountains01
 		_sync_dock())
-	panel.add_child(preset)
+	_map_ui.add_child(preset)
 
 	var canyon_cb = CheckBox.new()
 	canyon_cb.text = "Canyons"
@@ -543,7 +596,7 @@ func _enter_tree() -> void:
 		# world without carved canyons has no terracotta either.
 		_biomes().canyon_enabled = on
 		_save_settings())
-	panel.add_child(canyon_cb)
+	_map_ui.add_child(canyon_cb)
 
 	var mtn_cb = CheckBox.new()
 	mtn_cb.text = "Mountains"
@@ -551,7 +604,7 @@ func _enter_tree() -> void:
 	_cb_mountain = mtn_cb
 	mtn_cb.toggled.connect(func(on: bool) -> void:
 		_biomes().mountain_enabled = on)
-	panel.add_child(mtn_cb)
+	_map_ui.add_child(mtn_cb)
 
 	# ── Advanced (folded) ────────────────────────────────────────────────────
 	var adv_body := VBoxContainer.new()
@@ -562,8 +615,8 @@ func _enter_tree() -> void:
 	adv_btn.toggled.connect(func(on: bool) -> void:
 		adv_body.visible = on
 		adv_btn.text = ("▾ " if on else "▸ ") + "Advanced")
-	panel.add_child(adv_btn)
-	panel.add_child(adv_body)
+	_map_ui.add_child(adv_btn)
+	_map_ui.add_child(adv_body)
 
 	# ONLY what cannot be derived from the five knobs above lives here: the character of the plains
 	# and the shape of the canyon. Everything else has moved out — octaves and blur became
@@ -585,22 +638,22 @@ func _enter_tree() -> void:
 			func(v: float) -> void: gen_canyon_gorge = v, 0)
 
 	# ── Actions ──────────────────────────────────────────────────────────────
-	panel.add_child(_sep())
+	_map_ui.add_child(_sep())
 	var gen_btn = Button.new()
 	gen_btn.text = "Generate Terrain"
 	gen_btn.tooltip_text = "Rebuilds the whole heightmap from the settings above. Hand sculpting is lost."
 	gen_btn.pressed.connect(_generate_noise)
-	panel.add_child(gen_btn)
+	_map_ui.add_child(gen_btn)
 	var warn := _lbl("rebuilds everything — sculpting is lost")
 	warn.add_theme_font_size_override("font_size", 10)
 	warn.modulate = Color(1, 1, 1, 0.6)
-	panel.add_child(warn)
+	_map_ui.add_child(warn)
 
 	var bake_btn = Button.new()
 	bake_btn.text = "Bake to files"
 	bake_btn.tooltip_text = "One click: heightmap (.res) + preview mesh (.res) + greyscale PNG (for a minimap)."
 	bake_btn.pressed.connect(_bake_and_export)
-	panel.add_child(bake_btn)
+	_map_ui.add_child(bake_btn)
 
 	scroll.add_child(panel)
 	add_control_to_dock(DOCK_SLOT_LEFT_UL, scroll)
@@ -685,8 +738,13 @@ func _load_settings() -> void:
 func _is_terrain(n) -> bool:
 	return n != null and n.has_method("set_heightmap") and n.has_method("apply_heightmap")
 
+## Чанковая земля. Тоже по методу: класс ChunkTerrain объявлен в аддоне, но плагин не обязан
+## знать о нём больше, чем то, что он умеет показать превью.
+func _is_chunk_terrain(n) -> bool:
+	return n != null and is_instance_valid(n) and n.has_method("preview_build")
+
 func _handles(object) -> bool:
-	if _is_terrain(object):
+	if _is_terrain(object) or _is_chunk_terrain(object):
 		return true
 	return object is CollisionShape3D and _is_terrain(object.get_parent())
 
@@ -700,6 +758,8 @@ func _edit(object) -> void:
 	# viewport pointing at nothing until the next mouse move.
 	_brush_hit_ok = false
 	update_overlays()
+	# Чанковая земля показывает свою половину дока и прячет всё про карту высот.
+	chunk_node = object if _is_chunk_terrain(object) else null
 	# Выделили не рельеф — прежний остаётся выбранным. Перевести док на ноду без карты высот
 	# нельзя: у неё нечего ни читать, ни писать.
 	if _is_terrain(object):
@@ -711,6 +771,11 @@ func _edit(object) -> void:
 ## Re-read into the dock whatever lives in the selected node's BIOME RESOURCE. Everything else in
 ## the dock belongs to the plugin itself: shared, and kept in the project metadata.
 func _sync_dock() -> void:
+	var on_chunk := _is_chunk_terrain(chunk_node)
+	if _chunk_ui != null and is_instance_valid(_chunk_ui):
+		_chunk_ui.visible = on_chunk
+	if _map_ui != null and is_instance_valid(_map_ui):
+		_map_ui.visible = not on_chunk
 	var b := _biomes()
 	if _cb_canyon != null and is_instance_valid(_cb_canyon):
 		_cb_canyon.set_pressed_no_signal(b.canyon_enabled)
@@ -724,10 +789,23 @@ func _sync_dock() -> void:
 		# the signal handler, so without it the handle moves and the label keeps the old value.
 		_sl_stratum.value = b.canyon_band_height
 
+## Показать мир по сиду. Строится вокруг камеры редактора, поэтому сначала кладём её ноде:
+## своей камеры у неё в редакторе нет.
+func _preview_world() -> void:
+	if not _is_chunk_terrain(chunk_node):
+		return
+	var cam := EditorInterface.get_editor_viewport_3d(0).get_camera_3d()
+	if cam != null and chunk_node.has_method("set_editor_camera"):
+		chunk_node.set_editor_camera(cam)
+	chunk_node.preview_build(int(_chunk_seed.value))
+
 # ─────────────────────────────────────────────────
 # Viewport input (sculpting)
 # ─────────────────────────────────────────────────
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
+	# Камера редактора нужна и чанковой земле: по ней она выбирает уровни превью.
+	if _is_chunk_terrain(chunk_node) and chunk_node.has_method("set_editor_camera"):
+		chunk_node.set_editor_camera(viewport_camera)
 	if sculpt_node == null:
 		return EditorPlugin.AFTER_GUI_INPUT_PASS
 

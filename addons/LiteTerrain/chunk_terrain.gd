@@ -14,6 +14,7 @@
 ##
 ## Отсечение по камере считается НА КАЖДЫЙ УЗЕЛ и во время спуска по дереву: узел, не попавший в
 ## кадр, не рисуется и не раскрывается — вместе с ним отсекается вся его четверть.
+@tool
 class_name ChunkTerrain
 extends StaticBody3D
 
@@ -103,23 +104,12 @@ var _lod_timer: float = 0.0
 var _queued: Dictionary = {}   # key → true, чтобы не заводить второе задание на тот же узел
 
 func _ready() -> void:
-	collision_layer = 1
-	collision_mask = 0
-	# ЧТО ОСТАЛОСЬ В СЦЕНЕ ОТ ЗАПЕЧЁННОЙ КАРТЫ — УБРАТЬ. Нода рельефа носит с собой двоих:
-	# CollisionShape3D с полем высот прежней карты и MeshInstance3D с её же превью-мешем. Первое
-	# кладёт поверх процедурной земли невидимый кусок чужой, второе рисует ВТОРУЮ КАРТУ, без
-	# коллизии — ту самую, что висит рядом с настоящей. map.gd прятал меш в своём _ready; мы тоже.
-	#
-	# Меш гасим видимостью, а не удалением: на этом узле живёт grass.gd (трава и корруптация), и
-	# невидимость его не останавливает. Своих мешей у нас на этот момент ещё нет — они рождаются
-	# в _build_around.
-	for c in get_children():
-		if c is CollisionShape3D and (c as CollisionShape3D).shape is HeightMapShape3D:
-			(c as CollisionShape3D).shape = null
-		elif c is MeshInstance3D:
-			(c as MeshInstance3D).visible = false
+	# В РЕДАКТОРЕ НОДА НЕ ТРОГАЕТ НИЧЕГО САМА. Скрипт @tool ради превью (см. preview_build), а
+	# всякая правка свойств отсюда пометила бы сцену изменённой и однажды сохранилась.
 	if Engine.is_editor_hint():
 		return
+	collision_layer = 1
+	collision_mask = 0
 	await get_tree().process_frame
 	var game: Node = get_node_or_null("/root/G") if follow_world_settings else null
 	var seed_value: int = forced_seed
@@ -165,8 +155,10 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	_cam = _active_camera()
 	# ПЕРВОЕ КОЛЬЦО СТРОИМ ДО ГОТОВНОСТИ, а не по кадру-другому: игрок падает в мир сразу после
 	# terrain_ready, и земли под ним к этому моменту обязана быть не «скоро», а уже.
-	await _build_around(around)
-	set_collision_streaming(true)
+	var in_game := not Engine.is_editor_hint()
+	await _build_around(around, in_game)
+	if in_game:
+		set_collision_streaming(true)
 	terrain_is_ready = true
 	terrain_ready.emit()
 
@@ -180,7 +172,7 @@ const READY_RING := 2        # чанков в каждую сторону: 5×5
 ## отчёт, а число — отчёт.
 var _ready_ms: int = 0
 
-func _build_around(around: Vector3) -> void:
+func _build_around(around: Vector3, with_collision: bool = true) -> void:
 	var t0 := Time.get_ticks_msec()
 	gen_step = "world"
 	gen_frac = 0.0
@@ -195,13 +187,14 @@ func _build_around(around: Vector3) -> void:
 			_want[key] = true
 			need.append(key)
 			_enqueue_mesh(0, bx + dx, bz + dz, 0)
-			_enqueue_coll(bx + dx, bz + dz)
+			if with_collision:
+				_enqueue_coll(bx + dx, bz + dz)
 	var guard := 0
 	while guard < 600:
 		_job_tick()
 		var done := 0
 		for k in need:
-			if _live.has(k) and _col.has(k):
+			if _live.has(k) and (_col.has(k) or not with_collision):
 				done += 1
 		gen_frac = float(done) / float(need.size())
 		if done >= need.size():
@@ -226,6 +219,7 @@ func stop_generation() -> void:
 	_queued.clear()
 	if _gen != null and is_instance_valid(_gen):
 		_gen.stop()
+		_gen.queue_free()        # иначе каждое превью оставляет в ноде ещё один генератор
 	_gen = null
 
 func _exit_tree() -> void:
@@ -1020,6 +1014,52 @@ func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool =
 
 # ─────────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Превью в редакторе
+# ─────────────────────────────────────────────────────────────────────────────
+## ТОТ ЖЕ МИР, ЧТО УВИДИТ ИГРА, по указанному сиду — прямо во вьюпорте редактора. Смотреть на
+## сид иначе можно было только запуском игры: карты высот у чанковой земли нет, а значит нет и
+## того файла, который док показывал раньше.
+##
+## В СЦЕНУ НЕ ПОПАДАЕТ НИЧЕГО: узлы рождаются без owner, поэтому .tscn их не видит, а коллизию
+## превью не строит вовсе — она нужна машинам, а не глазам.
+var _preview_on: bool = false
+
+func preview_active() -> bool:
+	return _preview_on
+
+func preview_build(seed_value: int) -> void:
+	preview_clear()
+	_preview_on = true
+	await setup_procedural(seed_value, _preview_eye())
+
+func preview_clear() -> void:
+	_preview_on = false
+	stop_generation()
+	for key in _live.keys():
+		var n: Dictionary = _live[key]
+		if is_instance_valid(n["inst"]):
+			n["inst"].queue_free()
+	_live.clear()
+	_want.clear()
+	_hc.clear()
+	_memo.clear()
+	_clear_collision()
+	terrain_is_ready = false
+
+## Где стоит камера редактора, в наших координатах. Превью строится вокруг неё, а не вокруг нуля:
+## нода может стоять где угодно, а смотрят всегда туда, куда смотрят.
+func _preview_eye() -> Vector3:
+	var c := _active_camera()
+	if c == null:
+		return Vector3.ZERO
+	return global_transform.affine_inverse() * c.global_position
+
+## Камеру редактора кладёт плагин (_forward_3d_gui_input): своей у ноды в редакторе нет.
+func set_editor_camera(c: Camera3D) -> void:
+	if c != null and c != camera:
+		camera = c
+
 func _active_camera() -> Camera3D:
 	if is_instance_valid(camera):
 		return camera
@@ -1028,6 +1068,8 @@ func _active_camera() -> Camera3D:
 
 func _process(delta: float) -> void:
 	if _gen == null:
+		return
+	if Engine.is_editor_hint() and not _preview_on:
 		return
 	_col_tick()
 	_job_tick()

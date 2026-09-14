@@ -13,8 +13,6 @@
 [ext_resource type="PackedScene" uid="uid://c21ydn7r4eaea" path="res://enemy.tscn" id="19_enemy"]
 [ext_resource type="Script" uid="uid://bnvf256vo4ij2" path="res://enemy_spawner.gd" id="19_enemyspawn"]
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
-[ext_resource type="ArrayMesh" uid="uid://dqdgq3yx65fcr" path="res://addons/LiteTerrain/terrain_mesh.res" id="22_obt1j"]
-[ext_resource type="Material" uid="uid://v5bq48xoesdf" path="res://addons/LiteTerrain/terrain_shader.res" id="22_s0gvp"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
 [ext_resource type="Script" uid="uid://ch6lvbyyeape3" path="res://grass.gd" id="24_dhlwf"]
 [ext_resource type="CylinderMesh" uid="uid://b373o85jlixj5" path="res://resources/vein.tres" id="25_5t8nk"]
@@ -176,8 +174,6 @@ grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
 mask_offset = Vector2(-3385.2192, 2414.6802)
-
-[sub_resource type="HeightMapShape3D" id="HeightMapShape3D_obt1j"]
 
 [sub_resource type="MultiMesh" id="MultiMesh_obt1j"]
 transform_format = 1
@@ -560,17 +556,9 @@ camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 occlusion_min_dist = 80.0
 biomes = SubResource("Resource_s0gvp")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="map" unique_id=1449813003]
-shape = SubResource("HeightMapShape3D_obt1j")
-debug_color = Color(0, 11.708403, 13.469126, 1)
-
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.71846, 5.4409027, -9.443741)
 top_level = true
-material_override = ExtResource("22_s0gvp")
 cast_shadow = 0
-mesh = ExtResource("22_obt1j")
-surface_material_override/0 = ExtResource("22_s0gvp")
 script = ExtResource("24_dhlwf")
 map_node = NodePath("..")
 
