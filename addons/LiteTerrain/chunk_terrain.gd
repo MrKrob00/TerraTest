@@ -60,14 +60,18 @@ const LOD_QUALITY := 2.0
 @export_range(0.0, 3.0, 0.1) var collision_lookahead: float = 1.2
 
 @export_group("Procedural")
-@export var world_seed: int = 0
+## Сид, на котором стоит эта земля. Пишется при подъёме мира, читается кем угодно снаружи —
+## но НЕ экспорт: сид приходит из слота (G.world_seed) или из forced_seed, а поле в инспекторе
+## выглядело бы как третий источник, который ни на что не влияет.
+var world_seed: int = 0
 ## Номинальный размер мира для тех, кто спрашивает get_dims (раскладка магазинов, жил и точек).
 ## У самой земли края нет; это лишь квадрат, в котором игра расставляет своё.
 @export var world_cells: int = 2048
 @export_group("")
 
+## Спрашивать ли сид у слота (G.world_seed). Выключено — берётся forced_seed: так фон меню и
+## тестовые сцены получают свою землю, не трогая сохранение игрока.
 @export var follow_world_settings: bool = true
-@export var force_procedural: bool = true
 @export var forced_seed: int = 0
 
 signal terrain_ready
@@ -1046,9 +1050,6 @@ func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool =
 ## В СЦЕНУ НЕ ПОПАДАЕТ НИЧЕГО: узлы рождаются без owner, поэтому .tscn их не видит, а коллизию
 ## превью не строит вовсе — она нужна машинам, а не глазам.
 var _preview_on: bool = false
-
-func preview_active() -> bool:
-	return _preview_on
 
 func preview_build(seed_value: int) -> void:
 	preview_clear()
