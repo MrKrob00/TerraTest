@@ -35,7 +35,10 @@ const LOD_QUALITY := 2.0
 @export_group("Visibility")
 @export var view_distance: float = 1400.0
 @export var enable_frustum_culling: bool = true
-@export_range(-0.5, 0.5, 0.01) var frustum_margin: float = -0.05
+## ЗАПАС ЗА КРАЕМ КАДРА, В МЕТРАХ. Держим узлы, которые чуть-чуть за экраном: пока игрок едет,
+## они успевают посчитаться ДО того, как выедут в кадр. Раньше тут стояло −0.05 — то есть не
+## запас, а наоборот: узел на самом краю экрана отсекался.
+@export_range(0.0, 128.0, 1.0) var frustum_margin: float = 24.0
 ## Заслонённость рельефом для того, что на нём стоит. По умолчанию выключена, как и была: луч
 ## по земле стоит дороже, чем рисование куста, который всё равно за бугром.
 @export var enable_occlusion_culling: bool = false
@@ -1146,12 +1149,21 @@ func _process(delta: float) -> void:
 	_col_tick()
 	_job_tick()
 	_lod_timer += delta
-	if _lod_timer < lod_interval:
+	var cam := _active_camera()
+	if cam == null:
+		return
+	# ВЫБОР ПЕРЕСЧИТЫВАЕТСЯ ПО ДВИЖЕНИЮ, А НЕ ТОЛЬКО ПО ТАЙМЕРУ. На скорости за 0.15 с камера
+	# проезжает несколько метров и разворачивается — узел, выехавший в кадр, ждал следующего тика
+	# и всё это время его просто не было.
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	var stirred: bool = cam.global_position.distance_squared_to(_sel_pos) > SEL_MOVE2 \
+			or fwd.dot(_sel_fwd) < SEL_TURN_COS
+	if _lod_timer < (lod_interval * 0.25 if stirred else lod_interval):
 		return
 	_lod_timer = 0.0
-	_cam = _active_camera()
-	if _cam == null:
-		return
+	_sel_pos = cam.global_position
+	_sel_fwd = fwd
+	_cam = cam
 	var t0 := _pf_now()
 	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
 	_select(cam_local)
@@ -1184,6 +1196,36 @@ func _process(delta: float) -> void:
 ## нужен, и выбрасывается раньше только когда их накопилось больше LIVE_CAP.
 const NODE_GRACE := 15.0
 const LIVE_CAP := 420
+## Насколько камера должна сдвинуться (метры в квадрате) или повернуться, чтобы пересчитать выбор
+## раньше таймера. Четыре метра и пара градусов: меньше — и пересчёт идёт каждый кадр впустую.
+const SEL_MOVE2 := 16.0
+const SEL_TURN_COS := 0.999
+var _sel_pos: Vector3 = Vector3(1e9, 1e9, 1e9)
+var _sel_fwd: Vector3 = Vector3.FORWARD
+
+## ЕСТЬ ЛИ НА ЭТОМ МЕСТЕ ДРУГАЯ ЗЕМЛЯ. Смена уровня — это не «узел ушёл», а «узел заменили»:
+## вместо одного грубого встают четверо мелких или наоборот. Но замена ещё ТОЛЬКО В ОЧЕРЕДИ, а
+## старый гасился в тот же тик — на его месте на секунду-другую открывалась дыра. Ровно это и
+## выглядит как «чанки пропадают, пока едешь».
+func _covered(key: int) -> bool:
+	var l := _key_lod(key)
+	var gx := _key_gx(key)
+	var gz := _key_gz(key)
+	# Накрывает только то, что кадр ПРОСИТ и что уже ПОСТРОЕНО. «Просит» обязательно: живой, но
+	# тоже погашенный сосед не накрывает ничего, и по нему пряталась бы целая цепочка.
+	var pk := _key(l + 1, gx >> 1, gz >> 1)
+	if l < MAX_LOD and _want.has(pk) and _live.has(pk):
+		return true                    # стали грубее: накрывает родитель
+	if l > 0:
+		var all := true
+		for dz in 2:
+			for dx in 2:
+				var ck := _key(l - 1, gx * 2 + dx, gz * 2 + dz)
+				if not (_want.has(ck) and _live.has(ck)):
+					all = false
+		if all:
+			return true                # стали мельче: накрывают все четверо детей
+	return false
 
 func _retire(now: float) -> void:
 	var over: int = _live.size() - LIVE_CAP
@@ -1194,7 +1236,10 @@ func _retire(now: float) -> void:
 		if not is_instance_valid(n["inst"]):
 			_live.erase(key)
 			continue
-		n["inst"].visible = false
+		# Не накрыт — оставляем видимым. За кадром его всё равно отсечёт движок, а вот дыры на
+		# месте узла, чья замена ещё считается, не будет.
+		if _covered(key):
+			n["inst"].visible = false
 		if over <= 0 and now - float(n["seen"]) < NODE_GRACE:
 			continue
 		n["inst"].queue_free()
