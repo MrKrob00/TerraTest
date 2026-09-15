@@ -159,6 +159,32 @@ func delete_world(n: int) -> void:
 		use_slot(n)
 
 const WORLD_META := "world.json"
+const WORLD_SAVE := "world_save.json"
+
+## ГДЕ ИГРОК ОСТАНОВИЛСЯ В ПРОШЛЫЙ РАЗ — прямо из файла сохранения, не загружая мир. Спрашивает
+## РЕЛЬЕФ: он строит первую землю до того, как машины восстановлены (world_persist сам ждёт его
+## готовности), и без этой точки строил бы её вокруг камеры — то есть там, где открылась сцена, а
+## не там, где игрок окажется через секунду.
+##
+## Первой в списке машин лежит та, которой управляют (см. world_persist._save_world).
+func saved_start_point() -> Variant:
+	var p := slot_path(WORLD_SAVE)
+	if not FileAccess.file_exists(p):
+		return null
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return null
+	var d = JSON.parse_string(f.get_as_text())
+	f.close()
+	if not (d is Dictionary):
+		return null
+	var ms = d.get("machines", [])
+	if not (ms is Array) or (ms as Array).is_empty() or not (ms[0] is Dictionary):
+		return null
+	var pos = (ms[0] as Dictionary).get("pos", null)
+	if not (pos is Array) or (pos as Array).size() < 3:
+		return null
+	return Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 
 ## Сид слота с диска. Файла нет — слот открыли мимо меню (запуск сцены прямо из редактора):
 ## бросаем новый и записываем, иначе мир менялся бы каждый запуск.
