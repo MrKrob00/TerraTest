@@ -323,7 +323,9 @@ project: read it before claiming how anything works.
   the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
   could be built before the one being looked at. Coming back is cheap only while the heights are
   still cached (`HC_CAP`): rebuilding a mesh from them is vertices and colour, computing them again
-  is four times that from nothing.
+  is four times that from nothing. WITHIN `keep_radius` (320 m) nothing is dropped at all, by time
+  or by cap — that is the ground the player turns back onto in a second; a 320 m disc is about 150
+  nodes across all levels, because the far levels cover a lot with one node.
 - THE LOADING SCREEN WAITS FOR TWO THINGS: the 5×5 ring of level-0 chunks with their collision
   (`READY_RING`) — the ground under the wheels — and then the nodes the frame WANTS within
   `ready_view` metres, which is what the player actually sees. With only the ring the machine stood
