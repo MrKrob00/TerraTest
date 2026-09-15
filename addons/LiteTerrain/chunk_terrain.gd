@@ -152,9 +152,9 @@ func _ready() -> void:
 	set_collision_streaming(true)
 	# ГОВОРИМ, ТОЛЬКО ЕСЛИ ЗАГРУЗКА БЫЛА ДОЛГОЙ. Строка о каждом удачном входе — это строка,
 	# которую перестают читать; число нужно ровно тогда, когда кольцо не уложилось в мгновение.
-	if _ready_ms > READY_SLOW_MS:
-		print("ChunkTerrain: кольцо %d×%d за %d мс, сид %d"
-				% [READY_RING * 2 + 1, READY_RING * 2 + 1, _ready_ms, seed_value])
+	if _view_ms > READY_SLOW_MS:
+		print("ChunkTerrain: кольцо %d мс, всего до %d м %d мс, сид %d"
+				% [_ready_ms, int(ready_view), _view_ms, seed_value])
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
@@ -205,12 +205,18 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 const READY_SLOW_MS := 400
 const READY_RING := 2        # чанков в каждую сторону: 5×5 по 16 м = 80 м вокруг точки старта
 
-## Сколько заняло первое кольцо, мс. Печатается при входе в мир: «быстро или медленно» — это не
-## отчёт, а число — отчёт.
+## Сколько заняли обе стадии входа, мс. Печатается при входе в мир: «быстро или медленно» — это
+## не отчёт, а число — отчёт.
 var _ready_ms: int = 0
+var _view_ms: int = 0
+var _ready_ms_t0: int = 0
+## ДОКУДА ЖДЁМ ЗЕМЛЮ ПЕРЕД ТЕМ, КАК СНЯТЬ ЭКРАН ЗАГРУЗКИ, в метрах от камеры. Больше — дольше
+## вход, но меньше пустоты вокруг в первый кадр.
+@export_range(32.0, 512.0, 16.0) var ready_view: float = 192.0
 
 func _build_around(around: Vector3, with_collision: bool = true) -> void:
 	var t0 := Time.get_ticks_msec()
+	_ready_ms_t0 = t0
 	gen_step = "world"
 	gen_frac = 0.0
 	var bx := int(floor(around.x / CHUNK))
@@ -239,8 +245,50 @@ func _build_around(around: Vector3, with_collision: bool = true) -> void:
 		await get_tree().process_frame
 		guard += 1
 	_ready_ms = Time.get_ticks_msec() - t0
+	await _build_view()
 	gen_step = ""
 	gen_frac = 0.0
+
+## ТО, ЧТО ИГРОК УВИДИТ В ПЕРВЫЙ КАДР. Кольцо выше — это земля ПОД КОЛЁСАМИ: коллизия есть,
+## ехать можно, а вокруг пусто, потому что дальние узлы приезжали уже после того, как экран
+## погас. Ждём ещё и те узлы, которые кадр просит и которые ближе ready_view; даль за ними
+## дорисуется на ходу и этого не заметно.
+##
+## Ждать ВСЁ до горизонта нельзя: грубый узел стоит впятеро дороже мелкого (на шаге больше метра
+## размытие не переиспользует соседей), и полный набор — это десятки секунд.
+func _build_view() -> void:
+	_cam = _active_camera()
+	if _cam == null:
+		return
+	gen_step = "view"
+	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
+	# Камера во время загрузки стоит, поэтому спуск по дереву делаем ОДИН раз, а не каждый кадр.
+	_select(cam_local)
+	var need: Array[int] = []
+	var r2: float = ready_view * ready_view
+	for key in _want:
+		var l := _key_lod(key)
+		var gx := _key_gx(key)
+		var gz := _key_gz(key)
+		if _aabb_dist2(_node_aabb(l, gx, gz), cam_local) > r2:
+			continue
+		need.append(key)
+		if not _live.has(key):
+			_enqueue_mesh(l, gx, gz, _signature(l, gx, gz))
+	_sort_queues(cam_local)
+	var guard := 0
+	while guard < 900:
+		var done := 0
+		for k in need:
+			if _live.has(k):
+				done += 1
+		gen_frac = float(done) / float(maxi(need.size(), 1))
+		if done >= need.size():
+			break
+		_job_tick()
+		await get_tree().process_frame
+		guard += 1
+	_view_ms = Time.get_ticks_msec() - _ready_ms_t0
 
 ## СНЯТЬ КАРТУ СО СЧЁТА. Зовёт тот, кто собирается её освободить: задания пула пишут в массивы,
 ## живущие в этой ноде, и без остановки допишут в уничтоженные.

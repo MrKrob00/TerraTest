@@ -318,9 +318,12 @@ project: read it before claiming how anything works.
   could be built before the one being looked at. Coming back is cheap only while the heights are
   still cached (`HC_CAP`): rebuilding a mesh from them is vertices and colour, computing them again
   is four times that from nothing.
-- THE LOADING SCREEN WAITS FOR THE GROUND UNDER THE PLAYER, not for the view distance: the 5×5 ring
-  of level-0 chunks and their collision (`READY_RING`), and nothing else. The rest of the ring is
-  already queued and arrives behind the fade. Nothing can be baked ahead: the seed is the slot's
+- THE LOADING SCREEN WAITS FOR TWO THINGS: the 5×5 ring of level-0 chunks with their collision
+  (`READY_RING`) — the ground under the wheels — and then the nodes the frame WANTS within
+  `ready_view` metres, which is what the player actually sees. With only the ring the machine stood
+  on collision in the middle of nothing and the view arrived after the fade lifted. Waiting out to
+  `view_distance` is not an option: a coarse node costs five times a fine one (past a one-metre step
+  the blur cannot reuse neighbouring vertices), so the full set is tens of seconds. Nothing can be baked ahead: the seed is the slot's
   own, so precomputing chunks is the same work moved earlier.
 - Neighbour level is asked by `_level_of` (six dictionary lookups, not a tree walk), and the finer
   node lays its extra edge vertices on the segment between the ones it shares with the coarser. A
