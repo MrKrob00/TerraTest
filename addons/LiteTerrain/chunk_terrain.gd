@@ -277,6 +277,7 @@ func _build_view(centre: Vector3) -> void:
 			here = cl
 			cull = true
 			_cam = cam
+	_sel_local = here
 	# Камера во время загрузки стоит, поэтому спуск по дереву делаем ОДИН раз, а не каждый кадр.
 	_select(here, cull)
 	var need: Array[int] = []
@@ -822,15 +823,30 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	_live[key] = {"inst": mi, "sig": job["sig"], "lod": job["lod"], "gx": job["gx"], "gz": job["gz"],
 			"seen": float(Time.get_ticks_msec()) * 0.001}
 
-## Высоты держим только у того, что рисуется или лежит под коллизией.
+## БЛИЖНИЙ КРУГ ДЕРЖИМ ВСЕГДА. Всё, что ближе KEEP_RADIUS к игроку, не выбрасывается ни по
+## времени, ни по потолку: это земля, на которую он развернётся через секунду. Остальная память
+## работает как было — недавно виденное лежит ещё NODE_GRACE секунд и вытесняется самым старым.
+##
+## Круг в 320 м это около полутора сотен узлов всех уровней: пятая часть потолка мешей и
+## двадцатая — потолка высот. Дёшево ровно потому, что дальние уровни накрывают много одним узлом.
+@export_range(0.0, 1024.0, 16.0) var keep_radius: float = 320.0
+
+func _near_player(key: int) -> bool:
+	if keep_radius <= 0.0:
+		return false
+	return _aabb_dist2(_node_aabb(_key_lod(key), _key_gx(key), _key_gz(key)), _sel_local) \
+			<= keep_radius * keep_radius
+
+## Высоты держим у того, что рисуется, лежит под коллизией или стоит в ближнем круге.
 func _prune_heights() -> void:
 	if _hc.size() <= HC_CAP:
 		return
 	for key in _hc.keys():
 		if _hc.size() <= HC_CAP:
 			return
-		if not _live.has(key) and not _want.has(key) and not _col.has(key):
-			_hc.erase(key)
+		if _live.has(key) or _want.has(key) or _col.has(key) or _near_player(key):
+			continue
+		_hc.erase(key)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Меш узла
@@ -1255,6 +1271,7 @@ func _process(delta: float) -> void:
 	_cam = cam
 	var t0 := _pf_now()
 	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
+	_sel_local = cam_local
 	_select(cam_local)
 	var now: float = float(Time.get_ticks_msec()) * 0.001
 	var left: int = stitch_budget
@@ -1292,6 +1309,8 @@ const CAM_AT_START := 32.0
 const SEL_MOVE2 := 16.0
 const SEL_TURN_COS := 0.999
 var _sel_pos: Vector3 = Vector3(1e9, 1e9, 1e9)
+## То же самое, но В ОСЯХ НОДЫ: узлы живут в них, а _sel_pos мировой — им меряют сдвиг камеры.
+var _sel_local: Vector3 = Vector3(1e9, 1e9, 1e9)
 var _sel_fwd: Vector3 = Vector3.FORWARD
 
 ## ЕСТЬ ЛИ НА ЭТОМ МЕСТЕ ДРУГАЯ ЗЕМЛЯ. Смена уровня — это не «узел ушёл», а «узел заменили»:
@@ -1331,6 +1350,8 @@ func _retire(now: float) -> void:
 		# месте узла, чья замена ещё считается, не будет.
 		if _covered(key):
 			n["inst"].visible = false
+		if _near_player(key):
+			continue                   # ближний круг не выбрасываем ни по времени, ни по потолку
 		if over <= 0 and now - float(n["seen"]) < NODE_GRACE:
 			continue
 		n["inst"].queue_free()
