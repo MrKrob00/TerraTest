@@ -313,7 +313,13 @@ project: read it before claiming how anything works.
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
   recomputed on camera movement, not only on `lod_interval`.
-- NEAREST FIRST, AND THE FIRST RING IS AROUND THE CAMERA. Both queues are sorted by distance to
+- THE FIRST RING IS BUILT AT THE START POINT: the camera in a new world, and in a LOADED one the
+  primary machine's saved position, read straight out of the save (`G.saved_start_point`). The
+  machine returns to its place only AFTER the terrain is ready — `world_persist` waits for it — so
+  building around the camera would build where the scene happened to open. With a saved point the
+  view stage waits for a DISC around it at half the radius instead of the camera's cone: where the
+  player will look is unknown, and a disc is four times the nodes of a cone.
+- NEAREST FIRST. Both queues are sorted by distance to
   the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
   could be built before the one being looked at. Coming back is cheap only while the heights are
   still cached (`HC_CAP`): rebuilding a mesh from them is vertices and colour, computing them again

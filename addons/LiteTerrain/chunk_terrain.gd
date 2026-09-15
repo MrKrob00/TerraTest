@@ -142,12 +142,19 @@ func _ready() -> void:
 	var seed_value: int = forced_seed
 	if game != null and game.get("world_seed") != null:
 		seed_value = int(game.get("world_seed"))
-	# ОТ КАМЕРЫ, А НЕ ОТ НУЛЯ. Первое кольцо — это земля, которую игрок увидит в первый кадр, а
-	# ноль мира к ней отношения не имеет: камера уже стоит там, где начнётся игра.
-	_cam = _active_camera()
+	# ГДЕ СТРОИТЬ ПЕРВУЮ ЗЕМЛЮ. В сохранённом мире машина вернётся на своё место уже ПОСЛЕ того,
+	# как рельеф готов: world_persist сам ждёт его готовности. Значит вокруг камеры строить нечего
+	# — она стоит там, где открылась сцена. Точку берём из сейва, её там пишут первой машиной.
+	# Нового мира это не касается: сохранения нет, строим вокруг камеры.
+	var inv := global_transform.affine_inverse()
 	var start := Vector3.ZERO
-	if _cam != null:
-		start = global_transform.affine_inverse() * _cam.global_position
+	var saved = game.saved_start_point() if (game != null and game.has_method("saved_start_point")) else null
+	if saved is Vector3:
+		start = inv * (saved as Vector3)
+	else:
+		_cam = _active_camera()
+		if _cam != null:
+			start = inv * _cam.global_position
 	await setup_procedural(seed_value, start)
 	set_collision_streaming(true)
 	# ГОВОРИМ, ТОЛЬКО ЕСЛИ ЗАГРУЗКА БЫЛА ДОЛГОЙ. Строка о каждом удачном входе — это строка,
@@ -245,7 +252,7 @@ func _build_around(around: Vector3, with_collision: bool = true) -> void:
 		await get_tree().process_frame
 		guard += 1
 	_ready_ms = Time.get_ticks_msec() - t0
-	await _build_view()
+	await _build_view(around)
 	gen_step = ""
 	gen_frac = 0.0
 
@@ -256,26 +263,35 @@ func _build_around(around: Vector3, with_collision: bool = true) -> void:
 ##
 ## Ждать ВСЁ до горизонта нельзя: грубый узел стоит впятеро дороже мелкого (на шаге больше метра
 ## размытие не переиспользует соседей), и полный набор — это десятки секунд.
-func _build_view() -> void:
-	_cam = _active_camera()
-	if _cam == null:
-		return
+func _build_view(centre: Vector3) -> void:
 	gen_step = "view"
-	var cam_local: Vector3 = global_transform.affine_inverse() * _cam.global_position
+	# КАМЕРА РЯДОМ С ТОЧКОЙ — значит смотрит туда же, и ждать надо только то, что в кадре. Далеко
+	# (загруженный мир: машина ещё не вернулась на место) — куда игрок посмотрит, мы не знаем,
+	# поэтому ждём круг вокруг точки, и вдвое меньший: круг это вчетверо больше узлов, чем конус.
+	var here := centre
+	var cull := false
+	var cam := _active_camera()
+	if cam != null:
+		var cl: Vector3 = global_transform.affine_inverse() * cam.global_position
+		if cl.distance_squared_to(centre) < CAM_AT_START * CAM_AT_START:
+			here = cl
+			cull = true
+			_cam = cam
 	# Камера во время загрузки стоит, поэтому спуск по дереву делаем ОДИН раз, а не каждый кадр.
-	_select(cam_local)
+	_select(here, cull)
 	var need: Array[int] = []
-	var r2: float = ready_view * ready_view
+	var view: float = ready_view if cull else ready_view * 0.5
+	var r2: float = view * view
 	for key in _want:
 		var l := _key_lod(key)
 		var gx := _key_gx(key)
 		var gz := _key_gz(key)
-		if _aabb_dist2(_node_aabb(l, gx, gz), cam_local) > r2:
+		if _aabb_dist2(_node_aabb(l, gx, gz), here) > r2:
 			continue
 		need.append(key)
 		if not _live.has(key):
 			_enqueue_mesh(l, gx, gz, _signature(l, gx, gz))
-	_sort_queues(cam_local)
+	_sort_queues(here)
 	var guard := 0
 	while guard < 900:
 		var done := 0
@@ -596,10 +612,12 @@ func _signature(lod: int, gx: int, gz: int) -> int:
 # Спуск по дереву: что рисовать в этот тик
 # ─────────────────────────────────────────────────────────────────────────────
 
-func _select(cam_local: Vector3) -> void:
+## cull = false — берём всё вокруг точки, без отсечения по кадру. Нужно входу в сохранённый мир:
+## земля строится вокруг машины, а камера в этот момент ещё смотрит из начала сцены.
+func _select(at: Vector3, cull: bool = true) -> void:
 	_want.clear()
 	var planes: Array[Plane] = []
-	if enable_frustum_culling and is_instance_valid(_cam):
+	if cull and enable_frustum_culling and is_instance_valid(_cam):
 		var inv := global_transform.affine_inverse()
 		for pl in _cam.get_frustum():
 			planes.append(inv * pl)
@@ -609,11 +627,11 @@ func _select(cam_local: Vector3) -> void:
 		_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
 	var top := CHUNK << MAX_LOD
 	var r: int = int(ceil(view_distance / float(top)))
-	var g0x: int = int(floor(cam_local.x / float(top)))
-	var g0z: int = int(floor(cam_local.z / float(top)))
+	var g0x: int = int(floor(at.x / float(top)))
+	var g0z: int = int(floor(at.z / float(top)))
 	for gz in range(g0z - r, g0z + r + 1):
 		for gx in range(g0x - r, g0x + r + 1):
-			_descend(MAX_LOD, gx, gz, cam_local, planes)
+			_descend(MAX_LOD, gx, gz, at, planes)
 
 func _descend(lod: int, gx: int, gz: int, cam: Vector3, planes: Array[Plane]) -> void:
 	var span := float(CHUNK << lod)
@@ -1060,6 +1078,10 @@ func _make_tile(key: int, bcx: int, bcz: int, h: PackedFloat32Array) -> void:
 	cs.position = Vector3(bcx * CHUNK + CHUNK * 0.5, 0.0, bcz * CHUNK + CHUNK * 0.5)
 	add_child(cs)
 	_col[key] = cs
+	# ОТМЕЧАЕМ ВРЕМЯ СРАЗУ. Без записи _col_seen считает тайл ненужным с нулевой секунды и сносит
+	# его на первом же тике — а тайлы стартового кольца рождаются раньше, чем машина встанет на
+	# своё место, то есть до того, как их кто-то попросит.
+	_col_seen[key] = float(Time.get_ticks_msec()) * 0.001
 
 func collision_stats() -> Vector2i:
 	return Vector2i(_col.size(), _col_bodies.size())
@@ -1265,6 +1287,8 @@ const NODE_GRACE := 15.0
 const LIVE_CAP := 420
 ## Насколько камера должна сдвинуться (метры в квадрате) или повернуться, чтобы пересчитать выбор
 ## раньше таймера. Четыре метра и пара градусов: меньше — и пересчёт идёт каждый кадр впустую.
+## Ближе этого камера считается стоящей в той же точке, что и стройка первой земли.
+const CAM_AT_START := 32.0
 const SEL_MOVE2 := 16.0
 const SEL_TURN_COS := 0.999
 var _sel_pos: Vector3 = Vector3(1e9, 1e9, 1e9)
