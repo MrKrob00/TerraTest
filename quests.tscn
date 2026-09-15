@@ -1,0 +1,146 @@
+[gd_scene format=3 uid="uid://vbcwovv3kt73"]
+
+[ext_resource type="Script" uid="uid://lx0aw3qhsugp" path="res://quests.gd" id="1_q"]
+
+[sub_resource type="StyleBoxFlat" id="tracker"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0.07, 0.18, 0.21, 0.94)
+border_width_left = 3
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(1, 0.65, 0.2, 0.7)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="panel"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
+bg_color = Color(0.043, 0.122, 0.149, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.247, 0.6, 0.65, 0.5)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="Quests" type="CanvasLayer" unique_id=126925193]
+layer = 5
+script = ExtResource("1_q")
+
+[node name="Tracker" type="Button" parent="." unique_id=771392479]
+unique_name_in_owner = true
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -313.0
+offset_top = 76.0
+offset_right = -19.0
+offset_bottom = 140.0
+grow_horizontal = 0
+theme_override_styles/normal = SubResource("tracker")
+theme_override_styles/pressed = SubResource("tracker")
+theme_override_styles/hover = SubResource("tracker")
+
+[node name="TrackVB" type="VBoxContainer" parent="Tracker" unique_id=2057609236]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="TrackTitle" type="Label" parent="Tracker/TrackVB" unique_id=1369017009]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.65, 0.2, 1)
+theme_override_font_sizes/font_size = 16
+text = "★ Quest"
+
+[node name="TrackObjective" type="Label" parent="Tracker/TrackVB" unique_id=862751314]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.93, 0.95, 1)
+theme_override_font_sizes/font_size = 13
+text = "objective — 0/0"
+
+[node name="ListPanel" type="PanelContainer" parent="." unique_id=888738037]
+unique_name_in_owner = true
+visible = false
+mouse_filter = 0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -360.0
+offset_top = -230.0
+offset_right = 360.0
+offset_bottom = 230.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("panel")
+
+[node name="ListVB" type="VBoxContainer" parent="ListPanel" unique_id=1023611589]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Header" type="HBoxContainer" parent="ListPanel/ListVB" unique_id=2064426118]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 0
+
+[node name="Title" type="Label" parent="ListPanel/ListVB/Header" unique_id=1894383428]
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.85, 0.95, 0.98, 1)
+theme_override_font_sizes/font_size = 30
+text = "MISSION LOG"
+
+[node name="Close" type="Button" parent="ListPanel/ListVB/Header" unique_id=1806020968]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 40)
+layout_mode = 2
+text = "X"
+
+[node name="Main" type="HBoxContainer" parent="ListPanel/ListVB" unique_id=1500000001]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+
+[node name="Scroll" type="ScrollContainer" parent="ListPanel/ListVB/Main" unique_id=2125908248]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="QuestList" type="VBoxContainer" parent="ListPanel/ListVB/Main/Scroll" unique_id=1872184016]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 6
+
+[node name="Detail" type="VBoxContainer" parent="ListPanel/ListVB/Main" unique_id=1500000002]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+theme_override_constants/separation = 8
+
+[node name="TrackBtn" type="Button" parent="ListPanel/ListVB" unique_id=1500000003]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+text = "SET AS CURRENT MISSION"

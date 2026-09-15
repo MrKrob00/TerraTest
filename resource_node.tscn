@@ -69,12 +69,11 @@ _data = {
 &"breaking": SubResource("Animation_rigqd")
 }
 
-[node name="ResourceNode" type="StaticBody3D" unique_id=1305433026 node_paths=PackedStringArray("resources")]
+[node name="ResourceNode" type="StaticBody3D" unique_id=1305433026]
 collision_layer = 4
 collision_mask = 7
 script = ExtResource("1_xg62s")
 resource_tscn = ExtResource("2_1t6fe")
-resources = NodePath("resources")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=552341059]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
@@ -86,24 +85,6 @@ libraries/ = SubResource("AnimationLibrary_23y8i")
 [node name="RestTimer" type="Timer" parent="." unique_id=1738777058]
 wait_time = 5.0
 one_shot = true
-
-[node name="resources" type="Node3D" parent="." unique_id=2023529030]
-visible = false
-
-[node name="Resource5" parent="resources" unique_id=1479980520 instance=ExtResource("2_1t6fe")]
-process_mode = 4
-
-[node name="Resource4" parent="resources" unique_id=1544069865 instance=ExtResource("2_1t6fe")]
-process_mode = 4
-
-[node name="Resource3" parent="resources" unique_id=1328766566 instance=ExtResource("2_1t6fe")]
-process_mode = 4
-
-[node name="Resource2" parent="resources" unique_id=568138242 instance=ExtResource("2_1t6fe")]
-process_mode = 4
-
-[node name="Resource" parent="resources" unique_id=329912562 instance=ExtResource("2_1t6fe")]
-process_mode = 4
 
 [node name="visible_node" type="Node3D" parent="." unique_id=542765263]
 visible = false

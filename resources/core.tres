@@ -5,8 +5,7 @@
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_f16e6"]
 render_priority = 0
 shader = ExtResource("1_f7ssh")
-shader_parameter/ore_color = Color(1, 0.75, 0, 1)
-shader_parameter/emission_color = Color(0.4, 0.25, 0, 1)
+shader_parameter/ore_colors = PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 shader_parameter/emission_amount = 0.5
 shader_parameter/hit_duration = 0.4
 shader_parameter/shake_intensity = 0.2

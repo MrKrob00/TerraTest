@@ -1,0 +1,35 @@
+[gd_scene format=3 uid="uid://xheimtpjrti"]
+
+[ext_resource type="Script" uid="uid://cnnalj3vv35m" path="res://vehicle_body_3d.gd" id="1_veh"]
+[ext_resource type="Script" uid="uid://1rm2owmbub47" path="res://blocks.gd" id="2_blk"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_veh"]
+
+[sub_resource type="StandardMaterial3D" id="GhostMat_veh"]
+transparency = 4
+blend_mode = 1
+disable_ambient_light = true
+
+[sub_resource type="BoxMesh" id="GhostMesh_veh"]
+material = SubResource("GhostMat_veh")
+size = Vector3(1.1, 1.1, 1.1)
+
+[node name="Player" type="RigidBody3D" unique_id=2085915674 node_paths=PackedStringArray("block_map_node", "ghost_block")]
+collision_layer = 16
+collision_mask = 21
+can_sleep = false
+linear_damp = 3.0
+angular_damp = 3.0
+script = ExtResource("1_veh")
+block_map_node = NodePath("blocks")
+ghost_block = NodePath("blocks/MeshInstance3D")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=478795464]
+shape = SubResource("BoxShape3D_veh")
+
+[node name="blocks" type="Node3D" parent="." unique_id=8049590]
+script = ExtResource("2_blk")
+layout_preset = 3
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="blocks" unique_id=190982878]
+mesh = SubResource("GhostMesh_veh")

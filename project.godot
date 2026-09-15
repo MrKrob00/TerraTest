@@ -8,26 +8,99 @@
 
 config_version=5
 
+[admob]
+
+config={
+"banner": {
+"position": 1,
+"respect_safe_area": true,
+"show_instantly": true,
+"size": "BANNER",
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/6300978111"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/2934735716"
+}
+}
+},
+"debug": {
+"is_debug_on_release": false,
+"is_real": true,
+"is_test_europe_user_consent": false
+},
+"general": {
+"is_enabled": true,
+"is_for_child_directed_treatment": false,
+"max_ad_content_rating": "PG"
+},
+"interstitial": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/1033173712"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/4411468910"
+}
+}
+},
+"rewarded": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/5224354917"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/1712485313"
+}
+}
+},
+"rewarded_interstitial": {
+"unit_ids": {
+"Android": {
+"standard": "ca-app-pub-3940256099942544/5354046379"
+},
+"iOS": {
+"standard": "ca-app-pub-3940256099942544/6978759866"
+}
+}
+}
+}
+
 [animation]
 
 compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 
 [application]
 
-config/name="Terratest"
-run/main_scene="res://node_3d.tscn"
+config/name="WorldTech"
+config/version="0.1.0-beta1"
+run/main_scene="res://menu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
-config/icon="res://icon.svg"
+config/icon="uid://bnmv2qdj2tbui"
+boot_splash/image="uid://bnmv2qdj2tbui"
 config/specular_occlusion/enabled=true
 config/reflection_atlas/reflection_size=256
 
 [autoload]
 
 G="*res://G.gd"
+Dialogue="*res://dialogue.tscn"
+Music="*res://music_manager.gd"
+Q="*res://quest_manager.gd"
+MobileAds="*uid://cgi4yv4jxmjuy"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation="landscape"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/terrain_sculpt/plugin.cfg")
+enabled=PackedStringArray("res://addons/LiteTerrain/plugin.cfg", "res://addons/admob/plugin.cfg", "res://addons/blockfaces/plugin.cfg", "res://addons/blockgen/plugin.cfg")
 
 [input]
 
@@ -51,10 +124,10 @@ Building={
 "deadzone": 0.2,
 "events": []
 }
-
-[input_devices]
-
-pointing/android/enable_long_press_as_right_click=true
+ModeToggle={
+"deadzone": 0.2,
+"events": []
+}
 
 [layer_names]
 
@@ -72,7 +145,12 @@ pointing/android/enable_long_press_as_right_click=true
 
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_s3tc_bptc=true
 lights_and_shadows/use_physical_light_units=true
+lights_and_shadows/directional_shadow/size=1024
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
-occlusion_culling/occlusion_rays_per_thread=216
+scaling_3d/scale=0.75
+environment/glow/upscale_mode=0
