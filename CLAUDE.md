@@ -43,7 +43,11 @@ project: read it before claiming how anything works.
     value kept plus a same-size entry in `RETIRED_BLOCKS`.
 16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
     too (`TerrainBiomes.cv_noise`, handed to the masks as `biomes.noise`). A second copy of the
-    formula diverged once and moved a whole region.
+    formula diverged once and moved a whole region. PATCH SIZE IS SET BY `scale` AND NOTHING ELSE:
+    one octave plus a threshold has no size floor, so slivers of two or three chunks always appear
+    near the threshold. Raising `scale` is the only lever that does not change the world — lowering
+    the threshold removes slivers too but doubles how much of the map that biome covers. Blurring
+    the mask noise does not work: it moves the isoline, it does not remove slivers (measured).
 17. A loose item is put to sleep with `sleeping`, never `freeze`: `G.is_loose_item` checks `freeze`,
     and a frozen item stops being pickable.
 18. `user://` heights override packaged ones, so a regenerated map needs a fresh save; a procedural
