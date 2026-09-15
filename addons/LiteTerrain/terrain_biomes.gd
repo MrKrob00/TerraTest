@@ -17,7 +17,7 @@ extends Resource
 # ── Base land split: DESERT ↔ MEADOW ──────────────────────────────────────────
 @export_group("Desert / Meadow")
 ## Biome patch size in world units. Smaller fits several biomes on screen at once.
-@export_range(30.0, 1000.0, 1.0) var biome_scale: float = 230.0
+@export_range(30.0, 1000.0, 1.0) var biome_scale: float = 340.0
 ## Split threshold: above 0.5 gives more sand, below it more meadow.
 @export_range(0.0, 1.0, 0.01) var biome_bias: float = 0.5
 ## Transition width. Narrower gives a crisp border instead of a muddle.
@@ -37,7 +37,7 @@ extends Resource
 @export_group("Canyon")
 ## A disabled biome shows up neither in the colour nor in the landform.
 @export var canyon_enabled: bool = true
-@export_range(30.0, 1000.0, 1.0) var canyon_scale: float = 250.0
+@export_range(30.0, 1000.0, 1.0) var canyon_scale: float = 450.0
 ## Higher threshold means rarer canyons.
 @export_range(0.0, 1.0, 0.01) var canyon_threshold: float = 0.70
 ## Narrower edge means a steeper outer wall.
@@ -102,6 +102,20 @@ func snow_blend_at(world_height: float) -> float:
 ## rather than a bright patch.
 @export_range(0.4, 1.2, 0.01) var grass_shade: float = 0.62
 
+## РАЗМЕР ПЯТНА БИОМА РЕШАЕТ `scale`, И ТОЛЬКО ОН. Маска — это одна октава шума и порог, минимума
+## размера в ней нет: рядом с порогом всегда рождаются обрезки в два-три чанка, и именно они
+## попадаются на глаза, пока едешь. Замерено по связным пятнам на 6×6 км, три сида:
+##
+##   луг    230 → медиана 224 м, каждое шестое пятно меньше 128 м;  340 → 352 м и каждое двадцать
+##          пятое. Дальше не улучшается: граница 50 на 50 всегда даёт перешейки.
+##   каньон 250 → медиана 208 м, каждое седьмое меньше 128 м;  450 → 464 м и каждое тридцатое.
+##   горы   420 → медиана 336 м, мелких нет вовсе. Не трогаем.
+##
+## ПОРОГ ОСТАВЛЕН КАК БЫЛ. Опустить его до 0.58 убирает мелочь совсем, но доля каньона на карте
+## растёт с 22% до 39% — это уже другой мир, а не тот же с более крупными пятнами.
+##
+## Размыть сам шум (как размывают высоты) НЕ РАБОТАЕТ, проверено: размытие двигает линию порога,
+## но косицы не убирает — на радиусе 80 м мелких стало даже больше.
 # ── Masks (the same maths the shader assumes) ─────────────────────────────────
 # Each layer samples the noise at its own offset, otherwise canyons and mountains would
 # land on one and the same patch.
