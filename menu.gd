@@ -261,7 +261,11 @@ func _ask_delete(i: int) -> void:
 		_del_dialog.ok_button_text = tr("DELETE")
 		_del_dialog.confirmed.connect(_delete_slot)
 		add_child(_del_dialog)
-	_del_dialog.dialog_text = tr("Slot %d: the world and the save are erased. This cannot be undone.") % (i + 1)
+	# Называем то, что в слоте ЕСТЬ: обещать стереть сохранение там, где игрок ни разу не входил,
+	# значит пугать несуществующим.
+	var msg: String = tr("Slot %d: the world and the save are erased. This cannot be undone.") \
+			if G.slot_used(i) else tr("Slot %d: the world is erased. This cannot be undone.")
+	_del_dialog.dialog_text = msg % (i + 1)
 	_del_dialog.popup_centered(Vector2i(380, 140))
 
 func _delete_slot() -> void:

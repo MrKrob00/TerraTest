@@ -99,14 +99,17 @@ func slot_info(n: int) -> Dictionary:
 ## ПЕРЕКЛЮЧИТЬСЯ НА СЛОТ. Зовётся из меню ДО загрузки игровой сцены и из _ready (чтобы сцену
 ## можно было запустить прямо из редактора, без меню). Всё, что читается с диска, читается
 ## заново — G автолоад и переживает смену сцены, поэтому старый мир иначе остался бы в памяти.
-func use_slot(n: int) -> void:
+##
+## `keep_empty` — «слот сейчас пуст, и пусть остаётся пустым»: сид не бросается и world.json не
+## пишется. Так зовёт удаление; без этого слот оживал ровно в тот момент, когда его стирали.
+func use_slot(n: int, keep_empty: bool = false) -> void:
 	slot = clampi(n, 0, SLOT_COUNT - 1)
 	DirAccess.make_dir_recursive_absolute(slot_dir())
 	var f := FileAccess.open(LAST_SLOT_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(str(slot))
 		f.close()
-	_load_world_seed()
+	_load_world_seed(not keep_empty)
 	_reset_state()
 	_load_builds()
 	_load_progress()
@@ -156,7 +159,7 @@ func delete_world(n: int) -> void:
 	_wipe(n, PROGRESS_FILES)
 	_wipe(n, WORLD_FILES)
 	if n == slot:
-		use_slot(n)
+		use_slot(n, true)     # слот остаётся пустым: новый сид не бросаем и world.json не пишем
 
 const WORLD_META := "world.json"
 const WORLD_SAVE := "world_save.json"
@@ -187,12 +190,14 @@ func saved_start_point() -> Variant:
 	return Vector3(float(pos[0]), float(pos[1]), float(pos[2]))
 
 ## Сид слота с диска. Файла нет — слот открыли мимо меню (запуск сцены прямо из редактора):
-## бросаем новый и записываем, иначе мир менялся бы каждый запуск.
-func _load_world_seed() -> void:
+## бросаем новый и записываем, иначе мир менялся бы каждый запуск. Кроме случая, когда слот
+## только что стёрли (`create_if_missing == false`): там пустота — это и есть результат.
+func _load_world_seed(create_if_missing: bool = true) -> void:
 	var p := slot_path(WORLD_META)
 	if not FileAccess.file_exists(p):
 		world_seed = roll_world_seed()
-		_save_world_seed()
+		if create_if_missing:
+			_save_world_seed()
 		return
 	var f := FileAccess.open(p, FileAccess.READ)
 	if f == null:

@@ -143,5 +143,9 @@
 	"Slot %d: the world and the save are erased. This cannot be undone.": {
 		"ru": "Слот %d: мир и сохранение стираются. Отменить нельзя.",
 		"uk": "Слот %d: світ і збереження стираються. Скасувати не можна."
+	},
+	"Slot %d: the world is erased. This cannot be undone.": {
+		"ru": "Слот %d: мир стирается. Отменить нельзя.",
+		"uk": "Слот %d: світ стирається. Скасувати не можна."
 	}
 }
