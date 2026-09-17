@@ -552,6 +552,12 @@ project: read it before claiming how anything works.
   compares slopes rather than angles.
 - Seam rebuilds run on a budget per pass; a hairline crack beats a frame drop.
 - Whole-machine frustum culling toggles `visible` only — `process_mode` belongs to the sleep system.
+- A WALLED-IN BLOCK IS NOT DRAWN (`blocks._apply_occlusion`), and "walled in" is decided by a FLOOD
+  FILL FROM OUTSIDE, not by counting six neighbours: a neighbour may be a part that does not fill
+  its cell (wheel, belt, barrel, half-block), and you see straight through it. `VehicleBlock.
+  solid_cell` is that flag, default **false** — a wrong "no" costs one drawn cube, a wrong "yes" is
+  a hole in the hull. A block leaving the machine (torn off, taken, scattered) is made visible
+  again at the single door it leaves through.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.

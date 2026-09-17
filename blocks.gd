@@ -572,6 +572,7 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 		map[c.x][c.y][c.z] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
 	rotation_map[anchor] = rot if rot is Vector3 else Vector3(0, float(rot), 0)
+	queue_occlusion()
 	return true
 
 func remove_block(x: int, y: int, z: int) -> void:
@@ -587,11 +588,18 @@ func remove_block(x: int, y: int, z: int) -> void:
 		if _in_bounds(c.x, c.y, c.z):
 			map[c.x][c.y][c.z] = G.Block.EMPTY
 			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
+	# УХОДЯЩИЙ БЛОК ВОЗВРАЩАЕМ ВИДИМЫМ. Спрятанный как «его всё равно не видно» (см.
+	# _apply_occlusion) он снялся бы с машины невидимым — и лёг бы в мир или в руку пустым
+	# местом: за пределами сборки прятать его больше некому и незачем.
+	var leaving = node_map.get(anchor, null)
+	if leaving != null and is_instance_valid(leaving) and leaving is Node3D:
+		(leaving as Node3D).visible = true
 	node_map.erase(anchor)
 	rotation_map.erase(anchor)
 	output_map.erase(anchor)
 	port_map.erase(anchor)
 	charge_map.erase(anchor)
+	queue_occlusion()
 
 func get_block(x: int, y: int, z: int) -> G.Block:
 	if _in_bounds(x, y, z):
@@ -679,6 +687,9 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	# The matrix spawn effect plays only when a machine is built FROM SCRATCH (spawn_block is called
 	# from _spawn_all only: first machine, load, build change). Manual placement no longer plays it.
 	BlockFX.play(instance, false)
+	# Ноды появляются ПОЗЖЕ клеток (здесь есть await), поэтому счёт замурованных просим и
+	# отсюда: отложенный проход от set_block мог пройти по ещё пустому node_map.
+	queue_occlusion()
 
 # Apply the saved product choice to a block. The field name differs between the two factories, so
 # both are checked: they share no interface and adding one for a single number is not worth it.
@@ -915,6 +926,102 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 	var veh := get_parent()
 	if veh != null and veh.has_method("detach_block_to_world"):
 		veh.detach_block_to_world(node)
+
+# ── ЗАМУРОВАННЫЕ БЛОКИ НЕ РИСУЮТСЯ ──────────────────────────────────────────
+# На плотной сборке внутри деки стоит по десятку кубов, которых не видно ни с одной стороны:
+# каждый из них — свой draw call, своя тень и своя пачка вершин каждый кадр, ради ничего.
+#
+# СЧИТАЕМ ЗАЛИВКОЙ СНАРУЖИ, А НЕ «ШЕСТЬ СОСЕДЕЙ НА МЕСТЕ». Разница ровно та, ради которой
+# всё и затевалось: соседом может оказаться НЕПОЛНЫЙ блок — колесо, лента, ствол, половинка,
+# — сквозь который видно. Шесть соседей при этом есть, а дыра в корпусе всё равно видна, и
+# «оптимизация» вырезала бы кусок машины на глазах у игрока. Заливка идёт по клеткам, которые
+# ПРОПУСКАЮТ ВЗГЛЯД (пустым и занятым неполными блоками), начиная снаружи, и блок считается
+# видимым, если волна дошла до него самого или хотя бы до одной его грани.
+#
+# `solid_cell` — галочка на самом блоке: заполняет ли он клетку целиком. По умолчанию НЕТ, и
+# это нарочно: цена ошибки несимметрична. Ошибиться в «нет» — это один лишний нарисованный
+# куб, ошибиться в «да» — дыра в корпусе, сквозь которую видно небо.
+const _PX := MAP_SIZE_X + 2          # кайма в одну клетку: снаружи сборки всегда открыто
+const _PY := MAP_SIZE_Y + 2
+const _PZ := MAP_SIZE_Z + 2
+var _occl_queued: bool = false
+
+## Пересчёт откладываем на конец кадра: постановка блока и разбор машины меняют сетку пачками,
+## а проход тут один на всю сборку.
+func queue_occlusion() -> void:
+	if _occl_queued:
+		return
+	_occl_queued = true
+	call_deferred("_apply_occlusion")
+
+func _padded(x: int, y: int, z: int) -> int:
+	return ((x + 1) * _PY + (y + 1)) * _PZ + (z + 1)
+
+func _apply_occlusion() -> void:
+	_occl_queued = false
+	if node_map.is_empty():
+		return
+	var total: int = _PX * _PY * _PZ
+	var open := PackedByteArray()
+	open.resize(total)
+	open.fill(1)
+	var cells_of: Dictionary = {}                  # якорь → Array[Vector3i]
+	for ck in cell_owner:
+		var parts: PackedStringArray = String(ck).split(",")
+		if parts.size() < 3:
+			continue
+		var c := Vector3i(int(parts[0]), int(parts[1]), int(parts[2]))
+		var anchor := String(cell_owner[ck])
+		var arr: Array = cells_of.get(anchor, [])
+		arr.append(c)
+		cells_of[anchor] = arr
+		var node = node_map.get(anchor, null)
+		if node != null and is_instance_valid(node) and node.get("solid_cell") == true:
+			open[_padded(c.x, c.y, c.z)] = 0
+	# Заливка от угла каймы: кайма пуста целиком и потому связна — второй точки входа не нужно.
+	var seen := PackedByteArray()
+	seen.resize(total)
+	seen.fill(0)
+	var queue := PackedInt32Array()
+	queue.append(0)
+	seen[0] = 1
+	var head: int = 0
+	while head < queue.size():
+		var i: int = queue[head]
+		head += 1
+		var pz: int = i % _PZ
+		var py: int = int(i / _PZ) % _PY
+		var px: int = int(i / (_PZ * _PY))
+		for d in BFS_DIRS:
+			var nx: int = px + d.x
+			var ny: int = py + d.y
+			var nz: int = pz + d.z
+			if nx < 0 or ny < 0 or nz < 0 or nx >= _PX or ny >= _PY or nz >= _PZ:
+				continue
+			var j: int = (nx * _PY + ny) * _PZ + nz
+			if seen[j] == 1 or open[j] == 0:
+				continue
+			seen[j] = 1
+			queue.append(j)
+	for anchor in cells_of:
+		var node = node_map.get(anchor, null)
+		if node == null or not is_instance_valid(node) or not (node is Node3D):
+			continue
+		(node as Node3D).visible = _cells_seen(cells_of[anchor], seen)
+
+## Дошла ли заливка до блока: до его собственной клетки (неполный блок — сам по себе окно) или
+## хотя бы до одной клетки за его гранью.
+func _cells_seen(cells: Array, seen: PackedByteArray) -> bool:
+	for c in cells:
+		var px: int = c.x + 1
+		var py: int = c.y + 1
+		var pz: int = c.z + 1
+		if seen[(px * _PY + py) * _PZ + pz] == 1:
+			return true
+		for d in BFS_DIRS:
+			if seen[((px + d.x) * _PY + (py + d.y)) * _PZ + (pz + d.z)] == 1:
+				return true
+	return false
 
 # ══════════════════════════════════════════════════════════════════════════════
 # SAVE / LOAD

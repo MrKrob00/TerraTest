@@ -992,6 +992,9 @@ func scatter_blocks(cabin: Node = null) -> void:
 		if not (b is Node3D):
 			continue
 		var n3 := b as Node3D
+		# Замурованный блок машины не рисовался (blocks._apply_occlusion) — в мир он обязан
+		# выпасть видимым: прятать его там больше некому и незачем.
+		n3.visible = true
 		n3.reparent(objects)                      # keep_global_transform=true keeps the block in place
 		var rb := n3 as RigidBody3D
 		if rb == null:

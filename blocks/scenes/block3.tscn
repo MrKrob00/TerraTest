@@ -11,6 +11,7 @@ collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_scr")
 block = 26
+solid_cell = true
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 shape = SubResource("BoxShape3D_s")
