@@ -244,6 +244,7 @@ class Slot extends Button:
 	var price: int = 0
 	var build_name: String = ""       # имя сборки для load
 	var corner: Label = null
+	var sale: Label = null            # процент скидки, отдельной строкой в правом верхнем углу
 	var pencil: Control = null
 
 var _pool: Array = []
@@ -271,6 +272,20 @@ func _new_slot() -> Slot:
 	s.corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	s.corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	s.add_child(s.corner)
+	# ПРОЦЕНТ СКИДКИ — СВОЙ УГОЛ, ПРАВЫЙ ВЕРХНИЙ. Он стоял в той же строке, что и цена, и
+	# «120$  −30%» в угол слота просто не влезало: строка обрезалась, и от скидки оставалась
+	# половина процента. Две короткие надписи в разных углах читаются и на самом узком слоте.
+	s.sale = Label.new()
+	s.sale.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	s.sale.offset_left = -40.0
+	s.sale.offset_top = 1.0
+	s.sale.offset_right = -3.0
+	s.sale.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	s.sale.add_theme_font_size_override("font_size", 11)
+	s.sale.add_theme_color_override("font_color", SALE_COL)
+	s.sale.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.sale.visible = false
+	s.add_child(s.sale)
 	# Карандашик — подсказка «у слота есть меню», не кнопка: нажатия пропускает насквозь.
 	s.pencil = PencilIcon.new()
 	s.pencil.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
@@ -310,6 +325,7 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	# Цвет ценника СБРАСЫВАЕМ: слоты живут в пуле и переиспользуются, поэтому жёлтый ярлык
 	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
 	s.corner.remove_theme_color_override("font_color")
+	s.sale.visible = false
 	s.pencil.visible = false
 	s.visible = true
 
@@ -343,11 +359,13 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 	s.action = &"buy"
 	var off: int = G.shop_sale_pct(s.arg)
 	if off > 0:
-		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой и процент прямо в углу, старая
-		# цена — в подсказке. Процент обязателен: без него игрок не отличит скидку от блока,
-		# который просто дешевле соседнего, а угол слота — единственное место, куда он смотрит.
-		s.corner.text = "%d$  −%d%%" % [s.price, off]
+		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой внизу, процент мелким сверху
+		# справа, старая цена — в подсказке. Процент обязателен: без него игрок не отличит
+		# скидку от блока, который просто дешевле соседнего.
+		s.corner.text = "%d$" % s.price
 		s.corner.add_theme_color_override("font_color", SALE_COL)
+		s.sale.text = "−%d%%" % off
+		s.sale.visible = true
 		s.tooltip_text = "On sale: %d$ instead of %d$" % [s.price, int(it.get("was", s.price))]
 	else:
 		s.corner.text = "%d$" % s.price
