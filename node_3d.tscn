@@ -552,7 +552,7 @@ text = "<"
 
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
 script = ExtResource("17_tuemg")
-camera = NodePath("../../../../../../../../../@Node3DEditor@9852/@HSplitContainer@9257/@HSplitContainer@9259/@VSplitContainer@9261/@Node3DEditorViewportContainer@9262/@Node3DEditorViewport@9317/@SubViewportContainer@9263/@SubViewport@9264/@Camera3D@9266")
+camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 biomes = SubResource("Resource_s0gvp")
 view_distance = 4000.0
 collision_radius = 48

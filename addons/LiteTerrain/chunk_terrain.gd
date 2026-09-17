@@ -1236,11 +1236,20 @@ func _preview_eye() -> Vector3:
 	return global_transform.affine_inverse() * c.global_position
 
 ## Камеру редактора кладёт плагин (_forward_3d_gui_input): своей у ноды в редакторе нет.
+##
+## ДЕРЖИМ ЕЁ ОТДЕЛЬНО ОТ `camera`. Запись в экспортируемое свойство помечает сцену изменённой, и
+## однажды она сохраняется: в node_3d.tscn уезжал путь до камеры ВЬЮПОРТА РЕДАКТОРА
+## (`../../../@Node3DEditorViewport@…/@Camera3D@…`), которой в игре нет вовсе — то есть у земли в
+## запущенной игре камеры не оставалось. Поле не экспортируется и в сцену попасть не может.
+var _ed_cam: Camera3D = null
+
 func set_editor_camera(c: Camera3D) -> void:
-	if c != null and c != camera:
-		camera = c
+	if c != null:
+		_ed_cam = c
 
 func _active_camera() -> Camera3D:
+	if Engine.is_editor_hint() and is_instance_valid(_ed_cam):
+		return _ed_cam
 	if is_instance_valid(camera):
 		return camera
 	var vp := get_viewport()
