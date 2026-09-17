@@ -175,7 +175,10 @@ func _seed_demo() -> void:
 		 "event": "quest_tower_2", "goal": 1,
 		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
 	])
-	add_quest("arc_sam", "SAM Site Ridge", "", Type.STORY, 1, 13, "", 700, 100, 26)
+	# SAM ОТКРЫВАЕТСЯ НА 5 ГРЕЙДЕ, и раньше его в журнале нет. Watchtower и SAM — одна задача
+	# дважды, и подряд они читаются как повтор; лицензия разводит их по времени и заодно
+	# гарантирует, что во второй раз у игрока есть чем ломать ракетную точку.
+	add_quest("arc_sam", "SAM Site Ridge", "", Type.STORY, 1, 13, "", 700, 100, 26, 5)
 	add_stages("arc_sam", [
 		{"desc": "Reach the missile site",
 		 "event": "quest_sam_1", "goal": 1,

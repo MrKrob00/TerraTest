@@ -975,11 +975,20 @@ func scatter_blocks(cabin: Node = null) -> void:
 			if b.get("block") == G.Block.CABIN and b is Node3D:
 				center = (b as Node3D).global_position
 				break
+	var volatile: Array = []
 	for b in bl.get_children():                   # get_children() is a snapshot, so reparent is safe
 		if not ("block" in b):
 			continue                              # hint ghost mesh: it has no block type
 		if b.get("block") == G.Block.CABIN:
 			continue                              # the cabin is destroyed, do not drop it
+		# A VOLATILE BATTERY GOES OFF INSTEAD OF FALLING OUT (VehicleBlock.is_volatile). On such a
+		# build the battery IS the task: letting it land in the scrap when the machine comes apart
+		# - support block shot out, say - hands the player the prize and skips the bang.
+		# BLOWN AFTER THE LOOP, not here: the blast damages its neighbours, and they are exactly
+		# the blocks this loop is still scattering.
+		if b.has_method("is_volatile") and b.is_volatile():
+			volatile.append(b)
+			continue
 		if not (b is Node3D):
 			continue
 		var n3 := b as Node3D
@@ -994,6 +1003,9 @@ func scatter_blocks(cabin: Node = null) -> void:
 		rb.freeze = false
 		rb.sleeping = false
 		rb.apply_central_impulse((dir * 5.0 + Vector3.UP * 4.0) * rb.mass)
+	for v in volatile:
+		if is_instance_valid(v):
+			v.destroy()
 
 func register_blast(pos: Vector3, force: float) -> void:
 	_blast_pos = pos

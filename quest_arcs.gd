@@ -1091,8 +1091,9 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 		return
 	if not bool(_tower_dead.get(key, false)):
 		return
-	# Вышка мертва. Зарядные башни, если ещё стоят, остаются в мире обычными базами: добивать
-	# их ради галочки незачем, а бросать посреди боя — тем более.
+	# Вышка мертва. Зарядные башни, если ещё стоят, теряют в этот момент аккумуляторы
+	# (_blow_tower_guards) и остаются в мире обычными базами: добивать их ради галочки незачем,
+	# а бросать посреди боя — тем более.
 	_award(int(cfg["award"]))
 	Dialogue.say("System", "Ridge is clear. The hardware it was guarding is yours.")
 	Q.report(String(q["event"]), 1)
@@ -1111,6 +1112,7 @@ func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
 	var tower = sp.spawn_at(at, int(cfg["preset"]), 1, true)
 	if tower == null:
 		return false
+	tower.set_meta("volatile_batteries", true)
 	if tower.has_signal("died"):
 		tower.died.connect(_on_tower_died.bind(key))
 	_tower_node[key] = tower
@@ -1122,11 +1124,42 @@ func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
 		var ang: float = TAU * float(i) / float(n)
 		var wp: Vector3 = at + Vector3(cos(ang) * TOWER_RING, 0.0, sin(ang) * TOWER_RING)
 		wp.y = G.ground_y(wp, at.y)
-		sp.spawn_at(wp, 18, 1, true)
+		var g = sp.spawn_at(wp, 18, 1, true)
+		if g != null:
+			g.set_meta("volatile_batteries", true)
+			g.set_meta("tower_guard", key)      # см. _blow_tower_guards: метка, а не список
 	return true
+
+## ВЫШКА ПАЛА — БАТАРЕИ ЗАРЯДНЫХ БАШЕН РВУТСЯ. Энергия им больше некуда деваться, и точка
+## обязана кончиться одним событием, а не уборкой трёх-четырёх целых баз, у которых уже нет
+## работы: добивать их «ради галочки» — это ровно та скука, из-за которой квест кончается позже,
+## чем кончился бой.
+##
+## Ищем МЕТКОЙ ПО МИРУ, а не списком: список, который никто не перечитывает, однажды разойдётся
+## с миром (башню снесли, ссылка осталась) и начнёт врать — поэтому его здесь и не заводили.
+func _blow_tower_guards(key: String) -> void:
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	if vr == null:
+		return
+	for v in vr.get_children():
+		if not is_instance_valid(v) or not v.has_meta("tower_guard"):
+			continue
+		if String(v.get_meta("tower_guard")) != key:
+			continue
+		var bl: Node = v.get_node_or_null("blocks")
+		if bl == null:
+			continue
+		var bats: Array = []
+		for b in bl.get_children():
+			if b.has_method("is_volatile") and b.is_volatile():
+				bats.append(b)
+		for b in bats:                          # взрыв бьёт соседей — рвём вне обхода детей
+			if is_instance_valid(b):
+				b.destroy()
 
 func _on_tower_died(_who, key: String) -> void:
 	_tower_dead[key] = true
+	_blow_tower_guards(key)
 
 # ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
 # Часть 1 — доехать до точки. Часть 2 — победить.

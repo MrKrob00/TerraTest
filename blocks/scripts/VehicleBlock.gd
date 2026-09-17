@@ -378,15 +378,28 @@ func _check_critical() -> void:
 	var frac: float = float(current_hp) / float(maxi(max_hp, 1))
 	if frac >= DROP_FRAC:
 		return
-	var is_cabin: bool = block == G.Block.CABIN
+	var stays: bool = block == G.Block.CABIN or is_volatile()
 	if frac < FUSE_FRAC:
 		# Doomed: off the machine FOR CERTAIN (the 30% roll above may well have never come up),
 		# and the fuse is lit either way.
-		if not is_cabin and _map_node() != null:
+		if not stays and _map_node() != null:
 			_map_node().detach_node(self)
 		_light_fuse()
-	elif not is_cabin and _map_node() != null and randf() < DROP_CHANCE:
+	elif not stays and _map_node() != null and randf() < DROP_CHANCE:
 		_map_node().detach_node(self)
+
+## АККУМУЛЯТОР, КОТОРЫЙ НЕ ВЫПАДАЕТ, А РВЁТСЯ ВМЕСТЕ С ПОСТРОЙКОЙ.
+##
+## Помечается на МАШИНЕ (мета `volatile_batteries`), а не на блоке: это свойство постройки —
+## вышка под щитом и её зарядные башни, — и раздавать метку блокам по одному значит однажды
+## забыть один. Батарея такой постройки и есть задача: она должна рвануть в руках у того, кто
+## её ломает, а не лечь под ноги трофеем, чем бы её ни сбили — попаданием, фитилём или гибелью
+## самой постройки (в том числе когда сломали блок поддержки и всё посыпалось).
+func is_volatile() -> bool:
+	if block != G.Block.BATTERY:
+		return false
+	var veh: Node = _root_body()
+	return veh != null and veh.has_meta("volatile_batteries")
 
 ## The block map of the machine this block sits on. null → the block is already loose (lying in
 ## the world, in a collector, in the player's hand): there is nothing to tear it off.
@@ -497,9 +510,28 @@ func _play_hit_effect() -> void:
 # The battery and the cabin blow up HARDER than an ordinary block: one is a charged cell, the
 # other takes the whole machine with it. Same 3-metre-ish reach so the rule stays readable —
 # what differs is how much it hurts and how far it throws.
-const BATTERY_BLAST_RADIUS := 3.5
-const BATTERY_BLAST_DAMAGE := 45
+## ВЗРЫВ АККУМУЛЯТОРА РАСТЁТ С ЗАРЯДОМ. Пустая банка — кусок железа, полная — запас энергии, и
+## разница обязана читаться: снять с вражеской машины щит и реген выгодно ещё и потому, что её
+## батареи после этого рвутся вполсилы.
+##
+## Урон задан ДОЛЕЙ ОТ ПРОЧНОСТИ ОБЫЧНОГО БЛОКА, а не абсолютным числом: таблица BLOCK_HP
+## двигается (её тюнят «в секундах под огнём»), и «сколько это в хп» обязано двигаться вместе с
+## ней. Полный аккумулятор снимает соседу больше двух третей, пустой едва царапает.
+## Радиус в КЛЕТКАХ — клетка и есть метр.
+const BATTERY_BLAST_FRAC_FULL := 0.70
+const BATTERY_BLAST_FRAC_EMPTY := 0.20
+const BATTERY_BLAST_RADIUS_FULL := 3.0
+const BATTERY_BLAST_RADIUS_EMPTY := 1.0
 const BATTERY_BLAST_FORCE := 8.0
+
+## Насколько аккумулятор полон, 0..1. Не аккумулятор или блок без скрипта батареи — ноль:
+## `get` на отсутствующем поле возвращает null, и делить на него нельзя (CLAUDE.md, правило 4).
+func _charge01() -> float:
+	var cap = get("capacity")
+	var ch = get("charge")
+	if not (cap is float) or not (ch is float) or float(cap) <= 0.0:
+		return 0.0
+	return clampf(float(ch) / float(cap), 0.0, 1.0)
 const CABIN_BLAST_RADIUS := 3.5
 const CABIN_BLAST_DAMAGE := 55
 const CABIN_BLAST_FORCE := 9.0
@@ -520,8 +552,10 @@ func destroy() -> void:
 	var blast_d: int = 0
 	var blast_f: float = 0.0
 	if block == G.Block.BATTERY:
-		blast_r = BATTERY_BLAST_RADIUS
-		blast_d = BATTERY_BLAST_DAMAGE
+		var k: float = _charge01()
+		var ord_hp: float = float(int(BLOCK_HP.get(G.Block.BLOCK, DEFAULT_HP)))
+		blast_r = lerpf(BATTERY_BLAST_RADIUS_EMPTY, BATTERY_BLAST_RADIUS_FULL, k)
+		blast_d = int(round(ord_hp * lerpf(BATTERY_BLAST_FRAC_EMPTY, BATTERY_BLAST_FRAC_FULL, k)))
 		blast_f = BATTERY_BLAST_FORCE
 	elif block == G.Block.CABIN:
 		blast_r = CABIN_BLAST_RADIUS

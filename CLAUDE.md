@@ -152,6 +152,13 @@ project: read it before claiming how anything works.
   deferred to end of frame — `hurt` runs inside a physics traversal.
 - Three things explode: battery, cabin (takes the machine with it) and any burnt-out fuse. Damage
   hits blocks, impulse only loose bodies.
+- A BATTERY'S BLAST FOLLOWS ITS CHARGE: full it takes 70% of an ordinary block's HP three cells
+  out, empty 20% one cell out, linear between. The damage is stored as a SHARE of `BLOCK_HP[BLOCK]`
+  because that table is tuned in seconds-under-fire and moves.
+- A machine carrying meta `volatile_batteries` never drops a battery — it detonates instead,
+  whether shot off, burnt down or shaken loose when the build came apart. That is what the shielded
+  tower and its charging towers are marked with; killing the tower blows the guards' cells too
+  (`quest_arcs._blow_tower_guards`, found by meta `tower_guard`, never by a list).
 - Block tinting goes through a separate shell: model materials are shared between instances.
 - DAMAGE IS SHOWN AS CELLS, NOT AS A LEVEL (`block_hp.gdshader`): a cell is broken or not, decided
   by its own hash against the damage share, so a new hit ADDS glyphs to the ones already lit and
