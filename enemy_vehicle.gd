@@ -788,8 +788,14 @@ var _atk_cache: Array = []
 var _atk_n: int = -1
 
 # Weapon block cache: needed both for firing and for scoring our own range and firepower.
+var _blocks_node: Node = null
+
 func _weapon_blocks() -> Array:
-	var bl := get_node_or_null("blocks")
+	# Узел blocks ищем один раз: _do_attack зовут на каждом физ-тике, и поиск по имени на
+	# каждого врага каждый кадр — это чистая плата ни за что, узел никуда не переезжает.
+	if _blocks_node == null or not is_instance_valid(_blocks_node):
+		_blocks_node = get_node_or_null("blocks")
+	var bl: Node = _blocks_node
 	if bl == null:
 		return []
 	if bl.get_child_count() != _atk_n:

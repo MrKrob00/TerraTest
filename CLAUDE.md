@@ -551,6 +551,12 @@ project: read it before claiming how anything works.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
+- A TURRET'S TARGET LIST IS PRUNED WHERE IT IS READ (`WeaponBlock._update_current_target`):
+  `body_exited` never fires for a destroyed block — the body vanishes rather than leaves — so
+  without that the list grew to everything that ever entered the sphere, and scoring walked those
+  dead references every tick. Scoring itself runs at `RETARGET_PERIOD`, not per frame (`SC_STICKY`
+  holds the choice anyway), and a turret that has reached neutral stops ticking until it fires
+  again.
 - Anything behind the camera and past the near bubble is disabled; the near bubble stays active in
   every direction. Radar reads vein data, not what is drawn.
 

@@ -84,9 +84,30 @@ func _tick_weapon(delta: float) -> void:
 	if not firing:
 		if _current_target != null:
 			_current_target = null
+		# МОЛЧАЩАЯ БАШНЯ, ДОЕХАВШАЯ ДО НЕЙТРАЛИ, НЕ СТОИТ НИЧЕГО. Возврат в покой — это лерп,
+		# два slerp'а по модели и пряталка трассера, и они крутились на каждом физ-тике у
+		# каждого ствола в мире, включая те, что молчат всю игру (базы, вторая машина игрока,
+		# спящие сборки). Доехали — снимаем с тика до следующего выстрела.
+		if _rest:
+			return
 		_track_target(delta, false)     # прячет луч и плавно возвращает башню в нейтраль
+		if pivot.rotation.length_squared() < 1.0e-5:
+			pivot.rotation = Vector3.ZERO
+			if _yaw_part != null:
+				_yaw_part.transform.basis = _yaw_rest
+			if _pitch_part != null:
+				_pitch_part.transform.basis = _pitch_rest
+			_rest = true
 		return
-	_update_current_target()
+	_rest = false
+	# ПЕРЕСЧЁТ ЦЕЛИ — НЕ КАЖДЫЙ КАДР. Оценка перебирает ВСЕ блоки в сфере обнаружения, а их в
+	# бою десятки на каждый ствол; при этом SC_STICKY и без того держит ствол на выбранном
+	# блоке, то есть шестьдесят пересчётов в секунду выдавали шестьдесят одинаковых ответов.
+	# Цель умерла — пересчитываем сразу, это единственный случай, когда задержка видна.
+	_retarget_t -= delta
+	if _retarget_t <= 0.0 or _current_target == null or not is_instance_valid(_current_target):
+		_retarget_t = RETARGET_PERIOD
+		_update_current_target()
 	_track_velocity(delta)          # ДО наводки: упреждение считается по свежей скорости
 	raycast.force_raycast_update()
 	_track_target(delta, true)
@@ -120,6 +141,7 @@ var _yaw_part: Node3D = null           # поворотная часть: вле
 var _pitch_part: Node3D = null         # ствол: вверх-вниз
 var _yaw_rest: Basis = Basis()
 var _pitch_rest: Basis = Basis()
+var _rest: bool = false                # башня уже в нейтрали: возвращать её некуда (см. _tick_weapon)
 
 func _find_turret_parts() -> void:
 	for c in get_children():
@@ -216,8 +238,22 @@ const SC_NEAR := 100.0        # множитель близости: чем да
 ## ПОСТОЯННА — считается от id блока и от собственного зерна, поэтому цель не пляшет по кадрам.
 const SC_TASTE := 35.0
 var _taste_seed: int = 0
+const RETARGET_PERIOD := 0.12        # 8 раз в секунду, см. _tick_weapon
+var _retarget_t: float = 0.0
 
 func _update_current_target() -> void:
+	# СНАЧАЛА ВЫЧИЩАЕМ МЁРТВЫХ, и это не уборка ради порядка. body_exited по уничтоженному блоку
+	# НЕ ПРИХОДИТ — тело исчезает, а не выходит из зоны, — поэтому сбитые блоки оставались в
+	# списке навсегда. За длинный бой список рос до всего, что когда-либо попадало в сферу, и
+	# оценка честно перебирала эти сотни пустых ссылок каждый раз: чем дольше драка, тем ниже
+	# кадры, и «падает фпс на больших врагах» — это в основном оно.
+	var live: int = 0
+	for t in _targets:
+		if is_instance_valid(t):
+			_targets[live] = t
+			live += 1
+	if live != _targets.size():
+		_targets.resize(live)
 	if _targets.is_empty():
 		_current_target = null
 		return
@@ -231,8 +267,6 @@ func _update_current_target() -> void:
 	var best: Node3D = null
 	var best_score: float = -INF
 	for t in _targets:
-		if not is_instance_valid(t):
-			continue
 		var d: float = pivot.global_position.distance_to(t.global_position)
 		var score: float = SC_NEAR * (1.0 - clampf(d / maxf(weapon_range, 1.0), 0.0, 1.0))
 		if prio != null:
@@ -303,9 +337,18 @@ func _track_target(delta: float, firing: bool) -> void:
 ## ТРАССЕР — только картинка: цилиндр под лучом наводки, который тянется до точки попадания
 ## и пульсирует, пока орудие стреляет. Его может не быть вовсе (у новых моделей его нет), и
 ## это ни на что не влияет, кроме внешнего вида.
+## Узел трассера ищем ОДИН РАЗ. Поиск по имени стоял прямо здесь, а функция зовётся на каждом
+## физ-тике у КАЖДОГО ствола в мире — в том числе у молчащих, чтобы спрятать луч. «Нет трассера»
+## — тоже ответ, и его тоже запоминаем, иначе модели без него искали бы его вечно.
+var _tracer: MeshInstance3D = null
+var _tracer_looked: bool = false
+
 func _show_tracer(firing: bool, _delta: float) -> void:
-	var track_visual := raycast.get_node_or_null("track_visual") as MeshInstance3D
-	if track_visual == null:
+	if not _tracer_looked:
+		_tracer_looked = true
+		_tracer = raycast.get_node_or_null("track_visual") as MeshInstance3D
+	var track_visual: MeshInstance3D = _tracer
+	if track_visual == null or not is_instance_valid(track_visual):
 		return
 	if not firing:
 		if track_visual.visible:
