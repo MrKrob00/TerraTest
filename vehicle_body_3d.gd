@@ -400,6 +400,8 @@ func _find_terrain() -> Node:
 # ── Медленное перемещение в РЕЖИМЕ СТРОЙКИ (репозиция, чтобы выбраться из ямы/застревания) ──
 const BUILD_MOVE_SPEED := 4.0         # медленно (u/с) — это не езда, а сдвиг платформы
 const BUILD_HOVER_CLEARANCE := 4.0    # высота парения над рельефом в стройке
+## Половина сетки машины (blocks.gd: 11 клеток по метру) — дальше неё блок не встанет.
+const FOOT_LIMIT := 5.5
 var _terr_cache: Node = null
 
 ## ГАБАРИТ МАШИНЫ ПО XZ, в метрах и в её собственных осях. Нужен парению в стройке: высоту надо
@@ -407,6 +409,12 @@ var _terr_cache: Node = null
 ##
 ## Считаем по занятым КЛЕТКАМ, а не по мешам: клетка и есть габарит блока, а модель бывает и
 ## крупнее, и мельче своей клетки.
+##
+## СЧИТАЕМ ТОЛЬКО БЛОКИ — та же ловушка, что у hud._vehicle_top_y. Под узлом blocks висит ещё и
+## ghost_block, подсветка клетки, и она TOP_LEVEL: у top_level узла position это МИРОВАЯ
+## координата. Стоило подсветке отработать хоть раз — и габарит машины становился километровым,
+## парение мерило землю за сотни метров отсюда и подбрасывало машину на десятки метров. Каждый
+## поставленный блок двигал подсветку в новое место, поэтому и подброс каждый раз был свой.
 var _bmin: Vector2 = Vector2(-0.5, -0.5)
 var _bmax: Vector2 = Vector2(0.5, 0.5)
 
@@ -418,15 +426,17 @@ func _measure_footprint() -> void:
 	var mn := Vector2(INF, INF)
 	var mx := Vector2(-INF, -INF)
 	for b in block_map_node.get_children():
-		if not (b is Node3D):
+		if not (b is VehicleBlock) or (b as Node3D).top_level:
 			continue
 		var p: Vector3 = (b as Node3D).position
 		mn = Vector2(minf(mn.x, p.x), minf(mn.y, p.z))
 		mx = Vector2(maxf(mx.x, p.x), maxf(mx.y, p.z))
 	if mn.x > mx.x:
 		return
-	_bmin = mn - Vector2(0.5, 0.5)
-	_bmax = mx + Vector2(0.5, 0.5)
+	# Дальше края сетки блок не уедет — зажимаем, чтобы посторонний узел под blocks никогда больше
+	# не смог увести парение за горизонт, даже если он не top_level и не VehicleBlock.
+	_bmin = (mn - Vector2(0.5, 0.5)).clampf(-FOOT_LIMIT, FOOT_LIMIT)
+	_bmax = (mx + Vector2(0.5, 0.5)).clampf(-FOOT_LIMIT, FOOT_LIMIT)
 
 ## САМАЯ ВЫСОКАЯ ЗЕМЛЯ ПОД МАШИНОЙ — по её углам и середине, а не под началом координат.
 ##
