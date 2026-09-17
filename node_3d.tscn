@@ -460,7 +460,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
-text = "ЗАКРЫТЬ"
+text = "CLOSE"
 
 [node name="HandPanel" type="PanelContainer" parent="Vehicles/Camera Controller/HUD" unique_id=411000107]
 unique_name_in_owner = true

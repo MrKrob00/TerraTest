@@ -473,13 +473,12 @@ func _update_label() -> void:
 	var disp := "—"
 	if idx >= 0:
 		disp = _block_display_name(int(((_front_ring())["items"] as Array)[idx]["type"]))
-	_label.text = "%s\n%s" % [CAT_NAMES[key], disp]
+	_label.text = "%s\n%s" % [tr(String(CAT_NAMES[key])), disp]
 
+## Имя блока — через G.block_name: там таблица имён и перевод. Свой вывод из enum давал
+## «Rot support» и не переводился вовсе.
 func _block_display_name(block_type: int) -> String:
-	var names: Array = G.Block.keys()
-	if block_type >= 0 and block_type < names.size():
-		return str(names[block_type]).capitalize()
-	return "?"
+	return G.block_name(block_type)
 
 # Контуры колец на фоне — цвет категории, активное ярче.
 func _sync_bg_ovals() -> void:

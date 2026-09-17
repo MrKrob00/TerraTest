@@ -223,7 +223,7 @@ func _on_cleared(_who, e: Dictionary) -> void:
 	_cleared[String(e.get("key", ""))] = true    # переживёт и выгрузку региона, и сейв
 	e["node"] = null
 	_drop_loot(e["pos"] as Vector3)
-	Dialogue.say("System", "Stronghold neutralised. The sector reads clear.")
+	Dialogue.say("System", tr("Stronghold neutralised. The sector reads clear."))
 
 ## Трофей: слитки МЕТАЛЛА ЭТОГО БИОМА. Правило «металл принадлежит биому» уже держит карту
 ## (resource_nodes._metal_for), и трофей обязан ему следовать: иначе титанит выгоднее фармить

@@ -78,9 +78,9 @@ func _refresh_title() -> void:
 		return
 	var cur: int = _current()
 	if _is_comp:
-		_title.text = "COMPONENT FACTORY — %s" % G.kind_name(G.comp_key(cur))
+		_title.text = tr("COMPONENT FACTORY") + " — %s" % G.kind_name(G.comp_key(cur))
 	else:
-		_title.text = "FABRICATOR — %s" % G.block_name(cur)
+		_title.text = tr("FABRICATOR") + " — %s" % G.block_name(cur)
 
 func _current() -> int:
 	if not is_instance_valid(_block):

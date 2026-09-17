@@ -87,7 +87,7 @@ func _offer() -> void:
 	_write_slot(title, _desc_text(_shown_min), count, "sold_" + _kind, pay)
 	_active = true
 	_left = TIME_LIMIT
-	Dialogue.say("System", "We need %s. Urgently." % G.kind_name(_kind))
+	Dialogue.say("System", tr("We need %s. Urgently.") % G.kind_name(_kind))
 
 ## Строка в журнале: что везти, сколько осталось и сколько заплатят. Срок ЖИВОЙ — заказ имеет
 ## смысл ровно до тех пор, пока в него можно успеть, и «8 минут» в неподвижной строке отвечает

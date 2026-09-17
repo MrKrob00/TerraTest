@@ -836,7 +836,7 @@ func _start_scan() -> void:
 	_scan_left = scan_warn_time
 	_build_marker()
 	# Обманка: Система ВЕЖЛИВО просит НЕ выходить — кто послушается, того зачистка :)
-	_say("System", "Scheduled sector scan. Please do NOT leave the scan zone. This will take %d sec. Thank you for your cooperation." % int(scan_warn_time))
+	_say("System", tr("Scheduled sector scan. Please do NOT leave the scan zone. This will take %d sec. Thank you for your cooperation.") % int(scan_warn_time))
 
 func _resolve_scan() -> void:
 	_scan_state = 0
@@ -846,10 +846,10 @@ func _resolve_scan() -> void:
 	# The System does not track who left - it simply scans the area. Activity inside (player machines)
 	# means "something suspicious" and a reinforced unit; empty means a neutral report.
 	if p != null and _in_scan_box(p.global_position):
-		_say("System", "Unauthorized activity detected in the sector. Dispatching a handler.")
+		_say("System", tr("Unauthorized activity detected in the sector. Dispatching a handler."))
 		_spawn_invader(p)              # the invader goes for the DETECTED machine
 	else:
-		_say("System", "Sector scan complete. No anomalies detected.")
+		_say("System", tr("Sector scan complete. No anomalies detected."))
 
 func _in_scan_box(pos: Vector3) -> bool:
 	return absf(pos.x - _scan_center.x) <= scan_half_size and absf(pos.z - _scan_center.z) <= scan_half_size

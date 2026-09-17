@@ -754,7 +754,7 @@ func _point_finger(text: String, prop_quest: String = "") -> void:
 	if _finger_text == key and guide.has_method("is_active") and guide.is_active():
 		return
 	_finger_text = key
-	guide.point_at_world(_finger_point, text, false, TutorialGuide.Gate.OFF, false)
+	guide.point_at_world(_finger_point, tr(text), false, TutorialGuide.Gate.OFF, false)
 
 ## Куда смотрит палец ПРЯМО СЕЙЧАС. Именованный метод, а не лямбда в списке аргументов: лямбда,
 ## перенесённая на вторую строку, становится лишним аргументом вызова, и это валидный синтаксис
@@ -828,7 +828,7 @@ func _line_2(q: Dictionary) -> void:
 		_line_gifted = true
 		_award(G.Block.PROCESSOR)
 		_show_plan(LINE_PROC_PLAN)
-		Dialogue.say("System", "Processor delivered. It stands BESIDE the line, left of the middle belt — the belts stay where they are. It takes ore off the belt and puts the ingot back on it.")
+		Dialogue.say("System", tr("Processor delivered. It stands BESIDE the line, left of the middle belt — the belts stay where they are. It takes ore off the belt and puts the ingot back on it."))
 		return
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	if recv == null or not _chain_reaches(recv, G.Block.PROCESSOR):
@@ -863,7 +863,7 @@ func _spawn_line_kit(at: Vector3) -> void:
 	for _i in _belts_to_drop():
 		_props.drop_near("arc_line", G.Block.BELT, at)
 	_show_plan(LINE_PLAN)
-	Dialogue.say("System", "Seller is anchored and live, one belt already on it. The rest of the line is on the ground — the white outlines show where each piece goes.")
+	Dialogue.say("System", tr("Seller is anchored and live, one belt already on it. The rest of the line is on the ground — the white outlines show where each piece goes."))
 
 ## РОВНАЯ ПЛОЩАДКА под линию. Постройка ВСТРАИВАЕТСЯ в мир, а не ставится на него: линия
 ## длинная — шесть клеток по оси конвейера и две вбок под процессор, — и на склоне её просто
@@ -1075,7 +1075,7 @@ func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
 	if not _tower_node.has(key):
 		if not _tower_build(key, cfg, at):
 			return
-		Dialogue.say("System", String(cfg["say"]))
+		Dialogue.say("System", tr(String(cfg["say"])))
 	Q.report(String(q["event"]), 1)
 
 func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
@@ -1095,7 +1095,7 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 	# (_blow_tower_guards) и остаются в мире обычными базами: добивать их ради галочки незачем,
 	# а бросать посреди боя — тем более.
 	_award(int(cfg["award"]))
-	Dialogue.say("System", "Ridge is clear. The hardware it was guarding is yours.")
+	Dialogue.say("System", tr("Ridge is clear. The hardware it was guarding is yours."))
 	Q.report(String(q["event"]), 1)
 	_tower_node.erase(key)
 	_tower_dead.erase(key)
@@ -1521,7 +1521,7 @@ func _gang_1(q: Dictionary) -> void:
 		# Цель НЕ назначаем: банда стоит на месте, и первым ходом должен быть выстрел игрока.
 		# Так у него остаётся выбор — подъехать, посмотреть и уехать.
 		_ev_spawn(key, _ev_point[key] as Vector3, [5, 6, 7])
-		Dialogue.say("System", "Three units, no transponders. They are not ours.")
+		Dialogue.say("System", tr("Three units, no transponders. They are not ours."))
 	Q.report(String(q["event"]), 1)
 
 func _gang_2(q: Dictionary) -> void:
@@ -1556,9 +1556,9 @@ func _supply_1(q: Dictionary) -> void:
 		# никогда — и ехать за ним нечем рисковать.
 		if randf() < 0.5:
 			_ev_spawn(key, at, [6, 7], 1, _player())
-			Dialogue.say("System", "Crate located. Movement around it — you are not the only one who got the signal.")
+			Dialogue.say("System", tr("Crate located. Movement around it — you are not the only one who got the signal."))
 		else:
-			Dialogue.say("System", "Crate located and quiet. Take it.")
+			Dialogue.say("System", tr("Crate located and quiet. Take it."))
 	Q.report(String(q["event"]), 1)
 
 func _supply_2(q: Dictionary) -> void:
@@ -1589,7 +1589,7 @@ func _defend_1(q: Dictionary) -> void:
 			return
 		_ev_ally = ally[0]
 		_ev_spawn(key, at + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
-		Dialogue.say("System", "Friendly unit under fire. It will not last alone.")
+		Dialogue.say("System", tr("Friendly unit under fire. It will not last alone."))
 	Q.report(String(q["event"]), 1)
 
 var _ev_ally: Node3D = null
@@ -1636,7 +1636,7 @@ func _waves_1(q: Dictionary) -> void:
 		return
 	if not _ev_mobs.has(key):
 		_ev_spawn(key, p.global_position, [5, 6], 1, p)
-		Dialogue.say("System", "Contacts inbound on your position. First wave.")
+		Dialogue.say("System", tr("Contacts inbound on your position. First wave."))
 	if not _ev_all_dead(key):
 		return
 	_ev_mobs.erase(key)                        # первая волна кончилась, вторую пустит стадия 2
@@ -1651,7 +1651,7 @@ func _waves_2(q: Dictionary) -> void:
 		return
 	if not _ev_mobs.has(key):
 		_ev_spawn(key, p.global_position, [7, 8], 1, p)
-		Dialogue.say("System", "Second wave. Heavier.")
+		Dialogue.say("System", tr("Second wave. Heavier."))
 		return
 	if not _ev_all_dead(key):
 		return
@@ -1672,7 +1672,7 @@ func _camp_1(q: Dictionary) -> void:
 		var at: Vector3 = _ev_point[key] as Vector3
 		_ev_spawn(key, at, [7, 8, 9], 1, _player())
 		_props.ensure("event_camp", G.Block.PACKER, at)
-		Dialogue.say("System", "That is a staging point, not a patrol. Take it apart.")
+		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it apart."))
 	Q.report(String(q["event"]), 1)
 
 func _camp_2(q: Dictionary) -> void:

@@ -76,7 +76,7 @@ func _tick() -> void:
 		return
 	_target = base
 	_warning = WARN
-	Dialogue.say("System", "Your anchor is drawing attention. Contacts inbound — %d seconds."
+	Dialogue.say("System", tr("Your anchor is drawing attention. Contacts inbound — %d seconds.")
 			% int(WARN))
 
 func _launch() -> void:

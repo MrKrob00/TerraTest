@@ -57,7 +57,9 @@ func _advance() -> void:
 		_box.visible = false
 		return
 	var l: Dictionary = _queue.pop_front()
-	_line.text = "[color=#%s][%s][/color]: %s" % [NAME_COLOR, l["speaker"], l["text"]]
+	# ИМЯ ГОВОРЯЩЕГО ПЕРЕВОДИМ ЗДЕСЬ, а не на каждом вызове say(): "System" и "Mechanic" приходят
+	# из двух десятков мест, и обернуть их там значило бы однажды забыть одно.
+	_line.text = "[color=#%s][%s][/color]: %s" % [NAME_COLOR, tr(str(l["speaker"])), l["text"]]
 	_box.visible = true
 	_timer = l["dur"]
 

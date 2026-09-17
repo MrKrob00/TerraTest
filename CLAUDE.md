@@ -465,12 +465,23 @@ project: read it before claiming how anything works.
   which move; a component's text is derived from its recipe, never typed out.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
-  means follow the system). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
+  means English). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
   `TranslationServer` by `G._load_translations`): a string starts being translated the moment its
-  row appears, an unwrapped one keeps working, so the pass can go in slices. Scene text translates
-  itself; text set from code needs `tr()`. Translated so far: menu, slots, world creation, settings,
-  the radial menu, the death screen, the menu backdrop. NOT yet: quest texts, Mechanic lines, block
-  names and descriptions, the garage and the shop.
+  row appears, an unwrapped one keeps working. Scene text translates itself; text set from code
+  needs `tr()`. **The game is translated in full** — menu, HUD, garage, shop, tech tree, codex,
+  quests, Mechanic and System lines, block and material names. A new user-facing string is a `tr()`
+  plus a row in the same commit; `i18n/strings.json` keys are matched BYTE FOR BYTE, leading and
+  trailing spaces included.
+- WHERE A STRING IS TRANSLATED IS AT THE EDGE, not where the data is written. Quest titles, hints
+  and descriptions stay ENGLISH in `quest_manager`; `quests.gd`, the tracker and `Dialogue` call
+  `tr()` on them as they draw. The same rule made `research_lock_reason` split in two: a CODE for
+  the code to branch on, a phrase for the player — the UI used to test `why.begins_with("need RP")`,
+  and a translated phrase does not begin with that.
+- **THE TRANSLATION IS LONGER THAN THE ORIGINAL, AND THE LAYOUT HAS TO TAKE IT, NOT THE WORDING.**
+  «CODEX» is five letters and «СПРАВОЧНИК» is ten. The garage tab row picks its font size from the
+  row's own minimum width (`tech_ui._fit_tab_row`); a shop tile picks its font from the LONGEST WORD
+  in the name, because wrapping saves a line but never a word; the quest tracker and the journal
+  rows clip with an ellipsis instead of spilling past their panel.
 - NOBODY SPEAKS OUTSIDE THE WORLD. `Dialogue.say` drops the line when `/root/Main` is absent, and
   clears a visible one when the world goes away: `Q` is an autoload that comes up before the first
   scene, so its greeting used to land on the main menu. The greeting itself is asked for by the

@@ -174,7 +174,7 @@ func _ready() -> void:
 	# бы тап. Нужна не только нетерпеливым: если шаг стал непроходимым (скажем, сейв старый
 	# и стартовые блоки в мир уже не выдадутся), это единственный выход.
 	_skip_btn = Button.new()
-	_skip_btn.text = "SKIP TUTORIAL"
+	_skip_btn.text = tr("SKIP TUTORIAL")
 	_skip_btn.add_theme_font_size_override("font_size", 15)
 	_skip_btn.add_theme_color_override("font_color", Color(0.85, 0.9, 0.92))
 	_skip_btn.add_theme_stylebox_override("normal", _skip_style(false))

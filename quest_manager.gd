@@ -45,7 +45,7 @@ func _ready() -> void:
 func announce_start() -> void:
 	if not _announce_tutorial():
 		_say_lines([
-			["Mechanic", "Still running. Directives are top right when you want them."],
+			["Mechanic", tr("Still running. Directives are top right when you want them.")],
 		])
 
 # Демо-набор. event — какое игровое событие двигает прогресс (см. Q.report ниже);
@@ -338,7 +338,7 @@ func skip_quest(id: String) -> void:
 	q["progress"] = q["goal"]
 	q["done"] = true
 	_persist_done(q)
-	_say("System", "Directive '%s' is no longer resolvable. Dropped." % String(q["title"]))
+	_say("System", tr("Directive '%s' is no longer resolvable. Dropped.") % tr(String(q["title"])))
 	changed.emit()
 	_auto_track()
 
@@ -388,7 +388,7 @@ func skip_tutorial() -> void:
 		return
 	if g != null:
 		g.mark_progress_dirty()
-	_say("Mechanic", "Skipping the walkthrough. It is all in the menus when you need it.")
+	_say("Mechanic", tr("Skipping the walkthrough. It is all in the menus when you need it."))
 	changed.emit()
 	_auto_track()
 	tutorial_finished.emit()
@@ -453,7 +453,7 @@ func set_progress(id: String, value: int) -> void:
 		changed.emit()
 		var hint: String = String(q.get("hint", ""))
 		if hint != "":
-			_say("Mechanic", hint)
+			_say("Mechanic", tr(hint))
 		return
 	q["done"] = true
 	changed.emit()
@@ -535,14 +535,14 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	var names: Array = []
 	for bt in g.blocks_of_grade(faction, new_grade):
 		names.append(g.block_name(int(bt)))
-	var what := "new blocks" if names.is_empty() else ", ".join(names)
+	var what := tr("new blocks") if names.is_empty() else ", ".join(names)
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
 	var extra_line := ""
 	for q in quests:
 		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
-			extra_line = " And new quests have arrived."
+			extra_line = tr(" And new quests have arrived.")
 			break
-	_say("Mechanic", "License — grade %d! You can now research: %s.%s" % [new_grade, what, extra_line])
+	_say("Mechanic", tr("License — grade %d! You can now research: %s.%s") % [new_grade, what, extra_line])
 	# Пауза сюжета могла сняться — обновляем список и трекер.
 	changed.emit()
 	if tracked_id == "" or _find(tracked_id).get("done", true):
@@ -558,14 +558,14 @@ func _completion_message(title: String, reward: int) -> String:
 			"Logged: '%s'. Payment %d$.",
 			"'%s' complete. The System credits %d$.",
 		]
-		return with_reward[randi() % with_reward.size()] % [title, reward]
+		return tr(with_reward[randi() % with_reward.size()]) % [tr(title), reward]
 	var no_reward := [
 		"Directive '%s' resolved.",
 		"'%s' closed.",
 		"Logged: '%s'.",
 		"'%s' complete.",
 	]
-	return no_reward[randi() % no_reward.size()] % title
+	return tr(no_reward[randi() % no_reward.size()]) % tr(title)
 
 func _say(speaker: String, text: String) -> void:
 	var d = get_node_or_null("/root/Dialogue")
@@ -682,7 +682,7 @@ func _announce_tutorial() -> bool:
 		return false
 	var h := str(t.get("hint", ""))
 	if h != "":
-		_say("Mechanic", h)
+		_say("Mechanic", tr(h))
 	return true
 
 # Что показать в списке: все сюжетные ДО текущего включительно (выполненные + текущее) и

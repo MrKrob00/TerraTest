@@ -497,7 +497,7 @@ func quest_locked() -> bool:
 	return not G.quests_done.has(String(get_meta(QuestProps.META)))
 
 func _refuse_quest_locked() -> void:
-	Dialogue.say("System", "That build belongs to an open directive. Finish it first.")
+	Dialogue.say("System", tr("That build belongs to an open directive. Finish it first."))
 
 # Вся машина → в инвентарь: каждый блок типом в G.block_inventory, машина исчезает.
 func send_to_inventory() -> void:
@@ -1518,13 +1518,13 @@ func _place_ground_structure(instance: Node3D) -> void:
 				else VEIN_SNAP_FALLBACK
 		var vein: Node3D = _vein_near(_cabin_ground, reach)
 		if vein == null:
-			Dialogue.say("System", "The Auto Miner works an ore vein. Place it next to one.")
+			Dialogue.say("System", tr("The Auto Miner works an ore vein. Place it next to one."))
 			return
 		if vein.has_method("is_depleted") and not vein.is_depleted():
-			Dialogue.say("System", "Mine this vein out first — the Auto Miner only works a spent one.")
+			Dialogue.say("System", tr("Mine this vein out first — the Auto Miner only works a spent one."))
 			return
 		if vein.get("claimed_by") != null:
-			Dialogue.say("System", "Another Auto Miner already works this vein.")
+			Dialogue.say("System", tr("Another Auto Miner already works this vein."))
 			return
 		# СТАВИМ РЯДОМ, БУРОМ К ЖИЛЕ, а не поверх неё. Рабочая сторона у модели одна — передняя
 		# (−Z, как у ручного бура), и блок, накрывший жилу собой, выглядит как коробка на руде.
@@ -1906,7 +1906,7 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 		return false
 	var bt: int = int(held.get("block")) if ("block" in held) else -1
 	if not target.can_scrap(bt):
-		Dialogue.say("System", "No schematic for this part. It cannot be broken down.")
+		Dialogue.say("System", tr("No schematic for this part. It cannot be broken down."))
 		return true                                 # жест израсходован, блок ЦЕЛ и в руке
 	if target.scrap_block(held):
 		_clear_hand()
@@ -2072,11 +2072,11 @@ func _on_take_pressed() -> void:
 		# или только примерен — а в гараже он потом ещё и «пропадает в инвентарь» (закрытие
 		# гаража возвращает руку в инвентарь).
 		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
-			Dialogue.say("System", "That cell is taken.")
+			Dialogue.say("System", tr("That cell is taken."))
 			return
 		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
 		if not bmn.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
-			Dialogue.say("System", "Nothing to bolt onto there.")
+			Dialogue.say("System", tr("Nothing to bolt onto there."))
 			return
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.

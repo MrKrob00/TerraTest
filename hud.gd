@@ -414,16 +414,16 @@ func _build_settings_panel() -> void:
 	vb.add_theme_constant_override("separation", 14)
 	m.add_child(vb)
 	var t := Label.new()
-	t.text = "CAMERA SETTINGS"
+	t.text = tr("CAMERA SETTINGS")
 	t.add_theme_color_override("font_color", Color(0.55, 0.85, 0.9, 1))
 	t.add_theme_font_size_override("font_size", 20)
 	vb.add_child(t)
-	vb.add_child(_settings_slider("Rotation sensitivity", G.cam_look_sens,
+	vb.add_child(_settings_slider(tr("Rotation sensitivity"), G.cam_look_sens,
 			func(v): G.cam_look_sens = v; G.save_settings()))
-	vb.add_child(_settings_slider("Zoom sensitivity", G.cam_zoom_sens,
+	vb.add_child(_settings_slider(tr("Zoom sensitivity"), G.cam_zoom_sens,
 			func(v): G.cam_zoom_sens = v; G.save_settings()))
 	var cb := CheckButton.new()
-	cb.text = "Invert vertical"
+	cb.text = tr("Invert vertical")
 	cb.button_pressed = G.cam_invert_y
 	cb.add_theme_color_override("font_color", Color(0.9, 0.96, 0.98, 1))
 	cb.toggled.connect(func(on): G.cam_invert_y = on; G.save_settings())
@@ -557,7 +557,7 @@ class RadialWheel extends Control:
 			txt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			add_child(txt)
 		var cancel := Label.new()
-		cancel.text = "CANCEL"
+		cancel.text = tr("CANCEL")
 		cancel.add_theme_font_size_override("font_size", 15)
 		cancel.add_theme_color_override("font_color", Color(0.85, 0.9, 0.96))
 		cancel.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -987,10 +987,10 @@ func _build_hand_panel() -> void:
 	# обычный Control с _draw), а её узлом не опишешь. Рамка и отступы при этом уже нодовые.
 	# Кнопку «в инвентарь» держим ссылкой: с РЕСУРСОМ в руке она бессмысленна — инвентарь
 	# хранит типы блоков, руде там места нет, — и её надо гасить, а не молча ничего не делать.
-	_stash_btn = _hand_btn(InvIcon.new(), "Inventory", "Put the held block into inventory",
+	_stash_btn = _hand_btn(InvIcon.new(), tr("Inventory"), tr("Put the held block into inventory"),
 			func(): _hand_action("stash"))
 	row.add_child(_stash_btn)
-	row.add_child(_hand_btn(DropIcon.new(), "Drop", "Drop the held item into the world", func(): _hand_action("drop")))
+	row.add_child(_hand_btn(DropIcon.new(), tr("Drop"), tr("Drop the held item into the world"), func(): _hand_action("drop")))
 
 var _stash_btn: Button = null
 
@@ -1100,10 +1100,10 @@ func _build_rotate_panel() -> void:
 	_rotate_panel.position = Vector2(16.0, screen.y * 0.5 - 70.0)
 	var grid: GridContainer = %RotateGrid
 	# верхний ряд — наклон (крен вокруг оси Z), нижний — поворот (вокруг Y)
-	grid.add_child(_rot_btn("tilt_left",  "Tilt left",   Vector3.BACK,  PI / 2))
-	grid.add_child(_rot_btn("tilt_right", "Tilt right",  Vector3.BACK, -PI / 2))
-	grid.add_child(_rot_btn("yaw_left",   "Turn left",   Vector3.UP,    PI / 2))
-	grid.add_child(_rot_btn("yaw_right",  "Turn right",  Vector3.UP,   -PI / 2))
+	grid.add_child(_rot_btn("tilt_left",  tr("Tilt left"),   Vector3.BACK,  PI / 2))
+	grid.add_child(_rot_btn("tilt_right", tr("Tilt right"),  Vector3.BACK, -PI / 2))
+	grid.add_child(_rot_btn("yaw_left",   tr("Turn left"),   Vector3.UP,    PI / 2))
+	grid.add_child(_rot_btn("yaw_right",  tr("Turn right"),  Vector3.UP,   -PI / 2))
 
 # ── «Гироскоп» выбора блока (стройка) ──────────────────────────────────────────
 # Квадрат SIZE×SIZE у правого-нижнего края, ЛЕВЕЕ колонки кнопок Take/TakeOff (они
@@ -1735,7 +1735,7 @@ func _rebuild_vehicle_list() -> void:
 		_vehicle_list.add_child(btn)
 	if i == 0:
 		var empty := Label.new()
-		empty.text = "no vehicles"
+		empty.text = tr("no vehicles")
 		empty.modulate = Color(1, 1, 1, 0.5)
 		_vehicle_list.add_child(empty)
 
@@ -1901,28 +1901,28 @@ func _on_movement_pressed() -> void:
 	$Take.visible = false
 	$TakeOff.visible = false
 	%Joystick_movement.visible=true
-	_set_mode_label("BUILD", Color(1.0, 0.7, 0.25))   # едем → кнопка ведёт в стройку
+	_set_mode_label(tr("BUILD"), Color(1.0, 0.7, 0.25))   # едем → кнопка ведёт в стройку
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
 	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
-	_set_mode_label("MOVE", Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
+	_set_mode_label(tr("MOVE"), Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
 	_open_build_tab.call_deferred()    # стройка живёт в гараже: открываем его на своей вкладке
 
 func _on_take_pressed() -> void:
 	if current_vehicle.block_map_node.get_block(current_vehicle.BuildingBlock["x"],current_vehicle.BuildingBlock["y"],current_vehicle.BuildingBlock["z"])!=0:
 		return #if no empty return
-	$Take/Label.text = "Take"
+	$Take/Label.text = tr("Take")
 	$TakeOff.visible = false
 	if current_vehicle.block_body: #Take blocking
-		$Take/Label.text = "Place"
+		$Take/Label.text = tr("Place")
 
 func _on_take_off_pressed() -> void:
 	if current_vehicle.block_take:
 
-		$HUD/Build/Label.text = "Take"
+		$HUD/Build/Label.text = tr("Take")
 		$HUD/TakeOff.visible = false
 
 # ── Музыка: UI переехал в гараж (tech_ui, вкладка МУЗЫКА). В HUD остался только

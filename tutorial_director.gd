@@ -142,7 +142,7 @@ func _show_explain() -> void:
 		return
 	_explain_wait = 0
 	_explain_t = clampf(float(text.length()) / EXPLAIN_CHARS_PER_SEC, EXPLAIN_MIN, EXPLAIN_MAX)
-	_guide.point_at_node(node, text)
+	_guide.point_at_node(node, tr(text))
 
 func _explain_target(key: String) -> Control:
 	if key.begins_with("quest_"):
@@ -337,7 +337,7 @@ func _say_final_hints() -> void:
 		return
 	_final_said = true
 	for line in FINAL_HINTS:
-		Dialogue.say("Mechanic", String(line))
+		Dialogue.say("Mechanic", tr(String(line)))
 
 func _aim_current_step() -> void:
 	match _step:
@@ -430,7 +430,7 @@ func _aim_world(getter: Callable, text: String, gate: int = TutorialGuide.Gate.T
 	# В режиме WORLD заглушки нет (иначе она съела бы и тап по миру), поэтому меню/гараж
 	# на время шага гасим отдельно — руками HUD.
 	_set_ui_locked(gate == TutorialGuide.Gate.WORLD)
-	_guide.point_at_world(getter, text, true, gate)
+	_guide.point_at_world(getter, tr(text), true, gate)
 
 func _set_ui_locked(locked: bool) -> void:
 	var hud: Node = get_parent()
@@ -561,4 +561,4 @@ func _say_lines(lines: Array) -> void:
 	if d == null:
 		return
 	for l in lines:
-		d.say("Mechanic", str(l))
+		d.say("Mechanic", tr(str(l)))

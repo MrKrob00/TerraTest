@@ -766,18 +766,18 @@ func comp_key(c: int) -> String:
 ## Порядок проверок важен: «coal» и «chunk:» начинаются с той же буквы, что и компоненты.
 func kind_name(key: String) -> String:
 	if key == "coal":
-		return "Coal"
+		return tr("Coal")
 	if key.begins_with("chunk:"):
 		return block_name(int(key.substr(6)))   # сколько внутри — знает только держатель чанка
 	if key.begins_with("ore"):
 		var o: int = int(key.substr(3))
-		return "%s Ore" % METAL_NAME[o] if o < METAL_NAME.size() else key
+		return tr("%s Ore" % METAL_NAME[o]) if o < METAL_NAME.size() else key
 	if key.begins_with("m"):
 		var i: int = int(key.substr(1))
-		return METAL_NAME[i] if i < METAL_NAME.size() else key
+		return tr(String(METAL_NAME[i])) if i < METAL_NAME.size() else key
 	if key.begins_with("c"):
 		var j: int = int(key.substr(1))
-		return COMP_NAME[j] if j < COMP_NAME.size() else key
+		return tr(String(COMP_NAME[j])) if j < COMP_NAME.size() else key
 	return key
 
 ## Рецепт словами: «2× Ferrite + 2× Cuprite». Одна точка на все подписи — и в выборе
@@ -1170,7 +1170,33 @@ func block_from_key(v) -> int:
 	# правило должно ловить их тоже.
 	return int(RETIRED_BLOCKS.get(bt, bt))
 
+## ЧЕЛОВЕЧЕСКОЕ ИМЯ БЛОКА. Раньше оно выводилось из имени enum (`BELT_CROSS` → «Belt cross»), и
+## это работало ровно до перевода: переводить нечего — ключа нет, а «Rot support» не имя детали,
+## а имя константы, попавшее в интерфейс. Таблица даёт и нормальное английское имя, и ключ
+## перевода. Блока без строки в ней не бывает; на всякий случай остаётся прежний вывод из enum.
+const BLOCK_LABEL := {
+	Block.CABIN: "Cabin", Block.WHEEL: "Wheel", Block.SMALL_WHEEL: "Small Wheel",
+	Block.BIG_WHEEL: "Big Wheel", Block.TOP_WHEEL: "Riser Wheel", Block.STAB_WHEEL: "Stabiliser Wheel",
+	Block.BLOCK: "Frame Block", Block.BLOCK2: "Frame Block ×2", Block.BLOCK3: "Frame Block ×3",
+	Block.HALF_BLOCK: "Half Block", Block.HALF_BLOCK2: "Half Block ×2", Block.WEDGE2: "Wedge",
+	Block.ARMOR: "Armour Plate", Block.ARMOR2: "Armour Plate ×2", Block.ARMOR4: "Armour Plate ×4",
+	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
+	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
+	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
+	Block.DRILL: "Drill", Block.SMALL_DRILL: "Small Drill",
+	Block.COLLECTOR: "Collector", Block.RECEIVER: "Receiver", Block.PACKER: "Packer",
+	Block.BELT: "Conveyor", Block.BELT_SPLIT: "Conveyor Fork", Block.BELT_CROSS: "Conveyor Crossing",
+	Block.PROCESSOR: "Smelter", Block.COMP_FACTORY: "Component Plant", Block.FABRICATOR: "Fabricator",
+	Block.SCRAPPER: "Scrapper", Block.STORAGE: "Storage", Block.SELLER: "Seller",
+	Block.AUTO_MINER: "Auto Miner",
+	Block.BATTERY: "Battery", Block.SOLAR: "Solar Panel", Block.GENERATOR: "Generator",
+	Block.COAL_GEN: "Coal Generator", Block.WIRELESS_CHARGER: "Wireless Charger",
+	Block.REGEN: "Repair Field", Block.SHIELD: "Shield Dome", Block.RADAR: "Radar",
+}
+
 func block_name(bt: int) -> String:
+	if BLOCK_LABEL.has(bt):
+		return tr(String(BLOCK_LABEL[bt]))
 	var names: Array = Block.keys()
 	if bt >= 0 and bt < names.size():
 		return str(names[bt]).capitalize()
@@ -1233,7 +1259,8 @@ const BLOCK_DESC := {
 ## Одной фразой: что делает этот блок. Пусто — строки нет, и это нормально: справочник
 ## показывает такой блок с честным «описания пока нет», а не молча прячет.
 func block_desc(bt: int) -> String:
-	return String(BLOCK_DESC.get(int(bt), ""))
+	var d := String(BLOCK_DESC.get(int(bt), ""))
+	return tr(d) if d != "" else ""
 
 ## Описание металла. Название руды = название слитка, разница в переделе.
 const METAL_DESC := [
@@ -1244,17 +1271,17 @@ const METAL_DESC := [
 ]
 
 func metal_desc(m: int) -> String:
-	return METAL_DESC[m] if m >= 0 and m < METAL_DESC.size() else ""
+	return tr(String(METAL_DESC[m])) if m >= 0 and m < METAL_DESC.size() else ""
 
 ## Описание компонента СОБИРАЕТСЯ ИЗ РЕЦЕПТА, а не пишется руками: рецепты перебираются
 ## (_build_comp_recipes), и написанный от руки список из двадцати одной строки однажды
 ## разошёлся бы с ними молча.
 func comp_desc(c: int) -> String:
-	var tier: String = "Basic component." if c < COMP_SIMPLE_COUNT else "Advanced component."
+	var tier: String = tr("Basic component.") if c < COMP_SIMPLE_COUNT else tr("Advanced component.")
 	var rec: Dictionary = COMP_RECIPE.get(c, {})
 	if rec.is_empty():
 		return tier
-	return "%s Made from %s." % [tier, recipe_text(rec)]
+	return "%s %s" % [tier, tr("Made from %s.") % recipe_text(rec)]
 
 # Блоки заданного грейда фракции (для «открылось в магазине: …»).
 func blocks_of_grade(f: String, g: int) -> Array:
@@ -1273,25 +1300,39 @@ func is_block_shop_unlocked(bt: int) -> bool:
 	return researched.has(bt) and grade(m["f"]) >= int(m["g"])
 
 # Почему блок нельзя исследовать; "" — можно (текст для замка в UI).
-func research_lock_reason(bt: int) -> String:
+## ПРИЧИНА ЗАМКА ДВУМЯ ФУНКЦИЯМИ. `research_lock_code` отдаёт КОД — по нему ветвится код, и он
+## не зависит от языка; `research_lock_reason` отдаёт ту же причину ФРАЗОЙ для игрока. Пока
+## была одна функция, UI разбирал её строку (`why.begins_with("need RP")`) — а переведённая
+## фраза с "need RP" не начинается, и на русском ветка молча переставала срабатывать.
+func research_lock_code(bt: int) -> String:
 	if researched.has(bt):
-		return "already researched"
+		return "done"
 	var m: Dictionary = BLOCK_META.get(bt, {})
 	if m.is_empty():
-		return "no data"
+		return "nodata"
 	var parent := int(TECH_PARENT.get(bt, -1))
 	if parent >= 0 and not researched.has(parent):
-		return "need previous block: %s" % block_name(parent)
+		return "parent"
 	if grade(m["f"]) < int(m["g"]):
-		return "need grade %d" % int(m["g"])
+		return "grade"
 	if research_points < int(m["rp"]):
-		return "need RP: %d" % int(m["rp"])
+		return "rp"
+	return ""
+
+func research_lock_reason(bt: int) -> String:
+	var m: Dictionary = BLOCK_META.get(bt, {})
+	match research_lock_code(bt):
+		"done":   return tr("already researched")
+		"nodata": return tr("no data")
+		"parent": return tr("need previous block: %s") % block_name(int(TECH_PARENT.get(bt, -1)))
+		"grade":  return tr("need grade %d") % int(m["g"])
+		"rp":     return tr("need RP: %d") % int(m["rp"])
 	return ""
 
 # Исследовать блок: списывает ДИ, «дарит» ПЕРВЫЙ экземпляр в инвентарь (без двойного
 # гейта «исследовал → ещё накопи»), открывает блок в магазине.
 func research(bt: int) -> bool:
-	if research_lock_reason(bt) != "":
+	if research_lock_code(bt) != "":
 		return false
 	research_points -= int((BLOCK_META[bt] as Dictionary)["rp"])
 	researched.append(bt)

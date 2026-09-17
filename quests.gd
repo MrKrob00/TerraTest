@@ -16,6 +16,14 @@ var _inventory_open: bool = false
 
 func _ready() -> void:
 	add_to_group("quests")            # HUD через группу двигает трекер и прячет его в гараже
+	# ТРЕКЕР — КОРОБКА ФИКСИРОВАННОЙ ШИРИНЫ, а перевод длиннее оригинала: «SAM Site Ridge» это
+	# 14 знаков, «Ракетная точка на гребне» — 24, и строка вылезала за подложку прямо в мир.
+	# Обрезаем многоточием, а не переносим: в трекере ровно две строки, и третьей там негде
+	# встать. Целиком название всегда видно в журнале.
+	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_objective.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_title.clip_text = true
+	_objective.clip_text = true
 	_tracker_top0 = _tracker.offset_top
 	_tracker_bot0 = _tracker.offset_bottom
 	_list_top0 = _list_panel.offset_top
@@ -173,24 +181,24 @@ func _type_mark(q: Dictionary) -> String:
 func _update_tracker() -> void:
 	var q: Dictionary = Q.tracked()
 	if q.is_empty():
-		_title.text = "No active quests"
+		_title.text = tr("No active quests")
 		_objective.text = ""
 		return
 	var star := _type_mark(q) + " "
-	_title.text = star + str(q["title"]) + _stage_suffix(q)
+	_title.text = star + tr(str(q["title"])) + _stage_suffix(q)
 	if q["done"]:
-		_objective.text = "✓ done"
+		_objective.text = tr("✓ done")
 	elif _grade_locked(q):
 		# Затрекан ждущий грейда квест (напр. сейв со старым треком) — не врём прогрессом.
-		_objective.text = "Unlocks at license grade %d" % int(q.get("req_grade", 1))
+		_objective.text = tr("Unlocks at license grade %d") % int(q.get("req_grade", 1))
 	else:
-		_objective.text = "%s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+		_objective.text = "%s — %d/%d" % [tr(str(q["desc"])), q["progress"], q["goal"]]
 
 # «· часть 2/2» у многостадийных: без этого две разные части выглядят одним и тем же
 # заданием, у которого почему-то поменялся текст.
 func _stage_suffix(q: Dictionary) -> String:
 	var si: Vector2i = Q.stage_info(q)
-	return "" if si == Vector2i.ZERO else "  · part %d/%d" % [si.x, si.y]
+	return "" if si == Vector2i.ZERO else tr("  · part %d/%d") % [si.x, si.y]
 
 # Сюжетный квест ждёт грейда лицензии (см. quest_manager._grade_ok).
 func _grade_locked(q: Dictionary) -> bool:
@@ -227,7 +235,7 @@ func _apply_distance(row: Dictionary) -> void:
 		return
 	var d: float = _distance_to(row["q"])
 	(b as Button).text = String(row["base"]) if d < 0.0 \
-			else String(row["base"]) + "      %d m" % int(d)
+			else String(row["base"]) + "      " + tr("%d m") % int(d)
 
 func _rebuild_list() -> void:
 	_rows.clear()
@@ -237,10 +245,10 @@ func _rebuild_list() -> void:
 	# Ничего не выбрано (или выбранное закрылось) — показываем первое.
 	if _find_vis(vis, _sel_id).is_empty():
 		_sel_id = String(vis[0].get("id", "")) if not vis.is_empty() else ""
-	_add_section("TUTORIAL", vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
-	_add_section("STORY", vis.filter(func(q): return q["type"] == Q.Type.STORY))
-	_add_section("EVENT", vis.filter(func(q): return q["type"] == Q.Type.EVENT))
-	_add_section("DAILY", vis.filter(func(q): return q["type"] == Q.Type.DAILY))
+	_add_section(tr("TUTORIAL"), vis.filter(func(q): return q["type"] == Q.Type.TUTORIAL))
+	_add_section(tr("STORY"), vis.filter(func(q): return q["type"] == Q.Type.STORY))
+	_add_section(tr("EVENT"), vis.filter(func(q): return q["type"] == Q.Type.EVENT))
+	_add_section(tr("DAILY"), vis.filter(func(q): return q["type"] == Q.Type.DAILY))
 	_rebuild_detail()
 
 func _find_vis(vis: Array, id: String) -> Dictionary:
@@ -269,8 +277,12 @@ func _make_row(q: Dictionary) -> Control:
 	b.button_pressed = String(q.get("id", "")) == _sel_id
 	b.add_theme_font_size_override("font_size", 15)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# Название задания в переводе бывает вдвое длиннее английского — строка списка обязана
+	# кончаться многоточием, а не уезжать за панель.
+	b.clip_text = true
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var mark := _type_mark(q)
-	var base: String = "  %s  %s%s" % [mark, str(q["title"]), _stage_suffix(q)]
+	var base: String = "  %s  %s%s" % [mark, tr(str(q["title"])), _stage_suffix(q)]
 	b.text = base
 	# Строку запоминаем, чтобы РАССТОЯНИЕ обновлялось на месте (см. _process). Пересобирать
 	# ради цифры весь список нельзя: список пересобирается только по событию квеста, а игрок
@@ -300,17 +312,17 @@ func _rebuild_detail() -> void:
 	var q: Dictionary = _find_vis(Q.visible_quests(), _sel_id)
 	_track_btn.disabled = q.is_empty() or q["done"] or _grade_locked(q)
 	if q.is_empty():
-		_detail.add_child(_dim("No mission selected."))
+		_detail.add_child(_dim(tr("No mission selected.")))
 		return
 	var t := Label.new()
-	t.text = str(q["title"])
+	t.text = tr(str(q["title"]))
 	t.add_theme_font_size_override("font_size", 22)
 	t.add_theme_color_override("font_color", Color(0.85, 0.95, 0.98))
 	_detail.add_child(t)
 
-	_detail.add_child(_head("Description:"))
+	_detail.add_child(_head(tr("Description:")))
 	var d := Label.new()
-	d.text = String(q.get("hint", "")) if String(q.get("hint", "")) != "" else str(q["desc"])
+	d.text = tr(String(q.get("hint", ""))) if String(q.get("hint", "")) != "" else tr(str(q["desc"]))
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	d.add_theme_font_size_override("font_size", 14)
 	d.add_theme_color_override("font_color", Color(0.88, 0.93, 0.96))
@@ -323,25 +335,25 @@ func _rebuild_detail() -> void:
 			and String(q.get("id", "")) == String(contracts.active_quest_id()):
 		var left: int = int(contracts.seconds_left())
 		if left > 0:
-			_detail.add_child(_head("Time left:"))
+			_detail.add_child(_head(tr("Time left:")))
 			var tl := Label.new()
 			@warning_ignore("integer_division")
 			tl.text = "  %d:%02d" % [left / 60, left % 60]
 			tl.add_theme_font_size_override("font_size", 14)
 			tl.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
 			_detail.add_child(tl)
-	_detail.add_child(_head("Objectives:"))
+	_detail.add_child(_head(tr("Objectives:")))
 	var o := Label.new()
 	if _grade_locked(q):
-		o.text = "  ▪ Unlocks at license grade %d" % int(q.get("req_grade", 1))
+		o.text = "  ▪ " + tr("Unlocks at license grade %d") % int(q.get("req_grade", 1))
 	else:
-		o.text = "  ▪ %s — %d/%d" % [q["desc"], q["progress"], q["goal"]]
+		o.text = "  ▪ %s — %d/%d" % [tr(str(q["desc"])), q["progress"], q["goal"]]
 	o.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	o.add_theme_font_size_override("font_size", 14)
 	o.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
 	_detail.add_child(o)
 
-	_detail.add_child(_head("Rewards:"))
+	_detail.add_child(_head(tr("Rewards:")))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	for pair in [["%d XP" % int(q.get("reward_xp", 0)), int(q.get("reward_xp", 0))],

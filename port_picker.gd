@@ -59,7 +59,7 @@ func _build() -> void:
 	# Панель НЕ ШИРЕ ЭКРАНА: на телефоне 460 точек не влезают, и окно уезжало за край.
 	var panel: PanelContainer = %Panel
 	panel.custom_minimum_size = Vector2(minf(PANEL_W, vp.x - 48.0), 0.0)
-	(%Title as Label).text = "PORTS — %s" % G.block_name(int(_block.block))
+	(%Title as Label).text = tr("PORTS") + " — %s" % G.block_name(int(_block.block))
 
 	# Тап МИМО окна закрывает его — это на затемнении, а не на самом окне: окно ловит тапы
 	# (mouse_filter STOP у корня), иначе они уходили бы в мир под ним.

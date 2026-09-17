@@ -177,7 +177,7 @@ func _pay_out() -> void:
 	G.add_research_points(rp)
 	var d: Node = get_node_or_null("/root/Dialogue")
 	if d != null and d.has_method("say"):
-		d.say("System", "Wreck catalogued. +%d RP." % rp)
+		d.say("System", tr("Wreck catalogued. +%d RP.") % rp)
 
 
 func _die() -> void:
