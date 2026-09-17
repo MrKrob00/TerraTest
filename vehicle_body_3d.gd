@@ -911,7 +911,7 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed \
 			and not _tap_over_ui(event.position):
 		_try_open_factory_ui(event.position)
-	if event.is_action_pressed("Take"):     _on_take_pressed()
+	if event.is_action_pressed("Take"):     _take_action()
 	if event.is_action_pressed("TakeOff"):  _on_take_off_pressed()
 	if event.is_action_pressed("Building"): _on_building_pressed()
 	if event.is_action_pressed("Movement"): _on_movement_pressed()
@@ -932,6 +932,14 @@ func _process(_delta: float) -> void:
 		# Превью держимого блока переприменяем КАЖДЫЙ кадр: машина в стройке левитирует
 		# вверх-вниз, а превью top_level (мировое) — без этого блок отставал от выбранной
 		# ячейки. Пересчёт от block_map_node приклеивает его к ячейке, как светяшку.
+		#
+		# Наводка отдана соседней машине — превью держит ОНА, и гоняем его мы: её собственный
+		# _process молчит, потому что в стройке не она.
+		var d: Node = _delegated_to
+		if d != null and is_instance_valid(d):
+			if d._preview_res != null:
+				d._preview_held(d._preview_res)
+			return
 		if _preview_res != null:
 			_preview_held(_preview_res)
 		return
@@ -1111,27 +1119,51 @@ func _player_machine_under(screen_pos: Vector2) -> Node:
 ## некому — делегирования в этот кадр не было вовсе. Помним ссылку и снимаем.
 var _delegated_to: Node = null
 
+func _push_hand(o: Node) -> void:
+	o.block_take = block_take
+	o.hand_kind = hand_kind
+	o.build_basis = build_basis
+	o._hand_from_inventory = _hand_from_inventory
+
+func _pull_hand(o: Node) -> void:
+	block_take = o.block_take
+	hand_kind = o.hand_kind
+	build_basis = o.build_basis
+	_hand_from_inventory = o._hand_from_inventory
+
 func _delegate_build(other: Node, screen_pos: Vector2, commit: bool) -> void:
 	if _delegated_to != other:
 		_clear_delegated_highlight()          # навелись на ДРУГУЮ машину — прежнюю гасим
 	_delegated_to = other
-	other.block_take = block_take
-	other.hand_kind = hand_kind
-	other.build_basis = build_basis
-	other._hand_from_inventory = _hand_from_inventory
+	_push_hand(other)
 	if commit:
 		other._commit_build_tap(screen_pos)
 	else:
 		other._handle_click(screen_pos)
-	block_take = other.block_take
-	hand_kind = other.hand_kind
-	build_basis = other.build_basis
-	_hand_from_inventory = other._hand_from_inventory
+	_pull_hand(other)
 	# Своя подсветка гаснет: наводились не на нас, и оставленный на прошлой клетке призрак
 	# читался бы как «сюда тоже можно».
 	if ghost_block != null and is_instance_valid(ghost_block):
 		ghost_block.visible = false
 	block_body = null
+	# И СВОЁ ПРЕВЬЮ ТОЖЕ. Блок в руке ОДИН на все машины (держатель висит под камерой), а наш
+	# _process каждый кадр переставлял его по нашему старому _preview_res — то есть утаскивал
+	# обратно на нашу сетку ровно в тот момент, когда сосед уже поставил его на свою. Снаружи
+	# это и есть «на чужую машину блок не ставится».
+	_preview_res = null
+	_cabin_ground = null
+
+## «Взять/поставить» КНОПКОЙ (клавиша Take, тач-кнопка) — В ТУ ЖЕ МАШИНУ, КОТОРОЙ ОТДАНА НАВОДКА.
+## Двойной тап делегируется сам (_commit_build_tap), а кнопка шла мимо него: превью стояло на
+## соседней машине, а ставили на себя — где превью нет, и ветка молча выходила.
+func _take_action() -> void:
+	var o: Node = _delegated_to
+	if o == null or not is_instance_valid(o):
+		_on_take_pressed()
+		return
+	_push_hand(o)
+	o._on_take_pressed()
+	_pull_hand(o)
 
 ## Погасить подсветку на машине, которой мы делегировали наводку прошлый раз. Зовём ровно
 ## тогда, когда луч в неё больше не попадает.
