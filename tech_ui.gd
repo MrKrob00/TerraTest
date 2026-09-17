@@ -8,13 +8,13 @@ extends Control
 #                 Все значения живые: строки собираются кодом из MachineBody, а не
 #                 лежат в сцене, где часть чисел осталась картинкой со скриншота.
 
-enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH, TAB_BUILD }
+enum { TAB_INVENTORY, TAB_SHOP, TAB_BUILDS, TAB_MUSIC, TAB_SETTINGS, TAB_TECH, TAB_BUILD, TAB_CODEX }
 
 @onready var _grid:   HFlowContainer = %Grid
 @onready var _search: LineEdit      = %Search
 # ВАЖНО: индекс в массиве = значение enum (bind в _ready) — TabTech последним.
 @onready var _tab_buttons: Array = [
-	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings, %TabTech, %TabBuild
+	%TabInventory, %TabShop, %TabSnapshots, %TabMusic, %TabSettings, %TabTech, %TabBuild, %TabCodex
 ]
 
 var _items: Array = []   # [{type:int, name:String, count:int, price:int}]
@@ -110,6 +110,22 @@ func _build_filter_column() -> void:
 		fb.pressed.connect(_set_shop_filter.bind(f[0]))
 		_filter_col.add_child(fb)
 		_filter_buttons[f[0]] = fb
+	# Кнопки СПРАВОЧНИКА живут в той же колонке и просто скрыты: колонка одна, а её ширина
+	# и отступы заданы в сцене — вторая такая же рядом означала бы вторую раскладку.
+	_codex_col = VBoxContainer.new()
+	_codex_col.add_theme_constant_override("separation", 6)
+	_codex_col.visible = false
+	body.add_child(_codex_col)
+	body.move_child(_codex_col, 1)
+	for k in CODEX_KINDS:
+		var cb := Button.new()
+		cb.text = k[1]
+		cb.toggle_mode = true
+		cb.button_pressed = (k[0] == _codex_kind)
+		cb.custom_minimum_size = Vector2(104, 40)
+		cb.pressed.connect(_set_codex_kind.bind(k[0]))
+		_codex_col.add_child(cb)
+		_codex_buttons[k[0]] = cb
 
 func _set_shop_filter(key: String) -> void:
 	_shop_filter = key
@@ -151,6 +167,9 @@ func refresh() -> void:
 # ── Наполнение сетки в зависимости от вкладки ─────────────────────────────────
 func _load_items() -> void:
 	_items.clear()
+	if _tab == TAB_CODEX:
+		_load_codex_items()
+		return
 	if _tab == TAB_SHOP:
 		for block_type in _prices:
 			if not _passes_filter(int(block_type)):
@@ -180,6 +199,83 @@ func _load_items() -> void:
 			"price": 0,
 		})
 
+# ── ЭНЦИКЛОПЕДИЯ ─────────────────────────────────────────────────────────────
+# Справочник по деталям и материалам. Существует потому, что игра НИГДЕ не говорит, чем
+# стабилизатор отличается от верхнего колеса, а купол — от регенератора: в магазине у блока
+# есть только имя и цена, в стройке — только силуэт. Отсюда же и «что мне делать с этой
+# рудой»: имя материала в инвентаре не говорит ни во что он превращается, ни зачем.
+#
+# КАТАЛОГ СТРОИТСЯ ИЗ ТЕХ ЖЕ ТАБЛИЦ, из которых живёт игра (G.Block, G.METAL_NAME,
+# G.COMP_NAME): второй список, написанный руками, однажды отстал бы на один блок и молчал
+# бы об этом. Блок без строки описания из каталога НЕ ПРОПАДАЕТ — он честно говорит, что
+# описания пока нет, иначе дыру в справочнике никто бы не заметил.
+const CODEX_KINDS := [
+	["blocks",    "Blocks"],
+	["resources", "Resources"],
+]
+var _codex_kind: String = "blocks"
+var _codex_buttons: Dictionary = {}
+var _codex_col: VBoxContainer = null
+var _codex_dialog: AcceptDialog = null
+
+func _set_codex_kind(key: String) -> void:
+	_codex_kind = key
+	for k in _codex_buttons:
+		_codex_buttons[k].button_pressed = (k == key)
+	_load_items()
+	_rebuild_grid(_search.text if _search else "")
+
+func _load_codex_items() -> void:
+	if _codex_kind == "resources":
+		# Руда и слиток — одна строка: имя у них одно, разница в переделе, и две плитки
+		# «Ferrite» подряд читались бы как ошибка.
+		for m in G.METAL_NAME.size():
+			_items.append({"name": String(G.METAL_NAME[m]), "key": "m%d" % m})
+		for c in G.COMP_NAME.size():
+			_items.append({"name": String(G.COMP_NAME[c]), "key": "c%d" % c})
+		return
+	for bt in G.Block.values():
+		if int(bt) == G.Block.EMPTY or G.RETIRED_BLOCKS.has(int(bt)):
+			continue
+		_items.append({"name": _block_name(int(bt)), "key": "b%d" % int(bt)})
+
+func _fill_codex_slot(s: Slot, it: Dictionary, side: float) -> void:
+	_reset_slot(s, str(it["name"]), side)
+	s.action = &"codex"
+	s.codex_key = String(it["key"])
+
+## Окошко справки. Один диалог на все записи: их полсотни, и плодить по окну на запись
+## значило бы держать полсотни нод ради одного видимого.
+func _show_codex(key: String) -> void:
+	if key == "":
+		return
+	if _codex_dialog == null or not is_instance_valid(_codex_dialog):
+		_codex_dialog = AcceptDialog.new()
+		_codex_dialog.ok_button_text = "Close"
+		add_child(_codex_dialog)
+	var title := ""
+	var body := ""
+	if key.begins_with("b"):
+		var bt: int = int(key.substr(1))
+		title = G.block_name(bt)
+		body = G.block_desc(bt)
+		var rec: Dictionary = G.BLOCK_RECIPE.get(bt, {})
+		if not rec.is_empty():
+			body += "\n\nBuilt from: %s." % G.recipe_text(rec)
+	elif key.begins_with("m"):
+		var m: int = int(key.substr(1))
+		title = String(G.METAL_NAME[m])
+		body = G.metal_desc(m)
+	elif key.begins_with("c"):
+		var c: int = int(key.substr(1))
+		title = String(G.COMP_NAME[c])
+		body = G.comp_desc(c)
+	if body.strip_edges() == "":
+		body = "No description yet."
+	_codex_dialog.title = title
+	_codex_dialog.dialog_text = body
+	_codex_dialog.popup_centered(Vector2i(460, 240))
+
 func _block_name(block_type: int) -> String:
 	var names: Array = G.Block.keys()
 	if block_type >= 0 and block_type < names.size():
@@ -198,7 +294,7 @@ func _slot_side() -> float:
 	return maxf(floorf((w - sep * float(COLS - 1)) / float(COLS)), 48.0)
 
 func _on_grid_resized() -> void:
-	if _tab != TAB_INVENTORY and _tab != TAB_SHOP and _tab != TAB_BUILDS:
+	if _tab != TAB_INVENTORY and _tab != TAB_SHOP and _tab != TAB_BUILDS and _tab != TAB_CODEX:
 		return
 	if absf(_slot_side() - _last_slot_side) < 1.0:
 		return                                     # ширина слота не изменилась — перестраивать нечего
@@ -217,7 +313,10 @@ func _rebuild_grid(filter: String) -> void:
 	for it in _items:
 		if f != "" and not str(it["name"]).to_lower().contains(f):
 			continue
-		_fill_item_slot(_slot_at(shown), it, side)
+		if _tab == TAB_CODEX:
+			_fill_codex_slot(_slot_at(shown), it, side)
+		else:
+			_fill_item_slot(_slot_at(shown), it, side)
 		shown += 1
 	_hide_slots_from(shown)
 	if shown > 0:
@@ -243,6 +342,7 @@ class Slot extends Button:
 	var arg: int = 0                  # тип блока для take и buy
 	var price: int = 0
 	var build_name: String = ""       # имя сборки для load
+	var codex_key: String = ""        # что открыть в справочнике: "b<блок>" / "m<металл>" / "c<компонент>"
 	var corner: Label = null
 	var sale: Label = null            # процент скидки, отдельной строкой в правом верхнем углу
 	var pencil: Control = null
@@ -309,6 +409,7 @@ func _on_slot_pressed(s: Slot) -> void:
 		&"buy":  _buy(s.arg, s.price)
 		&"save": _save_current_build()
 		&"load": _load_build(s.build_name)
+		&"codex": _show_codex(s.codex_key)
 
 # Общая часть: размер, надпись и сброс всего, что мог включить прошлый жилец слота.
 func _reset_slot(s: Slot, label: String, side: float) -> void:
@@ -321,6 +422,7 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.arg = 0
 	s.price = 0
 	s.build_name = ""
+	s.codex_key = ""
 	s.corner.visible = false
 	# Цвет ценника СБРАСЫВАЕМ: слоты живут в пуле и переиспользуются, поэтому жёлтый ярлык
 	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
@@ -650,6 +752,8 @@ func _select_tab(idx: int) -> void:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
 		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY)
+	if _codex_col:
+		_codex_col.visible = (_tab == TAB_CODEX)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
 	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
 	var is_tech: bool = _tab == TAB_TECH

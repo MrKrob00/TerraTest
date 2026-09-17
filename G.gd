@@ -1176,6 +1176,86 @@ func block_name(bt: int) -> String:
 		return str(names[bt]).capitalize()
 	return "?"
 
+# ── СПРАВОЧНИК: что этот блок делает ─────────────────────────────────────────
+# Строки для «Энциклопедии» в гараже. ОДНА ФРАЗА ПРО РАБОТУ, а не пересказ характеристик:
+# числа живут в коде и двигаются (BLOCK_HP тюнят «в секундах под огнём», цены считаются из
+# рецепта), и переписанные сюда однажды разойдутся с игрой. Здесь — правило, по которому
+# деталь выбирают: чем она отличается от соседней в той же категории.
+const BLOCK_DESC := {
+	Block.CABIN: "The heart of a machine: lose it and everything falls apart. One per machine — a second cabin has nowhere to go.",
+	Block.WHEEL: "The standard wheel. Which wheel you take is decided by load capacity: over it the hull rubs the ground and the build buries itself.",
+	Block.SMALL_WHEEL: "Carries less and rides lower — a light machine sits closer to the ground and turns sharper.",
+	Block.BIG_WHEEL: "Carries most and rides highest. Heavy builds and rough ground.",
+	Block.TOP_WHEEL: "Riser wheel: bolts on by its TOP face and hangs below whatever it is attached to. An extra support point that lifts the machine clear instead of letting it bottom out.",
+	Block.STAB_WHEEL: "Stabiliser: mounts on the rear or front face and looks forward. The third support under a nose- or tail-heavy build.",
+	Block.BLOCK: "Plain frame cube. What the rest is bolted to.",
+	Block.BLOCK2: "Frame, two cells long. One part instead of two, and two cells' worth of hit points.",
+	Block.BLOCK3: "Frame, three cells long.",
+	Block.HALF_BLOCK: "Half-height frame: takes a WHOLE cell, just cut down — for flush edges and low decks.",
+	Block.HALF_BLOCK2: "Two half-blocks in a row.",
+	Block.WEDGE2: "Wedge, two cells long. A sloped nose: shots glance off it instead of landing square.",
+	Block.ARMOR: "Armour plate: same one cell, three times a frame's hit points. Put them where they cover something — the nose, and opposite the battery.",
+	Block.ARMOR2: "Armour plate, two cells. Toughness by volume.",
+	Block.ARMOR4: "Armour plate, two by two. The heaviest thing on most machines — plating everything turns a vehicle into a wall.",
+	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
+	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
+	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
+	Block.LASER: "Continuous beam: no travel time and no lead, so it does not miss a mover — and it drinks energy.",
+	Block.ROCKET: "Rockets: area damage on impact. Good against a cluster of blocks, wasteful against one.",
+	Block.POUND_CANNON: "Heavy cannon: hits hard and rarely. Meant for armour, not for wheels.",
+	Block.SHOTGUN: "Shot at close range, two rounds then a reload. Its own wide spread — useless at distance, brutal alongside.",
+	Block.MORTAR: "Eight barrels lobbed over an arc, aimed by the HULL rather than a turret. Twenty metres minimum — closer is not a ban, it is the ballistics.",
+	Block.DRILL: "Drill head: eats a vein or an enemy block on contact. Takes the first hit too, so it is built tough.",
+	Block.SMALL_DRILL: "Smaller drill, weaker and with a shorter reach.",
+	Block.COLLECTOR: "Picks resources up off the ground, always — anchored or driving.",
+	Block.RECEIVER: "The entry to a production line: ground material and collector ore onto the belt. Works only while anchored.",
+	Block.PACKER: "Magnetises loose blocks and packs them into chunks — onto a belt or back into the world.",
+	Block.BELT: "Conveyor. A machine stands BESIDE the line, not in a gap in it.",
+	Block.BELT_SPLIT: "Belt fork: one in, three out, handed round in turn.",
+	Block.BELT_CROSS: "Belt crossing: north-south and east-west pass in turn.",
+	Block.PROCESSOR: "Smelts ore into ingots.",
+	Block.COMP_FACTORY: "Makes components out of ingots. Every recipe is exactly two DIFFERENT materials — that is how the machine tells its inputs apart.",
+	Block.FABRICATOR: "Builds finished blocks out of two materials.",
+	Block.SCRAPPER: "Breaks blocks back down into ingots — half of what the recipe cost.",
+	Block.STORAGE: "Holds one kind of resource.",
+	Block.SELLER: "Sells what reaches it. A stationary block: on the ground it is the core of a new base.",
+	Block.AUTO_MINER: "Stationary miner: stands ON a vein and works it without you.",
+	Block.BATTERY: "Stores charge IN ITSELF, not in the machine — carry it to another build and the charge goes with it. It also explodes the harder the fuller it is.",
+	Block.SOLAR: "Panel: makes energy while ANCHORED. On the move it gives nothing.",
+	Block.GENERATOR: "Steady energy without sunlight.",
+	Block.COAL_GEN: "Burns coal into energy while anchored.",
+	Block.WIRELESS_CHARGER: "Pours energy into the battery of ANOTHER machine of your own side. Inside one machine energy is already shared.",
+	Block.REGEN: "Repair field: mends the blocks around it while there is energy to spend.",
+	Block.SHIELD: "Dome: covers what its SPHERE reaches, not what is bolted to it. Parked on the tail it leaves the nose outside.",
+	Block.RADAR: "Widens what the map shows.",
+}
+
+## Одной фразой: что делает этот блок. Пусто — строки нет, и это нормально: справочник
+## показывает такой блок с честным «описания пока нет», а не молча прячет.
+func block_desc(bt: int) -> String:
+	return String(BLOCK_DESC.get(int(bt), ""))
+
+## Описание металла. Название руды = название слитка, разница в переделе.
+const METAL_DESC := [
+	"The common ore. Everything starts here: frame, plating, the first components.",
+	"Conductive ore. Coils, relays, anything that carries current.",
+	"Glassy ore. Wafers, lenses, optics.",
+	"The hard one, and the rarest. Struts, rings, everything that has to hold.",
+]
+
+func metal_desc(m: int) -> String:
+	return METAL_DESC[m] if m >= 0 and m < METAL_DESC.size() else ""
+
+## Описание компонента СОБИРАЕТСЯ ИЗ РЕЦЕПТА, а не пишется руками: рецепты перебираются
+## (_build_comp_recipes), и написанный от руки список из двадцати одной строки однажды
+## разошёлся бы с ними молча.
+func comp_desc(c: int) -> String:
+	var tier: String = "Basic component." if c < COMP_SIMPLE_COUNT else "Advanced component."
+	var rec: Dictionary = COMP_RECIPE.get(c, {})
+	if rec.is_empty():
+		return tier
+	return "%s Made from %s." % [tier, recipe_text(rec)]
+
 # Блоки заданного грейда фракции (для «открылось в магазине: …»).
 func blocks_of_grade(f: String, g: int) -> Array:
 	var out: Array = []

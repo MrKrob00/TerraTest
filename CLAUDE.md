@@ -459,6 +459,10 @@ project: read it before claiming how anything works.
 - The scene holds what stands still (frame, padding, style, nesting); code holds what changes (text,
   visibility, edge layout, anything built from data). Code fetches nodes by unique name.
 - Icons are `_draw()` classes with no node representation.
+- The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
+  `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
+  it. Block text lives in `G.BLOCK_DESC` — one sentence about what the part DOES, never numbers,
+  which move; a component's text is derived from its recipe, never typed out.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
   means follow the system). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
