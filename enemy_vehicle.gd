@@ -1000,12 +1000,31 @@ func _on_body_exited(body: Node) -> void:
 const FLIP_DOT := 0.3          # the machine's up tilted more than ~72 deg: treat as flipped
 const FLIP_TIME := 2.0         # how long the righting takes
 const FLIP_CLEARANCE := 3.0    # how far above the terrain it is lifted
+## A FLIP IS A STATE, NOT A MOMENT. Righting freezes the machine whole - no AI, no drive, no
+## shooting - so any tilt that trips FLIP_DOT for a single frame buys two seconds of standing
+## still. Two enemies driving into each other do exactly that: one rides up the other's hull, tips
+## past the threshold, gets pinned in the air, drops back onto it and tips again. From the outside
+## that is a pair of machines stunned for four seconds every time they meet.
+const FLIP_CONFIRM := 0.6      # how long it must STAY over before we call it a flip
+## And a pause after righting: the two hulls are still overlapping when it ends, so without this
+## the next frame starts the whole thing over.
+const FLIP_COOLDOWN := 1.5
 var _flip_t: float = 0.0
+var _flip_hold: float = 0.0
+var _flip_cool: float = 0.0
 
 func _flip_recover(delta: float) -> bool:
 	if _flip_t <= 0.0:
+		_flip_cool = maxf(_flip_cool - delta, 0.0)
 		if _get_up().dot(Vector3.UP) >= FLIP_DOT:
+			_flip_hold = 0.0
 			return false
+		if _flip_cool > 0.0:
+			return false
+		_flip_hold += delta
+		if _flip_hold < FLIP_CONFIRM:
+			return false                          # a shove, not a flip: let physics sort it out
+		_flip_hold = 0.0
 		_flip_t = FLIP_TIME                       # just flipped: start righting
 	_flip_t -= delta
 	# Height: pulled toward terrain + clearance (damped spring, no overshoot).
@@ -1032,6 +1051,7 @@ func _flip_recover(delta: float) -> bool:
 		_stuck01 = 0.0                            # after righting this is not being stuck
 		_move_ref = global_position
 		_move_t = 0.0
+		_flip_cool = FLIP_COOLDOWN
 	return _flip_t > 0.0
 
 var _terrain_cache: Node = null
