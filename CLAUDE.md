@@ -617,6 +617,16 @@ project: read it before claiming how anything works.
   `super` at all. `_handle_fire` sees every weapon exactly once per shot. Blast light goes in
   `BlockFX.blast_cards`, the single door every explosion already passes through. Flash colour is a
   VARIABLE (`flash_color`), set by a subclass in `_ready` like `yaw_limit` and `spread_deg`.
+- **NEVER PUT AN `instance uniform` ON A TERRAIN CHUNK — OR ON ANYTHING THERE ARE MANY OF.** One
+  `MeshInstance3D` that uses instance uniforms allocates `MAX_INSTANCE_UNIFORM_INDICES` = **16**
+  slots out of the global shader uniform buffer, no matter how many variables the shader declares
+  (one is enough to pay 16). The phone reports a ceiling of 4096 items, so the whole game gets
+  **256 such objects**, against a terrain that holds up to `LIVE_CAP` = 420 live chunks. Past that
+  the allocation fails, returns -1, and the instance reads someone else's slot — which on the
+  device looked like a matrix effect flickering across the entire map, not like a broken effect on
+  one chunk. Raising `rendering/limits/global_shader_variables/buffer_size` does not help: the
+  4096 is the hardware's, not the setting's. Per-chunk values have to travel some other way —
+  vertex data, or a shared uniform plus something already in the mesh.
 - Two settings in `project.godot` flatten the picture on purpose, and both are speed:
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
   `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
