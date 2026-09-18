@@ -186,7 +186,6 @@ mesh = ExtResource("26_j3e5s")
 
 [node name="Main" type="Node3D" unique_id=1697367741]
 script = ExtResource("1_ealrb")
-profiler_on_start = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1964980053]
 environment = SubResource("Environment_id0nj")
