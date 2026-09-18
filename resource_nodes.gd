@@ -345,6 +345,32 @@ func _stream_in(v: Dictionary) -> void:
 ## ЖИВАЯ ЖИЛА ВОЗЛЕ ТОЧКИ — узел, а не запись в _data. Спрашивать можно только про то, что
 ## сейчас стримнуто: узел с коллизией существует лишь рядом с камерой. Это ровно то, что нужно
 ## сюжету — он ищет жилу тогда, когда игрок до неё доехал, а не когда объявляет задание.
+## ЖИЛА ПО ДАННЫМ, А НЕ ПО УЗЛУ. node_near ниже ищет среди ОТРИСОВАННЫХ жил, то есть только там,
+## где игрок уже стоит: жилы стримятся. А квесту нужна точка ЗАРАНЕЕ — чтобы метка вела к
+## настоящей жиле с самого объявления, а не к случайной точке рядом с ней.
+##
+## Данные для этого есть: _data держит записи регионов вокруг игрока (REGION 256 м, REGION_KEEP 1
+## — это 768 м в поперечнике), и считаются они от сида, независимо от того, что нарисовано.
+##
+## Возвращает мировую точку или null. lo/hi — в каком кольце от from искать.
+func vein_point_near(from: Vector3, lo: float, hi: float) -> Variant:
+	var best: Variant = null
+	var best_d: float = INF
+	for rec in _data:
+		var gp = rec.get("gpos")
+		if gp == null:
+			continue
+		var d: float = (gp as Vector3).distance_to(from)
+		if d < lo or d > hi:
+			continue
+		# Ближайшая К СЕРЕДИНЕ кольца, а не к игроку: у самого края кольца жила окажется либо
+		# под носом, либо на пределе, и «съезди за аккумулятором» перестанет быть поездкой.
+		var score: float = absf(d - (lo + hi) * 0.5)
+		if score < best_d:
+			best_d = score
+			best = gp
+	return best
+
 func node_near(world_pos: Vector3, radius: float = 25.0) -> Node:
 	var best: Node = null
 	var best_d2: float = radius * radius
