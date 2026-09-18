@@ -1082,6 +1082,25 @@ func _btm() -> Node:
 
 ## Другая машина ИГРОКА под лучом тапа — или null. «Своя» определяется списком машин у камеры:
 ## faction тут мало (у баз он свой), а список камеры и есть ответ на вопрос, чем игрок владеет.
+## ЧТО ЛУЧ ОБЯЗАН ПРОПУСКАТЬ. Себя — потому что по себе и так строим. И БЛОК В РУКЕ, потому что
+## во время превью он `top_level` и стоит РОВНО В ЦЕЛЕВОЙ КЛЕТКЕ, то есть на пути того самого
+## луча, которым эта клетка и ищется. Коллизию при взятии в руку он не теряет: VehicleBlock это
+## RigidBody3D на слое блоков.
+##
+## Без этого получалось так: первое наведение проходит, превью встаёт в клетку — и СЛЕДУЮЩИЙ луч
+## упирается в него. _player_machine_under поднимается от него по родителям до камеры, MachineBody
+## не находит и отвечает «под курсором нет своей машины», то есть делегирование не происходит
+## вовсе. Снаружи это «блок из руки на вторую машину не ставится», причём через раз: попадёшь
+## мимо превью — сработает, попадёшь в него — нет. Отсюда и «прокликал весь квадрат, и встало».
+##
+## exclude принимает RID'Ы, НЕ УЗЛЫ (правило проекта).
+func _ray_skip() -> Array[RID]:
+	var skip: Array[RID] = [get_rid()]
+	var held := hand_node()
+	if held is CollisionObject3D:
+		skip.append((held as CollisionObject3D).get_rid())
+	return skip
+
 func _player_machine_under(screen_pos: Vector2) -> Node:
 	if not is_active or camera_controller == null or camera_controller.camera == null:
 		return null
@@ -1091,7 +1110,7 @@ func _player_machine_under(screen_pos: Vector2) -> Node:
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
 	q.collision_mask = 2                          # слой блоков
-	q.exclude = [get_rid()]                       # себя не ищем: по себе и так строим
+	q.exclude = _ray_skip()                       # себя и блок в руке — см. _ray_skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return null
@@ -1268,6 +1287,11 @@ func _cell_from_physics(screen_pos: Vector2) -> Dictionary:
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
+	# Блок в руке пропускаем (см. _ray_skip): он стоит в целевой клетке и закрывает собой
+	# ровно то, что этот луч ищет. Себя НЕ исключаем — сюда и целимся.
+	var held_hand := hand_node()
+	if held_hand is CollisionObject3D:
+		q.exclude = [(held_hand as CollisionObject3D).get_rid()]
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
 	# Попали в ту машину, НА КОТОРОЙ строим (обычно в себя, но может быть и соседняя своя).
 	if hit.is_empty() or hit.get("collider") != _bt():
@@ -1473,7 +1497,7 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(world_origin, world_origin + world_dir * 200.0)
 	q.collision_mask = 1
-	q.exclude = [get_rid()]        # exclude — это RID'ы, не узлы
+	q.exclude = _ray_skip()        # себя и блок в руке; exclude — это RID'ы, не узлы
 	var hit := space.intersect_ray(q)
 	if hit.is_empty():
 		return
