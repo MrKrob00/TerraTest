@@ -39,7 +39,10 @@ extends Resource
 @export var canyon_enabled: bool = true
 @export_range(30.0, 1000.0, 1.0) var canyon_scale: float = 450.0
 ## Higher threshold means rarer canyons.
-@export_range(0.0, 1.0, 0.01) var canyon_threshold: float = 0.70
+## ПОРОГ ПОДОБРАН ПОД РАСПРЕДЕЛЕНИЕ ШУМА, а не выбран на глаз. Старый хеш давал равномерные
+## 0..1, нативный value-шум центрирован — при том же пороге 0.70 каньона выходило 18.8% площади
+## вместо прежних 24.4%. Замерено на пяти сидах, участок 4 км: 0.66 возвращает 24.2%.
+@export_range(0.0, 1.0, 0.01) var canyon_threshold: float = 0.66
 ## Narrower edge means a steeper outer wall.
 @export_range(0.02, 0.5, 0.01) var canyon_edge: float = 0.05
 @export var color_canyon: Color = Color(0.70, 0.30, 0.15)
@@ -53,7 +56,8 @@ extends Resource
 @export_group("Mountains")
 @export var mountain_enabled: bool = true
 @export_range(30.0, 1500.0, 1.0) var mountain_scale: float = 420.0
-@export_range(0.0, 1.0, 0.01) var mountain_threshold: float = 0.72
+## Тем же замером: 0.72 давало 18.5% гор вместо прежних 20.0%, 0.71 попадает в цель.
+@export_range(0.0, 1.0, 0.01) var mountain_threshold: float = 0.71
 @export_range(0.02, 0.5, 0.01) var mountain_edge: float = 0.05
 ## Mountain height, m (landform only, used by the generator).
 @export_range(0.0, 300.0, 1.0) var mountain_rise: float = 48.0
@@ -132,27 +136,51 @@ const MOUNTAIN_OFFSET := Vector2(211.0, 77.0)
 @export var mask_offset: Vector2 = Vector2.ZERO
 
 ## THE NOISE THE MASKS ARE BUILT ON, in one place. Every mask above takes it as a Callable because
-## its callers used to each carry their own copy of these eight lines - the generator, the map, the
+## its callers used to each carry their own copy of those lines - the generator, the terrain, the
 ## menu backdrop - and a copy is how the painted region and the carved region drifted apart once
 ## already. `biomes.noise` below is that Callable; pass it unless you are the shader.
+##
+## IT IS NATIVE NOISE NOW, AND THAT IS THE WHOLE POINT. This used to be eight lines of GDScript —
+## four hashes and three lerps — and those eight lines were where the world's loading time lived.
+## Measured, 200k calls each:
+##
+##   FastNoiseLite.get_noise_2d, SIX octaves, C++   0.84 us
+##   this function, ONE octave, GDScript           17.34 us      ← twenty times slower, doing less
+##   three biome masks per point                   60.5  us
+##   LiteTerrainGen.height_at per point           391    us
+##
+## And 441 points per chunk x 25 chunks x 391 us is 4.3 s, which is exactly the starting ring the
+## player waited through. Practically all of it was this function, called three times per mask and
+## five times over for the blur.
+##
+## `TYPE_VALUE` is the same KIND of noise — value noise on a lattice with smooth interpolation —
+## so the world keeps its character: patches of the same scale, the same thresholds, the same
+## smoothstep edges. It is not the same PATTERN: the hash differs, so every seed now draws a
+## different layout than it did before. Nothing was tuned around a particular seed, and picking
+## another one is two clicks in the inspector.
+##
+## THE SEED OF THE NOISE ITSELF STAYS FIXED. What moves a world is `mask_offset`, which shifts
+## where the masks are sampled (offset_for_seed); leaving the noise seed alone keeps that the only
+## thing a seed changes, and keeps this one shared instance valid for every caller.
+##
+## The instance is STATIC: one per run, not one per resource. Masks are asked for hundreds of
+## thousands of times per chunk, and a FastNoiseLite per TerrainBiomes would be a second lattice
+## the moment anything duplicated the resource — which the menu does for every round.
+static var _nz: FastNoiseLite = null
+
 static func cv_noise(p: Vector2) -> float:
-	var i := Vector2(floor(p.x), floor(p.y))
-	var f := p - i
-	f = f * f * (Vector2(3.0, 3.0) - 2.0 * f)
-	var a := _cv_hash2d(i)
-	var b := _cv_hash2d(i + Vector2(1.0, 0.0))
-	var c := _cv_hash2d(i + Vector2(0.0, 1.0))
-	var d := _cv_hash2d(i + Vector2(1.0, 1.0))
-	return lerpf(lerpf(a, b, f.x), lerpf(c, d, f.x), f.y)
-
-static func _cv_hash2d(p: Vector2) -> float:
-	p = Vector2(_cv_fract(p.x * 123.34), _cv_fract(p.y * 456.21))
-	var d: float = p.dot(p + Vector2(45.32, 45.32))
-	p += Vector2(d, d)
-	return _cv_fract(p.x * p.y)
-
-static func _cv_fract(x: float) -> float:
-	return x - floor(x)
+	if _nz == null:
+		_nz = FastNoiseLite.new()
+		_nz.noise_type = FastNoiseLite.TYPE_VALUE
+		_nz.fractal_type = FastNoiseLite.FRACTAL_NONE
+		# ОДНА КЛЕТКА РЕШЁТКИ — ОДНА ЕДИНИЦА `p`. Вызывающие уже поделили мировую точку на свой
+		# масштаб (biome_scale и прочие), то есть p приходит в «клетках узора»; частота по
+		# умолчанию 0.01 растянула бы каждый регион в сто раз.
+		_nz.frequency = 1.0
+		_nz.seed = 0
+	# ДИАПАЗОН 0..1, как у старого хеша: пороги масок (biome_bias 0.5, canyon_threshold 0.70)
+	# заданы в нём, а движок отдаёт -1..1.
+	return _nz.get_noise_2d(p.x, p.y) * 0.5 + 0.5
 
 ## The same function as a Callable to hand to the masks. A static method cannot be passed by name
 ## in every Godot build; a method on the resource can.

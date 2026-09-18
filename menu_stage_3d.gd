@@ -37,7 +37,8 @@ const MAP_SIZE := 256
 ## THE WAIT IS AS SHORT AS IT CAN BE (measured): with ready_view at 128 the backdrop sat for ten
 ## seconds, of which six were the view stage; at 32 the whole wait is the starting ring and
 ## nothing else. What is beyond it streams in behind the fade, and the camera is looking at the
-## machines anyway.
+## machines anyway. Since the noise went native the whole wait is 1.1 s, so there is room to raise
+## this again if the first frame ever looks too bare — but bare is not what it looks.
 const MENU_VIEW := 320.0
 const MENU_READY_VIEW := 32.0
 ## Everything the round can reach stays resident: the map is small and lives half a minute, so
@@ -79,7 +80,7 @@ const SEED_TRIES := 12
 const SCORE_STEP := 24.0
 ## The fight happens within this radius of the origin - it must be drivable ground, not a gorge.
 const CLEAR_RADIUS := 48.0
-## Wanted share of the window: canyon country over meadow (the ground there is high enough for a
+## Wanted share of the window: canyon OVER MEADOW (the ground there is high enough for a
 ## carve to have somewhere to go), and mountains for a skyline.
 const WANT_CANYON := 0.22
 const WANT_MOUNTAIN := 0.20
@@ -228,7 +229,7 @@ func _make_map(report: bool = false) -> Node3D:
 	m.biomes = b
 	# NO LANDFORM KNOBS HERE. The chunked terrain builds on the natural preset itself
 	# (chunk_terrain._proc_params), which is the same preset the game's own world uses, so the menu
-	# shows the country the player is about to drive into. Setting them from here would be a second
+	# shows the same land the player is about to drive into. Setting them from here would be a second
 	# copy of those numbers and, sooner or later, a different landscape behind the same menu.
 	m.view_distance = MENU_VIEW
 	m.ready_view = MENU_READY_VIEW

@@ -56,7 +56,7 @@ the node itself.
    `class_name`).
 2. Give it a `TerrainBiomes` resource in `biomes`, or leave it empty and it makes one.
 3. Look at the top of its inspector: the map of the world for the current seed. Step
-   through seeds until you like the country, then press **Показать в сцене** to build the
+   through seeds until you like where the regions land, then press **Показать в сцене** to build the
    real ground around the editor camera.
 
 That is the whole workflow. There is nothing to generate into a file and nothing to bake:
@@ -221,7 +221,7 @@ There is no sculpt brush any more, and its absence is the design. A brush made s
 map was a file of heights somebody edited by hand; a procedural world has nothing to edit — it
 has a SEED, and the only question is what that seed gives.
 
-Select the terrain node and the answer is at the top of the inspector: a map of the country for
+Select the terrain node and the answer is at the top of the inspector: a map of the regions for
 that seed, redrawn as you step through seeds with ◀ ▶ or roll one with RND. It draws the BIOME
 MASKS rather than the heights — a mask costs three noise samples per pixel, a height costs five
 with blur and the canyon cut, and at 128×128 that is the difference between flipping through

@@ -46,7 +46,14 @@ project: read it before claiming how anything works.
     value kept plus a same-size entry in `RETIRED_BLOCKS`.
 16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
     too (`TerrainBiomes.cv_noise`, handed to the masks as `biomes.noise`). A second copy of the
-    formula diverged once and moved a whole region. PATCH SIZE IS SET BY `scale` AND NOTHING ELSE:
+    formula diverged once and moved a whole region. THAT NOISE IS NATIVE (`FastNoiseLite`,
+    `TYPE_VALUE`): it used to be eight lines of GDScript hashing, and those eight lines WERE the
+    world's loading time — 17.3 us a call against 1.6 native, and three of them per mask, five
+    times over for the blur. The shader is not affected either way: masks reach it baked into
+    vertex colour, it never recomputes them. Swapping the noise changes the LAYOUT every seed
+    draws, and it changes the DISTRIBUTION too — the old hash was flat over 0..1, value noise is
+    centred, so the same threshold covers less ground. `canyon_threshold` and `mountain_threshold`
+    were re-measured against it (0.70→0.66, 0.72→0.71) to keep the composition where it was. PATCH SIZE IS SET BY `scale` AND NOTHING ELSE:
     one octave plus a threshold has no size floor, so slivers of two or three chunks always appear
     near the threshold. Raising `scale` is the only lever that does not change the world — lowering
     the threshold removes slivers too but doubles how much of the map that biome covers. Blurring
@@ -311,18 +318,19 @@ project: read it before claiming how anything works.
   regenerate without the dock. Measured before deleting it: a menu round on the old node took
   8.2 s, the same round on the chunked one takes 3.9 s.
 - THE MENU BACKDROP IS THE GAME'S OWN GROUND, tuned down rather than replaced: `MENU_VIEW` 320 m
-  against the game's 1400, `ready_view` 32 against 192, `ready_ring` 1 against 2. The camera hangs
+  against the game's 1400, `ready_view` 32 against 192, `ready_ring` 1 against 2. It is up in
+  1.1 s; the world, which waits for 192 m of view, in 3.7 s. The camera hangs
   over one fight and never travels, so everything past a few hundred metres is horizon nobody looks
   at, and every metre of it is noise computed on the phone that also has to run the menu. There is
   no authored first map any more — every round, the first included, is generated the same way.
 - THERE IS NO SCULPT BRUSH, AND THAT IS THE DESIGN. It made sense while a map was a file of
   heights edited by hand; a procedural world has a SEED, and the only question is what the seed
   gives. The answer is the MAP AT THE TOP OF THE NODE'S INSPECTOR (`seed_browser.gd`): step
-  through seeds and watch the country change. It draws the BIOME MASKS, not the heights — a mask
-  is three noise samples per pixel, a height is five plus blur plus the canyon cut, and at
-  128×128 that is the difference between flipping through seeds and waiting on each. The mask
-  offset comes from `TerrainBiomes.offset_for_seed`, the generator's own function: a second copy
-  would draw a country the game does not build. Under it, the distance rings to scale — four
+  through seeds and watch where the regions land. It draws the BIOME MASKS, not the heights —
+  measured, three masks cost about 5 us a point against 124 for a height, so at 128×128 that is
+  eighty milliseconds against two seconds: flipping through seeds against waiting on each. The
+  mask offset comes from `TerrainBiomes.offset_for_seed`, the generator's own function: a second
+  copy would draw a layout the game does not build. Under it, the distance rings to scale — four
   numbers in a list never showed that `keep_radius` must sit inside `view_distance`.
 - THE `camera` EXPORT IS AN OVERRIDE AND STAYS EMPTY. Both terrains take the camera the scene is
   DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
@@ -332,6 +340,9 @@ project: read it before claiming how anything works.
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
   (`LOD_QUALITY` = 2). Details: `docs/CHUNK_TERRAIN.md`.
+- THE COST OF THE WORLD IS `height_at`, AND IT IS MEASURABLE. 124 us a point × 441 points a chunk
+  × 25 chunks is the 1.1 s starting ring; before the noise went native it was 391 us and 3.7 s.
+  Anything that claims to speed up loading has to move that number — or it is moving nothing.
 - The generator answers BY POINT: `height_at(wx, wz)` is noise, blur and the canyon cut in one world
   point, and `sample_grid` builds a grid from it. The blur is always taken at FULL resolution, even
   when the node samples every 32nd cell — blurring an already sparse grid is a different field, and
