@@ -915,6 +915,7 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	# а камера ходит туда-сюда.
 	mi.visible = _want.has(key)
 	add_child(mi)
+	_arrive_start(mi)
 	_live[key] = {"inst": mi, "sig": job["sig"], "lod": job["lod"], "gx": job["gx"], "gz": job["gz"],
 			"seen": float(Time.get_ticks_msec()) * 0.001}
 
@@ -1350,11 +1351,46 @@ func _active_camera() -> Camera3D:
 	var vp := get_viewport()
 	return vp.get_camera_3d() if vp != null else null
 
+## МАТЕРИАЛИЗАЦИЯ: земля не возникает, а собирается — скан снизу вверх, клетки перед фронтом
+## горят в палитру глитча и гаснут в настоящий цвет (сам эффект в glsl.gdshader).
+##
+## ПРОГРЕСС СЧИТАЕМ ЗДЕСЬ, А НЕ ПО ШЕЙДЕРНОМУ TIME: сравнивать TIME с часами движка нельзя, это
+## разные шкалы (пауза, time_scale), и расхождение означало бы эффект, который либо не включается,
+## либо горит вечно. Здесь же видно, когда он кончился — узел уходит из списка и больше ничего не
+## стоит; у всех остальных arrive остаётся дефолтной единицей, то есть ранний выход в шейдере.
+##
+## Список короткий по построению: за раз рождается не больше build_batch узлов, и каждый живёт в
+## нём ARRIVE_DUR секунд.
+const ARRIVE_DUR := 0.55
+var _arriving: Array = []
+
+func _arrive_start(mi: MeshInstance3D) -> void:
+	mi.set_instance_shader_parameter(&"arrive", 0.0)
+	_arriving.append({"mi": mi, "t": 0.0})
+
+func _arrive_tick(delta: float) -> void:
+	if _arriving.is_empty():
+		return
+	for i in range(_arriving.size() - 1, -1, -1):
+		var e: Dictionary = _arriving[i]
+		var mi = e["mi"]
+		if not is_instance_valid(mi):
+			_arriving.remove_at(i)
+			continue
+		e["t"] = float(e["t"]) + delta
+		var k: float = float(e["t"]) / ARRIVE_DUR
+		if k >= 1.0:
+			mi.set_instance_shader_parameter(&"arrive", 1.0)   # единица = эффект выключен
+			_arriving.remove_at(i)
+		else:
+			mi.set_instance_shader_parameter(&"arrive", k)
+
 func _process(delta: float) -> void:
 	if _gen == null:
 		return
 	if Engine.is_editor_hint() and not _preview_on:
 		return
+	_arrive_tick(delta)
 	_col_tick()
 	_job_tick()
 	_lod_timer += delta
