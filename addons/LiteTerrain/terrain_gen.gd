@@ -1,20 +1,19 @@
 @tool
 class_name LiteTerrainGen
 extends Node
-## ГЕНЕРАТОР РЕЛЬЕФА — отдельный класс, а не часть плагина.
+## ГЕНЕРАТОР РЕЛЬЕФА. ОТВЕЧАЕТ ПО ТОЧКЕ И БОЛЬШЕ НИКАК.
 ##
-## Раньше все проходы (шум, размытие, каньоны) жили прямо в `plugin.gd`, а он —
-## `@tool extends EditorPlugin`. Редакторные классы в собранной игре ВЫРЕЗАНЫ: файл в сборку
-## попадал (addons экспортируются целиком), а загрузиться не мог. То есть генерация физически
-## существовала и была недоступна ровно там, где она и нужна, — в игре.
+## `height_at(wx, wz)` — шум, размытие и врез каньона в одной мировой точке; `sample_grid` набирает
+## из неё сетку. Всё. Прохода по массиву высот на весь мир здесь больше нет: он существовал ради
+## ЗАПЕЧЁННОЙ карты (потоковые проходы по строкам, буферы на всю карту, план стадий с процентами,
+## отмена на полпути), а запечённых карт в проекте не осталось — и мир, и фон меню считает
+## чанковая земля, а она спрашивает свои вершины чанк за чанком.
 ##
 ## Здесь только СЧЁТ. Ни одного обращения к доку, к выбранной ноде или к файлам: параметры
-## кладутся полями, прогресс уходит в `on_progress`, «стоп» спрашивается через `stop()`. Плагин
-## остался тонким вызывающим и по-прежнему владеет своим окном и записью файлов; игра позовёт
-## тот же `generate()` и запишет свои.
+## кладутся полями, «стоп» спрашивается через `stop()`.
 ##
-## Node, а не RefCounted: проходы отдают кадры через `await get_tree().process_frame` — иначе
-## редактор не перерисовывается и генерация неотличима от зависания.
+## Node, а не RefCounted, чтобы приходило NOTIFICATION_PREDELETE: по нему прогон отменяется сам
+## (см. _notification) — задача, уже сидящая в пуле, иначе считала бы в освобождаемый объект.
 
 # ── Параметры прогона ────────────────────────────────────────────────────────
 # Имена те же, что у ручек дока, и это НАМЕРЕННО: тела проходов переехали сюда байт в байт,
@@ -41,35 +40,13 @@ var ridge_sharp: float = 2.5
 # origin_* — мировая клетка, которой соответствует локальный (0,0) считаемого куска.
 var origin_x: int = 0
 var origin_z: int = 0
-## СДВИГ ШУМА, в мировых клетках. Нужен, чтобы ВОСПРОИЗВЕСТИ старую карту байт в байт: для неё
-## шум брался по индексу, то есть ровно по мировой координате плюс половина размера карты.
-## generate() ставит его сам; порегионному вызову он не нужен и остаётся нулём.
+## СДВИГ ШУМА, в мировых клетках. Остался от запечённых карт, где шум брался по индексу в
+## массиве; точечному запросу он не нужен и стоит нулём — begin_sampling его и обнуляет.
 var noise_offset := Vector2.ZERO
 
-## Куда сообщать о ходе работ: on_progress.call(step: String, frac: float). Пусто — молча.
-var on_progress: Callable = Callable()
-## Есть ли у вызывающего СВОЯ последняя стадия (запись файлов, пересборка превью). План строит
-## generate() — только он знает, сколько проходов реально запустится, — а долю под эту стадию
-## вызывающий забирает потом через next_slice(). Без флага она не попала бы в план вовсе, и
-## полоса добежала бы до конца раньше самой долгой части прогона.
-var plan_bake: bool = false
-
-# Умолчания процедурного мира. Читают ДВОЕ: map.gd и menu.gd (меню считает землю нового слота
-# до того, как карта появится). Две копии чисел = шов между тем, что посчитало меню, и тем,
-# что досчитает окно на ходу.
-## СТОРОНА ОКНА ВЫСОТ В КЛЕТКАХ. Окно — это БУФЕР В ПАМЯТИ, а не размер мира: высоты считаются
-## от мировых координат, поэтому мир бесконечен и ничего в нём не повторяется, сколько бы ни было
-## окно. Значит размер выбирается не «побольше красивее», а по памяти телефона.
-##
-## Пик памяти делают НЕ данные, а буферы прохода: их три, и каждый размером с окно. На 2048² это
-## ~64 МБ подряд, и на Adreno 610 resize отдаёт пустой массив — мира нет вовсе. 1024² даёт ~16 МБ
-## пика и радиус 512 м вокруг игрока.
-##
-## РЕЗАТЬ ОКНО НА ПЛИТКИ И СОБИРАТЬ ИЗ НИХ — НЕ РАБОТАЕТ ТУТ, проверено: один проход превращается
-## в шестьдесят четыре, каждый со своей группой задач в пуле потоков, и на слабом устройстве это
-## падает. Дальше видеть надо не большим окном, а настоящим тайловым стримингом хранилища — но
-## это переписывание рендера, а не размер константы.
-const DEF_WINDOW := 1024
+# Умолчания прогона: то, чем apply_params заполняет пропуски в переданном словаре, и основа
+# натурального пресета. Одна копия на всех — вторая означала бы, что мир игры и фон меню стоят
+# на разных числах.
 const DEF_SCALE := 150.0
 const DEF_POWER := 2.6
 const DEF_AMPLITUDE := 30.0
@@ -123,26 +100,11 @@ func apply_params(p: Dictionary) -> void:
 	mtn_amount = lerpf(0.25, 1.1, m)
 	ridge_sharp = lerpf(1.6, 3.6, m)
 
-## Доля шкалы под следующий проход плана. Публично ради той самой последней стадии.
-func next_slice() -> Vector2:
-	return _plan_slice()
-
-## Прогресс идёт в ЭТУ функцию, а не прямо в окно плагина: генератор про интерфейс ничего не
-## знает и знать не должен — его зовёт и редактор, и игра, а окна у них разные.
-func _report(step: String, frac: float) -> void:
-	if on_progress.is_valid():
-		on_progress.call(step, frac)
-
-## Остановить прогон. Уже запущенную групповую задачу отменить нельзя, поэтому «стоп» работает
-## наоборот: каждая оставшаяся строка выходит сразу (см. _gen_drop_row), проход дотикивает за
-## миллисекунды, а прогон останавливается МЕЖДУ проходами и ничего не отдаёт.
+## ОТМЕНА — ЭТО ФЛАГ, КОТОРЫЙ ЧИТАЮТ ЗАДАЧИ. Так говорит и тот, кто собирается генератор
+## ОСВОБОДИТЬ (chunk_terrain.stop_generation при смене сцены или сбросе раунда меню): задача,
+## уже сидящая в пуле, выйдет на первой же проверке вместо того, чтобы считать в никуда.
 func stop() -> void:
 	_gen_cancel = true
-	# THE LENGTH GOES TO ZERO IN THE SAME BREATH. Stop is also how a caller that is ABOUT TO FREE the
-	# generator says so (map.stop_generation, when the menu resets its round), and a row that is
-	# already inside the pool would otherwise pass its bounds check and write into buffers that are
-	# being destroyed - "out of bounds set index" on an array that no longer exists.
-	_gen_len = 0
 
 func cancelled() -> bool:
 	return _gen_cancel
@@ -167,202 +129,32 @@ var _gen_biomes: TerrainBiomes = null
 const GEN_OCTAVES := 6        # more = high-frequency noise, fewer = blurred blobs
 const GEN_SMOOTH_PASSES := 1  # one pass kills noise spikes; a second one starts eating terrain
 
-# ── Threaded generation (WorkerThreadPool) ────────────────────────────────────
-# The two heavy noise loops (filling the heights and carving the canyons) parallelise per row,
-# because rows are independent. Each thread writes only ITS OWN array indices (refcount = 1, so
-# no copy-on-write races) and reads the noise objects without mutating them. The state those
-# threaded callables need lives in the fields below.
-var _gen_w: int = 0
-var _gen_d: int = 0
+## Нажали «стоп» или генератор вот-вот освободят. Читает каждая задача — и та, что уже сидит в
+## пуле: иначе она считала бы в объект, которого сейчас не станет.
+var _gen_cancel: bool = false
+
+## ВСЁ, ЧТО ВЫВОДИТСЯ ИЗ ПАРАМЕТРОВ, считается ОДИН РАЗ в prepare_sampling — до того, как за
+## высоты возьмутся потоки: метры (они берутся от Height) и то, что когда-то стояло на
+## собственных ползунках. Задачи эти поля только читают.
+var _gen_mtn_rise: float = 48.0
+var _gen_dune_amp: float = 6.0
+## Глубина ущелья ниже местной земли (метры, от Height). Раньше поле значило «высота меса» —
+## пока верх меса задавался абсолютом; теперь абсолютов в каньоне нет вовсе.
+var _gen_gorge_depth: float = 40.0
+var _gen_floor: float = 6.0
+var _gen_mtn_amount: float = 0.8
+var _gen_ridge_sharp: float = 2.5
+
+# ── Шумы прогона ─────────────────────────────────────────────────────────────
+# Собираются один раз (prepare_sampling) на главном потоке; дальше их ТОЛЬКО ЧИТАЮТ — из задач
+# WorkerThreadPool, по одной на чанк. Ни одна из них шумы не меняет, поэтому делить их на всех
+# безопасно и копировать нечего.
 var _gen_base: FastNoiseLite
 var _gen_ridge: FastNoiseLite
 var _gen_dune: FastNoiseLite
 var _gen_gorge: FastNoiseLite
 var _gen_ramp: FastNoiseLite
-var _gen_out: PackedFloat32Array
-var _gen_base_in: PackedFloat32Array
-var _gen_carved: PackedFloat32Array
-## Buffer length AS A NUMBER. Threads must bounds-check, but WITHOUT TOUCHING the array itself:
-## any access to it as an object (even .size()) briefly creates a second reference, and a Packed
-## array written through with a second reference alive makes a COPY — the field then points at the
-## copy, every other thread's writes go nowhere, and what follows is exactly what the log showed:
-## "out of bounds" at addresses the whole array could never have.
-var _gen_len: int = 0
-## ГЕНЕРАТОР — ОДИН ПРОХОД ЗА РАЗ. Буферы прохода (_gen_out, _gen_base_in, _gen_carved) это поля
-## объекта, общие на все вызовы: второй проход, начатый пока идёт первый, затирает ему данные и
-## сбрасывает _gen_cancel. Ловили это так — игрок входил в мир, стоя у края окна, окно просило
-## полосу поверх ещё не досчитанной стартовой земли, и игра падала.
-##
-## Отказ ПУСТЫМ МАССИВОМ, а не ожиданием: все вызывающие уже умеют его читать как «не сложилось»
-## и не двигают окно, а ждать здесь значило бы держать кадр.
-var _gen_running: bool = false
 
-# One row z of a blur pass. Reads _gen_base_in (the previous pass) and writes _gen_out, so no
-# thread ever reads what another is writing. The border rows are copied through untouched — the
-# 5-tap kernel has no neighbours there.
-## Allocate a whole-map buffer and MAKE SURE it was allocated. Out of memory, resize() returns an
-## error and leaves the array EMPTY — after which the threads write into nothing and the log fills
-## with "out of bounds" instead of one clear line saying memory ran out. On a tablet with a couple
-## of gigabytes and a 1984² map (16 MB per buffer) that is not a hypothetical.
-func _gen_alloc(n: int, what: String) -> PackedFloat32Array:
-	var a := PackedFloat32Array()
-	if a.resize(n) != OK or a.size() != n:
-		push_error("LiteTerrain: could not allocate %s for %d values (%.1f MB) — out of memory"
-				% [what, n, float(n) * 4.0 / 1048576.0])
-		return PackedFloat32Array()
-	return a
-
-func _gen_blur_row(z: int) -> void:
-	if _gen_drop_row():
-		return
-	var w := _gen_w
-	var row := z * w
-	# ГРАНИЦЫ СПРАШИВАЕМ У САМИХ МАССИВОВ. Раньше тут стояла только длина прохода (_gen_len), а
-	# она переживает буфер: стоило проходу отпустить массив, как строка, всё ещё живущая в пуле,
-	# проходила проверку и писала в пустоту — «Out of bounds set index» ни к чему в кадре.
-	if _gen_len <= 0 or row + w > _gen_len \
-			or row + w > _gen_out.size() or row + w > _gen_base_in.size():
-		_gen_row_done()
-		return
-	if z == 0 or z == _gen_d - 1:
-		for x in w:
-			_gen_out[row + x] = _gen_base_in[row + x]
-		_gen_row_done()
-		return
-	_gen_out[row] = _gen_base_in[row]
-	_gen_out[row + w - 1] = _gen_base_in[row + w - 1]
-	for x in range(1, w - 1):
-		_gen_out[row + x] = (
-			_gen_base_in[row + x] +
-			_gen_base_in[row + x - 1] +
-			_gen_base_in[row + x + 1] +
-			_gen_base_in[row - w + x] +
-			_gen_base_in[row + w + x]
-		) * 0.2
-	_gen_row_done()
-var _gen_rows_done: int = 0
-var _gen_mutex := Mutex.new()
-## Stop was pressed. Read by every row task and between passes.
-var _gen_cancel: bool = false
-
-## One row is done — called from EVERY thread at the end of its work.
-func _gen_row_done() -> void:
-	_gen_mutex.lock()
-	_gen_rows_done += 1
-	_gen_mutex.unlock()
-
-## Should this row give up? A group task that is already running cannot be un-scheduled, so Stop
-## works the other way round: every remaining row returns at once, the pass ends in milliseconds
-## and the generation stops between passes, with the map on disk untouched.
-func _gen_drop_row() -> bool:
-	if not _gen_cancel:
-		return false
-	_gen_row_done()
-	return true
-
-# ── ПЛАН ПРОГОНА: СКОЛЬКО РАБОТЫ В КАЖДОМ ПРОХОДЕ ────────────────────────────
-# Полоса и оценка времени делили прогон по ЗАШИТЫМ долям (Heights 0.02..0.5, Smoothing
-# 0.5..0.62, Canyons 0.62..0.95), и это врало тремя способами сразу:
-#
-#   • РАЗМЫТИЙ БЫВАЕТ НЕСКОЛЬКО (GEN_SMOOTH_PASSES), а доля у них одна на всех: полоса
-#     проходила 0.5→0.62, откатывалась назад и шла заново. Это и есть «перед каньонами
-#     что-то пролетело»;
-#   • КАНЬОНЫ МОГУТ БЫТЬ ВЫКЛЮЧЕНЫ — тогда треть шкалы просто перепрыгивалась;
-#   • ЗАПИСЬ И ПЕРЕСБОРКА ПРЕВЬЮ занимали последние 4.5 % шкалы, хотя превью — самая долгая
-#     стадия во всём прогоне.
-#
-# А оценка времени считается как elapsed × (1 − frac) / frac, то есть она честна ровно
-# настолько, насколько ПОЛОСА ПРОПОРЦИОНАЛЬНА РАБОТЕ. С долями на глаз она и не могла не врать
-# с самого начала.
-#
-# Поэтому план собирается ДО прогона: каждый проход объявляет свою цену, доли шкалы получаются
-# делением, и «сколько осталось» становится правдой с первых секунд.
-#
-# ЦЕНА МЕРЯЕТСЯ В ВЫЗОВАХ ШУМА НА СЭМПЛ — их и считаем, потому что в этих проходах шум занимает
-# почти всё время, а пара smoothstep и умножений на его фоне теряется. Числа не на глаз, а
-# пересчитаны по коду самой строки (см. ссылки):
-## _cv_noise написан на GDScript и стоит примерно впятеро дороже нативного get_noise_2d — отсюда
-## множитель 5 ниже.
-## _gen_fill_row: base + ridge + dune×2 = 4 нативных, meadow_mask + mountain_mask + mountain_dome
-## = 3 вызова _cv_noise. 4 + 3×5 = 19.
-const COST_HEIGHTS := 19.0
-## _gen_blur_row: шума нет вовсе, пять чтений массива на сэмпл. Против одного вызова шума это
-## заметно меньше единицы.
-const COST_SMOOTH := 0.5
-## _gen_carve_row: canyon_mask (1×_cv_noise) — и ВЫХОД, если маска нулевая. Каньон занимает малую
-## долю карты, поэтому полная цена (mountain_mask + butte + gorge + ramp ≈ 17) платится только на
-## CANYON_SHARE площади: 5 + 17×0.2 ≈ 8.
-const COST_CANYON := 8.0
-const CANYON_SHARE := 0.2
-## Запись .res + .bin + ПЕРЕСБОРКА ПРЕВЬЮ. Шума здесь нет, но есть полный обход карты с постройкой
-## мешей всех чанков, и по времени это сопоставимо с проходом высот. Число — оценка, а не подсчёт
-## вызовов: считать нечего, стадия не наша (map.editor_rebuild_*).
-const COST_BAKE := 6.0
-
-var _plan: Array = []            # [{label, units}] СТРОГО в порядке запуска
-var _plan_total: float = 0.0
-var _plan_done: float = 0.0      # units уже отданных проходов
-var _plan_i: int = 0
-
-## Собрать план под конкретный прогон. do_canyons/blur_passes — ровно те условия, по которым
-## проходы и запускаются ниже: план, разошедшийся с прогоном, врёт не меньше зашитых долей.
-func _plan_build(width: int, depth: int, blur_passes: int, do_canyons: bool, do_bake: bool) -> void:
-	var samples: float = float(width) * float(depth)
-	_plan = [{"label": "Heights", "units": samples * COST_HEIGHTS}]
-	for _i in blur_passes:
-		_plan.append({"label": "Smoothing", "units": samples * COST_SMOOTH})
-	if do_canyons:
-		_plan.append({"label": "Canyons", "units": samples * COST_CANYON})
-	if do_bake:
-		_plan.append({"label": "Bake", "units": samples * COST_BAKE})
-	_plan_total = 0.0
-	for e in _plan:
-		_plan_total += float(e["units"])
-	_plan_done = 0.0
-	_plan_i = 0
-
-## Доля шкалы под СЛЕДУЮЩИЙ проход плана; курсор сдвигается. Идём строго по порядку — план
-## построен ровно в том, в каком проходы и запускаются.
-func _plan_slice() -> Vector2:
-	var a: float = _plan_done / maxf(_plan_total, 1.0)
-	if _plan_i >= _plan.size() or _plan_total <= 0.0:
-		return Vector2(a, 1.0)
-	_plan_done += float(_plan[_plan_i]["units"])
-	_plan_i += 1
-	return Vector2(a, _plan_done / _plan_total)
-
-## RUN ONE PASS WITH THE BAR MOVING. Every pass used to sit on wait_for_group_task_completion —
-## that blocks the main thread, and a blocked main thread redraws nothing, however pretty the
-## window is. Here we wait IN A LOOP, handing a frame back to the editor, and update the bar from
-## the number of finished rows.
-##
-## step_from/step_to is the share of the whole job this pass takes: the bar has to travel left to
-## right ONCE per generation, not jump back to zero at every stage.
-func _run_rows(task: Callable, rows: int, label: String) -> void:
-	# Долю шкалы НЕ ПЕРЕДАЁМ: её знает план (_plan_slice). Пока границы приходили аргументами,
-	# они были зашитыми числами в месте вызова — и разъезжались с тем, сколько проходов реально
-	# запустится.
-	var slice := _plan_slice()
-	var step_from: float = slice.x
-	var step_to: float = slice.y
-	_gen_rows_done = 0
-	var gid := WorkerThreadPool.add_group_task(task, rows, -1, false, "LiteTerrain")
-	while not WorkerThreadPool.is_group_task_completed(gid):
-		var done: float = float(_gen_rows_done) / float(maxi(rows, 1))
-		_report("%s — %d%%" % [label, int(done * 100.0)],
-				lerpf(step_from, step_to, done))
-		await get_tree().process_frame
-	WorkerThreadPool.wait_for_group_task_completion(gid)
-	if not _gen_cancel:
-		_report("%s — done" % label, step_to)
-
-# One row z of the height fill (WorkerThreadPool.add_group_task calls this per row).
-## ВЫСОТА ДО РАЗМЫТИЯ В ОДНОЙ МИРОВОЙ ТОЧКЕ.
-##
-## Вынесена из построчного прохода, и это не украшательство: пока формула жила внутри цикла по
-## массиву, спросить землю можно было только прямоугольником подряд. Значит ни высоты в точке без
-## загруженного куска, ни выборки ЧЕРЕЗ ШАГ для грубого уровня LOD — а на них стоит всё чанковое
-## хранилище. Строка теперь зовёт эту же функцию, поэтому копии формулы нет.
 func raw_height_at(wx: float, wz: float) -> float:
 	var nx := wx + noise_offset.x
 	var nz := wz + noise_offset.y
@@ -394,48 +186,6 @@ func raw_height_at(wx: float, wz: float) -> float:
 	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
 	return h * gen_amplitude + dune + mtn_rise
 
-func _gen_fill_row(z: int) -> void:
-	if _gen_drop_row():
-		return
-	var w := _gen_w
-	# МИРОВАЯ координата строки, а не индекс в массиве: кусок, посчитанный по любому смещению,
-	# обязан дать те же высоты (см. «МИРОВЫЕ КООРДИНАТЫ» вверху файла).
-	var wz := float(origin_z + z)
-	var row := z * w
-	if _gen_len <= 0 or row + w > _gen_out.size():
-		_gen_row_done()
-		return
-	for x in w:
-		_gen_out[row + x] = raw_height_at(float(origin_x + x), wz)
-	_gen_row_done()
-
-## Everything DERIVED FROM THE FIVE KNOBS for this generation: the metre values (from Height) and
-## what used to sit on sliders of its own. Computed once, before the first pass — the threads only
-## read these fields.
-var _gen_mtn_rise: float = 48.0
-var _gen_dune_amp: float = 6.0
-## Глубина ущелья ниже местной земли (метры, от Height). Раньше поле значило «высота меса» —
-## пока верх меса задавался абсолютом; теперь абсолютов в каньоне нет вовсе.
-var _gen_gorge_depth: float = 40.0
-var _gen_floor: float = 6.0
-var _gen_mtn_amount: float = 0.8
-var _gen_ridge_sharp: float = 2.5
-
-# One row z of the canyon carve (reads _gen_base_in, writes _gen_carved).
-## ЗЕМЛЯ В ОДНОЙ МИРОВОЙ ТОЧКЕ — шум, размытие, каньон. То же, что даёт проход, только без него.
-##
-## Ради этого и разбирался проход: чанковому хранилищу нужен ответ ПО ТОЧКЕ. Из него получается
-## всё остальное — высоты чанка, высота там, где ничего не загружено, и, главное, выборка ЧЕРЕЗ
-## ШАГ для грубого уровня LOD.
-##
-## РАЗМЫТИЕ СЧИТАЕТСЯ НА ПОЛНОМ РАЗРЕШЕНИИ, пятью отсчётами вокруг точки — теми же, что берёт
-## построчный проход. Это принципиально: взять каждую N-ю клетку и размыть уже разреженную сетку
-## значит получить ДРУГОЕ поле, и на стыке грубого уровня с мелким будет ступень, которую ничем
-## не закрыть. Пять вычислений шума на вершину против одного — на узел в 17×17 это двадцать
-## тысяч, то есть ничто.
-##
-## Края тут не копируются, в отличие от строки: у точки всегда есть соседи. Проход для этого и
-## считает кусок с фартуком.
 func height_at(wx: float, wz: float) -> float:
 	if _gen_base == null:
 		prepare_sampling()
@@ -556,100 +306,9 @@ func carve_at(wx: float, wz: float, surface: float) -> float:
 	var canyon_h: float = floor_h + (ti + riser) * (span / steps)
 	return lerpf(surface, canyon_h, hmask)
 
-func _gen_carve_row(z: int) -> void:
-	if _gen_drop_row():
-		return
-	var w := _gen_w
-	var wz := float(origin_z + z)
-	if _gen_biomes == null or _gen_len <= 0 or z * w + w > _gen_len \
-			or z * w + w > _gen_carved.size() or z * w + w > _gen_base_in.size():
-		_gen_row_done()
-		return
-	for x in w:
-		var idx := z * w + x
-		_gen_carved[idx] = carve_at(float(origin_x + x), wz, _gen_base_in[idx])
-	_gen_row_done()
-
-# The value noise the biome masks are built on. The maths lives in TerrainBiomes (one copy for the
-# generator, the map and the menu); this stays as a method because the row tasks pass it around as
-# a Callable thousands of times per pass.
 func _cv_noise(p: Vector2) -> float:
 	return TerrainBiomes.cv_noise(p)
 
-## ПРОГОН ЦЕЛИКОМ: шум → размытие → каньоны. Возвращает высоты или ПУСТОЙ массив, если не
-## хватило памяти или нажали «стоп». Пустой ответ обязателен именно как ответ, а не как
-## полурезультат: полугенерированная карта хуже старой, и записывать её нельзя.
-##
-## Окно, файлы, undo и пересборку превью делает вызывающий — здесь только счёт.
-func generate(width: int, depth: int, biomes: TerrainBiomes) -> PackedFloat32Array:
-	if _gen_running:
-		push_warning("LiteTerrain: проход уже идёт — второй запрос отклонён")
-		return PackedFloat32Array()
-	_gen_running = true
-	_gen_cancel = false
-	_gen_biomes = biomes
-	# Минимальный размер: меньше двух чанков даёт вырожденные чанки и ошибки сборки.
-	width = maxi(width, 32)
-	depth = maxi(depth, 32)
-	# КАРТА ЦЕЛИКОМ — ЭТО КУСОК С НАЧАЛОМ В ЛЕВОМ ВЕРХНЕМ УГЛУ. Мир у нас центрирован на нуле
-	# (map.gd ставит вершины в `x − w/2`), поэтому мировая клетка локального (0,0) — это минус
-	# половина размера.
-	origin_x = -int(width / 2)
-	origin_z = -int(depth / 2)
-	# Сдвиг выводим ИЗ НАЧАЛА КУСКА, а не из размера: тогда nx = wx − origin_x = x, то есть шум
-	# берётся ровно в той же точке, что и раньше, при любой чётности размера. Так генератор,
-	# перешедший на мировые координаты, воспроизводит прежнюю карту байт в байт, а не «почти».
-	noise_offset = Vector2(float(-origin_x), float(-origin_z))
-	var res: PackedFloat32Array = await _run_passes(width, depth)
-	_gen_running = false
-	return res
-
-## КУСОК МИРА ПО МИРОВЫМ КООРДИНАТАМ — то, ради чего всё и затевалось. Скользящее окно считает
-## землю кусками по мере движения игрока, и каждый кусок обязан сойтись с соседним по шву.
-##
-## ФАРТУК. Размытие читает соседние клетки, поэтому по краю куска ему читать нечего: без запаса
-## там осталась бы полоса НЕразмытой земли — ровно на шве, где её видно лучше всего. Считаем с
-## запасом в GEN_SMOOTH_PASSES клеток по каждой стороне и обрезаем: столько раз размытие и
-## заглядывает за край, по одной клетке за проход.
-##
-## noise_offset здесь НОЛЬ: шум берётся прямо по мировой клетке. Сдвиг нужен только карте
-## целиком, и только чтобы повторить старую.
-func generate_region(x0: int, z0: int, w: int, h: int, biomes: TerrainBiomes) -> PackedFloat32Array:
-	if _gen_running:
-		push_warning("LiteTerrain: проход уже идёт — второй запрос отклонён")
-		return PackedFloat32Array()
-	_gen_running = true
-	_gen_cancel = false
-	_gen_biomes = biomes
-	noise_offset = Vector2.ZERO
-	var pad: int = maxi(GEN_SMOOTH_PASSES, 1)
-	origin_x = x0 - pad
-	origin_z = z0 - pad
-	var pw: int = w + pad * 2
-	var ph: int = h + pad * 2
-	var padded: PackedFloat32Array = await _run_passes(pw, ph)
-	if padded.is_empty():
-		_gen_running = false
-		return padded
-	var out := _gen_alloc(w * h, "the region")
-	if out.is_empty():
-		_gen_running = false
-		return out
-	for z in h:
-		var src_row: int = (z + pad) * pw + pad
-		var dst_row: int = z * w
-		for x in w:
-			out[dst_row + x] = padded[src_row + x]
-	_gen_running = false
-	return out
-
-## ПОДГОТОВКА К СЧЁТУ БЕЗ ПРОХОДА: шумы и производные числа.
-##
-## Раньше всё это собиралось внутри _run_passes, то есть существовало ТОЛЬКО во время прохода по
-## массиву. Спросить высоту в точке было нельзя не из-за формулы — та уже вынута (raw_height_at), —
-## а потому, что _gen_base и остальные были пустыми, пока не запущен проход.
-##
-## Зовётся и проходом, и точечными запросами. Дёшево: пять объектов шума и несколько умножений.
 func prepare_sampling() -> void:
 	var gorge_noise := FastNoiseLite.new()
 	gorge_noise.seed          = gen_seed + 91
@@ -732,77 +391,3 @@ func prepare_sampling() -> void:
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
 
-
-## Общая часть обоих входов: шум → размытие → каньоны. Границы куска к этому моменту уже
-## заданы полями origin_*/noise_offset — проходы читают только их.
-## БУФЕРЫ ПРОХОДА ОТПУСКАЕМ ТОЛЬКО ЗДЕСЬ, перед новым прогоном — то есть в момент, когда в пуле
-## заведомо ничего не считает. Раньше каждый проход обнулял их сразу после себя, и строка, ещё
-## живущая в пуле, писала в отпущенный массив.
-func _free_pass_buffers() -> void:
-	_gen_out = PackedFloat32Array()
-	_gen_base_in = PackedFloat32Array()
-	_gen_carved = PackedFloat32Array()
-
-func _run_passes(width: int, depth: int) -> PackedFloat32Array:
-	_free_pass_buffers()
-	prepare_sampling()
-	_gen_w = width
-	_gen_d = depth
-	_gen_len = width * depth
-	_gen_out = _gen_alloc(_gen_len, "the heightmap")
-	if _gen_out.is_empty():
-		_gen_len = 0
-		return PackedFloat32Array()
-	# ПЛАН СТРОИМ ЗДЕСЬ, по тем же условиям, по которым проходы и запускаются ниже. Каньоны
-	# спрашиваем у обеих сторон — у дока и у ресурса биомов: врез идёт только когда включены обе,
-	# и план, посчитавший каньон включённым, оставил бы в конце шкалы непройденную треть.
-	var will_carve: bool = gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled
-	_plan_build(width, depth, GEN_SMOOTH_PASSES, will_carve, plan_bake)
-	await _run_rows(_gen_fill_row, depth, "Heights")
-	# STOP IS CHECKED BETWEEN PASSES, and every check leaves without writing anything: a map
-	# half-generated is worse than the old one, and the file on disk must stay usable.
-	if _gen_cancel:
-		return PackedFloat32Array()
-	var new_data := _gen_out
-
-	# ── Optional blur passes ─────────────────────
-	# Simple 5-tap box blur to soften extreme spikes.
-	# Each pass slightly reduces aliasing without destroying ridges.
-	# THREADED, like the fill and the carve above: a blur pass is a full sweep of the map, and on
-	# a big one that was seconds of main thread per pass, twice over — once here and once as the
-	# `duplicate()` it needed to avoid reading its own output.
-	for _p in GEN_SMOOTH_PASSES:
-		_gen_base_in = new_data
-		_gen_out = _gen_alloc(width * depth, "the blur buffer")
-		if _gen_out.is_empty():
-			break                      # no buffer, no blur — the map itself already exists
-		await _run_rows(_gen_blur_row, depth, "Smoothing")
-		if _gen_cancel:
-			return PackedFloat32Array()
-		new_data = _gen_out
-
-	# ── Canyon carve (AFTER the blur, which would otherwise round off the sheer walls) ──
-	# Badlands: mesas at ABSOLUTE heights (varied by the butte noise, so there is a hierarchy
-	# rather than one slab), TERRACED into flat treads and sharp risers, plus a network of
-	# gorges and the occasional ramp down. The region is the canyon biome's own mask.
-	# Carve only when canyons are enabled in BOTH the dock and the biomes, otherwise the
-	# landform would be cut up where the canyon colour is switched off.
-	if gen_canyon_enable and _gen_biomes.canyon_enabled:
-		# Channel network: abs(fbm) is near 0 along branching lines — like ridges, but cut down.
-		_gen_base_in = new_data
-		# duplicate() AND a size CHECK: out of memory it returns an empty array, and without the
-		# check the threads would start writing into nothing — thirty "out of bounds" lines instead
-		# of one clear one. Copying element by element is not an option: four million assignments
-		# in GDScript is seconds for nothing.
-		_gen_carved = new_data.duplicate()
-		if _gen_carved.size() != width * depth:
-			push_error("LiteTerrain: out of memory for the canyon buffer (%d values, %.1f MB) — canyons skipped"
-					% [width * depth, float(width * depth) * 4.0 / 1048576.0])
-			_gen_carved = PackedFloat32Array()
-		else:
-			await _run_rows(_gen_carve_row, depth, "Canyons")
-			if _gen_cancel:
-				return PackedFloat32Array()
-			new_data = _gen_carved
-
-	return new_data

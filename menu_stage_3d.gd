@@ -1,6 +1,6 @@
 extends Node3D
-## Menu backdrop: a REAL fight on a REAL map - LiteTerrain with streamed collision, and the game's
-## own enemy scenes with their physics, AI and weapons. The two machines are of DIFFERENT factions,
+## Menu backdrop: a REAL fight on a REAL map - THE SAME CHUNKED TERRAIN THE GAME RUNS ON, and the
+## game's own enemy scenes with their physics, AI and weapons. The two machines are of DIFFERENT factions,
 ## or enemy_vehicle._is_enemy does not see them as enemies at all.
 ##
 ## ROUND LIFECYCLE. A round runs ROUND_TIME, and only then does the next map start generating - the
@@ -14,17 +14,35 @@ extends Node3D
 ## Demo machines carry `demo = true`: no rewards, no quest progress, no retreat - a backdrop where
 ## both sides drive apart shows nothing.
 ##
-## The FIRST map is the one authored in the scene (`Stage/LiteTerrain`), so the menu opens on a
-## world rather than on sky while the first generation runs. Until a map is up the stage hides
-## behind `%Backdrop`, which covers the 3D and NOT the interface.
+## THERE IS NO AUTHORED FIRST MAP ANY MORE, and the baked map it used to be is gone with it. It
+## existed because the old terrain needed a minute to compute a window of heights, so the menu
+## would have opened on sky; the chunked terrain builds only what the camera can see and is up in
+## a moment. Every round, the first one included, is generated the same way - one code path
+## instead of two, and no 256 KB of baked heights in the repository that nobody could regenerate
+## without the dock. Until a map is up the stage hides behind `%Backdrop`, which covers the 3D and
+## NOT the interface.
 
 const ENEMY_SCENE := preload("res://enemy.tscn")
-const MAP_SCRIPT := preload("res://addons/LiteTerrain/map.gd")
+const MAP_SCRIPT := preload("res://addons/LiteTerrain/chunk_terrain.gd")
 
-## Generated rounds use a 256-cell map: a fight needs a couple of hundred metres, and a quarter of
-## the cells means a quarter of the noise and of the chunk meshes - the run finishes well inside a
-## round, on a phone too. The authored first map keeps whatever size it was baked at.
+## How much ground the menu looks at. A fight needs a couple of hundred metres; the chunked terrain
+## builds by distance rather than by map size, so this is the window the SEED IS SCORED over - the
+## patch the camera will actually show.
 const MAP_SIZE := 256
+## What the menu map draws and what it waits for. Both are a fraction of the game's (1400 / 192):
+## the camera hangs over one fight and never travels, so ground past a few hundred metres is
+## horizon nobody looks at, and every metre of it is noise computed on the phone that has to run
+## the menu.
+##
+## THE WAIT IS AS SHORT AS IT CAN BE (measured): with ready_view at 128 the backdrop sat for ten
+## seconds, of which six were the view stage; at 32 the whole wait is the starting ring and
+## nothing else. What is beyond it streams in behind the fade, and the camera is looking at the
+## machines anyway.
+const MENU_VIEW := 320.0
+const MENU_READY_VIEW := 32.0
+## Everything the round can reach stays resident: the map is small and lives half a minute, so
+## dropping and rebuilding chunks inside it would be work for nothing.
+const MENU_KEEP := 256.0
 const ROUND_TIME := 30.0
 ## Distance between the two machines at the start: they must see each other (enemy vision is 40 m)
 ## and still have room to manoeuvre.
@@ -87,17 +105,11 @@ var _ring_ang: float = 0.0
 var _swapping: bool = false
 ## The fight is off in the settings: no map, no machines, the backdrop is the menu.
 var _off: bool = false
-## Biomes for generated maps: the authored map's, so the regions the menu generates are the regions
-## the map in the scene was made with. Duplicated per map - the generator writes the seed's mask
-## offset into it.
-var _biomes: TerrainBiomes = null
-## The map authored in the scene, kept for what it can tell about the world it was baked from: its
-## biomes and the Height it was generated with.
-var _scene_map: Node3D = null
-## That Height, remembered while the node is alive. The node itself is freed by the first swap, and
-## asking a freed one later just returns nothing - every map after the first came out at the preset
-## Height instead of the authored one, which is half as tall.
-var _authored_height: float = 0.0
+## REGIONS OF THE MENU'S WORLD, on the stage itself. They used to be read off the map node authored
+## in the scene; with that node gone the resource has to live somewhere that is not a map, and the
+## stage is what owns the rounds. Duplicated per map - the generator writes the seed's mask offset
+## into it.
+@export var biomes: TerrainBiomes = null
 
 ## EVERY ENTRY INTO A ROUND GETS A NUMBER, and that number is the only way to cancel one. A GDScript
 ## coroutine cannot be aborted: the one waiting for terrain WILL get it and carry on - into a stage
@@ -111,10 +123,6 @@ var _opening: bool = false
 
 func _ready() -> void:
 	_rng.randomize()
-	_scene_map = get_node_or_null("LiteTerrain") as Node3D
-	var bio: Variant = _scene_map.get("biomes") if _scene_map != null else null
-	if bio is TerrainBiomes:
-		_biomes = bio
 	set_process(true)       # the camera works while the first map is still being generated
 	_off = G.menu_battles != true
 	if _off:
@@ -138,10 +146,8 @@ func set_battles(on: bool) -> void:
 	_backdrop.cover(true)
 	await _open_round()
 
-## Take the stage down: everything the fight owns goes, including the map authored in the scene -
-## THE SCENE ONE TOO, and by name rather than through _map, because the switch can be off before a
-## round ever opened and _map is still empty then. Left standing, it would go on streaming terrain
-## behind an opaque backdrop, which is the exact cost the switch exists to remove.
+## Take the stage down: everything the fight owns goes. Left standing, a map would go on streaming
+## terrain behind an opaque backdrop, which is the exact cost the switch exists to remove.
 func _shutdown() -> void:
 	_era += 1               # whatever is waiting on terrain right now is no longer ours
 	_opening = false
@@ -152,7 +158,7 @@ func _shutdown() -> void:
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
-	for m in [_map, _next_map, get_node_or_null("LiteTerrain") as Node3D]:
+	for m in [_map, _next_map]:
 		_discard(m)
 	_map = null
 	_next_map = null
@@ -169,9 +175,6 @@ func _live(era: int) -> bool:
 func _discard(m: Node3D) -> void:
 	if not is_instance_valid(m):
 		return
-	if m == _scene_map:
-		_authored_h()       # ask it its Height while it can still answer
-		_scene_map = null
 	if m.has_method("stop_generation"):
 		m.stop_generation()
 	var parent: Node = m.get_parent()
@@ -179,15 +182,8 @@ func _discard(m: Node3D) -> void:
 		parent.remove_child(m)
 	m.queue_free()
 
-## Height of the authored map, asked once and kept.
-func _authored_h() -> float:
-	if _authored_height <= 0.0 and is_instance_valid(_scene_map) \
-			and _scene_map.has_method("world_height"):
-		_authored_height = float(_scene_map.world_height())
-	return _authored_height
-
 # ── Rounds ───────────────────────────────────────────────────────────────────
-## Open the first round on the scene map; if it is gone (someone deleted the node), generate one.
+## Open a round: generate a map, stand two machines on it, start the clock.
 func _open_round() -> void:
 	_era += 1
 	var era: int = _era
@@ -195,21 +191,11 @@ func _open_round() -> void:
 	# The map is a LOCAL until the round is actually open. Assigning it up front let the tick see a
 	# map that was still loading, run its timer down and start generating the next one before the
 	# first had begun.
-	var m: Node3D = get_node_or_null("LiteTerrain") as Node3D
-	if m != null:
-		# The scene map loads its own baked heightmap and sets up its own collision in _ready.
-		_backdrop.set_progress(tr("reading terrain"), -1.0)
-		if not await _wait_terrain(m, true):
-			m = null
-		else:
-			_authored_h()
-	if m == null and _live(era):
-		m = await _make_map(true)
+	var m: Node3D = await _make_map(true)
 	if not _live(era):
 		# Switched off, or opened again, while we waited. Take our map with us - the stage has moved
 		# on without it, and nobody else holds a reference.
-		if m != _scene_map:
-			_discard(m)
+		_discard(m)
 		return
 	_opening = false
 	if m == null:
@@ -219,59 +205,55 @@ func _open_round() -> void:
 		push_warning("menu: no map for the round; the backdrop stays up")
 		_backdrop.cover(false)
 		return
-	if m != _scene_map:
-		m.set_collision_streaming(true)
+	_enable_collision(m)
 	_map = m
 	_spawn_pair()
 	_round_t = ROUND_TIME
 	_move_camera()          # first frame already looks at the fight, not at the origin
 	_backdrop.reveal()
 
-## A map generated from its own seed. `force_procedural` keeps it away from G: the slot's seed
-## belongs to the save, this one is scenery.
+## A map generated from its own seed. `follow_world_settings = false` keeps it away from G: the
+## slot's seed belongs to the save, this one is scenery.
 func _make_map(report: bool = false) -> Node3D:
-	# The biomes are the AUTHORED map's, copied: the regions, their scales and the terrace height all
-	# live in that resource, and a fresh default one would generate a different country under the
-	# same preset. The copy is per map because the generator writes the seed's mask offset into it.
-	var b: TerrainBiomes = (_biomes.duplicate() as TerrainBiomes) if _biomes != null \
+	# The biomes are the STAGE's, copied: the regions, their scales and the terrace height all live
+	# in that resource. The copy is per map because the generator writes the seed's mask offset into
+	# it - one shared resource would mean the map being prepared in the background moving the
+	# regions of the map currently on screen.
+	var b: TerrainBiomes = (biomes.duplicate() as TerrainBiomes) if biomes != null \
 			else TerrainBiomes.new()
 	var m := StaticBody3D.new()
 	m.set_script(MAP_SCRIPT)
-	m.force_procedural = true
+	m.follow_world_settings = false
 	m.forced_seed = _pick_seed(b)
-	m.window_size = MAP_SIZE
-	m.use_image_data = false
-	# TWO-METRE QUADS, the same as the game map (node_3d.tscn sets triangle_size = 1). The default
-	# is one metre, four times the triangles, for ground nobody will ever drive on: this map is
-	# scenery behind a menu and it runs on the same phone the game has to.
-	m.triangle_size = 1
 	m.biomes = b
-	# THE SAME PRESET THE EDITOR BUTTON USES. The procedural defaults are a compromise for the game's
-	# own world; the menu wants the land the dock's "Natural preset" makes - big masses, drivable
-	# slopes - and the numbers for it live in the generator, not here.
-	var np := LiteTerrainGen.natural_params(b)
-	# HEIGHT COMES FROM THE MAP IN THE SCENE, not from the preset. The preset is a starting point
-	# someone then moves: bake the menu map at Height 240 and generate the rounds at the preset's
-	# 130, and the generated ones stand next to it visibly flatter - canyons half as deep, mountains
-	# half as tall. The authored map records what built it (map.built_amplitude, written by the
-	# dock); everything else stays the preset.
-	var authored: float = _authored_h()
-	if authored > 0.0:
-		np["amplitude"] = authored
-	m.proc_scale = float(np["scale"])
-	m.proc_power = float(np["power"])
-	m.proc_amplitude = float(np["amplitude"])
-	m.proc_mountains01 = float(np["mountains"])
-	# Collision OFF from the start: while this map builds its chunks it stands at the same origin as
-	# the one on screen, and two heightfields under the same machines fight each other. It is turned
-	# on in the frame this map becomes the visible one.
-	m.start_without_collision = true
+	# NO LANDFORM KNOBS HERE. The chunked terrain builds on the natural preset itself
+	# (chunk_terrain._proc_params), which is the same preset the game's own world uses, so the menu
+	# shows the country the player is about to drive into. Setting them from here would be a second
+	# copy of those numbers and, sooner or later, a different landscape behind the same menu.
+	m.view_distance = MENU_VIEW
+	m.ready_view = MENU_READY_VIEW
+	m.keep_radius = MENU_KEEP
+	# ЗЕМЛИ ДО ПОКАЗА — ОДИН ЧАНК В КАЖДУЮ СТОРОНУ. Игре нужны восемьдесят метров во все стороны
+	# от машины, которая сейчас поедет; здесь две машины стоят в тридцати метрах от начала
+	# координат и дерутся на месте, а каждый лишний чанк — это секунда под затемнением.
+	m.ready_ring = 1
+	# COLLISION OFF FROM THE START: while this map builds its chunks it stands at the same origin as
+	# the one on screen, and two heightfields under the same machines fight each other. The flag is
+	# what `set_collision_streaming` checks, so the node's own _ready cannot switch it on behind our
+	# back either. It goes on in the frame this map becomes the visible one (_enable_collision).
+	m.enable_streaming_collision = false
 	add_child(m)
 	if not await _wait_terrain(m, report):
-		if is_instance_valid(m):
-			m.queue_free()
+		_discard(m)
 		return null
 	return m
+
+## The map has become the one on screen: it is the only one allowed to carry collision.
+func _enable_collision(m: Node3D) -> void:
+	if not is_instance_valid(m):
+		return
+	m.enable_streaming_collision = true
+	m.set_collision_streaming(true)
 
 ## The seed whose window shows the most landscape. Scoring reads the biome masks only - no heights,
 ## no threads - so auditing a dozen of them costs a few milliseconds, once per round.
@@ -339,15 +321,11 @@ func _wait_terrain(m: Node3D, report: bool = false) -> bool:
 	var guard: int = 0
 	while is_instance_valid(m) and not m.terrain_is_ready and guard < 3600:
 		if report:
-			# Asked through `get`, and every answer checked: a map node without these fields (an
-			# older addon, someone else's terrain) must leave the readout running, not crash it.
-			var sv: Variant = m.get("gen_step")
-			var fv: Variant = m.get("gen_frac")
-			var step: String = String(sv) if sv is String else ""
-			# An empty step means the map is not computing anything (it is reading a baked file):
-			# there is no fraction to show, and the meter runs instead of filling.
-			var frac: float = float(fv) if (step != "" and fv is float) else -1.0
-			_backdrop.set_progress(step if step != "" else tr("reading terrain"), frac)
+			# THE METER RUNS, IT DOES NOT FILL. The old map reported a fraction because it computed
+			# a whole window of heights and knew how far along it was; the chunked one builds the
+			# chunks the camera asks for and has no total to be a fraction OF. A bar that cannot be
+			# honest is worse than a meter that just says "working".
+			_backdrop.set_progress(tr("reading terrain"), -1.0)
 		await get_tree().process_frame
 		guard += 1
 	if is_instance_valid(m) and m.terrain_is_ready:
@@ -482,7 +460,7 @@ func _swap_round() -> void:
 	_next_map = null
 	if is_instance_valid(_map):
 		_map.visible = true
-		_map.set_collision_streaming(true)
+		_enable_collision(_map)
 	_spawn_pair()
 	_round_t = ROUND_TIME
 	_move_camera()

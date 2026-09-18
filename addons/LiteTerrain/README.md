@@ -1,10 +1,11 @@
 # LiteTerrain
 
-**Version 1.3** · Godot 4 · tuned for mobile
+**Version 2.0** · Godot 4 · tuned for mobile
 
-Lightweight heightmap terrain. One node builds its own collision body, collision
-shape and render mesh, then keeps a large map affordable through quadtree LOD and
-streaming collision. An editor dock creates, generates and bakes it.
+Procedural terrain stored and drawn in CHUNKS. One node builds the whole world from a
+seed: no heightmap file, no world-sized array, no edge. A chunk asks the generator for
+its own vertices, LOD merges four chunks into one mesh instead of decimating anything,
+and collision is cut only under the bodies that need it.
 
 Biomes — desert, meadow, canyon, mountains — live in a single resource that drives
 the landform, the masks and the colours at once, so a biome's shape cannot drift
@@ -13,10 +14,15 @@ away from how it looks.
 Built and tuned on an Adreno 610, a low-end mobile GPU, so the defaults lean
 towards performance.
 
+> **2.0 removed the baked half.** Version 1.x also carried a heightmap node
+> (`LiteTerrain`/`map.gd`) with a sliding window of heights, a sculpt brush, noise
+> generation into an array, and baking to `.res`/`.bin`/PNG. All of it is gone: a
+> procedural world has nothing to sculpt and nothing to bake. Measured on the way out —
+> one 256-cell map on the old node took 8.2 s to become ready, the same ground on the
+> chunked node takes 3.9 s.
+
 ## Contents
 
-- [Requirements](#requirements)
-- [Install](#install)
 - [Quick start](#quick-start)
 - [The terrain node](#the-terrain-node)
 - [Biomes](#biomes)
@@ -24,14 +30,11 @@ towards performance.
 - [Runtime API](#runtime-api)
 - [Physics and collision](#physics-and-collision)
 - [Choosing a world](#choosing-a-world)
-- [Generating terrain](#generating-terrain)
-- [Baking and shipping a big map](#baking-and-shipping-a-big-map)
 - [Performance tuning](#performance-tuning)
 - [How it works](#how-it-works)
 - [Property reference](#property-reference)
 - [Shader reference](#shader-reference)
 - [Troubleshooting](#troubleshooting)
-- [Upgrading from 1.0](#upgrading-from-10)
 
 ## Requirements
 
@@ -42,47 +45,40 @@ towards performance.
 
 1. Copy the `LiteTerrain` folder into your project's `res://addons/`.
 2. Project Settings → Plugins → enable LiteTerrain.
-3. A LiteTerrain dock appears on the left. Everything is driven from there.
+
+The plugin has no dock. It adds one panel to the inspector of a selected terrain
+(the seed map) and hands the node the editor viewport camera; everything else is on
+the node itself.
 
 ## Quick start
 
-1. Open a 3D scene.
-2. Press **Create Terrain Node**. This bakes a flat 128×128 heightmap of its own
-   (`res://terrain/<scene>_<node>.res`) and drops in a ready terrain: a StaticBody3D running
-   the `LiteTerrain` script with the terrain shader already applied. It starts in
-   image mode with streaming collision on.
-3. Select the node and shape it:
-   - **Generate Terrain** builds noise-based terrain. The dock shows the five settings
-     that decide what a world is — seed, size, height, feature size, and which biomes
-     exist — and folds the rest away under **Advanced** (octaves, plains power, ridge
-     sharpness, smoothing and the canyon shape). Generate rebuilds the whole heightmap,
-     so the previous heights are lost.
-4. Press **Bake to files** to write what the runtime needs: the heightmap
-   (`terrain_height.res`) and the external preview mesh (`terrain_mesh.res`), so the mesh is
-   not embedded into the scene on save.
+1. Open a 3D scene and add a **ChunkTerrain** node (Add Node, by name — the script has a
+   `class_name`).
+2. Give it a `TerrainBiomes` resource in `biomes`, or leave it empty and it makes one.
+3. Look at the top of its inspector: the map of the world for the current seed. Step
+   through seeds until you like the country, then press **Показать в сцене** to build the
+   real ground around the editor camera.
 
-The dock remembers its generation settings per project.
+That is the whole workflow. There is nothing to generate into a file and nothing to bake:
+the ground IS the seed, and the same seed gives the same world in the editor and in the
+running game.
 
 ## The terrain node
 
-The class is `LiteTerrain` (`map.gd`). It extends StaticBody3D and needs a
-`CollisionShape3D` and a `MeshInstance3D`, both of which it creates itself as
-internal children — they stay out of the scene tree and out of the `.tscn`, so a
-LiteTerrain is one clean node.
+The class is `ChunkTerrain` (`chunk_terrain.gd`). It extends StaticBody3D and creates
+everything it needs itself — chunk meshes as internal children, collision bodies per
+tile — so the `.tscn` stays a single node.
 
-The properties you will touch most often:
+Two properties decide what world it is:
 
-| Property | Default | What it does |
-|---|---|---|
-| `camera` | empty | Optional. Left empty, the terrain uses the currently active camera and follows camera switches. Set it only to force LOD from one specific camera. |
-| `biomes` | auto | The [biome resource](#biomes). Empty means a default set is created at runtime; save it as a `.tres` to edit it. |
-| `surface_material` | addon `terrain_shader.res` | The terrain material. Texture and quality settings live on it. |
-| `use_image_data` | `true` | On: heights live in an R32F image (`heightmap_path`) and collision streams under moving bodies. Off: one HeightMapShape3D holds the whole map. |
-| `heightmap_path` | addon `terrain_height.res` | The R32F resource loaded in image mode, one file per terrain — the dock gives a new node its own under `res://terrain/`, and moves a node still on this shared default onto one the first time it generates or bakes. Hidden in the inspector when image mode is off. |
-| `triangle_size` | `1 (detailed)` | Grid cell size at the finest LOD. See [Performance tuning](#performance-tuning). |
-| `max_render_distance` | `1400.0` | How far terrain is drawn. Match it to your visibility distance. |
+| Property | What it does |
+|---|---|
+| `forced_seed` | The seed. One number, and the entire world follows from it. |
+| `follow_world_settings` | On, the node takes the seed from an autoload `G` (`G.world_seed`) instead — that is how a game gives each save slot its own world. Off, `forced_seed` is used, which is what a menu backdrop or an editor preview wants. |
 
-Full list in the [Property reference](#property-reference).
+`camera` exists but should stay EMPTY: the node uses whichever camera the scene is drawn
+with (`get_viewport().get_camera_3d()`), so it follows camera switches and spring arms by
+itself. Set it only to drive LOD from a camera the scene is NOT drawn with.
 
 ## Biomes
 
@@ -121,11 +117,11 @@ Notes:
 - Grass grows in the meadow only. `sand_grass` lets a little into the desert; rock,
   canyon and mountains never carry grass.
 - `canyon_band_height` sizes both the colour strata and the geometry terraces — the
-  dock's terrace slider edits this same value, which is why they cannot desync.
+  colour strata and the geometry terraces read the same number, so they cannot desync.
 
-Changing a biome's **shape** parameters (scales, thresholds) requires re-running
-**Generate Terrain**: the masks are baked into vertex colours and into the heights.
-Changing **colours** takes effect immediately.
+Changing a biome's **shape** parameters (scales, thresholds) changes the world itself, so the
+chunks already built keep the old shape until they are rebuilt — in the editor, press the
+preview button again. Changing **colours** takes effect immediately.
 
 **Adding a biome of your own** takes a shader edit. Each layer's colour is written
 out in `glsl.gdshader`'s `vertex()` where `v_base_col` is assembled, so a new layer
@@ -151,9 +147,11 @@ Full list in the [Shader reference](#shader-reference).
 
 ```gdscript
 terrain.terrain_height_at(world_pos: Vector3) -> float   # ground height under a world point
-terrain.get_dims() -> Vector2i                           # heightmap width and depth in cells
-terrain.terrain_is_ready -> bool                         # near terrain built
+terrain.world_height() -> float                          # the amplitude the world was built with
+terrain.terrain_is_ready -> bool                         # the near ground is up
 terrain.terrain_ready                                    # signal, same thing
+terrain.set_collision_streaming(on: bool)                # collision on or off wholesale
+terrain.stop_generation()                                # cancel the running tasks (before freeing)
 ```
 
 Use `terrain_height_at` to place objects on the ground instead of dropping them:
@@ -162,10 +160,15 @@ Use `terrain_height_at` to place objects on the ground instead of dropping them:
 body.global_position.y = terrain.terrain_height_at(body.global_position) + clearance
 ```
 
-`collision_debug_at(world_pos) -> String` returns one line describing the streaming
-collision at a point — whether a tile exists there, how many are live, how many
-bodies are tracked. Useful when something falls through and you want a fact rather
-than a guess.
+WAIT FOR THE GROUND BY THE CLOCK, NOT BY FRAMES. `terrain_is_ready` turns true when the
+threads have finished, and that is real seconds — a frame count is a race that is won or
+lost by how fast the device happens to be:
+
+```gdscript
+var deadline := Time.get_ticks_msec() + 120_000
+while is_instance_valid(t) and not t.terrain_is_ready and Time.get_ticks_msec() < deadline:
+    await get_tree().process_frame
+```
 
 ### Editing the ground at runtime
 
@@ -174,60 +177,43 @@ terrain.flatten_area(center: Vector3, half_extent: Vector2, height: float,
                      feather := 4.0, record := true) -> void
 terrain.ground_edits() -> Array          # the edits so far, plain dictionaries, JSON-ready
 terrain.apply_ground_edits(list: Array)  # replay them, once, on load
-terrain.bake_heights() -> bool           # write the current heights to user://terrain_height.bin
-terrain.reset_heights()                  # forget every edit and go back to the shipped map
+terrain.reset_heights()                  # forget every edit
 ```
 
-`flatten_area` levels a **rectangular** pad — buildings are oblong, and a circle sized
-to fit one strips three times as much ground. It edits the heights, rebuilds the chunks
-it touched and drops the streaming collision there so it is re-cut against the new
-surface.
-
-Persistence is deliberately two mechanisms, not one. The **edit list** is four numbers
-per edit, costs nothing to keep, and survives a crash, so it is what a game saves during
-a session. The **baked file** is the whole heightmap, so it is written once at load time
-— after the edits have been replayed — and afterwards the list is empty because the
-ground itself is now shaped that way. A long loading screen is the right place for a
-15 MB dump; mid-session it shows up as a hitch.
+`flatten_area` levels a **rectangular** pad — buildings are oblong, and a circle sized to
+fit one strips three times as much ground. The edits are a LIST applied on top of the
+generator in one function, so the mesh, the collision and a height query all see the same
+ground; there is nothing to bake and no file to go stale.
 
 Replay edits **before** you restore anything that stands on them, or a building put back
-first ends up hovering. Every edit carries a running sequence number and the baked file
-remembers the last one it contains: without that, an edit still sitting in a game save
-(the player quit before the first autosave) would be applied a second time on top of
-already-flat ground, and the pad's rim would get steeper every session.
-
-The baked file lives in `user://`, so it is per-device application data: it is never in
-the project and never in an exported PCK. `res://` keeps the shipped map, and
-`reset_heights()` returns to it.
-
-The node also exposes the data API the dock uses (`is_image_mode`,
-`get_heights`, `set_heightmap`, `apply_heightmap`)
-if you want to build your own tooling.
+first ends up hovering. Every edit carries a running sequence number so replaying a save
+twice cannot deepen a pad.
 
 ## Physics and collision
 
 The terrain gives itself collision; you never add a CollisionShape3D by hand.
 
-By default it runs in image mode with streaming collision: instead of one giant shape,
-a small collision window follows each moving body. That is what keeps a large map
-cheap.
+A collision tile IS a base chunk, cut from the same heights as the level-0 mesh, so under
+near ground it costs nothing extra. Tiles have their OWN queue and it goes first: a tile is
+what a machine drives on, a mesh is what it looks at, and behind one shared queue the ground
+runs out every few metres.
 
-Bodies are discovered automatically — every moving physics body in the scene
-(RigidBody3D, VehicleBody3D, CharacterBody3D) gets a window sized by
-`collision_radius`, found through the tree's `node_added`/`node_removed` signals with
-no per-frame polling and no node paths to configure.
+Tiles are asked for along a body's CORRIDOR — where it is now plus where it will be in
+`collision_lookahead` seconds — rather than by moving a window along behind it: at speed a
+body outruns its own window.
+
+Bodies are discovered automatically: every moving physics body in the scene (RigidBody3D,
+VehicleBody3D, CharacterBody3D) is tracked through the tree's `node_added`/`node_removed`
+signals — no per-frame polling and no node paths to configure.
 
 Things to know:
 
-- Only terrain inside an active window has collision. A body far from any tracked body
-  sits on nothing. Raise `collision_radius` if a fast body outruns its window.
-- A body riding on another body (a part welded to a vehicle) is skipped — the parent's
-  window already covers it.
-- Area3D and StaticBody3D are never tracked.
+- Only ground under a tracked body has collision. Raise `collision_radius` if something
+  fast outruns its tiles.
+- A body riding on another body (a part welded to a vehicle) is skipped — the parent
+  covers it.
+- Area3D and StaticBody3D are never tracked, and a sleeping body is dropped.
 - `HeightMapShape3D` works with both Godot Physics and Jolt; it was tuned on Jolt.
-  Jolt treats a heightfield's outer edge as an active edge, which a wheel can catch
-  on, so `collision_overlap` grows each tile into its neighbours and buries that edge
-  under real surface.
 
 ## Choosing a world
 
@@ -250,157 +236,6 @@ and the collision radius) drawn to scale. Four numbers in a list say nothing abo
 proportion, and the proportion is the whole point: holding more in memory than is drawn is
 waste, and waiting on load for more than is held is worse.
 
-
-## Why generation is fast (and what to keep that way)
-
-Every full-map sweep in the addon is threaded through `WorkerThreadPool.add_group_task`, one
-task per ROW or per CHUNK: the noise fill, the canyon carve, the blur passes, the runtime chunk
-builds, the macro merges and the editor rebuilds. The rule that makes it safe is always the
-same — a worker writes only into its own slice of an array that was sized beforehand, reads
-data nobody mutates, and never touches the scene tree.
-
-The other half is not threading at all but **not doing the work twice**. Biome masks come from
-a lattice sampled every `MASK_STEP` cells and read back bilinearly; without it every vertex
-derives its biome from three noise calls of its own, which on a 1982² map is around twelve
-million calls against a hundred and ninety thousand. The editor rebuild used to skip building
-that lattice, and that alone was most of the minutes a full generate took.
-
-## Generating terrain
-
-**Generate Terrain** fills the map with layered noise, smooths it, then carves canyons into the
-result.
-
-An erosion filter used to run as a last pass (branching gullies drawn along the slope, the Clay
-John -> Fuse -> Rune Vision technique). It was removed on purpose: it made the map look richer
-but gave frequent height changes on every hillside, and this addon was built for a game where
-you drive across that ground all the time. It is in the git history if you want it back.
-
-**Five knobs, not seventeen.** A setting earns its place only if you can predict what it will
-change; everything else you turn blind and cannot reproduce. Three kinds of clutter were removed:
-values with one sensible answer became constants (noise octaves, blur passes — more octaves is
-noise, fewer is mush, and a second blur pass shaves off the very relief you built), values that
-always move together were merged into one knob (ridge height with ridge sharpness), and values
-that must *follow* the map height are now derived
-from it instead of being set apart (mountain rise, dunes, mesa top, canyon floor, snow line —
-these lived in metres and broke silently whenever `Height` moved).
-
-| Parameter | Default | Meaning |
-|---|---|---|
-| Seed | 42 | Same seed, same terrain — landform and biome geography both. |
-| Size | 0 | Target size in image mode. `0` keeps the current size — this is how the map grows. |
-| Height | 30 | Maximum height in world units. Everything measured in metres follows this. |
-| Features | 150 | Size of the land masses. Keep it near the biome `mountain_scale`, or the snow cap lands beside the mountain instead of on it. |
-| Mountains | 0.6 | 0 — rolling hills, 1 — knife-edged ridges. Drives ridge amount and sharpness together. |
-| Canyons | on | Master switch for carving. Canyons also need `canyon_enabled` in the biomes. |
-
-Under **Advanced** only what cannot be derived: `Plains power` (how flat the plains are) and the
-canyon shape — `Stratum`, `Riser`, `Gorge width`, `Channels`.
-
-**Natural preset** sets a consistent starting point and takes the feature size straight from the
-biome resource. Its numbers live in `LiteTerrainGen.natural_params()`, not in the button: the game
-generates maps with the same preset (the menu backdrop does), and a second copy of them here would
-quietly become a different landscape.
-
-### Passes that used to fight each other
-
-Three couplings are now explicit in the generator, because the passes run in order and each one
-rewrites what the previous produced:
-
-- the canyon pass **replaces** height with its terraces, so the fill pass no longer raises
-  mountain domes or draws dunes inside the canyon mask — that work was thrown away, and its
-  ragged leftovers stuck out of the canyon walls;
-- **a canyon is tableland cut by gorges**, not a pit and not a slab. Three things follow, and
-  each was learnt the hard way. The mesa top IS the local surface: while it was an absolute
-  height, the region either stood proud of the plain as a slab or sank into it as a flat coloured
-  field with no walls at all. The gorges are a MINORITY of the area: making the floor half the
-  region dropped the whole thing below its surroundings, leaving a bowl with a cliff around the
-  entire border — nothing could drive in or out. And the terraces are cut into the RISE, not into
-  the height: quantising floor and top put contour steps across the open ground, a six-metre drop
-  in the middle of a flat field. Because the top equals the surface, the region's border stops
-  being a cliff — the blend at the mask edge moves nothing;
-- every metre value is derived from `Height` (mountain rise 0.75, mesa top 0.42, canyon floor
-  0.06, snow line 0.55, dunes 0.05). Moving one slider used to break the other half of the
-  settings without showing it.
-
-Snow is painted where the mountain **mask** overlaps ground above the snow line (soft over the
-blend). The mask alone says only *where the mountain region is*, not how high the ground got
-there — painting by it put white patches on flat ground and the colour stopped matching the
-landform.
-
-The line is held in the biomes as a **share of Height** (`snow_frac`, `snow_blend_frac`) and turned
-into metres by `map.gd` when it fills the material (`TerrainBiomes.snow_line_at`). It used to be
-metres in the resource, written there by the generator on every run: an output stored in an input,
-so the field could not be edited (the next run overwrote it), every generate produced a diff in
-whatever scene held the resource, and any world that did not run the generator at load — a baked
-map, or a procedural slot whose ground was computed elsewhere — got painted by a line belonging to
-some other map. The Height itself is recorded on the terrain node as `built_amplitude`, written by
-the dock after a generate.
-
-All heavy passes run across the WorkerThreadPool, one row per task, and a progress window
-reports which pass is running, how far it got and **how long is left** — a full generate is tens
-of seconds, and without the window that reads as a frozen editor. The estimate is taken over the
-whole run rather than per pass: the passes differ several-fold in cost, so a per-pass number would
-promise a new total at every stage.
-
-Each terrain node keeps its heightmap in its OWN file: **Create Terrain Node** hands out
-`res://terrain/<scene>_<node>.res`, and Generate or Bake moves a node still sitting on the addon's
-default onto one before it writes. The default is shared by the whole project, so without this a
-terrain created (or generated) in a second scene overwrote the first scene's map — and creation
-writes a FLAT map, so the first one was simply gone.
-
-**Bake to files** runs under the same window (without Stop — there is nothing to undo once a
-file is written). It writes four things in a row, three of which are full sweeps of the map, and
-before the window that was tens of seconds of a frozen editor with no way to tell which file it
-was on.
-
-**Stop** abandons the run. A group task already running cannot be un-scheduled, so instead the
-remaining rows return immediately, the current pass ends in milliseconds and the generation stops
-between passes — with the map and the file on disk exactly as they were. Nothing is ever written
-half-generated.
-
-Generation replaces the whole heightmap and writes BOTH files the runtime may read — the R32F
-image and the streamable `.bin` beside it — so a reopened editor and the game load the same
-terrain. They have to move together: the runtime prefers the `.bin`, so updating only the image
-used to leave the game running on the previous map with no sign of it anywhere in the editor.
-
-The **last stage is the longest**, and it is driven step by step for that reason: setting the
-heights used to rebuild the whole editor preview inside `set_heightmap`, in one blocking call,
-with the bar frozen at 96 % — indistinguishable from a hang. The preview rebuild is now started
-by the plugin (`editor_rebuild_begin` / `_done` / `_progress` / `_apply`), which polls it and
-hands a frame back to the editor between polls, so the bar moves per chunk. Only the final mesh
-merge is still one blocking call.
-
-## Streaming heights (the .bin next to the .res)
-
-**Bake to files** writes one more file beside the heightmap resource: `terrain_height.bin` —
-the same heights as raw float32 rows behind a small header, plus a per-chunk min/max table.
-
-The reason is the size ceiling. An `Image` resource loads WHOLE, so the map has to fit in
-memory before a single vertex is built; a raw file gives any rectangle for a seek and a read
-(`read_height_rect`). The runtime prefers the `.bin` even while it still reads all of it,
-because a raw read is one allocation against "load resource → convert format →
-`to_float32_array`".
-
-The min/max table is what makes region streaming possible at all: the LOD tree needs a
-bounding box for every chunk before any height near it exists in memory. Two floats per chunk
-is ~120 KB on a 1984² map, against 16 MB of heights.
-
-Heights are float32 — four bytes per world unit. That is the format `HeightMapShape3D` takes
-for collision, so anything narrower would have to be widened again for every collision tile.
-Halving it is possible (16-bit fixed point at millimetre resolution covers any terrain range),
-and it halves the file, the RAM and the load time — but every read then costs a decode, and in
-GDScript that lands in the hottest loop there is.
-
-## Baking and shipping a big map
-
-1. Keep `use_image_data` on (the default).
-2. Press **Bake to files** to write `terrain_height.res` and `terrain_mesh.res`.
-3. Save the scene.
-
-The runtime loads the baked `.res` and streams a small collision window under tracked
-bodies, so the scene file stays small and nothing heavy loads at startup. The node's
-children are internal and are not saved into the scene, so there is nothing to detach
-by hand.
 
 ## Performance tuning
 
@@ -429,15 +264,15 @@ Levers, roughly in order of payoff:
 
 For anyone modifying the plugin.
 
-### Data model: image mode versus shape mode
+### Data model: there is none
 
-The heightmap is a flat float array (`md`), `w` by `d`.
+There is no height array and no file. `LiteTerrainGen.height_at(wx, wz)` answers for a world
+point — noise, a five-tap blur and the canyon cut — and `sample_grid` builds a grid out of it.
+That is the only source of ground in the addon, which is why the world has no edge and memory
+equals what is on screen.
 
-- **Image mode** (`use_image_data` on, the default): heights come from an R32F image
-  saved as a `.res`, and that image is the single source of truth for both the render
-  mesh and the collision.
-- **Shape mode** (off): one HeightMapShape3D holds both data and collision for the
-  whole map. Simple, but it does not scale.
+Terrain edits (`flatten_area`) are a LIST applied on top of that answer in one function, so the
+mesh, the collision and a height query cannot disagree.
 
 ### Chunks and quadtree LOD
 
@@ -527,7 +362,7 @@ wake one, or it will fall.
 
 ### Biome masks
 
-The masks are computed on the CPU (`map.gd`), once, on a sparse lattice with a
+The masks are computed on the CPU, once, on a sparse lattice with a
 `MASK_STEP` spacing, and read back with bilinear interpolation. The layout is a pure
 function of (x,z) and the masks are hundreds of world units across, so the lattice
 costs orders of magnitude fewer noise calls than one evaluation per vertex, with no
@@ -591,55 +426,46 @@ What was worth taking from them:
 
 ## Property reference
 
-**Where a setting lives tells you what it does.** The dock builds a BAKED map — seed, size,
-shape, bake — and holds nothing about how the map is displayed. The node holds the display, in
-groups, and nothing about generation. Inside the node one group is special: **Editor only**
-(`editor_lod`, `editor_view_distance`, `editor_detail`) does not exist in a built game at all —
-it is the editor preview. Every other group changes what the player sees.
+**Everything lives on the node.** There is no dock and no second place to look.
 
-Culling and drawing:
+The world:
 
 | Property | Default | What it does |
 |---|---|---|
-| `enable_frustum_culling` | `true` | Skip chunks outside the camera frustum. |
-| `frustum_margin` | `-0.05` | Frustum test margin. Negative culls slightly harder. |
-| `max_render_distance` | `1400.0` | Draw distance for chunks. |
-| `enable_occlusion_culling` | `false` | Hide chunks below the terrain horizon. Off by default: the horizon method false-culls on a steep top-down camera. |
-| `occlusion_min_dist` | `40.0` | Chunks closer than this are never occlusion-culled. |
-| `occlusion_bias` | `1.5` | Added to a chunk top before the horizon test. Higher is more conservative. |
-| `occlusion_samples` | `8` | Heightmap samples per camera-to-chunk ray. |
-
-LOD and chunks:
-
-| Property | Default | What it does |
-|---|---|---|
-| `enable_lod` | `true` | Turn LOD off without changing the distances. |
-| `lod_distance_0` | `40.0` | Under this distance a chunk is full resolution. This also bounds the grass, which only renders on the LOD-0 material. |
-| `lod_distance_1` | `80.0` | Under this distance a chunk uses a quarter of the triangles; past it, the merged macro mesh takes over. |
-| `lod_distance_2` | `160.0` | Kept for the editor LOD preview. |
-| `flat_lod_error` | `0.35` | How far a chunk may depart from flat and still be drawn coarsely. `0` disables it. |
-| `triangle_size` | `0` (= 1) | Grid cell size at the finest LOD: 1, 2 or 4. |
-| `chunk_size` | `16` | Cells per chunk side. |
-| `editor_lod` | `false` | Off bakes one full-resolution merged mesh in the editor; on builds the whole map with LOD and rebuilds only once the editor camera settles. |
-
-Streaming and collision:
-
-| Property | Default | What it does |
-|---|---|---|
-| `use_image_data` | `true` | Image mode master switch. |
-| `heightmap_path` | addon `terrain_height.res` | The R32F resource loaded in image mode. |
-| `enable_streaming_collision` | `true` | Stream a small collision window under tracked bodies. |
-| `stream_batch_size` | `8` | Chunks meshed per streaming batch. Lower means fewer hitches. |
-| `collision_cell` | `16` | Heightmap cells per collision tile. |
-| `collision_radius` | `8` | Cells covered around each tracked body. |
-| `collision_overlap` | `8` | Cells each tile is grown on every side. |
-
-Biomes and appearance:
-
-| Property | Default | What it does |
-|---|---|---|
+| `forced_seed` | `0` | The seed. The whole world follows from it. |
+| `follow_world_settings` | `true` | Take the seed from an autoload `G` (`G.world_seed`) instead, so each save slot gets its own world. Off for menus and previews. |
 | `biomes` | auto | The `TerrainBiomes` resource. See [Biomes](#biomes). |
 | `surface_material` | addon `terrain_shader.res` | Texture and quality settings. |
+| `world_cells` | `2048` | A NOMINAL square, not an edge: the world has none. Shops, ore veins and points of interest need a rectangle to lay themselves out in, and this is it. |
+
+What is drawn:
+
+| Property | Default | What it does |
+|---|---|---|
+| `view_distance` | `1400.0` | How far ground is drawn. |
+| `enable_frustum_culling` | `true` | Skip nodes outside the camera frustum. |
+| `frustum_margin` | `12.0` | Metres of slack, and ONLY on the side planes — on the near plane a positive margin means "draw what is behind the camera". |
+| `enable_occlusion_culling` | `false` | Hide nodes below the terrain horizon. |
+| `occlusion_min_dist` | `80.0` | Never occlusion-cull anything nearer than this. |
+| `lod_interval` | `0.15` | Seconds between LOD passes; the selection is also recomputed whenever the camera moves. |
+| `build_batch` | `24` | Node builds started per pass. |
+| `stitch_budget` | `16` | Seam rebuilds per pass. A hairline crack for a frame beats a frame drop. |
+
+Memory and loading:
+
+| Property | Default | What it does |
+|---|---|---|
+| `keep_radius` | `320.0` | Inside this radius nothing is ever dropped, by time or by cap — it is the ground the player turns back onto in a second. |
+| `ready_view` | `192.0` | How far the ground must be up before the loading screen may lift. |
+| `ready_ring` | `2` | Chunks each way that must exist, with collision, before anything is shown. 2 is 80 m; a menu backdrop wants 1. |
+
+Collision:
+
+| Property | Default | What it does |
+|---|---|---|
+| `enable_streaming_collision` | `true` | Cut collision under tracked bodies. |
+| `collision_radius` | `12` | Cells covered around each tracked body. |
+| `collision_lookahead` | `1.2` | Seconds of travel to ask for ahead of a body. |
 
 ## Shader reference
 
@@ -660,51 +486,21 @@ from the biomes resource at build time — edit them there, not here.
 
 ## Troubleshooting
 
-**The map is flat or wrong after reopening the project.** In image mode the runtime
-loads `heightmap_path`. If that file is missing the node warns in the output and falls
-back to the embedded shape. Press **Bake to files**.
+**Nothing appears.** The node builds around the camera the scene is DRAWN with. In a scene
+with no current camera there is no point to build around — check that one is `current`, and
+leave the node's `camera` property empty.
 
-**A body falls through the terrain.** With streaming collision on, ground only exists
-inside a window under a tracked body. Only moving bodies are tracked (RigidBody3D,
-VehicleBody3D, CharacterBody3D) — not Area3D or StaticBody3D. Call
-`collision_debug_at(pos)` to get a one-line answer about what was actually there.
+**The machine falls through at load.** Something asked for a height before
+`terrain_is_ready`; `terrain_height_at` answers 0 until the generator exists. Wait for the
+flag BY THE CLOCK (see [Runtime API](#runtime-api)), never by a frame count.
 
-**A fast body outruns its collision.** Raise `collision_radius`.
+**A hole opens in the ground while driving.** A LOD change is "the node was replaced", not
+"the node left", and the replacement may still be in the queue. A node is hidden only once a
+neighbour the frame wants is already built — if you touch that rule, this is what breaks.
 
-**The tile texture does not show.** Raise `texture_blend` above `0` on the material and
-make sure `low_quality` is off, since low quality skips the tile fetch.
-
-**Biome colours ignore the material.** They are meant to: `TerrainBiomes` writes them
-into the material at build time. Edit the resource.
-
-**A biome's shape did not change.** Shape parameters are baked into the heightmap and
-the vertex colours. Re-run **Generate Terrain**.
-
-## What is new in 1.3
-
-- **Runtime ground editing**: `flatten_area`, plus the two-mechanism persistence around it
-  (`ground_edits` / `apply_ground_edits` / `bake_heights` / `reset_heights`). See
-  [Runtime API](#runtime-api).
-- **LOD seam skirts**: a chunk bordering a different LOD drops a vertical wall along that
-  border, so no sky shows through during the frame or two before both sides are rebuilt.
-- **`asleep` bodies get no collision window**: a hook for dormant far-away actors.
-
-## Upgrading from 1.0
-
-- Biome parameters moved out of the shader and the generator into the new
-  `TerrainBiomes` resource. **If you had customised biome colours on the material, move
-  them to the resource** — the material's copies are overwritten at build time. Every
-  other value keeps its 1.0 default, so an untouched project looks the same.
-- Thirteen shader uniforms that nothing read were removed: `biome_scale`,
-  `biome_blend`, `biome_grass_bias`, `canyon_scale`, `canyon_threshold`, `canyon_edge`
-  (the shader never computed biome noise — the masks arrive baked into COLOR),
-  `height_grass_start`, `height_snow_start`, `zone_blend` (height zones were replaced
-  by the biome masks; snow is now the mountain layer), `grass_min_height`,
-  `grass_max_height`, `bend_radius` and `snow_grass`. Saved values for them are simply
-  ignored.
-- The chunk-mesh skirt was removed. `QT_SKIRT` had been 0 since it was found to hang
-  visibly off the edges of quadtree nodes, so the code was unreachable.
-- Code comments and the editor dock are English throughout.
+**The editor preview is somewhere else.** It builds around the editor viewport camera, which
+the plugin hands over on mouse movement over the viewport. Move the mouse over the 3D view
+once, then press the button.
 
 ## Notes
 

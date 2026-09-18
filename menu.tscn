@@ -2,7 +2,6 @@
 
 [ext_resource type="Script" uid="uid://wks43d8edlk4" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
-[ext_resource type="Script" uid="uid://ckpss4psgcjt4" path="res://addons/LiteTerrain/map.gd" id="3_4hy44"]
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="4_ytr4m"]
 [ext_resource type="Script" path="res://menu_backdrop.gd" id="5_backdrop"]
 [ext_resource type="Shader" path="res://menu_backdrop.gdshader" id="6_chart"]
@@ -93,6 +92,7 @@ script = ExtResource("1_menu")
 [node name="Stage" type="Node3D" parent="." unique_id=872619680]
 unique_name_in_owner = true
 script = ExtResource("2_stage")
+biomes = SubResource("Resource_l48gv")
 
 [node name="Sun" type="DirectionalLight3D" parent="Stage" unique_id=385704076]
 unique_name_in_owner = true
@@ -116,14 +116,6 @@ far = 600.0
 
 [node name="Machines" type="Node3D" parent="Stage" unique_id=664629790]
 unique_name_in_owner = true
-
-[node name="LiteTerrain" type="StaticBody3D" parent="Stage" unique_id=1897739102]
-script = ExtResource("3_4hy44")
-heightmap_path = "res://terrain/menu_LiteTerrain.res"
-built_amplitude = 240.0
-biomes = SubResource("Resource_l48gv")
-follow_world_settings = false
-metadata/_custom_type_script = "uid://ckpss4psgcjt4"
 
 [node name="BackdropLayer" type="CanvasLayer" parent="." unique_id=1900311447]
 layer = 0

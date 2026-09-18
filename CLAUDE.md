@@ -53,14 +53,14 @@ project: read it before claiming how anything works.
     the mask noise does not work: it moves the isoline, it does not remove slivers (measured).
 17. A loose item is put to sleep with `sleeping`, never `freeze`: `G.is_loose_item` checks `freeze`,
     and a frozen item stops being pickable.
-18. `user://` heights override packaged ones, so a regenerated map needs a fresh save; a procedural
-    world never bakes a dump at all.
+18. There are NO HEIGHT FILES. The ground is the seed and nothing else, so there is nothing to bake,
+    nothing to ship and nothing to go stale against a save.
 
 ## 1. Project skeleton
 
 - Autoloads: `G` (progress, prices, block metadata), `Dialogue`, `Music`, `Q` (quests), `MobileAds`.
 - Main scene is `menu.tscn`: the slot is chosen before map, machines and veins read any file.
-- World root `/root/Main`: `map` (LiteTerrain + veins + props), `Vehicles`, `objects` (loose blocks
+- World root `/root/Main`: `map` (ChunkTerrain + veins + props), `Vehicles`, `objects` (loose blocks
   and resources), `EnemySpawner`.
 - Blocks: scenes in `blocks/scenes/`, scripts in `blocks/scripts/`. Everything else sits at the
   repo root.
@@ -303,10 +303,18 @@ project: read it before claiming how anything works.
 
 ### Terrain (LiteTerrain, third-party addon we patched)
 
-- TWO TERRAIN NODES, and they are not interchangeable. The GAME WORLD is `chunk_terrain.gd`
-  (`ChunkTerrain`): no window, no world-sized height array — a chunk asks the generator for its own
-  vertices. `map.gd` (`LiteTerrain`) stays for the MENU backdrop and the editor dock, where the map
-  is a baked file. Everything below about windows, `md` and macro meshes is about `map.gd`.
+- ONE TERRAIN NODE FOR EVERYTHING: `chunk_terrain.gd` (`ChunkTerrain`). No window, no world-sized
+  height array, no heightmap file — a chunk asks the generator for its own vertices, and the game
+  world and the menu backdrop are the same node with different numbers. `map.gd` (`LiteTerrain`),
+  the baked-map half — a sliding window of heights, the macro mesh, sculpting, generation and
+  baking — IS GONE, and with it 5,800 lines and half a megabyte of baked heights nobody could
+  regenerate without the dock. Measured before deleting it: a menu round on the old node took
+  8.2 s, the same round on the chunked one takes 3.9 s.
+- THE MENU BACKDROP IS THE GAME'S OWN GROUND, tuned down rather than replaced: `MENU_VIEW` 320 m
+  against the game's 1400, `ready_view` 32 against 192, `ready_ring` 1 against 2. The camera hangs
+  over one fight and never travels, so everything past a few hundred metres is horizon nobody looks
+  at, and every metre of it is noise computed on the phone that also has to run the menu. There is
+  no authored first map any more — every round, the first included, is generated the same way.
 - THERE IS NO SCULPT BRUSH, AND THAT IS THE DESIGN. It made sense while a map was a file of
   heights edited by hand; a procedural world has a SEED, and the only question is what the seed
   gives. The answer is the MAP AT THE TOP OF THE NODE'S INSPECTOR (`seed_browser.gd`): step
@@ -370,15 +378,10 @@ project: read it before claiming how anything works.
   `collision_lookahead` seconds), never by moving the window ahead — at speed the body would leave
   its own window. Terrain edits are a LIST applied on top of the generator in one function
   (mesh, collision and height query all go through it); there is nothing to bake.
-- The ground is drawn three ways at once — chunk meshes, the merged macro mesh, and coarse quadtree
-  node meshes — and all three are stitched through one answer, `_drawn_step_at`. Seam signatures are
-  eight bits per field; four overflowed.
 - No skirts on seams, ever. Edges meet because every step is a power of two on one grid, and the
   chunk is restitched in the same pass the coarse mesh appeared.
 - Generation and rebuilds are threaded (`WorkerThreadPool`, one task per row or chunk): a thread
   writes only its own slice, reads only immutable data, never touches the tree.
-- Flat areas merge into big quads built from rectangles; the merge ceiling is chunk size, the outer
-  ring never merges, and the merge perimeter carries `no_grass`.
 - The mesh may know more than physics: ripples and rock roughness are baked into near chunks only,
   zero at chunk edges, as a function of world position and biome.
 - Layers must not eat each other: metre values derive from `Height`, and dampening a layer by a mask
@@ -387,27 +390,13 @@ project: read it before claiming how anything works.
   metres that depend on Height (the snow line) are held there as a SHARE and multiplied by
   `map.world_height()` when the materials are built. A generation pass that edits an authored field
   is a slider that moves back, a scene diff per run, and a value that is right for one map only.
-- The Height a map was built with is recorded on the terrain node (`map.built_amplitude`, written by
-  the dock) — the heights on disk are bare metres and the dock's settings live in editor metadata,
-  which does not ship. Procedural worlds know it from their own params; anything else falls back to
-  the map's own peak over `PEAK_OVER_HEIGHT`.
-- Heights are read in a strict order: `user://` override → the node's `heightmap_path` basename
-  + `.bin` → that `.res`.
-- The generator cancels itself on `NOTIFICATION_EXIT_TREE`/`PREDELETE`, and a map does the same for
-  its own (`map._exit_tree` → `stop_generation`). A scene change or a freed map otherwise leaves
-  worker rows writing into destroyed buffers — an "Out of bounds set index" from nowhere.
-- EVERY terrain node owns its heightmap file (`res://terrain/<scene>_<node>.res`, given out by
-  `plugin._new_heightmap_path`). The old default pointed every node at the addon's one file, and
-  creating or generating a terrain in one scene erased another scene's map — two scenes, one map.
-  Generating or baking moves a node still on that default onto its own file and says so.
-- A world can also be **procedural**: `md` is a window that follows the player, the generator
-  computes only the new strip, and chunk meshes plus collision tiles are re-indexed. "World point →
-  cell" lives in `_cell_ox`/`_cell_oz` only.
-- `window_margin` is clamped to `(window − step) / 2` per axis: a bigger one puts the point in the
-  opposite forbidden zone right after the shift, and the window ping-pongs every frame (a 256-cell
-  window with the exported 192 recomputed a strip forever).
-- Generation defaults live in `LiteTerrainGen.DEF_*`; the map's exports read from there so the menu
-  and the window generator cannot diverge (a divergence is a visible seam).
+- The generator cancels itself on `NOTIFICATION_EXIT_TREE`/`PREDELETE`, and a terrain does the same
+  for its own (`stop_generation`). A scene change or a freed map otherwise leaves worker tasks
+  computing into an object that is being destroyed.
+- `LiteTerrainGen` ANSWERS BY POINT AND NOTHING ELSE. The threaded row passes over a whole-world
+  array, the buffers, the staged progress plan and the cancel-halfway machinery all belonged to the
+  baked map and went with it. What is left is `height_at` / `sample_grid` plus `natural_params`,
+  the one copy of the landform numbers that the world and the menu both build on.
 
 ### Quests
 
@@ -512,13 +501,12 @@ project: read it before claiming how anything works.
   same thing is a second button in a crowded corner. The icon shows within `VBTN_SHOW_DIST` (15 m):
   it is a button over THAT machine, and at sixty it hung over every machine in sight and read as a
   map marker. The price is that a base left at a vein has to be driven up to.
-- Menu backdrop is a REAL fight. The FIRST map is the one authored in `menu.tscn`
-  (`Stage/LiteTerrain`, a baked heightmap made with the plugin) so the menu opens on a world instead
-  of on sky;
-  it carries `follow_world_settings = false`, or G would hand it the save slot's procedural seed.
-  Every map after it is generated: a 256-cell procedural LiteTerrain map on the dock's Natural
-  preset (`LiteTerrainGen.natural_params`, the single copy of those numbers) with streamed collision
-  and two enemy machines of DIFFERENT factions, with their own physics, AI and weapons. Demo
+- Menu backdrop is a REAL fight on a REAL `ChunkTerrain`, generated per round from an audition of
+  seeds, with streamed collision and two enemy machines of DIFFERENT factions carrying their own
+  physics, AI and weapons. It carries `follow_world_settings = false`, or G would hand it the save
+  slot's seed. Its biome resource lives on the STAGE (`menu_stage_3d.biomes`) and is duplicated per
+  map: the generator writes the seed's mask offset into it, so one shared copy would move the
+  regions of the map currently on screen while the next one is being prepared. Demo
   machines carry `demo = true` (no rewards, no quest progress, no retreat). A round runs 30 s and
   only THEN starts generating the next map, with the fight continuing meanwhile; the reset happens
   when that generation finishes, and never two generations at once. A death or a machine left
@@ -538,9 +526,6 @@ project: read it before claiming how anything works.
   once). Its look is a survey chart of the same value noise the terrain is built from — deliberately
   not `loading_screen.gd`'s glitch language. A canvas shader must end with `COLOR.a`, not `1.0`, or
   it throws away the modulate the fade is made of.
-- A generated menu map takes its HEIGHT from the map authored in the scene (`map.world_height`), not
-  from the preset: a menu baked at 240 next to rounds generated at the preset's 130 is visibly two
-  landscapes.
 - A generated menu map AUDITIONS seeds (`_score_seed`): biome masks only, no heights. A 256 m window
   dropped at random lands inside one region, and canyon on the fringe or over desert carves
   scratches a couple of metres deep — the preset was never the problem. Scoring wants canyon over
