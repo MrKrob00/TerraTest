@@ -1012,6 +1012,10 @@ const FLIP_CLEARANCE := 3.0    # how far above the terrain it is lifted
 ## past the threshold, gets pinned in the air, drops back onto it and tips again. From the outside
 ## that is a pair of machines stunned for four seconds every time they meet.
 const FLIP_CONFIRM := 0.6      # how long it must STAY over before we call it a flip
+## Ниже этого машина лежит НА БОКУ ИЛИ НА КРЫШЕ, а не «приподнята толчком»: −0.2 это примерно
+## 100° от вертикали. Такую поднимаем немедленно — сама она не выберется, и выдержка тут значит
+## только то, что игрок смотрит на дёргающийся кузов.
+const FLIP_HARD := -0.2
 ## And a pause after righting: the two hulls are still overlapping when it ends, so without this
 ## the next frame starts the whole thing over.
 const FLIP_COOLDOWN := 1.5
@@ -1022,14 +1026,24 @@ var _flip_cool: float = 0.0
 func _flip_recover(delta: float) -> bool:
 	if _flip_t <= 0.0:
 		_flip_cool = maxf(_flip_cool - delta, 0.0)
-		if _get_up().dot(Vector3.UP) >= FLIP_DOT:
+		var up_dot: float = _get_up().dot(Vector3.UP)
+		if up_dot >= FLIP_DOT:
 			_flip_hold = 0.0
 			return false
-		if _flip_cool > 0.0:
-			return false
-		_flip_hold += delta
-		if _flip_hold < FLIP_CONFIRM:
-			return false                          # a shove, not a flip: let physics sort it out
+		# ЛЕЖИТ ВВЕРХ ДНОМ — ВЫРАВНИВАЕМ СРАЗУ, без выдержки и мимо паузы. Выдержка заводилась
+		# против ДРУГОГО случая: двое наехали друг на друга, один задрал нос на корпус второго,
+		# перешагнул порог на кадр и получал freeze. Такой толчок наклоняет градусов на
+		# восемьдесят — и остаётся выше FLIP_HARD.
+		#
+		# А скаут ПАДАЕТ С НЕБА и приземляется как придётся. Лечь на крышу для него — обычное
+		# дело, и выдержка в этом случае означала, что он валяется, дёргается и выбирается сам.
+		# Снаружи это и есть «раньше станился, теперь трепыхается без стана».
+		if up_dot > FLIP_HARD:
+			if _flip_cool > 0.0:
+				return false
+			_flip_hold += delta
+			if _flip_hold < FLIP_CONFIRM:
+				return false                      # a shove, not a flip: let physics sort it out
 		_flip_hold = 0.0
 		_flip_t = FLIP_TIME                       # just flipped: start righting
 	_flip_t -= delta
