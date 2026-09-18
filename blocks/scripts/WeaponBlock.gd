@@ -405,7 +405,11 @@ func _handle_fire(delta: float) -> void:
 	# ВСПЫШКА ЗДЕСЬ, А НЕ В fire_bullet. Дверь одна на все стволы и срабатывает ровно раз на
 	# выстрел: дробовик зовёт fire_bullet восемь раз подряд (по дробине), а мортира свой
 	# fire_bullet переопределила и super не зовёт вовсе. Отсюда видно всех и по одному разу.
-	BlockFX.flash(self, _muzzle_point().global_position, flash_color, flash_size, FLASH_DUR)
+	# Направление обязательно: вспышка вытянута ВДОЛЬ выстрела, а не вокруг ствола. Берём его
+	# у Pivot — по нему же летит пуля (см. fire_bullet), так что пламя и снаряд идут в одну
+	# сторону по построению, а не потому, что кто-то их согласовал.
+	BlockFX.flash(self, _muzzle_point().global_position, flash_color, flash_size, FLASH_DUR,
+			(-$Pivot.global_transform.basis.z).normalized())
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")
