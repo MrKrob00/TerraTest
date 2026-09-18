@@ -44,7 +44,7 @@ func _build_ui() -> void:
 	add_theme_constant_override("separation", 4)
 
 	var title := Label.new()
-	title.text = "МИР ЭТОГО СИДА"
+	title.text = "WHAT THIS SEED GIVES"
 	title.add_theme_font_size_override("font_size", 11)
 	title.modulate = Color(1, 1, 1, 0.7)
 	add_child(title)
@@ -68,7 +68,7 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	add_child(row)
 	var lbl := Label.new()
-	lbl.text = "Сид"
+	lbl.text = "Seed"
 	lbl.custom_minimum_size = Vector2(34, 0)
 	row.add_child(lbl)
 
@@ -82,23 +82,23 @@ func _build_ui() -> void:
 	row.add_child(_seed_spin)
 
 	# Шаг на единицу — чтобы соседний сид можно было посмотреть, не придумывая число.
-	row.add_child(_mini("◀", "Предыдущий сид", func() -> void:
+	row.add_child(_mini("◀", "Previous seed", func() -> void:
 		_seed_spin.value = maxf(0.0, _seed_spin.value - 1.0)))
-	row.add_child(_mini("▶", "Следующий сид", func() -> void:
+	row.add_child(_mini("▶", "Next seed", func() -> void:
 		_seed_spin.value = _seed_spin.value + 1.0))
-	row.add_child(_mini("RND", "Случайный сид", func() -> void:
+	row.add_child(_mini("RND", "Random seed", func() -> void:
 		_seed_spin.value = float(randi() & 0x7FFFFFFF)))
 
 	# ── Охват ──
 	var srow := HBoxContainer.new()
 	add_child(srow)
 	var slbl := Label.new()
-	slbl.text = "Охват"
+	slbl.text = "Span"
 	slbl.custom_minimum_size = Vector2(34, 0)
 	srow.add_child(slbl)
 	_span_btn = OptionButton.new()
 	for i in SPANS.size():
-		_span_btn.add_item("%d м" % int(SPANS[i]), i)
+		_span_btn.add_item("%d m" % int(SPANS[i]), i)
 	_span_btn.selected = _span_idx
 	_span_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_span_btn.item_selected.connect(func(i: int) -> void:
@@ -110,19 +110,27 @@ func _build_ui() -> void:
 	var arow := HBoxContainer.new()
 	add_child(arow)
 	var show_btn := Button.new()
-	show_btn.text = "Показать в сцене"
-	show_btn.tooltip_text = "Строит вокруг камеры редактора ту же землю, что увидит игра. В сцену не сохраняется ничего."
+	show_btn.text = "Build in scene"
+	show_btn.tooltip_text = "Builds the same ground the game will, around the editor camera. Nothing is saved into the scene."
 	show_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	show_btn.pressed.connect(_on_show)
 	arow.add_child(show_btn)
 	var clear_btn := Button.new()
-	clear_btn.text = "Убрать"
+	clear_btn.text = "Clear"
 	clear_btn.pressed.connect(func() -> void:
 		if _node != null and is_instance_valid(_node) and _node.has_method("preview_clear"):
 			_node.preview_clear())
 	arow.add_child(clear_btn)
 
 	# Кольца дальности — тот же рисунок, что и карта выше, только про память и загрузку.
+	## ЗАГОЛОВОК НАД ПОЛОСКАМИ. Без него это четыре разноцветные черты неизвестно о чём — игрок
+	## так и сказал. Одна строка объясняет и что нарисовано, и какое правило они проверяют.
+	var rlbl := Label.new()
+	rlbl.text = "Nested circles around the player - each must fit inside the one below"
+	rlbl.add_theme_font_size_override("font_size", 10)
+	rlbl.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
+	rlbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	add_child(rlbl)
 	_ruler = RingRuler.new()
 	_ruler.node = _node
 	add_child(_ruler)
@@ -208,9 +216,9 @@ func _redraw() -> void:
 	_tex.texture = ImageTexture.create_from_image(img)
 
 	var follows: bool = _node.get("follow_world_settings") == true
-	_legend.text = "%d×%d м · маски биомов, не высоты%s" % [
+	_legend.text = "%d×%d m · biome masks, not heights%s" % [
 		int(span), int(span),
-		"\nВ ИГРЕ сид берётся из слота — это превью только для редактора." if follows else ""]
+		"\nIN GAME the seed comes from the save slot - this preview is editor only." if follows else ""]
 
 func _colour_at(b: TerrainBiomes, wp: Vector2, cv: Callable) -> Color:
 	var meadow: float = b.meadow_mask(wp, cv)
@@ -245,11 +253,14 @@ func _mark_origin(img: Image) -> void:
 # перевёрнутый порядок виден сразу, без запуска.
 class RingRuler extends Control:
 	var node: Node = null
+	## ПОДПИСЬ — ИМЯ СВОЙСТВА, а не пересказ. Раньше тут стояло «коллизия / загрузка / в памяти /
+	## видно», и это читалось как четыре непонятных полоски: связать их с ползунками, которые
+	## крутишь строкой выше, было нечем. Имя связывает сразу.
 	const ROWS := [
-		["коллизия", "collision_radius", Color(0.95, 0.45, 0.35), 16.0],   # в КЛЕТКАХ → метры
-		["загрузка", "ready_view",       Color(1.00, 0.78, 0.25), 1.0],
-		["в памяти", "keep_radius",      Color(0.35, 0.80, 0.55), 1.0],
-		["видно",    "view_distance",    Color(0.40, 0.70, 0.95), 1.0],
+		["collision_radius", Color(0.95, 0.45, 0.35), 16.0],   # в КЛЕТКАХ чанка → метры
+		["ready_view",       Color(1.00, 0.78, 0.25), 1.0],
+		["keep_radius",      Color(0.35, 0.80, 0.55), 1.0],
+		["view_distance",    Color(0.40, 0.70, 0.95), 1.0],
 	]
 
 	func _init() -> void:
@@ -261,15 +272,15 @@ class RingRuler extends Control:
 		var vals: Array = []
 		var top: float = 1.0
 		for r in ROWS:
-			var v = node.get(String(r[1]))
+			var v = node.get(String(r[0]))
 			# Клетка коллизии — не метр: радиус задан в клетках чанка, и без множителя красная
 			# полоска врала бы в шестнадцать раз.
-			var m: float = (float(v) * float(r[3])) if v != null else 0.0
+			var m: float = (float(v) * float(r[2])) if v != null else 0.0
 			vals.append(m)
 			top = maxf(top, m)
 		var font := get_theme_default_font()
 		var fs := 10
-		var bar_x := 74.0
+		var bar_x := 96.0     # под длинные имена свойств
 		var w: float = maxf(size.x - bar_x - 46.0, 20.0)
 		for i in ROWS.size():
 			var y: float = 4.0 + float(i) * 17.0
@@ -277,6 +288,6 @@ class RingRuler extends Control:
 					HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.65))
 			draw_rect(Rect2(bar_x, y, w, 10.0), Color(1, 1, 1, 0.07), true)
 			var frac: float = clampf(float(vals[i]) / top, 0.0, 1.0)
-			draw_rect(Rect2(bar_x, y, w * frac, 10.0), ROWS[i][2], true)
-			draw_string(font, Vector2(bar_x + w + 4.0, y + 9), "%d м" % int(vals[i]),
+			draw_rect(Rect2(bar_x, y, w * frac, 10.0), ROWS[i][1], true)
+			draw_string(font, Vector2(bar_x + w + 4.0, y + 9), "%d m" % int(vals[i]),
 					HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.8))
