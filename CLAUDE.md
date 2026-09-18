@@ -359,6 +359,17 @@ project: read it before claiming how anything works.
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
   recomputed on camera movement, not only on `lod_interval`.
+- WHICH NODES AND WHICH OF THEM ARE VISIBLE ARE TWO QUESTIONS, ASKED AT DIFFERENT RATES. Splitting
+  a node depends ONLY on distance; the frustum decides only what is drawn. Asking both in one
+  recursive descent per tick cost 6.6 ms — a third of a 60 fps frame, four times a second while
+  the camera moves. Now the LEAF SET IS CACHED (`_build_leaves`) and a tick is a flat pass over it
+  (`_select` → 1.7 ms), with the frustum folded into six rows of floats beforehand
+  (`_pack_planes`) so the inner loop has no `Plane`, no `Vector3` and no calls. The descent
+  repeats only when the camera has moved a whole base chunk (`LEAF_MOVE2`, 16 m): THE CAMERA
+  ORBITS THE MACHINE, so a turn is not a camera standing still — it is an arc a hundred metres
+  long, and a metre-sized threshold would rebuild the whole way round. The price is that an LOD
+  boundary lags by those 16 m, which is ordinary hysteresis and not a hole: the ground is there,
+  the seam is stitched, and collision runs its own queue along the body's corridor.
 - THE FIRST RING IS BUILT AT THE START POINT: the camera in a new world, and in a LOADED one the
   primary machine's saved position, read straight out of the save (`G.saved_start_point`). The
   machine returns to its place only AFTER the terrain is ready — `world_persist` waits for it — so

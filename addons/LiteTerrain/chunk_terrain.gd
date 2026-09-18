@@ -626,47 +626,102 @@ func _signature(lod: int, gx: int, gz: int) -> int:
 # Спуск по дереву: что рисовать в этот тик
 # ─────────────────────────────────────────────────────────────────────────────
 
+## ДВА РАЗНЫХ ВОПРОСА, И ЗАДАВАТЬ ИХ НАДО С РАЗНОЙ ЧАСТОТОЙ.
+##
+## «Дробить узел или нет» зависит ТОЛЬКО от расстояния (lod > 0 and d2 < (span·LOD_QUALITY)²) —
+## направление взгляда в это не входит вовсе. «Попадает ли узел в кадр» зависит только от
+## пирамиды. Раньше оба считались одним рекурсивным обходом на каждом тике LOD: замер дал 6.6 мс,
+## треть кадра 60 fps, и обход шёл вчетверо чаще, пока камера крутится. Плоский проход по кэшу
+## стоит 1.65 мс, а сам обход повторяется примерно раз на шестнадцать метров пути.
+##
+## Теперь НАБОР ЛИСТЬЕВ КЭШИРУЕТСЯ — ключи плюс их прямоугольники в плоских массивах, — а на тике
+## остаётся проход по нему с проверкой пирамиды. Обход дерева повторяется, только когда камера
+## УЕХАЛА дальше LEAF_MOVE2.
+##
+## ПОЧЕМУ ПОРОГ — ЦЕЛЫЙ ЧАНК, А НЕ МЕТР. Камера ходит ПО ОРБИТЕ вокруг машины (RADIUS до 20 м в
+## camera_controller), то есть при чистом повороте она никуда не смотрит с одного места: она едет
+## по дуге длиной в сотню метров. Порог в метр пересобирал бы набор всю дугу напролёт, ровно там,
+## где этого и надо избежать. Плата — граница уровня LOD запаздывает на те же 16 м: узлу, которому
+## пора раздробиться, дают проехать лишний чанк крупным. Это обычный гистерезис, а не дыра: земля
+## на месте, шов притянут, а коллизия идёт своей очередью по коридору тела и кэша не касается.
+##
+## Высота в кэш не кладётся: у всех узлов она одна (_y_lo.._y_hi) и живёт вместе с миром — её
+## подставляет _pack_planes, один раз на тик вместо одного раза на узел.
+var _leaf_keys := PackedInt64Array()
+var _leaf_box := PackedFloat32Array()         # по 4 на лист: minx, minz, maxx, maxz
+var _leaf_at: Vector3 = Vector3(1e9, 1e9, 1e9)
+var _leaf_vd: float = -1.0
+const LEAF_MOVE2 := 256.0                     # 16 м, один базовый чанк
+
 ## cull = false — берём всё вокруг точки, без отсечения по кадру. Нужно входу в сохранённый мир:
 ## земля строится вокруг машины, а камера в этот момент ещё смотрит из начала сцены.
 func _select(at: Vector3, cull: bool = true) -> void:
+	var mx: float = at.x - _leaf_at.x
+	var mz: float = at.z - _leaf_at.z
+	# По высоте не сверяемся: расстояние до узла меряется по земле (см. _aabb_dist2), и подъём
+	# камеры на орбите набор листьев не меняет.
+	if _leaf_vd != view_distance or mx * mx + mz * mz > LEAF_MOVE2:
+		_build_leaves(at)
 	_want.clear()
-	var planes: Array[Plane] = []
-	if cull and enable_frustum_culling and is_instance_valid(_cam):
-		var inv := global_transform.affine_inverse()
-		for pl in _cam.get_frustum():
-			planes.append(inv * pl)
-		# Куда смотрит камера, в наших осях: по нему отличаем ближнюю и дальнюю плоскости от
-		# боковых (см. frustum_margin). По номеру в массиве — нельзя: порядок плоскостей это
-		# деталь движка, а нормаль говорит сама за себя.
-		_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
+	var n: int = _leaf_keys.size()
+	if not (cull and enable_frustum_culling and is_instance_valid(_cam)):
+		for i in n:
+			_want[_leaf_keys[i]] = true
+		return
+	_pack_planes()
+	for i in n:
+		var b: int = i * 4
+		var vis := true
+		for q in 6:
+			var q3: int = q * 3
+			if _pl[q3] * _leaf_box[b + _pi[q * 2]] \
+					+ _pl[q3 + 1] * _leaf_box[b + _pi[q * 2 + 1]] \
+					+ _pl[q3 + 2] > 0.0:
+				vis = false
+				break
+		if vis:
+			_want[_leaf_keys[i]] = true
+
+func _build_leaves(at: Vector3) -> void:
+	_leaf_keys.clear()
+	_leaf_box.clear()
+	_leaf_at = at
+	_leaf_vd = view_distance
 	var top := CHUNK << MAX_LOD
 	var r: int = int(ceil(view_distance / float(top)))
 	var g0x: int = int(floor(at.x / float(top)))
 	var g0z: int = int(floor(at.z / float(top)))
 	for gz in range(g0z - r, g0z + r + 1):
 		for gx in range(g0x - r, g0x + r + 1):
-			_descend(MAX_LOD, gx, gz, at, planes)
+			_descend(MAX_LOD, gx, gz, at)
 
-func _descend(lod: int, gx: int, gz: int, cam: Vector3, planes: Array[Plane]) -> void:
+## Считает только расстояние, и арифметика здесь РАЗВЁРНУТА (ни _node_aabb, ни _aabb_dist2, ни
+## _key): вызов в GDScript стоит больше самой формулы, а на узел их выходило четыре.
+func _descend(lod: int, gx: int, gz: int, cam: Vector3) -> void:
 	var span := float(CHUNK << lod)
-	var aabb := _node_aabb(lod, gx, gz)
-	var d2 := _aabb_dist2(aabb, cam)
+	var x0: float = gx * span
+	var z0: float = gz * span
+	var x1: float = x0 + span
+	var z1: float = z0 + span
+	var dx: float = maxf(maxf(x0 - cam.x, 0.0), cam.x - x1)
+	var dz: float = maxf(maxf(z0 - cam.z, 0.0), cam.z - z1)
+	var d2: float = dx * dx + dz * dz
 	if d2 > view_distance * view_distance:
-		return
-	# ОТСЕЧЕНИЕ ЗДЕСЬ, А НЕ НАД ЛИСТЬЯМИ: узел вне кадра уносит с собой всю свою четверть, и
-	# внизу дерева проверять уже нечего. На верхнем уровне это разом снимает полмира за спиной.
-	if not planes.is_empty() and not _aabb_in_frustum(aabb, planes, frustum_margin):
 		return
 	var split := span * LOD_QUALITY
 	if lod > 0 and d2 < split * split:
 		var cx := gx * 2
 		var cz := gz * 2
-		_descend(lod - 1, cx, cz, cam, planes)
-		_descend(lod - 1, cx + 1, cz, cam, planes)
-		_descend(lod - 1, cx, cz + 1, cam, planes)
-		_descend(lod - 1, cx + 1, cz + 1, cam, planes)
+		_descend(lod - 1, cx, cz, cam)
+		_descend(lod - 1, cx + 1, cz, cam)
+		_descend(lod - 1, cx, cz + 1, cam)
+		_descend(lod - 1, cx + 1, cz + 1, cam)
 		return
-	_want[_key(lod, gx, gz)] = true
+	_leaf_keys.append((lod << 40) | ((gx & 0xFFFFF) << 20) | (gz & 0xFFFFF))
+	_leaf_box.append(x0)
+	_leaf_box.append(z0)
+	_leaf_box.append(x1)
+	_leaf_box.append(z1)
 
 func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var mx: Vector3 = aabb.position + aabb.size
@@ -674,25 +729,52 @@ func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var dz: float = maxf(maxf(aabb.position.z - p.z, 0.0), p.z - mx.z)
 	return dx * dx + dz * dz
 
-## Куда смотрит камера, в осях ноды. Ставится в _select, читается проверкой плоскостей.
+## Куда смотрит камера, в осях ноды. Ставится в _pack_planes, читается там же.
 var _cam_fwd_local: Vector3 = Vector3.FORWARD
 ## Выше этого |n·вперёд| плоскость считается ближней или дальней — им запас не даём. У бокового
 ## угол к оси взгляда это половина поля зрения плюс прямой, то есть скалярное произведение сильно
 ## меньше; спутать нельзя.
 const AXIAL_DOT := 0.9
 
-func _aabb_in_frustum(aabb: AABB, planes: Array[Plane], margin: float) -> bool:
-	var bmin: Vector3 = aabb.position
-	var bmax: Vector3 = aabb.position + aabb.size
-	for plane in planes:
-		var nx: float = bmin.x if plane.normal.x >= 0.0 else bmax.x
-		var ny: float = bmin.y if plane.normal.y >= 0.0 else bmax.y
-		var nz: float = bmin.z if plane.normal.z >= 0.0 else bmax.z
+## ПИРАМИДА, СЛОЖЕННАЯ ДЛЯ ПЛОСКОГО ПРОХОДА. Шесть плоскостей превращаются в 6×(nx, nz, сдвиг) и
+## 6×(какой угол брать по x, какой по z): у AABB ближний к плоскости угол выбирается по знаку
+## нормали, а знак за тик не меняется — значит это индекс в _leaf_box, посчитанный один раз.
+## В сдвиг уже сложены высота узла (у всех одна), d плоскости и запас, так что в цикле по узлам
+## остаётся два умножения и сравнение, без Plane, без Vector3 и без вызовов.
+var _pl := PackedFloat32Array()
+var _pi := PackedInt32Array()
+
+func _pack_planes() -> void:
+	var inv := global_transform.affine_inverse()
+	# Куда смотрит камера, в наших осях: по нему отличаем ближнюю и дальнюю плоскости от боковых
+	# (см. frustum_margin). По номеру в массиве — нельзя: порядок плоскостей это деталь движка, а
+	# нормаль говорит сама за себя.
+	_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
+	_pl.resize(18)
+	_pi.resize(12)
+	var i := 0
+	for raw in _cam.get_frustum():
+		if i == 6:
+			break
+		var p: Plane = inv * (raw as Plane)
+		var nn: Vector3 = p.normal
 		# Ближней и дальней — точно, без запаса: плюс у ближней это земля за спиной.
-		var m: float = 0.0 if absf(plane.normal.dot(_cam_fwd_local)) > AXIAL_DOT else margin
-		if plane.distance_to(Vector3(nx, ny, nz)) > m:
-			return false
-	return true
+		var m: float = 0.0 if absf(nn.dot(_cam_fwd_local)) > AXIAL_DOT else frustum_margin
+		_pl[i * 3] = nn.x
+		_pl[i * 3 + 1] = nn.z
+		_pl[i * 3 + 2] = nn.y * (_y_lo if nn.y >= 0.0 else _y_hi) - p.d - m
+		_pi[i * 2] = 0 if nn.x >= 0.0 else 2
+		_pi[i * 2 + 1] = 1 if nn.z >= 0.0 else 3
+		i += 1
+	# Плоскостей всегда шесть, но массив переживает тик: недобор оставил бы в хвосте прошлую
+	# пирамиду. Добиваем плоскостью, которая не отсекает ничего.
+	while i < 6:
+		_pl[i * 3] = 0.0
+		_pl[i * 3 + 1] = 0.0
+		_pl[i * 3 + 2] = -1e9
+		_pi[i * 2] = 0
+		_pi[i * 2 + 1] = 1
+		i += 1
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Сборка: очередь → пул потоков → дерево
@@ -1326,7 +1408,9 @@ const NODE_GRACE := 15.0
 const LIVE_CAP := 420
 ## Насколько камера должна сдвинуться (метры в квадрате) или повернуться, чтобы пересчитать выбор
 ## раньше таймера. Четыре метра и пара градусов: меньше — и пересчёт идёт каждый кадр впустую.
-## Ближе этого камера считается стоящей в той же точке, что и стройка первой земли.
+## Этот порог задаёт ЧАСТОТУ ТИКА и ничего больше; пересборку дерева держит свой, гораздо более
+## крупный LEAF_MOVE2 — тик на повороте стоит одного плоского прохода по кэшу листьев.
+## Ближе CAM_AT_START камера считается стоящей в той же точке, что и стройка первой земли.
 const CAM_AT_START := 32.0
 const SEL_MOVE2 := 16.0
 const SEL_TURN_COS := 0.999
