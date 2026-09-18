@@ -555,6 +555,7 @@ script = ExtResource("17_tuemg")
 biomes = SubResource("Resource_s0gvp")
 view_distance = 4000.0
 collision_radius = 48
+ready_view = 96.0
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
 top_level = true

@@ -372,9 +372,14 @@ project: read it before claiming how anything works.
   is four times that from nothing. WITHIN `keep_radius` (320 m) nothing is dropped at all, by time
   or by cap — that is the ground the player turns back onto in a second; a 320 m disc is about 150
   nodes across all levels, because the far levels cover a lot with one node.
-- THE LOADING SCREEN WAITS FOR TWO THINGS: the 5×5 ring of level-0 chunks with their collision
-  (`READY_RING`) — the ground under the wheels — and then the nodes the frame WANTS within
-  `ready_view` metres, which is what the player actually sees. With only the ring the machine stood
+- THE LOADING SCREEN WAITS FOR TWO THINGS: the ring of level-0 chunks with their collision
+  (`ready_ring`) — the ground under the wheels — and then the nodes the frame WANTS within
+  `ready_view` metres, which is what the player actually sees. `ready_view` IS A CLIFF, NOT A
+  SLOPE, and the cliff is where the LOD band changes: measured at 64/96/128/160/192 m the total
+  wait ran 1.1 / 1.6 / 3.0 / 4.0 / 4.1 s. Level 0 reaches 64 m and level 1 to 128, so anything
+  past 96 starts waiting on level-2 nodes, and a coarse node costs five times a fine one. The
+  world sits at 96 for that reason: one metre more of first-frame view past it costs whole
+  seconds. With only the ring the machine stood
   on collision in the middle of nothing and the view arrived after the fade lifted. Waiting out to
   `view_distance` is not an option: a coarse node costs five times a fine one (past a one-metre step
   the blur cannot reuse neighbouring vertices), so the full set is tens of seconds. Nothing can be baked ahead: the seed is the slot's
