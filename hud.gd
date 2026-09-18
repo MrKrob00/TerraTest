@@ -1263,6 +1263,7 @@ func _build_perf_panel() -> void:
 	# действия были невидимыми жестами, и «закрыть вообще хз» было честной оценкой. Тестеру,
 	# который открыл панель впервые, должно быть видно, чем её закрыть.
 	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
+	(%PerfGround as Button).pressed.connect(_toggle_ground_quality)
 	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
 
 
@@ -1296,6 +1297,18 @@ func _update_perf_panel(delta: float) -> void:
 			% [proc_ms, proc_marked, maxf(proc_ms - proc_marked, 0.0)])
 	lines.append("physics %.1f мс/тик (учтено %.1f, не учтено %.1f) — в него входит и сам Jolt"
 			% [phys_ms, phys_marked, maxf(phys_ms - phys_marked, 0.0)])
+	# САМАЯ ВАЖНАЯ СТРОКА ПАНЕЛИ: сколько кадра ушло МИМО скриптов. process и physics — это
+	# только GDScript и Jolt; всё, что остаётся до длины кадра, тратят рисование и драйвер. Без
+	# этой разницы панель показывает кучу чисел и не отвечает на первый вопрос — чинить логику
+	# или чинить пиксели.
+	#
+	# Физика приводится К КАДРУ, а не к тику: Performance отдаёт её за ОДИН тик, а тиков в кадре
+	# столько, сколько 60 Гц укладывается в текущий fps — на 26 кадрах их больше двух, и без
+	# пересчёта физика выглядела бы втрое дешевле, чем есть.
+	var fps: float = maxf(Engine.get_frames_per_second(), 1.0)
+	var phys_per_frame: float = phys_ms * (float(Engine.physics_ticks_per_second) / fps)
+	var outside: float = maxf(frame_ms - proc_ms - phys_per_frame, 0.0)
+	lines.append("ВНЕ СКРИПТОВ ~%.1f мс из %.1f — это рисование и драйвер" % [outside, frame_ms])
 	@warning_ignore("integer_division")
 	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
 
@@ -1359,6 +1372,12 @@ func _update_perf_panel(delta: float) -> void:
 			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
 			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
 			"вкл" if auto_fps else "ВЫКЛ"])
+	# Состояние пробы земли — иначе «я что-то нажал и оно стало быстрее» не привязать к причине.
+	var terr_q := get_node_or_null("/root/Main/map")
+	if terr_q != null and terr_q.has_method("get_surface_param"):
+		lines.append("шейдер земли: %s"
+				% ("УПРОЩЁННЫЙ (без шума и текстуры)" if terr_q.get_surface_param(&"low_quality") == true
+					else "полный"))
 	lines.append("узлов %d" % nodes)
 	# НОМЕР СБОРКИ — ради тестеров. Без него отчёт «у меня падает» не привязать к версии, а
 	# у беты это единственный способ понять, о какой сборке речь. Панель профиля для этого и
@@ -1379,6 +1398,23 @@ func _render_method() -> String:
 ## a machine without a GPU that lands inside "process", looking exactly like slow logic.
 ## If fps does not move, drawing is not the bottleneck and the table is where to look.
 const PERF_SCALES := [1.0, 0.75, 0.5, 0.35]
+
+## ПРОБА ЗЕМЛИ, в одно нажатие. Масштаб рендера отвечает на вопрос «пиксели ли это вообще», а
+## эта кнопка — на следующий: ПИКСЕЛИ ЧЕГО. `low_quality` снимает с фрагмента земли попиксельный
+## шум и выборку тайловой текстуры, не трогая ни геометрию, ни число объектов.
+##
+## Читать так: fps вырос заметно — узкое место во фрагментном шейдере рельефа, и чинить надо там.
+## Не сдвинулся — земля ни при чём, смотри на число draw-вызовов и на машины.
+##
+## Ручка в шейдере была с самого начала и НИКОГДА НИ ОТКУДА НЕ ВКЛЮЧАЛАСЬ — то есть лежала
+## мёртвой ровно там, где мы упираемся в заполнение.
+func _toggle_ground_quality() -> void:
+	var terr := get_node_or_null("/root/Main/map")
+	if terr == null or not terr.has_method("set_surface_param"):
+		return
+	var cur: Variant = terr.get_surface_param(&"low_quality")
+	terr.set_surface_param(&"low_quality", not (cur == true))
+	_perf_t = 0.0
 
 func _cycle_render_scale() -> void:
 	var vp := get_viewport()
