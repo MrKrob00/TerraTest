@@ -376,6 +376,16 @@ project: read it before claiming how anything works.
   building around the camera would build where the scene happened to open. With a saved point the
   view stage waits for a DISC around it at half the radius instead of the camera's cone: where the
   player will look is unknown, and a disc is four times the nodes of a cone.
+- COMPUTING IN A BATCH IS FINE, LANDING IN A BATCH IS NOT. The pool computes `build_batch` chunks
+  in parallel and that is cheap — each thread writes its own slice. Landing them is main-thread
+  and expensive PER CHUNK: an `ArrayMesh`, a vertex upload, a new node in the tree. Twenty-four of
+  those in one frame is what a player measured as 30 fps standing still against 22 while driving
+  onto new ground. So results go into a QUEUE and at most `apply_budget` (4) leave it per frame,
+  with the pool held back while the queue is not empty — without that backpressure the queue grows
+  faster than it drains and the ground falls further behind anyway. COLLISION TILES ARE OUTSIDE
+  THE BUDGET: a tile is what the machine drives on and cannot wait a frame; a mesh is what it
+  looks at and can. During loading the budget is off entirely — the screen is behind the fade,
+  there is nothing to smooth, and throughput is what matters.
 - NEAREST FIRST. Both queues are sorted by distance to
   the camera every LOD tick; without that the order was the tree walk, so a node a kilometre away
   could be built before the one being looked at. Coming back is cheap only while the heights are

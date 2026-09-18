@@ -835,6 +835,12 @@ func _job_tick() -> void:
 		_apply_batch()
 		while not _pending_dirty.is_empty():
 			_invalidate(_pending_dirty.pop_front())
+	_drain_apply()
+	# Очередь приземления не разобрана — новую пачку не считаем. Это ПОДПОР, а не задержка:
+	# без него на скорости пул считал бы быстрее, чем главный поток успевает класть, и очередь
+	# росла бы вместе с памятью, а земля отставала бы всё равно.
+	if not _apply_q.is_empty():
+		return
 	if _gen == null or (_jobs.is_empty() and _col_jobs.is_empty()):
 		return
 	# Сначала коллизия, целиком: её очередь короткая (тайлы вокруг тел), а ждать её нельзя.
@@ -875,6 +881,20 @@ func _build_job(i: int) -> void:
 func pending_jobs() -> int:
 	return _jobs.size() + _col_jobs.size() + (_batch.size() if _busy else 0)
 
+## СЧИТАТЬ МОЖНО ПАЧКОЙ, А ПРИЗЕМЛЯТЬ — НЕТ. Потоки считают build_batch чанков параллельно, и
+## это правильно: считают они в своих слайсах и никому не мешают. А вот приземление идёт на
+## ГЛАВНОМ потоке и стоит дорого на каждый чанк: ArrayMesh, заливка вершин в GPU, новый узел в
+## дереве сцены. Двадцать четыре таких в одном кадре — это замеренные игроком 30 fps на месте
+## против 22 при движении по новой земле.
+##
+## Поэтому результаты кладутся В ОЧЕРЕДЬ, а из неё в кадр уходит не больше apply_budget штук.
+## Общее время то же, спайк размазан.
+##
+## КОЛЛИЗИЯ ИДЁТ ВНЕ БЮДЖЕТА. Тайл — это то, по чему едет машина; задержать его на кадр значит
+## дать ей провалиться. Меш — это то, на что смотрят, и он подождёт.
+@export_range(1, 32, 1) var apply_budget: int = 4
+var _apply_q: Array = []
+
 func _apply_batch() -> void:
 	for i in _batch.size():
 		var job: Dictionary = _batch[i]
@@ -887,11 +907,24 @@ func _apply_batch() -> void:
 			_queued.erase(key | (1 << 50))
 			_make_tile(key, job["gx"], job["gz"], res["heights"])
 			continue
-		_queued.erase(key)
-		_place_mesh(key, job, res["mesh"])
+		_apply_q.append({"job": job, "mesh": res["mesh"]})
 	_batch.clear()
 	_out.clear()
 	_prune_heights()
+
+## Приземляем по apply_budget мешей за кадр. Пока очередь не пуста, новую пачку в пул не
+## запускаем (см. _job_tick): иначе на быстрой езде очередь росла бы быстрее, чем разбирается,
+## и земля отставала бы всё сильнее, а память — всё выше.
+func _drain_apply() -> void:
+	# ПОКА ИДЁТ ЗАГРУЗКА — БЕЗ БЮДЖЕТА. Там экран всё равно закрыт фейдом, сглаживать нечего, а
+	# нужна максимальная пропускная способность: игрок смотрит на полосу загрузки, а не на кадры.
+	# Бюджет включается, когда земля готова и на неё начали смотреть.
+	var n: int = _apply_q.size() if not terrain_is_ready else mini(apply_budget, _apply_q.size())
+	for i in n:
+		var e: Dictionary = _apply_q.pop_front()
+		var job: Dictionary = e["job"]
+		_queued.erase(int(job["key"]))
+		_place_mesh(int(job["key"]), job, e["mesh"])
 
 func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	var old = _live.get(key)
