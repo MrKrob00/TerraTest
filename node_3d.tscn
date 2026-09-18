@@ -578,7 +578,6 @@ text = "<"
 [node name="map" type="StaticBody3D" parent="." unique_id=1582159453]
 script = ExtResource("17_tuemg")
 biomes = SubResource("Resource_s0gvp")
-ready_view = 96.0
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="map" unique_id=941128747 node_paths=PackedStringArray("map_node")]
 top_level = true
