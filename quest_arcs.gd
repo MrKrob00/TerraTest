@@ -434,14 +434,7 @@ func _battery_stage() -> bool:
 		return false
 	var at: Vector3 = _bat_spot as Vector3
 	if _bat_free:
-		if not _player_owns(G.Block.BATTERY):
-			# ВЫПАДАЕТ ИЗ ЖИЛЫ, А НЕ ВЫДАЁТСЯ НАГРАДОЙ: claim_or_drop кладёт настоящий блок в мир у
-			# точки жилы, и подобрать его игрок должен сам. Награда квеста — деньги и опыт
-			# (quest_manager: 210/45/14), блоков в ней нет и быть не должно.
-			var dropped: Node3D = _props.claim_or_drop("arc_battery", G.Block.BATTERY, at)
-			if dropped != null and not _bat_worn:
-				_bat_worn = true
-				_wear_battery(dropped)
+		_bat_drop(at)
 		return false
 	if p.global_position.distance_squared_to(at) > BATTERY_REACH * BATTERY_REACH:
 		return false
@@ -452,6 +445,7 @@ func _battery_stage() -> bool:
 		rn = _find_resource_nodes()
 	if rn == null or not rn.has_method("node_near"):
 		_bat_free = true                      # жил в мире нет вовсе — не держим игрока
+		_bat_drop(at)
 		return false
 	var vein: Node = rn.node_near(at, BATTERY_REACH)
 	if vein == null:
@@ -460,9 +454,26 @@ func _battery_stage() -> bool:
 	if vein.call("is_depleted"):
 		_bat_free = true
 		_bat_hide()
+		_bat_drop(_bat_spot as Vector3)       # в ТОТ ЖЕ проход, а не следующим опросом
 	else:
 		_bat_display(vein as Node3D)
 	return false
+
+## УРОНИТЬ АККУМУЛЯТОР. Вынесено отдельно ровно затем, чтобы звалось СРАЗУ по выработке жилы, а
+## не следующим опросом. Раньше между «жила кончилась» и «блок лежит» проходило ДВА прохода по
+## POLL: один ставил флаг, второй ронял. Две секунды на пустом месте, и выглядело это как будто
+## квест подвис.
+##
+## ВЫПАДАЕТ ИЗ ЖИЛЫ, А НЕ ВЫДАЁТСЯ НАГРАДОЙ: claim_or_drop кладёт настоящий блок в мир у точки
+## жилы, и подобрать его игрок должен сам. Награда квеста — деньги и опыт (quest_manager:
+## 210/45/14), блоков в ней нет и быть не должно.
+func _bat_drop(at: Vector3) -> void:
+	if _player_owns(G.Block.BATTERY):
+		return
+	var dropped: Node3D = _props.claim_or_drop("arc_battery", G.Block.BATTERY, at)
+	if dropped != null and not _bat_worn:
+		_bat_worn = true
+		_wear_battery(dropped)
 
 ## Показать блок в жиле. Жилы СТРИМЯТСЯ — узел появляется и исчезает вместе с игроком, — поэтому
 ## показ проверяется каждый опрос и восстанавливается, а не ставится один раз.
