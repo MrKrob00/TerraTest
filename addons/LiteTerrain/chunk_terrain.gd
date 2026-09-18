@@ -168,7 +168,7 @@ func _ready() -> void:
 	# ГОВОРИМ, ТОЛЬКО ЕСЛИ ЗАГРУЗКА БЫЛА ДОЛГОЙ. Строка о каждом удачном входе — это строка,
 	# которую перестают читать; число нужно ровно тогда, когда кольцо не уложилось в мгновение.
 	if _view_ms > READY_SLOW_MS:
-		print("ChunkTerrain: кольцо %d мс, всего до %d м %d мс, сид %d"
+		print("ChunkTerrain: ring %d ms, out to %d m %d ms, seed %d"
 				% [_ready_ms, int(ready_view), _view_ms, seed_value])
 
 func _set_biomes(v: TerrainBiomes) -> void:
