@@ -390,4 +390,3 @@ func prepare_sampling() -> void:
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise
-

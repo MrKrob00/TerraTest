@@ -174,7 +174,7 @@ script = ExtResource("12_lggff")
 grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
-mask_offset = Vector2(-3385.2192, 2414.6802)
+mask_offset = Vector2(-2381.8252, -2997.1248)
 
 [sub_resource type="MultiMesh" id="MultiMesh_obt1j"]
 transform_format = 1
