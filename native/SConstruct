@@ -1,0 +1,6 @@
+env = SConscript("/tmp/gdcpp/SConstruct")
+env.Append(CPPPATH=["src/"])
+sources = Glob("src/*.cpp")
+library = env.SharedLibrary("bin/libterrain_native%s%s" % (env["suffix"], env["SHLIBSUFFIX"]),
+		source=sources)
+Default(library)
