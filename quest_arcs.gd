@@ -427,10 +427,27 @@ func _battery_stage() -> bool:
 	if p == null:
 		return false
 	if _bat_spot == null:
-		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * BATTERY_DIST, 0.0, sin(ang) * BATTERY_DIST)
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_bat_spot = wp
+		# ТОЧКА — НА НАСТОЯЩЕЙ ЖИЛЕ, а не рядом с ней. Раньше здесь бралось случайное направление
+		# на BATTERY_DIST, и метка вела в поле: жила находилась только когда игрок подъезжал на
+		# BATTERY_REACH и она успевала стримнуться. Снаружи это «показывает рядом».
+		#
+		# Данные о жилах есть заранее — они считаются от сида по регионам вокруг игрока, без
+		# всякой отрисовки (resource_nodes.vein_point_near).
+		var rnd: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
+		if rnd == null:
+			rnd = _find_resource_nodes()
+		var exact: Variant = null
+		if rnd != null and rnd.has_method("vein_point_near"):
+			exact = rnd.vein_point_near(p.global_position, BATTERY_DIST * 0.6, BATTERY_DIST * 1.6)
+		if exact != null:
+			_bat_spot = exact
+		else:
+			# Жил вокруг нет вовсе (редко: край карты, выработанный район) — держим прежнее
+			# поведение, иначе ветка не начнётся никогда.
+			var ang: float = randf() * TAU
+			var wp: Vector3 = p.global_position + Vector3(cos(ang) * BATTERY_DIST, 0.0, sin(ang) * BATTERY_DIST)
+			wp.y = G.ground_y(wp, p.global_position.y)
+			_bat_spot = wp
 		return false
 	var at: Vector3 = _bat_spot as Vector3
 	if _bat_free:
