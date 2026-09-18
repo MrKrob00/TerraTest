@@ -585,6 +585,32 @@ project: read it before claiming how anything works.
 - Shop sales are discounts only, on unlocked blocks only, applied by `shop_price_now`;
   `shop_price` stays the base because machine value is measured with it.
 
+### Look and light
+
+- THE RENDERER IS COMPATIBILITY (`gl_compatibility`, both desktop and mobile), picked for FPS, and
+  that decides what is even available: no SSAO, no SSR, no SDFGI, no volumetric fog. GLOW, DEPTH
+  FOG and TONEMAPPING all work there in 4.6, and those three are the whole post-processing budget.
+- GLOW IS THE SWITCH THE EFFECT LANGUAGE WAS WRITTEN FOR, and it was off. Every glitch card ends
+  `EMISSION = col * 2.0`, the laser fakes its muzzle with an emissive sphere, the matrix digits
+  burn above 1.0 — with glow off all of that clamped to white and read as flat paint. Blend mode
+  is ADDITIVE: the palette is neon, and Soft Light would mute exactly what should bloom.
+- `tonemap_mode` HAS TO BE SET, not just its contrast. `tonemap_agx_contrast = 1.7` sat in both
+  scenes while `tonemap_mode` stayed at its default Linear, so the number did nothing and
+  highlights clipped flat. AgX is **4** in that enum (Linear, Reinhard, Filmic, ACES, AgX).
+- DEPTH FOG READS `fog_density` AS A CEILING, NOT AS A RATE: the shader is
+  `pow(smoothstep(begin, end, z), curve) * density`. Switching `fog_mode` to Depth and leaving the
+  default density of 0.01 gives one per cent fog, which looks exactly like fog that does not work.
+- Fog distance follows the terrain the scene actually draws: the world fades 200→1100 m, the menu
+  backdrop 110→330 against its `MENU_VIEW` of 320. It also hides the far edge where chunks stream
+  in, so it buys frames as well as depth.
+- There is ONE light in the game — the directional sun. Not a single `OmniLight3D` or
+  `SpotLight3D` exists yet, so "light effects" today means emissive geometry plus glow.
+- Two settings in `project.godot` flatten the picture on purpose, and both are speed:
+  `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
+  `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
+- **Headless cannot judge any of this.** The dummy driver draws nothing, so these numbers are set
+  by reading the shader and the docs; only the device settles them.
+
 ### Performance
 
 - Engine occlusion culling is off (no baked occluders); the terrain does horizon culling itself and
