@@ -135,6 +135,12 @@ func _ready() -> void:
 	mk.vehicle = self
 	mk.position = Vector3(0, 2.6, 0)
 	add_child(mk)
+	# ПРОЯВЛЕНИЕ — ЗДЕСЬ, А НЕ В СПАВНЕРЕ. Врага добавляют пять разных путей (обычный поток,
+	# сюжетный скаут, квестовый участник, рейд, база), и вешать эффект на каждый значило бы
+	# пять копий и шестую, забытую при следующем пути. Машина знает о своём рождении сама.
+	#
+	# Откладываем на кадр: блоки строит apply_build, и на этой строке их ещё нет.
+	call_deferred("_materialise_on_spawn")
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
@@ -1016,6 +1022,14 @@ const FLIP_CONFIRM := 0.6      # how long it must STAY over before we call it a 
 ## 100° от вертикали. Такую поднимаем немедленно — сама она не выберется, и выдержка тут значит
 ## только то, что игрок смотрит на дёргающийся кузов.
 const FLIP_HARD := -0.2
+
+## База НЕ ПРОЯВЛЯЕТСЯ: она не прилетает, она стоит на карте с самого начала и восстанавливается
+## из сейва. Сорок оболочек на каждую вышку при входе в мир — это хич на загрузке ради эффекта,
+## которого никто не увидит, потому что смотреть в этот момент ещё некому.
+func _materialise_on_spawn() -> void:
+	if is_base or not is_inside_tree():
+		return
+	BlockFX.materialise(self)
 ## And a pause after righting: the two hulls are still overlapping when it ends, so without this
 ## the next frame starts the whole thing over.
 const FLIP_COOLDOWN := 1.5

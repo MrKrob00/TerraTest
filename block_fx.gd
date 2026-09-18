@@ -415,6 +415,83 @@ static func hp_overlay(block: Node3D) -> MeshInstance3D:
 
 # Коробка эффекта не может быть больше этого по каждой оси: страховка от FX-мешей
 # (луч лазера в момент выстрела и т.п.), которые не описывают сам блок.
+# ── Материализация МАШИНЫ ЦЕЛИКОМ ────────────────────────────────────────────────
+#
+# mode 0 у block_matrix уже делает нужное — «собирается снизу вверх, ниже фронта виден настоящий
+# блок». Но делает это НА БЛОК: позови его на сорок блоков сразу, и сорок фронтов поедут каждый
+# по своему кубику одновременно. Машина должна проявляться ОДНИМ фронтом по всему корпусу.
+#
+# Поэтому общий прогресс переводится в прогресс КАЖДОГО блока по его месту в корпусе: фронт идёт
+# от низа машины к верху, и блок получает свою долю ровно тогда, когда фронт проходит через него.
+# Колёса проявляются раньше кабины, потому что они ниже, — а не потому, что им так сказали.
+#
+# ПО МАТЕРИАЛУ НА БЛОК, И ЭТО НАМЕРЕННО. Общий материал означал бы один progress на всех, то есть
+# ту же кашу из сорока одновременных фронтов. Материалов это не ограничивает — ограничены
+# instance uniform'ы (см. правило в CLAUDE.md), а их здесь нет вовсе.
+const MAT_DUR := 1.4
+const MAT_CELLS := 5.0
+
+## Проявить машину целиком. Зовётся на спавне; самоочищается, ничего возвращать не нужно.
+static func materialise(machine: Node3D, dur: float = MAT_DUR) -> void:
+	if machine == null or not is_instance_valid(machine) or not machine.is_inside_tree():
+		return
+	var holder: Node = machine.get_node_or_null("blocks")
+	if holder == null:
+		return
+	var shells: Array = []
+	var lo: float = INF
+	var hi: float = -INF
+	for b in holder.get_children():
+		var nb := b as Node3D
+		if nb == null or nb.has_meta("block_fx"):
+			continue
+		var aabb := _local_aabb(nb)
+		if aabb.size == Vector3.ZERO:
+			continue
+		# Высота блока в осях МАШИНЫ берётся по его позиции в сетке, а не по его локальному
+		# aabb: повёрнутый блок всё равно занимает свою клетку, и фронт обязан идти по корпусу.
+		var mid: float = nb.position.y
+		var half: float = maxf(aabb.size.y, 0.2) * 0.5
+		lo = minf(lo, mid - half)
+		hi = maxf(hi, mid + half)
+		var fx := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE
+		fx.mesh = bm
+		fx.set_meta("block_fx", true)
+		fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mat := ShaderMaterial.new()
+		mat.shader = SHADER
+		mat.set_shader_parameter("mode", 0)
+		mat.set_shader_parameter("progress", 0.0)
+		mat.set_shader_parameter("cells_per_meter", MAT_CELLS)
+		mat.set_shader_parameter("seed", randf() * 100.0)
+		fx.material_override = mat
+		nb.add_child(fx)
+		fx.transform = Transform3D(Basis().scaled(aabb.size * 1.03 + Vector3(0.02, 0.02, 0.02)),
+				aabb.get_center())
+		shells.append({"mi": fx, "mat": mat, "lo": mid - half, "h": half * 2.0})
+	if shells.is_empty():
+		return
+	# Твин живёт НА МАШИНЕ: погибла машина — оболочки уходят вместе с ней, и обновлять уже нечего.
+	var tw := machine.create_tween()
+	tw.tween_method(_materialise_step.bind(shells, lo, hi), 0.0, 1.0, dur)
+	tw.tween_callback(_materialise_done.bind(shells))
+
+static func _materialise_step(p: float, shells: Array, lo: float, hi: float) -> void:
+	var front: float = lerpf(lo, hi, p)
+	for s in shells:
+		var m = s["mat"]
+		if m is ShaderMaterial:
+			m.set_shader_parameter("progress",
+					clampf((front - float(s["lo"])) / maxf(float(s["h"]), 0.001), 0.0, 1.0))
+
+static func _materialise_done(shells: Array) -> void:
+	for s in shells:
+		var mi = s["mi"]
+		if is_instance_valid(mi):
+			mi.queue_free()          # оболочка отработала: дальше виден настоящий блок
+
 const MAX_EXTENT := 2.0
 
 # AABB блока В ЕГО СОБСТВЕННЫХ ОСЯХ: объединяем AABB всех MeshInstance3D, переведя их
