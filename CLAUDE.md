@@ -307,6 +307,19 @@ project: read it before claiming how anything works.
   (`ChunkTerrain`): no window, no world-sized height array — a chunk asks the generator for its own
   vertices. `map.gd` (`LiteTerrain`) stays for the MENU backdrop and the editor dock, where the map
   is a baked file. Everything below about windows, `md` and macro meshes is about `map.gd`.
+- THERE IS NO SCULPT BRUSH, AND THAT IS THE DESIGN. It made sense while a map was a file of
+  heights edited by hand; a procedural world has a SEED, and the only question is what the seed
+  gives. The answer is the MAP AT THE TOP OF THE NODE'S INSPECTOR (`seed_browser.gd`): step
+  through seeds and watch the country change. It draws the BIOME MASKS, not the heights — a mask
+  is three noise samples per pixel, a height is five plus blur plus the canyon cut, and at
+  128×128 that is the difference between flipping through seeds and waiting on each. The mask
+  offset comes from `TerrainBiomes.offset_for_seed`, the generator's own function: a second copy
+  would draw a country the game does not build. Under it, the distance rings to scale — four
+  numbers in a list never showed that `keep_radius` must sit inside `view_distance`.
+- THE `camera` EXPORT IS AN OVERRIDE AND STAYS EMPTY. Both terrains take the camera the scene is
+  DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
+  machine changes by themselves. A path stored in a scene is a liability: one once saved as the
+  EDITOR VIEWPORT's camera, which does not exist in a running game.
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles

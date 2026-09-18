@@ -4,7 +4,7 @@
 
 Lightweight heightmap terrain. One node builds its own collision body, collision
 shape and render mesh, then keeps a large map affordable through quadtree LOD and
-streaming collision. An editor dock creates, generates, sculpts and bakes it.
+streaming collision. An editor dock creates, generates and bakes it.
 
 Biomes — desert, meadow, canyon, mountains — live in a single resource that drives
 the landform, the masks and the colours at once, so a biome's shape cannot drift
@@ -23,7 +23,7 @@ towards performance.
 - [Appearance](#appearance)
 - [Runtime API](#runtime-api)
 - [Physics and collision](#physics-and-collision)
-- [Sculpting](#sculpting)
+- [Choosing a world](#choosing-a-world)
 - [Generating terrain](#generating-terrain)
 - [Baking and shipping a big map](#baking-and-shipping-a-big-map)
 - [Performance tuning](#performance-tuning)
@@ -56,15 +56,12 @@ towards performance.
      that decide what a world is — seed, size, height, feature size, and which biomes
      exist — and folds the rest away under **Advanced** (octaves, plains power, ridge
      sharpness, smoothing and the canyon shape). Generate rebuilds the whole heightmap,
-     so hand sculpting is lost.
-   - Or sculpt by hand with **Raise**, **Lower** and **Flatten**. Paint with the left
-     mouse button in the viewport; radius and strength are in the dock. Each stroke is
-     one undo step (Ctrl+Z / Ctrl+Y).
-4. Press **Bake to files** to write everything the runtime needs at once: the heightmap
-   (`terrain_height.res`), a preview mesh (`terrain_mesh.res`) and a greyscale PNG
-   (`terrain_heightmap.png`, useful for a minimap).
+     so the previous heights are lost.
+4. Press **Bake to files** to write what the runtime needs: the heightmap
+   (`terrain_height.res`) and the external preview mesh (`terrain_mesh.res`), so the mesh is
+   not embedded into the scene on save.
 
-The dock remembers its brush and generation settings per project.
+The dock remembers its generation settings per project.
 
 ## The terrain node
 
@@ -203,8 +200,8 @@ The baked file lives in `user://`, so it is per-device application data: it is n
 the project and never in an exported PCK. `res://` keeps the shipped map, and
 `reset_heights()` returns to it.
 
-The node also exposes the sculpt and data API the dock uses (`is_image_mode`,
-`get_heights`, `set_heightmap`, `apply_brush`, `raycast_heightmap`, `apply_heightmap`)
+The node also exposes the data API the dock uses (`is_image_mode`,
+`get_heights`, `set_heightmap`, `apply_heightmap`)
 if you want to build your own tooling.
 
 ## Physics and collision
@@ -232,33 +229,27 @@ Things to know:
   on, so `collision_overlap` grows each tile into its neighbours and buries that edge
   under real surface.
 
-## Sculpting
+## Choosing a world
 
-Select the terrain node, pick a mode in the dock and paint with the left mouse button.
+There is no sculpt brush any more, and its absence is the design. A brush made sense while the
+map was a file of heights somebody edited by hand; a procedural world has nothing to edit — it
+has a SEED, and the only question is what that seed gives.
 
-- **Raise** and **Lower** move the surface under the brush.
-- **Flatten** pulls towards the average height inside the brush without overshooting.
-- Radius comes from the dock slider and from the mouse wheel over the viewport while the
-  terrain is selected, over the same range (1..200).
-- **Strength is a percentage of the map height, and it scales with the radius.** At 100 %
-  a radius-100 brush lifts the ground by 10 % of the Height knob, and a radius-10 brush by
-  1 %; between those it is linear. That keeps the SLOPE of a dab the same at any brush
-  size, so a wide brush builds a hill instead of a pancake and a narrow one stops punching
-  needles through the map. The line under the sliders shows what one dab does right now, in
-  metres. For Flatten the percentage is the blend towards the average instead, and it does
-  not scale with the radius — "halfway" means the same at any size.
-- Two rings follow the cursor on the ground: the outer one is the reach, where the falloff
-  has run down to zero, and the inner one (a tenth of it) is the core that moves by the full
-  step — the same ten-to-one ratio the strength rule uses.
-- Each stroke, mouse-down to mouse-up, is one Undo/Redo step.
-- The mesh-only detail (sand ripples, rock roughness) is **off in the editor** by default: it is
-  five extra noise evaluations per vertex and the editor rebuilds every visible chunk after each
-  dab. Turn it on with `editor_detail` on the node (group **Editor only**) — the preview rebuilds
-  on the click. In game it is always on for near chunks, which is why a freshly generated desert
-  can look perfectly smooth in the editor and have waves in play.
+Select the terrain node and the answer is at the top of the inspector: a map of the country for
+that seed, redrawn as you step through seeds with ◀ ▶ or roll one with RND. It draws the BIOME
+MASKS rather than the heights — a mask costs three noise samples per pixel, a height costs five
+with blur and the canyon cut, and at 128×128 that is the difference between flipping through
+seeds and waiting on each one. The regions are what you pick a seed for anyway; the relief
+inside them varies far less between seeds than their layout does.
 
-In image mode the preview mesh and the heightmap file update on mouse-up, so undo and
-redo stay in sync with what is on disk.
+**Show in scene** then builds the real ground, with the real generator, around the editor
+camera — nothing is written into the scene.
+
+Under the map is a ruler of the distance rings (`view_distance`, `keep_radius`, `ready_view`
+and the collision radius) drawn to scale. Four numbers in a list say nothing about their
+proportion, and the proportion is the whole point: holding more in memory than is drawn is
+waste, and waiting on load for more than is held is worse.
+
 
 ## Why generation is fast (and what to keep that way)
 
@@ -403,7 +394,7 @@ GDScript that lands in the hottest loop there is.
 ## Baking and shipping a big map
 
 1. Keep `use_image_data` on (the default).
-2. Press **Bake to files** to write `terrain_height.res`, `terrain_mesh.res` and the PNG.
+2. Press **Bake to files** to write `terrain_height.res` and `terrain_mesh.res`.
 3. Save the scene.
 
 The runtime loads the baked `.res` and streams a small collision window under tracked
@@ -444,8 +435,7 @@ The heightmap is a flat float array (`md`), `w` by `d`.
 
 - **Image mode** (`use_image_data` on, the default): heights come from an R32F image
   saved as a `.res`, and that image is the single source of truth for both the render
-  mesh and the collision. In the editor, sculpting edits the array directly and
-  hit-testing ray-marches the heightmap, so no physics shape is needed while you work.
+  mesh and the collision.
 - **Shape mode** (off): one HeightMapShape3D holds both data and collision for the
   whole map. Simple, but it does not scale.
 
@@ -601,8 +591,8 @@ What was worth taking from them:
 
 ## Property reference
 
-**Where a setting lives tells you what it does.** The dock builds the map — seed, size, shape,
-brush, bake — and holds nothing about how the map is displayed. The node holds the display, in
+**Where a setting lives tells you what it does.** The dock builds a BAKED map — seed, size,
+shape, bake — and holds nothing about how the map is displayed. The node holds the display, in
 groups, and nothing about generation. Inside the node one group is special: **Editor only**
 (`editor_lod`, `editor_view_distance`, `editor_detail`) does not exist in a built game at all —
 it is the editor preview. Every other group changes what the player sees.

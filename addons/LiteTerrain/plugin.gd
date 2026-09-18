@@ -1,18 +1,16 @@
 @tool
 extends EditorPlugin
 
-var sculpt_node     = null
-## Выбранная ЧАНКОВАЯ земля (chunk_terrain.gd). Держим отдельно от sculpt_node: у неё нет ни
-## карты высот, ни кисти, ни запекания — из дока ей нужен только сид и превью.
+## Выбранная ЗАПЕЧЁННАЯ карта (map.gd): у неё есть файл высот, который док умеет сгенерировать
+## и запечь. Имя было sculpt_node, пока в доке жила кисть; лепить больше нечего.
+var map_node     = null
+## Выбранная ЧАНКОВАЯ земля (chunk_terrain.gd). Держим отдельно: карты высот у неё нет вовсе,
+## а сид и превью живут в её инспекторе (seed_browser.gd) — доку она нужна лишь затем, чтобы
+## он спрятал то, что к ней не относится, и чтобы отдать ей камеру вьюпорта.
 var chunk_node      = null
-var _chunk_ui: VBoxContainer = null
 var _map_ui: VBoxContainer = null
-var _chunk_seed: SpinBox = null
-var brush_radius    = 3.0
-var brush_power     = 0.5      # 0..1 — the Strength slider, shown as 0..100 %
-var sculpt_mode     = "raise"
 var panel           = null
-var radius_slider   = null
+var _inspector: EditorInspectorPlugin = null
 # Live references to the widgets whose value does NOT live in the plugin but in the selected
 # node's biome resource. They have to be re-read when the selection changes (see _sync_dock), or
 # the box shows the previous terrain's state — or the fallback resource's, if nothing was
@@ -24,76 +22,9 @@ var _sl_stratum: HSlider = null
 var _sl_height: HSlider = null
 var _sl_features: HSlider = null
 var _sl_mountains: HSlider = null
-var strength_slider = null
-## Caption under the brush sliders: how many metres one dab moves RIGHT NOW.
-var _brush_hint: Label = null
-
-var _dirty_chunks: Dictionary = {}
-
-# ── Stroke-level undo/redo (image mode) ──────────────────────────────────────
-# Image mode edits md in place, which on its own leaves no history. To make Ctrl+Z / Ctrl+Y
-# behave, we snapshot the heights at the START of a stroke (button pressed) and commit ONE
-# history step at its END (button released), rather than one per pixel.
-var _stroke_active := false
-var _stroke_before := PackedFloat32Array()
-
-# ── Dab spacing (throttle) ────────────────────────────────────────────────────
-# _sculpt runs on EVERY mouse move, and apply_brush walks (2r+1)² cells. Dragging slowly or
-# just a shaky hand turns that into dozens of overlapping dabs on one spot — pure waste. A new
-# dab is laid down only once the cursor has moved a fraction of the radius from the last one;
-# neighbouring dabs still overlap, so coverage does not suffer.
-const DAB_SPACING_FRAC := 0.25
-var _have_last_dab := false
-var _last_dab_pos  := Vector3.ZERO
-
-# ── Brush strength is a PERCENTAGE, not metres ───────────────────────────────
-# Strength used to be the height of one dab in world units (a 1..1000 slider holding
-# thousandths), and there was no way to reason about it. The same number built a mountain on a
-# 30 m map and did nothing on a 300 m one; worse, it meant the SAME rise for a three-metre brush
-# and a two-hundred-metre one, so a wide dab came out as a flat pancake and a narrow one as a
-# needle through the map.
-#
-# Now strength is a fraction of the MAP HEIGHT (the Height knob), and it scales WITH THE RADIUS:
-# at 100 % a radius-100 brush lifts by 10 % of the height, a radius-10 brush by 1 %. The dab
-# therefore keeps the same SLOPE whatever the brush size — a hill comes out shaped like a hill.
-const SCULPT_REF_RADIUS := 100.0   # the radius at which 100 % power == SCULPT_REF_FRAC of height
-const SCULPT_REF_FRAC   := 0.10
-
-## Metres per dab for raise/lower.
-func _brush_step() -> float:
-	return gen_amplitude * SCULPT_REF_FRAC * (brush_radius / SCULPT_REF_RADIUS) * brush_power
-
-## Weight for flatten. That one is a blend towards the average height, not metres, so it does
-## NOT scale with the radius: "smooth it halfway" has to mean the same thing at any brush size.
-func _brush_weight() -> float:
-	return clampf(brush_power, 0.0, 1.0)
-
-# Slider handlers are named methods rather than lambdas because they now do two things (write
-# the value and refresh the hint), and a multi-statement lambda in the middle of a call's
-# argument list is exactly the kind of code the parser trips over.
-func _set_brush_radius(v: float) -> void:
-	brush_radius = v
-	_update_brush_hint()
-	update_overlays()
-
-func _set_brush_power(v: float) -> void:
-	brush_power = v / 100.0
-	_update_brush_hint()
 
 func _set_gen_amplitude(v: float) -> void:
 	gen_amplitude = v
-	_update_brush_hint()   # brush metres are a share of the map height — they move with it
-
-## The percentage is predictable, but the world is built in metres: without this line "40 %"
-## says nothing about what one dab actually does.
-func _update_brush_hint() -> void:
-	if _brush_hint == null or not is_instance_valid(_brush_hint):
-		return
-	var pct := int(round(brush_power * 100.0))
-	if sculpt_mode == "flatten":
-		_brush_hint.text = "%d%% towards the average" % pct
-	else:
-		_brush_hint.text = "%d%% · %s m per dab" % [pct, _fmt(_brush_step(), 2)]
 
 # ---------- Noise generation parameters ----------
 # FIVE KNOBS FOR THE WHOLE TERRAIN, cut down from seventeen on purpose. A setting earns its place
@@ -147,10 +78,10 @@ var _gen_biomes_fallback: TerrainBiomes = null
 # The biome resource of the SELECTED terrain node. The dock's sliders edit that resource, so
 # the landform and the biome colour cannot drift apart.
 func _biomes() -> TerrainBiomes:
-	if sculpt_node != null and "biomes" in sculpt_node:
-		if sculpt_node.biomes == null:
-			sculpt_node.biomes = TerrainBiomes.new()
-		return sculpt_node.biomes
+	if map_node != null and "biomes" in map_node:
+		if map_node.biomes == null:
+			map_node.biomes = TerrainBiomes.new()
+		return map_node.biomes
 	if _gen_biomes_fallback == null:
 		_gen_biomes_fallback = TerrainBiomes.new()
 	return _gen_biomes_fallback
@@ -313,18 +244,18 @@ func _eta_text(frac: float) -> String:
 ## здесь НЕ ПРЕДЛАГАЕМ: карта уже посчитана и записана в файл, бросить сборку превью значило бы
 ## оставить в сцене меш от прошлой карты — то есть картинку, которая врёт про то, что на диске.
 func _rebuild_preview_with_progress(step_from: float, step_to: float) -> void:
-	if sculpt_node == null or not sculpt_node.has_method("editor_rebuild_begin"):
+	if map_node == null or not map_node.has_method("editor_rebuild_begin"):
 		return
-	var total: int = sculpt_node.editor_rebuild_begin()
-	while not sculpt_node.editor_rebuild_done():
-		var done: float = sculpt_node.editor_rebuild_progress()
+	var total: int = map_node.editor_rebuild_begin()
+	while not map_node.editor_rebuild_done():
+		var done: float = map_node.editor_rebuild_progress()
 		_progress_say("Building the preview — %d%% of %d chunks" % [int(done * 100.0), total],
 				lerpf(step_from, step_to, done))
 		await get_tree().process_frame
 	# Склейка одного меша из всех чанков — единственная часть, которую нельзя разложить на кадры.
 	_progress_say("Merging the mesh", step_to)
 	await get_tree().process_frame
-	sculpt_node.editor_rebuild_apply()
+	map_node.editor_rebuild_apply()
 
 
 # ─────────────────────────────────────────────────
@@ -395,9 +326,16 @@ func _slider(mn: float, mx: float, val: float, step: float = 0.0) -> HSlider:
 # Dock UI
 # ─────────────────────────────────────────────────
 func _enter_tree() -> void:
-	# Pull back the dock settings saved last time (brush + generation) so they do not have to
+	# Pull back the dock settings saved last time so they do not have to
 	# be dialled in again on every visit.
 	_load_settings()
+
+	# КАРТА СИДА — В ИНСПЕКТОРЕ НОДЫ, а не здесь (terrain_inspector.gd). Сид принадлежит ноде,
+	# и место ему рядом с остальными её свойствами; док остался про ЗАПЕЧЁННУЮ карту, у которой
+	# ноды с сидом нет вовсе.
+	_inspector = preload("res://addons/LiteTerrain/terrain_inspector.gd").new()
+	_inspector.undo_redo = get_undo_redo()
+	add_inspector_plugin(_inspector)
 
 	# Wrap everything in a ScrollContainer so the dock is scrollable on tablets
 	var scroll = ScrollContainer.new()
@@ -425,92 +363,9 @@ func _enter_tree() -> void:
 	create_btn.pressed.connect(_create_terrain)
 	panel.add_child(create_btn)
 
-	# ── World preview (чанковая земля) ───────────────────────────────────────
-	# У ЧАНКОВОЙ ЗЕМЛИ КАРТЫ ВЫСОТ НЕТ: она считается из сида на ходу. Значит «сгенерировать» у
-	# неё нечего и записывать некуда — можно только ПОСМОТРЕТЬ, что даёт сид, не запуская игру.
-	# Поэтому вместо всего остального дока тут две кнопки.
-	_chunk_ui = VBoxContainer.new()
-	_chunk_ui.visible = false
-	panel.add_child(_chunk_ui)
-	_chunk_ui.add_child(_sep())
-	_chunk_ui.add_child(_lbl("── World preview ──"))
-	var cseed_row := HBoxContainer.new()
-	_chunk_seed = SpinBox.new()
-	_chunk_seed.min_value = 0
-	_chunk_seed.max_value = 99999
-	_chunk_seed.value = gen_seed
-	_chunk_seed.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var cdice := Button.new()
-	cdice.text = "RND"
-	cdice.tooltip_text = "Random seed"
-	cdice.pressed.connect(func() -> void:
-		_chunk_seed.value = float(randi() % 100000))
-	cseed_row.add_child(_lbl_fixed("Seed"))
-	cseed_row.add_child(_chunk_seed)
-	cseed_row.add_child(cdice)
-	_chunk_ui.add_child(cseed_row)
-
-	var show_btn := Button.new()
-	show_btn.text = "Show world"
-	show_btn.tooltip_text = "Строит вокруг камеры ту же землю, что увидит игра с этим сидом. В сцену не пишется ничего."
-	show_btn.pressed.connect(_preview_world)
-	_chunk_ui.add_child(show_btn)
-
-	var clear_btn := Button.new()
-	clear_btn.text = "Clear"
-	clear_btn.pressed.connect(func() -> void:
-		if _is_chunk_terrain(chunk_node):
-			chunk_node.preview_clear())
-	_chunk_ui.add_child(clear_btn)
-
-	var cnote := _lbl("землю задаёт сид; карты высот у неё нет")
-	cnote.add_theme_font_size_override("font_size", 10)
-	cnote.modulate = Color(1, 1, 1, 0.6)
-	_chunk_ui.add_child(cnote)
-
 	# ── Всё остальное — про ЗАПЕЧЁННУЮ карту (фон меню, карты из файла) ──────
 	_map_ui = VBoxContainer.new()
 	panel.add_child(_map_ui)
-
-	# ── Sculpt ───────────────────────────────────────────────────────────────
-	_map_ui.add_child(_sep())
-	_map_ui.add_child(_lbl("── Sculpt ──"))
-	var modes := HBoxContainer.new()
-	modes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var group := ButtonGroup.new()
-	# ПОДПИСИ СЛОВАМИ, А НЕ ЗНАЧКАМИ. Здесь стояли ▲ ▼ ⬛, и у шрифта редактора их нет — на
-	# экране выходили пустые квадраты. Отрисовать их, как иконки в игре, тут нечем: это
-	# обычные Button в доке, а не свой Control с _draw; слово же читается всегда и на любой
-	# системе. Внутреннее имя режима (второй элемент) при этом не меняется.
-	for m in [["RAISE", "raise"], ["LOWER", "lower"], ["FLATTEN", "flatten"]]:
-		var b := Button.new()
-		b.text = String(m[0])
-		b.tooltip_text = String(m[1]).capitalize()
-		b.toggle_mode = true
-		b.button_group = group
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.button_pressed = sculpt_mode == String(m[1])
-		var mode_name := String(m[1])
-		b.pressed.connect(func() -> void:
-			sculpt_mode = mode_name
-			_update_brush_hint()
-			update_overlays()
-			_save_settings())
-		modes.add_child(b)
-	_map_ui.add_child(modes)
-	radius_slider = _slider_row(_map_ui, "Radius", 1.0, 200.0, brush_radius, 1.0,
-			_set_brush_radius, 0)
-	strength_slider = _slider_row(_map_ui, "Strength", 0.0, 100.0, brush_power * 100.0, 1.0,
-			_set_brush_power, 0)
-	_brush_hint = _lbl("")
-	_brush_hint.modulate = Color(1, 1, 1, 0.6)   # a caption under the sliders, not a setting
-	_map_ui.add_child(_brush_hint)
-	_update_brush_hint()
-	# ЗДЕСЬ НЕТ И НЕ ДОЛЖНО БЫТЬ НАСТРОЕК ПОКАЗА. Док — это инструмент СОЗДАНИЯ карты: сид,
-	# размер, форма, кисть, запекание. Всё, что решает, как карта ВЫГЛЯДИТ (в редакторе или в
-	# игре), живёт на самой ноде, в её группах экспортов. Отсюда уехала галочка «Preview detail»:
-	# она правила свойство ноды, то есть была здесь гостем. Теперь это `editor_detail` в группе
-	# «Editor only», и превью пересобирается прямо по клику в инспекторе.
 
 	# ── World ────────────────────────────────────────────────────────────────
 	_map_ui.add_child(_sep())
@@ -640,17 +495,17 @@ func _enter_tree() -> void:
 	_map_ui.add_child(_sep())
 	var gen_btn = Button.new()
 	gen_btn.text = "Generate Terrain"
-	gen_btn.tooltip_text = "Rebuilds the whole heightmap from the settings above. Hand sculpting is lost."
+	gen_btn.tooltip_text = "Пересобирает карту высот целиком по настройкам выше."
 	gen_btn.pressed.connect(_generate_noise)
 	_map_ui.add_child(gen_btn)
-	var warn := _lbl("rebuilds everything — sculpting is lost")
+	var warn := _lbl("перезаписывает файл высот целиком")
 	warn.add_theme_font_size_override("font_size", 10)
 	warn.modulate = Color(1, 1, 1, 0.6)
 	_map_ui.add_child(warn)
 
 	var bake_btn = Button.new()
 	bake_btn.text = "Bake to files"
-	bake_btn.tooltip_text = "One click: heightmap (.res) + preview mesh (.res) + greyscale PNG (for a minimap)."
+	bake_btn.tooltip_text = "Карта высот (.res) + внешний меш превью (.res)."
 	bake_btn.pressed.connect(_bake_and_export)
 	_map_ui.add_child(bake_btn)
 
@@ -660,6 +515,9 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	# Persist the dock state when the editor closes or the plugin is disabled.
 	_save_settings()
+	if _inspector != null:
+		remove_inspector_plugin(_inspector)
+		_inspector = null
 	if panel:
 		var scroll = panel.get_parent()
 		if scroll:
@@ -676,7 +534,7 @@ func _exit_tree() -> void:
 # is why there is no status line and no three wrapper functions any more.
 
 # ─────────────────────────────────────────────────
-# Persist the dock's brush + generation settings across editor sessions.
+# Persist the dock's generation settings across editor sessions.
 # Kept in the editor's per-project metadata (.godot/, not the repository), so every visit
 # restores the previous state instead of making you dial everything in again.
 # ─────────────────────────────────────────────────
@@ -688,12 +546,6 @@ func _save_settings() -> void:
 	if es == null:
 		return
 	es.set_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {
-		"brush_radius":        brush_radius,
-		# A NEW KEY rather than the old brush_strength: that one held METRES per dab, this one a
-		# 0..1 share. The two overlap in range, so the old value would be read silently and give a
-		# strength nobody asked for.
-		"brush_power":         brush_power,
-		"sculpt_mode":         sculpt_mode,
 		"gen_seed":            gen_seed,
 		"gen_scale":           gen_scale,
 		"gen_power":           gen_power,
@@ -713,9 +565,6 @@ func _load_settings() -> void:
 	var d = es.get_project_metadata(SETTINGS_META_SECTION, SETTINGS_META_KEY, {})
 	if typeof(d) != TYPE_DICTIONARY:
 		return
-	brush_radius     = float(d.get("brush_radius",     brush_radius))
-	brush_power      = clampf(float(d.get("brush_power", brush_power)), 0.0, 1.0)
-	sculpt_mode      = str(d.get("sculpt_mode",        sculpt_mode))
 	gen_seed         = int(d.get("gen_seed",           gen_seed))
 	gen_scale        = float(d.get("gen_scale",        gen_scale))
 	gen_power        = float(d.get("gen_power",        gen_power))
@@ -748,33 +597,23 @@ func _handles(object) -> bool:
 	return object is CollisionShape3D and _is_terrain(object.get_parent())
 
 func _edit(object) -> void:
-	# Switching the selected node drops an uncommitted stroke, so one terrain's "before"
-	# snapshot cannot be applied to another.
-	_stroke_active = false
-	_stroke_before = PackedFloat32Array()
-	_have_last_dab = false
-	# The rings belong to the terrain that WAS selected: keep them and they would hang over the
-	# viewport pointing at nothing until the next mouse move.
-	_brush_hit_ok = false
-	update_overlays()
 	# Чанковая земля показывает свою половину дока и прячет всё про карту высот.
 	chunk_node = object if _is_chunk_terrain(object) else null
 	# Выделили не рельеф — прежний остаётся выбранным. Перевести док на ноду без карты высот
 	# нельзя: у неё нечего ни читать, ни писать.
 	if _is_terrain(object):
-		sculpt_node = object
+		map_node = object
 	elif object is CollisionShape3D and _is_terrain(object.get_parent()):
-		sculpt_node = object.get_parent()
+		map_node = object.get_parent()
 	_sync_dock()
 
 ## Re-read into the dock whatever lives in the selected node's BIOME RESOURCE. Everything else in
 ## the dock belongs to the plugin itself: shared, and kept in the project metadata.
 func _sync_dock() -> void:
-	var on_chunk := _is_chunk_terrain(chunk_node)
-	if _chunk_ui != null and is_instance_valid(_chunk_ui):
-		_chunk_ui.visible = on_chunk
+	# Выбрали чанковую землю — доку показывать нечего: карты высот у неё нет, а сид и превью
+	# живут в её инспекторе (seed_browser.gd).
 	if _map_ui != null and is_instance_valid(_map_ui):
-		_map_ui.visible = not on_chunk
+		_map_ui.visible = not _is_chunk_terrain(chunk_node)
 	var b := _biomes()
 	if _cb_canyon != null and is_instance_valid(_cb_canyon):
 		_cb_canyon.set_pressed_no_signal(b.canyon_enabled)
@@ -788,314 +627,26 @@ func _sync_dock() -> void:
 		# the signal handler, so without it the handle moves and the label keeps the old value.
 		_sl_stratum.value = b.canyon_band_height
 
-## Показать мир по сиду. Строится вокруг камеры редактора, поэтому сначала кладём её ноде:
-## своей камеры у неё в редакторе нет.
-func _preview_world() -> void:
-	if not _is_chunk_terrain(chunk_node):
-		return
-	var cam := EditorInterface.get_editor_viewport_3d(0).get_camera_3d()
-	if cam != null and chunk_node.has_method("set_editor_camera"):
-		chunk_node.set_editor_camera(cam)
-	chunk_node.preview_build(int(_chunk_seed.value))
-
 # ─────────────────────────────────────────────────
-# Viewport input (sculpting)
+# Viewport input
 # ─────────────────────────────────────────────────
+## КАМЕРА РЕДАКТОРА — ЕДИНСТВЕННОЕ, ЧТО ДОК БЕРЁТ ИЗ ВЬЮПОРТА. Здесь была кисть: перехват
+## колеса, разбор нажатий, шаг мазка, рейкаст в карту высот. Лепить руками больше нечего —
+## землю задаёт сид, и посмотреть десяток сидов быстрее, чем выгладить один холм.
 func _forward_3d_gui_input(viewport_camera: Camera3D, event: InputEvent) -> int:
-	# Камера редактора нужна и чанковой земле: по ней она выбирает уровни превью.
 	if _is_chunk_terrain(chunk_node) and chunk_node.has_method("set_editor_camera"):
 		chunk_node.set_editor_camera(viewport_camera)
-	if sculpt_node == null:
-		return EditorPlugin.AFTER_GUI_INPUT_PASS
-
-	# Feed the editor camera so map.gd can drive its editor LOD (editor_lod).
-	if sculpt_node.has_method("set_editor_camera"):
-		sculpt_node.set_editor_camera(viewport_camera)
-
-	# Track the point under the cursor even with no button held: that is what the brush rings
-	# are drawn around. Doing it here (and not only while painting) is the whole point — the
-	# brush has to be visible BEFORE the click, otherwise its size is a guess.
-	if event is InputEventMouseMotion:
-		_brush_cam = viewport_camera
-		var over = _ray_ground(viewport_camera, event.position)
-		_brush_hit_ok = over != null
-		if _brush_hit_ok:
-			_brush_hit = over
-		update_overlays()
-
-	if event is InputEventMouseButton:
-		# The wheel sizes the brush. Its range matches the slider (1..200), otherwise scrolling
-		# would knock a large radius back down to 20. The step scales with the radius so big
-		# brushes are reachable in a sane number of turns.
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			brush_radius = clamp(brush_radius + maxf(1.0, brush_radius * 0.15), 1.0, 200.0)
-			radius_slider.value = brush_radius   # its handler refreshes the hint and the rings
-			return EditorPlugin.AFTER_GUI_INPUT_STOP
-		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			brush_radius = clamp(brush_radius - maxf(1.0, brush_radius * 0.15), 1.0, 200.0)
-			radius_slider.value = brush_radius
-			return EditorPlugin.AFTER_GUI_INPUT_STOP
-
-		if (event.button_index == MOUSE_BUTTON_LEFT or event.button_index == MOUSE_BUTTON_RIGHT) and not event.pressed:
-			if _dirty_chunks.size() > 0 and sculpt_node and sculpt_node.has_method("update_chunks"):
-				sculpt_node.update_chunks(_dirty_chunks.keys())
-				_dirty_chunks.clear()
-			# The stroke ends when the button is released and no OTHER brush button is held.
-			var other := MOUSE_BUTTON_RIGHT if event.button_index == MOUSE_BUTTON_LEFT else MOUSE_BUTTON_LEFT
-			if not Input.is_mouse_button_pressed(other):
-				_have_last_dab = false            # the next stroke starts with clean spacing
-				if _stroke_active:
-					_commit_stroke_undo()
-			return EditorPlugin.AFTER_GUI_INPUT_PASS
-
-	if event is InputEventMouseMotion or event is InputEventMouseButton:
-		var left  = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-		var right = Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)
-
-		if not left and not right:
-			return EditorPlugin.AFTER_GUI_INPUT_PASS
-
-		var hit = _ray_ground(viewport_camera, event.position)
-		if hit == null:
-			return EditorPlugin.AFTER_GUI_INPUT_PASS
-		var hit_pos: Vector3 = hit
-
-		var raise = left
-		if sculpt_mode == "lower":
-			raise = false
-		elif sculpt_mode == "raise":
-			raise = true
-
-		# Spacing: skip the dab unless the cursor has moved a fraction of the radius from the
-		# last one. The first dab of a stroke always lands (_have_last_dab = false). The event
-		# is consumed either way (STOP) so the camera does not drift while painting.
-		var spacing := maxf(1.0, brush_radius * DAB_SPACING_FRAC)
-		if _have_last_dab and hit_pos.distance_to(_last_dab_pos) < spacing:
-			return EditorPlugin.AFTER_GUI_INPUT_STOP
-		_last_dab_pos = hit_pos
-		_have_last_dab = true
-
-		_sculpt(hit_pos, raise)
-		return EditorPlugin.AFTER_GUI_INPUT_STOP
-
+	if map_node != null and map_node.has_method("set_editor_camera"):
+		map_node.set_editor_camera(viewport_camera)
 	return EditorPlugin.AFTER_GUI_INPUT_PASS
-
-## The ground point under a viewport position, or null. ONE function for both worlds: the dab
-## and the brush cursor have to agree on where the brush is, and two copies of this would drift
-## apart the moment one of the two modes changed.
-func _ray_ground(cam: Camera3D, screen_pos: Vector2) -> Variant:
-	if sculpt_node == null or cam == null:
-		return null
-	var ray_origin := cam.project_ray_origin(screen_pos)
-	var ray_dir    := cam.project_ray_normal(screen_pos)
-	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-		# Image mode: hit the heightmap by ray-marching it — no physics shape needed.
-		return sculpt_node.raycast_heightmap(ray_origin, ray_dir)
-	# sculpt_node is untyped (it is whatever the editor selected), so nothing here can be
-	# inferred with := — the parser refuses to guess a type off a Variant call.
-	var space: PhysicsDirectSpaceState3D = sculpt_node.get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(ray_origin, ray_origin + ray_dir * 1000.0)
-	query.collide_with_bodies = true
-	var result: Dictionary = space.intersect_ray(query)
-	if result.is_empty():
-		return null
-	return result.position
-
-# ─────────────────────────────────────────────────
-# Brush cursor: TWO rings, drawn OVER the viewport
-# ─────────────────────────────────────────────────
-# There was no brush cursor at all: the radius was a number in the dock, and where it landed was
-# only visible after the dab. Rings are drawn as 2D over the viewport rather than as a mesh in
-# the scene — a mesh would need a node, a material and a place in the tree of somebody else's
-# scene, and would still be hidden by the very hill being sculpted.
-#
-# TWO rings, because strength now depends on the radius (see SCULPT_REF_RADIUS): the outer one is
-# the reach, where the falloff has run down to zero, and the inner one is the core that moves by
-# the full step. The inner one is a TENTH of the outer, which is exactly the ratio in the
-# strength rule — a radius-100 brush shows what a radius-10 brush would cover.
-const BRUSH_CORE_FRAC := 0.1
-const BRUSH_RING_SEGS := 56
-
-var _brush_cam: Camera3D = null
-var _brush_hit: Vector3 = Vector3.ZERO
-var _brush_hit_ok := false
-
-func _forward_3d_draw_over_viewport(overlay: Control) -> void:
-	if not _brush_hit_ok or sculpt_node == null:
-		return
-	if _brush_cam == null or not is_instance_valid(_brush_cam):
-		return
-	var col := Color(0.35, 1.0, 0.55, 0.9)          # raise
-	if sculpt_mode == "lower":
-		col = Color(1.0, 0.5, 0.25, 0.9)
-	elif sculpt_mode == "flatten":
-		col = Color(0.45, 0.75, 1.0, 0.9)
-	_draw_ring(overlay, brush_radius, col, 2.0)
-	_draw_ring(overlay, brush_radius * BRUSH_CORE_FRAC, Color(col, 0.45), 1.0)
-
-## One ring, laid ON the ground rather than on a flat disc: on a slope a flat circle sinks into
-## the hill and stops saying anything about what the brush will touch.
-func _draw_ring(overlay: Control, radius: float, col: Color, width: float) -> void:
-	if radius < 0.05:
-		return
-	var pts := PackedVector2Array()
-	for i in BRUSH_RING_SEGS + 1:
-		var a := TAU * float(i) / float(BRUSH_RING_SEGS)
-		var p := _brush_hit + Vector3(cos(a) * radius, 0.0, sin(a) * radius)
-		if sculpt_node.has_method("terrain_height_at"):
-			p.y = sculpt_node.terrain_height_at(p)
-		# A point BEHIND the camera unprojects to a mirrored dot in front of it, and joining it
-		# to its neighbours throws a stray line across the whole viewport. Break the line there.
-		if _brush_cam.is_position_behind(p):
-			if pts.size() > 1:
-				overlay.draw_polyline(pts, col, width)
-			pts = PackedVector2Array()
-			continue
-		pts.append(_brush_cam.unproject_position(p))
-	if pts.size() > 1:
-		overlay.draw_polyline(pts, col, width)
-
-# ─────────────────────────────────────────────────
-# Sculpt brush
-# ─────────────────────────────────────────────────
-func _sculpt(hit_pos: Vector3, raise: bool) -> void:
-	# Image mode: edit the heightmap array directly, no HeightMapShape3D involved.
-	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-		# Start of a stroke: snapshot the heights BEFORE any edits, once per stroke, for undo.
-		if not _stroke_active:
-			_stroke_before = sculpt_node.get_heights().duplicate()
-			_stroke_active = true
-		var mode_int := 0
-		if sculpt_mode != "flatten":
-			mode_int = 1 if raise else -1
-		# Two different quantities behind one argument: metres for raise/lower, a blend weight
-		# for flatten. apply_brush uses it accordingly, so pick it here by mode.
-		var power: float = _brush_weight() if mode_int == 0 else _brush_step()
-		var dirty: PackedInt32Array = sculpt_node.apply_brush(
-				hit_pos, brush_radius, power, mode_int)
-		for ci in dirty:
-			_dirty_chunks[ci] = true
-		return
-
-	var col_shape = sculpt_node.get_node("CollisionShape3D")
-	if col_shape == null:
-		return
-	var shape = col_shape.shape
-	if not shape is HeightMapShape3D:
-		return
-
-	var width        = shape.map_width
-	var depth        = shape.map_depth
-	var map_data_old = shape.map_data.duplicate()
-	var map_data     = shape.map_data
-
-	var local_pos = sculpt_node.to_local(hit_pos)
-	var cx = int(local_pos.x + width / 2.0)
-	var cz = int(local_pos.z + depth / 2.0)
-
-	var r     = int(ceil(brush_radius))
-	var x_min = clamp(cx - r, 0, width - 1)
-	var x_max = clamp(cx + r, 0, width - 1)
-	var z_min = clamp(cz - r, 0, depth - 1)
-	var z_max = clamp(cz + r, 0, depth - 1)
-
-	if sculpt_mode == "flatten":
-		var avg_height = 0.0
-		var count      = 0
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
-				var dx = x - cx
-				var dz = z - cz
-				if sqrt(dx*dx + dz*dz) <= brush_radius:
-					avg_height += map_data[z * width + x]
-					count += 1
-		if count > 0:
-			avg_height /= count
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
-				var dx   = x - cx
-				var dz   = z - cz
-				var dist = sqrt(dx*dx + dz*dz)
-				if dist <= brush_radius:
-					var falloff = 1.0 - (dist / brush_radius)
-					var index   = z * width + x
-					# Keep the lerp weight in [0,1], as in image mode: an unclamped *5 overshot
-					# the average at high strength and wrecked the map.
-					map_data[index] = lerp(map_data[index], avg_height, clampf(falloff * _brush_weight(), 0.0, 1.0))
-	else:
-		var step := _brush_step()
-		for z in range(z_min, z_max + 1):
-			for x in range(x_min, x_max + 1):
-				var dx   = x - cx
-				var dz   = z - cz
-				var dist = sqrt(dx*dx + dz*dz)
-				if dist <= brush_radius:
-					var falloff = 1.0 - (dist / brush_radius)
-					var index   = z * width + x
-					if raise:
-						map_data[index] += step * falloff
-					else:
-						map_data[index] -= step * falloff
-
-	var ur = get_undo_redo()
-	ur.create_action("Sculpt Terrain", UndoRedo.MERGE_ALL)
-	ur.add_do_property(shape, "map_data", map_data)
-	ur.add_undo_property(shape, "map_data", map_data_old)
-	ur.commit_action()
-
-	if sculpt_node.has_method("get_chunk_info"):
-		var info      = sculpt_node.get_chunk_info()
-		var cs        = info["chunk_size"]
-		var chunks_x  = info["chunks_x"]
-		var map_w     = info["map_width"]
-		var map_d     = info["map_depth"]
-		var chunks_z  = ceili(float(map_d - 1) / cs)
-		var total_chunks = chunks_x * chunks_z
-		var cx_center = int(local_pos.x + map_w / 2.0) / cs
-		var cz_center = int(local_pos.z + map_d / 2.0) / cs
-		var cr        = int(ceil(brush_radius / cs)) + 1
-		for dz in range(-cr, cr + 1):
-			for dx in range(-cr, cr + 1):
-				var ci = (cz_center + dz) * chunks_x + (cx_center + dx)
-				if ci >= 0 and ci < total_chunks:
-					_dirty_chunks[ci] = true
-
-# ─────────────────────────────────────────────────
-# End of an image-mode stroke → one undo/redo step.
-# The "before" snapshot was taken when the stroke began; here we take "after" and register an
-# action that swaps the whole heightmap between the two. Ctrl+Z restores "before", Ctrl+Y
-# "after". set_heightmap rebuilds the preview in full, and _persist_heightmap rewrites the
-# .res so the disk keeps up with undo/redo.
-# ─────────────────────────────────────────────────
-func _commit_stroke_undo() -> void:
-	_stroke_active = false
-	if sculpt_node == null or not (sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()):
-		return
-	var after: PackedFloat32Array = sculpt_node.get_heights().duplicate()
-	if _stroke_before.size() != after.size() or after.is_empty():
-		return
-	if _stroke_before == after:      # the stroke changed nothing — do not litter the history
-		return
-	var dims: Vector2i = sculpt_node.get_dims()
-	var ur = get_undo_redo()
-	ur.create_action("Sculpt Terrain", UndoRedo.MERGE_DISABLE, sculpt_node)
-	ur.add_do_method(sculpt_node, "set_heightmap", after, dims.x, dims.y)
-	ur.add_do_method(self, "_persist_heightmap")
-	ur.add_undo_method(sculpt_node, "set_heightmap", _stroke_before, dims.x, dims.y)
-	ur.add_undo_method(self, "_persist_heightmap")
-	# execute=false: the live md already equals "after", so there is no need to rebuild now.
-	ur.commit_action(false)
-	# ...but the .res on disk is still "before" — sync it once, after the stroke.
-	_persist_heightmap()
-	_stroke_before = PackedFloat32Array()
 
 # Rewrites the R32F heightmap into the file the node loads (its heightmap_path), so the disk
 # keeps up with sculpting and undo/redo. Without it, edits would live in memory until Bake.
 func _persist_heightmap() -> void:
-	if sculpt_node == null or not sculpt_node.has_method("get_heights"):
+	if map_node == null or not map_node.has_method("get_heights"):
 		return
-	var data: PackedFloat32Array = sculpt_node.get_heights()
-	var dims: Vector2i = sculpt_node.get_dims()
+	var data: PackedFloat32Array = map_node.get_heights()
+	var dims: Vector2i = map_node.get_dims()
 	if dims.x <= 0 or dims.y <= 0 or data.size() != dims.x * dims.y:
 		return
 	var img := Image.create_from_data(dims.x, dims.y, false, Image.FORMAT_RF, data.to_byte_array())
@@ -1114,8 +665,8 @@ const MESH_PATH      := "res://addons/LiteTerrain/terrain_mesh.res"
 # generation write to one place while the node loads from another, and the terrain comes back
 # empty after a reopen. Falls back to the constant when the node's path is blank.
 func _heightmap_target() -> String:
-	if sculpt_node != null:
-		var p := str(sculpt_node.get("heightmap_path"))
+	if map_node != null:
+		var p := str(map_node.get("heightmap_path"))
 		if p != "":
 			return p
 	return HEIGHTMAP_PATH
@@ -1149,37 +700,34 @@ func _new_heightmap_path(root: Node, node_name: String) -> String:
 ##
 ## The addon's own demo scene keeps the default: that file IS its map.
 func _ensure_own_heightmap() -> void:
-	if sculpt_node == null:
+	if map_node == null:
 		return
-	var p := str(sculpt_node.get("heightmap_path"))
+	var p := str(map_node.get("heightmap_path"))
 	if p != "" and p != HEIGHTMAP_PATH:
 		return
 	var root := EditorInterface.get_edited_scene_root()
 	if root == null or str(root.scene_file_path).begins_with("res://addons/LiteTerrain/"):
 		return
-	var np := _new_heightmap_path(root, str(sculpt_node.name))
-	sculpt_node.set("heightmap_path", np)
+	var np := _new_heightmap_path(root, str(map_node.name))
+	map_node.set("heightmap_path", np)
 	if EditorInterface.has_method("mark_scene_as_unsaved"):
 		EditorInterface.mark_scene_as_unsaved()
 	print("LiteTerrain: this terrain was sharing the addon's default heightmap with every other "
 			+ "scene in the project. It writes to %s from now on — save the scene." % np)
 
-# The heightmap PNG goes next to the heightmap itself (in the heightmap_path folder) rather
-# than the project root, so the plugin does not litter someone else's res://.
-func _heightmap_png_target() -> String:
-	return _heightmap_target().get_base_dir().path_join("terrain_heightmap.png")
-
-# One "Bake -> files" button: heightmap, preview mesh and PNG in a single click.
-## ЗАПЕКАНИЕ ТОЖЕ ПОД ОКНОМ. Оно пишет четыре файла подряд, и три из них — полный проход по
-## карте (таблица мин/макс на чанк, дамп высот, перевод высот в серый PNG). На 1984² это
-## секунды-десятки секунд молчания с застывшим редактором, неотличимые от зависания; а кнопка
-## одна, и понять, на каком она файле, было неоткуда. Между файлами отдаём кадр редактору —
-## тогда полоса и подпись успевают перерисоваться.
+# One "Bake -> files" button: heightmap and the external preview mesh.
+## ЗАПЕКАНИЕ ТОЖЕ ПОД ОКНОМ: полный проход по карте на 1984² — это секунды молчания с
+## застывшим редактором, неотличимые от зависания. Между файлами отдаём кадр редактору, тогда
+## полоса успевает перерисоваться.
+##
+## СЕРОГО PNG ЗДЕСЬ БОЛЬШЕ НЕТ. Он писался «для миникарты», миникарты в игре нет и не было
+## (радар читает данные о жилах, а не картинку), и ни одна сцена его не загружала: чистый
+## проход по всей карте ради файла, который никто не открывает.
 ##
 ## Тот же флаг _generating, что и у генерации: окно прогресса одно на двоих, и запустить
 ## запекание поверх генерации значило бы, что один закроет окно другого.
 func _bake_and_export() -> void:
-	if sculpt_node == null:
+	if map_node == null:
 		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
 		return
 	_ensure_own_heightmap()   # a map per terrain, not one shared by every scene
@@ -1190,15 +738,12 @@ func _bake_and_export() -> void:
 	_progress_say("Heightmap (.res)", 0.0)
 	await get_tree().process_frame
 	_bake_heightmap()
-	_progress_say("Greyscale PNG", 0.75)
-	await get_tree().process_frame
-	_generate_png()
 	_progress_say("Done", 1.0)
 	await get_tree().process_frame
 	_progress_close()
 
 func _bake_heightmap() -> void:
-	if sculpt_node == null:
+	if map_node == null:
 		push_warning("LiteTerrain: select the terrain StaticBody3D node first")
 		return
 
@@ -1206,14 +751,14 @@ func _bake_heightmap() -> void:
 	var depth: int
 	var data: PackedFloat32Array
 
-	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
+	if map_node.has_method("is_image_mode") and map_node.is_image_mode():
 		# Image mode: the heights live in md, not in the CollisionShape3D.
-		var dims: Vector2i = sculpt_node.get_dims()
+		var dims: Vector2i = map_node.get_dims()
 		width  = dims.x
 		depth  = dims.y
-		data   = sculpt_node.get_heights()
+		data   = map_node.get_heights()
 	else:
-		var col_shape = sculpt_node.get_node_or_null("CollisionShape3D")
+		var col_shape = map_node.get_node_or_null("CollisionShape3D")
 		if col_shape == null or not (col_shape.shape is HeightMapShape3D):
 			push_warning("LiteTerrain: no HeightMapShape3D found on the selected node")
 			return
@@ -1258,8 +803,8 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 		push_error("LiteTerrain: could not write %s" % path)
 		return
 	var cs: int = 16
-	if sculpt_node != null and "chunk_size" in sculpt_node:
-		cs = maxi(int(sculpt_node.chunk_size), 1)
+	if map_node != null and "chunk_size" in map_node:
+		cs = maxi(int(map_node.chunk_size), 1)
 	var cx: int = ceili(float(width - 1) / float(cs))
 	var cz: int = ceili(float(depth - 1) / float(cs))
 	f.store_32(STREAM_MAGIC)
@@ -1296,7 +841,7 @@ func _bake_stream_file(width: int, depth: int, data: PackedFloat32Array) -> void
 	# Without this the generated ArrayMesh is unique-to-scene and gets embedded into the
 	# .tscn on save (bloat + manual re-link each time). take_over_path() makes the live
 	# mesh point at the file, so the scene just references it externally.
-	var mi = sculpt_node.get_node_or_null("MeshInstance3D")
+	var mi = map_node.get_node_or_null("MeshInstance3D")
 	if mi != null and mi.mesh != null:
 		var merr := ResourceSaver.save(mi.mesh, MESH_PATH)
 		if merr == OK:
@@ -1358,65 +903,11 @@ func _create_terrain() -> void:
 			% [NEW_MAP_SIZE, NEW_MAP_SIZE, hm])
 
 # ─────────────────────────────────────────────────
-# Exports the heightmap as a greyscale PNG (heights normalised into 0..255) — useful for a
-# minimap or for editing elsewhere. The data is sourced exactly as baking sources it.
-# ─────────────────────────────────────────────────
-func _generate_png() -> void:
-	if sculpt_node == null:
-		push_warning("LiteTerrain: select a terrain node")
-		return
-	var width: int
-	var depth: int
-	var data: PackedFloat32Array
-	if sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode():
-		var dims: Vector2i = sculpt_node.get_dims()
-		width = dims.x
-		depth = dims.y
-		data  = sculpt_node.get_heights()
-	else:
-		var col = sculpt_node.get_node_or_null("CollisionShape3D")
-		if col == null or not (col.shape is HeightMapShape3D):
-			push_warning("LiteTerrain: no HeightMapShape3D")
-			return
-		width = col.shape.map_width
-		depth = col.shape.map_depth
-		data  = col.shape.map_data
-	if width <= 0 or depth <= 0 or data.size() != width * depth:
-		push_error("LiteTerrain: bad heightmap (%d values for %dx%d)" % [data.size(), width, depth])
-		return
-
-	var mn := INF
-	var mx := -INF
-	for h in data:
-		mn = minf(mn, h)
-		mx = maxf(mx, h)
-	var rng := maxf(mx - mn, 0.0001)
-
-	# ЧЕРЕЗ БАЙТОВЫЙ БУФЕР, А НЕ set_pixel. Тот на каждый пиксель собирает Color и уходит в
-	# движок через Variant: на карте 1984² это без малого четыре миллиона таких вызовов, то
-	# есть минуты — и всё это молча, потому что до окна прогресса дело не доходило. Здесь
-	# байты пишутся в заранее выделенный массив, а картинка собирается из него одним вызовом.
-	var bytes := PackedByteArray()
-	bytes.resize(width * depth)
-	var k: float = 255.0 / rng
-	for i in width * depth:
-		bytes[i] = clampi(int((data[i] - mn) * k), 0, 255)
-	var img := Image.create_from_data(width, depth, false, Image.FORMAT_L8, bytes)
-
-	var png_path := _heightmap_png_target()
-	var err := img.save_png(png_path)
-	if err == OK:
-		print("LiteTerrain: heightmap PNG %dx%d -> %s (min %.1f, max %.1f)" % [width, depth, png_path, mn, mx])
-		EditorInterface.get_resource_filesystem().scan()
-	else:
-		push_error("LiteTerrain: could not save the PNG (error %d)" % err)
-
-# ─────────────────────────────────────────────────
 # Noise terrain generation
 # ─────────────────────────────────────────────────
 func _generate_noise() -> void:
 	_save_settings()   # commit the current generation parameters to disk
-	if sculpt_node == null:
+	if map_node == null:
 		push_warning("LiteTerrain: выдели ноду с картой высот (LiteTerrain). У чанковой земли "
 				+ "(ChunkTerrain в node_3d.tscn) карты высот нет — она считается из сида на ходу, "
 				+ "и генерировать для неё нечего.")
@@ -1434,7 +925,7 @@ func _generate_noise() -> void:
 	_progress_say("Preparing", 0.0)
 	await get_tree().process_frame
 
-	var image_mode: bool = sculpt_node.has_method("is_image_mode") and sculpt_node.is_image_mode()
+	var image_mode: bool = map_node.has_method("is_image_mode") and map_node.is_image_mode()
 	var width: int
 	var depth: int
 	var shape = null
@@ -1442,13 +933,13 @@ func _generate_noise() -> void:
 
 	if image_mode:
 		# Size from the Map Size field (0 = keep current). This is how the map grows.
-		var dims: Vector2i = sculpt_node.get_dims()
+		var dims: Vector2i = map_node.get_dims()
 		width  = gen_size if gen_size > 0 else dims.x
 		depth  = gen_size if gen_size > 0 else dims.y
 		if width  <= 0: width  = 512
 		if depth  <= 0: depth  = 512
 	else:
-		var col_shape = sculpt_node.get_node_or_null("CollisionShape3D")
+		var col_shape = map_node.get_node_or_null("CollisionShape3D")
 		if col_shape == null:
 			push_warning("LiteTerrain: no CollisionShape3D child found")
 			_progress_close()
@@ -1502,7 +993,7 @@ func _generate_noise() -> void:
 	# ship with the game. So the one number every metre value in the generator is a share of gets
 	# written onto the terrain node, into the scene, next to the map it belongs to. The game reads it
 	# to place the snow line and to generate more land that matches (see map.world_height).
-	sculpt_node.set("built_amplitude", gen_amplitude)
+	map_node.set("built_amplitude", gen_amplitude)
 	if EditorInterface.has_method("mark_scene_as_unsaved"):
 		EditorInterface.mark_scene_as_unsaved()
 
@@ -1519,7 +1010,7 @@ func _generate_noise() -> void:
 		var bake_mid: float = lerpf(bake.x, bake.y, 0.08)
 		_progress_say("Writing the heights", bake.x)
 		await get_tree().process_frame
-		sculpt_node.set_heightmap(new_data, width, depth, false)   # false: превью соберём сами
+		map_node.set_heightmap(new_data, width, depth, false)   # false: превью соберём сами
 		var img := Image.create_from_data(width, depth, false, Image.FORMAT_RF, new_data.to_byte_array())
 		var gm_path := _heightmap_target()
 		var gerr := ResourceSaver.save(img, gm_path)
@@ -1545,11 +1036,11 @@ func _generate_noise() -> void:
 	# Route BOTH the do and the undo through the node's apply_heightmap() so the whole
 	# action lives in the scene-node history. (Mixing add_do_property on the heightmap
 	# resource with add_do_method on the node caused "UndoRedo history mismatch".)
-	# custom_context = sculpt_node pins the action to the node's history as well.
+	# custom_context = map_node pins the action to the node's history as well.
 	var ur = get_undo_redo()
-	ur.create_action("Generate Terrain Noise", UndoRedo.MERGE_DISABLE, sculpt_node)
-	ur.add_do_method(sculpt_node, "apply_heightmap", new_data)
-	ur.add_undo_method(sculpt_node, "apply_heightmap", map_data_old)
+	ur.create_action("Generate Terrain Noise", UndoRedo.MERGE_DISABLE, map_node)
+	ur.add_do_method(map_node, "apply_heightmap", new_data)
+	ur.add_undo_method(map_node, "apply_heightmap", map_data_old)
 	ur.commit_action()
 	gen.queue_free()
 	_progress_close()

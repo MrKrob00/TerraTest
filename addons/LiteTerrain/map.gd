@@ -1,6 +1,6 @@
 # map.gd — the LiteTerrain terrain node: a StaticBody3D with HeightMapShape3D collision and an
 # ArrayMesh, plus quadtree LOD, streaming collision and the grass shader. The LiteTerrain dock
-# creates one at the press of a button and can generate, sculpt and bake it.
+# creates one at the press of a button and can generate and bake it.
 @tool
 class_name LiteTerrain
 extends StaticBody3D
@@ -12,7 +12,7 @@ extends StaticBody3D
 # игрок. Раньше список был один и плоский, и понять, какая настройка на что влияет, можно было
 # только по комментарию.
 #
-# Создание карты сюда не входит вовсе: сид, размер, форма рельефа и кисть живут в ДОКЕ плагина.
+# Создание карты сюда не входит вовсе: сид, размер и форма рельефа живут в ДОКЕ плагина.
 # У ноды нет ни одной настройки генерации, у дока — ни одной настройки показа.
 @export_group("Terrain")
 ## The camera LOD and culling are measured from. LEAVE IT EMPTY unless you need something
@@ -1583,42 +1583,6 @@ func _recompute_height_bound() -> void:
 			m = h
 	_md_max = m if md.size() > 0 else 0.0
 
-# Ray-march the heightmap; returns the world hit position or null. Lets the editor
-# sculpt with NO physics collision, so the giant HeightMapShape3D is never needed.
-func raycast_heightmap(from_world: Vector3, dir_world: Vector3) -> Variant:
-	if md.is_empty() or w <= 0:
-		return null
-	var inv := global_transform.affine_inverse()
-	var o := inv * from_world
-	var dir := (inv.basis * dir_world).normalized()
-	var max_t := float(maxi(w, d)) * 2.0
-	var t := 0.0
-	# Skip the empty air: while the ray is heading down and still above the tallest peak
-	# (_md_max) there is nothing to sample, so jump straight to the y = _md_max plane (minus one,
-	# to start slightly above it and keep prev_gap > 0). Safe, since no terrain exists above.
-	if dir.y < -1e-6 and o.y > _md_max:
-		t = maxf(0.0, (o.y - _md_max) / -dir.y - 1.0)
-	var p0 := o + dir * t
-	var prev_gap := p0.y - _sample_height_local(p0.x, p0.z)
-	while t < max_t:
-		t += 1.0
-		var p := o + dir * t
-		var gap := p.y - _sample_height_local(p.x, p.z)
-		if gap <= 0.0 and prev_gap > 0.0:
-			var lo := t - 1.0
-			var hi := t
-			for _i in 10:
-				var mid := (lo + hi) * 0.5
-				var pm := o + dir * mid
-				if pm.y - _sample_height_local(pm.x, pm.z) > 0.0:
-					lo = mid
-				else:
-					hi = mid
-			var ph := o + dir * hi
-			return global_transform * Vector3(ph.x, _sample_height_local(ph.x, ph.z), ph.z)
-		prev_gap = gap
-	return null
-
 # ── A LEVELLED BUILDING SITE ─────────────────────────────────────────────────
 # Level a piece of terrain IN GAME: heights, mesh and collision. Needed by everything that is
 # built INTO the world rather than placed on it — a quest base, future towers, any structure that
@@ -1772,72 +1736,6 @@ func _flatten_heights(center_world: Vector3, half_extent: Vector2, height: float
 				dirty.append(ci)
 	return dirty
 
-# In-place brush on md around a world centre; returns the editor chunk indices touched.
-# mode: 1 = raise, -1 = lower, 0 = flatten.
-func apply_brush(center_world: Vector3, radius: float, strength: float, mode: int) -> PackedInt32Array:
-	var dirty := PackedInt32Array()
-	if md.is_empty() or w <= 0:
-		return dirty
-	var local := global_transform.affine_inverse() * center_world
-	var cx := int(round(local.x + _cell_ox() - 0.5))
-	var cz := int(round(local.z + _cell_oz() - 0.5))
-	var r := int(ceil(radius))
-	var x_min := clampi(cx - r, 0, w - 1)
-	var x_max := clampi(cx + r, 0, w - 1)
-	var z_min := clampi(cz - r, 0, d - 1)
-	var z_max := clampi(cz + r, 0, d - 1)
-	# Hot path: it runs on EVERY mouse move across (2r+1)² cells. Hence squared distances for the
-	# rejection test (sqrt only for cells that pass), no Vector2 allocations, and the row base
-	# and constant factors hoisted out of the loop.
-	var r2 := radius * radius
-	var inv_r := 1.0 / radius
-	var avg := 0.0
-	if mode == 0:
-		var cnt := 0
-		for z in range(z_min, z_max + 1):
-			var dz := z - cz
-			var dz2 := dz * dz
-			var row := z * w
-			for x in range(x_min, x_max + 1):
-				var dx := x - cx
-				if dx * dx + dz2 <= r2:
-					avg += md[row + x]
-					cnt += 1
-		if cnt > 0:
-			avg /= float(cnt)
-
-	var add := float(mode) * strength      # raise/lower: the constant part, hoisted out
-	for z in range(z_min, z_max + 1):
-		var dz := z - cz
-		var dz2 := dz * dz
-		var row := z * w
-		for x in range(x_min, x_max + 1):
-			var dx := x - cx
-			var d2 := dx * dx + dz2
-			if d2 > r2:
-				continue
-			var falloff := 1.0 - sqrt(float(d2)) * inv_r
-			var idx := row + x
-			if mode == 0:
-				# Flatten pulls towards the average. The weight is in [0,1] (falloff <= 1,
-				# strength <= 1); the clamp guards against strength > 1, which would make the
-				# lerp overshoot the average and wreck the map.
-				md[idx] = lerp(md[idx], avg, clampf(falloff * strength, 0.0, 1.0))
-			else:
-				md[idx] += add * falloff
-				if md[idx] > _md_max:      # keep the height bound current, for the raycast
-					_md_max = md[idx]
-	# Touched editor chunks (so the plugin can rebuild just those).
-	if _ed_cx > 0:
-		var seen := {}
-		for cz2 in range(z_min / chunk_size, z_max / chunk_size + 1):
-			for cx2 in range(x_min / chunk_size, x_max / chunk_size + 1):
-				var ci := cz2 * _ed_cx + cx2
-				if not seen.has(ci):
-					seen[ci] = true
-					dirty.append(ci)
-	return dirty
-
 # Partial update — only rebuild the listed chunk indices.
 # In the editor this is the hot path on every sculpt stroke.
 func update_chunks(chunk_indices: Array) -> void:
@@ -1914,14 +1812,6 @@ func update_chunks(chunk_indices: Array) -> void:
 		if macro_mesh:
 			_macro_instances[mi].mesh = macro_mesh
 			_macro_instances[mi].set_surface_override_material(0, _mat_lod_high if _mat_lod_high else mat)
-
-func get_chunk_info() -> Dictionary:
-	return {
-		"chunk_size": chunk_size,
-		"chunks_x":   ceili(float(w - 1) / chunk_size),
-		"map_width":  w,
-		"map_depth":  d,
-	}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Editor chunk cache internals

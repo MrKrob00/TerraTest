@@ -550,9 +550,8 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 text = "<"
 
-[node name="map" type="StaticBody3D" parent="." unique_id=1582159453 node_paths=PackedStringArray("camera")]
+[node name="map" type="StaticBody3D" parent="." unique_id=1582159453]
 script = ExtResource("17_tuemg")
-camera = NodePath("../Vehicles/Camera Controller/SpringArm3D/Camera3D")
 biomes = SubResource("Resource_s0gvp")
 view_distance = 4000.0
 collision_radius = 48
