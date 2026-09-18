@@ -37,6 +37,14 @@ class_name WeaponBlock
 # ПЕРЕМЕННЫЕ, А НЕ КОНСТАНТЫ: сектор — свойство конкретного ствола, а не всех сразу. У мортиры
 # он узкий (она наводится корпусом и лишь подправляет), и константу подкласс переопределить не
 # может — пришлось бы городить вторую проверку конуса рядом с этой.
+## ЦВЕТ И СИЛА ВСПЫШКИ — ПЕРЕМЕННЫЕ, А НЕ КОНСТАНТЫ: подкласс ставит своё в _ready, как он уже
+## делает с сектором наведения и разбросом. У лазера это цвет болта, у остальных пороховой
+## оранжевый. Вспышка короткая: выстрел это событие на кадр-другой, а не фонарь на стволе.
+var flash_color: Color = Color(1.0, 0.72, 0.35)
+var flash_energy: float = 3.0
+const FLASH_RANGE := 6.0
+const FLASH_DUR := 0.09
+
 var yaw_limit: float = 75.0
 var pitch_limit: float = 40.0
 
@@ -389,6 +397,11 @@ func _handle_fire(delta: float) -> void:
 		return
 	_fire_timer = fire_rate
 	fire_bullet()
+	# ВСПЫШКА ЗДЕСЬ, А НЕ В fire_bullet. Дверь одна на все стволы и срабатывает ровно раз на
+	# выстрел: дробовик зовёт fire_bullet восемь раз подряд (по дробине), а мортира свой
+	# fire_bullet переопределила и super не зовёт вовсе. Отсюда видно всех и по одному разу.
+	BlockFX.flash(self, _muzzle_point().global_position, flash_color, flash_energy,
+			FLASH_RANGE, FLASH_DUR)
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")
@@ -439,6 +452,13 @@ func _on_bullet_expired(b: Area3D) -> void:
 ## старая пуля виляла в сторону.
 var last_fired: Area3D = null
 
+## ТОЧКА ДУЛА, в одном месте: у пушки это DrillBody2, у лазера такого узла нет — тогда Marker3D.
+## Спрашивают её двое, пуля и вспышка, и раньше поиск узла лежал прямо в fire_bullet; вторая
+## копия означала бы, что свет однажды зажжётся не там, откуда вылетела пуля.
+func _muzzle_point() -> Node3D:
+	var m: Node3D = $Pivot.get_node_or_null("DrillBody2")
+	return m if m != null else $Pivot/Marker3D
+
 func fire_bullet():
 	last_fired = null
 	if ammo == null:
@@ -453,12 +473,7 @@ func fire_bullet():
 	if not ("dir" in bullet):
 		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
 		return
-	# Дуло: у пушки это DrillBody2, у лазера такого узла нет — берём Marker3D как запасной,
-	# иначе $Pivot/DrillBody2 = null и падало "global_position on null instance".
-	var muzzle: Node3D = $Pivot.get_node_or_null("DrillBody2")
-	if muzzle == null:
-		muzzle = $Pivot/Marker3D
-	bullet.global_position = muzzle.global_position
+	bullet.global_position = _muzzle_point().global_position
 	bullet.dir = dir
 	if "shooter_blocks" in bullet:
 		bullet.shooter_blocks = get_parent()   # свип пропускает свой корпус (пуля рождается внутри)

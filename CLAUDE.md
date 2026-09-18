@@ -603,8 +603,18 @@ project: read it before claiming how anything works.
 - Fog distance follows the terrain the scene actually draws: the world fades 200→1100 m, the menu
   backdrop 110→330 against its `MENU_VIEW` of 320. It also hides the far edge where chunks stream
   in, so it buys frames as well as depth.
-- There is ONE light in the game — the directional sun. Not a single `OmniLight3D` or
-  `SpotLight3D` exists yet, so "light effects" today means emissive geometry plus glow.
+- REAL LIGHT IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`). Besides the directional
+  sun those are the only `OmniLight3D` in the game, and they are REUSED: a new flash takes the
+  oldest lamp, so a firefight costs six nodes rather than one per shot. Shadows are off on all of
+  them, and past `FLASH_DIST` (110 m) a flash is not lit at all — it lives a tenth of a second and
+  nobody sees it across the map. A flash with no scene falls back to the tree root: an empty
+  `current_scene` used to mean no light at all, and that fails SILENTLY — the effect does not
+  crash, it simply never appears.
+- THE DOOR FOR A MUZZLE FLASH IS `WeaponBlock._handle_fire`, NOT `fire_bullet`. The shotgun calls
+  `fire_bullet` once per pellet, eight times a shot, and the mortar overrides it without calling
+  `super` at all. `_handle_fire` sees every weapon exactly once per shot. Blast light goes in
+  `BlockFX.blast_cards`, the single door every explosion already passes through. Flash colour is a
+  VARIABLE (`flash_color`), set by a subclass in `_ready` like `yaw_limit` and `spread_deg`.
 - Two settings in `project.godot` flatten the picture on purpose, and both are speed:
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
   `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
