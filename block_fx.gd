@@ -43,8 +43,14 @@ const FLASH_DIST := 110.0
 static var _lamps: Array = []
 static var _lamp_at: int = 0
 
-## Вспышка в мировой точке. size — радиус шара в метрах, dur — за сколько гаснет.
-static func flash(anchor: Node, pos: Vector3, col: Color, size: float, dur: float) -> void:
+## Вспышка у дула. dir — куда смотрит ствол: вспышка ВЫТЯНУТА ПО НЕМУ и смещена вперёд.
+##
+## ШАР БЫЛ НЕВЕРНЫМ РЕШЕНИЕМ, и игрок сказал об этом прямо. Выстрел — событие направленное, а шар
+## вокруг ствола не сообщает ни направления, ни того, что вообще произошло: он читается как
+## лампочка на оружии. Здесь конус: узкий у дула, раскрытый вперёд, вытянутый вдоль выстрела.
+## Это силуэт дульного пламени, а не абстрактная точка света.
+static func flash(anchor: Node, pos: Vector3, col: Color, size: float, dur: float,
+		dir: Vector3 = Vector3.ZERO) -> void:
 	if anchor == null or not is_instance_valid(anchor) or not anchor.is_inside_tree():
 		return
 	var tree := anchor.get_tree()
@@ -60,18 +66,30 @@ static func flash(anchor: Node, pos: Vector3, col: Color, size: float, dur: floa
 	var lamp := _take_lamp(host)
 	if lamp == null:
 		return
-	lamp.global_position = pos
-	lamp.scale = Vector3.ONE * size
-	var mat := lamp.material_override as StandardMaterial3D
+	var fwd: Vector3 = dir
+	if fwd.length_squared() < 0.0001:
+		fwd = (pos - cam.global_position)      # без направления (взрыв) — от камеры, то есть «на нас»
+	fwd = fwd.normalized() if fwd.length_squared() > 0.0001 else Vector3.FORWARD
+	# Смещаем ВПЕРЁД от дула на половину длины: иначе половина пламени торчит внутрь ствола.
+	lamp.global_position = pos + fwd * size * 0.9
+	if absf(fwd.dot(Vector3.UP)) < 0.99:
+		lamp.look_at(lamp.global_position + fwd, Vector3.UP)
+	var mi := lamp.get_child(0) as MeshInstance3D
+	if mi == null:
+		return
+	# Масштаб В ОСЯХ МЕША: x/z — толщина, y — длина вдоль выстрела (см. разворот в _take_lamp).
+	mi.scale = Vector3(size, size * 2.4, size)
+	var mat := mi.material_override as StandardMaterial3D
 	if mat != null:
-		mat.albedo_color = Color(col.r, col.g, col.b, 0.9)
+		mat.albedo_color = Color(col.r, col.g, col.b, 0.95)
 		mat.emission = col
 	lamp.visible = true
 	var tw := lamp.create_tween()
 	tw.set_parallel(true)
-	# Гаснет И РАСТЁТ: вспышка на два кадра читается как расширяющийся шар лучше, чем как
-	# просто темнеющий — глаз ловит движение быстрее, чем яркость.
-	tw.tween_property(lamp, "scale", Vector3.ONE * size * 1.8, dur).set_ease(Tween.EASE_OUT)
+	# Вытягивается ВПЕРЁД и гаснет: рост вдоль ствола читается как выброс, а рост во все стороны —
+	# как надувающийся шарик, чем прошлая версия и была.
+	tw.tween_property(mi, "scale", Vector3(size * 0.5, size * 3.4, size * 0.5), dur) \
+			.set_ease(Tween.EASE_OUT)
 	if mat != null:
 		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(_hide_lamp.bind(lamp))
@@ -79,34 +97,46 @@ static func flash(anchor: Node, pos: Vector3, col: Color, size: float, dur: floa
 	# kill_tweens у Node нет, поэтому ссылку храним сами.
 	lamp.set_meta("fx_tw", tw)
 
-static func _take_lamp(root: Node) -> MeshInstance3D:
+## Пул держит УЗЕЛ-ДЕРЖАТЕЛЬ, а конус лежит его ребёнком, и это не украшение. look_at ставит
+## поворот НА УЗЕЛ, то есть затирает любой предварительный разворот меша; а меш цилиндра растёт
+## по своему Y, тогда как взгляд идёт по -Z. Держать и то и другое на одном узле нельзя: либо
+## конус смотрит не туда, либо неравномерный масштаб родителя перекашивает повёрнутого ребёнка.
+##
+## Поэтому: РОДИТЕЛЬ — положение и поворот, РЕБЁНОК — разворот меша и масштаб в своих осях.
+static func _take_lamp(root: Node) -> Node3D:
 	for i in range(_lamps.size() - 1, -1, -1):
 		if not is_instance_valid(_lamps[i]):
 			_lamps.remove_at(i)
 	if _lamps.size() < LAMPS:
-		var made := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 1.0
-		sm.height = 2.0
-		sm.radial_segments = 8          # шар живёт два кадра: больше граней тут не видно
-		sm.rings = 4
-		made.mesh = sm
+		var made := Node3D.new()
+		var mi := MeshInstance3D.new()
+		# КОНУС, А НЕ ШАР. Вершина у дула, раскрытие вперёд — силуэт дульного пламени.
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = 0.5
+		cm.height = 1.0
+		cm.radial_segments = 8          # живёт четыре кадра: больше граней тут не видно
+		cm.rings = 0
+		mi.mesh = cm
+		# −90° по X переводит собственный +Y цилиндра в −Z родителя, то есть в направление взгляда.
+		mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
 		var m := StandardMaterial3D.new()
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
 		m.emission_enabled = true
 		m.emission_energy_multiplier = 4.0
-		made.material_override = m
-		made.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		made.add_child(mi)
 		made.visible = false
-
 		root.add_child(made)
 		_lamps.append(made)
 		return made
 	if _lamp_at >= _lamps.size():
 		_lamp_at = 0
-	var lamp: MeshInstance3D = _lamps[_lamp_at]
+	var lamp: Node3D = _lamps[_lamp_at]
 	_lamp_at = (_lamp_at + 1) % _lamps.size()
 	if lamp.has_meta("fx_tw"):               # get_meta без has_meta падает, см. правило 4
 		var old: Variant = lamp.get_meta("fx_tw")
@@ -114,7 +144,7 @@ static func _take_lamp(root: Node) -> MeshInstance3D:
 			(old as Tween).kill()
 	return lamp
 
-static func _hide_lamp(lamp: MeshInstance3D) -> void:
+static func _hide_lamp(lamp: Node3D) -> void:
 	if is_instance_valid(lamp):
 		lamp.visible = false           # погасшая вспышка не должна стоить ничего
 
@@ -427,82 +457,69 @@ static func hp_overlay(block: Node3D) -> MeshInstance3D:
 
 # Коробка эффекта не может быть больше этого по каждой оси: страховка от FX-мешей
 # (луч лазера в момент выстрела и т.п.), которые не описывают сам блок.
-# ── Материализация МАШИНЫ ЦЕЛИКОМ ────────────────────────────────────────────────
+# ── Материализация МАШИНЫ: экран между камерой и ней ─────────────────────────────
 #
-# mode 0 у block_matrix уже делает нужное — «собирается снизу вверх, ниже фронта виден настоящий
-# блок». Но делает это НА БЛОК: позови его на сорок блоков сразу, и сорок фронтов поедут каждый
-# по своему кубику одновременно. Машина должна проявляться ОДНИМ фронтом по всему корпусу.
+# ДВЕ ПРОШЛЫЕ ПОПЫТКИ БЫЛИ ОБОЛОЧКАМИ, И ОБЕ ПРОВАЛИЛИСЬ. На чанках земли глитч поверх
+# поверхности прочитался как поломка рендера; на машине по оболочке на блок — как сорок
+# независимых фронтов. Общее у них одно: глитч был НА предмете.
 #
-# Поэтому общий прогресс переводится в прогресс КАЖДОГО блока по его месту в корпусе: фронт идёт
-# от низа машины к верху, и блок получает свою долю ровно тогда, когда фронт проходит через него.
-# Колёса проявляются раньше кабины, потому что они ниже, — а не потому, что им так сказали.
+# Здесь он НА МЕСТЕ предмета. Один билборд закрывает машину со стороны взгляда и расступается от
+# краёв к центру, открывая её. Игрок видит не машину в глитчах, а глитч, из которого машина
+# выходит. Билборд — потому что камера во время спавна может ехать (облёт), и эффект обязан
+# оставаться между ней и машиной, а не показаться с ребра.
 #
-# ПО МАТЕРИАЛУ НА БЛОК, И ЭТО НАМЕРЕННО. Общий материал означал бы один progress на всех, то есть
-# ту же кашу из сорока одновременных фронтов. Материалов это не ограничивает — ограничены
-# instance uniform'ы (см. правило в CLAUDE.md), а их здесь нет вовсе.
-const MAT_DUR := 1.4
-const MAT_CELLS := 5.0
+# ОДИН УЗЕЛ НА МАШИНУ, не сорок: и дешевле, и это единственный способ получить ОДИН фронт.
+const SPAWN_SHADER := preload("res://spawn_glitch.gdshader")
+const SPAWN_DUR := 1.1
+const SPAWN_PAD := 1.35        # насколько шире силуэта, чтобы края машины не торчали из-под глитча
 
-## Проявить машину целиком. Зовётся на спавне; самоочищается, ничего возвращать не нужно.
-static func materialise(machine: Node3D, dur: float = MAT_DUR) -> void:
+## Проявить машину. Зовётся на спавне; самоочищается.
+static func materialise(machine: Node3D, dur: float = SPAWN_DUR) -> void:
 	if machine == null or not is_instance_valid(machine) or not machine.is_inside_tree():
 		return
 	var holder: Node = machine.get_node_or_null("blocks")
 	if holder == null:
 		return
-	var shells: Array = []
-	var lo: float = INF
-	var hi: float = -INF
+	# Радиус силуэта — по самому дальнему блоку от центра машины. Габарит берём из сетки, а не
+	# из мирового AABB: повёрнутая машина дала бы раздутую коробку и глитч вдвое больше нужного.
+	var r: float = 1.2
+	var mid := Vector3.ZERO
+	var n := 0
 	for b in holder.get_children():
 		var nb := b as Node3D
 		if nb == null or nb.has_meta("block_fx"):
 			continue
-		var aabb := _local_aabb(nb)
-		if aabb.size == Vector3.ZERO:
-			continue
-		# Высота блока в осях МАШИНЫ берётся по его позиции в сетке, а не по его локальному
-		# aabb: повёрнутый блок всё равно занимает свою клетку, и фронт обязан идти по корпусу.
-		var mid: float = nb.position.y
-		var half: float = maxf(aabb.size.y, 0.2) * 0.5
-		lo = minf(lo, mid - half)
-		hi = maxf(hi, mid + half)
-		var fx := MeshInstance3D.new()
-		var bm := BoxMesh.new()
-		bm.size = Vector3.ONE
-		fx.mesh = bm
-		fx.set_meta("block_fx", true)
-		fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var mat := ShaderMaterial.new()
-		mat.shader = SHADER
-		mat.set_shader_parameter("mode", 0)
-		mat.set_shader_parameter("progress", 0.0)
-		mat.set_shader_parameter("cells_per_meter", MAT_CELLS)
-		mat.set_shader_parameter("seed", randf() * 100.0)
-		fx.material_override = mat
-		nb.add_child(fx)
-		fx.transform = Transform3D(Basis().scaled(aabb.size * 1.03 + Vector3(0.02, 0.02, 0.02)),
-				aabb.get_center())
-		shells.append({"mi": fx, "mat": mat, "lo": mid - half, "h": half * 2.0})
-	if shells.is_empty():
+		mid += nb.position
+		n += 1
+	if n == 0:
 		return
-	# Твин живёт НА МАШИНЕ: погибла машина — оболочки уходят вместе с ней, и обновлять уже нечего.
+	mid /= float(n)
+	for b in holder.get_children():
+		var nb := b as Node3D
+		if nb == null or nb.has_meta("block_fx"):
+			continue
+		r = maxf(r, nb.position.distance_to(mid) + 0.9)
+	var fx := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = Vector2.ONE
+	fx.mesh = qm
+	fx.set_meta("block_fx", true)           # в габарит машины не входит (см. _local_aabb)
+	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := ShaderMaterial.new()
+	mat.shader = SPAWN_SHADER
+	mat.set_shader_parameter("progress", 0.0)
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	fx.material_override = mat
+	machine.add_child(fx)
+	fx.position = mid
+	fx.scale = Vector3.ONE * (r * 2.0 * SPAWN_PAD)
 	var tw := machine.create_tween()
-	tw.tween_method(_materialise_step.bind(shells, lo, hi), 0.0, 1.0, dur)
-	tw.tween_callback(_materialise_done.bind(shells))
+	tw.tween_method(_spawn_step.bind(mat), 0.0, 1.0, dur)
+	tw.tween_callback(fx.queue_free)
 
-static func _materialise_step(p: float, shells: Array, lo: float, hi: float) -> void:
-	var front: float = lerpf(lo, hi, p)
-	for s in shells:
-		var m = s["mat"]
-		if m is ShaderMaterial:
-			m.set_shader_parameter("progress",
-					clampf((front - float(s["lo"])) / maxf(float(s["h"]), 0.001), 0.0, 1.0))
-
-static func _materialise_done(shells: Array) -> void:
-	for s in shells:
-		var mi = s["mi"]
-		if is_instance_valid(mi):
-			mi.queue_free()          # оболочка отработала: дальше виден настоящий блок
+static func _spawn_step(p: float, mat: ShaderMaterial) -> void:
+	if is_instance_valid(mat):
+		mat.set_shader_parameter("progress", p)
 
 const MAX_EXTENT := 2.0
 
