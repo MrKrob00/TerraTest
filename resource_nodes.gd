@@ -60,6 +60,22 @@ var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 # Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
 # делал return, из-за чего узел не инициализировался за весь сеанс.
 const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+## Страховка на случай, если сигнала так и не будет (сломанная карта, выгруженная сцена).
+## В СЕКУНДАХ, не в кадрах: ждём мы работу потоков, а она меряется часами, а не кадрами.
+const TERRAIN_WAIT_SEC: float = 120.0
+
+func _terrain_ready(map: Node) -> bool:
+	return is_instance_valid(map) and map.get_dims().x > 0
+
+## Ждём готовности земли ОПРОСОМ ПО ЧАСАМ, а не по сигналу `terrain_ready`. Сигнал был бы
+## короче, но его нет у запечённой карты аддона, а главное — на него нельзя повесить срок:
+## `await` сигнала, который не придёт (сломанная карта, выгруженная сцена), висит вечно и
+## молча, то есть меняет громкую ошибку на тихую.
+func _wait_terrain(map: Node) -> void:
+	var deadline: int = Time.get_ticks_msec() + int(TERRAIN_WAIT_SEC * 1000.0)
+	while is_instance_valid(map) and not _terrain_ready(map) \
+			and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
 
 func _ready() -> void:
 	# До любого await: дальше по коду список нужен и шейдеру, и раздаче типов жилам.
@@ -69,12 +85,15 @@ func _ready() -> void:
 		push_error("resource_nodes: родитель так и не стал картой (нет terrain_height_at/get_dims)")
 		return
 
-	var guard: int = 0
-	while map.get_dims().x <= 0 and guard < 300:
-		await get_tree().process_frame
-		guard += 1
-	var dims: Vector2i = map.get_dims()
-	if dims.x <= 0:
+	# ЖДЁМ СИГНАЛА РЕЛЬЕФА, А НЕ КАДРОВ. `get_dims()` отдаёт ноль, пока земля не готова, а
+	# готовность — это РЕАЛЬНЫЕ СЕКУНДЫ работы потоков: замер на этой машине — кольцо 4.1 с,
+	# весь ближний вид 11.4 с. Прежние 300 кадров это 5 секунд при шестидесяти, то есть жилы
+	# сдавались РАНЬШЕ, чем земля успевала подняться, и не появлялись за весь сеанс. Держалось
+	# это только на том, что во время генерации кадры и так просажены и триста штук набегают
+	# дольше пяти секунд, — то есть на удаче, и на быстром устройстве удача кончается.
+	if not _terrain_ready(map):
+		await _wait_terrain(map)
+	if not _terrain_ready(map):
 		push_error("resource_nodes: рельеф так и не загрузился")
 		return
 

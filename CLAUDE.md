@@ -5,10 +5,13 @@ project: read it before claiming how anything works.
 
 ## 0. Critical rules
 
-1. The game cannot be run here. `gdparse` checks syntax only; everything else is verified by
-   reading the code.
+1. The game RUNS here, headless — see §3 "Running it". You do not get a picture, but you get the
+   real engine: the import, every script compiled with the autoloads up, every scene instantiated,
+   and the world booted for as many frames as you like. `gdparse` stays the two-second check; the
+   engine is the one that actually knows.
 2. `gdparse` does not see a **redeclared variable** or a **call to a method the node lacks**. Both
-   are Parse Errors in Godot, and a Parse Error means the whole script does not load.
+   are Parse Errors in Godot, and a Parse Error means the whole script does not load. The headless
+   self-test does see them — run it before claiming a change is safe.
 3. **No comments in `project.godot`** — Godot rewrites the file and folds `#` into a key name,
    silently killing the setting.
 4. `node.get("field")` returns `null` when there is no such field, and `bool(null)` crashes. Write
@@ -581,7 +584,58 @@ project: read it before claiming how anything works.
 - Anything behind the camera and past the near bubble is disabled; the near bubble stays active in
   every direction. Radar reads vein data, not what is drawn.
 
-## 3. Working with the code
+## 3. Running it
+
+There is no Godot in a fresh container and **it cannot be downloaded**: the egress proxy answers
+403 for godotengine.org and for `github.com/.../releases/download`. What it does allow is `git
+clone` of any GitHub repository and the Ubuntu archive — so the engine is BUILT, once, in about
+sixteen minutes on four cores:
+
+```sh
+apt-get install -y --no-install-recommends scons pkg-config build-essential \
+  libx11-dev libxcursor-dev libxinerama-dev libxi-dev libxrandr-dev libxext-dev libxrender-dev \
+  libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
+  libspeechd-dev libwayland-dev wayland-protocols libxkbcommon-dev
+git clone --depth 1 -b 4.6.3-stable https://github.com/godotengine/godot.git /tmp/godot
+cd /tmp/godot && scons platform=linuxbsd target=editor optimize=none debug_symbols=no lto=none \
+  module_text_server_adv_enabled=no module_text_server_fb_enabled=yes \
+  module_raycast_enabled=no module_lightmapper_rd_enabled=no \
+  module_openxr_enabled=no module_webxr_enabled=no module_mobile_vr_enabled=no \
+  module_webrtc_enabled=no module_websocket_enabled=no module_camera_enabled=no -j4
+# -> /tmp/godot/bin/godot.linuxbsd.editor.x86_64
+```
+
+`optimize=none` is for COMPILE time, not run time; the disabled modules are the expensive ones the
+project never touches. Jolt, GDScript, 3D and glTF stay — the game stands on them. The tag must
+match `config/features` in `project.godot`.
+
+**RUN IT ON A COPY, NEVER ON THE REPO.** Importing rewrites tracked files: my headless build writes
+`.import` files without the `etc2_astc` variant (mobile textures), re-serialises every `.res` cut
+from a `.glb`, and reorders keys in `project.godot`. Committing that breaks mobile texture import
+for real. So:
+
+```sh
+rm -rf /tmp/ttrun && mkdir /tmp/ttrun
+tar -cf - --exclude=.git --exclude=.godot -C /path/to/repo . | tar -xf - -C /tmp/ttrun
+G=/tmp/godot/bin/godot.linuxbsd.editor.x86_64
+$G --headless --path /tmp/ttrun --import                    # first, or nothing resolves
+$G --headless --path /tmp/ttrun --script res://_selftest.gd # every script + every scene
+$G --headless --path /tmp/ttrun res://node_3d.tscn --quit-after 12000   # boot the world
+```
+
+`_selftest.gd` (a `SceneTree` script, kept in the run copy, not in the repo) walks the project,
+`load()`s every `.gd` and instantiates every `.tscn`. **The import must run first** — without
+`.godot/` every scene that touches a model or a font fails with "Can't load dependency", which
+looks exactly like a broken scene and is not one.
+
+Do NOT use `--check-only --script file.gd` for a sweep: autoloads are not registered in that mode,
+so every file that mentions `G` or `Q` reports "Identifier not found" — a hundred false positives
+and nothing else.
+
+What you still do not get: a picture (headless draws into a dummy), touch gestures, and phone
+performance. Those stay with the person holding the device.
+
+## 4. Working with the code
 
 - Check syntax: `gdparse <files>`. It exits non-zero on syntax errors and says nothing useful about
   semantics.
@@ -593,7 +647,7 @@ project: read it before claiming how anything works.
   `G` helpers, not through node paths.
 - When behaviour changes, update this file and the matching `docs/` page in the same commit.
 
-## 4. Style and conventions
+## 5. Style and conventions
 
 - Comments and docs are in **English**: the same content costs far fewer tokens than Russian, and
   identifiers are English anyway. Old code is mostly Russian — convert a comment when editing the
@@ -603,7 +657,7 @@ project: read it before claiming how anything works.
 - Do not duplicate numbers that live in code (prices, radii, timings) — name the constant instead.
 - Bold for hard prohibitions; no shouting.
 
-## 5. Where to look next
+## 6. Where to look next
 
 - `docs/README.md` — index of the per-system notes.
 - `docs/STORY_ROADMAP.md` — story plan (TerraTech GSO skeleton on our mechanics: no shops, no
