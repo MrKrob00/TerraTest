@@ -330,6 +330,13 @@ func _set_shadows(n: Node, on: bool) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
 				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	for c in n.get_children():
+		# В AMMO НЕ ЗАХОДИМ. Там лежат пуля-шаблон и весь пул, и рекурсия включала им тень
+		# наравне с корпусом: снаряд 34 см в полёте попадал в теневую карту каждый кадр ради
+		# тени, которой никто не видит. При цене теней в восемь кадров из двадцати пяти (замер
+		# на устройстве) это чистые потери. Пуле тень снимают там, где ей ставят модель
+		# (WeaponBlock._apply_bullet_mesh), и перебивать это отсюда нельзя.
+		if c.name == &"Ammo":
+			continue
 		_set_shadows(c, on)
 
 func hurt(damage: int = 10) -> void:

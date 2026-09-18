@@ -414,7 +414,47 @@ func _handle_fire(delta: float) -> void:
 # Сценовое соединение Ammo/Bullet.body_entered → _on_bullet_body_entered БЕЗ bind давало
 # нехватку аргумента (source) и роняло вызов на КАЖДОМ попадании. Перецепляем с bind(самой
 # пули), чтобы source приходил корректно (нужен для возврата пули в пул).
+## МОДЕЛЬ ПУЛИ — ИЗ КОДА, ОДНОЙ ДВЕРЬЮ НА ПЯТЬ СТВОЛОВ. В сценах у пули стоял PlaneMesh, то есть
+## плоский квад: с ребра он не виден вовсе, и половину полёта снаряда просто нет на экране. В
+## objects/Assets.glb лежит настоящая модель (там же есть и Bullet_billboard — он не нужен,
+## билборд разворачивается к камере и теряет направление, а пуля обязана смотреть туда, куда
+## летит, см. bullet._stretch).
+##
+## Почему не правкой сцен: их пять, и шестая однажды приехала бы с тем же плоским квадом — ровно
+## тот довод, по которому здесь же гасится debug_shape_thickness у луча наводки.
+##
+## Меш нормализуется по своему же габариту, чтобы длина не зависела от того, в каком масштабе
+## художник сохранил модель.
+const BULLET_LEN := 0.34
+static var _bullet_mesh: Mesh = null
+
+static func _shared_bullet_mesh() -> Mesh:
+	if _bullet_mesh == null:
+		var ps: PackedScene = load("res://objects/Assets.glb")
+		if ps != null:
+			var r: Node = ps.instantiate()
+			var n := r.find_child("Bullet", true, false) as MeshInstance3D
+			if n != null:
+				_bullet_mesh = n.mesh
+			r.free()
+	return _bullet_mesh
+
+func _apply_bullet_mesh(b: Node) -> void:
+	var m: Mesh = _shared_bullet_mesh()
+	if m == null:
+		return
+	for c in b.get_children():
+		var mi := c as MeshInstance3D
+		if mi == null:
+			continue
+		mi.mesh = m
+		var ext: float = maxf(m.get_aabb().size.z, 0.001)
+		mi.scale = Vector3.ONE * (BULLET_LEN / ext)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		return
+
 func _rebind_bullet(b: Area3D) -> void:
+	_apply_bullet_mesh(b)
 	if b.body_entered.is_connected(_on_bullet_body_entered):
 		b.body_entered.disconnect(_on_bullet_body_entered)
 	var cb := _on_bullet_body_entered.bind(b)
