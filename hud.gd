@@ -1264,6 +1264,7 @@ func _build_perf_panel() -> void:
 	# который открыл панель впервые, должно быть видно, чем её закрыть.
 	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
 	(%PerfGround as Button).pressed.connect(_toggle_ground_quality)
+	(%PerfShadow as Button).pressed.connect(_toggle_shadows)
 	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
 
 
@@ -1378,6 +1379,9 @@ func _update_perf_panel(delta: float) -> void:
 		lines.append("шейдер земли: %s"
 				% ("УПРОЩЁННЫЙ (без шума и текстуры)" if terr_q.get_surface_param(&"low_quality") == true
 					else "полный"))
+	var sun := get_node_or_null("/root/Main/DirectionalLight3D2")
+	if sun is DirectionalLight3D:
+		lines.append("тени: %s" % ("вкл" if (sun as DirectionalLight3D).shadow_enabled else "ВЫКЛ"))
 	lines.append("узлов %d" % nodes)
 	# НОМЕР СБОРКИ — ради тестеров. Без него отчёт «у меня падает» не привязать к версии, а
 	# у беты это единственный способ понять, о какой сборке речь. Панель профиля для этого и
@@ -1414,6 +1418,31 @@ func _toggle_ground_quality() -> void:
 		return
 	var cur: Variant = terr.get_surface_param(&"low_quality")
 	terr.set_surface_param(&"low_quality", not (cur == true))
+	_perf_t = 0.0
+
+## ТРЕТЬЯ ПРОБА: тени. Она нужна именно потому, что первые две дали противоречивый на вид ответ —
+## масштаб рендера меняет кадр, а упрощение шейдера земли нет. Значит платим не за вычисления на
+## пиксель, а за пиксели как таковые; и есть расход, который от разрешения НЕ зависит и потому в
+## пробе масштабом не виден вовсе.
+##
+## Солнце с shadow_enabled рисует всю сцену ВТОРОЙ РАЗ в карту 1024² каждый кадр: всю землю в
+## радиусе directional_shadow_max_distance и все машины. Это отдельный геометрический проход, и
+## на мобильной видеокарте он стоит заметно.
+##
+## Читать так: fps вырос — тени и есть цена, и дальше это вопрос их дальности, размера карты или
+## отказа от них. Не сдвинулся — остаётся честный вывод, что кадр уходит в заполнение экрана, и
+## лечится он только разрешением и перерисовкой.
+func _toggle_shadows() -> void:
+	var lights: Array[Node] = get_tree().get_nodes_in_group("perf_lights")
+	if lights.is_empty():
+		# Группы нет — берём все солнца сцены: их одно-два, и искать дешевле, чем заводить связь.
+		var main := get_node_or_null("/root/Main")
+		if main != null:
+			lights.assign(main.find_children("*", "DirectionalLight3D", true, false))
+	for l in lights:
+		var dl := l as DirectionalLight3D
+		if dl != null:
+			dl.shadow_enabled = not dl.shadow_enabled
 	_perf_t = 0.0
 
 func _cycle_render_scale() -> void:
