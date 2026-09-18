@@ -350,15 +350,6 @@ project: read it before claiming how anything works.
   a chunk costs (n+2)² raw heights instead of 5n² (`_sample_unit`) — four times less for the same
   answer. `begin_sampling` prepares the noises once on the main thread; after that the threads only
   read.
-- A CHUNK DOES NOT APPEAR, IT ASSEMBLES (`arrive` in `glsl.gdshader`, driven by
-  `ChunkTerrain._arrive_tick`). Chunked streaming is what the game is built on, and it used to be
-  hidden; now it is shown in the same language as the glitch cards and the menu's survey chart — a
-  scan runs up the node and the cells ahead of it burn cyan/magenta before settling into ground.
-  THE PROGRESS IS COMPUTED IN GDSCRIPT, NOT FROM SHADER `TIME`: those are different clocks (pause,
-  `time_scale`), and a drift means an effect that either never fires or burns forever. `arrive`
-  defaults to 1.0, which is "off", so settled ground costs one comparison per fragment. GEOMETRY IS
-  NOT TOUCHED — LOD edges are snapped on a shared grid and collision is cut from the same heights,
-  so animating vertices would tear both.
 - A NODE IS HIDDEN ONLY WHEN OTHER GROUND ALREADY COVERS IT. A LOD change is not "the node left",
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
