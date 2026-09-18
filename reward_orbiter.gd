@@ -7,7 +7,7 @@ extends Node3D
 @export var radius: float = 3.4
 @export var height: float = 2.4
 @export var ang_speed: float = 1.5            # рад/с — скорость облёта вокруг машины
-@export var lifetime: float = 6.0             # сколько кружит до падения
+@export var lifetime: float = 3.0             # сколько кружит до падения (было 6 — вдвое дольше, чем нужно)
 
 var target: Node3D = null                     # машина, вокруг которой кружим
 var _block: Node3D = null                     # сам блок (инстанс сцены блока)

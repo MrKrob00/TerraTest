@@ -52,6 +52,8 @@ func _physics_process(delta: float) -> void:
 func _tick_bullet(delta: float) -> void:
 	if dir == Vector3.ZERO:          # в пуле — не двигаемся
 		t = 0.0
+		if scale != Vector3.ONE:
+			scale = Vector3.ONE      # вернулась в пул — снимаем растяжение (см. _stretch)
 		return
 	t += delta
 	var from: Vector3 = global_position
@@ -60,9 +62,28 @@ func _tick_bullet(delta: float) -> void:
 	if _sweep(from, to):
 		return                       # попали по дороге: оружие уже забрало пулю в пул
 	global_position = to
+	_stretch(from.distance_to(to))
 	if global_position.y < min_y or t > max_lifetime:
 		dir = Vector3.ZERO           # стоп; оружие заберёт в пул по сигналу
 		expired.emit(self)
+
+## ПУЛЯ РАСТЯГИВАЕТСЯ НА СВОЙ ШАГ, И БЕЗ ЭТОГО ЕЁ НЕ ВИДНО. На 120 м/с и 30 кадрах снаряд
+## проходит ЧЕТЫРЕ МЕТРА за кадр — точка успевает мелькнуть два раза и исчезнуть, что игрок и
+## описал как «появились, улетели, пропали».
+##
+## Скорость трогать нельзя: от неё считается упреждение турели (_lead_point) и вся баллистика.
+## Поэтому меняется только ВИД — меш вытягивается вдоль полёта ровно на пройденный за кадр
+## отрезок, и соседние кадры складываются в непрерывную черту вместо пунктира из точек.
+##
+## Масштаб сбрасывается при возврате в пул (см. dir == ZERO в _tick_bullet): иначе вытянутая
+## пуля ушла бы в пул и вылетела оттуда следующим выстрелом уже растянутой.
+const TRACE_MIN := 1.0           # короче собственной длины не сжимаем
+const TRACE_MAX := 14.0          # и не превращаем в луч через полкарты
+
+func _stretch(step: float) -> void:
+	var k: float = clampf(step, TRACE_MIN, TRACE_MAX)
+	# Меш смотрит по -Z (look_at в fire_bullet), значит тянем по Z.
+	scale = Vector3(1.0, 1.0, k)
 
 ## Проверить отрезок полёта. true — попали (сигнал отправлен, пуля дальше не летит).
 func _sweep(from: Vector3, to: Vector3) -> bool:

@@ -22,43 +22,36 @@ static var _cards_used: int = 0
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ВСПЫШКА: единственный настоящий свет в игре
+# ВСПЫШКА ВЫСТРЕЛА И ВЗРЫВА
 # ─────────────────────────────────────────────────────────────────────────────
 #
-# До этого в проекте был ровно ОДИН источник света — солнце, и ни одного OmniLight3D. Дуло
-# лазера светило эмиссивной сферой, то есть яркой краской, которая ничего вокруг не освещала.
-# Теперь выстрел и взрыв зажигают настоящую лампу, и вместе с включённым glow (см. Environment
-# в node_3d.tscn) она читается как свет, а не как наклейка.
+# БЫЛА OmniLight3D, И ЕЁ НЕ БЫЛО ВИДНО. Дважды: сначала с малыми числами, потом с поднятыми
+# вчетверо. Причина не в яркости, а в конфигурации рендера: при force_vertex_shading точечные
+# источники считаются В ВЕРШИНАХ (цикл по omni стоит внутри вершинного блока шейдера сцены), то
+# есть свет на кубе из восьми вершин почти никуда не попадает. А glow, который обычно и продаёт
+# вспышку ореолом, снят — он стоил 5 fps из 23.
 #
-# ЛАМП ШЕСТЬ НА ВСЮ ИГРУ, И ОНИ ПЕРЕИСПОЛЬЗУЮТСЯ. Создавать OmniLight3D на выстрел нельзя: в
-# большом бою десяток стволов бьёт очередями, а узел со светом на каждый выстрел — это хич на
-# ровном месте. Новая вспышка забирает самую старую лампу; при скорострельности оружия глазу
-# этого не видно, зато цена ограничена сверху числом, а не боем.
+# Значит подход был неверный, а не числа малы. Здесь НЕОСВЕЩАЕМЫЙ ЭМИССИВНЫЙ МЕШ — ровно то, чем
+# лазер рисует своё дуло, и это единственное в проекте, что видно наверняка: unshaded не зависит
+# ни от вершинного освещения, ни от glow, ни от тонемаппинга.
 #
-# ТЕНИ ВЫКЛЮЧЕНЫ ВСЕГДА. Compatibility считает освещение по вершинам (force_vertex_shading в
-# project.godot), и вспышка и так ложится плоско; теневая карта на каждый выстрел стоила бы
-# больше, чем весь эффект.
-#
-# ДАЛЬШЕ FLASH_DIST ЛАМПА НЕ ЗАЖИГАЕТСЯ ВОВСЕ. Вспышка живёт десятые доли секунды и на таком
-# расстоянии не видна, а бой идёт по всей карте — без этой проверки пул целиком уходил бы на
-# перестрелку, которую никто не смотрит.
+# ШЕСТЬ ШТУК НА ВСЮ ИГРУ, переиспользуются. Новая вспышка забирает самую старую: в бою десяток
+# стволов бьёт очередями, и узел на выстрел был бы хичем. Дальше FLASH_DIST не зажигаем вовсе —
+# вспышка живёт десятые доли секунды и на таком расстоянии не видна.
 const LAMPS := 6
 const FLASH_DIST := 110.0
 static var _lamps: Array = []
 static var _lamp_at: int = 0
 
-## Зажечь вспышку в мировой точке. anchor — любой узел в дереве (нужен только чтобы добраться
-## до сцены и камеры), dur — за сколько секунд она гаснет.
-static func flash(anchor: Node, pos: Vector3, col: Color, energy: float, rng: float,
-		dur: float) -> void:
+## Вспышка в мировой точке. size — радиус шара в метрах, dur — за сколько гаснет.
+static func flash(anchor: Node, pos: Vector3, col: Color, size: float, dur: float) -> void:
 	if anchor == null or not is_instance_valid(anchor) or not anchor.is_inside_tree():
 		return
 	var tree := anchor.get_tree()
 	if tree == null:
 		return
-	# Лампы вешаем на сцену, но если её нет (мир собран кодом, стенд, редакторское превью) —
-	# на корень. Пустой current_scene раньше означал бы, что света просто не будет, и заметить
-	# это нечем: вспышка не падает, она НЕ ПОЯВЛЯЕТСЯ.
+	# Пустой current_scene раньше означал бы, что вспышки просто нет, и заметить это нечем:
+	# она не падает, она НЕ ПОЯВЛЯЕТСЯ.
 	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
 	var vp := anchor.get_viewport()
 	var cam: Camera3D = vp.get_camera_3d() if vp != null else null
@@ -68,33 +61,52 @@ static func flash(anchor: Node, pos: Vector3, col: Color, energy: float, rng: fl
 	if lamp == null:
 		return
 	lamp.global_position = pos
-	lamp.light_color = col
-	lamp.omni_range = rng
-	lamp.light_energy = energy
+	lamp.scale = Vector3.ONE * size
+	var mat := lamp.material_override as StandardMaterial3D
+	if mat != null:
+		mat.albedo_color = Color(col.r, col.g, col.b, 0.9)
+		mat.emission = col
 	lamp.visible = true
 	var tw := lamp.create_tween()
-	tw.tween_property(lamp, "light_energy", 0.0, dur).set_ease(Tween.EASE_OUT)
-	tw.tween_callback(_hide_lamp.bind(lamp))
-	# Твин держим НА САМОЙ ЛАМПЕ: забирая её под новую вспышку, старый надо оборвать, иначе два
-	# твина тянут одну энергию в разные стороны и лампа моргает невпопад. Своего kill_tweens у
-	# Node нет, так что ссылку храним сами.
+	tw.set_parallel(true)
+	# Гаснет И РАСТЁТ: вспышка на два кадра читается как расширяющийся шар лучше, чем как
+	# просто темнеющий — глаз ловит движение быстрее, чем яркость.
+	tw.tween_property(lamp, "scale", Vector3.ONE * size * 1.8, dur).set_ease(Tween.EASE_OUT)
+	if mat != null:
+		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(_hide_lamp.bind(lamp))
+	# Твин держим НА САМОЙ вспышке: забирая её под новую, старый надо оборвать. Своего
+	# kill_tweens у Node нет, поэтому ссылку храним сами.
 	lamp.set_meta("fx_tw", tw)
 
-static func _take_lamp(root: Node) -> OmniLight3D:
-	# Пул переживает смену сцены, а лампы — нет: они дети сцены и умирают вместе с ней.
+static func _take_lamp(root: Node) -> MeshInstance3D:
 	for i in range(_lamps.size() - 1, -1, -1):
 		if not is_instance_valid(_lamps[i]):
 			_lamps.remove_at(i)
 	if _lamps.size() < LAMPS:
-		var made := OmniLight3D.new()
-		made.shadow_enabled = false
+		var made := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 1.0
+		sm.height = 2.0
+		sm.radial_segments = 8          # шар живёт два кадра: больше граней тут не видно
+		sm.rings = 4
+		made.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		m.emission_enabled = true
+		m.emission_energy_multiplier = 4.0
+		made.material_override = m
+		made.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		made.visible = false
+
 		root.add_child(made)
 		_lamps.append(made)
 		return made
 	if _lamp_at >= _lamps.size():
 		_lamp_at = 0
-	var lamp: OmniLight3D = _lamps[_lamp_at]
+	var lamp: MeshInstance3D = _lamps[_lamp_at]
 	_lamp_at = (_lamp_at + 1) % _lamps.size()
 	if lamp.has_meta("fx_tw"):               # get_meta без has_meta падает, см. правило 4
 		var old: Variant = lamp.get_meta("fx_tw")
@@ -102,9 +114,9 @@ static func _take_lamp(root: Node) -> OmniLight3D:
 			(old as Tween).kill()
 	return lamp
 
-static func _hide_lamp(lamp: OmniLight3D) -> void:
+static func _hide_lamp(lamp: MeshInstance3D) -> void:
 	if is_instance_valid(lamp):
-		lamp.visible = false           # погасшая лампа не должна стоить ничего
+		lamp.visible = false           # погасшая вспышка не должна стоить ничего
 
 # AOE-взрыв: урон блокам в радиусе (спад от центра) + красное облако глитч-карточек
 # (blast_cards, без частиц и света — легко для мобильного GPU). Батарея зовёт это при
@@ -220,10 +232,10 @@ static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
 	# Свет взрыва — здесь, а не у того, кто взорвался: blast_cards это единственная дверь, через
 	# неё проходят и батарея, и кабина, и догоревший предохранитель. Радиус вдвое шире облака,
 	# чтобы взрыв подсвечивал то, что вокруг, а не только себя.
-	# Яркость по той же причине, что у дула: свет считается в вершинах и размазывается по
-	# треугольнику (см. WeaponBlock.flash_energy). Радиус вдвое шире облака — взрыв обязан
-	# подсветить то, что вокруг, а не только себя.
-	flash(root, pos, BLAST_A, 16.0, radius * 2.5, BLAST_DUR)
+	# Размер по той же причине, что у дула: это неосвещаемый меш, а не лампа (см. flash), и
+	# задаётся он в метрах. Шар в половину радиуса поражения — взрыв читается вспышкой в центре
+	# облака, а не вторым облаком поверх первого.
+	flash(root, pos, BLAST_A, radius * 0.55, BLAST_DUR)
 
 ## Сколько карточек можно создать в этом кадре (общий потолок на всю игру, см. CARDS_PER_FRAME).
 ## Вынесено из play(), потому что считать бюджет обязаны ВСЕ, кто их создаёт: цепной взрыв
