@@ -1225,6 +1225,18 @@ func _setup_materials(base: Material) -> void:
 		_mat_lod0 = base
 		_mat_far = base
 
+## ОДНА ДВЕРЬ К ШЕЙДЕРУ ЗЕМЛИ СНАРУЖИ. Материалов ДВА (ближний с травой и дальний без неё), и
+## тот, кто хочет что-то в них поменять, обязан попасть в оба: правка одного означает, что
+## настройка действует только до 64 метров, а дальше земля живёт по-старому.
+func set_surface_param(name: StringName, value: Variant) -> void:
+	for m in [_mat_lod0, _mat_far]:
+		if m is ShaderMaterial:
+			(m as ShaderMaterial).set_shader_parameter(name, value)
+
+func get_surface_param(name: StringName) -> Variant:
+	return (_mat_lod0 as ShaderMaterial).get_shader_parameter(name) \
+			if _mat_lod0 is ShaderMaterial else null
+
 func _push_biomes() -> void:
 	if biomes == null:
 		return
