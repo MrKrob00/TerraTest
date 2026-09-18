@@ -2057,7 +2057,12 @@ func _on_take_pressed() -> void:
 				or (G.is_stationary(instance.get("block")) and not is_station)):
 			_place_ground_structure(instance)
 			return
+		# И ЭТОТ ОТКАЗ ТОЖЕ ГОВОРИТ ПРИЧИНУ. Два отказа ниже (клетка занята, не к чему крепиться)
+		# объясняются игроку, а самый частый молчал: наводка не дала клетки. На СВОЕЙ машине это
+		# редкость, а вот на соседней — обычное дело, и снаружи выглядит ровно как «блок из руки
+		# на вторую машину не ставится»: призрака нет, блок в руке, и ни слова почему.
 		if _preview_res == null:
+			Dialogue.say("System", tr("Aim at a cell on the machine first."))
 			return
 		var pres: Dictionary = _preview_res
 		# Машина, её сетка и её узел blocks — всё через одну точку (_bt/_btm), чтобы «на чём
