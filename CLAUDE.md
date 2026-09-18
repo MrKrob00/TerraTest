@@ -590,19 +590,21 @@ project: read it before claiming how anything works.
 - THE RENDERER IS COMPATIBILITY (`gl_compatibility`, both desktop and mobile), picked for FPS, and
   that decides what is even available: no SSAO, no SSR, no SDFGI, no volumetric fog. GLOW, DEPTH
   FOG and TONEMAPPING all work there in 4.6, and those three are the whole post-processing budget.
-- GLOW IS THE SWITCH THE EFFECT LANGUAGE WAS WRITTEN FOR, and it was off. Every glitch card ends
-  `EMISSION = col * 2.0`, the laser fakes its muzzle with an emissive sphere, the matrix digits
-  burn above 1.0 — with glow off all of that clamped to white and read as flat paint. Blend mode
-  is ADDITIVE: the palette is neon, and Soft Light would mute exactly what should bloom.
+- **GLOW AND FOG ARE OFF, AND THE REASON IS A MEASUREMENT ON THE DEVICE: 23 fps clean, 18-20 with
+  glow, 13 with fog on top.** That is 43% of the frame rate for two settings, on a phone that only
+  had 23 fps to give. Both were tried and both came back out. The effect language WAS written for
+  glow — every glitch card ends `EMISSION = col * 2.0`, the matrix digits burn above 1.0, the
+  laser fakes its muzzle with an emissive sphere — and it all clamps to white without it. That is
+  a real loss and it is still not worth 10 fps. If glow ever comes back it has to be a GRAPHICS
+  SETTING that is OFF by default, not a scene value, and the thing to fix first is the 23.
+  Headless cannot see any of this: only the phone can.
 - `tonemap_mode` HAS TO BE SET, not just its contrast. `tonemap_agx_contrast = 1.7` sat in both
   scenes while `tonemap_mode` stayed at its default Linear, so the number did nothing and
   highlights clipped flat. AgX is **4** in that enum (Linear, Reinhard, Filmic, ACES, AgX).
-- DEPTH FOG READS `fog_density` AS A CEILING, NOT AS A RATE: the shader is
-  `pow(smoothstep(begin, end, z), curve) * density`. Switching `fog_mode` to Depth and leaving the
-  default density of 0.01 gives one per cent fog, which looks exactly like fog that does not work.
-- Fog distance follows the terrain the scene actually draws: the world fades 200→1100 m, the menu
-  backdrop 110→330 against its `MENU_VIEW` of 320. It also hides the far edge where chunks stream
-  in, so it buys frames as well as depth.
+- If fog is ever retried: depth fog reads `fog_density` as a CEILING, not as a rate — the shader
+  is `pow(smoothstep(begin, end, z), curve) * density`, so the default 0.01 with `fog_mode` Depth
+  gives one per cent fog and looks like fog that does not work. It did NOT buy frames by hiding
+  the far edge, which was the hope; it cost five to seven.
 - REAL LIGHT IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`). Besides the directional
   sun those are the only `OmniLight3D` in the game, and they are REUSED: a new flash takes the
   oldest lamp, so a firefight costs six nodes rather than one per shot. Shadows are off on all of
