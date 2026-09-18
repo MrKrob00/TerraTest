@@ -80,6 +80,29 @@ group_uniforms;
 // (v_base_col) and interpolated: the terrain is fill-bound and there are orders of magnitude
 // fewer vertices than pixels. The fragment stage keeps only what has to be per-pixel — the
 // noise and the tile texture.
+// ── ВОЗДУШНАЯ ДЫМКА: глубина за ту цену, которую эта железка может заплатить ──────
+//
+// Движковый туман мы пробовали и сняли: на устройстве он стоил 5-7 fps из 23 (см. CLAUDE.md,
+// раздел Look and light). Он считает на КАЖДЫЙ фрагмент всей сцены рассеяние солнца, высотную
+// составляющую и влияние на небо — а нужна была ровно одна вещь: чтобы далёкая земля уходила в
+// цвет горизонта и появлялся масштаб.
+//
+// Здесь это стоит одного smoothstep НА ВЕРШИНУ и одного mix на фрагмент. Вершин у рельефа на
+// порядки меньше, чем пикселей, и мы fill-bound (см. комментарий про Adreno 610 ниже), так что
+// считать глубину в вершине — единственный способ получить её бесплатно. Небо не трогаем вовсе:
+// туман нужен земле, у неба свой градиент.
+//
+// И ЭТО ЕЩЁ И ВОЗВРАЩАЕТ КАДРЫ: там, где дымка почти сплошная, попиксельный шум и тайловая
+// текстура всё равно не видны — их считать не нужно (см. fragment). На дальних чанках, которых
+// в кадре больше всего, это снимает две операции с каждого пикселя.
+uniform vec4  haze_color : source_color = vec4(0.60, 0.71, 0.85, 1.0);  // цвет горизонта неба
+uniform float haze_begin    : hint_range(0.0, 2000.0) = 180.0;
+uniform float haze_end      : hint_range(0.0, 4000.0) = 900.0;
+uniform float haze_strength : hint_range(0.0, 1.0)    = 0.75;   // 1.0 = дальняя земля сплошной цвет
+// Дальше этого дымка считается сплошной, и фрагмент пропускает попиксельную детализацию.
+const float HAZE_FLAT = 0.9;
+varying float v_haze;
+
 varying vec2  v_pixel_uv;    // quantised (floored to the grid) — for steady noise and grass
 varying vec3  v_base_col;
 varying float v_is_grass;
@@ -103,6 +126,10 @@ void vertex() {
     v_pixel_uv = floor(tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
     v_wpos     = world_pos.xyz;
     v_wnrm     = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+    // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
+    // вниз, тонула бы в дымке наравне с горизонтом.
+    v_haze = smoothstep(haze_begin, haze_end,
+            length(world_pos.xz - CAMERA_POSITION_WORLD.xz)) * haze_strength;
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
     // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
@@ -173,7 +200,8 @@ void fragment() {
     // треугольника углы посчитаны в разных плоскостях, а интерполяция между ними — каша.
     // Вершинный v_pixel_uv при этом остаётся прежним (по XZ) — на нём растёт трава, а трава
     // и так бывает только на пологом.
-    if (!low_quality) {
+    // Под сплошной дымкой попиксельной детали не видно — не считаем её вовсе (см. шапку).
+    if (!low_quality && v_haze < HAZE_FLAT) {
         vec2 wall_uv = abs(v_wnrm.y) > 0.5
                 ? v_wpos.xz                                                  // пол и склоны
                 : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
@@ -203,4 +231,10 @@ void fragment() {
         ALBEDO   = mix(ALBEDO, g, k);
         EMISSION = g * corrupt_glow * k;
     }
+
+    // ДЫМКА ПОСЛЕДНЕЙ, поверх всего: она про воздух между камерой и поверхностью, а значит
+    // гасит и глитч заражённой зоны тоже — иначе на горизонте светились бы клетки, у которых
+    // сама земля уже растворилась.
+    ALBEDO   = mix(ALBEDO, haze_color.rgb, v_haze);
+    EMISSION = EMISSION * (1.0 - v_haze);
 }
