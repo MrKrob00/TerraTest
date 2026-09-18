@@ -1263,7 +1263,6 @@ func _build_perf_panel() -> void:
 	# действия были невидимыми жестами, и «закрыть вообще хз» было честной оценкой. Тестеру,
 	# который открыл панель впервые, должно быть видно, чем её закрыть.
 	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
-	(%PerfGround as Button).pressed.connect(_toggle_ground_quality)
 	(%PerfShadow as Button).pressed.connect(_toggle_shadows)
 	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
 
@@ -1373,12 +1372,6 @@ func _update_perf_panel(delta: float) -> void:
 			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
 			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
 			"вкл" if auto_fps else "ВЫКЛ"])
-	# Состояние пробы земли — иначе «я что-то нажал и оно стало быстрее» не привязать к причине.
-	var terr_q := get_node_or_null("/root/Main/map")
-	if terr_q != null and terr_q.has_method("get_surface_param"):
-		lines.append("шейдер земли: %s"
-				% ("УПРОЩЁННЫЙ (без шума и текстуры)" if terr_q.get_surface_param(&"low_quality") == true
-					else "полный"))
 	var sun := get_node_or_null("/root/Main/DirectionalLight3D2")
 	if sun is DirectionalLight3D:
 		lines.append("тени: %s" % ("вкл" if (sun as DirectionalLight3D).shadow_enabled else "ВЫКЛ"))
@@ -1403,27 +1396,9 @@ func _render_method() -> String:
 ## If fps does not move, drawing is not the bottleneck and the table is where to look.
 const PERF_SCALES := [1.0, 0.75, 0.5, 0.35]
 
-## ПРОБА ЗЕМЛИ, в одно нажатие. Масштаб рендера отвечает на вопрос «пиксели ли это вообще», а
-## эта кнопка — на следующий: ПИКСЕЛИ ЧЕГО. `low_quality` снимает с фрагмента земли попиксельный
-## шум и выборку тайловой текстуры, не трогая ни геометрию, ни число объектов.
-##
-## Читать так: fps вырос заметно — узкое место во фрагментном шейдере рельефа, и чинить надо там.
-## Не сдвинулся — земля ни при чём, смотри на число draw-вызовов и на машины.
-##
-## Ручка в шейдере была с самого начала и НИКОГДА НИ ОТКУДА НЕ ВКЛЮЧАЛАСЬ — то есть лежала
-## мёртвой ровно там, где мы упираемся в заполнение.
-func _toggle_ground_quality() -> void:
-	var terr := get_node_or_null("/root/Main/map")
-	if terr == null or not terr.has_method("set_surface_param"):
-		return
-	var cur: Variant = terr.get_surface_param(&"low_quality")
-	terr.set_surface_param(&"low_quality", not (cur == true))
-	_perf_t = 0.0
-
-## ТРЕТЬЯ ПРОБА: тени. Она нужна именно потому, что первые две дали противоречивый на вид ответ —
-## масштаб рендера меняет кадр, а упрощение шейдера земли нет. Значит платим не за вычисления на
-## пиксель, а за пиксели как таковые; и есть расход, который от разрешения НЕ зависит и потому в
-## пробе масштабом не виден вовсе.
+## ТЕНИ — ВТОРАЯ ПРОБА И САМАЯ РЕЗУЛЬТАТИВНАЯ: замер на устройстве дал 17 fps против 25.
+## Кнопка остаётся не как отладка, а как переключатель качества: цена известна, и решать,
+## платить ли её, теперь можно на месте.
 ##
 ## Солнце с shadow_enabled рисует всю сцену ВТОРОЙ РАЗ в карту 1024² каждый кадр: всю землю в
 ## радиусе directional_shadow_max_distance и все машины. Это отдельный геометрический проход, и

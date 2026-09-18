@@ -452,18 +452,6 @@ theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
 theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
 text = "3D SCALE"
 
-[node name="PerfGround" type="Button" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox/PerfButtons" unique_id=411000123]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 44)
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("StyleBoxFlat_hudbtn")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_hudbtnpressed")
-theme_override_styles/hover = SubResource("StyleBoxFlat_hudbtn")
-text = "ЗЕМЛЯ"
-
 [node name="PerfShadow" type="Button" parent="Vehicles/Camera Controller/HUD/PerfPanel/PerfBox/PerfButtons" unique_id=411000124]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 44)

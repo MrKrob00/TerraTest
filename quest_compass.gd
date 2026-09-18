@@ -76,7 +76,13 @@ func target_of(q: Dictionary) -> Variant:
 	var from: Vector3 = cam.global_position
 	match String(q.get("event", "")):
 		"enemy_killed", "daily_kill":
-			return _nearest_enemy(from)
+			# СЮЖЕТНЫЙ УБИЙ — ЭТО КОНКРЕТНАЯ МАШИНА, И ПОДМЕНА ЕЁ ЛЮБОЙ ДРУГОЙ ЕСТЬ ЛОЖЬ.
+			# «Уничтожь разведчика» до его спавна показывало на ближайшего случайного врага в
+			# радиусе KILL_MARK_DIST: игрок ехал за меткой и приезжал не туда. Дежурное задание
+			# «убей кого угодно» — другое дело, там любой враг и есть цель.
+			var q_type: int = int(q.get("type", -1))
+			var story_only: bool = q_type == Q.Type.STORY or q_type == Q.Type.TUTORIAL
+			return _nearest_enemy(from, story_only)
 		"ore_mined", "daily_ore":
 			return _nearest_of(_ore_positions(), from)
 		"money_earned":
@@ -86,7 +92,9 @@ func target_of(q: Dictionary) -> Variant:
 ## Дальше этого метка на «убей» не ставится: цели ещё нет, и стрелка в горизонт врёт.
 const KILL_MARK_DIST := 400.0
 
-func _nearest_enemy(from: Vector3) -> Variant:
+## story_only — брать ТОЛЬКО помеченную сюжетную машину. Не нашлась — метки нет вовсе, и это
+## правильный ответ: цель ещё не родилась, а стрелка в никуда хуже отсутствующей стрелки.
+func _nearest_enemy(from: Vector3, story_only: bool = false) -> Variant:
 	# СЮЖЕТНАЯ МАШИНА ВАЖНЕЕ БЛИЖНЕЙ и берётся на любой дистанции: «уничтожь разведчика» ведёт
 	# именно к нему. Нет ни одной цели в пределах KILL_MARK_DIST — метки НЕТ вовсе: до спавна
 	# разведчика стрелка показывала на случайного врага за полкарты, то есть на пустое поле.
@@ -103,6 +111,8 @@ func _nearest_enemy(from: Vector3) -> Variant:
 			story.append(e)
 		elif (e as Node3D).global_position.distance_squared_to(from) <= KILL_MARK_DIST * KILL_MARK_DIST:
 			near.append(e)
+	if story_only:
+		return _nearest_node(story, from) if not story.is_empty() else null
 	return _nearest_node(story if not story.is_empty() else near, from)
 
 func _nearest_node(nodes: Array, from: Vector3) -> Variant:
