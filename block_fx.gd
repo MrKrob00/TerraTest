@@ -21,6 +21,91 @@ static var _cards_frame: int = -1
 static var _cards_used: int = 0
 const CARD_SPREAD := 1.25       # насколько шире блока разлетаются карточки
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ВСПЫШКА: единственный настоящий свет в игре
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# До этого в проекте был ровно ОДИН источник света — солнце, и ни одного OmniLight3D. Дуло
+# лазера светило эмиссивной сферой, то есть яркой краской, которая ничего вокруг не освещала.
+# Теперь выстрел и взрыв зажигают настоящую лампу, и вместе с включённым glow (см. Environment
+# в node_3d.tscn) она читается как свет, а не как наклейка.
+#
+# ЛАМП ШЕСТЬ НА ВСЮ ИГРУ, И ОНИ ПЕРЕИСПОЛЬЗУЮТСЯ. Создавать OmniLight3D на выстрел нельзя: в
+# большом бою десяток стволов бьёт очередями, а узел со светом на каждый выстрел — это хич на
+# ровном месте. Новая вспышка забирает самую старую лампу; при скорострельности оружия глазу
+# этого не видно, зато цена ограничена сверху числом, а не боем.
+#
+# ТЕНИ ВЫКЛЮЧЕНЫ ВСЕГДА. Compatibility считает освещение по вершинам (force_vertex_shading в
+# project.godot), и вспышка и так ложится плоско; теневая карта на каждый выстрел стоила бы
+# больше, чем весь эффект.
+#
+# ДАЛЬШЕ FLASH_DIST ЛАМПА НЕ ЗАЖИГАЕТСЯ ВОВСЕ. Вспышка живёт десятые доли секунды и на таком
+# расстоянии не видна, а бой идёт по всей карте — без этой проверки пул целиком уходил бы на
+# перестрелку, которую никто не смотрит.
+const LAMPS := 6
+const FLASH_DIST := 110.0
+static var _lamps: Array = []
+static var _lamp_at: int = 0
+
+## Зажечь вспышку в мировой точке. anchor — любой узел в дереве (нужен только чтобы добраться
+## до сцены и камеры), dur — за сколько секунд она гаснет.
+static func flash(anchor: Node, pos: Vector3, col: Color, energy: float, rng: float,
+		dur: float) -> void:
+	if anchor == null or not is_instance_valid(anchor) or not anchor.is_inside_tree():
+		return
+	var tree := anchor.get_tree()
+	if tree == null:
+		return
+	# Лампы вешаем на сцену, но если её нет (мир собран кодом, стенд, редакторское превью) —
+	# на корень. Пустой current_scene раньше означал бы, что света просто не будет, и заметить
+	# это нечем: вспышка не падает, она НЕ ПОЯВЛЯЕТСЯ.
+	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
+	var vp := anchor.get_viewport()
+	var cam: Camera3D = vp.get_camera_3d() if vp != null else null
+	if cam == null or cam.global_position.distance_squared_to(pos) > FLASH_DIST * FLASH_DIST:
+		return
+	var lamp := _take_lamp(host)
+	if lamp == null:
+		return
+	lamp.global_position = pos
+	lamp.light_color = col
+	lamp.omni_range = rng
+	lamp.light_energy = energy
+	lamp.visible = true
+	var tw := lamp.create_tween()
+	tw.tween_property(lamp, "light_energy", 0.0, dur).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(_hide_lamp.bind(lamp))
+	# Твин держим НА САМОЙ ЛАМПЕ: забирая её под новую вспышку, старый надо оборвать, иначе два
+	# твина тянут одну энергию в разные стороны и лампа моргает невпопад. Своего kill_tweens у
+	# Node нет, так что ссылку храним сами.
+	lamp.set_meta("fx_tw", tw)
+
+static func _take_lamp(root: Node) -> OmniLight3D:
+	# Пул переживает смену сцены, а лампы — нет: они дети сцены и умирают вместе с ней.
+	for i in range(_lamps.size() - 1, -1, -1):
+		if not is_instance_valid(_lamps[i]):
+			_lamps.remove_at(i)
+	if _lamps.size() < LAMPS:
+		var made := OmniLight3D.new()
+		made.shadow_enabled = false
+		made.visible = false
+		root.add_child(made)
+		_lamps.append(made)
+		return made
+	if _lamp_at >= _lamps.size():
+		_lamp_at = 0
+	var lamp: OmniLight3D = _lamps[_lamp_at]
+	_lamp_at = (_lamp_at + 1) % _lamps.size()
+	if lamp.has_meta("fx_tw"):               # get_meta без has_meta падает, см. правило 4
+		var old: Variant = lamp.get_meta("fx_tw")
+		if old is Tween and (old as Tween).is_valid():
+			(old as Tween).kill()
+	return lamp
+
+static func _hide_lamp(lamp: OmniLight3D) -> void:
+	if is_instance_valid(lamp):
+		lamp.visible = false           # погасшая лампа не должна стоить ничего
+
 # AOE-взрыв: урон блокам в радиусе (спад от центра) + красное облако глитч-карточек
 # (blast_cards, без частиц и света — легко для мобильного GPU). Батарея зовёт это при
 # уничтожении. exclude_root —
@@ -132,6 +217,10 @@ static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
 	cloud.scale = Vector3.ONE * 0.35
 	tw.tween_property(cloud, "scale", Vector3.ONE, BLAST_DUR).set_ease(Tween.EASE_OUT)
 	tw.chain().tween_callback(cloud.queue_free)
+	# Свет взрыва — здесь, а не у того, кто взорвался: blast_cards это единственная дверь, через
+	# неё проходят и батарея, и кабина, и догоревший предохранитель. Радиус вдвое шире облака,
+	# чтобы взрыв подсвечивал то, что вокруг, а не только себя.
+	flash(root, pos, BLAST_A, 6.0, radius * 2.0, BLAST_DUR)
 
 ## Сколько карточек можно создать в этом кадре (общий потолок на всю игру, см. CARDS_PER_FRAME).
 ## Вынесено из play(), потому что считать бюджет обязаны ВСЕ, кто их создаёт: цепной взрыв
