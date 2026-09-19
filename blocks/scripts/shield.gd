@@ -45,13 +45,14 @@ func _ready() -> void:
 	var m := SphereMesh.new()
 	m.radius = SHIELD_RADIUS
 	m.height = SHIELD_RADIUS * 2.0
-	# ПЛАСТИНЫ, А НЕ ЗАЛИВКА. Однотонный шар на 12% альфы не читался ни как щит, ни как
-	# что-либо вообще. Шестиугольная сетка даёт ему устройство, а свечение по касательной —
-	# ощущение оболочки, сквозь которую видно машину (см. shield_dome.gdshader).
+	# ПЛАСТИНЫ, А НЕ ЗАЛИВКА (см. shield_dome.gdshader).
 	#
-	# Сегменты сферы подняты: на стандартных 64×32 шов между пластинами ломался на гранях меша.
-	m.radial_segments = 48
-	m.rings = 24
+	# СЕГМЕНТОВ ХВАТАЕТ НЕМНОГИХ. Их поднимали до 48×24, пока сетка считалась по UV: там шов
+	# действительно ломался на гранях меша. Теперь узор считается от НАПРАВЛЕНИЯ, а оно
+	# интерполируется гладко, так что от числа сегментов зависит только силуэт. Меньше
+	# сегментов — меньше вершинной работы, а купол на телефоне рисуется дважды (cull_disabled).
+	m.radial_segments = 32
+	m.rings = 16
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shield_dome.gdshader")
 	m.material = mat
@@ -79,45 +80,52 @@ func _physics_process(delta: float) -> void:
 	# КУПОЛ ТУСКНЕЕТ ВМЕСТЕ С ЗАРЯДОМ. Раньше он был одинаково ярким и при полной батарее, и на
 	# последних процентах: игрок узнавал, что щита больше нет, ровно в тот момент, когда по нему
 	# попадали. Теперь видно заранее — и это честная информация, а не подсказка.
-	if powered and _dome_mesh != null:
-		var mat := (_dome_mesh.mesh as SphereMesh).material as ShaderMaterial
-		if mat != null and v != null and v.has_method("energy_fill"):
-			var lvl: float = clampf(float(v.energy_fill()), 0.0, 1.0)
-			# Не в ноль: погасший в ноль купол неотличим от выключенного, а он ещё работает.
-			mat.set_shader_parameter("energy", 0.35 + 0.65 * lvl)
+	# Заряд теперь решает, СКОЛЬКО ПЛАСТИН СТОИТ, а не насколько купол бледный: бледнеющий
+	# купол читался как «эффект гаснет», осыпающаяся решётка — как «щита осталось на столько».
+	# Поэтому уровень уходит в шейдер как есть, без прежней поправки 0.35 + 0.65·lvl.
+	if powered and v != null and v.has_method("energy_fill"):
+		_set_dome_param("energy", clampf(float(v.energy_fill()), 0.0, 1.0))
+
+func _dome_material() -> ShaderMaterial:
+	if _dome_mesh == null:
+		return null
+	var pm := _dome_mesh.mesh as PrimitiveMesh
+	return pm.material as ShaderMaterial if pm != null else null
+
+func _set_dome_param(name: String, value: Variant) -> void:
+	var mat := _dome_material()
+	if mat != null:
+		mat.set_shader_parameter(name, value)
 
 func _push_hit() -> void:
-	if _dome_mesh == null:
-		return
-	var mat := (_dome_mesh.mesh as SphereMesh).material as ShaderMaterial
-	if mat != null:
-		mat.set_shader_parameter("hit", _hit)
+	_set_dome_param("hit", _hit)
 
 # Попадание в купол: списываем энергию вместо HP. Если на удар энергии не хватило —
 # щит ПРОБИТ: гаснет и SHIELD_BREAK_CD секунд не поднимается, даже если энергия уже
 # капает. Иначе на якоре подпитка шла быстрее выстрелов и щит был непробиваем.
 func absorb(damage: int) -> void:
-	# Купол вспыхивает целиком на каждое попадание — это и есть ответ на «не вижу, что щит
-	# сработал»: снаряд гас у границы, а сам щит никак не менялся.
+	# Волна от места удара — это и есть ответ на «не вижу, что щит сработал»: снаряд гас у
+	# границы, а сам щит никак не менялся. Без точки волна расходится от макушки — купол всё
+	# равно отвечает, просто не показывает, откуда прилетело.
 	_hit = 1.0
 	_push_hit()
 	var v := _vehicle_root()
 	if v and v.has_method("energy_consume"):
 		var cost := float(damage) * SHIELD_COST_X
 		var paid: float = v.energy_consume(cost)
-		_blink()
 		if paid < cost or v.energy_available() <= 0.0:
 			_cd = SHIELD_BREAK_CD
 
-func _blink() -> void:
-	if _dome_mesh == null:
+## Куда попали. Направление переводим в ОСИ КУПОЛА: машина едет и крутится, а волна обязана
+## остаться на том месте оболочки, куда пришёл снаряд.
+func mark_hit_point(world_pos: Vector3) -> void:
+	if _dome == null:
 		return
-	var mat := (_dome_mesh.mesh as SphereMesh).material as StandardMaterial3D
-	if mat == null:
+	var local: Vector3 = _dome.global_transform.basis.inverse() \
+			* (world_pos - _dome.global_position)
+	if local.length_squared() < 0.0001:
 		return
-	mat.albedo_color.a = 0.35
-	var tw := create_tween()
-	tw.tween_property(mat, "albedo_color:a", 0.12, 0.25)
+	_set_dome_param("hit_dir", local.normalized())
 
 func _vehicle_root() -> Node:
 	var p := get_parent()

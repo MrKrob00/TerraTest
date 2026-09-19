@@ -791,6 +791,6 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	# исчезновение пули из ниоткуда. Отметку рисуем НА КУПОЛЕ, в точке гашения, а не по пуле:
 	# по пуле облако и принадлежало не тому, и уезжало вместе со снарядом обратно в пул —
 	# следующий выстрел вылетал уже с глитчом на себе.
-	if "owner_vehicle" in body and is_instance_valid(source):
-		BlockFX.shield_spark(body, source.global_position)
+	if is_instance_valid(source) and body.has_method("struck"):
+		body.struck(source.global_position)
 	_recycle_bullet(source)

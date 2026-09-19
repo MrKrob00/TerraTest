@@ -653,7 +653,27 @@ project: read it before claiming how anything works.
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
   `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
 - **Headless cannot judge any of this.** The dummy driver draws nothing, so these numbers are set
-  by reading the shader and the docs; only the device settles them.
+  by reading the shader and the docs; only the device settles them. A shader's SHAPE, though, can
+  be seen — see §3 "Shaders need a REAL driver".
+- A PATTERN ON A SPHERE IS BUILT FROM THE DIRECTION, NEVER FROM SPHERE UV. Longitude lines run
+  together at the poles, and correcting the step by `sin(latitude)` does not straighten them, it
+  winds them into spirals — which is what the shield read as from above. The direction is split
+  onto a CUBE FACE (whichever axis is largest) and the grid is flat inside that face, with an
+  `atan` correction so a cell keeps its angular size out to the face corner. The price is a seam
+  on the twelve cube edges, and that price is unavoidable: a seamless hexagonal grid on a sphere
+  does not exist, it needs twelve pentagons.
+- A HEX LATTICE'S STEP AND ITS DISTANCE METRIC MUST MATCH. `s = vec2(1, 1.732)` goes with
+  `max(0.5·|x| + 0.866·|y|, |x|)`; the transposed step goes with the transposed metric. Mixing
+  them gives no hexagons at all, just a torn pattern of arcs — cheap to check by printing the
+  level set on a grid, which is how the shield's was finally found.
+- AN EFFECT THAT PLAYS WHEN NOTHING HAPPENED IS NOISE. The shield glitched a share of its plates
+  at all times, so it rippled while nobody was shooting at it. Anything that says "I was hit"
+  hangs off the hit value, and putting it behind `if (hit > 0.001)` costs nothing the rest of the
+  time: it is a uniform, so the branch is coherent across the whole surface.
+- A FULL-SCREEN TRANSPARENT SPHERE IS EXPENSIVE, AND `cull_disabled` PAYS FOR IT TWICE. Both the
+  dome and the repair field were such spheres with hashes in every pixel. The repair field is now
+  a MultiMesh of a dozen billboard cards — one draw call, no fragment cost worth the name — and
+  the dome dims its far hemisphere instead of adding it at full strength.
 
 ### Performance
 
@@ -727,8 +747,28 @@ Do NOT use `--check-only --script file.gd` for a sweep: autoloads are not regist
 so every file that mentions `G` or `Q` reports "Identifier not found" — a hundred false positives
 and nothing else.
 
-What you still do not get: a picture (headless draws into a dummy), touch gestures, and phone
-performance. Those stay with the person holding the device.
+### Shaders need a REAL driver, and there is one
+
+**Headless never compiles a shader.** The dummy driver parses nothing, so a broken `.gdshader`
+loads without a word and ships; on the phone it shows as a pink or invisible surface. Measured:
+a shader whose body is `ALBEDO = vec3(zzz)` loads clean under `--headless`.
+
+Xvfb and Mesa are installed, so the engine can run with the real GLES3 driver on llvmpipe:
+
+```sh
+xvfb-run -a -s "-screen 0 700x700x24" $G --path /tmp/ttrun \
+  --rendering-driver opengl3 --resolution 700x700 --script res://_shot.gd
+```
+
+There the shader is compiled and an error is printed with its line. **And the frame is really
+drawn**, so `get_viewport().get_texture().get_image().save_png("user://x.png")` after
+`await RenderingServer.frame_post_draw` gives a PICTURE of the effect to look at. Two traps in
+such a harness: the frame is cleared to WHITE, and an additive effect on white is invisible —
+put a dark sphere behind the scene rather than fighting the clear colour; and llvmpipe is slow,
+so keep it to a handful of frames per shot.
+
+What is still unavailable: the device's frame rate, touch gestures, and how any of it reads on a
+real screen. Those stay with the person holding the phone.
 
 ## 4. Working with the code
 
