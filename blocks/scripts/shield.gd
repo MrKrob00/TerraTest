@@ -25,7 +25,7 @@ const SHIELD_BREAK_CD := 2.0   # пробитый щит не поднимает
 var _dome: StaticBody3D = null
 var _dome_mesh: MeshInstance3D = null
 var _cd: float = 0.0           # > 0 — щит пробит и перезаряжается
-## Свежее попадание: купол вспыхивает целиком и гаснет за HIT_FADE. Без этого игрок не видел,
+## Свежее попадание: ОДНА пластина вспыхивает и гаснет за HIT_FADE. Без этого игрок не видел,
 ## что щит СРАБОТАЛ: снаряд просто исчезал у границы, а сам купол не менялся никак.
 var _hit: float = 0.0
 const HIT_FADE := 0.22
@@ -42,23 +42,32 @@ func _ready() -> void:
 	cs.shape = sph
 	_dome.add_child(cs)
 	_dome_mesh = MeshInstance3D.new()
-	var m := SphereMesh.new()
-	m.radius = SHIELD_RADIUS
-	m.height = SHIELD_RADIUS * 2.0
-	# ПЛАСТИНЫ, А НЕ ЗАЛИВКА (см. shield_dome.gdshader).
-	#
-	# СЕГМЕНТОВ ХВАТАЕТ НЕМНОГИХ. Их поднимали до 48×24, пока сетка считалась по UV: там шов
-	# действительно ломался на гранях меша. Теперь узор считается от НАПРАВЛЕНИЯ, а оно
-	# интерполируется гладко, так что от числа сегментов зависит только силуэт. Меньше
-	# сегментов — меньше вершинной работы, а купол на телефоне рисуется дважды (cull_disabled).
-	m.radial_segments = 32
-	m.rings = 16
+	# ПЛАСТИНЫ — НАСТОЯЩИЕ МНОГОУГОЛЬНИКИ, а не узор на сфере (см. shield_hex.gd). Сетку на
+	# сфере рисовать бесполезно при любых настройках: по UV она закручивается у полюсов, по
+	# грани куба тянется к силуэту. Здесь это многогранник Голдберга, и клетка одинакова везде.
+	_dome_mesh.mesh = _hex_geometry()
 	var mat := ShaderMaterial.new()
 	mat.shader = preload("res://shield_dome.gdshader")
-	m.material = mat
-	_dome_mesh.mesh = m
+	# Меш ОДИН НА ВСЕ ЩИТЫ (радиус у них общий), поэтому материал живёт на узле, а не на меше:
+	# заряд и попадание у каждого купола свои.
+	_dome_mesh.material_override = mat
+	_dome_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_dome.add_child(_dome_mesh)
 	add_child(_dome)
+
+## Сколько раз делится грань икосаэдра: ячеек выходит 10·sub²+2, то есть 92 при трёх. Столько
+## и читается как «шестиугольный щит» — при большем числе пластины мельчают до ряби.
+const DOME_SUB := 3
+static var _hex_mesh: ArrayMesh = null
+static var _hex_cells: Array = []
+
+## Строится один раз на всю игру: у всех щитов один радиус, значит и купол один и тот же.
+static func _hex_geometry() -> ArrayMesh:
+	if _hex_mesh == null:
+		var built := ShieldHex.build(SHIELD_RADIUS, DOME_SUB)
+		_hex_mesh = built["mesh"]
+		_hex_cells = built["centers"]
+	return _hex_mesh
 
 func _physics_process(delta: float) -> void:
 	if _dome == null:
@@ -89,8 +98,7 @@ func _physics_process(delta: float) -> void:
 func _dome_material() -> ShaderMaterial:
 	if _dome_mesh == null:
 		return null
-	var pm := _dome_mesh.mesh as PrimitiveMesh
-	return pm.material as ShaderMaterial if pm != null else null
+	return _dome_mesh.material_override as ShaderMaterial
 
 func _set_dome_param(name: String, value: Variant) -> void:
 	var mat := _dome_material()
@@ -104,9 +112,9 @@ func _push_hit() -> void:
 # щит ПРОБИТ: гаснет и SHIELD_BREAK_CD секунд не поднимается, даже если энергия уже
 # капает. Иначе на якоре подпитка шла быстрее выстрелов и щит был непробиваем.
 func absorb(damage: int) -> void:
-	# Волна от места удара — это и есть ответ на «не вижу, что щит сработал»: снаряд гас у
-	# границы, а сам щит никак не менялся. Без точки волна расходится от макушки — купол всё
-	# равно отвечает, просто не показывает, откуда прилетело.
+	# Вспышка пластины — это и есть ответ на «не вижу, что щит сработал»: снаряд гас у границы,
+	# а сам щит никак не менялся. Какая именно пластина, скажет mark_hit_point сразу следом;
+	# источник урона без точки (их почти нет) зажжёт ту, что отметили прошлой.
 	_hit = 1.0
 	_push_hit()
 	var v := _vehicle_root()
@@ -116,8 +124,9 @@ func absorb(damage: int) -> void:
 		if paid < cost or v.energy_available() <= 0.0:
 			_cd = SHIELD_BREAK_CD
 
-## Куда попали. Направление переводим в ОСИ КУПОЛА: машина едет и крутится, а волна обязана
-## остаться на том месте оболочки, куда пришёл снаряд.
+## Куда попали. Направление переводим в ОСИ КУПОЛА (машина едет и крутится) и ищем БЛИЖАЙШУЮ
+## ПЛАСТИНУ: вспыхивает ровно она одна. Мигание всей оболочки не говорит, куда пришёлся удар, а
+## под частым огнём превращается в мигание экрана.
 func mark_hit_point(world_pos: Vector3) -> void:
 	if _dome == null:
 		return
@@ -125,7 +134,17 @@ func mark_hit_point(world_pos: Vector3) -> void:
 			* (world_pos - _dome.global_position)
 	if local.length_squared() < 0.0001:
 		return
-	_set_dome_param("hit_dir", local.normalized())
+	_set_dome_param("hit_cell", _nearest_cell(local.normalized()))
+
+func _nearest_cell(dir: Vector3) -> Vector3:
+	var best: Vector3 = dir
+	var best_dot := -2.0
+	for c in _hex_cells:
+		var d: float = dir.dot(c)
+		if d > best_dot:
+			best_dot = d
+			best = c
+	return best
 
 func _vehicle_root() -> Node:
 	var p := get_parent()

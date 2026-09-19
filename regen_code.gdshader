@@ -73,7 +73,10 @@ void fragment() {
 	float bit = step(0.5, h1(v_seed + floor(TIME * flip_rate) * 1.37));
 	float g = glyph(UV, bit);
 	float a = g * v_fade * active;
+	// При unshaded в кадр идёт ALBEDO, а EMISSION не добавляет ничего (см. shield_dome.gdshader).
+	// Поднимать цвет выше единицы тут нельзя: множитель обрезается по каналам и съедает оттенок —
+	// зелёный уходил в бледный циан. Яркость цифры несёт ALPHA, а её потолок и так единица.
 	ALBEDO   = tint;
-	EMISSION = tint * a * 1.5;
+	EMISSION = tint;
 	ALPHA    = clamp(a, 0.0, 1.0);
 }

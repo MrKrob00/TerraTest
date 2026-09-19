@@ -655,17 +655,28 @@ project: read it before claiming how anything works.
 - **Headless cannot judge any of this.** The dummy driver draws nothing, so these numbers are set
   by reading the shader and the docs; only the device settles them. A shader's SHAPE, though, can
   be seen — see §3 "Shaders need a REAL driver".
-- A PATTERN ON A SPHERE IS BUILT FROM THE DIRECTION, NEVER FROM SPHERE UV. Longitude lines run
-  together at the poles, and correcting the step by `sin(latitude)` does not straighten them, it
-  winds them into spirals — which is what the shield read as from above. The direction is split
-  onto a CUBE FACE (whichever axis is largest) and the grid is flat inside that face, with an
-  `atan` correction so a cell keeps its angular size out to the face corner. The price is a seam
-  on the twelve cube edges, and that price is unavoidable: a seamless hexagonal grid on a sphere
-  does not exist, it needs twelve pentagons.
-- A HEX LATTICE'S STEP AND ITS DISTANCE METRIC MUST MATCH. `s = vec2(1, 1.732)` goes with
-  `max(0.5·|x| + 0.866·|y|, |x|)`; the transposed step goes with the transposed metric. Mixing
-  them gives no hexagons at all, just a torn pattern of arcs — cheap to check by printing the
-  level set on a grid, which is how the shield's was finally found.
+- **`EMISSION` DOES NOTHING UNDER `render_mode unshaded` IN COMPATIBILITY.** Measured on the real
+  driver: albedo 0.2 alone reads 0.498, emission 0.8 alone reads 0.302, and the two TOGETHER read
+  0.498 — the same as albedo by itself. So every brightness multiplier written onto `EMISSION` in
+  an unshaded shader was decoration; the colour that reaches the frame is `ALBEDO`. That is where
+  the shield's "why is it so dim whatever I do" came from. `glitch_card.gdshader` still ends
+  `EMISSION = col * 2.0` and is unshaded — its cards are running at plain `ALBEDO` brightness.
+- A HEXAGONAL SHIELD IS GEOMETRY, NOT A PATTERN (`shield_hex.gd`). Painting a grid onto a sphere
+  fails for a reason that is not about settings: sphere UV winds the lines into spirals at the
+  poles, a cube-face projection has no poles but stretches the cell toward the silhouette, and a
+  uniform hexagonal MARKING of a sphere does not exist at all. A hexagonal SOLID does — the
+  Goldberg polyhedron, dual of a geodesic sphere: 10·sub²+2 cells, twelve of them pentagons, the
+  rest equal hexagons (sub 3 → 92 cells, 540 triangles, built once and shared by every shield).
+  Each cell carries its own centre direction and random number in the vertex COLOR and its
+  distance-to-edge in UV, so the shader has no hash, no `mod` and no `atan` left, and lighting ONE
+  cell on a hit is an exact comparison rather than a distance on the sphere.
+- GODOT'S FRONT FACE IS THE CLOCKWISE ONE, seen from outside — the opposite of the right-hand
+  rule most mesh-building code reaches for. A code-built mesh with the intuitive winding renders
+  inside-out, and then `FRONT_FACING` answers backwards and `NORMAL` comes through flipped: the
+  near hemisphere was being dimmed as if it were the far one. Neither built-in is safe on such a
+  mesh — near or far is `dot(outward_direction, direction_to_camera)` computed from `VERTEX` and
+  `CAMERA_POSITION_WORLD`, which owes nothing to any convention. With back-face culling on, a
+  wrong winding is loud instead of silent: the mesh simply does not draw.
 - AN EFFECT THAT PLAYS WHEN NOTHING HAPPENED IS NOISE. The shield glitched a share of its plates
   at all times, so it rippled while nobody was shooting at it. Anything that says "I was hit"
   hangs off the hit value, and putting it behind `if (hit > 0.001)` costs nothing the rest of the
@@ -673,7 +684,9 @@ project: read it before claiming how anything works.
 - A FULL-SCREEN TRANSPARENT SPHERE IS EXPENSIVE, AND `cull_disabled` PAYS FOR IT TWICE. Both the
   dome and the repair field were such spheres with hashes in every pixel. The repair field is now
   a MultiMesh of a dozen billboard cards — one draw call, no fragment cost worth the name — and
-  the dome dims its far hemisphere instead of adding it at full strength.
+  the dome culls its back faces outright: half the fragments, no lattice added on top of itself,
+  and the near/far question gone. The cost is that the dome is invisible from inside it, which at
+  a four-metre radius the camera almost never is.
 
 ### Performance
 
