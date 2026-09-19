@@ -1291,13 +1291,8 @@ func _build_extra_panel() -> void:
 	_extra_vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_extra_vb.add_theme_constant_override("separation", 6)
 	_extra_scroll.add_child(_extra_vb)
-	# Обновление вкладки МУЗЫКА при смене трека/предпочтений.
-	var m := _music()
-	if m:
-		m.prefs_changed.connect(func() -> void:
-			if visible and _tab == TAB_MUSIC: _build_music_tab())
-		m.track_changed.connect(func(_t: String, _a: String) -> void:
-			if visible and _tab == TAB_MUSIC: _build_music_tab())
+	# Подписка на смену трека живёт в самой панели (music_panel.gd) — она обновляет свои строки
+	# и не требует от вкладки помнить, что их надо перерисовать.
 
 func _music() -> Node:
 	return get_node_or_null("/root/Music")
@@ -1323,6 +1318,9 @@ func _extra_header(text: String) -> void:
 	_extra_vb.add_child(lbl)
 
 # ── Вкладка МУЗЫКА ─────────────────────────────────────────────────────────────
+# Панель — общая с главным меню (music_panel.gd). Здесь она показывает ДВА списка, которые
+# играет мир; меню показывает свой. Вторая раскладка строк рядом с этой разъехалась бы в тот
+# день, когда в одну из них добавят кнопку.
 func _build_music_tab() -> void:
 	if _extra_vb == null:
 		return
@@ -1331,129 +1329,9 @@ func _build_music_tab() -> void:
 	if m == null:
 		_extra_header(tr("Music system not connected"))
 		return
-	var cur: Dictionary = m.current_track()
-	# Сейчас играет + пропуск
-	var now_row := HBoxContainer.new()
-	_extra_vb.add_child(now_row)
-	var now := Label.new()
-	now.text = ("▶ %s — %s  [%s]" % [cur.get("title", ""), cur.get("author", ""), m.context_name()]) \
-			if not cur.is_empty() else tr("Silence (no tracks or all disabled)")
-	now.add_theme_font_size_override("font_size", 13)
-	now.add_theme_color_override("font_color", Color(0.75, 0.95, 0.8))
-	now.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	now.clip_text = true
-	now_row.add_child(now)
-	var skip := Button.new()
-	skip.text = "⏭"
-	skip.tooltip_text = tr("Next track")
-	skip.custom_minimum_size = Vector2(44, 38)
-	skip.pressed.connect(func() -> void:
-		var mm := _music()
-		if mm: mm.skip())
-	now_row.add_child(skip)
-	# Громкость
-	var vol_row := HBoxContainer.new()
-	_extra_vb.add_child(vol_row)
-	var vol_lbl := Label.new()
-	vol_lbl.text = tr("Volume")
-	vol_lbl.add_theme_font_size_override("font_size", 13)
-	vol_row.add_child(vol_lbl)
-	var vol := HSlider.new()
-	vol.min_value = 0.0
-	vol.max_value = 1.0
-	vol.step = 0.05
-	vol.value = m.volume
-	vol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vol.value_changed.connect(func(v: float) -> void:
-		var mm := _music()
-		if mm: mm.set_volume(v))
-	vol_row.add_child(vol)
-	# Два списка: путешествия (играют и в гараже) и отдельно сражения. Без «меню» —
-	# тот тип зарезервирован под будущее главное меню игры.
-	var sections := [[tr("Travel"), m.Ctx.TRAVEL], [tr("Battle"), m.Ctx.BATTLE]]
-	for s in sections:
-		_extra_header(str(s[0]))
-		var list: Array = m.tracks.get(s[1], [])
-		if list.is_empty():
-			var empty := Label.new()
-			empty.text = tr("   (no tracks — drop .ogg into music/)")
-			empty.add_theme_font_size_override("font_size", 12)
-			empty.modulate = Color(1, 1, 1, 0.45)
-			_extra_vb.add_child(empty)
-			continue
-		for track in list:
-			_extra_vb.add_child(_music_row(m, track, cur))
-
-# ── Иконки строк музыки: рисуются кодом (юникод-глифы ♥/✖ не рендерились шрифтом) ──
-class HeartIcon extends Control:
-	var active := false
-	func _draw() -> void:
-		var c := size * 0.5 + Vector2(0, -1)
-		var col := Color(1.0, 0.35, 0.5) if active else Color(0.45, 0.47, 0.52)
-		var r := 5.0
-		draw_circle(c + Vector2(-r, -2), r, col)
-		draw_circle(c + Vector2(r, -2), r, col)
-		draw_colored_polygon(PackedVector2Array([
-			c + Vector2(-2.0 * r, 0.5), c + Vector2(2.0 * r, 0.5), c + Vector2(0, 11.0)]), col)
-
-class BanIcon extends Control:
-	var active := false
-	func _draw() -> void:
-		var c := size * 0.5
-		# «Не любимое» — всегда красный: тусклый в покое, яркий когда включён.
-		var col := Color(1.0, 0.25, 0.2) if active else Color(0.62, 0.2, 0.18)
-		var a := 7.0
-		draw_line(c + Vector2(-a, -a), c + Vector2(a, a), col, 3.5)
-		draw_line(c + Vector2(-a, a), c + Vector2(a, -a), col, 3.5)
-
-# Строка трека: слева НАЗВАНИЕ (сверху) и под ним автор (мелко, серым), справа кнопки
-# ♥ (любимое — играет чаще) и ✖ (не играть). ▶ у играющего.
-func _music_row(m: Node, t: Dictionary, cur: Dictionary) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	var file: String = t["file"]
-	var playing: bool = cur.get("file", "") == file
-
-	var info := VBoxContainer.new()
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	info.add_theme_constant_override("separation", 0)
-	row.add_child(info)
-	var title := Label.new()
-	title.text = ("▶ " if playing else "") + str(t["title"])
-	title.add_theme_font_size_override("font_size", 15)
-	title.clip_text = true
-	if m.banned.has(file):
-		title.modulate = Color(1, 1, 1, 0.4)
-	elif playing:
-		title.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
-	info.add_child(title)
-	var author := Label.new()
-	author.text = str(t["author"])
-	author.add_theme_font_size_override("font_size", 12)
-	author.add_theme_color_override("font_color", Color(0.55, 0.58, 0.62))
-	author.clip_text = true
-	if m.banned.has(file):
-		author.modulate = Color(1, 1, 1, 0.4)
-	info.add_child(author)
-
-	row.add_child(_music_icon_btn(HeartIcon.new(), m.fav.has(file), "Favorite: plays more often",
-			func(on: bool) -> void: m.set_favorite(file, on)))
-	row.add_child(_music_icon_btn(BanIcon.new(), m.banned.has(file), "Never play",
-			func(on: bool) -> void: m.set_banned(file, on)))
-	return row
-
-func _music_icon_btn(icon: Control, active: bool, tip: String, on_toggle: Callable) -> Button:
-	var b := Button.new()
-	b.toggle_mode = true
-	b.button_pressed = active
-	b.tooltip_text = tip
-	b.custom_minimum_size = Vector2(42, 40)
-	icon.set("active", active)
-	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.add_child(icon)
-	b.toggled.connect(on_toggle)
-	return b
+	var panel := MusicPanel.new()
+	_extra_vb.add_child(panel)
+	panel.setup([m.Ctx.TRAVEL, m.Ctx.BATTLE])
 
 # ── Вкладка НАСТРОЙКИ ──────────────────────────────────────────────────────────
 # Авто-FPS (система в Main.gd: держит целевой FPS, меняя масштаб рендера). Авто

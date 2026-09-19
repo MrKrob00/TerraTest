@@ -253,38 +253,63 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="Panel" type="PanelContainer" parent="UI/Settings" unique_id=1152079607]
-custom_minimum_size = Vector2(380, 0)
+[node name="SettingsPanel" type="PanelContainer" parent="UI/Settings" unique_id=1152079607]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 theme_override_styles/panel = SubResource("Panel_style")
 
-[node name="Box" type="VBoxContainer" parent="UI/Settings/Panel" unique_id=581829687]
+[node name="Box" type="VBoxContainer" parent="UI/Settings/SettingsPanel" unique_id=581829687]
 layout_mode = 2
 theme_override_constants/separation = 12
 
-[node name="Head" type="Label" parent="UI/Settings/Panel/Box" unique_id=928907405]
+[node name="Head" type="Label" parent="UI/Settings/SettingsPanel/Box" unique_id=928907405]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
 theme_override_font_sizes/font_size = 16
 text = "SETTINGS"
 
-[node name="LookRow" type="VBoxContainer" parent="UI/Settings/Panel/Box" unique_id=240687542]
+[node name="SettingsScroll" type="ScrollContainer" parent="UI/Settings/SettingsPanel/Box" unique_id=771100301]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="List" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll" unique_id=771100302]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="SecCamera" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=771100303]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LookRow" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=240687542]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LookRow" unique_id=1620807708]
+[node name="Row" type="HBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LookRow" unique_id=1105877678]
 layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Caption" type="Label" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LookRow/Row" unique_id=1620807708]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_font_sizes/font_size = 13
 text = "Rotation sensitivity"
 
-[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/LookRow" unique_id=1105877678]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="LookSlider" type="HSlider" parent="UI/Settings/Panel/Box/LookRow/Row" unique_id=834065702]
+[node name="LookValue" type="Label" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LookRow/Row" unique_id=1858621452]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "1.00"
+
+[node name="LookSlider" type="HSlider" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LookRow" unique_id=834065702]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.2
@@ -292,30 +317,31 @@ max_value = 3.0
 step = 0.05
 value = 1.0
 
-[node name="LookValue" type="Label" parent="UI/Settings/Panel/Box/LookRow/Row" unique_id=1858621452]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(52, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
-text = "1.00"
-
-[node name="ZoomRow" type="VBoxContainer" parent="UI/Settings/Panel/Box" unique_id=2018153649]
+[node name="ZoomRow" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=2018153649]
 layout_mode = 2
 theme_override_constants/separation = 2
 
-[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/ZoomRow" unique_id=832379863]
+[node name="Row" type="HBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/ZoomRow" unique_id=392058463]
 layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Caption" type="Label" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/ZoomRow/Row" unique_id=832379863]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_font_sizes/font_size = 13
 text = "Zoom sensitivity"
 
-[node name="Row" type="HBoxContainer" parent="UI/Settings/Panel/Box/ZoomRow" unique_id=392058463]
-layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="ZoomSlider" type="HSlider" parent="UI/Settings/Panel/Box/ZoomRow/Row" unique_id=434952249]
+[node name="ZoomValue" type="Label" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/ZoomRow/Row" unique_id=1715848877]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(220, 32)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "1.00"
+
+[node name="ZoomSlider" type="HSlider" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/ZoomRow" unique_id=434952249]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.2
@@ -323,45 +349,54 @@ max_value = 3.0
 step = 0.05
 value = 1.0
 
-[node name="ZoomValue" type="Label" parent="UI/Settings/Panel/Box/ZoomRow/Row" unique_id=1715848877]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(52, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.35, 0.85, 0.92, 1)
-text = "1.00"
-
-[node name="InvertY" type="CheckButton" parent="UI/Settings/Panel/Box" unique_id=11089756]
+[node name="InvertY" type="CheckButton" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=11089756]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 text = "Invert vertical"
 
-[node name="LangRow" type="HBoxContainer" parent="UI/Settings/Panel/Box" unique_id=11089760]
+[node name="SecSound" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=771100304]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="MusicHost" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=771100305]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="SecGame" type="VBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=771100306]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="LangRow" type="HBoxContainer" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=11089760]
 layout_mode = 2
 theme_override_constants/separation = 10
 
-[node name="Caption" type="Label" parent="UI/Settings/Panel/Box/LangRow" unique_id=11089761]
+[node name="Caption" type="Label" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LangRow" unique_id=11089761]
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_font_sizes/font_size = 13
 text = "Language"
 
-[node name="LangPick" type="OptionButton" parent="UI/Settings/Panel/Box/LangRow" unique_id=11089762]
+[node name="LangPick" type="OptionButton" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List/LangRow" unique_id=11089762]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(160, 40)
 layout_mode = 2
-size_flags_horizontal = 3
 
-[node name="MenuFight" type="CheckButton" parent="UI/Settings/Panel/Box" unique_id=11089757]
+[node name="MenuFight" type="CheckButton" parent="UI/Settings/SettingsPanel/Box/SettingsScroll/List" unique_id=11089757]
 unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.88, 0.97, 0.99, 1)
 text = "Fight behind the menu"
 
-[node name="CloseSettings" type="Button" parent="UI/Settings/Panel/Box" unique_id=1632485721]
+[node name="CloseSettings" type="Button" parent="UI/Settings/SettingsPanel/Box" unique_id=1632485721]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(88, 48)
 layout_mode = 2
+size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.62, 0.78, 0.82, 1)
 theme_override_colors/font_pressed_color = Color(0.88, 0.97, 0.99, 1)
 theme_override_colors/font_hover_color = Color(0.88, 0.97, 0.99, 1)

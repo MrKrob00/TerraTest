@@ -511,6 +511,12 @@ project: read it before claiming how anything works.
   EXACTLY TWO parents, and only lines show that; a stage list with an arrow showed the order and
   hid the dependency. Block text lives in `G.BLOCK_DESC` — one sentence about what the part DOES,
   never numbers, which move; a component's text is derived from its recipe, never typed out.
+- MUSIC CONTROLS ARE ONE PANEL, `music_panel.gd`, used by the garage tab and by the main-menu
+  settings; the only difference is WHICH context lists it is given. The menu shows its own,
+  the garage the two the world plays. The MENU context itself is set by `menu.gd` while that
+  scene is up and cleared when it leaves — the flag sat in the manager unused for months and
+  `music/menu/` never played once, because the autoload outlives the scene and nobody owned the
+  switch. Turning music off is `set_enabled`, not volume zero, which forgets the level.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
   means English). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into

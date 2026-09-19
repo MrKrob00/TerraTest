@@ -1,7 +1,9 @@
 extends Node
 # MusicManager (autoload) — контекстная музыка с плейлистом игрока.
 #
-# Три типа: MENU (гараж), TRAVEL (езда по миру), BATTLE (враги рядом). Треки лежат в
+# Три типа: MENU (главное меню игры), TRAVEL (езда по миру и гараж), BATTLE (враги рядом).
+# MENU ставит menu.gd, пока сцена меню на экране; гараж музыку НЕ меняет — он открывается
+# посреди поездки, и смена трека на вход в гараж читалась бы как «что-то случилось». Треки лежат в
 # res://music/{menu,travel,battle}/ и подхватываются автоматически (см. music/README.md).
 # Внутри типа трек выбирается СЛУЧАЙНО С ВЕСАМИ: любимый (♥) играет чаще, выключенный (✖)
 # не играет никогда, один и тот же трек не повторяется подряд (если есть выбор).
@@ -98,14 +100,37 @@ func set_volume(v: float) -> void:
 		_active.volume_db = linear_to_db(maxf(volume, 0.0001))
 	_save_prefs()
 
+## Музыка целиком выключается ВЫКЛЮЧАТЕЛЕМ, а не громкостью в ноль. Флаг `enabled` лежал здесь
+## с самого начала и его никто не ставил: единственным способом заглушить игру было утащить
+## ползунок влево, после чего прежняя громкость терялась.
+func set_enabled(on: bool) -> void:
+	if enabled == on:
+		return
+	enabled = on
+	_save_prefs()
+	if enabled:
+		_play_for_context()
+	else:
+		_gap_left = 0.0
+		_cur = {}
+		_fade_out_all()
+		track_changed.emit("", "")
+	prefs_changed.emit()
+
 func skip() -> void:
 	_start_track(_pick(_ctx), true)
 
 func current_track() -> Dictionary:
 	return _cur
 
+# Имя типа — одна таблица: её же читает панель музыки, когда подписывает свои списки.
+const CTX_TITLE := ["Menu", "Travel", "Battle"]
+
 func context_name() -> String:
-	return ["Menu", "Travel", "Battle"][_ctx]
+	return ctx_title(_ctx)
+
+func ctx_title(ctx: int) -> String:
+	return CTX_TITLE[ctx] if ctx >= 0 and ctx < CTX_TITLE.size() else ""
 
 # ── Контекст ───────────────────────────────────────────────────────────────────
 
