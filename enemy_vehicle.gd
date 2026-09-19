@@ -755,8 +755,19 @@ func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle = lerp(_steer_angle, steer_input * angle_limit, steer_speed * delta)
 
-	# On a sharp turn the throttle drops but not to zero, or the machine stops completing the turn.
-	var turn_factor: float = clampf(1.0 - absf(ang) / PI, 0.4, 1.0)
+	# В КРУТОМ ПОВОРОТЕ НАДО СБРАСЫВАТЬ ГАЗ, И СИЛЬНО. Это не «плавность», это единственный способ
+	# получить тугой поворот, и вот почему.
+	#
+	# Предельный угол руля ПАДАЕТ СО СКОРОСТЬЮ: angle_limit = steer_max_angle × (1 − 0.5 ×
+	# speed_ratio). А радиус поворота равен wheelbase / tan(руль). Игрок в повороте сбрасывает до
+	# ползком и получает все 45°; ИИ держал сорок-пятьдесят процентов газа, получал около 34° — и
+	# его круг выходил в ПОЛТОРА РАЗА шире при одинаковом руле. Отсюда «наматывание кругов
+	# паровозиком», пока игрок спокойно пристраивается сзади.
+	#
+	# Поэтому спад резче и дно ниже: на прямой курс газ полный, на развороте машина почти
+	# останавливается и выкручивается на месте. Ниже дна не опускаем — под steer_min_speed руль
+	# отпускается совсем, и поворот не закончится никогда.
+	var turn_factor: float = clampf(1.0 - absf(ang) / (PI * 0.55), 0.14, 1.0)
 	_throttle = lerp(_throttle, speed * turn_factor, 4.0 * delta)
 
 const CTX_PERIOD: float = 0.12
