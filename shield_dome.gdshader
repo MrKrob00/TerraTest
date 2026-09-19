@@ -26,6 +26,11 @@ uniform float rim_pow : hint_range(0.5, 8.0) = 2.6;    // насколько р�
 uniform float rim_gain : hint_range(0.0, 4.0) = 1.6;
 uniform float flicker_speed = 1.7;
 uniform float energy : hint_range(0.0, 1.0) = 1.0;     // заряд: гаснет вместе со щитом
+uniform vec3  glitch_a : source_color = vec3(0.15, 0.85, 1.0);   // тот же циан, что у карточек
+uniform vec3  glitch_b : source_color = vec3(0.72, 0.16, 1.0);   // и та же маджента
+uniform float glitch_share : hint_range(0.0, 0.6) = 0.10;        // доля пластин в глитче
+uniform float glitch_rate = 6.0;                                  // как часто перещёлкиваются
+uniform float hit : hint_range(0.0, 1.0) = 0.0;   // свежее попадание: купол вспыхивает целиком
 
 float hash(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21));
@@ -62,8 +67,21 @@ void fragment() {
 
 	float a = (fill * (0.6 + 0.4 * n) + edge) * pulse;
 	a = (a + fres * rim_gain) * energy;
+	a += hit * 0.5;
 
-	ALBEDO   = tint;
-	EMISSION = tint * (edge * 1.4 + fres * rim_gain) * energy;
-	ALPHA    = clamp(a, 0.0, 1.0);
+	// ПЛАСТИНЫ ГЛИТЧАТ, А НЕ ПРОСТО СВЕТЯТСЯ. Шестиугольники сами по себе оставляли купол
+	// шаром — «красивее, но всё тот же шар». Здесь редкие пластины перещёлкиваются в цвета
+	// глитча (циан/маджента), теми же, которыми говорит появление блока: щит читается как
+	// работающая система, а не как крашеная сфера.
+	//
+	// Редко и вразнобой: зажечь все — снова заливка, от которой и уходили.
+	float gt = floor(TIME * glitch_rate);
+	float gsel = hash(h.yz + vec2(gt, gt * 1.7));
+	float on = step(1.0 - glitch_share, gsel);
+	vec3 gcol = gsel < (1.0 - glitch_share * 0.5) ? glitch_a : glitch_b;
+	vec3 col = mix(tint, gcol, on);
+
+	ALBEDO   = col;
+	EMISSION = col * (edge * 1.4 + fres * rim_gain + on * 1.6) * energy;
+	ALPHA    = clamp(a + on * 0.35 * energy, 0.0, 1.0);
 }

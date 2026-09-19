@@ -631,6 +631,13 @@ func _in_bounds(x: int, y: int, z: int) -> bool:
 	)
 
 # ── Spawning one block ──────────────────────────────────────────────────────
+## Машина, которой мы принадлежим, проявляется целиком? Спрашиваем по наличию метода, а не по
+## классу: базам и машине игрока он не нужен, а заводить ради этого флаг и протаскивать его
+## через пять путей спавна — пять мест, где о нём забудут.
+func _owner_materialises() -> bool:
+	var p := get_parent()
+	return p != null and p.has_method("_materialise_on_spawn")
+
 func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	var scene: PackedScene = G.get_scene(block)
 	if scene == null:
@@ -686,7 +693,14 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 
 	# The matrix spawn effect plays only when a machine is built FROM SCRATCH (spawn_block is called
 	# from _spawn_all only: first machine, load, build change). Manual placement no longer plays it.
-	BlockFX.play(instance, false)
+	#
+	# И НЕ ИГРАЕТ ВОВСЕ, ЕСЛИ МАШИНА ПРОЯВЛЯЕТСЯ ЦЕЛИКОМ. У врага есть свой эффект рождения
+	# (BlockFX.materialise, зовётся из enemy_vehicle), и поблочный ему не нужен — он его к тому
+	# же ЛОМАЛ: двадцать семь блоков по двадцать восемь карточек выбирают весь бюджет кадра
+	# (CARDS_PER_FRAME), и машине-целиком не доставалось ни одной. Заодно это снимает ту самую
+	# тысячу узлов в одном кадре, ради которой бюджет и заводили.
+	if not _owner_materialises():
+		BlockFX.play(instance, false)
 	# Ноды появляются ПОЗЖЕ клеток (здесь есть await), поэтому счёт замурованных просим и
 	# отсюда: отложенный проход от set_block мог пройти по ещё пустому node_map.
 	queue_occlusion()
