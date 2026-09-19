@@ -610,6 +610,69 @@ static func _spawn_step(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):
 		mat.set_shader_parameter("progress", p)
 
+# ── Поток ремонта: код летит В блок, который чинят ───────────────────────────────
+#
+# Орбита вокруг регена (regen_field.gdshader) показывает, что поле РАБОТАЕТ. Она не может
+# показать, КОГО оно чинит прямо сейчас: шейдер сферы про соседние блоки ничего не знает.
+# Поэтому починка — отдельная вещь: несколько глифов срываются с поля и летят в цель.
+#
+# ЛЕТЯТ С УСКОРЕНИЕМ. Равномерный полёт читается как перенос предмета, разгон — как притяжение,
+# и именно он делает понятным, что чинит не «поле вообще», а вот этот код, прилетевший в блок.
+#
+# Глифы — билборды с карточным шейдером в зелёной палитре починки, той же, которой зеленеют
+# цифры урона на самом блоке. Держатся на СЦЕНЕ, а не на цели: блок могут в этот момент оторвать
+# или уничтожить, и поток обязан долететь всё равно.
+const HEAL_COL_A := Color(0.25, 1.0, 0.45)
+const HEAL_COL_B := Color(0.55, 1.0, 0.75)
+const HEAL_BOLTS := 3
+const HEAL_DUR := 0.32
+
+static func repair_stream(from: Node3D, to: Node3D) -> void:
+	if from == null or to == null or not is_instance_valid(from) or not is_instance_valid(to):
+		return
+	if not from.is_inside_tree() or not to.is_inside_tree():
+		return
+	var tree := from.get_tree()
+	if tree == null:
+		return
+	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
+	var n: int = _take_card_budget(HEAL_BOLTS)
+	if n <= 0:
+		return
+	var a: Vector3 = from.global_position
+	var b: Vector3 = to.global_position
+	for i in n:
+		var card := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2(0.34, 0.34)
+		card.mesh = q
+		card.set_meta("block_fx", true)
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var cmat := ShaderMaterial.new()
+		cmat.shader = CARD_SHADER
+		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("grid_cells", 3.0)
+		cmat.set_shader_parameter("fill_threshold", 0.30)
+		cmat.set_shader_parameter("progress", 0.0)
+		cmat.set_shader_parameter("glitch_a", Vector3(HEAL_COL_A.r, HEAL_COL_A.g, HEAL_COL_A.b))
+		cmat.set_shader_parameter("glitch_b", Vector3(HEAL_COL_B.r, HEAL_COL_B.g, HEAL_COL_B.b))
+		card.material_override = cmat
+		host.add_child(card)
+		# Стартуют не из одной точки, а с разных сторон поля: иначе три глифа летят слипшись
+		# и читаются одним.
+		var off := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 1.2
+		card.global_position = a + off
+		var tw := card.create_tween()
+		tw.set_parallel(true)
+		# EASE_IN и есть разгон: к цели глиф приходит быстрее, чем стартовал.
+		tw.tween_property(card, "global_position", b, HEAL_DUR).set_ease(Tween.EASE_IN)
+		tw.tween_method(_set_card_progress.bind(cmat), 0.0, 1.0, HEAL_DUR)
+		tw.chain().tween_callback(card.queue_free)
+
+static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
+	if is_instance_valid(mat):
+		mat.set_shader_parameter("progress", p)
+
 const MAX_EXTENT := 2.0
 
 # AABB блока В ЕГО СОБСТВЕННЫХ ОСЯХ: объединяем AABB всех MeshInstance3D, переведя их
