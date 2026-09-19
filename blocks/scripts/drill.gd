@@ -75,3 +75,7 @@ func _dig() -> void:
 		if G.is_friendly_dome(body, _root_body()): continue
 		if body.has_method("hurt"):
 			body.hurt(drill_damage)
+		# Чужой купол отмечает место удара так же, как от пули: бур стоит вплотную, так что
+		# своё положение здесь и есть точка контакта.
+		if body.has_method("struck"):
+			body.struck(global_position)
