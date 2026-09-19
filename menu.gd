@@ -47,11 +47,17 @@ func _ready() -> void:
 ##
 ## The list lives here rather than being fetched: the game is offline, and a request nobody
 ## answers is a startup delay plus an error screen.
+## ТЕКСТ ЗДЕСЬ ПИШЕТСЯ ПО-АНГЛИЙСКИ, И ЭТО НЕ СТИЛЬ, А УСЛОВИЕ РАБОТЫ. Ключ перевода — сама
+## английская строка (i18n/strings.json), поэтому запись, написанная по-русски, не переводится
+## ничем: она одинаково показывается на всех трёх языках. Ровно это и было — новости стояли
+## русским текстом и без tr(), то есть мимо перевода дважды.
+##
+## Новая запись = английский текст здесь ПЛЮС строки ru/uk в том же коммите.
 const NEWS := [
-	{"date": "15.09.2026", "title": "БЕСКОНЕЧНАЯ ГЕНЕРАЦИЯ", "lines": [
-		"Генерация мира теперь бесконечная и процедурная: земля считается по ходу игры, а не читается готовой.",
-		"При загрузке в мир карта больше не требует много времени.",
-		"Были исправлены некоторые баги.",
+	{"date": "15.09.2026", "title": "ENDLESS GENERATION", "lines": [
+		"World generation is endless and procedural now: the ground is computed as you drive, not read from a file.",
+		"Entering a world no longer keeps you waiting for the map.",
+		"A number of bugs fixed.",
 	]},
 ]
 
@@ -65,14 +71,14 @@ func _fill_news() -> void:
 		date.add_theme_color_override("font_color", DIM * Color(1, 1, 1, 0.75))
 		head.add_child(date)
 		var title := Label.new()
-		title.text = String(rel["title"])
+		title.text = tr(String(rel["title"]))
 		title.add_theme_font_size_override("font_size", 13)
 		title.add_theme_color_override("font_color", ACCENT)
 		head.add_child(title)
 		_news_list.add_child(head)
 		for line in rel["lines"]:
 			var l := Label.new()
-			l.text = "· " + String(line)
+			l.text = "· " + tr(String(line))
 			l.add_theme_font_size_override("font_size", 12)
 			l.add_theme_color_override("font_color", TEXT * Color(1, 1, 1, 0.86))
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
