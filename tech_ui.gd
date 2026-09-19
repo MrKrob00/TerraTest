@@ -247,6 +247,144 @@ var _codex_buttons: Dictionary = {}
 var _codex_col: VBoxContainer = null
 var _codex_dialog: AcceptDialog = null
 
+# ── ЦЕПОЧКА РЕСУРСОВ: ТОТ ЖЕ ГРАФ, ЧТО И ДРЕВО ТЕХНОЛОГИЙ ───────────────────────
+#
+# Плоский список «сорок имён подряд» отвечает на вопрос «что есть» и молчит о том, ОТКУДА оно
+# берётся. А вся экономика — четыре передела, и понять её по алфавитному списку нельзя.
+#
+# Рисуется ТЕМ ЖЕ холстом, что и древо (TechGraph): колонки слева направо — сырьё, слитки,
+# простые, сложные, — и НАСТОЯЩИЕ ЛИНИИ СВЯЗЕЙ от родителей к потомку. Список стадий с текстовой
+# стрелкой, который был здесь раньше, показывал порядок, но не показывал, что из чего: у каждого
+# компонента РОВНО ДВА родителя, и это видно только линиями.
+#
+# Строится из тех же таблиц, что и всё остальное (G.METAL_NAME, G.COMP_NAME, G.COMP_PARENT):
+# второй, написанный руками список однажды отстал бы на материал и промолчал.
+const CNODE_W := 104.0
+const CNODE_H := 42.0
+const CCOL_W := 150.0
+const CROW_H := 50.0
+
+var _chain_root: VBoxContainer = null
+var _chain_head: Label = null
+var _chain_scroll: ScrollContainer = null
+var _chain_graph: TechGraph = null
+
+func _chain_build_shell(body: Node) -> void:
+	_chain_root = VBoxContainer.new()
+	_chain_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chain_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_chain_root.add_theme_constant_override("separation", 6)
+	_chain_root.visible = false
+	body.add_child(_chain_root)
+	_chain_head = Label.new()
+	_chain_head.add_theme_font_size_override("font_size", 14)
+	_chain_head.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.9))
+	_chain_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_chain_root.add_child(_chain_head)
+	var area := Control.new()
+	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	area.clip_contents = true
+	_chain_root.add_child(area)
+	_chain_scroll = ScrollContainer.new()
+	_chain_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_chain_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_chain_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	area.add_child(_chain_scroll)
+	_chain_graph = TechGraph.new()
+	_chain_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг прокрутки идёт сквозь холст
+	_chain_scroll.add_child(_chain_graph)
+
+func _build_chain_tab() -> void:
+	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
+	if body == null:
+		return
+	if _chain_root == null:
+		_chain_build_shell(body)
+	_chain_root.visible = true
+	_chain_head.text = tr("Ore is smelted into ingots, a pair of ingots makes a simple component, a pair of simple ones makes a complex one. Tap any of them for its entry.")
+	for c in _chain_graph.get_children():
+		c.queue_free()
+
+	# Колонки. Уголь стоит в первой особняком: он не плавится в слиток и идёт прямо в топливо,
+	# поэтому связей у него нет и своей записи в каталоге тоже.
+	var col_raw: Array = []
+	for m in G.METAL_NAME.size():
+		col_raw.append({"name": tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "key": "m%d" % m})
+	col_raw.append({"name": tr("Coal"), "key": ""})
+	var col_ing: Array = []
+	for m in G.METAL_NAME.size():
+		col_ing.append({"name": tr(String(G.METAL_NAME[m])), "key": "m%d" % m})
+	# Ярусы — G.COMP_SIMPLE_COUNT, а не шестёрка руками: число пар считается из числа металлов,
+	# и одна новая руда сдвинула бы границу.
+	var col_s: Array = []
+	for c in mini(G.COMP_SIMPLE_COUNT, G.COMP_NAME.size()):
+		col_s.append({"name": tr(String(G.COMP_NAME[c])), "key": "c%d" % c})
+	var col_c: Array = []
+	for c in range(G.COMP_SIMPLE_COUNT, G.COMP_NAME.size()):
+		col_c.append({"name": tr(String(G.COMP_NAME[c])), "key": "c%d" % c})
+	var cols: Array = [col_raw, col_ing, col_s, col_c]
+
+	# Позиции: колонка по X, ряд по Y. Каждая колонка ЦЕНТРИРУЕТСЯ по самой длинной, иначе
+	# короткая колонка сырья прижималась бы к верху, а линии к ней шли бы наискось через всё.
+	var tallest := 0
+	for col in cols:
+		tallest = maxi(tallest, (col as Array).size())
+	for ci in cols.size():
+		var col: Array = cols[ci]
+		var off: float = (float(tallest) - float(col.size())) * CROW_H * 0.5
+		for ri in col.size():
+			(col[ri] as Dictionary)["at"] = Vector2(TMARGIN + ci * CCOL_W, TMARGIN + off + ri * CROW_H)
+
+	# Линии. Руда → слиток один к одному; компонент — от ОБОИХ родителей (G.COMP_PARENT).
+	var edges: Array = []
+	var line := Color(0.35, 0.72, 0.78, 0.5)
+	for m in G.METAL_NAME.size():
+		edges.append({"a": (col_raw[m]["at"] as Vector2) + Vector2(CNODE_W, CNODE_H * 0.5),
+				"b": (col_ing[m]["at"] as Vector2) + Vector2(0.0, CNODE_H * 0.5), "col": line})
+	for c in G.COMP_NAME.size():
+		var par: Array = G.COMP_PARENT[c]
+		if par == null or par.size() < 2:
+			continue
+		# Первый ярус собирается из СЛИТКОВ, второй — из первого яруса: индексы в COMP_PARENT
+		# считаются внутри своего яруса, и колонка-источник у них разная.
+		var simple: bool = c < G.COMP_SIMPLE_COUNT
+		var dst: Dictionary = col_s[c] if simple else col_c[c - G.COMP_SIMPLE_COUNT]
+		var src: Array = col_ing if simple else col_s
+		for pi in par:
+			var p_i: int = int(pi)
+			if p_i < 0 or p_i >= src.size():
+				continue
+			edges.append({"a": ((src[p_i] as Dictionary)["at"] as Vector2) + Vector2(CNODE_W, CNODE_H * 0.5),
+					"b": (dst["at"] as Vector2) + Vector2(0.0, CNODE_H * 0.5), "col": line})
+	_chain_graph.edges = edges
+	_chain_graph.queue_redraw()
+
+	var maxx := 0.0
+	var maxy := 0.0
+	for col in cols:
+		for it in col:
+			var at: Vector2 = (it as Dictionary)["at"]
+			maxx = maxf(maxx, at.x)
+			maxy = maxf(maxy, at.y)
+			_chain_graph.add_child(_make_chain_node(it as Dictionary))
+	_chain_graph.custom_minimum_size = Vector2(maxx + CNODE_W + TMARGIN, maxy + CNODE_H + TMARGIN)
+
+func _make_chain_node(it: Dictionary) -> Control:
+	var btn := Button.new()
+	btn.position = it["at"]
+	btn.size = Vector2(CNODE_W, CNODE_H)
+	btn.text = String(it["name"])
+	btn.clip_text = true
+	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btn.add_theme_font_size_override("font_size", 11)
+	var key := String(it["key"])
+	if key == "":
+		btn.disabled = true          # у угля своей записи в каталоге нет
+	else:
+		btn.pressed.connect(_show_codex.bind(key))
+	return btn
+
 func _set_codex_kind(key: String) -> void:
 	_codex_kind = key
 	for k in _codex_buttons:
@@ -254,80 +392,6 @@ func _set_codex_kind(key: String) -> void:
 	# Цепочка — другая панель, а не другой набор плиток: перевыбираем вкладку целиком, иначе
 	# сетка осталась бы видимой поверх неё.
 	_select_tab(TAB_CODEX)
-
-# ── ЦЕПОЧКА РЕСУРСОВ ──────────────────────────────────────────────────────────
-#
-# Плоский список «сорок имён подряд» отвечает на вопрос «что есть» и молчит о том, ОТКУДА оно
-# берётся. А вся экономика игры — это четыре передела подряд, и понять её по алфавитному списку
-# нельзя. Здесь те же записи выложены стадиями: сырьё, станок, что из него выходит, снова станок.
-#
-# СТРОИТСЯ ИЗ ТЕХ ЖЕ ТАБЛИЦ, что и всё остальное (G.METAL_NAME, G.COMP_NAME, G.COMP_RECIPE):
-# второй, написанный руками список однажды отстал бы на один материал и промолчал об этом.
-#
-# Записи кликабельны и открывают то же окно справки, что и плитки каталога, — иначе получилось бы
-# два описания одного и того же, которые разъедутся.
-func _build_chain_tab() -> void:
-	if _extra_vb == null:
-		return
-	_clear_extra()
-	_extra_header(tr("RAW MATERIAL"))
-	var raw: Array = []
-	for m in G.METAL_NAME.size():
-		raw.append([tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "m%d" % m])
-	# Уголь стоит особняком: он не переплавляется в слиток и идёт прямо в топливо.
-	raw.append([tr("Coal"), ""])
-	_chain_row(raw)
-	_chain_arrow(tr("Smelter"))
-	_extra_header(tr("INGOTS"))
-	var ing: Array = []
-	for m in G.METAL_NAME.size():
-		ing.append([tr(String(G.METAL_NAME[m])), "m%d" % m])
-	_chain_row(ing)
-	_chain_arrow(tr("Component Plant") + " — " + tr("a pair of metals"))
-	_extra_header(tr("SIMPLE COMPONENTS"))
-	var simple: Array = []
-	for c in mini(6, G.COMP_NAME.size()):
-		simple.append([tr(String(G.COMP_NAME[c])), "c%d" % c])
-	_chain_row(simple)
-	_chain_arrow(tr("Component Plant") + " — " + tr("a pair of simple ones"))
-	_extra_header(tr("COMPLEX COMPONENTS"))
-	var complex: Array = []
-	for c in range(6, G.COMP_NAME.size()):
-		complex.append([tr(String(G.COMP_NAME[c])), "c%d" % c])
-	_chain_row(complex)
-	_chain_arrow(tr("Fabricator"))
-	_extra_header(tr("BLOCKS"))
-	var blk := Label.new()
-	blk.text = tr("Over forty parts. Open the Blocks tab: each one lists what it is built from.")
-	blk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	blk.add_theme_font_size_override("font_size", 12)
-	blk.add_theme_color_override("font_color", Color(0.8, 0.88, 0.9, 0.8))
-	_extra_vb.add_child(blk)
-
-## Одна стадия: записи в ряд с переносом. Кнопка вместо метки — чтобы открывалось описание.
-func _chain_row(items: Array) -> void:
-	var flow := HFlowContainer.new()
-	flow.add_theme_constant_override("h_separation", 6)
-	flow.add_theme_constant_override("v_separation", 6)
-	for it in items:
-		var b := Button.new()
-		b.text = String(it[0])
-		b.add_theme_font_size_override("font_size", 12)
-		var key := String(it[1])
-		if key == "":
-			b.disabled = true       # у угля своей записи в каталоге нет
-		else:
-			b.pressed.connect(_show_codex.bind(key))
-		flow.add_child(b)
-	_extra_vb.add_child(flow)
-
-## Переход между стадиями: чем именно он делается.
-func _chain_arrow(what: String) -> void:
-	var lbl := Label.new()
-	lbl.text = "↓  " + what
-	lbl.add_theme_font_size_override("font_size", 13)
-	lbl.add_theme_color_override("font_color", Color(0.35, 0.85, 0.92, 0.95))
-	_extra_vb.add_child(lbl)
 
 func _load_codex_items() -> void:
 	if _codex_kind == "resources":
@@ -338,10 +402,25 @@ func _load_codex_items() -> void:
 		for c in G.COMP_NAME.size():
 			_items.append({"name": tr(String(G.COMP_NAME[c])), "key": "c%d" % c})
 		return
+	# БЛОКИ — ПО ГРЕЙДАМ И ТИПАМ, а не в порядке enum. Порядок значения перечисления — это
+	# история правок, а не устройство игры: рядом оказывались кабина и продавец, а пушка с
+	# лазером стояли через десять плиток друг от друга.
+	#
+	# Тип отбирается тем же фильтром, что и в магазине (_passes_filter, G.BLOCK_CATEGORIES):
+	# второй список категорий разъехался бы с первым. Грейд — это порядок и подпись: он и есть
+	# ответ на «когда я это получу».
+	var rows: Array = []
 	for bt in G.Block.values():
-		if int(bt) == G.Block.EMPTY or G.RETIRED_BLOCKS.has(int(bt)):
+		var b_i: int = int(bt)
+		if b_i == G.Block.EMPTY or G.RETIRED_BLOCKS.has(b_i):
 			continue
-		_items.append({"name": _block_name(int(bt)), "key": "b%d" % int(bt)})
+		if not _passes_filter(b_i):
+			continue
+		var meta: Dictionary = G.BLOCK_META.get(b_i, {})
+		rows.append({"g": int(meta.get("g", 1)), "n": _block_name(b_i), "b": b_i})
+	rows.sort_custom(func(x, y): return x["g"] < y["g"] if x["g"] != y["g"] else x["n"] < y["n"])
+	for r in rows:
+		_items.append({"name": "%d · %s" % [int(r["g"]), String(r["n"])], "key": "b%d" % int(r["b"])})
 
 func _fill_codex_slot(s: Slot, it: Dictionary, side: float) -> void:
 	_reset_slot(s, str(it["name"]), side)
@@ -872,35 +951,41 @@ func _select_tab(idx: int) -> void:
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
-		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY)
+		# Фильтр типов работает и в КАТАЛОГЕ: категории те же, что в магазине (G.BLOCK_CATEGORIES),
+		# и второй их список разъехался бы с первым.
+		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY
+				or (_tab == TAB_CODEX and _codex_kind == "blocks"))
 	if _codex_col:
 		_codex_col.visible = (_tab == TAB_CODEX)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
-	# Цепочка ресурсов живёт в той же панели-списке, что МУЗЫКА и НАСТРОЙКИ: у неё стадии сверху
-	# вниз, а не плитки, и сетка слотов для этого не годится.
-	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS \
-			or (_tab == TAB_CODEX and _codex_kind == "chain")
+	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
+	# Цепочка — ГРАФ, как древо технологий, а не список и не сетка плиток: у каждого компонента
+	# ровно два родителя, и это видно только линиями связей.
+	var is_chain: bool = _tab == TAB_CODEX and _codex_kind == "chain"
 	var is_tech: bool = _tab == TAB_TECH
 	var is_build: bool = _tab == TAB_BUILD
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
 	if grid_scroll:
-		grid_scroll.visible = not (extra_list or is_tech or is_build)
+		grid_scroll.visible = not (extra_list or is_tech or is_build or is_chain)
+	if _chain_root:
+		_chain_root.visible = is_chain
 	if _extra_scroll:
 		_extra_scroll.visible = extra_list
 	if _tech_root:
 		_tech_root.visible = is_tech
 	if _search:
-		_search.visible = not (extra_list or is_tech or is_build)
-	_widen_left_panel(is_tech)
+		_search.visible = not (extra_list or is_tech or is_build or is_chain)
+	_widen_left_panel(is_tech or is_chain)   # графу нужна та же ширина, что и древу
 	_show_left_panel(not is_build)
 	_set_world_clickthrough(is_build)
 	tab_changed.emit(_tab)
 	if is_build:
 		return                       # своего содержимого у вкладки нет
+	if is_chain:
+		_build_chain_tab()
+		return
 	if extra_list:
-		if _tab == TAB_CODEX:
-			_build_chain_tab()
-		elif _tab == TAB_MUSIC:
+		if _tab == TAB_MUSIC:
 			_build_music_tab()
 		else:
 			_build_settings_tab()
