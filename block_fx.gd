@@ -359,8 +359,12 @@ static func blast_cards(root: Node, pos: Vector3, radius: float,
 ## Сколько карточек можно создать в этом кадре (общий потолок на всю игру, см. CARDS_PER_FRAME).
 ## Вынесено из play(), потому что считать бюджет обязаны ВСЕ, кто их создаёт: цепной взрыв
 ## рвёт по десятку блоков сразу, и без общего счёта это тысяча узлов в одном кадре.
+## СЧИТАЕМ ПО КАДРАМ ЛОГИКИ, А НЕ ОТРИСОВКИ. Было get_frames_drawn, и это тихая ловушка: счётчик
+## отрисованных кадров может не расти вовсе (свёрнутое окно, прогон без рендера), а игра при этом
+## идёт. Бюджет тогда выбирается один раз и не обновляется НИКОГДА — эффекты просто перестают
+## появляться, молча и без единой ошибки. Поймано на собственном стенде, где ровно это и вышло.
 static func _take_card_budget(want: int) -> int:
-	var frame := Engine.get_frames_drawn()
+	var frame := Engine.get_process_frames()
 	if frame != _cards_frame:
 		_cards_frame = frame
 		_cards_used = 0
@@ -546,21 +550,25 @@ static func hp_overlay(block: Node3D) -> MeshInstance3D:
 
 # Коробка эффекта не может быть больше этого по каждой оси: страховка от FX-мешей
 # (луч лазера в момент выстрела и т.п.), которые не описывают сам блок.
-# ── Материализация МАШИНЫ: экран между камерой и ней ─────────────────────────────
+# ── Материализация МАШИНЫ: квадратные заплатки, уходящие с краёв ─────────────────
 #
-# ДВЕ ПРОШЛЫЕ ПОПЫТКИ БЫЛИ ОБОЛОЧКАМИ, И ОБЕ ПРОВАЛИЛИСЬ. На чанках земли глитч поверх
-# поверхности прочитался как поломка рендера; на машине по оболочке на блок — как сорок
-# независимых фронтов. Общее у них одно: глитч был НА предмете.
+# ТРЕТЬЯ ПОПЫТКА, И ПРЕДЫДУЩИЕ ДВЕ СТОИТ ПОМНИТЬ. Оболочка на каждый блок дала сорок независимых
+# фронтов. Один круглый билборд на всю машину дал ровное пятно, которое игрок назвал шаром: он
+# читался как заслонка, а не как глитч.
 #
-# Здесь он НА МЕСТЕ предмета. Один билборд закрывает машину со стороны взгляда и расступается от
-# краёв к центру, открывая её. Игрок видит не машину в глитчах, а глитч, из которого машина
-# выходит. Билборд — потому что камера во время спавна может ехать (облёт), и эффект обязан
-# оставаться между ней и машиной, а не показаться с ребра.
+# Здесь — НЕСКОЛЬКО КВАДРАТНЫХ ЗАПЛАТОК, тем же шейдером, которым говорит появление блока
+# (glitch_card): язык совпадает, и машина собирается из тех же кусков, что и деталь в руке.
 #
-# ОДИН УЗЕЛ НА МАШИНУ, не сорок: и дешевле, и это единственный способ получить ОДИН фронт.
-const SPAWN_SHADER := preload("res://spawn_glitch.gdshader")
-const SPAWN_DUR := 1.1
-const SPAWN_PAD := 1.35        # насколько шире силуэта, чтобы края машины не торчали из-под глитча
+# УХОДЯТ С КРАЁВ К ЦЕНТРУ. Заплатка гаснет тем раньше, чем дальше она от середины машины, так
+# что силуэт проявляется снаружи внутрь. Порядок задаётся не таймером на каждую, а одним общим
+# прогрессом: своя длительность у каждой заплатки означала бы, что они расходятся по фазе и
+# эффект рассыпается на мигание.
+#
+# Билборды: камера во время спавна может ехать, и заплатки обязаны оставаться между ней и
+# машиной. Глубина отключена в самом шейдере карточки.
+const SPAWN_DUR := 1.0
+const SPAWN_CARDS := 14
+const SPAWN_PAD := 1.25        # насколько шире силуэта разбросаны заплатки
 
 ## Проявить машину. Зовётся на спавне; самоочищается.
 static func materialise(machine: Node3D, dur: float = SPAWN_DUR) -> void:
@@ -569,9 +577,8 @@ static func materialise(machine: Node3D, dur: float = SPAWN_DUR) -> void:
 	var holder: Node = machine.get_node_or_null("blocks")
 	if holder == null:
 		return
-	# Радиус силуэта — по самому дальнему блоку от центра машины. Габарит берём из сетки, а не
-	# из мирового AABB: повёрнутая машина дала бы раздутую коробку и глитч вдвое больше нужного.
-	var r: float = 1.2
+	# Центр и радиус силуэта берём из СЕТКИ, а не из мирового AABB: повёрнутая машина дала бы
+	# раздутую коробку и заплатки вдвое больше нужного.
 	var mid := Vector3.ZERO
 	var n := 0
 	for b in holder.get_children():
@@ -583,32 +590,61 @@ static func materialise(machine: Node3D, dur: float = SPAWN_DUR) -> void:
 	if n == 0:
 		return
 	mid /= float(n)
+	var r: float = 1.0
 	for b in holder.get_children():
 		var nb := b as Node3D
 		if nb == null or nb.has_meta("block_fx"):
 			continue
-		r = maxf(r, nb.position.distance_to(mid) + 0.9)
-	var fx := MeshInstance3D.new()
-	var qm := QuadMesh.new()
-	qm.size = Vector2.ONE
-	fx.mesh = qm
-	fx.set_meta("block_fx", true)           # в габарит машины не входит (см. _local_aabb)
-	fx.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	var mat := ShaderMaterial.new()
-	mat.shader = SPAWN_SHADER
-	mat.set_shader_parameter("progress", 0.0)
-	mat.set_shader_parameter("seed", randf() * 100.0)
-	fx.material_override = mat
-	machine.add_child(fx)
-	fx.position = mid
-	fx.scale = Vector3.ONE * (r * 2.0 * SPAWN_PAD)
-	var tw := machine.create_tween()
-	tw.tween_method(_spawn_step.bind(mat), 0.0, 1.0, dur)
-	tw.tween_callback(fx.queue_free)
+		r = maxf(r, nb.position.distance_to(mid) + 0.8)
+	var count: int = _take_card_budget(SPAWN_CARDS)
+	if count <= 0:
+		return
+	var mats: Array = []
+	var outs: Array = []
+	var cloud := Node3D.new()
+	cloud.set_meta("block_fx", true)
+	machine.add_child(cloud)
+	cloud.position = mid
+	for i in count:
+		var card := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		card.mesh = q
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		card.set_meta("block_fx", true)     # правило 11: в габарит машины эффекты не входят
+		var cmat := ShaderMaterial.new()
+		cmat.shader = CARD_SHADER
+		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
+		cmat.set_shader_parameter("fill_threshold", randf_range(0.30, 0.46))
+		cmat.set_shader_parameter("progress", 0.5)   # 0.5 — пик видимости, дальше только гаснет
+		card.material_override = cmat
+		cloud.add_child(card)
+		# По ШАРУ вокруг центра, с равномерной плотностью по объёму: по кубу углы торчали бы
+		# за силуэт, а без кубического корня всё сбилось бы в середину.
+		var dir := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5)
+		dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.UP
+		var t: float = pow(randf(), 1.0 / 3.0)
+		card.position = dir * r * t * SPAWN_PAD
+		var sz: float = r * randf_range(0.5, 0.95)
+		card.scale = Vector3(sz, sz, 1.0)
+		mats.append(cmat)
+		outs.append(t)                                # доля радиуса: она и решает очерёдность
+	var tw := cloud.create_tween()
+	tw.tween_method(_spawn_step.bind(mats, outs), 0.0, 1.0, dur)
+	tw.tween_callback(cloud.queue_free)
 
-static func _spawn_step(p: float, mat: ShaderMaterial) -> void:
-	if is_instance_valid(mat):
-		mat.set_shader_parameter("progress", p)
+## Заплатка у края уходит первой, в середине — последней. Окно у каждой своё, но считается от
+## ОДНОГО прогресса, поэтому фронт общий.
+static func _spawn_step(p: float, mats: Array, outs: Array) -> void:
+	for i in mats.size():
+		var m = mats[i]
+		if not (m is ShaderMaterial):
+			continue
+		var start: float = 1.0 - float(outs[i])       # чем дальше от центра, тем раньше старт
+		var k: float = clampf((p - start * 0.75) / 0.45, 0.0, 1.0)
+		# 0.5..1.0 у карточного шейдера — чистое затухание без повторного разгорания.
+		(m as ShaderMaterial).set_shader_parameter("progress", 0.5 + 0.5 * k)
 
 # ── Поток ремонта: код летит В блок, который чинят ───────────────────────────────
 #

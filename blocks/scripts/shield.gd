@@ -25,6 +25,10 @@ const SHIELD_BREAK_CD := 2.0   # пробитый щит не поднимает
 var _dome: StaticBody3D = null
 var _dome_mesh: MeshInstance3D = null
 var _cd: float = 0.0           # > 0 — щит пробит и перезаряжается
+## Свежее попадание: купол вспыхивает целиком и гаснет за HIT_FADE. Без этого игрок не видел,
+## что щит СРАБОТАЛ: снаряд просто исчезал у границы, а сам купол не менялся никак.
+var _hit: float = 0.0
+const HIT_FADE := 0.22
 
 func _ready() -> void:
 	super._ready()
@@ -60,6 +64,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if _cd > 0.0:
 		_cd -= delta
+	if _hit > 0.0:
+		_hit = maxf(_hit - delta / HIT_FADE, 0.0)
+		_push_hit()
 	_dome.owner_vehicle = _vehicle_root()
 	# Купол активен: блок стоит на машине, есть энергия И щит не пробит (не на КД).
 	var v := _vehicle_root()
@@ -79,10 +86,21 @@ func _physics_process(delta: float) -> void:
 			# Не в ноль: погасший в ноль купол неотличим от выключенного, а он ещё работает.
 			mat.set_shader_parameter("energy", 0.35 + 0.65 * lvl)
 
+func _push_hit() -> void:
+	if _dome_mesh == null:
+		return
+	var mat := (_dome_mesh.mesh as SphereMesh).material as ShaderMaterial
+	if mat != null:
+		mat.set_shader_parameter("hit", _hit)
+
 # Попадание в купол: списываем энергию вместо HP. Если на удар энергии не хватило —
 # щит ПРОБИТ: гаснет и SHIELD_BREAK_CD секунд не поднимается, даже если энергия уже
 # капает. Иначе на якоре подпитка шла быстрее выстрелов и щит был непробиваем.
 func absorb(damage: int) -> void:
+	# Купол вспыхивает целиком на каждое попадание — это и есть ответ на «не вижу, что щит
+	# сработал»: снаряд гас у границы, а сам щит никак не менялся.
+	_hit = 1.0
+	_push_hit()
 	var v := _vehicle_root()
 	if v and v.has_method("energy_consume"):
 		var cost := float(damage) * SHIELD_COST_X
