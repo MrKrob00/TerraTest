@@ -40,7 +40,18 @@ const MAP_SIZE := 256
 ## machines anyway. Since the noise went native the whole wait is 1.1 s, so there is room to raise
 ## this again if the first frame ever looks too bare — but bare is not what it looks.
 const MENU_VIEW := 320.0
-const MENU_READY_VIEW := 32.0
+## СКОЛЬКО ЗЕМЛИ ГОТОВО ДО ПОКАЗА, и почему это два разных числа.
+##
+## Было одно, 32 м, а камера видит на MENU_VIEW — 320. Поэтому карта доезжала на глазах: игрок
+## видел, как чанки достраиваются вокруг уже идущего боя.
+##
+## Но платят за это ожидание разные люди. ФОНОВУЮ карту готовит предыдущий раунд, и все тридцать
+## секунд она никому не мешает: там ждать можно щедро. ПЕРВУЮ ждёт сам игрок, глядя на заставку,
+## и каждая секунда его.
+##
+## Замерено: 32 м — 0.41 с, 96 — 0.94, 160 — 2.10, 224 — 3.02.
+const MENU_READY_VIEW := 96.0        # первая карта: игрок ждёт, платим секундой
+const MENU_READY_VIEW_BG := 224.0    # фоновая: ждёт предыдущий раунд, платить нечем
 ## Everything the round can reach stays resident: the map is small and lives half a minute, so
 ## dropping and rebuilding chunks inside it would be work for nothing.
 const MENU_KEEP := 256.0
@@ -178,6 +189,12 @@ func _discard(m: Node3D) -> void:
 		return
 	if m.has_method("stop_generation"):
 		m.stop_generation()
+	# И СТРИМИНГ КОЛЛИЗИИ ТОЖЕ ВЫКЛЮЧАЕМ, ДО ОСВОБОЖДЕНИЯ. Рельеф держит плитки как владельцев
+	# форм и добавляет-убирает их по ходу; узел, который освобождают прямо посреди этого, даёт
+	# ошибки «shapes.has(owner)» пачками. Генерацию мы останавливаем строкой выше по той же
+	# причине — коллизия просто вторая половина того же правила.
+	if m.has_method("set_collision_streaming"):
+		m.set_collision_streaming(false)
 	var parent: Node = m.get_parent()
 	if parent != null:
 		parent.remove_child(m)
@@ -198,18 +215,32 @@ func _open_round() -> void:
 		# on without it, and nobody else holds a reference.
 		_discard(m)
 		return
-	_opening = false
 	if m == null:
 		# NOTHING TO STAND ON - the map never became ready (the generator gave up, the node died).
 		# Settling into the plain backdrop is the honest end: it is a finished picture rather than a
 		# progress plate that never fills, and the settings switch can ask for a round again.
 		push_warning("menu: no map for the round; the backdrop stays up")
+		_opening = false
 		_backdrop.cover(false)
 		return
 	_enable_collision(m)
 	_map = m
 	_spawn_pair()
+	# ТА ЖЕ ПРОВЕРКА, ЧТО И У СВОПА, и забыть её здесь стоило ровно того, что игрок и увидел:
+	# первый раунд открывался белым кадром без машин, а со второй генерации всё было нормально.
+	# Первый раунд идёт своим путём (_open_round), своп — своим (_swap_round), и починка одного
+	# не чинит второй. Камера тоже измеряет высоту земли под точкой взгляда: пока её нет, она
+	# уезжает в пустоту.
+	await _await_ground(era)
+	if not _live(era):
+		_opening = false
+		return
 	_round_t = ROUND_TIME
+	# ФЛАГ СНИМАЕТСЯ ПОСЛЕДНИМ, И ЭТО НЕ ФОРМАЛЬНОСТЬ. Раунд не открыт, пока не открыт. Сняв его
+	# до ожидания земли, я дал тику увидеть готовую карту с обнулённым _round_t — и тот сразу
+	# начинал генерировать СЛЕДУЮЩУЮ, прямо поверх открывающейся. Две карты разом дают ошибки
+	# владельцев коллизии и белый кадр вместо боя.
+	_opening = false
 	_move_camera()          # first frame already looks at the fight, not at the origin
 	_backdrop.reveal()
 
@@ -232,7 +263,7 @@ func _make_map(report: bool = false) -> Node3D:
 	# shows the same land the player is about to drive into. Setting them from here would be a second
 	# copy of those numbers and, sooner or later, a different landscape behind the same menu.
 	m.view_distance = MENU_VIEW
-	m.ready_view = MENU_READY_VIEW
+	m.ready_view = MENU_READY_VIEW if report else MENU_READY_VIEW_BG
 	m.keep_radius = MENU_KEEP
 	# ЗЕМЛИ ДО ПОКАЗА — ОДИН ЧАНК В КАЖДУЮ СТОРОНУ. Игре нужны восемьдесят метров во все стороны
 	# от машины, которая сейчас поедет; здесь две машины стоят в тридцати метрах от начала
@@ -427,7 +458,22 @@ func _replace_fallen() -> void:
 		_spawn_fighter(side)
 		changed = true
 	if changed:
+		_clear_debris()
 		_retarget()
+
+## ОБЛОМКИ УБИТОЙ МАШИНЫ НЕ ОСТАЮТСЯ ЛЕЖАТЬ. Погибая, машина роняет свои блоки в мир, и в меню
+## они падают сюда же, под _machines_root. За раунд с несколькими заменами их набирается столько,
+## что фон превращается в свалку, а каждый блок — это физическое тело, которое ещё и просит у
+## рельефа плитку коллизии под собой.
+##
+## Чистим В МОМЕНТ ЗАМЕНЫ, а не по таймеру: замена и есть признак того, что бой пошёл дальше и
+## старые обломки уже ни о чём не рассказывают. Живые бойцы, понятно, не трогаются.
+func _clear_debris() -> void:
+	for c in _machines_root.get_children():
+		if _fighters.has(c):
+			continue
+		_machines_root.remove_child(c)
+		c.queue_free()
 
 func _ground_y(p: Vector3) -> float:
 	if _map != null and is_instance_valid(_map) and _map.has_method("terrain_height_at"):
@@ -504,7 +550,13 @@ func _await_ground(era: int) -> void:
 			var cs: Vector2i = _map.collision_stats()
 			if cs.x > 0:
 				# Плитки есть — даём им ещё кадр, чтобы физика успела их увидеть.
-				await get_tree().physics_frame
+				#
+				# ЖДЁМ КАДР ОТРИСОВКИ, А НЕ ФИЗИЧЕСКИЙ. physics_frame возвращает управление
+				# ПОСРЕДИ шага физики, а рельеф в этот момент как раз добавляет и убирает
+				# владельцев плиток коллизии. Трогать сцену оттуда — это ошибки вида
+				# «shapes.has(owner)» пачками; они и посыпались, как только ожидание появилось
+				# в обоих путях открытия раунда.
+				await get_tree().process_frame
 				return
 		await get_tree().process_frame
 		waited += get_process_delta_time()
