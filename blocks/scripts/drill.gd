@@ -73,9 +73,12 @@ func _dig() -> void:
 		# _root_body(), а не _vehicle_root(): второй живёт в WeaponBlock и в shield, а бур —
 		# обычный VehicleBlock, и вызова с чужим именем хватило бы, чтобы скрипт не загрузился.
 		if G.is_friendly_dome(body, _root_body()): continue
-		if body.has_method("hurt"):
-			body.hurt(drill_damage)
-		# Чужой купол отмечает место удара так же, как от пули: бур стоит вплотную, так что
-		# своё положение здесь и есть точка контакта.
+		# Купол берёт энергией, и резка ему почти не страшна: в оригинале щит и пилы друг друга
+		# не видят вовсе, у нас бур купол всё же ковыряет — просто вчетверо дороже по времени.
+		# Иначе сборка с одним буром осталась бы вообще без ответа на щит.
 		if body.has_method("struck"):
+			body.hurt(drill_damage, WeaponBlock.SHIELD_MULT_CONTACT)
+			# Место удара отмечаем как от пули: бур стоит вплотную, своё положение и есть контакт.
 			body.struck(global_position)
+		elif body.has_method("hurt"):
+			body.hurt(drill_damage)
