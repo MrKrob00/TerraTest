@@ -503,8 +503,14 @@ project: read it before claiming how anything works.
 - Icons are `_draw()` classes with no node representation.
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
-  it. Block text lives in `G.BLOCK_DESC` — one sentence about what the part DOES, never numbers,
-  which move; a component's text is derived from its recipe, never typed out.
+  it. It has THREE kinds. Blocks are ordered BY GRADE and filtered by the SHOP's own category
+  list (`_passes_filter`, `G.BLOCK_CATEGORIES`) — enum order is the history of edits, not the
+  shape of the game, and a second category list would drift from the first. Resources are the
+  flat list. CHAIN is a GRAPH on the same canvas the tech tree uses (`TechGraph`): columns for
+  raw, ingots, simple and complex, with real edges from `G.COMP_PARENT`. Every component has
+  EXACTLY TWO parents, and only lines show that; a stage list with an arrow showed the order and
+  hid the dependency. Block text lives in `G.BLOCK_DESC` — one sentence about what the part DOES,
+  never numbers, which move; a component's text is derived from its recipe, never typed out.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
   means English). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
