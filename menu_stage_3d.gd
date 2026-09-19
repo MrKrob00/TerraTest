@@ -384,8 +384,19 @@ func _spawn_fighter(side: int) -> void:
 		var op: Vector3 = (other as Node3D).global_position
 		p = Vector3(op.x, 0.0, op.z) + dir * (START_GAP if side == 0 else -START_GAP)
 	e.global_position = Vector3(p.x, _ground_y(p) + 6.0, p.z)   # dropped in, like in game
+	# FACING THE OPPONENT, not whatever rotation the scene was saved with. Nothing turned these
+	# machines before, so which way they landed was luck: one of them regularly started the round
+	# with its back to the fight, spent the first seconds turning around and took hits for free.
+	# A demo fight that opens with a free beating reads as a broken fight.
+	#
+	# Forward is -Z (look_at points that axis), which is the same forward the rest of the project
+	# uses. The look point is level with the machine: aiming at ground height would tilt it.
+	var face: Vector3 = Vector3(-dir.x, 0.0, -dir.z) if side == 0 else dir
+	if face.length_squared() > 0.0001:
+		e.look_at(e.global_position + face, Vector3.UP)
 	if e is RigidBody3D:
 		(e as RigidBody3D).linear_velocity = Vector3.ZERO
+		(e as RigidBody3D).angular_velocity = Vector3.ZERO
 	_fighters[side] = e
 	_born[side] = _t
 	_armed[side] = false
