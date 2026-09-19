@@ -11,6 +11,14 @@ uniform float seed = 0.0;
 uniform float grid_cells = 4.0;          // 4×4 или 6×6 (задаёт BlockFX)
 uniform float fill_threshold = 0.42;     // выше = меньше заполнено (форма пятна)
 uniform float flicker_speed = 12.0;
+// ЯРКОСТЬ КАРТОЧКИ. Здесь стояло EMISSION = col * 2.0 — в расчёте на свечение, которого нет, и
+// при render_mode unshaded EMISSION в кадр не попадает вовсе (измерено на настоящем драйвере:
+// в непрозрачном режиме ровно ноль, при аддитивном — ничего поверх ALBEDO). То есть карточки
+// всё это время светили ровно цветом палитры, а множитель был украшением кода.
+//
+// Полтора, а не два: палитра и так почти насыщенная, и больший множитель упирает верхний канал
+// в единицу, выбеливая циан и мадженту до белого — оттенок там и есть всё сообщение.
+uniform float gain : hint_range(1.0, 3.0) = 1.5;
 
 float h1(float n) { return fract(sin(n * 12.9898 + seed * 78.233) * 43758.5453); }
 
@@ -74,7 +82,7 @@ void fragment() {
 	if (a < 0.04) {
 		discard;
 	}
-	ALBEDO   = col;
-	EMISSION = col * 2.0;
+	ALBEDO   = col * gain;
+	EMISSION = col * gain;
 	ALPHA    = a;
 }

@@ -30,8 +30,8 @@ uniform float fill : hint_range(0.0, 0.4) = 0.07;        // заливка пл�
 uniform float corner_w : hint_range(0.0, 0.4) = 0.14;    // размер точки на углу
 uniform float rim_pow : hint_range(1.0, 12.0) = 3.0;
 uniform float rim_gain : hint_range(0.0, 3.0) = 1.7;
-uniform float halo_pow : hint_range(0.5, 6.0) = 1.2;
-uniform float halo_gain : hint_range(0.0, 2.0) = 0.38;
+uniform float halo_pow : hint_range(0.5, 6.0) = 2.4;
+uniform float halo_gain : hint_range(0.0, 2.0) = 0.22;
 uniform float energy : hint_range(0.0, 1.0) = 1.0;
 // Свежее попадание: 1 в момент удара, едет к нулю. hit_cell — центр ТОЙ ОДНОЙ пластины, в
 // которую пришёл снаряд; её выбирает щит из списка центров. Купол целиком не мигает: вспышка
@@ -98,7 +98,13 @@ void fragment() {
 	}
 
 	// Пробитая пластина загорается, даже если заряд её погасил: попадание важнее.
-	float lattice = (seam + corner * 0.6 + body * fill) * max(up, flare);
+	float shell = max(up, flare);
+	float lattice = (seam + corner * 0.6 + body * fill) * shell;
+	// КОЛЬЦО ТОЖЕ ПРИНАДЛЕЖИТ ПЛАСТИНЕ. Оно считалось по всей сфере и не спрашивало, стоит ли
+	// здесь пластина: на разряженном щите решётка гасла, а голубая подсветка оболочки
+	// оставалась висеть шаром. Теперь на месте погасшей пластины нет ничего, и осыпающийся
+	// купол виден по силуэту — он становится дырявым, а не бледным.
+	rim *= shell;
 
 	// ЯРКОСТЬ ИДЁТ В ALBEDO, А НЕ В EMISSION. При render_mode unshaded компат-рендерер в кадр
 	// кладёт ALBEDO, а EMISSION не добавляет ничего — измерено: альбедо 0.2 даёт 0.498, эмиссия
