@@ -52,8 +52,9 @@ func _physics_process(delta: float) -> void:
 func _tick_bullet(delta: float) -> void:
 	if dir == Vector3.ZERO:          # в пуле — не двигаемся
 		t = 0.0
-		if scale != Vector3.ONE:
-			scale = Vector3.ONE      # вернулась в пул — снимаем растяжение (см. _stretch)
+		var mi0 := _mesh_node()      # вернулась в пул — снимаем растяжение (см. _stretch)
+		if mi0 != null and _mesh_base != Vector3.ZERO and mi0.scale != _mesh_base:
+			mi0.scale = _mesh_base
 		return
 	t += delta
 	var from: Vector3 = global_position
@@ -77,13 +78,30 @@ func _tick_bullet(delta: float) -> void:
 ##
 ## Масштаб сбрасывается при возврате в пул (см. dir == ZERO в _tick_bullet): иначе вытянутая
 ## пуля ушла бы в пул и вылетела оттуда следующим выстрелом уже растянутой.
+## ТЯНЕМ МЕШ, А НЕ ТЕЛО. Сначала масштабировался сам Area3D — и Jolt ругался каждый кадр полёта:
+## неравномерный масштаб сферической формы он не поддерживает и молча заменяет его равномерным.
+## То есть коллизия пули раздувалась, а в консоли шла ошибка на каждый кадр. Вид — дело меша,
+## физика тут ни при чём.
 const TRACE_MIN := 1.0           # короче собственной длины не сжимаем
 const TRACE_MAX := 14.0          # и не превращаем в луч через полкарты
+var _mesh_base: Vector3 = Vector3.ZERO      # масштаб, которым меш нормализован под длину модели
+
+func _mesh_node() -> MeshInstance3D:
+	for c in get_children():
+		var mi := c as MeshInstance3D
+		if mi != null:
+			return mi
+	return null
 
 func _stretch(step: float) -> void:
+	var mi := _mesh_node()
+	if mi == null:
+		return
+	if _mesh_base == Vector3.ZERO:
+		_mesh_base = mi.scale           # запоминаем однажды: дальше только домножаем
 	var k: float = clampf(step, TRACE_MIN, TRACE_MAX)
-	# Меш смотрит по -Z (look_at в fire_bullet), значит тянем по Z.
-	scale = Vector3(1.0, 1.0, k)
+	# Модель смотрит по -Z (look_at в fire_bullet), значит тянем по Z.
+	mi.scale = Vector3(_mesh_base.x, _mesh_base.y, _mesh_base.z * k)
 
 ## Проверить отрезок полёта. true — попали (сигнал отправлен, пуля дальше не летит).
 func _sweep(from: Vector3, to: Vector3) -> bool:
