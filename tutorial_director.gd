@@ -529,6 +529,15 @@ func _on_tutorial_finished() -> void:
 const FIRST_ENEMY_DELAY_FALLBACK := 8.0
 
 func _first_enemy_after_delay() -> void:
+	# ПРИДЕРЖИВАЕМ КВЕСТ НА ВРЕМЯ ПАУЗЫ. Он объявится, когда разведчик появится в мире (см.
+	# _spawn_first_enemy), а не сейчас: иначе в журнале восемь секунд висит «уничтожь
+	# разведчика», которого ещё нет, и метке не на что показывать.
+	#
+	# Ставится ЗДЕСЬ, в том же потоке, что и снятие. В определении квестов было бы нельзя:
+	# Q.reload_from_progress чистит придержки при выборе слота, а он случается позже.
+	var q0: Node = get_node_or_null("/root/Q")
+	if q0 != null and q0.has_method("hold_quest"):
+		q0.hold_quest("story_first_blood")
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	var delay: float = FIRST_ENEMY_DELAY_FALLBACK
 	var d = sp.get("first_spawn_delay") if sp != null else null
@@ -546,6 +555,15 @@ func _spawn_first_enemy() -> void:
 	var enemy: Node = null
 	if sp != null and sp.has_method("spawn_scout_near_player"):
 		enemy = sp.spawn_scout_near_player()
+	# КВЕСТ ОБЪЯВЛЯЕТСЯ ЗДЕСЬ, А НЕ ПО КОНЦУ ОБУЧЕНИЯ. Снимаем придержку ровно тогда, когда
+	# цель появилась в мире — тогда метка живая с первой секунды, а не через восемь.
+	#
+	# Снимаем и при НЕУДАЧЕ спавна тоже: ровного места рядом могло не найтись, но квест закрывается
+	# любым врагом, и обычный поток кого-нибудь приведёт. Придержанный навсегда квест был бы хуже
+	# любой метки.
+	var q: Node = get_node_or_null("/root/Q")
+	if q != null and q.has_method("release_quest"):
+		q.release_quest("story_first_blood")
 	if enemy == null:
 		# Ровного места рядом не нашлось — квест всё равно закрываемый: обычный поток
 		# врагов приведёт кого-нибудь сам, просто не так быстро.
