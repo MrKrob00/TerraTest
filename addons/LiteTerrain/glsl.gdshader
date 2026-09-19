@@ -47,7 +47,7 @@ uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);
 uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // stratum height (matches the geometry terrace)
 
 group_uniforms Grass;
-uniform float grass_density     : hint_range(0.0, 1.0)    = 0.4;
+uniform float grass_density     : hint_range(0.0, 1.0)    = 1.0;   // см. TerrainBiomes: всегда, а не по настройке
 uniform float grass_height      : hint_range(0.0, 1.0)    = 0.15;
 uniform float lod_grass_enabled : hint_range(0.0, 1.0)    = 1.0;
 uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
