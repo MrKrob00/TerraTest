@@ -408,7 +408,8 @@ func _handle_fire(delta: float) -> void:
 	# ВСПЫШКА — РЕБЁНОК ДУЛА, а не узел в мировых координатах. Машина едет, ствол поворачивается,
 	# и вспышка обязана ехать с ними: в мировой точке она оставалась там, где был ствол в момент
 	# нажатия. Направление при этом отдельно задавать не нужно — узел уже смотрит по стволу.
-	BlockFX.muzzle_fire(_muzzle_point(), flash_color, flash_size, FLASH_DUR)
+	BlockFX.muzzle_fire(_muzzle_point(), (-$Pivot.global_transform.basis.z).normalized(),
+			flash_color, flash_size, FLASH_DUR)
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")

@@ -68,11 +68,20 @@ static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
 	muzzle.add_child(holder)
 	return holder
 
-## Зажечь вспышку ствола. Позиция и поворот не нужны: узел уже стоит на дуле и смотрит по стволу.
-static func muzzle_fire(muzzle: Node3D, col: Color, size: float, dur: float) -> void:
+## Зажечь вспышку ствола. dir — направление ВЫСТРЕЛА в мировых осях.
+##
+## ПОВОРОТ БЕРЁТСЯ ОТ ВЫСТРЕЛА, А НЕ ОТ УЗЛА ДУЛА. Вспышка висит ребёнком дула и наследовала его
+## поворот, а он у каждой модели свой: художник ставил маркер как удобно. У одной пушки конус
+## выходил чуть ниже ствола, у другой развёрнут на девяносто градусов. Направление же у всех
+## одно и то же и уже известно — по нему летит пуля.
+static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, dur: float) -> void:
 	if muzzle == null or not is_instance_valid(muzzle) or not muzzle.is_inside_tree():
 		return
 	var holder := muzzle_node(muzzle, col)
+	# look_at ставит ГЛОБАЛЬНЫЙ поворот, то есть поворот родителя отменяется сам собой. Почти
+	# вертикальный ствол пропускаем: там базис вырождается и look_at падает.
+	if dir.length_squared() > 0.0001 and absf(dir.normalized().dot(Vector3.UP)) < 0.99:
+		holder.look_at(holder.global_position + dir, Vector3.UP)
 	var mi := holder.get_child(0) as MeshInstance3D
 	if mi == null:
 		return
