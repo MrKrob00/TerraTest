@@ -319,6 +319,23 @@ func _on_parent_changed() -> void:
 ## Neither is worth anything on a pile of debris: nobody reads hit points off scrap, and the
 ## shadow of a small block lying on the ground is a few dark pixels. Both come back the moment
 ## the block is bolted onto a machine again, where they do matter.
+## КАКИЕ ГРАНИ ЭТОГО БЛОКА ОТКРЫТЫ. Считает blocks._apply_occlusion (та же заливка снаружи, по
+## которой замурованный блок перестаёт рисоваться), здесь — только запоминаем и передаём
+## оболочке хп. Запоминаем обязательно: оболочка создаётся ЛЕНИВО, на первом уроне, то есть
+## обычно уже после того, как маску посчитали.
+var _open_faces: int = 63
+
+func set_open_faces(mask: int) -> void:
+	_open_faces = mask
+	_push_open_faces()
+
+func _push_open_faces() -> void:
+	if not is_instance_valid(_hp_fx):
+		return
+	var m := _hp_fx.material_override as ShaderMaterial
+	if m != null:
+		m.set_shader_parameter("open_faces", _open_faces)
+
 func _set_debris_render(loose: bool) -> void:
 	if is_instance_valid(_hp_fx):
 		_hp_fx.visible = not loose and current_hp < max_hp
@@ -479,6 +496,7 @@ func _refresh_hp_fx() -> void:
 		if not is_inside_tree():
 			return
 		_hp_fx = BlockFX.hp_overlay(self)
+		_push_open_faces()      # оболочка родилась только сейчас — маску ей ещё не отдавали
 	_hp_fx.visible = true
 	var mat := _hp_fx.material_override as ShaderMaterial
 	mat.set_shader_parameter("damage", clampf(dmg, 0.0, 1.0))

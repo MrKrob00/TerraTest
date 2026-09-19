@@ -1008,6 +1008,34 @@ func _apply_occlusion() -> void:
 		if node == null or not is_instance_valid(node) or not (node is Node3D):
 			continue
 		(node as Node3D).visible = _cells_seen(cells_of[anchor], seen)
+		# Заодно отдаём блоку, какие его грани открыты: оболочка хп не рисует прижатые к
+		# соседям, а их на плотной машине большинство (см. open_faces в block_hp.gdshader).
+		if node.has_method("set_open_faces"):
+			node.call("set_open_faces", _face_mask(cells_of[anchor], seen))
+
+## МАСКА ОТКРЫТЫХ ГРАНЕЙ, шесть бит: +X=1, −X=2, +Y=4, −Y=8, +Z=16, −Z=32. Грань открыта, если
+## заливка снаружи дошла хоть до одной клетки за ней — то есть оттуда на блок реально смотрят.
+## Порядок битов должен совпадать с шейдером, и другого места, где он записан, нет.
+const FACE_BITS := [
+	[Vector3i(1, 0, 0), 1], [Vector3i(-1, 0, 0), 2],
+	[Vector3i(0, 1, 0), 4], [Vector3i(0, -1, 0), 8],
+	[Vector3i(0, 0, 1), 16], [Vector3i(0, 0, -1), 32],
+]
+
+func _face_mask(cells: Array, seen: PackedByteArray) -> int:
+	var mask := 0
+	for fb in FACE_BITS:
+		var d: Vector3i = fb[0]
+		for c in cells:
+			var px: int = c.x + 1 + d.x
+			var py: int = c.y + 1 + d.y
+			var pz: int = c.z + 1 + d.z
+			if px < 0 or py < 0 or pz < 0 or px >= _PX or py >= _PY or pz >= _PZ:
+				continue
+			if seen[(px * _PY + py) * _PZ + pz] == 1:
+				mask |= int(fb[1])
+				break
+	return mask
 
 ## Дошла ли заливка до блока: до его собственной клетки (неполный блок — сам по себе окно) или
 ## хотя бы до одной клетки за его гранью.
