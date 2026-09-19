@@ -43,6 +43,7 @@ func _ready() -> void:
 	# быть у навесного оружия, которое целится в место, а не в тело.
 	spread_deg = 0.0
 	fire_rate = SALVO_PERIOD
+	shield_cost_mult = SHIELD_MULT_EXPLOSIVE   # взрыв идёт сквозь купол, платить за него незачем
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()
 

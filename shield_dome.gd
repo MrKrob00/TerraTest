@@ -5,10 +5,12 @@ extends StaticBody3D
 
 var owner_vehicle: Node = null   # корень машины-владельца: свои пули купол пропускают
 
-func hurt(damage: int = 10) -> void:
+## `cost_mult` — цена урона ЭТОГО типа для купола (WeaponBlock.shield_cost_mult). Со значением
+## по умолчанию источники, которые про типы не знают (бур, таран), платят обычную цену.
+func hurt(damage: int = 10, cost_mult: float = 1.0) -> void:
 	var shield := get_parent()
 	if shield and shield.has_method("absorb"):
-		shield.absorb(damage)
+		shield.absorb(damage, cost_mult)
 
 ## ПОПАДАНИЕ В КУПОЛ — ОДНА ДВЕРЬ, И ОНА ЗДЕСЬ. Оружие звало BlockFX напрямую, и всё, что
 ## купол показывает на удар, было расписано по стороне стреляющего: добавить туда волну от

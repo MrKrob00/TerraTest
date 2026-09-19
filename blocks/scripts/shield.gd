@@ -111,7 +111,10 @@ func _push_hit() -> void:
 # Попадание в купол: списываем энергию вместо HP. Если на удар энергии не хватило —
 # щит ПРОБИТ: гаснет и SHIELD_BREAK_CD секунд не поднимается, даже если энергия уже
 # капает. Иначе на якоре подпитка шла быстрее выстрелов и щит был непробиваем.
-func absorb(damage: int) -> void:
+## `cost_mult` — во сколько куполу обходится очко урона ЭТОГО типа (WeaponBlock.shield_cost_mult).
+## Единица — пули, на них и настроен SHIELD_COST_X; всё остальное дешевле, то есть хуже против
+## щита. Источник без типа (таран, чужой код) платит обычную цену.
+func absorb(damage: int, cost_mult: float = 1.0) -> void:
 	# Вспышка пластины — это и есть ответ на «не вижу, что щит сработал»: снаряд гас у границы,
 	# а сам щит никак не менялся. Какая именно пластина, скажет mark_hit_point сразу следом;
 	# источник урона без точки (их почти нет) зажжёт ту, что отметили прошлой.
@@ -119,7 +122,7 @@ func absorb(damage: int) -> void:
 	_push_hit()
 	var v := _vehicle_root()
 	if v and v.has_method("energy_consume"):
-		var cost := float(damage) * SHIELD_COST_X
+		var cost := float(damage) * SHIELD_COST_X * maxf(cost_mult, 0.0)
 		var paid: float = v.energy_consume(cost)
 		if paid < cost or v.energy_available() <= 0.0:
 			_cd = SHIELD_BREAK_CD
