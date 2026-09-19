@@ -240,6 +240,7 @@ func _load_items() -> void:
 const CODEX_KINDS := [
 	["blocks",    "Blocks"],
 	["resources", "Resources"],
+	["chain",     "Chain"],
 ]
 var _codex_kind: String = "blocks"
 var _codex_buttons: Dictionary = {}
@@ -250,8 +251,83 @@ func _set_codex_kind(key: String) -> void:
 	_codex_kind = key
 	for k in _codex_buttons:
 		_codex_buttons[k].button_pressed = (k == key)
-	_load_items()
-	_rebuild_grid(_search.text if _search else "")
+	# Цепочка — другая панель, а не другой набор плиток: перевыбираем вкладку целиком, иначе
+	# сетка осталась бы видимой поверх неё.
+	_select_tab(TAB_CODEX)
+
+# ── ЦЕПОЧКА РЕСУРСОВ ──────────────────────────────────────────────────────────
+#
+# Плоский список «сорок имён подряд» отвечает на вопрос «что есть» и молчит о том, ОТКУДА оно
+# берётся. А вся экономика игры — это четыре передела подряд, и понять её по алфавитному списку
+# нельзя. Здесь те же записи выложены стадиями: сырьё, станок, что из него выходит, снова станок.
+#
+# СТРОИТСЯ ИЗ ТЕХ ЖЕ ТАБЛИЦ, что и всё остальное (G.METAL_NAME, G.COMP_NAME, G.COMP_RECIPE):
+# второй, написанный руками список однажды отстал бы на один материал и промолчал об этом.
+#
+# Записи кликабельны и открывают то же окно справки, что и плитки каталога, — иначе получилось бы
+# два описания одного и того же, которые разъедутся.
+func _build_chain_tab() -> void:
+	if _extra_vb == null:
+		return
+	_clear_extra()
+	_extra_header(tr("RAW MATERIAL"))
+	var raw: Array = []
+	for m in G.METAL_NAME.size():
+		raw.append([tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "m%d" % m])
+	# Уголь стоит особняком: он не переплавляется в слиток и идёт прямо в топливо.
+	raw.append([tr("Coal"), ""])
+	_chain_row(raw)
+	_chain_arrow(tr("Smelter"))
+	_extra_header(tr("INGOTS"))
+	var ing: Array = []
+	for m in G.METAL_NAME.size():
+		ing.append([tr(String(G.METAL_NAME[m])), "m%d" % m])
+	_chain_row(ing)
+	_chain_arrow(tr("Component Plant") + " — " + tr("a pair of metals"))
+	_extra_header(tr("SIMPLE COMPONENTS"))
+	var simple: Array = []
+	for c in mini(6, G.COMP_NAME.size()):
+		simple.append([tr(String(G.COMP_NAME[c])), "c%d" % c])
+	_chain_row(simple)
+	_chain_arrow(tr("Component Plant") + " — " + tr("a pair of simple ones"))
+	_extra_header(tr("COMPLEX COMPONENTS"))
+	var complex: Array = []
+	for c in range(6, G.COMP_NAME.size()):
+		complex.append([tr(String(G.COMP_NAME[c])), "c%d" % c])
+	_chain_row(complex)
+	_chain_arrow(tr("Fabricator"))
+	_extra_header(tr("BLOCKS"))
+	var blk := Label.new()
+	blk.text = tr("Over forty parts. Open the Blocks tab: each one lists what it is built from.")
+	blk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	blk.add_theme_font_size_override("font_size", 12)
+	blk.add_theme_color_override("font_color", Color(0.8, 0.88, 0.9, 0.8))
+	_extra_vb.add_child(blk)
+
+## Одна стадия: записи в ряд с переносом. Кнопка вместо метки — чтобы открывалось описание.
+func _chain_row(items: Array) -> void:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	for it in items:
+		var b := Button.new()
+		b.text = String(it[0])
+		b.add_theme_font_size_override("font_size", 12)
+		var key := String(it[1])
+		if key == "":
+			b.disabled = true       # у угля своей записи в каталоге нет
+		else:
+			b.pressed.connect(_show_codex.bind(key))
+		flow.add_child(b)
+	_extra_vb.add_child(flow)
+
+## Переход между стадиями: чем именно он делается.
+func _chain_arrow(what: String) -> void:
+	var lbl := Label.new()
+	lbl.text = "↓  " + what
+	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.add_theme_color_override("font_color", Color(0.35, 0.85, 0.92, 0.95))
+	_extra_vb.add_child(lbl)
 
 func _load_codex_items() -> void:
 	if _codex_kind == "resources":
@@ -800,7 +876,10 @@ func _select_tab(idx: int) -> void:
 	if _codex_col:
 		_codex_col.visible = (_tab == TAB_CODEX)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
-	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
+	# Цепочка ресурсов живёт в той же панели-списке, что МУЗЫКА и НАСТРОЙКИ: у неё стадии сверху
+	# вниз, а не плитки, и сетка слотов для этого не годится.
+	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS \
+			or (_tab == TAB_CODEX and _codex_kind == "chain")
 	var is_tech: bool = _tab == TAB_TECH
 	var is_build: bool = _tab == TAB_BUILD
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
@@ -819,7 +898,9 @@ func _select_tab(idx: int) -> void:
 	if is_build:
 		return                       # своего содержимого у вкладки нет
 	if extra_list:
-		if _tab == TAB_MUSIC:
+		if _tab == TAB_CODEX:
+			_build_chain_tab()
+		elif _tab == TAB_MUSIC:
 			_build_music_tab()
 		else:
 			_build_settings_tab()
