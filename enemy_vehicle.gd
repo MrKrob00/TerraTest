@@ -125,7 +125,11 @@ func _ready() -> void:
 	# while nearly stopped. Enemy builds also often carry weapons at y=1.
 	anti_roll = 8.0
 	upright_strength = 15.0
-	steer_min_speed = 0.3
+	# Порог, ниже которого руль отпускается. У игрока 0.05; вшестеро больший порог означал, что
+	# на малом ходу враг переставал поворачивать вообще — ровно там, где игрок разворачивается
+	# лучше всего. Пилу на месте, ради которой порог поднимали, теперь держит не он, а
+	# STEER_FULL: мелкая ошибка курса больше не выкручивает руль.
+	steer_min_speed = 0.12
 	init_machine_physics()
 	# The name marker above a machine (enemy_marker.gd): an enemy must be visible in a crowd and behind
 	# a tree, and it must be clear who it is. Player machines carry the radial menu button at that spot,
@@ -721,6 +725,10 @@ func _drive_to(pos: Vector3, speed: float, delta: float) -> void:
 		return
 	_drive(to.normalized(), speed, delta)
 
+## При какой ошибке курса руль уже выкручен полностью. Сорок градусов: меньше — и машина
+## дёргает рулём на каждой мелкой правке курса, больше — и она снова поворачивает вяло.
+const STEER_FULL: float = deg_to_rad(40.0)
+
 # nose_dir is where we want to look, speed is signed (negative is reverse).
 func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
 	var travel: Vector3 = nose_dir if speed >= 0.0 else -nose_dir
@@ -734,7 +742,15 @@ func _drive(nose_dir: Vector3, speed: float, delta: float) -> void:
 	fwd = fwd.normalized()
 
 	var ang: float = fwd.signed_angle_to(aim, Vector3.UP)
-	var steer_input: float = clampf(ang / PI, -1.0, 1.0)
+	# РУЛЬ ДО УПОРА УЖЕ НА STEER_FULL, А НЕ НА РАЗВОРОТЕ. Было ang / PI: полный выворот
+	# получался, только когда цель ровно за спиной, а при ошибке в сорок градусов ИИ крутил руль
+	# на четверть. Игрок в этот момент держит его до упора — отсюда и разница, из-за которой
+	# погоня превращалась в наматывание кругов, а игрок спокойно пристраивался сзади.
+	#
+	# Радиус поворота в нашей модели равен wheelbase / tan(руль) и от СКОРОСТИ не зависит вовсе
+	# (см. MachineBody._apply_steering). Значит круг сужается только рулём, и притормаживать перед
+	# поворотом бесполезно — это и есть причина, по которой лечить надо было именно здесь.
+	var steer_input: float = clampf(ang / STEER_FULL, -1.0, 1.0)
 	var speed_ratio: float = clampf(linear_velocity.length() / max_speed, 0.0, 1.0)
 	var angle_limit: float = deg_to_rad(steer_max_angle) * (1.0 - speed_steer_reduction * speed_ratio)
 	_steer_angle = lerp(_steer_angle, steer_input * angle_limit, steer_speed * delta)
