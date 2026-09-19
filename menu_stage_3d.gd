@@ -474,10 +474,40 @@ func _swap_round() -> void:
 		_map.visible = true
 		_enable_collision(_map)
 	_spawn_pair()
+	# ЖДЁМ ЗЕМЛЮ ПОД МАШИНАМИ, И ТОЛЬКО ПОТОМ ПОДНИМАЕМ ФЕЙД. Коллизия на подготовленной карте
+	# выключена до самого свопа (иначе два поля высот дерутся за одни тела), а режется она ВОКРУГ
+	# ТЕЛ — значит до спавна резать не под кого, и порядок «машины, потом ожидание» единственно
+	# возможный. Без ожидания игрок видел, как машины падают сквозь землю, которой ещё нет, и как
+	# доезжают чанки: ровно то, что он назвал «в момент перегенерации выглядит фигово».
+	#
+	# Ждём ПО ФАКТУ, а не фиксированную паузу: пауза либо коротка на слабом телефоне, либо
+	# затягивает своп на быстром.
+	await _await_ground(era)
+	if not _live(era):
+		_swapping = false
+		return
 	_round_t = ROUND_TIME
 	_move_camera()
 	_backdrop.reveal()
 	_swapping = false
+
+## Земля под машинами нарезана. Ограничено по времени: если коллизия почему-то не поедет, раунд
+## всё равно обязан начаться — пустой экран хуже machine, просевшей на полметра.
+const GROUND_WAIT_MAX := 3.0
+
+func _await_ground(era: int) -> void:
+	var waited := 0.0
+	while waited < GROUND_WAIT_MAX:
+		if not _live(era) or not is_instance_valid(_map):
+			return
+		if _map.has_method("collision_stats"):
+			var cs: Vector2i = _map.collision_stats()
+			if cs.x > 0:
+				# Плитки есть — даём им ещё кадр, чтобы физика успела их увидеть.
+				await get_tree().physics_frame
+				return
+		await get_tree().process_frame
+		waited += get_process_delta_time()
 
 # ── Tick ─────────────────────────────────────────────────────────────────────
 func _process(delta: float) -> void:
