@@ -39,6 +39,19 @@ func _ready() -> void:
 	_fill_news()
 	_bind_settings()
 	_rebuild_left()
+	_set_menu_music(true)
+
+## МУЗЫКА МЕНЮ. Контекст MENU лежал в менеджере с самого начала, и звать его было неоткуда:
+## главного меню тогда не было, а потом оно появилось и про флаг забыли — папка `music/menu/`
+## молча не играла ни разу. Ставит его эта сцена, и она же снимает его, уходя: автолоад живёт
+## дольше сцены, и невыключенный флаг оставил бы мир играть меню поверх езды.
+func _exit_tree() -> void:
+	_set_menu_music(false)
+
+func _set_menu_music(on: bool) -> void:
+	var m := get_node_or_null("/root/Music")
+	if m != null:
+		m.set_menu_open(on)
 
 # ── News ─────────────────────────────────────────────────────────────────────
 ## A DATED feed, not a list of small change notes. What goes in: things that change the game for
@@ -108,7 +121,45 @@ func _bind_settings() -> void:
 	fight.button_pressed = G.menu_battles
 	fight.toggled.connect(_on_menu_fight)
 	_bind_lang()
+	_bind_sections()
 	(%CloseSettings as Button).pressed.connect(_close_settings)
+
+## РАЗДЕЛЫ. Камера, звук и игра лежали одним столбцом из шести разнородных виджетов: ползунок
+## чувствительности стоял вплотную к выбору языка, и найти в нём что-либо можно было только
+## прочитав всё. Заголовки рисует та же функция, что делит списки в панели музыки.
+##
+## Список ПРОКРУЧИВАЕТСЯ и его высота считается по экрану: с музыкой в настройках содержимое
+## перестало помещаться в телефон, а CenterContainer не обрежет панель — он вырастит её за
+## края экрана вместе с кнопкой ЗАКРЫТЬ.
+## Пересобирается целиком при смене языка: текст сцены движок переводит сам, а строку,
+## поставленную из кода, — нет, и заголовки остались бы на прежнем языке.
+func _bind_sections() -> void:
+	for host in [%SecCamera, %SecSound, %SecGame, %MusicHost]:
+		for c in (host as Node).get_children():
+			(host as Node).remove_child(c)
+			c.queue_free()
+	(%SecCamera as Node).add_child(MusicPanel.section_head(tr("CAMERA")))
+	(%SecSound as Node).add_child(MusicPanel.section_head(tr("SOUND")))
+	(%SecGame as Node).add_child(MusicPanel.section_head(tr("GAME")))
+	# Только свой список: настройки меню говорят о меню, и треки мира здесь не при чём.
+	var m := get_node_or_null("/root/Music")
+	if m != null:
+		var panel := MusicPanel.new()
+		(%MusicHost as Node).add_child(panel)
+		panel.setup([m.Ctx.MENU])
+
+## Высота прокрутки: по содержимому, но не выше доли экрана. Без верхней границы панель
+## растёт за края телефона; без нижней — под коротким списком остаётся пустая полоса.
+const SET_H_FRAC := 0.62
+const SET_W_MAX := 420.0
+
+func _fit_settings() -> void:
+	var vp := get_viewport().get_visible_rect().size
+	(%SettingsPanel as Control).custom_minimum_size.x = minf(SET_W_MAX, vp.x * 0.92)
+	var scroll := %SettingsScroll as Control
+	var inner: Control = scroll.get_child(0) as Control
+	var want: float = inner.get_combined_minimum_size().y if inner != null else 0.0
+	scroll.custom_minimum_size.y = minf(want, vp.y * SET_H_FRAC)
 
 ## ЯЗЫК. Подписи пунктов — на своих языках, а не переведённые: человек, открывший чужой язык по
 ## ошибке, должен найти свой в списке, не понимая ни слова вокруг.
@@ -132,6 +183,8 @@ func _on_lang_picked(idx: int) -> void:
 		return
 	G.set_lang(String(G.LANGS[idx]))
 	_rebuild_left()
+	_bind_sections()
+	call_deferred("_fit_settings")
 
 func _on_look_sens(v: float) -> void:
 	G.cam_look_sens = v
@@ -158,6 +211,9 @@ func _on_menu_fight(on: bool) -> void:
 
 func _open_settings() -> void:
 	_settings.visible = true
+	# Размер считается на ОТКРЫТИИ: пока панель была скрыта, её дети не раскладывались, и
+	# высота содержимого на старте сцены читалась нулём.
+	call_deferred("_fit_settings")
 
 func _close_settings() -> void:
 	_settings.visible = false
