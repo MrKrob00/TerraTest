@@ -16,15 +16,15 @@ const REGEN_HP := 12
 const REGEN_COST := 2.0        # энергии за один подлеченный блок
 const REGEN_INTERVAL := 1.0    # с между тиками
 
-## Прозрачность поля: обычная и «энергии нет». Разница небольшая намеренно — поле показывает
-## РАДИУС, это его работа, а моргать ради привлечения внимания оно не должно.
+## Яркость поля: рабочая и «энергии нет». Поле показывает РАДИУС и то, что блок работает;
+## моргать ради привлечения внимания оно не должно, поэтому переход плавный.
 const FIELD_ALPHA := 0.09
 const FIELD_ALPHA_DEAD := 0.03
 ## За сколько секунд поле переходит между этими двумя состояниями.
 const FIELD_FADE := 0.4
 
 var _timer: float = 0.0
-var _field: MeshInstance3D = null
+var _field: MultiMeshInstance3D = null
 var _field_mat: ShaderMaterial = null
 var _alpha: float = FIELD_ALPHA_DEAD
 
@@ -40,27 +40,43 @@ func _ready() -> void:
 # Отличие от щита принципиальное: у того купол — ФИЗИЧЕСКОЕ тело, он ловит снаряды и лежит
 # на слое блоков. Здесь это чистая графика, без коллизии вовсе: реген ничего не
 # перехватывает, он только чинит, и тело ему не нужно.
+## Сколько цифр в облаке. В кадре видно меньше — каждая гаснет к концу своего круга, так что
+## одновременно горят пять-шесть. Сплошная решётка цифр закрывала бы машину, которую чинят.
+const FIELD_DIGITS := 14
+## Размер карточки: глиф примерно того же размера, каким говорит урон на броне.
+const DIGIT_SIZE := 0.8
+
 func _build_field() -> void:
-	_field = MeshInstance3D.new()
-	var m := SphereMesh.new()
-	m.radius = REGEN_RADIUS
-	m.height = REGEN_RADIUS * 2.0
-	m.radial_segments = 16
-	m.rings = 8
-	# КОД, ПОДНИМАЮЩИЙСЯ ВОКРУГ БЛОКА, вместо ровной зелёной заливки. Она честно показывала
-	# радиус и больше ничего: по ней нельзя было понять, работает поле сейчас или просто висит.
-	# Частиц в проекте нет, поэтому код рисуется ТЕМ ЖЕ МЕШЕМ — ни одного нового узла и ни
-	# одного лишнего вызова отрисовки (см. regen_field.gdshader).
+	# ЦИФРЫ ЛЕТАЮТ ВНУТРИ ОБЪЁМА, А НЕ ПО ОБОЛОЧКЕ ШАРА. Сфера с узором по поверхности честно
+	# показывала радиус, но узор на оболочке остаётся узором на оболочке: внутрь он не попадёт
+	# никак, сколько его ни двигай. Радиус теперь показывает сам разлёт цифр.
+	#
+	# MultiMesh: один узел и один вызов отрисовки на всё поле, орбиты считаются в шейдере из
+	# TIME, на стороне игры — только четыре числа на цифру, записанные один раз.
+	_field = MultiMeshInstance3D.new()
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var q := QuadMesh.new()
+	q.size = Vector2(DIGIT_SIZE, DIGIT_SIZE)
+	mm.mesh = q
+	mm.instance_count = FIELD_DIGITS
+	for i in FIELD_DIGITS:
+		# Положение задаёт шейдер, поэтому трансформы единичные; фаза, скорость, радиус и
+		# зерно уезжают в custom data.
+		mm.set_instance_transform(i, Transform3D())
+		mm.set_instance_custom_data(i, Color(randf(), randf(), randf(), randf()))
+	_field.multimesh = mm
 	_field_mat = ShaderMaterial.new()
-	_field_mat.shader = preload("res://regen_field.gdshader")
-	_field_mat.set_shader_parameter("active", FIELD_ALPHA_DEAD)
-	# Изнанку/лицо решает сам шейдер (cull_disabled): код виден и снаружи, и когда камера
-	# въехала внутрь поля, а прозрачности достаточно, чтобы он не закрывал обзор.
-	m.radial_segments = 32
-	m.rings = 16
-	m.material = _field_mat
-	_field.mesh = m
+	_field_mat.shader = preload("res://regen_code.gdshader")
+	_field_mat.set_shader_parameter("radius", REGEN_RADIUS)
+	_field_mat.set_shader_parameter("active", 0.0)
+	_field.material_override = _field_mat
 	_field.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Габарит задаём руками: трансформы инстансов единичные, и посчитанный по ним габарит был
+	# бы точкой — поле пропадало бы, едва блок ушёл с края экрана.
+	_field.custom_aabb = AABB(Vector3.ONE * -REGEN_RADIUS, Vector3.ONE * (REGEN_RADIUS * 2.0))
+	_field.set_meta("block_fx", true)       # в габарит блока не входит (см. _local_aabb)
 	add_child(_field)
 
 func _physics_process(delta: float) -> void:
