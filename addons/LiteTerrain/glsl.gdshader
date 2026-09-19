@@ -161,14 +161,26 @@ void vertex() {
     vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // canyon cliffs are darker
     v_base_col    = mix(zone, rock_col, rock_t);
 
-    v_is_grass = 0.0;
+    // ТОН ЛУГА СЧИТАЕТСЯ ОТ БИОМА, А НЕ ОТ ТОГО, ПОДНЯЛАСЬ ЛИ ЭТА ВЕРШИНА.
+    //
+    // Раньше v_is_grass ставился только там, где вершину реально приподняли, а поднимают её лишь
+    // на ближнем уровне LOD и лишь по броску хеша. Значит умножение на grass_shade доставалось
+    // случайной части вершин: вблизи луг шёл пятнами двух тонов, а дальше первого уровня
+    // становился ровным третьим. Игрок это и увидел — «два цвета, а вдали будет ещё один».
+    //
+    // Долю травы знает КАЖДЫЙ уровень: она выводится из маски биома в COLOR.b и из уклона. Тон
+    // теперь берётся из неё, поэтому луг одного цвета на всей дистанции. Подъём вершин остаётся
+    // ниже и остаётся геометрией — он и должен быть виден только вблизи.
+    float grass_amount = mix(sand_grass, 1.0, biome_grass)
+            * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain);
+    v_is_grass = clamp(grass_amount, 0.0, 1.0);
     // COLOR.r < 0.5 marks a vertex on a chunk border: the grass offset is skipped there, or
     // the seam between differing LODs pulls apart. lod_grass_enabled is 1 only on the near
     // LOD-0 material.
     if (lod_grass_enabled > 0.5 && COLOR.r > 0.5) {
         // Grass grows in the MEADOW only. In the desert sand_grass = 0 means bare sand. None on
         // rock, in the canyon or on mountains. amount scales both height and density.
-        float amount = mix(sand_grass, 1.0, biome_grass) * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain);
+        float amount = grass_amount;
         if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
@@ -176,8 +188,7 @@ void vertex() {
                 float press = texture(trample_map, t_uv).r;
                 offset.y -= clamp(press, 0.0, 1.0) * grass_height * amount * 2.0;
             }
-            VERTEX    += offset;
-            v_is_grass = amount;                            // continuous, for a soft shade in the fragment
+            VERTEX += offset;
         }
     }
 }
