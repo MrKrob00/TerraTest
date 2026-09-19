@@ -25,7 +25,7 @@ const FIELD_FADE := 0.4
 
 var _timer: float = 0.0
 var _field: MeshInstance3D = null
-var _field_mat: StandardMaterial3D = null
+var _field_mat: ShaderMaterial = null
 var _alpha: float = FIELD_ALPHA_DEAD
 
 func _ready() -> void:
@@ -47,13 +47,17 @@ func _build_field() -> void:
 	m.height = REGEN_RADIUS * 2.0
 	m.radial_segments = 16
 	m.rings = 8
-	_field_mat = StandardMaterial3D.new()
-	_field_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_field_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_field_mat.albedo_color = Color(0.25, 1.0, 0.45, FIELD_ALPHA_DEAD)   # зелёный как у починки на блоках
-	# Рисуем ИЗНАНКУ сферы: снаружи она почти прозрачна, а изнутри не закрывает игроку обзор
-	# и не отсекает камеру, когда та въезжает внутрь поля.
-	_field_mat.cull_mode = BaseMaterial3D.CULL_FRONT
+	# КОД, ПОДНИМАЮЩИЙСЯ ВОКРУГ БЛОКА, вместо ровной зелёной заливки. Она честно показывала
+	# радиус и больше ничего: по ней нельзя было понять, работает поле сейчас или просто висит.
+	# Частиц в проекте нет, поэтому код рисуется ТЕМ ЖЕ МЕШЕМ — ни одного нового узла и ни
+	# одного лишнего вызова отрисовки (см. regen_field.gdshader).
+	_field_mat = ShaderMaterial.new()
+	_field_mat.shader = preload("res://regen_field.gdshader")
+	_field_mat.set_shader_parameter("active", FIELD_ALPHA_DEAD)
+	# Изнанку/лицо решает сам шейдер (cull_disabled): код виден и снаружи, и когда камера
+	# въехала внутрь поля, а прозрачности достаточно, чтобы он не закрывал обзор.
+	m.radial_segments = 32
+	m.rings = 16
 	m.material = _field_mat
 	_field.mesh = m
 	_field.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -141,4 +145,4 @@ func _fade_field(delta: float, target: float) -> void:
 	if _field_mat == null:
 		return
 	_alpha = move_toward(_alpha, target, delta * (FIELD_ALPHA - FIELD_ALPHA_DEAD) / FIELD_FADE)
-	_field_mat.albedo_color.a = _alpha
+	_field_mat.set_shader_parameter("active", _alpha / maxf(FIELD_ALPHA, 0.001))

@@ -26,10 +26,15 @@ func _ready() -> void:
 	var m := SphereMesh.new()
 	m.radius = SHIELD_RADIUS
 	m.height = SHIELD_RADIUS * 2.0
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0.3, 0.7, 1.0, 0.12)
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	# ПЛАСТИНЫ, А НЕ ЗАЛИВКА. Однотонный шар на 12% альфы не читался ни как щит, ни как
+	# что-либо вообще. Шестиугольная сетка даёт ему устройство, а свечение по касательной —
+	# ощущение оболочки, сквозь которую видно машину (см. shield_dome.gdshader).
+	#
+	# Сегменты сферы подняты: на стандартных 64×32 шов между пластинами ломался на гранях меша.
+	m.radial_segments = 48
+	m.rings = 24
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://shield_dome.gdshader")
 	m.material = mat
 	_dome_mesh.mesh = m
 	_dome.add_child(_dome_mesh)
@@ -49,6 +54,15 @@ func _physics_process(delta: float) -> void:
 	var cs := _dome.get_child(0) as CollisionShape3D
 	if cs:
 		cs.disabled = not powered
+	# КУПОЛ ТУСКНЕЕТ ВМЕСТЕ С ЗАРЯДОМ. Раньше он был одинаково ярким и при полной батарее, и на
+	# последних процентах: игрок узнавал, что щита больше нет, ровно в тот момент, когда по нему
+	# попадали. Теперь видно заранее — и это честная информация, а не подсказка.
+	if powered and _dome_mesh != null:
+		var mat := (_dome_mesh.mesh as SphereMesh).material as ShaderMaterial
+		if mat != null and v != null and v.has_method("energy_fill"):
+			var lvl: float = clampf(float(v.energy_fill()), 0.0, 1.0)
+			# Не в ноль: погасший в ноль купол неотличим от выключенного, а он ещё работает.
+			mat.set_shader_parameter("energy", 0.35 + 0.65 * lvl)
 
 # Попадание в купол: списываем энергию вместо HP. Если на удар энергии не хватило —
 # щит ПРОБИТ: гаснет и SHIELD_BREAK_CD секунд не поднимается, даже если энергия уже
