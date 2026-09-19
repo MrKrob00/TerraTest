@@ -4,7 +4,7 @@ extends Node3D
 ## or enemy_vehicle._is_enemy does not see them as enemies at all.
 ##
 ## ROUND LIFECYCLE. A round runs ROUND_TIME, and only then does the next map start generating - the
-## fight continues meanwhile. One generation at a time (_gen_busy). On swap EVERYTHING of the old
+## fight continues meanwhile. ОДНА КАРТА НА СЕССИЮ: раунд переезжает по ней (_move_round), а не
 ## round is removed first and the new one added a frame later, or machines spawn onto collision
 ## that is about to vanish.
 ##
@@ -50,8 +50,9 @@ const MENU_VIEW := 320.0
 ## и каждая секунда его.
 ##
 ## Замерено: 32 м — 0.41 с, 96 — 0.94, 160 — 2.10, 224 — 3.02.
-const MENU_READY_VIEW := 96.0        # первая карта: игрок ждёт, платим секундой
-const MENU_READY_VIEW_BG := 224.0    # фоновая: ждёт предыдущий раунд, платить нечем
+## Карта теперь ОДНА на сессию (раунд переезжает по ней, см. _move_round), то есть это ожидание
+## платится единожды, при входе в меню, и второго такого за сессию не будет.
+const MENU_READY_VIEW := 96.0
 ## Everything the round can reach stays resident: the map is small and lives half a minute, so
 ## dropping and rebuilding chunks inside it would be work for nothing.
 const MENU_KEEP := 256.0
@@ -104,8 +105,6 @@ var _round_t: float = 0.0
 @onready var _backdrop: Control = %Backdrop
 
 var _map: Node3D = null          # the map the fight runs on
-var _next_map: Node3D = null     # the one being generated in the background
-var _gen_busy: bool = false
 var _fighters: Array = []
 ## Per fighter, in the same order: when it was spawned and whether it has ever had a gun. Both are
 ## only there to tell "still being assembled" from "shot to pieces" (see ARM_GRACE).
@@ -114,6 +113,13 @@ var _armed: Array = []
 ## Angle of the line the pair stands on. Kept for the round, so a replacement machine appears where
 ## its predecessor stood instead of somewhere behind the camera.
 var _ring_ang: float = 0.0
+## ГДЕ ИДЁТ БОЙ. Раунд не строит новую карту, он ПЕРЕЕЗЖАЕТ по одной и той же на новое место.
+## Мир бесконечный и процедурный: в двухстах метрах от прежней точки другая земля, а строить её
+## заново незачем — половина уже в памяти (keep_radius), остальное дотекает, пока держится фейд.
+var _fight_centre: Vector3 = Vector3.ZERO
+## Насколько далеко переезжает следующий раунд. Двести метров — это уже другой пейзаж, но всё ещё
+## внутри того, что нода рисует (MENU_VIEW 320), то есть большая часть пути уже построена.
+const ROUND_HOP := 200.0
 var _swapping: bool = false
 ## The fight is off in the settings: no map, no machines, the backdrop is the menu.
 var _off: bool = false
@@ -170,10 +176,9 @@ func _shutdown() -> void:
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
-	for m in [_map, _next_map]:
+	for m in [_map]:
 		_discard(m)
 	_map = null
-	_next_map = null
 
 ## Is the round that started with this number still the current one? A coroutine asks after every
 ## await; false means it must leave without touching the stage.
@@ -235,6 +240,7 @@ func _open_round() -> void:
 	if not _live(era):
 		_opening = false
 		return
+	_reseat_fighters()
 	_round_t = ROUND_TIME
 	# ФЛАГ СНИМАЕТСЯ ПОСЛЕДНИМ, И ЭТО НЕ ФОРМАЛЬНОСТЬ. Раунд не открыт, пока не открыт. Сняв его
 	# до ожидания земли, я дал тику увидеть готовую карту с обнулённым _round_t — и тот сразу
@@ -263,7 +269,7 @@ func _make_map(report: bool = false) -> Node3D:
 	# shows the same land the player is about to drive into. Setting them from here would be a second
 	# copy of those numbers and, sooner or later, a different landscape behind the same menu.
 	m.view_distance = MENU_VIEW
-	m.ready_view = MENU_READY_VIEW if report else MENU_READY_VIEW_BG
+	m.ready_view = MENU_READY_VIEW
 	m.keep_radius = MENU_KEEP
 	# ЗЕМЛИ ДО ПОКАЗА — ОДИН ЧАНК В КАЖДУЮ СТОРОНУ. Игре нужны восемьдесят метров во все стороны
 	# от машины, которая сейчас поедет; здесь две машины стоят в тридцати метрах от начала
@@ -364,25 +370,6 @@ func _wait_terrain(m: Node3D, report: bool = false) -> bool:
 		return true
 	push_warning("menu: terrain never became ready (%d frames)" % guard)
 	return false
-
-## Start the NEXT map. Runs while the current fight is still on screen, so nothing freezes; the
-## round is only reset once this finishes. Guarded twice - a map already waiting, or a run already
-## going - because both _process and the "no weapons left" check can ask for it in the same frame.
-func _prepare_next() -> void:
-	if _next_map != null or _gen_busy:
-		return
-	var era: int = _era
-	_gen_busy = true
-	var m: Node3D = await _make_map()
-	_gen_busy = false
-	if not _live(era):
-		_discard(m)         # switched off or restarted while this was building
-		return
-	if m == null:
-		return
-	m.visible = false
-	_next_map = m
-
 func _spawn_pair() -> void:
 	_ring_ang = _rng.randf() * TAU
 	_fighters = [null, null]
@@ -406,7 +393,7 @@ func _spawn_fighter(side: int) -> void:
 	e.set("demo", true)
 	_machines_root.add_child(e)
 	var dir := Vector3(cos(_ring_ang), 0.0, sin(_ring_ang))
-	var p: Vector3 = dir * (START_GAP * 0.5) if side == 0 else dir * (-START_GAP * 0.5)
+	var p: Vector3 = _fight_centre + (dir * (START_GAP * 0.5) if side == 0 else dir * (-START_GAP * 0.5))
 	# A REPLACEMENT LANDS BESIDE THE MACHINE THAT IS STILL STANDING, not on the spot the round
 	# started from: a survivor that has driven off would otherwise get an opponent a hundred metres
 	# away, and the camera - which frames the middle of the pair - would show neither of them.
@@ -428,6 +415,13 @@ func _spawn_fighter(side: int) -> void:
 	if e is RigidBody3D:
 		(e as RigidBody3D).linear_velocity = Vector3.ZERO
 		(e as RigidBody3D).angular_velocity = Vector3.ZERO
+		# ЗАМОРОЖЕНЫ, ПОКА ПОД НИМИ НЕТ ЗЕМЛИ. Плитки коллизии режутся ВОКРУГ ТЕЛ и на свежей карте
+		# ждут в очереди за первичной постройкой мешей: замер дал НОЛЬ плиток на протяжении ста
+		# пятидесяти кадров, и машины всё это время просто падали — к концу на четырнадцать метров
+		# под землю. Снаружи это «враги застревают в карте».
+		#
+		# Размораживает _await_ground, когда плитки появились.
+		(e as RigidBody3D).freeze = true
 	_fighters[side] = e
 	_born[side] = _t
 	_armed[side] = false
@@ -480,75 +474,97 @@ func _ground_y(p: Vector3) -> float:
 		return float(_map.terrain_height_at(p))
 	return 0.0
 
-## Swap the round: EVERYTHING GOES FIRST, AND ONLY THEN DOES THE NEW ROUND ARRIVE. The two halves
-## are separated by a frame on purpose - queue_free() only takes effect at the end of the frame, so
-## machines spawned in the same breath would be dropped onto the collision of the map that is about
-## to disappear, and half of them would fall through the world.
+## ПЕРЕЕЗД РАУНДА: КАРТА ОДНА НА ВСЮ СЕССИЮ, МЕНЯЕТСЯ МЕСТО.
 ##
-## The old map takes its machines, their bullets and their wreckage with it: all of that lives under
-## nodes freed here. Removing the map from the tree BEFORE it is freed takes its collision away in
-## this frame rather than at the end of it.
-func _swap_round() -> void:
+## Раньше каждый раунд строил НОВУЮ карту, а старую выбрасывал. Отсюда шло всё сразу: земля
+## доезжала на глазах, на свопе сыпались ошибки владельцев форм коллизии, а машины падали с
+## шести метров над высотой, которую спрашивали у карты, ещё не построенной в той точке, —
+## и садились внутрь холма. Игрок назвал это «враги застревают в карте».
+##
+## Мир бесконечный и процедурный, значит новую землю искать не нужно — до неё можно доехать.
+## Раунд переезжает на ROUND_HOP метров: там другой пейзаж, но это та же нода, половина пути
+## уже в памяти (keep_radius), а высота в любой точке известна ВСЕГДА — terrain_height_at
+## отвечает по генератору, а не по построенным мешам. Поэтому машины садятся на землю, а не в неё.
+##
+## Ничего не создаётся и не освобождается: ни карты, ни коллизии, ни владельцев форм.
+func _move_round() -> void:
+	if _swapping:
+		return
 	var era: int = _era
 	_swapping = true
-	# The backdrop comes down over the swap. Without it the round ends on a hard cut from one
-	# landscape to another, and the new one is still popping its chunks in as it appears.
 	_backdrop.cover(false)
 	await get_tree().create_timer(SWAP_FADE).timeout
 	if not _live(era):
-		_swapping = false   # switched off while the screen was fading; _shutdown cleared the stage
+		_swapping = false
 		return
-	# ── Remove ──
+	# Машины, их обломки и эффекты прошлого раунда уходят целиком.
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
 	for c in _machines_root.get_children():
-		_machines_root.remove_child(c)       # machines, loose blocks and effects left by the fight
+		_machines_root.remove_child(c)
 		c.queue_free()
-	_discard(_map)
-	_map = null
-	await get_tree().process_frame           # nothing of the old round is left standing
+	await get_tree().process_frame
 	if not _live(era):
-		_discard(_next_map)
-		_next_map = null
 		_swapping = false
 		return
-	# ── Add ──
-	_map = _next_map
-	_next_map = null
-	if is_instance_valid(_map):
-		_map.visible = true
-		_enable_collision(_map)
+	# Новое место: направление случайное, расстояние постоянное. Случайная ДЛИНА дала бы раунды,
+	# которые визуально не отличаются от предыдущего.
+	var ang: float = _rng.randf() * TAU
+	_fight_centre += Vector3(cos(ang), 0.0, sin(ang)) * ROUND_HOP
 	_spawn_pair()
-	# ЖДЁМ ЗЕМЛЮ ПОД МАШИНАМИ, И ТОЛЬКО ПОТОМ ПОДНИМАЕМ ФЕЙД. Коллизия на подготовленной карте
-	# выключена до самого свопа (иначе два поля высот дерутся за одни тела), а режется она ВОКРУГ
-	# ТЕЛ — значит до спавна резать не под кого, и порядок «машины, потом ожидание» единственно
-	# возможный. Без ожидания игрок видел, как машины падают сквозь землю, которой ещё нет, и как
-	# доезжают чанки: ровно то, что он назвал «в момент перегенерации выглядит фигово».
-	#
-	# Ждём ПО ФАКТУ, а не фиксированную паузу: пауза либо коротка на слабом телефоне, либо
-	# затягивает своп на быстром.
+	_move_camera()          # камера уезжает туда же, и рельеф начинает достраивать вокруг неё
 	await _await_ground(era)
 	if not _live(era):
 		_swapping = false
 		return
+	_reseat_fighters()
 	_round_t = ROUND_TIME
-	_move_camera()
 	_backdrop.reveal()
 	_swapping = false
 
 ## Земля под машинами нарезана. Ограничено по времени: если коллизия почему-то не поедет, раунд
-## всё равно обязан начаться — пустой экран хуже machine, просевшей на полметра.
-const GROUND_WAIT_MAX := 3.0
+## всё равно обязан начаться — пустой экран хуже машины, просевшей на полметра.
+##
+## Переезд ждёт не только плитки под машинами, но и меши вокруг: раньше карта на новом месте была
+## построена заранее целиком, теперь она дотекает по ходу переезда.
+const GROUND_WAIT_MAX := 4.0
+## Одной плитки мало: первая появляется прямо под машиной, а рядом ещё пусто.
+const GROUND_TILES_MIN := 3
+
+## ПОСАДКА ПОСЛЕ ОЖИДАНИЯ. Машины роняются с шести метров, а плитки коллизии под ними режутся
+## ВОКРУГ ТЕЛ, то есть появляются уже после спавна. В это окно машина успевает провалиться сквозь
+## землю и остаётся внутри холма — игрок назвал это «враги застревают в карте». Замер на движке:
+## в первом раунде тонули обе.
+##
+## Поэтому, дождавшись земли, ставим их на неё явно. Высота берётся у ГЕНЕРАТОРА (terrain_height_at
+## отвечает по точке, а не по построенным мешам), значит она верна и там, куда карта ещё дотекает.
+func _reseat_fighters(unfreeze: bool = true) -> void:
+	for f in _fighters:
+		var m := f as Node3D
+		if m == null or not is_instance_valid(m):
+			continue
+		var gy: float = _ground_y(m.global_position)
+		m.global_position = Vector3(m.global_position.x, gy + 1.2, m.global_position.z)
+		var rb := m as RigidBody3D
+		if rb != null:
+			rb.linear_velocity = Vector3.ZERO
+			rb.angular_velocity = Vector3.ZERO
+			if unfreeze:
+				rb.freeze = false
 
 func _await_ground(era: int) -> void:
 	var waited := 0.0
 	while waited < GROUND_WAIT_MAX:
 		if not _live(era) or not is_instance_valid(_map):
 			return
+		# Пока ждём — ДЕРЖИМ машины на поверхности. Они заморожены, но высота под ними меняется
+		# по мере того, как рельеф достраивается, и без этого замороженная машина осталась бы
+		# висеть там, где её поставили до появления земли.
+		_reseat_fighters(false)
 		if _map.has_method("collision_stats"):
 			var cs: Vector2i = _map.collision_stats()
-			if cs.x > 0:
+			if cs.x >= GROUND_TILES_MIN:
 				# Плитки есть — даём им ещё кадр, чтобы физика успела их увидеть.
 				#
 				# ЖДЁМ КАДР ОТРИСОВКИ, А НЕ ФИЗИЧЕСКИЙ. physics_frame возвращает управление
@@ -573,15 +589,11 @@ func _process(delta: float) -> void:
 	# zero until the round is open) nor start a generation against a map that is not up yet.
 	if _opening or _map == null:
 		return
-	# A map is ready and waiting - reset the round now.
-	if _next_map != null:
-		_swap_round()
-		return
 	_round_t -= delta
-	# Time is up: start the next map. Guarded inside - the fight goes on for as long as the
-	# generation takes, and _round_t keeps ticking past zero without starting a second run.
+	# Время вышло — ПЕРЕЕЗЖАЕМ, а не строим новую карту. Защита внутри: _round_t тикает и дальше
+	# нуля, а второй переезд поверх идущего был бы двумя наборами машин на стадии.
 	if _round_t <= 0.0:
-		_prepare_next()
+		_move_round()
 	# The fight is kept alive the whole time, generation or not: a machine that died or lost its guns
 	# is replaced where it stood.
 	_replace_fallen()
