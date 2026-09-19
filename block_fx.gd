@@ -43,6 +43,79 @@ const FLASH_DIST := 110.0
 static var _lamps: Array = []
 static var _lamp_at: int = 0
 
+## СОБСТВЕННАЯ ВСПЫШКА СТВОЛА, ребёнком дула. Пул ниже (flash) кладёт узлы под корень сцены, то
+## есть в МИРОВЫЕ координаты, и это верно для взрыва: он случается в точке мира и машина к нему
+## отношения не имеет. Для выстрела — неверно: машина едет, а вспышка оставалась там, где был
+## ствол в момент нажатия. Игрок это и увидел.
+##
+## Поэтому у ствола она своя, ребёнком точки дула: едет и поворачивается вместе с ним без единой
+## строки на обновление. Создаётся лениво, на первом выстреле, и дальше только показывается.
+static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
+	var have := muzzle.get_node_or_null("MuzzleFX") as Node3D
+	if have != null:
+		return have
+	var holder := Node3D.new()
+	holder.name = "MuzzleFX"
+	holder.set_meta("block_fx", true)          # в габарит блока не входит (см. _local_aabb)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _cone_mesh()
+	# −90° по X переводит собственный +Y конуса в −Z держателя, то есть вперёд по стволу.
+	mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	mi.material_override = _flash_mat(col)
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(mi)
+	holder.visible = false
+	muzzle.add_child(holder)
+	return holder
+
+## Зажечь вспышку ствола. Позиция и поворот не нужны: узел уже стоит на дуле и смотрит по стволу.
+static func muzzle_fire(muzzle: Node3D, col: Color, size: float, dur: float) -> void:
+	if muzzle == null or not is_instance_valid(muzzle) or not muzzle.is_inside_tree():
+		return
+	var holder := muzzle_node(muzzle, col)
+	var mi := holder.get_child(0) as MeshInstance3D
+	if mi == null:
+		return
+	var mat := mi.material_override as StandardMaterial3D
+	if mat != null:
+		mat.albedo_color = Color(col.r, col.g, col.b, 0.95)
+		mat.emission = col
+	mi.scale = Vector3(size, size * 2.4, size)
+	holder.visible = true
+	if holder.has_meta("fx_tw"):
+		var old: Variant = holder.get_meta("fx_tw")
+		if old is Tween and (old as Tween).is_valid():
+			(old as Tween).kill()
+	var tw := holder.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3(size * 0.5, size * 3.4, size * 0.5), dur) \
+			.set_ease(Tween.EASE_OUT)
+	if mat != null:
+		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(_hide_lamp.bind(holder))
+	holder.set_meta("fx_tw", tw)
+
+static func _cone_mesh() -> Mesh:
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.0
+	cm.bottom_radius = 0.5
+	cm.height = 1.0
+	cm.radial_segments = 8          # живёт четыре кадра: больше граней тут не видно
+	cm.rings = 0
+	return cm
+
+static func _flash_mat(col: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.emission_enabled = true
+	m.emission_energy_multiplier = 4.0
+	m.albedo_color = col
+	m.emission = col
+	return m
+
 ## Вспышка у дула. dir — куда смотрит ствол: вспышка ВЫТЯНУТА ПО НЕМУ и смещена вперёд.
 ##
 ## ШАР БЫЛ НЕВЕРНЫМ РЕШЕНИЕМ, и игрок сказал об этом прямо. Выстрел — событие направленное, а шар
@@ -214,10 +287,26 @@ const BLAST_B := Color(1.0, 0.62, 0.10)     # и раскалённый край
 const BLAST_CARDS := 34
 const BLAST_DUR := 0.55
 
-static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
+## ИСКРА НА ЩИТЕ. Раньше попадание в купол рисовалось ПО САМОЙ ПУЛЕ (BlockFX.play на снаряде), и
+## это давало сразу две беды. Первая: глюк принадлежал не тому — игрок ждёт отметку на щите, там
+## где он сработал, а видел облако, летящее со снарядом. Вторая, хуже: пуля тут же уходила в пул
+## и вылетала СЛЕДУЮЩИМ выстрелом с ещё не догоревшим облаком на себе — «пуля уже с глитчом до
+## попадания».
+##
+## Теперь облако принадлежит КУПОЛУ и стоит в точке гашения: купол едет с машиной, значит и
+## отметка едет с ним. Палитра — глитчевая (циан/маджента), а не взрывная: щит гасит, а не рвёт.
+const SPARK_A := Color(0.15, 0.85, 1.0)
+const SPARK_B := Color(0.72, 0.16, 1.0)
+
+static func shield_spark(dome: Node, pos: Vector3) -> void:
+	blast_cards(dome, pos, 0.55, SPARK_A, SPARK_B, 10, 0.3)
+
+static func blast_cards(root: Node, pos: Vector3, radius: float,
+		ca: Color = BLAST_A, cb: Color = BLAST_B, cards: int = BLAST_CARDS,
+		dur: float = BLAST_DUR) -> void:
 	if root == null or not is_instance_valid(root):
 		return
-	var count: int = _take_card_budget(BLAST_CARDS)
+	var count: int = _take_card_budget(cards)
 	if count <= 0:
 		return
 	var cloud := Node3D.new()
@@ -237,8 +326,8 @@ static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
 		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
 		cmat.set_shader_parameter("fill_threshold", randf_range(0.34, 0.5))
 		cmat.set_shader_parameter("progress", 0.0)
-		cmat.set_shader_parameter("glitch_a", Vector3(BLAST_A.r, BLAST_A.g, BLAST_A.b))
-		cmat.set_shader_parameter("glitch_b", Vector3(BLAST_B.r, BLAST_B.g, BLAST_B.b))
+		cmat.set_shader_parameter("glitch_a", Vector3(ca.r, ca.g, ca.b))
+		cmat.set_shader_parameter("glitch_b", Vector3(cb.r, cb.g, cb.b))
 		card.material_override = cmat
 		cloud.add_child(card)
 		# Точки по ШАРУ, а не по кубу: у взрыва есть радиус, и облако обязано быть круглым —
@@ -253,11 +342,11 @@ static func blast_cards(root: Node, pos: Vector3, radius: float) -> void:
 		mats.append(cmat)
 	var tw := cloud.create_tween()
 	tw.set_parallel(true)
-	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, BLAST_DUR)
+	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, dur)
 	# Само облако РАЗЛЕТАЕТСЯ: карточки стоят на своих местах внутри него, а масштабируется
 	# узел целиком — один твин вместо тридцати четырёх.
 	cloud.scale = Vector3.ONE * 0.35
-	tw.tween_property(cloud, "scale", Vector3.ONE, BLAST_DUR).set_ease(Tween.EASE_OUT)
+	tw.tween_property(cloud, "scale", Vector3.ONE, dur).set_ease(Tween.EASE_OUT)
 	tw.chain().tween_callback(cloud.queue_free)
 	# Свет взрыва — здесь, а не у того, кто взорвался: blast_cards это единственная дверь, через
 	# неё проходят и батарея, и кабина, и догоревший предохранитель. Радиус вдвое шире облака,
