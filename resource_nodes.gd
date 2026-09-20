@@ -331,6 +331,20 @@ func _metal_for(local_pos: Vector3, map: Node, can_biome: bool, rng: RandomNumbe
 
 # Жила вошла в радиус: берём слот из пула, рисуем инстанс + создаём узел (добыча/коллизия).
 func _stream_in(v: Dictionary) -> void:
+	# ДЕРЕВО НЕ ВЫРАСТАЕТ ВНУТРИ ПОСТРОЙКИ, И ПРОВЕРЯТЬ ЭТО НАДО ЗДЕСЬ, А НЕ ТОЛЬКО НА ПЕРЕСАДКЕ.
+	# _data собирается из СИДА заново при каждом заходе, то есть пересадки прошлого сеанса
+	# забываются: игрок срубил дерево, построил на этом месте базу, перезашёл — и дерево вернулось
+	# ровно туда, где теперь стоит его база. Пересадка тут не спасает: она случается по таймеру
+	# отдыха, а это дерево уже полное и отдыхать не собирается.
+	#
+	# Смотрим ТОЛЬКО машины: жилы разведены ещё при раскладке, а проход по всем данным на каждом
+	# стриминге стоил бы дорого — стриминг идёт, пока игрок едет.
+	if v.get("wood") == true and _machine_near(v["pos"]):
+		var spot = _free_spot_near(v["pos"], v, false)
+		if spot == null:
+			return                                   # вокруг всё занято: лучше без дерева, чем в стене
+		v["pos"] = spot["pos"]
+		v["gpos"] = spot["gpos"]
 	if _free.is_empty():
 		return                                       # достигнут потолок max_visible — редко (кап с запасом)
 	var slot: int = _free.pop_back()
@@ -451,35 +465,30 @@ func replant(node: Node) -> bool:
 	for v in _data:
 		if v.get("node") != node:
 			continue
-		var from: Vector3 = v["pos"]
-		for _i in REPLANT_TRIES:
-			var ang: float = randf() * TAU
-			var dist: float = sqrt(randf()) * REPLANT_RADIUS   # равномерно по КРУГУ, а не по радиусу
-			var gp: Vector3 = to_global(from) + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-			var h: float = map.terrain_height_at(gp)
-			if h < min_height:
-				continue
-			var lp: Vector3 = to_local(Vector3(gp.x, h + 0.25, gp.z))
-			if _slope_at(map, lp.x, lp.z) > max_slope:
-				continue
-			if _spot_taken(lp, v):
-				continue
-			_stream_out(v)                       # слот и узел отдаём: пусть стримится заново
-			v["pos"] = lp
-			v["gpos"] = Vector3(gp.x, h + 0.25, gp.z)
-			return true
-		return false
+		var spot = _free_spot_near(v["pos"], v, true)
+		if spot == null:
+			return false
+		_stream_out(v)                           # слот и узел отдаём: пусть стримится заново
+		v["pos"] = spot["pos"]
+		v["gpos"] = spot["gpos"]
+		return true
 	return false
 
-## Занята ли точка чужой жилой или машиной. Жилы смотрим по ДАННЫМ (их много, но проход
-## разовый — пересадка случается раз в отдых одного дерева), машины по узлам: их единицы.
-func _spot_taken(lp: Vector3, self_v: Dictionary) -> bool:
+## Занята ли точка ЧУЖОЙ ЖИЛОЙ. Проход по всем данным, поэтому спрашивается только на пересадке
+## — она случается раз в отдых одного дерева. На стриминге этого делать нельзя: он идёт
+## постоянно, пока игрок едет.
+func _node_near(lp: Vector3, self_v: Dictionary) -> bool:
 	var rn2: float = REPLANT_CLEAR_NODE * REPLANT_CLEAR_NODE
 	for o in _data:
 		if o == self_v:
 			continue
 		if (o["pos"] as Vector3).distance_squared_to(lp) < rn2:
 			return true
+	return false
+
+## Занята ли точка МАШИНОЙ ИЛИ БАЗОЙ. Машин единицы, поэтому спрашивать можно хоть каждый
+## стриминг.
+func _machine_near(lp: Vector3) -> bool:
 	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
 	if vehicles == null:
 		return false
@@ -489,6 +498,30 @@ func _spot_taken(lp: Vector3, self_v: Dictionary) -> bool:
 		if m is Node3D and (m as Node3D).global_position.distance_squared_to(gp) < rm2:
 			return true
 	return false
+
+## Свободная точка в радиусе пересадки вокруг `from`. Возвращает null, если за REPLANT_TRIES
+## попыток ничего не нашлось: значит вокруг сплошь занято, и лучше не показывать дерево вовсе,
+## чем воткнуть его в постройку.
+func _free_spot_near(from: Vector3, self_v: Dictionary, check_nodes: bool) -> Variant:
+	var map: Node = get_parent()
+	if map == null or not map.has_method("terrain_height_at"):
+		return null
+	for _i in REPLANT_TRIES:
+		var ang: float = randf() * TAU
+		var dist: float = sqrt(randf()) * REPLANT_RADIUS   # равномерно по КРУГУ, а не по радиусу
+		var gp: Vector3 = to_global(from) + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+		var h: float = map.terrain_height_at(gp)
+		if h < min_height:
+			continue
+		var lp: Vector3 = to_local(Vector3(gp.x, h + 0.25, gp.z))
+		if _slope_at(map, lp.x, lp.z) > max_slope:
+			continue
+		if check_nodes and _node_near(lp, self_v):
+			continue
+		if _machine_near(lp):
+			continue
+		return {"pos": lp, "gpos": Vector3(gp.x, h + 0.25, gp.z)}
+	return null
 
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])

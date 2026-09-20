@@ -173,6 +173,14 @@ project: read it before claiming how anything works.
   you just cleared. The radius is small on purpose — with a free-for-all relocation the forest
   would migrate to wherever the player chops most. The target circle is checked against other
   nodes and against machines, or a tree eventually grows inside a base.
+- A REPLANT IS FORGOTTEN ON RELOAD, SO THE OCCUPANCY CHECK ALSO SITS AT STREAM-IN. `_data` is
+  rebuilt from the seed every load: the tree the player felled last session comes back to its
+  seeded point, which may now be under the base they built there. Waiting for `replant` does not
+  help — that runs off the rest timer, and a freshly loaded full tree never rests. So `_stream_in`
+  nudges a tree off a machine before the MultiMesh slot is taken, and shows nothing at all when
+  the whole circle is occupied. It asks about MACHINES ONLY (`_machine_near`, a handful of nodes);
+  the pass over all of `_data` (`_node_near`) stays on the replant path, because streaming runs
+  the whole time the player is driving.
 - THE AUTO-MINER DOES NOT TAKE A TREE, AND THAT IS THE RULE. Ore is the standing economy: find a
   vein, park a base, come back for the cargo. Wood is the driving economy: it is scattered one by
   one, and a miner on one tree is a miner on one tree. What a forest needs is not a block ON a
