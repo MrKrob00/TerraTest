@@ -782,6 +782,20 @@ project: read it before claiming how anything works.
   Each cell carries its own centre direction and random number in the vertex COLOR and its
   distance-to-edge in UV, so the shader has no hash, no `mod` and no `atan` left, and lighting ONE
   cell on a hit is an exact comparison rather than a distance on the sphere.
+- A DRAINING DOME KEEPS ITS PLATES AROUND THE LAST HIT, so the shield says where it is being
+  worked on. Dropping them by their own random number was stable but told the player nothing —
+  the dome thinned evenly, including on the side nobody was shooting at. The cap never empties:
+  `keep_cos` comes from `shield.gd`, computed per hit cell against the real plate centres so at
+  least KEEP_MIN (7) survive — the struck plate and its whole ring. One number for the whole dome
+  cannot do that: twelve of the 92 cells are pentagons with five neighbours, and across the entire
+  0.80–0.90 threshold plateau the minimum sits at six (measured).
+- CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
+  a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
+  spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came
+  out identical to the pixel. Stopping at the near hemisphere was better and still wasted the top
+  of the scale on the silhouette ring, which is seen edge-on and weighs nothing. Underneath the cap
+  the old uniform gate stays and carries the middle of the scale: 92 plates sit in rings around any
+  chosen one, so the cap itself grows in jumps of 7 → 13 → 22.
 - GODOT'S FRONT FACE IS THE CLOCKWISE ONE, seen from outside — the opposite of the right-hand
   rule most mesh-building code reaches for. A code-built mesh with the intuitive winding renders
   inside-out, and then `FRONT_FACING` answers backwards and `NORMAL` comes through flipped: the

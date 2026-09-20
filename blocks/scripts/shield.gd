@@ -60,6 +60,11 @@ func _ready() -> void:
 const DOME_SUB := 3
 static var _hex_mesh: ArrayMesh = null
 static var _hex_cells: Array = []
+static var _hex_keep: PackedFloat32Array = PackedFloat32Array()
+
+## СКОЛЬКО ПЛАСТИН ОСТАЁТСЯ ВОКРУГ ПОПАДАНИЯ НА ПУСТОМ ЗАРЯДЕ. Семь — это сама пластина и её
+## ряд соседей; меньше читается как случайные искры, а не как «щит держится вот здесь».
+const KEEP_MIN := 7
 
 ## Строится один раз на всю игру: у всех щитов один радиус, значит и купол один и тот же.
 static func _hex_geometry() -> ArrayMesh:
@@ -67,7 +72,26 @@ static func _hex_geometry() -> ArrayMesh:
 		var built := ShieldHex.build(SHIELD_RADIUS, DOME_SUB)
 		_hex_mesh = built["mesh"]
 		_hex_cells = built["centers"]
+		_build_keep_table()
 	return _hex_mesh
+
+## Порог близости, при котором вокруг КАЖДОЙ пластины остаётся ровно KEEP_MIN штук.
+##
+## Одним числом на весь купол это не решается: у двенадцати пятиугольников соседей пять, то есть
+## шесть пластин вместо семи, — измерено, на всём плато порогов 0.80…0.90 минимум держится на
+## шести. Поэтому порог свой у каждой пластины: берём KEEP_MIN-е по убыванию скалярное
+## произведение и чуть опускаем, чтобы оно само попало внутрь.
+static func _build_keep_table() -> void:
+	_hex_keep = PackedFloat32Array()
+	_hex_keep.resize(_hex_cells.size())
+	for i in _hex_cells.size():
+		var a: Vector3 = (_hex_cells[i] as Vector3).normalized()
+		var dots: Array[float] = []
+		for c in _hex_cells:
+			dots.append(a.dot((c as Vector3).normalized()))
+		dots.sort()
+		dots.reverse()
+		_hex_keep[i] = dots[mini(KEEP_MIN - 1, dots.size() - 1)] - 0.001
 
 func _physics_process(delta: float) -> void:
 	if _dome == null:
@@ -137,16 +161,22 @@ func mark_hit_point(world_pos: Vector3) -> void:
 			* (world_pos - _dome.global_position)
 	if local.length_squared() < 0.0001:
 		return
-	_set_dome_param("hit_cell", _nearest_cell(local.normalized()))
+	var i: int = _nearest_index(local.normalized())
+	if i < 0:
+		return
+	_set_dome_param("hit_cell", _hex_cells[i])
+	# И ГРАНИЦА ШАПКИ — ВМЕСТЕ С НЕЙ. Купол держит пластины вокруг последнего попадания, а
+	# сколько их там окажется, зависит от того, в какую именно пластину пришло (см. _hex_keep).
+	_set_dome_param("keep_cos", _hex_keep[i])
 
-func _nearest_cell(dir: Vector3) -> Vector3:
-	var best: Vector3 = dir
+func _nearest_index(dir: Vector3) -> int:
+	var best: int = -1
 	var best_dot := -2.0
-	for c in _hex_cells:
-		var d: float = dir.dot(c)
+	for i in _hex_cells.size():
+		var d: float = dir.dot(_hex_cells[i])
 		if d > best_dot:
 			best_dot = d
-			best = c
+			best = i
 	return best
 
 func _vehicle_root() -> Node:
