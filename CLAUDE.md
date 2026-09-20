@@ -43,7 +43,14 @@ project: read it before claiming how anything works.
     ground comes from the seed, so there is no world to reset, and `world_persist._fresh_start`
     calls it on the first line of every new save.
 15. Saves store blocks by **enum name**: renaming needs `LEGACY_BLOCK_KEYS`, removal needs the enum
-    value kept plus a same-size entry in `RETIRED_BLOCKS`.
+    value kept plus an entry in `RETIRED_BLOCKS`. SAME SIZE IS A PREFERENCE, NOT A LAW: a save is
+    restored through `apply_layout` → `set_block`, which clears `cell_owner` and recomputes the
+    footprint from the block type, so mapping a 2×1×2 onto a one-cell block leaves clean empty
+    cells rather than phantom occupied ones. That is how COAL_GEN was retired onto GENERATOR.
+    TWO BLOCKS THAT RUN THE SAME SCRIPT ARE ONE BLOCK. The coal generator and the generator sat on
+    the same `generator.gd` with the same burn time and the same per-fuel numbers, so the big one
+    was four cells and 35 kg for exactly the output of one cell — not a choice, a mistake waiting
+    to be made.
 16. Biome masks are computed in exactly one place, `TerrainBiomes` — the value noise under them
     too (`TerrainBiomes.cv_noise`, handed to the masks as `biomes.noise`). A second copy of the
     formula diverged once and moved a whole region. THAT NOISE IS NATIVE (`FastNoiseLite`,
