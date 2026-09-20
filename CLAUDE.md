@@ -655,6 +655,17 @@ project: read it before claiming how anything works.
   `music/menu/` never played once, because the autoload outlives the scene and nobody owned the
   switch. Turning music off is `set_enabled`, not volume zero, which forgets the level.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
+- A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
+  journal, the proving-ground panel). It is attached the way `SwipeClose` is —
+  `DragWindow.attach(window, handle, id)` — and it owns the drag, the remembered place
+  (`G.set_window_pos`) and the clamp on resize. The HANDLE is not always the window: the journal
+  is dragged by its header only, because a list that catches the drag with its whole body stops
+  scrolling under a finger. A handle that is a Button must ask `dragged()` and swallow its own
+  press: `Button` fires `pressed` on release even after the finger has hauled it across half the
+  screen. `dragged()` clears the flag as it answers, or one stray drag would mute every tap after
+  it. Panels that merely hover over the world go in the group `hud_float`, so the garage hides
+  them all at once; `quests` stays its own group, since the radar moves THAT window
+  (`set_top_offset`) and has no business moving a developer panel.
 - LANGUAGE: en / ru / uk, picked in the menu settings (`G.set_lang`, kept in `settings.json`, empty
   means English). The KEY IS THE ENGLISH STRING ITSELF (`i18n/strings.json`, loaded into
   `TranslationServer` by `G._load_translations`): a string starts being translated the moment its
