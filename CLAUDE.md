@@ -247,6 +247,29 @@ project: read it before claiming how anything works.
   moves two metres per physics frame (four at 30 fps) and a block is one metre, so shots stepped
   over blocks entirely — armour stopped nothing and hits landed on whatever was at the end of the
   step. One bullet lands one hit; a spent bullet is inert and the handler checks that.
+- A PROJECTILE FACES ITS VELOCITY EVERY FRAME (`bullet._face`), not only at the muzzle. The
+  launch `look_at` is close enough for a flat shot and wrong for an ARC: the mortar throws at 60°,
+  the shell passes its apex and comes down while the model still points at the sky, so the last
+  half of the flight is tail first. The direction comes from the STEP, not from `dir` — `dir` is
+  the horizontal part and gravity adds the rest inside `_tick_bullet`. Measured across a full
+  lob: nose against flight, 0.03°.
+- THE SHARED BULLET MODEL IS FOR ORDINARY SHOTS, and a weapon that builds its own projectile marks
+  it `WeaponBlock.OWN_VISUAL`. `_apply_bullet_mesh` walks every `MeshInstance3D` under the bullet
+  and replaces its mesh, and the laser calls it (through `_rebind_bullet`) right after assembling
+  its own long thin capsule — so the laser fired the machine gun's round, literally the same mesh,
+  and fired it SIDEWAYS, because the capsule is turned −90° about X for its own geometry. "The
+  laser shoots bullets" was not a figure of speech.
+- `bullet._stretch` SCALES THE AXIS THE MESH ACTUALLY POINTS ALONG, asked once from the mesh's own
+  rotation. Hardcoded "stretch along Z" scaled the RADIUS of any projectile whose model is turned
+  inside the bullet: the laser bolt did not lengthen, it swelled, and the worse the frame rate the
+  fatter it got.
+- THE LASER IS A CHARGED SHOT, and what it charges is visible: three rings running in to the
+  muzzle, brightening as the shot nears (`laser._drive_charge`), then a LANCE along the barrel
+  instead of a muzzle cone (`BlockFX.muzzle_lance`) — a cone is burning gas, and a laser has none.
+  Rate 0.9 s at 29 damage keeps the 32 dps the HP table is tuned to; the difference is that it
+  arrives in one blow with a wind-up the player can read and step behind cover for. Which effect a
+  shot draws is `WeaponBlock._muzzle_fx`, overridden like `flash_color` — the door stays single
+  (`_handle_fire` calls it once per shot, shotgun and mortar included).
 - A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
   `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
   pool is empty; afterwards bullets come out of it in any order.
@@ -571,6 +594,13 @@ project: read it before claiming how anything works.
   `is_instance_valid` after every `await`.
 - Terrain edits survive two ways: an edit list in the save for the session, and a baked dump applied
   at load. Every edit has a running number so it cannot be applied twice.
+- WAITING FOR THE TERRAIN IS MEASURED IN SECONDS, NEVER IN FRAMES (`world_persist.TERRAIN_WAIT_SEC`,
+  and `resource_nodes` was the first to learn it). Readiness is worker threads computing heights —
+  real seconds, about 3.7 of them for the world. A frame count guesses at what those seconds cost
+  and guesses wrong in both directions: 120 frames is four seconds on a phone and a blink headless.
+  When the wait expired everything behind it was skipped WITHOUT A WORD — the saved terrain edits
+  were never replayed, so a quest's levelled pad came back as raw hillside on every load, and
+  restored machines kept only their X/Z.
 
 ### UI
 
@@ -763,6 +793,15 @@ project: read it before claiming how anything works.
   the dome culls its back faces outright: half the fragments, no lattice added on top of itself,
   and the near/far question gone. The cost is that the dome is invisible from inside it, which at
   a four-metre radius the camera almost never is.
+- THE REPAIR FIELD'S DIGITS RIDE PARALLELS OF A SPHERE, one height per digit, and the height comes
+  from the INSTANCE NUMBER (`(i + 0.5) / N`), never from a roll. A random orbit axis per digit was
+  the obvious thing and it produced none of what was wanted: random axes pile the cloud toward the
+  middle, the circles cross at arbitrary angles and read as debris rather than an orbit, and the
+  visible arc was a fixed slice of each lap — half the digits only ever appeared on the low part
+  of it, which is what "they are all at block level or below" was. Random LATITUDE has the same
+  flaw in miniature: over thirty digits it will leave a hole at the crown and a clot at the waist.
+  Thirty cards at half the old size (0.4) carry LESS ink than fourteen at 0.8 while actually
+  outlining `REGEN_RADIUS`, which is the one thing the field exists to say.
 
 ### Performance
 

@@ -104,6 +104,66 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	tw.chain().tween_callback(_hide_lamp.bind(holder))
 	holder.set_meta("fx_tw", tw)
 
+## ВЫСТРЕЛ ЛАЗЕРА — НЕ ДУЛЬНОЕ ПЛАМЯ. Конус (muzzle_fire) рисует раскалённые газы, вылетающие
+## из ствола следом за пулей; у лазера газов нет, и тот же конус на нём читается как «пушка,
+## которую покрасили в красный». Здесь вместо него КОПЬЁ: тонкий отрезок вдоль выстрела, который
+## возникает во всю длину и гаснет, укорачиваясь к дулу, — след разряда, а не пламя.
+##
+## Держатель СВОЙ, не "MuzzleFX": ствол показывает что-то одно, но если однажды покажет оба,
+## пусть они хотя бы не затирают друг другу поворот и твин.
+static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float,
+		width: float, dur: float) -> void:
+	if muzzle == null or not is_instance_valid(muzzle) or not muzzle.is_inside_tree():
+		return
+	var holder := muzzle.get_node_or_null("LanceFX") as Node3D
+	if holder == null:
+		holder = Node3D.new()
+		holder.name = "LanceFX"
+		holder.set_meta("block_fx", true)       # в габарит блока не входит (см. _local_aabb)
+		var lm := MeshInstance3D.new()
+		var cy := CylinderMesh.new()
+		cy.top_radius = 0.5
+		cy.bottom_radius = 0.5
+		cy.height = 1.0
+		cy.radial_segments = 6                  # живёт три кадра, граней тут не видно
+		cy.rings = 0
+		lm.mesh = cy
+		# −90° по X переводит собственный +Y цилиндра в −Z держателя, то есть вперёд по стволу.
+		lm.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+		lm.material_override = _flash_mat(col)
+		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(lm)
+		holder.visible = false
+		muzzle.add_child(holder)
+	if dir.length_squared() > 0.0001 and absf(dir.normalized().dot(Vector3.UP)) < 0.99:
+		holder.look_at(holder.global_position + dir, Vector3.UP)
+	var mi := holder.get_child(0) as MeshInstance3D
+	if mi == null:
+		return
+	var mat := mi.material_override as StandardMaterial3D
+	if mat != null:
+		mat.albedo_color = Color(col.r, col.g, col.b, 0.95)
+		mat.emission = col
+	# Цилиндр стоит центром в нуле, поэтому его сдвигают вперёд на половину длины: копьё должно
+	# начинаться у дула, а не торчать из ствола назад.
+	mi.scale = Vector3(width, length, width)
+	mi.position = Vector3(0.0, 0.0, -length * 0.5)
+	holder.visible = true
+	if holder.has_meta("fx_tw"):
+		var old: Variant = holder.get_meta("fx_tw")
+		if old is Tween and (old as Tween).is_valid():
+			(old as Tween).kill()
+	var tw := holder.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(mi, "scale", Vector3(width * 0.3, length * 0.25, width * 0.3), dur) \
+			.set_ease(Tween.EASE_OUT)
+	tw.tween_property(mi, "position", Vector3(0.0, 0.0, -length * 0.125), dur) \
+			.set_ease(Tween.EASE_OUT)
+	if mat != null:
+		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(_hide_lamp.bind(holder))
+	holder.set_meta("fx_tw", tw)
+
 static func _cone_mesh() -> Mesh:
 	var cm := CylinderMesh.new()
 	cm.top_radius = 0.0

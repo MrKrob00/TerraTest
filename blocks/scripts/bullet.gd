@@ -63,10 +63,31 @@ func _tick_bullet(delta: float) -> void:
 	if _sweep(from, to):
 		return                       # попали по дороге: оружие уже забрало пулю в пул
 	global_position = to
+	_face(to - from)
 	_stretch(from.distance_to(to))
 	if global_position.y < min_y or t > max_lifetime:
 		dir = Vector3.ZERO           # стоп; оружие заберёт в пул по сигналу
 		expired.emit(self)
+
+## ПУЛЯ СМОТРИТ ТУДА, КУДА ЛЕТИТ — КАЖДЫЙ КАДР, А НЕ ТОЛЬКО В МОМЕНТ ВЫСТРЕЛА.
+##
+## Поворот ставился один раз, look_at'ом при выстреле (WeaponBlock.fire_bullet), и для прямого
+## ствола этого хватало: траектория почти прямая, отклонение за полёт меньше толщины снаряда.
+## Для НАВЕСА не хватает вовсе. Мортира бросает под 60°, снаряд проходит верхнюю точку и идёт
+## ВНИЗ, а модель всё это время смотрит вверх — на падающем участке он летит хвостом вперёд.
+## То же и у обычной пули на большой дистанции, только слабее.
+##
+## Направление берём ИЗ ШАГА, а не из dir: dir — это горизонтальная часть скорости, а
+## вертикальную добавляет гравитация уже в _tick_bullet, и правильный ответ есть только в
+## разнице точек. Почти вертикальный шаг пропускаем — на нём базис вырождается и look_at падает.
+const FACE_MIN_STEP := 0.0001
+
+func _face(step: Vector3) -> void:
+	if step.length_squared() < FACE_MIN_STEP:
+		return
+	var fwd: Vector3 = step.normalized()
+	var up: Vector3 = Vector3.UP if absf(fwd.y) < 0.99 else Vector3.FORWARD
+	global_basis = Basis.looking_at(fwd, up)
 
 ## ПУЛЯ РАСТЯГИВАЕТСЯ НА СВОЙ ШАГ, И БЕЗ ЭТОГО ЕЁ НЕ ВИДНО. На 120 м/с и 30 кадрах снаряд
 ## проходит ЧЕТЫРЕ МЕТРА за кадр — точка успевает мелькнуть два раза и исчезнуть, что игрок и
@@ -85,6 +106,11 @@ func _tick_bullet(delta: float) -> void:
 const TRACE_MIN := 1.0           # короче собственной длины не сжимаем
 const TRACE_MAX := 14.0          # и не превращаем в луч через полкарты
 var _mesh_base: Vector3 = Vector3.ZERO      # масштаб, которым меш нормализован под длину модели
+## КАКУЮ ОСЬ МЕША ТЯНЕМ. Масштаб живёт в ЛОКАЛЬНОЙ системе меша, а меш внутри пули бывает
+## повёрнут: капсула растёт по Y, и её разворачивают на −90° по X, чтобы длина легла вдоль
+## полёта. Жёсткое «тянем по Z» на такой пуле масштабировало РАДИУС — болт лазера не удлинялся,
+## а раздувался, тем сильнее чем ниже кадры. Ось спрашиваем у самого меша, один раз.
+var _stretch_axis: int = 2
 
 func _mesh_node() -> MeshInstance3D:
 	for c in get_children():
@@ -99,9 +125,17 @@ func _stretch(step: float) -> void:
 		return
 	if _mesh_base == Vector3.ZERO:
 		_mesh_base = mi.scale           # запоминаем однажды: дальше только домножаем
+		# Пуля смотрит по −Z; какая ось МЕША на неё легла, спрашиваем у его же поворота.
+		var local: Vector3 = (mi.transform.basis.orthonormalized().inverse() * Vector3.BACK).abs()
+		_stretch_axis = 2
+		if local.x > local.y and local.x > local.z:
+			_stretch_axis = 0
+		elif local.y > local.z:
+			_stretch_axis = 1
 	var k: float = clampf(step, TRACE_MIN, TRACE_MAX)
-	# Модель смотрит по -Z (look_at в fire_bullet), значит тянем по Z.
-	mi.scale = Vector3(_mesh_base.x, _mesh_base.y, _mesh_base.z * k)
+	var s: Vector3 = _mesh_base
+	s[_stretch_axis] = _mesh_base[_stretch_axis] * k
+	mi.scale = s
 
 ## Проверить отрезок полёта. true — попали (сигнал отправлен, пуля дальше не летит).
 func _sweep(from: Vector3, to: Vector3) -> bool:
