@@ -301,8 +301,11 @@ project: read it before claiming how anything works.
 - WHAT THE DOME COSTS DEPENDS ON WHAT HITS IT (`WeaponBlock.shield_cost_mult`, a variable set by
   a subclass in `_ready` like `flash_color`). BULLETS ARE THE ANSWER TO A SHIELD and stay at 1.0,
   which is what `SHIELD_COST_X` is tuned to — nothing in the seconds-under-fire table moves.
-  A laser pays half, explosives half, a drill a quarter, so bringing them to a dome is bringing
-  the wrong tool. Explosives keep their own way in regardless: `BlockFX.explosion` is a SPHERE
+  A laser pays 0.35, explosives half, a drill a quarter, so bringing them to a dome is bringing
+  the wrong tool. The original's spread is FOUR to one and ours is about two, on purpose: their
+  laser is a mediocre gun with a shield penalty, OURS IS THE STRONGEST GUN WE HAVE (32 dps against
+  the machine gun's 25), so a straight four would be half eaten by its own damage and still leave
+  a battery standing for twenty-odd seconds — longer than a fight lasts. Explosives keep their own way in regardless: `BlockFX.explosion` is a SPHERE
   QUERY, not a ray, so the blast already passes through the dome and reaches the blocks under it
   — which is exactly how the original game behaves. The multiplier rides with the damage
   (`shield_dome.hurt(damage, cost_mult)`); the dome is told apart from an ordinary block by
