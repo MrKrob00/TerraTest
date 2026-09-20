@@ -123,15 +123,18 @@ func _init_map() -> void:
 
 # ── Layouts ─────────────────────────────────────────────────────────────────
 func _define_layout() -> void:
+	# ЕЗДЯЩИЕ ВРАГИ — ЭТО ТАБЛИЦА, И БОЛЬШЕ НИЧЕГО. Здесь стоял список номеров пресетов через
+	# запятую, и добавить машину значило вписать её в ДВА места; забытый номер молча уезжал в
+	# _layout_default, то есть вместо новой сборки приезжала стартовая машина игрока. Теперь
+	# спрашиваем саму таблицу — номер в ней и есть регистрация.
+	if ENEMY_BUILDS.has(layout_preset):
+		_layout_enemy(layout_preset)
+		return
 	match layout_preset:
 		1: _layout_dual_gun()
 		2: _layout_laser_scout()
 		3: _layout_starter()
 		4: _layout_cabin_only()
-		# Enemy machines: the ladder lives in ENEMY_BUILDS, so a new variant is a table row and
-		# one number here, not another _layout_ function.
-		5, 6, 7, 8, 9, 10, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34:
-			_layout_enemy(layout_preset)
 		11: _layout_outpost()
 		12: _layout_fort()
 		13: _layout_turret_post(G.Block.GUN)
@@ -230,79 +233,233 @@ func _wheels_6() -> void:
 ##         cover the machine at all.
 ## wings - one barrel on EACH side of the third floor, at x 4 and x 6, at the front. Wide builds
 ##         only - a narrow hull has no shoulders to stand them on.
+## ЛЕСТНИЦА ВРАГОВ — ЭТО ТАБЛИЦА. Новая машина здесь строка, и больше нигде: номер в этом
+## словаре и есть её регистрация (см. _define_layout), а какой ступени она принадлежит, говорит
+## enemy_spawner.PRESET_TIERS.
+##
+## ПО ДЮЖИНЕ НА СТУПЕНЬ, А НЕ ПО ТРИ-ЧЕТЫРЕ. Одна машина на ступень — это один силуэт, один
+## заученный ответ и решённый грейд целиком; трёх хватало ненадолго. Вариант разыгрывается на
+## каждом спавне, поэтому ценность тут не в отдельной сборке, а в том, что следующая будет другой.
+##
+## ЧТО ЗАДАЁТ СТРОКА: rows — длина корпуса назад от кабины, width — ширина в клетках (1, 3 или 5),
+## deck — центральная колонка второго этажа спереди назад, top — третьего, crown — четвёртого,
+## wings — ствол на плечах, nose — носовая плита.
+##
+## ПРАВИЛА, КОТОРЫЕ СТРОКА ОБЯЗАНА СОБЛЮДАТЬ (их проверяет _selfcheck_builds):
+##   • ствол стоит только ПЕРВЫМ в своей колонке и на плечах — иначе он палит в собственный
+##     корпус и выглядит сломанным;
+##   • батарея лежит в ГЛУБИНЕ палубы и накрыта сверху — плиты по бортам ставятся сами
+##     (_armor_rows), а крыша приходит из `top`;
+##   • `top[i]` стоит над `deck[i+1]`, `crown[i]` — над `top[i]`, и только если там BLOCK;
+##   • плечи требуют ширины от трёх.
 const ENEMY_BUILDS: Dictionary = {
-	# -- Tier 0: light scouts. Small wheels, one gun, no plating - the machine a first cabin can
-	# actually beat.
-	5:  {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.GUN]},
-	19: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.LASER]},
-	20: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "nose": false, "deck": [G.Block.SHOTGUN]},
 
-	# -- Tier 1: runners. Full wheels and a nose plate: they have to be let close, or outrun.
-	6:  {"rows": 3, "wheel": G.Block.WHEEL,
+	# ── Ступень 0: scouts ──
+	# Мелочь на малых колёсах: один ствол, ни брони, ни энергии. Машина, которую бьёт первая же кабина
+	# игрока.
+	5: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.GUN]},
+	19: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.LASER]},
+	20: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.SHOTGUN]},
+	35: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "nose": true, "deck": [G.Block.GUN]},
+	36: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.GUN, G.Block.BLOCK]},
+	37: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.LASER, G.Block.BLOCK]},
+	38: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK]},
+	39: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.GUN, G.Block.BLOCK],
+		"top": [G.Block.LASER]},
+	40: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK], "top": [G.Block.GUN]},
+	41: {"rows": 2, "wheel": G.Block.WHEEL, "width": 1, "nose": true, "deck": [G.Block.LASER]},
+	42: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1, "deck": [G.Block.GUN, G.Block.BLOCK]},
+	43: {"rows": 3, "wheel": G.Block.SMALL_WHEEL, "width": 1, "deck": [G.Block.LASER, G.Block.BLOCK],
+		"top": [G.Block.GUN]},
+
+	# ── Ступень 1: runners ──
+	# Полноразмерные колёса и носовая плита: такого уже не расстрелять на подходе, надо либо
+	# подпустить, либо уехать.
+	6: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1,
 		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK]},
-	21: {"rows": 3, "wheel": G.Block.WHEEL,
+	21: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1,
 		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
-	22: {"rows": 3, "wheel": G.Block.WHEEL,
+	22: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1,
 		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK]},
+	44: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BLOCK]},
+	45: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
+	46: {"rows": 4, "wheel": G.Block.WHEEL, "width": 1,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK]},
+	47: {"rows": 4, "wheel": G.Block.WHEEL, "width": 1,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
+	48: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK]},
+	49: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK]},
+	50: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK]},
+	51: {"rows": 4, "wheel": G.Block.WHEEL, "width": 1,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.LASER]},
+	52: {"rows": 3, "wheel": G.Block.BIG_WHEEL, "width": 1,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BLOCK]},
 
-	# -- Tier 2: raiders. First WIDE hull and the first shoulder guns - the first machine that
-	# cannot be shot down on approach and has to be out-manoeuvred.
-	7:  {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+	# ── Ступень 2: raiders ──
+	# Первый ШИРОКИЙ корпус и первые стволы на плечах: спереди такую не продавить, её надо обходить.
+	7: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
-	23: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+	23: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
-	24: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+	24: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN]},
-	25: {"rows": 3, "wheel": G.Block.WHEEL, "wide": true,
+	25: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
+	53: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.SHOTGUN},
+	54: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
+	55: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.GUN},
+	56: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN],
+		"wings": G.Block.GUN},
+	57: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK],
+		"wings": G.Block.GUN},
+	58: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.LASER],
+		"wings": G.Block.LASER},
+	59: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "wings": G.Block.LASER},
+	60: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BLOCK, G.Block.BLOCK], "top": [G.Block.GUN],
+		"wings": G.Block.SHOTGUN},
 
-	# -- Tier 3: lancers. THE STEP WHERE POWER APPEARS - a battery feeding a dome or a repair
-	# field. The fight becomes two stages, drain it and then break the machine, and the battery is
-	# what is drained: panels stand only on bases, so a driving machine spawns full and never
-	# refills.
-	8:  {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+	# ── Ступень 3: lancers ──
+	# СТУПЕНЬ, НА КОТОРОЙ ПОЯВЛЯЕТСЯ ЭНЕРГИЯ: батарея, питающая купол или поле ремонта. Бой становится
+	# двухходовым — сначала осушить, потом ломать.
+	8: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
-	26: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+	26: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.GUN},
-	27: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+	27: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
-	28: {"rows": 4, "wheel": G.Block.WHEEL, "wide": true,
+	28: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
 		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.LASER},
+	61: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
+	62: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
+	63: {"rows": 5, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
+	64: {"rows": 5, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.REGEN], "wings": G.Block.SHOTGUN},
+	65: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
+	66: {"rows": 5, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.LASER},
+	67: {"rows": 4, "wheel": G.Block.WHEEL, "width": 3,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
+	68: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.EMPTY, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
 
-	# -- Tier 4: breakers. Big wheels, heavy barrels, dome and repair field on some variants.
-	# Already a LARGE machine, read off the horizon.
-	9:  {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	# ── Ступень 4: breakers ──
+	# Большие колёса, тяжёлые стволы, купол и поле ремонта вместе. Машину уже видно с горизонта, и по
+	# силуэту понятно, во что ввязываешься.
+	9: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
-	29: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	29: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
-	30: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	30: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
-	31: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	31: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.LASER},
+	69: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
+	70: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
+	71: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.GUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
+	72: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.ROCKET},
+	73: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
+	74: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.LASER},
+	75: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.SHOTGUN, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.REGEN, G.Block.SHIELD], "wings": G.Block.SHOTGUN},
+	76: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.SHIELD], "wings": G.Block.GUN},
 
-	# -- Tier 5: siege. The largest: five rows on big wheels, TWO batteries, dome and repair field
-	# together, four barrels. Meeting one is an event, not a routine skirmish.
-	10: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	# ── Ступень 5: siege ──
+	# Самые крупные: пять-шесть рядов на широком корпусе, батареи в глубине, купол и ремонт вторым
+	# ярусом. Встреча с такой — событие, а не стычка.
+	10: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.ROCKET},
-	32: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
-		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY,
-			G.Block.BLOCK],
+	32: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
-	33: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	33: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.LASER, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.LASER},
-	34: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "wide": true,
+	34: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 3,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.SHIELD, G.Block.REGEN], "wings": G.Block.GUN},
+	77: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.SHIELD, G.Block.REGEN],
+		"crown": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.POUND_CANNON},
+	78: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.LASER, G.Block.BLOCK, G.Block.SHIELD, G.Block.REGEN],
+		"crown": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.ROCKET},
+	79: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.REGEN, G.Block.REGEN],
+		"crown": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.LASER},
+	80: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.SHIELD], "crown": [G.Block.EMPTY, G.Block.REGEN],
+		"wings": G.Block.POUND_CANNON},
+	81: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.LASER, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.LASER, G.Block.BLOCK, G.Block.SHIELD, G.Block.REGEN],
+		"crown": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.LASER},
+	82: {"rows": 5, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.MORTAR, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.REGEN], "crown": [G.Block.EMPTY, G.Block.SHIELD],
+		"wings": G.Block.ROCKET},
+	83: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.SHIELD, G.Block.REGEN],
+		"crown": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
+	84: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
+		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
+		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.REGEN, G.Block.SHIELD],
+		"crown": [G.Block.EMPTY, G.Block.SHIELD], "wings": G.Block.GUN},
 }
 
 ## PLATES GO WHERE THEY PROTECT SOMETHING, and nowhere else. Armour used to line every middle cell
@@ -325,11 +482,15 @@ func _layout_enemy(preset: int) -> void:
 	if b.is_empty():
 		_layout_default()
 		return
-	var rows: int = maxi(int(b.get("rows", 2)), 1)
-	var wide: bool = b.get("wide", false) == true
-	var half: int = 1 if wide else 0
+	var rows: int = clampi(int(b.get("rows", 2)), 1, 6)
+	# ШИРИНА В КЛЕТКАХ: 1, 3 или 5. Раньше был флаг `wide`, то есть ровно два варианта, и верхние
+	# ступени упирались в ту же тройку, что и средние. Пять — потолок не от вкуса: колёса встают
+	# на half+1 от оси, и при половине в три ряд уехал бы за сетку (5+3+1 = 9 при пределе 10,
+	# а нос на z=4 и вовсе лёг бы криво).
+	var half: int = clampi(int(b.get("width", 1)) / 2, 0, 2)
 	var deck: Array = b.get("deck", [])
 	var top: Array = b.get("top", [])
+	var crown: Array = b.get("crown", [])
 	var wings: int = int(b.get("wings", G.Block.EMPTY))
 
 	# FLOOR. The cabin sits at the grid centre because that is the machine's origin (cell_to_local
@@ -340,11 +501,13 @@ func _layout_enemy(preset: int) -> void:
 			if x != 5 or i != 0:
 				set_block(x, 5, 5 + i, G.Block.BLOCK, 0.0)
 	if b.get("nose", true) == true:
-		_front_armor()
+		_front_armor(half)
 	var zs: Array = []
 	for i in rows:
 		zs.append(5 + i)
-	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, 2 if wide else 1)
+	# Колёса стоят СРАЗУ ЗА бортом: их присоединяющая грань смотрит в корпус, поэтому отступ
+	# всегда на одну клетку больше половины ширины.
+	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, half + 1)
 
 	# SECOND FLOOR. Centre column from the table; on a wide hull the sides are filled too, which is
 	# what makes the machine three cells wide ALL THE WAY UP instead of a wide pallet with a spine
@@ -353,13 +516,19 @@ func _layout_enemy(preset: int) -> void:
 	for i in deck.size():
 		if int(deck[i]) != G.Block.EMPTY:
 			set_block(5, 6, 5 + i, int(deck[i]), 0.0)
-		if not wide or int(deck[i]) == G.Block.EMPTY:
+		if half == 0 or int(deck[i]) == G.Block.EMPTY:
 			continue
+		# Плиты идут ПО БОРТУ, то есть по крайним колонкам; всё, что между ними и центром, —
+		# обычный корпус. На тройке это и есть борт, на пятёрке между плитой и стволом
+		# появляется ещё слой, который эти плиты и защищают.
 		if armor_at.has(i):
-			_side_armor(5 + i)
+			_side_armor(5 + i, half)
 		else:
-			set_block(4, 6, 5 + i, G.Block.BLOCK, 0.0)
-			set_block(6, 6, 5 + i, G.Block.BLOCK, 0.0)
+			set_block(5 - half, 6, 5 + i, G.Block.BLOCK, 0.0)
+			set_block(5 + half, 6, 5 + i, G.Block.BLOCK, 0.0)
+		for x in range(5 - half + 1, 5 + half):
+			if x != 5:
+				set_block(x, 6, 5 + i, G.Block.BLOCK, 0.0)
 
 	# THIRD FLOOR. A barrel may stand only at the FRONT of the centre column and on the shoulders:
 	# everything else up here is dome and repair field. A gun parked behind them was firing through
@@ -368,9 +537,22 @@ func _layout_enemy(preset: int) -> void:
 	for i in top.size():
 		if int(top[i]) != G.Block.EMPTY:
 			set_block(5, 7, 6 + i, int(top[i]), 0.0)
-	if wide and wings != G.Block.EMPTY:
-		set_block(4, 7, 6, wings, 0.0)
-		set_block(6, 7, 6, wings, 0.0)
+	if half > 0 and wings != G.Block.EMPTY:
+		set_block(5 - half, 7, 6, wings, 0.0)
+		set_block(5 + half, 7, 6, wings, 0.0)
+
+	# FOURTH FLOOR. Только у верхних ступеней: купол и поле ремонта вторым ярусом, ствол — опять
+	# же лишь первым в колонке. Стоит он на третьем этаже, поэтому крона живёт лишь там, где под
+	# ней есть `top`.
+	# КРОНА СТАВИТСЯ ТОЛЬКО НА ОБЫЧНЫЙ БЛОК. У ствола присоединяющая грань одна и нижняя
+	# (connect_faces = 32), на него не встаёт ничего; у купола и поля ремонта грани свои, и
+	# рассчитывать на них — гадание. Хочешь второй ярус — поставь в `top` на это место BLOCK.
+	for i in crown.size():
+		if int(crown[i]) == G.Block.EMPTY or i >= top.size():
+			continue
+		if int(top[i]) != G.Block.BLOCK:
+			continue
+		set_block(5, 8, 6 + i, int(crown[i]), 0.0)
 
 ## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
 ## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z
@@ -389,9 +571,9 @@ func _side_wheels(kind: int, zs: Array, dx: int = 1) -> void:
 ##
 ## Cell (5, 6, z) must be HULL: a gun has connect_faces = 32 (bottom only), nothing mounts on its
 ## side.
-func _side_armor(z: int) -> void:
-	set_block(4, 6, z, G.Block.ARMOR, PI / 2)
-	set_block(6, 6, z, G.Block.ARMOR, -PI / 2)
+func _side_armor(z: int, half: int = 1) -> void:
+	set_block(5 - half, 6, z, G.Block.ARMOR, PI / 2)
+	set_block(5 + half, 6, z, G.Block.ARMOR, -PI / 2)
 
 ## Front plate ahead of the cabin. Zero rotation: its rear face (+Z) already looks into the cabin,
 ## which accepts neighbours on every side.

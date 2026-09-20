@@ -264,11 +264,24 @@ project: read it before claiming how anything works.
   "never spawn in front".
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
   the tier is rolled under it. Kill reward is measured once at birth.
-- THE LADDER IS TWO TABLES AND NOTHING ELSE: `enemy_spawner.PRESET_TIERS` (a step per line, 3-4
-  builds per step) and `blocks.ENEMY_BUILDS` (what each build is — rows, wheel, width, deck, top).
-  A new machine is a table row plus its number in `_define_layout`, never another `_layout_` method.
-  Several builds per step is the point: one machine per step means one silhouette, one memorised
-  answer, and the whole grade is solved. The variant is rolled on every spawn.
+- THE LADDER IS TWO TABLES AND NOTHING ELSE: `enemy_spawner.PRESET_TIERS` (a step per line) and
+  `blocks.ENEMY_BUILDS` (what each build is — rows, wheel, width, deck, top, crown, wings). A new
+  machine is A TABLE ROW AND NOTHING ELSE: `_define_layout` now asks `ENEMY_BUILDS.has()` instead
+  of carrying a list of preset numbers, so a forgotten number can no longer send the player's own
+  starter machine out as an enemy. TWELVE PER STEP, not three: one machine per step is one
+  silhouette and one memorised answer, and three wore out inside a grade. The variant is rolled on
+  every spawn, so the value is not in any single build but in the next one being different.
+- A BUILD ROW IS CHECKED BY MACHINE, NOT BY EYE. Seventy-two rows cannot be read, and every error
+  here is silent: a floating block just drops into the world, a barrel behind a dome just never
+  sees anything, an overloaded build just digs itself in. The harness assembles every preset and
+  asks four things — empty line ahead of each barrel, nothing standing on a barrel, a battery
+  roofed and flanked, no cell without a neighbour — plus mass against `load_capacity()` and the
+  value curve across steps. Measured after the table was written: 0 geometry complaints, nothing
+  overloaded (worst 0.55 of capacity), medians 10.7k → 15.9k → 24.5k → 31.6k → 44.2k → 65.2k.
+- WIDTH IS 1, 3 OR 5 CELLS, and five is the ceiling for a reason: wheels sit at half+1 from the
+  axis, so a wider hull would push their row off the 11³ grid. The fourth floor (`crown`) stands
+  only on a `BLOCK` in `top` — a barrel carries nothing (`connect_faces` = 32, bottom only), and
+  guessing at a dome's faces is guessing.
 - Anything that wants an enemy asks the spawner, which owns the ladder: `_pick_preset` for the
   stream, `preset_for_request` for quest events, `preset_for_value` for raids (they measure the
   BASE, not the machine the player is driving). `raids.gd` reading the tier table itself is how the

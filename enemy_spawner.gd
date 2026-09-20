@@ -93,12 +93,12 @@ var _seed_grace: float = -1.0
 ## A const, not an export: it has to agree cell for cell with the build table, and a second copy in
 ## the inspector is how the two quietly drift apart.
 const PRESET_TIERS: Array = [
-	[5, 19, 20],            # scouts
-	[6, 21, 22],            # runners
-	[7, 23, 24, 25],        # raiders
-	[8, 26, 27, 28],        # lancers - power appears here
-	[9, 29, 30, 31],        # breakers
-	[10, 32, 33, 34],       # siege
+	[5, 19, 20, 35, 36, 37, 38, 39, 40, 41, 42, 43], # scouts
+	[6, 21, 22, 44, 45, 46, 47, 48, 49, 50, 51, 52], # runners
+	[7, 23, 24, 25, 53, 54, 55, 56, 57, 58, 59, 60], # raiders
+	[8, 26, 27, 28, 61, 62, 63, 64, 65, 66, 67, 68], # lancers
+	[9, 29, 30, 31, 69, 70, 71, 72, 73, 74, 75, 76], # breakers
+	[10, 32, 33, 34, 77, 78, 79, 80, 81, 82, 83, 84], # siege
 ]
 ## Player machine value (sum of G.shop_price over its blocks) at which each tier starts. A starter
 ## cabin is about 1800, a finished combat machine some ten thousand.
