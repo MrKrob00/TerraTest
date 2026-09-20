@@ -34,13 +34,17 @@ var _main: Node = null
 var _spawner: Node = null
 var _layer: CanvasLayer = null
 var _build_label: Label = null
+var _step_label: Label = null
 var _status: Label = null
 var _body: VBoxContainer = null
 var _panel: PanelContainer = null
 var _head: Button = null
 var _drag: DragWindow = null
-var _presets: Array[int] = []
-var _pick: int = 0
+var _groups: Array = []                 # [{title, list}] — ступени лестницы плюс «вне лестницы»
+var _gi: int = 0                        # какая ступень выбрана
+var _vi: int = 0                        # какой вариант внутри неё
+var _last_spawn: Node3D = null          # чей состав показывает подменю «Состав»
+var _parts: VBoxContainer = null
 var _ally: bool = false
 
 ## ФЛАГИ ПОДНИМАЮТСЯ В _enter_tree, А НЕ В _ready, И ЭТО НЕ ПРИДИРКА. Годот обходит дерево
@@ -127,23 +131,43 @@ func _stock_all_blocks() -> void:
 
 var _stocked: int = 0
 
-## Список сборок берём ИЗ ТЕХ ЖЕ ТАБЛИЦ, по которым мир их и строит: ступени спавнера по порядку,
-## потом всё остальное, что есть в blocks.ENEMY_BUILDS (шахтёры и любая будущая строка). Свой
-## список номеров здесь отстал бы от таблицы на первой же добавленной машине.
+## Сборки берём ИЗ ТЕХ ЖЕ ТАБЛИЦ, по которым мир их и строит, и СОХРАНЯЕМ ИХ СТУПЕНИ. Плоский
+## список из семидесяти шести номеров отвечал на «какая по счёту», а спрашивают у него другое —
+## «насколько сильная»: ступень и есть та самая крутизна, ради которой в панель лезут. Своё
+## деление здесь разъехалось бы с лестницей спавнера при первой же правке таблицы.
+##
+## Последней группой идёт всё, чего в лестнице нет: шахтёры и любая будущая строка. Прятать их
+## нельзя — на полигоне смотрят в том числе и то, что в обычной игре по цене не выпадает.
 func _collect_presets() -> void:
+	_groups.clear()
 	var seen := {}
 	if _spawner != null:
-		for step in _spawner.PRESET_TIERS:
-			for p in step:
-				if not seen.has(p):
-					seen[int(p)] = true
-					_presets.append(int(p))
+		var tiers: Array = _spawner.PRESET_TIERS
+		for i in tiers.size():
+			var list: Array[int] = []
+			for p in (tiers[i] as Array):
+				seen[int(p)] = true
+				list.append(int(p))
+			if not list.is_empty():
+				_groups.append({"title": tr("step %d") % (i + 1), "list": list})
+	var rest: Array[int] = []
 	for p in BLOCKS_SCRIPT.ENEMY_BUILDS.keys():
-		if not seen.has(p):
-			seen[int(p)] = true
-			_presets.append(int(p))
-	if _presets.is_empty():
-		_presets.append(5)
+		if not seen.has(int(p)):
+			rest.append(int(p))
+	rest.sort()
+	if not rest.is_empty():
+		_groups.append({"title": tr("off-ladder"), "list": rest})
+	if _groups.is_empty():
+		_groups.append({"title": tr("off-ladder"), "list": [5] as Array[int]})
+	_gi = 0
+	_vi = 0
+
+func _cur_list() -> Array:
+	return (_groups[_gi] as Dictionary)["list"]
+
+func _cur_preset() -> int:
+	var l: Array = _cur_list()
+	return int(l[clampi(_vi, 0, l.size() - 1)])
 
 ## Мир замолкает: поток врагов, налёты, точки, сканы сектора и обучение. Всё — через штатные
 ## отладочные флаги, мастер-выключатель на время полигона поднят.
@@ -210,6 +234,25 @@ func _build_ui() -> void:
 	box.add_child(_body)
 	box = _body                             # дальше всё складывается внутрь тела панели
 
+	# СТУПЕНЬ ОТДЕЛЬНОЙ СТРОКОЙ ОТ ВАРИАНТА. Сила машины и её силуэт — разные вопросы, и один
+	# общий счётчик на семьдесят шесть позиций отвечал только на второй: чтобы поднять уровень,
+	# приходилось пролистать всю ступень.
+	_step_label = Label.new()
+	_step_label.add_theme_color_override("font_color", Color(0.75, 0.9, 0.95))
+	box.add_child(_step_label)
+	var srow := HBoxContainer.new()
+	srow.add_theme_constant_override("separation", 4)
+	box.add_child(srow)
+	srow.add_child(_btn("<", _on_step.bind(-1), 40.0))
+	srow.add_child(_btn(">", _on_step.bind(1), 40.0))
+	var slab := Label.new()
+	slab.text = tr("grade")
+	slab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	slab.add_theme_font_size_override("font_size", 12)
+	slab.add_theme_color_override("font_color", Color(0.6, 0.72, 0.76))
+	srow.add_child(slab)
+
 	_build_label = Label.new()
 	_build_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(_build_label)
@@ -217,11 +260,21 @@ func _build_ui() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	box.add_child(row)
-	row.add_child(_btn("<", _on_prev, 40.0))
-	row.add_child(_btn(">", _on_next, 40.0))
+	row.add_child(_btn("<", _on_var.bind(-1), 40.0))
+	row.add_child(_btn(">", _on_var.bind(1), 40.0))
 	var spawn_btn := _btn(tr("Spawn"), _on_spawn, 0.0)
 	spawn_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(spawn_btn)
+
+	# СОСТАВ — ПОДМЕНЮ, а не строка в панели: список блоков это десяток строк, и висеть им
+	# всё время незачем.
+	var parts_btn := _btn(tr("Parts list"), _on_parts, 0.0)
+	parts_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(parts_btn)
+	_parts = VBoxContainer.new()
+	_parts.add_theme_constant_override("separation", 1)
+	_parts.visible = false
+	box.add_child(_parts)
 
 	box.add_child(_toggle(tr("Enemy AI"), _flag(&"enemy_ai"), _on_ai))
 	box.add_child(_toggle(tr("Spawn as ally"), false, _on_ally))
@@ -304,20 +357,25 @@ func _say(text: String) -> void:
 	if _status != null:
 		_status.text = text
 
-# ── Выбор сборки ─────────────────────────────────────────────────────────────
-func _on_prev() -> void:
-	_pick = (_pick - 1 + _presets.size()) % _presets.size()
+# ── Выбор сборки: сначала СТУПЕНЬ, потом вариант внутри неё ───────────────────
+# Два ряда, а не один длинный список: ступень — это сила машины, вариант — её силуэт, и
+# смешивать их в одном счётчике значит листать семьдесят шесть позиций, чтобы поднять уровень.
+func _on_step(delta: int) -> void:
+	_gi = posmod(_gi + delta, _groups.size())
+	_vi = 0                                 # другая ступень — считаем варианты заново
 	_refresh_build()
 
-func _on_next() -> void:
-	_pick = (_pick + 1) % _presets.size()
+func _on_var(delta: int) -> void:
+	var n: int = _cur_list().size()
+	_vi = posmod(_vi + delta, n)
 	_refresh_build()
 
 func _refresh_build() -> void:
 	if _build_label == null:
 		return
-	var p: int = _presets[_pick]
-	_build_label.text = "%d/%d   %s" % [_pick + 1, _presets.size(), _build_title(p)]
+	var g: Dictionary = _groups[_gi]
+	_step_label.text = "%s  (%d/%d)" % [String(g["title"]), _gi + 1, _groups.size()]
+	_build_label.text = "%d/%d   %s" % [_vi + 1, _cur_list().size(), _build_title(_cur_preset())]
 
 ## Подпись сборки СЧИТАЕТСЯ ИЗ ЕЁ СТРОКИ, а не написана рядом: семьдесят шесть подписей руками
 ## — это семьдесят шесть мест, где однажды будет написано не то, что стоит в таблице.
@@ -359,7 +417,7 @@ func _on_spawn() -> void:
 		_say(tr("No spawner in the scene."))
 		return
 	var at: Vector3 = _spawn_point()
-	var preset: int = _presets[_pick]
+	var preset: int = _cur_preset()
 	# faction 0 — своя, всё остальное враждебно. Союзник нужен, чтобы смотреть бой со стороны,
 	# а не только на себе.
 	# spawn_requested, а не spawn_at: на полигоне спавнер отказывает всем, кроме этой двери —
@@ -368,7 +426,10 @@ func _on_spawn() -> void:
 	if e == null:
 		_say(tr("Spawn refused."))
 		return
+	_last_spawn = e as Node3D
 	_say(tr("Spawned %s") % _build_title(preset))
+	if _parts != null and _parts.visible:
+		_refresh_parts()                     # подменю открыто — показываем состав нового
 
 ## Перед камерой, на расстоянии SPAWN_DIST. Не «вокруг игрока по кольцу», как в игре: на полигоне
 ## машину ставят, чтобы на неё смотреть.
@@ -382,6 +443,69 @@ func _spawn_point() -> Vector3:
 		fwd = Vector3.FORWARD
 	var p: Vector3 = cam.global_position + fwd.normalized() * SPAWN_DIST
 	return Vector3(p.x, G.ground_y(p, p.y), p.z)
+
+## СОСТАВ ПОСЛЕДНЕЙ ЗАСПАВНЕННОЙ МАШИНЫ — по её настоящим блокам, а не по строке таблицы.
+##
+## Пересчитать состав из `ENEMY_BUILDS` было бы вторым воплощением `blocks._layout_enemy`: там
+## и ряды, и ширина, и плиты брони, и крылья, и носовая клетка, — и разойтись эти две версии
+## обязаны на первой же правке раскладки. Спрашиваем то, что действительно стоит в мире.
+func _on_parts() -> void:
+	if _parts == null:
+		return
+	_parts.visible = not _parts.visible
+	if _parts.visible:
+		_refresh_parts()
+	_clamp_later.call_deferred()
+
+func _refresh_parts() -> void:
+	for c in _parts.get_children():
+		_parts.remove_child(c)
+		c.queue_free()
+	if not is_instance_valid(_last_spawn):
+		_parts.add_child(_part_row(tr("Spawn a machine to see its parts."), ""))
+		return
+	var host: Node = _last_spawn.get("block_map_node") as Node
+	if host == null:
+		host = _last_spawn.get_node_or_null("blocks")
+	if host == null or not host.has_method("get_layout"):
+		_parts.add_child(_part_row(tr("Spawn a machine to see its parts."), ""))
+		return
+	# ПЕРЕБИРАЕМ ТЕМ ЖЕ `get_layout`, ЧТО И СОХРАНЕНИЕ. Тип блока живёт в сетке, а не на узле, и
+	# свой обход `node_map` пришлось бы писать вместе с разбором якорей и футпринтов — ровно то,
+	# что эта функция уже делает и делает правильно (одна запись на многоклеточный блок).
+	# Имя — через G.block_name, ту же дверь, что и у магазина: свой перевод здесь означал бы
+	# переведённый магазин и непереведённый полигон рядом.
+	var count := {}
+	var total := 0
+	for e in host.call("get_layout"):
+		var bt: int = G.block_from_key((e as Dictionary).get("block", ""))
+		if bt == G.Block.EMPTY:
+			continue
+		var n: String = G.block_name(bt)
+		count[n] = int(count.get(n, 0)) + 1
+		total += 1
+	var names: Array = count.keys()
+	names.sort()
+	_parts.add_child(_part_row(tr("Parts: %d") % total, ""))
+	for n in names:
+		_parts.add_child(_part_row(String(n), "x%d" % int(count[n])))
+
+func _part_row(left: String, right: String) -> Control:
+	var row := HBoxContainer.new()
+	var a := Label.new()
+	a.text = left
+	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	a.add_theme_font_size_override("font_size", 12)
+	a.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	a.clip_text = true
+	row.add_child(a)
+	if right != "":
+		var b := Label.new()
+		b.text = right
+		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_color_override("font_color", Color(0.6, 0.85, 0.7))
+		row.add_child(b)
+	return row
 
 func _on_ai(on: bool) -> void:
 	_set_flag(&"enemy_ai", on)

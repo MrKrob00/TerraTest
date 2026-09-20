@@ -807,11 +807,19 @@ func find_block(x: int, y: int, z: int) -> Node3D:
 	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
 	var n = node_map.get(anchor, null)
 	# THE NODE MAY ALREADY BE FREED while the map entry survives: blocks die through queue_free and
-	# several paths lead there (blast, disassembly, build change). A reference to a freed instance is
-	# NOT null, and returning it from a typed function crashes the call ("Trying to return a previously
-	# freed instance") - that is exactly how the connectivity walk fell over after blocks were torn
-	# off. The entry is cleaned here too, or the next call trips over the same one.
-	if n != null and not is_instance_valid(n):
+	# several paths lead there (blast, disassembly, build change). Returning such a reference from a
+	# typed function crashes the call ("Trying to return a previously freed instance") — that is how
+	# the connectivity walk fell over after blocks were torn off. The entry is cleaned here too, or
+	# the next call trips over the same one.
+	#
+	# СПРАШИВАЕМ ТОЛЬКО `is_instance_valid`, БЕЗ СРАВНЕНИЯ С null. Сравнение стояло первым и гасило
+	# всю проверку: в Godot 4 освобождённый объект РАВЕН null по `==`, но не является им — он
+	# остаётся объектной ссылкой на мёртвый адрес. То есть `n != null` для такой ссылки ЛОЖНО,
+	# ветка очистки не выполнялась, и следующая же строка возвращала именно то, ради чего проверку
+	# и писали. В логе это видно дословно: «Trying to return a previously freed instance. n = <null>»
+	# — движок печатает освобождённую ссылку как `<null>`, хотя вернуть её не даёт.
+	# `is_instance_valid(null)` — тоже false, так что честный null уходит по той же ветке.
+	if not is_instance_valid(n):
 		node_map.erase(anchor)
 		return null
 	return n

@@ -195,9 +195,6 @@ func refresh() -> void:
 # ── Наполнение сетки в зависимости от вкладки ─────────────────────────────────
 func _load_items() -> void:
 	_items.clear()
-	if _tab == TAB_CODEX:
-		_load_codex_items()
-		return
 	if _tab == TAB_SHOP:
 		for block_type in _prices:
 			if not _passes_filter(int(block_type)):
@@ -237,15 +234,17 @@ func _load_items() -> void:
 # G.COMP_NAME): второй список, написанный руками, однажды отстал бы на один блок и молчал
 # бы об этом. Блок без строки описания из каталога НЕ ПРОПАДАЕТ — он честно говорит, что
 # описания пока нет, иначе дыру в справочнике никто бы не заметил.
+## ДВА РАЗДЕЛА, И ОБА — ГРАФЫ. Плоский список всех ресурсов отсюда убран: он отвечал на вопрос
+## «что есть» и молчал о том, ОТКУДА оно берётся, а ровно это и показывает цепочка — теми же
+## именами и теми же связями. Два места, где написано одно и то же, всегда расходятся; здесь
+## второе ещё и было бесполезнее первого.
 const CODEX_KINDS := [
 	["blocks",    "Blocks"],
-	["resources", "Resources"],
 	["chain",     "Chain"],
 ]
 var _codex_kind: String = "blocks"
 var _codex_buttons: Dictionary = {}
 var _codex_col: VBoxContainer = null
-var _codex_dialog: AcceptDialog = null
 
 # ── ЦЕПОЧКА РЕСУРСОВ: ТОТ ЖЕ ГРАФ, ЧТО И ДРЕВО ТЕХНОЛОГИЙ ───────────────────────
 #
@@ -264,47 +263,148 @@ const CNODE_H := 42.0
 const CCOL_W := 150.0
 const CROW_H := 50.0
 
-var _chain_root: VBoxContainer = null
-var _chain_head: Label = null
-var _chain_scroll: ScrollContainer = null
-var _chain_graph: TechGraph = null
+var _codex_root: VBoxContainer = null
+var _codex_head: Label = null
+var _codex_scroll: ScrollContainer = null
+var _codex_graph: TechGraph = null
+var _codex_info: PanelContainer = null
+var _codex_info_title: Label = null
+var _codex_info_body: Label = null
 
-func _chain_build_shell(body: Node) -> void:
-	_chain_root = VBoxContainer.new()
-	_chain_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_chain_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_chain_root.add_theme_constant_override("separation", 6)
-	_chain_root.visible = false
-	body.add_child(_chain_root)
-	_chain_head = Label.new()
-	_chain_head.add_theme_font_size_override("font_size", 14)
-	_chain_head.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.9))
-	_chain_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_chain_root.add_child(_chain_head)
+## ОПИСАНИЕ — ПОЛОСКОЙ ПО НИЗУ, А НЕ ОКНОМ ПО ЦЕНТРУ.
+##
+## Окно по центру закрывает ровно то, по чему только что ткнули, и требует отдельного действия,
+## чтобы его убрать: посмотреть три записи подряд — это три открытия и три закрытия. Полоска
+## лежит поверх графа снизу, сама меняет содержимое на следующий тап и не отнимает место у
+## раскладки — граф под ней остаётся там же, где был.
+const CODEX_INFO_H := 96.0
+
+func _codex_build_shell(body: Node) -> void:
+	_codex_root = VBoxContainer.new()
+	_codex_root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_codex_root.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_codex_root.add_theme_constant_override("separation", 6)
+	_codex_root.visible = false
+	body.add_child(_codex_root)
+	_codex_head = Label.new()
+	_codex_head.add_theme_font_size_override("font_size", 14)
+	_codex_head.add_theme_color_override("font_color", Color(0.55, 0.75, 0.8, 0.9))
+	_codex_head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_codex_root.add_child(_codex_head)
 	var area := Control.new()
 	area.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	area.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	area.clip_contents = true
-	_chain_root.add_child(area)
-	_chain_scroll = ScrollContainer.new()
-	_chain_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_chain_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	_chain_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-	area.add_child(_chain_scroll)
-	_chain_graph = TechGraph.new()
-	_chain_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг прокрутки идёт сквозь холст
-	_chain_scroll.add_child(_chain_graph)
+	_codex_root.add_child(area)
+	_codex_scroll = ScrollContainer.new()
+	_codex_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_codex_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_codex_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	area.add_child(_codex_scroll)
+	_codex_graph = TechGraph.new()
+	_codex_graph.mouse_filter = Control.MOUSE_FILTER_PASS   # тач-драг прокрутки идёт сквозь холст
+	_codex_scroll.add_child(_codex_graph)
 
-func _build_chain_tab() -> void:
+	# Полоска описания — ПОВЕРХ графа, по якорям: контейнер разложил бы её в столбец и отнял
+	# бы у графа высоту навсегда, даже когда показывать нечего.
+	_codex_info = PanelContainer.new()
+	_codex_info.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	_codex_info.offset_top = -CODEX_INFO_H
+	_codex_info.visible = false
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.05, 0.09, 0.11, 0.94)
+	sb.border_color = Color(0.35, 0.72, 0.78, 0.55)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(5)
+	sb.set_content_margin_all(8)
+	_codex_info.add_theme_stylebox_override("panel", sb)
+	area.add_child(_codex_info)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 3)
+	_codex_info.add_child(vb)
+	var row := HBoxContainer.new()
+	vb.add_child(row)
+	_codex_info_title = Label.new()
+	_codex_info_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_codex_info_title.add_theme_font_size_override("font_size", 14)
+	_codex_info_title.add_theme_color_override("font_color", Color(0.75, 0.93, 0.98))
+	_codex_info_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_codex_info_title.clip_text = true
+	row.add_child(_codex_info_title)
+	var close := Button.new()
+	close.text = "X"
+	close.flat = true
+	close.custom_minimum_size = Vector2(26, 0)
+	close.pressed.connect(func(): _codex_info.visible = false)
+	row.add_child(close)
+	_codex_info_body = Label.new()
+	_codex_info_body.add_theme_font_size_override("font_size", 12)
+	_codex_info_body.add_theme_color_override("font_color", Color(0.82, 0.9, 0.93))
+	_codex_info_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_codex_info_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	vb.add_child(_codex_info_body)
+
+## Справочник рисует ОДИН холст на оба раздела: разница только в том, что на нём разложено.
+func _build_codex_tab() -> void:
 	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
 	if body == null:
 		return
-	if _chain_root == null:
-		_chain_build_shell(body)
-	_chain_root.visible = true
-	_chain_head.text = tr("Ore is smelted into ingots, a pair of ingots makes a simple component, a pair of simple ones makes a complex one. Tap any of them for its entry.")
-	for c in _chain_graph.get_children():
+	if _codex_root == null:
+		_codex_build_shell(body)
+	_codex_root.visible = true
+	for c in _codex_graph.get_children():
 		c.queue_free()
+	_codex_info.visible = false
+	if _codex_kind == "blocks":
+		_codex_blocks_graph()
+	else:
+		_codex_codex_graph()
+
+## БЛОКИ — ТЕМ ЖЕ ДЕРЕВОМ, ЧТО И ИССЛЕДОВАНИЯ, и раскладка берётся та же самая (`_tech_layout`,
+## связи из `G.TECH_PARENT`). Список по грейдам отвечал «когда я это получу» и молчал о том, из
+## чего это растёт, хотя порядок изучения — и есть устройство прогрессии. Своя вторая раскладка
+## здесь разъехалась бы с древом при первой же правке родителя.
+##
+## От древа отличается ровно одним: тут нет ни цены в ДИ, ни замков — справочник рассказывает,
+## а не выдаёт. Поэтому и узлы другие (`_make_codex_block_node`), а раскладка общая.
+func _codex_blocks_graph() -> void:
+	_codex_head.text = tr("Blocks in research order: a child grows out of its parent. Tap any of them for its entry.")
+	var pos: Dictionary = _tech_layout()
+	var edges: Array = []
+	var line := Color(0.35, 0.72, 0.78, 0.5)
+	for bt in G.TECH_PARENT:
+		var par := int(G.TECH_PARENT[bt])
+		if not (pos.has(bt) and pos.has(par)):
+			continue
+		edges.append({"a": (pos[par] as Vector2) + Vector2(TNODE_W, TNODE_H * 0.5),
+				"b": (pos[bt] as Vector2) + Vector2(0.0, TNODE_H * 0.5), "col": line})
+	_codex_graph.edges = edges
+	_codex_graph.queue_redraw()
+	var maxx := 0.0
+	var maxy := 0.0
+	for bt in pos:
+		var at: Vector2 = pos[bt]
+		maxx = maxf(maxx, at.x)
+		maxy = maxf(maxy, at.y)
+		_codex_graph.add_child(_make_codex_block_node(int(bt), at))
+	_codex_graph.custom_minimum_size = Vector2(maxx + TNODE_W + TMARGIN, maxy + TNODE_H + TMARGIN)
+
+func _make_codex_block_node(bt: int, at: Vector2) -> Control:
+	var btn := Button.new()
+	btn.position = at
+	btn.size = Vector2(TNODE_W, TNODE_H)
+	btn.clip_text = true
+	btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	btn.add_theme_font_size_override("font_size", 11)
+	var meta: Dictionary = G.BLOCK_META.get(bt, {})
+	# Грейд подписью: по дереву видно ПОРЯДОК, а грейд говорит, на каком уровне лицензии это
+	# вообще открывается — второе из дерева не следует.
+	btn.text = "%s\n%d" % [G.block_name(bt), int(meta.get("g", 1))]
+	btn.pressed.connect(_show_codex.bind("b%d" % bt))
+	return btn
+
+func _codex_codex_graph() -> void:
+	_codex_head.text = tr("Ore is smelted into ingots, a pair of ingots makes a simple component, a pair of simple ones makes a complex one. Tap any of them for its entry.")
 
 	# Колонки. Уголь стоит в первой особняком: он не плавится в слиток и идёт прямо в топливо,
 	# поэтому связей у него нет и своей записи в каталоге тоже.
@@ -363,8 +463,8 @@ func _build_chain_tab() -> void:
 				continue
 			edges.append({"a": ((src[p_i] as Dictionary)["at"] as Vector2) + Vector2(CNODE_W, CNODE_H * 0.5),
 					"b": (dst["at"] as Vector2) + Vector2(0.0, CNODE_H * 0.5), "col": line})
-	_chain_graph.edges = edges
-	_chain_graph.queue_redraw()
+	_codex_graph.edges = edges
+	_codex_graph.queue_redraw()
 
 	var maxx := 0.0
 	var maxy := 0.0
@@ -373,8 +473,8 @@ func _build_chain_tab() -> void:
 			var at: Vector2 = (it as Dictionary)["at"]
 			maxx = maxf(maxx, at.x)
 			maxy = maxf(maxy, at.y)
-			_chain_graph.add_child(_make_chain_node(it as Dictionary))
-	_chain_graph.custom_minimum_size = Vector2(maxx + CNODE_W + TMARGIN, maxy + CNODE_H + TMARGIN)
+			_codex_graph.add_child(_make_chain_node(it as Dictionary))
+	_codex_graph.custom_minimum_size = Vector2(maxx + CNODE_W + TMARGIN, maxy + CNODE_H + TMARGIN)
 
 func _make_chain_node(it: Dictionary) -> Control:
 	var btn := Button.new()
@@ -399,49 +499,11 @@ func _set_codex_kind(key: String) -> void:
 	# сетка осталась бы видимой поверх неё.
 	_select_tab(TAB_CODEX)
 
-func _load_codex_items() -> void:
-	if _codex_kind == "resources":
-		# Руда и слиток — одна строка: имя у них одно, разница в переделе, и две плитки
-		# «Ferrite» подряд читались бы как ошибка.
-		for m in G.METAL_NAME.size():
-			_items.append({"name": tr(String(G.METAL_NAME[m])), "key": "m%d" % m})
-		for c in G.COMP_NAME.size():
-			_items.append({"name": tr(String(G.COMP_NAME[c])), "key": "c%d" % c})
-		return
-	# БЛОКИ — ПО ГРЕЙДАМ И ТИПАМ, а не в порядке enum. Порядок значения перечисления — это
-	# история правок, а не устройство игры: рядом оказывались кабина и продавец, а пушка с
-	# лазером стояли через десять плиток друг от друга.
-	#
-	# Тип отбирается тем же фильтром, что и в магазине (_passes_filter, G.BLOCK_CATEGORIES):
-	# второй список категорий разъехался бы с первым. Грейд — это порядок и подпись: он и есть
-	# ответ на «когда я это получу».
-	var rows: Array = []
-	for bt in G.Block.values():
-		var b_i: int = int(bt)
-		if b_i == G.Block.EMPTY or G.RETIRED_BLOCKS.has(b_i):
-			continue
-		if not _passes_filter(b_i):
-			continue
-		var meta: Dictionary = G.BLOCK_META.get(b_i, {})
-		rows.append({"g": int(meta.get("g", 1)), "n": _block_name(b_i), "b": b_i})
-	rows.sort_custom(func(x, y): return x["g"] < y["g"] if x["g"] != y["g"] else x["n"] < y["n"])
-	for r in rows:
-		_items.append({"name": "%d · %s" % [int(r["g"]), String(r["n"])], "key": "b%d" % int(r["b"])})
-
-func _fill_codex_slot(s: Slot, it: Dictionary, side: float) -> void:
-	_reset_slot(s, str(it["name"]), side)
-	s.action = &"codex"
-	s.codex_key = String(it["key"])
-
-## Окошко справки. Один диалог на все записи: их полсотни, и плодить по окну на запись
-## значило бы держать полсотни нод ради одного видимого.
+## Запись справочника — в полоску снизу (см. _codex_build_shell). Окно по центру закрывало ровно
+## тот узел, по которому ткнули, и требовало закрытия перед следующим тапом.
 func _show_codex(key: String) -> void:
-	if key == "":
+	if key == "" or _codex_info == null:
 		return
-	if _codex_dialog == null or not is_instance_valid(_codex_dialog):
-		_codex_dialog = AcceptDialog.new()
-		_codex_dialog.ok_button_text = tr("Close")
-		add_child(_codex_dialog)
 	var title := ""
 	var body := ""
 	if key.begins_with("b"):
@@ -461,9 +523,9 @@ func _show_codex(key: String) -> void:
 		body = G.comp_desc(c)
 	if body.strip_edges() == "":
 		body = tr("No description yet.")
-	_codex_dialog.title = title
-	_codex_dialog.dialog_text = body
-	_codex_dialog.popup_centered(Vector2i(460, 240))
+	_codex_info_title.text = title
+	_codex_info_body.text = body
+	_codex_info.visible = true
 
 ## Имя блока — ОДНОЙ ДВЕРЬЮ (G.block_name): там же лежит и перевод, а вторая копия правила
 ## означала бы переведённый магазин и непереведённый справочник рядом.
@@ -501,10 +563,7 @@ func _rebuild_grid(filter: String) -> void:
 	for it in _items:
 		if f != "" and not str(it["name"]).to_lower().contains(f):
 			continue
-		if _tab == TAB_CODEX:
-			_fill_codex_slot(_slot_at(shown), it, side)
-		else:
-			_fill_item_slot(_slot_at(shown), it, side)
+		_fill_item_slot(_slot_at(shown), it, side)
 		shown += 1
 	_hide_slots_from(shown)
 	if shown > 0:
@@ -530,7 +589,6 @@ class Slot extends Button:
 	var arg: int = 0                  # тип блока для take и buy
 	var price: int = 0
 	var build_name: String = ""       # имя сборки для load
-	var codex_key: String = ""        # что открыть в справочнике: "b<блок>" / "m<металл>" / "c<компонент>"
 	var corner: Label = null
 	var sale: Label = null            # процент скидки, отдельной строкой в правом верхнем углу
 	var pencil: Control = null
@@ -597,7 +655,6 @@ func _on_slot_pressed(s: Slot) -> void:
 		&"buy":  _buy(s.arg, s.price)
 		&"save": _save_current_build()
 		&"load": _load_build(s.build_name)
-		&"codex": _show_codex(s.codex_key)
 
 # Общая часть: размер, надпись и сброс всего, что мог включить прошлый жилец слота.
 ## Плитка квадратная и НЕ РАСТЯГИВАЕТСЯ, а имена деталей в переводе длиннее английских:
@@ -628,7 +685,6 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.arg = 0
 	s.price = 0
 	s.build_name = ""
-	s.codex_key = ""
 	s.corner.visible = false
 	# Цвет ценника СБРАСЫВАЕМ: слоты живут в пуле и переиспользуются, поэтому жёлтый ярлык
 	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
@@ -957,38 +1013,38 @@ func _select_tab(idx: int) -> void:
 		if _tab_buttons[i]:
 			_tab_buttons[i].button_pressed = (i == idx)
 	if _filter_col:
-		# Фильтр типов работает и в КАТАЛОГЕ: категории те же, что в магазине (G.BLOCK_CATEGORIES),
-		# и второй их список разъехался бы с первым.
-		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY
-				or (_tab == TAB_CODEX and _codex_kind == "blocks"))
+		# В СПРАВОЧНИКЕ ФИЛЬТРА БОЛЬШЕ НЕТ: там теперь граф, а не сетка плиток, и «показать только
+		# оружие» в дереве означало бы дерево с выломанной серединой — связи ведут через скрытые
+		# узлы. Фильтр остался там, где он отбирает ТОВАР: магазин и инвентарь.
+		_filter_col.visible = (_tab == TAB_SHOP or _tab == TAB_INVENTORY)
 	if _codex_col:
 		_codex_col.visible = (_tab == TAB_CODEX)
 	# МУЗЫКА/НАСТРОЙКИ — спец-панель-список; ДРЕВО — свой 2D-панорамируемый граф.
 	var extra_list: bool = _tab == TAB_MUSIC or _tab == TAB_SETTINGS
-	# Цепочка — ГРАФ, как древо технологий, а не список и не сетка плиток: у каждого компонента
-	# ровно два родителя, и это видно только линиями связей.
-	var is_chain: bool = _tab == TAB_CODEX and _codex_kind == "chain"
+	# СПРАВОЧНИК ЦЕЛИКОМ — ГРАФ, оба его раздела: у компонента ровно два родителя, у блока —
+	# один, и то и другое видно только линиями связей, а не сеткой плиток.
+	var is_codex: bool = _tab == TAB_CODEX
 	var is_tech: bool = _tab == TAB_TECH
 	var is_build: bool = _tab == TAB_BUILD
 	var grid_scroll: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body/Scroll")
 	if grid_scroll:
-		grid_scroll.visible = not (extra_list or is_tech or is_build or is_chain)
-	if _chain_root:
-		_chain_root.visible = is_chain
+		grid_scroll.visible = not (extra_list or is_tech or is_build or is_codex)
+	if _codex_root:
+		_codex_root.visible = is_codex
 	if _extra_scroll:
 		_extra_scroll.visible = extra_list
 	if _tech_root:
 		_tech_root.visible = is_tech
 	if _search:
-		_search.visible = not (extra_list or is_tech or is_build or is_chain)
-	_widen_left_panel(is_tech or is_chain)   # графу нужна та же ширина, что и древу
+		_search.visible = not (extra_list or is_tech or is_build or is_codex)
+	_widen_left_panel(is_tech or is_codex)   # графу нужна та же ширина, что и древу
 	_show_left_panel(not is_build)
 	_set_world_clickthrough(is_build)
 	tab_changed.emit(_tab)
 	if is_build:
 		return                       # своего содержимого у вкладки нет
-	if is_chain:
-		_build_chain_tab()
+	if is_codex:
+		_build_codex_tab()
 		return
 	if extra_list:
 		if _tab == TAB_MUSIC:

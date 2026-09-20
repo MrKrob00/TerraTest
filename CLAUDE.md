@@ -17,6 +17,12 @@ project: read it before claiming how anything works.
 4. `node.get("field")` returns `null` when there is no such field, and `bool(null)` crashes. Write
    `v.get("field") == true`. Same family: `get_meta(name, null)` still errors when the meta is
    missing - the engine reads a null default as "no default given", so ask `has_meta` first.
+   And **NEVER guard a freed reference with `!= null`** — ask `is_instance_valid` and nothing else.
+   Measured on the engine: for a freed object `obj == null` is **true** and `obj != null` is
+   **false**, yet it is not nil, it is an object reference to a dead address. So
+   `if n != null and not is_instance_valid(n)` never runs its body, and the next line returns the
+   very thing the check was written to stop: "Trying to return a previously freed instance".
+   `is_instance_valid(null)` is false too, so the one call covers both cases.
 5. A field named like a native class member ("Member X redefined") stops the script from loading.
    Signals count as members.
 6. A single-line lambda ends at the newline; a wrapped continuation becomes an extra call argument
@@ -598,6 +604,16 @@ project: read it before claiming how anything works.
   drops the flag, drops the pending write, re-reads progress from the slot file. The ban on
   writing holds only WHILE THE FLAG IS UP, so a `mark_progress_dirty` left over from the polygon —
   a one-second timer — would land sandbox numbers in the real slot the moment the flag cleared.
+- THE PANEL PICKS A STEP FIRST AND A VARIANT SECOND, and the split is the point: the step is how
+  strong the machine is, the variant is what it looks like. One counter over all seventy-six builds
+  answered only the second question — raising the level meant scrolling a whole step. The groups
+  come from `PRESET_TIERS` itself, plus one last group for everything not on the ladder (miners and
+  any future row), because a proving ground has to show what the value curve never rolls.
+- THE PARTS LIST READS THE MACHINE, NOT THE TABLE (`_refresh_parts` over `blocks.get_layout`).
+  Counting from `ENEMY_BUILDS` would be a second copy of `_layout_enemy` — rows, width, armour
+  plates, wings, the nose cell — and the two are obliged to disagree at the first edit. The same
+  `get_layout` the save uses already resolves anchors and footprints, so a multi-cell block counts
+  once.
 - ALL BLOCKS ARE HANDED OUT, not merely made unlimited. `block_available` answers "is there
   enough"; the picker globe asks something else — it walks `G.block_inventory` itself, and an
   empty list gives it nothing to show. The count does not matter: `consume_block` deducts nothing
@@ -660,14 +676,21 @@ project: read it before claiming how anything works.
 - Icons are `_draw()` classes with no node representation.
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
-  it. It has THREE kinds. Blocks are ordered BY GRADE and filtered by the SHOP's own category
-  list (`_passes_filter`, `G.BLOCK_CATEGORIES`) — enum order is the history of edits, not the
-  shape of the game, and a second category list would drift from the first. Resources are the
-  flat list. CHAIN is a GRAPH on the same canvas the tech tree uses (`TechGraph`): columns for
-  raw, ingots, simple and complex, with real edges from `G.COMP_PARENT`. Every component has
-  EXACTLY TWO parents, and only lines show that; a stage list with an arrow showed the order and
-  hid the dependency. Block text lives in `G.BLOCK_DESC` — one sentence about what the part DOES,
-  never numbers, which move; a component's text is derived from its recipe, never typed out.
+  it. BOTH ITS KINDS ARE GRAPHS on the tech tree's canvas (`TechGraph`), and neither is a grid of
+  tiles. BLOCKS reuse the tech tree's OWN layout (`_tech_layout`, edges from `G.TECH_PARENT`): the
+  order blocks are researched in IS the shape of the progression, and a second layout here would
+  drift from the tree at the first change of a parent. They differ from the tree in one thing —
+  no RP and no locks, because the codex explains rather than sells. CHAIN is columns for raw,
+  ingots, simple and complex with real edges from `G.COMP_PARENT`; every component has EXACTLY
+  TWO parents, and only lines show that. THE FLAT LIST OF RESOURCES IS GONE: it answered "what
+  exists" and said nothing about where it comes from, which is the one thing CHAIN already shows
+  with the same names. The category filter is gone from the codex with it — filtering a TREE
+  leaves it with holes, because the edges run through the hidden nodes.
+- A CODEX ENTRY OPENS IN A STRIP ALONG THE BOTTOM, not a centred dialog. A centred window covers
+  exactly the node just tapped and has to be dismissed before the next one: reading three entries
+  was three opens and three closes. The strip lies over the graph, swaps its contents on the next
+  tap and takes no height from the layout. Block text lives in `G.BLOCK_DESC` — one sentence about
+  what the part DOES, never numbers, which move; a component's text is derived from its recipe.
 - MUSIC CONTROLS ARE ONE PANEL, `music_panel.gd`, used by the garage tab and by the main-menu
   settings; the only difference is WHICH context lists it is given. The menu shows its own,
   the garage the two the world plays. The MENU context itself is set by `menu.gd` while that

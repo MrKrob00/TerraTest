@@ -173,7 +173,11 @@ func _stream() -> void:
 	for e in _points:
 		var d2: float = (e["pos"] as Vector3).distance_squared_to(origin)
 		var node = e["node"]
-		if node != null and not is_instance_valid(node):
+		# БЕЗ СРАВНЕНИЯ С null: освобождённый объект в Godot 4 РАВЕН null по `==`, но не является
+		# им, поэтому `node != null` для мёртвой ссылки ложно и ветка очистки не срабатывала.
+		# Запись в списке оставалась «занятой» мёртвым узлом, и точка больше не появлялась никогда.
+		# Та же грабля была в blocks.find_block — там она роняла обход связности.
+		if not is_instance_valid(node):
 			e["node"] = null
 			node = null
 		if bool(e["cleared"]):
