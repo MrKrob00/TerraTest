@@ -582,6 +582,26 @@ project: read it before claiming how anything works.
   be shorted. Everything else (chunks, LOD, the collision queue, grass) runs exactly as in the
   game, so the polygon tests the game rather than a mock-up. The ground's colour is the meadow
   mask forced to 1 (`ChunkTerrain.FLAT_COLOR`); the masks are not sampled at all there.
+- NOTHING ENTERS THE WORLD ON THE POLYGON EXCEPT THROUGH THE PANEL. Switching the stream off is
+  not enough, because the stream is not the only thing that asks for a machine: the story scout
+  comes from `tutorial_director` through `spawn_scout_near_player`, and quest branches call
+  `spawn_at` directly. Both of the spawner's doors now refuse while `G.proving_ground` is up, and
+  the panel goes through `spawn_requested`, which lifts the ban for exactly one call. Shutting the
+  askers off one at a time only means waiting for the next one.
+- THE POLYGON CARRIES ITS OWN MONEY, GRADE AND RESEARCH (`_sandbox_progress`), not the slot's. It
+  borrows the last played slot for a path in `user://`, so the real numbers arrive in memory with
+  it — and a player who sees their own balance and grade on a test ground draws the only sensible
+  conclusion, that their save went in there. It cannot (`G._flush_progress`), but an interface
+  that looks like data loss is no better than data loss. Writing the field is not enough either:
+  the HUD counter updates on `money_changed`, never by polling.
+- LEAVING THE POLYGON IS ONE FUNCTION, `G.leave_proving_ground`, and it does three things in order:
+  drops the flag, drops the pending write, re-reads progress from the slot file. The ban on
+  writing holds only WHILE THE FLAG IS UP, so a `mark_progress_dirty` left over from the polygon —
+  a one-second timer — would land sandbox numbers in the real slot the moment the flag cleared.
+- ALL BLOCKS ARE HANDED OUT, not merely made unlimited. `block_available` answers "is there
+  enough"; the picker globe asks something else — it walks `G.block_inventory` itself, and an
+  empty list gives it nothing to show. The count does not matter: `consume_block` deducts nothing
+  there, so the stack never shrinks.
 - WHAT IS A MODE AND WHAT IS A FLAG. The stock, the ground, the quests and the save ask
   `G.proving_ground` directly — they are not debug switches anyone may flip. The save is barred at
   `G._flush_progress`, the single write to disk, not at `save_now` and `mark_progress_dirty`
@@ -752,6 +772,14 @@ project: read it before claiming how anything works.
   this block" made a block in the hand belong to nobody — the energy branch dropped a second panel
   every second while the player carried the first one to the support.
 - `PhysicsRayQueryParameters3D.exclude` takes RIDs, not nodes.
+- A TOUCH RELEASE IS RECORDED BEFORE EVERY GATE (`camera_controller._unhandled_input`). A press may
+  be skipped — "not my finger" — but a release means one thing only, "the finger left the glass",
+  and that is true whatever gate is up. The `G.ui_grab` early return used to sit first, and the UI
+  raises that flag MID-GESTURE: a long press on a machine or a hold on the icon opens the radial
+  menu while the finger is still down. The release never reached the camera, the index stayed in
+  `_cam_touches` forever, and the next SINGLE-finger swipe was read as the second finger of a
+  pinch — the player turned the view and got zoom. Raising `ui_grab` also clears the set outright:
+  a finger that went off into someone else's handler may never report a release at all.
 
 ### Economy
 

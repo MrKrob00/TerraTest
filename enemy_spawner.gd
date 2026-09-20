@@ -576,7 +576,7 @@ const SCOUT_FRONT_SPREAD := 0.42            # +-24 deg: slightly aside so it doe
 ## Returns the enemy or null if scenes, map or player are missing. The spot is not validated: it
 ## drops in and rolls off a slope by itself, the same rule the ring spawn uses.
 func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
-	if enemy_scenes.is_empty():
+	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
 	var map: Node = _find_map()
 	var player: Node3D = _player()
@@ -635,8 +635,31 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 ## afterwards it is too late: an unfrozen hull with off-centre collision tips over on the first
 ## physics step. A building needs no drop either: a frozen body does not fall, it would simply hang
 ## at drop_height.
+## НА ПОЛИГОНЕ ПОПУЛЯЦИЯ ПРИНАДЛЕЖИТ ПОЛИГОНУ, И ЗАПРЕТ СТОИТ ЗДЕСЬ, У ДВЕРИ.
+##
+## Отключить общий поток мало: машину просит не только он. Сюжетного разведчика ставит
+## tutorial_director через spawn_scout_near_player, ветки квестов зовут spawn_at напрямую,
+## и каждый такой путь — это «откуда-то взялся враг», которого на испытательной площадке
+## никто не звал. Гасить их по одному значит ждать следующего; обе двери спавнера знают про
+## полигон, и этого достаточно, потому что мимо них машину в мир не поставить.
+##
+## Панель зовёт spawn_requested — единственный способ получить машину на полигоне.
+var _pg_request: bool = false
+
+func _pg_blocked() -> bool:
+	return G.proving_ground and not _pg_request
+
+## Спавн ПО ЗАПРОСУ: снимает запрет полигона ровно на один вызов. Флаг здесь, а не на вызывающем:
+## поднимать его снаружи значит однажды забыть опустить.
+func spawn_requested(pos: Vector3, preset: int, faction_id: int = 1,
+		as_base: bool = false) -> Node3D:
+	_pg_request = true
+	var e: Node3D = spawn_at(pos, preset, faction_id, as_base)
+	_pg_request = false
+	return e
+
 func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false) -> Node3D:
-	if enemy_scenes.is_empty():
+	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:

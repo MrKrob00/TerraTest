@@ -36,8 +36,9 @@ var _slots_open: bool = false
 func _ready() -> void:
 	# МЕНЮ — ЭТО НЕ ПОЛИГОН, чем бы ни кончился прошлый заход. Флаг живёт в автолоаде и смену
 	# сцены переживает; снимают его при выходе в меню (tech_ui), но выйти можно и иначе — упасть,
-	# уйти по кнопке «назад», вернуться из свёрнутого приложения. Здесь он снимается безусловно.
-	G.proving_ground = false
+	# уйти по кнопке «назад», вернуться из свёрнутого приложения. Здесь он снимается безусловно —
+	# и вместе с ним из памяти уходят полигонные деньги и изученное (G.leave_proving_ground).
+	G.leave_proving_ground()
 	%TitleVersion.text = "v%s" % str(ProjectSettings.get_setting("application/config/version", "dev"))
 	%NewsScroll.custom_minimum_size.y = get_viewport().get_visible_rect().size.y * NEWS_H_FRAC
 	_fill_news()

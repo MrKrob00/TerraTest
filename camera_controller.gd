@@ -89,27 +89,42 @@ func _input(event: InputEvent) -> void:
 # mouse_filter STOP их поглощают). Палец джойстика движения тоже пропускаем (по его индексу),
 # в стройке камеру не крутим (там драги ставят блоки).
 func _unhandled_input(event: InputEvent) -> void:
+	# ОТПУСКАНИЕ ЗАПИСЫВАЕМ ДО ЛЮБЫХ ГЕЙТОВ, И ЭТО ГЛАВНОЕ ПРАВИЛО ЭТОЙ ФУНКЦИИ.
+	#
+	# Нажатие можно пропустить: «этот палец не мой». Отпускание пропустить нельзя — оно значит
+	# ровно одно, «палец со стекла ушёл», и верно это при любом гейте. Раньше выход по G.ui_grab
+	# стоял первым, а интерфейс поднимает этот флаг ПОСРЕДИ жеста: длинное нажатие по машине и
+	# удержание значка открывают круговое меню, пока палец ещё на экране. Отпускание до камеры
+	# не доходило, индекс оставался в _cam_touches навсегда — и следующий ОДИНОЧНЫЙ свайп камера
+	# считала вторым пальцем пинча. Игрок крутил вид, а получал приближение.
+	#
+	# Воспроизведено на стенде: касание → свайп → ui_grab → отпускание → ui_grab снят; в списке
+	# остаётся одно касание, и следующий свайп даёт look_dx 0 вместо поворота.
+	if event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed:
+		# АВТО-ВОЗВРАТ ВЗГЛЯДА ПО ДВОЙНОМУ ТАПУ УБРАН. Двойной тап в этой игре значит «взять/
+		# поставить блок», и он же сбрасывал наклон камеры: игрок подбирал ресурс, а вид в тот
+		# же миг разворачивался. Вернуть взгляд ровно на машину по-прежнему можно (reset_gaze) —
+		# просто не жестом, занятым под другое.
+		_cam_touches.erase((event as InputEventScreenTouch).index)
+		if _cam_touches.size() < 2:
+			_pinch_last = -1.0
+		return
 	if G.ui_grab:
+		# Жест забрал интерфейс: всё, что камера считала своим, больше не её. Чистим сразу, а не
+		# ждём отпусканий — их может не быть вовсе, если палец уехал в чужой обработчик.
+		if not _cam_touches.is_empty():
+			_cam_touches.clear()
+			_pinch_last = -1.0
 		return
 	var jmove_idx: int = joystick_move.active_touch_index if joystick_move else -1
 	if event is InputEventScreenTouch:
-		if event.pressed:
-			if event.index == jmove_idx:
-				return                       # это палец джойстика движения
-			_cam_touches[event.index] = event.position
-			if _cam_touches.size() == 1:
-				_tap_down_pos = event.position
-				_tap_down_ms = Time.get_ticks_msec()
-				_tap_moved = false
-		else:
-			if _cam_touches.has(event.index):
-				# АВТО-ВОЗВРАТ ВЗГЛЯДА ПО ДВОЙНОМУ ТАПУ УБРАН. Двойной тап в этой игре значит
-				# «взять/поставить блок», и он же сбрасывал наклон камеры: игрок подбирал
-				# ресурс, а вид в тот же миг разворачивался. Вернуть взгляд ровно на машину
-				# по-прежнему можно (reset_gaze) — просто не жестом, занятым под другое.
-				_cam_touches.erase(event.index)
-			if _cam_touches.size() < 2:
-				_pinch_last = -1.0
+		if event.index == jmove_idx:
+			return                           # это палец джойстика движения
+		_cam_touches[event.index] = event.position
+		if _cam_touches.size() == 1:
+			_tap_down_pos = event.position
+			_tap_down_ms = Time.get_ticks_msec()
+			_tap_moved = false
 	elif event is InputEventScreenDrag:
 		if event.index == jmove_idx or not _cam_touches.has(event.index):
 			return
