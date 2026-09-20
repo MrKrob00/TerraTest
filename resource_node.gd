@@ -14,7 +14,9 @@ var current_hp: int = 0
 var instance_id: int = 0
 var ore_type: int = 0
 var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающей руды (тинт)
-var is_coal: bool = false                           # угольная жила: выброс = COAL, без тинта
+## ДЕРЕВО. Раньше здесь была угольная жила; уголь стал переделом (resource.upgrade), а из земли
+## теперь растёт дерево. Внешне это та же жила с другим выбросом — модель делается отдельно.
+var is_wood: bool = false
 var _available: int = MAX_RESOURCES                 # сколько руды осталось в жиле (логически)
 
 ## КТО ЗАНЯЛ ЖИЛУ (авто-шахтёр). Пока он стоит, жила НЕ ВОССТАНАВЛИВАЕТСЯ: выбирать надо —
@@ -30,6 +32,12 @@ func is_depleted() -> bool:
 ## занял другой шахтёр. Отдых при этом останавливаем: пока стоит шахтёр, жиле нечего
 ## восстанавливать.
 func claim(by: Node) -> bool:
+	# АВТО-ШАХТЁР НА ДЕРЕВО НЕ СТАВИТСЯ, И ЭТО ПРАВИЛО, А НЕ НЕДОДЕЛКА. Руда — экономика
+	# стоячая: нашёл жилу, поставил базу, вернулся за грузом. Дерево — экономика ездящая: оно
+	# раскидано поодиночке, и шахтёр на одном дереве был бы шахтёром на одном дереве. Что
+	# встанет на его место для леса, см. комментарий у wood_chance в resource_nodes.gd.
+	if is_wood:
+		return false
 	if by == null or not is_depleted():
 		return false
 	if claimed_by != null and is_instance_valid(claimed_by) and claimed_by != by:
@@ -92,8 +100,8 @@ func _eject_one() -> void:
 		objects = get_parent()                # мира ещё нет (тест сцены) — как раньше, под жилу
 	objects.add_child(res)
 	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
-	if is_coal and "type" in res:
-		res.type = res.Type.COAL              # уголь: тёмный сам по себе, тинт не нужен
+	if is_wood and "type" in res:
+		res.type = res.Type.WOOD              # дерево: свой цвет, тинт жилы не нужен
 	elif res.has_method("set_metal"):
 		# ore_type жилы — это и есть индекс металла (G.Metal): спавнер раздаёт типы по тому же
 		# списку цветов, что и G.METAL_COLOR. Цвет ставит сам set_metal, поэтому set_tint здесь
@@ -105,6 +113,13 @@ func _eject_one() -> void:
 
 # Жила восстановилась: снова полна руды, HP сброшен.
 func _on_rest_timer_timeout() -> void:
+	# ДЕРЕВО НЕ ОТДЫХАЕТ, А ПЕРЕЕЗЖАЕТ. Срубленное дерево не отрастает на пне; вместо этого
+	# лес прорастает в другом месте — пересадку делает владелец, он один знает правила
+	# раскладки (resource_nodes.replant).
+	if is_wood:
+		var owner_node: Node = get_parent()
+		if owner_node != null and owner_node.has_method("replant") and owner_node.replant(self):
+			return                              # узел уже освобождён пересадкой
 	# ЗАНЯТАЯ ЖИЛА НЕ ВОССТАНАВЛИВАЕТСЯ. Таймер мы останавливаем в claim(), но он мог уже
 	# тикать в момент постановки — и тогда жила налилась бы рудой прямо под шахтёром.
 	if claimed_by != null and is_instance_valid(claimed_by):

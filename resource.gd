@@ -1,7 +1,10 @@
 # resource_item.gd
 extends RigidBody3D
 
-enum Type { ORE, INGOT, COAL, CHUNK, COMPONENT }
+## WOOD ДОПИСАН В КОНЕЦ, А НЕ ВСТАВЛЕН: сейвы и склады хранят вид строкой (kind_key), но
+## значения enum лежат и в чужих полях, и вставка посередине молча переименовала бы всё, что
+## идёт после.
+enum Type { ORE, INGOT, COAL, CHUNK, COMPONENT, WOOD }
 
 # ВИД материала — это НЕ отдельная сцена, а поле на этой же. Руд четыре, слитков четыре,
 # компонентов шесть — шестнадцать сцен ради шестнадцати видов держали бы в памяти шестнадцать
@@ -12,6 +15,10 @@ enum Type { ORE, INGOT, COAL, CHUNK, COMPONENT }
 # metal = индекс G.Metal, живёт у ORE и INGOT. -1 — старый ресурс без вида (сейвы и жилы,
 # заданные до появления металлов): он честно остаётся «просто рудой», а не притворяется
 # первым металлом, иначе одна такая руда молча стала бы Ferrite.
+## Цвет дерева: тинт жилы к нему не применяется, как и к углю — оба узнаются по цвету, а не
+## по тому, откуда выпали. Модель дерева ещё делается, пока это тот же меш другого цвета.
+const WOOD_COLOR := Color(0.42, 0.28, 0.16)
+
 @export var metal: int = -1
 ## Индекс G.Comp — только у Type.COMPONENT.
 @export var component: int = 0
@@ -116,6 +123,8 @@ func kind_key() -> String:
 		return G.comp_key(component)
 	if type == Type.COAL:
 		return "coal"
+	if type == Type.WOOD:
+		return "wood"
 	if metal >= 0:
 		# Руда и слиток одного металла — РАЗНЫЕ виды: рецепты просят слиток, и руда, попав
 		# в фабрикатор, не должна засчитаться вместо него.
@@ -139,6 +148,9 @@ func set_kind_key(key: String) -> void:
 	elif key == "coal":
 		type = Type.COAL
 		_update_visual()
+	elif key == "wood":
+		type = Type.WOOD
+		_update_visual()
 	elif key.begins_with("m"):
 		type = Type.INGOT
 		set_metal(int(key.substr(1)))
@@ -153,7 +165,11 @@ func upgrade() -> void:
 	match type:
 		Type.ORE:
 			type = Type.INGOT
-		# COAL слитка НЕ имеет — процессор его не переплавляет, уголь остаётся углём.
+		# ДЕРЕВО ПЕРЕЖИГАЕТСЯ В УГОЛЬ. Это единственный передел не из металла, и он же
+		# единственный источник угля в игре: угольных жил больше нет, уголь только делают.
+		Type.WOOD:
+			type = Type.COAL
+		# COAL дальше не идёт: у угля слитка нет, он конечное топливо.
 		# КОМПОНЕНТЫ процессор не трогает: их варит только Component Factory по рецепту.
 	_update_visual()
 
@@ -177,9 +193,12 @@ func _update_visual() -> void:
 			mesh.material_override = _tint_material(G.COMP_COLOR[component])
 		return
 	mesh.scale = Vector3(1.3, 0.3, 1.3) if type == Type.INGOT else Vector3.ONE
-	# Уголь всегда тёмный (тинт жилы к нему не применяется).
+	# Уголь всегда тёмный, дерево всегда коричневое: тинт жилы к ним не применяется.
 	if type == Type.COAL:
 		mesh.material_override = _coal_material()
+		return
+	if type == Type.WOOD:
+		mesh.material_override = _tint_material(WOOD_COLOR)
 		return
 	if _has_tint:
 		mesh.material_override = _tint_material(_tint)

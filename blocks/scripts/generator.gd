@@ -5,6 +5,10 @@ extends FactoryBlock
 
 const BURN_TIME := 3.0
 const ENERGY_COAL := 40.0     # уголь — основное топливо
+## ДЕРЕВО ГОРИТ, НО ХУЖЕ УГЛЯ, И ЭТО ТА ЖЕ ПОЛОВИНА, ЧТО В ЦЕНЕ. Его можно кинуть в топку
+## прямо с дороги — и тогда процессор не нужен вовсе; можно пережечь и получить вдвое больше.
+## Выбор между «сейчас» и «вдвое» — это и есть смысл передела.
+const ENERGY_WOOD := 20.0
 const ENERGY_ORE := 25.0
 const ENERGY_INGOT := 80.0
 
@@ -28,6 +32,7 @@ func _on_item_received() -> void:
 		var tname: String = current_item.Type.keys()[current_item.type]
 		match tname:
 			"COAL":  _burn_energy = ENERGY_COAL
+			"WOOD":  _burn_energy = ENERGY_WOOD
 			"INGOT": _burn_energy = ENERGY_INGOT
 			_:       _burn_energy = ENERGY_ORE
 	_burn_left = BURN_TIME

@@ -161,6 +161,22 @@ project: read it before claiming how anything works.
   alive (`FactoryBlock._wait_on`), or a destroyed neighbour means waiting forever.
 - Area masks decide as much as scripts: collector layer 8, receiver 24, packer magnet 2.
 - Every recipe has exactly two different materials — the fabricator tells inputs apart by kind.
+- COAL IS NOT MINED, IT IS MADE. What grows out of the ground is WOOD; the processor burns it into
+  coal, and that is coal's only source (`resource.upgrade`, the one door the processor calls).
+  Wood is half of coal in both numbers that matter — 6 against 12 to sell, 20 against 40 in the
+  generator — so the choice is "throw it in the furnace now" against "burn it down and get twice
+  as much", which is what makes the conversion a decision rather than a step.
+- WOOD IS THE ONE THING THAT GROWS AT RANDOM. Ore is handed out BY REGION (`_metal_for`), so the
+  metal under your wheels depends on where you stand; wood is a per-point roll, so a forest is
+  never a deposit — you meet it on the way. And a felled tree does NOT grow back on its stump: it
+  MOVES, up to `REPLANT_RADIUS` (8 m), which keeps the region's tree count while emptying the spot
+  you just cleared. The radius is small on purpose — with a free-for-all relocation the forest
+  would migrate to wherever the player chops most. The target circle is checked against other
+  nodes and against machines, or a tree eventually grows inside a base.
+- THE AUTO-MINER DOES NOT TAKE A TREE, AND THAT IS THE RULE. Ore is the standing economy: find a
+  vein, park a base, come back for the cargo. Wood is the driving economy: it is scattered one by
+  one, and a miner on one tree is a miner on one tree. What a forest needs is not a block ON a
+  point but a block WITH A RADIUS — still to be written.
 
 ### Block death and the anchor
 

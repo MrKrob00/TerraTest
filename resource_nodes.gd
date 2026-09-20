@@ -14,10 +14,19 @@ extends Node3D
 ## Новый металл — строка в G.Metal/G.METAL_COLOR (до 8 штук, см. MAX_ORE_TYPES в resource.gdshader).
 var ore_colors: Array[Color] = []
 
-## Доля угольных жил (0..1). Угольная жила тёмная и выбрасывает УГОЛЬ (COAL) —
-## топливо генератора; слитка у угля нет, процессор его не переплавляет.
-@export var coal_chance: float = 0.25
-@export var coal_color: Color = Color(0.13, 0.13, 0.15)
+## ДОЛЯ ДЕРЕВЬЕВ (0..1). Дерево — единственное, что растёт ВРАЗБРОС: руду раздаёт регион
+## (_metal_for), то есть металл под ногами зависит от того, где ты стоишь, а дерево выпадает
+## броском на каждую точку. Поэтому лес нигде не «месторождение», его встречаешь по дороге.
+##
+## Уголь из земли УБРАН: он стал переделом (resource.upgrade — дерево в процессоре пережигается
+## в уголь), и это единственный его источник. Дерево горит само, вдвое хуже угля и стоит вдвое
+## дешевле — выбор между «кинуть в топку сейчас» и «пережечь и получить вдвое».
+##
+## АВТО-ШАХТЁР ДЕРЕВО НЕ БЕРЁТ (resource_node.claim). Лесу нужен не блок НА одной точке, а блок
+## С РАДИУСОМ, который валит всё вокруг себя и живёт за счёт того, что жила сама
+## восстанавливается по таймеру. Это отдельная работа и она ещё не сделана.
+@export var wood_chance: float = 0.25
+@export var wood_color: Color = Color(0.42, 0.28, 0.16)
 
 @export_group("Расстановка")
 ## СЧЁТЧИКА ЖИЛ НА ВСЮ КАРТУ БОЛЬШЕ НЕТ: у мира без края нет «всей карты». Плотность задаётся
@@ -43,7 +52,7 @@ var ore_colors: Array[Color] = []
 @export var keep_radius: float = 40.0
 @export var view_cos: float = -0.15          # чуть шире полусферы перед камерой — край не мигает
 
-# Все жилы карты как данные: {pos, scene, ore_type, coal, slot(-1=не показана), node(null)}.
+# Все жилы карты как данные: {pos, scene, ore_type, wood, slot(-1=не показана), node(null)}.
 var _data: Array = []
 var _free: Array[int] = []                   # свободные слоты MultiMesh (пул)
 var _cull_t: float = 0.0
@@ -108,7 +117,7 @@ func _apply_ore_colors() -> void:
 	if ore_colors.is_empty():
 		return
 	var cols := PackedVector3Array()
-	for c in ore_colors + [coal_color]:      # уголь — последний индекс в шейдере
+	for c in ore_colors + [wood_color]:      # дерево — последний индекс в шейдере
 		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
 		cols.append(Vector3(lc.r, lc.g, lc.b))
 	for mm in multimesh_nodes:
@@ -207,16 +216,16 @@ func _build_region(rk: Vector2i) -> Array:
 		if not grid.has(key):
 			grid[key] = [] as Array[Vector3]
 		(grid[key] as Array).append(lp)
-		var coal: bool = rng.randf() < coal_chance
-		var ore_type: int = ore_colors.size() if coal else _metal_for(lp, map, can_biome, rng)
-		if not _ore_enabled(ore_type, coal):
+		var wood: bool = rng.randf() < wood_chance
+		var ore_type: int = ore_colors.size() if wood else _metal_for(lp, map, can_biome, rng)
+		if not _ore_enabled(ore_type, wood):
 			continue
 		out.append({
 			"pos": lp,
 			"gpos": Vector3(gx, h + 0.25, gz),
 			"scene": resource_nodes[rng.randi() % resource_nodes.size()] \
 					if not resource_nodes.is_empty() else null,
-			"ore_type": ore_type, "coal": coal, "slot": -1, "node": null,
+			"ore_type": ore_type, "wood": wood, "slot": -1, "node": null,
 		})
 	return out
 
@@ -295,9 +304,9 @@ const WILD_CHANCE := 0.15
 ## G.Metal и в ore_colors: феррит, куприт, силикат, титанит; уголь идёт следом отдельным типом.
 const ORE_FLAGS := [&"ore_ferrite", &"ore_cuprite", &"ore_silicate", &"ore_titanite"]
 
-func _ore_enabled(ore_type: int, coal: bool) -> bool:
-	if coal:
-		return G.debug(&"ore_coal")
+func _ore_enabled(ore_type: int, wood: bool) -> bool:
+	if wood:
+		return G.debug(&"ore_wood")
 	return G.debug(ORE_FLAGS[ore_type]) if ore_type < ORE_FLAGS.size() else true
 
 func _metal_for(local_pos: Vector3, map: Node, can_biome: bool, rng: RandomNumberGenerator) -> int:
@@ -335,7 +344,7 @@ func _stream_in(v: Dictionary) -> void:
 		var node: Node3D = v["scene"].instantiate()
 		node.position = v["pos"]
 		node.instance_id = slot                      # узел пишет истощение в ЭТОТ слот
-		if "is_coal" in node: node.is_coal = v["coal"]
+		if "is_wood" in node: node.is_wood = v["wood"]
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]
@@ -407,10 +416,80 @@ func active_blips(around: Vector3 = Vector3.INF, radius: float = -1.0) -> Array:
 		if center.distance_squared_to(p) > r2:
 			continue
 		var t: int = int(v["ore_type"])
-		out.append({"p": p, "c": coal_color if t >= ore_colors.size() else ore_colors[t]})
+		out.append({"p": p, "c": wood_color if t >= ore_colors.size() else ore_colors[t]})
 	return out
 
 # Жила вышла из радиуса: гасим инстанс, освобождаем узел и возвращаем слот в пул.
+## СРУБЛЕННОЕ ДЕРЕВО ПЕРЕЕЗЖАЕТ НЕДАЛЕКО, А НЕ ОТРАСТАЕТ НА ПНЕ. Жила руды после отдыха
+## наливается там же, и это верно: месторождение никуда не делось, его просто не успели
+## выбрать. Лес так не читается — вырубил, стало пусто, а поднялось рядом.
+##
+## РАДИУС МАЛЕНЬКИЙ НАМЕРЕННО. Чистый случай по всей карте развалил бы плотность: регион
+## раскладывает СВОЁ число деревьев, и если каждое срубленное улетает куда угодно, лес
+## стягивается туда, где больше рубили. Восемь метров оставляют дерево в своём лесу, но не на
+## своём месте.
+##
+## КРУГ ПРОВЕРЯЕТСЯ НА ЗАНЯТОСТЬ: чужая жила, чужое дерево, машина или база. Без этого дерево
+## однажды вырастет в борту базы или внутри другой жилы — и то и другое выглядит поломкой, а
+## не лесом.
+##
+## Точка ищется ТЕМИ ЖЕ проверками, что и при раскладке (высота, склон), но СВОИМ генератором,
+## а не региональным: региональный обязан давать одно и то же при каждом заходе, иначе карта
+## перестанет быть функцией сида. Поэтому пересадка живёт только в текущем сеансе — перезашёл,
+## и деревья снова там, где их положил сид.
+const REPLANT_RADIUS: float = 8.0
+## Насколько далеко держаться от чужой жилы и от машины. Разные числа: жилы просто не должны
+## налезать друг на друга, а машину дерево не должно подпирать вплотную.
+const REPLANT_CLEAR_NODE: float = 3.0
+const REPLANT_CLEAR_MACHINE: float = 6.0
+const REPLANT_TRIES: int = 16
+
+func replant(node: Node) -> bool:
+	var map: Node = get_parent()
+	if map == null or not map.has_method("terrain_height_at"):
+		return false
+	for v in _data:
+		if v.get("node") != node:
+			continue
+		var from: Vector3 = v["pos"]
+		for _i in REPLANT_TRIES:
+			var ang: float = randf() * TAU
+			var dist: float = sqrt(randf()) * REPLANT_RADIUS   # равномерно по КРУГУ, а не по радиусу
+			var gp: Vector3 = to_global(from) + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+			var h: float = map.terrain_height_at(gp)
+			if h < min_height:
+				continue
+			var lp: Vector3 = to_local(Vector3(gp.x, h + 0.25, gp.z))
+			if _slope_at(map, lp.x, lp.z) > max_slope:
+				continue
+			if _spot_taken(lp, v):
+				continue
+			_stream_out(v)                       # слот и узел отдаём: пусть стримится заново
+			v["pos"] = lp
+			v["gpos"] = Vector3(gp.x, h + 0.25, gp.z)
+			return true
+		return false
+	return false
+
+## Занята ли точка чужой жилой или машиной. Жилы смотрим по ДАННЫМ (их много, но проход
+## разовый — пересадка случается раз в отдых одного дерева), машины по узлам: их единицы.
+func _spot_taken(lp: Vector3, self_v: Dictionary) -> bool:
+	var rn2: float = REPLANT_CLEAR_NODE * REPLANT_CLEAR_NODE
+	for o in _data:
+		if o == self_v:
+			continue
+		if (o["pos"] as Vector3).distance_squared_to(lp) < rn2:
+			return true
+	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
+	if vehicles == null:
+		return false
+	var gp: Vector3 = to_global(lp)
+	var rm2: float = REPLANT_CLEAR_MACHINE * REPLANT_CLEAR_MACHINE
+	for m in vehicles.get_children():
+		if m is Node3D and (m as Node3D).global_position.distance_squared_to(gp) < rm2:
+			return true
+	return false
+
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])
 	for mm in multimesh_nodes:

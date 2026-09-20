@@ -311,10 +311,14 @@ func _build_chain_tab() -> void:
 	var col_raw: Array = []
 	for m in G.METAL_NAME.size():
 		col_raw.append({"name": tr(String(G.METAL_NAME[m])) + " " + tr("ore"), "key": "m%d" % m})
-	col_raw.append({"name": tr("Coal"), "key": ""})
+	# ДЕРЕВО СТОИТ В СЫРЬЕ, УГОЛЬ — В ПЕРЕДЕЛЕ. Раньше уголь висел в первой колонке особняком,
+	# без единой связи: его добывали, и он никуда не вёл. Теперь он ровно такой же передел,
+	# как слиток из руды, и линия между ними это показывает.
+	col_raw.append({"name": tr("Wood"), "key": ""})
 	var col_ing: Array = []
 	for m in G.METAL_NAME.size():
 		col_ing.append({"name": tr(String(G.METAL_NAME[m])), "key": "m%d" % m})
+	col_ing.append({"name": tr("Coal"), "key": ""})
 	# Ярусы — G.COMP_SIMPLE_COUNT, а не шестёрка руками: число пар считается из числа металлов,
 	# и одна новая руда сдвинула бы границу.
 	var col_s: Array = []
@@ -339,7 +343,9 @@ func _build_chain_tab() -> void:
 	# Линии. Руда → слиток один к одному; компонент — от ОБОИХ родителей (G.COMP_PARENT).
 	var edges: Array = []
 	var line := Color(0.35, 0.72, 0.78, 0.5)
-	for m in G.METAL_NAME.size():
+	# Руда → слиток один к одному, и тем же ребром дерево → уголь: обе строки стоят последними
+	# в своих колонках, поэтому связь считается тем же индексом.
+	for m in range(mini(col_raw.size(), col_ing.size())):
 		edges.append({"a": (col_raw[m]["at"] as Vector2) + Vector2(CNODE_W, CNODE_H * 0.5),
 				"b": (col_ing[m]["at"] as Vector2) + Vector2(0.0, CNODE_H * 0.5), "col": line})
 	for c in G.COMP_NAME.size():
