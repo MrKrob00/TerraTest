@@ -682,7 +682,30 @@ project: read it before claiming how anything works.
 
 - The scene holds what stands still (frame, padding, style, nesting); code holds what changes (text,
   visibility, edge layout, anything built from data). Code fetches nodes by unique name.
-- Icons are `_draw()` classes with no node representation.
+- Icons are `_draw()` classes with no node representation — EXCEPT a block's own portrait, which
+  the game BAKES ITSELF at first launch (`icon_baker.gd`, autoload `Icons`). Shipping PNGs was the
+  alternative and it is worse: they go stale against the models at the first mesh swap, and go
+  stale SILENTLY. The source here is the model the block is built from. It bakes at STARTUP rather
+  than when the shop opens, because it is needed once per install and the menu's first seconds are
+  already spent computing ground behind the backdrop; the node is an AUTOLOAD because the player
+  may hit PLAY a second later and the work has to survive the scene change. Measured: 45 icons in
+  1.8 s, 198 KB in `user://icons`.
+- WHAT IS BAKED IS THE MODEL, NOT A WORKING PART. A live block builds a four-metre shield dome, the
+  laser's charge rings, the repair cloud and the damage shell in `_ready`; none of that belongs in a
+  portrait, and the dome alone shrank the block to a hundredth of the frame. So scripts are stripped
+  BEFORE the node enters the tree and effect meshes are skipped by the same `block_fx` meta
+  `_local_aabb` uses, plus the dome's own door `struck`. Files are named by ENUM KEY like saves
+  (`G.block_key`), never by number: renumbering the enum is an edit nobody would notice.
+- The single door out is `Icons.get_icon(bt)`, and it returns NULL until the bake finishes. An icon
+  is decoration, never a condition for the shop to work: the caller draws as it drew, and
+  `Icons.baked` tells an open panel to redraw.
+- A SHOP/INVENTORY ENTRY IS A ROW, NOT A TILE. Four columns on the narrow left panel gave sixty-point
+  tiles, which fit neither the model nor the name — and a translated name is twice the English
+  («Stabiliser Wheel» against «Стабилизирующее колесо»). A row gives the picture its own square on
+  the left, the name the whole remaining width and the price the right edge, and it reads at any
+  panel width. The grid stays an `HFlowContainer`: rows happen by themselves because a slot's
+  minimum width is the grid's width. That also deleted the per-word font fitting — there is room
+  now, so nothing has to shrink.
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
   it. BOTH ITS KINDS ARE GRAPHS on the tech tree's canvas (`TechGraph`), and neither is a grid of
