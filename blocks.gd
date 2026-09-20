@@ -456,6 +456,18 @@ const ENEMY_BUILDS: Dictionary = {
 		"deck": [G.Block.POUND_CANNON, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.SHIELD, G.Block.REGEN],
 		"crown": [G.Block.EMPTY, G.Block.REGEN], "wings": G.Block.POUND_CANNON},
+	# ── ШАХТЁРЫ: приехали работать, а не воевать ──
+	# Ни одного ствола: весь их ответ на обстрел — уехать (enemy_vehicle._mine_tick). В ступени
+	# лестницы они НЕ входят, у них своя квота у спавнера, иначе они заняли бы место бойцов.
+	90: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1, "front": G.Block.DRILL,
+		"deck": [G.Block.BLOCK, G.Block.STORAGE]},
+	91: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3, "front": G.Block.DRILL,
+		"deck": [G.Block.BLOCK, G.Block.STORAGE, G.Block.BLOCK]},
+	92: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3, "front": G.Block.DRILL,
+		"deck": [G.Block.BLOCK, G.Block.STORAGE, G.Block.STORAGE, G.Block.BLOCK]},
+	93: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "front": G.Block.SMALL_DRILL,
+		"deck": [G.Block.STORAGE]},
+
 	84: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
 		"top": [G.Block.GUN, G.Block.BLOCK, G.Block.REGEN, G.Block.SHIELD],
@@ -500,7 +512,12 @@ func _layout_enemy(preset: int) -> void:
 		for x in range(5 - half, 5 + half + 1):
 			if x != 5 or i != 0:
 				set_block(x, 5, 5 + i, G.Block.BLOCK, 0.0)
-	if b.get("nose", true) == true:
+	# ПЕРЕДНЯЯ КЛЕТКА: либо носовая плита, либо рабочий блок. Бур у шахтёра стоит там же, где у
+	# стартовой машины игрока, — перед кабиной на уровне пола, и присоединяется назад в неё.
+	var front: int = int(b.get("front", G.Block.EMPTY))
+	if front != G.Block.EMPTY:
+		set_block(5, 5, 4, front, 0.0)
+	elif b.get("nose", true) == true:
 		_front_armor(half)
 	var zs: Array = []
 	for i in rows:
