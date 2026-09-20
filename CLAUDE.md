@@ -232,8 +232,18 @@ project: read it before claiming how anything works.
 
 ### Enemies
 
-- `enemy_spawner.gd`: two awake at a time, one engaging, everyone drops in from `drop_height`. The
-  inner ring radius is computed from enemy vision plus `spawn_safe_margin`, never hardcoded.
+- `enemy_spawner.gd`: HOW MANY ARE AWAKE IS DECIDED BY DISTANCE, NOT BY A COUNTER. The awake cap
+  used to be one or two, and it doubled as the population cap: while two lived nearby the world
+  sent nobody, however much room there was. Now everything inside `sleep_dist` (100 m) is awake
+  and everything past it sleeps, so the only ceiling left is `max_total` — and it is a real one,
+  because wheels, AI and weapon ticks run for every machine that is not asleep. The boundary has
+  HYSTERESIS (`wake_frac`, wake at 85 m): at four hundred metres nobody lingered on the line, at a
+  hundred that line runs straight through the fight. `sleep_delay` doubles as the newcomer's
+  grace: the spawn ring reaches `spawn_max_dist` (160 m), so a machine is born outside the awake
+  radius and has those seconds to drive in. `max_engaging` is a SEPARATE cap and still 1 — it
+  decides who opens a fight, not who is loaded, so lifting the awake cap does not by itself put
+  more guns on you. Everyone drops in from `drop_height`; the inner ring radius is computed from
+  enemy vision plus `spawn_safe_margin`, never hardcoded.
 - THE WORLD RAMPS UP WITH THE PLAYER, from one number: `G.threat_ramp()` (0 at grade 1, 1 at
   `THREAT_FULL_GRADE` = 4). It scales how many enemies stay awake, how often the next one comes
   (`_awake_cap` / `_spawn_wait`), the tier ceiling on top of the value one (`_enemy_tier`), the

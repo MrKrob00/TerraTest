@@ -9,8 +9,6 @@ extends Node3D
 # thing the world must do, meet you within a hundred metres.
 
 @export var enemy_scenes: Array[PackedScene]        # pool of enemy scenes
-## Cap on AWAKE enemies. Nine, then four, still crowded; two is what a road encounter holds.
-@export var max_enemies: int = 2
 ## Pause between spawns. After a fight there must be an audible break, not the next fight.
 @export var spawn_interval: float = 75.0
 ## Enemies placed at once when the world is ready: not empty, not a crowd.
@@ -52,10 +50,24 @@ var _seed_grace: float = -1.0
 ## Past sleep_dist for sleep_delay seconds an enemy SLEEPS: physics frozen, AI and weapons off,
 ## node stays where it is. It used to be teleported back to the player instead, which made
 ## retreat impossible - the same machine reappeared behind you.
-@export var sleep_dist: float = 420.0
+##
+## БОДРСТВУЕТ ВСЁ, ЧТО БЛИЖЕ, СКОЛЬКО БЫ ИХ НИ БЫЛО. Счётчика бодрствующих больше нет, и этот
+## радиус — единственное, что держит цену: физика колёс, ИИ и тики стволов идут только у не
+## спящих. Сто метров против прежних четырёхсот — это примерно в шестнадцать раз меньше площади,
+## на которой всё это считается.
+@export var sleep_dist: float = 100.0
+## ГИСТЕРЕЗИС. Просыпается ближе, чем засыпает. С одним порогом машина, крутящаяся ровно на
+## границе, дёргалась бы между сном и явью каждые sleep_delay секунд — а на ста метрах граница
+## проходит ровно там, где идёт бой, в отличие от прежних четырёхсот, где никто не задерживался.
+@export_range(0.5, 1.0, 0.01) var wake_frac: float = 0.85
+## Секунды за границей до сна. Это ЖЕ и фора подъезжающему: кольцо спавна идёт до spawn_max_dist,
+## то есть машина рождается снаружи радиуса бодрствования и обязана успеть войти в него, пока
+## идёт этот отсчёт. При 160 м снаружи и скорости машины это десяток секунд — запас есть.
 @export var sleep_delay: float = 20.0
-## Sleepers do not count against the cap but must not pile up: over max_total the farthest
-## SLEEPER is removed. The invader never is.
+## ОБЩАЯ ЧИСЛЕННОСТЬ — И ТЕПЕРЬ ЭТО ЕДИНСТВЕННЫЙ ПОТОЛОК. Счётчика бодрствующих больше нет, а
+## значит в худшем случае столько машин и окажется рядом одновременно: цена кадра держится на
+## том, что дальше sleep_dist они спят. Сверх этого числа выбывает самый дальний СПЯЩИЙ; захватчик
+## не выбывает никогда.
 @export var max_total: int = 8
 @export var map_node: Node
 
@@ -139,9 +151,12 @@ func _tick_spawner(delta: float) -> void:
 	_limit_engagement()
 	if G.debug(&"sector_scan"):
 		_scan_tick(delta)                           # the rare sector scan event
-	# The cap counts AWAKE ones: a sleeper past the horizon does nothing, and counting it would
-	# let four forgotten machines disable spawning forever.
-	if _awake_count() >= _awake_cap():
+	# СКОЛЬКО МАШИН БОДРСТВУЕТ, РЕШАЕТ РАССТОЯНИЕ, А НЕ СЧЁТЧИК. Здесь стоял потолок в одну-две
+	# машины, и он же был потолком населённости: пока две живые рядом, мир не присылал никого,
+	# сколько бы места вокруг ни было. Теперь бодрствует всё, что ближе sleep_dist, а дальше
+	# засыпает; ограничителем осталась общая численность (max_total) — она и есть настоящая
+	# крыша, потому что физику и стволы тикают только не спящие.
+	if _enemies.size() >= max_total:
 		return
 	# First run: fill the world at once rather than one at a time.
 	if not _seeded:
@@ -155,7 +170,7 @@ func _tick_spawner(delta: float) -> void:
 		if _seed_grace > 0.0:
 			return
 		_seeded = true
-		for _i in mini(initial_enemies, _awake_cap()):
+		for _i in mini(initial_enemies, max_total):
 			_spawn_one()
 		_t = _spawn_wait()
 		return
@@ -175,11 +190,7 @@ func _tick_spawner(delta: float) -> void:
 # Ослабляем именно ПОТОК, а не самих врагов: сборку врага и так подбирает _pick_preset по цене
 # машины игрока, а выкуп за него считается от этой сборки. Время → сложность → награда, в этом
 # порядке, и каждое звено уже на месте — не хватало только первого.
-@export var max_enemies_early: int = 1          ## сколько не спит на первом грейде
 @export var spawn_interval_early_mul: float = 2.2   ## во столько раз реже приходит следующий
-
-func _awake_cap() -> int:
-	return int(round(G.threat_lerp(float(mini(max_enemies_early, max_enemies)), float(max_enemies))))
 
 func _spawn_wait() -> float:
 	return spawn_interval * G.threat_lerp(spawn_interval_early_mul, 1.0)
@@ -233,7 +244,7 @@ func _track_dormancy(delta: float) -> void:
 	if player == null:
 		return
 	# Bases sleep by the same rules: each carries several turrets, and WeaponBlock ticks every
-	# physics frame. They do not count against max_enemies - that cap is about who drives at you.
+	# physics frame.
 	for e in _enemies + _bases:
 		if not is_instance_valid(e):
 			continue
@@ -245,11 +256,14 @@ func _track_dormancy(delta: float) -> void:
 		if bool(e.get_meta("shadows_on", true)) != want_shadow:
 			e.set_meta("shadows_on", want_shadow)
 			_set_shadows(e, want_shadow)
+		# Засыпает за sleep_dist, просыпается за wake_frac от него — два разных порога, см. их
+		# объявление. Между ними машина остаётся в том состоянии, в каком была.
+		var wake_d: float = sleep_dist * wake_frac
 		if d2 > sleep_dist * sleep_dist:
 			_far_time[e] = float(_far_time.get(e, 0.0)) + delta
 			if _far_time[e] >= sleep_delay:
 				_sleep(e)
-		else:
+		elif d2 < wake_d * wake_d:
 			_far_time.erase(e)
 			_wake(e)
 	_release_lost_invader(player)
@@ -314,6 +328,20 @@ func _wake(e: Node3D) -> void:
 
 func _is_asleep(e: Node) -> bool:
 	return is_instance_valid(e) and bool(e.get_meta("asleep", false))
+
+## Сколько машин сейчас не спит. Раньше это был вход в потолок, теперь — ЕДИНСТВЕННОЕ число,
+## по которому видно цену: бодрствующих больше ничем не ограничено, и на телефоне это надо
+## видеть глазами (панель производительности в hud.gd).
+func awake_count() -> int:
+	return _awake_count()
+
+## Всего машин в списке, включая спящих: вторая половина той же строки на панели.
+func enemy_count() -> int:
+	var n: int = 0
+	for e in _enemies:
+		if is_instance_valid(e):
+			n += 1
+	return n
 
 func _awake_count() -> int:
 	var n: int = 0
@@ -857,7 +885,7 @@ func _in_scan_box(pos: Vector3) -> bool:
 # THE INVADER is a single machine that DROPS IN at the edge of the square, already locked on the
 # detected machine.
 #
-# It deliberately ignores the usual rules: it does not count against max_enemies, is never removed
+# It deliberately ignores the usual rules: it does not count against max_total, is never removed
 # by sleep cleanup and never forgets its target. This is an event, not background, and it must behave
 # like one - until the player kills it or leaves for good.
 #

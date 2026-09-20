@@ -1335,6 +1335,14 @@ func _update_perf_panel(delta: float) -> void:
 				blocks_total += bl.get_child_count()
 		lines.append("машин: %d (блоков на них %d)" % [vehicles.get_child_count(), blocks_total])
 
+	# СКОЛЬКО ВРАГОВ НЕ СПИТ — теперь это главное число цены боя. Потолок бодрствующих снят,
+	# держит её только радиус сна (enemy_spawner.sleep_dist), а сколько машин в него попало,
+	# заранее не известно: у каждой не спящей идут колёса, ИИ и тики стволов. Судить об этом
+	# можно только на устройстве, значит число должно быть на экране.
+	var spawner := get_node_or_null("/root/Main/EnemySpawner")
+	if spawner != null and spawner.has_method("awake_count"):
+		lines.append("враги: %d не спят из %d" % [spawner.awake_count(), spawner.enemy_count()])
+
 	# Terrain collision tiles: every non-sleeping body holds its own patch of heightfield open,
 	# so this line is what tells a terrain problem apart from a loose-block problem.
 	var terr := get_node_or_null("/root/Main/map")
