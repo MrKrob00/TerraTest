@@ -45,6 +45,11 @@ func _ready() -> void:
 	# The group is how "exit to menu" (tech_ui) finds us: this node lives in the scene, not as an
 	# autoload, and there must be no path to it in code - the scene has been rearranged more than once.
 	add_to_group("world_persist")
+	# ПОЛИГОН НЕ ПИШЕТ И НЕ ЧИТАЕТ СЕЙВ, и это не переключатель. Всё, что там стоит, поставлено
+	# руками на один сеанс; записать это в слот значит подменить игроку его собственный мир —
+	# ошибка, которую нельзя отменить. Группа остаётся: «выход в меню» ищет нас через неё.
+	if G.proving_ground:
+		return
 	# WAIT until the machine is actually built. Two frames are not enough: blocks.spawn_block does
 	# `await get_parent().ready` inside, so starter blocks arrive LATE. Applying the saved build at that
 	# moment lets apply_layout clear node_map while the catching-up coroutines then write colliders and
@@ -547,6 +552,8 @@ func _fresh_start() -> void:
 
 # ── Save / load ─────────────────────────────────────────────────────────────
 func _save_world() -> void:
+	if G.proving_ground:
+		return                                     # вторая дверь: _notification зовёт нас в обход _ready
 	var machines: Array = []
 	# The machine the player CONTROLS is written FIRST: loading puts machines[0] on it
 	# (_load_world -> _restore_machine(primary, ...)), and child order in Vehicles knows nothing about

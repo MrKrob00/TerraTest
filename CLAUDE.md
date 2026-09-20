@@ -561,6 +561,37 @@ project: read it before claiming how anything works.
   every load would stand a second base next to the first — the arc's own state is memory only.
 - The tutorial is five steps, assembly only. Non-obvious gestures are a Mechanic line at the end.
 
+### The proving ground
+
+- IT IS THE SAME WORLD, NOT A SECOND SCENE. `node_3d.tscn` with `G.proving_ground` raised: flat
+  ground, no stream of enemies, no quests, no save, an endless stock of blocks and a control
+  panel (`proving_ground.gd`, a node in the world scene that frees itself when the flag is down).
+  A separate scene would mean a second copy of the camera, the HUD, the player machine and two
+  dozen nodes, and that copy starts drifting from the original with the first edit to either.
+- THE PANEL SWITCHES NOTHING OF ITS OWN. The stream, the AI, raids, outposts, the tutorial,
+  invulnerability and infinite energy all already have exactly one door each — the debug flags on
+  `Main` read through `G.debug` — and the panel writes those. A second "turn the AI off" is how
+  the AI ends up off in one place and on in another.
+- THOSE FLAGS GO UP IN `_enter_tree`, NOT IN `_ready`. Godot walks the tree twice: `_enter_tree`
+  top-down over the whole branch, then `_ready` bottom-up. The panel is the last child of the
+  world, so in `_ready` it is already late — `tutorial_director` has asked `G.debug("tutorial")`,
+  got the default and started the walkthrough. Measured: the polygon opened with a tutorial
+  tracker and a SKIP button on it.
+- FLAT GROUND IS A FLAG ON THE GENERATOR (`LiteTerrainGen.flat`), because heights leave it by two
+  roads — `height_at` for the query and `sample_grid` for meshes and collision — and both have to
+  be shorted. Everything else (chunks, LOD, the collision queue, grass) runs exactly as in the
+  game, so the polygon tests the game rather than a mock-up. The ground's colour is the meadow
+  mask forced to 1 (`ChunkTerrain.FLAT_COLOR`); the masks are not sampled at all there.
+- WHAT IS A MODE AND WHAT IS A FLAG. The stock, the ground, the quests and the save ask
+  `G.proving_ground` directly — they are not debug switches anyone may flip. The save is barred at
+  `G._flush_progress`, the single write to disk, not at `save_now` and `mark_progress_dirty`
+  separately: there are two of those and one day there will be a third. The polygon borrows the
+  last played SLOT (autoloads need a path in `user://`) and must never be able to spoil it.
+- The flag is cleared in `menu._ready`, unconditionally. Clearing it only on the way out
+  (`tech_ui._to_main_menu`) is not enough: it lives in an autoload and survives a scene change,
+  and there are other ways out — a crash, the back key, returning from a minimised app. A
+  forgotten flag would mean the next REAL game on flat ground with an endless stock and no save.
+
 ### Saving and slots
 
 - A slot is a path prefix (`user://sN/`); file names never changed. Device config
@@ -949,3 +980,4 @@ real screen. Those stay with the person holding the phone.
 - `docs/BLOCKS_TODO.md`, `docs/STATIONARY_BLOCKS_DESIGN.md`, `docs/ROCKET_BLOCK.md`,
   `docs/PROPS_HOWTO.md` — blocks and world props.
 - `docs/CANYON_TERRAIN.md` — terrain generation detail.
+- `docs/PROVING_GROUND.md` — the proving ground: flat ground, spawning any build, what switches what.

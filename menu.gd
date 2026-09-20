@@ -34,6 +34,10 @@ const NEWS_H_FRAC := 0.42
 var _slots_open: bool = false
 
 func _ready() -> void:
+	# МЕНЮ — ЭТО НЕ ПОЛИГОН, чем бы ни кончился прошлый заход. Флаг живёт в автолоаде и смену
+	# сцены переживает; снимают его при выходе в меню (tech_ui), но выйти можно и иначе — упасть,
+	# уйти по кнопке «назад», вернуться из свёрнутого приложения. Здесь он снимается безусловно.
+	G.proving_ground = false
 	%TitleVersion.text = "v%s" % str(ProjectSettings.get_setting("application/config/version", "dev"))
 	%NewsScroll.custom_minimum_size.y = get_viewport().get_visible_rect().size.y * NEWS_H_FRAC
 	_fill_news()
@@ -229,9 +233,23 @@ func _rebuild_left() -> void:
 		_left.add_child(_button(tr("BACK"), DIM, _close_slots))
 		return
 	_left.add_child(_big_button(tr("PLAY"), _open_slots))
+	# ПОЛИГОН СТОИТ ОТДЕЛЬНОЙ КНОПКОЙ, А НЕ ЧЕТВЁРТЫМ СЛОТОМ. Слот — это сохранённый мир, а
+	# полигон не сохраняется вовсе: в ряду слотов он выглядел бы как мир, который почему-то
+	# каждый раз пустой.
+	_left.add_child(_button(tr("PROVING GROUND"), DIM, _open_proving_ground))
 	_left.add_child(_button(tr("SETTINGS"), DIM, _open_settings))
 	if OS.has_feature("pc"):
 		_left.add_child(_button(tr("QUIT"), DIM, func(): get_tree().quit()))
+
+## Полигон заходит в ТОТ ЖЕ мир, но помеченным флагом: земля станет ровной, поток врагов
+## замолчит, склад станет бесконечным, сейв не откроется и не запишется (см. proving_ground.gd).
+##
+## Слот всё равно нужен: автолоады читают из него настройки и список изученного, а без слота
+## пути в user:// не существует. Берём последний, в котором играли, и НЕ ТРОГАЕМ его содержимое.
+func _open_proving_ground() -> void:
+	G.use_slot(G.last_slot(), true)
+	G.proving_ground = true
+	_start_game()
 
 func _open_slots() -> void:
 	_slots_open = true

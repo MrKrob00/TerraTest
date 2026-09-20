@@ -675,7 +675,20 @@ func is_loose_item(n: Node) -> bool:
 const BUILD_REACH := 20.0
 
 ## Сколько блоков этого типа доступно ПРЯМО СЕЙЧАС: инвентарь плюс лежащие рядом.
+## ИСПЫТАТЕЛЬНЫЙ ПОЛИГОН. Не сохраняется и не переживает возврат в меню: это не режим мира,
+## а состояние сеанса. Флаг живёт здесь, потому что спрашивают его из разных углов — земля
+## (ровная), спавнер (молчит), квесты (не идут), сейв (не пишется), склад (бесконечный), — и
+## каждый угол обязан уметь спросить, даже когда сцены мира ещё нет.
+var proving_ground: bool = false
+
+## ПОЛИГОННЫЙ СКЛАД БЕСКОНЕЧЕН, И ЭТО ОДНА ДВЕРЬ, А НЕ ПРАВКА В КАЖДОМ МЕНЮ. Спрашивают наличие
+## блока отсюда все: гараж, шар выбора, серийная постройка. Выдай бесконечность где-то одному из
+## них — и остальные останутся с пустым складом, а постройка начнёт спорить сама с собой.
+const PG_STOCK := 999
+
 func block_available(bt: int) -> int:
+	if proving_ground:
+		return PG_STOCK
 	return block_inventory.count(bt) + loose_blocks_near(bt).size()
 
 ## Свободно лежащие блоки этого типа в радиусе руки, БЛИЖНИЕ ПЕРВЫМИ. Лежащий — это не
@@ -707,6 +720,8 @@ func loose_blocks_near(bt: int) -> Array:
 ## Одна дверь на всех, кто берёт блок в руку (гараж, шар выбора, авто-добор после постановки):
 ## иначе «можно ли взять» и «откуда списали» разъедутся, и сборка начнёт брать из воздуха.
 func consume_block(bt: int) -> bool:
+	if proving_ground:
+		return true                          # склад полигона не убывает (см. block_available)
 	if block_inventory.has(bt):
 		block_inventory.erase(bt)
 		mark_progress_dirty()
@@ -1307,6 +1322,8 @@ func blocks_of_grade(f: String, g: int) -> Array:
 
 # Доступен ли блок в МАГАЗИНЕ (гараж SHOP). Трофеи этим не гейтятся.
 func is_block_shop_unlocked(bt: int) -> bool:
+	if proving_ground:
+		return true                          # на полигоне открыто всё: там проверяют сборку, а не прогресс
 	var m: Dictionary = BLOCK_META.get(bt, {})
 	if m.is_empty():
 		return true
@@ -1394,7 +1411,15 @@ func save_now() -> void:
 	_progress_dirty = true
 	_flush_progress()
 
+## ЕДИНСТВЕННАЯ ЗАПИСЬ ПРОГРЕССА НА ДИСК — И ЗДЕСЬ ЖЕ СТОИТ ЗАПРЕТ ПОЛИГОНА. Деньги, изученное
+## и сохранённые сборки там трогать можно сколько угодно, но на диск это не попадёт: слот у
+## полигона чужой, взятый последним игранным, и испортить его нельзя ни в каком случае.
+## Ставить проверку в save_now/mark_progress_dirty по отдельности нельзя — их двое, и однажды
+## появится третий.
 func _flush_progress() -> void:
+	if proving_ground:
+		_progress_dirty = false
+		return
 	if not _progress_dirty:
 		return
 	_progress_dirty = false

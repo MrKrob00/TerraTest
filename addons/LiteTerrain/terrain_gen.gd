@@ -186,7 +186,19 @@ func raw_height_at(wx: float, wz: float) -> float:
 	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
 	return h * gen_amplitude + dune + mtn_rise
 
+## РОВНАЯ ЗЕМЛЯ ОДНИМ ФЛАГОМ. Нужна испытательному полигону: там измеряют машину, а не рельеф,
+## и любой холм под колесом — это лишняя переменная в замере. Флаг стоит ЗДЕСЬ, на генераторе,
+## потому что высоты уходят наружу двумя путями — `height_at` для запроса высоты и `sample_grid`
+## для мешей с коллизией, — и ровно их обоих надо закоротить. Всё остальное (чанки, LOD, очередь
+## коллизии, стрижка травы) работает как в игре, а значит полигон и проверяет игру, а не макет.
+##
+## Заодно это самая быстрая земля, какая тут бывает: `height_at` стоит 124 мкс, а здесь — ноль.
+var flat: bool = false
+var flat_y: float = 0.0
+
 func height_at(wx: float, wz: float) -> float:
+	if flat:
+		return flat_y
 	if _gen_base == null:
 		prepare_sampling()
 	var h: float = (raw_height_at(wx, wz)
@@ -209,6 +221,11 @@ func begin_sampling(b: TerrainBiomes) -> void:
 ## в один меш того же размера. Считается синхронно: зовётся из задачи WorkerThreadPool, по одной
 ## на чанк, и begin_sampling обязан быть позади.
 func sample_grid(ox: float, oz: float, n: int, step: float) -> PackedFloat32Array:
+	if flat:
+		var f := PackedFloat32Array()
+		f.resize(n * n)
+		f.fill(flat_y)
+		return f
 	if step == 1.0:
 		return _sample_unit(ox, oz, n)
 	var out := PackedFloat32Array()

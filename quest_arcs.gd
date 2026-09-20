@@ -29,6 +29,12 @@ var _dropped: Dictionary = {}      # какие стадии уже выложи
 var _thief: Node3D = null
 
 func _ready() -> void:
+	# НА ПОЛИГОНЕ ВЕТОК НЕТ. Задание — это участники, посылки и правки земли в мире, а полигон
+	# существует ровно затем, чтобы в нём не было ничего, кроме поставленного руками.
+	if G.proving_ground:
+		set_process(false)
+		set_physics_process(false)
+		return
 	add_to_group("quest_arcs")     # компас берёт отсюда координаты события
 	_props = QuestProps.new()
 	add_child(_props)
