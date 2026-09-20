@@ -440,8 +440,19 @@ func _handle_fire(delta: float) -> void:
 	# ВСПЫШКА — РЕБЁНОК ДУЛА, а не узел в мировых координатах. Машина едет, ствол поворачивается,
 	# и вспышка обязана ехать с ними: в мировой точке она оставалась там, где был ствол в момент
 	# нажатия. Направление при этом отдельно задавать не нужно — узел уже смотрит по стволу.
-	BlockFX.muzzle_fire(_muzzle_point(), (-$Pivot.global_transform.basis.z).normalized(),
-			flash_color, flash_size, FLASH_DUR)
+	_muzzle_fx((-$Pivot.global_transform.basis.z).normalized())
+
+## ЧЕМ ВЫСТРЕЛ ВЫГЛЯДИТ. Отдельный метод, а не строка в _handle_fire: дверь остаётся одна (сюда
+## приходит каждый ствол ровно раз на выстрел), но подкласс может показать своё — как он уже
+## делает с `flash_color` и `yaw_limit`. Дульное пламя конусом верно для пороха и неверно для
+## лазера, а второй вызов из самого лазера означал бы два эффекта на выстрел.
+func _muzzle_fx(dir: Vector3) -> void:
+	BlockFX.muzzle_fire(_muzzle_point(), dir, flash_color, flash_size, FLASH_DUR)
+
+## НАСКОЛЬКО ствол готов к следующему выстрелу: 0 сразу после выстрела, 1 в момент готовности.
+## Нужен тем, у кого выстрел не мгновенный, а НАКОПЛЕННЫЙ (лазер): по этому числу растёт заряд.
+func charge_ratio() -> float:
+	return 1.0 - clampf(_fire_timer / maxf(fire_rate, 0.001), 0.0, 1.0)
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")
@@ -475,13 +486,20 @@ static func _shared_bullet_mesh() -> Mesh:
 			r.free()
 	return _bullet_mesh
 
+## СНАРЯД СО СВОЕЙ МОДЕЛЬЮ СЮДА НЕ ПОПАДАЕТ. Общая модель — правило для тех, у кого снаряд
+## обычный, и лазеру она ставилась ПОВЕРХ его собственной капсулы: _build_bolt_pool собирал
+## длинный тонкий разряд, а следом вызывал _rebind_bullet, и вся геометрия заменялась на пулю
+## из Assets.glb. Игрок видел ровно то, что и было, — «лазер стреляет патронами»; и хуже того,
+## капсулу разворачивают на −90° по X, так что модель пули летела боком.
+const OWN_VISUAL := &"own_visual"
+
 func _apply_bullet_mesh(b: Node) -> void:
 	var m: Mesh = _shared_bullet_mesh()
 	if m == null:
 		return
 	for c in b.get_children():
 		var mi := c as MeshInstance3D
-		if mi == null:
+		if mi == null or mi.has_meta(OWN_VISUAL):
 			continue
 		mi.mesh = m
 		var ext: float = maxf(m.get_aabb().size.z, 0.001)

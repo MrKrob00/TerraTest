@@ -441,6 +441,14 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 		"fe": maxf(feather, 0.001), "y": target,
 		"n": (_edit_seq + 1) if record else 0,
 	}
+	# ТА ЖЕ ПРАВКА ВТОРОЙ РАЗ — НЕ ПРАВКА. Кто просит площадку, обычно просит её вместе с
+	# постройкой, и если постройка не встала, он приходит снова с теми же числами (quest_arcs
+	# опрашивает свою ветку раз в секунду). Записывать копию нельзя по трём причинам: _edit_h
+	# накладывает обе, и спад по краю выходит круче заказанного; каждая копия — лишний проход
+	# на КАЖДОМ запросе высоты в этом прямоугольнике, навсегда; и список при переполнении
+	# выбрасывает САМУЮ СТАРУЮ запись, то есть копии молча съедают площадки, выровненные раньше.
+	if _same_edit_recorded(e, _flat_edits):
+		return
 	if record:
 		_edit_seq += 1
 	# КОПИЯ, А НЕ append НА МЕСТЕ: ссылку на старый список держат задания, которые уже считает
@@ -451,6 +459,20 @@ func flatten_area(center_world: Vector3, half_extent: Vector2, height: float,
 		list.remove_at(0)
 	_flat_edits = list
 	_invalidate(_edit_rect(e))
+
+## Есть ли уже такая же площадка. Сравниваем с допуском: числа приходят из мировой точки через
+## обратную матрицу, и побитового совпадения у них не бывает даже у одного и того же места.
+const EDIT_SAME_XZ := 0.25        # м: ближе этого центры считаем одним местом
+const EDIT_SAME_Y := 0.05         # м: и высота площадки та же
+
+func _same_edit_recorded(e: Dictionary, list: Array) -> bool:
+	for o in list:
+		if absf(o["cx"] - e["cx"]) < EDIT_SAME_XZ and absf(o["cz"] - e["cz"]) < EDIT_SAME_XZ \
+				and absf(o["y"] - e["y"]) < EDIT_SAME_Y \
+				and is_equal_approx(o["ex"], e["ex"]) and is_equal_approx(o["ez"], e["ez"]) \
+				and is_equal_approx(o["fe"], e["fe"]):
+			return true
+	return false
 
 ## Правки наружу и обратно (мировое сохранение). Формат тот же, что был у map.gd.
 func ground_edits() -> Array:
@@ -479,6 +501,11 @@ func apply_ground_edits(list: Array) -> void:
 			"fe": maxf(float(raw.get("f", 4.0)), 0.001), "y": float(raw.get("y", 0.0)),
 			"n": int(raw.get("n", 0)),
 		}
+		# Сейв доливается К ТОМУ, ЧТО УЖЕ ЕСТЬ: загрузка идёт кадрами, и квестовая ветка успевает
+		# попросить свою площадку раньше, чем сейв до неё дошёл. Без этой проверки одна и та же
+		# площадка ложилась бы дважды — см. flatten_area.
+		if _same_edit_recorded(e, acc):
+			continue
 		acc.append(e)
 		_edit_seq = maxi(_edit_seq, e["n"])
 		var r := _edit_rect(e)

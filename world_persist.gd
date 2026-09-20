@@ -307,15 +307,26 @@ func _terrain() -> Node:
 # Terrain that has ALREADY loaded its heights. Until the map reads the heightmap get_dims() is zero
 # and terrain_height_at returns a meaningless zero - and lifting "above terrain" by that zero puts
 # the machine inside a hill. That is exactly how positions ended up under the map.
-const TERRAIN_WAIT_FRAMES: int = 120
+#
+# THE WAIT IS IN SECONDS, NOT IN FRAMES, and the difference is not cosmetic. Terrain readiness is
+# worker threads computing heights - real seconds, about 3.7 of them for the world's ready_view.
+# A frame count is a guess at what those seconds cost, and the guess breaks in both directions:
+# 120 frames is 4 s at 30 fps but a fraction of a second headless, so the wait expired BEFORE the
+# ground existed. Everything behind it was then skipped without a word: SAVED TERRAIN EDITS WERE
+# NEVER REPLAYED (a quest pad came back as raw hillside on every load) and restored machines kept
+# only their X/Z. resource_nodes hit the same trap and already waits by the clock; this is the
+# second copy of that mistake, not a new one.
+const TERRAIN_WAIT_SEC: float = 60.0
 
-func _await_terrain(max_frames: int) -> Node:
+func _await_terrain(max_sec: float) -> Node:
 	var terr := _ready_terrain()
-	var guard: int = 0
-	while terr == null and guard < max_frames:
+	var deadline: int = Time.get_ticks_msec() + int(max_sec * 1000.0)
+	while terr == null and Time.get_ticks_msec() < deadline:
 		await get_tree().process_frame
-		guard += 1
 		terr = _ready_terrain()
+	if terr == null:
+		push_warning("world_persist: рельеф не поднялся за %.0f с — правки земли и высоты "
+				% max_sec + "машин из сейва пропущены")
 	return terr
 
 func _ready_terrain() -> Node:
@@ -643,7 +654,7 @@ func _load_world() -> void:
 	# TERRAIN FIRST. Levelled pads must be replayed BEFORE machines return: a quest base stands on flat
 	# ground, and restored before its edit it would hang in the air (or sink, if the pad was cut down).
 	# Wait for the map's heights - zeros cannot level anything.
-	var terr0: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
+	var terr0: Node = await _await_terrain(TERRAIN_WAIT_SEC)
 	if terr0 != null and terr0.has_method("apply_ground_edits"):
 		var edits: Array = data.get("ground", [])
 		terr0.apply_ground_edits(edits)
@@ -749,7 +760,7 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	# to 600 frames, and if the terrain did not read its heights in time the player stood as a brick for
 	# ten seconds. If it does not arrive, place as saved: _rescue_fallen runs once a second and lifts
 	# the machine if it ends up underground.
-	var terr: Node = await _await_terrain(TERRAIN_WAIT_FRAMES)
+	var terr: Node = await _await_terrain(TERRAIN_WAIT_SEC)
 	# After waiting up to 120 frames the machine may be gone (destroyed, removed as an extra). A
 	# reference to a freed node is NOT null, so only is_instance_valid is checked: comparing with null
 	# silently lets a dead node through.
