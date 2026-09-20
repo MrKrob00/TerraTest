@@ -48,6 +48,11 @@ func _ready() -> void:
 	# готовое. Теперь цена считается из рецепта (G.shop_price) и всегда ВЫШЕ стоимости
 	# материалов, так что магазин — это удобство, а не способ обойти производство.
 	# Ассортимент прежний: всё, что есть в дереве технологий.
+	# Печь иконок может закончить, пока гараж уже открыт: тогда плитки перерисовываются с
+	# картинками. Без этого первая сессия после установки показала бы магазин без иконок,
+	# хотя файлы к тому моменту уже лежат.
+	if not Icons.baked.is_connected(_on_icons_baked):
+		Icons.baked.connect(_on_icons_baked)
 	_prices = {}
 	for _bt in G.BLOCK_META:
 		_prices[_bt] = G.shop_price(int(_bt))
@@ -532,16 +537,27 @@ func _show_codex(key: String) -> void:
 func _block_name(block_type: int) -> String:
 	return G.block_name(block_type)
 
-const COLS := 4
+## Осталась одна колонка: слот занимает всю ширину сетки (см. _row_w). Константа держится для
+## тех, кто считает раскладку от числа колонок.
+const COLS := 1
+## Полоска подписи по низу плитки и её шрифт. Высота фиксированная: имя в переводе длиннее
+## английского, и «плавающая» полоска прыгала бы от плитки к плитке.
+## Высота строки и её шрифт. Фиксированные: строка должна быть одинаковой у всех, иначе список
+## «дышит» при прокрутке, а картинка блока в разных строках выходит разного размера.
+const ROW_H := 50.0
+const ROW_FONT := 13
 
+## Высота строки. Имя функции осталось прежним: её зовут все заполнители слотов, а менять
+## подпись ради одного слова — это правка в шести местах ради нуля смысла.
 func _slot_side() -> float:
-	if _grid == null:
-		return 96.0
-	var sep: float = float(_grid.get_theme_constant("h_separation"))
-	var w: float = _grid.size.x
-	if w <= 1.0:                                   # ещё не разложились — берём разумный дефолт
-		return 96.0
-	return maxf(floorf((w - sep * float(COLS - 1)) / float(COLS)), 48.0)
+	return ROW_H
+
+## Ширина строки — вся сетка. HFlowContainer переносит следующий слот на новую строку именно
+## потому, что этот занимает её целиком.
+func _row_w() -> float:
+	if _grid == null or _grid.size.x <= 1.0:
+		return 240.0
+	return maxf(_grid.size.x - 2.0, 120.0)
 
 func _on_grid_resized() -> void:
 	if _tab != TAB_INVENTORY and _tab != TAB_SHOP and _tab != TAB_BUILDS and _tab != TAB_CODEX:
@@ -589,6 +605,12 @@ class Slot extends Button:
 	var arg: int = 0                  # тип блока для take и buy
 	var price: int = 0
 	var build_name: String = ""       # имя сборки для load
+	## ИМЯ НЕ `icon`: у Button такое свойство уже есть, а поле, названное как член нативного
+	## класса, роняет ВЕСЬ скрипт («Member icon redefined») — и gdparse этого не видит, только
+	## движок (см. CLAUDE.md, правило 5).
+	var block_icon: TextureRect = null
+	var strip: ColorRect = null       # тёмная полоска по низу под подписи
+	var name_lbl: Label = null        # имя детали (у самой кнопки текст пустой)
 	var corner: Label = null
 	var sale: Label = null            # процент скидки, отдельной строкой в правом верхнем углу
 	var pencil: Control = null
@@ -614,18 +636,49 @@ func _new_slot() -> Slot:
 	s.clip_text = true
 	s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	s.add_theme_font_size_override("font_size", 13)
+	# СТРОКА, А НЕ ПЛИТКА. Левая панель узкая, и в четыре колонки плитка выходила по шестьдесят
+	# точек: туда не помещается ни модель, ни имя — а имя в переводе ещё и вдвое длиннее
+	# английского («Stabiliser Wheel» против «Стабилизирующее колесо»). В строке у картинки свой
+	# квадрат слева, у имени вся оставшаяся ширина, у цены — правый край; читается на любой
+	# ширине панели и не зависит от длины слова.
+	#
+	# Сетка остаётся HFlowContainer: строки получаются сами, потому что минимальная ширина слота
+	# равна ширине сетки.
+	var row := HBoxContainer.new()
+	row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 5.0
+	row.offset_right = -6.0
+	row.add_theme_constant_override("separation", 7)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	s.add_child(row)
+	s.block_icon = TextureRect.new()
+	s.block_icon.custom_minimum_size = Vector2(ROW_H - 8.0, ROW_H - 8.0)
+	s.block_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	s.block_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	s.block_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.block_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(s.block_icon)
+	s.name_lbl = Label.new()
+	s.name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.name_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.name_lbl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	s.name_lbl.clip_text = true
+	s.name_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(s.name_lbl)
 	s.corner = Label.new()
-	s.corner.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	s.corner.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	s.corner.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	s.corner.custom_minimum_size = Vector2(58.0, 0.0)
 	s.corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	s.add_child(s.corner)
+	row.add_child(s.corner)
 	# ПРОЦЕНТ СКИДКИ — СВОЙ УГОЛ, ПРАВЫЙ ВЕРХНИЙ. Он стоял в той же строке, что и цена, и
 	# «120$  −30%» в угол слота просто не влезало: строка обрезалась, и от скидки оставалась
 	# половина процента. Две короткие надписи в разных углах читаются и на самом узком слоте.
 	s.sale = Label.new()
 	s.sale.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	s.sale.offset_left = -40.0
-	s.sale.offset_top = 1.0
-	s.sale.offset_right = -3.0
+	s.sale.offset_left = -96.0
+	s.sale.offset_top = 2.0
+	s.sale.offset_right = -62.0
 	s.sale.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	s.sale.add_theme_font_size_override("font_size", 11)
 	s.sale.add_theme_color_override("font_color", SALE_COL)
@@ -656,6 +709,13 @@ func _on_slot_pressed(s: Slot) -> void:
 		&"save": _save_current_build()
 		&"load": _load_build(s.build_name)
 
+## Иконка блока, если она уже испечена. НЕТ — просто нет: плитка работает как работала, а печь
+## закончит и перерисует (Icons.baked). Условием показа магазина картинка быть не может.
+func _set_slot_icon(s: Slot, bt: int) -> void:
+	var tex: Texture2D = Icons.get_icon(bt)
+	s.block_icon.texture = tex
+	s.block_icon.visible = tex != null
+
 # Общая часть: размер, надпись и сброс всего, что мог включить прошлый жилец слота.
 ## Плитка квадратная и НЕ РАСТЯГИВАЕТСЯ, а имена деталей в переводе длиннее английских:
 ## «Stabiliser Wheel» это два коротких слова, «Стабилизирующее колесо» — одно длинное, которое
@@ -663,21 +723,12 @@ func _on_slot_pressed(s: Slot) -> void:
 ## слово, а clip_text у плитки включён — не влезшее просто исчезает.
 const SLOT_FONT_MAX := 13
 const SLOT_FONT_MIN := 8
-const SLOT_CHAR_W := 0.56          # ширина знака в долях кегля: на нашем шрифте так и выходит
-
-func _slot_font_size(label: String, side: float) -> int:
-	var longest: int = 0
-	for w in label.split(" ", false):
-		longest = maxi(longest, String(w).length())
-	if longest <= 0:
-		return SLOT_FONT_MAX
-	var fit: int = int(floor((side - 8.0) / (float(longest) * SLOT_CHAR_W)))
-	return clampi(fit, SLOT_FONT_MIN, SLOT_FONT_MAX)
-
 func _reset_slot(s: Slot, label: String, side: float) -> void:
-	s.custom_minimum_size = Vector2(side, side)
-	s.text = label
-	s.add_theme_font_size_override("font_size", _slot_font_size(label, side))
+	s.custom_minimum_size = Vector2(_row_w(), side)
+	s.text = ""
+	s.name_lbl.text = label
+	s.name_lbl.add_theme_font_size_override("font_size", ROW_FONT)
+	s.corner.add_theme_font_size_override("font_size", ROW_FONT)
 	s.tooltip_text = ""
 	s.disabled = false
 	s.modulate = Color(1, 1, 1, 1)
@@ -686,6 +737,7 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.price = 0
 	s.build_name = ""
 	s.corner.visible = false
+	s.block_icon.visible = false
 	# Цвет ценника СБРАСЫВАЕМ: слоты живут в пуле и переиспользуются, поэтому жёлтый ярлык
 	# распродажи иначе остался бы висеть на том товаре, который займёт слот следующим.
 	s.corner.remove_theme_color_override("font_color")
@@ -698,10 +750,8 @@ func _reset_slot(s: Slot, label: String, side: float) -> void:
 func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 	_reset_slot(s, str(it["name"]), side)
 	s.arg = int(it["type"])
+	_set_slot_icon(s, s.arg)
 	s.corner.visible = true
-	s.corner.add_theme_font_size_override("font_size", 14)
-	s.corner.offset_left = -44
-	s.corner.offset_top = -24
 	if _tab != TAB_SHOP:
 		s.action = &"take"
 		s.corner.text = "×%d" % int(it["count"])
@@ -769,9 +819,6 @@ func _fill_build_slot(s: Slot, build_name: String, side: float) -> void:
 	s.build_name = build_name
 	s.corner.visible = true
 	s.corner.text = tr("%d bl.") % layout.size()
-	s.corner.add_theme_font_size_override("font_size", 12)
-	s.corner.offset_left = -52
-	s.corner.offset_top = -22
 	# Действия (переименовать/удалить) — по ДОЛГОМУ нажатию (и правой кнопкой на ПК), а не
 	# крошечными иконками в углу: на телефоне в 26 px попасть пальцем невозможно, а увеличить
 	# их прямо в слоте — значит закрыть название сборки. В меню цели крупные и не мешают.
@@ -1001,6 +1048,10 @@ func _buy(block_type: int, price: int) -> void:
 	_refresh_stats()
 
 # ── Вкладки ───────────────────────────────────────────────────────────────────
+func _on_icons_baked() -> void:
+	if is_inside_tree() and visible and _grid != null:
+		_rebuild_grid(_search.text if _search else "")
+
 func _select_tab(idx: int) -> void:
 	_tab = idx
 	# Шаги обучения по вкладкам. TAB_INVENTORY не докладываем: её открывает сам _ready,

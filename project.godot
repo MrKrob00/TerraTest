@@ -89,6 +89,7 @@ Dialogue="*res://dialogue.tscn"
 Music="*res://music_manager.gd"
 Q="*res://quest_manager.gd"
 MobileAds="*uid://cgi4yv4jxmjuy"
+Icons="*res://icon_baker.gd"
 
 [display]
 
