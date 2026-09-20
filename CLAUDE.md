@@ -604,11 +604,15 @@ project: read it before claiming how anything works.
   drops the flag, drops the pending write, re-reads progress from the slot file. The ban on
   writing holds only WHILE THE FLAG IS UP, so a `mark_progress_dirty` left over from the polygon —
   a one-second timer — would land sandbox numbers in the real slot the moment the flag cleared.
-- THE PANEL PICKS A STEP FIRST AND A VARIANT SECOND, and the split is the point: the step is how
-  strong the machine is, the variant is what it looks like. One counter over all seventy-six builds
-  answered only the second question — raising the level meant scrolling a whole step. The groups
-  come from `PRESET_TIERS` itself, plus one last group for everything not on the ladder (miners and
-  any future row), because a proving ground has to show what the value curve never rolls.
+- CHOOSING AN ENEMY IS ITS OWN WINDOW: steps down the left with a count each, cards on the right
+  carrying the build's number, floors, width and weapons. Arrows in the corner of the panel could
+  not do this — they compare nothing and never say how many there are, so learning what a step
+  holds meant clicking through all twelve and remembering. Spawn works without closing the window,
+  since several machines of one step usually go down in a row. Every word on a card is computed
+  from the `ENEMY_BUILDS` row; hand-written captions would be seventy-six places to disagree with
+  the table. The groups come from `PRESET_TIERS` itself, plus one last group for everything not on
+  the ladder (miners and any future row), because a proving ground has to show what the value curve
+  never rolls.
 - THE PARTS LIST READS THE MACHINE, NOT THE TABLE (`_refresh_parts` over `blocks.get_layout`).
   Counting from `ENEMY_BUILDS` would be a second copy of `_layout_enemy` — rows, width, armour
   plates, wings, the nose cell — and the two are obliged to disagree at the first edit. The same
