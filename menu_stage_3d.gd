@@ -450,6 +450,9 @@ func _replace_fallen() -> void:
 		if alive:
 			(f as Node).queue_free()
 		_spawn_fighter(side)
+		# И ПОСАДИТЬ ЕЁ. Открытие раунда сажает пару само (_await_ground → _reseat_fighters);
+		# у замены такого шага не было вовсе, и она оставалась замороженной в воздухе.
+		_land_fighter(side, _era)
 		changed = true
 	if changed:
 		_clear_debris()
@@ -541,17 +544,72 @@ const GROUND_TILES_MIN := 3
 ## отвечает по точке, а не по построенным мешам), значит она верна и там, куда карта ещё дотекает.
 func _reseat_fighters(unfreeze: bool = true) -> void:
 	for f in _fighters:
-		var m := f as Node3D
-		if m == null or not is_instance_valid(m):
-			continue
-		var gy: float = _ground_y(m.global_position)
-		m.global_position = Vector3(m.global_position.x, gy + 1.2, m.global_position.z)
-		var rb := m as RigidBody3D
-		if rb != null:
-			rb.linear_velocity = Vector3.ZERO
-			rb.angular_velocity = Vector3.ZERO
-			if unfreeze:
-				rb.freeze = false
+		_seat_one(f, unfreeze)
+
+## Одна машина на землю. Отдельной функцией, потому что садятся они двумя путями: парой в начале
+## раунда и поодиночке при замене, — а высота, обнуление скоростей и снятие заморозки у обоих
+## одни и те же.
+func _seat_one(f: Variant, unfreeze: bool) -> void:
+	var m := f as Node3D
+	if m == null or not is_instance_valid(m):
+		return
+	var gy: float = _ground_y(m.global_position)
+	m.global_position = Vector3(m.global_position.x, gy + 1.2, m.global_position.z)
+	var rb := m as RigidBody3D
+	if rb == null:
+		return
+	rb.linear_velocity = Vector3.ZERO
+	rb.angular_velocity = Vector3.ZERO
+	if unfreeze:
+		rb.freeze = false
+
+## ЗАМЕНА САДИТСЯ САМА, И БЕЗ ЭТОГО ОНА ВИСИТ В ВОЗДУХЕ. `_spawn_fighter` замораживает машину
+## всегда — иначе она провалится, пока под ней режется плитка коллизии, — а размораживал её
+## только `_reseat_fighters`, который зовут ровно два раза: при открытии раунда и при переезде.
+## Машина, родившаяся в середине боя вместо убитой, не проходила ни через один из них и
+## оставалась замороженной на высоте спавна до конца раунда.
+##
+## Ждём землю ПОД САМОЙ МАШИНОЙ, а не общий счётчик плиток: замена встаёт в START_GAP (34 м) от
+## выжившего, то есть заведомо вне его коридора коллизии, и на карте с десятками готовых плиток
+## под ней самой может не быть ни одной. Луч по слою рельефа (1) отвечает именно про это место.
+##
+## Срок тот же, что у раунда: если коллизия почему-то не поедет, лучше машина, просевшая на
+## полметра, чем машина, висящая в воздухе.
+##
+## Пока ждём — машину НЕ ТРОГАЕМ, в отличие от открытия раунда. Там земля дотекает под ногами и
+## высота под машиной меняется, поэтому её и держат на поверхности каждый кадр; здесь карта уже
+## стоит, `terrain_height_at` отвечает по точке и его ответ не изменится. Лишняя запись позиции
+## каждый кадр — это ещё и обращение к телу ровно тогда, когда рельеф добавляет и убирает
+## владельцев плиток, то есть «shapes.has(owner)» пачками.
+func _land_fighter(side: int, era: int) -> void:
+	var f: Variant = _fighters[side]
+	var waited := 0.0
+	while waited < GROUND_WAIT_MAX:
+		if not _live(era) or not is_instance_valid(f) or _fighters[side] != f:
+			return                       # раунд сменился или машину уже убрали
+		if _tile_under(f as Node3D):
+			break
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	if _live(era) and is_instance_valid(f) and _fighters[side] == f:
+		_seat_one(f, true)
+
+## Есть ли под телом плитка коллизии рельефа. Слой 1 — сам рельеф (ChunkTerrain.collision_layer).
+const TILE_PROBE_UP := 2.0
+const TILE_PROBE_DOWN := 8.0
+
+func _tile_under(m: Node3D) -> bool:
+	if m == null or not is_instance_valid(m) or not m.is_inside_tree():
+		return false
+	var space := m.get_world_3d().direct_space_state
+	if space == null:
+		return false
+	var q := PhysicsRayQueryParameters3D.create(
+			m.global_position + Vector3.UP * TILE_PROBE_UP,
+			m.global_position + Vector3.DOWN * TILE_PROBE_DOWN)
+	q.collision_mask = 1
+	q.collide_with_areas = false
+	return not space.intersect_ray(q).is_empty()
 
 func _await_ground(era: int) -> void:
 	var waited := 0.0

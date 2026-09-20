@@ -667,7 +667,13 @@ project: read it before claiming how anything works.
   when that generation finishes, and never two generations at once. A death or a machine left
   without weapons does NOT touch the map — it is replaced by another random build beside the
   survivor (`_replace_fallen`, after `ARM_GRACE`, because a machine has no weapons in the frame it
-  is born). The reset REMOVES EVERYTHING FIRST and adds the new round a frame later, or machines
+  is born). A REPLACEMENT HAS TO BE LANDED TOO (`_land_fighter`). `_spawn_fighter` freezes every
+  machine — collision tiles are cut around bodies and arrive after the spawn, so an unfrozen one
+  sinks — and the only thing that ever unfroze them was `_reseat_fighters`, called exactly twice:
+  at round open and at the hop. A machine born mid-fight went through neither and hung at its drop
+  height, frozen, for the rest of the round. It waits for ground UNDER ITSELF (a ray on layer 1),
+  not for the map's tile count: it lands `START_GAP` (34 m) from the survivor, well outside that
+  machine's collision corridor, so a map with dozens of tiles can still have none under it. The reset REMOVES EVERYTHING FIRST and adds the new round a frame later, or machines
   spawn onto collision that is about to vanish. A map being freed is taken off generation first
   (`map.stop_generation`): its worker rows write into buffers that live in the node.
   Collision on a prepared map stays OFF until it is the visible one
