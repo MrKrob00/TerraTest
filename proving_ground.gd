@@ -22,6 +22,8 @@ const PANEL_MARGIN := 12.0
 ## СВЕРХУ ПАНЕЛЬ НЕ СТАВИМ: там кнопка режима сборки, и панель легла ровно на неё. Отступ — её
 ## высота с запасом.
 const PANEL_TOP := 104.0
+## Имя окна в настройках: место, куда игрок её оттащил, переживает перезаход.
+const PANEL_ID := "proving_panel"
 ## Куда ставить заспавненную машину относительно игрока: вперёд по взгляду камеры.
 const SPAWN_DIST := 28.0
 ## Радиус «убрать ближайшего»: если рядом никого, лучше ничего не трогать, чем удалить машину
@@ -34,6 +36,9 @@ var _layer: CanvasLayer = null
 var _build_label: Label = null
 var _status: Label = null
 var _body: VBoxContainer = null
+var _panel: PanelContainer = null
+var _head: Button = null
+var _drag: DragWindow = null
 var _presets: Array[int] = []
 var _pick: int = 0
 var _ally: bool = false
@@ -112,7 +117,9 @@ func _build_ui() -> void:
 	_layer = CanvasLayer.new()
 	_layer.layer = 40                       # выше HUD, ниже окон гаража
 	add_child(_layer)
+	add_to_group("hud_float")               # HUD убирает нас на время гаража
 	var panel := PanelContainer.new()
+	_panel = panel
 	panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
 	panel.position = Vector2(PANEL_MARGIN, PANEL_TOP)
 	panel.custom_minimum_size = Vector2(PANEL_W, 0)
@@ -137,6 +144,11 @@ func _build_ui() -> void:
 	head.add_theme_color_override("font_color", Color(0.4, 1.0, 0.65))
 	head.pressed.connect(_on_fold)
 	box.add_child(head)
+	_head = head
+	# ТАСКАЕТСЯ ЗА ШАПКУ И ПОМНИТ МЕСТО — тем же механизмом, что трекер заданий и журнал
+	# (DragWindow). Панель разработчика мешает ровно так же, как любая другая, и убирать её
+	# игрок должен тем же движением, которым убирает остальные.
+	_drag = DragWindow.attach(panel, head, PANEL_ID)
 
 	_body = VBoxContainer.new()
 	_body.add_theme_constant_override("separation", 5)
@@ -189,9 +201,34 @@ func _build_ui() -> void:
 	_refresh_build()
 	_say(tr("No saves here, no quests, no stream of enemies. Blocks are unlimited."))
 
+## Свернуть/развернуть. Свёрнутая панель — это одна строка заголовка, которую можно оттащить в
+## любой угол: на телефоне свободного места нет нигде, и «сделать поменьше» тут значит «убрать».
 func _on_fold() -> void:
-	if _body != null:
-		_body.visible = not _body.visible
+	# Шапка — кнопка, и Button шлёт pressed по отпусканию даже после того, как её утащили через
+	# полэкрана. Переезд нажатием не считаем (та же грабля, что у трекера заданий).
+	if _drag != null and _drag.dragged():
+		return
+	if _body == null or _panel == null:
+		return
+	var open: bool = not _body.visible
+	_body.visible = open
+	_head.text = tr("PROVING GROUND") if open else tr("PG")
+	# Ширину держим только у развёрнутой: свёрнутая должна быть ярлыком, а не пустой полосой в
+	# треть экрана.
+	_panel.custom_minimum_size.x = PANEL_W if open else 0.0
+	_panel.reset_size()
+	# Развернулась у нижней кромки — прижимаем обратно, иначе половина кнопок за экраном.
+	_clamp_later.call_deferred()
+
+func _clamp_later() -> void:
+	if _drag != null and _panel != null:
+		_panel.position = _drag.clamp_on_screen(_panel, _panel.position)
+
+## HUD зовёт при открытии гаража — через ту же группу, что и трекер заданий. Гараж
+## полноэкранный, и панель поверх него не управляет ничем, что видно.
+func set_inventory_open(open: bool) -> void:
+	if _layer != null:
+		_layer.visible = not open
 
 func _btn(text: String, cb: Callable, min_w: float) -> Button:
 	var b := Button.new()
