@@ -65,7 +65,7 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 @export var ore_cuprite: bool = true
 @export var ore_silicate: bool = true
 @export var ore_titanite: bool = true
-@export var ore_coal: bool = true
+@export var ore_wood: bool = true
 
 @export_subgroup("Враги")
 ## Общий поток врагов вокруг игрока. КВЕСТОВЫЕ машины он не трогает: задание, которое молча

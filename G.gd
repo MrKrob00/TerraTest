@@ -766,6 +766,8 @@ func comp_key(c: int) -> String:
 func kind_name(key: String) -> String:
 	if key == "coal":
 		return tr("Coal")
+	if key == "wood":
+		return tr("Wood")
 	if key.begins_with("chunk:"):
 		return block_name(int(key.substr(6)))   # сколько внутри — знает только держатель чанка
 	if key.begins_with("ore"):
@@ -879,6 +881,9 @@ func recipe_total(bt: int) -> int:
 const METAL_PRICE := [25, 35, 45, 60]      # Ferrite, Cuprite, Silicate, Titanite
 const ORE_FRACTION := 0.4                  # руда = 0.4 своего слитка (переплавка 1:1)
 const COAL_PRICE := 12
+## ДЕРЕВО ДЕШЕВЛЕ УГЛЯ, И В ЭТОМ ВЕСЬ СМЫСЛ ПЕРЕДЕЛА. Его собирают по дороге, поэтому продавать
+## его как есть — заведомо хуже, чем пережечь в процессоре: половина цены и половина энергии.
+const WOOD_PRICE := 6
 ## Наценка за сборку: компонент стоит дороже своих частей, иначе собирать его ради продажи
 ## было бы бессмысленно. Она же делает второй ярус заметно дороже первого.
 const CRAFT_MARKUP := 1.25
@@ -958,6 +963,8 @@ func sell_price(key: String) -> int:
 func base_price(key: String) -> int:
 	if key == "coal":
 		return COAL_PRICE
+	if key == "wood":
+		return WOOD_PRICE
 	if key.begins_with("chunk:"):
 		# Чанк оценивается по тому, во что обошлись лежащие в нём блоки — ЗА ОДИН блок.
 		# Умножить на количество — дело продавца, он один знает, сколько внутри.
