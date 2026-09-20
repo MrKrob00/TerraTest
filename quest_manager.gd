@@ -43,6 +43,8 @@ func _ready() -> void:
 ## Ведём за руку: обучение не пройдено — Механик подсказывает текущий шаг, пройдено — обычное
 ## приветствие.
 func announce_start() -> void:
+	if G.proving_ground:
+		return                       # на полигоне некому и не о чем: заданий там нет (quest_arcs)
 	if not _announce_tutorial():
 		_say_lines([
 			["Mechanic", tr("Still running. Directives are top right when you want them.")],

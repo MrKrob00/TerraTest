@@ -1477,8 +1477,12 @@ func _build_settings_tab() -> void:
 func _to_main_menu() -> void:
 	var wp: Node = get_tree().get_first_node_in_group("world_persist")
 	if wp != null and wp.has_method("_save_world"):
-		wp._save_world()
+		wp._save_world()                     # на полигоне сам откажется (world_persist)
 	G.save_now()
+	# ФЛАГ ПОЛИГОНА СНИМАЕТСЯ ЗДЕСЬ, В ЕДИНСТВЕННОЙ ДВЕРИ ОБРАТНО В МЕНЮ. Он живёт в автолоаде,
+	# то есть переживает смену сцены, и забытый флаг означал бы следующую НАСТОЯЩУЮ игру на
+	# ровной земле, с бесконечным складом и без сейва.
+	G.proving_ground = false
 	get_tree().change_scene_to_file("res://menu.tscn")
 
 # Строка «подпись + ползунок + значение» для настроек камеры (0.2..3.0).

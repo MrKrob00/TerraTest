@@ -89,6 +89,11 @@ var world_seed: int = 0
 ## Спрашивать ли сид у слота (G.world_seed). Выключено — берётся forced_seed: так фон меню и
 ## тестовые сцены получают свою землю, не трогая сохранение игрока.
 @export var follow_world_settings: bool = true
+## РОВНАЯ ЗЕМЛЯ. Не экспорт: ставится из G при подъёме (испытательный полигон), а галочка в
+## инспекторе была бы вторым источником, который спорит с первым.
+var flat_ground: bool = false
+## Цвет земли на полигоне — чистый луг: трава есть, каньона и гор нет (см. _mesh_arrays).
+const FLAT_COLOR := Color(1.0, 0.0, 1.0, 0.0)
 @export var forced_seed: int = 0
 
 signal terrain_ready
@@ -150,6 +155,10 @@ func _ready() -> void:
 	var seed_value: int = forced_seed
 	if game != null and game.get("world_seed") != null:
 		seed_value = int(game.get("world_seed"))
+	# РОВНАЯ ЗЕМЛЯ ПОЛИГОНА. Флаг приходит оттуда же, откуда сид, — из G, а не экспортом в сцене:
+	# мир у полигона тот же самый (node_3d.tscn), и вторая сцена ради одной галочки означала бы
+	# вторую копию HUD, камеры и машины, которая начнёт отставать от первой с первой же правкой.
+	flat_ground = game != null and game.get("proving_ground") == true
 	# ГДЕ СТРОИТЬ ПЕРВУЮ ЗЕМЛЮ. В сохранённом мире машина вернётся на своё место уже ПОСЛЕ того,
 	# как рельеф готов: world_persist сам ждёт его готовности. Значит вокруг камеры строить нечего
 	# — она стоит там, где открылась сцена. Точку берём из сейва, её там пишут первой машиной.
@@ -194,6 +203,7 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	add_child(gen)
 	gen.gen_seed = seed_value
 	gen.apply_params(_proc_params())
+	gen.flat = flat_ground
 	gen.begin_sampling(_biomes())
 	_gen = gen
 	_y_lo = -world_height() * 0.5
@@ -1072,8 +1082,11 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 					or (j == VERTS - 1 and (ss & SIDE_DIFF) != 0) \
 					or (i == 0 and (sw & SIDE_DIFF) != 0) \
 					or (i == VERTS - 1 and (se & SIDE_DIFF) != 0)
-			cols[vi] = Color(0.0 if seam else 1.0,
-					b.canyon_mask(wp, nz_cb), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
+			# На полигоне масок не спрашиваем вовсе: там один биом по определению, а три маски на
+			# вершину — это ровно та работа, ради отсутствия которой земля и сделана ровной.
+			cols[vi] = (Color(0.0 if seam else FLAT_COLOR.r, FLAT_COLOR.g, FLAT_COLOR.b, FLAT_COLOR.a)
+					if flat_ground else Color(0.0 if seam else 1.0,
+					b.canyon_mask(wp, nz_cb), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb)))
 
 	var idx := PackedInt32Array()
 	idx.resize(CHUNK * CHUNK * 6)
