@@ -33,8 +33,12 @@ const PICK_DIST := 200.0
 var _main: Node = null
 var _spawner: Node = null
 var _layer: CanvasLayer = null
-var _build_label: Label = null
-var _step_label: Label = null
+var _pick_btn: Button = null            # кнопка на панели: что выбрано + вход в окно
+var _picker: PanelContainer = null      # само окно выбора
+var _picker_steps: VBoxContainer = null
+var _picker_grid: GridContainer = null
+var _picker_title: Label = null
+var _picker_gi: int = 0                 # какая ступень ОТКРЫТА в окне (выбор подтверждается тапом)
 var _status: Label = null
 var _body: VBoxContainer = null
 var _panel: PanelContainer = null
@@ -234,37 +238,17 @@ func _build_ui() -> void:
 	box.add_child(_body)
 	box = _body                             # дальше всё складывается внутрь тела панели
 
-	# СТУПЕНЬ ОТДЕЛЬНОЙ СТРОКОЙ ОТ ВАРИАНТА. Сила машины и её силуэт — разные вопросы, и один
-	# общий счётчик на семьдесят шесть позиций отвечал только на второй: чтобы поднять уровень,
-	# приходилось пролистать всю ступень.
-	_step_label = Label.new()
-	_step_label.add_theme_color_override("font_color", Color(0.75, 0.9, 0.95))
-	box.add_child(_step_label)
-	var srow := HBoxContainer.new()
-	srow.add_theme_constant_override("separation", 4)
-	box.add_child(srow)
-	srow.add_child(_btn("<", _on_step.bind(-1), 40.0))
-	srow.add_child(_btn(">", _on_step.bind(1), 40.0))
-	var slab := Label.new()
-	slab.text = tr("grade")
-	slab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	slab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	slab.add_theme_font_size_override("font_size", 12)
-	slab.add_theme_color_override("font_color", Color(0.6, 0.72, 0.76))
-	srow.add_child(slab)
-
-	_build_label = Label.new()
-	_build_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	box.add_child(_build_label)
-
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 4)
-	box.add_child(row)
-	row.add_child(_btn("<", _on_var.bind(-1), 40.0))
-	row.add_child(_btn(">", _on_var.bind(1), 40.0))
+	# ВЫБОР ВРАГА — ОТДЕЛЬНОЕ ОКНО, а не стрелки в углу панели. Стрелками нельзя ни сравнить
+	# соседние сборки, ни увидеть, сколько их вообще: чтобы понять, что стоит на ступени, надо
+	# было прощёлкать её целиком и запомнить. В окне ступени лежат колонкой, сборки — карточками,
+	# и выбор виден целиком.
+	_pick_btn = _btn("", _on_open_picker, 0.0)
+	_pick_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_pick_btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_pick_btn)
 	var spawn_btn := _btn(tr("Spawn"), _on_spawn, 0.0)
 	spawn_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(spawn_btn)
+	box.add_child(spawn_btn)
 
 	# СОСТАВ — ПОДМЕНЮ, а не строка в панели: список блоков это десяток строк, и висеть им
 	# всё время незачем.
@@ -360,22 +344,11 @@ func _say(text: String) -> void:
 # ── Выбор сборки: сначала СТУПЕНЬ, потом вариант внутри неё ───────────────────
 # Два ряда, а не один длинный список: ступень — это сила машины, вариант — её силуэт, и
 # смешивать их в одном счётчике значит листать семьдесят шесть позиций, чтобы поднять уровень.
-func _on_step(delta: int) -> void:
-	_gi = posmod(_gi + delta, _groups.size())
-	_vi = 0                                 # другая ступень — считаем варианты заново
-	_refresh_build()
-
-func _on_var(delta: int) -> void:
-	var n: int = _cur_list().size()
-	_vi = posmod(_vi + delta, n)
-	_refresh_build()
-
 func _refresh_build() -> void:
-	if _build_label == null:
+	if _pick_btn == null:
 		return
-	var g: Dictionary = _groups[_gi]
-	_step_label.text = "%s  (%d/%d)" % [String(g["title"]), _gi + 1, _groups.size()]
-	_build_label.text = "%d/%d   %s" % [_vi + 1, _cur_list().size(), _build_title(_cur_preset())]
+	_pick_btn.text = "%s\n%s" % [String((_groups[_gi] as Dictionary)["title"]),
+			_build_title(_cur_preset())]
 
 ## Подпись сборки СЧИТАЕТСЯ ИЗ ЕЁ СТРОКИ, а не написана рядом: семьдесят шесть подписей руками
 ## — это семьдесят шесть мест, где однажды будет написано не то, что стоит в таблице.
@@ -389,15 +362,22 @@ func _build_title(preset: int) -> String:
 			if (_spawner.PRESET_TIERS[i] as Array).has(preset):
 				step = i
 				break
+	var guns: String = _build_guns(preset)
+	var tail: String = guns if guns != "" else tr("no weapons")
+	var head: String = (tr("step %d") % (step + 1)) if step >= 0 else tr("off-ladder")
+	return "#%d · %s · %s" % [preset, head, tail]
+
+## Оружие сборки списком через запятую, "" если его нет вовсе (шахтёр). Отдельной функцией,
+## потому что спрашивают её двое — подпись на панели и карточка в окне выбора.
+func _build_guns(preset: int) -> String:
+	var b: Dictionary = BLOCKS_SCRIPT.ENEMY_BUILDS.get(preset, {})
 	var guns: Array[String] = []
 	for key in ["deck", "top", "crown", "wings", "front"]:
 		for v in _as_list(b.get(key)):
 			var n: String = G.block_name(int(v))
 			if _is_weapon(int(v)) and not guns.has(n):
 				guns.append(n)
-	var tail: String = ", ".join(guns) if not guns.is_empty() else tr("no weapons")
-	var head: String = (tr("step %d") % (step + 1)) if step >= 0 else tr("off-ladder")
-	return "#%d · %s · %s" % [preset, head, tail]
+	return ", ".join(guns)
 
 func _as_list(v: Variant) -> Array:
 	if v is Array:
@@ -443,6 +423,152 @@ func _spawn_point() -> Vector3:
 		fwd = Vector3.FORWARD
 	var p: Vector3 = cam.global_position + fwd.normalized() * SPAWN_DIST
 	return Vector3(p.x, G.ground_y(p, p.y), p.z)
+
+# ── Окно выбора врага ────────────────────────────────────────────────────────
+# Слева ступени колонкой, справа карточки сборок этой ступени. Выбор — тап по карточке; окно
+# закрывается сразу, потому что выбрали ровно то, что хотели, и второго подтверждения это не
+# требует. Заспавнить можно и отсюда — кнопкой внизу, не закрывая окна: на полигоне чаще
+# ставят подряд несколько машин одной ступени, чем одну.
+const PICK_W_MAX := 560.0
+const PICK_H_FRAC := 0.74
+const PICK_COLS := 2
+const PICK_ID := "proving_picker"
+
+func _on_open_picker() -> void:
+	if _picker == null:
+		_build_picker()
+	_picker_gi = _gi
+	_fill_picker()
+	_picker.visible = true
+	_fit_picker()
+
+func _build_picker() -> void:
+	_picker = PanelContainer.new()
+	_picker.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.07, 0.09, 0.97)
+	sb.border_color = Color(0.3, 0.85, 0.6, 0.7)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(7)
+	sb.set_content_margin_all(9)
+	_picker.add_theme_stylebox_override("panel", sb)
+	_picker.visible = false
+	_layer.add_child(_picker)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	_picker.add_child(col)
+
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	_picker_title = Label.new()
+	_picker_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_picker_title.add_theme_font_size_override("font_size", 15)
+	_picker_title.add_theme_color_override("font_color", Color(0.45, 1.0, 0.7))
+	head.add_child(_picker_title)
+	var close := _btn("X", _on_close_picker, 30.0)
+	head.add_child(close)
+	# Окно тоже таскается за шапку и помнит место — тем же DragWindow, что и всё остальное.
+	DragWindow.attach(_picker, _picker_title, PICK_ID)
+
+	var mid := HBoxContainer.new()
+	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mid.add_theme_constant_override("separation", 8)
+	col.add_child(mid)
+
+	# СТУПЕНИ КОЛОНКОЙ. Их семь, они короткие и не меняются — список, а не выпадашка: выпадашка
+	# на телефоне это лишний тап и закрытый экран ради того, что и так помещается.
+	var steps_scroll := ScrollContainer.new()
+	steps_scroll.custom_minimum_size = Vector2(118, 0)
+	steps_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	mid.add_child(steps_scroll)
+	_picker_steps = VBoxContainer.new()
+	_picker_steps.add_theme_constant_override("separation", 3)
+	_picker_steps.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	steps_scroll.add_child(_picker_steps)
+
+	var grid_scroll := ScrollContainer.new()
+	grid_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	mid.add_child(grid_scroll)
+	_picker_grid = GridContainer.new()
+	_picker_grid.columns = PICK_COLS
+	_picker_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_picker_grid.add_theme_constant_override("h_separation", 5)
+	_picker_grid.add_theme_constant_override("v_separation", 5)
+	grid_scroll.add_child(_picker_grid)
+
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 5)
+	col.add_child(foot)
+	var sp := _btn(tr("Spawn"), _on_spawn, 0.0)
+	sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(sp)
+	var done := _btn(tr("Done"), _on_close_picker, 0.0)
+	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	foot.add_child(done)
+
+func _on_close_picker() -> void:
+	if _picker != null:
+		_picker.visible = false
+
+## Размер от ЭКРАНА, а не константой: на телефоне и на планшете это разные окна, а вылезшее за
+## край всё равно пришлось бы прижимать (DragWindow.clamp_on_screen).
+func _fit_picker() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	_picker.custom_minimum_size = Vector2(minf(PICK_W_MAX, vp.x * 0.94), vp.y * PICK_H_FRAC)
+	_picker.reset_size()
+	_picker.position = ((vp - _picker.size) * 0.5).max(Vector2(8.0, 8.0))
+
+func _fill_picker() -> void:
+	_picker_title.text = tr("Pick an enemy")
+	for c in _picker_steps.get_children():
+		_picker_steps.remove_child(c)
+		c.queue_free()
+	for i in _groups.size():
+		var g: Dictionary = _groups[i]
+		var b := Button.new()
+		b.text = "%s\n(%d)" % [String(g["title"]), (g["list"] as Array).size()]
+		b.toggle_mode = true
+		b.button_pressed = (i == _picker_gi)
+		b.add_theme_font_size_override("font_size", 12)
+		b.pressed.connect(_on_pick_step.bind(i))
+		_picker_steps.add_child(b)
+	for c in _picker_grid.get_children():
+		_picker_grid.remove_child(c)
+		c.queue_free()
+	var list: Array = (_groups[_picker_gi] as Dictionary)["list"]
+	for vi in list.size():
+		_picker_grid.add_child(_pick_card(int(list[vi]), vi))
+
+func _on_pick_step(i: int) -> void:
+	_picker_gi = i
+	_fill_picker()
+
+## КАРТОЧКА ОТВЕЧАЕТ НА «ЧТО ЭТО», а не только «какая по счёту». Всё в ней считается из строки
+## таблицы (`ENEMY_BUILDS`): номер, оружие, этажи и ширина. Подписи руками — это семьдесят шесть
+## мест, где однажды будет написано не то, что стоит в таблице.
+func _pick_card(preset: int, vi: int) -> Control:
+	var b := Button.new()
+	b.toggle_mode = true
+	b.button_pressed = (_picker_gi == _gi and vi == _vi)
+	b.custom_minimum_size = Vector2(0, 56)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_font_size_override("font_size", 11)
+	var row: Dictionary = BLOCKS_SCRIPT.ENEMY_BUILDS.get(preset, {})
+	var guns: String = _build_guns(preset)
+	b.text = "#%d  %s\n%s" % [preset,
+			tr("%d rows · %d wide") % [int(row.get("rows", 1)), int(row.get("width", 1))],
+			guns if guns != "" else tr("no weapons")]
+	b.pressed.connect(_on_pick_build.bind(vi))
+	return b
+
+func _on_pick_build(vi: int) -> void:
+	_gi = _picker_gi
+	_vi = vi
+	_refresh_build()
+	_fill_picker()                          # подсветка выбранной карточки
 
 ## СОСТАВ ПОСЛЕДНЕЙ ЗАСПАВНЕННОЙ МАШИНЫ — по её настоящим блокам, а не по строке таблицы.
 ##
