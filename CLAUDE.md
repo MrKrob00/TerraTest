@@ -340,6 +340,16 @@ project: read it before claiming how anything works.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.
+- NOT EVERYTHING THAT DRIVES CAME FOR THE PLAYER. A MINER (`enemy_vehicle.miner`, builds 90-93)
+  has no weapon at all: it looks for a vein, drills it, and answers being shot at by driving
+  away, which is the only answer it has. That gives the player a choice — chase it for the cargo
+  or let it go — and gives the world someone who is busy with something else; until then every
+  machine on the map meant a fight. Its builds are deliberately NOT in `PRESET_TIERS` (that table
+  picks by the player's machine value, so a miner would take a fighter's place) and it never
+  queues for an engagement slot. `resource_nodes.vein_point_near` scores by closeness to the
+  MIDDLE of the ring it is given — that was written for the battery quest, where the errand has
+  to be a trip — so a miner asks a NARROW ring first and only widens when the neighbourhood is
+  empty; with one wide ring it drove 190 m past nearer veins, measured.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
   player: constant seed, cleared stays cleared, saves store indices only.
 

@@ -456,6 +456,12 @@ func _can_see_target() -> bool:
 	return d2 <= hear_radius * hear_radius or _los_ok
 
 func _update_ai(delta: float) -> void:
+	# ШАХТЁР ЖИВЁТ ПО СВОИМ ПРАВИЛАМ И ДО ВСЕГО ОСТАЛЬНОГО. Он приехал работать: не ищет цель,
+	# не занимает слот боя, не патрулирует вокруг точки рождения. Весь разбор ниже — поиск цели,
+	# забывание, счёт обстановки — ему не нужен ни на кадр.
+	if miner:
+		_mine_tick(delta)
+		return
 	# The target is re-searched periodically while there is none.
 	_reacquire_t -= delta
 	if _reacquire_t <= 0.0:
@@ -1139,3 +1145,103 @@ func _find_terrain() -> Node:
 # ══════════════════════════════════════════
 # PHYSICS - WHEELBASE
 # ══════════════════════════════════════════
+
+# ══════════════════════════════════════════
+# ШАХТЁР
+# ══════════════════════════════════════════
+## МАШИНА, КОТОРАЯ ПРИЕХАЛА НЕ ЗА ИГРОКОМ. До неё всё, что ездит по миру, было охотником, и мир
+## читался тиром: любая встреченная техника означала бой. Шахтёр ищет жилу, бурит её и на игрока
+## не смотрит вовсе — пока в него не выстрелят.
+##
+## ОТВЕЧАТЬ ЕМУ НЕЧЕМ, И ЭТО НЕ НЕДОСМОТР. Стволов у него нет по сборке, поэтому на обстрел он
+## отвечает единственным, что умеет, — уезжает. Выбор остаётся у игрока: догнать и добить ради
+## груза или пропустить.
+@export_group("ИИ — Шахтёр")
+@export var miner: bool = false
+## Кольцо поиска жилы. ВАЖНО, КАК РАБОТАЕТ ИСКОМОЕ: resource_nodes.vein_point_near выбирает
+## жилу, ближайшую К СЕРЕДИНЕ кольца, а не к спрашивающему — так написано для квеста, где «съезди
+## за аккумулятором» обязано быть поездкой. Шахтёру нужно обратное, поэтому сначала спрашиваем
+## УЗКОЕ кольцо (его середина и есть рабочая дистанция), и только если рядом пусто — широкое.
+## С одним кольцом 25..350 шахтёр систематически уезжал за сто девяносто метров мимо ближних жил
+## — проверено замером.
+const MINE_SEEK_LO: float = 12.0
+const MINE_SEEK_NEAR: float = 110.0
+const MINE_SEEK_HI: float = 350.0
+## На каком расстоянии он считает, что доехал, и встаёт бурить.
+const MINE_REACH: float = 5.0
+## Как часто пересматривает выбор: жилу могли выработать, до неё могло не доехать.
+const MINE_REPICK: float = 15.0
+## Сколько секунд удирает после попадания по нему.
+const MINE_FLEE_TIME: float = 8.0
+
+var _mine_point: Variant = null
+var _mine_t: float = 0.0
+var _flee_t: float = 0.0
+var _drills: Array = []
+var _drills_n: int = -1
+
+func _mine_tick(delta: float) -> void:
+	_answer_t = maxf(_answer_t - delta, 0.0)
+	_update_stuck(delta)
+	# Обстрел ставит цель через notice_attacker — тем же путём, что и у бойцов. Разница в том,
+	# что делает машина дальше.
+	if _answer_t > 0.0:
+		_flee_t = MINE_FLEE_TIME
+	_flee_t = maxf(_flee_t - delta, 0.0)
+	if _flee_t > 0.0 and is_instance_valid(_target):
+		var away: Vector3 = global_position + (global_position - _target.global_position).normalized() * 60.0
+		_drive_to(away, chase_speed_factor, delta)
+		return
+	_mine_t -= delta
+	if _mine_point == null or _mine_t <= 0.0:
+		_mine_t = MINE_REPICK
+		_mine_point = _pick_vein()
+	if _mine_point == null:
+		_act_patrol(delta)            # жил поблизости нет — просто ездит
+		return
+	var goal: Vector3 = _mine_point
+	if global_position.distance_squared_to(goal) < MINE_REACH * MINE_REACH:
+		_drive(_get_forward(), 0.0, delta)
+		_dig()
+		return
+	_drive_to(goal, patrol_speed_factor, delta)
+
+## Жилы спрашиваем у их владельца, а не у того, что нарисовано: resource_nodes отвечает из
+## данных, посчитанных по сиду, поэтому далёкая жила известна ещё до того, как её построят.
+func _pick_vein() -> Variant:
+	var main: Node = get_node_or_null("/root/Main")
+	if main == null:
+		return null
+	var rn: Node = null
+	for c in main.get_children():
+		if c.has_method("vein_point_near"):
+			rn = c
+			break
+		for g in c.get_children():
+			if g.has_method("vein_point_near"):
+				rn = g
+				break
+		if rn != null:
+			break
+	if rn == null:
+		return null
+	var near = rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_NEAR)
+	return near if near != null else rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_HI)
+
+## Бур — НЕ WeaponBlock, поэтому _weapon_blocks его не видит и _do_attack не трогает. Держим
+## свой список: у шахтёра других «жмущихся» блоков нет, но перебирать всё подряд значило бы
+## однажды дать ему выстрелить из ствола, которого у него быть не должно.
+func _dig() -> void:
+	var bl: Node = get_node_or_null("blocks")
+	if bl == null:
+		return
+	if _drills_n != bl.get_child_count():
+		_drills_n = bl.get_child_count()
+		_drills.clear()
+		for b in bl.get_children():
+			var t = b.get("block")
+			if t != null and (int(t) == G.Block.DRILL or int(t) == G.Block.SMALL_DRILL):
+				_drills.append(b)
+	for d in _drills:
+		if is_instance_valid(d) and d.has_method("attack"):
+			d.attack()

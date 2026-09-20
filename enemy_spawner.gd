@@ -85,6 +85,18 @@ var _seed_grace: float = -1.0
 ## The invader drops from the usual drop_height: it appears at the square's edge, i.e. close,
 ## and without the fall it read as "a machine materialised twenty metres away and opened fire".
 
+@export_group("Шахтёры")
+## НЕ ВСЕ, КТО ЕЗДИТ ПО МИРУ, ПРИЕХАЛИ ЗА ИГРОКОМ. Пока каждая встреченная машина означала бой,
+## мир читался тиром. У шахтёра нет ни одного ствола: он ищет жилу, бурит её и на обстрел
+## отвечает тем, что уезжает (enemy_vehicle.miner). Игроку это даёт выбор — догнать ради груза
+## или пропустить, — а миру вид населённого, а не расставленного по секторам.
+##
+## Их сборок нет в PRESET_TIERS: там выбирают по цене машины игрока, и шахтёр занимал бы место
+## бойца. Здесь своя маленькая квота, и она сознательно мала — это фон, а не содержание.
+@export var miner_presets: Array[int] = [90, 91, 92, 93]
+@export var max_miners: int = 2
+@export_range(0.0, 1.0, 0.05) var miner_chance: float = 0.35
+
 @export_group("Сила врага")
 ## THE LADDER: a step per line, several builds per step (see blocks.gd ENEMY_BUILDS). Steps grow in
 ## danger and in SIZE, so the silhouette on the horizon tells you what you are getting into, and the
@@ -217,6 +229,11 @@ func _limit_engagement() -> void:
 		if e.get("is_base") == true:
 			e.set_combat_allowed(true)
 			continue
+		# ШАХТЁР В ОЧЕРЕДИ НЕ СТОИТ. Стволов у него нет вовсе, драться он не собирается, а
+		# обстреляв его, игрок выдал бы ему цель — и копатель занял бы слот, которого ждёт боец.
+		if e.get("miner") == true:
+			e.set_combat_allowed(true)
+			continue
 		# ПО КОМУ СЕЙЧАС СТРЕЛЯЮТ — ВНЕ ОЧЕРЕДИ. Очередь решает, кто начинает бой; враг, которого
 		# расстреливают в упор, обязан отвечать, иначе он мишень, а не противник.
 		if float(e.get("_answer_t") if e.get("_answer_t") != null else 0.0) > 0.0:
@@ -343,6 +360,14 @@ func enemy_count() -> int:
 			n += 1
 	return n
 
+## Сколько шахтёров сейчас живо: по ним считается их собственная квота.
+func _miner_count() -> int:
+	var n: int = 0
+	for e in _enemies:
+		if is_instance_valid(e) and e.get("miner") == true:
+			n += 1
+	return n
+
 func _awake_count() -> int:
 	var n: int = 0
 	for e in _enemies:
@@ -397,10 +422,17 @@ func _spawn_one() -> void:
 		return
 
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
+	# ШАХТЁР ИДЁТ ПО СВОЕЙ КВОТЕ, А НЕ ПО ЛЕСТНИЦЕ. В PRESET_TIERS его нет намеренно: там сборку
+	# выбирают по цене машины игрока, и шахтёр занял бы место бойца — вместо боя игрок смотрел бы
+	# на копателя. Поэтому решение принимается ДО обращения к лестнице.
+	var as_miner: bool = not miner_presets.is_empty() \
+			and _miner_count() < max_miners and randf() < miner_chance
 	# The build is set BEFORE add_child (blocks assembles in its _ready).
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = _pick_preset(player)
+		blocks.layout_preset = int(miner_presets.pick_random()) if as_miner else _pick_preset(player)
+	if as_miner and "miner" in enemy:
+		enemy.miner = true
 
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
