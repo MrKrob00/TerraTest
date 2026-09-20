@@ -272,7 +272,6 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.BATTERY:   20.0,
 	G.Block.SOLAR:      8.0,
 	G.Block.GENERATOR: 28.0,
-	G.Block.COAL_GEN:  35.0,
 	G.Block.REGEN:     15.0,
 	G.Block.SHIELD:    18.0,
 	G.Block.RADAR:     10.0,

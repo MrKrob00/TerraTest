@@ -420,7 +420,6 @@ const BLOCK_META := {
 	Block.TOP_WHEEL:   {"f": "start", "g": 2, "rp": 15},
 	Block.STAB_WHEEL:  {"f": "start", "g": 2, "rp": 15},
 	Block.BLOCK2:      {"f": "start", "g": 1, "rp": 5},
-	Block.COAL_GEN:    {"f": "start", "g": 4, "rp": 30},  # большой генератор: уголь→энергия на якоре
 	Block.ROCKET:      {"f": "start", "g": 4, "rp": 35},  # ракетница: снаряд с AOE-взрывом
 	Block.BLOCK3:      {"f": "start", "g": 2, "rp": 10},
 	Block.WEDGE2:      {"f": "start", "g": 2, "rp": 10},
@@ -461,7 +460,7 @@ const TECH_PARENT := {
 	# порядок. Тяжёлые варианты по-прежнему растут из обычного колеса.
 	Block.WHEEL: Block.SMALL_WHEEL, Block.BIG_WHEEL: Block.WHEEL,
 	Block.TOP_WHEEL: Block.WHEEL,   Block.STAB_WHEEL: Block.WHEEL,
-	Block.BLOCK2: Block.BLOCK,      Block.COAL_GEN: Block.GENERATOR,
+	Block.BLOCK2: Block.BLOCK,
 	Block.ROCKET: Block.LASER,      # ракетница ветвится от лазера (продвинутое оружие)
 	Block.BLOCK3: Block.BLOCK2,     Block.ARMOR: Block.BLOCK,
 	Block.WEDGE2: Block.BLOCK2,     # клин 1³ снят, ветка клиньев начинается с 2×1×1
@@ -841,7 +840,6 @@ const BLOCK_RECIPE := {
 	Block.BATTERY:      {"c9": 2, "m1": 5},    # Dynamo Rotor + Cuprite
 	Block.SOLAR:        {"c5": 3, "m2": 4},    # Prism Lens + Silicate
 	Block.GENERATOR:    {"c9": 3, "m0": 6},
-	Block.COAL_GEN:     {"c9": 2, "m0": 6},
 	Block.WIRELESS_CHARGER: {"c6": 3, "c20": 2},   # Shielded Winding + Focus Cell
 	# ── Поддержка ─────────────────────────────────────────────────────────────
 	Block.REGEN:        {"c14": 2, "c20": 2},  # Optic Shroud + Focus Cell
@@ -1157,6 +1155,15 @@ const LEGACY_BLOCK_KEYS := {
 ## сборка не сойдётся по клеткам.
 const RETIRED_BLOCKS := {
 	Block.WEDGE: Block.HALF_BLOCK,   # клин 1³ повторял половинку той же клеткой
+	# УГОЛЬНЫЙ ГЕНЕРАТОР БЫЛ ТЕМ ЖЕ ГЕНЕРАТОРОМ. Обе сцены висели на ОДНОМ скрипте
+	# (blocks/scripts/generator.gd) с теми же BURN_TIME и теми же числами по топливу — то есть
+	# при одинаковой отдаче большой занимал четыре клетки против одной и весил 35 против
+	# генераторских. Такой блок нельзя выбрать осознанно, его можно только поставить по ошибке.
+	#
+	# Подмена НЕ равна по следу (2×1×2 против одной клетки), и это здесь безопасно: сейв
+	# восстанавливается через apply_layout → set_block, а тот пересчитывает занятые клетки по
+	# типу блока заново. Старая машина получит работающий генератор поменьше и три пустых клетки.
+	Block.COAL_GEN: Block.GENERATOR,
 }
 
 func block_from_key(v) -> int:
@@ -1190,7 +1197,7 @@ const BLOCK_LABEL := {
 	Block.SCRAPPER: "Scrapper", Block.STORAGE: "Storage", Block.SELLER: "Seller",
 	Block.AUTO_MINER: "Auto Miner",
 	Block.BATTERY: "Battery", Block.SOLAR: "Solar Panel", Block.GENERATOR: "Generator",
-	Block.COAL_GEN: "Coal Generator", Block.WIRELESS_CHARGER: "Wireless Charger",
+	Block.WIRELESS_CHARGER: "Wireless Charger",
 	Block.REGEN: "Repair Field", Block.SHIELD: "Shield Dome", Block.RADAR: "Radar",
 }
 
@@ -1249,7 +1256,6 @@ const BLOCK_DESC := {
 	Block.BATTERY: "Stores charge IN ITSELF, not in the machine — carry it to another build and the charge goes with it. It also explodes the harder the fuller it is.",
 	Block.SOLAR: "Panel: makes energy while ANCHORED. On the move it gives nothing.",
 	Block.GENERATOR: "Steady energy without sunlight.",
-	Block.COAL_GEN: "Burns coal into energy while anchored.",
 	Block.WIRELESS_CHARGER: "Pours energy into the battery of ANOTHER machine of your own side. Inside one machine energy is already shared.",
 	Block.REGEN: "Repair field: mends the blocks around it while there is energy to spend.",
 	Block.SHIELD: "Dome: covers what its SPHERE reaches, not what is bolted to it. Parked on the tail it leaves the nose outside.",
@@ -1575,6 +1581,8 @@ enum Block {
 	TOP_WHEEL = 21,
 	STAB_WHEEL = 22,
 	BLOCK2 = 23,
+	## СНЯТ (см. RETIRED_BLOCKS): был тем же генератором на том же скрипте, только вчетверо
+	## крупнее. Значение оставлено — его пишут старые сейвы.
 	COAL_GEN = 24,
 	ROCKET = 25,
 	# Новые id дописываем В КОНЕЦ: сейв хранит блоки СТРОКОЙ (block_key), но вставка в
@@ -1627,7 +1635,6 @@ enum Block {
 @onready var top_wheel_scene: PackedScene = preload("res://blocks/scenes/top_wheel.tscn")     # крепление сверху
 @onready var stab_wheel_scene: PackedScene = preload("res://blocks/scenes/stab_wheel.tscn")   # стабилизирующее (90°)
 @onready var block2_scene: PackedScene = preload("res://blocks/scenes/block2.tscn")           # 2×1×1
-@onready var coal_gen_scene: PackedScene = preload("res://blocks/scenes/coal_gen.tscn")       # 2×1×2, уголь→энергия на якоре
 @onready var rocket_scene: PackedScene = preload("res://blocks/scenes/rocket_launcher.tscn")
 @onready var block3_scene: PackedScene = preload("res://blocks/scenes/block3.tscn")
 @onready var wedge2_scene: PackedScene = preload("res://blocks/scenes/wedge2.tscn")
@@ -1681,7 +1688,7 @@ const BLOCK_CATEGORIES := {
 		Block.SUPPORT, Block.ROT_SUPPORT],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
-		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR, Block.COAL_GEN,
+		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR,
 		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY, Block.PACKER],
 }
 
@@ -1710,7 +1717,6 @@ func get_scene(block: Block) -> PackedScene:
 		Block.TOP_WHEEL: return top_wheel_scene
 		Block.STAB_WHEEL: return stab_wheel_scene
 		Block.BLOCK2: return block2_scene
-		Block.COAL_GEN: return coal_gen_scene
 		Block.ROCKET: return rocket_scene
 		Block.BLOCK3: return block3_scene
 		# Клин 1³ снят с производства. Отдаём половинку — ту, ради которой он и снят: новых

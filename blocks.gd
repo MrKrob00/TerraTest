@@ -734,17 +734,11 @@ func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
 					cells.append(Vector3i(x + dx, y + dy, z + dz))
 		return cells
 	if block == G.Block.ARMOR4:
-		var cells4: Array = []               # 2×1×2 (xyz), как у COAL_GEN
+		var cells4: Array = []               # 2×1×2 (xyz)
 		for dx in [-1, 0]:
 			for dz in [-1, 0]:
 				cells4.append(Vector3i(x + dx, y, z + dz))
 		return cells4
-	if block == G.Block.COAL_GEN:
-		var cells2: Array = []               # 2×1×2 (xyz): dx∈[-1,0], dy=0, dz∈[-1,0]
-		for dx in [-1, 0]:
-			for dz in [-1, 0]:
-				cells2.append(Vector3i(x + dx, y, z + dz))
-		return cells2
 	if block == G.Block.BLOCK2 or block == G.Block.WEDGE2 \
 			or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
 		return [Vector3i(x - 1, y, z), Vector3i(x, y, z)]   # 2×1×1
@@ -876,7 +870,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		elif box.size == Vector3(2,1,1):
 			collision.position += Vector3(-0.5,0.0,0.0)   # BLOCK2: центрируем 2-широкую коллизию
 		elif box.size == Vector3(2,1,2):
-			collision.position += Vector3(-0.5,0.0,-0.5)  # COAL_GEN: 2×1×2
+			collision.position += Vector3(-0.5,0.0,-0.5)  # ARMOR4: 2×1×2
 	if !get_parent().is_node_ready():
 		await get_parent().ready
 	get_parent().add_child(collision)
