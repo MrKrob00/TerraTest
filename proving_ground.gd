@@ -367,29 +367,76 @@ func _build_title(preset: int) -> String:
 	var head: String = (tr("step %d") % (step + 1)) if step >= 0 else tr("off-ladder")
 	return "#%d · %s · %s" % [preset, head, tail]
 
-## Оружие сборки списком через запятую, "" если его нет вовсе (шахтёр). Отдельной функцией,
-## потому что спрашивают её двое — подпись на панели и карточка в окне выбора.
+## ЧТО В СБОРКЕ — СЧИТАЕТСЯ ПО НАСТОЯЩЕЙ РАСКЛАДКЕ, а не по строке таблицы.
+##
+## Строка отвечает только на часть вопроса: `wings` это ОДИН тип на ДВА плеча, плиты брони и
+## пол вообще не перечислены — их раскладывает `_layout_enemy` из числа рядов и ширины. Считать
+## всё это здесь заново значило бы завести второе воплощение раскладки, и разойтись они обязаны
+## при первой же правке.
+##
+## Поэтому сборка собирается ПО-НАСТОЯЩЕМУ, но БЕЗ МИРА: узел `blocks.gd` вне дерева, ему
+## хватает `_init_map` + `_define_layout`. `set_block` пишет только сетку — ни одной сцены блока
+## при этом не создаётся, так что двенадцать карточек ступени стоят двенадцать словарей.
+## Сверено с живой машиной: у сборки #25 обе дороги дают 29 блоков.
+##
+## Считаем ЯКОРЯ, а не клетки: многоклеточный блок занимает несколько и посчитался бы дважды.
+var _sum_cache: Dictionary = {}
+
+func _summary(preset: int) -> Dictionary:
+	if _sum_cache.has(preset):
+		return _sum_cache[preset]
+	var n := Node3D.new()
+	n.set_script(BLOCKS_SCRIPT)
+	n.set("layout_preset", preset)
+	n.call("_init_map")
+	n.call("_define_layout")
+	var count := {}
+	var total := 0
+	var m: Array = n.get("map")
+	var owners: Dictionary = n.get("cell_owner")
+	var seen := {}
+	for x in m.size():
+		for y in (m[x] as Array).size():
+			for z in ((m[x] as Array)[y] as Array).size():
+				var bt: int = int(((m[x] as Array)[y] as Array)[z])
+				if bt == G.Block.EMPTY:
+					continue
+				var key: String = String(owners.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z]))
+				if seen.has(key):
+					continue
+				seen[key] = true
+				count[bt] = int(count.get(bt, 0)) + 1
+				total += 1
+	n.free()
+	var out := {"total": total, "count": count}
+	_sum_cache[preset] = out
+	return out
+
+## Список «имя ×N» по заданным типам, "" если ни одного. Порядок — по УБЫВАНИЮ количества, чтобы
+## главное оружие сборки стояло первым.
+func _sum_line(preset: int, types: Array) -> String:
+	var count: Dictionary = (_summary(preset) as Dictionary)["count"]
+	var rows: Array = []
+	for bt in types:
+		var k: int = int(bt)
+		if count.has(k):
+			rows.append({"n": G.block_name(k), "c": int(count[k])})
+	rows.sort_custom(func(a, b): return a["c"] > b["c"] if a["c"] != b["c"] else a["n"] < b["n"])
+	var parts: Array[String] = []
+	for r in rows:
+		parts.append("%s x%d" % [String(r["n"]), int(r["c"])])
+	return ", ".join(parts)
+
+## ЭНЕРГЕТИКА СБОРКИ — аккумуляторы, купол, поле ремонта. Три номера перечислены здесь, а не
+## взяты категорией: категории магазина делят блоки по прилавку («атака», «блоки», «фабрика»),
+## а вопрос тут другой — «чем эта машина держится под огнём».
+const POWER_BLOCKS := [G.Block.BATTERY, G.Block.SHIELD, G.Block.REGEN]
+
 func _build_guns(preset: int) -> String:
-	var b: Dictionary = BLOCKS_SCRIPT.ENEMY_BUILDS.get(preset, {})
-	var guns: Array[String] = []
-	for key in ["deck", "top", "crown", "wings", "front"]:
-		for v in _as_list(b.get(key)):
-			var n: String = G.block_name(int(v))
-			if _is_weapon(int(v)) and not guns.has(n):
-				guns.append(n)
-	return ", ".join(guns)
+	return _sum_line(preset, G.BLOCK_CATEGORIES.get("attack", []))
 
-func _as_list(v: Variant) -> Array:
-	if v is Array:
-		return v as Array
-	return [] if v == null else [v]
-
-## Оружие или нет — спрашиваем У СПИСКА МАГАЗИНА, а не у своего перечня номеров: категории
-## уже есть (G.BLOCK_CATEGORIES), по ним фильтрует и магазин, и справочник, и вторая копия
-## разошлась бы с ними на первой же новой пушке.
-func _is_weapon(bt: int) -> bool:
-	var atk = G.BLOCK_CATEGORIES.get("attack", [])
-	return atk is Array and (atk as Array).has(bt)
+func _build_power(preset: int) -> String:
+	return _sum_line(preset, POWER_BLOCKS)
 
 # ── Действия ─────────────────────────────────────────────────────────────────
 func _on_spawn() -> void:
@@ -552,15 +599,16 @@ func _pick_card(preset: int, vi: int) -> Control:
 	var b := Button.new()
 	b.toggle_mode = true
 	b.button_pressed = (_picker_gi == _gi and vi == _vi)
-	b.custom_minimum_size = Vector2(0, 56)
+	b.custom_minimum_size = Vector2(0, 68)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	b.add_theme_font_size_override("font_size", 11)
-	var row: Dictionary = BLOCKS_SCRIPT.ENEMY_BUILDS.get(preset, {})
 	var guns: String = _build_guns(preset)
-	b.text = "#%d  %s\n%s" % [preset,
-			tr("%d rows · %d wide") % [int(row.get("rows", 1)), int(row.get("width", 1))],
-			guns if guns != "" else tr("no weapons")]
+	var power: String = _build_power(preset)
+	b.text = "#%d  %s\n%s\n%s" % [preset,
+			tr("%d blocks") % int((_summary(preset) as Dictionary)["total"]),
+			guns if guns != "" else tr("no weapons"),
+			power if power != "" else tr("no power")]
 	b.pressed.connect(_on_pick_build.bind(vi))
 	return b
 

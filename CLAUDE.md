@@ -609,8 +609,13 @@ project: read it before claiming how anything works.
   not do this — they compare nothing and never say how many there are, so learning what a step
   holds meant clicking through all twelve and remembering. Spawn works without closing the window,
   since several machines of one step usually go down in a row. Every word on a card is computed
-  from the `ENEMY_BUILDS` row; hand-written captions would be seventy-six places to disagree with
-  the table. The groups come from `PRESET_TIERS` itself, plus one last group for everything not on
+  by BUILDING THE LAYOUT FOR REAL — a `blocks.gd` node outside the tree, `_init_map` plus
+  `_define_layout`. The table row answers only part of the question: `wings` is one type across
+  two shoulders, and armour plates and the floor are not in it at all — `_layout_enemy` lays those
+  out from the row count and the width. Counting them again here would be a second copy of that
+  function. `set_block` only writes the grid, so not one block scene is instantiated and twelve
+  cards cost twelve dictionaries; answers are cached. Cross-checked against a live machine: build
+  #25 comes out at 29 blocks both ways. The groups come from `PRESET_TIERS` itself, plus one last group for everything not on
   the ladder (miners and any future row), because a proving ground has to show what the value curve
   never rolls.
 - THE PARTS LIST READS THE MACHINE, NOT THE TABLE (`_refresh_parts` over `blocks.get_layout`).
