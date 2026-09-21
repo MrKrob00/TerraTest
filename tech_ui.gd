@@ -1554,6 +1554,21 @@ func _build_settings_tab() -> void:
 		ui_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(ui_hint)
 
+	# — СТРОЙКА — вкус, а не правило: одному подобранный блок нужен сразу в руке и на машине,
+	# другой подбирает мусор по дороге и не хочет каждый раз выпадать из езды.
+	_extra_header("— BUILDING —")
+	var pick := CheckButton.new()
+	pick.text = tr("Picking up a block opens assembly")
+	pick.button_pressed = G.build_on_pickup
+	pick.add_theme_font_size_override("font_size", 14)
+	pick.toggled.connect(func(on: bool) -> void: G.build_on_pickup = on; G.save_settings())
+	_extra_vb.add_child(pick)
+	var pick_hint := Label.new()
+	pick_hint.text = tr("Off — the block stays in hand, assembly opens by its button.")
+	pick_hint.add_theme_font_size_override("font_size", 12)
+	pick_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(pick_hint)
+
 	# — КАМЕРА — (перенесено из HUD: управление камерой настраивается здесь, в гараже)
 	_extra_header("— CAMERA —")
 	_extra_vb.add_child(_cam_slider(tr("Rotation sensitivity"), G.cam_look_sens,

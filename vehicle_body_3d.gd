@@ -2064,7 +2064,12 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	_cabin_ground = null
 	if ghost_block:
 		ghost_block.visible = false
-	_on_building_pressed()                          # гарантируем режим стройки (if Building: return внутри)
+	# НАСТРОЙКА, А НЕ ПРАВИЛО (G.build_on_pickup). Блок в руке ставить всё равно придётся, так
+	# что вход в стройку сразу экономит нажатие; но подбирать блоки на ходу, не собираясь ничего
+	# строить, — тоже нормальный способ играть, и тогда это выбрасывает из езды каждый раз.
+	# Выключено — блок просто остаётся в руке, а стройка открывается кнопкой, как и раньше.
+	if G.build_on_pickup:
+		_on_building_pressed()                      # (if Building: return внутри)
 	return true
 
 func _on_take_pressed() -> void:

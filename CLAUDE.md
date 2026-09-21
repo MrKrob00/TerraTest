@@ -839,6 +839,12 @@ project: read it before claiming how anything works.
 - A REFUSED PLACEMENT SAYS WHY. Silent `return` reads exactly like "I missed": the ghost is still
   on the cell, the block is still in hand, and closing the garage then returns it to the inventory —
   from the outside that is "the block I placed vanished".
+- PICKING A BLOCK UP OFF THE GROUND OPENS ASSEMBLY, AND THAT IS A SETTING (`G.build_on_pickup`,
+  in the garage settings under BUILDING), not a rule. The block has nowhere to go but onto a
+  machine, so for one player the mode switch is a tap saved; for another, who collects scrap on
+  the way without meaning to build anything, it is being thrown out of driving every time. The
+  door is single — `vehicle_body_3d._grab_world_block`. Taking a block OUT OF THE INVENTORY is not
+  under the setting: that already happens inside the assembly screen.
 - WHAT IS IN THE HAND IS `hand_node()`. `block_body` is the block being AIMED AT on a machine, and
   it is already counted by whoever counts machines. Asking `block_body` for "does the player have
   this block" made a block in the hand belong to nobody — the energy branch dropped a second panel
