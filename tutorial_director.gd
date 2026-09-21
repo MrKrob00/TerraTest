@@ -513,6 +513,12 @@ func _on_tutorial_finished() -> void:
 	_guide.clear()
 	_set_ui_locked(false)
 	_step = ""
+	# НА ПОЛИГОНЕ СЮЖЕТА НЕТ. Обучение там закрывается сразу (флаг `tutorial` снят), и обе
+	# следующие строки оказывались его единственным следом: Механик поздравлял с окончанием и
+	# сообщал, что «земля тут нигде не ровная», стоя на ровной по определению земле, а за ним
+	# заводился таймер первого врага — он упирался в запрет спавнера, то есть работал впустую.
+	if G.proving_ground:
+		return
 	_say_lines(["That is the whole of it. Take it for a drive — the ground here is not level anywhere."])
 	_first_enemy_after_delay()
 

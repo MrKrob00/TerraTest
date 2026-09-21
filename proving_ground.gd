@@ -49,6 +49,7 @@ var _gi: int = 0                        # какая ступень выбран
 var _vi: int = 0                        # какой вариант внутри неё
 var _last_spawn: Node3D = null          # чей состав показывает подменю «Состав»
 var _parts: VBoxContainer = null
+var _res_box: GridContainer = null      # подменю «Ресурсы»: кнопка на каждый вид сырья
 var _ally: bool = false
 
 ## ФЛАГИ ПОДНИМАЮТСЯ В _enter_tree, А НЕ В _ready, И ЭТО НЕ ПРИДИРКА. Годот обходит дерево
@@ -259,6 +260,19 @@ func _build_ui() -> void:
 	_parts.add_theme_constant_override("separation", 1)
 	_parts.visible = false
 	box.add_child(_parts)
+
+	# РЕСУРСЫ — тоже подменю: десять видов постоянно на панели не нужны, а цепочку производства
+	# без сырья не проверить ничем. Жил на ровной земле нет и быть не может, так что это
+	# единственный способ дать конвейеру что возить.
+	var res_btn := _btn(tr("Resources"), _on_res_menu, 0.0)
+	res_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(res_btn)
+	_res_box = GridContainer.new()
+	_res_box.columns = 2
+	_res_box.add_theme_constant_override("h_separation", 4)
+	_res_box.add_theme_constant_override("v_separation", 3)
+	_res_box.visible = false
+	box.add_child(_res_box)
 
 	box.add_child(_toggle(tr("Enemy AI"), _flag(&"enemy_ai"), _on_ai))
 	box.add_child(_toggle(tr("Spawn as ally"), false, _on_ally))
@@ -663,6 +677,71 @@ func _refresh_parts() -> void:
 	_parts.add_child(_part_row(tr("Parts: %d") % total, ""))
 	for n in names:
 		_parts.add_child(_part_row(String(n), "x%d" % int(count[n])))
+
+# ── Ресурсы ──────────────────────────────────────────────────────────────────
+# НА РОВНОЙ ЗЕМЛЕ ЖИЛ НЕТ. Полигон генерируется флагом `LiteTerrainGen.flat`, залежи и деревья
+# раскладываются по рельефу и биомам, которых здесь тоже нет, — то есть сырья на полигоне не
+# появится никогда. А без сырья половина блоков (приёмник, конвейер, процессор, склад,
+# фабрикатор, продавец) проверить нечем: они все начинаются с предмета, который кто-то привёз.
+#
+# ВИДЫ ЗАДАНЫ КЛЮЧАМИ (`resource.set_kind_key`) — той же строкой, которой их различают склад,
+# фабрикатор и сейв. Свой список «металл + тип» здесь был бы вторым разбором того же ключа.
+# Компонентов в списке нет намеренно: их делает фабрикатор из слитков, и выдать их готовыми
+# значило бы убрать ровно тот шаг, ради которого цепочку и проверяют.
+const RES_KINDS := ["ore0", "ore1", "ore2", "ore3", "m0", "m1", "m2", "m3", "coal", "wood"]
+## Сколько штук за нажатие. Одна ничего не покажет: конвейер и склад интересны потоком.
+const RES_BATCH := 5
+## Куда класть. Ближе машины, чем враг (SPAWN_DIST): руду везут коллектором, а у него радиус.
+const RES_DIST := 7.0
+const RES_SCATTER := 1.6
+
+func _on_res_menu() -> void:
+	if _res_box == null:
+		return
+	_res_box.visible = not _res_box.visible
+	if _res_box.visible and _res_box.get_child_count() == 0:
+		for k in RES_KINDS:
+			var b := _btn(G.kind_name(k), _on_spawn_res.bind(String(k)), 0.0)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			b.add_theme_font_size_override("font_size", 12)
+			_res_box.add_child(b)
+	_clamp_later.call_deferred()
+
+func _on_spawn_res(key: String) -> void:
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if objects == null:
+		_say(tr("No world objects node."))
+		return
+	var scn: PackedScene = load("res://resource.tscn") as PackedScene
+	if scn == null:
+		_say(tr("No resource scene."))
+		return
+	var at: Vector3 = _res_point()
+	for i in RES_BATCH:
+		var r: Node3D = scn.instantiate() as Node3D
+		if r == null:
+			continue
+		# В ДЕРЕВО РАНЬШЕ, ЧЕМ КООРДИНАТА: `set_kind_key` перекрашивает материал, а global_position
+		# у узла вне дерева смысла не имеет.
+		objects.add_child(r)
+		if r.has_method("set_kind_key"):
+			r.set_kind_key(key)
+		r.global_position = at + Vector3(
+				randf_range(-RES_SCATTER, RES_SCATTER), 0.9 + 0.35 * float(i),
+				randf_range(-RES_SCATTER, RES_SCATTER))
+	_say(tr("Dropped %s: %d") % [G.kind_name(key), RES_BATCH])
+
+## Перед камерой, но близко: сюда подъезжают приёмником, а не смотрят издали.
+func _res_point() -> Vector3:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return Vector3.ZERO
+	var fwd: Vector3 = -cam.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		fwd = Vector3.FORWARD
+	var p: Vector3 = cam.global_position + fwd.normalized() * RES_DIST
+	return Vector3(p.x, G.ground_y(p, p.y), p.z)
 
 func _part_row(left: String, right: String) -> Control:
 	var row := HBoxContainer.new()
