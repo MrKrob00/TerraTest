@@ -465,14 +465,20 @@ const ENEMY_BUILDS: Dictionary = {
 	# ── ШАХТЁРЫ: приехали работать, а не воевать ──
 	# Ни одного ствола: весь их ответ на обстрел — уехать (enemy_vehicle._mine_tick). В ступени
 	# лестницы они НЕ входят, у них своя квота у спавнера, иначе они заняли бы место бойцов.
+	# КОЛЛЕКТОР, А НЕ СКЛАД, и это не вкус. Склад принимает только то, что передал ему сосед по
+	# цепочке, и только НА ЯКОРЕ (`FactoryBlock._factory_active` спрашивает у машины поле
+	# `anchored`, которого у `enemy_vehicle` нет вовсе) — то есть на едущем добытчике он не мог
+	# принять ничего ни при каких условиях, и вся его добыча оставалась лежать на земле у жилы.
+	# Коллектор якоря НЕ ТРЕБУЕТ намеренно (`collector.gd`): подбирать с земли на ходу — его
+	# единственная работа. Теперь «догнать его ради груза» значит то, что написано.
 	90: {"rows": 3, "wheel": G.Block.WHEEL, "width": 1, "front": G.Block.DRILL,
-		"deck": [G.Block.BLOCK, G.Block.STORAGE]},
+		"deck": [G.Block.BLOCK, G.Block.COLLECTOR]},
 	91: {"rows": 3, "wheel": G.Block.WHEEL, "width": 3, "front": G.Block.DRILL,
-		"deck": [G.Block.BLOCK, G.Block.STORAGE, G.Block.BLOCK]},
+		"deck": [G.Block.BLOCK, G.Block.COLLECTOR, G.Block.BLOCK]},
 	92: {"rows": 4, "wheel": G.Block.BIG_WHEEL, "width": 3, "front": G.Block.DRILL,
-		"deck": [G.Block.BLOCK, G.Block.STORAGE, G.Block.STORAGE, G.Block.BLOCK]},
+		"deck": [G.Block.BLOCK, G.Block.COLLECTOR, G.Block.COLLECTOR, G.Block.BLOCK]},
 	93: {"rows": 2, "wheel": G.Block.SMALL_WHEEL, "width": 1, "front": G.Block.SMALL_DRILL,
-		"deck": [G.Block.STORAGE]},
+		"deck": [G.Block.COLLECTOR]},
 
 	84: {"rows": 6, "wheel": G.Block.BIG_WHEEL, "width": 5,
 		"deck": [G.Block.ROCKET, G.Block.BLOCK, G.Block.BATTERY, G.Block.BATTERY, G.Block.BATTERY, G.Block.BLOCK],
