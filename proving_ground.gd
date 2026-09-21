@@ -49,7 +49,7 @@ var _gi: int = 0                        # какая ступень выбран
 var _vi: int = 0                        # какой вариант внутри неё
 var _last_spawn: Node3D = null          # чей состав показывает подменю «Состав»
 var _parts: VBoxContainer = null
-var _res_box: GridContainer = null      # подменю «Ресурсы»: кнопка на каждый вид сырья
+var _res_win: PanelContainer = null     # окно «Ресурсы»: жилы сверху, предметы под ними
 var _ally: bool = false
 
 ## ФЛАГИ ПОДНИМАЮТСЯ В _enter_tree, А НЕ В _ready, И ЭТО НЕ ПРИДИРКА. Годот обходит дерево
@@ -239,10 +239,10 @@ func _build_ui() -> void:
 	box.add_child(_body)
 	box = _body                             # дальше всё складывается внутрь тела панели
 
-	# ВЫБОР ВРАГА — ОТДЕЛЬНОЕ ОКНО, а не стрелки в углу панели. Стрелками нельзя ни сравнить
-	# соседние сборки, ни увидеть, сколько их вообще: чтобы понять, что стоит на ступени, надо
-	# было прощёлкать её целиком и запомнить. В окне ступени лежат колонкой, сборки — карточками,
-	# и выбор виден целиком.
+	# ПАНЕЛЬ РАЗБИТА НА ТРИ ЧАСТИ, И ЭТО НЕ УКРАШЕНИЕ. Здесь двенадцать органов управления трёх
+	# разных пород: чем ставить, чем переключать мир и чем убирать за собой. Сплошным столбиком
+	# они читаются как список, в котором каждый раз ищешь нужную строку заново.
+	_section(box, tr("SPAWN"), true)
 	_pick_btn = _btn("", _on_open_picker, 0.0)
 	_pick_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_pick_btn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -261,24 +261,20 @@ func _build_ui() -> void:
 	_parts.visible = false
 	box.add_child(_parts)
 
-	# РЕСУРСЫ — тоже подменю: десять видов постоянно на панели не нужны, а цепочку производства
-	# без сырья не проверить ничем. Жил на ровной земле нет и быть не может, так что это
-	# единственный способ дать конвейеру что возить.
-	var res_btn := _btn(tr("Resources"), _on_res_menu, 0.0)
+	# РЕСУРСЫ — ОТДЕЛЬНОЕ ОКНО, по той же причине, что и выбор врага: пятнадцать кнопок (жилы и
+	# предметы) на панели шириной в триста точек — это столбик во весь экран, и остальное
+	# управление уезжает под него.
+	var res_btn := _btn(tr("Resources…"), _on_open_res, 0.0)
 	res_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(res_btn)
-	_res_box = GridContainer.new()
-	_res_box.columns = 2
-	_res_box.add_theme_constant_override("h_separation", 4)
-	_res_box.add_theme_constant_override("v_separation", 3)
-	_res_box.visible = false
-	box.add_child(_res_box)
 
+	_section(box, tr("WORLD"), false)
 	box.add_child(_toggle(tr("Enemy AI"), _flag(&"enemy_ai"), _on_ai))
 	box.add_child(_toggle(tr("Spawn as ally"), false, _on_ally))
 	box.add_child(_toggle(tr("Player invulnerable"), _flag(&"player_invulnerable"), _on_invuln))
 	box.add_child(_toggle(tr("Infinite energy"), _flag(&"infinite_energy"), _on_energy))
 
+	_section(box, tr("CLEAN UP"), false)
 	var row2 := HBoxContainer.new()
 	row2.add_theme_constant_override("separation", 4)
 	box.add_child(row2)
@@ -343,6 +339,18 @@ func _btn(text: String, cb: Callable, min_w: float) -> Button:
 		b.custom_minimum_size = Vector2(min_w, 0)
 	b.pressed.connect(cb)
 	return b
+
+## Подпись раздела. Черта сверху у всех, кроме первого: она разделяет, а над первым разделять
+## нечего — там заголовок панели.
+func _section(into: Node, text: String, first: bool) -> void:
+	if not first:
+		var sep := HSeparator.new()
+		into.add_child(sep)
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", 11)
+	l.add_theme_color_override("font_color", Color(0.45, 0.72, 0.62, 0.85))
+	into.add_child(l)
 
 func _toggle(text: String, on: bool, cb: Callable) -> CheckBox:
 	var c := CheckBox.new()
@@ -695,17 +703,122 @@ const RES_BATCH := 5
 const RES_DIST := 7.0
 const RES_SCATTER := 1.6
 
-func _on_res_menu() -> void:
-	if _res_box == null:
+## ЖИЛА ВАЖНЕЕ ПРЕДМЕТА, поэтому в окне она стоит первой. Выложенная руда отвечает на вопрос
+## «доедет ли ящик до фабрикатора»; жила отвечает на всё, что до этого: наводится ли бур, найдёт
+## ли её авто-шахтёр, подберёт ли коллектор то, что из неё вылетело, доберётся ли до неё вражеский
+## добытчик. Это разные блоки и разные механики, и предметами их не подменить.
+const VEIN_KINDS := [0, 1, 2, 3, -1]        # четыре металла плюс дерево (-1: у жил это флаг)
+## Дальше предметов: жила стоит на земле, и подъезжать к ней надо, а не упираться в неё бампером.
+const VEIN_DIST := 14.0
+const VEIN_SCATTER := 3.0
+
+const RES_W_MAX := 460.0
+const RES_ID := "proving_res"
+
+func _on_open_res() -> void:
+	if _res_win == null:
+		_build_res_win()
+	_res_win.visible = true
+	_fit_res_win()
+
+func _on_close_res() -> void:
+	if _res_win != null:
+		_res_win.visible = false
+
+func _build_res_win() -> void:
+	_res_win = PanelContainer.new()
+	_res_win.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.07, 0.09, 0.97)
+	sb.border_color = Color(0.3, 0.85, 0.6, 0.7)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(7)
+	sb.set_content_margin_all(9)
+	_res_win.add_theme_stylebox_override("panel", sb)
+	_res_win.visible = false
+	_layer.add_child(_res_win)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	_res_win.add_child(col)
+
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	var title := Label.new()
+	title.text = tr("RESOURCES")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", Color(0.45, 1.0, 0.7))
+	head.add_child(title)
+	head.add_child(_btn("X", _on_close_res, 30.0))
+	DragWindow.attach(_res_win, title, RES_ID)
+
+	_section(col, tr("VEINS — stand in the world, are mined"), true)
+	var vg := GridContainer.new()
+	vg.columns = 3
+	vg.add_theme_constant_override("h_separation", 4)
+	vg.add_theme_constant_override("v_separation", 4)
+	col.add_child(vg)
+	for t in VEIN_KINDS:
+		var vt: int = int(t)
+		var name: String = tr("Wood") if vt < 0 else String(G.METAL_NAME[vt])
+		var vb := _btn(tr(name), _on_spawn_vein.bind(vt), 0.0)
+		vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vb.add_theme_font_size_override("font_size", 12)
+		vg.add_child(vb)
+
+	_section(col, tr("ITEMS — lie on the ground, are carried"), false)
+	var ig := GridContainer.new()
+	ig.columns = 3
+	ig.add_theme_constant_override("h_separation", 4)
+	ig.add_theme_constant_override("v_separation", 4)
+	col.add_child(ig)
+	for k in RES_KINDS:
+		var b := _btn(G.kind_name(k), _on_spawn_res.bind(String(k)), 0.0)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.add_theme_font_size_override("font_size", 12)
+		ig.add_child(b)
+
+	col.add_child(_btn(tr("Done"), _on_close_res, 0.0))
+
+## Ширина от экрана, как у окна выбора врага: на телефоне и на планшете это разные окна.
+func _fit_res_win() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	_res_win.custom_minimum_size = Vector2(minf(RES_W_MAX, vp.x * 0.94), 0)
+	_res_win.reset_size()
+	_res_win.position = ((vp - _res_win.size) * 0.5).max(Vector2(8.0, 8.0))
+
+## Жилу ставит ВЛАДЕЛЕЦ ЖИЛ (`resource_nodes.spawn_vein`), а не панель. Там слот MultiMesh, узел
+## с коллизией, цвет руды и стриминг; своя раскладка здесь разошлась бы с настоящей на первой же
+## правке, и полигон начал бы показывать то, чего в игре нет.
+func _on_spawn_vein(ore_type: int) -> void:
+	var rn: Node = _resource_nodes()
+	if rn == null:
+		_say(tr("No resource nodes in the scene."))
 		return
-	_res_box.visible = not _res_box.visible
-	if _res_box.visible and _res_box.get_child_count() == 0:
-		for k in RES_KINDS:
-			var b := _btn(G.kind_name(k), _on_spawn_res.bind(String(k)), 0.0)
-			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			b.add_theme_font_size_override("font_size", 12)
-			_res_box.add_child(b)
-	_clamp_later.call_deferred()
+	var at: Vector3 = _res_point(VEIN_DIST)
+	var made := 0
+	for i in VEIN_BATCH:
+		var p: Vector3 = at + Vector3(
+				randf_range(-VEIN_SCATTER, VEIN_SCATTER), 0.0,
+				randf_range(-VEIN_SCATTER, VEIN_SCATTER))
+		if rn.call("spawn_vein", p, maxi(ore_type, 0), ore_type < 0) != null:
+			made += 1
+	var what: String = tr("Wood") if ore_type < 0 else tr(String(G.METAL_NAME[ore_type]))
+	_say(tr("Veins placed — %s: %d") % [what, made])
+
+## Сколько жил за нажатие. Три, а не одна: авто-шахтёр выбирает ближайшую из нескольких, и на
+## одной эту часть его поведения не увидеть вовсе.
+const VEIN_BATCH := 3
+
+func _resource_nodes() -> Node:
+	var map: Node = get_node_or_null("/root/Main/map")
+	if map == null:
+		return null
+	for c in map.get_children():
+		if c.has_method("spawn_vein"):
+			return c
+	return null
 
 func _on_spawn_res(key: String) -> void:
 	var objects: Node = get_node_or_null("/root/Main/objects")
@@ -731,8 +844,8 @@ func _on_spawn_res(key: String) -> void:
 				randf_range(-RES_SCATTER, RES_SCATTER))
 	_say(tr("Dropped %s: %d") % [G.kind_name(key), RES_BATCH])
 
-## Перед камерой, но близко: сюда подъезжают приёмником, а не смотрят издали.
-func _res_point() -> Vector3:
+## Перед камерой. Расстояние разное: к предмету подъезжают приёмником вплотную, к жиле — буром.
+func _res_point(dist: float = RES_DIST) -> Vector3:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return Vector3.ZERO
@@ -740,7 +853,7 @@ func _res_point() -> Vector3:
 	fwd.y = 0.0
 	if fwd.length_squared() < 0.0001:
 		fwd = Vector3.FORWARD
-	var p: Vector3 = cam.global_position + fwd.normalized() * RES_DIST
+	var p: Vector3 = cam.global_position + fwd.normalized() * dist
 	return Vector3(p.x, G.ground_y(p, p.y), p.z)
 
 func _part_row(left: String, right: String) -> Control:

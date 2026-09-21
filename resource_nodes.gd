@@ -185,6 +185,36 @@ func _rebuild_data() -> void:
 	_data.clear()
 	for k in _regions:
 		_data.append_array(_regions[k])
+	_data.append_array(_made)
+
+## ── ЖИЛА ПО ЗАКАЗУ ───────────────────────────────────────────────────────────
+## Заказанные жилы живут ОТДЕЛЬНЫМ списком, а не в регионе. Регион считается от сида и обязан
+## давать один и тот же набор сколько угодно раз; дописанная в него запись исчезла бы при первой
+## же пересборке — то есть в тот момент, когда игрок отъехал на регион и вернулся.
+var _made: Array = []
+
+## Поставить жилу в мировой точке. Ровная земля полигона не рождает ни одной (`min_height` 2.0
+## против flat_y 0.0), а без жилы нечем проверить ни бур, ни авто-шахтёра, ни коллектор.
+##
+## Запись делается ТОЙ ЖЕ ФОРМЫ, что у `_build_region`, и отдаётся ТОМУ ЖЕ `_stream_in`: слот
+## MultiMesh, узел с коллизией, тип и цвет руды — всё уже там, и второй такой раскладки быть не
+## должно. `ore_type` — индекс `G.Metal`; дерево у жил это отдельный флаг, а не пятый металл.
+func spawn_vein(world_pos: Vector3, ore_type: int, wood: bool) -> Node:
+	if resource_nodes.is_empty():
+		return null
+	var h: float = G.ground_y(world_pos, world_pos.y)
+	var gpos := Vector3(world_pos.x, h + 0.25, world_pos.z)
+	var v: Dictionary = {
+		"pos": to_local(gpos),
+		"gpos": gpos,
+		"scene": resource_nodes[randi() % resource_nodes.size()],
+		"ore_type": ore_colors.size() if wood else clampi(ore_type, 0, ore_colors.size() - 1),
+		"wood": wood, "slot": -1, "node": null,
+	}
+	_made.append(v)
+	_rebuild_data()
+	_stream_in(v)
+	return v.get("node")
 
 ## Жилы ОДНОГО региона. Своё зерно от сида мира и координат: соседний регион считается
 ## независимо, а этот всегда даёт одно и то же.

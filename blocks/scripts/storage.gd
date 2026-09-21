@@ -32,6 +32,26 @@ func _ready() -> void:
 	_build_label()
 	_refresh_visual()
 
+# ── Груз переживает перезаход ────────────────────────────────────────────────
+# Вид и количество живут ПОЛЯМИ УЗЛА, а сохранение хранит клетки, — то же расхождение, что у
+# заряда аккумулятора, и решается оно там же (blocks.store_map). Без этого база, построенная
+# вокруг склада, открывалась пустой: весь свезённый за сеанс груз исчезал.
+#
+# СЧЁТЧИКИ ЧАНКОВ ЕДУТ ВМЕСТЕ С КОЛИЧЕСТВОМ. «chunk:5» говорит, ЧТО внутри, но не СКОЛЬКО, и
+# склад, вернувшийся без них, отдал бы наружу пустые контейнеры.
+func store_state() -> Dictionary:
+	return {"k": stored_kind, "n": count, "c": _chunk_counts.duplicate()}
+
+func restore_store(st: Dictionary) -> void:
+	stored_kind = String(st.get("k", ""))
+	count = clampi(int(st.get("n", 0)), 0, CAPACITY)
+	_chunk_counts.clear()
+	for c in (st.get("c", []) as Array):
+		_chunk_counts.append(int(c))
+	if count <= 0:
+		stored_kind = ""            # пустой склад обязан принимать любой вид
+	_refresh_visual()
+
 # ── Приём ────────────────────────────────────────────────────────────────────
 # Предмет не кладём внутрь, а СЧИТАЕМ и уничтожаем: витрина одна на весь склад.
 func try_receive(item: Node3D) -> bool:
