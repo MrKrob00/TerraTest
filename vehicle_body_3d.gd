@@ -542,10 +542,16 @@ func disassemble() -> void:
 			var cell := Vector3i(roundi(n3.position.x + 5), roundi(n3.position.y + 5), roundi(n3.position.z + 5))
 			if block_map_node.has_method("remove_block"):
 				block_map_node.remove_block(cell.x, cell.y, cell.z)
+			# Коллизию блока ищем ЯРЛЫКОМ (его ставят оба пути постановки), и только потом по
+			# координате: смещений у крупных блоков теперь несколько, и они поворачиваются вместе
+			# с блоком, так что одна зашитая поправка 2×2×2 промахивалась бы мимо остальных.
 			for col in get_children():
-				if col is CollisionShape3D and col.is_in_group("block_collision") \
-						and (col.position == n3.position \
-						or col.position == n3.position + BIG_BLOCK_COL_OFFSET):
+				if not (col is CollisionShape3D and col.is_in_group("block_collision")):
+					continue
+				var tag: Variant = col.get_meta("block_owner") if col.has_meta("block_owner") else null
+				var mine: bool = (tag == b) if tag != null else (col.position == n3.position \
+						or col.position == n3.position + BIG_BLOCK_COL_OFFSET)
+				if mine:
 					col.queue_free()
 			n3.reparent(objects)
 	Wheels.clear()
@@ -1463,13 +1469,18 @@ func _preview_held(res: Dictionary) -> void:
 	var bmn: Node = _btm()            # строим на СЕБЕ или на соседней своей машине — решил луч
 	if bmn == null:
 		return
-	var ad :Vector3 = bmn.attach_delta(int(instance.block), String(res.face))
+	# ОРИЕНТАЦИЮ СЧИТАЕМ ДО КЛЕТОК, а не после: у продолговатого блока от угла зависит, вдоль
+	# какой оси он ляжет, то есть и куда сместить якорь (attach_delta), и свободно ли там
+	# (can_place). Раньше клетки считались без угла, и развёрнутый блок занимал их поперёк себя.
+	var orient := _face_orient(res.face, instance, build_basis) * build_basis
+	var yaw: float = orient.get_euler().y
+	var ad :Vector3 = bmn.attach_delta(int(instance.block), String(res.face), yaw)
 	var gx: float = float(res.x) + ad.x
 	var gy: float = float(res.y) + ad.y
 	var gz: float = float(res.z) + ad.z
 	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
 	var placeable: bool = bmn.can_attach(int(res.x), int(res.y), int(res.z),
-			instance, res.face) and bmn.can_place(instance.block, gx, gy, gz)
+			instance, res.face) and bmn.can_place(instance.block, gx, gy, gz, yaw)
 	if not placeable:
 		instance.top_level = false
 		instance.position = Vector3.ZERO       # обратно в руку
@@ -1477,7 +1488,6 @@ func _preview_held(res: Dictionary) -> void:
 		if ghost_block:
 			ghost_block.visible = false
 		return
-	var orient := _face_orient(res.face, instance, build_basis) * build_basis
 	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
 	var grid: Node3D = bmn as Node3D
 	var world_basis: Basis = (grid.global_transform.basis * orient).orthonormalized()
@@ -2105,7 +2115,12 @@ func _on_take_pressed() -> void:
 		# и с «блок в руке остался»: игрок видит призрак на месте и не понимает, поставлен блок
 		# или только примерен — а в гараже он потом ещё и «пропадает в инвентарь» (закрытие
 		# гаража возвращает руку в инвентарь).
-		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"]):
+		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI. Нужна
+		# ДО вопроса о клетках: у продолговатого блока угол решает, вдоль какой оси он ляжет.
+		var orient := _face_orient(pres.face, instance, build_basis) * build_basis
+		var yaw: float = orient.get_euler().y
+		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"],
+				BuildingBlock["z"], yaw):
 			Dialogue.say("System", tr("That cell is taken."))
 			return
 		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
@@ -2115,8 +2130,6 @@ func _on_take_pressed() -> void:
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
 		instance.top_level = false
-		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI.
-		var orient := _face_orient(pres.face, instance, build_basis) * build_basis
 		instance.basis = orient
 		instance.position = Vector3(BuildingBlock["x"]-5, BuildingBlock["y"]-5, BuildingBlock["z"]-5)
 		# ИЩЕМ КОЛЛИЗИЮ ПЕРЕБОРОМ, а не get_child(0). Порядок детей в сцене блока — вещь,
@@ -2129,11 +2142,9 @@ func _on_take_pressed() -> void:
 			return
 		var collision: CollisionShape3D = src_col.duplicate()
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
-		# .size есть только у коробки. У любой другой формы обращение к нему роняло бы
-		# постановку ровно так же — молча и на полпути.
-		var box: BoxShape3D = collision.shape as BoxShape3D
-		if box != null and box.size == Vector3(2, 2, 2):
-			collision.position += BIG_BLOCK_COL_OFFSET
+		# Сдвиг от якоря — у ХОЗЯИНА СЕТКИ (blocks.collider_offset), а не второй таблицей здесь:
+		# тут знали ровно один размер, 2×2×2, и всё остальное вставало на полклетки мимо.
+		collision.position += bmn.collider_offset(collision.shape, yaw)
 		tgt.add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
 		instance.reparent(tgt_blocks, false)

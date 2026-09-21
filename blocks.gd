@@ -747,32 +747,91 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 	return cell_owner.get(key, key) == key
 
 # ── Cells a block occupies ──────────────────────────────────────────────────
-# Anchor (x,y,z). A 2x2x2 (SELLER/PROCESSOR) takes x-1..x, y..y+1, z-1..z (8 cells); everything
-# else takes one.
-func _block_footprint(block: int, x: int, y: int, z: int) -> Array:
+## СМЕЩЕНИЯ КЛЕТОК ОТ ЯКОРЯ, в СВОИХ осях блока. Якорь у крупного блока в углу, а не в середине,
+## поэтому смещения уходят в минус по X и Z.
+##
+## Ось у продолговатого блока — та же, что у его модели и коллизии. Клин (WEDGE2) лежал в списке
+## двухклеточных «вдоль X», а его BoxShape3D — (1, 1, 2), то есть вдоль Z, и меш такой же: сетка
+## отдавала ему пару клеток поперёк того места, где он стоял. Замерено: при любом повороте сетка
+## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
+func _footprint_offsets(block: int) -> Array:
 	if block == G.Block.PROCESSOR or block == G.Block.SELLER or block == G.Block.FABRICATOR:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
 				for dz in [-1, 0]:
-					cells.append(Vector3i(x + dx, y + dy, z + dz))
+					cells.append(Vector3i(dx, dy, dz))
 		return cells
 	if block == G.Block.ARMOR4:
 		var cells4: Array = []               # 2×1×2 (xyz)
 		for dx in [-1, 0]:
 			for dz in [-1, 0]:
-				cells4.append(Vector3i(x + dx, y, z + dz))
+				cells4.append(Vector3i(dx, 0, dz))
 		return cells4
-	if block == G.Block.BLOCK2 or block == G.Block.WEDGE2 \
-			or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
-		return [Vector3i(x - 1, y, z), Vector3i(x, y, z)]   # 2×1×1
+	if block == G.Block.WEDGE2:
+		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0)]     # 1×1×2, вдоль Z
+	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
+		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0)]     # 2×1×1
 	if block == G.Block.BLOCK3:
-		return [Vector3i(x - 1, y, z), Vector3i(x, y, z), Vector3i(x + 1, y, z)]   # 3×1×1
-	return [Vector3i(x, y, z)]
+		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0), Vector3i(1, 0, 0)]   # 3×1×1
+	return [Vector3i(0, 0, 0)]
+
+## Клетки блока В ОСЯХ СЕТКИ. **СМЕЩЕНИЯ ПОВОРАЧИВАЮТСЯ ВМЕСТЕ С БЛОКОМ.** И меш, и коллизия
+## крутятся вокруг ЯКОРЯ (см. spawn_block и превью в vehicle_body_3d), а футпринт считался без
+## поворота вовсе — значит развёрнутый на 90° блок лежал поперёк тех клеток, которые сетка ему
+## отдала. Замерено на движке: клин и смелтер при 0°, 90°, 180° и 270° получали один и тот же
+## набор клеток.
+##
+## Поворот кратен 90°, поэтому round() после базиса даёт точные целые.
+func _block_footprint(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> Array:
+	var offs: Array = _footprint_offsets(block)
+	var out: Array = []
+	if offs.size() == 1 or is_zero_approx(yaw):
+		for o in offs:
+			out.append(Vector3i(x + o.x, y + o.y, z + o.z))
+		return out
+	var b := Basis(Vector3.UP, yaw)
+	for o in offs:
+		var r: Vector3 = (b * Vector3(o)).round()
+		out.append(Vector3i(x + int(r.x), y + int(r.y), z + int(r.z)))
+	return out
+
+## НА СКОЛЬКО СДВИНУТЬ КОЛЛИЗИЮ ОТ ЯКОРЯ — одна дверь на оба пути постановки (стартовая сборка
+## через spawn_block и ручная через vehicle_body_3d). Второй экземпляр этого правила лежал в
+## ручной постановке и знал ровно один размер, 2×2×2: всё остальное вставало со смещением в
+## полклетки, а развёрнутое — ещё и не в ту сторону.
+##
+## Якорь у крупного блока в углу, и смещение говорит, куда ОТ ЯКОРЯ уходит тело, — направление в
+## осях самого блока, поэтому его надо повернуть вместе с блоком.
+##
+## Размер коробки здесь — это и есть проверка «покрывает ли коллизия весь футпринт»: у брони она
+## тонкая (1×1×0.2) и стоит на своей грани, ей центр футпринта не нужен.
+func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
+	var box: BoxShape3D = shape as BoxShape3D
+	if box == null:
+		return Vector3.ZERO
+	var off := Vector3.ZERO
+	if box.size == Vector3(2, 2, 2):
+		off = Vector3(-0.5, 0.5, -0.5)
+	elif box.size == Vector3(2, 1, 1):
+		off = Vector3(-0.5, 0.0, 0.0)          # BLOCK2: центрируем 2-широкую коллизию
+	elif box.size == Vector3(1, 1, 2):
+		off = Vector3(0.0, 0.0, -0.5)          # WEDGE2: 1×1×2, длинной стороной по Z
+	elif box.size == Vector3(2, 1, 2):
+		off = Vector3(-0.5, 0.0, -0.5)         # ARMOR4: 2×1×2
+	if off == Vector3.ZERO:
+		return off                             # BLOCK3 и одноклеточные: якорь уже в середине тела
+	return Basis(Vector3.UP, yaw) * off
+
+## Поворот, с которым блок УЖЕ стоит в этой клетке. Нужен всем, кто спрашивает футпринт по карте:
+## сам поворот живёт в rotation_map под ключом ЯКОРЯ.
+func _yaw_at(x: int, y: int, z: int) -> float:
+	var r: Vector3 = rotation_map.get("%d,%d,%d" % [x, y, z], Vector3.ZERO)
+	return r.y
 
 # Can `block` be placed with anchor (x,y,z)? All footprint cells in bounds and empty.
-func can_place(block: int, x: int, y: int, z: int) -> bool:
-	for c in _block_footprint(block, x, y, z):
+func can_place(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> bool:
+	for c in _block_footprint(block, x, y, z, yaw):
 		if not _in_bounds(c.x, c.y, c.z) or map[c.x][c.y][c.z] != G.Block.EMPTY:
 			return false
 	return true
@@ -782,13 +841,16 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 	if not _in_bounds(x, y, z):
 		push_warning("set_block: cell (%d,%d,%d) is out of bounds" % [x, y, z])
 		return false
-	if not can_place(block, x, y, z):
+	# Клетки занимаем ПОД ТЕМ ЖЕ УГЛОМ, под которым блок встанет: у продолговатого блока от этого
+	# зависит, вдоль какой оси он ляжет.
+	var rv: Vector3 = rot if rot is Vector3 else Vector3(0, float(rot), 0)
+	if not can_place(block, x, y, z, rv.y):
 		return false   # overlap or edge: refuse
 	var anchor := "%d,%d,%d" % [x, y, z]
-	for c in _block_footprint(block, x, y, z):
+	for c in _block_footprint(block, x, y, z, rv.y):
 		map[c.x][c.y][c.z] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
-	rotation_map[anchor] = rot if rot is Vector3 else Vector3(0, float(rot), 0)
+	rotation_map[anchor] = rv
 	queue_occlusion()
 	return true
 
@@ -801,7 +863,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 	if not _in_bounds(ax, ay, az) or map[ax][ay][az] == G.Block.EMPTY:
 		return
-	for c in _block_footprint(map[ax][ay][az], ax, ay, az):
+	for c in _block_footprint(map[ax][ay][az], ax, ay, az, _yaw_at(ax, ay, az)):
 		if _in_bounds(c.x, c.y, c.z):
 			map[c.x][c.y][c.z] = G.Block.EMPTY
 			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
@@ -896,14 +958,19 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	# Offset applies to BOXES only: any other shape has no .size, and touching it would abort the
 	# spawn halfway.
-	var box: BoxShape3D = collision.shape as BoxShape3D
-	if box != null:
-		if box.size == Vector3(2,2,2):
-			collision.position += Vector3(-0.5,0.5,-0.5)
-		elif box.size == Vector3(2,1,1):
-			collision.position += Vector3(-0.5,0.0,0.0)   # BLOCK2: центрируем 2-широкую коллизию
-		elif box.size == Vector3(2,1,2):
-			collision.position += Vector3(-0.5,0.0,-0.5)  # ARMOR4: 2×1×2
+	#
+	# СМЕЩЕНИЕ ПОВОРАЧИВАЕТСЯ ВМЕСТЕ С БЛОКОМ. Якорь у крупного блока в углу, и смещение говорит,
+	# в какую сторону ОТ ЯКОРЯ уходит тело, — то есть это направление в осях самого блока. Взятое
+	# как есть, оно оставляло развёрнутую коллизию на клетку в стороне от меша.
+	#
+	# Размер коробки здесь — это проверка «покрывает ли коллизия весь футпринт»: у брони она
+	# тонкая (1×1×0.2) и стоит на своей грани, ей центр футпринта не нужен.
+	collision.position += collider_offset(collision.shape, rot.y)
+	# ЧЕЙ ЭТО КОЛЛАЙДЕР — ЯРЛЫКОМ, А НЕ ПО КООРДИНАТЕ. Сбитый блок ищет свою коллизию, и запасной
+	# способ — сравнение позиций — верен только пока смещение ровно одно и не поворачивается
+	# (machine_body._on_block_destroyed). Ручная постановка ярлык ставила, сборка машины — нет, то
+	# есть у стартовых и вражеских блоков работал именно запасной путь.
+	collision.set_meta("block_owner", instance)
 	if !get_parent().is_node_ready():
 		await get_parent().ready
 	get_parent().add_child(collision)
@@ -961,7 +1028,7 @@ func footprint_offsets(inst: Node) -> Array:
 		return []
 	var anchor := Vector3i(ax, ay, az)
 	var out: Array = []
-	for c in _block_footprint(int(map[ax][ay][az]), ax, ay, az):
+	for c in _block_footprint(int(map[ax][ay][az]), ax, ay, az, _yaw_at(ax, ay, az)):
 		out.append((c as Vector3i) - anchor)
 	return out
 
@@ -1115,7 +1182,7 @@ func _detach_orphans() -> void:
 		if bt == G.Block.EMPTY:
 			continue
 		var grounded := false
-		for c in _block_footprint(bt, ax, ay, az):
+		for c in _block_footprint(bt, ax, ay, az, _yaw_at(ax, ay, az)):
 			if reachable.has("%d,%d,%d" % [c.x, c.y, c.z]):
 				grounded = true
 				break
@@ -1437,10 +1504,10 @@ func _clear_block_collisions() -> void:
 # seller 2x2x2) a plain +-1 is not enough: the footprint grows one way, so on "positive" faces it
 # would clip into the neighbour. The shift is computed from the real footprint bounds; for 1x1x1
 # it gives +-1.
-func attach_delta(block_type: int, face: String) -> Vector3i:
+func attach_delta(block_type: int, face: String, yaw: float = 0.0) -> Vector3i:
 	var lo := Vector3i(0, 0, 0)
 	var hi := Vector3i(0, 0, 0)
-	for c in _block_footprint(block_type, 0, 0, 0):
+	for c in _block_footprint(block_type, 0, 0, 0, yaw):
 		lo.x = mini(lo.x, c.x); lo.y = mini(lo.y, c.y); lo.z = mini(lo.z, c.z)
 		hi.x = maxi(hi.x, c.x); hi.y = maxi(hi.y, c.y); hi.z = maxi(hi.z, c.z)
 	match face:
@@ -1471,7 +1538,7 @@ func rebuild_factory_links() -> void:
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 		if not _in_bounds(ax, ay, az):
 			continue
-		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az)
+		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az, _yaw_at(ax, ay, az))
 		anchors[n] = Vector3i(ax, ay, az)     # смещения клеток считаем от якоря
 		facs.append(n)
 	# Links are computed PER CELL. The old code walked the block's marked FACES and took the FIRST
