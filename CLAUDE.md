@@ -412,7 +412,13 @@ project: read it before claiming how anything works.
   has no weapon at all: it looks for a vein, drills it, and answers being shot at by driving
   away, which is the only answer it has. That gives the player a choice — chase it for the cargo
   or let it go — and gives the world someone who is busy with something else; until then every
-  machine on the map meant a fight. Its builds are deliberately NOT in `PRESET_TIERS` (that table
+  machine on the map meant a fight. **IT CARRIES A COLLECTOR, NOT A STORAGE, AND THAT IS WHAT
+  MAKES THE CARGO REAL.** Storage takes only what a chain neighbour hands it, and only while
+  anchored (`FactoryBlock._factory_active` asks the machine for `anchored`, a field
+  `enemy_vehicle` does not have at all), so on a driving miner it could never receive anything:
+  the deck said "cargo" and everything drilled stayed on the ground by the vein. The collector
+  needs no anchor on purpose — picking up off the ground while moving is its whole job. Measured
+  on the engine: a spawned miner's collector took all four ore items dropped under it. Its builds are deliberately NOT in `PRESET_TIERS` (that table
   picks by the player's machine value, so a miner would take a fighter's place) and it never
   queues for an engagement slot. `resource_nodes.vein_point_near` scores by closeness to the
   MIDDLE of the ring it is given — that was written for the battery quest, where the errand has
