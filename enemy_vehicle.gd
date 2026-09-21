@@ -1153,9 +1153,13 @@ func _find_terrain() -> Node:
 ## читался тиром: любая встреченная техника означала бой. Шахтёр ищет жилу, бурит её и на игрока
 ## не смотрит вовсе — пока в него не выстрелят.
 ##
-## ОТВЕЧАТЬ ЕМУ НЕЧЕМ, И ЭТО НЕ НЕДОСМОТР. Стволов у него нет по сборке, поэтому на обстрел он
-## отвечает единственным, что умеет, — уезжает. Выбор остаётся у игрока: догнать и добить ради
-## груза или пропустить.
+## ОТВЕЧАЕТ ОН БУРОМ, А УЕЗЖАЕТ, КОГДА БУРА НЕ ОСТАЛОСЬ. Стволов у него нет по сборке, но бур —
+## это контактное оружие, и оно бьёт по любому чужому телу в своей зоне (drill.gd), не только по
+## жиле. Прежний вариант — удирать от любого попадания — давал машину, которая разворачивается и
+## уезжает через секунду после начала боя: догонять её было скучно, а стрелять не во что.
+## Теперь пока бур цел, шахтёр прёт на обидчика и грызёт его в упор; отстрелили буры — бежит,
+## потому что отвечать действительно стало нечем. Выбор у игрока остаётся тот же: связываться
+## ради груза или пропустить, только теперь связаться стоит крови.
 @export_group("ИИ — Шахтёр")
 @export var miner: bool = false
 ## Кольцо поиска жилы. ВАЖНО, КАК РАБОТАЕТ ИСКОМОЕ: resource_nodes.vein_point_near выбирает
@@ -1171,12 +1175,20 @@ const MINE_SEEK_HI: float = 350.0
 const MINE_REACH: float = 5.0
 ## Как часто пересматривает выбор: жилу могли выработать, до неё могло не доехать.
 const MINE_REPICK: float = 15.0
-## Сколько секунд удирает после попадания по нему.
+## Сколько секунд удирает после попадания по нему — уже БЕЗ бура, когда отвечать нечем.
 const MINE_FLEE_TIME: float = 8.0
+## Сколько секунд держится на обидчике после последнего попадания. Окно, а не «навсегда»: игрок,
+## который бросил драку и уехал, не должен получить машину, едущую за ним до конца карты. Пока
+## бой идёт, окно продлевается само (см. MINE_FIGHT_HOLD).
+const MINE_FIGHT_TIME: float = 12.0
+## На этой дистанции бой считается идущим, и окно продлевается. Больше длины машины: шахтёр
+## упирается бампером, буру нужен контакт, и терять цель на развороте нельзя.
+const MINE_FIGHT_HOLD: float = 14.0
 
 var _mine_point: Variant = null
 var _mine_t: float = 0.0
 var _flee_t: float = 0.0
+var _fight_t: float = 0.0
 var _drills: Array = []
 var _drills_n: int = -1
 
@@ -1184,10 +1196,26 @@ func _mine_tick(delta: float) -> void:
 	_answer_t = maxf(_answer_t - delta, 0.0)
 	_update_stuck(delta)
 	# Обстрел ставит цель через notice_attacker — тем же путём, что и у бойцов. Разница в том,
-	# что делает машина дальше.
+	# что делает машина дальше: с буром лезет в контакт, без бура удирает.
+	var armed: bool = _has_drill()
 	if _answer_t > 0.0:
+		if armed:
+			_fight_t = MINE_FIGHT_TIME
+		else:
+			_flee_t = MINE_FLEE_TIME
+	# Буры отстрелили посреди драки — дальше уже бегство, и оно начинается с этой секунды.
+	if _fight_t > 0.0 and not armed:
+		_fight_t = 0.0
 		_flee_t = MINE_FLEE_TIME
+	_fight_t = maxf(_fight_t - delta, 0.0)
 	_flee_t = maxf(_flee_t - delta, 0.0)
+	if _fight_t > 0.0 and is_instance_valid(_target):
+		var d: float = global_position.distance_to(_target.global_position)
+		if d < MINE_FIGHT_HOLD:
+			_fight_t = MINE_FIGHT_TIME      # бой идёт — окно не истекает под носом у игрока
+		_drive_to(_target.global_position, chase_speed_factor, delta)
+		_dig()                              # бур сам решает, есть ли контакт (drill.get_overlapping_bodies)
+		return
 	if _flee_t > 0.0 and is_instance_valid(_target):
 		var away: Vector3 = global_position + (global_position - _target.global_position).normalized() * 60.0
 		_drive_to(away, chase_speed_factor, delta)
@@ -1195,7 +1223,13 @@ func _mine_tick(delta: float) -> void:
 	_mine_t -= delta
 	if _mine_point == null or _mine_t <= 0.0:
 		_mine_t = MINE_REPICK
-		_mine_point = _pick_vein()
+		# ПУСТОЙ ОТВЕТ НЕ СТИРАЕТ ТЕКУЩУЮ ЖИЛУ. `_pick_vein` спрашивает кольцо от MINE_SEEK_LO
+		# (12 м), а шахтёр, доехавший до жилы, стоит к ней ближе — то есть своей же цели в ответе
+		# не видит. Замерено: машина доезжала до жилы за семь секунд, а на первом пересмотре
+		# теряла точку и вставала патрулировать на месте, больше не бурив ни разу.
+		var picked = _pick_vein()
+		if picked != null:
+			_mine_point = picked
 	if _mine_point == null:
 		_act_patrol(delta)            # жил поблизости нет — просто ездит
 		return
@@ -1232,9 +1266,24 @@ func _pick_vein() -> Variant:
 ## свой список: у шахтёра других «жмущихся» блоков нет, но перебирать всё подряд значило бы
 ## однажды дать ему выстрелить из ствола, которого у него быть не должно.
 func _dig() -> void:
+	for d in _refresh_drills():
+		if is_instance_valid(d) and d.has_method("attack"):
+			d.attack()
+
+## ЕСТЬ ЛИ ЧЕМ ОТВЕЧАТЬ. Спрашивается каждый тик боя, поэтому список пересобирается только тогда,
+## когда у машины сменилось число блоков, — то же условие, по которому он собирался и раньше.
+## Отдельного «сколько у меня буров» в ИИ нет намеренно: два счётчика одного и того же однажды
+## разойдутся, и шахтёр будет бодаться пустым носом.
+func _has_drill() -> bool:
+	for d in _refresh_drills():
+		if is_instance_valid(d):
+			return true
+	return false
+
+func _refresh_drills() -> Array:
 	var bl: Node = get_node_or_null("blocks")
 	if bl == null:
-		return
+		return []
 	if _drills_n != bl.get_child_count():
 		_drills_n = bl.get_child_count()
 		_drills.clear()
@@ -1242,6 +1291,4 @@ func _dig() -> void:
 			var t = b.get("block")
 			if t != null and (int(t) == G.Block.DRILL or int(t) == G.Block.SMALL_DRILL):
 				_drills.append(b)
-	for d in _drills:
-		if is_instance_valid(d) and d.has_method("attack"):
-			d.attack()
+	return _drills

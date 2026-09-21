@@ -1003,13 +1003,23 @@ func _on_repair() -> void:
 ## Обломки и брошенное добро. На полигоне их набирается больше, чем в игре: машины тут не
 ## доезжают до смерти естественным путём, их убирают кнопкой, и всё, что с них осыпалось,
 ## остаётся лежать физическим телом и просить у земли плитку под собой.
+##
+## ЗАКАЗАННЫЕ ЖИЛЫ УБИРАЮТСЯ ТОЙ ЖЕ КНОПКОЙ. Убирать их было нечем вовсе: предметы лежат в
+## `/root/Main/objects`, а жила — это узел под своим владельцем плюс запись в его списке. Три жилы
+## за нажатие никуда не девались, и десяток нажатий складывал их в одно пятно. Отдельной кнопки
+## они не заслуживают: и то и другое — «убрать со стола то, что я сюда накидал».
 func _on_sweep() -> void:
+	var veins := 0
+	var rn: Node = _resource_nodes()
+	if rn != null and rn.has_method("clear_made"):
+		veins = int(rn.call("clear_made"))
 	var o: Node = get_node_or_null("/root/Main/objects")
-	if o == null:
+	var n := 0
+	if o != null:
+		for c in o.get_children():
+			c.queue_free()
+			n += 1
+	if n == 0 and veins == 0:
 		_say(tr("Nothing to sweep."))
 		return
-	var n := 0
-	for c in o.get_children():
-		c.queue_free()
-		n += 1
-	_say(tr("Swept items: %d") % n)
+	_say(tr("Swept — items: %d, veins: %d") % [n, veins])
