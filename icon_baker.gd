@@ -49,7 +49,7 @@ func _ready() -> void:
 ## сменилась версия (значит, могли смениться модели), список блоков или сама съёмка — печём заново.
 ## Рецепт в метке обязателен: у игрока на диске уже лежит партия, снятая по-старому, а версия
 ## сборки и число блоков от правки света не меняются — без этого номера он остался бы с ней навсегда.
-const RECIPE := 2
+const RECIPE := 3
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
@@ -168,7 +168,7 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	var model := Node3D.new()
 	for c in _walk(src):
 		var mi := c as MeshInstance3D
-		if mi == null or mi.mesh == null or not mi.visible or _is_fx(mi):
+		if mi == null or mi.mesh == null or not mi.visible or _is_fx(mi) or _is_glow(mi):
 			continue
 		var cp := MeshInstance3D.new()
 		cp.mesh = mi.mesh
@@ -222,6 +222,20 @@ func _strip(n: Node) -> void:
 	n.set_script(null)
 	for c in n.get_children():
 		_strip(c)
+
+## АДДИТИВНЫЙ МЕШ — ЭТО СВЕТ, А НЕ ДЕТАЛЬ. Приёмник и коллектор несут по капсуле в четыре метра
+## с `blend_mode = ADD`: в мире это луч всасывания, а в габарите портрета — палка, рядом с которой
+## сам блок сжимается в точку. Метки `block_fx` на ней нет и быть не должно (она живёт в сцене
+## блока, а не в эффектах), поэтому отличаем по материалу: сложение с фоном рисуют только свечения.
+func _is_glow(mi: MeshInstance3D) -> bool:
+	for s in mi.mesh.get_surface_count():
+		var m: Material = mi.get_surface_override_material(s)
+		if m == null:
+			m = mi.mesh.surface_get_material(s)
+		var bm := m as BaseMaterial3D
+		if bm != null and bm.blend_mode == BaseMaterial3D.BLEND_MODE_ADD:
+			return true
+	return false
 
 func _is_fx(n: Node) -> bool:
 	var cur: Node = n

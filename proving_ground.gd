@@ -631,8 +631,64 @@ func _pick_card(preset: int, vi: int) -> Control:
 			tr("%d blocks") % int((_summary(preset) as Dictionary)["total"]),
 			guns if guns != "" else tr("no weapons"),
 			power if power != "" else tr("no power")]
+	_card_icons(b, preset)
 	b.pressed.connect(_on_pick_build.bind(vi))
 	return b
+
+## Сколько портретов влезает в угол карточки. Пять: карточка узкая, а шестой уже налезает на
+## номер сборки.
+const CARD_ICONS := 5
+const CARD_ICON := 26.0
+
+## ПОРТРЕТЫ ОРУЖИЯ И ЭНЕРГЕТИКИ В УГЛУ КАРТОЧКИ. Строки «Machine Gun x2 · Shield x1» отвечают
+## точно, но читаются; выбирая машину для боя, смотрят на силуэты — по ним ступень видно раньше,
+## чем прочитаешь первое слово.
+##
+## Состав берём из того же `_summary`, что и текст, — второй проход по раскладке дал бы карточку,
+## где картинки спорят с подписью под ними.
+func _card_icons(b: Button, preset: int) -> void:
+	var count: Dictionary = (_summary(preset) as Dictionary)["count"]
+	# Оружие спрашиваем ТОЙ ЖЕ дверью, что и подпись под картинками (_build_guns), иначе
+	# в углу окажется ствол, которого в строке нет.
+	var attack: Array = G.BLOCK_CATEGORIES.get("attack", [])
+	var want: Array = []
+	for bt in count:
+		var t := int(bt)
+		if attack.has(t) or POWER_BLOCKS.has(t):
+			want.append(t)
+	if want.is_empty():
+		return
+	# По убыванию количества: главное оружие сборки идёт первым, как и в подписи (_sum_line).
+	want.sort_custom(func(x, y): return int(count[x]) > int(count[y]))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 3)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	row.offset_left = -(CARD_ICON + 3.0) * float(mini(want.size(), CARD_ICONS)) - 4.0
+	row.offset_top = 4.0
+	row.offset_right = -4.0
+	row.offset_bottom = 4.0 + CARD_ICON
+	row.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	var shown := 0
+	for t in want:
+		if shown >= CARD_ICONS:
+			break
+		var tex: Texture2D = Icons.get_icon(int(t))
+		if tex == null:
+			continue                       # печь ещё не дошла до этого блока — просто не рисуем
+		var ic := TextureRect.new()
+		ic.texture = tex
+		ic.custom_minimum_size = Vector2(CARD_ICON, CARD_ICON)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ic.tooltip_text = G.block_name(int(t))
+		row.add_child(ic)
+		shown += 1
+	if shown == 0:
+		row.queue_free()
+		return
+	b.add_child(row)
 
 func _on_pick_build(vi: int) -> void:
 	_gi = _picker_gi

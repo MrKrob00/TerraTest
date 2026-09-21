@@ -405,8 +405,42 @@ func _make_codex_block_node(bt: int, at: Vector2) -> Control:
 	# Грейд подписью: по дереву видно ПОРЯДОК, а грейд говорит, на каком уровне лицензии это
 	# вообще открывается — второе из дерева не следует.
 	btn.text = "%s\n%d" % [G.block_name(bt), int(meta.get("g", 1))]
+	# Своя рамка нужна только затем, чтобы у неё был левый отступ под портрет: у кнопки из темы
+	# сдвинуть текст нечем.
+	var st := StyleBoxFlat.new()
+	st.set_corner_radius_all(8)
+	st.set_border_width_all(2)
+	st.bg_color = Color(0.06, 0.12, 0.14, 0.92)
+	st.border_color = Color(0.3, 0.6, 0.66, 0.6)
+	st.content_margin_right = 6
+	st.content_margin_left = 6 + (TNODE_ICON + 6 if _node_icon(btn, bt) else 0.0)
+	for s in [&"normal", &"hover", &"focus"]:
+		btn.add_theme_stylebox_override(s, st)
 	btn.pressed.connect(_show_codex.bind("b%d" % bt))
 	return btn
+
+## ПОРТРЕТ ВНУТРИ УЗЛА ГРАФА. Одна дверь на древо и справочник: у них общая раскладка, и два
+## разных способа положить картинку разъехались бы при первой правке размера узла.
+##
+## Возвращает false, когда портрета ещё нет: печь идёт при старте и заканчивает позже, чем
+## игрок может открыть гараж (`Icons.get_icon` отдаёт null). Узел тогда рисуется как рисовался,
+## а `Icons.baked` перестроит вкладку.
+func _node_icon(btn: Button, bt: int) -> bool:
+	var tex: Texture2D = Icons.get_icon(bt)
+	if tex == null:
+		return false
+	var ic := TextureRect.new()
+	ic.texture = tex
+	ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	ic.mouse_filter = Control.MOUSE_FILTER_IGNORE      # тап по картинке — это тап по узлу
+	ic.set_anchors_preset(Control.PRESET_LEFT_WIDE)
+	ic.offset_left = 5.0
+	ic.offset_right = 5.0 + TNODE_ICON
+	ic.offset_top = -TNODE_ICON * 0.5
+	ic.offset_bottom = TNODE_ICON * 0.5
+	btn.add_child(ic)
+	return true
 
 func _codex_codex_graph() -> void:
 	_codex_head.text = tr("Ore is smelted into ingots, a pair of ingots makes a simple component, a pair of simple ones makes a complex one. Tap any of them for its entry.")
@@ -1048,9 +1082,18 @@ func _buy(block_type: int, price: int) -> void:
 	_refresh_stats()
 
 # ── Вкладки ───────────────────────────────────────────────────────────────────
+## ПЕЧЬ ЗАКОНЧИЛА — ПЕРЕСТРАИВАЕМ ТУ ВКЛАДКУ, ЧТО ОТКРЫТА. Портреты появляются через пару
+## секунд после запуска, и игрок вполне может открыть гараж раньше: без этого он увидел бы
+## древо без картинок до следующего переключения вкладки.
 func _on_icons_baked() -> void:
-	if is_inside_tree() and visible and _grid != null:
+	if not (is_inside_tree() and visible):
+		return
+	if _grid != null:
 		_rebuild_grid(_search.text if _search else "")
+	if _tech_root != null and _tech_root.visible:
+		_build_tech_tab()
+	if _codex_root != null and _codex_root.visible:
+		_build_codex_tab()
 
 func _select_tab(idx: int) -> void:
 	_tab = idx
@@ -1643,9 +1686,14 @@ func _cam_slider(label: String, value: float, on_change: Callable) -> Control:
 # Раскладка деревом (RT-подобная): x = глубина по TECH_PARENT, y — листья по порядку,
 # родитель по среднему детей. Граф внутри ScrollContainer по ОБЕИМ осям — тащишь пальцем
 # вверх/вниз/влево/вправо (тач-драг), чтобы влезало. Сверху фикс. инфо-панель.
-const TNODE_W := 96.0
+## УЗЕЛ ШИРЕ РАДИ ПОРТРЕТА. Имя детали в узле — это чтение, а картинка узнаётся без чтения, и
+## на дереве из полусотни узлов разница между «искать глазами» и «увидеть» решающая. Сорок
+## точек под портрет плюс прежнее место под текст: ширина выросла с 96 до 136, шаг колонок
+## следом, чтобы зазор под линии связей остался тем же (42).
+const TNODE_W := 136.0
 const TNODE_H := 50.0
-const TCOL_W := 138.0                  # шаг колонок (глубина): зазор под линии связей
+const TNODE_ICON := 40.0               # сторона портрета внутри узла
+const TCOL_W := 178.0                  # шаг колонок (глубина): зазор под линии связей
 const TROW_H := 64.0                   # шаг рядов
 const TMARGIN := 18.0
 
@@ -1888,10 +1936,15 @@ func _make_tech_node(bt: int, at: Vector2) -> Control:
 	btn.text = "%s\n%s" % [_block_name(bt), status]
 	var sel: bool = bt == _tech_selected
 	var st := _tech_node_style(state, sel)
+	var pressed_st := _tech_node_style(state, true)
+	# Отступ ставим ОБЕИМ рамкам: у нажатой он свой, и без этого текст прыгал бы под пальцем.
+	if _node_icon(btn, bt):
+		st.content_margin_left = 6 + TNODE_ICON + 6
+		pressed_st.content_margin_left = st.content_margin_left
 	btn.add_theme_stylebox_override("normal", st)
 	btn.add_theme_stylebox_override("hover", st)
 	btn.add_theme_stylebox_override("focus", st)
-	btn.add_theme_stylebox_override("pressed", _tech_node_style(state, true))
+	btn.add_theme_stylebox_override("pressed", pressed_st)
 	if state == 3:
 		btn.add_theme_color_override("font_color", Color(0.75, 0.8, 0.85, 0.6))
 	# ДВОЙНОЙ ТАП ПО УЗЛУ = ИЗУЧИТЬ СРАЗУ. Считаем время сами, а не полагаемся на
