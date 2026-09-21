@@ -696,6 +696,23 @@ project: read it before claiming how anything works.
   BEFORE the node enters the tree and effect meshes are skipped by the same `block_fx` meta
   `_local_aabb` uses, plus the dome's own door `struck`. Files are named by ENUM KEY like saves
   (`G.block_key`), never by number: renumbering the enum is an edit nobody would notice.
+- **A BAKE VIEWPORT NEEDS AN `Environment` WITH `CameraAttributes`, OR EVERY LIT SURFACE COMES OUT
+  PURE WHITE.** The project runs on PHYSICAL LIGHT UNITS (`rendering/lights_and_shadows/
+  use_physical_light_units`), so a `DirectionalLight3D` is measured in LUX and `light_energy` barely
+  matters; lux only means something against an exposure, and a viewport with no `CameraAttributes`
+  has no normalization at all. The first bake had neither, and 26 of the 45 icons were blank white
+  silhouettes — the shop's whole grey GSO half. The survivors survived for a reason that pointed
+  straight at the cause: their materials are `unshaded` and never see a light. Two more things go
+  with it. REFLECTIONS ARE DISABLED, not dimmed: with `transparent_bg` there is no sky to reflect,
+  the engine's fallback one is WHITE, and the older models sit at roughness 0.5, so they collected
+  it over the whole surface — which is why the white did not move when the light energy was swept
+  from 0.1 to 4.0. And AMBIENT IS A COLOUR, because that missing sky was also the fill light: with
+  none, shadow faces go black and the icon reads as a silhouette again. The exposure numbers are
+  the world's own (aperture 19, shutter 1/100.5), so lux in the studio means what lux means in the
+  game.
+- THE STAMP CARRIES A RECIPE NUMBER (`icon_baker.RECIPE`), not only the app version and the block
+  count. A change to the LIGHTING moves neither of those, so a player who already has a batch on
+  disk would keep it for ever — which is exactly what the white icons would have done.
 - The single door out is `Icons.get_icon(bt)`, and it returns NULL until the bake finishes. An icon
   is decoration, never a condition for the shop to work: the caller draws as it drew, and
   `Icons.baked` tells an open panel to redraw.
