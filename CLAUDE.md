@@ -627,6 +627,15 @@ project: read it before claiming how anything works.
   enough"; the picker globe asks something else — it walks `G.block_inventory` itself, and an
   empty list gives it nothing to show. The count does not matter: `consume_block` deducts nothing
   there, so the stack never shrinks.
+- RAW MATERIAL IS HANDED OUT TOO, and it has to be: veins and trees are laid out by RELIEF AND
+  BIOME, and flat ground has neither, so nothing will ever grow on the polygon by itself. Without
+  material, six blocks — receiver, belt, processor, storage, fabricator, seller — cannot be tested
+  at all, because every one of them starts with an item somebody delivered. The panel's RESOURCES
+  submenu drops a handful (`RES_BATCH`, five: one item shows nothing, a chain is interesting as a
+  STREAM) of any kind. The kinds are `resource.set_kind_key` KEYS — the same strings storage, the
+  fabricator and the save tell materials apart by; a local "metal + type" list here would be a
+  second parser of the same key. COMPONENTS ARE DELIBERATELY ABSENT: the fabricator makes them out
+  of ingots, and handing them over ready would delete the one step the chain is tested for.
 - WHAT IS A MODE AND WHAT IS A FLAG. The stock, the ground, the quests and the save ask
   `G.proving_ground` directly — they are not debug switches anyone may flip. The save is barred at
   `G._flush_progress`, the single write to disk, not at `save_now` and `mark_progress_dirty`
