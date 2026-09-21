@@ -752,6 +752,18 @@ project: read it before claiming how anything works.
 - THE STAMP CARRIES A RECIPE NUMBER (`icon_baker.RECIPE`), not only the app version and the block
   count. A change to the LIGHTING moves neither of those, so a player who already has a batch on
   disk would keep it for ever — which is exactly what the white icons would have done.
+- A PORTRAIT IS SKIPPED WHEN ITS MESH IS ADDITIVE (`icon_baker._is_glow`). The receiver and the
+  collector each carry a four-metre capsule with `blend_mode = ADD`: in the world it is an intake
+  beam, in a portrait's bounding box it is a pole next to which the block shrinks to a dot, and
+  both icons came out as vertical slivers. The `block_fx` meta cannot help — the beam lives in the
+  block's own scene, not in the effects — so the material answers instead: only a glow is drawn by
+  adding to the background. Measured after: those two went from 0.24 saturation to 0.37 and 0.43.
+- THE SAME PORTRAIT IS ON FOUR SCREENS NOW, through one door each way: shop and inventory rows
+  (`_set_slot_icon`), the tech tree and the codex graphs (`_node_icon`, shared because their layout
+  is shared), and the proving-ground build cards (`_card_icons`). A graph node grew from 96 to 136
+  points to hold a 40-point portrait on the left, and `TCOL_W` grew with it so the gap the link
+  lines run through stayed the same. `Icons.baked` rebuilds whichever tab is open: the bake finishes
+  seconds after launch and the player can be in the garage before it does.
 - The single door out is `Icons.get_icon(bt)`, and it returns NULL until the bake finishes. An icon
   is decoration, never a condition for the shop to work: the caller draws as it drew, and
   `Icons.baked` tells an open panel to redraw.
@@ -785,6 +797,18 @@ project: read it before claiming how anything works.
   scene is up and cleared when it leaves — the flag sat in the manager unused for months and
   `music/menu/` never played once, because the autoload outlives the scene and nobody owned the
   switch. Turning music off is `set_enabled`, not volume zero, which forgets the level.
+- **A LABEL ON A BLOCK LIVES BY THE BLOCK'S RULES.** The storage counter was a `Label3D` with
+  `fixed_size`, i.e. the same size on screen at any distance, and on a base with three storages the
+  numbers covered the base — «742» measured wider than the deck it stood on. It is now world-scaled
+  and hidden past `LABEL_DIST` (14 m), the same shape of rule as the machine icon's
+  `VBTN_SHOW_DIST`. The distance check must come BEFORE the early return in `_process`, or a label
+  hidden once never comes back: ask the COUNT, not the current visibility. The enemy marker is NOT
+  this bug — it is an ordinary billboard in world space and shrinks with distance as it should.
+- A COLLECTOR SHOWS ONE PICKED ITEM, not the stack. It used to place each one a metre above the
+  last (`y = index + 1`), so at capacity ten a tower of ore grew taller than the machine carrying
+  it. Same answer as the storage's showcase: one visible, the rest hidden — and the visibility
+  comes back at the SINGLE DOOR OUT (`remove_from_inventory`), or a hidden lump would ride the
+  belt invisible.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —

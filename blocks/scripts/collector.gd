@@ -53,11 +53,38 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 ## Пока он не сработал, коллектор считал слот занятым и мог не взять следующую руду.
 func remove_from_inventory(item: Node) -> void:
 	inventory.erase(item)
+	# ВИДИМОСТЬ ВОЗВРАЩАЕМ ЗДЕСЬ, В ЕДИНСТВЕННОЙ ДВЕРИ НАРУЖУ. В тарелке виден только первый
+	# предмет, остальные спрятаны; уйди такой к приёмнику как есть — по ленте поехал бы
+	# невидимый груз. То же правило, по которому замурованный блок снова показывают, когда он
+	# покидает машину.
+	if is_instance_valid(item) and item is Node3D:
+		(item as Node3D).visible = true
+	for i in inventory.size():
+		var it = inventory[i]
+		if is_instance_valid(it) and it is Node3D:
+			(it as Node3D).visible = i == 0
+
+## ПОДОБРАННОЕ ЛЕЖИТ В ТАРЕЛКЕ, А НЕ СТОЛБОМ НАД НЕЙ. Раньше каждый следующий предмет вставал
+## на метр выше предыдущего (`y = индекс + 1`), и при ёмкости десять над коллектором вырастала
+## башня руды выше самой машины — на скриншоте это первое, что видно.
+##
+## Показываем ОДИН предмет, как это делает склад со своей витриной: содержимое всё равно
+## читается счётом, а не пересчётом камней в воздухе. Остальные не удаляем и не трогаем логикой
+## — только прячем, потому что приёмник забирает их по списку (remove_from_inventory).
+const HOLD_Y := 0.45
 
 func fix_position_resources(body:Node3D):
 	if not is_instance_valid(body):
 		return                     # предмет забрали и уничтожили, пока вызов ждал кадра
-	body.position = Vector3(0, maxi(inventory.find(body), 0) + 1, 0)
+	var idx: int = maxi(inventory.find(body), 0)
+	body.position = Vector3(0, HOLD_Y, 0)
+	body.visible = idx == 0
+	# Первый в очереди мог смениться: предыдущий отдали приёмнику, и теперь видно должно быть
+	# то, что стало первым.
+	for i in inventory.size():
+		var it = inventory[i]
+		if is_instance_valid(it) and it is Node3D:
+			(it as Node3D).visible = i == 0
 
 # Столбик добычи над блоком. Сперва ЧИСТИМ список, потом раскладываем — и в таком порядке
 # по двум причинам.

@@ -16,6 +16,8 @@ const CAPACITY: int = 20
 const RESOURCE_SCENE: String = "res://resource.tscn"
 ## Как часто склад пробует отдать наружу. Каждый кадр незачем: приёмник освобождается редко.
 const PUSH_INTERVAL: float = 0.35
+## Дальше этого цифру не показываем — см. _process.
+const LABEL_DIST: float = 14.0
 
 var stored_kind: String = ""               # "" — склад пуст и примет любой вид
 var count: int = 0
@@ -139,9 +141,13 @@ func _build_label() -> void:
 	_label = Label3D.new()
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED   # текст всегда развёрнут к игроку
 	_label.no_depth_test = true
-	_label.fixed_size = true                              # не мельчает с расстоянием
-	_label.pixel_size = 0.0016
-	_label.font_size = 96
+	# РАЗМЕР НА ЭКРАНЕ ПОСТОЯННЫЙ — ЭТО И БЫЛО ОШИБКОЙ. С `fixed_size` цифра одинаково велика
+	# с любого расстояния, и на базе с тремя складами числа закрывали саму базу: на скриншоте
+	# «742» оказалось шире настила. Табличка — это надпись НА БЛОКЕ, значит и жить она должна
+	# по законам блока: уменьшаться вместе с ним и пропадать, когда блока уже не разглядеть.
+	_label.fixed_size = false
+	_label.pixel_size = 0.0042
+	_label.font_size = 64
 	_label.outline_size = 24
 	_label.modulate = Color(1.0, 0.95, 0.75)
 	_label.visible = false
@@ -153,12 +159,20 @@ func _process(_delta: float) -> void:
 	# Свой _process заслоняет базовый (FactoryBlock), поэтому его тик зовём сами: без него
 	# склад с готовым грузом никогда не повторил бы попытку отдать (см. push_retry_tick).
 	push_retry_tick(_delta)
-	if _label == null or not _label.visible:
+	# Спрашиваем КОЛИЧЕСТВО, а не текущую видимость: видимость ниже сама решается расстоянием,
+	# и выйди мы по ней — спрятанная один раз табличка не вернулась бы никогда.
+	if _label == null or count <= 0:
 		return
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	if cam == null:
 		return
 	var centre: Vector3 = _display.global_position if is_instance_valid(_display) else global_position
+	# ДАЛЬШЕ LABEL_DIST ЦИФРУ НЕ ПОКАЗЫВАЕМ. Это надпись на конкретном блоке, и издали она
+	# перестаёт быть информацией: база из трёх складов на горизонте превращается в три числа,
+	# висящие в воздухе. То же правило, по которому кнопка над машиной живёт в VBTN_SHOW_DIST.
+	_label.visible = cam.global_position.distance_squared_to(centre) < LABEL_DIST * LABEL_DIST
+	if not _label.visible:
+		return
 	var right: Vector3 = cam.global_transform.basis.x
 	var up: Vector3 = cam.global_transform.basis.y
 	_label.global_position = centre + right * 0.34 - up * 0.3

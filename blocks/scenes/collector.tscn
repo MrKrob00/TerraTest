@@ -10,13 +10,15 @@ inner_radius = 0.743
 outer_radius = 0.96
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p6pux"]
+transparency = 1
 blend_mode = 1
 cull_mode = 1
+albedo_color = Color(0.22, 0.52, 0.68, 0.5)
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_uypoc"]
 material = SubResource("StandardMaterial3D_p6pux")
 radius = 0.8
-height = 6.183
+height = 3.2
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_8sx5t"]
 radius = 5.0
