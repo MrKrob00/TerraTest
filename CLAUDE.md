@@ -350,8 +350,14 @@ project: read it before claiming how anything works.
   roofed and flanked, no cell without a neighbour — plus mass against `load_capacity()` and the
   value curve across steps. Measured after the table was written: 0 geometry complaints, nothing
   overloaded (worst 0.55 of capacity), medians 10.7k → 15.9k → 24.5k → 31.6k → 44.2k → 65.2k.
-- WIDTH IS 1, 3 OR 5 CELLS, and five is the ceiling for a reason: wheels sit at half+1 from the
-  axis, so a wider hull would push their row off the 11³ grid. The fourth floor (`crown`) stands
+- WIDTH IS ODD AND THE GRID'S CEILING IS NINE, not five. Wheels sit at half+1 from the axis, so a
+  nine-cell hull puts them on x = 0 and x = 10 — the last cells of the 11³ grid — and eleven
+  carries them off it, where `set_block` drops them without a word. Measured on the engine for
+  build 84: width 9 gives an 11×4×7 bounding box, 136 cells and 12 wheels with no warning;
+  width 11 gives 150 cells and ZERO wheels. The tables (`ENEMY_BUILDS`) still ask for 1, 3 or 5,
+  so the widest machine in the game today is 7 across where 11 would fit; that is a design
+  choice about silhouettes, and the comment that used to call it a grid limit was wrong (its own
+  arithmetic, "5+3+1 = 9 against a limit of 10", disproves it). The fourth floor (`crown`) stands
   only on a `BLOCK` in `top` — a barrel carries nothing (`connect_faces` = 32, bottom only), and
   guessing at a dome's faces is guessing.
 - Anything that wants an enemy asks the spawner, which owns the ladder: `_pick_preset` for the
