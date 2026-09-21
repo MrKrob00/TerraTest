@@ -23,6 +23,14 @@ const DIR := "user://icons"
 const STAMP := "user://icons/stamp.json"
 ## Сколько блоков печём за кадр. Один: кадр печи — это ещё и кадр меню, в котором крутится бой.
 const PER_FRAME := 1
+## Экспозиция и свет фотостудии. Диафрагма и выдержка — те же, что у мира (node_3d.tscn),
+## поэтому люксы здесь значат ровно то же, что там.
+const APERTURE := 19.0
+const SHUTTER := 100.485
+const AGX_CONTRAST := 1.7
+const KEY_LUX := 90000.0
+const FILL_LUX := 32000.0
+const AMBIENT := 0.45
 
 var _cache: Dictionary = {}             # тип блока → Texture2D
 var _ready_done: bool = false
@@ -37,12 +45,16 @@ func _ready() -> void:
 		return
 	_maybe_bake.call_deferred()
 
-## Испечено ли уже и тем ли составом. Метка хранит версию сборки и число иконок: сменилась
-## версия (значит, могли смениться модели) или список блоков — печём заново.
+## Испечено ли уже и тем ли составом. Метка хранит версию сборки, число иконок и НОМЕР РЕЦЕПТА:
+## сменилась версия (значит, могли смениться модели), список блоков или сама съёмка — печём заново.
+## Рецепт в метке обязателен: у игрока на диске уже лежит партия, снятая по-старому, а версия
+## сборки и число блоков от правки света не меняются — без этого номера он остался бы с ней навсегда.
+const RECIPE := 2
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
 		"n": _block_list().size(),
+		"r": RECIPE,
 	}
 
 func _maybe_bake() -> void:
@@ -57,7 +69,8 @@ func _maybe_bake() -> void:
 			f.close()
 			if d is Dictionary:
 				have = d
-	if String(have.get("v", "")) == String(want["v"]) and int(have.get("n", -1)) == int(want["n"]):
+	if String(have.get("v", "")) == String(want["v"]) and int(have.get("n", -1)) == int(want["n"]) \
+			and int(have.get("r", -1)) == int(want["r"]):
 		_ready_done = true
 		baked.emit()
 		return
@@ -88,17 +101,43 @@ func _bake_all() -> void:
 	sv.handle_input_locally = false
 	sv.physics_object_picking = false
 	add_child(sv)
+	# СВЕТ В ИГРЕ МЕРЯЕТСЯ В ЛЮКСАХ (project.godot: use_physical_light_units), а люксы имеют смысл
+	# только вместе с ЭКСПОЗИЦИЕЙ. Вьюпорт без CameraAttributes нормализации не имеет, солнце
+	# приходит как есть, и любая ЗАТЕНЁННАЯ поверхность улетает в чистый белый — что и случилось:
+	# половина иконок вышла белыми силуэтами. Текстурные блоки уцелели только потому, что их
+	# материалы unshaded и света не видят вовсе.
+	#
+	# ОТРАЖЕНИЯ ВЫКЛЮЧЕНЫ, а не приглушены: без неба отражать нечего, а запасное «небо» движка
+	# белое, и блестящий материал (roughness 0.5 у старых моделей) собирал его всей поверхностью.
+	#
+	# НЕБА ЗДЕСЬ НЕТ (transparent_bg), поэтому рассеянный свет задан цветом — иначе теневые грани
+	# уходят в чёрный, и иконка читается силуэтом.
+	var wenv := WorldEnvironment.new()
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.62, 0.70, 0.82)
+	env.ambient_light_energy = AMBIENT
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_agx_contrast = AGX_CONTRAST
+	var ca := CameraAttributesPhysical.new()
+	ca.exposure_aperture = APERTURE
+	ca.exposure_shutter_speed = SHUTTER
+	wenv.environment = env
+	wenv.camera_attributes = ca
+	sv.add_child(wenv)
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
 	sv.add_child(cam)
 	# Два источника. Один оставляет теневую грань чёрной, и кубик читается силуэтом, а не деталью.
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-42.0, -38.0, 0.0)
-	key.light_energy = 1.4
+	key.light_intensity_lux = KEY_LUX
 	sv.add_child(key)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-14.0, 140.0, 0.0)
-	fill.light_energy = 0.5
+	fill.light_intensity_lux = FILL_LUX
 	sv.add_child(fill)
 
 	var n := 0
