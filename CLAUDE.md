@@ -187,10 +187,14 @@ project: read it before claiming how anything works.
   the whole circle is occupied. It asks about MACHINES ONLY (`_machine_near`, a handful of nodes);
   the pass over all of `_data` (`_node_near`) stays on the replant path, because streaming runs
   the whole time the player is driving.
-- THE AUTO-MINER DOES NOT TAKE A TREE, AND THAT IS THE RULE. Ore is the standing economy: find a
-  vein, park a base, come back for the cargo. Wood is the driving economy: it is scattered one by
-  one, and a miner on one tree is a miner on one tree. What a forest needs is not a block ON a
-  point but a block WITH A RADIUS — still to be written.
+- **WOOD HAS NO AUTOMATION, AND THAT IS THE POINT — there is no harvester block and none is
+  planned.** Ore is the standing economy: find a vein, park a base, come back for the cargo. Wood
+  is the driving economy, and the RANDOM RELOCATION is what keeps it that way: a felled tree does
+  not come back to its stump, it reappears somewhere inside `REPLANT_RADIUS`, so there is no fixed
+  point for a machine to sit on. That is not a gap waiting for a radius-harvester — it is the
+  mechanic that ANSWERS why the auto-miner refuses a tree. Build a block that harvests an area and
+  the two economies collapse into one, and the only reason to ever drive anywhere for wood
+  disappears with it.
 
 ### Block death and the anchor
 
