@@ -94,6 +94,28 @@ project: read it before claiming how anything works.
 - `blocks.gd` holds an 11³ grid per machine; coordinates are shifted by +5, so the centre is
   (5,5,5). Multi-cell blocks keep node and rotation on one anchor cell (`cell_owner`); always go
   through `find_block` / `remove_block`.
+- **A MULTI-CELL BLOCK'S FOOTPRINT ROTATES WITH IT, AND SO DOES ITS COLLIDER OFFSET.** Both the
+  mesh and the collider turn about the ANCHOR, which for a big block is a corner rather than the
+  middle; `_block_footprint` computed cells with no regard for the angle at all, so a block turned
+  90° lay across cells the grid had reserved somewhere else. Measured on the engine: the wedge and
+  the smelter got the identical cell set at 0°, 90°, 180° and 270°. The offsets now live in
+  `_footprint_offsets` in the block's OWN axes and are turned by the yaw at every door — placing,
+  removing, connectivity, factory links and `attach_delta`, which the builder must call with the
+  angle it is about to place at.
+- WHERE THE COLLIDER SITS IS `blocks.collider_offset`, one door for both ways a block is placed.
+  Manual placement carried its own copy that knew exactly one size (2×2×2) and never turned it, so
+  everything else went in half a cell out. The box's SIZE is the test for "does the collider span
+  the whole footprint" — armour is a thin 1×1×0.2 plate standing on its own face and wants no
+  centring.
+- A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
+  fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
+  right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
+  was the live path for every starter and enemy block.
+- THREE ANSWERS ABOUT ONE SHAPE IS TWO TOO MANY. The wedge's `BoxShape3D` was 1×1×2 (long on Z),
+  its `cells_center` described a 2×1×2, and `_block_footprint` filed it with the 2×1×1 blocks
+  along X. Its mesh settles it: x spans exactly one cell, z spans two. It is now 1×1×2 on Z
+  everywhere, its model centred on those two cells (it sat 0.375 forward of them), and its
+  per-cell attach faces moved to the cells that now exist.
 - Where a block may attach is the `connect_faces` mask on `VehicleBlock`, edited on the cube widget
   (`port_cube.gd`) and nowhere else. Building rotates the block so that face meets the neighbour.
 - Connectivity is by **attach faces**, not by touching: an edge exists only when both sides mark the
