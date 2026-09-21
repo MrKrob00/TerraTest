@@ -74,6 +74,12 @@ static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
 ## поворот, а он у каждой модели свой: художник ставил маркер как удобно. У одной пушки конус
 ## выходил чуть ниже ствола, у другой развёрнут на девяносто градусов. Направление же у всех
 ## одно и то же и уже известно — по нему летит пуля.
+## Во сколько flash_size конус в начале жизни и в конце: радиус и длина. Растёт и тускнеет.
+const MUZZLE_R0 := 0.55
+const MUZZLE_L0 := 1.7
+const MUZZLE_R1 := 1.15
+const MUZZLE_L1 := 3.0
+
 static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, dur: float) -> void:
 	if muzzle == null or not is_instance_valid(muzzle) or not muzzle.is_inside_tree():
 		return
@@ -89,7 +95,15 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	if mat != null:
 		mat.albedo_color = Color(col.r, col.g, col.b, 0.95)
 		mat.emission = col
-	mi.scale = Vector3(size, size * 2.4, size)
+	# ВСПЫШКА РАСТЁТ, А НЕ СХЛОПЫВАЕТСЯ. Раньше она начинала широкой и вытягивалась в иглу —
+	# движение, обратное тому, что делают газы. И она была ЦЕНТРИРОВАНА НА ДУЛЕ, то есть половина
+	# её всегда торчала внутри ствола: на снимке видно, как силуэт ствола разрезает конус.
+	# Теперь остриё стоит в самом дуле (сдвиг на половину длины вперёд), а конус за свою жизнь
+	# расходится.
+	var s0 := Vector3(size * MUZZLE_R0, size * MUZZLE_L0, size * MUZZLE_R0)
+	var s1 := Vector3(size * MUZZLE_R1, size * MUZZLE_L1, size * MUZZLE_R1)
+	mi.scale = s0
+	mi.position = Vector3(0.0, 0.0, -0.5 * s0.y)
 	holder.visible = true
 	if holder.has_meta("fx_tw"):
 		var old: Variant = holder.get_meta("fx_tw")
@@ -97,8 +111,9 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 			(old as Tween).kill()
 	var tw := holder.create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(mi, "scale", Vector3(size * 0.5, size * 3.4, size * 0.5), dur) \
-			.set_ease(Tween.EASE_OUT)
+	tw.tween_property(mi, "scale", s1, dur).set_ease(Tween.EASE_OUT)
+	# Сдвиг едет вместе с длиной: остриё обязано оставаться в дуле всю жизнь эффекта.
+	tw.tween_property(mi, "position", Vector3(0.0, 0.0, -0.5 * s1.y), dur).set_ease(Tween.EASE_OUT)
 	if mat != null:
 		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(_hide_lamp.bind(holder))
@@ -164,10 +179,13 @@ static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float
 	tw.chain().tween_callback(_hide_lamp.bind(holder))
 	holder.set_meta("fx_tw", tw)
 
+## РАСТРУБ ВПЕРЁД, ОСТРИЁ У ДУЛА. Конус стоял наоборот — остриём от ствола, — и вспышка читалась
+## не как вылетающие газы, а как шип, растущий из дула. Поворот на −90° по X переводит +Y меша
+## вперёд по стволу, поэтому широкий конец — это `top_radius`.
 static func _cone_mesh() -> Mesh:
 	var cm := CylinderMesh.new()
-	cm.top_radius = 0.0
-	cm.bottom_radius = 0.5
+	cm.top_radius = 0.5
+	cm.bottom_radius = 0.0
 	cm.height = 1.0
 	cm.radial_segments = 8          # живёт четыре кадра: больше граней тут не видно
 	cm.rings = 0
@@ -729,10 +747,38 @@ static func _spawn_step(p: float, mats: Array, outs: Array) -> void:
 # или уничтожить, и поток обязан долететь всё равно.
 const HEAL_COL_A := Color(0.25, 1.0, 0.45)
 const HEAL_COL_B := Color(0.55, 1.0, 0.75)
-const HEAL_BOLTS := 3
+## ОДИН ГЛИФ НА БЛОК. Их было три, и на плотной сборке, где за тик чинится полдюжины бортов,
+## поле выбрасывало два десятка карточек разом — читалось это как вспышка, а не как «чиню вот
+## этот и вот этот». По одному на цель видно, СКОЛЬКО блоков под ремонтом, прямо по числу линий.
+const HEAL_BOLTS := 1
 const HEAL_DUR := 0.32
+## Та же оболочка, по которой шейдер раскладывает цифры (`regen_code.gdshader`: 0.82..1.0 радиуса).
+const HEAL_SHELL_LO := 0.82
+const HEAL_SHELL_HI := 1.0
 
-static func repair_stream(from: Node3D, to: Node3D) -> void:
+## ОТКУДА ЛЕТИТ ПОЧИНКА — ИЗ ОБЛАКА ЦИФР, А НЕ ИЗ САМОГО БЛОКА. Старт стоял в центре поля с
+## разбросом в полметра при радиусе 4.6, то есть практически в точке: получалась линия, которую
+## блок проводит до цели, — а чинит поле, а не блок.
+##
+## КОНКРЕТНУЮ ЦИФРУ НЕ СПРАШИВАЕМ. Её положение считается в шейдере из TIME, и повторить орбиту
+## на стороне игры значило бы завести вторую копию формулы — она разойдётся с первой при первой
+## же правке и разойдётся молча. Берём случайную точку на ТОЙ ЖЕ оболочке: цифры разбросаны по
+## ней целиком и всё время движутся, так что отличить «вот эта цифра» от «точка среди них»
+## нельзя даже в упор.
+##
+## Полушарие выбираем СО СТОРОНЫ ЦЕЛИ: с дальней стороны глиф летел бы сквозь всю машину.
+static func _cloud_point(centre: Vector3, toward: Vector3, r: float) -> Vector3:
+	if r <= 0.0:
+		return centre
+	var d := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5)
+	if d.length_squared() < 0.0001:
+		d = Vector3.UP
+	d = d.normalized()
+	if toward.length_squared() > 0.0001 and d.dot(toward.normalized()) < 0.0:
+		d = -d
+	return centre + d * r * randf_range(HEAL_SHELL_LO, HEAL_SHELL_HI)
+
+static func repair_stream(from: Node3D, to: Node3D, cloud_radius: float = 0.0) -> void:
 	if from == null or to == null or not is_instance_valid(from) or not is_instance_valid(to):
 		return
 	if not from.is_inside_tree() or not to.is_inside_tree():
@@ -763,10 +809,7 @@ static func repair_stream(from: Node3D, to: Node3D) -> void:
 		cmat.set_shader_parameter("glitch_b", Vector3(HEAL_COL_B.r, HEAL_COL_B.g, HEAL_COL_B.b))
 		card.material_override = cmat
 		host.add_child(card)
-		# Стартуют не из одной точки, а с разных сторон поля: иначе три глифа летят слипшись
-		# и читаются одним.
-		var off := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5) * 1.2
-		card.global_position = a + off
+		card.global_position = _cloud_point(a, b - a, cloud_radius)
 		var tw := card.create_tween()
 		tw.set_parallel(true)
 		# EASE_IN и есть разгон: к цели глиф приходит быстрее, чем стартовал.

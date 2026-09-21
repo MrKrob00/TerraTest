@@ -636,6 +636,20 @@ project: read it before claiming how anything works.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
   Far away they cost nothing because the spawner sleeps them. Waves are the exception: they arrive
   at the player.
+- A RELEASED STORY QUEST TAKES THE TRACKER (`_track_story_if_free`, called from `release_quest`).
+  `hold_quest` keeps the first story quest back until its target exists — the scout arrives after
+  `first_spawn_delay` — so at the moment the tutorial ended the head of `active_quests` was a
+  DAILY, and that is what `_auto_track` picked. The player left the tutorial tracking "sell ore"
+  while the first story quest appeared silently as the third row. It does NOT steal a story quest
+  the player is already on: the tree branches, and an opening sibling must not drag them off the
+  branch they chose. Dailies and events are stolen from freely — those are endless, the story is
+  not.
+- A HANDED-OUT BLOCK GETS THE FINGER BEFORE THE CELL DOES. `_arc_power_1` points at the panel
+  lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
+  that, so it asked for a repair unit to be placed while the block was still on the ground and the
+  outline hung on the support — "place the repair unit" with empty hands and no idea what or
+  where. Every arc that calls `_props.ensure` needs that branch, or a `Dialogue` line that says
+  the kit is on the ground (`_spawn_line_kit` does the latter).
 - A marker without a target is not drawn: kill quests look for a `story` machine first, then the
   nearest enemy within `KILL_MARK_DIST`. While a participant lives the marker follows it, not the
   point.
@@ -1055,6 +1069,16 @@ project: read it before claiming how anything works.
   nobody sees it across the map. A flash with no scene falls back to the tree root: an empty
   `current_scene` used to mean no light at all, and that fails SILENTLY — the effect does not
   crash, it simply never appears.
+- THE MUZZLE IS `Pivot/Marker3D` AND NOTHING ELSE. `_muzzle_point` used to prefer `DrillBody2`,
+  which is the barrel MESH: its origin sits in the middle of the turret. The shotgun, the mortar
+  and the heavy cannon are the only three that carry that node, so those three spawned their round
+  0.561 m from the real muzzle — inside their own body — and lit the flash there too, while the
+  gun, the laser and the rocket launcher fired correctly. The difference between weapons read as
+  random. Measured on the real driver against the models.
+- A MUZZLE FLASH GROWS AND SITS IN FRONT OF THE BARREL. The cone was pointed the wrong way (tip
+  away from the gun), CENTRED on the muzzle so half of it lived inside the barrel, and it
+  SHRANK over its life — wide and short to narrow and long, the opposite of what gas does. It now
+  has its tip in the muzzle, flares forward, and widens as it fades (`BlockFX.MUZZLE_R0/L0/R1/L1`).
 - THE DOOR FOR A MUZZLE FLASH IS `WeaponBlock._handle_fire`, NOT `fire_bullet`. The shotgun calls
   `fire_bullet` once per pellet, eight times a shot, and the mortar overrides it without calling
   `super` at all. `_handle_fire` sees every weapon exactly once per shot. Blast light goes in
@@ -1145,8 +1169,18 @@ project: read it before claiming how anything works.
   visible arc was a fixed slice of each lap — half the digits only ever appeared on the low part
   of it, which is what "they are all at block level or below" was. Random LATITUDE has the same
   flaw in miniature: over thirty digits it will leave a hole at the crown and a clot at the waist.
-  Thirty cards at half the old size (0.4) carry LESS ink than fourteen at 0.8 while actually
-  outlining `REGEN_RADIUS`, which is the one thing the field exists to say.
+  Ninety cards at 0.2 carry LESS ink than thirty at 0.4 (3.6 against 4.8) while actually
+  outlining `REGEN_RADIUS`, which is the one thing the field exists to say — thirty still drew
+  that outline as a dotted line. A MultiMesh bills for pixels, not for instances.
+- A REPAIR BOLT LEAVES THE CLOUD, NOT THE BLOCK, and there is ONE per block healed
+  (`BlockFX.repair_stream`). It started at the regen's own centre with half a metre of scatter
+  against a 4.6 m field, so it read as a line the block draws to its target — but it is the FIELD
+  that repairs. The start is now a random point on the same shell the shader puts the digits on
+  (0.82–1.0 of the radius), in the hemisphere facing the target so the glyph does not fly through
+  the whole machine. WHICH digit is never asked: their orbits are computed in the shader from
+  `TIME`, and repeating that on the game side would be a second copy of the formula that drifts
+  silently. Three bolts per block turned a dense build into a flash; one per target means the
+  number of lines IS the number of blocks under repair.
 
 ### Performance
 
