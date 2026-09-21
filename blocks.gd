@@ -104,6 +104,12 @@ var port_map: Dictionary = {}
 # full battery came back empty after a reload - the same way it used to empty when removed.
 var charge_map: Dictionary = {}
 
+# WHAT A STORAGE BLOCK HOLDS in this cell: "x,y,z" -> {"k": kind key, "n": count, "c": [chunk
+# counts]}. Same reason as charge_map: the contents are a property of the BLOCK (storage.gd) and
+# the save stores cells. Without this map a full storage came back EMPTY after a reload, which on
+# a base built around one is the whole session's cargo.
+var store_map: Dictionary = {}
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
@@ -792,6 +798,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	output_map.erase(anchor)
 	port_map.erase(anchor)
 	charge_map.erase(anchor)
+	store_map.erase(anchor)
 	queue_occlusion()
 
 func get_block(x: int, y: int, z: int) -> G.Block:
@@ -911,6 +918,8 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 func _apply_output(inst: Node, key: String) -> void:
 	if charge_map.has(key) and inst != null and ("charge" in inst):
 		inst.set("charge", float(charge_map[key]))     # аккумулятор родился с сохранённым зарядом
+	if store_map.has(key) and inst != null and inst.has_method("restore_store"):
+		inst.call("restore_store", store_map[key])     # склад родился с прежним грузом
 	if inst is FactoryBlock and port_map.has(key):
 		(inst as FactoryBlock).ports = (port_map[key] as Dictionary).duplicate()
 	if not output_map.has(key) or inst == null:
@@ -1341,6 +1350,13 @@ func get_layout() -> Array:
 					if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
 							and float(bnode.get("charge")) > 0.01:
 						entry["chg"] = float(bnode.get("charge"))
+					# Cargo is asked FROM THE LIVE NODE for the same reason as charge: the belt fills and
+					# empties a storage every few seconds, and the map only holds what it was born with.
+					# An empty storage writes no field.
+					if bnode != null and is_instance_valid(bnode) and bnode.has_method("store_state"):
+						var st: Dictionary = bnode.call("store_state")
+						if int(st.get("n", 0)) > 0:
+							entry["store"] = st
 					blocks_array.append(entry)
 	return blocks_array
 
@@ -1371,13 +1387,22 @@ func apply_layout(blocks_array: Array) -> void:
 	output_map.clear()
 	port_map.clear()
 	charge_map.clear()
+	store_map.clear()
 	for entry in blocks_array:
 		set_block(int(entry["x"]), int(entry["y"]), int(entry["z"]), G.block_from_key(entry["block"]), _read_rot(entry))
 		# Product choices go into the map BEFORE _spawn_all: nodes read them at birth.
+		var ckey: String = "%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]
 		if entry.has("out"):
-			output_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = int(entry["out"])
+			output_map[ckey] = int(entry["out"])
 		if entry.has("ports") and entry["ports"] is Dictionary:
-			port_map["%d,%d,%d" % [int(entry["x"]), int(entry["y"]), int(entry["z"])]] = entry["ports"]
+			port_map[ckey] = entry["ports"]
+		# CHARGE AND CARGO GO INTO THEIR MAPS HERE, and until now the charge did not: `get_layout`
+		# wrote "chg" into the save and nobody ever read it back, so `charge_map` — filled nowhere,
+		# read at birth — was dead code and every battery came back empty.
+		if entry.has("chg"):
+			charge_map[ckey] = float(entry["chg"])
+		if entry.has("store") and entry["store"] is Dictionary:
+			store_map[ckey] = entry["store"]
 	_spawn_all()
 
 # Removes block colliders (group block_collision) from the parent body on a build change, or the

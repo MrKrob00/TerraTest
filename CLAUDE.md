@@ -287,6 +287,14 @@ project: read it before claiming how anything works.
 - Charge lives in the batteries themselves (`battery.gd`); the machine only sums and draws. It
   travels with the block and survives saving (`blocks.charge_map`). Only the solar buffer belongs to
   the machine and exists while anchored.
+- **WHAT A BLOCK HOLDS IS SAVED IN THREE PLACES, AND ALL THREE HAVE TO BE WIRED.** The state lives
+  on the NODE, the save stores CELLS, so a map in `blocks.gd` carries it across: `get_layout` asks
+  the live node and writes a field, `apply_layout` reads that field back INTO THE MAP, and
+  `_apply_output` hands it to the node at birth. Miss the middle step and the whole thing is dead
+  code that looks finished — which is exactly what battery charge was: `get_layout` wrote `"chg"`
+  into every save, `apply_layout` cleared `charge_map` and never filled it, `_apply_output` read a
+  map nobody wrote, and every battery came back empty. Storage cargo (`store_map`, the block's
+  `store_state` / `restore_store`) runs the same three steps. An empty holder writes no field.
 - Enemy energy is real: tower panels, battery and shield all work, which is the way into a shielded
   tower. Every enemy ticks it, driving machines included — they carry domes and repair fields too.
 
@@ -628,14 +636,30 @@ project: read it before claiming how anything works.
   empty list gives it nothing to show. The count does not matter: `consume_block` deducts nothing
   there, so the stack never shrinks.
 - RAW MATERIAL IS HANDED OUT TOO, and it has to be: veins and trees are laid out by RELIEF AND
-  BIOME, and flat ground has neither, so nothing will ever grow on the polygon by itself. Without
-  material, six blocks — receiver, belt, processor, storage, fabricator, seller — cannot be tested
-  at all, because every one of them starts with an item somebody delivered. The panel's RESOURCES
-  submenu drops a handful (`RES_BATCH`, five: one item shows nothing, a chain is interesting as a
-  STREAM) of any kind. The kinds are `resource.set_kind_key` KEYS — the same strings storage, the
-  fabricator and the save tell materials apart by; a local "metal + type" list here would be a
-  second parser of the same key. COMPONENTS ARE DELIBERATELY ABSENT: the fabricator makes them out
-  of ingots, and handing them over ready would delete the one step the chain is tested for.
+  BIOME, and flat ground has neither (`min_height` 2.0 against `flat_y` 0.0), so nothing will ever
+  grow on the polygon by itself. THE RESOURCES WINDOW HANDS OUT BOTH HALVES, and they are not
+  interchangeable. A VEIN (`resource_nodes.spawn_vein`) answers everything up to the belt: does the
+  drill aim at it, does the auto-miner find it, does the collector pick up what flew out, does an
+  enemy miner drive to it. An ITEM lying on the ground answers what comes after: does the crate
+  reach the fabricator. Six blocks — receiver, belt, processor, storage, fabricator, seller —
+  cannot be tested at all without one, because every one of them starts with an item somebody
+  delivered. Batches are `VEIN_BATCH` (3: the auto-miner picks the NEAREST of several, and on one
+  vein that half of its behaviour is invisible) and `RES_BATCH` (5: a chain is interesting as a
+  STREAM). Item kinds are `resource.set_kind_key` KEYS — the same strings storage, the fabricator
+  and the save tell materials apart by; a local "metal + type" list here would be a second parser
+  of the same key. COMPONENTS ARE DELIBERATELY ABSENT: the fabricator makes them out of ingots, and
+  handing them over ready would delete the one step the chain is tested for.
+- A REQUESTED VEIN LIVES IN ITS OWN LIST (`resource_nodes._made`), never in a region. A region is
+  computed FROM THE SEED and is obliged to give the same set however many times it is asked; a row
+  appended to it would vanish at the first rebuild, which is the moment the player drives one
+  region away and comes back. The record itself has the shape `_build_region` writes and goes to
+  the same `_stream_in`: the MultiMesh slot, the collision node, the ore colour and the streaming
+  are all already there.
+- THE PANEL IS IN THREE PARTS, and that is not decoration. Twelve controls of three different
+  kinds live there — what to spawn, what to switch in the world, what to clear up — and in one
+  column they read as a list you search through every time. Long lists (builds, materials) are
+  WINDOWS, not fold-outs in a 300-point panel: fifteen buttons there are a column the height of
+  the screen, and everything else slides under it.
 - WHAT IS A MODE AND WHAT IS A FLAG. The stock, the ground, the quests and the save ask
   `G.proving_ground` directly — they are not debug switches anyone may flip. The save is barred at
   `G._flush_progress`, the single write to disk, not at `save_now` and `mark_progress_dirty`
