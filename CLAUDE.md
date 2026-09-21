@@ -123,6 +123,19 @@ project: read it before claiming how anything works.
 - Never compensate for that friction in `_apply_engine`. A `sqrt(friction) * mass * g` term used to
   be added there; mass cancels out of force/mass, so it was a flat +14.5 m/s² handed to every build,
   weight decided nothing, and the garage's load verdict could not come true at any mass.
+- THE TYRE TURNS AT THE SPEED THE MACHINE ACTUALLY MOVES, not at the throttle (`Wheel._roll_tyre`).
+  The angle used to accumulate as `throttle_input * SPIN_SPEED`, so the picture showed the PEDAL
+  and disagreed with the machine in both directions at once: a light build on strong wheels shot
+  off from a short tap while the tyres barely turned, and a machine jammed against a rock spun
+  nothing at full throttle, which is the one place a spinning wheel would have been right.
+  Rolling is ω = v / r, with v taken AT THE WHEEL'S OWN POINT (`linear_velocity +
+  angular_velocity × arm`) rather than at the centre of mass — through a turn the outer wheel
+  covers noticeably more ground than the inner one, and one shared vector would turn every corner
+  into four identically spinning wheels. Off the ground there is nothing to roll on and the
+  throttle takes over. The radius is asked of the MESH (`_measure_radius`), never derived from
+  `ride_height`: that number is the radius PLUS the arm's drop, and the arm's share differs across
+  the three sizes. `SPIN_MAX` is a picture limit, not physics — past roughly half the frame rate a
+  tyre reads as turning backwards, and a phone's frame rate puts that threshold low.
 - `ride_height` is the wheel's radius PLUS the drop of the suspension arm, and the arm is the same
   model on all three wheels — so the value scales with the tyre and nothing else. The tyres measure
   0.6 : 1.0 : 1.3 (small : standard : big); `suspension_travel` follows the same ratio.
@@ -179,6 +192,13 @@ project: read it before claiming how anything works.
   you just cleared. The radius is small on purpose — with a free-for-all relocation the forest
   would migrate to wherever the player chops most. The target circle is checked against other
   nodes and against machines, or a tree eventually grows inside a base.
+- A REPLANT IS A MOVE, NOT A PLACEMENT, so `_free_spot_near` does not ask `min_height`. That
+  threshold keeps the SEEDED layout out of the deepest basins; a tree that already stands passed it
+  once, and inside an eight-metre circle the height cannot run further than `max_slope` allows.
+  Asking it again forbids the move wherever the whole ground lies below the threshold — the proving
+  ground exactly (h = 0.0 against `min_height` 2.0), where all sixteen tries were rejected in
+  silence and the felled tree simply refilled on its stump. Measured there before the fix: fourteen
+  seconds after felling, records and nodes 7 → 7, nothing moved.
 - A REPLANT IS FORGOTTEN ON RELOAD, SO THE OCCUPANCY CHECK ALSO SITS AT STREAM-IN. `_data` is
   rebuilt from the seed every load: the tree the player felled last session comes back to its
   seeded point, which may now be under the base they built there. Waiting for `replant` does not
@@ -418,11 +438,32 @@ project: read it before claiming how anything works.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.
+- A ROLE FOLLOWS THE BUILD, AND THE DOOR IS `enemy_spawner._apply_role`. The `miner` flag used to
+  be raised only in the stream (`_spawn_one`), while `spawn_at` — the door quests, raids and the
+  proving-ground panel all come through — left it false. Out of that door drove a miner's HULL with
+  a fighter's BRAIN: the build carries no gun, so `EnemyBrain` ran it round the ENGAGE → RETREAT
+  loop — drive up, scratch with the drill, back off ten metres, come again. Measured on the engine:
+  build 91 through `spawn_requested` came out `miner = false` and patrolled a 40-64 m circle for a
+  minute without ever looking for a vein; with the role applied it picked a vein on the first tick
+  and drove to it. The role asks `miner_presets`, the same table the stream picks from — a second
+  list of "which builds dig" is how the two would disagree.
 - NOT EVERYTHING THAT DRIVES CAME FOR THE PLAYER. A MINER (`enemy_vehicle.miner`, builds 90-93)
-  has no weapon at all: it looks for a vein, drills it, and answers being shot at by driving
-  away, which is the only answer it has. That gives the player a choice — chase it for the cargo
-  or let it go — and gives the world someone who is busy with something else; until then every
-  machine on the map meant a fight. **IT CARRIES A COLLECTOR, NOT A STORAGE, AND THAT IS WHAT
+  has no gun: it looks for a vein and drills it. **ITS ANSWER TO BEING SHOT IS THE DRILL, AND IT
+  RUNS ONLY WHEN THE DRILL IS GONE.** A drill is a contact weapon that bites any foreign body in
+  its zone (`drill.gd`), not only a vein, so a miner with one still has something to say; fleeing
+  from the first hit gave a machine that turned and left a second into the fight, which is neither
+  a chase nor a fight. `MINE_FIGHT_TIME` is a window, not a vendetta — it refreshes while the two
+  are within `MINE_FIGHT_HOLD`, so a player who breaks off is not followed across the map, and the
+  moment the last drill is shot off the window closes and `MINE_FLEE_TIME` starts. "Has a drill" is
+  asked of the block list, never of a counter in the AI (`_refresh_drills`, one list for digging
+  and for fighting).
+- A WORKING BLOCK IN THE `front` ROW FILLS THE WHOLE NOSE, not the middle cell. One drill on a
+  three-cell hull left two empty corners and made a wide miner dig exactly as fast as the smallest
+  one — width bought nothing. Every nose cell stands in front of its own hull cell, so they all
+  join by the same rear face as the centre one.
+- A miner gives the player a choice — chase it for the cargo or let it go — and gives the world
+  someone who is busy with something else; until then every machine on the map meant a fight.
+  **IT CARRIES A COLLECTOR, NOT A STORAGE, AND THAT IS WHAT
   MAKES THE CARGO REAL.** Storage takes only what a chain neighbour hands it, and only while
   anchored (`FactoryBlock._factory_active` asks the machine for `anchored`, a field
   `enemy_vehicle` does not have at all), so on a driving miner it could never receive anything:
@@ -665,6 +706,12 @@ project: read it before claiming how anything works.
   and the save tell materials apart by; a local "metal + type" list here would be a second parser
   of the same key. COMPONENTS ARE DELIBERATELY ABSENT: the fabricator makes them out of ingots, and
   handing them over ready would delete the one step the chain is tested for.
+- WHAT IS HANDED OUT HAS TO BE REMOVABLE, AND THE SWEEP BUTTON IS THAT DOOR. Requested veins are
+  three per press and nothing took them away: the sweep cleared `/root/Main/objects`, where loose
+  items live, while a vein is a node under its owner plus a record in `_made`. Ten presses piled
+  thirty of them into one spot, which reads as "they multiply" — measured, the records grow by
+  exactly three a press, so nothing was ever duplicated, it simply never left. `clear_made` sits
+  with the owner, beside `spawn_vein`, and touches nothing seeded.
 - A REQUESTED VEIN LIVES IN ITS OWN LIST (`resource_nodes._made`), never in a region. A region is
   computed FROM THE SEED and is obliged to give the same set however many times it is asked; a row
   appended to it would vanish at the first rebuild, which is the moment the player drives one

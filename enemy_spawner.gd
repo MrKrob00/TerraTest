@@ -431,8 +431,7 @@ func _spawn_one() -> void:
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
 		blocks.layout_preset = int(miner_presets.pick_random()) if as_miner else _pick_preset(player)
-	if as_miner and "miner" in enemy:
-		enemy.miner = true
+	_apply_role(enemy, int(blocks.layout_preset) if blocks and "layout_preset" in blocks else -1)
 
 	var vehicles: Node = _vehicles_root()
 	if vehicles == null:
@@ -658,6 +657,19 @@ func spawn_requested(pos: Vector3, preset: int, faction_id: int = 1,
 	_pg_request = false
 	return e
 
+## РОЛЬ СЛЕДУЕТ ИЗ СБОРКИ, А НЕ ОТ ТОГО, КТО ПОПРОСИЛ МАШИНУ. Флаг `miner` поднимался только в
+## потоке (`_spawn_one`), а `spawn_at` — дверь, через которую машину просят все остальные: панель
+## полигона, квесты, рейды. Оттуда выезжал корпус шахтёра с мозгами бойца: стволов у него нет по
+## сборке, поэтому EnemyBrain гонял его по кругу ENGAGE → RETREAT — подъехал, ковырнул буром,
+## отъехал метров на десять, снова подъехал. Замерено на движке: спавн 91-й сборки через
+## `spawn_requested` давал `miner = false` и патрульную петлю в 40-64 м.
+##
+## Спрашиваем ту же таблицу, по которой шахтёра выбирает поток (`miner_presets`) — второго списка
+## «какие сборки копают» быть не должно.
+func _apply_role(enemy: Node, preset: int) -> void:
+	if "miner" in enemy:
+		enemy.set("miner", miner_presets.has(preset))
+
 func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false) -> Node3D:
 	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
@@ -674,6 +686,8 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 			blocks.is_station = true
 	if "faction" in enemy:
 		enemy.set("faction", faction_id)
+	if not as_base:
+		_apply_role(enemy, preset)
 	vehicles.add_child(enemy)
 	if as_base:
 		enemy.global_position = Vector3(pos.x, G.ground_y(pos, pos.y) + 0.5, pos.z)

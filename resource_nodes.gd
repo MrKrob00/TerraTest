@@ -216,6 +216,22 @@ func spawn_vein(world_pos: Vector3, ore_type: int, wood: bool) -> Node:
 	_stream_in(v)
 	return v.get("node")
 
+## Убрать ВСЕ заказанные жилы (полигон, кнопка уборки). Регионов не касается: их жилы посчитаны
+## от сида и обязаны вернуться, а заказанные — нет.
+##
+## Копятся они именно потому, что убирать их было нечем: кнопка уборки чистила `/root/Main/objects`,
+## где лежат предметы, а жила живёт узлом под своим владельцем и записью в `_made`. Три жилы за
+## нажатие никуда не девались, и после пяти нажатий пятнадцать штук стояли в одном пятне —
+## это и читалось как «их спавнится каждый раз больше».
+func clear_made() -> int:
+	var n: int = _made.size()
+	for v in _made:
+		if int(v["slot"]) >= 0:
+			_stream_out(v)              # слот и узел отдаём ДО того, как забудем запись
+	_made.clear()
+	_rebuild_data()
+	return n
+
 ## Жилы ОДНОГО региона. Своё зерно от сида мира и координат: соседний регион считается
 ## независимо, а этот всегда даёт одно и то же.
 func _build_region(rk: Vector2i) -> Array:
@@ -536,13 +552,17 @@ func _free_spot_near(from: Vector3, self_v: Dictionary, check_nodes: bool) -> Va
 	var map: Node = get_parent()
 	if map == null or not map.has_method("terrain_height_at"):
 		return null
+	# ПЕРЕСАДКА — ЭТО ПЕРЕЕЗД, А НЕ РАСКЛАДКА, ПОЭТОМУ `min_height` ЗДЕСЬ НЕ СПРАШИВАЕТСЯ. Тот
+	# порог отсеивает днища впадин при раскладке ОТ СИДА; дерево, которое уже стоит, порог когда-то
+	# прошло, а в круге восьми метров высота не может уйти дальше, чем позволит max_slope ниже.
+	# Спрашивать его снова — значит запретить переезд там, где вся земля ниже порога: на полигоне
+	# земля плоская (h = 0.0 против min_height 2.0), и все шестнадцать попыток отсеивались молча.
+	# Замерено на движке: срубленное дерево через 14 с оставалось на пне, узлов и записей 7 → 7.
 	for _i in REPLANT_TRIES:
 		var ang: float = randf() * TAU
 		var dist: float = sqrt(randf()) * REPLANT_RADIUS   # равномерно по КРУГУ, а не по радиусу
 		var gp: Vector3 = to_global(from) + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
 		var h: float = map.terrain_height_at(gp)
-		if h < min_height:
-			continue
 		var lp: Vector3 = to_local(Vector3(gp.x, h + 0.25, gp.z))
 		if _slope_at(map, lp.x, lp.z) > max_slope:
 			continue
