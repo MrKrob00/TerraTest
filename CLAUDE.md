@@ -948,6 +948,22 @@ project: read it before claiming how anything works.
   one chunk. Raising `rendering/limits/global_shader_variables/buffer_size` does not help: the
   4096 is the hardware's, not the setting's. Per-chunk values have to travel some other way —
   vertex data, or a shared uniform plus something already in the mesh.
+- **A NORMAL MAP DOES NOTHING ON THESE BLOCKS, AND IT IS NOT A SETTING AWAY.** Measured on the
+  real driver, one block rendered with and without one: the shipped material is `shading_mode = 0`
+  (UNSHADED), and the difference is **0.000** — an unshaded material never samples a normal map,
+  because it never lights anything. Switching that material to PER_PIXEL is still not enough:
+  `force_vertex_shading` computes lighting per VERTEX, so the difference stays at 0.102, which is
+  rounding. Only with BOTH changed does the map reach the frame, and then it is 1.66 (3.94 at
+  `normal_scale` 3) — visible on an edge, small. The cost of getting there is the whole look:
+  unshaded against per-pixel is a 13.5 difference on the same block, i.e. the flat, bright,
+  reads-on-a-phone style the game is drawn in, traded for real lighting, plus the frames that
+  lighting costs on a device that measured 23 fps clean.
+  WHICH IS WHY THE SHADING IS PAINTED INTO THE TEXTURE. `art/bake_normal.py` does that from a
+  normal map: it lights the map against a fixed tangent-space direction and multiplies the
+  DIFFERENCE from flat into the albedo atlas, so the 96% of the map that is flat leaves the
+  texture byte for byte unchanged and only the bevels get their lip. Free at runtime, no setting
+  moved, no art direction changed. `objects/Assets_main_texture_new_normal.png` is the map the
+  atlas was baked from; it is kept as the SOURCE for that tool, not as something the game loads.
 - Two settings in `project.godot` flatten the picture on purpose, and both are speed:
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
   `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
