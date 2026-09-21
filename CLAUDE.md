@@ -734,6 +734,25 @@ project: read it before claiming how anything works.
   thirty of them into one spot, which reads as "they multiply" — measured, the records grow by
   exactly three a press, so nothing was ever duplicated, it simply never left. `clear_made` sits
   with the owner, beside `spawn_vein`, and touches nothing seeded.
+- A QUEST CAN BE HANDED TO YOURSELF, AND THE DOOR IS `Q.force_quest` — the mirror of `hold_quest`.
+  A branch is locked behind four different gates (the previous quests' `requires`, `req_grade`, the
+  two journal slots, and "no story while the tutorial runs"), so waiting for the proving ground to
+  grow into a quest means never testing it. A forced quest is reset to its first stage before it is
+  handed over — the polygon borrows the last played slot, where the story may already be finished —
+  and it rides in `active_quests` / `visible_quests` ahead of everything else. TUTORIALS ARE
+  REFUSED: `tutorial_director` walks those step by step, and a step torn out of the middle tests
+  the desync, not the branch.
+  **THE LIST IS MEMORY ONLY AND IS CLEARED IN `reload_from_progress`,** beside `_held`. `Q` is an
+  autoload and outlives a scene change: hand yourself a branch on the polygon, leave to the menu,
+  start a real game, and it would still be running past `requires` and grade inside a save. Every
+  way into a real game picks a slot, so `G.use_slot` is that single door.
+- `quest_arcs` NO LONGER SWITCHES ITSELF OFF ON THE POLYGON — it drives ONLY what was handed out
+  (`_arc_quests`), which is the same rule the spawner lives by there: nothing enters that world on
+  its own. Asking `active_quests` there would be wrong rather than merely wasteful, because the
+  borrowed progress can have the story finished, and its branches would open with no button
+  pressed. Measured on the engine: before issuing, the polygon held zero quest machines; issuing
+  "Draw Power" put its anchored station in the world within seconds, and a tutorial step was
+  refused.
 - A REQUESTED VEIN LIVES IN ITS OWN LIST (`resource_nodes._made`), never in a region. A region is
   computed FROM THE SEED and is obliged to give the same set however many times it is asked; a row
   appended to it would vanish at the first rebuild, which is the moment the player drives one

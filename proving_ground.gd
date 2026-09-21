@@ -50,6 +50,8 @@ var _vi: int = 0                        # какой вариант внутри
 var _last_spawn: Node3D = null          # чей состав показывает подменю «Состав»
 var _parts: VBoxContainer = null
 var _res_win: PanelContainer = null     # окно «Ресурсы»: жилы сверху, предметы под ними
+var _quest_win: PanelContainer = null   # окно «Задания»: выдать себе любую ветку, кроме обучения
+var _quest_list: VBoxContainer = null
 var _ally: bool = false
 
 ## ФЛАГИ ПОДНИМАЮТСЯ В _enter_tree, А НЕ В _ready, И ЭТО НЕ ПРИДИРКА. Годот обходит дерево
@@ -267,6 +269,12 @@ func _build_ui() -> void:
 	var res_btn := _btn(tr("Resources…"), _on_open_res, 0.0)
 	res_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_child(res_btn)
+
+	# ЗАДАНИЯ — тоже окно: их под тридцать, и в колонке шириной в триста точек это список,
+	# который каждый раз приходится прокручивать глазами.
+	var q_btn := _btn(tr("Quests…"), _on_open_quests, 0.0)
+	q_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_child(q_btn)
 
 	_section(box, tr("WORLD"), false)
 	box.add_child(_toggle(tr("Enemy AI"), _flag(&"enemy_ai"), _on_ai))
@@ -836,6 +844,159 @@ func _build_res_win() -> void:
 		ig.add_child(b)
 
 	col.add_child(_btn(tr("Done"), _on_close_res, 0.0))
+
+# ── ЗАДАНИЯ ─────────────────────────────────────────────────────────────────
+# ВЫДАЁТ КВЕСТ ВЛАДЕЛЕЦ КВЕСТОВ (`Q.force_quest`), а не панель. Там и сброс прогресса, и обход
+# ворот (требования, грейд, места в журнале, «пока идёт обучение, сюжета нет»), и список
+# выданного, по которому ветки понимают, что вести (`quest_arcs._arc_quests`). Своя выдача здесь
+# была бы вторым набором тех же правил и разошлась бы с настоящим на первой же правке.
+#
+# ОБУЧЕНИЕ В СПИСОК НЕ ПОПАДАЕТ. Его ведёт `tutorial_director` шаг за шагом, и шаг, вырванный из
+# середины, проверяет не ветку, а рассинхрон; `Q.force_quest` такой запрос и не примет.
+const QUEST_W_MAX := 520.0
+const QUEST_ID := "proving_quests"
+
+func _on_open_quests() -> void:
+	if _quest_win == null:
+		_build_quest_win()
+	_quest_win.visible = true
+	_refresh_quest_list()
+	_fit_quest_win()
+
+func _on_close_quests() -> void:
+	if _quest_win != null:
+		_quest_win.visible = false
+
+func _build_quest_win() -> void:
+	_quest_win = PanelContainer.new()
+	_quest_win.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.07, 0.09, 0.97)
+	sb.border_color = Color(0.3, 0.85, 0.6, 0.7)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(7)
+	sb.set_content_margin_all(9)
+	_quest_win.add_theme_stylebox_override("panel", sb)
+	_quest_win.visible = false
+	_layer.add_child(_quest_win)
+
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	_quest_win.add_child(col)
+
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	var title := Label.new()
+	title.text = tr("QUESTS")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.add_theme_font_size_override("font_size", 15)
+	title.add_theme_color_override("font_color", Color(0.45, 1.0, 0.7))
+	head.add_child(title)
+	head.add_child(_btn("X", _on_close_quests, 30.0))
+	DragWindow.attach(_quest_win, title, QUEST_ID)
+
+	# СПИСОК В ПРОКРУТКЕ: заданий под тридцать, и без неё окно выше экрана.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(0, QUEST_LIST_H)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	col.add_child(scroll)
+	_quest_list = VBoxContainer.new()
+	_quest_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_quest_list.add_theme_constant_override("separation", 3)
+	scroll.add_child(_quest_list)
+
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	col.add_child(row)
+	var drop := _btn(tr("Drop all"), _on_drop_quests, 0.0)
+	drop.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(drop)
+	var done := _btn(tr("Done"), _on_close_quests, 0.0)
+	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(done)
+
+const QUEST_LIST_H := 320.0
+
+## Строки собираются из самого `Q.quests`, а не из своего списка имён: второй каталог заданий
+## отстал бы от настоящего на первом же добавленном квесте и молча.
+func _refresh_quest_list() -> void:
+	if _quest_list == null:
+		return
+	for c in _quest_list.get_children():
+		c.queue_free()
+	var q_node: Node = get_node_or_null("/root/Q")
+	if q_node == null:
+		return
+	var groups := [
+		[Q.Type.STORY, tr("STORY")],
+		[Q.Type.EVENT, tr("EVENTS — repeatable")],
+		[Q.Type.DAILY, tr("DAILY — counters")],
+	]
+	var first := true
+	for g in groups:
+		var kind: int = int(g[0])
+		var rows: Array = []
+		for q in Q.quests:
+			if int(q["type"]) == kind:
+				rows.append(q)
+		if rows.is_empty():
+			continue
+		rows.sort_custom(func(a, b): return int(a.get("order", 0)) < int(b.get("order", 0)))
+		_section(_quest_list, String(g[1]), first)
+		first = false
+		for q in rows:
+			_quest_list.add_child(_quest_row(q))
+
+## Одна строка: название с пометкой состояния плюс кнопка. Пометка нужна — на полигоне прогресс
+## одолжен у последнего игранного слота, и половина сюжета может быть уже пройдена.
+func _quest_row(q: Dictionary) -> Control:
+	var id: String = String(q["id"])
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	var lbl := Label.new()
+	var mark := ""
+	if Q.is_forced(id):
+		mark = tr(" — issued")
+	elif q.get("done") == true:
+		mark = tr(" — done")
+	lbl.text = tr(String(q["title"])) + mark
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lbl.add_theme_font_size_override("font_size", 12)
+	lbl.clip_text = true
+	if Q.is_forced(id):
+		lbl.add_theme_color_override("font_color", Color(0.5, 1.0, 0.75))
+	elif q.get("done") == true:
+		lbl.add_theme_color_override("font_color", Color(0.55, 0.6, 0.65))
+	row.add_child(lbl)
+	var b := _btn(tr("Drop") if Q.is_forced(id) else tr("Give"), _on_give_quest.bind(id), 62.0)
+	b.add_theme_font_size_override("font_size", 12)
+	row.add_child(b)
+	return row
+
+func _on_give_quest(id: String) -> void:
+	var q: Dictionary = Q.find_quest(id)
+	var title: String = tr(String(q.get("title", id)))
+	if Q.is_forced(id):
+		Q.drop_forced(id)
+		_say(tr("Quest dropped: %s") % title)
+	elif Q.force_quest(id):
+		# Участники ветки появляются на EV_SPAWN_DIST (250-300 м) — до них надо доехать, как и в игре.
+		_say(tr("Quest issued: %s") % title)
+	else:
+		_say(tr("This quest cannot be issued."))
+		return
+	_refresh_quest_list()
+
+func _on_drop_quests() -> void:
+	Q.drop_forced()
+	_say(tr("All issued quests dropped."))
+	_refresh_quest_list()
+
+func _fit_quest_win() -> void:
+	var vp: Vector2 = get_viewport().get_visible_rect().size
+	_quest_win.custom_minimum_size = Vector2(minf(QUEST_W_MAX, vp.x * 0.94), 0)
+	_quest_win.reset_size()
+	_quest_win.position = ((vp - _quest_win.size) * 0.5).max(Vector2(8.0, 8.0))
 
 ## Ширина от экрана, как у окна выбора врага: на телефоне и на планшете это разные окна.
 func _fit_res_win() -> void:

@@ -412,6 +412,11 @@ func reload_from_progress() -> void:
 	# Придержки — состояние СЕАНСА (см. hold_quest): смена слота или загрузка означает, что
 	# ждать больше некого, и придержанный квест иначе не открылся бы никогда.
 	_held.clear()
+	# ВЫДАННОЕ РУКАМИ ЧИСТИМ ЗДЕСЬ ЖЕ, И ЭТО ВАЖНЕЕ, ЧЕМ КАЖЕТСЯ. `Q` — автолоад, он переживает
+	# смену сцены: выдал себе ветку на полигоне, вышел в меню, начал настоящую игру — и она
+	# продолжала бы идти мимо требований и грейда уже в сейве. В настоящую игру заходят только
+	# через выбор слота (G.use_slot), то есть через эту функцию, — здесь дверь и есть.
+	_forced.clear()
 	var g = get_node_or_null("/root/G")
 	for q in quests:
 		q["progress"] = 0
@@ -605,17 +610,23 @@ func _first_active() -> Dictionary:
 # Активные (можно отслеживать/двигать): текущее сюжетное + все незавершённые ежедневные.
 func active_quests() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
+	# ВЫДАННОЕ РУКАМИ ИДЁТ ПЕРВЫМ И МИМО ВОРОТ (см. force_quest): его затем и выдавали, чтобы
+	# посмотреть прямо сейчас. Ниже те же квесты пропускаем, иначе они попали бы в список дважды.
+	for q in forced_quests():
+		out.append(q)
 	# Обучение ПЕРВЫМ — оно и трекается первым (_first_active берёт голову списка).
 	var tut := _current_tutorial()
 	if not tut.is_empty():
 		out.append(tut)
 	for q in available_story():
-		out.append(q)
+		if not _forced.has(String(q["id"])):
+			out.append(q)
 	for q in quests:
-		if q["type"] == Type.DAILY and not q["done"]:
+		if q["type"] == Type.DAILY and not q["done"] and not _forced.has(String(q["id"])):
 			out.append(q)
 	for ev in current_events():
-		out.append(ev)
+		if not _forced.has(String(ev["id"])):
+			out.append(ev)
 	return out
 
 ## СОБЫТИЙ В ЖУРНАЛЕ НЕ БОЛЬШЕ ДВУХ. Их шесть, все повторяемые, и появись они разом — журнал
@@ -700,17 +711,21 @@ func visible_quests() -> Array[Dictionary]:
 	# Сюжетных показываем ВСЕ доступные, а не один: дерево ветвится, и игрок выбирает,
 	# какую ветку вести. order остался только порядком показа внутри списка.
 	var out: Array[Dictionary] = []
+	for q in forced_quests():          # выданное руками видно в журнале так же, как обычное
+		out.append(q)
 	for q in _sorted_tutorial():
 		if not q["done"]:
 			out.append(q)
 			break
 	for q in available_story():
-		out.append(q)
+		if not _forced.has(String(q["id"])):
+			out.append(q)
 	for q in quests:
-		if q["type"] == Type.DAILY and not q["done"]:
+		if q["type"] == Type.DAILY and not q["done"] and not _forced.has(String(q["id"])):
 			out.append(q)
 	for ev in current_events():
-		out.append(ev)
+		if not _forced.has(String(ev["id"])):
+			out.append(ev)
 	return out
 
 # Сюжетные, доступные ПРЯМО СЕЙЧАС: не выполнены, требования закрыты, грейд взят.
@@ -737,6 +752,54 @@ func hold_quest(id: String) -> void:
 func release_quest(id: String) -> void:
 	if _held.erase(id):
 		changed.emit()
+
+## ── ЗАДАНИЕ, ВЫДАННОЕ РУКАМИ (полигон) ──────────────────────────────────────
+## Обратная сторона `_held`: там квест придерживают, здесь проталкивают мимо всех ворот сразу —
+## требований предыдущих квестов, грейда, двух мест в журнале и «пока идёт обучение, сюжета нет».
+## Иначе ветку на полигоне не проверить вовсе: сюжет заперт тем, что до него не дошли, события —
+## грейдом, а обучение там не проходят.
+##
+## ТОЛЬКО ПАМЯТЬ, НИКАКОГО СОХРАНЕНИЯ — как у `_held`. Полигон и так ничего не пишет на диск
+## (`G._flush_progress`), но выданное руками не должно пережить даже выход в меню.
+##
+## ОБУЧЕНИЕ СЮДА НЕ ВХОДИТ. Его ведёт `tutorial_director` шаг за шагом, и вырванный из середины
+## шаг проверяет не ветку, а рассинхрон между шагом и тем, кто его ведёт.
+var _forced: Dictionary = {}
+
+func force_quest(id: String) -> bool:
+	var q := _find(id)
+	if q.is_empty() or int(q["type"]) == Type.TUTORIAL:
+		return false
+	# СБРАСЫВАЕМ В НАЧАЛО. Полигон одалживает последний игранный слот, и сюжет в нём может быть
+	# уже пройден; проверять надо ветку целиком, а не её последнюю секунду.
+	reset_quest(id)
+	_forced[id] = true
+	changed.emit()
+	_auto_track()
+	return true
+
+## Снять выданное: без имени — всё сразу.
+func drop_forced(id: String = "") -> void:
+	if id == "":
+		if _forced.is_empty():
+			return
+		_forced.clear()
+	elif not _forced.erase(id):
+		return
+	changed.emit()
+	_auto_track()
+
+func is_forced(id: String) -> bool:
+	return _forced.has(id)
+
+## Выданные руками — в том виде, в каком их ждут ветки (`quest_arcs`) и журнал.
+func forced_quests() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for id in _forced:
+		var q := _find(String(id))
+		if not q.is_empty() and not q["done"]:
+			out.append(q)
+	return out
 
 func available_story() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
