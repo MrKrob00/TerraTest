@@ -29,12 +29,9 @@ var _dropped: Dictionary = {}      # какие стадии уже выложи
 var _thief: Node3D = null
 
 func _ready() -> void:
-	# НА ПОЛИГОНЕ ВЕТОК НЕТ. Задание — это участники, посылки и правки земли в мире, а полигон
-	# существует ровно затем, чтобы в нём не было ничего, кроме поставленного руками.
-	if G.proving_ground:
-		set_process(false)
-		set_physics_process(false)
-		return
+	# НА ПОЛИГОНЕ ВЕТКИ НЕ ЗАПУСКАЮТСЯ САМИ, но узел жив: ведём то, что выдали руками через
+	# панель (см. _arc_quests). Раньше он тут выключался целиком, и проверить ветку на полигоне
+	# было нельзя вовсе — а это единственное место, где её можно посмотреть с начала и сразу.
 	add_to_group("quest_arcs")     # компас берёт отсюда координаты события
 	_props = QuestProps.new()
 	add_child(_props)
@@ -53,7 +50,7 @@ func _tick_arcs(delta: float) -> void:
 		return
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
-	for q in Q.active_quests():
+	for q in _arc_quests():
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
 			"quest_arc_power_2":   _arc_power_2(q)
@@ -83,6 +80,15 @@ func _tick_arcs(delta: float) -> void:
 			"quest_waves_2":       _waves_2(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
+
+## КАКИЕ ЗАДАНИЯ ВЕДЁМ. В игре — все активные; на полигоне ТОЛЬКО ВЫДАННЫЕ РУКАМИ, и это то же
+## правило, по которому там живёт спавнер: в мир полигона ничто не входит само. Спрашивать там
+## `active_quests` нельзя — полигон одалживает прогресс последнего игранного слота, и сюжет,
+## пройденный в настоящей игре, открыл бы свои ветки сам, без единого нажатия.
+func _arc_quests() -> Array:
+	if G.proving_ground:
+		return Q.forced_quests()
+	return Q.active_quests()
 
 # ── Ветка «энергия»: панель на опору, затем реген рядом ──────────────────────
 # THE STAGE IS A PLACE, NOT AN INVENTORY. Handing the player a panel and a support as loose blocks
