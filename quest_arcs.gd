@@ -261,6 +261,14 @@ func _arc_power_2(q: Dictionary) -> void:
 	# нужен, — тем же ensure, что и панель стадией раньше, и с той же проверкой «в руке уже есть».
 	if not _player_owns(G.Block.REGEN):
 		_props.ensure("arc_power", G.Block.REGEN, _power_point)
+	# ПАЛЕЦ СНАЧАЛА НА САМ БЛОК, и только потом на клетку — ровно как стадией раньше с панелью.
+	# Здесь этой ветки не было, и получалось «поставь ремонтник» при пустых руках: блок лежал в
+	# траве, чертёж висел на опоре, а что именно ставить и откуда оно возьмётся, игроку не
+	# говорил никто. Про панель это уже было известно и записано — стадия просто не переняла.
+	if _props.position_for("arc_power") != null:
+		_drop_hints()
+		_point_finger("Pick the repair unit up", "arc_power")
+		return
 	if _plan_near(_power_point):
 		_show_plan_on(_power_base.get("block_map_node"),
 				[{"cell": _power_regen_cell(), "block": G.Block.REGEN}])

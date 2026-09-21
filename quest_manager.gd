@@ -601,6 +601,19 @@ func _auto_track() -> void:
 	tracked_id = q.get("id", "")
 	changed.emit()
 
+## ПОСТАВИТЬ ТРЕКЕР НА СЮЖЕТ, ЕСЛИ ОН СЕЙЧАС НЕ НА СЮЖЕТЕ. Отличается от `_auto_track` тем, что
+## НЕ перебивает уже выбранную сюжетную ветку: дерево ветвится, и игрок, ведущий одну ветку, не
+## должен терять её оттого, что открылась соседняя. Ежедневку и событие — перебиваем: они
+## бесконечные, а сюжет один.
+func _track_story_if_free() -> void:
+	var s := _current_story()
+	if s.is_empty():
+		return
+	var cur := _find(tracked_id)
+	if not cur.is_empty() and int(cur.get("type", -1)) == Type.STORY and cur["done"] == false:
+		return
+	track(String(s["id"]))
+
 func _first_active() -> Dictionary:
 	for q in active_quests():
 		return q
@@ -752,6 +765,11 @@ func hold_quest(id: String) -> void:
 func release_quest(id: String) -> void:
 	if _held.erase(id):
 		changed.emit()
+		# ОТПУЩЕННЫЙ СЮЖЕТ ЗАБИРАЕТ ТРЕКЕР. Придержка снимается позже, чем квест стал доступен
+		# по бумагам: разведчик прилетает через first_spawn_delay, и всё это время головой списка
+		# была ЕЖЕДНЕВКА — её и брал _auto_track в конце обучения. Игрок выходил из обучения с
+		# «продай руды» вместо первого сюжетного, а тот молча появлялся третьей строкой.
+		_track_story_if_free()
 
 ## ── ЗАДАНИЕ, ВЫДАННОЕ РУКАМИ (полигон) ──────────────────────────────────────
 ## Обратная сторона `_held`: там квест придерживают, здесь проталкивают мимо всех ворот сразу —
