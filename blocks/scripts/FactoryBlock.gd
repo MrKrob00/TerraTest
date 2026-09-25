@@ -156,6 +156,13 @@ func _factory_active() -> bool:
 func can_accept() -> bool:
 	return _factory_active() and current_item == null
 
+## Would this machine take THIS KIND of item if its intake were free. A belt asks it about a
+## machine that just refused: "busy" and "not mine" are both a refusal from try_receive, and only
+## the first is a reason to hold the item. Default no, so a machine that has not answered for itself
+## keeps the old behaviour (the belt moves the item on).
+func wants(_item: Node3D) -> bool:
+	return false
+
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active():
 		return false                      # без якоря цепочка стоит

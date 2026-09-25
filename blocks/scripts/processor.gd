@@ -79,8 +79,20 @@ func _pick_slots() -> Array:
 func can_accept() -> bool:
 	return _factory_active() and _cells.size() == CELLS and _cells[0] == null
 
+## Ore and wood, and only while the result has somewhere to go. A processor whose output is not
+## wired would fill its three cells and stop, and a belt waiting on it would stop the line behind it
+## with no word; without an outlet it wants nothing, and ore passes by as it always did.
+func wants(item: Node3D) -> bool:
+	return _factory_active() and not _valid_targets().is_empty() \
+			and is_instance_valid(item) and item.has_method("can_upgrade") and item.can_upgrade()
+
 func try_receive(item: Node3D) -> bool:
 	if not can_accept() or item == null or not is_instance_valid(item):
+		return false
+	# Refused BY KIND, not by outlet (that half is in wants). An ingot, coal or a component used to
+	# go in whenever the intake happened to be free and ride three ticks through unchanged: the same
+	# six ingots took 19.6 s past a processor against 13.4 s on a bare line.
+	if not item.has_method("can_upgrade") or not item.can_upgrade():
 		return false
 	_cells[0] = item
 	_adopt(item, 0)

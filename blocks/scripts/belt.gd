@@ -55,7 +55,12 @@ func _is_side(t: Node) -> bool:
 	var d: Vector3 = global_transform.basis.inverse() * ((t as Node3D).global_position - global_position)
 	return absf(d.x) > absf(d.z)
 
+## The machine this belt is holding its item for (see push_item). Read by _first_valid_target, so
+## the belt subscribes to THAT machine's slot_freed rather than the next belt's.
+var _held_for: FactoryBlock = null
+
 func push_item(item: Node3D) -> bool:
+	_held_for = null
 	if item == null or not is_instance_valid(item):
 		return false
 	for t in _valid_targets():
@@ -64,6 +69,15 @@ func push_item(item: Node3D) -> bool:
 		if (t as FactoryBlock).try_receive(item):
 			next_block = t
 			return true
+		if _held_for == null and (t as FactoryBlock).wants(item):
+			_held_for = t
+	# A MACHINE THAT WANTS THIS ITEM AND IS ONLY BUSY IS WAITED FOR. "Machine before belt" used to
+	# hold only while the machine was idle: the processor's intake frees once a tick, the belt
+	# offered in between, got a refusal and sent the ore on. Measured on the quest's own line, six
+	# ores dropped on the receiver, three runs: 5 ingots and 1 raw ore reached the seller every
+	# time. What the machine does not want (an ingot, a component) still passes straight on.
+	if _held_for != null:
+		return false
 	# ВТОРОЙ ЗАХОД — ЛЕНТЫ, и не всякая: за той, у которой в очереди стоит станок, место
 	# занято (см. side_waiting). Раньше здесь стоял super.push_item, то есть круговой обход
 	# всех целей, — и сквозной поток забирал каждую освободившуюся клетку.
@@ -76,6 +90,11 @@ func push_item(item: Node3D) -> bool:
 			next_block = t
 			return true
 	return false
+
+func _first_valid_target() -> FactoryBlock:
+	if is_instance_valid(_held_for):
+		return _held_for
+	return super._first_valid_target()
 
 ## СТАНОК СБОКУ ВПЕРЁД СКВОЗНОГО ПОТОКА — ждёт ли кто-то эту клетку.
 ##

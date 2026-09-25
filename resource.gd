@@ -161,6 +161,11 @@ func set_kind_key(key: String) -> void:
 
 # Вызывается Processor-ом. Металл при переплавке СОХРАНЯЕТСЯ: слиток из ферритовой руды —
 # ферритовый, иначе четыре руды сошлись бы в один безликий слиток и рецепты стали бы фикцией.
+## What the processor can turn into something else. The list is the left side of the match in
+## upgrade() below; a belt asks it to decide whether to wait for a busy processor or pass the item on.
+func can_upgrade() -> bool:
+	return type == Type.ORE or type == Type.WOOD
+
 func upgrade() -> void:
 	match type:
 		Type.ORE:
