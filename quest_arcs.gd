@@ -704,12 +704,15 @@ var _line_gifted: bool = false
 ##
 ## Клетка (5,5,6) в списке есть, но её ставит сам квест: подсказка на неё не появится, зато
 ## схема остаётся ЦЕЛОЙ — по ней же проверяется, что линия сложена так, как задумано.
+## "yaw" on every entry: on this line the turn IS the function (a reversed belt carries away from
+## the seller, a turned processor links to nothing), so the ghost stays until the block is turned
+## as drawn — see BuildHint.create.
 const LINE_PLAN := [
-	{"cell": Vector3i(5, 5, 6),  "block": G.Block.BELT},
-	{"cell": Vector3i(5, 5, 7),  "block": G.Block.BELT},
-	{"cell": Vector3i(5, 5, 8),  "block": G.Block.BELT},
-	{"cell": Vector3i(5, 5, 9),  "block": G.Block.BELT},
-	{"cell": Vector3i(5, 5, 10), "block": G.Block.RECEIVER},
+	{"cell": Vector3i(5, 5, 6),  "block": G.Block.BELT,     "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 7),  "block": G.Block.BELT,     "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 8),  "block": G.Block.BELT,     "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 9),  "block": G.Block.BELT,     "yaw": 0.0},
+	{"cell": Vector3i(5, 5, 10), "block": G.Block.RECEIVER, "yaw": 0.0},
 ]
 ## Куда встаёт процессор: СБОКУ ОТ ЛИНИИ, а не в её разрыв. Якорь (4,5,8), футпринт 2×2×2
 ## занимает x∈{3,4}, z∈{7,8} — все четыре клетки СЛЕВА от ленты, сама линия остаётся целой.
@@ -723,7 +726,7 @@ const LINE_PLAN := [
 ## (port_defaults). Значит груз сходит с ленты в станок и возвращается на ленту НА КЛЕТКУ
 ## БЛИЖЕ к продавцу, то есть поток никуда не разворачивается.
 const LINE_PROC_PLAN := [
-	{"cell": Vector3i(4, 5, 8), "block": G.Block.PROCESSOR},
+	{"cell": Vector3i(4, 5, 8), "block": G.Block.PROCESSOR, "yaw": 0.0},
 ]
 
 var _hints: Array = []
@@ -772,10 +775,13 @@ func _show_plan_on(bm, plan: Array) -> void:
 	_clear_plan()
 	for e in plan:
 		var cell: Vector3i = e["cell"]
+		# An entry with a "yaw" wants the block TURNED that way (see BuildHint.create).
+		var yaw: float = float(e["yaw"]) if e.has("yaw") else NAN
 		# Клетка уже занята нужным блоком (её поставил квест) — разметка ей не нужна.
-		if bm.has_method("get_block") and int(bm.get_block(cell.x, cell.y, cell.z)) == int(e["block"]):
+		if BuildHint.satisfied_by(bm, cell, int(e["block"]), yaw):
 			continue
-		var h := BuildHint.create(bm, cell, int(e["block"]))
+		var h := BuildHint.create(bm, cell, int(e["block"]),
+				Vector3(0.0, 0.0 if is_nan(yaw) else yaw, 0.0), not is_nan(yaw))
 		if h != null:
 			_hints.append(h)
 
@@ -803,6 +809,47 @@ var _finger_text: String = ""
 
 ## `prop_quest` — палец наводится на ПРЕДМЕТ этого квеста, пока тот лежит в мире, и только потом
 ## на ближайшую клетку чертежа.
+## THE KIT GETS THE FINGER BEFORE THE CELL DOES, the rule _arc_power_1 follows: pointing at an
+## empty cell while the player has nothing to put in it asks for a part they do not have yet. The
+## finger goes to a part lying by the seller until the player holds something the plan still needs.
+## Unlike the power branch the ghosts STAY UP: the shape of the whole line is the lesson, and with
+## four parts on the ground hiding it until each was picked up would hide it most of the stage.
+func _line_finger(place_text: String, plan: Array) -> void:
+	if _misturned(plan):
+		_point_finger("Turned the wrong way — match the white outline")
+		return
+	if not _can_place_any(plan) and _props.position_for("arc_line") != null:
+		_point_finger("Pick up the parts lying by the seller", "arc_line")
+		return
+	_point_finger(place_text)
+
+## The right block in a planned cell, turned otherwise than drawn. Measured: a processor set at 90°
+## on its cell was accepted by the grid, linked to nothing, and the type-only ghost vanished — no
+## outline, no finger, and a stage that never finished.
+func _misturned(plan: Array) -> bool:
+	if not is_instance_valid(_line_base):
+		return false
+	var bm = _line_base.get("block_map_node")
+	for e in plan:
+		if not e.has("yaw"):
+			continue
+		var c: Vector3i = e["cell"]
+		var bt: int = int(e["block"])
+		if _base_block(_line_base, c) == bt and not BuildHint.satisfied_by(bm, c, bt, float(e["yaw"])):
+			return true
+	return false
+
+## A block for a still-open cell of the plan, in the inventory or in the hand. _player_owns cannot
+## answer this: it counts the base as well, and the base already carries a belt.
+func _can_place_any(plan: Array) -> bool:
+	for e in plan:
+		var bt: int = int(e["block"])
+		if _base_block(_line_base, e["cell"]) == bt:
+			continue
+		if G.block_inventory.has(bt) or _in_hand(bt):
+			return true
+	return false
+
 func _point_finger(text: String, prop_quest: String = "") -> void:
 	var guide: Node = get_tree().get_first_node_in_group("tutorial_guide")
 	if guide == null:
@@ -875,7 +922,11 @@ func _line_1(q: Dictionary) -> void:
 	# Готово, когда цепочка РЕАЛЬНО собрана: от приёмника есть путь до продавца.
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	if recv == null or not _chain_reaches(recv, G.Block.SELLER):
-		_point_finger("Belt by belt along the line — receiver goes at the far end.")
+		# EVERY POLL, not once in _spawn_line_kit: the ghosts live in memory and a reload takes
+		# them, while _line_adopt marks the kit as already dropped. Measured: after a reload in this
+		# stage the player had zero ghosts and no finger. _show_plan is idempotent (_plan_sig).
+		_show_plan(LINE_PLAN)
+		_line_finger("Belt by belt along the line — receiver goes at the far end.", LINE_PLAN)
 		return
 	_clear_plan()
 	_drop_ore_over(recv, LINE_ORE)      # линия жива — вот ей и работа
@@ -884,6 +935,12 @@ func _line_1(q: Dictionary) -> void:
 
 func _line_2(q: Dictionary) -> void:
 	_line_adopt()
+	# HANDED OUT BEFORE A RELOAD ALREADY — on a machine, in the inventory or the hand, or lying by
+	# the seller. _line_gifted lives in memory, so every reload used to run the countdown again and
+	# drop a SECOND processor, with eight seconds of nothing on screen before it.
+	if not _line_gifted and (_player_owns(G.Block.PROCESSOR)
+			or _props.has_loose("arc_line", G.Block.PROCESSOR)):
+		_line_gifted = true
 	# Процессор выдаём НЕ сразу: игрок должен увидеть, как первая партия проехала по ленте и
 	# продалась. Подарок посреди этого зрелища его бы и перебил.
 	if not _line_gifted:
@@ -893,13 +950,20 @@ func _line_2(q: Dictionary) -> void:
 		if _line_gift_t > 0.0:
 			return
 		_line_gifted = true
-		_award(G.Block.PROCESSOR)
-		_show_plan(LINE_PROC_PLAN)
 		Dialogue.say("System", tr("Processor delivered. It stands BESIDE the line, left of the middle belt — the belts stay where they are. It takes ore off the belt and puts the ingot back on it."))
-		return
+	# A QUEST ITEM, NOT AN AWARD. award_blocks threw it into the world untagged: the finger could
+	# not find it, and ten minutes on the ground (world_persist.BLOCK_TTL) deleted it with the branch
+	# still waiting. Tagged, it outlives the timer, and ensure never drops a second while one lies.
+	if not _player_owns(G.Block.PROCESSOR):
+		_props.ensure("arc_line", G.Block.PROCESSOR, _line_point)
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
-	if recv == null or not _chain_reaches(recv, G.Block.PROCESSOR):
-		_point_finger("Processor goes here — beside the line, not into it.")
+	var proc: Node = _find_in_base(G.Block.PROCESSOR)
+	# CUT IN MEANS BOTH WAYS: ore reaches the processor AND the ingot reaches the seller. The
+	# input alone used to pass, with the output facing nothing, and the demo ore then sat inside.
+	if recv == null or proc == null or not _chain_reaches(recv, G.Block.PROCESSOR) \
+			or not _chain_reaches(proc, G.Block.SELLER):
+		_show_plan(LINE_PROC_PLAN)
+		_line_finger("Processor goes here — beside the line, not into it.", LINE_PROC_PLAN)
 		return                          # процессор ещё не врезан в линию
 	_clear_plan()
 	_drop_ore_over(recv, LINE_ORE)      # и снова руда — проверить, что линия не развалилась
@@ -1385,12 +1449,14 @@ func _player_owns(bt: int) -> bool:
 	# РУКА — ЭТО hand_node(), А НЕ block_body. block_body — это блок, НА КОТОРЫЙ НАВЕДЕНЫ (он и так
 	# посчитан выше, вместе с машиной, на которой стоит). Пока спрашивали его, блок в руке не
 	# считался ничьим: игрок вёз панель к опоре, а ветка каждую секунду роняла ему вторую.
+	return _in_hand(bt)
+
+func _in_hand(bt: int) -> bool:
 	var p: Node3D = _player()
 	if p == null or not p.has_method("hand_node"):
 		return false
 	var held = p.hand_node()
-	return held != null and is_instance_valid(held) and ("block" in held) \
-			and int(held.get("block")) == bt
+	return is_instance_valid(held) and ("block" in held) and int(held.get("block")) == bt
 
 func _count_block(bt: int) -> int:
 	return _machine_count(_player(), bt)

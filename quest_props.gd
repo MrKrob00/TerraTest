@@ -164,6 +164,11 @@ func position_for(quest_id: String) -> Variant:
 		return null
 	return n.global_position
 
+## Does an item of THIS TYPE still lie in the world under this quest. Typed for the same reason
+## _first_loose is: one stage can put several different blocks out under one id.
+func has_loose(quest_id: String, block_type: int) -> bool:
+	return _first_loose(quest_id, block_type) != null
+
 ## Ближайший к игроку предмет стадии, который ВСЁ ЕЩЁ лежит в мире. Подобранный узел уезжает
 ## из objects (в руку, потом на машину) — по родителю это и видно.
 ## Ближайший СВОБОДНО ЛЕЖАЩИЙ предмет этого квеста, при желании — ЗАДАННОГО ТИПА.

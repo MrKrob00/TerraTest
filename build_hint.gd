@@ -29,17 +29,25 @@ var cell := Vector3i.ZERO
 var block_type: int = 0
 
 var _map: Node = null                  # узел blocks машины (он же родитель)
+var _strict_yaw: bool = false
 var _mat: StandardMaterial3D = null
 var _t: float = 0.0
 var _check: float = 0.0
 
 ## Поставить призрак в клетку машины. rot — тот же поворот, каким блок встанет по-настоящему.
-static func create(blocks_node: Node, cell_pos: Vector3i, bt: int, rot: Vector3 = Vector3.ZERO) -> BuildHint:
+## strict_yaw: the ghost is done only when the block went in TURNED as drawn, not merely when the
+## cell holds that type. Opt-in, because for some blocks the yaw does not matter (a panel) or the
+## builder picks it by the face it attaches to (a wheel) — a strict ghost would hang over a block
+## that works. For a belt or a processor the yaw IS the function: turned wrong it links to nothing,
+## and a type-only ghost vanished anyway, leaving the player with no hint at all.
+static func create(blocks_node: Node, cell_pos: Vector3i, bt: int, rot: Vector3 = Vector3.ZERO,
+		strict_yaw: bool = false) -> BuildHint:
 	if blocks_node == null or not is_instance_valid(blocks_node):
 		return null
 	var h := BuildHint.new()
 	h.cell = cell_pos
 	h.block_type = bt
+	h._strict_yaw = strict_yaw
 	h._map = blocks_node
 	blocks_node.add_child(h)
 	# Та же формула, по которой blocks.gd ставит настоящий блок: сетка 11³ со сдвигом на центр.
@@ -101,8 +109,17 @@ func _process(delta: float) -> void:
 		return
 	# Поставили ЧТО НАДО — подсказка своё отработала. Поставили что-то другое — остаёмся:
 	# игрок ошибся клеткой, и убирать разметку в этот момент значит бросить его без ответа.
-	if int(_map.get_block(cell.x, cell.y, cell.z)) == block_type:
+	if satisfied_by(_map, cell, block_type, rotation.y if _strict_yaw else NAN):
 		queue_free()
+
+## One answer for the ghost and for whoever decides whether to draw it (quest_arcs._show_plan_on).
+## NAN yaw means "any turn will do".
+static func satisfied_by(bm: Node, c: Vector3i, bt: int, yaw: float) -> bool:
+	if bm == null or not bm.has_method("get_block") or int(bm.get_block(c.x, c.y, c.z)) != bt:
+		return false
+	if is_nan(yaw) or not bm.has_method("yaw_at"):
+		return true
+	return absf(angle_difference(float(bm.yaw_at(c.x, c.y, c.z)), yaw)) < 0.05
 
 ## Мировая точка призрака — для пальца наставника.
 func target_position() -> Vector3:
