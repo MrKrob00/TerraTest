@@ -81,19 +81,19 @@ connect_defaults = {
 "0,0,-1|0": false,
 "0,0,-1|2": false,
 "0,0,-1|3": false,
-"0,0,-1|4": true,
-"0,0,-1|5": false,
+"0,0,-1|4": false,
+"0,0,-1|5": true,
 "0,0,0|1": true,
 "0,0,0|2": false,
 "0,0,0|3": false,
 "0,0,0|4": false,
-"0,0,0|5": false
+"0,0,0|5": true
 }
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=583919251]
 shape = SubResource("BoxShape3D_s")
 
 [node name="Wedge" type="MeshInstance3D" parent="." unique_id=1427232002]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.46636844, 0.12500001)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.466, 0.6)
 mesh = SubResource("ArrayMesh_vye5e")
 skeleton = NodePath("")
