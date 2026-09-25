@@ -152,6 +152,9 @@ func _stretch(step: float) -> void:
 ## свежим объектом против 744 мкс с переиспользованным. Половина строки «пули» в профиле уходила
 ## на аллокацию, а не на физику.
 var _ray_q: PhysicsRayQueryParameters3D = null
+## The surface normal at the last hit, from the same ray: a mark on the world (BlockFX.ground_hole)
+## lies along the slope it was shot into.
+var hit_normal: Vector3 = Vector3.UP
 
 func _sweep(from: Vector3, to: Vector3) -> bool:
 	var space := get_world_3d().direct_space_state
@@ -183,6 +186,7 @@ func _sweep(from: Vector3, to: Vector3) -> bool:
 			start = (h["position"] as Vector3) + fwd * SWEEP_SKIP
 			continue
 		global_position = h["position"]
+		hit_normal = h.get("normal", Vector3.UP)
 		hit.emit(body, self)
 		return true
 	return false
