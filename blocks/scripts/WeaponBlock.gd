@@ -883,7 +883,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	elif is_instance_valid(source):
 		# THE WORLD: ground, rock, a tree. A shot that landed there used to vanish with no mark.
 		var n = source.get("hit_normal")
-		BlockFX.ground_hole(self, source.global_position, n if n is Vector3 else Vector3.UP)
+		BlockFX.ground_glitch(self, source.global_position, n if n is Vector3 else Vector3.UP)
 	# Щит гасит снаряд «в воздухе», на самом куполе: без отметки попадание выглядело как
 	# исчезновение пули из ниоткуда. Отметку рисуем НА КУПОЛЕ, в точке гашения, а не по пуле:
 	# по пуле облако и принадлежало не тому, и уезжало вместе со снарядом обратно в пул —

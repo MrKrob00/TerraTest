@@ -356,13 +356,13 @@ project: read it before claiming how anything works.
 - A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
   `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
   pool is empty; afterwards bullets come out of it in any order.
-- A SHOT THAT LANDS ON THE WORLD LEAVES A DIGITAL HOLE (`BlockFX.ground_hole`), and the door is the
-  branch of `WeaponBlock._on_bullet_body_entered` for a body that takes no damage — ground, rock,
-  tree. It used to vanish with no mark. The hole is its OWN shader (`ground_hole.gdshader`), not a
-  glitch card: cards blend additively, and adding black draws nothing, while a hole has to darken
-  the ground. It lies along the surface (`bullet.hit_normal`, from the sweep's own ray) and heals
-  over `HOLE_LIFE`. A POOL of `HOLE_POOL` (24): the oldest is reused, so a long burst costs 24 nodes
-  and no more — measured, 40 hits left exactly 24 — and nothing is made past `HOLE_DIST`.
+- A SHOT THAT LANDS ON THE WORLD LEAVES AN ORDINARY GLITCH (`BlockFX.ground_glitch`), and the door is
+  the branch of `WeaponBlock._on_bullet_body_entered` for a body that takes no damage — ground,
+  rock, tree. It used to vanish with no mark. The mark is the very card a block appears with,
+  lying on the surface (`lie_flat`, along `bullet.hit_normal` from the sweep's own ray): damage, NOT
+  a hole — a dark core was tried and read as the world breaking open. A POOL of `HOLE_POOL` (24):
+  the oldest is reused, so a long burst costs 24 nodes and no more — measured, 40 hits left exactly
+  24 — and nothing is made past `HOLE_DIST`.
 - A HARD LANDING SENDS A FLAT WAVE OF RED PIXELS ALONG THE GROUND (`BlockFX.ground_wave`, raised in
   `MachineBody.sense_ground`, so every enemy dropping in makes one too). The threshold is a fall
   HEIGHT (`LAND_WAVE_DROP`, 3 m) turned into a speed through the game's gravity, which is 24.5 m/s²,
@@ -526,7 +526,9 @@ project: read it before claiming how anything works.
   OR A MACHINE APPEARS WITH (`BlockFX.glyph`, a pixel pattern where every '#' is a card): they come
   up as BIG patches the size of the spawn cloud's (`GLYPH_BIG` cells), fly together SHRINKING, and
   lock into one small sign, in the glitch's own palette — the shape is the message, not the colour.
-  Three seconds and it is gone (`EnemyMarker.ALERT_TIME`). `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
+  AT REST IT STAYS A GLITCH, NOT A POLISHED GLYPH: half solid (`GLYPH_SOLID`, so the cards keep holes
+  and flicker), each pixel a little off its cell (`GLYPH_SKEW`), and in stepped glitch frames a few
+  pixels jump sideways. Three seconds and it is gone (`EnemyMarker.ALERT_TIME`). `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
   blinking it, since a sign that is always up says nothing. Demo fights never raise it.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
