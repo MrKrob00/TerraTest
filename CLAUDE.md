@@ -644,6 +644,12 @@ project: read it before claiming how anything works.
   writes only its own slice, reads only immutable data, never touches the tree.
 - The mesh may know more than physics: ripples and rock roughness are baked into near chunks only,
   zero at chunk edges, as a function of world position and biome.
+- A CANYON'S FLOOR IS WIDENED BY `gorge`, NOT BY `width` (`terrain_gen.DEF_CANYON_*`). `width` is
+  the SHARE of noise values that counts as floor, so raising it eats the mesas; `gorge` is the
+  wavelength of the channel network and scales floors and mesas together, the same way `scale` is
+  the lever for the biome masks. Measured, floor cross-width median: 17.0 m at 0.27/120, 23.5 m at
+  0.36/120 with the floor share going 37% → 48%, and 27.0 m at 0.27/180 with the share unchanged.
+  Numbers and method in `docs/CANYON_TERRAIN.md`.
 - Layers must not eat each other: metre values derive from `Height`, and dampening a layer by a mask
   makes a step exactly as tall as what it removes — the canyon cuts finished ground instead.
 - The generator NEVER writes into the biome resource except `mask_offset`. The resource is an input;
