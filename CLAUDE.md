@@ -1356,6 +1356,24 @@ project: read it before claiming how anything works.
   solid_cell` is that flag, default **false** — a wrong "no" costs one drawn cube, a wrong "yes" is
   a hole in the hull. A block leaving the machine (torn off, taken, scattered) is made visible
   again at the single door it leaves through.
+- **A MACHINE DRAWS ITS BLOCKS AS ONE MULTIMESH PER MESH (`MachineBatch`, created in
+  `MachineBody.init_machine_physics`, so the player, enemies and the menu fighters all get it).**
+  Measured before: 3.9 draw calls per block — a plain block one, a big wheel SIX (its model is a
+  chain of six meshes), a shotgun up to fourteen — and a 13-machine fight put 3321 draw calls on
+  screen. After: 773 in the same fight; one build went from 151 to 18. The originals stay in place
+  with their `visible` untouched: their render LAYERS go to 0, so occlusion, effects that measure a
+  block (`_local_aabb`) and everything else that asks `visible` works as before. Only meshes from
+  the block's own SCENE are batched (`owner == block`); what a script builds (hp overlay, laser
+  rings, dome, beams) draws itself. **A BLOCK WHOSE SCRIPT MOVES A SCENE MESH SETS `moving_parts`**
+  (wheels, every weapon, the drill), and its instances are copied from the live nodes each frame —
+  0.32 ms a tick in that fight; forget it and the part stands still in the picture while the node
+  turns. A mesh a script shows, hides or re-materials goes in `unbatched()` (the weapon's aim ray
+  with the tracer, the ammo pool, the processor's lamp body). The batch rebuilds when a block enters
+  or leaves `blocks` and when `_apply_occlusion` re-decides what is walled in; a block leaving gets
+  its layers back at once, before anything else sees it. Checked on the real driver: batched and
+  unbatched frames pixel-identical with turrets turned by hand (0 of 76 800 pixels differ); after
+  destroying blocks and tearing one off, instances always equal hidden originals, none hidden
+  outside the batch, and the torn block draws itself.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.

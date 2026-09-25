@@ -28,6 +28,11 @@ var _cells: Array = []          # предметы по клеткам: 0 — в
 var _slots: Array = []          # маркеры, по одному на клетку
 var _t: float = 0.0
 
+## Its body swaps material with the lamp state (_set_processing_visual).
+func unbatched() -> Array:
+	var m := get_node_or_null("MeshInstance3D")
+	return [m] if m != null else []
+
 func _ready() -> void:
 	super._ready()
 	_cells.resize(CELLS)

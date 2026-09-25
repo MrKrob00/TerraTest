@@ -93,6 +93,7 @@ var _hub_rest: Vector3 = Vector3.ZERO
 
 func _ready() -> void:
 	super._ready()
+	moving_parts = true                # knuckle steers, axle travels, tyre rolls (MachineBatch)
 	_tyre = get_node_or_null("%wheel") as Node3D
 	if _tyre == null:
 		return
