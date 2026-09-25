@@ -962,7 +962,12 @@ func _die() -> void:
 ##
 ## The impulse is applied DIRECTLY and at once: we unfreeze here rather than waiting for
 ## VehicleBlock to do it a frame later via signal, or the block falls through the floor first.
-func scatter_blocks(cabin: Node = null) -> void:
+## `survive` is the chance each block has of landing as loot rather than breaking up with the machine.
+## TerraTech's is 50% for a block detaching from a destroyed tech (it was 60% until 0.7.4.2); blocks
+## shot off DURING the fight survive on their own, better terms (VehicleBlock.hurt). Ours used to
+## be 100%, so whatever was left of a machine fell out whole. The player's own machine passes 1.0:
+## there it is not loot, it is the build they are about to lose.
+func scatter_blocks(cabin: Node = null, survive: float = 1.0) -> void:
 	var objects := _loose_sink()
 	var bl: Node = get("block_map_node") if get("block_map_node") != null else get_node_or_null("blocks")
 	if objects == null or bl == null:
@@ -990,6 +995,13 @@ func scatter_blocks(cabin: Node = null) -> void:
 			volatile.append(b)
 			continue
 		if not (b is Node3D):
+			continue
+		# BROKEN UP WITH THE MACHINE: the same destruction picture destroy() draws, but not
+		# destroy() itself - that emits `destroyed` into the grid of a machine that is going away,
+		# and would detonate a block whose fuse happened to have burnt out.
+		if survive < 1.0 and randf() >= survive:
+			BlockFX.play(b, true)
+			b.queue_free()
 			continue
 		var n3 := b as Node3D
 		# Замурованный блок машины не рисовался (blocks._apply_occlusion) — в мир он обязан

@@ -190,6 +190,9 @@ func _pay_out() -> void:
 		d.say("System", tr("Wreck catalogued. +%d RP.") % rp)
 
 
+## Share of a dead enemy's remaining blocks that land as loot (see MachineBody.scatter_blocks).
+const LOOT_SURVIVE := 0.5
+
 func _die() -> void:
 	if _dying:
 		return
@@ -198,7 +201,7 @@ func _die() -> void:
 	if not demo:
 		Q.report("enemy_killed", 1)         # combat quest progress; a menu duel counts for nothing
 	died.emit(self)
-	scatter_blocks(_cabin)    # shared scatter from MachineBody: the player uses the same one
+	scatter_blocks(_cabin, LOOT_SURVIVE)    # shared scatter from MachineBody: the player uses the same one
 	queue_free()
 
 func _setup_detection_area() -> void:

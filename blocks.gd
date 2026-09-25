@@ -523,12 +523,23 @@ func _layout_enemy(preset: int) -> void:
 	var wings: int = int(b.get("wings", G.Block.EMPTY))
 
 	# FLOOR. The cabin sits at the grid centre because that is the machine's origin (cell_to_local
-	# counts from CENTER); the hull runs backwards from it.
+	# counts from CENTER), so it is the BUILD that moves around it: z0 is the front row.
+	#
+	# THE CABIN RIDES IN THE MIDDLE ROW, not in the front one. It used to be row 0 with a single
+	# nose plate ahead of it (and on a one-cell spine only the wheels beside it), so the player's
+	# guns reached it within seconds, the machine died nearly whole and scattered everything it
+	# carried - "a big machine drops a pile of blocks". In the middle, the rows ahead and behind
+	# are what gets chewed through first, and a block DESTROYED on the way drops nothing. Row
+	# (rows-1)/2: 0 for one or two rows (behind the nose plate is the best cover a short hull
+	# has), 1 for three and four, 2 for five and six. Everything else keeps its place relative
+	# to the hull, so every check the build tables were written against still holds.
+	var cab_row: int = (rows - 1) / 2
+	var z0: int = 5 - cab_row
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
 	for i in rows:
 		for x in range(5 - half, 5 + half + 1):
-			if x != 5 or i != 0:
-				set_block(x, 5, 5 + i, G.Block.BLOCK, 0.0)
+			if x != 5 or i != cab_row:
+				set_block(x, 5, z0 + i, G.Block.BLOCK, 0.0)
 	# ПЕРЕДНИЙ РЯД: либо носовая плита, либо рабочий блок. Бур у шахтёра стоит там же, где у
 	# стартовой машины игрока, — перед кабиной на уровне пола, и присоединяется назад в неё.
 	#
@@ -540,12 +551,12 @@ func _layout_enemy(preset: int) -> void:
 	var front: int = int(b.get("front", G.Block.EMPTY))
 	if front != G.Block.EMPTY:
 		for x in range(5 - half, 5 + half + 1):
-			set_block(x, 5, 4, front, 0.0)
+			set_block(x, 5, z0 - 1, front, 0.0)
 	elif b.get("nose", true) == true:
-		_front_armor(half)
+		_front_armor(half, z0 - 1)
 	var zs: Array = []
 	for i in rows:
-		zs.append(5 + i)
+		zs.append(z0 + i)
 	# Колёса стоят СРАЗУ ЗА бортом: их присоединяющая грань смотрит в корпус, поэтому отступ
 	# всегда на одну клетку больше половины ширины.
 	_side_wheels(int(b.get("wheel", G.Block.WHEEL)), zs, half + 1)
@@ -556,20 +567,20 @@ func _layout_enemy(preset: int) -> void:
 	var armor_at: Array = _armor_rows(deck)
 	for i in deck.size():
 		if int(deck[i]) != G.Block.EMPTY:
-			set_block(5, 6, 5 + i, int(deck[i]), 0.0)
+			set_block(5, 6, z0 + i, int(deck[i]), 0.0)
 		if half == 0 or int(deck[i]) == G.Block.EMPTY:
 			continue
 		# Плиты идут ПО БОРТУ, то есть по крайним колонкам; всё, что между ними и центром, —
 		# обычный корпус. На тройке это и есть борт, на пятёрке между плитой и стволом
 		# появляется ещё слой, который эти плиты и защищают.
 		if armor_at.has(i):
-			_side_armor(5 + i, half)
+			_side_armor(z0 + i, half)
 		else:
-			set_block(5 - half, 6, 5 + i, G.Block.BLOCK, 0.0)
-			set_block(5 + half, 6, 5 + i, G.Block.BLOCK, 0.0)
+			set_block(5 - half, 6, z0 + i, G.Block.BLOCK, 0.0)
+			set_block(5 + half, 6, z0 + i, G.Block.BLOCK, 0.0)
 		for x in range(5 - half + 1, 5 + half):
 			if x != 5:
-				set_block(x, 6, 5 + i, G.Block.BLOCK, 0.0)
+				set_block(x, 6, z0 + i, G.Block.BLOCK, 0.0)
 
 	# THIRD FLOOR. A barrel may stand only at the FRONT of the centre column and on the shoulders:
 	# everything else up here is dome and repair field. A gun parked behind them was firing through
@@ -577,10 +588,10 @@ func _layout_enemy(preset: int) -> void:
 	# it just could not see anything either.
 	for i in top.size():
 		if int(top[i]) != G.Block.EMPTY:
-			set_block(5, 7, 6 + i, int(top[i]), 0.0)
+			set_block(5, 7, z0 + 1 + i, int(top[i]), 0.0)
 	if half > 0 and wings != G.Block.EMPTY:
-		set_block(5 - half, 7, 6, wings, 0.0)
-		set_block(5 + half, 7, 6, wings, 0.0)
+		set_block(5 - half, 7, z0 + 1, wings, 0.0)
+		set_block(5 + half, 7, z0 + 1, wings, 0.0)
 
 	# FOURTH FLOOR. Только у верхних ступеней: купол и поле ремонта вторым ярусом, ствол — опять
 	# же лишь первым в колонке. Стоит он на третьем этаже, поэтому крона живёт лишь там, где под
@@ -593,7 +604,7 @@ func _layout_enemy(preset: int) -> void:
 			continue
 		if int(top[i]) != G.Block.BLOCK:
 			continue
-		set_block(5, 8, 6 + i, int(crown[i]), 0.0)
+		set_block(5, 8, z0 + 1 + i, int(crown[i]), 0.0)
 
 ## Wheels along the hull sides. Rotations are not by eye: every wheel has connect_faces = 2, i.e.
 ## it joins with its REAR (+Z), so that is the side that must face the hull. A +-90 deg yaw turns +Z
@@ -620,9 +631,9 @@ func _side_armor(z: int, half: int = 1) -> void:
 ## which accepts neighbours on every side.
 ## half widens the plate to match the floor: 0 is a single plate on a spine, 1 covers a three-cell
 ## nose. Each plate accepts its neighbour behind it, so every one of them has hull to bolt to.
-func _front_armor(half: int = 0) -> void:
+func _front_armor(half: int = 0, z: int = 4) -> void:
 	for x in range(5 - half, 5 + half + 1):
-		set_block(x, 5, 4, G.Block.ARMOR, 0.0)
+		set_block(x, 5, z, G.Block.ARMOR, 0.0)
 
 ## ENEMY BASES (presets 11-12). The core is a SUPPORT, not a cabin: a base does not drive and holds
 ## on to the same thing ours does (G.STATIONARY_BLOCKS). It has no cabin on purpose - its death is
