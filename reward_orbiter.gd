@@ -16,9 +16,14 @@ var _t: float = 0.0
 var _glitch_t: float = 0.0
 var _dropped: bool = false
 
+## Marks an orbiter so QuestProps counts a block still circling as already handed out; without it
+## ensure would drop a second copy during the three seconds before this one lands.
+const META := "reward_orbiter"
+
 func setup(tgt: Node3D, block_type: int, phase: float) -> void:
 	target = tgt
 	_phase = phase
+	set_meta(META, true)
 	top_level = true                          # мировые координаты: сами держим позицию вокруг машины
 	var scene: PackedScene = G.get_scene(block_type)
 	if scene == null:
@@ -34,6 +39,10 @@ func setup(tgt: Node3D, block_type: int, phase: float) -> void:
 	if _block != null:
 		BlockFX.play(_block, false)            # глюк появления
 	_glitch_t = 0.9
+
+## The block itself, for a caller that has to tag it before it lands.
+func block() -> Node3D:
+	return _block
 
 func _physics_process(delta: float) -> void:
 	if _dropped:

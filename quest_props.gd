@@ -58,6 +58,33 @@ func ensure(quest_id: String, block_type: int, at: Variant = null) -> Node3D:
 		return have
 	return drop_near(quest_id, block_type, at) if at is Vector3 else drop_for(quest_id, block_type)
 
+## HAND A BLOCK OUT THE WAY A REWARD ARRIVES: it circles `around` (the base it is meant for, not the
+## player — it has to be installed THERE, and circling the player meant carrying it back by hand)
+## and lands beside it. Tagged from the first frame, so the finger follows it while it circles and
+## the loose-block timer never takes it. Nothing is handed out while the player is farther than
+## ORBIT_SEEN: the orbit is three seconds long and is the whole point, and the compass already
+## leads to the site.
+const ORBIT_SEEN := 40.0
+const REWARD_ORBITER := preload("res://reward_orbiter.gd")
+
+func ensure_orbit(quest_id: String, block_type: int, around: Node3D) -> Node3D:
+	_rescan(quest_id)
+	var have: Node3D = _first_loose(quest_id, block_type)
+	if have != null:
+		return have
+	var p: Node3D = _player()
+	if not is_instance_valid(around) or p == null \
+			or p.global_position.distance_squared_to(around.global_position) > ORBIT_SEEN * ORBIT_SEEN:
+		return null
+	var scn: Node = get_tree().current_scene
+	if scn == null:
+		return null
+	var orb: Node3D = REWARD_ORBITER.new()
+	scn.add_child(orb)
+	orb.setup(around, block_type, randf() * TAU)
+	var b: Node3D = orb.block()
+	return _register(quest_id, b) if is_instance_valid(b) else null
+
 ## ГАРАНТИРОВАТЬ блок В ТОЧКЕ, УСЫНОВИВ уже лежащий рядом.
 ##
 ## Нужно там, где блок роняет не квест, а бой: носителя разобрали, и его блоки разлетелись в
@@ -194,7 +221,8 @@ func _first_loose(quest_id: String, block_type: int = -1) -> Node3D:
 			continue
 		alive.append(n)
 		var p: Node = (n as Node3D).get_parent()
-		if p == null or p.name != "objects":
+		# Still circling counts as handed out (see ensure_orbit); anywhere else but objects means taken.
+		if p == null or (p.name != "objects" and not p.has_meta(REWARD_ORBITER.META)):
 			continue                       # уже подобрали
 		if block_type >= 0 and int(n.get("block")) != block_type:
 			continue                       # предмет того же квеста, но не тот, о котором спросили
