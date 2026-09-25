@@ -443,6 +443,20 @@ project: read it before claiming how anything works.
   they need the arc and where the player is meant to strip them. Power hung on the tail reads as a
   feature ("drive round the back and de-power it") and is really one cheap move that deletes the
   shield mechanic entirely.
+- THE CABIN RIDES IN THE MIDDLE ROW (`_layout_enemy`, row `(rows-1)/2`), and the build shifts around
+  it, because the cabin has to stay at grid (5,5,5), the machine's origin. It used to be row 0 with
+  one nose plate ahead, so the player's guns reached it within seconds and the machine died nearly
+  whole. Measured over all 76 builds, solid cells between the cabin and open air to the front:
+  about 1 → 2 on three- and four-row hulls, 1 → 3 on five and six; block counts unchanged, no cell
+  without a neighbour. What moving it along the hull cannot fix: on a one-cell spine the cabin's
+  flanks are wheels, which do not fill a cell — only a wider hull covers those.
+- A DEAD ENEMY DROPS HALF OF WHAT IT HAD LEFT (`enemy_vehicle.LOOT_SURVIVE`, rolled per block in
+  `MachineBody.scatter_blocks`), TerraTech's rule: a block detaching from a destroyed tech survives
+  50% of the time (60% before their 0.7.4.2). It used to be 100%, which with an exposed cabin is
+  what "a big machine drops a pile of blocks" was. Measured on a clean cabin kill, five builds from
+  two to six rows, three runs: 558 of 573 blocks dropped before, 300 of 573 after. The broken half
+  plays destroy()'s picture but not destroy() itself, which would signal into the dying machine's
+  grid. The player's own machine passes 1.0 — for them it is not loot but their build.
 - A BARREL NEEDS AN EMPTY LINE AHEAD OF IT at its own level, so a build gets guns in exactly three
   places: the FRONT of the deck, the FRONT of the top column, and the shoulders (`wings`, x 4 and
   x 6). Everything else on the top column is dome and repair field. A gun parked behind them still
