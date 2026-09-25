@@ -679,8 +679,22 @@ project: read it before claiming how anything works.
   lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
   that, so it asked for a repair unit to be placed while the block was still on the ground and the
   outline hung on the support — "place the repair unit" with empty hands and no idea what or
-  where. Every arc that calls `_props.ensure` needs that branch, or a `Dialogue` line that says
-  the kit is on the ground (`_spawn_line_kit` does the latter).
+  where. Every arc that calls `_props.ensure` needs that branch. A `Dialogue` line saying the kit
+  is on the ground is NOT a substitute: it scrolls away, and the factory branch that relied on one
+  pointed its finger at an empty cell while all four parts lay in the grass. `_line_finger` is the
+  several-part version — finger on a part while the player holds nothing the plan still needs, on
+  the cell otherwise — and it KEEPS the ghosts up, because there the shape of the whole line is
+  the lesson.
+- **A BLUEPRINT IS DRAWN ON EVERY POLL, NOT ONCE.** Ghosts and the finger live in memory, and a
+  reload takes them while the arc's "kit already dropped" mark comes back from the base. Drawn
+  once at the moment the kit appeared, they never came back: measured, a reload in the factory
+  branch's first stage left zero ghosts and no finger. `_show_plan` is idempotent through
+  `_plan_sig`, so calling it each poll costs a string compare.
+- A BLOCK A BRANCH HANDS OUT IS A QUEST ITEM (`_props.ensure`), NOT AN AWARD. `_award` →
+  `award_blocks` throws it into the world UNTAGGED: the finger cannot find it, the ten-minute
+  loose-block timer deletes it with the branch still waiting for it, and since the "already given"
+  flag is memory only, every reload handed out another. `_award` remains for REWARDS, where the
+  block is the player's to keep and nothing waits on it.
 - A marker without a target is not drawn: kill quests look for a `story` machine first, then the
   nearest enemy within `KILL_MARK_DIST`. While a participant lives the marker follows it, not the
   point.

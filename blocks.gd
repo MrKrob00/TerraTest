@@ -829,6 +829,11 @@ func _yaw_at(x: int, y: int, z: int) -> float:
 	var r: Vector3 = rotation_map.get("%d,%d,%d" % [x, y, z], Vector3.ZERO)
 	return r.y
 
+## The door for callers outside the grid (a blueprint ghost asks whether a block went in turned
+## the way it was drawn).
+func yaw_at(x: int, y: int, z: int) -> float:
+	return _yaw_at(x, y, z)
+
 # Can `block` be placed with anchor (x,y,z)? All footprint cells in bounds and empty.
 func can_place(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> bool:
 	for c in _block_footprint(block, x, y, z, yaw):
