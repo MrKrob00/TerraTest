@@ -29,6 +29,12 @@ var _cd: float = 0.0           # > 0 — щит пробит и перезаря
 ## что щит СРАБОТАЛ: снаряд просто исчезал у границы, а сам купол не менялся никак.
 var _hit: float = 0.0
 const HIT_FADE := 0.22
+## The ripple's own clock (shield_dome.gdshader `ripple`): 0 at the hit, 1 gone. A new one starts
+## only once the last is RIPPLE_RESTART of the way out, or a machine gun would restart it every
+## tenth of a second and it would never travel - sustained fire reads as rings rolling outward.
+const RIPPLE_TIME := 0.6
+const RIPPLE_RESTART := 0.5
+var _ripple: float = 1.0
 
 func _ready() -> void:
 	super._ready()
@@ -109,6 +115,9 @@ func _physics_process(delta: float) -> void:
 	if _hit > 0.0:
 		_hit = maxf(_hit - delta / HIT_FADE, 0.0)
 		_push_hit()
+	if _ripple < 1.0:
+		_ripple = minf(_ripple + delta / RIPPLE_TIME, 1.0)
+		_set_dome_param("ripple", _ripple)
 	_dome.owner_vehicle = _vehicle_root()
 	# Купол активен: блок стоит на машине, есть энергия И щит не пробит (не на КД).
 	var v := _vehicle_root()
@@ -176,6 +185,10 @@ func mark_hit_point(world_pos: Vector3) -> void:
 	# И ГРАНИЦА ШАПКИ — ВМЕСТЕ С НЕЙ. Купол держит пластины вокруг последнего попадания, а
 	# сколько их там окажется, зависит от того, в какую именно пластину пришло (см. _hex_keep).
 	_set_dome_param("keep_cos", _hex_keep[i])
+	if _ripple >= RIPPLE_RESTART:
+		_ripple = 0.0
+		_set_dome_param("ripple_cell", _hex_cells[i])
+		_set_dome_param("ripple", _ripple)
 
 func _nearest_index(dir: Vector3) -> int:
 	var best: int = -1
