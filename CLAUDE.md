@@ -1420,6 +1420,18 @@ project: read it before claiming how anything works.
   dead references every tick. Scoring itself runs at `RETARGET_PERIOD`, not per frame (`SC_STICKY`
   holds the choice anyway), and a turret that has reached neutral stops ticking until it fires
   again.
+- **RETARGETING WAS TWO THIRDS OF THE WEAPONS LINE.** Measured inside the weapon tick in a
+  13-machine fight (48 guns): scoring targets 8.9 ms of 13.6 a tick, aiming 2.0, firing 1.4, the
+  tracer ray 0.6. `_targets` holds every hostile block in the sixty-metre sphere — hundreds in such a
+  fight — and every retarget asked each one for its type by name (`get("block")`), its class and a
+  taste hash. Those never change while the block stays in range, so they are worked out once when it
+  enters (`_base_score`) and kept in `_target_base`, index for index with `_targets` — the add, the
+  remove, the prune and the scoring loop all move both. Checked side by side with the old scoring in
+  that fight: the same choice on 442 of 442 retargets.
+- AN IDLE BULLET DOES NOT TICK. Every pooled bullet ran `_physics_process` every physics frame just to
+  return; the pool now switches it off (`_recycle_bullet`, `_rebind_bullet`) and `fire_bullet` switches
+  it on, and the reset that tick used to do happens once in `bullet.park()`. In that fight 221 bullet
+  nodes existed and about half were idle.
 - Anything behind the camera and past the near bubble is disabled; the near bubble stays active in
   every direction. Radar reads vein data, not what is drawn.
 

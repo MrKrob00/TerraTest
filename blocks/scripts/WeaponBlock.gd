@@ -94,6 +94,12 @@ const FIRE_HOLD: float = 0.15
 var _fire_hold: float = 0.0
 var _anim_t: float = 0.0
 var _targets: Array[Node3D] = []
+## What a target IS never changes while it stays in range: cabin or gun (SC_CABIN / SC_WEAPON) and
+## this gun's own taste for it (SC_TASTE). Worked out ONCE when it enters and kept in step with
+## _targets, index for index. Retargeting scored every block in the sixty-metre sphere - hundreds in
+## a big fight - and asked each for its type by name (`get("block")`), its class and a hash, eight
+## times a second per gun: measured, that was 65% of the whole weapons line (8.9 of 13.6 ms a tick).
+var _target_base := PackedFloat32Array()
 ## EVERY RETARGET WRITES THIS FIELD, so its setter is the one door for "your guns locked on": a gun
 ## on the player's side holds a green frame on the block it aims at (BlockFX.lock_hold), and lets
 ## go of it when it aims elsewhere, stops firing or leaves the tree. The frame is per TARGET - guns
@@ -319,12 +325,15 @@ func _update_current_target() -> void:
 	# оценка честно перебирала эти сотни пустых ссылок каждый раз: чем дольше драка, тем ниже
 	# кадры, и «падает фпс на больших врагах» — это в основном оно.
 	var live: int = 0
-	for t in _targets:
+	for i in _targets.size():
+		var t = _targets[i]
 		if is_instance_valid(t):
 			_targets[live] = t
+			_target_base[live] = _target_base[i]
 			live += 1
 	if live != _targets.size():
 		_targets.resize(live)
+		_target_base.resize(live)
 	if _targets.is_empty():
 		_current_target = null
 		return
@@ -337,23 +346,20 @@ func _update_current_target() -> void:
 
 	var best: Node3D = null
 	var best_score: float = -INF
-	for t in _targets:
-		var d: float = pivot.global_position.distance_to(t.global_position)
-		var score: float = SC_NEAR * (1.0 - clampf(d / maxf(weapon_range, 1.0), 0.0, 1.0))
+	var from: Vector3 = pivot.global_position
+	var reach: float = maxf(weapon_range, 1.0)
+	for i in _targets.size():
+		var t: Node3D = _targets[i]
+		var d: float = from.distance_to(t.global_position)
+		var score: float = SC_NEAR * (1.0 - clampf(d / reach, 0.0, 1.0))
 		if prio != null:
 			if t == prio:
 				score += SC_PRIORITY
 			elif prio_root != null and _root_machine_of(t) == prio_root:
 				score += SC_PRIORITY_MACHINE
-		var bt = t.get("block")
-		if bt != null:
-			if int(bt) == G.Block.CABIN:
-				score += SC_CABIN
-			elif t is WeaponBlock:
-				score += SC_WEAPON
+		score += _target_base[i]
 		if t == _current_target:
 			score += SC_STICKY
-		score += SC_TASTE * _taste(t)
 		if score > best_score:
 			best_score = score
 			best = t
@@ -381,6 +387,17 @@ func _player_side() -> bool:
 ## A gun torn off or destroyed while aiming lets go of its frame, or the count never drops to zero.
 func _exit_tree() -> void:
 	_drop_lock()
+
+## The part of a target's score that never changes (see _target_base).
+func _base_score(t: Node) -> float:
+	var s: float = 0.0
+	var bt = t.get("block")
+	if bt != null:
+		if int(bt) == G.Block.CABIN:
+			s += SC_CABIN
+		elif t is WeaponBlock:
+			s += SC_WEAPON
+	return s + SC_TASTE * _taste(t)
 
 ## Постоянная псевдослучайная надбавка в 0..1 для пары «этот ствол — этот блок».
 func _taste(t: Node) -> float:
@@ -575,6 +592,7 @@ func _rebind_bullet(b: Area3D) -> void:
 	# spot, and the scene's template bullet (duplicated, never fired) sat visible at every weapon for
 	# good. The template passes through here too, so it is hidden with the rest.
 	b.visible = false
+	b.set_physics_process(false)                # and idle: it ticks only in flight (bullet.park)
 	if b.body_entered.is_connected(_on_bullet_body_entered):
 		b.body_entered.disconnect(_on_bullet_body_entered)
 	var cb := _on_bullet_body_entered.bind(b)
@@ -601,6 +619,9 @@ func _recycle_bullet(b: Area3D) -> void:
 	b.set_deferred("monitoring", false)         # в пуле (у центра) повторно не ловит тела
 	b.global_position = Vector3.ZERO
 	b.visible = false
+	if b.has_method("park"):
+		b.park()
+	b.set_physics_process(false)                # an idle bullet does not tick (bullet.park)
 	if not free_bullet.has(b):
 		free_bullet.append(b)
 
@@ -646,6 +667,7 @@ func fire_bullet():
 		return
 	bullet.global_position = _muzzle_point().global_position
 	bullet.visible = true
+	bullet.set_physics_process(true)
 	bullet.dir = dir
 	if "shooter_blocks" in bullet:
 		bullet.shooter_blocks = get_parent()   # свип пропускает свой корпус (пуля рождается внутри)
@@ -705,6 +727,7 @@ func _on_area_3d_body_entered(body: Node3D) -> void:
 		return                        # своя фракция — не цель, даже если это ДРУГАЯ машина
 	if not _targets.has(body):
 		_targets.append(body)
+		_target_base.append(_base_score(body))
 
 ## Чужой ли это блок ПО ФРАКЦИИ. Проверок «не своя машина» выше НЕ ХВАТАЛО: они отсекали
 ## только ту машину, на которой стоит сама турель. Всё остальное годилось в цели — и вторая
@@ -907,7 +930,10 @@ func _alert_victim(body: Node3D) -> void:
 		m.notice_attacker(_vehicle_root() as Node3D)
 
 func _on_area_3d_body_exited(body: Node3D) -> void:
-	_targets.erase(body)
+	var i: int = _targets.find(body)
+	if i >= 0:
+		_targets.remove_at(i)
+		_target_base.remove_at(i)
 
 func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	# ОДНА ПУЛЯ — ОДНО ПОПАДАНИЕ. Area3D шлёт body_entered ПО ТЕЛУ: пуля, вошедшая за один шаг в
