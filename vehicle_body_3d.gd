@@ -1399,11 +1399,18 @@ func _ghost_fit(b: Node) -> void:
 	var mid: Vector3 = _ghost_mid
 	var gnode: Node3D = grid as Node3D
 	var b3: Node3D = b as Node3D
+	# **МАСШТАБ УМНОЖАЕМ СПРАВА, А НЕ `scaled()`.** `Basis.scaled(s)` это S × X, то есть растяжение
+	# по МИРОВЫМ осям поверх уже повёрнутого базиса. Для равномерного числа разницы нет, а у
+	# многоклеточного блока размер неравномерный — и на повёрнутой машине такое растяжение не
+	# растягивает, а ПЕРЕКАШИВАЕТ: куб подсветки превращался в ромб. Машина в игре повёрнута
+	# почти всегда, поэтому видно это было постоянно и только на крупных блоках.
+	# X × S растягивает в осях САМОГО блока, а потом уже поворачивает — то есть даёт коробку.
 	if ghost_block.top_level:
 		ghost_block.global_transform = Transform3D(
-				gnode.global_transform.basis.scaled(size), gnode.to_global(b3.position + mid))
+				gnode.global_transform.basis * Basis.from_scale(size),
+				gnode.to_global(b3.position + mid))
 	else:
-		ghost_block.transform = Transform3D(Basis().scaled(size), b3.position + mid)
+		ghost_block.transform = Transform3D(Basis.from_scale(size), b3.position + mid)
 
 # Имя грани → направление от центра блока наружу. Оно же связывает имена разъёмов
 # (connect_faces у самого блока) с осями модели.
