@@ -54,6 +54,15 @@ uniform float keep_jitter : hint_range(0.0, 0.4) = 0.10;
 uniform vec3  glitch_a : source_color = vec3(0.15, 0.85, 1.0);
 uniform vec3  glitch_b : source_color = vec3(0.72, 0.16, 1.0);
 uniform float glitch_rate = 22.0;
+// RIPPLE: a ring of plates running out across the dome from the struck one (shield.gd starts it in
+// mark_hit_point). Its own clock, not `hit`: the flare fades in 0.22 s, too short to watch anything
+// travel. 1.0 is "no ripple", and the branch below is on that uniform, so an untouched dome pays
+// nothing. It lights plates the charge has turned off as well - for a moment the dome shows all of
+// itself, which is exactly what a ripple across a shield says.
+uniform float ripple : hint_range(0.0, 1.0) = 1.0;
+uniform vec3  ripple_cell = vec3(0.0, 1.0, 0.0);
+uniform float ripple_reach = 1.9;     // radians the ring travels, about 110 degrees
+uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92 cells
 
 varying vec3 v_cell;
 varying float v_rnd;
@@ -135,9 +144,22 @@ void fragment() {
 		col = mix(tint, g < 0.5 ? glitch_a : glitch_b, mine);
 	}
 
+	// Per plate: v_cell is constant across a plate, so the ring steps hex by hex, not as a band.
+	float wave = 0.0;
+	if (ripple < 0.999) {
+		float ang = acos(clamp(dot(normalize(v_cell), normalize(ripple_cell)), -1.0, 1.0));
+		float on = 1.0 - smoothstep(0.0, ripple_band, abs(ang - ripple * ripple_reach));
+		// Strong for most of the way and gone at the end: a linear fade halved it before it had
+		// crossed two rings, and on a half-charged dome it was hard to see at all.
+		wave = on * (1.0 - ripple * ripple);
+		float gw = fract(sin(floor(TIME * glitch_rate) * 7.13 + v_rnd * 91.7) * 43758.5453);
+		col = mix(col, gw < 0.5 ? glitch_a : glitch_b, wave * 0.85);
+	}
+
 	// Пробитая пластина загорается, даже если заряд её погасил: попадание важнее.
-	float shell = max(up, flare);
-	float lattice = (seam + corner * 0.6 + body * fill) * shell;
+	float shell = max(max(up, flare), wave);
+	// The ring fills the plate FACE, not only its seams: a lit plate otherwise changed by a shade.
+	float lattice = (seam + corner * 0.6 + body * (fill + wave * 0.45)) * shell;
 	// КОЛЬЦО ТОЖЕ ПРИНАДЛЕЖИТ ПЛАСТИНЕ. Оно считалось по всей сфере и не спрашивало, стоит ли
 	// здесь пластина: на разряженном щите решётка гасла, а голубая подсветка оболочки
 	// оставалась висеть шаром. Теперь на месте погасшей пластины нет ничего, и осыпающийся
@@ -148,7 +170,7 @@ void fragment() {
 	// кладёт ALBEDO, а EMISSION не добавляет ничего — измерено: альбедо 0.2 даёт 0.498, эмиссия
 	// 0.8 даёт 0.302, а вместе ровно те же 0.498. Любые множители на EMISSION здесь были
 	// украшением кода. Строку оставляем верной на случай, если glow когда-нибудь вернётся.
-	float bright = lattice * 0.75 + rim * 0.9 + flare * 1.8;
+	float bright = lattice * 0.75 + rim * 0.9 + flare * 1.8 + wave * 1.4;
 	ALBEDO   = col * (0.15 + bright);
 	EMISSION = col * bright;
 	ALPHA    = clamp(lattice + rim + flare * 1.2, 0.0, 1.0);

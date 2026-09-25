@@ -1275,6 +1275,15 @@ project: read it before claiming how anything works.
   least KEEP_MIN (7) survive — the struck plate and its whole ring. One number for the whole dome
   cannot do that: twelve of the 92 cells are pentagons with five neighbours, and across the entire
   0.80–0.90 threshold plateau the minimum sits at six (measured).
+- A HIT SENDS A RIPPLE ACROSS THE DOME: a ring of plates running out from the struck one
+  (`shield_dome.gdshader` `ripple` / `ripple_cell`, started in `shield.mark_hit_point`). Per plate,
+  like everything on this dome, so the ring steps hex by hex. It has ITS OWN CLOCK (`RIPPLE_TIME`,
+  0.6 s): the flare fades in 0.22 s, too short to watch anything travel. A new ring starts only once
+  the last is `RIPPLE_RESTART` of the way out, or a machine gun would restart it every tenth of a
+  second and it would never leave the hit point — measured, 30 hits in 3 s start 10 rings. It lights
+  plates the charge has turned off too, so for a moment the dome shows all of itself. It fills the
+  plate FACE and holds its strength most of the way (1 − p²): seams alone and a linear fade were
+  tried first and on a half-charged dome read as nothing on the real driver.
 - CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
   a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
   spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came
