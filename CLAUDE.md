@@ -515,8 +515,9 @@ project: read it before claiming how anything works.
   player's side (faction 0 and not an AI running this script, so the defend quest's ally does not
   count) the marker raises a "!" (`EnemyMarker.alert`) ASSEMBLED FROM THE SAME GLITCH CARDS A BLOCK
   OR A MACHINE APPEARS WITH (`BlockFX.glyph`, a pixel pattern where every '#' is a card): they come
-  up scattered, fly together and lock into one sign, in the glitch's own palette — the shape is the
-  message, not the colour. `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
+  up as BIG patches the size of the spawn cloud's (`GLYPH_BIG` cells), fly together SHRINKING, and
+  lock into one small sign, in the glitch's own palette — the shape is the message, not the colour.
+  Three seconds and it is gone (`EnemyMarker.ALERT_TIME`). `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
   blinking it, since a sign that is always up says nothing. Demo fights never raise it.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
