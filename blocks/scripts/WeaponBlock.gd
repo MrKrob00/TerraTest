@@ -94,7 +94,16 @@ const FIRE_HOLD: float = 0.15
 var _fire_hold: float = 0.0
 var _anim_t: float = 0.0
 var _targets: Array[Node3D] = []
-var _current_target: Node3D = null
+## EVERY RETARGET WRITES THIS FIELD, so its setter is the one door for "your guns locked on": when a
+## gun on the player's side takes a block of a DIFFERENT machine than before, that machine gets the
+## green frame (BlockFX.lock_frame, which also keeps it to one per machine per LOCK_GAP_MS - six
+## guns locking the same enemy make one frame, not six).
+var _current_target: Node3D = null:
+	set(v):
+		var was: Node3D = _current_target
+		_current_target = v
+		if is_instance_valid(v) and v != was:
+			_on_lock(v, was)
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
@@ -341,6 +350,16 @@ func _update_current_target() -> void:
 			best_score = score
 			best = t
 	_current_target = best
+
+func _on_lock(t: Node3D, was: Node3D) -> void:
+	var m: Node = _root_machine_of(t)
+	if not (m is Node3D) or (is_instance_valid(was) and _root_machine_of(was) == m):
+		return
+	# The player's side is the camera controller's list of machines - the same list quest_arcs asks.
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc == null or not ("vehicles" in cc) or not (cc.vehicles as Array).has(_vehicle_root()):
+		return
+	BlockFX.lock_frame(m as Node3D)
 
 ## Постоянная псевдослучайная надбавка в 0..1 для пары «этот ствол — этот блок».
 func _taste(t: Node) -> float:

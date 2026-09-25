@@ -372,6 +372,15 @@ project: read it before claiming how anything works.
   machine that tumbled lands on its hull, the wheels never report ground, and it sheds the speed
   over several steps (−28, −12, −4 m/s) — so "a hard fall that has almost stopped" counts as a
   landing too. Measured, four runs: enemy arrival 1 wave, 2 m drop 0, 20 m drop 1 every time.
+- YOUR GUNS LOCKING ON DRAW A GREEN NEON FRAME round that machine (`BlockFX.lock_frame`): four
+  corner brackets turned to the camera, sized to its footprint and riding with it, snapping in from
+  wide with stepped jitter. The door is a setter on `WeaponBlock._current_target`, which every
+  retarget writes. It fires only for a gun in the camera controller's `vehicles` (the player's
+  side — the same list `quest_arcs` asks), only when the new target is a DIFFERENT machine than
+  before (another block of the same one is not a new lock), and once per machine per `LOCK_GAP_MS`,
+  so six guns make one frame. Neon without glow is faked: every arm has a wider faint copy behind
+  it. Guns only look for targets while firing is held (`attack`), so a lock is always something the
+  player did. Measured: two guns on one enemy, one frame; the enemy's guns on the player, none.
 - `_alert_victim` (weapon side) tells the victim who shot; `hurt()` must not, since drills and
   repair fields call the same `hurt`.
 
