@@ -107,6 +107,17 @@ project: read it before claiming how anything works.
   everything else went in half a cell out. The box's SIZE is the test for "does the collider span
   the whole footprint" — armour is a thin 1×1×0.2 plate standing on its own face and wants no
   centring.
+- **THE COLLIDER'S POSITION IN A BLOCK SCENE IS A DRAWING FOR THE ARTIST, AND IT MUST BE DRAWN
+  WHERE THE GAME PUTS IT.** `spawn_block` OVERWRITES that local position — only the SHAPE comes
+  from the scene — and then applies `collider_offset`. So the collider a scene shows and the
+  collider the game builds can be half a cell apart, and the editor says nothing about it. The rule
+  a model is authored by is "the mesh lies exactly inside the block's collider", so a collider
+  drawn in the wrong place sends the artist to align against a lie: the wedge's mesh was moved to
+  sit in a collider centred on the anchor, while in game that collider stands half a cell back, on
+  the cells. Most scenes already agree (smelter, seller, block2 carry the offset in the scene); the
+  wedge and the fabricator had theirs at the origin and are now fixed. Measured after: in the
+  editor mesh and collider both span z −1.50…0.50, and in game mesh, collider and cells all span
+  the same two cells.
 - A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
