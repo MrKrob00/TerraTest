@@ -1197,6 +1197,16 @@ project: read it before claiming how anything works.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
+- **A BULLET'S TICK IS MOSTLY NOT THE RAYCAST.** Measured on the engine, 200 bullets, one physics
+  tick: raycast with a fresh `PhysicsRayQueryParameters3D.create` 1224 us, the same raycast reusing
+  one object 744 us, `Basis.looking_at` + `global_basis` 466 us, the child walk `_mesh_node` did per
+  tick 415 us, the position write 222 us, the two `Perf` marks 345 us — 2672 us in total, of which
+  the physics is 744. So the allocation cost more than a quarter of the "bullets" line and the mesh
+  search nearly as much; both are now done once per bullet rather than once per tick, and the sweep
+  was checked to behave identically (same hit at 3 m, same miss at 15 and 40 on a flat-aimed test,
+  before and after). Anything that claims to speed bullets up has to move those numbers — and a
+  move to MultiMesh would remove the node costs but NOT the 744 us, which is the part that decides
+  whether a shot lands.
 - A TURRET'S TARGET LIST IS PRUNED WHERE IT IS READ (`WeaponBlock._update_current_target`):
   `body_exited` never fires for a destroyed block — the body vanishes rather than leaves — so
   without that the list grew to everything that ever entered the sphere, and scoring walked those
