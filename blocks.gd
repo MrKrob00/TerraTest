@@ -1337,6 +1337,10 @@ func _apply_occlusion() -> void:
 		# соседям, а их на плотной машине большинство (см. open_faces в block_hp.gdshader).
 		if node.has_method("set_open_faces"):
 			node.call("set_open_faces", _face_mask(cells_of[anchor], seen))
+	# What is walled in changed, and the machine's batch draws only what is not (MachineBatch).
+	var mb: Node = get_parent().get_node_or_null("MeshBatch") if get_parent() != null else null
+	if mb != null and mb.has_method("mark_dirty"):
+		mb.mark_dirty()
 
 ## МАСКА ОТКРЫТЫХ ГРАНЕЙ, шесть бит: +X=1, −X=2, +Y=4, −Y=8, +Z=16, −Z=32. Грань открыта, если
 ## заливка снаружи дошла хоть до одной клетки за ней — то есть оттуда на блок реально смотрят.

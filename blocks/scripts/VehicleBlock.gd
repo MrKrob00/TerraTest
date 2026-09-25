@@ -283,6 +283,17 @@ const DEFAULT_WEIGHT := 10.0
 func get_weight() -> float:
 	return float(BLOCK_WEIGHT.get(block, DEFAULT_WEIGHT))
 
+## DRAWN BY THE MACHINE, NOT BY ITSELF (MachineBatch): a block's scene meshes join one MultiMesh
+## per mesh on its machine. A block whose SCRIPT MOVES one of those meshes (a tyre, a turret, a drill
+## rotor) sets this, and its instances are copied from the live nodes every frame; without it the
+## part would stand still in the picture while the node turned.
+var moving_parts: bool = false
+
+## Scene meshes the batch must leave alone: ones a script shows, hides or re-materials. The batch
+## draws a mesh the way it was when the build was last put together.
+func unbatched() -> Array:
+	return []
+
 var max_hp: int = 50
 var current_hp: int = 50
 var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)

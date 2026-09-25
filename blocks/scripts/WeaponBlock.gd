@@ -113,6 +113,7 @@ var _current_target: Node3D = null:
 var _held_lock = null
 func _ready() -> void:
 	super._ready()
+	moving_parts = true                  # the pivot turns and pitches (MachineBatch)
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	# ЛУЧ НАВЕДЕНИЯ НЕ РИСУЕМ. RayCast3D сам чертит свою отладочную линию, когда игра запущена с
 	# видимыми коллизиями, а в сценах стволов ей вдобавок задали толщину 5 и зелёный цвет — и от
@@ -357,6 +358,15 @@ func _update_current_target() -> void:
 			best_score = score
 			best = t
 	_current_target = best
+
+## The tracer (under the aim ray) is shown and hidden per tick, and the pool's bullets fly on their own.
+func unbatched() -> Array:
+	var out: Array = []
+	if is_instance_valid(raycast):
+		out.append(raycast)
+	if is_instance_valid(ammo):
+		out.append(ammo)
+	return out
 
 func _drop_lock() -> void:
 	if is_instance_valid(_held_lock):

@@ -28,6 +28,7 @@ var _spin_t := 0.0
 
 func _ready() -> void:
 	super()                  # VehicleBlock._ready (слои, hp, заморозка)
+	moving_parts = true      # the rotor spins (MachineBatch)
 	$drill.monitoring = true # сенсор бура держим включённым: overlaps готовы к первому же удару
 	_rotor = _find_rotor(self)
 	if _rotor != null:

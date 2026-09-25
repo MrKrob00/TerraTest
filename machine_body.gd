@@ -364,6 +364,12 @@ func _blocks_root() -> Node:
 const GROUND_FRICTION: float = 0.35
 
 func init_machine_physics() -> void:
+	# ONE DRAW CALL PER MESH PER MACHINE (MachineBatch). Here because both machines pass through here.
+	var bl := blocks_node()
+	if bl != null and get_node_or_null("MeshBatch") == null:
+		var mb := MachineBatch.new()
+		add_child(mb)
+		mb.setup(self, bl)
 	gravity_scale = gravity_mult
 	var mat := PhysicsMaterial.new()
 	mat.friction = GROUND_FRICTION
