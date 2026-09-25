@@ -94,19 +94,23 @@ const FIRE_HOLD: float = 0.15
 var _fire_hold: float = 0.0
 var _anim_t: float = 0.0
 var _targets: Array[Node3D] = []
-## EVERY RETARGET WRITES THIS FIELD, so its setter is the one door for "your guns locked on": when a
-## gun on the player's side takes a block of a DIFFERENT machine than before, that machine gets the
-## green frame (BlockFX.lock_frame, which also keeps it to one per machine per LOCK_GAP_MS - six
-## guns locking the same enemy make one frame, not six).
+## EVERY RETARGET WRITES THIS FIELD, so its setter is the one door for "your guns locked on": a gun
+## on the player's side holds a green frame on the block it aims at (BlockFX.lock_hold), and lets
+## go of it when it aims elsewhere, stops firing or leaves the tree. The frame is per TARGET - guns
+## that agree on one block share one frame.
 var _current_target: Node3D = null:
 	set(v):
-		# UNTYPED, and cleaned before the call: the old target is often a block that was just shot
-		# to pieces, and a FREED object handed to a typed Node3D parameter is a runtime error
-		# (CLAUDE.md rule 4 - it compares equal to null and is still not nil).
+		# UNTYPED: the old target is often a block that was just shot to pieces, and a FREED object
+		# handed to a typed Node3D is a runtime error (CLAUDE.md rule 4).
 		var was = _current_target
 		_current_target = v
-		if is_instance_valid(v) and v != was:
-			_on_lock(v, was if is_instance_valid(was) else null)
+		if v != was:
+			_drop_lock()
+			if is_instance_valid(v) and _player_side():
+				BlockFX.lock_hold(v)
+				_held_lock = v
+## The block this gun holds a frame on - released exactly, never re-decided at release time.
+var _held_lock = null
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)
@@ -354,15 +358,19 @@ func _update_current_target() -> void:
 			best = t
 	_current_target = best
 
-func _on_lock(t: Node3D, was: Node3D) -> void:
-	var m: Node = _root_machine_of(t)
-	if not (m is Node3D) or (is_instance_valid(was) and _root_machine_of(was) == m):
-		return
-	# The player's side is the camera controller's list of machines - the same list quest_arcs asks.
+func _drop_lock() -> void:
+	if is_instance_valid(_held_lock):
+		BlockFX.lock_release(_held_lock)
+	_held_lock = null
+
+## The player's side is the camera controller's list of machines - the same list quest_arcs asks.
+func _player_side() -> bool:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
-	if cc == null or not ("vehicles" in cc) or not (cc.vehicles as Array).has(_vehicle_root()):
-		return
-	BlockFX.lock_frame(m as Node3D)
+	return cc != null and ("vehicles" in cc) and (cc.vehicles as Array).has(_vehicle_root())
+
+## A gun torn off or destroyed while aiming lets go of its frame, or the count never drops to zero.
+func _exit_tree() -> void:
+	_drop_lock()
 
 ## Постоянная псевдослучайная надбавка в 0..1 для пары «этот ствол — этот блок».
 func _taste(t: Node) -> float:
