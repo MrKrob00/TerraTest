@@ -76,8 +76,35 @@ var _percept: Dictionary = {}
 var _decide_t: float = 0.0
 const DECIDE_PERIOD: float = 0.15        # re-score the situation ~7 times a second
 
-var _target:       Node3D  = null
+## EVERY WAY AN ENEMY PICKS A TARGET WRITES THIS FIELD (the zone signal, the periodic search, being
+## shot, a quest assignment), so its setter is the single door for "it noticed you": the red "!"
+## over the marker fires here and nowhere else.
+var _target: Node3D = null:
+	set(v):
+		var was: Node3D = _target
+		_target = v
+		if v != was and _is_player_side(v):
+			_alarm()
 var _forget_timer: float   = 0.0
+var _marker: Node3D = null
+## One "!" per this many seconds at most: a target that flickers across the zone border would
+## otherwise blink it on every crossing, and a sign that is always up says nothing.
+const ALARM_COOLDOWN := 8.0
+var _alarm_ms: int = -100000
+
+## The player's side: faction 0 and NOT one of us. A friendly AI (the defend quest's ally) is also
+## faction 0 but runs this script, and it noticing anything is no news to the player.
+func _is_player_side(n: Node) -> bool:
+	return is_instance_valid(n) and n.get("faction") == 0 and n.get_script() != get_script()
+
+func _alarm() -> void:
+	if demo or not is_instance_valid(_marker) or not _marker.has_method("alert"):
+		return
+	var now: int = Time.get_ticks_msec()
+	if now - _alarm_ms < int(ALARM_COOLDOWN * 1000.0):
+		return
+	_alarm_ms = now
+	_marker.alert()
 
 var _patrol_targets: Array[Vector3] = []
 var _patrol_index:   int   = 0
@@ -139,6 +166,7 @@ func _ready() -> void:
 	mk.vehicle = self
 	mk.position = Vector3(0, 2.6, 0)
 	add_child(mk)
+	_marker = mk
 	# ПРОЯВЛЕНИЕ — ЗДЕСЬ, А НЕ В СПАВНЕРЕ. Врага добавляют пять разных путей (обычный поток,
 	# сюжетный скаут, квестовый участник, рейд, база), и вешать эффект на каждый значило бы
 	# пять копий и шестую, забытую при следующем пути. Машина знает о своём рождении сама.

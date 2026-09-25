@@ -47,6 +47,21 @@ var _pin: Label3D = null
 var _name: Label3D = null
 var _t: float = 0.0
 
+# ── "It noticed you" ──────────────────────────────────────────────────────────
+# A red "!" over the diamond, raised by enemy_vehicle._alarm (the setter on its target, the single
+# door every way of picking a target goes through). It POPS, then GLITCHES for a moment - jumps
+# sideways in pixel steps and flickers, the effect language BlockFX speaks - then holds and fades.
+# Stepped, not smooth: a smooth wobble reads as a balloon, a jump reads as a signal.
+const COL_ALERT := Color(1.0, 0.13, 0.1)
+const ALERT_TIME := 1.6
+const ALERT_GLITCH := 0.55           # seconds of jumping and flicker at the start
+const ALERT_STEP := 0.05             # one glitch frame
+const ALERT_FADE := 0.35
+var _bang: Label3D = null
+var _alert_t: float = 0.0
+var _glitch_step: float = 0.0
+var _dim: bool = false
+
 static func name_for(id: int) -> String:
 	return "%s %s" % [ADJ[absi(id) % ADJ.size()], NOUN[absi(id / ADJ.size()) % NOUN.size()]]
 
@@ -55,6 +70,45 @@ func _ready() -> void:
 	_name = _label(name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id()),
 			64, -0.55)
 	_build_plate()
+	_bang = _label("!", 320, 1.15)
+	_bang.modulate = COL_ALERT
+	_bang.outline_size = 30
+	_bang.visible = false
+
+func alert() -> void:
+	_alert_t = ALERT_TIME
+	_glitch_step = 0.0
+	if _bang != null:
+		_bang.visible = true
+
+func _tick_alert(delta: float) -> void:
+	if _alert_t <= 0.0 or _bang == null:
+		return
+	_alert_t -= delta
+	if _alert_t <= 0.0:
+		_bang.visible = false
+		return
+	var age: float = ALERT_TIME - _alert_t
+	var s: float = 1.0
+	if age < 0.12:
+		s = lerpf(0.2, 1.35, age / 0.12)
+	elif age < 0.26:
+		s = lerpf(1.35, 1.0, (age - 0.12) / 0.14)
+	_bang.scale = Vector3.ONE * s
+	var a: float = 1.0
+	if age < ALERT_GLITCH:
+		_glitch_step -= delta
+		if _glitch_step <= 0.0:
+			_glitch_step = ALERT_STEP
+			_bang.position.x = [-0.14, 0.0, 0.0, 0.14][randi() % 4]
+			_dim = randf() < 0.3
+		if _dim:
+			a = 0.3
+	else:
+		_bang.position.x = 0.0
+	if _alert_t < ALERT_FADE:
+		a *= _alert_t / ALERT_FADE
+	_bang.modulate = Color(COL_ALERT, a)
 
 func _label(text: String, font_size: int, y: float) -> Label3D:
 	var l := Label3D.new()
@@ -138,6 +192,7 @@ func _process(delta: float) -> void:
 	Perf.mark("ui", _pf)
 
 func _tick_marker(delta: float) -> void:
+	_tick_alert(delta)                 # before the visibility gate: the clock runs even out of sight
 	var cc: Node = _camera_controller()
 	if cc == null or not ("current_vehicle" in cc) or cc.current_vehicle == null:
 		visible = false
