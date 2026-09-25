@@ -1207,6 +1207,17 @@ project: read it before claiming how anything works.
   before and after). Anything that claims to speed bullets up has to move those numbers — and a
   move to MultiMesh would remove the node costs but NOT the 744 us, which is the part that decides
   whether a shot lands.
+- A BULLET FLIES WITH `monitoring` OFF. `body_entered` and the sweep's `hit` land in the SAME
+  handler, so the Area was a second path to one answer, and the physics server was computing
+  overlaps for every bullet in the air every tick to provide it. What it could add over the sweep
+  is a hit at zero metres, which the sweep's first segment already covers.
+- **MEASURE A PHYSICS COST BY ALTERNATING, NEVER BY ONE PASS.** A single before/after of that same
+  flag read 48 ms against 2 — and it was an artefact: chunk streaming was still running and landed
+  in `TIME_PHYSICS_PROCESS`. Alternating OFF/ON six times over the same 200 nodes gave
+  18.2 / 18.7 / 17.7 / 19.6 / 21.0, i.e. about 2 ms, with the first sample of the run an outlier
+  in both directions. Also never time a tick with `await physics_frame` around it: that waits for
+  the next tick and always returns 1/60 s, however much work the tick did. Ask
+  `Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)`.
 - A TURRET'S TARGET LIST IS PRUNED WHERE IT IS READ (`WeaponBlock._update_current_target`):
   `body_exited` never fires for a destroyed block — the body vanishes rather than leaves — so
   without that the list grew to everything that ever entered the sphere, and scoring walked those
