@@ -695,6 +695,15 @@ project: read it before claiming how anything works.
   loose-block timer deletes it with the branch still waiting for it, and since the "already given"
   flag is memory only, every reload handed out another. `_award` remains for REWARDS, where the
   block is the player's to keep and nothing waits on it.
+- A HANDED-OUT BLOCK STILL ARRIVES THE WAY A REWARD DOES — IT CIRCLES — BUT AROUND THE BASE IT IS
+  MEANT FOR, NOT THE PLAYER (`QuestProps.ensure_orbit`, used for the power panel, the regen and
+  the processor). Laid silently in the grass it read as "it just fell out next to me"; circling the
+  player, as `award_blocks` does, meant carrying it fifty metres back to the base by hand. It is
+  tagged from the first frame and `_first_loose` counts a block still inside a `RewardOrbiter`
+  (`RewardOrbiter.META`) as handed out — without that, `ensure` dropped a second copy during the
+  three seconds before the first one landed. Nothing is handed out while the player is farther than
+  `ORBIT_SEEN`: the orbit is the point, and nobody watches it from across the map. Measured: one
+  copy the whole time, circling at 4.2 m, landing 2.7 m (panel) and 3.5 m (regen) from the base.
 - A marker without a target is not drawn: kill quests look for a `story` machine first, then the
   nearest enemy within `KILL_MARK_DIST`. While a participant lives the marker follows it, not the
   point.

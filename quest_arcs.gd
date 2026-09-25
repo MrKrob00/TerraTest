@@ -232,7 +232,7 @@ func _arc_power_1(q: Dictionary) -> void:
 	# спрашивает только про мир, и без него каждый опрос ронял бы вторую панель, пока игрок везёт
 	# первую в руке.
 	if not _player_owns(G.Block.SOLAR):
-		_props.ensure("arc_power", G.Block.SOLAR, _power_point)
+		_props.ensure_orbit("arc_power", G.Block.SOLAR, _power_base)
 	# ПАЛЕЦ СНАЧАЛА НА ПАНЕЛЬ, и только потом на клетку. Показывать место установки, пока блок
 	# лежит в траве, — значит просить поставить то, чего у игрока ещё нет; а чертёж в этот момент
 	# и вовсе висит на другом конце площадки.
@@ -254,13 +254,12 @@ func _arc_power_2(q: Dictionary) -> void:
 		_clear_plan()
 		Q.report(String(q["event"]), 1)
 		return
-	# РЕГЕН ЖДЁТ У БАЗЫ, А НЕ ЛЕТИТ К ИГРОКУ. Награда, закружившая вокруг машины (award_blocks →
-	# reward_orbiter), уместна, когда её можно везти куда угодно; здесь же её надо поставить ВОТ
-	# НА ЭТУ базу, до которой полсотни метров. Выданный у игрока блок означал «а теперь вези его
-	# обратно», причём в руке, то есть без стрельбы и с риском выронить. Кладём туда, где он
-	# нужен, — тем же ensure, что и панель стадией раньше, и с той же проверкой «в руке уже есть».
+	# THE REGEN ARRIVES AT THE BASE, NOT AT THE PLAYER. It has to go on THIS base, fifty metres from
+	# where the player may be, and a block circling the player meant "now carry it back", in hand,
+	# with no guns and a chance to drop it. It circles the BASE the way a reward circles a machine
+	# (ensure_orbit) and lands there: the gift is seen, and it is already where it is needed.
 	if not _player_owns(G.Block.REGEN):
-		_props.ensure("arc_power", G.Block.REGEN, _power_point)
+		_props.ensure_orbit("arc_power", G.Block.REGEN, _power_base)
 	# ПАЛЕЦ СНАЧАЛА НА САМ БЛОК, и только потом на клетку — ровно как стадией раньше с панелью.
 	# Здесь этой ветки не было, и получалось «поставь ремонтник» при пустых руках: блок лежал в
 	# траве, чертёж висел на опоре, а что именно ставить и откуда оно возьмётся, игроку не
@@ -953,9 +952,9 @@ func _line_2(q: Dictionary) -> void:
 		Dialogue.say("System", tr("Processor delivered. It stands BESIDE the line, left of the middle belt — the belts stay where they are. It takes ore off the belt and puts the ingot back on it."))
 	# A QUEST ITEM, NOT AN AWARD. award_blocks threw it into the world untagged: the finger could
 	# not find it, and ten minutes on the ground (world_persist.BLOCK_TTL) deleted it with the branch
-	# still waiting. Tagged, it outlives the timer, and ensure never drops a second while one lies.
+	# still waiting. It keeps the award's orbit, around the line base, and is tagged from the start.
 	if not _player_owns(G.Block.PROCESSOR):
-		_props.ensure("arc_line", G.Block.PROCESSOR, _line_point)
+		_props.ensure_orbit("arc_line", G.Block.PROCESSOR, _line_base)
 	var recv: Node = _find_in_base(G.Block.RECEIVER)
 	var proc: Node = _find_in_base(G.Block.PROCESSOR)
 	# CUT IN MEANS BOTH WAYS: ore reaches the processor AND the ingot reaches the seller. The
