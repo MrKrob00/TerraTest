@@ -152,7 +152,7 @@ func _stretch(step: float) -> void:
 ## свежим объектом против 744 мкс с переиспользованным. Половина строки «пули» в профиле уходила
 ## на аллокацию, а не на физику.
 var _ray_q: PhysicsRayQueryParameters3D = null
-## The surface normal at the last hit, from the same ray: a mark on the world (BlockFX.ground_hole)
+## The surface normal at the last hit, from the same ray: a mark on the world (BlockFX.ground_glitch)
 ## lies along the slope it was shot into.
 var hit_normal: Vector3 = Vector3.UP
 

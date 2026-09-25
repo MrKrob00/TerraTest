@@ -830,6 +830,14 @@ static func repair_stream(from: Node3D, to: Node3D, cloud_radius: float = 0.0) -
 # of the one tween that drives the whole thing (no script on the node, no second clock).
 const GLYPH_IN := 0.7            # scatter and fly-in; the sign is whole by this second
 const GLYPH_FLY := 0.45          # one card's flight; starts are staggered across GLYPH_IN - GLYPH_FLY
+## THE SIGN AT REST STAYS A GLITCH, NOT A POLISHED GLYPH: cards lock in only GLYPH_SOLID solid, so
+## they keep holes and flicker; each sits up to GLYPH_SKEW cells off its place, so the outline is not
+## ruler-straight; and in stepped glitch frames (GLYPH_JIT_STEP) a few pixels jump sideways.
+const GLYPH_SOLID := 0.5
+const GLYPH_SKEW := 0.14
+const GLYPH_JIT_STEP := 0.07
+const GLYPH_JIT_CHANCE := 0.16
+const GLYPH_JIT := 0.35          # how far a jumping pixel goes, in cells
 ## BIG GLITCHES INTO A SMALL SIGN: a card starts as a patch the size of the spawn cloud's (this many
 ## cells across, give or take a third) and shrinks to one pixel of the glyph as it arrives.
 const GLYPH_BIG := 5.0
@@ -851,8 +859,9 @@ static func glyph(parent: Node3D, pattern: Array, cell: float, at: Vector3, tota
 		var line: String = pattern[y]
 		for x in line.length():
 			if line[x] == "#":
+				var skew := Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), 0.0) * GLYPH_SKEW * cell
 				targets.append(Vector3((float(x) - float(cols - 1) * 0.5) * cell,
-						(float(rows - 1) * 0.5 - float(y)) * cell, 0.0))
+						(float(rows - 1) * 0.5 - float(y)) * cell, 0.0) + skew)
 	var count: int = _take_card_budget(targets.size())
 	if count < targets.size():
 		return null                              # half a sign is not a sign
@@ -889,6 +898,7 @@ static func glyph(parent: Node3D, pattern: Array, cell: float, at: Vector3, tota
 		card.scale = Vector3(big, big, 1.0)
 		card.set_meta("big", big)
 		card.set_meta("small", cell * GLYPH_FILL)
+		card.set_meta("cell", cell)
 		cards.append(card)
 		mats.append(cmat)
 		starts.append(st)
@@ -920,31 +930,39 @@ static func _glyph_step(t: float, holder: Node3D, cards: Array, mats: Array, sta
 			continue
 		var a: float = clampf((t - float(delays[i])) / GLYPH_FLY, 0.0, 1.0)
 		var e: float = 1.0 - pow(1.0 - a, 3.0)
-		c.position = (starts[i] as Vector3).lerp(targets[i], e)
+		var at: Vector3 = (starts[i] as Vector3).lerp(targets[i], e)
+		if a >= 1.0:
+			# A glitch frame: stepped, not smooth - the same step for every card, its own roll.
+			var k: int = int(t / GLYPH_JIT_STEP)
+			var roll: float = fposmod(sin(float(k * 131 + i * 17) * 12.9898) * 43758.5453, 1.0)
+			if roll < GLYPH_JIT_CHANCE:
+				at.x += (1.0 if roll < GLYPH_JIT_CHANCE * 0.5 else -1.0) * GLYPH_JIT * float(c.get_meta("cell"))
+		c.position = at
 		var sz: float = lerpf(float(c.get_meta("big")), float(c.get_meta("small")), e)
 		c.scale = Vector3(sz, sz, 1.0)
 		(mats[i] as ShaderMaterial).set_shader_parameter("progress", pr)
-		# Solid as it LOCKS IN: in flight it is still a patchy glitch card, in place a pixel.
-		(mats[i] as ShaderMaterial).set_shader_parameter("solid", a * a)
+		# Solider as it locks in, but only GLYPH_SOLID: in place it is still a glitch, with holes.
+		(mats[i] as ShaderMaterial).set_shader_parameter("solid", a * a * GLYPH_SOLID)
 
-# ── A DIGITAL HOLE WHERE A SHOT HIT THE WORLD ──────────────────────────────────
-# A shot that lands on the ground, a rock or a tree leaves a patch of the world that stopped being
-# rendered (ground_hole.gdshader): dark pixels with a glitch rim, healing over HOLE_LIFE. The door is
-# WeaponBlock._on_bullet_body_entered, the branch for a body that takes no damage.
+# ── AN ORDINARY GLITCH WHERE A SHOT HIT THE WORLD ─────────────────────────────
+# A shot that lands on the ground, a rock or a tree leaves a patch of plain glitch lying on the
+# surface: the very card a block appears with (CARD_SHADER, its palette, its flicker and fade), only
+# flat (`lie_flat`) so it stays on the ground as the camera orbits. Damage, not a hole - a dark
+# core read as the world breaking open, and the mark only has to say "that landed there". The door
+# is WeaponBlock._on_bullet_body_entered, the branch for a body that takes no damage.
 #
 # A POOL, NOT A NODE PER HIT. A machine gun puts several shots a second into the ground; the oldest
-# hole is taken for the newest, so a long burst costs HOLE_POOL nodes and no more. Past HOLE_DIST
-# nothing is made at all - a hole the size of a hand cannot be seen from there.
-const HOLE_SHADER := preload("res://ground_hole.gdshader")
+# patch is taken for the newest, so a long burst costs HOLE_POOL nodes and no more. Past HOLE_DIST
+# nothing is made at all - a patch the size of a hand cannot be seen from there.
 const HOLE_POOL := 24
-const HOLE_LIFE := 4.0
-const HOLE_SIZE := 0.75
+const HOLE_LIFE := 2.0
+const HOLE_SIZE := 0.7
 const HOLE_DIST := 90.0
 const HOLE_LIFT := 0.03          # off the surface, or it z-fights with the ground it lies on
 static var _holes: Array = []
 static var _hole_next: int = 0
 
-static func ground_hole(anchor: Node, pos: Vector3, normal: Vector3) -> void:
+static func ground_glitch(anchor: Node, pos: Vector3, normal: Vector3) -> void:
 	if anchor == null or not anchor.is_inside_tree():
 		return
 	var cam: Camera3D = anchor.get_viewport().get_camera_3d()
@@ -966,7 +984,8 @@ static func ground_hole(anchor: Node, pos: Vector3, normal: Vector3) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.set_meta("block_fx", true)
 		var m := ShaderMaterial.new()
-		m.shader = HOLE_SHADER
+		m.shader = CARD_SHADER
+		m.set_shader_parameter("lie_flat", true)
 		mi.material_override = m
 		host.add_child(mi)
 		_holes.append(mi)
@@ -984,9 +1003,12 @@ static func ground_hole(anchor: Node, pos: Vector3, normal: Vector3) -> void:
 	mi.visible = true
 	var mat := mi.material_override as ShaderMaterial
 	mat.set_shader_parameter("seed", randf() * 100.0)
-	mat.set_shader_parameter("progress", 0.0)
+	mat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
+	mat.set_shader_parameter("fill_threshold", randf_range(0.30, 0.46))
+	# From a third in: the card shader spends 0..0.5 coming up, and a hit is at full strength at once.
+	mat.set_shader_parameter("progress", 0.3)
 	var tw := mi.create_tween()
-	tw.tween_method(_set_card_progress.bind(mat), 0.0, 1.0, HOLE_LIFE)
+	tw.tween_method(_set_card_progress.bind(mat), 0.3, 1.0, HOLE_LIFE)
 	tw.tween_callback(mi.hide)
 	mi.set_meta("tw", tw)
 
