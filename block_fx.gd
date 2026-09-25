@@ -828,8 +828,11 @@ static func repair_stream(from: Node3D, to: Node3D, cloud_radius: float = 0.0) -
 # The glyph lives in the CAMERA'S PLANE: each card is already a billboard, but their POSITIONS must
 # lie across the screen for the shape to read, so the holder is turned to the camera on every step
 # of the one tween that drives the whole thing (no script on the node, no second clock).
-const GLYPH_IN := 0.45           # scatter and fly-in; the sign is whole by this second
-const GLYPH_FLY := 0.30          # one card's flight; starts are staggered across GLYPH_IN - GLYPH_FLY
+const GLYPH_IN := 0.7            # scatter and fly-in; the sign is whole by this second
+const GLYPH_FLY := 0.45          # one card's flight; starts are staggered across GLYPH_IN - GLYPH_FLY
+## BIG GLITCHES INTO A SMALL SIGN: a card starts as a patch the size of the spawn cloud's (this many
+## cells across, give or take a third) and shrinks to one pixel of the glyph as it arrives.
+const GLYPH_BIG := 5.0
 const GLYPH_FADE := 0.4
 const GLYPH_SCATTER := 1.7       # radius of the cloud the cards start from, in cells
 ## Cards exactly fill their cell. They blend ADDITIVELY, so any overlap doubles in brightness and
@@ -871,8 +874,10 @@ static func glyph(parent: Node3D, pattern: Array, cell: float, at: Vector3, tota
 		var cmat := ShaderMaterial.new()
 		cmat.shader = CARD_SHADER
 		cmat.set_shader_parameter("seed", randf() * 100.0)
-		cmat.set_shader_parameter("grid_cells", 3.0)
-		cmat.set_shader_parameter("fill_threshold", 0.18)   # nearly full: a pixel, not a patch
+		# The spawn cloud's own patch (materialise): 4x4 or 6x6 cells, patchy. `solid` fills it in
+		# as it locks into place, so the same card is a glitch in flight and a pixel at rest.
+		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
+		cmat.set_shader_parameter("fill_threshold", randf_range(0.30, 0.46))
 		cmat.set_shader_parameter("progress", 0.0)
 		card.material_override = cmat
 		holder.add_child(card)
@@ -880,7 +885,10 @@ static func glyph(parent: Node3D, pattern: Array, cell: float, at: Vector3, tota
 		d = d.normalized() if d.length_squared() > 0.0001 else Vector3.UP
 		var st: Vector3 = targets[i] + d * cell * GLYPH_SCATTER * pow(randf(), 1.0 / 3.0) * float(rows) * 0.5
 		card.position = st
-		card.scale = Vector3(cell * GLYPH_FILL, cell * GLYPH_FILL, 1.0)
+		var big: float = cell * GLYPH_BIG * randf_range(0.7, 1.3)
+		card.scale = Vector3(big, big, 1.0)
+		card.set_meta("big", big)
+		card.set_meta("small", cell * GLYPH_FILL)
 		cards.append(card)
 		mats.append(cmat)
 		starts.append(st)
@@ -913,6 +921,8 @@ static func _glyph_step(t: float, holder: Node3D, cards: Array, mats: Array, sta
 		var a: float = clampf((t - float(delays[i])) / GLYPH_FLY, 0.0, 1.0)
 		var e: float = 1.0 - pow(1.0 - a, 3.0)
 		c.position = (starts[i] as Vector3).lerp(targets[i], e)
+		var sz: float = lerpf(float(c.get_meta("big")), float(c.get_meta("small")), e)
+		c.scale = Vector3(sz, sz, 1.0)
 		(mats[i] as ShaderMaterial).set_shader_parameter("progress", pr)
 		# Solid as it LOCKS IN: in flight it is still a patchy glitch card, in place a pixel.
 		(mats[i] as ShaderMaterial).set_shader_parameter("solid", a * a)

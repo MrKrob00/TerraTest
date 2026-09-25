@@ -55,7 +55,7 @@ var _t: float = 0.0
 const BANG := ["##", "##", "##", "##", "##", "..", "##"]
 const BANG_CELL := 0.22
 const BANG_AT := Vector3(0.0, 1.25, 0.0)     # the glyph's centre, clear of the diamond under it
-const ALERT_TIME := 1.8
+const ALERT_TIME := 3.0                    # gathers, holds, and is gone three seconds in
 
 static func name_for(id: int) -> String:
 	return "%s %s" % [ADJ[absi(id) % ADJ.size()], NOUN[absi(id / ADJ.size()) % NOUN.size()]]
