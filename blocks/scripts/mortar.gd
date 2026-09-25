@@ -125,7 +125,7 @@ func _aim_ground() -> Variant:
 # метры, и снаряд обязан лететь именно туда, куда его положили, иначе пятно расползается тем
 # сильнее, чем дальше стреляем.
 func _arc_last(point: Vector3) -> void:
-	var b: Area3D = last_fired
+	var b = last_fired
 	if b == null or not is_instance_valid(b) or not ("dir" in b):
 		return
 	var aim: Vector3 = point

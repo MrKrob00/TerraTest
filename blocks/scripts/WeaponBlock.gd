@@ -533,7 +533,6 @@ func charge_ratio() -> float:
 
 # Безопасно: у оружия без пуль (лазер) узла Ammo может не быть (или он удалён в _ready).
 @onready var ammo: Node3D = get_node_or_null("Ammo")
-@onready var free_bullet: Array[Area3D]
 
 # Сценовое соединение Ammo/Bullet.body_entered → _on_bullet_body_entered БЕЗ bind давало
 # нехватку аргумента (source) и роняло вызов на КАЖДОМ попадании. Перецепляем с bind(самой
@@ -584,48 +583,22 @@ func _apply_bullet_mesh(b: Node) -> void:
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		return
 
+## The template round in the scene: give it the shared model (unless it brings its own) and keep
+## it out of the picture and off the tick. It never flies - BulletSim copies it at every shot - and
+## sitting visible at every weapon is what it used to do.
 func _rebind_bullet(b: Area3D) -> void:
 	_apply_bullet_mesh(b)
-	# A BULLET IN THE POOL IS HIDDEN, and shown only while it flies (fire_bullet / _recycle_bullet).
-	# Recycled bullets are parked at the world origin and were left visible: near the origin - the
-	# proving ground, the start of a game - every idle bullet of every gun was DRAWN, stacked in one
-	# spot, and the scene's template bullet (duplicated, never fired) sat visible at every weapon for
-	# good. The template passes through here too, so it is hidden with the rest.
 	b.visible = false
-	b.set_physics_process(false)                # and idle: it ticks only in flight (bullet.park)
-	if b.body_entered.is_connected(_on_bullet_body_entered):
-		b.body_entered.disconnect(_on_bullet_body_entered)
-	var cb := _on_bullet_body_entered.bind(b)
-	if not b.body_entered.is_connected(cb):
-		b.body_entered.connect(cb)
-	# Пуля улетела за окно коллизий (ушла ниже min_y / вышло время) → вернуть в пул.
-	if b.has_signal("expired") and not b.expired.is_connected(_on_bullet_expired):
-		b.expired.connect(_on_bullet_expired)
-	# ПОПАДАНИЕ ПО ОТРЕЗКУ (bullet._sweep) приходит сюда же и теми же аргументами: пуля летит
-	# быстрее собственной толщины, и Area ловит далеко не каждое попадание (см. bullet.gd).
-	if b.has_signal("hit") and not b.hit.is_connected(_on_bullet_body_entered):
-		b.hit.connect(_on_bullet_body_entered)
+	b.monitoring = false
+	b.set_physics_process(false)
 
-# Пуля отработала (попадание ИЛИ истечение полёта) — паркуем в пул инертной.
-func _recycle_bullet(b: Area3D) -> void:
-	if not is_instance_valid(b):
-		return
-	if "dir" in b:
-		b.dir = Vector3.ZERO
-	# _recycle_bullet зовётся ИЗ сигнала body_entered пули — прямая смена monitoring в этот момент
-	# заблокирована движком (Area заблокирована на время in/out-сигнала). set_deferred применит её
-	# в конце кадра. Без этого рецикл срывался: пуля оставалась monitoring=true у центра мира и
-	# продолжала ловить тела/слать сигналы (спам и возможные каскадные падения).
-	b.set_deferred("monitoring", false)         # в пуле (у центра) повторно не ловит тела
-	b.global_position = Vector3.ZERO
-	b.visible = false
-	if b.has_method("park"):
-		b.park()
-	b.set_physics_process(false)                # an idle bullet does not tick (bullet.park)
-	if not free_bullet.has(b):
-		free_bullet.append(b)
+## A shot that landed or expired goes back to the simulator's spare list (BulletSim.retire). Shots
+## are plain data now; there is no node to park, hide or stop ticking.
+func _recycle_bullet(b) -> void:
+	if b is BulletSim.Shot:
+		BulletSim.of(self).retire(b)
 
-func _on_bullet_expired(b: Area3D) -> void:
+func _on_bullet_expired(b) -> void:
 	_recycle_bullet(b)
 
 ## ПОСЛЕДНЯЯ ВЫПУЩЕННАЯ ПУЛЯ — ссылкой, а не поиском среди детей.
@@ -636,7 +609,7 @@ func _on_bullet_expired(b: Area3D) -> void:
 ## в произвольном порядке, и «последний ребёнок в полёте» — чужая, давно летящая пуля: свежая
 ## дробь уходила строго по стволу (вся пачка в одну точку, разброса не видно), а случайная
 ## старая пуля виляла в сторону.
-var last_fired: Area3D = null
+var last_fired = null                 # a BulletSim.Shot, or null
 
 ## ТОЧКА ДУЛА, в одном месте: у всех стволов это `Marker3D` на конце ствола. Спрашивают её двое,
 ## пуля и вспышка, и вторая копия поиска означала бы, что свет однажды зажжётся не там, откуда
@@ -655,45 +628,25 @@ func fire_bullet():
 	last_fired = null
 	if ammo == null:
 		return
-	if free_bullet.is_empty():
-		var new_bullet: Area3D = $Ammo/Bullet.duplicate()
-		ammo.add_child(new_bullet)
-		_rebind_bullet(new_bullet)              # дубликат унаследовал сценовое соединение без bind
-		free_bullet.append(new_bullet)
-	var bullet:Area3D = free_bullet.pop_back()
-	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
-	if not ("dir" in bullet):
-		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
+	# THE TEMPLATE IN THE SCENE STILL DEFINES THE ROUND - speed, drop, lifetime, mask, model - and
+	# BulletSim copies it into a Shot; flight, the sweep and the drawing live there (see its header).
+	var tpl := ammo.get_node_or_null("Bullet") as Node3D
+	if tpl == null or not ("dir" in tpl):
 		return
-	bullet.global_position = _muzzle_point().global_position
-	bullet.visible = true
-	bullet.set_physics_process(true)
-	bullet.dir = dir
-	if "shooter_blocks" in bullet:
-		bullet.shooter_blocks = get_parent()   # свип пропускает свой корпус (пуля рождается внутри)
-	_apply_flat_range(bullet)
-	_apply_spread(bullet)                       # ДО look_at: пуля обязана смотреть туда, куда летит
-	var shot: Vector3 = bullet.dir
-	if absf(shot.dot(Vector3.UP)) < 0.99:       # look_at падает, если dir почти вертикальна
-		bullet.look_at(bullet.global_position + shot)
-	# ПУЛЯ НЕ СЛЕДИТ ЗА ПЕРЕКРЫТИЯМИ: это второй путь к тому же обработчику, и он платный.
-	# Попадания приходят СВИПОМ (`bullet._sweep` → сигнал `hit`), а он ведёт в тот же
-	# `_on_bullet_body_entered`, что и `body_entered`. Area ловила разве что упор в ноль метров,
-	# который свип и так покрывает первым же отрезком, — и ради этого физический сервер считал
-	# перекрытия для каждой пули в воздухе каждый тик.
-	#
-	# ЦЕНА ЗАМЕРЕНА ЧЕРЕДОВАНИЕМ, а не одним прогоном: двести неподвижных пуль без скрипта,
-	# шесть замеров подряд ВЫКЛ/ВКЛ — 18.2 / 18.7 / 17.7 / 19.6 / — / 21.0 мс физ-тика, то есть
-	# около 2 мс разницы. Одиночный прогон до этого показывал 48 против 2, и это был артефакт
-	# стенда: стриминг чанков попадал в счётчик. Два миллисекунды из восемнадцати — немного, но
-	# это плата за дубликат, и на телефоне, где физика и так 25.5 мс, она не лишняя.
-	bullet.monitoring = false
-	last_fired = bullet
+	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
+	var shot: BulletSim.Shot = BulletSim.of(self).fire(self, tpl)
+	shot.global_position = _muzzle_point().global_position
+	shot.dir = dir
+	shot.shooter_blocks = get_parent()      # свип пропускает свой корпус (пуля рождается внутри)
+	_apply_flat_range(shot)
+	_apply_spread(shot)                     # ДО разворота: пуля обязана смотреть туда, куда летит
+	shot.face(shot.dir)
+	last_fired = shot
 
 ## Довернуть выпущенную пулю в конусе разброса. ОДИН конус на все стволы: подклассы меняют
 ## только угол (`spread_deg`), а мортира и дробовик, у которых разброс свой по смыслу, ставят
 ## ноль и считают сами.
-func _apply_spread(b: Node3D) -> void:
+func _apply_spread(b) -> void:
 	if spread_deg <= 0.0 or not ("dir" in b):
 		return
 	var d: Vector3 = b.dir
@@ -857,7 +810,7 @@ func _lead_point(target: Node3D, from: Vector3) -> Vector3:
 ## Высота ствола над землёй: пушка на третьем этаже сборки — это примерно 3.5 м.
 const MUZZLE_HEIGHT := 3.5
 
-func _apply_flat_range(b: Node) -> void:
+func _apply_flat_range(b) -> void:
 	if flat_range <= 0.0 or b == null or not ("bullet_gravity" in b) or not ("speed" in b):
 		return
 	var v: float = maxf(float(b.get("speed")), 1.0)
@@ -935,7 +888,7 @@ func _on_area_3d_body_exited(body: Node3D) -> void:
 		_targets.remove_at(i)
 		_target_base.remove_at(i)
 
-func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
+func _on_bullet_body_entered(body: Node3D, source) -> void:
 	# ОДНА ПУЛЯ — ОДНО ПОПАДАНИЕ. Area3D шлёт body_entered ПО ТЕЛУ: пуля, вошедшая за один шаг в
 	# два блока, наносила урон обоим, а после свипа то же попадание приходило бы ещё и вторым
 	# сигналом. Отработавшая пуля инертна (dir обнулён в _recycle_bullet) — по этому её и узнаём.

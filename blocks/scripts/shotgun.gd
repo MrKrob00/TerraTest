@@ -51,7 +51,7 @@ func fire_bullet() -> void:
 # Кто это был, помнит сам базовый класс (last_fired): искать её среди детей нельзя, пули идут
 # из пула не по порядку.
 func _spread_last() -> void:
-	var b: Area3D = last_fired
+	var b = last_fired
 	if b == null or not is_instance_valid(b) or not ("dir" in b):
 		return
 	var d: Vector3 = b.dir
