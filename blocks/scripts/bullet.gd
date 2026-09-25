@@ -49,12 +49,17 @@ func _physics_process(delta: float) -> void:
 	_tick_bullet(delta)
 	Perf.mark("bullets", _pf)
 
+## BACK IN THE POOL: reset once, here, instead of checking on every tick. The pool also switches
+## the bullet's tick off (WeaponBlock._recycle_bullet): an idle bullet ran _physics_process every
+## physics frame just to return, and with forty guns the pools hold hundreds of them.
+func park() -> void:
+	t = 0.0
+	var mi0 := _mesh_node()          # снимаем растяжение (см. _stretch)
+	if mi0 != null and _mesh_base != Vector3.ZERO and mi0.scale != _mesh_base:
+		mi0.scale = _mesh_base
+
 func _tick_bullet(delta: float) -> void:
-	if dir == Vector3.ZERO:          # в пуле — не двигаемся
-		t = 0.0
-		var mi0 := _mesh_node()      # вернулась в пул — снимаем растяжение (см. _stretch)
-		if mi0 != null and _mesh_base != Vector3.ZERO and mi0.scale != _mesh_base:
-			mi0.scale = _mesh_base
+	if dir == Vector3.ZERO:          # в пуле — не двигаемся (тик у пула выключен, это страховка)
 		return
 	t += delta
 	var from: Vector3 = global_position
