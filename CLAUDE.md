@@ -846,6 +846,17 @@ project: read it before claiming how anything works.
   When the wait expired everything behind it was skipped WITHOUT A WORD — the saved terrain edits
   were never replayed, so a quest's levelled pad came back as raw hillside on every load, and
   restored machines kept only their X/Z.
+- A RESTORED MACHINE IS SEATED ON THE HIGHEST GROUND UNDER IT, not on the ground under its origin,
+  which is the cabin: `world_persist._seat_machine` asks `vehicle_body_3d.ground_under_machine()`,
+  the same footprint sample build mode hovers by. Measured on real terrain, 400 points, a 5×5 m
+  machine: 83 of 400 came back with their blocks inside a slope, worst by 21.51 m, and `FALL_LIMIT`
+  (15 m) is far too coarse to catch it. The public door REMEASURES the footprint — `_measure_footprint`
+  runs on entering build mode and on editing the build, and a restore goes through neither, so
+  `_bmin`/`_bmax` still stand at one cell. A LOOSE ITEM keeps the single point sample
+  (`_over_ground`): it is smaller than a cell, so there is nothing else under it. The rescue net
+  splits the two: DETECTION stays at the origin, where a low reading means it stays silent instead
+  of lifting a machine legitimately nosed under a cliff, while the LIFT uses the footprint max, or
+  it drops the machine back into the slope once a second.
 
 ### UI
 
