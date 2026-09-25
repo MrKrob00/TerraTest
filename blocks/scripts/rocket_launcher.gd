@@ -41,7 +41,7 @@ func _track_target(delta: float, firing: bool) -> void:
 		_aim_model(0.0, 0.0, delta)
 
 # Ракета во что-то попала → ВЗРЫВ (AOE), а не одиночный урон базового WeaponBlock.
-func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
+func _on_bullet_body_entered(body: Node3D, source) -> void:
 	if body == self: return
 	if body.get_parent() == get_parent(): return               # блок своей же машины
 	if G.is_friendly_dome(body, _vehicle_root()): return
@@ -49,7 +49,7 @@ func _on_bullet_body_entered(body: Node3D, source: Area3D) -> void:
 	_recycle_bullet(source)
 
 # Ракета истекла (таймаут / ниже min_y) — тоже взрыв в точке (напр. упала в землю мимо цели).
-func _on_bullet_expired(b: Area3D) -> void:
+func _on_bullet_expired(b) -> void:
 	_explode(b.global_position)
 	_recycle_bullet(b)
 

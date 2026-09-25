@@ -329,11 +329,11 @@ project: read it before claiming how anything works.
   six seconds of focused fire from its own tier, an ordinary block three. A weapon without its own
   row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine — which is what the
   enemy aims at.
-- A BULLET IS SWEPT ALONG ITS SEGMENT (`bullet._sweep`), not left to Area3D overlap: at 120 u/s it
+- A BULLET IS SWEPT ALONG ITS SEGMENT (`BulletSim._sweep`), not left to Area3D overlap: at 120 u/s it
   moves two metres per physics frame (four at 30 fps) and a block is one metre, so shots stepped
   over blocks entirely — armour stopped nothing and hits landed on whatever was at the end of the
   step. One bullet lands one hit; a spent bullet is inert and the handler checks that.
-- A PROJECTILE FACES ITS VELOCITY EVERY FRAME (`bullet._face`), not only at the muzzle. The
+- A PROJECTILE FACES ITS VELOCITY EVERY FRAME (`BulletSim.Shot.face`), not only at the muzzle. The
   launch `look_at` is close enough for a flat shot and wrong for an ARC: the mortar throws at 60°,
   the shell passes its apex and comes down while the model still points at the sky, so the last
   half of the flight is tail first. The direction comes from the STEP, not from `dir` — `dir` is
@@ -345,7 +345,7 @@ project: read it before claiming how anything works.
   its own long thin capsule — so the laser fired the machine gun's round, literally the same mesh,
   and fired it SIDEWAYS, because the capsule is turned −90° about X for its own geometry. "The
   laser shoots bullets" was not a figure of speech.
-- `bullet._stretch` SCALES THE AXIS THE MESH ACTUALLY POINTS ALONG, asked once from the mesh's own
+- THE STRETCH SCALES THE AXIS THE MESH ACTUALLY POINTS ALONG (`BulletSim.Kind.axis`), asked once from the mesh's own
   rotation. Hardcoded "stretch along Z" scaled the RADIUS of any projectile whose model is turned
   inside the bullet: the laser bolt did not lengthen, it swelled, and the worse the frame rate the
   fatter it got.
@@ -357,7 +357,7 @@ project: read it before claiming how anything works.
   shot draws is `WeaponBlock._muzzle_fx`, overridden like `flash_color` — the door stays single
   (`_handle_fire` calls it once per shot, shotgun and mortar included).
 - A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
-  `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
+  `WeaponBlock.last_fired` (a `BulletSim.Shot`). "The last child of Ammo that is in flight" is only correct while the
   pool is empty; afterwards bullets come out of it in any order.
 - A SHOT THAT LANDS ON THE WORLD LEAVES AN ORDINARY GLITCH (`BlockFX.ground_glitch`), and the door is
   the branch of `WeaponBlock._on_bullet_body_entered` for a body that takes no damage — ground,
@@ -1387,15 +1387,19 @@ project: read it before claiming how anything works.
   before and after). Anything that claims to speed bullets up has to move those numbers — and a
   move to MultiMesh would remove the node costs but NOT the 744 us, which is the part that decides
   whether a shot lands.
-- A BULLET IN THE POOL IS HIDDEN (`WeaponBlock._rebind_bullet` / `_recycle_bullet`, shown again in
-  `fire_bullet`). Recycled bullets are parked at the world origin and were left visible, so near the
-  origin - the proving ground, the start of a game - every idle bullet of every gun was drawn,
-  stacked in one spot, and the scene's template bullet (duplicated, never fired) sat visible at
-  every weapon for good. Measured in a 13-machine fight: 3476 → 3321 draw calls.
-- A BULLET FLIES WITH `monitoring` OFF. `body_entered` and the sweep's `hit` land in the SAME
-  handler, so the Area was a second path to one answer, and the physics server was computing
-  overlaps for every bullet in the air every tick to provide it. What it could add over the sweep
-  is a hit at zero metres, which the sweep's first segment already covers.
+- **A BULLET IS DATA, NOT A NODE (`BulletSim`, one per scene).** A shot is a `BulletSim.Shot` with
+  the fields the weapons read and write (dir, speed, bullet_gravity, max_lifetime, global_position,
+  hit_normal, shooter_blocks), so the shotgun's cone, the mortar's arc, the rocket's blast and the
+  hit handler run on it unchanged. One loop steps every shot, sweeps it with one reused ray query and
+  writes it into a MultiMesh per round model — one draw call for all gun rounds in the air instead
+  of one each. The round is still AUTHORED in the weapon's scene (`Ammo/Bullet`, `bullet.gd`):
+  speed, drop, lifetime, collision mask and model are copied from that template at every shot, and
+  `_ballistics` reads it for the lead. Measured in a 13-machine fight: 224 bullet nodes → the 48
+  templates; the bullets line 4.4–4.8 → 3.7 ms a tick, of which the step is 3.1 and the drawing 0.56
+  — what is left is the ray, which decides whether a shot lands. Hits checked against the old
+  nodes: the same damage from gun, rocket and heavy cannon, and the laser's hit log identical shot
+  for shot (six hits, same blocks, same positions). The pool-era rules — hide the idle bullet,
+  `monitoring` off, stop its tick — went with the nodes.
 - **MEASURE A PHYSICS COST BY ALTERNATING, NEVER BY ONE PASS.** A single before/after of that same
   flag read 48 ms against 2 — and it was an artefact: chunk streaming was still running and landed
   in `TIME_PHYSICS_PROCESS`. Alternating OFF/ON six times over the same 200 nodes gave
@@ -1428,10 +1432,6 @@ project: read it before claiming how anything works.
   enters (`_base_score`) and kept in `_target_base`, index for index with `_targets` — the add, the
   remove, the prune and the scoring loop all move both. Checked side by side with the old scoring in
   that fight: the same choice on 442 of 442 retargets.
-- AN IDLE BULLET DOES NOT TICK. Every pooled bullet ran `_physics_process` every physics frame just to
-  return; the pool now switches it off (`_recycle_bullet`, `_rebind_bullet`) and `fire_bullet` switches
-  it on, and the reset that tick used to do happens once in `bullet.park()`. In that fight 221 bullet
-  nodes existed and about half were idle.
 - Anything behind the camera and past the near bubble is disabled; the near bubble stays active in
   every direction. Radar reads vein data, not what is drawn.
 
@@ -1478,6 +1478,11 @@ $G --headless --path /tmp/ttrun res://node_3d.tscn --quit-after 12000   # boot t
 `load()`s every `.gd` and instantiates every `.tscn`. **The import must run first** — without
 `.godot/` every scene that touches a model or a font fails with "Can't load dependency", which
 looks exactly like a broken scene and is not one.
+
+A `--script` harness is COMPILED BEFORE THE AUTOLOADS EXIST, so naming a class whose script uses an
+autoload by identifier (`BulletSim` uses `G`) fails to compile the harness — and a half-loaded
+harness then hangs instead of quitting. Load such a class at run time: `load("res://bullet_sim.gd")`.
+The game itself is unaffected: its scripts compile after the autoloads.
 
 Do NOT use `--check-only --script file.gd` for a sweep: autoloads are not registered in that mode,
 so every file that mentions `G` or `Q` reports "Identifier not found" — a hundred false positives
