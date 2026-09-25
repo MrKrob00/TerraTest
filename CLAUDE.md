@@ -363,6 +363,15 @@ project: read it before claiming how anything works.
   the ground. It lies along the surface (`bullet.hit_normal`, from the sweep's own ray) and heals
   over `HOLE_LIFE`. A POOL of `HOLE_POOL` (24): the oldest is reused, so a long burst costs 24 nodes
   and no more — measured, 40 hits left exactly 24 — and nothing is made past `HOLE_DIST`.
+- A HARD LANDING SENDS A FLAT WAVE OF RED PIXELS ALONG THE GROUND (`BlockFX.ground_wave`, raised in
+  `MachineBody.sense_ground`, so every enemy dropping in makes one too). The threshold is a fall
+  HEIGHT (`LAND_WAVE_DROP`, 3 m) turned into a speed through the game's gravity, which is 24.5 m/s²,
+  2.5× Earth's — a fixed 7 m/s meant a one-metre drop. The strength is the FASTEST FALL SEEN IN THE
+  AIR, never the speed on the landing tick: at 32 m/s the body reaches the ground in the step the
+  wheels first see it and Jolt has already bounced it (measured, vy = +0.6 on that tick). And a
+  machine that tumbled lands on its hull, the wheels never report ground, and it sheds the speed
+  over several steps (−28, −12, −4 m/s) — so "a hard fall that has almost stopped" counts as a
+  landing too. Measured, four runs: enemy arrival 1 wave, 2 m drop 0, 20 m drop 1 every time.
 - `_alert_victim` (weapon side) tells the victim who shot; `hurt()` must not, since drills and
   repair fields call the same `hurt`.
 

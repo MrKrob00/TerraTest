@@ -990,6 +990,49 @@ static func ground_hole(anchor: Node, pos: Vector3, normal: Vector3) -> void:
 	tw.tween_callback(mi.hide)
 	mi.set_meta("tw", tw)
 
+# ── A FLAT WAVE OF RED PIXELS WHERE A MACHINE LANDED HARD ─────────────────────
+# MachineBody.sense_ground raises it on the tick the wheels find ground after a fall, with the
+# falling speed as the strength; the radius follows it. One quad per landing, no pool: landings are
+# rare next to shots. Lies on the ground normal under the machine and a hand's width above it.
+const WAVE_SHADER := preload("res://ground_wave.gdshader")
+const WAVE_COL := Color(1.0, 0.13, 0.1)
+const WAVE_DUR := 0.75
+const WAVE_R_MIN := 3.0
+const WAVE_R_MAX := 9.0
+const WAVE_R_PER_MS := 0.3       # metres of radius per m/s of landing speed
+const WAVE_LIFT := 0.08
+
+static func ground_wave(anchor: Node, pos: Vector3, normal: Vector3, speed: float) -> void:
+	if anchor == null or not anchor.is_inside_tree():
+		return
+	var cam: Camera3D = anchor.get_viewport().get_camera_3d()
+	if cam != null and cam.global_position.distance_squared_to(pos) > FLASH_DIST * FLASH_DIST:
+		return
+	var tree := anchor.get_tree()
+	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
+	var r: float = clampf(WAVE_R_MIN + speed * WAVE_R_PER_MS, WAVE_R_MIN, WAVE_R_MAX)
+	var mi := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(r * 2.0, r * 2.0)
+	mi.mesh = pm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.set_meta("block_fx", true)
+	var m := ShaderMaterial.new()
+	m.shader = WAVE_SHADER
+	m.set_shader_parameter("radius_m", r)
+	m.set_shader_parameter("seed", randf() * 100.0)
+	m.set_shader_parameter("color", Vector3(WAVE_COL.r, WAVE_COL.g, WAVE_COL.b))
+	m.set_shader_parameter("progress", 0.0)
+	mi.material_override = m
+	host.add_child(mi)
+	var up: Vector3 = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
+	var side: Vector3 = up.cross(Vector3.FORWARD if absf(up.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+	mi.global_transform = Transform3D(Basis(side, up, side.cross(up)), pos + up * WAVE_LIFT)
+	var tw := mi.create_tween()
+	# EASE_OUT: the blow travels fast and slows as it spreads, the way a thud reads.
+	tw.tween_method(_set_card_progress.bind(m), 0.0, 1.0, WAVE_DUR).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_callback(mi.queue_free)
+
 static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):
 		mat.set_shader_parameter("progress", p)
