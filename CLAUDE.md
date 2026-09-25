@@ -216,6 +216,19 @@ project: read it before claiming how anything works.
 - A machine beside the line also gets PRIORITY FOR THE FREED CELL (`belt.side_waiting`): it returns
   its result onto the belt one cell along and loses that cell to through traffic every time, and
   while it holds its output it takes no input — a few boxes later the line is dead.
+- A MACHINE THAT WANTS THE ITEM IS WAITED FOR, NOT SKIPPED (`FactoryBlock.wants`, asked by
+  `belt.push_item` of a machine that just refused). `try_receive` says "no" for two different
+  reasons, "busy" and "not mine", and only the first is a reason to hold the item. Before this the
+  belt offered the machine first and, on any refusal, sent the item to the next belt: the
+  processor's intake frees once a tick, so an ore that arrived in between rode past. Measured on
+  the quest's own line with six ores, three runs: 5 ingots and 1 raw ore reached the seller every
+  time; after, 6 of 6, in the same 19.6 s. The belt then subscribes to THAT machine's `slot_freed`
+  (`belt._first_valid_target`). `wants` defaults to FALSE, so a machine that has not answered
+  for itself keeps the old behaviour. The processor wants ore and wood (`resource.can_upgrade`)
+  and only while its output is wired — a processor with no outlet would fill three cells and stop
+  the line behind it without a word. It also REFUSES by kind at the intake now: an ingot used to go
+  in whenever the intake was free and ride three ticks through unchanged (six ingots, 19.6 s past a
+  processor against 13.4 s on a bare line; now 13.4 both).
 - "Waiting for the next block" is trusted only while the one-shot `slot_freed` subscription is
   alive (`FactoryBlock._wait_on`), or a destroyed neighbour means waiting forever.
 - Area masks decide as much as scripts: collector layer 8, receiver 24, packer magnet 2.

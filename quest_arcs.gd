@@ -681,9 +681,13 @@ const LINE_REACH := 50.0       # ближе этого — материализ�
 ## константой (LINE_BELTS = 5, минус одна на продавце = четыре), а в схеме лент четыре, одна из
 ## которых уже стоит: игроку выдавали ЛИШНЮЮ, и она оставалась валяться у площадки как деталь,
 ## которой некуда встать. Два числа про одно и то же однажды разъезжаются — это и был тот раз.
-const LINE_ORE := 3            # сколько слитков падает на приёмник за раз
+const LINE_ORE := 3            # how many ores drop on the receiver per batch
 const LINE_GIFT_DELAY := 8.0   # через сколько секунд после сборки выдаём процессор
-const LINE_ORE_KIND := "m1"    # средний материал: медный слиток
+## COPPER ORE, not the copper ingot this used to be ("m1"). The branch is the lesson "ore sells for
+## scraps, metal does not": the first batch sells raw, the second goes through the processor. With an
+## ingot there was nothing to convert, and since the processor now refuses what it cannot upgrade,
+## the demo batch would ride straight past it.
+const LINE_ORE_KIND := "ore1"
 
 var _line_point: Variant = null
 var _line_base: Node3D = null          # заякоренная база-продавец, которую положил квест
