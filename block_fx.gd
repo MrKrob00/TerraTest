@@ -413,6 +413,7 @@ static func blast_cards(root: Node, pos: Vector3, radius: float,
 		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
 		cmat.set_shader_parameter("fill_threshold", randf_range(0.34, 0.5))
 		cmat.set_shader_parameter("progress", 0.0)
+		cmat.set_shader_parameter("use_tint", true)
 		cmat.set_shader_parameter("glitch_a", Vector3(ca.r, ca.g, ca.b))
 		cmat.set_shader_parameter("glitch_b", Vector3(cb.r, cb.g, cb.b))
 		card.material_override = cmat
@@ -499,6 +500,7 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 		cmat.set_shader_parameter("progress", 0.0)
 		# Прозрачная «пустая» краска = цвета шейдера по умолчанию (cyan/magenta).
 		if tint_a.a > 0.0:
+			cmat.set_shader_parameter("use_tint", true)
 			cmat.set_shader_parameter("glitch_a", Vector3(tint_a.r, tint_a.g, tint_a.b))
 		if tint_b.a > 0.0:
 			cmat.set_shader_parameter("glitch_b", Vector3(tint_b.r, tint_b.g, tint_b.b))
@@ -805,6 +807,7 @@ static func repair_stream(from: Node3D, to: Node3D, cloud_radius: float = 0.0) -
 		cmat.set_shader_parameter("grid_cells", 3.0)
 		cmat.set_shader_parameter("fill_threshold", 0.30)
 		cmat.set_shader_parameter("progress", 0.0)
+		cmat.set_shader_parameter("use_tint", true)
 		cmat.set_shader_parameter("glitch_a", Vector3(HEAL_COL_A.r, HEAL_COL_A.g, HEAL_COL_A.b))
 		cmat.set_shader_parameter("glitch_b", Vector3(HEAL_COL_B.r, HEAL_COL_B.g, HEAL_COL_B.b))
 		card.material_override = cmat
@@ -816,6 +819,103 @@ static func repair_stream(from: Node3D, to: Node3D, cloud_radius: float = 0.0) -
 		tw.tween_property(card, "global_position", b, HEAL_DUR).set_ease(Tween.EASE_IN)
 		tw.tween_method(_set_card_progress.bind(cmat), 0.0, 1.0, HEAL_DUR)
 		tw.chain().tween_callback(card.queue_free)
+
+# ── A SIGN ASSEMBLED FROM GLITCH CARDS ─────────────────────────────────────────
+# The cards a block or a machine appears with (the same shader, the same palette) come up scattered
+# round the spot, fly together and lock into ONE shape - a pixel glyph drawn by `pattern`, where
+# every '#' is a card. The colour is the glitch's own; only the shape says what it means.
+#
+# The glyph lives in the CAMERA'S PLANE: each card is already a billboard, but their POSITIONS must
+# lie across the screen for the shape to read, so the holder is turned to the camera on every step
+# of the one tween that drives the whole thing (no script on the node, no second clock).
+const GLYPH_IN := 0.45           # scatter and fly-in; the sign is whole by this second
+const GLYPH_FLY := 0.30          # one card's flight; starts are staggered across GLYPH_IN - GLYPH_FLY
+const GLYPH_FADE := 0.4
+const GLYPH_SCATTER := 1.7       # radius of the cloud the cards start from, in cells
+## Cards exactly fill their cell. They blend ADDITIVELY, so any overlap doubles in brightness and
+## draws a bright seam between every pair (1.15 read as a grid of tiles rather than one sign).
+const GLYPH_FILL := 1.0
+
+static func glyph(parent: Node3D, pattern: Array, cell: float, at: Vector3, total: float) -> Node3D:
+	if parent == null or not parent.is_inside_tree():
+		return null
+	var targets: Array = []
+	var rows: int = pattern.size()
+	var cols: int = 0
+	for r in pattern:
+		cols = maxi(cols, String(r).length())
+	for y in rows:
+		var line: String = pattern[y]
+		for x in line.length():
+			if line[x] == "#":
+				targets.append(Vector3((float(x) - float(cols - 1) * 0.5) * cell,
+						(float(rows - 1) * 0.5 - float(y)) * cell, 0.0))
+	var count: int = _take_card_budget(targets.size())
+	if count < targets.size():
+		return null                              # half a sign is not a sign
+	var holder := Node3D.new()
+	holder.set_meta("block_fx", true)
+	parent.add_child(holder)
+	holder.position = at
+	var cards: Array = []
+	var mats: Array = []
+	var starts: Array = []
+	var delays: Array = []
+	for i in targets.size():
+		var card := MeshInstance3D.new()
+		var q := QuadMesh.new()
+		q.size = Vector2.ONE
+		card.mesh = q
+		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		card.set_meta("block_fx", true)
+		var cmat := ShaderMaterial.new()
+		cmat.shader = CARD_SHADER
+		cmat.set_shader_parameter("seed", randf() * 100.0)
+		cmat.set_shader_parameter("grid_cells", 3.0)
+		cmat.set_shader_parameter("fill_threshold", 0.18)   # nearly full: a pixel, not a patch
+		cmat.set_shader_parameter("progress", 0.0)
+		card.material_override = cmat
+		holder.add_child(card)
+		var d := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5)
+		d = d.normalized() if d.length_squared() > 0.0001 else Vector3.UP
+		var st: Vector3 = targets[i] + d * cell * GLYPH_SCATTER * pow(randf(), 1.0 / 3.0) * float(rows) * 0.5
+		card.position = st
+		card.scale = Vector3(cell * GLYPH_FILL, cell * GLYPH_FILL, 1.0)
+		cards.append(card)
+		mats.append(cmat)
+		starts.append(st)
+		delays.append(randf() * (GLYPH_IN - GLYPH_FLY))
+	var tw := holder.create_tween()
+	tw.tween_method(_glyph_step.bind(holder, cards, mats, starts, targets, delays, total), 0.0, total, total)
+	tw.tween_callback(holder.queue_free)
+	_glyph_step(0.0, holder, cards, mats, starts, targets, delays, total)
+	return holder
+
+static func _glyph_step(t: float, holder: Node3D, cards: Array, mats: Array, starts: Array,
+		targets: Array, delays: Array, total: float) -> void:
+	if not is_instance_valid(holder) or not holder.is_inside_tree():
+		return
+	var cam: Camera3D = holder.get_viewport().get_camera_3d()
+	if cam != null:
+		var k: float = holder.get_parent_node_3d().global_basis.get_scale().x
+		holder.global_basis = Basis(cam.global_basis.get_rotation_quaternion()).scaled(Vector3.ONE * k)
+	# One progress for every card: 0 -> 0.5 is the card shader's "appearing", 0.5 is full, 0.5 -> 1
+	# is the fade, the same scale materialise() runs on.
+	var pr: float = 0.5
+	if t < GLYPH_IN:
+		pr = 0.5 * t / GLYPH_IN
+	elif t > total - GLYPH_FADE:
+		pr = 0.5 + 0.5 * clampf((t - (total - GLYPH_FADE)) / GLYPH_FADE, 0.0, 1.0)
+	for i in cards.size():
+		var c: Node3D = cards[i]
+		if not is_instance_valid(c):
+			continue
+		var a: float = clampf((t - float(delays[i])) / GLYPH_FLY, 0.0, 1.0)
+		var e: float = 1.0 - pow(1.0 - a, 3.0)
+		c.position = (starts[i] as Vector3).lerp(targets[i], e)
+		(mats[i] as ShaderMaterial).set_shader_parameter("progress", pr)
+		# Solid as it LOCKS IN: in flight it is still a patchy glitch card, in place a pixel.
+		(mats[i] as ShaderMaterial).set_shader_parameter("solid", a * a)
 
 static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):
