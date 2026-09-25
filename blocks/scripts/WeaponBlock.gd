@@ -104,6 +104,12 @@ func _ready() -> void:
 	# башне, а попадания — по трассерам. Гасим ЗДЕСЬ, у единственной двери: сцен со стволами
 	# пять, и шестая однажды приехала бы с той же настройкой.
 	raycast.debug_shape_thickness = 0
+	# **ЛУЧ НЕ ОБНОВЛЯЕТСЯ САМ.** `RayCast3D` по умолчанию `enabled`, то есть движок гоняет его
+	# КАЖДЫЙ ФИЗ-ТИК у каждого ствола в мире, — а сверху код звал ещё и `force_raycast_update()`.
+	# Два запроса к физике на ствол на тик вместо одного, причём результат читают только двое:
+	# проверка «не упёрся ли ствол в свой же блок» (раз в выстрел) и трассер (каждый тик, и он
+	# есть лишь у трёх стволов из шести). Обновляем явно и только там, где ответ нужен.
+	raycast.enabled = false
 	_sync_detect_radius()
 	_find_turret_parts()
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
@@ -154,7 +160,10 @@ func _tick_weapon(delta: float) -> void:
 		_retarget_t = RETARGET_PERIOD
 		_update_current_target()
 	_track_velocity(delta)          # ДО наводки: упреждение считается по свежей скорости
-	raycast.force_raycast_update()
+	# Луч нужен каждый тик только ТРАССЕРУ: он рисуется до точки попадания и обязан тянуться за
+	# целью. Остальным (пушка, лазер, ракетница) ответ нужен раз в выстрел — см. _handle_fire.
+	if _has_tracer():
+		raycast.force_raycast_update()
 	_track_target(delta, true)
 	_handle_fire(delta)
 
@@ -388,13 +397,19 @@ func _track_target(delta: float, firing: bool) -> void:
 var _tracer: MeshInstance3D = null
 var _tracer_looked: bool = false
 
-func _show_tracer(firing: bool, _delta: float) -> void:
+## Есть ли у этой модели трассер. Ответ ищется ОДИН раз и запоминается, включая «нет»: иначе
+## модели без трассера искали бы его каждый тик. Спрашивают двое — сам трассер и тик, решающий,
+## обновлять ли луч.
+func _has_tracer() -> bool:
 	if not _tracer_looked:
 		_tracer_looked = true
 		_tracer = raycast.get_node_or_null("track_visual") as MeshInstance3D
-	var track_visual: MeshInstance3D = _tracer
-	if track_visual == null or not is_instance_valid(track_visual):
+	return is_instance_valid(_tracer)
+
+func _show_tracer(firing: bool, _delta: float) -> void:
+	if not _has_tracer():
 		return
+	var track_visual: MeshInstance3D = _tracer
 	if not firing:
 		if track_visual.visible:
 			track_visual.visible = false
@@ -425,12 +440,17 @@ func _show_tracer(firing: bool, _delta: float) -> void:
 		m.emission_energy_multiplier = 1.5 + 1.5 * pulse
 
 func _handle_fire(delta: float) -> void:
-	var body: Node3D = raycast.get_collider()
-	if body:
-		if body == self or body.get_parent() == get_parent():
-			return
 	_fire_timer -= delta
 	if _fire_timer > 0.0:
+		return
+	# СТВОЛ УПЁРСЯ В СВОЙ ЖЕ БЛОК — не стреляем. Проверка стояла ПЕРЕД отсчётом и читала луч
+	# каждый тик; ответ же нужен ровно в тот тик, когда выстрел назрел. Таймер при отказе НЕ
+	# перезаряжаем — он остаётся отрицательным, и ствол выстрелит в первый же тик, когда
+	# помеха уйдёт, ровно как и раньше.
+	if not _has_tracer():
+		raycast.force_raycast_update()
+	var body: Node3D = raycast.get_collider()
+	if body and (body == self or body.get_parent() == get_parent()):
 		return
 	_fire_timer = fire_rate
 	fire_bullet()
