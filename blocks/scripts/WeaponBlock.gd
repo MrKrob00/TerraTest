@@ -100,10 +100,13 @@ var _targets: Array[Node3D] = []
 ## guns locking the same enemy make one frame, not six).
 var _current_target: Node3D = null:
 	set(v):
-		var was: Node3D = _current_target
+		# UNTYPED, and cleaned before the call: the old target is often a block that was just shot
+		# to pieces, and a FREED object handed to a typed Node3D parameter is a runtime error
+		# (CLAUDE.md rule 4 - it compares equal to null and is still not nil).
+		var was = _current_target
 		_current_target = v
 		if is_instance_valid(v) and v != was:
-			_on_lock(v, was)
+			_on_lock(v, was if is_instance_valid(was) else null)
 func _ready() -> void:
 	super._ready()
 	raycast.target_position = Vector3(0, 0, -weapon_range)

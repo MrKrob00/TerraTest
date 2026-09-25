@@ -81,7 +81,7 @@ const DECIDE_PERIOD: float = 0.15        # re-score the situation ~7 times a sec
 ## over the marker fires here and nowhere else.
 var _target: Node3D = null:
 	set(v):
-		var was: Node3D = _target
+		var was = _target               # untyped: the old target may be a freed machine (rule 4)
 		_target = v
 		if v != was and _is_player_side(v):
 			_alarm()

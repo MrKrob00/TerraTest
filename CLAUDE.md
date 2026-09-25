@@ -22,7 +22,10 @@ project: read it before claiming how anything works.
    **false**, yet it is not nil, it is an object reference to a dead address. So
    `if n != null and not is_instance_valid(n)` never runs its body, and the next line returns the
    very thing the check was written to stop: "Trying to return a previously freed instance".
-   `is_instance_valid(null)` is false too, so the one call covers both cases.
+   `is_instance_valid(null)` is false too, so the one call covers both cases. The same object
+   HANDED TO A TYPED PARAMETER is a runtime error ("previously freed ... not a subclass"): a
+   setter that passes the old value on (`WeaponBlock._current_target`, `enemy_vehicle._target`)
+   keeps it untyped and hands over `x if is_instance_valid(x) else null`.
 5. A field named like a native class member ("Member X redefined") stops the script from loading.
    Signals count as members.
 6. A single-line lambda ends at the newline; a wrapped continuation becomes an extra call argument
