@@ -506,8 +506,10 @@ project: read it before claiming how anything works.
   chosen: the zone signal, the periodic search, `notice_attacker` and quest `assign_target` all
   write that field, and a fifth way would be written one day too. When the new target is the
   player's side (faction 0 and not an AI running this script, so the defend quest's ally does not
-  count) the marker shows a red "!" (`EnemyMarker.alert`): it pops, glitches in pixel steps for half
-  a second, holds and fades. `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
+  count) the marker raises a "!" (`EnemyMarker.alert`) ASSEMBLED FROM THE SAME GLITCH CARDS A BLOCK
+  OR A MACHINE APPEARS WITH (`BlockFX.glyph`, a pixel pattern where every '#' is a card): they come
+  up scattered, fly together and lock into one sign, in the glitch's own palette — the shape is the
+  message, not the colour. `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
   blinking it, since a sign that is always up says nothing. Demo fights never raise it.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
@@ -1230,6 +1232,14 @@ project: read it before claiming how anything works.
   an unshaded shader was decoration; the colour that reaches the frame is `ALBEDO`. That is where
   the shield's "why is it so dim whatever I do" came from. `glitch_card.gdshader` still ends
   `EMISSION = col * 2.0` and is unshaded — its cards are running at plain `ALBEDO` brightness.
+- **A UNIFORM THE SHADER DOES NOT DECLARE IS DROPPED WITHOUT A WORD.** `BlockFX` passed `glitch_a` /
+  `glitch_b` to `glitch_card.gdshader` for the explosion (scarlet), the shield spark, the repair
+  bolt (green) and the seller's sale — and the shader never declared them, so every one of them drew
+  in the default cyan-magenta for as long as the code existed. It now has `use_tint`, and the
+  untinted default is unchanged. Two more things it carries: `lie_flat` (a card on the ground stays
+  on the ground — `flat` itself is a reserved word and fails compilation), and `solid`, which fills
+  a patchy card into a pixel so cards can lock into one shape (`BlockFX.glyph`). `vertex()` may not
+  `return`: that is a compile error too, and both were caught only on the real driver.
 - A HEXAGONAL SHIELD IS GEOMETRY, NOT A PATTERN (`shield_hex.gd`). Painting a grid onto a sphere
   fails for a reason that is not about settings: sphere UV winds the lines into spirals at the
   poles, a cube-face projection has no poles but stretches the cell toward the silhouette, and a

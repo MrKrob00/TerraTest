@@ -19,6 +19,20 @@ uniform float flicker_speed = 12.0;
 // Полтора, а не два: палитра и так почти насыщенная, и больший множитель упирает верхний канал
 // в единицу, выбеливая циан и мадженту до белого — оттенок там и есть всё сообщение.
 uniform float gain : hint_range(1.0, 3.0) = 1.5;
+// TINT. BlockFX has always passed glitch_a / glitch_b for the explosion (scarlet), the shield spark
+// and the repair bolt (green) - and this shader never declared them, so every one of those drew in
+// the default cyan-magenta. A caller that tints now sets use_tint; without it the palette below is
+// used exactly as before.
+uniform bool use_tint = false;
+uniform vec3 glitch_a : source_color = vec3(0.15, 0.85, 1.0);
+uniform vec3 glitch_b : source_color = vec3(0.85, 0.15, 0.95);
+// FLAT: the card lies in its own plane instead of turning to the camera - a mark ON the ground
+// has to stay on the ground when the camera orbits.
+uniform bool lie_flat = false;
+// SOLID: 0 is the usual patchy card, 1 a filled square that fades with everyone else. A card locking
+// into a glyph (BlockFX.glyph) runs it up, so the pieces join into ONE shape instead of a column of
+// holes - the patch threshold and the per-card visibility threshold are what punch those holes.
+uniform float solid : hint_range(0.0, 1.0) = 0.0;
 
 float h1(float n) { return fract(sin(n * 12.9898 + seed * 78.233) * 43758.5453); }
 
@@ -55,12 +69,15 @@ void vertex() {
 	// Настоящий БИЛБОРД (лицом к КАМЕРЕ): берём оси камеры (INV_VIEW_MATRIX), масштабируем их
 	// размером карточки, позиция — из модели (m[3]). VIEW·(оси камеры) = единичный базис в
 	// экране → квад строго перпендикулярен взгляду и поворачивается за камерой.
-	mat4 m = MODEL_MATRIX;
-	MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
-			INV_VIEW_MATRIX[0] * length(m[0].xyz),
-			INV_VIEW_MATRIX[1] * length(m[1].xyz),
-			INV_VIEW_MATRIX[2] * length(m[2].xyz),
-			m[3]);
+	// A lie_flat card keeps the default MODELVIEW (no `return` in vertex(): the compiler refuses it).
+	if (!lie_flat) {
+		mat4 m = MODEL_MATRIX;
+		MODELVIEW_MATRIX = VIEW_MATRIX * mat4(
+				INV_VIEW_MATRIX[0] * length(m[0].xyz),
+				INV_VIEW_MATRIX[1] * length(m[1].xyz),
+				INV_VIEW_MATRIX[2] * length(m[2].xyz),
+				m[3]);
+	}
 }
 
 void fragment() {
@@ -68,16 +85,16 @@ void fragment() {
 	vec2 cell = floor(g);
 	// Связная форма пятна (гладкий шум по клеткам → без разрывов).
 	float fill = vnoise(cell * 0.5 + vec2(seed * 0.13, seed * 0.29));
-	if (fill < fill_threshold) {
+	if (fill < fill_threshold * (1.0 - solid)) {
 		discard;                          // пустая клетка (край пятна)
 	}
 	// Цвет клетки — гладкий шум (другой масштаб/оффсет) → соседи близки, ПЛАВНЫЙ переход.
 	float cn = vnoise(cell * 0.35 + vec2(seed * 0.71 + 10.0, seed * 0.53 + 20.0));
-	vec3 col = palette(cn);
+	vec3 col = use_tint ? mix(glitch_a, glitch_b, cn) : palette(cn);
 	float A = (progress < 0.5) ? mix(0.6, 1.0, progress / 0.5) : mix(1.0, 0.0, (progress - 0.5) / 0.5);
 	float ct = fract(seed * 0.371 + 0.13);
-	float vis = clamp((A - ct) / 0.12, 0.0, 1.0);
-	float flick = 0.6 + 0.4 * h1(floor(TIME * flicker_speed));
+	float vis = mix(clamp((A - ct) / 0.12, 0.0, 1.0), A, solid);
+	float flick = mix(0.6 + 0.4 * h1(floor(TIME * flicker_speed)), 0.92, solid);
 	float a = vis * flick;
 	if (a < 0.04) {
 		discard;
