@@ -514,10 +514,18 @@ func _enemy_threats() -> Array:
 	return out
 
 func _on_raycast_body_entered(body: Node3D) -> void:
+	# МАШИНЫ МОЖЕТ НЕ БЫТЬ ВОВСЕ. `on_vehicle_died` обнуляет current_vehicle и держит экран смерти
+	# DEATH_PAUSE секунд, а луч наводки всё это время живёт и шлёт сигналы: игрок, тянувшийся к
+	# блоку в момент гибели, получал «Invalid access to property 'block_take' on a base object of
+	# type Nil». Спрашиваем is_instance_valid, а не != null: к этому моменту машина может быть уже
+	# и освобождена (см. правило про мёртвые ссылки).
+	if not is_instance_valid(current_vehicle):
+		return
 	# Только БЛОК: наводка ведёт к _pick_selected_block, а тот читает у наведённого .block.
 	# Руда теперь тоже лежит в objects, и без этой проверки светяшка вставала на неё, а
 	# кнопка «Взять» падала на int(null). Ресурс берётся другим путём — тапом (_grab_resource).
 	if body.get_parent() != null and body.get_parent().name == "objects" \
 			and ("block" in body) and !current_vehicle.block_take:
-		current_vehicle.ghost_block.global_position = body.global_position
+		if is_instance_valid(current_vehicle.ghost_block):
+			current_vehicle.ghost_block.global_position = body.global_position
 		current_vehicle.block_body = body

@@ -150,7 +150,7 @@ func _seed_demo() -> void:
 		 "hint": "Something logged your production. They are coming for the machine that makes it, not for you."},
 		{"desc": "Destroy the raid",
 		 "event": "quest_hold_2", "goal": 1,
-		 "hint": "Two of them. Your base cannot drive away — this one you finish standing."},
+		 "hint": "Your base cannot drive away — this one you finish standing."},
 	])
 
 	requires("arc_power", ["story_first_blood"])
