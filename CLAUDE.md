@@ -118,6 +118,13 @@ project: read it before claiming how anything works.
   wedge and the fabricator had theirs at the origin and are now fixed. Measured after: in the
   editor mesh and collider both span z −1.50…0.50, and in game mesh, collider and cells all span
   the same two cells.
+- **`Basis.scaled(s)` IS S x X — A SCALE IN WORLD AXES ON TOP OF A ROTATION, AND FOR A NON-UNIFORM
+  SIZE THAT SHEARS.** The block highlight sized itself with `machine.basis.scaled(size)`, so on a
+  turned machine the cube came out a rhombus; only multi-cell blocks have a non-uniform size, and
+  only they showed it. Measured: at a 30 deg machine yaw the angle between two of the highlight's
+  axes was 123 deg and at 45 deg it was 126.9, while at 0 and 90 it stayed square - which is why it
+  read as random. `X * Basis.from_scale(s)` scales in the block's OWN axes and then rotates: 90 /
+  90 / 90 at every angle.
 - A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
