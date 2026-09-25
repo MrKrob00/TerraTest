@@ -559,6 +559,12 @@ func _apply_bullet_mesh(b: Node) -> void:
 
 func _rebind_bullet(b: Area3D) -> void:
 	_apply_bullet_mesh(b)
+	# A BULLET IN THE POOL IS HIDDEN, and shown only while it flies (fire_bullet / _recycle_bullet).
+	# Recycled bullets are parked at the world origin and were left visible: near the origin - the
+	# proving ground, the start of a game - every idle bullet of every gun was DRAWN, stacked in one
+	# spot, and the scene's template bullet (duplicated, never fired) sat visible at every weapon for
+	# good. The template passes through here too, so it is hidden with the rest.
+	b.visible = false
 	if b.body_entered.is_connected(_on_bullet_body_entered):
 		b.body_entered.disconnect(_on_bullet_body_entered)
 	var cb := _on_bullet_body_entered.bind(b)
@@ -584,6 +590,7 @@ func _recycle_bullet(b: Area3D) -> void:
 	# продолжала ловить тела/слать сигналы (спам и возможные каскадные падения).
 	b.set_deferred("monitoring", false)         # в пуле (у центра) повторно не ловит тела
 	b.global_position = Vector3.ZERO
+	b.visible = false
 	if not free_bullet.has(b):
 		free_bullet.append(b)
 
@@ -628,6 +635,7 @@ func fire_bullet():
 		free_bullet.append(bullet)              # пуля без bullet.gd — вернуть в пул, не падать
 		return
 	bullet.global_position = _muzzle_point().global_position
+	bullet.visible = true
 	bullet.dir = dir
 	if "shooter_blocks" in bullet:
 		bullet.shooter_blocks = get_parent()   # свип пропускает свой корпус (пуля рождается внутри)

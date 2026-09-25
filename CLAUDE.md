@@ -1369,6 +1369,11 @@ project: read it before claiming how anything works.
   before and after). Anything that claims to speed bullets up has to move those numbers — and a
   move to MultiMesh would remove the node costs but NOT the 744 us, which is the part that decides
   whether a shot lands.
+- A BULLET IN THE POOL IS HIDDEN (`WeaponBlock._rebind_bullet` / `_recycle_bullet`, shown again in
+  `fire_bullet`). Recycled bullets are parked at the world origin and were left visible, so near the
+  origin - the proving ground, the start of a game - every idle bullet of every gun was drawn,
+  stacked in one spot, and the scene's template bullet (duplicated, never fired) sat visible at
+  every weapon for good. Measured in a 13-machine fight: 3476 → 3321 draw calls.
 - A BULLET FLIES WITH `monitoring` OFF. `body_entered` and the sweep's `hit` land in the SAME
   handler, so the Area was a second path to one answer, and the physics server was computing
   overlaps for every bullet in the air every tick to provide it. What it could add over the sweep
