@@ -917,6 +917,69 @@ static func _glyph_step(t: float, holder: Node3D, cards: Array, mats: Array, sta
 		# Solid as it LOCKS IN: in flight it is still a patchy glitch card, in place a pixel.
 		(mats[i] as ShaderMaterial).set_shader_parameter("solid", a * a)
 
+# ── A DIGITAL HOLE WHERE A SHOT HIT THE WORLD ──────────────────────────────────
+# A shot that lands on the ground, a rock or a tree leaves a patch of the world that stopped being
+# rendered (ground_hole.gdshader): dark pixels with a glitch rim, healing over HOLE_LIFE. The door is
+# WeaponBlock._on_bullet_body_entered, the branch for a body that takes no damage.
+#
+# A POOL, NOT A NODE PER HIT. A machine gun puts several shots a second into the ground; the oldest
+# hole is taken for the newest, so a long burst costs HOLE_POOL nodes and no more. Past HOLE_DIST
+# nothing is made at all - a hole the size of a hand cannot be seen from there.
+const HOLE_SHADER := preload("res://ground_hole.gdshader")
+const HOLE_POOL := 24
+const HOLE_LIFE := 4.0
+const HOLE_SIZE := 0.75
+const HOLE_DIST := 90.0
+const HOLE_LIFT := 0.03          # off the surface, or it z-fights with the ground it lies on
+static var _holes: Array = []
+static var _hole_next: int = 0
+
+static func ground_hole(anchor: Node, pos: Vector3, normal: Vector3) -> void:
+	if anchor == null or not anchor.is_inside_tree():
+		return
+	var cam: Camera3D = anchor.get_viewport().get_camera_3d()
+	if cam != null and cam.global_position.distance_squared_to(pos) > HOLE_DIST * HOLE_DIST:
+		return
+	var tree := anchor.get_tree()
+	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
+	var alive: Array = []
+	for h in _holes:
+		if is_instance_valid(h):
+			alive.append(h)
+	_holes = alive
+	var mi: MeshInstance3D = null
+	if _holes.size() < HOLE_POOL:
+		mi = MeshInstance3D.new()
+		var pm := PlaneMesh.new()                 # lies in XZ, faces +Y: the normal becomes its Y
+		pm.size = Vector2(HOLE_SIZE, HOLE_SIZE)
+		mi.mesh = pm
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.set_meta("block_fx", true)
+		var m := ShaderMaterial.new()
+		m.shader = HOLE_SHADER
+		mi.material_override = m
+		host.add_child(mi)
+		_holes.append(mi)
+	else:
+		mi = _holes[_hole_next % _holes.size()]
+		_hole_next += 1
+		if mi.has_meta("tw"):
+			var old = mi.get_meta("tw")
+			if old is Tween and (old as Tween).is_valid():
+				(old as Tween).kill()
+	var up: Vector3 = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
+	var side: Vector3 = up.cross(Vector3.FORWARD if absf(up.dot(Vector3.FORWARD)) < 0.9 else Vector3.RIGHT).normalized()
+	var basis := Basis(side, up, side.cross(up)).rotated(up, randf() * TAU)
+	mi.global_transform = Transform3D(basis, pos + up * HOLE_LIFT)
+	mi.visible = true
+	var mat := mi.material_override as ShaderMaterial
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	mat.set_shader_parameter("progress", 0.0)
+	var tw := mi.create_tween()
+	tw.tween_method(_set_card_progress.bind(mat), 0.0, 1.0, HOLE_LIFE)
+	tw.tween_callback(mi.hide)
+	mi.set_meta("tw", tw)
+
 static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):
 		mat.set_shader_parameter("progress", p)

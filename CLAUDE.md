@@ -356,6 +356,13 @@ project: read it before claiming how anything works.
 - A weapon that bends its shot after firing (shotgun spread, mortar arc) uses
   `WeaponBlock.last_fired`. "The last child of Ammo that is in flight" is only correct while the
   pool is empty; afterwards bullets come out of it in any order.
+- A SHOT THAT LANDS ON THE WORLD LEAVES A DIGITAL HOLE (`BlockFX.ground_hole`), and the door is the
+  branch of `WeaponBlock._on_bullet_body_entered` for a body that takes no damage — ground, rock,
+  tree. It used to vanish with no mark. The hole is its OWN shader (`ground_hole.gdshader`), not a
+  glitch card: cards blend additively, and adding black draws nothing, while a hole has to darken
+  the ground. It lies along the surface (`bullet.hit_normal`, from the sweep's own ray) and heals
+  over `HOLE_LIFE`. A POOL of `HOLE_POOL` (24): the oldest is reused, so a long burst costs 24 nodes
+  and no more — measured, 40 hits left exactly 24 — and nothing is made past `HOLE_DIST`.
 - `_alert_victim` (weapon side) tells the victim who shot; `hurt()` must not, since drills and
   repair fields call the same `hurt`.
 
