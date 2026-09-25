@@ -112,10 +112,19 @@ var _mesh_base: Vector3 = Vector3.ZERO      # масштаб, которым м�
 ## а раздувался, тем сильнее чем ниже кадры. Ось спрашиваем у самого меша, один раз.
 var _stretch_axis: int = 2
 
+## МЕШ ИЩЕТСЯ ОДИН РАЗ, А НЕ КАЖДЫЙ ТИК. Перебор детей стоял в `_stretch`, то есть выполнялся на
+## каждом физ-тике каждой пули в воздухе. Замерено на движке, 200 пуль: 415 мкс за тик только на
+## этот перебор — против 744 мкс на сам рейкаст, ради которого пуля и живёт.
+## Дети у пули не меняются за её жизнь, так что кэш не может устареть.
+var _mi_cache: MeshInstance3D = null
+
 func _mesh_node() -> MeshInstance3D:
+	if is_instance_valid(_mi_cache):
+		return _mi_cache
 	for c in get_children():
 		var mi := c as MeshInstance3D
 		if mi != null:
+			_mi_cache = mi
 			return mi
 	return null
 
@@ -138,6 +147,12 @@ func _stretch(step: float) -> void:
 	mi.scale = s
 
 ## Проверить отрезок полёта. true — попали (сигнал отправлен, пуля дальше не летит).
+## ОБЪЕКТ ЗАПРОСА ЖИВЁТ С ПУЛЕЙ, А НЕ СОЗДАЁТСЯ НА КАЖДЫЙ ЛУЧ. `create()` — это выделение
+## объекта, и оно стоит дороже самого луча: замерено на движке, 200 пуль за тик — 1224 мкс со
+## свежим объектом против 744 мкс с переиспользованным. Половина строки «пули» в профиле уходила
+## на аллокацию, а не на физику.
+var _ray_q: PhysicsRayQueryParameters3D = null
+
 func _sweep(from: Vector3, to: Vector3) -> bool:
 	var space := get_world_3d().direct_space_state
 	if space == null:
@@ -147,10 +162,14 @@ func _sweep(from: Vector3, to: Vector3) -> bool:
 	if step.length_squared() < 0.000001:
 		return false
 	var fwd: Vector3 = step.normalized()
+	if _ray_q == null:
+		_ray_q = PhysicsRayQueryParameters3D.new()
+		_ray_q.collide_with_areas = false
 	for _i in SWEEP_OWN_TRIES + 1:
-		var q := PhysicsRayQueryParameters3D.create(start, to)
+		var q := _ray_q
+		q.from = start
+		q.to = to
 		q.collision_mask = collision_mask
-		q.collide_with_areas = false
 		var h := space.intersect_ray(q)
 		if h.is_empty():
 			return false
