@@ -337,14 +337,29 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 ## копейщик — первая ступень с куполом, против стартовой кабины.
 ##
 ## СОЮЗНИКА (фракция 0) не режем: слабый союзник не помогает вообще никак.
-## БАЗЫ И ВЫШКИ сюда не идут намеренно — там сборка часть задания, и spawn_at зовут напрямую.
+## БАЗЫ И ВЫШКИ через потолок не идут намеренно — там сборка часть задания; к спавнеру они
+## обращаются на одну дверь ниже, через `_ask_spawner`.
 func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> Node3D:
 	if sp == null or not sp.has_method("spawn_at"):
 		return null
 	var want: int = preset
 	if faction_id != 0 and sp.has_method("preset_for_request"):
 		want = int(sp.preset_for_request(preset))
-	var e = sp.spawn_at(at, want, faction_id)
+	# НА ПОЛИГОНЕ ВЕТКУ ВЫДАЛ САМ ИГРОК, И ЭТО И ЕСТЬ «ЧЕРЕЗ ПАНЕЛЬ». Запрет там стоит на
+	# `spawn_at`, чтобы в тот мир никто не заезжал сам; выданный квест самоходным не является —
+	# его попросили кнопкой, и смотреть на него без участников нечего. Без этого арка тихо
+	# возвращалась ни с чем, и квест висел на первой стадии без врага (Q.force_quest выдаёт
+	# только ветки, `_arc_quests` гоняет только их — так что лишнего этот путь не пустит).
+	return _ask_spawner(sp, at, want, faction_id, false)
+
+## Одна дверь к спавнеру для ВСЕХ квестовых машин, ездящих и стоящих: потолок ступени режется
+## выше (в `_spawn_hostile`), а здесь только запрет полигона.
+func _ask_spawner(sp: Node, at: Vector3, preset: int, faction_id: int, as_base: bool) -> Node3D:
+	var e = null
+	if G.proving_ground and sp.has_method("spawn_requested"):
+		e = sp.spawn_requested(at, preset, faction_id, as_base)
+	else:
+		e = sp.spawn_at(at, preset, faction_id, as_base)
 	return e as Node3D if e is Node3D else null
 
 func _carrier_spawn(key: String, block: int, preset: int, at: Vector3) -> void:
@@ -1067,10 +1082,17 @@ func _hold_target() -> Node3D:
 	return anchored_one if anchored_one != null else _player()
 
 func _hold_1(q: Dictionary) -> void:
+	if not _hold_send():
+		return
+	Q.report(String(q["event"]), 1)
+
+## Присылает налёт на базу. Отдельно от стадии, потому что после перезахода его присылает ВТОРАЯ
+## стадия: ссылки на врагов в сейв не идут.
+func _hold_send() -> bool:
 	var p: Node3D = _hold_target()
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	if p == null or sp == null or not sp.has_method("spawn_at"):
-		return
+		return false
 	_hold.clear()
 	for i in HOLD_COUNT:
 		var ang: float = TAU * float(i) / float(HOLD_COUNT) + randf()
@@ -1081,11 +1103,17 @@ func _hold_1(q: Dictionary) -> void:
 			if e.has_method("assign_target"):
 				e.assign_target(p, true)    # идёт именно за базой и цель не бросает
 			_hold.append(e)
-	if _hold.is_empty():
-		return
-	Q.report(String(q["event"]), 1)
+	return not _hold.is_empty()
 
+## ПУСТОЙ СПИСОК — НЕ ПОБЕДА, А ПОТЕРЯННОЕ СОСТОЯНИЕ. Враги в сейв не идут, так что после
+## перезахода здесь пусто ВСЕГДА, и «ни одного живого» читалось как «налёт разбит»: замерено на
+## движке — на первом же опросе после перезахода квест закрывался сам, без единого выстрела.
+## То же правило уже стоит у событий (`_ev_all_dead`), у вышки и у охраны обломков: нет записи
+## значит «мы про них ничего не знаем», и налёт приезжает заново.
 func _hold_2(q: Dictionary) -> void:
+	if _hold.is_empty():
+		_hold_send()
+		return
 	for e in _hold:
 		if is_instance_valid(e):
 			return
@@ -1167,7 +1195,7 @@ func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	if sp == null or not sp.has_method("spawn_at"):
 		return false
-	var tower = sp.spawn_at(at, int(cfg["preset"]), 1, true)
+	var tower = _ask_spawner(sp, at, int(cfg["preset"]), 1, true)
 	if tower == null:
 		return false
 	tower.set_meta("volatile_batteries", true)
@@ -1182,7 +1210,7 @@ func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
 		var ang: float = TAU * float(i) / float(n)
 		var wp: Vector3 = at + Vector3(cos(ang) * TOWER_RING, 0.0, sin(ang) * TOWER_RING)
 		wp.y = G.ground_y(wp, at.y)
-		var g = sp.spawn_at(wp, 18, 1, true)
+		var g = _ask_spawner(sp, wp, 18, 1, true)
 		if g != null:
 			g.set_meta("volatile_batteries", true)
 			g.set_meta("tower_guard", key)      # см. _blow_tower_guards: метка, а не список
@@ -1235,6 +1263,10 @@ const DUEL_GAP := 18.0
 var _duel_point: Variant = null      # куда ехать (Vector3) или null — точки ещё нет
 var _duel_a: Node3D = null
 var _duel_b: Node3D = null
+## ВЫСТАВЛЕНА ЛИ ДУЭЛЬ. Только этим и отличается «их добили» от «перезаход»: у мёртвого узла и у
+## потерянной ссылки `is_instance_valid` одинаково false. Флаг ЖИВЁТ В ПАМЯТИ — это и есть весь
+## его смысл, память теряется вместе с участниками.
+var _duel_sent: bool = false
 var _duel_cool: float = 0.0
 
 ## Куда ведёт компас по этому событию. Публично — компас спрашивает отсюда, потому что цель
@@ -1247,19 +1279,25 @@ func _duel_1(q: Dictionary) -> void:
 	if p == null:
 		return
 	if _duel_point == null:
-		# Направление случайное, дистанция фиксированная: событие должно уводить игрока с его
-		# маршрута, а не подворачиваться там, куда он и так ехал.
-		var ang: float = randf() * TAU
-		var dist: float = _quest_dist()
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_duel_point = wp
+		_duel_point = _duel_pick_point()
 		return
 	# Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
 	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
 	if not _spawn_duel(_duel_point as Vector3):
 		return
 	Q.report(String(q["event"]), 1)
+
+## Точка дуэли: направление случайное, дистанция фиксированная — событие должно уводить игрока с
+## его маршрута, а не подворачиваться там, куда он и так ехал.
+func _duel_pick_point() -> Variant:
+	var p: Node3D = _player()
+	if p == null:
+		return null
+	var ang: float = randf() * TAU
+	var dist: float = _quest_dist()
+	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	wp.y = G.ground_y(wp, p.global_position.y)
+	return wp
 
 func _spawn_duel(center: Vector3) -> bool:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
@@ -1273,6 +1311,7 @@ func _spawn_duel(center: Vector3) -> bool:
 	_duel_b = _spawn_hostile(sp, center + side, 8, 2)
 	if _duel_a == null or _duel_b == null:
 		return false
+	_duel_sent = true
 	# Цели назначаем сразу и накрепко: пока игрок доедет, они уже должны драться, а не
 	# искать друг друга по своим зонам обнаружения.
 	if _duel_a.has_method("assign_target"):
@@ -1282,10 +1321,22 @@ func _spawn_duel(center: Vector3) -> bool:
 	return true
 
 func _duel_2(q: Dictionary) -> void:
+	# ПУСТЫЕ ССЫЛКИ САМИ ПО СЕБЕ НЕ ПОБЕДА: у мёртвого узла ссылка ведёт на освобождённый адрес,
+	# а после перезахода её попросту нет — и то и другое `is_instance_valid` отдаёт как false, так
+	# что отличить «добили» от «состояние потеряно» может только флаг. Он в памяти, а память как
+	# раз и теряется: не поднят — дуэль выставляется заново. Иначе квест закрывался выходом в
+	# меню, а это единственное событие, которое игрок вообще может просто посмотреть.
+	if not _duel_sent:
+		if _duel_point == null:
+			_duel_point = _duel_pick_point()
+		if _duel_point != null:
+			_spawn_duel(_duel_point as Vector3)
+		return
 	# Победа = поля боя больше нет. Если они добьют друг друга сами — тоже победа: игрок
 	# приехал и дождался, это его решение, а не поблажка.
 	if is_instance_valid(_duel_a) or is_instance_valid(_duel_b):
 		return
+	_duel_sent = false
 	Q.report(String(q["event"]), 1)
 	_duel_cool = _event_cooldown()   # дуэль — такое же событие, пауза общая
 	_duel_point = null

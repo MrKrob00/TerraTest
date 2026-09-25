@@ -678,6 +678,22 @@ project: read it before claiming how anything works.
   out goes through `ensure`, which never duplicates something the player already owns.
 - A story block is taken, not found: carried by an enemy or held by a vein, and a killed carrier
   must leave the block behind (`claim_or_drop`) or the branch dead-locks.
+- **AN EMPTY PARTICIPANT LIST IS "WE KNOW NOTHING ABOUT THEM", NEVER "THEY ARE ALL DEAD".** Enemies
+  do not go into the save, so after a reload every arc's list is empty and every reference is gone;
+  reading that as a win handed the quest over for free on the first poll, without a shot. Most arcs
+  already had the branch (`_ev_all_dead`, `_camp_2`, `_gang_2`, `_defend_2`, `_tower_2`,
+  `_salvage_2`) — `_hold_2` and `_duel_2` did not, and both closed on reload; measured on the
+  engine. The duel needs a FLAG (`_duel_sent`) rather than a null test, because rule 4 applies:
+  a freed node and a lost reference both read false through `is_instance_valid`, so only something
+  that lives in memory can tell "they killed each other" from "the scene restarted".
+- EVERY QUEST MACHINE ASKS THE SPAWNER THROUGH ONE DOOR, `quest_arcs._ask_spawner` (with
+  `_spawn_hostile` on top of it for anything that drives, since that is where `_tier_cap` applies).
+  ON THE POLYGON IT GOES THROUGH `spawn_requested`: the ban there is on machines that come by
+  themselves, and a branch the player handed themselves with a button IS "through the panel" —
+  watching a branch with no participants is watching nothing. Arcs called `spawn_at` directly, so
+  measured on the engine a forced `arc_hold` sat on stage one with zero enemies and no word in the
+  log, which is exactly what "the quest hangs with no enemy" was. `spawn_at` itself still refuses
+  there, and it must.
 - Placement is shown by a blueprint (`_show_plan_on`), rebuilt only on plan change (`_plan_sig`).
 - A quest may put a BUILDING in the world (`_spawn_station`): no cabin, a stationary core, anchored
   from birth, the player's faction — so it can be built on and the camera can switch to it. The
