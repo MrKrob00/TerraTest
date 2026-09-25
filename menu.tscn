@@ -3,8 +3,12 @@
 [ext_resource type="Script" uid="uid://wks43d8edlk4" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="4_ytr4m"]
-[ext_resource type="Script" path="res://menu_backdrop.gd" id="5_backdrop"]
-[ext_resource type="Shader" path="res://menu_backdrop.gdshader" id="6_chart"]
+[ext_resource type="Script" uid="uid://b65k0a3k2b8td" path="res://menu_backdrop.gd" id="5_backdrop"]
+[ext_resource type="Shader" uid="uid://8nw6rf8a20cp" path="res://menu_backdrop.gdshader" id="6_chart"]
+
+[sub_resource type="Resource" id="Resource_l48gv"]
+script = ExtResource("4_ytr4m")
+mask_offset = Vector2(-1713.813, 503.81348)
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
 sky_top_color = Color(0.15, 0.3, 0.58, 1)
@@ -32,12 +36,15 @@ tonemap_agx_contrast = 1.7
 exposure_aperture = 19.0
 exposure_shutter_speed = 100.485
 
-[sub_resource type="Resource" id="Resource_l48gv"]
-script = ExtResource("4_ytr4m")
-mask_offset = Vector2(-1713.813, 503.81348)
-
 [sub_resource type="ShaderMaterial" id="Chart_mat"]
 shader = ExtResource("6_chart")
+shader_parameter/col_deep = Color(0.008, 0.027, 0.035, 1)
+shader_parameter/col_high = Color(0.043, 0.118, 0.137, 1)
+shader_parameter/col_line = Color(0.35, 0.85, 0.92, 1)
+shader_parameter/col_warm = Color(0.85, 0.45, 0.25, 1)
+shader_parameter/bands = 15.0
+shader_parameter/drift = 0.9
+shader_parameter/energy = 1.0
 
 [sub_resource type="StyleBoxFlat" id="Panel_style"]
 content_margin_left = 10.0
@@ -123,6 +130,7 @@ layer = 0
 
 [node name="Backdrop" type="Control" parent="BackdropLayer" unique_id=1900311448]
 unique_name_in_owner = true
+layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -134,7 +142,7 @@ script = ExtResource("5_backdrop")
 [node name="Pattern" type="ColorRect" parent="BackdropLayer/Backdrop" unique_id=1900311449]
 show_behind_parent = true
 material = SubResource("Chart_mat")
-anchors_preset = 15
+layout_mode = 0
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
