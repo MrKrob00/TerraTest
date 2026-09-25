@@ -385,8 +385,50 @@ func erase_wheel(wheel: Node) -> void:
 # ══════════════════════════════════════════
 
 func sense_ground(delta: float) -> void:
+	var was_grounded: bool = _on_ground
+	if not was_grounded:
+		_fall_speed = maxf(_fall_speed, -linear_velocity.y)
 	_check_ground()
+	# A HARD LANDING: the first tick the wheels find ground after a fall, with the FASTEST FALL SEEN
+	# IN THE AIR as its strength - not the speed on the landing tick. At 32 m/s the body reaches the
+	# ground in the same step the wheels first see it, and by the time we look Jolt has already
+	# bounced it: measured, a 20 m drop read vy = +0.6 on its landing tick. Shared here, so an enemy
+	# dropping in makes one too.
+	var thr: float = sqrt(2.0 * _gravity_accel() * LAND_WAVE_DROP)
+	var fall: float = -linear_velocity.y
+	# ...OR A FALL THAT HAS ALMOST STOPPED WITH NO WHEELS DOWN. A machine that tumbled in the air
+	# comes down on its hull, the wheels never report ground, and by the rule above it never
+	# "landed" at all; and it sheds the speed over several steps (measured -28, -12, -4 m/s), so a
+	# one-step "sudden stop" test misses it too. Whatever it hit with, a hard fall that stopped hit.
+	var stopped: bool = not _on_ground and fall < LAND_STOP_SPEED and _fall_speed > thr
+	if (_on_ground and not was_grounded) or stopped:
+		if _fall_speed > thr:
+			_land_wave(_fall_speed)
+		_fall_speed = 0.0
 	_sync_mass(delta)
+
+## A landing shows (BlockFX.ground_wave) after a fall of this many METRES or more. Set as a height
+## and turned into a speed through the game's own gravity, which is 2.5 times Earth's: a fixed 7 m/s
+## meant a one-metre drop, and every ledge in the road set it off.
+const LAND_WAVE_DROP := 3.0
+var _fall_speed: float = 0.0
+## Below this a fall counts as stopped (m/s): a body resting on its hull still jitters a little.
+const LAND_STOP_SPEED := 2.0
+## A bounce on landing is a second landing a moment later; one wave per blow.
+const LAND_WAVE_GAP_MS := 1200
+var _land_wave_ms: int = -100000
+
+func _land_wave(speed: float) -> void:
+	var now: int = Time.get_ticks_msec()
+	if now - _land_wave_ms < LAND_WAVE_GAP_MS:
+		return
+	_land_wave_ms = now
+	var space := get_world_3d().direct_space_state
+	var q := PhysicsRayQueryParameters3D.create(global_position, global_position + Vector3.DOWN * 12.0, 1, [get_rid()])
+	var h := space.intersect_ray(q)
+	if h.is_empty():
+		return
+	BlockFX.ground_wave(self, h["position"], h["normal"], speed)
 
 func drive_physics(delta: float) -> void:
 	_apply_suspension()
