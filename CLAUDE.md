@@ -1218,6 +1218,17 @@ project: read it before claiming how anything works.
   in both directions. Also never time a tick with `await physics_frame` around it: that waits for
   the next tick and always returns 1/60 s, however much work the tick did. Ask
   `Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS)`.
+- A TURRET'S AIM RAY IS NOT `enabled`. `RayCast3D` defaults to on, so the engine updated it every
+  physics tick for every weapon in the world, and the tick called `force_raycast_update()` on top —
+  two physics queries per weapon per tick. Its result is read by exactly two things: the "is my own
+  barrel blocked" check, which is needed once per SHOT, and the tracer beam, which needs it every
+  tick and exists on three of the six weapons (mortar, heavy cannon, shotgun). So the ray is forced
+  where the answer is used. The blocked check moved AFTER the fire timer and does not reset it on
+  refusal, so a weapon still fires on the first tick the obstruction clears.
+- **A FIGHT IS TOO NOISY TO JUDGE FROM ONE RUN.** The same 15-second fight, damage dealt: 120 / 135
+  / 129 before a change and 134 / 235 / 186 after. A single pair would have "proved" either a 36%
+  regression or a 55% improvement depending on which two samples you took. Three runs a side, and
+  read the band, not the number.
 - A TURRET'S TARGET LIST IS PRUNED WHERE IT IS READ (`WeaponBlock._update_current_target`):
   `body_exited` never fires for a destroyed block — the body vanishes rather than leaves — so
   without that the list grew to everything that ever entered the sphere, and scoring walked those
