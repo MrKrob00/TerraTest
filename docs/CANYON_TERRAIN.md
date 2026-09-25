@@ -129,10 +129,23 @@
 
 ## Ширина дна
 
-В метрах она — ПРОИЗВЕДЕНИЕ двух чисел: `gen_canyon_width` (какая доля значений шума считается
-дном) и `gen_canyon_gorge` (длина волны сети каналов, то есть сколько метров приходится на эту
-долю). Крутить одно бессмысленно: по 0.18 и 90 дно выходило в пару метров — каньон видно, а
-проехать по нему нельзя. Сейчас 0.27 и 120: дно вдвое шире, каналы заодно реже и крупнее.
+Two numbers set it, and they do different things. `gen_canyon_width` is the SHARE of noise values
+that counts as floor: raising it widens the floor by eating the mesas. `gen_canyon_gorge` is the
+wavelength of the channel network: raising it scales floors and mesas together, so the land keeps
+its composition and only gets bigger. Measured on the generator, floor cross-width through random
+floor points in canyon cores (500 points; median / p90 / floor share of the canyon):
+
+| width / gorge | median | p90 | floor share |
+|---|---|---|---|
+| 0.18 / 90 (old) | a couple of metres | | |
+| 0.27 / 120 | 17.0 m | 35.0 m | 37% |
+| 0.36 / 120 | 23.5 m | 46.5 m | 48% |
+| 0.27 / 180 (now) | 27.0 m | 51.5 m | 37% |
+
+"Wider canyons" is therefore `gorge`, not `width`. This page used to say the floor in metres is
+width × gorge. As a guide to the WIDTH that roughly holds (products 43 and 49 above, floors 23.5
+and 27 m), but it hides the cost: the `width` route takes 11 points of the canyon's area away from
+the mesas, and the `gorge` route takes none.
 
 ## Размер пятен биома
 

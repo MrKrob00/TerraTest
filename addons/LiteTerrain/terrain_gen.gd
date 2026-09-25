@@ -53,12 +53,15 @@ const DEF_AMPLITUDE := 30.0
 const DEF_MOUNTAINS := 0.6
 const DEF_CANYON := true
 const DEF_CANYON_RISER := 0.35
-## ШИРИНА ДНА УЩЕЛЬЯ СКЛАДЫВАЕТСЯ ИЗ ДВУХ ЧИСЕЛ, и в метрах она их произведение: `width` — какая
-## доля значений шума считается дном, `gorge` — длина волны сети каналов, то есть сколько метров
-## в одной такой доле. По 0.18 и 90 дно выходило в пару метров: каньон видно, а проехать по нему
-## нельзя. Подняли оба, каждый в полтора раза, — дно вдвое шире, а каналы заодно реже и крупнее,
-## то есть каньон стал местом, а не царапиной.
-const DEF_CANYON_GORGE := 120.0
+## THE TWO NUMBERS ARE NOT INTERCHANGEABLE. `width` is the SHARE of noise values that counts as
+## floor, so raising it eats the mesas; `gorge` is the wavelength of the channel network, so it
+## scales floors and mesas together and leaves the composition alone. Measured on the generator
+## (floor cross-width through random floor points in canyon cores, 500 points):
+##   0.27 / 120 — median 17.0 m, p90 35.0 m, floor 37% of the canyon
+##   0.36 / 120 — median 23.5 m, p90 46.5 m, floor 48%   (mesas shrink)
+##   0.27 / 180 — median 27.0 m, p90 51.5 m, floor 37%   (the same land, bigger)
+## So "wider canyons" is `gorge`. Before 0.27 / 120 it was 0.18 / 90, a floor of a couple of metres.
+const DEF_CANYON_GORGE := 180.0
 const DEF_CANYON_WIDTH := 0.27
 
 static func default_params() -> Dictionary:
