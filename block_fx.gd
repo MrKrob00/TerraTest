@@ -1055,110 +1055,37 @@ static func ground_wave(anchor: Node, pos: Vector3, normal: Vector3, speed: floa
 	tw.tween_method(_set_card_progress.bind(m), 0.0, 1.0, WAVE_DUR).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_callback(mi.queue_free)
 
-# ── A GREEN NEON FRAME WHEN YOUR GUNS LOCK ON ──────────────────────────────────
-# Four corner brackets round the enemy machine, turned to the camera, sized to its footprint and
-# riding with it (the holder is its child). They snap in from wide with stepped jitter - the lock -
-# hold, and fade. Drawn over the terrain like a sight, so a lock behind a hill still reads. Raised
-# by WeaponBlock (the setter on its target), once per machine per LOCK_GAP_MS.
-const LOCK_COL := Color(0.3, 1.0, 0.45)
-const LOCK_TIME := 1.6
-const LOCK_SNAP := 0.22          # from wide to fitted
-const LOCK_FADE := 0.35
-const LOCK_WIDE := 1.7           # the frame starts this many times its fitted size
-const LOCK_ARM := 0.34           # bracket arm, share of the half-size
-const LOCK_GAP_MS := 5000
-## NEON WITHOUT GLOW: glow is off for frames (see "Look and light"), so the halo is faked - every
-## arm has a wider, faint copy behind it. Eight more quads on one material.
-const LOCK_HALO_W := 3.2
-const LOCK_HALO_A := 0.28
+# ── A GREEN NEON FRAME ON EVERY BLOCK YOUR GUNS ARE LOCKED ON (LockFrame) ────
+# Counted per target: a gun that takes a block calls lock_hold, one that lets go calls lock_release,
+# and the block carries the count and its one frame as metas. Several guns on one block share one
+# frame. The frame is the block's child, so it dies with the block, count and all.
+static func lock_hold(block: Node3D) -> void:
+	if block == null or not is_instance_valid(block) or not block.is_inside_tree():
+		return
+	var n: int = (int(block.get_meta("lock_n")) if block.has_meta("lock_n") else 0) + 1
+	block.set_meta("lock_n", n)
+	var f = block.get_meta("lock_frame") if block.has_meta("lock_frame") else null
+	if is_instance_valid(f):
+		(f as LockFrame).rehold()
+		return
+	var aabb := _local_aabb(block)
+	var fr := LockFrame.new()
+	fr.setup(maxf(aabb.size.length() * 0.5, 0.6))
+	fr.centre = aabb.get_center()
+	block.add_child(fr)
+	fr.position = fr.centre
+	block.set_meta("lock_frame", fr)
 
-static func lock_frame(machine: Node3D) -> void:
-	if machine == null or not is_instance_valid(machine) or not machine.is_inside_tree():
+static func lock_release(block: Node3D) -> void:
+	if block == null or not is_instance_valid(block):
 		return
-	var now: int = Time.get_ticks_msec()
-	if machine.has_meta("lock_ms") and now - int(machine.get_meta("lock_ms")) < LOCK_GAP_MS:
-		return
-	machine.set_meta("lock_ms", now)
-	var holder_blocks: Node = machine.get_node_or_null("blocks")
-	var mid := Vector3.ZERO
-	var n := 0
-	if holder_blocks != null:
-		for b in holder_blocks.get_children():
-			var nb := b as Node3D
-			if nb == null or nb.has_meta("block_fx"):
-				continue
-			mid += nb.position
-			n += 1
+	var n: int = maxi((int(block.get_meta("lock_n")) if block.has_meta("lock_n") else 1) - 1, 0)
+	block.set_meta("lock_n", n)
 	if n > 0:
-		mid /= float(n)
-	var r: float = 1.5
-	if holder_blocks != null:
-		for b in holder_blocks.get_children():
-			var nb := b as Node3D
-			if nb != null and not nb.has_meta("block_fx"):
-				r = maxf(r, nb.position.distance_to(mid) + 0.9)
-	var holder := Node3D.new()
-	holder.set_meta("block_fx", true)
-	machine.add_child(holder)
-	holder.position = mid
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	mat.no_depth_test = true
-	mat.albedo_color = LOCK_COL
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	var halo := mat.duplicate() as StandardMaterial3D
-	var arm: float = r * LOCK_ARM
-	var th: float = maxf(r * 0.05, 0.07)
-	var bars: Array = []
-	for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		# Two arms per corner, running INWARD from the corner along each edge.
-		for axis in 2:
-			var off := Vector2(-corner.x * arm * 0.5, 0.0) if axis == 0 else Vector2(0.0, -corner.y * arm * 0.5)
-			for layer in 2:
-				var w: float = th * (LOCK_HALO_W if layer == 0 else 1.0)
-				var mi := MeshInstance3D.new()
-				var q := QuadMesh.new()
-				q.size = Vector2(arm + w - th, w) if axis == 0 else Vector2(w, arm + w - th)
-				mi.mesh = q
-				mi.material_override = halo if layer == 0 else mat
-				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				mi.set_meta("block_fx", true)
-				holder.add_child(mi)
-				bars.append([mi, corner, off])
-	var tw := holder.create_tween()
-	tw.tween_method(_lock_step.bind(holder, bars, r, mat, halo), 0.0, LOCK_TIME, LOCK_TIME)
-	tw.tween_callback(holder.queue_free)
-	_lock_step(0.0, holder, bars, r, mat, halo)
-
-static func _lock_step(t: float, holder: Node3D, bars: Array, r: float, mat: StandardMaterial3D,
-		halo: StandardMaterial3D) -> void:
-	if not is_instance_valid(holder) or not holder.is_inside_tree():
 		return
-	var cam: Camera3D = holder.get_viewport().get_camera_3d()
-	if cam != null:
-		holder.global_basis = Basis(cam.global_basis.get_rotation_quaternion())
-	var k: float = clampf(t / LOCK_SNAP, 0.0, 1.0)
-	var size: float = r * lerpf(LOCK_WIDE, 1.0, 1.0 - pow(1.0 - k, 3.0))
-	# Stepped jitter while it snaps: the lock is a glitch landing, not a zoom.
-	var jit := Vector2.ZERO
-	if k < 1.0:
-		var step: int = int(t / 0.05)
-		jit = Vector2(fposmod(sin(float(step) * 12.99) * 437.5, 1.0) - 0.5,
-				fposmod(sin(float(step) * 78.23) * 437.5, 1.0) - 0.5) * r * 0.12
-	for e in bars:
-		var mi: Node3D = e[0]
-		var c: Vector2 = e[1]
-		var o: Vector2 = e[2]
-		mi.position = Vector3(c.x * size + o.x + jit.x, c.y * size + o.y + jit.y, 0.0)
-	var a: float = 1.0
-	if t < LOCK_SNAP:
-		a = 0.55 + 0.45 * float(int(t / 0.04) % 2)      # flicker while it lands
-	elif t > LOCK_TIME - LOCK_FADE:
-		a = clampf((LOCK_TIME - t) / LOCK_FADE, 0.0, 1.0)
-	mat.albedo_color = Color(LOCK_COL, a)
-	halo.albedo_color = Color(LOCK_COL, a * LOCK_HALO_A)
+	var f = block.get_meta("lock_frame") if block.has_meta("lock_frame") else null
+	if is_instance_valid(f):
+		(f as LockFrame).release()
 
 static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):
