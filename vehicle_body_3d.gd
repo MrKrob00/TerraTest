@@ -455,6 +455,14 @@ func _ground_under_machine() -> float:
 		top = maxf(top, terr.terrain_height_at(wp))
 	return top
 
+## То же снаружи: world_persist сажает машину из сейва и обязан мерить землю так же, как стройка.
+## Габарит здесь СЧИТАЕТСЯ ЗАНОВО — _measure_footprint вызывается на входе в стройку и при правке
+## сборки, а восстановление из сейва не проходит ни через то, ни через другое, так что _bmin/_bmax
+## там ещё стоят в одной клетке. Внутренний вызов (парение, каждый кадр) остаётся без обмера.
+func ground_under_machine() -> float:
+	_measure_footprint()
+	return _ground_under_machine()
+
 func _get_terrain() -> Node:
 	if _terr_cache == null or not is_instance_valid(_terr_cache):
 		_terr_cache = _find_terrain()

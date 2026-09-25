@@ -16,15 +16,33 @@ const SAFE_CLEARANCE := 2.0         # lift above terrain when restoring
 ## сохранённый y остаётся прежним. База оказывается либо внутри холма, либо висит над ямой.
 ##
 ## Поэтому из сейва берём X/Z как есть, а высоту СВЕРЯЕМ С ЗЕМЛЁЙ: не совпало — сажаем на неё.
-## Четыре метра — это запас на склон и на то, что высота спрашивается в начале координат машины,
-## а не под каждым колесом; «стоял на возвышении» столько не даёт.
+## Четыре метра — запас на склон под машиной; «стоял на возвышении» столько не даёт.
 const MAX_CLEARANCE := 4.0
 
-## Высота по земле: из сейва X/Z, y — от рельефа. Одна дверь для машин и для лежащих блоков.
+## Высота по земле: из сейва X/Z, y — от рельефа. Дверь для ЛЕЖАЩЕГО ПРЕДМЕТА: он меньше клетки,
+## так что одна проба в его точке и есть вся земля под ним. Машина сажается через _seat_machine.
 func _over_ground(pos: Vector3, terr: Node) -> Vector3:
 	if terr == null or not terr.has_method("terrain_height_at"):
 		return pos
-	var ground: float = terr.terrain_height_at(pos)
+	return _clear_of(pos, terr.terrain_height_at(pos))
+
+## МАШИНА САЖАЕТСЯ ПО САМОЙ ВЫСОКОЙ ЗЕМЛЕ ПОД НЕЙ, а не по земле под началом координат: начало
+## координат — это кабина. Под кабиной склон бывает низким, пока хвост уже в горе. Мерено на
+## настоящем рельефе (400 точек, машина 5x5 м): разница в среднем 1.47 м, худшая 23.51, и в 82
+## случаях из 400 она больше SAFE_CLEARANCE — каждая пятая машина приезжала из сейва ВНУТРЬ
+## склона, а FALL_LIMIT (15 м) слишком груб, чтобы такую поймать. Стройка эту ошибку уже не делает
+## (vehicle_body_3d.ground_under_machine) — спрашиваем ЕЁ, а не считаем углы второй раз.
+func _seat_machine(veh: Node3D, pos: Vector3, terr: Node) -> Vector3:
+	if terr == null or not terr.has_method("terrain_height_at"):
+		return pos
+	if not veh.has_method("ground_under_machine"):
+		return _over_ground(pos, terr)
+	# Габарит меряется В МИРОВЫХ осях от текущего места машины, так что X/Z должны стоять до
+	# вопроса. Тело уже заморожено, физика этот сдвиг не откатит.
+	veh.global_position = Vector3(pos.x, veh.global_position.y, pos.z)
+	return _clear_of(pos, veh.ground_under_machine())
+
+func _clear_of(pos: Vector3, ground: float) -> Vector3:
 	if pos.y > ground + MAX_CLEARANCE:
 		pos.y = ground + SAFE_CLEARANCE        # мир под ним другой — сажаем
 	else:
@@ -379,8 +397,16 @@ func _rescue_fallen() -> void:
 			rb.linear_velocity = Vector3.ZERO
 			rb.angular_velocity = Vector3.ZERO
 			lifted.append(rb)
+		# ПОЙМАТЬ падение — по земле в начале координат, а ВЫТАЩИТЬ — по самой высокой земле под
+		# машиной. Порог ловит «провалился насквозь»: в начале координат земля НИЖЕ, чем под
+		# хвостом на гребне, так что проверка скорее промолчит, чем поднимет машину, честно
+		# заехавшую носом под обрыв. А вот поднимать на низкую землю нельзя — это снова внутрь
+		# склона, ещё и раз в секунду.
+		var top: float = ground
+		if ready_terr != null and n3.has_method("ground_under_machine"):
+			top = n3.ground_under_machine()
 		# With no terrain ready, lift higher and let it fall to the ground by itself.
-		var lift_y: float = (ground + SAFE_CLEARANCE + 2.0) if ready_terr != null else 200.0
+		var lift_y: float = (top + SAFE_CLEARANCE + 2.0) if ready_terr != null else 200.0
 		n3.global_position = Vector3(n3.global_position.x, lift_y, n3.global_position.z)
 	if lifted.is_empty():
 		return
@@ -788,7 +814,7 @@ func _restore_machine(veh, mdata: Dictionary) -> void:
 	if p != null:
 		var pos := Vector3(p[0], p[1], p[2])
 		if terr != null:
-			pos = _over_ground(pos, terr)
+			pos = _seat_machine(veh, pos, terr)
 		else:
 			# The saved height must not be applied unchecked: if a past bug left it underground the machine
 			# starts inside the world and falls. Take X/Z only and keep the spawn height, which is safely above
