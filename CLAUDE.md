@@ -502,6 +502,13 @@ project: read it before claiming how anything works.
   spawner's queue) kept a shot-at enemy silent while it stood second in line — the player emptied a
   gun into a machine that never fired back. `notice_attacker` now lifts it for `ANSWER_TIME`, and
   the spawner leaves such an enemy out of the queue while that runs.
+- "IT NOTICED YOU" IS A SETTER ON `enemy_vehicle._target`, not a call at each place a target is
+  chosen: the zone signal, the periodic search, `notice_attacker` and quest `assign_target` all
+  write that field, and a fifth way would be written one day too. When the new target is the
+  player's side (faction 0 and not an AI running this script, so the defend quest's ally does not
+  count) the marker shows a red "!" (`EnemyMarker.alert`): it pops, glitches in pixel steps for half
+  a second, holds and fades. `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
+  blinking it, since a sign that is always up says nothing. Demo fights never raise it.
 - Acquisition has two paths (area signal, periodic search) and both must go through
   `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.
