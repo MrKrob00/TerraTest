@@ -1513,6 +1513,14 @@ project: read it before claiming how anything works.
   `BENDER_REFRESH` with `BENDER_MARGIN` of slack). Every machine block and every loose item is a
   bender, and each cost a height query and two metas per frame wherever it lay: measured 133
   benders, 11 inside the window, a 1.76-2.08 ms tick; after, 0.23-0.26 ms.
+- **A SLEEPING LOOSE BLOCK IS DRAWN BY A MULTIMESH TOO (`loose_batch.gd`, owned by `world_persist`,
+  membership decided in its cull pass).** Fifty blocks lying in view cost +130 draw calls, 2.6 a
+  block; batched, +24, and the frame is identical to the pixel (0 differing, checked on the real
+  driver). ONLY SLEEPING ones — a moving block would need its transform copied every frame — and
+  the wake is caught at once through `sleeping_state_changed`, a pick-up or a bolt-on through
+  `tree_exiting`, so a knocked block never hangs in its old place. Split by `CELL` (64 m): one
+  MultiMesh for the whole map is culled as one AABB and would never leave the frame. The mesh
+  collection is `MachineBatch._collect`, static, not a copy.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
