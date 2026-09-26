@@ -1560,7 +1560,7 @@ func _rot_array(v: Vector3) -> Array:
 	return [v.x, v.y, v.z]
 
 # Reads rotation from a layout entry: the new format "rot":[x,y,z] or the old "rot_y":float.
-func _read_rot(entry: Dictionary) -> Vector3:
+static func _read_rot(entry: Dictionary) -> Vector3:
 	if entry.has("rot"):
 		var r: Array = entry["rot"]
 		return Vector3(float(r[0]), float(r[1]), float(r[2]))
