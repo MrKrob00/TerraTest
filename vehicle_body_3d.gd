@@ -897,17 +897,17 @@ func _input(event: InputEvent) -> void:
 		elif _touch_count == 0 and not _build_tap_moved \
 				and Time.get_ticks_msec() - _build_tap_ms >= LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
-			# ДОЛГОЕ УДЕРЖАНИЕ = настройки блока. Жест был свободен: короткий путь ниже требует
-			# уложиться в 250 мс, и всё, что дольше, до этого просто терялось. Двойной тап
-			# занять было нельзя — он означает «взять блок в руку».
+			# A LONG PRESS opens the block's settings. The tap below takes everything shorter, so
+			# the two gestures split the time with no gap. The double tap was not free for this —
+			# it means "take the block into the hand".
 			_try_open_factory_ui(event.position)
 		elif _touch_count == 0 and not _build_tap_moved \
-				and Time.get_ticks_msec() - _build_tap_ms < 250 \
+				and Time.get_ticks_msec() - _build_tap_ms < LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
 			_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
-			# ДВОЙНОЙ тап (второй за ~340мс рядом) = подтверждение: взять/поставить.
+			# A DOUBLE tap (the second within DOUBLE_TAP_MS and DOUBLE_TAP_SLOP) confirms: take or place.
 			var _now := Time.get_ticks_msec()
-			if _now - _dbl_tap_ms < 340 and _dbl_tap_pos.distance_to(event.position) < 45.0:
+			if _now - _dbl_tap_ms < DOUBLE_TAP_MS and _dbl_tap_pos.distance_squared_to(event.position) < DOUBLE_TAP_SLOP * DOUBLE_TAP_SLOP:
 				_commit_build_tap(event.position)
 				_dbl_tap_ms = 0                    # съели двойной — не склеиваем в тройной
 			else:
@@ -1963,6 +1963,13 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 
 ## Сколько держать, чтобы это считалось длинным нажатием.
 const LONG_PRESS_MS: int = 500
+# Anything shorter than a long press is a tap: a 250 ms ceiling used to leave 250..500 ms belonging
+# to neither gesture, and on a phone at 20 fps one hitch pushes an ordinary tap into that hole.
+# The double tap is measured release to release in frame time, so press length and two frame
+# steps ride on top of the finger's own gap: 340 ms measured 388 for a quick double tap on a slow
+# frame and the block stayed in the hand. The slop is in stretched viewport points (1280 wide).
+const DOUBLE_TAP_MS: int = 450
+const DOUBLE_TAP_SLOP: float = 80.0
 
 # Длинное нажатие по СВОЕМУ фабричному блоку = окно «что производить». Только по своему:
 # на чужой машине настройки нам не принадлежат, а лезть в них через полкарты — не механика.

@@ -243,9 +243,10 @@ text = "8,220 kg"
 layout_mode = 2
 theme_override_styles/panel = SubResource("barbottom")
 
-[node name="Hints" type="HBoxContainer" parent="Root/BottomBar"]
+[node name="Hints" type="HFlowContainer" parent="Root/BottomBar"]
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/h_separation = 24
+theme_override_constants/v_separation = 2
 
 [node name="H1" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
@@ -261,7 +262,7 @@ text = "Search — filter by name"
 
 [node name="H4" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
-text = "Tap the vehicle — place a block"
+text = "Double-tap the vehicle — place a block"
 
 [node name="H5" type="Label" parent="Root/BottomBar/Hints"]
 layout_mode = 2
