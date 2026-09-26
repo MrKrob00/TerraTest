@@ -1447,7 +1447,11 @@ project: read it before claiming how anything works.
   when the list changes. The cut radius is `CUT_INSET` of the sphere, because the dome is a solid
   of FLAT plates lying inside its sphere; cutting at the full radius opens a sliver where neither
   dome draws. A dome that goes dark stops cutting at once — the lit one re-asks every tick.
-  Checked on the real driver: with the cut, one outline and no inner arcs.
+  Checked on the real driver: with the cut, one outline and no inner arcs. THE JOIN IS WELDED
+  (`weld_w`, `weld_gain`): a fragment within `weld_w` metres outside a cutting sphere is lit as a
+  seam of its own, dimmed with the charge but never below a third. Bare, the join was plates
+  sliced mid-plate meeting at a dark crease; the lit band closes it the way the lattice closes a
+  plate, and from above it reads as one ring where two bubbles merge.
 - CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
   a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
   spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came
