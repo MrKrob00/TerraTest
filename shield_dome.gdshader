@@ -63,17 +63,25 @@ uniform float ripple : hint_range(0.0, 1.0) = 1.0;
 uniform vec3  ripple_cell = vec3(0.0, 1.0, 0.0);
 uniform float ripple_reach = 1.9;     // radians the ring travels, about 110 degrees
 uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92 cells
+// OVERLAPPING DOMES DRAW AS ONE HULL. Each neighbour dome of the same side that reaches into this one
+// arrives here as (centre in THIS dome's model space, radius squared); a fragment inside any of them
+// is thrown away, so what is left of two or three domes is only their common outer envelope.
+// shield.gd fills it (`_update_cuts`); CUT_MAX there must match the array size.
+uniform vec4 cut[4];
+uniform int cut_n = 0;
 
 varying vec3 v_cell;
 varying float v_rnd;
 varying vec2 v_uv;
 varying vec3 v_wpos;
 varying vec3 v_wout;
+varying vec3 v_lpos;
 
 void vertex() {
 	v_cell = COLOR.rgb * 2.0 - 1.0;
 	v_rnd = COLOR.a;
 	v_uv = UV;
+	v_lpos = VERTEX;
 	// Наружное направление и мировая точка считаются здесь САМИ. Встроенный NORMAL приходит
 	// вывернутым (у меша, собранного кодом, обход вершин обратный, и движок доворачивает
 	// нормаль по своему соглашению) — измерено: ближняя полусфера уходила в множитель дальней.
@@ -82,6 +90,15 @@ void vertex() {
 }
 
 void fragment() {
+	for (int i = 0; i < 4; i++) {
+		if (i >= cut_n) {
+			break;
+		}
+		vec3 d = v_lpos - cut[i].xyz;
+		if (dot(d, d) < cut[i].w) {
+			discard;
+		}
+	}
 	float t = v_uv.x;
 	float edge_pos = min(v_uv.y, 1.0 - v_uv.y);
 

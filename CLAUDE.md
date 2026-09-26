@@ -1382,6 +1382,15 @@ project: read it before claiming how anything works.
   plates the charge has turned off too, so for a moment the dome shows all of itself. It fills the
   plate FACE and holds its strength most of the way (1 − p²): seams alone and a linear fade were
   tried first and on a half-charged dome read as nothing on the real driver.
+- OVERLAPPING DOMES DRAW AS ONE HULL (`shield._update_cuts` → `shield_dome.gdshader` `cut`). Every
+  lit dome of the same side (same machine, or same `faction`) whose sphere reaches into this one is
+  handed over as a centre in THIS dome's model space, and a fragment inside it is discarded — so
+  two shields two cells apart show their common envelope, not two lattices crossing through each
+  other. Model space because domes on one machine stand still there: the uniforms are written only
+  when the list changes. The cut radius is `CUT_INSET` of the sphere, because the dome is a solid
+  of FLAT plates lying inside its sphere; cutting at the full radius opens a sliver where neither
+  dome draws. A dome that goes dark stops cutting at once — the lit one re-asks every tick.
+  Checked on the real driver: with the cut, one outline and no inner arcs.
 - CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
   a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
   spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came

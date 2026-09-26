@@ -35,6 +35,13 @@ const HIT_FADE := 0.22
 const RIPPLE_TIME := 0.6
 const RIPPLE_RESTART := 0.5
 var _ripple: float = 1.0
+## Neighbour domes cut out of this one (shield_dome.gdshader `cut`). The dome is a Goldberg solid of
+## FLAT plates, so its surface lies inside the true sphere by up to 1 - cos(half a plate); cutting at
+## the full radius would open a sliver where neither dome draws. CUT_INSET is that margin.
+const CUT_MAX := 4
+const CUT_INSET := 0.985
+const GROUP := &"shield_blocks"
+var _cuts: Array[Vector4] = []
 
 func _ready() -> void:
 	super._ready()
@@ -60,6 +67,7 @@ func _ready() -> void:
 	_dome_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_dome.add_child(_dome_mesh)
 	add_child(_dome)
+	add_to_group(GROUP)
 
 ## Сколько раз делится грань икосаэдра: ячеек выходит 10·sub²+2, то есть 92 при трёх. Столько
 ## и читается как «шестиугольный щит» — при большем числе пластины мельчают до ряби.
@@ -135,6 +143,48 @@ func _physics_process(delta: float) -> void:
 	# Поэтому уровень уходит в шейдер как есть, без прежней поправки 0.35 + 0.65·lvl.
 	if powered and v != null and v.has_method("energy_fill"):
 		_set_dome_param("energy", clampf(float(v.energy_fill()), 0.0, 1.0))
+	if powered:
+		_update_cuts(v)
+
+## Every other LIT dome of the same side whose sphere reaches into this one, in this dome's own axes.
+## Domes on one machine stand still in those axes, so the uniforms are written only when the list
+## actually changes - a driving machine does not pay a material write per tick for them.
+func _update_cuts(v: Node) -> void:
+	var side: Variant = v.get("faction") if v != null else null
+	var inv: Transform3D = _dome.global_transform.affine_inverse()
+	var reach2: float = (2.0 * SHIELD_RADIUS) * (2.0 * SHIELD_RADIUS)
+	var r2: float = (SHIELD_RADIUS * CUT_INSET) * (SHIELD_RADIUS * CUT_INSET)
+	var found: Array[Vector4] = []
+	for n in get_tree().get_nodes_in_group(GROUP):
+		if n == self or found.size() >= CUT_MAX:
+			continue
+		var other_dome: Node3D = n.get("_dome")
+		if not is_instance_valid(other_dome) or not other_dome.visible:
+			continue
+		var ov: Node = n.call("_vehicle_root")
+		if ov != v and (ov == null or ov.get("faction") != side):
+			continue
+		var c: Vector3 = other_dome.global_position
+		if c.distance_squared_to(_dome.global_position) >= reach2:
+			continue
+		var lc: Vector3 = inv * c
+		found.append(Vector4(lc.x, lc.y, lc.z, r2))
+	if _same_cuts(found):
+		return
+	_cuts = found
+	var packed: Array[Vector4] = found.duplicate()
+	while packed.size() < CUT_MAX:
+		packed.append(Vector4.ZERO)
+	_set_dome_param("cut", packed)
+	_set_dome_param("cut_n", found.size())
+
+func _same_cuts(found: Array[Vector4]) -> bool:
+	if found.size() != _cuts.size():
+		return false
+	for i in found.size():
+		if (found[i] - _cuts[i]).length_squared() > 0.0001:
+			return false
+	return true
 
 func _dome_material() -> ShaderMaterial:
 	if _dome_mesh == null:
