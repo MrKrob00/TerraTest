@@ -1222,6 +1222,11 @@ project: read it before claiming how anything works.
   against taps through the HUD, and a double tap that fired is swallowed.
 - Building on another of your machines is delegated to that machine (`_delegate_build`) — there is
   no second build implementation. Only the active machine delegates; hand flags move with the tap.
+- A TAP IS ANYTHING SHORTER THAN A LONG PRESS, AND THE DOUBLE TAP IS WIDE (`DOUBLE_TAP_MS` 450,
+  `DOUBLE_TAP_SLOP` 80 points). Both are measured in frame time, release to release, so a slow
+  frame lands on top of the finger. With a 250 ms tap ceiling, 250..500 belonged to no gesture,
+  and a 340 ms window measured a quick double tap at 388 on the real driver: the block stayed in
+  the hand. The garage hint says DOUBLE-tap; it used to say "tap", and a single tap only aims.
 - THE CONFIRMING TAP RE-AIMS. Placing reads `_preview_res` and `BuildingBlock`, i.e. what the LAST
   aiming pass left; on a phone the confirmation is the second tap of a double, the finger has moved,
   and a delegate machine may have had no aiming pass that frame at all. So `_commit_build_tap` aims
