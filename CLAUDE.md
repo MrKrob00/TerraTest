@@ -1197,7 +1197,12 @@ project: read it before claiming how anything works.
   (`hud._update_vehicle_button` → `open_vehicle_menu`), and nothing else: a second way to do the
   same thing is a second button in a crowded corner. The icon shows within `VBTN_SHOW_DIST` (15 m):
   it is a button over THAT machine, and at sixty it hung over every machine in sight and read as a
-  map marker. The price is that a base left at a vein has to be driven up to.
+  map marker. The price is that a base left at a vein has to be driven up to. THERE IS ONE ICON
+  PER MACHINE IN REACH (a pool of `VBTN_MAX`, nearest first), not one for the nearest: a base, the
+  miner beside it and a truck alongside are three machines inside fifteen metres, and one icon
+  meant shuffling round until the nearest was the one wanted. The hold belongs to the ICON that
+  was pressed (`_vbtn_hold_icon`), and is dropped if that icon stops standing over its machine.
+  Measured: three machines, three icons, the held middle one opened its own menu.
 - Menu backdrop is a REAL fight on a REAL `ChunkTerrain`, generated per round from an audition of
   seeds, with streamed collision and two enemy machines of DIFFERENT factions carrying their own
   physics, AI and weapons. It carries `follow_world_settings = false`, or G would hand it the save
