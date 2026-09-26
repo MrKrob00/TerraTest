@@ -749,14 +749,16 @@ project: read it before claiming how anything works.
   also spawn ONCE: the duel is guarded by `_duel_sent`, the salvage guard by `_salvage_killed` (it
   hunts the player and is usually met on the way). Measured on the engine for five events: stage 1
   held at 244-275 m with no machines added, stage 2 at the point.
-- A RELEASED STORY QUEST TAKES THE TRACKER (`_track_story_if_free`, called from `release_quest`).
-  `hold_quest` keeps the first story quest back until its target exists — the scout arrives after
-  `first_spawn_delay` — so at the moment the tutorial ended the head of `active_quests` was a
-  DAILY, and that is what `_auto_track` picked. The player left the tutorial tracking "sell ore"
-  while the first story quest appeared silently as the third row. It does NOT steal a story quest
-  the player is already on: the tree branches, and an opening sibling must not drag them off the
-  branch they chose. Dailies and events are stolen from freely — those are endless, the story is
-  not.
+- A STORY QUEST THAT HAS JUST APPEARED TAKES THE TRACKER (`Q._story_appeared`), from a daily or an
+  event, never from another story quest: the tree branches, and an opening sibling must not drag
+  the player off the branch they chose. It is called from the THREE places a story quest can
+  appear — a quest completing, a grade-up, and `release_quest` — and only on APPEARANCE
+  (`_story_known`, seeded on load), so a player who deliberately switched to an event keeps it
+  until the next story quest opens. The grade-up call was the one missing: SAM opens at grade 5,
+  after Watchtower, so between the two the tracker had fallen to an event or a daily, and grade 5
+  left it there — measured, old code kept `daily_ore`, new code moves to `arc_sam`. The release
+  call is the older half of the same rule: `hold_quest` keeps the first story quest back until the
+  scout arrives, and at the end of the tutorial the head of `active_quests` was a daily.
 - A HANDED-OUT BLOCK GETS THE FINGER BEFORE THE CELL DOES. `_arc_power_1` points at the panel
   lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
   that, so it asked for a repair unit to be placed while the block was still on the ground and the

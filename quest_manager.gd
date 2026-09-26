@@ -429,6 +429,7 @@ func reload_from_progress() -> void:
 	tracked_id = ""
 	changed.emit()
 	_auto_track()
+	_seed_story_known()
 
 ## Квест по id — ПУБЛИЧНО. Нужен тем, кто квест не создаёт, а ВЕДЁТ: контракты (contracts.gd)
 ## переписывают один и тот же слот вместо того, чтобы плодить задания. Лезть за этим в
@@ -536,6 +537,7 @@ func _on_completed(q: Dictionary) -> void:
 	# перецепляемся на следующее активное.
 	if tracked_id == "" or _find(tracked_id).get("done", true):
 		_auto_track()
+	_story_appeared()          # the completion may have unlocked the next one
 
 # Новый грейд лицензии: Механик объявляет, что открылось в магазине (этап 1 прогрессии).
 func _on_grade_up(faction: String, new_grade: int) -> void:
@@ -557,6 +559,7 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	changed.emit()
 	if tracked_id == "" or _find(tracked_id).get("done", true):
 		_auto_track()
+	_story_appeared()          # a grade-gated story quest (SAM at 5) opens exactly here
 
 # Случайная фраза о выполнении. С наградой и без — свои наборы.
 func _completion_message(title: String, reward: int) -> String:
@@ -601,18 +604,38 @@ func _auto_track() -> void:
 	tracked_id = q.get("id", "")
 	changed.emit()
 
-## ПОСТАВИТЬ ТРЕКЕР НА СЮЖЕТ, ЕСЛИ ОН СЕЙЧАС НЕ НА СЮЖЕТЕ. Отличается от `_auto_track` тем, что
-## НЕ перебивает уже выбранную сюжетную ветку: дерево ветвится, и игрок, ведущий одну ветку, не
-## должен терять её оттого, что открылась соседняя. Ежедневку и событие — перебиваем: они
-## бесконечные, а сюжет один.
-func _track_story_if_free() -> void:
-	var s := _current_story()
-	if s.is_empty():
+## A STORY QUEST THAT HAS JUST APPEARED TAKES THE TRACKER - from a daily or an event, never from
+## another story quest (the tree branches, and an opening sibling must not drag the player off the
+## branch they chose). Called from the three places a story quest can appear: a quest completing,
+## a grade-up, and a held quest being released. Only on APPEARANCE: a player who deliberately
+## switched to an event keeps it until the next story quest opens.
+##
+## The grade-up call is the one that was missing. SAM opens at grade 5, after Watchtower is done,
+## so between the two the tracker had fallen to an event or a daily; grade 5 then opened SAM, and
+## the old check - "retrack only if nothing is tracked or it is finished" - left the event on.
+var _story_known: Dictionary = {}
+
+func _story_appeared() -> void:
+	var fresh: Dictionary = {}
+	for q in available_story():
+		var id := String(q["id"])
+		if _story_known.has(id):
+			continue
+		_story_known[id] = true
+		if fresh.is_empty():
+			fresh = q
+	if fresh.is_empty():
 		return
 	var cur := _find(tracked_id)
 	if not cur.is_empty() and int(cur.get("type", -1)) == Type.STORY and cur["done"] == false:
 		return
-	track(String(s["id"]))
+	track(String(fresh["id"]))
+
+## What is already open when a save loads is not "new": seeing it again must not steal the tracker.
+func _seed_story_known() -> void:
+	_story_known.clear()
+	for q in available_story():
+		_story_known[String(q["id"])] = true
 
 func _first_active() -> Dictionary:
 	for q in active_quests():
@@ -769,7 +792,7 @@ func release_quest(id: String) -> void:
 		# по бумагам: разведчик прилетает через first_spawn_delay, и всё это время головой списка
 		# была ЕЖЕДНЕВКА — её и брал _auto_track в конце обучения. Игрок выходил из обучения с
 		# «продай руды» вместо первого сюжетного, а тот молча появлялся третьей строкой.
-		_track_story_if_free()
+		_story_appeared()
 
 ## ── ЗАДАНИЕ, ВЫДАННОЕ РУКАМИ (полигон) ──────────────────────────────────────
 ## Обратная сторона `_held`: там квест придерживают, здесь проталкивают мимо всех ворот сразу —
