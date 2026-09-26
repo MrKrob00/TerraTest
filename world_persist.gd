@@ -124,6 +124,15 @@ func _process(delta: float) -> void:
 #
 # The near bubble stays active in every direction: what is close takes part in the game (packer
 # magnet, receiver, picking up by hand) and must not be gated by view direction.
+const LOOSE_BATCH := preload("res://loose_batch.gd")
+var _lb: Node = null
+
+func _loose_batch() -> Node:
+	if not is_instance_valid(_lb):
+		_lb = LOOSE_BATCH.new()
+		add_child(_lb)
+	return _lb
+
 const CULL_PERIOD := 0.25
 const CULL_KEEP_RADIUS := 25.0       # m: closer than this a block stays active whatever the camera looks at
 const CULL_VIEW_COS := -0.15         # slightly wider than the hemisphere in front, so the edge does not flicker
@@ -155,6 +164,11 @@ func _cull_tick(delta: float) -> void:
 		if n == null:
 			continue
 		_settle_tick(n)
+		# A block that has come to rest joins the loose batch; the wake takes it out at once
+		# (loose_batch.gd). Asked here because this is the one walk over loose items there is.
+		if n is VehicleBlock:
+			var lb := n as RigidBody3D
+			_loose_batch().want(n, lb.sleeping and not lb.freeze)
 		# DRAWING AND SCRIPT ARE DECIDED SEPARATELY, and that is not pedantry.
 		#
 		# There is nothing to draw off-frame at all, so the exact frustum test fits - the same one machines

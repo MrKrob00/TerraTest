@@ -138,7 +138,8 @@ func _rebuild() -> void:
 		_groups[key] = {"mmi": mmi, "parts": parts, "dyn": dyn}
 
 ## The block's own scene meshes, depth first, skipping whole branches that are not model.
-func _collect(n: Node, block: Node, skip: Array, out: Array) -> void:
+## Static because LooseBatch asks the same question of a block lying on the ground.
+static func _collect(n: Node, block: Node, skip: Array, out: Array) -> void:
 	for c in n.get_children():
 		if skip.has(c) or c is Area3D or c.has_meta("block_fx") or c is VehicleBlock:
 			continue
@@ -151,13 +152,13 @@ func _collect(n: Node, block: Node, skip: Array, out: Array) -> void:
 			out.append(c)
 		_collect(c, block, skip, out)
 
-func _has_surface_override(mi: MeshInstance3D) -> bool:
+static func _has_surface_override(mi: MeshInstance3D) -> bool:
 	for i in mi.get_surface_override_material_count():
 		if mi.get_surface_override_material(i) != null:
 			return true
 	return false
 
-func _key(mi: MeshInstance3D) -> String:
+static func _key(mi: MeshInstance3D) -> String:
 	var mat = mi.material_override
 	return "%d|%d|%d" % [mi.mesh.get_rid().get_id(),
 			mat.get_rid().get_id() if mat != null else 0, mi.cast_shadow]
