@@ -16,7 +16,7 @@ render_mode unshaded, depth_draw_never, blend_add;
 //
 // А ГДЕ ИМЕННО ОНИ СТОЯТ, РЕШАЕТ ПОСЛЕДНЕЕ ПОПАДАНИЕ. Порядок по случайному числу пластины был
 // постоянным, но ни о чём не говорил: щит осыпался равномерно и с той стороны, куда никто не
-// стрелял, тоже. Теперь пластины держатся ШАПКОЙ вокруг hit_cell, и садящийся щит показывает,
+// стрелял, тоже. Теперь пластины держатся ШАПКОЙ вокруг hit_pos, и садящийся щит показывает,
 // откуда по нему бьют. Шапка никогда не пустеет: keep_cos приходит с той стороны (shield.gd)
 // посчитанным по реальным центрам пластин так, чтобы в ней осталось не меньше семи — сама
 // пластина попадания и весь её ряд соседей. У двенадцати пятиугольников соседей пять, поэтому
@@ -40,13 +40,16 @@ uniform float rim_gain : hint_range(0.0, 3.0) = 1.7;
 uniform float halo_pow : hint_range(0.5, 6.0) = 2.4;
 uniform float halo_gain : hint_range(0.0, 2.0) = 0.22;
 uniform float energy : hint_range(0.0, 1.0) = 1.0;
-// Свежее попадание: 1 в момент удара, едет к нулю. hit_cell — центр ТОЙ ОДНОЙ пластины, в
+// Свежее попадание: 1 в момент удара, едет к нулю. hit_pos — центр ТОЙ ОДНОЙ пластины, в
 // которую пришёл снаряд; её выбирает щит из списка центров. Купол целиком не мигает: вспышка
 // на всю оболочку не говорит, куда попали, и на частом огне превращается в мигание экрана.
 uniform float hit : hint_range(0.0, 1.0) = 0.0;
-uniform vec3  hit_cell = vec3(0.0, 1.0, 0.0);
+// Positions, not directions: the centre of the struck plate in THIS dome's model space. A merged
+// hull shares one hit, and a point on the neighbour's surface has no direction from our centre
+// that means anything; a distance does. On one dome it is the same thing (see `near` below).
+uniform vec3  hit_pos = vec3(0.0, 4.0, 0.0);
 /// Косинус, ниже которого пластина уже не в шапке попадания. Считает shield.gd по центрам
-/// пластин под КОНКРЕТНУЮ hit_cell, чтобы в шапке гарантированно было seven и на пятиугольнике.
+/// пластин под КОНКРЕТНУЮ hit_pos, чтобы в шапке гарантированно было seven и на пятиугольнике.
 uniform float keep_cos : hint_range(-1.0, 1.0) = 0.88;
 /// Насколько рваный край у шапки. Ноль дал бы идеальный круг, а это читается как маска поверх
 /// купола, а не как осыпающаяся решётка. Внутрь шапки не пускаем — иначе минимум не гарантирован.
@@ -60,7 +63,7 @@ uniform float glitch_rate = 22.0;
 // nothing. It lights plates the charge has turned off as well - for a moment the dome shows all of
 // itself, which is exactly what a ripple across a shield says.
 uniform float ripple : hint_range(0.0, 1.0) = 1.0;
-uniform vec3  ripple_cell = vec3(0.0, 1.0, 0.0);
+uniform vec3  ripple_pos = vec3(0.0, 4.0, 0.0);
 uniform float ripple_reach = 1.9;     // radians the ring travels, about 110 degrees
 uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92 cells
 // OVERLAPPING DOMES DRAW AS ONE HULL. Each neighbour dome of the same side that reaches into this one
@@ -69,12 +72,21 @@ uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92
 // shield.gd fills it (`_update_cuts`); CUT_MAX there must match the array size.
 uniform vec4 cut[4];
 uniform int cut_n = 0;
-// THE WELD: where one dome is cut by another, the edge of the cut is drawn as a seam of its own.
-// Bare, the join was plates sliced through the middle meeting at a dark crease; a lit band along
-// the intersection closes it the way the lattice closes every plate, so two domes read as one hull
-// rather than two spheres pushed into each other. Metres, measured outward from the cutting sphere.
-uniform float weld_w : hint_range(0.01, 0.6) = 0.26;
-uniform float weld_gain : hint_range(0.0, 3.0) = 0.7;
+// ONE LATTICE ACROSS THE JOIN. Two domes cut against each other used to meet at a line with each
+// plate sliced through; now, within `seam_zone` metres of the join, the plate is chosen from ONE set
+// - the surviving plates of every merged dome near the join (shield.gd `_update_seam`: centre in this
+// dome's model space, and its own random number) - as the nearest centre. So a hexagon that starts
+// on one sphere carries on over the other, with one edge where the two centres are equidistant.
+// Outside the band the baked lattice stands; the band is wide enough that the plate a fragment
+// belongs to there is always in the set, so the two agree at its border.
+uniform vec4  seam_c[96];
+uniform int   seam_n = 0;
+uniform float seam_zone = 1.0;
+// A baked plate whose CENTRE is this close to a join was given up to the shared rows (shield.gd
+// `_seam_clear`); every fragment of it takes the shared lattice too, or the part of it reaching past
+// the band would still be drawn as a sliver of the old plate.
+uniform float seam_clear = 0.0;
+uniform float radius = 4.0;
 
 varying vec3 v_cell;
 varying float v_rnd;
@@ -97,6 +109,8 @@ void vertex() {
 
 void fragment() {
 	float edge_d = 1e3;
+	float cell_d = 1e3;
+	vec3 own_c = normalize(v_cell) * radius;
 	for (int i = 0; i < 4; i++) {
 		if (i >= cut_n) {
 			break;
@@ -106,13 +120,50 @@ void fragment() {
 		if (dd < cut[i].w) {
 			discard;
 		}
-		edge_d = min(edge_d, sqrt(dd) - sqrt(cut[i].w));
+		// Distance to the JOIN: the circle this sphere (at the origin, `radius`) shares with the
+		// cutting one. Not to the cutting sphere - with domes two cells apart almost all of a dome
+		// lies near the other sphere, and the band swallowed the whole lattice.
+		vec3 ax = normalize(cut[i].xyz);
+		float half_d = 0.5 * length(cut[i].xyz);
+		float rho = sqrt(max(radius * radius - half_d * half_d, 0.0));
+		float h = dot(v_lpos, ax) - half_d;
+		float q = length(v_lpos - ax * dot(v_lpos, ax));
+		edge_d = min(edge_d, sqrt(h * h + (q - rho) * (q - rho)));
+		float hc = dot(own_c, ax) - half_d;
+		float qc = length(own_c - ax * dot(own_c, ax));
+		cell_d = min(cell_d, sqrt(hc * hc + (qc - rho) * (qc - rho)));
 	}
-	// Dimmed with the charge like everything else on the dome, but never gone: a draining hull is
-	// still one hull, and the join is where the eye looks for it.
-	float weld = cut_n > 0 ? (1.0 - smoothstep(0.0, weld_w, edge_d)) * mix(0.3, 1.0, clamp(energy, 0.0, 1.0)) : 0.0;
+	// The plate this fragment belongs to: the baked one, or on the join the nearest of the shared set.
+	vec3 cell_pos = own_c;
+	float rnd = v_rnd;
 	float t = v_uv.x;
 	float edge_pos = min(v_uv.y, 1.0 - v_uv.y);
+	if (seam_n > 1 && (edge_d < seam_zone || cell_d < seam_clear)) {
+		float d1 = 1e9;
+		float d2 = 1e9;
+		vec4 c1 = vec4(0.0);
+		vec4 c2 = vec4(0.0);
+		for (int i = 0; i < 96; i++) {
+			if (i >= seam_n) {
+				break;
+			}
+			vec3 dv = v_lpos - seam_c[i].xyz;
+			float dd = dot(dv, dv);
+			if (dd < d1) {
+				d2 = d1; c2 = c1;
+				d1 = dd; c1 = seam_c[i];
+			} else if (dd < d2) {
+				d2 = dd; c2 = seam_c[i];
+			}
+		}
+		cell_pos = c1.xyz;
+		rnd = c1.w;
+		// Distance to the bisector of the two nearest centres, against the half-gap: 0 at a centre,
+		// 1 on the edge - the same scale the baked UV.x carries, so the seam width matches.
+		float gap = max(length(c2.xyz - c1.xyz), 0.001);
+		t = clamp(1.0 - ((d2 - d1) / (2.0 * gap)) / (0.5 * gap), 0.0, 1.0);
+		edge_pos = 0.5;                   // no corner dots on the join: they belong to baked corners
+	}
 
 	// ПОЛОСА С ПЛАТО, А НЕ СКЛОН. smoothstep до самой единицы достигает её ровно НА ребре, то
 	// есть шов был ярким в одну линию пикселей, а всё остальное — растяжкой: решётка читалась
@@ -128,7 +179,10 @@ void fragment() {
 	// выключенного щита, а он ещё работает, и по этим семи пластинам видно, с какой стороны его
 	// дожимают. Остальное садится порогом, который едет от «всё» при полном заряде к границе
 	// шапки при пустом.
-	float near = dot(normalize(v_cell), normalize(hit_cell));
+	// Chord to cosine: on a sphere of `radius` the two are one number, so every threshold below keeps
+	// its meaning, and across a merged hull "near the hit" is simply near in space.
+	vec3 dh = cell_pos - hit_pos;
+	float near = 1.0 - dot(dh, dh) / (2.0 * radius * radius);
 	float core = step(keep_cos, near);
 	// ЗАРЯД ТЯНЕТ РАДИУС ШАПКИ НА ЭКРАНЕ, А НЕ КОСИНУС И НЕ УГОЛ. Купол виден как КРУГ, и шапка
 	// половинного угла θ занимает на нём радиус sin θ — то есть по косинусу шкала врёт вдвойне.
@@ -140,14 +194,14 @@ void fragment() {
 	float s_keep = sqrt(max(1.0 - keep_cos * keep_cos, 0.0));
 	float s = mix(s_keep, 1.0, clamp(energy, 0.0, 1.0));
 	float thr = sqrt(max(1.0 - s * s, 0.0));
-	float cap = step(thr, near + (v_rnd - 0.5) * keep_jitter);
+	float cap = step(thr, near + (rnd - 0.5) * keep_jitter);
 	// А ЩИТ ВСЁ-ТАКИ ОКРУЖАЕТ МАШИНУ ЦЕЛИКОМ. Одной шапки мало: получив в корму, игрок смотрел
 	// бы вперёд и не видел там вообще ничего. Поэтому поверх шапки идёт прежний равномерный
 	// порог по случайному числу пластины. Он же вытягивает середину шкалы: пластин всего 92, они
 	// лежат кольцами вокруг любой выбранной, и между первым кольцом и вторым по косинусу провал
 	// — шапка растёт скачками 7 → 13 → 22, а рассыпанные по оболочке пластины заполняют
 	// промежутки. Вместе это читается так: густо там, куда бьют, редко по остальной оболочке.
-	float spread = step(v_rnd, clamp(energy, 0.0, 1.0));
+	float spread = step(rnd, clamp(energy, 0.0, 1.0));
 	float up = max(core, max(cap, spread));
 
 	// БЛИЖНЯЯ ПОЛУСФЕРА ИЛИ ДАЛЬНЯЯ — ЧИСТАЯ ГЕОМЕТРИЯ: наружное направление против направления
@@ -166,29 +220,29 @@ void fragment() {
 	if (hit > 0.001) {
 		// Своя пластина или нет — сравнением центров. Внутри пластины центр постоянен, так что
 		// это точное «да/нет», а не расстояние по куполу.
-		float mine = step(0.99, dot(normalize(v_cell), normalize(hit_cell)));
+		float mine = 1.0 - step(0.35, length(cell_pos - hit_pos));
 		flare = mine * hit;
 		float gt = floor(TIME * glitch_rate);
-		float g = fract(sin(gt * 12.9898 + v_rnd * 78.233) * 43758.5453);
+		float g = fract(sin(gt * 12.9898 + rnd * 78.233) * 43758.5453);
 		col = mix(tint, g < 0.5 ? glitch_a : glitch_b, mine);
 	}
 
 	// Per plate: v_cell is constant across a plate, so the ring steps hex by hex, not as a band.
 	float wave = 0.0;
 	if (ripple < 0.999) {
-		float ang = acos(clamp(dot(normalize(v_cell), normalize(ripple_cell)), -1.0, 1.0));
+		float ang = 2.0 * asin(clamp(length(cell_pos - ripple_pos) / (2.0 * radius), 0.0, 1.0));
 		float on = 1.0 - smoothstep(0.0, ripple_band, abs(ang - ripple * ripple_reach));
 		// Strong for most of the way and gone at the end: a linear fade halved it before it had
 		// crossed two rings, and on a half-charged dome it was hard to see at all.
 		wave = on * (1.0 - ripple * ripple);
-		float gw = fract(sin(floor(TIME * glitch_rate) * 7.13 + v_rnd * 91.7) * 43758.5453);
+		float gw = fract(sin(floor(TIME * glitch_rate) * 7.13 + rnd * 91.7) * 43758.5453);
 		col = mix(col, gw < 0.5 ? glitch_a : glitch_b, wave * 0.85);
 	}
 
 	// Пробитая пластина загорается, даже если заряд её погасил: попадание важнее.
-	float shell = max(max(max(up, flare), wave), weld);
+	float shell = max(max(up, flare), wave);
 	// The ring fills the plate FACE, not only its seams: a lit plate otherwise changed by a shade.
-	float lattice = (seam + corner * 0.6 + body * (fill + wave * 0.45)) * shell + weld * weld_gain;
+	float lattice = (seam + corner * 0.6 + body * (fill + wave * 0.45)) * shell;
 	// КОЛЬЦО ТОЖЕ ПРИНАДЛЕЖИТ ПЛАСТИНЕ. Оно считалось по всей сфере и не спрашивало, стоит ли
 	// здесь пластина: на разряженном щите решётка гасла, а голубая подсветка оболочки
 	// оставалась висеть шаром. Теперь на месте погасшей пластины нет ничего, и осыпающийся
