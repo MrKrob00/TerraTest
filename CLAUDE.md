@@ -1504,6 +1504,15 @@ project: read it before claiming how anything works.
   unbatched frames pixel-identical with turrets turned by hand (0 of 76 800 pixels differ); after
   destroying blocks and tearing one off, instances always equal hidden originals, none hidden
   outside the batch, and the torn block draws itself.
+- **THE PROFILER PANEL PRINTS PER FRAME (per physics TICK for `PERF_PHYS_KEYS`), AND IT DID NOT
+  USED TO.** The panel snapshots four times a second, and `Perf.snapshot` handed over everything
+  piled up since the last one — six frames at 23 fps — so a 5 ms pass read as 30 ms and the
+  "accounted" figure could exceed the whole process line. `Perf.frame` / `Perf.tick` (called by
+  the HUD) count what the snapshot divides by.
+- THE GRASS BENDER LIST IS THE TRAMPLE WINDOW, NOT THE WORLD (`grass.gd`, refreshed every
+  `BENDER_REFRESH` with `BENDER_MARGIN` of slack). Every machine block and every loose item is a
+  bender, and each cost a height query and two metas per frame wherever it lay: measured 133
+  benders, 11 inside the window, a 1.76-2.08 ms tick; after, 0.23-0.26 ms.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.

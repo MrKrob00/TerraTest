@@ -1234,7 +1234,11 @@ func _rotate_block(axis: Vector3, ang: float) -> void:
 	if v and v.has_method("rotate_build"):
 		v.rotate_build(axis, ang)
 
+func _physics_process(_delta: float) -> void:
+	Perf.tick()
+
 func _process(delta: float) -> void:
+	Perf.frame()
 	var _pf := Perf.now()     # метка для панели профиля (perf.gd): цена самого HUD
 	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
 	_update_radar(delta)
@@ -1312,7 +1316,7 @@ func _update_perf_panel(delta: float) -> void:
 	var nodes: int = int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT))
 
 	# Per-system marks, split into the two budgets they were taken in.
-	var snap: Dictionary = Perf.snapshot()
+	var snap: Dictionary = Perf.snapshot(PERF_PHYS_KEYS)
 	var proc_marked: float = 0.0
 	var phys_marked: float = 0.0
 	for k in snap:
@@ -1397,7 +1401,8 @@ func _update_perf_panel(delta: float) -> void:
 		var ms2: float = float(snap[k]) / 1000.0
 		if ms2 >= 0.05:
 			parts.append("%s %.1f" % [k, ms2])
-	lines.append("по системам, мс: " + (", ".join(parts) if not parts.is_empty() else "—"))
+	lines.append("по системам, мс за кадр (%s — за тик): " % ", ".join(PERF_PHYS_KEYS)
+			+ (", ".join(parts) if not parts.is_empty() else "—"))
 	# WHAT IS DRAWING THIS. On a device with no real GPU the adapter name says so outright
 	# (llvmpipe, SwiftShader, Mesa softpipe), and then "process" is mostly the rasterizer.
 	var vp := get_viewport()
