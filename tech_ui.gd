@@ -1020,26 +1020,35 @@ func _load_build(build_name: String) -> void:
 		var t := int(b)
 		pool[t] = pool.get(t, 0) + 1
 	var need: Dictionary = G.layout_counts(target)
-	# Чего не хватает?
+	# SHORT OF BLOCKS: BUILD WHAT HOLDS TOGETHER. It used to refuse outright on any missing type.
+	# Now the part the pool can build is built outward from the core, and only through what was
+	# actually placed (blocks.buildable_subset), so a gun whose hull is missing is left out rather
+	# than hung in the air. Whatever is not placed stays in the inventory.
+	var build: Array = target
 	var missing: Dictionary = {}
 	for t in need:
 		var short: int = int(need[t]) - int(pool.get(t, 0))
 		if short > 0:
 			missing[t] = short
 	if not missing.is_empty():
-		_say(tr("Missing: ") + _missing_text(missing))
-		return
-	# Применяем: новый инвентарь = пул − потрачено на сборку.
-	for t in need:
-		pool[t] = int(pool.get(t, 0)) - int(need[t])
+		build = blocks_node.get_script().buildable_subset(target, pool)
+		if build.is_empty():
+			_say(tr("Missing: ") + _missing_text(missing))
+			return
+	var used: Dictionary = G.layout_counts(build)
+	for t in used:
+		pool[t] = int(pool.get(t, 0)) - int(used[t])
 	var new_inv: Array = []
 	for t in pool:
 		for _i in int(pool[t]):
 			new_inv.append(int(t))
 	G.block_inventory = new_inv
 	G.mark_progress_dirty()
-	v.apply_build(target)
-	_say(tr("Build applied: %s") % build_name)
+	v.apply_build(build)
+	if missing.is_empty():
+		_say(tr("Build applied: %s") % build_name)
+	else:
+		_say(tr("Built %d of %d blocks. Missing: ") % [build.size(), target.size()] + _missing_text(missing))
 	refresh()
 
 func _missing_text(missing: Dictionary) -> String:

@@ -213,6 +213,15 @@ project: read it before claiming how anything works.
   its cell footprint — not under the origin, which is the cabin. Against a mountain those are
   different numbers: low under the cabin, a slope under the tail, and the machine caught on the hill
   instead of rising over it.
+- A SAVED BUILD THAT THE POOL CANNOT COVER IS BUILT AS FAR AS IT HOLDS TOGETHER (`blocks.buildable_subset`,
+  from `tech_ui._load_build`), instead of being refused. The walk starts at the core (cabin or
+  stationary block), follows REAL joins — each block's connect mask turned by its rotation, from
+  one uninstanced scene per entry on a grid outside the tree, since without a node every neighbour
+  counts as joined — and continues only THROUGH blocks it took. So whatever hangs off a missing
+  block is never reached: no gun is placed with nothing under it, and the nearest blocks get the
+  pool first. Measured through the real garage path on a 38-block build: all available — 38
+  placed; no hull blocks — the cabin alone, all 18 others back in the inventory; half the hull —
+  23 placed, every one of them connected to the cabin.
 - Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
   — one door, `G.block_available` / `G.consume_block`, used by the garage, the block globe and the
   serial-build refill. Asking in one place and deducting in another is how a build starts taking
