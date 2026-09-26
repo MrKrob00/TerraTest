@@ -622,7 +622,12 @@ func _salvage_1(q: Dictionary) -> void:
 		wp.y = G.ground_y(wp, p.global_position.y)
 		_salvage_point = wp
 		return
-	_salvage_spawn_guard()
+	# A guard the player killed on the way stays dead: it hunts the player, so it is often met
+	# before the point is.
+	if not _salvage_killed:
+		_salvage_spawn_guard()
+	if not _reached(_salvage_point):
+		return
 	Q.report(String(q["event"]), 1)
 
 var _salvage_killed: bool = false
@@ -1229,6 +1234,8 @@ func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
 		if not _tower_build(key, cfg, at):
 			return
 		Dialogue.say("System", tr(String(cfg["say"])))
+	if not _reached(at):
+		return
 	Q.report(String(q["event"]), 1)
 
 func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
@@ -1319,10 +1326,7 @@ func _on_tower_died(_who, key: String) -> void:
 #
 # Точка ставится не рядом и не за горизонтом: ровно настолько далеко, чтобы это была
 # ПОЕЗДКА, а не поворот головы, и чтобы по дороге игрок успел решить, ввязываться ли.
-## На каком подлёте стычка начинается. Двести метров ехать в пустоту скучно; на пятидесяти
-## бой уже слышно и видно, и игрок приезжает НА идущую драку, а не на пустое поле, где
-## машины возникнут у него на глазах.
-## Насколько дуэлянты стоят друг от друга.
+## Насколько дуэлянты стоят друг от друга. Stage 1 ends at REACH_DIST (see _reached).
 const DUEL_GAP := 18.0
 ## Сколько ждать перед тем, как событие может случиться снова, — общее для всех событий
 ## (см. _event_cooldown в разделе «ПОВТОРЯЕМЫЕ СОБЫТИЯ»).
@@ -1350,7 +1354,10 @@ func _duel_1(q: Dictionary) -> void:
 		return
 	# Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
 	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
-	if not _spawn_duel(_duel_point as Vector3):
+	# Once: this stage now polls until the player arrives, and every poll would send a new pair.
+	if not _duel_sent and not _spawn_duel(_duel_point as Vector3):
+		return
+	if not _reached(_duel_point):
 		return
 	Q.report(String(q["event"]), 1)
 
@@ -1418,6 +1425,18 @@ func _duel_cooldown(delta: float) -> void:
 		Q.reset_quest("event_duel")
 
 # ── Помощники ────────────────────────────────────────────────────────────────
+## "REACH X" IS DONE WHEN THE PLAYER IS THERE, NOT WHEN X EXISTS. Participants appear the moment a
+## quest opens, 250-300 m out (the one spawn rule), and commit 99e43f9 moved the spawn up by
+## deleting the distance gate that also decided when stage 1 counted as done. Every "Reach ..."
+## stage then reported itself in the same poll that spawned its enemies, and the tracker showed
+## 2/2 the moment an event appeared. The spawn stays early; only the report waits for this.
+const REACH_DIST := 60.0
+
+func _reached(at: Variant) -> bool:
+	var p: Node3D = _player()
+	return p != null and at is Vector3 \
+			and p.global_position.distance_squared_to(at as Vector3) <= REACH_DIST * REACH_DIST
+
 func _player() -> Node3D:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
 	if cc != null and "current_vehicle" in cc and cc.current_vehicle != null:
@@ -1700,6 +1719,8 @@ func _gang_1(q: Dictionary) -> void:
 		# Так у него остаётся выбор — подъехать, посмотреть и уехать.
 		_ev_spawn(key, _ev_point[key] as Vector3, [5, 6, 7])
 		Dialogue.say("System", tr("Three units, no transponders. They are not ours."))
+	if not _reached(_ev_point[key]):
+		return
 	Q.report(String(q["event"]), 1)
 
 func _gang_2(q: Dictionary) -> void:
@@ -1737,6 +1758,8 @@ func _supply_1(q: Dictionary) -> void:
 			Dialogue.say("System", tr("Crate located. Movement around it — you are not the only one who got the signal."))
 		else:
 			Dialogue.say("System", tr("Crate located and quiet. Take it."))
+	if not _reached(_ev_point[key]):
+		return
 	Q.report(String(q["event"]), 1)
 
 func _supply_2(q: Dictionary) -> void:
@@ -1768,6 +1791,8 @@ func _defend_1(q: Dictionary) -> void:
 		_ev_ally = ally[0]
 		_ev_spawn(key, at + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
 		Dialogue.say("System", tr("Friendly unit under fire. It will not last alone."))
+	if not _reached(_ev_point[key]):
+		return
 	Q.report(String(q["event"]), 1)
 
 var _ev_ally: Node3D = null
@@ -1851,6 +1876,8 @@ func _camp_1(q: Dictionary) -> void:
 		_ev_spawn(key, at, [7, 8, 9], 1, _player())
 		_props.ensure("event_camp", G.Block.PACKER, at)
 		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it apart."))
+	if not _reached(_ev_point[key]):
+		return
 	Q.report(String(q["event"]), 1)
 
 func _camp_2(q: Dictionary) -> void:
