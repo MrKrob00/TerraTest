@@ -385,6 +385,14 @@ project: read it before claiming how anything works.
   a hole — a dark core was tried and read as the world breaking open. A POOL of `HOLE_POOL` (24):
   the oldest is reused, so a long burst costs 24 nodes and no more — measured, 40 hits left exactly
   24 — and nothing is made past `HOLE_DIST`.
+- THE MARK IS LIFTED OUT OF THE GRASS IN DEPTH, NOT IN SPACE (`glitch_card.gdshader` `depth_lift`,
+  set to `G.grass_lift()` + `HOLE_LIFT`). The grass IS the near LOD lifting meadow vertices by
+  `TerrainBiomes.grass_height` (0.3 m) along the normal, while the bullet's ray hits the flat
+  heightfield under it — so a mark 3 cm over the physics ground lay 27 cm under the drawn meadow.
+  The card's vertices slide toward the camera along their own view ray: on screen the mark stays
+  exactly where the shot landed, in depth it clears the lift (divided by the ray's angle to the
+  ground, or a grazing view would still bury it). Measured on the proving ground's full meadow:
+  six marks, none visible before, all six after.
 - A HARD LANDING SENDS A FLAT WAVE OF RED PIXELS ALONG THE GROUND (`BlockFX.ground_wave`, raised in
   `MachineBody.sense_ground`, so every enemy dropping in makes one too). The threshold is a fall
   HEIGHT (`LAND_WAVE_DROP`, 3 m) turned into a speed through the game's gravity, which is 24.5 m/s²,

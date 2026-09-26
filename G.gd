@@ -645,6 +645,18 @@ func near_active(p: Vector3, radius: float) -> bool:
 			return true
 	return false
 
+## How far the DRAWN ground stands above the ground physics sees, at most. The near LOD lifts
+## meadow vertices by `TerrainBiomes.grass_height` (that lift IS the grass), and a ray, a
+## bullet and `ground_y` all answer the flat heightfield underneath it.
+func grass_lift() -> float:
+	if _map_cache == null or not is_instance_valid(_map_cache):
+		_map_cache = get_node_or_null("/root/Main/map")
+	var b: Variant = _map_cache.get("biomes") if _map_cache != null else null
+	if b == null or not (b is Resource):
+		return 0.0
+	var h: Variant = (b as Resource).get("grass_height")
+	return float(h) if h != null else 0.0
+
 func ground_y(pos: Vector3, fallback: float) -> float:
 	if _map_cache == null or not is_instance_valid(_map_cache):
 		_map_cache = get_node_or_null("/root/Main/map")

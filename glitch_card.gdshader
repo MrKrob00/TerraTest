@@ -33,6 +33,11 @@ uniform bool lie_flat = false;
 // into a glyph (BlockFX.glyph) runs it up, so the pieces join into ONE shape instead of a column of
 // holes - the patch threshold and the per-card visibility threshold are what punch those holes.
 uniform float solid : hint_range(0.0, 1.0) = 0.0;
+// DEPTH LIFT, metres along the card's own normal: the vertex slides TOWARD THE CAMERA along its view
+// ray, so on screen it stays exactly where it was while in depth it clears whatever stands that
+// high above it. A shot's mark lies on the PHYSICS ground, and the drawn meadow is lifted above
+// that by the grass (G.grass_lift, 0.3 m) - without this the mark was buried under the grass.
+uniform float depth_lift = 0.0;
 
 float h1(float n) { return fract(sin(n * 12.9898 + seed * 78.233) * 43758.5453); }
 
@@ -77,6 +82,15 @@ void vertex() {
 				INV_VIEW_MATRIX[1] * length(m[1].xyz),
 				INV_VIEW_MATRIX[2] * length(m[2].xyz),
 				m[3]);
+	}
+	if (depth_lift > 0.0) {
+		vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+		float d = length(vp.xyz);
+		vec3 n = normalize((MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+		// At a grazing view the ray has to travel further to rise the same height off the ground.
+		float pull = depth_lift / max(abs(dot(vp.xyz / d, n)), 0.25);
+		vp.xyz *= max(d - pull, 0.05) / d;
+		POSITION = PROJECTION_MATRIX * vp;
 	}
 }
 

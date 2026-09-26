@@ -1003,6 +1003,7 @@ static func ground_glitch(anchor: Node, pos: Vector3, normal: Vector3) -> void:
 	mi.visible = true
 	var mat := mi.material_override as ShaderMaterial
 	mat.set_shader_parameter("seed", randf() * 100.0)
+	mat.set_shader_parameter("depth_lift", G.grass_lift() + HOLE_LIFT)
 	mat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
 	mat.set_shader_parameter("fill_threshold", randf_range(0.30, 0.46))
 	# From a third in: the card shader spends 0..0.5 coming up, and a hit is at full strength at once.
