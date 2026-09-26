@@ -1282,6 +1282,13 @@ project: read it before claiming how anything works.
   is `pow(smoothstep(begin, end, z), curve) * density`, so the default 0.01 with `fog_mode` Depth
   gives one per cent fog and looks like fog that does not work. It did NOT buy frames by hiding
   the far edge, which was the hope; it cost five to seven.
+- A HOLE IN THE GROUND SHOWS THE SKY'S LOWER HALF, so that half is DARK (`ground_bottom_color` /
+  `ground_horizon_color` of the `ProceduralSkyMaterial` in both `node_3d.tscn` and `menu.tscn`).
+  A missing chunk or an LOD crack opens straight onto it, and at 0.42 / 0.6 it drew a pale
+  blue-grey patch in the middle of the terrain. Measured on the real driver through AgX at
+  contrast 1.7, looking 27 deg down: bottom 0.42 reads 0.22 on screen, 0.2 reads 0.04, and 0.1 or
+  less crushes to pure black, which reads as a torn world. The terrain colour did not move
+  (0.46/0.27/0.17 both ways): the sky's ambient on an up-facing surface comes from the upper half.
 - REAL LIGHT IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`). Besides the directional
   sun those are the only `OmniLight3D` in the game, and they are REUSED: a new flash takes the
   oldest lamp, so a firefight costs six nodes rather than one per shot. Shadows are off on all of
