@@ -647,7 +647,9 @@ project: read it before claiming how anything works.
   tower refilled 0 → 144 in 4 s (3 × `RATE`), and 0 → 0 once the stations were gone; a station
   turned 89° onto the player and fired 36 times from 25 m.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
-  player: constant seed, cleared stays cleared, saves store indices only.
+  player: constant seed, cleared stays cleared, saves store indices only. A cleared point drops
+  NO INGOTS: what it leaves is what its build leaves (`scatter_blocks` at `LOOT_SURVIVE`), like
+  any machine. The old three-to-six ingots of the biome's metal on top were taken out.
 
 ### Terrain (LiteTerrain, third-party addon we patched)
 
