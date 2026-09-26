@@ -605,6 +605,14 @@ project: read it before claiming how anything works.
   MIDDLE of the ring it is given — that was written for the battery quest, where the errand has
   to be a trip — so a miner asks a NARROW ring first and only widens when the neighbourhood is
   empty; with one wide ring it drove 190 m past nearer veins, measured.
+- EVERY TURRET CARRIES A NEAR BARREL AND A FAR ONE (`blocks._define_layout`, presets 11 and 13-17).
+  Two of a kind left each tower a hole: two guns had nothing for a machine pressed against them,
+  two shotguns nothing past eighteen metres, and a mortar cannot hit inside twenty at all. Near:
+  shotgun, rocket (18 m). Far: gun (60), laser (70), mortar (20-160). The outpost does not turn, so
+  its near barrel faces BACK — at 0 it looked into its own mast and fired nothing at a machine
+  behind it (measured: 0 shots, now 19). NOTE THE CEILING: a base opens fire only on what it SEES,
+  and sight is `detection_radius`, 40 m for every enemy — so a far barrel on a base works out to
+  40 m unless the player shoots first. Measured the same on the old two-gun towers.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
   player: constant seed, cleared stays cleared, saves store indices only.
 
