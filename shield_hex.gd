@@ -80,12 +80,13 @@ static func build(radius: float, sub: int) -> Dictionary:
 		# merged dome draws a NEIGHBOUR'S plate from this list - it must gate on the same value.
 		rnds.append(roundf(col.a * 255.0) / 255.0)
 		var n := ring.size()
+		var idx: float = float(centers.size() - 1)   # UV2.x: which plate - rows of a merged hull's table
 		for k in n:
 			var p0: Vector3 = ring[k]
 			var p1: Vector3 = ring[(k + 1) % n]
-			_vertex(st, col, c, UV_CENTER, radius)
-			_vertex(st, col, p0, UV_EDGE_A, radius)
-			_vertex(st, col, p1, UV_EDGE_B, radius)
+			_vertex(st, col, c, UV_CENTER, radius, idx)
+			_vertex(st, col, p0, UV_EDGE_A, radius, idx)
+			_vertex(st, col, p1, UV_EDGE_B, radius, idx)
 	var mesh := st.commit()
 	return {"mesh": mesh, "centers": centers, "rnds": rnds}
 
@@ -154,8 +155,9 @@ static func _tangent(c: Vector3, p: Vector3) -> Vector3:
 		d = c.cross(Vector3.UP if absf(c.y) < 0.9 else Vector3.RIGHT)
 	return d.normalized()
 
-static func _vertex(st: SurfaceTool, col: Color, dir: Vector3, uv: Vector2, radius: float) -> void:
+static func _vertex(st: SurfaceTool, col: Color, dir: Vector3, uv: Vector2, radius: float, idx: float) -> void:
 	st.set_color(col)
 	st.set_uv(uv)
+	st.set_uv2(Vector2(idx, 0.0))
 	st.set_normal(dir)              # нормаль сферы, а не грани: френель обязан быть гладким
 	st.add_vertex(dir * radius)

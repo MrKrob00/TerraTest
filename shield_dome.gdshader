@@ -72,20 +72,15 @@ uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92
 // shield.gd fills it (`_update_cuts`); CUT_MAX there must match the array size.
 uniform vec4 cut[4];
 uniform int cut_n = 0;
-// ONE LATTICE ACROSS THE JOIN. Two domes cut against each other used to meet at a line with each
-// plate sliced through; now, within `seam_zone` metres of the join, the plate is chosen from ONE set
-// - the surviving plates of every merged dome near the join (shield.gd `_update_seam`: centre in this
-// dome's model space, and its own random number) - as the nearest centre. So a hexagon that starts
-// on one sphere carries on over the other, with one edge where the two centres are equidistant.
-// Outside the band the baked lattice stands; the band is wide enough that the plate a fragment
-// belongs to there is always in the set, so the two agree at its border.
-uniform vec4  seam_c[96];
-uniform int   seam_n = 0;
-uniform float seam_zone = 1.0;
-// A baked plate whose CENTRE is this close to a join was given up to the shared rows (shield.gd
-// `_seam_clear`); every fragment of it takes the shared lattice too, or the part of it reaching past
-// the band would still be drawn as a sliver of the old plate.
-uniform float seam_clear = 0.0;
+// ONE LATTICE OVER A MERGED HULL. When domes are merged, EVERY fragment takes its plate as the
+// nearest centre of one shared set (shield.gd `_solve_seam`: all the domes' plates plus centres
+// relaxed into a honeycomb along the joins), instead of the baked lattice with a band of other
+// cells at the join - the two never agreed at the band's edge, and that disagreement was the
+// slivers and loose edges. So a fragment does not scan the whole set: `seam_tex` holds, for each of
+// this mesh's plates (row = UV2.x), the up-to-16 centres near it (xyz in model space, w = random
+// number, w < 0 ends the row). The nearest centre to any point of a plate is always among them.
+uniform bool merged = false;
+uniform sampler2D seam_tex : filter_nearest;
 uniform float radius = 4.0;
 
 varying vec3 v_cell;
@@ -94,12 +89,14 @@ varying vec2 v_uv;
 varying vec3 v_wpos;
 varying vec3 v_wout;
 varying vec3 v_lpos;
+varying flat float v_idx;
 
 void vertex() {
 	v_cell = COLOR.rgb * 2.0 - 1.0;
 	v_rnd = COLOR.a;
 	v_uv = UV;
 	v_lpos = VERTEX;
+	v_idx = UV2.x;
 	// Наружное направление и мировая точка считаются здесь САМИ. Встроенный NORMAL приходит
 	// вывернутым (у меша, собранного кодом, обход вершин обратный, и движок доворачивает
 	// нормаль по своему соглашению) — измерено: ближняя полусфера уходила в множитель дальней.
@@ -108,61 +105,58 @@ void vertex() {
 }
 
 void fragment() {
-	float edge_d = 1e3;
-	float cell_d = 1e3;
-	vec3 own_c = normalize(v_cell) * radius;
 	for (int i = 0; i < 4; i++) {
 		if (i >= cut_n) {
 			break;
 		}
 		vec3 d = v_lpos - cut[i].xyz;
-		float dd = dot(d, d);
-		if (dd < cut[i].w) {
+		if (dot(d, d) < cut[i].w) {
 			discard;
 		}
-		// Distance to the JOIN: the circle this sphere (at the origin, `radius`) shares with the
-		// cutting one. Not to the cutting sphere - with domes two cells apart almost all of a dome
-		// lies near the other sphere, and the band swallowed the whole lattice.
-		vec3 ax = normalize(cut[i].xyz);
-		float half_d = 0.5 * length(cut[i].xyz);
-		float rho = sqrt(max(radius * radius - half_d * half_d, 0.0));
-		float h = dot(v_lpos, ax) - half_d;
-		float q = length(v_lpos - ax * dot(v_lpos, ax));
-		edge_d = min(edge_d, sqrt(h * h + (q - rho) * (q - rho)));
-		float hc = dot(own_c, ax) - half_d;
-		float qc = length(own_c - ax * dot(own_c, ax));
-		cell_d = min(cell_d, sqrt(hc * hc + (qc - rho) * (qc - rho)));
 	}
-	// The plate this fragment belongs to: the baked one, or on the join the nearest of the shared set.
-	vec3 cell_pos = own_c;
+	// The plate this fragment belongs to: the baked one, or on a merged hull the nearest centre.
+	vec3 cell_pos = normalize(v_cell) * radius;
 	float rnd = v_rnd;
 	float t = v_uv.x;
 	float edge_pos = min(v_uv.y, 1.0 - v_uv.y);
-	if (seam_n > 1 && (edge_d < seam_zone || cell_d < seam_clear)) {
+	float corner_v = -1.0;
+	if (merged) {
+		int row = int(v_idx + 0.5);
 		float d1 = 1e9;
 		float d2 = 1e9;
+		float d3 = 1e9;
 		vec4 c1 = vec4(0.0);
 		vec4 c2 = vec4(0.0);
-		for (int i = 0; i < 96; i++) {
-			if (i >= seam_n) {
+		vec4 c3 = vec4(0.0);
+		for (int k = 0; k < 16; k++) {
+			vec4 c = texelFetch(seam_tex, ivec2(k, row), 0);
+			if (c.w < 0.0) {
 				break;
 			}
-			vec3 dv = v_lpos - seam_c[i].xyz;
+			vec3 dv = v_lpos - c.xyz;
 			float dd = dot(dv, dv);
 			if (dd < d1) {
+				d3 = d2; c3 = c2;
 				d2 = d1; c2 = c1;
-				d1 = dd; c1 = seam_c[i];
+				d1 = dd; c1 = c;
 			} else if (dd < d2) {
-				d2 = dd; c2 = seam_c[i];
+				d3 = d2; c3 = c2;
+				d2 = dd; c2 = c;
+			} else if (dd < d3) {
+				d3 = dd; c3 = c;
 			}
 		}
 		cell_pos = c1.xyz;
 		rnd = c1.w;
-		// Distance to the bisector of the two nearest centres, against the half-gap: 0 at a centre,
-		// 1 on the edge - the same scale the baked UV.x carries, so the seam width matches.
-		float gap = max(length(c2.xyz - c1.xyz), 0.001);
-		t = clamp(1.0 - ((d2 - d1) / (2.0 * gap)) / (0.5 * gap), 0.0, 1.0);
-		edge_pos = 0.5;                   // no corner dots on the join: they belong to baked corners
+		// Distance to the bisector of the nearest pair against the half-gap: 0 at a centre, 1 on
+		// the edge - the scale the baked UV.x carries, so the seam width matches a lone dome's.
+		float g2 = max(length(c2.xyz - c1.xyz), 0.001);
+		float g3 = max(length(c3.xyz - c1.xyz), 0.001);
+		float t2 = clamp(1.0 - ((d2 - d1) / (2.0 * g2)) / (0.5 * g2), 0.0, 1.0);
+		float t3 = clamp(1.0 - ((d3 - d1) / (2.0 * g3)) / (0.5 * g3), 0.0, 1.0);
+		t = max(t2, t3);
+		// A corner is where the third centre is as close as the second: both edges are near.
+		corner_v = min(t2, t3);
 	}
 
 	// ПОЛОСА С ПЛАТО, А НЕ СКЛОН. smoothstep до самой единицы достигает её ровно НА ребре, то
@@ -170,7 +164,9 @@ void fragment() {
 	// тусклой при любых множителях. Здесь полоса выходит на полную яркость заранее.
 	float seam = smoothstep(1.0 - line_w, 1.0 - line_w + 0.05, t);
 	float body = 1.0 - seam;
-	float corner = smoothstep(corner_w, 0.0, edge_pos) * smoothstep(1.0 - line_w * 2.0, 1.0, t);
+	float corner = corner_v >= 0.0
+			? smoothstep(1.0 - line_w * 1.6, 1.0, corner_v)
+			: smoothstep(corner_w, 0.0, edge_pos) * smoothstep(1.0 - line_w * 2.0, 1.0, t);
 
 	// ЧТО СТОИТ, А ЧТО ОСЫПАЛОСЬ. Близость к попаданию — скалярное произведение центров; внутри
 	// пластины центр постоянен, так что число одно на всю пластину и края не рвутся.
