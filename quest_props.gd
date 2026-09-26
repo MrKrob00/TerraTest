@@ -48,6 +48,24 @@ func _rescan(quest_id: String) -> void:
 		if c is Node3D and c.has_meta(META) and String(c.get_meta(META)) == quest_id:
 			_register(quest_id, c as Node3D)
 
+## THE QUEST IS OVER (done or abandoned): its items stop being its items. What still lies loose
+## is removed, and what the player took loses the tag. Before this an event's crate outlived the
+## event: an abandoned Supply Drop left its block in the world tagged `event_supply`, the next one
+## dropped another, and taking the nearest never closed the quest, because the old one still read
+## as "the crate is still lying there". A taken block kept its tag too, and one shot off a machine
+## later was rescanned as that quest's crate.
+func release(quest_id: String) -> void:
+	_rescan(quest_id)
+	for n in _props.get(quest_id, []):
+		if not is_instance_valid(n):
+			continue
+		var p: Node = (n as Node).get_parent()
+		if p != null and p.name == "objects":
+			(n as Node).queue_free()
+		elif (n as Node).has_meta(META):
+			(n as Node).remove_meta(META)
+	_props.erase(quest_id)
+
 ## ГАРАНТИРОВАТЬ предмет: лежит в мире — берём его, нет — кладём новый. Именно этого и просит
 ## правило «если квестового предмета нет, он спавнится заново»: перезаход, случайная гибель,
 ## провал под рельеф — причина не важна, важно, что цель у квеста снова есть.

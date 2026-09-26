@@ -529,6 +529,14 @@ func preset_for_request(preset: int) -> int:
 	# step the player can actually take, and there the variant is rolled.
 	return preset if tier <= cap else _variant(cap)
 
+## A build `below` steps under the ceiling the player can take, never under the first step. For
+## an encounter that sizes itself by HEADCOUNT rather than by name: one machine at the ceiling, two
+## a step lower (Supply Drop's trap).
+func preset_below_cap(below: int) -> int:
+	if PRESET_TIERS.is_empty():
+		return 0
+	return _variant(maxi(_tier_cap(_player()) - maxi(below, 0), 0))
+
 func _pick_preset(player: Node3D) -> int:
 	if PRESET_TIERS.is_empty():
 		return 0

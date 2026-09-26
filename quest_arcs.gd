@@ -1544,6 +1544,7 @@ func _event_cooldown() -> float:
 var _ev_point: Dictionary = {}   # id события → Vector3, куда ехать
 var _ev_mobs: Dictionary = {}    # id события → Array участников
 var _ev_cool: Dictionary = {}    # id события → сколько ещё остывать
+var _ev_orb: Dictionary = {}     # event key -> reward orb hanging over its point (reward_orb.gd)
 
 ## Куда ведёт компас по этому событию. ОДНА точка входа на все события с координатами:
 ## разбирать их по одному в компасе значило бы вспоминать про него при каждом новом.
@@ -1658,6 +1659,11 @@ func _ev_clear(key: String) -> void:
 			(m as Node).queue_free()
 	_ev_mobs.erase(key)
 	_ev_point.erase(key)
+	var orb = _ev_orb.get(key)
+	if is_instance_valid(orb):
+		(orb as Node).queue_free()
+	_ev_orb.erase(key)
+	_props.release("event_" + key)
 
 ## Все участники события уничтожены?
 func _ev_all_dead(key: String) -> bool:
@@ -1676,6 +1682,8 @@ func _ev_done(q: Dictionary, key: String) -> void:
 	_ev_cool[String(q["id"])] = _event_cooldown()
 	_ev_mobs.erase(key)
 	_ev_point.erase(key)
+	_ev_orb.erase(key)                  # an opened orb burns out and frees itself
+	_props.release(String(q["id"]))
 
 ## Остывание всех событий разом (зовётся из _process рядом с дуэльным).
 func _ev_cooldowns(delta: float) -> void:
@@ -1736,10 +1744,20 @@ func _gang_2(q: Dictionary) -> void:
 		return
 	_ev_done(q, key)
 
-# ── «Supply Drop»: ящик снабжения, иногда с засадой ─────────────────────────
-## Что бывает в ящике. Список короткий и намеренно полезный: событие должно быть поводом
-## съездить, а не лотереей с мусором.
+# ── «Supply Drop»: a reward orb, half the time bait ─────────────────────────
+## The reward is not a crate lying in the grass but an ORB of glitch cards over the point
+## (reward_orb.gd): it opens after HOLD_TIME within HOLD_DIST and the reward drops out of it. Half
+## the drops are BAIT: the ambush arrives when the player does (not before - it is a trap, not a
+## camp), and the orb stays shut until it is dead. One enemy at the ceiling the player can take, or
+## two a step below it (EnemySpawner.preset_below_cap). The bait pays one block more, because it
+## cost a fight.
 const SUPPLY_LOOT := [G.Block.BATTERY, G.Block.SOLAR, G.Block.BELT, G.Block.ARMOR2, G.Block.REGEN]
+const SUPPLY_BLOCKS := 1
+const SUPPLY_TRAP_BLOCKS := 2
+const REWARD_ORB := preload("res://reward_orb.gd")
+
+var _supply_trap: bool = false
+var _supply_opened: bool = false
 
 func _supply_1(q: Dictionary) -> void:
 	var key := "supply"
@@ -1747,29 +1765,72 @@ func _supply_1(q: Dictionary) -> void:
 		return
 	if _ev_get_point(key) == null:
 		return
-	if not _ev_mobs.has(key):
-		_ev_mobs[key] = []                      # событие началось, даже если засады не будет
-		var at: Vector3 = _ev_point[key] as Vector3
-		_props.ensure("event_supply", int(SUPPLY_LOOT.pick_random()), at)
-		# ЗАСАДА через раз. Всегда — и груз перестаёт быть грузом, превращаясь в бой;
-		# никогда — и ехать за ним нечем рисковать.
-		if randf() < 0.5:
-			_ev_spawn(key, at, [6, 7], 1, _player())
-			Dialogue.say("System", tr("Crate located. Movement around it — you are not the only one who got the signal."))
-		else:
-			Dialogue.say("System", tr("Crate located and quiet. Take it."))
-	if not _reached(_ev_point[key]):
+	var at: Vector3 = _ev_point[key] as Vector3
+	if not is_instance_valid(_ev_orb.get(key)):
+		_supply_trap = randf() < 0.5
+		_supply_opened = false
+		_supply_orb(key, at)
+		Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
+	if not _reached(at):
 		return
+	if _supply_trap and not _ev_mobs.has(key):
+		var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+		var two: bool = randf() < 0.5
+		var presets: Array = []
+		for i in (2 if two else 1):
+			presets.append(int(sp.preset_below_cap(1 if two else 0)) if sp != null \
+					and sp.has_method("preset_below_cap") else 6)
+		_ev_spawn(key, at, presets, 1, _player())
+		Dialogue.say("System", tr("It was bait. Contacts dropping on the drop."))
+	elif not _ev_mobs.has(key):
+		_ev_mobs[key] = []                    # nobody guards it: "all dead" is true from the start
 	Q.report(String(q["event"]), 1)
+
+func _supply_orb(key: String, at: Vector3) -> void:
+	var host: Node = get_tree().current_scene
+	if host == null:
+		return
+	var orb: Node3D = REWARD_ORB.new()
+	host.add_child(orb)
+	orb.setup(at)
+	orb.opened.connect(_on_supply_opened)
+	_ev_orb[key] = orb
+
+func _on_supply_opened(at: Vector3) -> void:
+	for i in (SUPPLY_TRAP_BLOCKS if _supply_trap else SUPPLY_BLOCKS):
+		_drop_reward(int(SUPPLY_LOOT.pick_random()), at)
+	_supply_opened = true
+
+## A reward block falling out of the air at `at`: an ordinary loose block, the player's to keep.
+func _drop_reward(bt: int, at: Vector3) -> void:
+	var scene: PackedScene = G.get_scene(bt)
+	var objects: Node = get_node_or_null("/root/Main/objects")
+	if scene == null or objects == null:
+		return
+	var node: Node3D = scene.instantiate()
+	objects.add_child(node)
+	node.global_position = at + Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
+	if node is RigidBody3D:
+		(node as RigidBody3D).freeze = false
+	BlockFX.play(node, false)
 
 func _supply_2(q: Dictionary) -> void:
 	var key := "supply"
 	if _ev_abandoned(q, key):
 		return
-	# Победа — ГРУЗ У ИГРОКА, а не «убей всех»: засада тут помеха, а не цель.
-	if _props.position_for("event_supply") != null:
+	if _supply_opened:
+		_supply_opened = false
+		_ev_done(q, key)
 		return
-	_ev_done(q, key)
+	var orb = _ev_orb.get(key)
+	# STATE LOST (a reload: events are not saved): back to stage 1, which rolls a new drop and, if
+	# it is bait, springs it when the player arrives - an ambush spawned here would already be
+	# waiting at a point the player has not been told about yet.
+	if not is_instance_valid(orb) or not _ev_mobs.has(key):
+		_ev_clear(key)
+		Q.reset_quest(String(q["id"]))
+		return
+	(orb as Node).set("locked", _supply_trap and not _ev_all_dead(key))
 
 # ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
 

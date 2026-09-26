@@ -786,6 +786,24 @@ project: read it before claiming how anything works.
   three seconds before the first one landed. Nothing is handed out while the player is farther than
   `ORBIT_SEEN`: the orbit is the point, and nobody watches it from across the map. Measured: one
   copy the whole time, circling at 4.2 m, landing 2.7 m (panel) and 3.5 m (regen) from the base.
+- **SUPPLY DROP'S REWARD IS AN ORB, NOT A CRATE** (`reward_orb.gd`): a 1 m sphere of the glitch cards a
+  block appears with, `HOVER` 3 m over the point, every card living its own short cycle and reborn
+  elsewhere in the sphere, so it never stands still. It opens by being stood next to —
+  `HOLD_TIME` 3 s within `HOLD_DIST` 10 m — and the hold IS its progress bar: fewer cards are reborn
+  as it runs, walking off fills it back in. Then it burns out and the reward drops out of it as
+  ordinary loose blocks. Half the drops are BAIT: the ambush arrives WHEN THE PLAYER DOES (it is a
+  trap, not a camp) — one machine at the ceiling the player can take or two a step below
+  (`EnemySpawner.preset_below_cap`) — and the orb stays `locked` while they live; bait pays
+  `SUPPLY_TRAP_BLOCKS` against `SUPPLY_BLOCKS`. Stage 2 without its orb (a reload: events are not
+  saved) goes back to stage 1 rather than springing an ambush at a point the player was never
+  shown. Measured on the engine: clean drop — no enemies, opened 3 s after arriving, 1 block, quest
+  closed; bait — no enemies until arrival, 1 on arrival, 0 progress while it lived, opened after,
+  2 blocks; lost orb — back to stage 1 with a new one.
+- **A QUEST'S ITEMS END WITH THE QUEST** (`QuestProps.release`, called from `_ev_done` and `_ev_clear`):
+  what still lies loose is removed, what the player took loses its tag. An abandoned event used to
+  leave its crate in the world, still tagged: the next one dropped a second, and taking the nearest
+  never closed the quest, because the old one still read as "not taken yet". A taken block kept its
+  tag too, and when shot off a machine later it was rescanned as that quest's crate.
 - A marker without a target is not drawn: kill quests look for a `story` machine first, then the
   nearest enemy within `KILL_MARK_DIST`. While a participant lives the marker follows it, not the
   point.

@@ -1732,18 +1732,6 @@
 		"ru": "Доехать до сброса",
 		"uk": "Доїхати до скидання"
 	},
-	"A crate came down intact. Whether anyone else got the signal is the interesting part.": {
-		"ru": "Ящик сел целым. Интереснее другое: кто ещё поймал сигнал.",
-		"uk": "Ящик сів цілим. Цікавіше інше: хто ще спіймав сигнал."
-	},
-	"Take the crate": {
-		"ru": "Забрать ящик",
-		"uk": "Забрати ящик"
-	},
-	"The crate is the objective. Whatever is guarding it is only in the way.": {
-		"ru": "Цель — ящик. Всё, что его стережёт, просто мешает.",
-		"uk": "Ціль — ящик. Усе, що його стереже, просто заважає."
-	},
 	"Cover the Convoy": {
 		"ru": "Прикрыть своих",
 		"uk": "Прикрити своїх"
@@ -1887,14 +1875,6 @@
 	"Three units, no transponders. They are not ours.": {
 		"ru": "Три машины, ответчиков нет. Они не наши.",
 		"uk": "Три машини, відповідачів немає. Вони не наші."
-	},
-	"Crate located. Movement around it — you are not the only one who got the signal.": {
-		"ru": "Ящик найден. Вокруг движение — сигнал поймал не ты один.",
-		"uk": "Ящик знайдено. Навколо рух — сигнал спіймав не ти один."
-	},
-	"Crate located and quiet. Take it.": {
-		"ru": "Ящик найден, вокруг тихо. Забирай.",
-		"uk": "Ящик знайдено, навколо тихо. Забирай."
 	},
 	"Friendly unit under fire. It will not last alone.": {
 		"ru": "Своя машина под огнём. Одна она не выстоит.",
@@ -2227,5 +2207,25 @@
 	"no power": {
 		"ru": "без энергетики",
 		"uk": "без енергетики"
+	},
+	"Something came down intact. Whether anyone else got the signal is the interesting part.": {
+		"ru": "Что-то село целым. Интереснее другое: кто ещё поймал сигнал.",
+		"uk": "Щось сіло цілим. Цікавіше інше: хто ще спіймав сигнал."
+	},
+	"Stay by the drop until it opens": {
+		"ru": "Держись у сброса, пока он не откроется",
+		"uk": "Тримайся біля скидання, поки воно не відкриється"
+	},
+	"Keep within ten metres and it comes apart into whatever it holds. If it was bait, it stays shut while the bait's owners live.": {
+		"ru": "Держись в десяти метрах — и он рассыплется в то, что держит. Если это приманка, он не откроется, пока живы её хозяева.",
+		"uk": "Тримайся в межах десяти метрів — і воно розсиплеться на те, що тримає. Якщо це приманка, воно не відкриється, поки живі її господарі."
+	},
+	"Something came down intact out there. Get close and it opens.": {
+		"ru": "Там что-то село целым. Подъедешь ближе — откроется.",
+		"uk": "Там щось сіло цілим. Під'їдеш ближче — відкриється."
+	},
+	"It was bait. Contacts dropping on the drop.": {
+		"ru": "Это была приманка. На сброс падают контакты.",
+		"uk": "Це була приманка. На скидання падають контакти."
 	}
 }
