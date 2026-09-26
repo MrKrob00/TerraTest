@@ -1157,6 +1157,81 @@ func _reachable_cells() -> Dictionary:
 			queue.append(n)
 	return seen
 
+## THE PART OF A SAVED LAYOUT THAT `pool` CAN BUILD AND THAT HOLDS TOGETHER FROM THE CORE.
+## `pool` is block type -> count; the returned entries are a subset of `layout`, in its format.
+##
+## Walks outward from the core (cabin or stationary block) along REAL joins, the same test
+## `_reachable_cells` uses, and only THROUGH blocks it takes: a block is taken while the pool still
+## has one, and whatever hangs only off a block that was not taken is never reached, so a gun is
+## never placed with nothing under it. Nearest to the core is taken first, so a shortage costs the
+## outer blocks, not the hull.
+##
+## Runs on a grid OUTSIDE the tree with one uninstanced scene per entry for its faces: joins are
+## decided by each block's own connect mask turned by its rotation, and without a node every
+## neighbour would count as joined (see _cells_linked).
+static func buildable_subset(layout: Array, pool: Dictionary) -> Array:
+	var g: Node = load("res://blocks.gd").new()
+	g._init_map()
+	var entry_at: Dictionary = {}                 # anchor key -> entry
+	for e in layout:
+		var bt: int = G.block_from_key(e["block"])
+		var x: int = int(e["x"]); var y: int = int(e["y"]); var z: int = int(e["z"])
+		var rot: Vector3 = g._read_rot(e)
+		if not g.set_block(x, y, z, bt, rot):
+			continue
+		var key := "%d,%d,%d" % [x, y, z]
+		entry_at[key] = e
+		var scene: PackedScene = G.get_scene(bt)
+		if scene != null:
+			var proto: Node = scene.instantiate()
+			if proto is Node3D:
+				(proto as Node3D).rotation = rot
+			g.node_map[key] = proto
+	var left: Dictionary = pool.duplicate()
+	var taken: Dictionary = {}                    # anchor key -> true (taken) / false (skipped)
+	var queue: Array = []
+	var seen: Dictionary = {}
+	for key in entry_at:
+		var bt: int = G.block_from_key(entry_at[key]["block"])
+		if bt == G.Block.CABIN or G.is_stationary(bt):
+			var p: PackedStringArray = String(key).split(",")
+			queue.append(Vector3i(int(p[0]), int(p[1]), int(p[2])))
+			seen[key] = true
+	var head: int = 0
+	while head < queue.size():
+		var c: Vector3i = queue[head]
+		head += 1
+		var anchor: String = g.cell_owner.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z])
+		if not taken.has(anchor):
+			var bt: int = G.block_from_key(entry_at[anchor]["block"])
+			taken[anchor] = int(left.get(bt, 0)) > 0
+			if taken[anchor]:
+				left[bt] = int(left[bt]) - 1
+		if not taken[anchor]:
+			continue                              # not built: nothing is reached through it
+		var a: Node = g.find_block(c.x, c.y, c.z)
+		for d in BFS_DIRS:
+			var n: Vector3i = c + d
+			if not g._in_bounds(n.x, n.y, n.z) or g.map[n.x][n.y][n.z] == G.Block.EMPTY:
+				continue
+			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
+			if seen.has(nk):
+				continue
+			if not g._cells_linked(a, g.find_block(n.x, n.y, n.z), c, n, d):
+				continue
+			seen[nk] = true
+			queue.append(n)
+	var out: Array = []
+	for e in layout:
+		var key := "%d,%d,%d" % [int(e["x"]), int(e["y"]), int(e["z"])]
+		if taken.get(key, false) == true:
+			out.append(e)
+	for key in g.node_map:
+		if is_instance_valid(g.node_map[key]):
+			(g.node_map[key] as Node).free()
+	g.free()
+	return out
+
 ## Is there a REAL join between neighbouring CELLS ca and cb along d?
 ##
 ## Cells are asked, not blocks: on a block larger than one cell a side consists of several cells, and
