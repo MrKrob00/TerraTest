@@ -1031,6 +1031,12 @@ project: read it before claiming how anything works.
   world and the save together.
 - Deleting a world lives in the MENU, next to the slots: hold, then a question that names the slot.
   The in-game settings have no wipe button: one tap, irreversible, among sliders.
+- **SAVED BUILDS ARE ONE FILE FOR THE WHOLE GAME (`G.BUILDS_PATH`, `user://vehicle_builds.json`),
+  not per slot.** A build is a drawing of a machine and belongs to the player, not to a world: in
+  the slot folder a new world, a reset or the proving ground started with none. It is read once a
+  run (`_builds_loaded`); a reset or a deleted slot leaves it alone. The first run with the shared
+  file merges every slot's old `vehicle_builds.json` into it (`_merge_slot_builds`, a clashing name
+  gets the slot's number), and those files stay where they lay.
 - Autoloads must be told the slot changed: `G.use_slot` calls `Q.reload_from_progress()`, otherwise
   a reset slot opens with the story already finished.
 - Death holds a screen for `DEATH_PAUSE` before the hand-over (`hud.show_death`): the camera stays
@@ -1111,6 +1117,14 @@ project: read it before claiming how anything works.
   points to hold a 40-point portrait on the left, and `TCOL_W` grew with it so the gap the link
   lines run through stayed the same. `Icons.baked` rebuilds whichever tab is open: the bake finishes
   seconds after launch and the player can be in the garage before it does.
+- A SAVED BUILD IS SHOWN BY ITS MACHINE (`Icons.get_build_thumb(layout)`): the layout is put
+  together the way `blocks.spawn_block` places blocks (anchor cell, entry rotation via the static
+  `blocks._read_rot`), in the SAME studio as the portraits (`icon_baker._make_studio` — one light,
+  one exposure), and photographed three-quarters from the FRONT (a machine drives along -Z). Files
+  in `user://build_thumbs` are named by the layout's CONTENT (`build_key`, normalised so ints from a
+  live machine and floats back from JSON give one key): a rename keeps the picture, an edit gets a
+  new one. Baked when first asked for, one at a time after the portraits; `Icons.build_baked`
+  redraws the builds tab, whose rows are taller (`BUILD_ROW_H`) to give the picture room.
 - The single door out is `Icons.get_icon(bt)`, and it returns NULL until the bake finishes. An icon
   is decoration, never a condition for the shop to work: the caller draws as it drew, and
   `Icons.baked` tells an open panel to redraw.

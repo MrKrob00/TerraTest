@@ -92,8 +92,30 @@ func _block_list() -> Array:
 func _bake_all() -> void:
 	_baking = true
 	DirAccess.make_dir_recursive_absolute(DIR)
+	var st: Array = _make_studio(Vector2i(ICON_PX, ICON_PX))
+	var sv: SubViewport = st[0]
+	var cam: Camera3D = st[1]
+	var n := 0
+	for bt in _block_list():
+		await _bake_one(sv, cam, int(bt))
+		n += 1
+		if n % PER_FRAME == 0:
+			await get_tree().process_frame
+	sv.queue_free()
+	var f := FileAccess.open(STAMP, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_stamp_now()))
+		f.close()
+	_baking = false
+	_ready_done = true
+	baked.emit()
+
+## THE PHOTO STUDIO, one for block portraits and machine pictures alike: the light, the exposure
+## and the tone mapping are the ones the portraits were tuned with (see the notes inside), and a
+## second copy for builds would drift from them at the first touch.
+func _make_studio(px: Vector2i) -> Array:
 	var sv := SubViewport.new()
-	sv.size = Vector2i(ICON_PX, ICON_PX)
+	sv.size = px
 	sv.transparent_bg = true
 	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	# Печь НЕ ДОЛЖНА ловить ввод и НЕ должна платить за физику: это фотостудия, а не мир.
@@ -140,20 +162,7 @@ func _bake_all() -> void:
 	fill.light_intensity_lux = FILL_LUX
 	sv.add_child(fill)
 
-	var n := 0
-	for bt in _block_list():
-		await _bake_one(sv, cam, int(bt))
-		n += 1
-		if n % PER_FRAME == 0:
-			await get_tree().process_frame
-	sv.queue_free()
-	var f := FileAccess.open(STAMP, FileAccess.WRITE)
-	if f != null:
-		f.store_string(JSON.stringify(_stamp_now()))
-		f.close()
-	_baking = false
-	_ready_done = true
-	baked.emit()
+	return [sv, cam]
 
 func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	var scn: PackedScene = G.get_scene(bt)
@@ -197,6 +206,123 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	# бы не тому блоку, а перенумерование enum это правка, которую никто не заметит.
 	img.save_png("%s/%s.png" % [DIR, G.block_key(bt)])
 	_cache.erase(bt)
+	model.queue_free()
+
+# ── Saved builds: a picture of the whole machine ────────────────────────────
+## A build is shown by its MACHINE, assembled from the layout in the same studio as the portraits
+## and photographed three-quarters from the FRONT (a machine drives along -Z). Files are named by
+## the layout's CONTENT (`build_key`), not by the build's name: a rename keeps its picture, an
+## edited build gets a new one, and the same build saved in two slots is one file. Baked when first
+## asked for, one build at a time, and `build_baked` tells an open list to redraw.
+signal build_baked
+const BUILD_DIR := "user://build_thumbs"
+const BUILD_PX := Vector2i(240, 160)
+var _build_cache: Dictionary = {}       # key -> Texture2D
+var _build_queue: Array = []            # [key, layout]
+var _build_busy: bool = false
+
+## The same layout gives the same key whether it came from a live machine (ints) or back from JSON
+## (floats) - JSON.stringify would write 5 and 5.0 differently and bake every build twice.
+func build_key(layout: Array) -> String:
+	var parts: PackedStringArray = []
+	for e in layout:
+		if not (e is Dictionary):
+			continue
+		var r: Vector3 = BLOCKS_SCRIPT._read_rot(e)
+		parts.append("%d,%d,%d,%s,%.2f,%.2f,%.2f" % [int(e.get("x", 0)), int(e.get("y", 0)),
+				int(e.get("z", 0)), str(e.get("block", "")), r.x, r.y, r.z])
+	return "%d_%08x" % [RECIPE, ";".join(parts).hash()]
+
+## The picture, or NULL while it is being made. Asking for a missing one starts its bake.
+func get_build_thumb(layout: Array) -> Texture2D:
+	if layout.is_empty():
+		return null
+	var key := build_key(layout)
+	if _build_cache.has(key):
+		return _build_cache[key]
+	var path := "%s/%s.png" % [BUILD_DIR, key]
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null:
+			var tex := ImageTexture.create_from_image(img)
+			_build_cache[key] = tex
+			return tex
+	for q in _build_queue:
+		if q[0] == key:
+			return null
+	_build_queue.append([key, layout.duplicate(true)])
+	if not _build_busy:
+		_bake_builds()
+	return null
+
+const BLOCKS_SCRIPT := preload("res://blocks.gd")
+
+func _bake_builds() -> void:
+	_build_busy = true
+	while _baking:
+		await get_tree().process_frame     # the portraits first: the shop is waiting on them
+	DirAccess.make_dir_recursive_absolute(BUILD_DIR)
+	var st: Array = _make_studio(BUILD_PX)
+	var sv: SubViewport = st[0]
+	var cam: Camera3D = st[1]
+	while not _build_queue.is_empty():
+		var job: Array = _build_queue.pop_front()
+		await _bake_build(sv, cam, job[0], job[1])
+		build_baked.emit()
+	sv.queue_free()
+	_build_busy = false
+
+func _bake_build(sv: SubViewport, cam: Camera3D, key: String, layout: Array) -> void:
+	# The machine is put together the way blocks.spawn_block puts it: the block on its anchor cell
+	# (CENTER at the origin), turned by the entry's own rotation. Scripts go before the tree, as for
+	# a portrait - no domes, no rings, no working parts.
+	var src := Node3D.new()
+	for e in layout:
+		if not (e is Dictionary):
+			continue
+		var bt: int = G.block_from_key(e.get("block", ""))
+		var scn: PackedScene = G.get_scene(bt) if bt != G.Block.EMPTY else null
+		if scn == null:
+			continue
+		var inst: Node3D = scn.instantiate()
+		_strip(inst)
+		src.add_child(inst)
+		inst.position = Vector3(float(e.get("x", 5)) - BLOCKS_SCRIPT.CENTER,
+				float(e.get("y", 5)) - BLOCKS_SCRIPT.CENTER,
+				float(e.get("z", 5)) - BLOCKS_SCRIPT.CENTER) * BLOCKS_SCRIPT.CELL_SIZE
+		inst.rotation = BLOCKS_SCRIPT._read_rot(e)
+	sv.add_child(src)
+	await get_tree().process_frame
+	var model := Node3D.new()
+	for c in _walk(src):
+		var mi := c as MeshInstance3D
+		if mi == null or mi.mesh == null or not mi.is_visible_in_tree() or _is_fx(mi) or _is_glow(mi):
+			continue
+		var cp := MeshInstance3D.new()
+		cp.mesh = mi.mesh
+		cp.material_override = mi.material_override
+		model.add_child(cp)
+		cp.global_transform = mi.global_transform
+	src.queue_free()
+	sv.add_child(model)
+	await get_tree().process_frame
+	var box: AABB = _aabb(model)
+	if box.size.length() < 0.0001:
+		model.queue_free()
+		return
+	var c3: Vector3 = box.get_center()
+	var r: float = box.size.length() * 0.5
+	var dir := Vector3(1.0, 0.75, -1.0).normalized()
+	cam.look_at_from_position(c3 + dir * (r * 4.0), c3, Vector3.UP)
+	cam.keep_aspect = Camera3D.KEEP_HEIGHT
+	cam.size = r * 1.7                       # the frame is wider than tall: height is the limit
+	cam.near = 0.01
+	cam.far = r * 12.0
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var img: Image = sv.get_texture().get_image()
+	img.save_png("%s/%s.png" % [BUILD_DIR, key])
+	_build_cache[key] = ImageTexture.create_from_image(img)
 	model.queue_free()
 
 ## ЕДИНСТВЕННАЯ ДВЕРЬ НАРУЖУ. Пока не испечено — null, и вызывающий рисует как рисовал: иконка

@@ -53,6 +53,8 @@ func _ready() -> void:
 	# хотя файлы к тому моменту уже лежат.
 	if not Icons.baked.is_connected(_on_icons_baked):
 		Icons.baked.connect(_on_icons_baked)
+	if not Icons.build_baked.is_connected(_on_build_baked):
+		Icons.build_baked.connect(_on_build_baked)
 	_prices = {}
 	for _bt in G.BLOCK_META:
 		_prices[_bt] = G.shop_price(int(_bt))
@@ -757,8 +759,12 @@ func _set_slot_icon(s: Slot, bt: int) -> void:
 ## слово, а clip_text у плитки включён — не влезшее просто исчезает.
 const SLOT_FONT_MAX := 13
 const SLOT_FONT_MIN := 8
+const BUILD_ROW_H := 84.0
+const BUILD_THUMB := Vector2(114.0, 76.0)
+
 func _reset_slot(s: Slot, label: String, side: float) -> void:
 	s.custom_minimum_size = Vector2(_row_w(), side)
+	s.block_icon.custom_minimum_size = Vector2(ROW_H - 8.0, ROW_H - 8.0)   # a build row widens it
 	s.text = ""
 	s.name_lbl.text = label
 	s.name_lbl.add_theme_font_size_override("font_size", ROW_FONT)
@@ -853,6 +859,13 @@ func _fill_build_slot(s: Slot, build_name: String, side: float) -> void:
 	s.build_name = build_name
 	s.corner.visible = true
 	s.corner.text = tr("%d bl.") % layout.size()
+	# THE MACHINE ITSELF, not a name to remember it by (Icons.get_build_thumb): a taller row with a
+	# wide picture on the left. NULL while it is being photographed - the row works without it.
+	s.custom_minimum_size.y = BUILD_ROW_H
+	s.block_icon.custom_minimum_size = BUILD_THUMB
+	var tex: Texture2D = Icons.get_build_thumb(layout)
+	s.block_icon.texture = tex
+	s.block_icon.visible = tex != null
 	# Действия (переименовать/удалить) — по ДОЛГОМУ нажатию (и правой кнопкой на ПК), а не
 	# крошечными иконками в углу: на телефоне в 26 px попасть пальцем невозможно, а увеличить
 	# их прямо в слоте — значит закрыть название сборки. В меню цели крупные и не мешают.
@@ -1094,6 +1107,11 @@ func _buy(block_type: int, price: int) -> void:
 ## ПЕЧЬ ЗАКОНЧИЛА — ПЕРЕСТРАИВАЕМ ТУ ВКЛАДКУ, ЧТО ОТКРЫТА. Портреты появляются через пару
 ## секунд после запуска, и игрок вполне может открыть гараж раньше: без этого он увидел бы
 ## древо без картинок до следующего переключения вкладки.
+## A machine picture is ready: only the builds tab shows them, so only it is redrawn.
+func _on_build_baked() -> void:
+	if is_inside_tree() and visible and _tab == TAB_BUILDS and _grid != null:
+		_rebuild_grid(_search.text if _search else "")
+
 func _on_icons_baked() -> void:
 	if not (is_inside_tree() and visible):
 		return

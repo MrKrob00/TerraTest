@@ -21,9 +21,14 @@ var block_inventory = []
 # ─── Сохранённые сборки машины ────────────────────────────────────────────────
 # name -> layout (массив {x,y,z,block,rot_y}, как blocks.get_layout()). Персистится в user://.
 var saved_builds: Dictionary = {}
-## Имя файла, а не путь: он лежит В ПАПКЕ СЛОТА (см. G.slot_path) — сборки принадлежат миру,
-## в котором их собрали, а не устройству.
+## ONE FILE FOR THE WHOLE GAME, not one per slot. A build is a drawing of a machine, not a
+## piece of a world: made in one save it is wanted in the next, and on the proving ground most of
+## all. It used to live in the slot folder, so a new world, a reset or the polygon started with
+## none. The old per-slot files are merged in once (`_merge_slot_builds`) and left where they lay.
+const BUILDS_PATH := "user://vehicle_builds.json"
+## The old per-slot name, read only by the one-time merge.
 const BUILDS_FILE := "vehicle_builds.json"
+var _builds_loaded: bool = false
 
 func _ready() -> void:
 	_build_comp_recipes()      # до загрузки: рецепты нужны ценам, а цены — магазину
@@ -40,7 +45,8 @@ func _ready() -> void:
 # не потребовали ни одной новой ветки в сохранении и загрузке.
 #
 # ЧТО В СЛОТЕ И ЧТО ВНЕ ЕГО. В слоте всё, что принадлежит ЭТОМУ миру: прогресс, машины, блоки
-# в мире, сохранённые сборки и запечённые правки рельефа. Вне слота — конфиг УСТРОЙСТВА
+# в мире и запечённые правки рельефа. Saved BUILDS are outside it (BUILDS_PATH): a drawing of a
+# machine belongs to the player, not to one world. Вне слота — и конфиг УСТРОЙСТВА
 # (settings.json: масштаб интерфейса, тени, чувствительность камеры): он про телефон, а не про
 # прохождение, и обнулять его вместе с миром было бы наказанием ни за что.
 const SLOT_COUNT := 3
@@ -111,7 +117,7 @@ func use_slot(n: int, keep_empty: bool = false) -> void:
 		f.close()
 	_load_world_seed(not keep_empty)
 	_reset_state()
-	_load_builds()
+	_load_builds()                 # once per run: the same list whichever slot is open
 	_load_progress()
 	# Q — автолоад: его список квестов помечен done по прогрессу, прочитанному РАНЬШЕ, и смену
 	# слота сам он не заметит. Без этого сброшенный слот открывался с закрытым сюжетом.
@@ -122,7 +128,7 @@ func use_slot(n: int, keep_empty: bool = false) -> void:
 ## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид. Первый слот особенный —
 ## у него сид постоянный, это «наша» карта.
 ## Файлы ПРОГРЕССА: сброс оставляет мир (сид и посчитанное окно) на месте.
-const PROGRESS_FILES := ["progress.json", "vehicle_builds.json", "world_save.json",
+const PROGRESS_FILES := ["progress.json", "world_save.json",
 		"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin"]
 ## Файлы МИРА: сид и кеш посчитанного окна.
 const WORLD_FILES := ["world.json", "world_window.bin"]
@@ -218,7 +224,6 @@ func _reset_state() -> void:
 	_progress_dirty = false
 	money = 500
 	block_inventory = []
-	saved_builds = {}
 	faction_xp = {"start": 0}
 	research_points = 0
 	researched = START_RESEARCHED.duplicate()
@@ -1479,7 +1484,6 @@ func _flush_progress() -> void:
 ## slot_path, и второй копии префикса быть не должно.
 const WIPE_FILES := [
 	PROGRESS_FILE,
-	BUILDS_FILE,
 	"world_save.json",
 	"world_save.bad.json",
 	"vehicle_layout.json",
@@ -1503,7 +1507,6 @@ func wipe_save() -> void:
 		terr.reset_heights()
 	money = 500
 	block_inventory = []
-	saved_builds = {}
 	faction_xp = {"start": 0}
 	research_points = 0
 	researched = START_RESEARCHED.duplicate()
@@ -1592,21 +1595,46 @@ func rename_build(old_name: String, new_name: String) -> bool:
 	return true
 
 func _persist_builds() -> void:
-	var f = FileAccess.open(slot_path(BUILDS_FILE), FileAccess.WRITE)
+	var f = FileAccess.open(BUILDS_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(saved_builds))
 		f.close()
 
 func _load_builds() -> void:
-	if not FileAccess.file_exists(slot_path(BUILDS_FILE)):
+	if _builds_loaded:
 		return
-	var f = FileAccess.open(slot_path(BUILDS_FILE), FileAccess.READ)
-	if f == null:
+	_builds_loaded = true
+	saved_builds = {}
+	if FileAccess.file_exists(BUILDS_PATH):
+		var f = FileAccess.open(BUILDS_PATH, FileAccess.READ)
+		if f != null:
+			var data = JSON.parse_string(f.get_as_text())
+			f.close()
+			if data is Dictionary:
+				saved_builds = data
 		return
-	var data = JSON.parse_string(f.get_as_text())
-	f.close()
-	if data is Dictionary:
-		saved_builds = data
+	_merge_slot_builds()
+
+## First run with the shared file: every slot's builds go into it, in slot order. A name already
+## taken gets the slot's number after it rather than overwriting what came first.
+func _merge_slot_builds() -> void:
+	for n in SLOT_COUNT:
+		var p: String = slot_path(BUILDS_FILE, n)
+		if not FileAccess.file_exists(p):
+			continue
+		var f = FileAccess.open(p, FileAccess.READ)
+		if f == null:
+			continue
+		var data = JSON.parse_string(f.get_as_text())
+		f.close()
+		if not (data is Dictionary):
+			continue
+		for k in data:
+			var nm: String = str(k)
+			if saved_builds.has(nm):
+				nm = "%s (%d)" % [nm, n + 1]
+			saved_builds[nm] = data[k]
+	_persist_builds()
 
 # Кол-во блоков по типам в раскладке (значения из JSON приходят float — приводим к int).
 func layout_counts(layout: Array) -> Dictionary:
