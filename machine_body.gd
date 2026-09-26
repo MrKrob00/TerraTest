@@ -363,11 +363,17 @@ func _blocks_root() -> Node:
 ## and a silent engine default has no business deciding that.
 const GROUND_FRICTION: float = 0.35
 
+## PRELOADED, NOT NAMED BY class_name. A class_name is resolved through the editor's class cache,
+## and a file pulled in from outside (git) can arrive before that cache knows it: then THIS script
+## fails to compile, and since both machines extend it, the player's machine is left with no
+## script at all - no build mode, no hand. Reproduced by dropping the entry from the cache.
+const MACHINE_BATCH := preload("res://machine_batch.gd")
+
 func init_machine_physics() -> void:
 	# ONE DRAW CALL PER MESH PER MACHINE (MachineBatch). Here because both machines pass through here.
 	var bl := blocks_node()
 	if bl != null and get_node_or_null("MeshBatch") == null:
-		var mb := MachineBatch.new()
+		var mb := MACHINE_BATCH.new()
 		add_child(mb)
 		mb.setup(self, bl)
 	gravity_scale = gravity_mult

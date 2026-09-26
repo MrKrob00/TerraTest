@@ -76,6 +76,16 @@ project: read it before claiming how anything works.
     the mask noise does not work: it moves the isoline, it does not remove slivers (measured).
 17. A loose item is put to sleep with `sleeping`, never `freeze`: `G.is_loose_item` checks `freeze`,
     and a frozen item stops being pickable.
+19. **A NEW `class_name` IS NOT NAMED FROM ANOTHER FILE — PRELOAD IT.** The name is resolved through
+    the editor's class cache, and a file that arrives from outside the editor (a git pull) can land
+    before the cache knows it. Then every script that names it fails to compile, and whatever
+    extends THAT fails too: `MachineBatch` named in `machine_body.gd` left the player's machine
+    with no script at all — BUILD did nothing, the machine never lifted, nothing went into the hand.
+    Reproduced by dropping three entries from `.godot/global_script_class_cache.cfg`:
+    `vehicle_body_3d.gd`, `enemy_vehicle.gd`, every weapon and `BlockFX` failed to load. So a new
+    class is reached through `const X := preload("res://x.gd")` (`MachineBody.MACHINE_BATCH`,
+    `BlockFX.LOCK_FRAME`, `WeaponBlock.BULLET_SIM`), and a class naming ITSELF uses `load()` of its
+    own path. Old names (`BlockFX`, `VehicleBlock`, `Perf`) are in every cache already.
 18. There are NO HEIGHT FILES. The ground is the seed and nothing else, so there is nothing to bake,
     nothing to ship and nothing to go stale against a save.
 

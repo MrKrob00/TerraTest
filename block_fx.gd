@@ -1059,6 +1059,9 @@ static func ground_wave(anchor: Node, pos: Vector3, normal: Vector3, speed: floa
 # Counted per target: a gun that takes a block calls lock_hold, one that lets go calls lock_release,
 # and the block carries the count and its one frame as metas. Several guns on one block share one
 # frame. The frame is the block's child, so it dies with the block, count and all.
+## Preloaded rather than named by class_name - see MachineBody.MACHINE_BATCH for why.
+const LOCK_FRAME := preload("res://lock_frame.gd")
+
 static func lock_hold(block: Node3D) -> void:
 	if block == null or not is_instance_valid(block) or not block.is_inside_tree():
 		return
@@ -1066,10 +1069,10 @@ static func lock_hold(block: Node3D) -> void:
 	block.set_meta("lock_n", n)
 	var f = block.get_meta("lock_frame") if block.has_meta("lock_frame") else null
 	if is_instance_valid(f):
-		(f as LockFrame).rehold()
+		f.rehold()
 		return
 	var aabb := _local_aabb(block)
-	var fr := LockFrame.new()
+	var fr := LOCK_FRAME.new()
 	fr.setup(maxf(aabb.size.length() * 0.5, 0.6))
 	fr.centre = aabb.get_center()
 	block.add_child(fr)
@@ -1085,7 +1088,7 @@ static func lock_release(block: Node3D) -> void:
 		return
 	var f = block.get_meta("lock_frame") if block.has_meta("lock_frame") else null
 	if is_instance_valid(f):
-		(f as LockFrame).release()
+		f.release()
 
 static func _set_card_progress(p: float, mat: ShaderMaterial) -> void:
 	if is_instance_valid(mat):

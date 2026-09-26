@@ -595,8 +595,8 @@ func _rebind_bullet(b: Area3D) -> void:
 ## A shot that landed or expired goes back to the simulator's spare list (BulletSim.retire). Shots
 ## are plain data now; there is no node to park, hide or stop ticking.
 func _recycle_bullet(b) -> void:
-	if b is BulletSim.Shot:
-		BulletSim.of(self).retire(b)
+	if b is BULLET_SIM.Shot:
+		BULLET_SIM.of(self).retire(b)
 
 func _on_bullet_expired(b) -> void:
 	_recycle_bullet(b)
@@ -610,6 +610,8 @@ func _on_bullet_expired(b) -> void:
 ## дробь уходила строго по стволу (вся пачка в одну точку, разброса не видно), а случайная
 ## старая пуля виляла в сторону.
 var last_fired = null                 # a BulletSim.Shot, or null
+## Preloaded rather than named by class_name - see MachineBody.MACHINE_BATCH for why.
+const BULLET_SIM := preload("res://bullet_sim.gd")
 
 ## ТОЧКА ДУЛА, в одном месте: у всех стволов это `Marker3D` на конце ствола. Спрашивают её двое,
 ## пуля и вспышка, и вторая копия поиска означала бы, что свет однажды зажжётся не там, откуда
@@ -634,7 +636,7 @@ func fire_bullet():
 	if tpl == null or not ("dir" in tpl):
 		return
 	var dir: Vector3 = (-$Pivot.global_transform.basis.z).normalized()
-	var shot: BulletSim.Shot = BulletSim.of(self).fire(self, tpl)
+	var shot: BULLET_SIM.Shot = BULLET_SIM.of(self).fire(self, tpl)
 	shot.global_position = _muzzle_point().global_position
 	shot.dir = dir
 	shot.shooter_blocks = get_parent()      # свип пропускает свой корпус (пуля рождается внутри)

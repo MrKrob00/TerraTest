@@ -67,12 +67,12 @@ var _kinds: Dictionary = {}
 var _ray: PhysicsRayQueryParameters3D = null
 
 ## The world's simulator, made on first use under the current scene (the menu's fight has its own).
-static func of(n: Node) -> BulletSim:
+static func of(n: Node):
 	var tree := n.get_tree()
 	var host: Node = tree.current_scene if tree.current_scene != null else tree.root
 	var sim = host.get_node_or_null("BulletSim")
 	if sim == null:
-		sim = BulletSim.new()
+		sim = load("res://bullet_sim.gd").new()     # its own class_name may not be cached yet
 		sim.name = "BulletSim"
 		host.add_child(sim)
 	return sim
