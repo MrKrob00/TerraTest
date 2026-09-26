@@ -1447,11 +1447,28 @@ project: read it before claiming how anything works.
   when the list changes. The cut radius is `CUT_INSET` of the sphere, because the dome is a solid
   of FLAT plates lying inside its sphere; cutting at the full radius opens a sliver where neither
   dome draws. A dome that goes dark stops cutting at once — the lit one re-asks every tick.
-  Checked on the real driver: with the cut, one outline and no inner arcs. THE JOIN IS WELDED
-  (`weld_w`, `weld_gain`): a fragment within `weld_w` metres outside a cutting sphere is lit as a
-  seam of its own, dimmed with the charge but never below a third. Bare, the join was plates
-  sliced mid-plate meeting at a dark crease; the lit band closes it the way the lattice closes a
-  plate, and from above it reads as one ring where two bubbles merge.
+  Checked on the real driver: with the cut, one outline and no inner arcs.
+- **MERGED DOMES ARE ONE LATTICE, NOT TWO STITCHED** (`shield._update_seam`, shader `seam_c`). Near a
+  join each dome draws its plate as the NEAREST CENTRE of one shared set — the surviving plates of
+  every merged dome plus plates laid ON the intersection ring and one staggered row each side of it
+  (`_ring_points`, spacing measured from the lattice, rows `ROW_H` apart and half a step round) —
+  so a hexagon that starts on one sphere carries on over the other. Two things had to be true for
+  that to read as honeycomb: the ring row, or two mirror-image domes put the lattice EDGE exactly on
+  the join; and the staggered rows, or the band came out as rectangles. "Near the join" is distance
+  to the intersection CIRCLE (`_ring_dist`, and the same formula in the shader), never to the other
+  sphere: two cells apart, almost a whole dome lies within two metres of the other sphere and that
+  measure cleared the entire lattice. A plate given up to the shared rows sends ALL its fragments to
+  the shared set (`seam_clear`), or its part past the band stays as a sliver. Ring plates take their
+  random number from their place in the row, built in world space from the pair ordered by instance
+  id, so both domes draw the same plate the same.
+  THE HIT BELONGS TO THE HULL: `hit_pos` / `ripple_pos` are POSITIONS in model space and every
+  threshold reads `near = 1 - chord²/2R²`, which on one sphere is exactly the old cosine. The struck
+  plate (snapped to the shared set near the join) goes to every merged dome (`_take_hit`), so the
+  flare, the drained cap and the ripple are one patch across the join. Measured on the real driver:
+  front and top views one honeycomb over the join, a ripple from the left dome lighting rings on both,
+  a drained hull keeping one continuous cap. What remains: small slivers where the band meets the
+  baked Goldberg plates (a Goldberg cell is not exactly the Voronoi cell of its centre); a band
+  fragment loops over up to `SEAM_MAX` (96) centres, which is paid only while domes are merged.
 - CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
   a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
   spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came

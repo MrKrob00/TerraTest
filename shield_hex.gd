@@ -29,8 +29,8 @@ const UV_EDGE_B := Vector2(1.0, 1.0)
 ## и не меняться между запусками.
 const CELL_SEED := 20260919
 
-## Возвращает {"mesh": ArrayMesh, "centers": Array[Vector3]} — меш купола и единичные
-## направления на центры ячеек в том же порядке, в каком они попали в меш.
+## Возвращает {"mesh": ArrayMesh, "centers": Array[Vector3], "rnds": PackedFloat32Array} — меш
+## купола, единичные направления на центры ячеек и их случайные числа, в порядке меша.
 static func build(radius: float, sub: int) -> Dictionary:
 	sub = maxi(sub, 1)
 	var pts: Array[Vector3] = []
@@ -68,6 +68,7 @@ static func build(radius: float, sub: int) -> Dictionary:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var centers: Array[Vector3] = []
+	var rnds := PackedFloat32Array()
 	for vi in pts.size():
 		var c: Vector3 = pts[vi]
 		var ring: Array = _sorted_ring(c, around.get(vi, []), cent)
@@ -75,6 +76,9 @@ static func build(radius: float, sub: int) -> Dictionary:
 			continue
 		centers.append(c)
 		var col := Color(c.x * 0.5 + 0.5, c.y * 0.5 + 0.5, c.z * 0.5 + 0.5, rng.randf())
+		# The number exactly as the shader reads it: vertex colour is eight bits a channel, and a
+		# merged dome draws a NEIGHBOUR'S plate from this list - it must gate on the same value.
+		rnds.append(roundf(col.a * 255.0) / 255.0)
 		var n := ring.size()
 		for k in n:
 			var p0: Vector3 = ring[k]
@@ -83,7 +87,7 @@ static func build(radius: float, sub: int) -> Dictionary:
 			_vertex(st, col, p0, UV_EDGE_A, radius)
 			_vertex(st, col, p1, UV_EDGE_B, radius)
 	var mesh := st.commit()
-	return {"mesh": mesh, "centers": centers}
+	return {"mesh": mesh, "centers": centers, "rnds": rnds}
 
 # ── Кухня ─────────────────────────────────────────────────────────────────────
 
