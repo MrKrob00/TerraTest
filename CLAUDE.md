@@ -282,6 +282,16 @@ project: read it before claiming how anything works.
   the whole circle is occupied. It asks about MACHINES ONLY (`_machine_near`, a handful of nodes);
   the pass over all of `_data` (`_node_near`) stays on the replant path, because streaming runs
   the whole time the player is driving.
+- THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
+  energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
+  whatever there is even when it is short, so the old "take and see" on one panel (6/s against the
+  12/s the block needs) drained the batteries, then ate every tick's production, and never dug —
+  measured over 12 s: 60 energy, 0 ore; and 144 energy, 0 ore beside a vein that was not spent
+  yet. Now: one panel 48 energy / 2 ore (half rate, as the buffer fills), two panels 120 / 5, a
+  full vein 0 / 0. A base with NO energy system does not dig at all — it used to dig for free,
+  which made the power a factory asks for a formality — and says once what it needs. What a miner
+  cannot hand to a receiver ON ITS OWN MACHINE lies by the vein (up to `GROUND_LIMIT`), where any
+  collector or receiver in reach may take it — including another base's standing next to it.
 - **WOOD HAS NO AUTOMATION, AND THAT IS THE POINT — there is no harvester block and none is
   planned.** Ore is the standing economy: find a vein, park a base, come back for the cargo. Wood
   is the driving economy, and the RANDOM RELOCATION is what keeps it that way: a felled tree does

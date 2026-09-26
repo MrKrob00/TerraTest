@@ -67,19 +67,24 @@ func _physics_process(delta: float) -> void:
 	if target == null and before.size() >= GROUND_LIMIT:
 		_set_rig(false)
 		return
-	# 2. Энергия. Списываем за весь цикл сразу; не хватило — цикл пропущен.
-	if not _take_energy():
-		_set_rig(false)
-		return
-	# 3. Жила.
+	# 2. The vein, BEFORE the energy. Paying first meant a miner with no spent vein in reach (or
+	# one taken by a neighbour) was billed every cycle for ore it never dug.
 	var vein: Node3D = _find_vein(delta)
 	if vein == null or not vein.has_method("mine_for_claimer"):
+		_set_rig(false)
+		return
+	# 3. Energy: ASKED, then taken. energy_consume hands over whatever there is even when it is
+	# short, so "take and see" on one panel (6/s against the 12/s this block needs) drained the
+	# batteries to zero, then ate every tick's production, and never once dug - the machine was
+	# flat and the ground was empty.
+	if not _has_energy():
 		_set_rig(false)
 		return
 	# Что уже валяется рядом, мы запомнили ВЫШЕ: новым будет то, чего в том списке нет.
 	if not vein.mine_for_claimer(self):
 		_set_rig(false)
 		return                            # жилу занял кто-то другой или она вдруг ожила
+	_pay_energy()
 	# Цикл прошёл целиком — качалка ходит (если есть кому на неё смотреть).
 	_set_rig(_seen_by_player())
 	if target == null:
@@ -101,18 +106,38 @@ func _free_target() -> FactoryBlock:
 			return t
 	return null
 
-func _take_energy() -> bool:
+## Enough for a whole cycle right now. A machine with no energy system at all has none: the miner
+## is a factory, and a factory runs on power. It used to dig for free on a base with no panel and
+## no battery (capacity 0), which made the power it asked for everywhere else a formality.
+func _has_energy() -> bool:
 	var v: Node = _vehicle()
-	if v == null or not v.has_method("energy_consume"):
-		return true                       # энергосистемы нет — не блокируем добычу
-	# ТО ЖЕ САМОЕ, когда система есть, но ПУСТА. У базы, чьё ядро — сам шахтёр, нет ни панелей,
-	# ни аккумуляторов: ёмкость ноль, выработка ноль, и списать с неё нельзя НИКОГДА. Шахтёр
-	# молча не добывал ничего, а сказать об этом ему нечем — блок читался как сломанный.
-	# Появилась панель — появилась и плата за цикл, правило «фабрика ест энергию» в силе.
-	if v.has_method("energy_cap") and float(v.energy_cap()) <= 0.0:
-		return true
+	if v == null or not v.has_method("energy_available"):
+		return false
 	var need: float = energy_per_sec * mine_interval
-	return v.energy_consume(need) >= need - 0.001
+	if float(v.energy_available()) >= need - 0.001 or _free_power(v):
+		return true
+	_say_no_power(v)
+	return false
+
+func _pay_energy() -> void:
+	var v: Node = _vehicle()
+	if v != null and v.has_method("energy_consume"):
+		v.energy_consume(energy_per_sec * mine_interval)
+
+## The debug switch pays for the player's machines at the till (MachineBody.energy_consume), so an
+## empty store must not stop a miner there either.
+func _free_power(v: Node) -> bool:
+	return v.get("faction") == 0 and G.debug(&"infinite_energy", false)
+
+## Said ONCE per block, and only for the player's own machine: a stopped rig shows that something is
+## missing, this says what. Once, because the cycle comes round every two seconds.
+var _told_power: bool = false
+func _say_no_power(v: Node) -> void:
+	if _told_power or v.get("faction") != 0 or v.get("demo") == true:
+		return
+	_told_power = true
+	var need: float = energy_per_sec
+	Dialogue.say("System", tr("The Auto Miner needs %d energy a second: two solar panels, or a battery to carry it.") % int(need))
 
 # Жила ПОД блоком. Ищем ПО ДАННЫМ (перебором залежей), а не лучом вниз, и кешируем: жила не
 # двигается, а стационарный блок тем более. Кеш сбрасываем, если жила исчезла.
