@@ -610,9 +610,15 @@ project: read it before claiming how anything works.
   two shotguns nothing past eighteen metres, and a mortar cannot hit inside twenty at all. Near:
   shotgun, rocket (18 m). Far: gun (60), laser (70), mortar (20-160). The outpost does not turn, so
   its near barrel faces BACK — at 0 it looked into its own mast and fired nothing at a machine
-  behind it (measured: 0 shots, now 19). NOTE THE CEILING: a base opens fire only on what it SEES,
-  and sight is `detection_radius`, 40 m for every enemy — so a far barrel on a base works out to
-  40 m unless the player shoots first. Measured the same on the old two-gun towers.
+  behind it (measured: 0 shots, now 19). A BASE SEES `BASE_SIGHT` (70 m), set in
+  `enemy_vehicle._setup_detection_area` off `is_base` so both doors that make a base (the spawner and
+  `outposts.gd`) get it; a driving enemy keeps 40 m so the player can still drive round a patrol.
+  At 40 a far barrel on a base was pointless — it fired at nothing past 40 unless shot first.
+  `_enemy_detect_radius` skips bases, or one base read first would push every drop ring out to 70.
+  EVERY WEAPON IS ARMED ONCE THE TARGET IS SEEN, even one out of its range: the range is only the
+  AIMING sphere, the rounds fly well past it, and straight-ahead fire from a machine turned onto its
+  target lands. Arming only what reaches was tried — the same 13-machine fight dealt 214-344 damage
+  in 6 s against 431-683 — and reverted.
 - THE SHIELDED TOWERS' CHARGING STATIONS (preset 18) ARE BATTERY STATIONS THAT DEFEND THEMSELVES:
   two batteries, a panel and the wireless transmitter on a ROTATING core, plus a machine gun the
   rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (the mast over the
