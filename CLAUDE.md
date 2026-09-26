@@ -1218,7 +1218,11 @@ project: read it before claiming how anything works.
   miner beside it and a truck alongside are three machines inside fifteen metres, and one icon
   meant shuffling round until the nearest was the one wanted. The hold belongs to the ICON that
   was pressed (`_vbtn_hold_icon`), and is dropped if that icon stops standing over its machine.
-  Measured: three machines, three icons, the held middle one opened its own menu.
+  Measured: three machines, three icons, the held middle one opened its own menu. THE HOLD AND
+  THE MENU BELONG TO THE FINGER THAT STARTED THEM (`_vbtn_touch`, `_vmenu_touch`): the mouse state
+  knows only touch index 0, so a hold by a second finger while the first drove the joystick was
+  dropped the frame it began, and an open menu followed the joystick's drags. Measured with the
+  stick moving: finger 1 opens the menu, picks a sector and switches machines.
 - Menu backdrop is a REAL fight on a REAL `ChunkTerrain`, generated per round from an audition of
   seeds, with streamed collision and two enemy machines of DIFFERENT factions carrying their own
   physics, AI and weapons. It carries `follow_world_settings = false`, or G would hand it the save

@@ -689,6 +689,12 @@ var _vbtn_hold_icon: GearIcon = null
 var _vbtn_hold: float = 0.0
 var _vbtn_holding: bool = false
 var _vbtn_top: Dictionary = {}       # machine -> [top y, seconds to recount]
+## THE FINGER THAT HOLDS THE ICON, and later drives the menu it opened. The mouse state only knows
+## touch index 0, so with a finger already on the joystick a hold by the second one was dropped the
+## frame it began, and an open menu followed the JOYSTICK's finger around. -1: the mouse, or index 0.
+var _vbtn_touch: int = -1
+var _vbtn_touch_down: bool = false
+var _vmenu_touch: int = -1
 
 func _build_vehicle_button() -> void:
 	for i in VBTN_MAX:
@@ -710,6 +716,9 @@ func _on_vbtn_input(event: InputEvent, icon: GearIcon) -> void:
 	if pressed and not _vbtn_holding and _vbtn_of.has(icon):
 		_vbtn_holding = true
 		_vbtn_hold = 0.0
+		var ti: int = (event as InputEventScreenTouch).index if event is InputEventScreenTouch else -1
+		_vbtn_touch = ti if ti > 0 else -1
+		_vbtn_touch_down = true
 		_vbtn_hold_icon = icon
 		_vbtn_target = _vbtn_of[icon]
 		G.ui_grab = true                  # жест удержания не должен ещё и крутить камеру
@@ -725,6 +734,8 @@ func _vbtn_cancel() -> void:
 		_vbtn_hold_icon.queue_redraw()
 	_vbtn_hold_icon = null
 	_vbtn_target = null
+	_vbtn_touch = -1
+	_vbtn_touch_down = false
 
 func _hide_vbtns() -> void:
 	for b in _vbtns:
@@ -784,7 +795,8 @@ func _update_vehicle_button(delta: float) -> void:
 		return
 	# Палец ещё на экране? Тач эмулирует левую кнопку мыши, поэтому состояние надёжно и при
 	# перетаскивании, и когда палец ушёл с самой кнопки.
-	if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
+	var held: bool = _vbtn_touch_down if _vbtn_touch > 0 else Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
+	if not held:
 		_vbtn_cancel()
 		return
 	_vbtn_hold += delta
@@ -793,8 +805,10 @@ func _update_vehicle_button(delta: float) -> void:
 	if _vbtn_hold >= VBTN_HOLD:
 		var at: Vector2 = _vbtn_hold_icon.position + Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
 		var target: Node3D = _vbtn_target
+		var finger: int = _vbtn_touch
 		_vbtn_cancel()
 		open_vehicle_menu(target, at)      # меню раскрывается вокруг кнопки, палец ещё зажат
+		_vmenu_touch = finger
 
 ## The machine's top, recounted every VBTN_TOP_PERIOD rather than per frame (blocks do not jump).
 func _top_of(v: Node3D, delta: float) -> float:
@@ -824,6 +838,7 @@ func _vehicle_top_y(v: Node3D) -> float:
 
 func open_vehicle_menu(vehicle: Node, screen_pos: Vector2 = Vector2(-1, -1)) -> void:
 	close_vehicle_menu()
+	_vmenu_touch = -1                  # the icon hold sets it right after, a long press does not
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	# Центр колеса — где 2D-кнопка машины; прижимаем к экрану, чтобы не обрезалось.
 	var center := screen * 0.5 if screen_pos.x < 0.0 else screen_pos
@@ -874,8 +889,18 @@ func _input(event: InputEvent) -> void:
 		_toggle_perf_panel()
 		get_viewport().set_input_as_handled()
 		return
+	# The icon's own finger leaving the glass ends its hold (see _vbtn_touch).
+	if event is InputEventScreenTouch and not event.pressed and event.index == _vbtn_touch:
+		_vbtn_touch_down = false
 	if _vmenu == null:
 		return
+	# A menu opened by a finger other than the first listens to that finger only: the joystick's
+	# drags and the mouse emulated from it are someone else's gesture.
+	if _vmenu_touch > 0:
+		if event is InputEventMouse:
+			return
+		if (event is InputEventScreenDrag or event is InputEventScreenTouch) and event.index != _vmenu_touch:
+			return
 	var pos := Vector2.ZERO
 	var is_motion := false
 	var is_release := false
@@ -959,6 +984,7 @@ func close_vehicle_menu() -> void:
 	_vmenu = null
 	_vmenu_wheel = null
 	_vmenu_vehicle = null
+	_vmenu_touch = -1
 	G.ui_grab = false
 
 # ── Панель поворота блока (низ по центру, только в режиме стройки) ─────────────
