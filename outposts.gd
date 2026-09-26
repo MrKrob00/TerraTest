@@ -56,12 +56,6 @@ const TICK := 1.0
 ## пушка достаёт издалека, дробовик наказывает за подъезд вплотную, лазер жжёт непрерывно.
 const PRESETS := [11, 12, 13, 14, 15]
 
-## Награда за зачистку СВЕРХ разлетевшихся блоков: слитки того металла, что лежит в этом
-## биоме. Поход должен окупаться не только ломом, иначе разбирать точку выгоднее издалека
-## по одному блоку, чем брать её штурмом.
-const LOOT_MIN := 3
-const LOOT_MAX := 6
-
 var _points: Array = []          # [{pos: Vector3, preset: int, cleared: bool, node: Node3D}]
 var _t: float = 0.0
 var _ready_done: bool = false
@@ -226,34 +220,10 @@ func _on_cleared(_who, e: Dictionary) -> void:
 	e["cleared"] = true
 	_cleared[String(e.get("key", ""))] = true    # переживёт и выгрузку региона, и сейв
 	e["node"] = null
-	_drop_loot(e["pos"] as Vector3)
+	# NO INGOTS FALL OUT OF IT. A stronghold used to drop three to six ingots of the biome's metal
+	# on top of its own blocks; what a cleared point leaves is what its build leaves
+	# (MachineBody.scatter_blocks at LOOT_SURVIVE), the same as any machine.
 	Dialogue.say("System", tr("Stronghold neutralised. The sector reads clear."))
-
-## Трофей: слитки МЕТАЛЛА ЭТОГО БИОМА. Правило «металл принадлежит биому» уже держит карту
-## (resource_nodes._metal_for), и трофей обязан ему следовать: иначе титанит выгоднее фармить
-## с ближайшего аванпоста в пустыне, чем ехать в горы.
-func _drop_loot(at: Vector3) -> void:
-	var props: Node = get_tree().get_first_node_in_group("quest_props")
-	if props == null or not props.has_method("drop_resource"):
-		return
-	var metal: int = _metal_of_biome(at)
-	var n: int = randi_range(LOOT_MIN, LOOT_MAX)
-	for i in n:
-		var off := Vector3(randf_range(-2.5, 2.5), 1.2 + float(i) * 0.4, randf_range(-2.5, 2.5))
-		props.drop_resource("m%d" % metal, at + off)
-
-func _metal_of_biome(at: Vector3) -> int:
-	var map: Node = get_node_or_null("/root/Main/map")
-	if map == null or not map.has_method("biome_at"):
-		return 0
-	var m: Vector3 = map.biome_at(at)            # x = каньон, y = луг, z = горы
-	if m.z > 0.5:
-		return 3                                 # горы → титанит
-	if m.x > 0.5:
-		return 2                                 # каньон → силикат
-	if m.y > 0.5:
-		return 1                                 # луг → куприт
-	return 0                                     # пустыня → феррит
 
 func _player() -> Node3D:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
