@@ -1441,6 +1441,10 @@ project: read it before claiming how anything works.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
+- A LOOSE ITEM (ore, ingot, component, chunk — `resource.tscn`) WAS 4,240 TRIANGLES, a whole gun is
+  139 and a wheel 286: its glow bubble was a `SphereMesh` at the default 64×32 segments, half a
+  metre across. At 16×8 it is 304 in total, and on the real driver the frame is the same picture
+  (12×6 was tried and read faceted up close). Every item on a belt and every ore at a vein paid it.
 - **A BULLET'S TICK IS MOSTLY NOT THE RAYCAST.** Measured on the engine, 200 bullets, one physics
   tick: raycast with a fresh `PhysicsRayQueryParameters3D.create` 1224 us, the same raycast reusing
   one object 744 us, `Basis.looking_at` + `global_basis` 466 us, the child walk `_mesh_node` did per
