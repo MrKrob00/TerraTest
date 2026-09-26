@@ -69,6 +69,12 @@ uniform float ripple_band = 0.30;     // radians: about one ring of plates at 92
 // shield.gd fills it (`_update_cuts`); CUT_MAX there must match the array size.
 uniform vec4 cut[4];
 uniform int cut_n = 0;
+// THE WELD: where one dome is cut by another, the edge of the cut is drawn as a seam of its own.
+// Bare, the join was plates sliced through the middle meeting at a dark crease; a lit band along
+// the intersection closes it the way the lattice closes every plate, so two domes read as one hull
+// rather than two spheres pushed into each other. Metres, measured outward from the cutting sphere.
+uniform float weld_w : hint_range(0.01, 0.6) = 0.26;
+uniform float weld_gain : hint_range(0.0, 3.0) = 0.7;
 
 varying vec3 v_cell;
 varying float v_rnd;
@@ -90,15 +96,21 @@ void vertex() {
 }
 
 void fragment() {
+	float edge_d = 1e3;
 	for (int i = 0; i < 4; i++) {
 		if (i >= cut_n) {
 			break;
 		}
 		vec3 d = v_lpos - cut[i].xyz;
-		if (dot(d, d) < cut[i].w) {
+		float dd = dot(d, d);
+		if (dd < cut[i].w) {
 			discard;
 		}
+		edge_d = min(edge_d, sqrt(dd) - sqrt(cut[i].w));
 	}
+	// Dimmed with the charge like everything else on the dome, but never gone: a draining hull is
+	// still one hull, and the join is where the eye looks for it.
+	float weld = cut_n > 0 ? (1.0 - smoothstep(0.0, weld_w, edge_d)) * mix(0.3, 1.0, clamp(energy, 0.0, 1.0)) : 0.0;
 	float t = v_uv.x;
 	float edge_pos = min(v_uv.y, 1.0 - v_uv.y);
 
@@ -174,9 +186,9 @@ void fragment() {
 	}
 
 	// Пробитая пластина загорается, даже если заряд её погасил: попадание важнее.
-	float shell = max(max(up, flare), wave);
+	float shell = max(max(max(up, flare), wave), weld);
 	// The ring fills the plate FACE, not only its seams: a lit plate otherwise changed by a shade.
-	float lattice = (seam + corner * 0.6 + body * (fill + wave * 0.45)) * shell;
+	float lattice = (seam + corner * 0.6 + body * (fill + wave * 0.45)) * shell + weld * weld_gain;
 	// КОЛЬЦО ТОЖЕ ПРИНАДЛЕЖИТ ПЛАСТИНЕ. Оно считалось по всей сфере и не спрашивало, стоит ли
 	// здесь пластина: на разряженном щите решётка гасла, а голубая подсветка оболочки
 	// оставалась висеть шаром. Теперь на месте погасшей пластины нет ничего, и осыпающийся
