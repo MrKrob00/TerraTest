@@ -741,6 +741,14 @@ project: read it before claiming how anything works.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
   Far away they cost nothing because the spawner sleeps them. Waves are the exception: they arrive
   at the player.
+- **A "REACH X" STAGE ENDS WHEN THE PLAYER IS THERE (`quest_arcs._reached`, `REACH_DIST` 60 m), NOT
+  WHEN X EXISTS.** Spawning early and reporting stage 1 used to be one line, so moving the spawn up
+  took the distance gate with it: every "Reach ..." stage (Crossfire, Tech Gang, Supply Drop, Cover
+  the Convoy, Staging Point, Salvage, both towers) reported itself in the poll that spawned its
+  enemies, and the tracker showed 2/2 the moment an event appeared. A stage that now WAITS must
+  also spawn ONCE: the duel is guarded by `_duel_sent`, the salvage guard by `_salvage_killed` (it
+  hunts the player and is usually met on the way). Measured on the engine for five events: stage 1
+  held at 244-275 m with no machines added, stage 2 at the point.
 - A RELEASED STORY QUEST TAKES THE TRACKER (`_track_story_if_free`, called from `release_quest`).
   `hold_quest` keeps the first story quest back until its target exists — the scout arrives after
   `first_spawn_delay` — so at the moment the tutorial ended the head of `active_quests` was a
