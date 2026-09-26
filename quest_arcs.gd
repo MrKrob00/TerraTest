@@ -51,6 +51,7 @@ func _tick_arcs(delta: float) -> void:
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	for q in _arc_quests():
+		_cur_q = String(q.get("id", ""))
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
 			"quest_arc_power_2":   _arc_power_2(q)
@@ -77,7 +78,6 @@ func _tick_arcs(delta: float) -> void:
 			"quest_defend_1":      _defend_1(q)
 			"quest_defend_2":      _defend_2(q)
 			"quest_waves_1":       _waves_1(q)
-			"quest_waves_2":       _waves_2(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
 
@@ -338,6 +338,24 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 ## СОЮЗНИКА (фракция 0) не режем: слабый союзник не помогает вообще никак.
 ## БАЗЫ И ВЫШКИ через потолок не идут намеренно — там сборка часть задания; к спавнеру они
 ## обращаются на одну дверь ниже, через `_ask_spawner`.
+## THE REWARD FOLLOWS WHAT THE QUEST PUT UP. Every hostile a quest spawns reports its death here,
+## with the value it was measured at on birth, and the quest's reward is multiplied by the average
+## strength of what died (G.strength_of: 1 at step one of the ladder, capped at 3). The same event
+## sent against a starter cabin and against a late build used to pay the same 200-420, while the
+## builds it sent - chosen by the player's own machine - grew five-fold. `_cur_q` is the quest being
+## polled: every spawn happens inside its handler.
+var _cur_q: String = ""
+var _q_kills: Dictionary = {}           # quest id -> [sum of values, count]
+
+func _on_quest_kill(who, qid: String) -> void:
+	if qid == "" or not is_instance_valid(who):
+		return
+	var e: Array = _q_kills.get(qid, [0.0, 0])
+	e[0] = float(e[0]) + float(who.get("build_value") if who.get("build_value") != null else 0)
+	e[1] = int(e[1]) + 1
+	_q_kills[qid] = e
+	Q.set_reward_mult(qid, G.strength_of(float(e[0]) / float(maxi(int(e[1]), 1))))
+
 func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> Node3D:
 	if sp == null or not sp.has_method("spawn_at"):
 		return null
@@ -349,7 +367,10 @@ func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> 
 	# его попросили кнопкой, и смотреть на него без участников нечего. Без этого арка тихо
 	# возвращалась ни с чем, и квест висел на первой стадии без врага (Q.force_quest выдаёт
 	# только ветки, `_arc_quests` гоняет только их — так что лишнего этот путь не пустит).
-	return _ask_spawner(sp, at, want, faction_id, false)
+	var e: Node3D = _ask_spawner(sp, at, want, faction_id, false)
+	if e != null and faction_id != 0 and _cur_q != "" and e.has_signal("died"):
+		e.died.connect(_on_quest_kill.bind(_cur_q), CONNECT_ONE_SHOT)
+	return e
 
 ## Одна дверь к спавнеру для ВСЕХ квестовых машин, ездящих и стоящих: потолок ступени режется
 ## выше (в `_spawn_hostile`), а здесь только запрет полигона.
@@ -1654,6 +1675,8 @@ func _ev_abandoned(q: Dictionary, key: String) -> bool:
 ## Убрать за собой: участники, точка, метка. Уводим их из мира, а не бросаем — иначе поле
 ## постепенно зарастает машинами от заданий, которые игрок даже не начал.
 func _ev_clear(key: String) -> void:
+	_q_kills.erase("event_" + key)
+	Q.set_reward_mult("event_" + key, 1.0)
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m):
 			(m as Node).queue_free()
@@ -1679,6 +1702,7 @@ func _ev_all_dead(key: String) -> bool:
 ## Событие завершено: остывает и через минуту-две открывается снова.
 func _ev_done(q: Dictionary, key: String) -> void:
 	Q.report(String(q["event"]), 1)
+	_q_kills.erase(String(q["id"]))     # paid out above; the next run of the event starts at one
 	_ev_cool[String(q["id"])] = _event_cooldown()
 	_ev_mobs.erase(key)
 	_ev_point.erase(key)
@@ -1884,39 +1908,21 @@ func _defend_2(q: Dictionary) -> void:
 	_ev_ally = null
 	_ev_done(q, key)
 
-# ── «Enemy Waves»: волны прямо по твоей позиции ─────────────────────────────
-const WAVES_COUNT := 2
-
+# ── «Hold Position»: one attack, straight at your position ──────────────────
 func _waves_1(q: Dictionary) -> void:
 	var key := "waves"
 	var p: Node3D = _player()
 	if p == null:
 		return
-	# Точка — ГДЕ СТОИТ ИГРОК: волны приходят к нему, ехать никуда не надо. Она нужна не для
+	# Точка — ГДЕ СТОИТ ИГРОК: волна приходит к нему, ехать никуда не надо. Она нужна не для
 	# компаса, а для правила «уехал на 500 м — задание снято».
 	if not _ev_point.has(key):
 		_ev_point[key] = p.global_position
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		_ev_spawn(key, p.global_position, [5, 6], 1, p)
-		Dialogue.say("System", tr("Contacts inbound on your position. First wave."))
-	if not _ev_all_dead(key):
-		return
-	_ev_mobs.erase(key)                        # первая волна кончилась, вторую пустит стадия 2
-	Q.report(String(q["event"]), 1)
-
-func _waves_2(q: Dictionary) -> void:
-	var key := "waves"
-	if _ev_abandoned(q, key):
-		return
-	var p: Node3D = _player()
-	if p == null:
-		return
-	if not _ev_mobs.has(key):
-		_ev_spawn(key, p.global_position, [7, 8], 1, p)
-		Dialogue.say("System", tr("Second wave. Heavier."))
-		return
+		_ev_spawn(key, p.global_position, [6, 7, 8], 1, p)
+		Dialogue.say("System", tr("Contacts inbound on your position."))
 	if not _ev_all_dead(key):
 		return
 	_ev_done(q, key)

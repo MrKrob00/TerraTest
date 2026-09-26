@@ -1059,6 +1059,24 @@ const RP_KILL_MAX := 12
 func rp_for_kill(value: int) -> int:
 	return clampi(int(float(value - RP_KILL_BASE) / RP_KILL_STEP) + 1, 1, RP_KILL_MAX)
 
+## XP FOR A KILL FOLLOWS THE MACHINE, like the RP above. It was a flat 15 whatever died, so a
+## sixth-step siege build paid what a scout paid, and grade 5 (1500 XP) was a hundred kills of
+## anything - measured by a player as half an hour of farming. KILL_XP at KILL_XP_REF (the median
+## value of step one of the ladder) and in proportion above it; never less than the old 15.
+const KILL_XP := 15
+const KILL_XP_REF := 10700.0
+const KILL_XP_MAX := 120
+
+func xp_for_kill(value: int) -> int:
+	return clampi(roundi(float(KILL_XP) * float(value) / KILL_XP_REF), KILL_XP, KILL_XP_MAX)
+
+## How much stronger than step one a machine of this value is: the multiplier a quest's reward
+## takes from the enemies it put up (quest_arcs `_on_quest_kill`). 1 at step one, capped at 3.
+const QUEST_REWARD_MAX := 3.0
+
+func strength_of(value: float) -> float:
+	return clampf(value / KILL_XP_REF, 1.0, QUEST_REWARD_MAX)
+
 ## ЦЕНА БЛОКА В МАГАЗИНЕ — не список, а следствие рецепта. Раньше цены лежали руками в
 ## tech_ui (BLOCK 5$, GUN 35$…) и с материалами не сверялись никак: блок из материалов на
 ## 300$ продавался за пятёрку, и весь смысл добычи, переработки и сборки исчезал —
@@ -1175,7 +1193,8 @@ var killed_kinds: Array = []           # виды врагов, за котор�
 func on_game_event(event: String, amount: int = 1, kind: String = "default") -> void:
 	match event:
 		"enemy_killed":
-			add_faction_xp("start", 15 * amount)
+			# XP for the kill is paid by the machine itself (enemy_vehicle._pay_out): it knows
+			# what it was worth, and this bus only knows that something died.
 			if not killed_kinds.has(kind):
 				killed_kinds.append(kind)
 				add_research_points(5)
