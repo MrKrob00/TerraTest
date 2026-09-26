@@ -676,31 +676,42 @@ class GearIcon extends Control:
 		if fill > 0.001:
 			draw_arc(c, r * 1.75, -PI * 0.5, -PI * 0.5 + TAU * fill, 32, Color(1.0, 0.9, 0.25), 4.0, true)
 
-var _vbtn: GearIcon = null
-var _vbtn_target: Node3D = null      # машина, к которой сейчас привязана кнопка
+## ONE ICON PER MACHINE IN REACH, not one for the nearest. A base with a miner beside it and a
+## truck parked alongside is three machines within fifteen metres, and a single icon meant walking
+## round until the nearest one happened to be the one you wanted. The icons are a pool, assigned to
+## machines every frame; the hold belongs to the ICON that was pressed, so the menu opens over the
+## machine under the finger. VBTN_MAX is a ceiling on clutter, nearest first.
+const VBTN_MAX := 6
+var _vbtns: Array[GearIcon] = []
+var _vbtn_of: Dictionary = {}        # GearIcon -> machine it stands over this frame
+var _vbtn_target: Node3D = null      # machine whose icon is being held
+var _vbtn_hold_icon: GearIcon = null
 var _vbtn_hold: float = 0.0
 var _vbtn_holding: bool = false
-var _vbtn_top_t: float = 0.0
-var _vbtn_top_y: float = 2.2         # высота якоря над началом координат машины
+var _vbtn_top: Dictionary = {}       # machine -> [top y, seconds to recount]
 
 func _build_vehicle_button() -> void:
-	_vbtn = GearIcon.new()
-	_vbtn.custom_minimum_size = Vector2(VBTN_SIZE, VBTN_SIZE)
-	_vbtn.size = Vector2(VBTN_SIZE, VBTN_SIZE)
-	_vbtn.mouse_filter = Control.MOUSE_FILTER_STOP   # кнопка ловит ввод сама, как всякий UI
-	_vbtn.visible = false
-	_vbtn.gui_input.connect(_on_vbtn_input)
-	add_child(_vbtn)
+	for i in VBTN_MAX:
+		var b := GearIcon.new()
+		b.custom_minimum_size = Vector2(VBTN_SIZE, VBTN_SIZE)
+		b.size = Vector2(VBTN_SIZE, VBTN_SIZE)
+		b.mouse_filter = Control.MOUSE_FILTER_STOP   # кнопка ловит ввод сама, как всякий UI
+		b.visible = false
+		b.gui_input.connect(_on_vbtn_input.bind(b))
+		add_child(b)
+		_vbtns.append(b)
 
-func _on_vbtn_input(event: InputEvent) -> void:
+func _on_vbtn_input(event: InputEvent, icon: GearIcon) -> void:
 	var pressed: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT \
 			and (event as InputEventMouseButton).pressed) \
 			or (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed)
 	# Тач приходит дважды (само касание и эмулированная из него мышь) — второй раз прогресс
 	# обнулять нельзя, иначе удержание не наберётся никогда.
-	if pressed and not _vbtn_holding:
+	if pressed and not _vbtn_holding and _vbtn_of.has(icon):
 		_vbtn_holding = true
 		_vbtn_hold = 0.0
+		_vbtn_hold_icon = icon
+		_vbtn_target = _vbtn_of[icon]
 		G.ui_grab = true                  # жест удержания не должен ещё и крутить камеру
 		get_viewport().set_input_as_handled()
 
@@ -709,53 +720,67 @@ func _vbtn_cancel() -> void:
 		G.ui_grab = false
 	_vbtn_holding = false
 	_vbtn_hold = 0.0
-	if _vbtn != null:
-		_vbtn.fill = 0.0
-		_vbtn.queue_redraw()
+	if is_instance_valid(_vbtn_hold_icon):
+		_vbtn_hold_icon.fill = 0.0
+		_vbtn_hold_icon.queue_redraw()
+	_vbtn_hold_icon = null
+	_vbtn_target = null
+
+func _hide_vbtns() -> void:
+	for b in _vbtns:
+		b.visible = false
+	_vbtn_of.clear()
 
 func _update_vehicle_button(delta: float) -> void:
-	if _vbtn == null:
+	if _vbtns.is_empty():
 		return
-	# Меню уже открыто, гараж поверх экрана или управлять нечем — кнопки нет.
+	# Меню уже открыто, гараж поверх экрана или управлять нечем — кнопок нет.
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
 	var cur = cc.current_vehicle if (cc != null and "current_vehicle" in cc) else null
 	if _vmenu != null or _controls_hidden or cur == null or not (cur is Node3D):
-		_vbtn.visible = false
+		_hide_vbtns()
 		_vbtn_cancel()
 		return
-	# Ближайшая ДРУГАЯ машина игрока в радиусе.
-	var best: Node3D = null
-	var best_d: float = VBTN_SHOW_DIST * VBTN_SHOW_DIST
+	# Every OTHER machine of the player in reach, nearest first.
+	var near: Array = []
+	var reach2: float = VBTN_SHOW_DIST * VBTN_SHOW_DIST
 	if "vehicles" in cc:
 		for v in cc.vehicles:
 			if v == null or not is_instance_valid(v) or v == cur or not (v is Node3D):
 				continue
 			var d: float = (cur as Node3D).global_position.distance_squared_to((v as Node3D).global_position)
-			if d < best_d:
-				best_d = d
-				best = v as Node3D
-	if best == null:
-		_vbtn.visible = false
-		_vbtn_cancel()
-		return
-	if best != _vbtn_target:
-		_vbtn_target = best
-		_vbtn_top_t = 0.0
-		_vbtn_cancel()
-	# Верх машины пересчитываем редко: перебор блоков каждый кадр ради одной высоты не нужен.
-	_vbtn_top_t -= delta
-	if _vbtn_top_t <= 0.0:
-		_vbtn_top_t = VBTN_TOP_PERIOD
-		_vbtn_top_y = _vehicle_top_y(best)
+			if d < reach2:
+				near.append([d, v])
+	near.sort_custom(func(x, y): return x[0] < y[0])
 	var cam: Camera3D = get_viewport().get_camera_3d()
-	var world: Vector3 = best.global_position + Vector3.UP * _vbtn_top_y
-	if cam == null or cam.is_position_behind(world):
-		_vbtn.visible = false
-		_vbtn_cancel()
-		return
-	_vbtn.visible = true
-	_vbtn.position = cam.unproject_position(world) - Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+	_vbtn_of.clear()
+	var used: int = 0
+	for e in near:
+		if used >= VBTN_MAX or cam == null:
+			break
+		var v: Node3D = e[1]
+		var world: Vector3 = v.global_position + Vector3.UP * _top_of(v, delta)
+		if cam.is_position_behind(world):
+			continue
+		var b: GearIcon = _vbtns[used]
+		used += 1
+		b.visible = true
+		b.position = cam.unproject_position(world) - Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+		_vbtn_of[b] = v
+		if b != _vbtn_hold_icon and b.fill != 0.0:
+			b.fill = 0.0
+			b.queue_redraw()
+	for i in range(used, _vbtns.size()):
+		_vbtns[i].visible = false
+	for v in _vbtn_top.keys():
+		if not is_instance_valid(v):
+			_vbtn_top.erase(v)
 	if not _vbtn_holding:
+		return
+	# The held icon has to still stand over the machine it was pressed on: icons are reassigned
+	# every frame, and a machine driving out of reach takes its icon with it.
+	if not is_instance_valid(_vbtn_hold_icon) or _vbtn_of.get(_vbtn_hold_icon) != _vbtn_target:
+		_vbtn_cancel()
 		return
 	# Палец ещё на экране? Тач эмулирует левую кнопку мыши, поэтому состояние надёжно и при
 	# перетаскивании, и когда палец ушёл с самой кнопки.
@@ -763,12 +788,22 @@ func _update_vehicle_button(delta: float) -> void:
 		_vbtn_cancel()
 		return
 	_vbtn_hold += delta
-	_vbtn.fill = clampf(_vbtn_hold / VBTN_HOLD, 0.0, 1.0)
-	_vbtn.queue_redraw()
+	_vbtn_hold_icon.fill = clampf(_vbtn_hold / VBTN_HOLD, 0.0, 1.0)
+	_vbtn_hold_icon.queue_redraw()
 	if _vbtn_hold >= VBTN_HOLD:
-		var at: Vector2 = _vbtn.position + Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+		var at: Vector2 = _vbtn_hold_icon.position + Vector2(VBTN_SIZE, VBTN_SIZE) * 0.5
+		var target: Node3D = _vbtn_target
 		_vbtn_cancel()
-		open_vehicle_menu(best, at)        # меню раскрывается вокруг кнопки, палец ещё зажат
+		open_vehicle_menu(target, at)      # меню раскрывается вокруг кнопки, палец ещё зажат
+
+## The machine's top, recounted every VBTN_TOP_PERIOD rather than per frame (blocks do not jump).
+func _top_of(v: Node3D, delta: float) -> float:
+	var e: Array = _vbtn_top.get(v, [0.0, 0.0])
+	e[1] -= delta
+	if e[1] <= 0.0:
+		e = [_vehicle_top_y(v), VBTN_TOP_PERIOD]
+	_vbtn_top[v] = e
+	return e[0]
 
 ## Высота САМОГО ВЕРХНЕГО блока машины над её началом координат — чтобы кнопка не тонула в
 ## высокой сборке. Плюс запас, иначе значок ложится прямо на крышу.
@@ -912,12 +947,8 @@ func _do_vmenu_action(idx: int, vehicle: Node) -> void:
 ## своём тике — то есть кадром позже и не целиком, а этот мусор оставался.
 func on_vehicle_switched(v: Node) -> void:
 	close_vehicle_menu()          # он же снимает G.ui_grab
-	_vbtn_holding = false
-	_vbtn_hold = 0.0
-	_vbtn_target = null           # цель кнопки считается заново: прежняя стала текущей
-	if _vbtn != null and is_instance_valid(_vbtn):
-		_vbtn.fill = 0.0
-		_vbtn.visible = false
+	_vbtn_cancel()                # the held icon belonged to the previous machine's view
+	_hide_vbtns()                 # icons are reassigned next frame: the old current is now "other"
 	G.ui_grab = false
 	current_vehicle = v
 	_update_build_widgets()       # режим у новой машины свой — кнопки под него
