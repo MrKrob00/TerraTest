@@ -225,10 +225,10 @@ func _seed_demo() -> void:
 	add_stages("event_supply", [
 		{"desc": "Reach the drop",
 		 "event": "quest_supply_1", "goal": 1,
-		 "hint": "A crate came down intact. Whether anyone else got the signal is the interesting part."},
-		{"desc": "Take the crate",
+		 "hint": "Something came down intact. Whether anyone else got the signal is the interesting part."},
+		{"desc": "Stay by the drop until it opens",
 		 "event": "quest_supply_2", "goal": 1,
-		 "hint": "The crate is the objective. Whatever is guarding it is only in the way."},
+		 "hint": "Keep within ten metres and it comes apart into whatever it holds. If it was bait, it stays shut while the bait's owners live."},
 	])
 	add_quest("event_defend", "Cover the Convoy", "", Type.EVENT, 1, 0, "", 300, 35, 7, 2)
 	add_stages("event_defend", [
