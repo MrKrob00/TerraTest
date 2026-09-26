@@ -34,6 +34,9 @@ extends Node3D
 @export var corr_map_size: float = 1984.0
 
 const VP_SIZE: int = 512
+const BENDER_REFRESH := 0.5
+## How far a bender can get between two refreshes: 80 m/s is faster than anything that drives.
+const BENDER_MARGIN := 40.0
 const CORR_GRID: int = 64                           # текстура состояния (клеток на сторону)
 
 var _initialized: bool = false
@@ -113,23 +116,27 @@ func _tick_grass(delta: float) -> void:
 	_time += delta
 	_corruption_tick(delta)
 
-	# Refresh the bender list periodically so newly-spawned objects are picked up.
-	_refresh_t += delta
-	if _refresh_t >= 0.5:
-		_refresh_t = 0.0
-		_benders = get_tree().get_nodes_in_group("grass_benders")
-	# Отсев мёртвых — вместе с обновлением списка (раз в 0.5с), а не каждый кадр: .filter()
-	# каждый кадр создавал новую Callable + новый Array и звал is_instance_valid на всех
-	# benders (а туда попадает КАЖДЫЙ блок машины). Между обновлениями мёртвые отсеиваются
-	# ниже по месту, в самом цикле.
-	if _refresh_t == 0.0:
-		_benders = _benders.filter(func(t): return is_instance_valid(t))
-
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
 	var center := Vector2(cam.global_position.x, cam.global_position.z)
 	var has_map := map_node.has_method("terrain_height_at")
+	var half := window_size * 0.5
+
+	# THE LIST IS THE WINDOW, NOT THE WORLD. Every machine block and every loose item on the map
+	# is a bender, and each one cost a height query and two metas per frame even when it lay a
+	# kilometre away: measured 133 benders, 11 of them inside the window, 1.5 ms of a 1.76 ms tick.
+	# So the refresh (twice a second) keeps only what stands within the window plus the distance
+	# anything can cover before the next refresh.
+	_refresh_t += delta
+	if _refresh_t >= BENDER_REFRESH:
+		_refresh_t = 0.0
+		var reach: float = half + BENDER_MARGIN
+		_benders.clear()
+		for t in get_tree().get_nodes_in_group("grass_benders"):
+			var tp: Vector3 = (t as Node3D).global_position
+			if absf(tp.x - center.x) <= reach and absf(tp.z - center.y) <= reach:
+				_benders.append(t)
 
 	# 1. Per ground-touching bender: it's "live" this frame (stays fully pressed while
 	#    present — fixes grass springing back under a STATIONARY object), and it drops a
@@ -139,9 +146,11 @@ func _tick_grass(delta: float) -> void:
 		if not is_instance_valid(b):
 			continue                       # мёртвых чистит периодический filter выше
 		var bp: Vector3 = b.global_position
+		var p := Vector2(bp.x, bp.z)
+		if absf(p.x - center.x) > half or absf(p.y - center.y) > half:
+			continue                       # outside the window: nothing to press, ask no height
 		if has_map and bp.y - map_node.terrain_height_at(bp) > ground_touch_height:
 			continue
-		var p := Vector2(bp.x, bp.z)
 		live.append(p)
 		var last: Vector2 = b.get_meta("_last_print", Vector2(INF, INF))
 		if last.distance_squared_to(p) >= footprint_spacing * footprint_spacing:
@@ -156,7 +165,6 @@ func _tick_grass(delta: float) -> void:
 
 	# 3. Draw into the player-centred window: LIVE stamps first (full press, never fades),
 	#    then the fading TRAIL (newest first, so if the pool runs out the oldest drop).
-	var half := window_size * 0.5
 	var ppu  := float(VP_SIZE) / window_size               # pixels per world unit
 	var sprite_scale := (stamp_radius * 2.0 * ppu) / float(_stamp_tex.get_width())
 	var i := 0
