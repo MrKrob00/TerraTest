@@ -1245,6 +1245,20 @@ project: read it before claiming how anything works.
   this block" made a block in the hand belong to nobody — the energy branch dropped a second panel
   every second while the player carried the first one to the support.
 - `PhysicsRayQueryParameters3D.exclude` takes RIDs, not nodes.
+- **A BUTTON ANSWERS ANY FINGER (`touch_buttons.gd`, autoload `TouchButtons`).** Godot emulates the
+  mouse from touch index 0 only, and `BaseButton` listens to the mouse only; a second finger's
+  `InputEventScreenTouch` does reach the Control under it and is stopped there, unanswered. So with
+  one finger on the movement joystick (a `TouchScreenButton`, which takes any index) no Control
+  button could be pressed — the garage icon, the garage's X — while BUILD and fire, both
+  `TouchScreenButton`s, still worked. The autoload hooks `gui_input` of every `BaseButton` as it
+  enters the tree and presses it for index > 0; index 0 stays with the mouse, or every button
+  would fire twice. Measured with the stick held by finger 0: garage icon, X and a double-tap
+  placement by finger 1 all failed before and all work after.
+- THE WORLD TAP IS ONE FINGER, TRACKED BY INDEX (`vehicle_body_3d._build_tap_idx`), and the
+  joystick's finger is not counted (`_joystick_finger`, `_joystick_held`). Counting it made every tap
+  while driving "two fingers down", and every twitch of the stick a drag that marked the tap as a
+  swipe. The joystick's own `_input` may run before or after ours, so a press is asked by the
+  joystick's claiming RULE, not by whether it has claimed yet.
 - A TOUCH RELEASE IS RECORDED BEFORE EVERY GATE (`camera_controller._unhandled_input`). A press may
   be skipped — "not my finger" — but a release means one thing only, "the finger left the glass",
   and that is true whatever gate is up. The `G.ui_grab` early return used to sit first, and the UI

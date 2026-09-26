@@ -851,10 +851,38 @@ func _typing_in_ui() -> bool:
 	var vp := get_viewport()
 	return vp != null and vp.gui_get_focus_owner() is LineEdit
 
+func _joystick() -> Node:
+	return camera_controller.get("joystick_move") if is_instance_valid(camera_controller) else null
+
+## Is this press the movement joystick's? Its own `_input` may run before or after ours, so ask the
+## rule it claims a finger by (inside the stick, or inside its zone where it re-centres) rather
+## than whether it has claimed it yet.
+func _joystick_finger(t: InputEventScreenTouch) -> bool:
+	var j: Node = _joystick()
+	if j == null or not j.is_visible_in_tree():
+		return false
+	var held: int = j.get("active_touch_index")
+	if held >= 0:
+		return held == t.index
+	return j.call("is_touch_inside", t.position) or j.call("is_touch_outside", t.position)
+
+## Fingers the joystick holds down right now (0 or 1).
+func _joystick_held() -> int:
+	var j: Node = _joystick()
+	if j == null:
+		return 0
+	var held: int = j.get("active_touch_index")
+	return 1 if held >= 0 and held != _build_tap_idx else 0
+
 var _touch_count: int = 0        # активных пальцев на экране
 var _build_tap_pos: Vector2 = Vector2.ZERO
 var _build_tap_ms: int = 0
 var _build_tap_moved: bool = false   # палец сдвинулся → это ОРБИТА камеры, а не наводка блока
+# THE TAP IS ONE FINGER, TRACKED BY ITS INDEX. The movement joystick holds a finger of its own, and
+# counting it made every tap while driving "two fingers down" (no tap at all), and every twitch of
+# the stick a drag that marked the tap as a swipe. So the joystick's finger is not counted, and only
+# the tap's own finger can move it off being a tap.
+var _build_tap_idx: int = -1
 # Двойной тап = «подтверждение» (взять/поставить). Одиночный только наводит/подсвечивает.
 var _dbl_tap_ms: int = 0
 var _dbl_tap_pos: Vector2 = Vector2.ZERO
@@ -891,17 +919,21 @@ func _input(event: InputEvent) -> void:
 				_commit_build_tap(event.position)
 	elif event is InputEventScreenTouch:
 		if event.pressed:
-			_build_tap_pos = event.position
-			_build_tap_ms = Time.get_ticks_msec()
-			_build_tap_moved = false
-		elif _touch_count == 0 and not _build_tap_moved \
+			if not _joystick_finger(event):
+				_build_tap_idx = event.index
+				_build_tap_pos = event.position
+				_build_tap_ms = Time.get_ticks_msec()
+				_build_tap_moved = false
+		elif event.index != _build_tap_idx:
+			pass
+		elif _touch_count - _joystick_held() == 0 and not _build_tap_moved \
 				and Time.get_ticks_msec() - _build_tap_ms >= LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
 			# A LONG PRESS opens the block's settings. The tap below takes everything shorter, so
 			# the two gestures split the time with no gap. The double tap was not free for this —
 			# it means "take the block into the hand".
 			_try_open_factory_ui(event.position)
-		elif _touch_count == 0 and not _build_tap_moved \
+		elif _touch_count - _joystick_held() == 0 and not _build_tap_moved \
 				and Time.get_ticks_msec() - _build_tap_ms < LONG_PRESS_MS \
 				and not _tap_over_ui(event.position):
 			_handle_click(event.position)          # ОДИНОЧНЫЙ тап = навести/подсветить блок
@@ -914,7 +946,7 @@ func _input(event: InputEvent) -> void:
 				_dbl_tap_ms = _now
 				_dbl_tap_pos = event.position
 	elif event is InputEventScreenDrag:
-		if _build_tap_pos.distance_to(event.position) > 14.0:
+		if event.index == _build_tap_idx and _build_tap_pos.distance_to(event.position) > 14.0:
 			_build_tap_moved = true                # свайп → орбита камеры, блок не наводим
 	# Клавиатурные действия гасим ТОЛЬКО пока печатают в текстовом поле — иначе, если
 	# фокус где-то залип, тач/мышь-кнопки Take/TakeOff/Building/Movement (это тоже
