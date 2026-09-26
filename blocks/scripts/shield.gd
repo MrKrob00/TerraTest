@@ -45,18 +45,11 @@ var _cuts: Array[Vector4] = []
 ## Shields whose domes are merged with this one right now (same list as the cuts): a hit on any of
 ## them is a hit on the one hull, so the flare, the cap and the ripple are handed to all of them.
 var _merged: Array = []
-## Plates of the merged domes within SEAM_MARGIN spacings past the band anchor the relaxation.
-const SEAM_MARGIN := 0.9
 ## The per-plate table (shield_dome.gdshader `seam_tex`): up to SEAM_ROW centres within SEAM_NEAR
 ## spacings of the plate's own centre. A plate reaches about 0.6 of a spacing from its centre and
 ## the centre that owns a point is at most as far again, so 1.7 always holds the owner.
 const SEAM_ROW := 16
 const SEAM_NEAR := 1.7
-## The band along a join starts from rows: one ON the intersection ring (with only the domes' own
-## plates, two mirror-image domes put a lattice EDGE exactly on the join) and one each side of it, a
-## hexagon's row-height away (spacing x sqrt(3)/2) and half a step round. The domes' own plates
-## closer to the join than `_seam_clear` give way to them; the relaxation then evens it all out.
-const ROW_H := 0.866
 var _seam_local: Array = []           # the hull's centres in this dome's model space (hit snapping)
 static var _hex_spacing: float = 0.0
 
@@ -177,6 +170,7 @@ func _physics_process(delta: float) -> void:
 		_set_dome_param("energy", clampf(float(v.energy_fill()), 0.0, 1.0))
 	if powered:
 		_update_cuts(v)
+		_poll_seam()
 
 ## Every other LIT dome of the same side whose sphere reaches into this one, in this dome's own axes.
 ## Domes on one machine stand still in those axes, so the uniforms are written only when the list
@@ -227,8 +221,9 @@ func _update_cuts(v: Node) -> void:
 ## pays nothing.
 static var _seam_cache: Dictionary = {}
 static var _fib: PackedVector3Array = PackedVector3Array()
-const SEAM_SAMPLES := 1600           # surface samples per sphere for the relaxation
-const SEAM_ROUNDS := 7
+const SEAM_SAMPLES := 4000           # surface samples per sphere for the relaxation
+const SEAM_ROUNDS := 30
+const SEAM_NB := 10                  # neighbour list per centre for the nearest-centre walk
 
 static func _fib_dirs() -> PackedVector3Array:
 	if _fib.is_empty():
@@ -256,8 +251,17 @@ func _update_seam(inv: Transform3D) -> void:
 		var o: Vector3 = d[0]
 		var bz: Vector3 = (d[1] as Basis).z
 		key += "%.2f,%.2f,%.2f/%.2f,%.2f,%.2f;" % [o.x, o.y, o.z, bz.x, bz.y, bz.z]
+	if domes.size() < 2:
+		_seam_cache[key] = []
 	if not _seam_cache.has(key):
-		_seam_cache[key] = _solve_seam(domes) if domes.size() > 1 else []
+		# OFF THE MAIN THREAD. The relaxation is most of a second on a slow build, and it runs the
+		# moment a shield is bolted on or a machine loads. Until it lands the domes are simply cut
+		# against each other; `_poll_seam` applies the result when the job is done.
+		_start_seam_job(key, domes)
+		_seam_key = key
+		_set_dome_param("merged", false)
+		return
+	_seam_key = ""
 	var solved: Array = _seam_cache[key]
 	_seam_local = []
 	if solved.is_empty():
@@ -289,6 +293,34 @@ func _update_seam(inv: Transform3D) -> void:
 	_set_dome_param("merged", true)
 	_set_dome_param("radius", SHIELD_RADIUS)
 
+static var _seam_jobs: Dictionary = {}   # layout key -> {"task": id, "domes": Array, "out": Array}
+var _seam_key: String = ""               # the layout this dome waits for, "" when none
+
+static func _start_seam_job(key: String, domes: Array) -> void:
+	if _seam_jobs.has(key):
+		return
+	_fib_dirs()                          # lazily built statics: build them here, not on a worker
+	_spacing()
+	var job := {"domes": domes, "out": []}
+	job["task"] = WorkerThreadPool.add_task(_run_seam_job.bind(job), false, "shield seam")
+	_seam_jobs[key] = job
+
+static func _run_seam_job(job: Dictionary) -> void:
+	job["out"] = _solve_seam(job["domes"])
+
+## A waiting dome asks every tick; the first to find the job done joins it and caches the result.
+func _poll_seam() -> void:
+	if _seam_key == "":
+		return
+	if not _seam_cache.has(_seam_key):
+		var job: Dictionary = _seam_jobs.get(_seam_key, {})
+		if job.is_empty() or not WorkerThreadPool.is_task_completed(int(job["task"])):
+			return
+		WorkerThreadPool.wait_for_task_completion(int(job["task"]))
+		_seam_cache[_seam_key] = job["out"]
+		_seam_jobs.erase(_seam_key)
+	_update_seam(_dome.global_transform.affine_inverse())
+
 ## Is `p` on the visible hull: outside every sphere but dome `own`'s.
 static func _alive(p: Vector3, own: int, domes: Array) -> bool:
 	var r_in: float = SHIELD_RADIUS * CUT_INSET
@@ -297,82 +329,179 @@ static func _alive(p: Vector3, own: int, domes: Array) -> bool:
 			return false
 	return true
 
-## Distance from a point on dome `own` to the nearest join it has.
-static func _join_dist(p: Vector3, own: int, domes: Array) -> float:
-	var best := INF
-	for j in domes.size():
-		if j != own:
-			best = minf(best, _ring_dist(p, domes[own][0], domes[j][0]))
-	return best
-
 ## The relaxation itself, in machine space. Returns Vector4(position, random number) per centre.
+##
+## THE WHOLE HULL RELAXES, NOT A BAND. Relaxing only a strip along the join and holding the rest
+## still left a seam of its own where the moving strip met the held lattice: cells there came out
+## five- and seven-sided and of mixed sizes (measured, T of three domes: 54% hexagons, cell areas
+## spread 0.22, against a lone dome's 77% and 0.08). Every plate of every dome is a centre, every
+## centre moves, and Lloyd's rounds even the whole surface - a lone dome is already such a solution,
+## so away from the joins almost nothing moves.
+##
+## SPEED: a sample's nearest centre is looked for among the neighbours of LAST round's nearest
+## (centres move little per round), with each centre's SEAM_NB nearest centres re-listed every round.
 static func _solve_seam(domes: Array) -> Array:
-	var sp: float = _spacing()
-	var clear: float = sp * (ROW_H + 0.55)
-	var reach: float = sp * (ROW_H + 0.75) + SEAM_MARGIN * sp
-	var fixed: Array = []                    # Vector4: the band's anchors, searched while relaxing
-	var rest: Array = []                     # Vector4: the rest of the hull, drawn as it is
-	var moving: Array = []                   # Vector3
-	# The lattice's own plates outside the band stay where they are; the ones next to the band hold
-	# it in place while it relaxes.
-	for i in domes.size():
-		for k in _hex_cells.size():
-			var p: Vector3 = domes[i][0] + (domes[i][1] as Basis) * ((_hex_cells[k] as Vector3) * SHIELD_RADIUS)
-			if not _alive(p, i, domes):
-				continue
-			var d: float = _join_dist(p, i, domes)
-			if d < clear:
-				continue
-			if d < reach:
-				fixed.append(Vector4(p.x, p.y, p.z, _hex_rnd[k]))
-			else:
-				rest.append(Vector4(p.x, p.y, p.z, _hex_rnd[k]))
-	# Starting places for the band: the ring and a staggered row each side, per overlapping pair.
-	for i in domes.size():
-		for j in range(i + 1, domes.size()):
-			_seed_rows(i, j, domes, moving)
-	# Surface samples of the band, spread evenly over every sphere.
-	var samples: Array = []
+	var centres: Array[Vector3] = []
+	var rnds := PackedFloat32Array()
+	# Domes in a ROW make a surface of revolution, and that has a far better start than two
+	# Goldberg lattices with twelve pentagons each: rings of staggered cells round the row's axis,
+	# one ring on every join and a single cell at each end. Any other layout starts from the plates.
+	if not _ring_start(domes, centres, rnds):
+		for i in domes.size():
+			for k in _hex_cells.size():
+				var p: Vector3 = domes[i][0] + (domes[i][1] as Basis) * ((_hex_cells[k] as Vector3) * SHIELD_RADIUS)
+				if _alive(p, i, domes):
+					centres.append(p)
+					rnds.append(_hex_rnd[k])
+	var samples := PackedVector3Array()
 	for i in domes.size():
 		for f in _fib_dirs():
 			var p: Vector3 = domes[i][0] + f * SHIELD_RADIUS
-			if _alive(p, i, domes) and _join_dist(p, i, domes) < clear + 0.6 * sp:
-				samples.append([p, i])
-	var nf: int = fixed.size()
+			if _alive(p, i, domes):
+				samples.append(p)
+	var n: int = centres.size()
+	if n < 2 or samples.is_empty():
+		return []
+	# Each sample's current owner, found once by brute force.
+	var owner := PackedInt32Array()
+	owner.resize(samples.size())
+	for si in samples.size():
+		var best := INF
+		for c in n:
+			var d: float = samples[si].distance_squared_to(centres[c])
+			if d < best:
+				best = d
+				owner[si] = c
 	for _round in SEAM_ROUNDS:
-		var sum: Array = []
-		var cnt: PackedInt32Array = PackedInt32Array()
-		sum.resize(moving.size())
-		cnt.resize(moving.size())
-		for m in moving.size():
-			sum[m] = Vector3.ZERO
-		for smp in samples:
-			var p: Vector3 = smp[0]
-			var best := INF
-			var who := -1
-			for c in nf:
-				var q: Vector4 = fixed[c]
-				var dq: float = p.distance_squared_to(Vector3(q.x, q.y, q.z))
-				if dq < best:
-					best = dq
-					who = c
-			for m in moving.size():
-				var dm: float = p.distance_squared_to(moving[m])
-				if dm < best:
-					best = dm
-					who = nf + m
-			if who >= nf:
-				sum[who - nf] = (sum[who - nf] as Vector3) + p
-				cnt[who - nf] += 1
-		for m in moving.size():
-			if cnt[m] == 0:
-				continue
-			moving[m] = _onto_hull((sum[m] as Vector3) / float(cnt[m]), domes)
-	var out: Array = rest + fixed
-	for m in moving.size():
-		var p: Vector3 = moving[m]
-		var rnd: float = fposmod(sin(float(m) * 12.9898 + float(moving.size()) * 78.233) * 43758.5453, 1.0)
-		out.append(Vector4(p.x, p.y, p.z, roundf(rnd * 255.0) / 255.0))
+		var nb: Array = _centre_neighbours(centres)
+		var sum: Array[Vector3] = []
+		sum.resize(n)
+		var cnt := PackedInt32Array()
+		cnt.resize(n)
+		for si in samples.size():
+			var p: Vector3 = samples[si]
+			var w: int = owner[si]
+			# Walk downhill through neighbour lists until no neighbour is nearer.
+			var best: float = p.distance_squared_to(centres[w])
+			var moved := true
+			while moved:
+				moved = false
+				for c in (nb[w] as PackedInt32Array):
+					var d: float = p.distance_squared_to(centres[c])
+					if d < best:
+						best = d
+						w = c
+						moved = true
+			owner[si] = w
+			sum[w] += p
+			cnt[w] += 1
+		for c in n:
+			if cnt[c] > 0:
+				centres[c] = _onto_hull(sum[c] / float(cnt[c]), domes)
+	var out: Array = []
+	for c in n:
+		out.append(Vector4(centres[c].x, centres[c].y, centres[c].z, rnds[c]))
+	return out
+
+## Starting centres for domes in a row: false when they are not in one.
+static func _ring_start(domes: Array, centres: Array[Vector3], rnds: PackedFloat32Array) -> bool:
+	var first: Vector3 = domes[0][0]
+	var far: Vector3 = first
+	for d in domes:
+		if (d[0] as Vector3).distance_squared_to(first) > far.distance_squared_to(first):
+			far = d[0]
+	var span: float = first.distance_to(far)
+	if span < 0.01:
+		return false
+	var axis: Vector3 = (far - first) / span
+	var ts: Array[float] = []
+	for d in domes:
+		var rel: Vector3 = (d[0] as Vector3) - first
+		if (rel - axis * rel.dot(axis)).length() > 0.05:
+			return false                      # off the line: not a surface of revolution
+		ts.append(rel.dot(axis))
+	ts.sort()
+	var R: float = SHIELD_RADIUS
+	var sp: float = _spacing()
+	# The profile, walked from one end to the other: arc length against position on the axis.
+	var x0: float = ts[0] - R
+	var x1: float = ts[ts.size() - 1] + R
+	var steps: int = 4000
+	var xs := PackedFloat32Array()
+	var ss := PackedFloat32Array()
+	var prev_r: float = 0.0
+	var acc: float = 0.0
+	for k in steps + 1:
+		var x: float = lerpf(x0, x1, float(k) / float(steps))
+		var r: float = _profile(x, ts)
+		if k > 0:
+			acc += sqrt(pow((x1 - x0) / float(steps), 2.0) + pow(r - prev_r, 2.0))
+		xs.append(x)
+		ss.append(acc)
+		prev_r = r
+	var total: float = acc
+	# Knots: both ends and every join; rings between them at about a row-height apart.
+	var knots: Array[float] = [0.0]
+	for i in ts.size() - 1:
+		knots.append(_s_at((ts[i] + ts[i + 1]) * 0.5, xs, ss))
+	knots.append(total)
+	var rows: Array[float] = []
+	for k in knots.size() - 1:
+		var a: float = knots[k]
+		var b: float = knots[k + 1]
+		var n: int = maxi(1, roundi((b - a) / (sp * 0.866)))   # a hexagon's row height
+		for j in n:
+			rows.append(a + (b - a) * float(j) / float(n))
+	rows.append(total)
+	var ref: Vector3 = Vector3.UP if absf(axis.y) < 0.9 else Vector3.RIGHT
+	var u: Vector3 = axis.cross(ref).normalized()
+	var w: Vector3 = axis.cross(u)
+	for ri in rows.size():
+		var x: float = _x_at(rows[ri], xs, ss)
+		var r: float = _profile(x, ts)
+		var ctr: Vector3 = first + axis * x
+		var n: int = 1 if r < sp * 0.35 else maxi(3, roundi(TAU * r / sp))
+		for k in n:
+			var th: float = TAU * (float(k) + 0.5 * float(ri % 2)) / float(n)
+			centres.append(ctr + (u * cos(th) + w * sin(th)) * r)
+			var rnd: float = fposmod(sin(float(ri) * 91.7 + float(k) * 12.9898) * 43758.5453, 1.0)
+			rnds.append(roundf(rnd * 255.0) / 255.0)
+	return true
+
+## Radius of the row's hull at position `x` along its axis.
+static func _profile(x: float, ts: Array[float]) -> float:
+	var r := 0.0
+	for t in ts:
+		var h: float = SHIELD_RADIUS * SHIELD_RADIUS - (x - t) * (x - t)
+		if h > 0.0:
+			r = maxf(r, sqrt(h))
+	return r
+
+static func _s_at(x: float, xs: PackedFloat32Array, ss: PackedFloat32Array) -> float:
+	var i: int = clampi(xs.bsearch(x), 1, xs.size() - 1)
+	var f: float = inverse_lerp(xs[i - 1], xs[i], x)
+	return lerpf(ss[i - 1], ss[i], f)
+
+static func _x_at(s: float, xs: PackedFloat32Array, ss: PackedFloat32Array) -> float:
+	var i: int = clampi(ss.bsearch(s), 1, ss.size() - 1)
+	var f: float = inverse_lerp(ss[i - 1], ss[i], s) if ss[i] > ss[i - 1] else 0.0
+	return lerpf(xs[i - 1], xs[i], f)
+
+## Each centre's SEAM_NB nearest centres. Distances go into one packed integer with the index in
+## the low bits, so the native sort does the work instead of a sort callback per comparison.
+static func _centre_neighbours(centres: Array[Vector3]) -> Array:
+	var n: int = centres.size()
+	var out: Array = []
+	for a in n:
+		var keys := PackedInt64Array()
+		keys.resize(n)
+		for b in n:
+			keys[b] = (int(centres[a].distance_squared_to(centres[b]) * 10000.0) << 12) | b
+		keys.sort()
+		var row := PackedInt32Array()
+		for k in range(1, mini(SEAM_NB + 1, n)):
+			row.append(int(keys[k] & 4095))
+		out.append(row)
 	return out
 
 ## The nearest point of the visible hull to `p`: its projection onto whichever sphere is not
@@ -393,42 +522,6 @@ static func _onto_hull(p: Vector3, domes: Array) -> Vector3:
 			best = q
 	return best
 
-## Seed rows for the pair (i, j): the ring they meet in and one staggered row on each sphere.
-static func _seed_rows(i: int, j: int, domes: Array, out: Array) -> void:
-	var ca: Vector3 = domes[i][0]
-	var cb: Vector3 = domes[j][0]
-	var d: float = ca.distance_to(cb)
-	if d < 0.01 or d >= 2.0 * SHIELD_RADIUS:
-		return
-	var axis: Vector3 = (cb - ca) / d
-	var ref: Vector3 = Vector3.UP if absf(axis.y) < 0.9 else Vector3.RIGHT
-	var u: Vector3 = axis.cross(ref).normalized()
-	var w: Vector3 = axis.cross(u)
-	var sp: float = _spacing()
-	var a0: float = acos(clampf(d * 0.5 / SHIELD_RADIUS, -1.0, 1.0))
-	var rows: Array = [[ca, axis, a0, 0.0, -1]]
-	var a1: float = a0 + sp * ROW_H / SHIELD_RADIUS
-	rows.append([ca, axis, a1, 0.5, i])
-	rows.append([cb, -axis, a1, 0.5, j])
-	for r in rows:
-		var c0: Vector3 = r[0]
-		var ax: Vector3 = r[1]
-		var ang: float = r[2]
-		var rr: float = SHIELD_RADIUS * sin(ang)
-		var ctr: Vector3 = c0 + ax * (SHIELD_RADIUS * cos(ang))
-		var n: int = maxi(3, roundi(TAU * rr / sp))
-		for k in n:
-			var th: float = TAU * (float(k) + float(r[3])) / float(n)
-			var p: Vector3 = ctr + (u * cos(th) + w * sin(th)) * rr
-			var own: int = int(r[4]) if int(r[4]) >= 0 else i
-			var ok: bool = true
-			for m in domes.size():
-				if m != i and m != j and p.distance_to(domes[m][0]) < SHIELD_RADIUS * CUT_INSET:
-					ok = false
-					break
-			if ok and (own == i or own == j):
-				out.append(p)
-
 ## Distance from `p` to the circle where two domes of this radius, centred at `ca` and `cb`, meet.
 static func _ring_dist(p: Vector3, ca: Vector3, cb: Vector3) -> float:
 	var d: float = ca.distance_to(cb)
@@ -440,10 +533,6 @@ static func _ring_dist(p: Vector3, ca: Vector3, cb: Vector3) -> float:
 	var h: float = (p - m).dot(ax)
 	var q: float = ((p - m) - ax * h).length()
 	return sqrt(h * h + (q - rho) * (q - rho))
-
-## Own plates closer to a join than this give way to the band.
-func _seam_clear() -> float:
-	return _spacing() * (ROW_H + 0.55)
 
 func _same_cuts(found: Array[Vector4]) -> bool:
 	if found.size() != _cuts.size():
