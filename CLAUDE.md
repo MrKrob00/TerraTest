@@ -613,6 +613,15 @@ project: read it before claiming how anything works.
   behind it (measured: 0 shots, now 19). NOTE THE CEILING: a base opens fire only on what it SEES,
   and sight is `detection_radius`, 40 m for every enemy — so a far barrel on a base works out to
   40 m unless the player shoots first. Measured the same on the old two-gun towers.
+- THE SHIELDED TOWERS' CHARGING STATIONS (preset 18) ARE BATTERY STATIONS THAT DEFEND THEMSELVES:
+  two batteries, a panel and the wireless transmitter on a ROTATING core, plus a machine gun the
+  rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (the mast over the
+  core) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` (6 m)
+  of the tower's battery; on the axis it keeps the 4.9 m `TOWER_RING` was measured for. One gun
+  per station: Watchtower goes from two barrels to five, SAM to six. Measured through the real
+  quest: three stations, every block connected, every transmitter feeding the tower; the drained
+  tower refilled 0 → 144 in 4 s (3 × `RATE`), and 0 → 0 once the stations were gone; a station
+  turned 89° onto the player and fired 36 times from 25 m.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
   player: constant seed, cleared stays cleared, saves store indices only.
 
