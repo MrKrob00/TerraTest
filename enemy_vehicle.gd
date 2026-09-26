@@ -206,16 +206,18 @@ func _measure_build() -> void:
 			v += G.shop_price(int(b.get("block")))
 	build_value = v
 
-# Kill reward: RP by machine value (G.rp_for_kill). The System announces it - without the line the
+# Kill reward: RP and XP by machine value (G.rp_for_kill, G.xp_for_kill). The System announces it - without the line the
 # player would not notice anything was granted.
 func _pay_out() -> void:
 	if demo or faction == 0 or build_value <= 0:
 		return
 	var rp: int = G.rp_for_kill(build_value)
+	var xp: int = G.xp_for_kill(build_value)
 	G.add_research_points(rp)
+	G.add_faction_xp("start", xp)
 	var d: Node = get_node_or_null("/root/Dialogue")
 	if d != null and d.has_method("say"):
-		d.say("System", tr("Wreck catalogued. +%d RP.") % rp)
+		d.say("System", tr("Wreck catalogued. +%d RP, +%d XP.") % [rp, xp])
 
 
 ## Share of a dead enemy's remaining blocks that land as loot (see MachineBody.scatter_blocks).

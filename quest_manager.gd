@@ -240,13 +240,12 @@ func _seed_demo() -> void:
 		 "hint": "It survives or it does not. There is no partial credit for this one."},
 	])
 	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9, 3)
+	# ONE WAVE. It used to be two - a pair, then a heavier pair the moment the first died - and a
+	# second attack arriving out of a finished fight read as a spawn bug, not as a design.
 	add_stages("event_waves", [
-		{"desc": "Survive the first wave",
+		{"desc": "Survive the attack",
 		 "event": "quest_waves_1", "goal": 1,
 		 "hint": "They are coming to you. Pick your ground before they arrive."},
-		{"desc": "Survive the second wave",
-		 "event": "quest_waves_2", "goal": 1,
-		 "hint": "Heavier than the first. Repairs, if you have them, happen now."},
 	])
 	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12, 4)
 	add_stages("event_camp", [
@@ -478,6 +477,7 @@ func reset_quest(id: String) -> void:
 		return
 	q["done"] = false
 	q["progress"] = 0
+	q.erase("reward_mult")
 	if q.has("stages") and not (q["stages"] as Array).is_empty():
 		q["stage"] = 0
 		_apply_stage(q)
@@ -500,18 +500,27 @@ func _persist_done(q: Dictionary) -> void:
 		g.quests_done.append(q["id"])
 		g.mark_progress_dirty()
 
+## The reward multiplier a quest earned from the strength of the enemies it put up (quest_arcs
+## `_on_quest_kill`). Read once at completion and dropped, so a repeating event starts at 1 again.
+func set_reward_mult(id: String, m: float) -> void:
+	var q := _find(id)
+	if not q.is_empty():
+		q["reward_mult"] = m
+
 func _on_completed(q: Dictionary) -> void:
+	var mult: float = float(q.get("reward_mult", 1.0))
+	q.erase("reward_mult")
 	# Награда деньгами. Начисляем НАПРЯМУЮ (g.money += ...), а не через add_money, чтобы
 	# награда сама не засчитывалась в задание «заработай денег».
-	var reward: int = int(q.get("reward_money", 0))
+	var reward: int = roundi(float(q.get("reward_money", 0)) * mult)
 	var g = get_node_or_null("/root/G")
 	if g:
 		if reward > 0:
 			g.money += reward
 			g.mark_progress_dirty()   # мимо add_money — сейв надо пометить самим
 			g.money_changed.emit()
-		g.add_faction_xp("start", int(q.get("reward_xp", 0)))
-		g.add_research_points(int(q.get("reward_rp", 0)))
+		g.add_faction_xp("start", roundi(float(q.get("reward_xp", 0)) * mult))
+		g.add_research_points(roundi(float(q.get("reward_rp", 0)) * mult))
 	# Награда БЛОКАМИ: блоки глючно кружат вокруг машины игрока, затем падают в мир (не молча в
 	# инвентарь). Ставим на активную машину игрока.
 	var rblock: int = int(q.get("reward_block", 0))

@@ -478,6 +478,16 @@ project: read it before claiming how anything works.
   "never spawn in front".
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
   the tier is rolled under it. Kill reward is measured once at birth.
+- **A KILL PAYS BY WHAT DIED, IN XP AS WELL AS RP** (`G.xp_for_kill`, paid in `enemy_vehicle._pay_out`
+  next to the RP). It was a flat 15 on the event bus, so a sixth-step siege build paid what a scout
+  paid, and grade 5 (1500 XP) was a hundred kills of anything — a player measured it as half an
+  hour of farming. Now 15 at `KILL_XP_REF` (the median value of step one) and in proportion above,
+  never less than 15, capped at `KILL_XP_MAX`. The same measure scales a QUEST's reward: every
+  hostile a quest spawns through `_spawn_hostile` reports its death with its value
+  (`quest_arcs._on_quest_kill`, the polled quest being `_cur_q`), and money, XP and RP at
+  completion are multiplied by the average strength of what died (`G.strength_of`, 1 to
+  `QUEST_REWARD_MAX` 3). Measured: a gang of step-one machines pays exactly the table (x1.0); a
+  Hold Position of 10-14k builds paid 387$ / 51 XP against the table's 340 / 45 (x1.14).
 - THE LADDER IS TWO TABLES AND NOTHING ELSE: `enemy_spawner.PRESET_TIERS` (a step per line) and
   `blocks.ENEMY_BUILDS` (what each build is — rows, wheel, width, deck, top, crown, wings). A new
   machine is A TABLE ROW AND NOTHING ELSE: `_define_layout` now asks `ENEMY_BUILDS.has()` instead
@@ -791,8 +801,11 @@ project: read it before claiming how anything works.
   world; `quest_compass.gd` draws the marker and exposes any quest's target.
 - STORY is story only. Counters live in DAILY, events repeat and are capped at two journal slots.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
-  Far away they cost nothing because the spawner sleeps them. Waves are the exception: they arrive
-  at the player.
+  Far away they cost nothing because the spawner sleeps them. Hold Position is the exception: its
+  attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
+  launched the moment the first died, and a new attack out of a finished fight read as a spawn bug.
+  Every other event spawns its party once; a second spawn happens only after a reload, when the
+  participant list (memory only) is gone.
 - **A "REACH X" STAGE ENDS WHEN THE PLAYER IS THERE (`quest_arcs._reached`, `REACH_DIST` 60 m), NOT
   WHEN X EXISTS.** Spawning early and reporting stage 1 used to be one line, so moving the spawn up
   took the distance gate with it: every "Reach ..." stage (Crossfire, Tech Gang, Supply Drop, Cover
