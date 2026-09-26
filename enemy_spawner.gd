@@ -870,7 +870,8 @@ func _enemy_detect_radius() -> float:
 	if _detect_cache > 0.0:
 		return _detect_cache
 	for e in _enemies:
-		if is_instance_valid(e):
+		# A base sees farther (enemy_vehicle.BASE_SIGHT) and must not set the ring machines drop on.
+		if is_instance_valid(e) and e.get("is_base") != true:
 			var r = e.get("detection_radius")
 			if r != null and float(r) > 0.0:
 				_detect_cache = float(r)

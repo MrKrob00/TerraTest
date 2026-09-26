@@ -232,7 +232,15 @@ func _die() -> void:
 	scatter_blocks(_cabin, LOOT_SURVIVE)    # shared scatter from MachineBody: the player uses the same one
 	queue_free()
 
+## A BASE WATCHES FARTHER THAN A MACHINE. `detection_radius` (40 m) is kept short so the player can
+## drive round a patrol, but a turret that sees 40 m makes its far barrel pointless: a gun reaches
+## 60 m and a laser 70, and a base never fired at anything past 40 unless shot first. Set here, off
+## `is_base`, so both doors that make a base (the spawner and outposts.gd) get it.
+const BASE_SIGHT := 70.0
+
 func _setup_detection_area() -> void:
+	if is_base:
+		detection_radius = maxf(detection_radius, BASE_SIGHT)
 	var area: Area3D = Area3D.new()
 	area.name             = "DetectionArea"
 	area.collision_layer  = 0
@@ -887,6 +895,10 @@ func _do_attack() -> void:
 	# shoots" must hold whoever set the flag.
 	if not (combat_allowed or is_base or _answer_t > 0.0) or not is_instance_valid(_target):
 		return
+	# EVERYTHING IS ARMED, EVEN WHAT CANNOT REACH. A weapon's range is only its AIMING sphere; its
+	# rounds fly well past it, and a machine turned toward its target hits with the straight-ahead
+	# fire an unarmed-in-range weapon gives. Arming only what reaches was tried and measured: the same
+	# 13-machine fight dealt 214-344 damage in 6 s against 431-683 with everything armed.
 	for b in _weapon_blocks():
 		if not is_instance_valid(b):
 			_atk_n = -1                 # block destroyed: rebuild the cache
