@@ -143,11 +143,15 @@ func _define_layout() -> void:
 		4: _layout_cabin_only()
 		11: _layout_outpost()
 		12: _layout_fort()
-		13: _layout_turret_post(G.Block.GUN)
-		14: _layout_turret_post(G.Block.SHOTGUN)
-		15: _layout_turret_post(G.Block.LASER)
-		16: _layout_shielded_tower(G.Block.GUN)      # Charlie Watchtower
-		17: _layout_shielded_tower(G.Block.ROCKET)   # SAM Site Ridge
+		# EVERY TURRET CARRIES A NEAR GUN AND A FAR ONE. Two of the same left each a hole: two guns
+		# (60 m) had nothing for a machine pressed against them, two shotguns (18 m) nothing past
+		# twenty metres, and a mortar cannot even hit inside 20 m. Near: shotgun, rocket (18 m).
+		# Far: gun (60), laser (70), mortar (20-160).
+		13: _layout_turret_post(G.Block.GUN, G.Block.SHOTGUN)
+		14: _layout_turret_post(G.Block.LASER, G.Block.SHOTGUN)
+		15: _layout_turret_post(G.Block.MORTAR, G.Block.SHOTGUN)
+		16: _layout_shielded_tower(G.Block.GUN, G.Block.SHOTGUN)     # Charlie Watchtower
+		17: _layout_shielded_tower(G.Block.MORTAR, G.Block.ROCKET)   # SAM Site Ridge: all explosive
 		18: _layout_charge_tower()                   # зарядная башня к ним обеим
 		_: _layout_default()
 
@@ -650,8 +654,11 @@ func _layout_outpost() -> void:
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
 	set_block(5, 6, 5, G.Block.BLOCK, 0.0)
 	_side_armor(5)
-	set_block(5, 7, 5, G.Block.GUN, 0.0)
-	set_block(5, 6, 6, G.Block.GUN, 0.0)
+	set_block(5, 7, 5, G.Block.GUN, 0.0)             # far, on top, facing forward
+	# Near, and facing BACK: the outpost does not turn, and at 0 this barrel looked straight into
+	# its own mast - it could neither shoot ahead nor cover the rear (measured: 0 shots at a machine
+	# ten metres behind). The two barrels now split the circle instead of sharing half of it.
+	set_block(5, 6, 6, G.Block.SHOTGUN, PI)
 
 ## Fort: wider, taller, with a rocket launcher and a battery. The battery is not there for energy (a
 ## base needs none) but for the blast: finishing a fort off at point blank should be dangerous.
@@ -686,9 +693,9 @@ func _layout_fort() -> void:
 ## join with the bottom only (connect_faces = 32), so each has a console block under it; the panel
 ## likewise, so it sits on a base block rather than on the bare core.
 ##
-## The weapon is a PARAMETER: gun, shotgun and laser give three different towers from one layout -
-## long range, close spread and a continuous beam.
-func _layout_turret_post(weapon: int) -> void:
+## The weapons are PARAMETERS, one far and one near (see _define_layout): three different towers
+## from one layout.
+func _layout_turret_post(far: int, near: int) -> void:
 	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)     # ядро: его и доворачивает ИИ
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -700,8 +707,8 @@ func _layout_turret_post(weapon: int) -> void:
 	set_block(5, 6, 4, G.Block.SOLAR, 0.0)           # питание щита
 	set_block(5, 6, 6, G.Block.SOLAR, 0.0)
 	set_block(5, 7, 5, G.Block.BLOCK, 0.0)
-	set_block(4, 7, 5, weapon, 0.0)                  # стволы по бокам
-	set_block(6, 7, 5, weapon, 0.0)
+	set_block(4, 7, 5, far, 0.0)                     # стволы по бокам
+	set_block(6, 7, 5, near, 0.0)
 	set_block(5, 8, 5, G.Block.SHIELD, 0.0)          # купол накрывает всю башню
 
 # ── SHIELDED TOWER (presets 16-17) and its CHARGING TOWERS (18) ──────────────
@@ -716,7 +723,7 @@ func _layout_turret_post(weapon: int) -> void:
 # current and the dome holds; kill them all and the reserve drains under fire.
 #
 # The player sees this without a hint: a charging beam runs from each tower to the shielded one.
-func _layout_shielded_tower(weapon: int) -> void:
+func _layout_shielded_tower(far: int, near: int) -> void:
 	set_block(5, 5, 5, G.Block.ROT_SUPPORT, 0.0)     # ядро: его доворачивает ИИ
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)
 	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
@@ -729,8 +736,8 @@ func _layout_shielded_tower(weapon: int) -> void:
 	set_block(4, 6, 5, G.Block.BLOCK, 0.0)           # консоли под стволы
 	set_block(6, 6, 5, G.Block.BLOCK, 0.0)
 	set_block(5, 7, 5, G.Block.BLOCK, 0.0)
-	set_block(4, 7, 5, weapon, 0.0)                  # стволы низом на консолях (connect_faces = 32)
-	set_block(6, 7, 5, weapon, 0.0)
+	set_block(4, 7, 5, far, 0.0)                     # стволы низом на консолях (connect_faces = 32)
+	set_block(6, 7, 5, near, 0.0)
 	set_block(5, 8, 5, G.Block.SHIELD, 0.0)          # купол накрывает всю вышку
 
 func _layout_charge_tower() -> void:
