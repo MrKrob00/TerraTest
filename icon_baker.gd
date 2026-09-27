@@ -53,8 +53,8 @@ func _ready() -> void:
 ## 5: the shotgun and the heavy cannon got theirs. 6: the cannon and the mortar cut to their cell.
 ## 7: the shield and the repair unit got models. 8: the radar. 9: the hull blocks.
 ## 10: half blocks became 45-degree triangles; the riser and stabiliser wheels got models.
-## 11: the riser became TerraTech's two-cell bracket and swan-neck arm.
-const RECIPE := 11
+## 11: the riser became TerraTech's two-cell bracket and swan-neck arm. 12: its heavy mount and cast arm.
+const RECIPE := 12
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

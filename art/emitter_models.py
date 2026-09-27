@@ -260,36 +260,101 @@ def seg_xy(faces, p0, p1, w, h, style):
     faces += part
 
 
-# The riser, as TerraTech draws theirs: a plate bolted UNDER the hull with a bearing below it, a
-# swan-neck arm leaving it downwards and sideways, and an ordinary tyre hanging on the arm's end in
-# the NEXT cell. Two cells wide: the anchor is the tyre's cell (x 0) so the suspension probes from
-# under the tyre; the bracket is the cell at x -1, and only its top face attaches. The arm turns
-# about the bearing when the machine steers and slides into it with the suspension.
+def sweep(pk, img, faces, path, w, h, ramp, sides=12, cell=3, taper=1.0):
+    """A thick rounded bar swept along a curve in the XY plane: `path` is a list of (x, y) points,
+    the section a rounded rectangle w across (along Z) and h thick, shrinking to `taper` of its size
+    at the far end. Every facet is painted by its own normal, so the bar reads round unshaded."""
+    n = len(path)
+    rings = []
+    for i, (x, y) in enumerate(path):
+        # Tangent from the neighbours; the section's "up" is the tangent turned in the XY plane.
+        pa = path[max(i - 1, 0)]
+        pb = path[min(i + 1, n - 1)]
+        tx, ty = pb[0] - pa[0], pb[1] - pa[1]
+        tl = math.hypot(tx, ty) or 1.0
+        nx, ny = -ty / tl, tx / tl
+        k = 1.0 + (taper - 1.0) * i / max(n - 1, 1)
+        ring = []
+        for j in range(sides):
+            ang = (j + 0.5) * 2 * math.pi / sides
+            c, sn = math.cos(ang), math.sin(ang)
+            # Superellipse: a rounded rectangle rather than an ellipse, like a cast arm.
+            e = 0.5
+            cu = math.copysign(abs(c) ** e, c) * h / 2 * k
+            su = math.copysign(abs(sn) ** e, sn) * w / 2 * k
+            ring.append((x + nx * cu, y + ny * cu, su))
+        rings.append(ring)
+    segs = n - 1
+    x0, y0, iw, ih = pk.take(sides * cell, segs * cell)
+    cells = {}
+    for i in range(segs):
+        for j in range(sides):
+            jj = (j + 1) % sides
+            q = [rings[i][j], rings[i][jj], rings[i + 1][jj], rings[i + 1][j]]
+            mid = [sum(p[t] for p in q) / 4 for t in range(3)]
+            cx = (path[i][0] + path[i + 1][0]) / 2
+            cy = (path[i][1] + path[i + 1][1]) / 2
+            out = th.norm((mid[0] - cx, mid[1] - cy, mid[2]))
+            u0, v0 = x0 + j * cell, y0 + i * cell
+            uv = [(u0, v0), (u0 + cell, v0), (u0 + cell, v0 + cell), (u0, v0 + cell)]
+            if th.dot(th.newell(q), out) < 0:
+                q, uv = list(reversed(q)), list(reversed(uv))
+            f = th.Face(q, None)
+            f.uv = uv
+            faces.append(f)
+            cells[(i, j)] = ramp_colour(ramp, th.newell(q))
+    for yy in range(-th.PAD, ih + th.PAD):
+        for xx in range(-th.PAD, iw + th.PAD):
+            i = min(max(yy // cell, 0), segs - 1)
+            j = min(max(xx // cell, 0), sides - 1)
+            img.putpixel((x0 + xx, y0 + yy), th.jitter(cells[(i, j)], 1))
+    # End caps.
+    for ring, t in ((rings[0], path[0]), (rings[-1], path[-1])):
+        other = path[1] if ring is rings[0] else path[-2]
+        out = th.norm((t[0] - other[0], t[1] - other[1], 0.0))
+        pts = th.outward(list(ring), (t[0] - out[0], t[1] - out[1], 0.0))
+        faces.append(th.Face(pts, "dark", u_hint=(0, 0, 1)))
+
+
+def bezier(p0, p1, p2, steps):
+    return [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
+             (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1])
+            for t in [k / steps for k in range(steps + 1)]]
+
+
+# The riser, as TerraTech draws theirs (the reference picture): a heavy rounded MOUNT bolted under the
+# hull, a THICK cast arm leaving its underside and sweeping down and out in one curve, and an ordinary
+# tyre on the arm's end, the arm meeting the hub on the tyre's inner face. Two cells wide: the
+# anchor is the tyre's cell (x 0) so the suspension probes from under the tyre; the bracket is the
+# cell at x -1, and only its top face attaches. The arm turns about the mount's axis when steering
+# and slides into the mount with the suspension, so its root starts well inside the mount.
 RISER_TYRE_C = (0.15, -0.40)     # (x, y) of the tyre's centre in the anchor cell
-RISER_BEARING = (-1.0, 0.37)     # (x, y) of the bearing under the plate
+RISER_BEARING = (-1.0, 0.37)     # (x, y) of the steering axis' top, under the hull
 
 
 def build_riser(pk, img):
     parts = {"riser_mount": [], "riser_arm": []}
     mount, arm = parts["riser_mount"], parts["riser_arm"]
     bx, by = RISER_BEARING
-    # Bearing housing under the plate (the plate itself is the artist's).
+    # Mount: a heavy chamfered body under the hull, nearly the tyre's width, a dark bearing ring
+    # where the arm leaves it.
+    th.prism(mount, bx - 0.40, bx + 0.40, 0.10, 0.50, 0.36, -0.36, 0.11,
+             cap_front="blue", cap_back="blue", top_style="blue")
     part = []
-    lathe_y(pk, img, part, [(0.0, 0.10), (0.13, 0.10), (0.17, 0.14), (0.17, by)], BLUE_RAMP, sides=10)
-    lathe_y(pk, img, part, [(0.19, by - 0.05), (0.19, by)], METAL_RAMP, sides=10)
+    lathe_y(pk, img, part, [(0.20, 0.04), (0.22, 0.07), (0.22, 0.10)], METAL_RAMP, sides=12)
     for f in part:
         f.pts = [(p[0] + bx, p[1], p[2]) for p in f.pts]
     mount += part
-    # Arm, built about the bearing (the node's origin) in block axes: a rod up into the housing,
-    # then the neck down and out to a boss on the hub's inner side.
+    # Arm, about the steering axis (the node's origin) in block axes: root inside the mount, one
+    # curve down and out, ending on the hub's inner face.
     tx, ty = RISER_TYRE_C
-    hub_in = tx - 0.43                  # the hub's inner end, where the boss sits
-    lathe_y(pk, img, arm, [(0.06, -0.12 - by), (0.06, 0.25 - by)], METAL_RAMP, sides=8)
-    pts = [(0.0, -0.12 - by), (0.12, -0.34 - by), (hub_in - bx - 0.12, ty - by + 0.02),
-           (hub_in - bx, ty - by)]
-    for i in range(len(pts) - 1):
-        seg_xy(arm, pts[i], pts[i + 1], 0.16, 0.12, "blue")
-    rod_x(pk, img, arm, ty - by, 0.0, 0.09, hub_in - bx - 0.06, hub_in - bx + 0.03)
+    hub_in = tx - 0.36
+    p0 = (0.0, 0.28 - by)
+    p1 = (0.0, ty - by)
+    p2 = (hub_in - bx, ty - by)
+    sweep(pk, img, arm, bezier(p0, p1, p2, 9), 0.26, 0.22, BLUE_RAMP, taper=0.85)
+    # Boss: the round cap where the arm meets the hub.
+    rod_x(pk, img, arm, ty - by, 0.0, 0.14, hub_in - bx - 0.02, hub_in - bx + 0.06)
     return parts
 
 
