@@ -36,13 +36,17 @@ use_debanding = false
 
 [sub_resource type="Sky" id="Sky_2yde8"]
 sky_material = SubResource("ProceduralSkyMaterial_obt1j")
-process_mode = 2
+radiance_size = 0
 
 [sub_resource type="Environment" id="Environment_id0nj"]
 background_mode = 2
 background_color = Color(0.21960784, 0.11372549, 0.5294118, 1)
 sky = SubResource("Sky_2yde8")
 sky_custom_fov = 80.0
+ambient_light_source = 2
+ambient_light_color = Color(0.3, 0.44, 0.68, 1)
+ambient_light_energy = 0.15
+reflected_light_source = 1
 tonemap_mode = 4
 tonemap_agx_contrast = 1.7
 
