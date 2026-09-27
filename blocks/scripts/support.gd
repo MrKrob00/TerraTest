@@ -14,9 +14,10 @@ extends VehicleBlock
 const FOOT_TOP := -0.42
 ## The sleeve covers this share of the ram, so the jack reads as two telescoping stages.
 const SLEEVE_SHARE := 0.55
-## Past this the jack stays short: a machine anchored over a cliff is still anchored, it just does
-## not get a twenty-metre stilt.
-const LEG_MAX := 12.0
+## How far the ram runs out: the most the anchor may hold the machine's foot off the ground.
+## vehicle_body_3d._anchor_target_y asks `leg_max` and sets the anchor height inside it, so the foot
+## always lands; the player's number, "the machine rises about a metre and a half".
+const LEG_MAX := 1.5
 ## How fast the piston runs, as a share of what is left per second, never slower than LEG_MIN_SPEED.
 const LEG_EASE := 10.0
 const LEG_MIN_SPEED := 1.5
@@ -45,6 +46,9 @@ func _ready() -> void:
 ## Asked by vehicle_body_3d._build_anchor_column: this block puts its own foot on the ground.
 func draws_own_leg() -> bool:
 	return true
+
+func leg_max() -> float:
+	return LEG_MAX
 
 func _process(delta: float) -> void:
 	var m: Node = _machine()

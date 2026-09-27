@@ -255,13 +255,16 @@ func toggle_anchor() -> bool:
 	# жал кнопку, машину подкидывало, и почему — оставалось гадать. Единственное условие
 	# якоря — наличие опоры на самой машине; всё остальное решает выравнивание, которое и так
 	# ставит машину в 0° и поднимает на полметра.
+	var target_y: float = _anchor_target_y()
+	if is_nan(target_y):
+		_anchor_refuse_hop()               # the ram cannot reach the ground without burying the hull
+		return false
 	var terr: Node = _find_terrain()
 	freeze = true
 	anchored = true
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
 	_rebuild_factory()                    # цепочка фабрики свежая к запуску под якорем
-	var target_y := global_position.y + 0.5
 	_anchor_tween = create_tween()
 	_anchor_tween.tween_property(self, "global_position:y", target_y, 0.18)   # (4) подъём на 0.5
 	_anchor_tween.tween_property(self, "global_rotation:x", 0.0, 0.12)        # (5) ровно 0°
@@ -275,6 +278,40 @@ func toggle_anchor() -> bool:
 	if not body_entered.is_connected(_on_anchor_contact):
 		body_entered.connect(_on_anchor_contact)
 	return true
+
+## THE ANCHOR HEIGHT IS SET BY THE GROUND UNDER THE SUPPORT, NOT UNDER THE CABIN. It used to be
+## "where the machine stands plus ANCHOR_LIFT", which is right only while the support stands near the
+## cabin: with the support out on the low side of a slope its ram could not reach the ground and the
+## machine stood on a jack in the air. Now the lift is clamped between "foot on the ground, ram in"
+## and "ram fully out" (the support's `leg_max`), and raised further only as far as every other block
+## needs to clear the ground under ITS OWN column (wheels excepted - on an anchor they hang). When the
+## two cannot both hold, the answer is NAN and the anchor refuses: the jack is too short for this spot.
+const ANCHOR_LIFT := 0.5
+const ANCHOR_CLEARANCE := 0.05
+
+func _anchor_target_y() -> float:
+	var want: float = global_position.y + ANCHOR_LIFT
+	var sup: Node3D = support_block()
+	if sup == null or not sup.has_method("leg_max") or block_map_node == null:
+		return want
+	var yaw := Basis(Vector3.UP, global_rotation.y)        # the machine is levelled as it anchors
+	var o: Vector3 = global_position
+	var sp: Vector3 = o + yaw * sup.position
+	var foot_lo: float = G.ground_y(sp, sp.y - 1.0) - (sup.position.y - 0.5)
+	var foot_hi: float = foot_lo + float(sup.leg_max())
+	var clear: float = -INF
+	for b in block_map_node.get_children():
+		if b == sup or not (b is Node3D) or not ("block" in b) or b.has_method("probe_ground"):
+			continue
+		var n := b as Node3D
+		var c = n.get("cells_center")
+		var local: Vector3 = n.position + n.basis * ((c as Vector3) if c is Vector3 else Vector3.ZERO)
+		var p: Vector3 = o + yaw * local
+		clear = maxf(clear, G.ground_y(p, -INF) - (n.position.y - 0.5) + ANCHOR_CLEARANCE)
+	var lo: float = maxf(foot_lo, clear)
+	if lo > foot_hi:
+		return NAN
+	return clampf(want, lo, foot_hi)
 
 ## КОЛОННА СТАВИТСЯ ПОД ЯДРО, А НЕ ПОД НАЧАЛО КООРДИНАТ МАШИНЫ. У блока 2×2×2 (продавец,
 ## фабрикатор, процессор) якорная клетка — УГЛОВАЯ: футпринт растёт от неё в минус по X и Z

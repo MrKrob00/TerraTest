@@ -400,7 +400,18 @@ project: read it before claiming how anything works.
   core has `draws_own_leg` - it used to grow a white `CylinderMesh` - and keeps its column only
   for a base whose core is a seller or a miner. Measured on the proving ground: foot bottom 0.000
   against ground 0.000 for both, no column, the base at -0.61 deg while the block turned to
-  29.39, the ram back to its rest length after release.
+  29.39, the ram back to its rest length after release. The deck is blue down to the ridge band
+  (`DECK_Y`), the player's sketch: a dark neck under a short deck read as the block's bulk.
+- **THE ANCHOR HEIGHT IS SET BY THE GROUND UNDER THE SUPPORT, NOT UNDER THE CABIN**
+  (`vehicle_body_3d._anchor_target_y`). It was "where the machine stands plus `ANCHOR_LIFT`", right
+  only while the support stands by the cabin: three cells back over the low side of a slope, its ram
+  could not reach and the machine stood on a jack in the air. Now the height is clamped between "foot
+  on the ground, ram in" and "ram fully out" (`support.gd` `leg_max`, 1.5 m - the lift the player
+  expects), and raised only as far as every other block needs to clear the ground under its OWN
+  column (wheels excepted: on an anchor they hang). When both cannot hold the anchor refuses with the
+  usual hop. Measured in the real world, support three cells behind the cabin, four slopes: the old
+  rule needed a 1.52-1.99 m ram every time (the jack hung), the new one put the foot at 0.000 on all
+  four with the cabin 0.48-1.00 m clear; on flat ground nothing changed (1.38, ram 0.88).
 - The core watchdog (`MachineBody.cabin_watch`) runs for enemies too: it asks whether anything still
   holds the machine together instead of waiting for a `destroyed` signal.
 
