@@ -46,38 +46,6 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_qk1gl")
 
-[sub_resource type="ArrayMesh" id="ArrayMesh_xp6cf"]
-_surfaces = [{
-"aabb": AABB(-0.17484674, -0.15890636, -0.2128271, 0.39218077, 0.40482122, 0.4256542),
-"format": 34896613377,
-"index_count": 108,
-"index_data": PackedByteArray("AAABAAIAAgADAAAAAQAEAAIAAgAEAAMAAQAAAAUAAQAFAAYAAAADAAcAAAAHAAUAAQAIAAQABgAIAAEABQAJAAYABgAJAAgABQAHAAkABAAKAAMACAALAAQABAALAAoACQAMAAgACAAMAAsABwANAAkACQANAAwAAwAOAAcAAwAKAA4ABwAOAA0ACwAPAAoADQAQAAwADAARAAsACwARAA8ADAAQABEACgAPABIACgASAA4AEQASAA8ADQATABAAEwARABAADgATAA0AEQATABIADgASABMA"),
-"name": "main",
-"primitive": 3,
-"uv_scale": Vector4(0, 0, 0, 0),
-"vertex_count": 20,
-"vertex_data": PackedByteArray("AAApG1RNAAAAAB+//38AAAAAfoAELgAAqHopG1RNAACoen6ABC4AAAAAKRuqsgAAAAB+gPrRAACoeikbqrIAAKh6H7//fwAAqHp+gPrRAAD6kwAA5DAAAPqTNp4AAAAA+pP///9/AAD6kzae//8AAPqTAAAazwAA//8AAOQwAAD+/////38AAP7/Np4AAAAA//8AABrPAAD+/zae//8AAA==")
-}]
-blend_shape_mode = 0
-
-[sub_resource type="ArrayMesh" id="ArrayMesh_a3rid"]
-resource_name = "Assets_Cylinder_021"
-_surfaces = [{
-"aabb": AABB(-0.17484674, -0.15890636, -0.2128271, 0.39218077, 0.40482122, 0.4256542),
-"attribute_data": PackedByteArray("aQ7gLFkOsixyDsQsSw7hLEEOxSwBCUIswgd9LcIHQiwBCX0twQxCLIELfS2BC0IswQx9LUEKQiwBCX0tAQlCLEEKfS0BDkIswQx9LcEMQiwBDn0tgQtCLEEKfS1BCkIsgQt9LSQI7C8oCpQuKArsLyQIlC40EOwvORKULjkS7C80EJQuXA56LEgOgCxODnosYg6ALFUOYixrDmcsYg5sLFUOViwoCuwvLAyULiwM7C8oCpQucw7DLEIOxCxaDrEsag7gLEwO4CxODnosQA5mLEkObCxIDoAsYg5sLGIOgCxcDnosaw5nLEkObCxVDlYsVQ5iLEAOZiwwDuwvNBCULjQQ7C8wDpQuLAzsLzAOlC4wDuwvLAyULg=="),
-"format": 34896613399,
-"index_count": 108,
-"index_data": PackedByteArray("AAABAAIAAQAAAAMAAQADAAQABQAGAAcABQAIAAYACQAKAAsACQAMAAoADQAOAA8ADQAQAA4AEQASABMAEQAUABIAFQAWABcAFQAYABYAGQAaABsAGQAcABoAHQAeAB8AHQAgAB4AIQAiACMAIQAkACIAJQAmACcAJQAoACYAKQAqACsAKQAsACoALQAuAC8ALgAtADAALgAwADEAMgAzADQAMgA1ADMANgA3ADgANgA5ADcAOgA7ADwAOgA9ADsAPgA/AEAAPgBBAD8AQgBDAEQAQgBFAEMA"),
-"material": SubResource("StandardMaterial3D_sr0ja"),
-"name": "main",
-"primitive": 3,
-"uv_scale": Vector4(0, 0, 0, 0),
-"vertex_count": 70,
-"vertex_data": PackedByteArray("AAApG1RNAMAAAB+//38AwAAAfoAELgDAAAApG6qyAMAAAH6A+tEAwAAAfoAELv7AqHopG1RN/sAAACkbVE3+wKh6foAELv7AAAApG6qy9/aoen6A+tH39gAAfoD60ff2qHopG6qy9/YAAB+//390yKh6foAELnTIAAB+gAQudMioeh+//390yAAAKRtUTVTVqHopG6qyVNUAACkbqrJU1ah6KRtUTVTVAAB+gPrRXeWoeh+//39d5QAAH7//f13lqHp+gPrRXeX6kwAA5DBU1f//AAAaz1TV+pMAABrPVNX//wAA5DBU1fqTNp4AAP7A//8AAOQw/sD6kwAA5DD+wP7/Np4AAP7AqHopG1RNRMX6kwAAGs9Exah6KRuqskTF+pMAAOQwRMWoeh+//38Pt/qTNp4AAPi2qHp+gAQu6Lb6k////38Yt/qTAAAaz/b2/v82nv//9vb6kzae///29v//AAAaz/b2/v82nv//AMD+/zaeAAAAwP7/////fwDA//8AABrPAMD//wAA5DAAwKh6KRuqsrnW+pM2nv//NNeoen6A+tHM1/qTAAAaz6jWqHp+gAQuoKn6kwAA5DA+q6h6KRtUTY2s+pM2ngAAc6moen6A+tGny/qT////f2fLqHofv/9/MMv6kzae///Iy/qT////f3TI/v82ngAAdMj6kzaeAAB0yP7/////f3TI+pM2nv//XeX+/////39d5fqT////f13l/v82nv//XeU7gXgCPIF5AjyBegI8gXgCPYF7ApnwZQ+Z8GUPmfBlD5nwZQ+xxE07scRNO7HETTuxxE07TSCx300gsd9NILHfTSCx31TVqipU1aoqVNWqKlTVqioBM/3MATP9zAEz/cwBM/3MqqqpqqqqqaqqqqmqqqqpqmSPZI9kj2SPZI9kj2SPZI+pt9QbqbfUG6m31Bupt9QbZW12Jd9sYyV3bFQln21+JU27TbtNu027TbtNu027Tbusfln9rX5a/ax+Wf2tflr9rX5a/fmS1A7ZjsAEHm/bAiiUuBHFmc8O0p/5AzNc3QAWmNQRX3G0Hm5vHx+kbYIfS3KBHrJfsl+yX7Jfsl+yX7Jfsl/+TP5M/kz+TP5M/kz+TP5M")
-}]
-blend_shape_mode = 0
-shadow_mesh = SubResource("ArrayMesh_xp6cf")
-
 [sub_resource type="ArrayMesh" id="ArrayMesh_yn1y8"]
 _surfaces = [{
 "aabb": AABB(-0.30000004, -0.30000004, -0.29999998, 0.3, 0.6, 0.59999996),
@@ -140,12 +108,8 @@ skeleton = NodePath("")
 mesh = ExtResource("5_stab_arm")
 skeleton = NodePath("")
 
-[node name="stab_hub" type="MeshInstance3D" parent="stab_axle"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.6, -0.12)
-mesh = SubResource("ArrayMesh_a3rid")
-skeleton = NodePath("")
-
-[node name="wheel" type="MeshInstance3D" parent="stab_axle/stab_hub"]
+[node name="wheel" type="MeshInstance3D" parent="stab_axle"]
 unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.6, -0.12)
 mesh = SubResource("ArrayMesh_baq8b")
 skeleton = NodePath("")
