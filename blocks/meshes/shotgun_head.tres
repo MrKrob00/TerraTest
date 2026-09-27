@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://qihl5aurvt5w"]
 
 [ext_resource type="Texture2D" uid="uid://h2f4cmcmgx7l" path="res://objects/shotgun_texture.png" id="1_036y4"]
 

@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://bckc7x10ojwgk"]
 
 [ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="1_mhsep"]
 
