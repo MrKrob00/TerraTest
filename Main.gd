@@ -1,13 +1,22 @@
 extends Node
 
 # --- НАЛАШТУВАННЯ ---
-const TARGET_FPS: float = 55.0       # Цільовий FPS, нижче якого зменшуємо якість
-const SAFE_FPS_UP: float = 58.0      # FPS, вище якого можна спробувати ПІДВИЩИТИ якість
-const COOLDOWN_TIME: float = 3.0     # Скільки секунд чекати після ПІДВИЩЕННЯ, перш ніж підвищувати знову
+# THE AUTO-SCALER KEEPS A PLAYABLE FRAME RATE, IT DOES NOT CHASE 60. It used to aim at 55 fps and
+# was allowed down to a quarter of the resolution, so on a phone that gives 26 fps at full size it
+# sank to mush within seconds - and the player switched it off and played at full size and 26 fps.
+# Now it only steps in below TARGET_FPS (30, what mobile games hold), never goes under SCALE_MIN
+# (0.6, still a sharp enough 3D picture under a native-resolution HUD), comes back up once there is
+# headroom (SAFE_FPS_UP), and never renders above native: supersampling on a phone is pure cost.
+const TARGET_FPS: float = 30.0
+const SAFE_FPS_UP: float = 40.0
+const COOLDOWN_TIME: float = 3.0     # seconds after a step UP before the next one
 
-const SCALE_MIN: float = 0.25        # Мінімальний масштаб (25%)
-const SCALE_MAX: float = 2.0         # Максимальний масштаб (200% — супер-семплінг для топових пристроїв)
-const SCALE_STEP: float = 0.1        # Крок зміни масштабу (10%)
+const SCALE_MIN: float = 0.6
+const SCALE_MAX: float = 1.0
+const SCALE_STEP: float = 0.05
+## The player's own choice is not bound by the auto-scaler's floor and ceiling.
+const MANUAL_SCALE_MIN: float = 0.25
+const MANUAL_SCALE_MAX: float = 2.0
 
 # --- ВНУТРІШНІ ЗМІННІ ---
 var current_scale: float = 1.0
@@ -203,12 +212,16 @@ func set_auto_fps(on: bool) -> void:
 	if not on:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
+	else:
+		# Into the auto range at once: from a manual 0.4 it would otherwise wait for 40 fps to climb.
+		current_scale = clampf(get_viewport().scaling_3d_scale, SCALE_MIN, SCALE_MAX)
+		get_viewport().scaling_3d_scale = current_scale
 	fps_buffer.clear()
 	_save_settings()
 
 # Ручной масштаб рендера (работает при выключенном авто).
 func set_manual_scale(v: float) -> void:
-	manual_scale = clampf(v, SCALE_MIN, SCALE_MAX)
+	manual_scale = clampf(v, MANUAL_SCALE_MIN, MANUAL_SCALE_MAX)
 	if not auto_fps:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
@@ -231,7 +244,7 @@ func _load_settings() -> void:
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(SETTINGS_PATH))
 	if parsed is Dictionary:
 		auto_fps = bool(parsed.get("auto_fps", true))
-		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), SCALE_MIN, SCALE_MAX)
+		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), MANUAL_SCALE_MIN, MANUAL_SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
