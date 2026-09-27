@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR and the RISER / STABILISER wheels.
+"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR and the STABILISER wheel.
 
-    python3 art/emitter_models.py [shield|regen|radar|riser|stab ...]    (no argument: all)
+    python3 art/emitter_models.py [shield|regen|radar|stab ...]    (no argument: all)
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part)
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
@@ -229,10 +229,10 @@ def build_radar(pk, img):
     return parts
 
 
-# ── the riser and the stabiliser wheels ─────────────────────────────────────────────────────────
-# Both carry the artist's SMALL tyre and hub (Assets.glb Wheel_small / Wheel_Axle) and the artist's
-# mounting plate; what is generated here is only what those two lack - a strut and a fork, a mount
-# and trailing arms - so the tyre on them is the very tyre on the small wheel.
+# ── the stabiliser wheel ────────────────────────────────────────────────────────────────────────
+# It carries the artist's SMALL tyre and hub (Assets.glb Wheel_small / Wheel_Axle) and the artist's
+# mounting plate; what is generated here is only what those lack - a mount and trailing arms - so
+# the tyre on it is the very tyre on the small wheel.
 
 STAB_RIDE = 0.90         # same as the standard wheel: the stabiliser carries at the same height
 STAB_AXLE = (-0.60, -0.12)   # (y, z) of its axle, reaching away from the hull on its +Z side
@@ -246,116 +246,6 @@ def rod_x(pk, img, faces, y, z, r, x0, x1, ramp=None):
     for f in part:
         f.pts = [(p[1], p[0] + y, p[2] + z) for p in f.pts]
     faces += part
-
-
-def seg_xy(faces, p0, p1, w, h, style):
-    """A bar from p0 to p1 in the XY plane, w wide (along Z) and h thick."""
-    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
-    ln = math.hypot(dx, dy)
-    a = math.atan2(dy, dx)
-    part = []
-    th.box(part, (0.0, -h / 2, -w / 2), (ln, h / 2, w / 2), style)
-    ca, sa = math.cos(a), math.sin(a)
-    xform(part, lambda p: (p[0] * ca - p[1] * sa + p0[0], p[0] * sa + p[1] * ca + p0[1], p[2]))
-    faces += part
-
-
-def sweep(pk, img, faces, path, w, h, ramp, sides=12, cell=3, taper=1.0):
-    """A thick rounded bar swept along a curve in the XY plane: `path` is a list of (x, y) points,
-    the section a rounded rectangle w across (along Z) and h thick, shrinking to `taper` of its size
-    at the far end. Every facet is painted by its own normal, so the bar reads round unshaded."""
-    n = len(path)
-    rings = []
-    for i, (x, y) in enumerate(path):
-        # Tangent from the neighbours; the section's "up" is the tangent turned in the XY plane.
-        pa = path[max(i - 1, 0)]
-        pb = path[min(i + 1, n - 1)]
-        tx, ty = pb[0] - pa[0], pb[1] - pa[1]
-        tl = math.hypot(tx, ty) or 1.0
-        nx, ny = -ty / tl, tx / tl
-        k = 1.0 + (taper - 1.0) * i / max(n - 1, 1)
-        ring = []
-        for j in range(sides):
-            ang = (j + 0.5) * 2 * math.pi / sides
-            c, sn = math.cos(ang), math.sin(ang)
-            # Superellipse: a rounded rectangle rather than an ellipse, like a cast arm.
-            e = 0.5
-            cu = math.copysign(abs(c) ** e, c) * h / 2 * k
-            su = math.copysign(abs(sn) ** e, sn) * w / 2 * k
-            ring.append((x + nx * cu, y + ny * cu, su))
-        rings.append(ring)
-    segs = n - 1
-    x0, y0, iw, ih = pk.take(sides * cell, segs * cell)
-    cells = {}
-    for i in range(segs):
-        for j in range(sides):
-            jj = (j + 1) % sides
-            q = [rings[i][j], rings[i][jj], rings[i + 1][jj], rings[i + 1][j]]
-            mid = [sum(p[t] for p in q) / 4 for t in range(3)]
-            cx = (path[i][0] + path[i + 1][0]) / 2
-            cy = (path[i][1] + path[i + 1][1]) / 2
-            out = th.norm((mid[0] - cx, mid[1] - cy, mid[2]))
-            u0, v0 = x0 + j * cell, y0 + i * cell
-            uv = [(u0, v0), (u0 + cell, v0), (u0 + cell, v0 + cell), (u0, v0 + cell)]
-            if th.dot(th.newell(q), out) < 0:
-                q, uv = list(reversed(q)), list(reversed(uv))
-            f = th.Face(q, None)
-            f.uv = uv
-            faces.append(f)
-            cells[(i, j)] = ramp_colour(ramp, th.newell(q))
-    for yy in range(-th.PAD, ih + th.PAD):
-        for xx in range(-th.PAD, iw + th.PAD):
-            i = min(max(yy // cell, 0), segs - 1)
-            j = min(max(xx // cell, 0), sides - 1)
-            img.putpixel((x0 + xx, y0 + yy), th.jitter(cells[(i, j)], 1))
-    # End caps.
-    for ring, t in ((rings[0], path[0]), (rings[-1], path[-1])):
-        other = path[1] if ring is rings[0] else path[-2]
-        out = th.norm((t[0] - other[0], t[1] - other[1], 0.0))
-        pts = th.outward(list(ring), (t[0] - out[0], t[1] - out[1], 0.0))
-        faces.append(th.Face(pts, "dark", u_hint=(0, 0, 1)))
-
-
-def bezier(p0, p1, p2, steps):
-    return [((1 - t) ** 2 * p0[0] + 2 * (1 - t) * t * p1[0] + t * t * p2[0],
-             (1 - t) ** 2 * p0[1] + 2 * (1 - t) * t * p1[1] + t * t * p2[1])
-            for t in [k / steps for k in range(steps + 1)]]
-
-
-# The riser, as TerraTech draws theirs (the reference picture): a heavy rounded MOUNT bolted under the
-# hull, a THICK cast arm leaving its underside and sweeping down and out in one curve, and an ordinary
-# tyre on the arm's end, the arm meeting the hub on the tyre's inner face. Two cells wide: the
-# anchor is the tyre's cell (x 0) so the suspension probes from under the tyre; the bracket is the
-# cell at x -1, and only its top face attaches. The arm turns about the mount's axis when steering
-# and slides into the mount with the suspension, so its root starts well inside the mount.
-RISER_TYRE_C = (0.15, -0.40)     # (x, y) of the tyre's centre in the anchor cell
-RISER_BEARING = (-1.0, 0.37)     # (x, y) of the steering axis' top, under the hull
-
-
-def build_riser(pk, img):
-    parts = {"riser_mount": [], "riser_arm": []}
-    mount, arm = parts["riser_mount"], parts["riser_arm"]
-    bx, by = RISER_BEARING
-    # Mount: a heavy chamfered body under the hull, nearly the tyre's width, a dark bearing ring
-    # where the arm leaves it.
-    th.prism(mount, bx - 0.40, bx + 0.40, 0.10, 0.50, 0.36, -0.36, 0.11,
-             cap_front="blue", cap_back="blue", top_style="blue")
-    part = []
-    lathe_y(pk, img, part, [(0.20, 0.04), (0.22, 0.07), (0.22, 0.10)], METAL_RAMP, sides=12)
-    for f in part:
-        f.pts = [(p[0] + bx, p[1], p[2]) for p in f.pts]
-    mount += part
-    # Arm, about the steering axis (the node's origin) in block axes: root inside the mount, one
-    # curve down and out, ending on the hub's inner face.
-    tx, ty = RISER_TYRE_C
-    hub_in = tx - 0.36
-    p0 = (0.0, 0.28 - by)
-    p1 = (0.0, ty - by)
-    p2 = (hub_in - bx, ty - by)
-    sweep(pk, img, arm, bezier(p0, p1, p2, 9), 0.26, 0.22, BLUE_RAMP, taper=0.85)
-    # Boss: the round cap where the arm meets the hub.
-    rod_x(pk, img, arm, ty - by, 0.0, 0.14, hub_in - bx - 0.02, hub_in - bx + 0.06)
-    return parts
 
 
 def build_stab(pk, img):
@@ -383,7 +273,6 @@ BLOCKS = {
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
     "radar": (23, build_radar, 256),
-    "riser": (29, build_riser, 256),
     "stab": (31, build_stab, 256),
 }
 

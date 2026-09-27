@@ -234,22 +234,16 @@ project: read it before claiming how anything works.
   `load_capacity` plus a `ride_height` LARGER than the standard wheel's, and `connect_faces` of
   `FACE_TOP` (16) rather than `FACE_BACK` — neither is set yet. The stabiliser mounts on the REAR
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
-  tail-heavy build, where a block used to be propped in and then dragged along the ground. BOTH ARE
-  BUILT NOW (`art/emitter_models.py` riser / stab). THE RISER IS TERRATECH'S: 2x1x1, a bracket cell
-  (x -1) whose TOP face alone attaches (`connect_defaults` "-1,0,0|4", mask 0) under the hull, a
-  HEAVY chamfered mount there, and a THICK cast arm (`emitter_models.sweep`: a rounded section swept
-  along a curve, every facet painted by its normal) leaving the mount's underside in one curve down
-  and out to an ORDINARY tyre (the standard wheel's own tyre and hub) in the next cell. The first try
-  - a flat plate, a thin rod and bent bars - read nothing like TerraTech's, and the player said so;
-  the reference is a mount nearly the tyre's width and an arm nearly the tyre's thickness. The ANCHOR IS THE TYRE'S CELL, so the suspension probes from under the tyre;
-  the arm turns about the bearing when steering (`riser_susp_high`, its local Z turned to world up
-  because the knuckle steers about its own Z) and slides into it with the suspension (`riser_axle`);
-  `ride_height` 0.9 under a cell that is itself one under the hull. The stabiliser bolts on by its
-  BACK face like any wheel (the small wheel's tyre, hub and plate), trailing arms down to an axle
-  beside the tyre, rolling along the machine (axis block X), `ride_height` 0.9 like the standard
-  wheel. Measured on the proving ground: four risers holding a 3x3 floor from its sides stand the
-  cabin at 1.88 m against 0.88 on standard wheels, all four grounded; two standard wheels in front
-  and a stabiliser on the tail stand level (0.0 deg) at 0.88 with the stabiliser grounded.
+  tail-heavy build, where a block used to be propped in and then dragged along the ground. THE STABILISER
+  IS BUILT (`art/emitter_models.py` stab): it bolts on by its BACK face like any wheel (the small
+  wheel's tyre, hub and plate), trailing arms down to an axle beside the tyre, rolling along the
+  machine (axis block X), `ride_height` 0.9 like the standard wheel. Measured on the proving ground:
+  two standard wheels in front and a stabiliser on the tail stand level (0.0 deg) at 0.88 with the
+  stabiliser grounded. THE RISER IS STILL THE PLACEHOLDER, and on purpose: two generated attempts
+  (a thin plate and rod, then a heavy mount and a swept cast arm) were rejected by the player and
+  removed. What the model has to be is settled - TerraTech's: 2x1x1 WIDE, a mount whose top face
+  bolts under the hull, an arm out to the side, an ordinary tyre in the second cell - so whoever
+  builds it next starts from that, not from the old "strut straight down" note.
 
 ### Building
 
