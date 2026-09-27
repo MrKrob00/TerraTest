@@ -1,20 +1,71 @@
-[gd_scene format=3 uid="uid://3eysq21v4sj4"]
+[gd_scene format=4 uid="uid://3eysq21v4sj4"]
 
-[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://blocks/scripts/block.gd" id="1_im0tn"]
-[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_xfwl5"]
+[ext_resource type="Script" path="res://blocks/scripts/radar.gd" id="1_radar"]
+[ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="3_atlas"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/radar_body.tres" id="4_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/radar_head.tres" id="5_head"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
+resource_name = "main"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("3_atlas")
+texture_filter = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_6541o"]
+_surfaces = [{
+"aabb": AABB(-0.5014731, 0.010473512, -0.5, 1, 0.12695664, 1),
+"format": 34896613377,
+"index_count": 84,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAABAAMABAACAAEABAADAAUAAAAFAAMABQAGAAQABwAEAAYABwACAAQABQAIAAYABwAGAAgABQAJAAgABwAIAAkAAAAJAAUACgAHAAkAAgALAAAACgAJAAwAAgANAAsADgAHAAoAAgAHAA4ADgAKAAwAAgAOAA0ACQAAAA8ACQAPAAwADwAAAAsADgAMAA8ADwALAA0ADwANAA4A"),
+"name": "main",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 16,
+"vertex_data": PackedByteArray("/////wIPAAD88AAAAAAAAP//AAACDwAA/PD//wAAAAACDwAAAAAAAAIP//8AAAAAAAAAAAIPAAAAAAAA/PAAAAAA//8CDwAAAAD///zwAAACDwAA//8AAP/////88AAAAg//////AAD//wAA/PAAAPzwAAD//wAA/PD/////AAA=")
+}]
+blend_shape_mode = 0
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_8lv7q"]
+resource_name = "Assets_Plane_018"
+_surfaces = [{
+"aabb": AABB(-0.5014731, 0.010473512, -0.5, 1, 0.12695664, 1),
+"attribute_data": PackedByteArray("OxAZLL8RSS07EEktvxEZLL8RSS07EBksvxEZLDsQSS07EBksvxFJLTsQSS2/ERksOxAZLL8RSS07EEktvxEZLJEZRy2cEQsskBkELJ0RTi2RGUctnBELLJAZBCydEU4tqAV1OGAFUDOxBaIzOwCXM44ARjODALw4VQXGODEAajicEUctkRkLLJ0RBCyQGU4tkRlHLZwRCyyQGQQsnRFOLUkWnindFlkg3RYKKZgNxR9JFsUfBQ0KKZgNnikFDVkg"),
+"format": 34896613399,
+"index_count": 84,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUACAAJAAoACAALAAkADAANAA4ADAAPAA0AEAARABIAEAATABEAFAAVABYAFAAXABUAGAAZABoAGAAbABkAGQAbABwAGwAYAB0AHQAYAB4AGwAdAB8AIAAhACIAIAAjACEAJAAlACYAJAAnACUAKAApACoAKAArACkAKQArACwAKwAoAC0ALQAoAC4AKwAtAC8A"),
+"material": SubResource("StandardMaterial3D_sr0ja"),
+"name": "main",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 48,
+"vertex_data": PackedByteArray("/////wIP/9/88AAAAAD/3///AAACD//f/PD//wAA/98CDwAA////nwAA///88P+fAg///////58AAAAA/PD/n/zw//////+f//8AAPzw/5/88AAA////n//////88P+fAg///wAA/98AAAAAAg//3wIPAAAAAP/fAAD//wIP/98CDwAAAAD///zw//8AAP//Ag///wAA///88AAAAAD/////AAACD/+///////zw/7//////Ag//v///AAD88P+/AAAAAPzwxf8CDwAAAADF/wAAAAACD8T///8AAAIPxf/88AAAAADF//zwAAD//8X/Ag8AAP//xf///wAA/PDF//zwAAD//x8AAg//////HwD88P////8fAAIPAAD//x8AAAAAAPzw/78AAP//Ag//vwAA///88P+/AAAAAAIP/7//////Ag9U1QIP//8AAFTV/PD//wAAVNUAAP///PBU1QAA//8CD1TV/PD/////VNX//////PBU1QIP/////1TV/38AAP9/AAD/fwAA/38AAP9//f//f/3//3/9//9//f//fwEA/38BAP9/AQD/fwEA/3/+//9//v//f/7//3/+/81/zP/Nf8z/zX/M/81/zP8xgGQAMYBkADGAZAAxgGQAv38fQL9/H0C+fyBAv38fQL9/H0C/fx9Av38fQL9/H0D/////////////////////zX+a/81/mv/Nf5r/zX+a/1TVqipU1aoqVNWqKlTVqipU1aoqVNWqKlTVqipU1aoq")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_6541o")
 
 [node name="Radar" type="RigidBody3D" unique_id=1629215319]
 collision_layer = 2
 collision_mask = 21
-script = ExtResource("1_im0tn")
+script = ExtResource("1_radar")
 block = 17
 connect_faces = 32
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=512521952]
 shape = SubResource("BoxShape3D_h01jy")
 
-[node name="Block" type="MeshInstance3D" parent="." unique_id=515504045]
-mesh = ExtResource("2_xfwl5")
-skeleton = NodePath("../..")
+[node name="radar_base" type="MeshInstance3D" parent="." unique_id=515504045]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+mesh = SubResource("ArrayMesh_8lv7q")
+skeleton = NodePath("")
+
+[node name="Body" type="MeshInstance3D" parent="." unique_id=515504046]
+mesh = ExtResource("4_body")
+skeleton = NodePath("")
+
+[node name="Head" type="MeshInstance3D" parent="." unique_id=515504047]
+transform = Transform3D(-0.70710677, 0, -0.70710677, 0, 1, 0, 0.70710677, 0, -0.70710677, 0, 0, 0)
+mesh = ExtResource("5_head")
+skeleton = NodePath("")

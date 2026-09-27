@@ -1561,6 +1561,13 @@ project: read it before claiming how anything works.
   every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
   what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
   thumbnails already did - without it the crystal was baked white.
+- **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
+  `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
+  draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
+  lying loose it stands still. The dish looks up `RADAR_TILT` (45 deg): tipped less, the turntable
+  and its mount stood in front of the bowl and pierced it, and a bowl raised clear of them no longer
+  fit the cell. The scene parks the head at -135 deg so the portrait, taken from the back-right,
+  shows the dish's face instead of its dark back.
 - **A SHIELD THAT RUNS DRY REBOOTS** (`shield.gd`, `SHIELD_BREAK_CD`), the same as one broken by a
   hit it cannot pay for. The dome used to vanish at zero and stand again on the first drop a panel
   produced, so a shield sharing a thin supply with a repair field blinked with the ticks. Measured on
