@@ -38,10 +38,20 @@ func _on_item_received() -> void:
 func _valid_targets() -> Array:
 	var out: Array = []
 	for t in super._valid_targets():
-		if _is_belt(t) and _is_side(t):
+		if _is_belt(t) and _is_side(t) and not _is_fork():
 			continue
 		out.append(t)
 	return out
+
+## THE FORK IS THE ONE BELT THAT HANDS SIDEWAYS TO BELTS - that is what it is for. It used to have
+## no faces in its scene (so the FactoryBlock default: in at the back, out at the front) and it ran
+## this script's "no side belts" rule like any belt, so it was a plain belt: measured, six ingots
+## in, six out of the front, none to either side. Now it takes from the back, gives front, left and
+## right (output_faces 13), and turns the three belts round in order (_rr).
+func _is_fork() -> bool:
+	return block == G.Block.BELT_SPLIT
+
+var _rr: int = 0
 
 func _is_belt(t: Node) -> bool:
 	var bt = t.get("block")
@@ -81,13 +91,20 @@ func push_item(item: Node3D) -> bool:
 	# ВТОРОЙ ЗАХОД — ЛЕНТЫ, и не всякая: за той, у которой в очереди стоит станок, место
 	# занято (см. side_waiting). Раньше здесь стоял super.push_item, то есть круговой обход
 	# всех целей, — и сквозной поток забирал каждую освободившуюся клетку.
+	var belts: Array = []
 	for t in _valid_targets():
-		if not _is_belt(t):
-			continue
+		if _is_belt(t):
+			belts.append(t)
+	# A fork starts one past the belt it fed last; a plain belt always offers in the same order.
+	var start: int = (_rr % belts.size()) if _is_fork() and not belts.is_empty() else 0
+	for i in belts.size():
+		var t = belts[(start + i) % belts.size()]
 		if t.has_method("side_waiting") and t.side_waiting():
 			continue
 		if (t as FactoryBlock).try_receive(item):
 			next_block = t
+			if _is_fork():
+				_rr = start + i + 1
 			return true
 	return false
 

@@ -456,6 +456,35 @@ def style_px(style, x, y, w, h, d):
         if 2 <= y < h - 2 and (x % 5) in (2, 3):
             return METAL[0]
         return jitter(METAL[3], 2)
+    if style == "fork_hub":
+        # The fork's middle: one T of arrows - from the back edge in, then out front, left and right.
+        # u runs forward, v across; the shafts are 2 texels wide, the heads 5.
+        if d < 1.0:
+            return METAL[5]
+        cu, cv = w / 2.0, h / 2.0
+        px, py = x + 0.5, y + 0.5
+        shaft_u = abs(py - cv) <= 1.1 and px <= w - 5              # back -> front
+        shaft_v = abs(px - cu) <= 1.1 and 4 <= py <= h - 4          # left <-> right
+        head_f = px > w - 7 and abs(py - cv) <= (w - px) * 0.9 + 0.3
+        head_l = py < 7 and abs(px - cu) <= py * 0.9 + 0.3
+        head_r = py > h - 7 and abs(px - cu) <= (h - py) * 0.9 + 0.3
+        if (shaft_u and px >= cu - 1) or shaft_v or head_f or head_l or head_r:
+            return ORANGE
+        if shaft_u:
+            return ORANGE_LO                                         # the incoming half, dimmer
+        return METAL[2] if (x + y) % 5 == 0 else METAL[1]
+    if style in ("belt", "belt_fwd"):
+        # Rubber belt: ribs across the run, and for a directed belt chevrons pointing along +u
+        # (the way the cargo goes). The face's u runs along the flow, v across it.
+        if d < 1.0:
+            return METAL[2]
+        if style == "belt_fwd":
+            for u0 in (w * 0.18, w * 0.62):
+                a = (x + 0.5) - u0
+                off = abs(y + 0.5 - h / 2)
+                if 0 <= a < 6 and abs(off - (6 - a) * 0.9) < 1.2 and off < h / 2 - 2:
+                    return ORANGE if a > 1 else ORANGE_LO
+        return METAL[2] if (x % 4) == 0 else METAL[1]
     if style == "metal_rod":
         return METAL[4] if y < h / 2 else METAL[3]
     if style == "cap_bolt":
