@@ -3,7 +3,7 @@ extends VehicleBlock
 # Меш блока берётся ИЗ СЦЕНЫ — тот, что положил художник. Скрипт его больше не трогает.
 #
 # Раньше здесь меш подменялся сгенерированным (res://blocks/armor.blockgen) прямо в _ready.
-# Скрипт висит на ШЕСТИ сценах (block, block2, battery, radar, solar, support), так что
+# Скрипт висит на ШЕСТИ сценах (block, block2, battery, solar, support; the radar has its own now), так что
 # подменялись все шесть — любая модель из сцены затиралась одной и той же болванкой.
 #
 # Генератор никуда не делся: плагин addons/blockgen импортирует .blockgen в обычный ресурс

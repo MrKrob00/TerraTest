@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the SHIELD and the REPAIR UNIT (regen): round, moving, glowing - not boxes.
+"""Builds the SHIELD, the REPAIR UNIT (regen) and the RADAR: round, moving - not boxes.
 
-    python3 art/emitter_models.py [shield|regen ...]    (no argument: both)
+    python3 art/emitter_models.py [shield|regen|radar ...]    (no argument: all)
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part)
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
@@ -22,6 +22,10 @@ REGEN - a beacon, not a second orb: a blue hub marked with the green cross, a ma
 CRYSTAL the script tints and pulses on every repair, and a RING with three inward nozzles that
 spins while the field is powered and runs down when it is not.
   parts: regen_body (still), regen_ring (moves), regen_crystal (tinted, never batched)
+
+RADAR - a dish on a mast, tipped RADAR_TILT up, feed horn in front; the head sweeps round while
+the block sits on a machine, which is exactly when it widens the map.
+  parts: radar_body (still), radar_head (turns)
 
 Every part fits the block's 1 m cell at its highest pose (the rule the turret heads follow).
 """
@@ -179,9 +183,56 @@ def build_regen(pk, img):
     return parts
 
 
+# ── the radar ───────────────────────────────────────────────────────────────────────────────────
+
+DISH_RAMP = [(70, 78, 100), (95, 104, 130), (120, 130, 158), (145, 155, 182), (165, 175, 200)]
+# The dish looks up this far; tipped less, the turntable and its mount stood in FRONT of the bowl's
+# lower half and pierced it, and a bowl raised clear of them no longer fits the cell.
+RADAR_TILT = 45.0
+RADAR_Y = 0.0            # the head's spin axis starts at the mast's top (radar.gd reads the node)
+
+
+def xform(faces, fn):
+    """Move built faces by a point function (and their u hints by its linear part)."""
+    for f in faces:
+        f.pts = [fn(p) for p in f.pts]
+        if f.u_hint:
+            o = fn((0.0, 0.0, 0.0))
+            q = fn(f.u_hint)
+            f.u_hint = (q[0] - o[0], q[1] - o[1], q[2] - o[2])
+    return faces
+
+
+def build_radar(pk, img):
+    parts = {"radar_body": [], "radar_head": []}
+    body, head = parts["radar_body"], parts["radar_head"]
+    # Pedestal and mast on the platform.
+    lathe_y(pk, img, body, [(0.30, -0.36), (0.30, -0.27), (0.24, -0.21), (0.0, -0.21)], BLUE_RAMP,
+            sides=8)
+    lathe_y(pk, img, body, [(0.07, -0.21), (0.07, 0.0), (0.0, 0.0)], METAL_RAMP, sides=8)
+    # Head, built round its spin axis at the mast top: a turntable, a mount, the dish and its feed.
+    lathe_y(pk, img, head, [(0.12, 0.0), (0.12, 0.04), (0.09, 0.06), (0.0, 0.06)], BLUE_RAMP,
+            sides=8)
+    th.box(head, (-0.06, 0.03, -0.08), (0.06, 0.15, 0.02), "dark")
+    # The dish is a bowl about its own axis (local Y): back surface, rim, concave front.
+    dish = []
+    lathe_y(pk, img, dish, [(0.0, -0.035), (0.12, -0.02), (0.24, 0.015), (0.345, 0.07),
+                            (0.345, 0.10), (0.24, 0.045), (0.12, 0.012), (0.0, 0.0)],
+            BLUE_RAMP, sides=16, ring_ramps={3: METAL_RAMP, 4: DISH_RAMP, 5: DISH_RAMP, 6: DISH_RAMP})
+    # The feed horn on its rod, out in front of the bowl.
+    lathe_y(pk, img, dish, [(0.018, 0.0), (0.018, 0.2), (0.042, 0.2), (0.042, 0.245), (0.0, 0.245)],
+            METAL_RAMP, sides=6, ring_ramps={3: th.RIM})
+    # Tip the bowl's axis from up to forward-and-up, then sit it on the mount.
+    a = math.radians(-(90.0 - RADAR_TILT))
+    ca, sa = math.cos(a), math.sin(a)
+    head += xform(dish, lambda p: (p[0], p[1] * ca - p[2] * sa + 0.18, p[1] * sa + p[2] * ca - 0.06))
+    return parts
+
+
 BLOCKS = {
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
+    "radar": (23, build_radar, 256),
 }
 
 
