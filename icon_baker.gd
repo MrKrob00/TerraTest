@@ -57,7 +57,8 @@ func _ready() -> void:
 ## 13: the riser is the placeholder again. 14: the stabiliser without the artist's hub.
 ## 15: the conveyors got models. 16: the fork's arrows as open chevrons, belt textures lossless.
 ## 17: both supports got models (jacks). 18: redrawn after the GSO anchor.
-const RECIPE := 18
+## 19: the supports in our palette.
+const RECIPE := 19
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

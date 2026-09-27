@@ -385,7 +385,9 @@ project: read it before claiming how anything works.
 - Support column and `ROT_SUPPORT` rotation pivot are taken from the support block
   (`vehicle_body_3d.support_block`), not from the machine origin, which is the cabin.
 - **BOTH SUPPORTS ARE JACKS AFTER TERRATECH'S GSO ANCHOR, AND THE COLUMN IS THEIR OWN RAM**
-  (`art/emitter_models.py` support / rot_support, `blocks/scripts/support.gd`). A round grey base
+  (`art/emitter_models.py` support / rot_support, `blocks/scripts/support.gd`). Their SHAPE, not
+  their colours - dark metal and GSO blue like every block here, not the original's cream and grey.
+  A round base
   under a deck the blocks stand on, joining by the four sides and the top (`connect_faces` 31),
   never the bottom; every round part has its FLATS ON THE CELL'S FACES (16 sides, `flat_r`), so a
   neighbour meets a face - the first cut, a housing on a thin sleeve with an inset lower tier,

@@ -354,14 +354,15 @@ def build_belt_split(pk, img):
 # Parts: <name>_body (still), <name>_leg (a unit rod the script stretches), <name>_foot (moves
 # down), and for the turntable <name>_stator (holds world yaw while anchored).
 
-# The reference is TerraTech's GSO rotating anchor: a round BASE and a flat round DECK on it that
+# The reference is TerraTech's GSO rotating anchor (its shape; the colours are ours - dark metal and
+# GSO blue, like every block from Assets.glb): a round BASE and a flat round DECK on it that
 # blocks stand on, joining by the four sides and the top, never the bottom. Every round part here has
 # its flats ON the cell's faces (16 sides, `flat_r`), so a neighbour meets a face rather than a curve
 # standing off it - the first cut, a housing on a thin sleeve, read as joining by its top only.
 SUP_FOOT_Y = -0.42       # the foot's top at rest; the scene's leg/sleeve sit above it (support.gd)
 RAM_R, SLEEVE_R = 0.19, 0.27
 ORANGE_RAMP = [th.ORANGE_LO, th.ORANGE_LO, th.ORANGE, th.ORANGE]
-BASE_RAMP = DISH_RAMP    # the anchor's grey-lavender base
+BASE_RAMP = METAL_RAMP   # the base in the dark metal every other block is built on
 
 
 def flat_r(r_flat, sides=16):
@@ -385,7 +386,7 @@ def support_base(pk, img, faces, top, marks):
     r0, r1 = flat_r(0.45), flat_r(0.5)
     lathe_y(pk, img, faces, [(0.0, SUP_FOOT_Y), (r0, SUP_FOOT_Y), (r0, -0.27), (r1, -0.25),
                              (r1, -0.15), (r0, -0.13), (r0, top), (0.30, top)], BASE_RAMP,
-            sides=16, marks=marks, ring_ramps={2: METAL_RAMP})
+            sides=16, marks=marks, ring_ramps={2: BLUE_RAMP, 4: BLUE_RAMP})
 
 
 def deck_top(faces, y, style, square=False):
