@@ -166,6 +166,13 @@ project: read it before claiming how anything works.
   Its slope shows the middle of the wedge's slope island (`SLOPE_ASPECT`), not a squashed whole.
 - Where a block may attach is the `connect_faces` mask on `VehicleBlock`, edited on the cube widget
   (`port_cube.gd`) and nowhere else. Building rotates the block so that face meets the neighbour.
+- **A PER-CELL KEY TURNS ABOUT THE ANCHOR** (`VehicleBlock._local_side`), as the grid, the mesh and
+  the collider do. It turned about `cells_center`, which agrees only at 0 deg, so every multi-cell
+  block standing at 90, 180 or 270 read its cells under keys that do not exist and fell back to the
+  mask: measured over every default at every yaw, the wedge 0/10, the riser 0/1, the processor's
+  ports 0/21 and the seller's 0/25 at each turned yaw - now all of them at every yaw. A turned wedge
+  quietly joined on every face, a turned riser on none, and a turned factory ran on its mask instead
+  of the ports drawn for it (the quest line stands at yaw 0 and never saw it).
 - Connectivity is by **attach faces**, not by touching: an edge exists only when both sides mark the
   direction (`_reachable_cells`). Blocks larger than a cell expand a side into cells
   (`connects_at` / `connect_defaults`).
@@ -228,15 +235,18 @@ project: read it before claiming how anything works.
   `FACE_TOP` (16) rather than `FACE_BACK` — neither is set yet. The stabiliser mounts on the REAR
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
   tail-heavy build, where a block used to be propped in and then dragged along the ground. BOTH ARE
-  BUILT NOW (`art/emitter_models.py` riser / stab, on the small wheel's own tyre, hub and plate): the
-  riser is a plate on TOP, a strut that turns with the steering (`riser_susp_high`, its local Z
-  turned to world up because the knuckle steers about its own Z) and a telescoping fork that
-  travels (`riser_axle`), `ride_height` 0.95 under its own cell; the stabiliser bolts on by its BACK
-  face like any wheel, with trailing arms down to an axle beside the tyre, the tyre rolling along
-  the machine (axis block X), `ride_height` 0.9 like the standard wheel so it carries at the same
-  height. Measured on the proving ground: four risers under a 3x3 floor hold the cabin 1.93 m over
-  the ground against 0.88 on standard wheels, all four grounded; two standard wheels in front and a
-  stabiliser on the tail stand level (0.0 deg) at 0.88 with the stabiliser grounded.
+  BUILT NOW (`art/emitter_models.py` riser / stab). THE RISER IS TERRATECH'S: 2x1x1, a bracket cell
+  (x -1) whose TOP face alone attaches (`connect_defaults` "-1,0,0|4", mask 0) under the hull, with a
+  plate and a bearing, and a swan-neck arm out to an ORDINARY tyre (the standard wheel's own tyre and
+  hub) in the next cell. The ANCHOR IS THE TYRE'S CELL, so the suspension probes from under the tyre;
+  the arm turns about the bearing when steering (`riser_susp_high`, its local Z turned to world up
+  because the knuckle steers about its own Z) and slides into it with the suspension (`riser_axle`);
+  `ride_height` 0.9 under a cell that is itself one under the hull. The stabiliser bolts on by its
+  BACK face like any wheel (the small wheel's tyre, hub and plate), trailing arms down to an axle
+  beside the tyre, rolling along the machine (axis block X), `ride_height` 0.9 like the standard
+  wheel. Measured on the proving ground: four risers holding a 3x3 floor from its sides stand the
+  cabin at 1.88 m against 0.88 on standard wheels, all four grounded; two standard wheels in front
+  and a stabiliser on the tail stand level (0.0 deg) at 0.88 with the stabiliser grounded.
 
 ### Building
 

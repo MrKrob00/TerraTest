@@ -80,8 +80,7 @@ func connect_vecs() -> Array:
 # работает по маске, как и раньше, поэтому все существующие сцены ведут себя как прежде.
 #
 # Оси именно локальные: словарь описывает САМ БЛОК, а он поворачивается вместе с машиной.
-# Перевод из осей карты в свои делает _local_side (крутим вокруг центра футпринта, иначе
-# поворот уводит клетки за его границы).
+# Перевод из осей карты в свои делает _local_side (крутим вокруг ЯКОРЯ, как сетка, меш и коллайдер).
 ##
 ## Ключ порта/стыковки: смещение клетки от якоря + индекс стороны в FACE_VECS.
 static func side_key(off: Vector3i, dir_idx: int) -> String:
@@ -109,7 +108,11 @@ func _local_side(off: Vector3i, dir: Vector3i) -> String:
 	var li: int = idx_of(Vector3i(int(ld.x), int(ld.y), int(ld.z)))
 	if li < 0:
 		return ""
-	var lo: Vector3 = (inv * (Vector3(off) - cells_center) + cells_center).round()
+	# THE CELL TURNS ABOUT THE ANCHOR, as the grid turns it (blocks._block_footprint: Basis * offset)
+	# and as the mesh and the collider turn. This used to turn it about `cells_center`, which is the
+	# same only at 0 deg: a two-cell block at 90 or 180 read its cells under keys that do not exist,
+	# fell back to the mask, and a wedge joined on every face while the riser joined on none.
+	var lo: Vector3 = (inv * Vector3(off)).round()
 	return side_key(Vector3i(int(lo.x), int(lo.y), int(lo.z)), li)
 
 ## Центр футпринта В СМЕЩЕНИЯХ от якоря (у 2×2×2 это (-0.5, 0.5, -0.5)). Вокруг него

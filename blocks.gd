@@ -797,7 +797,8 @@ func _footprint_offsets(block: int) -> Array:
 		return cells4
 	if block == G.Block.WEDGE2:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0)]     # 1×1×2, вдоль Z
-	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
+	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2 \
+			or block == G.Block.TOP_WHEEL:   # the riser: bracket at -1, the tyre's cell is the anchor
 		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0)]     # 2×1×1
 	if block == G.Block.BLOCK3:
 		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0), Vector3i(1, 0, 0)]   # 3×1×1
