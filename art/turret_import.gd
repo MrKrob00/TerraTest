@@ -1,5 +1,5 @@
 extends SceneTree
-# Turns art/out/<name>.glb (written by art/turret_heads.py or art/emitter_models.py) into the
+# Turns art/out/<name>.glb (written by art/turret_heads.py, emitter_models.py or hull_models.py) into the
 # meshes a block scene uses: every node of the glb becomes blocks/meshes/<node>.tres, so a turret
 # head (one node, "<name>_head") and a many-part block (shield_body, shield_cap, ...) go one way.
 #
@@ -12,7 +12,7 @@ extends SceneTree
 func _init() -> void:
 	var names := OS.get_cmdline_user_args()
 	if names.is_empty():
-		names = PackedStringArray(["mortar", "shotgun", "pound_cannon", "shield", "regen"])
+		names = PackedStringArray(["mortar", "shotgun", "pound_cannon", "shield", "regen", "radar", "hull"])
 	for n in names:
 		_convert(n)
 	quit()
@@ -29,7 +29,12 @@ func _convert(n: String) -> void:
 	mat.resource_name = n
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.albedo_texture = load("res://objects/%s_texture.png" % n)
+	# A part set with no texture of its own (the hull) sits on the shared atlas, like the frame block.
+	var tex := "res://objects/%s_texture.png" % n
+	if not ResourceLoader.exists(tex):
+		tex = "res://objects/Assets_main_texture_new.png"
+		mat.resource_name = "main"
+	mat.albedo_texture = load(tex)
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST_WITH_MIPMAPS
 	for node in scene.find_children("*", "MeshInstance3D", true, false):
 		var mi := node as MeshInstance3D

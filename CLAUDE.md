@@ -147,6 +147,20 @@ project: read it before claiming how anything works.
   along X. Its mesh settles it: x spans exactly one cell, z spans two. It is now 1×1×2 on Z
   everywhere, its model centred on those two cells (it sat 0.375 forward of them), and its
   per-cell attach faces moved to the cells that now exist.
+- **THE HULL BLOCKS ARE THE FRAME BLOCK, BUILT BY `art/hull_models.py`** (Frame Block x2 and x3, both
+  half blocks, the wedge; `blocks/meshes/hull_*.tres`). Each is a solid with every edge chamfered by
+  the frame block's own 0.067 m, walls ON the cell faces, and texels taken from the SAME atlas
+  islands `block_construct` uses (striped panel upright, braced panel on top and bottom, a strip on
+  every chamfer), laid the same way round - no texture of its own. A long face gets a whole panel
+  per cell, so a x2 is one part that still shows two cells. TWO PARTS READ AS ONE HULL ONLY WHEN
+  BOTH STAND ON THE CELL FACE WITH THE SAME SMALL BEVEL: the old wedge's walls stood 2 cm inside the
+  cell and its slope fell 0.2 m at each side, so a row of wedges was a row of ridges with a V-groove
+  between every pair. A WEDGE ALSO JOINS BY ITS SIDES now (`connect_defaults` "|2" / "|3" true on
+  both cells): they were false, so two wedges side by side were two parts each hanging on what was
+  under it - measured through `buildable_subset`, a cabin, a block and three wedges in a row built
+  3 of 5 before and 5 of 5 after. The half blocks were the full frame cube (Half Block x2 a single
+  cube on a two-cell footprint); they are the lower half now, with a half-height collider that
+  `collider_offset` seats (sizes (1, 0.5, 1) and (2, 0.5, 1)).
 - Where a block may attach is the `connect_faces` mask on `VehicleBlock`, edited on the cube widget
   (`port_cube.gd`) and nowhere else. Building rotates the block so that face meets the neighbour.
 - Connectivity is by **attach faces**, not by touching: an edge exists only when both sides mark the

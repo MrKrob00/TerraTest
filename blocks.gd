@@ -846,6 +846,10 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 		off = Vector3(0.0, 0.0, -0.5)          # WEDGE2: 1×1×2, длинной стороной по Z
 	elif box.size == Vector3(2, 1, 2):
 		off = Vector3(-0.5, 0.0, -0.5)         # ARMOR4: 2×1×2
+	elif box.size == Vector3(1, 0.5, 1):
+		off = Vector3(0.0, -0.25, 0.0)         # HALF_BLOCK: the lower half of its cell
+	elif box.size == Vector3(2, 0.5, 1):
+		off = Vector3(-0.5, -0.25, 0.0)        # HALF_BLOCK2: two lower halves
 	if off == Vector3.ZERO:
 		return off                             # BLOCK3 и одноклеточные: якорь уже в середине тела
 	return Basis(Vector3.UP, yaw) * off
