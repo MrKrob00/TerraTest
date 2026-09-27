@@ -236,9 +236,12 @@ project: read it before claiming how anything works.
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
   tail-heavy build, where a block used to be propped in and then dragged along the ground. BOTH ARE
   BUILT NOW (`art/emitter_models.py` riser / stab). THE RISER IS TERRATECH'S: 2x1x1, a bracket cell
-  (x -1) whose TOP face alone attaches (`connect_defaults` "-1,0,0|4", mask 0) under the hull, with a
-  plate and a bearing, and a swan-neck arm out to an ORDINARY tyre (the standard wheel's own tyre and
-  hub) in the next cell. The ANCHOR IS THE TYRE'S CELL, so the suspension probes from under the tyre;
+  (x -1) whose TOP face alone attaches (`connect_defaults` "-1,0,0|4", mask 0) under the hull, a
+  HEAVY chamfered mount there, and a THICK cast arm (`emitter_models.sweep`: a rounded section swept
+  along a curve, every facet painted by its normal) leaving the mount's underside in one curve down
+  and out to an ORDINARY tyre (the standard wheel's own tyre and hub) in the next cell. The first try
+  - a flat plate, a thin rod and bent bars - read nothing like TerraTech's, and the player said so;
+  the reference is a mount nearly the tyre's width and an arm nearly the tyre's thickness. The ANCHOR IS THE TYRE'S CELL, so the suspension probes from under the tyre;
   the arm turns about the bearing when steering (`riser_susp_high`, its local Z turned to world up
   because the knuckle steers about its own Z) and slides into it with the suspension (`riser_axle`);
   `ride_height` 0.9 under a cell that is itself one under the hull. The stabiliser bolts on by its

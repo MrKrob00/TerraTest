@@ -131,11 +131,6 @@ connect_defaults = {
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, 0)
 shape = SubResource("BoxShape3D_uqkpu")
 
-[node name="riser_plate" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, -1, 0, 0, 0, -1, -1, 0.5, 0)
-mesh = SubResource("ArrayMesh_mv24a")
-skeleton = NodePath("")
-
 [node name="riser_mount" type="MeshInstance3D" parent="."]
 mesh = ExtResource("4_riser_mount")
 skeleton = NodePath("")
