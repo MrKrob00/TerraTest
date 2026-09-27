@@ -50,7 +50,7 @@ GENERATOR, COAL_GEN, AUTO_MINER, FABRICATOR, COMP_FACTORY, SCRAPPER, PACKER.
 | GUN | 60 | 5 | 0.2 с | башня, упреждение + поправка на просадку (умолчания `WeaponBlock`) |
 | LASER | 70 | 8 | 0.25 с | стреляет БОЛТАМИ, а не непрерывным лучом (тот же урон в секунду) |
 | ROCKET | 18 | 45 в центре | 1.6 с | AOE `aoe_radius` = **1.5** (было 4.5 — по требованию игрока уменьшено) |
-| MORTAR | 20…160 | 12 × 8 shells | 1.6 s | aimed by the hull (±18°), throw 60° near → 30° far; model: 8-tube pack on the shared neck, parked at 45° (`art/mortar_model.py`) |
+| MORTAR | 20…160 | 12 × 8 shells | 1.6 s | aimed by the hull (±18°), throw 60° near → 30° far; model: 8-tube pack on the shared neck, parked at 45° (`art/turret_heads.py`) |
 | POUND_CANNON | 60 | 30 | 1.2 с | башня; тот же DPS, что у пушки, но одним ударом |
 | SHOTGUN | 18 | 4 × 8 дробин | 0.35 с, 2 выстрела → 2.5 с перезарядки | конус 7° |
 

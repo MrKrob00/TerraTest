@@ -1,25 +1,32 @@
 #!/usr/bin/env python3
-"""Builds the mortar's swinging head: geometry, its own texture, and a .glb an artist can open.
+"""Builds the swinging HEADS of the turrets that had none: geometry, a texture of their own, and a
+.glb an artist can open.
 
-    python3 art/mortar_model.py        -> objects/mortar_texture.png + art/out/mortar.glb
+    python3 art/turret_heads.py [mortar|shotgun|pound_cannon ...]   (no argument: all of them)
+        -> objects/<name>_texture.png + art/out/<name>.glb
+    godot --headless --path . --script res://art/turret_import.gd -- <name> ...
+        -> blocks/meshes/<name>_head.tres
 
 Only the HEAD is new. The platform and the turning neck are the ones the gun, the rocket launcher
-and the laser already stand on (Assets.glb `base` / `rocketgun_head`), so a mortar reads as one of
-the family and the turret chain in WeaponBlock finds its parts the same way. The head's origin is
-the neck's pitch axis: the tip of the dark arm, 0.42 m over the platform, 0.28 m behind the centre.
+and the laser already stand on (Assets.glb `base` / `rocketgun_head`), so every weapon reads as one
+of the family and the turret chain in WeaponBlock finds its parts the same way. A head's origin is
+the neck's pitch axis: the tip of the dark arm, 0.42 m over the platform, 0.28 m behind the centre,
+and every head grips it with the same clevis (two cheeks and a trunnion round the arm's x +-0.09).
 
-WHAT THE GAME SAYS THE MORTAR IS, and so what the model has to say:
-  - EIGHT SHELLS A SALVO, all at once (mortar.gd SHELLS) -> eight tubes, 4 x 2, every mouth visible
-    from the front, so the salvo can be counted on the model;
-  - AIMED BY THE HULL, the barrel only trims 18 deg -> no turret drum, a pack on trunnions;
-  - THROWS AT 30-60 DEG -> short fat tubes on a pack that sits OVER the pivot, so it can swing up
-    without burying its tail in the neck (checked at 60 deg against the neck's collar).
+EACH HEAD SAYS WHAT ITS WEAPON DOES IN CODE:
+  - MORTAR: eight shells a salvo (mortar.gd SHELLS) -> eight tubes, 4 x 2, every mouth visible from
+    the front; aimed by the hull, throws at 30-60 deg -> a pack on trunnions that sits OVER the pivot
+    so it can swing up without burying its tail in the neck (checked at 60 deg).
+  - SHOTGUN: two shots, then a reload (shotgun.gd BURST) -> two barrels side by side, and a shell box
+    showing two brass bases; a wide cone -> flared muzzles.
+  - POUND_CANNON: one 30-damage blow at 60 m -> one long thick barrel, a heavy mantlet, a recoil
+    sleeve and a muzzle brake. The heaviest silhouette of the six.
 
 STYLE is the atlas's, not a new one. The blocks are UNSHADED, so every bit of shape is painted:
 the palette is sampled from Assets_main_texture_new.png (GSO blue, gunmetal, orange trim), each
 face gets its own pixels at the atlas's density (~48 px/m) with the light bevel line along its
 edges that the other models carry, and the chamfer strips are painted as lit lips. Faces facing
-down are darkened a little and the tubes carry a top-lit ramp around their eight sides, because
+down are darkened a little and round parts carry a top-lit ramp around their eight sides, because
 with no lighting that is the only way a cylinder reads as round.
 
 Why a texture of its own and not a corner of the shared atlas: the atlas is the artist's export,
@@ -38,13 +45,11 @@ except ImportError:
     sys.exit("needs Pillow: pip install pillow")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT_GLB = os.path.join(ROOT, "art", "out", "mortar.glb")   # .gdignore: for Blender, never imported
-OUT_PNG = os.path.join(ROOT, "objects", "mortar_texture.png")
+OUT_GLB = os.path.join(ROOT, "art", "out", "%s.glb")   # .gdignore: for Blender, never imported
+OUT_PNG = os.path.join(ROOT, "objects", "%s_texture.png")
 
-TEX = 256           # texture side, px
 DENS = 48.0         # px per metre - the atlas's own density
 PAD = 2             # px of bleed round every island (mipmaps and 4x4 VRAM blocks)
-random.seed(7)
 
 # Palette, sampled from the atlas.
 BLUE = (76, 106, 177)
@@ -123,7 +128,7 @@ def prism(faces, x0, x1, y0, y1, z_back, z_front, c, side="blue", cap_front="blu
         faces.append(Face(outward([(p[0], p[1], z_back) for p in oct_], centre), cap_back, u_hint=(1, 0, 0)))
 
 
-def box(faces, lo, hi, style, skip=()):
+def box(faces, lo, hi, style, skip=(), face_styles=None):
     x0, y0, z0 = lo
     x1, y1, z1 = hi
     centre = ((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
@@ -138,49 +143,69 @@ def box(faces, lo, hi, style, skip=()):
     for k, q in quads.items():
         if k in skip:
             continue
-        faces.append(Face(outward(q, centre), style, u_hint=(0, 0, -1) if k[1] in "xy" else (1, 0, 0)))
+        st = (face_styles or {}).get(k, style)
+        faces.append(Face(outward(q, centre), st, u_hint=(0, 0, -1) if k[1] in "xy" else (1, 0, 0)))
 
 
-# Tube islands: all eight tubes share them, so they are fixed rectangles laid out first.
-TUBE_R = 0.068        # outer circumradius
-TUBE_IN = 0.050       # bore
-TUBE_SIDES = 8
-BORE_DEPTH = 0.08
-
-ISLANDS = {}          # name -> (x, y, w, h) in px, reserved before packing
+# A KIT is one kind of round part: its painted islands are reserved before the faces are packed,
+# and every copy of the part (eight mortar tubes, two shotgun barrels) shares them.
+ISLANDS = {}          # "<kit>.<island>" -> (x, y, w, h) in px
 
 
-def tube(faces, cx, cy, z_back, z_mouth):
-    n = TUBE_SIDES
+def reserve_kit(pk, name, wall_len_m, mouth=True, sides=8):
+    ISLANDS[name + ".wall"] = pk.take(3 * sides, max(4, int(round(wall_len_m * DENS))))
+    if mouth:
+        ISLANDS[name + ".rim"] = pk.take(2 * sides, 4)
+        ISLANDS[name + ".bore"] = pk.take(2 * sides, 6)
+        ISLANDS[name + ".bottom"] = pk.take(4, 4)
+
+
+def lathe(faces, kit, cx, cy, profile, r_in=None, depth=0.0, sides=8, cap_back=False):
+    """A round part along Z. `profile` is [(radius, z), ...] from the back to the front; the front
+    ends in a mouth (rim down to r_in, a bore `depth` deep and its bottom) when r_in is given,
+    otherwise in a flat cap. The wall maps onto the kit's island by distance along Z."""
+    n = sides
     ang = [math.pi / 2 + (i + 0.5) * 2 * math.pi / n for i in range(n)]   # a flat on top
     ring = lambda r, z: [(cx + r * math.cos(a), cy + r * math.sin(a), z) for a in ang]
-    o_b, o_m = ring(TUBE_R, z_back), ring(TUBE_R, z_mouth)
-    i_m, i_d = ring(TUBE_IN, z_mouth), ring(TUBE_IN, z_mouth + BORE_DEPTH)
+    wx, wy, ww, wh = ISLANDS[kit + ".wall"]
+    z_len = abs(profile[-1][1] - profile[0][1]) or 1.0
+    z_back, z_mouth = profile[0][1], profile[-1][1]
     axis_c = (cx, cy, (z_back + z_mouth) / 2)
-    wx, wy, ww, wh = ISLANDS["wall"]
-    rx, ry, rw, rh = ISLANDS["rim"]
-    bx, by, bw, bh = ISLANDS["bore"]
+    rings = [ring(r, z) for r, z in profile]
+    vs = [wy + wh * abs(z - z_back) / z_len for _r, z in profile]
+    if r_in is not None:
+        i_m, i_d = ring(r_in, z_mouth), ring(r_in, z_mouth + depth)
+        rx, ry, rw, rh = ISLANDS[kit + ".rim"]
+        bx, by, bw, bh = ISLANDS[kit + ".bore"]
     for i in range(n):
         j = (i + 1) % n
-        # Outer wall: column i of the wall island, v along the length.
         u0, u1 = wx + ww * i / n, wx + ww * (i + 1) / n
-        q = [o_b[i], o_b[j], o_m[j], o_m[i]]
-        uv = [(u0, wy), (u1, wy), (u1, wy + wh), (u0, wy + wh)]
-        faces.append(fixed(q, uv, axis_c, outward_sign=+1))
-        # Mouth rim (annulus), column i of the rim island.
-        u0, u1 = rx + rw * i / n, rx + rw * (i + 1) / n
-        q = [o_m[i], o_m[j], i_m[j], i_m[i]]
-        uv = [(u0, ry), (u1, ry), (u1, ry + rh), (u0, ry + rh)]
-        faces.append(fixed(q, uv, (cx, cy, z_mouth + 1.0), outward_sign=+1))
-        # Bore wall, seen from inside.
-        u0, u1 = bx + bw * i / n, bx + bw * (i + 1) / n
-        q = [i_m[i], i_m[j], i_d[j], i_d[i]]
-        uv = [(u0, by), (u1, by), (u1, by + bh), (u0, by + bh)]
-        faces.append(fixed(q, uv, (cx, cy, z_mouth), outward_sign=-1))
-    # Bore bottom.
-    cx0, cy0, cw, chh = ISLANDS["bottom"]
-    uv = [(cx0 + cw / 2 + cw / 2 * math.cos(a), cy0 + chh / 2 + chh / 2 * math.sin(a)) for a in ang]
-    faces.append(fixed(i_d, uv, (cx, cy, z_mouth - 1.0), outward_sign=+1))
+        for k in range(len(rings) - 1):
+            a_, b_ = rings[k], rings[k + 1]
+            q = [a_[i], a_[j], b_[j], b_[i]]
+            uv = [(u0, vs[k]), (u1, vs[k]), (u1, vs[k + 1]), (u0, vs[k + 1])]
+            faces.append(fixed(q, uv, (cx, cy, (a_[i][2] + b_[i][2]) / 2), outward_sign=+1))
+        if r_in is not None:
+            # Mouth rim (annulus), column i of the rim island.
+            o_m = rings[-1]
+            u0, u1 = rx + rw * i / n, rx + rw * (i + 1) / n
+            q = [o_m[i], o_m[j], i_m[j], i_m[i]]
+            uv = [(u0, ry), (u1, ry), (u1, ry + rh), (u0, ry + rh)]
+            faces.append(fixed(q, uv, (cx, cy, z_mouth + 1.0), outward_sign=+1))
+            # Bore wall, seen from inside.
+            u0, u1 = bx + bw * i / n, bx + bw * (i + 1) / n
+            q = [i_m[i], i_m[j], i_d[j], i_d[i]]
+            uv = [(u0, by), (u1, by), (u1, by + bh), (u0, by + bh)]
+            faces.append(fixed(q, uv, (cx, cy, z_mouth), outward_sign=-1))
+    front = +1.0 if z_mouth > z_back else -1.0
+    if r_in is not None:
+        cx0, cy0, cw, chh = ISLANDS[kit + ".bottom"]
+        uv = [(cx0 + cw / 2 + cw / 2 * math.cos(a), cy0 + chh / 2 + chh / 2 * math.sin(a)) for a in ang]
+        faces.append(fixed(i_d, uv, (cx, cy, z_mouth + front), outward_sign=+1))
+    else:
+        faces.append(Face(outward(list(rings[-1]), axis_c), "cap_bolt", u_hint=(1, 0, 0)))
+    if cap_back:
+        faces.append(Face(outward(list(rings[0]), axis_c), "cap_bolt", u_hint=(1, 0, 0)))
 
 
 def fixed(pts, uv, ref, outward_sign):
@@ -193,14 +218,26 @@ def fixed(pts, uv, ref, outward_sign):
     return f
 
 
-def build():
+def clevis(faces, top):
+    """Two gunmetal cheeks round the neck's arm tip and the trunnion through them."""
+    for sg in (-1, 1):
+        box(faces, (0.10 if sg > 0 else -0.15, -0.075, -0.07),
+            (0.15 if sg > 0 else -0.10, top, 0.11), "dark")
+    prism_x(faces, -0.18, 0.18, 0.0, 0.0, 0.045)
+
+
+def reserve_mortar(pk):
+    reserve_kit(pk, "tube", 0.03 + 0.62)
+
+
+def build_mortar():
     faces = []
     # Tubes: 4 x 2, a flat on top, row centres over the pivot so the pack clears the neck's arm.
     cols = [-0.225, -0.075, 0.075, 0.225]
     rows = [0.165, 0.315]
     for y in rows:
         for x in cols:
-            tube(faces, x, y, 0.03, -0.62)
+            lathe(faces, "tube", x, y, [(0.068, 0.03), (0.068, -0.62)], r_in=0.050, depth=0.08)
     # Breech housing, behind the tubes. Top panel carries the forward arrow.
     # Its rear-bottom edge is what meets the neck's collar at 60 deg: at z 0.15 / y 0.055 it clears
     # the collar's back edge by ~7 cm (it touched at 0.20 / 0.035).
@@ -209,12 +246,71 @@ def build():
     # Two bands holding the cluster; the front one carries the orange trim of the platform.
     prism(faces, -0.315, 0.315, 0.08, 0.40, -0.22, -0.30, 0.03)
     prism(faces, -0.315, 0.315, 0.08, 0.40, -0.44, -0.51, 0.03, side="stripe")
-    # Clevis round the neck's arm tip (x +-0.09): two gunmetal cheeks and the trunnion between.
-    for s in (-1, 1):
-        box(faces, (s * 0.10 if s > 0 else -0.15, -0.075, -0.07),
-            (0.15 if s > 0 else -0.10, 0.065, 0.11), "dark")
-    prism_x(faces, -0.18, 0.18, 0.0, 0.0, 0.045)
+    clevis(faces, 0.065)
     return faces
+
+
+# A FLAT-FIRING HEAD SITS HIGH ON THE ARM, the way the gun's and the rocket launcher's do: at the
+# 40 deg depression WeaponBlock allows, a barrel 0.13 m over the pivot went straight through the neck's
+# collar and the cannon's brake came out under the platform. At 0.30 the barrel's middle stays over
+# the collar top at full depression, and the clevis grows up to meet the body.
+FLAT_Y = 0.30
+
+
+def reserve_shotgun(pk):
+    reserve_kit(pk, "barrel", 0.58)
+
+
+def build_shotgun():
+    faces = []
+    y = FLAT_Y
+    # Two barrels, one per shot of the burst, flaring a little at the muzzle: the cone is the weapon.
+    # A rib runs between them - without it, two short flared tubes read as binoculars from the front.
+    for x in (-0.085, 0.085):
+        lathe(faces, "barrel", x, y, [(0.062, -0.20), (0.062, -0.70), (0.082, -0.78)],
+              r_in=0.050, depth=0.09)
+    box(faces, (-0.025, y, -0.68), (0.025, y + 0.075, -0.20), "dark")
+    # Receiver: the blue body the barrels leave, grille at the back, arrow on top.
+    prism(faces, -0.20, 0.20, y - 0.14, y + 0.14, 0.14, -0.22, 0.04,
+          cap_front="blue", cap_back="grille", top_style="blue_arrow")
+    # Clamp round both barrels, carrying the platform's orange trim.
+    prism(faces, -0.18, 0.18, y - 0.095, y + 0.095, -0.46, -0.52, 0.03, side="stripe")
+    # Shell box on the right: two brass bases, one per shot before the reload.
+    box(faces, (0.20, y - 0.10, -0.13), (0.265, y + 0.08, 0.07), "dark", face_styles={"+x": "shells"})
+    clevis(faces, y - 0.13)
+    return faces
+
+
+def reserve_pound_cannon(pk):
+    reserve_kit(pk, "barrel", 0.64)
+    reserve_kit(pk, "sleeve", 0.26, mouth=False)
+
+
+def build_pound_cannon():
+    faces = []
+    y = FLAT_Y
+    # One long thick barrel: a single heavy blow at sixty metres.
+    lathe(faces, "barrel", 0.0, y, [(0.072, -0.46), (0.072, -1.10)], r_in=0.050, depth=0.05)
+    # Recoil sleeve where it leaves the mantlet, banded in the platform's orange.
+    lathe(faces, "sleeve", 0.0, y, [(0.11, -0.20), (0.11, -0.46)])
+    prism(faces, -0.122, 0.122, y - 0.122, y + 0.122, -0.38, -0.43, 0.038, side="stripe")
+    # Muzzle brake, slotted on both sides; its front stays behind the bore's bottom.
+    box(faces, (-0.105, y - 0.08, -1.04), (0.105, y + 0.08, -0.93), "dark",
+        face_styles={"+x": "brake", "-x": "brake"})
+    # Mantlet: a heavy armoured block with a thicker face plate.
+    prism(faces, -0.25, 0.25, y - 0.17, y + 0.17, 0.22, -0.16, 0.06,
+          cap_front="blue", cap_back="grille", top_style="blue_arrow")
+    prism(faces, -0.27, 0.27, y - 0.19, y + 0.19, -0.16, -0.21, 0.07)
+    clevis(faces, y - 0.16)
+    return faces
+
+
+# name: (seed, reserve, build, texture side)
+WEAPONS = {
+    "mortar": (7, reserve_mortar, build_mortar, 256),
+    "shotgun": (11, reserve_shotgun, build_shotgun, 256),
+    "pound_cannon": (13, reserve_pound_cannon, build_pound_cannon, 256),
+}
 
 
 def prism_x(faces, x0, x1, cy, cz, r):
@@ -322,6 +418,24 @@ def style_px(style, x, y, w, h, d):
         if 4 <= x < w - 4 and 4 <= y < h - 4:
             return METAL[1] if (y - 4) % 3 == 0 else METAL[3]
         return jitter(BLUE, 2)
+    if style == "shells":
+        # Two brass shell bases in a dark box: the burst, counted.
+        if d < 1.0:
+            return METAL[5]
+        for cx in (w * 0.3, w * 0.7):
+            r = math.hypot(x + 0.5 - cx, y + 0.5 - h / 2)
+            if r <= 2.2:
+                return WHITE if (r <= 0.8) else ORANGE
+            if r <= 3.0:
+                return ORANGE_LO
+        return jitter(METAL[2], 2)
+    if style == "brake":
+        # Muzzle brake: two vertical ports cut through the side.
+        if d < 1.0:
+            return METAL[5]
+        if 2 <= y < h - 2 and (x % 5) in (2, 3):
+            return METAL[0]
+        return jitter(METAL[3], 2)
     if style == "metal_rod":
         return METAL[4] if y < h / 2 else METAL[3]
     if style == "cap_bolt":
@@ -329,11 +443,11 @@ def style_px(style, x, y, w, h, d):
     return (255, 0, 255)
 
 
-def paint_islands(img):
-    n = TUBE_SIDES
-    # Tube wall: a top-lit ramp round the eight sides, a darker ring where it leaves the band,
-    # and a lit line down the upper flat - the only way a round tube reads with no lighting.
-    x0, y0, w, h = ISLANDS["wall"]
+def paint_kit(img, kit, sides=8):
+    n = sides
+    # Wall: a top-lit ramp round the eight sides, a darker seam ring, and a lit lip at the mouth
+    # end - the only way a round part reads with no lighting.
+    x0, y0, w, h = ISLANDS[kit + ".wall"]
     for yy in range(-PAD, h + PAD):
         for xx in range(-PAD, w + PAD):
             i = min(max(int((xx + 0.5) / w * n), 0), n - 1)
@@ -346,7 +460,9 @@ def paint_islands(img):
             if yy >= h - 2:
                 c = METAL[min(idx + 1, 6)]                    # the muzzle lip
             img.putpixel((x0 + xx, y0 + yy), jitter(c, 1))
-    x0, y0, w, h = ISLANDS["rim"]
+    if kit + ".rim" not in ISLANDS:
+        return
+    x0, y0, w, h = ISLANDS[kit + ".rim"]
     for yy in range(-PAD, h + PAD):
         for xx in range(-PAD, w + PAD):
             i = min(max(int((xx + 0.5) / w * n), 0), n - 1)
@@ -354,12 +470,12 @@ def paint_islands(img):
             lit = math.sin(a)
             c = RIM[int(round((lit + 1) / 2 * 4))]
             img.putpixel((x0 + xx, y0 + yy), c)
-    x0, y0, w, h = ISLANDS["bore"]
+    x0, y0, w, h = ISLANDS[kit + ".bore"]
     for yy in range(-PAD, h + PAD):
         for xx in range(-PAD, w + PAD):
             t = min(max(yy / max(h - 1, 1), 0.0), 1.0)
             img.putpixel((x0 + xx, y0 + yy), METAL[1] if t < 0.35 else METAL[0])
-    x0, y0, w, h = ISLANDS["bottom"]
+    x0, y0, w, h = ISLANDS[kit + ".bottom"]
     for yy in range(-PAD, h + PAD):
         for xx in range(-PAD, w + PAD):
             img.putpixel((x0 + xx, y0 + yy), (10, 9, 12))
@@ -380,15 +496,15 @@ def project(face):
     return n, [(p[0] - mx, p[1] - my) for p in pts2]
 
 
-def main():
-    img = Image.new("RGB", (TEX, TEX), BLUE)
-    pk = Packer(TEX)
-    wall_len = int(round((0.03 + 0.62) * DENS))
-    ISLANDS["wall"] = pk.take(24, wall_len)
-    ISLANDS["rim"] = pk.take(16, 4)
-    ISLANDS["bore"] = pk.take(16, 6)
-    ISLANDS["bottom"] = pk.take(4, 4)
-    paint_islands(img)
+def make(name):
+    seed, reserve, build, tex = WEAPONS[name]
+    random.seed(seed)
+    ISLANDS.clear()
+    img = Image.new("RGB", (tex, tex), BLUE)
+    pk = Packer(tex)
+    reserve(pk)
+    for kit in dict.fromkeys(k.split(".")[0] for k in ISLANDS):
+        paint_kit(img, kit)
     faces = build()
     todo = []
     for f in faces:
@@ -404,16 +520,21 @@ def main():
         rect = pk.take(w, h)
         paint_face(img, rect, pts2, f.style, n[1])
         f.uv = [(rect[0] + p[0], rect[1] + p[1]) for p in pts2]
-    img.save(OUT_PNG)
-    write_glb(faces)
+    img.save(OUT_PNG % name)
+    write_glb(faces, name, tex)
     tris = sum(len(f.pts) - 2 for f in faces)
-    print("faces %d, triangles %d, texture %dx%d, used rows to %d px"
-          % (len(faces), tris, TEX, TEX, pk.y + pk.row_h))
+    print("%s: faces %d, triangles %d, texture %dx%d, used rows to %d px"
+          % (name, len(faces), tris, tex, tex, pk.y + pk.row_h))
+
+
+def main():
+    for name in (sys.argv[1:] or list(WEAPONS)):
+        make(name)
 
 
 # ── glTF ────────────────────────────────────────────────────────────────────────────────────────
 
-def write_glb(faces):
+def write_glb(faces, name, tex):
     pos, nrm, uvs, idx = [], [], [], []
     for f in faces:
         n = newell(f.pts)
@@ -421,7 +542,7 @@ def write_glb(faces):
         for p, t in zip(f.pts, f.uv):
             pos.append(p)
             nrm.append(n)
-            uvs.append((t[0] / TEX, t[1] / TEX))
+            uvs.append((t[0] / tex, t[1] / tex))
         for k in range(1, len(f.pts) - 1):
             idx += [base, base + k, base + k + 1]
     blob = bytearray()
@@ -459,28 +580,28 @@ def write_glb(faces):
     a_uv = acc(view(o, l, 34962), 5126, len(uvs), "VEC2")
     o, l = chunk(idx, "H")
     a_idx = acc(view(o, l, 34963), 5123, len(idx), "SCALAR")
-    png = open(OUT_PNG, "rb").read()
+    png = open(OUT_PNG % name, "rb").read()
     off = len(blob)
     blob.extend(png)
     while len(blob) % 4:
         blob.append(0)
     v_img = view(off, len(png))
     gltf = {
-        "asset": {"version": "2.0", "generator": "art/mortar_model.py"},
+        "asset": {"version": "2.0", "generator": "art/turret_heads.py"},
         "extensionsUsed": ["KHR_materials_unlit"],
         "scene": 0,
         "scenes": [{"nodes": [0]}],
-        "nodes": [{"name": "mortar_head", "mesh": 0}],
-        "meshes": [{"name": "mortar_head", "primitives": [{
+        "nodes": [{"name": name + "_head", "mesh": 0}],
+        "meshes": [{"name": name + "_head", "primitives": [{
             "attributes": {"POSITION": a_pos, "NORMAL": a_nrm, "TEXCOORD_0": a_uv},
             "indices": a_idx, "material": 0}]}],
-        "materials": [{"name": "mortar", "doubleSided": True,
+        "materials": [{"name": name, "doubleSided": True,
                        "extensions": {"KHR_materials_unlit": {}},
                        "pbrMetallicRoughness": {"baseColorTexture": {"index": 0},
                                                 "metallicFactor": 0, "roughnessFactor": 0.9}}],
         "textures": [{"source": 0, "sampler": 0}],
         "samplers": [{"magFilter": 9728, "minFilter": 9986}],
-        "images": [{"bufferView": v_img, "mimeType": "image/png", "name": "mortar_texture"}],
+        "images": [{"bufferView": v_img, "mimeType": "image/png", "name": name + "_texture"}],
         "buffers": [{"byteLength": len(blob)}],
         "bufferViews": views,
         "accessors": accs,
@@ -489,7 +610,7 @@ def write_glb(faces):
     while len(js) % 4:
         js += b" "
     total = 12 + 8 + len(js) + 8 + len(blob)
-    with open(OUT_GLB, "wb") as fh:
+    with open(OUT_GLB % name, "wb") as fh:
         fh.write(struct.pack("<III", 0x46546C67, 2, total))
         fh.write(struct.pack("<II", len(js), 0x4E4F534A) + js)
         fh.write(struct.pack("<II", len(blob), 0x004E4942) + bytes(blob))

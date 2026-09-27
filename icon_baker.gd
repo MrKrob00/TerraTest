@@ -50,7 +50,8 @@ func _ready() -> void:
 ## Рецепт в метке обязателен: у игрока на диске уже лежит партия, снятая по-старому, а версия
 ## сборки и число блоков от правки света не меняются — без этого номера он остался бы с ней навсегда.
 ## 4: the mortar got its model (it was a grey box and a cylinder, and that is what the stamp kept).
-const RECIPE := 4
+## 5: the shotgun and the heavy cannon got theirs.
+const RECIPE := 5
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
