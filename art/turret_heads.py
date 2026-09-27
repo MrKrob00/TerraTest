@@ -424,6 +424,25 @@ def style_px(style, x, y, w, h, d):
                 if x == rx + 1 and y == ry + 1:
                     return BLUE_HI
         return jitter(BLUE, 2)
+    if style in ("anchor_top", "anchor_top_fixed"):
+        # The supports' deck. The rotating one carries a white chevron pointing FORWARD (+u): the
+        # heading it turns the machine to. The fixed one a ring of bolts - it points nowhere.
+        if d < 1.0:
+            return BLUE_HI
+        if d < 2.0:
+            return BLUE_MID
+        px, py, cy = x + 0.5, y + 0.5, h / 2.0
+        if style == "anchor_top":
+            a = w * 0.70 - px
+            if 0 <= a <= w * 0.28 and abs(abs(py - cy) - a * 0.95) < 1.7:
+                return WHITE
+        else:
+            r = math.hypot(px - w / 2.0, py - cy)
+            ring = min(w, h) * 0.30
+            if abs(r - ring) < 1.0:
+                ang = math.atan2(py - cy, px - w / 2.0)
+                return BLUE_HI if (int((ang + math.pi) / (2 * math.pi) * 8 + 0.5) % 2) else BLUE_DEEP
+        return jitter(BLUE, 2)
     if style == "bevel":
         return BLUE_MID if d >= 1.0 else BLUE
     if style == "dark":

@@ -384,17 +384,21 @@ project: read it before claiming how anything works.
   off the anchor itself.
 - Support column and `ROT_SUPPORT` rotation pivot are taken from the support block
   (`vehicle_body_3d.support_block`), not from the machine origin, which is the cabin.
-- **BOTH SUPPORTS ARE JACKS, AND THE COLUMN IS THEIR OWN PISTON** (`art/emitter_models.py` support /
-  rot_support, `blocks/scripts/support.gd`). A housing that bolts on by its top and sides, a
-  sleeve, a piston rod and a round foot; while the machine is anchored (or is an enemy base) the
-  rod runs out until the foot stands on the ground (`G.ground_y` under the block, capped at
-  `LEG_MAX`), and back in on release. So `_build_anchor_column` builds nothing when the core has
-  `draws_own_leg` - it used to grow a white `CylinderMesh` - and keeps its column only for a base
-  whose core is a seller or a miner. The rotating one carries the jack under a TURNTABLE: the
-  housing and rotor ring turn with the machine, the STATOR ring (orange ticks, two lugs) holds the
-  heading it had when the machine anchored, so the turn is seen against it. Measured on the
-  proving ground: foot bottom 0.000 against ground 0.000 for both, no column, stator at -0.61 deg
-  while the block turned to 29.39, rod back to its rest length after release.
+- **BOTH SUPPORTS ARE JACKS AFTER TERRATECH'S GSO ANCHOR, AND THE COLUMN IS THEIR OWN RAM**
+  (`art/emitter_models.py` support / rot_support, `blocks/scripts/support.gd`). A round grey base
+  under a deck the blocks stand on, joining by the four sides and the top (`connect_faces` 31),
+  never the bottom; every round part has its FLATS ON THE CELL'S FACES (16 sides, `flat_r`), so a
+  neighbour meets a face - the first cut, a housing on a thin sleeve with an inset lower tier,
+  read as joining by its top only. The fixed one has a square deck and a hazard band on the base;
+  the rotating one a round deck with a white chevron (its heading) turning with the machine, over
+  a base that HOLDS the heading it had when the machine anchored, orange ticks on its ridge so the
+  turn is seen against it. While the machine is anchored (or is an enemy base) a telescoping ram
+  (sleeve over rod) runs out until the foot stands on the ground (`G.ground_y` under the block,
+  capped at `LEG_MAX`), and back in on release. So `_build_anchor_column` builds nothing when the
+  core has `draws_own_leg` - it used to grow a white `CylinderMesh` - and keeps its column only
+  for a base whose core is a seller or a miner. Measured on the proving ground: foot bottom 0.000
+  against ground 0.000 for both, no column, the base at -0.61 deg while the block turned to
+  29.39, the ram back to its rest length after release.
 - The core watchdog (`MachineBody.cabin_watch`) runs for enemies too: it asks whether anything still
   holds the machine together instead of waiting for a `destroyed` signal.
 

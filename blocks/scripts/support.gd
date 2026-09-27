@@ -2,16 +2,18 @@ extends VehicleBlock
 # SUPPORT and ROTATING SUPPORT. What they do lives on the machine (vehicle_body_3d: `support_block`,
 # `toggle_anchor`, `_rot_support_tick`; enemy_vehicle `_turn_to_target`); this script only SHOWS it.
 #
-# The model is a jack (art/emitter_models.py support / rot_support): a housing, a sleeve, a piston
-# rod and a round foot. While the machine stands on its anchor the piston runs out until the foot is
+# The model is TerraTech's GSO anchor as a jack (art/emitter_models.py support / rot_support): a
+# round base under a deck, a telescoping ram (sleeve over rod) and a foot. While the machine stands on its anchor the ram runs out until the foot is
 # on the ground - that replaces the plain white cylinder the machine used to grow under itself, so
 # the machine draws no column when this block is its core (`draws_own_leg`). On the rotating one
-# the STATOR ring under the turntable holds its heading on the ground while the housing turns with
+# the round STATOR base under the deck holds its heading on the ground while the housing turns with
 # the machine, which is the one thing that says "this block turns the build".
 
-## The model's rest gap between the leg's node and the foot's top (SUP_FOOT_Y - SUP_LEG_Y there):
-## the leg is a unit rod scaled to this plus the extension.
-const LEG_REST := 0.10
+## The foot's top at rest (SUP_FOOT_Y in the model). The ram and the sleeve are unit rods hanging
+## from their nodes; the gap from the leg's node down to here is the rest length, read off the scene.
+const FOOT_TOP := -0.42
+## The sleeve covers this share of the ram, so the jack reads as two telescoping stages.
+const SLEEVE_SHARE := 0.55
 ## Past this the jack stays short: a machine anchored over a cliff is still anchored, it just does
 ## not get a twenty-metre stilt.
 const LEG_MAX := 12.0
@@ -22,6 +24,8 @@ const LEG_MIN_SPEED := 1.5
 const FOOT_DROP := 0.5
 
 var _leg: Node3D = null
+var _sleeve: Node3D = null
+var _rest: float = 0.0
 var _foot: Node3D = null
 var _stator: Node3D = null
 var _ext: float = 0.0
@@ -32,6 +36,9 @@ func _ready() -> void:
 	super._ready()
 	moving_parts = true                 # leg, foot and stator move (MachineBatch copies them)
 	_leg = get_node_or_null("Leg") as Node3D
+	_sleeve = get_node_or_null("Sleeve") as Node3D
+	if _leg != null:
+		_rest = maxf(_leg.position.y - FOOT_TOP, 0.01)
 	_foot = get_node_or_null("Foot") as Node3D
 	_stator = get_node_or_null("Stator") as Node3D
 
@@ -52,7 +59,9 @@ func _process(delta: float) -> void:
 		var step: float = maxf(absf(want - _ext) * LEG_EASE, LEG_MIN_SPEED) * delta
 		_ext = move_toward(_ext, want, step)
 		if _leg != null:
-			_leg.scale = Vector3(1.0, LEG_REST + _ext, 1.0)
+			_leg.scale = Vector3(1.0, _rest + _ext, 1.0)
+		if _sleeve != null:
+			_sleeve.scale = Vector3(1.0, maxf((_rest + _ext) * SLEEVE_SHARE, _rest), 1.0)
 		if _foot != null:
 			_foot.position.y = -_ext
 	if _stator != null:

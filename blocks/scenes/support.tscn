@@ -5,6 +5,8 @@
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/support_leg.tres" id="3_leg"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/support_foot.tres" id="4_foot"]
 
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/support_sleeve.tres" id="9_sleeve"]
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
 
 [node name="Support" type="RigidBody3D" unique_id=472438370]
@@ -20,8 +22,12 @@ shape = SubResource("BoxShape3D_h01jy")
 [node name="Body" type="MeshInstance3D" parent="." unique_id=1930675546]
 mesh = ExtResource("2_body")
 
+[node name="Sleeve" type="MeshInstance3D" parent="." unique_id=1930675549]
+transform = Transform3D(1, 0, 0, 0, 0.04, 0, 0, 0, 1, 0, -0.38, 0)
+mesh = ExtResource("9_sleeve")
+
 [node name="Leg" type="MeshInstance3D" parent="." unique_id=1930675547]
-transform = Transform3D(1, 0, 0, 0, 0.1, 0, 0, 0, 1, 0, -0.3, 0)
+transform = Transform3D(1, 0, 0, 0, 0.04, 0, 0, 0, 1, 0, -0.38, 0)
 mesh = ExtResource("3_leg")
 
 [node name="Foot" type="MeshInstance3D" parent="." unique_id=1930675548]

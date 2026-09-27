@@ -12,8 +12,8 @@ texture_filter = 2
 [resource]
 resource_name = "rot_support_leg"
 _surfaces = [{
-"aabb": AABB(-0.09176295, -1, -0.09176295, 0.1835259, 1, 0.1835259),
-"attribute_data": PackedByteArray("/5H/Af+U/wH/lP8E/5H/BP+U/wH/l/8B/5f/BP+U/wT/l/8B/5r/Af+a/wT/l/8E/5r/Af+d/wH/nf8E/5r/BP+d/wH/oP8B/6D/BP+d/wT/oP8B/6P/Af+j/wT/oP8E/6P/Af+m/wH/pv8E/6P/BP+m/wH/qf8B/6n/BP+m/wT/qf8B/6z/Af+s/wT/qf8E/6z/Af+v/wH/r/8E/6z/BP+v/wH/sv8B/7L/BP+v/wT/sv8B/7X/Af+1/wT/sv8E"),
+"aabb": AABB(-0.1835259, -1, -0.1835259, 0.3670518, 1, 0.3670518),
+"attribute_data": PackedByteArray("/2n/Af9s/wH/bP8E/2n/BP9s/wH/b/8B/2//BP9s/wT/b/8B/3L/Af9y/wT/b/8E/3L/Af91/wH/df8E/3L/BP91/wH/eP8B/3j/BP91/wT/eP8B/3v/Af97/wT/eP8E/3v/Af9+/wH/fv8E/3v/BP9+/wH/gf8B/4H/BP9+/wT/gf8B/4T/Af+E/wT/gf8E/4T/Af+H/wH/h/8E/4T/BP+H/wH/iv8B/4r/BP+H/wT/iv8B/43/Af+N/wT/iv8E"),
 "format": 34896613399,
 "index_count": 72,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAJAAmACUAJAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4A"),
