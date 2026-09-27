@@ -349,8 +349,8 @@ project: read it before claiming how anything works.
   ban in code but a fact of the ballistics. Its spread is in METRES ON THE GROUND, not degrees, and
   that number decides how much of a salvo lands: a wide pattern turns nominal damage into a tenth of
   it.
-- **THE MORTAR'S MODEL IS GENERATED, AND ONLY ITS HEAD IS NEW** (`art/mortar_model.py` →
-  `objects/mortar_texture.png` + `art/out/mortar.glb`; `art/mortar_import.gd` → `blocks/meshes/
+- **THE MORTAR'S MODEL IS GENERATED, AND ONLY ITS HEAD IS NEW** (`art/turret_heads.py` →
+  `objects/mortar_texture.png` + `art/out/mortar.glb`; `art/turret_import.gd` → `blocks/meshes/
   mortar_head.tres`). Platform and neck are the ones the gun, rocket launcher and laser stand on,
   so it reads as one of the family and `_find_turret_parts` finds its chain like theirs. The head
   says what the code does: EIGHT tubes, 4 × 2, every mouth visible from the front (`SHELLS`), on a
@@ -366,10 +366,19 @@ project: read it before claiming how anything works.
   breech's rear edge clears the neck's collar by ~7 cm - it touched before the housing was cut to
   z 0.15. THE MORTAR HAS NO TRACER: its `_track_target` never called `_show_tracer`, so the green
   placeholder box stood over every mortar in the game for good, and a straight beam would lie about
-  a lobbed shell anyway. The shotgun and heavy cannon keep theirs, hidden in the scene
-  (`visible = false`) since the script shows it only while firing - drawn by default, it was also
-  baked into both portraits. A model change needs `icon_baker.RECIPE` bumped, or installs keep the
-  old portrait.
+  a lobbed shell anyway. The shotgun and heavy cannon lost theirs with their models: a BoxMesh the
+  code never stretched (it only resizes a CylinderMesh), which on the new heads would have blinked
+  above the barrels on every shot; drawn by default, it was also baked into both portraits. A model
+  change needs `icon_baker.RECIPE` bumped, or installs keep the old portrait.
+- **THE SHOTGUN AND THE HEAVY CANNON ARE BUILT BY THE SAME TOOL** (`art/turret_heads.py <name>`,
+  `art/turret_import.gd -- <name>`): two barrels and a shell box with two brass bases for the
+  two-shot burst, flared muzzles for the cone; one long thick barrel, recoil sleeve, muzzle brake
+  and a heavy mantlet for the single 30-damage blow. A FLAT-FIRING HEAD SITS HIGH ON THE ARM
+  (`FLAT_Y`, 0.30 m over the pivot) as the gun's and the rocket's do: at 0.13 the barrels went
+  through the neck's collar at the 40 deg depression and the cannon's brake came out under the
+  platform. Measured on the engine: model and `Pivot` point the same way (0.00 deg) at every height,
+  and `Pivot/Marker3D` sits 1.5 cm from the muzzle level, 12 cm at 25 deg - the pivots differ, as on
+  every turret.
   ON AN ENEMY THE MORTAR BARELY FIRES, AND THE REASON IS THE DRIVER, NOT THE GUN. Measured on the
   proving ground with build 29, 20 s runs: 0-2 salvos, and every one of them in the second the nose
   swept across the target. `_act_engage` drives AT the target and PURSUE closes to 3-5 m, so the
@@ -1665,7 +1674,7 @@ project: read it before claiming how anything works.
   physics tick for every weapon in the world, and the tick called `force_raycast_update()` on top —
   two physics queries per weapon per tick. Its result is read by exactly two things: the "is my own
   barrel blocked" check, which is needed once per SHOT, and the tracer beam, which needs it every
-  tick and exists on two of the six weapons (heavy cannon, shotgun). So the ray is forced
+  tick and no weapon carries one any more (`_has_tracer` stays, answering "no" once). So the ray is forced
   where the answer is used. The blocked check moved AFTER the fire timer and does not reset it on
   refusal, so a weapon still fires on the first tick the obstruction clears.
 - **A FIGHT IS TOO NOISY TO JUDGE FROM ONE RUN.** The same 15-second fight, damage dealt: 120 / 135
