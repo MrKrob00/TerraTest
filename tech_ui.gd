@@ -1027,6 +1027,17 @@ func _load_build(build_name: String) -> void:
 	var target: Array = G.saved_builds.get(build_name, [])
 	if target.is_empty():
 		return
+	# THE PROVING GROUND'S STOCK IS ENDLESS AND IS NOT AN INVENTORY. It is ten of every type in
+	# G.block_inventory so the picker globe has something to walk (proving_ground._stock_all_blocks),
+	# and the pool arithmetic below read those ten as all there was: a build with a dozen belts
+	# "ran short", was cut down, and the leftover written back as the inventory took every type the
+	# build used out of the globe for good - measured, belts 10 -> 0, 45 types -> 43, 21 of 25
+	# placed. That was "after a saved build nothing could be taken into the hand".
+	if G.proving_ground:
+		v.apply_build(target)
+		_say(tr("Build applied: %s") % build_name)
+		refresh()
+		return
 	var current: Array = blocks_node.get_layout() if blocks_node.has_method("get_layout") else []
 	var pool: Dictionary = G.layout_counts(current)
 	for b in G.block_inventory:

@@ -1088,6 +1088,11 @@ project: read it before claiming how anything works.
   plates, wings, the nose cell — and the two are obliged to disagree at the first edit. The same
   `get_layout` the save uses already resolves anchors and footprints, so a multi-cell block counts
   once.
+- A SAVED BUILD ON THE POLYGON IS APPLIED WHOLE AND TOUCHES NO STOCK (`tech_ui._load_build`). The
+  garage's pool arithmetic read the ten-of-each stock as all there was: a build with a dozen belts
+  "ran short", was cut down, and the leftover written back as the inventory took every type the
+  build used out of the picker globe for good - measured, belts 10 -> 0, 45 types -> 43, 21 of 25
+  placed. That was "after applying a saved build nothing could be taken into the hand".
 - ALL BLOCKS ARE HANDED OUT, not merely made unlimited. `block_available` answers "is there
   enough"; the picker globe asks something else — it walks `G.block_inventory` itself, and an
   empty list gives it nothing to show. The count does not matter: `consume_block` deducts nothing
