@@ -186,8 +186,28 @@ project: read it before claiming how anything works.
 
 - The machine is a plain `RigidBody3D`, NOT `VehicleBody3D`. Wheels are not physics constraints and
   nothing rolls: a wheel probes the ground with a ray (`Wheel.probe_ground`), the suspension is
-  `apply_force` at the wheel offset, and traction, lateral grip and braking are `apply_central_force`
-  through the centre of mass. Jolt only carries the body; the car is written by hand.
+  `apply_force` at the wheel offset, and traction, grip and rolling drag are `apply_force` AT EACH
+  WHEEL (`MachineBody._wheel_forces`). Jolt only carries the body; the car is written by hand.
+- **EVERY WHEEL PUSHES WHERE IT STANDS AND ALONG WHERE IT ROLLS.** Traction used to be one force
+  through the centre of mass along the CABIN's forward, grip another, the turn an angular velocity
+  written straight in: a wheel's place and heading decided nothing, so a wheel bolted on turned
+  sideways still drove the machine forward and wheels on one side drove it straight. Now each
+  grounded wheel, at its own spot (lifted to the centre of mass's height so traction does not pitch
+  the hull), pushes along its ROLLING LINE (`Wheel.rolling_dir`, from the tyre's rest axle) by
+  throttle times how much that line points forward, holds against sliding along its AXLE
+  (`wheel_cornering`, capped by `WHEEL_GRIP_LIMIT` like a tyre sliding), and with no throttle drags
+  along the rolling line. Steering turns the front wheels' line (only wheels rolling along the
+  machine), and that grip IS the turn - nothing writes yaw. Below `TANK_FADE` the steering also
+  pushes one side against the other (`TANK_STEER`), so a machine turns on the spot, which the AI
+  needs: without it two wide big-wheel builds barely moved (10-12 m in 12 s against 56-72). A wheel
+  ROLLING ACROSS the machine is driven by the steering instead (it strafes). A bare cabin with no
+  wheels keeps the old whole-body push. Measured on the proving ground against the old model: a
+  four-wheel car the same straight (54 m / 20 m/s in 3 s) and turning at 8.1 m against 6.1; the
+  same car plus one sideways wheel on the tail 36 m instead of 54 (it drags); wheels on the right
+  only - a spin, about 1.7 rad/s, instead of driving straight; wheels all across - no forward run,
+  steering strafes it at 17.9 m/s; five enemy builds all close to 26-28 m of the player, as before.
+  WHEELS ARE MOUNTED AT +-90 DEG on the sides (`blocks._define_layout`): at 0 the standard tyre
+  rolls ACROSS the machine, which the old model never noticed.
 - There is no engine block. Traction is the sum of `wheel_power` over driving wheels **that touch
   the ground**, times `engine_force`. A bare cabin with no blocks at all gets `chassis_power` so the
   first minutes work.

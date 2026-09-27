@@ -106,6 +106,21 @@ func _ready() -> void:
 		_hub = _tyre                   # опорное колесо: ход отыгрывает сама покрышка
 	_hub_rest = _hub.position
 	_radius = _measure_radius()
+	_axle_block = (global_basis.inverse() * _tyre.global_basis).x.normalized()
+
+## THE TYRE'S AXLE IN THE BLOCK'S OWN AXES, taken once at rest (no steering, no roll - rolling turns
+## the tyre about this very axis). The machine pushes each wheel along where it ROLLS and holds it
+## against sliding along this axle (MachineBody._wheel_forces), so a wheel bolted on turned sideways
+## drives sideways and drags when the machine goes forward - which is what it is.
+var _axle_block: Vector3 = Vector3.RIGHT
+
+## Where this wheel rolls, flattened onto the plane `up` spans: unit, sign arbitrary (callers use it
+## as a line). ZERO when the axle stands along `up` - a tyre lying flat rolls nowhere.
+func rolling_dir(up: Vector3) -> Vector3:
+	var d: Vector3 = (global_basis * _axle_block).cross(up)
+	if d.length_squared() < 0.01:
+		return Vector3.ZERO
+	return d.normalized()
 
 ## Первая часть модели, в имени которой есть слово. Ищем по всему поддереву: цепочка
 ## вложена на несколько уровней, а имена у трёх размеров колеса отличаются суффиксом.

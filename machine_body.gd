@@ -445,9 +445,13 @@ func _land_wave(speed: float) -> void:
 func drive_physics(delta: float) -> void:
 	_apply_suspension()
 	if _on_ground:
-		_apply_engine()
-		_apply_grip()
-		_apply_steering(delta)
+		if _wheel_count > 0:
+			_wheel_forces()
+		else:
+			# A bare cabin (no wheels at all) crawls on chassis_power, pushed and steered as a whole.
+			_apply_engine()
+			_apply_grip()
+			_apply_steering(delta)
 	# Roll is damped in the air too, but weaker: with no wheel contact there is nothing to damp
 	# against, and releasing the machine entirely gives uncontrollable spin after a jump.
 	_apply_anti_roll(delta, 1.0 if _on_ground else air_stability)
@@ -742,6 +746,90 @@ func _apply_steering(delta: float) -> void:
 			target_yaw = -target_yaw
 
 	angular_velocity.y = lerp(angular_velocity.y, target_yaw, turn_response * delta)
+
+# ══════════════════════════════════════════
+# WHEEL FORCES
+# ══════════════════════════════════════════
+# EVERY WHEEL PUSHES WHERE IT STANDS AND ALONG WHERE IT ROLLS. Traction used to be one force through
+# the centre of mass along the CABIN's forward, grip one more, and the turn an angular velocity
+# written straight in: so a wheel's position and heading decided nothing - a wheel bolted on the
+# tail turned sideways still pushed the machine forward, wheels on one side only drove it straight,
+# and any yaw that asymmetric thrust did produce was damped back to zero every tick.
+#
+# Now, per grounded wheel, at its own spot (lifted to the centre of mass's height, so traction does
+# not pitch the hull - the old central force had that for the same reason):
+#   drive  - along the wheel's rolling line, by throttle times how much that line points forward:
+#            a sideways wheel does not drive a forward run, a wheel on one side yaws the machine;
+#   grip   - against sliding along the wheel's AXLE, capped by friction (WHEEL_GRIP_LIMIT): a
+#            sideways wheel drags when the machine goes forward, and a front wheel turned by the
+#            steering is what turns the machine - no yaw is written anywhere;
+#   coast  - with no throttle, rolling drag along the rolling line (engine_brake +
+#            longitudinal_grip, the two old central terms).
+# Each wheel carries its share of the mass (mass / wheel count), so a machine hanging on two of six
+# wheels grips with a third of its weight, as `_contact_ratio` did.
+## Largest sideways acceleration a wheel's grip can give its share of the mass (m/s^2): the tyre
+## slides past it. Arcade, not asphalt (the game's gravity is 24.5, so a friction over 3): the front
+## pair alone carries the turn, and at half this a car cornered at half what the old model gave.
+const WHEEL_GRIP_LIMIT := 80.0
+## Forward speed (m/s) by which the tank-style part of the turn has faded out (see _wheel_forces).
+const TANK_FADE := 6.0
+## Share of full wheel power a wheel gives the tank-style turn standing still: at full power a car
+## spun on the spot at nearly 130 deg/s, which reads as a top rather than a machine.
+const TANK_STEER := 0.5
+## How hard a tyre resists sliding along its axle, per m/s of slide (1/s). It is what turns the
+## machine now, so it is stiffer than the old whole-body `lateral_grip`, which only damped a drift.
+@export var wheel_cornering: float = 24.0
+
+func _wheel_forces() -> void:
+	var up: Vector3 = _get_up()
+	var fwd: Vector3 = _get_forward()
+	var com_g: Vector3 = global_transform * center_of_mass
+	var share: float = mass / float(maxi(_wheel_count, 1))
+	var right: Vector3 = _get_right()
+	# Steering as a -1..1 push to the right: what a wheel ROLLING ACROSS the machine does with it.
+	var steer_n: float = -_steer_angle / maxf(deg_to_rad(steer_max_angle), 0.001)
+	# How much of the turn the wheels make by pushing unevenly, tank-fashion: all of it standing,
+	# none of it at TANK_FADE and above, where the steered front wheels turn the machine.
+	var tank_k: float = clampf(1.0 - absf(fwd.dot(linear_velocity)) / TANK_FADE, 0.0, 1.0)
+	for w in Wheels:
+		if not is_instance_valid(w) or not w.grounded:
+			continue
+		var base: Vector3 = w.rolling_dir(up) if w.has_method("rolling_dir") else fwd
+		if base == Vector3.ZERO:
+			continue
+		var along: float = base.dot(fwd)
+		# Only a wheel rolling ALONG the machine is steered; one bolted on across it is not a
+		# front wheel of anything, and turning it would only twist the machine.
+		var d: Vector3 = base
+		if w.is_front and absf(along) > 0.7 and absf(_steer_angle) > 0.001:
+			d = base.rotated(up, _steer_angle)       # the line turns with the wheel; its sign is free
+		var lat: Vector3 = up.cross(d)
+		var wp: Vector3 = (w as Node3D).global_position
+		var point: Vector3 = wp - up * (wp - com_g).dot(up)
+		# Throttle drives what rolls forward, along the line the steering has turned. Steering
+		# drives what rolls ACROSS (a sideways-mounted wheel strafes the machine), and on the rest
+		# pushes one side against the other at low speed, so the machine can turn where the front
+		# wheels alone could not - along the wheel's STRAIGHT line, since a front wheel turned in
+		# and pushing backwards drags the nose the wrong way. Every base sign cancels.
+		var push: Vector3 = d * signf(d.dot(base)) * _throttle * along
+		if absf(along) >= 0.7:
+			var arm_h: Vector3 = point - com_g
+			var lever: float = arm_h.cross(base).dot(up) / maxf(arm_h.length(), 0.5)
+			push -= base * steer_n * tank_k * TANK_STEER * lever
+		else:
+			push += base * steer_n * base.dot(right)
+		var v_at: Vector3 = linear_velocity + angular_velocity.cross(point - com_g)
+		var f_lat: float = clampf(-v_at.dot(lat) * wheel_cornering, -WHEEL_GRIP_LIMIT, WHEEL_GRIP_LIMIT)
+		var f: Vector3 = lat * f_lat * share
+		var amount: float = push.length()
+		if amount > 0.01:
+			if w.is_drive:
+				# Fades toward max_speed along the push's own line, so a strafe has the same ceiling.
+				var speed_factor: float = clampf(1.0 - absf(v_at.dot(push / amount)) / max_speed, 0.05, 1.0)
+				f += push * w.wheel_power * engine_force * speed_factor
+		else:
+			f -= d * v_at.dot(d) * (engine_brake + longitudinal_grip) * share
+		apply_force(f, point - global_position)
 
 # ══════════════════════════════════════════
 # STABILISATION
