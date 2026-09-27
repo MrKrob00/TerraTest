@@ -236,7 +236,10 @@ project: read it before claiming how anything works.
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
   tail-heavy build, where a block used to be propped in and then dragged along the ground. THE STABILISER
   IS BUILT (`art/emitter_models.py` stab): it bolts on by its BACK face like any wheel (the small
-  wheel's tyre, hub and plate), trailing arms down to an axle beside the tyre, rolling along the
+  wheel's tyre and plate), trailing arms down to an axle rod THROUGH the tyre's centre. The artist's
+  `Wheel_Axle` is NOT part of the tyre - it is the separate hub of their own suspension, sitting
+  beside the tyre - and bolted onto this one it stuck out past one arm; the tyre carries its own
+  rim, so it hangs between the arms alone, rolling along the
   machine (axis block X), `ride_height` 0.9 like the standard wheel. Measured on the proving ground:
   two standard wheels in front and a stabiliser on the tail stand level (0.0 deg) at 0.88 with the
   stabiliser grounded. THE RISER IS STILL THE PLACEHOLDER, and on purpose: two generated attempts
