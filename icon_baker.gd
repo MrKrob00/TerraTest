@@ -55,8 +55,8 @@ func _ready() -> void:
 ## 10: half blocks became 45-degree triangles; the riser and stabiliser wheels got models.
 ## 11: the riser became TerraTech's two-cell bracket and swan-neck arm. 12: its heavy mount and cast arm.
 ## 13: the riser is the placeholder again. 14: the stabiliser without the artist's hub.
-## 15: the conveyors got models.
-const RECIPE := 15
+## 15: the conveyors got models. 16: the fork's arrows as open chevrons, belt textures lossless.
+const RECIPE := 16
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

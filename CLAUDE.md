@@ -287,7 +287,11 @@ project: read it before claiming how anything works.
   `item_slot` still sits on it. What the belt SAYS is the point: arrows along the run on a
   conveyor, a T of arrows on the fork's middle plate (in from the back, out three ways - four
   arrowed runs crossing read as a heap of chevrons), no arrows on the crossing, which passes both
-  axes.
+  axes. THE FORK'S ARROWS ARE OPEN CHEVRONS PAINTED OVER THE BACKGROUND (`fork_hub`): filled heads
+  on shafts merged into one orange blot on a 31-texel plate. AND THE BELT TEXTURES ARE IMPORTED
+  LOSSLESS (`compress/mode=0`): VRAM compression works in 4x4 blocks of two end colours, and every
+  block holding a thin orange stroke on the dark belt came out as a brown square round the arrow -
+  measured on the real driver, gone with lossless. 256 px each, so the memory is nothing.
 - A machine beside the line also gets PRIORITY FOR THE FREED CELL (`belt.side_waiting`): it returns
   its result onto the belt one cell along and loses that cell to through traffic every time, and
   while it holds its output it takes no input — a few boxes later the line is dead.
