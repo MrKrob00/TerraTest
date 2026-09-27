@@ -27,9 +27,9 @@ RADAR - a dish on a mast, tipped RADAR_TILT up, feed horn in front; the head swe
 the block sits on a machine, which is exactly when it widens the map.
   parts: radar_body (still), radar_head (turns)
 
-SUPPORT / ROT_SUPPORT - a jack (housing, sleeve, piston rod, foot); the turntable one adds a
-stator ring that holds its heading while the machine turns (see the section below).
-  parts: <name>_body (still), <name>_leg (stretched), <name>_foot (moves), rot's _stator (turns)
+SUPPORT / ROT_SUPPORT - after TerraTech's GSO anchor: a round base under a deck (square on the
+fixed one, round on the turning one), a telescoping ram and a foot (see the section below).
+  parts: <name>_body (still), <name>_sleeve / _leg (stretched), <name>_foot (moves), rot's _stator
 
 Every part fits the block's 1 m cell at its highest pose (the rule the turret heads follow).
 """
@@ -354,53 +354,79 @@ def build_belt_split(pk, img):
 # Parts: <name>_body (still), <name>_leg (a unit rod the script stretches), <name>_foot (moves
 # down), and for the turntable <name>_stator (holds world yaw while anchored).
 
-SUP_LEG_Y = -0.30        # the leg's node: the rod hangs from here, inside the sleeve
-SUP_FOOT_Y = -0.40       # the foot's top at rest; the leg's rest length is the gap (support.gd)
+# The reference is TerraTech's GSO rotating anchor: a round BASE and a flat round DECK on it that
+# blocks stand on, joining by the four sides and the top, never the bottom. Every round part here has
+# its flats ON the cell's faces (16 sides, `flat_r`), so a neighbour meets a face rather than a curve
+# standing off it - the first cut, a housing on a thin sleeve, read as joining by its top only.
+SUP_FOOT_Y = -0.42       # the foot's top at rest; the scene's leg/sleeve sit above it (support.gd)
+RAM_R, SLEEVE_R = 0.19, 0.27
 ORANGE_RAMP = [th.ORANGE_LO, th.ORANGE_LO, th.ORANGE, th.ORANGE]
+BASE_RAMP = DISH_RAMP    # the anchor's grey-lavender base
 
 
-def support_jack(pk, img, sleeve, leg, foot, top):
-    """Sleeve from `top` down, the piston rod (unit length, down from the node) and the foot."""
-    lathe_y(pk, img, sleeve, [(0.10, -0.37), (0.14, -0.37), (0.16, -0.35), (0.16, top - 0.05),
-                              (0.21, top - 0.04), (0.21, top)], METAL_RAMP, sides=12,
-            ring_ramps={3: BLUE_RAMP, 4: BLUE_RAMP})
-    lathe_y(pk, img, leg, [(0.095, -1.0), (0.095, 0.0)], th.RIM, sides=12)
-    lathe_y(pk, img, foot, [(0.0, -0.5), (0.33, -0.5), (0.33, -0.465), (0.24, -0.44),
-                            (0.12, -0.415), (0.12, SUP_FOOT_Y), (0.0, SUP_FOOT_Y)], METAL_RAMP,
-            sides=12, ring_ramps={1: ORANGE_RAMP})
+def flat_r(r_flat, sides=16):
+    """Circumradius of a `sides`-gon whose flats stand r_flat from the axis."""
+    return r_flat / math.cos(math.pi / sides)
+
+
+def support_ram(pk, img, leg, sleeve, foot):
+    """The two telescoping stages (unit length, hanging down from their nodes) and the foot."""
+    lathe_y(pk, img, leg, [(RAM_R, -1.0), (RAM_R, 0.0)], th.RIM, sides=12)
+    lathe_y(pk, img, sleeve, [(SLEEVE_R - 0.02, -1.0), (SLEEVE_R, -0.97), (SLEEVE_R, 0.0)],
+            METAL_RAMP, sides=12)
+    R = flat_r(0.5)
+    lathe_y(pk, img, foot, [(0.0, -0.5), (R, -0.5), (R, -0.465), (flat_r(0.46), -0.44),
+                            (0.32, SUP_FOOT_Y), (0.0, SUP_FOOT_Y)], METAL_RAMP, sides=16,
+            ring_ramps={1: ORANGE_RAMP})
+
+
+def support_base(pk, img, faces, top, marks):
+    """The round base from the foot up to `top`, a ridge band round its middle."""
+    r0, r1 = flat_r(0.45), flat_r(0.5)
+    lathe_y(pk, img, faces, [(0.0, SUP_FOOT_Y), (r0, SUP_FOOT_Y), (r0, -0.27), (r1, -0.25),
+                             (r1, -0.15), (r0, -0.13), (r0, top), (0.30, top)], BASE_RAMP,
+            sides=16, marks=marks, ring_ramps={2: METAL_RAMP})
+
+
+def deck_top(faces, y, style, square=False):
+    if square:
+        pts = [(-0.5, y, -0.5), (0.5, y, -0.5), (0.5, y, 0.5), (-0.5, y, 0.5)]
+    else:
+        R = flat_r(0.5)
+        pts = [(R * math.cos((i + 0.5) * math.pi / 8), y, R * math.sin((i + 0.5) * math.pi / 8))
+               for i in range(16)]
+    faces.append(th.Face(th.outward(pts, (0.0, y - 1.0, 0.0)), style, u_hint=(0, 0, -1)))
 
 
 def build_support(pk, img):
-    parts = {"support_body": [], "support_leg": [], "support_foot": []}
+    parts = {"support_body": [], "support_sleeve": [], "support_leg": [], "support_foot": []}
     body = parts["support_body"]
-    # Housing: a full-width top tier (the mount), a hazard-banded lower tier - the jack's case.
+    # A square deck the full cell across (it does not turn, so it may meet its neighbours flat).
     h = []
-    th.prism(h, -0.5, 0.5, -0.5, 0.5, 0.5, 0.16, 0.067, side="blue", cap_front=None, cap_back="blue")
-    th.prism(h, -0.44, 0.44, -0.44, 0.44, 0.16, -0.10, 0.06, side="stripe", cap_front="dark",
-             cap_back=None)
+    th.prism(h, -0.5, 0.5, -0.5, 0.5, 0.5, 0.12, 0.067, side="blue", cap_front="dark", cap_back=None)
     body += along_y(h)
-    support_jack(pk, img, body, parts["support_leg"], parts["support_foot"], -0.10)
+    deck_top(body, 0.5, "anchor_top_fixed", square=True)
+    # Round base with a hazard band on its ridge: the fixed one says "stand clear", not "turns".
+    hazard = {(i, 3): (th.ORANGE if i % 2 else METAL_RAMP[1]) for i in range(16)}
+    support_base(pk, img, body, 0.12, hazard)
+    support_ram(pk, img, parts["support_leg"], parts["support_sleeve"], parts["support_foot"])
     return parts
 
 
 def build_rot_support(pk, img):
-    parts = {"rot_support_body": [], "rot_support_stator": [], "rot_support_leg": [],
-             "rot_support_foot": []}
+    parts = {"rot_support_body": [], "rot_support_stator": [], "rot_support_sleeve": [],
+             "rot_support_leg": [], "rot_support_foot": []}
     body, stator = parts["rot_support_body"], parts["rot_support_stator"]
-    h = []
-    th.prism(h, -0.5, 0.5, -0.5, 0.5, 0.5, 0.14, 0.067, side="blue", cap_front="dark", cap_back="blue")
-    body += along_y(h)
-    # Rotor ring under the housing, turning with it.
-    lathe_y(pk, img, body, [(0.20, 0.04), (0.45, 0.04), (0.45, 0.11), (0.42, 0.14)], BLUE_RAMP,
-            sides=16, ring_ramps={2: METAL_RAMP})
-    # Stator ring: dark, an orange tick on every fourth facet of its wall, two lugs.
-    ticks = {(i, 2): th.ORANGE for i in range(0, 16, 4)}
-    lathe_y(pk, img, stator, [(0.16, -0.14), (0.38, -0.14), (0.42, -0.11), (0.42, 0.01),
-                              (0.36, 0.03)], METAL_RAMP, sides=16, marks=ticks)
-    for sx in (-1, 1):
-        lo, hi = sorted((sx * 0.40, sx * 0.47))
-        th.box(stator, (lo, -0.12, -0.05), (hi, -0.01, 0.05), "dark")
-    support_jack(pk, img, stator, parts["rot_support_leg"], parts["rot_support_foot"], -0.14)
+    # The deck: a round platform, the blocks stand on it and turn with it; the chevron shows where.
+    R = flat_r(0.5)
+    lathe_y(pk, img, body, [(flat_r(0.44), 0.06), (flat_r(0.47), 0.08), (R, 0.10), (R, 0.47),
+                            (flat_r(0.485), 0.5)], BLUE_RAMP, sides=16, ring_ramps={0: METAL_RAMP})
+    deck_top(body, 0.5, "anchor_top")
+    # The base holds its heading on the ground: four orange ticks on its ridge, so a turn is seen.
+    ticks = {(i, 3): th.ORANGE for i in (0, 4, 8, 12)}
+    support_base(pk, img, stator, 0.06, ticks)
+    support_ram(pk, img, parts["rot_support_leg"], parts["rot_support_sleeve"],
+                parts["rot_support_foot"])
     return parts
 
 
