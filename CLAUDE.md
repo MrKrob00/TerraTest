@@ -354,7 +354,7 @@ project: read it before claiming how anything works.
   mortar_head.tres`). Platform and neck are the ones the gun, rocket launcher and laser stand on,
   so it reads as one of the family and `_find_turret_parts` finds its chain like theirs. The head
   says what the code does: EIGHT tubes, 4 × 2, every mouth visible from the front (`SHELLS`), on a
-  pack over the neck's pitch axis. Unshaded, so all shape is PAINTED: palette sampled from the atlas,
+  short pack wholly in front of the neck's pitch axis. Unshaded, so all shape is PAINTED: palette sampled from the atlas,
   each face its own texels at the atlas's ~48 px/m with the light edge line the other models carry,
   a top-lit ramp round the tubes. A texture of its own, because the atlas is the artist's export and
   the next one would paint over anything added to it; the glb goes to `art/out` (`.gdignore`)
@@ -362,18 +362,24 @@ project: read it before claiming how anything works.
   THE PACK IS PARKED AT 45 DEG IN THE SCENE, and `mortar.gd` reads that rest angle off the part
   (`_idle_pitch`) and aims `throw angle - rest`: measured on the engine, at 20/50/90/160 m the tubes
   stand at 60.0/53.6/45.0/30.0 deg, exactly the throw, and `Pivot/Marker3D` sits within 8 cm of the
-  mouths' centre (it is placed for 45 deg; the model pivots elsewhere than `Pivot`). At 60 deg the
-  breech's rear edge clears the neck's collar by ~7 cm - it touched before the housing was cut to
-  z 0.15. THE MORTAR HAS NO TRACER: its `_track_target` never called `_show_tracer`, so the green
+  mouths' centre (it is placed for 45 deg; the model pivots elsewhere than `Pivot`). THE MORTAR HAS NO TRACER: its `_track_target` never called `_show_tracer`, so the green
   placeholder box stood over every mortar in the game for good, and a straight beam would lie about
   a lobbed shell anyway. The shotgun and heavy cannon lost theirs with their models: a BoxMesh the
   code never stretched (it only resizes a CylinderMesh), which on the new heads would have blinked
   above the barrels on every shot; drawn by default, it was also baked into both portraits. A model
   change needs `icon_baker.RECIPE` bumped, or installs keep the old portrait.
+- **A TURRET HEAD FITS ITS 1 M CELL AT REST**, as the artist's do: measured by vertices in block space,
+  gun / rocket / laser span -0.52..0.52, and every generated head now stays inside -0.50..0.50 (mortar
+  up to y 0.48, heavy cannon's muzzle on the front wall). The head hangs at block (0, -0.081, 0.28),
+  so a flat head has z -0.78..0.22 in its own axes; the mortar, parked at 45 deg, turns that box into
+  y - z <= 0.82 and y + z <= 0.31, which is why its pack stands wholly in front of the pivot. The
+  first cannon's barrel ran 0.32 m out of the cell and the first mortar pack 0.12 up and 0.19 back -
+  into the next block's space, where a neighbour would stand inside it. Aiming may swing a part out,
+  as it does on every turret; the rest pose may not.
 - **THE SHOTGUN AND THE HEAVY CANNON ARE BUILT BY THE SAME TOOL** (`art/turret_heads.py <name>`,
   `art/turret_import.gd -- <name>`): two barrels and a shell box with two brass bases for the
-  two-shot burst, flared muzzles for the cone; one long thick barrel, recoil sleeve, muzzle brake
-  and a heavy mantlet for the single 30-damage blow. A FLAT-FIRING HEAD SITS HIGH ON THE ARM
+  two-shot burst, flared muzzles for the cone; one thick barrel, recoil sleeve, muzzle brake and a
+  heavy mantlet for the single 30-damage blow. A FLAT-FIRING HEAD SITS HIGH ON THE ARM
   (`FLAT_Y`, 0.30 m over the pivot) as the gun's and the rocket's do: at 0.13 the barrels went
   through the neck's collar at the 40 deg depression and the cannon's brake came out under the
   platform. Measured on the engine: model and `Pivot` point the same way (0.00 deg) at every height,

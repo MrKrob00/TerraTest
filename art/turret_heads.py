@@ -15,12 +15,12 @@ and every head grips it with the same clevis (two cheeks and a trunnion round th
 
 EACH HEAD SAYS WHAT ITS WEAPON DOES IN CODE:
   - MORTAR: eight shells a salvo (mortar.gd SHELLS) -> eight tubes, 4 x 2, every mouth visible from
-    the front; aimed by the hull, throws at 30-60 deg -> a pack on trunnions that sits OVER the pivot
-    so it can swing up without burying its tail in the neck (checked at 60 deg).
+    the front; aimed by the hull, throws at 30-60 deg -> a short pack on trunnions, wholly in front
+    of the pivot, so it fits the cell at rest and swings up clear of the neck.
   - SHOTGUN: two shots, then a reload (shotgun.gd BURST) -> two barrels side by side, and a shell box
     showing two brass bases; a wide cone -> flared muzzles.
-  - POUND_CANNON: one 30-damage blow at 60 m -> one long thick barrel, a heavy mantlet, a recoil
-    sleeve and a muzzle brake. The heaviest silhouette of the six.
+  - POUND_CANNON: one 30-damage blow at 60 m -> one thick barrel, a heavy mantlet, a recoil
+    sleeve and a muzzle brake. The heaviest silhouette of the six, inside the same cube.
 
 STYLE is the atlas's, not a new one. The blocks are UNSHADED, so every bit of shape is painted:
 the palette is sampled from Assets_main_texture_new.png (GSO blue, gunmetal, orange trim), each
@@ -226,26 +226,29 @@ def clevis(faces, top):
     prism_x(faces, -0.18, 0.18, 0.0, 0.0, 0.045)
 
 
+# EVERY HEAD FITS ITS CELL AT REST, the way the artist's gun, laser and rocket launcher do (their
+# vertices measure inside -0.52..0.52). The head hangs at block (0, -0.081, 0.28), so in head axes
+# a flat head has z in -0.78..0.22 and y up to 0.58. A head parked at an angle turns that box: at
+# the mortar's 45 deg the limits are y - z <= 0.82 (top), y + z <= 0.31 (back), and the pack has to
+# stand wholly IN FRONT of the pivot - the first pack reached 0.62 up and 0.69 back.
 def reserve_mortar(pk):
-    reserve_kit(pk, "tube", 0.03 + 0.62)
+    reserve_kit(pk, "tube", 0.05 + 0.49)
 
 
 def build_mortar():
     faces = []
-    # Tubes: 4 x 2, a flat on top, row centres over the pivot so the pack clears the neck's arm.
-    cols = [-0.225, -0.075, 0.075, 0.225]
-    rows = [0.165, 0.315]
+    # Tubes: 4 x 2, a flat on top, every mouth visible from the front.
+    cols = [-0.21, -0.07, 0.07, 0.21]
+    rows = [0.105, 0.245]
     for y in rows:
         for x in cols:
-            lathe(faces, "tube", x, y, [(0.068, 0.03), (0.068, -0.62)], r_in=0.050, depth=0.08)
-    # Breech housing, behind the tubes. Top panel carries the forward arrow.
-    # Its rear-bottom edge is what meets the neck's collar at 60 deg: at z 0.15 / y 0.055 it clears
-    # the collar's back edge by ~7 cm (it touched at 0.20 / 0.035).
-    prism(faces, -0.34, 0.34, 0.055, 0.425, 0.15, -0.04, 0.045,
+            lathe(faces, "tube", x, y, [(0.062, -0.05), (0.062, -0.49)], r_in=0.046, depth=0.07)
+    # Breech housing, behind the tubes and in front of the pivot; its top-back edge sits exactly on
+    # the cell's back wall at rest. Top panel carries the forward arrow.
+    prism(faces, -0.31, 0.31, 0.03, 0.33, -0.02, -0.15, 0.04,
           cap_front="blue", cap_back="grille", top_style="blue_arrow")
-    # Two bands holding the cluster; the front one carries the orange trim of the platform.
-    prism(faces, -0.315, 0.315, 0.08, 0.40, -0.22, -0.30, 0.03)
-    prism(faces, -0.315, 0.315, 0.08, 0.40, -0.44, -0.51, 0.03, side="stripe")
+    # One band round the cluster, in the platform's orange trim.
+    prism(faces, -0.29, 0.29, 0.035, 0.315, -0.30, -0.36, 0.03, side="stripe")
     clevis(faces, 0.065)
     return faces
 
@@ -282,25 +285,25 @@ def build_shotgun():
 
 
 def reserve_pound_cannon(pk):
-    reserve_kit(pk, "barrel", 0.64)
-    reserve_kit(pk, "sleeve", 0.26, mouth=False)
+    reserve_kit(pk, "barrel", 0.48)
+    reserve_kit(pk, "sleeve", 0.20, mouth=False)
 
 
 def build_pound_cannon():
     faces = []
     y = FLAT_Y
-    # One long thick barrel: a single heavy blow at sixty metres.
-    lathe(faces, "barrel", 0.0, y, [(0.072, -0.46), (0.072, -1.10)], r_in=0.050, depth=0.05)
+    # One thick barrel ending on the cell's front wall (-0.78): a single heavy blow at sixty metres.
+    lathe(faces, "barrel", 0.0, y, [(0.072, -0.30), (0.072, -0.78)], r_in=0.050, depth=0.05)
     # Recoil sleeve where it leaves the mantlet, banded in the platform's orange.
-    lathe(faces, "sleeve", 0.0, y, [(0.11, -0.20), (0.11, -0.46)])
-    prism(faces, -0.122, 0.122, y - 0.122, y + 0.122, -0.38, -0.43, 0.038, side="stripe")
+    lathe(faces, "sleeve", 0.0, y, [(0.11, -0.10), (0.11, -0.30)])
+    prism(faces, -0.122, 0.122, y - 0.122, y + 0.122, -0.22, -0.26, 0.038, side="stripe")
     # Muzzle brake, slotted on both sides; its front stays behind the bore's bottom.
-    box(faces, (-0.105, y - 0.08, -1.04), (0.105, y + 0.08, -0.93), "dark",
+    box(faces, (-0.105, y - 0.08, -0.72), (0.105, y + 0.08, -0.62), "dark",
         face_styles={"+x": "brake", "-x": "brake"})
-    # Mantlet: a heavy armoured block with a thicker face plate.
-    prism(faces, -0.25, 0.25, y - 0.17, y + 0.17, 0.22, -0.16, 0.06,
+    # Mantlet: a heavy armoured block, its back on the cell's back wall, with a thicker face plate.
+    prism(faces, -0.25, 0.25, y - 0.17, y + 0.17, 0.22, -0.06, 0.06,
           cap_front="blue", cap_back="grille", top_style="blue_arrow")
-    prism(faces, -0.27, 0.27, y - 0.19, y + 0.19, -0.16, -0.21, 0.07)
+    prism(faces, -0.27, 0.27, y - 0.19, y + 0.19, -0.06, -0.11, 0.07)
     clevis(faces, y - 0.16)
     return faces
 

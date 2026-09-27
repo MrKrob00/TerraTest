@@ -135,7 +135,7 @@ debug_color = Color(11.215399, 0, 13.469126, 1)
 [node name="Pivot" type="Node3D" parent="." unique_id=1389589612]
 
 [node name="Marker3D" type="Marker3D" parent="Pivot" unique_id=275422850]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.38, -0.365)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.315, -0.235)
 
 [node name="RayCast3D" type="RayCast3D" parent="Pivot" unique_id=1767409556]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2202931, 0)
