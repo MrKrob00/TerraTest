@@ -1354,22 +1354,18 @@ func _update_perf_panel(delta: float) -> void:
 
 	var lines: Array[String] = []
 	lines.append("%d FPS · кадр %.1f мс" % [int(Engine.get_frames_per_second()), frame_ms])
-	lines.append("process %.1f мс (учтено %.1f, не учтено %.1f)"
-			% [proc_ms, proc_marked, maxf(proc_ms - proc_marked, 0.0)])
+	lines.append("скрипты %.1f мс за кадр (в process входит и рендер — см. ниже)" % proc_marked)
 	lines.append("physics %.1f мс/тик (учтено %.1f, не учтено %.1f) — в него входит и сам Jolt"
 			% [phys_ms, phys_marked, maxf(phys_ms - phys_marked, 0.0)])
-	# САМАЯ ВАЖНАЯ СТРОКА ПАНЕЛИ: сколько кадра ушло МИМО скриптов. process и physics — это
-	# только GDScript и Jolt; всё, что остаётся до длины кадра, тратят рисование и драйвер. Без
-	# этой разницы панель показывает кучу чисел и не отвечает на первый вопрос — чинить логику
-	# или чинить пиксели.
-	#
-	# Физика приводится К КАДРУ, а не к тику: Performance отдаёт её за ОДИН тик, а тиков в кадре
-	# столько, сколько 60 Гц укладывается в текущий fps — на 26 кадрах их больше двух, и без
-	# пересчёта физика выглядела бы втрое дешевле, чем есть.
-	var fps: float = maxf(Engine.get_frames_per_second(), 1.0)
-	var phys_per_frame: float = phys_ms * (float(Engine.physics_ticks_per_second) / fps)
-	var outside: float = maxf(frame_ms - proc_ms - phys_per_frame, 0.0)
-	lines.append("ВНЕ СКРИПТОВ ~%.1f мс из %.1f — это рисование и драйвер" % [outside, frame_ms])
+	# THE MOST IMPORTANT LINE: how much of the frame is DRAWING. The engine's "process" time is not
+	# scripts alone - main.cpp starts that clock before the scripts' _process and stops it AFTER
+	# RenderingServer.draw(), so drawing and the driver are inside it. Subtracting process from the
+	# frame therefore showed ~0 ms "outside scripts" on a device that was spending 31 of 38 ms
+	# drawing. Drawing is what process holds beyond the scripts that were marked.
+	# (Both monitors are the worst tick of the last second, so the split is approximate.)
+	var render_ms: float = maxf(proc_ms - proc_marked, 0.0)
+	lines.append("РЕНДЕР+ДРАЙВЕР ~%.1f мс из %.1f (process %.1f минус скрипты %.1f)"
+			% [render_ms, frame_ms, proc_ms, proc_marked])
 	@warning_ignore("integer_division")
 	lines.append("рендер: %d draw · %d объектов · %dk треуг." % [draws, objs, prims / 1000])
 

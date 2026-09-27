@@ -1359,6 +1359,21 @@ project: read it before claiming how anything works.
   contrast 1.7, looking 27 deg down: bottom 0.42 reads 0.22 on screen, 0.2 reads 0.04, and 0.1 or
   less crushes to pure black, which reads as a torn world. The terrain colour did not move
   (0.46/0.27/0.17 both ways): the sky's ambient on an up-facing surface comes from the upper half.
+- **NOTHING IS LIT BY THE SKY.** Ambient is a flat colour (`ambient_light_source` COLOR, 0.15) and
+  sky reflections are off (`reflected_light_source` DISABLED), in both `node_3d.tscn` and
+  `menu.tscn`; the sky's radiance map is 32 px and processed once (`radiance_size` 0, automatic).
+  Every lit surface used to sample a 256 px radiance cubemap for ambient and a blurred reflection,
+  re-processed incrementally. Measured on the real driver, five alternating rounds: the frame 13%
+  faster (every pair faster), the picture different by 0.003 a channel — under one step of 255,
+  and not visible side by side. What was NOT the cost: drawing the sky itself (a clear-colour
+  background with lighting still from the sky: 0%), the grass trample viewport (0%), the terrain's
+  per-pixel detail (4%). The render scale remains the biggest lever and belongs to the player.
+- **THE ENGINE'S "PROCESS" TIME INCLUDES DRAWING.** `main.cpp` starts that clock before the
+  scripts' `_process` and stops it after `RenderingServer.draw()`, so frame − process − physics is
+  NOT "time outside scripts": the panel showed ~0 there on a phone spending 31 of 38 ms drawing.
+  The panel now prints drawing as process minus the marked scripts. GLES (the phone) captures no
+  GPU timestamps at all (`drivers/gles3/storage/utilities.cpp`, desktop GL only), so a per-pass GPU
+  split does not exist on the device — costs are ranked here, on llvmpipe, by A/B.
 - REAL LIGHT IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`). Besides the directional
   sun those are the only `OmniLight3D` in the game, and they are REUSED: a new flash takes the
   oldest lamp, so a firefight costs six nodes rather than one per shot. Shadows are off on all of
