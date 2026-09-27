@@ -1,15 +1,61 @@
-[gd_scene format=3 uid="uid://bcgba3aca7cee"]
+[gd_scene format=4 uid="uid://bcgba3aca7cee"]
 
 [ext_resource type="Script" uid="uid://ci0a8rxxhwu36" path="res://blocks/scripts/regen.gd" id="1_s"]
+[ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="9_tex"]
+[ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="3_atlas"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_body.tres" id="4_regen_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_ring.tres" id="5_regen_ring"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_crystal.tres" id="6_regen_crystal"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
+size = Vector3(1, 1, 1)
 
-[sub_resource type="StandardMaterial3D" id="Mat_a"]
-albedo_color = Color(0.9, 0.35, 0.55, 1)
-roughness = 0.55
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+resource_name = "regen_glow"
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.35, 1, 0.5, 1)
+albedo_texture = ExtResource("9_tex")
+texture_filter = 2
 
-[sub_resource type="BoxMesh" id="BoxMesh_a"]
-material = SubResource("Mat_a")
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
+resource_name = "main"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("3_atlas")
+texture_filter = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_6541o"]
+_surfaces = [{
+"aabb": AABB(-0.5014731, 0.010473512, -0.5, 1, 0.12695664, 1),
+"format": 34896613377,
+"index_count": 84,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAABAAMABAACAAEABAADAAUAAAAFAAMABQAGAAQABwAEAAYABwACAAQABQAIAAYABwAGAAgABQAJAAgABwAIAAkAAAAJAAUACgAHAAkAAgALAAAACgAJAAwAAgANAAsADgAHAAoAAgAHAA4ADgAKAAwAAgAOAA0ACQAAAA8ACQAPAAwADwAAAAsADgAMAA8ADwALAA0ADwANAA4A"),
+"name": "main",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 16,
+"vertex_data": PackedByteArray("/////wIPAAD88AAAAAAAAP//AAACDwAA/PD//wAAAAACDwAAAAAAAAIP//8AAAAAAAAAAAIPAAAAAAAA/PAAAAAA//8CDwAAAAD///zwAAACDwAA//8AAP/////88AAAAg//////AAD//wAA/PAAAPzwAAD//wAA/PD/////AAA=")
+}]
+blend_shape_mode = 0
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_8lv7q"]
+resource_name = "Assets_Plane_018"
+_surfaces = [{
+"aabb": AABB(-0.5014731, 0.010473512, -0.5, 1, 0.12695664, 1),
+"attribute_data": PackedByteArray("OxAZLL8RSS07EEktvxEZLL8RSS07EBksvxEZLDsQSS07EBksvxFJLTsQSS2/ERksOxAZLL8RSS07EEktvxEZLJEZRy2cEQsskBkELJ0RTi2RGUctnBELLJAZBCydEU4tqAV1OGAFUDOxBaIzOwCXM44ARjODALw4VQXGODEAajicEUctkRkLLJ0RBCyQGU4tkRlHLZwRCyyQGQQsnRFOLUkWnindFlkg3RYKKZgNxR9JFsUfBQ0KKZgNnikFDVkg"),
+"format": 34896613399,
+"index_count": 84,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUACAAJAAoACAALAAkADAANAA4ADAAPAA0AEAARABIAEAATABEAFAAVABYAFAAXABUAGAAZABoAGAAbABkAGQAbABwAGwAYAB0AHQAYAB4AGwAdAB8AIAAhACIAIAAjACEAJAAlACYAJAAnACUAKAApACoAKAArACkAKQArACwAKwAoAC0ALQAoAC4AKwAtAC8A"),
+"material": SubResource("StandardMaterial3D_sr0ja"),
+"name": "main",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 48,
+"vertex_data": PackedByteArray("/////wIP/9/88AAAAAD/3///AAACD//f/PD//wAA/98CDwAA////nwAA///88P+fAg///////58AAAAA/PD/n/zw//////+f//8AAPzw/5/88AAA////n//////88P+fAg///wAA/98AAAAAAg//3wIPAAAAAP/fAAD//wIP/98CDwAAAAD///zw//8AAP//Ag///wAA///88AAAAAD/////AAACD/+///////zw/7//////Ag//v///AAD88P+/AAAAAPzwxf8CDwAAAADF/wAAAAACD8T///8AAAIPxf/88AAAAADF//zwAAD//8X/Ag8AAP//xf///wAA/PDF//zwAAD//x8AAg//////HwD88P////8fAAIPAAD//x8AAAAAAPzw/78AAP//Ag//vwAA///88P+/AAAAAAIP/7//////Ag9U1QIP//8AAFTV/PD//wAAVNUAAP///PBU1QAA//8CD1TV/PD/////VNX//////PBU1QIP/////1TV/38AAP9/AAD/fwAA/38AAP9//f//f/3//3/9//9//f//fwEA/38BAP9/AQD/fwEA/3/+//9//v//f/7//3/+/81/zP/Nf8z/zX/M/81/zP8xgGQAMYBkADGAZAAxgGQAv38fQL9/H0C+fyBAv38fQL9/H0C/fx9Av38fQL9/H0D/////////////////////zX+a/81/mv/Nf5r/zX+a/1TVqipU1aoqVNWqKlTVqipU1aoqVNWqKlTVqipU1aoq")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_6541o")
 
 [node name="Regen" type="RigidBody3D" unique_id=265452729]
 collision_layer = 2
@@ -20,5 +66,22 @@ block = 15
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1221529185]
 shape = SubResource("BoxShape3D_a")
 
-[node name="Mesh" type="MeshInstance3D" parent="." unique_id=1439003423]
-mesh = SubResource("BoxMesh_a")
+[node name="regen_base" type="MeshInstance3D" parent="." unique_id=1439003423]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
+mesh = SubResource("ArrayMesh_8lv7q")
+skeleton = NodePath("")
+
+[node name="Body" type="MeshInstance3D" parent="." unique_id=1439003430]
+mesh = ExtResource("4_regen_body")
+skeleton = NodePath("")
+
+[node name="Ring" type="MeshInstance3D" parent="." unique_id=1439003431]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+mesh = ExtResource("5_regen_ring")
+skeleton = NodePath("")
+
+[node name="Crystal" type="MeshInstance3D" parent="." unique_id=1439003432]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("6_regen_crystal")
+skeleton = NodePath("")

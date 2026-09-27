@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="1_363m0"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_n8pw4"]
+resource_name = "regen"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_363m0")
+texture_filter = 2
+
+[resource]
+resource_name = "regen_crystal"
+_surfaces = [{
+"aabb": AABB(-0.095262796, -0.16, -0.11, 0.19052559, 0.32, 0.22),
+"attribute_data": PackedByteArray("/x3/Bf8h/wX/If8J/x3/Cf8h/wX/Jf8F/yX/Cf8h/wn/Jf8F/yn/Bf8p/wn/Jf8J/yn/Bf8t/wX/Lf8J/yn/Cf8t/wX/Mf8F/zH/Cf8t/wn/Mf8F/zX/Bf81/wn/Mf8J/x3/Af8h/wH/If8F/x3/Bf8h/wH/Jf8B/yX/Bf8h/wX/Jf8B/yn/Af8p/wX/Jf8F/yn/Af8t/wH/Lf8F/yn/Bf8t/wH/Mf8B/zH/Bf8t/wX/Mf8B/zX/Af81/wX/Mf8F"),
+"format": 34896613399,
+"index_count": 72,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAJAAmACUAJAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4A"),
+"material": SubResource("StandardMaterial3D_n8pw4"),
+"name": "regen",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 48,
+"vertex_data": PackedByteArray("////f/+/J9r/f/9///8n2v9/AAD/fyfa/38AAP9/J9r/f/9///9XxAAA/3//v1fE/38AAP9/V8T/fwAA/39XxAAA/3//vxjMAAD/f/8/GMz/fwAA/38YzP9/AAD/fxjMAAD/f/8/Duf/f/9/AAAO5/9/AAD/fw7n/38AAP9/Duf/f/9/AAB6+v///3//P3r6/38AAP9/evr/fwAA/396+v///3//PwL+////f/+/Av7/fwAA/38C/v9/AAD/fwL+/3////9/+ej/f////3/56P9//3////no////f/+/+ej/f////3/ovf9/////f+i9AAD/f/+/6L3/f/9////ovf9/////fxjM/3////9/GMwAAP9//z8YzAAA/3//vxjM/3////9/P/r/f////38/+v9//38AAD/6AAD/f/8/P/r/f////39G4v9/////f0bi////f/8/RuL/f/9/AABG4v9/////fwL+/3////9/Av7///9//78C/v///3//PwL+RIfRW0SH0VtEh9FbRIfRW+dTtHznU7R851O0fOdTtHzDrjH9w64x/cOuMf3DrjH9tVPP5bVTz+W1U8/ltVPP5UAtQchALUHIQC1ByEAtQcg0rexiNK3sYjSt7GI0rexi1pvOkdabzpHWm86R1pvOkZiInqyYiJ6smIierJiInqwyfTvRMn070TJ9O9EyfTvRkVzSwJFc0sCRXNLAkVzSwAnCgj8JwoI/CcKCPwnCgj8SHTUtEh01LRIdNS0SHTUt")
+}]
+blend_shape_mode = 0

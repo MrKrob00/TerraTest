@@ -1,6 +1,6 @@
 # shield.gd — блок щита: держит сферический купол вокруг себя. Купол ловит вражеские
 # снаряды/лучи (он на слое блоков) и за каждое попадание списывает энергию машины:
-# урон × SHIELD_COST_X. Энергии нет — купол гаснет (коллизия и меш выключены).
+# урон × SHIELD_COST_X. Энергии нет — купол гаснет и уходит на перезагрузку (SHIELD_BREAK_CD).
 extends VehicleBlock
 
 const SHIELD_RADIUS := 4.0
@@ -20,7 +20,7 @@ const SHIELD_RADIUS := 4.0
 ## Стеной щит от этого не становится: панелей на ездящих машинах нет, заряд им дают один раз при
 ## рождении (enemy_spawner._charge_batteries), и потратить его можно ровно однажды.
 const SHIELD_COST_X := 0.6     # энергии за 1 урона
-const SHIELD_BREAK_CD := 2.0   # пробитый щит не поднимается столько секунд
+const SHIELD_BREAK_CD := 2.0   # a dome that broke or ran dry stays down this long (a reboot)
 
 var _dome: StaticBody3D = null
 var _dome_mesh: MeshInstance3D = null
@@ -91,6 +91,7 @@ func _ready() -> void:
 	_dome.add_child(_dome_mesh)
 	add_child(_dome)
 	add_to_group(GROUP)
+	_setup_emitter()
 
 ## Сколько раз делится грань икосаэдра: ячеек выходит 10·sub²+2, то есть 92 при трёх. Столько
 ## и читается как «шестиугольный щит» — при большем числе пластины мельчают до ряби.
@@ -140,6 +141,77 @@ static func _build_keep_table() -> void:
 		var next: int = mini(last + 1, dots.size() - 1)
 		_hex_keep[i] = (dots[last] + dots[next]) * 0.5 if next > last else dots[last] - 0.01
 
+# ── THE EMITTER ─────────────────────────────────────────────────────────────────
+# The block itself says what the dome is doing, so a shield on a machine can be read from its
+# model even where the dome is off screen: the cap LIFTS and turns while the dome stands and the
+# core shows cyan through the gap; after running dry it REBOOTS for SHIELD_BREAK_CD - cap shut,
+# core blinking amber - and flashes white the moment the dome comes back; unpowered it is dark
+# and still. Parts: `Cap` moves (moving_parts, so the batch copies it every frame), `Core` is
+# re-coloured and drawn by itself (unbatched). The lift matches art/emitter_models.py SHIELD_LIFT.
+const CAP_LIFT := 0.09
+const CAP_SPIN := 0.7              # rad/s while the dome stands
+const CAP_SPIN_BOOT := 5.0         # rad/s the cap winds up to by the end of a reboot
+const CORE_ON := Color(0.35, 0.85, 1.0)
+const CORE_BOOT := Color(1.0, 0.6, 0.15)
+const CORE_OFF := Color(0.07, 0.09, 0.13)
+const BOOT_BLINK := 3.0            # blinks a second while rebooting
+const BOOT_FLASH := 0.35           # s of white when the dome comes back
+const REBOOT_LIFT := 0.6           # share of CAP_LIFT the cap opens to while rebooting
+var _cap: Node3D = null
+var _core: MeshInstance3D = null
+var _core_mat: StandardMaterial3D = null
+var _core_col: Color = CORE_OFF
+var _spin: float = 0.0
+var _was_up: bool = false
+var _flash: float = 0.0
+
+func unbatched() -> Array:
+	var c := get_node_or_null("Core")
+	return [c] if c != null else []
+
+func _setup_emitter() -> void:
+	moving_parts = true
+	_cap = get_node_or_null("Cap") as Node3D
+	_core = get_node_or_null("Core") as MeshInstance3D
+	if _core != null:
+		var m: Material = _core.material_override
+		if m == null and _core.mesh != null:
+			m = _core.mesh.surface_get_material(0)
+		if m is StandardMaterial3D:
+			_core_mat = (m as StandardMaterial3D).duplicate()
+			_core_mat.albedo_color = _core_col
+			_core.material_override = _core_mat
+
+func _animate_emitter(delta: float, up: bool, rebooting: bool) -> void:
+	if _cap == null:
+		return
+	if up and not _was_up:
+		_flash = 1.0
+	_was_up = up
+	_flash = maxf(_flash - delta / BOOT_FLASH, 0.0)
+	# Rebooting, the cap stands half open: shut, it hid the very core that says "rebooting".
+	var lift: float = CAP_LIFT if up else (CAP_LIFT * REBOOT_LIFT if rebooting else 0.0)
+	var spin: float = CAP_SPIN if up else 0.0
+	var col: Color = CORE_ON if up else CORE_OFF
+	if rebooting:
+		# Winds up as the reboot runs out: the player sees how soon the dome is back.
+		var k: float = 1.0 - clampf(_cd / SHIELD_BREAK_CD, 0.0, 1.0)
+		spin = CAP_SPIN_BOOT * k
+		var blink: bool = fmod(Time.get_ticks_msec() / 1000.0 * BOOT_BLINK, 1.0) < 0.5
+		col = CORE_BOOT if blink else CORE_BOOT * 0.35
+	if _flash > 0.0:
+		col = col.lerp(Color.WHITE, _flash)
+	_cap.position.y = move_toward(_cap.position.y, lift, delta * 0.45)
+	_spin = move_toward(_spin, spin, delta * 3.0)
+	if _spin > 0.001:
+		_cap.rotate_y(_spin * delta)
+	if _core_mat != null:
+		var target: Color = col
+		# Blinks switch at once; everything else eases, so power flicker never reaches the core.
+		_core_col = target if rebooting or _flash > 0.0 else _core_col.lerp(target, clampf(delta * 6.0, 0.0, 1.0))
+		if not _core_mat.albedo_color.is_equal_approx(_core_col):
+			_core_mat.albedo_color = _core_col
+
 func _physics_process(delta: float) -> void:
 	if _dome == null:
 		return
@@ -154,8 +226,16 @@ func _physics_process(delta: float) -> void:
 	_dome.owner_vehicle = _vehicle_root()
 	# Купол активен: блок стоит на машине, есть энергия И щит не пробит (не на КД).
 	var v := _vehicle_root()
-	var powered: bool = _cd <= 0.0 and freeze and v != null \
-			and v.has_method("energy_available") and v.energy_available() > 0.0
+	var mounted: bool = freeze and v != null and v.has_method("energy_available")
+	var has_energy: bool = mounted and v.energy_available() > 0.0
+	# RUNNING DRY IS A COLLAPSE, NOT A PAUSE. The dome used to vanish at zero and stand again on the
+	# first drop a panel produced, so a shield sharing a thin supply with a repair field blinked on
+	# and off with every tick; now it reboots for SHIELD_BREAK_CD, exactly as when a hit it cannot
+	# pay for breaks it (absorb), and the model shows the reboot.
+	if _dome.visible and mounted and not has_energy and _cd <= 0.0:
+		_cd = SHIELD_BREAK_CD
+	var powered: bool = _cd <= 0.0 and has_energy
+	_animate_emitter(delta, powered, mounted and _cd > 0.0)
 	_dome.visible = powered
 	var cs := _dome.get_child(0) as CollisionShape3D
 	if cs:
