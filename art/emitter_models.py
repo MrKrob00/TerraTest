@@ -381,12 +381,16 @@ def support_ram(pk, img, leg, sleeve, foot):
             ring_ramps={1: ORANGE_RAMP})
 
 
-def support_base(pk, img, faces, top, marks):
-    """The round base from the foot up to `top`, a ridge band round its middle."""
+DECK_Y = -0.15           # the deck's underside: blue from here up (the player's sketch - it was
+                         # 0.12, and the dark neck under it read as the block's bulk)
+
+
+def support_base(pk, img, faces, marks):
+    """The round base from the foot up to the deck: a wall, and a ridge band right under the deck."""
     r0, r1 = flat_r(0.45), flat_r(0.5)
-    lathe_y(pk, img, faces, [(0.0, SUP_FOOT_Y), (r0, SUP_FOOT_Y), (r0, -0.27), (r1, -0.25),
-                             (r1, -0.15), (r0, -0.13), (r0, top), (0.30, top)], BASE_RAMP,
-            sides=16, marks=marks, ring_ramps={2: BLUE_RAMP, 4: BLUE_RAMP})
+    lathe_y(pk, img, faces, [(0.0, SUP_FOOT_Y), (r0, SUP_FOOT_Y), (r0, DECK_Y - 0.12),
+                             (r1, DECK_Y - 0.10), (r1, DECK_Y), (0.30, DECK_Y)], BASE_RAMP,
+            sides=16, marks=marks, ring_ramps={2: BLUE_RAMP})
 
 
 def deck_top(faces, y, style, square=False):
@@ -404,12 +408,13 @@ def build_support(pk, img):
     body = parts["support_body"]
     # A square deck the full cell across (it does not turn, so it may meet its neighbours flat).
     h = []
-    th.prism(h, -0.5, 0.5, -0.5, 0.5, 0.5, 0.12, 0.067, side="blue", cap_front="dark", cap_back=None)
+    th.prism(h, -0.5, 0.5, -0.5, 0.5, 0.5, DECK_Y, 0.067, side="blue", cap_front="dark",
+             cap_back=None)
     body += along_y(h)
     deck_top(body, 0.5, "anchor_top_fixed", square=True)
     # Round base with a hazard band on its ridge: the fixed one says "stand clear", not "turns".
     hazard = {(i, 3): (th.ORANGE if i % 2 else METAL_RAMP[1]) for i in range(16)}
-    support_base(pk, img, body, 0.12, hazard)
+    support_base(pk, img, body, hazard)
     support_ram(pk, img, parts["support_leg"], parts["support_sleeve"], parts["support_foot"])
     return parts
 
@@ -420,12 +425,13 @@ def build_rot_support(pk, img):
     body, stator = parts["rot_support_body"], parts["rot_support_stator"]
     # The deck: a round platform, the blocks stand on it and turn with it; the chevron shows where.
     R = flat_r(0.5)
-    lathe_y(pk, img, body, [(flat_r(0.44), 0.06), (flat_r(0.47), 0.08), (R, 0.10), (R, 0.47),
-                            (flat_r(0.485), 0.5)], BLUE_RAMP, sides=16, ring_ramps={0: METAL_RAMP})
+    lathe_y(pk, img, body, [(flat_r(0.44), DECK_Y), (flat_r(0.47), DECK_Y + 0.02),
+                            (R, DECK_Y + 0.04), (R, 0.47), (flat_r(0.485), 0.5)], BLUE_RAMP,
+            sides=16, ring_ramps={0: METAL_RAMP})
     deck_top(body, 0.5, "anchor_top")
     # The base holds its heading on the ground: four orange ticks on its ridge, so a turn is seen.
     ticks = {(i, 3): th.ORANGE for i in (0, 4, 8, 12)}
-    support_base(pk, img, stator, 0.06, ticks)
+    support_base(pk, img, stator, ticks)
     support_ram(pk, img, parts["rot_support_leg"], parts["rot_support_sleeve"],
                 parts["rot_support_foot"])
     return parts
