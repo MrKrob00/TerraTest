@@ -234,8 +234,6 @@ def build_radar(pk, img):
 # mounting plate; what is generated here is only what those two lack - a strut and a fork, a mount
 # and trailing arms - so the tyre on them is the very tyre on the small wheel.
 
-RISER_RIDE = 0.95        # wheel.gd ride_height: the tyre hangs this far under the block's centre
-RISER_TYRE = 1.25        # tyre scale against the small wheel's (r 0.30 -> 0.375)
 STAB_RIDE = 0.90         # same as the standard wheel: the stabiliser carries at the same height
 STAB_AXLE = (-0.60, -0.12)   # (y, z) of its axle, reaching away from the hull on its +Z side
 
@@ -250,23 +248,48 @@ def rod_x(pk, img, faces, y, z, r, x0, x1, ramp=None):
     faces += part
 
 
+def seg_xy(faces, p0, p1, w, h, style):
+    """A bar from p0 to p1 in the XY plane, w wide (along Z) and h thick."""
+    dx, dy = p1[0] - p0[0], p1[1] - p0[1]
+    ln = math.hypot(dx, dy)
+    a = math.atan2(dy, dx)
+    part = []
+    th.box(part, (0.0, -h / 2, -w / 2), (ln, h / 2, w / 2), style)
+    ca, sa = math.cos(a), math.sin(a)
+    xform(part, lambda p: (p[0] * ca - p[1] * sa + p0[0], p[0] * sa + p[1] * ca + p0[1], p[2]))
+    faces += part
+
+
+# The riser, as TerraTech draws theirs: a plate bolted UNDER the hull with a bearing below it, a
+# swan-neck arm leaving it downwards and sideways, and an ordinary tyre hanging on the arm's end in
+# the NEXT cell. Two cells wide: the anchor is the tyre's cell (x 0) so the suspension probes from
+# under the tyre; the bracket is the cell at x -1, and only its top face attaches. The arm turns
+# about the bearing when the machine steers and slides into it with the suspension.
+RISER_TYRE_C = (0.15, -0.40)     # (x, y) of the tyre's centre in the anchor cell
+RISER_BEARING = (-1.0, 0.37)     # (x, y) of the bearing under the plate
+
+
 def build_riser(pk, img):
-    parts = {"riser_strut": [], "riser_fork": []}
-    strut, fork = parts["riser_strut"], parts["riser_fork"]
-    r = 0.30 * RISER_TYRE
-    ay = -RISER_RIDE + r
-    # Strut housing under the plate: turns with the steering, does not travel.
-    lathe_y(pk, img, strut, [(0.0, 0.14), (0.10, 0.14), (0.14, 0.18), (0.14, 0.37)], BLUE_RAMP,
-            sides=8)
-    lathe_y(pk, img, strut, [(0.075, 0.10), (0.075, 0.14), (0.0, 0.14)], METAL_RAMP, sides=8)
-    # Fork: travels with the suspension. The slider runs up into the housing, so a compressed
-    # strut reads as a telescope closing, not as a part sinking through another.
-    lathe_y(pk, img, fork, [(0.05, -0.06), (0.05, 0.30)], METAL_RAMP, sides=8)
-    th.box(fork, (-0.26, -0.12, -0.09), (0.26, -0.04, 0.09), "blue")
-    for sx in (-1, 1):
-        lo, hi = sorted((sx * 0.21, sx * 0.26))
-        th.box(fork, (lo, ay - 0.06, -0.05), (hi, -0.10, 0.05), "dark")
-    rod_x(pk, img, fork, ay, 0.0, 0.035, -0.27, 0.27)
+    parts = {"riser_mount": [], "riser_arm": []}
+    mount, arm = parts["riser_mount"], parts["riser_arm"]
+    bx, by = RISER_BEARING
+    # Bearing housing under the plate (the plate itself is the artist's).
+    part = []
+    lathe_y(pk, img, part, [(0.0, 0.10), (0.13, 0.10), (0.17, 0.14), (0.17, by)], BLUE_RAMP, sides=10)
+    lathe_y(pk, img, part, [(0.19, by - 0.05), (0.19, by)], METAL_RAMP, sides=10)
+    for f in part:
+        f.pts = [(p[0] + bx, p[1], p[2]) for p in f.pts]
+    mount += part
+    # Arm, built about the bearing (the node's origin) in block axes: a rod up into the housing,
+    # then the neck down and out to a boss on the hub's inner side.
+    tx, ty = RISER_TYRE_C
+    hub_in = tx - 0.43                  # the hub's inner end, where the boss sits
+    lathe_y(pk, img, arm, [(0.06, -0.12 - by), (0.06, 0.25 - by)], METAL_RAMP, sides=8)
+    pts = [(0.0, -0.12 - by), (0.12, -0.34 - by), (hub_in - bx - 0.12, ty - by + 0.02),
+           (hub_in - bx, ty - by)]
+    for i in range(len(pts) - 1):
+        seg_xy(arm, pts[i], pts[i + 1], 0.16, 0.12, "blue")
+    rod_x(pk, img, arm, ty - by, 0.0, 0.09, hub_in - bx - 0.06, hub_in - bx + 0.03)
     return parts
 
 

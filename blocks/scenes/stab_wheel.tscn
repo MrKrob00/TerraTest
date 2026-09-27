@@ -145,8 +145,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.6, -0.12)
 mesh = SubResource("ArrayMesh_a3rid")
 skeleton = NodePath("")
 
-[node name="wheel" type="MeshInstance3D" parent="stab_axle"]
+[node name="wheel" type="MeshInstance3D" parent="stab_axle/stab_hub"]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.6, -0.12)
 mesh = SubResource("ArrayMesh_baq8b")
 skeleton = NodePath("")
