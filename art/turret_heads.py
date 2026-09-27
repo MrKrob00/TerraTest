@@ -61,6 +61,7 @@ METAL = [(19, 18, 23), (31, 29, 34), (42, 40, 50), (50, 48, 59), (61, 59, 70), (
 RIM = [(61, 59, 70), (75, 70, 87), (97, 94, 112), (120, 116, 135), (150, 146, 166)]
 ORANGE = (212, 144, 56)
 ORANGE_LO = (150, 96, 38)
+GREEN = (80, 205, 120)
 WHITE = (213, 210, 222)
 
 
@@ -382,6 +383,22 @@ def paint_face(img, rect, poly2d, style, facing):
 
 
 def style_px(style, x, y, w, h, d):
+    if style == "blue_cross":
+        # The repair unit's mark: a green cross outlined in white, the same on every side.
+        if d < 1.0:
+            return BLUE_HI
+        if d < 2.0:
+            return BLUE_MID
+        cx, cy = w / 2.0, h / 2.0
+        arm, half = min(w, h) * 0.32, min(w, h) * 0.11
+        ax, ay = abs(x + 0.5 - cx), abs(y + 0.5 - cy)
+        inside = (ax <= half and ay <= arm) or (ay <= half and ax <= arm)
+        edge = (ax <= half + 1 and ay <= arm + 1) or (ay <= half + 1 and ax <= arm + 1)
+        if inside:
+            return GREEN
+        if edge:
+            return WHITE
+        return jitter(BLUE, 2)
     if style in ("blue", "blue_arrow", "stripe"):
         # A face only a few texels across keeps ONE light line: the full two-texel lip on all
         # sides turned the bands into solid highlight and the whole pack read paler than the gun.

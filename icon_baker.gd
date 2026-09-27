@@ -51,7 +51,8 @@ func _ready() -> void:
 ## сборки и число блоков от правки света не меняются — без этого номера он остался бы с ней навсегда.
 ## 4: the mortar got its model (it was a grey box and a cylinder, and that is what the stamp kept).
 ## 5: the shotgun and the heavy cannon got theirs. 6: the cannon and the mortar cut to their cell.
-const RECIPE := 6
+## 7: the shield and the repair unit got models.
+const RECIPE := 7
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
@@ -183,6 +184,9 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 			continue
 		var cp := MeshInstance3D.new()
 		cp.mesh = mi.mesh
+		# The node's own material too, as the build thumbnails already copy it: a part the scene
+		# tints (the shield's core, the repair crystal) came out untinted white without it.
+		cp.material_override = mi.material_override
 		model.add_child(cp)
 		cp.global_transform = mi.global_transform
 	src.queue_free()

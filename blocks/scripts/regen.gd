@@ -31,6 +31,67 @@ var _alpha: float = FIELD_ALPHA_DEAD
 func _ready() -> void:
 	super._ready()
 	_build_field()
+	_setup_beacon()
+
+# ── THE BEACON ──────────────────────────────────────────────────────────────────
+# The model says whether the field works: powered, the RING spins up and the CRYSTAL glows green
+# and floats; every repair tick that heals something flashes it; unpowered, the ring runs down and
+# the crystal goes dark. `Ring` and `Crystal` move (moving_parts), the crystal is re-coloured and
+# so draws itself (unbatched).
+const RING_SPIN := 1.8             # rad/s at full power
+const RING_SPIN_UP := 1.2          # rad/s² - it winds up and runs down, it does not snap
+const CRYSTAL_ON := Color(0.35, 1.0, 0.5)
+const CRYSTAL_HEAL := Color(0.85, 1.0, 0.85)
+const CRYSTAL_OFF := Color(0.07, 0.16, 0.1)
+const BOB := 0.025                 # m the crystal floats while powered
+const HEAL_FLASH := 0.3            # s
+var _ring: Node3D = null
+var _crystal: MeshInstance3D = null
+var _crystal_mat: StandardMaterial3D = null
+var _crystal_y: float = 0.0
+var _crystal_col: Color = CRYSTAL_OFF
+var _spin: float = 0.0
+var _bob: float = 0.0
+var _heal_flash: float = 0.0
+
+func unbatched() -> Array:
+	var c := get_node_or_null("Crystal")
+	return [c] if c != null else []
+
+func _setup_beacon() -> void:
+	moving_parts = true
+	_ring = get_node_or_null("Ring") as Node3D
+	_crystal = get_node_or_null("Crystal") as MeshInstance3D
+	if _crystal != null:
+		_crystal_y = _crystal.position.y
+		var m: Material = _crystal.material_override
+		if m == null and _crystal.mesh != null:
+			m = _crystal.mesh.surface_get_material(0)
+		if m is StandardMaterial3D:
+			_crystal_mat = (m as StandardMaterial3D).duplicate()
+			_crystal_mat.albedo_color = _crystal_col
+			_crystal.material_override = _crystal_mat
+
+func _animate_beacon(delta: float, on: bool) -> void:
+	if _ring == null:
+		return
+	_spin = move_toward(_spin, RING_SPIN if on else 0.0, delta * RING_SPIN_UP)
+	if _spin > 0.001:
+		_ring.rotate_y(_spin * delta)
+	_heal_flash = maxf(_heal_flash - delta / HEAL_FLASH, 0.0)
+	if _crystal == null:
+		return
+	_bob = move_toward(_bob, 1.0 if on else 0.0, delta * 1.5)
+	var t: float = Time.get_ticks_msec() / 1000.0
+	_crystal.position.y = _crystal_y + BOB * _bob * sin(t * 2.2)
+	if _bob > 0.001:
+		_crystal.rotate_y(delta * 0.9 * _bob)
+	if _crystal_mat != null:
+		var target: Color = CRYSTAL_ON if on else CRYSTAL_OFF
+		target = target.lerp(CRYSTAL_HEAL, _heal_flash)
+		_crystal_col = _crystal_col.lerp(target, clampf(delta * 8.0, 0.0, 1.0))
+		if not _crystal_mat.albedo_color.is_equal_approx(_crystal_col):
+			_crystal_mat.albedo_color = _crystal_col
 
 # ── Поле ремонта ─────────────────────────────────────────────────────────────
 # Видимая сфера радиусом ровно REGEN_RADIUS, как купол у щита. Без неё радиус был
@@ -88,17 +149,21 @@ func _build_field() -> void:
 	add_child(_field)
 
 func _physics_process(delta: float) -> void:
+	_animate_beacon(delta, _work(delta))
+
+## The field's tick; true while it is powered and mounted.
+func _work(delta: float) -> bool:
 	if freeze == false:
 		_show_field(false)
-		return                               # валяется в мире — не работает
+		return false                         # валяется в мире — не работает
 	var blocks_node := get_parent()
 	if blocks_node == null or blocks_node.name != "blocks":
 		_show_field(false)
-		return
+		return false
 	var vehicle := blocks_node.get_parent()
 	if vehicle == null or not vehicle.has_method("energy_consume"):
 		_show_field(false)
-		return
+		return false
 	# Нехватку энергии показываем ПРИГЛУШЕНИЕМ, а не включением-выключением.
 	#
 	# Мигало здесь по двум причинам, и обе убраны. Первая: поле вспыхивало на каждый ремонт —
@@ -112,11 +177,11 @@ func _physics_process(delta: float) -> void:
 	var powered: bool = vehicle.has_method("energy_available") and vehicle.energy_available() > 0.0
 	_show_field(powered)
 	if not powered:
-		return
+		return false
 	_fade_field(delta, FIELD_ALPHA)
 	_timer -= delta
 	if _timer > 0.0:
-		return
+		return true
 	_timer = REGEN_INTERVAL
 	# Кого чинить, спрашиваем У ФИЗИКИ, а не у своего узла blocks: раньше перебирались только
 	# соседи по машине, и поле, накрывшее лежащий на земле блок или борт стоящей рядом машины,
@@ -138,6 +203,8 @@ func _physics_process(delta: float) -> void:
 		# И КОД ЛЕТИТ В БЛОК. Орбита вокруг поля показывает, что оно работает; этот поток
 		# показывает, КОГО оно чинит прямо сейчас (см. BlockFX.repair_stream).
 		BlockFX.repair_stream(self, b, REGEN_RADIUS)
+		_heal_flash = 1.0
+	return true
 
 ## Все блоки в поле — запросом сферой по слою блоков. Потолок в 32 тела берём такой же, как у
 ## взрыва: поле маленькое, и упереться в него можно только внутри плотной сборки, где лишний

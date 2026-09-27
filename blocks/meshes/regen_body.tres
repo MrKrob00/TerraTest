@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="1_mhsep"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_n8pw4"]
+resource_name = "regen"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_mhsep")
+texture_filter = 2
+
+[resource]
+resource_name = "regen_body"
+_surfaces = [{
+"aabb": AABB(-0.33, -0.36, -0.33, 0.66, 0.43, 0.66),
+"attribute_data": PackedByteArray("ep7/GXqe/wH/kf8B/5H/GXnubgd57v8B/+H/Af/hbgd6sv8ZerL/Af+l/wH/pf8Zeg5uK3oO/yX/Af8l/wFuK3rG/xl6xv8B/7n/Af+5/xl6Im4reiL/Jf8V/yX/FW4retr/GXra/wH/zf8B/83/GXo2bit6Nv8l/yn/Jf8pbivWca0h1omtIa2N1h2tjdcF1on/AdZx/wH/bdcF/23WHf8B/wf/BP8H/wT/Cv8B/wr/BP8H/wf/B/8H/wr/BP8K/wf/B/8K/wf/Cv8K/wf/Cv8K/wf/Df8H/w3/Cv8K/wr/Df8H/xD/B/8Q/wr/Df8K/xD/B/8T/wf/E/8K/xD/Cv8T/wf/Fv8H/xb/Cv8T/wr/Fv8H/xn/B/8Z/wr/Fv8K/wH/BP8E/wT/BP8H/wH/B/8E/wT/B/8E/wf/B/8E/wf/B/8E/wr/BP8K/wf/B/8H/wr/BP8N/wT/Df8H/wr/B/8N/wT/EP8E/xD/B/8N/wf/EP8E/xP/BP8T/wf/EP8H/xP/BP8W/wT/Fv8H/xP/B/8W/wT/Gf8E/xn/B/8W/wf/Af8B/wT/Af8E/wT/Af8E/wT/Af8H/wH/B/8E/wT/BP8H/wH/Cv8B/wr/BP8H/wT/Cv8B/w3/Af8N/wT/Cv8E/w3/Af8Q/wH/EP8E/w3/BP8Q/wH/E/8B/xP/BP8Q/wT/E/8B/xb/Af8W/wT/E/8E/xb/Af8Z/wH/Gf8E/xb/BA=="),
+"format": 34896613399,
+"index_count": 210,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAIAAkACMAIAAlACQAIAAmACUAIAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4AMAAyADEAMAAzADIANAA2ADUANAA3ADYAOAA6ADkAOAA7ADoAPAA+AD0APAA/AD4AQABCAEEAQABDAEIARABGAEUARABHAEYASABKAEkASABLAEoATABOAE0ATABPAE4AUABSAFEAUABTAFIAVABWAFUAVABXAFYAWABaAFkAWABbAFoAXABeAF0AXABfAF4AYABiAGEAYABjAGIAZABmAGUAZABnAGYAaABqAGkAaABrAGoAbABuAG0AbABvAG4AcAByAHEAcABzAHIAdAB2AHUAdAB3AHYAeAB6AHkAeAB7AHoAfAB+AH0AfAB/AH4AgACCAIEAgACDAIIAhACGAIUAhACHAIYA"),
+"material": SubResource("StandardMaterial3D_n8pw4"),
+"name": "regen",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 136,
+"vertex_data": PackedByteArray("Bx8AAP///7/34AAA////v/fgyZr///+/Bx/Jmv///7/34AAA///i6P//AAD34OLo///Jmvfg4uj34Mma///i6P//AAD34P////8AAAcf/////8maBx//////yZr34P////8AAAcfh/b34AAAAACH9vfgyZoAAIf2///Jmgcfh/b34AAAAAD//wcfAAAAAP//Bx/JmgAA///34MmaAAD//wcfAAAAAJPhAAAAAAcfk+EAAMmaBx+T4QcfyZoAAJPhAAAAAAcf/78AAAAA9+D/vwAAyZr34P+/AADJmgcf/78AAAAA9+A/qAcfAAD//z+oBx/Jmv//P6gAAMma9+A/qAcfyZr/////9+DJmv///////8ma9+D/////yZoHH///9+DJmgAA//8HH8maAAD//wAAyZoHH///AADJmvfg///fmiLuIYvi6CGLIu7fmuLoIYvJmt+a4ujfmsmaIYvi6CGLIu7fmv+/3XQi7t+a/7/ddMma35r/vyGLyZrfmv+/3XQi7t+aP6gfZSLuIYs/qB9lyZohiz+o3XTJmt+aP6gfZSLuIYv/vx9lIu7ddP+/H2XJmt10/78fZcmaIYv/vx9lIu7ddJPh3XQi7h9lk+HddMmaH2WT4R9lyZrddJPh3XQi7h9l//8hiyLuH2X//yGLyZofZf//3XTJmh9l//8hiyLuH2WH9t+aIu7ddIf235rJmt10h/Yhi8maH2WH9t+aIu7ddP//35oi7iGL///fmsmaIYv//9+ayZrddP//6pH//2uHQfdrh///6pFB9yGLIu7fmkH335oi7iGLQfdrh///6pGe1JN4///qkZ7U3XQi7t+antQhiyLu35qe1JN4///qkeTCFG7//2uH5MIfZSLuIYvkwt10Iu7fmuTCFG7//2uHCdIUbv//k3gJ0h9lIu7ddAnSH2Ui7iGLCdIUbv//k3iz8pN4//8UbrPy3XQi7h9ls/IfZSLu3XSz8pN4//8Ubtnxa4f//xRu2fEhiyLuH2XZ8d10Iu4fZdnxa4f//xRueunqkf//k3h66d+aIu7ddHrpIYsi7h9leunqkf//k3iv/OqR//9rh6/835oi7iGLr/zfmiLu3XSv/P9/////f////3////9///9rh///6pH//+qR//9rh////3////9/////f////3///5N4///qkf//a4f//+qR////f////3////9/////f///FG7//2uH//+TeP//6pH///9/////f////3////9///8Ubv//k3j//xRu//9rh////3////9/////f////3///5N4//8Ubv//FG7//5N4////f////3////9/////f///a4f//xRu//+TeP//FG7///9/////f////3////9////qkf//k3j//2uH//8Ubv///3////9/////f////3///+qR//9rh///6pH//5N4////f/9//3//f/9//3//f/9/S6IYdUuiGHVLohh1S6IYdf+//3//v/9//7//f/+//3/lyYJo5cmCaOXJgmjlyYJo/z//v/8//7//P/+//z//v+5jTdjuY03Y7mNN2O5jTdj/f////3////9/////f///fGxivXxsYr18bGK9fGxivf9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+/S6IYdUuiGHVLohh1S6IYdf9//3//f/9//3//f/9//398bGK9fGxivXxsYr18bGK9/3////9/////f////3///+5jTdjuY03Y7mNN2O5jTdj/P/+//z//v/8//7//P/+/5cmCaOXJgmjlyYJo5cmCaP+//3//v/9//7//f/+//3+wnVSZsJ1UmbCdVJmwnVSZxpH8m8aR/JvGkfybxpH8m5eHfLaXh3y2l4d8tpeHfLaze7bKs3u2yrN7tsqze7bKDmWxwQ5lscEOZbHBDmWxwTO/JikzvyYpM78mKTO/JikuUhEKLlIRCi5SEQouUhEKxyIrKMciKyjHIisoxyIrKP9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+/")
+}]
+blend_shape_mode = 0

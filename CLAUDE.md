@@ -1548,6 +1548,26 @@ project: read it before claiming how anything works.
   THE HIT BELONGS TO THE HULL: `hit_pos` / `ripple_pos` are POSITIONS in model space and every
   threshold reads `near = 1 - chord²/2R²`, which on one sphere is exactly the old cosine; the struck
   plate goes to every merged dome (`_take_hit`), so flare, drained cap and ripple are one patch.
+- **THE SHIELD BLOCK AND THE REPAIR UNIT ARE MODELS THAT SAY WHAT THEY ARE DOING**
+  (`art/emitter_models.py`, same toolkit and palette as the turret heads, on the weapons' platform;
+  parts `<name>_body` / `_cap` or `_ring` / `_core` or `_crystal` in `blocks/meshes`). ROUND PARTS
+  ARE A LATHE WITH PAINTED FACETS: the blocks are unshaded, so a sphere in one colour is a disc, and
+  every facet gets its own texel square lit from one fixed direction. The shield is an ORB - dark
+  lower half gripped by four claws, a blue cap - whose cap LIFTS and turns while the dome stands and
+  shows a cyan core through the gap; the repair unit is a BEACON - a hub with the green cross, a
+  crystal, a ring with three nozzles - whose ring spins up with power and runs down without it, and
+  whose crystal flashes on every repair tick. Moving parts go through `moving_parts`, the tinted part
+  through `unbatched()` and a per-block duplicate of its material (one shared material would tint
+  every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
+  what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
+  thumbnails already did - without it the crystal was baked white.
+- **A SHIELD THAT RUNS DRY REBOOTS** (`shield.gd`, `SHIELD_BREAK_CD`), the same as one broken by a
+  hit it cannot pay for. The dome used to vanish at zero and stand again on the first drop a panel
+  produced, so a shield sharing a thin supply with a repair field blinked with the ticks. Measured on
+  the engine: drained at 2.5 s, power back at 3.0 s, dome back at 4.5 s - two seconds after the
+  collapse, not the moment power returned. While it reboots the cap stands `REBOOT_LIFT` open and the
+  core blinks amber (shut, it hid the one thing that says "rebooting"), the cap winds up to
+  `CAP_SPIN_BOOT` as the reboot runs out, and the core flashes white when the dome is back.
 - CHARGE DRIVES THE CAP'S RADIUS ON SCREEN, not its cosine and not its angle. The dome is seen as
   a DISC, and a cap of half-angle θ takes up sin θ of it. Running the threshold linearly in cosine
   spent half the scale on the far hemisphere, which is CULLED — frames at charge 1.0 and 0.6 came
