@@ -87,6 +87,7 @@ collision_mask = 2
 
 [node name="track_visual" type="MeshInstance3D" parent="Pivot/RayCast3D" unique_id=745219242]
 transform = Transform3D(-3.7855173e-08, 2.1855694e-08, 1, 0.5, 0.8660254, 0, -0.8660254, 0.5, -4.371139e-08, 1.8061959e-09, 0.08211151, -0.35067907)
+visible = false
 mesh = SubResource("BoxMesh_dk5gl")
 skeleton = NodePath("../..")
 

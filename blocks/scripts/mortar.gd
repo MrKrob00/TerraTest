@@ -30,6 +30,12 @@ const ARC_FAR_DEG := 30.0
 const MORTAR_YAW := 18.0
 
 var _salvo_t: float = 0.0
+## The tube pack's REST elevation, read off the scene rather than written here. The model stands
+## at rest pointing up the way a mortar is parked (mortar.tscn, `mortar_head`), and WeaponBlock
+## rotates a part FROM its rest pose: so the aim hands it the throw angle MINUS this, and the pack
+## shows exactly the angle the shells leave at. A second number here would disagree with the
+## scene the first time either was touched.
+var _idle_pitch: float = 0.0
 
 func _ready() -> void:
 	super._ready()
@@ -46,6 +52,9 @@ func _ready() -> void:
 	shield_cost_mult = SHIELD_MULT_EXPLOSIVE   # взрыв идёт сквозь купол, платить за него незачем
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()
+	if _pitch_part != null:
+		var f: Vector3 = _pitch_rest * Vector3.FORWARD
+		_idle_pitch = atan2(f.y, Vector2(f.x, f.z).length())
 
 func _physics_process(delta: float) -> void:
 	_salvo_t = maxf(_salvo_t - delta, 0.0)
@@ -69,7 +78,7 @@ func _track_target(delta: float, firing: bool) -> void:
 	var pitch: float = _arc_deg(dist)
 	pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0),
 			12.0 * delta)
-	_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)
+	_aim_model(deg_to_rad(yaw), deg_to_rad(pitch) - _idle_pitch, delta)
 
 ## Угол броска на эту дальность: круто вблизи, отложе вдали (см. шапку).
 func _arc_deg(dist: float) -> float:

@@ -349,6 +349,27 @@ project: read it before claiming how anything works.
   ban in code but a fact of the ballistics. Its spread is in METRES ON THE GROUND, not degrees, and
   that number decides how much of a salvo lands: a wide pattern turns nominal damage into a tenth of
   it.
+- **THE MORTAR'S MODEL IS GENERATED, AND ONLY ITS HEAD IS NEW** (`art/mortar_model.py` →
+  `objects/mortar_texture.png` + `art/out/mortar.glb`; `art/mortar_import.gd` → `blocks/meshes/
+  mortar_head.tres`). Platform and neck are the ones the gun, rocket launcher and laser stand on,
+  so it reads as one of the family and `_find_turret_parts` finds its chain like theirs. The head
+  says what the code does: EIGHT tubes, 4 × 2, every mouth visible from the front (`SHELLS`), on a
+  pack over the neck's pitch axis. Unshaded, so all shape is PAINTED: palette sampled from the atlas,
+  each face its own texels at the atlas's ~48 px/m with the light edge line the other models carry,
+  a top-lit ramp round the tubes. A texture of its own, because the atlas is the artist's export and
+  the next one would paint over anything added to it; the glb goes to `art/out` (`.gdignore`)
+  because Godot's importer would build its own material, and the look depends on this exact one.
+  THE PACK IS PARKED AT 45 DEG IN THE SCENE, and `mortar.gd` reads that rest angle off the part
+  (`_idle_pitch`) and aims `throw angle - rest`: measured on the engine, at 20/50/90/160 m the tubes
+  stand at 60.0/53.6/45.0/30.0 deg, exactly the throw, and `Pivot/Marker3D` sits within 8 cm of the
+  mouths' centre (it is placed for 45 deg; the model pivots elsewhere than `Pivot`). At 60 deg the
+  breech's rear edge clears the neck's collar by ~7 cm - it touched before the housing was cut to
+  z 0.15. THE MORTAR HAS NO TRACER: its `_track_target` never called `_show_tracer`, so the green
+  placeholder box stood over every mortar in the game for good, and a straight beam would lie about
+  a lobbed shell anyway. The shotgun and heavy cannon keep theirs, hidden in the scene
+  (`visible = false`) since the script shows it only while firing - drawn by default, it was also
+  baked into both portraits. A model change needs `icon_baker.RECIPE` bumped, or installs keep the
+  old portrait.
 - Damage always goes through `_scale_damage`, subclass numbers included.
 - BLOCK HP IS MEASURED IN SECONDS UNDER FIRE, against the DPS the code actually produces (gun 25/s,
   laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 23-30 — 8 shells × 12 with
@@ -1638,7 +1659,7 @@ project: read it before claiming how anything works.
   physics tick for every weapon in the world, and the tick called `force_raycast_update()` on top —
   two physics queries per weapon per tick. Its result is read by exactly two things: the "is my own
   barrel blocked" check, which is needed once per SHOT, and the tracer beam, which needs it every
-  tick and exists on three of the six weapons (mortar, heavy cannon, shotgun). So the ray is forced
+  tick and exists on two of the six weapons (heavy cannon, shotgun). So the ray is forced
   where the answer is used. The blocked check moved AFTER the fire timer and does not reset it on
   refusal, so a weapon still fires on the first tick the obstruction clears.
 - **A FIGHT IS TOO NOISY TO JUDGE FROM ONE RUN.** The same 15-second fight, damage dealt: 120 / 135
