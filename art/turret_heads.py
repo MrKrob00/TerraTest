@@ -457,22 +457,30 @@ def style_px(style, x, y, w, h, d):
             return METAL[0]
         return jitter(METAL[3], 2)
     if style == "fork_hub":
-        # The fork's middle: one T of arrows - from the back edge in, then out front, left and right.
-        # u runs forward, v across; the shafts are 2 texels wide, the heads 5.
+        # The fork's middle: the background first, then open chevrons laid over it - two pointing
+        # out front, left and right, one coming in from the back. Filled heads on shafts merged
+        # into one orange blot at this size (33 texels); an open ">" never covers its neighbour.
+        # u runs forward, v across.
         if d < 1.0:
             return METAL[5]
         cu, cv = w / 2.0, h / 2.0
         px, py = x + 0.5, y + 0.5
-        shaft_u = abs(py - cv) <= 1.1 and px <= w - 5              # back -> front
-        shaft_v = abs(px - cu) <= 1.1 and 4 <= py <= h - 4          # left <-> right
-        head_f = px > w - 7 and abs(py - cv) <= (w - px) * 0.9 + 0.3
-        head_l = py < 7 and abs(px - cu) <= py * 0.9 + 0.3
-        head_r = py > h - 7 and abs(px - cu) <= (h - py) * 0.9 + 0.3
-        if (shaft_u and px >= cu - 1) or shaft_v or head_f or head_l or head_r:
-            return ORANGE
-        if shaft_u:
-            return ORANGE_LO                                         # the incoming half, dimmer
-        return METAL[2] if (x + y) % 5 == 0 else METAL[1]
+        # (tip u, tip v, direction u, direction v, colour): each chevron's tip, pointing along dir.
+        marks = []
+        for k in (0, 1):
+            s = 3.0 + k * 4.0
+            marks.append((w - s, cv, 1, 0, ORANGE))
+            marks.append((cu, s, 0, -1, ORANGE))
+            marks.append((cu, h - s, 0, 1, ORANGE))
+        marks.append((7.0, cv, 1, 0, ORANGE_LO))
+        for tu, tv, du, dv, col in marks:
+            a = (tu - px) * du + (tv - py) * dv                   # distance back from the tip
+            off = abs((px - tu) * dv - (py - tv) * du)            # distance across the axis
+            if 0 <= a <= 3.2 and abs(off - a) < 0.85:
+                return col
+        if math.hypot(px - cu, py - cv) <= 2.2:
+            return METAL[4]                                        # the pivot the flow splits at
+        return METAL[2] if (x % 4) == 0 else METAL[1]
     if style in ("belt", "belt_fwd"):
         # Rubber belt: ribs across the run, and for a directed belt chevrons pointing along +u
         # (the way the cargo goes). The face's u runs along the flow, v across it.
