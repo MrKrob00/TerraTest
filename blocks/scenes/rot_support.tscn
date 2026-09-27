@@ -1,7 +1,10 @@
 [gd_scene format=3 uid="uid://rotsupport1a"]
 
-[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://blocks/scripts/block.gd" id="1_scr"]
-[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_mesh"]
+[ext_resource type="Script" path="res://blocks/scripts/support.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/rot_support_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/rot_support_stator.tres" id="3_stator"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/rot_support_leg.tres" id="4_leg"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/rot_support_foot.tres" id="5_foot"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_s"]
 
@@ -15,5 +18,15 @@ connect_faces = 31
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=146362098]
 shape = SubResource("BoxShape3D_s")
 
-[node name="Block" type="MeshInstance3D" parent="." unique_id=2091556287]
-mesh = ExtResource("2_mesh")
+[node name="Body" type="MeshInstance3D" parent="." unique_id=2091556287]
+mesh = ExtResource("2_body")
+
+[node name="Stator" type="MeshInstance3D" parent="." unique_id=2091556288]
+mesh = ExtResource("3_stator")
+
+[node name="Leg" type="MeshInstance3D" parent="." unique_id=2091556289]
+transform = Transform3D(1, 0, 0, 0, 0.1, 0, 0, 0, 1, 0, -0.3, 0)
+mesh = ExtResource("4_leg")
+
+[node name="Foot" type="MeshInstance3D" parent="." unique_id=2091556290]
+mesh = ExtResource("5_foot")
