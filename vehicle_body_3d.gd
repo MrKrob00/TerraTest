@@ -296,6 +296,13 @@ func _core_center_offset() -> Vector3:
 	return core.position + core.basis * local
 
 func _build_anchor_column(depth: float) -> void:
+	# A support puts its OWN foot on the ground (support.gd runs the jack's piston out), so the
+	# machine grows no column under it; the column stays for a base whose core is a seller or miner.
+	var core: Node3D = station_core()
+	if core == null:
+		core = support_block()
+	if core != null and core.has_method("draws_own_leg"):
+		return
 	var off: Vector3 = _core_center_offset()
 	_anchor_column = MeshInstance3D.new()
 	var cyl := CylinderMesh.new()
