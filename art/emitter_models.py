@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR and the STABILISER wheel.
+"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR, the STABILISER wheel and the CONVEYORS.
 
-    python3 art/emitter_models.py [shield|regen|radar|stab ...]    (no argument: all)
+    python3 art/emitter_models.py [shield|regen|radar|stab|belt|belt_cross|belt_split ...]
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part)
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
@@ -269,11 +269,85 @@ def build_stab(pk, img):
     return parts
 
 
+# ── the conveyors ───────────────────────────────────────────────────────────────────────────────
+# The shape of the old conveyor (a deck on a column) kept, drawn the way the other blocks are and
+# light: the old mesh was 1344 triangles a cell. The deck's top stays at the old height (the items'
+# `item_slot` sits over it), the belt shows where cargo goes: arrows on a conveyor, arrows fanning out
+# three ways on the fork, none on the crossing, which passes both axes.
+
+BELT_TOP = 0.44
+
+
+def belt_stand(pk, img, faces):
+    th.box(faces, (-0.30, -0.50, -0.30), (0.30, -0.43, 0.30), "dark")
+    lathe_y(pk, img, faces, [(0.13, -0.43), (0.13, 0.18)], METAL_RAMP, sides=8)
+    th.prism(faces, -0.5, 0.5, 0.18, BELT_TOP - 0.02, 0.5, -0.5, 0.05)
+
+
+def belt_strip(faces, lo, hi, style, u_hint):
+    """A belt run on the deck; its top carries `style`, u running along `u_hint` (the flow)."""
+    part = []
+    th.box(part, lo, hi, "dark")
+    for f in part:
+        if th.newell(f.pts)[1] > 0.9:
+            f.style = style
+            f.u_hint = u_hint
+    faces += part
+
+
+def build_belt(pk, img):
+    parts = {"belt_body": []}
+    f = parts["belt_body"]
+    belt_stand(pk, img, f)
+    belt_strip(f, (-0.36, BELT_TOP - 0.02, -0.5), (0.36, BELT_TOP, 0.5), "belt_fwd", (0, 0, -1))
+    for sx in (-1, 1):
+        lo, hi = sorted((sx * 0.38, sx * 0.5))
+        th.box(f, (lo, BELT_TOP - 0.02, -0.5), (hi, BELT_TOP + 0.07, 0.5), "blue")
+    return parts
+
+
+def build_belt_cross(pk, img):
+    parts = {"belt_cross_body": []}
+    f = parts["belt_cross_body"]
+    belt_stand(pk, img, f)
+    belt_strip(f, (-0.36, BELT_TOP - 0.02, -0.5), (0.36, BELT_TOP, 0.5), "belt", (0, 0, -1))
+    belt_strip(f, (-0.5, BELT_TOP - 0.02, -0.36), (0.5, BELT_TOP + 0.004, 0.36), "belt", (1, 0, 0))
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            xl, xh = sorted((sx * 0.38, sx * 0.5))
+            zl, zh = sorted((sz * 0.38, sz * 0.5))
+            th.box(f, (xl, BELT_TOP - 0.02, zl), (xh, BELT_TOP + 0.09, zh), "blue")
+    return parts
+
+
+def build_belt_split(pk, img):
+    parts = {"belt_split_body": []}
+    f = parts["belt_split_body"]
+    belt_stand(pk, img, f)
+    # A distribution plate in the middle carrying one T of arrows (in from the back, out front,
+    # left and right), and short plain runs from it to the four cell edges. Four arrowed runs
+    # crossing in the middle were tried first and read as a heap of chevrons.
+    belt_strip(f, (-0.34, BELT_TOP - 0.01, -0.34), (0.34, BELT_TOP + 0.01, 0.34), "fork_hub", (0, 0, -1))
+    belt_strip(f, (-0.30, BELT_TOP - 0.02, 0.34), (0.30, BELT_TOP, 0.5), "belt", (0, 0, -1))
+    belt_strip(f, (-0.30, BELT_TOP - 0.02, -0.5), (0.30, BELT_TOP, -0.34), "belt", (0, 0, -1))
+    belt_strip(f, (-0.5, BELT_TOP - 0.02, -0.30), (-0.34, BELT_TOP, 0.30), "belt", (-1, 0, 0))
+    belt_strip(f, (0.34, BELT_TOP - 0.02, -0.30), (0.5, BELT_TOP, 0.30), "belt", (1, 0, 0))
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            xl, xh = sorted((sx * 0.38, sx * 0.5))
+            zl, zh = sorted((sz * 0.38, sz * 0.5))
+            th.box(f, (xl, BELT_TOP - 0.02, zl), (xh, BELT_TOP + 0.09, zh), "blue")
+    return parts
+
+
 BLOCKS = {
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
     "radar": (23, build_radar, 256),
     "stab": (31, build_stab, 256),
+    "belt": (37, build_belt, 256),
+    "belt_cross": (41, build_belt_cross, 256),
+    "belt_split": (43, build_belt_split, 256),
 }
 
 

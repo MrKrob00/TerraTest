@@ -276,6 +276,18 @@ project: read it before claiming how anything works.
 - A machine stands **beside** the belt, not in a gap in it. Belts never hand sideways to another
   belt, and a non-belt receives before the next belt does (`push_item` round-robins for the
   splitter).
+- **THE FORK IS THE ONE BELT THAT HANDS SIDEWAYS TO BELTS** (`belt.gd _is_fork`, `_rr`). Its scene had
+  no faces (so the FactoryBlock default: in at the back, out at the front) and it ran the belts'
+  "no side belts" rule, so "one in, three out" was a plain belt - measured on a real line, six
+  ingots in: 6 front, 0 left, 0 right. It now takes from the back, gives front, left and right
+  (`output_faces` 13) and turns the three belts in order: 2 / 2 / 2.
+- **THE CONVEYORS ARE MODELS, NOT THE 1344-TRIANGLE TABLE** (`art/emitter_models.py` belt /
+  belt_cross / belt_split, 92 / 128 / 164 triangles; the three used to share one mesh). The old
+  shape is kept - a deck on a column - with the deck's top where it was, so the cargo at
+  `item_slot` still sits on it. What the belt SAYS is the point: arrows along the run on a
+  conveyor, a T of arrows on the fork's middle plate (in from the back, out three ways - four
+  arrowed runs crossing read as a heap of chevrons), no arrows on the crossing, which passes both
+  axes.
 - A machine beside the line also gets PRIORITY FOR THE FREED CELL (`belt.side_waiting`): it returns
   its result onto the belt one cell along and loses that cell to through traffic every time, and
   while it holds its output it takes no input — a few boxes later the line is dead.
