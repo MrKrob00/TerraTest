@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the SHIELD, the REPAIR UNIT (regen) and the RADAR: round, moving - not boxes.
+"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR and the RISER / STABILISER wheels.
 
-    python3 art/emitter_models.py [shield|regen|radar ...]    (no argument: all)
+    python3 art/emitter_models.py [shield|regen|radar|riser|stab ...]    (no argument: all)
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part)
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
@@ -229,10 +229,74 @@ def build_radar(pk, img):
     return parts
 
 
+# ── the riser and the stabiliser wheels ─────────────────────────────────────────────────────────
+# Both carry the artist's SMALL tyre and hub (Assets.glb Wheel_small / Wheel_Axle) and the artist's
+# mounting plate; what is generated here is only what those two lack - a strut and a fork, a mount
+# and trailing arms - so the tyre on them is the very tyre on the small wheel.
+
+RISER_RIDE = 0.95        # wheel.gd ride_height: the tyre hangs this far under the block's centre
+RISER_TYRE = 1.25        # tyre scale against the small wheel's (r 0.30 -> 0.375)
+STAB_RIDE = 0.90         # same as the standard wheel: the stabiliser carries at the same height
+STAB_AXLE = (-0.60, -0.12)   # (y, z) of its axle, reaching away from the hull on its +Z side
+
+
+def rod_x(pk, img, faces, y, z, r, x0, x1, ramp=None):
+    """An octagonal rod along X (an axle through a hub)."""
+    part = []
+    lathe_y(pk, img, part, [(r, x0), (r, x1)], ramp or METAL_RAMP, sides=8)
+    # lathe_y builds about Y; lay it down: (x, y, z) -> (y, x, z), then move to (y, z).
+    for f in part:
+        f.pts = [(p[1], p[0] + y, p[2] + z) for p in f.pts]
+    faces += part
+
+
+def build_riser(pk, img):
+    parts = {"riser_strut": [], "riser_fork": []}
+    strut, fork = parts["riser_strut"], parts["riser_fork"]
+    r = 0.30 * RISER_TYRE
+    ay = -RISER_RIDE + r
+    # Strut housing under the plate: turns with the steering, does not travel.
+    lathe_y(pk, img, strut, [(0.0, 0.14), (0.10, 0.14), (0.14, 0.18), (0.14, 0.37)], BLUE_RAMP,
+            sides=8)
+    lathe_y(pk, img, strut, [(0.075, 0.10), (0.075, 0.14), (0.0, 0.14)], METAL_RAMP, sides=8)
+    # Fork: travels with the suspension. The slider runs up into the housing, so a compressed
+    # strut reads as a telescope closing, not as a part sinking through another.
+    lathe_y(pk, img, fork, [(0.05, -0.06), (0.05, 0.30)], METAL_RAMP, sides=8)
+    th.box(fork, (-0.26, -0.12, -0.09), (0.26, -0.04, 0.09), "blue")
+    for sx in (-1, 1):
+        lo, hi = sorted((sx * 0.21, sx * 0.26))
+        th.box(fork, (lo, ay - 0.06, -0.05), (hi, -0.10, 0.05), "dark")
+    rod_x(pk, img, fork, ay, 0.0, 0.035, -0.27, 0.27)
+    return parts
+
+
+def build_stab(pk, img):
+    parts = {"stab_mount": [], "stab_arm": []}
+    mount, arm = parts["stab_mount"], parts["stab_arm"]
+    # Mount on the back plate: a dark sleeve tall enough to hide the arm roots at full travel.
+    th.box(mount, (-0.19, -0.17, 0.18), (0.19, 0.17, 0.37), "dark", face_styles={"-z": "blue"})
+    # Trailing arms from inside the sleeve down to the axle, beside the tyre.
+    ay, az = STAB_AXLE
+    y0, z0 = 0.0, 0.27
+    ln = math.hypot(ay - y0, az - z0)
+    ang = math.atan2(az - z0, -(ay - y0))       # tilt from straight down, towards -Z
+    for sx in (-1, 1):
+        lo, hi = sorted((sx * 0.19, sx * 0.25))
+        a = []
+        th.box(a, (lo, -ln, -0.035), (hi, 0.04, 0.035), "blue")
+        ca, sa = math.cos(-ang), math.sin(-ang)
+        xform(a, lambda p: (p[0], p[1] * ca - p[2] * sa + y0, p[1] * sa + p[2] * ca + z0))
+        arm += a
+    rod_x(pk, img, arm, ay, az, 0.035, -0.26, 0.26)
+    return parts
+
+
 BLOCKS = {
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
     "radar": (23, build_radar, 256),
+    "riser": (29, build_riser, 256),
+    "stab": (31, build_stab, 256),
 }
 
 

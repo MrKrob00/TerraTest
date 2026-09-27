@@ -159,8 +159,11 @@ project: read it before claiming how anything works.
   both cells): they were false, so two wedges side by side were two parts each hanging on what was
   under it - measured through `buildable_subset`, a cabin, a block and three wedges in a row built
   3 of 5 before and 5 of 5 after. The half blocks were the full frame cube (Half Block x2 a single
-  cube on a two-cell footprint); they are the lower half now, with a half-height collider that
-  `collider_offset` seats (sizes (1, 0.5, 1) and (2, 0.5, 1)).
+  cube on a two-cell footprint). A HALF BLOCK IS THE CUBE CUT CORNER TO CORNER - a right-angle
+  triangle, full height at the back, 45 deg down to the front edge - and x2 is that triangle two
+  cells WIDE, not long. It attaches like the wedge: bottom, back and both sides (`connect_faces` 46);
+  a half block, a second beside it and a x2 beside that all join (5 of 5 through `buildable_subset`).
+  Its slope shows the middle of the wedge's slope island (`SLOPE_ASPECT`), not a squashed whole.
 - Where a block may attach is the `connect_faces` mask on `VehicleBlock`, edited on the cube widget
   (`port_cube.gd`) and nowhere else. Building rotates the block so that face meets the neighbour.
 - Connectivity is by **attach faces**, not by touching: an edge exists only when both sides mark the
@@ -201,7 +204,14 @@ project: read it before claiming how anything works.
   into four identically spinning wheels. Off the ground there is nothing to roll on and the
   throttle takes over. The radius is asked of the MESH (`_measure_radius`), never derived from
   `ride_height`: that number is the radius PLUS the arm's drop, and the arm's share differs across
-  the three sizes. `SPIN_MAX` is a picture limit, not physics — past roughly half the frame rate a
+  the three sizes. IT NEVER WAS, UNTIL NOW: it searched only the tyre node's CHILDREN, while the tyre
+  mesh sits on that node itself, so every wheel ran on the `ride_height * 0.65` fallback - 0.436 /
+  0.585 / 0.715 against real tyres of 0.30 / 0.50 / 0.65, the picture rolling 10-30 % slow. And the
+  SPIN IS ω = n × v / r PROJECTED ON THE TYRE'S OWN AXLE (`_tyre.global_basis.x`), not v·forward
+  times a sign guessed from the wheel's side: that guess held only for axles pointing into the hull
+  from the left or right, and a stabiliser on the nose and one on the tail face each other. Measured:
+  standard left and right, small, riser and both stabilisers - the tyre's bottom point moves back
+  0.099 m in 0.02 s at 5 m/s, exactly v·dt, i.e. rolling without slip on every mount. `SPIN_MAX` is a picture limit, not physics — past roughly half the frame rate a
   tyre reads as turning backwards, and a phone's frame rate puts that threshold low.
 - `ride_height` is the wheel's radius PLUS the drop of the suspension arm, and the arm is the same
   model on all three wheels — so the value scales with the tyre and nothing else. The tyres measure
@@ -217,9 +227,16 @@ project: read it before claiming how anything works.
   `load_capacity` plus a `ride_height` LARGER than the standard wheel's, and `connect_faces` of
   `FACE_TOP` (16) rather than `FACE_BACK` — neither is set yet. The stabiliser mounts on the REAR
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
-  tail-heavy build, where a block used to be propped in and then dragged along the ground. Both
-  models are still to come, so their geometry, mounting face and transmission are deliberately left
-  as placeholders on the standard wheel's numbers.
+  tail-heavy build, where a block used to be propped in and then dragged along the ground. BOTH ARE
+  BUILT NOW (`art/emitter_models.py` riser / stab, on the small wheel's own tyre, hub and plate): the
+  riser is a plate on TOP, a strut that turns with the steering (`riser_susp_high`, its local Z
+  turned to world up because the knuckle steers about its own Z) and a telescoping fork that
+  travels (`riser_axle`), `ride_height` 0.95 under its own cell; the stabiliser bolts on by its BACK
+  face like any wheel, with trailing arms down to an axle beside the tyre, the tyre rolling along
+  the machine (axis block X), `ride_height` 0.9 like the standard wheel so it carries at the same
+  height. Measured on the proving ground: four risers under a 3x3 floor hold the cabin 1.93 m over
+  the ground against 0.88 on standard wheels, all four grounded; two standard wheels in front and a
+  stabiliser on the tail stand level (0.0 deg) at 0.88 with the stabiliser grounded.
 
 ### Building
 
