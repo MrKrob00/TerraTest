@@ -370,6 +370,12 @@ project: read it before claiming how anything works.
   (`visible = false`) since the script shows it only while firing - drawn by default, it was also
   baked into both portraits. A model change needs `icon_baker.RECIPE` bumped, or installs keep the
   old portrait.
+  ON AN ENEMY THE MORTAR BARELY FIRES, AND THE REASON IS THE DRIVER, NOT THE GUN. Measured on the
+  proving ground with build 29, 20 s runs: 0-2 salvos, and every one of them in the second the nose
+  swept across the target. `_act_engage` drives AT the target and PURSUE closes to 3-5 m, so the
+  hull is rarely within the mortar's 18 deg and soon inside its 20 m dead zone. The cone was
+  suspected first (`Pivot` stands at the throw angle) and cleared by alternating runs: old and new
+  cones fire alike once the nose is on.
 - Damage always goes through `_scale_damage`, subclass numbers included.
 - BLOCK HP IS MEASURED IN SECONDS UNDER FIRE, against the DPS the code actually produces (gun 25/s,
   laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 23-30 — 8 shells × 12 with
