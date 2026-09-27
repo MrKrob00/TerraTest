@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://ddlgr7fqir5ds" path="res://objects/stab_texture.png" id="1_o5yxo"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_a70ow"]
+resource_name = "stab"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_o5yxo")
+texture_filter = 2
+
+[resource]
+resource_name = "stab_mount"
+_surfaces = [{
+"aabb": AABB(-0.19, -0.17, 0.18, 0.38, 0.34, 0.19),
+"attribute_data": PackedByteArray("HrdREh63/wH/rf8B/61REh3H/wH/vf8B/71REh3HURIeZ/8B/13/Af9dPRQeZz0UHnc9FB53/wH/bf8B/209FP99URI8kFESPJD/Af99/wH/lf8B/5VREjyoURI8qP8B"),
+"format": 34896613399,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYA"),
+"material": SubResource("StandardMaterial3D_a70ow"),
+"name": "stab",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("//8AAAAA////////AAD///////////////8AAP////8AAAAAAAD/vwAAAAD///+/AAD//////78AAP//AAD/vwAA//8AAP//AAD///////////////////////8AAP//AAAAAAAA/////wAAAAD/////AAD/////AAAAAP////8AAAAA////v///AAD///+//////////78AAP//////vwAAAAAAAP//AAD//wAA////////AAD/////AAAAAP///7//f/+//3//v/9//7//f/9/////f////3////9/////f/+//3//v/9//7//f/+//3//P/9//z//f/8//3//P/9//3//f/9//3//f/9//3//P/+//z//v/8//7//P/+/")
+}]
+blend_shape_mode = 0

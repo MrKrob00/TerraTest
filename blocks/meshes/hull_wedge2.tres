@@ -13,7 +13,7 @@ texture_filter = 2
 resource_name = "hull_wedge2"
 _surfaces = [{
 "aabb": AABB(-0.5, -0.5, -1.4400734, 1, 0.9700367, 1.9400734),
-"attribute_data": PackedByteArray("/xK/Kn8Yvyp/GH8r/xJ/K78FPzm/BX8zAAB/MwAAPzn/Er8qfxi/Kn8Yfyv/En8rA1h/RrxRf0a8Uf80A1j/NP8Svyp/GL8qfxh/K/8Sfys/DT8pPxY/KT8W/x8/Df8fPw0/KT8WPyk/Fv8fPw3/Hz9gv0D/Wb9E/1l/Nv8Svyp/GL8qfxh/K/8SfyvfEh8r3xIfK98SHyv/Er8qfxi/Kn8Yfyv/En8r3xIfK98SHyvfEh8r/xK/Kn8Yvyp/GH8r/xJ/K98SHyvfEh8r3xIfK79Pfzb/T79Ef0m/QP8Sfyt/GH8rfxi/Kv8SvyrfEh8r3xIfK98SHyv/En8rfxh/K38Yvyr/Er8q3xIfK98SHyvfEh8r/xJ/K38Yfyt/GL8q/xK/Kt8SHyvfEh8r3xIfKw=="),
+"attribute_data": PackedByteArray("/xK/Kn8Yvyp/GH8r/xJ/K78FPzm/BX8zAAB/MwAAPzn/Er8qfxi/Kn8Yfyv/En8rA1heRbxRXkW8USE2A1ghNv8Svyp/GL8qfxh/K/8Sfys/DT8pPxY/KT8W/x8/Df8fPw0/KT8WPyk/Fv8fPw3/Hz9gv0D/Wb9E/1l/Nv8Svyp/GL8qfxh/K/8SfyvfEh8r3xIfK98SHyv/Er8qfxi/Kn8Yfyv/En8r3xIfK98SHyvfEh8r/xK/Kn8Yvyp/GH8r/xJ/K98SHyvfEh8r3xIfK79Pfzb/T79Ef0m/QP8Sfyt/GH8rfxi/Kv8SvyrfEh8r3xIfK98SHyv/En8rfxh/K38Yvyr/Er8q3xIfK98SHyvfEh8r/xJ/K38Yfyt/GL8q/xK/Kt8SHyvfEh8r3xIfKw=="),
 "format": 34896613399,
 "index_count": 102,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHwAhACAAHwAiACEAIwAlACQAJgAoACcAJgApACgAKgAsACsALQAvAC4ALQAwAC8AMQAzADIANAA2ADUANwA5ADgANwA6ADkAOwA9ADwAPgBAAD8APgBBAEAAQgBEAEMARQBHAEYARQBIAEcASQBLAEoA"),

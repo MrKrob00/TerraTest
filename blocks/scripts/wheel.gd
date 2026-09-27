@@ -241,27 +241,28 @@ func _tick_wheel(delta: float) -> void:
 func _roll_tyre(delta: float) -> void:
 	if _tyre == null or _radius <= 0.0:
 		return
-	# Колесо крепится то через грань "left", то "right" (±90° по Y, см. _face_orient
-	# в vehicle_body_3d.gd) — эти монтажи зеркальны, поэтому один и тот же локальный
-	# спин катится визуально в РАЗНЫЕ мировые стороны слева/справа от машины.
-	# Компенсируем знаком по стороне (X-позиция колеса от центра машины, см. _on_take_pressed:
-	# position = Vector3(x-5, y-5, z-5) относительно $blocks — сетка 11³, центр 5).
-	var side := -1.0 if position.x < 0.0 else 1.0
-	var omega: float = 0.0
+	# THE SPIN IS THE ROLLING ITSELF, PROJECTED ON THE TYRE'S OWN AXLE: omega = n x v / r, read along
+	# the tyre's local X in the world. It used to be v.forward / r times a sign guessed from which side
+	# of the machine the wheel stood on, which only held for tyres whose axle points into the hull
+	# from the left or the right; a stabiliser on the nose and one on the tail face each other, and
+	# one of the two rolled backwards. The projection needs no guess for any mount.
 	var body := _root_body() as RigidBody3D
-	if grounded and body != null:
+	if body == null:
+		return
+	var w := Vector3.ZERO
+	if grounded:
 		var arm: Vector3 = global_position - body.global_position
 		var v: Vector3 = body.linear_velocity + body.angular_velocity.cross(arm)
-		var fwd: Vector3 = -body.global_transform.basis.z
-		omega = v.dot(fwd) / _radius
+		w = Vector3.UP.cross(v) / _radius
 	elif throttle_input != 0.0:
-		omega = throttle_input * SPIN_SPEED
+		w = Vector3.UP.cross(-body.global_transform.basis.z) * (throttle_input * SPIN_SPEED)
+	var omega: float = w.dot(_tyre.global_basis.x.normalized())
 	if is_zero_approx(omega):
 		return
-	# Покрышка катится вокруг СВОЕЙ оси X: вперёд +x, назад −x (так собрана модель).
-	# Угол копим сами и умножаем базис справа, а не пишем rotation.x: у покрышки в сцене
-	# запечён свой разворот, и присваивание одной эйлеровой компоненты его бы разрушило.
-	_spin += side * clampf(omega, -SPIN_MAX, SPIN_MAX) * delta
+	# Покрышка катится вокруг СВОЕЙ оси X. Угол копим сами и умножаем базис справа, а не пишем
+	# rotation.x: у покрышки в сцене запечён свой разворот, и присваивание одной эйлеровой
+	# компоненты его бы разрушило.
+	_spin += clampf(omega, -SPIN_MAX, SPIN_MAX) * delta
 	_spin = fposmod(_spin, TAU)        # угол копится часами езды; без этого он растёт без предела
 	_tyre.transform.basis = _tyre_rest * Basis(Vector3.RIGHT, _spin)
 
@@ -271,12 +272,18 @@ func _roll_tyre(delta: float) -> void:
 ## цепочки. Художник поменяет модель — число поедет за ней само.
 func _measure_radius() -> float:
 	var best: float = 0.0
-	for n in _tyre.find_children("*", "MeshInstance3D", true, false):
+	# The tyre node ITSELF carries the tyre mesh on every model; asking only its children found
+	# nothing, and every wheel ran on the fallback below: 0.436 / 0.585 / 0.715 against real tyres of
+	# 0.30 / 0.50 / 0.65, so the picture rolled 10-30 % slower than the machine moved. The scale is
+	# taken against the BLOCK, so a tyre scaled up in its scene measures as big as it is drawn.
+	var meshes: Array = [_tyre]
+	meshes.append_array(_tyre.find_children("*", "MeshInstance3D", true, false))
+	for n in meshes:
 		var mi := n as MeshInstance3D
-		if mi.mesh == null:
+		if mi == null or mi.mesh == null:
 			continue
 		var box: AABB = mi.mesh.get_aabb()
-		var sc: Vector3 = (_tyre.global_transform.affine_inverse() * mi.global_transform).basis.get_scale()
+		var sc: Vector3 = (global_transform.affine_inverse() * mi.global_transform).basis.get_scale()
 		best = maxf(best, maxf(box.size.y * sc.y, box.size.z * sc.z) * 0.5)
 	# Запасной вариант — если меша не нашлось (опорное колесо без геометрии, заглушка). Доля
 	# взята от стандартного колеса: ride_height 0.55 при радиусе покрышки около 0.36.

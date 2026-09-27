@@ -52,7 +52,8 @@ func _ready() -> void:
 ## 4: the mortar got its model (it was a grey box and a cylinder, and that is what the stamp kept).
 ## 5: the shotgun and the heavy cannon got theirs. 6: the cannon and the mortar cut to their cell.
 ## 7: the shield and the repair unit got models. 8: the radar. 9: the hull blocks.
-const RECIPE := 9
+## 10: half blocks became 45-degree triangles; the riser and stabiliser wheels got models.
+const RECIPE := 10
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

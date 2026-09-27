@@ -22,7 +22,7 @@ one part that still shows its two cells, instead of one panel stretched to twice
 
 Blocks (in their anchor's axes; the scenes keep the anchor where the grid puts it):
   hull_block2  2x1x1, cells x -1 and 0          hull_block3  3x1x1, cells x -1, 0, +1
-  hull_half    1 x 0.5 x 1, the lower half       hull_half2   2 x 0.5 x 1, cells x -1 and 0
+  hull_half    1x1x1, the cube cut corner to corner  hull_half2   the same triangle 2 wide, cells x -1 and 0
   hull_wedge2  1x1x2, cells z 0 and -1, full height at the back (z +0.5), edge on the ground at the front
 """
 import json
@@ -44,6 +44,7 @@ TOP = (53, 128, 89, 165)       # top and bottom: the braced panel
 STRIP = (76, 171, 98, 174)     # every chamfer
 CORNER = (75, 172)             # the corner triangles: one texel
 SLOPE = (325, 212, 354, 282)   # the wedge's slope, tip at y0, top at y1
+SLOPE_ASPECT = (SLOPE[3] - SLOPE[1]) / (SLOPE[2] - SLOPE[0])   # metres of slope one cell wide
 
 
 def sub(a, b): return (a[0] - b[0], a[1] - b[1], a[2] - b[2])
@@ -159,10 +160,15 @@ def prism_x(m, q, x0, x1, c=CHAMFER, cell_x=1.0, slope_edge=None, side_uv=None):
                 uvs = [island_uv(STRIP, 0, 0), island_uv(STRIP, 1, 0), island_uv(STRIP, 1, 1),
                        island_uv(STRIP, 0, 1)]
             elif is_slope:
-                # Tip end of the edge at the island's y0, as the artist's wedge maps it.
+                # Tip end of the edge at the island's y0, as the artist's wedge maps it. A slope
+                # shorter than the wedge's shows the middle of the island rather than a squashed
+                # whole (the half block's 1.41 m against the island's 2.4 : 1), and every cell
+                # across gets its own panel, as the other faces do.
                 tip_first = a[0] < b[0]
-                v0, v1 = (0.0, 1.0) if tip_first else (1.0, 0.0)
-                u0, u1 = (1 - (s0 - x0) / (x1 - x0), 1 - (s1 - x0) / (x1 - x0))
+                ca_, cb_ = span(edge_len, SLOPE_ASPECT)
+                v0, v1 = (ca_, cb_) if tip_first else (cb_, ca_)
+                cell0 = x0 + math.floor((s0 - x0) / cell_x + 1e-6) * cell_x
+                u0, u1 = 1 - (s0 - cell0) / cell_x, 1 - (s1 - cell0) / cell_x
                 uvs = [island_uv(SLOPE, u0, v0), island_uv(SLOPE, u1, v0), island_uv(SLOPE, u1, v1),
                        island_uv(SLOPE, u0, v1)]
             else:
@@ -259,8 +265,11 @@ def build():
     blocks = {}
     m = Mesh(); prism_x(m, box_profile(-0.5, 0.5, -0.5, 0.5), -1.5, 0.5); blocks["hull_block2"] = m
     m = Mesh(); prism_x(m, box_profile(-0.5, 0.5, -0.5, 0.5), -1.5, 1.5); blocks["hull_block3"] = m
-    m = Mesh(); prism_x(m, box_profile(-0.5, 0.0, -0.5, 0.5), -0.5, 0.5); blocks["hull_half"] = m
-    m = Mesh(); prism_x(m, box_profile(-0.5, 0.0, -0.5, 0.5), -1.5, 0.5); blocks["hull_half2"] = m
+    # Half block: the cube cut corner to corner - full height at the back, a 45 deg slope down to
+    # the front edge. x2 is the same triangle two cells WIDE (along X), like the other x2 blocks.
+    half = [(-0.5, 0.5), (0.5, 0.5), (-0.5, -0.5)]
+    m = Mesh(); prism_x(m, half, -0.5, 0.5, slope_edge=1); blocks["hull_half"] = m
+    m = Mesh(); prism_x(m, half, -1.5, 0.5, slope_edge=1); blocks["hull_half2"] = m
     # Wedge: (y, z) triangle - back-bottom, back-top, front tip on the ground. Edge 1 (back-top ->
     # tip) is the slope.
     wedge = [(-0.5, 0.5), (0.5, 0.5), (-0.5, -1.5)]
