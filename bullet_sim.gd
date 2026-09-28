@@ -23,6 +23,17 @@ const TRACE_MAX := 14.0          # and never a beam across the map
 const SWEEP_SKIP := 0.05         # past our own body, so the ray does not stop on it again
 const SWEEP_OWN_TRIES := 3       # how many of our own blocks in a row the ray may skip
 const FACE_MIN_STEP := 0.0001
+## A CHEAP FIRE TRAIL BEHIND EVERY ORDINARY ROUND: the rounds alone read poorly against the ground.
+## Two crossed strips (seen from any side), additive, white-yellow at the head fading through orange
+## to nothing, drawn as ONE MultiMesh per round model beside the rounds' own - one draw call more
+## per model, no particles. Its length is the path of the last TRAIL_TIME, never more than the round
+## has flown (or it would reach back past the muzzle). A round that brings its own projectile
+## (WeaponBlock.OWN_VISUAL, the laser's bolt) carries none.
+const TRAIL_TIME := 0.03
+const TRAIL_MAX := 4.0
+const TRAIL_W0 := 0.10           # half-width at the round
+const TRAIL_W1 := 0.015          # half-width at the tail
+const OWN_VISUAL := &"own_visual"   # WeaponBlock.OWN_VISUAL; not named from there (rule 19)
 
 class Shot:
 	var dir: Vector3 = Vector3.ZERO
@@ -39,6 +50,7 @@ class Shot:
 	var kind = null                     # BulletSim.Kind
 	var facing: Basis = Basis()
 	var trace: float = TRACE_MIN
+	var flown: float = 0.0              # metres since the muzzle: caps the trail
 	var live: bool = false
 
 	## Kept for the mortar, which turns its shell once after setting the arc; the tick turns every
@@ -60,6 +72,7 @@ class Kind:
 	var origin: Vector3 = Vector3.ZERO
 	var axis: int = 2                   # which of its axes lies down the flight
 	var count: int = 0
+	var trail: MultiMeshInstance3D = null
 
 var _live: Array = []
 var _spare: Array = []
@@ -95,6 +108,7 @@ func fire(weapon: Node, template: Node3D) -> Shot:
 	s.weapon = weapon
 	s.kind = _kind_of(template)
 	s.trace = TRACE_MIN
+	s.flown = 0.0
 	s.facing = Basis()
 	s.live = true
 	_live.append(s)
@@ -144,8 +158,64 @@ func _kind_of(template: Node3D) -> Kind:
 	mm.visible_instance_count = 0
 	k.mmi.multimesh = mm
 	add_child(k.mmi)
+	if not mi.has_meta(OWN_VISUAL):
+		k.trail = MultiMeshInstance3D.new()
+		k.trail.set_meta("block_fx", true)
+		k.trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		k.trail.material_override = _trail_material()
+		var tm := MultiMesh.new()
+		tm.transform_format = MultiMesh.TRANSFORM_3D
+		tm.mesh = _trail_mesh()
+		tm.instance_count = 32
+		tm.visible_instance_count = 0
+		k.trail.multimesh = tm
+		add_child(k.trail)
 	_kinds[key] = k
 	return k
+
+static var _t_mesh: ArrayMesh = null
+static var _t_mat: StandardMaterial3D = null
+
+## Two crossed strips from the round (z 0) back to the tail (z 1, +Z: a shot looks down -Z),
+## tapering; u runs head to tail for the gradient. Built once, shared by every model.
+static func _trail_mesh() -> ArrayMesh:
+	if _t_mesh != null:
+		return _t_mesh
+	var v := PackedVector3Array()
+	var uv := PackedVector2Array()
+	for side in [Vector3.RIGHT, Vector3.UP]:
+		var a0: Vector3 = side * TRAIL_W0
+		var a1: Vector3 = side * TRAIL_W1
+		var quad := [-a0, a0, a1 + Vector3.BACK, -a1 + Vector3.BACK]
+		var uvs := [Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)]
+		for idx in [0, 1, 2, 0, 2, 3]:
+			v.append(quad[idx])
+			uv.append(uvs[idx])
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = v
+	arr[Mesh.ARRAY_TEX_UV] = uv
+	_t_mesh = ArrayMesh.new()
+	_t_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	return _t_mesh
+
+static func _trail_material() -> StandardMaterial3D:
+	if _t_mat != null:
+		return _t_mat
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
+	g.colors = PackedColorArray([Color(1.0, 0.95, 0.65), Color(1.0, 0.55, 0.15), Color(0.0, 0.0, 0.0)])
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.width = 64
+	tex.height = 4
+	_t_mat = StandardMaterial3D.new()
+	_t_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_t_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_t_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	_t_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_t_mat.albedo_texture = tex
+	return _t_mat
 
 func _physics_process(delta: float) -> void:
 	var _pf := Perf.now()
@@ -173,7 +243,9 @@ func _step(delta: float) -> void:
 		else:
 			s.global_position = to
 			s.face(to - from)
-			s.trace = clampf(from.distance_to(to), TRACE_MIN, TRACE_MAX)
+			var step: float = from.distance_to(to)
+			s.trace = clampf(step, TRACE_MIN, TRACE_MAX)
+			s.flown += step
 			if s.global_position.y < s.min_y or s.t > s.max_lifetime:
 				s.dir = Vector3.ZERO
 				if is_instance_valid(s.weapon) and s.weapon.has_method("_on_bullet_expired"):
@@ -221,6 +293,17 @@ func _sweep(s: Shot, from: Vector3, to: Vector3) -> bool:
 		return true
 	return false
 
+## Room for one more instance: the buffer doubles and keeps what it had.
+static func _room(mm: MultiMesh, n: int) -> void:
+	if n < mm.instance_count:
+		return
+	var old := PackedFloat32Array(mm.buffer)
+	mm.instance_count = mm.instance_count * 2
+	var buf := mm.buffer
+	for j in old.size():
+		buf[j] = old[j]
+	mm.buffer = buf
+
 func _draw() -> void:
 	for key in _kinds:
 		(_kinds[key] as Kind).count = 0
@@ -229,19 +312,20 @@ func _draw() -> void:
 		if k == null:
 			continue
 		var mm: MultiMesh = k.mmi.multimesh
-		if k.count >= mm.instance_count:
-			var keep_n: int = mm.instance_count
-			var old := PackedFloat32Array(mm.buffer)
-			mm.instance_count = keep_n * 2
-			var buf := mm.buffer
-			for j in old.size():
-				buf[j] = old[j]
-			mm.buffer = buf
+		_room(mm, k.count)
 		var sc: Vector3 = k.scale0
 		sc[k.axis] = k.scale0[k.axis] * (s as Shot).trace
 		var local := Transform3D(k.rot * Basis.from_scale(sc), k.origin)
-		mm.set_instance_transform(k.count, Transform3D((s as Shot).facing, (s as Shot).global_position) * local)
+		var at := Transform3D((s as Shot).facing, (s as Shot).global_position)
+		mm.set_instance_transform(k.count, at * local)
+		if k.trail != null:
+			var tm: MultiMesh = k.trail.multimesh
+			_room(tm, k.count)
+			var length: float = minf(minf((s as Shot).speed * TRAIL_TIME, TRAIL_MAX), (s as Shot).flown)
+			tm.set_instance_transform(k.count, at * Transform3D(Basis.from_scale(Vector3(1, 1, maxf(length, 0.01))), Vector3.ZERO))
 		k.count += 1
 	for key in _kinds:
 		var k: Kind = _kinds[key]
 		k.mmi.multimesh.visible_instance_count = k.count
+		if k.trail != null:
+			k.trail.multimesh.visible_instance_count = k.count
