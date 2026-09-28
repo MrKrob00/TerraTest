@@ -1840,8 +1840,24 @@ project: read it before claiming how anything works.
 - **THE SECOND FACTION IS MARLIT** (`G.FACTIONS["marlit"]`, emblem `images/faction_marlit.png`): the
   player's own low-poly picture - sea and cliffs at sunset in an octagonal steel frame - cut out of
   its black backdrop (a fill from the image's edges, then the octagon's bounds; 256 px, mipmapped
-  like Falsus's). No block or quest carries it yet; its models are to be built from scratch in its
-  own style, the gyro repair unit (`regen_marlit`) first in line.
+  like Falsus's). ITS SMALLEST BLOCK IS 2x2x2 (TerraTech's GeoCorp scale): `MARLIT_BLOCK`, the
+  1x2x2 `MARLIT_SLAB` and the two cut corner to corner, `MARLIT_HALF` / `MARLIT_HALF_SLAB`. Their
+  models are the emblem on every flat face - a dark gunmetal plate, an octagonal bevel sloping in, a
+  thin sunset line and a floor of low-poly facets (`art/emitter_models.py` `marlit_prism` /
+  `marlit_poly`: every ring is the face's own outline inset and corner-cut, so a narrow face gets a
+  stretched octagon and a wedge's side a hexagon; facets are toned by a light in the FACE's axes, so
+  all six sides read alike). THE HALF BLOCKS COLLIDE AS WEDGES (`ConvexPolygonShape3D` in anchor
+  space, so `collider_offset` returns zero for them): the 2x2x2 one's top-front cell is empty, and a
+  box would stop shots on air there; that cell joins on nothing (`connect_defaults`). Measured: cells,
+  mesh and collider span one box at 0/90/180/270 (the halves' mesh 0.11 m short at the acute tips,
+  where the chamfer cuts them - inside the collider, as it must be); a block beside the empty cell
+  does not join, beside the bottom-front one it does. A FACTION IS LICENSED BY A STORY QUEST
+  (`G.FACTION_LICENCE`, read off `quests_done` - no second list): until then its blocks cannot be
+  researched (`research_lock_code` "licence"); trophies bolt on as always. `grant_licence` hands
+  the faction's root blocks over researched. THE TECH TREE HAS ONE PAGE PER LICENSED FACTION
+  (`tech_ui._tech_layout(f)`, a switch above the tree, the header showing that page's grade): the
+  layout used to keep "the last block without a parent" as THE root, and a second root would have
+  replaced the whole Falsus tree without a word. The codex stacks every tree.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a

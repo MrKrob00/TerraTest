@@ -1297,10 +1297,13 @@ func _update_currency() -> void:
 	if has_node("%Currency"):
 		%Currency.text = str(G.money)
 	if _prog_label:
-		var gr: int = G.grade("start")
-		var xp: int = int(G.faction_xp.get("start", 0))
-		var th: Array = (G.FACTIONS["start"] as Dictionary)["xp_thresholds"]
+		var fac: String = _tech_faction if G.faction_open(_tech_faction) else "start"
+		var gr: int = G.grade(fac)
+		var xp: int = int(G.faction_xp.get(fac, 0))
+		var th: Array = (G.FACTIONS[fac] as Dictionary)["xp_thresholds"]
 		var txt := tr("Gr.%d") % gr
+		if G.open_factions().size() > 1:
+			txt = tr(String((G.FACTIONS[fac] as Dictionary)["name"])) + " " + txt
 		if gr < th.size():
 			txt += " · %d/%d XP" % [xp, int(th[gr])]   # порог СЛЕДУЮЩЕГО грейда
 		else:
@@ -1750,6 +1753,39 @@ var _tech_head: Label = null
 var _tech_scroll: ScrollContainer = null
 var _tech_graph: TechGraph = null       # холст графа (ноды + линии) внутри _tech_scroll
 var _tech_leaf := 0.0                    # счётчик листьев при раскладке (см. _tech_assign)
+## Whose page the tree shows. The switch above it lists only licensed factions and hides itself
+## while there is one; the garage header shows the grade of the page that is open.
+var _tech_faction := "start"
+var _tech_fac_row: HBoxContainer = null
+
+func _tech_fill_factions() -> void:
+	for c in _tech_fac_row.get_children():
+		c.queue_free()
+	var open: Array = G.open_factions()
+	_tech_fac_row.visible = open.size() > 1
+	for f in open:
+		var b := Button.new()
+		b.text = tr(String((G.FACTIONS[f] as Dictionary)["name"]))
+		b.toggle_mode = true
+		b.button_pressed = f == _tech_faction
+		b.custom_minimum_size = Vector2(0, 40)
+		b.add_theme_font_size_override("font_size", 15)
+		var em: Texture2D = G.faction_emblem(String(f))
+		if em != null:
+			b.icon = em
+			b.expand_icon = true
+			b.add_theme_constant_override("icon_max_width", 28)
+		b.pressed.connect(_tech_pick_faction.bind(String(f)))
+		_tech_fac_row.add_child(b)
+
+func _tech_pick_faction(f: String) -> void:
+	if f == _tech_faction:
+		_tech_fill_factions()
+		return
+	_tech_faction = f
+	_tech_selected = -1
+	_update_currency()
+	_build_tech_tab()
 
 func _build_tech_tab() -> void:
 	var body: Node = get_node_or_null("Root/Main/LeftPanel/LeftVB/Body")
@@ -1758,12 +1794,20 @@ func _build_tech_tab() -> void:
 	if _tech_root == null:
 		_tech_build_shell(body)
 	_tech_root.visible = true            # билдер зовётся только для активной вкладки ДРЕВО
-	_tech_head.text = tr("Tech tree — researched %d/%d · RP: %d") % [
-			G.researched.size(), G.BLOCK_META.size(), G.research_points]
+	if not G.faction_open(_tech_faction):
+		_tech_faction = "start"
+	_tech_fill_factions()
+	var total := 0
+	var done := 0
+	for bt in G.BLOCK_META:
+		if String((G.BLOCK_META[bt] as Dictionary)["f"]) == _tech_faction:
+			total += 1
+			done += 1 if G.researched.has(int(bt)) else 0
+	_tech_head.text = tr("Tech tree — researched %d/%d · RP: %d") % [done, total, G.research_points]
 	_tech_update_info()
 
 	# Раскладка позиций всех нод (px) деревом.
-	var pos := _tech_layout()
+	var pos := _tech_layout(_tech_faction)
 	# Холст нужного размера + перестройка нод/линий (сохраняя позицию прокрутки).
 	var keep := Vector2(_tech_scroll.scroll_horizontal, _tech_scroll.scroll_vertical)
 	var graph: TechGraph = _tech_graph
@@ -1815,6 +1859,10 @@ func _tech_build_shell(body: Node) -> void:
 	_tech_root.add_theme_constant_override("separation", 6)
 	_tech_root.visible = false
 	body.add_child(_tech_root)
+
+	_tech_fac_row = HBoxContainer.new()
+	_tech_fac_row.add_theme_constant_override("separation", 8)
+	_tech_root.add_child(_tech_fac_row)
 
 	_tech_head = Label.new()
 	_tech_head.add_theme_font_size_override("font_size", 16)
@@ -1904,28 +1952,43 @@ func _tech_node_style(state: int, selected: bool) -> StyleBoxFlat:
 
 # Позиции всех нод дерева (px). x = глубина·TCOL_W; y = ряд·TROW_H (лист по счётчику,
 # родитель — среднее детей: классическая аккуратная раскладка дерева).
-func _tech_layout() -> Dictionary:
+## ONE TREE PER FACTION, each from its own root (a block with no parent): `f` picks the faction's
+## page, "" stacks every faction's tree one under the other (the codex). It used to keep "the last
+## block without a parent" as THE root, which held only while there was one faction - a second
+## root silently replaced the whole Falsus tree.
+func _tech_layout(f: String = "") -> Dictionary:
 	var children: Dictionary = {}
-	var root := -1
+	var roots: Array = []
 	for bt in G.BLOCK_META:
+		var fac: String = String((G.BLOCK_META[bt] as Dictionary)["f"])
+		if f != "" and fac != f:
+			continue
 		if G.TECH_PARENT.has(bt):
 			var par := int(G.TECH_PARENT[bt])
 			if not children.has(par):
 				children[par] = []
 			(children[par] as Array).append(int(bt))
 		else:
-			root = int(bt)                 # без родителя = корень (кабина)
+			roots.append(int(bt))
 	for par in children:
 		(children[par] as Array).sort()    # стабильный порядок детей
+	# Faction order first (the FACTIONS table), then the block's own number.
+	var forder: Array = G.FACTIONS.keys()
+	roots.sort_custom(func(a, b): return _root_rank(a, forder) < _root_rank(b, forder))
 	var rows: Dictionary = {}
 	_tech_leaf = 0.0
-	if root >= 0:
-		_tech_assign(root, children, rows)
+	for root in roots:
+		if _tech_leaf > 0.0:
+			_tech_leaf += 1.0              # a blank row between two trees
+		_tech_assign(int(root), children, rows)
 	var pos: Dictionary = {}
 	for bt in rows:
 		pos[bt] = Vector2(TMARGIN + _tech_depth(int(bt)) * TCOL_W,
 				TMARGIN + float(rows[bt]) * TROW_H)
 	return pos
+
+func _root_rank(bt: int, forder: Array) -> int:
+	return forder.find(String((G.BLOCK_META[bt] as Dictionary)["f"])) * 1000 + bt
 
 func _tech_assign(bt: int, children: Dictionary, rows: Dictionary) -> void:
 	var kids: Array = children.get(bt, [])

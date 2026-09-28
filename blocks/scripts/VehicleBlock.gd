@@ -236,6 +236,11 @@ const BLOCK_HP: Dictionary = {
 	G.Block.STORAGE:    170,
 	G.Block.AUTO_MINER: 210,
 	G.Block.FABRICATOR: 300,
+	# Marlit hull by volume, a little over the frame's 160 a cell: fewer seams in one big part.
+	G.Block.MARLIT_BLOCK:     1400,
+	G.Block.MARLIT_SLAB:      700,
+	G.Block.MARLIT_HALF:      700,
+	G.Block.MARLIT_HALF_SLAB: 350,
 }
 const DEFAULT_HP := 90
 
@@ -265,6 +270,10 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.STORAGE:    26.0,
 	G.Block.AUTO_MINER: 40.0,
 	G.Block.FABRICATOR: 55.0,
+	G.Block.MARLIT_BLOCK:     90.0,
+	G.Block.MARLIT_SLAB:      46.0,
+	G.Block.MARLIT_HALF:      46.0,
+	G.Block.MARLIT_HALF_SLAB: 23.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
 	G.Block.RECEIVER:    12.0,

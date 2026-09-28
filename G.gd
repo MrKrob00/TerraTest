@@ -416,6 +416,37 @@ const FACTIONS := {
 }
 var _emblems: Dictionary = {}
 
+## WHICH STORY QUEST LICENSES A FACTION. Falsus is open from the start; a faction listed here opens
+## when its quest is done (Big Yellow for Marlit, `quest_arcs._arc_yellow`). The licence is read
+## off `quests_done`, which the save already carries - a second "licensed" list would be a second
+## record of one fact. Until then its blocks cannot be researched; trophies still bolt on, as
+## every trophy does.
+const FACTION_LICENCE := {"marlit": "arc_yellow"}
+
+func faction_open(f: String) -> bool:
+	if proving_ground or not FACTION_LICENCE.has(f):
+		return FACTIONS.has(f)
+	return quests_done.has(String(FACTION_LICENCE[f]))
+
+## Factions the player holds a licence for, in the table's order.
+func open_factions() -> Array:
+	var out: Array = []
+	for f in FACTIONS:
+		if faction_open(String(f)):
+			out.append(String(f))
+	return out
+
+## The licence has just been granted: the faction's root blocks (no parent, no RP) come researched
+## and one of each into the inventory, so the new page does not open on a tree of padlocks.
+func grant_licence(f: String) -> void:
+	for bt in BLOCK_META:
+		var m: Dictionary = BLOCK_META[bt]
+		if String(m["f"]) == f and not TECH_PARENT.has(bt) and not researched.has(int(bt)):
+			researched.append(int(bt))
+			block_inventory.append(int(bt))
+	mark_progress_dirty()
+	progress_changed.emit()
+
 ## The faction's emblem, or null when it has none. Loaded once.
 func faction_emblem(f: String) -> Texture2D:
 	if not _emblems.has(f):
@@ -470,6 +501,11 @@ const BLOCK_META := {
 	Block.SHOTGUN:     {"f": "start", "g": 2, "rp": 18},
 	Block.COMP_FACTORY: {"f": "start", "g": 4, "rp": 35},   # компоненты — ступень перед фабрикатором
 	Block.PACKER:      {"f": "start", "g": 3, "rp": 22},    # сбор трофеев — ступень после коллектора
+	# Marlit's root costs nothing: the licence hands it over researched (licence_faction).
+	Block.MARLIT_BLOCK:     {"f": "marlit", "g": 1, "rp": 0},
+	Block.MARLIT_SLAB:      {"f": "marlit", "g": 1, "rp": 8},
+	Block.MARLIT_HALF:      {"f": "marlit", "g": 1, "rp": 8},
+	Block.MARLIT_HALF_SLAB: {"f": "marlit", "g": 2, "rp": 12},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -503,6 +539,8 @@ const TECH_PARENT := {
 	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
 	Block.ARMOR2: Block.ARMOR,          Block.ARMOR4: Block.ARMOR2,
 	Block.ARMOR9: Block.ARMOR4,
+	Block.MARLIT_SLAB: Block.MARLIT_BLOCK,  Block.MARLIT_HALF: Block.MARLIT_BLOCK,
+	Block.MARLIT_HALF_SLAB: Block.MARLIT_HALF,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -884,6 +922,12 @@ const BLOCK_RECIPE := {
 	Block.ARMOR2:       {"c1": 3, "m3": 4},
 	Block.ARMOR4:       {"c11": 3, "c1": 4},   # Armour Segment + Cast Plating
 	Block.ARMOR9:       {"c11": 7, "c1": 9},
+	# Marlit builds of Cuprite and Silicate, where Falsus frames are Ferrite and Titanite; a 2x2x2
+	# costs about four fifths of the eight frames it replaces - one big part is the cheap way.
+	Block.MARLIT_BLOCK:     {"m1": 14, "m2": 14},
+	Block.MARLIT_SLAB:      {"m1": 7, "m2": 7},
+	Block.MARLIT_HALF:      {"m1": 7, "m2": 7},
+	Block.MARLIT_HALF_SLAB: {"m1": 4, "m2": 3},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1285,6 +1329,8 @@ const BLOCK_LABEL := {
 	Block.HALF_BLOCK: "Half Block", Block.HALF_BLOCK2: "Half Block ×2", Block.WEDGE2: "Wedge",
 	Block.ARMOR: "Armour Plate", Block.ARMOR2: "Armour Plate ×2", Block.ARMOR4: "Armour Plate ×4",
 	Block.ARMOR9: "Armour Plate ×9",
+	Block.MARLIT_BLOCK: "Marlit Block", Block.MARLIT_SLAB: "Marlit Block 1×2×2",
+	Block.MARLIT_HALF: "Marlit Half Block", Block.MARLIT_HALF_SLAB: "Marlit Half Block 1×2×2",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1329,6 +1375,10 @@ const BLOCK_DESC := {
 	Block.ARMOR2: "Armour plate, two cells. Toughness by volume.",
 	Block.ARMOR4: "Armour plate, two by two. The heaviest thing on most machines — plating everything turns a vehicle into a wall.",
 	Block.ARMOR9: "Armour plate, three by three: a whole flank in one piece, and the weight of one.",
+	Block.MARLIT_BLOCK: "Marlit's smallest block is two cells every way: eight cells of hull in one part, cheaper than eight frames.",
+	Block.MARLIT_SLAB: "Marlit block one cell thick: two by two across, for walls and narrow hulls.",
+	Block.MARLIT_HALF: "The Marlit block cut corner to corner: a 45° slope two cells tall, for noses and roofs.",
+	Block.MARLIT_HALF_SLAB: "The same Marlit slope, one cell thick.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1417,6 +1467,8 @@ func research_lock_code(bt: int) -> String:
 	var m: Dictionary = BLOCK_META.get(bt, {})
 	if m.is_empty():
 		return "nodata"
+	if not faction_open(String(m["f"])):
+		return "licence"
 	var parent := int(TECH_PARENT.get(bt, -1))
 	if parent >= 0 and not researched.has(parent):
 		return "parent"
@@ -1431,6 +1483,7 @@ func research_lock_reason(bt: int) -> String:
 	match research_lock_code(bt):
 		"done":   return tr("already researched")
 		"nodata": return tr("no data")
+		"licence": return tr("need the %s licence") % tr(String((FACTIONS[m["f"]] as Dictionary)["name"]))
 		"parent": return tr("need previous block: %s") % block_name(int(TECH_PARENT.get(bt, -1)))
 		"grade":  return tr("need grade %d") % int(m["g"])
 		"rp":     return tr("need RP: %d") % int(m["rp"])
@@ -1744,6 +1797,11 @@ enum Block {
 	COMP_FACTORY = 46,  # варит КОМПОНЕНТЫ из слитков (см. COMP_RECIPE) и отдаёт их на ленту
 	PACKER = 47,        # магнитит свободные блоки и пакует их в чанки: на ленту или в мир
 	ARMOR9 = 48,        # armour plate 3×3, a wall round its anchor
+	# MARLIT, the second faction: its smallest block is 2×2×2 (TerraTech's GeoCorp scale).
+	MARLIT_BLOCK = 49,      # 2×2×2
+	MARLIT_SLAB = 50,       # 1×2×2
+	MARLIT_HALF = 51,       # 2×2×2 cut corner to corner
+	MARLIT_HALF_SLAB = 52,  # 1×2×2 cut corner to corner
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1791,6 +1849,10 @@ enum Block {
 @onready var mortar_scene: PackedScene = preload("res://blocks/scenes/mortar.tscn")
 @onready var pound_cannon_scene: PackedScene = preload("res://blocks/scenes/pound_cannon.tscn")
 @onready var shotgun_scene: PackedScene = preload("res://blocks/scenes/shotgun.tscn")
+@onready var marlit_block_scene: PackedScene = preload("res://blocks/scenes/marlit_block.tscn")
+@onready var marlit_slab_scene: PackedScene = preload("res://blocks/scenes/marlit_slab.tscn")
+@onready var marlit_half_scene: PackedScene = preload("res://blocks/scenes/marlit_half.tscn")
+@onready var marlit_half_slab_scene: PackedScene = preload("res://blocks/scenes/marlit_half_slab.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -1819,7 +1881,8 @@ const BLOCK_CATEGORIES := {
 		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
-		Block.SUPPORT, Block.ROT_SUPPORT],
+		Block.SUPPORT, Block.ROT_SUPPORT,
+		Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR,
@@ -1878,6 +1941,10 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MORTAR: return mortar_scene
 		Block.POUND_CANNON: return pound_cannon_scene
 		Block.SHOTGUN: return shotgun_scene
+		Block.MARLIT_BLOCK: return marlit_block_scene
+		Block.MARLIT_SLAB: return marlit_slab_scene
+		Block.MARLIT_HALF: return marlit_half_scene
+		Block.MARLIT_HALF_SLAB: return marlit_half_slab_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
