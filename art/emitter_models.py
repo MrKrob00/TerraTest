@@ -734,10 +734,8 @@ def build_collector(pk, img):
 # ceiling and wall, the fireboxes - re-coloured by processor.gd, never batched).
 #
 # SELLER: one intake, the right-back-bottom quarter, from the back and from the right. So that cell
-# is an open MOUTH at belt height, facing back and right, under a glass TUBE that carries what is
-# sold up through the roof to an uplink - sold goods leave the world, and the model says where to.
-# The rest is the VAULT, an L round the mouth: a trade screen (gold coin, green bars) on the front,
-# a round vault door on the left. Part: seller_body.
+# is an open MOUTH at belt height under an open LIFT SHAFT the goods ride up to an uplink on the roof
+# (build_seller). The rest is the VAULT, an L round the mouth.
 CH_Y = BELT_TOP          # the channel / mouth deck top: the belts' own deck height
 
 
@@ -849,33 +847,67 @@ def build_processor(pk, img):
     return parts
 
 
+SL_TOP = 0.95           # the vault's top and the roof's underside: the shaft ends here
+SL_SHAFT_R = 0.30       # the lift shaft's rails stand on this circle; the goods ride inside it
+SL_BEZEL = 0.06         # how far the screen's bezel stands off the vault's front
+SL_SCREEN = (-1.34, 0.34, 0.2, 0.84)   # the glass: x0, x1, y0, y1 (seller.tscn's Label3D sits on it)
+
+
 def build_seller(pk, img):
-    parts = {"seller_body": []}
+    """THE SALE IS SHOWN, NOT IMPLIED. Goods come in at belt height through the MOUTH (the one
+    intake quarter, right-back-bottom, from the back and the right), RIDE UP an open LIFT SHAFT - four
+    rails and two rings, so they are seen going - into the roof, and are beamed off at the UPLINK on
+    top: a gold ring there spins up with every sale (seller.gd) and the SCREEN across the front
+    flashes and says what went for how much (the scene's Label3D stands on its glass; a coin and a
+    chart painted there were replaced by a real display, the player's call). The rest is the vault,
+    an L round the mouth, with a round vault door on the left.
+    Parts: seller_body (still), seller_ring (turns), seller_screen (flashed, never batched)."""
+    parts = {"seller_body": [], "seller_ring": [], "seller_screen": []}
     b = parts["seller_body"]
-    top = 0.95
-    # The vault: an L round the mouth - the left column full depth, and the front-right cell.
-    # One trade screen on the front (the left piece's), a plain grille on everything else.
-    for lo, hi, front in (((-1.5, -0.5, -1.5), (-0.5, top, 0.5), "sell_panel"),
-                          ((-0.5, -0.5, -1.5), (0.5, top, -0.5), "plain_side")):
+    top = SL_TOP
+    # The vault: the left column full depth, and the front-right cell, both stopping short of the
+    # front face by SL_BEZEL so the screen's bezel stands on it inside the cell.
+    for lo, hi in (((-1.5, -0.5, -1.5 + SL_BEZEL), (-0.5, top, 0.5)),
+                   ((-0.5, -0.5, -1.5 + SL_BEZEL), (0.5, top, -0.5))):
         v = []
         cham_box(v, lo, hi, 0.067, "vault", None, "dark", "dark_edge")
-        restyle(v, "vault", [((0, -1), front), ((-1, 0), "vault_door"), ((1, 0), "plain_side"),
+        restyle(v, "vault", [((0, -1), "plain_side"), ((-1, 0), "vault_door"), ((1, 0), "plain_side"),
                              ((0, 1), "plain_side")])
         b += v
+    # THE SCREEN: one wide display across the whole front in a blue bezel, blank - the game writes
+    # on it (the scene's Label3D stands on its glass) - with a row of status lamps under it.
+    sx0, sx1, sy0, sy1 = SL_SCREEN
+    th.box(b, (sx0 - 0.08, sy0 - 0.08, -1.5), (sx1 + 0.08, sy1 + 0.08, -1.5 + SL_BEZEL), "blue")
+    glow_quad(parts["seller_screen"], ((sx0 + sx1) / 2, (sy0 + sy1) / 2, -1.504), (-1, 0, 0),
+              (0, 1, 0), (sx1 - sx0) / 2, (sy1 - sy0) / 2, style="screen")
+    glow_quad(b, ((sx0 + sx1) / 2, sy0 - 0.2, -1.5 + SL_BEZEL - 0.004), (-1, 0, 0), (0, 1, 0),
+              0.55, 0.06, style="lamp_strip")
     # The mouth: the right-back cell, open to the back and the right at the belts' deck height.
-    cham_box(b, (-0.5, -0.5, -0.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "dark", None, "dark", "dark_edge")
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "slab_side", None, "dark",
+             "dark_edge")
     belt_strip(b, (-0.5, CH_Y - 0.14, -0.5), (0.5, CH_Y, 0.5), "belt", (0, 0, -1))
-    # The tube: glass between two dark collars, from over the mouth up into the roof.
-    lathe_y(pk, img, b, [(0.36, 0.40), (0.36, 0.48), (0.30, 0.50), (0.30, 0.86), (0.36, 0.88),
-                         (0.36, top)], BLUE_RAMP, sides=8,
-            ring_ramps={0: METAL_RAMP, 1: METAL_RAMP, 3: METAL_RAMP, 4: METAL_RAMP})
-    # The roof, and on it the uplink the tube feeds: a blue emitter with a gold ring.
+    # The lift shaft over it: four blue rails and two rings, open between them.
+    for k in range(4):
+        a = (k + 0.5) * math.pi / 2
+        x, z = SL_SHAFT_R * math.cos(a), SL_SHAFT_R * math.sin(a)
+        th.box(b, (x - 0.035, CH_Y, z - 0.035), (x + 0.035, top, z + 0.035), "blue")
+    for y in (0.40, 0.70):             # two rings, their outer wall and top: all that is seen
+        lathe_y(pk, img, b, [(SL_SHAFT_R + 0.05, y), (SL_SHAFT_R + 0.05, y + 0.04),
+                             (SL_SHAFT_R - 0.02, y + 0.04)], METAL_RAMP, sides=8)
+    # The roof, and on it the uplink the shaft feeds: a blue mast and an emitter tip.
     frustum(b, crect(-1.48, 0.48, -1.48, 0.48, 0.14, top), crect(-1.3, 0.3, -1.3, 0.3, 0.1, 1.2),
             "blue", "bevel", "blue")
+    lathe_y(pk, img, b, [(0.22, 1.2), (0.22, 1.25), (0.1, 1.29), (0.08, 1.42), (0.16, 1.45),
+                         (0.16, 1.48), (0.0, 1.5)], BLUE_RAMP, sides=8, ring_ramps={0: METAL_RAMP})
+    # Two short aerials on the roof's front corners, gold-tipped.
+    for x in (-1.2, 0.2):
+        th.box(b, (x - 0.025, 1.2, -1.2 - 0.025), (x + 0.025, 1.44, -1.2 + 0.025), "dark")
+        th.box(b, (x - 0.045, 1.44, -1.2 - 0.045), (x + 0.045, 1.5, -1.2 + 0.045), "blue")
+    # The ring round the mast: gold with dark ticks, so its turn is seen.
     gold = [th.GOLD_LO, th.GOLD, th.GOLD, th.GOLD]
-    lathe_y(pk, img, b, [(0.26, 1.2), (0.26, 1.26), (0.16, 1.32), (0.2, 1.38), (0.2, 1.42),
-                         (0.08, 1.5), (0.0, 1.5)], BLUE_RAMP, sides=8,
-            ring_ramps={0: METAL_RAMP, 2: gold, 3: gold})
+    ticks = {(i, 1): th.METAL[1] for i in range(0, 8, 2)}
+    lathe_y(pk, img, parts["seller_ring"], [(0.14, 1.31), (0.28, 1.32), (0.28, 1.37), (0.14, 1.38),
+                                            (0.14, 1.31)], gold, sides=8, marks=ticks)
     return parts
 
 

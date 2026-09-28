@@ -1739,10 +1739,16 @@ project: read it before claiming how anything works.
   `HatchOut`, `Gauge`; `moving_parts`), shrinking the metre-wide cargo bubble to `IN_FURNACE` in the
   mouth; `upgrade()` stays in the tick, so the product never waits on a tween. The fire grates on the
   outer walls ARE the old red/green lamp (`_set_processing_visual`, part `processor_glow`). Rejected
-  on the way: a hood over a straight channel, a hot bed in an open channel, an open gallery. The seller's one
-  intake is the right-back-bottom quarter, from the back and the right: an open MOUTH at belt height
-  under a glass TUBE up through the roof to a gold-ringed uplink, inside an L-shaped vault with one
-  trade screen (gold coin, green bars) and a round vault door. Measured on the engine: three ore
+  on the way: a hood over a straight channel, a hot bed in an open channel, an open gallery. The
+  SELLER SHOWS THE SALE TOO: its one intake is the right-back-bottom quarter, from the back and the
+  right - an open MOUTH at belt height - and the goods RIDE UP an open lift shaft (four rails, two
+  rings) into the roof (`seller._on_item_received`), are beamed off at the UPLINK on top (the
+  gold-and-green glitch plays there, marker `uplink_top`), a gold ring round its mast spins up
+  (`Ring`, `moving_parts`), and a WIDE SCREEN across the whole front says what went for how much -
+  the scene's `Label3D` stands on its glass, flashing gold on a sale and settling back to terminal
+  green; its "Cash" line is `tr("Cash: %s")`. A coin and a chart painted on a panel were there first
+  and the player asked for a real display instead. Around it: a round vault door on the left, status
+  lamps under the screen, hazard slats on the mouth's base, two aerials. Measured on the engine: three ore
   through receiver, belt, processor and belt into the seller paid 75 (three Ferrite ingots) both
   straight through the channel and with the processor beside the line.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from

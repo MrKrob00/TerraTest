@@ -158,7 +158,9 @@ built round the machine:
   - A hood over the channel hid the work.
   - A hot bed in an open channel was not a smelter.
   - An open gallery split the furnace into pieces.
-- **The seller.** Its one intake corner is an open mouth under the tube that carries sold goods
-  away.
+- **The seller.** Its one intake corner is an open mouth, and the sale is shown the same way: the
+  goods ride up an open lift shaft, are beamed off at an uplink on the roof, and a wide screen
+  across the front says what went for how much. It is a real display the game writes on, not a
+  painted coin.
 
 Everything else is closed: a wall, a vault, a furnace.
