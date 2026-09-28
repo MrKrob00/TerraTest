@@ -567,6 +567,17 @@ def style_px(style, x, y, w, h, d):
         if 1 <= y < h - 1 and 2 <= x < w - 2:
             return METAL[1] if (x // 2) % 2 else (ORANGE if y < h - 2 else ORANGE_LO)
         return METAL[2]
+    if style == "recv_floor":
+        # The receiver's deck: the belt's own ribbed rubber, and two chevrons at the front edge
+        # pointing out (+u) to the conveyor it feeds.
+        if d < 1.0:
+            return METAL[2]
+        for u0 in (w - 13.0, w - 7.0):
+            a = (x + 0.5) - u0
+            off = abs(y + 0.5 - h / 2)
+            if 0 <= a < 6 and abs(off - (6 - a) * 0.9) < 1.2 and off < 7:
+                return ORANGE if a > 1 else ORANGE_LO
+        return METAL[2] if (x % 4) == 0 else METAL[1]
     if style == "recv_pad":
         # The receiver's pad: dark rubber with the blue octagon the old model carried.
         if d < 1.0:
