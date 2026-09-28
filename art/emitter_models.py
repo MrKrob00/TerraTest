@@ -31,6 +31,10 @@ SUPPORT / ROT_SUPPORT - after TerraTech's GSO anchor: a round base under a deck 
 fixed one, round on the turning one), a telescoping ram and a foot (see the section below).
   parts: <name>_body (still), <name>_sleeve / _leg (stretched), <name>_foot (moves), rot's _stator
 
+GENERATOR - the first model built by the measured rules in docs/ART_STYLE.md rather than after one
+reference: a dark chamfered cube, a blue housing with a turbine, fire behind a grate on every wall.
+  parts: generator_body (still), generator_rotor (turns), generator_fire (tinted, never batched)
+
 Every part fits the block's 1 m cell at its highest pose (the rule the turret heads follow).
 """
 import json
@@ -437,7 +441,119 @@ def build_rot_support(pk, img):
     return parts
 
 
+# ── the generator ───────────────────────────────────────────────────────────────────────────────
+# Built to the style rules in docs/ART_STYLE.md, not after any one reference: a DARK CHAMFERED CUBE
+# (it joins on every face, so its walls stand on the cell's faces like the frame block's), a GSO
+# BLUE HOUSING on top as the weapons carry, and ONE POP COLOUR that says what the block does - the
+# amber of fire behind a grate on every wall, lit only while it burns. The turbine in the housing's
+# well spins up with the fire. Parts: generator_body (still), generator_rotor (turns),
+# generator_fire (re-coloured by generator.gd, never batched).
+GEN_TOP = 0.20           # the cube's top; the housing stands on it
+GEN_WELL_Y = 0.40        # the housing's top, where the rotor turns (generator.gd reads nothing)
+
+
+def cham_box(faces, lo, hi, c, side, top, bottom, edge):
+    """A box with EVERY edge chamfered by c: six inset faces, twelve edge strips, eight corners."""
+    x = (lo[0], hi[0])
+    y = (lo[1], hi[1])
+    z = (lo[2], hi[2])
+    centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+
+    def pt(ix, iy, iz, pull):
+        # the corner (ix, iy, iz) of the box, pulled in by c along every axis except `pull`
+        s = [1 if ix else -1, 1 if iy else -1, 1 if iz else -1]
+        p = [x[ix], y[iy], z[iz]]
+        for a in range(3):
+            if a != pull:
+                p[a] -= s[a] * c
+        return tuple(p)
+
+    for a in range(3):
+        for side_i in (0, 1):
+            q = []
+            for u, v in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                idx = [0, 0, 0]
+                idx[a] = side_i
+                idx[(a + 1) % 3], idx[(a + 2) % 3] = u, v
+                q.append(pt(idx[0], idx[1], idx[2], a))
+            n = [0.0, 0.0, 0.0]
+            n[a] = 1.0 if side_i else -1.0
+            if a == 1:
+                st, uh = (top if side_i else bottom), (1, 0, 0)
+            else:
+                st, uh = side, th.cross((0, 1, 0), tuple(n))
+            faces.append(th.Face(th.outward(q, centre), st, u_hint=uh))
+    for a in range(3):                       # the edge runs along axis a
+        b, cc = (a + 1) % 3, (a + 2) % 3
+        for sb in (0, 1):
+            for sc in (0, 1):
+                q = []
+                for sa in (0, 1):
+                    for pull in (b, cc):
+                        idx = [0, 0, 0]
+                        idx[a], idx[b], idx[cc] = sa, sb, sc
+                        q.append(pt(idx[0], idx[1], idx[2], pull))
+                q = [q[0], q[1], q[3], q[2]]
+                uh = [0, 0, 0]
+                uh[a] = 1
+                faces.append(th.Face(th.outward(q, centre), edge, u_hint=tuple(uh)))
+    for ix in (0, 1):
+        for iy in (0, 1):
+            for iz in (0, 1):
+                tri = [pt(ix, iy, iz, a) for a in range(3)]
+                faces.append(th.Face(th.outward(tri, centre), edge))
+
+
+def octo(half, ch, y):
+    """A chamfered square at height y, half-width `half`, corners cut by ch."""
+    p, _ = th.octagon(-half, half, -half, half, ch)
+    return [(u, y, v) for u, v in p]
+
+
+def build_generator(pk, img):
+    parts = {"generator_body": [], "generator_rotor": [], "generator_fire": []}
+    body, rotor, fire = parts["generator_body"], parts["generator_rotor"], parts["generator_fire"]
+    cham_box(body, (-0.5, -0.5, -0.5), (0.5, GEN_TOP, 0.5), 0.067, "gen_side", "dark", "dark",
+             "dark_edge")
+    # The housing: a chamfered frustum, the weapons' blue, its corners the lighter bevel.
+    lo, hi = octo(0.45, 0.13, GEN_TOP), octo(0.31, 0.09, GEN_WELL_Y)
+    centre = (0.0, (GEN_TOP + GEN_WELL_Y) / 2, 0.0)
+    for i in range(8):
+        j = (i + 1) % 8
+        q = [lo[i], lo[j], hi[j], hi[i]]
+        n = th.newell(th.outward(q, centre))
+        uh = th.cross((0, 1, 0), th.norm((n[0], 0.0, n[2])))
+        body.append(th.Face(th.outward(q, centre), "bevel" if i % 2 else "blue", u_hint=uh))
+    body.append(th.Face(th.outward(hi, (0.0, 0.0, 0.0)), "gen_top", u_hint=(1, 0, 0)))
+    # The firebox windows: one on every wall, standing a hair proud of it.
+    for k in range(4):
+        a = k * math.pi / 2
+        nx, nz = math.cos(a), math.sin(a)
+        tx, tz = -nz, nx
+        off = 0.5 + 0.004
+        q = [(nx * off + tx * s, yy, nz * off + tz * s) for s, yy in
+             ((-0.30, -0.40), (0.30, -0.40), (0.30, -0.17), (-0.30, -0.17))]
+        fire.append(th.Face(th.outward(q, (0.0, -0.28, 0.0)), "gen_fire", u_hint=(tx, 0.0, tz)))
+    # The rotor: an octagonal hub and six pitched blades over the well.
+    hub = []
+    th.prism(hub, -0.06, 0.06, -0.06, 0.06, GEN_WELL_Y + 0.07, GEN_WELL_Y, 0.03, side="dark",
+             cap_front=None, cap_back="cap_bolt")
+    rotor += along_y(hub)
+    for k in range(6):
+        a = k * math.pi / 3
+        ca, sa = math.cos(a), math.sin(a)
+        pts = []
+        for r, w in ((0.06, 0.035), (0.26, 0.05)):
+            for s in (-1, 1):
+                # the blade's edge rises on one side: a 25 deg pitch, so it reads as a turbine
+                pts.append((ca * r - sa * s * w, GEN_WELL_Y + 0.035 + s * w * 0.47, sa * r + ca * s * w))
+        q = [pts[0], pts[1], pts[3], pts[2]]
+        rotor.append(th.Face(th.outward(q, (0.0, GEN_WELL_Y - 1.0, 0.0)), "blade", u_hint=(ca, 0.0, sa)))
+    return parts
+
+
 BLOCKS = {
+    "generator": (59, build_generator, 256),
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
     "radar": (23, build_radar, 256),

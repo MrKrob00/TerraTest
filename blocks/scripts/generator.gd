@@ -15,6 +15,55 @@ const ENERGY_INGOT := 80.0
 var _burn_left: float = 0.0
 var _burn_energy: float = 0.0
 
+# The model says whether it burns (art/emitter_models.py build_generator): fire behind the grate on
+# every wall, painted LIT and darkened here when cold, and a turbine in the housing's well that
+# spins up with the fire and runs down after it. `Rotor` moves (moving_parts), `Fire` is
+# re-coloured per block (unbatched, its own material copy - a shared one would light every
+# generator in the world at once).
+const FIRE_COLD := Color(0.20, 0.18, 0.22)
+const ROTOR_SPIN := 9.0          # rad/s at full fire
+const ROTOR_EASE := 6.0          # rad/s per second: full speed in half a burn (BURN_TIME)
+var _rotor: Node3D = null
+var _fire: MeshInstance3D = null
+var _fire_mat: StandardMaterial3D = null
+var _spin: float = 0.0
+var _flick: float = 0.0
+
+func unbatched() -> Array:
+	return [_fire] if _fire != null else []
+
+func _ready() -> void:
+	moving_parts = true
+	_rotor = get_node_or_null("Rotor") as Node3D
+	_fire = get_node_or_null("Fire") as MeshInstance3D
+	if _fire != null and _fire.mesh != null:
+		var m := _fire.mesh.surface_get_material(0) as StandardMaterial3D
+		if m != null:
+			_fire_mat = m.duplicate()
+			_fire_mat.albedo_color = FIRE_COLD
+			_fire.material_override = _fire_mat
+	super._ready()
+
+func _burning() -> bool:
+	return _burn_left > 0.0 and current_item != null and _factory_active()
+
+func _process(delta: float) -> void:
+	push_retry_tick(delta)
+	var on := _burning()
+	if not on and _spin <= 0.0:
+		if _fire_mat != null and _fire_mat.albedo_color != FIRE_COLD:
+			_fire_mat.albedo_color = FIRE_COLD
+		return
+	_spin = move_toward(_spin, ROTOR_SPIN if on else 0.0, ROTOR_EASE * delta)
+	if _rotor != null:
+		_rotor.rotate_y(_spin * delta)
+	if _fire_mat != null:
+		var target := FIRE_COLD
+		if on:
+			_flick = move_toward(_flick, randf_range(0.78, 1.0), delta * 4.0)
+			target = Color(_flick, _flick, _flick)
+		_fire_mat.albedo_color = _fire_mat.albedo_color.lerp(target, clampf(delta * 5.0, 0.0, 1.0))
+
 # КОМПОНЕНТ в топку не берём вовсе. Он не топливо: сжечь деталь, которая стоит двух слитков,
 # ради энергии одной руды — это не выбор игрока, а потеря по невнимательности. Отказ виден:
 # компонент остаётся на ленте и едет дальше.

@@ -1687,6 +1687,15 @@ project: read it before claiming how anything works.
   every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
   what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
   thumbnails already did - without it the crystal was baked white.
+- **THE BLOCK STYLE IS MEASURED, AND NEW MODELS ARE BUILT BY IT** (`docs/ART_STYLE.md`): 18 of the
+  artist's models, area-weighted, are 78% dark violet-grey metal, 12% GSO blue, 3% one pop colour; no
+  light is painted (up / side / down faces all read ~0.22), shape reads by edge lines and chamfers
+  (22% of the surface); 40-150 triangles at 38-48 px/m. THE GENERATOR is the first model built from
+  those rules rather than traced (`art/emitter_models.py` generator): a full chamfered cube (it joins
+  on every face), a low blue housing with a turbine in its well, and amber fire behind a grate on
+  every wall - the one pop colour, LIT ONLY WHILE IT BURNS (`generator.gd`: `Fire` re-coloured per
+  block and unbatched, `Rotor` moving). Measured on the engine: cold and still before, lit and
+  spinning while a coal burns, 40 energy, cold and still after.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
