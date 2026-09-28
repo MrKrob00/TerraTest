@@ -1332,7 +1332,7 @@ const BLOCK_DESC := {
 	Block.PROCESSOR: "Smelts ore into ingots.",
 	Block.COMP_FACTORY: "Makes components out of ingots. Every recipe is exactly two DIFFERENT materials — that is how the machine tells its inputs apart.",
 	Block.FABRICATOR: "Builds finished blocks out of two materials.",
-	Block.SCRAPPER: "Breaks blocks back down into ingots — half of what the recipe cost.",
+	Block.SCRAPPER: "Sucks loose blocks in through its pipe and breaks them down into ingots — half of what the recipe cost.",
 	Block.STORAGE: "Holds one kind of resource.",
 	Block.SELLER: "Sells what reaches it. A stationary block: on the ground it is the core of a new base.",
 	Block.AUTO_MINER: "Stationary miner: stands ON a vein and works it without you.",

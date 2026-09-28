@@ -1,33 +1,52 @@
 [gd_scene format=3 uid="uid://scrapperblk1"]
 
 [ext_resource type="Script" path="res://blocks/scripts/scrapper.gd" id="1_scr"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_body.tres" id="2_mesh"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_roller_a.tres" id="3_ra"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_roller_b.tres" id="4_rb"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_body.tres" id="2_m"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_roller_a.tres" id="3_m"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/scrapper_roller_b.tres" id="4_m"]
 
-[sub_resource type="BoxShape3D" id="BoxShape3D_s"]
+[sub_resource type="BoxShape3D" id="BoxShape3D_big"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_suck"]
+radius = 6.0
 
 [node name="scrapper" type="RigidBody3D"]
 collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_scr")
 block = 37
-input_faces = 15
-output_faces = 15
+input_faces = 0
+output_faces = 0
+port_defaults = {
+"0,0,-1|0": 2
+}
+cells_center = Vector3(-0.5, 0.5, -0.5)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-shape = SubResource("BoxShape3D_s")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("BoxShape3D_big")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = ExtResource("2_mesh")
+mesh = ExtResource("2_m")
 
 [node name="RollerA" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0.09)
-mesh = ExtResource("3_ra")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.76, -0.665)
+mesh = ExtResource("3_m")
 
 [node name="RollerB" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, -0.09)
-mesh = ExtResource("4_rb")
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.76, -0.935)
+mesh = ExtResource("4_m")
 
 [node name="item_slot" type="Marker3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0)
+
+[node name="nozzle" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 1.0, 0.36)
+
+[node name="suction" type="Area3D" parent="nozzle"]
+collision_layer = 0
+collision_mask = 10
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="nozzle/suction"]
+shape = SubResource("SphereShape3D_suck")

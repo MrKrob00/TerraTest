@@ -782,7 +782,8 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 ## отдавала ему пару клеток поперёк того места, где он стоял. Замерено: при любом повороте сетка
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
-	if block == G.Block.PROCESSOR or block == G.Block.SELLER or block == G.Block.FABRICATOR:
+	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.COMP_FACTORY,
+			G.Block.SCRAPPER]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

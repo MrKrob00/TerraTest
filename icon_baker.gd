@@ -62,7 +62,8 @@ func _ready() -> void:
 ## 23: the x2's slab sized to its one-cell height.
 ## 38: the storage got a model; the supports' decks plain (the fixed one bolted at the corners).
 ## 39: draft one-cell models for the component plant, the scrapper and the packer.
-const RECIPE := 39
+## 40: the component plant and the scrapper are 2x2x2; the fabricator got its model.
+const RECIPE := 40
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
