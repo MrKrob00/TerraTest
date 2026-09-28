@@ -1886,6 +1886,13 @@ project: read it before claiming how anything works.
   nodes: the same damage from gun, rocket and heavy cannon, and the laser's hit log identical shot
   for shot (six hits, same blocks, same positions). The pool-era rules — hide the idle bullet,
   `monitoring` off, stop its tick — went with the nodes.
+- **EVERY ORDINARY ROUND DRAGS A CHEAP FIRE TRAIL** (`BulletSim` `TRAIL_*`): the rounds alone read
+  as faint dark dashes against the ground. Two crossed strips (seen from any side), additive,
+  white-yellow at the head fading through orange to nothing, drawn as ONE MultiMesh per round model
+  beside the rounds' own - one draw call more per model, no particles (rule 11). Its length is the
+  path of the last `TRAIL_TIME`, capped at `TRAIL_MAX` and at what the round has flown (`Shot.flown`),
+  so it never reaches back past the muzzle. A round with its own projectile (`OWN_VISUAL`, the
+  laser's bolt) carries none. Checked on the real driver: a stream of gun rounds with and without.
 - **MEASURE A PHYSICS COST BY ALTERNATING, NEVER BY ONE PASS.** A single before/after of that same
   flag read 48 ms against 2 — and it was an artefact: chunk streaming was still running and landed
   in `TIME_PHYSICS_PROCESS`. Alternating OFF/ON six times over the same 200 nodes gave
