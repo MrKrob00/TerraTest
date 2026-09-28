@@ -1,13 +1,9 @@
 [gd_scene format=3 uid="uid://dj3llv78pt3oh"]
 
 [ext_resource type="Script" uid="uid://tr8g557bwkj2" path="res://blocks/scripts/collector.gd" id="1_wdhqu"]
-[ext_resource type="ArrayMesh" uid="uid://38vxybb43fdt" path="res://objects/GSO_Cube_004.res" id="2_ri0qi"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/collector_body.tres" id="2_ri0qi"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
-
-[sub_resource type="TorusMesh" id="TorusMesh_6hi42"]
-inner_radius = 0.743
-outer_radius = 0.96
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_p6pux"]
 transparency = 1
@@ -56,11 +52,6 @@ shape = SubResource("BoxShape3D_h01jy")
 
 [node name="Block" type="MeshInstance3D" parent="." unique_id=1097756131]
 mesh = ExtResource("2_ri0qi")
-skeleton = NodePath("../..")
-
-[node name="Block" type="MeshInstance3D" parent="Block" unique_id=1442614339]
-transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0.477, 0)
-mesh = SubResource("TorusMesh_6hi42")
 skeleton = NodePath("../..")
 
 [node name="Block2" type="MeshInstance3D" parent="Block" unique_id=1336660518]
