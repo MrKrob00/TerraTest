@@ -257,6 +257,44 @@ def obox(faces, centre, ax, half, styles):
             k += 1
 
 
+def _sleeve(faces, lo, hi, along, wall=0.018, style="dark"):
+    """A hollow box open at both ends along axis `along` (0 x, 1 y, 2 z): the four walls round it."""
+    for ax in range(3):
+        if ax == along:
+            continue
+        for side in (0, 1):
+            a, b = list(lo), list(hi)
+            if side == 0:
+                b[ax] = lo[ax] + wall
+            else:
+                a[ax] = hi[ax] - wall
+            skip = ("+x", "-x") if along == 0 else (("+y", "-y") if along == 1 else ("+z", "-z"))
+            th.box(faces, tuple(a), tuple(b), style, skip=skip)
+
+
+def regen2_mounts():
+    """The sleeves that hold the rings to the cell - one per face, each a short open tunnel the band
+    slides through, so every ring can still turn about its own axis. Front and back: one tunnel down
+    the Z axis, where all four rings pass one behind the other. Left and right: round the horizontal
+    ring, its outer wall on the face. Top and bottom: round the vertical ring, on a stub to the face."""
+    f = []
+    rw = REGEN2_WIDTH + 0.022              # a sleeve's inner half-size across the band
+    R0, R1 = REGEN2_R[0], REGEN2_R[1]
+    for sg in (1, -1):
+        # left / right, round the horizontal ring (radius R0) where it crosses x = +-R0
+        x0, x1 = sorted((sg * (R0 - REGEN2_DEPTH - 0.026), sg * 0.5))
+        _sleeve(f, (x0, -rw, -0.09), (x1, rw, 0.09), 2)
+        # top / bottom, round the vertical ring (radius R1), and the stub up to the face
+        y0, y1 = sorted((sg * (R1 - REGEN2_DEPTH - 0.026), sg * (R1 + REGEN2_DEPTH + 0.026)))
+        _sleeve(f, (-rw, y0, -0.09), (rw, y1, 0.09), 2)
+        s0, s1 = sorted((sg * (R1 + REGEN2_DEPTH + 0.026), sg * 0.5))
+        th.box(f, (-0.05, s0, -0.05), (0.05, s1, 0.05), "blue")
+        # front / back, the tunnel down Z through which all four rings pass
+        z0, z1 = sorted((sg * (REGEN2_R[3] - REGEN2_DEPTH - 0.03), sg * 0.5))
+        _sleeve(f, (-0.075, -0.075, z0), (0.075, 0.075, z1), 2, style="blue")
+    return f
+
+
 def build_regen2(pk, img):
     parts = {}
     for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, REGEN2_R)):
@@ -264,6 +302,7 @@ def build_regen2(pk, img):
         square_ring(faces, glow, ang, R, REGEN2_DEPTH, REGEN2_WIDTH)
         parts["regen2_ring%d" % i] = faces
         parts["regen2_glow%d" % i] = glow
+    parts["regen2_mount"] = regen2_mounts()
     parts["regen2_crystal"] = []
     lathe_y(pk, img, parts["regen2_crystal"], [(0.0, -0.21), (0.13, -0.04), (0.13, 0.04), (0.0, 0.21)],
             CORE_RAMP, sides=6, cell=4)

@@ -443,9 +443,6 @@ def _cube(bx, by):
 EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet, "fab_side": _cube}
 
 
-BRASS = [(96, 66, 30), (140, 100, 44), (184, 138, 62), (218, 176, 88), (242, 214, 138), (252, 236, 186)]
-
-
 def _ramp_at(ramp, f):
     """The colour at position f along a ramp of colours, blended between its two neighbours."""
     f = max(0.0, min(len(ramp) - 1.0, f))
@@ -831,17 +828,17 @@ def style_px(style, x, y, w, h, d):
         return jitter(METAL[3], 2)
     if style[:5] == "rband":
         # The repair ring's outer face, drawn ACROSS the band, not along it (the player's call): dark
-        # plates whose light runs from one end to the other, and at a joint a BRASS band right across
-        # with a bolt at each edge - a warm second accent between the blue sides and the green energy.
-        # A line along the band read as one long stripe.
+        # plates whose light runs from one end to the other, and at a joint a blue band right across
+        # with a bolt at each edge. A line along the band read as one long stripe; brass bands were
+        # tried as a second accent and turned down.
         k = int(style[5])
         joint = style.endswith("j")
         fx = (x + 0.5) / w
         if joint and abs(x + 0.5 - w / 2.0) <= 2.5:
             if 1 <= y <= 2 or h - 3 <= y <= h - 2:
                 if abs(x + 0.5 - w / 2.0) <= 1.0:
-                    return METAL[1]
-            return _ramp_at(BRASS, 0.6 + k * 0.7 + 0.8 * (1.0 - (x + 0.5) / w))
+                    return RIM[3]
+            return _ramp_at([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI], 1.0 + k * 0.7)
         if x < 1:
             return METAL[0]                                  # the seam between plates
         if y < 1 or y >= h - 1:
