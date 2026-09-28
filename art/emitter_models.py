@@ -1196,106 +1196,83 @@ def build_packer(pk, img):
     return parts
 
 
-# ── the battery ─────────────────────────────────────────────────────────────────────────────────
-# A CELL IN A CAGE: it joins on all six faces, so it is the wireless charger's frame (cage()) with
-# a battery standing in it - a round cell with a blue top band, the + nub up at the cell's top face
-# and the flat - end on the bottom one, so both of those faces meet a neighbour flush too. Round
-# the body four green charge rings (battery_seg, one mesh on nodes Seg0..3) light by the block's own
-# charge (battery.gd); a dark ring leaves its slot showing, so an empty battery still reads as one.
-BAT_R = 0.35                     # the cell's radius, inside the frame's window
-BAT_SEG_Y = (-0.34, -0.22, -0.10, 0.02)   # charge ring centres, bottom up (battery.tscn Seg0..3)
-BAT_SEG_HH = 0.03
+# ── the battery and the wireless charger ────────────────────────────────────────────────────────
+# BOTH JOIN ON ALL SIX FACES, AND THE BLOCK ITSELF REACHES THEM - no frame round it (a cage of posts
+# and beams was tried and the player turned it down). Round parts have 12 sides with their FLATS ON
+# THE CELL'S FACES (flat_r, 12 sides), so a round body meets a side neighbour on a face, not an edge.
+# BATTERY - a cell as wide as the cell: flats on the four sides, the flat - end on the bottom face,
+#   the + nub up to the top face, a blue top band. Four charge rings sit in GROOVES round the body
+#   (battery_seg, one mesh on nodes Seg0..3) and light by the block's own charge (battery.gd); a dark
+#   ring leaves its groove showing, so an empty battery still reads as one.
+# WIRELESS CHARGER - a spool: two round plates the full width of the cell top and bottom (they meet
+#   all six neighbours), a mast between them, a big cyan emitter orb (the beam's colour) and a ring
+#   round it that SPINS WHILE ENERGY FLOWS (wireless_charger.gd, node `Ring`).
+BAT_SEG_Y = (-0.32, -0.20, -0.08, 0.04)   # charge ring centres, bottom up (battery.tscn Seg0..3)
+BAT_SEG_HH = 0.04
+BAT_GROOVE = 0.46                # the grooves' floor; the rings stand in them to BAT_RING
+BAT_RING = 0.49
 GREEN_RAMP = [(34, 104, 62), (52, 146, 86), (80, 205, 120), (120, 230, 150), (170, 248, 192)]
 SLOT_RAMP = [(20, 30, 25), (26, 40, 33), (34, 50, 42), (44, 62, 52), (56, 76, 64)]
-
-
-def cage(b, crosses=False):
-    """The six-face frame: four blue posts and eight dark beams on the cell's edges, so every face
-    of the cell is a flat frame flush with it (the block joins on all six). With `crosses`, a bar
-    cross over the top and bottom windows, meeting at a blue hub."""
-    t, h = WL_POST, 0.5
-    for sx in (-1, 1):
-        for sz in (-1, 1):
-            x0, x1 = sorted((sx * h, sx * (h - t)))
-            z0, z1 = sorted((sz * h, sz * (h - t)))
-            th.box(b, (x0, -h, z0), (x1, h, z1), "blue")
-    for sy in (-1, 1):
-        y0, y1 = sorted((sy * h, sy * (h - t)))
-        for sz in (-1, 1):
-            z0, z1 = sorted((sz * h, sz * (h - t)))
-            th.box(b, (-h + t, y0, z0), (h - t, y1, z1), "dark", skip=("+x", "-x"))
-        for sx in (-1, 1):
-            x0, x1 = sorted((sx * h, sx * (h - t)))
-            th.box(b, (x0, y0, -h + t), (x1, y1, h - t), "dark", skip=("+z", "-z"))
-        if crosses:
-            yc = sy * (h - t / 2)
-            w = WL_BAR / 2
-            th.box(b, (-h + t, yc - w, -w), (h - t, yc + w, w), "dark", skip=("+x", "-x"))
-            th.box(b, (-w, yc - w, -h + t), (w, yc + w, -w), "dark", skip=("+z",))
-            th.box(b, (-w, yc - w, w), (w, yc + w, h - t), "dark", skip=("-z",))
-            hub = 0.09
-            th.box(b, (-hub, yc - w - 0.004, -hub), (hub, yc + w + 0.004, hub), "blue")
+WL_PLATE = 0.10                  # the charger's top and bottom plates' thickness
+WL_ORB = 0.22                    # the emitter orb's radius
+WL_RING = (0.40, 0.045)          # the ring's radius and its tube's
+CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
 
 
 def build_battery(pk, img):
     parts = {"battery_body": [], "battery_seg": []}
-    b = parts["battery_body"]
-    cage(b)
-    R, hh = BAT_R, BAT_SEG_HH
-    prof = [(0.0, -0.5), (R - 0.05, -0.5), (R, -0.46)]
+    fr = lambda r: flat_r(r, 12)
+    hh = BAT_SEG_HH
+    prof = [(0.0, -0.5), (fr(0.45), -0.5), (fr(0.5), -0.46)]
     ramps = {}
     for yc in BAT_SEG_Y:
-        prof.append((R, yc - hh))
-        prof.append((R, yc + hh))
-        ramps[len(prof) - 2] = SLOT_RAMP
-    top = [(R, 0.16), (R, 0.40), (R - 0.05, 0.44), (0.13, 0.44), (0.13, 0.5), (0.0, 0.5)]
-    prof += top
-    k = len(prof) - len(top)
-    ramps[k] = BLUE_RAMP                           # the blue top band
+        # a groove: in, down its floor, out again - the charge ring stands in it
+        prof += [(fr(0.5), yc - hh), (fr(BAT_GROOVE), yc - hh), (fr(BAT_GROOVE), yc + hh), (fr(0.5), yc + hh)]
+        for k in (len(prof) - 4, len(prof) - 3, len(prof) - 2):
+            ramps[k] = SLOT_RAMP
+    k = len(prof)
+    prof += [(fr(0.5), 0.14), (fr(0.5), 0.40), (fr(0.44), 0.45), (fr(0.15), 0.45), (fr(0.15), 0.5), (0.0, 0.5)]
+    ramps[k - 1] = METAL_RAMP                      # the body up to the band
+    ramps[k] = BLUE_RAMP                           # the blue top band and its shoulder
     ramps[k + 1] = BLUE_RAMP
     ramps[k + 3] = th.RIM                          # the + nub
     ramps[k + 4] = th.RIM
-    lathe_y(pk, img, b, prof, METAL_RAMP, sides=12, ring_ramps=ramps)
+    lathe_y(pk, img, parts["battery_body"], prof, METAL_RAMP, sides=12, ring_ramps=ramps)
     # one charge ring, centred on y 0: the scene stands four copies at BAT_SEG_Y
-    lathe_y(pk, img, parts["battery_seg"], [(R - 0.005, -hh), (R + 0.012, -hh), (R + 0.012, hh),
-                                            (R - 0.005, hh)], GREEN_RAMP, sides=12)
+    e = hh - 0.006
+    lathe_y(pk, img, parts["battery_seg"], [(fr(BAT_GROOVE), -e), (fr(BAT_RING), -e), (fr(BAT_RING), e),
+                                            (fr(BAT_GROOVE), e)], GREEN_RAMP, sides=12)
     return parts
-
-
-# ── the wireless charger ────────────────────────────────────────────────────────────────────────
-# IT JOINS ON ALL SIX FACES, so it is a CAGE: every face of the cell is a flat frame flush with it,
-# four blue posts and eight dark beams on the cube's edges, and a cross over the top and bottom
-# windows holding a mast. On the mast in the middle, the one thing that is not frame: a cyan
-# emitter orb (the beam's colour) inside a blue ring that SPINS WHILE ENERGY FLOWS
-# (wireless_charger.gd, node `Ring`). Open walls on purpose - the orb is what says "transmitter",
-# and a closed box with a drawing on it would be one more crate.
-WL_POST = 0.11                   # the frame's section
-WL_BAR = 0.06                    # the top and bottom crosses' section
-WL_ORB = 0.18                    # the emitter orb's radius
-WL_RING = (0.34, 0.04)           # the ring's radius and its tube's
-CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
 
 
 def build_wireless(pk, img):
     parts = {"wireless_body": [], "wireless_ring": []}
     b, ring = parts["wireless_body"], parts["wireless_ring"]
-    t, h = WL_POST, 0.5
-    cage(b, crosses=True)
+    fr = lambda r: flat_r(r, 12)
+    p = WL_PLATE
+    # the two plates: a blue rim the full width of the cell, a dark face toward the orb
+    for sy in (-1, 1):
+        prof = [(0.0, -0.5), (fr(0.5), -0.5), (fr(0.5), -0.5 + p - 0.03), (fr(0.46), -0.5 + p),
+                (fr(0.10), -0.5 + p), (0.0, -0.5 + p)]
+        if sy > 0:
+            prof = [(r, -y) for r, y in reversed(prof)]
+        lathe_y(pk, img, b, prof, METAL_RAMP, sides=12,
+                ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP} if sy < 0 else {2: BLUE_RAMP, 3: BLUE_RAMP})
     # the mast, and the orb on it
-    lathe_y(pk, img, b, [(0.03, -h + t), (0.03, -WL_ORB * 0.8)], METAL_RAMP, sides=8)
-    lathe_y(pk, img, b, [(0.03, WL_ORB * 0.8), (0.03, h - t)], METAL_RAMP, sides=8)
-    lathe_y(pk, img, b, [(0.0, -WL_ORB * 1.05)] + sphere_profile(0.0, WL_ORB, -70, 70, 6)
-            + [(0.0, WL_ORB * 1.05)], CYAN_RAMP, sides=12, cell=3)
+    lathe_y(pk, img, b, [(0.04, -0.5 + p), (0.04, -WL_ORB * 0.8)], METAL_RAMP, sides=8)
+    lathe_y(pk, img, b, [(0.04, WL_ORB * 0.8), (0.04, 0.5 - p)], METAL_RAMP, sides=8)
+    lathe_y(pk, img, b, [(0.0, -WL_ORB * 1.02)] + sphere_profile(0.0, WL_ORB, -70, 70, 6)
+            + [(0.0, WL_ORB * 1.02)], CYAN_RAMP, sides=12, cell=3)
     # the ring: blue with dark bands so its turn is seen, on three spokes out of the orb
     R, r = WL_RING
-    n = 16
+    n = 20
     path = [(R * math.cos(a), 0.0, R * math.sin(a)) for a in
             (2 * math.pi * k / n for k in range(n + 1))]
-    tube(ring, path, [r] * (n + 1), ["b" if k % 4 else "m" for k in range(n)], sides=6)
+    tube(ring, path, [r] * (n + 1), ["b" if k % 5 else "m" for k in range(n)], sides=6)
     for k in range(3):
         a = 2 * math.pi * k / 3 + math.pi / 6
         ca, sa = math.cos(a), math.sin(a)
-        tube(ring, [(ca * 0.05, 0.0, sa * 0.05), (ca * (R - r), 0.0, sa * (R - r))], [0.014, 0.014],
+        tube(ring, [(ca * 0.1, 0.0, sa * 0.1), (ca * (R - r), 0.0, sa * (R - r))], [0.018, 0.018],
              ["m"], sides=4)
     return parts
 

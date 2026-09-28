@@ -20,17 +20,17 @@ mesh = ExtResource("2_body")
 skeleton = NodePath("")
 
 [node name="Seg0" type="MeshInstance3D" parent="." unique_id=244932970]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.34, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.32, 0)
 mesh = ExtResource("3_seg")
 
 [node name="Seg1" type="MeshInstance3D" parent="." unique_id=244932971]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.22, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.2, 0)
 mesh = ExtResource("3_seg")
 
 [node name="Seg2" type="MeshInstance3D" parent="." unique_id=244932972]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.1, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.08, 0)
 mesh = ExtResource("3_seg")
 
 [node name="Seg3" type="MeshInstance3D" parent="." unique_id=244932973]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.02, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.04, 0)
 mesh = ExtResource("3_seg")

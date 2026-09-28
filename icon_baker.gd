@@ -68,7 +68,8 @@ func _ready() -> void:
 ## 43: Falsus sign plates on the seller, fabricator, plant and scrapper.
 ## 44: the battery's model (terminals, a charge gauge on every wall).
 ## 45: the battery is a cell in a cage; the wireless charger's model.
-const RECIPE := 45
+## 46: no cage: the battery is a cell as wide as the cell, the charger a spool.
+const RECIPE := 46
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
