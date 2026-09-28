@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://ow3whhcqbvgi"]
 
-[ext_resource type="Texture2D" uid="uid://bd7ip8s9yptl" path="res://objects/processor_texture.png" id="1_4mcas"]
+[ext_resource type="Texture2D" uid="uid://bd7ip8tayptl" path="res://objects/processor_texture.png" id="1_4mcas"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vdvjl"]
 resource_name = "processor"
