@@ -6,6 +6,10 @@ extends CanvasLayer
 @onready var _tracker:   Button   = %Tracker
 @onready var _title:     Label    = %TrackTitle
 @onready var _objective: Label    = %TrackObjective
+@onready var _emblem:    TextureRect = %TrackEmblem
+## The quest's faction emblem (G.faction_emblem) beside its title - tracker, list row, detail.
+const EMBLEM_ROW := 20                 # px, a list row's icon
+const EMBLEM_DETAIL := 32              # px, beside the faction's name over the detail
 @onready var _list_panel: PanelContainer = %ListPanel
 @onready var _list:      VBoxContainer   = %QuestList
 
@@ -138,6 +142,8 @@ func _type_mark(q: Dictionary) -> String:
 
 func _update_tracker() -> void:
 	var q: Dictionary = Q.tracked()
+	_emblem.texture = null if q.is_empty() else G.faction_emblem(Q.faction_of(q))
+	_emblem.visible = _emblem.texture != null
 	if q.is_empty():
 		_title.text = tr("No active quests")
 		_objective.text = ""
@@ -242,6 +248,9 @@ func _make_row(q: Dictionary) -> Control:
 	var mark := _type_mark(q)
 	var base: String = "  %s  %s%s" % [mark, tr(str(q["title"])), _stage_suffix(q)]
 	b.text = base
+	b.icon = G.faction_emblem(Q.faction_of(q))
+	b.add_theme_constant_override("icon_max_width", EMBLEM_ROW)
+	b.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS   # 256 px shown at 20: shimmers without
 	# Строку запоминаем, чтобы РАССТОЯНИЕ обновлялось на месте (см. _process). Пересобирать
 	# ради цифры весь список нельзя: список пересобирается только по событию квеста, а игрок
 	# едет к цели с открытым журналом — и метры в нём стояли намертво, показывая расстояние на
@@ -272,6 +281,24 @@ func _rebuild_detail() -> void:
 	if q.is_empty():
 		_detail.add_child(_dim(tr("No mission selected.")))
 		return
+	var tex: Texture2D = G.faction_emblem(Q.faction_of(q))
+	if tex != null:
+		var fr := HBoxContainer.new()
+		fr.add_theme_constant_override("separation", 8)
+		var ic := TextureRect.new()
+		ic.texture = tex
+		ic.custom_minimum_size = Vector2(EMBLEM_DETAIL, EMBLEM_DETAIL)
+		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+		fr.add_child(ic)
+		var fn := Label.new()
+		fn.text = tr(String((G.FACTIONS.get(Q.faction_of(q), {}) as Dictionary).get("name", "")))
+		fn.add_theme_font_size_override("font_size", 14)
+		fn.add_theme_color_override("font_color", Color(0.45, 0.95, 0.5))
+		fn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		fr.add_child(fn)
+		_detail.add_child(fr)
 	var t := Label.new()
 	t.text = tr(str(q["title"]))
 	t.add_theme_font_size_override("font_size", 22)

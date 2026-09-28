@@ -384,6 +384,26 @@ def paint_face(img, rect, poly2d, style, facing):
             img.putpixel((x0 + xx, y0 + yy), shade(style_px(style, xx, yy, w, h, d), k))
 
 
+_FALSUS = {}
+
+
+def _falsus_cov(w, h):
+    """Coverage of the Falsus emblem (art/faction_emblem.py, the one drawing of it) centred in a
+    w x h plate, cached per size. Under ~8 px of hole the eye is a dot: finer, it is mush."""
+    if (w, h) not in _FALSUS:
+        import numpy as np
+        import faction_emblem as fe
+        size = min(w, h)
+        R = size * 0.42
+        simple = R * fe.HOLE < 8
+        cov = fe.coverage(lambda x, y: fe.inside(x, y, simple), size, R, ss=3)
+        full = np.zeros((h, w), dtype=np.float32)
+        oy, ox = (h - size) // 2, (w - size) // 2
+        full[oy:oy + size, ox:ox + size] = cov
+        _FALSUS[(w, h)] = full
+    return _FALSUS[(w, h)]
+
+
 def _gear(bx, by):
     r = math.hypot(bx, by)
     if r < 1.3:
@@ -813,6 +833,15 @@ def style_px(style, x, y, w, h, d):
         if y >= h - 3:
             return RIM[2] if y == h - 3 else METAL[2]
         return METAL[0] if y > 5 else METAL[1]
+    if style == "falsus_plate":
+        # The faction's sign on a machine: its emblem in its green on a dark plate with the edge line.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        if 0 <= y < h and 0 <= x < w and _falsus_cov(w, h)[y][x] >= 0.5:
+            return (60, 222, 76)
+        return METAL[1]
     if style == "fab_window":
         # The fabricator's assembly window: dark glass with the cyan grid a block materialises on.
         if d < 1.0:

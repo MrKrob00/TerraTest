@@ -403,9 +403,21 @@ func current_lang() -> String:
 signal grade_up(faction: String, new_grade: int)
 signal progress_changed                # XP/ДИ/исследования изменились (для UI)
 
+## The first faction is FALSUS (the id stays "start": saves and BLOCK_META key on it). Its
+## emblem is drawn by art/faction_emblem.py and shown on its quests (quests.gd) and on the sign
+## plates of the machines it builds (art/emitter_models.py falsus_plate).
 const FACTIONS := {
-	"start": {"name": "Starter", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500]},
+	"start": {"name": "Falsus", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
+		"emblem": "res://images/faction_falsus.png"},
 }
+var _emblems: Dictionary = {}
+
+## The faction's emblem, or null when it has none. Loaded once.
+func faction_emblem(f: String) -> Texture2D:
+	if not _emblems.has(f):
+		var path: String = String((FACTIONS.get(f, {}) as Dictionary).get("emblem", ""))
+		_emblems[f] = load(path) as Texture2D if path != "" and ResourceLoader.exists(path) else null
+	return _emblems[f]
 # Блок → фракция / грейд / цена исследования в ДИ (раскладка утверждена в ТЗ §2).
 const BLOCK_META := {
 	Block.CABIN:     {"f": "start", "g": 1, "rp": 0},
