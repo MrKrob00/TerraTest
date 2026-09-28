@@ -23,19 +23,20 @@ const TRACE_MAX := 14.0          # and never a beam across the map
 const SWEEP_SKIP := 0.05         # past our own body, so the ray does not stop on it again
 const SWEEP_OWN_TRIES := 3       # how many of our own blocks in a row the ray may skip
 const FACE_MIN_STEP := 0.0001
-## AN ORDINARY ROUND IS DRAWN AS A FIRE STREAK, AND THE STREAK IS ALL THERE IS. The shared round
-## model read as a faint dark dash against the ground; a trail behind it was a second MultiMesh per
-## model - a draw call more - for a dash nobody saw anyway. So the round's own MultiMesh draws the
-## streak instead: two crossed strips (seen from any side), additive, white-yellow at the head fading
-## through orange to nothing, as many draw calls as before trails existed. Its length is the path of
-## the last TRAIL_TIME, capped at TRAIL_MAX and at what the round has flown (never back past the
-## muzzle), and never under TRAIL_MIN, the old round's length, so it shows from the first frame. A
-## round that brings its own projectile (WeaponBlock.OWN_VISUAL, the laser's bolt) keeps its model.
+## AN ORDINARY ROUND DRAGS A FIRE STREAK, AND BOTH ARE ONE SURFACE OF ONE MESH (`_streak_mesh`,
+## `bullet_streak.gdshader`): the round's own model, and behind it two crossed strips (seen from any
+## side), white-yellow fading through orange to nothing. One material, so one MultiMesh is still one
+## draw call - a trail as a second MultiMesh cost a call more, and replacing the round with the streak
+## lost the model. Premultiplied alpha lets one pass draw the round opaque and ADD the streak. The
+## streak starts at the round's tail and is the path of the last TRAIL_TIME, capped at TRAIL_MAX and
+## at what the round has flown (never back past the muzzle); lengths travel per shot in the
+## MultiMesh's custom data. A round that brings its own projectile (WeaponBlock.OWN_VISUAL, the
+## laser's bolt) keeps its model and material.
 const TRAIL_TIME := 0.03
 const TRAIL_MAX := 4.0
-const TRAIL_MIN := 0.34          # WeaponBlock.BULLET_LEN
 const TRAIL_W0 := 0.10           # half-width at the round
 const TRAIL_W1 := 0.015          # half-width at the tail
+const STREAK_SHADER := preload("res://bullet_streak.gdshader")
 const OWN_VISUAL := &"own_visual"   # WeaponBlock.OWN_VISUAL; not named from there (rule 19)
 
 class Shot:
@@ -75,7 +76,8 @@ class Kind:
 	var origin: Vector3 = Vector3.ZERO
 	var axis: int = 2                   # which of its axes lies down the flight
 	var count: int = 0
-	var streak: bool = false            # drawn as the fire streak, not the template's model
+	var streak: bool = false            # the round plus its fire streak (_streak_mesh)
+	var tail: float = 0.0               # the round's back end on +Z at trace 1
 
 var _live: Array = []
 var _spare: Array = []
@@ -150,14 +152,21 @@ func _kind_of(template: Node3D) -> Kind:
 		k.axis = 0
 	elif local.y > local.z:
 		k.axis = 1
-	k.streak = not mi.has_meta(OWN_VISUAL)
+	var smesh: ArrayMesh = null
+	var smat: ShaderMaterial = null
+	if not mi.has_meta(OWN_VISUAL):
+		smesh = _streak_mesh(mi.mesh, k)
+		if smesh != null:
+			smat = _streak_material(mi.mesh, mat, k)
+	k.streak = smesh != null
 	k.mmi = MultiMeshInstance3D.new()
 	k.mmi.set_meta("block_fx", true)
 	k.mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	k.mmi.material_override = _trail_material() if k.streak else mat
+	k.mmi.material_override = smat if k.streak else mat
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = _trail_mesh() if k.streak else mi.mesh
+	mm.use_custom_data = k.streak
+	mm.mesh = smesh if k.streak else mi.mesh
 	mm.instance_count = 32
 	mm.visible_instance_count = 0
 	k.mmi.multimesh = mm
@@ -165,49 +174,70 @@ func _kind_of(template: Node3D) -> Kind:
 	_kinds[key] = k
 	return k
 
-static var _t_mesh: ArrayMesh = null
-static var _t_mat: StandardMaterial3D = null
-
-## Two crossed strips from the round (z 0) back to the tail (z 1, +Z: a shot looks down -Z),
-## tapering; u runs head to tail for the gradient. Built once, shared by every model.
-static func _trail_mesh() -> ArrayMesh:
-	if _t_mesh != null:
-		return _t_mesh
+## The round's model turned and scaled into bullet space (looking down -Z), UV2 (1, 1), after two
+## crossed strips from z 0 to z 1 (+Z, behind the round), tapering, UV2 (0, 0), u head to tail
+## for the gradient. The shader stretches the round by the trace and moves the strips to its tail.
+## null when the model's arrays cannot be read: the kind then draws the plain model.
+static func _streak_mesh(src: Mesh, k: Kind) -> ArrayMesh:
+	if src == null or src.get_surface_count() < 1:
+		return null
+	var arr: Array = src.surface_get_arrays(0)
+	var sv = arr[Mesh.ARRAY_VERTEX]
+	if sv == null or (sv as PackedVector3Array).is_empty():
+		return null
 	var v := PackedVector3Array()
 	var uv := PackedVector2Array()
+	var flag := PackedVector2Array()
+	var idx := PackedInt32Array()
 	for side in [Vector3.RIGHT, Vector3.UP]:
 		var a0: Vector3 = side * TRAIL_W0
 		var a1: Vector3 = side * TRAIL_W1
 		var quad := [-a0, a0, a1 + Vector3.BACK, -a1 + Vector3.BACK]
 		var uvs := [Vector2(0, 0), Vector2(0, 1), Vector2(1, 1), Vector2(1, 0)]
-		for idx in [0, 1, 2, 0, 2, 3]:
-			v.append(quad[idx])
-			uv.append(uvs[idx])
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = v
-	arr[Mesh.ARRAY_TEX_UV] = uv
-	_t_mesh = ArrayMesh.new()
-	_t_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	return _t_mesh
+		for q in [0, 1, 2, 0, 2, 3]:
+			idx.append(v.size())
+			v.append(quad[q])
+			uv.append(uvs[q])
+			flag.append(Vector2.ZERO)
+	var base: int = v.size()
+	var b: Basis = k.rot * Basis.from_scale(k.scale0)
+	var suv = arr[Mesh.ARRAY_TEX_UV]
+	var tail: float = -INF
+	for i in (sv as PackedVector3Array).size():
+		var p: Vector3 = b * (sv as PackedVector3Array)[i]
+		tail = maxf(tail, p.z)
+		v.append(p)
+		uv.append((suv as PackedVector2Array)[i] if suv != null else Vector2.ZERO)
+		flag.append(Vector2.ONE)
+	var si = arr[Mesh.ARRAY_INDEX]
+	if si != null and not (si as PackedInt32Array).is_empty():
+		for i in (si as PackedInt32Array):
+			idx.append(base + i)
+	else:
+		for i in (sv as PackedVector3Array).size():
+			idx.append(base + i)
+	k.tail = tail
+	var out := []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = v
+	out[Mesh.ARRAY_TEX_UV] = uv
+	out[Mesh.ARRAY_TEX_UV2] = flag
+	out[Mesh.ARRAY_INDEX] = idx
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, out)
+	return m
 
-static func _trail_material() -> StandardMaterial3D:
-	if _t_mat != null:
-		return _t_mat
-	var g := Gradient.new()
-	g.offsets = PackedFloat32Array([0.0, 0.25, 1.0])
-	g.colors = PackedColorArray([Color(1.0, 0.95, 0.65), Color(1.0, 0.55, 0.15), Color(0.0, 0.0, 0.0)])
-	var tex := GradientTexture2D.new()
-	tex.gradient = g
-	tex.width = 64
-	tex.height = 4
-	_t_mat = StandardMaterial3D.new()
-	_t_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_t_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_t_mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	_t_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_t_mat.albedo_texture = tex
-	return _t_mat
+## The round's own texture and tint go into the shader; the model's material stays untouched.
+static func _streak_material(src: Mesh, override: Material, k: Kind) -> ShaderMaterial:
+	var sm := ShaderMaterial.new()
+	sm.shader = STREAK_SHADER
+	var base = override if override != null else src.surface_get_material(0)
+	if base is BaseMaterial3D:
+		sm.set_shader_parameter("albedo_tex", (base as BaseMaterial3D).albedo_texture)
+		sm.set_shader_parameter("albedo", (base as BaseMaterial3D).albedo_color)
+	sm.set_shader_parameter("origin", k.origin)
+	sm.set_shader_parameter("tail", k.tail)
+	return sm
 
 func _physics_process(delta: float) -> void:
 	var _pf := Perf.now()
@@ -306,12 +336,13 @@ func _draw() -> void:
 		var mm: MultiMesh = k.mmi.multimesh
 		_room(mm, k.count)
 		var at := Transform3D((s as Shot).facing, (s as Shot).global_position)
+		var sc: Vector3 = k.scale0
 		if k.streak:
-			var length: float = minf(minf((s as Shot).speed * TRAIL_TIME, TRAIL_MAX), (s as Shot).flown)
-			length = maxf(length, TRAIL_MIN)
-			mm.set_instance_transform(k.count, at * Transform3D(Basis.from_scale(Vector3(1, 1, length)), Vector3.ZERO))
+			var length: float = minf((s as Shot).speed * TRAIL_TIME, TRAIL_MAX)
+			length = clampf((s as Shot).flown - k.tail * (s as Shot).trace, 0.0, length)
+			mm.set_instance_transform(k.count, at)
+			mm.set_instance_custom_data(k.count, Color(length, (s as Shot).trace, 0.0, 0.0))
 		else:
-			var sc: Vector3 = k.scale0
 			sc[k.axis] = k.scale0[k.axis] * (s as Shot).trace
 			mm.set_instance_transform(k.count, at * Transform3D(k.rot * Basis.from_scale(sc), k.origin))
 		k.count += 1
