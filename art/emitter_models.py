@@ -279,18 +279,18 @@ def build_stab(pk, img):
 
 
 # ── the conveyors ───────────────────────────────────────────────────────────────────────────────
-# The shape of the old conveyor (a deck on a column) kept, drawn the way the other blocks are and
-# light: the old mesh was 1344 triangles a cell. The deck's top stays at the old height (the items'
-# `item_slot` sits over it), the belt shows where cargo goes: arrows on a conveyor, arrows fanning out
-# three ways on the fork, none on the crossing, which passes both axes.
+# A FLOATING DECK IN THE MIDDLE OF THE CELL, the receiver's height: the old conveyor's column and
+# base plate are gone (the player's call - it stood on a post like the old receiver), and a shallow
+# dark keel under the deck is all there is below it. The deck's top is BELT_TOP and the items'
+# `item_slot` (belt*.tscn) sits half a bubble over it. The belt shows where cargo goes: arrows on a
+# conveyor, arrows fanning out three ways on the fork, none on the crossing, which passes both axes.
 
-BELT_TOP = 0.44
+BELT_TOP = 0.06          # the receiver's chute ends at the same height (build_receiver)
 
 
-def belt_stand(pk, img, faces):
-    th.box(faces, (-0.30, -0.50, -0.30), (0.30, -0.43, 0.30), "dark")
-    lathe_y(pk, img, faces, [(0.13, -0.43), (0.13, 0.18)], METAL_RAMP, sides=8)
-    th.prism(faces, -0.5, 0.5, 0.18, BELT_TOP - 0.02, 0.5, -0.5, 0.05)
+def belt_stand(pk, img, faces, keel=(0.22, 0.40)):
+    th.prism(faces, -0.5, 0.5, BELT_TOP - 0.14, BELT_TOP - 0.02, 0.5, -0.5, 0.04)
+    th.box(faces, (-keel[0], BELT_TOP - 0.20, -keel[1]), (keel[0], BELT_TOP - 0.14, keel[1]), "dark")
 
 
 def belt_strip(faces, lo, hi, style, u_hint):
@@ -318,7 +318,7 @@ def build_belt(pk, img):
 def build_belt_cross(pk, img):
     parts = {"belt_cross_body": []}
     f = parts["belt_cross_body"]
-    belt_stand(pk, img, f)
+    belt_stand(pk, img, f, keel=(0.25, 0.25))
     belt_strip(f, (-0.36, BELT_TOP - 0.02, -0.5), (0.36, BELT_TOP, 0.5), "belt", (0, 0, -1))
     belt_strip(f, (-0.5, BELT_TOP - 0.02, -0.36), (0.5, BELT_TOP + 0.004, 0.36), "belt", (1, 0, 0))
     for sx in (-1, 1):
@@ -332,7 +332,7 @@ def build_belt_cross(pk, img):
 def build_belt_split(pk, img):
     parts = {"belt_split_body": []}
     f = parts["belt_split_body"]
-    belt_stand(pk, img, f)
+    belt_stand(pk, img, f, keel=(0.25, 0.25))
     # A distribution plate in the middle carrying one T of arrows (in from the back, out front,
     # left and right), and short plain runs from it to the four cell edges. Four arrowed runs
     # crossing in the middle were tried first and read as a heap of chevrons.
@@ -559,14 +559,14 @@ def build_generator(pk, img):
 
 # ── the receiver and the collector ──────────────────────────────────────────────────────────────
 # The player's own shapes redrawn to docs/ART_STYLE.md. The RECEIVER - the chain's entry, pulling
-# ground materials and collectors' cargo in through its beam - is a SAUCER hovering just off the
-# floor of its cell: dark underside, a blue rim with orange ticks, and a dish turned inward to the
-# old dark pad with its blue octagon. The COLLECTOR is a cube with a round bowl in its top,
+# ground materials and collectors' cargo in through its beam - is HALF A SAUCER, cut along the face
+# it hands cargo out of and set under the belts' deck, as if it ran on under the conveyor. The COLLECTOR is a cube with a round bowl in its top,
 # where the one item it shows sits (collector.gd HOLD_Y); now a dark grilled cube, a blue lid, and a
 # dark bowl with a boss in the middle. Both used to stand out of their cell (the plate 9 cm over
 # the top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 plain triangles.
-RECV_SAUCER = (-0.43, -0.26, -0.20, -0.34)   # underside tip, rim, lip, pad (receiver.gd bobs it)
-RECV_PAD_R = 0.20
+RECV_SAUCER = (-0.36, -0.14, -0.10, -0.26)   # underside tip, rim, lip, pad: under the belts' deck
+RECV_PAD_R = 0.14
+RECV_STRETCH = 1.84              # the half is 0.50 across and 0.92 deep, so it fills the cell
 COL_BOWL_R = 0.36                # the bowl's mouth
 
 
@@ -631,24 +631,78 @@ def lid_ring(pk, img, faces, outer, y, R, n, lip=True):
         faces.append(f)
 
 
+def lathe_half(pk, img, faces, profile, ramp, sides, cz, sz, ring_ramps=None, marks=None):
+    """The back HALF of lathe_y's surface (+Z side of the axis), its axis on the plane z = cz and
+    stretched sz times along +Z; every facet painted flat in its own tone, like lathe_y."""
+    cell = 3
+    rings = len(profile) - 1
+    x0, y0, w, h = pk.take(sides * cell, rings * cell)
+    ang = [i * math.pi / sides for i in range(sides + 1)]
+    P = lambda r, y, i: (r * math.cos(ang[i]), y, cz + sz * r * math.sin(ang[i]))
+    cells = {}
+    for k in range(rings):
+        (r0, ya), (r1, yb) = profile[k], profile[k + 1]
+        rr = (ring_ramps or {}).get(k, ramp)
+        for i in range(sides):
+            q = [P(r0, ya, i), P(r0, ya, i + 1), P(r1, yb, i + 1), P(r1, yb, i)]
+            u0, v0 = x0 + i * cell, y0 + (rings - 1 - k) * cell
+            uv = [(u0, v0 + cell), (u0 + cell, v0 + cell), (u0 + cell, v0), (u0, v0)]
+            am = (ang[i] + ang[i + 1]) / 2
+            dr, dy = r1 - r0, yb - ya
+            want = (dy * math.cos(am), -dr, dy * math.sin(am) / sz)
+            if r0 == 0.0:                          # a pole: one real triangle
+                q, uv = q[1:], uv[1:]
+            elif r1 == 0.0:
+                q, uv = q[:3], uv[:3]
+            if th.dot(th.newell(q), want) < 0:
+                q, uv = list(reversed(q)), list(reversed(uv))
+            f = th.Face(q, None)
+            f.uv = uv
+            faces.append(f)
+            cells[(i, k)] = (marks or {}).get((i, k)) or ramp_colour(rr, th.norm(want))
+    for yy in range(-th.PAD, h + th.PAD):
+        for xx in range(-th.PAD, w + th.PAD):
+            i = min(max(xx // cell, 0), sides - 1)
+            k = rings - 1 - min(max(yy // cell, 0), rings - 1)
+            img.putpixel((x0 + xx, y0 + yy), th.jitter(cells[(i, k)], 1))
+
+
 def build_receiver(pk, img):
-    """A SAUCER HOVERING JUST OFF THE CELL'S FLOOR, its top a dish turned inward to the pad the beam
-    starts from. Tried and rejected by the player: a plate on a post (it hung at the top of its cell)
-    and a platform block (not a saucer). No support: receiver.gd bobs it a little while it works."""
+    """HALF A SAUCER, CUT ALONG THE FACE IT HANDS CARGO OUT OF (front, -Z) and set under the belts'
+    deck, so it reads as a plate that runs on under the conveyor. The player's old model already did
+    this - rounded at the back, square at the output side; the whole round saucers were wrong.
+    Stretched along the cell so the half fills it. No support: Receiver.gd bobs it while it works."""
     parts = {"receiver_body": []}
     body = parts["receiver_body"]
     b, rim, lip, pad_y = RECV_SAUCER
-    # Underside cone, the rim band with four orange ticks, the lip, and the dish down to the pad in
-    # two dark steps with a thin blue ring between them - one plain slope read as a grey plate.
-    ticks = {(i, 1): th.ORANGE for i in range(0, 12, 3)}
+    # AS WIDE AS THE CONVEYOR at the cut, and laid out like it: the blue ledge spans what the belt's
+    # rails span (0.38..0.50 from the axis), the dark dish what its belt strip spans (0.36).
+    R, cz, sz = 0.5, -0.5, RECV_STRETCH
+    ticks = {(i, 1): th.ORANGE for i in (1, 6)}
     dark = METAL_RAMP[:4]
-    lathe_y(pk, img, body, [(0.0, b), (0.46, rim - 0.06), (0.49, rim), (0.45, lip),
-                            (0.34, lip - 0.06), (0.31, lip - 0.07), (RECV_PAD_R, pad_y)],
-            METAL_RAMP, sides=12, marks=ticks,
-            ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP, 3: dark, 4: BLUE_RAMP, 5: dark})
-    pad = [(RECV_PAD_R * math.cos((i + 0.5) * math.pi / 6), pad_y,
-            RECV_PAD_R * math.sin((i + 0.5) * math.pi / 6)) for i in range(12)]
-    body.append(th.Face(th.outward(pad, (0.0, pad_y - 1.0, 0.0)), "recv_pad", u_hint=(1, 0, 0)))
+    prof = [(0.0, b), (R, rim), (0.47, lip), (0.37, lip - 0.01), (0.35, lip - 0.06),
+            (RECV_PAD_R, pad_y), (0.0, pad_y)]
+    lathe_half(pk, img, body, prof, METAL_RAMP, 8, cz, sz, marks=ticks,
+               ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP, 3: dark, 4: dark, 5: [th.METAL[1]]})
+    # The cut: the section closed flat on the front face, both halves, in trapezoids between the
+    # profile's own radii (top surface = the profile from the rim inward, bottom = the underside).
+    tops = sorted(prof[1:], key=lambda p: p[0])
+
+    def at(pts, r):
+        for (ra, ya), (rb, yb) in zip(pts, pts[1:]):
+            if ra <= r <= rb:
+                return ya if rb == ra else ya + (r - ra) / (rb - ra) * (yb - ya)
+        return pts[-1][1]
+    br = sorted(set(p[0] for p in tops))
+    for sgn in (-1, 1):
+        for r0, r1 in zip(br, br[1:]):
+            y0b, y1b = b + r0 / R * (rim - b), b + r1 / R * (rim - b)
+            q = [(sgn * r0, y0b, cz), (sgn * r1, y1b, cz), (sgn * r1, at(tops, r1), cz),
+                 (sgn * r0, at(tops, r0), cz)]
+            if abs(q[1][1] - q[2][1]) < 1e-6:
+                q = [q[0], q[1], q[3]]
+            body.append(th.Face(th.outward(q, (sgn * (r0 + r1) / 2, (y0b + at(tops, r0)) / 2, cz + 1.0)),
+                                "dark", u_hint=(1, 0, 0)))
     return parts
 
 

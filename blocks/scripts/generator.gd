@@ -21,9 +21,9 @@ var _burn_energy: float = 0.0
 # re-coloured per block (unbatched, its own material copy - a shared one would light every
 # generator in the world at once).
 #
-# FUEL GOES IN THROUGH THE TOP, FROM WHICHEVER SIDE IT CAME. A belt carries its cargo at the lid's
-# own height, so one door on top serves all four sides with no lift and no drop; four side doors
-# would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks through the lid
+# FUEL GOES IN THROUGH THE TOP, FROM WHICHEVER SIDE IT CAME: one door serves all four sides, where
+# side doors would have been four moving parts. It rises from the belt (mid-cell) onto the lid,
+# then drops in. The turbine sinks through the lid
 # (RETRACT), the fuel settles over the well, shrinks and drops in (`_swallow`), and only THEN the
 # fire flares and the burn starts - the turbine comes back up and spins. THE WELL IS PAINTED ON A
 # SOLID LID: whatever sinks below it is simply gone into the dark. A real well was tried and showed

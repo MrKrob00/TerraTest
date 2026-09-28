@@ -321,9 +321,11 @@ project: read it before claiming how anything works.
   ingots in: 6 front, 0 left, 0 right. It now takes from the back, gives front, left and right
   (`output_faces` 13) and turns the three belts in order: 2 / 2 / 2.
 - **THE CONVEYORS ARE MODELS, NOT THE 1344-TRIANGLE TABLE** (`art/emitter_models.py` belt /
-  belt_cross / belt_split, 92 / 128 / 164 triangles; the three used to share one mesh). The old
-  shape is kept - a deck on a column - with the deck's top where it was, so the cargo at
-  `item_slot` still sits on it. What the belt SAYS is the point: arrows along the run on a
+  belt_cross / belt_split, 76 / 112 / 148 triangles; the three used to share one mesh). THEY ARE A
+  FLOATING DECK IN THE MIDDLE OF THE CELL (`BELT_TOP` 0.06), a shallow dark keel under it and no
+  column - the player's call, the old deck stood on a post like the old receiver - and `item_slot`
+  (0.57) keeps the cargo sitting on it. The receiver's half-saucer runs on under that deck. What
+  the belt SAYS is the point: arrows along the run on a
   conveyor, a T of arrows on the fork's middle plate (in from the back, out three ways - four
   arrowed runs crossing read as a heap of chevrons), no arrows on the crossing, which passes both
   axes. THE FORK'S ARROWS ARE OPEN CHEVRONS PAINTED OVER THE BACKGROUND (`fork_hub`): filled heads
@@ -1698,25 +1700,27 @@ project: read it before claiming how anything works.
   on every face), a low blue housing with a turbine in its well, and amber fire behind a grate on
   every wall - the one pop colour, LIT ONLY WHILE IT BURNS (`generator.gd`: `Fire` re-coloured per
   block and unbatched, `Rotor` moving). FUEL GOES IN THROUGH THE TOP, from whichever side it came:
-  a belt carries its cargo at the lid's own height, so one door serves all four sides, where side
-  doors would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks through the lid
+  one door serves all four sides, where side doors would have been four moving parts; the fuel
+  rises from the belt onto the lid and drops in. The turbine sinks through the lid
   (`RETRACT`), the fuel settles over the well, shrinks and drops in, and only then the fire flares.
   THE WELL IS PAINTED ON A SOLID LID, so what sinks is simply gone into the dark: a real well was
   tried and showed the blades lying in a pit and the fuel on its floor. Measured on the engine: turbine down as
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
   40 energy; fed by a belt from east, west and north alike.
 - **THE RECEIVER AND THE COLLECTOR KEEP THE PLAYER'S SHAPES, REDRAWN TO THE STYLE** (`art/emitter_models.py`
-  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is a SAUCER HOVERING JUST OFF
-  THE FLOOR of its cell - dark underside, a blue rim with orange ticks, a dish turned inward in two
-  dark steps with a blue ring between them, the old dark pad with its blue octagon where the beam
-  starts - and it bobs `BOB_AMP` while on a machine (`Receiver.gd`, `Block` moving). Rejected on the
-  way: a plate on a post (it hung at the top of its cell) and a platform block (not a saucer). Beam
-  and cargo stack moved down with the pad, and it joins by the sides and the bottom only
-  (`connect_faces` 47): a block on top would hang in the air. The collector is still a cube with a
-  round bowl in its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the held item
-  sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
+  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is HALF A SAUCER, CUT ALONG
+  THE FACE IT HANDS CARGO OUT OF (front, -Z) and set under the belts' deck, so it reads as a plate
+  that runs on under the conveyor - which is what the player's old model did, rounded at the back
+  and square at the output side. It is exactly the conveyor's width at the cut, laid out like it:
+  its blue ledge spans the rails (0.38..0.50 from the axis), its dark dish the belt strip. It floats
+  and bobs `BOB_AMP` while on a machine (`Receiver.gd`, `Block` moving). Rejected on the way: a
+  plate on a post, a platform block, whole round saucers (on the floor, then with a chute). Beam and
+  cargo stack sit over the dish, and it joins by the sides and the bottom only (`connect_faces`
+  47): a block on top would hang in the air. The collector is still a cube with a round bowl in
+  its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the
+  held item sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
   top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
-  154 and 139 inside it. Range rings and the collector's script are untouched.
+  98 and 139 inside it. Range rings and the collector's script are untouched.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
