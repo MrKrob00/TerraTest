@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://ctyg86paifney"]
 
-[ext_resource type="Texture2D" path="res://objects/Assets_main_texture_new.png" id="1_v71ui"]
+[ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="1_v71ui"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mmkft"]
 resource_name = "main"
