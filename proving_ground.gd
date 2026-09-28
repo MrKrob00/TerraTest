@@ -422,21 +422,17 @@ func _summary(preset: int) -> Dictionary:
 	n.call("_define_layout")
 	var count := {}
 	var total := 0
-	var m: Array = n.get("map")
+	var m: Dictionary = n.get("map")             # occupied cells only: Vector3i -> block
 	var owners: Dictionary = n.get("cell_owner")
 	var seen := {}
-	for x in m.size():
-		for y in (m[x] as Array).size():
-			for z in ((m[x] as Array)[y] as Array).size():
-				var bt: int = int(((m[x] as Array)[y] as Array)[z])
-				if bt == G.Block.EMPTY:
-					continue
-				var key: String = String(owners.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z]))
-				if seen.has(key):
-					continue
-				seen[key] = true
-				count[bt] = int(count.get(bt, 0)) + 1
-				total += 1
+	for c in m:
+		var bt: int = int(m[c])
+		var key: String = String(owners.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z]))
+		if seen.has(key):
+			continue
+		seen[key] = true
+		count[bt] = int(count.get(bt, 0)) + 1
+		total += 1
 	n.free()
 	var out := {"total": total, "count": count}
 	_sum_cache[preset] = out

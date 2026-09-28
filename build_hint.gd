@@ -50,7 +50,7 @@ static func create(blocks_node: Node, cell_pos: Vector3i, bt: int, rot: Vector3 
 	h._strict_yaw = strict_yaw
 	h._map = blocks_node
 	blocks_node.add_child(h)
-	# Та же формула, по которой blocks.gd ставит настоящий блок: сетка 11³ со сдвигом на центр.
+	# The formula blocks.gd places a real block by: the cell less the centre cell (5).
 	h.position = Vector3(float(cell_pos.x - 5), float(cell_pos.y - 5), float(cell_pos.z - 5))
 	h.rotation = rot
 	h._build_ghost()

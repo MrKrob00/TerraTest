@@ -125,6 +125,7 @@ func _process(delta: float) -> void:
 # The near bubble stays active in every direction: what is close takes part in the game (packer
 # magnet, receiver, picking up by hand) and must not be gated by view direction.
 const LOOSE_BATCH := preload("res://loose_batch.gd")
+const BLOCKS_SCRIPT := preload("res://blocks.gd")
 var _lb: Node = null
 
 func _loose_batch() -> Node:
@@ -255,7 +256,7 @@ const SHADOW_DIST := 90.0
 #
 # The check runs EVERY FRAME rather than on the cleanup timer: a machine must appear the same frame
 # the camera turns to it. There are only a few machines and the test is six dot products.
-const VEH_CULL_RADIUS := 9.0     # sphere around a machine: the 11^3 grid diagonal plus margin
+const VEH_CULL_RADIUS := 9.0     # the least sphere round a machine; a bigger build asks its own (blocks.reach_radius)
 ## Box height for the occlusion query. The sphere radius does not fit here: is_point_hidden builds a
 ## 1 x height x 1 column, and a nine-metre column would stick out above any hill, so "behind a ridge"
 ## would never happen. Four metres is a machine with a turret plus margin.
@@ -283,11 +284,17 @@ func _vehicle_render_tick() -> void:
 			_set_vehicle_visible(n, true)
 			continue
 		var pos: Vector3 = n.global_position
-		var shown: bool = _in_frustum(frustum, pos, VEH_CULL_RADIUS)
+		var rad: float = VEH_CULL_RADIUS
+		var top: float = VEH_OCCL_HEIGHT
+		var bm = n.get("block_map_node")
+		if bm != null and is_instance_valid(bm) and ("reach_radius" in bm):
+			rad = maxf(rad, float(bm.get("reach_radius")))
+			top = maxf(top, float(bm.get("reach_top")))
+		var shown: bool = _in_frustum(frustum, pos, rad)
 		if shown and can_occlude:
 			# Behind a ridge is the same as behind you. The hysteresis inside is_point_hidden uses the previous
 			# state so a machine on the very edge of a hill does not flicker.
-			shown = not terr.is_point_hidden(pos, VEH_OCCL_HEIGHT, not n.visible)
+			shown = not terr.is_point_hidden(pos, top, not n.visible)
 		_set_vehicle_visible(n, shown)
 
 func _set_vehicle_visible(n: Node3D, on: bool) -> void:
@@ -748,8 +755,11 @@ func _layout_ok(layout) -> bool:
 		if not (e.has("x") and e.has("y") and e.has("z") and e.has("block")):
 			return false
 		var x := int(e["x"]); var y := int(e["y"]); var z := int(e["z"])
-		if x < 0 or x > 10 or y < 0 or y > 10 or z < 0 or z > 10:
-			return false                      # координаты вне сетки 11³ — файл от другой версии
+		# The grid's own bounds (blocks.GRID_MIN..GRID_MAX, -5..15 round the centre 5): a hardcoded
+		# 0..10 here would have QUARANTINED the whole save of anyone who built past the old grid.
+		if x < BLOCKS_SCRIPT.GRID_MIN or x > BLOCKS_SCRIPT.GRID_MAX or y < BLOCKS_SCRIPT.GRID_MIN \
+				or y > BLOCKS_SCRIPT.GRID_MAX or z < BLOCKS_SCRIPT.GRID_MIN or z > BLOCKS_SCRIPT.GRID_MAX:
+			return false                      # outside the grid: a file from another version
 		if G.block_from_key(e["block"]) == G.Block.EMPTY:
 			return false                      # неизвестный блок (переименовали/удалили тип)
 	return true

@@ -1,13 +1,23 @@
 # block_map.gd
 extends Node3D
 
-const MAP_SIZE_X = 11
-const MAP_SIZE_Y = 11
-const MAP_SIZE_Z = 11
-const CENTER = 5                     # индекс центральной клетки по каждой оси (0..10 → центр 5)
+## THE GRID IS 21 CELLS EACH WAY, AND ITS CENTRE IS STILL CELL 5. It was 11 (cells 0..10, centre
+## 5), and every layout ever written counts from that centre: the enemy table, the quest bases,
+## player saves and saved builds, the "cell - 5" that turns a cell into a position in half a dozen
+## files. Widening it round the SAME centre (cells -5..15) keeps every one of them valid as it is;
+## renumbering the centre to 10 would have meant converting every save and every table.
+const MAP_SIZE_X = 21
+const MAP_SIZE_Y = 21
+const MAP_SIZE_Z = 21
+const CENTER = 5                     # the core's cell on every axis
+const GRID_MIN = CENTER - 10         # -5
+const GRID_MAX = CENTER + 10         # 15
 const CELL_SIZE = 1.0
 
-var map: Array = []
+## OCCUPIED CELLS ONLY: Vector3i -> block type; an empty cell has no key. A 21x21x21 array is 9261
+## slots per machine, and the save, the connectivity walk and the occlusion pass all ran over the
+## whole of it - seven times the old grid. Now they walk what is there.
+var map: Dictionary = {}
 var node_map: Dictionary = {}
 var rotation_map: Dictionary = {}
 # Multi-cell blocks (SELLER/PROCESSOR 2x2x2) occupy 8 cells but node and rotation live on ONE
@@ -117,15 +127,28 @@ func _ready() -> void:
 
 # ── Init ────────────────────────────────────────────────────────────────────
 func _init_map() -> void:
-	map = []
-	for x in range(MAP_SIZE_X):
-		var plane: Array = []
-		for y in range(MAP_SIZE_Y):
-			var row: Array = []
-			for z in range(MAP_SIZE_Z):
-				row.append(G.Block.EMPTY)
-			plane.append(row)
-		map.append(plane)
+	map = {}
+
+## What stands in a cell (EMPTY when nothing does).
+func _cell(x: int, y: int, z: int) -> int:
+	return int(map.get(Vector3i(x, y, z), G.Block.EMPTY))
+
+## Every block's anchor cell, in x, then y, then z order - the order the old array loops gave, so a
+## save or a spawn comes out the same whatever order the blocks went in.
+func _anchors_sorted() -> Array:
+	var out: Array = []
+	for c in map:
+		if _is_anchor(c.x, c.y, c.z):
+			out.append(c)
+	out.sort_custom(_cell_less)
+	return out
+
+static func _cell_less(a: Vector3i, b: Vector3i) -> bool:
+	if a.x != b.x:
+		return a.x < b.x
+	if a.y != b.y:
+		return a.y < b.y
+	return a.z < b.z
 
 # ── Layouts ─────────────────────────────────────────────────────────────────
 func _define_layout() -> void:
@@ -764,13 +787,9 @@ func _layout_charge_tower() -> void:
 
 # ── Spawning all blocks ─────────────────────────────────────────────────────
 func _spawn_all() -> void:
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
-				var block: G.Block = map[x][y][z]
-				# anchor cells only, or a multi-cell block spawns eight times
-				if block != G.Block.EMPTY and _is_anchor(x, y, z):
-					spawn_block(block, x, y, z)
+	# anchor cells only, or a multi-cell block spawns eight times
+	for c in _anchors_sorted():
+		spawn_block(int(map[c]), c.x, c.y, c.z)
 
 # True if (x,y,z) is its block's anchor cell (always true for single-cell blocks).
 func _is_anchor(x: int, y: int, z: int) -> bool:
@@ -920,7 +939,7 @@ func yaw_at(x: int, y: int, z: int) -> float:
 # Can `block` be placed with anchor (x,y,z)? All footprint cells in bounds and empty.
 func can_place(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> bool:
 	for c in _block_footprint(block, x, y, z, yaw):
-		if not _in_bounds(c.x, c.y, c.z) or map[c.x][c.y][c.z] != G.Block.EMPTY:
+		if not _in_bounds(c.x, c.y, c.z) or map.has(c):
 			return false
 	return true
 
@@ -936,7 +955,7 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 		return false   # overlap or edge: refuse
 	var anchor := "%d,%d,%d" % [x, y, z]
 	for c in _block_footprint(block, x, y, z, rv.y):
-		map[c.x][c.y][c.z] = block
+		map[c] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
 	rotation_map[anchor] = rv
 	queue_occlusion()
@@ -949,12 +968,11 @@ func remove_block(x: int, y: int, z: int) -> void:
 	var anchor: String = cell_owner.get("%d,%d,%d" % [x, y, z], "%d,%d,%d" % [x, y, z])
 	var parts := anchor.split(",")
 	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
-	if not _in_bounds(ax, ay, az) or map[ax][ay][az] == G.Block.EMPTY:
+	if not _in_bounds(ax, ay, az) or _cell(ax, ay, az) == G.Block.EMPTY:
 		return
-	for c in _block_footprint(map[ax][ay][az], ax, ay, az, _yaw_at(ax, ay, az)):
-		if _in_bounds(c.x, c.y, c.z):
-			map[c.x][c.y][c.z] = G.Block.EMPTY
-			cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
+	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az)):
+		map.erase(c)
+		cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
 	# УХОДЯЩИЙ БЛОК ВОЗВРАЩАЕМ ВИДИМЫМ. Спрятанный как «его всё равно не видно» (см.
 	# _apply_occlusion) он снялся бы с машины невидимым — и лёг бы в мир или в руку пустым
 	# местом: за пределами сборки прятать его больше некому и незачем.
@@ -970,9 +988,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	queue_occlusion()
 
 func get_block(x: int, y: int, z: int) -> G.Block:
-	if _in_bounds(x, y, z):
-		return map[x][y][z]
-	return G.Block.EMPTY
+	return _cell(x, y, z) as G.Block
 
 func find_block(x: int, y: int, z: int) -> Node3D:
 	if not _in_bounds(x, y, z):
@@ -1001,9 +1017,9 @@ func find_block(x: int, y: int, z: int) -> Node3D:
 
 func _in_bounds(x: int, y: int, z: int) -> bool:
 	return (
-		x >= 0 and x < MAP_SIZE_X and
-		y >= 0 and y < MAP_SIZE_Y and
-		z >= 0 and z < MAP_SIZE_Z
+		x >= GRID_MIN and x <= GRID_MAX and
+		y >= GRID_MIN and y <= GRID_MAX and
+		z >= GRID_MIN and z <= GRID_MAX
 	)
 
 # ── Spawning one block ──────────────────────────────────────────────────────
@@ -1116,7 +1132,7 @@ func footprint_offsets(inst: Node) -> Array:
 		return []
 	var anchor := Vector3i(ax, ay, az)
 	var out: Array = []
-	for c in _block_footprint(int(map[ax][ay][az]), ax, ay, az, _yaw_at(ax, ay, az)):
+	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az)):
 		out.append((c as Vector3i) - anchor)
 	return out
 
@@ -1202,23 +1218,19 @@ const BFS_DIRS := [Vector3i(1,0,0), Vector3i(-1,0,0), Vector3i(0,1,0),
 func _reachable_cells() -> Dictionary:
 	var seen: Dictionary = {}
 	var queue: Array = []
-	for x in MAP_SIZE_X:
-		for y in MAP_SIZE_Y:
-			for z in MAP_SIZE_Z:
-				var bt: int = map[x][y][z]
-				if bt != G.Block.EMPTY and (bt == G.Block.CABIN or G.is_stationary(bt)):
-					var k := "%d,%d,%d" % [x, y, z]
-					if not seen.has(k):
-						seen[k] = true
-						queue.append(Vector3i(x, y, z))
+	for cell in map:
+		var bt: int = int(map[cell])
+		if bt == G.Block.CABIN or G.is_stationary(bt):
+			var k := "%d,%d,%d" % [cell.x, cell.y, cell.z]
+			if not seen.has(k):
+				seen[k] = true
+				queue.append(cell)
 	while not queue.is_empty():
 		var c: Vector3i = queue.pop_back()
 		var a: Node = find_block(c.x, c.y, c.z)
 		for d in BFS_DIRS:
 			var n: Vector3i = c + d
-			if not _in_bounds(n.x, n.y, n.z):
-				continue
-			if map[n.x][n.y][n.z] == G.Block.EMPTY:
+			if not map.has(n):
 				continue
 			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
 			if seen.has(nk):
@@ -1284,7 +1296,7 @@ static func buildable_subset(layout: Array, pool: Dictionary) -> Array:
 		var a: Node = g.find_block(c.x, c.y, c.z)
 		for d in BFS_DIRS:
 			var n: Vector3i = c + d
-			if not g._in_bounds(n.x, n.y, n.z) or g.map[n.x][n.y][n.z] == G.Block.EMPTY:
+			if not g.map.has(n):
 				continue
 			var nk := "%d,%d,%d" % [n.x, n.y, n.z]
 			if seen.has(nk):
@@ -1341,7 +1353,7 @@ func _detach_orphans() -> void:
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 		if not _in_bounds(ax, ay, az):
 			continue
-		var bt: int = map[ax][ay][az]
+		var bt: int = _cell(ax, ay, az)
 		if bt == G.Block.EMPTY:
 			continue
 		var grounded := false
@@ -1385,7 +1397,7 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 	# NEVER drop the CABIN. It is the root the whole build hangs on, and a torn block loses its death
 	# subscriptions (below) - together that meant a machine with no root and no death signal: the rest
 	# fell off as detached while a live empty hull kept driving with nothing able to kill it.
-	if _in_bounds(ax, ay, az) and map[ax][ay][az] == G.Block.CABIN:
+	if _cell(ax, ay, az) == G.Block.CABIN:
 		return
 	var anchor := "%d,%d,%d" % [ax, ay, az]
 	var node: Node = node_map.get(anchor, null)
@@ -1413,10 +1425,23 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 # `solid_cell` — галочка на самом блоке: заполняет ли он клетку целиком. По умолчанию НЕТ, и
 # это нарочно: цена ошибки несимметрична. Ошибиться в «нет» — это один лишний нарисованный
 # куб, ошибиться в «да» — дыра в корпусе, сквозь которую видно небо.
-const _PX := MAP_SIZE_X + 2          # кайма в одну клетку: снаружи сборки всегда открыто
-const _PY := MAP_SIZE_Y + 2
-const _PZ := MAP_SIZE_Z + 2
+## THE FILL RUNS IN THE BUILD'S OWN BOX, not the grid's: the occupied cells' bounds plus a
+## one-cell rim, which is always open. Over the whole 21-cell grid (23^3 with the rim) every
+## rebuild would have walked twelve thousand cells for a machine of thirty blocks.
+var _ox: int = 0                     # grid cell of the padded box's corner
+var _oy: int = 0
+var _oz: int = 0
+var _PX: int = 0
+var _PY: int = 0
+var _PZ: int = 0
 var _occl_queued: bool = false
+## HOW FAR THE BUILD REACHES from the machine's origin (its core cell), in metres: the sphere that
+## holds every block, and the height of its top above the origin. The machine's frustum and
+## behind-a-ridge culls ask these (world_persist): on the 11-cell grid a fixed 9 m sphere held any
+## machine, on the 21-cell one a long machine's nose would vanish while its middle was off screen.
+## Updated by the occlusion pass, which measures the build's box anyway.
+var reach_radius: float = 9.0
+var reach_top: float = 4.0
 
 ## Пересчёт откладываем на конец кадра: постановка блока и разбор машины меняют сетку пачками,
 ## а проход тут один на всю сборку.
@@ -1427,12 +1452,28 @@ func queue_occlusion() -> void:
 	call_deferred("_apply_occlusion")
 
 func _padded(x: int, y: int, z: int) -> int:
-	return ((x + 1) * _PY + (y + 1)) * _PZ + (z + 1)
+	return ((x - _ox) * _PY + (y - _oy)) * _PZ + (z - _oz)
 
 func _apply_occlusion() -> void:
 	_occl_queued = false
-	if node_map.is_empty():
+	if node_map.is_empty() or map.is_empty():
 		return
+	var lo := Vector3i(GRID_MAX, GRID_MAX, GRID_MAX)
+	var hi := Vector3i(GRID_MIN, GRID_MIN, GRID_MIN)
+	for c in map:
+		lo = Vector3i(mini(lo.x, c.x), mini(lo.y, c.y), mini(lo.z, c.z))
+		hi = Vector3i(maxi(hi.x, c.x), maxi(hi.y, c.y), maxi(hi.z, c.z))
+	_ox = lo.x - 1
+	_oy = lo.y - 1
+	_oz = lo.z - 1
+	var ext := Vector3(maxi(absi(lo.x - CENTER), absi(hi.x - CENTER)) + 0.5,
+			maxi(absi(lo.y - CENTER), absi(hi.y - CENTER)) + 0.5,
+			maxi(absi(lo.z - CENTER), absi(hi.z - CENTER)) + 0.5)
+	reach_radius = ext.length() * CELL_SIZE
+	reach_top = (hi.y - CENTER + 0.5) * CELL_SIZE
+	_PX = hi.x - lo.x + 3
+	_PY = hi.y - lo.y + 3
+	_PZ = hi.z - lo.z + 3
 	var total: int = _PX * _PY * _PZ
 	var open := PackedByteArray()
 	open.resize(total)
@@ -1503,9 +1544,9 @@ func _face_mask(cells: Array, seen: PackedByteArray) -> int:
 	for fb in FACE_BITS:
 		var d: Vector3i = fb[0]
 		for c in cells:
-			var px: int = c.x + 1 + d.x
-			var py: int = c.y + 1 + d.y
-			var pz: int = c.z + 1 + d.z
+			var px: int = c.x - _ox + d.x
+			var py: int = c.y - _oy + d.y
+			var pz: int = c.z - _oz + d.z
 			if px < 0 or py < 0 or pz < 0 or px >= _PX or py >= _PY or pz >= _PZ:
 				continue
 			if seen[(px * _PY + py) * _PZ + pz] == 1:
@@ -1517,9 +1558,9 @@ func _face_mask(cells: Array, seen: PackedByteArray) -> int:
 ## хотя бы до одной клетки за его гранью.
 func _cells_seen(cells: Array, seen: PackedByteArray) -> bool:
 	for c in cells:
-		var px: int = c.x + 1
-		var py: int = c.y + 1
-		var pz: int = c.z + 1
+		var px: int = c.x - _ox
+		var py: int = c.y - _oy
+		var pz: int = c.z - _oz
 		if seen[(px * _PY + py) * _PZ + pz] == 1:
 			return true
 		for d in BFS_DIRS:
@@ -1533,19 +1574,15 @@ func _cells_seen(cells: Array, seen: PackedByteArray) -> bool:
 
 func save_layout() -> void:
 	var blocks_array: Array = []
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
-				var block: G.Block = map[x][y][z]
-				if block != G.Block.EMPTY and _is_anchor(x, y, z):
-					var key: String = "%d,%d,%d" % [x, y, z]
-					blocks_array.append({
-						"x": x,
-						"y": y,
-						"z": z,
-						"block": G.block_key(block),
-						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
-					})
+	for c in _anchors_sorted():
+		var key: String = "%d,%d,%d" % [c.x, c.y, c.z]
+		blocks_array.append({
+			"x": c.x,
+			"y": c.y,
+			"z": c.z,
+			"block": G.block_key(int(map[c])),
+			"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
+		})
 
 	var json_string: String = JSON.stringify(blocks_array, "\t")
 	var file: FileAccess = FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.WRITE)
@@ -1577,39 +1614,35 @@ func load_layout() -> void:
 
 func get_layout() -> Array:
 	var blocks_array: Array = []
-	for x in range(MAP_SIZE_X):
-		for y in range(MAP_SIZE_Y):
-			for z in range(MAP_SIZE_Z):
-				var block: G.Block = map[x][y][z]
-				if block != G.Block.EMPTY and _is_anchor(x, y, z):
-					var key: String = "%d,%d,%d" % [x, y, z]
-					var entry: Dictionary = {
-						"x": x, "y": y, "z": z,
-						"block": G.block_key(block),
-						"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
-					}
-					# "out" is written ONLY for factories whose choice was changed: an extra field in each of fifty
-					# cells would bloat the save for a default value.
-					if output_map.has(key):
-						entry["out"] = int(output_map[key])
-					# Ports are written ONLY where the player changed them: the rest run on the default rule (face
-					# masks), and storing emptiness is pointless.
-					if port_map.has(key) and not (port_map[key] as Dictionary).is_empty():
-						entry["ports"] = port_map[key]
-					# Charge is asked FROM THE LIVE NODE: it is spent and gained every second while the map only holds
-					# what the block was born with. An empty battery writes no field.
-					var bnode: Node = node_map.get(key)
-					if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
-							and float(bnode.get("charge")) > 0.01:
-						entry["chg"] = float(bnode.get("charge"))
-					# Cargo is asked FROM THE LIVE NODE for the same reason as charge: the belt fills and
-					# empties a storage every few seconds, and the map only holds what it was born with.
-					# An empty storage writes no field.
-					if bnode != null and is_instance_valid(bnode) and bnode.has_method("store_state"):
-						var st: Dictionary = bnode.call("store_state")
-						if int(st.get("n", 0)) > 0:
-							entry["store"] = st
-					blocks_array.append(entry)
+	for c in _anchors_sorted():
+		var key: String = "%d,%d,%d" % [c.x, c.y, c.z]
+		var entry: Dictionary = {
+			"x": c.x, "y": c.y, "z": c.z,
+			"block": G.block_key(int(map[c])),
+			"rot": _rot_array(rotation_map.get(key, Vector3.ZERO))
+		}
+		# "out" is written ONLY for factories whose choice was changed: an extra field in each of fifty
+		# cells would bloat the save for a default value.
+		if output_map.has(key):
+			entry["out"] = int(output_map[key])
+		# Ports are written ONLY where the player changed them: the rest run on the default rule (face
+		# masks), and storing emptiness is pointless.
+		if port_map.has(key) and not (port_map[key] as Dictionary).is_empty():
+			entry["ports"] = port_map[key]
+		# Charge is asked FROM THE LIVE NODE: it is spent and gained every second while the map only holds
+		# what the block was born with. An empty battery writes no field.
+		var bnode: Node = node_map.get(key)
+		if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
+				and float(bnode.get("charge")) > 0.01:
+			entry["chg"] = float(bnode.get("charge"))
+		# Cargo is asked FROM THE LIVE NODE for the same reason as charge: the belt fills and
+		# empties a storage every few seconds, and the map only holds what it was born with.
+		# An empty storage writes no field.
+		if bnode != null and is_instance_valid(bnode) and bnode.has_method("store_state"):
+			var st: Dictionary = bnode.call("store_state")
+			if int(st.get("n", 0)) > 0:
+				entry["store"] = st
+		blocks_array.append(entry)
 	return blocks_array
 
 func _rot_array(v: Vector3) -> Array:
@@ -1705,7 +1738,7 @@ func rebuild_factory_links() -> void:
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 		if not _in_bounds(ax, ay, az):
 			continue
-		cells[n] = _block_footprint(int(map[ax][ay][az]), ax, ay, az, _yaw_at(ax, ay, az))
+		cells[n] = _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az))
 		anchors[n] = Vector3i(ax, ay, az)     # смещения клеток считаем от якоря
 		facs.append(n)
 	# Links are computed PER CELL. The old code walked the block's marked FACES and took the FIRST
