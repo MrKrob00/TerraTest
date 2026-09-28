@@ -193,27 +193,77 @@ def build_regen(pk, img):
 
 
 # ── the repair unit, second cut (preview) ──────────────────────────────────────────────────────
-# No platform: four rings round the crystal, seen from the front as "-", "|", "/" and "\" - every
+# No platform: four square-section bands (the first cut's round tubes were turned down for the old
+# ring's flat band), green emitters on their inside facing the crystal, round the crystal, seen from the front as "-", "|", "/" and "\" - every
 # ring's plane holds the front axis (Z), turned about it by REGEN2_ANGLES. Nested at REGEN2_R so each
 # can turn about its own axis without passing through the others; the outer one reaches the cell.
 REGEN2_ANGLES = (0.0, 90.0, 45.0, 135.0)
-REGEN2_R = (0.455, 0.395, 0.335, 0.275)
-REGEN2_TUBE = 0.042
+REGEN2_R = (0.45, 0.39, 0.33, 0.27)
+REGEN2_DEPTH = 0.024          # the band's half depth (radial) and half width
+REGEN2_WIDTH = 0.04
+
+
+def _tone(n, kind):
+    """The painted-light tone of a face with normal n, as the tube's facets are toned."""
+    return "%stone%d" % (kind, int(round(max(0.0, min(1.0, 0.5 + 0.5 * th.dot(th.norm(n), LIGHT)))) * 4))
+
+
+def square_ring(faces, ang, R, depth, width, n=24):
+    """A flat band of square section (the old repair ring's, blue outside, dark inside) round a circle
+    of radius R whose plane holds the Z axis, turned about Z by ang degrees."""
+    c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    nrm = (-s_, c, 0.0)                      # the ring plane's normal
+    def at(t, dr, dn):
+        rad = (math.cos(t) * c, math.cos(t) * s_, math.sin(t))
+        return th.add(th.mul(rad, R + dr), th.mul(nrm, dn))
+    for k in range(n):
+        t0, t1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
+        tm = (t0 + t1) / 2
+        rad = (math.cos(tm) * c, math.cos(tm) * s_, math.sin(tm))
+        tan = (-math.sin(tm) * c, -math.sin(tm) * s_, math.cos(tm))
+        seam = k % 6 == 0
+        for (d0, n0), (d1, n1), out, kind in (
+                ((depth, -width), (depth, width), rad, "m" if seam else "b"),       # outer
+                ((-depth, width), (-depth, -width), th.mul(rad, -1), "m"),          # inner
+                ((-depth, width), (depth, width), nrm, "m" if seam else "b"),       # side
+                ((depth, -width), (-depth, -width), th.mul(nrm, -1), "m" if seam else "b")):
+            q = [at(t0, d0, n0), at(t0, d1, n1), at(t1, d1, n1), at(t1, d0, n0)]
+            cen = th.add(th.mul(rad, R), th.mul(out, -1.0))
+            faces.append(th.Face(th.outward(q, cen), _tone(out, kind), u_hint=tan))
+
+
+def obox(faces, centre, ax, half, styles):
+    """A box on axes ax = (a, b, c) with half sizes half; styles[i] for the +a, -a, +b, -b, +c, -c faces."""
+    k = 0
+    for i in range(3):
+        for sg in (1, -1):
+            a, b2, c2 = ax[i], ax[(i + 1) % 3], ax[(i + 2) % 3]
+            ha, hb, hc = half[i], half[(i + 1) % 3], half[(i + 2) % 3]
+            f0 = th.add(centre, th.mul(a, sg * ha))
+            q = [th.add(f0, th.add(th.mul(b2, x * hb), th.mul(c2, y * hc))) for x, y in
+                 ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+            faces.append(th.Face(th.outward(q, centre), styles[k], u_hint=b2))
+            k += 1
 
 
 def build_regen2(pk, img):
     parts = {}
-    n = 24
     for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, REGEN2_R)):
-        c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
-        # a circle in the XZ plane, turned about Z: (x, 0, z) -> (x c, x s, z)
-        path = [(R * math.cos(t) * c, R * math.cos(t) * s_, R * math.sin(t))
-                for t in (2 * math.pi * k / n for k in range(n + 1))]
         faces = []
-        tube(faces, path, [REGEN2_TUBE] * (n + 1), ["m" if k % 6 == 0 else "b" for k in range(n)], sides=6)
+        square_ring(faces, ang, R, REGEN2_DEPTH, REGEN2_WIDTH)
+        # two emitters on the band's inside, facing the crystal: a dark stub, a green glowing tip
+        c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        nrm = (-s_, c, 0.0)
+        for sg in (1, -1):
+            rad = (sg * c, sg * s_, 0.0)
+            tan = (0.0, 0.0, 1.0)
+            base = th.mul(rad, R - REGEN2_DEPTH - 0.03)
+            obox(faces, base, (rad, nrm, tan), (0.03, 0.04, 0.05), ["dark"] * 6)
+            tip = th.mul(rad, R - REGEN2_DEPTH - 0.08)
+            obox(faces, tip, (rad, nrm, tan), (0.022, 0.032, 0.04), ["level"] * 6)
         parts["regen2_ring%d" % i] = faces
     parts["regen2_crystal"] = []
-    lathe_y(pk, img, parts["regen2_crystal"], [(0.0, -0.23), (0.15, -0.05), (0.15, 0.05), (0.0, 0.23)],
+    lathe_y(pk, img, parts["regen2_crystal"], [(0.0, -0.21), (0.13, -0.04), (0.13, 0.04), (0.0, 0.21)],
             CORE_RAMP, sides=6, cell=4)
     return parts
 
