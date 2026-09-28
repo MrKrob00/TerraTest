@@ -192,6 +192,32 @@ def build_regen(pk, img):
     return parts
 
 
+# ── the repair unit, second cut (preview) ──────────────────────────────────────────────────────
+# No platform: four rings round the crystal, seen from the front as "-", "|", "/" and "\" - every
+# ring's plane holds the front axis (Z), turned about it by REGEN2_ANGLES. Nested at REGEN2_R so each
+# can turn about its own axis without passing through the others; the outer one reaches the cell.
+REGEN2_ANGLES = (0.0, 90.0, 45.0, 135.0)
+REGEN2_R = (0.455, 0.395, 0.335, 0.275)
+REGEN2_TUBE = 0.042
+
+
+def build_regen2(pk, img):
+    parts = {}
+    n = 24
+    for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, REGEN2_R)):
+        c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+        # a circle in the XZ plane, turned about Z: (x, 0, z) -> (x c, x s, z)
+        path = [(R * math.cos(t) * c, R * math.cos(t) * s_, R * math.sin(t))
+                for t in (2 * math.pi * k / n for k in range(n + 1))]
+        faces = []
+        tube(faces, path, [REGEN2_TUBE] * (n + 1), ["m" if k % 6 == 0 else "b" for k in range(n)], sides=6)
+        parts["regen2_ring%d" % i] = faces
+    parts["regen2_crystal"] = []
+    lathe_y(pk, img, parts["regen2_crystal"], [(0.0, -0.23), (0.15, -0.05), (0.15, 0.05), (0.0, 0.23)],
+            CORE_RAMP, sides=6, cell=4)
+    return parts
+
+
 # ── the radar ───────────────────────────────────────────────────────────────────────────────────
 
 DISH_RAMP = [(70, 78, 100), (95, 104, 130), (120, 130, 158), (145, 155, 182), (165, 175, 200)]
@@ -1268,6 +1294,7 @@ def build_wireless(pk, img):
 
 
 BLOCKS = {
+    "regen2": (109, build_regen2, 256),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
