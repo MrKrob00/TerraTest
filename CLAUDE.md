@@ -128,7 +128,9 @@ project: read it before claiming how anything works.
   with ribs between them; now the one-cell plate's frame (its bevel and rim, measured off
   `GSO_Plane`) runs round the OUTSIDE only, one grey panel fills it, and on it a raised reinforcing
   slab, four blue braces from its corners to the panel's, a diamond and bolts - the rim bolts where
-  the cells meet, so a x9 still tells its size. On the artist's own two materials, and with the
+  the cells meet, so a x9 still tells its size. The slab's inset is taken PER SIDE (`SLAB_IN`,
+  `SLAB_IN_ONE` on a side one cell long): one number left the x2 a 0.27 m strip with its corner
+  bolts touching and the diamond over its edges. On the artist's own two materials, and with the
   artist's NORMALS, WHICH ARE INVERTED (the x1's showing face carries +Y, into the plate): built
   with outward normals the big plates lit as the x1's opposite, black beside grey in one light.
   Measured: cells, mesh and collider span the same rectangle for all four, and a wall carrying all

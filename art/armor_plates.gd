@@ -24,6 +24,7 @@ const BEVEL := 0.034599         # 0.5 - 0.465401
 const RIM := 0.066394           # 0.5 - 0.433606
 
 const SLAB_IN := 0.30           # the reinforcing slab's inset from the panel edge
+const SLAB_IN_ONE := 0.12       # ...on a side only one cell long
 const SLAB_H := 0.03
 const SLAB_CH := 0.035          # its chamfer
 const BRACE_W := 0.10
@@ -91,6 +92,9 @@ func _poly(key: String, pts: Array, n: Vector3) -> void:
 func _rect(x0: float, x1: float, z0: float, z1: float, d: float, y: float) -> Array:
 	return [Vector3(x0 + d, y, z0 + d), Vector3(x1 - d, y, z0 + d), Vector3(x1 - d, y, z1 - d), Vector3(x0 + d, y, z1 - d)]
 
+func _rect2(x0: float, x1: float, z0: float, z1: float, dx: float, dz: float, y: float) -> Array:
+	return [Vector3(x0 + dx, y, z0 + dz), Vector3(x1 - dx, y, z0 + dz), Vector3(x1 - dx, y, z1 - dz), Vector3(x0 + dx, y, z1 - dz)]
+
 ## A frustum from the rectangle `lo` up (toward -Y) to `hi`: top face and four sloped sides.
 func _frustum(key: String, lo: Array, hi: Array) -> void:
 	_poly(key, hi, Vector3.DOWN)
@@ -154,25 +158,31 @@ func _build(w: float, h: float, cx: float, cz: float) -> void:
 		_poly("Blue", [foot[i], foot[j], inner[j], inner[i]], Vector3.DOWN)
 	# One grey panel across the whole plate.
 	_poly("Gray", inner, Vector3.DOWN)
-	# The reinforcing slab.
-	var slab_lo := _rect(x0, x1, z0, z1, RIM + SLAB_IN, face)
-	var slab_hi := _rect(x0, x1, z0, z1, RIM + SLAB_IN + SLAB_CH, face - SLAB_H)
+	# The reinforcing slab. Its inset is taken PER SIDE from that side's own length: one number for
+	# both left the x2 (one cell high) a strip 0.27 m tall, with its corner bolts touching and the
+	# diamond hanging over its edges.
+	var ix: float = SLAB_IN if w > 1.5 else SLAB_IN_ONE
+	var iz: float = SLAB_IN if h > 1.5 else SLAB_IN_ONE
+	var slab_lo := _rect2(x0, x1, z0, z1, RIM + ix, RIM + iz, face)
+	var slab_hi := _rect2(x0, x1, z0, z1, RIM + ix + SLAB_CH, RIM + iz + SLAB_CH, face - SLAB_H)
 	_frustum("Gray", slab_lo, slab_hi)
-	# Braces from the panel's corners to the slab's, bolted at both ends.
+	# Braces from the panel's corners to the slab's, bolted at the panel end.
 	var pc := _rect(x0, x1, z0, z1, RIM + 0.07, face)
 	for i in 4:
 		_brace(pc[i], slab_lo[i], face)
 		_bolt(pc[i].x, pc[i].z, face - BRACE_H)
-	# The diamond on the slab: its points on the slab's axes, a third of the slab's shorter side.
+	# The diamond on the slab, sized by the slab's shorter side so it always sits inside it.
 	var top_y := face - SLAB_H
-	var r: float = minf(w, h) * 0.17
+	var slab_w: float = w - 2.0 * (RIM + ix + SLAB_CH)
+	var slab_h: float = h - 2.0 * (RIM + iz + SLAB_CH)
+	var r: float = minf(minf(slab_w, slab_h) * 0.32, 0.4)
 	var dia_lo := [Vector3(cx - r, top_y, cz), Vector3(cx, top_y, cz - r), Vector3(cx + r, top_y, cz), Vector3(cx, top_y, cz + r)]
 	var dia_hi := []
 	for q in dia_lo:
 		dia_hi.append(Vector3(cx + (q.x - cx) * 0.8, top_y - 0.014, cz + (q.z - cz) * 0.8))
 	_frustum("Blue", dia_lo, dia_hi)
 	# Bolts at the slab's corners.
-	for q in _rect(x0, x1, z0, z1, RIM + SLAB_IN + SLAB_CH + 0.06, top_y):
+	for q in _rect2(x0, x1, z0, z1, RIM + ix + SLAB_CH + 0.07, RIM + iz + SLAB_CH + 0.07, top_y):
 		_bolt(q.x, q.z, top_y)
 	# Bolts along the rim where the cells meet, so the plate still tells how big it is.
 	for i in range(1, int(w)):
