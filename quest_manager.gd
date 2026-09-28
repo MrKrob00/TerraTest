@@ -507,6 +507,11 @@ func set_reward_mult(id: String, m: float) -> void:
 	if not q.is_empty():
 		q["reward_mult"] = m
 
+## Whose quest this is: a G.FACTIONS id. Every quest today is the first faction's (Falsus); a
+## quest of another names it in a "faction" field. The XP goes there, and the UI shows its emblem.
+func faction_of(q: Dictionary) -> String:
+	return String(q.get("faction", "start"))
+
 func _on_completed(q: Dictionary) -> void:
 	var mult: float = float(q.get("reward_mult", 1.0))
 	q.erase("reward_mult")
@@ -519,7 +524,7 @@ func _on_completed(q: Dictionary) -> void:
 			g.money += reward
 			g.mark_progress_dirty()   # мимо add_money — сейв надо пометить самим
 			g.money_changed.emit()
-		g.add_faction_xp("start", roundi(float(q.get("reward_xp", 0)) * mult))
+		g.add_faction_xp(faction_of(q), roundi(float(q.get("reward_xp", 0)) * mult))
 		g.add_research_points(roundi(float(q.get("reward_rp", 0)) * mult))
 	# Награда БЛОКАМИ: блоки глючно кружат вокруг машины игрока, затем падают в мир (не молча в
 	# инвентарь). Ставим на активную машину игрока.

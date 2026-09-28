@@ -1784,6 +1784,20 @@ project: read it before claiming how anything works.
   front of it; a loose block 4 m from the scrapper was swallowed in 0.5 s and its materials sold for
   85. AN OLD SAVE with one of these where it now overlaps a neighbour loses it on load: `set_block`
   refuses an overlap.
+- **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
+  the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
+  faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a
+  lozenge, a round hole in the lozenge, the eye in the hole - bright green shapes and NOTHING else,
+  the gaps and the hole see-through (the player's rules: not white, gaps, no backdrop behind the
+  eye), a pale neon edge and a short halo off the big shapes only (off the fine parts it gathered
+  into haze in the hole). The UI picture (`images/faction_falsus.png`, 256 px, mipmapped - shown at
+  20-32 px it shimmers without) and the block SIGN PLATES (`turret_heads` "falsus_plate",
+  `emitter_models.falsus_plate`) both ask that one function, so they cannot drift; under ~8 px of
+  hole the eye is a dot. A plate is ONE per block and only where a wall has room: the seller's
+  back, the fabricator's front, the plant's and the scrapper's left wall. QUESTS carry their
+  faction (`Q.faction_of`, default the first), which is where their XP goes and whose emblem
+  `quests.gd` shows - on the tracker's title (`TrackEmblem`), on every journal row and over the
+  detail with the faction's name.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

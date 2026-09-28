@@ -1,5 +1,9 @@
 {
 	"_about": "Key = the ENGLISH string as it stands in the code. No invented key names: a wrapped string is translated the moment a row appears here, and an unwrapped one keeps working untouched. Loaded by G._load_translations at startup; format patterns must keep their placeholders in the same order.",
+	"Falsus": {
+		"ru": "Falsus",
+		"uk": "Falsus"
+	},
 	"PLAY": {
 		"ru": "ИГРАТЬ",
 		"uk": "ГРАТИ"

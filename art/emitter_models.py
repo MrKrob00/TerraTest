@@ -874,6 +874,7 @@ def build_seller(pk, img):
         restyle(v, "vault", [((0, -1), "plain_side"), ((-1, 0), "vault_door"), ((1, 0), "plain_side"),
                              ((0, 1), "plain_side")])
         b += v
+    falsus_plate(b, (-1.0, 0.25, 0.504), (1, 0, 0), 0.8)   # the vault's plain back wall
     # THE SCREEN: one wide display across the whole front in a blue bezel, blank - the game writes
     # on it (the scene's Label3D stands on its glass) - with a row of status lamps under it.
     sx0, sx1, sy0, sy1 = SL_SCREEN
@@ -1097,6 +1098,13 @@ def plant_top(px, py, w, h):
     return th.jitter(th.BLUE, 2)
 
 
+def falsus_plate(faces, centre, right, size):
+    """The Falsus faction's sign plate (turret_heads "falsus_plate"), a hair proud of a wall whose
+    outward normal is right x up. ONE per block, and only where a wall has room: the player's
+    call - not on every block, and two on one read as clutter."""
+    glow_quad(faces, centre, right, (0, 1, 0), size / 2, size / 2, style="falsus_plate")
+
+
 def big_base(b, side):
     """The 2x2x2 machines' ground floor: one dark body the full footprint up to BIG_TOP."""
     cham_box(b, (-1.5, -0.5, -1.5), (0.5, BIG_TOP, 0.5), 0.067, side, "dark", "dark", "dark_edge")
@@ -1114,6 +1122,7 @@ def build_comp_factory(pk, img):
     for cx in (-1.0, 0.0):
         belt_mouth(b, cx, 0.5, (0, 1), top=PLANT_MOUTH)   # the two inputs: the back
     belt_mouth(b, 0.0, -1.5, (0, -1), top=PLANT_MOUTH)    # the output: the front, right column
+    falsus_plate(b, (-1.504, 0.0, 0.1), (0, 0, 1), 0.6)   # the left wall, beside the gear
     return parts
 
 
@@ -1126,6 +1135,7 @@ def build_fabricator(pk, img):
     # The assembly windows, one in each side wall: the grid a block materialises on.
     glow_quad(b, (-1.504, 0.12, -0.5), (0, 0, 1), (0, 1, 0), 0.62, 0.26, style="fab_window")
     glow_quad(b, (0.504, 0.12, -0.5), (0, 0, -1), (0, 1, 0), 0.62, 0.26, style="fab_window")
+    falsus_plate(b, (-1.1, 0.02, -1.504), (-1, 0, 0), 0.66)  # the front wall, beside the block sign
     # The assembly housing over the base, and on it the PIPE the block leaves by: up, over and out
     # of a flared mouth at the front.
     frustum(b, crect(-1.46, 0.46, -1.46, 0.46, 0.14, BIG_TOP), crect(-1.3, 0.3, -1.3, 0.3, 0.12, 0.95),
@@ -1143,6 +1153,7 @@ def build_scrapper(pk, img):
     b = parts["scrapper_body"]
     big_base(b, "scrap_side")
     belt_mouth(b, 0.0, -1.5, (0, -1))           # the output: the front's bottom quarter, right column
+    falsus_plate(b, (-1.504, 0.02, 0.1), (0, 0, 1), 0.66)  # the left wall, beside the split block
     # The hopper on the front half of the roof, hazard slats round its rim.
     lo, hi = crect(-1.3, 0.3, -1.35, -0.25, 0.10, BIG_TOP), crect(-1.45, 0.45, -1.48, -0.12, 0.12, 1.05)
     frustum(b, lo, hi, "blue", "bevel", None)
