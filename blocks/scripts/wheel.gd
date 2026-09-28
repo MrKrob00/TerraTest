@@ -35,6 +35,10 @@ const STEER_SPEED: float = 6.0
 @export var ride_height: float = 0.55
 ## Ход подвески: на столько колесо может уйти вверх (сжатие) и вниз (вывешивание) от оси.
 @export var suspension_travel: float = 0.22
+## The part the suspension moves, when it is not the one named *axle*. The stabiliser's mount
+## carries its arms and tyre as children, and only moving the mount moves them together: moving the
+## arms alone slid them in and out of the mount (the player's fix put them under it).
+@export var travel_part: NodePath
 
 ## Самый крутой склон, который подвеска ещё отрабатывает: 1/0.6 ≈ 53°. Дальше поправка на
 ## наклон росла бы к бесконечности (у отвесной стены нормаль вообще горизонтальна).
@@ -101,7 +105,10 @@ func _ready() -> void:
 	_steer = _find_part("susp_high")
 	if _steer != null:
 		_steer_rest = _steer.transform.basis
-	_hub = _find_part("axle")
+	if not travel_part.is_empty():
+		_hub = get_node_or_null(travel_part) as Node3D
+	if _hub == null:
+		_hub = _find_part("axle")
 	if _hub == null:
 		_hub = _tyre                   # опорное колесо: ход отыгрывает сама покрышка
 	_hub_rest = _hub.position
