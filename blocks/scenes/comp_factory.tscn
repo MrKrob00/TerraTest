@@ -2,10 +2,9 @@
 
 [ext_resource type="Script" path="res://blocks/scripts/comp_factory.gd" id="1_cf"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/comp_factory_body.tres" id="2_m"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/comp_factory_ram.tres" id="3_m"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_big"]
-size = Vector3(2, 2, 2)
+size = Vector3(2, 1, 2)
 
 [node name="comp_factory" type="RigidBody3D"]
 collision_layer = 2
@@ -19,17 +18,14 @@ port_defaults = {
 "0,0,0|1": 1,
 "0,0,-1|0": 2
 }
-cells_center = Vector3(-0.5, 0.5, -0.5)
+cells_center = Vector3(-0.5, 0, -0.5)
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
 shape = SubResource("BoxShape3D_big")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="."]
 mesh = ExtResource("2_m")
-
-[node name="Ram" type="MeshInstance3D" parent="."]
-mesh = ExtResource("3_m")
 
 [node name="item_slot" type="Marker3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0)

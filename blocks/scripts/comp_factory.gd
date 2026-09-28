@@ -29,32 +29,10 @@ var _ready_count: int = 0           # сварено и ждёт отправк�
 var _push_t: float = 0.0
 var _res_scene: PackedScene = null
 
-## THE PRESS STAMPS WHILE A COMPONENT IS BEING MADE (art/emitter_models.py build_comp_factory, node
-## `Ram`): down fast onto the anvil, a beat, up slow, for as long as the craft runs.
-const STROKE: float = 0.25          # emitter_models PR_STROKE
-const STAMP_TIME: float = 0.5
-var _ram: Node3D = null
-var _stamp_t: float = 0.0
-
 func _ready() -> void:
-	moving_parts = true
-	_ram = get_node_or_null("Ram") as Node3D
 	super._ready()
 	_res_scene = load(RESOURCE_SCENE) as PackedScene
 	_need = G.COMP_RECIPE.get(output_comp, {}).duplicate()
-
-func _process(delta: float) -> void:
-	push_retry_tick(delta)
-	if _ram == null:
-		return
-	if _crafting:
-		_stamp_t += delta
-		var p: float = fmod(_stamp_t, STAMP_TIME) / STAMP_TIME
-		var down: float = smoothstep(0.0, 0.18, p) if p < 0.3 else 1.0 - smoothstep(0.3, 1.0, p)
-		_ram.position.y = -STROKE * down
-	elif _ram.position.y != 0.0:
-		_stamp_t = 0.0
-		_ram.position.y = move_toward(_ram.position.y, 0.0, STROKE * 2.0 * delta)
 
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active() or _crafting or _need.is_empty():
