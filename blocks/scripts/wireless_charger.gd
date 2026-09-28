@@ -28,11 +28,11 @@ var _beam: MeshInstance3D = null
 var _beam_mat: StandardMaterial3D = null
 var _t: float = 0.0
 
-## The two coils round the dome (art/emitter_models.py build_wireless) turn while energy flows
+## The two coils (art/emitter_models.py build_wireless) turn while energy flows
 ## and runs down when it stops - the block's own "working" sign, next to the beam.
 const RING_SPIN: float = 5.0         # rad/s while transmitting
-## Where the beam leaves: the dome's centre (art/emitter_models.py WL_DOME).
-const EMIT := Vector3(0.0, 0.10, 0.0)
+## Where the beam leaves: between the two coils (art/emitter_models.py WL_COILS_Y).
+const EMIT := Vector3(0.0, -0.135, 0.0)
 const RING_EASE: float = 3.0
 var _ring: Node3D = null
 var _ring_w: float = 0.0

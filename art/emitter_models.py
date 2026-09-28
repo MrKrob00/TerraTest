@@ -1198,25 +1198,24 @@ def build_packer(pk, img):
 
 
 # ── the battery and the wireless charger ────────────────────────────────────────────────────────
-# BOTH JOIN ON ALL SIX FACES, AND THE BLOCK ITSELF REACHES THEM - no frame round it (a cage of posts
+# THE BATTERY JOINS ON ALL SIX FACES, AND THE BLOCK ITSELF REACHES THEM - no frame round it (a cage of posts
 # and beams was tried and the player turned it down). Round parts have 12 sides with their FLATS ON
 # THE CELL'S FACES (flat_r, 12 sides), so a round body meets a side neighbour on a face, not an edge.
 # BATTERY - a cell as wide as the cell: flats on the four sides, the flat - end on the bottom face,
 #   the + nub up to the top face, a blue top band. Four charge rings sit in GROOVES round the body
 #   (battery_seg, one mesh on nodes Seg0..3) and light by the block's own charge (battery.gd); a dark
 #   ring leaves its groove showing, so an empty battery still reads as one.
-# WIRELESS CHARGER - TerraTech's GSO charger: a dome with a red band and two cyan coils (build_wireless).
+# WIRELESS CHARGER - TerraTech's GSO charger's two cyan coils on a post, mounted by its back face.
 BAT_SEG_Y = (-0.32, -0.20, -0.08, 0.04)   # charge ring centres, bottom up (battery.tscn Seg0..3)
 BAT_SEG_HH = 0.04
 BAT_GROOVE = 0.46                # the grooves' floor; the rings stand in them to BAT_RING
 BAT_RING = 0.49
 GREEN_RAMP = [(34, 104, 62), (52, 146, 86), (80, 205, 120), (120, 230, 150), (170, 248, 192)]
 SLOT_RAMP = [(20, 30, 25), (26, 40, 33), (34, 50, 42), (44, 62, 52), (56, 76, 64)]
-WL_DOME = (0.10, 0.40)           # the charger's dome: centre y, radius (its top cut flat at y 0.5)
-WL_COIL = (0.42, 0.075)          # a coil: radius and tube - their outside reaches the side faces
-WL_COILS_Y = (-0.33, -0.16)      # the two coils' heights, round the dome's lower half
-WL_GREY = [(58, 56, 66), (74, 72, 84), (92, 90, 104), (112, 110, 124), (138, 136, 150)]
-WL_RED = [(96, 24, 28), (132, 34, 38), (176, 46, 48), (208, 64, 62), (232, 96, 90)]
+WL_COIL = (0.33, 0.07)           # a coil: radius and tube - clear of the mount plate behind it
+WL_COILS_Y = (-0.22, -0.05)      # the two coils' heights; the arm passes over the upper one
+WL_ARM_Y = (0.12, 0.26)          # the arm from the plate to the post's head
+WL_PLATE_H, WL_PLATE_T = 0.32, 0.07   # the mount plate: half-size, thickness
 CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
 
 
@@ -1247,34 +1246,38 @@ def build_battery(pk, img):
 
 
 def build_wireless(pk, img):
-    """TerraTech's GSO Wireless Charger, from the player's picture: a round grey dome with a red
-    band, two thick glowing cyan coils wrapped round its lower half, and a cable from the coils up
-    into the dome. NO PLATFORM - a base read as "joins by its bottom only", the player's call.
-    It still joins on all six faces: the coils reach the four side faces, a flat cap on the dome the
-    top one, the body under the coils the bottom one. The coils turn while energy flows
-    (wireless_charger.gd `Ring`); the beam leaves the dome's centre (`EMIT`)."""
+    """TerraTech's GSO Wireless Charger, the player's cut of it: the two thick glowing cyan coils and
+    NOTHING round them but what holds them - a dark post through their middle with a cyan lens on top,
+    three spokes each, and an arm back to a blue MOUNT PLATE on the back face, the one face it joins
+    by (`connect_faces` FACE_BACK, like a wheel; TerraTech's joins by one side too). A cable runs from
+    the plate under the coils to the post's foot. The coils turn while energy flows
+    (wireless_charger.gd `Ring`); the beam leaves the coils' middle (`EMIT`)."""
     parts = {"wireless_body": [], "wireless_ring": []}
     b, ring = parts["wireless_body"], parts["wireless_ring"]
-    cy, cr = WL_DOME
-    fr = lambda r: flat_r(r, 12)
-    # the body under the coils, from the bottom face up into the dome
-    lathe_y(pk, img, b, [(0.0, -0.5), (fr(0.30), -0.5), (fr(0.34), -0.46), (fr(0.34), cy - cr * 0.55)],
-            METAL_RAMP, sides=12)
-    # the dome, cut by a small flat cap at the top face; the red band round its waist
-    prof = sphere_profile(cy, cr, -40, 72, 8) + [(0.11, 0.5), (0.0, 0.5)]
-    band = {k for k in range(len(prof) - 1) if cy + 0.02 <= prof[k][1] < cy + cr * 0.40}
-    lathe_y(pk, img, b, prof, WL_GREY, sides=16,
-            ring_ramps={**{k: WL_RED for k in band}, len(prof) - 2: METAL_RAMP, len(prof) - 3: METAL_RAMP})
-    # the cable: out of the upper coil, round and up into the dome
     R, r = WL_COIL
-    y0 = WL_COILS_Y[1]
-    tube(b, [(R - 0.02, y0 + r * 0.6, 0.0), (R + 0.02, y0 + 0.12, 0.0), (cr * 0.92, cy + 0.02, 0.0),
-             (cr * 0.75, cy + 0.14, 0.0)], [0.028] * 4, ["m", "m", "m"], sides=6)
-    # the two coils: cyan, a dark seam every few segments so their turn is seen
+    y_lo, y_hi = WL_COILS_Y
+    # the mount plate on the back face, and the arm from it over the coils to the post's head
+    ph = WL_PLATE_H
+    th.box(b, (-ph, -ph, 0.5 - WL_PLATE_T), (ph, ph, 0.5), "blue")
+    th.box(b, (-0.07, WL_ARM_Y[0], 0.08), (0.07, WL_ARM_Y[1], 0.5 - WL_PLATE_T), "dark", skip=("+z",))
+    # the post through the coils, and the cyan lens it carries on top
+    lathe_y(pk, img, b, [(0.0, -0.40), (0.10, -0.40), (0.11, -0.37), (0.11, WL_ARM_Y[1]),
+                         (0.09, WL_ARM_Y[1] + 0.02)], METAL_RAMP, sides=12)
+    lathe_y(pk, img, b, [(0.09, WL_ARM_Y[1] + 0.02), (0.07, WL_ARM_Y[1] + 0.06), (0.0, WL_ARM_Y[1] + 0.07)],
+            CYAN_RAMP, sides=12)
+    # the cable: out of the plate, down, under the lower coil to the post's foot
+    tube(b, [(0.12, -0.24, 0.5 - WL_PLATE_T), (0.12, -0.37, 0.36), (0.07, -0.39, 0.12)], [0.03] * 3,
+         ["m", "m"], sides=6)
+    # the two coils: cyan, a dark seam every few segments so their turn is seen, three spokes each
     n = 18
-    for yc in WL_COILS_Y:
+    for yc in (y_lo, y_hi):
         path = [(R * math.cos(a), yc, R * math.sin(a)) for a in (2 * math.pi * k / n for k in range(n + 1))]
         tube(ring, path, [r] * (n + 1), ["m" if k % 6 == 0 else "c" for k in range(n)], sides=6)
+        for k in range(3):
+            a = 2 * math.pi * k / 3 + math.pi / 6
+            ca, sa = math.cos(a), math.sin(a)
+            tube(ring, [(ca * 0.10, yc, sa * 0.10), (ca * (R - r * 0.5), yc, sa * (R - r * 0.5))],
+                 [0.018, 0.018], ["m"], sides=4)
     return parts
 
 

@@ -742,9 +742,11 @@ func _layout_shielded_tower(far: int, near: int) -> void:
 
 ## A CHARGING STATION: an ordinary battery station - batteries, a panel, the transmitter - that
 ## also defends itself, with a machine gun and a ROTATING core that turns it to the target
-## (enemy_vehicle._turn_to_target). THE TRANSMITTER SITS ON THE ROTATION AXIS, on the mast over the
-## core: anywhere else the station would swing it out of wireless_charger.RANGE (6 m) of the tower's
+## (enemy_vehicle._turn_to_target). THE TRANSMITTER SITS ON THE ROTATION AXIS, over the core:
+## anywhere else the station would swing it out of wireless_charger.RANGE (6 m) of the tower's
 ## battery as it turned. On the axis it keeps the 4.9 m the ring was measured for (TOWER_RING).
+## It joins by its BACK face only (a wheel's mount), so it hangs on the front of a second column
+## (5,6,6)-(5,7,6) behind it, and the panel moved from that column's foot to its top.
 ## One gun per station: three or four stations already take the tower from two barrels to five or
 ## six.
 func _layout_charge_tower() -> void:
@@ -752,10 +754,12 @@ func _layout_charge_tower() -> void:
 	set_block(4, 5, 5, G.Block.BATTERY, 0.0)         # its store: the transmitter pours from these
 	set_block(6, 5, 5, G.Block.BATTERY, 0.0)
 	set_block(5, 5, 4, G.Block.BLOCK, 0.0)           # front floor, under the gun
-	set_block(5, 5, 6, G.Block.BLOCK, 0.0)           # back floor, under the panel (SOLAR joins from below)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)           # back floor, under the transmitter's column
 	set_block(5, 6, 5, G.Block.BLOCK, 0.0)           # mast
-	set_block(5, 7, 5, G.Block.WIRELESS_CHARGER, 0.0)
-	set_block(5, 6, 6, G.Block.SOLAR, 0.0)
+	set_block(5, 6, 6, G.Block.BLOCK, 0.0)           # the column the transmitter hangs on
+	set_block(5, 7, 6, G.Block.BLOCK, 0.0)
+	set_block(5, 7, 5, G.Block.WIRELESS_CHARGER, 0.0)   # on the axis, its back (+Z) on (5,7,6)
+	set_block(5, 8, 6, G.Block.SOLAR, 0.0)           # the panel on the column's top (joins from below)
 	set_block(5, 6, 4, G.Block.GUN, 0.0)             # faces front: the station turns it onto the target
 
 # ── Spawning all blocks ─────────────────────────────────────────────────────
