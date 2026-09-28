@@ -1887,11 +1887,13 @@ project: read it before claiming how anything works.
   The armour carried the block's window and "only repeated the block"; it is SCALES laid like
   shingles (thin at the top under the scale above, the step facing DOWN - thick at the top read as
   a bookcase) between posts with a sunset slit. The 4x2 has no middle post - it read as two 2x2
-  plates side by side - and its scales run the whole width as CHEVRONS dipping to the middle, the
-  top rail following the V. The faction's octagon set on its scales was turned down too: the
-  block's window on the armour, "two styles, badly joined". Unshaded blocks cast no shadow, so a
-  scale is told from the next by PAINT: a lit lip along its foot, rows alternating a tone, a
-  chevron's halves a tone apart - without them the 4x2 rendered as one blank panel.
+  plates side by side - and its scales run the whole width as CHEVRONS dipping to the middle. What
+  the V leaves by the rails is MORE OF THE SAME SCALES CUT OFF BY THE RAIL (a triangle under the top
+  one, a wedge at each end of the bottom one): a plate of the frame's own there was "something new"
+  and was turned down, as was the faction's octagon set on the scales ("two styles, badly joined").
+  Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
+  foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
+  chevron's two halves are ONE tone: a step apart, one read as unfinished.
 - **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
   trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
   a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver
