@@ -369,7 +369,12 @@ const GROUND_FRICTION: float = 0.35
 ## script at all - no build mode, no hand. Reproduced by dropping the entry from the cache.
 const MACHINE_BATCH := preload("res://machine_batch.gd")
 
+## Every machine in the world - player, enemies, bases, the menu's fighters. Weapons find their
+## targets by walking it (WeaponBlock._scan_targets) instead of each holding a physics sensor.
+const MACHINES := &"machines"
+
 func init_machine_physics() -> void:
+	add_to_group(MACHINES)
 	# ONE DRAW CALL PER MESH PER MACHINE (MachineBatch). Here because both machines pass through here.
 	var bl := blocks_node()
 	if bl != null and get_node_or_null("MeshBatch") == null:

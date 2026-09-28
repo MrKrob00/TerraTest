@@ -134,6 +134,15 @@ func _ready() -> void:
 	# есть лишь у трёх стволов из шести). Обновляем явно и только там, где ответ нужен.
 	raycast.enabled = false
 	_sync_detect_radius()
+	# THE DETECTION SPHERE NO LONGER WATCHES: targets are found by `_scan_targets`, a walk over the
+	# machines in range. As a Jolt sensor the sphere cost HALF A PHYSICS TICK with an enemy close
+	# (measured, a quiet scene: 25-28 ms a tick with the sensors, 10-13 without): every gun held one
+	# weapon_range across, every block of every machine inside it is a body that moves each tick,
+	# and every pair was re-checked each tick - which is why a fight near an enemy fell to 15 fps
+	# while shooting at nothing stayed at 30. The node stays in the scenes, idle.
+	if Area_Range != null:
+		Area_Range.monitoring = false
+		Area_Range.monitorable = false
 	_find_turret_parts()
 	# Шаблон-пулю перецепляем с bind (см. _rebind_bullet). Лазер свой Ammo дальше удалит.
 	if has_node("Ammo/Bullet"):
@@ -318,7 +327,53 @@ var _taste_seed: int = 0
 const RETARGET_PERIOD := 0.12        # 8 раз в секунду, см. _tick_weapon
 var _retarget_t: float = 0.0
 
+## How far a machine's blocks can lie from its origin: an 11-cell grid round the cabin, plus a
+## 2x2x2 block's reach. A machine farther than weapon_range plus this has nothing in range.
+const MACHINE_REACH := 10.0
+
+## Every hostile block within weapon_range, and every lit hostile dome whose sphere reaches into it:
+## what the detection sphere used to hand over through body_entered, found by distance. Base scores
+## are kept for targets already known (see _target_base), worked out once for new ones.
+func _scan_targets() -> void:
+	var own: Node = _vehicle_root()
+	var from: Vector3 = global_position
+	var r2: float = weapon_range * weapon_range
+	var far2: float = (weapon_range + MACHINE_REACH) * (weapon_range + MACHINE_REACH)
+	var known: Dictionary = {}
+	for i in _targets.size():
+		if is_instance_valid(_targets[i]):
+			known[_targets[i]] = _target_base[i]
+	var found: Array[Node3D] = []
+	var base := PackedFloat32Array()
+	for m in get_tree().get_nodes_in_group(MachineBody.MACHINES):
+		if m == own or not (m is Node3D) or (m as Node3D).global_position.distance_squared_to(from) > far2:
+			continue
+		if not _is_hostile(m):
+			continue
+		var bl: Node = m.blocks_node()
+		if bl == null:
+			continue
+		for b in bl.get_children():
+			if not (b is VehicleBlock) or b.is_queued_for_deletion():
+				continue
+			var dome = b.get("_dome")
+			if dome is Node3D and (dome as Node3D).visible and not G.is_friendly_dome(dome, own):
+				var reach: float = weapon_range + SHIELD_REACH
+				if (dome as Node3D).global_position.distance_squared_to(from) <= reach * reach:
+					found.append(dome)
+					base.append(known[dome] if known.has(dome) else _base_score(dome))
+			if (b as Node3D).global_position.distance_squared_to(from) <= r2:
+				found.append(b)
+				base.append(known[b] if known.has(b) else _base_score(b))
+	_targets = found
+	_target_base = base
+
+## The dome's radius (shield.gd SHIELD_RADIUS): a dome counts while its sphere reaches into
+## weapon_range, as it did when the sensor saw it.
+const SHIELD_REACH := 4.0
+
 func _update_current_target() -> void:
+	_scan_targets()
 	# СНАЧАЛА ВЫЧИЩАЕМ МЁРТВЫХ, и это не уборка ради порядка. body_exited по уничтоженному блоку
 	# НЕ ПРИХОДИТ — тело исчезает, а не выходит из зоны, — поэтому сбитые блоки оставались в
 	# списке навсегда. За длинный бой список рос до всего, что когда-либо попадало в сферу, и
