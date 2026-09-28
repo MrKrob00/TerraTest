@@ -202,6 +202,7 @@ REGEN2_ANGLES = (0.0, 90.0, 45.0, 135.0)
 REGEN2_R = (0.45, 0.39, 0.33, 0.27)
 REGEN2_DEPTH = 0.024          # the band's half depth (radial) and half width
 REGEN2_WIDTH = 0.04
+REGEN2_JOINT = 4                 # a plate joint with bolts every this many facets
 
 
 def _tone(n, kind):
@@ -212,8 +213,9 @@ def _tone(n, kind):
 def square_ring(faces, glow, ang, R, depth, width, n=24):
     """A flat band of square section (the old repair ring's) round a circle of radius R whose plane
     holds the Z axis, turned about Z by ang degrees: plain blue outside and on the sides, each facet in
-    its painted-light tone and no edge lines (they read as a row of windows), and its whole INSIDE a
-    glowing strip, a part of its own (`glow`) so the script can light and dim it."""
+    its painted-light tone, and its whole INSIDE a glowing strip, a part of its own (`glow`) so the
+    script can light and dim it. The outer face is dark metal with a blue inlay down the middle and a
+    bolted plate joint every REGEN2_JOINT facets; the sides are the blue."""
     c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
     nrm = (-s_, c, 0.0)                      # the ring plane's normal
     def at(t, dr, dn):
@@ -231,7 +233,13 @@ def square_ring(faces, glow, ang, R, depth, width, n=24):
                 ((depth, -width), (-depth, -width), th.mul(nrm, -1), faces)):
             q = [at(t0, d0, n0), at(t0, d1, n1), at(t1, d1, n1), at(t1, d0, n0)]
             cen = th.add(th.mul(rad, R), th.mul(out, -1.0))
-            style = "energy" if dest is glow else "bflat" + _tone(out, "b")[5:]
+            tone = _tone(out, "b")[5:]
+            if dest is glow:
+                style = "energy"
+            elif out is rad:
+                style = "rband" + tone + ("j" if k % REGEN2_JOINT == 0 else "")
+            else:
+                style = "rside" + tone
             dest.append(th.Face(th.outward(q, cen), style, u_hint=tan))
 
 
@@ -1338,7 +1346,7 @@ def build_wireless(pk, img):
 
 
 BLOCKS = {
-    "regen2": (109, build_regen2, 256),
+    "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
@@ -1363,8 +1371,14 @@ BLOCKS = {
 }
 
 
+# A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
+# metre); everything else keeps the family's.
+DENSITY = {"regen2": 128.0}
+
+
 def make(name):
     seed, build, tex = BLOCKS[name]
+    th.DENS = DENSITY.get(name, 48.0)
     th.random.seed(seed)
     th.ISLANDS.clear()
     img = Image.new("RGB", (tex, tex), th.BLUE)
