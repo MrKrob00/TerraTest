@@ -1728,14 +1728,17 @@ project: read it before claiming how anything works.
   in its RIGHT-BOTTOM column: in at the back quarter and out at the front (a line runs straight
   through), and on the right face in at the back quarter, out at the front one (a belt passing
   alongside hands ore in and takes the ingot whichever way it runs - a belt's sides are both in and
-  out). So that column is an OPEN CHANNEL at the belts' deck height, open at both ends and along the
-  whole right side, under a HOOD whose underside and side window glow with the fireboxes on the
-  furnace (the left column) - the heat IS the old red/green lamp (`processor.gd`
-  `_set_processing_visual`, part `processor_glow`, lit while anything is inside). The seller's one
+  out). So that column is an OPEN CHANNEL at the belts' deck height, open at both ends, along the
+  whole right side AND TO THE SKY: NOTHING STANDS OVER IT, because the melt is the show - a first cut
+  put a hood there and the player saw a conveyor under a box. In its middle lies a HOT BED fed by a
+  vent in the furnace (the left column); the three item markers run along the channel (entry, bed,
+  exit), the ore glows from dark red to orange on the bed (`processor._heat`, one hot material per
+  processor) and the tick that carries it off turns it into the product under a hot glitch
+  (`BlockFX.play`). The heat parts ARE the old red/green lamp (`_set_processing_visual`, part
+  `processor_glow`, lit while anything is inside). The seller's one
   intake is the right-back-bottom quarter, from the back and the right: an open MOUTH at belt height
   under a glass TUBE up through the roof to a gold-ringed uplink, inside an L-shaped vault with one
-  trade screen (gold coin, green bars) and a round vault door. The item markers were left as they
-  were: the carrying animation is to be redone for these models. Measured on the engine: three ore
+  trade screen (gold coin, green bars) and a round vault door. Measured on the engine: three ore
   through receiver, belt, processor and belt into the seller paid 75 (three Ferrite ingots) both
   straight through the channel and with the processor beside the line.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from

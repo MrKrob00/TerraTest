@@ -151,7 +151,9 @@ ports. The model's first job is to show WHICH quarters, because that decides how
 built round the machine:
 
 - **The smelter.** Its ports are all in one column, at belt height. That column is an open
-  channel under a hot hood, open at both ends and along its whole side.
+  channel, open at both ends, along its whole side and to the sky, with a hot bed in the middle
+  where the ore glows and turns into an ingot. A hood over it was tried first, and it hid exactly
+  what the machine is for.
 - **The seller.** Its one intake corner is an open mouth under the tube that carries sold goods
   away.
 
