@@ -12,8 +12,8 @@ texture_filter = 2
 [resource]
 resource_name = "processor_glow"
 _surfaces = [{
-"aabb": AABB(-1.504, -0.15, -1.504, 1.844, 0.4, 2.008),
-"attribute_data": PackedByteArray("/2RbQlF1W0JRdf8y/2T/Mv8U4GVmI+BlZiP/Yv8U/2L/eJk8mJqZPJia/zL/eP8y/5yZPGWrmTxlq/8y/5z/Mv+umTxlvZk8Zb3/Mv+u/zI="),
+"aabb": AABB(-1.504, 0.08, -1.504, 0.98399997, 0.81, 2.008),
+"attribute_data": PackedByteArray("/0xHKihhRyooYf8A/0z/AP8AmWJHKpliRyr/WP8A/1j/qLdrmMq3a5jK/2T/qP9k/wC3dWYPt3VmD/9u/wD/bv8St3VmIbd1ZiH/bv8S/24="),
 "format": 34896613399,
 "index_count": 30,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIA"),
@@ -22,6 +22,6 @@ _surfaces = [{
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
 "vertex_count": 20,
-"vertex_data": PackedByteArray("mKH1iMuo//////WIy6j/////9YgzV///mKH1iDNX//+YnP+fPqb//5ic/5/AWf//mJzL7MBZ//+YnMvsPqb//wAAAADBJv+/AAAAAD3Z/78AAP//Pdn/vwAA///BJv+/nW8AAAAA//9SHAAAAAD//1Ic//8AAP//nW///wAA//9SHAAA////v51vAAD///+/nW///////79SHP//////v/9//7//f/+//3//v/9//7//v/9//7//f/+//3//v/9//3////9/////f////3////8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+"vertex_data": PackedByteArray("diV5g1sS/////3mDWxL/////eYOj7f//diV5g6Pt//9MIQAAo+3//0whAABbEv//TCFqflsS//9MIWp+o+3//wAAgKfBJv+/AACApz3Z/78AAP//Pdn/vwAA///BJv+/KtGApwAA//8SNYCnAAD//xI1//8AAP//KtH//wAA//8SNYCn////vyrRgKf///+/KtH//////78SNf//////v/9//z//f/8//3//P/9//z//v/9//7//f/+//3//v/9//3////9/////f////3////8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
 }]
 blend_shape_mode = 0

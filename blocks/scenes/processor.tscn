@@ -49,13 +49,16 @@ shape = SubResource("BoxShape3D_nxtql")
 mesh = ExtResource("3_glow")
 
 [node name="item_slot" type="Marker3D" parent="." unique_id=1139876594]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0.05)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0)
 
 [node name="item_slot2" type="Marker3D" parent="." unique_id=272038550]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, -0.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.29, 0)
 
 [node name="item_slot3" type="Marker3D" parent="." unique_id=1696341375]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, -1.05)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, -1)
+
+[node name="furnace_out" type="Marker3D" parent="." unique_id=1696341376]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.29, -1)
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1489926572]
 mesh = ExtResource("2_nxtql")
