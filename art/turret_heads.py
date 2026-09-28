@@ -649,6 +649,29 @@ def style_px(style, x, y, w, h, d):
         if d < 1.0:
             return ORANGE_LO
         return (255, 222, 130) if t > 0.7 else ((250, 180, 80) if t > 0.35 else ORANGE)
+    if style == "screen":
+        # A display the game writes on (the seller's Label3D stands on it): near-black glass with
+        # faint scanlines, a thin gold header bar and corner brackets - no picture of its own.
+        if d < 1.0:
+            return METAL[1]
+        px, py = x + 0.5, y + 0.5
+        if 3 <= py < 5 and 4 <= px < w - 4:
+            return GOLD_LO
+        for cx, cy, sx, sy in ((3, 3, 1, 1), (w - 3, 3, -1, 1), (3, h - 3, 1, -1), (w - 3, h - 3, -1, -1)):
+            ax, ay = (px - cx) * sx, (py - cy) * sy
+            if (0 <= ax < 5 and 0 <= ay < 1.2) or (0 <= ay < 5 and 0 <= ax < 1.2):
+                return (70, 120, 110)
+        return (14, 22, 26) if y % 3 else (20, 30, 34)
+    if style == "lamp_strip":
+        # A row of status lamps under the screen: green, green, amber, green, green.
+        if d < 1.0:
+            return METAL[5]
+        n = 5
+        for k in range(n):
+            cx = w * (k + 0.5) / n
+            if abs(x + 0.5 - cx) <= 2.2 and abs(y + 0.5 - h / 2.0) <= 2.0:
+                return ORANGE if k == 2 else GREEN
+        return METAL[1]
     if style == "recv_floor":
         # The receiver's deck: the belt's own ribbed rubber, and two chevrons at the front edge
         # pointing out (+u) to the conveyor it feeds.

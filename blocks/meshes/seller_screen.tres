@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=3]
+
+[ext_resource type="Texture2D" uid="uid://uuxiru7bai21" path="res://objects/seller_texture.png" id="1_lbwq2"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_nr3eg"]
+resource_name = "seller"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_lbwq2")
+texture_filter = 2
+
+[resource]
+resource_name = "seller_screen"
+_surfaces = [{
+"aabb": AABB(-1.34, 0.2, -1.504, 1.6800001, 0.64, 1e-05),
+"attribute_data": PackedByteArray(255, 132, 91, 98, 81, 173, 91, 98, 81, 173, 255, 82, 255, 132, 255, 82),
+"format": 34896613399,
+"index_count": 6,
+"index_data": PackedByteArray(0, 0, 2, 0, 1, 0, 0, 0, 3, 0, 2, 0),
+"material": SubResource("StandardMaterial3D_nr3eg"),
+"name": "seller",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 4,
+"vertex_data": PackedByteArray(255, 255, 0, 0, 0, 0, 255, 255, 0, 0, 0, 0, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 255, 255, 255, 255, 0, 0, 255, 255, 255, 63, 255, 191, 255, 63, 255, 191, 255, 63, 255, 191, 255, 63, 255, 191)
+}]
+blend_shape_mode = 0
