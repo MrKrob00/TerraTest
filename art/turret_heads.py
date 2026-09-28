@@ -443,6 +443,15 @@ def _cube(bx, by):
 EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet, "fab_side": _cube}
 
 
+def _ramp_at(ramp, f):
+    """The colour at position f along a ramp of colours, blended between its two neighbours."""
+    f = max(0.0, min(len(ramp) - 1.0, f))
+    i = min(int(f), len(ramp) - 2)
+    t = f - i
+    a, b = ramp[i], ramp[i + 1]
+    return tuple(int(round(a[j] + (b[j] - a[j]) * t)) for j in range(3))
+
+
 def style_px(style, x, y, w, h, d):
     if style == "blue_cross":
         # The repair unit's mark: a green cross outlined in white, the same on every side.
@@ -817,6 +826,30 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style[:5] == "rband":
+        # The repair ring's outer face: dark metal plates with a light edge along both long edges,
+        # a blue inlay down the middle, and at a plate joint a dark seam with a bolt either side.
+        k = int(style[5])
+        joint = style.endswith("j")
+        base = _ramp_at(METAL, 1.6 + k * 0.6 + 1.2 * (1.0 - (y + 0.5) / h))
+        if y < 1 or y >= h - 1:
+            return RIM[1 + k // 2]
+        mid = abs(y + 0.5 - h / 2.0)
+        if mid <= 1.0:
+            return [BLUE_LO, BLUE, BLUE, BLUE_MID, BLUE_HI][k]
+        if joint:
+            if x < 1:
+                return METAL[0]
+            if 2 <= x <= 3 and (2 <= y <= 3 or h - 4 <= y <= h - 3):
+                return RIM[3] if (x + y) % 2 else RIM[2]
+        return jitter(base, 1)
+    if style[:5] == "rside":
+        # The repair ring's sides: the family's blue in a light GRADIENT across the face (the
+        # painted light the tubes carry), shifted by how the facet faces the light - flat blue read
+        # as a dead stripe. No edge line per facet: that read as a row of windows.
+        k = int(style[5:])
+        return jitter(_ramp_at([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI, (160, 190, 238)],
+                               0.6 + k * 0.85 + 1.4 * (1.0 - (y + 0.5) / h)), 1)
     if style[:5] == "bflat" and style[5:].isdigit():
         # A plain blue facet in its painted-light tone, no edge line: a smooth band.
         return jitter([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][int(style[5:])], 1)
