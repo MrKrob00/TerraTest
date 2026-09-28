@@ -202,7 +202,7 @@ REGEN2_ANGLES = (0.0, 90.0, 45.0, 135.0)
 REGEN2_R = (0.45, 0.39, 0.33, 0.27)
 REGEN2_DEPTH = 0.024          # the band's half depth (radial) and half width
 REGEN2_WIDTH = 0.04
-REGEN2_JOINT = 4                 # a plate joint with bolts every this many facets
+REGEN2_JOINT = 2                 # a plate joint with bolts every this many facets
 
 
 def _tone(n, kind):
@@ -214,8 +214,8 @@ def square_ring(faces, glow, ang, R, depth, width, n=24):
     """A flat band of square section (the old repair ring's) round a circle of radius R whose plane
     holds the Z axis, turned about Z by ang degrees: plain blue outside and on the sides, each facet in
     its painted-light tone, and its whole INSIDE a glowing strip, a part of its own (`glow`) so the
-    script can light and dim it. The outer face is dark metal with a blue inlay down the middle and a
-    bolted plate joint every REGEN2_JOINT facets; the sides are the blue."""
+    script can light and dim it. The outer face is dark plates drawn ACROSS the band - light running
+    along each, a blue band across it with bolts every REGEN2_JOINT facets; the sides are the blue."""
     c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
     nrm = (-s_, c, 0.0)                      # the ring plane's normal
     def at(t, dr, dn):
