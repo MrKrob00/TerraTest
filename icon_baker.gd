@@ -69,7 +69,8 @@ func _ready() -> void:
 ## 44: the battery's model (terminals, a charge gauge on every wall).
 ## 45: the battery is a cell in a cage; the wireless charger's model.
 ## 46: no cage: the battery is a cell as wide as the cell, the charger a spool.
-const RECIPE := 46
+## 47: the wireless charger is a Tesla coil on a GSO base.
+const RECIPE := 47
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

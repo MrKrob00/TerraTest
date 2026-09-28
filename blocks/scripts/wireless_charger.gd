@@ -28,9 +28,11 @@ var _beam: MeshInstance3D = null
 var _beam_mat: StandardMaterial3D = null
 var _t: float = 0.0
 
-## The ring round the emitter orb (art/emitter_models.py build_wireless) spins while energy flows
+## The toroid round the terminal (art/emitter_models.py build_wireless) spins while energy flows
 ## and runs down when it stops - the block's own "working" sign, next to the beam.
 const RING_SPIN: float = 5.0         # rad/s while transmitting
+## Where the beam leaves: the terminal sphere's centre (art/emitter_models.py WL_TERM).
+const EMIT := Vector3(0.0, 0.37, 0.0)
 const RING_EASE: float = 3.0
 var _ring: Node3D = null
 var _ring_w: float = 0.0
@@ -159,7 +161,7 @@ func _show_beam(on: bool) -> void:
 func _aim_beam(to: Vector3) -> void:
 	if _beam == null:
 		return
-	var from: Vector3 = global_position
+	var from: Vector3 = global_transform * EMIT
 	var mid: Vector3 = (from + to) * 0.5
 	var beam_len: float = from.distance_to(to)
 	if beam_len < 0.05:
