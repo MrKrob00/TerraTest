@@ -35,10 +35,10 @@ func charge_take(amount: float) -> float:
 	return got
 
 # ── The gauge on the walls ───────────────────────────────────────────────────────────────────────
-# Four segments (nodes Seg0..3, one mesh, art/emitter_models.py build_battery) light by charge /
-# capacity, rounded UP so a battery holding anything shows one; under LOW_FRAC the last one blinks.
-# A dark segment is flattened to SEG_OFF, not hidden: MachineBatch reads `visible` only when it
-# rebuilds, so it copies the parts' transforms instead (`moving_parts`), as the storage's bar does.
+# Four charge rings round the cell (nodes Seg0..3, one mesh, art/emitter_models.py build_battery)
+# light by charge / capacity, rounded UP so a battery holding anything shows one; under LOW_FRAC the
+# last one blinks. A dark ring is shrunk to SEG_OFF into the cell, not hidden: MachineBatch reads
+# `visible` only when it rebuilds, so it copies the parts' transforms instead (`moving_parts`).
 const SEG_OFF: float = 0.001
 const LOW_FRAC: float = 0.15
 const BLINK_MS: int = 400
@@ -67,4 +67,4 @@ func _process(_delta: float) -> void:
 		return
 	_shown = lit
 	for i in _segs.size():
-		_segs[i].scale = Vector3.ONE if i < lit else Vector3(1.0, SEG_OFF, 1.0)
+		_segs[i].scale = Vector3.ONE if i < lit else Vector3.ONE * SEG_OFF

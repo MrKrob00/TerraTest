@@ -1780,16 +1780,22 @@ project: read it before claiming how anything works.
   the bar is flattened to `LEVEL_NONE`, not hidden: `MachineBatch` reads `visible` only when it
   rebuilds, so a hidden part would go on drawing. Measured on the engine: 1 / 10 / 20 / 0 items give
   0.05 / 0.50 / 1.00 / 0.001.
-- **THE BATTERY LOOKS LIKE A BATTERY AND SHOWS ITS OWN CHARGE** (`art/emitter_models.py` battery): a
-  dark case, a blue rim and lid, two terminals with + and - painted in front of them, and on every
-  wall a battery drawn with four cells. The cells are geometry (`battery_seg`, one mesh, nodes
-  `Seg0..3`) laid on slots painted in block metres (`turret_heads.BAT_*`), so a dark cell still reads
-  as an empty cell. `battery.gd` lights them by charge / capacity rounded UP (anything in it shows
-  one), blinks the last under `LOW_FRAC`, and flattens a dark one to `SEG_OFF` under
-  `moving_parts`, as the storage's bar does. It POLLS `charge`: the save and an enemy's full start
-  write the field straight in. Still a full cell (it walls a machine's middle): only the terminals
-  stand in the 12 cm over the lid. Measured on the real driver: 1 / 0.6 / 0.3 / 0.1 / 0 charge
-  light 4 / 3 / 2 / 1 / 0 cells. An enemy's battery drains in sight while its dome works.
+- **THE BATTERY AND THE WIRELESS CHARGER JOIN ON ALL SIX FACES, SO BOTH ARE A CAGE**
+  (`art/emitter_models.py` `cage()`, battery / wireless): four blue posts and eight dark beams on the
+  cell's edges, so every face of the cell is a flat frame flush with it, and the part that says what
+  the block is stands inside. The first battery was a case with terminals in a 12 cm recess over its
+  lid - a top face a neighbour could not sit flush on - and the charger was a 0.2 m plate on the
+  cell's floor with a matching thin collider; both colliders are the full cell now.
+  THE BATTERY IS A CELL: round, a blue top band, the + nub up at the cell's top face and the flat -
+  end on the bottom one. Round its body four green charge rings (`battery_seg`, one mesh, nodes
+  `Seg0..3`) light by charge / capacity rounded UP (anything in it shows one), the last blinks under
+  `LOW_FRAC`, and a dark ring is shrunk to `SEG_OFF` under `moving_parts` (as the storage's bar)
+  over a dark slot, so an empty battery still reads as one. It POLLS `charge`: the save and an
+  enemy's full start write the field straight in. Measured on the real driver through the machine
+  batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. It is no longer `solid_cell` - you see through it.
+  THE CHARGER is a mast between crosses over the top and bottom windows, a cyan emitter orb (the
+  beam's colour) and a ring round it that SPINS WHILE ENERGY FLOWS (`wireless_charger.gd` `Ring`,
+  `RING_SPIN`, eased by `RING_EASE`). Measured: beam on, ring at 5 rad/s, transfer unchanged.
 - **THE FABRICATOR AND THE SCRAPPER ARE 2x2x2, THE COMPONENT PLANT 2x1x2, AND THEIR PORTS ARE THE
   PLAYER'S DESIGN** (`art/emitter_models.py` comp_factory / fabricator / scrapper,
   `blocks._footprint_offsets` and `collider_offset`, anchored in a corner like the smelter). Masks are

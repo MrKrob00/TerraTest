@@ -28,9 +28,26 @@ var _beam: MeshInstance3D = null
 var _beam_mat: StandardMaterial3D = null
 var _t: float = 0.0
 
+## The ring round the emitter orb (art/emitter_models.py build_wireless) spins while energy flows
+## and runs down when it stops - the block's own "working" sign, next to the beam.
+const RING_SPIN: float = 5.0         # rad/s while transmitting
+const RING_EASE: float = 3.0
+var _ring: Node3D = null
+var _ring_w: float = 0.0
+
 func _ready() -> void:
+	moving_parts = true                  # the ring turns (MachineBatch copies it)
+	_ring = get_node_or_null("Ring") as Node3D
 	super._ready()
 	_build_beam()
+
+func _process(delta: float) -> void:
+	if _ring == null:
+		return
+	var want: float = RING_SPIN if _beam != null and _beam.visible else 0.0
+	_ring_w = lerpf(_ring_w, want, 1.0 - exp(-RING_EASE * delta))
+	if _ring_w > 0.01:
+		_ring.rotate_y(_ring_w * delta)
 
 func _physics_process(delta: float) -> void:
 	var mine: Node = _machine()
