@@ -2243,5 +2243,41 @@
 	"Built %d of %d blocks. Missing: ": {
 		"ru": "Собрано %d из %d блоков. Не хватает: ",
 		"uk": "Зібрано %d з %d блоків. Бракує: "
+	},
+	"Marlit Block": {
+		"ru": "Блок Marlit",
+		"uk": "Блок Marlit"
+	},
+	"Marlit Block 1×2×2": {
+		"ru": "Блок Marlit 1×2×2",
+		"uk": "Блок Marlit 1×2×2"
+	},
+	"Marlit Half Block": {
+		"ru": "Полублок Marlit",
+		"uk": "Напівблок Marlit"
+	},
+	"Marlit Half Block 1×2×2": {
+		"ru": "Полублок Marlit 1×2×2",
+		"uk": "Напівблок Marlit 1×2×2"
+	},
+	"Marlit's smallest block is two cells every way: eight cells of hull in one part, cheaper than eight frames.": {
+		"ru": "Самый маленький блок Marlit — две клетки в каждую сторону: восемь клеток корпуса одной деталью, дешевле восьми рам.",
+		"uk": "Найменший блок Marlit — дві клітинки в кожен бік: вісім клітинок корпусу однією деталлю, дешевше за вісім рам."
+	},
+	"Marlit block one cell thick: two by two across, for walls and narrow hulls.": {
+		"ru": "Блок Marlit толщиной в одну клетку: два на два, для стен и узких корпусов.",
+		"uk": "Блок Marlit завтовшки в одну клітинку: два на два, для стін і вузьких корпусів."
+	},
+	"The Marlit block cut corner to corner: a 45° slope two cells tall, for noses and roofs.": {
+		"ru": "Блок Marlit, срезанный от угла к углу: скос 45° высотой в две клетки, для носа и крыши.",
+		"uk": "Блок Marlit, зрізаний від кута до кута: скіс 45° заввишки у дві клітинки, для носа й даху."
+	},
+	"The same Marlit slope, one cell thick.": {
+		"ru": "Тот же скос Marlit толщиной в одну клетку.",
+		"uk": "Той самий скіс Marlit завтовшки в одну клітинку."
+	},
+	"need the %s licence": {
+		"ru": "нужна лицензия %s",
+		"uk": "потрібна ліцензія %s"
 	}
 }

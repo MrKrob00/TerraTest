@@ -75,7 +75,8 @@ func _ready() -> void:
 ## 50: the charger is its two coils alone, held by a shell on the back face.
 ## 51: the repair unit is a gyro - four rings on six round bearings round the crystal.
 ## 52: the repair unit is the beacon again (the gyro is kept for Marlit).
-const RECIPE := 52
+## 53: the four Marlit hull blocks.
+const RECIPE := 53
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
