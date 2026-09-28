@@ -1543,9 +1543,13 @@ func _rotation_between(from_dir: Vector3, to_dir: Vector3) -> Basis:
 	if d > 0.9999:
 		return Basis()
 	if d < -0.9999:
-		# Строго противоположны: ось поворота не определена, берём любую перпендикулярную.
-		var any: Vector3 = Vector3.UP if absf(a.dot(Vector3.UP)) < 0.9 else Vector3.RIGHT
-		return Basis(a.cross(any).normalized(), PI)
+		# EXACTLY OPPOSITE: any perpendicular axis turns one into the other, and which one decides
+		# which way up the block ends. A horizontal face turns about the VERTICAL: a wheel bolted
+		# onto the machine's back (its connect face +Z has to look forward) was turned about X
+		# instead - the right direction, upside down, arm over the tyre.
+		if absf(a.dot(Vector3.UP)) < 0.9:
+			return Basis(Vector3.UP, PI)
+		return Basis(Vector3.RIGHT, PI)
 	return Basis(a.cross(b).normalized(), a.angle_to(b))
 
 # Ставим сам взятый блок на выбранную ячейку (превью реальным блоком, не светяшкой).
@@ -1876,13 +1880,18 @@ func _pick_selected_block() -> bool:
 		if i is CollisionShape3D and (i.position == block_body.position \
 				or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
 			i.queue_free()
+	# THE BLOCK COMES INTO THE HAND TURNED THE WAY IT STOOD, in the machine's axes (its transform
+	# under `blocks`): set a wheel back where it came from, or next to it, and it goes on as it
+	# was. It used to arrive square, and every re-seated block had to be turned again by hand.
+	var stood: Basis = block_body.transform.basis.orthonormalized()
 	block_body.reparent(camera_controller.camera.get_child(0), false)
 	block_body.position = Vector3.ZERO
 	block_take = true
 	hand_kind = Hand.BLOCK
 	Q.report("block_taken_world", 1)               # шаг обучения: блок в руке, откуда — неважно
 	_hand_from_inventory = false                   # снят с машины, не из инвентаря — без авто-добора
-	build_basis = Basis()
+	build_basis = stood
+	block_body.basis = build_basis                 # in the hand already turned as it stood
 	_preview_res = null
 	_cabin_ground = null
 	if ghost_block:
