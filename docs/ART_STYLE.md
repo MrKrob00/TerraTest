@@ -143,3 +143,16 @@ head, not as a gadget standing next to it.
 A sign smaller than about five texels breaks up under mip-mapping at a grazing angle. The first
 three-row triangle read as a bird from 35°, while straight on it was clean. Draw emblems at least
 nine texels across.
+
+## Machines drawn from their ports
+
+The smelter and the seller are 2×2×2, and each face is four quarters, only some of which are
+ports. The model's first job is to show WHICH quarters, because that decides how a line is
+built round the machine:
+
+- **The smelter.** Its ports are all in one column, at belt height. That column is an open
+  channel under a hot hood, open at both ends and along its whole side.
+- **The seller.** Its one intake corner is an open mouth under the tube that carries sold goods
+  away.
+
+Everything else is closed: a wall, a vault, a furnace.

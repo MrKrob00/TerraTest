@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://bd7ip8s9yptl" path="res://objects/processor_texture.png" id="1_4mcas"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_vdvjl"]
+resource_name = "processor"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_4mcas")
+texture_filter = 2
+
+[resource]
+resource_name = "processor_glow"
+_surfaces = [{
+"aabb": AABB(-1.504, -0.15, -1.504, 2.008, 1.01, 2.008),
+"attribute_data": PackedByteArray("/04oLShjKC0oY/8A/07/AP9Yt3dlf7d3ZX//cP9Y/3D/MJlgmVKZYJlS/1b/MP9W/1SZYGZjmWBmY/9W/1T/Vv9mmWBldZlgZXX/Vv9m/1Y="),
+"format": 34896613399,
+"index_count": 30,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIA"),
+"material": SubResource("StandardMaterial3D_vdvjl"),
+"name": "processor",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 20,
+"vertex_data": PackedByteArray("MooQl7UK//9J9RCXtQr//0n1EJdJ9f//MooQl0n1/////wa5/eX/////BrkBGv///////wEa/////////eX//wAAAADBJv+/AAAAAD3Z/78AAGJlPdn/vwAAYmXBJv+/gGYAAAAA//8BGgAAAAD//wEaYmUAAP//gGZiZQAA//8BGgAA////v4BmAAD///+/gGZiZf///78BGmJl////v/9//z//f/8//3//P/9//z//v/9//7//f/+//3//v/9//3////9/////f////3////8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+}]
+blend_shape_mode = 0

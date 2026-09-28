@@ -1,16 +1,11 @@
 [gd_scene format=3 uid="uid://dv0pgciocsbmf"]
 
 [ext_resource type="Script" uid="uid://dwqo1oflwm2qj" path="res://blocks/scripts/processor.gd" id="1_dhbhs"]
-[ext_resource type="ArrayMesh" uid="uid://bgii82gyihygq" path="res://objects/GSO_Cube_012.res" id="2_nxtql"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_body.tres" id="2_nxtql"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_glow.tres" id="3_glow"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_nxtql"]
 size = Vector3(2, 2, 2)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_dhbhs"]
-
-[sub_resource type="SphereMesh" id="SphereMesh_xqqlq"]
-material = SubResource("StandardMaterial3D_dhbhs")
-height = 0.5
 
 [node name="processor" type="RigidBody3D" unique_id=542629824]
 collision_layer = 2
@@ -51,8 +46,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
 shape = SubResource("BoxShape3D_nxtql")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1951237388]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.0055685, 1.5, -0.9492625)
-mesh = SubResource("SphereMesh_xqqlq")
+mesh = ExtResource("3_glow")
 
 [node name="item_slot" type="Marker3D" parent="." unique_id=1139876594]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.005, 0.95, 0.005)
@@ -67,5 +61,4 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.8374919, 0.92944515, -0.96
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.005, 0.95, -0.982)
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1489926572]
-transform = Transform3D(0.97528, 0, 0, 0, 0.94429, 0, 0, 0, 0.94402, -0.47528, 0.44429, -0.5)
 mesh = ExtResource("2_nxtql")

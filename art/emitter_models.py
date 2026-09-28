@@ -721,7 +721,135 @@ def build_collector(pk, img):
     return parts
 
 
+# ── the processor (smelter) and the seller: 2x2x2 ──────────────────────────────────────────────
+# Both are 2x2x2 with the anchor in a corner: cells x -1/0 (left/right), z -1/0 (front/back),
+# y 0/1, so the block spans x -1.5..0.5, y -0.5..1.5, z -1.5..0.5 in its own axes. EVERY PORT IS A
+# QUARTER OF A FACE (blocks' port_defaults, "dx,dy,dz|face"), and the model shows exactly those:
+#
+# PROCESSOR: all its ports are in the RIGHT-BOTTOM column - IN on the back quarter and OUT on the
+# front quarter (a line runs straight through it), and on the RIGHT face IN at the back quarter,
+# OUT at the front one (a belt passing alongside hands ore in and takes the ingot, whichever way it
+# runs - a belt's sides are both in and out). So that column is an OPEN CHANNEL at the belts' deck
+# height (BELT_TOP), open at both ends and along its whole right side, under a HOOD whose underside
+# glows while it works; the left column is the FURNACE. Parts: processor_body, processor_glow (the
+# heat: hood underside, hood window, firebox windows - re-coloured by processor.gd, never batched).
+#
+# SELLER: one intake, the right-back-bottom quarter, from the back and from the right. So that cell
+# is an open MOUTH at belt height, facing back and right, under a glass TUBE that carries what is
+# sold up through the roof to an uplink - sold goods leave the world, and the model says where to.
+# The rest is the VAULT, an L round the mouth: a trade screen (gold coin, green bars) on the front,
+# a round vault door on the left. Part: seller_body.
+CH_Y = BELT_TOP          # the channel / mouth deck top: the belts' own deck height
+
+
+def crect(x0, x1, z0, z1, ch, y):
+    """A rectangle with its corners cut by ch, at height y, as 8 points in order."""
+    return [(x0 + ch, y, z0), (x1 - ch, y, z0), (x1, y, z0 + ch), (x1, y, z1 - ch),
+            (x1 - ch, y, z1), (x0 + ch, y, z1), (x0, y, z1 - ch), (x0, y, z0 + ch)]
+
+
+def frustum(faces, lo, hi, side, bevel, top):
+    """Sloped housing between two 8-point rings (crect / octo); odd sides are the corner bevels."""
+    cx = sum(p[0] for p in lo) / 8
+    cz = sum(p[2] for p in lo) / 8
+    centre = (cx, (lo[0][1] + hi[0][1]) / 2, cz)
+    for i in range(8):
+        j = (i + 1) % 8
+        q = th.outward([lo[i], lo[j], hi[j], hi[i]], centre)
+        nn = th.newell(q)
+        faces.append(th.Face(q, bevel if i % 2 else side,
+                             u_hint=th.cross((0, 1, 0), th.norm((nn[0], 0.0, nn[2])))))
+    if top:
+        faces.append(th.Face(th.outward(hi, (cx, hi[0][1] - 1.0, cz)), top, u_hint=(1, 0, 0)))
+
+
+def restyle(faces, style, by_normal):
+    """Give faces of `style` another style by their normal: by_normal = [((nx, nz), new), ...]."""
+    for f in faces:
+        if f.style != style:
+            continue
+        n = th.newell(f.pts)
+        for (nx, nz), new in by_normal:
+            if n[0] * nx + n[2] * nz > 0.9:
+                f.style = new
+
+
+def glow_quad(faces, centre, right, up, hw, hh, style="gen_fire"):
+    """A window of glow `hw` x `hh` half-size, facing out along right x up's normal... in `faces`."""
+    c, r, u = centre, right, up
+    q = [th.add(c, th.add(th.mul(r, -hw), th.mul(u, -hh))), th.add(c, th.add(th.mul(r, hw), th.mul(u, -hh))),
+         th.add(c, th.add(th.mul(r, hw), th.mul(u, hh))), th.add(c, th.add(th.mul(r, -hw), th.mul(u, hh)))]
+    n = th.cross(r, u)
+    faces.append(th.Face(th.outward(q, th.sub(c, n)), style, u_hint=r))
+
+
+def build_processor(pk, img):
+    parts = {"processor_body": [], "processor_glow": []}
+    b, g = parts["processor_body"], parts["processor_glow"]
+    hood_lo, hood_hi, roof_hi = 0.45, 1.0, 1.26
+    # The furnace: the left column, full depth.
+    fur = []
+    cham_box(fur, (-1.5, -0.5, -1.5), (-0.5, hood_hi, 0.5), 0.067, "smelt_side", None, "dark",
+             "dark_edge")
+    restyle(fur, "smelt_side", [((1, 0), "dark")])          # the wall facing the channel
+    b += fur
+    # The channel: a base under it and the belt's own deck on top, running back to front (-Z).
+    cham_box(b, (-0.5, -0.5, -1.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "dark", None, "dark", "dark_edge")
+    belt_strip(b, (-0.5, CH_Y - 0.14, -1.5), (0.5, CH_Y, 0.5), "belt_fwd", (0, 0, -1))
+    # The hood over the channel, carried by the furnace and two blue posts on its open side.
+    cham_box(b, (-0.5, hood_lo, -1.5), (0.5, hood_hi, 0.5), 0.05, "dark", None, None, "dark_edge")
+    for z0, z1 in ((0.38, 0.5), (-1.5, -1.38)):
+        th.box(b, (0.38, CH_Y, z0), (0.5, hood_lo, z1), "blue")
+    # The heat: the hood's underside over the channel, a window on its open side, fireboxes on the
+    # furnace's outer walls.
+    glow_quad(g, (0.0, hood_lo - 0.004, -0.5), (1, 0, 0), (0, 0, 1), 0.42, 0.92)
+    glow_quad(g, (0.504, 0.72, -0.5), (0, 0, -1), (0, 1, 0), 0.8, 0.14)
+    glow_quad(g, (-1.504, 0.05, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.2)
+    glow_quad(g, (-1.0, 0.05, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.2)
+    glow_quad(g, (-1.0, 0.05, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.2)
+    # The roof: the family's blue sloped housing over both columns, two chimneys over the furnace.
+    frustum(b, crect(-1.48, 0.48, -1.48, 0.48, 0.14, hood_hi), crect(-1.3, 0.3, -1.3, 0.3, 0.1, roof_hi),
+            "blue", "bevel", "blue")
+    for cz in (-0.95, -0.05):
+        lathe_y(pk, img, b, [(0.14, roof_hi), (0.14, 1.44), (0.18, 1.47), (0.18, 1.5), (0.0, 1.5)],
+                METAL_RAMP, sides=8, cx=-1.0, cz=cz, ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP,
+                                                              3: [th.METAL[0]]})
+    return parts
+
+
+def build_seller(pk, img):
+    parts = {"seller_body": []}
+    b = parts["seller_body"]
+    top = 0.95
+    # The vault: an L round the mouth - the left column full depth, and the front-right cell.
+    # One trade screen on the front (the left piece's), a plain grille on everything else.
+    for lo, hi, front in (((-1.5, -0.5, -1.5), (-0.5, top, 0.5), "sell_panel"),
+                          ((-0.5, -0.5, -1.5), (0.5, top, -0.5), "plain_side")):
+        v = []
+        cham_box(v, lo, hi, 0.067, "vault", None, "dark", "dark_edge")
+        restyle(v, "vault", [((0, -1), front), ((-1, 0), "vault_door"), ((1, 0), "plain_side"),
+                             ((0, 1), "plain_side")])
+        b += v
+    # The mouth: the right-back cell, open to the back and the right at the belts' deck height.
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "dark", None, "dark", "dark_edge")
+    belt_strip(b, (-0.5, CH_Y - 0.14, -0.5), (0.5, CH_Y, 0.5), "belt", (0, 0, -1))
+    # The tube: glass between two dark collars, from over the mouth up into the roof.
+    lathe_y(pk, img, b, [(0.36, 0.40), (0.36, 0.48), (0.30, 0.50), (0.30, 0.86), (0.36, 0.88),
+                         (0.36, top)], BLUE_RAMP, sides=8,
+            ring_ramps={0: METAL_RAMP, 1: METAL_RAMP, 3: METAL_RAMP, 4: METAL_RAMP})
+    # The roof, and on it the uplink the tube feeds: a blue emitter with a gold ring.
+    frustum(b, crect(-1.48, 0.48, -1.48, 0.48, 0.14, top), crect(-1.3, 0.3, -1.3, 0.3, 0.1, 1.2),
+            "blue", "bevel", "blue")
+    gold = [th.GOLD_LO, th.GOLD, th.GOLD, th.GOLD]
+    lathe_y(pk, img, b, [(0.26, 1.2), (0.26, 1.26), (0.16, 1.32), (0.2, 1.38), (0.2, 1.42),
+                         (0.08, 1.5), (0.0, 1.5)], BLUE_RAMP, sides=8,
+            ring_ramps={0: METAL_RAMP, 2: gold, 3: gold})
+    return parts
+
+
 BLOCKS = {
+    "processor": (71, build_processor, 512),
+    "seller": (73, build_seller, 512),
     "receiver": (61, build_receiver, 256),
     "collector": (67, build_collector, 256),
     "generator": (59, build_generator, 256),

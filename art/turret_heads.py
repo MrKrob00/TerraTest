@@ -63,6 +63,8 @@ ORANGE = (212, 144, 56)
 ORANGE_LO = (150, 96, 38)
 GREEN = (80, 205, 120)
 WHITE = (213, 210, 222)
+GOLD = (240, 196, 72)
+GOLD_LO = (170, 128, 40)
 
 
 # ── geometry ────────────────────────────────────────────────────────────────────────────────────
@@ -539,6 +541,18 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style == "plain_side":
+        # A dark grilled wall with no sign: the family's panel where there is nothing to say.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        if 3 <= y < h - 3 and 3 <= x < w - 3:
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        for rx, ry in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+            if x == rx and y == ry:
+                return METAL[6]
+        return jitter(METAL[3], 2)
     if style == "col_side":
         # The collector's wall: the slot grille the whole height, and on a plate in the middle a
         # chevron pointing DOWN - things go in at the top and stay.
@@ -567,6 +581,68 @@ def style_px(style, x, y, w, h, d):
         if 1 <= y < h - 1 and 2 <= x < w - 2:
             return METAL[1] if (x // 2) % 2 else (ORANGE if y < h - 2 else ORANGE_LO)
         return METAL[2]
+    if style == "smelt_side":
+        # The smelter's furnace wall: the slot grille, and on a plate in the middle an INGOT (a
+        # trapezoid, narrow on top) - what comes out of it.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        cx, cy = w / 2.0, h * 0.40
+        bx, by = x + 0.5 - cx, y + 0.5 - cy
+        if abs(bx) <= 6.5 and abs(by) <= 4.5:
+            if abs(bx) > 5.5 or abs(by) > 3.5:
+                return METAL[5]
+            if -1.5 <= by <= 1.5 and abs(bx) <= 2.6 + (by + 1.5) * 0.6:
+                return WHITE if by < -0.5 else RIM[3]
+            return METAL[1]
+        if 3 <= y < h - 3 and 3 <= x < w - 3:
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        return jitter(METAL[3], 2)
+    if style == "vault_door":
+        # The seller's vault: a round door with spokes and a ring of bolts.
+        if d < 1.0:
+            return METAL[5]
+        cx, cy = w / 2.0, h / 2.0
+        px, py = x + 0.5 - cx, y + 0.5 - cy
+        R = min(w, h) * 0.36
+        r = math.hypot(px, py)
+        if R - 1.6 <= r < R:
+            return METAL[5]
+        if r < 2.6:
+            return RIM[3]
+        if r < R - 1.6:
+            if abs(px) < 0.8 or abs(py) < 0.8:
+                return METAL[1]
+            return METAL[3]
+        for k in range(8):
+            a = k * math.pi / 4
+            if int(px + cx) == int(cx + math.cos(a) * (R + 2.5)) and int(py + cy) == int(cy + math.sin(a) * (R + 2.5)):
+                return METAL[6]
+        return jitter(METAL[2], 2)
+    if style == "sell_panel":
+        # The seller's front: a dark screen with a gold coin and three green bars rising - trade.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        if 4 <= x < w - 4 and 4 <= y < h - 4:
+            cx, cy = w * 0.33, h * 0.42
+            r = math.hypot(x + 0.5 - cx, y + 0.5 - cy)
+            R = min(w, h) * 0.20
+            if r < R:
+                if abs(x + 0.5 - cx) < 1.0 and abs(y + 0.5 - cy) < R * 0.6:
+                    return GOLD
+                return GOLD if r > R - 1.4 else GOLD_LO
+            base = h * 0.62
+            for k, top in enumerate((0.44, 0.34, 0.22)):
+                bx0 = w * 0.58 + k * 4
+                if bx0 <= x < bx0 + 3 and h * top <= y < base:
+                    return GREEN
+            if int(h * 0.62) == y and w * 0.55 <= x < w - 5:
+                return RIM[1]
+            return METAL[0] if (x + y) % 7 else METAL[1]
+        return jitter(METAL[3], 2)
     if style == "recv_floor":
         # The receiver's deck: the belt's own ribbed rubber, and two chevrons at the front edge
         # pointing out (+u) to the conveyor it feeds.
