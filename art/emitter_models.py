@@ -192,7 +192,7 @@ def build_regen(pk, img):
     return parts
 
 
-# ── the repair unit, second cut (preview) ──────────────────────────────────────────────────────
+# ── the repair unit, second cut (the one in the game; build_regen above is the kept first model) ──────────────────────────────────────────────────────
 # No platform: four square-section bands (the first cut's round tubes were turned down for the old
 # ring's flat band) whose whole inside is a glowing strip (a part of its own, tinted like the
 # crystal: green working, dark off - emitter stubs on the inside were tried and dropped), round the crystal, seen from the front as "-", "|", "/" and "\" - every
