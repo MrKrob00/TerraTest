@@ -445,6 +445,7 @@ const BLOCK_META := {
 	Block.SCRAPPER:    {"f": "start", "g": 3, "rp": 25},   # разбор трофеев — средний тир
 	Block.ARMOR2:      {"f": "start", "g": 2, "rp": 18},
 	Block.ARMOR4:      {"f": "start", "g": 3, "rp": 25},
+	Block.ARMOR9:      {"f": "start", "g": 4, "rp": 35},
 	Block.HALF_BLOCK:  {"f": "start", "g": 1, "rp": 5},
 	Block.HALF_BLOCK2: {"f": "start", "g": 1, "rp": 8},
 	Block.WIRELESS_CHARGER: {"f": "start", "g": 4, "rp": 30},
@@ -485,6 +486,7 @@ const TECH_PARENT := {
 	Block.PACKER: Block.COLLECTOR,      # тот же сбор с земли, только блоков
 	Block.SCRAPPER: Block.PROCESSOR,    # разбор — ветка переработки, не сборки
 	Block.ARMOR2: Block.ARMOR,          Block.ARMOR4: Block.ARMOR2,
+	Block.ARMOR9: Block.ARMOR4,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -865,6 +867,7 @@ const BLOCK_RECIPE := {
 	Block.ARMOR:        {"c1": 2, "m3": 2},    # Cast Plating + Titanite
 	Block.ARMOR2:       {"c1": 3, "m3": 4},
 	Block.ARMOR4:       {"c11": 3, "c1": 4},   # Armour Segment + Cast Plating
+	Block.ARMOR9:       {"c11": 7, "c1": 9},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1265,6 +1268,7 @@ const BLOCK_LABEL := {
 	Block.BLOCK: "Frame Block", Block.BLOCK2: "Frame Block ×2", Block.BLOCK3: "Frame Block ×3",
 	Block.HALF_BLOCK: "Half Block", Block.HALF_BLOCK2: "Half Block ×2", Block.WEDGE2: "Wedge",
 	Block.ARMOR: "Armour Plate", Block.ARMOR2: "Armour Plate ×2", Block.ARMOR4: "Armour Plate ×4",
+	Block.ARMOR9: "Armour Plate ×9",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1308,6 +1312,7 @@ const BLOCK_DESC := {
 	Block.ARMOR: "Armour plate: same one cell, three times a frame's hit points. Put them where they cover something — the nose, and opposite the battery.",
 	Block.ARMOR2: "Armour plate, two cells. Toughness by volume.",
 	Block.ARMOR4: "Armour plate, two by two. The heaviest thing on most machines — plating everything turns a vehicle into a wall.",
+	Block.ARMOR9: "Armour plate, three by three: a whole flank in one piece, and the weight of one.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1713,7 +1718,7 @@ enum Block {
 	FABRICATOR = 36,    # фабрикатор 2³: два материала на входе, готовый блок на выходе
 	SCRAPPER = 37,      # разбирает блоки обратно в слитки: половина рецепта (см. BLOCK_RECIPE)
 	ARMOR2 = 38,        # защитная плита 2×1×1
-	ARMOR4 = 39,        # защитная плита 2×1×2
+	ARMOR4 = 39,        # armour plate 2×2, a wall (up and across)
 	HALF_BLOCK = 40,    # половина блока: занимает ЦЕЛУЮ клетку, просто скошена — ровные края
 	HALF_BLOCK2 = 41,   # две половины подряд, 2×1×1
 	WIRELESS_CHARGER = 42,  # шлёт энергию в аккумулятор ДРУГОЙ машины игрока, свою игнорирует
@@ -1722,6 +1727,7 @@ enum Block {
 	SHOTGUN = 45,       # дробовик: дробь, ближний бой, два выстрела и перезарядка
 	COMP_FACTORY = 46,  # варит КОМПОНЕНТЫ из слитков (см. COMP_RECIPE) и отдаёт их на ленту
 	PACKER = 47,        # магнитит свободные блоки и пакует их в чанки: на ленту или в мир
+	ARMOR9 = 48,        # armour plate 3×3, a wall round its anchor
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1762,6 +1768,7 @@ enum Block {
 @onready var scrapper_scene: PackedScene = preload("res://blocks/scenes/scrapper.tscn")
 @onready var armor2_scene: PackedScene = preload("res://blocks/scenes/armor2.tscn")
 @onready var armor4_scene: PackedScene = preload("res://blocks/scenes/armor4.tscn")
+@onready var armor9_scene: PackedScene = preload("res://blocks/scenes/armor9.tscn")
 @onready var half_block_scene: PackedScene = preload("res://blocks/scenes/half_block.tscn")
 @onready var half_block2_scene: PackedScene = preload("res://blocks/scenes/half_block2.tscn")
 @onready var wireless_charger_scene: PackedScene = preload("res://blocks/scenes/wireless_charger.tscn")
@@ -1792,7 +1799,7 @@ func is_stationary(bt: int) -> bool:
 const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
 		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN],
-	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.HALF_BLOCK, Block.HALF_BLOCK2,
+	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.ARMOR9, Block.HALF_BLOCK, Block.HALF_BLOCK2,
 		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
@@ -1848,6 +1855,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.SCRAPPER: return scrapper_scene
 		Block.ARMOR2: return armor2_scene
 		Block.ARMOR4: return armor4_scene
+		Block.ARMOR9: return armor9_scene
 		Block.HALF_BLOCK: return half_block_scene
 		Block.HALF_BLOCK2: return half_block2_scene
 		Block.WIRELESS_CHARGER: return wireless_charger_scene
