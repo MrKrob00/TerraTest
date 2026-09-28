@@ -302,6 +302,16 @@ project: read it before claiming how anything works.
   pool first. Measured through the real garage path on a 38-block build: all available — 38
   placed; no hull blocks — the cabin alone, all 18 others back in the inventory; half the hull —
   23 placed, every one of them connected to the cabin.
+- **A HALF TURN ABOUT A HORIZONTAL AXIS IS A YAW** (`vehicle_body_3d._rotation_between`). Placing turns a
+  block so its connect face meets the neighbour by the SHORTEST rotation, and for exactly opposite
+  directions any perpendicular axis will do - the code took one about X, so a wheel bolted onto a
+  block's BACK face (its connect face +Z has to look forward) came out upside down, arm over the tyre.
+  A horizontal face now turns about the vertical. Measured through the real preview and Take path:
+  up was (0,-1,0) on the back face before, (0,1,0) after; the side faces unchanged.
+- A BLOCK TAKEN OFF A MACHINE COMES INTO THE HAND TURNED AS IT STOOD (`_pick_selected_block` sets
+  `build_basis` from its transform under `blocks`). It used to arrive square, and every re-seated
+  block had to be turned by hand again. Measured: the hand's basis equals the placed one on the back
+  and both side faces.
 - Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
   — one door, `G.block_available` / `G.consume_block`, used by the garage, the block globe and the
   serial-build refill. Asking in one place and deducting in another is how a build starts taking
