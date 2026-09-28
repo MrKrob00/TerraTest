@@ -817,13 +817,17 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
-    if style[:5] in ("mtone", "btone") and style[5:].isdigit():
+    if style[:5] in ("mtone", "btone", "ctone") and style[5:].isdigit():
         # A facet of a round part built as flat quads (emitter_models.tube): its own tone from the
         # painted light, and the atlas's edge line - a pipe reads round only this way, unshaded.
         k = int(style[5:])
         if style[0] == "m":
             c = METAL[2 + k]
             return RIM[1] if d < 1.0 else jitter(c, 1)
+        if style[0] == "c":
+            # a glowing coil: cyan, lit even underneath (it is the light), a white-cyan edge line
+            c = [(40, 150, 180), (60, 180, 210), (90, 210, 236), (140, 232, 250), (196, 248, 255)][k]
+            return (210, 252, 255) if d < 1.0 else jitter(c, 1)
         c = [BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][k]
         return BLUE_HI if d < 1.0 and k < 4 else jitter(c, 1)
     if style == "mouth":
