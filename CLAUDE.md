@@ -1780,22 +1780,23 @@ project: read it before claiming how anything works.
   the bar is flattened to `LEVEL_NONE`, not hidden: `MachineBatch` reads `visible` only when it
   rebuilds, so a hidden part would go on drawing. Measured on the engine: 1 / 10 / 20 / 0 items give
   0.05 / 0.50 / 1.00 / 0.001.
-- **THE BATTERY AND THE WIRELESS CHARGER JOIN ON ALL SIX FACES, SO BOTH ARE A CAGE**
-  (`art/emitter_models.py` `cage()`, battery / wireless): four blue posts and eight dark beams on the
-  cell's edges, so every face of the cell is a flat frame flush with it, and the part that says what
-  the block is stands inside. The first battery was a case with terminals in a 12 cm recess over its
-  lid - a top face a neighbour could not sit flush on - and the charger was a 0.2 m plate on the
-  cell's floor with a matching thin collider; both colliders are the full cell now.
-  THE BATTERY IS A CELL: round, a blue top band, the + nub up at the cell's top face and the flat -
-  end on the bottom one. Round its body four green charge rings (`battery_seg`, one mesh, nodes
-  `Seg0..3`) light by charge / capacity rounded UP (anything in it shows one), the last blinks under
-  `LOW_FRAC`, and a dark ring is shrunk to `SEG_OFF` under `moving_parts` (as the storage's bar)
-  over a dark slot, so an empty battery still reads as one. It POLLS `charge`: the save and an
-  enemy's full start write the field straight in. Measured on the real driver through the machine
-  batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. It is no longer `solid_cell` - you see through it.
-  THE CHARGER is a mast between crosses over the top and bottom windows, a cyan emitter orb (the
-  beam's colour) and a ring round it that SPINS WHILE ENERGY FLOWS (`wireless_charger.gd` `Ring`,
-  `RING_SPIN`, eased by `RING_EASE`). Measured: beam on, ring at 5 rad/s, transfer unchanged.
+- **THE BATTERY AND THE WIRELESS CHARGER JOIN ON ALL SIX FACES, AND THE BLOCK ITSELF REACHES THEM**
+  (`art/emitter_models.py` battery / wireless). Round parts have 12 sides with their FLATS ON THE
+  CELL'S FACES (`flat_r(r, 12)`), so a round body meets a side neighbour on a face. Rejected on the
+  way: a case with its terminals in a 12 cm recess over the lid (no flush top face), and then a CAGE
+  of posts and beams round both (the player's call - no frame). Both colliders are the full cell;
+  the charger's used to be a 0.2 m plate on the floor.
+  THE BATTERY IS A CELL AS WIDE AS THE CELL: the flat - end on the bottom face, the + nub up to the
+  top one, a blue top band. Four green charge rings stand in GROOVES round the body (`battery_seg`,
+  one mesh, nodes `Seg0..3`), lit by charge / capacity rounded UP (anything in it shows one); the
+  last blinks under `LOW_FRAC`, and a dark ring is shrunk to `SEG_OFF` under `moving_parts` (as the
+  storage's bar), leaving its groove, so an empty battery still reads as one. It POLLS `charge`: the
+  save and an enemy's full start write the field straight in. Measured on the real driver through
+  the machine batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. Not `solid_cell` - its corners are open.
+  THE CHARGER IS A SPOOL: two round plates the full width of the cell top and bottom (they meet all
+  six neighbours), a mast, a cyan emitter orb (the beam's colour) and a ring round it that SPINS
+  WHILE ENERGY FLOWS (`wireless_charger.gd` `Ring`, `RING_SPIN` eased by `RING_EASE`). Measured: beam
+  on, ring at 5 rad/s, transfer unchanged.
 - **THE FABRICATOR AND THE SCRAPPER ARE 2x2x2, THE COMPONENT PLANT 2x1x2, AND THEIR PORTS ARE THE
   PLAYER'S DESIGN** (`art/emitter_models.py` comp_factory / fabricator / scrapper,
   `blocks._footprint_offsets` and `collider_offset`, anchored in a corner like the smelter). Masks are
