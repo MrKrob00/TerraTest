@@ -273,37 +273,28 @@ def _sleeve(faces, lo, hi, along, wall=0.018, style="dark"):
 
 
 def regen2_mounts():
-    """What holds the rings to the cell, one per face, each flush on its face so the block joins on all
-    six - and every ring still slides through, turning about its own axis.
-    LEFT / RIGHT / TOP / BOTTOM: a bearing HOUSING, a solid chamfered block from just inside its ring
-    out to the face, with a bolted blue pad on the face; the ring runs into its end walls as into a
-    slot (an open sleeve and a stub read as loose parts).
-    FRONT / BACK: a round HUB down the Z axis - all four rings pass it there, one behind the other, as
-    if threaded on it - ending in a blue flange flush on the face."""
+    """ONE CONNECTOR FOR ALL SIX FACES (the player's call: mixed housings and hubs read as parts from
+    different kits), after a gimbal's trunnions - every ring of a real gyroscope hangs on the same round
+    pivot bearing where its axis meets the frame. Each is a dark hub down the face's axis, from just
+    inside the ring it holds out to the face, and a blue flange flush on the face: the ring is threaded
+    on the hub and slides round it. Only the hub's length differs - left/right hold the outer ring,
+    top/bottom the vertical one, front/back all four, which pass the Z axis one behind the other."""
     f = []
-    hw = REGEN2_WIDTH + 0.03               # a housing's half-size across the band
-    for sg in (1, -1):
-        for axis, R in ((0, REGEN2_R[0]), (1, REGEN2_R[1])):
-            inner = R - REGEN2_DEPTH - 0.03
-            lo, hi = [-hw, -hw, -0.1], [hw, hw, 0.1]
-            lo[axis], hi[axis] = sorted((sg * inner, sg * 0.5))
-            top = "anchor_top_fixed"
-            if axis == 1:
-                cham_box(f, tuple(lo), tuple(hi), 0.02, "dark",
-                         top if sg > 0 else "dark", top if sg < 0 else "dark", "bevel")
-            else:
-                cham_box(f, tuple(lo), tuple(hi), 0.02, "dark", "dark", "dark", "bevel")
-                # the pad on the side face: a blue plate a hair proud of the housing's outer wall
-                x = sg * 0.5
-                q = [(x, -hw + 0.02, -0.08), (x, hw - 0.02, -0.08), (x, hw - 0.02, 0.08), (x, -hw + 0.02, 0.08)]
-                f.append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), top, u_hint=(0, 0, 1)))
-        # the hub down Z and its flange on the face
-        z_in = sg * (REGEN2_R[3] - REGEN2_DEPTH - 0.04)
-        tube(f, [(0.0, 0.0, z_in), (0.0, 0.0, sg * 0.46)], [0.055, 0.055], ["m"], sides=12,
-             cap_start="cap_bolt")
-        tube(f, [(0.0, 0.0, sg * 0.46), (0.0, 0.0, sg * 0.5)], [0.105, 0.105], ["b"], sides=12,
-             cap_start="blue", cap_end="blue")
+    reach = {0: REGEN2_R[0], 1: REGEN2_R[1], 2: REGEN2_R[3]}
+    for axis in (0, 1, 2):
+        for sg in (1, -1):
+            def p(d):
+                v = [0.0, 0.0, 0.0]
+                v[axis] = sg * d
+                return tuple(v)
+            d_in = reach[axis] - REGEN2_DEPTH - 0.04
+            tube(f, [p(d_in), p(0.46)], [WL_HUB, WL_HUB], ["m"], sides=12, cap_start="cap_bolt")
+            tube(f, [p(0.46), p(0.5)], [WL_FLANGE, WL_FLANGE], ["b"], sides=12, cap_start="blue",
+                 cap_end="anchor_top_fixed")
     return f
+
+
+WL_HUB, WL_FLANGE = 0.055, 0.105      # a connector's hub and flange radii
 
 
 def build_regen2(pk, img):
