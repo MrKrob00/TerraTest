@@ -16,24 +16,26 @@ var _burn_left: float = 0.0
 var _burn_energy: float = 0.0
 
 # The model says whether it burns (art/emitter_models.py build_generator): fire behind the grate on
-# every wall and at the bottom of the well, painted LIT and darkened here when cold, and a turbine
+# every wall, painted LIT and darkened here when cold, and a turbine
 # that spins up with the fire and runs down after it. `Rotor` moves (moving_parts), `Fire` is
 # re-coloured per block (unbatched, its own material copy - a shared one would light every
 # generator in the world at once).
 #
 # FUEL GOES IN THROUGH THE TOP, FROM WHICHEVER SIDE IT CAME. A belt carries its cargo at the lid's
 # own height, so one door on top serves all four sides with no lift and no drop; four side doors
-# would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks into the well
-# (RETRACT), the fuel settles over it, shrinks and drops in (`_swallow`), and only THEN the fire
-# flares and the burn starts - the lid closes as the turbine comes back up and spins.
+# would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks through the lid
+# (RETRACT), the fuel settles over the well, shrinks and drops in (`_swallow`), and only THEN the
+# fire flares and the burn starts - the turbine comes back up and spins. THE WELL IS PAINTED ON A
+# SOLID LID: whatever sinks below it is simply gone into the dark. A real well was tried and showed
+# the blades lying in a pit and the fuel on its floor.
 const FIRE_COLD := Color(0.20, 0.18, 0.22)
 const ROTOR_SPIN := 9.0          # rad/s at full fire
 const ROTOR_EASE := 6.0          # rad/s per second: full speed in half a burn (BURN_TIME)
-const RETRACT := 0.16            # how far the rotor sinks (the well is 0.18 deep, emitter_models)
+const RETRACT := 0.16            # how far the rotor sinks: its top (0.47) ends under the lid (0.40)
 const GATE_TIME := 0.25          # s to sink or rise; the fuel's slide onto the lid takes 0.3
 const SETTLE_TIME := 0.15        # s the fuel shrinks to the well's width over the lid
 const SINK_TIME := 0.3           # s it drops in
-const SINK_Y := 0.25             # where it vanishes: just over the grate
+const SINK_Y := 0.25             # where it vanishes, well under the lid
 var _rotor: Node3D = null
 var _fire: MeshInstance3D = null
 var _fire_mat: StandardMaterial3D = null

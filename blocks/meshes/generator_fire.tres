@@ -12,16 +12,16 @@ texture_filter = 2
 [resource]
 resource_name = "generator_fire"
 _surfaces = [{
-"aabb": AABB(-0.504, -0.4, -0.504, 1.008, 0.62, 1.008),
-"attribute_data": PackedByteArray("8XkDOe5y/zEDaf8x/2EDOf9h7kIDafJJ7nLySfF57kL/bQldzIoJXcyK/1H/bf9R/5EJXcyuCV3Mrv9R/5H/Uf+1CV3L0gldy9L/Uf+1/1H/2Qldy/YJXcv2/1H/2f9R"),
+"aabb": AABB(-0.504, -0.4, -0.504, 1.008, 0.23, 1.008),
+"attribute_data": PackedByteArray("/0kJXcxmCV3MZv9R/0n/Uf9tCV3MigldzIr/Uf9t/1H/kQldzK4JXcyu/1H/kf9R/7UJXcvSCV3L0v9R/7X/UQ=="),
 "format": 34896613399,
-"index_count": 42,
-"index_data": PackedByteArray("AAACAAEAAAADAAIAAAAEAAMAAAAFAAQAAAAGAAUAAAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYA"),
+"index_count": 24,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4A"),
 "material": SubResource("StandardMaterial3D_721pb"),
 "name": "generator",
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
-"vertex_count": 24,
-"vertex_data": PackedByteArray("Wb///8Fl//89mv//pUD//8Fl//+lQP//pUD//8Fl//+lQP//PZr//8Fl//9Zv///PZr//1m///9Zv///PZr/////917PM//////3Xi/M/////wAAL8z/////AADPM///L8z3Xv///7/PM/de////v88zAAD///+/L8wAAP///78AAPdeL8z/vwAA917PM/+/AAAAAM8z/78AAAAAL8z/v88z914AAP//L8z3XgAA//8vzAAAAAD//88zAAAAAP///3//v/9//7//f/+//3//v/9//7//f/+//3//v/9//7//v/9//7//f/+//3//v/9//3//f/9//3//f/9//3//f/9/////f////3////9/////P/+//z//v/8//7//P/+/")
+"vertex_count": 16,
+"vertex_data": PackedByteArray("/////88z////////L8z/////AAAvzP////8AAM8z//8vzP//////v88z//////+/zzMAAP///78vzAAA////vwAA//8vzP+/AAD//88z/78AAAAAzzP/vwAAAAAvzP+/zzP//wAA//8vzP//AAD//y/MAAAAAP//zzMAAAAA////v/9//7//f/+//3//v/9//3//f/9//3//f/9//3//f/9/////f////3////9/////P/+//z//v/8//7//P/+/")
 }]
 blend_shape_mode = 0

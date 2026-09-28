@@ -1699,9 +1699,10 @@ project: read it before claiming how anything works.
   every wall - the one pop colour, LIT ONLY WHILE IT BURNS (`generator.gd`: `Fire` re-coloured per
   block and unbatched, `Rotor` moving). FUEL GOES IN THROUGH THE TOP, from whichever side it came:
   a belt carries its cargo at the lid's own height, so one door serves all four sides, where side
-  doors would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks into a real well
-  (`RETRACT`), the fuel settles over it, shrinks and drops in, and only then the fire flares - the
-  well's floor is a grate over the fire, lit with the walls. Measured on the engine: turbine down as
+  doors would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks through the lid
+  (`RETRACT`), the fuel settles over the well, shrinks and drops in, and only then the fire flares.
+  THE WELL IS PAINTED ON A SOLID LID, so what sinks is simply gone into the dark: a real well was
+  tried and showed the blades lying in a pit and the fuel on its floor. Measured on the engine: turbine down as
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
   40 energy; fed by a belt from east, west and north alike.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
