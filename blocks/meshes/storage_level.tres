@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://caacrojdm2h62" path="res://objects/storage_texture.png" id="1_2npb8"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_2haca"]
+resource_name = "storage"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_2npb8")
+texture_filter = 2
+
+[resource]
+resource_name = "storage_level"
+_surfaces = [{
+"aabb": AABB(-0.504, 0, -0.504, 1.008, 0.7, 1.008),
+"attribute_data": PackedByteArray("//GZI0b3mSNG9/8B//H/Af8BmVNHB5lTRwf/Mf8B/zH/DZlTRxOZU0cT/zH/Df8x/xmZU0cfmVNHH/8x/xn/MQ=="),
+"format": 34896613399,
+"index_count": 24,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4A"),
+"material": SubResource("StandardMaterial3D_2haca"),
+"name": "storage",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 16,
+"vertex_data": PackedByteArray("/////wdy////////943/////AAD3jf////8AAAdy///3jf//////vwdy//////+/B3IAAP///7/3jQAA////vwAA///3jf+/AAD//wdy/78AAAAAB3L/vwAAAAD3jf+/B3L//wAA///3jf//AAD///eNAAAAAP//B3IAAAAA////v/9//7//f/+//3//v/9//3//f/9//3//f/9//3//f/9/////f////3////9/////P/+//z//v/8//7//P/+/")
+}]
+blend_shape_mode = 0

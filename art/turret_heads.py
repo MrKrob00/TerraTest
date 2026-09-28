@@ -384,6 +384,39 @@ def paint_face(img, rect, poly2d, style, facing):
             img.putpixel((x0 + xx, y0 + yy), shade(style_px(style, xx, yy, w, h, d), k))
 
 
+def _gear(bx, by):
+    r = math.hypot(bx, by)
+    if r < 1.3:
+        return False
+    if r <= 3.3:
+        return True
+    ang = math.atan2(by, bx)
+    return r <= 4.8 and abs(((ang / (2 * math.pi) * 8) % 1.0) - 0.5) < 0.22
+
+
+def _split_block(bx, by):
+    # a square broken down a jagged line, the halves pushed apart
+    if abs(by) > 4.0:
+        return False
+    crack = 0.6 * (1 if int(by + 4) % 2 else -1)
+    if bx < crack - 0.8:
+        return -4.6 <= bx and abs(by + 0.6) <= 3.4
+    if bx > crack + 0.8:
+        return bx <= 4.6 and abs(by - 0.6) <= 3.4
+    return False
+
+
+def _magnet(bx, by):
+    # a horseshoe, open at the top
+    r = math.hypot(bx, by - 0.5)
+    if by >= 0.5:
+        return 1.8 <= r <= 4.0
+    return 1.8 <= abs(bx) <= 4.0 and by >= -4.2
+
+
+EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet}
+
+
 def style_px(style, x, y, w, h, d):
     if style == "blue_cross":
         # The repair unit's mark: a green cross outlined in white, the same on every side.
@@ -427,23 +460,19 @@ def style_px(style, x, y, w, h, d):
                     return BLUE_HI
         return jitter(BLUE, 2)
     if style in ("anchor_top", "anchor_top_fixed"):
-        # The supports' deck. The rotating one carries a white chevron pointing FORWARD (+u): the
-        # heading it turns the machine to. The fixed one a ring of bolts - it points nowhere.
+        # The supports' deck: plain blue, the player's call - the turning one's chevron and the fixed
+        # one's ring of bolts read as a design laid over the deck (and the chevron sat off the
+        # turn's centre). The fixed square deck keeps a bolt in each corner, where a deck is bolted.
         if d < 1.0:
             return BLUE_HI
         if d < 2.0:
             return BLUE_MID
-        px, py, cy = x + 0.5, y + 0.5, h / 2.0
-        if style == "anchor_top":
-            a = w * 0.70 - px
-            if 0 <= a <= w * 0.28 and abs(abs(py - cy) - a * 0.95) < 1.7:
-                return WHITE
-        else:
-            r = math.hypot(px - w / 2.0, py - cy)
-            ring = min(w, h) * 0.30
-            if abs(r - ring) < 1.0:
-                ang = math.atan2(py - cy, px - w / 2.0)
-                return BLUE_HI if (int((ang + math.pi) / (2 * math.pi) * 8 + 0.5) % 2) else BLUE_DEEP
+        if style == "anchor_top_fixed":
+            for rx, ry in ((4, 4), (w - 6, 4), (4, h - 6), (w - 6, h - 6)):
+                if rx <= x < rx + 2 and ry <= y < ry + 2:
+                    return BLUE_DEEP
+                if (x == rx + 2 and ry <= y <= ry + 2) or (y == ry + 2 and rx <= x <= rx + 2):
+                    return BLUE_HI
         return jitter(BLUE, 2)
     if style == "bevel":
         return BLUE_MID if d >= 1.0 else BLUE
@@ -718,6 +747,73 @@ def style_px(style, x, y, w, h, d):
         if t > 0.40:
             return (240, 170, 70)
         return ORANGE if t > 0.18 else ORANGE_LO
+    if style == "store_side":
+        # The storage's wall: a container's corrugation, and down the middle a dark slot with a
+        # tick every quarter - the level bar (storage_level, its own part) rises in it.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        cx = w / 2.0
+        s0, s1 = 4, h - 4
+        if abs(x + 0.5 - cx) <= 4.0 and s0 - 1 <= y < s1 + 1:
+            if abs(x + 0.5 - cx) > 3.0 or y in (s0 - 1, s1):
+                return METAL[5]
+            for k in range(1, 4):
+                if y == int(s1 - (s1 - s0) * k / 4.0) and abs(x + 0.5 - cx) > 1.5:
+                    return RIM[1]
+            return METAL[0]
+        for rx, ry in ((3, 3), (w - 4, 3), (3, h - 4), (w - 4, h - 4)):
+            if x == rx and y == ry:
+                return METAL[6]
+        if 3 <= y < h - 3:
+            k = x % 5
+            return METAL[4] if k == 0 else (METAL[3] if k < 3 else METAL[2])
+        return jitter(METAL[3], 2)
+    if style in EMBLEMS:
+        # A factory wall that says what the block does: the family's slot grille, and on a plate
+        # in the middle a mark nine-plus texels across (smaller breaks up under mipmaps, see
+        # docs/ART_STYLE.md) - a gear for the component plant, a split block for the scrapper, a
+        # horseshoe magnet for the packer.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        cx, cy = w / 2.0, h * 0.42
+        bx, by = x + 0.5 - cx, y + 0.5 - cy
+        if abs(bx) <= 6.5 and abs(by) <= 6.5:
+            if abs(bx) > 5.5 or abs(by) > 5.5:
+                return METAL[5]
+            return RIM[4] if EMBLEMS[style](bx, by) else METAL[1]
+        if 3 <= y < h - 3 and 3 <= x < w - 3:
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        for rx, ry in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+            if x == rx and y == ry:
+                return METAL[6]
+        return jitter(METAL[3], 2)
+    if style == "coil":
+        # The packer's electromagnet: copper windings, a dark line between every turn.
+        if d < 1.0:
+            return ORANGE_LO
+        return ORANGE_LO if y % 3 == 0 else (ORANGE if (y // 3) % 2 else (190, 124, 50))
+    if style == "pole":
+        # The magnet's pole face: bright polished metal with a dark ring.
+        r = math.hypot(x + 0.5 - w / 2.0, y + 0.5 - h / 2.0)
+        if d < 1.0:
+            return RIM[1]
+        if abs(r - min(w, h) * 0.28) < 0.8:
+            return METAL[2]
+        return RIM[3] if r < min(w, h) * 0.28 else RIM[2]
+    if style == "level":
+        # The storage's fill: a bright bar in segments, the storage's one pop colour.
+        if d < 1.0:
+            return (150, 240, 170)
+        return GREEN if (y % 4) else (60, 160, 95)
+    if style == "store_floor":
+        # The tray the one shown item sits in: dark checker plate.
+        if d < 1.0:
+            return METAL[4]
+        return METAL[2] if ((x // 3) + (y // 3)) % 2 else METAL[1]
     if style == "blade":
         return RIM[4] if d < 1.0 else RIM[2]
     if style == "metal_rod":

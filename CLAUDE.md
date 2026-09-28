@@ -433,9 +433,11 @@ project: read it before claiming how anything works.
   never the bottom; every round part has its FLATS ON THE CELL'S FACES (16 sides, `flat_r`), so a
   neighbour meets a face - the first cut, a housing on a thin sleeve with an inset lower tier,
   read as joining by its top only. The fixed one has a square deck and a hazard band on the base;
-  the rotating one a round deck with a white chevron (its heading) turning with the machine, over
-  a base that HOLDS the heading it had when the machine anchored, orange ticks on its ridge so the
-  turn is seen against it. While the machine is anchored (or is an enemy base) a telescoping ram
+  the rotating one a round deck turning with the machine, over a base that HOLDS the heading it had
+  when the machine anchored, orange ticks on its ridge so the turn is seen against it. BOTH DECKS
+  ARE PLAIN BLUE, the player's call: the rotating one's white chevron sat off the turn's centre and
+  the fixed one's ring of bolts read as a design laid over it; the square deck keeps one bolt in
+  each corner (`anchor_top_fixed`). While the machine is anchored (or is an enemy base) a telescoping ram
   (sleeve over rod) runs out until the foot stands on the ground (`G.ground_y` under the block,
   capped at `LEG_MAX`), and back in on release. So `_build_anchor_column` builds nothing when the
   core has `draws_own_leg` - it used to grow a white `CylinderMesh` - and keeps its column only
@@ -1751,6 +1753,13 @@ project: read it before claiming how anything works.
   lamps under the screen, hazard slats on the mouth's base, two aerials. Measured on the engine: three ore
   through receiver, belt, processor and belt into the seller paid 75 (three Ferrite ingots) both
   straight through the channel and with the processor beside the line.
+- **THE STORAGE SAYS HOW FULL IT IS** (`art/emitter_models.py` storage): a container, corrugated
+  dark walls on blue corner posts, and the one item it shows in a tray in the lid (`item_slot` 0.45,
+  the collector's hold height). Its one pop colour is a green LEVEL BAR in a slot down every wall
+  (node `Level`, `storage.gd` scales it from its base by count / `CAPACITY`, `moving_parts`). Empty,
+  the bar is flattened to `LEVEL_NONE`, not hidden: `MachineBatch` reads `visible` only when it
+  rebuilds, so a hidden part would go on drawing. Measured on the engine: 1 / 10 / 20 / 0 items give
+  0.05 / 0.50 / 1.00 / 0.001.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

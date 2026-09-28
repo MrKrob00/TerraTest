@@ -18,6 +18,11 @@ const RESOURCE_SCENE: String = "res://resource.tscn"
 const PUSH_INTERVAL: float = 0.35
 ## Дальше этого цифру не показываем — см. _process.
 const LABEL_DIST: float = 14.0
+## The level bars on the walls (art/emitter_models.py build_storage, node `Level`) are scaled up
+## from their base by count / CAPACITY, never under LEVEL_MIN while anything is inside. Empty, they
+## are flattened to LEVEL_NONE, not hidden: MachineBatch reads `visible` only when it rebuilds.
+const LEVEL_MIN: float = 0.04
+const LEVEL_NONE: float = 0.001
 
 var stored_kind: String = ""               # "" — склад пуст и примет любой вид
 var count: int = 0
@@ -27,8 +32,11 @@ var _display: Node3D = null                # тот самый один пред
 var _label: Label3D = null
 var _push_t: float = 0.0
 var _res_scene: PackedScene = null
+var _level: Node3D = null
 
 func _ready() -> void:
+	moving_parts = true                     # the level bar scales (MachineBatch copies it)
+	_level = get_node_or_null("Level") as Node3D
 	super._ready()
 	_res_scene = load(RESOURCE_SCENE) as PackedScene
 	_build_label()
@@ -136,6 +144,8 @@ func _refresh_visual() -> void:
 	if _label != null:
 		_label.text = str(count)
 		_label.visible = count > 0
+	if _level != null:
+		_level.scale.y = maxf(float(count) / CAPACITY, LEVEL_MIN) if count > 0 else LEVEL_NONE
 
 func _build_label() -> void:
 	_label = Label3D.new()

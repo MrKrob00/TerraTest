@@ -911,7 +911,58 @@ def build_seller(pk, img):
     return parts
 
 
+# ── the storage ─────────────────────────────────────────────────────────────────────────────────
+# One kind of material, up to storage.gd CAPACITY, in and out on all four sides. What it has to SAY
+# is how full it is, so that is its one pop colour: a level bar in a slot down the middle of every
+# wall (storage_level, scaled by storage.gd from its base). The one item it shows sits in a tray in
+# the lid (storage.tscn item_slot). The walls are a container's corrugation - the frame block's
+# grille would make it one more generator.
+STORE_TRAY = 0.30        # the tray's half-width in the lid
+STORE_FLOOR = 0.32       # the tray's floor
+STORE_LEVEL_Y = -0.355   # the level bar's base (storage.tscn node `Level`)
+STORE_LEVEL_H = 0.70     # its full height: the slot painted in store_side
+
+
+def build_storage(pk, img):
+    parts = {"storage_body": [], "storage_level": []}
+    b = parts["storage_body"]
+    c, o, t = 0.067, 0.5 - 0.067, STORE_TRAY
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5), c, "store_side", None, "dark", "dark_edge")
+    # The upright edges are the container's blue corner posts: next to the collector's all-dark
+    # cube it would otherwise read as the same block with a square hole.
+    for f in b:
+        if f.style == "dark_edge" and len(f.pts) == 4 and abs(th.norm(th.newell(f.pts))[1]) < 0.1:
+            f.style = "bevel"
+    # The lid: a blue frame round the tray, four trapezoids.
+    for k in range(4):
+        a = k * math.pi / 2
+        ca, sa = round(math.cos(a)), round(math.sin(a))
+
+        def pt(u, v):   # u across the side, v outward from the middle
+            return (ca * v - sa * u, 0.5, sa * v + ca * u)
+        q = [pt(-o, o), pt(o, o), pt(t, t), pt(-t, t)]
+        b.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "blue", u_hint=(-sa, 0, ca)))
+        # the tray's wall under that side, facing in
+        w = [pt(-t, t), pt(t, t), (pt(t, t)[0], STORE_FLOOR, pt(t, t)[2]),
+             (pt(-t, t)[0], STORE_FLOOR, pt(-t, t)[2])]
+        b.append(th.Face(th.outward(w, (ca * 2.0, 0.4, sa * 2.0)), "dark", u_hint=(-sa, 0, ca)))
+    floor = [(-t, STORE_FLOOR, -t), (t, STORE_FLOOR, -t), (t, STORE_FLOOR, t), (-t, STORE_FLOOR, t)]
+    b.append(th.Face(th.outward(floor, (0.0, -1.0, 0.0)), "store_floor", u_hint=(1, 0, 0)))
+    # The level bars: one per wall, a hair proud of it, built from y 0 so the script scales them up.
+    for k in range(4):
+        a = k * math.pi / 2
+        nx, nz = round(math.cos(a)), round(math.sin(a))
+        tx, tz = -nz, nx
+        off = 0.5 + 0.004
+        q = [(nx * off + tx * s, yy, nz * off + tz * s) for s, yy in
+             ((-0.055, 0.0), (0.055, 0.0), (0.055, STORE_LEVEL_H), (-0.055, STORE_LEVEL_H))]
+        parts["storage_level"].append(th.Face(th.outward(q, (0.0, STORE_LEVEL_H / 2, 0.0)), "level",
+                                              u_hint=(tx, 0.0, tz)))
+    return parts
+
+
 BLOCKS = {
+    "storage": (79, build_storage, 256),
     "processor": (71, build_processor, 512),
     "seller": (73, build_seller, 512),
     "receiver": (61, build_receiver, 256),
