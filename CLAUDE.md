@@ -104,9 +104,25 @@ project: read it before claiming how anything works.
 
 ### Machines and the block grid
 
-- `blocks.gd` holds an 11³ grid per machine; coordinates are shifted by +5, so the centre is
-  (5,5,5). Multi-cell blocks keep node and rotation on one anchor cell (`cell_owner`); always go
-  through `find_block` / `remove_block`.
+- `blocks.gd` holds a 21³ grid per machine, cells -5..15 on every axis (`GRID_MIN`/`GRID_MAX`),
+  and the centre is STILL (5,5,5). Multi-cell blocks keep node and rotation on one anchor cell
+  (`cell_owner`); always go through `find_block` / `remove_block`.
+- **THE GRID GREW FROM 11³ (cells 0..10) ROUND THE SAME CENTRE, AND THAT IS WHAT KEPT EVERYTHING
+  VALID.** Every layout counts from cell 5 - the enemy table, the quest bases, player saves and
+  saved builds, the "cell - 5" that turns a cell into a position in half a dozen files - so the
+  range widened to -5..15 instead of the centre moving to 10, and not one of them was converted.
+  Measured: all 130 presets build the identical layout on the old and the new code (3328 blocks).
+  THE GRID IS A DICTIONARY OF OCCUPIED CELLS (`map`, Vector3i -> block; `_cell` reads, an empty
+  cell has no key), and every pass walks what is there, in x/y/z order (`_anchors_sorted`) so saves
+  come out as before: a 21³ array is 9261 slots per machine. The occlusion fill runs in the build's
+  own box plus a rim, not the grid's. THE BOUNDS LIVE IN ONE SCRIPT: the pick ray
+  (`vehicle_body_3d._in_bounds`) and the save check (`world_persist._layout_ok`) read
+  `GRID_MIN`/`GRID_MAX` from `blocks.gd` - the save check's hardcoded 0..10 would have QUARANTINED the
+  whole save of anyone who built past the old grid. What scales with the build asks the build:
+  `blocks.reach_radius` / `reach_top` (measured by the occlusion pass) size the machine's frustum
+  and behind-a-ridge culls, which were a fixed 9 m sphere; `WeaponBlock.MACHINE_REACH` is 18 m and
+  the camera zooms out to 35. Measured on the proving ground: a machine from cell -5 to 15 builds
+  32 of 32, every collider in its own cell, reach 14.9 m.
 - **A MULTI-CELL BLOCK'S FOOTPRINT ROTATES WITH IT, AND SO DOES ITS COLLIDER OFFSET.** Both the
   mesh and the collider turn about the ANCHOR, which for a big block is a corner rather than the
   middle; `_block_footprint` computed cells with no regard for the angle at all, so a block turned
@@ -692,9 +708,10 @@ project: read it before claiming how anything works.
   roofed and flanked, no cell without a neighbour — plus mass against `load_capacity()` and the
   value curve across steps. Measured after the table was written: 0 geometry complaints, nothing
   overloaded (worst 0.55 of capacity), medians 10.7k → 15.9k → 24.5k → 31.6k → 44.2k → 65.2k.
-- WIDTH IS ODD AND THE GRID'S CEILING IS NINE, not five. Wheels sit at half+1 from the axis, so a
-  nine-cell hull puts them on x = 0 and x = 10 — the last cells of the 11³ grid — and eleven
-  carries them off it, where `set_block` drops them without a word. Measured on the engine for
+- WIDTH IS ODD AND THE GRID'S CEILING IS NINETEEN since the grid grew to 21³ (it was nine on the
+  11³ one). Wheels sit at half+1 from the axis, so the widest hull puts them on the grid's last
+  cells, and anything wider carries them off it, where `set_block` drops them without a word.
+  What follows is the 11³ grid's measurement: Measured on the engine for
   build 84: width 9 gives an 11×4×7 bounding box, 136 cells and 12 wheels with no warning;
   width 11 gives 150 cells and ZERO wheels. The tables (`ENEMY_BUILDS`) still ask for 1, 3 or 5,
   so the widest machine in the game today is 7 across where 11 would fit; that is a design

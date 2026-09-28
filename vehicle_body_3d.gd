@@ -174,7 +174,7 @@ func has_rot_support() -> bool:
 
 # Разворот на якоре. Крутим transform напрямую, а не моментом: тело заморожено якорем.
 #
-# ВОКРУГ САМОЙ ОПОРЫ, а не вокруг начала координат машины. Начало — центр сетки 11³ (кабина),
+# ВОКРУГ САМОЙ ОПОРЫ, а не вокруг начала координат машины. Начало — центральная клетка сетки (кабина),
 # и при опоре где-нибудь на краю база ездила по дуге радиусом в полкорпуса: колонна стоит на
 # месте, а постройку уносит вбок. Крутим точку: сдвигаем origin вокруг мировой позиции блока и
 # домножаем базис.
@@ -444,8 +444,8 @@ func _find_terrain() -> Node:
 # ── Медленное перемещение в РЕЖИМЕ СТРОЙКИ (репозиция, чтобы выбраться из ямы/застревания) ──
 const BUILD_MOVE_SPEED := 4.0         # медленно (u/с) — это не езда, а сдвиг платформы
 const BUILD_HOVER_CLEARANCE := 4.0    # высота парения над рельефом в стройке
-## Половина сетки машины (blocks.gd: 11 клеток по метру) — дальше неё блок не встанет.
-const FOOT_LIMIT := 5.5
+## Half the machine's grid (blocks.gd: 21 cells of a metre, centre 5) - no block stands past it.
+const FOOT_LIMIT := 10.5
 var _terr_cache: Node = null
 
 ## ГАБАРИТ МАШИНЫ ПО XZ, в метрах и в её собственных осях. Нужен парению в стройке: высоту надо
@@ -817,11 +817,9 @@ func set_active(active: bool) -> void:
 @export var ghost_block: Node3D
 
 const CELL_SIZE = 1.0
-# Сетка сборки 11×11×11 с ядром в центре (см. blocks.gd) — луч выбора/постановки блоков ходит
-# по клеткам 0..10, клетка ядра = 5 по каждой оси.
-const MAP_SIZE_X = 11
-const MAP_SIZE_Y = 11
-const MAP_SIZE_Z = 11
+# The build grid is blocks.gd's: 21 cells each way, -5..15, the core in cell 5 on every axis. The
+# pick ray walks those cells; its bounds are that script's, never a copy.
+const BLOCKS_SCRIPT := preload("res://blocks.gd")
 
 var block_take: bool = false
 ## ЧТО именно в руке. Одним понятием, а не проверкой свойств в каждом месте: рука раньше
@@ -835,7 +833,7 @@ var hand_kind: int = Hand.EMPTY
 ## наличию свойств, а не по классу: resource.gd не объявляет class_name.
 static func _is_resource(n: Node) -> bool:
 	return n != null and not ("block" in n) and ("type" in n) and n.has_method("kind_key")
-var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # дефолт = центр сетки 11³
+var BuildingBlock: Dictionary = { "build": true, "x": 5, "y": 5, "z": 5, "block": 1 }  # default: the grid's centre cell
 
 # Ориентация блока в руке = авто по грани (наклон/поворот) ∘ ручная (кнопки UI поворота).
 var build_basis: Basis = Basis()
@@ -1718,7 +1716,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if v is Node3D:
 		v.global_rotation.y = yaw                         # уважаем ручной поворот игрока (как в превью)
 	if v.has_method("apply_build"):
-		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # ядро в ЦЕНТРЕ сетки 11³
+		v.apply_build([{"x": 5, "y": 5, "z": 5, "block": core, "rot": [0.0, 0.0, 0.0]}])  # the core in the grid's CENTRE cell
 	# Ядро базы → машина на якоре (нельзя ехать/снять якорь). Опора здесь равноправна с
 	# продавцом: база отличается от машины не набором блоков, а тем, что у неё нет кабины и
 	# она стоит.
@@ -1846,7 +1844,9 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	return result
 
 func _in_bounds(x: float, y: float, z: float) -> bool:
-	return x>=0 and x<MAP_SIZE_X and y>=0 and y<MAP_SIZE_Y and z>=0 and z<MAP_SIZE_Z
+	var lo: int = BLOCKS_SCRIPT.GRID_MIN
+	var hi: int = BLOCKS_SCRIPT.GRID_MAX
+	return x >= lo and x <= hi and y >= lo and y <= hi and z >= lo and z <= hi
 
 func _get_block_name(block: int) -> String:
 	var names: Array = G.Block.keys()

@@ -327,9 +327,10 @@ var _taste_seed: int = 0
 const RETARGET_PERIOD := 0.12        # 8 раз в секунду, см. _tick_weapon
 var _retarget_t: float = 0.0
 
-## How far a machine's blocks can lie from its origin: an 11-cell grid round the cabin, plus a
-## 2x2x2 block's reach. A machine farther than weapon_range plus this has nothing in range.
-const MACHINE_REACH := 10.0
+## How far a machine's blocks can lie from its origin: the 21-cell grid round the cabin reaches
+## 10 cells each way, 17.3 m to a corner, plus a margin. A machine farther than weapon_range plus
+## this has nothing in range.
+const MACHINE_REACH := 18.0
 
 ## Every hostile block within weapon_range, and every lit hostile dome whose sphere reaches into it:
 ## what the detection sphere used to hand over through body_entered, found by distance. Base scores

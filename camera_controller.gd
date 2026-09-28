@@ -29,7 +29,7 @@ var vehicles: Array
 const MOUSE_SENS := 0.0025   # рад на пиксель движения мыши
 const ZOOM_STEP := 1.0
 const ZOOM_MIN := 2.0
-const ZOOM_MAX := 20.0
+const ZOOM_MAX := 35.0          # a 21-cell machine has to fit in the frame
 var _mouse_look_dx: float = 0.0   # накопленный сдвиг мыши по X с прошлого кадра (ПКМ зажата)
 var _mouse_look_dy: float = 0.0   # то же по Y — наклон взгляда
 
