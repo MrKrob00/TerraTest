@@ -512,6 +512,63 @@ def style_px(style, x, y, w, h, d):
                 if 0 <= a < 6 and abs(off - (6 - a) * 0.9) < 1.2 and off < h / 2 - 2:
                     return ORANGE if a > 1 else ORANGE_LO
         return METAL[2] if (x % 4) == 0 else METAL[1]
+    if style == "gen_side":
+        # The generator's wall, the frame block's language in our own drawing: a light edge line,
+        # a slot grille across the top with a bolt sign in the middle, and under it the dark frame
+        # the firebox window (a part of its own, generator_fire) sits in. Rows run down from the top.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        g0, g1 = 3, int(h * 0.46)
+        cx = w / 2.0
+        if g0 <= y < g1 and 3 <= x < w - 3:
+            bx, by = x + 0.5 - cx, y + 0.5 - (g0 + g1) / 2.0
+            if abs(bx) <= 4.5 and abs(by) <= 4.5:
+                # The sign plate: a bolt, drawn as two offset bars, on a dark square.
+                if abs(bx) > 3.5 or abs(by) > 3.5:
+                    return METAL[5]
+                if (by < 0 and 0 <= bx + by * 0.5 + 0.5 <= 1.6) or (by >= 0 and 0 <= bx + by * 0.5 + 1.5 <= 1.6) \
+                        or (abs(by) < 0.6 and -1.5 <= bx <= 1.5):
+                    return RIM[4]
+                return METAL[1]
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        if y >= g1 + 1:
+            return METAL[2] if (x + y) % 5 else METAL[1]
+        for rx, ry in ((2, h - 3), (w - 3, h - 3)):
+            if x == rx and y == ry:
+                return METAL[6]
+        return jitter(METAL[3], 2)
+    if style == "dark_edge":
+        # A chamfer on dark metal: the light line the atlas draws along every bevel.
+        return RIM[1] if d < 1.0 else METAL[4]
+    if style == "gen_top":
+        # The housing's top: a blue lip round a dark round well the rotor turns in.
+        if d < 1.0:
+            return BLUE_HI
+        if d < 2.0:
+            return BLUE_MID
+        r = math.hypot(x + 0.5 - w / 2.0, y + 0.5 - h / 2.0)
+        R = min(w, h) * 0.5 - 2.5
+        if R - 1.0 <= r < R:
+            return RIM[1]
+        if r < R - 1.0:
+            return METAL[0] if r < R * 0.55 else METAL[1]
+        return jitter(BLUE, 2)
+    if style == "gen_fire":
+        # Fire behind a grate, painted in its LIT state; generator.gd darkens it when cold.
+        if d < 1.0:
+            return METAL[0]
+        if x % 4 == 1:
+            return METAL[1]                          # grate bars
+        t = (y + 0.5) / h                            # 0 at the top, 1 at the bottom
+        if t > 0.72:
+            return (255, 214, 120)
+        if t > 0.40:
+            return (240, 170, 70)
+        return ORANGE if t > 0.18 else ORANGE_LO
+    if style == "blade":
+        return RIM[4] if d < 1.0 else RIM[2]
     if style == "metal_rod":
         return METAL[4] if y < h / 2 else METAL[3]
     if style == "cap_bolt":
