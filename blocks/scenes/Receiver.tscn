@@ -50,12 +50,11 @@ connect_faces = 47
 shape = SubResource("BoxShape3D_h01jy")
 
 [node name="Block" type="MeshInstance3D" parent="." unique_id=733296483]
-transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0, 0)
 mesh = ExtResource("2_y5o5s")
 skeleton = NodePath("../..")
 
 [node name="Block2" type="MeshInstance3D" parent="Block" unique_id=788153795]
-transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 1.856517, 0.07200721)
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 1.9365, -0.05)
 mesh = SubResource("CapsuleMesh_wq66k")
 skeleton = NodePath("../..")
 
@@ -72,6 +71,6 @@ shape = SubResource("SphereShape3D_8sx5t")
 mesh = SubResource("TorusMesh_p6pux")
 
 [node name="resources" type="Node3D" parent="." unique_id=1227729540]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.84, 0.072)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.76, -0.05)
 
 [connection signal="child_order_changed" from="resources" to="." method="_on_resources_child_order_changed"]

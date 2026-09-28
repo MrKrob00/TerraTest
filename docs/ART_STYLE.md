@@ -122,18 +122,21 @@ The harness is not kept in the repo; this describes what it does.
 ## Redrawn to the rules
 
 The collector kept the shape the player had made for it: a cube with a bowl. The receiver took
-two tries to become what the player wanted:
+four tries:
 
 - **A plate on a post.** It hung at the top of its cell.
 - **A platform block.** It stood on the floor, but it was not a saucer.
+- **Whole round saucers.** First on the floor, then with a chute.
 
-It is now a saucer hovering just off the floor, its top a dish turned inward, and it bobs while it
-works.
+What the player wanted was already in their old model. It was rounded at the back and square at
+the side it hands cargo out of, so it pointed at its conveyor. It is now HALF a saucer, cut along
+that face, set under the belts' deck and exactly the conveyor's width, so it runs on under the
+belt. The conveyors lost their column and float in the middle of the cell with it.
 
-- **Colour.** Dark metal, a GSO-blue rim or lid, and four orange ticks on the saucer's rim.
+- **Colour.** Dark metal, a GSO-blue ledge or lid, and two orange ticks on the saucer's rim.
 - **Emblem.** A sign plate on the collector's grille: a down-pointing triangle, because things go
   in at the top and stay.
-- **Size.** Both now fit their cell: 154 and 139 triangles, down from 450 and 882 untextured.
+- **Size.** Both now fit their cell: 98 and 139 triangles, down from 450 and 882 untextured.
 
 A sign smaller than about five texels breaks up under mip-mapping at a grazing angle. The first
 three-row triangle read as a bird from 35°, while straight on it was clean. Draw emblems at least
