@@ -1728,17 +1728,18 @@ project: read it before claiming how anything works.
   in its RIGHT-BOTTOM column: in at the back quarter and out at the front (a line runs straight
   through), and on the right face in at the back quarter, out at the front one (a belt passing
   alongside hands ore in and takes the ingot whichever way it runs - a belt's sides are both in and
-  out). THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE - the player's design: taken in on the right
-  at the back, it slides LEFT into the furnace (the left column), travels FORWARD through it and
-  comes out to the RIGHT at the front. So the bottom layer is a U-shaped track: the right column is
-  the intake and the exit, split by a low blue divider (the ore never goes straight) and open to the
-  sky; the furnace's lower half is a GALLERY open towards them, glowing inside, with its own track.
-  `processor._move` walks that path (markers `item_slot` / `item_slot2` / `item_slot3` plus
-  `furnace_out`), shrinking the item to `IN_FURNACE` under the gallery's ceiling - the cargo is a
-  metre-wide bubble - and growing it back as it comes out, already the product, under a hot glitch
-  (`BlockFX.play`); `upgrade()` stays in the tick, so the product never waits on a tween. The fire
-  parts ARE the old red/green lamp (`_set_processing_visual`, part `processor_glow`). Rejected on
-  the way: a hood over a straight channel (it hid the work), a hot bed in an open channel. The seller's one
+  out). THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE, INTO A CLOSED FURNACE - the player's design:
+  taken in on the right at the back, it goes LEFT into the furnace (the left column, one solid body)
+  through a mouth and is gone; the MODEL shows the melt - a gauge of molten metal fills while the ore
+  is inside - and the product comes out to the RIGHT at the front through the other mouth, under a
+  hot glitch (`BlockFX.play`). Both mouths have guillotine hatches that lift as something passes.
+  The right column is the intake (arrows into the furnace) and the exit, split by a low divider; the
+  exit carries TWO chevrons, forward and right, because the product leaves either way and one arrow
+  said half of it. `processor._move` drives the path, the hatches and the gauge (nodes `HatchIn`,
+  `HatchOut`, `Gauge`; `moving_parts`), shrinking the metre-wide cargo bubble to `IN_FURNACE` in the
+  mouth; `upgrade()` stays in the tick, so the product never waits on a tween. The fire grates on the
+  outer walls ARE the old red/green lamp (`_set_processing_visual`, part `processor_glow`). Rejected
+  on the way: a hood over a straight channel, a hot bed in an open channel, an open gallery. The seller's one
   intake is the right-back-bottom quarter, from the back and the right: an open MOUTH at belt height
   under a glass TUBE up through the roof to a gold-ringed uplink, inside an L-shaped vault with one
   trade screen (gold coin, green bars) and a round vault door. Measured on the engine: three ore

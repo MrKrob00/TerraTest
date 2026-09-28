@@ -12,16 +12,16 @@ texture_filter = 2
 [resource]
 resource_name = "processor_glow"
 _surfaces = [{
-"aabb": AABB(-1.504, 0.08, -1.504, 0.98399997, 0.81, 2.008),
-"attribute_data": PackedByteArray("/0xHKihhRyooYf8A/0z/AP8AmWJHKpliRyr/WP8A/1j/qLdrmMq3a5jK/2T/qP9k/wC3dWYPt3VmD/9u/wD/bv8St3VmIbd1ZiH/bv8S/24="),
+"aabb": AABB(-1.504, 0.1, -1.504, 0.80399996, 0.5, 2.008),
+"attribute_data": PackedByteArray("/3T/PpmW/z6Zlv8y/3T/Mv+Y/z5lp/8+Zaf/Mv+Y/zL/qv8+Zbn/PmW5/zL/qv8y"),
 "format": 34896613399,
-"index_count": 30,
-"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIA"),
+"index_count": 18,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoA"),
 "material": SubResource("StandardMaterial3D_vdvjl"),
 "name": "processor",
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
-"vertex_count": 20,
-"vertex_data": PackedByteArray("diV5g1sS/////3mDWxL/////eYOj7f//diV5g6Pt//9MIQAAo+3//0whAABbEv//TCFqflsS//9MIWp+o+3//wAAgKfBJv+/AACApz3Z/78AAP//Pdn/vwAA///BJv+/KtGApwAA//8SNYCnAAD//xI1//8AAP//KtH//wAA//8SNYCn////vyrRgKf///+/KtH//////78SNf//////v/9//z//f/8//3//P/9//z//v/9//7//f/+//3//v/9//3////9/////f////3////8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+"vertex_count": 12,
+"vertex_data": PackedByteArray("AAAAAMEm/78AAAAAPdn/vwAA//892f+/AAD//8Em/7///wAAAAD///RAAAAAAP//9ED//wAA////////AAD///RAAAD///+///8AAP///7//////////v/RA//////+//3////9/////f////3////8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
 }]
 blend_shape_mode = 0

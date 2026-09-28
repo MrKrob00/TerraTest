@@ -3,6 +3,9 @@
 [ext_resource type="Script" uid="uid://dwqo1oflwm2qj" path="res://blocks/scripts/processor.gd" id="1_dhbhs"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_body.tres" id="2_nxtql"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_glow.tres" id="3_glow"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_hatch_in.tres" id="4_hin"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_hatch_out.tres" id="5_hout"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_gauge.tres" id="6_gauge"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_nxtql"]
 size = Vector3(2, 2, 2)
@@ -52,13 +55,23 @@ mesh = ExtResource("3_glow")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0)
 
 [node name="item_slot2" type="Marker3D" parent="." unique_id=272038550]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.29, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.26, 0)
 
 [node name="item_slot3" type="Marker3D" parent="." unique_id=1696341375]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, -1)
 
 [node name="furnace_out" type="Marker3D" parent="." unique_id=1696341376]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.29, -1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0.26, -1)
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="." unique_id=1489926572]
 mesh = ExtResource("2_nxtql")
+
+[node name="HatchIn" type="MeshInstance3D" parent="." unique_id=1951237390]
+mesh = ExtResource("4_hin")
+
+[node name="HatchOut" type="MeshInstance3D" parent="." unique_id=1951237391]
+mesh = ExtResource("5_hout")
+
+[node name="Gauge" type="MeshInstance3D" parent="." unique_id=1951237392]
+transform = Transform3D(1, 0, 0, 0, 0.02, 0, 0, 0, 1, -0.47, 0.58, -0.5)
+mesh = ExtResource("6_gauge")

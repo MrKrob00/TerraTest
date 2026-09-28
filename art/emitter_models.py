@@ -782,48 +782,62 @@ def glow_quad(faces, centre, right, up, hw, hh, style="gen_fire"):
     faces.append(th.Face(th.outward(q, th.sub(c, n)), style, u_hint=r))
 
 
-SM_TUNNEL = 0.5         # the furnace gallery's ceiling; processor.gd shrinks the ore to pass under it
+SM_MOUTH = 0.46         # the furnace mouths' top; the hatches cover them and lift by SM_HATCH_LIFT
+SM_GAUGE = (-0.47, 0.58, -0.5)  # the gauge fill's base in block space (processor.tscn node `Gauge`)
+SM_GAUGE_H = 0.36
 
 
 def build_processor(pk, img):
-    """THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE - the player's idea: taken in on the right at the
-    back, it slides LEFT into the furnace, travels FORWARD through it and comes out to the RIGHT at
-    the front (processor.gd moves it so). So the bottom layer is a U-shaped track: the right column
-    is the intake (back) and the exit (front) with a low divider between them - the ore never goes
-    straight - and open to the sky; the left column is the FURNACE, whose lower half is a GALLERY
-    open towards the channel, glowing inside, with its own track running forward. Rejected on the
-    way: a hood over a straight channel (it hid the work), a hot bed in an open channel (not a
-    smelter)."""
-    parts = {"processor_body": [], "processor_glow": []}
+    """THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE, AND THE FURNACE IS SOLID - the player's design:
+    taken in on the right at the back, it goes LEFT into the furnace through a mouth, is gone inside
+    (the model shows the melt, not the ore), and comes out to the RIGHT at the front through the
+    other mouth, already the product. So the right column is the intake (arrows into the furnace)
+    and the exit (one chevron forward, one right: it leaves either way), split by a divider; the
+    left column is one closed furnace with two guillotine HATCHES over its mouths and a GAUGE of
+    molten metal between them that fills while the ore is inside (processor.gd drives all three).
+    Rejected on the way: a hood over a straight channel, a hot bed in an open channel, an open
+    gallery (the ore in plain view, the furnace in pieces)."""
+    parts = {"processor_body": [], "processor_glow": [], "processor_hatch_in": [],
+             "processor_hatch_out": [], "processor_gauge": []}
     b, g = parts["processor_body"], parts["processor_glow"]
     fur_hi, roof_hi, deck_lo = 1.0, 1.26, CH_Y - 0.14
-    # Bases under both columns, and the decks: intake arrows point LEFT (into the furnace), the
-    # furnace track FORWARD, the exit RIGHT - the clockwise U.
-    cham_box(b, (-1.5, -0.5, -1.5), (0.5, deck_lo, 0.5), 0.05, "dark", None, "dark", "dark_edge")
+    # The right column: a base, the intake deck (arrows LEFT, into the furnace), the exit deck
+    # (both ways out), the divider and the belts' rail stubs.
+    cham_box(b, (-0.5, -0.5, -1.5), (0.5, deck_lo, 0.5), 0.04, "dark", None, "dark", "dark_edge")
     belt_strip(b, (-0.5, deck_lo, -0.5), (0.5, CH_Y, 0.5), "belt_fwd", (-1, 0, 0))
-    belt_strip(b, (-0.5, deck_lo, -1.5), (0.5, CH_Y, -0.5), "belt_fwd", (1, 0, 0))
-    belt_strip(b, (-1.5, deck_lo, -1.5), (-0.5, CH_Y, 0.5), "belt_fwd", (0, 0, -1))
-    # The divider between intake and exit, and the belts' rail stubs at the outer corners.
+    belt_strip(b, (-0.5, deck_lo, -1.5), (0.5, CH_Y, -0.5), "exit_two", (0, 0, -1))
     th.box(b, (-0.5, CH_Y - 0.02, -0.56), (0.5, CH_Y + 0.12, -0.44), "blue")
     for z0, z1 in ((0.38, 0.5), (-1.5, -1.38)):
         th.box(b, (0.38, CH_Y - 0.02, z0), (0.5, CH_Y + 0.07, z1), "blue")
-    # The furnace: an upper body over the gallery, its walls on the three outer sides below it, a
-    # blue pillar between the two mouths.
-    up = []
-    cham_box(up, (-1.5, SM_TUNNEL, -1.5), (-0.5, fur_hi, 0.5), 0.05, "smelt_side", None, None,
+    # The furnace: one closed body, the full left column.
+    fur = []
+    cham_box(fur, (-1.5, -0.5, -1.5), (-0.5, fur_hi, 0.5), 0.067, "smelt_side", None, "dark",
              "dark_edge")
-    restyle(up, "smelt_side", [((1, 0), "plain_side")])
-    b += up
-    th.box(b, (-1.5, CH_Y, -1.5), (-1.38, SM_TUNNEL, 0.5), "dark")          # left wall
-    th.box(b, (-1.5, CH_Y, 0.38), (-0.5, SM_TUNNEL, 0.5), "dark")           # back wall
-    th.box(b, (-1.5, CH_Y, -1.5), (-0.5, SM_TUNNEL, -1.38), "dark")         # front wall
-    th.box(b, (-0.62, CH_Y, -0.58), (-0.5, SM_TUNNEL, -0.42), "blue")       # pillar between mouths
-    # The fire: the gallery's ceiling and back wall glow, and fireboxes on the outer walls.
-    glow_quad(g, (-0.94, SM_TUNNEL - 0.004, -0.5), (1, 0, 0), (0, 0, 1), 0.42, 0.86)
-    glow_quad(g, (-1.376, (CH_Y + SM_TUNNEL) / 2, -0.5), (0, 0, -1), (0, 1, 0), 0.86, 0.2)
-    glow_quad(g, (-1.504, 0.75, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.14)
-    glow_quad(g, (-1.0, 0.75, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.14)
-    glow_quad(g, (-1.0, 0.75, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.14)
+    restyle(fur, "smelt_side", [((1, 0), "plain_side")])
+    b += fur
+    # The mouths on its right wall, each a dark opening in a blue frame, at belt height.
+    for cz in (0.0, -1.0):
+        glow_quad(b, (-0.496, (CH_Y + SM_MOUTH) / 2, cz), (0, 0, -1), (0, 1, 0), 0.3,
+                  (SM_MOUTH - CH_Y) / 2, style="dark")
+        th.box(b, (-0.5, SM_MOUTH, cz - 0.36), (-0.44, SM_MOUTH + 0.05, cz + 0.36), "blue")
+        for dz in (-0.36, 0.3):
+            th.box(b, (-0.5, CH_Y, cz + dz), (-0.44, SM_MOUTH, cz + dz + 0.06), "blue")
+    # The hatches: blue plates with hazard trim over the mouths, lifted by processor.gd.
+    for name, cz in (("processor_hatch_in", 0.0), ("processor_hatch_out", -1.0)):
+        th.box(parts[name], (-0.46, CH_Y, cz - 0.3), (-0.43, SM_MOUTH, cz + 0.3), "blue",
+               face_styles={"+x": "stripe", "-x": "stripe"})
+    # The gauge between the mouths: a dark well in a blue frame, and the fill (a part of its own,
+    # its base at SM_GAUGE so processor.gd scales it upward).
+    gx, gy, gz = SM_GAUGE
+    th.box(b, (-0.5, gy - 0.03, gz - 0.12), (-0.46, gy + SM_GAUGE_H + 0.03, gz + 0.12), "blue")
+    glow_quad(b, (-0.458, gy + SM_GAUGE_H / 2, gz), (0, 0, -1), (0, 1, 0), 0.08, SM_GAUGE_H / 2,
+              style="dark")
+    th.box(parts["processor_gauge"], (-0.456 - gx, 0.0, -0.075), (-0.445 - gx, SM_GAUGE_H, 0.075),
+           "molten")
+    # The fire: grates on the furnace's outer walls.
+    glow_quad(g, (-1.504, 0.35, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.25)
+    glow_quad(g, (-1.0, 0.35, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.25)
+    glow_quad(g, (-1.0, 0.35, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.25)
     # The roof over the furnace only, two chimneys on it.
     frustum(b, crect(-1.48, -0.52, -1.48, 0.48, 0.12, fur_hi), crect(-1.36, -0.64, -1.36, 0.36, 0.08, roof_hi),
             "blue", "bevel", "blue")

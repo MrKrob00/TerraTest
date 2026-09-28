@@ -24,17 +24,24 @@ const CELLS := 3
 ## Индекс стороны +X в FACE_VECS (см. VehicleBlock): «правый борт» процессора.
 const FACE_RIGHT_IDX := 3
 
-## THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE (art/emitter_models.py build_processor): cell 0 is
-## the intake on the right at the back; the move into cell 1 carries it LEFT into the furnace's
-## gallery, shrinking it to pass under the gallery's ceiling; the move into cell 2 carries it FORWARD
-## through the fire to the gallery's front mouth (marker `furnace_out`), where it comes out already
-## changed, under a hot glitch, and slides RIGHT to the exit growing back. upgrade() is still called
-## by the tick, so the product never depends on a tween finishing - only the picture does.
-const IN_FURNACE := 0.42         # the item's scale inside the gallery
-const LEG := 0.3                 # seconds per leg of the path; two legs must fit in a tick
+## THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE, AND INTO A CLOSED FURNACE
+## (art/emitter_models.py build_processor): cell 0 is the intake on the right at the back; the move
+## into cell 1 lifts the back hatch and carries the ore LEFT through the mouth, shrinking it to fit,
+## and there it is gone - the furnace shows the melt instead, a GAUGE of molten metal filling over
+## the tick; the move into cell 2 lifts the front hatch, and out of it comes the product under a hot
+## glitch, sliding RIGHT to the exit and growing back while the gauge drains. upgrade() is still
+## called by the tick, so the product never depends on a tween finishing - only the picture does.
+const IN_FURNACE := 0.42         # the item's scale in the mouth (it is a metre-wide bubble)
+const LEG := 0.3                 # seconds per leg of the path
+const HATCH_LIFT := 0.42         # the mouth's height: a lifted hatch clears it
+const HATCH_TIME := 0.12
+const GAUGE_MIN := 0.02          # never 0: a zero scale is a degenerate basis in the batch
 const MELT_FX_TIME := 0.5
 const MELT_A := Color(1.0, 0.55, 0.15)
 const MELT_B := Color(1.0, 0.85, 0.40)
+var _hatch_in: Node3D = null
+var _hatch_out: Node3D = null
+var _gauge: Node3D = null
 
 var _cells: Array = []          # предметы по клеткам: 0 — вход, CELLS-1 — выход
 var _slots: Array = []          # маркеры, по одному на клетку
@@ -46,6 +53,10 @@ func unbatched() -> Array:
 	return [m] if m != null else []
 
 func _ready() -> void:
+	moving_parts = true              # the hatches and the gauge (MachineBatch copies them)
+	_hatch_in = get_node_or_null("HatchIn") as Node3D
+	_hatch_out = get_node_or_null("HatchOut") as Node3D
+	_gauge = get_node_or_null("Gauge") as Node3D
 	super._ready()
 	_cells.resize(CELLS)
 	_slots = _pick_slots()
@@ -189,22 +200,46 @@ func _move(item: Node3D, cell: int) -> void:
 	var to: Vector3 = (_slots[cell] as Node3D).position
 	var tw: Tween = create_tween()
 	match cell:
-		1:   # left, into the furnace, shrinking under its ceiling
+		1:   # left through the back mouth, and gone; the gauge fills while it melts
+			_open_hatch(_hatch_in)
 			tw.tween_property(item, "position", to, LEG)
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE * IN_FURNACE, LEG)
-		2:   # forward through the fire, out of the front mouth changed, right to the exit
+			tw.tween_callback(item.set.bind("visible", false))
+			_fill_gauge(1.0, tick_time * 0.9)
+		2:   # out of the front mouth already changed, right to the exit, growing back
+			_open_hatch(_hatch_out)
 			var mouth := get_node_or_null("furnace_out") as Node3D
 			if mouth != null:
-				tw.tween_property(item, "position", mouth.position, LEG)
-				tw.tween_callback(_melt_fx.bind(item))
+				item.position = mouth.position
+			if vis != null:
+				vis.scale = Vector3.ONE * IN_FURNACE
+			item.visible = true
+			_melt_fx(item)
 			tw.tween_property(item, "position", to, LEG)
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE, LEG)
+			_fill_gauge(GAUGE_MIN, 0.4)
 		_:
+			item.visible = true
 			tw.tween_property(item, "position", to, minf(LEG, tick_time * 0.8))
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE, minf(LEG, tick_time * 0.8))
+
+## A guillotine hatch: up, held while the item passes, down.
+func _open_hatch(h: Node3D) -> void:
+	if h == null:
+		return
+	var tw := create_tween()
+	tw.tween_property(h, "position:y", HATCH_LIFT, HATCH_TIME)
+	tw.tween_interval(LEG)
+	tw.tween_property(h, "position:y", 0.0, HATCH_TIME * 1.5)
+
+func _fill_gauge(level: float, time: float) -> void:
+	if _gauge == null:
+		return
+	var tw := create_tween()
+	tw.tween_property(_gauge, "scale:y", maxf(level, GAUGE_MIN), time)
 
 func _melt_fx(item: Node3D) -> void:
 	if is_instance_valid(item) and item.get_parent() == self:
