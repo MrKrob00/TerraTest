@@ -1197,58 +1197,111 @@ def build_packer(pk, img):
 
 
 # ── the battery ─────────────────────────────────────────────────────────────────────────────────
-# A BATTERY THAT READS AS ONE: a dark case with a battery drawn on every wall and four green charge
-# segments on it that light by the block's own charge (battery.gd, nodes Seg0..3 sharing one mesh),
-# a blue rim and lid, and on the lid the two terminals with + and - in front of them. It stays a
-# full cell (it joins on every face and walls a machine's middle) - only the terminals stand in the
-# last 12 cm over the lid, up to the cell's face.
-BAT_TERM_X = 0.19                # the terminals, + on the right (+X), - on the left
-BAT_TERM_Z = 0.06                # a little back, so the marks in front of them have room
+# A CELL IN A CAGE: it joins on all six faces, so it is the wireless charger's frame (cage()) with
+# a battery standing in it - a round cell with a blue top band, the + nub up at the cell's top face
+# and the flat - end on the bottom one, so both of those faces meet a neighbour flush too. Round
+# the body four green charge rings (battery_seg, one mesh on nodes Seg0..3) light by the block's own
+# charge (battery.gd); a dark ring leaves its slot showing, so an empty battery still reads as one.
+BAT_R = 0.35                     # the cell's radius, inside the frame's window
+BAT_SEG_Y = (-0.34, -0.22, -0.10, 0.02)   # charge ring centres, bottom up (battery.tscn Seg0..3)
+BAT_SEG_HH = 0.03
+GREEN_RAMP = [(34, 104, 62), (52, 146, 86), (80, 205, 120), (120, 230, 150), (170, 248, 192)]
+SLOT_RAMP = [(20, 30, 25), (26, 40, 33), (34, 50, 42), (44, 62, 52), (56, 76, 64)]
 
 
-def bat_top(px, py, w, h):
-    d = min(px, py, w - px, h - py)
-    if d < 1.0:
-        return th.BLUE_HI
-    if d < 2.0:
-        return th.BLUE_MID
-    o = 0.5 - th.BAT_C
-    for sx, plus in ((BAT_TERM_X, True), (-BAT_TERM_X, False)):
-        gx = px - (sx + o) * th.DENS
-        gy = py - (-0.20 + o) * th.DENS
-        if (abs(gy) <= 1.0 and abs(gx) <= 3.5) or (plus and abs(gx) <= 1.0 and abs(gy) <= 3.5):
-            return th.WHITE
-    return th.jitter(th.BLUE, 2)
+def cage(b, crosses=False):
+    """The six-face frame: four blue posts and eight dark beams on the cell's edges, so every face
+    of the cell is a flat frame flush with it (the block joins on all six). With `crosses`, a bar
+    cross over the top and bottom windows, meeting at a blue hub."""
+    t, h = WL_POST, 0.5
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            x0, x1 = sorted((sx * h, sx * (h - t)))
+            z0, z1 = sorted((sz * h, sz * (h - t)))
+            th.box(b, (x0, -h, z0), (x1, h, z1), "blue")
+    for sy in (-1, 1):
+        y0, y1 = sorted((sy * h, sy * (h - t)))
+        for sz in (-1, 1):
+            z0, z1 = sorted((sz * h, sz * (h - t)))
+            th.box(b, (-h + t, y0, z0), (h - t, y1, z1), "dark", skip=("+x", "-x"))
+        for sx in (-1, 1):
+            x0, x1 = sorted((sx * h, sx * (h - t)))
+            th.box(b, (x0, y0, -h + t), (x1, y1, h - t), "dark", skip=("+z", "-z"))
+        if crosses:
+            yc = sy * (h - t / 2)
+            w = WL_BAR / 2
+            th.box(b, (-h + t, yc - w, -w), (h - t, yc + w, w), "dark", skip=("+x", "-x"))
+            th.box(b, (-w, yc - w, -h + t), (w, yc + w, -w), "dark", skip=("+z",))
+            th.box(b, (-w, yc - w, w), (w, yc + w, h - t), "dark", skip=("-z",))
+            hub = 0.09
+            th.box(b, (-hub, yc - w - 0.004, -hub), (hub, yc + w + 0.004, hub), "blue")
 
 
 def build_battery(pk, img):
     parts = {"battery_body": [], "battery_seg": []}
     b = parts["battery_body"]
-    c, top = th.BAT_C, th.BAT_TOP
-    o = 0.5 - c
-    cham_box(b, (-0.5, -0.5, -0.5), (0.5, top, 0.5), c, "bat_side", None, "dark", "dark_edge")
-    for f in b:                       # the rim round the lid is blue, the case's corners stay dark
-        if f.style == "dark_edge" and min(p[1] for p in f.pts) > top - c - 1e-6:
-            f.style = "bevel"
-    paint_island(pk, img, b, -o, o, -o, o, top, bat_top)
-    for sx in (BAT_TERM_X, -BAT_TERM_X):
-        lathe_y(pk, img, b, [(0.08, top), (0.08, top + 0.025), (0.055, top + 0.025), (0.055, 0.475),
-                             (0.04, 0.5), (0.0, 0.5)], th.RIM, sides=8, cx=sx, cz=BAT_TERM_Z,
-                ring_ramps={0: METAL_RAMP, 1: METAL_RAMP})
-    # One segment on every wall, centred on y 0: the scene stands four copies at BAT_SEG_Y.
-    hh = th.BAT_SEG_HH
-    for k in range(4):
-        a = k * math.pi / 2
-        nx, nz = round(math.cos(a)), round(math.sin(a))
-        tx, tz = -nz, nx
-        off = 0.5 + 0.004
-        q = [(nx * off + tx * s, yy, nz * off + tz * s) for s, yy in
-             ((-th.BAT_SEG_HW, -hh), (th.BAT_SEG_HW, -hh), (th.BAT_SEG_HW, hh), (-th.BAT_SEG_HW, hh))]
-        parts["battery_seg"].append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), "bat_cell", u_hint=(tx, 0.0, tz)))
+    cage(b)
+    R, hh = BAT_R, BAT_SEG_HH
+    prof = [(0.0, -0.5), (R - 0.05, -0.5), (R, -0.46)]
+    ramps = {}
+    for yc in BAT_SEG_Y:
+        prof.append((R, yc - hh))
+        prof.append((R, yc + hh))
+        ramps[len(prof) - 2] = SLOT_RAMP
+    top = [(R, 0.16), (R, 0.40), (R - 0.05, 0.44), (0.13, 0.44), (0.13, 0.5), (0.0, 0.5)]
+    prof += top
+    k = len(prof) - len(top)
+    ramps[k] = BLUE_RAMP                           # the blue top band
+    ramps[k + 1] = BLUE_RAMP
+    ramps[k + 3] = th.RIM                          # the + nub
+    ramps[k + 4] = th.RIM
+    lathe_y(pk, img, b, prof, METAL_RAMP, sides=12, ring_ramps=ramps)
+    # one charge ring, centred on y 0: the scene stands four copies at BAT_SEG_Y
+    lathe_y(pk, img, parts["battery_seg"], [(R - 0.005, -hh), (R + 0.012, -hh), (R + 0.012, hh),
+                                            (R - 0.005, hh)], GREEN_RAMP, sides=12)
+    return parts
+
+
+# ── the wireless charger ────────────────────────────────────────────────────────────────────────
+# IT JOINS ON ALL SIX FACES, so it is a CAGE: every face of the cell is a flat frame flush with it,
+# four blue posts and eight dark beams on the cube's edges, and a cross over the top and bottom
+# windows holding a mast. On the mast in the middle, the one thing that is not frame: a cyan
+# emitter orb (the beam's colour) inside a blue ring that SPINS WHILE ENERGY FLOWS
+# (wireless_charger.gd, node `Ring`). Open walls on purpose - the orb is what says "transmitter",
+# and a closed box with a drawing on it would be one more crate.
+WL_POST = 0.11                   # the frame's section
+WL_BAR = 0.06                    # the top and bottom crosses' section
+WL_ORB = 0.18                    # the emitter orb's radius
+WL_RING = (0.34, 0.04)           # the ring's radius and its tube's
+CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
+
+
+def build_wireless(pk, img):
+    parts = {"wireless_body": [], "wireless_ring": []}
+    b, ring = parts["wireless_body"], parts["wireless_ring"]
+    t, h = WL_POST, 0.5
+    cage(b, crosses=True)
+    # the mast, and the orb on it
+    lathe_y(pk, img, b, [(0.03, -h + t), (0.03, -WL_ORB * 0.8)], METAL_RAMP, sides=8)
+    lathe_y(pk, img, b, [(0.03, WL_ORB * 0.8), (0.03, h - t)], METAL_RAMP, sides=8)
+    lathe_y(pk, img, b, [(0.0, -WL_ORB * 1.05)] + sphere_profile(0.0, WL_ORB, -70, 70, 6)
+            + [(0.0, WL_ORB * 1.05)], CYAN_RAMP, sides=12, cell=3)
+    # the ring: blue with dark bands so its turn is seen, on three spokes out of the orb
+    R, r = WL_RING
+    n = 16
+    path = [(R * math.cos(a), 0.0, R * math.sin(a)) for a in
+            (2 * math.pi * k / n for k in range(n + 1))]
+    tube(ring, path, [r] * (n + 1), ["b" if k % 4 else "m" for k in range(n)], sides=6)
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + math.pi / 6
+        ca, sa = math.cos(a), math.sin(a)
+        tube(ring, [(ca * 0.05, 0.0, sa * 0.05), (ca * (R - r), 0.0, sa * (R - r))], [0.014, 0.014],
+             ["m"], sides=4)
     return parts
 
 
 BLOCKS = {
+    "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
     "fabricator": (101, build_fabricator, 512),
