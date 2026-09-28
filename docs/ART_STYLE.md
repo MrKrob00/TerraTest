@@ -150,10 +150,11 @@ The smelter and the seller are 2×2×2, and each face is four quarters, only som
 ports. The model's first job is to show WHICH quarters, because that decides how a line is
 built round the machine:
 
-- **The smelter.** Its ports are all in one column, at belt height. That column is an open
-  channel, open at both ends, along its whole side and to the sky, with a hot bed in the middle
-  where the ore glows and turns into an ingot. A hood over it was tried first, and it hid exactly
-  what the machine is for.
+- **The smelter.** Its ports are all in one column at belt height, and the ore goes round,
+  clockwise: in on the right at the back, left into the furnace, forward through its glowing
+  gallery, and out to the right at the front. The right column is an open intake and exit split
+  by a divider. Two tries went before it, and both are rules now: a hood over the channel hid the
+  work, and a hot bed in an open channel was not a smelter.
 - **The seller.** Its one intake corner is an open mouth under the tube that carries sold goods
   away.
 

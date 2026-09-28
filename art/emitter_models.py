@@ -729,10 +729,9 @@ def build_collector(pk, img):
 # PROCESSOR: all its ports are in the RIGHT-BOTTOM column - IN on the back quarter and OUT on the
 # front quarter (a line runs straight through it), and on the RIGHT face IN at the back quarter,
 # OUT at the front one (a belt passing alongside hands ore in and takes the ingot, whichever way it
-# runs - a belt's sides are both in and out). So that column is an OPEN CHANNEL at the belts' deck
-# height (BELT_TOP), open at both ends, along its whole right side AND TO THE SKY, with a hot bed in
-# its middle; the left column is the FURNACE. Parts: processor_body, processor_glow (the heat: the
-# bed, the vent, the fireboxes - re-coloured by processor.gd, never batched).
+# runs - a belt's sides are both in and out). The ore goes ROUND through the furnace in the left
+# column, clockwise (build_processor). Parts: processor_body, processor_glow (the fire: the gallery's
+# ceiling and wall, the fireboxes - re-coloured by processor.gd, never batched).
 #
 # SELLER: one intake, the right-back-bottom quarter, from the back and from the right. So that cell
 # is an open MOUTH at belt height, facing back and right, under a glass TUBE that carries what is
@@ -783,35 +782,48 @@ def glow_quad(faces, centre, right, up, hw, hh, style="gen_fire"):
     faces.append(th.Face(th.outward(q, th.sub(c, n)), style, u_hint=r))
 
 
+SM_TUNNEL = 0.5         # the furnace gallery's ceiling; processor.gd shrinks the ore to pass under it
+
+
 def build_processor(pk, img):
-    """NOTHING STANDS OVER THE CHANNEL: what the smelter does is the show. The first cut put a
-    hood over it and the player saw a conveyor under a box. Now the channel is open to the sky; in
-    its middle, where the ore stops for a tick, lies a HOT BED (a glowing grate) and the furnace
-    beside it breathes onto it through a vent; processor.gd heats the ore red on the bed and plays
-    the glitch the moment it becomes an ingot."""
+    """THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE - the player's idea: taken in on the right at the
+    back, it slides LEFT into the furnace, travels FORWARD through it and comes out to the RIGHT at
+    the front (processor.gd moves it so). So the bottom layer is a U-shaped track: the right column
+    is the intake (back) and the exit (front) with a low divider between them - the ore never goes
+    straight - and open to the sky; the left column is the FURNACE, whose lower half is a GALLERY
+    open towards the channel, glowing inside, with its own track running forward. Rejected on the
+    way: a hood over a straight channel (it hid the work), a hot bed in an open channel (not a
+    smelter)."""
     parts = {"processor_body": [], "processor_glow": []}
     b, g = parts["processor_body"], parts["processor_glow"]
-    fur_hi, roof_hi = 1.0, 1.26
-    # The furnace: the left column, full depth.
-    fur = []
-    cham_box(fur, (-1.5, -0.5, -1.5), (-0.5, fur_hi, 0.5), 0.067, "smelt_side", None, "dark",
-             "dark_edge")
-    restyle(fur, "smelt_side", [((1, 0), "plain_side")])     # the wall facing the channel
-    b += fur
-    # The channel: a base under it and the belt's own deck on top, running back to front (-Z).
-    cham_box(b, (-0.5, -0.5, -1.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "dark", None, "dark", "dark_edge")
-    belt_strip(b, (-0.5, CH_Y - 0.14, -1.5), (0.5, CH_Y, 0.5), "belt_fwd", (0, 0, -1))
-    # Stubs of the belts' rails at the channel's outer corners - the open side stays open.
+    fur_hi, roof_hi, deck_lo = 1.0, 1.26, CH_Y - 0.14
+    # Bases under both columns, and the decks: intake arrows point LEFT (into the furnace), the
+    # furnace track FORWARD, the exit RIGHT - the clockwise U.
+    cham_box(b, (-1.5, -0.5, -1.5), (0.5, deck_lo, 0.5), 0.05, "dark", None, "dark", "dark_edge")
+    belt_strip(b, (-0.5, deck_lo, -0.5), (0.5, CH_Y, 0.5), "belt_fwd", (-1, 0, 0))
+    belt_strip(b, (-0.5, deck_lo, -1.5), (0.5, CH_Y, -0.5), "belt_fwd", (1, 0, 0))
+    belt_strip(b, (-1.5, deck_lo, -1.5), (-0.5, CH_Y, 0.5), "belt_fwd", (0, 0, -1))
+    # The divider between intake and exit, and the belts' rail stubs at the outer corners.
+    th.box(b, (-0.5, CH_Y - 0.02, -0.56), (0.5, CH_Y + 0.12, -0.44), "blue")
     for z0, z1 in ((0.38, 0.5), (-1.5, -1.38)):
         th.box(b, (0.38, CH_Y - 0.02, z0), (0.5, CH_Y + 0.07, z1), "blue")
-    # The hot bed in the middle of the channel, and the vent on the furnace's wall that feeds it.
-    glow_quad(g, (0.0, CH_Y + 0.004, -0.5), (1, 0, 0), (0, 0, -1), 0.34, 0.32)
-    th.box(b, (-0.5, CH_Y, -0.86), (-0.38, CH_Y + 0.2, -0.14), "dark")
-    glow_quad(g, (-0.376, CH_Y + 0.1, -0.5), (0, 0, -1), (0, 1, 0), 0.3, 0.06)
-    # Fireboxes on the furnace's outer walls.
-    glow_quad(g, (-1.504, 0.05, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.2)
-    glow_quad(g, (-1.0, 0.05, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.2)
-    glow_quad(g, (-1.0, 0.05, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.2)
+    # The furnace: an upper body over the gallery, its walls on the three outer sides below it, a
+    # blue pillar between the two mouths.
+    up = []
+    cham_box(up, (-1.5, SM_TUNNEL, -1.5), (-0.5, fur_hi, 0.5), 0.05, "smelt_side", None, None,
+             "dark_edge")
+    restyle(up, "smelt_side", [((1, 0), "plain_side")])
+    b += up
+    th.box(b, (-1.5, CH_Y, -1.5), (-1.38, SM_TUNNEL, 0.5), "dark")          # left wall
+    th.box(b, (-1.5, CH_Y, 0.38), (-0.5, SM_TUNNEL, 0.5), "dark")           # back wall
+    th.box(b, (-1.5, CH_Y, -1.5), (-0.5, SM_TUNNEL, -1.38), "dark")         # front wall
+    th.box(b, (-0.62, CH_Y, -0.58), (-0.5, SM_TUNNEL, -0.42), "blue")       # pillar between mouths
+    # The fire: the gallery's ceiling and back wall glow, and fireboxes on the outer walls.
+    glow_quad(g, (-0.94, SM_TUNNEL - 0.004, -0.5), (1, 0, 0), (0, 0, 1), 0.42, 0.86)
+    glow_quad(g, (-1.376, (CH_Y + SM_TUNNEL) / 2, -0.5), (0, 0, -1), (0, 1, 0), 0.86, 0.2)
+    glow_quad(g, (-1.504, 0.75, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.14)
+    glow_quad(g, (-1.0, 0.75, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.14)
+    glow_quad(g, (-1.0, 0.75, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.14)
     # The roof over the furnace only, two chimneys on it.
     frustum(b, crect(-1.48, -0.52, -1.48, 0.48, 0.12, fur_hi), crect(-1.36, -0.64, -1.36, 0.36, 0.08, roof_hi),
             "blue", "bevel", "blue")

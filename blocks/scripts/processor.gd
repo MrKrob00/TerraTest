@@ -24,14 +24,17 @@ const CELLS := 3
 ## Индекс стороны +X в FACE_VECS (см. VehicleBlock): «правый борт» процессора.
 const FACE_RIGHT_IDX := 3
 
-## The middle cell lies on the model's hot bed (art/emitter_models.py build_processor).
-const BED := 1
+## THE ORE GOES ROUND, CLOCKWISE SEEN FROM ABOVE (art/emitter_models.py build_processor): cell 0 is
+## the intake on the right at the back; the move into cell 1 carries it LEFT into the furnace's
+## gallery, shrinking it to pass under the gallery's ceiling; the move into cell 2 carries it FORWARD
+## through the fire to the gallery's front mouth (marker `furnace_out`), where it comes out already
+## changed, under a hot glitch, and slides RIGHT to the exit growing back. upgrade() is still called
+## by the tick, so the product never depends on a tween finishing - only the picture does.
+const IN_FURNACE := 0.42         # the item's scale inside the gallery
+const LEG := 0.3                 # seconds per leg of the path; two legs must fit in a tick
 const MELT_FX_TIME := 0.5
 const MELT_A := Color(1.0, 0.55, 0.15)
 const MELT_B := Color(1.0, 0.85, 0.40)
-const HEAT_FROM := Color(0.45, 0.12, 0.05)
-const HEAT_TO := Color(1.0, 0.55, 0.15)
-var _hot: StandardMaterial3D = null     # one per processor: only one item is ever on the bed
 
 var _cells: Array = []          # предметы по клеткам: 0 — вход, CELLS-1 — выход
 var _slots: Array = []          # маркеры, по одному на клетку
@@ -148,17 +151,11 @@ func _tick() -> void:
 		if not is_instance_valid(_cells[i]):
 			_cells[i] = null
 			continue
-		# РУДА СТАНОВИТСЯ СЛИТКОМ НА ВХОДЕ В ПОСЛЕДНЮЮ КЛЕТКУ, то есть после двух тиков, и
-		# третий тик её уже выдаёт. Так игрок видит готовый слиток внутри станка, а не
-		# превращение в момент выдачи, когда смотреть уже некуда.
-		# THE MELT IS SHOWN, NOT IMPLIED: on the bed (the middle cell, under nothing) the ore
-		# glows up from dark red to orange, and the tick that carries it off the bed turns it into
-		# the product with a hot glitch over it - the item's own look is swapped by upgrade().
-		if i == BED:
-			_heat(_cells[i])
+		# THE ORE BECOMES THE PRODUCT ON ENTERING THE LAST CELL - after two ticks, the third hands
+		# it out. At that moment it is still inside the furnace, small; _move shows it come out of
+		# the front mouth already changed.
 		if i == last and _cells[i].has_method("upgrade"):
 			_cells[i].upgrade()
-			BlockFX.play(_cells[i], false, MELT_FX_TIME, MELT_A, MELT_B)
 		_move(_cells[i], i)
 	_cells[0] = null
 	# 3. Входная клетка освободилась — сказать об этом ленте, которая ждёт (см. шапку).
@@ -182,15 +179,36 @@ func _adopt(item: Node3D, cell: int) -> void:
 	item.global_position = world_pos
 	_move(item, cell)
 
-## Твин ВЕЗЁТ ТОЛЬКО КАРТИНКУ. Очередь на него не смотрит: не доиграл, оборвался, блок
-## повернули посреди пути — предмет всё равно числится в своей клетке и уедет следующим тиком.
-## Раньше вся логика висела на его сигнале, и любой сбой означал груз, застрявший навсегда.
+## THE TWEEN CARRIES THE PICTURE ONLY. The queue never looks at it: cut short, the machine rotated
+## mid-way - the item still counts as in its cell and leaves on the next tick. The whole logic used
+## to hang on its signal, and any hiccup meant cargo stuck for good.
 func _move(item: Node3D, cell: int) -> void:
 	if cell >= _slots.size() or _slots[cell] == null:
 		return
-	var tween: Tween = create_tween()
-	tween.tween_property(item, "position", (_slots[cell] as Node3D).position,
-			minf(0.3, tick_time * 0.8))
+	var vis := item.get_node_or_null("MeshInstance3D") as Node3D
+	var to: Vector3 = (_slots[cell] as Node3D).position
+	var tw: Tween = create_tween()
+	match cell:
+		1:   # left, into the furnace, shrinking under its ceiling
+			tw.tween_property(item, "position", to, LEG)
+			if vis != null:
+				tw.parallel().tween_property(vis, "scale", Vector3.ONE * IN_FURNACE, LEG)
+		2:   # forward through the fire, out of the front mouth changed, right to the exit
+			var mouth := get_node_or_null("furnace_out") as Node3D
+			if mouth != null:
+				tw.tween_property(item, "position", mouth.position, LEG)
+				tw.tween_callback(_melt_fx.bind(item))
+			tw.tween_property(item, "position", to, LEG)
+			if vis != null:
+				tw.parallel().tween_property(vis, "scale", Vector3.ONE, LEG)
+		_:
+			tw.tween_property(item, "position", to, minf(LEG, tick_time * 0.8))
+			if vis != null:
+				tw.parallel().tween_property(vis, "scale", Vector3.ONE, minf(LEG, tick_time * 0.8))
+
+func _melt_fx(item: Node3D) -> void:
+	if is_instance_valid(item) and item.get_parent() == self:
+		BlockFX.play(item, false, MELT_FX_TIME, MELT_A, MELT_B)
 
 ## THE HEAT IS THE LAMP (art/emitter_models.py build_processor): the hood's underside over the
 ## channel, the window on its open side and the furnace's fireboxes, painted LIT and darkened here
@@ -209,17 +227,3 @@ func _set_processing_visual(active: bool) -> void:
 		_lamp = (m as StandardMaterial3D).duplicate() if m is StandardMaterial3D else StandardMaterial3D.new()
 		mi.material_override = _lamp
 	_lamp.albedo_color = Color.WHITE if active else HEAT_COLD
-
-## Heat the item on the bed: its inner mesh takes this processor's hot material, which glows up over
-## the tick. upgrade() puts the product's own look back, so nothing has to take it off again.
-func _heat(item: Node3D) -> void:
-	var m := item.get_node_or_null("MeshInstance3D/ResourceMesh") as MeshInstance3D
-	if m == null:
-		return
-	if _hot == null:
-		_hot = StandardMaterial3D.new()
-		_hot.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_hot.albedo_color = HEAT_FROM
-	m.material_override = _hot
-	var tw := create_tween()
-	tw.tween_property(_hot, "albedo_color", HEAT_TO, tick_time * 0.9)
