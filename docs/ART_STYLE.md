@@ -151,10 +151,13 @@ ports. The model's first job is to show WHICH quarters, because that decides how
 built round the machine:
 
 - **The smelter.** Its ports are all in one column at belt height, and the ore goes round,
-  clockwise: in on the right at the back, left into the furnace, forward through its glowing
-  gallery, and out to the right at the front. The right column is an open intake and exit split
-  by a divider. Two tries went before it, and both are rules now: a hood over the channel hid the
-  work, and a hot bed in an open channel was not a smelter.
+  clockwise: in on the right at the back, left into a CLOSED furnace, and out to the right at the
+  front, already changed. The model, not the ore, shows the melt: hatches lift at the mouths, and a
+  gauge of molten metal fills while the ore is inside. Three tries went before it, and all three
+  are rules now:
+  - A hood over the channel hid the work.
+  - A hot bed in an open channel was not a smelter.
+  - An open gallery split the furnace into pieces.
 - **The seller.** Its one intake corner is an open mouth under the tube that carries sold goods
   away.
 
