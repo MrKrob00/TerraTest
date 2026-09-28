@@ -740,21 +740,26 @@ MB_ARMOR = 0.42       # plate depth: a 0.12 base plus the scales standing out of
 MB_SCALE = 0.5        # one scale per half cell of height
 
 
-def _armor(w, h, emblem=False):
+MB_CHEVRON = 0.45     # how far the 4x2's chevron scales dip at the middle
+
+
+def _armor(w, h, chevron=False):
     """MARLIT ARMOUR IS SCALES, NOT A WINDOW. The first cut put the block's octagon on a slab, and a
     plate read as a thin block. Now: a steel base on the cell's back face, horizontal scales laid
-    over it like the strata of the emblem's cliffs - each thick at its top and thin at its foot, so
-    the side view is a saw and every scale sheds a shot downward - and steel posts at the ends and
-    every two cells, with a sunset slit down each."""
+    over it like the strata of the emblem's cliffs, steel posts at the ends and every two cells with
+    a sunset slit down each, and rails top and bottom closing the frame.
+
+    THE 4x2 IS ONE PLATE IN ONE STYLE. A post every two cells made it two 2x2 plates side by side,
+    and the faction's octagon set on its scales put the block's window on the armour - two styles,
+    badly joined (the player's word). Its scales run the whole width as CHEVRONS dipping to the
+    middle: the same scales, one piece, and nothing a 2x2 plate has."""
     def fn(f, rnd):
         x0, x1 = 0.5 - w, 0.5
         y0, y1 = -0.5, h - 0.5
         zb = 0.5 - 0.12
         zf = 0.5 - MB_ARMOR
         cham_box(f, (x0, y0, zb), (x1, y1, 0.5), 0.04, "mplate", "mplate", "mplate", "medge")
-        # THE 4x2 IS ONE PLATE, NOT TWO: a post every two cells made it read as two 2x2 plates side
-        # by side. Its scales run the whole width and the faction's octagon sits on them instead.
-        posts = [x0, x1] if emblem else [x0 + 2.0 * k for k in range(int(round(w / 2.0)) + 1)]
+        posts = [x0, x1] if chevron else [x0 + 2.0 * k for k in range(int(round(w / 2.0)) + 1)]
         pw = 0.16
         spans = []
         for i, px in enumerate(posts):
@@ -771,7 +776,6 @@ def _armor(w, h, emblem=False):
                  (cx + slit, y1 - 0.08, zf - 0.001), (cx - slit, y1 - 0.08, zf - 0.001)]
             f.append(th.Face(th.outward(q, (cx, 0.0, 1.0)), "mglow", u_hint=(0, 1, 0)))
             spans.append((lo, hi))
-        # rails top and bottom, the posts' height, closing the frame round the scales
         rh = 0.12
         cham_box(f, (x0 + pw, y1 - rh, zf), (x1 - pw, y1, zb), 0.03, "mbev2", "mbev5", "mbev1", "medge")
         cham_box(f, (x0 + pw, y0, zf), (x1 - pw, y0 + rh, zb), 0.03, "mbev2", "mbev4", "mbev1", "medge")
@@ -779,40 +783,50 @@ def _armor(w, h, emblem=False):
         # step faces DOWN. Thick at the top put a lit shelf over every scale and the plate read as a
         # bookcase.
         ya0, ya1 = y0 + rh, y1 - rh
-        n = max(1, int(round((ya1 - ya0) / MB_SCALE)))
-        hs = (ya1 - ya0) / n
-        runs = [(spans[k][1], spans[k + 1][0]) for k in range(len(spans) - 1)]
-        if emblem:
-            # the boss is solid to the base: scales run up to it from either side, never under its
-            # window, whose floor lies deeper than a scale's face
-            ea = (h - 2 * rh) / 2 - 0.04
-            cxm = (x0 + x1) / 2
-            runs = [(runs[0][0], cxm - ea), (cxm + ea, runs[0][1])]
-        for sx0, sx1 in runs:
+        zt, zft = zb - 0.05, zf + 0.02
+        dip = MB_CHEVRON if chevron else 0.0
+        n = max(1, int(round((ya1 - ya0 - dip) / MB_SCALE)))
+        hs = (ya1 - ya0 - dip) / n
+        lip = 0.1                              # share of a scale's face that is its lit lip
+
+        def along(p, q, t):
+            return tuple(p[i] + (q[i] - p[i]) * t for i in range(3))
+        for k in range(len(spans) - 1):
+            sx0, sx1 = spans[k][1], spans[k + 1][0]
+            cx = (sx0 + sx1) / 2
+            # halves as (edge x, middle x); a straight scale is one "half" across the whole run
+            halves = [(sx0, cx), (sx1, cx)] if chevron else [(sx0, sx1)]
             for j in range(n):
-                ya = ya1 - j * hs                  # the scale's top, under the foot of the one above
-                yb = ya - hs                       # its foot
-                zt, zft = zb - 0.05, zf + 0.02
-                front = [(sx0, ya, zt), (sx1, ya, zt), (sx1, yb, zft), (sx0, yb, zft)]
-                foot = [(sx0, yb, zft), (sx1, yb, zft), (sx1, yb, zb), (sx0, yb, zb)]
-                ctr = ((sx0 + sx1) / 2, (ya + yb) / 2, zb + 0.2)
-                tone = 3 + (j % 2)                 # alternate scales half a step apart
-                f.append(th.Face(th.outward(front, ctr), "mbev%d" % tone, u_hint=(1, 0, 0)))
-                f.append(th.Face(th.outward(foot, ctr), "mbev0", u_hint=(1, 0, 0)))
-        if emblem:
-            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
-            a = (h - 2 * rh) / 2 - 0.04
-            b = a - 0.42 * a
-            oc = [(b, a), (a, b), (a, -b), (b, -a), (-b, -a), (-a, -b), (-a, b), (-b, a)]
-            top = [(cx + x, cy + y, zf) for x, y in oc]
-            marlit_poly(f, th.outward(top, (cx, cy, 1.0)), rnd)
-            for i in range(8):
-                j = (i + 1) % 8
-                wall = [(cx + oc[i][0], cy + oc[i][1], zf), (cx + oc[j][0], cy + oc[j][1], zf),
-                        (cx + oc[j][0], cy + oc[j][1], zb), (cx + oc[i][0], cy + oc[i][1], zb)]
-                nn = th.norm((oc[i][0] + oc[j][0], oc[i][1] + oc[j][1], 0.0))
-                tone = int(round(max(0.0, min(1.0, 0.45 + 0.6 * th.dot(nn, LIGHT))) * 5))
-                f.append(th.Face(th.outward(wall, (cx, cy, 0.3)), "mbev%d" % tone, u_hint=th.sub(wall[1], wall[0])))
+                te = ya1 - j * hs
+                fe = te - hs
+                ctr = (cx, te - hs / 2, zb + 0.2)
+                for hi_, (xe, xm) in enumerate(halves):
+                    mdip = dip                  # the middle of a chevron sits `dip` lower
+                    tp = [(xe, te, zt), (xm, te - mdip, zt)]
+                    ft = [(xe, fe, zft), (xm, fe - mdip, zft)]
+                    # UNSHADED BLOCKS CAST NO SHADOW, so a scale is told from the next by paint: a
+                    # lit lip along its foot, rows alternating a step, a chevron's halves a step apart
+                    tone = 2 + (j % 2) + (hi_ if chevron else 0)
+                    ls = [along(ft[0], tp[0], lip), along(ft[1], tp[1], lip)]
+                    face = [tp[0], tp[1], ls[1], ls[0]]
+                    lipq = [ls[0], ls[1], ft[1], ft[0]]
+                    f.append(th.Face(th.outward(face, ctr), "mbev%d" % tone, u_hint=th.sub(tp[1], tp[0])))
+                    f.append(th.Face(th.outward(lipq, ctr), "mbev5", u_hint=th.sub(tp[1], tp[0])))
+                    foot = [ft[0], ft[1], (ft[1][0], ft[1][1], zb), (ft[0][0], ft[0][1], zb)]
+                    f.append(th.Face(th.outward(foot, ctr), "mbev0", u_hint=th.sub(tp[1], tp[0])))
+            if chevron:
+                # the frame follows the chevron: a V notch under the top rail, and the bottom rail
+                # rising to the posts under the last scale's ends
+                # the notch is the top rail's own V, on the rail's face (a dark notch behind it
+                # read as a hole), with its underside facing down onto the first scale
+                v = [(sx0, ya1, zf), (sx1, ya1, zf), (cx, ya1 - dip, zf)]
+                f.append(th.Face(th.outward(v, (cx, ya1, 1.0)), "mbev2", u_hint=(1, 0, 0)))
+                for xe in (sx0, sx1):
+                    und = [(xe, ya1, zf), (cx, ya1 - dip, zf), (cx, ya1 - dip, zt), (xe, ya1, zt)]
+                    f.append(th.Face(th.outward(und, (cx, ya1, 0.3)), "mbev0", u_hint=(1, 0, 0)))
+                for xe in (sx0, sx1):
+                    wedge = [(xe, ya0, zft), (xe, ya0 + dip, zft), (cx, ya0, zft)]
+                    f.append(th.Face(th.outward(wedge, (cx, ya0, 1.0)), "mbev3", u_hint=(1, 0, 0)))
     return fn
 
 
@@ -825,7 +839,7 @@ def build_marlit_armor4(pk, img):
 
 
 def build_marlit_armor8(pk, img):
-    return _one("marlit_armor8", _armor(4.0, 2.0, emblem=True))
+    return _one("marlit_armor8", _armor(4.0, 2.0, chevron=True))
 
 
 MB_CAP = 0.95         # the Octo Block's corner caps: most of a cell each way

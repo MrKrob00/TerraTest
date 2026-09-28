@@ -1869,8 +1869,12 @@ project: read it before claiming how anything works.
   faceted corner caps, a core 0.12 under them and the faction's octagon as a boss on every face.
   The armour carried the block's window and "only repeated the block"; it is SCALES laid like
   shingles (thin at the top under the scale above, the step facing DOWN - thick at the top read as
-  a bookcase) between posts with a sunset slit, and the 4x2 has no middle post but the octagon on
-  its scales, or it read as two 2x2 plates side by side.
+  a bookcase) between posts with a sunset slit. The 4x2 has no middle post - it read as two 2x2
+  plates side by side - and its scales run the whole width as CHEVRONS dipping to the middle, the
+  top rail following the V. The faction's octagon set on its scales was turned down too: the
+  block's window on the armour, "two styles, badly joined". Unshaded blocks cast no shadow, so a
+  scale is told from the next by PAINT: a lit lip along its foot, rows alternating a tone, a
+  chevron's halves a tone apart - without them the 4x2 rendered as one blank panel.
 - **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
   trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
   a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver
