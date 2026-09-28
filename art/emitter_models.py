@@ -32,7 +32,8 @@ fixed one, round on the turning one), a telescoping ram and a foot (see the sect
   parts: <name>_body (still), <name>_sleeve / _leg (stretched), <name>_foot (moves), rot's _stator
 
 GENERATOR - the first model built by the measured rules in docs/ART_STYLE.md rather than after one
-reference: a dark chamfered cube, a blue housing with a turbine, fire behind a grate on every wall.
+reference: a dark chamfered cube, a blue housing with a turbine over a painted well, fire behind a
+grate on every wall.
   parts: generator_body (still), generator_rotor (turns), generator_fire (tinted, never batched)
 
 Every part fits the block's 1 m cell at its highest pose (the rule the turret heads follow).
@@ -510,75 +511,6 @@ def octo(half, ch, y):
     return [(u, y, v) for u, v in p]
 
 
-GEN_WELL_R = 0.27        # the well's corners; its flats stand 0.25 out, the blades' tips 0.24
-GEN_WELL_B = GEN_WELL_Y - 0.18   # the well's floor, a grate over the fire (part of generator_fire)
-# The rotor sinks GEN_RETRACT into the well to let fuel in (generator.gd RETRACT, same number).
-
-
-def gen_lid(pk, img, faces, outer, y):
-    """The housing's top: a ring between the chamfered square `outer` and the well, cut into
-    eight convex pieces that share ONE painted island, so the lid reads as one plate. The well is
-    an octagon, like the rest of the block's round-ish parts: 16 sides cost 40 triangles more and
-    read the same at 48 px/m."""
-    half = max(abs(p[0]) for p in outer)
-    w = int(math.ceil(2 * half * th.DENS))
-    x0, y0, _, _ = pk.take(w, w)
-    uv = lambda p: (x0 + (p[0] + half) * th.DENS, y0 + (p[2] + half) * th.DENS)
-    poly = [((p[0] + half) * th.DENS, (p[2] + half) * th.DENS) for p in outer]
-    rw = GEN_WELL_R * th.DENS
-    for yy in range(-th.PAD, w + th.PAD):
-        for xx in range(-th.PAD, w + th.PAD):
-            px, py = xx + 0.5, yy + 0.5
-            d = th.dist_to_edges(min(max(px, 0), w), min(max(py, 0), w), poly)
-            r = math.hypot(px - w / 2.0, py - w / 2.0)
-            if d < 1.0:
-                c = th.BLUE_HI
-            elif d < 2.0:
-                c = th.BLUE_MID
-            elif r < rw + 1.2:
-                c = th.RIM[1]                     # the well's lip
-            else:
-                c = th.jitter(th.BLUE, 2)
-                for k in range(4):                # rivets on the diagonals, where the lip is widest
-                    ang = (k + 0.5) * math.pi / 2
-                    rx = w / 2.0 + math.cos(ang) * (rw + 2.8)
-                    ry = w / 2.0 + math.sin(ang) * (rw + 2.8)
-                    if int(px) == int(rx) and int(py) == int(ry):
-                        c = th.BLUE_DEEP
-                    elif int(px) == int(rx) + 1 and int(py) == int(ry) + 1:
-                        c = th.BLUE_HI
-            img.putpixel((x0 + xx, y0 + yy), th.shade(c, 1.06))
-
-    def hit(a):
-        # where the ray from the centre at angle a leaves the outer polygon
-        dx, dz = math.cos(a), math.sin(a)
-        best = None
-        for i in range(len(outer)):
-            p, q = outer[i], outer[(i + 1) % len(outer)]
-            ex, ez = q[0] - p[0], q[2] - p[2]
-            den = dx * ez - dz * ex
-            if abs(den) < 1e-9:
-                continue
-            t = (p[0] * ez - p[2] * ex) / den
-            u = (p[0] * dz - p[2] * dx) / den
-            if t > 0 and -1e-9 <= u <= 1 + 1e-9 and (best is None or t < best):
-                best = t
-        return (dx * best, y, dz * best)
-
-    n = 8
-    corners = [(math.atan2(p[2], p[0]) % (2 * math.pi), p) for p in outer]
-    for i in range(n):
-        a0, a1 = (i + 0.5) * 2 * math.pi / n, (i + 1.5) * 2 * math.pi / n
-        mid = [p for ang, p in corners if 0 < (ang - a0) % (2 * math.pi) < a1 - a0]
-        mid.sort(key=lambda p: -((math.atan2(p[2], p[0]) - a0) % (2 * math.pi)))
-        pts = [(GEN_WELL_R * math.cos(a0), y, GEN_WELL_R * math.sin(a0)),
-               (GEN_WELL_R * math.cos(a1), y, GEN_WELL_R * math.sin(a1)), hit(a1)] + mid + [hit(a0)]
-        pts = th.outward(pts, (0.0, y - 1.0, 0.0))
-        f = th.Face(pts, None)
-        f.uv = [uv(p) for p in pts]
-        faces.append(f)
-
-
 def build_generator(pk, img):
     parts = {"generator_body": [], "generator_rotor": [], "generator_fire": []}
     body, rotor, fire = parts["generator_body"], parts["generator_rotor"], parts["generator_fire"]
@@ -593,14 +525,10 @@ def build_generator(pk, img):
         n = th.newell(th.outward(q, centre))
         uh = th.cross((0, 1, 0), th.norm((n[0], 0.0, n[2])))
         body.append(th.Face(th.outward(q, centre), "bevel" if i % 2 else "blue", u_hint=uh))
-    # The intake: a real well in the lid. Fuel from any of the four sides arrives at belt height,
-    # which is this lid's height, so one door on top serves them all.
-    gen_lid(pk, img, body, hi, GEN_WELL_Y)
-    lathe_y(pk, img, body, [(GEN_WELL_R, GEN_WELL_B), (GEN_WELL_R, GEN_WELL_Y)],
-            [METAL_RAMP[0], METAL_RAMP[1], METAL_RAMP[2]], sides=8)
-    grate = [(GEN_WELL_R * math.cos((i + 0.5) * math.pi / 4), GEN_WELL_B,
-              GEN_WELL_R * math.sin((i + 0.5) * math.pi / 4)) for i in range(8)]
-    fire.append(th.Face(th.outward(grate, (0.0, GEN_WELL_B - 1.0, 0.0)), "gen_fire", u_hint=(1, 0, 0)))
+    # The intake is PAINTED, not cut: a dark well on a solid lid. The rotor and the fuel sink through
+    # the lid (generator.gd RETRACT) and vanish into the dark, so nobody sees where they go - a real
+    # well was tried and showed the blades lying in a pit and the fuel sitting on its floor.
+    body.append(th.Face(th.outward(hi, (0.0, 0.0, 0.0)), "gen_top", u_hint=(1, 0, 0)))
     # The firebox windows: one on every wall, standing a hair proud of it.
     for k in range(4):
         a = k * math.pi / 2
@@ -610,10 +538,9 @@ def build_generator(pk, img):
         q = [(nx * off + tx * s, yy, nz * off + tz * s) for s, yy in
              ((-0.30, -0.40), (0.30, -0.40), (0.30, -0.17), (-0.30, -0.17))]
         fire.append(th.Face(th.outward(q, (0.0, -0.28, 0.0)), "gen_fire", u_hint=(tx, 0.0, tz)))
-    # The rotor: a shaft down to the grate with a bolted hub on top, six pitched blades. The whole
-    # part sinks into the well when fuel goes in, so the shaft is what it slides along.
+    # The rotor: an octagonal hub with a bolt and six pitched blades, all inside the painted well.
     hub = []
-    th.prism(hub, -0.06, 0.06, -0.06, 0.06, GEN_WELL_Y + 0.07, GEN_WELL_B, 0.03, side="dark",
+    th.prism(hub, -0.06, 0.06, -0.06, 0.06, GEN_WELL_Y + 0.07, GEN_WELL_Y, 0.03, side="dark",
              cap_front=None, cap_back="cap_bolt")
     rotor += along_y(hub)
     for k in range(6):
