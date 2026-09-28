@@ -1765,10 +1765,13 @@ project: read it before claiming how anything works.
   anchored in a corner like the smelter). Masks are 0 and every port is a `port_defaults` quarter at
   belt height, drawn as a painted opening (`belt_mouth`; a frame of boxes would stand out of the cell,
   since those walls ARE the cell's faces). PLANT: in on BOTH bottom quarters of the back, out on the
-  front's bottom quarter in the right column; a press on the roof whose `Ram` stamps while a component
-  is made (`comp_factory.gd` STROKE), two bins behind it for its two materials. FABRICATOR: in on both
-  bottom back quarters, and the block leaves through a PIPE on the roof, thrown out of its mouth
-  (marker `pipe_mouth`, `EJECT_*`) rather than handed to a belt; cyan windows in its sides. SCRAPPER:
+  front's bottom quarter in the right column; a press in the middle of the roof and nothing else,
+  whose `Ram` stamps while a component is made (`comp_factory.gd` STROKE) onto an anvil with a gear
+  painted on it - two bins for the materials and an off-centre press were tried first and the player
+  read them as detail that says nothing. FABRICATOR: in on both bottom back quarters, and the block
+  leaves through a short elbow PIPE rising near the roof's front edge, thrown out of its mouth
+  (marker `pipe_mouth`, `EJECT_*`) rather than handed to a belt; cyan windows in its sides. A pipe
+  starting at the back and running over the roof read as a hose, and was cut short. SCRAPPER:
   NO belt input - a SUCTION PIPE (marker `nozzle`, Area3D `suction`, 6 m) draws loose blocks and loose
   chunks to its mouth and swallows them, only while anchored, only what has a recipe and never a quest
   item (an unscrappable block would pile at the mouth, a quest block eaten dead-locks its branch); the
