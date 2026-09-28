@@ -23,14 +23,17 @@ const TRACE_MAX := 14.0          # and never a beam across the map
 const SWEEP_SKIP := 0.05         # past our own body, so the ray does not stop on it again
 const SWEEP_OWN_TRIES := 3       # how many of our own blocks in a row the ray may skip
 const FACE_MIN_STEP := 0.0001
-## A CHEAP FIRE TRAIL BEHIND EVERY ORDINARY ROUND: the rounds alone read poorly against the ground.
-## Two crossed strips (seen from any side), additive, white-yellow at the head fading through orange
-## to nothing, drawn as ONE MultiMesh per round model beside the rounds' own - one draw call more
-## per model, no particles. Its length is the path of the last TRAIL_TIME, never more than the round
-## has flown (or it would reach back past the muzzle). A round that brings its own projectile
-## (WeaponBlock.OWN_VISUAL, the laser's bolt) carries none.
+## AN ORDINARY ROUND IS DRAWN AS A FIRE STREAK, AND THE STREAK IS ALL THERE IS. The shared round
+## model read as a faint dark dash against the ground; a trail behind it was a second MultiMesh per
+## model - a draw call more - for a dash nobody saw anyway. So the round's own MultiMesh draws the
+## streak instead: two crossed strips (seen from any side), additive, white-yellow at the head fading
+## through orange to nothing, as many draw calls as before trails existed. Its length is the path of
+## the last TRAIL_TIME, capped at TRAIL_MAX and at what the round has flown (never back past the
+## muzzle), and never under TRAIL_MIN, the old round's length, so it shows from the first frame. A
+## round that brings its own projectile (WeaponBlock.OWN_VISUAL, the laser's bolt) keeps its model.
 const TRAIL_TIME := 0.03
 const TRAIL_MAX := 4.0
+const TRAIL_MIN := 0.34          # WeaponBlock.BULLET_LEN
 const TRAIL_W0 := 0.10           # half-width at the round
 const TRAIL_W1 := 0.015          # half-width at the tail
 const OWN_VISUAL := &"own_visual"   # WeaponBlock.OWN_VISUAL; not named from there (rule 19)
@@ -72,7 +75,7 @@ class Kind:
 	var origin: Vector3 = Vector3.ZERO
 	var axis: int = 2                   # which of its axes lies down the flight
 	var count: int = 0
-	var trail: MultiMeshInstance3D = null
+	var streak: bool = false            # drawn as the fire streak, not the template's model
 
 var _live: Array = []
 var _spare: Array = []
@@ -147,29 +150,18 @@ func _kind_of(template: Node3D) -> Kind:
 		k.axis = 0
 	elif local.y > local.z:
 		k.axis = 1
+	k.streak = not mi.has_meta(OWN_VISUAL)
 	k.mmi = MultiMeshInstance3D.new()
 	k.mmi.set_meta("block_fx", true)
 	k.mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	k.mmi.material_override = mat
+	k.mmi.material_override = _trail_material() if k.streak else mat
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
-	mm.mesh = mi.mesh
+	mm.mesh = _trail_mesh() if k.streak else mi.mesh
 	mm.instance_count = 32
 	mm.visible_instance_count = 0
 	k.mmi.multimesh = mm
 	add_child(k.mmi)
-	if not mi.has_meta(OWN_VISUAL):
-		k.trail = MultiMeshInstance3D.new()
-		k.trail.set_meta("block_fx", true)
-		k.trail.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		k.trail.material_override = _trail_material()
-		var tm := MultiMesh.new()
-		tm.transform_format = MultiMesh.TRANSFORM_3D
-		tm.mesh = _trail_mesh()
-		tm.instance_count = 32
-		tm.visible_instance_count = 0
-		k.trail.multimesh = tm
-		add_child(k.trail)
 	_kinds[key] = k
 	return k
 
@@ -313,19 +305,16 @@ func _draw() -> void:
 			continue
 		var mm: MultiMesh = k.mmi.multimesh
 		_room(mm, k.count)
-		var sc: Vector3 = k.scale0
-		sc[k.axis] = k.scale0[k.axis] * (s as Shot).trace
-		var local := Transform3D(k.rot * Basis.from_scale(sc), k.origin)
 		var at := Transform3D((s as Shot).facing, (s as Shot).global_position)
-		mm.set_instance_transform(k.count, at * local)
-		if k.trail != null:
-			var tm: MultiMesh = k.trail.multimesh
-			_room(tm, k.count)
+		if k.streak:
 			var length: float = minf(minf((s as Shot).speed * TRAIL_TIME, TRAIL_MAX), (s as Shot).flown)
-			tm.set_instance_transform(k.count, at * Transform3D(Basis.from_scale(Vector3(1, 1, maxf(length, 0.01))), Vector3.ZERO))
+			length = maxf(length, TRAIL_MIN)
+			mm.set_instance_transform(k.count, at * Transform3D(Basis.from_scale(Vector3(1, 1, length)), Vector3.ZERO))
+		else:
+			var sc: Vector3 = k.scale0
+			sc[k.axis] = k.scale0[k.axis] * (s as Shot).trace
+			mm.set_instance_transform(k.count, at * Transform3D(k.rot * Basis.from_scale(sc), k.origin))
 		k.count += 1
 	for key in _kinds:
 		var k: Kind = _kinds[key]
 		k.mmi.multimesh.visible_instance_count = k.count
-		if k.trail != null:
-			k.trail.multimesh.visible_instance_count = k.count
