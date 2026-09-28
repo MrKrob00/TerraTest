@@ -961,7 +961,103 @@ def build_storage(pk, img):
     return parts
 
 
+# ── the component plant, the scrapper, the packer ───────────────────────────────────────────────
+# Three one-cell machines, in and out on all four sides, each a dark base with its emblem on every
+# wall (a gear, a split block, a horseshoe magnet) under the one part that says what it does:
+#   COMPONENT PLANT - a PRESS: a blue frame over an anvil, and a ram with hazard slats that stamps
+#     while a component is being made (comp_factory.gd drives `Ram`).
+#   SCRAPPER - a SHREDDER: a hopper opening upward, hazard slats round its rim, and two toothed
+#     rollers at its bottom that turn while there is scrap to hand out (scrapper.gd, `RollerA/B`).
+#   PACKER - an ELECTROMAGNET: copper windings (its recipe is coils) between a blue flange and cap,
+#     a polished pole on top the chunks it packs rest on.
+PR_BASE = 0.06           # the press's table
+PR_STROKE = 0.09         # how far the ram comes down (comp_factory.gd STROKE): onto the anvil
+SC_BASE = 0.02           # the scrapper's base top; the hopper stands on it
+SC_FLOOR = 0.12          # the hopper's floor
+SC_ROLL_Y = 0.25         # the rollers' axles (scrapper.tscn RollerA / RollerB)
+SC_ROLL_Z = 0.09
+SC_ROLL_R = 0.085
+
+
+def funnel(faces, top, bottom, style):
+    """The INSIDE of a hopper between two 8-point rings (crect), every quad facing the axis."""
+    for i in range(8):
+        j = (i + 1) % 8
+        q = [top[i], top[j], bottom[j], bottom[i]]
+        mid = tuple(sum(p[k] for p in q) / 4 for k in range(3))
+        out = th.norm((mid[0], 0.0, mid[2]))
+        faces.append(th.Face(th.outward(q, th.add(mid, th.mul(out, 3.0))), style,
+                             u_hint=th.cross((0, 1, 0), out)))
+
+
+def flat_ring(faces, outer, inner, style):
+    """A flat band between two 8-point rings at one height, facing up."""
+    for i in range(8):
+        j = (i + 1) % 8
+        q = [outer[i], outer[j], inner[j], inner[i]]
+        e = th.norm(th.sub(outer[j], outer[i]))
+        faces.append(th.Face(th.outward(q, (0.0, q[0][1] - 1.0, 0.0)), style, u_hint=e))
+
+
+def build_comp_factory(pk, img):
+    parts = {"comp_factory_body": [], "comp_factory_ram": []}
+    b, ram = parts["comp_factory_body"], parts["comp_factory_ram"]
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, PR_BASE, 0.5), 0.067, "comp_side", "dark", "dark", "dark_edge")
+    cham_box(b, (-0.17, PR_BASE, -0.17), (0.17, 0.14, 0.17), 0.02, "dark", "dark", None, "dark_edge")
+    for s in (-1, 1):
+        th.box(b, (s * 0.36 - 0.05, PR_BASE, -0.12), (s * 0.36 + 0.05, 0.40, 0.12), "blue", skip=("-y",))
+    cham_box(b, (-0.47, 0.40, -0.15), (0.47, 0.5, 0.15), 0.03, "blue", "blue", "blue", "bevel")
+    # The ram at rest: a rod up into the beam and a head with hazard slats round it.
+    th.box(ram, (-0.04, 0.34, -0.04), (0.04, 0.40, 0.04), "dark", skip=("+y",))
+    cham_box(ram, (-0.15, 0.14 + PR_STROKE, -0.15), (0.15, 0.36, 0.15), 0.025, "slab_side", "dark",
+             "dark", "dark_edge")
+    return parts
+
+
+def build_scrapper(pk, img):
+    parts = {"scrapper_body": [], "scrapper_roller_a": [], "scrapper_roller_b": []}
+    b = parts["scrapper_body"]
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, SC_BASE, 0.5), 0.067, "scrap_side", None, "dark", "dark_edge")
+    lo, hi = crect(-0.44, 0.44, -0.44, 0.44, 0.10, SC_BASE), crect(-0.5, 0.5, -0.5, 0.5, 0.12, 0.5)
+    frustum(b, lo, hi, "blue", "bevel", None)
+    inner = crect(-0.40, 0.40, -0.40, 0.40, 0.10, 0.5)
+    flat_ring(b, hi, inner, "slab_side")
+    bottom = crect(-0.24, 0.24, -0.24, 0.24, 0.06, SC_FLOOR)
+    funnel(b, inner, bottom, "dark")
+    b.append(th.Face(th.outward(bottom, (0.0, SC_FLOOR - 1.0, 0.0)), "dark", u_hint=(1, 0, 0)))
+    # The rollers, each about its own axle along X through the origin (the scene places them):
+    # light teeth on every other facet, so the turn is seen.
+    teeth = {(i, k): (th.RIM[4] if i % 2 else th.METAL[1]) for i in range(8) for k in (1, 2, 3)}
+    for name in ("scrapper_roller_a", "scrapper_roller_b"):
+        r = SC_ROLL_R
+        prof = [(0.0, -0.21), (r * 0.7, -0.21), (r, -0.14), (r, 0.0), (r, 0.14), (r * 0.7, 0.21), (0.0, 0.21)]
+        part = []
+        lathe_y(pk, img, part, prof, METAL_RAMP, sides=8, marks=teeth)
+        for f in part:
+            f.pts = [(p[1], p[0], p[2]) for p in f.pts]
+        parts[name] += part
+    return parts
+
+
+def build_packer(pk, img):
+    parts = {"packer_body": []}
+    b = parts["packer_body"]
+    o = 0.5 - 0.067
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, 0.0, 0.5), 0.067, "pack_side", None, "dark", "dark_edge")
+    frustum(b, crect(-o, o, -o, o, 0.12, 0.0), crect(-o, o, -o, o, 0.12, 0.06), "blue", "bevel", "blue")
+    frustum(b, crect(-0.37, 0.37, -0.37, 0.37, 0.10, 0.06), crect(-0.37, 0.37, -0.37, 0.37, 0.10, 0.34),
+            "coil", "coil", None)
+    frustum(b, crect(-0.42, 0.42, -0.42, 0.42, 0.12, 0.34), crect(-0.42, 0.42, -0.42, 0.42, 0.12, 0.40),
+            "blue", "bevel", "blue")
+    frustum(b, crect(-0.17, 0.17, -0.17, 0.17, 0.05, 0.40), crect(-0.14, 0.14, -0.14, 0.14, 0.04, 0.5),
+            "dark", "dark_edge", "pole")
+    return parts
+
+
 BLOCKS = {
+    "comp_factory": (83, build_comp_factory, 256),
+    "scrapper": (89, build_scrapper, 256),
+    "packer": (97, build_packer, 256),
     "storage": (79, build_storage, 256),
     "processor": (71, build_processor, 512),
     "seller": (73, build_seller, 512),
