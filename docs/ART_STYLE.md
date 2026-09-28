@@ -121,15 +121,19 @@ The harness is not kept in the repo; this describes what it does.
 
 ## Redrawn to the rules
 
-The collector kept the shape the player had made for it: a cube with a bowl. The receiver was a
-plate on a post and read as a saucer hovering at the top of its cell. It now stands on the floor
-as the platform blocks do: a slatted platform, a low blue housing and the pad on top.
+The collector kept the shape the player had made for it: a cube with a bowl. The receiver took
+two tries to become what the player wanted:
 
-- **Colour and slats.** Dark metal, a GSO-blue housing or lid, and the platform's orange slats on
-  the receiver's platform.
+- **A plate on a post.** It hung at the top of its cell.
+- **A platform block.** It stood on the floor, but it was not a saucer.
+
+It is now a saucer hovering just off the floor, its top a dish turned inward, and it bobs while it
+works.
+
+- **Colour.** Dark metal, a GSO-blue rim or lid, and four orange ticks on the saucer's rim.
 - **Emblem.** A sign plate on the collector's grille: a down-pointing triangle, because things go
   in at the top and stay.
-- **Size.** Both now fit their cell: 88 and 139 triangles, down from 450 and 882 untextured.
+- **Size.** Both now fit their cell: 154 and 139 triangles, down from 450 and 882 untextured.
 
 A sign smaller than about five texels breaks up under mip-mapping at a grazing angle. The first
 three-row triangle read as a bird from 35°, while straight on it was clean. Draw emblems at least

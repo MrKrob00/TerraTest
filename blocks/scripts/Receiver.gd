@@ -19,7 +19,29 @@ var vehicles_in_zone: Array = []
 var inventory: Array = []
 var timer: Timer
 
+# THE SAUCER HOVERS (art/emitter_models.py build_receiver): no support under it, it bobs a few
+# centimetres while it sits on a machine. `Block` moves, so the batch copies it (moving_parts); the
+# beam is its child and bobs with it. A loose receiver is drawn from the static loose batch, so it
+# does not bob there - nor does it need to: it is not working.
+const BOB_AMP := 0.025
+const BOB_RATE := 2.1            # rad/s, about three seconds a cycle
+var _saucer: Node3D = null
+var _saucer_y: float = 0.0
+var _bob_t: float = 0.0
+
+func _process(delta: float) -> void:
+	push_retry_tick(delta)
+	if _saucer == null or get_parent() == null or get_parent().name != "blocks":
+		return
+	_bob_t += delta
+	_saucer.position.y = _saucer_y + sin(_bob_t * BOB_RATE) * BOB_AMP
+
 func _ready() -> void:
+	moving_parts = true
+	_saucer = get_node_or_null("Block") as Node3D
+	if _saucer != null:
+		_saucer_y = _saucer.position.y
+		_bob_t = randf() * TAU               # neighbours do not bob in step
 	super._ready()
 	timer = Timer.new()
 	timer.wait_time = take_interval

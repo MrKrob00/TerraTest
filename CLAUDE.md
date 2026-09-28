@@ -1706,16 +1706,17 @@ project: read it before claiming how anything works.
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
   40 energy; fed by a belt from east, west and north alike.
 - **THE RECEIVER AND THE COLLECTOR KEEP THE PLAYER'S SHAPES, REDRAWN TO THE STYLE** (`art/emitter_models.py`
-  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver was a plate on a post and read
-  as a saucer hovering at the top of its cell, so it STANDS ON THE FLOOR now, the platform archetype -
-  a slatted dark platform, a low blue housing, the dark pad with its blue octagon where the beam
-  starts; beam and cargo stack moved down with the pad (0.6 m), and it joins by the sides and the
-  bottom only (`connect_faces` 47), since a block on top would hang 0.6 m over it. The collector is
-  still a cube with a round bowl in its top -
-  grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the held item
+  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is a SAUCER HOVERING JUST OFF
+  THE FLOOR of its cell - dark underside, a blue rim with orange ticks, a dish turned inward in two
+  dark steps with a blue ring between them, the old dark pad with its blue octagon where the beam
+  starts - and it bobs `BOB_AMP` while on a machine (`Receiver.gd`, `Block` moving). Rejected on the
+  way: a plate on a post (it hung at the top of its cell) and a platform block (not a saucer). Beam
+  and cargo stack moved down with the pad, and it joins by the sides and the bottom only
+  (`connect_faces` 47): a block on top would hang in the air. The collector is still a cube with a
+  round bowl in its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the held item
   sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
   top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
-  88 and 139 inside it. Range rings and scripts are untouched: they never named the body.
+  154 and 139 inside it. Range rings and the collector's script are untouched.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
