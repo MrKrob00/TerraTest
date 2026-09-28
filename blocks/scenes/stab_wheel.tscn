@@ -91,6 +91,7 @@ ride_height = 0.9
 suspension_travel = 0.14
 block = 22
 connect_faces = 2
+travel_part = NodePath("stab_mount")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=856280884]
 shape = SubResource("BoxShape3D_uqkpu")
