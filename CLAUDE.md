@@ -839,8 +839,8 @@ project: read it before claiming how anything works.
   in 6 s against 431-683 — and reverted.
 - THE SHIELDED TOWERS' CHARGING STATIONS (preset 18) ARE BATTERY STATIONS THAT DEFEND THEMSELVES:
   two batteries, a panel and the wireless transmitter on a ROTATING core, plus a machine gun the
-  rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (the mast over the
-  core) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` (6 m)
+  rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (over the core, hung
+  by its back on a column behind it) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` (6 m)
   of the tower's battery; on the axis it keeps the 4.9 m `TOWER_RING` was measured for. One gun
   per station: Watchtower goes from two barrels to five, SAM to six. Measured through the real
   quest: three stations, every block connected, every transmitter feeding the tower; the drained
@@ -1780,12 +1780,12 @@ project: read it before claiming how anything works.
   the bar is flattened to `LEVEL_NONE`, not hidden: `MachineBatch` reads `visible` only when it
   rebuilds, so a hidden part would go on drawing. Measured on the engine: 1 / 10 / 20 / 0 items give
   0.05 / 0.50 / 1.00 / 0.001.
-- **THE BATTERY AND THE WIRELESS CHARGER JOIN ON ALL SIX FACES, AND THE BLOCK ITSELF REACHES THEM**
-  (`art/emitter_models.py` battery / wireless). Round parts have 12 sides with their FLATS ON THE
-  CELL'S FACES (`flat_r(r, 12)`), so a round body meets a side neighbour on a face. Rejected on the
-  way: a case with its terminals in a 12 cm recess over the lid (no flush top face), and then a CAGE
-  of posts and beams round both (the player's call - no frame). Both colliders are the full cell;
-  the charger's used to be a 0.2 m plate on the floor.
+- **THE BATTERY JOINS ON ALL SIX FACES AND THE BLOCK ITSELF REACHES THEM; THE WIRELESS CHARGER JOINS
+  BY ITS BACK ONLY** (`art/emitter_models.py` battery / wireless). The battery's round parts have 12
+  sides with their FLATS ON THE CELL'S FACES (`flat_r(r, 12)`), so a round body meets a side
+  neighbour on a face. Rejected on the way: a case with its terminals in a 12 cm recess over the lid
+  (no flush top face), and then a CAGE of posts and beams round both (the player's call - no frame).
+  Both colliders are the full cell; the charger's used to be a 0.2 m plate on the floor.
   THE BATTERY IS A CELL AS WIDE AS THE CELL: the flat - end on the bottom face, the + nub up to the
   top one, a blue top band. Four green charge rings stand in GROOVES round the body (`battery_seg`,
   one mesh, nodes `Seg0..3`), lit by charge / capacity rounded UP (anything in it shows one); the
@@ -1793,14 +1793,19 @@ project: read it before claiming how anything works.
   storage's bar), leaving its groove, so an empty battery still reads as one. It POLLS `charge`: the
   save and an enemy's full start write the field straight in. Measured on the real driver through
   the machine batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. Not `solid_cell` - its corners are open.
-  THE CHARGER IS TERRATECH'S GSO WIRELESS CHARGER, from the player's picture of it: a grey dome with
-  a red band, two thick glowing cyan coils round its lower half (tube kind "c", `ctone`) and a cable
-  from the coils up into the dome. NO PLATFORM: a Tesla coil on a GSO base read as "joins by its
-  bottom only" and was turned down, as was a spool of two full-width plates before it. It still joins
-  on all six: the coils reach the four side faces (`WL_COIL`), a flat cap on the dome the top one,
-  the body under the coils the bottom one. The coils TURN WHILE ENERGY FLOWS (`wireless_charger.gd`
-  `Ring`, `RING_SPIN` eased by `RING_EASE`; the dark seams show the turn), and the beam leaves the
-  dome's centre (`EMIT`). Measured: beam on, coils at 5 rad/s, transfer unchanged.
+  THE CHARGER IS TERRATECH'S GSO WIRELESS CHARGER, CUT DOWN TO ITS COILS: two thick glowing cyan
+  coils (tube kind "c", `ctone`) on three spokes each round a dark post with a cyan lens, an arm back
+  to a blue MOUNT PLATE on the back face, and a cable from the plate to the post's foot. It JOINS BY
+  THAT PLATE ONLY (`connect_faces` 2, FACE_BACK - a wheel's mount; TerraTech's joins by one side
+  too). The player's path to it: a Tesla coil on a GSO base read as "joins by its bottom only", a
+  spool of two full-width plates was turned down, and the original's grey dome with a red band was
+  liked for its coils and not for its ball. The coils TURN WHILE ENERGY FLOWS (`wireless_charger.gd`
+  `Ring`, `RING_SPIN` eased by `RING_EASE`; the dark seams show the turn), and the beam leaves from
+  between them (`EMIT`). The charge station (`blocks._layout_charge_tower`) keeps its transmitter
+  ON THE ROTATION AXIS by hanging it on a second column behind it, (5,6,6)-(5,7,6), with the panel
+  moved to that column's top. Measured: the station keeps all 11 blocks with the charger on the axis;
+  a charger bolted to a cabin's front pours into an ally, beam on, coils at 5 rad/s. A charger an old
+  save has standing on something by any other face falls off on load.
 - **THE FABRICATOR AND THE SCRAPPER ARE 2x2x2, THE COMPONENT PLANT 2x1x2, AND THEIR PORTS ARE THE
   PLAYER'S DESIGN** (`art/emitter_models.py` comp_factory / fabricator / scrapper,
   `blocks._footprint_offsets` and `collider_offset`, anchored in a corner like the smelter). Masks are
