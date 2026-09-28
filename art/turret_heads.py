@@ -813,12 +813,6 @@ def style_px(style, x, y, w, h, d):
         if y >= h - 3:
             return RIM[2] if y == h - 3 else METAL[2]
         return METAL[0] if y > 5 else METAL[1]
-    if style == "die":
-        # The press's anvil: dark steel with the gear it stamps, drawn big.
-        if d < 1.0:
-            return RIM[1]
-        bx, by = (x + 0.5 - w / 2.0) / (min(w, h) / 13.0), (y + 0.5 - h / 2.0) / (min(w, h) / 13.0)
-        return RIM[3] if _gear(bx, by) else jitter(METAL[2], 2)
     if style == "fab_window":
         # The fabricator's assembly window: dark glass with the cyan grid a block materialises on.
         if d < 1.0:

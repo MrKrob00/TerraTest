@@ -782,14 +782,15 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 ## отдавала ему пару клеток поперёк того места, где он стоял. Замерено: при любом повороте сетка
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
-	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.COMP_FACTORY,
-			G.Block.SCRAPPER]:
+	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
 				for dz in [-1, 0]:
 					cells.append(Vector3i(dx, dy, dz))
 		return cells
+	if block == G.Block.COMP_FACTORY:
+		return [Vector3i(-1, 0, -1), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 0)]  # 2×1×2
 	# ARMOUR PLATES ARE WALLS: they stand on the back face of their cells, so a big one spreads across
 	# (X) and up (Y), never in depth. The x4 used to be 2x1x2 - a slab lying flat under a plate
 	# that stood upright.
@@ -857,6 +858,8 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 				0.5 if is_equal_approx(box.size.y, 2.0) else 0.0, 0.5 - box.size.z * 0.5)
 	elif box.size == Vector3(2, 2, 2):
 		off = Vector3(-0.5, 0.5, -0.5)
+	elif box.size == Vector3(2, 1, 2):
+		off = Vector3(-0.5, 0.0, -0.5)         # COMP_FACTORY: 2×1×2, flat on the floor of its cells
 	elif box.size == Vector3(2, 1, 1):
 		off = Vector3(-0.5, 0.0, 0.0)          # BLOCK2: центрируем 2-широкую коллизию
 	elif box.size == Vector3(1, 1, 2):

@@ -966,12 +966,12 @@ def build_storage(pk, img):
 # is coils) between a blue flange and cap, on a dark base with a horseshoe on every wall, and a
 # polished pole on top the chunks it packs rest on.
 #
-# COMPONENT PLANT, FABRICATOR and SCRAPPER are 2x2x2, anchored in a corner like the smelter (cells
+# FABRICATOR and SCRAPPER are 2x2x2, anchored in a corner like the smelter (cells
 # x -1/0, z -1/0, y 0/1: the block spans x -1.5..0.5, y -0.5..1.5, z -1.5..0.5). The player's
 # design, port by port - every port a quarter of a face, all at the belts' height:
-#   COMPONENT PLANT - IN on both BOTTOM quarters of the back, OUT on the front's bottom quarter
-#     in the right column (x 0, the smelter's). A PRESS in the middle of the roof stamps while a
-#     component is made (comp_factory.gd drives `Ram`), a gear painted on its anvil.
+#   COMPONENT PLANT - 2x1x2 (cells x -1/0, z -1/0, one high): IN on both halves of the back, OUT on
+#     the front's right column (x 0, the smelter's). Nothing on its roof but a drawing: two ingots,
+#     arrows in to a gear, an arrow out.
 #   FABRICATOR - IN on both bottom quarters of the back; the finished block leaves through a PIPE
 #     on the roof and is thrown out of its mouth at the front (fabricator.gd, marker `pipe_mouth`).
 #     Cyan windows in its sides: the grid a block materialises on.
@@ -979,7 +979,8 @@ def build_storage(pk, img):
 #     hopper on the roof with two toothed rollers that turn while it works (`RollerA/B`); the
 #     materials leave on the front's bottom quarter, right column.
 BIG_TOP = 0.55           # the 2x2x2 bases' roof: the ground floor and a little over
-PR_STROKE = 0.25         # how far the plant's ram comes down (comp_factory.gd STROKE): onto the anvil
+MOUTH_HW = 0.44          # a belt mouth's half-width: its frame on the belt's rails
+PLANT_MOUTH = 0.40       # the plant's mouths' top: its wall ends under the chamfer at 0.433
 SC_ROLL = (-0.5, 0.76, -0.8, 0.135, 0.12)   # scrapper rollers: x, y, z, z-offset each, radius
 
 
@@ -1044,13 +1045,56 @@ def tube(faces, path, radii, kinds, sides=8, cap_start=None, cap_end=None):
             faces.append(th.Face(th.outward(list(rings[i]), inside), cap, u_hint=u_prev))
 
 
-def belt_mouth(faces, cx, cz, nrm):
+def belt_mouth(faces, cx, cz, nrm, top=SM_MOUTH):
     """An opening at belt height in the wall whose outward normal is nrm (+-X or +-Z), centred on
-    (cx, cz) of that face: a dark hole in a painted blue frame, a hair proud of the wall - a frame
-    of boxes would stand out of the cell, since this wall IS the cell's face."""
+    (cx, cz) of that face, as WIDE AS THE BELT (its blue frame on the belt's rails, the dark hole
+    the belt's floor): a painted frame a hair proud of the wall - a frame of boxes would stand out
+    of the cell, since this wall IS the cell's face. Narrower, it read as smaller than the belt."""
     nx, nz = nrm
-    glow_quad(faces, (cx + nx * 0.004, (CH_Y - 0.06 + SM_MOUTH) / 2, cz + nz * 0.004), (-nz, 0, nx),
-              (0, 1, 0), 0.36, (SM_MOUTH - CH_Y + 0.06) / 2, style="mouth")
+    glow_quad(faces, (cx + nx * 0.004, (CH_Y - 0.06 + top) / 2, cz + nz * 0.004), (-nz, 0, nx),
+              (0, 1, 0), MOUTH_HW, (top - CH_Y + 0.06) / 2, style="mouth")
+
+
+def paint_island(pk, img, faces, x0, x1, z0, z1, y, fn):
+    """A face on top at height y whose texels map straight onto the world: pixel x runs along +X,
+    pixel y along +Z (so low rows are the FRONT), painted by fn(px, py, w, h) -> colour. For a
+    drawing that has to know which way the machine faces."""
+    w, h = int(math.ceil((x1 - x0) * th.DENS)), int(math.ceil((z1 - z0) * th.DENS))
+    rx, ry, _, _ = pk.take(w, h)
+    for yy in range(-th.PAD, h + th.PAD):
+        for xx in range(-th.PAD, w + th.PAD):
+            img.putpixel((rx + xx, ry + yy), fn(min(max(xx, 0), w - 1) + 0.5, min(max(yy, 0), h - 1) + 0.5, w, h))
+    pts = th.outward([(x0, y, z0), (x1, y, z0), (x1, y, z1), (x0, y, z1)], (0.0, y - 1.0, 0.0))
+    f = th.Face(pts, None)
+    f.uv = [(rx + (p[0] - x0) * th.DENS, ry + (p[2] - z0) * th.DENS) for p in pts]
+    faces.append(f)
+
+
+def plant_top(px, py, w, h):
+    """The component plant's roof: two ingots at the back (its two inputs), arrows in to a big gear
+    (what it makes), and one arrow out to the front in the right column (its output)."""
+    d = min(px, py, w - px, h - py)
+    if d < 1.0:
+        return th.BLUE_HI
+    if d < 2.0:
+        return th.BLUE_MID
+    for rx, ry in ((4, 4), (w - 5, 4), (4, h - 5), (w - 5, h - 5)):
+        if int(px) == rx and int(py) == ry:
+            return th.BLUE_DEEP
+    s = min(w, h) / 24.0
+    gx, gy = (px - w * 0.5) / s, (py - h * 0.48) / s
+    if math.hypot(gx, gy) <= 5.4:
+        return th.RIM[4] if th._gear(gx, gy) else th.BLUE_DEEP
+    for cx in (w * 0.25, w * 0.75):
+        bx, by = px - cx, py - h * 0.86
+        if -2.5 <= by <= 2.5 and abs(bx) <= 4.5 + (by + 2.5) * 0.5:
+            return th.WHITE if by < -1.0 else th.RIM[3]
+    for tx, ty in ((w * 0.25, h * 0.66), (w * 0.75, h * 0.66), (w * 0.75, h * 0.14)):
+        a = py - ty                              # behind the tip, toward the back (+py)
+        off = abs(px - tx)
+        if 0 <= a <= 5 and abs(off - a) < 1.0:
+            return th.ORANGE if a > 1 else th.ORANGE_LO
+    return th.jitter(th.BLUE, 2)
 
 
 def big_base(b, side):
@@ -1059,23 +1103,17 @@ def big_base(b, side):
 
 
 def build_comp_factory(pk, img):
-    """The press and nothing else on the roof, centred: an anvil with the gear it stamps painted on
-    it, two blue uprights, a beam, and the ram. Two bins for the two materials and an off-centre
-    press were tried first and read as detail with nothing to say."""
-    parts = {"comp_factory_body": [], "comp_factory_ram": []}
-    b, ram = parts["comp_factory_body"], parts["comp_factory_ram"]
-    big_base(b, "comp_side")
+    """2x1x2, flat on the floor of its cells (the player's call): nothing on the roof but a drawing
+    of what it does - a press, bins and an off-centre press were tried first and read as detail with
+    nothing to say."""
+    parts = {"comp_factory_body": []}
+    b = parts["comp_factory_body"]
+    c = 0.067
+    cham_box(b, (-1.5, -0.5, -1.5), (0.5, 0.5, 0.5), c, "comp_side", None, "dark", "dark_edge")
+    paint_island(pk, img, b, -1.5 + c, 0.5 - c, -1.5 + c, 0.5 - c, 0.5, plant_top)
     for cx in (-1.0, 0.0):
-        belt_mouth(b, cx, 0.5, (0, 1))         # the two inputs: the back's bottom quarters
-    belt_mouth(b, 0.0, -1.5, (0, -1))           # the output: the front's, right column
-    cham_box(b, (-0.85, BIG_TOP, -0.85), (-0.15, 0.70, -0.15), 0.03, "dark", "die", None, "dark_edge")
-    for x0 in (-1.45, 0.25):
-        th.box(b, (x0, BIG_TOP, -0.65), (x0 + 0.2, 1.30, -0.35), "blue", skip=("-y",))
-    cham_box(b, (-1.5, 1.30, -0.72), (0.5, 1.5, -0.28), 0.04, "blue", "blue", "blue", "bevel")
-    # The ram at rest, over the anvil by PR_STROKE: a rod up into the beam, a head with hazard slats.
-    th.box(ram, (-0.58, 0.70 + PR_STROKE + 0.23, -0.58), (-0.42, 1.30, -0.42), "dark", skip=("+y",))
-    cham_box(ram, (-0.8, 0.70 + PR_STROKE, -0.8), (-0.2, 0.70 + PR_STROKE + 0.23, -0.2), 0.03,
-             "slab_side", "dark", "dark", "dark_edge")
+        belt_mouth(b, cx, 0.5, (0, 1), top=PLANT_MOUTH)   # the two inputs: the back
+    belt_mouth(b, 0.0, -1.5, (0, -1), top=PLANT_MOUTH)    # the output: the front, right column
     return parts
 
 
