@@ -1,5 +1,5 @@
-# THE FIRST MODEL of the repair unit (a hub on the weapons' platform, one ring, a crystal), kept by
-# the player's wish as a spare: scene blocks/scenes/regen_v1.tscn. Not used by the game.
+# THE GYRO REPAIR UNIT, kept for the second faction (Marlit) to be reworked into its own style;
+# the game's repair unit is regen.gd / regen.tscn. Not used by the game yet.
 # regen.gd — блок регенерации: раз в интервал чинит повреждённые блоки В РАДИУСЕ, тратя
 # энергию своей машины (vehicle.energy_consume). Нет энергии — не чинит.
 #
@@ -35,65 +35,104 @@ func _ready() -> void:
 	_build_field()
 	_setup_beacon()
 
-# ── THE BEACON ──────────────────────────────────────────────────────────────────
-# The model says whether the field works: powered, the RING spins up and the CRYSTAL glows green
-# and floats; every repair tick that heals something flashes it; unpowered, the ring runs down and
-# the crystal goes dark. `Ring` and `Crystal` move (moving_parts), the crystal is re-coloured and
-# so draws itself (unbatched).
-const RING_SPIN := 1.8             # rad/s at full power
-const RING_SPIN_UP := 1.2          # rad/s² - it winds up and runs down, it does not snap
+# ── THE GYRO ───────────────────────────────────────────────────────────────────
+# The model says whether the field works (art/emitter_models.py build_regen2): four rings round the
+# crystal, seen from the front as "-", "|", "/" and "\", held on round bearings at the six faces.
+# OFF: the rings stand, their energy strips are dark, and the crystal lies grey at the bottom, on the
+# rings. POWER-UP: the rings wind up, each turning about its OWN axis (the normal of its plane, so it
+# slides through its bearings), at its own rate and alternating in direction; the strips and the
+# crystal turn green, and the crystal rises to the centre and stands up. WORKING: the rings turn and
+# the crystal floats and turns slowly; every repair tick that heals something flashes it. Rings and
+# crystal move (moving_parts); the crystal and the strips are re-coloured, so they draw themselves
+# (unbatched) on one per-block material.
+const RING_ANGLES := [0.0, 90.0, 45.0, 135.0]     # each ring's plane, turned about Z (build_regen2)
+const RING_RATES := [1.0, -1.35, 0.8, -1.15]       # x RING_SPIN, rad/s: their own pace, alternating
+const RING_SPIN := 1.6
+const POWER_UP := 1.2              # s from off to working (and back)
 const CRYSTAL_ON := Color(0.35, 1.0, 0.5)
 const CRYSTAL_HEAL := Color(0.85, 1.0, 0.85)
-const CRYSTAL_OFF := Color(0.07, 0.16, 0.1)
-const BOB := 0.025                 # m the crystal floats while powered
+const CRYSTAL_OFF := Color(0.26, 0.27, 0.3)
+const STRIP_OFF := Color(0.1, 0.13, 0.11)
+## Where the crystal lies off: on its side, down on the bottom bearing and the rings.
+const REST_POS := Vector3(0.0, -0.19, 0.0)
+const BOB := 0.02                  # m the crystal floats while working
 const HEAL_FLASH := 0.3            # s
-var _ring: Node3D = null
+var _rings: Array[Node3D] = []
 var _crystal: MeshInstance3D = null
-var _crystal_mat: StandardMaterial3D = null
-var _crystal_y: float = 0.0
-var _crystal_col: Color = CRYSTAL_OFF
-var _spin: float = 0.0
-var _bob: float = 0.0
+var _glow_mat: StandardMaterial3D = null
+var _power: float = 0.0            # 0 off .. 1 working, eased
+var _crystal_turn: float = 0.0
 var _heal_flash: float = 0.0
 
 func unbatched() -> Array:
+	var out: Array = []
 	var c := get_node_or_null("Crystal")
-	return [c] if c != null else []
+	if c != null:
+		out.append(c)
+	for i in 4:
+		var g := get_node_or_null("Ring%d/Glow" % i)
+		if g != null:
+			out.append(g)
+	return out
 
 func _setup_beacon() -> void:
 	moving_parts = true
-	_ring = get_node_or_null("Ring") as Node3D
+	for i in 4:
+		var r := get_node_or_null("Ring%d" % i) as Node3D
+		if r != null:
+			_rings.append(r)
 	_crystal = get_node_or_null("Crystal") as MeshInstance3D
-	if _crystal != null:
-		_crystal_y = _crystal.position.y
-		var m: Material = _crystal.material_override
-		if m == null and _crystal.mesh != null:
-			m = _crystal.mesh.surface_get_material(0)
-		if m is StandardMaterial3D:
-			_crystal_mat = (m as StandardMaterial3D).duplicate()
-			_crystal_mat.albedo_color = _crystal_col
-			_crystal.material_override = _crystal_mat
+	# One material for the crystal and the four strips, duplicated per block: a shared one would
+	# light every repair unit in the world at once.
+	var m: Material = _crystal.material_override if _crystal != null else null
+	if m is StandardMaterial3D:
+		_glow_mat = (m as StandardMaterial3D).duplicate()
+		_glow_mat.albedo_color = CRYSTAL_OFF
+		_crystal.material_override = _glow_mat
+	# The strips take their own copy: they go dark to a different colour than the crystal's grey.
+	var strip_mat: StandardMaterial3D = null
+	if _glow_mat != null:
+		strip_mat = _glow_mat.duplicate()
+		strip_mat.albedo_color = STRIP_OFF
+		_strip_mat = strip_mat
+	for r in _rings:
+		var g := r.get_node_or_null("Glow") as MeshInstance3D
+		if g != null and strip_mat != null:
+			g.material_override = strip_mat
+	_pose_crystal(0.0)
+
+var _strip_mat: StandardMaterial3D = null
 
 func _animate_beacon(delta: float, on: bool) -> void:
-	if _ring == null:
-		return
-	_spin = move_toward(_spin, RING_SPIN if on else 0.0, delta * RING_SPIN_UP)
-	if _spin > 0.001:
-		_ring.rotate_y(_spin * delta)
+	_power = move_toward(_power, 1.0 if on else 0.0, delta / POWER_UP)
+	var p: float = _power * _power * (3.0 - 2.0 * _power)        # smoothstep: eases in and out
+	for i in _rings.size():
+		var w: float = RING_SPIN * float(RING_RATES[i]) * p
+		if absf(w) > 0.0005:
+			var a: float = deg_to_rad(float(RING_ANGLES[i]))
+			_rings[i].rotate(Vector3(-sin(a), cos(a), 0.0), w * delta)
 	_heal_flash = maxf(_heal_flash - delta / HEAL_FLASH, 0.0)
+	_crystal_turn += delta * 0.9 * p
+	_pose_crystal(p)
+	if _glow_mat != null:
+		var c: Color = CRYSTAL_OFF.lerp(CRYSTAL_ON, p).lerp(CRYSTAL_HEAL, _heal_flash)
+		if not _glow_mat.albedo_color.is_equal_approx(c):
+			_glow_mat.albedo_color = c
+	if _strip_mat != null:
+		var sc: Color = STRIP_OFF.lerp(CRYSTAL_ON, p)
+		if not _strip_mat.albedo_color.is_equal_approx(sc):
+			_strip_mat.albedo_color = sc
+
+## The crystal at power p: lying on the bottom at 0, standing in the centre at 1, lifted along the way.
+func _pose_crystal(p: float) -> void:
 	if _crystal == null:
 		return
-	_bob = move_toward(_bob, 1.0 if on else 0.0, delta * 1.5)
 	var t: float = Time.get_ticks_msec() / 1000.0
-	_crystal.position.y = _crystal_y + BOB * _bob * sin(t * 2.2)
-	if _bob > 0.001:
-		_crystal.rotate_y(delta * 0.9 * _bob)
-	if _crystal_mat != null:
-		var target: Color = CRYSTAL_ON if on else CRYSTAL_OFF
-		target = target.lerp(CRYSTAL_HEAL, _heal_flash)
-		_crystal_col = _crystal_col.lerp(target, clampf(delta * 8.0, 0.0, 1.0))
-		if not _crystal_mat.albedo_color.is_equal_approx(_crystal_col):
-			_crystal_mat.albedo_color = _crystal_col
+	var pos: Vector3 = REST_POS.lerp(Vector3.ZERO, p)
+	pos.y += BOB * p * sin(t * 2.2)
+	var lying := Basis(Vector3.RIGHT, PI * 0.5)
+	var standing := Basis(Vector3.UP, _crystal_turn)
+	_crystal.transform = Transform3D(lying.slerp(standing, p), pos)
 
 # ── Поле ремонта ─────────────────────────────────────────────────────────────
 # Видимая сфера радиусом ровно REGEN_RADIUS, как купол у щита. Без неё радиус был
