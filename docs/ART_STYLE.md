@@ -95,8 +95,8 @@ HUD label.
 | blue | a low chamfered frustum on top, a housing like the weapons', 0.2 m tall |
 | pop | amber fire behind a grate in every wall, and nothing else amber |
 | light | none painted; edge lines on every face, chamfer strips a shade lighter than the wall |
-| detail | 108 triangles, 48 px/m, 256 px texture of its own |
-| function | the grate is LIT only while it burns (`generator.gd`, cold otherwise); a turbine in the housing's well spins up with the fire and runs down after it |
+| detail | 148 triangles (a real octagonal well; sixteen sides cost 40 more and read the same), 48 px/m, 256 px texture of its own |
+| function | the grate is LIT only while it burns (`generator.gd`, cold otherwise); fuel goes in through the top - the turbine sinks into the well, the fuel drops in, the fire flares, the turbine rises and spins up |
 
 What was changed after the first render against the family, and why:
 

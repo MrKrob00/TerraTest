@@ -216,12 +216,15 @@ project: read it before claiming how anything works.
   machine), and that grip IS the turn - nothing writes yaw. Below `TANK_FADE` the steering also
   pushes one side against the other (`TANK_STEER`), so a machine turns on the spot, which the AI
   needs: without it two wide big-wheel builds barely moved (10-12 m in 12 s against 56-72). A wheel
-  ROLLING ACROSS the machine is driven by the steering instead (it strafes). A bare cabin with no
-  wheels keeps the old whole-body push. Measured on the proving ground against the old model: a
+  ROLLING ACROSS the machine is driven by the steering at every speed, the way that TURNS the
+  machine about its centre of mass (TerraTech's), not the way that strafes it: on the nose or the
+  tail it swings the machine round, under the centre it does nothing. It used to strafe, so a
+  sideways wheel on a car's tail turned it the WRONG way (+29 deg from rest on a right steer, now
+  -212) and a machine with every wheel across slid 20.8 m sideways (now it spins on the spot, 0.2 m).
+  A bare cabin with no wheels keeps the old whole-body push. Measured on the proving ground against the old model: a
   four-wheel car the same straight (54 m / 20 m/s in 3 s) and turning at 8.1 m against 6.1; the
   same car plus one sideways wheel on the tail 36 m instead of 54 (it drags); wheels on the right
-  only - a spin, about 1.7 rad/s, instead of driving straight; wheels all across - no forward run,
-  steering strafes it at 17.9 m/s; five enemy builds all close to 26-28 m of the player, as before.
+  only - a spin, about 1.7 rad/s, instead of driving straight; wheels all across - no forward run; five enemy builds all close to 26-28 m of the player, as before.
   WHEELS ARE MOUNTED AT +-90 DEG on the sides (`blocks._define_layout`): at 0 the standard tyre
   rolls ACROSS the machine, which the old model never noticed.
 - There is no engine block. Traction is the sum of `wheel_power` over driving wheels **that touch
@@ -1694,8 +1697,13 @@ project: read it before claiming how anything works.
   those rules rather than traced (`art/emitter_models.py` generator): a full chamfered cube (it joins
   on every face), a low blue housing with a turbine in its well, and amber fire behind a grate on
   every wall - the one pop colour, LIT ONLY WHILE IT BURNS (`generator.gd`: `Fire` re-coloured per
-  block and unbatched, `Rotor` moving). Measured on the engine: cold and still before, lit and
-  spinning while a coal burns, 40 energy, cold and still after.
+  block and unbatched, `Rotor` moving). FUEL GOES IN THROUGH THE TOP, from whichever side it came:
+  a belt carries its cargo at the lid's own height, so one door serves all four sides, where side
+  doors would have needed the fuel to dive 0.7 m to the firebox. The turbine sinks into a real well
+  (`RETRACT`), the fuel settles over it, shrinks and drops in, and only then the fire flares - the
+  well's floor is a grate over the fire, lit with the walls. Measured on the engine: turbine down as
+  the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
+  40 energy; fed by a belt from east, west and north alike.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

@@ -785,8 +785,7 @@ func _wheel_forces() -> void:
 	var fwd: Vector3 = _get_forward()
 	var com_g: Vector3 = global_transform * center_of_mass
 	var share: float = mass / float(maxi(_wheel_count, 1))
-	var right: Vector3 = _get_right()
-	# Steering as a -1..1 push to the right: what a wheel ROLLING ACROSS the machine does with it.
+	# Steering as -1..1, positive to the right.
 	var steer_n: float = -_steer_angle / maxf(deg_to_rad(steer_max_angle), 0.001)
 	# How much of the turn the wheels make by pushing unevenly, tank-fashion: all of it standing,
 	# none of it at TANK_FADE and above, where the steered front wheels turn the machine.
@@ -806,18 +805,20 @@ func _wheel_forces() -> void:
 		var lat: Vector3 = up.cross(d)
 		var wp: Vector3 = (w as Node3D).global_position
 		var point: Vector3 = wp - up * (wp - com_g).dot(up)
-		# Throttle drives what rolls forward, along the line the steering has turned. Steering
-		# drives what rolls ACROSS (a sideways-mounted wheel strafes the machine), and on the rest
-		# pushes one side against the other at low speed, so the machine can turn where the front
-		# wheels alone could not - along the wheel's STRAIGHT line, since a front wheel turned in
-		# and pushing backwards drags the nose the wrong way. Every base sign cancels.
+		# Throttle drives what rolls forward, along the line the steering has turned. Steering pushes
+		# every wheel the way that TURNS the machine about its centre of mass (`lever`: how much the
+		# wheel's line swings round it), along the wheel's STRAIGHT line, since a front wheel turned
+		# in and pushing backwards drags the nose the wrong way. A wheel rolling along the machine
+		# does it only at low speed (tank_k), where the front wheels alone cannot turn it; one
+		# rolling ACROSS has no other job and does it always, TerraTech's way - on the nose or the
+		# tail it swings the machine round, under the centre it does nothing. It used to STRAFE
+		# (push to the machine's right), so a sideways wheel on the tail turned a car the wrong way.
+		# Every base sign cancels.
 		var push: Vector3 = d * signf(d.dot(base)) * _throttle * along
-		if absf(along) >= 0.7:
-			var arm_h: Vector3 = point - com_g
-			var lever: float = arm_h.cross(base).dot(up) / maxf(arm_h.length(), 0.5)
-			push -= base * steer_n * tank_k * TANK_STEER * lever
-		else:
-			push += base * steer_n * base.dot(right)
+		var arm_h: Vector3 = point - com_g
+		var lever: float = arm_h.cross(base).dot(up) / maxf(arm_h.length(), 0.5)
+		var turn_k: float = tank_k * TANK_STEER if absf(along) >= 0.7 else 1.0
+		push -= base * steer_n * turn_k * lever
 		var v_at: Vector3 = linear_velocity + angular_velocity.cross(point - com_g)
 		var f_lat: float = clampf(-v_at.dot(lat) * wheel_cornering, -WHEEL_GRIP_LIMIT, WHEEL_GRIP_LIMIT)
 		var f: Vector3 = lat * f_lat * share
