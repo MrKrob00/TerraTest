@@ -789,12 +789,21 @@ func _footprint_offsets(block: int) -> Array:
 				for dz in [-1, 0]:
 					cells.append(Vector3i(dx, dy, dz))
 		return cells
+	# ARMOUR PLATES ARE WALLS: they stand on the back face of their cells, so a big one spreads across
+	# (X) and up (Y), never in depth. The x4 used to be 2x1x2 - a slab lying flat under a plate
+	# that stood upright.
 	if block == G.Block.ARMOR4:
-		var cells4: Array = []               # 2×1×2 (xyz)
+		var cells4: Array = []               # 2×2×1, up from the anchor
 		for dx in [-1, 0]:
-			for dz in [-1, 0]:
-				cells4.append(Vector3i(dx, 0, dz))
+			for dy in [0, 1]:
+				cells4.append(Vector3i(dx, dy, 0))
 		return cells4
+	if block == G.Block.ARMOR9:
+		var cells9: Array = []               # 3×3×1 round the anchor
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				cells9.append(Vector3i(dx, dy, 0))
+		return cells9
 	if block == G.Block.WEDGE2:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0)]     # 1×1×2, вдоль Z
 	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
@@ -838,14 +847,19 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 	if box == null:
 		return Vector3.ZERO
 	var off := Vector3.ZERO
-	if box.size == Vector3(2, 2, 2):
+	if box.size.z < 0.5:
+		# AN ARMOUR PLATE STANDS ON ITS CELLS' BACK FACE, where its mesh is: back by half a cell less
+		# half its thickness, and centred on the cells it spans. This used to fall through to zero,
+		# so every plate's collider stood in the middle of its cell while the plate was drawn 0.4 m
+		# behind it - shots stopped on air in front of the armour.
+		off = Vector3(-0.5 if is_equal_approx(box.size.x, 2.0) else 0.0,
+				0.5 if is_equal_approx(box.size.y, 2.0) else 0.0, 0.5 - box.size.z * 0.5)
+	elif box.size == Vector3(2, 2, 2):
 		off = Vector3(-0.5, 0.5, -0.5)
 	elif box.size == Vector3(2, 1, 1):
 		off = Vector3(-0.5, 0.0, 0.0)          # BLOCK2: центрируем 2-широкую коллизию
 	elif box.size == Vector3(1, 1, 2):
 		off = Vector3(0.0, 0.0, -0.5)          # WEDGE2: 1×1×2, длинной стороной по Z
-	elif box.size == Vector3(2, 1, 2):
-		off = Vector3(-0.5, 0.0, -0.5)         # ARMOR4: 2×1×2
 	if off == Vector3.ZERO:
 		return off                             # BLOCK3 и одноклеточные: якорь уже в середине тела
 	return Basis(Vector3.UP, yaw) * off

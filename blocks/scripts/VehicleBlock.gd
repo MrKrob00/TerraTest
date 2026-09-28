@@ -217,9 +217,10 @@ const BLOCK_HP: Dictionary = {
 	G.Block.BLOCK3:    240,      # 3 клетки — и hp втрое от обычного блока
 	G.Block.WEDGE2:    220,
 	G.Block.ARMOR:     480,      # защитная пластина: держит втрое больше блока
-	# Плиты крупнее — прочность по объёму: 2 клетки вдвое, 4 клетки вчетверо от ARMOR.
+	# Bigger plates: toughness by area - 2 cells twice ARMOR, 4 four times, 9 nine.
 	G.Block.ARMOR2:    960,
 	G.Block.ARMOR4:    1920,
+	G.Block.ARMOR9:    4320,
 	# Половинка — тот же материал, но металла в ней меньше: две трети от блока.
 	G.Block.HALF_BLOCK:  110,
 	G.Block.HALF_BLOCK2: 220,
@@ -249,6 +250,7 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.ARMOR:     34.0,
 	G.Block.ARMOR2:    68.0,
 	G.Block.ARMOR4:    136.0,
+	G.Block.ARMOR9:    306.0,
 	G.Block.HALF_BLOCK:  7.0,
 	G.Block.HALF_BLOCK2: 14.0,
 	G.Block.WIRELESS_CHARGER: 16.0,
