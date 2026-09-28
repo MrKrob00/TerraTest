@@ -414,7 +414,13 @@ def _magnet(bx, by):
     return 1.8 <= abs(bx) <= 4.0 and by >= -4.2
 
 
-EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet}
+def _cube(bx, by):
+    # a block: its outline and a solid core
+    m = max(abs(bx), abs(by))
+    return 3.4 <= m <= 4.6 or m <= 1.7
+
+
+EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet, "fab_side": _cube}
 
 
 def style_px(style, x, y, w, h, d):
@@ -791,6 +797,29 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style[:5] in ("mtone", "btone") and style[5:].isdigit():
+        # A facet of a round part built as flat quads (emitter_models.tube): its own tone from the
+        # painted light, and the atlas's edge line - a pipe reads round only this way, unshaded.
+        k = int(style[5:])
+        if style[0] == "m":
+            c = METAL[2 + k]
+            return RIM[1] if d < 1.0 else jitter(c, 1)
+        c = [BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][k]
+        return BLUE_HI if d < 1.0 and k < 4 else jitter(c, 1)
+    if style == "mouth":
+        # A belt-height opening in a machine's wall: a blue frame, a dark hole, a light sill.
+        if x < 3 or x >= w - 3 or y < 3:
+            return BLUE_HI if (d < 1.0) else (BLUE_MID if (x in (2, w - 3) or y == 2) else BLUE)
+        if y >= h - 3:
+            return RIM[2] if y == h - 3 else METAL[2]
+        return METAL[0] if y > 5 else METAL[1]
+    if style == "fab_window":
+        # The fabricator's assembly window: dark glass with the cyan grid a block materialises on.
+        if d < 1.0:
+            return METAL[1]
+        if (x % 6 == 0) or (y % 6 == 0):
+            return (70, 190, 200)
+        return (14, 30, 36) if (x + y) % 2 else (18, 36, 42)
     if style == "coil":
         # The packer's electromagnet: copper windings, a dark line between every turn.
         if d < 1.0:

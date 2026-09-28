@@ -1760,6 +1760,25 @@ project: read it before claiming how anything works.
   the bar is flattened to `LEVEL_NONE`, not hidden: `MachineBatch` reads `visible` only when it
   rebuilds, so a hidden part would go on drawing. Measured on the engine: 1 / 10 / 20 / 0 items give
   0.05 / 0.50 / 1.00 / 0.001.
+- **THE COMPONENT PLANT, THE FABRICATOR AND THE SCRAPPER ARE 2x2x2, AND THEIR PORTS ARE THE PLAYER'S
+  DESIGN** (`art/emitter_models.py` comp_factory / fabricator / scrapper, `blocks._footprint_offsets`,
+  anchored in a corner like the smelter). Masks are 0 and every port is a `port_defaults` quarter at
+  belt height, drawn as a painted opening (`belt_mouth`; a frame of boxes would stand out of the cell,
+  since those walls ARE the cell's faces). PLANT: in on BOTH bottom quarters of the back, out on the
+  front's bottom quarter in the right column; a press on the roof whose `Ram` stamps while a component
+  is made (`comp_factory.gd` STROKE), two bins behind it for its two materials. FABRICATOR: in on both
+  bottom back quarters, and the block leaves through a PIPE on the roof, thrown out of its mouth
+  (marker `pipe_mouth`, `EJECT_*`) rather than handed to a belt; cyan windows in its sides. SCRAPPER:
+  NO belt input - a SUCTION PIPE (marker `nozzle`, Area3D `suction`, 6 m) draws loose blocks and loose
+  chunks to its mouth and swallows them, only while anchored, only what has a recipe and never a quest
+  item (an unscrappable block would pile at the mouth, a quest block eaten dead-locks its branch); the
+  materials leave on the front's bottom quarter, right column, and its `RollerA/B` turn while there is
+  any to hand out. The hand feed on a foreign machine is unchanged. The PACKER stays one cell: an
+  electromagnet, copper windings between a blue flange and cap. Measured on an anchored base on the
+  proving ground: 2+2 ingots down the back belt into the plant came out as a component and sold for
+  150, the ram reaching its full 0.25; the fabricator's block landed 2.4 m in front of it; a loose
+  block 4 m from the scrapper was swallowed in 0.5 s and its materials sold for 85. AN OLD SAVE with
+  one of these where it now overlaps a neighbour loses it on load: `set_block` refuses an overlap.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

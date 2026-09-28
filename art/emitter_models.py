@@ -961,22 +961,26 @@ def build_storage(pk, img):
     return parts
 
 
-# ── the component plant, the scrapper, the packer ───────────────────────────────────────────────
-# Three one-cell machines, in and out on all four sides, each a dark base with its emblem on every
-# wall (a gear, a split block, a horseshoe magnet) under the one part that says what it does:
-#   COMPONENT PLANT - a PRESS: a blue frame over an anvil, and a ram with hazard slats that stamps
-#     while a component is being made (comp_factory.gd drives `Ram`).
-#   SCRAPPER - a SHREDDER: a hopper opening upward, hazard slats round its rim, and two toothed
-#     rollers at its bottom that turn while there is scrap to hand out (scrapper.gd, `RollerA/B`).
-#   PACKER - an ELECTROMAGNET: copper windings (its recipe is coils) between a blue flange and cap,
-#     a polished pole on top the chunks it packs rest on.
-PR_BASE = 0.06           # the press's table
-PR_STROKE = 0.09         # how far the ram comes down (comp_factory.gd STROKE): onto the anvil
-SC_BASE = 0.02           # the scrapper's base top; the hopper stands on it
-SC_FLOOR = 0.12          # the hopper's floor
-SC_ROLL_Y = 0.25         # the rollers' axles (scrapper.tscn RollerA / RollerB)
-SC_ROLL_Z = 0.09
-SC_ROLL_R = 0.085
+# ── the packer, and the three 2x2x2 machines drawn from their ports ─────────────────────────────
+# PACKER (one cell, in and out on all four sides) - an ELECTROMAGNET: copper windings (its recipe
+# is coils) between a blue flange and cap, on a dark base with a horseshoe on every wall, and a
+# polished pole on top the chunks it packs rest on.
+#
+# COMPONENT PLANT, FABRICATOR and SCRAPPER are 2x2x2, anchored in a corner like the smelter (cells
+# x -1/0, z -1/0, y 0/1: the block spans x -1.5..0.5, y -0.5..1.5, z -1.5..0.5). The player's
+# design, port by port - every port a quarter of a face, all at the belts' height:
+#   COMPONENT PLANT - IN on both BOTTOM quarters of the back, OUT on the front's bottom quarter
+#     in the right column (x 0, the smelter's). A PRESS on the roof stamps while a component is
+#     made (comp_factory.gd drives `Ram`); two bins behind it are its two materials.
+#   FABRICATOR - IN on both bottom quarters of the back; the finished block leaves through a PIPE
+#     on the roof and is thrown out of its mouth at the front (fabricator.gd, marker `pipe_mouth`).
+#     Cyan windows in its sides: the grid a block materialises on.
+#   SCRAPPER - a SUCTION PIPE draws loose blocks in (scrapper.gd, marker `nozzle`) and feeds a
+#     hopper on the roof with two toothed rollers that turn while it works (`RollerA/B`); the
+#     materials leave on the front's bottom quarter, right column.
+BIG_TOP = 0.55           # the 2x2x2 bases' roof: the ground floor and a little over
+PR_STROKE = 0.25         # how far the plant's ram comes down (comp_factory.gd STROKE): onto the anvil
+SC_ROLL = (-0.5, 0.76, -0.8, 0.135, 0.12)   # scrapper rollers: x, y, z, z-offset each, radius
 
 
 def funnel(faces, top, bottom, style):
@@ -985,7 +989,8 @@ def funnel(faces, top, bottom, style):
         j = (i + 1) % 8
         q = [top[i], top[j], bottom[j], bottom[i]]
         mid = tuple(sum(p[k] for p in q) / 4 for k in range(3))
-        out = th.norm((mid[0], 0.0, mid[2]))
+        ax = (sum(p[0] for p in bottom) / 8, mid[1], sum(p[2] for p in bottom) / 8)
+        out = th.norm((mid[0] - ax[0], 0.0, mid[2] - ax[2]))
         faces.append(th.Face(th.outward(q, th.add(mid, th.mul(out, 3.0))), style,
                              u_hint=th.cross((0, 1, 0), out)))
 
@@ -999,38 +1004,128 @@ def flat_ring(faces, outer, inner, style):
         faces.append(th.Face(th.outward(q, (0.0, q[0][1] - 1.0, 0.0)), style, u_hint=e))
 
 
+def tube(faces, path, radii, kinds, sides=8, cap_start=None, cap_end=None):
+    """A pipe along a polyline: rings carried along by parallel transport (no twist), one kind per
+    segment - "m" dark metal, "b" blue - every facet toned by the painted light (mtone / btone)."""
+    rings, u_prev = [], None
+    n = len(path)
+    for i, p in enumerate(path):
+        if i == 0:
+            t = th.sub(path[1], path[0])
+        elif i == n - 1:
+            t = th.sub(path[-1], path[-2])
+        else:
+            t = th.add(th.norm(th.sub(path[i], path[i - 1])), th.norm(th.sub(path[i + 1], path[i])))
+        t = th.norm(t)
+        if u_prev is None:
+            a = (0, 1, 0) if abs(t[1]) < 0.9 else (1, 0, 0)
+            u = th.norm(th.cross(a, t))
+        else:
+            u = th.norm(th.sub(u_prev, th.mul(t, th.dot(u_prev, t))))
+        v = th.cross(t, u)
+        u_prev = u
+        ring = []
+        for j in range(sides):
+            ang = (j + 0.5) * 2 * math.pi / sides
+            ring.append(th.add(p, th.add(th.mul(u, radii[i] * math.cos(ang)), th.mul(v, radii[i] * math.sin(ang)))))
+        rings.append(ring)
+    for k in range(n - 1):
+        c = th.mul(th.add(path[k], path[k + 1]), 0.5)
+        along = th.norm(th.sub(path[k + 1], path[k]))
+        for j in range(sides):
+            jj = (j + 1) % sides
+            q = th.outward([rings[k][j], rings[k][jj], rings[k + 1][jj], rings[k + 1][j]], c)
+            nn = th.norm(th.newell(q))
+            tone = int(round(max(0.0, min(1.0, 0.5 + 0.5 * th.dot(nn, LIGHT))) * 4))
+            faces.append(th.Face(q, "%stone%d" % (kinds[k], tone), u_hint=along))
+    for cap, i, j in ((cap_start, 0, 1), (cap_end, n - 1, n - 2)):
+        if cap:
+            inside = th.add(path[i], th.mul(th.norm(th.sub(path[j], path[i])), 0.1))
+            faces.append(th.Face(th.outward(list(rings[i]), inside), cap, u_hint=u_prev))
+
+
+def belt_mouth(faces, cx, cz, nrm):
+    """An opening at belt height in the wall whose outward normal is nrm (+-X or +-Z), centred on
+    (cx, cz) of that face: a dark hole in a painted blue frame, a hair proud of the wall - a frame
+    of boxes would stand out of the cell, since this wall IS the cell's face."""
+    nx, nz = nrm
+    glow_quad(faces, (cx + nx * 0.004, (CH_Y - 0.06 + SM_MOUTH) / 2, cz + nz * 0.004), (-nz, 0, nx),
+              (0, 1, 0), 0.36, (SM_MOUTH - CH_Y + 0.06) / 2, style="mouth")
+
+
+def big_base(b, side):
+    """The 2x2x2 machines' ground floor: one dark body the full footprint up to BIG_TOP."""
+    cham_box(b, (-1.5, -0.5, -1.5), (0.5, BIG_TOP, 0.5), 0.067, side, "dark", "dark", "dark_edge")
+
+
 def build_comp_factory(pk, img):
     parts = {"comp_factory_body": [], "comp_factory_ram": []}
     b, ram = parts["comp_factory_body"], parts["comp_factory_ram"]
-    cham_box(b, (-0.5, -0.5, -0.5), (0.5, PR_BASE, 0.5), 0.067, "comp_side", "dark", "dark", "dark_edge")
-    cham_box(b, (-0.17, PR_BASE, -0.17), (0.17, 0.14, 0.17), 0.02, "dark", "dark", None, "dark_edge")
-    for s in (-1, 1):
-        th.box(b, (s * 0.36 - 0.05, PR_BASE, -0.12), (s * 0.36 + 0.05, 0.40, 0.12), "blue", skip=("-y",))
-    cham_box(b, (-0.47, 0.40, -0.15), (0.47, 0.5, 0.15), 0.03, "blue", "blue", "blue", "bevel")
-    # The ram at rest: a rod up into the beam and a head with hazard slats round it.
-    th.box(ram, (-0.04, 0.34, -0.04), (0.04, 0.40, 0.04), "dark", skip=("+y",))
-    cham_box(ram, (-0.15, 0.14 + PR_STROKE, -0.15), (0.15, 0.36, 0.15), 0.025, "slab_side", "dark",
-             "dark", "dark_edge")
+    big_base(b, "comp_side")
+    for cx in (-1.0, 0.0):
+        belt_mouth(b, cx, 0.5, (0, 1))         # the two inputs: the back's bottom quarters
+    belt_mouth(b, 0.0, -1.5, (0, -1))           # the output: the front's, right column
+    # The press, on the front half of the roof: an anvil, two blue uprights, a beam.
+    cham_box(b, (-0.8, BIG_TOP, -1.2), (-0.2, 0.70, -0.6), 0.03, "dark", "dark", None, "dark_edge")
+    for x0 in (-1.45, 0.25):
+        th.box(b, (x0, BIG_TOP, -1.05), (x0 + 0.2, 1.30, -0.75), "blue", skip=("-y",))
+    cham_box(b, (-1.5, 1.30, -1.12), (0.5, 1.5, -0.68), 0.04, "blue", "blue", "blue", "bevel")
+    # The ram at rest, over the anvil by PR_STROKE: a rod up into the beam, a head with hazard slats.
+    th.box(ram, (-0.58, 0.70 + PR_STROKE + 0.23, -0.98), (-0.42, 1.30, -0.82), "dark", skip=("+y",))
+    cham_box(ram, (-0.8, 0.70 + PR_STROKE, -1.2), (-0.2, 0.70 + PR_STROKE + 0.23, -0.6), 0.03,
+             "slab_side", "dark", "dark", "dark_edge")
+    # Two bins on the back half: the two materials a recipe asks for.
+    for x0 in (-1.38, -0.38):
+        lo = crect(x0, x0 + 0.76, -0.40, 0.36, 0.08, BIG_TOP)
+        hi = crect(x0 - 0.04, x0 + 0.80, -0.44, 0.40, 0.08, 1.02)
+        frustum(b, lo, hi, "blue", "bevel", "store_floor")
+    return parts
+
+
+def build_fabricator(pk, img):
+    parts = {"fabricator_body": []}
+    b = parts["fabricator_body"]
+    big_base(b, "fab_side")
+    for cx in (-1.0, 0.0):
+        belt_mouth(b, cx, 0.5, (0, 1))
+    # The assembly windows, one in each side wall: the grid a block materialises on.
+    glow_quad(b, (-1.504, 0.12, -0.5), (0, 0, 1), (0, 1, 0), 0.62, 0.26, style="fab_window")
+    glow_quad(b, (0.504, 0.12, -0.5), (0, 0, -1), (0, 1, 0), 0.62, 0.26, style="fab_window")
+    # The assembly housing over the base, and on it the PIPE the block leaves by: up, over and out
+    # of a flared mouth at the front.
+    frustum(b, crect(-1.46, 0.46, -1.46, 0.46, 0.14, BIG_TOP), crect(-1.3, 0.3, -1.3, 0.3, 0.12, 0.95),
+            "blue", "bevel", "dark")
+    path = [(-0.5, 0.95, 0.0), (-0.5, 1.08, 0.0), (-0.5, 1.17, -0.08), (-0.5, 1.2, -0.2),
+            (-0.5, 1.2, -1.36), (-0.5, 1.2, -1.42), (-0.5, 1.2, -1.5)]
+    tube(b, path, [0.26, 0.2, 0.2, 0.2, 0.2, 0.24, 0.28], ["b", "m", "m", "m", "b", "b"],
+         cap_end="dark")
     return parts
 
 
 def build_scrapper(pk, img):
     parts = {"scrapper_body": [], "scrapper_roller_a": [], "scrapper_roller_b": []}
     b = parts["scrapper_body"]
-    cham_box(b, (-0.5, -0.5, -0.5), (0.5, SC_BASE, 0.5), 0.067, "scrap_side", None, "dark", "dark_edge")
-    lo, hi = crect(-0.44, 0.44, -0.44, 0.44, 0.10, SC_BASE), crect(-0.5, 0.5, -0.5, 0.5, 0.12, 0.5)
+    big_base(b, "scrap_side")
+    belt_mouth(b, 0.0, -1.5, (0, -1))           # the output: the front's bottom quarter, right column
+    # The hopper on the front half of the roof, hazard slats round its rim.
+    lo, hi = crect(-1.3, 0.3, -1.35, -0.25, 0.10, BIG_TOP), crect(-1.45, 0.45, -1.48, -0.12, 0.12, 1.05)
     frustum(b, lo, hi, "blue", "bevel", None)
-    inner = crect(-0.40, 0.40, -0.40, 0.40, 0.10, 0.5)
+    inner = crect(-1.35, 0.35, -1.38, -0.22, 0.10, 1.05)
     flat_ring(b, hi, inner, "slab_side")
-    bottom = crect(-0.24, 0.24, -0.24, 0.24, 0.06, SC_FLOOR)
+    bottom = crect(-1.2, 0.2, -1.08, -0.52, 0.06, 0.62)
     funnel(b, inner, bottom, "dark")
-    b.append(th.Face(th.outward(bottom, (0.0, SC_FLOOR - 1.0, 0.0)), "dark", u_hint=(1, 0, 0)))
+    b.append(th.Face(th.outward(bottom, (-0.5, 0.0, -0.8)), "dark", u_hint=(1, 0, 0)))
+    # The suction pipe: a flared nozzle at the back, over the roof and down into the hopper.
+    path = [(-0.5, 1.0, 0.36), (-0.5, 1.08, 0.24), (-0.5, 1.26, 0.08), (-0.5, 1.34, -0.1),
+            (-0.5, 1.28, -0.3), (-0.5, 1.12, -0.46)]
+    tube(b, path, [0.26, 0.14, 0.13, 0.13, 0.13, 0.13], ["b", "m", "m", "m", "b"], cap_start="dark")
     # The rollers, each about its own axle along X through the origin (the scene places them):
     # light teeth on every other facet, so the turn is seen.
+    r, half = SC_ROLL[4], 0.62
     teeth = {(i, k): (th.RIM[4] if i % 2 else th.METAL[1]) for i in range(8) for k in (1, 2, 3)}
     for name in ("scrapper_roller_a", "scrapper_roller_b"):
-        r = SC_ROLL_R
-        prof = [(0.0, -0.21), (r * 0.7, -0.21), (r, -0.14), (r, 0.0), (r, 0.14), (r * 0.7, 0.21), (0.0, 0.21)]
+        prof = [(0.0, -half), (r * 0.7, -half), (r, -half + 0.08), (r, 0.0), (r, half - 0.08),
+                (r * 0.7, half), (0.0, half)]
         part = []
         lathe_y(pk, img, part, prof, METAL_RAMP, sides=8, marks=teeth)
         for f in part:
@@ -1055,8 +1150,9 @@ def build_packer(pk, img):
 
 
 BLOCKS = {
-    "comp_factory": (83, build_comp_factory, 256),
-    "scrapper": (89, build_scrapper, 256),
+    "comp_factory": (83, build_comp_factory, 512),
+    "fabricator": (101, build_fabricator, 512),
+    "scrapper": (89, build_scrapper, 512),
     "packer": (97, build_packer, 256),
     "storage": (79, build_storage, 256),
     "processor": (71, build_processor, 512),

@@ -21,6 +21,10 @@ var _need: Dictionary = {}               # ключ материала → ск�
 var _have: Dictionary = {}               # ключ материала → сколько уже лежит
 var _crafting: bool = false
 
+const EJECT_CLEAR: float = 0.9      # the new block appears this far past the pipe's mouth
+const EJECT_PUSH: float = 3.0       # m/s along the pipe
+const EJECT_LIFT: float = 1.5       # m/s up
+
 func _ready() -> void:
 	super._ready()
 	_need = G.block_recipe(output_block).duplicate()   # копия: словарь рецептов общий на всех
@@ -85,12 +89,17 @@ func _eject_block() -> void:
 	if inst == null:
 		return
 	objects.add_child(inst)
-	inst.global_position = global_position + _eject_dir() * 1.6 + Vector3.UP * 0.6
+	# OUT OF THE PIPE ON THE ROOF (marker `pipe_mouth`, facing its -Z): the player's design - the
+	# block is spat into the world, not handed to a belt.
+	var mouth := get_node_or_null("pipe_mouth") as Node3D
+	var dir: Vector3 = -mouth.global_basis.z if mouth != null else _eject_dir()
+	var from: Vector3 = mouth.global_position if mouth != null else global_position
+	inst.global_position = from + dir * EJECT_CLEAR
 	if inst is RigidBody3D:
 		var rb := inst as RigidBody3D
 		rb.freeze = false
 		rb.sleeping = false
-		rb.apply_central_impulse((_eject_dir() * 2.0 + Vector3.UP * 2.5) * rb.mass)
+		rb.apply_central_impulse((dir * EJECT_PUSH + Vector3.UP * EJECT_LIFT) * rb.mass)
 	BlockFX.play(inst, false)
 
 # Куда выбрасывать: наружу по грани вывода. Граней несколько (противоположная сторона
