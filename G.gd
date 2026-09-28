@@ -506,6 +506,15 @@ const BLOCK_META := {
 	Block.MARLIT_SLAB:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF_SLAB: {"f": "marlit", "g": 2, "rp": 12},
+	Block.MARLIT_GIRDER:    {"f": "marlit", "g": 1, "rp": 8},
+	Block.MARLIT_LONG:      {"f": "marlit", "g": 2, "rp": 14},
+	Block.MARLIT_LONG_HALF: {"f": "marlit", "g": 2, "rp": 14},
+	Block.MARLIT_BRACKET:   {"f": "marlit", "g": 2, "rp": 12},
+	Block.MARLIT_ARMOR2:    {"f": "marlit", "g": 2, "rp": 18},
+	Block.MARLIT_BREW_GIRDER: {"f": "marlit", "g": 3, "rp": 20},
+	Block.MARLIT_ARMOR4:    {"f": "marlit", "g": 3, "rp": 25},
+	Block.MARLIT_OCTO:      {"f": "marlit", "g": 3, "rp": 28},
+	Block.MARLIT_ARMOR8:    {"f": "marlit", "g": 4, "rp": 35},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -541,6 +550,11 @@ const TECH_PARENT := {
 	Block.ARMOR9: Block.ARMOR4,
 	Block.MARLIT_SLAB: Block.MARLIT_BLOCK,  Block.MARLIT_HALF: Block.MARLIT_BLOCK,
 	Block.MARLIT_HALF_SLAB: Block.MARLIT_HALF,
+	Block.MARLIT_LONG: Block.MARLIT_BLOCK,     Block.MARLIT_LONG_HALF: Block.MARLIT_HALF,
+	Block.MARLIT_GIRDER: Block.MARLIT_BLOCK,   Block.MARLIT_BREW_GIRDER: Block.MARLIT_GIRDER,
+	Block.MARLIT_BRACKET: Block.MARLIT_GIRDER,
+	Block.MARLIT_ARMOR2: Block.MARLIT_SLAB,    Block.MARLIT_ARMOR4: Block.MARLIT_ARMOR2,
+	Block.MARLIT_ARMOR8: Block.MARLIT_ARMOR4,  Block.MARLIT_OCTO: Block.MARLIT_LONG,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -928,6 +942,16 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_SLAB:      {"m1": 7, "m2": 7},
 	Block.MARLIT_HALF:      {"m1": 7, "m2": 7},
 	Block.MARLIT_HALF_SLAB: {"m1": 4, "m2": 3},
+	Block.MARLIT_LONG:      {"m1": 28, "m2": 28},
+	Block.MARLIT_LONG_HALF: {"m1": 14, "m2": 14},
+	Block.MARLIT_GIRDER:    {"m1": 8, "m2": 6},
+	Block.MARLIT_BREW_GIRDER: {"m1": 16, "m2": 12},
+	Block.MARLIT_BRACKET:   {"m1": 5, "m2": 4},
+	# Armour as the Falsus plates are made: Cast Plating plus metal, Silicate for Marlit.
+	Block.MARLIT_ARMOR2:    {"c1": 3, "m2": 6},
+	Block.MARLIT_ARMOR4:    {"c1": 6, "m2": 12},
+	Block.MARLIT_ARMOR8:    {"c1": 12, "m2": 24},
+	Block.MARLIT_OCTO:      {"m1": 47, "m2": 47},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1329,8 +1353,13 @@ const BLOCK_LABEL := {
 	Block.HALF_BLOCK: "Half Block", Block.HALF_BLOCK2: "Half Block ×2", Block.WEDGE2: "Wedge",
 	Block.ARMOR: "Armour Plate", Block.ARMOR2: "Armour Plate ×2", Block.ARMOR4: "Armour Plate ×4",
 	Block.ARMOR9: "Armour Plate ×9",
-	Block.MARLIT_BLOCK: "Marlit Block", Block.MARLIT_SLAB: "Marlit Block 1×2×2",
+	Block.MARLIT_BLOCK: "Marlit Basic Block", Block.MARLIT_SLAB: "Marlit Block 1×2×2",
 	Block.MARLIT_HALF: "Marlit Half Block", Block.MARLIT_HALF_SLAB: "Marlit Half Block 1×2×2",
+	Block.MARLIT_LONG: "Marlit Long Block", Block.MARLIT_LONG_HALF: "Marlit Long Half Block",
+	Block.MARLIT_GIRDER: "Marlit Girder Block", Block.MARLIT_BREW_GIRDER: "Marlit Brew Girder",
+	Block.MARLIT_BRACKET: "Marlit Girder Bracket",
+	Block.MARLIT_ARMOR2: "Marlit Armour Plate 2×1", Block.MARLIT_ARMOR4: "Marlit Armour Plate 2×2",
+	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1379,6 +1408,15 @@ const BLOCK_DESC := {
 	Block.MARLIT_SLAB: "Marlit block one cell thick: two by two across, for walls and narrow hulls.",
 	Block.MARLIT_HALF: "The Marlit block cut corner to corner: a 45° slope two cells tall, for noses and roofs.",
 	Block.MARLIT_HALF_SLAB: "The same Marlit slope, one cell thick.",
+	Block.MARLIT_LONG: "Two Marlit basic blocks in one part: four cells long, two by two across.",
+	Block.MARLIT_LONG_HALF: "The Marlit slope, four cells long: a whole nose or roof edge in one piece.",
+	Block.MARLIT_GIRDER: "The Marlit Girder Block is a structural Standard Block. It weighs half as much as a Marlit Basic Block, has only half of its health and only 4 Attachment Points on two opposite sides each.",
+	Block.MARLIT_BREW_GIRDER: "The Marlit girder, four cells long: a light spine between two heavy ends.",
+	Block.MARLIT_BRACKET: "A small but strong girdered platform: bolts on by its back, carries on its top.",
+	Block.MARLIT_ARMOR2: "Marlit armour plate, two by one: thicker than Falsus plating, and heavier.",
+	Block.MARLIT_ARMOR4: "Marlit armour plate, two by two.",
+	Block.MARLIT_ARMOR8: "Marlit armour plate, four by two: a whole flank of a big machine.",
+	Block.MARLIT_OCTO: "The Octo Block: three cells every way, eight heavy corner caps round a core, the faction's octagon on every face.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1802,6 +1840,15 @@ enum Block {
 	MARLIT_SLAB = 50,       # 1×2×2
 	MARLIT_HALF = 51,       # 2×2×2 cut corner to corner
 	MARLIT_HALF_SLAB = 52,  # 1×2×2 cut corner to corner
+	MARLIT_LONG = 53,       # 4×2×2, the basic block twice
+	MARLIT_LONG_HALF = 54,  # 4×2×2 cut corner to corner
+	MARLIT_GIRDER = 55,     # 2×2×2 truss: half the weight and hit points, joins by its two end plates
+	MARLIT_BREW_GIRDER = 56,  # 4×2×2 truss
+	MARLIT_BRACKET = 57,    # 2×1×2 girdered platform: joins by its back and its top
+	MARLIT_ARMOR2 = 58,     # armour plate 2×1
+	MARLIT_ARMOR4 = 59,     # armour plate 2×2
+	MARLIT_ARMOR8 = 60,     # armour plate 4×2
+	MARLIT_OCTO = 61,       # 3×3×3 round its anchor: eight corner caps and an octagon on every face
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1853,6 +1900,15 @@ enum Block {
 @onready var marlit_slab_scene: PackedScene = preload("res://blocks/scenes/marlit_slab.tscn")
 @onready var marlit_half_scene: PackedScene = preload("res://blocks/scenes/marlit_half.tscn")
 @onready var marlit_half_slab_scene: PackedScene = preload("res://blocks/scenes/marlit_half_slab.tscn")
+@onready var marlit_long_scene: PackedScene = preload("res://blocks/scenes/marlit_long.tscn")
+@onready var marlit_long_half_scene: PackedScene = preload("res://blocks/scenes/marlit_long_half.tscn")
+@onready var marlit_girder_scene: PackedScene = preload("res://blocks/scenes/marlit_girder.tscn")
+@onready var marlit_brew_scene: PackedScene = preload("res://blocks/scenes/marlit_brew_girder.tscn")
+@onready var marlit_bracket_scene: PackedScene = preload("res://blocks/scenes/marlit_bracket.tscn")
+@onready var marlit_armor2_scene: PackedScene = preload("res://blocks/scenes/marlit_armor2.tscn")
+@onready var marlit_armor4_scene: PackedScene = preload("res://blocks/scenes/marlit_armor4.tscn")
+@onready var marlit_armor8_scene: PackedScene = preload("res://blocks/scenes/marlit_armor8.tscn")
+@onready var marlit_octo_scene: PackedScene = preload("res://blocks/scenes/marlit_octo.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
@@ -1882,7 +1938,10 @@ const BLOCK_CATEGORIES := {
 		Block.WEDGE2, Block.ARMOR,
 		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
 		Block.SUPPORT, Block.ROT_SUPPORT,
-		Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB],
+		Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB,
+		Block.MARLIT_LONG, Block.MARLIT_LONG_HALF, Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER,
+		Block.MARLIT_BRACKET, Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8,
+		Block.MARLIT_OCTO],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR,
@@ -1945,6 +2004,15 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_SLAB: return marlit_slab_scene
 		Block.MARLIT_HALF: return marlit_half_scene
 		Block.MARLIT_HALF_SLAB: return marlit_half_slab_scene
+		Block.MARLIT_LONG: return marlit_long_scene
+		Block.MARLIT_LONG_HALF: return marlit_long_half_scene
+		Block.MARLIT_GIRDER: return marlit_girder_scene
+		Block.MARLIT_BREW_GIRDER: return marlit_brew_scene
+		Block.MARLIT_BRACKET: return marlit_bracket_scene
+		Block.MARLIT_ARMOR2: return marlit_armor2_scene
+		Block.MARLIT_ARMOR4: return marlit_armor4_scene
+		Block.MARLIT_ARMOR8: return marlit_armor8_scene
+		Block.MARLIT_OCTO: return marlit_octo_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).

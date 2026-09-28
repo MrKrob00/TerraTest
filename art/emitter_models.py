@@ -434,13 +434,18 @@ def _cut_corners(q, c):
     return out
 
 
-def marlit_poly(faces, pts, rnd):
+MB_RAISE = 0.12        # how far an armour plate's octagon stands proud of the plate
+
+
+def marlit_poly(faces, pts, rnd, raised=False):
     """The Marlit face on ANY flat convex face of a chamfered solid (pts: its 3D outline): the plate,
     the bevel, the sunset line and the facet floor of `marlit_face`, with every ring the face's own
     outline inset and corner-cut - a square gives the 2x2x2 block's octagon, a 1-wide face a
     stretched one, a wedge's side a hexagon. Each ring is cut from the INSET OUTLINE rather than
     inset from the ring before: insetting a cut ring collapses the short cut edges of a 45 deg
-    corner. Sizes shrink with the face (`r1`), so a narrow face keeps a window rather than a slit."""
+    corner. Sizes shrink with the face (`r1`), so a narrow face keeps a window rather than a slit.
+    `raised` turns the window inside out for armour: the bevel climbs to a boss standing MB_RAISE
+    proud of the plate, the sunset line runs round its top and the facets are its face."""
     cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
     n = th.norm(th.newell(pts))
     u = th.norm(th.sub(pts[1], pts[0]))
@@ -461,7 +466,8 @@ def marlit_poly(faces, pts, rnd):
         rk = rin - ins
         rings.append(_cut_corners(hm.inset(q, ins), cut * rk / r1))
     o1, o2, o3 = rings
-    d2 = MB_OCT[1][2]
+    d2 = -MB_RAISE if raised else MB_OCT[1][2]
+    fl = -(MB_RAISE + 0.02) if raised else MB_FLOOR
     inside = th.add(cen, th.mul(n, -1.0))
     lf = th.norm(th.add(th.add(th.mul(u, -0.45), th.mul(v, 0.55)), th.mul(n, 0.70)))
     flat = th.dot(n, lf)
@@ -489,13 +495,13 @@ def marlit_poly(faces, pts, rnd):
         my = (o3[i][1] + o3[(i + 1) % N][1]) * 0.5
         k = 0.66 + rnd.uniform(-0.08, 0.08)
         o2d.append((mx * k + rnd.uniform(-0.04, 0.04) * sc, my * k + rnd.uniform(-0.04, 0.04) * sc))
-    outer = [P(x, y, MB_FLOOR + rnd.uniform(-0.07, 0.04) * sc) for x, y in o2d]
+    outer = [P(x, y, fl + rnd.uniform(-0.07, 0.04) * sc) for x, y in o2d]
     inner = []
     for k in range(N // 2):
         x, y = o2d[2 * k + 1]
         f = 0.42 + rnd.uniform(-0.08, 0.08)
-        inner.append(P(x * f, y * f, MB_FLOOR - rnd.uniform(-0.03, 0.12) * sc))
-    mid = P(0.0, 0.0, MB_FLOOR - rnd.uniform(0.02, 0.1) * sc)
+        inner.append(P(x * f, y * f, fl - rnd.uniform(-0.03, 0.12) * sc))
+    mid = P(0.0, 0.0, fl - rnd.uniform(0.02, 0.1) * sc)
     base = [P(x, y, d2) for x, y in o3]
     tris = []
     for i in range(N):
@@ -515,10 +521,25 @@ def marlit_poly(faces, pts, rnd):
         faces.append(th.Face(t, "mrock%d" % tone, u_hint=u))
 
 
-def marlit_prism(f, q, x0, x1, rnd):
+def _x_pieces(xa, xb, x0, seg):
+    """[xa, xb] cut at every x0 + k*seg inside it: one panel per `seg` of length."""
+    if seg is None:
+        return [(xa, xb)]
+    cuts = [xa]
+    k = 1
+    while x0 + k * seg < xb - 1e-6:
+        if x0 + k * seg > xa + 1e-6:
+            cuts.append(x0 + k * seg)
+        k += 1
+    cuts.append(xb)
+    return list(zip(cuts[:-1], cuts[1:]))
+
+
+def marlit_prism(f, q, x0, x1, rnd, seg=None):
     """A Marlit solid: the sharp convex profile q (in y, z) swept from x0 to x1, every edge chamfered
     by the block's MB_C (strips and corner triangles in the bevel's `medge`), and every flat face -
-    the swept ones and both end walls - dressed by `marlit_poly`."""
+    the swept ones and both end walls - dressed by `marlit_poly`. With `seg` every swept face is
+    one panel per `seg` metres, so a long block reads as the basic block twice over."""
     c = MB_C
     qc, kind = hm.chamfered_profile(q, c)
     wall = hm.inset(q, c)
@@ -529,12 +550,13 @@ def marlit_prism(f, q, x0, x1, rnd):
     centre = ((x0 + x1) / 2, cy, cz)
     for i in range(n):
         a, b = qc[i], qc[(i + 1) % n]
-        pts = [(xa, a[0], a[1]), (xb, a[0], a[1]), (xb, b[0], b[1]), (xa, b[0], b[1])]
-        pts = th.outward(pts, centre)
         if kind[i] == "chamfer":
-            f.append(th.Face(pts, "medge", u_hint=(1, 0, 0)))
-        else:
-            marlit_poly(f, pts, rnd)
+            pts = [(xa, a[0], a[1]), (xb, a[0], a[1]), (xb, b[0], b[1]), (xa, b[0], b[1])]
+            f.append(th.Face(th.outward(pts, centre), "medge", u_hint=(1, 0, 0)))
+            continue
+        for s0, s1 in _x_pieces(xa, xb, x0, seg):
+            pts = [(s0, a[0], a[1]), (s1, a[0], a[1]), (s1, b[0], b[1]), (s0, b[0], b[1])]
+            marlit_poly(f, th.outward(pts, centre), rnd)
     nq = len(q)
     for sx, xw, xf in ((-1.0, x0, xa), (1.0, x1, xb)):
         marlit_poly(f, th.outward([(xw, p[0], p[1]) for p in wall], centre), rnd)
@@ -575,6 +597,273 @@ def build_marlit_half_slab(pk, img):
     parts = {"marlit_half_slab_body": []}
     marlit_prism(parts["marlit_half_slab_body"], MB_HALF_YZ, -0.5, 0.5, _r.Random(14))
     return parts
+
+
+def _cham_faces(lo, hi, c):
+    """The six inset faces of `cham_box(lo, hi, c)`, keyed (axis, side), wound outward."""
+    xs = (lo[0], hi[0])
+    ys = (lo[1], hi[1])
+    zs = (lo[2], hi[2])
+    centre = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+
+    def pt(idx, pull):
+        p = [xs[idx[0]], ys[idx[1]], zs[idx[2]]]
+        for ax in range(3):
+            if ax != pull:
+                p[ax] -= (1 if idx[ax] else -1) * c
+        return tuple(p)
+    out = {}
+    for a in range(3):
+        for side in (0, 1):
+            q = []
+            for u, v in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                idx = [0, 0, 0]
+                idx[a] = side
+                idx[(a + 1) % 3], idx[(a + 2) % 3] = u, v
+                q.append(pt(idx, a))
+            out[(a, side)] = th.outward(q, centre)
+    return out
+
+
+def marlit_box(f, lo, hi, c, rnd, dress=None, seg=None):
+    """A chamfered Marlit box whose faces in `dress` ({(axis, side): "window" | "boss"}) carry the
+    emblem's octagon - a window let in, or a boss standing proud (armour) - and the rest are plain
+    plate. A dressed face is one panel per `seg` metres along X."""
+    cham_box(f, lo, hi, c, None, None, None, "medge")
+    dress = dress or {}
+    for key, pts in _cham_faces(lo, hi, c).items():
+        mode = dress.get(key)
+        if mode is None:
+            f.append(th.Face(pts, "mplate", u_hint=(1, 0, 0) if key[0] != 0 else (0, 0, 1)))
+            continue
+        if key[0] == 0 or seg is None:
+            marlit_poly(f, pts, rnd, raised=mode == "boss")
+            continue
+        xmin = min(p[0] for p in pts)
+        xmax = max(p[0] for p in pts)
+        for s0, s1 in _x_pieces(xmin, xmax, lo[0], seg):
+            sub = [((s0 if abs(p[0] - xmin) < 1e-6 else s1), p[1], p[2]) for p in pts]
+            marlit_poly(f, sub, rnd, raised=mode == "boss")
+
+
+def mbeam(f, a, b, w, h, up):
+    """A girder member from a to b, w across and h deep (h along `up`), each face toned by how it
+    turns to the painted light - the chamfered look of the frame without its triangles."""
+    d = th.norm(th.sub(b, a))
+    u = th.norm(th.cross(d, up))
+    v = th.cross(u, d)
+    centre = th.mul(th.add(a, b), 0.5)
+    L = math.sqrt(sum((b[i] - a[i]) ** 2 for i in range(3)))
+    styles = []
+    for nrm in (d, th.mul(d, -1), u, th.mul(u, -1), v, th.mul(v, -1)):
+        styles.append("mbev%d" % int(round(max(0.0, min(1.0, 0.42 + 0.55 * th.dot(nrm, LIGHT))) * 5)))
+    obox(f, centre, (d, u, v), (L / 2, w / 2, h / 2), styles)
+
+
+MB_PLATE = 0.28       # the girders' end plates and the bracket's deck: thick enough for a window
+MB_BEAM = 0.26        # longerons, flush with the cell faces
+MB_BRACE = 0.11       # the diagonal braces
+
+
+def marlit_girder(f, x0, x1, rnd):
+    """A Marlit girder along X over y -0.5..1.5, z -1.5..0.5: two end plates with the emblem's window
+    - the only faces that join - four longerons flush with the cell faces, a bulkhead ring every two
+    cells, and an X of braces on every long side of every bay. Open in between: it weighs half."""
+    y0, y1, z0, z1 = -0.5, 1.5, -1.5, 0.5
+    marlit_box(f, (x0, y0, z0), (x0 + MB_PLATE, y1, z1), 0.08, rnd, {(0, 0): "window"})
+    marlit_box(f, (x1 - MB_PLATE, y0, z0), (x1, y1, z1), 0.08, rnd, {(0, 1): "window"})
+    ia, ib = x0 + MB_PLATE, x1 - MB_PLATE
+    t = MB_BEAM
+    for yy in ((y0, y0 + t), (y1 - t, y1)):
+        for zz in ((z0, z0 + t), (z1 - t, z1)):
+            cham_box(f, (ia, yy[0], zz[0]), (ib, yy[1], zz[1]), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+    bays = int(round((x1 - x0) / 2.0))
+    hw = 0.1
+    for k in range(1, bays):
+        xm = x0 + 2.0 * k
+        for lo, hi in (((xm - hw, y0, z0 + t), (xm + hw, y0 + t, z1 - t)),
+                       ((xm - hw, y1 - t, z0 + t), (xm + hw, y1, z1 - t)),
+                       ((xm - hw, y0 + t, z0), (xm + hw, y1 - t, z0 + t)),
+                       ((xm - hw, y0 + t, z1 - t), (xm + hw, y1 - t, z1))):
+            cham_box(f, lo, hi, 0.03, "mbev2", "mbev4", "mbev1", "medge")
+    e = MB_BRACE / 2 + 0.01
+    m = t * 0.5
+    for k in range(bays):
+        bx0 = max(ia, x0 + 2.0 * k + (hw if k > 0 else 0.0))
+        bx1 = min(ib, x0 + 2.0 * (k + 1) - (hw if k < bays - 1 else 0.0))
+        for yf in (y0 + e, y1 - e):
+            mbeam(f, (bx0, yf, z0 + m), (bx1, yf, z1 - m), MB_BRACE, MB_BRACE, (0, 1, 0))
+            mbeam(f, (bx0, yf, z1 - m), (bx1, yf, z0 + m), MB_BRACE, MB_BRACE, (0, 1, 0))
+        for zf in (z0 + e, z1 - e):
+            mbeam(f, (bx0, y0 + m, zf), (bx1, y1 - m, zf), MB_BRACE, MB_BRACE, (0, 0, 1))
+            mbeam(f, (bx0, y1 - m, zf), (bx1, y0 + m, zf), MB_BRACE, MB_BRACE, (0, 0, 1))
+
+
+def _one(name, fn):
+    import random as _r
+    parts = {name + "_body": []}
+    fn(parts[name + "_body"], _r.Random(sum(map(ord, name))))
+    return parts
+
+
+def build_marlit_long(pk, img):
+    return _one("marlit_long", lambda f, r: marlit_prism(f, MB_BOX_YZ, -3.5, 0.5, r, seg=2.0))
+
+
+def build_marlit_long_half(pk, img):
+    return _one("marlit_long_half", lambda f, r: marlit_prism(f, MB_HALF_YZ, -3.5, 0.5, r, seg=2.0))
+
+
+def build_marlit_girder(pk, img):
+    return _one("marlit_girder", lambda f, r: marlit_girder(f, -1.5, 0.5, r))
+
+
+def build_marlit_brew(pk, img):
+    return _one("marlit_brew", lambda f, r: marlit_girder(f, -3.5, 0.5, r))
+
+
+def _bracket(f, rnd):
+    # 2x1x2 (x -1.5..0.5, y -0.5..0.5, z -1.5..0.5): a back plate the full height, which is how it
+    # bolts on, a deck over the rest, which is where things stand on it, and braces under the deck.
+    marlit_box(f, (-1.5, -0.5, 0.5 - MB_PLATE), (0.5, 0.5, 0.5), 0.06, rnd, {(2, 1): "window"})
+    marlit_box(f, (-1.5, 0.5 - MB_PLATE, -1.5), (0.5, 0.5, 0.5 - MB_PLATE), 0.06, rnd, {(1, 1): "window"})
+    zb = 0.5 - MB_PLATE
+    for x in (-1.5 + 0.1, -0.5, 0.5 - 0.1):
+        mbeam(f, (x, -0.5 + 0.08, zb - 0.02), (x, 0.5 - MB_PLATE - 0.02, -1.5 + 0.14), 0.14, 0.14, (1, 0, 0))
+
+
+def build_marlit_bracket(pk, img):
+    return _one("marlit_bracket", _bracket)
+
+
+MB_ARMOR = 0.42       # plate depth: a 0.12 base plus the scales standing out of it
+MB_SCALE = 0.5        # one scale per half cell of height
+
+
+def _armor(w, h, emblem=False):
+    """MARLIT ARMOUR IS SCALES, NOT A WINDOW. The first cut put the block's octagon on a slab, and a
+    plate read as a thin block. Now: a steel base on the cell's back face, horizontal scales laid
+    over it like the strata of the emblem's cliffs - each thick at its top and thin at its foot, so
+    the side view is a saw and every scale sheds a shot downward - and steel posts at the ends and
+    every two cells, with a sunset slit down each."""
+    def fn(f, rnd):
+        x0, x1 = 0.5 - w, 0.5
+        y0, y1 = -0.5, h - 0.5
+        zb = 0.5 - 0.12
+        zf = 0.5 - MB_ARMOR
+        cham_box(f, (x0, y0, zb), (x1, y1, 0.5), 0.04, "mplate", "mplate", "mplate", "medge")
+        # THE 4x2 IS ONE PLATE, NOT TWO: a post every two cells made it read as two 2x2 plates side
+        # by side. Its scales run the whole width and the faction's octagon sits on them instead.
+        posts = [x0, x1] if emblem else [x0 + 2.0 * k for k in range(int(round(w / 2.0)) + 1)]
+        pw = 0.16
+        spans = []
+        for i, px in enumerate(posts):
+            if i == 0:
+                lo, hi = x0, x0 + pw
+            elif i == len(posts) - 1:
+                lo, hi = x1 - pw, x1
+            else:
+                lo, hi = px - pw / 2, px + pw / 2
+            cham_box(f, (lo, y0, zf), (hi, y1, zb), 0.04, "mbev2", "mbev4", "mbev1", "medge")
+            slit = 0.025                       # the sunset slit down the post's face
+            cx = (lo + hi) / 2
+            q = [(cx - slit, y0 + 0.08, zf - 0.001), (cx + slit, y0 + 0.08, zf - 0.001),
+                 (cx + slit, y1 - 0.08, zf - 0.001), (cx - slit, y1 - 0.08, zf - 0.001)]
+            f.append(th.Face(th.outward(q, (cx, 0.0, 1.0)), "mglow", u_hint=(0, 1, 0)))
+            spans.append((lo, hi))
+        # rails top and bottom, the posts' height, closing the frame round the scales
+        rh = 0.12
+        cham_box(f, (x0 + pw, y1 - rh, zf), (x1 - pw, y1, zb), 0.03, "mbev2", "mbev5", "mbev1", "medge")
+        cham_box(f, (x0 + pw, y0, zf), (x1 - pw, y0 + rh, zb), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+        # SCALES LIKE SHINGLES: thin at the top, tucked under the one above, thick at the foot, so the
+        # step faces DOWN. Thick at the top put a lit shelf over every scale and the plate read as a
+        # bookcase.
+        ya0, ya1 = y0 + rh, y1 - rh
+        n = max(1, int(round((ya1 - ya0) / MB_SCALE)))
+        hs = (ya1 - ya0) / n
+        runs = [(spans[k][1], spans[k + 1][0]) for k in range(len(spans) - 1)]
+        if emblem:
+            # the boss is solid to the base: scales run up to it from either side, never under its
+            # window, whose floor lies deeper than a scale's face
+            ea = (h - 2 * rh) / 2 - 0.04
+            cxm = (x0 + x1) / 2
+            runs = [(runs[0][0], cxm - ea), (cxm + ea, runs[0][1])]
+        for sx0, sx1 in runs:
+            for j in range(n):
+                ya = ya1 - j * hs                  # the scale's top, under the foot of the one above
+                yb = ya - hs                       # its foot
+                zt, zft = zb - 0.05, zf + 0.02
+                front = [(sx0, ya, zt), (sx1, ya, zt), (sx1, yb, zft), (sx0, yb, zft)]
+                foot = [(sx0, yb, zft), (sx1, yb, zft), (sx1, yb, zb), (sx0, yb, zb)]
+                ctr = ((sx0 + sx1) / 2, (ya + yb) / 2, zb + 0.2)
+                tone = 3 + (j % 2)                 # alternate scales half a step apart
+                f.append(th.Face(th.outward(front, ctr), "mbev%d" % tone, u_hint=(1, 0, 0)))
+                f.append(th.Face(th.outward(foot, ctr), "mbev0", u_hint=(1, 0, 0)))
+        if emblem:
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            a = (h - 2 * rh) / 2 - 0.04
+            b = a - 0.42 * a
+            oc = [(b, a), (a, b), (a, -b), (b, -a), (-b, -a), (-a, -b), (-a, b), (-b, a)]
+            top = [(cx + x, cy + y, zf) for x, y in oc]
+            marlit_poly(f, th.outward(top, (cx, cy, 1.0)), rnd)
+            for i in range(8):
+                j = (i + 1) % 8
+                wall = [(cx + oc[i][0], cy + oc[i][1], zf), (cx + oc[j][0], cy + oc[j][1], zf),
+                        (cx + oc[j][0], cy + oc[j][1], zb), (cx + oc[i][0], cy + oc[i][1], zb)]
+                nn = th.norm((oc[i][0] + oc[j][0], oc[i][1] + oc[j][1], 0.0))
+                tone = int(round(max(0.0, min(1.0, 0.45 + 0.6 * th.dot(nn, LIGHT))) * 5))
+                f.append(th.Face(th.outward(wall, (cx, cy, 0.3)), "mbev%d" % tone, u_hint=th.sub(wall[1], wall[0])))
+    return fn
+
+
+def build_marlit_armor2(pk, img):
+    return _one("marlit_armor2", _armor(2.0, 1.0))
+
+
+def build_marlit_armor4(pk, img):
+    return _one("marlit_armor4", _armor(2.0, 2.0))
+
+
+def build_marlit_armor8(pk, img):
+    return _one("marlit_armor8", _armor(4.0, 2.0, emblem=True))
+
+
+MB_CAP = 0.95         # the Octo Block's corner caps: most of a cell each way
+MB_CORE = 1.38        # its core, 0.12 under the caps: the channels between them
+
+
+def _octo(f, rnd):
+    """THE OCTO BLOCK: a 3x3x3 cube round its anchor that is not the basic block scaled up. Its eight
+    corners are heavy faceted caps (the eight of its name), its core sits 0.12 under them so the
+    edges between caps read as channels, and every face carries the emblem's octagon as a boss flush
+    with the caps - window, sunset line and facets on top, a sunset glow round its foot. The octagon
+    is the space the four caps leave: its diagonals run between their inner corners."""
+    cham_box(f, (-MB_CORE,) * 3, (MB_CORE,) * 3, 0.08, "mplate", "mplate", "mplate", "medge")
+    k = 1.5 - MB_CAP
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            for sz in (-1, 1):
+                lo = tuple(min(s_ * 1.5, s_ * k) for s_ in (sx, sy, sz))
+                hi = tuple(max(s_ * 1.5, s_ * k) for s_ in (sx, sy, sz))
+                cham_box(f, lo, hi, 0.2, "mbev2", "mbev4", "mbev1", "medge")
+    a, b = 0.93, k                       # the octagon: (b, a), (a, b), ... in the face's axes
+    oct2 = [(b, a), (a, b), (a, -b), (b, -a), (-b, -a), (-a, -b), (-a, b), (-b, a)]
+    for axis in range(3):
+        for sg in (1, -1):
+            n, u, v = _face_axes(axis, sg)
+
+            def P(x, y, d, n=n, u=u, v=v):
+                return th.add(th.add(th.mul(u, x), th.mul(v, y)), th.mul(n, d))
+            top = [P(x, y, 1.5) for x, y in oct2]
+            marlit_poly(f, th.outward(top, (0, 0, 0)), rnd)
+            for i in range(8):
+                j = (i + 1) % 8
+                wall = [P(*oct2[i], 1.5), P(*oct2[j], 1.5), P(*oct2[j], MB_CORE), P(*oct2[i], MB_CORE)]
+                f.append(th.Face(th.outward(wall, (0, 0, 0)), "mglow", u_hint=th.sub(wall[1], wall[0])))
+
+
+def build_marlit_octo(pk, img):
+    return _one("marlit_octo", _octo)
 
 
 # ── the radar ───────────────────────────────────────────────────────────────────────────────────
@@ -1657,6 +1946,15 @@ BLOCKS = {
     "marlit_slab": (127, build_marlit_slab, 512),
     "marlit_half": (131, build_marlit_half, 512),
     "marlit_half_slab": (137, build_marlit_half_slab, 512),
+    "marlit_long": (139, build_marlit_long, 512),
+    "marlit_long_half": (149, build_marlit_long_half, 512),
+    "marlit_girder": (151, build_marlit_girder, 512),
+    "marlit_brew": (157, build_marlit_brew, 512),
+    "marlit_bracket": (163, build_marlit_bracket, 512),
+    "marlit_armor2": (167, build_marlit_armor2, 512),
+    "marlit_armor4": (173, build_marlit_armor4, 512),
+    "marlit_armor8": (179, build_marlit_armor8, 512),
+    "marlit_octo": (181, build_marlit_octo, 512),
     "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
@@ -1684,7 +1982,7 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"regen2": 128.0}
+DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0}
 
 
 def make(name):

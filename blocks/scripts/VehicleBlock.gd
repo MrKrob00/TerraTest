@@ -241,6 +241,16 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_SLAB:      700,
 	G.Block.MARLIT_HALF:      700,
 	G.Block.MARLIT_HALF_SLAB: 350,
+	G.Block.MARLIT_LONG:      2800,
+	G.Block.MARLIT_LONG_HALF: 1400,
+	G.Block.MARLIT_GIRDER:    700,     # half the basic block's, as its entry says
+	G.Block.MARLIT_BREW_GIRDER: 1400,
+	G.Block.MARLIT_BRACKET:   600,     # small but strong
+	# Plates by area, a little over Falsus's 480 a cell: thicker plate.
+	G.Block.MARLIT_ARMOR2:    1100,
+	G.Block.MARLIT_ARMOR4:    2200,
+	G.Block.MARLIT_ARMOR8:    4400,
+	G.Block.MARLIT_OCTO:      4700,    # 27 cells at the basic block's rate
 }
 const DEFAULT_HP := 90
 
@@ -274,6 +284,15 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_SLAB:      46.0,
 	G.Block.MARLIT_HALF:      46.0,
 	G.Block.MARLIT_HALF_SLAB: 23.0,
+	G.Block.MARLIT_LONG:      180.0,
+	G.Block.MARLIT_LONG_HALF: 92.0,
+	G.Block.MARLIT_GIRDER:    45.0,
+	G.Block.MARLIT_BREW_GIRDER: 90.0,
+	G.Block.MARLIT_BRACKET:   30.0,
+	G.Block.MARLIT_ARMOR2:    70.0,
+	G.Block.MARLIT_ARMOR4:    140.0,
+	G.Block.MARLIT_ARMOR8:    280.0,
+	G.Block.MARLIT_OCTO:      300.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
 	G.Block.RECEIVER:    12.0,

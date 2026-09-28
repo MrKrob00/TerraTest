@@ -1858,6 +1858,26 @@ project: read it before claiming how anything works.
   (`tech_ui._tech_layout(f)`, a switch above the tree, the header showing that page's grade): the
   layout used to keep "the last block without a parent" as THE root, and a second root would have
   replaced the whole Falsus tree without a word. The codex stacks every tree.
+  THE REST OF THE HULL (the player's list, TerraTech's GeoCorp set): Long Block and Long Half Block
+  (4x2x2, `marlit_prism(seg=2.0)`, so a long face shows two panels - the basic block twice over),
+  Girder Block (2x2x2) and Brew Girder (4x2x2): two windowed end plates, the only faces that join
+  (`connect_faces` 12), four longerons, a bulkhead ring every two cells and braces - half the basic
+  block's weight and hit points, as its entry says; Girder Bracket (2x1x2): a back plate and a deck
+  over braces, joining by its back and top (18); armour plates 2x1, 2x2 and 4x2, 0.42 deep on the
+  back face; and the Octo Block (3x3x3 round its anchor). TWO CUTS WERE TURNED DOWN AND ARE RULES
+  NOW. The octo was an octagonal prism - "just the block made bigger"; it is a cube with eight
+  faceted corner caps, a core 0.12 under them and the faction's octagon as a boss on every face.
+  The armour carried the block's window and "only repeated the block"; it is SCALES laid like
+  shingles (thin at the top under the scale above, the step facing DOWN - thick at the top read as
+  a bookcase) between posts with a sunset slit, and the 4x2 has no middle post but the octagon on
+  its scales, or it read as two 2x2 plates side by side.
+- **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
+  trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
+  a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver
+  on an anchored base takes what lies in its zone and what any machine's collector carries. Each
+  poll the arc uplinks what the receiver took (a glitch in the faction's colours) and counts it; 40
+  close the quest and `Q._on_completed` grants the licence. Measured on the proving ground: the
+  point at 274 m, stage 2 on arrival, 40 ore handed over in 37 s, the root block researched.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a

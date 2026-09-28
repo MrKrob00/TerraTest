@@ -190,6 +190,22 @@ func _seed_demo() -> void:
 		 "hint": "Same order as before — the towers hold the shield, the shield holds the site."},
 	])
 
+	# ── BIG YELLOW: THE SECOND FACTION'S LICENCE ───────────────────────────────
+	# TerraTech's Big Yellow (docs/STORY_ROADMAP.md, No 12), waiting until now for a second faction.
+	# Marlit puts a collection point down; what the player hands over there buys its licence
+	# (G.FACTION_LICENCE, granted in _on_completed). It opens after Hold the Line: by then the player
+	# has a collector, a line and a reason to have ore to spare.
+	add_quest("arc_yellow", "Big Yellow", "", Type.STORY, 1, 12, "", 500, 80, 22)
+	add_stages("arc_yellow", [
+		{"desc": "Reach the Marlit collection point",
+		 "event": "quest_yellow_1", "goal": 1,
+		 "hint": "Marlit wants to do business. They build big and they build heavy, and they have set a collection point down out in the field."},
+		{"desc": "Hand over 40 resources",
+		 "event": "quest_yellow_2", "goal": 40,
+		 "hint": "Bring a collector with ore in it up to the point's receiver, or drop ore in its zone. Marlit pays in a licence, not in money."},
+	])
+	requires("arc_yellow", ["arc_hold"])
+
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])
 	requires("arc_hold", ["arc_solvent"])
@@ -345,11 +361,14 @@ func skip_quest(id: String) -> void:
 
 # Взят ли грейд, нужный квесту (гейт цепочек по лицензии).
 func _grade_ok(q: Dictionary) -> bool:
-	var need := int(q.get("req_grade", 1))
-	if need <= 1:
-		return true
 	var g = get_node_or_null("/root/G")
-	return g == null or g.grade("start") >= need
+	if g == null:
+		return true
+	# ANOTHER FACTION'S QUEST WAITS FOR ITS LICENCE, and its grade is that faction's grade.
+	if not g.faction_open(faction_of(q)):
+		return false
+	var need := int(q.get("req_grade", 1))
+	return need <= 1 or g.grade(faction_of(q)) >= need
 
 # Игра сообщает о событии — двигаем ВСЕ активные задания с таким event (и сюжет, и дейлики):
 #   Q.report("ore_mined", 1) / Q.report("enemy_killed", 1) / Q.report("money_earned", 5)
@@ -528,6 +547,12 @@ func _on_completed(q: Dictionary) -> void:
 		g.add_research_points(roundi(float(q.get("reward_rp", 0)) * mult))
 	# Награда БЛОКАМИ: блоки глючно кружат вокруг машины игрока, затем падают в мир (не молча в
 	# инвентарь). Ставим на активную машину игрока.
+	# A FACTION'S LICENCE IS A QUEST'S REWARD (G.FACTION_LICENCE): its root blocks arrive researched.
+	if g:
+		for f in g.FACTION_LICENCE:
+			if String(g.FACTION_LICENCE[f]) == String(q["id"]):
+				g.grant_licence(String(f))
+				_say("System", tr("%s licence granted. Its blocks are in the tech tree.") % tr(String((g.FACTIONS[f] as Dictionary)["name"])))
 	var rblock: int = int(q.get("reward_block", 0))
 	if rblock > 0:
 		var cc = get_tree().get_first_node_in_group("camera_controller")
@@ -565,7 +590,8 @@ func _on_grade_up(faction: String, new_grade: int) -> void:
 	# «Можно исследовать», не «в магазине»: до исследования в древе блок в магазине под замком.
 	var extra_line := ""
 	for q in quests:
-		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"]:
+		if q["type"] == Type.STORY and int(q.get("req_grade", 1)) == new_grade and not q["done"] \
+				and faction_of(q) == faction:
 			extra_line = tr(" And new quests have arrived.")
 			break
 	_say("Mechanic", tr("License — grade %d! You can now research: %s.%s") % [new_grade, what, extra_line])

@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://cmarlitarm22x"]
+
+[ext_resource type="Script" uid="uid://du14au5yglscl" path="res://blocks/scripts/block.gd" id="1_scr"]
+
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_armor4_body.tres" id="2_mesh"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 0.42)
+
+[node name="marlit_armor4" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+block = 59
+connect_faces = 2
+cells_center = Vector3(-0.5, 0.5, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, 0.29)
+shape = SubResource("Shape_1")
+
+[node name="Block" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_mesh")
