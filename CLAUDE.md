@@ -1708,19 +1708,20 @@ project: read it before claiming how anything works.
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
   40 energy; fed by a belt from east, west and north alike.
 - **THE RECEIVER AND THE COLLECTOR KEEP THE PLAYER'S SHAPES, REDRAWN TO THE STYLE** (`art/emitter_models.py`
-  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is HALF A SAUCER, CUT ALONG
-  THE FACE IT HANDS CARGO OUT OF (front, -Z) and set under the belts' deck, so it reads as a plate
-  that runs on under the conveyor - which is what the player's old model did, rounded at the back
-  and square at the output side. It is exactly the conveyor's width at the cut, laid out like it:
-  its blue ledge spans the rails (0.38..0.50 from the axis), its dark dish the belt strip. It floats
-  and bobs `BOB_AMP` while on a machine (`Receiver.gd`, `Block` moving). Rejected on the way: a
-  plate on a post, a platform block, whole round saucers (on the floor, then with a chute). Beam and
-  cargo stack sit over the dish, and it joins by the sides and the bottom only (`connect_faces`
-  47): a block on top would hang in the air. The collector is still a cube with a round bowl in
+  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is THE CONVEYOR'S HEAD - the
+  player's old model seen from above, a square plate with its BACK corners cut and its FRONT (output,
+  -Z) edge square, a regular blue octagon on a pad in the middle - drawn in the conveyors' own parts:
+  its deck at exactly the belt's heights (`BELT_TOP`), exactly the belt's width, the belt's blue rails
+  running on round its sides and back, the belt's ribbed floor with chevrons out to the front, and a
+  dark octagonal emitter under the deck for body. It does NOT bob: a moving part cannot sit flush
+  with a static belt. Rejected on the way, in order: a plate on a post, a platform block, round
+  saucers, a half-saucer - thin, lower than the belt, and rounder than the plate the player meant.
+  Beam and cargo stack stand over the pad; it joins by the sides and the bottom only (`connect_faces`
+  47), since a block on top would hang over a deck this low. The collector is still a cube with a round bowl in
   its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the
   held item sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
   top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
-  98 and 139 inside it. Range rings and the collector's script are untouched.
+  114 and 139 inside it. Range rings and the collector's script are untouched.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

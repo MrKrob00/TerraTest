@@ -122,21 +122,23 @@ The harness is not kept in the repo; this describes what it does.
 ## Redrawn to the rules
 
 The collector kept the shape the player had made for it: a cube with a bowl. The receiver took
-four tries:
+five tries, and every miss was the same mistake: inventing a shape instead of reading the one the
+player had drawn.
 
 - **A plate on a post.** It hung at the top of its cell.
 - **A platform block.** It stood on the floor, but it was not a saucer.
-- **Whole round saucers.** First on the floor, then with a chute.
+- **Two round saucers.** One on the floor, one with a chute.
+- **A half-saucer.** Thin, lower than the belt, and far rounder than the plate the player meant.
 
-What the player wanted was already in their old model. It was rounded at the back and square at
-the side it hands cargo out of, so it pointed at its conveyor. It is now HALF a saucer, cut along
-that face, set under the belts' deck and exactly the conveyor's width, so it runs on under the
-belt. The conveyors lost their column and float in the middle of the cell with it.
+The old model seen from above answers it: a square plate with its back corners cut, its output
+edge square, a blue octagon in the middle. The receiver is now exactly that, drawn in the
+conveyors' own parts: the belt's height, width, rails and ribbed floor. It reads as the conveyor's
+head, not as a gadget standing next to it.
 
-- **Colour.** Dark metal, a GSO-blue ledge or lid, and two orange ticks on the saucer's rim.
+- **Colour.** Dark metal, the conveyor's blue rails and deck, a GSO-blue lid on the collector.
 - **Emblem.** A sign plate on the collector's grille: a down-pointing triangle, because things go
   in at the top and stay.
-- **Size.** Both now fit their cell: 98 and 139 triangles, down from 450 and 882 untextured.
+- **Size.** Both now fit their cell: 114 and 139 triangles, down from 450 and 882 untextured.
 
 A sign smaller than about five texels breaks up under mip-mapping at a grazing angle. The first
 three-row triangle read as a bird from 35°, while straight on it was clean. Draw emblems at least

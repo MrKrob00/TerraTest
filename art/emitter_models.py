@@ -559,14 +559,13 @@ def build_generator(pk, img):
 
 # ── the receiver and the collector ──────────────────────────────────────────────────────────────
 # The player's own shapes redrawn to docs/ART_STYLE.md. The RECEIVER - the chain's entry, pulling
-# ground materials and collectors' cargo in through its beam - is HALF A SAUCER, cut along the face
-# it hands cargo out of and set under the belts' deck, as if it ran on under the conveyor. The COLLECTOR is a cube with a round bowl in its top,
+# ground materials and collectors' cargo in through its beam - is the CONVEYOR'S HEAD: the old
+# plate's outline at the belts' own height, their rails run on round it. The COLLECTOR is a cube with a round bowl in its top,
 # where the one item it shows sits (collector.gd HOLD_Y); now a dark grilled cube, a blue lid, and a
 # dark bowl with a boss in the middle. Both used to stand out of their cell (the plate 9 cm over
 # the top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 plain triangles.
-RECV_SAUCER = (-0.36, -0.14, -0.10, -0.26)   # underside tip, rim, lip, pad: under the belts' deck
-RECV_PAD_R = 0.14
-RECV_STRETCH = 1.84              # the half is 0.50 across and 0.92 deep, so it fills the cell
+RECV_CUT = 0.22                  # how much of each BACK corner is cut off (the front stays square)
+RECV_PAD_Z = 0.04               # the pad sits a little back, clear of the chevrons
 COL_BOWL_R = 0.36                # the bowl's mouth
 
 
@@ -631,78 +630,80 @@ def lid_ring(pk, img, faces, outer, y, R, n, lip=True):
         faces.append(f)
 
 
-def lathe_half(pk, img, faces, profile, ramp, sides, cz, sz, ring_ramps=None, marks=None):
-    """The back HALF of lathe_y's surface (+Z side of the axis), its axis on the plane z = cz and
-    stretched sz times along +Z; every facet painted flat in its own tone, like lathe_y."""
-    cell = 3
-    rings = len(profile) - 1
-    x0, y0, w, h = pk.take(sides * cell, rings * cell)
-    ang = [i * math.pi / sides for i in range(sides + 1)]
-    P = lambda r, y, i: (r * math.cos(ang[i]), y, cz + sz * r * math.sin(ang[i]))
-    cells = {}
-    for k in range(rings):
-        (r0, ya), (r1, yb) = profile[k], profile[k + 1]
-        rr = (ring_ramps or {}).get(k, ramp)
-        for i in range(sides):
-            q = [P(r0, ya, i), P(r0, ya, i + 1), P(r1, yb, i + 1), P(r1, yb, i)]
-            u0, v0 = x0 + i * cell, y0 + (rings - 1 - k) * cell
-            uv = [(u0, v0 + cell), (u0 + cell, v0 + cell), (u0 + cell, v0), (u0, v0)]
-            am = (ang[i] + ang[i + 1]) / 2
-            dr, dy = r1 - r0, yb - ya
-            want = (dy * math.cos(am), -dr, dy * math.sin(am) / sz)
-            if r0 == 0.0:                          # a pole: one real triangle
-                q, uv = q[1:], uv[1:]
-            elif r1 == 0.0:
-                q, uv = q[:3], uv[:3]
-            if th.dot(th.newell(q), want) < 0:
-                q, uv = list(reversed(q)), list(reversed(uv))
-            f = th.Face(q, None)
-            f.uv = uv
-            faces.append(f)
-            cells[(i, k)] = (marks or {}).get((i, k)) or ramp_colour(rr, th.norm(want))
-    for yy in range(-th.PAD, h + th.PAD):
-        for xx in range(-th.PAD, w + th.PAD):
-            i = min(max(xx // cell, 0), sides - 1)
-            k = rings - 1 - min(max(yy // cell, 0), rings - 1)
-            img.putpixel((x0 + xx, y0 + yy), th.jitter(cells[(i, k)], 1))
+def extrude_xz(faces, poly, y0, y1, side, top, bottom, u_top=(0, 0, -1)):
+    """A convex polygon (x, z) extruded from y0 up to y1; a style of None leaves that face out."""
+    cx = sum(p[0] for p in poly) / len(poly)
+    cz = sum(p[1] for p in poly) / len(poly)
+    centre = (cx, (y0 + y1) / 2, cz)
+    n = len(poly)
+    for i in range(n):
+        (xa, za), (xb, zb) = poly[i], poly[(i + 1) % n]
+        if side is None:
+            break
+        q = [(xa, y0, za), (xb, y0, zb), (xb, y1, zb), (xa, y1, za)]
+        q = th.outward(q, centre)
+        nn = th.newell(q)
+        faces.append(th.Face(q, side, u_hint=th.cross((0, 1, 0), th.norm((nn[0], 0.0, nn[2])))))
+    if top:
+        faces.append(th.Face(th.outward([(x, y1, z) for x, z in poly], centre), top, u_hint=u_top))
+    if bottom:
+        faces.append(th.Face(th.outward([(x, y0, z) for x, z in poly], centre), bottom, u_hint=u_top))
 
 
 def build_receiver(pk, img):
-    """HALF A SAUCER, CUT ALONG THE FACE IT HANDS CARGO OUT OF (front, -Z) and set under the belts'
-    deck, so it reads as a plate that runs on under the conveyor. The player's old model already did
-    this - rounded at the back, square at the output side; the whole round saucers were wrong.
-    Stretched along the cell so the half fills it. No support: Receiver.gd bobs it while it works."""
+    """THE CONVEYOR'S HEAD: the player's old receiver, seen from above - a square plate with its
+    BACK corners cut and its FRONT edge square, a blue octagon on a pad in the middle - drawn in the
+    conveyors' own parts. Its deck stands at exactly the belt's heights (BELT_TOP), it is exactly
+    the belt's width, and the belt's blue rails run on round its sides and back; the floor is the
+    belt's ribbed rubber with two chevrons out to the front (FactoryBlock: front = -Z). Under it a
+    dark octagonal emitter gives it body and says where the beam comes from. Rejected on the way: a
+    plate on a post, a platform block, round saucers and a half-saucer - too thin, lower than the
+    belt, and rounder than the plate the player meant."""
     parts = {"receiver_body": []}
     body = parts["receiver_body"]
-    b, rim, lip, pad_y = RECV_SAUCER
-    # AS WIDE AS THE CONVEYOR at the cut, and laid out like it: the blue ledge spans what the belt's
-    # rails span (0.38..0.50 from the axis), the dark dish what its belt strip spans (0.36).
-    R, cz, sz = 0.5, -0.5, RECV_STRETCH
-    ticks = {(i, 1): th.ORANGE for i in (1, 6)}
-    dark = METAL_RAMP[:4]
-    prof = [(0.0, b), (R, rim), (0.47, lip), (0.37, lip - 0.01), (0.35, lip - 0.06),
-            (RECV_PAD_R, pad_y), (0.0, pad_y)]
-    lathe_half(pk, img, body, prof, METAL_RAMP, 8, cz, sz, marks=ticks,
-               ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP, 3: dark, 4: dark, 5: [th.METAL[1]]})
-    # The cut: the section closed flat on the front face, both halves, in trapezoids between the
-    # profile's own radii (top surface = the profile from the rim inward, bottom = the underside).
-    tops = sorted(prof[1:], key=lambda p: p[0])
-
-    def at(pts, r):
-        for (ra, ya), (rb, yb) in zip(pts, pts[1:]):
-            if ra <= r <= rb:
-                return ya if rb == ra else ya + (r - ra) / (rb - ra) * (yb - ya)
-        return pts[-1][1]
-    br = sorted(set(p[0] for p in tops))
-    for sgn in (-1, 1):
-        for r0, r1 in zip(br, br[1:]):
-            y0b, y1b = b + r0 / R * (rim - b), b + r1 / R * (rim - b)
-            q = [(sgn * r0, y0b, cz), (sgn * r1, y1b, cz), (sgn * r1, at(tops, r1), cz),
-                 (sgn * r0, at(tops, r0), cz)]
-            if abs(q[1][1] - q[2][1]) < 1e-6:
-                q = [q[0], q[1], q[3]]
-            body.append(th.Face(th.outward(q, (sgn * (r0 + r1) / 2, (y0b + at(tops, r0)) / 2, cz + 1.0)),
-                                "dark", u_hint=(1, 0, 0)))
+    deck_lo, deck_hi, rail_hi = BELT_TOP - 0.14, BELT_TOP, BELT_TOP + 0.07
+    cb, rw = RECV_CUT, 0.12                  # back-corner cut; rail width = the belt's rails
+    outline = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5 - cb), (0.5 - cb, 0.5), (-0.5 + cb, 0.5),
+               (-0.5, 0.5 - cb)]
+    extrude_xz(body, outline, deck_lo, deck_hi, "blue", "recv_floor", "dark")
+    # The rails, round the sides and the back, in convex pieces (each between the outline and its
+    # inset by the rail width). The inset of a 45-degree cut moves along its normal.
+    k = rw * (math.sqrt(2) - 1)              # how far a mitred corner of the inset line moves
+    xo, xi = 0.5, 0.5 - rw
+    zb_o, zb_i = 0.5, 0.5 - rw
+    for s in (-1, 1):
+        side_ = [(s * xo, -0.5), (s * xo, 0.5 - cb), (s * xi, 0.5 - cb - k), (s * xi, -0.5)]
+        cut_ = [(s * xo, 0.5 - cb), (s * (0.5 - cb), zb_o), (s * (0.5 - cb - k), zb_i),
+                (s * xi, 0.5 - cb - k)]
+        for piece in (side_, cut_):
+            extrude_xz(body, piece, deck_hi - 0.02, rail_hi, "blue", "blue", None)
+    back_ = [(-(0.5 - cb), zb_o), (0.5 - cb, zb_o), (0.5 - cb - k, zb_i), (-(0.5 - cb - k), zb_i)]
+    extrude_xz(body, back_, deck_hi - 0.02, rail_hi, "blue", "blue", None)
+    # The pad, the old model's: dark, a blue octagon on it.
+    pad = []
+    ph = 0.26                                # a REGULAR octagon, as the old model's ring was
+    th.prism(pad, -ph, ph, RECV_PAD_Z - ph, RECV_PAD_Z + ph, deck_hi + 0.03, deck_hi,
+             ph * (2 - math.sqrt(2)), side="dark", cap_front=None, cap_back="recv_pad")
+    for f in pad:
+        if f.style == "bevel":
+            f.style = "dark_edge"
+    # prism builds along Z with y as its second axis; turn it up: (x, y, z) -> (x, z, -y) then fix
+    for f in pad:
+        f.pts = [(p[0], p[2], p[1]) for p in f.pts]
+        f.pts = th.outward(f.pts, (0.0, deck_hi + 0.015, RECV_PAD_Z))
+        if f.u_hint:
+            f.u_hint = (f.u_hint[0], f.u_hint[2], f.u_hint[1])
+    body += pad
+    # The emitter under the deck: a dark octagonal frustum, its face down a blue ring.
+    lo, hi = octo(0.18, 0.05, deck_lo - 0.16), octo(0.32, 0.09, deck_lo)
+    centre = (0.0, deck_lo - 0.08, 0.0)
+    for i in range(8):
+        j = (i + 1) % 8
+        q = th.outward([lo[i], lo[j], hi[j], hi[i]], centre)
+        nn = th.newell(q)
+        body.append(th.Face(q, "dark_edge" if i % 2 else "dark",
+                            u_hint=th.cross((0, 1, 0), th.norm((nn[0], 0.0, nn[2])))))
+    body.append(th.Face(th.outward(lo, (0.0, deck_lo, 0.0)), "recv_pad", u_hint=(1, 0, 0)))
     return parts
 
 
