@@ -60,7 +60,8 @@ func _ready() -> void:
 ## 19: the supports in our palette. 20: their deck blue down to the band.
 ## 21: armour plates x2 / x4 / x9 got models. 22: each one slab with detail.
 ## 23: the x2's slab sized to its one-cell height.
-const RECIPE := 37
+## 38: the storage got a model; the supports' decks plain (the fixed one bolted at the corners).
+const RECIPE := 38
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
