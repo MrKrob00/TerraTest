@@ -805,8 +805,9 @@ def _armor(w, h, chevron=False):
                     tp = [(xe, te, zt), (xm, te - mdip, zt)]
                     ft = [(xe, fe, zft), (xm, fe - mdip, zft)]
                     # UNSHADED BLOCKS CAST NO SHADOW, so a scale is told from the next by paint: a
-                    # lit lip along its foot, rows alternating a step, a chevron's halves a step apart
-                    tone = 2 + (j % 2) + (hi_ if chevron else 0)
+                    # lit lip along its foot and rows alternating a step. The chevron's halves are
+                    # ONE tone: a step apart, one half read as unfinished beside the other.
+                    tone = 2 + (j % 2)
                     ls = [along(ft[0], tp[0], lip), along(ft[1], tp[1], lip)]
                     face = [tp[0], tp[1], ls[1], ls[0]]
                     lipq = [ls[0], ls[1], ft[1], ft[0]]
@@ -815,18 +816,26 @@ def _armor(w, h, chevron=False):
                     foot = [ft[0], ft[1], (ft[1][0], ft[1][1], zb), (ft[0][0], ft[0][1], zb)]
                     f.append(th.Face(th.outward(foot, ctr), "mbev0", u_hint=th.sub(tp[1], tp[0])))
             if chevron:
-                # the frame follows the chevron: a V notch under the top rail, and the bottom rail
-                # rising to the posts under the last scale's ends
-                # the notch is the top rail's own V, on the rail's face (a dark notch behind it
-                # read as a hole), with its underside facing down onto the first scale
-                v = [(sx0, ya1, zf), (sx1, ya1, zf), (cx, ya1 - dip, zf)]
-                f.append(th.Face(th.outward(v, (cx, ya1, 1.0)), "mbev2", u_hint=(1, 0, 0)))
+                # WHAT THE CHEVRON LEAVES BY THE RAILS IS MORE OF THE SAME SCALES, CUT OFF BY THE RAIL:
+                # a plate of the frame's own under the top rail and wedges over the bottom one were
+                # "something new" and read as patches. Above row 0 is row -1 with its top cut by the
+                # top rail (a triangle, thickest at the middle); below the last row is row n with its
+                # foot cut by the bottom rail (a wedge at each end).
+                sc = min(dip / hs, 1.0)
+                sr = max(0.0, 1.0 - dip / hs)
                 for xe in (sx0, sx1):
-                    und = [(xe, ya1, zf), (cx, ya1 - dip, zf), (cx, ya1 - dip, zt), (xe, ya1, zt)]
-                    f.append(th.Face(th.outward(und, (cx, ya1, 0.3)), "mbev0", u_hint=(1, 0, 0)))
-                for xe in (sx0, sx1):
-                    wedge = [(xe, ya0, zft), (xe, ya0 + dip, zft), (cx, ya0, zft)]
-                    f.append(th.Face(th.outward(wedge, (cx, ya0, 1.0)), "mbev3", u_hint=(1, 0, 0)))
+                    ctr = (cx, ya1, zb + 0.2)
+                    a_ = (xe, ya1, zft)
+                    b_ = (cx, ya1 - dip, zft)
+                    c_ = (cx, ya1, zft + (zt - zft) * sc)
+                    lip_c = (cx, ya1 - dip + lip * hs, zft + (zt - zft) * lip)
+                    f.append(th.Face(th.outward([a_, lip_c, c_], ctr), "mbev3", u_hint=th.sub(b_, a_)))
+                    f.append(th.Face(th.outward([a_, b_, lip_c], ctr), "mbev5", u_hint=th.sub(b_, a_)))
+                    step = [a_, b_, (cx, ya1 - dip, zb), (xe, ya1, zb)]
+                    f.append(th.Face(th.outward(step, ctr), "mbev0", u_hint=th.sub(b_, a_)))
+                    ctr2 = (cx, ya0, zb + 0.2)
+                    wedge = [(xe, ya0 + dip, zt), (cx, ya0, zt), (xe, ya0, zft + (zt - zft) * sr)]
+                    f.append(th.Face(th.outward(wedge, ctr2), "mbev%d" % (2 + (n % 2)), u_hint=(1, 0, 0)))
     return fn
 
 
