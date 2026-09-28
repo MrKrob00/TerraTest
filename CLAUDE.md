@@ -470,8 +470,18 @@ project: read it before claiming how anything works.
 
 ### Weapons
 
-- Turrets aim themselves: own detection sphere synced to `weapon_range`, nearest target, lead with
-  drop compensation. Player taps play no part.
+- Turrets aim themselves: targets within `weapon_range` found by `_scan_targets`, nearest target,
+  lead with drop compensation. Player taps play no part.
+- **A GUN FINDS ITS TARGETS BY DISTANCE, NOT BY A PHYSICS SENSOR** (`WeaponBlock._scan_targets`,
+  over the group `MachineBody.MACHINES`, run at every retarget, i.e. only while firing). Each gun
+  used to hold a monitoring `Area3D` `weapon_range` across (60 m for the gun), and every block of
+  every machine inside it is a body that moves each tick, so Jolt re-checked every pair every tick
+  whether anyone was shooting or not. That was the "15 fps next to one enemy, 30 at the same build
+  firing alone" report. Measured, a quiet scene with ten guns and three enemies close: 29-32 ms a
+  tick with the sensors, 11-12 with the scan; enemies and player still acquire and fire. The
+  `Area_Range` node stays in the scenes (its radius still follows `weapon_range`), switched off in
+  `_ready`. A machine that never goes through `init_machine_physics` is not in the group and is
+  never a target.
 - The target is a **block** (layer mask 2). A block on a machine has zero `linear_velocity`, so
   target speed is measured between physics ticks.
 - Target scoring weighs proximity above the cabin (`SC_CABIN`) and adds a per-gun constant taste
@@ -1974,10 +1984,8 @@ project: read it before claiming how anything works.
   / 129 before a change and 134 / 235 / 186 after. A single pair would have "proved" either a 36%
   regression or a 55% improvement depending on which two samples you took. Three runs a side, and
   read the band, not the number.
-- A TURRET'S TARGET LIST IS PRUNED WHERE IT IS READ (`WeaponBlock._update_current_target`):
-  `body_exited` never fires for a destroyed block — the body vanishes rather than leaves — so
-  without that the list grew to everything that ever entered the sphere, and scoring walked those
-  dead references every tick. Scoring itself runs at `RETARGET_PERIOD`, not per frame (`SC_STICKY`
+- A TURRET'S TARGET LIST IS REBUILT BY THE SCAN AT EVERY RETARGET and still pruned where it is
+  read (`WeaponBlock._update_current_target`): a block can be freed between two scans. Scoring itself runs at `RETARGET_PERIOD`, not per frame (`SC_STICKY`
   holds the choice anyway), and a turret that has reached neutral stops ticking until it fires
   again.
 - **RETARGETING WAS TWO THIRDS OF THE WEAPONS LINE.** Measured inside the weapon tick in a
@@ -1985,8 +1993,8 @@ project: read it before claiming how anything works.
   tracer ray 0.6. `_targets` holds every hostile block in the sixty-metre sphere — hundreds in such a
   fight — and every retarget asked each one for its type by name (`get("block")`), its class and a
   taste hash. Those never change while the block stays in range, so they are worked out once when it
-  enters (`_base_score`) and kept in `_target_base`, index for index with `_targets` — the add, the
-  remove, the prune and the scoring loop all move both. Checked side by side with the old scoring in
+  first shows up (`_base_score`) and kept in `_target_base`, index for index with `_targets` — the
+  scan carries a known block's score over, the prune and the scoring loop move both. Checked side by side with the old scoring in
   that fight: the same choice on 442 of 442 retargets.
 - Anything behind the camera and past the near bubble is disabled; the near bubble stays active in
   every direction. Radar reads vein data, not what is drawn.
