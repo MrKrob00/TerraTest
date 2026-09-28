@@ -1205,17 +1205,16 @@ def build_packer(pk, img):
 #   the + nub up to the top face, a blue top band. Four charge rings sit in GROOVES round the body
 #   (battery_seg, one mesh on nodes Seg0..3) and light by the block's own charge (battery.gd); a dark
 #   ring leaves its groove showing, so an empty battery still reads as one.
-# WIRELESS CHARGER - TerraTech's GSO charger's two cyan coils on a post, mounted by its back face.
+# WIRELESS CHARGER - TerraTech's GSO charger's two cyan coils, held by a shell on the back face.
 BAT_SEG_Y = (-0.32, -0.20, -0.08, 0.04)   # charge ring centres, bottom up (battery.tscn Seg0..3)
 BAT_SEG_HH = 0.04
 BAT_GROOVE = 0.46                # the grooves' floor; the rings stand in them to BAT_RING
 BAT_RING = 0.49
 GREEN_RAMP = [(34, 104, 62), (52, 146, 86), (80, 205, 120), (120, 230, 150), (170, 248, 192)]
 SLOT_RAMP = [(20, 30, 25), (26, 40, 33), (34, 50, 42), (44, 62, 52), (56, 76, 64)]
-WL_COIL = (0.33, 0.07)           # a coil: radius and tube - clear of the mount plate behind it
-WL_COILS_Y = (-0.22, -0.05)      # the two coils' heights; the arm passes over the upper one
-WL_ARM_Y = (0.12, 0.26)          # the arm from the plate to the post's head
-WL_PLATE_H, WL_PLATE_T = 0.32, 0.07   # the mount plate: half-size, thickness
+WL_COIL = (0.415, 0.08)          # a coil: radius and tube - its outside reaches the side faces
+WL_COILS_Y = (-0.1, 0.1)         # the two coils' heights, one over the other round the middle
+WL_CLAMP = math.radians(30)      # the shell's arc: a twelfth of the coil's round
 CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
 
 
@@ -1246,38 +1245,25 @@ def build_battery(pk, img):
 
 
 def build_wireless(pk, img):
-    """TerraTech's GSO Wireless Charger, the player's cut of it: the two thick glowing cyan coils and
-    NOTHING round them but what holds them - a dark post through their middle with a cyan lens on top,
-    three spokes each, and an arm back to a blue MOUNT PLATE on the back face, the one face it joins
-    by (`connect_faces` FACE_BACK, like a wheel; TerraTech's joins by one side too). A cable runs from
-    the plate under the coils to the post's foot. The coils turn while energy flows
-    (wireless_charger.gd `Ring`); the beam leaves the coils' middle (`EMIT`)."""
+    """TerraTech's GSO Wireless Charger, the player's cut of it: NOTHING BUT THE TWO COILS - thick
+    glowing cyan rings as wide as the cell, so they reach its side faces - and, on the back, a SHELL
+    wrapped round both over a twelfth of their round (`WL_CLAMP`), standing flush on the back face.
+    That shell is the mount: the block joins by its back only (`connect_faces` FACE_BACK, like a
+    wheel; TerraTech's joins by one side too). No platform, no post, no dome - each was tried and
+    turned down. The coils turn through the shell while energy flows (wireless_charger.gd `Ring`);
+    the beam leaves their middle (`EMIT`)."""
     parts = {"wireless_body": [], "wireless_ring": []}
     b, ring = parts["wireless_body"], parts["wireless_ring"]
     R, r = WL_COIL
-    y_lo, y_hi = WL_COILS_Y
-    # the mount plate on the back face, and the arm from it over the coils to the post's head
-    ph = WL_PLATE_H
-    th.box(b, (-ph, -ph, 0.5 - WL_PLATE_T), (ph, ph, 0.5), "blue")
-    th.box(b, (-0.07, WL_ARM_Y[0], 0.08), (0.07, WL_ARM_Y[1], 0.5 - WL_PLATE_T), "dark", skip=("+z",))
-    # the post through the coils, and the cyan lens it carries on top
-    lathe_y(pk, img, b, [(0.0, -0.40), (0.10, -0.40), (0.11, -0.37), (0.11, WL_ARM_Y[1]),
-                         (0.09, WL_ARM_Y[1] + 0.02)], METAL_RAMP, sides=12)
-    lathe_y(pk, img, b, [(0.09, WL_ARM_Y[1] + 0.02), (0.07, WL_ARM_Y[1] + 0.06), (0.0, WL_ARM_Y[1] + 0.07)],
-            CYAN_RAMP, sides=12)
-    # the cable: out of the plate, down, under the lower coil to the post's foot
-    tube(b, [(0.12, -0.24, 0.5 - WL_PLATE_T), (0.12, -0.37, 0.36), (0.07, -0.39, 0.12)], [0.03] * 3,
-         ["m", "m"], sides=6)
-    # the two coils: cyan, a dark seam every few segments so their turn is seen, three spokes each
-    n = 18
-    for yc in (y_lo, y_hi):
+    # the shell: a chamfered block round both coils on the back, its back face on the cell's
+    half = R * math.sin(WL_CLAMP / 2) + 0.02
+    top = max(abs(y) for y in WL_COILS_Y) + r + 0.035
+    cham_box(b, (-half, -top, R - r - 0.035), (half, top, 0.5), 0.03, "wl_shell", "blue", "blue", "bevel")
+    # the two coils: cyan, a dark seam every few segments so their turn is seen
+    n = 24
+    for yc in WL_COILS_Y:
         path = [(R * math.cos(a), yc, R * math.sin(a)) for a in (2 * math.pi * k / n for k in range(n + 1))]
         tube(ring, path, [r] * (n + 1), ["m" if k % 6 == 0 else "c" for k in range(n)], sides=6)
-        for k in range(3):
-            a = 2 * math.pi * k / 3 + math.pi / 6
-            ca, sa = math.cos(a), math.sin(a)
-            tube(ring, [(ca * 0.10, yc, sa * 0.10), (ca * (R - r * 0.5), yc, sa * (R - r * 0.5))],
-                 [0.018, 0.018], ["m"], sides=4)
     return parts
 
 

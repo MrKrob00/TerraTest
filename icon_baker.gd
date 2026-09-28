@@ -72,7 +72,8 @@ func _ready() -> void:
 ## 47: the wireless charger is a Tesla coil on a GSO base.
 ## 48: the wireless charger after TerraTech's: a dome with a red band and two cyan coils.
 ## 49: the charger is its coils on a post, mounted by a plate on its back.
-const RECIPE := 49
+## 50: the charger is its two coils alone, held by a shell on the back face.
+const RECIPE := 50
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

@@ -1794,14 +1794,15 @@ project: read it before claiming how anything works.
   save and an enemy's full start write the field straight in. Measured on the real driver through
   the machine batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. Not `solid_cell` - its corners are open.
   THE CHARGER IS TERRATECH'S GSO WIRELESS CHARGER, CUT DOWN TO ITS COILS: two thick glowing cyan
-  coils (tube kind "c", `ctone`) on three spokes each round a dark post with a cyan lens, an arm back
-  to a blue MOUNT PLATE on the back face, and a cable from the plate to the post's foot. It JOINS BY
-  THAT PLATE ONLY (`connect_faces` 2, FACE_BACK - a wheel's mount; TerraTech's joins by one side
-  too). The player's path to it: a Tesla coil on a GSO base read as "joins by its bottom only", a
-  spool of two full-width plates was turned down, and the original's grey dome with a red band was
-  liked for its coils and not for its ball. The coils TURN WHILE ENERGY FLOWS (`wireless_charger.gd`
-  `Ring`, `RING_SPIN` eased by `RING_EASE`; the dark seams show the turn), and the beam leaves from
-  between them (`EMIT`). The charge station (`blocks._layout_charge_tower`) keeps its transmitter
+  coils (tube kind "c", `ctone`) as wide as the cell, so they reach its side faces, and a blue SHELL
+  (`wl_shell`) wrapped round both over a twelfth of their round (`WL_CLAMP`), standing flush on the
+  back face - the player's drawing. It JOINS BY THAT SHELL ONLY (`connect_faces` 2, FACE_BACK - a
+  wheel's mount; TerraTech's joins by one side too). The player's path to it: a Tesla coil on a GSO
+  base read as "joins by its bottom only", a spool of two full-width plates was turned down, the
+  original's grey dome with a red band was liked for its coils and not for its ball, and coils on a
+  post with a mount plate behind were "a platform" again. The coils TURN THROUGH THE SHELL WHILE
+  ENERGY FLOWS (`wireless_charger.gd` `Ring`, `RING_SPIN` eased by `RING_EASE`; the dark seams show
+  the turn), and the beam leaves from between them (`EMIT`). The charge station (`blocks._layout_charge_tower`) keeps its transmitter
   ON THE ROTATION AXIS by hanging it on a second column behind it, (5,6,6)-(5,7,6), with the panel
   moved to that column's top. Measured: the station keeps all 11 blocks with the charger on the axis;
   a charger bolted to a cabin's front pours into an ally, beam on, coils at 5 rad/s. A charger an old
