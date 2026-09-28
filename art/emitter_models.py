@@ -970,8 +970,8 @@ def build_storage(pk, img):
 # x -1/0, z -1/0, y 0/1: the block spans x -1.5..0.5, y -0.5..1.5, z -1.5..0.5). The player's
 # design, port by port - every port a quarter of a face, all at the belts' height:
 #   COMPONENT PLANT - IN on both BOTTOM quarters of the back, OUT on the front's bottom quarter
-#     in the right column (x 0, the smelter's). A PRESS on the roof stamps while a component is
-#     made (comp_factory.gd drives `Ram`); two bins behind it are its two materials.
+#     in the right column (x 0, the smelter's). A PRESS in the middle of the roof stamps while a
+#     component is made (comp_factory.gd drives `Ram`), a gear painted on its anvil.
 #   FABRICATOR - IN on both bottom quarters of the back; the finished block leaves through a PIPE
 #     on the roof and is thrown out of its mouth at the front (fabricator.gd, marker `pipe_mouth`).
 #     Cyan windows in its sides: the grid a block materialises on.
@@ -1059,26 +1059,23 @@ def big_base(b, side):
 
 
 def build_comp_factory(pk, img):
+    """The press and nothing else on the roof, centred: an anvil with the gear it stamps painted on
+    it, two blue uprights, a beam, and the ram. Two bins for the two materials and an off-centre
+    press were tried first and read as detail with nothing to say."""
     parts = {"comp_factory_body": [], "comp_factory_ram": []}
     b, ram = parts["comp_factory_body"], parts["comp_factory_ram"]
     big_base(b, "comp_side")
     for cx in (-1.0, 0.0):
         belt_mouth(b, cx, 0.5, (0, 1))         # the two inputs: the back's bottom quarters
     belt_mouth(b, 0.0, -1.5, (0, -1))           # the output: the front's, right column
-    # The press, on the front half of the roof: an anvil, two blue uprights, a beam.
-    cham_box(b, (-0.8, BIG_TOP, -1.2), (-0.2, 0.70, -0.6), 0.03, "dark", "dark", None, "dark_edge")
+    cham_box(b, (-0.85, BIG_TOP, -0.85), (-0.15, 0.70, -0.15), 0.03, "dark", "die", None, "dark_edge")
     for x0 in (-1.45, 0.25):
-        th.box(b, (x0, BIG_TOP, -1.05), (x0 + 0.2, 1.30, -0.75), "blue", skip=("-y",))
-    cham_box(b, (-1.5, 1.30, -1.12), (0.5, 1.5, -0.68), 0.04, "blue", "blue", "blue", "bevel")
+        th.box(b, (x0, BIG_TOP, -0.65), (x0 + 0.2, 1.30, -0.35), "blue", skip=("-y",))
+    cham_box(b, (-1.5, 1.30, -0.72), (0.5, 1.5, -0.28), 0.04, "blue", "blue", "blue", "bevel")
     # The ram at rest, over the anvil by PR_STROKE: a rod up into the beam, a head with hazard slats.
-    th.box(ram, (-0.58, 0.70 + PR_STROKE + 0.23, -0.98), (-0.42, 1.30, -0.82), "dark", skip=("+y",))
-    cham_box(ram, (-0.8, 0.70 + PR_STROKE, -1.2), (-0.2, 0.70 + PR_STROKE + 0.23, -0.6), 0.03,
+    th.box(ram, (-0.58, 0.70 + PR_STROKE + 0.23, -0.58), (-0.42, 1.30, -0.42), "dark", skip=("+y",))
+    cham_box(ram, (-0.8, 0.70 + PR_STROKE, -0.8), (-0.2, 0.70 + PR_STROKE + 0.23, -0.2), 0.03,
              "slab_side", "dark", "dark", "dark_edge")
-    # Two bins on the back half: the two materials a recipe asks for.
-    for x0 in (-1.38, -0.38):
-        lo = crect(x0, x0 + 0.76, -0.40, 0.36, 0.08, BIG_TOP)
-        hi = crect(x0 - 0.04, x0 + 0.80, -0.44, 0.40, 0.08, 1.02)
-        frustum(b, lo, hi, "blue", "bevel", "store_floor")
     return parts
 
 
@@ -1095,7 +1092,8 @@ def build_fabricator(pk, img):
     # of a flared mouth at the front.
     frustum(b, crect(-1.46, 0.46, -1.46, 0.46, 0.14, BIG_TOP), crect(-1.3, 0.3, -1.3, 0.3, 0.12, 0.95),
             "blue", "bevel", "dark")
-    path = [(-0.5, 0.95, 0.0), (-0.5, 1.08, 0.0), (-0.5, 1.17, -0.08), (-0.5, 1.2, -0.2),
+    # It starts near the front: a pipe run back across the roof and round read as a hose.
+    path = [(-0.5, 0.95, -0.72), (-0.5, 1.07, -0.72), (-0.5, 1.16, -0.8), (-0.5, 1.2, -0.92),
             (-0.5, 1.2, -1.36), (-0.5, 1.2, -1.42), (-0.5, 1.2, -1.5)]
     tube(b, path, [0.26, 0.2, 0.2, 0.2, 0.2, 0.24, 0.28], ["b", "m", "m", "m", "b", "b"],
          cap_end="dark")
