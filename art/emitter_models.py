@@ -273,25 +273,36 @@ def _sleeve(faces, lo, hi, along, wall=0.018, style="dark"):
 
 
 def regen2_mounts():
-    """The sleeves that hold the rings to the cell - one per face, each a short open tunnel the band
-    slides through, so every ring can still turn about its own axis. Front and back: one tunnel down
-    the Z axis, where all four rings pass one behind the other. Left and right: round the horizontal
-    ring, its outer wall on the face. Top and bottom: round the vertical ring, on a stub to the face."""
+    """What holds the rings to the cell, one per face, each flush on its face so the block joins on all
+    six - and every ring still slides through, turning about its own axis.
+    LEFT / RIGHT / TOP / BOTTOM: a bearing HOUSING, a solid chamfered block from just inside its ring
+    out to the face, with a bolted blue pad on the face; the ring runs into its end walls as into a
+    slot (an open sleeve and a stub read as loose parts).
+    FRONT / BACK: a round HUB down the Z axis - all four rings pass it there, one behind the other, as
+    if threaded on it - ending in a blue flange flush on the face."""
     f = []
-    rw = REGEN2_WIDTH + 0.022              # a sleeve's inner half-size across the band
-    R0, R1 = REGEN2_R[0], REGEN2_R[1]
+    hw = REGEN2_WIDTH + 0.03               # a housing's half-size across the band
     for sg in (1, -1):
-        # left / right, round the horizontal ring (radius R0) where it crosses x = +-R0
-        x0, x1 = sorted((sg * (R0 - REGEN2_DEPTH - 0.026), sg * 0.5))
-        _sleeve(f, (x0, -rw, -0.09), (x1, rw, 0.09), 2)
-        # top / bottom, round the vertical ring (radius R1), and the stub up to the face
-        y0, y1 = sorted((sg * (R1 - REGEN2_DEPTH - 0.026), sg * (R1 + REGEN2_DEPTH + 0.026)))
-        _sleeve(f, (-rw, y0, -0.09), (rw, y1, 0.09), 2)
-        s0, s1 = sorted((sg * (R1 + REGEN2_DEPTH + 0.026), sg * 0.5))
-        th.box(f, (-0.05, s0, -0.05), (0.05, s1, 0.05), "blue")
-        # front / back, the tunnel down Z through which all four rings pass
-        z0, z1 = sorted((sg * (REGEN2_R[3] - REGEN2_DEPTH - 0.03), sg * 0.5))
-        _sleeve(f, (-0.075, -0.075, z0), (0.075, 0.075, z1), 2, style="blue")
+        for axis, R in ((0, REGEN2_R[0]), (1, REGEN2_R[1])):
+            inner = R - REGEN2_DEPTH - 0.03
+            lo, hi = [-hw, -hw, -0.1], [hw, hw, 0.1]
+            lo[axis], hi[axis] = sorted((sg * inner, sg * 0.5))
+            top = "anchor_top_fixed"
+            if axis == 1:
+                cham_box(f, tuple(lo), tuple(hi), 0.02, "dark",
+                         top if sg > 0 else "dark", top if sg < 0 else "dark", "bevel")
+            else:
+                cham_box(f, tuple(lo), tuple(hi), 0.02, "dark", "dark", "dark", "bevel")
+                # the pad on the side face: a blue plate a hair proud of the housing's outer wall
+                x = sg * 0.5
+                q = [(x, -hw + 0.02, -0.08), (x, hw - 0.02, -0.08), (x, hw - 0.02, 0.08), (x, -hw + 0.02, 0.08)]
+                f.append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), top, u_hint=(0, 0, 1)))
+        # the hub down Z and its flange on the face
+        z_in = sg * (REGEN2_R[3] - REGEN2_DEPTH - 0.04)
+        tube(f, [(0.0, 0.0, z_in), (0.0, 0.0, sg * 0.46)], [0.055, 0.055], ["m"], sides=12,
+             cap_start="cap_bolt")
+        tube(f, [(0.0, 0.0, sg * 0.46), (0.0, 0.0, sg * 0.5)], [0.105, 0.105], ["b"], sides=12,
+             cap_start="blue", cap_end="blue")
     return f
 
 
