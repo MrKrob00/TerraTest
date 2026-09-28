@@ -558,14 +558,15 @@ def build_generator(pk, img):
 
 
 # ── the receiver and the collector ──────────────────────────────────────────────────────────────
-# The player's own shapes, kept (they liked them) and redrawn to docs/ART_STYLE.md: the RECEIVER is
-# a plate on a post - the chain's entry, pulling ground materials and collectors' cargo in through
-# its beam - now a GSO-blue collar under a dark plate with the platform's orange slats and the
-# old dark pad with its blue octagon on top. The COLLECTOR is a cube with a round bowl in its top,
+# The player's own shapes redrawn to docs/ART_STYLE.md. The RECEIVER - the chain's entry, pulling
+# ground materials and collectors' cargo in through its beam - was a plate on a post; on a post it
+# read as a saucer hovering at the top of its cell, so it now stands on the floor as the platform
+# blocks do: a slatted dark platform, a low blue housing, and the old dark pad with its blue
+# octagon on top. The COLLECTOR is a cube with a round bowl in its top,
 # where the one item it shows sits (collector.gd HOLD_Y); now a dark grilled cube, a blue lid, and a
 # dark bowl with a boss in the middle. Both used to stand out of their cell (the plate 9 cm over
 # the top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 plain triangles.
-RECV_HEAD = (0.31, 0.47)         # the plate's underside and top; the pad stands on it to 0.50
+RECV_BASE = (-0.34, -0.14)       # the platform's top and the housing's top; the pad adds 0.04
 COL_BOWL_R = 0.36                # the bowl's mouth
 
 
@@ -631,27 +632,27 @@ def lid_ring(pk, img, faces, outer, y, R, n, lip=True):
 
 
 def build_receiver(pk, img):
+    """The platform archetype, the turret base's: it stands ON the cell's floor, not on a post - on
+    a post it read as a saucer hovering at the top of its cell."""
     parts = {"receiver_body": []}
     body = parts["receiver_body"]
-    lo_y, hi_y = RECV_HEAD
-    # The post, from the cell's floor up into the collar.
-    lathe_y(pk, img, body, [(0.0, -0.5), (flat_r(0.13, 8), -0.5), (flat_r(0.13, 8), 0.12)],
-            METAL_RAMP, sides=8)
-    # The collar: the weapons' sloped blue housing, turned upside down under the plate.
-    lo, hi = octo(0.15, 0.05, 0.10), octo(0.44, 0.13, lo_y)
-    centre = (0.0, (0.10 + lo_y) / 2, 0.0)
+    lo_y, hi_y = RECV_BASE
+    # The platform: a whole cell across, the family's orange slats on its sides.
+    cham_box(body, (-0.5, -0.5, -0.5), (0.5, lo_y, 0.5), 0.025, "slab_side", "dark", "dark",
+             "dark_edge")
+    # The housing: the weapons' sloped blue frustum, and its top a blue ring round the pad.
+    lo, hi = octo(0.44, 0.13, lo_y), octo(0.30, 0.09, hi_y)
+    centre = (0.0, (lo_y + hi_y) / 2, 0.0)
     for i in range(8):
         j = (i + 1) % 8
         q = [lo[i], lo[j], hi[j], hi[i]]
         n = th.newell(th.outward(q, centre))
         uh = th.cross((0, 1, 0), th.norm((n[0], 0.0, n[2])))
         body.append(th.Face(th.outward(q, centre), "bevel" if i % 2 else "blue", u_hint=uh))
-    # The plate: a whole cell across, the platform's slats on its sides.
-    cham_box(body, (-0.5, lo_y, -0.5), (0.5, hi_y, 0.5), 0.025, "slab_side", "dark", "dark",
-             "dark_edge")
-    # The pad on top, where the beam starts.
+    body.append(th.Face(th.outward(hi, (0.0, hi_y - 1.0, 0.0)), "blue", u_hint=(1, 0, 0)))
+    # The pad, where the beam starts: dark rubber with the old model's blue octagon.
     pad = []
-    th.prism(pad, -0.32, 0.32, -0.32, 0.32, 0.5, hi_y, 0.10, side="dark", cap_front=None,
+    th.prism(pad, -0.24, 0.24, -0.24, 0.24, hi_y + 0.04, hi_y, 0.07, side="dark", cap_front=None,
              cap_back="recv_pad")
     for f in pad:
         if f.style == "bevel":

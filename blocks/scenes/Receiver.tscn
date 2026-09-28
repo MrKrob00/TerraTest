@@ -44,6 +44,7 @@ collision_mask = 21
 freeze = true
 script = ExtResource("1_fdjhr")
 block = 6
+connect_faces = 47
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1317273449]
 shape = SubResource("BoxShape3D_h01jy")
@@ -54,7 +55,7 @@ mesh = ExtResource("2_y5o5s")
 skeleton = NodePath("../..")
 
 [node name="Block2" type="MeshInstance3D" parent="Block" unique_id=788153795]
-transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 2.696517, 0.07200721)
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 2.096517, 0.07200721)
 mesh = SubResource("CapsuleMesh_wq66k")
 skeleton = NodePath("../..")
 
@@ -71,6 +72,6 @@ shape = SubResource("SphereShape3D_8sx5t")
 mesh = SubResource("TorusMesh_p6pux")
 
 [node name="resources" type="Node3D" parent="." unique_id=1227729540]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.072)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.6, 0.072)
 
 [connection signal="child_order_changed" from="resources" to="." method="_on_resources_child_order_changed"]
