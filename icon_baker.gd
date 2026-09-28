@@ -73,7 +73,8 @@ func _ready() -> void:
 ## 48: the wireless charger after TerraTech's: a dome with a red band and two cyan coils.
 ## 49: the charger is its coils on a post, mounted by a plate on its back.
 ## 50: the charger is its two coils alone, held by a shell on the back face.
-const RECIPE := 50
+## 51: the repair unit is a gyro - four rings on six round bearings round the crystal.
+const RECIPE := 51
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
