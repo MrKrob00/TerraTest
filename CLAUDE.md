@@ -121,14 +121,19 @@ project: read it before claiming how anything works.
   the whole footprint". A THIN box (armour, 0.2 deep) is a plate on its cells' BACK FACE, where its
   mesh is, centred on the cells it spans: it used to fall through to zero, so every plate's collider
   stood in the middle of its cell with the plate drawn 0.4 m behind it, and shots stopped on air.
-- **THE ARMOUR PLATES ARE WALLS, AND THE BIG ONES ARE BUILT FROM THE SMALL ONE** (`art/armor_plates.gd`
-  -> `blocks/meshes/armor_2x1 / 2x2 / 3x3.tres`): x2 is 2x1, x4 2x2 up from its anchor, x9 (new)
-  3x3 round it, all across and up and never in depth - the x4 was a 2x1x2 slab lying flat under a
-  plate that stood upright. Every cell is the artist's own one-cell plate (`GSO_Plane`, its panel,
-  bolts and two materials, so the family matches), with the bevel flattened on the edges INSIDE the
-  plate: left on every cell it cut a groove between them and a x4 read as four plates. Measured:
-  cells, mesh and collider span the same rectangle for all four, and a wall carrying all four
-  joins 40 of 40 through `buildable_subset`. Toughness and weight go by area (x9: 4320 hp, 306 kg).
+- **THE ARMOUR PLATES ARE WALLS, AND EACH BIG ONE IS ONE SLAB** (`art/armor_plates.gd` ->
+  `blocks/meshes/armor_2x1 / 2x2 / 3x3.tres`): x2 is 2x1, x4 2x2 up from its anchor, x9 (new) 3x3
+  round it, all across and up and never in depth - the x4 was a 2x1x2 slab lying flat under a plate
+  that stood upright. The first cut tiled the artist's one-cell plate and read as a grid of plates
+  with ribs between them; now the one-cell plate's frame (its bevel and rim, measured off
+  `GSO_Plane`) runs round the OUTSIDE only, one grey panel fills it, and on it a raised reinforcing
+  slab, four blue braces from its corners to the panel's, a diamond and bolts - the rim bolts where
+  the cells meet, so a x9 still tells its size. On the artist's own two materials, and with the
+  artist's NORMALS, WHICH ARE INVERTED (the x1's showing face carries +Y, into the plate): built
+  with outward normals the big plates lit as the x1's opposite, black beside grey in one light.
+  Measured: cells, mesh and collider span the same rectangle for all four, and a wall carrying all
+  four joins 40 of 40 through `buildable_subset`. Toughness and weight go by area (x9: 4320 hp,
+  306 kg).
 - **THE COLLIDER'S POSITION IN A BLOCK SCENE IS A DRAWING FOR THE ARTIST, AND IT MUST BE DRAWN
   WHERE THE GAME PUTS IT.** `spawn_block` OVERWRITES that local position — only the SHAPE comes
   from the scene — and then applies `collider_offset`. So the collider a scene shows and the

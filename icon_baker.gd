@@ -58,8 +58,8 @@ func _ready() -> void:
 ## 15: the conveyors got models. 16: the fork's arrows as open chevrons, belt textures lossless.
 ## 17: both supports got models (jacks). 18: redrawn after the GSO anchor.
 ## 19: the supports in our palette. 20: their deck blue down to the band.
-## 21: armour plates x2 / x4 / x9 got models.
-const RECIPE := 21
+## 21: armour plates x2 / x4 / x9 got models. 22: each one slab with detail.
+const RECIPE := 22
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
