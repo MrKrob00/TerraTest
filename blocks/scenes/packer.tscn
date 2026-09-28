@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://packerblk01"]
 
 [ext_resource type="Script" path="res://blocks/scripts/packer.gd" id="1_pk"]
-[ext_resource type="ArrayMesh" uid="uid://tc3oghgqhdhw" path="res://objects/GSO (2)_Cube_002.res" id="2_mesh"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/packer_body.tres" id="2_mesh"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_pk"]
 
