@@ -862,6 +862,29 @@ def style_px(style, x, y, w, h, d):
         if abs(r - min(w, h) * 0.28) < 0.8:
             return METAL[2]
         return RIM[3] if r < min(w, h) * 0.28 else RIM[2]
+    if style == "wl_side":
+        # The wireless charger's base wall: the family's edge line and slot grille, and in the middle
+        # on a dark plate the wireless sign - a dot and three arcs rising from it, in light metal.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        cx, cy = w / 2.0, h * 0.78
+        bx, by = x + 0.5 - cx, cy - (y + 0.5)
+        if abs(bx) <= 7.5 and -2.5 <= by <= 10.5:
+            if abs(bx) > 6.5 or by < -1.5 or by > 9.5:
+                return METAL[5]
+            r = math.hypot(bx, by)
+            if r <= 1.3:
+                return RIM[4]
+            if by > 0.3 and abs(bx) < by * 1.15:
+                for ra in (3.5, 6.0, 8.5):
+                    if abs(r - ra) <= 0.75:
+                        return RIM[4]
+            return METAL[1]
+        if 3 <= y < h - 3 and 3 <= x < w - 3:
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        return jitter(METAL[3], 2)
     if style == "level":
         # The storage's fill: a bright bar in segments, the storage's one pop colour.
         if d < 1.0:

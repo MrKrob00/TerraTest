@@ -1793,10 +1793,13 @@ project: read it before claiming how anything works.
   storage's bar), leaving its groove, so an empty battery still reads as one. It POLLS `charge`: the
   save and an enemy's full start write the field straight in. Measured on the real driver through
   the machine batch: charge 1 / 0.5 / 0 draw 4 / 2 / 0 rings. Not `solid_cell` - its corners are open.
-  THE CHARGER IS A SPOOL: two round plates the full width of the cell top and bottom (they meet all
-  six neighbours), a mast, a cyan emitter orb (the beam's colour) and a ring round it that SPINS
-  WHILE ENERGY FLOWS (`wireless_charger.gd` `Ring`, `RING_SPIN` eased by `RING_EASE`). Measured: beam
-  on, ring at 5 rad/s, transfer unchanged.
+  THE CHARGER IS TERRATECH'S GSO WIRELESS CHARGER IN OUR STYLE: a Tesla coil on a GSO base. The base
+  fills the cell's lower part (four sides and the bottom) with the wireless sign on every wall
+  (`wl_side`), a column carries three blue coil discs, and the cyan terminal sphere (the beam's
+  colour) is cut flat at the top face - so it still joins on all six. The toroid round the terminal
+  SPINS WHILE ENERGY FLOWS (`wireless_charger.gd` `Ring`, `RING_SPIN` eased by `RING_EASE`), and the
+  beam leaves the terminal (`EMIT`), not the block's centre. A spool of two full-width plates came
+  before it and was turned down. Measured: beam on, ring at 5 rad/s, transfer unchanged.
 - **THE FABRICATOR AND THE SCRAPPER ARE 2x2x2, THE COMPONENT PLANT 2x1x2, AND THEIR PORTS ARE THE
   PLAYER'S DESIGN** (`art/emitter_models.py` comp_factory / fabricator / scrapper,
   `blocks._footprint_offsets` and `collider_offset`, anchored in a corner like the smelter). Masks are

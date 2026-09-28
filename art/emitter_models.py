@@ -1204,18 +1204,17 @@ def build_packer(pk, img):
 #   the + nub up to the top face, a blue top band. Four charge rings sit in GROOVES round the body
 #   (battery_seg, one mesh on nodes Seg0..3) and light by the block's own charge (battery.gd); a dark
 #   ring leaves its groove showing, so an empty battery still reads as one.
-# WIRELESS CHARGER - a spool: two round plates the full width of the cell top and bottom (they meet
-#   all six neighbours), a mast between them, a big cyan emitter orb (the beam's colour) and a ring
-#   round it that SPINS WHILE ENERGY FLOWS (wireless_charger.gd, node `Ring`).
+# WIRELESS CHARGER - after TerraTech's GSO charger, a Tesla coil on a GSO base (build_wireless).
 BAT_SEG_Y = (-0.32, -0.20, -0.08, 0.04)   # charge ring centres, bottom up (battery.tscn Seg0..3)
 BAT_SEG_HH = 0.04
 BAT_GROOVE = 0.46                # the grooves' floor; the rings stand in them to BAT_RING
 BAT_RING = 0.49
 GREEN_RAMP = [(34, 104, 62), (52, 146, 86), (80, 205, 120), (120, 230, 150), (170, 248, 192)]
 SLOT_RAMP = [(20, 30, 25), (26, 40, 33), (34, 50, 42), (44, 62, 52), (56, 76, 64)]
-WL_PLATE = 0.10                  # the charger's top and bottom plates' thickness
-WL_ORB = 0.22                    # the emitter orb's radius
-WL_RING = (0.40, 0.045)          # the ring's radius and its tube's
+WL_BASE = -0.05                  # the charger's GSO base: the cell up to here
+WL_DISCS = ((0.02, 0.30), (0.11, 0.26), (0.20, 0.22))   # coil discs: bottom y, radius
+WL_TERM = (0.37, 0.15)           # the terminal sphere: centre y, radius (cut flat at y 0.5)
+WL_TORUS = (0.25, 0.065)         # the toroid round it: radius, tube
 CYAN_RAMP = [(18, 60, 78), (26, 98, 124), (52, 158, 190), (104, 214, 236), (186, 248, 255)]
 
 
@@ -1246,34 +1245,35 @@ def build_battery(pk, img):
 
 
 def build_wireless(pk, img):
+    """After TerraTech's GSO Wireless Charger: a Tesla coil on a GSO base. The base fills the cell's
+    lower part (four sides and the bottom), the coil column carries three blue discs, and the cyan
+    terminal sphere is cut flat at the cell's top face - so it still joins on all six. The toroid
+    round the terminal spins while energy flows (wireless_charger.gd `Ring`); the beam leaves the
+    sphere's centre (`EMIT`)."""
     parts = {"wireless_body": [], "wireless_ring": []}
     b, ring = parts["wireless_body"], parts["wireless_ring"]
-    fr = lambda r: flat_r(r, 12)
-    p = WL_PLATE
-    # the two plates: a blue rim the full width of the cell, a dark face toward the orb
-    for sy in (-1, 1):
-        prof = [(0.0, -0.5), (fr(0.5), -0.5), (fr(0.5), -0.5 + p - 0.03), (fr(0.46), -0.5 + p),
-                (fr(0.10), -0.5 + p), (0.0, -0.5 + p)]
-        if sy > 0:
-            prof = [(r, -y) for r, y in reversed(prof)]
-        lathe_y(pk, img, b, prof, METAL_RAMP, sides=12,
-                ring_ramps={1: BLUE_RAMP, 2: BLUE_RAMP} if sy < 0 else {2: BLUE_RAMP, 3: BLUE_RAMP})
-    # the mast, and the orb on it
-    lathe_y(pk, img, b, [(0.04, -0.5 + p), (0.04, -WL_ORB * 0.8)], METAL_RAMP, sides=8)
-    lathe_y(pk, img, b, [(0.04, WL_ORB * 0.8), (0.04, 0.5 - p)], METAL_RAMP, sides=8)
-    lathe_y(pk, img, b, [(0.0, -WL_ORB * 1.02)] + sphere_profile(0.0, WL_ORB, -70, 70, 6)
-            + [(0.0, WL_ORB * 1.02)], CYAN_RAMP, sides=12, cell=3)
-    # the ring: blue with dark bands so its turn is seen, on three spokes out of the orb
-    R, r = WL_RING
-    n = 20
-    path = [(R * math.cos(a), 0.0, R * math.sin(a)) for a in
-            (2 * math.pi * k / n for k in range(n + 1))]
-    tube(ring, path, [r] * (n + 1), ["b" if k % 5 else "m" for k in range(n)], sides=6)
+    c, top = 0.067, WL_BASE
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, top, 0.5), c, "wl_side", "blue", "dark", "dark_edge")
+    for f in b:                       # the base's top rim is blue, its corners stay dark
+        if f.style == "dark_edge" and min(p[1] for p in f.pts) > top - c - 1e-6:
+            f.style = "bevel"
+    lathe_y(pk, img, b, [(0.20, top), (0.20, top + 0.03), (0.12, top + 0.05), (0.12, WL_TERM[1])],
+            METAL_RAMP, sides=12, ring_ramps={0: BLUE_RAMP})
+    for y0, rd in WL_DISCS:
+        lathe_y(pk, img, b, [(0.12, y0), (rd, y0), (rd, y0 + 0.035), (0.12, y0 + 0.035)], BLUE_RAMP,
+                sides=12, ring_ramps={1: METAL_RAMP})
+    cy, cr = WL_TERM
+    lathe_y(pk, img, b, sphere_profile(cy, cr, -60, 60, 6) + [(0.0, 0.5)], CYAN_RAMP, sides=12)
+    # the toroid round the terminal, blue with dark bands so its turn is seen, on three spokes
+    R, r = WL_TORUS
+    n = 18
+    path = [(R * math.cos(a), cy, R * math.sin(a)) for a in (2 * math.pi * k / n for k in range(n + 1))]
+    tube(ring, path, [r] * (n + 1), ["m" if k % 6 == 0 else "b" for k in range(n)], sides=6)
     for k in range(3):
         a = 2 * math.pi * k / 3 + math.pi / 6
         ca, sa = math.cos(a), math.sin(a)
-        tube(ring, [(ca * 0.1, 0.0, sa * 0.1), (ca * (R - r), 0.0, sa * (R - r))], [0.018, 0.018],
-             ["m"], sides=4)
+        tube(ring, [(ca * (cr - 0.02), cy, sa * (cr - 0.02)), (ca * (R - r * 0.5), cy, sa * (R - r * 0.5))],
+             [0.016, 0.016], ["m"], sides=4)
     return parts
 
 
