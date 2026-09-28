@@ -866,6 +866,21 @@ def style_px(style, x, y, w, h, d):
         if abs(r - min(w, h) * 0.28) < 0.8:
             return METAL[2]
         return RIM[3] if r < min(w, h) * 0.28 else RIM[2]
+    if style == "wl_shell":
+        # The charger's coil shell: GSO blue with the family's light edge, a dark seam band across
+        # the middle (where the two coils run through) and a bolt in each corner.
+        if d < 1.0:
+            return BLUE_HI
+        if d < 2.0:
+            return BLUE_MID
+        if abs(y + 0.5 - h / 2.0) < 1.0:
+            return BLUE_DEEP
+        for rx, ry in ((3, 3), (w - 4, 3), (3, h - 4), (w - 4, h - 4)):
+            if x == rx and y == ry:
+                return BLUE_DEEP
+            if x == rx + 1 and y == ry + 1:
+                return BLUE_HI
+        return jitter(BLUE, 2)
     if style == "wl_side":
         # The wireless charger's base wall: the family's edge line and slot grille, and in the middle
         # on a dark plate the wireless sign - a dot and three arcs rising from it, in light metal.
