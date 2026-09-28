@@ -1707,23 +1707,15 @@ project: read it before claiming how anything works.
   ARE A LATHE WITH PAINTED FACETS: the blocks are unshaded, so a sphere in one colour is a disc, and
   every facet gets its own texel square lit from one fixed direction. The shield is an ORB - dark
   lower half gripped by four claws, a blue cap - whose cap LIFTS and turns while the dome stands and
-  shows a cyan core through the gap. THE REPAIR UNIT IS A GYRO (`build_regen2`, `regen.gd` "THE
-  GYRO"): four square-section bands round a green crystal, seen from the front as "-", "|", "/" and
-  "\" (every band's plane holds the Z axis), nested at `REGEN2_R` so each can turn about its own
-  axis - the normal of its plane - without passing through another. Outside, dark plates drawn ACROSS
-  the band (light running along each plate, a blue band with bolts at every other joint) and blue
-  sides with a light gradient; inside, the whole band is a glowing ENERGY strip. It hangs on ONE
-  connector repeated on all six faces - a round trunnion bearing, a dark hub down the face's axis with
-  a blue flange flush on the face, as every ring of a real gyroscope hangs on identical pivots - so
-  it joins on all six. OFF: bands still, strips dark, the crystal lying grey at the bottom on the
-  rings. POWER-UP (`POWER_UP`): the bands wind up each at its own rate, alternating in direction
-  (`RING_RATES`), strips and crystal turn green, the crystal rises to the centre and stands up.
-  WORKING: bands turn, the crystal floats and turns, and flashes on every repair tick. The player's
-  path to it: round tubes, then emitter stubs on the inside, a lengthwise inlay, brass bands and a
-  mix of housings and hubs were each turned down. THE FIRST MODEL (a hub with the green cross on the
-  weapons' platform, one ring with three nozzles) IS KEPT AS A SPARE by the player's wish:
-  `blocks/scenes/regen_v1.tscn` + `regen_v1.gd`, its meshes `regen_body/ring/crystal`, its builder
-  `build_regen` - none of them used by the game. Moving parts go through `moving_parts`, the tinted part
+  shows a cyan core through the gap; the repair unit is a BEACON - a hub with the green cross, a
+  crystal, a ring with three nozzles - whose ring spins up with power and runs down without it, and
+  whose crystal flashes on every repair tick. A GYRO REPAIR UNIT WAS BUILT AND IS KEPT FOR THE SECOND
+  FACTION, MARLIT (`blocks/scenes/regen_marlit.tscn` + `regen_marlit.gd`, meshes `regen2_*`, builder
+  `build_regen2`; not used by the game): four square-section bands round the crystal, seen from the
+  front as "-", "|", "/" and "\", each turning about the normal of its plane, a glowing energy strip
+  along each band's inside, the same round trunnion bearing on all six faces; off, the crystal lies
+  grey on the rings, powering up it turns green and rises to the centre. The player chose to keep the
+  beacon in the game and to rework the gyro into Marlit's own style. Moving parts go through `moving_parts`, the tinted part
   through `unbatched()` and a per-block duplicate of its material (one shared material would tint
   every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
   what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
@@ -1845,6 +1837,11 @@ project: read it before claiming how anything works.
   front of it; a loose block 4 m from the scrapper was swallowed in 0.5 s and its materials sold for
   85. AN OLD SAVE with one of these where it now overlaps a neighbour loses it on load: `set_block`
   refuses an overlap.
+- **THE SECOND FACTION IS MARLIT** (`G.FACTIONS["marlit"]`, emblem `images/faction_marlit.png`): the
+  player's own low-poly picture - sea and cliffs at sunset in an octagonal steel frame - cut out of
+  its black backdrop (a fill from the image's edges, then the octagon's bounds; 256 px, mipmapped
+  like Falsus's). No block or quest carries it yet; its models are to be built from scratch in its
+  own style, the gyro repair unit (`regen_marlit`) first in line.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a

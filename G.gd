@@ -409,6 +409,10 @@ signal progress_changed                # XP/ДИ/исследования изм
 const FACTIONS := {
 	"start": {"name": "Falsus", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
 		"emblem": "res://images/faction_falsus.png"},
+	# THE SECOND FACTION: sea and cliffs, drawn in low poly. No blocks or quests carry it yet; its
+	# models are to be built in its own style (the gyro repair unit, regen_marlit, waits for that).
+	"marlit": {"name": "Marlit", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
+		"emblem": "res://images/faction_marlit.png"},
 }
 var _emblems: Dictionary = {}
 
