@@ -118,3 +118,18 @@ The harness is not kept in the repo; this describes what it does.
 - **Sample the palette.** Take `ceil(area × 400)` random points per triangle, weighted by AREA, and
   cluster them. Sampling the atlas image itself is wrong: 93 % of it is unused background, the
   flat (76,106,177) fill.
+
+## Redrawn to the rules
+
+The receiver and the collector kept the shapes the player had made for them: a plate on a post,
+and a cube with a bowl. Only the drawing changed:
+
+- **Colour and slats.** Dark metal, a GSO-blue collar or lid, and the platform's orange slats on
+  the receiver's plate.
+- **Emblem.** A sign plate on the collector's grille: a down-pointing triangle, because things go
+  in at the top and stay.
+- **Size.** Both now fit their cell: 114 and 139 triangles, down from 450 and 882 untextured.
+
+A sign smaller than about five texels breaks up under mip-mapping at a grazing angle. The first
+three-row triangle read as a bird from 35°, while straight on it was clean. Draw emblems at least
+nine texels across.

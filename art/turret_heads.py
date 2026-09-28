@@ -539,6 +539,41 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style == "col_side":
+        # The collector's wall: the slot grille the whole height, and on a plate in the middle a
+        # chevron pointing DOWN - things go in at the top and stay.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        cx, cy = w / 2.0, h / 2.0
+        bx, by = x + 0.5 - cx, y + 0.5 - cy
+        if abs(bx) <= 5.5 and abs(by) <= 5.5:
+            if abs(bx) > 4.5 or abs(by) > 4.5:
+                return METAL[5]
+            if -2.5 <= by <= 2.5 and abs(bx) <= (2.5 - by) * 0.75 + 0.4:   # a triangle, point down
+                return RIM[4]
+            return METAL[1]
+        if 3 <= y < h - 3 and 3 <= x < w - 3:
+            return METAL[1] if (x % 3) == 0 else METAL[3]
+        for rx, ry in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+            if x == rx and y == ry:
+                return METAL[6]
+        return jitter(METAL[3], 2)
+    if style == "slab_side":
+        # A platform's side, the family's: dark edge lines and orange hazard slats between them.
+        if d < 1.0:
+            return METAL[5]
+        if 1 <= y < h - 1 and 2 <= x < w - 2:
+            return METAL[1] if (x // 2) % 2 else (ORANGE if y < h - 2 else ORANGE_LO)
+        return METAL[2]
+    if style == "recv_pad":
+        # The receiver's pad: dark rubber with the blue octagon the old model carried.
+        if d < 1.0:
+            return METAL[4]
+        if 3.0 <= d < 4.6:
+            return BLUE_HI if d < 3.8 else BLUE
+        return jitter(METAL[1], 2)
     if style == "dark_edge":
         # A chamfer on dark metal: the light line the atlas draws along every bevel.
         return RIM[1] if d < 1.0 else METAL[4]

@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://xximcpqpe85s"]
 
 [ext_resource type="Script" uid="uid://dm5g1makgcqnc" path="res://blocks/scripts/Receiver.gd" id="1_fdjhr"]
-[ext_resource type="ArrayMesh" uid="uid://dhyew4foa3dk0" path="res://objects/GSO_Cube_013.res" id="2_y5o5s"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/receiver_body.tres" id="2_y5o5s"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
 

@@ -1705,6 +1705,14 @@ project: read it before claiming how anything works.
   tried and showed the blades lying in a pit and the fuel on its floor. Measured on the engine: turbine down as
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
   40 energy; fed by a belt from east, west and north alike.
+- **THE RECEIVER AND THE COLLECTOR KEEP THE PLAYER'S SHAPES, REDRAWN TO THE STYLE** (`art/emitter_models.py`
+  receiver / collector, `blocks/meshes/<name>_body.tres`): the receiver is still a plate on a post - a
+  GSO-blue collar under a dark plate with the platform's orange slats, the dark pad with its blue
+  octagon on top, where the beam starts; the collector still a cube with a round bowl in its top -
+  grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the held item
+  sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
+  top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
+  114 and 139 inside it. Beams, range rings and scripts are untouched: they never named the body.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,

@@ -483,7 +483,8 @@ def cham_box(faces, lo, hi, c, side, top, bottom, edge):
                 st, uh = (top if side_i else bottom), (1, 0, 0)
             else:
                 st, uh = side, th.cross((0, 1, 0), tuple(n))
-            faces.append(th.Face(th.outward(q, centre), st, u_hint=uh))
+            if st is not None:
+                faces.append(th.Face(th.outward(q, centre), st, u_hint=uh))
     for a in range(3):                       # the edge runs along axis a
         b, cc = (a + 1) % 3, (a + 2) % 3
         for sb in (0, 1):
@@ -556,7 +557,126 @@ def build_generator(pk, img):
     return parts
 
 
+# ── the receiver and the collector ──────────────────────────────────────────────────────────────
+# The player's own shapes, kept (they liked them) and redrawn to docs/ART_STYLE.md: the RECEIVER is
+# a plate on a post - the chain's entry, pulling ground materials and collectors' cargo in through
+# its beam - now a GSO-blue collar under a dark plate with the platform's orange slats and the
+# old dark pad with its blue octagon on top. The COLLECTOR is a cube with a round bowl in its top,
+# where the one item it shows sits (collector.gd HOLD_Y); now a dark grilled cube, a blue lid, and a
+# dark bowl with a boss in the middle. Both used to stand out of their cell (the plate 9 cm over
+# the top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 plain triangles.
+RECV_HEAD = (0.31, 0.47)         # the plate's underside and top; the pad stands on it to 0.50
+COL_BOWL_R = 0.36                # the bowl's mouth
+
+
+def lid_ring(pk, img, faces, outer, y, R, n, lip=True):
+    """A flat plate between the convex polygon `outer` and a round hole of radius R (n sides, the
+    lathe's own phase), cut into n convex pieces that share ONE painted island, so it reads as one
+    blue plate with a dark lip round the hole and four rivets on the diagonals."""
+    half = max(max(abs(p[0]), abs(p[2])) for p in outer)
+    w = int(math.ceil(2 * half * th.DENS))
+    x0, y0, _, _ = pk.take(w, w)
+    uv = lambda p: (x0 + (p[0] + half) * th.DENS, y0 + (p[2] + half) * th.DENS)
+    poly = [((p[0] + half) * th.DENS, (p[2] + half) * th.DENS) for p in outer]
+    rw = R * th.DENS
+    for yy in range(-th.PAD, w + th.PAD):
+        for xx in range(-th.PAD, w + th.PAD):
+            px, py = xx + 0.5, yy + 0.5
+            d = th.dist_to_edges(min(max(px, 0), w), min(max(py, 0), w), poly)
+            r = math.hypot(px - w / 2.0, py - w / 2.0)
+            if d < 1.0:
+                c = th.BLUE_HI
+            elif d < 2.0:
+                c = th.BLUE_MID
+            elif lip and r < rw + 1.2:
+                c = th.RIM[1]
+            else:
+                c = th.jitter(th.BLUE, 2)
+                for k in range(4):
+                    ang = (k + 0.5) * math.pi / 2
+                    rr = (rw + min(w / 2.0 * 1.41 - 3.0, rw + 6.0)) / 2.0
+                    rx, ry = w / 2.0 + math.cos(ang) * rr, w / 2.0 + math.sin(ang) * rr
+                    if int(px) == int(rx) and int(py) == int(ry):
+                        c = th.BLUE_DEEP
+                    elif int(px) == int(rx) + 1 and int(py) == int(ry) + 1:
+                        c = th.BLUE_HI
+            img.putpixel((x0 + xx, y0 + yy), th.shade(c, 1.06))
+
+    def hit(a):
+        dx, dz = math.cos(a), math.sin(a)
+        best = None
+        for i in range(len(outer)):
+            p, q = outer[i], outer[(i + 1) % len(outer)]
+            ex, ez = q[0] - p[0], q[2] - p[2]
+            den = dx * ez - dz * ex
+            if abs(den) < 1e-9:
+                continue
+            t = (p[0] * ez - p[2] * ex) / den
+            u = (p[0] * dz - p[2] * dx) / den
+            if t > 0 and -1e-9 <= u <= 1 + 1e-9 and (best is None or t < best):
+                best = t
+        return (dx * best, y, dz * best)
+
+    corners = [(math.atan2(p[2], p[0]) % (2 * math.pi), p) for p in outer]
+    for i in range(n):
+        a0, a1 = (i + 0.5) * 2 * math.pi / n, (i + 1.5) * 2 * math.pi / n
+        mid = [p for ang, p in corners if 0 < (ang - a0) % (2 * math.pi) < a1 - a0]
+        mid.sort(key=lambda p: -((math.atan2(p[2], p[0]) - a0) % (2 * math.pi)))
+        pts = [(R * math.cos(a0), y, R * math.sin(a0)), (R * math.cos(a1), y, R * math.sin(a1)),
+               hit(a1)] + mid + [hit(a0)]
+        pts = th.outward(pts, (0.0, y - 1.0, 0.0))
+        f = th.Face(pts, None)
+        f.uv = [uv(p) for p in pts]
+        faces.append(f)
+
+
+def build_receiver(pk, img):
+    parts = {"receiver_body": []}
+    body = parts["receiver_body"]
+    lo_y, hi_y = RECV_HEAD
+    # The post, from the cell's floor up into the collar.
+    lathe_y(pk, img, body, [(0.0, -0.5), (flat_r(0.13, 8), -0.5), (flat_r(0.13, 8), 0.12)],
+            METAL_RAMP, sides=8)
+    # The collar: the weapons' sloped blue housing, turned upside down under the plate.
+    lo, hi = octo(0.15, 0.05, 0.10), octo(0.44, 0.13, lo_y)
+    centre = (0.0, (0.10 + lo_y) / 2, 0.0)
+    for i in range(8):
+        j = (i + 1) % 8
+        q = [lo[i], lo[j], hi[j], hi[i]]
+        n = th.newell(th.outward(q, centre))
+        uh = th.cross((0, 1, 0), th.norm((n[0], 0.0, n[2])))
+        body.append(th.Face(th.outward(q, centre), "bevel" if i % 2 else "blue", u_hint=uh))
+    # The plate: a whole cell across, the platform's slats on its sides.
+    cham_box(body, (-0.5, lo_y, -0.5), (0.5, hi_y, 0.5), 0.025, "slab_side", "dark", "dark",
+             "dark_edge")
+    # The pad on top, where the beam starts.
+    pad = []
+    th.prism(pad, -0.32, 0.32, -0.32, 0.32, 0.5, hi_y, 0.10, side="dark", cap_front=None,
+             cap_back="recv_pad")
+    for f in pad:
+        if f.style == "bevel":
+            f.style = "dark_edge"                 # the pad is dark metal all round, not a housing
+    body += along_y(pad)
+    return parts
+
+
+def build_collector(pk, img):
+    parts = {"collector_body": []}
+    body = parts["collector_body"]
+    c = 0.067
+    cham_box(body, (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5), c, "col_side", None, "dark", "dark_edge")
+    top = [(-0.5 + c, 0.5, -0.5 + c), (0.5 - c, 0.5, -0.5 + c), (0.5 - c, 0.5, 0.5 - c),
+           (-0.5 + c, 0.5, 0.5 - c)]
+    lid_ring(pk, img, body, top, 0.5, COL_BOWL_R, 12)
+    # The bowl: a dark cone down to a floor, a lighter boss in the middle the item rests over.
+    lathe_y(pk, img, body, [(0.0, 0.34), (0.11, 0.34), (COL_BOWL_R * 0.8, 0.30), (COL_BOWL_R, 0.5)],
+            METAL_RAMP[:4], sides=12, ring_ramps={0: th.RIM})
+    return parts
+
+
 BLOCKS = {
+    "receiver": (61, build_receiver, 256),
+    "collector": (67, build_collector, 256),
     "generator": (59, build_generator, 256),
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
