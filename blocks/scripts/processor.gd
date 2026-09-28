@@ -28,7 +28,7 @@ var _cells: Array = []          # предметы по клеткам: 0 — в
 var _slots: Array = []          # маркеры, по одному на клетку
 var _t: float = 0.0
 
-## Its body swaps material with the lamp state (_set_processing_visual).
+## Its heat part is re-coloured with the lamp state (_set_processing_visual).
 func unbatched() -> Array:
 	var m := get_node_or_null("MeshInstance3D")
 	return [m] if m != null else []
@@ -177,13 +177,20 @@ func _move(item: Node3D, cell: int) -> void:
 	tween.tween_property(item, "position", (_slots[cell] as Node3D).position,
 			minf(0.3, tick_time * 0.8))
 
-## Материал КЕШИРУЕМ. Он ставится на свой MeshInstance через material_override, но создавать
-## его заново на каждый вызов нельзя: тик идёт раз в секунду, и каждый раз рождался бы новый
-## StandardMaterial3D.
+## THE HEAT IS THE LAMP (art/emitter_models.py build_processor): the hood's underside over the
+## channel, the window on its open side and the furnace's fireboxes, painted LIT and darkened here
+## while nothing is inside - the old red/green ball said the same thing in a language no other
+## block speaks. A per-block copy of the part's material, made once (a shared one would light every
+## processor in the world; a new one per tick would allocate once a second).
+const HEAT_COLD := Color(0.20, 0.18, 0.22)
 var _lamp: StandardMaterial3D = null
 
 func _set_processing_visual(active: bool) -> void:
 	if _lamp == null:
-		_lamp = StandardMaterial3D.new()
-		$MeshInstance3D.material_override = _lamp
-	_lamp.albedo_color = Color.GREEN if active else Color.RED
+		var mi := get_node_or_null("MeshInstance3D") as MeshInstance3D
+		if mi == null:
+			return
+		var m: Material = mi.mesh.surface_get_material(0) if mi.mesh != null else null
+		_lamp = (m as StandardMaterial3D).duplicate() if m is StandardMaterial3D else StandardMaterial3D.new()
+		mi.material_override = _lamp
+	_lamp.albedo_color = Color.WHITE if active else HEAT_COLD

@@ -1722,6 +1722,22 @@ project: read it before claiming how anything works.
   held item sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
   top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
   114 and 139 inside it. Range rings and the collector's script are untouched.
+- **THE PROCESSOR (SMELTER) AND THE SELLER ARE DRAWN FROM THEIR PORTS** (`art/emitter_models.py`
+  processor / seller, 2x2x2, anchor in a corner so the block spans x -1.5..0.5, z -1.5..0.5 in its own
+  axes). Every port is a QUARTER OF A FACE, and the model shows exactly those. The processor's are all
+  in its RIGHT-BOTTOM column: in at the back quarter and out at the front (a line runs straight
+  through), and on the right face in at the back quarter, out at the front one (a belt passing
+  alongside hands ore in and takes the ingot whichever way it runs - a belt's sides are both in and
+  out). So that column is an OPEN CHANNEL at the belts' deck height, open at both ends and along the
+  whole right side, under a HOOD whose underside and side window glow with the fireboxes on the
+  furnace (the left column) - the heat IS the old red/green lamp (`processor.gd`
+  `_set_processing_visual`, part `processor_glow`, lit while anything is inside). The seller's one
+  intake is the right-back-bottom quarter, from the back and the right: an open MOUTH at belt height
+  under a glass TUBE up through the roof to a gold-ringed uplink, inside an L-shaped vault with one
+  trade screen (gold coin, green bars) and a round vault door. The item markers were left as they
+  were: the carrying animation is to be redone for these models. Measured on the engine: three ore
+  through receiver, belt, processor and belt into the seller paid 75 (three Ferrite ingots) both
+  straight through the channel and with the processor beside the line.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
   draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
