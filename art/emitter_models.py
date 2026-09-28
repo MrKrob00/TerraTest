@@ -46,6 +46,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import turret_heads as th  # noqa: E402
+import hull_models as hm  # noqa: E402
 
 Image = th.Image
 
@@ -416,6 +417,163 @@ def build_marlit_block(pk, img):
             n, u, v = _face_axes(axis, sg)
             fc = th.add(centre, th.mul(n, 1.0))
             marlit_face(f, fc, n, u, v, 1.0 - MB_C, rnd)
+    return parts
+
+
+def _cut_corners(q, c):
+    """Cut every corner of a convex polygon (2D) by c along both its edges: A_i toward the previous
+    vertex, B_i toward the next, in that order, so every ring cut this way pairs vertex for vertex."""
+    out = []
+    n = len(q)
+    for i in range(n):
+        a, b, p = q[i - 1], q[i], q[(i + 1) % n]
+        da = math.hypot(b[0] - a[0], b[1] - a[1])
+        db = math.hypot(p[0] - b[0], p[1] - b[1])
+        out.append(hm.lerp2(b, a, c / da))
+        out.append(hm.lerp2(b, p, c / db))
+    return out
+
+
+def marlit_poly(faces, pts, rnd):
+    """The Marlit face on ANY flat convex face of a chamfered solid (pts: its 3D outline): the plate,
+    the bevel, the sunset line and the facet floor of `marlit_face`, with every ring the face's own
+    outline inset and corner-cut - a square gives the 2x2x2 block's octagon, a 1-wide face a
+    stretched one, a wedge's side a hexagon. Each ring is cut from the INSET OUTLINE rather than
+    inset from the ring before: insetting a cut ring collapses the short cut edges of a 45 deg
+    corner. Sizes shrink with the face (`r1`), so a narrow face keeps a window rather than a slit."""
+    cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
+    n = th.norm(th.newell(pts))
+    u = th.norm(th.sub(pts[1], pts[0]))
+    v = th.norm(th.cross(n, u))
+    q = [(th.dot(th.sub(p, cen), u), th.dot(th.sub(p, cen), v)) for p in pts]
+
+    def P(x, y, d=0.0):
+        return th.add(cen, th.add(th.add(th.mul(u, x), th.mul(v, y)), th.mul(n, -d)))
+    rin = min(abs((b[0] - a[0]) * a[1] - (b[1] - a[1]) * a[0]) / math.hypot(b[0] - a[0], b[1] - a[1])
+              for a, b in zip(q, q[1:] + q[:1]))
+    m = 0.04
+    r1 = rin - m
+    cut = min(MB_OCT[0][1], 0.42 * r1)
+    bevel = min(MB_OCT[1][2] * 1.8, 0.30 * r1)
+    glow = min(0.05, 0.12 * r1)
+    rings = []
+    for ins in (m, m + bevel, m + bevel + glow):
+        rk = rin - ins
+        rings.append(_cut_corners(hm.inset(q, ins), cut * rk / r1))
+    o1, o2, o3 = rings
+    d2 = MB_OCT[1][2]
+    inside = th.add(cen, th.mul(n, -1.0))
+    lf = th.norm(th.add(th.add(th.mul(u, -0.45), th.mul(v, 0.55)), th.mul(n, 0.70)))
+    flat = th.dot(n, lf)
+    nq = len(q)
+    for i in range(nq):
+        a_i, b_i = o1[2 * i], o1[2 * i + 1]
+        a_n = o1[(2 * i + 2) % len(o1)]
+        faces.append(th.Face(th.outward([P(*q[i]), P(*a_i), P(*b_i)], inside), "mplate", u_hint=u))
+        faces.append(th.Face(th.outward([P(*q[i]), P(*q[(i + 1) % nq]), P(*a_n), P(*b_i)], inside),
+                             "mplate", u_hint=u))
+    N = len(o1)
+    for i in range(N):
+        j = (i + 1) % N
+        qd = th.outward([P(*o1[i]), P(*o1[j]), P(*o2[j], d2), P(*o2[i], d2)], inside)
+        nn = th.norm(th.newell(qd))
+        tone = int(round(max(0.0, min(1.0, 0.5 + 1.1 * (th.dot(nn, lf) - flat))) * 5))
+        faces.append(th.Face(qd, "mbev%d" % tone, u_hint=th.sub(qd[1], qd[0])))
+        g = [P(*o2[i], d2), P(*o2[j], d2), P(*o3[j], d2), P(*o3[i], d2)]
+        faces.append(th.Face(th.outward(g, inside), "mglow", u_hint=th.sub(g[1], g[0])))
+    # the facet floor, ring by ring as on the block's faces; jitter scales with the window
+    sc = max(0.3, min(1.0, rin / 0.8))
+    o2d = []
+    for i in range(N):
+        mx = (o3[i][0] + o3[(i + 1) % N][0]) * 0.5
+        my = (o3[i][1] + o3[(i + 1) % N][1]) * 0.5
+        k = 0.66 + rnd.uniform(-0.08, 0.08)
+        o2d.append((mx * k + rnd.uniform(-0.04, 0.04) * sc, my * k + rnd.uniform(-0.04, 0.04) * sc))
+    outer = [P(x, y, MB_FLOOR + rnd.uniform(-0.07, 0.04) * sc) for x, y in o2d]
+    inner = []
+    for k in range(N // 2):
+        x, y = o2d[2 * k + 1]
+        f = 0.42 + rnd.uniform(-0.08, 0.08)
+        inner.append(P(x * f, y * f, MB_FLOOR - rnd.uniform(-0.03, 0.12) * sc))
+    mid = P(0.0, 0.0, MB_FLOOR - rnd.uniform(0.02, 0.1) * sc)
+    base = [P(x, y, d2) for x, y in o3]
+    tris = []
+    for i in range(N):
+        j = (i + 1) % N
+        tris.append([base[i], base[j], outer[i]])
+        tris.append([outer[i], base[j], outer[j]])
+    H = N // 2
+    for k in range(H):
+        a0, a1_, a2 = outer[2 * k], outer[2 * k + 1], outer[(2 * k + 2) % N]
+        c, cn = inner[k], inner[(k + 1) % H]
+        tris += [[a0, a1_, c], [a1_, a2, c], [c, a2, cn], [mid, c, cn]]
+    for t in tris:
+        t = th.outward(t, P(0, 0, 2.0))
+        nn = th.norm(th.newell(t))
+        lit = 0.5 + 1.6 * (th.dot(nn, lf) - flat)
+        tone = 6 if lit > 1.0 else int(round(max(0.0, lit) * 5))
+        faces.append(th.Face(t, "mrock%d" % tone, u_hint=u))
+
+
+def marlit_prism(f, q, x0, x1, rnd):
+    """A Marlit solid: the sharp convex profile q (in y, z) swept from x0 to x1, every edge chamfered
+    by the block's MB_C (strips and corner triangles in the bevel's `medge`), and every flat face -
+    the swept ones and both end walls - dressed by `marlit_poly`."""
+    c = MB_C
+    qc, kind = hm.chamfered_profile(q, c)
+    wall = hm.inset(q, c)
+    n = len(qc)
+    xa, xb = x0 + c, x1 - c
+    cy = sum(p[0] for p in q) / len(q)
+    cz = sum(p[1] for p in q) / len(q)
+    centre = ((x0 + x1) / 2, cy, cz)
+    for i in range(n):
+        a, b = qc[i], qc[(i + 1) % n]
+        pts = [(xa, a[0], a[1]), (xb, a[0], a[1]), (xb, b[0], b[1]), (xa, b[0], b[1])]
+        pts = th.outward(pts, centre)
+        if kind[i] == "chamfer":
+            f.append(th.Face(pts, "medge", u_hint=(1, 0, 0)))
+        else:
+            marlit_poly(f, pts, rnd)
+    nq = len(q)
+    for sx, xw, xf in ((-1.0, x0, xa), (1.0, x1, xb)):
+        marlit_poly(f, th.outward([(xw, p[0], p[1]) for p in wall], centre), rnd)
+        for j in range(nq):
+            fa, fb = qc[2 * j + 1], qc[(2 * j + 2) % n]
+            wa, wb = wall[j], wall[(j + 1) % nq]
+            st = [(xf, fa[0], fa[1]), (xf, fb[0], fb[1]), (xw, wb[0], wb[1]), (xw, wa[0], wa[1])]
+            f.append(th.Face(th.outward(st, centre), "medge", u_hint=th.sub(st[1], st[0])))
+            ca, cb = qc[(2 * j + 2) % n], qc[(2 * j + 3) % n]
+            wv = wall[(j + 1) % nq]
+            tri = [(xf, ca[0], ca[1]), (xf, cb[0], cb[1]), (xw, wv[0], wv[1])]
+            f.append(th.Face(th.outward(tri, centre), "medge", u_hint=th.sub(tri[1], tri[0])))
+
+
+# The Marlit family, anchored like every 2x2x2 block (y -0.5..1.5, z -1.5..0.5); the "slab" ones
+# are one cell across X. The half blocks are the cube cut corner to corner as the Falsus half block:
+# full height at the back (+Z), 45 deg down to the front's bottom edge.
+MB_BOX_YZ = [(-0.5, -1.5), (1.5, -1.5), (1.5, 0.5), (-0.5, 0.5)]
+MB_HALF_YZ = [(-0.5, -1.5), (1.5, 0.5), (-0.5, 0.5)]
+
+
+def build_marlit_slab(pk, img):
+    import random as _r
+    parts = {"marlit_slab_body": []}
+    marlit_prism(parts["marlit_slab_body"], MB_BOX_YZ, -0.5, 0.5, _r.Random(12))
+    return parts
+
+
+def build_marlit_half(pk, img):
+    import random as _r
+    parts = {"marlit_half_body": []}
+    marlit_prism(parts["marlit_half_body"], MB_HALF_YZ, -1.5, 0.5, _r.Random(13))
+    return parts
+
+
+def build_marlit_half_slab(pk, img):
+    import random as _r
+    parts = {"marlit_half_slab_body": []}
+    marlit_prism(parts["marlit_half_slab_body"], MB_HALF_YZ, -0.5, 0.5, _r.Random(14))
     return parts
 
 
@@ -1496,6 +1654,9 @@ def build_wireless(pk, img):
 
 BLOCKS = {
     "marlit_block": (113, build_marlit_block, 512),
+    "marlit_slab": (127, build_marlit_slab, 512),
+    "marlit_half": (131, build_marlit_half, 512),
+    "marlit_half_slab": (137, build_marlit_half_slab, 512),
     "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
