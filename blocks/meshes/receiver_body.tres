@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://coqjcu13oj0yy"]
 
-[ext_resource type="Texture2D" uid="uid://bkinvw73kexw9" path="res://objects/receiver_texture.png" id="1_eun6v"]
+[ext_resource type="Texture2D" uid="uid://bkinvw73kexxa" path="res://objects/receiver_texture.png" id="1_eun6v"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8fvye"]
 resource_name = "receiver"

@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://cr15sbfqtuoa8"]
 
 [ext_resource type="Texture2D" uid="uid://bi52vnmfqnvt6" path="res://objects/generator_texture.png" id="1_1mk6i"]
 

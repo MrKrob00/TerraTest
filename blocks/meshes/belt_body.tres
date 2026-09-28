@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://da48vyvrtbmx3"]
 
 [ext_resource type="Texture2D" uid="uid://yoc5lxxmo0rh" path="res://objects/belt_texture.png" id="1_s3bri"]
 
