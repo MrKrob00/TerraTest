@@ -787,19 +787,39 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
-			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF]:
+			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
 				for dz in [-1, 0]:
 					cells.append(Vector3i(dx, dy, dz))
 		return cells
-	if block == G.Block.COMP_FACTORY:
+	if block in [G.Block.MARLIT_LONG, G.Block.MARLIT_LONG_HALF, G.Block.MARLIT_BREW_GIRDER]:
+		var cl: Array = []                  # 4×2×2, reaching -X and -Z from its anchor like a 2×2×2
+		for dx in [-3, -2, -1, 0]:
+			for dy in [0, 1]:
+				for dz in [-1, 0]:
+					cl.append(Vector3i(dx, dy, dz))
+		return cl
+	if block == G.Block.MARLIT_OCTO:
+		var co: Array = []                  # 3×3×3 round its anchor
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				for dz in [-1, 0, 1]:
+					co.append(Vector3i(dx, dy, dz))
+		return co
+	if block == G.Block.MARLIT_ARMOR8:
+		var ca: Array = []                  # 4×2×1 wall, up from the anchor
+		for dx in [-3, -2, -1, 0]:
+			for dy in [0, 1]:
+				ca.append(Vector3i(dx, dy, 0))
+		return ca
+	if block == G.Block.COMP_FACTORY or block == G.Block.MARLIT_BRACKET:
 		return [Vector3i(-1, 0, -1), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 0)]  # 2×1×2
 	# ARMOUR PLATES ARE WALLS: they stand on the back face of their cells, so a big one spreads across
 	# (X) and up (Y), never in depth. The x4 used to be 2x1x2 - a slab lying flat under a plate
 	# that stood upright.
-	if block == G.Block.ARMOR4:
+	if block == G.Block.ARMOR4 or block == G.Block.MARLIT_ARMOR4:
 		var cells4: Array = []               # 2×2×1, up from the anchor
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
@@ -815,7 +835,8 @@ func _footprint_offsets(block: int) -> Array:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0)]     # 1×1×2, вдоль Z
 	if block == G.Block.MARLIT_SLAB or block == G.Block.MARLIT_HALF_SLAB:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0), Vector3i(0, 1, -1), Vector3i(0, 1, 0)]   # 1×2×2
-	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2:
+	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2 \
+			or block == G.Block.MARLIT_ARMOR2:
 		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0)]     # 2×1×1
 	if block == G.Block.BLOCK3:
 		return [Vector3i(-1, 0, 0), Vector3i(0, 0, 0), Vector3i(1, 0, 0)]   # 3×1×1
@@ -861,12 +882,20 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 		# half its thickness, and centred on the cells it spans. This used to fall through to zero,
 		# so every plate's collider stood in the middle of its cell while the plate was drawn 0.4 m
 		# behind it - shots stopped on air in front of the armour.
-		off = Vector3(-0.5 if is_equal_approx(box.size.x, 2.0) else 0.0,
-				0.5 if is_equal_approx(box.size.y, 2.0) else 0.0, 0.5 - box.size.z * 0.5)
+		# A 4-wide plate (Marlit's 4×2) reaches three cells to -X like the long blocks; 3 wide is the
+		# Falsus x9, centred on its anchor.
+		var ox := 0.0
+		if is_equal_approx(box.size.x, 2.0):
+			ox = -0.5
+		elif is_equal_approx(box.size.x, 4.0):
+			ox = -1.5
+		off = Vector3(ox, 0.5 if is_equal_approx(box.size.y, 2.0) else 0.0, 0.5 - box.size.z * 0.5)
 	elif box.size == Vector3(2, 2, 2):
 		off = Vector3(-0.5, 0.5, -0.5)
 	elif box.size == Vector3(1, 2, 2):
 		off = Vector3(0.0, 0.5, -0.5)          # MARLIT_SLAB: one cell across, up and back like a 2×2×2
+	elif box.size == Vector3(4, 2, 2):
+		off = Vector3(-1.5, 0.5, -0.5)         # Marlit's long blocks: a 2×2×2 doubled along -X
 	elif box.size == Vector3(2, 1, 2):
 		off = Vector3(-0.5, 0.0, -0.5)         # COMP_FACTORY: 2×1×2, flat on the floor of its cells
 	elif box.size == Vector3(2, 1, 1):

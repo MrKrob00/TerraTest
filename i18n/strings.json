@@ -2244,10 +2244,6 @@
 		"ru": "Собрано %d из %d блоков. Не хватает: ",
 		"uk": "Зібрано %d з %d блоків. Бракує: "
 	},
-	"Marlit Block": {
-		"ru": "Блок Marlit",
-		"uk": "Блок Marlit"
-	},
 	"Marlit Block 1×2×2": {
 		"ru": "Блок Marlit 1×2×2",
 		"uk": "Блок Marlit 1×2×2"
@@ -2279,5 +2275,105 @@
 	"need the %s licence": {
 		"ru": "нужна лицензия %s",
 		"uk": "потрібна ліцензія %s"
+	},
+	"Big Yellow": {
+		"ru": "Big Yellow",
+		"uk": "Big Yellow"
+	},
+	"Reach the Marlit collection point": {
+		"ru": "Доберись до пункта приёма Marlit",
+		"uk": "Дістанься до пункту прийому Marlit"
+	},
+	"Marlit wants to do business. They build big and they build heavy, and they have set a collection point down out in the field.": {
+		"ru": "Marlit хочет вести дела. Они строят крупно и тяжело — и уже поставили в поле пункт приёма.",
+		"uk": "Marlit хоче вести справи. Вони будують великим і важким — і вже поставили в полі пункт прийому."
+	},
+	"Hand over 40 resources": {
+		"ru": "Сдай 40 единиц сырья",
+		"uk": "Здай 40 одиниць сировини"
+	},
+	"Bring a collector with ore in it up to the point's receiver, or drop ore in its zone. Marlit pays in a licence, not in money.": {
+		"ru": "Подведи машину со сборщиком, полным руды, к приёмнику пункта — или вывали руду в его зону. Marlit платит лицензией, а не деньгами.",
+		"uk": "Підведи машину зі збирачем, повним руди, до приймача пункту — або висип руду в його зону. Marlit платить ліцензією, а не грошима."
+	},
+	"%s licence granted. Its blocks are in the tech tree.": {
+		"ru": "Лицензия %s получена. Её блоки — в древе технологий.",
+		"uk": "Ліцензію %s отримано. Її блоки — у дереві технологій."
+	},
+	"Marlit Basic Block": {
+		"ru": "Базовый блок Marlit",
+		"uk": "Базовий блок Marlit"
+	},
+	"Marlit Long Block": {
+		"ru": "Длинный блок Marlit",
+		"uk": "Довгий блок Marlit"
+	},
+	"Marlit Long Half Block": {
+		"ru": "Длинный полублок Marlit",
+		"uk": "Довгий напівблок Marlit"
+	},
+	"Marlit Girder Block": {
+		"ru": "Балочный блок Marlit",
+		"uk": "Балковий блок Marlit"
+	},
+	"Marlit Brew Girder": {
+		"ru": "Длинная балка Marlit",
+		"uk": "Довга балка Marlit"
+	},
+	"Marlit Girder Bracket": {
+		"ru": "Балочный кронштейн Marlit",
+		"uk": "Балковий кронштейн Marlit"
+	},
+	"Marlit Armour Plate 2×1": {
+		"ru": "Бронеплита Marlit 2×1",
+		"uk": "Бронеплита Marlit 2×1"
+	},
+	"Marlit Armour Plate 2×2": {
+		"ru": "Бронеплита Marlit 2×2",
+		"uk": "Бронеплита Marlit 2×2"
+	},
+	"Marlit Armour Plate 4×2": {
+		"ru": "Бронеплита Marlit 4×2",
+		"uk": "Бронеплита Marlit 4×2"
+	},
+	"Marlit Octo Block": {
+		"ru": "Окто-блок Marlit",
+		"uk": "Окто-блок Marlit"
+	},
+	"Two Marlit basic blocks in one part: four cells long, two by two across.": {
+		"ru": "Два базовых блока Marlit одной деталью: четыре клетки в длину, два на два в сечении.",
+		"uk": "Два базові блоки Marlit однією деталлю: чотири клітинки завдовжки, два на два в перерізі."
+	},
+	"The Marlit slope, four cells long: a whole nose or roof edge in one piece.": {
+		"ru": "Скос Marlit длиной в четыре клетки: целый нос или край крыши одной деталью.",
+		"uk": "Скіс Marlit завдовжки в чотири клітинки: цілий ніс або край даху однією деталлю."
+	},
+	"The Marlit Girder Block is a structural Standard Block. It weighs half as much as a Marlit Basic Block, has only half of its health and only 4 Attachment Points on two opposite sides each.": {
+		"ru": "Балочный блок Marlit — конструкционный стандартный блок. Весит вдвое меньше базового блока Marlit, прочности у него вдвое меньше, и точек крепления всего по 4 на двух противоположных сторонах.",
+		"uk": "Балковий блок Marlit — конструкційний стандартний блок. Важить удвічі менше за базовий блок Marlit, міцності в нього вдвічі менше, і точок кріплення лише по 4 на двох протилежних сторонах."
+	},
+	"The Marlit girder, four cells long: a light spine between two heavy ends.": {
+		"ru": "Балка Marlit длиной в четыре клетки: лёгкий хребет между двумя тяжёлыми торцами.",
+		"uk": "Балка Marlit завдовжки в чотири клітинки: легкий хребет між двома важкими торцями."
+	},
+	"A small but strong girdered platform: bolts on by its back, carries on its top.": {
+		"ru": "Небольшая, но прочная площадка на балках: крепится задом, несёт на себе сверху.",
+		"uk": "Невеликий, але міцний майданчик на балках: кріпиться задом, несе на собі згори."
+	},
+	"Marlit armour plate, two by one: thicker than Falsus plating, and heavier.": {
+		"ru": "Бронеплита Marlit два на один: толще брони Falsus — и тяжелее.",
+		"uk": "Бронеплита Marlit два на один: товща за броню Falsus — і важча."
+	},
+	"Marlit armour plate, two by two.": {
+		"ru": "Бронеплита Marlit два на два.",
+		"uk": "Бронеплита Marlit два на два."
+	},
+	"Marlit armour plate, four by two: a whole flank of a big machine.": {
+		"ru": "Бронеплита Marlit четыре на два: целый борт большой машины.",
+		"uk": "Бронеплита Marlit чотири на два: цілий борт великої машини."
+	},
+	"The Octo Block: three cells every way, eight heavy corner caps round a core, the faction's octagon on every face.": {
+		"ru": "Окто-блок: три клетки в каждую сторону, восемь тяжёлых угловых колпаков вокруг ядра и восьмиугольник фракции на каждой грани.",
+		"uk": "Окто-блок: три клітинки в кожен бік, вісім важких кутових ковпаків навколо ядра й восьмикутник фракції на кожній грані."
 	}
 }
