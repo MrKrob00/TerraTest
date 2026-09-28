@@ -1886,16 +1886,19 @@ project: read it before claiming how anything works.
   nodes: the same damage from gun, rocket and heavy cannon, and the laser's hit log identical shot
   for shot (six hits, same blocks, same positions). The pool-era rules — hide the idle bullet,
   `monitoring` off, stop its tick — went with the nodes.
-- **AN ORDINARY ROUND IS DRAWN AS A FIRE STREAK, AND THE STREAK IS ALL THERE IS** (`BulletSim`
-  `TRAIL_*`, `Kind.streak`): the shared round model read as a faint dark dash against the ground. A
-  trail behind it was tried first as a SECOND MultiMesh per model - a draw call more for a dash nobody
-  saw - so the round's own MultiMesh now draws the streak instead: two crossed strips (seen from any
-  side), additive, white-yellow at the head fading through orange to nothing. No particles (rule 11),
-  and exactly the draw calls there were before: measured, gun, shotgun, heavy cannon, rocket launcher
-  and mortar come to 2 MultiMeshes in all. Its length is the path of the last `TRAIL_TIME`, capped
-  at `TRAIL_MAX` and at what the round has flown (`Shot.flown`, never back past the muzzle), and never
-  under `TRAIL_MIN`, the old round's length, so it shows from the first frame. A round with its own
-  projectile (`OWN_VISUAL`, the laser's bolt) keeps its model. Checked on the real driver.
+- **AN ORDINARY ROUND DRAGS A FIRE STREAK, AND ROUND AND STREAK ARE ONE SURFACE** (`BulletSim`
+  `_streak_mesh`, `bullet_streak.gdshader`): the round's own model from `Assets.glb` and, behind its
+  tail, two crossed strips (seen from any side), white-yellow fading through orange to nothing. Two
+  cuts came first and both were dropped: the trail as a SECOND MultiMesh per model (a draw call more)
+  and the streak INSTEAD of the round (the player wanted the model back). One surface and one
+  material keep one draw call per model; PREMULTIPLIED ALPHA lets one pass draw the round opaque
+  (alpha 1) and ADD the streak (alpha 0). Which vertex is which is UV2.x - vertex COLOR read 0 on the
+  round through the MultiMesh and drew it as streak. The lengths are per shot in the MultiMesh's
+  custom data: x the streak (path of the last `TRAIL_TIME`, capped at `TRAIL_MAX` and at what the
+  round has flown past its tail, `Shot.flown`), y the round's stretch (`trace`, as before). No
+  particles (rule 11); measured, gun, shotgun, heavy cannon, rocket launcher and mortar come to 2
+  MultiMeshes in all. A round with its own projectile (`OWN_VISUAL`, the laser's bolt) keeps its
+  model and material. Checked on the real driver.
 - **MEASURE A PHYSICS COST BY ALTERNATING, NEVER BY ONE PASS.** A single before/after of that same
   flag read 48 ms against 2 — and it was an artefact: chunk streaming was still running and landed
   in `TIME_PHYSICS_PROCESS`. Alternating OFF/ON six times over the same 200 nodes gave
