@@ -443,6 +443,9 @@ def _cube(bx, by):
 EMBLEMS = {"comp_side": _gear, "scrap_side": _split_block, "pack_side": _magnet, "fab_side": _cube}
 
 
+BRASS = [(96, 66, 30), (140, 100, 44), (184, 138, 62), (218, 176, 88), (242, 214, 138), (252, 236, 186)]
+
+
 def _ramp_at(ramp, f):
     """The colour at position f along a ramp of colours, blended between its two neighbours."""
     f = max(0.0, min(len(ramp) - 1.0, f))
@@ -827,29 +830,31 @@ def style_px(style, x, y, w, h, d):
                 return METAL[6]
         return jitter(METAL[3], 2)
     if style[:5] == "rband":
-        # The repair ring's outer face: dark metal plates with a light edge along both long edges,
-        # a blue inlay down the middle, and at a plate joint a dark seam with a bolt either side.
+        # The repair ring's outer face, drawn ACROSS the band, not along it (the player's call): dark
+        # plates whose light runs from one end to the other, and at a joint a BRASS band right across
+        # with a bolt at each edge - a warm second accent between the blue sides and the green energy.
+        # A line along the band read as one long stripe.
         k = int(style[5])
         joint = style.endswith("j")
-        base = _ramp_at(METAL, 1.6 + k * 0.6 + 1.2 * (1.0 - (y + 0.5) / h))
+        fx = (x + 0.5) / w
+        if joint and abs(x + 0.5 - w / 2.0) <= 2.5:
+            if 1 <= y <= 2 or h - 3 <= y <= h - 2:
+                if abs(x + 0.5 - w / 2.0) <= 1.0:
+                    return METAL[1]
+            return _ramp_at(BRASS, 0.6 + k * 0.7 + 0.8 * (1.0 - (x + 0.5) / w))
+        if x < 1:
+            return METAL[0]                                  # the seam between plates
         if y < 1 or y >= h - 1:
             return RIM[1 + k // 2]
-        mid = abs(y + 0.5 - h / 2.0)
-        if mid <= 1.0:
-            return [BLUE_LO, BLUE, BLUE, BLUE_MID, BLUE_HI][k]
-        if joint:
-            if x < 1:
-                return METAL[0]
-            if 2 <= x <= 3 and (2 <= y <= 3 or h - 4 <= y <= h - 3):
-                return RIM[3] if (x + y) % 2 else RIM[2]
-        return jitter(base, 1)
+        return jitter(_ramp_at(METAL, 1.4 + k * 0.6 + 1.6 * (1.0 - fx)), 1)
     if style[:5] == "rside":
-        # The repair ring's sides: the family's blue in a light GRADIENT across the face (the
-        # painted light the tubes carry), shifted by how the facet faces the light - flat blue read
-        # as a dead stripe. No edge line per facet: that read as a row of windows.
+        # The repair ring's sides: the family's blue, its light running along each segment (across
+        # the band's width nothing changes), a dark seam where two segments meet.
         k = int(style[5:])
+        if x < 1:
+            return BLUE_DEEP
         return jitter(_ramp_at([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI, (160, 190, 238)],
-                               0.6 + k * 0.85 + 1.4 * (1.0 - (y + 0.5) / h)), 1)
+                               0.5 + k * 0.85 + 1.5 * (1.0 - (x + 0.5) / w)), 1)
     if style[:5] == "bflat" and style[5:].isdigit():
         # A plain blue facet in its painted-light tone, no edge line: a smooth band.
         return jitter([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][int(style[5:])], 1)
