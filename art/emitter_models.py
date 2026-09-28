@@ -311,6 +311,114 @@ def build_regen2(pk, img):
     return parts
 
 
+# ── MARLIT: the second faction ─────────────────────────────────────────────────────────────────
+# Its own style, from its emblem (images/faction_marlit.png): a brushed STEEL octagon frame, an
+# orange SUNSET glow on its inner rim, and LOW-POLY cliffs and sea - big flat facets, each its own
+# tone of the painted light, no edge lines. Marlit builds BIG (the player's GeoCorp): its most basic
+# block is 2x2x2, anchored like the other 2x2x2 blocks (x -1.5..0.5, y -0.5..1.5, z -1.5..0.5).
+MB_C = 0.16            # the block's edge bevel
+# The emblem's frame, face by face: a flat dark plate out to the OUTER octagon, a lit bevel sloping in
+# to the INNER one, a thin sunset line, then the low-poly sea-and-cliff floor. (half-size flat to
+# flat, corner cut, depth under the face)
+MB_OCT = [(0.80, 0.30, 0.0), (0.62, 0.23, 0.10), (0.57, 0.21, 0.10)]
+MB_FLOOR = 0.13        # the facets lie about here, raised and sunk round it
+def _face_axes(axis, sg):
+    n = [0.0, 0.0, 0.0]
+    n[axis] = float(sg)
+    u = [0.0, 0.0, 0.0]
+    v = [0.0, 0.0, 0.0]
+    u[(axis + 1) % 3] = 1.0
+    v[(axis + 2) % 3] = 1.0
+    return tuple(n), tuple(u), tuple(v)
+
+
+def marlit_face(faces, centre, n, u, v, half, rnd):
+    """One face of a Marlit block, drawn like its emblem: a dark gunmetal plate, an octagonal bevel
+    sloping inward (each of its eight facets its own tone, as in the emblem), a thin sunset line, and
+    inside a floor of low-poly facets that catch the sunset on their lit sides."""
+    def P(x, y, d=0.0):
+        return th.add(centre, th.add(th.add(th.mul(u, x), th.mul(v, y)), th.mul(n, -d)))
+
+    def octo(a, c):
+        b = a - c
+        return [(b, a), (a, b), (a, -b), (b, -a), (-b, -a), (-a, -b), (-a, b), (-b, a)]
+    o1, o2, o3 = (octo(a, c) for a, c, _ in MB_OCT)
+    d1, d2, d3 = (d for _, _, d in MB_OCT)
+    s = half
+    a1, b1 = o1[1][0], o1[0][0]
+    inside = th.add(centre, th.mul(n, -1.0))
+    # light in the FACE's own axes, and tones by how far a facet tilts from the face: the blocks are
+    # unshaded and the house style paints no world light (every side reads alike). With the world's
+    # light the roof's facets all turned to the sunset and a side face went black.
+    lf = th.norm(th.add(th.add(th.mul(u, -0.45), th.mul(v, 0.55)), th.mul(n, 0.70)))
+    flat = th.dot(n, lf)
+    plate = [[(-b1, s), (b1, s), (b1, a1), (-b1, a1)], [(s, -b1), (s, b1), (a1, b1), (a1, -b1)],
+             [(-b1, -s), (-b1, -a1), (b1, -a1), (b1, -s)], [(-s, -b1), (-a1, -b1), (-a1, b1), (-s, b1)],
+             [(b1, s), (s, s), (s, b1), (a1, b1), (b1, a1)], [(s, -b1), (s, -s), (b1, -s), (b1, -a1), (a1, -b1)],
+             [(-b1, -s), (-s, -s), (-s, -b1), (-a1, -b1), (-b1, -a1)], [(-s, b1), (-s, s), (-b1, s), (-b1, a1), (-a1, b1)]]
+    for poly in plate:
+        faces.append(th.Face(th.outward([P(x, y) for x, y in poly], inside), "mplate", u_hint=u))
+    for i in range(8):
+        j = (i + 1) % 8
+        q = [P(*o1[i], d1), P(*o1[j], d1), P(*o2[j], d2), P(*o2[i], d2)]
+        q = th.outward(q, inside)
+        nn = th.norm(th.newell(q))
+        tone = int(round(max(0.0, min(1.0, 0.5 + 1.1 * (th.dot(nn, lf) - flat))) * 5))
+        faces.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
+        g = [P(*o2[i], d2), P(*o2[j], d2), P(*o3[j], d3), P(*o3[i], d3)]
+        faces.append(th.Face(th.outward(g, inside), "mglow", u_hint=th.sub(g[1], g[0])))
+    # the floor: a proper triangulation, ring by ring - the inner octagon, eight points off its edge
+    # midpoints, four under every other one of those, and the centre; overlapping fans read as torn
+    # paper. Heights swing both ways round MB_FLOOR so the facets tilt enough to read as cliffs.
+    o2d = []
+    for i in range(8):
+        mx = (o3[i][0] + o3[(i + 1) % 8][0]) * 0.5
+        my = (o3[i][1] + o3[(i + 1) % 8][1]) * 0.5
+        k = 0.66 + rnd.uniform(-0.08, 0.08)
+        o2d.append((mx * k + rnd.uniform(-0.04, 0.04), my * k + rnd.uniform(-0.04, 0.04)))
+    outer = [P(x, y, MB_FLOOR + rnd.uniform(-0.07, 0.04)) for x, y in o2d]
+    inner = []
+    for k in range(4):
+        x, y = o2d[2 * k + 1]
+        f = 0.42 + rnd.uniform(-0.08, 0.08)
+        inner.append(P(x * f, y * f, MB_FLOOR - rnd.uniform(-0.03, 0.12)))
+    mid = P(rnd.uniform(-0.05, 0.05), rnd.uniform(-0.05, 0.05), MB_FLOOR - rnd.uniform(0.02, 0.1))
+    base = [P(x, y, d3) for x, y in o3]
+    tris = []
+    for i in range(8):
+        j = (i + 1) % 8
+        tris.append([base[i], base[j], outer[i]])
+        tris.append([outer[i], base[j], outer[j]])
+    for k in range(4):
+        a0, a1_, a2 = outer[2 * k], outer[2 * k + 1], outer[(2 * k + 2) % 8]
+        c, cn = inner[k], inner[(k + 1) % 4]
+        tris += [[a0, a1_, c], [a1_, a2, c], [c, a2, cn], [mid, c, cn]]
+    for t in tris:
+        t = th.outward(t, P(0, 0, 2.0))
+        nn = th.norm(th.newell(t))
+        # enough contrast to read as cliffs, not so much that it reads as noise; the sunset catches
+        # only a facet turned hard to the light - on three or four a face it read as stains
+        lit = 0.5 + 1.6 * (th.dot(nn, lf) - flat)
+        tone = 6 if lit > 1.0 else int(round(max(0.0, lit) * 5))
+        faces.append(th.Face(t, "mrock%d" % tone, u_hint=u))
+
+
+def build_marlit_block(pk, img):
+    import random as _r
+    rnd = _r.Random(11)
+    parts = {"marlit_block": []}
+    f = parts["marlit_block"]
+    lo, hi = (-1.5, -0.5, -1.5), (0.5, 1.5, 0.5)
+    centre = (-0.5, 0.5, -0.5)
+    cham_box(f, lo, hi, MB_C, None, None, None, "medge")
+    for axis in range(3):
+        for sg in (1, -1):
+            n, u, v = _face_axes(axis, sg)
+            fc = th.add(centre, th.mul(n, 1.0))
+            marlit_face(f, fc, n, u, v, 1.0 - MB_C, rnd)
+    return parts
+
+
 # ── the radar ───────────────────────────────────────────────────────────────────────────────────
 
 DISH_RAMP = [(70, 78, 100), (95, 104, 130), (120, 130, 158), (145, 155, 182), (165, 175, 200)]
@@ -1387,6 +1495,7 @@ def build_wireless(pk, img):
 
 
 BLOCKS = {
+    "marlit_block": (113, build_marlit_block, 512),
     "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),

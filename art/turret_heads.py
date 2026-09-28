@@ -826,6 +826,36 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style == "mplate":
+        # Marlit's frame plate: dark gunmetal as in its emblem, a fine brushed grain, no lines of its
+        # own - lines on every plate piece read as a grid of tiles.
+        streak = ((y * 7 + (x // 11)) % 4)
+        return tuple(max(0, min(255, c + (streak == 0) * 4 - (streak == 2) * 3)) for c in (46, 48, 56))
+    if style == "medge":
+        # the block's own bevel: a lit rim with a bright line along it, the emblem's outer edge
+        if d < 1.0:
+            return (150, 154, 166)
+        return jitter((70, 74, 84), 1)
+    if style[:4] == "mbev" and style[4:].isdigit():
+        # the octagon's sloping bevel: one tone per facet by its angle to the light, a bright line on
+        # its outer edge (the emblem's rim) and a dark one where it drops to the sunset line
+        k = int(style[4:])
+        if y < 1:
+            return (98, 102, 116)                         # the rim: quiet, or it doubles the bevel's line
+        if y >= h - 1:
+            return (20, 20, 26)
+        return jitter([(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102),
+                       (106, 110, 124)][k], 1)
+    if style == "mglow":
+        # the sunset line along the frame's inner edge: hot at the lip, deeper in
+        t = (y + 0.5) / max(h, 1)
+        return _ramp_at([(255, 226, 160), (252, 176, 80), (226, 116, 38)], t * 2.0)
+    if style[:5] == "mrock" and style[5:].isdigit():
+        # the low-poly sea and cliffs: one flat tone per facet, deep navy in the shade, slate as it
+        # turns to the light, and only the most lit catches the sunset like the cliff tops in the emblem
+        k = int(style[5:])
+        return jitter([(22, 28, 44), (30, 38, 60), (40, 52, 78), (52, 66, 94), (68, 84, 112),
+                       (90, 104, 130), (206, 140, 92)][k], 1)
     if style[:5] == "rband":
         # The repair ring's outer face, drawn ACROSS the band, not along it (the player's call): dark
         # plates whose light runs from one end to the other, and at a joint a blue band right across
