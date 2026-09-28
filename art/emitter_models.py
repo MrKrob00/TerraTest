@@ -730,9 +730,9 @@ def build_collector(pk, img):
 # front quarter (a line runs straight through it), and on the RIGHT face IN at the back quarter,
 # OUT at the front one (a belt passing alongside hands ore in and takes the ingot, whichever way it
 # runs - a belt's sides are both in and out). So that column is an OPEN CHANNEL at the belts' deck
-# height (BELT_TOP), open at both ends and along its whole right side, under a HOOD whose underside
-# glows while it works; the left column is the FURNACE. Parts: processor_body, processor_glow (the
-# heat: hood underside, hood window, firebox windows - re-coloured by processor.gd, never batched).
+# height (BELT_TOP), open at both ends, along its whole right side AND TO THE SKY, with a hot bed in
+# its middle; the left column is the FURNACE. Parts: processor_body, processor_glow (the heat: the
+# bed, the vent, the fireboxes - re-coloured by processor.gd, never batched).
 #
 # SELLER: one intake, the right-back-bottom quarter, from the back and from the right. So that cell
 # is an open MOUTH at belt height, facing back and right, under a glass TUBE that carries what is
@@ -784,31 +784,36 @@ def glow_quad(faces, centre, right, up, hw, hh, style="gen_fire"):
 
 
 def build_processor(pk, img):
+    """NOTHING STANDS OVER THE CHANNEL: what the smelter does is the show. The first cut put a
+    hood over it and the player saw a conveyor under a box. Now the channel is open to the sky; in
+    its middle, where the ore stops for a tick, lies a HOT BED (a glowing grate) and the furnace
+    beside it breathes onto it through a vent; processor.gd heats the ore red on the bed and plays
+    the glitch the moment it becomes an ingot."""
     parts = {"processor_body": [], "processor_glow": []}
     b, g = parts["processor_body"], parts["processor_glow"]
-    hood_lo, hood_hi, roof_hi = 0.45, 1.0, 1.26
+    fur_hi, roof_hi = 1.0, 1.26
     # The furnace: the left column, full depth.
     fur = []
-    cham_box(fur, (-1.5, -0.5, -1.5), (-0.5, hood_hi, 0.5), 0.067, "smelt_side", None, "dark",
+    cham_box(fur, (-1.5, -0.5, -1.5), (-0.5, fur_hi, 0.5), 0.067, "smelt_side", None, "dark",
              "dark_edge")
-    restyle(fur, "smelt_side", [((1, 0), "dark")])          # the wall facing the channel
+    restyle(fur, "smelt_side", [((1, 0), "plain_side")])     # the wall facing the channel
     b += fur
     # The channel: a base under it and the belt's own deck on top, running back to front (-Z).
     cham_box(b, (-0.5, -0.5, -1.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "dark", None, "dark", "dark_edge")
     belt_strip(b, (-0.5, CH_Y - 0.14, -1.5), (0.5, CH_Y, 0.5), "belt_fwd", (0, 0, -1))
-    # The hood over the channel, carried by the furnace and two blue posts on its open side.
-    cham_box(b, (-0.5, hood_lo, -1.5), (0.5, hood_hi, 0.5), 0.05, "dark", None, None, "dark_edge")
+    # Stubs of the belts' rails at the channel's outer corners - the open side stays open.
     for z0, z1 in ((0.38, 0.5), (-1.5, -1.38)):
-        th.box(b, (0.38, CH_Y, z0), (0.5, hood_lo, z1), "blue")
-    # The heat: the hood's underside over the channel, a window on its open side, fireboxes on the
-    # furnace's outer walls.
-    glow_quad(g, (0.0, hood_lo - 0.004, -0.5), (1, 0, 0), (0, 0, 1), 0.42, 0.92)
-    glow_quad(g, (0.504, 0.72, -0.5), (0, 0, -1), (0, 1, 0), 0.8, 0.14)
+        th.box(b, (0.38, CH_Y - 0.02, z0), (0.5, CH_Y + 0.07, z1), "blue")
+    # The hot bed in the middle of the channel, and the vent on the furnace's wall that feeds it.
+    glow_quad(g, (0.0, CH_Y + 0.004, -0.5), (1, 0, 0), (0, 0, -1), 0.34, 0.32)
+    th.box(b, (-0.5, CH_Y, -0.86), (-0.38, CH_Y + 0.2, -0.14), "dark")
+    glow_quad(g, (-0.376, CH_Y + 0.1, -0.5), (0, 0, -1), (0, 1, 0), 0.3, 0.06)
+    # Fireboxes on the furnace's outer walls.
     glow_quad(g, (-1.504, 0.05, -0.5), (0, 0, 1), (0, 1, 0), 0.7, 0.2)
     glow_quad(g, (-1.0, 0.05, -1.504), (-1, 0, 0), (0, 1, 0), 0.3, 0.2)
     glow_quad(g, (-1.0, 0.05, 0.504), (1, 0, 0), (0, 1, 0), 0.3, 0.2)
-    # The roof: the family's blue sloped housing over both columns, two chimneys over the furnace.
-    frustum(b, crect(-1.48, 0.48, -1.48, 0.48, 0.14, hood_hi), crect(-1.3, 0.3, -1.3, 0.3, 0.1, roof_hi),
+    # The roof over the furnace only, two chimneys on it.
+    frustum(b, crect(-1.48, -0.52, -1.48, 0.48, 0.12, fur_hi), crect(-1.36, -0.64, -1.36, 0.36, 0.08, roof_hi),
             "blue", "bevel", "blue")
     for cz in (-0.95, -0.05):
         lathe_y(pk, img, b, [(0.14, roof_hi), (0.14, 1.44), (0.18, 1.47), (0.18, 1.5), (0.0, 1.5)],
