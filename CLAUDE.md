@@ -1734,8 +1734,8 @@ project: read it before claiming how anything works.
   is inside - and the product comes out to the RIGHT at the front through the other mouth, under a
   hot glitch (`BlockFX.play`). Both mouths have guillotine hatches that lift as something passes.
   The right column is the intake (arrows into the furnace) and the exit, split by a low divider; the
-  exit carries TWO chevrons, forward and right, because the product leaves either way and one arrow
-  said half of it. `processor._move` drives the path, the hatches and the gauge (nodes `HatchIn`,
+  exit carries NO arrows, because the product leaves forward or right and an arrow for one said
+  half of it (two arrows were tried and dropped too). `processor._move` drives the path, the hatches and the gauge (nodes `HatchIn`,
   `HatchOut`, `Gauge`; `moving_parts`), shrinking the metre-wide cargo bubble to `IN_FURNACE` in the
   mouth; `upgrade()` stays in the tick, so the product never waits on a tween. The fire grates on the
   outer walls ARE the old red/green lamp (`_set_processing_visual`, part `processor_glow`). Rejected

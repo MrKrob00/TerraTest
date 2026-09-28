@@ -643,18 +643,6 @@ def style_px(style, x, y, w, h, d):
                 return RIM[1]
             return METAL[0] if (x + y) % 7 else METAL[1]
         return jitter(METAL[3], 2)
-    if style == "exit_two":
-        # The smelter's exit: the product leaves FORWARD (+u) or to the RIGHT (+v), so one chevron
-        # each way - one arrow would say only half of it.
-        if d < 1.0:
-            return METAL[2]
-        px, py = x + 0.5, y + 0.5
-        for tu, tv, du, dv in ((w - 5.0, h * 0.42, 1, 0), (w * 0.42, h - 5.0, 0, 1)):
-            a = (tu - px) * du + (tv - py) * dv
-            off = abs((px - tu) * dv - (py - tv) * du)
-            if 0 <= a <= 6.0 and abs(off - a * 0.9) < 1.2:
-                return ORANGE if a > 1 else ORANGE_LO
-        return METAL[2] if (x % 4) == 0 else METAL[1]
     if style == "molten":
         # The smelter's gauge fill: molten metal, bright at the bottom.
         t = (y + 0.5) / max(h, 1)

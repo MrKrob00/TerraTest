@@ -792,7 +792,8 @@ def build_processor(pk, img):
     taken in on the right at the back, it goes LEFT into the furnace through a mouth, is gone inside
     (the model shows the melt, not the ore), and comes out to the RIGHT at the front through the
     other mouth, already the product. So the right column is the intake (arrows into the furnace)
-    and the exit (one chevron forward, one right: it leaves either way), split by a divider; the
+    and the exit (plain: it leaves forward or right, and arrows for one said half of it), split by
+    a divider; the
     left column is one closed furnace with two guillotine HATCHES over its mouths and a GAUGE of
     molten metal between them that fills while the ore is inside (processor.gd drives all three).
     Rejected on the way: a hood over a straight channel, a hot bed in an open channel, an open
@@ -802,10 +803,10 @@ def build_processor(pk, img):
     b, g = parts["processor_body"], parts["processor_glow"]
     fur_hi, roof_hi, deck_lo = 1.0, 1.26, CH_Y - 0.14
     # The right column: a base, the intake deck (arrows LEFT, into the furnace), the exit deck
-    # (both ways out), the divider and the belts' rail stubs.
+    # (no arrows: the product leaves forward or right), the divider and the belts' rail stubs.
     cham_box(b, (-0.5, -0.5, -1.5), (0.5, deck_lo, 0.5), 0.04, "dark", None, "dark", "dark_edge")
     belt_strip(b, (-0.5, deck_lo, -0.5), (0.5, CH_Y, 0.5), "belt_fwd", (-1, 0, 0))
-    belt_strip(b, (-0.5, deck_lo, -1.5), (0.5, CH_Y, -0.5), "exit_two", (0, 0, -1))
+    belt_strip(b, (-0.5, deck_lo, -1.5), (0.5, CH_Y, -0.5), "belt", (0, 0, -1))
     th.box(b, (-0.5, CH_Y - 0.02, -0.56), (0.5, CH_Y + 0.12, -0.44), "blue")
     for z0, z1 in ((0.38, 0.5), (-1.5, -1.38)):
         th.box(b, (0.38, CH_Y - 0.02, z0), (0.5, CH_Y + 0.07, z1), "blue")
