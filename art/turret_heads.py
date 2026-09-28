@@ -817,6 +817,15 @@ def style_px(style, x, y, w, h, d):
             if x == rx and y == ry:
                 return METAL[6]
         return jitter(METAL[3], 2)
+    if style[:5] == "bflat" and style[5:].isdigit():
+        # A plain blue facet in its painted-light tone, no edge line: a smooth band.
+        return jitter([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][int(style[5:])], 1)
+    if style == "energy":
+        # A glowing strip, painted in light greys so its material can tint it (green working,
+        # dark off): brightest down the middle, a little dimmer at its edges.
+        t = abs(y + 0.5 - h / 2.0) / max(h / 2.0, 1.0)
+        v = int(255 - 70 * t * t)
+        return (v, v, min(255, v + 4))
     if style[:5] in ("mtone", "btone", "ctone") and style[5:].isdigit():
         # A facet of a round part built as flat quads (emitter_models.tube): its own tone from the
         # painted light, and the atlas's edge line - a pipe reads round only this way, unshaded.
