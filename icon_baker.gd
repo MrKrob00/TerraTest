@@ -66,7 +66,8 @@ func _ready() -> void:
 ## 41: the plant is its press alone, the fabricator's pipe a short elbow at the front.
 ## 42: the plant is 2x1x2 with a drawing on its roof; belt mouths as wide as the belt.
 ## 43: Falsus sign plates on the seller, fabricator, plant and scrapper.
-const RECIPE := 43
+## 44: the battery's model (terminals, a charge gauge on every wall).
+const RECIPE := 44
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

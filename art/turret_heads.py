@@ -67,6 +67,15 @@ GOLD = (240, 196, 72)
 GOLD_LO = (170, 128, 40)
 
 
+# The battery's wall drawing, in block metres (emitter_models.build_battery lays the segments on it).
+BAT_TOP = 0.38                   # the case's top; the terminals stand on it up to the cell's face
+BAT_C = 0.067                    # the family's chamfer
+BAT_SEG_HW, BAT_SEG_HH = 0.14, 0.0475
+BAT_SEG_Y = (-0.2825, -0.1575, -0.0325, 0.0925)   # segment centres, bottom up
+BAT_ICON = (0.22, -0.40, 0.21)   # the outline: half-width, bottom, top
+BAT_NUB = (0.09, 0.26)           # the nub on top: half-width, top
+
+
 # ── geometry ────────────────────────────────────────────────────────────────────────────────────
 
 class Face:
@@ -862,6 +871,38 @@ def style_px(style, x, y, w, h, d):
         if abs(r - min(w, h) * 0.28) < 0.8:
             return METAL[2]
         return RIM[3] if r < min(w, h) * 0.28 else RIM[2]
+    if style == "bat_side":
+        # The battery's wall: a battery drawn on it - a light outline with its nub on top, four slots
+        # inside where the charge segments (battery_seg, their own part) sit. The drawing is laid in
+        # BLOCK METRES (BAT_*), because the segments are geometry and have to land on their slots.
+        if d < 1.0:
+            return METAL[5]
+        if d < 2.0:
+            return METAL[4]
+        bx = abs((x + 0.5) / DENS - (0.5 - BAT_C))
+        by = (BAT_TOP - BAT_C) - (y + 0.5) / DENS
+        for yc in BAT_SEG_Y:
+            if bx <= BAT_SEG_HW and abs(by - yc) <= BAT_SEG_HH:
+                # an empty cell stays readable as a cell: dim, with its own edge
+                edge = bx > BAT_SEG_HW - 1.0 / DENS or abs(by - yc) > BAT_SEG_HH - 1.0 / DENS
+                return (40, 62, 50) if edge else (26, 40, 33)
+        hw, bot, top = BAT_ICON
+        st = 2.0 / DENS
+        if bx <= BAT_NUB[0] and top <= by <= BAT_NUB[1]:
+            return RIM[3]
+        if bx <= hw and bot <= by <= top:
+            if bx > hw - st or by < bot + st or by > top - st:
+                return RIM[3]
+            return METAL[0]
+        for rx, ry in ((2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)):
+            if x == rx and y == ry:
+                return METAL[6]
+        return jitter(METAL[3], 2)
+    if style == "bat_cell":
+        # A charge segment: the battery's one pop colour, a light line along its top.
+        if d < 1.0:
+            return (150, 240, 170) if y < h / 2 else (60, 160, 95)
+        return GREEN
     if style == "level":
         # The storage's fill: a bright bar in segments, the storage's one pop colour.
         if d < 1.0:

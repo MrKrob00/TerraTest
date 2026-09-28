@@ -1196,7 +1196,60 @@ def build_packer(pk, img):
     return parts
 
 
+# ── the battery ─────────────────────────────────────────────────────────────────────────────────
+# A BATTERY THAT READS AS ONE: a dark case with a battery drawn on every wall and four green charge
+# segments on it that light by the block's own charge (battery.gd, nodes Seg0..3 sharing one mesh),
+# a blue rim and lid, and on the lid the two terminals with + and - in front of them. It stays a
+# full cell (it joins on every face and walls a machine's middle) - only the terminals stand in the
+# last 12 cm over the lid, up to the cell's face.
+BAT_TERM_X = 0.19                # the terminals, + on the right (+X), - on the left
+BAT_TERM_Z = 0.06                # a little back, so the marks in front of them have room
+
+
+def bat_top(px, py, w, h):
+    d = min(px, py, w - px, h - py)
+    if d < 1.0:
+        return th.BLUE_HI
+    if d < 2.0:
+        return th.BLUE_MID
+    o = 0.5 - th.BAT_C
+    for sx, plus in ((BAT_TERM_X, True), (-BAT_TERM_X, False)):
+        gx = px - (sx + o) * th.DENS
+        gy = py - (-0.20 + o) * th.DENS
+        if (abs(gy) <= 1.0 and abs(gx) <= 3.5) or (plus and abs(gx) <= 1.0 and abs(gy) <= 3.5):
+            return th.WHITE
+    return th.jitter(th.BLUE, 2)
+
+
+def build_battery(pk, img):
+    parts = {"battery_body": [], "battery_seg": []}
+    b = parts["battery_body"]
+    c, top = th.BAT_C, th.BAT_TOP
+    o = 0.5 - c
+    cham_box(b, (-0.5, -0.5, -0.5), (0.5, top, 0.5), c, "bat_side", None, "dark", "dark_edge")
+    for f in b:                       # the rim round the lid is blue, the case's corners stay dark
+        if f.style == "dark_edge" and min(p[1] for p in f.pts) > top - c - 1e-6:
+            f.style = "bevel"
+    paint_island(pk, img, b, -o, o, -o, o, top, bat_top)
+    for sx in (BAT_TERM_X, -BAT_TERM_X):
+        lathe_y(pk, img, b, [(0.08, top), (0.08, top + 0.025), (0.055, top + 0.025), (0.055, 0.475),
+                             (0.04, 0.5), (0.0, 0.5)], th.RIM, sides=8, cx=sx, cz=BAT_TERM_Z,
+                ring_ramps={0: METAL_RAMP, 1: METAL_RAMP})
+    # One segment on every wall, centred on y 0: the scene stands four copies at BAT_SEG_Y.
+    hh = th.BAT_SEG_HH
+    for k in range(4):
+        a = k * math.pi / 2
+        nx, nz = round(math.cos(a)), round(math.sin(a))
+        tx, tz = -nz, nx
+        off = 0.5 + 0.004
+        q = [(nx * off + tx * s, yy, nz * off + tz * s) for s, yy in
+             ((-th.BAT_SEG_HW, -hh), (th.BAT_SEG_HW, -hh), (th.BAT_SEG_HW, hh), (-th.BAT_SEG_HW, hh))]
+        parts["battery_seg"].append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), "bat_cell", u_hint=(tx, 0.0, tz)))
+    return parts
+
+
 BLOCKS = {
+    "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
     "fabricator": (101, build_fabricator, 512),
     "scrapper": (89, build_scrapper, 512),

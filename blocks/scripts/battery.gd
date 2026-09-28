@@ -33,3 +33,38 @@ func charge_take(amount: float) -> float:
 	var got: float = minf(maxf(amount, 0.0), charge)
 	charge -= got
 	return got
+
+# ── The gauge on the walls ───────────────────────────────────────────────────────────────────────
+# Four segments (nodes Seg0..3, one mesh, art/emitter_models.py build_battery) light by charge /
+# capacity, rounded UP so a battery holding anything shows one; under LOW_FRAC the last one blinks.
+# A dark segment is flattened to SEG_OFF, not hidden: MachineBatch reads `visible` only when it
+# rebuilds, so it copies the parts' transforms instead (`moving_parts`), as the storage's bar does.
+const SEG_OFF: float = 0.001
+const LOW_FRAC: float = 0.15
+const BLINK_MS: int = 400
+
+var _segs: Array[Node3D] = []
+var _shown: int = -1
+
+func _ready() -> void:
+	moving_parts = true
+	for i in 4:
+		var s := get_node_or_null("Seg%d" % i) as Node3D
+		if s != null:
+			_segs.append(s)
+	super._ready()
+
+# Polled rather than set from charge_add/charge_take: the save and the enemy's full start write
+# `charge` straight in.
+func _process(_delta: float) -> void:
+	if _segs.is_empty():
+		return
+	var f: float = clampf(charge / capacity, 0.0, 1.0) if capacity > 0.0 else 0.0
+	var lit: int = clampi(ceili(f * _segs.size() - 0.001), 0, _segs.size())
+	if lit == 1 and f < LOW_FRAC and (Time.get_ticks_msec() / BLINK_MS) % 2 == 1:
+		lit = 0
+	if lit == _shown:
+		return
+	_shown = lit
+	for i in _segs.size():
+		_segs[i].scale = Vector3.ONE if i < lit else Vector3(1.0, SEG_OFF, 1.0)

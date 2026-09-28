@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://cp0mg03kqtg6" path="res://objects/battery_texture.png" id="1_oosm1"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tuxua"]
+resource_name = "battery"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_oosm1")
+texture_filter = 2
+
+[resource]
+resource_name = "battery_seg"
+_surfaces = [{
+"aabb": AABB(-0.504, -0.0475, -0.504, 1.008, 0.095, 1.008),
+"attribute_data": PackedByteArray("/6GOam+vjmpvr/9l/6H/Zf+1jmpvw45qb8P/Zf+1/2X/yY5qb9eOam/X/2X/yf9l/92Oam/rjmpv6/9l/93/ZQ=="),
+"format": 34896613399,
+"index_count": 24,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4A"),
+"material": SubResource("StandardMaterial3D_tuxua"),
+"name": "battery",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 16,
+"vertex_data": PackedByteArray("/////3Fc////////jaP/////AACNo/////8AAHFc//+No///////v3Fc//////+/cVwAAP///7+NowAA////vwAA//+No/+/AAD//3Fc/78AAAAAcVz/vwAAAACNo/+/cVz//wAA//+No///AAD//42jAAAAAP//cVwAAAAA////v/9//7//f/+//3//v/9//3//f/9//3//f/9//3//f/9/////f////3////9/////P/+//z//v/8//7//P/+/")
+}]
+blend_shape_mode = 0
