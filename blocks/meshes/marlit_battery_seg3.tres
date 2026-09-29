@@ -12,16 +12,16 @@ texture_filter = 2
 [resource]
 resource_name = "marlit_battery_seg3"
 _surfaces = [{
-"aabb": AABB(-0.924, -0.924, -0.924, 1.848, 1.848, 1.848),
-"attribute_data": PackedByteArray("/yCEO/UthDv1Lf84/yD/OP8whDv1PYQ79T3/OP8w/zj/QIQ79U2EO/VN/zj/QP84/1CEO/VdhDv1Xf84/1D/OP9ghDv1bYQ79W3/OP9g/zj/cIQ79X2EO/V9/zj/cP84"),
+"aabb": AABB(-0.865, 0.45575, -0.865, 1.73, 0.086000025, 1.73),
+"attribute_data": PackedByteArray("/1CLYuVdi2LlXf9g/1D/YP9gi2LlbYti5W3/YP9g/2D/cIti5X2LYuV9/2D/cP9g/4CLYuWNi2Lljf9g/4D/YP+Qi2LlnYti5Z3/YP+Q/2D/oIti5a2LYuWt/2D/oP9g/7CLYuW9i2Llvf9g/7D/YP/Ai2LlzYti5c3/YP/A/2A="),
 "format": 34896613399,
-"index_count": 36,
-"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYA"),
+"index_count": 48,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4A"),
 "material": SubResource("StandardMaterial3D_d7ghk"),
 "name": "marlit_battery",
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
-"vertex_count": 24,
-"vertex_data": PackedByteArray("AABigSBO/78AAGKB3rH/vwAAxpTesf+/AADGlCBO/7///2KB3rH/////YoEgTv/////GlCBO/////8aU3rH//96xAACcfv//IE4AAJx+//8gTgAAOGv//96xAAA4a///IE7//5x+///esf//nH7//96x//84a///IE7//zhr///esWKBAAD//yBOYoEAAP//IE7GlAAA///escaUAAD//yBOYoH///+/3rFigf///7/escaU////vyBOxpT///+//3////9/////f////3////+//3//v/9//7//f/+//3//f/8//3//P/9//z//f/8//3//v/9//7//f/+//3//v/8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+"vertex_count": 32,
+"vertex_data": PackedByteArray("/////wS14ugEtf/////i6AS1AAD//+Lo//8AAAS14ugEtf//////v/pK//////+/+koAAP///78EtQAA////v/pK/////z+oAAD//wS1P6gAAAAABLU/qPpKAAD//z+oAAD//wS1/78AAP//+kr/vwAAAAD6Sv+/AAAAAAS1/78AAP//+kqT4fpK//8AAJPh+koAAAAAk+EAAAAA+kqT4fpK//8AAP//BLX//wAA//8EtQAAAAD///pKAAAAAP//BLX//wAAh/b/////+kqH9v//AAD6Sof2BLUAAAAAh/b/////+kr///////8Etf////8AAAS1/////wAA+kr//0uiGHVLohh1S6IYdUuiGHX/f/9//3//f/9//3//f/9/fGxivXxsYr18bGK9fGxivf9/////f////3////9////uY03Y7mNN2O5jTdjuY03Y/z//v/8//7//P/+//z//v+XJgmjlyYJo5cmCaOXJgmj/v/9//7//f/+//3//v/9/")
 }]
 blend_shape_mode = 0

@@ -2244,115 +2244,133 @@ def build_battery(pk, img):
 
 
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
-# A BATTERY READS AS A BATTERY BY ITS PICTOGRAM, so that is what every face carries: the body with
-# its nub and the charge bars in it, sunk into the plate. What the games that do this well share
-# (Space Engineers' battery: lit lights counted on its faces; Satisfactory's power storage: one
-# charge bar on the building; Mekanism's energy cube: one core whose brightness is the charge;
-# TerraTech's GeoCorp battery pack: 2x2x2 with all 24 points attachable) is a solid frame and one
-# charge readable at a glance - and the one sign everybody reads as "stored charge" is the icon on
-# every phone. All six faces are the same, nothing stands proud of the cell, so it joins on every
-# face and has no terminals. Turned down on the way: four Falsus cells between two plates ("four
-# batteries put together"); a tall gauge column per side ("a water tank") with terminals on top; a
-# stack of lit capacitor plates in side panels ("ugly, and not the same all round"); an octagonal
-# charge dial round a cell end ("cool, but not a battery at first sight").
-#   body - the block and its six pictograms
-#   seg  - one charge bar on all six faces, about the block's middle; the scene stands MBAT_SEGS
-#          copies (Seg0 the bottom bar) there and battery.gd shrinks the dark ones into the block
-MBAT_SEGS = 5
-MBAT_BODY = (0.52, -0.72, 0.50, 0.14)   # the icon's body: half width, foot, head, corner cut
-MBAT_NUB = (0.25, 0.56, 0.72, 0.05)     # its nub, a separate window above the body
-MBAT_BEV = (0.08, 0.08)                 # the sunk windows' bevel: across, deep
-MBAT_LINE = 0.03                        # the sunset line round each window's floor
-MBAT_NUB_BEV = 0.035                    # the nub is short: its bevel and line are narrower
-MBAT_NUB_LINE = 0.015
-MBAT_BAR_IN = 0.05                      # the bars stand this far in from the line
-MBAT_BAR_GAP = 0.05                     # and this far apart
+# THE FALSUS BATTERY, GROWN TO MARLIT'S SCALE. In this game a battery is already a round cell with
+# green charge rings (battery.gd, BAT_RING), so the Marlit one is that - ONE big octagonal cell the
+# height of the block, in a heavy Marlit cradle: a plate under and over it carrying the faction's
+# window, a post at every corner with the sunset line up its outer faces. Flanges cut the cell into
+# MBAT_SEGS sections, and each section has its charge ring in a groove round its whole girth, lit
+# bottom up; a dark ring leaves its groove, so an empty battery still reads as one. All four sides
+# are the same, the top is a plain Marlit face - no terminals - and it joins on every face. What the
+# games that do big batteries well share (Space Engineers: lights counted on the faces; Mekanism:
+# one core whose glow is the charge; TerraTech's GeoCorp pack: 2x2x2 and attachable all round) is a
+# heavy frame round one element that says "stored power", with the charge readable at a glance.
+# Turned down on the way: four Falsus cells between two plates ("four batteries put together"); a
+# gauge column per side ("a water tank") with terminals on top; lit capacitor plates in side panels
+# ("ugly, and not the same all round"); an octagonal charge dial ("not a battery at first sight");
+# the phone's battery icon sunk into every face ("too simple").
+#   body - the cradle and the cell
+#   seg  - one charge ring, about the block's middle; the scene stands MBAT_SEGS copies (Seg0 the
+#          lowest) there and battery.gd shrinks the dark ones into the block
+MBAT_SEGS = 4
+MBAT_PLATE = 0.30             # the cradle's plates
+MBAT_POST = 0.30              # its corner posts, square
+MBAT_C = 0.07                 # the cradle's chamfer
+MBAT_CELL = 0.86              # the cell's half width across its flats: it fills the cradle - thinner,
+                              # the posts and plates round it read as a cage
+MBAT_FLANGE = (0.91, 0.07)    # a flange: half width across flats, height
+MBAT_GROOVE = (0.80, 0.11)    # a ring's groove: half width, height
+MBAT_RING = 0.865             # the lit ring's half width, a hair proud of the cell
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
 SUNSET_RAMP = [(226, 116, 38), (240, 150, 60), (252, 176, 80), (254, 200, 120), (255, 226, 160)]
+_OCT_K = 1.0 / math.cos(math.pi / 8)
 
 
-def _mbat_rect(hw, y0, y1, cut):
-    return _cut_corners([(-hw, y0), (hw, y0), (hw, y1), (-hw, y1)], cut)
+def _oct_ring(C, a, y):
+    """A regular octagon of half width `a` across its flats (flats facing the sides) at height y."""
+    r = a * _OCT_K
+    return [(C[0] + r * math.cos(math.pi / 8 + k * math.pi / 4), y,
+             C[2] + r * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(8)]
 
 
-def _mbat_face(f, bars, pts):
-    """One face: the plate round two sunk windows (body and nub), each a bevel, a sunset line and a
-    dark floor; the body's bars go to `bars[k]`, bottom up. "Up" is world up, or world front on a
-    top or bottom face."""
-    cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
-    n = th.norm(th.newell(pts))
-    wu = (0.0, 0.0, -1.0) if abs(n[1]) > 0.7 else (0.0, 1.0, 0.0)
-    up = th.norm(th.sub(wu, th.mul(n, th.dot(wu, n))))
-    rt = th.cross(up, n)
-    R = max(abs(th.dot(th.sub(p, cen), rt)) for p in pts)
-
-    def P(x, y, d=0.0):
-        return th.add(cen, th.add(th.add(th.mul(rt, x), th.mul(up, y)), th.mul(n, -d)))
-    inside = th.add(cen, th.mul(n, -1.0))
-    lf = th.norm(th.add(th.add(th.mul(rt, -0.45), th.mul(up, 0.55)), th.mul(n, 0.70)))
-    flat = th.dot(n, lf)
-
-    def quad(q2, st, d=0.0):
-        q = th.outward([P(x, y, d) for x, y in q2], inside)
+def _oct_band(f, C, a0, y0, a1, y1, style):
+    """The band between two octagon rings; its tone by which way it faces (up lit, down dark,
+    upright in between), the same on all eight sides."""
+    r0, r1 = _oct_ring(C, a0, y0), _oct_ring(C, a1, y1)
+    up = 1.0 if (y1 == y0 and a1 < a0) else (-1.0 if y1 == y0 else 0.0)
+    for k in range(8):
+        j = (k + 1) % 8
+        q = [r0[k], r0[j], r1[j], r1[k]]
+        if math.dist(q[0], q[3]) < 1e-6:
+            continue
+        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        out = (m[0] - C[0], 0.0, m[2] - C[2]) if up == 0.0 else (0.0, up, 0.0)
+        q = th.outward(q, th.sub(m, out))
+        st = style
+        if style == "mtone":
+            st = "mbev%d" % (4 if up > 0 else (1 if up < 0 else 3))
+        elif style == "mwall":
+            st = "mflat%d" % (4 if up > 0 else (1 if up < 0 else 3))
         f.append(th.Face(q, st, u_hint=th.sub(q[1], q[0])))
-    hw, yb, yt, c = MBAT_BODY
-    nw, ny0, ny1, nc = MBAT_NUB
-    # the plate: strips round the two windows, and the triangles their cut corners leave
-    quad([(-R, -R), (-hw, -R), (-hw, R), (-R, R)], "mplate")
-    quad([(hw, -R), (R, -R), (R, R), (hw, R)], "mplate")
-    quad([(-hw, -R), (hw, -R), (hw, yb), (-hw, yb)], "mplate")
-    quad([(-hw, yt), (hw, yt), (hw, ny0), (-hw, ny0)], "mplate")
-    quad([(-hw, ny0), (-nw, ny0), (-nw, ny1), (-hw, ny1)], "mplate")
-    quad([(nw, ny0), (hw, ny0), (hw, ny1), (nw, ny1)], "mplate")
-    quad([(-hw, ny1), (hw, ny1), (hw, R), (-hw, R)], "mplate")
-    for sx in (-1, 1):
-        for y, sy in ((yb, 1), (yt, -1)):
-            quad([(sx * hw, y), (sx * hw, y + sy * c), (sx * (hw - c), y)], "mplate")
-        quad([(sx * nw, ny1), (sx * nw, ny1 - nc), (sx * (nw - nc), ny1)], "mplate")
-        quad([(sx * nw, ny0), (sx * nw, ny0 + nc), (sx * (nw - nc), ny0)], "mplate")
-    bw, bd = MBAT_BEV
-    floor_body = None
-    for (whw, wy0, wy1, wc), wb, wl in ((MBAT_BODY, bw, MBAT_LINE), (MBAT_NUB, MBAT_NUB_BEV, MBAT_NUB_LINE)):
-        o0 = _mbat_rect(whw, wy0, wy1, wc)
-        o1 = _mbat_rect(whw - wb, wy0 + wb, wy1 - wb, wc * 0.6)
-        o2 = _mbat_rect(whw - wb - wl, wy0 + wb + wl, wy1 - wb - wl, wc * 0.5)
-        N = len(o0)
-        for i in range(N):
-            j = (i + 1) % N
-            q = th.outward([P(*o0[i]), P(*o0[j]), P(*o1[j], bd), P(*o1[i], bd)], inside)
-            nn = th.norm(th.newell(q))
-            tone = int(round(max(0.0, min(1.0, 0.5 + 1.1 * (th.dot(nn, lf) - flat))) * 5))
-            f.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
-            quad([o1[i], o1[j], o2[j], o2[i]], "mglow", bd)
-        quad(o2, "mcore", bd)
-        if floor_body is None:
-            floor_body = (whw - wb - wl, wy0 + wb + wl, wy1 - wb - wl)
-    fx, fy0, fy1 = floor_body
-    x = fx - MBAT_BAR_IN
-    y0, y1 = fy0 + MBAT_BAR_IN, fy1 - MBAT_BAR_IN
-    pitch = (y1 - y0 + MBAT_BAR_GAP) / MBAT_SEGS
-    for k in range(MBAT_SEGS):
-        a = y0 + pitch * k
-        q = th.outward([P(-x, a, bd - 0.004), P(x, a, bd - 0.004), P(x, a + pitch - MBAT_BAR_GAP, bd - 0.004),
-                        P(-x, a + pitch - MBAT_BAR_GAP, bd - 0.004)], inside)
-        bars[k].append(th.Face(q, "mcharge", u_hint=th.sub(q[1], q[0])))
 
 
 def build_marlit_battery(pk, img):
+    import random as _r
+    rnd = _r.Random(233)
     parts = {"marlit_battery_body": []}
     f = parts["marlit_battery_body"]
     C = (-0.5, 0.5, -0.5)
-    lo, hi = (-1.5, -0.5, -1.5), (0.5, 1.5, 0.5)
-    cham_box(f, lo, hi, MB_C, None, None, None, "medge")
-    bars = [[] for _ in range(MBAT_SEGS)]
-    for pts in _cham_faces(lo, hi, MB_C).values():
-        _mbat_face(f, bars, pts)
-    # every bar is its own part (one Seg node each), moved to the block's middle where they stand
+    x0, x1, z0, z1 = -1.5, 0.5, -1.5, 0.5
+    yb, yt = -0.5, 1.5
+    P, T = MBAT_PLATE, MBAT_POST
+    # the plates: the faction's window outward, plain metal toward the cell
+    for lo, hi, outer in (((x0, yb, z0), (x1, yb + P, z1), 0), ((x0, yt - P, z0), (x1, yt, z1), 1)):
+        cham_box(f, lo, hi, MBAT_C, "mplate", "mplate" if not outer else None,
+                 "mplate" if outer else None, "medge")
+        marlit_poly(f, _cham_faces(lo, hi, MBAT_C)[(1, outer)], rnd)
+    # the posts, with the sunset line up both outer faces
+    c0, c1 = yb + P, yt - P
+    for sx in (0, 1):
+        for sz in (0, 1):
+            px = (x0, x0 + T) if sx == 0 else (x1 - T, x1)
+            pz = (z0, z0 + T) if sz == 0 else (z1 - T, z1)
+            cham_box(f, (px[0], c0, pz[0]), (px[1], c1, pz[1]), MBAT_C, "mplate", None, None, "medge")
+            ox = px[0] if sx == 0 else px[1]
+            oz = pz[0] if sz == 0 else pz[1]
+            mx, mz = (px[0] + px[1]) / 2, (pz[0] + pz[1]) / 2
+            for q in ([(ox, c0 + 0.06, mz - 0.02), (ox, c0 + 0.06, mz + 0.02), (ox, c1 - 0.06, mz + 0.02),
+                       (ox, c1 - 0.06, mz - 0.02)],
+                      [(mx - 0.02, c0 + 0.06, oz), (mx + 0.02, c0 + 0.06, oz), (mx + 0.02, c1 - 0.06, oz),
+                       (mx - 0.02, c1 - 0.06, oz)]):
+                n = (ox - mx, 0.0, 0.0) if q[0][0] == ox and q[1][0] == ox else (0.0, 0.0, oz - mz)
+                q = [th.add(p, th.mul(th.norm(n), 0.002)) for p in q]
+                f.append(th.Face(th.outward(q, (mx, (c0 + c1) / 2, mz)), "mglow", u_hint=(0, 1, 0)))
+    # the cell: flanges at both ends and between the sections, a groove round each section
+    fa, fh = MBAT_FLANGE
+    ga, gh = MBAT_GROOVE
+    sec = (c1 - c0 - (MBAT_SEGS + 1) * fh) / MBAT_SEGS
+    rings = [[] for _ in range(MBAT_SEGS)]
+    y = c0
+    for k in range(MBAT_SEGS + 1):
+        _oct_band(f, C, fa, y, fa, y + fh, "mtone")
+        y += fh
+        if k == MBAT_SEGS:
+            break
+        _oct_band(f, C, fa, y, MBAT_CELL, y, "mtone")                  # the flange's top
+        g0 = y + (sec - gh) / 2
+        _oct_band(f, C, MBAT_CELL, y, MBAT_CELL, g0, "mwall")
+        _oct_band(f, C, MBAT_CELL, g0, ga, g0, "mwall")                # into the groove
+        _oct_band(f, C, ga, g0, ga, g0 + gh, "mflat0")
+        _oct_band(f, C, ga, g0 + gh, MBAT_CELL, g0 + gh, "mwall")
+        _oct_band(f, C, MBAT_CELL, g0 + gh, MBAT_CELL, y + sec, "mwall")
+        _oct_band(f, C, MBAT_CELL, y + sec, fa, y + sec, "mtone")      # the next flange's foot
+        # the ring, a band in the groove round the whole girth, about the block's middle
+        e = 0.012
+        for q in _ring_quads(MBAT_RING, g0 + e - C[1], g0 + gh - e - C[1]):
+            rings[k].append(th.Face(q, "mcharge", u_hint=th.sub(q[1], q[0])))
+        y += sec
     for k in range(MBAT_SEGS):
-        for fc in bars[k]:
-            fc.pts = [th.sub(p, C) for p in fc.pts]
-        parts["marlit_battery_seg%d" % k] = bars[k]
+        parts["marlit_battery_seg%d" % k] = rings[k]
     return parts
+
+
+def _ring_quads(a, y0, y1):
+    r0, r1 = _oct_ring((0.0, 0.0, 0.0), a, y0), _oct_ring((0.0, 0.0, 0.0), a, y1)
+    out = []
+    for k in range(8):
+        j = (k + 1) % 8
+        q = [r0[k], r0[j], r1[j], r1[k]]
+        out.append(th.outward(q, (0.0, (y0 + y1) / 2, 0.0)))
+    return out
 
 
 def build_wireless(pk, img):
