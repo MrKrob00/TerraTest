@@ -437,7 +437,7 @@ def _cut_corners(q, c):
 MB_RAISE = 0.12        # how far an armour plate's octagon stands proud of the plate
 
 
-def marlit_poly(faces, pts, rnd, raised=False):
+def marlit_poly(faces, pts, rnd, raised=False, floor=True):
     """The Marlit face on ANY flat convex face of a chamfered solid (pts: its 3D outline): the plate,
     the bevel, the sunset line and the facet floor of `marlit_face`, with every ring the face's own
     outline inset and corner-cut - a square gives the 2x2x2 block's octagon, a 1-wide face a
@@ -487,6 +487,15 @@ def marlit_poly(faces, pts, rnd, raised=False):
         faces.append(th.Face(qd, "mbev%d" % tone, u_hint=th.sub(qd[1], qd[0])))
         g = [P(*o2[i], d2), P(*o2[j], d2), P(*o3[j], d2), P(*o3[i], d2)]
         faces.append(th.Face(th.outward(g, inside), "mglow", u_hint=th.sub(g[1], g[0])))
+    if not floor:
+        # an OPEN window (the Marlit shield): a short throat down from the floor ring instead of
+        # the facets, and the ring's outline handed back so the caller can fill it with a hatch
+        for i in range(N):
+            j = (i + 1) % N
+            q = [P(*o3[i], d2), P(*o3[j], d2), P(*o3[j], d2 + 0.08), P(*o3[i], d2 + 0.08)]
+            m2 = ((o3[i][0] + o3[j][0]) * 2.0, (o3[i][1] + o3[j][1]) * 2.0)
+            faces.append(th.Face(th.outward(q, P(m2[0], m2[1], d2 + 0.04)), "medge", u_hint=th.sub(q[1], q[0])))
+        return o3, d2
     # the facet floor, ring by ring as on the block's faces; jitter scales with the window
     sc = max(0.3, min(1.0, rin / 0.8))
     o2d = []
@@ -1162,94 +1171,104 @@ def build_marlit_regen(pk, img):
 
 
 # ── the Marlit shield ───────────────────────────────────────────────────────────────────────────
-# In the same shell (portholes on the four sides and the top, a solid floor): a banded glowing CORE
-# with an emitter lens under the top porthole, walled in by four armour plates carrying the
-# faction's window. THE PLATES STAND ON THE DIAGONALS, so two of them meet right behind every
-# porthole: closed, each porthole shows a seam of armour; with the dome up each plate slides out
-# MS2_SLIDE toward its corner and leans back MS2_LEAN about its foot (marlit_shield.gd), and the seam
-# behind every porthole opens on the core. Facing the portholes, the plates hid the opening from
-# every side. The Falsus shield is an orb whose cap lifts; this one opens its armour.
-#   base  - the shell and the lens housing (static)
-#   core  - the glowing column and lens, tinted by the script (off grey, up cyan)
-#   plate - one wall, its FOOT's outer edge at the local origin, its outer face looking +X
-MS2_FLOOR = -0.5 + MSH_T      # the floor plate's top
-MS2_CORE_R = 0.30
-MS2_CORE_TOP = 1.10
-MS2_IN = 0.40           # a plate's inner face from the centre
-MS2_T = 0.12
-MS2_HALF = 0.34         # half its width
-MS2_TOP = 1.22
-MS2_SLIDE = 0.32        # along the diagonal, where the shell's corner leaves 0.7 m of room
-MS2_LEAN = 8.0
+# A Marlit basic block from the outside - six flush faces, each with the faction's octagon, so
+# blocks bolt on everywhere - whose windows are HATCHES. The floor of every window is eight
+# triangular leaves (the facets' place, toned like them); with the dome up each leaf swings INTO the
+# block on a hinge along its edge of the octagon by MSD_FOLD, the window becomes a funnel of parted
+# leaves, and at the bottom of all six the emitter glows: a dome is thrown every way, so every face
+# opens. MSD_FOLD keeps each funnel inside its own sixth of the cube (the pyramid from the face to
+# the centre), so the six never touch: at 90 deg they crossed inside and every window showed a tangle
+# of other faces' leaves. Nothing
+# moves outward, so a neighbour bolted on any face is never touched. Turned down on the way: armour
+# plates round a core, first on a pedestal and then inside the repair unit's porthole shell ("you
+# copied the repair unit").
+#   body  - the hollow block: chamfered edges, six open windows with their throats
+#   core  - the emitter, tinted by the script (off grey, up cyan)
+#   leaf_flat / leaf_corner - one leaf on a flat and on a cut corner of the octagon: hinge along X at
+#            the local origin, apex toward +Z (the window's centre), outward face +Y
+MSD_C = 0.08          # the block's edge chamfer
+MSD_CORE_R = 0.38       # inside the leaves' tips, the nearest of which stand 0.43 from the centre
+MSD_FOLD = 55.0
+MSD_LINER = 0.04
+MSD_LINER_IN = 0.45
+MSD_SINK = 0.06       # closed, the apex lies this much deeper than the hinge: a shallow funnel
+MSD_LEAF_T = 0.03
+MSD_LEAF = {}         # filled by the builder: kind -> (apothem, half edge, angles in degrees)
 
 
-def _marlit_shield_base(f, rnd):
-    cx, cz = -0.5, -0.5
-    marlit_shell(f, [(0, 0), (0, 1), (2, 0), (2, 1), (1, 1)])
-    n = 8
-    rr = (MS2_CORE_R + 0.06) / math.cos(math.pi / n)
-    for (y0, y1, r) in ((MS2_CORE_TOP, MS2_CORE_TOP + 0.1, rr), (MS2_FLOOR, MS2_FLOOR + 0.08, rr + 0.04)):
-        pts = [(cx + math.sin(math.pi / n + 2 * math.pi * k / n) * r, cz + math.cos(math.pi / n + 2 * math.pi * k / n) * r) for k in range(n)]
-        f.append(th.Face(th.outward([(p[0], y1, p[1]) for p in pts], (cx, y0 - 1.0, cz)), "mplate", u_hint=(1, 0, 0)))
-        f.append(th.Face(th.outward([(p[0], y0, p[1]) for p in pts], (cx, y1 + 1.0, cz)), "mbev1", u_hint=(1, 0, 0)))
-        for k in range(n):
-            a, b = pts[k], pts[(k + 1) % n]
-            q = [(a[0], y0, a[1]), (b[0], y0, b[1]), (b[0], y1, b[1]), (a[0], y1, a[1])]
-            f.append(th.Face(th.outward(q, (cx, (y0 + y1) / 2, cz)), "medge", u_hint=th.sub(q[1], q[0])))
-            if y0 > 0.5:
-                g = [(a[0], y0 + 0.035, a[1]), (b[0], y0 + 0.035, b[1]), (b[0], y0 + 0.06, b[1]), (a[0], y0 + 0.06, a[1])]
-                g = [(cx + (p[0] - cx) * 1.004, p[1], cz + (p[2] - cz) * 1.004) for p in g]
-                f.append(th.Face(th.outward(g, (cx, y0, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
-    # the lens housing hangs from the top plate on four struts
-    # along the axes, between the plates' crowns, to the top plate beyond its porthole
-    for (dx, dz) in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-        mbeam(f, (cx + dx * 0.3, MS2_CORE_TOP + 0.08, cz + dz * 0.3), (cx + dx * 0.76, 1.5 - MSH_T, cz + dz * 0.76), 0.06, 0.06, (0, 1, 0))
-def _marlit_shield_core(f, pk, img):
-    # the column and a raised lens on the housing, one lathe painted in the crystal's grey ramp: the
-    # script tints it through material_override, as the repair unit's crystal is tinted
-    n = 8
-    r = MS2_CORE_R
-    # stacked cells: a waist between every two, so the column reads as charge, not as a pipe
-    prof = [(r * 0.9, MS2_FLOOR)]
-    cells = 4
-    span = (MS2_CORE_TOP - 0.05) - (MS2_FLOOR + 0.08)
-    for k in range(cells):
-        y0 = MS2_FLOOR + 0.08 + span * k / cells
-        y1 = MS2_FLOOR + 0.08 + span * (k + 1) / cells
-        prof += [(r * 0.8, y0), (r, y0 + 0.04), (r, y1 - 0.04)]
-    prof += [(r * 0.8, MS2_CORE_TOP - 0.05), (r * 0.9, MS2_CORE_TOP), (0.0, MS2_CORE_TOP)]
-    lathe_y(pk, img, f, prof, CORE_RAMP, sides=n, cell=4, cx=-0.5, cz=-0.5)
-    lathe_y(pk, img, f, [(0.0, MS2_CORE_TOP + 0.1), (0.22, MS2_CORE_TOP + 0.1), (0.16, MS2_CORE_TOP + 0.2), (0.0, MS2_CORE_TOP + 0.23)],
-            CORE_RAMP, sides=n, cell=4, cx=-0.5, cz=-0.5)
+def _marlit_shield_body(f, rnd):
+    lo, hi = (-1.5, -0.5, -1.5), (0.5, 1.5, 0.5)
+    cham_box(f, lo, hi, MSD_C, None, None, None, "medge")
+    out = None
+    for key, pts in _cham_faces(lo, hi, MSD_C).items():
+        o3, d2 = marlit_poly(f, pts, rnd, floor=False)
+        _shield_liner(f, pts, o3, d2)
+        if key == (1, 1):
+            out = (pts, (o3, d2))
+    return out
 
 
-def _marlit_shield_plate(f, rnd):
-    # built with its foot's outer edge at the origin, looking +X: x -MS2_T..0, y 0..height
-    h = MS2_TOP - MS2_FLOOR
-    marlit_box(f, (-MS2_T, 0.0, -MS2_HALF), (0.0, h, MS2_HALF), 0.035, rnd, {(0, 1): "window"})
-    # the crown: a sloped cap leaning in over the core, the inner edge low
-    cap = [(0.0, h, -MS2_HALF + 0.035), (0.0, h, MS2_HALF - 0.035), (-MS2_T - 0.10, h - 0.12, MS2_HALF - 0.1),
-           (-MS2_T - 0.10, h - 0.12, -MS2_HALF + 0.1)]
-    f.append(th.Face(th.outward(cap, (-0.05, 0.0, 0.0)), "mbev3", u_hint=(0, 0, 1)))
-    under = [(-MS2_T, h - 0.12, -MS2_HALF + 0.1), (-MS2_T, h - 0.12, MS2_HALF - 0.1), (-MS2_T - 0.10, h - 0.12, MS2_HALF - 0.1),
-             (-MS2_T - 0.10, h - 0.12, -MS2_HALF + 0.1)]
-    f.append(th.Face(th.outward(under, (-0.05, h, 0.0)), "mbev1", u_hint=(0, 0, 1)))
-    for sz in (-1, 1):
-        z_o, z_i = sz * (MS2_HALF - 0.035), sz * (MS2_HALF - 0.1)
-        tri = [(0.0, h, z_o), (-MS2_T - 0.10, h - 0.12, z_i), (-MS2_T, h - 0.12, z_i), (-MS2_T, h, z_o)]
-        f.append(th.Face(th.outward(tri, (-0.05, h - 0.05, 0.0)), "medge", u_hint=(1, 0, 0)))
-    # a sunset line under the crown on the outer face
-    q = [(0.002, h - 0.2, -MS2_HALF + 0.08), (0.002, h - 0.2, MS2_HALF - 0.08), (0.002, h - 0.17, MS2_HALF - 0.08), (0.002, h - 0.17, -MS2_HALF + 0.08)]
-    f.append(th.Face(th.outward(q, (-1.0, h, 0.0)), "mglow", u_hint=(0, 0, 1)))
+def _shield_liner(f, pts, o3, d2):
+    """A fixed funnel just behind where the leaves fold (MSD_LINER off their cone): what the gaps
+    between parted leaves show. Without it they showed straight through the block to the sky. It
+    runs from the throat's foot down to MSD_LINER_IN of the window, inside the core."""
+    cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
+    n = th.norm(th.newell(pts))
+    u = th.norm(th.sub(pts[1], pts[0]))
+    v = th.norm(th.cross(n, u))
+
+    def P(x, y, d):
+        return th.add(cen, th.add(th.add(th.mul(u, x), th.mul(v, y)), th.mul(n, -d)))
+    cot = 1.0 / math.tan(math.radians(MSD_FOLD))
+    top_d = d2 + 0.08
+    N = len(o3)
+    for i in range(N):
+        j = (i + 1) % N
+        a, b = o3[i], o3[j]
+        apo = math.hypot((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        # the depth at which the leaves' cone (plus MSD_LINER) has shrunk to MSD_LINER_IN of the window
+        bot_d = d2 + (apo * (1.0 - MSD_LINER_IN) + MSD_LINER) / cot
+        k = MSD_LINER_IN
+        q = [P(a[0], a[1], top_d), P(b[0], b[1], top_d), P(b[0] * k, b[1] * k, bot_d), P(a[0] * k, a[1] * k, bot_d)]
+        f.append(th.Face(th.outward(q, P(0, 0, top_d - 0.2)), "mbev1", u_hint=th.sub(q[1], q[0])))
+
+
+def _leaf(f, half, apo, rnd_tone):
+    t = MSD_LEAF_T
+    top = [(-half, 0.0, 0.0), (half, 0.0, 0.0), (0.0, -MSD_SINK, apo)]
+    bot = [(x, y - t, z) for x, y, z in top]
+    f.append(th.Face(th.outward(top, (0.0, -1.0, apo / 3)), "mrock%d" % rnd_tone, u_hint=(1, 0, 0)))
+    f.append(th.Face(th.outward(bot, (0.0, 1.0, apo / 3)), "mbev1", u_hint=(1, 0, 0)))
+    for i in range(3):
+        j = (i + 1) % 3
+        q = [top[i], top[j], bot[j], bot[i]]
+        f.append(th.Face(th.outward(q, (0.0, -t / 2, apo / 3)), "medge", u_hint=th.sub(q[1], q[0])))
 
 
 def build_marlit_shield(pk, img):
     import random as _r
     rnd = _r.Random(227)
-    parts = {"marlit_shield_base": [], "marlit_shield_core": [], "marlit_shield_plate": []}
-    _marlit_shield_base(parts["marlit_shield_base"], rnd)
-    _marlit_shield_core(parts["marlit_shield_core"], pk, img)
-    _marlit_shield_plate(parts["marlit_shield_plate"], rnd)
+    parts = {"marlit_shield_body": [], "marlit_shield_core": [], "marlit_shield_leaf_flat": [],
+             "marlit_shield_leaf_corner": []}
+    pts, (o3, d2) = _marlit_shield_body(parts["marlit_shield_body"], rnd)
+    # the top face's window, in its own 2D frame (marlit_poly's u, v about the face centre): the
+    # leaves' sizes and where their hinges sit, for the scene and the script
+    kinds = {}
+    for i in range(len(o3)):
+        a, b = o3[i], o3[(i + 1) % len(o3)]
+        mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
+        half = math.hypot(b[0] - a[0], b[1] - a[1]) / 2
+        apo = math.hypot(mx, my)
+        ang = math.degrees(math.atan2(my, mx)) % 360
+        kind = "flat" if abs(round(ang / 90.0) * 90.0 - ang) < 1.0 else "corner"
+        kinds.setdefault(kind, [apo, half, []])[2].append(round(ang, 3))
+    MSD_LEAF.update(kinds)
+    print("leaves:", {k: (round(v[0], 4), round(v[1], 4), v[2]) for k, v in kinds.items()}, "depth", round(d2, 4))
+    _leaf(parts["marlit_shield_leaf_flat"], kinds["flat"][1], kinds["flat"][0], 3)
+    _leaf(parts["marlit_shield_leaf_corner"], kinds["corner"][1], kinds["corner"][0], 2)
+    lathe_y(pk, img, parts["marlit_shield_core"],
+            [(0.0, 0.5 - MSD_CORE_R), (MSD_CORE_R * 0.7, 0.5 - MSD_CORE_R * 0.7), (MSD_CORE_R, 0.5), (MSD_CORE_R * 0.7, 0.5 + MSD_CORE_R * 0.7),
+             (0.0, 0.5 + MSD_CORE_R)], CORE_RAMP, sides=10, cell=4, cx=-0.5, cz=-0.5)
     return parts
 
 

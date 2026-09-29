@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://coq5xv30hr5ng" path="res://objects/marlit_shield_texture.png" id="1_4trwf"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rmgsh"]
+resource_name = "marlit_shield"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_4trwf")
+texture_filter = 2
+
+[resource]
+resource_name = "marlit_shield_leaf_flat"
+_surfaces = [{
+"aabb": AABB(-0.4284091, -0.09, 0, 0.8568182, 0.09, 0.65),
+"attribute_data": PackedByteArray("IyFmM0cp/yb/GP8m/yxmM0c9ZjMjNf8m/4yRm0adkZtGnf+a/4z/mv+gkJvVr5Cb4K//mgqh/5oKs5Cb4MGQm9XB/5r/sv+a"),
+"format": 34896613399,
+"index_count": 24,
+"index_data": PackedByteArray("AAACAAEAAwAFAAQABgAIAAcABgAJAAgACgAMAAsACgANAAwADgAQAA8ADgARABAA"),
+"material": SubResource("StandardMaterial3D_rmgsh"),
+"name": "marlit_shield",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 18,
+"vertex_data": PackedByteArray("/39VVf//Nv3/////AAA2/QAA//8AADb9AACqqgAAdf3//6qqAAB1/f9/AAD//3X9AAD//wAA////////AAD/////qqoAAP//AACqqgAA////////AACH8/9/VVX//4fz/38AAP//h/P//6qqAACH8/9/VVX//3uqAAD//wAAe6oAAKqqAAB7qv9/AAD//3uqwoK7u8KCu7vCgru7XUH5/F1B+fxdQfn8/z//v/8//7//P/+//z//vzSqlHg0qpR4NKqUeDSqlHgFcTbVBXE21QVxNtUFcTbV")
+}]
+blend_shape_mode = 0
