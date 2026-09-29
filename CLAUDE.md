@@ -641,6 +641,18 @@ project: read it before claiming how anything works.
 
 ### Energy
 
+- **THE ENERGY SCALE IS THE PLAYER'S, AND EVERYTHING ELSE WAS SCALED TO IT.** A Falsus battery holds
+  2000 (`battery.gd capacity`, `MachineBody.BATTERY_CAP`), a Falsus panel makes 80 a second
+  (`SOLAR_RATE`), the Marlit array 200 (`marlit_solar.UNITS` 2.5 panels). Against the old 100 / 6:
+  what DRAINS was scaled with the battery (x20), so a battery lasts the same seconds - the dome's
+  `SHIELD_COST_X` 12 a point, the auto miner 160 a second; what PRODUCES with the panel (x40/3) -
+  the generator 270 / 540 / 330 / 1070 a wood / coal / ore / ingot. The repair units' numbers were
+  set by the player separately (the repair-budget entry) and were not scaled. Wireless chargers are
+  the player's too: Falsus 125 a second out to 20 m, Marlit (`wireless_marlit.gd`) 75 out to 40,
+  set as `charge_rate` / `charge_range` in `_init` like the regen's fields. Measured on the engine:
+  125.0 at 15 m and nothing at 30; 75.0 at 30 m and nothing at 45. WHAT STORES CHARGE IS ONE LIST,
+  `G.BATTERY_BLOCKS`, read by the machine's sum and by the charger's aim.
+
 - Charge lives in the batteries themselves (`battery.gd`); the machine only sums and draws. It
   travels with the block and survives saving (`blocks.charge_map`). Only the solar buffer belongs to
   the machine and exists while anchored.
@@ -862,11 +874,12 @@ project: read it before claiming how anything works.
 - THE SHIELDED TOWERS' CHARGING STATIONS (preset 18) ARE BATTERY STATIONS THAT DEFEND THEMSELVES:
   two batteries, a panel and the wireless transmitter on a ROTATING core, plus a machine gun the
   rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (over the core, hung
-  by its back on a column behind it) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` (6 m)
-  of the tower's battery; on the axis it keeps the 4.9 m `TOWER_RING` was measured for. One gun
+  by its back on a column behind it) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` - 6 m
+  when this was built, 20 now - of the tower's battery; on the axis it keeps the 4.9 m `TOWER_RING`
+  was measured for. One gun
   per station: Watchtower goes from two barrels to five, SAM to six. Measured through the real
   quest: three stations, every block connected, every transmitter feeding the tower; the drained
-  tower refilled 0 → 144 in 4 s (3 × `RATE`), and 0 → 0 once the stations were gone; a station
+  tower refilled 0 → 144 in 4 s (3 × `RATE`, 12 a second then), and 0 → 0 once the stations were gone; a station
   turned 89° onto the player and fired 36 times from 25 m.
 - Fortified points (`outposts.gd`) are the only things placed on the map instead of around the
   player: constant seed, cleared stays cleared, saves store indices only. A cleared point drops
@@ -1907,7 +1920,7 @@ project: read it before claiming how anything works.
   any block that has it, so driving it is armour and makes nothing. The rejected cuts (side lids
   round a scissor lift, a mast of leaves, an iris with a flower of 24 small leaves - "all at one
   height, too small to count") are in the model's header. Measured on the proving ground: joins as
-  above in 8 of 8 cases; anchored, open at 2.4 s with 24 energy a second; released, closed again.
+  above in 8 of 8 cases; anchored, open at 2.4 s with 24 energy a second (200 on today's scale); released, closed again.
 - **MARLIT HAS NO SHIELD, AND THAT IS THE DESIGN** (TerraTech's GeoCorp has none either): its answer
   to fire is the big armour plates. `MARLIT_SHIELD` is RETIRED onto `MARLIT_BLOCK` (same 2x2x2), the
   enum value kept for saves; the hatch model, its scene and `marlit_shield.gd` stay as a DRAFT the

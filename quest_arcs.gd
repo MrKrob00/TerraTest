@@ -1305,10 +1305,10 @@ func _hold_2(q: Dictionary) -> void:
 # льют в неё энергию блоком WIRELESS_CHARGER. Квест не знает про щит вообще ничего — он
 # ставит машины и ждёт, пока вышка умрёт. Убил башни → у вышки кончается запас → купол гаснет
 # сам, и её можно ломать. Игроку это видно по лучам зарядки, а не по строчке в журнале.
-## Радиус кольца зарядных башен. Считается, а не подбирается на глаз: башня обязана
-## ДОТЯГИВАТЬСЯ до аккумулятора вышки (wireless_charger.RANGE = 6 м) и при этом стоять СНАРУЖИ
-## купола (shield.SHIELD_RADIUS = 4 м) — иначе её саму не расстрелять, а в этом вся задача.
-## На 5.5 м зарядник тянется 4.9 м до ближнего аккумулятора и стоит в полутора метрах от купола.
+## The charging stations' ring. It must stand OUTSIDE the dome (shield.SHIELD_RADIUS, 4 m), or the
+## station cannot be shot, which is the whole task, and within wireless_charger.RANGE of the
+## tower's battery. The ring was measured when that range was 6 m (4.9 m to the nearer battery at
+## 5.5); at 20 m it is no longer the limit, and the tight ring stays because it reads as one site.
 const TOWER_RING := 5.5
 ## Пресет вышки, сколько зарядных башен, и что говорит Система, когда игрок доехал.
 const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 3, "award": G.Block.SHIELD,
@@ -1364,9 +1364,7 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 
 ## Собрать точку: вышка в центре, зарядные башни кольцом вокруг неё.
 ##
-## Радиус кольца — НЕ ВКУС: у зарядника дальность 6 м (wireless_charger.RANGE), и башня должна
-## дотягиваться до аккумулятора вышки, но стоять СНАРУЖИ купола (радиус 4 м), иначе её не
-## расстрелять — а в этом вся задача.
+## The ring's radius is TOWER_RING, and why is written there.
 func _tower_build(key: String, cfg: Dictionary, at: Vector3) -> bool:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	if sp == null or not sp.has_method("spawn_at"):

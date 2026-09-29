@@ -766,8 +766,9 @@ func _layout_shielded_tower(far: int, near: int) -> void:
 ## A CHARGING STATION: an ordinary battery station - batteries, a panel, the transmitter - that
 ## also defends itself, with a machine gun and a ROTATING core that turns it to the target
 ## (enemy_vehicle._turn_to_target). THE TRANSMITTER SITS ON THE ROTATION AXIS, over the core:
-## anywhere else the station would swing it out of wireless_charger.RANGE (6 m) of the tower's
-## battery as it turned. On the axis it keeps the 4.9 m the ring was measured for (TOWER_RING).
+## anywhere else the station would swing it round as it turned. That rule was made when
+## wireless_charger.RANGE was 6 m and the swing mattered; at 20 m it does not, but a beam from the
+## axis stays one line from station to tower however the station turns.
 ## It joins by its BACK face only (a wheel's mount), so it hangs on the front of a second column
 ## (5,6,6)-(5,7,6) behind it, and the panel moved from that column's foot to its top.
 ## One gun per station: three or four stations already take the tower from two barrels to five or
