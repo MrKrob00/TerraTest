@@ -13,7 +13,7 @@ texture_filter = 2
 resource_name = "marlit_shield_leaf_corner"
 _surfaces = [{
 "aabb": AABB(-0.15668844, -0.09, 0, 0.31337687, 0.09, 0.76255035),
-"attribute_data": PackedByteArray("+UmID/NM/wD/Rv8A/06ID/NUiA/5Uf8A/+iRm/PukZvz7v+a/+j/mv/EkJvU05Cb4NP/mgrF/5oK15Cb4OWQm9Tl/5r/1v+a"),
+"attribute_data": PackedByteArray("+VWID/NY/wD/Uv8A/1qID/NgiA/5Xf8A/+iRm/PukZvz7v+a/+j/mv/EkJvU05Cb4NP/mgrF/5oK15Cb4OWQm9Tl/5r/1v+a"),
 "format": 34896613399,
 "index_count": 24,
 "index_data": PackedByteArray("AAACAAEAAwAFAAQABgAIAAcABgAJAAgACgAMAAsACgANAAwADgAQAA8ADgARABAA"),
