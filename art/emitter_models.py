@@ -193,55 +193,9 @@ def build_regen(pk, img):
     return parts
 
 
-# ── the repair unit, second cut (the one in the game; build_regen above is the kept first model) ──────────────────────────────────────────────────────
-# No platform: four square-section bands (the first cut's round tubes were turned down for the old
-# ring's flat band) whose whole inside is a glowing strip (a part of its own, tinted like the
-# crystal: green working, dark off - emitter stubs on the inside were tried and dropped), round the crystal, seen from the front as "-", "|", "/" and "\" - every
-# ring's plane holds the front axis (Z), turned about it by REGEN2_ANGLES. Nested at REGEN2_R so each
-# can turn about its own axis without passing through the others; the outer one reaches the cell.
+# The gyro's four ring planes, turned about Z: seen from the front "-", "|", "/" and "\" (the Marlit
+# repair unit's rings; the one-cell GSO gyro they came from is retired).
 REGEN2_ANGLES = (0.0, 90.0, 45.0, 135.0)
-REGEN2_R = (0.45, 0.39, 0.33, 0.27)
-REGEN2_DEPTH = 0.024          # the band's half depth (radial) and half width
-REGEN2_WIDTH = 0.04
-REGEN2_JOINT = 2                 # a plate joint with bolts every this many facets
-
-
-def _tone(n, kind):
-    """The painted-light tone of a face with normal n, as the tube's facets are toned."""
-    return "%stone%d" % (kind, int(round(max(0.0, min(1.0, 0.5 + 0.5 * th.dot(th.norm(n), LIGHT)))) * 4))
-
-
-def square_ring(faces, glow, ang, R, depth, width, n=24):
-    """A flat band of square section (the old repair ring's) round a circle of radius R whose plane
-    holds the Z axis, turned about Z by ang degrees: plain blue outside and on the sides, each facet in
-    its painted-light tone, and its whole INSIDE a glowing strip, a part of its own (`glow`) so the
-    script can light and dim it. The outer face is dark plates drawn ACROSS the band - light running
-    along each, a blue band across it with bolts every REGEN2_JOINT facets; the sides are the blue."""
-    c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
-    nrm = (-s_, c, 0.0)                      # the ring plane's normal
-    def at(t, dr, dn):
-        rad = (math.cos(t) * c, math.cos(t) * s_, math.sin(t))
-        return th.add(th.mul(rad, R + dr), th.mul(nrm, dn))
-    for k in range(n):
-        t0, t1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
-        tm = (t0 + t1) / 2
-        rad = (math.cos(tm) * c, math.cos(tm) * s_, math.sin(tm))
-        tan = (-math.sin(tm) * c, -math.sin(tm) * s_, math.cos(tm))
-        for (d0, n0), (d1, n1), out, dest in (
-                ((depth, -width), (depth, width), rad, faces),                      # outer
-                ((-depth, width), (-depth, -width), th.mul(rad, -1), glow),         # inner: the energy
-                ((-depth, width), (depth, width), nrm, faces),                      # sides
-                ((depth, -width), (-depth, -width), th.mul(nrm, -1), faces)):
-            q = [at(t0, d0, n0), at(t0, d1, n1), at(t1, d1, n1), at(t1, d0, n0)]
-            cen = th.add(th.mul(rad, R), th.mul(out, -1.0))
-            tone = _tone(out, "b")[5:]
-            if dest is glow:
-                style = "energy"
-            elif out is rad:
-                style = "rband" + tone + ("j" if k % REGEN2_JOINT == 0 else "")
-            else:
-                style = "rside" + tone
-            dest.append(th.Face(th.outward(q, cen), style, u_hint=tan))
 
 
 def obox(faces, centre, ax, half, styles):
@@ -271,45 +225,6 @@ def _sleeve(faces, lo, hi, along, wall=0.018, style="dark"):
                 a[ax] = hi[ax] - wall
             skip = ("+x", "-x") if along == 0 else (("+y", "-y") if along == 1 else ("+z", "-z"))
             th.box(faces, tuple(a), tuple(b), style, skip=skip)
-
-
-def regen2_mounts():
-    """ONE CONNECTOR FOR ALL SIX FACES (the player's call: mixed housings and hubs read as parts from
-    different kits), after a gimbal's trunnions - every ring of a real gyroscope hangs on the same round
-    pivot bearing where its axis meets the frame. Each is a dark hub down the face's axis, from just
-    inside the ring it holds out to the face, and a blue flange flush on the face: the ring is threaded
-    on the hub and slides round it. Only the hub's length differs - left/right hold the outer ring,
-    top/bottom the vertical one, front/back all four, which pass the Z axis one behind the other."""
-    f = []
-    reach = {0: REGEN2_R[0], 1: REGEN2_R[1], 2: REGEN2_R[3]}
-    for axis in (0, 1, 2):
-        for sg in (1, -1):
-            def p(d):
-                v = [0.0, 0.0, 0.0]
-                v[axis] = sg * d
-                return tuple(v)
-            d_in = reach[axis] - REGEN2_DEPTH - 0.04
-            tube(f, [p(d_in), p(0.46)], [WL_HUB, WL_HUB], ["m"], sides=12, cap_start="cap_bolt")
-            tube(f, [p(0.46), p(0.5)], [WL_FLANGE, WL_FLANGE], ["b"], sides=12, cap_start="blue",
-                 cap_end="anchor_top_fixed")
-    return f
-
-
-WL_HUB, WL_FLANGE = 0.055, 0.105      # a connector's hub and flange radii
-
-
-def build_regen2(pk, img):
-    parts = {}
-    for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, REGEN2_R)):
-        faces, glow = [], []
-        square_ring(faces, glow, ang, R, REGEN2_DEPTH, REGEN2_WIDTH)
-        parts["regen2_ring%d" % i] = faces
-        parts["regen2_glow%d" % i] = glow
-    parts["regen2_mount"] = regen2_mounts()
-    parts["regen2_crystal"] = []
-    lathe_y(pk, img, parts["regen2_crystal"], [(0.0, -0.21), (0.13, -0.04), (0.13, 0.04), (0.0, 0.21)],
-            CORE_RAMP, sides=6, cell=4)
-    return parts
 
 
 # ── MARLIT: the second faction ─────────────────────────────────────────────────────────────────
@@ -1100,7 +1015,7 @@ ALL_FACES = [(a, s_) for a in range(3) for s_ in (0, 1)]
 
 
 # ── the Marlit repair unit ──────────────────────────────────────────────────────────────────────
-# The gyro (build_regen2, one cell, GSO blue) at Marlit's scale in the Marlit shell: rings and
+# The gyro (the retired one-cell GSO repair unit's rings) at Marlit's scale in the Marlit shell: rings and
 # crystal keep the gyro's parts and nesting (regen_marlit.gd drives them), gunmetal now, the inside
 # of each ring the energy strip. The outer ring turns on bearings in the left and right portholes,
 # the vertical one in the top and bottom ones, each held by a spider; front and back are clear.
@@ -1113,7 +1028,8 @@ def _mtone(n):
 
 
 def marlit_ring(faces, glow, ang, R, depth, width, n=28):
-    """square_ring's band in Marlit's metal: every facet toned by the painted light, an edge-coloured
+    """A flat band of square section round a circle of radius R whose plane holds the Z axis, turned
+    about Z by ang degrees, in Marlit's metal: every facet toned by the painted light, an edge-coloured
     joint every fourth, and the inside the energy strip (its own part, so the script can light it)."""
     c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
     nrm = (-s_, c, 0.0)
@@ -2367,7 +2283,6 @@ BLOCKS = {
     "marlit_solar": (193, build_marlit_solar, 512),
     "marlit_regen": (211, build_marlit_regen, 512),
     "marlit_shield": (229, build_marlit_shield, 512),
-    "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
@@ -2394,7 +2309,7 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0}
+DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0}
 
 
 def make(name):

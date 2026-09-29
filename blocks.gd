@@ -806,7 +806,8 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
-			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR]:
+			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
+			G.Block.MARLIT_REGEN, G.Block.MARLIT_SHIELD]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

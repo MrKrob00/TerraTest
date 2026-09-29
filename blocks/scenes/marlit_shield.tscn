@@ -1,0 +1,279 @@
+[gd_scene format=3 uid="uid://cmarlitshield64"]
+
+[ext_resource type="Script" path="res://blocks/scripts/marlit_shield.gd" id="1_s"]
+[ext_resource type="Texture2D" uid="uid://coq5xv30hr5ng" path="res://objects/marlit_shield_texture.png" id="9_tex"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_shield_body.tres" id="body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_shield_core.tres" id="core"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_shield_leaf_flat.tres" id="lf"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_shield_leaf_corner.tres" id="lc"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+resource_name = "marlit_shield_glow"
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.35, 0.85, 1, 1)
+albedo_texture = ExtResource("9_tex")
+texture_filter = 2
+
+[node name="marlit_shield" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_s")
+block = 64
+connect_faces = 63
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("body")
+
+[node name="Core" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("core")
+
+[node name="Leaf0" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0, -1, 1, 0, 0, -0, -1, -0, 0.397, 1.15, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf1" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 1, -6.12323e-17, 1, 0, 0, -0, -6.12323e-17, -1, 0.397, 0.5, 0.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf2" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0, 1.22465e-16, 1, 1, 0, 0, -0, 1, -1.22465e-16, 0.397, -0.15, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf3" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -1, 1.83697e-16, 1, 0, 0, 0, 1.83697e-16, 1, 0.397, 0.5, -1.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf4" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0.707107, -0.707107, 1, 0, 0, -0, -0.707107, -0.707107, 0.397, 1.03924, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf5" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0, 0.707107, 0.707107, 1, 0, 0, -0, 0.707107, -0.707107, 0.397, -0.0392396, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf6" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -0.707107, 0.707107, 1, 0, 0, 0, 0.707107, 0.707107, 0.397, -0.0392396, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf7" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -0.707107, -0.707107, 1, 0, 0, -0, -0.707107, 0.707107, 0.397, 1.03924, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(1, 0, 0)
+
+[node name="Leaf8" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -0, 1, -1, 0, 0, -0, -1, -0, -1.397, 1.15, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf9" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -1, 6.12323e-17, -1, 0, 0, -0, -6.12323e-17, -1, -1.397, 0.5, 0.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf10" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0, -1.22465e-16, -1, -1, 0, 0, -0, 1, -1.22465e-16, -1.397, -0.15, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf11" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 1, -1.83697e-16, -1, 0, 0, 0, 1.83697e-16, 1, -1.397, 0.5, -1.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf12" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -0.707107, 0.707107, -1, 0, 0, -0, -0.707107, -0.707107, -1.397, 1.03924, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf13" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0, -0.707107, -0.707107, -1, 0, 0, -0, 0.707107, -0.707107, -1.397, -0.0392396, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf14" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0.707107, -0.707107, -1, 0, 0, 0, 0.707107, 0.707107, -1.397, -0.0392396, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf15" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, 0.707107, 0.707107, -1, 0, 0, -0, -0.707107, 0.707107, -1.397, 1.03924, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(-1, 0, 0)
+
+[node name="Leaf16" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, -0, -0, -1, -0.5, 1.397, 0.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf17" type="MeshInstance3D" parent="."]
+transform = Transform3D(-6.12323e-17, 0, 1, 0, 1, 0, -1, -0, -6.12323e-17, 0.15, 1.397, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf18" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, -0, 1.22465e-16, 0, 1, 0, -1.22465e-16, -0, 1, -0.5, 1.397, -1.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf19" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.83697e-16, 0, -1, 0, 1, 0, 1, 0, 1.83697e-16, -1.15, 1.397, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf20" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, 0, 0.707107, 0, 1, 0, -0.707107, -0, -0.707107, 0.0392396, 1.397, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf21" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, -0, 0.707107, 0, 1, 0, -0.707107, -0, 0.707107, 0.0392396, 1.397, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf22" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, 0, -0.707107, 0, 1, 0, 0.707107, 0, 0.707107, -1.03924, 1.397, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf23" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, 0, -0.707107, 0, 1, 0, 0.707107, -0, -0.707107, -1.03924, 1.397, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 1, 0)
+
+[node name="Leaf24" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, -0, 0, -1, 0, -0, -0, -1, -0.5, -0.397, 0.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf25" type="MeshInstance3D" parent="."]
+transform = Transform3D(6.12323e-17, 0, -1, 0, -1, 0, -1, -0, -6.12323e-17, 0.15, -0.397, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf26" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1, -0, -1.22465e-16, 0, -1, 0, -1.22465e-16, -0, 1, -0.5, -0.397, -1.15)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf27" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1.83697e-16, 0, 1, 0, -1, 0, 1, 0, 1.83697e-16, -1.15, -0.397, -0.5)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf28" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, 0, -0.707107, 0, -1, 0, -0.707107, -0, -0.707107, 0.0392396, -0.397, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf29" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, -0, -0.707107, 0, -1, 0, -0.707107, -0, 0.707107, 0.0392396, -0.397, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf30" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, 0, 0.707107, 0, -1, 0, 0.707107, 0, 0.707107, -1.03924, -0.397, -1.03924)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf31" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, 0, 0.707107, 0, -1, 0, 0.707107, -0, -0.707107, -1.03924, -0.397, 0.0392396)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, -1, 0)
+
+[node name="Leaf32" type="MeshInstance3D" parent="."]
+transform = Transform3D(0, -1, 0, 0, 0, 1, -1, -0, -0, 0.15, 0.5, 0.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf33" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, -6.12323e-17, 0, 0, 0, 1, -6.12323e-17, -1, -0, -0.5, 1.15, 0.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf34" type="MeshInstance3D" parent="."]
+transform = Transform3D(1.22465e-16, 1, -0, 0, 0, 1, 1, -1.22465e-16, -0, -1.15, 0.5, 0.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf35" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1, 1.83697e-16, 0, 0, 0, 1, 1.83697e-16, 1, 0, -0.5, -0.15, 0.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf36" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, -0.707107, 0, 0, 0, 1, -0.707107, -0.707107, -0, 0.0392396, 1.03924, 0.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf37" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, 0.707107, -0, 0, 0, 1, 0.707107, -0.707107, -0, -1.03924, 1.03924, 0.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf38" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, 0.707107, 0, 0, 0, 1, 0.707107, 0.707107, 0, -1.03924, -0.0392396, 0.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf39" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, -0.707107, 0, 0, 0, 1, -0.707107, 0.707107, -0, 0.0392396, -0.0392396, 0.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, 1)
+
+[node name="Leaf40" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0, 1, 0, 0, 0, -1, -1, -0, -0, 0.15, 0.5, -1.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf41" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1, 6.12323e-17, 0, 0, 0, -1, -6.12323e-17, -1, -0, -0.5, 1.15, -1.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf42" type="MeshInstance3D" parent="."]
+transform = Transform3D(-1.22465e-16, -1, -0, 0, 0, -1, 1, -1.22465e-16, -0, -1.15, 0.5, -1.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf43" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, -1.83697e-16, 0, 0, 0, -1, 1.83697e-16, 1, 0, -0.5, -0.15, -1.397)
+mesh = ExtResource("lf")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf44" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, 0.707107, 0, 0, 0, -1, -0.707107, -0.707107, -0, 0.0392396, 1.03924, -1.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf45" type="MeshInstance3D" parent="."]
+transform = Transform3D(-0.707107, -0.707107, -0, 0, 0, -1, 0.707107, -0.707107, -0, -1.03924, 1.03924, -1.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf46" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, -0.707107, 0, 0, 0, -1, 0.707107, 0.707107, 0, -1.03924, -0.0392396, -1.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, -1)
+
+[node name="Leaf47" type="MeshInstance3D" parent="."]
+transform = Transform3D(0.707107, 0.707107, 0, 0, 0, -1, -0.707107, 0.707107, -0, 0.0392396, -0.0392396, -1.397)
+mesh = ExtResource("lc")
+metadata/face = Vector3i(0, 0, -1)

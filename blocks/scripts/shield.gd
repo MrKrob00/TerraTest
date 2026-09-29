@@ -22,6 +22,16 @@ const SHIELD_RADIUS := 4.0
 const SHIELD_COST_X := 0.6     # энергии за 1 урона
 const SHIELD_BREAK_CD := 2.0   # a dome that broke or ran dry stays down this long (a reboot)
 
+## What a faction's own shield changes (marlit_shield.gd sets them in _init). The dome is SCALED as a
+## node, so its mesh, its plates, the shader and every point handed to it stay in the model space of
+## a SHIELD_RADIUS dome; only world distances multiply. Domes merge only with domes of their own
+## scale - the shared lattice is solved for one radius. `cost_x` is the energy one point of damage
+## costs this dome.
+var dome_scale: float = 1.0
+var cost_x: float = SHIELD_COST_X
+## Where the dome stands in the block: a 2x2x2 block's anchor is its corner, not its middle.
+var dome_centre: Vector3 = Vector3.ZERO
+
 var _dome: StaticBody3D = null
 var _dome_mesh: MeshInstance3D = null
 var _cd: float = 0.0           # > 0 — щит пробит и перезаряжается
@@ -89,6 +99,8 @@ func _ready() -> void:
 	_dome_mesh.material_override = mat
 	_dome_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_dome.add_child(_dome_mesh)
+	_dome.scale = Vector3.ONE * dome_scale
+	_dome.position = dome_centre
 	add_child(_dome)
 	add_to_group(GROUP)
 	_setup_emitter()
@@ -257,8 +269,8 @@ func _physics_process(delta: float) -> void:
 ## actually changes - a driving machine does not pay a material write per tick for them.
 func _update_cuts(v: Node) -> void:
 	var inv: Transform3D = _dome.global_transform.affine_inverse()
-	var reach2: float = (2.0 * SHIELD_RADIUS) * (2.0 * SHIELD_RADIUS)
-	var r2: float = (SHIELD_RADIUS * CUT_INSET) * (SHIELD_RADIUS * CUT_INSET)
+	var reach2: float = pow(2.0 * SHIELD_RADIUS * dome_scale, 2.0)
+	var r2: float = (SHIELD_RADIUS * CUT_INSET) * (SHIELD_RADIUS * CUT_INSET)   # model space
 	var found: Array[Vector4] = []
 	var merged: Array = []
 	for n in get_tree().get_nodes_in_group(GROUP):
@@ -273,6 +285,8 @@ func _update_cuts(v: Node) -> void:
 		# fresh solve per tick - they simply overlap.
 		if ov != v:
 			continue
+		if not is_equal_approx(float(n.get("dome_scale")), dome_scale):
+			continue                         # a dome of another size simply overlaps
 		var c: Vector3 = other_dome.global_position
 		if c.distance_squared_to(_dome.global_position) >= reach2:
 			continue
@@ -324,9 +338,10 @@ func _update_seam(inv: Transform3D) -> void:
 	for n in [self] + _merged:
 		if is_instance_valid(n) and is_instance_valid(n.get("_dome")):
 			var t: Transform3D = mach * (n.get("_dome") as Node3D).global_transform
-			domes.append([t.origin, t.basis.orthonormalized()])
+			# In the model units of a SHIELD_RADIUS dome: the solve is written for that radius.
+			domes.append([t.origin / dome_scale, t.basis.orthonormalized()])
 	domes.sort_custom(func(a, b): return str(a[0]) < str(b[0]))
-	var key := ""
+	var key := "%.2f|" % dome_scale
 	for d in domes:
 		var o: Vector3 = d[0]
 		var bz: Vector3 = (d[1] as Basis).z
@@ -351,7 +366,7 @@ func _update_seam(inv: Transform3D) -> void:
 	var to_me: Transform3D = inv * ((v as Node3D).global_transform if v is Node3D else Transform3D.IDENTITY)
 	var pts: Array = []                      # Vector4 in model space
 	for e in solved:
-		var q: Vector3 = to_me * Vector3(e.x, e.y, e.z)
+		var q: Vector3 = to_me * (Vector3(e.x, e.y, e.z) * dome_scale)
 		pts.append(Vector4(q.x, q.y, q.z, e.w))
 		_seam_local.append(q)
 	# The table: for each plate of THIS mesh, the centres that can own any point of it.
@@ -649,7 +664,7 @@ func absorb(damage: int, cost_mult: float = 1.0) -> void:
 	_push_hit()
 	var v := _vehicle_root()
 	if v and v.has_method("energy_consume"):
-		var cost := float(damage) * SHIELD_COST_X * maxf(cost_mult, 0.0)
+		var cost := float(damage) * cost_x * maxf(cost_mult, 0.0)
 		var paid: float = v.energy_consume(cost)
 		if paid < cost or v.energy_available() <= 0.0:
 			_cd = SHIELD_BREAK_CD

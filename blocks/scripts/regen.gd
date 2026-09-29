@@ -23,6 +23,14 @@ const FIELD_ALPHA_DEAD := 0.03
 ## За сколько секунд поле переходит между этими двумя состояниями.
 const FIELD_FADE := 0.4
 
+## What a faction's own repair unit changes (regen_marlit.gd sets them in _init): how far the field
+## reaches, how much a tick heals, how many blocks one tick can take, and where in the block the
+## field's centre is - the anchor cell of a 2x2x2 block is its corner, not its middle.
+var field_radius: float = REGEN_RADIUS
+var heal_hp: int = REGEN_HP
+var max_bodies: int = FIELD_MAX_BODIES
+var field_centre: Vector3 = Vector3.ZERO
+
 var _timer: float = 0.0
 var _field: MultiMeshInstance3D = null
 var _field_mat: ShaderMaterial = null
@@ -138,13 +146,14 @@ func _build_field() -> void:
 	_field.multimesh = mm
 	_field_mat = ShaderMaterial.new()
 	_field_mat.shader = preload("res://regen_code.gdshader")
-	_field_mat.set_shader_parameter("radius", REGEN_RADIUS)
+	_field_mat.set_shader_parameter("radius", field_radius)
 	_field_mat.set_shader_parameter("active", 0.0)
 	_field.material_override = _field_mat
 	_field.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Габарит задаём руками: трансформы инстансов единичные, и посчитанный по ним габарит был
 	# бы точкой — поле пропадало бы, едва блок ушёл с края экрана.
-	_field.custom_aabb = AABB(Vector3.ONE * -REGEN_RADIUS, Vector3.ONE * (REGEN_RADIUS * 2.0))
+	_field.custom_aabb = AABB(Vector3.ONE * -field_radius, Vector3.ONE * (field_radius * 2.0))
+	_field.position = field_centre
 	_field.set_meta("block_fx", true)       # в габарит блока не входит (см. _local_aabb)
 	add_child(_field)
 
@@ -194,7 +203,7 @@ func _work(delta: float) -> bool:
 		# Платим за каждый блок отдельно: не хватило на этого — дальше смысла нет.
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
 			break
-		b.current_hp = mini(b.current_hp + REGEN_HP, b.max_hp)
+		b.current_hp = mini(b.current_hp + heal_hp, b.max_hp)
 		# ПОЧИНКУ ПОКАЗЫВАЕТ САМ ОВЕРЛЁЙ ПОВРЕЖДЕНИЙ: цифры, переставшие быть красными, зеленеют
 		# и гаснут. Отдельная зелёная оболочка поверх блока (BlockFX.heal) рисовала то же самое
 		# вторым мешем и не говорила, ЧТО именно починили.
@@ -202,7 +211,7 @@ func _work(delta: float) -> bool:
 			b._refresh_hp_fx()
 		# И КОД ЛЕТИТ В БЛОК. Орбита вокруг поля показывает, что оно работает; этот поток
 		# показывает, КОГО оно чинит прямо сейчас (см. BlockFX.repair_stream).
-		BlockFX.repair_stream(self, b, REGEN_RADIUS)
+		BlockFX.repair_stream(_field if is_instance_valid(_field) else self, b, field_radius)
 		_heal_flash = 1.0
 	return true
 
@@ -216,14 +225,14 @@ func _blocks_in_field() -> Array:
 	if world == null:
 		return []
 	var sphere := SphereShape3D.new()
-	sphere.radius = REGEN_RADIUS
+	sphere.radius = field_radius
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = sphere
-	q.transform = Transform3D(Basis(), global_position)
+	q.transform = Transform3D(Basis(), to_global(field_centre))
 	q.collision_mask = 2                      # слой блоков (VehicleBlock.collision_layer = 2)
 	q.collide_with_bodies = true
 	var out: Array = []
-	for hit in world.direct_space_state.intersect_shape(q, FIELD_MAX_BODIES):
+	for hit in world.direct_space_state.intersect_shape(q, max_bodies):
 		var b = hit.get("collider")
 		if b is Node3D and ("current_hp" in b) and ("max_hp" in b):
 			out.append(b)

@@ -1,0 +1,77 @@
+[gd_scene format=3 uid="uid://cmarlitregen63"]
+
+[ext_resource type="Script" path="res://blocks/scripts/regen_marlit.gd" id="1_s"]
+[ext_resource type="Texture2D" uid="uid://by434re5ouets" path="res://objects/marlit_regen_texture.png" id="9_tex"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_frame.tres" id="frame"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_crystal.tres" id="c"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_ring0.tres" id="r0"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow0.tres" id="g0"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_ring1.tres" id="r1"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow1.tres" id="g1"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_ring2.tres" id="r2"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow2.tres" id="g2"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_ring3.tres" id="r3"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow3.tres" id="g3"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+resource_name = "marlit_regen_glow"
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.35, 1, 0.5, 1)
+albedo_texture = ExtResource("9_tex")
+texture_filter = 2
+
+[node name="marlit_regen" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_s")
+block = 63
+connect_faces = 63
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Frame" type="MeshInstance3D" parent="."]
+mesh = ExtResource("frame")
+
+[node name="Ring0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r0")
+
+[node name="Glow" type="MeshInstance3D" parent="Ring0"]
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("g0")
+
+[node name="Ring1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r1")
+
+[node name="Glow" type="MeshInstance3D" parent="Ring1"]
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("g1")
+
+[node name="Ring2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r2")
+
+[node name="Glow" type="MeshInstance3D" parent="Ring2"]
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("g2")
+
+[node name="Ring3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r3")
+
+[node name="Glow" type="MeshInstance3D" parent="Ring3"]
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("g3")
+
+[node name="Crystal" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+material_override = SubResource("Mat_glow")
+mesh = ExtResource("c")

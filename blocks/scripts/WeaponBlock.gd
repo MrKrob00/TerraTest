@@ -373,9 +373,9 @@ func _scan_targets() -> void:
 	_targets = found
 	_target_base = base
 
-## The dome's radius (shield.gd SHIELD_RADIUS): a dome counts while its sphere reaches into
-## weapon_range, as it did when the sensor saw it.
-const SHIELD_REACH := 4.0
+## The biggest dome's radius (shield.gd SHIELD_RADIUS times the Marlit shield's scale): a dome
+## counts while its sphere reaches into weapon_range, as it did when the sensor saw it.
+const SHIELD_REACH := 6.0
 
 func _update_current_target() -> void:
 	_scan_targets()
