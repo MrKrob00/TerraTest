@@ -12,8 +12,8 @@ texture_filter = 2
 [resource]
 resource_name = "marlit_battery_seg5"
 _surfaces = [{
-"aabb": AABB(-0.1, 0.18654762, -0.954, 0.2, 0.062023804, 1.908),
-"attribute_data": PackedByteArray("/zwdhJlAHYSZQP+C/zz/gplG/4L/Qv+C/0IdhJlGHYQ="),
+"aabb": AABB(-0.08, 0.19875, -0.954, 0.16, 0.15374999, 1.908),
+"attribute_data": PackedByteArray("/wDDjeEDw43hA/+K/wD/iv8Gw43hCcON4Qn/iv8G/4o="),
 "format": 34896613399,
 "index_count": 12,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYA"),
@@ -22,6 +22,6 @@ _surfaces = [{
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
 "vertex_count": 8,
-"vertex_data": PackedByteArray("AAD//wAA////////AAD/////AAAAAP//AAAAAAAA////////////vwAA//////+/AAAAAP///7///wAA////v/8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+"vertex_data": PackedByteArray("AAD//wAA////////AAD/////AAAAAP//AAAAAAAA//8AAAAA////v///AAD///+//////////78AAP//////v/8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
 }]
 blend_shape_mode = 0
