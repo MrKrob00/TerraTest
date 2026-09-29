@@ -992,6 +992,140 @@ def build_marlit_solar(pk, img):
     return parts
 
 
+# ── the Marlit repair unit ──────────────────────────────────────────────────────────────────────
+# The gyro (build_regen2, one cell, GSO blue) moved into Marlit at Marlit's scale: 2x2x2, the four
+# rings and the crystal HUNG IN A FRAME - a plinth, a roof with the faction's octagon, four corner
+# pillars with sunset slits, a crossbar across the left and right sides carrying the outer ring's
+# bearings (the vertical ring hangs from the roof and the plinth), and gussets in every corner. Rings and crystal keep the gyro's parts
+# and nesting (regen_marlit.gd drives them unchanged), gunmetal now, their inner strip the energy.
+MR_R = (0.78, 0.67, 0.56, 0.45)       # the rings, outermost first; the outer one clears the crossbars
+MR_DEPTH, MR_WIDTH = 0.035, 0.06
+MR_PIL = 0.26                          # corner pillar section
+MR_PLINTH = 0.28                       # plinth and roof thickness
+MR_BAR = 0.14                          # crossbar section
+
+
+def _mtone(n):
+    return "mbev%d" % int(round(max(0.0, min(1.0, 0.42 + 0.55 * th.dot(th.norm(n), LIGHT))) * 5))
+
+
+def marlit_ring(faces, glow, ang, R, depth, width, n=28):
+    """square_ring's band in Marlit's metal: every facet toned by the painted light, an edge-coloured
+    joint every fourth, and the inside the energy strip (its own part, so the script can light it)."""
+    c, s_ = math.cos(math.radians(ang)), math.sin(math.radians(ang))
+    nrm = (-s_, c, 0.0)
+
+    def at(t, dr, dn):
+        rad = (math.cos(t) * c, math.cos(t) * s_, math.sin(t))
+        return th.add(th.mul(rad, R + dr), th.mul(nrm, dn))
+    for k in range(n):
+        t0, t1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
+        tm = (t0 + t1) / 2
+        rad = (math.cos(tm) * c, math.cos(tm) * s_, math.sin(tm))
+        tan = (-math.sin(tm) * c, -math.sin(tm) * s_, math.cos(tm))
+        for (d0, n0), (d1, n1), out, dest in (
+                ((depth, -width), (depth, width), rad, faces),
+                ((-depth, width), (-depth, -width), th.mul(rad, -1), glow),
+                ((-depth, width), (depth, width), nrm, faces),
+                ((depth, -width), (-depth, -width), th.mul(nrm, -1), faces)):
+            q = [at(t0, d0, n0), at(t0, d1, n1), at(t1, d1, n1), at(t1, d0, n0)]
+            cen = th.add(th.mul(rad, R), th.mul(out, -1.0))
+            if dest is glow:
+                style = "energy"
+            elif out is rad and k % 4 == 0:
+                style = "medge"
+            else:
+                style = _mtone(out)
+            dest.append(th.Face(th.outward(q, cen), style, u_hint=tan))
+
+
+def _marlit_regen_frame(f, rnd):
+    x0, x1, y0, y1, z0, z1 = -1.5, 0.5, -0.5, 1.5, -1.5, 0.5
+    cx, cy, cz = -0.5, 0.5, -0.5
+    pb, pt = y0 + MR_PLINTH, y1 - MR_PLINTH
+    marlit_box(f, (x0, y0, z0), (x1, pb, z1), 0.05, rnd)
+    marlit_box(f, (x0, pt, z0), (x1, y1, z1), 0.05, rnd, {(1, 1): "window"})
+    # a sunset band round the plinth and the roof
+    for yy in ((y0 + pb) / 2, (pt + y1) / 2):
+        for (a, b, nrm) in (((x0, z0), (x1, z0), (0, 0, -1)), ((x1, z1), (x0, z1), (0, 0, 1)),
+                            ((x0, z1), (x0, z0), (-1, 0, 0)), ((x1, z0), (x1, z1), (1, 0, 0))):
+            o = (nrm[0] * 0.002, 0.0, nrm[2] * 0.002)
+            q = [(a[0] + o[0] + (0.12 if a[0] < b[0] else -0.12 if a[0] > b[0] else 0), yy - 0.018, a[1] + o[2] + (0.12 if a[1] < b[1] else -0.12 if a[1] > b[1] else 0)),
+                 (b[0] + o[0] - (0.12 if a[0] < b[0] else -0.12 if a[0] > b[0] else 0), yy - 0.018, b[1] + o[2] - (0.12 if a[1] < b[1] else -0.12 if a[1] > b[1] else 0))]
+            q = q + [(q[1][0], yy + 0.018, q[1][2]), (q[0][0], yy + 0.018, q[0][2])]
+            f.append(th.Face(th.outward(q, (cx, yy, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
+    # corner pillars, a sunset slit down each outer face
+    P = MR_PIL
+    for (px, sx) in ((x0, 1), (x1 - P, -1)):
+        for (pz, sz) in ((z0, 1), (z1 - P, -1)):
+            cham_box(f, (px, pb, pz), (px + P, pt, pz + P), 0.05, "mbev2", "mbev4", "mbev1", "medge")
+            ox = px if sx == 1 else px + P
+            oz = pz if sz == 1 else pz + P
+            mx, mz = px + P / 2, pz + P / 2
+            for q, ref in (([(ox - sx * 0.002, pb + 0.14, mz - 0.025), (ox - sx * 0.002, pb + 0.14, mz + 0.025),
+                             (ox - sx * 0.002, pt - 0.14, mz + 0.025), (ox - sx * 0.002, pt - 0.14, mz - 0.025)], (mx, cy, mz)),
+                           ([(mx - 0.025, pb + 0.14, oz - sz * 0.002), (mx + 0.025, pb + 0.14, oz - sz * 0.002),
+                             (mx + 0.025, pt - 0.14, oz - sz * 0.002), (mx - 0.025, pt - 0.14, oz - sz * 0.002)], (mx, cy, mz))):
+                f.append(th.Face(th.outward(q, ref), "mglow", u_hint=(0, 1, 0)))
+    # a crossbar across the middle of the left and right sides, flush with the face, and the bearing
+    # on it. NOT on the front and back: there it ran straight across the crystal and hid the one
+    # part that says what the block is doing, so the gyro is seen whole from those two sides.
+    B = MR_BAR
+    h = B / 2
+    cham_box(f, (x0, cy - h, z0 + P), (x0 + B, cy + h, z1 - P), 0.02, "mbev2", "mbev4", "mbev1", "medge")
+    cham_box(f, (x1 - B, cy - h, z0 + P), (x1, cy + h, z1 - P), 0.02, "mbev2", "mbev4", "mbev1", "medge")
+    # gussets: a strut across each lower and upper corner of every side, pillar to plinth or roof
+    G_ = 0.30
+    for side in range(4):
+        for top in (0, 1):
+            for end in (0, 1):
+                ya = pb if top == 0 else pt
+                yb = ya + (G_ if top == 0 else -G_)
+                if side < 2:                               # the -Z and +Z sides: along X
+                    zz = z0 + 0.05 if side == 0 else z1 - 0.05
+                    xa = x0 + P if end == 0 else x1 - P
+                    xb = xa + (G_ if end == 0 else -G_)
+                    a, b = (xa, yb, zz), (xb, ya, zz)
+                    up = (0, 0, 1)
+                else:
+                    xx = x0 + 0.05 if side == 2 else x1 - 0.05
+                    za = z0 + P if end == 0 else z1 - P
+                    zb = za + (G_ if end == 0 else -G_)
+                    a, b = (xx, yb, za), (xx, ya, zb)
+                    up = (1, 0, 0)
+                mbeam(f, a, b, 0.07, 0.07, up)
+    # the bearings: hubs down each axis from the ring they hold out to the frame (left/right the
+    # outer ring, top/bottom the vertical one) and a flange on the frame
+    reach = {0: MR_R[0], 1: MR_R[1]}
+    ends = {0: 1.0 - B, 1: 1.0 - MR_PLINTH}
+    for axis in (0, 1):
+        for sg in (1, -1):
+            def p(d):
+                v = [cx, cy, cz]
+                v[axis] += sg * d
+                return tuple(v)
+            d_in = reach[axis] - MR_DEPTH - 0.05
+            tube(f, [p(d_in), p(ends[axis])], [0.07, 0.07], ["m"], sides=12, cap_start="cap_bolt")
+            tube(f, [p(ends[axis] - 0.05), p(ends[axis] + 0.004)], [0.13, 0.13], ["m"], sides=12, cap_start="medge",
+                 cap_end="medge")
+
+
+def build_marlit_regen(pk, img):
+    import random as _r
+    rnd = _r.Random(203)
+    parts = {"marlit_regen_frame": []}
+    _marlit_regen_frame(parts["marlit_regen_frame"], rnd)
+    for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, MR_R)):
+        faces, glow = [], []
+        marlit_ring(faces, glow, ang, R, MR_DEPTH, MR_WIDTH)
+        parts["marlit_regen_ring%d" % i] = faces
+        parts["marlit_regen_glow%d" % i] = glow
+    parts["marlit_regen_crystal"] = []
+    lathe_y(pk, img, parts["marlit_regen_crystal"], [(0.0, -0.37), (0.23, -0.08), (0.23, 0.08), (0.0, 0.37)],
+            CORE_RAMP, sides=8, cell=4)
+    return parts
+
+
 # ── the radar ───────────────────────────────────────────────────────────────────────────────────
 
 DISH_RAMP = [(70, 78, 100), (95, 104, 130), (120, 130, 158), (145, 155, 182), (165, 175, 200)]
@@ -2082,6 +2216,7 @@ BLOCKS = {
     "marlit_armor8": (179, build_marlit_armor8, 512),
     "marlit_octo": (181, build_marlit_octo, 512),
     "marlit_solar": (193, build_marlit_solar, 512),
+    "marlit_regen": (211, build_marlit_regen, 512),
     "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
@@ -2109,7 +2244,7 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0}
+DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 40.0}
 
 
 def make(name):
