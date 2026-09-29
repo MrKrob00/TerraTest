@@ -905,6 +905,20 @@ def style_px(style, x, y, w, h, d):
     if style[:5] == "mflat" and style[5:].isdigit():
         # a plain Marlit surface in one painted-light tone, no edge line of its own
         return jitter([(22, 23, 30), (30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82)][int(style[5:])], 1)
+    if style == "mvent":
+        # a vented Marlit wall: dark slots in rows, each with a lit lip over it, a plate frame round them
+        if x < 3 or y < 3 or x >= w - 3 or y >= h - 3:
+            return jitter((46, 48, 56), 1)
+        if ((x - 3) // 4) % 2 == 1:
+            return (40, 43, 52)
+        r = (y - 3) % 4
+        return (14, 15, 20) if r in (1, 2) else ((84, 88, 102) if r == 0 else (40, 43, 52))
+    if style == "mcase":
+        # a car battery's case: dark moulded walls with raised vertical ribs, a lit edge on each rib
+        if y < 1 or y >= h - 1:
+            return (26, 27, 34)
+        r = x % 7
+        return (60, 64, 76) if r == 0 else ((46, 49, 58) if r in (1, 2) else jitter((32, 34, 42), 1))
     if style == "mcore":
         # the cell's dark glass end: deep teal, darkest in the middle
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
