@@ -2488,11 +2488,12 @@ def build_marlit_battery(pk, img):
 #   body - housing, fingers
 #   disc - the emitter, about its own middle (the scene's Ring node stands at MWL_DISC)
 MWL_DISC = (-0.5, 0.0, -0.74)     # the disc's middle in block space: half height, the front row
-MWL_DISC_A = 0.62                 # its half width across the flats
+MWL_DISC_A = 0.60                 # its half width across the flats
 MWL_DISC_H = 0.06                 # its half thickness
 MWL_SLOT = 0.11                   # the slot's half height, the disc turning in it
 MWL_FINGERS = (225.0, 270.0, 315.0)   # where the fingers hook the rim, degrees round the disc
-MWL_REACH = 0.70                  # the fingers' drop, from the disc's middle
+MWL_CURL = 0.12                   # the radius a finger curls round the rim by
+MWL_FINGER = (0.22, 0.13, 0.08)   # a finger's width at the palm, at the tip; its thickness
 
 
 _OCT_K = 1.0 / math.cos(math.pi / 8)
@@ -2547,6 +2548,32 @@ def _mwl_beam(f, p0, p1, half_w, half_h, lit):
     obox(f, th.mul(th.add(p0, p1), 0.5), (side, up, ax), (half_w, half_h, math.dist(p0, p1) / 2), lit)
 
 
+def _mwl_claw(f, pts, side):
+    """A finger swept along `pts` in a vertical plane: a rectangular section, narrowing from the palm
+    to the tip, every face toned by which way it looks - a bent plate of flat facets."""
+    w0, w1, t = MWL_FINGER
+    n = len(pts)
+    secs = []
+    for i, p in enumerate(pts):
+        a = pts[max(i - 1, 0)]
+        b = pts[min(i + 1, n - 1)]
+        tg = th.norm(th.sub(b, a))
+        nm = th.norm(th.cross(side, tg))
+        w = (w0 + (w1 - w0) * i / (n - 1)) / 2
+        secs.append([th.add(p, th.add(th.mul(side, sw * w), th.mul(nm, sn * t / 2)))
+                     for sw, sn in ((-1, 1), (1, 1), (1, -1), (-1, -1))])
+    mid = lambda q: th.mul(tuple(map(sum, zip(*q))), 1.0 / len(q))
+    for i in range(n - 1):
+        axis = mid(pts[i:i + 2])
+        for k in range(4):
+            j = (k + 1) % 4
+            q = th.outward([secs[i][k], secs[i][j], secs[i + 1][j], secs[i + 1][k]], axis)
+            ny = th.norm(th.newell(q))[1]
+            tone = 4 if ny > 0.6 else (3 if ny > 0.2 else (2 if ny > -0.2 else (1 if ny > -0.6 else 0)))
+            f.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
+    f.append(th.Face(th.outward(list(secs[-1]), pts[-2]), "medge", u_hint=side))
+
+
 def build_marlit_wireless(pk, img):
     import random as _r
     rnd = _r.Random(241)
@@ -2581,22 +2608,21 @@ def build_marlit_wireless(pk, img):
     for y0 in (S + 0.07, -S - 0.1):
         f.append(th.Face(th.outward([(-1.3, y0, -0.502), (0.3, y0, -0.502), (0.3, y0 + 0.025, -0.502),
                                      (-1.3, y0 + 0.025, -0.502)], (0, 0, 0)), "mglow", u_hint=(1, 0, 0)))
-    # the fingers: a knuckle on the upper half's front, a beam out over the disc, a drop past the
-    # rim and a tip hooked under it
+    # the claws: one palm on the housing's front over the slot, three fingers fanning out of it
+    # over the disc, each a bent plate that curls round the rim and hooks under it
     Dx, Dy, Dz = MWL_DISC
     A, H = MWL_DISC_A, MWL_DISC_H
-    rr = flat_r(A, 8) + 0.05
-    lit = ["mflat3", "mflat3", "mflat4", "mflat1", "mflat2", "mflat2"]
+    _mwl_box(f, (Dx - 0.34, S + 0.03, -0.62), (Dx + 0.34, 0.36, -0.5), 0.05)
+    Ra = MWL_CURL
+    path = [(-0.30, 0.25), (0.05, 0.25), (A - 0.16, 0.15)]
+    path += [(A - 0.02 + Ra * math.cos(math.radians(t)), Ra * math.sin(math.radians(t)))
+             for t in (100, 60, 20, -20, -60, -100)]
+    path += [(A - 0.15, -Ra - 0.01)]
     for az in MWL_FINGERS:
-        ca, sa = math.cos(math.radians(az)), math.sin(math.radians(az))
-        tx, tz = Dx + rr * ca, Dz + rr * sa
-        kx = Dx + 0.9 * rr * ca
-        _mwl_box(f, (kx - 0.1, S + 0.06, -0.62), (kx + 0.1, 0.36, -0.5), 0.03)
-        over = (tx, Dy + H + 0.09, tz)
-        _mwl_beam(f, (kx, 0.25, -0.58), over, 0.065, 0.055, lit)
-        _mwl_beam(f, over, (tx, Dy - H - 0.07, tz), 0.065, 0.05, lit)
-        tip = (Dx + (rr - 0.12) * ca, Dy - H - 0.05, Dz + (rr - 0.12) * sa)
-        _mwl_beam(f, (tx, Dy - H - 0.05, tz), tip, 0.05, 0.03, lit)
+        d = (math.cos(math.radians(az)), 0.0, math.sin(math.radians(az)))
+        side = th.norm(th.cross(d, (0.0, 1.0, 0.0)))
+        pts = [(Dx + d[0] * r, Dy + y, Dz + d[2] * r) for r, y in path]
+        _mwl_claw(f, pts, side)
     # the disc, about its own middle: a cyan rim, a dark ring the turn shows on, a cyan coil ring,
     # a dark plate and a hub
     g = parts["marlit_wireless_disc"]
