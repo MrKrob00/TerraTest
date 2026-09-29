@@ -13,7 +13,7 @@ texture_filter = 2
 resource_name = "marlit_solar_mast"
 _surfaces = [{
 "aabb": AABB(-0.10162675, 0, -0.10162675, 0.2032535, 1, 0.2032535),
-"attribute_data": PackedByteArray("/xgEkf8Y/47/AP+O/wAEkf8yBJH/Mv+O/xr/jv8aBJH/TASR/0z/jv80/47/NASR/2YEkf9m/47/Tv+O/04Ekf+ABJH/gP+O/2j/jv9oBJH/mgSR/5r/jv+C/47/ggSR/7QEkf+0/47/nP+O/5wEkf/OBJH/zv+O/7b/jv+2BJHf5W1kcuT/Ymzi/2L/4G1k/+ByZmzi4Gdy5OBn3+VyZg=="),
+"attribute_data": PackedByteArray("/3gEdf94/3L/YP9y/2AEdf+SBHX/kv9y/3r/cv96BHX/rAR1/6z/cv+U/3L/lAR1/8YEdf/G/3L/rv9y/64Edf/gBHX/4P9y/8j/cv/IBHX/+gR1//r/cv/i/3L/4gR1/xgEe/8Y/3j/AP94/wAEe/8yBHv/Mv94/xr/eP8aBHvgKW1Ucij/Um0m/1L/JG1U/yRyVm0m4FdyKOBX4ClyVg=="),
 "format": 34896613399,
 "index_count": 66,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAIAAkACMAIAAlACQAIAAmACUAIAAnACYA"),

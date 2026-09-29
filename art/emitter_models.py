@@ -890,14 +890,20 @@ def build_marlit_octo(pk, img):
 
 
 # ── the Marlit solar array ──────────────────────────────────────────────────────────────────────
-# TerraTech's GeoCorp solar box: a low 2x1x2 housing whose lid opens on the anchor and a panel rises
-# out of it. The block owns 2x2x2 - the housing is its lower floor, the open array its upper one -
-# so nothing it does ever reaches past its cells. Four parts, each built round its own pivot so the
+# TerraTech's GeoCorp solar box: a low 2x1x2 housing whose lid opens on the anchor, and a mast rises
+# out of it with six small leaves unfolding up it in three tiers. The block owns 2x3x2 - the housing
+# is its lower floor, the mast its upper two - so nothing it does ever reaches past its cells. One
+# big plate on a post was the first cut and was turned down: the original is a TREE of leaves that
+# fold into one neat stack. Four parts, each built round its own pivot so the
 # script only turns and slides them:
 #   body  - the housing (x -1.5..0.5, y -0.5..0.38, z -1.5..0.5), open on top, windows on its walls
 #   lid   - one leaf, hinge along Z at its local origin, lying over x 0..1 and y -0.12..0; the scene
 #           puts one at each outer edge (the right one turned 180 about Y), and opening is +90 about Z
-#   panel - the array, centred on its local origin, 1.84 square
+#   panel - one leaf, hinged at its local origin along X, reaching +Z; six of them. Folded they lie
+#           flat in one stack in the housing (y -0.24 + 0.075 k, hinge at z -0.95); open they hang
+#           in three tiers up the mast (y 1.0 / 1.55 / 2.1), one leaf forward and one back, each
+#           tier ONE plane tilted 25 deg with the glass up and to the front - leaves tilted each
+#           outward showed the front ones' grey backs to anyone standing before the block
 #   mast  - a unit octagonal column (y 0..1) the script stretches from the floor to the panel
 MS_WALL = 0.14
 MS_TOP = 0.38          # the walls' top; a closed leaf lies on it, flush with the cell's top face
@@ -931,28 +937,36 @@ def _marlit_solar_lid(f, rnd):
     marlit_box(f, (0.0, -MS_LID, -1.0), (1.0, 0.0, 1.0), 0.04, rnd, {(1, 1): "window"})
 
 
+MS_LEAF = 0.9          # one leaf of the array: 0.9 square, hinged at the mast
+MS_LEAF_CELLS = 2
+
+
 def _marlit_solar_panel(f, rnd):
-    h = MS_PANEL
-    cham_box(f, (-h, -0.06, -h), (h, 0.02, h), 0.03, "mbev2", "mplate", "mbev1", "medge")
-    # the sunset rim round the glass
-    rim = 0.06
-    for q in ([(-h + 0.03, 0.021, -h + 0.03), (h - 0.03, 0.021, -h + 0.03), (h - 0.03, 0.021, -h + 0.03 + rim), (-h + 0.03, 0.021, -h + 0.03 + rim)],
-              [(-h + 0.03, 0.021, h - 0.03 - rim), (h - 0.03, 0.021, h - 0.03 - rim), (h - 0.03, 0.021, h - 0.03), (-h + 0.03, 0.021, h - 0.03)],
-              [(-h + 0.03, 0.021, -h + 0.03 + rim), (-h + 0.03 + rim, 0.021, -h + 0.03 + rim), (-h + 0.03 + rim, 0.021, h - 0.03 - rim), (-h + 0.03, 0.021, h - 0.03 - rim)],
-              [(h - 0.03 - rim, 0.021, -h + 0.03 + rim), (h - 0.03, 0.021, -h + 0.03 + rim), (h - 0.03, 0.021, h - 0.03 - rim), (h - 0.03 - rim, 0.021, h - 0.03 - rim)]):
-        f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "mglow", u_hint=(1, 0, 0)))
-    # the cells, a 4 x 4 grid of glass with the frame's dark between them
-    inner = h - 0.03 - rim - 0.02
-    step = 2 * inner / MS_CELLS
-    gap = 0.025
-    for i in range(MS_CELLS):
-        for j in range(MS_CELLS):
-            a0 = -inner + i * step + gap
-            a1 = -inner + (i + 1) * step - gap
-            b0 = -inner + j * step + gap
-            b1 = -inner + (j + 1) * step - gap
-            q = [(a0, 0.022, b0), (a1, 0.022, b0), (a1, 0.022, b1), (a0, 0.022, b1)]
-            f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "msolar", u_hint=(1, 0, 0)))
+    """One leaf of the array (TerraTech's GeoCorp array is a mast of small panels, not one plate):
+    hinged along X at its local origin, reaching +Z, glass up. Six of them fold flat into one stack
+    in the housing and unfold up the mast in three tiers."""
+    w = MS_LEAF / 2
+    d = MS_LEAF
+    cham_box(f, (-w, -0.05, 0.0), (w, 0.01, d), 0.02, "mbev2", "mplate", "mbev1", "medge")
+    rim = 0.045
+    yt = 0.011
+    for q in ([(-w + 0.02, yt, 0.02), (w - 0.02, yt, 0.02), (w - 0.02, yt, 0.02 + rim), (-w + 0.02, yt, 0.02 + rim)],
+              [(-w + 0.02, yt, d - 0.02 - rim), (w - 0.02, yt, d - 0.02 - rim), (w - 0.02, yt, d - 0.02), (-w + 0.02, yt, d - 0.02)],
+              [(-w + 0.02, yt, 0.02 + rim), (-w + 0.02 + rim, yt, 0.02 + rim), (-w + 0.02 + rim, yt, d - 0.02 - rim), (-w + 0.02, yt, d - 0.02 - rim)],
+              [(w - 0.02 - rim, yt, 0.02 + rim), (w - 0.02, yt, 0.02 + rim), (w - 0.02, yt, d - 0.02 - rim), (w - 0.02 - rim, yt, d - 0.02 - rim)]):
+        f.append(th.Face(th.outward(q, (0.0, -1.0, d / 2)), "mglow", u_hint=(1, 0, 0)))
+    a0, a1 = -w + 0.02 + rim + 0.015, w - 0.02 - rim - 0.015
+    b0, b1 = 0.02 + rim + 0.015, d - 0.02 - rim - 0.015
+    sa = (a1 - a0) / MS_LEAF_CELLS
+    sb = (b1 - b0) / MS_LEAF_CELLS
+    gap = 0.018
+    for i in range(MS_LEAF_CELLS):
+        for j in range(MS_LEAF_CELLS):
+            q = [(a0 + i * sa + gap, yt + 0.001, b0 + j * sb + gap), (a0 + (i + 1) * sa - gap, yt + 0.001, b0 + j * sb + gap),
+                 (a0 + (i + 1) * sa - gap, yt + 0.001, b0 + (j + 1) * sb - gap), (a0 + i * sa + gap, yt + 0.001, b0 + (j + 1) * sb - gap)]
+            f.append(th.Face(th.outward(q, (0.0, -1.0, d / 2)), "msolar", u_hint=(1, 0, 0)))
+    # the hinge knuckle along the inner edge
+    cham_box(f, (-w + 0.1, -0.07, -0.04), (w - 0.1, 0.0, 0.04), 0.015, "mbev3", "mbev4", "mbev1", "medge")
 
 
 def _marlit_solar_mast(f, rnd):
