@@ -35,7 +35,7 @@ const FILTERS := [
 	["attack",  "Attack"],
 	["blocks",  "Blocks"],
 	["factory", "Factory"],
-	["other",   "Other"],
+	["power",   "Power"],
 ]
 
 func _ready() -> void:
@@ -170,15 +170,15 @@ func _set_shop_filter(key: String) -> void:
 	_load_items()
 	_rebuild_grid(_search.text if _search else "")
 
-# Проходит ли блок текущий фильтр SHOP. "other" = не попал ни в одну категорию.
+# Does the block pass the SHOP filter. "power" also takes what is in no category at all.
 func _passes_filter(block_type: int) -> bool:
 	match _shop_filter:
 		"all":
 			return true
-		"other":
+		"power":
 			for k in _categories:
 				if _categories[k].has(block_type):
-					return false
+					return k == "power"
 			return true
 		_:
 			return _categories.get(_shop_filter, []).has(block_type)

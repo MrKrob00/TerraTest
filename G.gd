@@ -1911,8 +1911,7 @@ enum Block {
 @onready var marlit_octo_scene: PackedScene = preload("res://blocks/scenes/marlit_octo.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
-# в стройке (block_globe.gd). Ключ "other" не хранится явно — это всё, что не попало
-# ни в одну из категорий ниже.
+# в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
 # Стационарные блоки (базы): при постановке на ЗЕМЛЮ рождают якорную структуру, на
 # мобильную машину не ставятся (см. docs/STATIONARY_BLOCKS_DESIGN.md): продавец и
 # авто-шахтёр — последний вдобавок требует жилы под собой.
@@ -1944,8 +1943,13 @@ const BLOCK_CATEGORIES := {
 		Block.MARLIT_OCTO],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
-		Block.STORAGE, Block.PROCESSOR, Block.SELLER, Block.GENERATOR,
+		Block.STORAGE, Block.PROCESSOR, Block.SELLER,
 		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY, Block.PACKER],
+	# POWER: what makes, stores, passes on or spends energy. It was "other" - the leftovers of the
+	# three lists above - and the generator sat among the factory blocks. Anything that falls in no
+	# list still shows under Power (the radar, today), so a new block never vanishes from the shop.
+	"power":   [Block.SOLAR, Block.BATTERY, Block.GENERATOR, Block.WIRELESS_CHARGER,
+		Block.SHIELD, Block.REGEN],
 }
 
 func get_scene(block: Block) -> PackedScene:

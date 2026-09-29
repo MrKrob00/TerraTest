@@ -104,6 +104,7 @@ func _fill_components() -> void:
 # Разделы — те же категории, что в гараже и в глобусе стройки (G.BLOCK_CATEGORIES): третьего
 # способа группировать блоки в проекте быть не должно, иначе они разъедутся.
 func _fill_blocks() -> void:
+	var lists: Dictionary = {}
 	var shown: Dictionary = {}
 	for key in G.BLOCK_CATEGORIES:
 		var names: Array = []
@@ -112,20 +113,18 @@ func _fill_blocks() -> void:
 				continue                       # рецепта нет — собрать нельзя, в списке не место
 			names.append(int(bt))
 			shown[int(bt)] = true
-		if names.is_empty():
-			continue
-		_section(String(key).to_upper())
-		for bt in names:
-			_row(bt, G.block_name(bt), G.recipe_text(G.block_recipe(bt)), Color(0.55, 0.78, 0.82))
-	# Всё, что не попало ни в одну категорию, — «прочее»: иначе блок с рецептом молча
-	# исчез бы из выбора, и понять это можно было бы только по отсутствию в списке.
-	var rest: Array = []
+		lists[key] = names
+	# What is in no category goes under POWER, as in the shop and the globe: otherwise a block with
+	# a recipe would vanish from the choice, noticed only by its absence.
 	for bt in G.BLOCK_RECIPE:
 		if not shown.has(int(bt)):
-			rest.append(int(bt))
-	if not rest.is_empty():
-		_section("OTHER")
-		for bt in rest:
+			(lists["power"] as Array).append(int(bt))
+	for key in lists:
+		var names: Array = lists[key]
+		if names.is_empty():
+			continue
+		_section(tr(String(key).to_upper()))
+		for bt in names:
 			_row(bt, G.block_name(bt), G.recipe_text(G.block_recipe(bt)), Color(0.55, 0.78, 0.82))
 
 func _section(text: String) -> void:

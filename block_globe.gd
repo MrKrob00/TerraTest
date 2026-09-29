@@ -17,11 +17,11 @@ extends Control
 signal block_chosen(block_type: int)
 
 const SIZE := 320.0
-const CAT_KEYS := ["attack", "blocks", "factory", "other"]
-const CAT_NAMES := {"attack": "Attack", "blocks": "Blocks", "factory": "Factory", "other": "Other"}
+const CAT_KEYS := ["attack", "blocks", "factory", "power"]
+const CAT_NAMES := {"attack": "Attack", "blocks": "Blocks", "factory": "Factory", "power": "Power"}
 const CAT_COLORS := {
 	"attack": Color(0.85, 0.36, 0.32), "blocks": Color(0.30, 0.62, 0.66),
-	"factory": Color(0.85, 0.66, 0.30), "other": Color(0.62, 0.46, 0.80),
+	"factory": Color(0.85, 0.66, 0.30), "power": Color(0.62, 0.46, 0.80),
 }
 
 # Геометрия карусели. Категория ci стоит на ободе диска под азимутом β = base_ci + _spin;
@@ -299,7 +299,7 @@ func _category_of(block_type: int) -> String:
 	for k in G.BLOCK_CATEGORIES:
 		if (G.BLOCK_CATEGORIES[k] as Array).has(block_type):
 			return k
-	return "other"
+	return "power"                        # what is in no list shows under Power
 
 func _nearest_nonempty(ci: int) -> int:
 	for d in [1, 2]:
