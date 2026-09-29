@@ -914,14 +914,20 @@ def style_px(style, x, y, w, h, d):
         r = (y - 3) % 4
         return (14, 15, 20) if r in (1, 2) else ((84, 88, 102) if r == 0 else (40, 43, 52))
     if style == "mcase":
-        # a car battery's case: dark moulding with three wide horizontal grooves, a lit lip on each
-        g = (y * 4) // max(h, 1)
-        r = (y * 4) % max(h, 1)
-        if g in (1, 2, 3) and r < max(2, h // 24):
-            return (18, 19, 25)
-        if g in (1, 2, 3) and r < max(3, h // 16):
-            return (70, 74, 88)
-        return jitter((34, 36, 45), 1)
+        # a car battery's case: dark moulding fluted with wide vertical ribs, a lit edge on each rib
+        r = x % 9
+        if r == 0:
+            return (72, 76, 90)
+        if r in (1, 2, 3):
+            return jitter((44, 47, 57), 1)
+        if r == 8:
+            return (20, 21, 27)
+        return jitter((32, 34, 42), 1)
+    if style == "mlabel":
+        # a battery's label plate: a lighter moulded panel, a dark border
+        if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
+            return (26, 27, 34)
+        return jitter((62, 66, 80), 1)
     if style == "mlid":
         # a battery's lid or foot band: mid gunmetal, a lit edge along its top
         if y < 1:
@@ -937,12 +943,19 @@ def style_px(style, x, y, w, h, d):
         # a bolt head painted on a plate: a lit ring round a dark hex socket
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
         return (22, 23, 30) if t < 0.35 else ((110, 114, 128) if t < 0.8 else (46, 48, 56))
+    if style[:4] == "cyan" and style[4:].isdigit():
+        # a solid glowing cyan, no edge line: a disc's sector
+        return [(40, 150, 180), (60, 180, 210), (90, 210, 236), (140, 232, 250)][int(style[4:])]
+    if style == "mpin":
+        # a knuckle pin's cap: dark metal with a thin sunset ring
+        t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
+        return (236, 146, 58) if 0.55 < t < 0.8 else ((70, 74, 88) if t >= 0.8 else (30, 32, 40))
     if style == "mcore":
         # a gauge's unlit floor: near-black violet, a faint line across it every few texels, so an
         # empty gauge reads as unlit cells rather than an empty tube
         if y % 6 == 0:
-            return (34, 34, 46)
-        return jitter((20, 20, 28), 1)
+            return (24, 30, 30)
+        return jitter((26, 40, 36), 1)
     if style == "mcharge":
         # one charge bar: green, a bright line down its length, deeper at its edges, a dark tick at
         # each end so the bars read as counted cells
