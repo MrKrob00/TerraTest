@@ -890,137 +890,243 @@ def build_marlit_octo(pk, img):
 
 
 # ── the Marlit solar array ──────────────────────────────────────────────────────────────────────
-# TerraTech's GeoCorp solar box: a low 2x1x2 housing whose lid opens on the anchor and lifts a stack
-# of panels out of it. The block owns 2x3x2 - the housing is its lower floor, the array its upper
-# two - so nothing it does ever reaches past its cells.
+# A low 2x1x2 housing with a round IRIS DOOR in the middle of its lid. On the anchor the iris opens,
+# a telescoping beam rises through it wrapped in eight leaves - hanging down round it as a closed
+# bud that just clears the hole - and above the housing the leaves open like a flower. The block
+# owns 2x2x2: the housing its lower floor, the flower its upper one.
 #
-# THE LIFT IS A SCISSOR, because nothing else folds that flat and rises that far: the housing is
-# under a metre inside and the array stands over two. A telescoping mast was the second cut and was
-# turned down with the first (one plate on a post): a thin rod over an empty box. Two scissor frames
-# stand at the sides; at every crossing of their arms a cross axle carries one TIER of two wide
-# leaves opening like wings, forward and back, glass outward and up. Folded, the scissors lie flat
-# on the floor and the tiers settle onto each other as a flat stack - the array packs itself.
+# The player's design, after two cuts were turned down: side lids standing up round a scissor lift
+# with winged tiers, and before it a mast of tilted leaves. What stays from them: the housing's walls
+# and the leaf's glass (msolar cells in a sunset rim).
 #
 # Parts, each built round its own pivot so the script only turns and slides them:
-#   body  - the housing (x -1.5..0.5, y -0.5..0.38, z -1.5..0.5), open on top, rails and a carriage
-#   lid   - one leaf of the lid, hinge along Z at its local origin, lying over x 0..1, y -0.12..0;
-#           one at each outer edge (the right one turned 180 about Y); opening is +90 about Z
-#   arm   - one scissor arm, centred, along Z (MS_ARM long); sixteen of them, turned about X
-#   axle  - a cross axle along X between the two scissor frames, centred; one per tier
-#   panel - one array leaf, hinged along X at its local origin, reaching +Z (MS_LEAF_D), glass up.
-#           A tier's two leaves open as a ROOF, outer edges down, so each shows its glass outward -
-#           forward and back. Opened as a V (edges up) the glass faced the mast and the dark backs
-#           faced the world.
-# THE POSE (for the block's script): four scissor levels from MS_Y0, each MS_H_FOLD high folded and
-# MS_H_OPEN open, arms at +-atan2(h, sqrt(ARM^2 - h^2)) about X; a cross axle at every crossing
-# (y = Y0 + (i - 0.5) h), a tier of two leaves on crossings 2..4 opened MS_TILT as a roof, and two
-# axles across the scissor tips at the top (y = Y0 + 4h, z = -0.5 +- w/2) closing the frame. Open,
-# the top frame stands at 2.3 and the lowest leaf edge at 0.44, over the housing's 0.38.
-MS_Y0 = -0.1
-MS_H_FOLD = 0.06
-MS_H_OPEN = 0.6
-MS_TILT = 25.0
+#   body   - the housing (x -1.5..0.5, y -0.5..0.5, z -1.5..0.5) with a round hole MS_HOLE in the lid
+#   iris   - one of MS_BLADES blades with its tip at the local origin; closed they tile the disc with
+#            spiral seams, opening swings each MS_SWING about the rim end of its trail edge, under the
+#            lid: that pivot and angle lay the eight in a ring 0.48..0.81 from the centre, clear of the
+#            rising bud and inside the walls (searched numerically; six blades reach 0.88, through them)
+#   stageN - the beam's four telescoping stages (N = 0..3, widest first), each from y 0 up
+#   hub    - the octagonal crown on the beam's top the leaves hinge on (radius MS_HUB)
+#   panel  - one leaf, hinged along X at its local origin, reaching +Z (MS_LEAF_D), glass up; eight,
+#            one on each side of the crown. Folded it hangs straight down (+90 about X), glass out;
+#            open it stands MS_TIP above level.
 MS_WALL = 0.14
-MS_TOP = 0.38          # the walls' top; a closed lid leaf lies on it, flush with the cell's top face
-MS_LID = 0.12
-MS_ARM = 0.85          # scissor arm, pin to pin
-MS_SCISSOR_X = (-1.33, 0.33)   # the two frames' planes, just inside the standing lid leaves
-MS_LEAF_W = 1.4        # a leaf across X, between the frames
-MS_LEAF_D = 0.85       # and from its hinge out along Z
-MS_LEAF_CELLS = (3, 2)
+MS_TOP = 0.38          # the lid's underside; its top is the cell's top face, 0.5
+MS_HOLE = 0.5          # the iris door's radius
+MS_BLADES = 8
+MS_SPIRAL = 0.9       # radians the blade's seam turns from the centre to the rim
+MS_SWING = 55.0
+MS_HUB = 0.42          # the crown's apothem: eight leaves 0.33 wide round it hang as a bud of 0.47
+MS_LEAF_W = 0.33
+MS_LEAF_D = 0.55
+MS_TIP = 15.0
+MS_STAGE = [0.28, 0.23, 0.18, 0.13]   # the stages' widths
+MS_STAGE_H = 0.5
+CENTRE_XZ = (-0.5, -0.5)
 
 
 def _marlit_solar_body(f, rnd):
     x0, x1, z0, z1, y0 = -1.5, 0.5, -1.5, 0.5, -0.5
+    cx, cz = CENTRE_XZ
     t = MS_WALL
     marlit_box(f, (x0, y0, z0), (x1, y0 + 0.2, z1), 0.05, rnd)                        # floor
     marlit_box(f, (x0, y0 + 0.2, z0), (x1, MS_TOP, z0 + t), 0.05, rnd, {(2, 0): "window"})
     marlit_box(f, (x0, y0 + 0.2, z1 - t), (x1, MS_TOP, z1), 0.05, rnd, {(2, 1): "window"})
     marlit_box(f, (x0, y0 + 0.2, z0 + t), (x0 + t, MS_TOP, z1 - t), 0.05, rnd, {(0, 0): "window"})
     marlit_box(f, (x1 - t, y0 + 0.2, z0 + t), (x1, MS_TOP, z1 - t), 0.05, rnd, {(0, 1): "window"})
-    # the sunset line round the inside of the rim: seen only when the lid is open
-    yg0, yg1 = MS_TOP - 0.1, MS_TOP - 0.05
-    xa, xb, za, zb = x0 + t + 0.001, x1 - t - 0.001, z0 + t + 0.001, z1 - t - 0.001
-    for q in ([(xa, yg0, za), (xb, yg0, za), (xb, yg1, za), (xa, yg1, za)],
-              [(xa, yg0, zb), (xb, yg0, zb), (xb, yg1, zb), (xa, yg1, zb)],
-              [(xa, yg0, za), (xa, yg0, zb), (xa, yg1, zb), (xa, yg1, za)],
-              [(xb, yg0, za), (xb, yg0, zb), (xb, yg1, zb), (xb, yg1, za)]):
-        f.append(th.Face(th.outward(q, (-0.5, yg0, -0.5)), "mglow", u_hint=th.sub(q[1], q[0])))
-    # the carriage the scissors stand on: a rail under each frame with its two feet, and a deck
-    # between them with a sunset slot down the middle (the stack's cradle)
-    for sx in MS_SCISSOR_X:
-        cham_box(f, (sx - 0.07, y0 + 0.2, -1.2), (sx + 0.07, y0 + 0.3, 0.2), 0.02, "mbev2", "mbev4", "mbev1", "medge")
-    cham_box(f, (-1.22, y0 + 0.2, -1.15), (0.22, y0 + 0.26, 0.15), 0.02, "mplate", "mplate", "mplate", "medge")
-    slot = [(-1.05, y0 + 0.261, -0.54), (0.05, y0 + 0.261, -0.54), (0.05, y0 + 0.261, -0.46), (-1.05, y0 + 0.261, -0.46)]
-    f.append(th.Face(th.outward(slot, (-0.5, -5.0, -0.5)), "mglow", u_hint=(1, 0, 0)))
+    # the lid: a plate from the square to the round hole, top and underside, with a sunset ring
+    # round the door and a dark throat down its edge
+    n = 32
+    half = 1.0 - 0.02
+    top, bot = 0.5, MS_TOP
+    ring = 0.05
+    for i in range(n):
+        a0 = 2 * math.pi * i / n
+        a1 = 2 * math.pi * (i + 1) / n
+
+        def sq(a):
+            dx, dz = math.sin(a), math.cos(a)
+            k = half / max(abs(dx), abs(dz))
+            return (cx + dx * k, cz + dz * k)
+
+        def circ(a, r):
+            return (cx + math.sin(a) * r, cz + math.cos(a) * r)
+        o0, o1 = sq(a0), sq(a1)
+        g0, g1 = circ(a0, MS_HOLE + ring), circ(a1, MS_HOLE + ring)
+        h0, h1 = circ(a0, MS_HOLE), circ(a1, MS_HOLE)
+        up = (cx, 5.0, cz)
+        q = [(g0[0], top, g0[1]), (g1[0], top, g1[1]), (o1[0], top, o1[1]), (o0[0], top, o0[1])]
+        f.append(th.Face(th.outward(q, (cx, -5.0, cz)), "mplate", u_hint=(1, 0, 0)))
+        q = [(h0[0], top + 0.001, h0[1]), (h1[0], top + 0.001, h1[1]), (g1[0], top + 0.001, g1[1]), (g0[0], top + 0.001, g0[1])]
+        f.append(th.Face(th.outward(q, (cx, -5.0, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
+        q = [(h0[0], bot, h0[1]), (h1[0], bot, h1[1]), (o1[0], bot, o1[1]), (o0[0], bot, o0[1])]
+        f.append(th.Face(th.outward(q, up), "mplate", u_hint=(1, 0, 0)))
+        q = [(h0[0], bot, h0[1]), (h1[0], bot, h1[1]), (h1[0], top, h1[1]), (h0[0], top, h0[1])]
+        am = (a0 + a1) / 2
+        f.append(th.Face(th.outward(q, (cx + math.sin(am) * 3.0, 0.44, cz + math.cos(am) * 3.0)), "mbev0",
+                         u_hint=th.sub(q[1], q[0])))
+    # the lid's outer band, over the walls' tops
+    for (lo, hi) in (((x0, bot, z0), (x1, top, z0 + t)), ((x0, bot, z1 - t), (x1, top, z1)),
+                     ((x0, bot, z0 + t), (x0 + t, top, z1 - t)), ((x1 - t, bot, z0 + t), (x1, top, z1 - t))):
+        th.box(f, lo, hi, "medge", skip=("+y", "-y"))
+    # the beam's socket on the floor
+    cham_box(f, (cx - 0.22, y0 + 0.2, cz - 0.22), (cx + 0.22, y0 + 0.24, cz + 0.22), 0.015, "mbev2", "mbev4", "mbev1", "medge")
 
 
-def _marlit_solar_lid(f, rnd):
-    # the lid leaf's outer face (+Y while closed, outward once standing) carries the emblem's window
-    marlit_box(f, (0.0, -MS_LID, -1.0), (1.0, 0.0, 1.0), 0.04, rnd, {(1, 1): "window"})
+def _marlit_solar_iris(f, pk, img):
+    # one blade of the iris: the ring between two copies of one SPIRAL, 360/MS_BLADES apart, so six of
+    # them tile the disc with pinwheel seams (straight seams read as a pie cut, not as an aperture).
+    # Apex at the origin; the lead edge runs out along theta(s) = -half + MS_SPIRAL * s. A sunset line
+    # follows the lead edge, so the closed door is a spiral of light and a turning one winds it open.
+    half = math.pi / MS_BLADES
+    r = MS_HOLE + 0.02
+    n = 8
+
+    def lead(k):
+        s = k / n
+        a = -half + MS_SPIRAL * s
+        return (math.sin(a) * r * s, math.cos(a) * r * s)
+
+    def trail(k):
+        s = k / n
+        a = half + MS_SPIRAL * s
+        return (math.sin(a) * r * s, math.cos(a) * r * s)
+    yt, yb = 0.0, -0.014
+    mid = (math.sin(MS_SPIRAL * 0.6) * r * 0.6, math.cos(MS_SPIRAL * 0.6) * r * 0.6)
+    # the top and the underside are strips, and a texel island per strip paints an edge line along
+    # every strip: on the curved seam those lines stepped into a row of teeth. So the whole blade is
+    # one island mapped straight onto its plane, darker at the hub and lighter at the rim, and the
+    # seam is left to the geometry - a painted one stepped the same way at this texel size.
+    allp = [lead(k) for k in range(n + 1)] + [trail(k) for k in range(n + 1)] + \
+        [(math.sin(-half + MS_SPIRAL + 2 * half * j / 8) * r, math.cos(-half + MS_SPIRAL + 2 * half * j / 8) * r) for j in range(9)]
+    bx0, bx1 = min(p[0] for p in allp), max(p[0] for p in allp)
+    bz0, bz1 = min(p[1] for p in allp), max(p[1] for p in allp)
+    iw, ih = int(math.ceil((bx1 - bx0) * th.DENS)), int(math.ceil((bz1 - bz0) * th.DENS))
+    rx, ry, _, _ = pk.take(iw, ih)
+    for yy in range(-th.PAD, ih + th.PAD):
+        for xx in range(-th.PAD, iw + th.PAD):
+            x = bx0 + (min(max(xx, 0), iw - 1) + 0.5) / th.DENS
+            z = bz0 + (min(max(yy, 0), ih - 1) + 0.5) / th.DENS
+            rr = math.hypot(x, z)
+            sfr = min(rr / r, 1.0)
+            if r - rr < 0.012:
+                c = th.METAL[6]
+            else:
+                c0, c1 = th.METAL[3], th.METAL[5]
+                c = tuple(int(c0[i] + (c1[i] - c0[i]) * sfr) for i in range(3))
+            img.putpixel((rx + xx, ry + yy), c)
+
+    def flat(pts):
+        g = th.Face(pts, None)
+        g.uv = [(rx + (p[0] - bx0) * th.DENS, ry + (p[2] - bz0) * th.DENS) for p in pts]
+        f.append(g)
+    arc = [(math.sin(-half + MS_SPIRAL + 2 * half * j / 4) * r, math.cos(-half + MS_SPIRAL + 2 * half * j / 4) * r) for j in range(5)]
+    for (y, ref) in ((yt, -1.0), (yb, 1.0)):
+        for k in range(n):
+            l0, l1, t0, t1 = lead(k), lead(k + 1), trail(k), trail(k + 1)
+            q = [(l0[0], y, l0[1]), (l1[0], y, l1[1]), (t1[0], y, t1[1])] + ([] if k == 0 else [(t0[0], y, t0[1])])
+            flat(th.outward(q, (mid[0], ref, mid[1])))
+        # the sliver between the last strip's chord and the rim arc, fanned from the lead edge's end
+        l = lead(n)
+        for j in range(1, 4):
+            flat(th.outward([(l[0], y, l[1]), (arc[j][0], y, arc[j][1]), (arc[j + 1][0], y, arc[j + 1][1])], (mid[0], ref, mid[1])))
+    edge = [lead(k) for k in range(n + 1)]
+    arc = [(math.sin(-half + MS_SPIRAL + 2 * half * j / 4) * r, math.cos(-half + MS_SPIRAL + 2 * half * j / 4) * r) for j in range(5)]
+    outline = edge + arc[1:] + [trail(k) for k in range(n - 1, 0, -1)]
+    area = sum(outline[k][0] * outline[(k + 1) % len(outline)][1] - outline[(k + 1) % len(outline)][0] * outline[k][1]
+               for k in range(len(outline)))
+    sg = 1.0 if area > 0 else -1.0
+    for k in range(len(outline)):
+        a, b = outline[k], outline[(k + 1) % len(outline)]
+        q = [(a[0], yb, a[1]), (b[0], yb, b[1]), (b[0], yt, b[1]), (a[0], yt, a[1])]
+        # the edge's outward side from the outline's winding, not from a guessed centre: the spiral
+        # edges curve round any single inside point
+        ex, ez = b[0] - a[0], b[1] - a[1]
+        nx, nz = ez * sg, -ex * sg
+        m = ((a[0] + b[0]) / 2 - nx, (a[1] + b[1]) / 2 - nz)
+        f.append(th.Face(th.outward(q, (m[0], (yt + yb) / 2, m[1])), "medge", u_hint=th.sub(q[1], q[0])))
+    # the spiral of light, just inside the lead edge
+    w = 0.028
+    for k in range(1, n):
+        s0, s1 = k / n, (k + 1) / n
+        a0, a1 = -half + MS_SPIRAL * s0, -half + MS_SPIRAL * s1
+        d0, d1 = w / max(r * s0, 0.05), w / max(r * s1, 0.05)
+        q = [(math.sin(a0) * r * s0, yt + 0.001, math.cos(a0) * r * s0), (math.sin(a1) * r * s1, yt + 0.001, math.cos(a1) * r * s1),
+             (math.sin(a1 + d1) * r * s1, yt + 0.001, math.cos(a1 + d1) * r * s1), (math.sin(a0 + d0) * r * s0, yt + 0.001, math.cos(a0 + d0) * r * s0)]
+        f.append(th.Face(th.outward(q, (mid[0], -1.0, mid[1])), "mglow", u_hint=th.sub(q[1], q[0])))
 
 
-def _marlit_solar_arm(f, rnd):
-    h = MS_ARM / 2
-    cham_box(f, (-0.03, -0.035, -h), (0.03, 0.035, h), 0.012, "mbev3", "mbev4", "mbev1", "medge")
-    # a sunset slit down the arm's outer face, and a pin boss at each end and at the crossing
-    q = [(-0.031, -0.008, -h + 0.08), (-0.031, 0.008, -h + 0.08), (-0.031, 0.008, h - 0.08), (-0.031, -0.008, h - 0.08)]
-    f.append(th.Face(th.outward(q, (1.0, 0.0, 0.0)), "mglow", u_hint=(0, 0, 1)))
-    q2 = [(0.031, -0.008, -h + 0.08), (0.031, 0.008, -h + 0.08), (0.031, 0.008, h - 0.08), (0.031, -0.008, h - 0.08)]
-    f.append(th.Face(th.outward(q2, (-1.0, 0.0, 0.0)), "mglow", u_hint=(0, 0, 1)))
-    for z in (-h, 0.0, h):               # plain boxes: sixteen arms, and a chamfer each is 2k triangles
-        th.box(f, (-0.05, -0.045, z - 0.045), (0.05, 0.045, z + 0.045), "mbev2",
-               face_styles={"+y": "mbev4", "-y": "mbev1"})
+def _marlit_solar_stage(f, w):
+    h = w / 2
+    cham_box(f, (-h, 0.0, -h), (h, MS_STAGE_H, h), 0.02, "mbev2", "mbev4", "mbev1", "medge")
+    # a collar ring at the top of each stage, with the sunset slit round it
+    cham_box(f, (-h - 0.02, MS_STAGE_H - 0.06, -h - 0.02), (h + 0.02, MS_STAGE_H, h + 0.02), 0.01, "mbev3", "mbev4", "mbev1", "medge")
+    for (a, b) in (((-h - 0.021, -h - 0.021), (h + 0.021, -h - 0.021)), ((h + 0.021, -h - 0.021), (h + 0.021, h + 0.021)),
+                   ((h + 0.021, h + 0.021), (-h - 0.021, h + 0.021)), ((-h - 0.021, h + 0.021), (-h - 0.021, -h - 0.021))):
+        q = [(a[0], MS_STAGE_H - 0.04, a[1]), (b[0], MS_STAGE_H - 0.04, b[1]), (b[0], MS_STAGE_H - 0.025, b[1]), (a[0], MS_STAGE_H - 0.025, a[1])]
+        f.append(th.Face(th.outward(q, (0.0, MS_STAGE_H - 0.03, 0.0)), "mglow", u_hint=th.sub(q[1], q[0])))
 
 
-def _marlit_solar_axle(f, rnd):
-    x0, x1 = MS_SCISSOR_X
-    cx = (x0 + x1) / 2
-    half = (x1 - x0) / 2 + 0.05
-    cham_box(f, (-half, -0.04, -0.04), (half, 0.04, 0.04), 0.015, "mbev3", "mbev4", "mbev1", "medge")
-    # the hinge knuckles the leaves turn on
-    for xk in (-0.5, 0.0, 0.5):
-        th.box(f, (xk - 0.07, -0.055, -0.055), (xk + 0.07, 0.055, 0.055), "mbev2",
-               face_styles={"+y": "mbev4", "-y": "mbev1"})
+def _marlit_solar_hub(f, rnd):
+    # the crown: an octagonal plate MS_HUB across the flats with a knuckle on each side for a leaf
+    n = 8
+    rr = MS_HUB / math.cos(math.pi / n)
+    pts = [(math.sin(math.pi / n + 2 * math.pi * k / n) * rr, math.cos(math.pi / n + 2 * math.pi * k / n) * rr) for k in range(n)]
+    yt, yb = 0.03, -0.03
+    f.append(th.Face(th.outward([(p[0], yt, p[1]) for p in pts], (0.0, -1.0, 0.0)), "mplate", u_hint=(1, 0, 0)))
+    f.append(th.Face(th.outward([(p[0], yb, p[1]) for p in pts], (0.0, 1.0, 0.0)), "mbev1", u_hint=(1, 0, 0)))
+    for k in range(n):
+        a, b = pts[k], pts[(k + 1) % n]
+        q = [(a[0], yb, a[1]), (b[0], yb, b[1]), (b[0], yt, b[1]), (a[0], yt, a[1])]
+        f.append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), "medge", u_hint=th.sub(q[1], q[0])))
+    # a sunset ring on the crown and a cap over the beam's head
+    rg0, rg1 = MS_HUB * 0.55, MS_HUB * 0.65
+    for k in range(n):
+        a0 = math.pi / n + 2 * math.pi * k / n
+        a1 = a0 + 2 * math.pi / n
+        q = [(math.sin(a0) * rg0, yt + 0.001, math.cos(a0) * rg0), (math.sin(a1) * rg0, yt + 0.001, math.cos(a1) * rg0),
+             (math.sin(a1) * rg1, yt + 0.001, math.cos(a1) * rg1), (math.sin(a0) * rg1, yt + 0.001, math.cos(a0) * rg1)]
+        f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "mglow", u_hint=th.sub(q[1], q[0])))
+    # inside the ring the crown is a ninth cell: a bare plate there was the biggest thing in the
+    # flower's middle and said nothing about what the block does
+    cell = [(math.sin(math.pi / n + 2 * math.pi * k / n) * rg0, yt + 0.001, math.cos(math.pi / n + 2 * math.pi * k / n) * rg0)
+            for k in range(n)]
+    f.append(th.Face(th.outward(cell, (0.0, -1.0, 0.0)), "msolar", u_hint=(1, 0, 0)))
 
 
 def _marlit_solar_panel(f, rnd):
     w = MS_LEAF_W / 2
     d = MS_LEAF_D
-    cham_box(f, (-w, -0.05, 0.03), (w, 0.01, d), 0.02, "mbev2", "mplate", "mbev1", "medge")
-    rim = 0.045
-    yt = 0.011
-    for q in ([(-w + 0.02, yt, 0.05), (w - 0.02, yt, 0.05), (w - 0.02, yt, 0.05 + rim), (-w + 0.02, yt, 0.05 + rim)],
-              [(-w + 0.02, yt, d - 0.02 - rim), (w - 0.02, yt, d - 0.02 - rim), (w - 0.02, yt, d - 0.02), (-w + 0.02, yt, d - 0.02)],
-              [(-w + 0.02, yt, 0.05 + rim), (-w + 0.02 + rim, yt, 0.05 + rim), (-w + 0.02 + rim, yt, d - 0.02 - rim), (-w + 0.02, yt, d - 0.02 - rim)],
-              [(w - 0.02 - rim, yt, 0.05 + rim), (w - 0.02, yt, 0.05 + rim), (w - 0.02, yt, d - 0.02 - rim), (w - 0.02 - rim, yt, d - 0.02 - rim)]):
+    cham_box(f, (-w, -0.045, 0.0), (w, 0.005, d), 0.015, "mbev2", "mplate", "mbev1", "medge")
+    rim = 0.035
+    yt = 0.006
+    for q in ([(-w + 0.015, yt, 0.015), (w - 0.015, yt, 0.015), (w - 0.015, yt, 0.015 + rim), (-w + 0.015, yt, 0.015 + rim)],
+              [(-w + 0.015, yt, d - 0.015 - rim), (w - 0.015, yt, d - 0.015 - rim), (w - 0.015, yt, d - 0.015), (-w + 0.015, yt, d - 0.015)],
+              [(-w + 0.015, yt, 0.015 + rim), (-w + 0.015 + rim, yt, 0.015 + rim), (-w + 0.015 + rim, yt, d - 0.015 - rim), (-w + 0.015, yt, d - 0.015 - rim)],
+              [(w - 0.015 - rim, yt, 0.015 + rim), (w - 0.015, yt, 0.015 + rim), (w - 0.015, yt, d - 0.015 - rim), (w - 0.015 - rim, yt, d - 0.015 - rim)]):
         f.append(th.Face(th.outward(q, (0.0, -1.0, d / 2)), "mglow", u_hint=(1, 0, 0)))
-    a0, a1 = -w + 0.02 + rim + 0.015, w - 0.02 - rim - 0.015
-    b0, b1 = 0.05 + rim + 0.015, d - 0.02 - rim - 0.015
-    na, nb = MS_LEAF_CELLS
-    sa = (a1 - a0) / na
+    a0, a1 = -w + 0.015 + rim + 0.01, w - 0.015 - rim - 0.01
+    b0, b1 = 0.015 + rim + 0.01, d - 0.015 - rim - 0.01
+    nb = 2
     sb = (b1 - b0) / nb
-    gap = 0.018
-    for i in range(na):
-        for j in range(nb):
-            q = [(a0 + i * sa + gap, yt + 0.001, b0 + j * sb + gap), (a0 + (i + 1) * sa - gap, yt + 0.001, b0 + j * sb + gap),
-                 (a0 + (i + 1) * sa - gap, yt + 0.001, b0 + (j + 1) * sb - gap), (a0 + i * sa + gap, yt + 0.001, b0 + (j + 1) * sb - gap)]
-            f.append(th.Face(th.outward(q, (0.0, -1.0, d / 2)), "msolar", u_hint=(1, 0, 0)))
-    # two hinge straps down to the axle
-    for xk in (-0.25, 0.25):
-        cham_box(f, (xk - 0.05, -0.04, 0.0), (xk + 0.05, 0.0, 0.14), 0.012, "mbev3", "mbev4", "mbev1", "medge")
+    gap = 0.012
+    for j in range(nb):
+        q = [(a0 + gap, yt + 0.001, b0 + j * sb + gap), (a1 - gap, yt + 0.001, b0 + j * sb + gap),
+             (a1 - gap, yt + 0.001, b0 + (j + 1) * sb - gap), (a0 + gap, yt + 0.001, b0 + (j + 1) * sb - gap)]
+        f.append(th.Face(th.outward(q, (0.0, -1.0, d / 2)), "msolar", u_hint=(1, 0, 0)))
 
 
 def build_marlit_solar(pk, img):
     import random as _r
     rnd = _r.Random(191)
-    parts = {"marlit_solar_body": [], "marlit_solar_lid": [], "marlit_solar_arm": [],
-             "marlit_solar_axle": [], "marlit_solar_panel": []}
+    parts = {"marlit_solar_body": [], "marlit_solar_iris": [], "marlit_solar_hub": [], "marlit_solar_panel": []}
     _marlit_solar_body(parts["marlit_solar_body"], rnd)
-    _marlit_solar_lid(parts["marlit_solar_lid"], rnd)
-    _marlit_solar_arm(parts["marlit_solar_arm"], rnd)
-    _marlit_solar_axle(parts["marlit_solar_axle"], rnd)
+    _marlit_solar_iris(parts["marlit_solar_iris"], pk, img)
+    _marlit_solar_hub(parts["marlit_solar_hub"], rnd)
     _marlit_solar_panel(parts["marlit_solar_panel"], rnd)
+    for i, w in enumerate(MS_STAGE):
+        parts["marlit_solar_stage%d" % i] = []
+        _marlit_solar_stage(parts["marlit_solar_stage%d" % i], w)
     return parts
 
 
