@@ -914,15 +914,35 @@ def style_px(style, x, y, w, h, d):
         r = (y - 3) % 4
         return (14, 15, 20) if r in (1, 2) else ((84, 88, 102) if r == 0 else (40, 43, 52))
     if style == "mcase":
-        # a car battery's case: dark moulded walls with raised vertical ribs, a lit edge on each rib
-        if y < 1 or y >= h - 1:
-            return (26, 27, 34)
-        r = x % 7
-        return (60, 64, 76) if r == 0 else ((46, 49, 58) if r in (1, 2) else jitter((32, 34, 42), 1))
-    if style == "mcore":
-        # the cell's dark glass end: deep teal, darkest in the middle
+        # a car battery's case: dark moulding with three wide horizontal grooves, a lit lip on each
+        g = (y * 4) // max(h, 1)
+        r = (y * 4) % max(h, 1)
+        if g in (1, 2, 3) and r < max(2, h // 24):
+            return (18, 19, 25)
+        if g in (1, 2, 3) and r < max(3, h // 16):
+            return (70, 74, 88)
+        return jitter((34, 36, 45), 1)
+    if style == "mlid":
+        # a battery's lid or foot band: mid gunmetal, a lit edge along its top
+        if y < 1:
+            return (98, 102, 116)
+        if y >= h - 1:
+            return (22, 23, 30)
+        return jitter((56, 60, 72), 1)
+    if style == "meye":
+        # the charge eye: a green gem, bright in the middle, deeper to its rim
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
-        return jitter(_ramp_at([(10, 18, 22), (18, 32, 36), (30, 50, 54)], t * 2.0), 1)
+        return _ramp_at([(200, 255, 215), (90, 230, 135), (30, 140, 75)], t * 2.0)
+    if style == "mbolt":
+        # a bolt head painted on a plate: a lit ring round a dark hex socket
+        t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
+        return (22, 23, 30) if t < 0.35 else ((110, 114, 128) if t < 0.8 else (46, 48, 56))
+    if style == "mcore":
+        # a gauge's unlit floor: near-black violet, a faint line across it every few texels, so an
+        # empty gauge reads as unlit cells rather than an empty tube
+        if y % 6 == 0:
+            return (34, 34, 46)
+        return jitter((20, 20, 28), 1)
     if style == "mcharge":
         # one charge bar: green, a bright line down its length, deeper at its edges, a dark tick at
         # each end so the bars read as counted cells

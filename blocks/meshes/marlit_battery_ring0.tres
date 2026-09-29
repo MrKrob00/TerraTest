@@ -12,8 +12,8 @@ texture_filter = 2
 [resource]
 resource_name = "marlit_battery_ring0"
 _surfaces = [{
-"aabb": AABB(-0.865, 0.035, -0.924, 1.73, 0.11, 1.848),
-"attribute_data": PackedByteArray("+lqTkWZa/5CUWf+Q/1iTkf9YZZKUWfqSZlr6kvpaZZL6XpORZl7/kJRd/5D/XJOR/1xlkpRd+pJmXvqS+l5lkvpik5FmYv+QlGH/kP9gk5H/YGWSlGH6kmZi+pL6YmWS+maTkWZm/5CUZf+Q/2STkf9kZZKUZfqSZmb6kvpmZZI="),
+"aabb": AABB(-0.7416667, -0.065, -0.983, 1.4833333, 0.15, 1.966),
+"attribute_data": PackedByteArray("sjvJi+g6/4rKOf+K/zjJi/846IzKObKN6DqyjbI76IyyQcmL6ED/iso//4r/PsmL/z7ojMo/so3oQLKNskHojLJHyYvoRv+KykX/iv9EyYv/ROiMykWyjehGso2yR+iMsk3Ji+hM/4rKS/+K/0rJi/9K6IzKS7KN6EyyjbJN6Iw="),
 "format": 34896613399,
 "index_count": 72,
 "index_data": PackedByteArray("AAACAAEAAAADAAIAAAAEAAMAAAAFAAQAAAAGAAUAAAAHAAYACAAKAAkACAALAAoACAAMAAsACAANAAwACAAOAA0ACAAPAA4AEAASABEAEAATABIAEAAUABMAEAAVABQAEAAWABUAEAAXABYAGAAaABkAGAAbABoAGAAcABsAGAAdABwAGAAeAB0AGAAfAB4A"),
@@ -22,6 +22,6 @@ _surfaces = [{
 "primitive": 3,
 "uv_scale": Vector4(0, 0, 0, 0),
 "vertex_count": 32,
-"vertex_data": PackedByteArray("RhD6SgAA//+CCwAAAAD//8QEAAAAAP//AAD6SgAA//8AAAS1AAD//8QE//8AAP//ggv//wAA//9GEAS1AAD//0YQBLX///+/ggv//////7/EBP//////vwAABLX///+/AAD6Sv///7/EBAAA////v4ILAAD///+/RhD6Sv///7////pKAAD//zr7AAAAAP//fPQAAAAA//+47/pKAAD//7jvBLUAAP//fPT//wAA//86+///AAD/////BLUAAP////8Etf///786+///////v3z0//////+/uO8Etf///7+47/pK////v3z0AAD///+/OvsAAP///7////pK////v/8//7//P/+//z//v/8//7//P/+//z//v/8//7//P/+//3//f/9//3//f/9//3//f/9//3//f/9//3//f/9//3//P/+//z//v/8//7//P/+//z//v/8//7//P/+//z//v/9//3//f/9//3//f/9//3//f/9//3//f/9//3//f/9/")
+"vertex_data": PackedByteArray("4xn6SgAA//9OEgAAAAD//5UHAAAAAP//AAD6SgAA//8AAAS1AAD//5UH//8AAP//ThL//wAA///jGQS1AAD//+MZBLX///+/ThL//////7+VB///////vwAABLX///+/AAD6Sv///7+VBwAA////v04SAAD///+/4xn6Sv///7////pKAAD//2n4AAAAAP//sO0AAAAA//8b5vpKAAD//xvmBLUAAP//sO3//wAA//9p+P//AAD/////BLUAAP////8Etf///79p+P//////v7Dt//////+/G+YEtf///78b5vpK////v7DtAAD///+/afgAAP///7////pK////v/8//7//P/+//z//v/8//7//P/+//z//v/8//7//P/+//3//f/9//3//f/9//3//f/9//3//f/9//3//f/9//3//P/+//z//v/8//7//P/+//z//v/8//7//P/+//z//v/9//3//f/9//3//f/9//3//f/9//3//f/9//3//f/9/")
 }]
 blend_shape_mode = 0
