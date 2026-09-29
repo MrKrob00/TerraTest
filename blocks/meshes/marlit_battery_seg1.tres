@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://b1v3mxqtqbjlu" path="res://objects/marlit_battery_texture.png" id="1_pdcf3"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_d7ghk"]
+resource_name = "marlit_battery"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_pdcf3")
+texture_filter = 2
+
+[resource]
+resource_name = "marlit_battery_seg1"
+_surfaces = [{
+"aabb": AABB(-0.924, -0.924, -0.924, 1.848, 1.848, 1.848),
+"attribute_data": PackedByteArray("/2CENfVthDX1bf8y/2D/Mv9whDX1fYQ19X3/Mv9w/zL/gIQ19Y2ENfWN/zL/gP8y/5CENfWdhDX1nf8y/5D/Mv+ghDX1rYQ19a3/Mv+g/zL/sIQ19b2ENfW9/zL/sP8y"),
+"format": 34896613399,
+"index_count": 36,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYA"),
+"material": SubResource("StandardMaterial3D_d7ghk"),
+"name": "marlit_battery",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAC+TCBO/78AAL5M3rH/vwAAI2Desf+/AAAjYCBO/7///75M3rH/////vkwgTv////8jYCBO/////yNg3rH//96xAABAs///IE4AAECz//8gTgAA25///96xAADbn///IE7//0Cz///esf//QLP//96x///bn///IE7//9uf///esb5MAAD//yBOvkwAAP//IE4jYAAA///esSNgAAD//yBOvkz///+/3rG+TP///7/esSNg////vyBOI2D///+//3////9/////f////3////+//3//v/9//7//f/+//3//f/8//3//P/9//z//f/8//3//v/9//7//f/+//3//v/8//7//P/+//z//v/8//7//f/9//3//f/9//3//f/9/")
+}]
+blend_shape_mode = 0

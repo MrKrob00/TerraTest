@@ -897,19 +897,17 @@ def style_px(style, x, y, w, h, d):
     if style[:5] == "bflat" and style[5:].isdigit():
         # A plain blue facet in its painted-light tone, no edge line: a smooth band.
         return jitter([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][int(style[5:])], 1)
-    if style == "slot":
-        # the dark glass at the back of a gauge: deep teal, a pale sheen down one edge
-        if x < 2:
-            return (40, 64, 66)
-        return jitter((14, 24, 26), 1)
-    if style == "gauge":
-        # the charge in a gauge: green, lighter at the middle of its width, a fine dark band every few
-        # texels so the column reads as cells stacked up rather than a painted bar
-        t = abs(x + 0.5 - w / 2.0) / max(w / 2.0, 1.0)
-        c = _ramp_at([(150, 250, 180), (80, 205, 120), (40, 140, 80)], t * 2.0)
-        if y % 6 == 0:
-            c = tuple(int(v * 0.55) for v in c)
-        return c
+    if style == "mcore":
+        # the cell's dark glass end: deep teal, darkest in the middle
+        t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
+        return jitter(_ramp_at([(10, 18, 22), (18, 32, 36), (30, 50, 54)], t * 2.0), 1)
+    if style == "mcharge":
+        # one charge bar: green, a bright line down its length, deeper at its edges, a dark tick at
+        # each end so the bars read as counted cells
+        if x < 1 or x >= w - 1:
+            return (30, 90, 56)
+        t = abs(y + 0.5 - h / 2.0) / max(h / 2.0, 1.0)
+        return _ramp_at([(190, 255, 205), (90, 225, 135), (40, 150, 85)], t * 2.0)
     if style == "energy":
         # A glowing strip, painted in light greys so its material can tint it (green working,
         # dark off): brightest down the middle, a little dimmer at its edges.
