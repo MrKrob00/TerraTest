@@ -5,9 +5,9 @@ extends VehicleBlock
 # The model is TerraTech's GSO anchor as a jack (art/emitter_models.py support / rot_support): a
 # round base under a deck, a telescoping ram (sleeve over rod) and a foot. While the machine stands on its anchor the ram runs out until the foot is
 # on the ground - that replaces the plain white cylinder the machine used to grow under itself, so
-# the machine draws no column when this block is its core (`draws_own_leg`). On the rotating one
-# the round STATOR base under the deck holds its heading on the ground while the housing turns with
-# the machine, which is the one thing that says "this block turns the build".
+# the machine draws no column when this block is its core (`draws_own_leg`). The rotating one's
+# round STATOR base turns WITH the housing, like the rest of the block: it used to hold the heading
+# it had at the anchor, and the player read the one part not turning as a part turning backwards.
 
 ## The foot's top at rest (SUP_FOOT_Y in the model). The ram and the sleeve are unit rods hanging
 ## from their nodes; the gap from the leg's node down to here is the rest length, read off the scene.
@@ -28,20 +28,16 @@ var _leg: Node3D = null
 var _sleeve: Node3D = null
 var _rest: float = 0.0
 var _foot: Node3D = null
-var _stator: Node3D = null
 var _ext: float = 0.0
-var _holding: bool = false
-var _hold_yaw: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	moving_parts = true                 # leg, foot and stator move (MachineBatch copies them)
+	moving_parts = true                 # leg and foot move (MachineBatch copies them)
 	_leg = get_node_or_null("Leg") as Node3D
 	_sleeve = get_node_or_null("Sleeve") as Node3D
 	if _leg != null:
 		_rest = maxf(_leg.position.y - FOOT_TOP, 0.01)
 	_foot = get_node_or_null("Foot") as Node3D
-	_stator = get_node_or_null("Stator") as Node3D
 
 ## Asked by vehicle_body_3d._build_anchor_column: this block puts its own foot on the ground.
 func draws_own_leg() -> bool:
@@ -68,23 +64,6 @@ func _process(delta: float) -> void:
 			_sleeve.scale = Vector3(1.0, maxf((_rest + _ext) * SLEEVE_SHARE, _rest), 1.0)
 		if _foot != null:
 			_foot.position.y = -_ext
-	if _stator != null:
-		_turn_stator(planted and upright, delta)
-
-## The stator keeps the heading it had when the machine anchored; loose or driving it turns with
-## the housing again, easing back to its rest angle.
-func _turn_stator(planted: bool, delta: float) -> void:
-	if planted:
-		if not _holding:
-			_holding = true
-			_hold_yaw = global_rotation.y + _stator.rotation.y
-		_stator.rotation.y = wrapf(_hold_yaw - global_rotation.y, -PI, PI)
-	else:
-		_holding = false
-		if not is_zero_approx(_stator.rotation.y):
-			_stator.rotation.y = lerp_angle(_stator.rotation.y, 0.0, minf(delta * 4.0, 1.0))
-			if absf(_stator.rotation.y) < 0.001:
-				_stator.rotation.y = 0.0
 
 func _machine() -> Node:
 	var p: Node = get_parent()
