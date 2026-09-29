@@ -464,8 +464,9 @@ project: read it before claiming how anything works.
   never the bottom; every round part has its FLATS ON THE CELL'S FACES (16 sides, `flat_r`), so a
   neighbour meets a face - the first cut, a housing on a thin sleeve with an inset lower tier,
   read as joining by its top only. The fixed one has a square deck and a hazard band on the base;
-  the rotating one a round deck turning with the machine, over a base that HOLDS the heading it had
-  when the machine anchored, orange ticks on its ridge so the turn is seen against it. BOTH DECKS
+  the rotating one a round deck over a round base with orange ticks on its ridge, ALL OF IT TURNING
+  WITH THE MACHINE: the base used to hold the heading it had at the anchor, and the player read the
+  one part standing still as a part turning backwards. BOTH DECKS
   ARE PLAIN BLUE, the player's call: the rotating one's white chevron sat off the turn's centre and
   the fixed one's ring of bolts read as a design laid over it; the square deck keeps one bolt in
   each corner (`anchor_top_fixed`). While the machine is anchored (or is an enemy base) a telescoping ram
@@ -473,8 +474,7 @@ project: read it before claiming how anything works.
   capped at `LEG_MAX`), and back in on release. So `_build_anchor_column` builds nothing when the
   core has `draws_own_leg` - it used to grow a white `CylinderMesh` - and keeps its column only
   for a base whose core is a seller or a miner. Measured on the proving ground: foot bottom 0.000
-  against ground 0.000 for both, no column, the base at -0.61 deg while the block turned to
-  29.39, the ram back to its rest length after release. The deck is blue down to the ridge band
+  against ground 0.000 for both, no column, the ram back to its rest length after release. The deck is blue down to the ridge band
   (`DECK_Y`), the player's sketch: a dark neck under a short deck read as the block's bulk.
 - **THE ANCHOR HEIGHT IS SET BY THE GROUND UNDER THE SUPPORT, NOT UNDER THE CABIN**
   (`vehicle_body_3d._anchor_target_y`). It was "where the machine stands plus `ANCHOR_LIFT`", right

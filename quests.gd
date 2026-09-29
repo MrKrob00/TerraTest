@@ -131,15 +131,6 @@ func _refresh() -> void:
 		_rebuild_list()
 
 # ── Трекер (одно задание вверху справа) ───────────────────────────────────────
-## Значок типа задания. Одна точка на трекер и журнал: раньше строка выбора была написана
-## дважды, и добавление типа требовало вспомнить про оба места.
-func _type_mark(q: Dictionary) -> String:
-	match int(q["type"]):
-		Q.Type.TUTORIAL: return "▶"
-		Q.Type.STORY:    return "★"
-		Q.Type.EVENT:    return "!"      # не эмодзи: шрифт проекта их не рендерит
-		_:               return "◆"
-
 func _update_tracker() -> void:
 	var q: Dictionary = Q.tracked()
 	_emblem.texture = null if q.is_empty() else G.faction_emblem(Q.faction_of(q))
@@ -148,8 +139,9 @@ func _update_tracker() -> void:
 		_title.text = tr("No active quests")
 		_objective.text = ""
 		return
-	var star := _type_mark(q) + " "
-	_title.text = star + tr(str(q["title"])) + _stage_suffix(q)
+	# The faction emblem stands before the title; the old type marks (a star, "!", a diamond)
+	# after it said less than the emblem does and were taken out.
+	_title.text = tr(str(q["title"])) + _stage_suffix(q)
 	if q["done"]:
 		_objective.text = tr("✓ done")
 	elif _grade_locked(q):
@@ -232,7 +224,7 @@ func _add_section(section_name: String, items: Array) -> void:
 	for q in items:
 		_list.add_child(_make_row(q))
 
-# Строка списка: значок типа, название и РАССТОЯНИЕ до цели. Расстояние берём у компаса —
+# Строка списка: эмблема фракции, название и РАССТОЯНИЕ до цели. Расстояние берём у компаса —
 # он уже умеет находить точку задания, и второй такой поиск тут был бы копией его логики.
 func _make_row(q: Dictionary) -> Control:
 	var b := Button.new()
@@ -245,8 +237,7 @@ func _make_row(q: Dictionary) -> Control:
 	# кончаться многоточием, а не уезжать за панель.
 	b.clip_text = true
 	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	var mark := _type_mark(q)
-	var base: String = "  %s  %s%s" % [mark, tr(str(q["title"])), _stage_suffix(q)]
+	var base: String = "  %s%s" % [tr(str(q["title"])), _stage_suffix(q)]
 	b.text = base
 	b.icon = G.faction_emblem(Q.faction_of(q))
 	b.add_theme_constant_override("icon_max_width", EMBLEM_ROW)
