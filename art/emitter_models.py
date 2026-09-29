@@ -2371,18 +2371,49 @@ def _mbat_rect(hw, y0, y1, cut):
 
 # ── the Marlit wireless charger ─────────────────────────────────────────────────────────────────
 # TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot): a heavy housing
-# with a raised hood, and CLAWS reaching out of it to hold a flat emitter disc by its rim, the disc
-# glowing cyan round its edge - the same blue as every energy beam in the game (the player's call),
-# where GeoCorp's hazard stripes become the faction's sunset line and its warning sticker the
-# faction's window on the hood. 2x1x2: the housing fills the back row and bolts on by its back
-# face, both cells of it (the only faces it joins by); the disc lies low in the front row, turning
-# in the claws' jaws while energy flows (wireless_charger.gd `Ring`), and the beam leaves its middle.
-#   body - mount, housing, hood, claws
+# the emitter disc COMES OUT OF, through a slot at half its height, and three fingers reaching
+# forward from the housing over the disc to hook its rim. The disc glows cyan round its edge - the
+# blue of every energy beam in the game (the player's call); GeoCorp's hazard stripes become the
+# faction's sunset slats and its warning sticker the faction's window on top. 2x1x2: the housing
+# fills the back row and its back face IS the mount - flush, a window per cell, the two faces it
+# joins by; the disc turns in the fingers while energy flows (wireless_charger.gd `Ring`) and the
+# beam leaves its middle. Turned down: the disc hung UNDER the housing on a spindle, and a separate
+# mount plate standing proud of the back ("a strange platform").
+#   body - housing, fingers
 #   disc - the emitter, about its own middle (the scene's Ring node stands at MWL_DISC)
-MWL_DISC = (-0.5, -0.36, -0.72)   # the disc's middle in block space
-MWL_DISC_A = 0.66                 # its half width across the flats; with the claws it stays in the cells
+MWL_DISC = (-0.5, 0.0, -0.74)     # the disc's middle in block space: half height, the front row
+MWL_DISC_A = 0.62                 # its half width across the flats
 MWL_DISC_H = 0.06                 # its half thickness
-MWL_JAW = 0.10                    # how far a claw's jaws reach in over the rim
+MWL_SLOT = 0.11                   # the slot's half height, the disc turning in it
+MWL_FINGERS = (225.0, 270.0, 315.0)   # where the fingers hook the rim, degrees round the disc
+MWL_REACH = 0.70                  # the fingers' drop, from the disc's middle
+
+
+_OCT_K = 1.0 / math.cos(math.pi / 8)
+
+
+def _oct_ring(C, a, y):
+    """A regular octagon of half width `a` across its flats (flats facing the sides) at height y."""
+    r = a * _OCT_K
+    return [(C[0] + r * math.cos(math.pi / 8 + k * math.pi / 4), y,
+             C[2] + r * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(8)]
+
+
+def _oct_band(f, C, a0, y0, a1, y1, style):
+    """The band between two octagon rings; "mtone" tones it by which way it faces (up lit, down
+    dark, upright between), the same on all eight sides."""
+    r0, r1 = _oct_ring(C, a0, y0), _oct_ring(C, a1, y1)
+    up = 1.0 if (y1 == y0 and a1 < a0) else (-1.0 if y1 == y0 else 0.0)
+    for k in range(8):
+        j = (k + 1) % 8
+        q = [r0[k], r0[j], r1[j], r1[k]]
+        if math.dist(q[0], q[3]) < 1e-6:
+            continue
+        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        out = (m[0] - C[0], 0.0, m[2] - C[2]) if up == 0.0 else (0.0, up, 0.0)
+        q = th.outward(q, th.sub(m, out))
+        st = "mbev%d" % (4 if up > 0 else (1 if up < 0 else 3)) if style == "mtone" else style
+        f.append(th.Face(q, st, u_hint=th.sub(q[1], q[0])))
 
 
 def _mwl_box(f, lo, hi, c=0.035, top="mplate"):
@@ -2392,13 +2423,22 @@ def _mwl_box(f, lo, hi, c=0.035, top="mplate"):
 def _mwl_face_windows(f, pts, n_win, rnd):
     """A flat face cut along its long side into `n_win` Marlit windows, one per cell."""
     a, b, c_, d = pts
+    if math.dist(a, b) < math.dist(a, d):
+        a, b, c_, d = b, c_, d, a                 # split along the long side
     for k in range(n_win):
         t0, t1 = k / n_win, (k + 1) / n_win
 
         def L(p, q, t):
             return tuple(p[i] + (q[i] - p[i]) * t for i in range(3))
-        q = [L(a, b, t0), L(a, b, t1), L(d, c_, t1), L(d, c_, t0)]
-        marlit_poly(f, q, rnd)
+        marlit_poly(f, [L(a, b, t0), L(a, b, t1), L(d, c_, t1), L(d, c_, t0)], rnd)
+
+
+def _mwl_beam(f, p0, p1, half_w, half_h, lit):
+    """A square beam from p0 to p1, its width horizontal."""
+    ax = th.norm(th.sub(p1, p0))
+    side = th.norm(th.cross((0.0, 1.0, 0.0), ax)) if abs(ax[1]) < 0.99 else (1.0, 0.0, 0.0)
+    up = th.norm(th.cross(ax, side))
+    obox(f, th.mul(th.add(p0, p1), 0.5), (side, up, ax), (half_w, half_h, math.dist(p0, p1) / 2), lit)
 
 
 def build_marlit_wireless(pk, img):
@@ -2406,74 +2446,68 @@ def build_marlit_wireless(pk, img):
     rnd = _r.Random(241)
     parts = {"marlit_wireless_body": [], "marlit_wireless_disc": []}
     f = parts["marlit_wireless_body"]
-    # the mount: a plate on the back face, one window per cell - the face it joins by
-    lo, hi = (-1.5, -0.5, 0.34), (0.5, 0.32, 0.5)
-    cham_box(f, lo, hi, 0.06, None, "mplate", "mflat1", "medge")
-    for key, q in _cham_faces(lo, hi, 0.06).items():
-        if key == (2, 1):
-            q = th.outward(q, (-0.5, 0.0, 0.0))
-            _mwl_face_windows(f, q, 2, rnd)
-        elif key[0] != 1:
-            f.append(th.Face(q, "mplate", u_hint=(0, 1, 0)))
-    # the housing: plain metal, a sunset line across the front, hazard slats on both ends
-    lo, hi = (-1.46, -0.22, -0.5), (0.46, 0.28, 0.34)
-    cham_box(f, lo, hi, 0.08, None, "mplate", "mflat1", "medge")
-    for key, q in _cham_faces(lo, hi, 0.08).items():
-        if key[0] == 0:
-            f.append(th.Face(q, "mhazard", u_hint=(0, 0, 1)))
-        elif key[0] == 2:
-            f.append(th.Face(q, "mplate", u_hint=(1, 0, 0)))
-    for y0 in (0.12, 0.155):
-        f.append(th.Face(th.outward([(-1.3, y0, -0.502), (0.3, y0, -0.502), (0.3, y0 + 0.02, -0.502),
-                                     (-1.3, y0 + 0.02, -0.502)], (0, 0, 0)), "mglow", u_hint=(1, 0, 0)))
-    # the hood, with the faction's window where GeoCorp has its sticker
-    lo, hi = (-1.2, 0.28, -0.42), (0.2, 0.46, 0.26)
-    cham_box(f, lo, hi, 0.06, "mplate", None, None, "medge")
-    marlit_poly(f, _cham_faces(lo, hi, 0.06)[(1, 1)], rnd)
-    # two claws, one each side: a knuckle on the housing, a finger bent down to the rim, a post
-    # outside it and jaws over and under the disc; and the spindle arm down to the disc's hub
+    S = MWL_SLOT
+    # the housing: one solid block, the slot cut into its front only, so the ends are whole and the
+    # back - the mount - is one flush face with a window per cell; slats on the ends, windows on top
+    lo, hi, c = (-1.5, -0.5, -0.5), (0.5, 0.5, 0.5), 0.07
+    cham_box(f, lo, hi, c, None, None, "mflat1", "medge")
+    faces = _cham_faces(lo, hi, c)
+    for key in ((0, 0), (0, 1)):
+        f.append(th.Face(faces[key], "mhazard", u_hint=(0, 0, 1)))
+    _mwl_face_windows(f, faces[(2, 1)], 2, rnd)
+    _mwl_face_windows(f, faces[(1, 1)], 2, rnd)
+    sx0, sx1, zb = -1.32, 0.32, 0.0
+    fx0, fx1, fy0, fy1, zf = -1.5 + c, 0.5 - c, -0.5 + c, 0.5 - c, -0.5
+    ref = (-0.5, 0.0, 0.5)
+    for q in ([(fx0, S, zf), (fx1, S, zf), (fx1, fy1, zf), (fx0, fy1, zf)],
+              [(fx0, fy0, zf), (fx1, fy0, zf), (fx1, -S, zf), (fx0, -S, zf)],
+              [(fx0, -S, zf), (sx0, -S, zf), (sx0, S, zf), (fx0, S, zf)],
+              [(sx1, -S, zf), (fx1, -S, zf), (fx1, S, zf), (sx1, S, zf)]):
+        f.append(th.Face(th.outward(q, ref), "mplate", u_hint=(1, 0, 0)))
+    for q, st, inner in (([(sx0, S, zf), (sx1, S, zf), (sx1, S, zb), (sx0, S, zb)], "mflat1", (-0.5, 0.0, -0.25)),
+                         ([(sx0, -S, zf), (sx1, -S, zf), (sx1, -S, zb), (sx0, -S, zb)], "mflat3", (-0.5, 0.0, -0.25)),
+                         ([(sx0, -S, zf), (sx0, S, zf), (sx0, S, zb), (sx0, -S, zb)], "mflat2", (-0.5, 0.0, -0.25)),
+                         ([(sx1, -S, zf), (sx1, S, zf), (sx1, S, zb), (sx1, -S, zb)], "mflat2", (-0.5, 0.0, -0.25)),
+                         ([(sx0, -S, zb), (sx1, -S, zb), (sx1, S, zb), (sx0, S, zb)], "mflat0", (-0.5, 0.0, -0.25))):
+        # the slot's walls face into it
+        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        f.append(th.Face(th.outward(q, th.add(m, th.sub(m, inner))), st, u_hint=th.sub(q[1], q[0])))
+    for y0 in (S + 0.07, -S - 0.1):
+        f.append(th.Face(th.outward([(-1.3, y0, -0.502), (0.3, y0, -0.502), (0.3, y0 + 0.025, -0.502),
+                                     (-1.3, y0 + 0.025, -0.502)], (0, 0, 0)), "mglow", u_hint=(1, 0, 0)))
+    # the fingers: a knuckle on the upper half's front, a beam out over the disc, a drop past the
+    # rim and a tip hooked under it
     Dx, Dy, Dz = MWL_DISC
-    A, H, J = MWL_DISC_A, MWL_DISC_H, MWL_JAW
-    top, bot = Dy + H + 0.015, Dy - H - 0.015
+    A, H = MWL_DISC_A, MWL_DISC_H
+    rr = flat_r(A, 8) + 0.05
     lit = ["mflat3", "mflat3", "mflat4", "mflat1", "mflat2", "mflat2"]
-    for sg in (-1, 1):
-        px0, px1 = sorted((Dx + sg * (A + 0.015), Dx + sg * (A + 0.13)))
-        pm = (px0 + px1) / 2
-        _mwl_box(f, (px0 - 0.02, -0.14, -0.64), (px1 + 0.02, 0.12, -0.5), 0.04)          # knuckle
-        p0, p1 = (pm, -0.02, -0.6), (pm, top + 0.09, Dz - 0.02)
-        ax = th.norm(th.sub(p1, p0))
-        up = th.norm(th.cross((1, 0, 0), ax))
-        obox(f, th.mul(th.add(p0, p1), 0.5), ((1, 0, 0), up, ax),
-             (0.11, 0.08, math.dist(p1, p0) / 2 + 0.04), lit)                  # finger
-        _mwl_box(f, (px0, bot - 0.07, Dz - 0.1), (px1, top + 0.14, Dz + 0.1), 0.04)     # post
-        jx0, jx1 = sorted((Dx + sg * (A - J), Dx + sg * (A + 0.015)))
-        _mwl_box(f, (jx0, top, Dz - 0.08), (jx1, top + 0.07, Dz + 0.08), 0.025)          # jaws
-        _mwl_box(f, (jx0, bot - 0.07, Dz - 0.08), (jx1, bot, Dz + 0.08), 0.025)
-    hub_top = Dy + H + 0.05
-    p0, p1 = (Dx, 0.0, -0.56), (Dx, hub_top + 0.16, Dz)
-    ax = th.norm(th.sub(p1, p0))
-    up = th.norm(th.cross((1, 0, 0), ax))
-    obox(f, th.mul(th.add(p0, p1), 0.5), ((1, 0, 0), up, ax), (0.1, 0.07, math.dist(p1, p0) / 2 + 0.05), lit)
-    Cz = (Dx, 0.0, Dz)
-    _oct_band(f, Cz, 0.13, hub_top + 0.01, 0.13, hub_top + 0.16, "mtone")                 # the spindle
-    _oct_band(f, Cz, 0.13, hub_top + 0.01, 0.0, hub_top + 0.01, "mflat0")
-    # the disc, about its own middle: a cyan rim, a turning dark ring the spin shows on, a cyan
-    # coil ring, a dark plate and a hub
+    for az in MWL_FINGERS:
+        ca, sa = math.cos(math.radians(az)), math.sin(math.radians(az))
+        tx, tz = Dx + rr * ca, Dz + rr * sa
+        kx = Dx + 0.9 * rr * ca
+        _mwl_box(f, (kx - 0.1, S + 0.06, -0.62), (kx + 0.1, 0.36, -0.5), 0.03)
+        over = (tx, Dy + H + 0.09, tz)
+        _mwl_beam(f, (kx, 0.25, -0.58), over, 0.065, 0.055, lit)
+        _mwl_beam(f, over, (tx, Dy - H - 0.07, tz), 0.065, 0.05, lit)
+        tip = (Dx + (rr - 0.12) * ca, Dy - H - 0.05, Dz + (rr - 0.12) * sa)
+        _mwl_beam(f, (tx, Dy - H - 0.05, tz), tip, 0.05, 0.03, lit)
+    # the disc, about its own middle: a cyan rim, a dark ring the turn shows on, a cyan coil ring,
+    # a dark plate and a hub
     g = parts["marlit_wireless_disc"]
     O = (0.0, 0.0, 0.0)
     _oct_band(g, O, A, -H, A, H, "ctone3")
     _oct_band(g, O, A, -H, 0.0, -H, "mflat0")
+    r0, r1 = _oct_ring(O, A, H), _oct_ring(O, A - 0.11, H)
     for k in range(8):
-        r0, r1 = _oct_ring(O, A, H), _oct_ring(O, A - 0.12, H)
         j = (k + 1) % 8
-        q = th.outward([r0[k], r0[j], r1[j], r1[k]], (0.0, 0.0, 0.0))
+        q = th.outward([r0[k], r0[j], r1[j], r1[k]], (0.0, -1.0, 0.0))
         g.append(th.Face(q, "mflat3" if k % 2 else "mflat1", u_hint=th.sub(q[1], q[0])))
-    _oct_band(g, O, A - 0.12, H, A - 0.12, H + 0.02, "ctone2")
-    _oct_band(g, O, A - 0.12, H + 0.02, A - 0.22, H + 0.02, "ctone4")
-    _oct_band(g, O, A - 0.22, H + 0.02, A - 0.22, H, "ctone2")
-    _oct_band(g, O, A - 0.22, H, 0.22, H, "mflat2")
-    _oct_band(g, O, 0.22, H, 0.22, H + 0.05, "mtone")
-    _oct_band(g, O, 0.22, H + 0.05, 0.0, H + 0.05, "mflat4")
+    _oct_band(g, O, A - 0.11, H, A - 0.11, H + 0.02, "ctone2")
+    _oct_band(g, O, A - 0.11, H + 0.02, A - 0.2, H + 0.02, "ctone4")
+    _oct_band(g, O, A - 0.2, H + 0.02, A - 0.2, H, "ctone2")
+    _oct_band(g, O, A - 0.2, H, 0.2, H, "mflat2")
+    _oct_band(g, O, 0.2, H, 0.2, H + 0.05, "mtone")
+    _oct_band(g, O, 0.2, H + 0.05, 0.0, H + 0.05, "mflat4")
     return parts
 
 
