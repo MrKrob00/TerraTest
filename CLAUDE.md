@@ -1899,6 +1899,20 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
+- **THE MARLIT SOLAR ARRAY IS A LID THAT TURNS OVER** (`MARLIT_SOLAR`, `blocks/scripts/marlit_solar.gd`,
+  `art/emitter_models.py` marlit_solar): a 2x1x2 housing whose top is two leaves, the Marlit window on
+  one side and 4x2 cells on the other. On the anchor each leaf rides up on two rams to the middle of
+  the upper cell, turns over and settles back cells up (`FLIP_TIME`); released, the same path back.
+  TWO LEAVES, NOT ONE PLATE: a 2x2 plate turning about its middle sweeps a metre above and below it,
+  out of the block both ways; a 2x1 leaf sweeps 0.43 and stays in the upper cell. So the block owns
+  2x2x2 while its collider is the housing alone (2x1x2, `collider_offset`). It JOINS BY ITS BOTTOM AND
+  BY THE SIDES OF ITS BOTTOM ROW ONLY (`connect_faces` 47, upper-row sides false in
+  `connect_defaults`) - the player's rule: nothing may stand where a leaf turns. It is worth `UNITS`
+  (4) Falsus panels, by area, and only lying open: `MachineBody`'s power scan asks `solar_units()` of
+  any block that has it, so driving it is armour and makes nothing. The rejected cuts (side lids
+  round a scissor lift, a mast of leaves, an iris with a flower of 24 small leaves - "all at one
+  height, too small to count") are in the model's header. Measured on the proving ground: joins as
+  above in 8 of 8 cases; anchored, open at 2.4 s with 24 energy a second; released, closed again.
 - **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
   trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
   a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver

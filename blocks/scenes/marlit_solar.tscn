@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://cmarlitsolar62"]
+
+[ext_resource type="Script" path="res://blocks/scripts/marlit_solar.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_solar_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_solar_leaf.tres" id="3_leaf"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_solar_ram.tres" id="4_ram"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 1, 2)
+
+[node name="marlit_solar" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+block = 62
+connect_faces = 47
+cells_center = Vector3(-0.5, 0.5, -0.5)
+connect_defaults = {
+"-1,1,-1|0": false,
+"-1,1,-1|1": false,
+"-1,1,-1|2": false,
+"-1,1,-1|3": false,
+"-1,1,0|0": false,
+"-1,1,0|1": false,
+"-1,1,0|2": false,
+"-1,1,0|3": false,
+"0,1,-1|0": false,
+"0,1,-1|1": false,
+"0,1,-1|2": false,
+"0,1,-1|3": false,
+"0,1,0|0": false,
+"0,1,0|1": false,
+"0,1,0|2": false,
+"0,1,0|3": false
+}
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("2_body")
+
+[node name="LeafA" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.4, -0.94)
+mesh = ExtResource("3_leaf")
+
+[node name="LeafB" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.4, -0.06)
+mesh = ExtResource("3_leaf")
+
+[node name="RamA0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.43, 0.4, -0.94)
+mesh = ExtResource("4_ram")
+
+[node name="RamA1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.43, 0.4, -0.94)
+mesh = ExtResource("4_ram")
+
+[node name="RamB0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.43, 0.4, -0.06)
+mesh = ExtResource("4_ram")
+
+[node name="RamB1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.43, 0.4, -0.06)
+mesh = ExtResource("4_ram")

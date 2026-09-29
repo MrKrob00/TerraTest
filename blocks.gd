@@ -806,7 +806,7 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
-			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER]:
+			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
@@ -916,7 +916,7 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 	elif box.size == Vector3(4, 2, 2):
 		off = Vector3(-1.5, 0.5, -0.5)         # Marlit's long blocks: a 2×2×2 doubled along -X
 	elif box.size == Vector3(2, 1, 2):
-		off = Vector3(-0.5, 0.0, -0.5)         # COMP_FACTORY: 2×1×2, flat on the floor of its cells
+		off = Vector3(-0.5, 0.0, -0.5)         # COMP_FACTORY, MARLIT_SOLAR's housing: 2×1×2 on the floor of its cells
 	elif box.size == Vector3(2, 1, 1):
 		off = Vector3(-0.5, 0.0, 0.0)          # BLOCK2: центрируем 2-широкую коллизию
 	elif box.size == Vector3(1, 1, 2):

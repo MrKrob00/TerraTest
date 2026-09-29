@@ -515,6 +515,7 @@ const BLOCK_META := {
 	Block.MARLIT_ARMOR4:    {"f": "marlit", "g": 3, "rp": 25},
 	Block.MARLIT_OCTO:      {"f": "marlit", "g": 3, "rp": 28},
 	Block.MARLIT_ARMOR8:    {"f": "marlit", "g": 4, "rp": 35},
+	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -555,6 +556,7 @@ const TECH_PARENT := {
 	Block.MARLIT_BRACKET: Block.MARLIT_GIRDER,
 	Block.MARLIT_ARMOR2: Block.MARLIT_SLAB,    Block.MARLIT_ARMOR4: Block.MARLIT_ARMOR2,
 	Block.MARLIT_ARMOR8: Block.MARLIT_ARMOR4,  Block.MARLIT_OCTO: Block.MARLIT_LONG,
+	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -952,6 +954,7 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_ARMOR4:    {"c1": 6, "m2": 12},
 	Block.MARLIT_ARMOR8:    {"c1": 12, "m2": 24},
 	Block.MARLIT_OCTO:      {"m1": 47, "m2": 47},
+	Block.MARLIT_SOLAR:     {"c5": 12, "m2": 16},   # four Falsus panels' lenses and Silicate
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1360,6 +1363,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_BRACKET: "Marlit Girder Bracket",
 	Block.MARLIT_ARMOR2: "Marlit Armour Plate 2×1", Block.MARLIT_ARMOR4: "Marlit Armour Plate 2×2",
 	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
+	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1417,6 +1421,7 @@ const BLOCK_DESC := {
 	Block.MARLIT_ARMOR4: "Marlit armour plate, two by two.",
 	Block.MARLIT_ARMOR8: "Marlit armour plate, four by two: a whole flank of a big machine.",
 	Block.MARLIT_OCTO: "The Octo Block: three cells every way, eight heavy corner caps round a core, the faction's octagon on every face.",
+	Block.MARLIT_SOLAR: "An armoured lid that turns over on the anchor: its underside is a solar panel as big as four ordinary ones. Driving, it is armour and makes nothing.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1849,6 +1854,7 @@ enum Block {
 	MARLIT_ARMOR4 = 59,     # armour plate 2×2
 	MARLIT_ARMOR8 = 60,     # armour plate 4×2
 	MARLIT_OCTO = 61,       # 3×3×3 round its anchor: eight corner caps and an octagon on every face
+	MARLIT_SOLAR = 62,      # 2×2×2: a 2×1×2 housing whose lid turns over into the upper floor
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1909,6 +1915,7 @@ enum Block {
 @onready var marlit_armor4_scene: PackedScene = preload("res://blocks/scenes/marlit_armor4.tscn")
 @onready var marlit_armor8_scene: PackedScene = preload("res://blocks/scenes/marlit_armor8.tscn")
 @onready var marlit_octo_scene: PackedScene = preload("res://blocks/scenes/marlit_octo.tscn")
+@onready var marlit_solar_scene: PackedScene = preload("res://blocks/scenes/marlit_solar.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
@@ -1949,7 +1956,7 @@ const BLOCK_CATEGORIES := {
 	# three lists above - and the generator sat among the factory blocks. Anything that falls in no
 	# list still shows under Power (the radar, today), so a new block never vanishes from the shop.
 	"power":   [Block.SOLAR, Block.BATTERY, Block.GENERATOR, Block.WIRELESS_CHARGER,
-		Block.SHIELD, Block.REGEN],
+		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -2017,6 +2024,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_ARMOR4: return marlit_armor4_scene
 		Block.MARLIT_ARMOR8: return marlit_armor8_scene
 		Block.MARLIT_OCTO: return marlit_octo_scene
+		Block.MARLIT_SOLAR: return marlit_solar_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).

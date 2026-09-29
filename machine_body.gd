@@ -158,7 +158,7 @@ var _tick_prod: float = 0.0
 var _energy_cap: float = 0.0
 var _battery_cap: float = 0.0        # battery share of capacity (recounted twice a second)
 var _cap_timer: float = 0.0
-var _solar_count: int = 0            # cached solar block count (refreshed with _cap_timer)
+var _solar_count: float = 0.0        # panels' worth of solar, refreshed with _cap_timer
 
 func energy_cap() -> float:
 	return _energy_cap
@@ -245,7 +245,7 @@ func _energy_tick(delta: float) -> void:
 	if _cap_timer <= 0.0:
 		_cap_timer = 0.5
 		var anchors := 0
-		_solar_count = 0
+		_solar_count = 0.0
 		_batteries.clear()
 		_battery_cap = BASE_ENERGY_CAP
 		var bl: Node = _blocks_root()
@@ -259,7 +259,9 @@ func _energy_tick(delta: float) -> void:
 					var cap = b.get("capacity")
 					_battery_cap += float(cap) if cap != null else BATTERY_CAP
 				elif bt == G.Block.SOLAR:
-					_solar_count += 1
+					_solar_count += 1.0
+				elif b.has_method("solar_units"):
+					_solar_count += b.solar_units()     # Marlit's array: four panels, only lying open
 				# What holds the machine on its anchor: a support block OR any stationary block - exactly what
 				# allowed anchoring in can_anchor().
 				if bt != null and (int(bt) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT] or G.is_stationary(int(bt))):
