@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://b4anfbgtf6n1t"]
 
 [ext_resource type="Texture2D" uid="uid://coluwccx0cpu4" path="res://objects/marlit_half_slab_texture.png" id="1_6qh8n"]
 

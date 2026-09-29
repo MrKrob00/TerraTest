@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://cyovbn704jagt"]
 
 [ext_resource type="Texture2D" uid="uid://cfdja21v7of01" path="res://objects/marlit_girder_texture.png" id="1_r8e6p"]
 
