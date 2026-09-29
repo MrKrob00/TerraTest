@@ -2243,6 +2243,70 @@ def build_battery(pk, img):
     return parts
 
 
+# ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
+# FOUR BIG CELLS BETWEEN TWO MARLIT PLATES: a 2x2 bank of the Falsus battery's cell at Marlit's
+# scale, so it reads as a battery at a glance, in gunmetal instead of blue. Every cell is 12-sided
+# with its FLATS ON THE CELL FACES (flat_r), so the bank meets a neighbour flush on all four sides,
+# and the plates carry the faction's window top and bottom: it joins on every face. Each cell has
+# four grooves with a green charge ring in each - green as on the Falsus battery, since charge must
+# read the same whatever faction holds it - lit bottom up by charge (the scene stands one ring per
+# cell per level, 16 in all, Seg<level>_<cell>). A sunset bus runs up the gap in the middle, where
+# the four cells meet, and a thin sunset line rings each cell under its shoulder.
+MBAT_CAP = 0.28                           # plate thickness, top and bottom
+MBAT_SEG_Y = (0.05, 0.35, 0.65, 0.95)     # charge ring centres, bottom up
+MBAT_SEG_HH = 0.06
+MBAT_GROOVE = 0.45
+MBAT_RING = 0.49
+MBAT_CELLS = ((-1.0, -1.0), (0.0, -1.0), (-1.0, 0.0), (0.0, 0.0))
+MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
+SUNSET_RAMP = [(226, 116, 38), (240, 150, 60), (252, 176, 80), (254, 200, 120), (255, 226, 160)]
+
+
+def _sunset_band(f, lo, hi, y, inset=0.14, hw=0.018):
+    """A sunset line round the four sides of a box lo..hi at height y."""
+    (x0, _, z0), (x1, _, z1) = lo, hi
+    cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+    e = 0.002
+    for q in ([(x0 + inset, y - hw, z0 - e), (x1 - inset, y - hw, z0 - e), (x1 - inset, y + hw, z0 - e), (x0 + inset, y + hw, z0 - e)],
+              [(x0 + inset, y - hw, z1 + e), (x1 - inset, y - hw, z1 + e), (x1 - inset, y + hw, z1 + e), (x0 + inset, y + hw, z1 + e)],
+              [(x0 - e, y - hw, z0 + inset), (x0 - e, y - hw, z1 - inset), (x0 - e, y + hw, z1 - inset), (x0 - e, y + hw, z0 + inset)],
+              [(x1 + e, y - hw, z0 + inset), (x1 + e, y - hw, z1 - inset), (x1 + e, y + hw, z1 - inset), (x1 + e, y + hw, z0 + inset)]):
+        f.append(th.Face(th.outward(q, (cx, y, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
+
+
+def build_marlit_battery(pk, img):
+    import random as _r
+    rnd = _r.Random(233)
+    parts = {"marlit_battery_body": [], "marlit_battery_seg": []}
+    f = parts["marlit_battery_body"]
+    x0, x1, z0, z1 = -1.5, 0.5, -1.5, 0.5
+    yb, yt = -0.5 + MBAT_CAP, 1.5 - MBAT_CAP
+    marlit_box(f, (x0, -0.5, z0), (x1, yb, z1), 0.05, rnd, {(1, 0): "window"})
+    marlit_box(f, (x0, yt, z0), (x1, 1.5, z1), 0.05, rnd, {(1, 1): "window"})
+    _sunset_band(f, (x0, 0, z0), (x1, 0, z1), (-0.5 + yb) / 2)
+    _sunset_band(f, (x0, 0, z0), (x1, 0, z1), (yt + 1.5) / 2)
+    fr = lambda r: flat_r(r, 12)
+    hh = MBAT_SEG_HH
+    prof = [(fr(0.44), yb), (fr(0.5), yb + 0.06)]
+    ramps = {}
+    for yc in MBAT_SEG_Y:
+        prof += [(fr(0.5), yc - hh), (fr(MBAT_GROOVE), yc - hh), (fr(MBAT_GROOVE), yc + hh), (fr(0.5), yc + hh)]
+        for k in (len(prof) - 4, len(prof) - 3, len(prof) - 2):
+            ramps[k] = SLOT_RAMP
+    k = len(prof)
+    prof += [(fr(0.5), 1.06), (fr(0.5), 1.08), (fr(0.5), 1.10), (fr(0.5), yt - 0.06), (fr(0.44), yt)]
+    ramps[k] = SUNSET_RAMP                         # the thin sunset line under the shoulder
+    for cx, cz in MBAT_CELLS:
+        lathe_y(pk, img, f, prof, MARLIT_RAMP, sides=12, ring_ramps=ramps, cx=cx, cz=cz)
+    # the bus up the gap where the four cells meet
+    lathe_y(pk, img, f, [(0.11, yb), (0.11, yt)], SUNSET_RAMP, sides=8, cx=-0.5, cz=-0.5)
+    # one charge ring about its own axis at y 0: the scene stands one per cell per level
+    e = hh - 0.008
+    lathe_y(pk, img, parts["marlit_battery_seg"], [(fr(MBAT_GROOVE), -e), (fr(MBAT_RING), -e), (fr(MBAT_RING), e),
+                                                   (fr(MBAT_GROOVE), e)], GREEN_RAMP, sides=12)
+    return parts
+
+
 def build_wireless(pk, img):
     """TerraTech's GSO Wireless Charger, the player's cut of it: NOTHING BUT THE TWO COILS - thick
     glowing cyan rings as wide as the cell, so they reach its side faces - and, on the back, a SHELL
@@ -2282,6 +2346,7 @@ BLOCKS = {
     "marlit_octo": (181, build_marlit_octo, 512),
     "marlit_solar": (193, build_marlit_solar, 512),
     "marlit_regen": (211, build_marlit_regen, 512),
+    "marlit_battery": (239, build_marlit_battery, 512),
     "marlit_shield": (229, build_marlit_shield, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
@@ -2309,7 +2374,7 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0}
+DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0, "marlit_battery": 36.0}
 
 
 def make(name):
