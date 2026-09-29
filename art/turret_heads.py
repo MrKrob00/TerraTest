@@ -846,6 +846,18 @@ def style_px(style, x, y, w, h, d):
             return (20, 20, 26)
         return jitter([(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102),
                        (106, 110, 124)][k], 1)
+    if style == "msolar":
+        # a Marlit solar cell: the sea of the emblem as glass - deep navy lifting to slate across the
+        # cell, a pale sheen along two edges, a dark bus line down the middle
+        if d < 1.0:
+            return (18, 22, 34)
+        if abs(x + 0.5 - w / 2.0) < 0.6:
+            return (34, 44, 70)
+        t = ((x + 0.5) / max(w, 1) + (y + 0.5) / max(h, 1)) * 0.5
+        c = _ramp_at([(26, 38, 72), (44, 64, 108), (70, 98, 150)], t * 2.0)
+        if y < 2 or x < 2:
+            c = tuple(min(255, v + 26) for v in c)
+        return jitter(c, 1)
     if style == "mglow":
         # the sunset line along the frame's inner edge: hot at the lip, deeper in
         t = (y + 0.5) / max(h, 1)

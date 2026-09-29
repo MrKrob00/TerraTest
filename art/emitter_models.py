@@ -889,6 +889,97 @@ def build_marlit_octo(pk, img):
     return _one("marlit_octo", _octo)
 
 
+# ── the Marlit solar array ──────────────────────────────────────────────────────────────────────
+# TerraTech's GeoCorp solar box: a low 2x1x2 housing whose lid opens on the anchor and a panel rises
+# out of it. The block owns 2x2x2 - the housing is its lower floor, the open array its upper one -
+# so nothing it does ever reaches past its cells. Four parts, each built round its own pivot so the
+# script only turns and slides them:
+#   body  - the housing (x -1.5..0.5, y -0.5..0.38, z -1.5..0.5), open on top, windows on its walls
+#   lid   - one leaf, hinge along Z at its local origin, lying over x 0..1 and y -0.12..0; the scene
+#           puts one at each outer edge (the right one turned 180 about Y), and opening is +90 about Z
+#   panel - the array, centred on its local origin, 1.84 square
+#   mast  - a unit octagonal column (y 0..1) the script stretches from the floor to the panel
+MS_WALL = 0.14
+MS_TOP = 0.38          # the walls' top; a closed leaf lies on it, flush with the cell's top face
+MS_LID = 0.12
+MS_PANEL = 0.92        # the array's half-size
+MS_CELLS = 4
+
+
+def _marlit_solar_body(f, rnd):
+    x0, x1, z0, z1, y0 = -1.5, 0.5, -1.5, 0.5, -0.5
+    t = MS_WALL
+    marlit_box(f, (x0, y0, z0), (x1, y0 + 0.2, z1), 0.05, rnd)                        # floor
+    marlit_box(f, (x0, y0 + 0.2, z0), (x1, MS_TOP, z0 + t), 0.05, rnd, {(2, 0): "window"})
+    marlit_box(f, (x0, y0 + 0.2, z1 - t), (x1, MS_TOP, z1), 0.05, rnd, {(2, 1): "window"})
+    marlit_box(f, (x0, y0 + 0.2, z0 + t), (x0 + t, MS_TOP, z1 - t), 0.05, rnd, {(0, 0): "window"})
+    marlit_box(f, (x1 - t, y0 + 0.2, z0 + t), (x1, MS_TOP, z1 - t), 0.05, rnd, {(0, 1): "window"})
+    # the sunset line round the inside of the rim: seen only when the leaves are open
+    yg0, yg1 = MS_TOP - 0.1, MS_TOP - 0.05
+    xa, xb, za, zb = x0 + t + 0.001, x1 - t - 0.001, z0 + t + 0.001, z1 - t - 0.001
+    for q in ([(xa, yg0, za), (xb, yg0, za), (xb, yg1, za), (xa, yg1, za)],
+              [(xa, yg0, zb), (xb, yg0, zb), (xb, yg1, zb), (xa, yg1, zb)],
+              [(xa, yg0, za), (xa, yg0, zb), (xa, yg1, zb), (xa, yg1, za)],
+              [(xb, yg0, za), (xb, yg0, zb), (xb, yg1, zb), (xb, yg1, za)]):
+        f.append(th.Face(th.outward(q, (-0.5, yg0, -0.5)), "mglow", u_hint=th.sub(q[1], q[0])))
+    # the mast's socket on the floor
+    cham_box(f, (-0.72, y0 + 0.2, -0.72), (-0.28, y0 + 0.32, -0.28), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+
+
+def _marlit_solar_lid(f, rnd):
+    # the leaf's outer face (+Y while closed, outward once standing) carries the emblem's window
+    marlit_box(f, (0.0, -MS_LID, -1.0), (1.0, 0.0, 1.0), 0.04, rnd, {(1, 1): "window"})
+
+
+def _marlit_solar_panel(f, rnd):
+    h = MS_PANEL
+    cham_box(f, (-h, -0.06, -h), (h, 0.02, h), 0.03, "mbev2", "mplate", "mbev1", "medge")
+    # the sunset rim round the glass
+    rim = 0.06
+    for q in ([(-h + 0.03, 0.021, -h + 0.03), (h - 0.03, 0.021, -h + 0.03), (h - 0.03, 0.021, -h + 0.03 + rim), (-h + 0.03, 0.021, -h + 0.03 + rim)],
+              [(-h + 0.03, 0.021, h - 0.03 - rim), (h - 0.03, 0.021, h - 0.03 - rim), (h - 0.03, 0.021, h - 0.03), (-h + 0.03, 0.021, h - 0.03)],
+              [(-h + 0.03, 0.021, -h + 0.03 + rim), (-h + 0.03 + rim, 0.021, -h + 0.03 + rim), (-h + 0.03 + rim, 0.021, h - 0.03 - rim), (-h + 0.03, 0.021, h - 0.03 - rim)],
+              [(h - 0.03 - rim, 0.021, -h + 0.03 + rim), (h - 0.03, 0.021, -h + 0.03 + rim), (h - 0.03, 0.021, h - 0.03 - rim), (h - 0.03 - rim, 0.021, h - 0.03 - rim)]):
+        f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "mglow", u_hint=(1, 0, 0)))
+    # the cells, a 4 x 4 grid of glass with the frame's dark between them
+    inner = h - 0.03 - rim - 0.02
+    step = 2 * inner / MS_CELLS
+    gap = 0.025
+    for i in range(MS_CELLS):
+        for j in range(MS_CELLS):
+            a0 = -inner + i * step + gap
+            a1 = -inner + (i + 1) * step - gap
+            b0 = -inner + j * step + gap
+            b1 = -inner + (j + 1) * step - gap
+            q = [(a0, 0.022, b0), (a1, 0.022, b0), (a1, 0.022, b1), (a0, 0.022, b1)]
+            f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "msolar", u_hint=(1, 0, 0)))
+
+
+def _marlit_solar_mast(f, rnd):
+    r = 0.11
+    n = 8
+    pts = [(r * math.cos(math.pi / n + 2 * math.pi * k / n), r * math.sin(math.pi / n + 2 * math.pi * k / n)) for k in range(n)]
+    for k in range(n):
+        a, b = pts[k], pts[(k + 1) % n]
+        q = [(a[0], 0.0, a[1]), (b[0], 0.0, b[1]), (b[0], 1.0, b[1]), (a[0], 1.0, a[1])]
+        nn = th.norm(((a[0] + b[0]) / 2, 0.0, (a[1] + b[1]) / 2))
+        tone = int(round(max(0.0, min(1.0, 0.45 + 0.6 * th.dot(nn, LIGHT))) * 5))
+        f.append(th.Face(th.outward(q, (0.0, 0.5, 0.0)), "mbev%d" % tone, u_hint=(0, 1, 0)))
+    top = [(p[0], 1.0, p[1]) for p in pts]
+    f.append(th.Face(th.outward(top, (0.0, 0.0, 0.0)), "mbev3", u_hint=(1, 0, 0)))
+
+
+def build_marlit_solar(pk, img):
+    import random as _r
+    rnd = _r.Random(191)
+    parts = {"marlit_solar_body": [], "marlit_solar_lid": [], "marlit_solar_panel": [], "marlit_solar_mast": []}
+    _marlit_solar_body(parts["marlit_solar_body"], rnd)
+    _marlit_solar_lid(parts["marlit_solar_lid"], rnd)
+    _marlit_solar_panel(parts["marlit_solar_panel"], rnd)
+    _marlit_solar_mast(parts["marlit_solar_mast"], rnd)
+    return parts
+
+
 # ── the radar ───────────────────────────────────────────────────────────────────────────────────
 
 DISH_RAMP = [(70, 78, 100), (95, 104, 130), (120, 130, 158), (145, 155, 182), (165, 175, 200)]
@@ -1978,6 +2069,7 @@ BLOCKS = {
     "marlit_armor4": (173, build_marlit_armor4, 512),
     "marlit_armor8": (179, build_marlit_armor8, 512),
     "marlit_octo": (181, build_marlit_octo, 512),
+    "marlit_solar": (193, build_marlit_solar, 512),
     "regen2": (109, build_regen2, 512),
     "wireless": (107, build_wireless, 256),
     "battery": (103, build_battery, 256),
