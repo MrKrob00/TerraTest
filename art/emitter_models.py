@@ -903,22 +903,31 @@ def build_marlit_octo(pk, img):
 #   body   - the housing (x -1.5..0.5, y -0.5..0.5, z -1.5..0.5) with a round hole MS_HOLE in the lid
 #   iris   - one of MS_BLADES blades with its tip at the local origin; closed they tile the disc with
 #            spiral seams, opening swings each MS_SWING about the rim end of its trail edge, under the
-#            lid: that pivot and angle lay the eight in a ring 0.48..0.81 from the centre, clear of the
-#            rising bud and inside the walls (searched numerically; six blades reach 0.88, through them)
+#            lid: that pivot and angle lay the sixteen in a ring 0.64..0.84 from the centre, clear of
+#            the rising bud and inside the walls at 0.86 (searched numerically: fewer, wider blades
+#            reach further - twelve 0.91, eight 1.0 - and the hole could not grow past 0.5 with eight)
 #   stageN - the beam's four telescoping stages (N = 0..3, widest first), each from y 0 up
-#   hub    - the octagonal crown on the beam's top the leaves hinge on (radius MS_HUB)
-#   panel  - one leaf, hinged along X at its local origin, reaching +Z (MS_LEAF_D), glass up; eight,
-#            one on each side of the crown. Folded it hangs straight down (+90 about X), glass out;
-#            open it stands MS_TIP above level.
+#   hub    - the crown on the beam's top: two twelve-sided rings the leaves hinge on, the upper at
+#            MS_HUB, the lower MS_DROP under it at MS_HUB2 and turned half a step
+#   panel  - an upper leaf, hinged along X at its local origin, reaching +Z, glass up; panel2 a lower
+#            one. Folded they hang straight down (+90 about X), glass out, the lower tier inside the
+#            upper: 24 leaves in a bud 0.60 across, under the 0.62 hole. Open they both stand MS_TIP
+#            above level, the lower tier filling the upper one's gaps MS_DROP beneath it.
 MS_WALL = 0.14
 MS_TOP = 0.38          # the lid's underside; its top is the cell's top face, 0.5
-MS_HOLE = 0.5          # the iris door's radius
-MS_BLADES = 8
-MS_SPIRAL = 0.9       # radians the blade's seam turns from the centre to the rim
-MS_SWING = 55.0
-MS_HUB = 0.42          # the crown's apothem: eight leaves 0.33 wide round it hang as a bud of 0.47
-MS_LEAF_W = 0.33
-MS_LEAF_D = 0.55
+MS_HOLE = 0.62         # the iris door's radius
+MS_BLADES = 16
+MS_SPIRAL = 0.8        # radians the blade's seam turns from the centre to the rim
+MS_SWING = 60.0
+MS_BLADE_T = 0.01
+MS_LEAVES = 12         # per tier; the lower tier stands half a step round, in the upper one's gaps
+MS_HUB = 0.56          # the upper tier's hinge line (the crown's apothem)
+MS_HUB2 = 0.485        # the lower tier's, MS_DROP under it and inside the upper bud
+MS_DROP = 0.08
+MS_LEAF_W = 0.28
+MS_LEAF_D = 0.42
+MS_LEAF2_W = 0.25
+MS_LEAF2_D = 0.45
 MS_TIP = 15.0
 MS_STAGE = [0.28, 0.23, 0.18, 0.13]   # the stages' widths
 MS_STAGE_H = 0.5
@@ -991,7 +1000,7 @@ def _marlit_solar_iris(f, pk, img):
         s = k / n
         a = half + MS_SPIRAL * s
         return (math.sin(a) * r * s, math.cos(a) * r * s)
-    yt, yb = 0.0, -0.014
+    yt, yb = 0.0, -MS_BLADE_T
     mid = (math.sin(MS_SPIRAL * 0.6) * r * 0.6, math.cos(MS_SPIRAL * 0.6) * r * 0.6)
     # the top and the underside are strips, and a texel island per strip paints an edge line along
     # every strip: on the curved seam those lines stepped into a row of teeth. So the whole blade is
@@ -1067,38 +1076,48 @@ def _marlit_solar_stage(f, w):
         f.append(th.Face(th.outward(q, (0.0, MS_STAGE_H - 0.03, 0.0)), "mglow", u_hint=th.sub(q[1], q[0])))
 
 
-def _marlit_solar_hub(f, rnd):
-    # the crown: an octagonal plate MS_HUB across the flats with a knuckle on each side for a leaf
-    n = 8
-    rr = MS_HUB / math.cos(math.pi / n)
-    pts = [(math.sin(math.pi / n + 2 * math.pi * k / n) * rr, math.cos(math.pi / n + 2 * math.pi * k / n) * rr) for k in range(n)]
-    yt, yb = 0.03, -0.03
-    f.append(th.Face(th.outward([(p[0], yt, p[1]) for p in pts], (0.0, -1.0, 0.0)), "mplate", u_hint=(1, 0, 0)))
-    f.append(th.Face(th.outward([(p[0], yb, p[1]) for p in pts], (0.0, 1.0, 0.0)), "mbev1", u_hint=(1, 0, 0)))
+def _ngon_slab(f, n, apothem, rot, y0, y1, side="medge", top="mplate", bottom="mbev1"):
+    rr = apothem / math.cos(math.pi / n)
+    pts = [(math.sin(rot + math.pi / n + 2 * math.pi * k / n) * rr, math.cos(rot + math.pi / n + 2 * math.pi * k / n) * rr)
+           for k in range(n)]
+    if top:
+        f.append(th.Face(th.outward([(p[0], y1, p[1]) for p in pts], (0.0, y0 - 1.0, 0.0)), top, u_hint=(1, 0, 0)))
+    if bottom:
+        f.append(th.Face(th.outward([(p[0], y0, p[1]) for p in pts], (0.0, y1 + 1.0, 0.0)), bottom, u_hint=(1, 0, 0)))
     for k in range(n):
         a, b = pts[k], pts[(k + 1) % n]
-        q = [(a[0], yb, a[1]), (b[0], yb, b[1]), (b[0], yt, b[1]), (a[0], yt, a[1])]
-        f.append(th.Face(th.outward(q, (0.0, 0.0, 0.0)), "medge", u_hint=th.sub(q[1], q[0])))
-    # a sunset ring on the crown and a cap over the beam's head
-    rg0, rg1 = MS_HUB * 0.55, MS_HUB * 0.65
+        q = [(a[0], y0, a[1]), (b[0], y0, b[1]), (b[0], y1, b[1]), (a[0], y1, a[1])]
+        f.append(th.Face(th.outward(q, (0.0, (y0 + y1) / 2, 0.0)), side, u_hint=th.sub(q[1], q[0])))
+    return pts
+
+
+def _marlit_solar_hub(f, rnd):
+    # the crown: the upper ring (hinges of the outer tier), a drum, the lower ring half a step round
+    # (hinges of the inner tier); a sunset ring and a cell on top
+    n = MS_LEAVES
+    step = math.pi / n
+    _ngon_slab(f, n, MS_HUB, 0.0, -0.02, 0.02)
+    _ngon_slab(f, n, MS_HUB2, step, -MS_DROP - 0.02, -MS_DROP + 0.02, top=None)
+    _ngon_slab(f, n, MS_HUB2 - 0.08, 0.0, -MS_DROP + 0.02, -0.02, top=None, bottom=None, side="mbev2")
+    yt = 0.02
+    rg0, rg1 = MS_HUB * 0.8, MS_HUB * 0.88
+    rr0, rr1 = rg0 / math.cos(step), rg1 / math.cos(step)
     for k in range(n):
-        a0 = math.pi / n + 2 * math.pi * k / n
-        a1 = a0 + 2 * math.pi / n
-        q = [(math.sin(a0) * rg0, yt + 0.001, math.cos(a0) * rg0), (math.sin(a1) * rg0, yt + 0.001, math.cos(a1) * rg0),
-             (math.sin(a1) * rg1, yt + 0.001, math.cos(a1) * rg1), (math.sin(a0) * rg1, yt + 0.001, math.cos(a0) * rg1)]
+        a0 = step + 2 * step * k
+        a1 = a0 + 2 * step
+        q = [(math.sin(a0) * rr0, yt + 0.001, math.cos(a0) * rr0), (math.sin(a1) * rr0, yt + 0.001, math.cos(a1) * rr0),
+             (math.sin(a1) * rr1, yt + 0.001, math.cos(a1) * rr1), (math.sin(a0) * rr1, yt + 0.001, math.cos(a0) * rr1)]
         f.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "mglow", u_hint=th.sub(q[1], q[0])))
-    # inside the ring the crown is a ninth cell: a bare plate there was the biggest thing in the
+    # inside the ring the crown is one more cell: a bare plate there was the biggest thing in the
     # flower's middle and said nothing about what the block does
-    cell = [(math.sin(math.pi / n + 2 * math.pi * k / n) * rg0, yt + 0.001, math.cos(math.pi / n + 2 * math.pi * k / n) * rg0)
-            for k in range(n)]
+    cell = [(math.sin(step + 2 * step * k) * rr0, yt + 0.001, math.cos(step + 2 * step * k) * rr0) for k in range(n)]
     f.append(th.Face(th.outward(cell, (0.0, -1.0, 0.0)), "msolar", u_hint=(1, 0, 0)))
 
 
-def _marlit_solar_panel(f, rnd):
-    w = MS_LEAF_W / 2
-    d = MS_LEAF_D
+def _marlit_solar_panel(f, width, d):
+    w = width / 2
     cham_box(f, (-w, -0.045, 0.0), (w, 0.005, d), 0.015, "mbev2", "mplate", "mbev1", "medge")
-    rim = 0.035
+    rim = 0.03
     yt = 0.006
     for q in ([(-w + 0.015, yt, 0.015), (w - 0.015, yt, 0.015), (w - 0.015, yt, 0.015 + rim), (-w + 0.015, yt, 0.015 + rim)],
               [(-w + 0.015, yt, d - 0.015 - rim), (w - 0.015, yt, d - 0.015 - rim), (w - 0.015, yt, d - 0.015), (-w + 0.015, yt, d - 0.015)],
@@ -1119,11 +1138,13 @@ def _marlit_solar_panel(f, rnd):
 def build_marlit_solar(pk, img):
     import random as _r
     rnd = _r.Random(191)
-    parts = {"marlit_solar_body": [], "marlit_solar_iris": [], "marlit_solar_hub": [], "marlit_solar_panel": []}
+    parts = {"marlit_solar_body": [], "marlit_solar_iris": [], "marlit_solar_hub": [], "marlit_solar_panel": [],
+             "marlit_solar_panel2": []}
     _marlit_solar_body(parts["marlit_solar_body"], rnd)
     _marlit_solar_iris(parts["marlit_solar_iris"], pk, img)
     _marlit_solar_hub(parts["marlit_solar_hub"], rnd)
-    _marlit_solar_panel(parts["marlit_solar_panel"], rnd)
+    _marlit_solar_panel(parts["marlit_solar_panel"], MS_LEAF_W, MS_LEAF_D)
+    _marlit_solar_panel(parts["marlit_solar_panel2"], MS_LEAF2_W, MS_LEAF2_D)
     for i, w in enumerate(MS_STAGE):
         parts["marlit_solar_stage%d" % i] = []
         _marlit_solar_stage(parts["marlit_solar_stage%d" % i], w)
