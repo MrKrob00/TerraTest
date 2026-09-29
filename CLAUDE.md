@@ -427,9 +427,14 @@ project: read it before claiming how anything works.
 
 ### Block death and the anchor
 
-- Thresholds are on `VehicleBlock`, checked in `hurt()`: below `DROP_FRAC` a hit can tear the block
-  into the world (`DROP_CHANCE`), below `FUSE_FRAC` it burns a fuse and detonates. The tear is
-  deferred to end of frame — `hurt` runs inside a physics traversal.
+- Thresholds are on `VehicleBlock`, checked in `hurt()`: when a block FIRST goes under `DROP_FRAC`
+  (20%) it rolls ONCE to tear into the world, below `FUSE_FRAC` it burns a fuse and detonates. The
+  tear is deferred to end of frame — `hurt` runs inside a physics traversal. THE ROLL IS ONE, NOT
+  ONE PER HIT: at 30% a hit, every block shot under a fifth came off within a few rounds. The chance
+  is the block's own (`_drop_chance`): 50% an ordinary part, 30% a weapon (`WeaponBlock` overrides
+  it; the drill is not one) and a battery, 20% armour (`ARMOR_BLOCKS`, both factions). Repaired back
+  over the line, it rolls again next time. Measured, 240 blocks put under 20%: 47% came off, and a
+  second hit above the fuse tore off none.
 - Three things explode: battery, cabin (takes the machine with it) and any burnt-out fuse. Damage
   hits blocks, impulse only loose bodies.
 - A BATTERY'S BLAST FOLLOWS ITS CHARGE: full it takes 70% of an ordinary block's HP three cells

@@ -332,6 +332,10 @@ var _retarget_t: float = 0.0
 ## this has nothing in range.
 const MACHINE_REACH := 18.0
 
+## A weapon sits on its mount harder than a hull part: 30% to tear off (VehicleBlock._check_critical).
+func _drop_chance() -> float:
+	return DROP_CHANCE_WEAPON
+
 ## Every hostile block within weapon_range, and every lit hostile dome whose sphere reaches into it:
 ## what the detection sphere used to hand over through body_entered, found by distance. Base scores
 ## are kept for targets already known (see _target_base), worked out once for new ones.

@@ -430,8 +430,20 @@ func hurt(damage: int = 10) -> void:
 # cut (blocks._detach_one) — so a detached cabin left the machine with no root and no death
 # signal at once: everything else fell off as orphans and a live, empty hull kept driving
 # around, unkillable. It still explodes when destroyed, it just never leaves the machine.
-const DROP_FRAC := 0.20        # below this share of hp a hit can tear the block off
-const DROP_CHANCE := 0.30      # chance PER HIT while in that state
+const DROP_FRAC := 0.20        # below this share of hp the mounts may give
+## ONE ROLL, WHEN THE BLOCK FIRST GOES UNDER DROP_FRAC, not one per hit: at 30% a hit every block
+## shot under a fifth of its hp came off within a few rounds, so "may tear off" read as "always
+## does". The chance is the block's own (`_drop_chance`): half for an ordinary part, less for what
+## is bolted on harder - a weapon on its mount (WeaponBlock) and a battery in its cradle at 30%,
+## armour at 20%, since a plate is the part meant to stay and take the hits. A block repaired back
+## over the line rolls again when it next drops under it.
+const DROP_CHANCE := 0.50
+const DROP_CHANCE_WEAPON := 0.30
+const DROP_CHANCE_BATTERY := 0.30
+const DROP_CHANCE_ARMOR := 0.20
+const ARMOR_BLOCKS := [G.Block.ARMOR, G.Block.ARMOR2, G.Block.ARMOR4, G.Block.ARMOR9,
+		G.Block.MARLIT_ARMOR2, G.Block.MARLIT_ARMOR4, G.Block.MARLIT_ARMOR8]
+var _drop_rolled: bool = false
 const FUSE_FRAC := 0.05        # below this the block is doomed: it detaches and burns down
 ## How long the fuse burns. Long on purpose: a doomed block has to be a WARNING, something you
 ## can drive away from or shoot off, not an instant explosion the player never saw coming.
@@ -453,16 +465,27 @@ func _check_critical() -> void:
 		return
 	var frac: float = float(current_hp) / float(maxi(max_hp, 1))
 	if frac >= DROP_FRAC:
+		_drop_rolled = false             # repaired over the line: the next drop under it rolls anew
 		return
 	var stays: bool = block == G.Block.CABIN or is_volatile()
 	if frac < FUSE_FRAC:
-		# Doomed: off the machine FOR CERTAIN (the 30% roll above may well have never come up),
+		# Doomed: off the machine FOR CERTAIN (the one roll under DROP_FRAC may have failed),
 		# and the fuse is lit either way.
 		if not stays and _map_node() != null:
 			_map_node().detach_node(self)
 		_light_fuse()
-	elif not stays and _map_node() != null and randf() < DROP_CHANCE:
-		_map_node().detach_node(self)
+	elif not _drop_rolled:
+		_drop_rolled = true
+		if not stays and _map_node() != null and randf() < _drop_chance():
+			_map_node().detach_node(self)
+
+## This block's chance to tear off when it first goes under DROP_FRAC; WeaponBlock overrides it.
+func _drop_chance() -> float:
+	if block == G.Block.BATTERY:
+		return DROP_CHANCE_BATTERY
+	if ARMOR_BLOCKS.has(block):
+		return DROP_CHANCE_ARMOR
+	return DROP_CHANCE
 
 ## АККУМУЛЯТОР, КОТОРЫЙ НЕ ВЫПАДАЕТ, А РВЁТСЯ ВМЕСТЕ С ПОСТРОЙКОЙ.
 ##
