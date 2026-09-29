@@ -1,19 +1,19 @@
 [gd_resource type="ArrayMesh" format=4]
 
-[ext_resource type="Texture2D" uid="uid://b1v3mxqtqbjlu" path="res://objects/marlit_battery_texture.png" id="1_qr4sb"]
+[ext_resource type="Texture2D" uid="uid://b1v3mxqtqbjlu" path="res://objects/marlit_battery_texture.png" id="1_a2pcs"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_d7ghk"]
 resource_name = "marlit_battery"
 cull_mode = 2
 shading_mode = 0
-albedo_texture = ExtResource("1_qr4sb")
+albedo_texture = ExtResource("1_a2pcs")
 texture_filter = 2
 
 [resource]
-resource_name = "marlit_battery_seg3"
+resource_name = "marlit_battery_seg5"
 _surfaces = [{
-"aabb": AABB(-0.1, 0.0125, -0.954, 0.2, 0.062023807, 1.908),
-"attribute_data": PackedByteArray("/yQdhJkoHYSZKP+C/yT/gpku/4L/Kv+C/yodhJkuHYQ="),
+"aabb": AABB(-0.1, 0.18654762, -0.954, 0.2, 0.062023804, 1.908),
+"attribute_data": PackedByteArray("/zwdhJlAHYSZQP+C/zz/gplG/4L/Qv+C/0IdhJlGHYQ="),
 "format": 34896613399,
 "index_count": 12,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYA"),
