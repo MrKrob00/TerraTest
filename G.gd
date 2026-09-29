@@ -409,8 +409,7 @@ signal progress_changed                # XP/ДИ/исследования изм
 const FACTIONS := {
 	"start": {"name": "Falsus", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
 		"emblem": "res://images/faction_falsus.png"},
-	# THE SECOND FACTION: sea and cliffs, drawn in low poly. No blocks or quests carry it yet; its
-	# models are to be built in its own style (the gyro repair unit, regen_marlit, waits for that).
+	# THE SECOND FACTION: sea and cliffs, drawn in low poly; blocks from 2x2x2 up, licensed by Big Yellow.
 	"marlit": {"name": "Marlit", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
 		"emblem": "res://images/faction_marlit.png"},
 }
@@ -516,6 +515,8 @@ const BLOCK_META := {
 	Block.MARLIT_OCTO:      {"f": "marlit", "g": 3, "rp": 28},
 	Block.MARLIT_ARMOR8:    {"f": "marlit", "g": 4, "rp": 35},
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
+	Block.MARLIT_SHIELD:    {"f": "marlit", "g": 3, "rp": 40},
+	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -557,6 +558,7 @@ const TECH_PARENT := {
 	Block.MARLIT_ARMOR2: Block.MARLIT_SLAB,    Block.MARLIT_ARMOR4: Block.MARLIT_ARMOR2,
 	Block.MARLIT_ARMOR8: Block.MARLIT_ARMOR4,  Block.MARLIT_OCTO: Block.MARLIT_LONG,
 	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
+	Block.MARLIT_SHIELD: Block.MARLIT_SOLAR,   Block.MARLIT_REGEN: Block.MARLIT_SHIELD,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -955,6 +957,9 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_ARMOR8:    {"c1": 12, "m2": 24},
 	Block.MARLIT_OCTO:      {"m1": 47, "m2": 47},
 	Block.MARLIT_SOLAR:     {"c5": 12, "m2": 16},   # four Falsus panels' lenses and Silicate
+	# Three Falsus units' parts each: half as far again is 2.25 times the ground covered.
+	Block.MARLIT_SHIELD:    {"c20": 9, "c6": 6},
+	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1364,6 +1369,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_ARMOR2: "Marlit Armour Plate 2×1", Block.MARLIT_ARMOR4: "Marlit Armour Plate 2×2",
 	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
+	Block.MARLIT_SHIELD: "Marlit Shield Dome", Block.MARLIT_REGEN: "Marlit Repair Field",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1422,6 +1428,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_ARMOR8: "Marlit armour plate, four by two: a whole flank of a big machine.",
 	Block.MARLIT_OCTO: "The Octo Block: three cells every way, eight heavy corner caps round a core, the faction's octagon on every face.",
 	Block.MARLIT_SOLAR: "An armoured lid that turns over on the anchor: its underside is a solar panel as big as four ordinary ones. Driving, it is armour and makes nothing.",
+	Block.MARLIT_SHIELD: "A wider dome that spends less energy on each hit. Its hatches open on every free face; a face with a block on it stays shut.",
+	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1855,6 +1863,8 @@ enum Block {
 	MARLIT_ARMOR8 = 60,     # armour plate 4×2
 	MARLIT_OCTO = 61,       # 3×3×3 round its anchor: eight corner caps and an octagon on every face
 	MARLIT_SOLAR = 62,      # 2×2×2: a 2×1×2 housing whose lid turns over into the upper floor
+	MARLIT_REGEN = 63,      # 2×2×2: the gyro repair unit in the Marlit shell
+	MARLIT_SHIELD = 64,     # 2×2×2: a Marlit block whose six windows are hatches
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1916,6 +1926,8 @@ enum Block {
 @onready var marlit_armor8_scene: PackedScene = preload("res://blocks/scenes/marlit_armor8.tscn")
 @onready var marlit_octo_scene: PackedScene = preload("res://blocks/scenes/marlit_octo.tscn")
 @onready var marlit_solar_scene: PackedScene = preload("res://blocks/scenes/marlit_solar.tscn")
+@onready var marlit_regen_scene: PackedScene = preload("res://blocks/scenes/marlit_regen.tscn")
+@onready var marlit_shield_scene: PackedScene = preload("res://blocks/scenes/marlit_shield.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
@@ -1956,7 +1968,7 @@ const BLOCK_CATEGORIES := {
 	# three lists above - and the generator sat among the factory blocks. Anything that falls in no
 	# list still shows under Power (the radar, today), so a new block never vanishes from the shop.
 	"power":   [Block.SOLAR, Block.BATTERY, Block.GENERATOR, Block.WIRELESS_CHARGER,
-		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR],
+		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR, Block.MARLIT_SHIELD, Block.MARLIT_REGEN],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -2025,6 +2037,8 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_ARMOR8: return marlit_armor8_scene
 		Block.MARLIT_OCTO: return marlit_octo_scene
 		Block.MARLIT_SOLAR: return marlit_solar_scene
+		Block.MARLIT_REGEN: return marlit_regen_scene
+		Block.MARLIT_SHIELD: return marlit_shield_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).

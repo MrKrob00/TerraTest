@@ -1731,13 +1731,8 @@ project: read it before claiming how anything works.
   lower half gripped by four claws, a blue cap - whose cap LIFTS and turns while the dome stands and
   shows a cyan core through the gap; the repair unit is a BEACON - a hub with the green cross, a
   crystal, a ring with three nozzles - whose ring spins up with power and runs down without it, and
-  whose crystal flashes on every repair tick. A GYRO REPAIR UNIT WAS BUILT AND IS KEPT FOR THE SECOND
-  FACTION, MARLIT (`blocks/scenes/regen_marlit.tscn` + `regen_marlit.gd`, meshes `regen2_*`, builder
-  `build_regen2`; not used by the game): four square-section bands round the crystal, seen from the
-  front as "-", "|", "/" and "\", each turning about the normal of its plane, a glowing energy strip
-  along each band's inside, the same round trunnion bearing on all six faces; off, the crystal lies
-  grey on the rings, powering up it turns green and rises to the centre. The player chose to keep the
-  beacon in the game and to rework the gyro into Marlit's own style. Moving parts go through `moving_parts`, the tinted part
+  whose crystal flashes on every repair tick. The one-cell GSO gyro that was built beside it became
+  the MARLIT repair unit (below). Moving parts go through `moving_parts`, the tinted part
   through `unbatched()` and a per-block duplicate of its material (one shared material would tint
   every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
   what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
@@ -1913,6 +1908,32 @@ project: read it before claiming how anything works.
   round a scissor lift, a mast of leaves, an iris with a flower of 24 small leaves - "all at one
   height, too small to count") are in the model's header. Measured on the proving ground: joins as
   above in 8 of 8 cases; anchored, open at 2.4 s with 24 energy a second; released, closed again.
+- **THE MARLIT REPAIR UNIT AND SHIELD ARE FALSUS'S, SUBCLASSED, AT MARLIT'S NUMBERS** (`regen_marlit.gd`
+  extends `regen.gd`, `marlit_shield.gd` extends `shield.gd`; both 2x2x2, joining on all six faces).
+  What the field and the dome DO stays in the parent; a faction's block sets instance fields in
+  `_init` - `field_radius` / `heal_hp` / `max_bodies` / `field_centre`, `dome_scale` / `cost_x` /
+  `dome_centre` - and draws its own model. The player's numbers: reach x1.5 (field 6.9 m, dome 6 m),
+  the repair field heals 40% more a tick and takes 40% more blocks a tick, a hit on the Marlit dome
+  costs `SHIELD_COST_X` / 1.25 (0.48 energy a point against Falsus's 0.6 - the player asked for
+  1.25 against 1, and 0.6 was set down from 1.0 because domes "fell too fast", so the ratio was
+  kept, not the numbers). THE DOME IS SCALED AS A NODE: mesh, plates, shader and every point handed
+  to it stay in a `SHIELD_RADIUS` dome's model space, the sphere collider scales with it (Jolt:
+  measured, a 4 m sphere at scale 1.5 stops a ray at 5.9 m and not at 6.3), and DOMES MERGE ONLY WITH
+  DOMES OF THEIR OWN SCALE - the shared lattice (`_solve_seam`) is solved for one radius, and the
+  solve runs in that model's units. `WeaponBlock.SHIELD_REACH` is the biggest dome, 6 m. The REPAIR
+  UNIT's model is the gyro in the MARLIT SHELL (`art/emitter_models.py` `marlit_shell`): twelve edge
+  beams and six flush face plates, each with an octagonal porthole, the outer ring on spiders in the
+  side portholes, the vertical one in the top and bottom ones. Turned down on the way: a frame of
+  pillars and a roof ("a cage"), then the gyro open on a pedestal ("nothing to bolt to"). The SHIELD
+  is a Marlit block whose six window floors are HATCHES of eight leaves: dome up, the leaves swing
+  `FOLD` (55 deg) into the block - at 90 the six funnels crossed inside and every window showed a
+  tangle; 55 keeps each in its own sixth of the cube - a fixed dark liner behind them closes the gaps
+  (they showed the sky through the block), and then the emitter SWELLS x2.1 into all six funnels
+  (the player: "the sphere is small"). A FACE WITH A BLOCK IN FRONT OF IT STAYS SHUT
+  (`_poll_covered`, any of the four cells before the face taken). Turned down: armour plates round
+  a core on a pedestal, then in the repair unit's porthole shell ("you copied the repair unit").
+  Measured on the proving ground: dome 6 m, 100 damage cost 48 energy, three covered faces shut and
+  three open with the emitter swollen, a loose block 6.5 m away healed 17 a tick.
 - **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
   trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
   a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver

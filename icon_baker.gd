@@ -76,8 +76,8 @@ func _ready() -> void:
 ## 51: the repair unit is a gyro - four rings on six round bearings round the crystal.
 ## 52: the repair unit is the beacon again (the gyro is kept for Marlit).
 ## 53: the four Marlit hull blocks. 54: nine more Marlit blocks. 55: Marlit armour redrawn. 56: the 4x2 plate again.
-## 57: the Marlit solar array.
-const RECIPE := 57
+## 57: the Marlit solar array. 58: the Marlit repair unit and shield.
+const RECIPE := 58
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
