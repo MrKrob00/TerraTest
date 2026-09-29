@@ -8,9 +8,9 @@ extends VehicleBlock
 
 ## Seconds for the whole path, up, over and down.
 const FLIP_TIME := 2.4
-## Worth of a Falsus panel (SOLAR_RATE each): the open face is four square metres of cells, four
-## panels' worth of area.
-const UNITS := 4.0
+## Worth of a Falsus panel (SOLAR_RATE each): the player's 200 energy a second, against the Falsus
+## panel's 80.
+const UNITS := 2.5
 ## A leaf's centre lying in the frame, and while it turns (MS_REST_Y / MS_TURN_Y in the model).
 const REST_Y := 0.4
 const TURN_Y := 1.0

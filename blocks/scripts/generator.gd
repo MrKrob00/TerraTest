@@ -4,13 +4,15 @@
 extends FactoryBlock
 
 const BURN_TIME := 3.0
-const ENERGY_COAL := 40.0     # coal is the fuel
+## Energy per load, scaled with the panels when the energy scale grew (SOLAR_RATE 6 -> 80, x40/3):
+## a burning generator is still worth what it was against a panel, about 2.2 of them on coal.
+const ENERGY_COAL := 540.0    # coal is the fuel
 ## WOOD BURNS, BUT WORSE THAN COAL, AND BY THE SAME HALF AS ITS PRICE. It can go into the furnace
 ## straight off the road - and then no processor is needed at all; or it can be burnt down into
 ## twice as much. "Now" against "double" is the whole point of the conversion.
-const ENERGY_WOOD := 20.0
-const ENERGY_ORE := 25.0
-const ENERGY_INGOT := 80.0
+const ENERGY_WOOD := 270.0
+const ENERGY_ORE := 330.0
+const ENERGY_INGOT := 1070.0
 
 var _burn_left: float = 0.0
 var _burn_energy: float = 0.0

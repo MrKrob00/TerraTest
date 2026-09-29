@@ -14,10 +14,12 @@ extends VehicleBlock
 # general check: the beam has to end on the thing being charged, and capacity does not say WHERE
 # that is. New storage blocks will have to be added here by hand - the price of a correct picture.
 
-## Радиус действия в метрах (решение игрока).
-const RANGE := 6.0
-## Сколько энергии в секунду переливаем.
-const RATE := 12.0
+## The player's numbers: Falsus pours 125 energy a second as far as 20 m. A faction's charger
+## (wireless_marlit.gd) sets `charge_range` / `charge_rate` in `_init`, as the regen does.
+const RANGE := 20.0
+const RATE := 125.0
+var charge_range: float = RANGE
+var charge_rate: float = RATE
 ## Как часто ищем получателя. Каждый кадр перебирать машины незачем — они не телепортируются.
 const SCAN_PERIOD := 0.5
 
@@ -72,7 +74,7 @@ func _physics_process(delta: float) -> void:
 		return
 	# Берём энергию у СВОЕЙ машины и кладём получателю. Отдаём ровно столько, сколько
 	# реально сняли: energy_consume возвращает выданное, и если у нас пусто — перелива нет.
-	var want: float = RATE * delta
+	var want: float = charge_rate * delta
 	var got: float = mine.energy_consume(want) if mine.has_method("energy_consume") else 0.0
 	if got <= 0.0:
 		_show_beam(false)
@@ -95,7 +97,7 @@ func _find_battery(mine: Node) -> Node3D:
 	var best: Node3D = null
 	# В КВАДРАТЕ: сравниваем с distance_squared_to. Здесь стояло само RANGE, то есть радиус
 	# на деле был √6 ≈ 2.4 м — машины почти вплотную, и зарядка «не работала».
-	var best_d2: float = RANGE * RANGE
+	var best_d2: float = charge_range * charge_range
 	var my_f = mine.get("faction")
 	var mine_faction: int = int(my_f) if my_f != null else 0
 	for v in vehicles.get_children():
@@ -110,7 +112,7 @@ func _find_battery(mine: Node) -> Node3D:
 		for b in blocks.get_children():
 			if not (b is Node3D) or b.get("block") == null:
 				continue
-			if int(b.get("block")) != G.Block.BATTERY:
+			if not (int(b.get("block")) in G.BATTERY_BLOCKS):
 				continue
 			var d2: float = global_position.distance_squared_to((b as Node3D).global_position)
 			if d2 < best_d2:

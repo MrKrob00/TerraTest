@@ -1324,6 +1324,10 @@ const LEGACY_BLOCK_KEYS := {
 ## стоит в сохранённых машинах и лежит в инвентаре, и молча исчезнуть — значит отобрать
 ## у игрока имущество и продырявить его машину. Заменяем на блок ТОГО ЖЕ размера, иначе
 ## сборка не сойдётся по клеткам.
+## What stores charge: the machine sums these (machine_body) and a wireless charger aims at them.
+## One list, so a faction's battery is one line here rather than a type test in each reader.
+const BATTERY_BLOCKS := [Block.BATTERY]
+
 const RETIRED_BLOCKS := {
 	Block.WEDGE: Block.HALF_BLOCK,   # клин 1³ повторял половинку той же клеткой
 	# MARLIT HAS NO SHIELD, as TerraTech's GeoCorp has none: its answer is the big armour plates. The

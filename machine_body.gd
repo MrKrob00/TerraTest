@@ -147,12 +147,12 @@ func mass_limit() -> float:
 #
 # _energy is what batteries do NOT hold: the solar buffer under anchor. It belongs to the machine
 # because it appears with the anchor and disappears with it.
-const BATTERY_CAP := 100.0        # fallback capacity for blocks without one (old scenes)
+const BATTERY_CAP := 2000.0       # fallback capacity for blocks without one (old scenes)
 ## A machine has NO capacity of its own. Capacity comes only from what is mounted: a battery
 ## always, a solar panel only WHILE ANCHORED and only as much as it produces in a second. Leave the
 ## anchor and that buffer goes with the production, leaving whatever the battery really holds.
 const BASE_ENERGY_CAP := 0.0
-const SOLAR_RATE := 6.0          # energy per second per panel (anchored only)
+const SOLAR_RATE := 80.0         # energy per second per panel (anchored only)
 var _energy: float = 0.0
 var _tick_prod: float = 0.0
 var _energy_cap: float = 0.0
@@ -252,7 +252,7 @@ func _energy_tick(delta: float) -> void:
 		if bl != null:
 			for b in bl.get_children():
 				var bt = b.get("block")
-				if bt == G.Block.BATTERY:
+				if bt != null and int(bt) in G.BATTERY_BLOCKS:
 					_batteries.append(b)
 					# Capacity is asked FROM THE BLOCK: it is its property (battery.gd). BATTERY_CAP here is only
 					# a fallback for scenes without the battery script.

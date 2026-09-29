@@ -40,8 +40,8 @@ const ANIM_LEN := 2.5
 const RIG_VIEW_DIST := 120.0
 @onready var _anim: AnimationPlayer = get_node_or_null("AnimationPlayer")
 var _rig_on: bool = false
-## Энергии в секунду. 12 — это две солнечные панели (SOLAR_RATE 6.0 у каждой).
-@export var energy_per_sec: float = 12.0
+## Energy a second: two Falsus panels (SOLAR_RATE each), so one panel digs at half the rate.
+@export var energy_per_sec: float = 160.0
 ## Как далеко под собой искать жилу и в каком радиусе подбирать выпавшее.
 @export var vein_reach: float = 3.0
 @export var pickup_radius: float = 4.0

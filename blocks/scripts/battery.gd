@@ -13,7 +13,9 @@ extends VehicleBlock
 
 ## Сколько энергии вмещает ОДИН аккумулятор. Экспортом, а не константой у машины: разные
 ## аккумуляторы — это разные блоки, и ёмкость обязана быть свойством детали.
-@export var capacity: float = 100.0
+## THE ENERGY SCALE IS THE PLAYER'S (a battery 2000, a Falsus panel 80 a second, the Marlit
+## accumulator 15000 and its panel 200); every consumer was scaled with it - see SHIELD_COST_X.
+@export var capacity: float = 2000.0
 
 ## Сколько в нём СЕЙЧАС. Новый блок приходит пустым: заряд — это то, что машина в него
 ## положила, а не подарок за постановку.
@@ -35,7 +37,8 @@ func charge_take(amount: float) -> float:
 	return got
 
 # ── The gauge on the walls ───────────────────────────────────────────────────────────────────────
-# Four charge rings round the cell (nodes Seg0..3, one mesh, art/emitter_models.py build_battery)
+# The charge segments (nodes Seg0..N: four rings round the Falsus cell, eight lit gaps on the Marlit
+# accumulator; art/emitter_models.py build_battery / build_marlit_battery)
 # light by charge / capacity, rounded UP so a battery holding anything shows one; under LOW_FRAC the
 # last one blinks. A dark ring is shrunk to SEG_OFF into the cell, not hidden: MachineBatch reads
 # `visible` only when it rebuilds, so it copies the parts' transforms instead (`moving_parts`).
@@ -48,10 +51,12 @@ var _shown: int = -1
 
 func _ready() -> void:
 	moving_parts = true
-	for i in 4:
-		var s := get_node_or_null("Seg%d" % i) as Node3D
-		if s != null:
-			_segs.append(s)
+	# As many as the scene has: four rings on the Falsus cell, eight lit gaps on the Marlit
+	# accumulator (Seg0 at the bottom).
+	var i := 0
+	while get_node_or_null("Seg%d" % i) != null:
+		_segs.append(get_node("Seg%d" % i) as Node3D)
+		i += 1
 	super._ready()
 
 # Polled rather than set from charge_add/charge_take: the save and the enemy's full start write
