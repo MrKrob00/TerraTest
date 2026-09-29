@@ -2244,111 +2244,114 @@ def build_battery(pk, img):
 
 
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
-# AN ACCUMULATOR, NOT A BATTERY: one heavy Marlit block holding a tank of charge, and the tank is what
-# the eye reads. Every side face has a tall GAUGE - a slot the height of the block with dark glass at
-# its back, sunset ticks at a quarter, a half and three quarters - and in it a green column that
-# rises with the charge (`Level`, one part for all four sides, scaled from its foot like the
-# storage's bar). Heavy cooling ribs flank each gauge, and the top carries two terminals drawn flush,
-# + and -, so the block still meets a neighbour flat on every face. The first cut was four Falsus
-# cells in a 2x2 bank between two plates: "four batteries put together", and 2380 triangles.
-MBAT_C = 0.08                 # the body's edge chamfer
-MBAT_SLOT_HW = 0.2            # gauge half width
-MBAT_SLOT_Y = (-0.3, 1.3)     # gauge foot and head
-MBAT_SLOT_D = 0.1             # how deep the glass sits
-MBAT_FILL_D = 0.07            # the green column, in front of the glass
+# A BATTERY READS AS A BATTERY BY ITS PICTOGRAM, so that is what every face carries: the body with
+# its nub and the charge bars in it, sunk into the plate. What the games that do this well share
+# (Space Engineers' battery: lit lights counted on its faces; Satisfactory's power storage: one
+# charge bar on the building; Mekanism's energy cube: one core whose brightness is the charge;
+# TerraTech's GeoCorp battery pack: 2x2x2 with all 24 points attachable) is a solid frame and one
+# charge readable at a glance - and the one sign everybody reads as "stored charge" is the icon on
+# every phone. All six faces are the same, nothing stands proud of the cell, so it joins on every
+# face and has no terminals. Turned down on the way: four Falsus cells between two plates ("four
+# batteries put together"); a tall gauge column per side ("a water tank") with terminals on top; a
+# stack of lit capacitor plates in side panels ("ugly, and not the same all round"); an octagonal
+# charge dial round a cell end ("cool, but not a battery at first sight").
+#   body - the block and its six pictograms
+#   seg  - one charge bar on all six faces, about the block's middle; the scene stands MBAT_SEGS
+#          copies (Seg0 the bottom bar) there and battery.gd shrinks the dark ones into the block
+MBAT_SEGS = 5
+MBAT_BODY = (0.52, -0.72, 0.50, 0.14)   # the icon's body: half width, foot, head, corner cut
+MBAT_NUB = (0.25, 0.56, 0.72, 0.05)     # its nub, a separate window above the body
+MBAT_BEV = (0.08, 0.08)                 # the sunk windows' bevel: across, deep
+MBAT_LINE = 0.03                        # the sunset line round each window's floor
+MBAT_NUB_BEV = 0.035                    # the nub is short: its bevel and line are narrower
+MBAT_NUB_LINE = 0.015
+MBAT_BAR_IN = 0.05                      # the bars stand this far in from the line
+MBAT_BAR_GAP = 0.05                     # and this far apart
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
 SUNSET_RAMP = [(226, 116, 38), (240, 150, 60), (252, 176, 80), (254, 200, 120), (255, 226, 160)]
 
 
-def _side_frame(axis, side):
-    """Outward normal n and in-face axes (u horizontal, up) of a side face of the block."""
-    n = [0.0, 0.0, 0.0]
-    n[axis] = 1.0 if side else -1.0
-    u = [0.0, 0.0, 0.0]
-    u[2 if axis == 0 else 0] = 1.0
-    return tuple(n), tuple(u)
+def _mbat_rect(hw, y0, y1, cut):
+    return _cut_corners([(-hw, y0), (hw, y0), (hw, y1), (-hw, y1)], cut)
+
+
+def _mbat_face(f, bars, pts):
+    """One face: the plate round two sunk windows (body and nub), each a bevel, a sunset line and a
+    dark floor; the body's bars go to `bars[k]`, bottom up. "Up" is world up, or world front on a
+    top or bottom face."""
+    cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
+    n = th.norm(th.newell(pts))
+    wu = (0.0, 0.0, -1.0) if abs(n[1]) > 0.7 else (0.0, 1.0, 0.0)
+    up = th.norm(th.sub(wu, th.mul(n, th.dot(wu, n))))
+    rt = th.cross(up, n)
+    R = max(abs(th.dot(th.sub(p, cen), rt)) for p in pts)
+
+    def P(x, y, d=0.0):
+        return th.add(cen, th.add(th.add(th.mul(rt, x), th.mul(up, y)), th.mul(n, -d)))
+    inside = th.add(cen, th.mul(n, -1.0))
+    lf = th.norm(th.add(th.add(th.mul(rt, -0.45), th.mul(up, 0.55)), th.mul(n, 0.70)))
+    flat = th.dot(n, lf)
+
+    def quad(q2, st, d=0.0):
+        q = th.outward([P(x, y, d) for x, y in q2], inside)
+        f.append(th.Face(q, st, u_hint=th.sub(q[1], q[0])))
+    hw, yb, yt, c = MBAT_BODY
+    nw, ny0, ny1, nc = MBAT_NUB
+    # the plate: strips round the two windows, and the triangles their cut corners leave
+    quad([(-R, -R), (-hw, -R), (-hw, R), (-R, R)], "mplate")
+    quad([(hw, -R), (R, -R), (R, R), (hw, R)], "mplate")
+    quad([(-hw, -R), (hw, -R), (hw, yb), (-hw, yb)], "mplate")
+    quad([(-hw, yt), (hw, yt), (hw, ny0), (-hw, ny0)], "mplate")
+    quad([(-hw, ny0), (-nw, ny0), (-nw, ny1), (-hw, ny1)], "mplate")
+    quad([(nw, ny0), (hw, ny0), (hw, ny1), (nw, ny1)], "mplate")
+    quad([(-hw, ny1), (hw, ny1), (hw, R), (-hw, R)], "mplate")
+    for sx in (-1, 1):
+        for y, sy in ((yb, 1), (yt, -1)):
+            quad([(sx * hw, y), (sx * hw, y + sy * c), (sx * (hw - c), y)], "mplate")
+        quad([(sx * nw, ny1), (sx * nw, ny1 - nc), (sx * (nw - nc), ny1)], "mplate")
+        quad([(sx * nw, ny0), (sx * nw, ny0 + nc), (sx * (nw - nc), ny0)], "mplate")
+    bw, bd = MBAT_BEV
+    floor_body = None
+    for (whw, wy0, wy1, wc), wb, wl in ((MBAT_BODY, bw, MBAT_LINE), (MBAT_NUB, MBAT_NUB_BEV, MBAT_NUB_LINE)):
+        o0 = _mbat_rect(whw, wy0, wy1, wc)
+        o1 = _mbat_rect(whw - wb, wy0 + wb, wy1 - wb, wc * 0.6)
+        o2 = _mbat_rect(whw - wb - wl, wy0 + wb + wl, wy1 - wb - wl, wc * 0.5)
+        N = len(o0)
+        for i in range(N):
+            j = (i + 1) % N
+            q = th.outward([P(*o0[i]), P(*o0[j]), P(*o1[j], bd), P(*o1[i], bd)], inside)
+            nn = th.norm(th.newell(q))
+            tone = int(round(max(0.0, min(1.0, 0.5 + 1.1 * (th.dot(nn, lf) - flat))) * 5))
+            f.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
+            quad([o1[i], o1[j], o2[j], o2[i]], "mglow", bd)
+        quad(o2, "mcore", bd)
+        if floor_body is None:
+            floor_body = (whw - wb - wl, wy0 + wb + wl, wy1 - wb - wl)
+    fx, fy0, fy1 = floor_body
+    x = fx - MBAT_BAR_IN
+    y0, y1 = fy0 + MBAT_BAR_IN, fy1 - MBAT_BAR_IN
+    pitch = (y1 - y0 + MBAT_BAR_GAP) / MBAT_SEGS
+    for k in range(MBAT_SEGS):
+        a = y0 + pitch * k
+        q = th.outward([P(-x, a, bd - 0.004), P(x, a, bd - 0.004), P(x, a + pitch - MBAT_BAR_GAP, bd - 0.004),
+                        P(-x, a + pitch - MBAT_BAR_GAP, bd - 0.004)], inside)
+        bars[k].append(th.Face(q, "mcharge", u_hint=th.sub(q[1], q[0])))
 
 
 def build_marlit_battery(pk, img):
-    parts = {"marlit_battery_body": [], "marlit_battery_level": []}
+    parts = {"marlit_battery_body": []}
     f = parts["marlit_battery_body"]
-    lvl = parts["marlit_battery_level"]
     C = (-0.5, 0.5, -0.5)
     lo, hi = (-1.5, -0.5, -1.5), (0.5, 1.5, 0.5)
-    cham_box(f, lo, hi, MBAT_C, None, None, None, "medge")
-    faces = _cham_faces(lo, hi, MBAT_C)
-    # top and bottom: plain plate; the top carries two flush terminals
-    f.append(th.Face(faces[(1, 0)], "mplate", u_hint=(1, 0, 0)))
-    f.append(th.Face(faces[(1, 1)], "mplate", u_hint=(1, 0, 0)))
-    yt = 1.5 + 0.002
-    for sx, sign in ((-0.5, "+"), (0.5, "-")):
-        cx, cz = C[0] + sx, C[2]
-        n8 = 12
-        for r0, r1, st in ((0.0, 0.2, "mbev1"), (0.2, 0.26, "mglow")):
-            for k in range(n8):
-                a0, a1 = 2 * math.pi * k / n8, 2 * math.pi * (k + 1) / n8
-                if r0 == 0.0:
-                    q = [(cx, yt, cz), (cx + math.cos(a0) * r1, yt, cz + math.sin(a0) * r1), (cx + math.cos(a1) * r1, yt, cz + math.sin(a1) * r1)]
-                else:
-                    q = [(cx + math.cos(a0) * r0, yt, cz + math.sin(a0) * r0), (cx + math.cos(a1) * r0, yt, cz + math.sin(a1) * r0),
-                         (cx + math.cos(a1) * r1, yt, cz + math.sin(a1) * r1), (cx + math.cos(a0) * r1, yt, cz + math.sin(a0) * r1)]
-                f.append(th.Face(th.outward(q, (cx, 0.0, cz)), st, u_hint=(1, 0, 0)))
-        bars = [((-0.11, -0.025), (0.11, 0.025))] + ([((-0.025, -0.11), (0.025, 0.11))] if sign == "+" else [])
-        for (a, b) in bars:
-            q = [(cx + a[0], yt + 0.001, cz + a[1]), (cx + b[0], yt + 0.001, cz + a[1]), (cx + b[0], yt + 0.001, cz + b[1]), (cx + a[0], yt + 0.001, cz + b[1])]
-            f.append(th.Face(th.outward(q, (cx, 0.0, cz)), "mglow", u_hint=(1, 0, 0)))
-    # the four sides: a plate with a gauge slot cut through its middle, ribs either side
-    lim = 1.0 - MBAT_C
-    y0, y1 = MBAT_SLOT_Y
-    hw = MBAT_SLOT_HW
-    for axis in (0, 2):
-        for side in (0, 1):
-            n, u = _side_frame(axis, side)
-
-            def P(a, y, d=0.0):
-                return (C[0] + n[0] * (1.0 - d) + u[0] * a, y, C[2] + n[2] * (1.0 - d) + u[2] * a)
-            ref = (C[0], 0.5, C[2])
-            yb, ytop = -0.5 + MBAT_C, 1.5 - MBAT_C
-            for q in ([P(-lim, yb), P(-hw, yb), P(-hw, ytop), P(-lim, ytop)],
-                      [P(hw, yb), P(lim, yb), P(lim, ytop), P(hw, ytop)],
-                      [P(-hw, yb), P(hw, yb), P(hw, y0), P(-hw, y0)],
-                      [P(-hw, y1), P(hw, y1), P(hw, ytop), P(-hw, ytop)]):
-                f.append(th.Face(th.outward(q, ref), "mplate", u_hint=(0, 1, 0)))
-            d = MBAT_SLOT_D
-            for q, st in (([P(-hw, y0), P(-hw, y1), P(-hw, y1, d), P(-hw, y0, d)], "medge"),
-                          ([P(hw, y0), P(hw, y1), P(hw, y1, d), P(hw, y0, d)], "medge"),
-                          ([P(-hw, y0), P(hw, y0), P(hw, y0, d), P(-hw, y0, d)], "mbev3"),
-                          ([P(-hw, y1), P(hw, y1), P(hw, y1, d), P(-hw, y1, d)], "mbev1")):
-                m = th.mul(tuple(map(sum, zip(*q))), 0.25)
-                away = th.add(m, th.mul(th.sub(P(0, (y0 + y1) / 2, d * 0.5), m), -1.0))
-                f.append(th.Face(th.outward(q, away), st, u_hint=th.sub(q[1], q[0])))
-            back = [P(-hw, y0, d), P(hw, y0, d), P(hw, y1, d), P(-hw, y1, d)]
-            f.append(th.Face(th.outward(back, ref), "slot", u_hint=(0, 1, 0)))
-            # sunset ticks on the frame at a quarter, a half and three quarters
-            for k in (1, 2, 3):
-                ty = y0 + (y1 - y0) * k / 4
-                for sgn in (-1, 1):
-                    q = [P(sgn * hw, ty - 0.012, -0.002), P(sgn * (hw + 0.1), ty - 0.012, -0.002),
-                         P(sgn * (hw + 0.1), ty + 0.012, -0.002), P(sgn * hw, ty + 0.012, -0.002)]
-                    f.append(th.Face(th.outward(q, ref), "mglow", u_hint=th.sub(q[1], q[0])))
-            # cooling ribs: four heavy bars each side of the gauge, standing 0.03 proud
-            for sgn in (-1, 1):
-                for k in range(4):
-                    ry = -0.2 + k * 0.45
-                    a0, a1 = sorted((sgn * (hw + 0.2), sgn * (lim - 0.12)))
-                    q0 = [P(a0, ry, -0.03), P(a1, ry, -0.03), P(a1, ry + 0.16, -0.03), P(a0, ry + 0.16, -0.03)]
-                    f.append(th.Face(th.outward(q0, ref), "mbev3", u_hint=(0, 1, 0)))
-                    for (pa, pb, st) in (((a0, ry), (a1, ry), "mbev1"), ((a0, ry + 0.16), (a1, ry + 0.16), "mbev4"),
-                                         ((a0, ry), (a0, ry + 0.16), "medge"), ((a1, ry), (a1, ry + 0.16), "medge")):
-                        q = [P(pa[0], pa[1]), P(pb[0], pb[1]), P(pb[0], pb[1], -0.03), P(pa[0], pa[1], -0.03)]
-                        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
-                        cen = P((a0 + a1) / 2, ry + 0.08, -0.015)
-                        f.append(th.Face(th.outward(q, th.add(m, th.mul(th.sub(cen, m), 1.0))), st, u_hint=th.sub(q[1], q[0])))
-            # the green column: from the foot up, local y 0..(y1 - y0), the scene sets it at y0
-            fd = MBAT_FILL_D
-            q = [P(-hw + 0.03, 0.0, fd), P(hw - 0.03, 0.0, fd), P(hw - 0.03, y1 - y0, fd), P(-hw + 0.03, y1 - y0, fd)]
-            q = [(p[0] - C[0], p[1], p[2] - C[2]) for p in q]
-            lvl.append(th.Face(th.outward(q, (0.0, 0.5, 0.0)), "gauge", u_hint=(0, 1, 0)))
+    cham_box(f, lo, hi, MB_C, None, None, None, "medge")
+    bars = [[] for _ in range(MBAT_SEGS)]
+    for pts in _cham_faces(lo, hi, MB_C).values():
+        _mbat_face(f, bars, pts)
+    # every bar is its own part (one Seg node each), moved to the block's middle where they stand
+    for k in range(MBAT_SEGS):
+        for fc in bars[k]:
+            fc.pts = [th.sub(p, C) for p in fc.pts]
+        parts["marlit_battery_seg%d" % k] = bars[k]
     return parts
 
 
