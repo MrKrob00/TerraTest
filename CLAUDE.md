@@ -1908,8 +1908,13 @@ project: read it before claiming how anything works.
   round a scissor lift, a mast of leaves, an iris with a flower of 24 small leaves - "all at one
   height, too small to count") are in the model's header. Measured on the proving ground: joins as
   above in 8 of 8 cases; anchored, open at 2.4 s with 24 energy a second; released, closed again.
-- **THE MARLIT REPAIR UNIT AND SHIELD ARE FALSUS'S, SUBCLASSED, AT MARLIT'S NUMBERS** (`regen_marlit.gd`
-  extends `regen.gd`, `marlit_shield.gd` extends `shield.gd`; both 2x2x2, joining on all six faces).
+- **MARLIT HAS NO SHIELD, AND THAT IS THE DESIGN** (TerraTech's GeoCorp has none either): its answer
+  to fire is the big armour plates. `MARLIT_SHIELD` is RETIRED onto `MARLIT_BLOCK` (same 2x2x2), the
+  enum value kept for saves; the hatch model, its scene and `marlit_shield.gd` stay as a DRAFT the
+  game never loads, and `shield.gd` keeps the per-instance fields it was given for it.
+- **THE MARLIT REPAIR UNIT IS FALSUS'S, SUBCLASSED, AT MARLIT'S NUMBERS** (`regen_marlit.gd` extends
+  `regen.gd`; 2x2x2, joining on all six faces; the draft shield below was built the same way on
+  `shield.gd`).
   What the field and the dome DO stays in the parent; a faction's block sets instance fields in
   `_init` - `field_radius` / `heal_hp` / `max_bodies` / `field_centre`, `dome_scale` / `cost_x` /
   `dome_centre` - and draws its own model. The player's numbers: reach x1.5 (field 6.9 m, dome 6 m),
@@ -1920,12 +1925,13 @@ project: read it before claiming how anything works.
   to it stay in a `SHIELD_RADIUS` dome's model space, the sphere collider scales with it (Jolt:
   measured, a 4 m sphere at scale 1.5 stops a ray at 5.9 m and not at 6.3), and DOMES MERGE ONLY WITH
   DOMES OF THEIR OWN SCALE - the shared lattice (`_solve_seam`) is solved for one radius, and the
-  solve runs in that model's units. `WeaponBlock.SHIELD_REACH` is the biggest dome, 6 m. The REPAIR
+  solve runs in that model's units. `WeaponBlock.SHIELD_REACH` is the biggest dome in the game, 4 m
+  now the Marlit one is a draft. The REPAIR
   UNIT's model is the gyro in the MARLIT SHELL (`art/emitter_models.py` `marlit_shell`): twelve edge
   beams and six flush face plates, each with an octagonal porthole, the outer ring on spiders in the
   side portholes, the vertical one in the top and bottom ones. Turned down on the way: a frame of
-  pillars and a roof ("a cage"), then the gyro open on a pedestal ("nothing to bolt to"). The SHIELD
-  is a Marlit block whose six window floors are HATCHES of eight leaves: dome up, the leaves swing
+  pillars and a roof ("a cage"), then the gyro open on a pedestal ("nothing to bolt to"). The DRAFT
+  SHIELD is a Marlit block whose six window floors are HATCHES of eight leaves: dome up, the leaves swing
   `FOLD` (55 deg) into the block - at 90 the six funnels crossed inside and every window showed a
   tangle; 55 keeps each in its own sixth of the cube - a fixed dark liner behind them closes the gaps
   (they showed the sky through the block), and then the emitter SWELLS x2.1 into all six funnels
