@@ -13,7 +13,7 @@ texture_filter = 2
 resource_name = "marlit_shield_leaf_flat"
 _surfaces = [{
 "aabb": AABB(-0.4284091, -0.09, 0, 0.8568182, 0.09, 0.65),
-"attribute_data": PackedByteArray("IyFmM0cp/yb/GP8m/yxmM0c9ZjMjNf8m/4yRm0adkZtGnf+a/4z/mv+gkJvVr5Cb4K//mgqh/5oKs5Cb4MGQm9XB/5r/sv+a"),
+"attribute_data": PackedByteArray("IzFmM0c5/yb/KP8m/zxmM0dNZjMjRf8m/4yRm0adkZtGnf+a/4z/mv+gkJvVr5Cb4K//mgqh/5oKs5Cb4MGQm9XB/5r/sv+a"),
 "format": 34896613399,
 "index_count": 24,
 "index_data": PackedByteArray("AAACAAEAAwAFAAQABgAIAAcABgAJAAgACgAMAAsACgANAAwADgAQAA8ADgARABAA"),

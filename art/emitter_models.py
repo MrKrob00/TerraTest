@@ -1176,7 +1176,8 @@ def build_marlit_regen(pk, img):
 # triangular leaves (the facets' place, toned like them); with the dome up each leaf swings INTO the
 # block on a hinge along its edge of the octagon by MSD_FOLD, the window becomes a funnel of parted
 # leaves, and at the bottom of all six the emitter glows: a dome is thrown every way, so every face
-# opens. MSD_FOLD keeps each funnel inside its own sixth of the cube (the pyramid from the face to
+# opens. Once they are open the emitter SWELLS (MSD_SWELL) and presses into all six funnels - the
+# player's call: at the size that fits between the closed leaves it read as a small bead. MSD_FOLD keeps each funnel inside its own sixth of the cube (the pyramid from the face to
 # the centre), so the six never touch: at 90 deg they crossed inside and every window showed a tangle
 # of other faces' leaves. Nothing
 # moves outward, so a neighbour bolted on any face is never touched. Turned down on the way: armour
@@ -1187,7 +1188,9 @@ def build_marlit_regen(pk, img):
 #   leaf_flat / leaf_corner - one leaf on a flat and on a cut corner of the octagon: hinge along X at
 #            the local origin, apex toward +Z (the window's centre), outward face +Y
 MSD_C = 0.08          # the block's edge chamfer
-MSD_CORE_R = 0.38       # inside the leaves' tips, the nearest of which stand 0.43 from the centre
+MSD_CORE_R = 0.38       # closed: inside the leaves' tips, the nearest of which stand 0.43 from the centre
+MSD_SWELL = 2.1         # open: the emitter swells to 0.8 and fills the foot of every funnel, the
+                        # folded leaves and the liner cutting it - still 0.1 under every face
 MSD_FOLD = 55.0
 MSD_LINER = 0.04
 MSD_LINER_IN = 0.45
@@ -1266,9 +1269,9 @@ def build_marlit_shield(pk, img):
     print("leaves:", {k: (round(v[0], 4), round(v[1], 4), v[2]) for k, v in kinds.items()}, "depth", round(d2, 4))
     _leaf(parts["marlit_shield_leaf_flat"], kinds["flat"][1], kinds["flat"][0], 3)
     _leaf(parts["marlit_shield_leaf_corner"], kinds["corner"][1], kinds["corner"][0], 2)
-    lathe_y(pk, img, parts["marlit_shield_core"],
-            [(0.0, 0.5 - MSD_CORE_R), (MSD_CORE_R * 0.7, 0.5 - MSD_CORE_R * 0.7), (MSD_CORE_R, 0.5), (MSD_CORE_R * 0.7, 0.5 + MSD_CORE_R * 0.7),
-             (0.0, 0.5 + MSD_CORE_R)], CORE_RAMP, sides=10, cell=4, cx=-0.5, cz=-0.5)
+    # round its OWN centre: the script swells it by scaling the node, which sits at the block's middle
+    prof = [(MSD_CORE_R * math.sin(math.pi * k / 8), -MSD_CORE_R * math.cos(math.pi * k / 8)) for k in range(9)]
+    lathe_y(pk, img, parts["marlit_shield_core"], prof, CORE_RAMP, sides=16, cell=4)
     return parts
 
 
