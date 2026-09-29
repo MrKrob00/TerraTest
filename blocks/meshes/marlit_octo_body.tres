@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://b30vnwr4pgfcr"]
 
 [ext_resource type="Texture2D" uid="uid://bttnjh1rj8s2n" path="res://objects/marlit_octo_texture.png" id="1_kqlvp"]
 

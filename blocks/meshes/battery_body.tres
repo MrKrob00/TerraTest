@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://ccca6yygs1713"]
 
 [ext_resource type="Texture2D" uid="uid://cp0mg03kqtg6" path="res://objects/battery_texture.png" id="1_u4uyy"]
 
