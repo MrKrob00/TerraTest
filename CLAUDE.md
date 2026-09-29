@@ -1917,8 +1917,9 @@ project: read it before claiming how anything works.
   `shield.gd`).
   What the field and the dome DO stays in the parent; a faction's block sets instance fields in
   `_init` - `field_radius` / `heal_hp` / `max_bodies` / `field_centre`, `dome_scale` / `cost_x` /
-  `dome_centre` - and draws its own model. The player's numbers: reach x1.5 (field 6.9 m, dome 6 m),
-  the repair field heals 40% more a tick and takes 40% more blocks a tick, a hit on the Marlit dome
+  `dome_centre` - and draws its own model. The repair unit's numbers are in the repair-budget entry
+  below (8.75 m, 180 HP/s at 0.6 HP an energy, 40% more blocks a tick); the draft dome's were a
+  reach x1.5 (6 m), and a hit on the Marlit dome
   costs `SHIELD_COST_X` / 1.25 (0.48 energy a point against Falsus's 0.6 - the player asked for
   1.25 against 1, and 0.6 was set down from 1.0 because domes "fell too fast", so the ratio was
   kept, not the numbers). THE DOME IS SCALED AS A NODE: mesh, plates, shader and every point handed
@@ -1998,12 +1999,24 @@ project: read it before claiming how anything works.
   faces outright: half the fragments, nothing added on top of itself, and the near/far question
   gone; the repair field's shader is a rim, a thin grid and one band, no hash. The cost is that they
   are invisible from inside, which at their radius the camera almost never is.
+- **A REPAIR UNIT MENDS A BUDGET OF HIT POINTS A SECOND, SHARED BY WHAT IS BROKEN** (`regen.gd`
+  `heal_rate` / `hp_per_energy`, `_share`; the player's numbers): Falsus 135 HP/s at 1.5 HP an
+  energy, Marlit 180 HP/s at 0.6 HP an energy over 8.75 m - wider and faster, and two and a half
+  times the energy per hit point. One damaged block takes the whole budget, ten a tenth each;
+  none is given more than it is missing and what it did not need goes to the rest. The budget is
+  cut to what the machine can pay for and paid before anything flies. It used to be a fixed 12 per
+  block per tick for 2 energy. `max_bodies` caps the DAMAGED blocks a tick shares between (the
+  nearest first); the sphere query itself returns up to `FIELD_QUERY_MAX`, since sharing one cap
+  let a dense hull fill it with sound blocks and batteries - measured, four of ten damaged blocks
+  were never asked about. Measured on the proving ground: one block 135 for 90 energy, ten blocks
+  13-14 each (135) for 90; Marlit ten blocks 18 each for 300, one block 159 (all it was missing).
 - **THE REPAIR FIELD IS A PLAIN SPHERE, AND THE REPAIR IS DIGITS THAT TRAVEL** (`regen.gd`,
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
   (`pulse`) as each repair lands. For every block a tick mends, `DIGITS_PER_HEAL` 0/1 cards appear
-  round the unit's core, blink in, and fly to the block along an arc; THE HIT POINTS LAND WITH THEM
+  ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink
+  in, and fly to the block along an arc; THE HIT POINTS LAND WITH THEM
   (`_land` -> `_mend`), so the block's damage overlay greens as they arrive - a block with digits
   still on the way is not charged or sent more. The digits are ONE MultiMesh per unit, a pool of
   `max_bodies` x `DIGITS_PER_HEAL` cards written on the CPU only while any flies: no node per heal.

@@ -9,11 +9,12 @@
 extends VehicleBlock
 
 const REGEN_RADIUS := 4.6      # м: как далеко достаёт
-## HP ЗА ТИК НА ОДИН БЛОК. Пять в секунду против входящих 25-75 не читались вовсе — поле работало
-## только между боями. Это ЕДИНСТВЕННЫЙ ответ игрока на длительный огонь (во вражеских сборках
-## регена нет ни в одной, см. blocks.gd), и он обязан быть заметен в бою, а не только после него.
-const REGEN_HP := 12
-const REGEN_COST := 2.0        # энергии за один подлеченный блок
+## THE UNIT MENDS A BUDGET OF HIT POINTS A SECOND, SHARED BY WHAT IS BROKEN (the player's numbers):
+## one damaged block takes all of it, ten take a tenth each. It used to be a fixed 12 per block per
+## tick for 2 energy, so a big battered hull drew the most repair and the most energy exactly when
+## the unit was spread thinnest - and a lone block under fire got the same 12 as one of thirty.
+const REGEN_RATE := 135.0      # HP a second, split between the damaged blocks in the field
+const REGEN_HP_PER_ENERGY := 1.5
 const REGEN_INTERVAL := 1.0    # с между тиками
 
 ## Яркость поля: рабочая и «энергии нет». Поле показывает РАДИУС и то, что блок работает;
@@ -24,10 +25,11 @@ const FIELD_ALPHA_DEAD := 0.03
 const FIELD_FADE := 0.4
 
 ## What a faction's own repair unit changes (regen_marlit.gd sets them in _init): how far the field
-## reaches, how much a tick heals, how many blocks one tick can take, and where in the block the
-## field's centre is - the anchor cell of a 2x2x2 block is its corner, not its middle.
+## reaches, how many hit points it mends a second and at what price, how many blocks one tick can
+## take, and where in the block the field's centre is - a 2x2x2 block's anchor is its corner.
 var field_radius: float = REGEN_RADIUS
-var heal_hp: int = REGEN_HP
+var heal_rate: float = REGEN_RATE
+var hp_per_energy: float = REGEN_HP_PER_ENERGY
 var max_bodies: int = FIELD_MAX_BODIES
 var field_centre: Vector3 = Vector3.ZERO
 
@@ -109,7 +111,7 @@ func _animate_beacon(delta: float, on: bool) -> void:
 # ── The field and the digits ─────────────────────────────────────────────────
 # The FIELD is a sphere of exactly `field_radius` (regen_field.gdshader): a rim, a thin grid and a
 # band running over it - it says how far the unit reaches and that it is powered. The REPAIR is said
-# by DIGITS: for every block a tick mends, DIGITS_PER_HEAL 0/1 cards appear round the unit's core,
+# by DIGITS: for every block a tick mends, DIGITS_PER_HEAL 0/1 cards appear anywhere in the field,
 # hang there a moment and fly to the block along an arc; the hit points land WITH them
 # (`_land`), so the block's damage overlay greens the moment the digits arrive. They used to be a
 # cloud of ninety cards orbiting the field for good and one glitch bolt per heal - the player wanted
@@ -124,7 +126,7 @@ const DIGIT_SIZE := 0.32
 const DIGIT_SPAWN := 0.35          # s the digits hang at the core, blinking in
 const DIGIT_FLY := 0.7             # s to the block
 const DIGIT_FADE := 0.15           # s they burn out on it
-const DIGIT_CORE := 0.5            # m round the core they appear in
+const DIGIT_SPREAD := 0.9         # share of the field's radius they appear within
 const DIGIT_ARC := 0.9             # m the path bows upward
 const PULSE_FADE := 0.4            # s the field brightens for when a repair lands
 
@@ -184,8 +186,10 @@ func _launch(b: Node3D, hp: int) -> bool:
 	var id: int = b.get_instance_id()
 	_groups[id] = {"block": b, "hp": hp, "left": DIGITS_PER_HEAL}
 	for k in DIGITS_PER_HEAL:
+		# Anywhere inside the field (uniform in its volume: the cube root), not at the core: a whole
+		# swarm leaving one point read as a fountain, not as the field doing the work.
 		var start := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized() \
-				* randf_range(0.15, DIGIT_CORE)
+				* field_radius * DIGIT_SPREAD * pow(randf(), 1.0 / 3.0)
 		_flights.append({"slot": _free.pop_back(), "group": id, "start": start,
 			"t": -k * 0.08, "side": randf_range(-0.5, 0.5), "seed": randf()})
 	return true
@@ -305,26 +309,65 @@ func _work(delta: float) -> bool:
 	# Кого чинить, спрашиваем У ФИЗИКИ, а не у своего узла blocks: раньше перебирались только
 	# соседи по машине, и поле, накрывшее лежащий на земле блок или борт стоящей рядом машины,
 	# не делало с ними ничего. Слой 2 — это блоки, все и всюду: на машине, на базе, в мире.
+	# СЕБЯ ТОЖЕ ЧИНИМ: the unit is one of the blocks in its field, or a shot-up unit stays shot up.
+	# Blocks with digits still on the way wait for them to land.
+	var need: Array = []
 	for b in _blocks_in_field():
-		# СЕБЯ ТОЖЕ ЧИНИМ. Раньше блок себя пропускал, и пробитый реген оставался пробитым:
-		# чинил всё вокруг, кроме единственного блока, от которого зависит вся починка.
-		if b.current_hp >= b.max_hp:
-			continue
-		# Digits already on their way to it: the next repair waits for them to land.
-		if _groups.has(b.get_instance_id()):
-			continue
-		# Платим за каждый блок отдельно: не хватило на этого — дальше смысла нет.
-		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
-			break
-		if not _launch(b, heal_hp):
-			_mend(b, heal_hp)
-		_heal_flash = 1.0
+		if b.current_hp < b.max_hp and not _groups.has(b.get_instance_id()):
+			need.append(b)
+	if need.is_empty():
+		return true
+	if need.size() > max_bodies:
+		var c: Vector3 = to_global(field_centre)
+		need.sort_custom(func(a, b): return (a as Node3D).global_position.distance_squared_to(c) < (b as Node3D).global_position.distance_squared_to(c))
+		need.resize(max_bodies)
+	# The budget, cut to what the machine can pay for; paid in full before anything flies.
+	var budget: float = heal_rate * REGEN_INTERVAL
+	if vehicle.has_method("energy_available"):
+		budget = minf(budget, float(vehicle.energy_available()) * hp_per_energy)
+	var shares: Dictionary = _share(need, int(budget))
+	var total := 0
+	for id in shares:
+		total += int(shares[id])
+	if total <= 0:
+		return true
+	vehicle.energy_consume(float(total) / hp_per_energy)
+	for b in need:
+		var hp: int = int(shares.get(b.get_instance_id(), 0))
+		if hp > 0 and not _launch(b, hp):
+			_mend(b, hp)
+	_heal_flash = 1.0
 	return true
 
-## Все блоки в поле — запросом сферой по слою блоков. Потолок в 32 тела берём такой же, как у
-## взрыва: поле маленькое, и упереться в него можно только внутри плотной сборки, где лишний
-## блок починится следующим тиком.
+## The budget split evenly between the blocks, none given more than it is missing, what one did not
+## need handed on to the rest (water filling). Every pass gives at least one point to someone, so
+## it ends. instance id -> hit points.
+static func _share(blocks: Array, budget: int) -> Dictionary:
+	var out: Dictionary = {}
+	var open: Array = blocks.duplicate()
+	var left: int = budget
+	while left > 0 and not open.is_empty():
+		var each: int = maxi(left / open.size(), 1)
+		var still: Array = []
+		for b in open:
+			if left <= 0:
+				break
+			var id: int = b.get_instance_id()
+			var missing: int = b.max_hp - b.current_hp - int(out.get(id, 0))
+			var give: int = mini(mini(each, missing), left)
+			out[id] = int(out.get(id, 0)) + give
+			left -= give
+			if missing > give:
+				still.append(b)
+		open = still
+	return out
+
+## How many DAMAGED blocks one tick shares its budget between (`max_bodies`, the nearest first).
 const FIELD_MAX_BODIES := 32
+## What the sphere query may return at all. It counts every block in the field, whole ones and
+## batteries included: when this was the damaged cap too, a dense hull filled it with sound blocks
+## and measured, four of ten damaged ones were never asked about.
+const FIELD_QUERY_MAX := 160
 
 func _blocks_in_field() -> Array:
 	var world := get_world_3d()
@@ -338,7 +381,7 @@ func _blocks_in_field() -> Array:
 	q.collision_mask = 2                      # слой блоков (VehicleBlock.collision_layer = 2)
 	q.collide_with_bodies = true
 	var out: Array = []
-	for hit in world.direct_space_state.intersect_shape(q, max_bodies):
+	for hit in world.direct_space_state.intersect_shape(q, FIELD_QUERY_MAX):
 		var b = hit.get("collider")
 		if b is Node3D and ("current_hp" in b) and ("max_hp" in b):
 			out.append(b)

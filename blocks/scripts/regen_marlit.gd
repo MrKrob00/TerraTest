@@ -3,15 +3,18 @@
 # is the gyro. The block is 2x2x2, so the field stands round the block's middle, not its anchor.
 extends "res://blocks/scripts/regen.gd"
 
-## The player's numbers against the Falsus unit: half as far again, and 40 % more of both what a tick
-## heals and how many blocks one tick can take. The cost per block is regen.gd's, so per hit point
-## it is the cheaper unit too.
-const MARLIT_REACH := 1.5
+## The player's numbers: a wider, faster, hungrier field. 180 HP a second against Falsus's 135, at
+## 0.6 HP an energy against 1.5 - two and a half times the energy for each hit point - and 8.75 m
+## of reach; 40% more blocks a tick, so the budget has room to spread.
+const MARLIT_RADIUS := 8.75
+const MARLIT_RATE := 180.0
+const MARLIT_HP_PER_ENERGY := 0.6
 const MARLIT_MORE := 1.4
 
 func _init() -> void:
-	field_radius = REGEN_RADIUS * MARLIT_REACH
-	heal_hp = int(round(REGEN_HP * MARLIT_MORE))
+	field_radius = MARLIT_RADIUS
+	heal_rate = MARLIT_RATE
+	hp_per_energy = MARLIT_HP_PER_ENERGY
 	max_bodies = int(round(FIELD_MAX_BODIES * MARLIT_MORE))
 	field_centre = Vector3(-0.5, 0.5, -0.5)
 
