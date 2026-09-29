@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" uid="uid://2lmjdde08ut8" path="res://objects/marlit_solar_texture.png" id="1_f5888"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sjofu"]
+resource_name = "marlit_solar"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_f5888")
+texture_filter = 2
+
+[resource]
+resource_name = "marlit_solar_mast"
+_surfaces = [{
+"aabb": AABB(-0.10162675, 0, -0.10162675, 0.2032535, 1, 0.2032535),
+"attribute_data": PackedByteArray("/xgEkf8Y/47/AP+O/wAEkf8yBJH/Mv+O/xr/jv8aBJH/TASR/0z/jv80/47/NASR/2YEkf9m/47/Tv+O/04Ekf+ABJH/gP+O/2j/jv9oBJH/mgSR/5r/jv+C/47/ggSR/7QEkf+0/47/nP+O/5wEkf/OBJH/zv+O/7b/jv+2BJHf5W1kcuT/Ymzi/2L/4G1k/+ByZmzi4Gdy5OBn3+VyZg=="),
+"format": 34896613399,
+"index_count": 66,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAIAAkACMAIAAlACQAIAAmACUAIAAnACYA"),
+"material": SubResource("StandardMaterial3D_sjofu"),
+"name": "marlit_solar",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 40,
+"vertex_data": PackedByteArray("/////wS14ugEtf/////i6AS1AAD//+Lo//8AAAS14ugEtf//////v/pK//////+/+koAAP///78EtQAA////v/pK/////z+oAAD//wS1P6gAAAAABLU/qPpKAAD//z+oAAD//wS1/78AAP//+kr/vwAAAAD6Sv+/AAAAAAS1/78AAP//+kqT4fpK//8AAJPh+koAAAAAk+EAAAAA+kqT4fpK//8AAP//BLX//wAA//8EtQAAAAD///pKAAAAAP//BLX//wAAh/b/////+kqH9v//AAD6Sof2BLUAAAAAh/b/////+kr///////8Etf////8AAAS1/////wAA+kr////////6Sv//BLX//wAA///6Sv//AAD//wAA///6Sv//AAD//wS1///6Sv///////wS1/////////////wS1//9Lohh1S6IYdUuiGHVLohh1/3//f/9//3//f/9//3//f3xsYr18bGK9fGxivXxsYr3/f////3////9/////f///7mNN2O5jTdjuY03Y7mNN2P8//7//P/+//z//v/8//7/lyYJo5cmCaOXJgmjlyYJo/7//f/+//3//v/9//7//f/9//7//f/+//3//v/9//7//f/+//3//v/9//7//f/+/")
+}]
+blend_shape_mode = 0
