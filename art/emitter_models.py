@@ -2246,29 +2246,30 @@ def build_battery(pk, img):
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
 # THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack. The body is ONE PART: an H-shaped
 # profile - a platform under, a platform over, a spine a third of the width between them - swept from
-# back to front with every outer edge chamfered, so platforms and spine read as one casting rather
-# than a box stood between two slabs. In the two bays the H leaves, TWO BIG CELLS a side, barrels
-# whose ends are hidden in sockets in the platforms and whose bellies come out flush with the
-# block's faces, a couple of energy rings showing on each. The charge is a VERTICAL GAUGE cut into
-# the spine through both platforms, front and back. The platforms' sides carry the faction's window;
-# nothing stands out of the cell and it joins on every face.
+# back to front with every outer edge chamfered, the platforms' sides vented. In the two bays the H
+# leaves stand TWO CAR BATTERIES a side (the player's call), FILLING the bay: platform to platform,
+# the block's side to the spine, one width top to bottom. What makes them part of the block rather
+# than boxes put in it: a steel strap over each outer side from platform to platform, bolted at the
+# top, and a copper link across the gap between the two of a side. A ribbed case under a lid band,
+# and on its outward end the charge eye a car battery carries, lit green while it holds charge. The
+# charge itself is the VERTICAL GAUGE cut into the spine through
+# both platforms, front and back. Nothing stands out of the cell and it joins on every face.
 # Turned down before the player set this layout: four Falsus cells between two plates; a gauge
 # column per side ("a water tank") with terminals on top; lit capacitor plates in side panels; an
 # octagonal charge dial; the phone's battery icon on every face ("too simple"); one octagonal cell
-# with rings in a cage of posts ("looks like a battery again"). And inside the layout: platforms
-# too thin, cells standing whole on the platforms, the gauge a separate box between them.
-#   body  - the casting and the cells
+# with rings in a cage of posts ("looks like a battery again"). Inside the layout: platforms too
+# thin, the gauge a separate box between them, round cells in sockets ("not built in"), and car
+# batteries on trays with a gap over them and a lid wider than the case ("short, uneven widths").
+#   body  - the casting and the batteries
 #   seg   - one gauge bar, front and back, about the block's middle; the scene stands MBAT_SEGS
 #           copies (Seg0 the lowest) there and battery.gd shrinks the dark ones into the block
-#   ring  - one tier of energy rings on all four cells (ring0 the lower), about the block's middle
+#   ring0 - the four batteries' charge eyes, about the block's middle
 MBAT_SEGS = 8
 MBAT_PLAT = 0.66                  # each platform's height
 MBAT_SPINE = 2.0 / 3.0            # the spine's width
 MBAT_C = 0.08                     # the casting's chamfer
-MBAT_CELL = (0.295, 0.33)         # a cell's radius to its flats: at its ends, at its belly (flush)
-MBAT_SOCKET = (0.33, 0.07)        # a socket round each cell end: radius to its flats, height
-MBAT_RING_T = (0.36, 0.64)        # the rings' middles, as shares of the cell's visible height
-MBAT_RING_H = 0.06
+MBAT_CAR = (0.05, 0.08, 0.12, 0.055)  # a car battery: inset from the block's side, the gap between
+                                      # the two of a side, the lid band, the charge eye's radius
 MBAT_GAUGE = (0.16, 0.20, 0.04, 0.05, 0.015)   # hw, margin top/bottom, bevel across, deep, line
 MBAT_BAR_GAP = 0.03
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
@@ -2345,7 +2346,7 @@ def _mbat_profile():
 def build_marlit_battery(pk, img):
     import random as _r
     rnd = _r.Random(233)
-    parts = {"marlit_battery_body": [], "marlit_battery_ring0": [], "marlit_battery_ring1": []}
+    parts = {"marlit_battery_body": [], "marlit_battery_ring0": []}
     f = parts["marlit_battery_body"]
     C = (-0.5, 0.5, -0.5)
     c = MBAT_C
@@ -2367,8 +2368,10 @@ def build_marlit_battery(pk, img):
         vert = abs(e[0]) < 1e-6
         outer_side = vert and abs(abs(a[0] + 0.5) - 1.0) < 1e-6
         outer_cap = horiz and abs(a[1] - 0.5) > 0.99
-        if outer_cap or (outer_side and math.dist(a, b) > 0.3):
+        if outer_cap:
             marlit_poly(f, q, rnd)
+        elif outer_side and math.dist(a, b) > 0.3:
+            f.append(th.Face(q, "mvent", u_hint=(0, 0, 1)))
         elif horiz or vert:
             f.append(th.Face(q, "mplate", u_hint=(0, 0, 1)))
         else:
@@ -2444,56 +2447,82 @@ def build_marlit_battery(pk, img):
             q = th.outward([P(-fx, ya, bd - 0.004), P(fx, ya, bd - 0.004), P(fx, yb_, bd - 0.004),
                             P(-fx, yb_, bd - 0.004)], ref)
             part.append(th.Face([th.sub(p, C) for p in q], "mcharge", u_hint=(1, 0, 0)))
-    # the cells: barrels, their ends in sockets in the platforms, their bellies flush with the faces
-    re_, rb = MBAT_CELL
-    sr, sh = MBAT_SOCKET
-    fr = lambda r: flat_r(r, 8)
-    vis0, vis1 = y0 + sh, y1 - sh
-    span = vis1 - vis0
+    # the car batteries FILL THEIR BAY: from the lower platform to the upper one, from the block's
+    # side to the spine, one width top to bottom (a tray or lid wider than the case read as uneven).
+    # A ribbed case under a lid band, a steel strap over the outer side from platform to platform
+    # with a bolt head at the top, a copper link across the gap between the two of a side, and the
+    # charge eye on the outward end under a sunset line
+    xi, zg, lb, eye_r = MBAT_CAR
+    sx_l, sx_r = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
     for cx, cz in _mbat_cells():
-        # the sockets: a collar of the casting round each end
-        for ys, sg in ((y0, 1.0), (y1, -1.0)):
-            prof_s = [(fr(sr), ys), (fr(sr), ys + sg * (sh - 0.02)), (fr(sr - 0.02), ys + sg * sh), (fr(re_), ys + sg * sh)]
-            if sg < 0:
-                prof_s = [(r, y) for r, y in reversed(prof_s)]
-            lathe_y(pk, img, f, prof_s, MARLIT_RAMP, sides=8, cx=cx, cz=cz)
-        pr = [(fr(re_), vis0), (fr(rb), vis0 + 0.10)]
-        for t in MBAT_RING_T:
-            ga = vis0 + span * t - MBAT_RING_H / 2
-            gb = ga + MBAT_RING_H
-            pr += [(fr(rb), ga), (fr(rb - 0.03), ga), (fr(rb - 0.03), gb), (fr(rb), gb)]
-        pr += [(fr(rb), vis1 - 0.10), (fr(re_), vis1)]
-        lathe_y(pk, img, f, pr, MARLIT_RAMP, sides=8, cx=cx, cz=cz)
-        for k, t in enumerate(MBAT_RING_T):
-            ga = vis0 + span * t - MBAT_RING_H / 2 + 0.008
-            gb = ga + MBAT_RING_H - 0.016
-            lathe_y(pk, img, parts["marlit_battery_ring%d" % k], [(fr(rb - 0.004), ga), (fr(rb - 0.004), gb)],
-                    GREEN_RAMP, sides=8, cx=cx - C[0], cz=cz - C[2])
-    for k in range(2):
-        for fc in parts["marlit_battery_ring%d" % k]:
-            fc.pts = [(p[0], p[1] - C[1], p[2]) for p in fc.pts]
+        left = cx < -0.5
+        xo = -1.5 + xi if left else 0.5 - xi                 # the outer side
+        xs = sx_l - 0.015 if left else sx_r + 0.015         # the spine side
+        xa, xb = sorted((xo, xs))
+        out_z = -1.0 if cz < -0.5 else 1.0
+        za, zb_ = sorted((-1.5 + zg if out_z < 0 else -0.5 + zg / 2, -0.5 - zg / 2 if out_z < 0 else 0.5 - zg))
+        cham_box(f, (xa, y0, za), (xb, y1 - lb, zb_), 0.025, "mcase", None, None, "medge")
+        cham_box(f, (xa, y1 - lb, za), (xb, y1, zb_), 0.025, "mbev4", None, None, "medge")
+        # the strap and its bolt, on the outer side, in the middle of the battery's length
+        zm = (za + zb_) / 2
+        so = xo - (0.03 if left else -0.03)
+        s0, s1 = sorted((xo, so))
+        cham_box(f, (s0, y0 - 0.01, zm - 0.05), (s1, y1 + 0.01, zm + 0.05), 0.008, "mbev4", None, None, "medge")
+        b0, b1 = sorted((so, so - (0.02 if left else -0.02)))
+        cham_box(f, (b0, y1 - lb + 0.02, zm - 0.035), (b1, y1 - 0.02, zm + 0.035), 0.006, "mbev5", "mbev5", "mbev1", "medge")
+        # the eye end: a sunset line under the lid band, the eye in its bezel near the outer corner
+        ze = za if out_z < 0 else zb_
+        ref = (cx, 0.5, cz)
+        q = [(xa + 0.05, y1 - lb - 0.035, ze + out_z * 0.001), (xb - 0.05, y1 - lb - 0.035, ze + out_z * 0.001),
+             (xb - 0.05, y1 - lb - 0.015, ze + out_z * 0.001), (xa + 0.05, y1 - lb - 0.015, ze + out_z * 0.001)]
+        f.append(th.Face(th.outward(q, ref), "mglow", u_hint=(1, 0, 0)))
+        ex = xo + (0.14 if left else -0.14)
+        ey = y1 - lb - 0.13
+        for r, st, dz, lit in ((eye_r + 0.028, "mflat0", 0.001, False), (eye_r, "mcharge", 0.004, True)):
+            ring = [(ex + r * _OCT_K * math.cos(math.pi / 8 + k * math.pi / 4),
+                     ey + r * _OCT_K * math.sin(math.pi / 8 + k * math.pi / 4), ze + out_z * dz) for k in range(8)]
+            face = th.Face(th.outward(ring, ref), st, u_hint=(1, 0, 0))
+            if lit:
+                face.pts = [th.sub(p, C) for p in face.pts]
+                parts["marlit_battery_ring0"].append(face)
+            else:
+                f.append(face)
+    # the copper link across each side's gap, on the outer side under the lid band
+    for left in (True, False):
+        xo = -1.5 + xi if left else 0.5 - xi
+        x0_, x1_ = sorted((xo, xo - (0.025 if left else -0.025)))
+        cham_box(f, (x0_, y1 - lb - 0.1, -0.5 - zg / 2 - 0.16), (x1_, y1 - lb - 0.03, -0.5 + zg / 2 + 0.16), 0.008,
+                 "coil", "coil", "coil", "coil")
     return parts
 
 
 # ── the Marlit wireless charger ─────────────────────────────────────────────────────────────────
-# TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot): a heavy housing
-# the emitter disc COMES OUT OF, through a slot at half its height, and three fingers reaching
-# forward from the housing over the disc to hook its rim. The disc glows cyan round its edge - the
-# blue of every energy beam in the game (the player's call); GeoCorp's hazard stripes become the
-# faction's sunset slats and its warning sticker the faction's window on top. 2x1x2: the housing
-# fills the back row and its back face IS the mount - flush, a window per cell, the two faces it
-# joins by; the disc turns in the fingers while energy flows (wireless_charger.gd `Ring`) and the
-# beam leaves its middle. Turned down: the disc hung UNDER the housing on a spindle, and a separate
-# mount plate standing proud of the back ("a strange platform").
-#   body - housing, fingers
+# TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot), mounted like the
+# Girder Bracket: a back plate the full height - the mount, the two faces it joins by, a window per
+# cell - with a deck over the back half on two braces. From the deck an arm reaches the HUB over the
+# disc's middle, and a lower arm from the plate's foot the bearing under it: the disc turns on the
+# axis the two hold (wireless_charger.gd `Ring`), glowing cyan round its edge - the blue of every
+# energy beam in the game (the player's call). Out of the hub two claws curl round the rim, one each
+# side, and in its crown sits a cyan LENS the beam leaves from. Turned down: the disc hung UNDER the
+# housing on a spindle; a separate mount plate proud of the back ("a strange platform"); a solid
+# housing with a slot ("just two blocks"); three square fingers, then three bent ones from a palm
+# on the housing ("two, not three, and something at the middle").
+#   body - plate, deck, braces, arms, hub, bearing, claws
 #   disc - the emitter, about its own middle (the scene's Ring node stands at MWL_DISC)
+#   lens - the hub's lens, about the disc's middle, dimmed when idle
 MWL_DISC = (-0.5, 0.0, -0.74)     # the disc's middle in block space: half height, the front row
 MWL_DISC_A = 0.60                 # its half width across the flats
 MWL_DISC_H = 0.06                 # its half thickness
-MWL_SLOT = 0.11                   # the slot's half height, the disc turning in it
-MWL_FINGERS = (225.0, 270.0, 315.0)   # where the fingers hook the rim, degrees round the disc
-MWL_CURL = 0.12                   # the radius a finger curls round the rim by
-MWL_FINGER = (0.22, 0.13, 0.08)   # a finger's width at the palm, at the tip; its thickness
+MWL_PLATE = 0.2                   # the back plate
+MWL_DECK_Z = -0.45                # the deck reaches forward to here
+MWL_DECK_Y = (0.2, 0.36)          # its underside and top
+MWL_ARM = 0.13                    # the upper arm's half width
+MWL_HUB = 0.2                     # the hub's half width across flats
+MWL_LENS = 0.12
+MWL_FINGERS = (205.0, 335.0)      # the claws reach forward to either side, a pair of pincers round the
+                                  # disc's front half; straight out to the sides they read as a strap
+MWL_CURL = 0.12                   # the radius a claw curls round the rim by
+MWL_FINGER = (0.2, 0.13, 0.08)    # a claw's width at the hub, at the tip; its thickness
 
 
 _OCT_K = 1.0 / math.cos(math.pi / 8)
@@ -2577,44 +2606,50 @@ def _mwl_claw(f, pts, side):
 def build_marlit_wireless(pk, img):
     import random as _r
     rnd = _r.Random(241)
-    parts = {"marlit_wireless_body": [], "marlit_wireless_disc": []}
+    parts = {"marlit_wireless_body": [], "marlit_wireless_disc": [], "marlit_wireless_lens": []}
     f = parts["marlit_wireless_body"]
-    S = MWL_SLOT
-    # the housing: one solid block, the slot cut into its front only, so the ends are whole and the
-    # back - the mount - is one flush face with a window per cell; slats on the ends, windows on top
-    lo, hi, c = (-1.5, -0.5, -0.5), (0.5, 0.5, 0.5), 0.07
-    cham_box(f, lo, hi, c, None, None, "mflat1", "medge")
-    faces = _cham_faces(lo, hi, c)
-    for key in ((0, 0), (0, 1)):
-        f.append(th.Face(faces[key], "mhazard", u_hint=(0, 0, 1)))
-    _mwl_face_windows(f, faces[(2, 1)], 2, rnd)
-    _mwl_face_windows(f, faces[(1, 1)], 2, rnd)
-    sx0, sx1, zb = -1.32, 0.32, 0.0
-    fx0, fx1, fy0, fy1, zf = -1.5 + c, 0.5 - c, -0.5 + c, 0.5 - c, -0.5
-    ref = (-0.5, 0.0, 0.5)
-    for q in ([(fx0, S, zf), (fx1, S, zf), (fx1, fy1, zf), (fx0, fy1, zf)],
-              [(fx0, fy0, zf), (fx1, fy0, zf), (fx1, -S, zf), (fx0, -S, zf)],
-              [(fx0, -S, zf), (sx0, -S, zf), (sx0, S, zf), (fx0, S, zf)],
-              [(sx1, -S, zf), (fx1, -S, zf), (fx1, S, zf), (sx1, S, zf)]):
-        f.append(th.Face(th.outward(q, ref), "mplate", u_hint=(1, 0, 0)))
-    for q, st, inner in (([(sx0, S, zf), (sx1, S, zf), (sx1, S, zb), (sx0, S, zb)], "mflat1", (-0.5, 0.0, -0.25)),
-                         ([(sx0, -S, zf), (sx1, -S, zf), (sx1, -S, zb), (sx0, -S, zb)], "mflat3", (-0.5, 0.0, -0.25)),
-                         ([(sx0, -S, zf), (sx0, S, zf), (sx0, S, zb), (sx0, -S, zb)], "mflat2", (-0.5, 0.0, -0.25)),
-                         ([(sx1, -S, zf), (sx1, S, zf), (sx1, S, zb), (sx1, -S, zb)], "mflat2", (-0.5, 0.0, -0.25)),
-                         ([(sx0, -S, zb), (sx1, -S, zb), (sx1, S, zb), (sx0, S, zb)], "mflat0", (-0.5, 0.0, -0.25))):
-        # the slot's walls face into it
-        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
-        f.append(th.Face(th.outward(q, th.add(m, th.sub(m, inner))), st, u_hint=th.sub(q[1], q[0])))
-    for y0 in (S + 0.07, -S - 0.1):
-        f.append(th.Face(th.outward([(-1.3, y0, -0.502), (0.3, y0, -0.502), (0.3, y0 + 0.025, -0.502),
-                                     (-1.3, y0 + 0.025, -0.502)], (0, 0, 0)), "mglow", u_hint=(1, 0, 0)))
-    # the claws: one palm on the housing's front over the slot, three fingers fanning out of it
-    # over the disc, each a bent plate that curls round the rim and hooks under it
     Dx, Dy, Dz = MWL_DISC
     A, H = MWL_DISC_A, MWL_DISC_H
-    _mwl_box(f, (Dx - 0.34, S + 0.03, -0.62), (Dx + 0.34, 0.36, -0.5), 0.05)
+    P = MWL_PLATE
+    zp = 0.5 - P
+    # the back plate, the full height - the mount, a window per cell on its back, a sunset slit on
+    # its front either side of the arms
+    marlit_box(f, (-1.5, -0.5, zp), (0.5, 0.5, 0.5), 0.06, rnd, {(2, 1): "window"}, seg=1.0)
+    for sx in (-1.3, 0.3):
+        top = MWL_DECK_Y[0] - 0.05
+        q = [(sx - 0.02, -0.38, zp - 0.001), (sx + 0.02, -0.38, zp - 0.001), (sx + 0.02, top, zp - 0.001),
+             (sx - 0.02, top, zp - 0.001)]
+        f.append(th.Face(th.outward(q, (sx, 0.0, 1.0)), "mglow", u_hint=(0, 1, 0)))
+    # the deck over the disc's back half, as the girder bracket's, on two braces from the plate's foot
+    dz0 = MWL_DECK_Z
+    yd0, yd1 = MWL_DECK_Y
+    marlit_box(f, (-1.5, yd0, dz0), (0.5, yd1, zp), 0.05, rnd, {(1, 1): "window"}, seg=1.0)
+    for x in (-1.5 + 0.1, 0.5 - 0.1):
+        mbeam(f, (x, -0.5 + 0.08, zp - 0.02), (x, yd0 - 0.01, dz0 + 0.12), 0.13, 0.13, (1, 0, 0))
+    # the upper arm from the deck to the hub over the disc's middle, the lower one from the plate's
+    # foot to the bearing under it: the disc turns on the axis the two hold
+    wa = MWL_ARM
+    cham_box(f, (Dx - wa, yd0 + 0.02, Dz), (Dx + wa, yd1 - 0.02, dz0 + 0.02), 0.03, "mbev3", "mbev4", "mbev1", "medge")
+    mbeam(f, (Dx, -0.5 + 0.1, zp - 0.02), (Dx, -H - 0.12, Dz + 0.02), 0.2, 0.1, (1, 0, 0))
+    C = (Dx, 0.0, Dz)
+    hub = MWL_HUB
+    _oct_band(f, C, hub, H + 0.03, hub, yd1, "mtone")                      # the hub
+    _oct_band(f, C, hub, H + 0.03, 0.0, H + 0.03, "mflat0")
+    _oct_band(f, C, hub, yd1, hub - 0.04, yd1 + 0.04, "mtone")             # its crown
+    _oct_band(f, C, hub - 0.04, yd1 + 0.04, MWL_LENS, yd1 + 0.04, "mtone")
+    _oct_band(f, C, hub, -H - 0.03, hub, -H - 0.14, "mtone")               # the bearing under
+    _oct_band(f, C, hub, -H - 0.14, 0.0, -H - 0.14, "mflat1")
+    _oct_band(f, C, hub, -H - 0.03, 0.0, -H - 0.03, "mflat0")
+    # the lens in the crown: the beam's source, cyan, its own part so it can be dimmed
+    g = parts["marlit_wireless_lens"]
+    O = (0.0, 0.0, 0.0)
+    _oct_band(g, O, MWL_LENS, yd1 + 0.04, MWL_LENS, yd1 + 0.07, "ctone3")
+    _oct_band(g, O, MWL_LENS, yd1 + 0.07, 0.0, yd1 + 0.07, "ctone4")
+    for fc in g:
+        fc.pts = [(p[0], p[1], p[2]) for p in fc.pts]
+    # two claws out of the hub, one each side, curled round the rim and hooked under it
     Ra = MWL_CURL
-    path = [(-0.30, 0.25), (0.05, 0.25), (A - 0.16, 0.15)]
+    path = [(hub - 0.02, (H + yd1) / 2 + 0.03), (0.32, (H + yd1) / 2 + 0.03), (A - 0.16, 0.15)]
     path += [(A - 0.02 + Ra * math.cos(math.radians(t)), Ra * math.sin(math.radians(t)))
              for t in (100, 60, 20, -20, -60, -100)]
     path += [(A - 0.15, -Ra - 0.01)]
@@ -2623,10 +2658,9 @@ def build_marlit_wireless(pk, img):
         side = th.norm(th.cross(d, (0.0, 1.0, 0.0)))
         pts = [(Dx + d[0] * r, Dy + y, Dz + d[2] * r) for r, y in path]
         _mwl_claw(f, pts, side)
-    # the disc, about its own middle: a cyan rim, a dark ring the turn shows on, a cyan coil ring,
-    # a dark plate and a hub
+    # the disc, about its own middle: a cyan rim, a dark ring the turn shows on, a cyan coil ring and
+    # a dark plate round the hub
     g = parts["marlit_wireless_disc"]
-    O = (0.0, 0.0, 0.0)
     _oct_band(g, O, A, -H, A, H, "ctone3")
     _oct_band(g, O, A, -H, 0.0, -H, "mflat0")
     r0, r1 = _oct_ring(O, A, H), _oct_ring(O, A - 0.11, H)
@@ -2637,9 +2671,7 @@ def build_marlit_wireless(pk, img):
     _oct_band(g, O, A - 0.11, H, A - 0.11, H + 0.02, "ctone2")
     _oct_band(g, O, A - 0.11, H + 0.02, A - 0.2, H + 0.02, "ctone4")
     _oct_band(g, O, A - 0.2, H + 0.02, A - 0.2, H, "ctone2")
-    _oct_band(g, O, A - 0.2, H, 0.2, H, "mflat2")
-    _oct_band(g, O, 0.2, H, 0.2, H + 0.05, "mtone")
-    _oct_band(g, O, 0.2, H + 0.05, 0.0, H + 0.05, "mflat4")
+    _oct_band(g, O, A - 0.2, H, 0.0, H, "mflat2")
     return parts
 
 
