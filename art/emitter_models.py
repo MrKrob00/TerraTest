@@ -992,47 +992,111 @@ def build_marlit_solar(pk, img):
     return parts
 
 
-# ── the Marlit pedestal: the repair unit and the shield stand on one ────────────────────────────
-MP_TOP = 0.0          # the pedestal's top; below it two tiers, the upper one inset
+# ── the Marlit shell: the repair unit and the shield live in one ────────────────────────────────
+# A 2x2x2 block that other blocks bolt onto on EVERY side and whose middle still shows: twelve edge
+# beams and six face plates flush on the cell faces, each plate with a big octagonal porthole round
+# the face's centre, its lip lit sunset. Two cuts came first and both were turned down by the player:
+# a frame of four pillars and a roof ("it is in a cage"), then the gyro open on a pedestal ("nothing
+# to bolt a block to"). A plate is where a neighbour meets the block, the porthole is where the eye
+# gets in.
+MSH_B = 0.14          # edge beam section
+MSH_T = 0.12          # face plate thickness
+MSH_HOLE = 0.66       # porthole apothem, from the face's centre: a 0.2 m plate still round it
+MSH_C = (-0.5, 0.5, -0.5)
 
 
-def _marlit_pedestal(f, rnd):
-    """A heavy two-tier Marlit base over the whole 2x2 footprint, y -0.5..MP_TOP: a full slab and an
-    inset tier on it, a sunset band round each and a sunset octagon on top round the centre."""
-    x0, x1, z0, z1 = -1.5, 0.5, -1.5, 0.5
-    cx, cz = -0.5, -0.5
-    mid = -0.24
-    ins = 0.16
-    marlit_box(f, (x0, -0.5, z0), (x1, mid, z1), 0.05, rnd)
-    marlit_box(f, (x0 + ins, mid, z0 + ins), (x1 - ins, MP_TOP, z1 - ins), 0.04, rnd)
-    for (lo_x, hi_x, lo_z, hi_z, yy) in ((x0, x1, z0, z1, (-0.5 + mid) / 2), (x0 + ins, x1 - ins, z0 + ins, z1 - ins, (mid + MP_TOP) / 2)):
-        e = 0.002
-        for q in ([(lo_x + 0.14, yy - 0.018, lo_z - e), (hi_x - 0.14, yy - 0.018, lo_z - e), (hi_x - 0.14, yy + 0.018, lo_z - e), (lo_x + 0.14, yy + 0.018, lo_z - e)],
-                  [(lo_x + 0.14, yy - 0.018, hi_z + e), (hi_x - 0.14, yy - 0.018, hi_z + e), (hi_x - 0.14, yy + 0.018, hi_z + e), (lo_x + 0.14, yy + 0.018, hi_z + e)],
-                  [(lo_x - e, yy - 0.018, lo_z + 0.14), (lo_x - e, yy - 0.018, hi_z - 0.14), (lo_x - e, yy + 0.018, hi_z - 0.14), (lo_x - e, yy + 0.018, lo_z + 0.14)],
-                  [(hi_x + e, yy - 0.018, lo_z + 0.14), (hi_x + e, yy - 0.018, hi_z - 0.14), (hi_x + e, yy + 0.018, hi_z - 0.14), (hi_x + e, yy + 0.018, lo_z + 0.14)]):
-            f.append(th.Face(th.outward(q, (cx, yy, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
-    n = 8
-    for k in range(n):
-        a0 = math.pi / n + 2 * math.pi * k / n
-        a1 = a0 + 2 * math.pi / n
-        r0, r1 = 0.50, 0.56
-        q = [(cx + math.sin(a0) * r0, MP_TOP + 0.001, cz + math.cos(a0) * r0), (cx + math.sin(a1) * r0, MP_TOP + 0.001, cz + math.cos(a1) * r0),
-             (cx + math.sin(a1) * r1, MP_TOP + 0.001, cz + math.cos(a1) * r1), (cx + math.sin(a0) * r1, MP_TOP + 0.001, cz + math.cos(a0) * r1)]
-        f.append(th.Face(th.outward(q, (cx, -1.0, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
+def _face_frame(axis, side):
+    """(normal, u, v) of a face of the shell, outward normal first."""
+    n = [0.0, 0.0, 0.0]
+    n[axis] = 1.0 if side else -1.0
+    u = [0.0, 0.0, 0.0]
+    v = [0.0, 0.0, 0.0]
+    u[(axis + 1) % 3] = 1.0
+    v[(axis + 2) % 3] = 1.0
+    return tuple(n), tuple(u), tuple(v)
+
+
+def _shell_plate(f, axis, side, hole=True, spider=False):
+    n, u, v = _face_frame(axis, side)
+    lim = 1.0 - MSH_B
+    d_out, d_in = 1.0, 1.0 - MSH_T
+
+    def P(a, b, d):
+        return tuple(MSH_C[i] + u[i] * a + v[i] * b + n[i] * d for i in range(3))
+    inside = MSH_C
+    if not hole:
+        for d, st in ((d_out, "mplate"), (d_in, "mbev1")):
+            q = [P(-lim, -lim, d), P(lim, -lim, d), P(lim, lim, d), P(-lim, lim, d)]
+            ref = th.add(MSH_C, th.mul(n, d - 0.5 if d == d_out else d + 0.5))
+            f.append(th.Face(th.outward(q, ref), st, u_hint=u))
+        return
+    k8 = 8
+    ro = MSH_HOLE / math.cos(math.pi / k8)
+    ang = [math.pi / k8 + 2 * math.pi * k / k8 for k in range(k8)]
+    oc = [(math.cos(a) * ro, math.sin(a) * ro) for a in ang]
+
+    def sq(a):
+        c, s_ = math.cos(a), math.sin(a)
+        m = lim / max(abs(c), abs(s_))
+        return (c * m, s_ * m)
+    for k in range(k8):
+        a0, a1 = ang[k], ang[(k + 1) % k8] + (2 * math.pi if k == k8 - 1 else 0.0)
+        outer = [sq(a0)]
+        for cn in (math.pi / 4, 3 * math.pi / 4, 5 * math.pi / 4, 7 * math.pi / 4, 9 * math.pi / 4):
+            if a0 < cn < a1:
+                outer.append((math.copysign(lim, math.cos(cn)), math.copysign(lim, math.sin(cn))))
+        outer.append(sq(a1))
+        ring2d = [oc[k], oc[(k + 1) % k8]] + outer[::-1]
+        for d, st in ((d_out, "mplate"), (d_in, "mbev1")):
+            q = [P(x, y, d) for x, y in ring2d]
+            ref = th.add(MSH_C, th.mul(n, d - 0.5 if d == d_out else d + 0.5))
+            f.append(th.Face(th.outward(q, ref), st, u_hint=u))
+        # the porthole's wall and its sunset lip
+        x0, y0 = oc[k]
+        x1, y1 = oc[(k + 1) % k8]
+        wall = [P(x0, y0, d_in), P(x1, y1, d_in), P(x1, y1, d_out), P(x0, y0, d_out)]
+        # the wall faces the porthole's axis: wound away from a point beyond it in the plate
+        f.append(th.Face(th.outward(wall, P(x0 + x1, y0 + y1, (d_in + d_out) / 2)), "medge",
+                         u_hint=th.sub(wall[1], wall[0])))
+        g = 1.07
+        lip = [P(x0, y0, d_out + 0.002), P(x1, y1, d_out + 0.002), P(x1 * g, y1 * g, d_out + 0.002), P(x0 * g, y0 * g, d_out + 0.002)]
+        f.append(th.Face(th.outward(lip, th.add(MSH_C, th.mul(n, d_out - 0.5))), "mglow", u_hint=th.sub(lip[1], lip[0])))
+    if spider:
+        # four spokes from the porthole's flats to a boss on the axis, the flange a bearing sits in
+        dh = (d_in + d_out) / 2
+        for (x, y) in ((MSH_HOLE, 0.0), (-MSH_HOLE, 0.0), (0.0, MSH_HOLE), (0.0, -MSH_HOLE)):
+            mbeam(f, P(x * 1.02, y * 1.02, dh), P(x * 0.18, y * 0.18, dh), 0.06, 0.06, n)
+        tube(f, [P(0, 0, d_in - 0.02), P(0, 0, d_out - 0.01)], [0.13, 0.13], ["m"], sides=12, cap_start="medge", cap_end="medge")
+
+
+def marlit_shell(f, holes, spiders=()):
+    """The twelve beams and the six plates; `holes` the faces (axis, side) with a porthole."""
+    x0, x1, y0, y1, z0, z1 = -1.5, 0.5, -0.5, 1.5, -1.5, 0.5
+    B = MSH_B
+    for yy in ((y0, y0 + B), (y1 - B, y1)):
+        for zz in ((z0, z0 + B), (z1 - B, z1)):
+            cham_box(f, (x0, yy[0], zz[0]), (x1, yy[1], zz[1]), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+    for xx in ((x0, x0 + B), (x1 - B, x1)):
+        for zz in ((z0, z0 + B), (z1 - B, z1)):
+            cham_box(f, (xx[0], y0 + B, zz[0]), (xx[1], y1 - B, zz[1]), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+    for xx in ((x0, x0 + B), (x1 - B, x1)):
+        for yy in ((y0, y0 + B), (y1 - B, y1)):
+            cham_box(f, (xx[0], yy[0], z0 + B), (xx[1], yy[1], z1 - B), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+    for axis in range(3):
+        for side in (0, 1):
+            _shell_plate(f, axis, side, (axis, side) in holes, (axis, side) in spiders)
+
+
+ALL_FACES = [(a, s_) for a in range(3) for s_ in (0, 1)]
 
 
 # ── the Marlit repair unit ──────────────────────────────────────────────────────────────────────
-# The gyro (build_regen2, one cell, GSO blue) at Marlit's scale, OPEN, on the pedestal: an armillary
-# sphere on its stand, not a cage. A frame of pillars and a roof round it was the first cut and read
-# as "it is in a cage" (the player). Two yoke uprights rise from the pedestal left and right and hold
-# the outer ring on its bearings; the vertical ring stands on a socket in the pedestal's top. Rings
-# and crystal keep the gyro's parts and nesting (regen_marlit.gd drives them), gunmetal now, the
-# inside of each ring the energy strip. The gyro's centre is MR_CY, clear of the pedestal and the
-# cell's top by the vertical ring's radius.
-MR_R = (0.78, 0.67, 0.56, 0.45)       # the rings, outermost first
+# The gyro (build_regen2, one cell, GSO blue) at Marlit's scale in the Marlit shell: rings and
+# crystal keep the gyro's parts and nesting (regen_marlit.gd drives them), gunmetal now, the inside
+# of each ring the energy strip. The outer ring turns on bearings in the left and right portholes,
+# the vertical one in the top and bottom ones, each held by a spider; front and back are clear.
+MR_R = (0.78, 0.67, 0.56, 0.45)       # the rings, outermost first; the outer one clears the plates
 MR_DEPTH, MR_WIDTH = 0.035, 0.06
-MR_CY = 0.76                           # the gyro's centre in block space
 
 
 def _mtone(n):
@@ -1070,28 +1134,15 @@ def marlit_ring(faces, glow, ang, R, depth, width, n=28):
 
 
 def _marlit_regen_base(f, rnd):
-    cx, cz = -0.5, -0.5
-    _marlit_pedestal(f, rnd)
-    # the yoke: an upright each side, just outside the outer ring, from the pedestal to the gyro's
-    # axis, a boss at its head the bearing turns in, and a gusset down to the pedestal
-    ux = MR_R[0] + MR_DEPTH + 0.08            # the upright's inner face from the centre
-    for sg in (1, -1):
-        xa, xb = (cx + ux, cx + ux + 0.16) if sg > 0 else (cx - ux - 0.16, cx - ux)
-        cham_box(f, (xa, MP_TOP, cz - 0.13), (xb, MR_CY + 0.14, cz + 0.13), 0.035, "mbev2", "mbev4", "mbev1", "medge")
-        xo = xb if sg > 0 else xa
-        q = [(xo + sg * 0.002, MP_TOP + 0.12, cz - 0.025), (xo + sg * 0.002, MP_TOP + 0.12, cz + 0.025),
-             (xo + sg * 0.002, MR_CY - 0.1, cz + 0.025), (xo + sg * 0.002, MR_CY - 0.1, cz - 0.025)]
-        f.append(th.Face(th.outward(q, (cx, MR_CY / 2, cz)), "mglow", u_hint=(0, 1, 0)))
-        for dz in (-1, 1):
-            mbeam(f, ((xa + xb) / 2, MP_TOP + 0.02, cz + dz * 0.42), ((xa + xb) / 2, MP_TOP + 0.36, cz + dz * 0.1), 0.07, 0.07, (1, 0, 0))
-        def p(d):
-            return (cx + sg * d, MR_CY, cz)
-        tube(f, [p(MR_R[0] - MR_DEPTH - 0.04), p(ux + 0.02)], [0.065, 0.065], ["m"], sides=12, cap_start="cap_bolt")
-        tube(f, [p(ux - 0.03), p(ux + 0.005)], [0.12, 0.12], ["m"], sides=12, cap_start="medge", cap_end="medge")
-    # the socket the vertical ring stands on
-    bot = MR_CY - MR_R[1] - MR_DEPTH
-    tube(f, [(cx, MP_TOP, cz), (cx, bot + 0.02, cz)], [0.1, 0.07], ["m"], sides=12, cap_end="cap_bolt")
-    tube(f, [(cx, MP_TOP - 0.01, cz), (cx, MP_TOP + 0.03, cz)], [0.16, 0.16], ["m"], sides=12, cap_end="medge")
+    marlit_shell(f, ALL_FACES, spiders=[(0, 0), (0, 1), (1, 0), (1, 1)])
+    # the hubs from the rings they hold out to the spiders' bosses
+    for axis, reach in ((0, MR_R[0]), (1, MR_R[1])):
+        for sg in (1, -1):
+            def p(d):
+                v = list(MSH_C)
+                v[axis] += sg * d
+                return tuple(v)
+            tube(f, [p(reach - MR_DEPTH - 0.04), p(1.0 - MSH_T)], [0.06, 0.06], ["m"], sides=12, cap_start="cap_bolt")
 
 
 def build_marlit_regen(pk, img):
@@ -1111,31 +1162,33 @@ def build_marlit_regen(pk, img):
 
 
 # ── the Marlit shield ───────────────────────────────────────────────────────────────────────────
-# On the same pedestal: a glowing octagonal CORE with an emitter lens on top, walled in by four tall
-# armour plates carrying the faction's window. Closed they stand as one tower and the core shows
-# only through the four corner slits; with the dome up each plate slides out MS2_SLIDE and leans
-# back MS2_LEAN about its foot (marlit_shield.gd), and the core stands in the open. The Falsus
-# shield is an orb whose cap lifts; this one opens its armour - Marlit says it with plates.
-#   base  - pedestal and the lens housing on the core's top (static)
-#   core  - the glowing column, tinted by the script (off grey, up cyan)
+# In the same shell (portholes on the four sides and the top, a solid floor): a banded glowing CORE
+# with an emitter lens under the top porthole, walled in by four armour plates carrying the
+# faction's window. THE PLATES STAND ON THE DIAGONALS, so two of them meet right behind every
+# porthole: closed, each porthole shows a seam of armour; with the dome up each plate slides out
+# MS2_SLIDE toward its corner and leans back MS2_LEAN about its foot (marlit_shield.gd), and the seam
+# behind every porthole opens on the core. Facing the portholes, the plates hid the opening from
+# every side. The Falsus shield is an orb whose cap lifts; this one opens its armour.
+#   base  - the shell and the lens housing (static)
+#   core  - the glowing column and lens, tinted by the script (off grey, up cyan)
 #   plate - one wall, its FOOT's outer edge at the local origin, its outer face looking +X
+MS2_FLOOR = -0.5 + MSH_T      # the floor plate's top
 MS2_CORE_R = 0.30
-MS2_CORE_TOP = 1.14
-MS2_IN = 0.44           # a plate's inner face from the centre
-MS2_T = 0.14
-MS2_HALF = 0.40         # half its width
-MS2_TOP = 1.36
-MS2_SLIDE = 0.12
-MS2_LEAN = 9.0
+MS2_CORE_TOP = 1.10
+MS2_IN = 0.40           # a plate's inner face from the centre
+MS2_T = 0.12
+MS2_HALF = 0.34         # half its width
+MS2_TOP = 1.22
+MS2_SLIDE = 0.32        # along the diagonal, where the shell's corner leaves 0.7 m of room
+MS2_LEAN = 8.0
 
 
 def _marlit_shield_base(f, rnd):
     cx, cz = -0.5, -0.5
-    _marlit_pedestal(f, rnd)
+    marlit_shell(f, [(0, 0), (0, 1), (2, 0), (2, 1), (1, 1)])
     n = 8
     rr = (MS2_CORE_R + 0.06) / math.cos(math.pi / n)
-    # the lens housing: a dark octagonal collar over the core, a sunset rim, the lens is the core's own
-    for (y0, y1, r) in ((MS2_CORE_TOP, MS2_CORE_TOP + 0.1, rr), (MP_TOP, MP_TOP + 0.08, rr + 0.04)):
+    for (y0, y1, r) in ((MS2_CORE_TOP, MS2_CORE_TOP + 0.1, rr), (MS2_FLOOR, MS2_FLOOR + 0.08, rr + 0.04)):
         pts = [(cx + math.sin(math.pi / n + 2 * math.pi * k / n) * r, cz + math.cos(math.pi / n + 2 * math.pi * k / n) * r) for k in range(n)]
         f.append(th.Face(th.outward([(p[0], y1, p[1]) for p in pts], (cx, y0 - 1.0, cz)), "mplate", u_hint=(1, 0, 0)))
         f.append(th.Face(th.outward([(p[0], y0, p[1]) for p in pts], (cx, y1 + 1.0, cz)), "mbev1", u_hint=(1, 0, 0)))
@@ -1147,20 +1200,22 @@ def _marlit_shield_base(f, rnd):
                 g = [(a[0], y0 + 0.035, a[1]), (b[0], y0 + 0.035, b[1]), (b[0], y0 + 0.06, b[1]), (a[0], y0 + 0.06, a[1])]
                 g = [(cx + (p[0] - cx) * 1.004, p[1], cz + (p[2] - cz) * 1.004) for p in g]
                 f.append(th.Face(th.outward(g, (cx, y0, cz)), "mglow", u_hint=th.sub(q[1], q[0])))
-
-
+    # the lens housing hangs from the top plate on four struts
+    # along the axes, between the plates' crowns, to the top plate beyond its porthole
+    for (dx, dz) in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        mbeam(f, (cx + dx * 0.3, MS2_CORE_TOP + 0.08, cz + dz * 0.3), (cx + dx * 0.76, 1.5 - MSH_T, cz + dz * 0.76), 0.06, 0.06, (0, 1, 0))
 def _marlit_shield_core(f, pk, img):
     # the column and a raised lens on the housing, one lathe painted in the crystal's grey ramp: the
     # script tints it through material_override, as the repair unit's crystal is tinted
     n = 8
     r = MS2_CORE_R
     # stacked cells: a waist between every two, so the column reads as charge, not as a pipe
-    prof = [(r * 0.9, MP_TOP)]
+    prof = [(r * 0.9, MS2_FLOOR)]
     cells = 4
-    span = (MS2_CORE_TOP - 0.05) - (MP_TOP + 0.08)
+    span = (MS2_CORE_TOP - 0.05) - (MS2_FLOOR + 0.08)
     for k in range(cells):
-        y0 = MP_TOP + 0.08 + span * k / cells
-        y1 = MP_TOP + 0.08 + span * (k + 1) / cells
+        y0 = MS2_FLOOR + 0.08 + span * k / cells
+        y1 = MS2_FLOOR + 0.08 + span * (k + 1) / cells
         prof += [(r * 0.8, y0), (r, y0 + 0.04), (r, y1 - 0.04)]
     prof += [(r * 0.8, MS2_CORE_TOP - 0.05), (r * 0.9, MS2_CORE_TOP), (0.0, MS2_CORE_TOP)]
     lathe_y(pk, img, f, prof, CORE_RAMP, sides=n, cell=4, cx=-0.5, cz=-0.5)
@@ -1170,7 +1225,7 @@ def _marlit_shield_core(f, pk, img):
 
 def _marlit_shield_plate(f, rnd):
     # built with its foot's outer edge at the origin, looking +X: x -MS2_T..0, y 0..height
-    h = MS2_TOP - MP_TOP
+    h = MS2_TOP - MS2_FLOOR
     marlit_box(f, (-MS2_T, 0.0, -MS2_HALF), (0.0, h, MS2_HALF), 0.035, rnd, {(0, 1): "window"})
     # the crown: a sloped cap leaning in over the core, the inner edge low
     cap = [(0.0, h, -MS2_HALF + 0.035), (0.0, h, MS2_HALF - 0.035), (-MS2_T - 0.10, h - 0.12, MS2_HALF - 0.1),
@@ -2317,7 +2372,7 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 40.0, "marlit_shield": 38.0}
+DENSITY = {"regen2": 128.0, "marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0}
 
 
 def make(name):
