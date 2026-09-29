@@ -2244,32 +2244,76 @@ def build_battery(pk, img):
 
 
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
-# THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack: a heavy PLATFORM under and over
-# (MBAT_PLAT of the height each), a solid SPINE a third of the width running back to front between
-# them, and in the room left either side TWO big cells a side, sunk into both platforms through
-# thick collars, only a couple of energy rings of each showing. The charge is a VERTICAL GAUGE sunk
-# into the spine's front and back. Platforms carry the faction's window outward and a sunset line
-# round the lip the cells enter by. Nothing stands out of the cell and it joins on every face.
+# THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack. The body is ONE PART: an H-shaped
+# profile - a platform under, a platform over, a spine a third of the width between them - swept from
+# back to front with every outer edge chamfered, so platforms and spine read as one casting rather
+# than a box stood between two slabs. In the two bays the H leaves, TWO BIG CELLS a side, barrels
+# whose ends are hidden in sockets in the platforms and whose bellies come out flush with the
+# block's faces, a couple of energy rings showing on each. The charge is a VERTICAL GAUGE cut into
+# the spine through both platforms, front and back. The platforms' sides carry the faction's window;
+# nothing stands out of the cell and it joins on every face.
 # Turned down before the player set this layout: four Falsus cells between two plates; a gauge
 # column per side ("a water tank") with terminals on top; lit capacitor plates in side panels; an
 # octagonal charge dial; the phone's battery icon on every face ("too simple"); one octagonal cell
-# with rings in a cage of posts ("looks like a battery again").
-#   body  - platforms, spine, cells and collars
+# with rings in a cage of posts ("looks like a battery again"). And inside the layout: platforms
+# too thin, cells standing whole on the platforms, the gauge a separate box between them.
+#   body  - the casting and the cells
 #   seg   - one gauge bar, front and back, about the block's middle; the scene stands MBAT_SEGS
 #           copies (Seg0 the lowest) there and battery.gd shrinks the dark ones into the block
 #   ring  - one tier of energy rings on all four cells (ring0 the lower), about the block's middle
-MBAT_SEGS = 6
-MBAT_PLAT = 2.0 * 10.0 / 35.0     # each platform's height (the player's 10/35)
-MBAT_PLAT_C = 0.12                # the platforms' chamfer
+MBAT_SEGS = 8
+MBAT_PLAT = 0.66                  # each platform's height
 MBAT_SPINE = 2.0 / 3.0            # the spine's width
-MBAT_CELL_R = 0.30                # a cell's radius to its flats
-MBAT_COLLAR = (0.335, 0.12)       # a collar: radius to its flats, height
-MBAT_RING_Y = (0.30, 0.56)        # the energy rings' feet above the lower platform
-MBAT_RING_H = 0.07
-MBAT_GAUGE = (0.19, 0.09, 0.05, 0.05, 0.015)   # hw, margin top/bottom, bevel across, deep, line
-MBAT_BAR_GAP = 0.025
+MBAT_C = 0.08                     # the casting's chamfer
+MBAT_CELL = (0.295, 0.33)         # a cell's radius to its flats: at its ends, at its belly (flush)
+MBAT_SOCKET = (0.33, 0.07)        # a socket round each cell end: radius to its flats, height
+MBAT_RING_T = (0.36, 0.64)        # the rings' middles, as shares of the cell's visible height
+MBAT_RING_H = 0.06
+MBAT_GAUGE = (0.16, 0.20, 0.04, 0.05, 0.015)   # hw, margin top/bottom, bevel across, deep, line
+MBAT_BAR_GAP = 0.03
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
 SUNSET_RAMP = [(226, 116, 38), (240, 150, 60), (252, 176, 80), (254, 200, 120), (255, 226, 160)]
+
+
+def _miter_inset(q, c):
+    """Offset a simple CCW polygon (convex or not) inward by c, corners mitred."""
+    n = len(q)
+    out = []
+    for i in range(n):
+        a, b, p = q[i - 1], q[i], q[(i + 1) % n]
+        d1 = (b[0] - a[0], b[1] - a[1])
+        d2 = (p[0] - b[0], p[1] - b[1])
+        l1, l2 = math.hypot(*d1), math.hypot(*d2)
+        n1 = (-d1[1] / l1, d1[0] / l1)
+        n2 = (-d2[1] / l2, d2[0] / l2)
+        k = c / (1.0 + n1[0] * n2[0] + n1[1] * n2[1])
+        out.append((b[0] + (n1[0] + n2[0]) * k, b[1] + (n1[1] + n2[1]) * k))
+    return out
+
+
+def _ear_clip(q):
+    """Triangles of a simple CCW polygon (convex or not)."""
+    def cr(a, b, c):
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+    pts = [p for i, p in enumerate(q) if abs(cr(q[i - 1], p, q[(i + 1) % len(q)])) > 1e-9]
+    idx = list(range(len(pts)))
+    tris = []
+    while len(idx) > 3:
+        for k in range(len(idx)):
+            i0, i1, i2 = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            a, b, c = pts[i0], pts[i1], pts[i2]
+            if cr(a, b, c) <= 1e-9:
+                continue
+            if any(cr(a, b, pts[j]) > 1e-9 and cr(b, c, pts[j]) > 1e-9 and cr(c, a, pts[j]) > 1e-9
+                   for j in idx if j not in (i0, i1, i2)):
+                continue
+            tris.append((a, b, c))
+            idx.pop(k)
+            break
+        else:
+            raise ValueError("ear clipping stuck")
+    tris.append(tuple(pts[i] for i in idx))
+    return tris
 
 
 def _mbat_cells():
@@ -2278,95 +2322,157 @@ def _mbat_cells():
     return [(x, z) for x in (-1.5 + w / 2, 0.5 - w / 2) for z in (-1.0, 0.0)]
 
 
+def _mbat_profile():
+    """The casting's H, CCW in (x, y), its outer corners cut by the chamfer."""
+    y0, y1 = -0.5 + MBAT_PLAT, 1.5 - MBAT_PLAT
+    bl, br = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
+    c = MBAT_C
+    corners = [((-1.5, -0.5), True), ((0.5, -0.5), True), ((0.5, y0), True), ((br, y0), False),
+               ((br, y1), False), ((0.5, y1), True), ((0.5, 1.5), True), ((-1.5, 1.5), True),
+               ((-1.5, y1), True), ((bl, y1), False), ((bl, y0), False), ((-1.5, y0), True)]
+    out = []
+    n = len(corners)
+    for i, (p, cut) in enumerate(corners):
+        if not cut:
+            out.append(p)
+            continue
+        a, b = corners[i - 1][0], corners[(i + 1) % n][0]
+        out.append(hm.lerp2(p, a, c / math.dist(p, a)))
+        out.append(hm.lerp2(p, b, c / math.dist(p, b)))
+    return out
+
+
 def build_marlit_battery(pk, img):
     import random as _r
     rnd = _r.Random(233)
     parts = {"marlit_battery_body": [], "marlit_battery_ring0": [], "marlit_battery_ring1": []}
     f = parts["marlit_battery_body"]
     C = (-0.5, 0.5, -0.5)
-    y0 = -0.5 + MBAT_PLAT                      # the lower platform's top
-    y1 = 1.5 - MBAT_PLAT                       # the upper one's underside
-    # the platforms: the window outward, a sunset line round the lip the cells enter by
-    for lo, hi, outer, lip in (((-1.5, -0.5, -1.5), (0.5, y0, 0.5), 0, y0 - MBAT_PLAT_C - 0.06),
-                               ((-1.5, y1, -1.5), (0.5, 1.5, 0.5), 1, y1 + MBAT_PLAT_C + 0.04)):
-        cham_box(f, lo, hi, MBAT_PLAT_C, "mplate", "mplate" if not outer else None,
-                 "mplate" if outer else None, "medge")
-        marlit_poly(f, _cham_faces(lo, hi, MBAT_PLAT_C)[(1, outer)], rnd)
-        e = MBAT_PLAT_C + 0.02
-        for q in ([(-1.5 + e, lip, -1.5), (0.5 - e, lip, -1.5), (0.5 - e, lip + 0.02, -1.5), (-1.5 + e, lip + 0.02, -1.5)],
-                  [(-1.5 + e, lip, 0.5), (0.5 - e, lip, 0.5), (0.5 - e, lip + 0.02, 0.5), (-1.5 + e, lip + 0.02, 0.5)],
-                  [(-1.5, lip, -1.5 + e), (-1.5, lip, 0.5 - e), (-1.5, lip + 0.02, 0.5 - e), (-1.5, lip + 0.02, -1.5 + e)],
-                  [(0.5, lip, -1.5 + e), (0.5, lip, 0.5 - e), (0.5, lip + 0.02, 0.5 - e), (0.5, lip + 0.02, -1.5 + e)]):
+    c = MBAT_C
+    y0, y1 = -0.5 + MBAT_PLAT, 1.5 - MBAT_PLAT
+    zf, zb = -1.5, 0.5
+    prof = _mbat_profile()
+    ins = _miter_inset(prof, c)
+    n = len(prof)
+    # the walls, swept between the two chamfers; top and bottom and the platforms' outer sides carry
+    # the window, the rest is plate
+    for i in range(n):
+        a, b = prof[i], prof[(i + 1) % n]
+        q = [(a[0], a[1], zf + c), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (a[0], a[1], zb - c)]
+        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        e = (b[0] - a[0], b[1] - a[1])
+        nrm = (e[1], -e[0], 0.0)                     # CCW profile: outward is the right normal
+        q = th.outward(q, th.sub(m, nrm))
+        horiz = abs(e[1]) < 1e-6
+        vert = abs(e[0]) < 1e-6
+        outer_side = vert and abs(abs(a[0] + 0.5) - 1.0) < 1e-6
+        outer_cap = horiz and abs(a[1] - 0.5) > 0.99
+        if outer_cap or (outer_side and math.dist(a, b) > 0.3):
+            marlit_poly(f, q, rnd)
+        elif horiz or vert:
+            f.append(th.Face(q, "mplate", u_hint=(0, 0, 1)))
+        else:
+            f.append(th.Face(q, "medge", u_hint=(0, 0, 1)))
+    # the chamfer frames front and back
+    for zw, zc, sg in ((zf, zf + c, -1.0), (zb, zb - c, 1.0)):
+        for i in range(n):
+            j = (i + 1) % n
+            q = [(prof[i][0], prof[i][1], zc), (prof[j][0], prof[j][1], zc), (ins[j][0], ins[j][1], zw),
+                 (ins[i][0], ins[i][1], zw)]
             m = th.mul(tuple(map(sum, zip(*q))), 0.25)
-            out = th.norm((m[0] - C[0], 0.0, m[2] - C[2]))
-            q = [th.add(p, th.mul(out, 0.003)) for p in q]
-            f.append(th.Face(th.outward(q, C), "mglow", u_hint=th.sub(q[1], q[0])))
-    # the spine, back to front, the gauge sunk into both ends
-    sx0, sx1 = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
-    lo, hi = (sx0, y0, -1.5), (sx1, y1, 0.5)
-    cham_box(f, lo, hi, 0.05, None, None, None, "medge")
-    for key, q in _cham_faces(lo, hi, 0.05).items():
-        if key[0] == 0:
-            f.append(th.Face(q, "mplate", u_hint=(0, 1, 0)))
+            q = th.outward(q, (-0.5, 0.5, m[2] - sg))
+            f.append(th.Face(q, "medge", u_hint=th.sub(q[1], q[0])))
+    # the front and back faces round the gauge, each cut down the middle into two halves and
+    # ear-clipped (the H is not convex)
     hw, mg, bw, bd, ln = MBAT_GAUGE
-    gy0, gy1 = y0 + mg, y1 - mg
-    rings = []
-    for zf, sg in ((-1.5, -1.0), (0.5, 1.0)):
-        def P(x, y, d=0.0, zf=zf, sg=sg):
-            return (-0.5 + x * (-sg), y, zf - sg * d)
-        o0 = _mbat_rect(hw, gy0, gy1, 0.04)
-        o1 = _mbat_rect(hw - bw, gy0 + bw, gy1 - bw, 0.025)
-        o2 = _mbat_rect(hw - bw - ln, gy0 + bw + ln, gy1 - bw - ln, 0.02)
-        ref = (-0.5, 0.5, zf - sg)
-        # the spine's end round the gauge: strips either side, below and above, and the cut corners
-        W, fb, ft, gc = MBAT_SPINE / 2 - 0.05, y0 + 0.05, y1 - 0.05, 0.04
-        for q2 in ([(-W, fb), (-hw, fb), (-hw, ft), (-W, ft)], [(hw, fb), (W, fb), (W, ft), (hw, ft)],
-                   [(-hw, fb), (hw, fb), (hw, gy0), (-hw, gy0)], [(-hw, gy1), (hw, gy1), (hw, ft), (-hw, ft)],
-                   [(-hw, gy0), (-hw + gc, gy0), (-hw, gy0 + gc)], [(hw, gy0), (hw - gc, gy0), (hw, gy0 + gc)],
-                   [(-hw, gy1), (-hw + gc, gy1), (-hw, gy1 - gc)], [(hw, gy1), (hw - gc, gy1), (hw, gy1 - gc)]):
-            f.append(th.Face(th.outward([P(x, y) for x, y in q2], ref), "mplate", u_hint=(0, 1, 0)))
-        for i in range(8):
-            j = (i + 1) % 8
+    g0, g1 = -0.5 + mg, 1.5 - mg
+    xc = -0.5
+    yb, yt = min(p[1] for p in ins), max(p[1] for p in ins)
+    halves = []
+    for side in (-1, 1):
+        # walk the inset outline from the top crossing to the bottom crossing on this side
+        pts = [p for p in ins]
+        k_top = max(range(len(pts)), key=lambda i: (pts[i][1], -side * pts[i][0]))
+        path = []
+        i = k_top
+        step = 1 if side < 0 else -1
+        while True:
+            p = pts[i]
+            if abs(p[1] - yb) < 1e-6 and (p[0] - xc) * side < 0.5:
+                path.append(p)
+                j = (i + step) % len(pts)
+                if abs(pts[j][1] - yb) > 1e-6 or (pts[j][0] - xc) * side < 0:
+                    break
+            elif (p[0] - xc) * side >= -1e-9:
+                path.append(p)
+            i = (i + step) % len(pts)
+        path = [(xc, yt)] + [p for p in path if (p[0] - xc) * side > 1e-6] + [(xc, yb)]
+        path += [(xc, g0), (xc + side * hw, g0), (xc + side * hw, g1), (xc, g1)]
+        if side > 0:
+            path = list(reversed(path))
+        halves.append(path)
+    for zw, sg in ((zf, -1.0), (zb, 1.0)):
+        for path in halves:
+            area = sum(path[i][0] * path[(i + 1) % len(path)][1] - path[(i + 1) % len(path)][0] * path[i][1]
+                       for i in range(len(path)))
+            pp = path if area > 0 else list(reversed(path))
+            for t in _ear_clip(pp):
+                q = [(x, y, zw) for x, y in t]
+                f.append(th.Face(th.outward(q, (-0.5, 0.5, zw - sg)), "mplate", u_hint=(1, 0, 0)))
+    # the gauge, sunk into the spine through both platforms
+    for zw, sg in ((zf, -1.0), (zb, 1.0)):
+        def P(x, y, d=0.0, zw=zw, sg=sg):
+            return (xc + x, y, zw - sg * d)
+        ref = (-0.5, 0.5, zw - sg)
+        o0 = [(-hw, g0), (hw, g0), (hw, g1), (-hw, g1)]
+        o1 = [(-hw + bw, g0 + bw), (hw - bw, g0 + bw), (hw - bw, g1 - bw), (-hw + bw, g1 - bw)]
+        o2 = [(x * (hw - bw - ln) / (hw - bw), y) for x, y in
+              [(-hw + bw, g0 + bw + ln), (hw - bw, g0 + bw + ln), (hw - bw, g1 - bw - ln), (-hw + bw, g1 - bw - ln)]]
+        for i in range(4):
+            j = (i + 1) % 4
             q = th.outward([P(*o0[i]), P(*o0[j]), P(*o1[j], bd), P(*o1[i], bd)], ref)
-            f.append(th.Face(q, "mbev%d" % (4 if o0[i][1] > gy1 - 0.05 and o0[j][1] > gy1 - 0.05 else 1 if o0[i][1] < gy0 + 0.05 and o0[j][1] < gy0 + 0.05 else 2), u_hint=th.sub(q[1], q[0])))
+            f.append(th.Face(q, "mbev%d" % [1, 2, 4, 2][i], u_hint=th.sub(q[1], q[0])))
             q = th.outward([P(*o1[i], bd), P(*o1[j], bd), P(*o2[j], bd), P(*o2[i], bd)], ref)
             f.append(th.Face(q, "mglow", u_hint=th.sub(q[1], q[0])))
         f.append(th.Face(th.outward([P(x, y, bd) for x, y in o2], ref), "mcore", u_hint=(1, 0, 0)))
-        rings.append((P, ref))
-    # the gauge bars, bottom up, on both ends at once
-    fx = hw - bw - ln - 0.025
-    b0, b1 = gy0 + bw + ln + 0.025, gy1 - bw - ln - 0.025
-    pitch = (b1 - b0 + MBAT_BAR_GAP) / MBAT_SEGS
-    for k in range(MBAT_SEGS):
-        part = parts.setdefault("marlit_battery_seg%d" % k, [])
-        ya, yb_ = b0 + pitch * k, b0 + pitch * (k + 1) - MBAT_BAR_GAP
-        for P, ref in rings:
+        fx = hw - bw - ln - 0.025
+        b0, b1 = g0 + bw + ln + 0.025, g1 - bw - ln - 0.025
+        pitch = (b1 - b0 + MBAT_BAR_GAP) / MBAT_SEGS
+        for k in range(MBAT_SEGS):
+            part = parts.setdefault("marlit_battery_seg%d" % k, [])
+            ya, yb_ = b0 + pitch * k, b0 + pitch * (k + 1) - MBAT_BAR_GAP
             q = th.outward([P(-fx, ya, bd - 0.004), P(fx, ya, bd - 0.004), P(fx, yb_, bd - 0.004),
                             P(-fx, yb_, bd - 0.004)], ref)
             part.append(th.Face([th.sub(p, C) for p in q], "mcharge", u_hint=(1, 0, 0)))
-    # the cells: a collar where each enters a platform, grooves where its rings run
-    R, (cr, ch) = MBAT_CELL_R, MBAT_COLLAR
-    fr = lambda r: flat_r(r, 12)
-    groove = R - 0.03
+    # the cells: barrels, their ends in sockets in the platforms, their bellies flush with the faces
+    re_, rb = MBAT_CELL
+    sr, sh = MBAT_SOCKET
+    fr = lambda r: flat_r(r, 8)
+    vis0, vis1 = y0 + sh, y1 - sh
+    span = vis1 - vis0
     for cx, cz in _mbat_cells():
-        prof = [(fr(cr), y0), (fr(cr), y0 + ch), (fr(R), y0 + ch + 0.03)]
-        for gy in MBAT_RING_Y:
-            ga, gb = y0 + gy, y0 + gy + MBAT_RING_H
-            prof += [(fr(R), ga), (fr(groove), ga), (fr(groove), gb), (fr(R), gb)]
-        prof += [(fr(R), y1 - ch - 0.03), (fr(cr), y1 - ch), (fr(cr), y1)]
-        lathe_y(pk, img, f, prof, MARLIT_RAMP, sides=8, cx=cx, cz=cz)
-        for k, gy in enumerate(MBAT_RING_Y):
-            ga, gb = y0 + gy + 0.008, y0 + gy + MBAT_RING_H - 0.008
-            lathe_y(pk, img, parts["marlit_battery_ring%d" % k], [(fr(R + 0.004), ga), (fr(R + 0.004), gb)],
+        # the sockets: a collar of the casting round each end
+        for ys, sg in ((y0, 1.0), (y1, -1.0)):
+            prof_s = [(fr(sr), ys), (fr(sr), ys + sg * (sh - 0.02)), (fr(sr - 0.02), ys + sg * sh), (fr(re_), ys + sg * sh)]
+            if sg < 0:
+                prof_s = [(r, y) for r, y in reversed(prof_s)]
+            lathe_y(pk, img, f, prof_s, MARLIT_RAMP, sides=8, cx=cx, cz=cz)
+        pr = [(fr(re_), vis0), (fr(rb), vis0 + 0.10)]
+        for t in MBAT_RING_T:
+            ga = vis0 + span * t - MBAT_RING_H / 2
+            gb = ga + MBAT_RING_H
+            pr += [(fr(rb), ga), (fr(rb - 0.03), ga), (fr(rb - 0.03), gb), (fr(rb), gb)]
+        pr += [(fr(rb), vis1 - 0.10), (fr(re_), vis1)]
+        lathe_y(pk, img, f, pr, MARLIT_RAMP, sides=8, cx=cx, cz=cz)
+        for k, t in enumerate(MBAT_RING_T):
+            ga = vis0 + span * t - MBAT_RING_H / 2 + 0.008
+            gb = ga + MBAT_RING_H - 0.016
+            lathe_y(pk, img, parts["marlit_battery_ring%d" % k], [(fr(rb - 0.004), ga), (fr(rb - 0.004), gb)],
                     GREEN_RAMP, sides=8, cx=cx - C[0], cz=cz - C[2])
     for k in range(2):
         for fc in parts["marlit_battery_ring%d" % k]:
             fc.pts = [(p[0], p[1] - C[1], p[2]) for p in fc.pts]
     return parts
-
-
-def _mbat_rect(hw, y0, y1, cut):
-    return _cut_corners([(-hw, y0), (hw, y0), (hw, y1), (-hw, y1)], cut)
 
 
 # ── the Marlit wireless charger ─────────────────────────────────────────────────────────────────
