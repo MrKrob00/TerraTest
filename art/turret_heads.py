@@ -897,6 +897,11 @@ def style_px(style, x, y, w, h, d):
     if style[:5] == "bflat" and style[5:].isdigit():
         # A plain blue facet in its painted-light tone, no edge line: a smooth band.
         return jitter([BLUE_DEEP, BLUE_LO, BLUE, BLUE_MID, BLUE_HI][int(style[5:])], 1)
+    if style == "mhazard":
+        # GeoCorp's hazard slats in Marlit's colours: sunset and gunmetal, diagonal, a dark border
+        if x < 2 or y < 2 or x >= w - 2 or y >= h - 2:
+            return (34, 36, 44)
+        return (236, 146, 58) if ((x + y) // 7) % 2 == 0 else (40, 42, 50)
     if style[:5] == "mflat" and style[5:].isdigit():
         # a plain Marlit surface in one painted-light tone, no edge line of its own
         return jitter([(22, 23, 30), (30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82)][int(style[5:])], 1)
