@@ -1994,30 +1994,25 @@ project: read it before claiming how anything works.
   hangs off the hit value, and putting it behind `if (hit > 0.001)` costs nothing the rest of the
   time: it is a uniform, so the branch is coherent across the whole surface.
 - A FULL-SCREEN TRANSPARENT SPHERE IS EXPENSIVE, AND `cull_disabled` PAYS FOR IT TWICE. Both the
-  dome and the repair field were such spheres with hashes in every pixel. The repair field is now
-  a MultiMesh of a dozen billboard cards — one draw call, no fragment cost worth the name — and
-  the dome culls its back faces outright: half the fragments, no lattice added on top of itself,
-  and the near/far question gone. The cost is that the dome is invisible from inside it, which at
-  a four-metre radius the camera almost never is.
-- THE REPAIR FIELD'S DIGITS RIDE PARALLELS OF A SPHERE, one height per digit, and the height comes
-  from the INSTANCE NUMBER (`(i + 0.5) / N`), never from a roll. A random orbit axis per digit was
-  the obvious thing and it produced none of what was wanted: random axes pile the cloud toward the
-  middle, the circles cross at arbitrary angles and read as debris rather than an orbit, and the
-  visible arc was a fixed slice of each lap — half the digits only ever appeared on the low part
-  of it, which is what "they are all at block level or below" was. Random LATITUDE has the same
-  flaw in miniature: over thirty digits it will leave a hole at the crown and a clot at the waist.
-  Ninety cards at 0.2 carry LESS ink than thirty at 0.4 (3.6 against 4.8) while actually
-  outlining `REGEN_RADIUS`, which is the one thing the field exists to say — thirty still drew
-  that outline as a dotted line. A MultiMesh bills for pixels, not for instances.
-- A REPAIR BOLT LEAVES THE CLOUD, NOT THE BLOCK, and there is ONE per block healed
-  (`BlockFX.repair_stream`). It started at the regen's own centre with half a metre of scatter
-  against a 4.6 m field, so it read as a line the block draws to its target — but it is the FIELD
-  that repairs. The start is now a random point on the same shell the shader puts the digits on
-  (0.82–1.0 of the radius), in the hemisphere facing the target so the glyph does not fly through
-  the whole machine. WHICH digit is never asked: their orbits are computed in the shader from
-  `TIME`, and repeating that on the game side would be a second copy of the formula that drifts
-  silently. Three bolts per block turned a dense build into a flash; one per target means the
-  number of lines IS the number of blocks under repair.
+  dome and the repair field were such spheres with hashes in every pixel. Both now cull their back
+  faces outright: half the fragments, nothing added on top of itself, and the near/far question
+  gone; the repair field's shader is a rim, a thin grid and one band, no hash. The cost is that they
+  are invisible from inside, which at their radius the camera almost never is.
+- **THE REPAIR FIELD IS A PLAIN SPHERE, AND THE REPAIR IS DIGITS THAT TRAVEL** (`regen.gd`,
+  `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
+  `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
+  sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
+  (`pulse`) as each repair lands. For every block a tick mends, `DIGITS_PER_HEAL` 0/1 cards appear
+  round the unit's core, blink in, and fly to the block along an arc; THE HIT POINTS LAND WITH THEM
+  (`_land` -> `_mend`), so the block's damage overlay greens as they arrive - a block with digits
+  still on the way is not charged or sent more. The digits are ONE MultiMesh per unit, a pool of
+  `max_bodies` x `DIGITS_PER_HEAL` cards written on the CPU only while any flies: no node per heal.
+  What this replaced: ninety cards orbiting the field for good and one glitch bolt per heal
+  (`BlockFX.repair_stream`, gone), which built a node per heal and was 40% of the unit's work.
+  EVERY UNIT RUNS ON ITS OWN BEAT (`_timer` starts at a random phase): with one start value all of
+  them fired in one physics tick, and five units over a battered hull put 35-47 ms into it once a
+  second - a hitch, not a load. Measured on the proving ground: digits leave, the hit points land
+  1.2 s later, 87 digits in flight for the Falsus unit over 28 damaged blocks, 102 for the Marlit.
 
 ### Performance
 

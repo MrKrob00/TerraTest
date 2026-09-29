@@ -32,13 +32,18 @@ var max_bodies: int = FIELD_MAX_BODIES
 var field_centre: Vector3 = Vector3.ZERO
 
 var _timer: float = 0.0
-var _field: MultiMeshInstance3D = null
+var _field: MeshInstance3D = null
 var _field_mat: ShaderMaterial = null
 var _alpha: float = FIELD_ALPHA_DEAD
 
 func _ready() -> void:
 	super._ready()
+	# EVERY UNIT ON ITS OWN BEAT. With one start value all of them fired in the same physics tick:
+	# measured, five units over a battered hull put 35-47 ms of work into one tick a second - a
+	# hitch, not a load. A random phase spreads it over the second.
+	_timer = randf() * REGEN_INTERVAL
 	_build_field()
+	_build_digits()
 	_setup_beacon()
 
 # ── THE BEACON ──────────────────────────────────────────────────────────────────
@@ -101,61 +106,166 @@ func _animate_beacon(delta: float, on: bool) -> void:
 		if not _crystal_mat.albedo_color.is_equal_approx(_crystal_col):
 			_crystal_mat.albedo_color = _crystal_col
 
-# ── Поле ремонта ─────────────────────────────────────────────────────────────
-# Видимая сфера радиусом ровно REGEN_RADIUS, как купол у щита. Без неё радиус был
-# невидимой цифрой в коде: игрок не мог знать, дотягивается блок до пробитого борта или
-# нет, и ставил реген наугад. Сфера отвечает на это одним взглядом.
+# ── The field and the digits ─────────────────────────────────────────────────
+# The FIELD is a sphere of exactly `field_radius` (regen_field.gdshader): a rim, a thin grid and a
+# band running over it - it says how far the unit reaches and that it is powered. The REPAIR is said
+# by DIGITS: for every block a tick mends, DIGITS_PER_HEAL 0/1 cards appear round the unit's core,
+# hang there a moment and fly to the block along an arc; the hit points land WITH them
+# (`_land`), so the block's damage overlay greens the moment the digits arrive. They used to be a
+# cloud of ninety cards orbiting the field for good and one glitch bolt per heal - the player wanted
+# a plain, pretty field and the repair visible as something that travels.
 #
-# Отличие от щита принципиальное: у того купол — ФИЗИЧЕСКОЕ тело, он ловит снаряды и лежит
-# на слое блоков. Здесь это чистая графика, без коллизии вовсе: реген ничего не
-# перехватывает, он только чинит, и тело ему не нужно.
-## Сколько цифр в облаке. По набору читается РАДИУС поля, а тридцатью точками сфера всё ещё
-## очерчивалась пунктиром — девяносто дают сплошной силуэт. Дороже это не стало: MultiMesh рисует
-## всё облако одним вызовом, и цена в нём — пиксели, а не число инстансов.
-const FIELD_DIGITS := 90
-## Размер карточки. Снова половина прежнего, и это важно именно вместе с утроением числа: втрое
-## больше цифр при вчетверо меньшей площади каждой — 90 × 0.2² против 30 × 0.4², то есть краски в
-## кадре даже МЕНЬШЕ (3.6 против 4.8), и сквозь облако по-прежнему видно чинимый борт.
-const DIGIT_SIZE := 0.2
+# The digits are ONE MultiMesh per unit, a pool of cards moved on the CPU while any is in flight: no
+# node is made per heal (the old bolt made one, and it was 40% of the unit's work). The pool holds a
+# full tick - `max_bodies` blocks, DIGITS_PER_HEAL each - since a fixed 96 ran out under the Marlit
+# unit's 45 and the rest healed with nothing flying.
+const DIGITS_PER_HEAL := 3
+const DIGIT_SIZE := 0.26
+const DIGIT_SPAWN := 0.35          # s the digits hang at the core, blinking in
+const DIGIT_FLY := 0.7             # s to the block
+const DIGIT_FADE := 0.15           # s they burn out on it
+const DIGIT_CORE := 0.5            # m round the core they appear in
+const DIGIT_ARC := 0.9             # m the path bows upward
+const PULSE_FADE := 0.4            # s the field brightens for when a repair lands
+
+var _digits: MultiMeshInstance3D = null
+var _flights: Array = []           # {slot, group, start, ctrl, t, seed}
+var _groups: Dictionary = {}       # block instance id -> {block, hp, left}
+var _free: Array[int] = []
+var _pulse: float = 0.0
+var _digits_dirty := false
 
 func _build_field() -> void:
-	# ЦИФРЫ ЛЕТАЮТ ВНУТРИ ОБЪЁМА, А НЕ ПО ОБОЛОЧКЕ ШАРА. Сфера с узором по поверхности честно
-	# показывала радиус, но узор на оболочке остаётся узором на оболочке: внутрь он не попадёт
-	# никак, сколько его ни двигай. Радиус теперь показывает сам разлёт цифр.
-	#
-	# MultiMesh: один узел и один вызов отрисовки на всё поле, орбиты считаются в шейдере из
-	# TIME, на стороне игры — только четыре числа на цифру, записанные один раз.
-	_field = MultiMeshInstance3D.new()
+	_field = MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = field_radius
+	sph.height = field_radius * 2.0
+	sph.radial_segments = 32
+	sph.rings = 16
+	_field.mesh = sph
+	_field_mat = ShaderMaterial.new()
+	_field_mat.shader = preload("res://regen_field.gdshader")
+	_field_mat.set_shader_parameter("active", 0.0)
+	_field.material_override = _field_mat
+	_field.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_field.position = field_centre
+	_field.set_meta("block_fx", true)       # not part of the block's size (see _local_aabb)
+	add_child(_field)
+
+func _build_digits() -> void:
+	_digits = MultiMeshInstance3D.new()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
 	var q := QuadMesh.new()
 	q.size = Vector2(DIGIT_SIZE, DIGIT_SIZE)
 	mm.mesh = q
-	mm.instance_count = FIELD_DIGITS
-	for i in FIELD_DIGITS:
-		# Положение задаёт шейдер, поэтому трансформы единичные; фаза, скорость, ВЫСОТА и
-		# зерно уезжают в custom data.
-		#
-		# ВЫСОТА НЕ СЛУЧАЙНАЯ, А ПО НОМЕРУ. Случайная широта на три десятка цифр обязательно
-		# оставит дыру у макушки и сгусток у пояса — и поле снова будет читаться как облако на
-		# одном уровне. Раскладка по номеру (i + 0.5) / N покрывает высоты ровно.
-		var lat: float = (float(i) + 0.5) / float(FIELD_DIGITS)
-		mm.set_instance_transform(i, Transform3D())
-		mm.set_instance_custom_data(i, Color(randf(), randf(), lat, randf()))
-	_field.multimesh = mm
-	_field_mat = ShaderMaterial.new()
-	_field_mat.shader = preload("res://regen_code.gdshader")
-	_field_mat.set_shader_parameter("radius", field_radius)
-	_field_mat.set_shader_parameter("active", 0.0)
-	_field.material_override = _field_mat
-	_field.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Габарит задаём руками: трансформы инстансов единичные, и посчитанный по ним габарит был
-	# бы точкой — поле пропадало бы, едва блок ушёл с края экрана.
-	_field.custom_aabb = AABB(Vector3.ONE * -field_radius, Vector3.ONE * (field_radius * 2.0))
-	_field.position = field_centre
-	_field.set_meta("block_fx", true)       # в габарит блока не входит (см. _local_aabb)
-	add_child(_field)
+	var pool: int = max_bodies * DIGITS_PER_HEAL
+	mm.instance_count = pool
+	for i in pool:
+		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+		mm.set_instance_custom_data(i, Color(0, randf(), 0, 0))
+		_free.append(i)
+	_digits.multimesh = mm
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://regen_digit.gdshader")
+	_digits.material_override = mat
+	_digits.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# The instances move, so the box is set by hand: the whole field, where every flight stays.
+	_digits.custom_aabb = AABB(Vector3.ONE * -field_radius, Vector3.ONE * (field_radius * 2.0))
+	_digits.position = field_centre
+	_digits.set_meta("block_fx", true)
+	add_child(_digits)
+
+## Send digits to mend `b` by `hp`. False when the pool has no room: the caller heals at once.
+func _launch(b: Node3D, hp: int) -> bool:
+	if _digits == null or _free.size() < DIGITS_PER_HEAL:
+		return false
+	var id: int = b.get_instance_id()
+	_groups[id] = {"block": b, "hp": hp, "left": DIGITS_PER_HEAL}
+	for k in DIGITS_PER_HEAL:
+		var start := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized() \
+				* randf_range(0.15, DIGIT_CORE)
+		_flights.append({"slot": _free.pop_back(), "group": id, "start": start,
+			"t": -k * 0.08, "side": randf_range(-0.5, 0.5), "seed": randf()})
+	return true
+
+func _process(delta: float) -> void:
+	if _pulse > 0.0:
+		_pulse = maxf(_pulse - delta / PULSE_FADE, 0.0)
+		if _field_mat != null:
+			_field_mat.set_shader_parameter("pulse", _pulse)
+	if _flights.is_empty():
+		if _digits_dirty:
+			_digits_dirty = false
+			var mm0 := _digits.multimesh
+			for i in mm0.instance_count:
+				mm0.set_instance_custom_data(i, Color(0, 0, 0, 0))
+		return
+	_digits_dirty = true
+	var mm: MultiMesh = _digits.multimesh
+	var total: float = DIGIT_SPAWN + DIGIT_FLY + DIGIT_FADE
+	var keep: Array = []
+	for f in _flights:
+		f["t"] += delta
+		var t: float = f["t"]
+		var g: Dictionary = _groups.get(f["group"], {})
+		var b = g.get("block")
+		if t >= total or not is_instance_valid(b):
+			mm.set_instance_transform(f["slot"], Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
+			mm.set_instance_custom_data(f["slot"], Color(0, f["seed"], 0, 0))
+			_free.append(f["slot"])
+			continue
+		keep.append(f)
+		var target: Vector3 = _digits.to_local((b as Node3D).global_position)
+		var pos: Vector3 = f["start"]
+		var alpha := 1.0
+		var size := 1.0
+		if t < 0.0:
+			alpha = 0.0
+		elif t < DIGIT_SPAWN:
+			var k: float = t / DIGIT_SPAWN
+			size = k
+			alpha = k * (0.6 + 0.4 * float(int(t * 30.0) % 2))   # blinks in
+		elif t < DIGIT_SPAWN + DIGIT_FLY:
+			var u: float = (t - DIGIT_SPAWN) / DIGIT_FLY
+			u = u * u * (3.0 - 2.0 * u)
+			var mid: Vector3 = (f["start"] + target) * 0.5 + Vector3.UP * DIGIT_ARC
+			var span: Vector3 = target - f["start"]
+			if span.length_squared() > 0.0001:
+				mid += span.cross(Vector3.UP).normalized() * float(f["side"])
+			pos = (f["start"] as Vector3).lerp(mid, u).lerp(mid.lerp(target, u), u)
+		else:
+			if not f.get("landed", false):
+				f["landed"] = true
+				_land(f["group"])
+			var k2: float = (t - DIGIT_SPAWN - DIGIT_FLY) / DIGIT_FADE
+			pos = target
+			alpha = 1.0 - k2
+			size = 1.0 + k2 * 0.8
+		mm.set_instance_transform(f["slot"], Transform3D(Basis().scaled(Vector3.ONE * size), pos))
+		mm.set_instance_custom_data(f["slot"], Color(alpha, f["seed"], 0, 0))
+	_flights = keep
+
+## A digit reached its block; the last of its group brings the hit points.
+func _land(group: int) -> void:
+	var g: Dictionary = _groups.get(group, {})
+	if g.is_empty():
+		return
+	g["left"] = int(g["left"]) - 1
+	if int(g["left"]) > 0:
+		return
+	_groups.erase(group)
+	var b = g.get("block")
+	if is_instance_valid(b):
+		_mend(b, int(g["hp"]))
+	_pulse = 1.0
+
+func _mend(b: Node, hp: int) -> void:
+	b.current_hp = mini(b.current_hp + hp, b.max_hp)
+	# THE REPAIR IS SHOWN BY THE DAMAGE OVERLAY ITSELF: digits that stop being red green and fade.
+	if b.has_method("_refresh_hp_fx"):
+		b._refresh_hp_fx()
 
 func _physics_process(delta: float) -> void:
 	_animate_beacon(delta, _work(delta))
@@ -200,18 +310,14 @@ func _work(delta: float) -> bool:
 		# чинил всё вокруг, кроме единственного блока, от которого зависит вся починка.
 		if b.current_hp >= b.max_hp:
 			continue
+		# Digits already on their way to it: the next repair waits for them to land.
+		if _groups.has(b.get_instance_id()):
+			continue
 		# Платим за каждый блок отдельно: не хватило на этого — дальше смысла нет.
 		if vehicle.energy_consume(REGEN_COST) < REGEN_COST:
 			break
-		b.current_hp = mini(b.current_hp + heal_hp, b.max_hp)
-		# ПОЧИНКУ ПОКАЗЫВАЕТ САМ ОВЕРЛЁЙ ПОВРЕЖДЕНИЙ: цифры, переставшие быть красными, зеленеют
-		# и гаснут. Отдельная зелёная оболочка поверх блока (BlockFX.heal) рисовала то же самое
-		# вторым мешем и не говорила, ЧТО именно починили.
-		if b.has_method("_refresh_hp_fx"):
-			b._refresh_hp_fx()
-		# И КОД ЛЕТИТ В БЛОК. Орбита вокруг поля показывает, что оно работает; этот поток
-		# показывает, КОГО оно чинит прямо сейчас (см. BlockFX.repair_stream).
-		BlockFX.repair_stream(_field if is_instance_valid(_field) else self, b, field_radius)
+		if not _launch(b, heal_hp):
+			_mend(b, heal_hp)
 		_heal_flash = 1.0
 	return true
 
