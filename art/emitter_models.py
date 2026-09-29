@@ -2244,52 +2244,62 @@ def build_battery(pk, img):
 
 
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
-# THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack. The body is ONE PART: an H-shaped
-# profile - a platform under, a platform over, a spine a third of the width between them - swept from
-# back to front with every outer edge chamfered, the platforms' sides vented. In the two bays the H
-# leaves stand TWO CAR BATTERIES a side (the player's call), FILLING the bay: platform to platform,
-# the block's side to the spine, one width top to bottom. What makes them part of the block rather
-# than boxes put in it: a steel strap over each outer side from platform to platform, bolted at the
-# top, and a copper link across the gap between the two of a side. A ribbed case under a lid band,
-# and on its outward end the charge eye a car battery carries, lit green while it holds charge. The
-# charge itself is the VERTICAL GAUGE cut into the spine through
-# both platforms, front and back. Nothing stands out of the cell and it joins on every face.
+# THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack. The body is ONE CASTING: a platform
+# under, a platform over, a spine a third of the width between them, swept from back to front with
+# its OUTER edges chamfered heavily (the lips over the bays stay square). The bays are POCKETED: the
+# platforms' lips overhang the cells by MBAT_LIP and behind the lips the bays run MBAT_POCKET deeper
+# into both platforms. In each bay stand TWO CAR BATTERIES a side (the player's call), each rising
+# out of the lower pocket and into the upper one - driven into the platforms, taller than it is wide
+# - with a collar at each lip where it enters, a fluted case, a label plate on its outward end and
+# the charge eye on its outer side, where a car battery carries its hydrometer. The charge itself is
+# the VERTICAL GAUGE cut into the spine through both platforms, front and back: the one green thing
+# on those faces. The platforms' sides are calm plate with a sunset line and two bolts; the faction's
+# window is on the top and bottom. Nothing stands out of the cell and it joins on every face.
 # Turned down before the player set this layout: four Falsus cells between two plates; a gauge
 # column per side ("a water tank") with terminals on top; lit capacitor plates in side panels; an
 # octagonal charge dial; the phone's battery icon on every face ("too simple"); one octagonal cell
 # with rings in a cage of posts ("looks like a battery again"). Inside the layout: platforms too
-# thin, the gauge a separate box between them, round cells in sockets ("not built in"), and car
+# thin, the gauge a separate box between them, round cells in sockets ("not built in"), car
 # batteries on trays with a gap over them and a lid wider than the case ("short, uneven widths").
+# An outside critique then read the next cut as a chest of drawers (windows and a copper pull on the
+# sides) with a robot's face (two green eyes beside the gauge) - those went.
 #   body  - the casting and the batteries
 #   seg   - one gauge bar, front and back, about the block's middle; the scene stands MBAT_SEGS
 #           copies (Seg0 the lowest) there and battery.gd shrinks the dark ones into the block
 #   ring0 - the four batteries' charge eyes, about the block's middle
 MBAT_SEGS = 8
-MBAT_PLAT = 0.66                  # each platform's height
+MBAT_PLAT = 0.66                  # each platform's height at its outer face
 MBAT_SPINE = 2.0 / 3.0            # the spine's width
-MBAT_C = 0.12                     # the casting's chamfer: heavy, as GeoCorp's platforms
-MBAT_CAR = (0.04, 0.14, 0.13, 0.08, 0.03, 0.075)   # a car battery: inset from the block's faces, the
-                                  # gap between the two of a side, lid, foot band, how far lid and foot
-                                  # stand proud of the case, the charge eye's radius
+MBAT_C = 0.12                     # the casting's outer chamfer: heavy, as GeoCorp's platforms
+MBAT_LIP = 0.14                   # how far the platforms' lips overhang the cells
+MBAT_POCKET = 0.14                # how far behind the lips the bays run into the platforms
+MBAT_END = 0.10                   # the cells' outward ends stand this far in from the front/back
+MBAT_GAP = 0.14                   # between the two cells of a side
+MBAT_COLLAR = (0.10, 0.09)        # a collar at each lip: height, how far it stands proud of the case
+MBAT_EYE = 0.06                   # the charge eye's radius
 MBAT_GAUGE = (0.16, 0.20, 0.04, 0.05, 0.015)   # hw, margin top/bottom, bevel across, deep, line
 MBAT_BAR_GAP = 0.03
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
 SUNSET_RAMP = [(226, 116, 38), (240, 150, 60), (252, 176, 80), (254, 200, 120), (255, 226, 160)]
 
 
-def _miter_inset(q, c):
-    """Offset a simple CCW polygon (convex or not) inward by c, corners mitred."""
+def _offset_inset(q, offs):
+    """Offset each edge of a simple CCW polygon inward by its own amount (offs[i] for edge i -> i+1)
+    and return the polygon of the offset lines' intersections."""
     n = len(q)
+    lines = []
+    for i in range(n):
+        a, b = q[i], q[(i + 1) % n]
+        d = (b[0] - a[0], b[1] - a[1])
+        ln = math.hypot(*d)
+        nx, ny = -d[1] / ln, d[0] / ln
+        lines.append(((a[0] + nx * offs[i], a[1] + ny * offs[i]), d))
     out = []
     for i in range(n):
-        a, b, p = q[i - 1], q[i], q[(i + 1) % n]
-        d1 = (b[0] - a[0], b[1] - a[1])
-        d2 = (p[0] - b[0], p[1] - b[1])
-        l1, l2 = math.hypot(*d1), math.hypot(*d2)
-        n1 = (-d1[1] / l1, d1[0] / l1)
-        n2 = (-d2[1] / l2, d2[0] / l2)
-        k = c / (1.0 + n1[0] * n2[0] + n1[1] * n2[1])
-        out.append((b[0] + (n1[0] + n2[0]) * k, b[1] + (n1[1] + n2[1]) * k))
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        t = ((p2[0] - p1[0]) * d2[1] - (p2[1] - p1[1]) * d2[0]) / den
+        out.append((p1[0] + d1[0] * t, p1[1] + d1[1] * t))
     return out
 
 
@@ -2318,6 +2328,26 @@ def _ear_clip(q):
     return tris
 
 
+def _clip_half(poly, xc, left):
+    """Sutherland-Hodgman: the part of a polygon on one side of x = xc."""
+    def inside(p):
+        return p[0] <= xc + 1e-9 if left else p[0] >= xc - 1e-9
+
+    def cut(p, q):
+        t = (xc - p[0]) / (q[0] - p[0])
+        return (xc, p[1] + (q[1] - p[1]) * t)
+    out = []
+    for i in range(len(poly)):
+        cur, prv = poly[i], poly[i - 1]
+        if inside(cur):
+            if not inside(prv):
+                out.append(cut(prv, cur))
+            out.append(cur)
+        elif inside(prv):
+            out.append(cut(prv, cur))
+    return out
+
+
 def _mbat_cells():
     """The four cells' axes (x, z) in block space."""
     w = (2.0 - MBAT_SPINE) / 2
@@ -2325,25 +2355,38 @@ def _mbat_cells():
 
 
 def _mbat_profile():
-    """The casting's H, CCW in (x, y), its outer corners cut by the chamfer."""
+    """The casting's profile, CCW in (x, y): the H with pocketed bays, its outer corners cut by the
+    chamfer, and for every edge whether it is on the outer silhouette."""
     y0, y1 = -0.5 + MBAT_PLAT, 1.5 - MBAT_PLAT
+    p0, p1 = y0 - MBAT_POCKET, y1 + MBAT_POCKET
     bl, br = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
-    c = MBAT_C
-    # the platforms' lips over the bays stay square: chamfered, they sloped away from the battery
-    # and left a slot along it
-    corners = [((-1.5, -0.5), True), ((0.5, -0.5), True), ((0.5, y0), False), ((br, y0), False),
-               ((br, y1), False), ((0.5, y1), False), ((0.5, 1.5), True), ((-1.5, 1.5), True),
-               ((-1.5, y1), False), ((bl, y1), False), ((bl, y0), False), ((-1.5, y0), False)]
-    out = []
+    L, c = MBAT_LIP, MBAT_C
+    corners = [((-1.5, -0.5), True), ((0.5, -0.5), True), ((0.5, y0), False), ((0.5 - L, y0), False),
+               ((0.5 - L, p0), False), ((br, p0), False), ((br, p1), False), ((0.5 - L, p1), False),
+               ((0.5 - L, y1), False), ((0.5, y1), False), ((0.5, 1.5), True), ((-1.5, 1.5), True),
+               ((-1.5, y1), False), ((-1.5 + L, y1), False), ((-1.5 + L, p1), False), ((bl, p1), False),
+               ((bl, p0), False), ((-1.5 + L, p0), False), ((-1.5 + L, y0), False), ((-1.5, y0), False)]
+    pts = []
     n = len(corners)
     for i, (p, cut) in enumerate(corners):
         if not cut:
-            out.append(p)
+            pts.append(p)
             continue
         a, b = corners[i - 1][0], corners[(i + 1) % n][0]
-        out.append(hm.lerp2(p, a, c / math.dist(p, a)))
-        out.append(hm.lerp2(p, b, c / math.dist(p, b)))
-    return out
+        pts.append(hm.lerp2(p, a, c / math.dist(p, a)))
+        pts.append(hm.lerp2(p, b, c / math.dist(p, b)))
+
+    def outer(a, b):
+        if abs(a[0] - b[0]) > 1e-9 and abs(a[1] - b[1]) > 1e-9:
+            return True                                      # a chamfer's cut
+        if abs(a[0] - b[0]) < 1e-9:
+            return abs(abs(a[0] + 0.5) - 1.0) < 1e-9
+        return abs(a[1] + 0.5) < 1e-9 or abs(a[1] - 1.5) < 1e-9
+    return pts, [outer(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+
+
+def _decal(f, pts, ref, style, u):
+    f.append(th.Face(th.outward(pts, ref), style, u_hint=u))
 
 
 def build_marlit_battery(pk, img):
@@ -2354,77 +2397,92 @@ def build_marlit_battery(pk, img):
     C = (-0.5, 0.5, -0.5)
     c = MBAT_C
     y0, y1 = -0.5 + MBAT_PLAT, 1.5 - MBAT_PLAT
+    p0, p1 = y0 - MBAT_POCKET, y1 + MBAT_POCKET
     zf, zb = -1.5, 0.5
-    prof = _mbat_profile()
-    ins = _miter_inset(prof, c)
+    prof, outer = _mbat_profile()
     n = len(prof)
-    # the walls, swept between the two chamfers; top and bottom and the platforms' outer sides carry
-    # the window, the rest is plate
+    ins = _offset_inset(prof, [c if o else 0.0 for o in outer])
+    # the walls. An outer wall runs between the two chamfers; a wall inside a bay has no chamfer, so it
+    # reaches the front and back faces, cut back where it meets a chamfered neighbour
     for i in range(n):
-        a, b = prof[i], prof[(i + 1) % n]
-        q = [(a[0], a[1], zf + c), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (a[0], a[1], zb - c)]
-        m = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        j = (i + 1) % n
+        a, b = prof[i], prof[j]
         e = (b[0] - a[0], b[1] - a[1])
         nrm = (e[1], -e[0], 0.0)                     # CCW profile: outward is the right normal
+        if outer[i]:
+            q = [(a[0], a[1], zf + c), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (a[0], a[1], zb - c)]
+        else:
+            q = []
+            if outer[i - 1]:
+                q += [(a[0], a[1], zf + c), (ins[i][0], ins[i][1], zf)]
+            else:
+                q += [(a[0], a[1], zf)]
+            if outer[j]:
+                q += [(ins[j][0], ins[j][1], zf), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (ins[j][0], ins[j][1], zb)]
+            else:
+                q += [(b[0], b[1], zf), (b[0], b[1], zb)]
+            if outer[i - 1]:
+                q += [(ins[i][0], ins[i][1], zb), (a[0], a[1], zb - c)]
+            else:
+                q += [(a[0], a[1], zb)]
+        m = th.mul(tuple(map(sum, zip(*q))), 1.0 / len(q))
         q = th.outward(q, th.sub(m, nrm))
         horiz = abs(e[1]) < 1e-6
         vert = abs(e[0]) < 1e-6
-        outer_side = vert and abs(abs(a[0] + 0.5) - 1.0) < 1e-6
-        outer_cap = horiz and abs(a[1] - 0.5) > 0.99
-        if outer_cap:
-            marlit_poly(f, q, rnd)
-        elif outer_side and math.dist(a, b) > 0.3:
-            marlit_poly(f, q, rnd)
-        elif horiz or vert:
+        if outer[i] and horiz:
+            marlit_poly(f, q, rnd)                           # top and bottom: the faction's window
+        elif outer[i] and vert:
             f.append(th.Face(q, "mplate", u_hint=(0, 0, 1)))
+            # a platform's side: a sunset line along its middle, a bolt near each end
+            xs = a[0] + (0.004 if a[0] > -0.5 else -0.004)
+            ym = (a[1] + b[1]) / 2
+            ref = (-0.5, ym, -0.5)
+            _decal(f, [(xs, ym - 0.012, zf + 0.3), (xs, ym - 0.012, zb - 0.3), (xs, ym + 0.012, zb - 0.3),
+                       (xs, ym + 0.012, zf + 0.3)], ref, "mglow", (0, 0, 1))
+            for zc_ in (zf + 0.2, zb - 0.2):
+                _decal(f, [(xs, ym - 0.045, zc_ - 0.045), (xs, ym - 0.045, zc_ + 0.045), (xs, ym + 0.045, zc_ + 0.045),
+                           (xs, ym + 0.045, zc_ - 0.045)], ref, "mbolt", (0, 0, 1))
+        elif horiz or vert:
+            f.append(th.Face(q, "mbev1" if horiz and nrm[1] < 0 else "mplate", u_hint=(0, 0, 1)))
         else:
             f.append(th.Face(q, "medge", u_hint=(0, 0, 1)))
-    # the chamfer frames front and back
+    # the chamfer frames, front and back, along the outer silhouette only
     for zw, zc, sg in ((zf, zf + c, -1.0), (zb, zb - c, 1.0)):
         for i in range(n):
+            if not outer[i]:
+                continue
             j = (i + 1) % n
             q = [(prof[i][0], prof[i][1], zc), (prof[j][0], prof[j][1], zc), (ins[j][0], ins[j][1], zw),
                  (ins[i][0], ins[i][1], zw)]
             m = th.mul(tuple(map(sum, zip(*q))), 0.25)
             q = th.outward(q, (-0.5, 0.5, m[2] - sg))
             f.append(th.Face(q, "medge", u_hint=th.sub(q[1], q[0])))
-    # the front and back faces round the gauge, each cut down the middle into two halves and
-    # ear-clipped (the H is not convex)
+    # the front and back faces round the gauge: each cut down the middle into two halves, the gauge's
+    # half notched out of the cut edge, and ear-clipped (the outline is not convex)
     hw, mg, bw, bd, ln = MBAT_GAUGE
     g0, g1 = -0.5 + mg, 1.5 - mg
     xc = -0.5
-    yb, yt = min(p[1] for p in ins), max(p[1] for p in ins)
     halves = []
-    for side in (-1, 1):
-        # walk the inset outline from the top crossing to the bottom crossing on this side
-        pts = [p for p in ins]
-        k_top = max(range(len(pts)), key=lambda i: (pts[i][1], -side * pts[i][0]))
-        path = []
-        i = k_top
-        step = 1 if side < 0 else -1
-        while True:
-            p = pts[i]
-            if abs(p[1] - yb) < 1e-6 and (p[0] - xc) * side < 0.5:
-                path.append(p)
-                j = (i + step) % len(pts)
-                if abs(pts[j][1] - yb) > 1e-6 or (pts[j][0] - xc) * side < 0:
-                    break
-            elif (p[0] - xc) * side >= -1e-9:
-                path.append(p)
-            i = (i + step) % len(pts)
-        path = [(xc, yt)] + [p for p in path if (p[0] - xc) * side > 1e-6] + [(xc, yb)]
-        path += [(xc, g0), (xc + side * hw, g0), (xc + side * hw, g1), (xc, g1)]
-        if side > 0:
-            path = list(reversed(path))
-        halves.append(path)
+    for left in (True, False):
+        h = _clip_half(ins, xc, left)
+        k = next(i for i in range(len(h)) if abs(h[i][0] - xc) < 1e-9 and abs(h[(i + 1) % len(h)][0] - xc) < 1e-9)
+        if left:
+            notch = [(xc, g0), (xc - hw, g0), (xc - hw, g1), (xc, g1)]
+        else:
+            notch = [(xc, g1), (xc + hw, g1), (xc + hw, g0), (xc, g0)]
+        halves.append(h[:k + 1] + notch + h[k + 1:])
     for zw, sg in ((zf, -1.0), (zb, 1.0)):
         for path in halves:
-            area = sum(path[i][0] * path[(i + 1) % len(path)][1] - path[(i + 1) % len(path)][0] * path[i][1]
-                       for i in range(len(path)))
-            pp = path if area > 0 else list(reversed(path))
-            for t in _ear_clip(pp):
+            for t in _ear_clip(path):
                 q = [(x, y, zw) for x, y in t]
                 f.append(th.Face(th.outward(q, (-0.5, 0.5, zw - sg)), "mplate", u_hint=(1, 0, 0)))
+        # a bolt near each outer corner of both platforms
+        zd = zw + sg * 0.004
+        ref = (-0.5, 0.5, zw - sg)
+        for yc_ in ((-0.5 + y0) / 2, (y1 + 1.5) / 2):
+            for xc_ in (-1.5 + 0.26, 0.5 - 0.26):
+                _decal(f, [(xc_ - 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ + 0.045, zd),
+                           (xc_ - 0.045, yc_ + 0.045, zd)], ref, "mbolt", (1, 0, 0))
     # the gauge, sunk into the spine through both platforms
     for zw, sg in ((zf, -1.0), (zb, 1.0)):
         def P(x, y, d=0.0, zw=zw, sg=sg):
@@ -2432,8 +2490,8 @@ def build_marlit_battery(pk, img):
         ref = (-0.5, 0.5, zw - sg)
         o0 = [(-hw, g0), (hw, g0), (hw, g1), (-hw, g1)]
         o1 = [(-hw + bw, g0 + bw), (hw - bw, g0 + bw), (hw - bw, g1 - bw), (-hw + bw, g1 - bw)]
-        o2 = [(x * (hw - bw - ln) / (hw - bw), y) for x, y in
-              [(-hw + bw, g0 + bw + ln), (hw - bw, g0 + bw + ln), (hw - bw, g1 - bw - ln), (-hw + bw, g1 - bw - ln)]]
+        o2 = [(-hw + bw + ln, g0 + bw + ln), (hw - bw - ln, g0 + bw + ln), (hw - bw - ln, g1 - bw - ln),
+              (-hw + bw + ln, g1 - bw - ln)]
         for i in range(4):
             j = (i + 1) % 4
             q = th.outward([P(*o0[i]), P(*o0[j]), P(*o1[j], bd), P(*o1[i], bd)], ref)
@@ -2450,97 +2508,85 @@ def build_marlit_battery(pk, img):
             q = th.outward([P(-fx, ya, bd - 0.004), P(fx, ya, bd - 0.004), P(fx, yb_, bd - 0.004),
                             P(-fx, yb_, bd - 0.004)], ref)
             part.append(th.Face([th.sub(p, C) for p in q], "mcharge", u_hint=(1, 0, 0)))
-    # the platforms' fronts and backs: a bolt near each outer corner, a sunset line along each bay's lip
-    bl_, br_ = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
-    for zw, sg in ((zf, -1.0), (zb, 1.0)):
-        zd = zw + sg * 0.004
-        ref = (-0.5, 0.5, zw - sg)
-        for yc_ in ((-0.5 + y0) / 2, (y1 + 1.5) / 2):
-            for xc_ in (-1.5 + 0.24, 0.5 - 0.24):
-                q = [(xc_ - 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ + 0.045, zd),
-                     (xc_ - 0.045, yc_ + 0.045, zd)]
-                f.append(th.Face(th.outward(q, ref), "mbolt", u_hint=(1, 0, 0)))
-        for yl in (y0 - 0.07, y1 + 0.05):
-            for xa_, xb_ in ((-1.5 + 0.1, bl_ - 0.1), (br_ + 0.1, 0.5 - 0.1)):
-                q = [(xa_, yl, zd), (xb_, yl, zd), (xb_, yl + 0.02, zd), (xa_, yl + 0.02, zd)]
-                f.append(th.Face(th.outward(q, ref), "mglow", u_hint=(1, 0, 0)))
-    # the car batteries FILL THEIR BAY: platform to platform, the block's side to the spine, one width
-    # top to bottom. A dark grooved case between a lid and a foot band standing proud of it - the
-    # collars the cell is driven into the platforms by - a copper link across the gap between the
-    # two of a side, and on the outward end a label plate with a sunset line and the charge eye
-    xi, zg, lid, foot, prd, eye_r = MBAT_CAR
+    # the car batteries: out of the lower pocket into the upper one, their outer side under the lips'
+    # line; a collar at each lip, proud on the outer side and the outward end; a label plate on the
+    # outward end; the charge eye on the outer side under the upper collar
+    L = MBAT_LIP
+    ch, pr = MBAT_COLLAR
     sx_l, sx_r = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
     for cx, cz in _mbat_cells():
         left = cx < -0.5
-        xo = -1.5 + xi if left else 0.5 - xi                 # the case's outer side
-        xs = sx_l if left else sx_r                          # the spine's face
+        xo = -1.5 + L if left else 0.5 - L
+        xs = sx_l if left else sx_r
         xa, xb = sorted((xo, xs))
         out_z = -1.0 if cz < -0.5 else 1.0
-        za, zb_ = sorted((-1.5 + xi if out_z < 0 else -0.5 + zg / 2, -0.5 - zg / 2 if out_z < 0 else 0.5 - xi))
-        cham_box(f, (xa, y0, za), (xb, y1, zb_), 0.06, "mcase", None, None, "medge")
-        # lid and foot: bands proud of the case on its three open sides, flush with the spine
-        pa, pb = (xa - prd, xb) if left else (xa, xb + prd)
-        for ya_, yb_ in ((y1 - lid, y1), (y0, y0 + foot)):
-            cham_box(f, (pa, ya_, za - prd), (pb, yb_, zb_ + prd), 0.02, "mlid", None, None, "medge")
-        # the outward end: a raised label plate, a sunset line along its top, the eye in its middle
-        ze = za if out_z < 0 else zb_
+        za, zb_ = sorted((zf + MBAT_END if out_z < 0 else -0.5 + MBAT_GAP / 2,
+                          -0.5 - MBAT_GAP / 2 if out_z < 0 else zb - MBAT_END))
+        cham_box(f, (xa, p0, za), (xb, p1, zb_), 0.035, "mcase", None, None, "medge")
+        ca, cb = (xa - pr, xb) if left else (xa, xb + pr)
+        cza, czb = (za - pr, zb_) if out_z < 0 else (za, zb_ + pr)
+        for ya_, yb_ in ((y0, y0 + ch), (y1 - ch, y1)):
+            cham_box(f, (ca, ya_, cza), (cb, yb_, czb), 0.02, "mlid", "mlid", "mlid", "medge")
+        # the label plate between the collars on the outward end, a sunset stripe across its foot
+        ze = (za if out_z < 0 else zb_) + out_z * 0.012
+        lx0, lx1 = xa + 0.07, xb - 0.07
+        ly0, ly1 = y0 + ch + 0.08, y1 - ch - 0.08
+        zlo, zhi = sorted((ze - out_z * 0.012, ze))
+        cham_box(f, (lx0, ly0, zlo), (lx1, ly1, zhi), 0.01, "mlabel", "mbev4", "mbev1", "medge")
         ref = (cx, 0.5, cz)
-        lw, lh_ = 0.19, 0.13
-        ly = y1 - lid - 0.05 - lh_
-        cham_box(f, (cx - lw, ly - lh_, min(ze, ze + out_z * 0.015)), (cx + lw, ly + lh_, max(ze, ze + out_z * 0.015)),
-                 0.01, "mbev2", "mbev4", "mbev1", "medge")
-        zl = ze + out_z * 0.015
-        q = [(cx - lw + 0.03, ly + lh_ - 0.045, zl + out_z * 0.004), (cx + lw - 0.03, ly + lh_ - 0.045, zl + out_z * 0.004),
-             (cx + lw - 0.03, ly + lh_ - 0.025, zl + out_z * 0.004), (cx - lw + 0.03, ly + lh_ - 0.025, zl + out_z * 0.004)]
-        f.append(th.Face(th.outward(q, ref), "mglow", u_hint=(1, 0, 0)))
-        ey = ly - 0.02
-        for r, st, dz, lit in ((eye_r + 0.025, "mflat0", 0.004, False), (eye_r, "meye", 0.008, True)):
-            ring = [(cx + r * _OCT_K * math.cos(math.pi / 8 + k * math.pi / 4),
-                     ey + r * _OCT_K * math.sin(math.pi / 8 + k * math.pi / 4), zl + out_z * dz) for k in range(8)]
-            face = th.Face(th.outward(ring, ref), st, u_hint=(1, 0, 0))
+        zd = ze + out_z * 0.004
+        _decal(f, [(lx0 + 0.03, ly0 + 0.05, zd), (lx1 - 0.03, ly0 + 0.05, zd), (lx1 - 0.03, ly0 + 0.08, zd),
+                   (lx0 + 0.03, ly0 + 0.08, zd)], ref, "mglow", (1, 0, 0))
+        # the eye on the outer side, near the outward end, just under the upper collar
+        xe = xo + (-0.006 if left else 0.006)
+        ez = (za if out_z < 0 else zb_) - out_z * 0.2
+        ey = y1 - ch - 0.13
+        for r, st, off, lit in ((MBAT_EYE + 0.025, "mflat0", 0.0, False), (MBAT_EYE, "meye", 0.004, True)):
+            xx = xe + (-off if left else off)
+            ring = [(xx, ey + r * _OCT_K * math.sin(math.pi / 8 + k * math.pi / 4),
+                     ez + r * _OCT_K * math.cos(math.pi / 8 + k * math.pi / 4)) for k in range(8)]
+            face = th.Face(th.outward(ring, (cx, ey, ez)), st, u_hint=(0, 0, 1))
             if lit:
                 face.pts = [th.sub(p, C) for p in face.pts]
                 parts["marlit_battery_ring0"].append(face)
             else:
                 f.append(face)
-    # the copper link across each side's gap, on the outer side just under the lids
-    for left in (True, False):
-        xo = -1.5 + xi if left else 0.5 - xi
-        x0_, x1_ = sorted((xo, xo - (prd + 0.005 if left else -(prd + 0.005))))
-        cham_box(f, (x0_, y1 - lid - 0.13, -0.5 - zg / 2 - 0.12), (x1_, y1 - lid - 0.03, -0.5 + zg / 2 + 0.12), 0.012,
-                 "coil", "coil", "coil", "coil")
     return parts
 
 
 # ── the Marlit wireless charger ─────────────────────────────────────────────────────────────────
 # TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot), mounted like the
 # Girder Bracket: a back plate the full height - the mount, the two faces it joins by, a window per
-# cell - with a deck over the back half on two braces. From the deck an arm reaches the HUB over the
-# disc's middle, and a lower arm from the plate's foot the bearing under it: the disc turns on the
-# axis the two hold (wireless_charger.gd `Ring`), glowing cyan round its edge - the blue of every
-# energy beam in the game (the player's call). Out of the hub two claws curl round the rim, one each
-# side, and in its crown sits a cyan LENS the beam leaves from. Turned down: the disc hung UNDER the
-# housing on a spindle; a separate mount plate proud of the back ("a strange platform"); a solid
-# housing with a slot ("just two blocks"); three square fingers, then three bent ones from a palm
-# on the housing ("two, not three, and something at the middle").
-#   body - plate, deck, braces, arms, hub, bearing, claws
+# cell - and from it a BEAK of two jaws tapering to the disc's axis, ribbed like the bracket's braces.
+# The disc comes out of the middle of the beak, between the jaws, and turns on the axis they hold
+# (wireless_charger.gd `Ring`), glowing cyan - the blue of every energy beam in the game (the
+# player's call). The upper jaw's tip is the HUB: a knuckle collar the two claws pivot on and a
+# crown with the cyan LENS the beam leaves from. Each claw is four rigid plates pinned at the joints,
+# out of the collar, over the rim, down past it and hooked under it. Turned down: the disc hung UNDER
+# the housing on a spindle; a separate mount plate proud of the back ("a strange platform"); a solid
+# housing with a slot ("just two blocks"); three square fingers, then three bent ones from a palm;
+# then two full-width decks round the disc (a box with a slot again) and claws swept as one smooth
+# tube (hoses), both read so by an outside critique.
+#   body - plate, beak, ribs, hub, bearing, claws
 #   disc - the emitter, about its own middle (the scene's Ring node stands at MWL_DISC)
 #   lens - the hub's lens, about the disc's middle, dimmed when idle
-MWL_DISC = (-0.5, 0.0, -0.74)     # the disc's middle in block space: half height, the front row
-MWL_DISC_A = 0.60                 # its half width across the flats
-MWL_DISC_H = 0.06                 # its half thickness
+MWL_DISC = (-0.5, 0.0, -0.70)     # the disc's middle in block space: half height, the front row
+MWL_DISC_A = 0.70                 # its half width across the flats
+MWL_DISC_H = 0.08                 # its half thickness
 MWL_PLATE = 0.2                   # the back plate
-MWL_DECK = (0.14, 0.32, 0.20, -0.45, -0.18)   # a deck's inner face, outer face, hood lip, front, where
-                                  # the hood starts to slope; the lower deck is the upper one mirrored
-MWL_ARM = 0.12                    # the arms' half width
-MWL_HUB = 0.17                    # the hub's half width across flats
-MWL_COLLAR = 0.23                 # the knuckle collar round it
-MWL_LENS = 0.13
-MWL_FINGERS = (235.0, 305.0)      # a forward pair of pincers; straight out to the sides they read
-                                  # as a watch strap over the disc
-MWL_CURL = 0.13                   # the radius a claw curls round the rim by, about a point just
-                                  # outside the disc's corners (its swept volume stays clear)
-MWL_CLAW = (0.15, 0.05, 0.16, 0.06)   # a claw's width at the hub, at the tip; its depth, likewise
+MWL_JAW_Y = (0.16, 0.30)          # a jaw's inner and outer face, off the disc's plane
+MWL_JAW_BACK = 0.8                # a jaw's half width at the plate
+MWL_JAW_CH = 0.06                 # the chamfer down its sides
+MWL_RIB_X = 0.42                  # the ribs on the jaws, either side of the axis
+MWL_RIB_H = 0.16                  # their height at the plate
+MWL_RIB_RUN = 0.5                 # and how far along the jaw they run
+MWL_HUB = 0.2                     # the hub's half width across flats: the jaws' tips
+MWL_COLLAR = 0.26                 # the knuckle collar round it
+MWL_KNUCKLE_Y = 0.23              # where the claws leave the collar
+MWL_LENS = 0.14
+MWL_FINGERS = (215.0, 325.0)      # a forward pair of pincers
+MWL_CLAW_W = (0.24, 0.22, 0.18, 0.12)   # the four plates' widths, root to hook
+MWL_CLAW_T = (0.12, 0.10, 0.09, 0.07)   # and depths
 
 
 _OCT_K = 1.0 / math.cos(math.pi / 8)
@@ -2553,11 +2599,11 @@ def _oct_ring(C, a, y):
              C[2] + r * math.sin(math.pi / 8 + k * math.pi / 4)) for k in range(8)]
 
 
-def _oct_band(f, C, a0, y0, a1, y1, style):
+def _oct_band(f, C, a0, y0, a1, y1, style, down=False):
     """The band between two octagon rings; "mtone" tones it by which way it faces (up lit, down
-    dark, upright between), the same on all eight sides."""
+    dark, upright between), the same on all eight sides. A flat band faces up unless `down`."""
     r0, r1 = _oct_ring(C, a0, y0), _oct_ring(C, a1, y1)
-    up = 1.0 if (y1 == y0 and a1 < a0) else (-1.0 if y1 == y0 else 0.0)
+    up = (-1.0 if down else 1.0) if y1 == y0 else 0.0
     for k in range(8):
         j = (k + 1) % 8
         q = [r0[k], r0[j], r1[j], r1[k]]
@@ -2568,22 +2614,6 @@ def _oct_band(f, C, a0, y0, a1, y1, style):
         q = th.outward(q, th.sub(m, out))
         st = "mbev%d" % (4 if up > 0 else (1 if up < 0 else 3)) if style == "mtone" else style
         f.append(th.Face(q, st, u_hint=th.sub(q[1], q[0])))
-
-
-def _mwl_prism_x(f, prof, x0, x1, styles, caps):
-    """A convex (y, z) profile swept along x from x0 to x1, no chamfer: one face per profile edge in
-    styles[i] (a painted edge line gives it its rim) and the two end caps in `caps`."""
-    n = len(prof)
-    cy = sum(p[0] for p in prof) / n
-    cz = sum(p[1] for p in prof) / n
-    centre = ((x0 + x1) / 2, cy, cz)
-    for i in range(n):
-        a, b = prof[i], prof[(i + 1) % n]
-        q = [(x0, a[0], a[1]), (x1, a[0], a[1]), (x1, b[0], b[1]), (x0, b[0], b[1])]
-        f.append(th.Face(th.outward(q, centre), styles[i], u_hint=(1, 0, 0)))
-    for xw in (x0, x1):
-        q = [(xw, p[0], p[1]) for p in prof]
-        f.append(th.Face(th.outward(q, centre), caps, u_hint=(0, 0, 1)))
 
 
 def _mwl_oct_prism(f, c, axis, r, half, side_style, cap_style):
@@ -2606,31 +2636,71 @@ def _mwl_oct_prism(f, c, axis, r, half, side_style, cap_style):
         f.append(th.Face(th.outward(list(e), c), cap_style, u_hint=v))
 
 
-def _mwl_claw(f, pts, side):
-    """A claw swept along `pts` in a vertical plane: a six-sided section with a ridge on its back
-    and its belly, deep at the hub and tapering to a point, every facet toned by which way it looks."""
-    w0, w1, t0, t1 = MWL_CLAW
-    n = len(pts)
-    secs = []
-    for i, p in enumerate(pts):
-        a = pts[max(i - 1, 0)]
-        b = pts[min(i + 1, n - 1)]
-        tg = th.norm(th.sub(b, a))
-        nm = th.norm(th.cross(side, tg))
-        k = i / (n - 1)
-        w = (w0 + (w1 - w0) * k) / 2
-        t = (t0 + (t1 - t0) * k) / 2
-        secs.append([th.add(p, th.add(th.mul(side, sw * w), th.mul(nm, sn * t)))
-                     for sw, sn in ((-1.0, 0.0), (-0.55, 1.0), (0.55, 1.0), (1.0, 0.0), (0.55, -1.0), (-0.55, -1.0))])
-    for i in range(n - 1):
-        axis = th.mul(th.add(pts[i], pts[i + 1]), 0.5)
-        for k in range(6):
-            j = (k + 1) % 6
-            q = th.outward([secs[i][k], secs[i][j], secs[i + 1][j], secs[i + 1][k]], axis)
-            ny = th.norm(th.newell(q))[1]
-            tone = 4 if ny > 0.6 else (3 if ny > 0.2 else (2 if ny > -0.2 else (1 if ny > -0.6 else 0)))
-            f.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
-    f.append(th.Face(th.outward(list(secs[-1]), pts[-2]), "medge", u_hint=side))
+def _mwl_plate(f, a, b, side, w, t):
+    """One rigid plate of a claw from a to b: a six-sided section, `w` across (along `side`) and `t`
+    deep with a ridge on its back and belly, every face one tone by which way it looks."""
+    tg = th.norm(th.sub(b, a))
+    nm = th.norm(th.cross(side, tg))
+    sec = [(-1.0, 0.0), (-0.55, 1.0), (0.55, 1.0), (1.0, 0.0), (0.55, -1.0), (-0.55, -1.0)]
+    ra = [th.add(a, th.add(th.mul(side, sw * w / 2), th.mul(nm, sn * t / 2))) for sw, sn in sec]
+    rb = [th.add(b, th.add(th.mul(side, sw * w / 2), th.mul(nm, sn * t / 2))) for sw, sn in sec]
+    mid = th.mul(th.add(a, b), 0.5)
+    for k in range(6):
+        j = (k + 1) % 6
+        q = th.outward([ra[k], ra[j], rb[j], rb[k]], mid)
+        ny = th.norm(th.newell(q))[1]
+        tone = 4 if ny > 0.6 else (3 if ny > 0.2 else (2 if ny > -0.2 else (1 if ny > -0.6 else 0)))
+        f.append(th.Face(q, "mbev%d" % tone, u_hint=th.sub(q[1], q[0])))
+    for r, o in ((ra, b), (rb, a)):
+        f.append(th.Face(th.outward(list(r), o), "medge", u_hint=side))
+
+
+def _mwl_jaw(f, rnd, sg):
+    """A jaw of the beak: a trapezoid in plan from the plate (MWL_JAW_BACK across) to the hub
+    (MWL_HUB across), its sides chamfered down, the faction's window on its outer face. sg = 1 is the
+    upper jaw, -1 the lower."""
+    Dx, Dy, Dz = MWL_DISC
+    zp = 0.5 - MWL_PLATE
+    yi, yo = MWL_JAW_Y
+    hb, ht, ch = MWL_JAW_BACK, MWL_HUB, MWL_JAW_CH
+    # the section at the plate and at the tip: inner face full width, outer face narrower by ch
+    def ring(z, h):
+        return [(Dx - h, sg * yi, z), (Dx + h, sg * yi, z), (Dx + h, sg * (yo - ch), z),
+                (Dx + h - ch, sg * yo, z), (Dx - h + ch, sg * yo, z), (Dx - h, sg * (yo - ch), z)]
+    r0, r1 = ring(zp, hb), ring(Dz, ht)
+    mid = (Dx, sg * (yi + yo) / 2, (zp + Dz) / 2)
+    tone = ["mbev1" if sg > 0 else "mbev4", "mbev2", "mbev3" if sg > 0 else "mbev2", None,
+            "mbev3" if sg > 0 else "mbev2", "mbev2"]
+    for k in range(6):
+        j = (k + 1) % 6
+        q = th.outward([r0[k], r0[j], r1[j], r1[k]], mid)
+        if tone[k] is None:
+            if sg > 0:
+                marlit_poly(f, q, rnd)
+            else:
+                f.append(th.Face(q, "mbev1", u_hint=(1, 0, 0)))
+        else:
+            f.append(th.Face(q, tone[k], u_hint=th.sub(q[1], q[0])))
+    f.append(th.Face(th.outward(list(r1), mid), "mbev3", u_hint=(1, 0, 0)))
+    # two ribs on its outer face out to the plate: the girder bracket's braces, stood on the jaw
+    for s_ in (-1.0, 1.0):
+        x = Dx + s_ * MWL_RIB_X
+        zt = zp - MWL_RIB_RUN
+        pts_a = [(x - 0.03, sg * yo, zp), (x - 0.03, sg * (yo + MWL_RIB_H), zp), (x - 0.03, sg * yo, zt)]
+        pts_b = [(x + 0.03, p[1], p[2]) for p in pts_a]
+        cen = (x, sg * (yo + MWL_RIB_H / 3), zp - MWL_RIB_RUN / 3)
+        for k in range(3):
+            j = (k + 1) % 3
+            q = th.outward([pts_a[k], pts_a[j], pts_b[j], pts_b[k]], cen)
+            ny = th.norm(th.newell(q))[1] * sg
+            f.append(th.Face(q, "mbev4" if ny > 0.3 else "mbev2", u_hint=th.sub(q[1], q[0])))
+        for p3 in (pts_a, pts_b):
+            f.append(th.Face(th.outward(list(p3), cen), "mbev2", u_hint=(0, 0, 1)))
+        # a sunset slit along the rib's slope
+        xs = x + 0.034
+        q = [(xs, sg * (yo + 0.03), zp - 0.04), (xs, sg * (yo + MWL_RIB_H - 0.05), zp - 0.04),
+             (xs, sg * (yo + 0.03), zt + 0.12)]
+        f.append(th.Face(th.outward(q, (x, sg * yo, zp)), "mglow", u_hint=(0, 1, 0)))
 
 
 def build_marlit_wireless(pk, img):
@@ -2641,87 +2711,75 @@ def build_marlit_wireless(pk, img):
     Dx, Dy, Dz = MWL_DISC
     A, H = MWL_DISC_A, MWL_DISC_H
     zp = 0.5 - MWL_PLATE
-    # the back plate, the full height: the mount, a window per cell on its back
+    # the back plate, the full height: the mount, a window per cell on its back, sunset hazard slats
+    # on its front beyond the beak
     marlit_box(f, (-1.5, -0.5, zp), (0.5, 0.5, 0.5), 0.06, rnd, {(2, 1): "window"}, seg=1.0)
-    # two decks, over and under the disc, a hood sloping down to the lip on each; the disc comes out
-    # of the gap between them. Sunset slats on their ends, one window across the upper one's top
-    yb, yt, lip, zf, zs = MWL_DECK
+    for x0, x1 in ((-1.44, -1.3), (0.3, 0.44)):
+        _decal(f, [(x0, -0.42, zp - 0.004), (x1, -0.42, zp - 0.004), (x1, 0.42, zp - 0.004), (x0, 0.42, zp - 0.004)],
+               (x0, 0.0, 1.0), "mhazard", (0, 1, 0))
+    # the beak: an upper and a lower jaw from the plate to the disc's axis; the disc comes out between
     for sg in (1.0, -1.0):
-        prof = [(sg * yb, zp), (sg * yt, zp), (sg * yt, zs), (sg * lip, zf), (sg * yb, zf)]
-        if sg < 0:
-            prof = list(reversed(prof))
-        st = ["mbev2", "mbev4" if sg > 0 else "mbev1", "mbev4" if sg > 0 else "mbev1", "mbev3", "mbev1" if sg > 0 else "mbev3"]
-        if sg < 0:
-            st = list(reversed(st))
-        _mwl_prism_x(f, prof, -1.5, 0.5, st, "mhazard")
-        if sg > 0:
-            marlit_poly(f, [(-1.44, yt + 0.002, zs - 0.02), (0.44, yt + 0.002, zs - 0.02), (0.44, yt + 0.002, zp - 0.04),
-                            (-1.44, yt + 0.002, zp - 0.04)], rnd)
-        # a sunset line along the hood's lip
-        yl = sg * (lip - 0.02)
-        q = [(-1.45, yl - 0.012, zf - 0.004), (0.45, yl - 0.012, zf - 0.004), (0.45, yl + 0.012, zf - 0.004),
-             (-1.45, yl + 0.012, zf - 0.004)]
-        f.append(th.Face(th.outward(q, (-0.5, 0.0, 0.0)), "mglow", u_hint=(1, 0, 0)))
-    # posts at the decks' front corners: the two decks and the plate are one C round the disc
-    for x0, x1 in ((-1.46, -1.3), (0.3, 0.46)):
-        cham_box(f, (x0, -yb - 0.01, zf + 0.02), (x1, yb + 0.01, zf + 0.16), 0.025, "mbev2", None, None, "medge")
-        xo = x0 if x0 < -0.5 else x1
-        q = [(xo, -yb + 0.02, zf + 0.05), (xo, -yb + 0.02, zf + 0.13), (xo, yb - 0.02, zf + 0.13), (xo, yb - 0.02, zf + 0.05)]
-        q = [(p[0] + (-0.002 if xo < -0.5 else 0.002), p[1], p[2]) for p in q]
-        f.append(th.Face(th.outward(q, (-0.5, 0.0, zf + 0.09)), "mhazard", u_hint=(0, 1, 0)))
-    # the arms from the decks to the hub over the disc's middle and the bearing under it
-    wa = MWL_ARM
-    for sg in (1.0, -1.0):
-        ya, yb2 = sorted((sg * (H + 0.14), sg * (H + 0.24)))
-        cham_box(f, (Dx - wa, ya, Dz), (Dx + wa, yb2, zs), 0.03, "mbev3", "mbev4" if sg > 0 else "mbev2",
-                 "mbev1", "medge")
+        _mwl_jaw(f, rnd, sg)
     C = (Dx, 0.0, Dz)
     hub, col = MWL_HUB, MWL_COLLAR
-    top = H + 0.30
-    _oct_band(f, C, hub, H + 0.03, hub, H + 0.12, "mtone")                   # the hub, under its collar
-    _oct_band(f, C, hub, H + 0.03, 0.0, H + 0.03, "mflat0")
-    _oct_band(f, C, hub, H + 0.12, col, H + 0.12, "mtone")                   # the knuckle collar
-    _oct_band(f, C, col, H + 0.12, col, H + 0.22, "mtone")
-    _oct_band(f, C, col, H + 0.22, hub - 0.03, H + 0.22, "mtone")
-    _oct_band(f, C, hub - 0.03, H + 0.22, hub - 0.03, top - 0.03, "mtone")   # the crown
-    _oct_band(f, C, hub - 0.03, top - 0.03, MWL_LENS + 0.03, top, "mtone")
-    _oct_band(f, C, MWL_LENS + 0.03, top, MWL_LENS, top, "mtone")
-    _oct_band(f, C, hub, -H - 0.03, 0.0, -H - 0.03, "mflat0")                # the bearing under
-    _oct_band(f, C, hub, -H - 0.03, hub, -H - 0.26, "mtone")
-    _oct_band(f, C, hub, -H - 0.26, 0.0, -H - 0.26, "mflat1")
-    # the lens in the crown, cyan, its own part so it can be dimmed; a bright dot in its middle
+    yi, yo = MWL_JAW_Y
+    # the hub, seated in the upper jaw's tip: a knuckle collar the claws pivot on, a crown over the
+    # jaw and the lens in it; the bearing under, seated in the lower jaw's tip
+    _oct_band(f, C, hub, H + 0.03, hub, yo, "mtone")
+    _oct_band(f, C, hub, H + 0.03, 0.0, H + 0.03, "mflat0", down=True)
+    yk = MWL_KNUCKLE_Y
+    _oct_band(f, C, col, yk - 0.06, col, yk + 0.06, "mtone")
+    _oct_band(f, C, col, yk + 0.06, hub, yk + 0.06, "mtone")
+    _oct_band(f, C, col, yk - 0.06, hub, yk - 0.06, "mtone", down=True)
+    top = yo + 0.07
+    _oct_band(f, C, hub, yo, hub - 0.04, top, "mtone")
+    _oct_band(f, C, hub - 0.04, top, MWL_LENS + 0.02, top, "mtone")
+    _oct_band(f, C, hub, -H - 0.03, hub, -yo, "mtone")
+    _oct_band(f, C, hub, -H - 0.03, 0.0, -H - 0.03, "mflat0")
     g = parts["marlit_wireless_lens"]
     O = (0.0, 0.0, 0.0)
-    _oct_band(g, O, MWL_LENS, top - 0.01, MWL_LENS, top + 0.02, "ctone3")
-    _oct_band(g, O, MWL_LENS, top + 0.02, MWL_LENS * 0.45, top + 0.02, "ctone3")
-    _oct_band(g, O, MWL_LENS * 0.45, top + 0.02, 0.0, top + 0.02, "ctone4")
-    # two claws out of knuckles on the collar, a forward pair of pincers hooking the rim
-    rc = flat_r(A, 8) + 0.012
-    Ra = MWL_CURL
-    yk = H + 0.17
-    path = [(col - 0.02, yk), (col + 0.12, yk + 0.01), (rc - 0.2, Ra + 0.05), (rc - 0.08, Ra + 0.01)]
-    path += [(rc + Ra * math.cos(math.radians(t)), Ra * math.sin(math.radians(t))) for t in (75, 45, 15, -15, -45, -75)]
-    path += [(rc - 0.1, -Ra + 0.01)]
+    _oct_band(g, O, MWL_LENS, top - 0.01, MWL_LENS, top + 0.025, "ctone2")
+    _oct_band(g, O, MWL_LENS, top + 0.025, MWL_LENS * 0.4, top + 0.025, "cyan2")
+    _oct_band(g, O, MWL_LENS * 0.4, top + 0.025, 0.0, top + 0.025, "ctone4")
+    # two claws, each four rigid plates with a pin at every joint: out of the collar, over the rim,
+    # down past it and hooked under it; a forward pair of pincers clear of the disc's sweep
+    rv = flat_r(A, 8)
+    w_, t_ = MWL_CLAW_W, MWL_CLAW_T
+    # the plate down past the rim stands upright outside the corners' sweep (rv); leaning in, it cut it
+    pts2 = [(col + 0.02, yk), (0.46, yk), (rv + 0.09, H + 0.09), (rv + 0.09, H + 0.03),
+            (rv + 0.09, -H - 0.06), (rv - 0.13, -H - 0.09)]
     for az in MWL_FINGERS:
         d = (math.cos(math.radians(az)), 0.0, math.sin(math.radians(az)))
         side = th.norm(th.cross(d, (0.0, 1.0, 0.0)))
-        _mwl_claw(f, [(Dx + d[0] * r, Dy + y, Dz + d[2] * r) for r, y in path], side)
-        # the knuckle: a pin across the claw's root with sunset caps
-        _mwl_oct_prism(f, (Dx + d[0] * (col + 0.02), yk, Dz + d[2] * (col + 0.02)), side, 0.06, 0.1, None, "mglow")
-    # the disc, about its own middle: a cyan rim, a top of cyan sectors - alternate ones a shade
-    # darker, so the turn shows - inside a dark lip, a dark underside, and a spindle into hub and bearing
+        P3 = [(Dx + d[0] * r, y, Dz + d[2] * r) for r, y in pts2]
+        _mwl_plate(f, P3[0], P3[1], side, w_[0], t_[0])
+        _mwl_plate(f, P3[1], P3[2], side, w_[1], t_[1])
+        _mwl_plate(f, P3[2], P3[4], side, w_[2], t_[2])
+        _mwl_plate(f, P3[4], P3[5], side, w_[3], t_[3])
+        for k, rr in ((0, 0.075), (1, 0.06), (2, 0.05)):
+            _mwl_oct_prism(f, P3[[0, 1, 4][k]] if k != 1 else P3[1], side, rr, w_[k] / 2 + 0.02, None, "mpin")
+        _mwl_oct_prism(f, P3[2], side, 0.055, w_[1] / 2 + 0.02, None, "mpin")
+    # the disc, about its own middle: a cyan rim, a thin dark lip, a top of solid cyan sectors in two
+    # shades split by dark seams so the turn shows, a dark underside, a spindle into hub and bearing
     g = parts["marlit_wireless_disc"]
     _oct_band(g, O, A, -H, A, H, "ctone3")
-    _oct_band(g, O, A, -H, 0.0, -H, "mflat0")
-    _oct_band(g, O, A, H, A - 0.06, H, "mflat1")
-    r0, r1 = _oct_ring(O, A - 0.06, H), _oct_ring(O, 0.1, H)
+    _oct_band(g, O, A, -H, 0.0, -H, "mflat0", down=True)
+    _oct_band(g, O, A, H, A - 0.05, H, "mflat1")
+    r0, r1 = _oct_ring(O, A - 0.05, H), _oct_ring(O, 0.12, H)
     for k in range(8):
         j = (k + 1) % 8
         q = th.outward([r0[k], r0[j], r1[j], r1[k]], (0.0, -1.0, 0.0))
-        g.append(th.Face(q, "ctone3" if k % 2 else "ctone2", u_hint=th.sub(q[1], q[0])))
-    _oct_band(g, O, 0.1, H, 0.0, H, "mflat1")
-    _oct_band(g, O, 0.05, H, 0.05, H + 0.04, "mtone")
-    _oct_band(g, O, 0.05, -H, 0.05, -H - 0.04, "mtone")
+        g.append(th.Face(q, "cyan3" if k % 2 else "cyan2", u_hint=th.sub(q[1], q[0])))
+        # a dark seam along each corner ray, just over the sectors
+        a0_, a1_ = r0[k], r1[k]
+        dr = th.norm(th.sub(a0_, a1_))
+        sd = th.mul(th.norm(th.cross(dr, (0.0, 1.0, 0.0))), 0.009)
+        q = [th.add(th.add(a1_, sd), (0, 0.003, 0)), th.add(th.sub(a1_, sd), (0, 0.003, 0)),
+             th.add(th.sub(a0_, sd), (0, 0.003, 0)), th.add(th.add(a0_, sd), (0, 0.003, 0))]
+        g.append(th.Face(th.outward(q, (0.0, -1.0, 0.0)), "mflat0", u_hint=dr))
+    _oct_band(g, O, 0.12, H, 0.0, H, "mflat1")
+    _oct_band(g, O, 0.06, H, 0.06, H + 0.03, "mtone")
+    _oct_band(g, O, 0.06, -H, 0.06, -H - 0.03, "mtone")
     return parts
 
 
