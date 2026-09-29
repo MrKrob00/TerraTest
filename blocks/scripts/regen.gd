@@ -120,7 +120,7 @@ func _animate_beacon(delta: float, on: bool) -> void:
 # full tick - `max_bodies` blocks, DIGITS_PER_HEAL each - since a fixed 96 ran out under the Marlit
 # unit's 45 and the rest healed with nothing flying.
 const DIGITS_PER_HEAL := 3
-const DIGIT_SIZE := 0.26
+const DIGIT_SIZE := 0.32
 const DIGIT_SPAWN := 0.35          # s the digits hang at the core, blinking in
 const DIGIT_FLY := 0.7             # s to the block
 const DIGIT_FADE := 0.15           # s they burn out on it

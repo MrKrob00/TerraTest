@@ -6,7 +6,7 @@ render_mode unshaded, cull_disabled, depth_draw_never, blend_add, shadows_disabl
 // INSTANCE_CUSTOM.x is its brightness, .y its seed. The same 0 and 1 the damage on the blocks
 // is written in (block_hp.gdshader), so what flies in is what heals.
 
-uniform vec3  tint : source_color = vec3(0.35, 1.0, 0.5);
+uniform vec3  tint : source_color = vec3(0.2, 1.0, 0.35);
 uniform float flip_rate = 7.0;
 
 varying float v_alpha;
