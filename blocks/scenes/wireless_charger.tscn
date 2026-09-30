@@ -1,8 +1,8 @@
-[gd_scene format=4 uid="uid://yt1h6a2rvdvho"]
+[gd_scene format=3 uid="uid://bnlamxkah5mw3"]
 
-[ext_resource type="Script" path="res://blocks/scripts/wireless_charger.gd" id="1_s"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/wireless_body.tres" id="2_body"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/wireless_ring.tres" id="3_ring"]
+[ext_resource type="Script" uid="uid://cn4vb8q60xy6n" path="res://blocks/scripts/wireless_charger.gd" id="1_s"]
+[ext_resource type="ArrayMesh" uid="uid://dv232xnkleisf" path="res://blocks/meshes/wireless_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" uid="uid://dc5i4l0oefs44" path="res://blocks/meshes/wireless_ring.tres" id="3_ring"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
 
