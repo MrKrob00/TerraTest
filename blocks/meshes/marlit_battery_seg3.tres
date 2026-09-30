@@ -12,8 +12,8 @@ texture_filter = 2
 [resource]
 resource_name = "marlit_battery_seg3"
 _surfaces = [{
-"aabb": AABB(-0.08, -0.16875, -0.954, 0.16, 0.15375, 1.908),
-"attribute_data": PackedByteArray("/wzDk+EPw5PhD/+Q/wz/kP8Sw5PhFcOT4RX/kP8S/5A="),
+"aabb": AABB(-0.065, -0.165, -0.954, 0.13, 0.15, 1.908),
+"attribute_data": PackedByteArray("/0Kyl1ZFspdWRf+U/0L/lP9IspdWS7KXVkv/lP9I/5Q="),
 "format": 34896613399,
 "index_count": 12,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYA"),
