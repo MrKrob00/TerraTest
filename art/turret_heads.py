@@ -923,6 +923,16 @@ def style_px(style, x, y, w, h, d):
         if r == 8:
             return (20, 21, 27)
         return jitter((32, 34, 42), 1)
+    if style == "mcell":
+        # a cell's case: Marlit navy, a step lighter and bluer than the casting so the cells read as
+        # bodies of their own; light falls from above
+        t = (y + 0.5) / max(h, 1)
+        return jitter(_ramp_at([(58, 70, 96), (46, 56, 80), (38, 46, 66)], t * 2.0), 1)
+    if style == "mcell_edge":
+        # a cell's chamfered edge: the same navy lit a step, a light line along it
+        if d < 1.0:
+            return (110, 124, 150)
+        return jitter((62, 76, 104), 1)
     if style == "mlabel":
         # a battery's label plate: a lighter moulded panel, a dark border
         if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
