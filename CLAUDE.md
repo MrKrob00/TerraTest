@@ -423,6 +423,11 @@ project: read it before claiming how anything works.
   (`FactoryPicker` `PortsButton`, shown for a multi-cell factory): with the product first, the
   plant's and the fabricator's ports had no way in at all.
   Measured on the engine: two ores through processors into the plant, 2 components sold (+300).
+- **EACH INPUT OF A FACTORY HAS ITS OWN BELT, AND THAT IS THE LOGIC, NOT A BUG** (the player's call).
+  A belt carrying mixed items into a plant whose slot for one of them is already full stops: the
+  extra item waits at the mouth (`wants` is false for it, there is no other way on) and everything
+  behind it waits too. Sorting the line - one ore per belt, a fork or a second receiver - is the
+  player's job and part of the logistics puzzle; do not make the belt skip, buffer or drop the item.
 - **A RECEIVER RETRIES ITS HAND-OFF** (`Receiver.push_retry_tick`, every `PUSH_RETRY`). It took ore
   into its inventory and pushed only when something new arrived, so a belt laid after the ore,
   or a wait on a belt that was relaid (`_wait_on` dead), left it holding everything for good.
