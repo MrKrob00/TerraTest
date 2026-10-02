@@ -1869,6 +1869,10 @@ func _ev_cooldowns(delta: float) -> void:
 			_ev_cool.erase(id)
 			Q.reset_quest(id)
 
+## How far round its point a party's members drop: the clearance from the player's machines is
+## taken for the whole ring, so the two numbers are one.
+const EV_PARTY_RING := 10.0
+
 ## Спавн отряда вокруг точки. Пресеты — те же ступени опасности, что у обычных врагов.
 func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 		lock_on: Node3D = null) -> Array:
@@ -1882,11 +1886,26 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	if faction_id != 0:
 		if sp.has_method("party_for_request"):
 			presets = sp.party_for_request(presets)
+		# A FACTION'S PARTY IS MEASURED IN ITS OWN BUILDS: the budget above counts Falsus ladder
+		# values, and a Marlit runner (17.4k) stands in for steps worth 10.7k / 15.9k - so the party
+		# is turned into the faction's builds HERE and trimmed again on their real value (members
+		# outside the ladder cannot step down, only drop). `_spawn_hostile` leaves them as they are.
+		var mapped: Array = []
+		for p in presets:
+			mapped.append(_faction_preset(sp, int(p)))
+		if mapped != presets and sp.has_method("party_budget") and sp.has_method("preset_value"):
+			var budget: float = sp.party_budget()
+			var total: float = 0.0
+			for p in mapped:
+				total += sp.preset_value(int(p))
+			while mapped.size() > 1 and total > budget:
+				total -= sp.preset_value(int(mapped.pop_back()))
+		presets = mapped
 		if sp.has_method("clear_point"):
-			at = sp.clear_point(at, 10.0)
+			at = sp.clear_point(at, EV_PARTY_RING)
 	for i in presets.size():
 		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
-		var pos: Vector3 = at + Vector3(cos(ang) * 10.0, 0.0, sin(ang) * 10.0)
+		var pos: Vector3 = at + Vector3(cos(ang) * EV_PARTY_RING, 0.0, sin(ang) * EV_PARTY_RING)
 		var e: Node3D = _spawn_hostile(sp, pos, int(presets[i]), faction_id)
 		if e == null:
 			continue

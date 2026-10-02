@@ -175,8 +175,9 @@ func upgrade() -> void:
 		# КОМПОНЕНТЫ процессор не трогает: их варит только Component Factory по рецепту.
 	_update_visual()
 
-## THE ITEM'S PICTURE IS ITS OWN MODEL (art/item_models.gd; the ingot is the artist's,
-## objects/Assets.glb): raw ore is a piece of its vein, so the shape tells the metal and the stage at
+## THE ITEM'S PICTURE IS ITS OWN MODEL (art/item_models.gd; the ingot is the artist's
+## `ingot_metal`, cut out of objects/Assets.glb into resources/items/ingot.tres by the same tool, so
+## the first ingot of a session does not instance the whole artist library in its frame): raw ore is a piece of its vein, so the shape tells the metal and the stage at
 ## once. It used to be one octahedron in a metre-wide additive bubble - 256 triangles of bubble -
 ## and the stage was told by squashing the octahedron. The model stands with its foot where the
 ## bubble's bottom was (`FOOT_Y`): the body keeps its half-metre sphere, so every belt slot, tray
@@ -190,8 +191,16 @@ const FOOT_Y := -0.48
 var _foot: float = FOOT_Y
 
 func seat(foot: float) -> void:
+	if is_equal_approx(_foot, foot):
+		return
 	_foot = foot
 	_update_visual()
+
+## AN ITEM THAT LANDS AMONG THE LOOSE ONES STANDS AS THEY DO, however it left its holder - a
+## collector torn off or scattered with ore in its bowl does not go through `unseat`.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PARENTED and get_parent() != null and get_parent().name == "objects":
+		unseat()
 
 func unseat() -> void:
 	seat(FOOT_Y)
@@ -207,15 +216,6 @@ static func _item_mesh(key: String) -> Mesh:
 	if _meshes.has(key):
 		return _meshes[key]
 	var m: Mesh = null
-	if key == "ingot":
-		var ps: PackedScene = load("res://objects/Assets.glb")
-		if ps != null:
-			var r: Node = ps.instantiate()
-			var n := r.find_child("ingot_metal", true, false) as MeshInstance3D
-			m = n.mesh if n != null else null
-			r.free()
-		_meshes[key] = m
-		return m
 	if ResourceLoader.exists(ITEM_DIR + key + ".tres"):
 		m = load(ITEM_DIR + key + ".tres")
 	_meshes[key] = m
@@ -248,12 +248,14 @@ func _update_visual() -> void:
 		Type.CHUNK:
 			key = "chunk"
 			mat = _tint_material(Color.WHITE)
-	var mm: Mesh = _item_mesh(key)
-	if mm == null:
-		return
+	# the glow first: its quad has no material in the scene, and left without one it would draw
+	# as a plain white square
 	var glow := get_node_or_null("MeshInstance3D") as MeshInstance3D
 	if glow != null and glow.mesh != null:
 		glow.material_override = _glow_material(_glow_colour())
+	var mm: Mesh = _item_mesh(key)
+	if mm == null:
+		return
 	mesh.mesh = mm
 	mesh.material_override = mat
 	mesh.scale = Vector3.ONE

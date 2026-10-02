@@ -417,7 +417,11 @@ project: read it before claiming how anything works.
   (Ferrite + Cuprite) and every other ingot rode past it - "two ingots wired in, no component, and
   it took only one of them". A saved product is handed over through `_apply_output`, which now
   calls `reload_recipe()` too: the field alone left the old recipe in `_need`. The plant `wants`
-  an ingot of its recipe (also while crafting), so the belt holds it instead of sending it on.
+  an ingot of its recipe (also while crafting), so the belt holds it instead of sending it on, and it
+  emits `slot_freed` when a craft ends, as the processor does, so the held ingot goes in at once
+  rather than on the belt's next retry. THE PORTS ARE A BUTTON IN THE PRODUCT WINDOW
+  (`FactoryPicker` `PortsButton`, shown for a multi-cell factory): with the product first, the
+  plant's and the fabricator's ports had no way in at all.
   Measured on the engine: two ores through processors into the plant, 2 components sold (+300).
 - **A RECEIVER RETRIES ITS HAND-OFF** (`Receiver.push_retry_tick`, every `PUSH_RETRY`). It took ore
   into its inventory and pushed only when something new arrived, so a belt laid after the ore,
@@ -816,7 +820,13 @@ project: read it before claiming how anything works.
   on the bottom step is the last one dropped; a single machine is never cut. THE SECTOR SCAN's
   invader is the ceiling step too (`_variant(_tier_cap)`), not the fixed preset 9 it used to be.
   Measured on a starter cabin (cap 0, budget 17.1k): the camp's 7/8/9 and the waves' 6/7/8 come as
-  one scout.
+  one scout. A FACTION'S PARTY IS TRIMMED AGAIN ON ITS OWN BUILDS' VALUE (`_ev_spawn`, `party_budget`):
+  a Marlit runner (17.4k) stands in for ladder steps worth 10.7k / 15.9k, so a Marlit gang on a
+  starter cabin is one runner, not three. Build values come from ONE walk of the real layout,
+  `blocks.preset_summary` (count, total, value), shared with the proving ground's cards - two
+  copies were bound to drift - and are WARMED a preset a frame from the spawner's start
+  (`_warm_values`): all of them at once is ~200 ms. The invader is sized on the machine the scan
+  DETECTED (`locked`).
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
   the tier is rolled under it. Kill reward is measured once at birth.
 - **A KILL PAYS BY WHAT DIED, IN XP AS WELL AS RP** (`G.xp_for_kill`, paid in `enemy_vehicle._pay_out`
@@ -1533,7 +1543,8 @@ project: read it before claiming how anything works.
   the receiver's beam stacks the same way from `STACK_BASE`. Both used to step a whole metre, the
   bubble's size - ten picked items were a tower taller than the machine, which is why the collector
   had been cut down to one. The single door out (`remove_from_inventory`) unseats the item and
-  shows it again.
+  shows it again; an item that lands among the loose ones by any other way (a collector torn off with
+  ore in its bowl) is unseated by its own `NOTIFICATION_PARENTED`, and `seat` skips a foot it already has.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
@@ -2060,7 +2071,8 @@ project: read it before claiming how anything works.
   `wireless_marlit.gd`, 2x1x2 like the bracket, joins by its back only). Models from
   `art/emitter_models.py` marlit_battery / marlit_wireless, approved by the player. The battery's
   eight gauge bars are `Seg0..7` and its cells' two energy rings `Ring0` (anything in it) / `Ring1`
-  (over half), all shrunk dark like the Falsus rings. Everything that meant "a battery" now asks
+  (over half), all shrunk dark like the Falsus rings; the rings are part of the compared state, or a
+  first trickle of charge (under one bar) never lit Ring0. Everything that meant "a battery" now asks
   `G.BATTERY_BLOCKS` - drop chance, the volatile tower rule, the charge-scaled blast - not
   `Block.BATTERY`. The charger's disc is its `Ring` and the beam leaves its middle (`emit_at`, set
   in `_init`). Measured: segments 0/1/4/5/8 at charge 0/0.1/0.5/0.51/1, rings off/low/low/both/both;
@@ -2248,7 +2260,10 @@ project: read it before claiming how anything works.
   Ring round it and glass on top...; body in the component's colour, dark metal, glass, a GSO-blue
   screen), a chunk a crate with GSO-blue straps. What the bubble was for - an item seen in
   the grass - is ONE BILLBOARD QUAD (`resources/items/item_glow.gdshader`, additive, the item's
-  colour, coal an ember), two triangles. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
+  colour, coal an ember), two triangles; its material is set before anything else, or a missing model
+  would leave a plain white square. The ingot is cut out of the library into
+  `resources/items/ingot.tres` by the same tool, so the first ingot of a session does not instance
+  all of `Assets.glb` in its frame. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
   with its FOOT where the bubble's bottom was (`FOOT_Y`), so every belt slot, tray, mouth and hold
   height made for the bubble still holds it; the rotation is locked in the scene, or a rolling
   sphere would swing the model round its middle. A HOLDER that shows an item sitting IN something

@@ -77,9 +77,13 @@ func _process(_delta: float) -> void:
 	var lit: int = clampi(ceili(f * _segs.size() - 0.001), 0, _segs.size())
 	if lit == 1 and f < LOW_FRAC and (Time.get_ticks_msec() / BLINK_MS) % 2 == 1:
 		lit = 0
-	if lit == _shown:
+	# the rings have thresholds of their own (anything in it / over half), so they are part of what
+	# is compared: behind the segment count alone a first trickle of charge never lit Ring0
+	var rings: int = (1 if f > 0.0 else 0) + (2 if f > RING_HIGH else 0)
+	var state: int = lit * 4 + rings
+	if state == _shown:
 		return
-	_shown = lit
+	_shown = state
 	for i in _segs.size():
 		_segs[i].scale = Vector3.ONE if i < lit else Vector3.ONE * SEG_OFF
 	for k in _rings.size():

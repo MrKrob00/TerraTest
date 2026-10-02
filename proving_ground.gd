@@ -410,33 +410,8 @@ func _build_title(preset: int) -> String:
 ## Сверено с живой машиной: у сборки #25 обе дороги дают 29 блоков.
 ##
 ## Считаем ЯКОРЯ, а не клетки: многоклеточный блок занимает несколько и посчитался бы дважды.
-var _sum_cache: Dictionary = {}
-
 func _summary(preset: int) -> Dictionary:
-	if _sum_cache.has(preset):
-		return _sum_cache[preset]
-	var n := Node3D.new()
-	n.set_script(BLOCKS_SCRIPT)
-	n.set("layout_preset", preset)
-	n.call("_init_map")
-	n.call("_define_layout")
-	var count := {}
-	var total := 0
-	var m: Dictionary = n.get("map")             # occupied cells only: Vector3i -> block
-	var owners: Dictionary = n.get("cell_owner")
-	var seen := {}
-	for c in m:
-		var bt: int = int(m[c])
-		var key: String = String(owners.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z]))
-		if seen.has(key):
-			continue
-		seen[key] = true
-		count[bt] = int(count.get(bt, 0)) + 1
-		total += 1
-	n.free()
-	var out := {"total": total, "count": count}
-	_sum_cache[preset] = out
-	return out
+	return BLOCKS_SCRIPT.preset_summary(preset)
 
 ## Список «имя ×N» по заданным типам, "" если ни одного. Порядок — по УБЫВАНИЮ количества, чтобы
 ## главное оружие сборки стояло первым.

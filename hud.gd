@@ -1642,7 +1642,7 @@ func open_factory_picker(block: Node) -> bool:
 	# A BLOCK THAT MAKES SOMETHING OPENS ITS PRODUCT FIRST, ports only for the rest (the processor).
 	# Ports came first, and since the component plant and the fabricator grew past one cell the
 	# product picker could not be reached at all: every plant stayed on Wound Coil and refused any
-	# other pair of ingots. Their ports are authored in the scene.
+	# other pair of ingots. Their ports are a button in the product window (`PortsButton`).
 	_factory_picker = FactoryPicker.open_for(self, block)
 	if _factory_picker != null:
 		return true
