@@ -269,8 +269,32 @@ func _seed_demo() -> void:
 		 "hint": "The point is not taken until the crate on it is yours."},
 	])
 
+	# MARLIT'S EVENTS: the same four the original's GeoCorp board repeats (the player's list) -
+	# Supply Drop, Tech Gang, Defend Friendly Tech, Defeat Enemy Waves - under Marlit's flag. The arcs
+	# are Falsus's own (quest_arcs takes the key from the stage); the faction sends Marlit machines
+	# (quest_arcs._faction_preset), fills the drop with Marlit blocks and takes the XP. They open with
+	# the licence and climb Marlit's grades in the same order as Falsus's.
+	_marlit_event("event_msupply", "Supply Drop", 200, 25, 5, 1, "event_supply", "msupply")
+	_marlit_event("event_mgang", "Tech Gang", 320, 40, 8, 1, "event_gang", "mgang")
+	_marlit_event("event_mdefend", "Cover the Convoy", 300, 35, 7, 2, "event_defend", "mdefend")
+	_marlit_event("event_mwaves", "Hold Position", 340, 45, 9, 3, "event_waves", "mwaves")
+
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
+
+## A Marlit copy of a Falsus event: its stages with the stage events renamed to its own key.
+func _marlit_event(id: String, title: String, money: int, xp: int, rp: int, grade: int,
+		like: String, key: String) -> void:
+	add_quest(id, title, "", Type.EVENT, 1, 0, "", money, xp, rp, grade)
+	var src := _find(like)
+	var stages: Array = []
+	for st in src.get("stages", []):
+		var c: Dictionary = (st as Dictionary).duplicate()
+		var ev := String(c["event"])
+		c["event"] = "quest_" + key + "_" + ev.get_slice("_", ev.get_slice_count("_") - 1)
+		stages.append(c)
+	add_stages(id, stages)
+	_find(id)["faction"] = "marlit"
 
 # ── Данные ────────────────────────────────────────────────────────────────────
 func add_quest(id: String, title: String, desc: String, type: int, goal: int,
@@ -426,6 +450,7 @@ func reload_from_progress() -> void:
 	# Придержки — состояние СЕАНСА (см. hold_quest): смена слота или загрузка означает, что
 	# ждать больше некого, и придержанный квест иначе не открылся бы никогда.
 	_held.clear()
+	_roster.clear()                    # the drawn events belong to the session, like _held
 	# ВЫДАННОЕ РУКАМИ ЧИСТИМ ЗДЕСЬ ЖЕ, И ЭТО ВАЖНЕЕ, ЧЕМ КАЖЕТСЯ. `Q` — автолоад, он переживает
 	# смену сцены: выдал себе ветку на полигоне, вышел в меню, начал настоящую игру — и она
 	# продолжала бы идти мимо требований и грейда уже в сейве. В настоящую игру заходят только
@@ -714,7 +739,7 @@ func active_quests() -> Array[Dictionary]:
 ## МЕСТ В ЖУРНАЛЕ — ПО ДАВЛЕНИЮ МИРА. Два события сразу — это уже выбор «еду на груз или разгоняю
 ## банду», и он хорош, когда есть чем ехать; на первом грейде это просто две беды разом. Пока мир
 ## слабый (G.threat_ramp), место одно.
-const EVENT_SLOTS := 2
+const EVENT_SLOTS := 3
 const EVENT_SLOTS_EARLY := 1
 ## С какого давления открывается второе место.
 const EVENT_SLOTS_AT := 0.6
@@ -725,28 +750,79 @@ func event_slots() -> int:
 		return EVENT_SLOTS
 	return EVENT_SLOTS if g.threat_ramp() >= EVENT_SLOTS_AT else EVENT_SLOTS_EARLY
 
+## WHICH EVENTS ARE ON THE BOARD (the player's rules): EVENT_SLOTS places; one of them is GUARANTEED
+## to an event of the highest faction the player holds; the rest are drawn at random; and a faction
+## at its last grade stops sending events once a better one is open - with Marlit licensed and
+## Falsus at grade 5, the board is Marlit's. A drawn event keeps its place until it is done or
+## dropped (`_roster`, memory only): drawing on every call would shuffle the journal each frame.
+var _roster: Array[String] = []
+
+## Factions whose events may be drawn, in the table's order (the last is the highest).
+func _event_factions() -> Array:
+	var g = get_node_or_null("/root/G")
+	if g == null:
+		return ["start"]
+	var open: Array = g.open_factions() if g.has_method("open_factions") else ["start"]
+	var out: Array = []
+	for i in open.size():
+		var f := String(open[i])
+		var last_grade: int = int((g.FACTIONS[f] as Dictionary).get("grades", 5))
+		if i < open.size() - 1 and g.grade(f) >= last_grade:
+			continue                          # maxed, and a better faction is open
+		out.append(f)
+	return out
+
 func current_events() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if tutorial_active():
 		return out
-	var rest: Array[Dictionary] = []
+	var factions: Array = _event_factions()
+	var pool: Array[Dictionary] = []
 	for q in quests:
 		if q["type"] != Type.EVENT or q["done"]:
 			continue
 		if int(q.get("stage", 0)) > 0 or int(q.get("progress", 0)) > 0:
 			out.append(q)                 # это уже идёт — держим в любом случае
-		elif _grade_ok(q):
-			# ГРЕЙД СПРАШИВАЕТСЯ И У СОБЫТИЙ, а не только у сюжета. Раньше все шесть были открыты
-			# с первой минуты, и разнообразие начиналось там же, где кончалось: лагерь с четырьмя
-			# машинами мог выпасть игроку с одной пушкой. Теперь они открываются лесенкой — в том
-			# же порядке, в каком расписаны их награды.
-			rest.append(q)
+		elif _grade_ok(q) and factions.has(faction_of(q)):
+			pool.append(q)
 	var slots: int = event_slots()
+	# keep what was drawn while it is still on offer
+	var kept: Array[String] = []
+	for id in _roster:
+		var q := _find(id)
+		if not q.is_empty() and (out.has(q) or pool.has(q)):
+			kept.append(id)
+	_roster = kept
+	var shown: Array[String] = []
+	for q in out:
+		shown.append(String(q["id"]))
+	for id in _roster:
+		if not shown.has(id):
+			shown.append(id)
+	# the guaranteed place: an event of the highest faction
+	var top := String(factions[-1]) if not factions.is_empty() else "start"
+	var has_top := false
+	for id in shown:
+		if faction_of(_find(id)) == top:
+			has_top = true
+	if not has_top and shown.size() < slots:
+		var tops: Array = pool.filter(func(q): return faction_of(q) == top and not shown.has(String(q["id"])))
+		if not tops.is_empty():
+			var pick: Dictionary = tops.pick_random()
+			shown.append(String(pick["id"]))
+			_roster.append(String(pick["id"]))
+	# the rest at random
+	var rest: Array = pool.filter(func(q): return not shown.has(String(q["id"])))
+	rest.shuffle()
 	for q in rest:
-		if out.size() >= slots:
+		if shown.size() >= slots:
 			break
-		out.append(q)
-	return out.slice(0, slots)
+		shown.append(String(q["id"]))
+		_roster.append(String(q["id"]))
+	var res: Array[Dictionary] = []
+	for id in shown.slice(0, slots):
+		res.append(_find(id))
+	return res
 
 # Текущий шаг обучения (первый невыполненный по order) или пусто, если обучение пройдено.
 func _current_tutorial() -> Dictionary:
