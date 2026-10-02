@@ -27,8 +27,9 @@ uniform bool fells = false;
 uniform float lean_max = 0.30;
 uniform float fall_angle = 1.45;
 uniform float fall_time = 0.9;
-// What is left of a mined-out ore: stubs, so the vein still says what it holds while it rests.
-uniform float stub = 0.22;
+// What is left of a mined-out vein: a small copy of itself, so it still says what it holds while
+// it rests.
+uniform float stub = 0.30;
 uniform float grow_time = 0.6;
 
 varying float v_hit;
@@ -56,8 +57,9 @@ void vertex() {
 	}
 	vec3 p = VERTEX - vec3(0.0, base_y, 0.0);
 	float h = max(p.y, 0.0);
-	// UV.x marks the part that is mined (art/vein_models.gd): the rock and the stump never move
-	if (UV.x > 0.5) {
+	// An ore vein shrinks WHOLE, rock and all (the player: the ore going while the rock it stood on
+	// stayed was wrong); on the tree UV.x marks what falls, and the stump stays.
+	if (UV.x > 0.5 || !fells) {
 		if (fells) {
 			float a = (1.0 - hp) * lean_max;
 			float keep = 1.0;

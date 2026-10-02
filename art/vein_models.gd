@@ -9,15 +9,14 @@ extends SceneTree
 #   ferrite  - rusty angular chunks breaking out of the rock (iron ore);
 #   cuprite  - banded copper ore, uneven strata stacked in steps (rounded nuggets were turned
 #              down: they looked silly);
-#   silicate - a tall rock with a brush of thin glass crystals on top;
+#   silicate - a cluster of thick crystal columns straight out of the ground (TerraTech's node);
 #   titanite - jagged shards of raw ore broken up through the rock (plates were turned down:
 #              they read as metal already made, not as ore).
 # The rock under each is NARROW, about the drill's reach across: the first cut was a 1.7 m slab of
 # stone with a second chunk beside it, and the ore sat on it like decoration on a plinth.
 #
-# One mesh per model, and the vertex says what moves (UV.x 1): the ore shrinks into the rock as the
-# HP goes and grows back, the rock stays; on the tree the stump stays and the rest falls and is
-# gone (resources/resource.gdshader). The frame is the vein node's: its origin stands 0.25 over the
+# One mesh per model. An ore vein shrinks WHOLE as the HP goes and grows back; on the tree the vertex
+# says what falls (UV.x 1) and the stump stays (resources/resource.gdshader). The frame is the vein node's: its origin stands 0.25 over the
 # ground, so the ground is y = GROUND, and every part reaches below it so a slope shows no edge.
 #
 # Faces are flat and carry their own tone from one fixed light: unshaded, so a facet's colour is all
@@ -178,47 +177,48 @@ func _cuprite() -> SurfaceTool:
 	_stratum(st, Vector3(0.30, 0, -0.22), 0.13, GROUND + 0.20, GROUND + 0.40, 5)
 	return st
 
-## A crystal: a prism from its foot inside the rock, a shoulder and a pointed tip.
-func _crystal(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float, r: float,
-		sides: int) -> void:
+## A crystal column, TerraTech's: a THICK hexagonal prism from its foot under the ground, a short
+## faceted point, the shoulder ring a little wider than the foot.
+func _column(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float, r: float) -> void:
 	var up: Vector3 = (Vector3.UP * cos(lean) + dir.normalized() * sin(lean)).normalized()
 	var side: Vector3 = up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
 	var side2: Vector3 = up.cross(side).normalized()
 	var phase: float = _rng.randf() * TAU
 	var lo: Array = []
 	var hi: Array = []
-	for i in sides:
-		var a: float = phase + TAU * float(i) / float(sides)
+	for i in 6:
+		var a: float = phase + TAU * float(i) / 6.0
 		var o: Vector3 = side * cos(a) * r + side2 * sin(a) * r
 		lo.append(foot + o)
-		hi.append(foot + up * h * 0.72 + o * 1.06)
+		hi.append(foot + up * h * 0.78 + o * 1.05)
 	var tip: Vector3 = foot + up * h
 	var inside: Vector3 = foot + up * h * 0.4
-	for i in sides:
-		var j: int = (i + 1) % sides
+	for i in 6:
+		var j: int = (i + 1) % 6
 		_quad(st, lo[i], lo[j], hi[j], hi[i], inside, Color.WHITE, true)
 		_tri(st, hi[i], hi[j], tip, inside, Color.WHITE, true)
 
-## SILICATE: a TALL rock whose top is a brush of many thin crystals (the player's design: a few big
-## crystals on a low slab read as a cluster, not as a vein). Feet sit just inside the cap, the
-## lean grows with the distance from its middle, so the brush fans out over the rock's shoulders.
+## SILICATE: a cluster of thick crystal columns growing straight out of the ground, TerraTech's
+## crystal node - a tall one in the middle, a ring leaning out round it and small shards at the
+## foot. Turned down on the way: big thin crystals on a stone slab ("a plinth"), then a tall rock
+## with a brush of thin crystals on top ("still not it").
 func _silicate() -> SurfaceTool:
 	var st := _begin()
 	_moving = false
-	_boulder(st, Vector3.ZERO, 6, [[0.46, GROUND - SINK, 0.08], [0.50, GROUND + 0.10, 0.10],
-			[0.42, GROUND + 0.55, 0.10], [0.32, GROUND + 0.82, 0.04]], STONE)
-	_moving = true
-	var count := 17
-	for i in count:
-		# a golden-angle spiral over the cap: even cover, no two feet on one spot
-		var t: float = (float(i) + 0.5) / float(count)
-		var rr: float = 0.32 * sqrt(t)
-		var ang: float = float(i) * 2.39996
+	var y0 := GROUND - 0.25                              # every foot starts under the ground
+	_column(st, Vector3(0.02, y0, 0.0), Vector3(0.3, 0, -0.2), 0.06, 1.85, 0.24)
+	var ring := 5
+	for i in ring:
+		var ang: float = TAU * float(i) / float(ring) + _rng.randf_range(-0.2, 0.2)
 		var dir := Vector3(cos(ang), 0, sin(ang))
-		var foot := dir * rr + Vector3(0, GROUND + 0.84 - rr * 0.10, 0)     # just under the cap
-		var lean: float = 0.08 + 1.3 * rr + _rng.randf_range(-0.08, 0.08)
-		var h: float = _rng.randf_range(0.30, 0.50) * (1.25 - 1.2 * rr)
-		_crystal(st, foot, dir, lean, h, _rng.randf_range(0.035, 0.055), 4)
+		var foot := dir * _rng.randf_range(0.17, 0.24) + Vector3(0, y0, 0)
+		_column(st, foot, dir, _rng.randf_range(0.30, 0.55), _rng.randf_range(0.95, 1.35),
+				_rng.randf_range(0.14, 0.19))
+	for i in 3:
+		var ang: float = TAU * (float(i) + 0.5) / 3.0 + _rng.randf_range(-0.3, 0.3)
+		var dir := Vector3(cos(ang), 0, sin(ang))
+		_column(st, dir * 0.40 + Vector3(0, GROUND - 0.12, 0), dir, _rng.randf_range(0.7, 0.95),
+				_rng.randf_range(0.40, 0.55), 0.09)
 	return st
 
 ## A raw ore shard: a lofted lump skewed to one side and broken off unevenly on top, with every
