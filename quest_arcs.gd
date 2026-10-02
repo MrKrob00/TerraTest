@@ -72,6 +72,16 @@ func _tick_arcs(delta: float) -> void:
 			"quest_sam_1":         _tower_1(q, TOWER_SAM)
 			"quest_sam_2":         _tower_2(q, TOWER_SAM)
 			"quest_duel_1":        _duel_1(q)
+			# MARLIT'S EVENTS ARE THE SAME EVENTS WITH ANOTHER FACTION: the functions take their key
+			# from the stage ("quest_mgang_1" -> "mgang"), and the faction decides the enemies'
+			# builds (_faction_preset), the loot and whose XP it pays (Q.faction_of)
+			"quest_mgang_1":       _gang_1(q)
+			"quest_mgang_2":       _gang_2(q)
+			"quest_msupply_1":     _supply_1(q)
+			"quest_msupply_2":     _supply_2(q)
+			"quest_mdefend_1":     _defend_1(q)
+			"quest_mdefend_2":     _defend_2(q)
+			"quest_mwaves_1":      _waves_1(q)
 			"quest_duel_2":        _duel_2(q)
 			"quest_gang_1":        _gang_1(q)
 			"quest_gang_2":        _gang_2(q)
@@ -422,6 +432,8 @@ func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> 
 	var want: int = preset
 	if faction_id != 0 and sp.has_method("preset_for_request"):
 		want = int(sp.preset_for_request(preset))
+	if faction_id != 0:
+		want = _faction_preset(sp, want)
 	# НА ПОЛИГОНЕ ВЕТКУ ВЫДАЛ САМ ИГРОК, И ЭТО И ЕСТЬ «ЧЕРЕЗ ПАНЕЛЬ». Запрет там стоит на
 	# `spawn_at`, чтобы в тот мир никто не заезжал сам; выданный квест самоходным не является —
 	# его попросили кнопкой, и смотреть на него без участников нечего. Без этого арка тихо
@@ -431,6 +443,19 @@ func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> 
 	if e != null and faction_id != 0 and _cur_q != "" and e.has_signal("died"):
 		e.died.connect(_on_quest_kill.bind(_cur_q), CONNECT_ONE_SHOT)
 	return e
+
+## AN EVENT SENDS ITS OWN FACTION'S MACHINES (the player's rule): the quest being polled names its
+## faction, and a Marlit quest turns the Falsus build it asked for into Marlit's build of the same
+## step - the step itself is still the player's ceiling. Builds outside the ladder are left alone.
+const MARLIT_BY_STEP := [121, 121, 122, 122, 120, 120]   # runner, raider, champion (blocks.gd)
+
+func _faction_preset(sp: Node, preset: int) -> int:
+	if _cur_q == "" or Q.faction_of(Q._find(_cur_q)) != "marlit" or not sp.has_method("_tier_of"):
+		return preset
+	var t: int = int(sp._tier_of(preset))
+	if t < 0:
+		return preset
+	return int(MARLIT_BY_STEP[mini(t, MARLIT_BY_STEP.size() - 1)])
 
 ## Одна дверь к спавнеру для ВСЕХ квестовых машин, ездящих и стоящих: потолок ступени режется
 ## выше (в `_spawn_hostile`), а здесь только запрет полигона.
@@ -1426,7 +1451,7 @@ func duel_point() -> Variant:
 
 func _duel_1(q: Dictionary) -> void:
 	var p: Node3D = _player()
-	if p == null:
+	if p == null or _duel_abandoned(q):
 		return
 	if _duel_point == null:
 		_duel_point = _duel_pick_point()
@@ -1443,14 +1468,30 @@ func _duel_1(q: Dictionary) -> void:
 ## Точка дуэли: направление случайное, дистанция фиксированная — событие должно уводить игрока с
 ## его маршрута, а не подворачиваться там, куда он и так ехал.
 func _duel_pick_point() -> Variant:
-	var p: Node3D = _player()
-	if p == null:
-		return null
-	var ang: float = randf() * TAU
-	var dist: float = _quest_dist()
-	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-	wp.y = G.ground_y(wp, p.global_position.y)
-	return wp
+	return _event_point()
+
+## The duel keeps its own state, so it never went through _ev_abandoned and stayed in the journal
+## however far the player went. Same rule as every event: farther than EV_ABANDON from the nearest of
+## the player's machines - the duel is dropped, its machines leave, and it cools down.
+func _duel_abandoned(q: Dictionary) -> bool:
+	if _duel_point == null:
+		return false
+	var at: Vector3 = _duel_point as Vector3
+	var live = _live_target("quest_duel_1")
+	if live is Vector3:
+		at = live
+	if _nearest_own_d2(at) <= EV_ABANDON * EV_ABANDON:
+		return false
+	for m in [_duel_a, _duel_b]:
+		if is_instance_valid(m):
+			(m as Node).queue_free()
+	_duel_a = null
+	_duel_b = null
+	_duel_sent = false
+	_duel_point = null
+	_duel_cool = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
+	return true
 
 func _spawn_duel(center: Vector3) -> bool:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
@@ -1474,6 +1515,8 @@ func _spawn_duel(center: Vector3) -> bool:
 	return true
 
 func _duel_2(q: Dictionary) -> void:
+	if _duel_abandoned(q):
+		return
 	# ПУСТЫЕ ССЫЛКИ САМИ ПО СЕБЕ НЕ ПОБЕДА: у мёртвого узла ссылка ведёт на освобождённый адрес,
 	# а после перезахода её попросту нет — и то и другое `is_instance_valid` отдаёт как false, так
 	# что отличить «добили» от «состояние потеряно» может только флаг. Он в памяти, а память как
@@ -1699,18 +1742,61 @@ func _ev_key(ev: String) -> String:
 ## Точка события: выбираем один раз и держим. Возвращает null, пока игрока нет.
 ## dist <= 0 — общее правило спавна квестов (_quest_dist).
 func _ev_get_point(key: String, dist: float = 0.0) -> Variant:
-	if dist <= 0.0:
-		dist = _quest_dist()
 	if _ev_point.has(key):
 		return _ev_point[key]
+	var wp = _event_point(dist)
+	if wp == null:
+		return null
+	_ev_point[key] = wp
+	return wp
+
+## WHERE AN EVENT HAPPENS: EV_POINT_DIST from the player, and no nearer than EV_BASE_CLEAR to any of
+## the player's machines and bases (the player's rule): with the player a hundred metres from their
+## base, a point "a hundred metres off" could land on the base itself. `dist` > 0 asks for that
+## distance instead.
+const EV_POINT_DIST := Vector2(100.0, 250.0)
+const EV_BASE_CLEAR := 100.0
+
+func _event_point(dist: float = 0.0) -> Variant:
 	var p: Node3D = _player()
 	if p == null:
 		return null
-	var ang: float = randf() * TAU
-	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-	wp.y = G.ground_y(wp, p.global_position.y)
-	_ev_point[key] = wp
-	return wp
+	var best: Variant = null
+	var best_clear: float = -1.0
+	for i in 24:
+		var d: float = dist if dist > 0.0 else randf_range(EV_POINT_DIST.x, EV_POINT_DIST.y)
+		var ang: float = randf() * TAU
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * d, 0.0, sin(ang) * d)
+		var clear: float = _nearest_own_d2(wp)
+		if clear >= EV_BASE_CLEAR * EV_BASE_CLEAR:
+			best = wp
+			break
+		if clear > best_clear:
+			best_clear = clear
+			best = wp
+	var out: Vector3 = best
+	out.y = G.ground_y(out, p.global_position.y)
+	return out
+
+## The player's machines and bases (the camera's list, the one quest code asks everywhere).
+func _own_machines() -> Array:
+	var out: Array = []
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc != null and "vehicles" in cc:
+		for v in cc.vehicles:
+			if is_instance_valid(v) and v is Node3D:
+				out.append(v)
+	if out.is_empty():
+		var p: Node3D = _player()
+		if p != null:
+			out.append(p)
+	return out
+
+func _nearest_own_d2(at: Vector3) -> float:
+	var best: float = INF
+	for v in _own_machines():
+		best = minf(best, (v as Node3D).global_position.distance_squared_to(at))
+	return best
 
 ## УЕХАЛ ЗА EV_ABANDON — снимаем. Возвращает true, если событие снято: вызывающий сразу выходит.
 ##
@@ -1719,10 +1805,15 @@ func _ev_get_point(key: String, dist: float = 0.0) -> Variant:
 ## которому игрок так и не поехал, висело в журнале вечно — занимая место, которое теперь
 ## делят всего два события.
 func _ev_abandoned(q: Dictionary, key: String) -> bool:
-	var p: Node3D = _player()
-	if p == null or not _ev_point.has(key):
+	if not _ev_point.has(key):
 		return false
-	if p.global_position.distance_squared_to(_ev_point[key] as Vector3) <= EV_ABANDON * EV_ABANDON:
+	# FROM THE NEAREST OF THE PLAYER'S MACHINES AND BASES, not from the one being driven: an event
+	# by the player's base stays while the player is out on a run (the player's rule)
+	var at: Vector3 = _ev_point[key] as Vector3
+	var live = _live_target("quest_%s_1" % key)
+	if live is Vector3:
+		at = live
+	if _nearest_own_d2(at) <= EV_ABANDON * EV_ABANDON:
 		return false
 	_ev_clear(key)
 	# Остывание ставим и здесь: снятое событие обязано вернуться, иначе «уехал один раз» —
@@ -1800,7 +1891,7 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 # ── «Tech Gang»: банда стоит лагерем, её надо разогнать ──────────────────────
 
 func _gang_1(q: Dictionary) -> void:
-	var key := "gang"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if _ev_get_point(key) == null:
@@ -1815,7 +1906,7 @@ func _gang_1(q: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 
 func _gang_2(q: Dictionary) -> void:
-	var key := "gang"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
@@ -1835,28 +1926,31 @@ func _gang_2(q: Dictionary) -> void:
 ## two a step below it (EnemySpawner.preset_below_cap). The bait pays one block more, because it
 ## cost a fight.
 const SUPPLY_LOOT := [G.Block.BATTERY, G.Block.SOLAR, G.Block.BELT, G.Block.ARMOR2, G.Block.REGEN]
+## A Marlit drop holds Marlit's own blocks.
+const SUPPLY_LOOT_MARLIT := [G.Block.MARLIT_BLOCK, G.Block.MARLIT_SLAB, G.Block.MARLIT_HALF,
+		G.Block.MARLIT_ARMOR2, G.Block.MARLIT_GIRDER]
 const SUPPLY_BLOCKS := 1
 const SUPPLY_TRAP_BLOCKS := 2
 const REWARD_ORB := preload("res://reward_orb.gd")
 
-var _supply_trap: bool = false
-var _supply_opened: bool = false
+var _supply_trap: Dictionary = {}        # event key -> this drop is bait
+var _supply_opened: Dictionary = {}      # event key -> its orb has opened
 
 func _supply_1(q: Dictionary) -> void:
-	var key := "supply"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if _ev_get_point(key) == null:
 		return
 	var at: Vector3 = _ev_point[key] as Vector3
 	if not is_instance_valid(_ev_orb.get(key)):
-		_supply_trap = randf() < 0.5
-		_supply_opened = false
+		_supply_trap[key] = randf() < 0.5
+		_supply_opened[key] = false
 		_supply_orb(key, at)
 		Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
 	if not _reached(at):
 		return
-	if _supply_trap and not _ev_mobs.has(key):
+	if _supply_trap.get(key, false) and not _ev_mobs.has(key):
 		var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 		var two: bool = randf() < 0.5
 		var presets: Array = []
@@ -1876,13 +1970,14 @@ func _supply_orb(key: String, at: Vector3) -> void:
 	var orb: Node3D = REWARD_ORB.new()
 	host.add_child(orb)
 	orb.setup(at)
-	orb.opened.connect(_on_supply_opened)
+	orb.opened.connect(_on_supply_opened.bind(key))
 	_ev_orb[key] = orb
 
-func _on_supply_opened(at: Vector3) -> void:
-	for i in (SUPPLY_TRAP_BLOCKS if _supply_trap else SUPPLY_BLOCKS):
-		_drop_reward(int(SUPPLY_LOOT.pick_random()), at)
-	_supply_opened = true
+func _on_supply_opened(at: Vector3, key: String) -> void:
+	var loot: Array = SUPPLY_LOOT_MARLIT if Q.faction_of(Q._find("event_" + key)) == "marlit" else SUPPLY_LOOT
+	for i in (SUPPLY_TRAP_BLOCKS if _supply_trap.get(key, false) else SUPPLY_BLOCKS):
+		_drop_reward(int(loot.pick_random()), at)
+	_supply_opened[key] = true
 
 ## A reward block falling out of the air at `at`: an ordinary loose block, the player's to keep.
 func _drop_reward(bt: int, at: Vector3) -> void:
@@ -1898,11 +1993,11 @@ func _drop_reward(bt: int, at: Vector3) -> void:
 	BlockFX.play(node, false)
 
 func _supply_2(q: Dictionary) -> void:
-	var key := "supply"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
-	if _supply_opened:
-		_supply_opened = false
+	if _supply_opened.get(key, false):
+		_supply_opened[key] = false
 		_ev_done(q, key)
 		return
 	var orb = _ev_orb.get(key)
@@ -1913,12 +2008,12 @@ func _supply_2(q: Dictionary) -> void:
 		_ev_clear(key)
 		Q.reset_quest(String(q["id"]))
 		return
-	(orb as Node).set("locked", _supply_trap and not _ev_all_dead(key))
+	(orb as Node).set("locked", _supply_trap.get(key, false) and not _ev_all_dead(key))
 
 # ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
 
 func _defend_1(q: Dictionary) -> void:
-	var key := "defend"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if _ev_get_point(key) == null:
@@ -1932,17 +2027,17 @@ func _defend_1(q: Dictionary) -> void:
 		if ally.is_empty():
 			Q.skip_quest(String(q["id"]))
 			return
-		_ev_ally = ally[0]
-		_ev_spawn(key, at + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
+		_ev_ally[key] = ally[0]
+		_ev_spawn(key, at + Vector3(20.0, 0.0, 0.0), [6, 7], 1, ally[0])
 		Dialogue.say("System", tr("Friendly unit under fire. It will not last alone."))
 	if not _reached(_ev_point[key]):
 		return
 	Q.report(String(q["event"]), 1)
 
-var _ev_ally: Node3D = null
+var _ev_ally: Dictionary = {}           # event key -> the friendly unit being covered
 
 func _defend_2(q: Dictionary) -> void:
-	var key := "defend"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
@@ -1952,24 +2047,25 @@ func _defend_2(q: Dictionary) -> void:
 		if at != null:
 			var ally: Array = _ev_spawn(key, at as Vector3, [6], 0)
 			if not ally.is_empty():
-				_ev_ally = ally[0]
-				_ev_spawn(key, (at as Vector3) + Vector3(20.0, 0.0, 0.0), [6, 7], 1, _ev_ally)
+				_ev_ally[key] = ally[0]
+				_ev_spawn(key, (at as Vector3) + Vector3(20.0, 0.0, 0.0), [6, 7], 1, ally[0])
 		return
 	# Союзника добили — защищать больше некого. Это не поражение с наказанием, а снятое
 	# задание: цель исчезла не по вине игрока (см. Q.skip_quest).
-	if not is_instance_valid(_ev_ally):
+	var ally = _ev_ally.get(key)
+	if not is_instance_valid(ally):
 		_ev_clear(key)
 		Q.skip_quest(String(q["id"]))
 		return
 	for m in _ev_mobs.get(key, []):
-		if is_instance_valid(m) and m != _ev_ally:
+		if is_instance_valid(m) and m != ally:
 			return
-	_ev_ally = null
+	_ev_ally.erase(key)
 	_ev_done(q, key)
 
 # ── «Hold Position»: one attack, straight at your position ──────────────────
 func _waves_1(q: Dictionary) -> void:
-	var key := "waves"
+	var key := _ev_key(String(q["event"]))
 	var p: Node3D = _player()
 	if p == null:
 		return
@@ -1992,7 +2088,7 @@ func _waves_1(q: Dictionary) -> void:
 # Смысл при этом сохранён: укреплённая точка, охрана, и трофей достаётся тому, кто её взял.
 
 func _camp_1(q: Dictionary) -> void:
-	var key := "camp"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if _ev_get_point(key) == null:
@@ -2007,7 +2103,7 @@ func _camp_1(q: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 
 func _camp_2(q: Dictionary) -> void:
-	var key := "camp"
+	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):

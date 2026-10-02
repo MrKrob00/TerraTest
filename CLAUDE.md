@@ -725,6 +725,24 @@ project: read it before claiming how anything works.
 - Time → difficulty → reward, in that order. The last two links were already there (the enemy build
   follows the player's machine value, the payout is measured from that build, and event rewards are
   a ladder from 200 to 420); the first was missing.
+- **AN EVENT IS DROPPED PAST `EV_ABANDON` (500 m) FROM THE NEAREST OF THE PLAYER'S MACHINES AND BASES**
+  (`quest_arcs._ev_abandoned`, `_nearest_own_d2`; the player's rule), measured to a live participant
+  or the point, cools down and comes back at a NEW point `EV_POINT_DIST` (100-250 m) from the player
+  and no nearer than `EV_BASE_CLEAR` (100 m) to any of their machines (`_event_point`) - a point a
+  hundred metres from a player standing by their base could fall on the base. Story quests are not
+  events and keep their own rules. The duel kept its own state and was never dropped
+  (`_duel_abandoned` now). Measured: an event 600 m away went with its machines, the duel at 700 m.
+- **EVENTS CARRY A FACTION, AND THE BOARD IS DRAWN BY FACTION** (`Q.current_events`, `_roster`,
+  `_event_factions`; the player's rules). `EVENT_SLOTS` 3; one place is guaranteed to an event of the
+  highest licensed faction, the rest are drawn at random and keep their place until done or dropped
+  (drawing on every call would shuffle the journal); a faction at its last grade sends nothing once a
+  better one is open. Marlit's events (`event_msupply / mgang / mdefend / mwaves`, `Q._marlit_event`)
+  are Falsus's arcs under another key ("quest_mgang_1" -> "mgang"), so per-event state lives in
+  dictionaries by key; the faction turns the build an event asked for into Marlit's of the same step
+  (`quest_arcs._faction_preset`, `MARLIT_BY_STEP`: runner 121, raider 122, champion 120 - placeholders
+  for cabin, wheels and guns as on the champion), fills a drop with Marlit blocks and takes the XP.
+  Measured: Falsus at grade 5 with Marlit open - only Marlit events; at grade 4 - one Marlit event
+  guaranteed and two drawn; a Marlit gang of three runners at 131 m.
 - On equal sector load the spawn picks the **rear**: the "not in front" ban only covers the moment
   of appearing, and one turn of the wheel later a side spawn is in the way.
 - Beyond `sleep_dist` an enemy sleeps: physics frozen, `process_mode` off, meta flag `asleep` (read

@@ -177,6 +177,8 @@ func _define_layout() -> void:
 		17: _layout_shielded_tower(G.Block.MORTAR, G.Block.ROCKET)   # SAM Site Ridge: all explosive
 		18: _layout_charge_tower()                   # зарядная башня к ним обеим
 		MARLIT_CHAMPION: _layout_marlit_champion()
+		MARLIT_RUNNER: _layout_marlit_runner()
+		MARLIT_RAIDER: _layout_marlit_raider()
 		_: _layout_default()
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
@@ -188,6 +190,35 @@ func _define_layout() -> void:
 ## Marlit has no models for them yet: the Falsus cabin, and wheels and guns on the Falsus models
 ## with Marlit's numbers (MARLIT_WHEEL, MARLIT_GUN).
 const MARLIT_CHAMPION := 120
+
+## Marlit's lighter machines, for the events Marlit sends (quest_arcs._faction_preset turns the
+## Falsus build an event asked for into the Marlit one of its step): a runner about the second
+## step (~17k), a raider about the third (~26k); past that the champion comes. Same placeholders.
+const MARLIT_RUNNER := 121
+const MARLIT_RAIDER := 122
+
+func _layout_marlit_runner() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)      # z 3..4
+	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)      # z 6..7
+	for z in [3, 7]:
+		set_block(4, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
+		set_block(6, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
+	set_block(5, 7, 3, G.Block.MARLIT_GUN, 0.0)
+
+func _layout_marlit_raider() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)      # z 3..4
+	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)      # z 6..7
+	set_block(4, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # x 3..4, z 6..7
+	set_block(7, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # x 6..7, z 6..7
+	set_block(4, 5, 3, G.Block.MARLIT_WHEEL, PI / 2)
+	set_block(6, 5, 3, G.Block.MARLIT_WHEEL, -PI / 2)
+	set_block(2, 5, 7, G.Block.MARLIT_WHEEL, PI / 2)
+	set_block(8, 5, 7, G.Block.MARLIT_WHEEL, -PI / 2)
+	set_block(5, 7, 3, G.Block.MARLIT_GUN, 0.0)
+	set_block(3, 7, 6, G.Block.MARLIT_GUN, 0.0)
+	set_block(7, 7, 6, G.Block.MARLIT_GUN, 0.0)
 
 func _layout_marlit_champion() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
