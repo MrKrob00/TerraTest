@@ -27,9 +27,6 @@ uniform bool fells = false;
 uniform float lean_max = 0.30;
 uniform float fall_angle = 1.45;
 uniform float fall_time = 0.9;
-// What is left of a mined-out vein: a small copy of itself, so it still says what it holds while
-// it rests.
-uniform float stub = 0.30;
 uniform float grow_time = 0.6;
 
 varying float v_hit;
@@ -57,9 +54,14 @@ void vertex() {
 	}
 	vec3 p = VERTEX - vec3(0.0, base_y, 0.0);
 	float h = max(p.y, 0.0);
-	// An ore vein shrinks WHOLE, rock and all (the player: the ore going while the rock it stood on
-	// stayed was wrong); on the tree UV.x marks what falls, and the stump stays.
-	if (UV.x > 0.5 || !fells) {
+	// An ORE VEIN BREAKS, IT DOES NOT SHRINK (the player's call): UV.x is each part's break point
+	// (art/vein_models.gd), and a part is drawn only while the HP share is above it - one part goes
+	// with each ore thrown out, the rubble (UV.x below 0) stays. A broken part collapses to one point,
+	// so its triangles have no area and draw nothing. On the TREE UV.x marks what falls; the stump stays.
+	bool broken = !fells && hp <= UV.x;
+	if (broken) {
+		p = vec3(0.0);
+	} else if (UV.x > 0.5 || !fells) {
 		if (fells) {
 			float a = (1.0 - hp) * lean_max;
 			float keep = 1.0;
@@ -74,7 +76,7 @@ void vertex() {
 			p = vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
 			p *= keep * mix(0.05, 1.0, grow);
 		} else {
-			p *= mix(stub, 1.0, hp) * mix(stub, 1.0, grow);
+			p *= mix(0.05, 1.0, grow);          // back from the rest: the whole vein grows in again
 		}
 		if (last_hit > 0.0) {
 			float since = TIME - last_hit;

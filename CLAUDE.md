@@ -469,8 +469,14 @@ project: read it before claiming how anything works.
   node - thick hexagonal columns straight out of the ground, no rock - and titanite jagged raw
   shards. Turned down on the way: round copper nuggets ("look silly"), titanite as thin plates
   ("something already made, not ore"), and two crystal cuts (thin crystals on a slab, then a tall
-  rock with a brush of thin crystals on top). AN ORE VEIN SHRINKS WHOLE, ROCK AND ALL, to `stub`
-  of itself when mined out - the ore going while its rock stayed was wrong. A tree
+  rock with a brush of thin crystals on top). AN ORE VEIN BREAKS, IT DOES NOT SHRINK (the
+  player's call - shrinking read as a model getting smaller, and the ore going while its rock
+  stayed was wrong first): every model is cut into parts, UV.x carries each part's break point
+  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, lined up with the five ores `resource_node` throws out),
+  and the shader collapses a part once the HP share is at or under it - one mesh, one MultiMesh, no
+  model swapped. What stays at zero is RUBBLE (UV.x below 0): the rock's low base, the crystals'
+  broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
+  again. Measured on the real driver at HP 1 / 0.7 / 0.5 / 0.3 / 0 for all four metals. A tree
   leans a little while it is chopped and on the last blow falls and is gone in `fall_time`,
   leaving the stump - lying there for the rest was wrong. One MultiMesh per model
   (`resource_nodes.multimesh_nodes` in `G.Metal` order, `wood_multimesh_nodes`; `_model_mm`, a metal
