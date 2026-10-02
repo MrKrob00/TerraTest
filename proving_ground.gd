@@ -475,7 +475,7 @@ func _on_spawn() -> void:
 	# а не только на себе.
 	# spawn_requested, а не spawn_at: на полигоне спавнер отказывает всем, кроме этой двери —
 	# иначе сюжетный разведчик и ветки квестов ставили бы машины, которых никто не звал.
-	var e = _spawner.call("spawn_requested", at, preset, 0 if _ally else 1, false)
+	var e = _spawner.call("spawn_requested", at, preset, 0 if _ally else 1, false, true)
 	if e == null:
 		_say(tr("Spawn refused."))
 		return

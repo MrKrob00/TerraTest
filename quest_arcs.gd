@@ -1498,6 +1498,8 @@ func _spawn_duel(center: Vector3) -> bool:
 	if sp == null or not sp.has_method("spawn_at"):
 		return false
 	var side: Vector3 = Vector3(DUEL_GAP * 0.5, 0.0, 0.0)
+	if sp.has_method("clear_point"):
+		center = sp.clear_point(center, DUEL_GAP * 0.5)   # both outside PLAYER_CLEAR, still facing off
 	# ОБА ПО ПОТОЛКУ ИГРОКА. Дуэль — зрелище, на которое игрок приезжает и в которое лезет, и
 	# зашитые сюда 7 и 8 означали копейщика с куполом в первый час игры, против стартовой кабины.
 	# Фракции остаются РАЗНЫМИ (1 и 2) — иначе они друг друга не увидят вовсе.
@@ -1874,6 +1876,14 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	if sp == null or not sp.has_method("spawn_at"):
 		return []
 	var out: Array = []
+	# THE PARTY IS MEASURED AGAINST THE PLAYER BEFORE IT IS BORN (`party_for_request`), and its
+	# point is moved out of PLAYER_CLEAR as a whole (`clear_point`), so the members still drop
+	# together - one by one at the door each would be pushed its own way.
+	if faction_id != 0:
+		if sp.has_method("party_for_request"):
+			presets = sp.party_for_request(presets)
+		if sp.has_method("clear_point"):
+			at = sp.clear_point(at, 10.0)
 	for i in presets.size():
 		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
 		var pos: Vector3 = at + Vector3(cos(ang) * 10.0, 0.0, sin(ang) * 10.0)
