@@ -412,6 +412,18 @@ project: read it before claiming how anything works.
   alive (`FactoryBlock._wait_on`), or a destroyed neighbour means waiting forever.
 - Area masks decide as much as scripts: collector layer 8, receiver 24, packer magnet 2.
 - Every recipe has exactly two different materials — the fabricator tells inputs apart by kind.
+- **THE COMPONENT PLANT'S LONG PRESS OPENS THE PRODUCT FIRST** (`hud.open_factory_picker`: `FactoryPicker`,
+  then `PortPicker`). It opened the ports window, so a plant stayed on its default Wound Coil
+  (Ferrite + Cuprite) and every other ingot rode past it - "two ingots wired in, no component, and
+  it took only one of them". A saved product is handed over through `_apply_output`, which now
+  calls `reload_recipe()` too: the field alone left the old recipe in `_need`. The plant `wants`
+  an ingot of its recipe (also while crafting), so the belt holds it instead of sending it on.
+  Measured on the engine: two ores through processors into the plant, 2 components sold (+300).
+- **A RECEIVER RETRIES ITS HAND-OFF** (`Receiver.push_retry_tick`, every `PUSH_RETRY`). It took ore
+  into its inventory and pushed only when something new arrived, so a belt laid after the ore,
+  or a wait on a belt that was relaid (`_wait_on` dead), left it holding everything for good.
+  `try_receive` from a chain neighbour goes into the same inventory, not `current_item`. Measured:
+  belt laid after six ores, yaw 0 and 90 - all six in the storage, the receiver empty.
 - COAL IS NOT MINED, IT IS MADE. What grows out of the ground is WOOD; the processor burns it into
   coal, and that is coal's only source (`resource.upgrade`, the one door the processor calls).
   Wood is half of coal in both numbers that matter — 6 against 12 to sell, 20 against 40 in the

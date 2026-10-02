@@ -1639,14 +1639,14 @@ var _factory_picker: Control = null
 func open_factory_picker(block: Node) -> bool:
 	if is_instance_valid(_factory_picker):
 		_factory_picker.queue_free()
-	# У МНОГОКЛЕТОЧНОГО фабричного блока ДЛИННОЕ нажатие открывает настройку ПОРТОВ: там
-	# сторона это несколько клеток, и она интереснее выбора продукта (продукт есть не у всех,
-	# а порты — у каждого). У односкеточных PortPicker сам вернёт null, и откроется выбор
-	# продукта, как раньше.
-	_factory_picker = PortPicker.open_for(self, block)
+	# A BLOCK THAT MAKES SOMETHING OPENS ITS PRODUCT FIRST, ports only for the rest (the processor).
+	# Ports came first, and since the component plant and the fabricator grew past one cell the
+	# product picker could not be reached at all: every plant stayed on Wound Coil and refused any
+	# other pair of ingots. Their ports are authored in the scene.
+	_factory_picker = FactoryPicker.open_for(self, block)
 	if _factory_picker != null:
 		return true
-	_factory_picker = FactoryPicker.open_for(self, block)
+	_factory_picker = PortPicker.open_for(self, block)
 	return _factory_picker != null
 
 func _build_menu_button() -> void:
