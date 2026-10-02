@@ -5,7 +5,11 @@ extends Node3D
 # коллизия), и инстанс в двух MultiMesh (видимый меш + канал шейдера истощения).
 
 @export var resource_nodes: Array[PackedScene]
+## THE ORE OUTCROP: the rock that stays and the crystals that are mined (art/vein_models.gd).
 @export var multimesh_nodes: Array[MultiMeshInstance3D]
+## THE TREE: the stump that stays and the tree that falls. Every slot is drawn in all four; a
+## vein shows in its own pair and stands collapsed (ZERO_XFORM) in the other.
+@export var wood_multimesh_nodes: Array[MultiMeshInstance3D]
 
 ## Цвета типов жил = ЦВЕТА МЕТАЛЛОВ, один в один: тип жилы это и есть металл, который из неё
 ## выйдет (G.Metal), и жила обязана выглядеть тем, что даёт. Список НЕ дублируется здесь и не
@@ -69,6 +73,16 @@ var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 # Ждём, пока она начнёт отвечать, и только потом сдаёмся: прежний вариант ругался и
 # делал return, из-за чего узел не инициализировался за весь сеанс.
 const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
+## Each vein drawn turned by its own angle and at its own size, by its position.
+const VEIN_SCALE_MIN := 0.85
+const VEIN_SCALE_MAX := 1.15
+
+## A TIME FOR THE SHADER IS THE SHADER'S CLOCK, which rolls over (`time_rollover_secs`, an hour by
+## default): an hour into a session a raw Time.get_ticks_msec() stood an hour ahead of TIME, and a
+## vein that came back then read "comes back in an hour" - its crystals stayed at stub size for good.
+static func shader_now() -> float:
+	var roll: float = float(ProjectSettings.get_setting("rendering/limits/time/time_rollover_secs", 3600))
+	return fmod(Time.get_ticks_msec() / 1000.0, maxf(roll, 1.0))
 ## Страховка на случай, если сигнала так и не будет (сломанная карта, выгруженная сцена).
 ## В СЕКУНДАХ, не в кадрах: ждём мы работу потоков, а она меряется часами, а не кадрами.
 const TERRAIN_WAIT_SEC: float = 120.0
@@ -112,18 +126,27 @@ func _ready() -> void:
 	_init_slots()
 	_regions_tick()
 
-# Заливаем список цветов в шейдер руды (общий материал core.tres → один раз на всех).
+func _all_mm() -> Array:
+	return multimesh_nodes + wood_multimesh_nodes
+
+## The metal colours into the vein shader (resources/resource.gdshader), once for all: the
+## crystals' material is the MultiMesh's material_override.
 func _apply_ore_colors() -> void:
 	if ore_colors.is_empty():
 		return
 	var cols := PackedVector3Array()
-	for c in ore_colors + [wood_color]:      # дерево — последний индекс в шейдере
-		var lc: Color = c.srgb_to_linear()      # шейдер ждёт линейные RGB
+	for c in ore_colors + [wood_color]:      # wood is the shader's last index
+		var lc: Color = c.srgb_to_linear()      # the shader takes linear RGB
 		cols.append(Vector3(lc.r, lc.g, lc.b))
-	for mm in multimesh_nodes:
-		var mesh: Mesh = mm.multimesh.mesh if mm.multimesh else null
-		if mesh is PrimitiveMesh and mesh.material is ShaderMaterial:
-			(mesh.material as ShaderMaterial).set_shader_parameter("ore_colors", cols)
+	for mm in _all_mm():
+		if mm.material_override is ShaderMaterial:
+			(mm.material_override as ShaderMaterial).set_shader_parameter("ore_colors", cols)
+
+## Custom data of one slot in every MultiMesh (resource_node writes its HP and hit times here).
+func write_custom(slot: int, data: Color) -> void:
+	for mm in _all_mm():
+		if mm.multimesh != null and slot >= 0 and slot < mm.multimesh.instance_count:
+			mm.multimesh.set_instance_custom_data(slot, data)
 
 # ── РЕГИОНЫ: ЖИЛЫ РОЖДАЮТСЯ КУСКАМИ, А НЕ ВСЕЙ КАРТОЙ СРАЗУ ──────────────────
 # Раньше две тысячи жил раскладывались ОДИН РАЗ при загрузке, перебором по всей карте. В мире
@@ -316,13 +339,17 @@ func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
 func _init_slots() -> void:
 	var cap: int = maxi(max_visible, 1)
 	var big := AABB(Vector3(-2000.0, -2000.0, -2000.0), Vector3(4000.0, 4000.0, 4000.0))
-	for mm in multimesh_nodes:
+	for mm in _all_mm():
 		mm.custom_aabb = big
 		mm.multimesh.instance_count = 0
 		mm.multimesh.use_custom_data = true         # буфер custom-data ДО instance_count
+		# THE INSTANCE COLOUR MULTIPLIES THE VERTEX COLOUR in Compatibility, and without use_colors
+		# it is black: measured on the real driver, every vein drew as a black silhouette.
+		mm.multimesh.use_colors = true
 		mm.multimesh.instance_count = cap
 		for s in cap:
 			mm.multimesh.set_instance_transform(s, ZERO_XFORM)   # пусто, пока не заполнит стриминг
+			mm.multimesh.set_instance_color(s, Color.WHITE)
 	_free.clear()
 	for s in range(cap - 1, -1, -1):
 		_free.append(s)                             # слоты cap-1..0 свободны
@@ -395,10 +422,24 @@ func _stream_in(v: Dictionary) -> void:
 		return                                       # достигнут потолок max_visible — редко (кап с запасом)
 	var slot: int = _free.pop_back()
 	v["slot"] = slot
-	var xform := Transform3D(Basis(), v["pos"])
-	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))   # G=1 «целая», A=тип (стримнутая жила полна)
+	# Each vein turned and sized by its own point: one model, and no two outcrops alike. From the
+	# position, so a vein comes back the same every time it streams in.
+	var gp: Vector3 = v["gpos"]
+	var hh: int = hash(Vector2i(int(gp.x * 8.0), int(gp.z * 8.0)))
+	var yaw: float = float(hh % 6283) * 0.001
+	var size: float = VEIN_SCALE_MIN + float((hh >> 13) % 1000) * 0.001 * (VEIN_SCALE_MAX - VEIN_SCALE_MIN)
+	var xform := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size), v["pos"])
+	# G=1 whole, A the type; B the time it came back - a replanted tree grows in its new spot
+	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))
+	if v.get("regrow") == true:
+		v.erase("regrow")
+		custom.b = shader_now()
+	var wood: bool = v.get("wood") == true
 	for mm in multimesh_nodes:
-		mm.multimesh.set_instance_transform(slot, xform)
+		mm.multimesh.set_instance_transform(slot, ZERO_XFORM if wood else xform)
+		mm.multimesh.set_instance_custom_data(slot, custom)
+	for mm in wood_multimesh_nodes:
+		mm.multimesh.set_instance_transform(slot, xform if wood else ZERO_XFORM)
 		mm.multimesh.set_instance_custom_data(slot, custom)
 	if v["scene"] != null:
 		var node: Node3D = v["scene"].instantiate()
@@ -517,6 +558,10 @@ func replant(node: Node) -> bool:
 		_stream_out(v)                           # слот и узел отдаём: пусть стримится заново
 		v["pos"] = spot["pos"]
 		v["gpos"] = spot["gpos"]
+		v["regrow"] = true                       # grows in its new spot (resource.gdshader)
+		# STRAIGHT BACK IN: it stood in view, and the streaming pass reruns only when the camera
+		# crosses a cell (RESCAN_CELL), so a player standing at the stump never saw it grow back.
+		_stream_in(v)
 		return true
 	return false
 
@@ -575,7 +620,7 @@ func _free_spot_near(from: Vector3, self_v: Dictionary, check_nodes: bool) -> Va
 
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])
-	for mm in multimesh_nodes:
+	for mm in _all_mm():
 		mm.multimesh.set_instance_transform(slot, ZERO_XFORM)
 	if v["node"] != null and is_instance_valid(v["node"]):
 		v["node"].queue_free()
