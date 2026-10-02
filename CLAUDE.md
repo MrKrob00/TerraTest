@@ -465,15 +465,18 @@ project: read it before claiming how anything works.
   run on a copy, writes `resources/vein_ore0..3.tres` and `vein_tree.tres`; 78-246 triangles). The
   player's calls, each a rule now: one crystal cluster in four colours read as one ore, and its
   1.7 m slab of rock read as a plinth - so the rock is about a metre across and the ORE is the shape:
-  ferrite rusty angular chunks, cuprite banded strata stacked in steps, silicate a TALL rock with a
-  brush of thin crystals on top, titanite jagged raw shards. Turned down on the way: round copper
-  nuggets ("look silly") and titanite as thin plates ("something already made, not ore"). A tree
+  ferrite rusty angular chunks, cuprite banded strata stacked in steps, silicate TerraTech's crystal
+  node - thick hexagonal columns straight out of the ground, no rock - and titanite jagged raw
+  shards. Turned down on the way: round copper nuggets ("look silly"), titanite as thin plates
+  ("something already made, not ore"), and two crystal cuts (thin crystals on a slab, then a tall
+  rock with a brush of thin crystals on top). AN ORE VEIN SHRINKS WHOLE, ROCK AND ALL, to `stub`
+  of itself when mined out - the ore going while its rock stayed was wrong. A tree
   leans a little while it is chopped and on the last blow falls and is gone in `fall_time`,
   leaving the stump - lying there for the rest was wrong. One MultiMesh per model
   (`resource_nodes.multimesh_nodes` in `G.Metal` order, `wood_multimesh_nodes`; `_model_mm`, a metal
   past the list borrows the last), so all veins are five draw calls; a vein is drawn in its own and
-  stands collapsed in the rest. In each mesh UV.x marks the part that is mined: the ore shrinks to
-  stubs into its rock and grows back, the rock and the stump never move (`resources/resource.gdshader`).
+  stands collapsed in the rest. On the tree UV.x marks the part that falls; the stump never moves
+  (`resources/resource.gdshader`).
   Faces are flat with their own tone from one fixed light; an ore vertex has alpha 1 and is tinted by
   its metal (`G.METAL_COLOR`). Every vein is turned and sized by its position (`VEIN_SCALE_*`). Four
   traps, all measured on the real driver: A MULTIMESH WITHOUT `use_colors` MULTIPLIES VERTEX COLOUR
