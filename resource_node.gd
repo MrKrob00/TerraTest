@@ -14,8 +14,8 @@ var current_hp: int = 0
 var instance_id: int = 0
 var ore_type: int = 0
 var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающей руды (тинт)
-## ДЕРЕВО. Раньше здесь была угольная жила; уголь стал переделом (resource.upgrade), а из земли
-## теперь растёт дерево. Внешне это та же жила с другим выбросом — модель делается отдельно.
+## A TREE. It used to be a coal vein; coal is made now (resource.upgrade) and wood grows instead.
+## Drawn by the owner's wood MultiMeshes (a stump and a tree that falls as it is chopped).
 var is_wood: bool = false
 var _available: int = MAX_RESOURCES                 # сколько руды осталось в жиле (логически)
 
@@ -63,8 +63,6 @@ func mine_for_claimer(by: Node) -> bool:
 	_eject_one()
 	return true
 
-# Второй MultiMesh — в него пишем состояние жилы для шейдера истощения.
-@onready var _depletion_mm: MultiMeshInstance3D = get_node_or_null("../MultiMeshInstance3D2")
 
 func _ready() -> void:
 	current_hp = max_hp
@@ -130,8 +128,13 @@ func _on_rest_timer_timeout() -> void:
 	_write_shader_data(Color(0.0, 1.0, _now(), float(ore_type)))
 
 func _now() -> float:
+	var owner_node: Node = get_parent()
+	if owner_node != null and owner_node.has_method("shader_now"):
+		return owner_node.shader_now()
 	return Time.get_ticks_msec() / 1000.0
 
+# The vein's state for resources/resource.gdshader, in every MultiMesh of the owner (ore and wood).
 func _write_shader_data(data: Color) -> void:
-	if _depletion_mm and _depletion_mm.multimesh:
-		_depletion_mm.multimesh.set_instance_custom_data(instance_id, data)
+	var owner_node: Node = get_parent()
+	if owner_node != null and owner_node.has_method("write_custom"):
+		owner_node.write_custom(instance_id, data)

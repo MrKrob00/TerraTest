@@ -15,8 +15,11 @@
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
 [ext_resource type="Script" uid="uid://ch6lvbyyeape3" path="res://grass.gd" id="24_dhlwf"]
-[ext_resource type="CylinderMesh" uid="uid://b373o85jlixj5" path="res://resources/vein.tres" id="25_5t8nk"]
-[ext_resource type="CapsuleMesh" uid="uid://b385jequj3mbb" path="res://resources/core.tres" id="26_j3e5s"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_rock.tres" id="25_5t8nk"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_crystal.tres" id="26_j3e5s"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_stump.tres" id="26_vstump"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_tree.tres" id="26_vtree"]
+[ext_resource type="Shader" uid="uid://k47ww3x7p37f" path="res://resources/resource.gdshader" id="26_vshader"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
 [ext_resource type="Script" uid="uid://b3qqxwdgaomiq" path="res://outposts.gd" id="29_outposts"]
@@ -183,11 +186,37 @@ mask_offset = Vector2(-2381.8252, -2997.1248)
 
 [sub_resource type="MultiMesh" id="MultiMesh_obt1j"]
 transform_format = 1
+use_colors = true
 mesh = ExtResource("25_5t8nk")
 
 [sub_resource type="MultiMesh" id="MultiMesh_5t8nk"]
 transform_format = 1
+use_colors = true
 mesh = ExtResource("26_j3e5s")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vstump"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vstump")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vtree"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vtree")
+
+[sub_resource type="StandardMaterial3D" id="Mat_vein_flat"]
+shading_mode = 0
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
+
+[sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
+render_priority = 0
+shader = ExtResource("26_vshader")
+
+[sub_resource type="ShaderMaterial" id="Mat_vein_tree"]
+render_priority = 0
+shader = ExtResource("26_vshader")
+shader_parameter/fells = true
 
 [node name="Main" type="Node3D" unique_id=1697367741]
 script = ExtResource("1_ealrb")
@@ -581,19 +610,31 @@ map_node = NodePath("..")
 [node name="BiomeProps" type="Node3D" parent="map" unique_id=199846371]
 script = ExtResource("27_biomescat")
 
-[node name="Resource_Nodes" type="Node3D" parent="map" unique_id=213070597 node_paths=PackedStringArray("multimesh_nodes")]
+[node name="Resource_Nodes" type="Node3D" parent="map" unique_id=213070597 node_paths=PackedStringArray("multimesh_nodes", "wood_multimesh_nodes")]
 script = ExtResource("24_5t8nk")
 resource_nodes = Array[PackedScene]([ExtResource("11_tereu")])
 multimesh_nodes = [NodePath("MultiMeshInstance3D"), NodePath("MultiMeshInstance3D2")]
+wood_multimesh_nodes = [NodePath("WoodStump"), NodePath("WoodTree")]
 
 [node name="MultiMeshInstance3D" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1838571884]
+material_override = SubResource("Mat_vein_flat")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_obt1j")
 
 [node name="MultiMeshInstance3D2" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984415]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.8, 0)
+material_override = SubResource("Mat_vein_ore")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_5t8nk")
+
+[node name="WoodStump" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984416]
+material_override = SubResource("Mat_vein_flat")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vstump")
+
+[node name="WoodTree" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984417]
+material_override = SubResource("Mat_vein_tree")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vtree")
 
 [node name="WorldPersist" type="Node" parent="." unique_id=3615113]
 script = ExtResource("28_worldpersist")
