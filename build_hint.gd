@@ -117,6 +117,11 @@ func _process(delta: float) -> void:
 static func satisfied_by(bm: Node, c: Vector3i, bt: int, yaw: float) -> bool:
 	if bm == null or not bm.has_method("get_block") or int(bm.get_block(c.x, c.y, c.z)) != bt:
 		return false
+	# THE PLAN'S CELL HAS TO BE THE BLOCK'S ANCHOR. get_block answers for every cell a big block
+	# covers, so a processor anchored a cell off still "stood" on the planned cell: the ghost and
+	# the finger went out while its ports faced the wrong belts and the stage never closed.
+	if bm.has_method("anchor_of") and bm.anchor_of(c) != c:
+		return false
 	if is_nan(yaw) or not bm.has_method("yaw_at"):
 		return true
 	return absf(angle_difference(float(bm.yaw_at(c.x, c.y, c.z)), yaw)) < 0.05

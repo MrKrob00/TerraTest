@@ -143,8 +143,8 @@ func _tick_grass(delta: float) -> void:
 	#    fading footprint when it has moved enough (the lingering trail behind it).
 	var live: Array[Vector2] = []
 	for b in _benders:
-		if not is_instance_valid(b):
-			continue                       # мёртвых чистит периодический filter выше
+		if not is_instance_valid(b) or not b.is_inside_tree():
+			continue                       # dead or out of the tree (a block in the hand put away)
 		var bp: Vector3 = b.global_position
 		var p := Vector2(bp.x, bp.z)
 		if absf(p.x - center.x) > half or absf(p.y - center.y) > half:

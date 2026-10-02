@@ -131,8 +131,13 @@ func outputs_at(off: Vector3i, dir: Vector3i) -> bool:
 	var st: int = port_state(off, idx)
 	return st == PORT_OUT or st == PORT_BOTH
 
-# Направления отмеченных сторон в осях РОДИТЕЛЯ (с учётом поворота блока).
+# FROZEN FROM THE FIRST TICK. The freeze lives in super._ready, and the await below lets physics step
+# the body before it: a factory block spawned onto a machine overlapped the machine's own copy of its
+# box, Jolt pushed it out and gravity pulled it, and it froze wherever it landed - a seller 0.24-0.65 m
+# off its cells and turned up to 10 deg, differently on every spawn and every load. A block laid loose
+# in the world is unfrozen again by VehicleBlock._on_parent_changed, as before.
 func _ready() -> void:
+	freeze = true
 	await get_tree().process_frame
 	super._ready()
 

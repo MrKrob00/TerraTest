@@ -39,6 +39,11 @@ const ANIM_LEN := 2.5
 ## сторону, иначе обернулся и увидел замершую машину, которая «только что работала».
 const RIG_VIEW_DIST := 120.0
 @onready var _anim: AnimationPlayer = get_node_or_null("AnimationPlayer")
+
+## The pump moves scene meshes (the drill, the beam, the rod), so the machine's batch has to copy
+## them every frame; without it the rig pumped on hidden nodes and the picture stood still.
+func _init() -> void:
+	moving_parts = true
 var _rig_on: bool = false
 ## Energy a second: two Falsus panels (SOLAR_RATE each), so one panel digs at half the rate.
 @export var energy_per_sec: float = 160.0
