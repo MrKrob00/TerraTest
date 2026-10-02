@@ -5,10 +5,12 @@ extends Node3D
 # коллизия), и инстанс в двух MultiMesh (видимый меш + канал шейдера истощения).
 
 @export var resource_nodes: Array[PackedScene]
-## THE ORE OUTCROP: the rock that stays and the crystals that are mined (art/vein_models.gd).
+## ONE OUTCROP MODEL PER METAL, in G.Metal order (art/vein_models.gd): ferrite chunks, cuprite
+## nuggets, silicate crystals, titanite plates. Each model is its rock plus its ore; the vertex says
+## which part is mined.
 @export var multimesh_nodes: Array[MultiMeshInstance3D]
-## THE TREE: the stump that stays and the tree that falls. Every slot is drawn in all four; a
-## vein shows in its own pair and stands collapsed (ZERO_XFORM) in the other.
+## THE TREE: stump and tree in one model. Every slot exists in every MultiMesh; a vein is drawn in
+## its own model's and stands collapsed (ZERO_XFORM) in the rest (`_model_mm`).
 @export var wood_multimesh_nodes: Array[MultiMeshInstance3D]
 
 ## Цвета типов жил = ЦВЕТА МЕТАЛЛОВ, один в один: тип жилы это и есть металл, который из неё
@@ -128,6 +130,15 @@ func _ready() -> void:
 
 func _all_mm() -> Array:
 	return multimesh_nodes + wood_multimesh_nodes
+
+## The MultiMesh that draws this vein: the tree, or its metal's outcrop (a metal past the list - a
+## new one before its model is built - borrows the last).
+func _model_mm(v: Dictionary) -> MultiMeshInstance3D:
+	if v.get("wood") == true:
+		return wood_multimesh_nodes[0] if not wood_multimesh_nodes.is_empty() else null
+	if multimesh_nodes.is_empty():
+		return null
+	return multimesh_nodes[clampi(int(v["ore_type"]), 0, multimesh_nodes.size() - 1)]
 
 ## The metal colours into the vein shader (resources/resource.gdshader), once for all: the
 ## crystals' material is the MultiMesh's material_override.
@@ -434,12 +445,10 @@ func _stream_in(v: Dictionary) -> void:
 	if v.get("regrow") == true:
 		v.erase("regrow")
 		custom.b = shader_now()
-	var wood: bool = v.get("wood") == true
-	for mm in multimesh_nodes:
-		mm.multimesh.set_instance_transform(slot, ZERO_XFORM if wood else xform)
-		mm.multimesh.set_instance_custom_data(slot, custom)
-	for mm in wood_multimesh_nodes:
-		mm.multimesh.set_instance_transform(slot, xform if wood else ZERO_XFORM)
+	# drawn in its own model's MultiMesh, collapsed in every other
+	var own: MultiMeshInstance3D = _model_mm(v)
+	for mm in _all_mm():
+		mm.multimesh.set_instance_transform(slot, xform if mm == own else ZERO_XFORM)
 		mm.multimesh.set_instance_custom_data(slot, custom)
 	if v["scene"] != null:
 		var node: Node3D = v["scene"].instantiate()
