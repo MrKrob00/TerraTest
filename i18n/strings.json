@@ -2016,6 +2016,22 @@
 		"ru": "Пулемёт, который бьёт сильнее: та же наводка, тяжелее патроны.",
 		"uk": "Кулемет, що б'є сильніше: те саме наведення, важчі набої."
 	},
+	"Marlit Accumulator": {
+		"ru": "Аккумулятор Marlit",
+		"uk": "Акумулятор Marlit"
+	},
+	"Marlit Wireless Charger": {
+		"ru": "Беспроводная зарядка Marlit",
+		"uk": "Бездротова зарядка Marlit"
+	},
+	"A big accumulator: holds as much as several Falsus batteries, and the charge goes with it. Full, it blows up like they do.": {
+		"ru": "Большой аккумулятор: вмещает как несколько батарей Falsus, и заряд переезжает вместе с ним. Полный — взрывается так же, как они.",
+		"uk": "Великий акумулятор: вміщує як кілька батарей Falsus, і заряд переїжджає разом із ним. Повний — вибухає так само, як вони."
+	},
+	"Pours energy into another machine of your side, slower than the Falsus charger but twice as far.": {
+		"ru": "Переливает энергию в другую машину твоей стороны: медленнее зарядки Falsus, но вдвое дальше.",
+		"uk": "Переливає енергію в іншу машину твого боку: повільніше за зарядку Falsus, але вдвічі далі."
+	},
 	"Nothing to bolt onto there.": {
 		"ru": "Там не к чему крепиться.",
 		"uk": "Там нема до чого кріпитися."

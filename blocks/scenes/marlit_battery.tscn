@@ -1,0 +1,73 @@
+[gd_scene format=3 uid="uid://cmarlitbatt67"]
+
+[ext_resource type="Script" uid="uid://cdylj81nkk8lu" path="res://blocks/scripts/battery.gd" id="1_s"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_body.tres" id="body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg0.tres" id="s0"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg1.tres" id="s1"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg2.tres" id="s2"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg3.tres" id="s3"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg4.tres" id="s4"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg5.tres" id="s5"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg6.tres" id="s6"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_seg7.tres" id="s7"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_ring0.tres" id="r0"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_battery_ring1.tres" id="r1"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="marlit_battery" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_s")
+block = 67
+connect_faces = 63
+cells_center = Vector3(-0.5, 0.5, -0.5)
+capacity = 15000.0
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("body")
+
+[node name="Seg0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s0")
+
+[node name="Seg1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s1")
+
+[node name="Seg2" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s2")
+
+[node name="Seg3" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s3")
+
+[node name="Seg4" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s4")
+
+[node name="Seg5" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s5")
+
+[node name="Seg6" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s6")
+
+[node name="Seg7" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("s7")
+
+[node name="Ring0" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r0")
+
+[node name="Ring1" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+mesh = ExtResource("r1")

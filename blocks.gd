@@ -871,7 +871,7 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
-			G.Block.MARLIT_REGEN]:
+			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
@@ -898,7 +898,7 @@ func _footprint_offsets(block: int) -> Array:
 			for dy in [0, 1]:
 				ca.append(Vector3i(dx, dy, 0))
 		return ca
-	if block == G.Block.COMP_FACTORY or block == G.Block.MARLIT_BRACKET:
+	if block in [G.Block.COMP_FACTORY, G.Block.MARLIT_BRACKET, G.Block.MARLIT_WIRELESS]:
 		return [Vector3i(-1, 0, -1), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 0)]  # 2×1×2
 	# ARMOUR PLATES ARE WALLS: they stand on the back face of their cells, so a big one spreads across
 	# (X) and up (Y), never in depth. The x4 used to be 2x1x2 - a slab lying flat under a plate

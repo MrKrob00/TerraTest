@@ -518,6 +518,8 @@ const BLOCK_META := {
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 4, "rp": 50},
 	Block.MARLIT_GUN:       {"f": "marlit", "g": 4, "rp": 50},
+	Block.MARLIT_BATTERY:   {"f": "marlit", "g": 3, "rp": 35},
+	Block.MARLIT_WIRELESS:  {"f": "marlit", "g": 4, "rp": 45},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -561,6 +563,7 @@ const TECH_PARENT := {
 	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
 	Block.MARLIT_REGEN: Block.MARLIT_SOLAR,
 	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_BLOCK,
+	Block.MARLIT_BATTERY: Block.MARLIT_SOLAR, Block.MARLIT_WIRELESS: Block.MARLIT_BATTERY,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -963,6 +966,9 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
 	Block.MARLIT_WHEEL:     {"c16": 3, "m0": 12},
 	Block.MARLIT_GUN:       {"c17": 3, "m3": 9},
+	# The Falsus battery's parts for its share of the charge, and the Falsus charger's doubled
+	Block.MARLIT_BATTERY:   {"c9": 12, "m1": 24},
+	Block.MARLIT_WIRELESS:  {"c6": 6, "c20": 4},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1331,7 +1337,7 @@ const LEGACY_BLOCK_KEYS := {
 ## сборка не сойдётся по клеткам.
 ## What stores charge: the machine sums these (machine_body) and a wireless charger aims at them.
 ## One list, so a faction's battery is one line here rather than a type test in each reader.
-const BATTERY_BLOCKS := [Block.BATTERY]
+const BATTERY_BLOCKS := [Block.BATTERY, Block.MARLIT_BATTERY]
 
 const RETIRED_BLOCKS := {
 	Block.WEDGE: Block.HALF_BLOCK,   # клин 1³ повторял половинку той же клеткой
@@ -1382,6 +1388,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
 	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun",
+	Block.MARLIT_BATTERY: "Marlit Accumulator", Block.MARLIT_WIRELESS: "Marlit Wireless Charger",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1443,6 +1450,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
 	Block.MARLIT_WHEEL: "A heavy wheel: pulls harder and carries more than any Falsus wheel.",
 	Block.MARLIT_GUN: "A machine gun that hits harder: the same aim, heavier rounds.",
+	Block.MARLIT_BATTERY: "A big accumulator: holds as much as several Falsus batteries, and the charge goes with it. Full, it blows up like they do.",
+	Block.MARLIT_WIRELESS: "Pours energy into another machine of your side, slower than the Falsus charger but twice as far.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1880,6 +1889,8 @@ enum Block {
 	MARLIT_SHIELD = 64,     # RETIRED (RETIRED_BLOCKS): Marlit carries no shield. Keep the value.
 	MARLIT_WHEEL = 65,      # PLACEHOLDER: the big wheel's model, Marlit's numbers (more pull, more load)
 	MARLIT_GUN = 66,        # PLACEHOLDER: the machine gun's model, heavier rounds
+	MARLIT_BATTERY = 67,    # 2×2×2 accumulator: two platforms, a spine, four cells, a gauge front and back
+	MARLIT_WIRELESS = 68,   # 2×1×2 charger: a bracket on its back, a disc held by two claws
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1944,6 +1955,8 @@ enum Block {
 @onready var marlit_regen_scene: PackedScene = preload("res://blocks/scenes/marlit_regen.tscn")
 @onready var marlit_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_wheel.tscn")
 @onready var marlit_gun_scene: PackedScene = preload("res://blocks/scenes/marlit_gun.tscn")
+@onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
+@onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
@@ -1984,7 +1997,8 @@ const BLOCK_CATEGORIES := {
 	# three lists above - and the generator sat among the factory blocks. Anything that falls in no
 	# list still shows under Power (the radar, today), so a new block never vanishes from the shop.
 	"power":   [Block.SOLAR, Block.BATTERY, Block.GENERATOR, Block.WIRELESS_CHARGER,
-		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR, Block.MARLIT_REGEN],
+		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR, Block.MARLIT_REGEN,
+		Block.MARLIT_BATTERY, Block.MARLIT_WIRELESS],
 }
 
 func get_scene(block: Block) -> PackedScene:
@@ -2056,6 +2070,8 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_REGEN: return marlit_regen_scene
 		Block.MARLIT_WHEEL: return marlit_wheel_scene
 		Block.MARLIT_GUN: return marlit_gun_scene
+		Block.MARLIT_BATTERY: return marlit_battery_scene
+		Block.MARLIT_WIRELESS: return marlit_wireless_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
