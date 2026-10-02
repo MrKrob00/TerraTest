@@ -987,6 +987,16 @@ def style_px(style, x, y, w, h, d):
         # a bolt head on a plate: a lit head in a dark shadow ring, the rest the plate's own tone
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
         return (112, 116, 130) if t < 0.5 else ((24, 25, 32) if t < 0.8 else (46, 48, 56))
+    if style == "mwarn":
+        # a warning plaque: a sunset triangle with a dark bar on a dark field, a light rim
+        if x < 1 or y < 1 or x >= w - 1 or y >= h - 1:
+            return (98, 102, 116)
+        u, v = (x + 0.5) / w, (y + 0.5) / h
+        if 0.15 < v < 0.85 and abs(u - 0.5) < (0.85 - v) * 0.5:
+            if abs(u - 0.5) < 0.05 and 0.35 < v < 0.68:
+                return (30, 20, 14)
+            return (236, 146, 58)
+        return (30, 32, 40)
     if style[:4] == "cyan" and style[4:].isdigit():
         # a solid glowing cyan, no edge line: a disc's sector
         return [(40, 150, 180), (60, 180, 210), (90, 210, 236), (140, 232, 250)][int(style[4:])]

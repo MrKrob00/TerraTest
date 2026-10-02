@@ -2610,40 +2610,47 @@ def build_marlit_battery(pk, img):
 
 
 # ── the Marlit wireless charger ─────────────────────────────────────────────────────────────────
-# TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot), mounted like the
-# Girder Bracket: a back plate the full height - the mount, the two faces it joins by, a window per
-# cell - and from it a BEAK of two hooded jaws tapering toward the disc's axis, sunset hazard slats
-# on their sides. The disc comes out of the middle of the beak, between the jaws, and turns on the
-# axis a HUB drum and a bearing hold at the jaws' tips (wireless_charger.gd `Ring`), glowing cyan -
-# the blue of every energy beam in the game (the player's call). The hub is the claws' mechanism:
-# a collar they hinge on in yokes, a stepped crown, and the cyan LENS the beam leaves from. Each claw
-# is an arch of rigid keeled plates turning at every joint - up and over the rim, down past it, in
-# under it to a talon. Turned down: the disc hung UNDER the housing on a spindle; a separate mount
-# plate proud of the back ("a strange platform"); a solid housing with a slot ("just two blocks");
-# three square fingers, then three bent ones from a palm ("two, not three, something at the
-# middle"); then, read so by an outside critique, two full-width decks round the disc (a box with
-# a slot again), claws swept as one smooth tube (hoses), and claws as straight L-shaped legs with a
-# row of orange pin caps (robot arms).
-#   body - plate, beak, hub, bearing, claws
+# TERRATECH'S GEOCORP REMOTE CHARGER IN MARLIT'S METAL (the player's screenshot), mounted the way
+# the Girder Bracket is: a back plate the full height - the mount, the two faces it joins by, a
+# window per cell - with a DECK over two braces from the plate's foot. The deck is a hood sloping
+# down onto the HUB at its tip; a keel under the disc carries the bearing; the disc comes out of the
+# middle between deck and keel and turns on the axis they hold (wireless_charger.gd `Ring`), glowing
+# cyan - the blue of every energy beam in the game (the player's call). The hub is the claws'
+# mechanism: a collar they hinge on in yokes, a stepped crown through the deck and the cyan LENS the
+# beam leaves from. Each claw is one curl of keeled plates, every joint turning, up over the rim,
+# down past it, in under it and a talon hooked back up. GeoCorp's hazard stripes are the deck's
+# sunset slats, its warning sticker the plaque on the hood. Turned down: the disc hung UNDER the
+# housing on a spindle; a separate mount plate proud of the back ("a strange platform"); a solid
+# housing with a slot ("just two blocks"); three square fingers, then three bent ones from a palm
+# ("two, not three, something at the middle"); then, read so by an outside critique, two full-width
+# decks round the disc (a box with a slot), claws swept as one smooth tube (hoses), claws as straight
+# L-shaped legs with a row of orange pin caps (robot arms), and two solid hooded jaws (a box again).
+#   body - plate, deck, braces, keel, hub, bearing, claws
 #   disc - the emitter, about its own middle (the scene's Ring node stands at MWL_DISC)
 #   lens - the hub's lens, about the disc's middle, dimmed when idle
 MWL_DISC = (-0.5, 0.0, -0.70)     # the disc's middle in block space: half height, the front row
 MWL_DISC_A = 0.70                 # its half width across the flats
 MWL_DISC_H = 0.08                 # its half thickness
 MWL_PLATE = 0.2                   # the back plate
-MWL_JAW_Y = (0.15, 0.40, 0.30)    # a jaw's inner face; its outer face at the plate and at the tip
-MWL_JAW_BACK = 0.94               # a jaw's half width at the plate: out to the plate's own chamfer
-MWL_JAW_TIP = 0.30                # and at its tip
-MWL_JAW_SHORT = 0.26              # the tip stops this far behind the axis; the hub stands in front
-MWL_JAW_CH = 0.06                 # the chamfer down its sides
+MWL_DECK_W = (0.94, 0.34)         # the deck's half width at the plate and at its tip
+MWL_DECK_Y = (0.46, 0.32)         # its top at the plate and at its tip: a hood sloping to the hub
+MWL_DECK_T = 0.10                 # its thickness
+MWL_DECK_CH = 0.04                # the chamfer down its sides
+MWL_DECK_TIP = 0.12               # its tip stops this far behind the axis, inside the hub
+MWL_PLAQUE = (-0.32, -0.30)       # the warning plaque on the hood: x off the axis, z
+MWL_BRACE_X = 0.62                # the braces either side of the axis, clear of the disc's sweep
+MWL_BRACE_Z = 0.0                 # where they meet the deck
+MWL_KEEL_Y = 0.24                 # the keel's end under the disc's middle
 MWL_HUB = (0.26, 0.32, 0.21)      # the hub drum, the collar, the crown: half widths across flats
 MWL_KNUCKLE_Y = 0.25              # the collar's middle, where the claws hinge
-MWL_TOP = 0.42                    # the crown's top
+MWL_TOP = 0.44                    # the crown's top
 MWL_LENS = 0.13
 MWL_BEARING = 0.2
 MWL_FINGERS = (200.0, 340.0)      # a pair of pincers closing on the disc from either side
-MWL_CLAW_W = (0.26, 0.24, 0.21, 0.18, 0.15, 0.11, 0.02)   # the plates' widths, joint by joint
-MWL_CLAW_T = (0.15, 0.14, 0.12, 0.10, 0.09, 0.07, 0.02)   # and depths
+MWL_CLAW_PATH = [(0.27, 0.25), (0.52, 0.34), (0.80, 0.26), (0.91, 0.05), (0.85, -0.16), (0.66, -0.21),
+                 (0.57, -0.15)]   # (radius, height): the curl; clear of the disc's sweep (checked)
+MWL_CLAW_W = (0.34, 0.30, 0.26, 0.21, 0.16, 0.11, 0.02)   # the plates' widths, joint by joint
+MWL_CLAW_T = (0.18, 0.16, 0.14, 0.12, 0.10, 0.08, 0.02)   # and depths
 
 
 _OCT_K = 1.0 / math.cos(math.pi / 8)
@@ -2717,35 +2724,55 @@ def _mwl_plate(f, a, b, side, w, t, w1=None, t1=None):
         f.append(th.Face(th.outward(list(r), o), "medge", u_hint=side))
 
 
-def _mwl_jaw(f, rnd, sg):
-    """A jaw of the beak: a trapezoid in plan from the plate (MWL_JAW_BACK across) to just short of
-    the axis (MWL_JAW_TIP across), thick at the plate and thinning to the tip so its outer face slopes
-    down onto the hub like a hood; its sides chamfered, the sunset hazard slats on its upright sides,
-    the faction's window on its outer face. sg = 1 is the upper jaw, -1 the lower."""
+def _mwl_deck(f, rnd):
+    """The deck over the disc, the Girder Bracket's deck in this block's own cut: a hood plate
+    MWL_DECK_T thick, a trapezoid in plan from the plate (MWL_DECK_W[0] across) to its tip
+    (MWL_DECK_W[1]) over the hub, sloping down toward the tip; its side edges chamfered and striped
+    with the sunset hazard slats, a sunset line along its lip and a warning plaque on its top. Returns a function giving its underside's height at a z."""
     Dx, Dy, Dz = MWL_DISC
     zp = 0.5 - MWL_PLATE
-    zt = Dz + MWL_JAW_SHORT
-    yi, yo_b, yo_t = MWL_JAW_Y
-    hb, ht, ch = MWL_JAW_BACK, MWL_JAW_TIP, MWL_JAW_CH
+    zt = Dz + MWL_DECK_TIP
+    (hb, ht), (yb, yt), T, ch = MWL_DECK_W, MWL_DECK_Y, MWL_DECK_T, MWL_DECK_CH
 
-    def ring(z, h, yo):
-        return [(Dx - h, sg * yi, z), (Dx + h, sg * yi, z), (Dx + h, sg * (yo - ch), z),
-                (Dx + h - ch, sg * yo, z), (Dx - h + ch, sg * yo, z), (Dx - h, sg * (yo - ch), z)]
-    r0, r1 = ring(zp, hb, yo_b), ring(zt, ht, yo_t)
-    mid = (Dx, sg * (yi + yo_t) / 2, (zp + zt) / 2)
-    styles = ["mbev1" if sg > 0 else "mbev4", "mhazard", "mbev3" if sg > 0 else "mbev2", None,
-              "mbev3" if sg > 0 else "mbev2", "mhazard"]
+    def top(z):
+        return yb + (yt - yb) * (zp - z) / (zp - zt)
+
+    def ring(z, h):
+        y1 = top(z)
+        y0 = y1 - T
+        return [(Dx - h, y0, z), (Dx + h, y0, z), (Dx + h, y1 - ch, z), (Dx + h - ch, y1, z),
+                (Dx - h + ch, y1, z), (Dx - h, y1 - ch, z)]
+    r0, r1 = ring(zp, hb), ring(zt, ht)
+    mid = (Dx, (top(zp) + top(zt)) / 2 - T / 2, (zp + zt) / 2)
+    styles = ["mbev1", "mhazard", "mbev3", None, "mbev3", "mhazard"]
     for k in range(6):
         j = (k + 1) % 6
         q = th.outward([r0[k], r0[j], r1[j], r1[k]], mid)
-        if styles[k] is None:
-            if sg > 0:
-                marlit_poly(f, q, rnd)
-            else:
-                f.append(th.Face(q, "mbev1", u_hint=(1, 0, 0)))
-        else:
+        if styles[k] is not None:
             f.append(th.Face(q, styles[k], u_hint=th.sub(q[1], q[0])))
+            continue
+        # plain plate: the faction's window is 0.2 deep and this deck 0.1 thick - set into it, the
+        # window's floor fell through the deck's underside and its sunset line lay in that face
+        q = th.outward([r0[k], r0[j], r1[j], r1[k]], mid)
+        f.append(th.Face(q, "mplate", u_hint=(1, 0, 0)))
     f.append(th.Face(th.outward(list(r1), mid), "mbev3", u_hint=(1, 0, 0)))
+    nrm = th.norm((0.0, 1.0, (yt - yb) / (zp - zt)))
+    # a sunset line along the hood's lip
+    lz = zt + 0.07
+    lh_ = ht + (hb - ht) * (lz - zt) / (zp - zt) - ch - 0.04
+    pts = [th.add((Dx + sx * lh_, top(lz + dz), lz + dz), th.mul(nrm, 0.004))
+           for sx, dz in ((-1, -0.015), (1, -0.015), (1, 0.015), (-1, 0.015))]
+    f.append(th.Face(th.outward(pts, (Dx, top(lz) - 1.0, lz)), "mglow", u_hint=(1, 0, 0)))
+    # the warning plaque, lying on the slope over the front of the top
+    zc = MWL_PLAQUE[1]
+    xc = Dx + MWL_PLAQUE[0]
+    hw, hh = 0.1, 0.09
+    pts = []
+    for dx, dz in ((-hw, -hh), (hw, -hh), (hw, hh), (-hw, hh)):
+        p = (xc + dx, top(zc + dz), zc + dz)
+        pts.append(th.add(p, th.mul(nrm, 0.004)))
+    f.append(th.Face(th.outward(pts, (xc, top(zc) - 1.0, zc)), "mwarn", u_hint=(1, 0, 0)))
+    return lambda z: top(z) - T
 
 
 def build_marlit_wireless(pk, img):
@@ -2758,12 +2785,17 @@ def build_marlit_wireless(pk, img):
     zp = 0.5 - MWL_PLATE
     # the back plate, the full height: the mount, a window per cell on its back
     marlit_box(f, (-1.5, -0.5, zp), (0.5, 0.5, 0.5), 0.06, rnd, {(2, 1): "window"}, seg=1.0)
-    # the beak: two hooded jaws from the plate to just short of the axis; the disc comes out between
-    for sg in (1.0, -1.0):
-        _mwl_jaw(f, rnd, sg)
+    # the deck over the disc and the two braces under it, from the plate's foot - the bracket
+    under = _mwl_deck(f, rnd)
+    zb = MWL_BRACE_Z
+    for sx in (-1.0, 1.0):
+        x = Dx + sx * MWL_BRACE_X
+        _mwl_plate(f, (x, -0.40, zp + 0.03), (x, under(zb) + 0.02, zb), (1.0, 0.0, 0.0), 0.13, 0.13)
+    # the keel under the disc, from the plate's foot to the bearing
+    _mwl_plate(f, (Dx, -0.40, zp + 0.03), (Dx, -MWL_KEEL_Y, Dz), (1.0, 0.0, 0.0), 0.18, 0.12)
     C = (Dx, 0.0, Dz)
-    # the hub: a drum at the jaws' tip, a collar the claws hinge on, a stepped crown and the lens; the
-    # bearing under it at the lower jaw's tip
+    # the hub: a drum, a collar the claws hinge on, a stepped crown through the deck's tip, the lens;
+    # the bearing under it on the keel
     hub, col, crown = MWL_HUB
     yk = MWL_KNUCKLE_Y
     _oct_band(f, C, hub, H + 0.03, hub, yk - 0.07, "mtone")
@@ -2775,35 +2807,28 @@ def build_marlit_wireless(pk, img):
     _oct_band(f, C, crown, MWL_TOP - 0.02, MWL_LENS + 0.03, MWL_TOP, "mtone")
     _oct_band(f, C, MWL_LENS + 0.03, MWL_TOP, MWL_LENS, MWL_TOP, "mglow")
     bh = MWL_BEARING
-    _oct_band(f, C, bh, -H - 0.03, bh, -MWL_JAW_Y[0] - 0.12, "mtone")
+    _oct_band(f, C, bh, -H - 0.03, bh, -MWL_KEEL_Y - 0.08, "mtone")
     _oct_band(f, C, bh, -H - 0.03, 0.0, -H - 0.03, "mflat0")
+    _oct_band(f, C, bh, -MWL_KEEL_Y - 0.08, 0.0, -MWL_KEEL_Y - 0.08, "mflat1", down=True)
     g = parts["marlit_wireless_lens"]
     O = (0.0, 0.0, 0.0)
     _oct_band(g, O, MWL_LENS, MWL_TOP - 0.01, MWL_LENS, MWL_TOP + 0.02, "ctone2")
     _oct_band(g, O, MWL_LENS, MWL_TOP + 0.02, MWL_LENS * 0.4, MWL_TOP + 0.02, "cyan2")
     _oct_band(g, O, MWL_LENS * 0.4, MWL_TOP + 0.02, 0.0, MWL_TOP + 0.02, "ctone4")
-    # two claws, hinged in yokes on the collar: an arch of rigid keeled plates turning at every joint,
-    # up and over the rim, down past it and in under it to a talon; a pin at the root and the crest
-    rv = flat_r(A, 8)
-    path = [(col - 0.05, yk), (0.42, yk + 0.12), (0.64, yk + 0.12), (rv + 0.10, H + 0.12),
-            (rv + 0.11, -0.02), (rv + 0.06, -H - 0.07), (rv - 0.12, -H - 0.11)]
+    # two claws hinged in yokes on the collar: one curl of keeled plates, every joint turning, up
+    # over the rim, down past it, in under it and a talon hooked back up
     ws, ts = MWL_CLAW_W, MWL_CLAW_T
     for az in MWL_FINGERS:
         d = (math.cos(math.radians(az)), 0.0, math.sin(math.radians(az)))
         side = th.norm(th.cross(d, (0.0, 1.0, 0.0)))
-        P = [(Dx + d[0] * r, y, Dz + d[2] * r) for r, y in path]
+        P = [(Dx + d[0] * r, y, Dz + d[2] * r) for r, y in MWL_CLAW_PATH]
         for i in range(len(P) - 1):
-            last = i == len(P) - 2
-            _mwl_plate(f, P[i], P[i + 1], side, ws[i], ts[i], ws[i + 1] if not last else 0.02,
-                       ts[i + 1] if not last else 0.02)
-        # the yoke: two cheeks either side of the claw's root, a pin through them
+            _mwl_plate(f, P[i], P[i + 1], side, ws[i], ts[i], ws[i + 1], ts[i + 1])
         for sw in (-1.0, 1.0):
-            cc = th.add(P[0], th.mul(side, sw * (ws[0] / 2 + 0.025)))
-            cc = th.add(cc, th.mul(d, 0.04))
-            obox(f, cc, (d, side, (0.0, 1.0, 0.0)), (0.1, 0.02, 0.08),
+            cc = th.add(th.add(P[0], th.mul(side, sw * (ws[0] / 2 + 0.025))), th.mul(d, 0.03))
+            obox(f, cc, (d, side, (0.0, 1.0, 0.0)), (0.1, 0.02, 0.09),
                  ["mbev3", "mbev2", "mbev2", "mbev2", "mbev4", "mbev1"])
-        _mwl_oct_prism(f, th.add(P[0], th.mul(d, 0.05)), side, 0.045, ws[0] / 2 + 0.05, None, "mpin")
-        _mwl_oct_prism(f, P[2], side, 0.05, ws[2] / 2 + 0.015, None, "mflat1")
+        _mwl_oct_prism(f, th.add(P[0], th.mul(d, 0.04)), side, 0.045, ws[0] / 2 + 0.05, None, "medge")
     # the disc, about its own middle: a cyan rim, a thin dark lip, a top of solid cyan sectors in two
     # shades split by dark seams so the turn shows, a dark underside, a spindle into hub and bearing
     g = parts["marlit_wireless_disc"]
