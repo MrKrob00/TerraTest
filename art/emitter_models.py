@@ -2245,42 +2245,44 @@ def build_battery(pk, img):
 
 # ── the Marlit battery ──────────────────────────────────────────────────────────────────────────
 # THE PLAYER'S LAYOUT, after TerraTech's GeoCorp battery pack. The body is ONE CASTING: a platform
-# under, a platform over, a spine a third of the width between them, swept from back to front with
-# its outer edges chamfered heavily. In each bay stand TWO CELLS a side - the car batteries the
-# player asked for, built as fat navy bodies - that FILL it: flush with the block's faces, their
-# vertical edges chamfered like the casting's, and running on INTO both platforms. Where a platform
-# meets a bay its lip is cut back at 45 deg (MBAT_BEVEL), so the cell is seen passing into the
-# platform along that slope - driven in, the way GeoCorp's cells meet their collars. On every cell
-# two green rings - "a couple of energy rings", the player's words - light with the charge (ring0
-# anything in it, ring1 over half). The charge itself is the VERTICAL GAUGE cut into the spine
-# through both platforms, front and back. Platform sides are calm plate: a bolt at each end and a
-# sunset tick pointing into each cell; the faction's window is on the top and bottom. Nothing stands
-# out of the cell and it joins on every face.
+# under, a platform over - each MBAT_PLAT tall all round, the player asked twice for them big - and a
+# spine a third of the width between them, swept from back to front with its outer edges chamfered.
+# In each bay stand TWO CELLS a side - the car batteries the player asked for - that fill it and
+# BULGE: flush with the block's faces through the middle, they slope back in toward both lips and
+# run on into the platforms, so their middle stands out and their top and bottom are hidden in the
+# casting (the player's words for the cells). Each is a navy moulded case, two panels to a face, a
+# lid seam near its top, and two ring grooves; in the grooves the green energy rings light with the
+# charge (ring0 anything in it, ring1 over half) and an unlit ring leaves its groove, so an empty
+# battery still shows where its charge goes. The charge itself is the VERTICAL GAUGE cut into the
+# spine through both platforms, front and back. Platform sides are calm plate with a bolt at each
+# end; the faction's window is on the top and bottom. Nothing stands out of the cell and it joins
+# on every face.
 # Turned down before the player set this layout: four Falsus cells between two plates; a gauge
 # column per side ("a water tank") with terminals on top; lit capacitor plates in side panels; an
 # octagonal charge dial; the phone's battery icon on every face ("too simple"); one octagonal cell
 # with rings in a cage of posts ("looks like a battery again"). Inside the layout: platforms too
 # thin, the gauge a separate box between them, round cells in sockets ("not built in"), car
 # batteries on trays with a gap over them and a lid wider than the case ("short, uneven widths").
-# An outside critique then read the next cuts as a chest of drawers (windows, lip sunset lines and a
-# copper pull on the sides; light collars stacked like shelves), a robot's face (green eyes beside the
-# gauge) and small screens (label plates on the cells' ends), with the cells sunk out of sight
-# behind overhanging lips - all of that went.
+# Outside critiques then read the next cuts as a chest of drawers (windows, sunset lines and ticks
+# on the platform sides; light collars like shelves), a robot's face (green eyes beside the gauge),
+# small screens (label plates), cells hidden behind overhanging lips, plain blue boxes, and pale
+# cell chamfers lining up with the casting's into posts; and a 45 deg lip cut that showed the cells
+# entering made the platforms' sides smaller than the ones the player had already called too small.
 #   body  - the casting and the cells
 #   seg   - one gauge bar, front and back, about the block's middle; the scene stands MBAT_SEGS
 #           copies (Seg0 the lowest) there and battery.gd shrinks the dark ones into the block
 #   ring0 / ring1 - the cells' lower and upper energy rings, about the block's middle
 MBAT_SEGS = 8
-MBAT_PLAT = 0.66                  # each platform's height over a bay
+MBAT_PLAT = 0.66                  # each platform's height, all round
 MBAT_SPINE = 2.0 / 3.0            # the spine's width
 MBAT_C = 0.12                     # the casting's outer chamfer: heavy, as GeoCorp's platforms
-MBAT_BEVEL = 0.16                 # the 45 deg cut on each platform lip over a bay
-MBAT_DRIVE = 0.22                 # how far a cell runs on into each platform past the bay
-MBAT_FACE = 0.03                  # a cell stands this far in from the block's faces
-MBAT_CELL_C = 0.11                # a cell's vertical edges: chamfered past the casting's, so its
-                                  # corner stays inside the casting's where it runs into a platform
-MBAT_GAP = 0.10                   # between the two cells of a side
-MBAT_RING = (1.0 / 3.0, 2.0 / 3.0, 0.05)   # the rings' heights as shares of the bay, their height
+MBAT_FACE = 0.03                  # a cell's middle stands this far in from the block's faces
+MBAT_BULGE = (0.10, 0.10)         # a cell's slope back into each lip: how far in, over what height
+MBAT_GAP = 0.04                   # between the two cells of a side: a seam, so they read as twins
+MBAT_CELL_C = 0.06                # a cell's chamfer on the block's vertical corner
+MBAT_RINGS = (0.33, 0.53, 0.06)   # the ring grooves' feet above the bay's floor, and their height
+MBAT_SEAM = (0.665, 0.02)         # the lid seam's foot above the bay's floor, and its height
+MBAT_GROOVE = 0.012               # how deep the grooves are cut
 MBAT_GAUGE = (0.16, 0.20, 0.04, 0.05, 0.03)    # hw, margin top/bottom, bevel across, deep, line
 MBAT_BAR_GAP = 0.03
 MARLIT_RAMP = [(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102)]
@@ -2359,15 +2361,14 @@ def _mbat_cells():
 
 
 def _mbat_profile():
-    """The casting's profile, CCW in (x, y): the H with its bay lips cut back at 45 deg and its outer
-    corners cut by the chamfer, and for every edge whether it is on the outer silhouette."""
+    """The casting's profile, CCW in (x, y): the H with its outer corners cut by the chamfer, and for
+    every edge whether it is on the outer silhouette."""
     y0, y1 = -0.5 + MBAT_PLAT, 1.5 - MBAT_PLAT
     bl, br = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
-    B, c = MBAT_BEVEL, MBAT_C
-    corners = [((-1.5, -0.5), True), ((0.5, -0.5), True), ((0.5, y0 - B), False), ((0.5 - B, y0), False),
-               ((br, y0), False), ((br, y1), False), ((0.5 - B, y1), False), ((0.5, y1 + B), False),
-               ((0.5, 1.5), True), ((-1.5, 1.5), True), ((-1.5, y1 + B), False), ((-1.5 + B, y1), False),
-               ((bl, y1), False), ((bl, y0), False), ((-1.5 + B, y0), False), ((-1.5, y0 - B), False)]
+    c = MBAT_C
+    corners = [((-1.5, -0.5), True), ((0.5, -0.5), True), ((0.5, y0), False), ((br, y0), False),
+               ((br, y1), False), ((0.5, y1), False), ((0.5, 1.5), True), ((-1.5, 1.5), True),
+               ((-1.5, y1), False), ((bl, y1), False), ((bl, y0), False), ((-1.5, y0), False)]
     pts = []
     n = len(corners)
     for i, (p, cut) in enumerate(corners):
@@ -2380,11 +2381,32 @@ def _mbat_profile():
 
     def outer(a, b):
         if abs(a[0] - b[0]) > 1e-9 and abs(a[1] - b[1]) > 1e-9:
-            return True                                      # a chamfer's or a lip's cut
+            return True                                      # a chamfer's cut
         if abs(a[0] - b[0]) < 1e-9:
             return abs(abs(a[0] + 0.5) - 1.0) < 1e-9
         return abs(a[1] + 0.5) < 1e-9 or abs(a[1] - 1.5) < 1e-9
     return pts, [outer(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+
+
+def _mbat_ring(x0, x1, z0, z1, kinds, e, cuts):
+    """A cell's outline at one height, CCW in (x, z) seen from above, as 8 points (A, B per corner).
+    kinds[i] names the side from corner i to corner i+1 (corners: (x0,z0), (x1,z0), (x1,z1), (x0,z1));
+    each side is set in by e[kind]; each corner is cut by cuts[(kind, kind)]."""
+    ins = [e[k] for k in kinds]                   # z-min, x-max, z-max, x-min sides
+    xa, xb = x0 + ins[3], x1 - ins[1]
+    za, zb = z0 + ins[0], z1 - ins[2]
+    q = [(xa, za), (xb, za), (xb, zb), (xa, zb)]
+    out = []
+    for i in range(4):
+        prv, nxt = kinds[i - 1], kinds[i]
+        c = cuts.get(frozenset((prv, nxt)), 0.0)
+        a, b, p = q[i - 1], q[i], q[(i + 1) % 4]
+        if c <= 0.0:
+            out += [b, b]
+            continue
+        out.append(hm.lerp2(b, a, c / math.dist(a, b)))
+        out.append(hm.lerp2(b, p, c / math.dist(b, p)))
+    return out
 
 
 def _decal(f, pts, ref, style, u):
@@ -2403,6 +2425,8 @@ def build_marlit_battery(pk, img):
     prof, outer = _mbat_profile()
     n = len(prof)
     ins = _offset_inset(prof, [c if o else 0.0 for o in outer])
+    zF, zB = zf + 0.004, zb - 0.004              # the front and back faces, a hair inside the cell so
+                                                # their bolts stay in it
     # the walls. An outer wall runs between the two chamfers; a wall inside a bay has no chamfer, so it
     # reaches the front and back faces, cut back where it meets a chamfered neighbour
     for i in range(n):
@@ -2415,17 +2439,17 @@ def build_marlit_battery(pk, img):
         else:
             q = []
             if outer[i - 1]:
-                q += [(a[0], a[1], zf + c), (ins[i][0], ins[i][1], zf)]
+                q += [(a[0], a[1], zf + c), (ins[i][0], ins[i][1], zF)]
             else:
-                q += [(a[0], a[1], zf)]
+                q += [(a[0], a[1], zF)]
             if outer[j]:
-                q += [(ins[j][0], ins[j][1], zf), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (ins[j][0], ins[j][1], zb)]
+                q += [(ins[j][0], ins[j][1], zF), (b[0], b[1], zf + c), (b[0], b[1], zb - c), (ins[j][0], ins[j][1], zB)]
             else:
-                q += [(b[0], b[1], zf), (b[0], b[1], zb)]
+                q += [(b[0], b[1], zF), (b[0], b[1], zB)]
             if outer[i - 1]:
-                q += [(ins[i][0], ins[i][1], zb), (a[0], a[1], zb - c)]
+                q += [(ins[i][0], ins[i][1], zB), (a[0], a[1], zb - c)]
             else:
-                q += [(a[0], a[1], zb)]
+                q += [(a[0], a[1], zB)]
         m = th.mul(tuple(map(sum, zip(*q))), 1.0 / len(q))
         q = th.outward(q, th.sub(m, nrm))
         horiz = abs(e[1]) < 1e-6
@@ -2433,26 +2457,13 @@ def build_marlit_battery(pk, img):
         if outer[i] and horiz:
             marlit_poly(f, q, rnd)                           # top and bottom: the faction's window
         elif outer[i] and vert:
-            f.append(th.Face(q, "mplate", u_hint=(0, 0, 1)))
-            # a platform's side: a bolt near each end, a sunset tick over each cell pointing into it
-            xs = a[0] + (0.004 if a[0] > -0.5 else -0.004)
-            ya_, yb_ = sorted((a[1], b[1]))
-            upper = ya_ > 0.5
-            ym = (ya_ + yb_) / 2
-            ref = (-0.5, ym, -0.5)
-            for zc_ in (zf + 0.2, zb - 0.2):
-                _decal(f, [(xs, ym - 0.045, zc_ - 0.045), (xs, ym - 0.045, zc_ + 0.045), (xs, ym + 0.045, zc_ + 0.045),
-                           (xs, ym + 0.045, zc_ - 0.045)], ref, "mbolt", (0, 0, 1))
-            for zc_ in (-1.0, 0.0):
-                t0, t1 = (ya_ + 0.04, ya_ + 0.26) if upper else (yb_ - 0.26, yb_ - 0.04)
-                _decal(f, [(xs, t0, zc_ - 0.025), (xs, t0, zc_ + 0.025), (xs, t1, zc_ + 0.025), (xs, t1, zc_ - 0.025)],
-                       ref, "mglow", (0, 1, 0))
+            f.append(th.Face(q, "mpside", u_hint=(0, 0, 1)))       # a platform's side, bolted
         elif horiz or vert:
             f.append(th.Face(q, "mbev1", u_hint=(0, 0, 1)))       # inside a bay: in shadow
         else:
             f.append(th.Face(q, "medge", u_hint=(0, 0, 1)))
     # the chamfer frames, front and back, along the outer silhouette only
-    for zw, zc, sg in ((zf, zf + c, -1.0), (zb, zb - c, 1.0)):
+    for zw, zc, sg in ((zF, zf + c, -1.0), (zB, zb - c, 1.0)):
         for i in range(n):
             if not outer[i]:
                 continue
@@ -2476,20 +2487,20 @@ def build_marlit_battery(pk, img):
         else:
             notch = [(xc, g1), (xc + hw, g1), (xc + hw, g0), (xc, g0)]
         halves.append(h[:k + 1] + notch + h[k + 1:])
-    for zw, sg in ((zf, -1.0), (zb, 1.0)):
+    for zw, sg, zbolt in ((zF, -1.0, zf), (zB, 1.0, zb)):
         for path in halves:
             for t in _ear_clip(path):
                 q = [(x, y, zw) for x, y in t]
                 f.append(th.Face(th.outward(q, (-0.5, 0.5, zw - sg)), "mplate", u_hint=(1, 0, 0)))
         # a bolt near each outer corner of both platforms
-        zd = zw + sg * 0.004
+        zd = zbolt
         ref = (-0.5, 0.5, zw - sg)
         for yc_ in ((-0.5 + y0) / 2, (y1 + 1.5) / 2):
             for xc_ in (-1.5 + 0.26, 0.5 - 0.26):
                 _decal(f, [(xc_ - 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ - 0.045, zd), (xc_ + 0.045, yc_ + 0.045, zd),
                            (xc_ - 0.045, yc_ + 0.045, zd)], ref, "mbolt", (1, 0, 0))
     # the gauge, sunk into the spine through both platforms
-    for zw, sg in ((zf, -1.0), (zb, 1.0)):
+    for zw, sg in ((zF, -1.0), (zB, 1.0)):
         def P(x, y, d=0.0, zw=zw, sg=sg):
             return (xc + x, y, zw - sg * d)
         ref = (-0.5, 0.5, zw - sg)
@@ -2513,46 +2524,86 @@ def build_marlit_battery(pk, img):
             q = th.outward([P(-fx, ya, bd - 0.004), P(fx, ya, bd - 0.004), P(fx, yb_, bd - 0.004),
                             P(-fx, yb_, bd - 0.004)], ref)
             part.append(th.Face([th.sub(p, C) for p in q], "mcharge", u_hint=(1, 0, 0)))
-    # the cells: flush with the block's faces, from inside the lower platform to inside the upper
-    # one - the casting covers what runs on into it, and the lips' 45 deg cuts show them entering
+    # the cells: lofted through a stack of outlines from inside the lower platform to inside the
+    # upper one. Their outer side and outward end are flush through the middle and slope back in by
+    # MBAT_BULGE toward each lip; the grooves step in by MBAT_GROOVE; the spine side is hidden and not
+    # drawn
     for k in (0, 1):
         parts["marlit_battery_ring%d" % k] = []
     sx_l, sx_r = -0.5 - MBAT_SPINE / 2, -0.5 + MBAT_SPINE / 2
-    cc = MBAT_CELL_C
+    bi, bh = MBAT_BULGE
+    g = MBAT_GROOVE
+    r0f, r1f, rh = MBAT_RINGS
+    sf, sh = MBAT_SEAM
+    # (y, inset of the outer faces, what the band above this level is)
+    lv = [(y0 - 0.02, bi, None), (y0, bi, "dn"), (y0 + bh, 0.0, "case")]
+    for yy, hh, kind in ((y0 + r0f, rh, "groove"), (y0 + r1f, rh, "groove"), (y0 + sf, sh, "seam")):
+        lv += [(yy, 0.0, "ledge_dn"), (yy, g, kind), (yy + hh, g, "ledge_up"), (yy + hh, 0.0, "case")]
+    lv += [(y1 - bh, 0.0, "up"), (y1, bi, None), (y1 + 0.02, bi, None)]
+    cuts = {frozenset(("outer", "outward")): MBAT_CELL_C, frozenset(("outer", "gap")): 0.02}
     for cx, cz in _mbat_cells():
         left = cx < -0.5
-        xo = -1.5 + MBAT_FACE if left else 0.5 - MBAT_FACE
-        xs = sx_l - 0.006 if left else sx_r + 0.006
-        xa, xb = sorted((xo, xs))
-        out_z = -1.0 if cz < -0.5 else 1.0
-        za, zb_ = sorted((zf + MBAT_FACE if out_z < 0 else -0.5 + MBAT_GAP / 2,
-                          -0.5 - MBAT_GAP / 2 if out_z < 0 else zb - MBAT_FACE))
-        cham_box(f, (xa, y0 - MBAT_DRIVE, za), (xb, y1 + MBAT_DRIVE, zb_), cc, "mcell", None, None, "mcell_edge")
-        # the rings: bands round the cell's chamfered footprint, a hair proud, on every face but the
-        # spine's
-        foot = _cut_corners([(xa, za), (xb, za), (xb, zb_), (xa, zb_)], cc)
-        fm = ((xa + xb) / 2, (za + zb_) / 2)
-        for k, t in enumerate(MBAT_RING[:2]):
-            yr = y0 + (y1 - y0) * t
-            h = MBAT_RING[2] / 2
-            for i in range(len(foot)):
-                j = (i + 1) % len(foot)
-                pa, pb = foot[i], foot[j]
-                mx, mz = (pa[0] + pb[0]) / 2, (pa[1] + pb[1]) / 2
-                if abs(pa[0] - pb[0]) < 1e-9 and abs(pa[0] - xs) < 1e-6:
-                    continue                                     # against the spine
-                nx, nz = mx - fm[0], mz - fm[1]
-                nl = math.hypot(nx, nz)
-                # push along the edge's own outward normal
-                ex, ez = pb[0] - pa[0], pb[1] - pa[1]
-                el = math.hypot(ex, ez)
-                ox, oz = ez / el, -ex / el
-                if ox * nx + oz * nz < 0:
-                    ox, oz = -ox, -oz
-                d = 0.004
-                q = [(pa[0] + ox * d, yr - h, pa[1] + oz * d), (pb[0] + ox * d, yr - h, pb[1] + oz * d),
-                     (pb[0] + ox * d, yr + h, pb[1] + oz * d), (pa[0] + ox * d, yr + h, pa[1] + oz * d)]
-                face = th.Face(th.outward(q, (fm[0], yr, fm[1])), "meye", u_hint=(ex / el, 0.0, ez / el))
+        front = cz < -0.5
+        x0, x1 = (-1.5 + MBAT_FACE, sx_l) if left else (sx_r, 0.5 - MBAT_FACE)
+        z0, z1 = (zf + MBAT_FACE, -0.5 - MBAT_GAP / 2) if front else (-0.5 + MBAT_GAP / 2, zb - MBAT_FACE)
+        kinds = ["outward" if front else "gap", "spine" if left else "outer",
+                 "gap" if front else "outward", "outer" if left else "spine"]
+        cen = ((x0 + x1) / 2, (z0 + z1) / 2)
+
+        def ring_at(e_out):
+            return _mbat_ring(x0, x1, z0, z1, kinds, {"outer": e_out, "outward": e_out, "gap": 0.0, "spine": 0.0}, cuts)
+        rings = [(yy, ring_at(e)) for yy, e, _ in lv]
+        for li in range(len(lv) - 1):
+            band = lv[li][2]
+            if band is None:
+                continue                                     # inside a platform
+            (ya_, ra), (yb_, rb) = rings[li], rings[li + 1]
+            for i in range(8):
+                j = (i + 1) % 8
+                side = kinds[i // 2] if i % 2 == 1 else None    # odd segments are the sides
+                corner = i % 2 == 0
+                if side == "spine":
+                    continue
+                pa, pb = ra[i], ra[j]
+                qa, qb = rb[i], rb[j]
+                q = [(pa[0], ya_, pa[1]), (pb[0], ya_, pb[1]), (qb[0], yb_, qb[1]), (qa[0], yb_, qa[1])]
+                if math.dist(q[0], q[1]) < 1e-6 and math.dist(q[2], q[3]) < 1e-6:
+                    continue
+                if math.dist(q[0], q[3]) < 1e-6 and math.dist(q[1], q[2]) < 1e-6:
+                    continue
+                if side == "gap":
+                    st = "mflat0"
+                elif band in ("ledge_up", "up"):
+                    st = "mcell_up"
+                elif band in ("ledge_dn", "dn"):
+                    st = "mcell_dn"
+                elif band in ("groove", "seam"):
+                    st = "mgroove"
+                elif corner:
+                    st = "mcell_c"
+                else:
+                    st = "mcase2"
+                ym = (ya_ + yb_) / 2
+                q = th.outward(q, (cen[0], ym, cen[1]))
+                e = th.norm(th.sub((pb[0], 0.0, pb[1]), (pa[0], 0.0, pa[1]))) if math.dist(pa, pb) > 1e-6 else (1.0, 0.0, 0.0)
+                f.append(th.Face(q, st, u_hint=e))
+        # the green rings, in the grooves, on the outer side and outward end and the corner between
+        for k, yy in enumerate((y0 + r0f, y0 + r1f)):
+            rr = ring_at(g - 0.004)
+            for i in range(8):
+                j = (i + 1) % 8
+                side = kinds[i // 2] if i % 2 == 1 else None
+                if side in ("spine", "gap"):
+                    continue
+                if i % 2 == 0 and frozenset((kinds[i // 2 - 1], kinds[i // 2])) != frozenset(("outer", "outward")):
+                    continue
+                pa, pb = rr[i], rr[j]
+                if math.dist(pa, pb) < 1e-6:
+                    continue
+                q = [(pa[0], yy + 0.006, pa[1]), (pb[0], yy + 0.006, pb[1]), (pb[0], yy + rh - 0.006, pb[1]),
+                     (pa[0], yy + rh - 0.006, pa[1])]
+                q = th.outward(q, (cen[0], yy + rh / 2, cen[1]))
+                face = th.Face(q, "mring", u_hint=th.norm(th.sub((pb[0], 0.0, pb[1]), (pa[0], 0.0, pa[1]))))
                 face.pts = [th.sub(pt, C) for pt in face.pts]
                 parts["marlit_battery_ring%d" % k].append(face)
     return parts

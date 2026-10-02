@@ -923,6 +923,40 @@ def style_px(style, x, y, w, h, d):
         if r == 8:
             return (20, 21, 27)
         return jitter((32, 34, 42), 1)
+    if style == "mpside":
+        # a platform's side: the plate, and a bolt head near each end
+        for bx in (int(w * 0.1), int(w * 0.9)):
+            r = math.hypot(x + 0.5 - bx, y + 0.5 - h / 2.0)
+            if r < 1.6:
+                return (112, 116, 130)                 # the bolt head, lit
+            if r < 2.4:
+                return (24, 25, 32)                    # its shadow ring
+        streak = ((y * 7 + (x // 11)) % 4)
+        return tuple(max(0, min(255, c + (streak == 0) * 4 - (streak == 2) * 3)) for c in (46, 48, 56))
+    if style == "mcase2":
+        # a cell's moulded case: two navy panels to a face, a raised rib between them (four ribs a
+        # face read as a grid of tiles with the grooves across them)
+        for k in (1,):
+            rx = int(round(w * k / 2.0))
+            if x == rx:
+                return (96, 112, 142)
+            if x == rx + 1:
+                return (24, 30, 44)
+        t = (y + 0.5) / max(h, 1)
+        return jitter(_ramp_at([(56, 68, 94), (46, 56, 80)], t * 1.0), 1)
+    if style == "mcell_up":
+        return jitter((70, 84, 114), 1) if d >= 1.0 else (112, 126, 152)
+    if style == "mcell_dn":
+        return jitter((30, 36, 52), 1)
+    if style == "mcell_c":
+        # a cell's corner chamfer: its own navy a step lit, a one-texel line on its arris
+        return (92, 106, 136) if d < 1.0 else jitter((60, 72, 100), 1)
+    if style == "mgroove":
+        return jitter((16, 20, 30), 1)
+    if style == "mring":
+        # an energy ring: green, bright down its middle
+        t = abs(y + 0.5 - h / 2.0) / max(h / 2.0, 1.0)
+        return _ramp_at([(190, 255, 205), (90, 225, 135), (40, 150, 85)], t * 2.0)
     if style == "mcell":
         # a cell's case: Marlit navy, a step lighter and bluer than the casting so the cells read as
         # bodies of their own; light falls from above
@@ -950,9 +984,9 @@ def style_px(style, x, y, w, h, d):
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
         return _ramp_at([(200, 255, 215), (90, 230, 135), (30, 140, 75)], t * 2.0)
     if style == "mbolt":
-        # a bolt head painted on a plate: a lit ring round a dark hex socket
+        # a bolt head on a plate: a lit head in a dark shadow ring, the rest the plate's own tone
         t = math.hypot((x + 0.5) / max(w, 1) - 0.5, (y + 0.5) / max(h, 1) - 0.5) * 2.0
-        return (22, 23, 30) if t < 0.35 else ((110, 114, 128) if t < 0.8 else (46, 48, 56))
+        return (112, 116, 130) if t < 0.5 else ((24, 25, 32) if t < 0.8 else (46, 48, 56))
     if style[:4] == "cyan" and style[4:].isdigit():
         # a solid glowing cyan, no edge line: a disc's sector
         return [(40, 150, 180), (60, 180, 210), (90, 210, 236), (140, 232, 250)][int(style[4:])]
