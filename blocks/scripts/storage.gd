@@ -126,6 +126,9 @@ func _make_item() -> Node3D:
 	return it
 
 # ── Витрина: один предмет + табличка с количеством ───────────────────────────
+## The shown item's model stands this far under the slot: in the lid's tray (resource.seat).
+const TRAY_FOOT := -0.08
+
 func _refresh_visual() -> void:
 	if count <= 0:
 		if is_instance_valid(_display):
@@ -136,6 +139,8 @@ func _refresh_visual() -> void:
 		if _display != null:
 			add_child(_display)
 			_display.position = $item_slot.position if has_node("item_slot") else Vector3.ZERO
+			if _display.has_method("seat"):
+				_display.seat(TRAY_FOOT)
 			if _display is RigidBody3D:
 				var rb := _display as RigidBody3D
 				rb.freeze = true             # витрина не должна ни падать, ни толкаться

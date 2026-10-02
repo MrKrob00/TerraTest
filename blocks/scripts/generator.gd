@@ -106,11 +106,11 @@ func _on_item_received() -> void:
 			"WOOD":  _burn_energy = ENERGY_WOOD
 			"INGOT": _burn_energy = ENERGY_INGOT
 			_:       _burn_energy = ENERGY_ORE
-	# The item is a metre-wide bubble; its picture shrinks to the well's width, then drops in.
+	# The item's picture settles to the well's width, then drops in.
 	var vis := current_item.get_node_or_null("MeshInstance3D") as Node3D
 	var tw := create_tween()
 	if vis != null:
-		tw.tween_property(vis, "scale", Vector3.ONE * 0.5, SETTLE_TIME)
+		tw.tween_property(vis, "scale", Vector3.ONE * 0.85, SETTLE_TIME)
 	tw.tween_property(current_item, "position", Vector3(0.0, SINK_Y, 0.0), SINK_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	if vis != null:

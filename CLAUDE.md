@@ -2232,10 +2232,26 @@ project: read it before claiming how anything works.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
-- A LOOSE ITEM (ore, ingot, component, chunk — `resource.tscn`) WAS 4,240 TRIANGLES, a whole gun is
-  139 and a wheel 286: its glow bubble was a `SphereMesh` at the default 64×32 segments, half a
-  metre across. At 16×8 it is 304 in total, and on the real driver the frame is the same picture
-  (12×6 was tried and read faceted up close). Every item on a belt and every ore at a vein paid it.
+- **A LOOSE ITEM IS ITS OWN MODEL, AND THE BUBBLE IS GONE** (`resource.tscn`, `resource._update_visual`,
+  models from `art/item_models.gd` in `resources/items/`). It was an octahedron squashed by stage
+  inside a metre-wide additive green sphere - 4,240 triangles once, 256 of bubble at 16×8 after,
+  and the player's verdict "fun, but heavy and not pretty". Now: RAW ORE IS A PIECE OF ITS VEIN
+  (ferrite chunk, cuprite slab, silicate crystal shard, titanite shard, 24-48 triangles, grey tones
+  times the metal's colour); the INGOT is the artist's `ingot_metal` from `objects/Assets.glb`,
+  its pixel texture tinted per metal; wood a log, coal a charcoal lump with its facets showing (the
+  artist's `coal` samples a near-black patch of the atlas and read as a blot), a component a hex
+  nut in its colour, a chunk a crate with GSO-blue straps. What the bubble was for - an item seen in
+  the grass - is ONE BILLBOARD QUAD (`resources/items/item_glow.gdshader`, additive, the item's
+  colour, coal an ember), two triangles. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
+  with its FOOT where the bubble's bottom was (`FOOT_Y`), so every belt slot, tray, mouth and hold
+  height made for the bubble still holds it; the rotation is locked in the scene, or a rolling
+  sphere would swing the model round its middle. A HOLDER that shows an item sitting IN something
+  calls `seat(foot)` (collector `HOLD_FOOT`, storage `TRAY_FOOT`) and `unseat()` at its door out:
+  those heights were the bubble's middle, and at `FOOT_Y` the model sank into the box. The machines
+  that shrank the metre-wide picture to fit a mouth (processor `IN_FURNACE`, generator, seller
+  `LIFT_SCALE`) shrink it much less. Measured: the quest chain still sells 2 components for 300, a
+  receiver with a late belt still hands on 6 of 6; on the real driver the items sit on the belt deck,
+  in the storage tray and the collector's bowl.
 - **A BULLET'S TICK IS MOSTLY NOT THE RAYCAST.** Measured on the engine, 200 bullets, one physics
   tick: raycast with a fresh `PhysicsRayQueryParameters3D.create` 1224 us, the same raycast reusing
   one object 744 us, `Basis.looking_at` + `global_basis` 466 us, the child walk `_mesh_node` did per
