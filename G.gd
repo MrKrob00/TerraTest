@@ -516,6 +516,8 @@ const BLOCK_META := {
 	Block.MARLIT_ARMOR8:    {"f": "marlit", "g": 4, "rp": 35},
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
+	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 4, "rp": 50},
+	Block.MARLIT_GUN:       {"f": "marlit", "g": 4, "rp": 50},
 }
 # Дерево исследований: ребёнок → родитель (рёбра утверждены игроком, ТЗ §4).
 const TECH_PARENT := {
@@ -558,6 +560,7 @@ const TECH_PARENT := {
 	Block.MARLIT_ARMOR8: Block.MARLIT_ARMOR4,  Block.MARLIT_OCTO: Block.MARLIT_LONG,
 	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
 	Block.MARLIT_REGEN: Block.MARLIT_SOLAR,
+	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_BLOCK,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
 	Block.POUND_CANNON: Block.GUN,      Block.SHOTGUN: Block.GUN,
@@ -958,6 +961,8 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_SOLAR:     {"c5": 12, "m2": 16},   # four Falsus panels' lenses and Silicate
 	# Three Falsus units' parts: half as far again is 2.25 times the ground covered.
 	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
+	Block.MARLIT_WHEEL:     {"c16": 3, "m0": 12},
+	Block.MARLIT_GUN:       {"c17": 3, "m3": 9},
 	Block.SUPPORT:      {"c2": 2, "m0": 4},    # Braced Strut + Ferrite
 	Block.ROT_SUPPORT:  {"c16": 2, "m0": 6},   # Drive Axle + Ferrite
 	Block.CABIN:        {"c12": 2, "c18": 2},  # Logic Housing + Control Chip
@@ -1376,6 +1381,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
+	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
 	Block.POUND_CANNON: "Heavy Cannon", Block.SHOTGUN: "Shotgun", Block.MORTAR: "Mortar",
@@ -1435,6 +1441,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_OCTO: "The Octo Block: three cells every way, eight heavy corner caps round a core, the faction's octagon on every face.",
 	Block.MARLIT_SOLAR: "An armoured lid that turns over on the anchor: its underside is a solar panel as big as four ordinary ones. Driving, it is armour and makes nothing.",
 	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
+	Block.MARLIT_WHEEL: "A heavy wheel: pulls harder and carries more than any Falsus wheel.",
+	Block.MARLIT_GUN: "A machine gun that hits harder: the same aim, heavier rounds.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
 	Block.ROT_SUPPORT: "Rotating support: anchor plus the right to turn the whole build with the joystick. What makes a fixed mortar work.",
 	Block.GUN: "Machine gun. Aims itself within its cone, leads the target and spreads with distance. The all-round answer.",
@@ -1870,6 +1878,8 @@ enum Block {
 	MARLIT_SOLAR = 62,      # 2×2×2: a 2×1×2 housing whose lid turns over into the upper floor
 	MARLIT_REGEN = 63,      # 2×2×2: the gyro repair unit in the Marlit shell
 	MARLIT_SHIELD = 64,     # RETIRED (RETIRED_BLOCKS): Marlit carries no shield. Keep the value.
+	MARLIT_WHEEL = 65,      # PLACEHOLDER: the big wheel's model, Marlit's numbers (more pull, more load)
+	MARLIT_GUN = 66,        # PLACEHOLDER: the machine gun's model, heavier rounds
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1932,6 +1942,8 @@ enum Block {
 @onready var marlit_octo_scene: PackedScene = preload("res://blocks/scenes/marlit_octo.tscn")
 @onready var marlit_solar_scene: PackedScene = preload("res://blocks/scenes/marlit_solar.tscn")
 @onready var marlit_regen_scene: PackedScene = preload("res://blocks/scenes/marlit_regen.tscn")
+@onready var marlit_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_wheel.tscn")
+@onready var marlit_gun_scene: PackedScene = preload("res://blocks/scenes/marlit_gun.tscn")
 
 # Категории блоков — общие для гаража (tech_ui SHOP-фильтр) и «шара» выбора блока
 # в стройке (block_globe.gd). "power" также забирает всё, что не попало ни в одну категорию.
@@ -1954,7 +1966,7 @@ func is_stationary(bt: int) -> bool:
 
 const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
-		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN],
+		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN, Block.MARLIT_GUN],
 	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.ARMOR9, Block.HALF_BLOCK, Block.HALF_BLOCK2,
 		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE2, Block.ARMOR,
@@ -1963,7 +1975,7 @@ const BLOCK_CATEGORIES := {
 		Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB,
 		Block.MARLIT_LONG, Block.MARLIT_LONG_HALF, Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER,
 		Block.MARLIT_BRACKET, Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8,
-		Block.MARLIT_OCTO],
+		Block.MARLIT_OCTO, Block.MARLIT_WHEEL],
 	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
 		Block.SCRAPPER,
 		Block.STORAGE, Block.PROCESSOR, Block.SELLER,
@@ -2042,8 +2054,11 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_OCTO: return marlit_octo_scene
 		Block.MARLIT_SOLAR: return marlit_solar_scene
 		Block.MARLIT_REGEN: return marlit_regen_scene
+		Block.MARLIT_WHEEL: return marlit_wheel_scene
+		Block.MARLIT_GUN: return marlit_gun_scene
 	return null
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
 func is_wheel(bt: int) -> bool:
-	return int(bt) in [Block.WHEEL, Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL]
+	return int(bt) in [Block.WHEEL, Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
+			Block.MARLIT_WHEEL]

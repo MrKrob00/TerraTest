@@ -252,6 +252,8 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_ARMOR8:    4400,
 	G.Block.MARLIT_SOLAR:     800,     # the housing is half a basic block, the lid armour
 	G.Block.MARLIT_REGEN:     700,
+	G.Block.MARLIT_WHEEL:     260,
+	G.Block.MARLIT_GUN:       200,
 	G.Block.MARLIT_OCTO:      4700,    # 27 cells at the basic block's rate
 }
 const DEFAULT_HP := 90
@@ -296,6 +298,8 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_ARMOR8:    280.0,
 	G.Block.MARLIT_SOLAR:     60.0,
 	G.Block.MARLIT_REGEN:     55.0,
+	G.Block.MARLIT_WHEEL:     50.0,
+	G.Block.MARLIT_GUN:       28.0,
 	G.Block.MARLIT_OCTO:      300.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,

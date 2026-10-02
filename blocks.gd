@@ -71,7 +71,7 @@ var is_station: bool = false
 # Supports were forbidden as well - self-contradictory ever since a support became a STATIONARY
 # block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
 # power, weapons - makes sense on a base.
-const _STATION_BANNED := [G.Block.CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL,
+const _STATION_BANNED := [G.Block.CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
 		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
@@ -176,7 +176,39 @@ func _define_layout() -> void:
 		16: _layout_shielded_tower(G.Block.GUN, G.Block.SHOTGUN)     # Charlie Watchtower
 		17: _layout_shielded_tower(G.Block.MORTAR, G.Block.ROCKET)   # SAM Site Ridge: all explosive
 		18: _layout_charge_tower()                   # зарядная башня к ним обеим
+		MARLIT_CHAMPION: _layout_marlit_champion()
 		_: _layout_default()
+
+## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
+## Outside the ladder on purpose (enemy_spawner._tier_of answers -1, so no ceiling touches it): the
+## fight is the licence, and it is sized at the fourth step whatever the player drives (about 37k
+## against that step's 31.6k median; a Marlit repair field with its batteries put it at 54k, past the
+## fifth). Marlit hull round a cabin, four Marlit wheels, three Marlit guns on the nose, plates on
+## the nose. The cabin, the wheels and the guns are PLACEHOLDERS -
+## Marlit has no models for them yet: the Falsus cabin, and wheels and guns on the Falsus models
+## with Marlit's numbers (MARLIT_WHEEL, MARLIT_GUN).
+const MARLIT_CHAMPION := 120
+
+func _layout_marlit_champion() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	# the spine: slabs fore and aft of the cabin (1x2x2, up and back from the anchor)
+	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)
+	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)
+	set_block(5, 5, 9, G.Block.MARLIT_SLAB, 0.0)
+	# the flanks: three 2x2x2 blocks a side, z 3..8
+	for z in [4, 6, 8]:
+		set_block(4, 5, z, G.Block.MARLIT_BLOCK, 0.0)
+		set_block(7, 5, z, G.Block.MARLIT_BLOCK, 0.0)
+	# four wheels on the flanks' outer corners
+	for z in [3, 8]:
+		set_block(2, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
+		set_block(8, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
+	# three guns along the nose, an empty line ahead of each
+	for x in [3, 5, 7]:
+		set_block(x, 7, 3, G.Block.MARLIT_GUN, 0.0)
+	# plates on the nose, under the guns' line
+	set_block(4, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
+	set_block(7, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
 
 # New game: ONE cabin (the starter kit drops into the world nearby, see world_persist.gd). The
 # core sits at the grid CENTRE, and add-on floors count from it (+5).

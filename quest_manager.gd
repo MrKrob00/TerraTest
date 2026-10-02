@@ -190,19 +190,15 @@ func _seed_demo() -> void:
 		 "hint": "Same order as before — the towers hold the shield, the shield holds the site."},
 	])
 
-	# ── BIG YELLOW: THE SECOND FACTION'S LICENCE ───────────────────────────────
-	# TerraTech's Big Yellow (docs/STORY_ROADMAP.md, No 12), waiting until now for a second faction.
-	# Marlit puts a collection point down; what the player hands over there buys its licence
-	# (G.FACTION_LICENCE, granted in _on_completed). It opens after Hold the Line: by then the player
-	# has a collector, a line and a reason to have ore to spare.
-	add_quest("arc_yellow", "Big Yellow", "", Type.STORY, 1, 12, "", 500, 80, 22)
+	# ── MARLIT'S CHAMPION: THE SECOND FACTION'S LICENCE ─────────────────────────
+	# The player's design: Marlit sends a machine of the fourth step built of its own blocks; beat it
+	# and Marlit's licence is yours (G.FACTION_LICENCE, granted in _on_completed). The id stays
+	# "arc_yellow" - saves and the licence table key on it.
+	add_quest("arc_yellow", "Marlit's Champion", "", Type.STORY, 1, 14, "", 500, 80, 22)
 	add_stages("arc_yellow", [
-		{"desc": "Reach the Marlit collection point",
+		{"desc": "Destroy the Marlit champion",
 		 "event": "quest_yellow_1", "goal": 1,
-		 "hint": "Marlit wants to do business. They build big and they build heavy, and they have set a collection point down out in the field."},
-		{"desc": "Hand over 40 resources",
-		 "event": "quest_yellow_2", "goal": 40,
-		 "hint": "Bring a collector with ore in it up to the point's receiver, or drop ore in its zone. Marlit pays in a licence, not in money."},
+		 "hint": "Marlit only deals with those who can beat them. Their champion is out in the field - heavy hull, heavy wheels, guns that hit harder than ours."},
 	])
 	requires("arc_yellow", ["arc_hold"])
 
