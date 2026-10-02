@@ -1,0 +1,42 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" path="res://objects/Assets_main_texture_recoure.png" id="1_pkluu"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ft6n2"]
+resource_name = "recourse"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_pkluu")
+texture_filter = 2
+
+[sub_resource type="ArrayMesh" id="ArrayMesh_h0n8j"]
+_surfaces = [{
+"aabb": AABB(-0.16430058, 0.035299703, -0.2446702, 0.32860115, 0.14512613, 0.4893404),
+"format": 34896613377,
+"index_count": 36,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAACAAEAAwAEAAEABQAAAAIAAwAAAAUABAAGAAIABQACAAYAAwAHAAQAAwAFAAcABwAGAAQABwAFAAYA"),
+"name": "recourse",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 8,
+"vertex_data": PackedByteArray("AAAAAP//AAAOLP//AAAAAA4s/////wAAAAAAAAAAAADw0///AAAAAP//AAD//wAA8NP/////AAD//wAAAAAAAA==")
+}]
+blend_shape_mode = 0
+
+[resource]
+resource_name = "Assets_Plane_020"
+_surfaces = [{
+"aabb": AABB(-0.16430058, 0.035299703, -0.2446702, 0.32860115, 0.14512613, 0.4893404),
+"attribute_data": PackedByteArray("7hORFHMMBQFzDJEU7hMFASoSGhxFBrMVtg+8FcUDDBzuEyUAcwyRFHMMJQDuE5EUKhIaHEUGsxW2D7wVxQMMHB4MggEyAD8UMgCCAR4MPxQfAbQUCA1EAAgNtBQfAUQA"),
+"format": 34896613399,
+"index_count": 36,
+"index_data": PackedByteArray("AAABAAIAAAADAAEABAAFAAYABAAHAAUACAAJAAoACAALAAkADAANAA4ADAAPAA0AEAARABIAEAATABEAFAAVABYAFAAXABUA"),
+"material": SubResource("StandardMaterial3D_ft6n2"),
+"name": "recourse",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 24,
+"vertex_data": PackedByteArray("AAAAAP//ciEOLP//AAByIQ4s/////3IhAAAAAAAAciEAAAAAAAD///DT//8AAP//Diz//wAA/////wAAAAD/////AAAAADPN8NP/////M83w0///AAAzzf//AAD//zPN//8AAP//JYAOLP////8lgPDT/////ySAAAAAAP//JYAAAAAAAAD/////AAD///////8AAAAA//8AAAAA//////DT//8AAP//Diz///////8OLP//AAD///DT////////ZF+xr2Rfsa9kX7GvZF+xrzqAw/86gMP/OoDD/zqAw/8StglbErYJWxK2CVsStglb//////////////////////9//z//f/8//3//P/9//z//f/+//3//v/9//7//f/+/")
+}]
+blend_shape_mode = 0
+shadow_mesh = SubResource("ArrayMesh_h0n8j")

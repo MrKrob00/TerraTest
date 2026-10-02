@@ -66,6 +66,12 @@ func _build() -> void:
 		if (e is InputEventMouseButton and e.pressed) or (e is InputEventScreenTouch and e.pressed):
 			close())
 	(%CloseButton as Button).pressed.connect(close)
+	# THE PORTS STAY ONE TAP AWAY: the long press opens the product (hud.open_factory_picker), and
+	# a multi-cell factory's per-cell ports would otherwise have no way in at all.
+	var ports := %PortsButton as Button
+	ports.visible = _blocks_root.has_method("footprint_offsets") and _block is FactoryBlock \
+			and (_blocks_root.footprint_offsets(_block) as Array).size() > 1
+	ports.pressed.connect(_open_ports)
 
 	if _is_comp:
 		_fill_components()
@@ -161,6 +167,15 @@ func _choose(idx: int) -> void:
 
 func close() -> void:
 	queue_free()
+
+func _open_ports() -> void:
+	var host: Node = get_parent()
+	var block: Node = _block
+	close()
+	if host != null and is_instance_valid(block):
+		var p = PortPicker.open_for(host, block)
+		if p != null and host.get("_factory_picker") != null:
+			host.set("_factory_picker", p)
 
 # ── Мелочи оформления ────────────────────────────────────────────────────────
 # Квадратик цвета материала. Кешируем по цвету: в списке из двадцати одной строки иначе

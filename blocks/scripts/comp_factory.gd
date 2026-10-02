@@ -82,6 +82,9 @@ func _start_craft() -> void:
 	_have.clear()
 	_crafting = false
 	_ready_count += 1
+	# A belt holding an ingot for us (`wants` says yes while crafting) waits on this signal, and
+	# nothing else wakes it: without it the line behind the plant stood still for good.
+	slot_freed.emit()
 
 # Готовое НЕ выбрасываем в мир, а ставим в очередь на ленту: пока принять некому, компонент
 # ждёт внутри. Так цепочка не роняет деталь под гусеницы, когда следующий блок занят.

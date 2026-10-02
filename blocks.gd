@@ -1346,6 +1346,41 @@ func _reachable_cells() -> Dictionary:
 ## Runs on a grid OUTSIDE the tree with one uninstanced scene per entry for its faces: joins are
 ## decided by each block's own connect mask turned by its rotation, and without a node every
 ## neighbour would count as joined (see _cells_linked).
+## WHAT A BUILD IS, counted on its REAL layout (`_init_map` + `_define_layout` on a node outside the
+## tree - `set_block` only writes the grid, not one block scene is made): blocks by type, how many,
+## and what they are worth at shop prices. By ANCHOR, so a multi-cell block counts once. One door
+## for the proving ground's cards and the spawner's party budget: two copies of this walk were
+## obliged to drift from `_layout_enemy` apart. Cached; a preset's layout never changes in a run.
+static var _summaries: Dictionary = {}
+
+static func preset_summary(preset: int) -> Dictionary:
+	if _summaries.has(preset):
+		return _summaries[preset]
+	var n := Node3D.new()
+	n.set_script(load("res://blocks.gd"))
+	n.set("layout_preset", preset)
+	n.call("_init_map")
+	n.call("_define_layout")
+	var count := {}
+	var total := 0
+	var value := 0.0
+	var m: Dictionary = n.get("map")
+	var owners: Dictionary = n.get("cell_owner")
+	var seen := {}
+	for c in m:
+		var bt: int = int(m[c])
+		var key: String = String(owners.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z]))
+		if seen.has(key):
+			continue
+		seen[key] = true
+		count[bt] = int(count.get(bt, 0)) + 1
+		total += 1
+		value += float(G.shop_price(bt))
+	n.free()
+	var out := {"total": total, "count": count, "value": value}
+	_summaries[preset] = out
+	return out
+
 static func buildable_subset(layout: Array, pool: Dictionary) -> Array:
 	var g: Node = load("res://blocks.gd").new()
 	g._init_map()

@@ -131,6 +131,7 @@ var _scan_center: Vector3 = Vector3.ZERO
 var _scan_marker: Node3D = null
 
 func _ready() -> void:
+	_warm_values()                 # runs on by itself, a preset a frame
 	# Wait for the terrain (map loads md after its own await).
 	var guard: int = 0
 	var map: Node = _find_map()
@@ -575,6 +576,13 @@ func _machine_value(machine: Node3D) -> int:
 ## never cut - a single member at the ceiling is the measure itself.
 const PARTY_BUDGET := 1.6
 
+## What a party may be worth for the player now - the budget `party_for_request` holds it to.
+func party_budget() -> float:
+	var player: Node3D = _player()
+	if PRESET_TIERS.is_empty():
+		return INF
+	return PARTY_BUDGET * _step_value(_tier_cap(player))
+
 func party_for_request(presets: Array) -> Array:
 	var out: Array = []
 	for p in presets:
@@ -601,32 +609,22 @@ func party_for_request(presets: Array) -> Array:
 			out.pop_back()
 	return out
 
-## What a build costs, measured on its REAL layout (`_init_map` + `_define_layout` on a blocks
-## node outside the tree, as the proving ground's cards do): the table row does not list the
-## floor, the plates or the second wing. Anchors, not cells, so a multi-cell block counts once.
-var _value_cache: Dictionary = {}
-
+## What a build costs at shop prices, on its real layout (`blocks.preset_summary`, the door the
+## proving ground's cards use too).
 func preset_value(preset: int) -> float:
-	if _value_cache.has(preset):
-		return float(_value_cache[preset])
-	var n := Node3D.new()
-	n.set_script(load("res://blocks.gd"))
-	n.set("layout_preset", preset)
-	n.call("_init_map")
-	n.call("_define_layout")
-	var m: Dictionary = n.get("map")
-	var owners: Dictionary = n.get("cell_owner")
-	var seen := {}
-	var v: float = 0.0
-	for c in m:
-		var key: String = String(owners.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z]))
-		if seen.has(key):
-			continue
-		seen[key] = true
-		v += float(G.shop_price(int(m[c])))
-	n.free()
-	_value_cache[preset] = v
-	return v
+	return float(load("res://blocks.gd").preset_summary(preset)["value"])
+
+## WARMED OVER FRAMES, NOT AT THE FIRST EVENT: every ladder preset's layout built at once is about
+## 200 ms on the desktop (measured), a visible hitch on a phone in the poll that spawns a party.
+## One preset a frame from the spawner's start; a party asked before it finishes builds what it
+## still lacks itself.
+func _warm_values() -> void:
+	for row in PRESET_TIERS:
+		for p in row:
+			if not is_inside_tree():
+				return
+			preset_value(int(p))
+			await get_tree().process_frame
 
 ## The median build of a step - what "one machine at the ceiling" is worth.
 var _step_cache: Dictionary = {}
@@ -650,7 +648,7 @@ func _step_value(tier: int) -> float:
 ## asked for an attack gets one, from far enough to be seen coming. Bases (`as_base`) stand at
 ## their quest point and are left alone; allies (faction 0) too.
 const PLAYER_CLEAR := 100.0
-const CLEAR_PAD := 15.0          # a party stands ten metres round its point
+const CLEAR_PAD := 15.0          # past PLAYER_CLEAR; a party (quest_arcs.EV_PARTY_RING) stands inside it
 
 func _own_points() -> Array:
 	var out: Array = []
@@ -1122,7 +1120,7 @@ func _spawn_invader(locked: Node3D = null) -> void:
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = _variant(_tier_cap(_player()))
+		blocks.layout_preset = _variant(_tier_cap(locked if is_instance_valid(locked) else _player()))
 	vehicles.add_child(enemy)
 	var ang: float = randf() * TAU
 	var r: float = scan_half_size * 0.8

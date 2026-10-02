@@ -3,7 +3,7 @@ extends SceneTree
 # meshes resource.gd puts in its picture. Run on a copy of the project (CLAUDE.md §3):
 #   godot --headless --path <copy> --script res://art/item_models.gd
 # and copy resources/items/*.tres back. The INGOT is the artist's own (objects/Assets.glb
-# `ingot_metal`), tinted per metal by resource.gd. Their `coal` is not used: it samples a near-black
+# `ingot_metal`, saved out as resources/items/ingot.tres), tinted per metal by resource.gd. Their `coal` is not used: it samples a near-black
 # patch of the atlas and read as a black blot with no faces.
 #
 # RAW ORE IS A PIECE OF ITS VEIN (art/vein_models.gd): a rusty chunk of ferrite, a banded slab of
@@ -39,7 +39,17 @@ func _initialize() -> void:
 		_save(comps[i], "component%d" % i)
 	_save(_chunk(), "chunk")
 	_save(_coal(), "coal")
+	_save_ingot()
 	quit()
+
+## The artist's ingot, cut out of the library as it is (mesh, UVs, its own material): resource.gd
+## loads it like the other items instead of instancing objects/Assets.glb in a game frame.
+func _save_ingot() -> void:
+	var r: Node = (load("res://objects/Assets.glb") as PackedScene).instantiate()
+	var n := r.find_child("ingot_metal", true, false) as MeshInstance3D
+	var err := ResourceSaver.save(n.mesh, OUT + "ingot.tres")
+	print("ingot: %d triangles, save %d" % [n.mesh.get_faces().size() / 3, err])
+	r.free()
 
 func _save(st: SurfaceTool, name: String) -> void:
 	var m: ArrayMesh = st.commit()
