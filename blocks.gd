@@ -1207,6 +1207,10 @@ func _apply_output(inst: Node, key: String) -> void:
 		inst.set("output_comp", v)
 	elif "output_block" in inst:
 		inst.set("output_block", v)
+	# the recipe was read in the block's _ready, before this: a saved product loaded with the
+	# default recipe, and the plant took the wrong ingots
+	if inst.has_method("reload_recipe"):
+		inst.reload_recipe()
 
 ## Cell offsets of a block from its anchor. One cell for a normal block, eight for a 2x2x2. Public:
 ## the port window (port_picker) draws sides from these, and recomputing the footprint on the UI

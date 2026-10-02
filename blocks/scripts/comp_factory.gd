@@ -34,6 +34,13 @@ func _ready() -> void:
 	_res_scene = load(RESOURCE_SCENE) as PackedScene
 	_need = G.COMP_RECIPE.get(output_comp, {}).duplicate()
 
+# A belt holds an ingot of the recipe for us while we craft, instead of sending it past.
+func wants(item: Node3D) -> bool:
+	if not _factory_active() or _need.is_empty() or not is_instance_valid(item):
+		return false
+	var kind: String = item.kind_key() if item.has_method("kind_key") else ""
+	return _need.has(kind) and (_crafting or int(_have.get(kind, 0)) < int(_need[kind]))
+
 func try_receive(item: Node3D) -> bool:
 	if not _factory_active() or _crafting or _need.is_empty():
 		return false

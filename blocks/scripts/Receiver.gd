@@ -138,11 +138,45 @@ func _push_from_inventory() -> void:
 		var wait_on := _first_valid_target()
 		if wait_on != null and not waiting_for_next:
 			waiting_for_next = true
+			_wait_on = wait_on
 			wait_on.slot_freed.connect(_on_next_block_freed, CONNECT_ONE_SHOT)
 
 func _on_next_block_freed() -> void:
 	waiting_for_next = false
 	call_deferred("_push_from_inventory")  # ← тоже deferred
+
+## THE RETRY THE BASE CLASS GIVES EVERY OTHER BLOCK. FactoryBlock.push_retry_tick keys on
+## `current_item`, and the receiver keeps its goods in `inventory`, so it never ran here: a push was
+## tried only when an item came IN or the awaited neighbour signalled. Items taken before the belt
+## was laid (an anchored base in the garage takes everything in five metres at once) or while the
+## awaited belt was picked up and relaid then sat on the receiver for good - and at `capacity` it
+## stops taking, so nothing ever came in to kick it again.
+func push_retry_tick(delta: float) -> void:
+	if inventory.is_empty() or not _factory_active():
+		return
+	if waiting_for_next:
+		if is_instance_valid(_wait_on) and _wait_on.slot_freed.is_connected(_on_next_block_freed):
+			return
+		waiting_for_next = false
+	_retry_t -= delta
+	if _retry_t > 0.0:
+		return
+	_retry_t = PUSH_RETRY
+	_push_from_inventory()
+
+## HANDED IN BY A CHAIN NEIGHBOUR - a belt into its back, the auto miner - INTO THE SAME INVENTORY the
+## ground and the collectors fill. The base try_receive parked the item in `current_item`, which
+## nothing here ever reads: it sat on the receiver for good.
+func try_receive(item: Node3D) -> bool:
+	if not _factory_active() or inventory.size() >= capacity:
+		return false
+	if item == null or not is_instance_valid(item):
+		return false
+	_accept_item(item)
+	return true
+
+func can_accept() -> bool:
+	return _factory_active() and inventory.size() < capacity
 
 func _on_item_received() -> void:
 	pass
