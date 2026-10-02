@@ -53,62 +53,46 @@ func _on_collector_body_entered(body: RigidBody3D) -> void:
 ## Пока он не сработал, коллектор считал слот занятым и мог не взять следующую руду.
 func remove_from_inventory(item: Node) -> void:
 	inventory.erase(item)
-	# ВИДИМОСТЬ ВОЗВРАЩАЕМ ЗДЕСЬ, В ЕДИНСТВЕННОЙ ДВЕРИ НАРУЖУ. В тарелке виден только первый
-	# предмет, остальные спрятаны; уйди такой к приёмнику как есть — по ленте поехал бы
-	# невидимый груз. То же правило, по которому замурованный блок снова показывают, когда он
-	# покидает машину.
+	# The single door out puts the item back as a loose one: visible, seated as loose items sit.
 	if is_instance_valid(item) and item is Node3D:
 		(item as Node3D).visible = true
 		if item.has_method("unseat"):
 			item.unseat()
-	for i in inventory.size():
-		var it = inventory[i]
-		if is_instance_valid(it) and it is Node3D:
-			(it as Node3D).visible = i == 0
+	_layout()
 
-## ПОДОБРАННОЕ ЛЕЖИТ В ТАРЕЛКЕ, А НЕ СТОЛБОМ НАД НЕЙ. Раньше каждый следующий предмет вставал
-## на метр выше предыдущего (`y = индекс + 1`), и при ёмкости десять над коллектором вырастала
-## башня руды выше самой машины — на скриншоте это первое, что видно.
-##
-## Показываем ОДИН предмет, как это делает склад со своей витриной: содержимое всё равно
-## читается счётом, а не пересчётом камней в воздухе. Остальные не удаляем и не трогаем логикой
-## — только прячем, потому что приёмник забирает их по списку (remove_from_inventory).
+## WHAT IT PICKED UP STANDS IN A STACK IN THE BOWL, AS THE RECEIVER LIFTS ITS CARGO (the player's
+## call: it showed one and hid the rest, so a collector carrying five looked like it carried one).
+## Each item stands on the one under it (`model_height` + `STACK_GAP`): the first stack, of
+## metre-wide bubbles one metre apart, grew a tower taller than the machine - which is why it was
+## cut down to one.
 const HOLD_Y := 0.45
-## The held item's model stands this far under HOLD_Y: on the bowl's boss, not sunk in the block
-## (resource.seat).
+## The bottom item's model stands this far under HOLD_Y, on the bowl's boss (resource.seat).
 const HOLD_FOOT := -0.12
+const STACK_GAP := 0.02
 
-func fix_position_resources(body:Node3D):
-	if not is_instance_valid(body):
-		return                     # предмет забрали и уничтожили, пока вызов ждал кадра
-	var idx: int = maxi(inventory.find(body), 0)
-	body.position = Vector3(0, HOLD_Y, 0)
-	if body.has_method("seat"):
-		body.seat(HOLD_FOOT)
-	body.visible = idx == 0
-	# Первый в очереди мог смениться: предыдущий отдали приёмнику, и теперь видно должно быть
-	# то, что стало первым.
-	for i in inventory.size():
-		var it = inventory[i]
-		if is_instance_valid(it) and it is Node3D:
-			(it as Node3D).visible = i == 0
-
-# Столбик добычи над блоком. Сперва ЧИСТИМ список, потом раскладываем — и в таком порядке
-# по двум причинам.
-#
-# Во-первых, ссылка на освобождённый узел НЕ равна null: руду у коллектора забирает приёмник,
-# дальше она уезжает по ленте и может быть переплавлена или продана — то есть узла уже нет, а
-# в списке он ещё есть. Проверять его через get_parent() значило падать на мёртвом узле
-# («Attempt to call function 'get_parent' in base 'previously freed'»), поэтому фильтруем
-# по is_instance_valid.
-#
-# Во-вторых, erase ПРЯМО В ЦИКЛЕ по тому же массиву сдвигает хвост, и обход пропускает
-# элемент за каждым удалённым — часть добычи оставалась лежать друг в друге.
-func _on_resources_child_order_changed() -> void:
-	var holder := $resources
+func _layout() -> void:
+	var holder := get_node_or_null("resources")
+	if holder == null:
+		return                     # the block is being torn down; its children go first
 	inventory = inventory.filter(func(i):
 		return is_instance_valid(i) and i.get_parent() == holder)
+	var y := HOLD_Y
 	for idx in inventory.size():
 		var n := inventory[idx] as Node3D
-		if n != null:
-			n.position = Vector3(0, idx + 1, 0)
+		if n == null:
+			continue
+		n.position = Vector3(0, y, 0)
+		n.visible = true
+		if n.has_method("seat"):
+			n.seat(HOLD_FOOT)
+		y += (n.model_height() if n.has_method("model_height") else 0.3) + STACK_GAP
+
+func fix_position_resources(body: Node3D) -> void:
+	if not is_instance_valid(body):
+		return                     # taken and freed while the call waited for the frame
+	_layout()
+
+## The list is cleaned FIRST and laid out after: a node a receiver took may already be freed (a
+## freed reference is not null), and erasing inside the loop over the same array skipped items.
+func _on_resources_child_order_changed() -> void:
+	_layout()

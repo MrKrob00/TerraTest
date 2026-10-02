@@ -1,5 +1,5 @@
 extends SceneTree
-# THE LOOSE ITEM MODELS: raw ore per metal, a log, a component and a block chunk, low poly, saved as
+# THE LOOSE ITEM MODELS: raw ore per metal, a log, coal, one model per component and a block chunk, low poly, saved as
 # meshes resource.gd puts in its picture. Run on a copy of the project (CLAUDE.md §3):
 #   godot --headless --path <copy> --script res://art/item_models.gd
 # and copy resources/items/*.tres back. The INGOT is the artist's own (objects/Assets.glb
@@ -34,7 +34,9 @@ func _initialize() -> void:
 	_save(_silicate(), "ore2")
 	_save(_titanite(), "ore3")
 	_save(_log(), "wood")
-	_save(_component(), "component")
+	var comps := _components()
+	for i in comps.size():
+		_save(comps[i], "component%d" % i)
 	_save(_chunk(), "chunk")
 	_save(_coal(), "coal")
 	quit()
@@ -204,28 +206,6 @@ func _log() -> SurfaceTool:
 		_tri(st, bb[i], bb[j], Vector3(half, r, 0), c, WOOD_END)
 	return _foot(st)
 
-## COMPONENT: a machined part - a hex nut, its body in the component's colour round a dark bore.
-func _component() -> SurfaceTool:
-	var st := _begin()
-	var n := 6
-	var ro := 0.17
-	var ri := 0.07
-	var h := 0.12
-	var c := Vector3(0, h * 0.5, 0)
-	var ob: Array = []; var ot: Array = []; var ib: Array = []; var it: Array = []
-	for i in n:
-		var ang: float = TAU * float(i) / float(n)
-		var d := Vector3(cos(ang), 0, sin(ang))
-		ob.append(d * ro); ot.append(d * ro + Vector3(0, h, 0))
-		ib.append(d * ri); it.append(d * ri + Vector3(0, h, 0))
-	for i in n:
-		var j: int = (i + 1) % n
-		_quad(st, ob[i], ob[j], ot[j], ot[i], c, Color.WHITE)            # outer walls
-		_quad(st, ot[i], ot[j], it[j], it[i], c - Vector3(0, 1, 0), Color.WHITE)   # top face
-		_quad(st, ob[j], ob[i], ib[i], ib[j], c + Vector3(0, 1, 0), Color.WHITE)   # bottom face
-		_quad(st, ib[j], ib[i], it[i], it[j], c + (ib[i] + ib[j]) * 4.0, NUT_DARK)  # the bore, facing in
-	return _foot(st)
-
 ## CHUNK: a crate of packed blocks - a dark box with two GSO-blue straps.
 func _chunk() -> SurfaceTool:
 	var st := _begin()
@@ -251,3 +231,204 @@ func _coal() -> SurfaceTool:
 		_tri(st, rings[2][k], rings[2][j], Vector3(0.02, 0.26, -0.01), inside, CHARCOAL)
 		_tri(st, rings[0][j], rings[0][k], Vector3(0, -0.01, 0), inside, CHARCOAL)
 	return _foot(st)
+
+# ── COMPONENTS: one model each, after its name (G.COMP_NAME). The first six are made of two ingots,
+# the rest of two of those, and the model shows the parts it is made of where it can (the Torque
+# Motor carries the Wound Coil's windings, the Focus Cell the Contact Ring and the Prism Lens). The
+# body is TINTED (white here, the component's colour from resource.gd); the frames are fixed dark
+# metal, a lens fixed glass, a screen GSO blue - one pop colour, as the blocks keep it.
+const DARK := Color(0.30, 0.30, 0.35)       # 0.20 came out black on the real driver
+const GLASS := Color(0.62, 0.86, 0.92)
+const SCREEN := Color(0.30, 0.48, 0.80)
+const T := Color.WHITE
+
+## A frustum of `n` sides along `axis` from `c`, radius r0 at the start and r1 at the end.
+func _prism(st: SurfaceTool, c: Vector3, axis: Vector3, n: int, r0: float, r1: float, h: float,
+		col: Color, phase: float = 0.0) -> void:
+	axis = axis.normalized()
+	var u: Vector3 = axis.cross(Vector3.UP if absf(axis.y) < 0.9 else Vector3.RIGHT).normalized()
+	var v: Vector3 = axis.cross(u).normalized()
+	var a: Array = []
+	var b: Array = []
+	for i in n:
+		var ang: float = phase + TAU * float(i) / float(n)
+		var d: Vector3 = u * cos(ang) + v * sin(ang)
+		a.append(c + d * r0)
+		b.append(c + axis * h + d * r1)
+	var mid: Vector3 = c + axis * h * 0.5
+	for i in n:
+		var j: int = (i + 1) % n
+		_quad(st, a[i], a[j], b[j], b[i], mid, col)
+		if r0 > 0.001:
+			_tri(st, a[j], a[i], c, mid, col)
+		if r1 > 0.001:
+			_tri(st, b[i], b[j], c + axis * h, mid, col)
+
+## An annulus of `n` sides along `axis`: a ring with a hole, walls in and out.
+func _annulus(st: SurfaceTool, c: Vector3, axis: Vector3, n: int, ro: float, ri: float, h: float,
+		col: Color) -> void:
+	axis = axis.normalized()
+	var u: Vector3 = axis.cross(Vector3.UP if absf(axis.y) < 0.9 else Vector3.RIGHT).normalized()
+	var v: Vector3 = axis.cross(u).normalized()
+	var oa: Array = []; var ob: Array = []; var ia: Array = []; var ib: Array = []
+	for i in n:
+		var ang: float = TAU * float(i) / float(n)
+		var d: Vector3 = u * cos(ang) + v * sin(ang)
+		oa.append(c + d * ro); ob.append(c + axis * h + d * ro)
+		ia.append(c + d * ri); ib.append(c + axis * h + d * ri)
+	for i in n:
+		var j: int = (i + 1) % n
+		var mid: Vector3 = c + axis * h * 0.5 + (oa[i] + oa[j] - c * 2.0) * 0.5 * ((ro + ri) / (2.0 * ro))
+		_quad(st, oa[i], oa[j], ob[j], ob[i], mid, col)                      # outside
+		_quad(st, ia[j], ia[i], ib[i], ib[j], mid, col)                      # bore
+		_quad(st, ob[i], ob[j], ib[j], ib[i], mid - axis * h, col)           # end facing +axis
+		_quad(st, oa[j], oa[i], ia[i], ia[j], mid + axis * h, col)           # end facing -axis
+
+func _bx(st: SurfaceTool, c: Vector3, h: Vector3, col: Color, b: Basis = Basis()) -> void:
+	_box(st, c, b, h, col)
+
+const X := Vector3(1, 0, 0)
+const Y := Vector3(0, 1, 0)
+const Z := Vector3(0, 0, 1)
+
+func _components() -> Array:
+	var out: Array = []
+	for i in 21:
+		var st := _begin()
+		call("_comp%d" % i, st)
+		out.append(_foot(st))
+	return out
+
+## Wound Coil: windings on a spool between two dark flanges, lying on its side.
+func _comp0(st) -> void:
+	_prism(st, Vector3(-0.17, 0.14, 0), X, 8, 0.14, 0.14, 0.04, DARK, PI / 8)
+	_prism(st, Vector3(-0.13, 0.14, 0), X, 8, 0.11, 0.11, 0.26, T, PI / 8)
+	_prism(st, Vector3(0.13, 0.14, 0), X, 8, 0.14, 0.14, 0.04, DARK, PI / 8)
+
+## Cast Plating: a thick bevelled plate with a raised cross on it.
+func _comp1(st) -> void:
+	_prism(st, Vector3(0, 0, 0), Y, 4, 0.25, 0.21, 0.07, T, PI / 4)
+	_bx(st, Vector3(0, 0.085, 0), Vector3(0.16, 0.02, 0.035), T)
+	_bx(st, Vector3(0, 0.085, 0), Vector3(0.035, 0.02, 0.16), T)
+
+## Braced Strut: two rails held apart by three cross-braces.
+func _comp2(st) -> void:
+	for z in [-0.08, 0.08]:
+		_bx(st, Vector3(0, 0.035, z), Vector3(0.24, 0.035, 0.025), T)
+	for x in [-0.16, 0.0, 0.16]:
+		_bx(st, Vector3(x, 0.035, 0), Vector3(0.018, 0.025, 0.07), DARK, Basis(Y, 0.5 if x != 0.0 else -0.5))
+
+## Etched Wafer: a thin octagonal disc, a raised square die in the middle.
+func _comp3(st) -> void:
+	_prism(st, Vector3.ZERO, Y, 8, 0.2, 0.2, 0.025, T, PI / 8)
+	_bx(st, Vector3(0, 0.04, 0), Vector3(0.08, 0.015, 0.08), SCREEN)
+
+## Contact Ring: a flat ring with four contact pins standing up.
+func _comp4(st) -> void:
+	_annulus(st, Vector3.ZERO, Y, 10, 0.18, 0.11, 0.05, T)
+	for i in 4:
+		var a: float = TAU * float(i) / 4.0 + 0.4
+		_bx(st, Vector3(cos(a) * 0.145, 0.08, sin(a) * 0.145), Vector3(0.015, 0.035, 0.015), DARK)
+
+## Prism Lens: a triangular glass prism lying in a dark cradle.
+func _comp5(st) -> void:
+	_bx(st, Vector3(0, 0.02, 0), Vector3(0.2, 0.02, 0.09), DARK)
+	_prism(st, Vector3(-0.17, 0.12, 0), X, 3, 0.1, 0.1, 0.34, GLASS, PI / 2)
+
+## Shielded Winding: the coil inside a dark half-shell.
+func _comp6(st) -> void:
+	_comp0(st)
+	_bx(st, Vector3(0, 0.03, 0), Vector3(0.2, 0.03, 0.16), DARK)
+	for z in [-0.15, 0.15]:
+		_bx(st, Vector3(0, 0.14, z), Vector3(0.2, 0.14, 0.015), T)
+
+## Torque Motor: a drum with cooling ribs, a shaft out of one end, a mounting foot.
+func _comp7(st) -> void:
+	_bx(st, Vector3(0, 0.025, 0), Vector3(0.14, 0.025, 0.1), DARK)
+	_prism(st, Vector3(-0.15, 0.15, 0), X, 8, 0.12, 0.12, 0.28, T, PI / 8)
+	for x in [-0.1, 0.0, 0.1]:
+		_prism(st, Vector3(x - 0.012, 0.15, 0), X, 8, 0.135, 0.135, 0.024, DARK, PI / 8)
+	_prism(st, Vector3(0.13, 0.15, 0), X, 6, 0.035, 0.035, 0.12, DARK)
+
+## Signal Relay: a box with a small coil on its lid and two pins under it.
+func _comp8(st) -> void:
+	_bx(st, Vector3(0, 0.09, 0), Vector3(0.15, 0.07, 0.11), T)
+	_prism(st, Vector3(-0.08, 0.22, 0), X, 6, 0.05, 0.05, 0.16, DARK)
+	for x in [-0.08, 0.08]:
+		_bx(st, Vector3(x, 0.01, 0), Vector3(0.012, 0.02, 0.012), DARK)
+
+## Dynamo Rotor: a hub with six blades, lying flat.
+func _comp9(st) -> void:
+	_prism(st, Vector3.ZERO, Y, 8, 0.07, 0.07, 0.1, DARK, PI / 8)
+	for i in 6:
+		var a: float = TAU * float(i) / 6.0
+		_bx(st, Vector3(cos(a) * 0.15, 0.05, sin(a) * 0.15), Vector3(0.09, 0.012, 0.04), T, Basis(Y, -a) * Basis(X, 0.5))
+
+## Pulse Emitter: a body with a glass cone flaring out of its front.
+func _comp10(st) -> void:
+	_prism(st, Vector3(-0.18, 0.11, 0), X, 8, 0.1, 0.1, 0.2, T, PI / 8)
+	_prism(st, Vector3(0.02, 0.11, 0), X, 8, 0.07, 0.13, 0.14, GLASS, PI / 8)
+	_prism(st, Vector3(-0.2, 0.11, 0), X, 8, 0.11, 0.11, 0.03, DARK, PI / 8)
+
+## Armour Segment: a plate bent into a chevron, braced underneath.
+func _comp11(st) -> void:
+	for sd in [-1.0, 1.0]:
+		_bx(st, Vector3(sd * 0.1, 0.07, 0), Vector3(0.12, 0.025, 0.17), T, Basis(Z, sd * -0.35))
+	_bx(st, Vector3(0, 0.03, 0), Vector3(0.18, 0.02, 0.025), DARK)
+
+## Logic Housing: a box with a blue screen set into its top.
+func _comp12(st) -> void:
+	_bx(st, Vector3(0, 0.08, 0), Vector3(0.18, 0.08, 0.13), T)
+	_bx(st, Vector3(0, 0.165, 0), Vector3(0.12, 0.01, 0.08), SCREEN)
+
+## Sealed Bearing: a thick flat ring round a dark hub, seen from its face.
+func _comp13(st) -> void:
+	_annulus(st, Vector3.ZERO, Y, 12, 0.19, 0.09, 0.08, T)
+	_prism(st, Vector3.ZERO, Y, 8, 0.07, 0.07, 0.1, DARK, PI / 8)
+
+## Optic Shroud: a hood opening forward with a lens at its back.
+func _comp14(st) -> void:
+	_prism(st, Vector3(-0.16, 0.13, 0), X, 4, 0.08, 0.16, 0.3, T, PI / 4)
+	_prism(st, Vector3(-0.18, 0.13, 0), X, 8, 0.07, 0.07, 0.04, GLASS, PI / 8)
+
+## Servo Arm: two links with a joint between them and a two-finger claw.
+func _comp15(st) -> void:
+	_bx(st, Vector3(-0.1, 0.04, 0), Vector3(0.11, 0.035, 0.04), T)
+	_prism(st, Vector3(0.0, 0.0, -0.05), Z, 8, 0.05, 0.05, 0.1, DARK, PI / 8)
+	_bx(st, Vector3(0.07, 0.1, 0), Vector3(0.09, 0.03, 0.035), T, Basis(Z, 0.8))
+	for z in [-0.03, 0.03]:
+		_bx(st, Vector3(0.15, 0.18, z), Vector3(0.04, 0.012, 0.01), DARK, Basis(Z, 0.3))
+
+## Drive Axle: a shaft with a hub at each end.
+func _comp16(st) -> void:
+	_prism(st, Vector3(-0.22, 0.09, 0), X, 6, 0.03, 0.03, 0.44, DARK)
+	for x in [-0.2, 0.14]:
+		_prism(st, Vector3(x, 0.09, 0), X, 8, 0.09, 0.09, 0.06, T, PI / 8)
+
+## Sight Mount: a scope tube on a short post over a base plate.
+func _comp17(st) -> void:
+	_bx(st, Vector3(0, 0.015, 0), Vector3(0.11, 0.015, 0.09), T)
+	_bx(st, Vector3(0, 0.08, 0), Vector3(0.025, 0.05, 0.025), DARK)
+	_prism(st, Vector3(-0.15, 0.17, 0), X, 6, 0.045, 0.045, 0.3, T)
+	_prism(st, Vector3(0.15, 0.17, 0), X, 6, 0.045, 0.05, 0.02, GLASS)
+
+## Control Chip: a square chip with pins along all four sides.
+func _comp18(st) -> void:
+	_bx(st, Vector3(0, 0.03, 0), Vector3(0.13, 0.025, 0.13), DARK)
+	_bx(st, Vector3(0, 0.06, 0), Vector3(0.07, 0.008, 0.07), T)
+	for i in 4:
+		var d := Vector3(cos(TAU * i / 4.0), 0, sin(TAU * i / 4.0))
+		var side := Vector3(-d.z, 0, d.x)
+		for k in [-0.07, 0.0, 0.07]:
+			_bx(st, d * 0.15 + side * k + Vector3(0, 0.02, 0), Vector3(0.02, 0.008, 0.012), T, Basis(Y, -TAU * i / 4.0))
+
+## Optic Sensor: a box with a glass dome eye.
+func _comp19(st) -> void:
+	_bx(st, Vector3(0, 0.06, 0), Vector3(0.14, 0.06, 0.12), T)
+	_prism(st, Vector3(0, 0.12, 0), Y, 8, 0.09, 0.03, 0.08, GLASS, PI / 8)
+
+## Focus Cell: a cylinder cell with the Contact Ring round its middle and the Prism Lens's glass on top.
+func _comp20(st) -> void:
+	_prism(st, Vector3.ZERO, Y, 8, 0.11, 0.11, 0.26, T, PI / 8)
+	_annulus(st, Vector3(0, 0.1, 0), Y, 8, 0.14, 0.11, 0.05, DARK)
+	_prism(st, Vector3(0, 0.26, 0), Y, 8, 0.08, 0.02, 0.07, GLASS, PI / 8)
