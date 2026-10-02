@@ -195,6 +195,11 @@ func seat(foot: float) -> void:
 
 func unseat() -> void:
 	seat(FOOT_Y)
+
+## How tall the model stands - what a holder stacking items lays the next one on.
+func model_height() -> float:
+	var mesh := get_node_or_null("MeshInstance3D/ResourceMesh") as MeshInstance3D
+	return mesh.mesh.get_aabb().size.y if mesh != null and mesh.mesh != null else 0.3
 const ITEM_DIR := "res://resources/items/"
 static var _meshes: Dictionary = {}
 
@@ -237,7 +242,7 @@ func _update_visual() -> void:
 			key = "wood"
 			mat = _tint_material(Color.WHITE)
 		Type.COMPONENT:
-			key = "component"
+			key = "component%d" % clampi(component, 0, G.COMP_NAME.size() - 1)
 			var cc: Color = G.COMP_COLOR[component] if component >= 0 and component < G.COMP_COLOR.size() else Color.WHITE
 			mat = _tint_material(cc)
 		Type.CHUNK:

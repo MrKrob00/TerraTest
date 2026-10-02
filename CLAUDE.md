@@ -1526,11 +1526,14 @@ project: read it before claiming how anything works.
   `VBTN_SHOW_DIST`. The distance check must come BEFORE the early return in `_process`, or a label
   hidden once never comes back: ask the COUNT, not the current visibility. The enemy marker is NOT
   this bug — it is an ordinary billboard in world space and shrinks with distance as it should.
-- A COLLECTOR SHOWS ONE PICKED ITEM, not the stack. It used to place each one a metre above the
-  last (`y = index + 1`), so at capacity ten a tower of ore grew taller than the machine carrying
-  it. Same answer as the storage's showcase: one visible, the rest hidden — and the visibility
-  comes back at the SINGLE DOOR OUT (`remove_from_inventory`), or a hidden lump would ride the
-  belt invisible.
+- A COLLECTOR SHOWS WHAT IT CARRIES AS A STACK IN ITS BOWL, as the receiver lifts its cargo
+  (`collector._layout`, the player's call: showing one and hiding the rest made a collector carrying
+  five look like it carried one). Each item stands on the one under it by its model's height
+  (`resource.model_height` + `STACK_GAP`), the bottom one seated on the bowl's boss (`HOLD_FOOT`);
+  the receiver's beam stacks the same way from `STACK_BASE`. Both used to step a whole metre, the
+  bubble's size - ten picked items were a tower taller than the machine, which is why the collector
+  had been cut down to one. The single door out (`remove_from_inventory`) unseats the item and
+  shows it again.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
@@ -2240,7 +2243,10 @@ project: read it before claiming how anything works.
   times the metal's colour); the INGOT is the artist's `ingot_metal` from `objects/Assets.glb`,
   its pixel texture tinted per metal; wood a log, coal a charcoal lump with its facets showing (the
   artist's `coal` samples a near-black patch of the atlas and read as a blot), a component a hex
-  nut in its colour, a chunk a crate with GSO-blue straps. What the bubble was for - an item seen in
+  model per COMPONENT after its name (`G.COMP_NAME`: the Wound Coil a spool, the Torque Motor a
+  ribbed drum with a shaft, the Control Chip a pinned chip, the Focus Cell a cell with the Contact
+  Ring round it and glass on top...; body in the component's colour, dark metal, glass, a GSO-blue
+  screen), a chunk a crate with GSO-blue straps. What the bubble was for - an item seen in
   the grass - is ONE BILLBOARD QUAD (`resources/items/item_glow.gdshader`, additive, the item's
   colour, coal an ember), two triangles. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
   with its FOOT where the bubble's bottom was (`FOOT_Y`), so every belt slot, tray, mouth and hold

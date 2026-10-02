@@ -36,17 +36,29 @@ func _accept_item(item: Node3D) -> void:
 		item.freeze = true
 	item.reparent($resources, true)
 	inventory.append(item)
-	var target_pos: Vector3 = Vector3(0, inventory.find(item) + 1, 0)
+	var target_pos: Vector3 = _stack_pos(inventory.find(item))
 	var tween: Tween = create_tween()
 	tween.tween_property(item, "position", target_pos, 0.3)
 	_push_from_inventory()   # проталкиваем СРАЗУ (по событию), а не ждём тика таймера
 	_update_take_timer()     # набрали capacity → таймер забора сам остановится
 
+## The cargo it lifts stands in its beam from STACK_BASE up, each item on the one under it
+## (`model_height` + `STACK_GAP`); it used to be a metre a step, the bubble's.
+const STACK_BASE := 0.9
+const STACK_GAP := 0.06
+
+func _stack_pos(idx: int) -> Vector3:
+	var y := STACK_BASE
+	for i in mini(maxi(idx, 0), inventory.size()):
+		var it = inventory[i]
+		y += (it.model_height() if is_instance_valid(it) and it.has_method("model_height") else 0.3) + STACK_GAP
+	return Vector3(0, y, 0)
+
 func _fix_positions() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
 	for i in inventory:
 		var tween: Tween = create_tween()
-		tween.tween_property(i, "position", Vector3(0, inventory.find(i) + 1, 0), 0.3)
+		tween.tween_property(i, "position", _stack_pos(inventory.find(i)), 0.3)
 
 func _on_body_entered(body: Node3D) -> void:
 	if body is RigidBody3D and not vehicles_in_zone.has(body):
