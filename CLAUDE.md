@@ -761,7 +761,29 @@ project: read it before claiming how anything works.
   by LiteTerrain too, to skip its collision window).
 - The first enemy of a save deals halved damage (`FIRST_ENEMY_DAMAGE`); the story scout gets that
   discount unconditionally and drops along the player's heading — the one deliberate inversion of
-  "never spawn in front".
+  "never spawn in front" — but 115-135 m out, not 20-40: the clearance below holds for it too.
+- **NO HOSTILE MACHINE IS BORN WITHIN 100 M OF THE PLAYER'S OWN** (`EnemySpawner.PLAYER_CLEAR`, the
+  player's rule): the machine driven, a base, a truck parked at a vein - everything in the camera
+  controller's `vehicles`. A point too close is MOVED OUT, not refused (`clear_point`: out along the
+  line it lay on, then fanning to the sides), so an event that asked for an attack still gets one,
+  from far enough to be seen coming. The door is `spawn_at` (every quest, raid and event), plus the
+  three that place their own: the stream ring (inner edge `PLAYER_CLEAR + CLEAR_PAD`, checked
+  against every own machine, not only the driven one), the sector-scan invader (it dropped 25 m
+  away) and the story scout. A party is moved AS A WHOLE before its members are placed
+  (`_ev_spawn`, the duel), or each would be pushed its own way. Left alone: bases (`as_base`, they
+  are the quest point), allies (faction 0), and the proving-ground panel's own spawn
+  (`spawn_requested(..., free_place)`), whose point is the test. Measured: asked at 0 / 20 m - born
+  at 115; 70 m from the player and 10 from a parked truck - born 115 from the truck; Hold Position,
+  which used to drop the attack on the player's position, born at 119 m.
+- **AN EVENT'S PARTY IS SIZED BY THE PLAYER, NOT ONLY ITS MEMBERS** (`EnemySpawner.party_for_request`,
+  called by `_ev_spawn`). Each member was already capped to the ceiling, and three machines at the
+  ceiling are three times what the player was measured against. The party is held to
+  `PARTY_BUDGET` (1.6) times the median value of the ceiling step (`_step_value`, values measured
+  on the real layout, `preset_value`): the dearest member steps down first, and only with everyone
+  on the bottom step is the last one dropped; a single machine is never cut. THE SECTOR SCAN's
+  invader is the ceiling step too (`_variant(_tier_cap)`), not the fixed preset 9 it used to be.
+  Measured on a starter cabin (cap 0, budget 17.1k): the camp's 7/8/9 and the waves' 6/7/8 come as
+  one scout.
 - The build is picked against the player's machine value (`_pick_preset`); value sets a ceiling and
   the tier is rolled under it. Kill reward is measured once at birth.
 - **A KILL PAYS BY WHAT DIED, IN XP AS WELL AS RP** (`G.xp_for_kill`, paid in `enemy_vehicle._pay_out`

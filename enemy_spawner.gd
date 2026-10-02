@@ -81,9 +81,9 @@ var _seed_grace: float = -1.0
 @export var scan_max_interval: float = 900.0
 @export var scan_half_size: float = 32.0            # half-size of the square (4x4 chunks of 16 = 64)
 @export var scan_warn_time: float = 12.0            # seconds to escape
-@export var scan_preset: int = 9                    # heavy build (see blocks.gd layouts)
-## The invader drops from the usual drop_height: it appears at the square's edge, i.e. close,
-## and without the fall it read as "a machine materialised twenty metres away and opened fire".
+## The invader is the player's CEILING step (`_tier_cap`), not a named build: a fixed heavy preset
+## came for a starter cabin the same as for a finished base. It drops in PLAYER_CLEAR out from the
+## detected machine, already locked on, and drives the rest.
 
 @export_group("Шахтёры")
 ## НЕ ВСЕ, КТО ЕЗДИТ ПО МИРУ, ПРИЕХАЛИ ЗА ИГРОКОМ. Пока каждая встреченная машина означала бой,
@@ -566,6 +566,138 @@ func _machine_value(machine: Node3D) -> int:
 			v += G.shop_price(int(b.get("block")))
 	return v
 
+## A PARTY IS SIZED BY THE PLAYER, NOT ONLY ITS MEMBERS. `preset_for_request` caps each machine
+## at the player's ceiling, and three machines at the ceiling are still three times what the
+## player was measured against: a camp of lancer, crusher and siege on a starter cabin came as
+## three scouts, all locked on at once. So the whole party is held to PARTY_BUDGET times what one
+## machine of the ceiling step is worth (`_step_value`): the dearest member steps down first, and
+## only when everyone is on the bottom step does the party lose its last member. One machine is
+## never cut - a single member at the ceiling is the measure itself.
+const PARTY_BUDGET := 1.6
+
+func party_for_request(presets: Array) -> Array:
+	var out: Array = []
+	for p in presets:
+		out.append(preset_for_request(int(p)))
+	var player: Node3D = _player()
+	if player == null or PRESET_TIERS.is_empty() or out.size() <= 1:
+		return out
+	var budget: float = PARTY_BUDGET * _step_value(_tier_cap(player))
+	while out.size() > 1:
+		var total: float = 0.0
+		var dear: int = -1
+		var dear_t: int = 0
+		for i in out.size():
+			total += preset_value(int(out[i]))
+			var t: int = _tier_of(int(out[i]))
+			if t > dear_t:
+				dear_t = t
+				dear = i
+		if total <= budget:
+			break
+		if dear >= 0:
+			out[dear] = _variant(dear_t - 1)
+		else:
+			out.pop_back()
+	return out
+
+## What a build costs, measured on its REAL layout (`_init_map` + `_define_layout` on a blocks
+## node outside the tree, as the proving ground's cards do): the table row does not list the
+## floor, the plates or the second wing. Anchors, not cells, so a multi-cell block counts once.
+var _value_cache: Dictionary = {}
+
+func preset_value(preset: int) -> float:
+	if _value_cache.has(preset):
+		return float(_value_cache[preset])
+	var n := Node3D.new()
+	n.set_script(load("res://blocks.gd"))
+	n.set("layout_preset", preset)
+	n.call("_init_map")
+	n.call("_define_layout")
+	var m: Dictionary = n.get("map")
+	var owners: Dictionary = n.get("cell_owner")
+	var seen := {}
+	var v: float = 0.0
+	for c in m:
+		var key: String = String(owners.get("%d,%d,%d" % [c.x, c.y, c.z], "%d,%d,%d" % [c.x, c.y, c.z]))
+		if seen.has(key):
+			continue
+		seen[key] = true
+		v += float(G.shop_price(int(m[c])))
+	n.free()
+	_value_cache[preset] = v
+	return v
+
+## The median build of a step - what "one machine at the ceiling" is worth.
+var _step_cache: Dictionary = {}
+
+func _step_value(tier: int) -> float:
+	tier = clampi(tier, 0, PRESET_TIERS.size() - 1)
+	if _step_cache.has(tier):
+		return float(_step_cache[tier])
+	var vals: Array = []
+	for p in PRESET_TIERS[tier]:
+		vals.append(preset_value(int(p)))
+	vals.sort()
+	var med: float = float(vals[vals.size() / 2]) if not vals.is_empty() else 0.0
+	_step_cache[tier] = med
+	return med
+
+## NO HOSTILE MACHINE IS BORN WITHIN PLAYER_CLEAR OF THE PLAYER'S OWN - the machine driven, a base,
+## a truck parked at a vein (the player's rule). The door is `spawn_at`, which every quest, raid
+## and event goes through, plus the stream ring, the invader and the story scout, which place their
+## own. A point that is too close is not refused, it is MOVED OUT (`clear_point`): an event that
+## asked for an attack gets one, from far enough to be seen coming. Bases (`as_base`) stand at
+## their quest point and are left alone; allies (faction 0) too.
+const PLAYER_CLEAR := 100.0
+const CLEAR_PAD := 15.0          # a party stands ten metres round its point
+
+func _own_points() -> Array:
+	var out: Array = []
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller") if is_inside_tree() else null
+	if cc == null or not ("vehicles" in cc):
+		return out
+	for v in cc.vehicles:
+		if is_instance_valid(v) and v is Node3D:
+			out.append((v as Node3D).global_position)
+	return out
+
+func is_clear_of_player(pos: Vector3, own: Array = [], spread: float = 0.0) -> bool:
+	if own.is_empty():
+		own = _own_points()
+	var r: float = PLAYER_CLEAR + spread
+	for o in own:
+		if Vector2(pos.x - o.x, pos.z - o.z).length_squared() < r * r:
+			return false
+	return true
+
+## The point itself when it is clear; otherwise the nearest clear one found walking OUT from the
+## machine that is too close, along the line it already lay on, then fanning to either side
+## (a base and the truck beside it can both be in the way). `spread` is the radius the caller
+## will scatter a party over round the point.
+func clear_point(pos: Vector3, spread: float = 0.0) -> Vector3:
+	var own: Array = _own_points()
+	if own.is_empty() or is_clear_of_player(pos, own, spread):
+		return pos
+	var near: Vector3 = own[0]
+	for o in own:
+		if Vector2(pos.x - o.x, pos.z - o.z).length_squared() \
+				< Vector2(pos.x - near.x, pos.z - near.z).length_squared():
+			near = o
+	var away := Vector2(pos.x - near.x, pos.z - near.z)
+	var base_ang: float = atan2(away.y, away.x) if away.length_squared() > 0.01 else randf() * TAU
+	for ring in 6:
+		var r: float = PLAYER_CLEAR + spread + CLEAR_PAD + float(ring) * 30.0
+		for k in 7:
+			var a: float = base_ang + float((k + 1) / 2) * (PI / 6.0) * (1.0 if k % 2 == 1 else -1.0)
+			var c := Vector3(near.x + cos(a) * r, pos.y, near.z + sin(a) * r)
+			if is_clear_of_player(c, own, spread):
+				c.y = G.ground_y(c, pos.y)
+				return c
+	var far := Vector3(near.x + cos(base_ang) * 400.0, pos.y, near.z + sin(base_ang) * 400.0)
+	far.y = G.ground_y(far, pos.y)
+	return far
+
 ## A scout CLOSE to the player - the story spawn after the tutorial. The regular stream keeps
 ## "enemy vision + margin" so as not to pile on; here the point is that the player sees it at once,
 ## hence its own distance and the weakest build.
@@ -582,7 +714,8 @@ func _machine_value(machine: Node3D) -> int:
 const SCOUT_FRONT_SPREAD := 0.42            # +-24 deg: slightly aside so it does not land exactly on the nose
 ## Returns the enemy or null if scenes, map or player are missing. The spot is not validated: it
 ## drops in and rolls off a slope by itself, the same rule the ring spawn uses.
-func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D:
+func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
+		max_d: float = PLAYER_CLEAR + CLEAR_PAD + 20.0) -> Node3D:
 	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
 	var map: Node = _find_map()
@@ -598,7 +731,7 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 	var base: float = atan2(fwd.z, fwd.x) if fwd.length_squared() > 0.0001 else randf() * TAU
 	var ang: float = base + randf_range(-SCOUT_FRONT_SPREAD, SCOUT_FRONT_SPREAD)
 	var dist: float = randf_range(min_d, max_d)
-	var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	var world := clear_point(center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
 	# Height through the ONE function (project rule): until the map's heights are read, raw
 	# terrain_height_at returns zero and the scout would drop underground.
 	var pos := Vector3(world.x, G.ground_y(world, center.y) + drop_height, world.z)
@@ -652,6 +785,9 @@ func spawn_scout_near_player(min_d: float = 20.0, max_d: float = 40.0) -> Node3D
 ##
 ## Панель зовёт spawn_requested — единственный способ получить машину на полигоне.
 var _pg_request: bool = false
+## The panel's own spawn lands where it was asked, near the player included: testing a fight
+## at ten metres is what the proving ground is for. Quests on the polygon keep the clearance.
+var _pg_free: bool = false
 
 func _pg_blocked() -> bool:
 	return G.proving_ground and not _pg_request
@@ -659,10 +795,12 @@ func _pg_blocked() -> bool:
 ## Спавн ПО ЗАПРОСУ: снимает запрет полигона ровно на один вызов. Флаг здесь, а не на вызывающем:
 ## поднимать его снаружи значит однажды забыть опустить.
 func spawn_requested(pos: Vector3, preset: int, faction_id: int = 1,
-		as_base: bool = false) -> Node3D:
+		as_base: bool = false, free_place: bool = false) -> Node3D:
 	_pg_request = true
+	_pg_free = free_place
 	var e: Node3D = spawn_at(pos, preset, faction_id, as_base)
 	_pg_request = false
+	_pg_free = false
 	return e
 
 ## РОЛЬ СЛЕДУЕТ ИЗ СБОРКИ, А НЕ ОТ ТОГО, КТО ПОПРОСИЛ МАШИНУ. Флаг `miner` поднимался только в
@@ -696,6 +834,8 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 		enemy.set("faction", faction_id)
 	if not as_base:
 		_apply_role(enemy, preset)
+		if faction_id != 0 and not _pg_free:
+			pos = clear_point(pos)
 	vehicles.add_child(enemy)
 	if as_base:
 		enemy.global_position = Vector3(pos.x, G.ground_y(pos, pos.y) + 0.5, pos.z)
@@ -794,8 +934,9 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 			return per[a] < per[b]
 		return back[a] < back[b])
 	# Ring bounds are computed ONCE per search: enemy vision does not change during the loop.
-	var near: float = _spawn_min_dist()
+	var near: float = maxf(_spawn_min_dist(), PLAYER_CLEAR + CLEAR_PAD)
 	var far: float = maxf(spawn_max_dist, near + 20.0)   # the ring cannot be inside out
+	var own: Array = _own_points()
 	# Several attempts inside a sector: a point may be taken by a neighbour, the player's heading or a
 	# quiet zone.
 	for sec in order:
@@ -811,6 +952,8 @@ func _find_spawn_pos(map: Node, center: Vector3, exclude: Node = null):
 				continue                       # по курсу и близко — игрок увидел бы появление
 			if _near_anchored_base(cand):
 				continue                       # quiet zone: no spawns near an anchored player machine
+			if not is_clear_of_player(cand, own):
+				continue                       # the ring is round the driven machine, not round a base
 			return cand
 	return null
 
@@ -979,16 +1122,14 @@ func _spawn_invader(locked: Node3D = null) -> void:
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		blocks.layout_preset = scan_preset      # reinforced build
+		blocks.layout_preset = _variant(_tier_cap(_player()))
 	vehicles.add_child(enemy)
 	var ang: float = randf() * TAU
 	var r: float = scan_half_size * 0.8
-	var wp: Vector3 = _scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r)
-	var h: float = map.terrain_height_at(wp) if map.has_method("terrain_height_at") else wp.y
-	# It FALLS from height rather than appearing on the ground. It shows up at the edge of the square,
-	# i.e. near the player; for someone standing still that read as "a machine materialised twenty metres
-	# away and opened fire". The fall gives the seconds in which it can be seen and heard.
-	enemy.global_position = Vector3(wp.x, h + drop_height, wp.z)
+	var wp: Vector3 = clear_point(_scan_center + Vector3(cos(ang) * r, 0.0, sin(ang) * r))
+	# It FALLS from height rather than appearing on the ground: the fall gives the seconds in which
+	# it can be seen and heard.
+	enemy.global_position = Vector3(wp.x, G.ground_y(wp, _scan_center.y) + drop_height, wp.z)
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
