@@ -1553,6 +1553,15 @@ project: read it before claiming how anything works.
 - A REFUSED PLACEMENT SAYS WHY. Silent `return` reads exactly like "I missed": the ghost is still
   on the cell, the block is still in hand, and closing the garage then returns it to the inventory —
   from the outside that is "the block I placed vanished".
+- **A DOUBLE TAP ON THE GROUND THROWS THE BLOCK IN THE HAND OUT** (`vehicle_body_3d._drop_on_ground_tap`,
+  in driving and in building alike, the player's call): it lands at the tapped point as an ordinary
+  loose block, pulled in to `G.BUILD_REACH` of the machine. Only when the re-aim found no cell on a
+  machine and no ground core (a cabin or a stationary block keeps "double tap on the ground = new
+  machine / base"), and only when the first thing the ray meets is the ground. Measured with real
+  touches: in both modes the gun landed within 0.5 m of the aim, unfrozen, the hand empty.
+- THE BUILD PANELS COUNT AS HUD FOR A WORLD TAP (`_UI_HIT_PANELS`: the turn buttons, the hand panel, the
+  globe). On a phone the hovered control is empty once the finger lifts, so a press on a turn button
+  also reached the world as a tap there and re-aimed the preview away.
 - PICKING A BLOCK UP OFF THE GROUND OPENS ASSEMBLY, AND THAT IS A SETTING (`G.build_on_pickup`,
   in the garage settings under BUILDING), not a rule. The block has nowhere to go but onto a
   machine, so for one player the mode switch is a tap saved; for another, who collects scrap on
