@@ -254,6 +254,8 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_REGEN:     700,
 	G.Block.MARLIT_WHEEL:     260,
 	G.Block.MARLIT_GUN:       200,
+	G.Block.MARLIT_BATTERY:   900,     # a battery's toughness, by its eight cells, less the open bays
+	G.Block.MARLIT_WIRELESS:  400,
 	G.Block.MARLIT_OCTO:      4700,    # 27 cells at the basic block's rate
 }
 const DEFAULT_HP := 90
@@ -300,6 +302,8 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_REGEN:     55.0,
 	G.Block.MARLIT_WHEEL:     50.0,
 	G.Block.MARLIT_GUN:       28.0,
+	G.Block.MARLIT_BATTERY:   140.0,
+	G.Block.MARLIT_WIRELESS:  45.0,
 	G.Block.MARLIT_OCTO:      300.0,
 	G.Block.DRILL:     25.0,
 	G.Block.COLLECTOR: 12.0,
@@ -489,7 +493,7 @@ func _check_critical() -> void:
 
 ## This block's chance to tear off when it first goes under DROP_FRAC; WeaponBlock overrides it.
 func _drop_chance() -> float:
-	if block == G.Block.BATTERY:
+	if block in G.BATTERY_BLOCKS:
 		return DROP_CHANCE_BATTERY
 	if ARMOR_BLOCKS.has(block):
 		return DROP_CHANCE_ARMOR
@@ -503,7 +507,7 @@ func _drop_chance() -> float:
 ## её ломает, а не лечь под ноги трофеем, чем бы её ни сбили — попаданием, фитилём или гибелью
 ## самой постройки (в том числе когда сломали блок поддержки и всё посыпалось).
 func is_volatile() -> bool:
-	if block != G.Block.BATTERY:
+	if not (block in G.BATTERY_BLOCKS):
 		return false
 	var veh: Node = _root_body()
 	return veh != null and veh.has_meta("volatile_batteries")
@@ -659,7 +663,7 @@ func destroy() -> void:
 	var blast_r: float = 0.0
 	var blast_d: int = 0
 	var blast_f: float = 0.0
-	if block == G.Block.BATTERY:
+	if block in G.BATTERY_BLOCKS:
 		var k: float = _charge01()
 		var ord_hp: float = float(int(BLOCK_HP.get(G.Block.BLOCK, DEFAULT_HP)))
 		blast_r = lerpf(BATTERY_BLAST_RADIUS_EMPTY, BATTERY_BLAST_RADIUS_FULL, k)

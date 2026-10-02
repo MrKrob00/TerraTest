@@ -2019,6 +2019,16 @@ project: read it before claiming how anything works.
   to fire is the big armour plates. `MARLIT_SHIELD` is RETIRED onto `MARLIT_BLOCK` (same 2x2x2), the
   enum value kept for saves; the hatch model, its scene and `marlit_shield.gd` stay as a DRAFT the
   game never loads, and `shield.gd` keeps the per-instance fields it was given for it.
+- **THE MARLIT ACCUMULATOR AND WIRELESS CHARGER RUN THE FALSUS SCRIPTS** (`MARLIT_BATTERY` 67 on
+  `battery.gd`, capacity 15000, 2x2x2, joins on all six faces; `MARLIT_WIRELESS` 68 on
+  `wireless_marlit.gd`, 2x1x2 like the bracket, joins by its back only). Models from
+  `art/emitter_models.py` marlit_battery / marlit_wireless, approved by the player. The battery's
+  eight gauge bars are `Seg0..7` and its cells' two energy rings `Ring0` (anything in it) / `Ring1`
+  (over half), all shrunk dark like the Falsus rings. Everything that meant "a battery" now asks
+  `G.BATTERY_BLOCKS` - drop chance, the volatile tower rule, the charge-scaled blast - not
+  `Block.BATTERY`. The charger's disc is its `Ring` and the beam leaves its middle (`emit_at`, set
+  in `_init`). Measured: segments 0/1/4/5/8 at charge 0/0.1/0.5/0.51/1, rings off/low/low/both/both;
+  75 energy a second into a battery 30 m away, beam on, disc at 5 rad/s.
 - **THE MARLIT REPAIR UNIT IS FALSUS'S, SUBCLASSED, AT MARLIT'S NUMBERS** (`regen_marlit.gd` extends
   `regen.gd`; 2x2x2, joining on all six faces; the draft shield below was built the same way on
   `shield.gd`).

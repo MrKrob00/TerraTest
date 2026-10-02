@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://cmarlitwless68"]
+
+[ext_resource type="Script" path="res://blocks/scripts/wireless_marlit.gd" id="1_s"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wireless_body.tres" id="body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wireless_disc.tres" id="disc"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_wireless_lens.tres" id="lens"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 1, 2)
+
+[node name="marlit_wireless" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_s")
+block = 68
+connect_faces = 2
+cells_center = Vector3(-0.5, 0, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("body")
+
+[node name="Ring" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.7)
+mesh = ExtResource("disc")
+
+[node name="Lens" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.7)
+mesh = ExtResource("lens")

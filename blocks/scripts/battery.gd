@@ -48,6 +48,11 @@ const BLINK_MS: int = 400
 
 var _segs: Array[Node3D] = []
 var _shown: int = -1
+## The Marlit accumulator's cells carry two energy rings (Ring0 low, Ring1 high): the low one lit
+## while anything is in it, the high one over RING_HIGH. Dark, a ring shrinks into its groove like
+## a segment.
+const RING_HIGH: float = 0.5
+var _rings: Array[Node3D] = []
 
 func _ready() -> void:
 	moving_parts = true
@@ -57,6 +62,10 @@ func _ready() -> void:
 	while get_node_or_null("Seg%d" % i) != null:
 		_segs.append(get_node("Seg%d" % i) as Node3D)
 		i += 1
+	for k in 2:
+		var r := get_node_or_null("Ring%d" % k) as Node3D
+		if r != null:
+			_rings.append(r)
 	super._ready()
 
 # Polled rather than set from charge_add/charge_take: the save and the enemy's full start write
@@ -73,3 +82,6 @@ func _process(_delta: float) -> void:
 	_shown = lit
 	for i in _segs.size():
 		_segs[i].scale = Vector3.ONE if i < lit else Vector3.ONE * SEG_OFF
+	for k in _rings.size():
+		var on: bool = f > 0.0 if k == 0 else f > RING_HIGH
+		_rings[k].scale = Vector3.ONE if on else Vector3.ONE * SEG_OFF

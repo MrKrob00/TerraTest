@@ -33,8 +33,10 @@ var _t: float = 0.0
 ## The two coils (art/emitter_models.py build_wireless) turn while energy flows
 ## and runs down when it stops - the block's own "working" sign, next to the beam.
 const RING_SPIN: float = 5.0         # rad/s while transmitting
-## Where the beam leaves: between the two coils (art/emitter_models.py WL_COILS_Y).
+## Where the beam leaves: between the two coils (art/emitter_models.py WL_COILS_Y). A faction's
+## charger moves it in `_init` (the Marlit disc's middle).
 const EMIT := Vector3.ZERO
+var emit_at: Vector3 = EMIT
 const RING_EASE: float = 3.0
 var _ring: Node3D = null
 var _ring_w: float = 0.0
@@ -163,7 +165,7 @@ func _show_beam(on: bool) -> void:
 func _aim_beam(to: Vector3) -> void:
 	if _beam == null:
 		return
-	var from: Vector3 = global_transform * EMIT
+	var from: Vector3 = global_transform * emit_at
 	var mid: Vector3 = (from + to) * 0.5
 	var beam_len: float = from.distance_to(to)
 	if beam_len < 0.05:
