@@ -59,6 +59,8 @@ func remove_from_inventory(item: Node) -> void:
 	# покидает машину.
 	if is_instance_valid(item) and item is Node3D:
 		(item as Node3D).visible = true
+		if item.has_method("unseat"):
+			item.unseat()
 	for i in inventory.size():
 		var it = inventory[i]
 		if is_instance_valid(it) and it is Node3D:
@@ -72,12 +74,17 @@ func remove_from_inventory(item: Node) -> void:
 ## читается счётом, а не пересчётом камней в воздухе. Остальные не удаляем и не трогаем логикой
 ## — только прячем, потому что приёмник забирает их по списку (remove_from_inventory).
 const HOLD_Y := 0.45
+## The held item's model stands this far under HOLD_Y: on the bowl's boss, not sunk in the block
+## (resource.seat).
+const HOLD_FOOT := -0.12
 
 func fix_position_resources(body:Node3D):
 	if not is_instance_valid(body):
 		return                     # предмет забрали и уничтожили, пока вызов ждал кадра
 	var idx: int = maxi(inventory.find(body), 0)
 	body.position = Vector3(0, HOLD_Y, 0)
+	if body.has_method("seat"):
+		body.seat(HOLD_FOOT)
 	body.visible = idx == 0
 	# Первый в очереди мог смениться: предыдущий отдали приёмнику, и теперь видно должно быть
 	# то, что стало первым.

@@ -20,7 +20,7 @@ extends FactoryBlock
 const SELL_A := Color(1.0, 0.82, 0.22)
 const SELL_B := Color(0.45, 1.0, 0.55)
 const SELL_FX_TIME := 0.45
-const LIFT_SCALE := 0.5          # the goods shrink to ride inside the shaft's rails
+const LIFT_SCALE := 0.8          # the goods shrink to ride inside the shaft's rails
 const SHAFT_TOP := 0.92          # where they vanish into the roof (just under SL_TOP)
 const RING_SPIN := 14.0          # rad/s right after a sale
 const RING_EASE := 7.0           # rad/s per second back down

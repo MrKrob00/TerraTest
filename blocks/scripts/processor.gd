@@ -31,7 +31,7 @@ const FACE_RIGHT_IDX := 3
 ## the tick; the move into cell 2 lifts the front hatch, and out of it comes the product under a hot
 ## glitch, sliding RIGHT to the exit and growing back while the gauge drains. upgrade() is still
 ## called by the tick, so the product never depends on a tween finishing - only the picture does.
-const IN_FURNACE := 0.42         # the item's scale in the mouth (it is a metre-wide bubble)
+const IN_FURNACE := 0.85         # the item's scale in the mouth: the item models are ~0.45 m, the mouth 0.42 high
 const LEG := 0.3                 # seconds per leg of the path
 const HATCH_LIFT := 0.42         # the mouth's height: a lifted hatch clears it
 const HATCH_TIME := 0.12

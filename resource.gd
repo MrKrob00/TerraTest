@@ -34,9 +34,6 @@ const CHUNK_MAX := 24
 
 @export var type: Type = Type.ORE
 
-# Материалы для каждого типа — назначаешь в инспекторе
-@export var ore_material: Material
-@export var ingot_material: Material
 
 ## Вдали от игрока коллизия чанков не прогружена → ресурс проваливался «за окно коллизий»
 ## в пустоту. Вместо коллизии под каждым (сотни!) — прижимаем ресурс к ПОВЕРХНОСТИ heightmap
@@ -178,60 +175,141 @@ func upgrade() -> void:
 		# КОМПОНЕНТЫ процессор не трогает: их варит только Component Factory по рецепту.
 	_update_visual()
 
+## THE ITEM'S PICTURE IS ITS OWN MODEL (art/item_models.gd; the ingot is the artist's,
+## objects/Assets.glb): raw ore is a piece of its vein, so the shape tells the metal and the stage at
+## once. It used to be one octahedron in a metre-wide additive bubble - 256 triangles of bubble -
+## and the stage was told by squashing the octahedron. The model stands with its foot where the
+## bubble's bottom was (`FOOT_Y`): the body keeps its half-metre sphere, so every belt slot, tray
+## and hold height made for the bubble still holds it, and the rotation is locked in the scene so a
+## rolling sphere cannot swing the model round its centre.
+const FOOT_Y := -0.48
+## Where the model's foot stands below the item's origin. A HOLDER that shows an item sitting IN
+## something (the collector's bowl, the storage's tray) puts the origin on that surface and calls
+## `seat(...)`: those heights were set for the bubble's middle, and at FOOT_Y the model sank into
+## the box. `unseat()` at the holder's single door out.
+var _foot: float = FOOT_Y
+
+func seat(foot: float) -> void:
+	_foot = foot
+	_update_visual()
+
+func unseat() -> void:
+	seat(FOOT_Y)
+const ITEM_DIR := "res://resources/items/"
+static var _meshes: Dictionary = {}
+
+static func _item_mesh(key: String) -> Mesh:
+	if _meshes.has(key):
+		return _meshes[key]
+	var m: Mesh = null
+	if key == "ingot":
+		var ps: PackedScene = load("res://objects/Assets.glb")
+		if ps != null:
+			var r: Node = ps.instantiate()
+			var n := r.find_child("ingot_metal", true, false) as MeshInstance3D
+			m = n.mesh if n != null else null
+			r.free()
+		_meshes[key] = m
+		return m
+	if ResourceLoader.exists(ITEM_DIR + key + ".tres"):
+		m = load(ITEM_DIR + key + ".tres")
+	_meshes[key] = m
+	return m
+
 func _update_visual() -> void:
-	var mesh = get_node_or_null("MeshInstance3D/ResourceMesh")
+	var mesh := get_node_or_null("MeshInstance3D/ResourceMesh") as MeshInstance3D
 	if mesh == null:
 		return
-	# Форма: руда — шар, слиток — примятый (сплющенный) шар внутри внешней сферы.
-	# Внешний шар (MeshInstance3D) не трогаем — меняем только внутренний ResourceMesh.
-	# Чанк — кубик: видно, что это упаковка, а не руда. Сколько внутри, показывает склад
-	# своей табличкой; рисовать счётчик на каждом едущем предмете было бы дорого.
-	if type == Type.CHUNK:
-		mesh.scale = Vector3(0.8, 0.8, 0.8)
-		return
-	# Компонент — вытянутая «деталь»: по силуэту сразу видно, что это уже не сырьё. Металл
-	# различается цветом, а вот руда/слиток/деталь должны читаться и на расстоянии, где цвет
-	# сливается, — поэтому у каждой ступени переработки своя форма.
-	if type == Type.COMPONENT:
-		mesh.scale = Vector3(0.5, 0.9, 1.2)
-		if component >= 0 and component < G.COMP_COLOR.size():
-			mesh.material_override = _tint_material(G.COMP_COLOR[component])
-		return
-	mesh.scale = Vector3(1.3, 0.3, 1.3) if type == Type.INGOT else Vector3.ONE
-	# Уголь всегда тёмный, дерево всегда коричневое: тинт жилы к ним не применяется.
-	if type == Type.COAL:
-		mesh.material_override = _coal_material()
-		return
-	if type == Type.WOOD:
-		mesh.material_override = _tint_material(WOOD_COLOR)
-		return
-	if _has_tint:
-		mesh.material_override = _tint_material(_tint)
-		return
+	var key := ""
+	var mat: Material = null
 	match type:
 		Type.ORE:
-			if ore_material:
-				mesh.material_override = ore_material
+			var m: int = clampi(metal, 0, 3)
+			key = "ore%d" % m
+			mat = _tint_material(_tint if _has_tint else G.METAL_COLOR[m])
 		Type.INGOT:
-			if ingot_material:
-				mesh.material_override = ingot_material
+			key = "ingot"
+			mat = _ingot_material(_tint if _has_tint else (G.METAL_COLOR[metal] if metal >= 0 else Color(0.8, 0.8, 0.85)))
+		Type.COAL:
+			key = "coal"
+			mat = _tint_material(Color.WHITE)
+		Type.WOOD:
+			key = "wood"
+			mat = _tint_material(Color.WHITE)
+		Type.COMPONENT:
+			key = "component"
+			var cc: Color = G.COMP_COLOR[component] if component >= 0 and component < G.COMP_COLOR.size() else Color.WHITE
+			mat = _tint_material(cc)
+		Type.CHUNK:
+			key = "chunk"
+			mat = _tint_material(Color.WHITE)
+	var mm: Mesh = _item_mesh(key)
+	if mm == null:
+		return
+	var glow := get_node_or_null("MeshInstance3D") as MeshInstance3D
+	if glow != null and glow.mesh != null:
+		glow.material_override = _glow_material(_glow_colour())
+	mesh.mesh = mm
+	mesh.material_override = mat
+	mesh.scale = Vector3.ONE
+	var box: AABB = mm.get_aabb()
+	var mid: Vector3 = box.position + box.size * 0.5
+	mesh.position = Vector3(-mid.x, _foot - box.position.y, -mid.z)
 
+## THE GLOW IS ONE BILLBOARD QUAD (resources/items/item_glow.gdshader), two triangles where the
+## bubble was 256: it keeps what the bubble was for - an item in the grass is seen from across the
+## base - in the item's own colour, behind its model.
+static var _glow_mats: Dictionary = {}
+const GLOW_SHADER := preload("res://resources/items/item_glow.gdshader")
+
+func _glow_colour() -> Color:
+	match type:
+		Type.COAL:
+			return Color(0.9, 0.22, 0.08)          # an ember
+		Type.WOOD:
+			return Color(0.85, 0.65, 0.35)
+		Type.CHUNK:
+			return Color(0.45, 0.65, 1.0)
+		Type.COMPONENT:
+			return G.COMP_COLOR[component] if component >= 0 and component < G.COMP_COLOR.size() else Color.WHITE
+	if _has_tint:
+		return _tint
+	return G.METAL_COLOR[clampi(metal, 0, 3)]
+
+static func _glow_material(c: Color) -> ShaderMaterial:
+	var key := c.to_rgba32()
+	if _glow_mats.has(key):
+		return _glow_mats[key]
+	var m := ShaderMaterial.new()
+	m.shader = GLOW_SHADER
+	m.set_shader_parameter("tint", c)
+	_glow_mats[key] = m
+	return m
+
+## Unshaded vertex colour times `c`: the models carry their facets' tones as grey (a fixed part,
+## bark or a crate's strap, carries its own colour and is drawn with white).
 func _tint_material(c: Color) -> StandardMaterial3D:
 	var key := c.to_rgba32()
 	var cached = _tint_mats.get(key)
 	if cached == null:
 		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.vertex_color_use_as_albedo = true
+		m.vertex_color_is_srgb = true
 		m.albedo_color = c
-		m.emission_enabled = true
-		m.emission = c * 0.4
 		_tint_mats[key] = m
 		cached = m
 	return cached
 
-static var _coal_mat: StandardMaterial3D = null
-static func _coal_material() -> StandardMaterial3D:
-	if _coal_mat == null:
-		_coal_mat = StandardMaterial3D.new()
-		_coal_mat.albedo_color = Color(0.12, 0.12, 0.14)
-		_coal_mat.roughness = 0.95
-	return _coal_mat
+## The artist's ingot keeps its own texture (the bevels and the pixel shine), tinted by the metal.
+static var _ingot_mats: Dictionary = {}
+static func _ingot_material(c: Color) -> Material:
+	var key := c.to_rgba32()
+	if _ingot_mats.has(key):
+		return _ingot_mats[key]
+	var base: Mesh = _item_mesh("ingot")
+	var src: Material = base.surface_get_material(0) if base != null else null
+	var m: BaseMaterial3D = (src as BaseMaterial3D).duplicate() if src is BaseMaterial3D else StandardMaterial3D.new()
+	m.albedo_color = c
+	_ingot_mats[key] = m
+	return m
