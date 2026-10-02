@@ -1104,6 +1104,7 @@ func _on_building_pressed() -> void:
 # проглатывался. Езде это не мешает: джойстик работает ПЕРЕТАСКИВАНИЕМ, а подбор — коротким
 # двойным тапом, и одно от другого отличает _build_tap_moved.
 const _UI_HIT_NODES := ["Take", "TakeOff", "Attack", "ModeToggle"]
+const _UI_HIT_PANELS := ["_rotate_panel", "_hand_panel", "_block_globe"]
 
 # Пришёлся ли указатель на интерактивный HUD? На ПК hover-контрол ловит это сам. На ТАЧЕ
 # gui_get_hovered_control после отрыва пальца врёт (hover «висит» пусто), из-за чего тап по
@@ -1123,6 +1124,15 @@ func _tap_over_ui(pos: Vector2) -> bool:
 		if n is Control and (n as Control).get_global_rect().has_point(pos):
 			return true
 		if n is TouchScreenButton and _tsb_hit(n as TouchScreenButton, pos):
+			return true
+	# THE BUILD PANELS TOO: the turn buttons, the hand panel and the block globe. On a phone the
+	# hovered control is empty once the finger lifts, so a press on a turn button also reached the
+	# world as a tap there - it re-aimed past the machine and threw the preview away, and the
+	# block turned in the hand instead of where it was shown.
+	for field in _UI_HIT_PANELS:
+		var c = hud.get(field)
+		if c is Control and is_instance_valid(c) and (c as Control).is_visible_in_tree() \
+				and (c as Control).get_global_rect().has_point(pos):
 			return true
 	return false
 
@@ -2020,7 +2030,8 @@ func _commit_build_tap(screen_pos: Vector2) -> void:
 		# наводки в этот кадр могло не прийти вовсе: ставили туда, куда показывали РАНЬШЕ, а
 		# отказ (клетка занята) выглядел как «блок просто не ставится».
 		_handle_click(screen_pos)
-		_on_take_pressed()               # поставить блок из руки (или наземное ядро — кабина/база)
+		if not _drop_on_ground_tap(screen_pos):
+			_on_take_pressed()           # поставить блок из руки (или наземное ядро — кабина/база)
 		used = true                      # блок в руке — жест наш в любом случае
 	else:
 		used = _maybe_grab_on_tap(screen_pos)   # взять блок машины / свободный блок или ресурс
@@ -2515,6 +2526,54 @@ func drop_hand_to_world() -> void:
 	instance.reparent(objects)            # VehicleBlock сам разморозится (parent == "objects")
 	instance.scale = Vector3.ONE
 	_clear_hand()
+
+## A DOUBLE TAP ON THE GROUND THROWS THE BLOCK IN THE HAND OUT, in driving and in building alike
+## (the player's call): the block lands at the tapped point as an ordinary loose block. Only when the
+## tap aimed at nothing on a machine (`_preview_res` empty after the re-aim) and at no ground core
+## (a cabin or a stationary block placed on the ground as a new machine or base keeps that gesture).
+## The first thing the ray meets has to be the ground - a tap on another machine throws nothing -
+## and the point is pulled in to `G.BUILD_REACH` of the machine, the reach the build draws blocks
+## from, so a block is never thrown across the map.
+func _drop_on_ground_tap(screen_pos: Vector2) -> bool:
+	if hand_kind != Hand.BLOCK or _preview_res != null or _cabin_ground != null:
+		return false
+	var inst := _hand_instance()
+	if inst == null or _is_resource(inst) or not ("block" in inst) or int(inst.get("block")) == G.Block.CABIN:
+		return false
+	if camera_controller == null or camera_controller.camera == null:
+		return false
+	var cam: Camera3D = camera_controller.camera
+	var from: Vector3 = cam.project_ray_origin(screen_pos)
+	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 400.0)
+	q.collision_mask = 1 | 2 | 16                  # ground, blocks, machines: the first one decides
+	if inst is CollisionObject3D:
+		q.exclude = [(inst as CollisionObject3D).get_rid()]
+	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
+	if hit.is_empty():
+		return false
+	var col := hit.get("collider") as CollisionObject3D
+	if col == null or (col.collision_layer & 1) == 0 or col is MachineBody or col is VehicleBlock:
+		return false                               # not the ground
+	var p: Vector3 = hit["position"]
+	var flat := Vector3(p.x - global_position.x, 0.0, p.z - global_position.z)
+	if flat.length_squared() > G.BUILD_REACH * G.BUILD_REACH:
+		p = global_position + flat.normalized() * G.BUILD_REACH
+		p.y = G.ground_y(p, global_position.y)
+	var objects := get_node_or_null("/root/Main/objects")
+	if objects == null:
+		return false
+	inst.top_level = false
+	inst.reparent(objects)                         # VehicleBlock unfreezes itself under "objects"
+	inst.scale = Vector3.ONE
+	inst.global_transform = Transform3D(build_basis, p + Vector3.UP * 0.6)
+	if inst is RigidBody3D:
+		(inst as RigidBody3D).linear_velocity = Vector3.ZERO
+		(inst as RigidBody3D).angular_velocity = Vector3.ZERO
+	BlockFX.play(inst, false)                      # the glitch a block appears with
+	_clear_hand()
+	build_basis = Basis()
+	G.mark_progress_dirty()
+	return true
 
 # Q на ПК / действие «TakeOff» = быстро бросить блок в мир.
 func _on_take_off_pressed() -> void:
