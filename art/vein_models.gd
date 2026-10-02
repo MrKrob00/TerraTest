@@ -15,8 +15,9 @@ extends SceneTree
 # The rock under each is NARROW, about the drill's reach across: the first cut was a 1.7 m slab of
 # stone with a second chunk beside it, and the ore sat on it like decoration on a plinth.
 #
-# One mesh per model. An ore vein shrinks WHOLE as the HP goes and grows back; on the tree the vertex
-# says what falls (UV.x 1) and the stump stays (resources/resource.gdshader). The frame is the vein node's: its origin stands 0.25 over the
+# One mesh per model, cut into parts: an ore vein BREAKS a part at a time as the HP goes (UV.x is the
+# part's break point, see `_part`) and grows back whole; on the tree UV.x 1 is what falls and the
+# stump stays (resources/resource.gdshader). The frame is the vein node's: its origin stands 0.25 over the
 # ground, so the ground is y = GROUND, and every part reaches below it so a slope shows no edge.
 #
 # Faces are flat and carry their own tone from one fixed light: unshaded, so a facet's colour is all
@@ -36,7 +37,14 @@ const NEEDLE := Color(0.30, 0.58, 0.34)
 const NEEDLE_TIP := Color(0.40, 0.68, 0.38)
 
 var _rng := RandomNumberGenerator.new()
-var _moving := false            # the faces being added now are the part that is mined
+## What the faces being added now are, written to UV.x. On an ORE it is the part's BREAK point: the
+## part is drawn while the vein's HP share is above it, so one part goes with each ore thrown out
+## (`BREAKS`, the vein's MAX_RESOURCES = 5 throws at 0.8 / 0.6 / ... / 0.0); RUBBLE (below 0) stays
+## for good and marks the spot while the vein rests. On the TREE it is 1 for what falls, 0 for the
+## stump.
+var _part := RUBBLE
+const RUBBLE := -1.0
+const BREAKS := [0.8, 0.6, 0.4, 0.2, 0.0]
 
 func _initialize() -> void:
 	_rng.seed = 7711
@@ -72,7 +80,7 @@ func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, inside: Vector3, 
 		cc = Color(g, g, g, 1.0)
 	else:
 		cc = Color(col.r * k, col.g * k, col.b * k, 0.0)
-	var uv := Vector2(1.0 if _moving else 0.0, 0.0)
+	var uv := Vector2(_part, 0.0)
 	for p in [a, c, b]:
 		st.set_color(cc)
 		st.set_normal(n)
@@ -115,11 +123,15 @@ func _boulder(st: SurfaceTool, c: Vector3, n: int, rings: Array, col: Color) -> 
 	for k in n:
 		_tri(st, rs[-1][k], rs[-1][(k + 1) % n], top, inside, col, false)
 
-## The narrow rock every ore stands in: one boulder about a metre across.
-func _base(st: SurfaceTool, col: Color, top: float = 0.30) -> void:
-	_moving = false
+## The narrow rock every ore stands in, about a metre across, in two parts: the low rubble that
+## stays, and the rock over it, which breaks away at `cap` like any piece of ore.
+func _base(st: SurfaceTool, col: Color, top: float, cap: float) -> void:
+	_part = RUBBLE
 	_boulder(st, Vector3.ZERO, 6,
-			[[0.50, GROUND - SINK, 0.08], [0.54, GROUND + 0.08, 0.10], [0.38, GROUND + top, 0.12]], col)
+			[[0.50, GROUND - SINK, 0.08], [0.55, GROUND + 0.04, 0.08], [0.46, GROUND + 0.10, 0.06]], col.darkened(0.1))
+	_part = cap
+	_boulder(st, Vector3(0.02, 0, -0.02), 6,
+			[[0.46, GROUND + 0.0, 0.08], [0.48, GROUND + 0.10, 0.10], [0.36, GROUND + top, 0.12]], col)
 
 ## A box of half sizes `h` turned by `b` round `c`.
 func _box(st: SurfaceTool, c: Vector3, b: Basis, h: Vector3, col: Color, tinted: bool) -> void:
@@ -136,13 +148,17 @@ func _turn(yaw: float, tilt: float, roll: float = 0.0) -> Basis:
 ## FERRITE: rusty angular chunks half out of the rock, tilted every way - a broken seam.
 func _ferrite() -> SurfaceTool:
 	var st := _begin()
-	_base(st, Color(0.27, 0.22, 0.22))
-	_moving = true
+	_base(st, Color(0.27, 0.22, 0.22), 0.30, BREAKS[4])
 	var rust := Color.WHITE
+	_part = BREAKS[4]
 	_box(st, Vector3(0.0, GROUND + 0.42, 0.02), _turn(0.4, 0.35, 0.25), Vector3(0.24, 0.22, 0.20), rust, true)
+	_part = BREAKS[3]
 	_box(st, Vector3(0.28, GROUND + 0.30, -0.12), _turn(1.2, -0.5, 0.6), Vector3(0.17, 0.15, 0.14), rust, true)
+	_part = BREAKS[2]
 	_box(st, Vector3(-0.27, GROUND + 0.28, 0.20), _turn(2.3, 0.7, -0.4), Vector3(0.15, 0.16, 0.12), rust, true)
+	_part = BREAKS[1]
 	_box(st, Vector3(-0.10, GROUND + 0.30, -0.32), _turn(0.9, -0.3, 0.9), Vector3(0.11, 0.10, 0.10), rust, true)
+	_part = BREAKS[0]
 	_box(st, Vector3(0.12, GROUND + 0.68, 0.06), _turn(2.0, 0.6, 0.5), Vector3(0.10, 0.09, 0.09), rust, true)
 	return st
 
@@ -169,17 +185,21 @@ func _stratum(st: SurfaceTool, c: Vector3, r: float, y0: float, y1: float, n: in
 ## broken up through the rock. Rounded nuggets were turned down (the player: they look silly).
 func _cuprite() -> SurfaceTool:
 	var st := _begin()
-	_base(st, Color(0.22, 0.25, 0.25), 0.20)
-	_moving = true
+	_base(st, Color(0.22, 0.25, 0.25), 0.20, BREAKS[3])
+	_part = BREAKS[4]
 	_stratum(st, Vector3(0.02, 0, 0.0), 0.40, GROUND + 0.05, GROUND + 0.28, 6)
+	_part = BREAKS[2]
 	_stratum(st, Vector3(-0.06, 0, 0.05), 0.30, GROUND + 0.26, GROUND + 0.48, 6)
+	_part = BREAKS[0]
 	_stratum(st, Vector3(0.05, 0, -0.02), 0.20, GROUND + 0.46, GROUND + 0.66, 5)
+	_part = BREAKS[1]
 	_stratum(st, Vector3(0.30, 0, -0.22), 0.13, GROUND + 0.20, GROUND + 0.40, 5)
 	return st
 
 ## A crystal column, TerraTech's: a THICK hexagonal prism from its foot under the ground, a short
 ## faceted point, the shoulder ring a little wider than the foot.
-func _column(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float, r: float) -> void:
+func _column(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float, r: float,
+		brk: float, stub: float = 0.0) -> void:
 	var up: Vector3 = (Vector3.UP * cos(lean) + dir.normalized() * sin(lean)).normalized()
 	var side: Vector3 = up.cross(Vector3.FORWARD if absf(up.z) < 0.9 else Vector3.RIGHT).normalized()
 	var side2: Vector3 = up.cross(side).normalized()
@@ -193,10 +213,26 @@ func _column(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float
 		hi.append(foot + up * h * 0.78 + o * 1.05)
 	var tip: Vector3 = foot + up * h
 	var inside: Vector3 = foot + up * h * 0.4
+	_part = brk
 	for i in 6:
 		var j: int = (i + 1) % 6
 		_quad(st, lo[i], lo[j], hi[j], hi[i], inside, Color.WHITE, true)
 		_tri(st, hi[i], hi[j], tip, inside, Color.WHITE, true)
+	if stub <= 0.0:
+		return
+	# the broken-off stump that stays: a sleeve a hair wider than the column, cut flat at `stub`
+	_part = RUBBLE
+	var top: Array = []
+	var bot: Array = []
+	for i in 6:
+		var o: Vector3 = (lo[i] - foot) * 1.06
+		bot.append(foot + o)
+		top.append(foot + up * stub + o)
+	var cap: Vector3 = foot + up * stub
+	for i in 6:
+		var j: int = (i + 1) % 6
+		_quad(st, bot[i], bot[j], top[j], top[i], foot + up * stub * 0.5, Color.WHITE, true)
+		_tri(st, top[i], top[j], cap, foot, Color(0.75, 0.75, 0.75), true)
 
 ## SILICATE: a cluster of thick crystal columns growing straight out of the ground, TerraTech's
 ## crystal node - a tall one in the middle, a ring leaning out round it and small shards at the
@@ -204,21 +240,21 @@ func _column(st: SurfaceTool, foot: Vector3, dir: Vector3, lean: float, h: float
 ## with a brush of thin crystals on top ("still not it").
 func _silicate() -> SurfaceTool:
 	var st := _begin()
-	_moving = false
 	var y0 := GROUND - 0.25                              # every foot starts under the ground
-	_column(st, Vector3(0.02, y0, 0.0), Vector3(0.3, 0, -0.2), 0.06, 1.85, 0.24)
+	_column(st, Vector3(0.02, y0, 0.0), Vector3(0.3, 0, -0.2), 0.06, 1.85, 0.24, BREAKS[4], 0.42)
 	var ring := 5
+	var ring_breaks := [BREAKS[1], BREAKS[2], BREAKS[1], BREAKS[3], BREAKS[2]]
 	for i in ring:
 		var ang: float = TAU * float(i) / float(ring) + _rng.randf_range(-0.2, 0.2)
 		var dir := Vector3(cos(ang), 0, sin(ang))
 		var foot := dir * _rng.randf_range(0.17, 0.24) + Vector3(0, y0, 0)
 		_column(st, foot, dir, _rng.randf_range(0.30, 0.55), _rng.randf_range(0.95, 1.35),
-				_rng.randf_range(0.14, 0.19))
+				_rng.randf_range(0.14, 0.19), ring_breaks[i], 0.36)
 	for i in 3:
 		var ang: float = TAU * (float(i) + 0.5) / 3.0 + _rng.randf_range(-0.3, 0.3)
 		var dir := Vector3(cos(ang), 0, sin(ang))
 		_column(st, dir * 0.40 + Vector3(0, GROUND - 0.12, 0), dir, _rng.randf_range(0.7, 0.95),
-				_rng.randf_range(0.40, 0.55), 0.09)
+				_rng.randf_range(0.40, 0.55), 0.09, BREAKS[0])
 	return st
 
 ## A raw ore shard: a lofted lump skewed to one side and broken off unevenly on top, with every
@@ -240,18 +276,21 @@ func _shard(st: SurfaceTool, foot: Vector3, lean: Vector3, r: float, h: float, n
 ## read as something already made; this is ore).
 func _titanite() -> SurfaceTool:
 	var st := _begin()
-	_base(st, Color(0.24, 0.24, 0.27), 0.24)
-	_moving = true
+	_base(st, Color(0.24, 0.24, 0.27), 0.24, BREAKS[3])
+	_part = BREAKS[4]
 	_shard(st, Vector3(0.0, GROUND + 0.18, 0.0), Vector3(0.10, 0, -0.08), 0.24, 0.62, 5)
+	_part = BREAKS[2]
 	_shard(st, Vector3(0.24, GROUND + 0.12, 0.16), Vector3(0.45, 0, 0.25), 0.16, 0.40, 5)
+	_part = BREAKS[1]
 	_shard(st, Vector3(-0.24, GROUND + 0.12, 0.10), Vector3(-0.50, 0, 0.10), 0.15, 0.36, 4)
+	_part = BREAKS[0]
 	_shard(st, Vector3(-0.06, GROUND + 0.10, -0.28), Vector3(-0.10, 0, -0.55), 0.13, 0.30, 4)
 	return st
 
 func _tree() -> SurfaceTool:
 	var st := _begin()
 	# the stump stays when the rest is felled
-	_moving = false
+	_part = 0.0
 	var n := 6
 	var lo := _ring(Vector3.ZERO, n, 0.42, GROUND - SINK, 0.06, 0.0)
 	var mid := _ring(Vector3.ZERO, n, 0.36, GROUND + 0.06, 0.08, 0.0)
@@ -265,7 +304,7 @@ func _tree() -> SurfaceTool:
 	for k in n:
 		_tri(st, hi[k], hi[(k + 1) % n], top, Vector3(0, GROUND, 0), Color(0.62, 0.48, 0.30), false)
 	# the trunk from inside the stump up into the crown, and three tiers of needles
-	_moving = true
+	_part = 1.0
 	var m := 5
 	var tlo := _ring(Vector3.ZERO, m, 0.20, GROUND + 0.1, 0.0, 0.0)
 	var thi := _ring(Vector3.ZERO, m, 0.13, GROUND + 1.25, 0.0, 0.0)
