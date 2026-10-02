@@ -854,7 +854,9 @@ func _footprint_offsets(block: int) -> Array:
 		return cells9
 	if block == G.Block.WEDGE2:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0)]     # 1×1×2, вдоль Z
-	if block == G.Block.MARLIT_SLAB or block == G.Block.MARLIT_HALF_SLAB:
+	# THE AUTO MINER IS 1x2x2 TOO: its model and its box were always that size, and the grid reserved
+	# one cell, so blocks could be placed inside it and the box stood half a cell off the model
+	if block == G.Block.MARLIT_SLAB or block == G.Block.MARLIT_HALF_SLAB or block == G.Block.AUTO_MINER:
 		return [Vector3i(0, 0, -1), Vector3i(0, 0, 0), Vector3i(0, 1, -1), Vector3i(0, 1, 0)]   # 1×2×2
 	if block == G.Block.BLOCK2 or block == G.Block.ARMOR2 or block == G.Block.HALF_BLOCK2 \
 			or block == G.Block.MARLIT_ARMOR2:
@@ -870,14 +872,28 @@ func _footprint_offsets(block: int) -> Array:
 ## набор клеток.
 ##
 ## Поворот кратен 90°, поэтому round() после базиса даёт точные целые.
-func _block_footprint(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> Array:
+## A block's rotation as a Basis, from whatever the caller holds: a yaw (float), the euler angles a
+## node and rotation_map carry (Vector3), or a Basis.
+static func rot_basis(rot) -> Basis:
+	if rot is Basis:
+		return rot
+	if rot is Vector3:
+		return Basis.from_euler(rot)
+	return Basis(Vector3.UP, float(rot))
+
+## THE FOOTPRINT TURNS WITH THE BLOCK'S WHOLE ROTATION, not its yaw alone. Building tilts a block
+## whose joining face looks the wrong way (an armour plate laid flat on a top face, a girder on its
+## side), and the mesh and the box turn with that tilt about the anchor; a footprint turned by the
+## yaw only reserved an upright wall of cells under a plate lying flat over others the grid called
+## free.
+func _block_footprint(block: int, x: int, y: int, z: int, rot = 0.0) -> Array:
 	var offs: Array = _footprint_offsets(block)
 	var out: Array = []
-	if offs.size() == 1 or is_zero_approx(yaw):
+	var b: Basis = rot_basis(rot)
+	if offs.size() == 1 or b.is_equal_approx(Basis()):
 		for o in offs:
 			out.append(Vector3i(x + o.x, y + o.y, z + o.z))
 		return out
-	var b := Basis(Vector3.UP, yaw)
 	for o in offs:
 		var r: Vector3 = (b * Vector3(o)).round()
 		out.append(Vector3i(x + int(r.x), y + int(r.y), z + int(r.z)))
@@ -893,7 +909,7 @@ func _block_footprint(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> A
 ##
 ## Размер коробки здесь — это и есть проверка «покрывает ли коллизия весь футпринт»: у брони она
 ## тонкая (1×1×0.2) и стоит на своей грани, ей центр футпринта не нужен.
-func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
+func collider_offset(shape: Shape3D, rot) -> Vector3:
 	var box: BoxShape3D = shape as BoxShape3D
 	if box == null:
 		return Vector3.ZERO
@@ -925,7 +941,7 @@ func collider_offset(shape: Shape3D, yaw: float) -> Vector3:
 		off = Vector3(0.0, 0.0, -0.5)          # WEDGE2: 1×1×2, длинной стороной по Z
 	if off == Vector3.ZERO:
 		return off                             # BLOCK3 и одноклеточные: якорь уже в середине тела
-	return Basis(Vector3.UP, yaw) * off
+	return rot_basis(rot) * off
 
 ## Поворот, с которым блок УЖЕ стоит в этой клетке. Нужен всем, кто спрашивает футпринт по карте:
 ## сам поворот живёт в rotation_map под ключом ЯКОРЯ.
@@ -933,14 +949,18 @@ func _yaw_at(x: int, y: int, z: int) -> float:
 	var r: Vector3 = rotation_map.get("%d,%d,%d" % [x, y, z], Vector3.ZERO)
 	return r.y
 
+## The whole rotation the block anchored here stands at - what its footprint turns by.
+func _rot_at(x: int, y: int, z: int) -> Vector3:
+	return rotation_map.get("%d,%d,%d" % [x, y, z], Vector3.ZERO)
+
 ## The door for callers outside the grid (a blueprint ghost asks whether a block went in turned
 ## the way it was drawn).
 func yaw_at(x: int, y: int, z: int) -> float:
 	return _yaw_at(x, y, z)
 
 # Can `block` be placed with anchor (x,y,z)? All footprint cells in bounds and empty.
-func can_place(block: int, x: int, y: int, z: int, yaw: float = 0.0) -> bool:
-	for c in _block_footprint(block, x, y, z, yaw):
+func can_place(block: int, x: int, y: int, z: int, rot = 0.0) -> bool:
+	for c in _block_footprint(block, x, y, z, rot):
 		if not _in_bounds(c.x, c.y, c.z) or map.has(c):
 			return false
 	return true
@@ -953,10 +973,10 @@ func set_block(x: int, y: int, z: int, block: G.Block, rot = 0.0) -> bool:
 	# Клетки занимаем ПОД ТЕМ ЖЕ УГЛОМ, под которым блок встанет: у продолговатого блока от этого
 	# зависит, вдоль какой оси он ляжет.
 	var rv: Vector3 = rot if rot is Vector3 else Vector3(0, float(rot), 0)
-	if not can_place(block, x, y, z, rv.y):
+	if not can_place(block, x, y, z, rv):
 		return false   # overlap or edge: refuse
 	var anchor := "%d,%d,%d" % [x, y, z]
-	for c in _block_footprint(block, x, y, z, rv.y):
+	for c in _block_footprint(block, x, y, z, rv):
 		map[c] = block
 		cell_owner["%d,%d,%d" % [c.x, c.y, c.z]] = anchor
 	rotation_map[anchor] = rv
@@ -972,7 +992,7 @@ func remove_block(x: int, y: int, z: int) -> void:
 	var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 	if not _in_bounds(ax, ay, az) or _cell(ax, ay, az) == G.Block.EMPTY:
 		return
-	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az)):
+	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _rot_at(ax, ay, az)):
 		map.erase(c)
 		cell_owner.erase("%d,%d,%d" % [c.x, c.y, c.z])
 	# УХОДЯЩИЙ БЛОК ВОЗВРАЩАЕМ ВИДИМЫМ. Спрятанный как «его всё равно не видно» (см.
@@ -1039,13 +1059,17 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		return
 
 	var instance: Node3D = scene.instantiate()
+	var key := "%d,%d,%d" % [x, y, z]
+	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
+	# THE BODY ENTERS THE TREE FROZEN AND IN ITS CELL. Added first and placed later, it spent its first
+	# physics ticks at the machine's origin as a live body, inside the machine's own colliders.
+	if instance is RigidBody3D:
+		(instance as RigidBody3D).freeze = true
+	instance.rotation = rot
+	instance.position = Vector3((x - CENTER) * CELL_SIZE, (y - CENTER) * CELL_SIZE, (z - CENTER) * CELL_SIZE)
 	add_child(instance)
 
 	attach_block_signals(instance, x, y, z)
-
-	var key := "%d,%d,%d" % [x, y, z]
-	var rot: Vector3 = rotation_map.get(key, Vector3.ZERO)
-	instance.rotation = rot
 
 	# The collider is found by SEARCH, not as the first child: node order inside block scenes gets
 	# changed without thinking, and a miss here would break the whole build's spawn (same rake as
@@ -1071,7 +1095,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	#
 	# Размер коробки здесь — это проверка «покрывает ли коллизия весь футпринт»: у брони она
 	# тонкая (1×1×0.2) и стоит на своей грани, ей центр футпринта не нужен.
-	collision.position += collider_offset(collision.shape, rot.y)
+	collision.position += collider_offset(collision.shape, rot)
 	# ЧЕЙ ЭТО КОЛЛАЙДЕР — ЯРЛЫКОМ, А НЕ ПО КООРДИНАТЕ. Сбитый блок ищет свою коллизию, и запасной
 	# способ — сравнение позиций — верен только пока смещение ровно одно и не поворачивается
 	# (machine_body._on_block_destroyed). Ручная постановка ярлык ставила, сборка машины — нет, то
@@ -1134,7 +1158,7 @@ func footprint_offsets(inst: Node) -> Array:
 		return []
 	var anchor := Vector3i(ax, ay, az)
 	var out: Array = []
-	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az)):
+	for c in _block_footprint(_cell(ax, ay, az), ax, ay, az, _rot_at(ax, ay, az)):
 		out.append((c as Vector3i) - anchor)
 	return out
 
@@ -1335,6 +1359,10 @@ func _cells_linked(a: Node, b: Node, ca: Vector3i, cb: Vector3i, d: Vector3i) ->
 
 ## The anchor cell that cell c belongs to. The offset from it is "which cell of the block this is" -
 ## the same key per-cell settings are described by.
+## The anchor cell of the block covering `c` (c itself when it is an anchor or empty).
+func anchor_of(c: Vector3i) -> Vector3i:
+	return _anchor_of(c)
+
 func _anchor_of(c: Vector3i) -> Vector3i:
 	var key := "%d,%d,%d" % [c.x, c.y, c.z]
 	var anchor: String = cell_owner.get(key, key)
@@ -1359,7 +1387,7 @@ func _detach_orphans() -> void:
 		if bt == G.Block.EMPTY:
 			continue
 		var grounded := false
-		for c in _block_footprint(bt, ax, ay, az, _yaw_at(ax, ay, az)):
+		for c in _block_footprint(bt, ax, ay, az, _rot_at(ax, ay, az)):
 			if reachable.has("%d,%d,%d" % [c.x, c.y, c.z]):
 				grounded = true
 				break
@@ -1706,10 +1734,10 @@ func _clear_block_collisions() -> void:
 # seller 2x2x2) a plain +-1 is not enough: the footprint grows one way, so on "positive" faces it
 # would clip into the neighbour. The shift is computed from the real footprint bounds; for 1x1x1
 # it gives +-1.
-func attach_delta(block_type: int, face: String, yaw: float = 0.0) -> Vector3i:
+func attach_delta(block_type: int, face: String, rot = 0.0) -> Vector3i:
 	var lo := Vector3i(0, 0, 0)
 	var hi := Vector3i(0, 0, 0)
-	for c in _block_footprint(block_type, 0, 0, 0, yaw):
+	for c in _block_footprint(block_type, 0, 0, 0, rot):
 		lo.x = mini(lo.x, c.x); lo.y = mini(lo.y, c.y); lo.z = mini(lo.z, c.z)
 		hi.x = maxi(hi.x, c.x); hi.y = maxi(hi.y, c.y); hi.z = maxi(hi.z, c.z)
 	match face:
@@ -1720,6 +1748,61 @@ func attach_delta(block_type: int, face: String, yaw: float = 0.0) -> Vector3i:
 		"back":   return Vector3i(0, 0, -lo.z + 1)
 		"front":  return Vector3i(0, 0, -hi.z - 1)
 	return Vector3i.ZERO
+
+## WHERE A BLOCK LARGER THAN ONE CELL CAN GO ON AN AIMED FACE: every anchor that puts one of its
+## cells right in front of the face (`cell` + the face's direction) with the block on the face's side.
+## attach_delta gives ONE of them - the anchor pinned to the aimed column, the rest growing to -X/-Z -
+## and on a hull one cell wide that one almost always ran into the hull's own next cell while the
+## mirrored one was free: every 2x2x2 block was refused on three faces of five. The first entry is
+## attach_delta's, so a block that fitted before goes exactly where it went before; the rest follow,
+## the most centred on the aimed cell first.
+func attach_candidates(block_type: int, cell: Vector3i, face: String, rot = 0.0) -> Array:
+	if not FACE_DIR.has(face):
+		return []
+	var n: Vector3i = FACE_DIR[face]
+	var front: Vector3i = cell + n
+	var fp: Array = _block_footprint(block_type, 0, 0, 0, rot)
+	var first: Vector3i = cell + attach_delta(block_type, face, rot)
+	if fp.size() <= 1:
+		return [first]
+	# the layer of the footprint that touches the face: lowest along the normal for +, highest for -
+	var axis: int = 0 if n.x != 0 else (1 if n.y != 0 else 2)
+	var sgn: int = n.x + n.y + n.z
+	var edge: int = 1 << 30 if sgn > 0 else -(1 << 30)
+	for o in fp:
+		var v: int = (o as Vector3i)[axis]
+		edge = mini(edge, v) if sgn > 0 else maxi(edge, v)
+	var mid := Vector3.ZERO
+	for o in fp:
+		mid += Vector3(o as Vector3i)
+	mid /= float(fp.size())
+	var out: Array = [first]
+	var rest: Array = []
+	for o in fp:
+		var oi: Vector3i = o
+		if oi[axis] != edge:
+			continue
+		var a: Vector3i = front - oi
+		if a == first:
+			continue
+		# how far the block's middle lands from the aimed cell, across the face
+		var c: Vector3 = Vector3(a) + mid - Vector3(front)
+		c[axis] = 0.0
+		rest.append([c.length_squared(), a])
+	rest.sort_custom(func(p, q): return p[0] < q[0])
+	for r in rest:
+		out.append(r[1])
+	return out
+
+## Why a block cannot go where it was aimed, for the player: "" when it can.
+func placement_refusal(block_type: int, anchor: Vector3i, rot = 0.0) -> String:
+	for c in _block_footprint(block_type, anchor.x, anchor.y, anchor.z, rot):
+		if not _in_bounds(c.x, c.y, c.z):
+			return "The block would stick out of the build area."
+	for c in _block_footprint(block_type, anchor.x, anchor.y, anchor.z, rot):
+		if map.has(c):
+			return "No room for this block there."
+	return ""
 
 # ══════════════════════════════════════════════════════════════════════════════
 # FACTORY LINKS
@@ -1740,7 +1823,7 @@ func rebuild_factory_links() -> void:
 		var ax := int(parts[0]); var ay := int(parts[1]); var az := int(parts[2])
 		if not _in_bounds(ax, ay, az):
 			continue
-		cells[n] = _block_footprint(_cell(ax, ay, az), ax, ay, az, _yaw_at(ax, ay, az))
+		cells[n] = _block_footprint(_cell(ax, ay, az), ax, ay, az, _rot_at(ax, ay, az))
 		anchors[n] = Vector3i(ax, ay, az)     # смещения клеток считаем от якоря
 		facs.append(n)
 	# Links are computed PER CELL. The old code walked the block's marked FACES and took the FIRST

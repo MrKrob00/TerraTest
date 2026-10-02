@@ -328,6 +328,39 @@ project: read it before claiming how anything works.
   `build_basis` from its transform under `blocks`). It used to arrive square, and every re-seated
   block had to be turned by hand again. Measured: the hand's basis equals the placed one on the back
   and both side faces.
+- **A BLOCK LARGER THAN ONE CELL TRIES EVERY ALIGNMENT THAT TOUCHES THE AIMED FACE**
+  (`blocks.attach_candidates`, through ONE door for the preview and the commit,
+  `vehicle_body_3d._fit_held`). The anchor used to be pinned to the aimed column with the rest
+  growing to -X/-Z, and on a hull one cell wide that ran into the hull's own next cell: every 2x2x2
+  block (all of Marlit, processor, seller, fabricator) was refused on three faces of five, silently
+  while aiming and with "that cell is taken" about an empty cell on commit. The first candidate is
+  the old one, so whatever fitted goes where it went. A candidate must be free, accepted by the
+  neighbour AND joined by the new block's own touching cell under the orientation it will stand at
+  (a wedge or processor otherwise went on, was not counted as joined, and fell off at the next
+  removal); a refusal names its reason (`blocks.placement_refusal`). Measured through the real
+  preview and commit, 37 block types x 5 faces of a starter hull: 41 refused before, 2 after (the
+  wedge's back and bottom, which really do not join).
+- **A FOOTPRINT TURNS BY THE BLOCK'S WHOLE ROTATION** (`blocks._block_footprint(..., rot)`, `rot_basis`,
+  `_rot_at`, `collider_offset(shape, rot)`), not its yaw: building tilts a plate onto a top face or a
+  girder onto its side, and the yaw-only footprint reserved an upright wall under a plate lying flat
+  over cells the grid called free.
+- A HAND-PLACED BLOCK'S COLLIDER CARRIES `block_owner` and is removed by that tag when the block is
+  taken off (`_pick_selected_block`); the position match knew one offset, and every plate, wedge,
+  two-cell or turned block taken off left an invisible box on the hull.
+- A TAP THAT MISSES THE MACHINE CLEARS THE PREVIEW (`_clear_held_preview`): the double tap's second
+  half re-aims, and on a miss it used to commit the cell previewed earlier.
+- **A FACTORY BLOCK IS FROZEN BEFORE ITS FIRST PHYSICS TICK** (`FactoryBlock._ready` sets `freeze` before
+  its one-frame await; `blocks.spawn_block` freezes, turns and places the body BEFORE adding it). The
+  freeze lived after the await, so a seller, belt, generator, auto miner, storage or fabricator
+  spawned onto a machine spent its first ticks as a live body inside the machine's own copy of its
+  box: Jolt pushed it out, gravity pulled it, and it froze 0.05-0.67 m off its cells and turned up
+  to 10 deg, differently on every spawn and every load - saved builds, the factory quest's station
+  and every restored base. Measured over every block type through `apply_build`: 11 drifting
+  before, 0 of 65 after. A block laid loose is still unfrozen by `_on_parent_changed`.
+- THE AUTO MINER IS 1x2x2 (`_footprint_offsets`, its scene's model, box and `item_slot` moved into
+  those cells, `cells_center` (0, 0.5, -0.5)), and it sets `moving_parts`: the grid reserved one
+  cell under a 1x2x2 box and model, and the pump ran on hidden nodes. An old save with a block in
+  the newly reserved cells loses that block on load.
 - Building draws from the INVENTORY PLUS whatever lies within `G.BUILD_REACH` (20 m) of the machine
   — one door, `G.block_available` / `G.consume_block`, used by the garage, the block globe and the
   serial-build refill. Asking in one place and deducting in another is how a build starts taking

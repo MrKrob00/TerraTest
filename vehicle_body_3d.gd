@@ -1336,7 +1336,11 @@ func _handle_click(screen_pos: Vector2) -> void:
 			return
 		_cabin_ground = null     # целимся в машину: это обычная постановка в сетку, не база
 		# Больше НЕ светяшка: двигаем сам взятый блок на выбранную ячейку (превью), тап Take ставит.
-		if res["hit"]: _preview_held(res)
+		if res["hit"]:
+			_preview_held(res)
+		else:
+			_clear_held_preview()    # a tap past the machine aims at nothing: a stale preview would
+			                         # be committed by the double tap's second half
 		return
 	else:
 		# look_at ломается, когда направление почти вертикально (клик СТРОГО «по земле» — взгляд
@@ -1381,8 +1385,14 @@ func _cell_from_physics(screen_pos: Vector2) -> Dictionary:
 	if held_hand is CollisionObject3D:
 		q.exclude = [(held_hand as CollisionObject3D).get_rid()]
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
-	# Попали в ту машину, НА КОТОРОЙ строим (обычно в себя, но может быть и соседняя своя).
-	if hit.is_empty() or hit.get("collider") != _bt():
+	# Попали в ту машину, НА КОТОРОЙ строим (обычно в себя, но может быть и соседняя своя). The ray
+	# meets a BLOCK's own body (layer 2) far more often than the machine's: walk up to the machine.
+	if hit.is_empty():
+		return miss
+	var hit_m: Node = hit.get("collider") as Node
+	while hit_m != null and not (hit_m is MachineBody):
+		hit_m = hit_m.get_parent()
+	if hit_m != _bt():
 		return miss                        # попали не в неё (земля, чужой блок) — это не наводка
 	var grid: Node3D = bmn as Node3D
 	var basis_inv: Basis = grid.global_transform.basis.inverse()
@@ -1550,6 +1560,48 @@ func _rotation_between(from_dir: Vector3, to_dir: Vector3) -> Basis:
 		return Basis(Vector3.RIGHT, PI)
 	return Basis(a.cross(b).normalized(), a.angle_to(b))
 
+## WHERE THE BLOCK IN THE HAND GOES ON THE AIMED FACE, OR WHY IT CANNOT - one door for the preview
+## and the commit, which used to work the anchor out each on its own. A block larger than one cell
+## has several anchors that put it against the face (blocks.attach_candidates); trying only the one
+## pinned to the aimed column refused every 2x2x2 block on three faces of five, silently while aiming
+## and with "that cell is taken" about an empty cell on the double tap. A candidate has to be free,
+## accepted by the neighbour, AND joined by the new block's own cell that touches the face, asked
+## under the orientation it will stand at: without that last check a wedge or a processor went on
+## that the joint check did not count, and fell off at the next block removed or shot away.
+## Returns {ok, anchor, orient} or {ok: false, reason}.
+func _fit_held(res: Dictionary, instance: Node, bmn: Node) -> Dictionary:
+	var out := {"ok": false, "reason": "Nothing to bolt onto there."}
+	if not (instance is VehicleBlock) or not FACE_DIR.has(String(res.face)):
+		return out
+	var vb := instance as VehicleBlock
+	var cell := Vector3i(int(res.x), int(res.y), int(res.z))
+	if not bmn.can_attach(cell.x, cell.y, cell.z, instance, res.face):
+		return out
+	var orient := _face_orient(res.face, instance, build_basis) * build_basis
+	var fd: Vector3 = FACE_DIR[String(res.face)]
+	var dir := Vector3i(-roundi(fd.x), -roundi(fd.y), -roundi(fd.z))   # from the new block to the aimed one
+	var front: Vector3i = cell - dir
+	var saved: Transform3D = vb.transform
+	vb.basis = orient                          # connects_at reads the node's own basis
+	var reason := ""
+	var found := {}
+	for a in bmn.attach_candidates(int(vb.block), cell, String(res.face), orient):
+		var anchor: Vector3i = a
+		var why: String = bmn.placement_refusal(int(vb.block), anchor, orient)
+		if why == "" and not vb.connects_at(front - anchor, dir):
+			why = "This side of the block does not join there."
+		if why == "":
+			found = {"ok": true, "anchor": anchor, "orient": orient}
+			break
+		if reason == "":
+			reason = why
+	vb.transform = saved
+	if not found.is_empty():
+		return found
+	if reason != "":
+		out["reason"] = reason
+	return out
+
 # Ставим сам взятый блок на выбранную ячейку (превью реальным блоком, не светяшкой).
 func _preview_held(res: Dictionary) -> void:
 	var holder: Node = camera_controller.camera.get_child(0)
@@ -1562,32 +1614,39 @@ func _preview_held(res: Dictionary) -> void:
 	var bmn: Node = _btm()            # строим на СЕБЕ или на соседней своей машине — решил луч
 	if bmn == null:
 		return
-	# ОРИЕНТАЦИЮ СЧИТАЕМ ДО КЛЕТОК, а не после: у продолговатого блока от угла зависит, вдоль
-	# какой оси он ляжет, то есть и куда сместить якорь (attach_delta), и свободно ли там
-	# (can_place). Раньше клетки считались без угла, и развёрнутый блок занимал их поперёк себя.
-	var orient := _face_orient(res.face, instance, build_basis) * build_basis
-	var yaw: float = orient.get_euler().y
-	var ad :Vector3 = bmn.attach_delta(int(instance.block), String(res.face), yaw)
-	var gx: float = float(res.x) + ad.x
-	var gy: float = float(res.y) + ad.y
-	var gz: float = float(res.z) + ad.z
-	BuildingBlock["x"] = gx; BuildingBlock["y"] = gy; BuildingBlock["z"] = gz
-	var placeable: bool = bmn.can_attach(int(res.x), int(res.y), int(res.z),
-			instance, res.face) and bmn.can_place(instance.block, gx, gy, gz, yaw)
-	if not placeable:
+	# ORIENTATION BEFORE CELLS: a long block's angle decides which way it lies, so where its anchor
+	# goes and whether that is free (see _fit_held).
+	var fit: Dictionary = _fit_held(res, instance, bmn)
+	if not fit.ok:
 		instance.top_level = false
 		instance.position = Vector3.ZERO       # обратно в руку
 		instance.rotation = Vector3.ZERO
 		if ghost_block:
 			ghost_block.visible = false
 		return
-	var local_pos := Vector3(gx - 5, gy - 5, gz - 5)
+	var anchor: Vector3i = fit.anchor
+	var orient: Basis = fit.orient
+	BuildingBlock["x"] = anchor.x; BuildingBlock["y"] = anchor.y; BuildingBlock["z"] = anchor.z
+	var local_pos := Vector3(anchor.x - 5, anchor.y - 5, anchor.z - 5)
 	var grid: Node3D = bmn as Node3D
 	var world_basis: Basis = (grid.global_transform.basis * orient).orthonormalized()
 	# top_level → превью держится в мировой ячейке и НЕ крутится с камерой (блок висит под
 	# камерой; без этого при повороте камеры он «смотрел» на неё).
 	instance.top_level = true
 	instance.global_transform = Transform3D(world_basis, grid.to_global(local_pos))
+	if ghost_block:
+		ghost_block.visible = false
+
+## The block in the hand goes back into the hand: no preview, nothing aimed at.
+func _clear_held_preview() -> void:
+	_preview_res = null
+	var holder: Node = camera_controller.camera.get_child(0) if camera_controller != null and camera_controller.camera != null else null
+	if holder != null and holder.get_child_count() > 0:
+		var inst := holder.get_child(0) as Node3D
+		if inst != null:
+			inst.top_level = false
+			inst.position = Vector3.ZERO
+			inst.basis = build_basis
 	if ghost_block:
 		ghost_block.visible = false
 
@@ -1614,7 +1673,7 @@ func _preview_cabin_ground(world_origin: Vector3, world_dir: Vector3) -> void:
 	var pyaw: float = build_basis.get_euler().y
 	var poff: Vector3 = Basis(Vector3.UP, pyaw) * _cells_center_of(inst)
 	inst.global_transform = Transform3D(Basis(Vector3.UP, pyaw),
-			_cabin_ground + Vector3.UP * 1.2 - Vector3(poff.x, 0.0, poff.z))
+			_cabin_ground + Vector3.UP * 0.5 - Vector3(poff.x, 0.0, poff.z))   # where _place_ground_structure puts it
 	if ghost_block:
 		ghost_block.visible = false
 
@@ -1873,13 +1932,20 @@ func _pick_selected_block() -> bool:
 		# кабиной/базой, отрывается и падает в мир (тот же BFS, что при боевом разрушении).
 		if bmn.has_method("_detach_orphans"):
 			bmn.call_deferred("_detach_orphans")
-	# 2×2-блоки кладут коллизию со сдвигом (-0.5,0.5,-0.5), поэтому ищем по обоим
-	# вариантам позиции, иначе коллизия 2×2 оставалась бы висеть после снятия блока.
-	# Коллизии блоков живут на КУЗОВЕ машины-владельца — у неё их и ищем.
+	# THE BLOCK'S COLLIDER IS FOUND BY ITS TAG (both ways a block is placed set it), on the body of
+	# the machine it came off; by position only for an untagged box from an old save. The position
+	# match knew one offset, so every plate, wedge, two-cell, turned or Marlit block taken off left
+	# an invisible box on the hull that stopped shots on air.
+	var tagged := false
 	for i in owner_v.get_children():
-		if i is CollisionShape3D and (i.position == block_body.position \
-				or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
+		if i is CollisionShape3D and i.has_meta("block_owner") and i.get_meta("block_owner") == block_body:
 			i.queue_free()
+			tagged = true
+	if not tagged:
+		for i in owner_v.get_children():
+			if i is CollisionShape3D and not i.has_meta("block_owner") and (i.position == block_body.position \
+					or i.position == block_body.position + Vector3(-0.5, 0.5, -0.5)):
+				i.queue_free()
 	# THE BLOCK COMES INTO THE HAND TURNED THE WAY IT STOOD, in the machine's axes (its transform
 	# under `blocks`): set a wheel back where it came from, or next to it, and it goes on as it
 	# was. It used to arrive square, and every re-seated block had to be turned again by hand.
@@ -2224,16 +2290,13 @@ func _on_take_pressed() -> void:
 		# гаража возвращает руку в инвентарь).
 		# Полная ориентация: авто по грани (наклон/разворот колеса) ∘ ручной поворот из UI. Нужна
 		# ДО вопроса о клетках: у продолговатого блока угол решает, вдоль какой оси он ляжет.
-		var orient := _face_orient(pres.face, instance, build_basis) * build_basis
-		var yaw: float = orient.get_euler().y
-		if not bmn.can_place(instance.block, BuildingBlock["x"], BuildingBlock["y"],
-				BuildingBlock["z"], yaw):
-			Dialogue.say("System", tr("That cell is taken."))
+		var fit: Dictionary = _fit_held(pres, instance, bmn)
+		if not fit.ok:
+			Dialogue.say("System", tr(String(fit.reason)))
 			return
-		# Точки стыковки: пускает ли сосед к своей грани (см. connect_faces в инспекторе блока).
-		if not bmn.can_attach(int(pres.x), int(pres.y), int(pres.z), instance, pres.face):
-			Dialogue.say("System", tr("Nothing to bolt onto there."))
-			return
+		var orient: Basis = fit.orient
+		var anchor: Vector3i = fit.anchor
+		BuildingBlock["x"] = anchor.x; BuildingBlock["y"] = anchor.y; BuildingBlock["z"] = anchor.z
 		# Превью держало блок top_level (мировой трансформ). Перед постановкой возвращаем
 		# наследование, иначе local basis/position ниже применятся как мировые.
 		instance.top_level = false
@@ -2251,7 +2314,11 @@ func _on_take_pressed() -> void:
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		# Сдвиг от якоря — у ХОЗЯИНА СЕТКИ (blocks.collider_offset), а не второй таблицей здесь:
 		# тут знали ровно один размер, 2×2×2, и всё остальное вставало на полклетки мимо.
-		collision.position += bmn.collider_offset(collision.shape, yaw)
+		collision.position += bmn.collider_offset(collision.shape, orient)
+		# WHOSE COLLIDER THIS IS - by tag, as spawn_block tags its own: taking the block off again
+		# or losing it in a fight finds the box by this, not by a position that a block larger
+		# than a cell, or turned, does not have
+		collision.set_meta("block_owner", instance)
 		tgt.add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
 		instance.reparent(tgt_blocks, false)
