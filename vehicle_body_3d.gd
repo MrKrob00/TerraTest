@@ -1025,6 +1025,10 @@ func _process(_delta: float) -> void:
 		# _process молчит, потому что в стройке не она.
 		var d: Node = _delegated_to
 		if d != null and is_instance_valid(d):
+			# THE TURN IS OURS: the player turns the block on the machine they drive, and the
+			# neighbour previews it - without handing the turn over each frame the neighbour kept
+			# the angle from the last aim, and a turn showed only after aiming again
+			d.build_basis = build_basis
 			if d._preview_res != null:
 				d._preview_held(d._preview_res)
 			return
@@ -1858,7 +1862,11 @@ func rotate_build(axis: Vector3, ang: float) -> void:
 	var held := _hand_instance()
 	if held == null:
 		return
-	if held.top_level and _preview_res != null:
+	var d: Node = _delegated_to
+	if d != null and is_instance_valid(d) and d._preview_res != null:
+		d.build_basis = build_basis          # aimed at a neighbour: it previews, with our turn
+		d._preview_held(d._preview_res)
+	elif _preview_res != null:
 		_preview_held(_preview_res)          # наведён на клетку — с ориентацией по грани
 	else:
 		held.basis = build_basis             # в руке — крутится сразу под камерой
