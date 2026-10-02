@@ -461,25 +461,30 @@ project: read it before claiming how anything works.
   which made the power a factory asks for a formality — and says once what it needs. What a miner
   cannot hand to a receiver ON ITS OWN MACHINE lies by the vein (up to `GROUND_LIMIT`), where any
   collector or receiver in reach may take it — including another base's standing next to it.
-- **A VEIN IS A ROCK WITH CRYSTALS OF ITS METAL, A TREE IS A PINE THAT FALLS** (`art/vein_models.gd`,
-  run on a copy, writes `resources/vein_rock / vein_crystal / vein_stump / vein_tree.tres`; 65 + 69
-  and 30 + 46 triangles). Each kind is two MultiMeshes (`resource_nodes.multimesh_nodes` ore,
-  `wood_multimesh_nodes` wood) sharing the slot pool: the part that stays is plain unshaded vertex
-  colour, the part that is mined runs `resources/resource.gdshader` - crystals shrink to stubs into
-  the rock with the HP and grow back; a tree LEANS by the share chopped and lies down at zero
-  (`fells`), and grows up where it is replanted (`regrow` -> B). A vein shows in its own pair and
-  stands collapsed in the other. Faces are flat with their own tone from one fixed light; a crystal
-  vertex has alpha 1 and is tinted by its metal (`G.METAL_COLOR`). Every vein is turned and sized by
-  its position (`VEIN_SCALE_*`). Three traps, all measured on the real driver: A MULTIMESH WITHOUT
-  `use_colors` MULTIPLIES VERTEX COLOUR BY BLACK in Compatibility (every vein a silhouette), so
-  `_init_slots` turns it on and writes white; the game's AgX at contrast 1.7 crushes darks
-  (needles authored at 0.33 green came out black - the palette is set against it, check a colour in
-  the world's own Environment, not a bare one, which does no sRGB conversion at all); and a time
-  handed to the shader is the SHADER'S clock, which rolls over hourly (`shader_now`) - a raw
-  ticks value made every vein that came back after the first hour stay at stub size. A replanted
-  tree is streamed straight back in: the streaming pass reruns only when the camera crosses a cell,
-  so a player at the stump never saw it grow back. Measured in the world: four metals and two
-  trees; a half-mined, a mined-out vein, a tree leaning then lying, then grown again 5.6 s later.
+- **EVERY METAL'S VEIN HAS ITS OWN SHAPE, AND A FELLED TREE LEAVES ONLY ITS STUMP** (`art/vein_models.gd`,
+  run on a copy, writes `resources/vein_ore0..3.tres` and `vein_tree.tres`; 78-246 triangles). The
+  player's calls, each a rule now: one crystal cluster in four colours read as one ore, and its
+  1.7 m slab of rock read as a plinth - so the rock is about a metre across and the ORE is the shape:
+  ferrite rusty angular chunks, cuprite banded strata stacked in steps, silicate a TALL rock with a
+  brush of thin crystals on top, titanite jagged raw shards. Turned down on the way: round copper
+  nuggets ("look silly") and titanite as thin plates ("something already made, not ore"). A tree
+  leans a little while it is chopped and on the last blow falls and is gone in `fall_time`,
+  leaving the stump - lying there for the rest was wrong. One MultiMesh per model
+  (`resource_nodes.multimesh_nodes` in `G.Metal` order, `wood_multimesh_nodes`; `_model_mm`, a metal
+  past the list borrows the last), so all veins are five draw calls; a vein is drawn in its own and
+  stands collapsed in the rest. In each mesh UV.x marks the part that is mined: the ore shrinks to
+  stubs into its rock and grows back, the rock and the stump never move (`resources/resource.gdshader`).
+  Faces are flat with their own tone from one fixed light; an ore vertex has alpha 1 and is tinted by
+  its metal (`G.METAL_COLOR`). Every vein is turned and sized by its position (`VEIN_SCALE_*`). Four
+  traps, all measured on the real driver: A MULTIMESH WITHOUT `use_colors` MULTIPLIES VERTEX COLOUR
+  BY BLACK in Compatibility (every vein a silhouette), so `_init_slots` turns it on and writes white;
+  a shader that converts vertex colour to linear UNCONDITIONALLY draws it far too dark - the renderer
+  writes sRGB straight out (`OUTPUT_IS_SRGB`), and the shader takes the same branch a
+  StandardMaterial with `vertex_color_is_srgb` does (the rock came out black, the metals a shade
+  redder than their colours); a time handed to the shader is the SHADER'S clock, which rolls over
+  hourly (`shader_now`) - a raw ticks value made every vein that came back after the first hour
+  stay at stub size; and a replanted tree is streamed straight back in, because the streaming pass
+  reruns only when the camera crosses a cell.
 - **WOOD HAS NO AUTOMATION, AND THAT IS THE POINT — there is no harvester block and none is
   planned.** Ore is the standing economy: find a vein, park a base, come back for the cargo. Wood
   is the driving economy, and the RANDOM RELOCATION is what keeps it that way: a felled tree does

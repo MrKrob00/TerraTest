@@ -15,9 +15,10 @@
 [ext_resource type="PackedScene" uid="uid://vbcwovv3kt73" path="res://quests.tscn" id="20_quests"]
 [ext_resource type="Script" uid="uid://bipkqbtl2cesf" path="res://resource_nodes.gd" id="24_5t8nk"]
 [ext_resource type="Script" uid="uid://ch6lvbyyeape3" path="res://grass.gd" id="24_dhlwf"]
-[ext_resource type="ArrayMesh" path="res://resources/vein_rock.tres" id="25_5t8nk"]
-[ext_resource type="ArrayMesh" path="res://resources/vein_crystal.tres" id="26_j3e5s"]
-[ext_resource type="ArrayMesh" path="res://resources/vein_stump.tres" id="26_vstump"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_ore0.tres" id="26_vore0"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_ore1.tres" id="26_vore1"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_ore2.tres" id="26_vore2"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_ore3.tres" id="26_vore3"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree.tres" id="26_vtree"]
 [ext_resource type="Shader" uid="uid://k47ww3x7p37f" path="res://resources/resource.gdshader" id="26_vshader"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
@@ -184,30 +185,30 @@ grass_height = 0.3
 sand_grass = 0.1
 mask_offset = Vector2(-2381.8252, -2997.1248)
 
-[sub_resource type="MultiMesh" id="MultiMesh_obt1j"]
+[sub_resource type="MultiMesh" id="MultiMesh_vore0"]
 transform_format = 1
 use_colors = true
-mesh = ExtResource("25_5t8nk")
+mesh = ExtResource("26_vore0")
 
-[sub_resource type="MultiMesh" id="MultiMesh_5t8nk"]
+[sub_resource type="MultiMesh" id="MultiMesh_vore1"]
 transform_format = 1
 use_colors = true
-mesh = ExtResource("26_j3e5s")
+mesh = ExtResource("26_vore1")
 
-[sub_resource type="MultiMesh" id="MultiMesh_vstump"]
+[sub_resource type="MultiMesh" id="MultiMesh_vore2"]
 transform_format = 1
 use_colors = true
-mesh = ExtResource("26_vstump")
+mesh = ExtResource("26_vore2")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vore3"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vore3")
 
 [sub_resource type="MultiMesh" id="MultiMesh_vtree"]
 transform_format = 1
 use_colors = true
 mesh = ExtResource("26_vtree")
-
-[sub_resource type="StandardMaterial3D" id="Mat_vein_flat"]
-shading_mode = 0
-vertex_color_use_as_albedo = true
-vertex_color_is_srgb = true
 
 [sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
 render_priority = 0
@@ -613,25 +614,30 @@ script = ExtResource("27_biomescat")
 [node name="Resource_Nodes" type="Node3D" parent="map" unique_id=213070597 node_paths=PackedStringArray("multimesh_nodes", "wood_multimesh_nodes")]
 script = ExtResource("24_5t8nk")
 resource_nodes = Array[PackedScene]([ExtResource("11_tereu")])
-multimesh_nodes = [NodePath("MultiMeshInstance3D"), NodePath("MultiMeshInstance3D2")]
-wood_multimesh_nodes = [NodePath("WoodStump"), NodePath("WoodTree")]
+multimesh_nodes = [NodePath("OreFerrite"), NodePath("OreCuprite"), NodePath("OreSilicate"), NodePath("OreTitanite")]
+wood_multimesh_nodes = [NodePath("Wood")]
 
-[node name="MultiMeshInstance3D" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1838571884]
-material_override = SubResource("Mat_vein_flat")
-cast_shadow = 0
-multimesh = SubResource("MultiMesh_obt1j")
-
-[node name="MultiMeshInstance3D2" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984415]
+[node name="OreFerrite" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984420]
 material_override = SubResource("Mat_vein_ore")
 cast_shadow = 0
-multimesh = SubResource("MultiMesh_5t8nk")
+multimesh = SubResource("MultiMesh_vore0")
 
-[node name="WoodStump" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984416]
-material_override = SubResource("Mat_vein_flat")
+[node name="OreCuprite" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984421]
+material_override = SubResource("Mat_vein_ore")
 cast_shadow = 0
-multimesh = SubResource("MultiMesh_vstump")
+multimesh = SubResource("MultiMesh_vore1")
 
-[node name="WoodTree" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984417]
+[node name="OreSilicate" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984422]
+material_override = SubResource("Mat_vein_ore")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vore2")
+
+[node name="OreTitanite" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984423]
+material_override = SubResource("Mat_vein_ore")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vore3")
+
+[node name="Wood" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984417]
 material_override = SubResource("Mat_vein_tree")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vtree")

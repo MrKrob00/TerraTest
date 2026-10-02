@@ -21,10 +21,13 @@ uniform float shake_intensity = 0.15;
 uniform float shake_speed = 40.0;
 // The ground in the vein's frame: what the crystals shrink into and the tree turns about.
 uniform float base_y = -0.25;
-// A tree FALLS as it is chopped (leans by the share gone, lies down at zero) instead of shrinking.
+// A tree LEANS a little as it is chopped and, at zero, falls and is gone in `fall_time`, leaving
+// its stump (the player's call: a felled tree lying there for the rest was wrong).
 uniform bool fells = false;
+uniform float lean_max = 0.30;
 uniform float fall_angle = 1.45;
-// What is left of a mined-out crystal: stubs, so the vein still says what it holds while it rests.
+uniform float fall_time = 0.9;
+// What is left of a mined-out ore: stubs, so the vein still says what it holds while it rests.
 uniform float stub = 0.22;
 uniform float grow_time = 0.6;
 
@@ -53,32 +56,53 @@ void vertex() {
 	}
 	vec3 p = VERTEX - vec3(0.0, base_y, 0.0);
 	float h = max(p.y, 0.0);
-	if (fells) {
-		float a = (1.0 - hp) * fall_angle;
-		float c = cos(a);
-		float s = sin(a);
-		p = vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
-		p *= mix(0.05, 1.0, grow);
-	} else {
-		p *= mix(stub, 1.0, hp) * mix(stub, 1.0, grow);
-	}
-	if (last_hit > 0.0) {
-		float since = TIME - last_hit;
-		if (since >= 0.0 && since < hit_duration) {
-			float fade = 1.0 - since / hit_duration;
-			float k = h * shake_intensity * fade;
-			p.x += sin(since * shake_speed) * k;
-			p.z += cos(since * shake_speed) * k * 0.5;
+	// UV.x marks the part that is mined (art/vein_models.gd): the rock and the stump never move
+	if (UV.x > 0.5) {
+		if (fells) {
+			float a = (1.0 - hp) * lean_max;
+			float keep = 1.0;
+			if (hp <= 0.001) {
+				// felled: tips over from where it leaned, then sinks out of sight
+				float since = max(TIME - last_hit, 0.0);
+				a = mix(lean_max, fall_angle, smoothstep(0.0, fall_time * 0.6, since));
+				keep = 1.0 - smoothstep(fall_time * 0.5, fall_time, since);
+			}
+			float c = cos(a);
+			float s = sin(a);
+			p = vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+			p *= keep * mix(0.05, 1.0, grow);
+		} else {
+			p *= mix(stub, 1.0, hp) * mix(stub, 1.0, grow);
+		}
+		if (last_hit > 0.0) {
+			float since = TIME - last_hit;
+			if (since >= 0.0 && since < hit_duration) {
+				float fade = 1.0 - since / hit_duration;
+				float k = h * shake_intensity * fade;
+				p.x += sin(since * shake_speed) * k;
+				p.z += cos(since * shake_speed) * k * 0.5;
+			}
 		}
 	}
 	VERTEX = p + vec3(0.0, base_y, 0.0);
 }
 
 void fragment() {
-	// vertex colours are authored in sRGB, ore_colors arrive linear
+	// Vertex colours are authored in sRGB, ore_colors arrive linear. Which space ALBEDO is in is the
+	// renderer's: where it writes sRGB straight out (OUTPUT_IS_SRGB, as here in Compatibility) the
+	// vertex colour goes through untouched and the metal goes back to sRGB - the same branch a
+	// StandardMaterial with vertex_color_is_srgb takes. Converting always made the rock black and
+	// the metals a shade darker and redder than G.METAL_COLOR, measured on the real driver.
 	vec3 c = COLOR.rgb;
-	c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-	vec3 col = mix(c, c * TINT_LIN * v_tint, COLOR.a);
+	vec3 tint = v_tint;
+	float gain = TINT_LIN;
+	if (OUTPUT_IS_SRGB) {
+		tint = mix(tint * 12.92, 1.055 * pow(max(tint, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), tint));
+		gain = TINT_GAIN;
+	} else {
+		c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
+	}
+	vec3 col = mix(c, c * gain * tint, COLOR.a);
 	float since = TIME - v_hit;
 	if (v_hit > 0.0 && since >= 0.0 && since < 0.15) {
 		col += vec3((1.0 - since / 0.15) * 0.6);
