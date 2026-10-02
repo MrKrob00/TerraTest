@@ -1988,6 +1988,34 @@
 		"ru": "Эта клетка занята.",
 		"uk": "Ця клітинка зайнята."
 	},
+	"Marlit's Champion": {
+		"ru": "Чемпион Marlit",
+		"uk": "Чемпіон Marlit"
+	},
+	"Destroy the Marlit champion": {
+		"ru": "Уничтожь чемпиона Marlit",
+		"uk": "Знищ чемпіона Marlit"
+	},
+	"Marlit only deals with those who can beat them. Their champion is out in the field - heavy hull, heavy wheels, guns that hit harder than ours.": {
+		"ru": "Marlit имеет дело только с теми, кто может их победить. Их чемпион где-то в поле: тяжёлый корпус, тяжёлые колёса и пушки, которые бьют сильнее наших.",
+		"uk": "Marlit має справу лише з тими, хто може їх перемогти. Їхній чемпіон десь у полі: важкий корпус, важкі колеса й гармати, що б'ють сильніше за наші."
+	},
+	"Marlit Wheel": {
+		"ru": "Колесо Marlit",
+		"uk": "Колесо Marlit"
+	},
+	"Marlit Gun": {
+		"ru": "Пушка Marlit",
+		"uk": "Гармата Marlit"
+	},
+	"A heavy wheel: pulls harder and carries more than any Falsus wheel.": {
+		"ru": "Тяжёлое колесо: тянет сильнее и везёт больше любого колеса Falsus.",
+		"uk": "Важке колесо: тягне сильніше й везе більше за будь-яке колесо Falsus."
+	},
+	"A machine gun that hits harder: the same aim, heavier rounds.": {
+		"ru": "Пулемёт, который бьёт сильнее: та же наводка, тяжелее патроны.",
+		"uk": "Кулемет, що б'є сильніше: те саме наведення, важчі набої."
+	},
 	"Nothing to bolt onto there.": {
 		"ru": "Там не к чему крепиться.",
 		"uk": "Там нема до чого кріпитися."

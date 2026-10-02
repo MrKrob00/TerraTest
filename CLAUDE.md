@@ -1996,13 +1996,18 @@ project: read it before claiming how anything works.
   a core on a pedestal, then in the repair unit's porthole shell ("you copied the repair unit").
   Measured on the proving ground: dome 6 m, 100 damage cost 48 energy, three covered faces shut and
   three open with the emitter swollen, a loose block 6.5 m away healed 17 a tick.
-- **BIG YELLOW LICENSES MARLIT** (`arc_yellow`, after Hold the Line; `quest_arcs._yellow_*`). We have no
-  trading station, so Marlit sets a COLLECTION POINT down 250-300 m out - the player's own quest base,
-  a support, Marlit hull and a receiver - and handing over is the ordinary factory rule: a receiver
-  on an anchored base takes what lies in its zone and what any machine's collector carries. Each
-  poll the arc uplinks what the receiver took (a glitch in the faction's colours) and counts it; 40
-  close the quest and `Q._on_completed` grants the licence. Measured on the proving ground: the
-  point at 274 m, stage 2 on arrival, 40 ore handed over in 37 s, the root block researched.
+- **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", after Hold the Line;
+  `quest_arcs._yellow_1`; the id is kept, saves and `G.FACTION_LICENCE` key on it). The player's
+  design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
+  from the player and the licence is granted when it dies. A Marlit hull round a cabin, four
+  `MARLIT_WHEEL`, three `MARLIT_GUN`, plates on the nose - about 37k, the fourth step (31.6k
+  median); outside the ladder, so no ceiling shrinks it. The cabin, wheel and gun are PLACEHOLDERS:
+  the Falsus cabin, and the big wheel and machine gun scenes inherited with Marlit's numbers (wheel
+  power and load x1.5, damage 8 against 5). It was a collection point where resources were handed
+  in - a TerraTech mission, not the one the player asked for - and every load planted another,
+  because the poll runs before saved bases come back (~10 s); `_sweep_yellow_points` removes those
+  from old saves. Measured on the proving ground: champion at 197-200 m, all blocks, drives; killed,
+  the quest closes and the licence opens.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a

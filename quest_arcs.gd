@@ -50,6 +50,7 @@ func _tick_arcs(delta: float) -> void:
 		return
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
+	_sweep_yellow_points()
 	for q in _arc_quests():
 		_cur_q = String(q.get("id", ""))
 		match String(q.get("event", "")):
@@ -66,7 +67,6 @@ func _tick_arcs(delta: float) -> void:
 			"quest_hold_1":        _hold_1(q)
 			"quest_hold_2":        _hold_2(q)
 			"quest_yellow_1":      _yellow_1(q)
-			"quest_yellow_2":      _yellow_2(q)
 			"quest_tower_1":       _tower_1(q, TOWER_WATCH)
 			"quest_tower_2":       _tower_2(q, TOWER_WATCH)
 			"quest_sam_1":         _tower_1(q, TOWER_SAM)
@@ -278,83 +278,62 @@ func _arc_power_2(q: Dictionary) -> void:
 		_clear_plan()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BIG YELLOW: resources handed to Marlit buy its licence
+# MARLIT'S LICENCE IS WON IN A FIGHT (arc_yellow)
 # ══════════════════════════════════════════════════════════════════════════════
-# TerraTech's "Big Yellow" on our mechanics. We have no trading station, so Marlit puts one down: a
-# COLLECTION POINT, the player's own quest base (a support, Marlit hull and a receiver), 250-300 m
-# out like every quest site. Handing over IS the ordinary factory rule - a receiver on an anchored
-# base takes what lies in its zone and what the collectors of any machine inside it carry - so the
-# player learns nothing new and needs nothing new: drive a loaded collector up to it. What the
-# receiver takes is uplinked to Marlit once a poll (a glitch in the faction's colours) and counted.
-# Nothing is paid for it: the licence is the payment (Q grants it on completion, G.grant_licence).
-const YELLOW_HALF := Vector2(3.0, 3.0)
-const YELLOW_FEATHER := 5.0
-## Marlit's own colours for the uplink: the sunset and the sea of its emblem.
-const YELLOW_FX_A := Color(1.0, 0.62, 0.22)
-const YELLOW_FX_B := Color(0.32, 0.58, 1.0)
-const YELLOW_FX_TIME := 0.5
-## The support is the core at (5,5,5); a Marlit block stands on one side, a Marlit half block in
-## front, and the receiver - which joins by its sides and bottom only - on the support's right.
-const YELLOW_LAYOUT := [
-	{"x": 5, "y": 5, "z": 5, "block": G.Block.SUPPORT, "rot": [0.0, 0.0, 0.0]},
-	{"x": 4, "y": 5, "z": 6, "block": G.Block.MARLIT_BLOCK, "rot": [0.0, 0.0, 0.0]},
-	{"x": 6, "y": 5, "z": 4, "block": G.Block.MARLIT_HALF, "rot": [0.0, 0.0, 0.0]},
-	{"x": 6, "y": 5, "z": 5, "block": G.Block.RECEIVER, "rot": [0.0, 0.0, 0.0]},
-]
+# The player's design: Marlit sends its champion, a machine of the fourth step built of Marlit
+# blocks (blocks.MARLIT_CHAMPION, outside the ladder so no ceiling shrinks it), about
+# YELLOW_DIST from the player; destroying it is the licence. It used to be a collection point where
+# resources were handed in - a TerraTech mission that was not this one - and every load planted
+# another point, because the poll ran before the saved base came back; those are swept up
+# (`_sweep_yellow_points`) from old saves.
+const YELLOW_DIST := 200.0
+const CHAMPION_PRESET := 120              # blocks.MARLIT_CHAMPION
 
 var _yellow_point: Variant = null
-var _yellow_base: Node3D = null
+var _yellow_e: Node3D = null
+## SENT, NOT "DEAD": a lost reference after a reload and a dead champion both read false through
+## is_instance_valid; only this flag, which lives in memory, tells them apart (as `_duel_sent`).
+var _yellow_sent: bool = false
 
-## One collection point per playthrough, picked up by its tag after a reload (as `_power_site`).
-func _yellow_site() -> bool:
-	if is_instance_valid(_yellow_base):
-		return true
-	_yellow_base = _adopt_quest_base("arc_yellow")
-	if is_instance_valid(_yellow_base):
-		_yellow_point = _yellow_base.global_position
-		return true
-	var p: Node3D = _player()
-	if p == null:
-		return false
-	if _yellow_point == null:
-		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang), 0.0, sin(ang)) * _quest_dist()
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_yellow_point = wp
-	_flatten_site(_yellow_point as Vector3, YELLOW_HALF, YELLOW_FEATHER)
-	_yellow_base = _spawn_station(_yellow_point as Vector3, YELLOW_LAYOUT)
-	if is_instance_valid(_yellow_base):
-		_yellow_base.set_meta(QuestProps.META, "arc_yellow")
-	return false
+func yellow_point() -> Variant:
+	return _yellow_point
 
 func _yellow_1(q: Dictionary) -> void:
-	if not _yellow_site():
+	if not _yellow_sent:
+		var p: Node3D = _player()
+		var map: Node = get_node_or_null("/root/Main/map")
+		if p == null or (map != null and map.get("terrain_is_ready") == false):
+			return
+		if _yellow_point == null:
+			var ang: float = randf() * TAU
+			var wp: Vector3 = p.global_position + Vector3(cos(ang), 0.0, sin(ang)) * YELLOW_DIST
+			wp.y = G.ground_y(wp, p.global_position.y)
+			_yellow_point = wp
+		_yellow_e = _spawn_hostile(get_node_or_null("/root/Main/EnemySpawner"), _yellow_point as Vector3,
+				CHAMPION_PRESET)
+		if _yellow_e == null:
+			return
+		_yellow_e.set_meta("story", true)          # the kill marker looks for this first
+		_yellow_sent = true
 		return
-	if _reached(_yellow_point):
-		Q.report(String(q["event"]), 1)
+	if is_instance_valid(_yellow_e):
+		_yellow_point = _yellow_e.global_position   # the compass follows the champion
+		return
+	_yellow_sent = false
+	_yellow_point = null
+	Q.report(String(q["event"]), 1)
 
-func _yellow_2(q: Dictionary) -> void:
-	if not _yellow_site():
+## Collection points the old version of this quest planted (one more on every load) leave the world.
+func _sweep_yellow_points() -> void:
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	if vr == null:
 		return
-	var bm = _yellow_base.get("block_map_node")
-	if bm == null or not is_instance_valid(bm):
-		return
-	var sent := 0
-	for b in (bm as Node).get_children():
-		if b.get("block") == null or int(b.get("block")) != G.Block.RECEIVER or not ("inventory" in b):
-			continue
-		for item in (b.get("inventory") as Array).duplicate():
-			if not is_instance_valid(item):
-				continue
-			(b.get("inventory") as Array).erase(item)
-			BlockFX.play(item, true, YELLOW_FX_TIME, YELLOW_FX_A, YELLOW_FX_B)
-			item.queue_free()
-			sent += 1
-		if sent > 0:
-			b.call("_fix_positions")
-			b.call("_update_take_timer")      # room again: it goes on taking from collectors
-	if sent > 0:
-		Q.report(String(q["event"]), sent)
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	for c in vr.get_children():
+		if c.has_meta(QuestProps.META) and String(c.get_meta(QuestProps.META)) == "arc_yellow":
+			if cc != null and "vehicles" in cc:
+				(cc.vehicles as Array).erase(c)
+			c.queue_free()
 
 # ══════════════════════════════════════════════════════════════════════════════
 # БЛОК ВЕЗЁТ ВРАГ: не «съезди и подбери», а «отбери»
@@ -1667,7 +1646,6 @@ func quest_point(ev: String) -> Variant:
 		"quest_arc_power_1": return _power_point
 		"quest_arc_power_2": return _power_point
 		"quest_yellow_1": return _yellow_point
-		"quest_yellow_2": return _yellow_point
 		# Ветки с носителем и с жилой: точка едет за живым носителем (carrier_point сама
 		# обновляет её), а после боя указывает туда, где упал блок.
 		"quest_arc_radar_1":   return carrier_point("arc_radar")
