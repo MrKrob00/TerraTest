@@ -411,6 +411,8 @@ func erase_wheel(wheel: Node) -> void:
 # ══════════════════════════════════════════
 
 func sense_ground(delta: float) -> void:
+	if _first_tick_ms < 0:
+		_first_tick_ms = Time.get_ticks_msec()
 	var was_grounded: bool = _on_ground
 	if not was_grounded:
 		_fall_speed = maxf(_fall_speed, -linear_velocity.y)
@@ -452,9 +454,30 @@ func _land_wave(speed: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var q := PhysicsRayQueryParameters3D.create(global_position, global_position + Vector3.DOWN * 12.0, 1, [get_rid()])
 	var h := space.intersect_ray(q)
+	_land_hurt_wheels(speed)
 	if h.is_empty():
 		return
 	BlockFX.ground_wave(self, h["position"], h["normal"], speed)
+
+## A HARD LANDING COSTS THE WHEELS A LITTLE (the player's call): LAND_WHEEL_MIN of a wheel's hit
+## points at the wave's threshold, growing with the fall to LAND_WHEEL_MAX. Through `hurt`, the one
+## door, so invulnerability and the damage overlay apply as to a shot. Not in a machine's first
+## LAND_GRACE_MS: every enemy ARRIVES by dropping from the sky, and that is not its fault.
+const LAND_WHEEL_MIN := 0.02
+const LAND_WHEEL_MAX := 0.12
+const LAND_GRACE_MS := 8000
+var _first_tick_ms: int = -1
+
+func _land_hurt_wheels(speed: float) -> void:
+	var now: int = Time.get_ticks_msec()
+	if _first_tick_ms < 0 or now - _first_tick_ms < LAND_GRACE_MS:
+		return
+	var thr: float = sqrt(2.0 * _gravity_accel() * LAND_WAVE_DROP)
+	var share: float = clampf(LAND_WHEEL_MIN + (LAND_WHEEL_MAX - LAND_WHEEL_MIN) * (speed / thr - 1.0) * 0.5,
+			LAND_WHEEL_MIN, LAND_WHEEL_MAX)
+	for w in Wheels.duplicate():
+		if is_instance_valid(w) and w.has_method("hurt") and "max_hp" in w:
+			w.hurt(maxi(int(round(float(w.get("max_hp")) * share)), 1))
 
 func drive_physics(delta: float) -> void:
 	_apply_suspension()

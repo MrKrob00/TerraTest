@@ -1072,6 +1072,7 @@ static func ground_wave(anchor: Node, pos: Vector3, normal: Vector3, speed: floa
 	m.set_shader_parameter("seed", randf() * 100.0)
 	m.set_shader_parameter("color", Vector3(WAVE_COL.r, WAVE_COL.g, WAVE_COL.b))
 	m.set_shader_parameter("progress", 0.0)
+	m.set_shader_parameter("depth_lift", G.grass_lift() + WAVE_LIFT)
 	mi.material_override = m
 	host.add_child(mi)
 	var up: Vector3 = normal.normalized() if normal.length_squared() > 0.0001 else Vector3.UP
