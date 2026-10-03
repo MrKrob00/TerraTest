@@ -771,8 +771,11 @@ project: read it before claiming how anything works.
   then the other, and the animation shows them together"): one marker on each Falsus barrel
   (x +-0.085), one on each pair of Marlit's four bores (x +-0.18), and a flash sized to ONE barrel
   (`flash_size` 0.26 / 0.4) - at the shared 0.42 a petal reached 0.6 m and one flash covered both.
-  A MUZZLE STANDS AT THE BARREL'S END, MEASURED ON THE MODEL'S VERTICES: the Falsus laser's sat at
-  the pivot's height, 0.335 m under its lens and 0.26 m inside the head, so its shot left low. Measured on the engine: kicks 0.05 / 0.10 / 0.16 m, the twin gun alternating both muzzles;
+  A MUZZLE STANDS AT THE BARREL'S END, MEASURED ON THE MODEL'S VERTICES IN THE TREE: the Falsus
+  laser's sat at the pivot's height, 0.24 m under its lens tip (now (0, 0.24, -0.5)), so its shot
+  left low. MEASURE A SCENE'S PARTS WITH IT INSIDE THE TREE: `global_transform` of a node outside
+  it is only its own local one, and the first fix built on such a number put the laser's and the
+  shotgun's muzzles 0.28 m ahead of their barrels, in the air - the player saw it on the picture. Measured on the engine: kicks 0.05 / 0.10 / 0.16 m, the twin gun alternating both muzzles;
   checked on the real driver for all six Falsus weapons and the five Marlit.
 
 ### Energy
