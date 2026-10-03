@@ -131,6 +131,9 @@ var _overlay: Overlay = null
 var _visual_cache := {}
 var _all_empty := false
 var _inv_seen := -1
+var _hand_seen := -1                   # the hand's block type at the last refresh
+var _recount_in := -1                  # frames until the recount a change of hand asks for
+const RECOUNT_DELAY := 2
 
 var _dragging := false
 var _drag_dist := 0.0
@@ -281,6 +284,15 @@ func refresh() -> void:
 				continue
 			var bt: int = int(c.get("block"))
 			counts[bt] = counts.get(bt, 0) + 1
+	# THE BLOCK IN THE HAND IS THE PLAYER'S TOO, and the globe turns to it (the player's call). Taking
+	# a block into the hand takes it OUT of the inventory (G.consume_block), so the globe never showed
+	# it: a gun picked off the hull vanished from the list while it was being carried. Stashing it
+	# puts it back in the inventory and dropping it lays it loose within reach, so the count stays
+	# the same either way; placing it is what spends it.
+	var hand := _hand_type()
+	_hand_seen = hand
+	if hand > 0:
+		counts[hand] = counts.get(hand, 0) + 1
 	var order: Array = counts.keys()
 	order.sort_custom(_before)
 	for block_type in order:
@@ -292,6 +304,14 @@ func refresh() -> void:
 		if not items.is_empty():
 			_all_empty = false
 			_item_idx[k] = clampi(int(_item_idx[k]), 0, items.size() - 1)
+	if hand > 0:
+		var hk := _category_of(hand)
+		var items: Array = _by_cat[hk]
+		for i in items.size():
+			if int(items[i]["type"]) == hand:
+				_cat_idx = CAT_KEYS.find(hk)
+				_item_idx[hk] = i
+				break
 	if (_by_cat[CAT_KEYS[_cat_idx]] as Array).is_empty() and not _all_empty:
 		_cat_idx = _nearest_nonempty(_cat_idx)
 	# Ставим передней текущую категорию (β=0 → _spin = −cat·AZ).
@@ -304,6 +324,25 @@ func refresh() -> void:
 ## The lists' own order (`G.block_order`, the garage's too), not the order blocks were picked up in.
 func _before(a, b) -> bool:
 	return G.block_order(int(a)) < G.block_order(int(b))
+
+## Recount in RECOUNT_DELAY frames rather than now (see `_tick_globe`): for whoever just emptied
+## the hand into the world.
+func refresh_soon() -> void:
+	_recount_in = RECOUNT_DELAY
+
+## What the hand holds as a block type, -1 for nothing or for a resource. The hand is ONE holder under
+## the shared camera, so the driven machine answers for a build delegated to another one too.
+func _hand_type() -> int:
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc == null or not ("current_vehicle" in cc):
+		return -1
+	var v = cc.current_vehicle
+	if not is_instance_valid(v) or not v.has_method("hand_node"):
+		return -1
+	var h: Node = v.hand_node()
+	if not is_instance_valid(h) or not ("block" in h):
+		return -1
+	return int(h.get("block"))
 
 func _category_of(block_type: int) -> String:
 	for k in G.BLOCK_CATEGORIES:
@@ -535,7 +574,17 @@ func _process(delta: float) -> void:
 func _tick_globe(delta: float) -> void:
 	if not visible or _root == null:
 		return
-	if not _dragging and G.block_inventory.size() != _inv_seen and _stack_settled():
+	# A CHANGE OF HAND IS COUNTED TWO FRAMES LATER: a block thrown out of the hand is reparented
+	# into the world still frozen and unfreezes on the next frame (VehicleBlock._on_parent_changed),
+	# so a recount in the same frame missed it - the globe turned away from its now "empty" ring,
+	# and with the inventory unchanged nothing recounted it after.
+	if _hand_type() != _hand_seen and _recount_in < 0:
+		_recount_in = RECOUNT_DELAY
+	if _recount_in >= 0:
+		_recount_in -= 1
+	if not _dragging and (G.block_inventory.size() != _inv_seen or _recount_in == 0) \
+			and _stack_settled():
+		_recount_in = -1
 		refresh()
 	var pk := minf(SPIN_SPEED * delta, 1.0)
 	_spin = lerpf(_spin, _spin_t, pk)

@@ -2073,12 +2073,19 @@ func _maybe_grab_on_tap(screen_pos: Vector2) -> bool:
 	# нельзя, и разбирать её на ходу руками мы не даём.
 	if _mark_enemy_target(screen_pos):
 		return true
-	# 1) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
+	# 1) WHAT LIES LOOSE IN FRONT OF THE MACHINE GOES FIRST. The aim that set block_body walks the
+	# GRID, which knows nothing of a loose block lying on the hull: a tap on that block went through
+	# it and took the machine's block under it. `_grab_world_block` asks physics, whose first hit
+	# is whichever is nearer - the loose item, or a block of a machine (then it answers false and
+	# the machine's block is taken as before).
+	if _grab_world_block(screen_pos):
+		return true
+	# 2) Блок на МАШИНЕ (block_body уже наведён grid-лучом) — снять в руку.
 	if block_body != null and is_instance_valid(block_body) \
 			and block_body.get_parent() != null and block_body.get_parent().name == "blocks":
 		_pick_selected_block()
 		return true
-	return _grab_world_block(screen_pos)
+	return false
 
 # Взять РЕСУРС в руку. Отдельно от блочного пути намеренно: общего у них только «повесить
 # под камеру», а всё остальное (тип, инвентарь, сетка, стройка, шаг обучения) — блочное и
