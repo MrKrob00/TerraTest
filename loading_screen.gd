@@ -415,16 +415,35 @@ func _hook_terrain() -> void:
 	else:
 		_finish()
 
+const FX_WARMUP := preload("res://fx_warmup.gd")
+## The warm-up may take this long at most; the screen dissolves anyway after it.
+const WARMUP_MAX := 3.0
+
 func _finish() -> void:
 	if _phase == 2:
 		return
 	_phase = 2
+	await _warm_up()
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(self, "_dissolve", 1.0, 0.5)          # нарастающий глитч-развал (как снос блока)
 	tw.tween_property(_ui, "modulate:a", 0.0, 0.5)
 	tw.set_parallel(false)
 	tw.tween_callback(queue_free)
+
+## Play every fight effect once behind the still opaque screen (fx_warmup.gd): the first shot must
+## not stop the frame to compile them. Only in the world - the menu has no machines to shoot.
+func _warm_up() -> void:
+	var scn: Node = get_tree().current_scene
+	if scn == null or scn.get_node_or_null("Vehicles") == null:
+		return
+	var w := FX_WARMUP.new()
+	var finished := [false]
+	w.done.connect(func(): finished[0] = true)
+	scn.add_child(w)
+	var t0: int = Time.get_ticks_msec()
+	while not finished[0] and Time.get_ticks_msec() - t0 < int(WARMUP_MAX * 1000.0):
+		await get_tree().process_frame
 
 # КАРКАС — спокойная геометрия экрана: сетка, угловые скобки, линейки вокруг названия и
 # засечки у полосы загрузки.
