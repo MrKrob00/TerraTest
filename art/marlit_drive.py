@@ -12,7 +12,9 @@ CABIN - the faction's casting with its front-top edge cut away into a SLOPED CAN
 of sea-teal glass in a gunmetal frame, a sunset line under them and a light bar along the brow.
 Each side has a glass window following the slope, a door with a porthole and a handle, and hazard
 slats along its foot; the front a vented grille between two sunset lamps, a tow hook and slats; the
-roof a bolted hatch and a vent strip; the back a radiator and two exhaust ports. All of it lies on
+roof a bolted hatch and a vent strip. THE FRONT AND THE BACK ARE THE FACTION'S WINDOW OPENED: an
+intake of louvres framed by the window's bevel, whose upright sides are the headlamps, and a radiator
+of fins - a grille, lamps and exhausts laid on as decals "did not belong" (the player). All of it lies on
 the block's faces, so it still joins on every face but the slope. The first cut - the canopy on a
 plain casting with the faction's window on every side - was "too simple" (the player).
   body - all of it (a cabin moves nothing)
@@ -100,12 +102,131 @@ def _cab_side(f, x, sx):
           inside, "mhazard", u=(0, 0, 1))
 
 
+def _cab_prism(f, q, x0, x1, rnd, special):
+    """`emitter_models.marlit_prism`, except that a swept face named in `special` (by the z both its
+    edges stand at: the front -1.5, the back 0.5) is handed to its own function instead of the
+    faction's window: there the window IS the grille or the radiator, built into the casting."""
+    c = em.MB_C
+    qc, kind = hm.chamfered_profile(q, c)
+    wall = hm.inset(q, c)
+    n = len(qc)
+    xa, xb = x0 + c, x1 - c
+    cy = sum(p[0] for p in q) / len(q)
+    cz = sum(p[1] for p in q) / len(q)
+    centre = ((x0 + x1) / 2, cy, cz)
+    for i in range(n):
+        a, b = qc[i], qc[(i + 1) % n]
+        pts = th.outward([(xa, a[0], a[1]), (xb, a[0], a[1]), (xb, b[0], b[1]), (xa, b[0], b[1])], centre)
+        if kind[i] == "chamfer":
+            f.append(th.Face(pts, "medge", u_hint=(1, 0, 0)))
+            continue
+        key = round(a[1], 3) if abs(a[1] - b[1]) < 1e-6 else None
+        if key in special:
+            special[key](f, pts, rnd)
+        else:
+            em.marlit_poly(f, pts, rnd)
+    nq = len(q)
+    for xw, xf in ((x0, xa), (x1, xb)):
+        em.marlit_poly(f, th.outward([(xw, p[0], p[1]) for p in wall], centre), rnd)
+        for j in range(nq):
+            fa, fb = qc[2 * j + 1], qc[(2 * j + 2) % n]
+            wa, wb = wall[j], wall[(j + 1) % nq]
+            st = [(xf, fa[0], fa[1]), (xf, fb[0], fb[1]), (xw, wb[0], wb[1]), (xw, wa[0], wa[1])]
+            f.append(th.Face(th.outward(st, centre), "medge", u_hint=th.sub(st[1], st[0])))
+            ca, cb = qc[(2 * j + 2) % n], qc[(2 * j + 3) % n]
+            wv = wall[(j + 1) % nq]
+            tri = [(xf, ca[0], ca[1]), (xf, cb[0], cb[1]), (xw, wv[0], wv[1])]
+            f.append(th.Face(th.outward(tri, centre), "medge", u_hint=th.sub(tri[1], tri[0])))
+
+
+def _window_open(f, pts, rnd, louvres, lamps):
+    """The faction's window on this face, OPEN (`marlit_poly(floor=False)`): its bevel and sunset line
+    frame a dark well filled with louvres - horizontal (the front's intake) or upright (the back's
+    radiator fins). `lamps` turns the window's two upright side bevels into headlamp lenses, so the
+    lights are part of the frame rather than stuck on beside it."""
+    start = len(f)
+    ring, d2 = em.marlit_poly(f, pts, rnd, floor=False)
+    cen = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
+    n = th.norm(th.newell(pts))
+    u = th.norm(th.sub(pts[1], pts[0]))
+    v = th.norm(th.cross(n, u))
+    if abs(u[1]) > abs(u[0]):             # work in world axes: a across (x), b up (y)
+        u, v = v, u
+    if u[0] < 0:
+        u = th.mul(u, -1.0)
+    if v[1] < 0:
+        v = th.mul(v, -1.0)
+    ring = [(th.dot(th.sub(p, cen), u), th.dot(th.sub(p, cen), v))
+            for p in [th.add(cen, th.add(th.mul(th.norm(th.sub(pts[1], pts[0])), x),
+                                         th.mul(th.norm(th.cross(n, th.norm(th.sub(pts[1], pts[0])))), y)))
+                      for x, y in ring]]
+
+    def P(x, y, d):
+        return th.add(cen, th.add(th.add(th.mul(u, x), th.mul(v, y)), th.mul(n, -d)))
+    inside = th.add(cen, th.mul(n, -1.0))
+    if lamps:
+        for face in f[start:]:
+            if face.style.startswith("mbev"):
+                nn = th.norm(th.newell(face.pts))
+                if abs(nn[0]) > 0.3:          # the upright sides and the four corner facets: lamp clusters
+                    face.style = "mlamp"
+    floor = d2 + 0.08
+    mw._face(f, [P(x, y, floor) for x, y in ring], th.add(cen, th.mul(n, -2.0)), "mflat0", u_hint=u)
+
+    def span(t, along_y):
+        """Where a line at t (a height, or an x) crosses the ring: its two ends."""
+        hits = []
+        for i in range(len(ring)):
+            a, b = ring[i], ring[(i + 1) % len(ring)]
+            ka, kb = (a[1], b[1]) if along_y else (a[0], b[0])
+            if (ka - t) * (kb - t) <= 0 and abs(kb - ka) > 1e-9:
+                s2 = (t - ka) / (kb - ka)
+                hits.append(a[0] + (b[0] - a[0]) * s2 if along_y else a[1] + (b[1] - a[1]) * s2)
+        return (min(hits), max(hits)) if len(hits) >= 2 else None
+    ys = [p[1] for p in ring]
+    xs = [p[0] for p in ring]
+    if louvres == "h":
+        lo, hi = min(ys), max(ys)
+        k = 6
+        for i in range(k):
+            y = lo + (hi - lo) * (i + 0.6) / (k + 0.2)
+            sp = span(y, True)
+            if sp is None:
+                continue
+            x0, x1 = sp[0] + 0.01, sp[1] - 0.01
+            # a slat tipped down toward the front: its lit top, then its dark lip
+            mw._face(f, [P(x0, y, d2 + 0.01), P(x1, y, d2 + 0.01), P(x1, y - 0.06, floor - 0.01),
+                         P(x0, y - 0.06, floor - 0.01)], inside, "mbev3", u_hint=u)
+            mw._face(f, [P(x0, y, d2 + 0.01), P(x1, y, d2 + 0.01), P(x1, y - 0.012, d2 + 0.01),
+                         P(x0, y - 0.012, d2 + 0.01)], inside, "mbev4", u_hint=u)
+    else:
+        lo, hi = min(xs), max(xs)
+        k = 9
+        for i in range(k):
+            x = lo + (hi - lo) * (i + 0.6) / (k + 0.2)
+            sp = span(x, False)
+            if sp is None:
+                continue
+            y0, y1 = sp[0] + 0.01, sp[1] - 0.01
+            # a radiator fin, edge on to the back: two faces and a lit edge
+            for dx, st in ((-0.018, "mbev2"), (0.018, "mbev3")):
+                mw._face(f, [P(x, y0, d2 + 0.005), P(x, y1, d2 + 0.005), P(x + dx, y1, floor - 0.01),
+                             P(x + dx, y0, floor - 0.01)], inside, st, u_hint=v)
+            mw._face(f, [P(x - 0.006, y0, d2 + 0.004), P(x + 0.006, y0, d2 + 0.004), P(x + 0.006, y1, d2 + 0.004),
+                         P(x - 0.006, y1, d2 + 0.004)], inside, "mbev4", u_hint=v)
+
+
 def build_marlit_cabin(pk, img):
     import random as _r
     rnd = _r.Random(57)
     parts = {"marlit_cabin_body": []}
     f = parts["marlit_cabin_body"]
-    em.marlit_prism(f, CAB_YZ, -1.5, 0.5, rnd)
+    # THE FRONT AND THE BACK ARE THE FACTION'S WINDOW ITSELF, OPENED: the intake and its lamps on the
+    # front, the radiator on the back. Decals of a grille, lamps and exhausts laid over the window
+    # "did not belong" (the player) - two styles on one face.
+    _cab_prism(f, CAB_YZ, -1.5, 0.5, rnd, {
+        -1.5: lambda ff, pts, r: _window_open(ff, pts, r, "h", True),
+        0.5: lambda ff, pts, r: _window_open(ff, pts, r, "v", False)})
     inside = (CX, 0.3, -0.4)
     # the canopy: three panes in a gunmetal frame, a sunset line under them
     span = math.hypot(1.5 - CAB_SILL, CAB_BROW + 1.5)
@@ -139,26 +260,9 @@ def build_marlit_cabin(pk, img):
                   th.add(c, (-0.035, 0, 0.035))], inside, "mbolt")
     _quad(f, [(-1.3, yt, 0.24), (-0.95, yt, 0.24), (-0.95, yt, 0.36), (-1.3, yt, 0.36)], inside, "mvent")
     _quad(f, [(-0.05, yt, 0.24), (0.3, yt, 0.24), (0.3, yt, 0.36), (-0.05, yt, 0.36)], inside, "mvent")
-    # the front: a vented grille between two sunset lamps, a tow hook, slats along the foot
-    zf = -1.5 - PROUD
-    _quad(f, [(-0.95, -0.12, zf), (-0.05, -0.12, zf), (-0.05, 0.30, zf), (-0.95, 0.30, zf)], inside, "mvent")
-    for x0, x1 in ((-1.36, -1.06), (0.06, 0.36)):
-        _quad(f, [(x0, 0.02, zf), (x1, 0.02, zf), (x1, 0.26, zf), (x0, 0.26, zf)], inside, "mflat1")
-        _quad(f, [(x0 + 0.03, 0.05, zf - 0.004), (x1 - 0.03, 0.05, zf - 0.004), (x1 - 0.03, 0.23, zf - 0.004),
-                  (x0 + 0.03, 0.23, zf - 0.004)], inside, "mglow")
-    _quad(f, [(-1.36, -0.42, zf), (0.36, -0.42, zf), (0.36, -0.30, zf), (-1.36, -0.30, zf)], inside, "mhazard")
-    em.obox(f, (-0.5, -0.22, -1.5 - 0.02), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.10, 0.05, 0.02),
-            ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
     # the sides
     _cab_side(f, -1.5, -1.0)
     _cab_side(f, 0.5, 1.0)
-    # the back: a radiator, two exhaust ports with sunset rims, slats along the foot
-    zb = 0.5 + PROUD
-    _quad(f, [(-1.2, 0.05, zb), (0.2, 0.05, zb), (0.2, 0.95, zb), (-1.2, 0.95, zb)], inside, "mvent")
-    for x in (-1.12, 0.12):
-        _oct_on(f, (x, 1.22, zb), (1, 0, 0), (0, 1, 0), 0.15, "mglow", inside)
-        _oct_on(f, (x, 1.22, zb + 0.004), (1, 0, 0), (0, 1, 0), 0.11, "mflat0", inside)
-    _quad(f, [(-1.36, -0.42, zb), (0.36, -0.42, zb), (0.36, -0.30, zb), (-1.36, -0.30, zb)], inside, "mhazard")
     return parts
 
 
