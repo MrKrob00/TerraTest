@@ -300,82 +300,84 @@ def _cab_bottom(f, F):
 
 
 # THE CUBE KEEPS ITS EDGES SHARP AND ITS CORNERS CARRY ARMOUR (the player: "the corners are too
-# even", then of the chamfered cut "too rounded - I just want some details"). So at every corner a
-# block CORNER_S on a side is cut out of the finished faces and a separate corner piece stands in it,
-# flush with the cube: a seam round it, a plate with bolts on each of its three faces. The cut is a
-# CLIP: a face minus the corner's box is split into convex pieces (in front of the box on x, then on
-# y, then on z), and the three walls of the notch are closed in the dark, seen only through the seam.
-CORNER_S = 0.30              # the corner piece's size, in the cube's half-size (a metre here)
-CORNER_GAP = 0.018           # the seam round it
-
-
-def _clip(poly, n, o):
-    """Sutherland-Hodgman: the part of a 3D polygon (in the cube's unit axes) with n.u <= o."""
-    out = []
-    m = len(poly)
-    for i in range(m):
-        a, b = poly[i], poly[(i + 1) % m]
-        da, db = th.dot(n, a) - o, th.dot(n, b) - o
-        if da <= 1e-9:
-            out.append(a)
-        if (da < -1e-9 < db) or (db < -1e-9 < da):
-            t = da / (da - db)
-            out.append(th.add(a, th.mul(th.sub(b, a), t)))
-    return out
-
-
-def _live(u):
-    if len(u) < 3:
-        return False
-    nn = th.newell(u)
-    return th.dot(nn, nn) > 1e-10
-
-
-def _minus_box(poly, sg, t):
-    """A convex polygon minus the corner box {sg_i u_i >= t on every axis}, as convex pieces."""
-    out = []
-    rest = poly
-    for i in range(3):
-        n = [0.0, 0.0, 0.0]
-        n[i] = sg[i]
-        piece = _clip(rest, tuple(n), t)
-        if _live(piece):
-            out.append(piece)
-        rest = _clip(rest, tuple(-v for v in n), -t)
-        if not _live(rest):
-            return out
-    return out
+# even", then of a chamfered cut "too rounded - I just want some details"). At every corner a cap
+# CORNER_S on a side, a bolted plate on each of its three faces, standing CORNER_PROUD off the cube
+# like the inlays. IT IS LAID OVER THE FACES, NOT CUT INTO THEM: a notch cut out of the finished
+# faces split every face it crossed into convex pieces and took the cabin from 754 triangles to
+# 1929, three quarters of that the split; under a cap the faces simply stay, hidden, and
+# `_cull_hidden` throws away whatever no ray from outside reaches.
+CORNER_S = 0.30              # the cap's size, in the cube's half-size (a metre here)
+CORNER_PROUD = 0.006         # how far it stands off the cube's faces
 
 
 def _carve(faces):
-    """Cut the corner boxes out of every face, close the notches, stand a corner piece in each."""
+    """The corner caps, over the finished faces."""
     C = (CX, CY, CZ)
     t = 1.0 - CORNER_S
-    corners = [(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
-    polys = [([th.sub(q, C) for q in fc.pts], fc) for fc in faces]
-    for sg in corners:
-        nxt = []
-        for u, fc in polys:
-            for piece in _minus_box(u, sg, t):
-                nxt.append((piece, fc))
-        polys = nxt
-    out = [th.Face([th.add(q, C) for q in u], fc.style, u_hint=fc.u_hint) for u, fc in polys]
-    W = lambda u: th.add(C, u)      # noqa: E731
-    for sg in corners:
-        # the notch's three walls, dark
-        for i in range(3):
-            j, k = (i + 1) % 3, (i + 2) % 3
-            q = []
-            for a, b in ((t, t), (1.0, t), (1.0, 1.0), (t, 1.0)):
-                u = [0.0, 0.0, 0.0]
-                u[i], u[j], u[k] = sg[i] * t, sg[j] * a, sg[k] * b
-                q.append(W(tuple(u)))
-            mw._face(out, q, W(tuple(v * 2.0 for v in sg)), "mflat0")
-        # the corner piece, flush with the cube's three faces
-        lo = tuple(min(sg[i] * (t + CORNER_GAP), sg[i] * 1.0) for i in range(3))
-        hi = tuple(max(sg[i] * (t + CORNER_GAP), sg[i] * 1.0) for i in range(3))
-        em.cham_box(out, W(lo), W(hi), 0.02, "mpside", "mpside", "mpside", "mbev3")
+    out = list(faces)
+    for sg in [(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]:
+        a = tuple(sg[i] * t for i in range(3))
+        b = tuple(sg[i] * (1.0 + CORNER_PROUD) for i in range(3))
+        lo = th.add(C, tuple(min(a[i], b[i]) for i in range(3)))
+        hi = th.add(C, tuple(max(a[i], b[i]) for i in range(3)))
+        em.cham_box(out, lo, hi, 0.015, "mpside", "mpside", "mpside", "mbev3")
     return out
+
+
+def _cull_hidden(faces, n_dirs=96):
+    """Drop every face no ray from outside can reach. The cabin is built in layers - an under-layer
+    under the plates, walls of slabs pressed against each other, pieces the corner cut split off -
+    and a good share of what that leaves is never seen from any side. Each face is sampled (its
+    middle and points near its corners), each sample shoots rays over the half sphere it faces, and
+    the face stays if one ray gets out without striking another face. Offline, numpy, a few seconds."""
+    import numpy as np
+    tri, own = [], []
+    for i, fc in enumerate(faces):
+        for k in range(1, len(fc.pts) - 1):
+            tri.append((fc.pts[0], fc.pts[k], fc.pts[k + 1]))
+            own.append(i)
+    T = np.array(tri, dtype=np.float64)
+    V0, E1, E2 = T[:, 0], T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    g = math.pi * (3.0 - math.sqrt(5.0))
+    D = np.array([(math.cos(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2),
+                   1 - 2 * (i + 0.5) / n_dirs,
+                   math.sin(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2)) for i in range(n_dirs)])
+
+    def escapes(O, d):
+        # Moller-Trumbore, every ray of the batch against every triangle
+        p = np.cross(d[:, None, :], E2[None, :, :])
+        det = np.einsum("tk,rtk->rt", E1, p)
+        ok = np.abs(det) > 1e-12
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        s_ = O[:, None, :] - V0[None, :, :]
+        u = np.einsum("rtk,rtk->rt", s_, p) * inv
+        q = np.cross(s_, E1[None, :, :])
+        v = np.einsum("rk,rtk->rt", d, q) * inv
+        t = np.einsum("tk,rtk->rt", E2, q) * inv
+        hit = ok & (u >= -1e-7) & (v >= -1e-7) & (u + v <= 1 + 1e-7) & (t > 1e-5)
+        return ~hit.any(axis=1)
+
+    kept = []
+    for fc in faces:
+        nn = th.newell(fc.pts)
+        L = math.sqrt(th.dot(nn, nn))
+        if L < 1e-12:
+            continue
+        n = np.array(nn) / L
+        P = np.array(fc.pts)
+        c = P.mean(axis=0)
+        S = np.vstack([c[None, :], P * 0.8 + c * 0.2]) + n * 2e-4
+        dd = D[D @ n > 0.12]
+        O = np.repeat(S, len(dd), axis=0)
+        d = np.tile(dd, (len(S), 1))
+        seen = False
+        for k in range(0, len(O), 64):
+            if escapes(O[k:k + 64], d[k:k + 64]).any():
+                seen = True
+                break
+        if seen:
+            kept.append(fc)
+    return kept
 
 
 def build_marlit_cabin(pk, img):
@@ -400,7 +402,7 @@ def build_marlit_cabin(pk, img):
             else:
                 F = _Face(cen, th.cross((0.0, 1.0, 0.0), n), (0.0, 1.0, 0.0), n)
                 (_cab_back if side else _cab_front)(f, F)
-    parts["marlit_cabin_body"] = _carve(f)
+    parts["marlit_cabin_body"] = _cull_hidden(_carve(f))
     return parts
 
 
