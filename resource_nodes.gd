@@ -167,13 +167,13 @@ func _all_mm() -> Array:
 ## The MultiMesh that draws this vein: the tree, or its metal's outcrop (a metal past the list - a
 ## new one before its model is built - borrows the last).
 ## WHICH TREE GROWS HERE, BY BIOME (the player's call, after TerraTech): an index into
-## `wood_multimesh_nodes` - TREE_FIR on the mountains, TREE_BROAD or TREE_TEAL on the meadow and in the
-## canyon, TREE_PALM in the desert; -1 on a salt flat, where nothing grows. The roll is a HASH OF THE
-## POINT, not the region's rng: drawing from that would shift every vein after the first tree.
-const TREE_FIR := 0
-const TREE_BROAD := 1
-const TREE_TEAL := 2
-const TREE_PALM := 3
+## `wood_multimesh_nodes` - TREE_BROAD or TREE_TEAL on the meadow, TREE_BROAD in the canyon and on the
+## mountains (two mountain trees were turned down, and the player kept three models), TREE_PALM in
+## the desert; -1 on a salt flat, where nothing grows. The roll is a HASH OF THE POINT, not the
+## region's rng: drawing from that would shift every vein after the first tree.
+const TREE_BROAD := 0
+const TREE_TEAL := 1
+const TREE_PALM := 2
 const TEAL_SHARE := 30          # of a hundred meadow trees
 
 func _tree_kind(map: Node, world: Vector3) -> int:
@@ -182,11 +182,11 @@ func _tree_kind(map: Node, world: Vector3) -> int:
 	if map.has_method("salt_at") and float(map.salt_at(world)) > 0.5:
 		return -1
 	var b: Vector3 = map.biome_at(world)          # canyon, meadow, mountain
-	if b.z > 0.5:
-		return TREE_FIR
-	if b.y > 0.5 or b.x > 0.5:
+	if b.y > 0.5 and b.z <= 0.5:
 		var roll: int = absi(hash(Vector2i(roundi(world.x * 10.0), roundi(world.z * 10.0)))) % 100
 		return TREE_TEAL if roll < TEAL_SHARE else TREE_BROAD
+	if b.x > 0.5 or b.z > 0.5:
+		return TREE_BROAD
 	return TREE_PALM
 
 func _model_mm(v: Dictionary) -> MultiMeshInstance3D:

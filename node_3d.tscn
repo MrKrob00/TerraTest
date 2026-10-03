@@ -19,7 +19,6 @@
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore1.tres" id="26_vore1"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore2.tres" id="26_vore2"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore3.tres" id="26_vore3"]
-[ext_resource type="ArrayMesh" path="res://resources/vein_tree.tres" id="26_vtree"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree1.tres" id="26_vtree1"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree2.tres" id="26_vtree2"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree3.tres" id="26_vtree3"]
@@ -207,11 +206,6 @@ mesh = ExtResource("26_vore2")
 transform_format = 1
 use_colors = true
 mesh = ExtResource("26_vore3")
-
-[sub_resource type="MultiMesh" id="MultiMesh_vtree"]
-transform_format = 1
-use_colors = true
-mesh = ExtResource("26_vtree")
 
 [sub_resource type="MultiMesh" id="MultiMesh_vtree1"]
 transform_format = 1
@@ -633,7 +627,7 @@ script = ExtResource("27_biomescat")
 script = ExtResource("24_5t8nk")
 resource_nodes = Array[PackedScene]([ExtResource("11_tereu")])
 multimesh_nodes = [NodePath("OreFerrite"), NodePath("OreCuprite"), NodePath("OreSilicate"), NodePath("OreTitanite")]
-wood_multimesh_nodes = [NodePath("Wood"), NodePath("Wood1"), NodePath("Wood2"), NodePath("Wood3")]
+wood_multimesh_nodes = [NodePath("Wood1"), NodePath("Wood2"), NodePath("Wood3")]
 
 [node name="OreFerrite" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984420]
 material_override = SubResource("Mat_vein_ore")
@@ -654,11 +648,6 @@ multimesh = SubResource("MultiMesh_vore2")
 material_override = SubResource("Mat_vein_ore")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vore3")
-
-[node name="Wood" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984417]
-material_override = SubResource("Mat_vein_tree")
-cast_shadow = 0
-multimesh = SubResource("MultiMesh_vtree")
 
 [node name="Wood1" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
 material_override = SubResource("Mat_vein_tree")

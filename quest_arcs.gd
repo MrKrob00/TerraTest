@@ -615,11 +615,11 @@ var _bat_shown: Node3D = null
 ## needles, out at its skirt and tipped over, where it is seen from the ground. Felling the tree is
 ## what brings it down - the tree goes on its last blow, and the block drops where it stood.
 ## Per tree model (resource_nodes TREE_*, vein_models.gd): the point it hangs at in the tree's own
-## frame - on the fir's lowest tier, between the broadleaf's branches, between the teal tree's two
-## trunks under its crown, under the palm's fronds (its top leans out along +X) - and how far out
-## from that point it is pushed, in a random direction.
-const BATTERY_SHOW := [[Vector3(0.0, 1.45, 0.0), 0.85], [Vector3(0.0, 2.05, 0.0), 0.45],
-		[Vector3(0.0, 1.85, 0.0), 0.2], [Vector3(0.9, 3.5, 0.25), 0.3]]
+## frame - between the broadleaf's branches, between the teal tree's two trunks under its crown,
+## under the palm's fronds (its top leans out along +X) - and how far out from that point it is
+## pushed, in a random direction.
+const BATTERY_SHOW := [[Vector3(0.0, 2.05, 0.0), 0.45], [Vector3(0.0, 1.85, 0.0), 0.2],
+		[Vector3(0.9, 3.5, 0.25), 0.3]]
 const BATTERY_SHOW_TILT := 0.45        # tipped on what it is caught on, rad
 ## Сколько от него осталось. Тридцать процентов — это и «видно, что он побитый» (красные цифры
 ## хп над блоком), и повод дать игроку реген или ремонт, а не бесплатную целую деталь.
