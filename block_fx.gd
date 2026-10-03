@@ -58,9 +58,7 @@ static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
 	holder.name = "MuzzleFX"
 	holder.set_meta("block_fx", true)          # в габарит блока не входит (см. _local_aabb)
 	var mi := MeshInstance3D.new()
-	mi.mesh = _cone_mesh()
-	# −90° по X переводит собственный +Y конуса в −Z держателя, то есть вперёд по стволу.
-	mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	mi.mesh = _jet_mesh()
 	var mat := _flash_mat(col)
 	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -82,6 +80,40 @@ static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
 	holder.visible = false
 	muzzle.add_child(holder)
 	return holder
+
+## THE FLAME IS A JET OF PIXELS, NOT A CONE (the player: "I just do not like the cone part"). A
+## smooth cone of light is the one shape in the shot that was not in the game's language - every
+## other effect here is pixel cards. So: a short chain of glowing cubes down the shot, shrinking
+## toward its end and stepping off the axis, and two sparks thrown out to the sides; built along -Z
+## of the holder from the muzzle out, length 1, turned at random about the shot each time.
+static var _jet: Mesh = null
+
+static func _jet_mesh() -> Mesh:
+	if _jet != null:
+		return _jet
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# [centre, half-size]: the chain, then the sparks
+	# Apart, not touching: additive cubes that overlap sum to one white bar.
+	for c in [[Vector3(0.0, 0.0, -0.14), 0.20], [Vector3(0.16, -0.10, -0.44), 0.15],
+			[Vector3(-0.14, 0.12, -0.68), 0.11], [Vector3(0.10, 0.08, -0.86), 0.075],
+			[Vector3(-0.06, -0.08, -0.98), 0.045], [Vector3(0.60, 0.14, -0.30), 0.06],
+			[Vector3(-0.32, -0.56, -0.50), 0.05]]:
+		var o: Vector3 = c[0]
+		var h: float = c[1]
+		for ax in 3:
+			for sg in [-1.0, 1.0]:
+				var n := Vector3.ZERO
+				n[ax] = sg
+				var u := Vector3.ZERO
+				u[(ax + 1) % 3] = h
+				var v := Vector3.ZERO
+				v[(ax + 2) % 3] = h
+				var f: Vector3 = o + n * h
+				for q in [f - u - v, f + u - v, f + u + v, f - u - v, f + u + v, f - u + v]:
+					st.add_vertex(q)
+	_jet = st.commit()
+	return _jet
 
 ## Four flat petals in the plane across the barrel (XY of the holder, which looks down -Z), each a
 ## thin diamond from the muzzle out; doubled back to back so both faces draw. One mesh, built once.
@@ -128,11 +160,12 @@ static func _ring_mesh() -> Mesh:
 ## поворот, а он у каждой модели свой: художник ставил маркер как удобно. У одной пушки конус
 ## выходил чуть ниже ствола, у другой развёрнут на девяносто градусов. Направление же у всех
 ## одно и то же и уже известно — по нему летит пуля.
-## Во сколько flash_size конус в начале жизни и в конце: радиус и длина. Растёт и тускнеет.
-const MUZZLE_R0 := 0.55
-const MUZZLE_L0 := 1.7
-const MUZZLE_R1 := 1.15
-const MUZZLE_L1 := 3.0
+## How many flash_size the jet is across and along at the start of its life and at the end: it grows
+## and fades.
+const MUZZLE_R0 := 0.9               # near the jet's length, so its pixels stay cubes
+const MUZZLE_L0 := 1.2
+const MUZZLE_R1 := 1.3
+const MUZZLE_L1 := 2.2
 ## The petals across the barrel and the shock ring, at the start of the flash and at its end.
 const MUZZLE_PETAL0 := 1.4
 const MUZZLE_PETAL1 := 0.5
@@ -159,10 +192,11 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	# её всегда торчала внутри ствола: на снимке видно, как силуэт ствола разрезает конус.
 	# Теперь остриё стоит в самом дуле (сдвиг на половину длины вперёд), а конус за свою жизнь
 	# расходится.
-	var s0 := Vector3(size * MUZZLE_R0, size * MUZZLE_L0, size * MUZZLE_R0)
-	var s1 := Vector3(size * MUZZLE_R1, size * MUZZLE_L1, size * MUZZLE_R1)
+	var s0 := Vector3(size * MUZZLE_R0, size * MUZZLE_R0, size * MUZZLE_L0)
+	var s1 := Vector3(size * MUZZLE_R1, size * MUZZLE_R1, size * MUZZLE_L1)
 	mi.scale = s0
-	mi.position = Vector3(0.0, 0.0, -0.5 * s0.y)
+	mi.position = Vector3.ZERO                 # the jet is built from the muzzle out
+	mi.rotation = Vector3(0.0, 0.0, randf() * TAU)
 	var petals := holder.get_child(1) as MeshInstance3D if holder.get_child_count() > 2 else null
 	var ring := holder.get_child(2) as MeshInstance3D if holder.get_child_count() > 2 else null
 	if petals != null:
@@ -180,8 +214,6 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	var tw := holder.create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(mi, "scale", s1, dur).set_ease(Tween.EASE_OUT)
-	# Сдвиг едет вместе с длиной: остриё обязано оставаться в дуле всю жизнь эффекта.
-	tw.tween_property(mi, "position", Vector3(0.0, 0.0, -0.5 * s1.y), dur).set_ease(Tween.EASE_OUT)
 	if petals != null:
 		tw.tween_property(petals, "scale", Vector3.ONE * size * MUZZLE_PETAL1, dur * 0.7).set_ease(Tween.EASE_OUT)
 	if ring != null:
@@ -270,15 +302,6 @@ static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float
 ## РАСТРУБ ВПЕРЁД, ОСТРИЁ У ДУЛА. Конус стоял наоборот — остриём от ствола, — и вспышка читалась
 ## не как вылетающие газы, а как шип, растущий из дула. Поворот на −90° по X переводит +Y меша
 ## вперёд по стволу, поэтому широкий конец — это `top_radius`.
-static func _cone_mesh() -> Mesh:
-	var cm := CylinderMesh.new()
-	cm.top_radius = 0.5
-	cm.bottom_radius = 0.0
-	cm.height = 1.0
-	cm.radial_segments = 8          # живёт четыре кадра: больше граней тут не видно
-	cm.rings = 0
-	return cm
-
 static func _flash_mat(col: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
