@@ -767,7 +767,12 @@ project: read it before claiming how anything works.
   material per muzzle, so one fade. NO ROUND, NO FLASH: `_handle_fire` clears `last_fired` and asks
   it after `fire_bullet`, because a reloading shotgun or a mortar with no ground to aim at used to
   flash without firing. SEVERAL MUZZLES TAKE TURNS: every `Marker3D` under `Pivot` is one, in scene
-  order. Measured on the engine: kicks 0.05 / 0.10 / 0.16 m, the twin gun alternating both muzzles;
+  order. A SHOTGUN'S BURST IS TWO SHOTS, SO IT HAS TWO MUZZLES (the player: "it fires one barrel and
+  then the other, and the animation shows them together"): one marker on each Falsus barrel
+  (x +-0.085), one on each pair of Marlit's four bores (x +-0.18), and a flash sized to ONE barrel
+  (`flash_size` 0.26 / 0.4) - at the shared 0.42 a petal reached 0.6 m and one flash covered both.
+  A MUZZLE STANDS AT THE BARREL'S END, MEASURED ON THE MODEL'S VERTICES: the Falsus laser's sat at
+  the pivot's height, 0.335 m under its lens and 0.26 m inside the head, so its shot left low. Measured on the engine: kicks 0.05 / 0.10 / 0.16 m, the twin gun alternating both muzzles;
   checked on the real driver for all six Falsus weapons and the five Marlit.
 
 ### Energy
