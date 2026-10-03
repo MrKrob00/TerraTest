@@ -734,6 +734,41 @@ project: read it before claiming how anything works.
   firing stops.
 - `_alert_victim` (weapon side) tells the victim who shot; `hurt()` must not, since drills and
   repair fields call the same `hurt`.
+- **MARLIT'S WEAPONS ARE BALL TURRETS, NOT FALSUS'S PLATFORM, NECK AND HEAD** (`art/marlit_weapons.py`,
+  the player's call: "do not repeat the Falsus style, and it must turn easily every way"). A faceted
+  ball sits in a cup on an octagonal collar: the collar is the yaw part, the ball the pitch part, its
+  two trunnions show the pitch axis, and a ball in a socket clips nothing at any angle. The weapon
+  leaves through a port on the ball's front. Parts `<name>_base` / `_yaw` / `_head`, the same
+  platform -> yaw -> pitch chain `_find_turret_parts` walks, so no turret code knows they are round.
+  2x2x2 like every Marlit block (anchored in a corner, `cells_center` (-0.5, 0.5, -0.5)), joining by
+  the bottom (32); `Pivot` stands at the ball's middle, 1.0 m behind the block's front face where the
+  muzzles are. GUN twin barrels (two markers, they alternate), LASER a stepped lens stack with cyan
+  bands and a cyan bolt, SHOTGUN a row of four bores (12 pellets), CANNON one thick barrel and a
+  counterweight, MORTAR seven tubes and SEVEN SHELLS A SALVO (the player's rule: one per tube; the
+  script's `shells` is per scene now, Falsus keeps eight). Each runs the Falsus script with its own
+  numbers in its scene (the subclasses' constants became exports for it). MARLIT_GUN was a one-cell
+  placeholder on the Falsus model: an old save with one where the 2x2x2 now overlaps loses it on
+  load. The Marlit builds were re-laid round them (runner one gun, raider gun + shotgun, champion gun
+  + shotgun - a heavy cannon there put it at 44k, the fifth step; measured 20.4k / 29.1k / 39.8k).
+- **MARLIT FIRES ITS OWN ROUND AND ITS OWN BOLT.** `round_style` "marlit" (scene export) gives the
+  template an octagonal gunmetal slug with a sunset nose (`WeaponBlock._marlit_round_mesh`, built
+  once) and the template carries its streak's colours as metas (`streak_head` / `streak_mid`), which
+  BulletSim hands to `bullet_streak.gdshader` per kind - Falsus's streak stays powder yellow.
+  `round_len` sizes the round per weapon (a cannon's shell is not a bullet). EVERY LASER BOLT HAS A
+  WHITE-HOT CORE IN ITS COLOURED SHEATH (`laser._bolt_mesh`): two surfaces of one mesh, so one laser's
+  bolts are still one MultiMesh (an own-visual kind keeps the mesh's surface materials); a lone
+  translucent capsule read as a coloured stick. Marlit's beam is cyan (`beam_color`).
+- **A SHOT KICKS ITS BARREL BACK AND THROWS A BLAST ACROSS IT, FOR BOTH FACTIONS.** The pitch part
+  jumps back `recoil_dist` along its own axis in `RECOIL_KICK` and springs home in `RECOIL_RETURN`
+  (`WeaponBlock._drive_recoil`; gun 0.05, shotgun 0.09+, mortar 0.08+, laser 0.03, Marlit cannon
+  0.16 m). The flash (`BlockFX.muzzle_fire`) is the cone plus four petals of fire across the barrel,
+  each shot turned at random, and a ring running out ahead - from the front or three-quarters, how
+  turrets are mostly seen, the cone alone was a dot; the laser's lance throws a ring too. All on one
+  material per muzzle, so one fade. NO ROUND, NO FLASH: `_handle_fire` clears `last_fired` and asks
+  it after `fire_bullet`, because a reloading shotgun or a mortar with no ground to aim at used to
+  flash without firing. SEVERAL MUZZLES TAKE TURNS: every `Marker3D` under `Pivot` is one, in scene
+  order. Measured on the engine: kicks 0.05 / 0.10 / 0.16 m, the twin gun alternating both muzzles;
+  checked on the real driver for all six Falsus weapons and the five Marlit.
 
 ### Energy
 
@@ -1849,6 +1884,12 @@ project: read it before claiming how anything works.
 - Two settings in `project.godot` flatten the picture on purpose, and both are speed:
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
   `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
+- A SHADER IS COMPILED THE FIRST TIME SOMETHING DRAWS WITH IT, and the frame waits. Seen on the real
+  driver: the first muzzle flash of a run compiled its material and was over by the time that frame
+  drew; every later one showed. A warm-up plugin (FSIB) exists for this, but for Forward+ and as the
+  main scene - ours is Compatibility and the menu is the main scene. The block portraits baked at
+  startup already draw every block's model once; if a first-use hitch is ever measured on the phone,
+  the fix is drawing the effect materials (flash, lance, glitch cards, rounds) there too.
 - **Headless cannot judge any of this.** The dummy driver draws nothing, so these numbers are set
   by reading the shader and the docs; only the device settles them. A shader's SHAPE, though, can
   be seen — see §3 "Shaders need a REAL driver".
@@ -2156,10 +2197,10 @@ project: read it before claiming how anything works.
   `quest_arcs._yellow_1`; the id is kept, saves and `G.FACTION_LICENCE` key on it). The player's
   design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
   from the player and the licence is granted when it dies. A Marlit hull round a cabin, four
-  `MARLIT_WHEEL`, three `MARLIT_GUN`, plates on the nose - about 37k, the fourth step (31.6k
-  median); outside the ladder, so no ceiling shrinks it. The cabin, wheel and gun are PLACEHOLDERS:
-  the Falsus cabin, and the big wheel and machine gun scenes inherited with Marlit's numbers (wheel
-  power and load x1.5, damage 8 against 5). It was a collection point where resources were handed
+  `MARLIT_WHEEL`, a Marlit gun and a Marlit shotgun on the nose, plates on the nose - about 40k,
+  the fourth step (31.6k median); outside the ladder, so no ceiling shrinks it. The cabin and the
+  wheel are PLACEHOLDERS: the Falsus cabin, and the big wheel's scene inherited with Marlit's numbers
+  (wheel power and load x1.5). It was a collection point where resources were handed
   in - a TerraTech mission, not the one the player asked for - and every load planted another,
   because the poll runs before saved bases come back (~10 s); `_sweep_yellow_points` removes those
   from old saves. Measured on the proving ground: champion at 197-200 m, all blocks, drives; killed,

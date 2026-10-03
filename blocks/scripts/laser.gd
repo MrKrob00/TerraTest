@@ -8,35 +8,37 @@ extends WeaponBlock
 # Пули, пул и возврат в пул — общие с пушкой (WeaponBlock.fire_bullet). Своё тут только
 # то, как болт выглядит: собираем шаблон кодом, чтобы не заводить отдельную сцену.
 
-const BEAM_COLOR := Color(1.0, 0.15, 0.2)     # цвет болта и вспышки
+# A faction's laser sets its own numbers in the scene (marlit_laser.tscn): Marlit's energy is the
+# cyan of every beam it throws. The defaults are the Falsus laser.
+@export var beam_color: Color = Color(1.0, 0.15, 0.2)     # цвет болта и вспышки
 ## ДЛИННЫЙ И ТОНКИЙ, А НЕ КОРОТКИЙ И ТОЛСТЫЙ. Прежняя капсула 1.6 × 0.09 при скорости 90 была
 ## размером с пулю и читалась как пуля — игрок так и сказал: «лазер стреляет патронами». Разряд
 ## обязан быть ДЛИНЕЕ СВОЕГО ШАГА ЗА КАДР, тогда соседние кадры складываются в непрерывную
 ## черту; шаг здесь 2.5 м при шестидесяти кадрах, а с растяжением (bullet._stretch) в полёте
 ## выходит около шести.
-const BOLT_SPEED := 150.0                     # разряд, а не снаряд: быстрее пушечной пули (120)
-const BOLT_LENGTH := 2.6
-const BOLT_RADIUS := 0.045
-const LASER_RANGE := 70.0                     # дальнобойное оружие 4-го грейда
+@export var bolt_speed: float = 150.0          # разряд, а не снаряд: быстрее пушечной пули (120)
+@export var bolt_length: float = 2.6
+@export var bolt_radius: float = 0.045
+@export var laser_range: float = 70.0          # дальнобойное оружие 4-го грейда
 ## ЗАРЯЖАЕМЫЙ ВЫСТРЕЛ. Урон в секунду тот же, каким был у непрерывного луча (≈32) и каким его
 ## считает таблица HP блоков, — но он теперь приходит ОДНИМ ударом раз в 0.9 с, а не капает
 ## четыре раза в секунду. Так у оружия появляется собственный ритм: видно, как ствол копит и
 ## когда разрядится, и по этому ритму от него можно уйти за угол.
-const LASER_FIRE_RATE := 0.9
-const LASER_DAMAGE := 29
+@export var laser_fire_rate: float = 0.9
+@export var laser_damage: int = 29
 const BULLET_SCRIPT := preload("res://blocks/scripts/bullet.gd")
 
 ## НАКОПИТЕЛЬ: кольца, сбегающиеся к дулу. Их три и они идут со сдвигом фазы, поэтому поток
 ## непрерывный, а яркость всего набора растёт вместе с зарядом — к выстрелу кольца самые яркие.
 ## Шарик у ствола тут не годится: он не говорит ни о направлении, ни о том, что идёт накопление.
 const CHARGE_RINGS := 3
-const CHARGE_REACH := 1.1                     # м: откуда кольцо начинает путь к дулу
-const CHARGE_BIG := 0.38                      # радиус кольца в начале пути
+@export var charge_reach: float = 1.1          # м: откуда кольцо начинает путь к дулу
+@export var charge_big: float = 0.38           # радиус кольца в начале пути
 const CHARGE_SMALL := 0.09                    # и у самого дула
 const CHARGE_THICK := 0.035                   # толщина самого кольца
 ## Копьё разряда вместо дульного конуса (BlockFX.muzzle_lance).
-const LANCE_LEN := 2.2
-const LANCE_WIDTH := 0.1
+@export var lance_len: float = 2.2
+@export var lance_width: float = 0.1
 const LANCE_DUR := 0.12
 
 var _charge: Node3D = null
@@ -44,14 +46,15 @@ var _rings: Array[MeshInstance3D] = []
 
 func _ready() -> void:
 	super._ready()
-	weapon_range = LASER_RANGE
-	fire_rate = LASER_FIRE_RATE
-	damage = LASER_DAMAGE
+	weapon_range = laser_range
+	fire_rate = laser_fire_rate
+	damage = laser_damage
+	recoil_dist = minf(recoil_dist, 0.03)   # light: a discharge, not a charge of powder
 	# Разброс ВДВОЕ УЖЕ базового: лазер — точный ствол, это его отличие от пушки, за которое
 	# платят скорострельностью и дальностью. Нулевым его не делаем: аимбот остаётся аимботом,
 	# каким бы благородным ни было оружие.
 	spread_deg = 0.7
-	flash_color = BEAM_COLOR        # свет дула — того же цвета, что болт, а не пороховой
+	flash_color = beam_color        # свет дула — того же цвета, что болт, а не пороховой
 	# Против купола лазер — неправильный инструмент: щит снимает с батареи половину цены.
 	shield_cost_mult = SHIELD_MULT_ENERGY
 	raycast.target_position = Vector3(0, 0, -weapon_range)
@@ -82,21 +85,16 @@ func _build_bolt_pool() -> void:
 	bolt.collision_mask = 7            # как у пушечной пули: рельеф + блоки
 	bolt.monitoring = false            # в пуле не ловит тела
 	bolt.set_script(BULLET_SCRIPT)
-	bolt.set("speed", BOLT_SPEED)
+	bolt.set("speed", bolt_speed)
 	bolt.set("bullet_gravity", 0.0)    # сгусток света не проседает
-	bolt.set("max_lifetime", weapon_range / BOLT_SPEED + 0.4)
+	bolt.set("max_lifetime", weapon_range / bolt_speed + 0.4)
 	var col := CollisionShape3D.new()
 	var sph := SphereShape3D.new()
 	sph.radius = 0.22
 	col.shape = sph
 	bolt.add_child(col)
 	var mi := MeshInstance3D.new()
-	var cap := CapsuleMesh.new()
-	cap.radius = BOLT_RADIUS
-	cap.height = BOLT_LENGTH
-	cap.radial_segments = 6
-	cap.material = _glow_mat(BEAM_COLOR, 7.0)
-	mi.mesh = cap
+	mi.mesh = _bolt_mesh()
 	mi.rotation = Vector3(-PI / 2, 0, 0)   # капсула растёт по Y, а болт летит по -Z
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# РАЗРЯД — НЕ ПУЛЯ, И ОБЩУЮ МОДЕЛЬ СНАРЯДА СЮДА СТАВИТЬ НЕЛЬЗЯ (WeaponBlock.OWN_VISUAL).
@@ -111,7 +109,7 @@ func _build_charge() -> void:
 	_charge = Node3D.new()
 	_charge.name = "ChargeFX"
 	_charge.set_meta("block_fx", true)          # в габарит блока не входит (см. _local_aabb)
-	var mat := _glow_mat(BEAM_COLOR, 7.0)
+	var mat := _glow_mat(beam_color, 7.0)
 	for _i in CHARGE_RINGS:
 		var mi := MeshInstance3D.new()
 		var t := TorusMesh.new()
@@ -138,11 +136,39 @@ func _drive_charge(ratio: float) -> void:
 	for i in _rings.size():
 		var p: float = fposmod(ratio + float(i) / float(CHARGE_RINGS), 1.0)
 		var mi: MeshInstance3D = _rings[i]
-		var r: float = lerpf(CHARGE_BIG, CHARGE_SMALL, p)
+		var r: float = lerpf(charge_big, CHARGE_SMALL, p)
 		mi.scale = Vector3(r, r, r)
-		mi.position = Vector3(0.0, 0.0, -(1.0 - p) * CHARGE_REACH)
+		mi.position = Vector3(0.0, 0.0, -(1.0 - p) * charge_reach)
 		# Кольцо разгорается на входе и гаснет у дула, иначе видно, что их ровно три.
 		mi.transparency = 1.0 - clampf(sin(p * PI) * (0.25 + 0.75 * ratio), 0.0, 1.0)
+
+## THE BOLT HAS A WHITE-HOT CORE IN A COLOURED SHEATH, two surfaces of one mesh (so BulletSim still
+## draws all bolts of one laser in one MultiMesh - a kind that brings its own visual keeps the mesh's
+## own surface materials). A single translucent capsule read as a coloured stick; the core is what
+## makes it read as light. The sheath is additive, the core opaque.
+func _bolt_mesh() -> ArrayMesh:
+	var cap := CapsuleMesh.new()
+	cap.radius = bolt_radius
+	cap.height = bolt_length
+	cap.radial_segments = 6
+	cap.rings = 2
+	var core := CapsuleMesh.new()
+	core.radius = bolt_radius * 0.42
+	core.height = bolt_length * 0.86
+	core.radial_segments = 6
+	core.rings = 2
+	var m := ArrayMesh.new()
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, core.get_mesh_arrays())
+	var cm := StandardMaterial3D.new()
+	cm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	cm.albedo_color = beam_color.lerp(Color.WHITE, 0.75)
+	m.surface_set_material(0, cm)
+	m.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, cap.get_mesh_arrays())
+	var sm := _glow_mat(beam_color, 7.0)
+	sm.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	sm.albedo_color = Color(beam_color.r, beam_color.g, beam_color.b, 0.9)
+	m.surface_set_material(1, sm)
+	return m
 
 func _glow_mat(col: Color, energy: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
@@ -183,4 +209,4 @@ func _track_target(delta: float, firing: bool) -> void:
 
 ## Разряд рисуем копьём вдоль ствола, а не дульным конусом: конус — это пороховые газы.
 func _muzzle_fx(dir: Vector3) -> void:
-	BlockFX.muzzle_lance(_muzzle_point(), dir, BEAM_COLOR, LANCE_LEN, LANCE_WIDTH, LANCE_DUR)
+	BlockFX.muzzle_lance(_muzzle_point(), dir, beam_color, lance_len, lance_width, LANCE_DUR)

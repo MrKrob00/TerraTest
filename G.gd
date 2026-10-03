@@ -517,7 +517,11 @@ const BLOCK_META := {
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 4, "rp": 50},
-	Block.MARLIT_GUN:       {"f": "marlit", "g": 4, "rp": 50},
+	Block.MARLIT_GUN:       {"f": "marlit", "g": 2, "rp": 30},
+	Block.MARLIT_SHOTGUN:   {"f": "marlit", "g": 3, "rp": 35},
+	Block.MARLIT_CANNON:    {"f": "marlit", "g": 3, "rp": 40},
+	Block.MARLIT_LASER:     {"f": "marlit", "g": 4, "rp": 50},
+	Block.MARLIT_MORTAR:    {"f": "marlit", "g": 5, "rp": 60},
 	Block.MARLIT_BATTERY:   {"f": "marlit", "g": 3, "rp": 35},
 	Block.MARLIT_WIRELESS:  {"f": "marlit", "g": 4, "rp": 45},
 }
@@ -563,6 +567,8 @@ const TECH_PARENT := {
 	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
 	Block.MARLIT_REGEN: Block.MARLIT_SOLAR,
 	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_BLOCK,
+	Block.MARLIT_SHOTGUN: Block.MARLIT_GUN, Block.MARLIT_CANNON: Block.MARLIT_GUN,
+	Block.MARLIT_LASER: Block.MARLIT_GUN,   Block.MARLIT_MORTAR: Block.MARLIT_CANNON,
 	Block.MARLIT_BATTERY: Block.MARLIT_SOLAR, Block.MARLIT_WIRELESS: Block.MARLIT_BATTERY,
 	Block.HALF_BLOCK: Block.BLOCK,      Block.HALF_BLOCK2: Block.HALF_BLOCK,
 	Block.WIRELESS_CHARGER: Block.BATTERY,   # переливание энергии — ветка аккумулятора
@@ -965,7 +971,12 @@ const BLOCK_RECIPE := {
 	# Three Falsus units' parts: half as far again is 2.25 times the ground covered.
 	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
 	Block.MARLIT_WHEEL:     {"c16": 3, "m0": 12},
-	Block.MARLIT_GUN:       {"c17": 3, "m3": 9},
+	# A Falsus weapon's parts, about three times over: two cells across and two deep.
+	Block.MARLIT_GUN:       {"c17": 6, "m3": 18},
+	Block.MARLIT_SHOTGUN:   {"c17": 6, "m3": 15},
+	Block.MARLIT_CANNON:    {"c11": 9, "c17": 6},
+	Block.MARLIT_LASER:     {"c10": 9, "c19": 6},
+	Block.MARLIT_MORTAR:    {"c11": 9, "c18": 6},
 	# The Falsus battery's parts for its share of the charge, and the Falsus charger's doubled
 	Block.MARLIT_BATTERY:   {"c9": 12, "m1": 24},
 	Block.MARLIT_WIRELESS:  {"c6": 6, "c20": 4},
@@ -1388,6 +1399,8 @@ const BLOCK_LABEL := {
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
 	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun",
+	Block.MARLIT_LASER: "Marlit Laser", Block.MARLIT_SHOTGUN: "Marlit Shotgun",
+	Block.MARLIT_CANNON: "Marlit Heavy Cannon", Block.MARLIT_MORTAR: "Marlit Mortar",
 	Block.MARLIT_BATTERY: "Marlit Accumulator", Block.MARLIT_WIRELESS: "Marlit Wireless Charger",
 	Block.SUPPORT: "Support", Block.ROT_SUPPORT: "Rotating Support",
 	Block.GUN: "Machine Gun", Block.LASER: "Laser", Block.ROCKET: "Rocket Launcher",
@@ -1449,7 +1462,11 @@ const BLOCK_DESC := {
 	Block.MARLIT_SOLAR: "An armoured lid that turns over on the anchor: its underside is a solar panel as big as four ordinary ones. Driving, it is armour and makes nothing.",
 	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
 	Block.MARLIT_WHEEL: "A heavy wheel: pulls harder and carries more than any Falsus wheel.",
-	Block.MARLIT_GUN: "A machine gun that hits harder: the same aim, heavier rounds.",
+	Block.MARLIT_GUN: "Twin barrels in a ball turret: a steady stream of heavy rounds, turning freely every way.",
+	Block.MARLIT_LASER: "A lens stack in a ball turret: a charged cyan bolt, one hard blow at long range.",
+	Block.MARLIT_SHOTGUN: "Four short bores in a row: a wide cone of heavy shot at close range, two blasts then a reload.",
+	Block.MARLIT_CANNON: "One thick barrel and a counterweight: a single heavy blow, for armour.",
+	Block.MARLIT_MORTAR: "Seven tubes lobbed over an arc, aimed by the hull: a salvo of seven shells. Twenty metres minimum.",
 	Block.MARLIT_BATTERY: "A big accumulator: holds as much as several Falsus batteries, and the charge goes with it. Full, it blows up like they do.",
 	Block.MARLIT_WIRELESS: "Pours energy into another machine of your side, slower than the Falsus charger but twice as far.",
 	Block.SUPPORT: "Fixed support. A machine carrying one may anchor; put it on the ground and it becomes the core of a new base.",
@@ -1888,9 +1905,13 @@ enum Block {
 	MARLIT_REGEN = 63,      # 2×2×2: the gyro repair unit in the Marlit shell
 	MARLIT_SHIELD = 64,     # RETIRED (RETIRED_BLOCKS): Marlit carries no shield. Keep the value.
 	MARLIT_WHEEL = 65,      # PLACEHOLDER: the big wheel's model, Marlit's numbers (more pull, more load)
-	MARLIT_GUN = 66,        # PLACEHOLDER: the machine gun's model, heavier rounds
+	MARLIT_GUN = 66,        # 2×2×2 ball turret: twin barrels (art/marlit_weapons.py)
 	MARLIT_BATTERY = 67,    # 2×2×2 accumulator: two platforms, a spine, four cells, a gauge front and back
 	MARLIT_WIRELESS = 68,   # 2×1×2 charger: a bracket on its back, a disc held by two claws
+	MARLIT_LASER = 69,      # 2×2×2 ball turret: a lens stack, a cyan bolt
+	MARLIT_SHOTGUN = 70,    # 2×2×2 ball turret: a row of four short bores
+	MARLIT_CANNON = 71,     # 2×2×2 ball turret: one thick barrel, a counterweight
+	MARLIT_MORTAR = 72,     # 2×2×2 ball turret: seven tubes, a salvo of seven
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1955,6 +1976,10 @@ enum Block {
 @onready var marlit_regen_scene: PackedScene = preload("res://blocks/scenes/marlit_regen.tscn")
 @onready var marlit_wheel_scene: PackedScene = preload("res://blocks/scenes/marlit_wheel.tscn")
 @onready var marlit_gun_scene: PackedScene = preload("res://blocks/scenes/marlit_gun.tscn")
+@onready var marlit_laser_scene: PackedScene = preload("res://blocks/scenes/marlit_laser.tscn")
+@onready var marlit_shotgun_scene: PackedScene = preload("res://blocks/scenes/marlit_shotgun.tscn")
+@onready var marlit_cannon_scene: PackedScene = preload("res://blocks/scenes/marlit_cannon.tscn")
+@onready var marlit_mortar_scene: PackedScene = preload("res://blocks/scenes/marlit_mortar.tscn")
 @onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
 @onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
 
@@ -1979,7 +2004,8 @@ func is_stationary(bt: int) -> bool:
 
 const BLOCK_CATEGORIES := {
 	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
-		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN, Block.MARLIT_GUN],
+		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN, Block.MARLIT_GUN, Block.MARLIT_LASER,
+		Block.MARLIT_SHOTGUN, Block.MARLIT_CANNON, Block.MARLIT_MORTAR],
 	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.ARMOR9, Block.HALF_BLOCK, Block.HALF_BLOCK2,
 		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
 		Block.WEDGE2, Block.ARMOR,
@@ -2070,6 +2096,10 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_REGEN: return marlit_regen_scene
 		Block.MARLIT_WHEEL: return marlit_wheel_scene
 		Block.MARLIT_GUN: return marlit_gun_scene
+		Block.MARLIT_LASER: return marlit_laser_scene
+		Block.MARLIT_SHOTGUN: return marlit_shotgun_scene
+		Block.MARLIT_CANNON: return marlit_cannon_scene
+		Block.MARLIT_MORTAR: return marlit_mortar_scene
 		Block.MARLIT_BATTERY: return marlit_battery_scene
 		Block.MARLIT_WIRELESS: return marlit_wireless_scene
 	return null

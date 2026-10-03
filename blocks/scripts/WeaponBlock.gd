@@ -72,18 +72,30 @@ const SHIELD_MULT_CONTACT := 0.25     # бур: медленно, но возм�
 ## ЦВЕТ И СИЛА ВСПЫШКИ — ПЕРЕМЕННЫЕ, А НЕ КОНСТАНТЫ: подкласс ставит своё в _ready, как он уже
 ## делает с сектором наведения и разбросом. У лазера это цвет болта, у остальных пороховой
 ## оранжевый. Вспышка короткая: выстрел это событие на кадр-другой, а не фонарь на стволе.
-var flash_color: Color = Color(1.0, 0.72, 0.35)
+@export var flash_color: Color = Color(1.0, 0.72, 0.35)
 ## ВСПЫШКА — НЕОСВЕЩАЕМЫЙ МЕШ, А НЕ СВЕТ (см. BlockFX.flash). Точечный источник в этой
 ## конфигурации рендера не виден: освещение считается по вершинам, а glow снят ценой кадров.
 ## Поэтому здесь размер шара в метрах и время жизни, а не радиус и энергия лампы.
 ##
 ## Живёт дольше выстрела намеренно: при 30 кадрах 0.13 с это четыре кадра — меньше просто не
 ## успеешь заметить.
-var flash_size: float = 0.42
+@export var flash_size: float = 0.42
 const FLASH_DUR := 0.16
 
 var yaw_limit: float = 75.0
 var pitch_limit: float = 40.0
+
+## WHAT THE ROUND LOOKS LIKE: "" the shared Falsus round from Assets.glb, "marlit" Marlit's own
+## slug with its sunset streak (`_marlit_round_mesh`). `round_len` is the round's length in metres
+## (0: BULLET_LEN) - a cannon's shell is not a machine gun's bullet.
+@export var round_style: StringName = &""
+@export var round_len: float = 0.0
+## THE SHOT KICKS THE BARREL BACK. The pitch part (the barrel, or Marlit's ball) jumps back along its
+## own axis by this much and springs home (`_drive_recoil`) - a shot read only as a flash before,
+## and a heavy cannon fired the way a machine gun did. Metres; a subclass or the scene sets its own.
+@export var recoil_dist: float = 0.05
+const RECOIL_KICK := 0.035            # s to the full kick: a jolt, not a slide
+const RECOIL_RETURN := 0.22           # s back home
 
 var _fire_timer: float = 0.0
 ## «Огонь» — это не защёлка, а таймер: attack() взводит его, и каждый кадр он гаснет.
@@ -162,6 +174,7 @@ func _physics_process(delta: float) -> void:
 	Perf.mark("weapons", _pf)
 
 func _tick_weapon(delta: float) -> void:
+	_drive_recoil(delta)
 	_fire_hold = maxf(_fire_hold - delta, 0.0)
 	var firing := _fire_hold > 0.0
 	if not firing:
@@ -227,6 +240,8 @@ var _yaw_part: Node3D = null           # поворотная часть: вле
 var _pitch_part: Node3D = null         # ствол: вверх-вниз
 var _yaw_rest: Basis = Basis()
 var _pitch_rest: Basis = Basis()
+var _pitch_rest_pos: Vector3 = Vector3.ZERO
+var _recoil_t: float = -1.0
 var _rest: bool = false                # башня уже в нейтрали: возвращать её некуда (см. _tick_weapon)
 
 func _find_turret_parts() -> void:
@@ -249,6 +264,24 @@ func _find_turret_parts() -> void:
 		_yaw_rest = _yaw_part.transform.basis
 	if _pitch_part != null:
 		_pitch_rest = _pitch_part.transform.basis
+		_pitch_rest_pos = _pitch_part.position
+
+## The kick: up to `recoil_dist` back along the barrel in RECOIL_KICK, home in RECOIL_RETURN. Driven
+## every physics tick while it runs, firing or not; the barrel's turn is _aim_model's, this moves
+## only its position.
+func _drive_recoil(delta: float) -> void:
+	if _recoil_t < 0.0 or _pitch_part == null:
+		return
+	_recoil_t += delta
+	var k: float = 0.0
+	if _recoil_t < RECOIL_KICK:
+		k = _recoil_t / RECOIL_KICK
+	elif _recoil_t < RECOIL_KICK + RECOIL_RETURN:
+		k = 1.0 - smoothstep(0.0, 1.0, (_recoil_t - RECOIL_KICK) / RECOIL_RETURN)
+	else:
+		_recoil_t = -1.0
+	var back: Vector3 = _pitch_part.transform.basis.orthonormalized() * Vector3.BACK
+	_pitch_part.position = _pitch_rest_pos + back * recoil_dist * k
 
 func _first_mesh_child(n: Node) -> MeshInstance3D:
 	for c in n.get_children():
@@ -570,7 +603,15 @@ func _handle_fire(delta: float) -> void:
 	if body and (body == self or body.get_parent() == get_parent()):
 		return
 	_fire_timer = fire_rate
+	# NO ROUND, NO FLASH. A subclass's fire_bullet may decline (the shotgun reloading, the mortar
+	# with no ground to aim at): the flash used to play anyway, a shot that never left the barrel.
+	# `last_fired` is what the base sets for a real round, so it is cleared first and asked after.
+	last_fired = null
 	fire_bullet()
+	if last_fired == null:
+		return
+	if recoil_dist > 0.0:
+		_recoil_t = 0.0
 	# ВСПЫШКА ЗДЕСЬ, А НЕ В fire_bullet. Дверь одна на все стволы и срабатывает ровно раз на
 	# выстрел: дробовик зовёт fire_bullet восемь раз подряд (по дробине), а мортира свой
 	# fire_bullet переопределила и super не зовёт вовсе. Отсюда видно всех и по одному разу.
@@ -578,6 +619,8 @@ func _handle_fire(delta: float) -> void:
 	# и вспышка обязана ехать с ними: в мировой точке она оставалась там, где был ствол в момент
 	# нажатия. Направление при этом отдельно задавать не нужно — узел уже смотрит по стволу.
 	_muzzle_fx((-$Pivot.global_transform.basis.z).normalized())
+	# Several barrels fire in turn (Marlit's twin gun): the next shot leaves from the next muzzle.
+	_muzzle_i = (_muzzle_i + 1) % maxi(_muzzle_list().size(), 1)
 
 ## ЧЕМ ВЫСТРЕЛ ВЫГЛЯДИТ. Отдельный метод, а не строка в _handle_fire: дверь остаётся одна (сюда
 ## приходит каждый ствол ровно раз на выстрел), но подкласс может показать своё — как он уже
@@ -630,7 +673,8 @@ static func _shared_bullet_mesh() -> Mesh:
 const OWN_VISUAL := &"own_visual"
 
 func _apply_bullet_mesh(b: Node) -> void:
-	var m: Mesh = _shared_bullet_mesh()
+	var marlit: bool = round_style == &"marlit"
+	var m: Mesh = _marlit_round_mesh() if marlit else _shared_bullet_mesh()
 	if m == null:
 		return
 	for c in b.get_children():
@@ -639,9 +683,62 @@ func _apply_bullet_mesh(b: Node) -> void:
 			continue
 		mi.mesh = m
 		var ext: float = maxf(m.get_aabb().size.z, 0.001)
-		mi.scale = Vector3.ONE * (BULLET_LEN / ext)
+		mi.scale = Vector3.ONE * ((round_len if round_len > 0.0 else BULLET_LEN) / ext)
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		if marlit:
+			# its streak burns in Marlit's sunset, not Falsus's powder yellow (BulletSim reads these)
+			mi.set_meta(&"streak_head", MARLIT_STREAK_HEAD)
+			mi.set_meta(&"streak_mid", MARLIT_STREAK_MID)
 		return
+
+## MARLIT'S ROUND: an octagonal slug, a dark body and a hot sunset nose, in the faction's metal - not
+## Falsus's brass bullet. Built once in code, one surface on a two-texel texture, so BulletSim's
+## streak shader draws it like any other round (it reads `albedo_texture`).
+const MARLIT_STREAK_HEAD := Color(1.0, 0.86, 0.62)
+const MARLIT_STREAK_MID := Color(0.95, 0.36, 0.30)
+static var _marlit_round: Mesh = null
+
+static func _marlit_round_mesh() -> Mesh:
+	if _marlit_round != null:
+		return _marlit_round
+	var img := Image.create(2, 1, false, Image.FORMAT_RGB8)
+	img.set_pixel(0, 0, Color(0.20, 0.21, 0.26))          # the body: gunmetal
+	img.set_pixel(1, 0, Color(1.0, 0.62, 0.30))           # the nose and the band: sunset
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_texture = ImageTexture.create_from_image(img)
+	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 8
+	# along -Z (the flight): tail ring at z 0.5, body to z -0.15, a sunset band, the nose to -0.5
+	var rings := [[0.5, 0.16, 0.25], [-0.10, 0.16, 0.25], [-0.10, 0.17, 0.75], [-0.22, 0.17, 0.75],
+			[-0.22, 0.13, 0.75], [-0.5, 0.0, 0.75]]
+	for r in range(rings.size() - 1):
+		var a: Array = rings[r]
+		var b: Array = rings[r + 1]
+		for i in n:
+			var t0: float = TAU * (float(i) + 0.5) / float(n)
+			var t1: float = TAU * (float(i) + 1.5) / float(n)
+			var p := [Vector3(cos(t0) * a[1], sin(t0) * a[1], a[0]), Vector3(cos(t1) * a[1], sin(t1) * a[1], a[0]),
+					Vector3(cos(t1) * b[1], sin(t1) * b[1], b[0]), Vector3(cos(t0) * b[1], sin(t0) * b[1], b[0])]
+			var uv := Vector2(float(b[2]), 0.5)
+			for q in [0, 1, 2, 0, 2, 3]:
+				st.set_uv(uv)
+				st.add_vertex(p[q])
+	# the tail cap
+	for i in n:
+		var t0: float = TAU * (float(i) + 0.5) / float(n)
+		var t1: float = TAU * (float(i) + 1.5) / float(n)
+		st.set_uv(Vector2(0.25, 0.5))
+		st.add_vertex(Vector3(0, 0, 0.5))
+		st.set_uv(Vector2(0.25, 0.5))
+		st.add_vertex(Vector3(cos(t1) * 0.16, sin(t1) * 0.16, 0.5))
+		st.set_uv(Vector2(0.25, 0.5))
+		st.add_vertex(Vector3(cos(t0) * 0.16, sin(t0) * 0.16, 0.5))
+	st.set_material(mat)
+	_marlit_round = st.commit()
+	return _marlit_round
 
 ## The template round in the scene: give it the shared model (unless it brings its own) and keep
 ## it out of the picture and off the tick. It never flies - BulletSim copies it at every shot - and
@@ -682,9 +779,26 @@ const BULLET_SIM := preload("res://bullet_sim.gd")
 ## есть, — снаряд рождался на 0.52 м позади и на 0.21 м выше настоящего дула, то есть внутри
 ## собственного корпуса, и вспышка зажигалась там же. У пушки, лазера и ракетницы такого узла
 ## нет, поэтому они стреляли правильно, и разница между стволами выглядела случайной.
+##
+## SEVERAL MUZZLES TAKE TURNS: every Marker3D under Pivot is one (`Marker3D`, `Marker3D2`...), in
+## scene order, and `_muzzle_i` moves on after each shot. One marker - every Falsus gun - is the old
+## behaviour exactly.
+var _muzzles: Array = []
+var _muzzle_i: int = 0
+
+func _muzzle_list() -> Array:
+	if _muzzles.is_empty():
+		for c in $Pivot.get_children():
+			if c is Marker3D:
+				_muzzles.append(c)
+	return _muzzles
+
 func _muzzle_point() -> Node3D:
-	var m: Node3D = $Pivot.get_node_or_null("Marker3D")
-	return m if m != null else $Pivot
+	var list := _muzzle_list()
+	if list.is_empty():
+		return $Pivot
+	var m = list[_muzzle_i % list.size()]
+	return m if is_instance_valid(m) else $Pivot
 
 func fire_bullet():
 	last_fired = null

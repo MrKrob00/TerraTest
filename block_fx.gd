@@ -61,12 +61,66 @@ static func muzzle_node(muzzle: Node3D, col: Color) -> Node3D:
 	mi.mesh = _cone_mesh()
 	# −90° по X переводит собственный +Y конуса в −Z держателя, то есть вперёд по стволу.
 	mi.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-	mi.material_override = _flash_mat(col)
+	var mat := _flash_mat(col)
+	mi.material_override = mat
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	holder.add_child(mi)
+	# THE BLAST HAS A SHAPE ACROSS THE BARREL TOO: four short petals of fire out to the sides and a
+	# ring that runs outward from the muzzle. The cone alone said "light out of the barrel"; seen
+	# from the front or three-quarters - how a turret is mostly seen - it was a dot. One material
+	# for all three, so the one fade covers them.
+	var petals := MeshInstance3D.new()
+	petals.mesh = _petal_mesh()
+	petals.material_override = mat
+	petals.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(petals)
+	var ring := MeshInstance3D.new()
+	ring.mesh = _ring_mesh()
+	ring.material_override = mat
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(ring)
 	holder.visible = false
 	muzzle.add_child(holder)
 	return holder
+
+## Four flat petals in the plane across the barrel (XY of the holder, which looks down -Z), each a
+## thin diamond from the muzzle out; doubled back to back so both faces draw. One mesh, built once.
+static var _petals: Mesh = null
+static var _ring: Mesh = null
+
+static func _petal_mesh() -> Mesh:
+	if _petals != null:
+		return _petals
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for k in 4:
+		var a: float = PI / 4.0 + k * PI / 2.0
+		var out := Vector3(cos(a), sin(a), 0.0)
+		var side := Vector3(-sin(a), cos(a), 0.0) * 0.16
+		var tip := out * 1.0 + Vector3(0, 0, -0.12)
+		var mid := out * 0.35
+		for tri in [[Vector3.ZERO, mid + side, tip], [Vector3.ZERO, tip, mid - side]]:
+			for v in tri:
+				st.add_vertex(v)
+	_petals = st.commit()
+	return _petals
+
+## A flat ring across the barrel, inner edge at 0.8 of its radius.
+static func _ring_mesh() -> Mesh:
+	if _ring != null:
+		return _ring
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 16
+	for i in n:
+		var a0: float = TAU * i / n
+		var a1: float = TAU * (i + 1) / n
+		var o0 := Vector3(cos(a0), sin(a0), 0.0)
+		var o1 := Vector3(cos(a1), sin(a1), 0.0)
+		for v in [o0 * 0.8, o0, o1, o0 * 0.8, o1, o1 * 0.8]:
+			st.add_vertex(v)
+	_ring = st.commit()
+	return _ring
 
 ## Зажечь вспышку ствола. dir — направление ВЫСТРЕЛА в мировых осях.
 ##
@@ -79,6 +133,11 @@ const MUZZLE_R0 := 0.55
 const MUZZLE_L0 := 1.7
 const MUZZLE_R1 := 1.15
 const MUZZLE_L1 := 3.0
+## The petals across the barrel and the shock ring, at the start of the flash and at its end.
+const MUZZLE_PETAL0 := 1.4
+const MUZZLE_PETAL1 := 0.5
+const MUZZLE_RING0 := 0.25
+const MUZZLE_RING1 := 1.5
 
 static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, dur: float) -> void:
 	if muzzle == null or not is_instance_valid(muzzle) or not muzzle.is_inside_tree():
@@ -104,6 +163,15 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	var s1 := Vector3(size * MUZZLE_R1, size * MUZZLE_L1, size * MUZZLE_R1)
 	mi.scale = s0
 	mi.position = Vector3(0.0, 0.0, -0.5 * s0.y)
+	var petals := holder.get_child(1) as MeshInstance3D if holder.get_child_count() > 2 else null
+	var ring := holder.get_child(2) as MeshInstance3D if holder.get_child_count() > 2 else null
+	if petals != null:
+		petals.scale = Vector3.ONE * size * MUZZLE_PETAL0
+		petals.rotation.z = randf() * TAU            # never the same star twice in a burst
+		petals.position = Vector3(0.0, 0.0, -size * 0.15)
+	if ring != null:
+		ring.scale = Vector3.ONE * size * MUZZLE_RING0
+		ring.position = Vector3(0.0, 0.0, -size * 0.3)
 	holder.visible = true
 	if holder.has_meta("fx_tw"):
 		var old: Variant = holder.get_meta("fx_tw")
@@ -114,6 +182,12 @@ static func muzzle_fire(muzzle: Node3D, dir: Vector3, col: Color, size: float, d
 	tw.tween_property(mi, "scale", s1, dur).set_ease(Tween.EASE_OUT)
 	# Сдвиг едет вместе с длиной: остриё обязано оставаться в дуле всю жизнь эффекта.
 	tw.tween_property(mi, "position", Vector3(0.0, 0.0, -0.5 * s1.y), dur).set_ease(Tween.EASE_OUT)
+	if petals != null:
+		tw.tween_property(petals, "scale", Vector3.ONE * size * MUZZLE_PETAL1, dur * 0.7).set_ease(Tween.EASE_OUT)
+	if ring != null:
+		# the ring runs out ahead of the flame and away from the muzzle: the shock of the shot
+		tw.tween_property(ring, "scale", Vector3.ONE * size * MUZZLE_RING1, dur).set_ease(Tween.EASE_OUT)
+		tw.tween_property(ring, "position", Vector3(0.0, 0.0, -size * 1.6), dur).set_ease(Tween.EASE_OUT)
 	if mat != null:
 		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(_hide_lamp.bind(holder))
@@ -145,9 +219,16 @@ static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float
 		lm.mesh = cy
 		# −90° по X переводит собственный +Y цилиндра в −Z держателя, то есть вперёд по стволу.
 		lm.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
-		lm.material_override = _flash_mat(col)
+		var lmat := _flash_mat(col)
+		lm.material_override = lmat
 		lm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		holder.add_child(lm)
+		# a ring of light thrown off the emitter as the bolt leaves: the discharge, seen head-on
+		var lr := MeshInstance3D.new()
+		lr.mesh = _ring_mesh()
+		lr.material_override = lmat
+		lr.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		holder.add_child(lr)
 		holder.visible = false
 		muzzle.add_child(holder)
 	if dir.length_squared() > 0.0001 and absf(dir.normalized().dot(Vector3.UP)) < 0.99:
@@ -163,6 +244,10 @@ static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float
 	# начинаться у дула, а не торчать из ствола назад.
 	mi.scale = Vector3(width, length, width)
 	mi.position = Vector3(0.0, 0.0, -length * 0.5)
+	var lr := holder.get_child(1) as MeshInstance3D if holder.get_child_count() > 1 else null
+	if lr != null:
+		lr.scale = Vector3.ONE * width * 1.5
+		lr.position = Vector3(0.0, 0.0, -0.05)
 	holder.visible = true
 	if holder.has_meta("fx_tw"):
 		var old: Variant = holder.get_meta("fx_tw")
@@ -174,6 +259,9 @@ static func muzzle_lance(muzzle: Node3D, dir: Vector3, col: Color, length: float
 			.set_ease(Tween.EASE_OUT)
 	tw.tween_property(mi, "position", Vector3(0.0, 0.0, -length * 0.125), dur) \
 			.set_ease(Tween.EASE_OUT)
+	if lr != null:
+		tw.tween_property(lr, "scale", Vector3.ONE * width * 7.0, dur * 1.4).set_ease(Tween.EASE_OUT)
+		tw.tween_property(lr, "position", Vector3(0.0, 0.0, -length * 0.3), dur * 1.4).set_ease(Tween.EASE_OUT)
 	if mat != null:
 		tw.tween_property(mat, "albedo_color:a", 0.0, dur).set_ease(Tween.EASE_IN)
 	tw.chain().tween_callback(_hide_lamp.bind(holder))

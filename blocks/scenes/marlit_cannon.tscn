@@ -2,9 +2,9 @@
 
 [ext_resource type="Script" path="res://blocks/scripts/WeaponBlock.gd" id="1_s"]
 [ext_resource type="Script" path="res://blocks/scripts/bullet.gd" id="2_b"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_gun_base.tres" id="m_base"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_gun_yaw.tres" id="m_yaw"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_gun_head.tres" id="m_head"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_cannon_base.tres" id="m_base"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_cannon_yaw.tres" id="m_yaw"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_cannon_head.tres" id="m_head"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(2, 2, 2)
@@ -15,7 +15,7 @@ radius = 60.0
 [sub_resource type="BoxShape3D" id="Bullet_1"]
 size = Vector3(0.2, 0.2, 0.4)
 
-[node name="marlit_gun" type="RigidBody3D" node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
+[node name="marlit_cannon" type="RigidBody3D" node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
 collision_layer = 2
 collision_mask = 21
 freeze = true
@@ -23,31 +23,31 @@ script = ExtResource("1_s")
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
 Area_Range = NodePath("Area3D")
-block = 66
+block = 71
 connect_faces = 32
 cells_center = Vector3(-0.5, 0.5, -0.5)
 flash_color = Color(1, 0.5, 0.32, 1)
-damage = 8
-fire_rate = 0.14
-weapon_range = 65.0
-spread_deg = 1.2
+damage = 60
+fire_rate = 1.4
+weapon_range = 70.0
+spread_deg = 0.8
 round_style = &"marlit"
-round_len = 0.42
-recoil_dist = 0.05
-flash_size = 0.5
+round_len = 0.7
+recoil_dist = 0.16
+flash_size = 0.75
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
 shape = SubResource("Shape_1")
 
-[node name="marlit_gun_base" type="MeshInstance3D" parent="."]
+[node name="marlit_cannon_base" type="MeshInstance3D" parent="."]
 mesh = ExtResource("m_base")
 
-[node name="marlit_gun_yaw" type="MeshInstance3D" parent="marlit_gun_base"]
+[node name="marlit_cannon_yaw" type="MeshInstance3D" parent="marlit_cannon_base"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.02, -0.5)
 mesh = ExtResource("m_yaw")
 
-[node name="marlit_gun_head" type="MeshInstance3D" parent="marlit_gun_base/marlit_gun_yaw"]
+[node name="marlit_cannon_head" type="MeshInstance3D" parent="marlit_cannon_base/marlit_cannon_yaw"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
 mesh = ExtResource("m_head")
 
@@ -62,10 +62,7 @@ shape = SubResource("Sphere_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.6, -0.5)
 
 [node name="Marker3D" type="Marker3D" parent="Pivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.15, 0, -1)
-
-[node name="Marker3D2" type="Marker3D" parent="Pivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, 0, -1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1)
 
 [node name="RayCast3D" type="RayCast3D" parent="Pivot"]
 target_position = Vector3(0, 0, -10)
@@ -78,8 +75,8 @@ top_level = true
 collision_layer = 0
 collision_mask = 7
 script = ExtResource("2_b")
-speed = 130.0
-bullet_gravity = 45.0
+speed = 140.0
+bullet_gravity = 30.0
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Ammo/Bullet"]
 shape = SubResource("Bullet_1")
