@@ -556,9 +556,13 @@ project: read it before claiming how anything works.
   never the bottom; every round part has its FLATS ON THE CELL'S FACES (16 sides, `flat_r`), so a
   neighbour meets a face - the first cut, a housing on a thin sleeve with an inset lower tier,
   read as joining by its top only. The fixed one has a square deck and a hazard band on the base;
-  the rotating one a round deck over a round base with orange ticks on its ridge, ALL OF IT TURNING
-  WITH THE MACHINE: the base used to hold the heading it had at the anchor, and the player read the
-  one part standing still as a part turning backwards. BOTH DECKS
+  the rotating one a round deck over a round base with orange ticks on its ridge. ANCHORED, EVERYTHING
+  UNDER ITS DECK HOLDS ITS WORLD HEADING - base, sleeve, ram and foot (`support._hold_heading`) - and
+  the deck turns over it; released, the lower half eases square again. Two cuts came first and each
+  is a rule now: the base held ALONE while the ram and foot under it turned, and a still part between
+  two turning ones read as turning backwards; then nothing held, and "the part that should be fixed
+  turns with the machine". Measured: deck 0/30/60/90 deg, lower half 0 throughout, foot on the
+  ground. BOTH DECKS
   ARE PLAIN BLUE, the player's call: the rotating one's white chevron sat off the turn's centre and
   the fixed one's ring of bolts read as a design laid over it; the square deck keeps one bolt in
   each corner (`anchor_top_fixed`). While the machine is anchored (or is an enemy base) a telescoping ram

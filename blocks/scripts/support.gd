@@ -5,9 +5,14 @@ extends VehicleBlock
 # The model is TerraTech's GSO anchor as a jack (art/emitter_models.py support / rot_support): a
 # round base under a deck, a telescoping ram (sleeve over rod) and a foot. While the machine stands on its anchor the ram runs out until the foot is
 # on the ground - that replaces the plain white cylinder the machine used to grow under itself, so
-# the machine draws no column when this block is its core (`draws_own_leg`). The rotating one's
-# round STATOR base turns WITH the housing, like the rest of the block: it used to hold the heading
-# it had at the anchor, and the player read the one part not turning as a part turning backwards.
+# the machine draws no column when this block is its core (`draws_own_leg`).
+#
+# ON THE ROTATING ONE EVERYTHING UNDER THE DECK HOLDS ITS HEADING while the machine is anchored -
+# the round STATOR base, the sleeve, the ram and the foot - and the deck with the housing turns over
+# it: the foot stands on the ground, and what stands on the ground does not turn. The first cut held
+# the stator ALONE while the ram and the foot under it turned with the machine, and a held part
+# between two turning ones read as a part turning backwards (the player's report); after that the
+# whole block turned, and "the part that should be fixed turns with the machine" was the next one.
 
 ## The foot's top at rest (SUP_FOOT_Y in the model). The ram and the sleeve are unit rods hanging
 ## from their nodes; the gap from the leg's node down to here is the rest length, read off the scene.
@@ -28,16 +33,22 @@ var _leg: Node3D = null
 var _sleeve: Node3D = null
 var _rest: float = 0.0
 var _foot: Node3D = null
+var _stator: Node3D = null
 var _ext: float = 0.0
+## The lower half's turn against the block, and the world heading it holds while planted.
+var _yaw: float = 0.0
+var _holding: bool = false
+var _hold_yaw: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	moving_parts = true                 # leg and foot move (MachineBatch copies them)
+	moving_parts = true                 # leg, foot and the held lower half move (MachineBatch copies them)
 	_leg = get_node_or_null("Leg") as Node3D
 	_sleeve = get_node_or_null("Sleeve") as Node3D
 	if _leg != null:
 		_rest = maxf(_leg.position.y - FOOT_TOP, 0.01)
 	_foot = get_node_or_null("Foot") as Node3D
+	_stator = get_node_or_null("Stator") as Node3D       # only the rotating support has one
 
 ## Asked by vehicle_body_3d._build_anchor_column: this block puts its own foot on the ground.
 func draws_own_leg() -> bool:
@@ -55,15 +66,41 @@ func _process(delta: float) -> void:
 	if planted and upright:
 		var bottom: float = global_position.y - FOOT_DROP
 		want = clampf(bottom - G.ground_y(global_position, bottom), 0.0, LEG_MAX)
+	var moved: bool = false
 	if not is_equal_approx(_ext, want):
 		var step: float = maxf(absf(want - _ext) * LEG_EASE, LEG_MIN_SPEED) * delta
 		_ext = move_toward(_ext, want, step)
+		moved = true
+	if _stator != null and _hold_heading(planted and upright, delta):
+		moved = true
+	if moved:
+		var turn := Basis(Vector3.UP, _yaw)
 		if _leg != null:
-			_leg.scale = Vector3(1.0, _rest + _ext, 1.0)
+			_leg.basis = turn * Basis.from_scale(Vector3(1.0, _rest + _ext, 1.0))
 		if _sleeve != null:
-			_sleeve.scale = Vector3(1.0, maxf((_rest + _ext) * SLEEVE_SHARE, _rest), 1.0)
+			_sleeve.basis = turn * Basis.from_scale(
+					Vector3(1.0, maxf((_rest + _ext) * SLEEVE_SHARE, _rest), 1.0))
 		if _foot != null:
 			_foot.position.y = -_ext
+			_foot.basis = turn
+		if _stator != null:
+			_stator.basis = turn
+
+## Planted, the lower half keeps the world heading it had when the anchor went down; released, it
+## eases back square to the block. True when the angle changed.
+func _hold_heading(planted: bool, delta: float) -> bool:
+	var was: float = _yaw
+	if planted:
+		if not _holding:
+			_holding = true
+			_hold_yaw = global_rotation.y + _yaw
+		_yaw = wrapf(_hold_yaw - global_rotation.y, -PI, PI)
+	else:
+		_holding = false
+		_yaw = lerp_angle(_yaw, 0.0, minf(delta * 4.0, 1.0))
+		if absf(_yaw) < 0.001:
+			_yaw = 0.0
+	return not is_equal_approx(was, _yaw)
 
 func _machine() -> Node:
 	var p: Node = get_parent()
