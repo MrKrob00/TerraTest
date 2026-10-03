@@ -8,18 +8,24 @@ placeholders.
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
 
-CABIN - the faction's casting with its front-top edge cut away into a SLOPED CANOPY: the cockpit is
-the slope, three panes of sea-teal glass in a gunmetal frame, a sunset line under them. Below it the
-front is a bumper with a vented grille between two sunset lamps; the sides and the top carry the
-faction's window like every Marlit block, so it still joins on every face (the slope excepted).
+CABIN - the faction's casting with its front-top edge cut away into a SLOPED CANOPY: three panes
+of sea-teal glass in a gunmetal frame, a sunset line under them and a light bar along the brow.
+Each side has a glass window following the slope, a door with a porthole and a handle, and hazard
+slats along its foot; the front a vented grille between two sunset lamps, a tow hook and slats; the
+roof a bolted hatch and a vent strip; the back a radiator and two exhaust ports. All of it lies on
+the block's faces, so it still joins on every face but the slope. The first cut - the canopy on a
+plain casting with the faction's window on every side - was "too simple" (the player).
   body - all of it (a cabin moves nothing)
 
-WHEEL - a wide low-poly tyre with staggered lugs, an octagonal rim on the outer side with six spokes
-and a capped hub, a short axle housing back to a round bearing plate on the BACK face - the face
-it bolts on by, as every wheel here (`connect_faces` 2). The tyre turns about Z through the block's
-middle, so at rest it rolls across the block, as the Falsus wheels do before the hull turns them.
-  body - the bearing plate and the axle housing (still)
-  tyre - the tyre, rim, spokes and hub, about its own middle (turns)
+WHEEL - after the Falsus wheel's layout (the player: "a transmission, and the wheel lower, like
+Falsus"): a bearing plate on the BACK face, the face it bolts on by (`connect_faces` 2), and from it
+a double wishbone - an upper and a lower A-arm - down to a hub carrier, two coil-over dampers with
+sunset springs, and a gearbox on the plate driving the hub through a shaft with a boot at each end.
+The tyre hangs on them BELOW the block, as the Falsus wheels hang below theirs (their tyre's middle
+0.38 m under the block's, its bottom past the block's floor): a wide low-poly tyre with staggered
+lugs, an octagonal rim with six spokes and a capped hub on its outer side.
+  body - plate, gearbox, arms, dampers, shaft, hub carrier (still)
+  tyre - the tyre, rim, spokes and hub, about its own middle (turns about Z)
 """
 import math
 import os
@@ -28,27 +34,70 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import turret_heads as th  # noqa: E402
 import emitter_models as em  # noqa: E402
+import hull_models as hm  # noqa: E402
 import marlit_weapons as mw  # noqa: E402
 
 CX, CY, CZ = -0.5, 0.5, -0.5          # the 2x2x2 block's middle
 
+
+def _quad(f, pts, inside, style, u=(1, 0, 0)):
+    mw._face(f, pts, inside, style, u_hint=u)
+
+
+def _oct_on(f, c, u, v, r, style, inside):
+    """A flat octagon of half width r across its flats, centred at c in the plane of u and v."""
+    k = r / math.cos(math.pi / 8)
+    pts = [th.add(c, th.add(th.mul(u, k * math.cos(math.pi / 8 + i * math.pi / 4)),
+                            th.mul(v, k * math.sin(math.pi / 8 + i * math.pi / 4)))) for i in range(8)]
+    mw._face(f, pts, inside, style, u_hint=u)
+
+
 # ── the cabin ───────────────────────────────────────────────────────────────────────────────────
-# the profile in (y, z): the front's upright face up to CAB_SILL, the canopy slope up to the top
-# at CAB_BROW behind the front face
 CAB_SILL = 0.45
 CAB_BROW = -0.45
 CAB_YZ = [(-0.5, -1.5), (CAB_SILL, -1.5), (1.5, CAB_BROW), (1.5, 0.5), (-0.5, 0.5)]
-CAB_PANES = (-1.32, -0.86, -0.14, 0.32)      # x of the panes' edges: a wide middle, two narrow sides
-CAB_FRAME = 0.05                            # the frame's half width between panes
-CAB_GLASS_IN = 0.10                         # the glass stands this far inside the slope's edges
+CAB_PANES = (-1.32, -0.86, -0.14, 0.32)
+CAB_FRAME = 0.05
+CAB_GLASS_IN = 0.10
+PROUD = 0.008                         # overlays stand this far off the face they dress
 
 
 def _slope_point(x, s, lift=0.0):
-    """A point on the canopy slope: s 0 at the sill, 1 at the brow; `lift` off it along its normal."""
     y = CAB_SILL + (1.5 - CAB_SILL) * s
     z = -1.5 + (CAB_BROW + 1.5) * s
     n = th.norm((0.0, CAB_BROW + 1.5, -(1.5 - CAB_SILL)))
     return (x + n[0] * lift, y + n[1] * lift, z + n[2] * lift)
+
+
+def _cab_side(f, x, sx):
+    """One side wall at x (sx +1 / -1 outward): a plate over the dressing, a window under the slope,
+    a door with a porthole and a handle, hazard slats along the foot."""
+    xo = x + sx * PROUD
+    inside = (CX, 0.5, -0.5)
+
+    def P(y, z, d=0.0):
+        return (xo + sx * d, y, z)
+    wall = hm.inset(CAB_YZ, em.MB_C)
+    _quad(f, [P(p[0], p[1]) for p in wall], inside, "mplate", u=(0, 0, 1))
+    # the window under the slope: a frame, then the glass
+    # a quarter metre off the slope along z: the casting's 0.16 chamfer runs along that edge, and a
+    # window closer than that hung in the air past the body
+    win = [(0.75, -0.95), (1.15, -0.55), (1.15, -0.30), (0.75, -0.30)]
+    _quad(f, [P(y + (0.03 if i in (1, 2) else -0.03), z + (-0.03 if i in (0, 1) else 0.03), 0.003)
+              for i, (y, z) in enumerate(win)], inside, "mflat1", u=(0, 0, 1))
+    _quad(f, [P(y, z, 0.006) for y, z in win], inside, "mglass", u=(0, 0, 1))
+    # the door behind it, a porthole and a handle
+    _quad(f, [P(-0.25, -0.18, 0.003), P(-0.25, 0.36, 0.003), P(1.18, 0.36, 0.003), P(1.18, -0.18, 0.003)],
+          inside, "mflat1", u=(0, 0, 1))
+    _quad(f, [P(-0.21, -0.14, 0.006), P(-0.21, 0.32, 0.006), P(1.14, 0.32, 0.006), P(1.14, -0.14, 0.006)],
+          inside, "mpside", u=(0, 0, 1))
+    _oct_on(f, P(0.86, 0.09, 0.009), (0, 0, 1), (0, 1, 0), 0.15, "mflat1", inside)
+    _oct_on(f, P(0.86, 0.09, 0.012), (0, 0, 1), (0, 1, 0), 0.11, "mglass", inside)
+    _quad(f, [P(0.36, -0.09, 0.012), P(0.36, 0.05, 0.012), P(0.44, 0.05, 0.012), P(0.44, -0.09, 0.012)],
+          inside, "mglow", u=(0, 0, 1))
+    # hazard slats along the foot
+    _quad(f, [P(-0.40, -1.32, 0.004), P(-0.40, 0.32, 0.004), P(-0.28, 0.32, 0.004), P(-0.28, -1.32, 0.004)],
+          inside, "mhazard", u=(0, 0, 1))
 
 
 def build_marlit_cabin(pk, img):
@@ -57,43 +106,71 @@ def build_marlit_cabin(pk, img):
     parts = {"marlit_cabin_body": []}
     f = parts["marlit_cabin_body"]
     em.marlit_prism(f, CAB_YZ, -1.5, 0.5, rnd)
-    # the canopy: three panes in a gunmetal frame, proud of the slope's own dressing
+    inside = (CX, 0.3, -0.4)
+    # the canopy: three panes in a gunmetal frame, a sunset line under them
     span = math.hypot(1.5 - CAB_SILL, CAB_BROW + 1.5)
-    s0 = CAB_GLASS_IN / span
-    s1 = 1.0 - CAB_GLASS_IN / span
+    s0, s1 = CAB_GLASS_IN / span, 1.0 - CAB_GLASS_IN / span
     xs = CAB_PANES
-    centre = (CX, 0.2, -0.2)
     frame = [_slope_point(xs[0] - CAB_FRAME, s0 - 0.03, 0.010), _slope_point(xs[-1] + CAB_FRAME, s0 - 0.03, 0.010),
              _slope_point(xs[-1] + CAB_FRAME, s1 + 0.03, 0.010), _slope_point(xs[0] - CAB_FRAME, s1 + 0.03, 0.010)]
-    mw._face(f, frame, centre, "mflat1", u_hint=(1, 0, 0))
+    _quad(f, frame, inside, "mflat1")
     for i in range(len(xs) - 1):
         a = xs[i] + (CAB_FRAME if i > 0 else 0.0)
         b = xs[i + 1] - (CAB_FRAME if i < len(xs) - 2 else 0.0)
-        pane = [_slope_point(a, s0, 0.018), _slope_point(b, s0, 0.018), _slope_point(b, s1, 0.018),
-                _slope_point(a, s1, 0.018)]
-        mw._face(f, pane, centre, "mglass", u_hint=(1, 0, 0))
-    # a sunset line under the glass, along the sill
-    line = [_slope_point(xs[0], s0 - 0.055, 0.016), _slope_point(xs[-1], s0 - 0.055, 0.016),
-            _slope_point(xs[-1], s0 - 0.035, 0.016), _slope_point(xs[0], s0 - 0.035, 0.016)]
-    mw._face(f, line, centre, "mglow", u_hint=(1, 0, 0))
-    # the bumper: a vented grille between two sunset lamps, proud of the front face
-    zf = -1.5 - 0.012
-    grille = [(-0.95, -0.22, zf), (-0.05, -0.22, zf), (-0.05, 0.22, zf), (-0.95, 0.22, zf)]
-    mw._face(f, grille, (CX, 0.0, 0.0), "mvent", u_hint=(1, 0, 0))
-    for x0, x1 in ((-1.36, -1.08), (0.08, 0.36)):
-        lamp = [(x0, -0.06, zf), (x1, -0.06, zf), (x1, 0.18, zf), (x0, 0.18, zf)]
-        mw._face(f, lamp, (CX, 0.0, 0.0), "mglow", u_hint=(1, 0, 0))
+        _quad(f, [_slope_point(a, s0, 0.018), _slope_point(b, s0, 0.018), _slope_point(b, s1, 0.018),
+                  _slope_point(a, s1, 0.018)], inside, "mglass")
+    _quad(f, [_slope_point(xs[0], s0 - 0.055, 0.016), _slope_point(xs[-1], s0 - 0.055, 0.016),
+              _slope_point(xs[-1], s0 - 0.035, 0.016), _slope_point(xs[0], s0 - 0.035, 0.016)], inside, "mglow")
+    # a light bar along the brow, on the roof
+    yt = 1.5 + PROUD
+    _quad(f, [(-1.34, yt, CAB_BROW + 0.04), (0.34, yt, CAB_BROW + 0.04), (0.34, yt, CAB_BROW + 0.20),
+              (-1.34, yt, CAB_BROW + 0.20)], inside, "mflat1")
+    for k in range(5):
+        x0 = -1.28 + k * 0.33
+        _quad(f, [(x0, yt + 0.004, CAB_BROW + 0.07), (x0 + 0.24, yt + 0.004, CAB_BROW + 0.07),
+                  (x0 + 0.24, yt + 0.004, CAB_BROW + 0.17), (x0, yt + 0.004, CAB_BROW + 0.17)], inside, "mglow")
+    # the roof: a bolted hatch and a vent strip
+    _oct_on(f, (-0.5, yt, 0.06), (1, 0, 0), (0, 0, 1), 0.30, "mflat1", inside)
+    _oct_on(f, (-0.5, yt + 0.004, 0.06), (1, 0, 0), (0, 0, 1), 0.25, "mpside", inside)
+    for i in range(4):
+        a = math.pi / 4 + i * math.pi / 2
+        c = (-0.5 + math.cos(a) * 0.19, yt + 0.008, 0.06 + math.sin(a) * 0.19)
+        _quad(f, [th.add(c, (-0.035, 0, -0.035)), th.add(c, (0.035, 0, -0.035)), th.add(c, (0.035, 0, 0.035)),
+                  th.add(c, (-0.035, 0, 0.035))], inside, "mbolt")
+    _quad(f, [(-1.3, yt, 0.24), (-0.95, yt, 0.24), (-0.95, yt, 0.36), (-1.3, yt, 0.36)], inside, "mvent")
+    _quad(f, [(-0.05, yt, 0.24), (0.3, yt, 0.24), (0.3, yt, 0.36), (-0.05, yt, 0.36)], inside, "mvent")
+    # the front: a vented grille between two sunset lamps, a tow hook, slats along the foot
+    zf = -1.5 - PROUD
+    _quad(f, [(-0.95, -0.12, zf), (-0.05, -0.12, zf), (-0.05, 0.30, zf), (-0.95, 0.30, zf)], inside, "mvent")
+    for x0, x1 in ((-1.36, -1.06), (0.06, 0.36)):
+        _quad(f, [(x0, 0.02, zf), (x1, 0.02, zf), (x1, 0.26, zf), (x0, 0.26, zf)], inside, "mflat1")
+        _quad(f, [(x0 + 0.03, 0.05, zf - 0.004), (x1 - 0.03, 0.05, zf - 0.004), (x1 - 0.03, 0.23, zf - 0.004),
+                  (x0 + 0.03, 0.23, zf - 0.004)], inside, "mglow")
+    _quad(f, [(-1.36, -0.42, zf), (0.36, -0.42, zf), (0.36, -0.30, zf), (-1.36, -0.30, zf)], inside, "mhazard")
+    em.obox(f, (-0.5, -0.22, -1.5 - 0.02), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.10, 0.05, 0.02),
+            ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
+    # the sides
+    _cab_side(f, -1.5, -1.0)
+    _cab_side(f, 0.5, 1.0)
+    # the back: a radiator, two exhaust ports with sunset rims, slats along the foot
+    zb = 0.5 + PROUD
+    _quad(f, [(-1.2, 0.05, zb), (0.2, 0.05, zb), (0.2, 0.95, zb), (-1.2, 0.95, zb)], inside, "mvent")
+    for x in (-1.12, 0.12):
+        _oct_on(f, (x, 1.22, zb), (1, 0, 0), (0, 1, 0), 0.15, "mglow", inside)
+        _oct_on(f, (x, 1.22, zb + 0.004), (1, 0, 0), (0, 1, 0), 0.11, "mflat0", inside)
+    _quad(f, [(-1.36, -0.42, zb), (0.36, -0.42, zb), (0.36, -0.30, zb), (-1.36, -0.30, zb)], inside, "mhazard")
     return parts
 
 
 # ── the wheel ───────────────────────────────────────────────────────────────────────────────────
-WH_R = 0.95                  # the tyre's radius over the lugs
-WH_TREAD = 0.89              # under them
-WH_SIDE_IN = 0.56            # the sidewall's inner edge, where the rim starts
-WH_Z = (-1.45, -0.27)        # the tyre's outer and inner faces (the outer side looks along -Z)
-WH_N = 16                    # facets round
-WH_HUB = (0.20, 0.30)        # the hub cap and the axle housing, across their flats
-WH_PLATE = (0.78, 0.30)      # the bearing plate on the back face: across its flats, its front z
+TC = (-0.5, -0.25, -0.86)    # the tyre's middle: under the block, as the Falsus wheels hang
+WH_R = 0.85                  # the tyre's radius over the lugs
+WH_TREAD = 0.79
+WH_SIDE_IN = 0.50
+WH_Z = (-1.45, -0.30)        # the tyre's outer and inner faces (the outer side looks along -Z)
+WH_N = 16
+WH_HUB = 0.18
+PLATE_Z = 0.30               # the bearing plate's front face
 
 
 def _ring(C, r, z, n=WH_N, off=0.5):
@@ -109,45 +186,92 @@ def _band_z(f, C, r0, z0, r1, z1, style, n=WH_N):
         q = [a[k], a[j], b[j], b[k]]
         if math.dist(q[0], q[3]) < 1e-6 and math.dist(q[1], q[2]) < 1e-6:
             continue
-        if r0 == r1:
-            centre = mid
-        else:
-            centre = (C[0], C[1], z0 + (1.0 if z1 > z0 else -1.0)) if abs(z1 - z0) < 1e-6 else mid
+        centre = (C[0], C[1], z0 + (1.0 if z1 > z0 else -1.0)) if abs(z1 - z0) < 1e-6 and r0 != r1 else mid
+        if abs(z1 - z0) < 1e-6:
+            centre = (C[0], C[1], z0 + (0.3 if z0 > C[2] else -0.3) * -1.0)
         mw._face(f, q, centre, style, u_hint=th.sub(q[1], q[0]))
 
 
+def _coil(f, a, b, r, turns, wire):
+    """A coil spring from a to b, `turns` round, its wire a four-sided tube in sunset."""
+    ax, u, v = mw._frame(th.sub(b, a))
+    n = turns * 8
+    pts = []
+    for i in range(n + 1):
+        t = i / n
+        ang = 2 * math.pi * turns * t
+        pts.append(th.add(th.add(a, th.mul(th.sub(b, a), t)),
+                          th.add(th.mul(u, r * math.cos(ang)), th.mul(v, r * math.sin(ang)))))
+    for i in range(n):
+        mw.oct_tube(f, pts[i], pts[i + 1], wire, wire, "mglow", sides=4)
+
+
+def _damper(f, top, bottom):
+    """A coil-over: a fat body up top, a thin rod down, a sunset spring round both, eyes at the ends."""
+    mid = th.add(top, th.mul(th.sub(bottom, top), 0.55))
+    mw.oct_tube(f, top, mid, 0.075, 0.075, "m", cap_a="mflat2")
+    mw.oct_tube(f, mid, bottom, 0.04, 0.04, "m", cap_b="mflat2")
+    _coil(f, th.add(top, th.mul(th.sub(bottom, top), 0.12)), th.add(top, th.mul(th.sub(bottom, top), 0.88)),
+          0.12, 4, 0.018)
+
+
 def build_marlit_wheel2(pk, img):
+    import random as _r
+    rnd = _r.Random(73)
     parts = {"marlit_wheel2_body": [], "marlit_wheel2_tyre": []}
     b = parts["marlit_wheel2_body"]
-    # the bearing plate on the back face, the axle housing out to the tyre's inner face
-    mw.oct_tube(b, (CX, CY, 0.5), (CX, CY, WH_PLATE[1]), WH_PLATE[0], WH_PLATE[0] - 0.04, "m",
-                cap_a="mflat2", cap_b="mflat3")
-    mw.band(b, (CX, CY, WH_PLATE[1] - 0.001), (CX, CY, -1.0), WH_PLATE[0] - 0.10, WH_PLATE[0] - 0.07, "mglow")
-    mw.oct_tube(b, (CX, CY, WH_PLATE[1]), (CX, CY, WH_Z[1] + 0.02), WH_HUB[1], WH_HUB[1] - 0.03, "m")
-    for k in range(4):
-        a = math.pi / 4 + k * math.pi / 2
-        p = (CX + math.cos(a) * (WH_PLATE[0] - 0.17), CY + math.sin(a) * (WH_PLATE[0] - 0.17), WH_PLATE[1] - 0.012)
-        bolt = [th.add(p, (-0.05, -0.05, 0)), th.add(p, (0.05, -0.05, 0)), th.add(p, (0.05, 0.05, 0)),
-                th.add(p, (-0.05, 0.05, 0))]
-        mw._face(b, bolt, (CX, CY, 0.5), "mbolt", u_hint=(1, 0, 0))
-    # the tyre, about its own middle (the scene's tyre node stands at the block's middle)
+    # the bearing plate on the back face, the faction's window on its front
+    em.marlit_box(b, (-1.38, -0.12, PLATE_Z), (0.38, 1.38, 0.5), 0.06, rnd, {(2, 0): "window"})
+    # the gearbox on the plate, vented, its output boot
+    gb = ((-0.86, 0.26, 0.12), (-0.14, 0.78, PLATE_Z))
+    mw.mbox(b, gb[0], gb[1])
+    _quad(b, [(-0.80, 0.32, 0.12 - 0.004), (-0.20, 0.32, 0.12 - 0.004), (-0.20, 0.72, 0.12 - 0.004),
+              (-0.80, 0.72, 0.12 - 0.004)], (-0.5, 0.5, 0.2), "mvent")
+    hub_in = (TC[0], TC[1], WH_Z[1] + 0.06)                  # the hub carrier's inner face
+    knuckle = (TC[0], TC[1], WH_Z[1] + 0.10)
+    out = (-0.5, 0.30, 0.10)
+    mw.oct_tube(b, (out[0], out[1], 0.12), out, 0.11, 0.11, "m")
+    # the drive shaft, a boot at each end
+    shaft_a = th.add(out, (0, 0, -0.08))
+    shaft_b = th.add(knuckle, (0, 0, 0.10))
+    mw.oct_tube(b, out, shaft_a, 0.10, 0.07, "mtone1")
+    mw.oct_tube(b, shaft_a, shaft_b, 0.05, 0.05, "m")
+    mw.oct_tube(b, shaft_b, th.add(knuckle, (0, 0, 0.02)), 0.07, 0.10, "mtone1")
+    # the hub carrier
+    em.obox(b, knuckle, ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.16, 0.30, 0.06),
+            ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
+    mw.oct_tube(b, th.add(knuckle, (0, 0, -0.06)), hub_in, 0.20, 0.20, "m")
+    # the double wishbone: an upper and a lower A-arm, each two keeled plates from the plate to the
+    # carrier, with pins at the plate
+    for y_plate, y_knuckle, w in ((1.02, TC[1] + 0.26, 0.11), (0.06, TC[1] - 0.26, 0.13)):
+        apex = (TC[0], y_knuckle, knuckle[2] + 0.04)
+        for x_plate in (-1.06, 0.06):
+            a = (x_plate, y_plate, PLATE_Z - 0.02)
+            em._mwl_plate(b, a, apex, (0.0, 1.0, 0.0), w, w * 0.8, w * 0.8, w * 0.7)
+            em._mwl_oct_prism(b, (x_plate, y_plate, PLATE_Z - 0.04), (1.0, 0.0, 0.0), 0.05, 0.08, None, "mpin")
+    # two coil-over dampers from high on the plate to the lower arms
+    for xs in (-1.15, 0.15):
+        top = (xs, 1.24, PLATE_Z - 0.06)
+        bot = (TC[0] + (xs - TC[0]) * 0.45, TC[1] - 0.10, knuckle[2] + 0.30)
+        _damper(b, top, bot)
+    # the tyre, about its own middle (the scene's tyre node stands at TC)
     t = parts["marlit_wheel2_tyre"]
     O = (0.0, 0.0, 0.0)
-    zo, zi = WH_Z[0] - CZ, WH_Z[1] - CZ          # in the tyre's own frame
-    sh = 0.08                                    # the shoulder's run-in
-    _band_z(t, O, WH_SIDE_IN, zo, WH_TREAD - 0.04, zo, "m")          # outer sidewall
-    _band_z(t, O, WH_SIDE_IN, zi, WH_TREAD - 0.04, zi, "m")          # inner sidewall
-    _band_z(t, O, WH_TREAD - 0.13, zo - 0.004, WH_TREAD - 0.10, zo - 0.004, "mglow")   # a sunset line
-    _band_z(t, O, WH_TREAD - 0.04, zo, WH_TREAD, zo + sh, "m")       # shoulders
+    zo, zi = WH_Z[0] - TC[2], WH_Z[1] - TC[2]
+    sh = 0.07
+    _band_z(t, O, WH_SIDE_IN, zo, WH_TREAD - 0.04, zo, "m")
+    _band_z(t, O, WH_SIDE_IN, zi, WH_TREAD - 0.04, zi, "m")
+    _band_z(t, O, WH_TREAD - 0.12, zo - 0.004, WH_TREAD - 0.09, zo - 0.004, "mglow")
+    _band_z(t, O, WH_TREAD - 0.04, zo, WH_TREAD, zo + sh, "m")
     _band_z(t, O, WH_TREAD - 0.04, zi, WH_TREAD, zi - sh, "m")
-    _band_z(t, O, WH_TREAD, zo + sh, WH_TREAD, zi - sh, "mflat0")     # the tread's floor
-    # staggered lugs: two rows, the second half a facet round, each a block standing on the floor
+    _band_z(t, O, WH_TREAD, zo + sh, WH_TREAD, zi - sh, "mflat0")
     width = (zi - sh) - (zo + sh)
     for row, (za, zb, off) in enumerate(((zo + sh + 0.03, zo + sh + width * 0.48, 0.0),
                                          (zo + sh + width * 0.52, zi - sh - 0.03, 0.5))):
         for k in range(WH_N):
             a0 = 2 * math.pi * (k + off + 0.12) / WH_N
             a1 = 2 * math.pi * (k + off + 0.62) / WH_N
+
             def P(a, r, z):
                 return (r * math.cos(a), r * math.sin(a), z)
             lo = [P(a0, WH_TREAD, za), P(a1, WH_TREAD, za), P(a1, WH_TREAD, zb), P(a0, WH_TREAD, zb)]
@@ -157,7 +281,6 @@ def build_marlit_wheel2(pk, img):
             for i in range(4):
                 j = (i + 1) % 4
                 mw._face(t, [lo[i], lo[j], hi[j], hi[i]], mid, "mflat0", u_hint=th.sub(lo[j], lo[i]))
-    # the rim on the outer side: a dark dish, a sunset line round its lip, six spokes to a capped hub
     _band_z(t, O, WH_SIDE_IN, zo, WH_SIDE_IN - 0.03, zo + 0.05, "m", n=8)
     _band_z(t, O, WH_SIDE_IN - 0.03, zo + 0.05, WH_SIDE_IN - 0.06, zo + 0.05, "mglow", n=8)
     _band_z(t, O, WH_SIDE_IN - 0.06, zo + 0.05, 0.0, zo + 0.12, "mflat0", n=8)
@@ -165,18 +288,16 @@ def build_marlit_wheel2(pk, img):
         a = 2 * math.pi * k / 6
         d = (math.cos(a), math.sin(a), 0.0)
         s = (-math.sin(a), math.cos(a), 0.0)
-        em.obox(t, (d[0] * 0.33, d[1] * 0.33, zo + 0.07), (d, s, (0.0, 0.0, 1.0)), (0.17, 0.045, 0.045),
-                ["mtone3"] * 6)
-    mw.oct_tube(t, (0, 0, zo + 0.12), (0, 0, zo - 0.04), WH_HUB[0], WH_HUB[0] - 0.03, "m", cap_b="mpin")
-    # the inner side's hub face, round the housing
-    _band_z(t, O, WH_SIDE_IN, zi, WH_HUB[1] + 0.01, zi - 0.05, "m", n=8)
+        em.obox(t, (d[0] * 0.29, d[1] * 0.29, zo + 0.07), (d, s, (0.0, 0.0, 1.0)), (0.15, 0.04, 0.04), ["mtone3"] * 6)
+    mw.oct_tube(t, (0, 0, zo + 0.12), (0, 0, zo - 0.04), WH_HUB, WH_HUB - 0.03, "m", cap_b="mpin")
+    _band_z(t, O, WH_SIDE_IN, zi, 0.22, zi - 0.05, "m", n=8)
     return parts
 
 
 em.BLOCKS["marlit_cabin"] = (331, build_marlit_cabin, 512)
 em.BLOCKS["marlit_wheel2"] = (337, build_marlit_wheel2, 512)
 em.DENSITY["marlit_cabin"] = 36.0
-em.DENSITY["marlit_wheel2"] = 36.0
+em.DENSITY["marlit_wheel2"] = 34.0
 
 if __name__ == "__main__":
     for nm in (sys.argv[1:] or ["marlit_cabin", "marlit_wheel2"]):
