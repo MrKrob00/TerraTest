@@ -846,6 +846,14 @@ def style_px(style, x, y, w, h, d):
             return (20, 20, 26)
         return jitter([(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102),
                        (106, 110, 124)][k], 1)
+    if style == "mlamp":
+        # a headlamp lens in a window's bevel: hot white-gold in the middle of the facet, deepening to
+        # sunset at its ends, a dark line round it - lit, so it reads as a lamp and not as paint
+        if d < 1.0:
+            return (46, 34, 28)
+        t = abs((x + 0.5) / max(w, 1) - 0.5) * 2.0
+        s2 = abs((y + 0.5) / max(h, 1) - 0.5) * 2.0
+        return _ramp_at([(255, 244, 214), (254, 206, 120), (236, 140, 56)], max(t, s2) * 2.0)
     if style == "mglass":
         # Marlit's cockpit glass: deep sea-teal darkening downward, a pale rim, and one broad
         # diagonal sheen across the pane - the only way flat unshaded glass reads as glass
