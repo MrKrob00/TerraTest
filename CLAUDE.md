@@ -602,6 +602,20 @@ project: read it before claiming how anything works.
   for a base whose core is a seller or a miner. Measured on the proving ground: foot bottom 0.000
   against ground 0.000 for both, no column, the ram back to its rest length after release. The deck is blue down to the ridge band
   (`DECK_Y`), the player's sketch: a dark neck under a short deck read as the block's bulk.
+- **MARLIT HAS ITS OWN SUPPORTS** (`MARLIT_SUPPORT` 74, `MARLIT_ROT_SUPPORT` 75, `art/emitter_models.py`
+  marlit_support / marlit_rot_support, the same `support.gd`): 2x2x2, ONE CASTING - the player turned
+  down a windowed slab on a smaller drum ("two models stuck together") and a thin ram ("far too narrow
+  for a block this big"): the same 2x2 silhouette from the deck down to a skirt sloping in to a ram
+  0.85 m across and a foot nearly the block's width. The rotating one is the casting cut by a band:
+  a RING GEAR turns in it with the top, two motor PINIONS on the lower half's lid roll round it
+  (`support.PINION_RATIO`, nodes `Stator/Pinion0..1`), and the lower half holds its heading like the
+  Falsus one. Every part is built round the block's AXIS and stands at (-0.5, y, -0.5), the middle of
+  a block anchored in its corner; `foot_top` is a scene export. THE AXIS, NOT THE ANCHOR: the turn's
+  pivot is `centre()` (`_rot_support_tick`), the anchor height probes the ground under it
+  (`_anchor_target_y`), and the ram under the leg's own position (`support.gd`). WHAT ANCHORS A
+  MACHINE IS ONE LIST, `G.SUPPORT_BLOCKS` / `G.is_support` / `G.is_rot_support`, like the cabins.
+  Measured on the proving ground: anchored, foot 0.004 m into the ground; the deck turned 30/60/90 deg,
+  the casting held 0, the pinions turned, the axis did not move.
 - THE ANCHOR'S CLEARANCE IS TAKEN PER CELL, not per block (`_anchor_target_y` over `blocks.map`):
   a block's centre and its anchor cell's floor missed a footprint reaching BELOW its anchor (the
   octo block, the x9 plate) and the far end of a long block over a slope. Measured: the four slopes

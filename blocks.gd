@@ -911,7 +911,7 @@ func _footprint_offsets(block: int) -> Array:
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
 			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR,
-			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN]:
+			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

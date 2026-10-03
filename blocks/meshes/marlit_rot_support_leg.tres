@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" path="res://objects/marlit_rot_support_texture.png" id="1_e34c6"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tpyhb"]
+resource_name = "marlit_rot_support"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_e34c6")
+texture_filter = 2
+
+[resource]
+resource_name = "marlit_rot_support_leg"
+_surfaces = [{
+"aabb": AABB(-0.34, -1, -0.34, 0.68, 1, 0.68),
+"attribute_data": PackedByteArray("/w7/AH8Q/wB/EH8C/w5/An8Q/wD/Ef8A/xF/An8QfwL/Ef8AfxP/AH8TfwL/EX8CfxP/AP8U/wD/FH8CfxN/Av8U/wB/Fv8AfxZ/Av8UfwJ/Fv8A/xf/AP8XfwJ/Fn8C/xf/AH8Z/wB/GX8C/xd/An8Z/wD/Gv8A/xp/An8ZfwI="),
+"format": 34896613399,
+"index_count": 48,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4A"),
+"material": SubResource("StandardMaterial3D_tpyhb"),
+"name": "marlit_rot_support",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 32,
+"vertex_data": PackedByteArray("/////wS14ugEtf/////i6AS1AAD//+Lo//8AAAS14ugEtf//////v/pK//////+/+koAAP///78EtQAA////v/pK/////z+oAAD//wS1P6gAAAAABLU/qPpKAAD//z+oAAD//wS1/78AAP//+kr/vwAAAAD6Sv+/AAAAAAS1/78AAP//+kqT4fpK//8AAJPh+koAAAAAk+EAAAAA+kqT4fpK//8AAP//BLX//wAA//8EtQAAAAD///pKAAAAAP//BLX//wAAh/b/////+kqH9v//AAD6Sof2BLUAAAAAh/b/////+kr///////8Etf////8AAAS1/////wAA+kr//0uiGHVLohh1S6IYdUuiGHX/f/9//3//f/9//3//f/9/fGxivXxsYr18bGK9fGxivf9/////f////3////9////uY03Y7mNN2O5jTdjuY03Y/z//v/8//7//P/+//z//v+XJgmjlyYJo5cmCaOXJgmj/v/9//7//f/+//3//v/9/")
+}]
+blend_shape_mode = 0

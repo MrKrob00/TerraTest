@@ -2507,5 +2507,21 @@
 	"Marlit's cabin: the heart of a machine in an armoured head two cells every way. Blocks bolt on to any face.": {
 		"ru": "Кабина Marlit: сердце машины в бронированной голове по две клетки в каждую сторону. Блоки крепятся к любой грани.",
 		"uk": "Кабіна Marlit: серце машини в броньованій голові по дві клітинки в кожен бік. Блоки кріпляться до будь-якої грані."
+	},
+	"Marlit Support": {
+		"ru": "Опора Марлит",
+		"uk": "Опора Марліт"
+	},
+	"Marlit Rotating Support": {
+		"ru": "Поворотная опора Марлит",
+		"uk": "Поворотна опора Марліт"
+	},
+	"Marlit's support: a cast jack with a ram as wide as a wheel. Anchors the machine, or stands on the ground as the core of a base.": {
+		"ru": "Опора Марлит: литой домкрат со штоком шириной в колесо. Ставит машину на якорь или встаёт на землю ядром базы.",
+		"uk": "Опора Марліт: литий домкрат зі штоком завширшки з колесо. Ставить машину на якір або стає на землю ядром бази."
+	},
+	"Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.": {
+		"ru": "Поворотная опора Марлит: верх крутится на зубчатом венце, а литьё под ним держит землю — вся постройка поворачивается джойстиком.",
+		"uk": "Поворотна опора Марліт: верх обертається на зубчастому вінці, а лиття під ним тримає землю — уся будова повертається джойстиком."
 	}
 }

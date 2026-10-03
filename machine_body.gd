@@ -271,7 +271,7 @@ func _energy_tick(delta: float) -> void:
 					_solar_count += b.solar_units()     # Marlit's array: four panels, only lying open
 				# What holds the machine on its anchor: a support block OR any stationary block - exactly what
 				# allowed anchoring in can_anchor().
-				if bt != null and (int(bt) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT] or G.is_stationary(int(bt))):
+				if bt != null and (G.is_support(bt) or G.is_stationary(int(bt))):
 					anchors += 1
 		# What to do when no supports remain is up to the SUBCLASS: the player's machine drops off the
 		# anchor, an enemy base has nowhere to drop. Counted here because it is the same block walk.
