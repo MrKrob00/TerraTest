@@ -14,6 +14,17 @@ uniform sampler2D tile_texture : source_color, filter_nearest_mipmap;
 uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
 uniform float texture_blend    : hint_range(0.0, 1.0)    = 0.06;
 
+// THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
+// tile used - R cracked earth, G sand ripples, B grass clumps, A broad patches. Masks, not colour:
+// no source_color. Set by TerrainBiomes.apply_to_material. Each biome takes its own channel, after
+// TerraTech's ground (the player's screenshots): the desert rippled, the meadow tufted, everything
+// a little patchy, so no ground is one flat colour.
+uniform sampler2D ground_detail : hint_default_white, filter_nearest_mipmap, repeat_enable;
+uniform float detail_world_size : hint_range(1.0, 40.0)  = 9.0;
+uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
+uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
+uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
+
 // Quantising v_pixel_uv to a grid keeps the noise and the grass steady per cell instead of
 // flickering per fragment.
 const float PIXELS_PER_TILE = 16.0;
@@ -45,6 +56,14 @@ uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.0;    // no grass
 // CANYON biome: terracotta regions. Overrides sand and meadow, dry land, no grass.
 uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);
 uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // stratum height (matches the geometry terrace)
+// SALT FLATS: a dried lake bed, cracked into tiles (the ground detail's R channel). Its mask rides
+// in COLOR.r with the grass flag (chunk_terrain SEAM_ON / SALT_SPAN): r >= SEAM_TEST is a grass
+// vertex with r - SEAM_ON of salt, below it a seam vertex with r of salt.
+uniform vec4  color_salt        : source_color = vec4(0.86, 0.75, 0.58, 1.0);
+uniform float crack_strength    : hint_range(0.0, 1.0)     = 0.65;
+const float SEAM_TEST = 0.55;
+const float SEAM_ON = 0.6;
+const float SALT_SPAN = 0.4;
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 1.0;   // см. TerrainBiomes: всегда, а не по настройке
@@ -106,6 +125,8 @@ varying float v_haze;
 varying vec2  v_pixel_uv;    // quantised (floored to the grid) — for steady noise and grass
 varying vec3  v_base_col;
 varying float v_is_grass;
+varying float v_desert;       // bare sand: what the ripples are drawn on
+varying float v_salt;         // the salt flat: what the cracks are drawn on
 varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
 varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
 varying float v_corrupt;      // strength of the corrupted zone (0..1)
@@ -152,7 +173,10 @@ void vertex() {
     float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 per band, stable
     vec3  canyon_col = mix(color_canyon.rgb * 0.72,
                            clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
+    bool  grass_vtx = COLOR.r >= SEAM_TEST;
+    float salt    = clamp(grass_vtx ? (COLOR.r - SEAM_ON) / SALT_SPAN : COLOR.r / SALT_SPAN, 0.0, 1.0);
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);  // desert ↔ meadow
+    zone          = mix(zone,           color_salt.rgb,   salt);        // the salt flat on the desert
     zone          = mix(zone,           canyon_col,       canyon);      // canyon on top
     float snow    = mountain * smoothstep(snow_line - snow_blend, snow_line + snow_blend, wy);
     zone          = mix(zone,           color_snow.rgb,   snow);        // snow only up high
@@ -172,12 +196,14 @@ void vertex() {
     // теперь берётся из неё, поэтому луг одного цвета на всей дистанции. Подъём вершин остаётся
     // ниже и остаётся геометрией — он и должен быть виден только вблизи.
     float grass_amount = mix(sand_grass, 1.0, biome_grass)
-            * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain);
+            * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain) * (1.0 - salt);
     v_is_grass = clamp(grass_amount, 0.0, 1.0);
-    // COLOR.r < 0.5 marks a vertex on a chunk border: the grass offset is skipped there, or
+    v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0);
+    v_salt = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0);
+    // COLOR.r < SEAM_TEST marks a vertex on a chunk border: the grass offset is skipped there, or
     // the seam between differing LODs pulls apart. lod_grass_enabled is 1 only on the near
     // LOD-0 material.
-    if (lod_grass_enabled > 0.5 && COLOR.r > 0.5) {
+    if (lod_grass_enabled > 0.5 && grass_vtx) {
         // Grass grows in the MEADOW only. In the desert sand_grass = 0 means bare sand. None on
         // rock, in the canyon or on mountains. amount scales both height and density.
         float amount = grass_amount;
@@ -219,9 +245,14 @@ void fragment() {
         wall_uv /= tile_world_size;
         vec2 noise_uv = floor(wall_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
         base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
-        if (texture_blend > 0.001) {
-            base_col = mix(base_col, texture(tile_texture, wall_uv).rgb, texture_blend);
-        }
+        // one fetch, as the old tile's was: the detail masks (see the uniforms)
+        vec4 dt = texture(ground_detail, wall_uv * tile_world_size / detail_world_size);
+        float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
+        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert * ripple_strength);
+        k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
+        // the lake bed: a tone per tile, dark in the cracks
+        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt * crack_strength);
+        base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
     // Below grass_shade 0.65 the grass sits slightly darker than the ground — a soft shadow at

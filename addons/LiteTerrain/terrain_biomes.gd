@@ -7,7 +7,7 @@ extends Resource
 ## drift away from its terrain.
 ##
 ## A biome is a 0..1 MASK of world-XZ noise. Layers stack in this order:
-##   base DESERT ↔ MEADOW split  →  CANYON on top  →  MOUNTAINS on top.
+##   base DESERT ↔ MEADOW split  →  SALT FLATS on the desert  →  CANYON on top  →  MOUNTAINS on top.
 ## A disabled layer yields a zero mask and disappears from both the colour and the landform.
 ##
 ## Settings alone cannot add a biome of your own: each layer's colour is written out in
@@ -32,6 +32,20 @@ extends Resource
 @export_range(5.0, 200.0, 1.0) var dune_wavelength: float = 34.0
 ## How far to flatten hills in the desert: 0 is a table, 1 is as hilly as the meadow.
 @export_range(0.0, 1.0, 0.05) var desert_flatten: float = 0.4
+
+# ── SALT FLATS ────────────────────────────────────────────────────────────────
+# A DRIED LAKE BED, after TerraTech's Salt Flats (the player's screenshot): ground near flat to the
+# horizon, cracked into tiles. It lies only INSIDE the desert and never under mountains; the
+# generator flattens the land under it (terrain_gen.raw_height_at) and the canyon does not cut it
+# (carve_at). Stacking: desert/meadow -> salt on the desert -> canyon -> mountains.
+@export_group("Salt flats")
+@export var salt_enabled: bool = true
+@export_range(30.0, 1500.0, 1.0) var salt_scale: float = 520.0
+## Higher is rarer. Value noise is centred, so this sits above the others' 0.66-0.71.
+@export_range(0.0, 1.0, 0.01) var salt_threshold: float = 0.70
+## Wider than the other edges: the flattening rides on it, and a narrow edge is a cliff.
+@export_range(0.02, 0.5, 0.01) var salt_edge: float = 0.08
+@export var color_salt: Color = Color(0.86, 0.75, 0.58)
 
 # ── CANYON ────────────────────────────────────────────────────────────────────
 @export_group("Canyon")
@@ -133,6 +147,7 @@ func snow_blend_at(world_height: float) -> float:
 # land on one and the same patch.
 const CANYON_OFFSET := Vector2(101.0, 53.0)
 const MOUNTAIN_OFFSET := Vector2(211.0, 77.0)
+const SALT_OFFSET := Vector2(331.0, 19.0)
 
 ## WHERE THE BIOMES SIT, moved by the SEED. The masks come from a hash-based value noise with
 ## fixed constants, so without this every seed produced new hills in exactly the same desert,
@@ -220,6 +235,22 @@ func mountain_mask(wp: Vector2, noise: Callable) -> float:
 	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, mountain_threshold + mountain_edge, n)
 
+## 0..1: a salt flat here. Only on the desert, never under the mountains - the same masks decide.
+func salt_mask(wp: Vector2, noise: Callable) -> float:
+	var m: float = salt_raw(wp, noise)
+	if m <= 0.0:
+		return 0.0
+	return m * (1.0 - meadow_mask(wp, noise)) * (1.0 - mountain_mask(wp, noise))
+
+## The salt mask BEFORE the desert and the mountains take their share: for a caller that has those
+## two masks in hand already (terrain_gen.raw_height_at - two noise reads a point less on the
+## world's hottest path; salt_mask in full cost it 17%, measured).
+func salt_raw(wp: Vector2, noise: Callable) -> float:
+	if not salt_enabled:
+		return 0.0
+	var n: float = noise.call(wp / salt_scale + SALT_OFFSET + mask_offset)
+	return smoothstep(salt_threshold - salt_edge, salt_threshold + salt_edge, n)
+
 ## The mountain dome — not the mask but its interior: it ramps up smoothly from the
 ## threshold to the peak, and the generator raises the landform by it so the slopes stay
 ## gentle enough to drive on.
@@ -238,6 +269,9 @@ func mountain_dome(wp: Vector2, noise: Callable) -> float:
 ## `world_height` is the Height the ground was generated with; the snow line is worked out from it
 ## here, because the shader compares against a world Y and needs metres. The caller knows the
 ## Height (map.world_height), this resource does not and must not guess.
+## The ground's detail masks (art/ground_detail.py): cracks, ripples, grass, patches in one texture.
+const GROUND_DETAIL := preload("res://addons/LiteTerrain/ground_detail.png")
+
 func apply_to_material(mat: ShaderMaterial, world_height: float) -> void:
 	if mat == null:
 		return
@@ -255,3 +289,5 @@ func apply_to_material(mat: ShaderMaterial, world_height: float) -> void:
 	mat.set_shader_parameter("grass_height", grass_height)
 	mat.set_shader_parameter("sand_grass", sand_grass)
 	mat.set_shader_parameter("grass_shade", grass_shade)
+	mat.set_shader_parameter("color_salt", color_salt)
+	mat.set_shader_parameter("ground_detail", GROUND_DETAIL)

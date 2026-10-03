@@ -1231,8 +1231,29 @@ project: read it before claiming how anything works.
   chunk is restitched in the same pass the coarse mesh appeared.
 - Generation and rebuilds are threaded (`WorkerThreadPool`, one task per row or chunk): a thread
   writes only its own slice, reads only immutable data, never touches the tree.
-- The mesh may know more than physics: ripples and rock roughness are baked into near chunks only,
-  zero at chunk edges, as a function of world position and biome.
+- **THE GROUND'S DETAIL IS ONE TEXTURE OF FOUR MASKS, IN THE ONE FETCH THE OLD TILE SPENT**
+  (`art/ground_detail.py` -> `addons/LiteTerrain/ground_detail.png`, set by
+  `TerrainBiomes.apply_to_material`; the player's call, after TerraTech's ground): R cracked earth
+  (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B grass
+  clumps, A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
+  ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
+  `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
+  MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
+  drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
+  geometry baked into chunks; a note here used to say there was.
+- **THE SALT FLATS ARE THE FIFTH BIOME** (TerraTech's dried lake bed, the player's first screenshot):
+  `TerrainBiomes.salt_mask` - only on the desert, never under mountains. The land eases down to a bed
+  made of the SAME base noise read at a twentieth of its frequency (`terrain_gen.raw_height_at`), so
+  it sits where the desert sits and stays near flat; the mask's wide edge (`salt_edge`) is the shore,
+  a slope - measured, the steepest shore point is no steeper than the relief there without it (80
+  deg against 84, canyon walls). THE SALT FLAT WINS OVER THE CANYON in both landform (`carve_at`
+  damps the cut) and colour (`chunk_terrain._biome_colour` bakes canyon x (1 - salt)), or a lake bed
+  under a canyon mask was painted terracotta. ITS MASK RIDES IN `COLOR.r` WITH THE GRASS FLAG -
+  the other three channels are taken: r = (seam ? 0 : `SEAM_ON` 0.6) + `SALT_SPAN` 0.4 x salt, split
+  at `SEAM_TEST` 0.55 in the shader; `FLAT_COLOR` (the proving ground) is r = 0.6, no salt. In
+  `raw_height_at` the mask is `salt_raw` x the desert share already in hand: the full `salt_mask`
+  read the meadow and mountain masks again and cost `height_at` 17%. About 10% of the map at
+  `salt_threshold` 0.70. No grass and no ripples on it; `salt_at` asks it at a world point.
 - A CANYON'S FLOOR IS WIDENED BY `gorge`, NOT BY `width` (`terrain_gen.DEF_CANYON_*`). `width` is
   the SHARE of noise values that counts as floor, so raising it eats the mesas; `gorge` is the
   wavelength of the channel network and scales floors and mesas together, the same way `scale` is
