@@ -512,7 +512,7 @@ func _apply_suspension() -> void:
 		var travel: float = maxf(w.suspension_travel, 0.01)
 		var k: float = w.load_capacity * _gravity_accel() / (travel * SUSP_SAG)
 		# Vertical speed of the mount point - that is what gets damped.
-		var arm: Vector3 = w.global_position - global_position
+		var arm: Vector3 = w.contact_point() - global_position
 		var vel_at: Vector3 = linear_velocity + angular_velocity.cross(arm)
 		var c: float = 2.0 * SUSP_DAMP * sqrt(k * maxf(mass / float(_wheel_count), 0.001))
 		var force: float = k * sag - c * vel_at.dot(up)
@@ -625,7 +625,7 @@ func _sync_mass(delta: float = 0.0) -> void:
 			sum_x += b.position.x * w
 			sum_z += b.position.z * w
 			lowest = minf(lowest, b.position.y - 0.5)
-			if int(b.block) != G.Block.CABIN:
+			if not G.is_cabin(b.block):
 				extra += 1
 	mass = total
 	_body_drop = lowest
@@ -642,10 +642,11 @@ func _sync_mass(delta: float = 0.0) -> void:
 	var n: int = 0
 	for wheel in Wheels:
 		if is_instance_valid(wheel):
-			axle_y += wheel.position.y
-			sum_z_w += wheel.position.z
-			min_z = minf(min_z, wheel.position.z)
-			max_z = maxf(max_z, wheel.position.z)
+			var wl: Vector3 = wheel.contact_local()
+			axle_y += wl.y
+			sum_z_w += wl.z
+			min_z = minf(min_z, wl.z)
+			max_z = maxf(max_z, wl.z)
 			n += 1
 	if n > 0:
 		axle_y /= float(n)
@@ -669,7 +670,7 @@ func _update_axles(mid_z: float, min_z: float, max_z: float) -> void:
 	var single_row: bool = spread < 0.5
 	for w in Wheels:
 		if is_instance_valid(w):
-			w.is_front = single_row or w.position.z < mid_z
+			w.is_front = single_row or w.contact_local().z < mid_z
 
 func _get_wheelbase() -> float:
 	return _wheelbase
@@ -817,7 +818,7 @@ func _wheel_forces() -> void:
 		if w.is_front and absf(along) > 0.7 and absf(_steer_angle) > 0.001:
 			d = base.rotated(up, _steer_angle)       # the line turns with the wheel; its sign is free
 		var lat: Vector3 = up.cross(d)
-		var wp: Vector3 = (w as Node3D).global_position
+		var wp: Vector3 = w.contact_point()
 		var point: Vector3 = wp - up * (wp - com_g).dot(up)
 		# Throttle drives what rolls forward, along the line the steering has turned. Steering pushes
 		# every wheel the way that TURNS the machine about its centre of mass (`lever`: how much the
@@ -1053,7 +1054,7 @@ func _connect_cabin() -> void:
 	if bl == null:
 		return
 	for b in bl.get_children():
-		if b.get("block") == G.Block.CABIN:
+		if G.is_cabin(b.get("block")):
 			_cabin = b
 			_had_cabin = true
 			if b.has_signal("destroyed") and not b.destroyed.is_connected(_on_cabin_destroyed):
@@ -1135,18 +1136,18 @@ func scatter_blocks(cabin: Node = null, survive: float = 1.0) -> void:
 	if objects == null or bl == null:
 		return
 	var center: Vector3 = global_position
-	if cabin != null and is_instance_valid(cabin) and cabin is Node3D:
-		center = (cabin as Node3D).global_position
+	if cabin != null and is_instance_valid(cabin) and cabin is VehicleBlock:
+		center = (cabin as VehicleBlock).centre()
 	else:
 		for b in bl.get_children():
-			if b.get("block") == G.Block.CABIN and b is Node3D:
-				center = (b as Node3D).global_position
+			if G.is_cabin(b.get("block")) and b is VehicleBlock:
+				center = (b as VehicleBlock).centre()
 				break
 	var volatile: Array = []
 	for b in bl.get_children():                   # get_children() is a snapshot, so reparent is safe
 		if not ("block" in b):
 			continue                              # hint ghost mesh: it has no block type
-		if b.get("block") == G.Block.CABIN:
+		if G.is_cabin(b.get("block")):
 			continue                              # the cabin is destroyed, do not drop it
 		# A VOLATILE BATTERY GOES OFF INSTEAD OF FALLING OUT (VehicleBlock.is_volatile). On such a
 		# build the battery IS the task: letting it land in the scrap when the machine comes apart

@@ -486,7 +486,7 @@ func _base_score(t: Node) -> float:
 	var s: float = 0.0
 	var bt = t.get("block")
 	if bt != null:
-		if int(bt) == G.Block.CABIN:
+		if G.is_cabin(bt):
 			s += SC_CABIN
 		elif t is WeaponBlock:
 			s += SC_WEAPON
@@ -1010,11 +1010,11 @@ func _aim_point_for(body: Node3D) -> Vector3:
 		return body.global_position
 	var cabin: Node3D = null
 	for b in blocks.get_children():
-		if b.get("block") == G.Block.CABIN and b is Node3D:
+		if G.is_cabin(b.get("block")) and b is Node3D:
 			cabin = b
 			break
 	if cabin != null and _cabin_exposed(body, cabin):
-		return cabin.global_position
+		return _mid(cabin)
 	var best: Node3D = null
 	var bd := INF
 	for b in blocks.get_children():
@@ -1030,7 +1030,8 @@ func _aim_point_for(body: Node3D) -> Vector3:
 # рядом с кабиной (а не в другой её блок и не в постороннее препятствие).
 func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 	var space := get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, cabin.global_position)
+	var aim: Vector3 = _mid(cabin)
+	var q := PhysicsRayQueryParameters3D.create(pivot.global_position, aim)
 	var own := _vehicle_root()
 	# RID'ы, а не узлы: Array[RID] не принимает Object, и список молча оставался пустым.
 	# СПИСОК СОБИРАЕМ, А НЕ ВЫБИРАЕМ ТЕРНАРНИКОМ: у ветвей «RID» и «null» нет общего типа, и
@@ -1045,7 +1046,13 @@ func _cabin_exposed(body: Node3D, cabin: Node3D) -> bool:
 		return true
 	if res.collider != body:
 		return false
-	return res.position.distance_squared_to(cabin.global_position) <= 0.81   # 0.9², корень не нужен
+	# a hit within 0.9 m of a one-cell cabin's middle; a 2x2x2 cabin's faces stand a metre out
+	var reach: float = 0.9 + (cabin.get("cells_center") as Vector3).length() if "cells_center" in cabin else 0.9
+	return res.position.distance_squared_to(aim) <= reach * reach
+
+## A block's middle: its anchor is a corner of a multi-cell block (VehicleBlock.centre).
+static func _mid(b: Node3D) -> Vector3:
+	return b.centre() if b.has_method("centre") else b.global_position
 
 ## Сказать подстреленной машине, КТО в неё попал. Урон и осведомлённость разделены
 ## намеренно: hurt() зовут ещё бур по жиле, реген и цепная детонация блоков — у них стрелка

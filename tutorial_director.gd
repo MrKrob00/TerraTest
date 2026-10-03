@@ -200,7 +200,7 @@ func _pending_blocks() -> int:
 		if not ("block" in c) or not (c is Node3D):
 			continue
 		var bt: int = int(c.get("block"))
-		if bt == G.Block.CABIN or G.is_stationary(bt):
+		if G.is_cabin(bt) or G.is_stationary(bt):
 			continue
 		if from.distance_squared_to((c as Node3D).global_position) > PENDING_RADIUS * PENDING_RADIUS:
 			continue                     # это не наш набор, а чужой хлам где-то в мире
@@ -496,7 +496,7 @@ func _nearest_loose_block() -> Vector3:
 		if not ("block" in c) or not (c is Node3D):
 			continue
 		var bt: int = int(c.get("block"))
-		if bt == G.Block.CABIN or G.is_stationary(bt):
+		if G.is_cabin(bt) or G.is_stationary(bt):
 			continue
 		var d: float = origin.distance_squared_to((c as Node3D).global_position)
 		if d < best_d:

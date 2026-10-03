@@ -794,7 +794,7 @@ func _is_station_data(mdata: Dictionary) -> bool:
 		if not (e is Dictionary):
 			continue
 		var bt: int = G.block_from_key(e.get("block", 0))
-		if bt == G.Block.CABIN:
+		if G.is_cabin(bt):
 			return false
 		if G.is_stationary(bt):
 			has_core = true

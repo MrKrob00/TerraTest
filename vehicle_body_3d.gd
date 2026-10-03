@@ -237,7 +237,7 @@ func station_core() -> Node3D:
 func is_core_block(b: Node) -> bool:
 	if b == null or not is_instance_valid(b) or not ("block" in b):
 		return false
-	if int(b.get("block")) == G.Block.CABIN:
+	if G.is_cabin(b.get("block")):
 		return true
 	return b == station_core()
 
@@ -589,7 +589,7 @@ func disassemble() -> void:
 	if objects == null or block_map_node == null:
 		return
 	for b in block_map_node.get_children():
-		if not ("block" in b) or b.get("block") == G.Block.CABIN:
+		if not ("block" in b) or G.is_cabin(b.get("block")):
 			continue
 		# Ядро СТАНЦИИ (первый стационарный блок, напр. SELLER) — как кабина у машины: остаётся
 		# на якоре и НЕ выпадает. Пропускаем ДО remove_block/коллизии/reparent, чтобы клетки
@@ -1340,7 +1340,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 				return
 			var held_bt: int = holder.get_child(0).get("block")
 			# КАБИНА — всегда новая машина на земле: на машину её не поставить.
-			if held_bt == G.Block.CABIN:
+			if G.is_cabin(held_bt):
 				_preview_cabin_ground(world_origin, world_dir)
 				return
 			# СТАЦИОНАРНЫЙ блок (продавец, авто-шахтёр) ставится И НА МАШИНУ, и на землю.
@@ -2256,7 +2256,7 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	# ломало ровно то, ради чего его в мир и кладут: сюжет выдаёт опору («найдите её»), сбитая
 	# база рассыпается опорами и продавцами — а поднять их было нечем, тап по ним не делал
 	# ничего. Кабина остаётся исключением: это ядро ЧУЖОЙ машины, поднимать её незачем.
-	if int(body.get("block")) == G.Block.CABIN:
+	if G.is_cabin(body.get("block")):
 		return false
 	_return_hand_to_inventory()                    # рука должна быть пустой (перестраховка от лишних блоков)
 	body.reparent(camera_controller.camera.get_child(0), false)   # в takepos под камерой
@@ -2296,7 +2296,7 @@ func _on_take_pressed() -> void:
 		var instance: VehicleBlock = camera_controller.camera.get_child(0).get_child(0)
 		# Кабина → новая машина; стационар (с машины) → новая база. Ставятся В МИР на землю.
 		# Стационар на СТАНЦИИ на землю не идёт (_cabin_ground будет null — превью шло сеткой).
-		if _cabin_ground != null and (instance.get("block") == G.Block.CABIN \
+		if _cabin_ground != null and (G.is_cabin(instance.get("block")) \
 				or (G.is_stationary(instance.get("block")) and not is_station)):
 			_place_ground_structure(instance)
 			return
@@ -2505,7 +2505,7 @@ func stash_hand_to_inventory() -> void:
 	if hand_kind == Hand.RESOURCE:
 		drop_hand_to_world()
 		return
-	if block_body != null and is_instance_valid(block_body) and int(block_body.get("block")) == G.Block.CABIN:
+	if block_body != null and is_instance_valid(block_body) and G.is_cabin(block_body.get("block")):
 		return                            # кабину (ядро новой машины) не прячем
 	_return_hand_to_inventory()
 
@@ -2529,7 +2529,7 @@ func drop_hand_to_world() -> void:
 		if ghost_block:
 			ghost_block.visible = false
 		return
-	if int(instance.get("block")) == G.Block.CABIN:
+	if G.is_cabin(instance.get("block")):
 		return                            # кабину не бросаем в мир (это ядро новой машины)
 	var objects := get_node_or_null("/root/Main/objects")
 	if objects == null:
@@ -2550,7 +2550,7 @@ func _drop_on_ground_tap(screen_pos: Vector2) -> bool:
 	if hand_kind != Hand.BLOCK or _preview_res != null or _cabin_ground != null:
 		return false
 	var inst := _hand_instance()
-	if inst == null or _is_resource(inst) or not ("block" in inst) or int(inst.get("block")) == G.Block.CABIN:
+	if inst == null or _is_resource(inst) or not ("block" in inst) or G.is_cabin(inst.get("block")):
 		return false
 	if camera_controller == null or camera_controller.camera == null:
 		return false
