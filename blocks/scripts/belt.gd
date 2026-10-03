@@ -130,8 +130,7 @@ func side_waiting() -> bool:
 	for b in host.get_children():
 		if b == self or not (b is FactoryBlock) or _is_belt(b):
 			continue
-		var f := b as FactoryBlock
-		if f.current_item != null and f.waiting_for_next and f.next_blocks.has(self):
+		if (b as FactoryBlock).holds_for(self):
 			return true
 	return false
 

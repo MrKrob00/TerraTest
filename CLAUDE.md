@@ -419,6 +419,16 @@ project: read it before claiming how anything works.
   the line behind it without a word. It also REFUSES by kind at the intake now: an ingot used to go
   in whenever the intake was free and ride three ticks through unchanged (six ingots, 19.6 s past a
   processor against 13.4 s on a bare line; now 13.4 both).
+- **THE PROCESSOR HANDS ITS PRODUCT ON BY THE BELT'S SIGNAL, NOT ITS OWN TICK** (`processor._try_out`,
+  `_on_out_freed`): a product the outlet refused waited a whole tick, and with the belt's hop (0.3 s
+  tween + 1.0 s timer) longer than the 1.0 s tick every other tick failed - one product per 2.0 s
+  where a bare line moves one per 1.3, and the belt behind the smelter stood with it (the player:
+  "the conveyor moves in step, the smelter lags"). Its cells SHIFT ONE BY ONE into empty cells, so
+  a full outlet no longer freezes the intake, and `belt.side_waiting` asks `FactoryBlock.holds_for`,
+  which the processor answers from `_cells` - it never sets `current_item`, so the freed cell beside
+  it went to through traffic every time. Measured, six ores: sold at 8.4 ... 18.5 s before, 8.5 ...
+  15.3 after (straight through); beside the line 20.8 -> 18.8. Three cells, three ticks inside, as
+  before.
 - "Waiting for the next block" is trusted only while the one-shot `slot_freed` subscription is
   alive (`FactoryBlock._wait_on`), or a destroyed neighbour means waiting forever.
 - Area masks decide as much as scripts: collector layer 8, receiver 24, packer magnet 2.

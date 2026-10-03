@@ -284,6 +284,11 @@ func _first_valid_target() -> FactoryBlock:
 	var t := _valid_targets()
 	return t[0] if not t.is_empty() else null
 
+## Is this block holding an item for `belt`, waiting for it to free (belt.side_waiting asks)? A
+## machine that keeps its cargo elsewhere than `current_item` answers for itself (processor.gd).
+func holds_for(belt: Node) -> bool:
+	return current_item != null and waiting_for_next and next_blocks.has(belt)
+
 func _on_next_block_freed() -> void:
 	waiting_for_next = false
 	_try_push()
