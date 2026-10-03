@@ -483,15 +483,15 @@ project: read it before claiming how anything works.
   the whole time the player is driving.
 - **A TREE IS CHOSEN BY ITS BIOME** (`resource_nodes._tree_kind`, the player's call after TerraTech;
   `art/vein_models.gd`, one mesh and one MultiMesh each, `wood_multimesh_nodes` in `TREE_*` order):
-  a faceted snow FIR on the mountains (`vein_tree`; the first conifer of needle cones was turned
-  down - "not ours"), a BROADLEAF of chunky crown lumps on the meadow and in the canyon
-  (`vein_tree1`), a TEAL tree on a V of trunks under a crown of flat lumps on the meadow too, a
-  `TEAL_SHARE` of it (`vein_tree2`; crossed trunks under a gem-shaped slab read as "strange"), a PALM
-  in the desert (`vein_tree3`), and NOTHING on a salt flat. The roll is a hash of the point, not the
-  region's rng, so the veins after a tree stand where they stood. Every model's stump is its own trunk
-  cut at `CUT_Y` (`_stump`), and every model has its own fixed seed. The record carries `tree`, the
-  node `tree_kind`. Measured over the start's regions: mountain 11 firs, meadow 25 broadleaf + 8
-  teal, desert 11 palms, canyon 3 broadleaf, 0 on salt.
+  a BROADLEAF of chunky crown lumps on the meadow, in the canyon and on the mountains (`vein_tree1`),
+  a TEAL tree on a V of trunks under a crown of flat lumps on the meadow too, a `TEAL_SHARE` of it
+  (`vein_tree2`; crossed trunks under a gem-shaped slab read as "strange"), a PALM in the desert
+  (`vein_tree3`), and NOTHING on a salt flat. THERE IS NO MOUNTAIN TREE, AND TWO WERE TURNED DOWN: a
+  conifer of needle cones ("not ours") and a faceted fir ("raw, too plain - the others carry their
+  leaves on top"); the player kept the three. The roll is a hash of the point, not the region's rng,
+  so the veins after a tree stand where they stood. Every model's stump is its own trunk cut at
+  `CUT_Y` (`_stump`), and every model has its own fixed seed. The record carries `tree`, the node
+  `tree_kind`.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
@@ -506,7 +506,7 @@ project: read it before claiming how anything works.
   cannot hand to a receiver ON ITS OWN MACHINE lies by the vein (up to `GROUND_LIMIT`), where any
   collector or receiver in reach may take it — including another base's standing next to it.
 - **EVERY METAL'S VEIN HAS ITS OWN SHAPE, AND A FELLED TREE LEAVES ONLY ITS STUMP** (`art/vein_models.gd`,
-  run on a copy, writes `resources/vein_ore0..3.tres` and `vein_tree.tres`; 78-246 triangles). The
+  run on a copy, writes `resources/vein_ore0..3.tres` and `vein_tree1..3.tres`; 78-246 triangles). The
   player's calls, each a rule now: one crystal cluster in four colours read as one ore, and its
   1.7 m slab of rock read as a plinth - so the rock is about a metre across and the ORE is the shape:
   ferrite rusty angular chunks, cuprite banded strata stacked in steps, silicate TerraTech's crystal

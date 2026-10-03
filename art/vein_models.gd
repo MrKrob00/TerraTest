@@ -53,10 +53,9 @@ func _initialize() -> void:
 	_save(_silicate(), "vein_ore2")
 	_save(_titanite(), "vein_ore3")
 	# a seed per tree: reworking one no longer shifts every later tree's jitter
-	var trees := [[_mountain_fir, "vein_tree"], [_broadleaf, "vein_tree1"], [_flatcrown, "vein_tree2"],
-			[_palm, "vein_tree3"]]
+	var trees := [[_broadleaf, "vein_tree1"], [_flatcrown, "vein_tree2"], [_palm, "vein_tree3"]]
 	for i in trees.size():
-		_rng.seed = 9100 + i
+		_rng.seed = 9101 + i            # the seeds the approved models were drawn with
 		_save((trees[i][0] as Callable).call(), trees[i][1])
 	quit()
 
@@ -303,7 +302,8 @@ const WOOD := Color(0.78, 0.62, 0.40)
 
 
 # ── TREES BY BIOME (after TerraTech's, the player's screenshots) ─────────────────────────────────
-# vein_tree (the conifer) stands on the mountains; vein_tree1 a BROADLEAF with chunky faceted crown
+# Two attempts at a mountain tree were turned down (a conifer of needle cones, then a faceted fir:
+# "too plain, the others carry their leaves on top"), so there are three: vein_tree1 a BROADLEAF with chunky faceted crown
 # lumps and vein_tree2 a FLAT-CROWN teal tree on a forked trunk on the meadow; vein_tree3 a PALM in
 # the desert. Every one keeps the felling rules of `_tree`: its stump is the base of ITS OWN trunk
 # up to CUT_Y with a pale cut, UV.x 1 on everything above, which is what falls.
@@ -421,38 +421,6 @@ func _flat_lump(st: SurfaceTool, c: Vector3, r: float, h: float, col: Color) -> 
 		var j: int = (k + 1) % sides
 		_tri(st, rings[2][k], rings[2][j], top, c, col.lightened(0.08), false)
 		_tri(st, rings[0][j], rings[0][k], bot, c, col.darkened(0.45), false)
-
-## THE MOUNTAIN FIR (vein_tree), in the broadleaf's chunky faceted language - the needle cones of
-## the first conifer were turned down ("not ours"): three faceted tiers tapering up a straight
-## trunk, dark green, snow on their tops.
-const FIR := Color(0.18, 0.44, 0.30)
-const SNOW := Color(0.92, 0.95, 1.0)
-
-func _mountain_fir() -> SurfaceTool:
-	var st := _begin()
-	var n := 6
-	var cut := _stump(st, n, 0.24, BARK)
-	_limb(st, cut, Vector3(0.0, GROUND + 3.4, 0.0), 0.08, BARK.darkened(0.08))
-	var tiers := [[GROUND + 1.6, 1.25, 1.3], [GROUND + 2.55, 0.98, 1.15], [GROUND + 3.4, 0.68, 1.0],
-			[GROUND + 4.1, 0.36, 0.8]]
-	for i in tiers.size():
-		_fir_tier(st, Vector3(0.0, tiers[i][0], 0.0), tiers[i][1], tiers[i][2])
-	return st
-
-## One tier: a chunky faceted cone, its upper facets white with snow.
-func _fir_tier(st: SurfaceTool, c: Vector3, r: float, h: float) -> void:
-	var sides := 7
-	var lo := _ring(Vector3.ZERO, sides, r * 0.72, c.y - h * 0.45, 0.06, 0.0)
-	var mid := _ring(Vector3.ZERO, sides, r, c.y - h * 0.15, 0.10, 0.5)
-	var hi := _ring(Vector3.ZERO, sides, r * 0.45, c.y + h * 0.30, 0.10, 1.0)
-	var apex := c + Vector3(_rng.randf_range(-0.05, 0.05), h * 0.55, _rng.randf_range(-0.05, 0.05))
-	var bot := c + Vector3(0, -h * 0.5, 0)
-	for k in sides:
-		var j: int = (k + 1) % sides
-		_quad(st, lo[k], lo[j], mid[j], mid[k], c, FIR.darkened(0.15), false)
-		_quad(st, mid[k], mid[j], hi[j], hi[k], c, FIR if k % 3 != 0 else SNOW.darkened(0.08), false)
-		_tri(st, hi[k], hi[j], apex, c, SNOW, false)
-		_tri(st, lo[j], lo[k], bot, c, FIR.darkened(0.4), false)
 
 ## A frond: a strip from the crown out and down, seen from both sides (the shader culls backs).
 func _frond(st: SurfaceTool, base: Vector3, dir: Vector3, length: float, width: float) -> void:
