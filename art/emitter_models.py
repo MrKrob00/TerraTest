@@ -1453,16 +1453,22 @@ def build_rot_support(pk, img):
 # and housing - a toothed ring gear turning with the deck - and two motor PINIONS on the housing's
 # corners in mesh with it: the deck turns, the housing holds its heading on the ground, the pinions
 # spin against the ring. That is what says "this one turns", where the Falsus one has a few ticks.
-MSUP_DECK = 0.70          # the deck slab's underside
-MSUP_HOUSE = (-0.32, 0.50)    # the rotating one's housing; the fixed one's runs up to the deck
-MSUP_OCT = 0.50           # the housing's corner cut: an octagon with flats one cell wide on the faces
-MSUP_RAM = (0.17, 0.25)   # leg and sleeve radii
-MSUP_FOOT = 0.78          # the foot's flat radius
-MSUP_FOOT_TOP = -0.36     # the foot's top at rest (the script's FOOT_TOP)
-RING = dict(n=28, root=0.82, tip=0.92, y0=0.51, y1=0.69)   # the ring gear (pitch ~0.87)
-PINION = dict(n=7, root=0.13, tip=0.22, y0=0.52, y1=0.68)   # pitch ~0.175
-PINION_AT = 1.045 / math.sqrt(2.0)     # centre distance ring + pinion pitch, along the diagonals
-MOTOR = (0.16, 0.06)      # the pinion motor's drum radius and its foot height
+# The player's verdict on the first cut - a windowed slab on a smaller octagonal drum on a thin
+# ram - was "two models stuck together, and the support far too narrow for a block this big". So
+# the body is ONE casting: the same 2x2 silhouette from the deck to a skirt sloping in to the ram
+# (`_ring_solid`, rings of octagons whose corner cut is the block's vertical chamfer), and the ram
+# and foot are most of the block's width. On the rotating one a narrow BAND cuts the casting: the
+# ring gear turns in it with the top, the pinions stand in it on the bottom's lid, and the walls
+# above and below carry on the same line, so it reads as one machine with a slewing ring.
+MSUP_C = 0.12             # the casting's vertical chamfer (the corner strips)
+MSUP_SKIRT = (0.74, 0.30, -0.30)   # the skirt's foot: half width, corner cut, y (the ram leaves here)
+MSUP_BAND = (0.58, 0.78)  # the rotating one's band: the lower half's lid and the upper half's floor
+MSUP_RAM = (0.34, 0.43)   # leg and sleeve radii
+MSUP_FOOT = 0.90          # the foot's flat radius: nearly the block's width
+MSUP_FOOT_TOP = -0.37     # the foot's top at rest (the script's FOOT_TOP)
+RING = dict(n=28, root=0.80, tip=0.90, y0=0.60, y1=0.76)   # the ring gear (pitch ~0.85)
+PINION = dict(n=7, root=0.13, tip=0.22, y0=0.60, y1=0.76)   # pitch ~0.175
+PINION_AT = 1.025 / math.sqrt(2.0)     # centre distance ring + pinion pitch, along the diagonals
 
 
 def _swap_xy(faces):
@@ -1520,28 +1526,76 @@ def gear(f, cx, cz, g, phase=0.0):
             f.append(th.Face(q, "mglow" if k == 1 else _lit(th.newell(q)), u_hint=th.sub(q[1], q[0])))
 
 
-def _msup_deck(f, rnd):
-    marlit_box(f, (-1.0, MSUP_DECK, -1.0), (1.0, 1.5, 1.0), 0.12, rnd,
-               {(1, 1): "window", (0, 0): "window", (0, 1): "window", (2, 0): "window", (2, 1): "window"})
+def _ring_solid(f, rings, rnd, top=True, bottom=True, dress=0.35):
+    """A casting from rings of octagons [(half, cut, y), ...] top down: every pair of rings gives a
+    band of eight planar quads (their edges are parallel, so a quad is flat). A flat side at least
+    `dress` tall carries the emblem's window, a corner strip is the bevel, anything else is plate
+    toned by the painted light; the caps are a window (top) and a plate (bottom)."""
+    oct3 = [[(x, y, z) for x, z in _octagon(h, c)] for h, c, y in rings]
+    centre = (0.0, sum(r[2] for r in rings) / len(rings), 0.0)
+    for i in range(len(rings) - 1):
+        U, L = oct3[i], oct3[i + 1]
+        tall = rings[i][2] - rings[i + 1][2]
+        for j in range(8):
+            k = (j + 1) % 8
+            q = th.outward([U[j], U[k], L[k], L[j]], centre)
+            flat = j % 2 == 0
+            if flat and tall >= dress and abs(rings[i][0] - rings[i + 1][0]) < 1e-6:
+                marlit_poly(f, q, rnd)
+            elif not flat:
+                f.append(th.Face(q, "medge", u_hint=th.sub(q[1], q[0])))
+            else:
+                f.append(th.Face(q, "mplate", u_hint=th.sub(q[1], q[0])))
+    if top:
+        # a SQUARE window in an octagonal plate: the lid's corner edges are a few centimetres long,
+        # and the window's corner cuts on them crossed over into spikes
+        y = rings[0][2]
+        O = oct3[0]
+        sq = rings[0][0] - rings[0][1]
+        S = [(sq, y, sq), (-sq, y, sq), (-sq, y, -sq), (sq, y, -sq)]
+        below = (0.0, y - 1.0, 0.0)
+        for j, (o0, o1, s0, s1) in enumerate(((O[0], O[1], S[3], S[0]), (O[2], O[3], S[0], S[1]),
+                                              (O[4], O[5], S[1], S[2]), (O[6], O[7], S[2], S[3]))):
+            f.append(th.Face(th.outward([o0, o1, s1, s0], below), "mplate", u_hint=(1, 0, 0)))
+            o2 = O[(2 * j + 2) % 8]
+            f.append(th.Face(th.outward([o1, o2, s1], below), "mplate", u_hint=(1, 0, 0)))
+        marlit_poly(f, th.outward(S, below), rnd)
+    if bottom:
+        q = th.outward(oct3[-1], th.add(oct3[-1][0], (0, 1, 0)))
+        f.append(th.Face(q, "mplate", u_hint=(1, 0, 0)))
 
 
-def _msup_house(f, y0, y1, rnd):
-    hs = []
-    marlit_prism(hs, _octagon(1.0, MSUP_OCT), y0, y1, rnd)
-    f += _swap_xy(hs)
+def _msup_top(y_floor):
+    """The upper casting's rings: chamfered lid, walls on the cell faces, a chamfer in to y_floor."""
+    c = MSUP_C
+    return [(1.0 - c, c * 0.5, 1.5), (1.0, c, 1.5 - c), (1.0, c, y_floor + 0.06),
+            (1.0 - 0.06, c + 0.04, y_floor)]
+
+
+def _msup_bottom(y_lid):
+    """The lower casting's rings: a lid chamfer, walls on the cell faces, then the skirt."""
+    c = MSUP_C
+    h, cut, y = MSUP_SKIRT
+    rings = [(1.0, c, 0.12), (1.0 - 0.06, c + 0.04, 0.04), (h, cut, y)]
+    if y_lid is not None:
+        rings = [(1.0 - 0.06, c + 0.04, y_lid), (1.0, c, y_lid - 0.06)] + rings
+    return rings
 
 
 def _msup_ram(pk, img, parts, prefix):
-    """Leg and sleeve as unit rods hanging from their nodes (the script stretches them), octagonal;
-    the foot a wide octagonal pad with a sunset rim, its top at MSUP_FOOT_TOP."""
+    """Leg and sleeve as unit rods hanging from their nodes (the script stretches them), octagonal
+    and thick; a collar where each stage leaves the one above; the foot a pad nearly the block's
+    width with a sunset rim, its top at MSUP_FOOT_TOP."""
     lr, sr = MSUP_RAM
-    lathe_y(pk, img, parts[prefix + "_leg"], [(lr, -1.0), (lr, 0.0)], MARLIT_RAMP, sides=8)
-    lathe_y(pk, img, parts[prefix + "_sleeve"], [(sr - 0.03, -1.0), (sr, -0.96), (sr, 0.0)],
-            MARLIT_RAMP, sides=8)
-    R = MSUP_FOOT / math.cos(math.pi / 8)
+    k = 1.0 / math.cos(math.pi / 8)
+    lathe_y(pk, img, parts[prefix + "_leg"], [(lr * k, -1.0), (lr * k, 0.0)], MARLIT_RAMP, sides=8)
+    lathe_y(pk, img, parts[prefix + "_sleeve"],
+            [(lr * k + 0.01, -1.0), (sr * k, -0.97), (sr * k, -0.90), (sr * k - 0.03, -0.88),
+             (sr * k - 0.03, 0.0)], MARLIT_RAMP, sides=8, ring_ramps={1: SUNSET_RAMP})
+    R = MSUP_FOOT * k
     lathe_y(pk, img, parts[prefix + "_foot"],
-            [(0.0, -0.5), (R, -0.5), (R, -0.44), (R * 0.96, -0.42), (R * 0.70, MSUP_FOOT_TOP),
-             (0.0, MSUP_FOOT_TOP)], MARLIT_RAMP, sides=8, ring_ramps={1: SUNSET_RAMP, 2: SUNSET_RAMP})
+            [(0.0, -0.5), (R, -0.5), (R, -0.45), (R * 0.95, -0.43), (lr * k + 0.06, MSUP_FOOT_TOP),
+             (0.0, MSUP_FOOT_TOP)], MARLIT_RAMP, sides=8, ring_ramps={1: SUNSET_RAMP})
 
 
 def build_marlit_support(pk, img):
@@ -1549,9 +1603,9 @@ def build_marlit_support(pk, img):
     rnd = _r.Random(41)
     parts = {"marlit_support_body": [], "marlit_support_sleeve": [], "marlit_support_leg": [],
              "marlit_support_foot": []}
-    body = parts["marlit_support_body"]
-    _msup_deck(body, rnd)
-    _msup_house(body, MSUP_HOUSE[0], MSUP_DECK, rnd)
+    c = MSUP_C
+    rings = _msup_top(0.04)[:2] + _msup_bottom(None)
+    _ring_solid(parts["marlit_support_body"], rings, rnd)
     _msup_ram(pk, img, parts, "marlit_support")
     return parts
 
@@ -1563,26 +1617,19 @@ def build_marlit_rot_support(pk, img):
              "marlit_rot_support_pinion": [], "marlit_rot_support_sleeve": [],
              "marlit_rot_support_leg": [], "marlit_rot_support_foot": []}
     body, stator = parts["marlit_rot_support_body"], parts["marlit_rot_support_stator"]
-    # TURNS: the deck and the ring gear under it, closed by a hub plate down to the housing
-    _msup_deck(body, rnd)
+    lid, floor = MSUP_BAND
+    # TURNS: the upper casting and the ring gear hung under its floor
+    _ring_solid(body, _msup_top(floor), rnd, bottom=True)
     gear(body, 0.0, 0.0, RING)
-    lathe_y(pk, img, body, [(0.0, RING["y0"] - 0.02), (0.55, RING["y0"] - 0.02), (0.55, RING["y0"])],
-            MARLIT_RAMP, sides=8)
-    # HOLDS: the housing, and a motor drum on two opposite corners carrying the pinions
-    _msup_house(stator, MSUP_HOUSE[0], MSUP_HOUSE[1], rnd)
-    mr, my = MOTOR
-    for sx in (1.0, -1.0):
-        c = PINION_AT * sx
-        # a dark drum with one thin sunset band under its lid: all orange it read as a battery
-        lathe_y(pk, img, stator, [(0.0, my), (mr, my), (mr, PINION["y0"] - 0.10),
-                                  (mr, PINION["y0"] - 0.07), (mr, PINION["y0"] - 0.03),
-                                  (mr * 0.8, PINION["y0"]), (0.0, PINION["y0"])],
-                MARLIT_RAMP, sides=8, cx=c, cz=c, ring_ramps={2: SUNSET_RAMP})
+    # HOLDS: the lower casting, its lid the band's floor, with the pinions standing on it
+    _ring_solid(stator, _msup_bottom(lid), rnd, top=False)
+    q = [(x, lid, z) for x, z in _octagon(1.0 - 0.06, MSUP_C + 0.04)]
+    stator.append(th.Face(th.outward(q, (0.0, lid - 1.0, 0.0)), "mplate", u_hint=(1, 0, 0)))
     # ONE pinion, built about its own axis: the scene stands two nodes on the corners and the
     # script spins them against the ring
     gear(parts["marlit_rot_support_pinion"], 0.0, 0.0, PINION)
     lathe_y(pk, img, parts["marlit_rot_support_pinion"],
-            [(0.07, PINION["y1"]), (0.07, PINION["y1"] + 0.03), (0.0, PINION["y1"] + 0.03)],
+            [(0.07, PINION["y1"]), (0.07, PINION["y1"] + 0.015), (0.0, PINION["y1"] + 0.015)],
             SUNSET_RAMP, sides=8)
     _msup_ram(pk, img, parts, "marlit_rot_support")
     return parts
