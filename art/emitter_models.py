@@ -894,13 +894,13 @@ def _marlit_solar_leaf(f, rnd):
     for sx in (-1, 1):
         a, b = sx * hl, sx * (MS_RAM_X - 0.03)
         lo, hi = (min(a, b), -0.035, -0.035), (max(a, b), 0.035, 0.035)
-        cham_box(f, lo, hi, 0.012, "mbev2", "mbev4", "mbev1", "medge")
+        long_cham_box(f, lo, hi, 0, 0.012)
 
 
 def _marlit_solar_ram(f, rnd):
     # the bearing the trunnion turns in, then the rod down into the wall with a sunset slit
-    cham_box(f, (-0.045, -0.06, -0.06), (0.045, 0.06, 0.06), 0.02, "mbev2", "mbev4", "mbev1", "medge")
-    cham_box(f, (-0.03, -MS_RAM_L, -0.03), (0.03, -0.06, 0.03), 0.008, "mbev3", "mbev4", "mbev1", "medge")
+    long_cham_box(f, (-0.045, -0.06, -0.06), (0.045, 0.06, 0.06), 0, 0.02)
+    long_cham_box(f, (-0.03, -MS_RAM_L, -0.03), (0.03, -0.06, 0.03), 1, 0.008, side="mbev3")
     for sz in (-1, 1):
         q = [(-0.012, -0.45, sz * 0.031), (0.012, -0.45, sz * 0.031), (0.012, -0.1, sz * 0.031), (-0.012, -0.1, sz * 0.031)]
         f.append(th.Face(th.outward(q, (0.0, -0.3, 0.0)), "mglow", u_hint=(0, 1, 0)))
@@ -997,15 +997,16 @@ def marlit_shell(f, holes, spiders=()):
     """The twelve beams and the six plates; `holes` the faces (axis, side) with a porthole."""
     x0, x1, y0, y1, z0, z1 = -1.5, 0.5, -0.5, 1.5, -1.5, 0.5
     B = MSH_B
+    # chamfered along their length only: 12 x 44 triangles were a third of the repair unit
     for yy in ((y0, y0 + B), (y1 - B, y1)):
         for zz in ((z0, z0 + B), (z1 - B, z1)):
-            cham_box(f, (x0, yy[0], zz[0]), (x1, yy[1], zz[1]), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+            long_cham_box(f, (x0, yy[0], zz[0]), (x1, yy[1], zz[1]), 0, 0.03)
     for xx in ((x0, x0 + B), (x1 - B, x1)):
         for zz in ((z0, z0 + B), (z1 - B, z1)):
-            cham_box(f, (xx[0], y0 + B, zz[0]), (xx[1], y1 - B, zz[1]), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+            long_cham_box(f, (xx[0], y0 + B, zz[0]), (xx[1], y1 - B, zz[1]), 1, 0.03)
     for xx in ((x0, x0 + B), (x1 - B, x1)):
         for yy in ((y0, y0 + B), (y1 - B, y1)):
-            cham_box(f, (xx[0], yy[0], z0 + B), (xx[1], yy[1], z1 - B), 0.03, "mbev2", "mbev4", "mbev1", "medge")
+            long_cham_box(f, (xx[0], yy[0], z0 + B), (xx[1], yy[1], z1 - B), 2, 0.03)
     for axis in range(3):
         for side in (0, 1):
             _shell_plate(f, axis, side, (axis, side) in holes, (axis, side) in spiders)
@@ -1021,6 +1022,7 @@ ALL_FACES = [(a, s_) for a in range(3) for s_ in (0, 1)]
 # the vertical one in the top and bottom ones, each held by a spider; front and back are clear.
 MR_R = (0.78, 0.67, 0.56, 0.45)       # the rings, outermost first; the outer one clears the plates
 MR_DEPTH, MR_WIDTH = 0.035, 0.06
+MR_SEG = 16                           # a ring's facets: at 28 the four rings alone were 896 triangles
 
 
 def _mtone(n):
@@ -1077,7 +1079,7 @@ def build_marlit_regen(pk, img):
     _marlit_regen_base(parts["marlit_regen_frame"], rnd)
     for i, (ang, R) in enumerate(zip(REGEN2_ANGLES, MR_R)):
         faces, glow = [], []
-        marlit_ring(faces, glow, ang, R, MR_DEPTH, MR_WIDTH)
+        marlit_ring(faces, glow, ang, R, MR_DEPTH, MR_WIDTH, n=MR_SEG)
         parts["marlit_regen_ring%d" % i] = faces
         parts["marlit_regen_glow%d" % i] = glow
     parts["marlit_regen_crystal"] = []
@@ -1450,6 +1452,37 @@ def build_rot_support(pk, img):
 # generator_fire (re-coloured by generator.gd, never batched).
 GEN_TOP = 0.20           # the cube's top; the housing stands on it
 GEN_WELL_Y = 0.40        # the housing's top, where the rotor turns (generator.gd reads nothing)
+
+
+def long_cham_box(faces, lo, hi, axis, c, side="mbev2", top="mbev4", bottom="mbev1", edge="medge"):
+    """A box chamfered by c along the four edges that run down `axis` only: an octagon extruded, 28
+    triangles against cham_box's 44 - the ends of a beam or a rod meet something and are not seen
+    (`cull_hidden` drops them), and the chamfers that matter are the long ones."""
+    b, cc = (axis + 1) % 3, (axis + 2) % 3
+    mid = tuple((lo[i] + hi[i]) / 2 for i in range(3))
+    sec = [(lo[b] + c, lo[cc]), (hi[b] - c, lo[cc]), (hi[b], lo[cc] + c), (hi[b], hi[cc] - c),
+           (hi[b] - c, hi[cc]), (lo[b] + c, hi[cc]), (lo[b], hi[cc] - c), (lo[b], lo[cc] + c)]
+
+    def P(t, p2):
+        q = [0.0, 0.0, 0.0]
+        q[axis], q[b], q[cc] = t, p2[0], p2[1]
+        return tuple(q)
+    for i in range(8):
+        j = (i + 1) % 8
+        quad = [P(lo[axis], sec[i]), P(lo[axis], sec[j]), P(hi[axis], sec[j]), P(hi[axis], sec[i])]
+        n = th.norm(th.newell(th.outward(quad, mid)))
+        if i % 2 == 1:
+            st = edge
+        elif abs(n[1]) > 0.7:
+            st = top if n[1] > 0 else bottom
+        else:
+            st = side
+        ax = [0.0, 0.0, 0.0]
+        ax[axis] = 1.0
+        faces.append(th.Face(th.outward(quad, mid), st, u_hint=tuple(ax)))
+    for t in (lo[axis], hi[axis]):
+        faces.append(th.Face(th.outward([P(t, p2) for p2 in sec], mid), edge,
+                             u_hint=(1.0, 0.0, 0.0) if axis != 0 else (0.0, 0.0, 1.0)))
 
 
 def cham_box(faces, lo, hi, c, side, top, bottom, edge):
@@ -2923,6 +2956,84 @@ BLOCKS = {
 DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0, "marlit_battery": 36.0, "marlit_wireless": 40.0}
 
 
+# The models whose hidden faces are thrown away on the way out (`cull_hidden`): everything over
+# about 700 triangles. A model's look does not change, so the list can only grow.
+CULL = {"marlit_regen", "marlit_solar", "marlit_octo", "marlit_battery", "marlit_wireless",
+        "marlit_mortar", "marlit_wheel2"}
+
+
+SAMPLE_STEP = 0.08            # metres between a face's samples
+
+
+def cull_hidden(faces, n_dirs=96):
+    """Drop every face of a PART no ray from outside can reach: walls pressed against each other, a
+    plate laid over another, the floor of a lathe under its cap. Each face is sampled (its middle
+    and points near its corners), each sample shoots rays over the half sphere it faces, and the
+    face stays if one ray gets out without striking another face OF THE SAME PART - parts move
+    against each other (a ring turns in a frame), so one never hides another here. Offline, numpy,
+    seconds a model. Applied by `make` to the models in CULL."""
+    import numpy as np
+    tri, own = [], []
+    for i, fc in enumerate(faces):
+        for k in range(1, len(fc.pts) - 1):
+            tri.append((fc.pts[0], fc.pts[k], fc.pts[k + 1]))
+            own.append(i)
+    T = np.array(tri, dtype=np.float64)
+    V0, E1, E2 = T[:, 0], T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
+    g = math.pi * (3.0 - math.sqrt(5.0))
+    D = np.array([(math.cos(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2),
+                   1 - 2 * (i + 0.5) / n_dirs,
+                   math.sin(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2)) for i in range(n_dirs)])
+
+    def escapes(O, d):
+        # Moller-Trumbore, every ray of the batch against every triangle
+        p = np.cross(d[:, None, :], E2[None, :, :])
+        det = np.einsum("tk,rtk->rt", E1, p)
+        ok = np.abs(det) > 1e-12
+        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+        s_ = O[:, None, :] - V0[None, :, :]
+        u = np.einsum("rtk,rtk->rt", s_, p) * inv
+        q = np.cross(s_, E1[None, :, :])
+        v = np.einsum("rk,rtk->rt", d, q) * inv
+        t = np.einsum("tk,rtk->rt", E2, q) * inv
+        hit = ok & (u >= -1e-7) & (v >= -1e-7) & (u + v <= 1 + 1e-7) & (t > 1e-5)
+        return ~hit.any(axis=1)
+
+    kept = []
+    for fc in faces:
+        nn = th.newell(fc.pts)
+        L = math.sqrt(th.dot(nn, nn))
+        if L < 1e-12:
+            continue
+        n = np.array(nn) / L
+        P = np.array(fc.pts)
+        c = P.mean(axis=0)
+        # A GRID over the whole face, SAMPLE_STEP apart, not its middle and corners: a big face can
+        # show only through a slit (the octo's core in the channels between its caps), and with five
+        # samples all under the caps it was thrown away and the block had holes in it.
+        pts = [c, *(P * 0.9 + c * 0.1)]
+        for k in range(1, len(P) - 1):
+            a, b, d3 = P[0], P[k], P[k + 1]
+            m = max(1, min(14, int(math.ceil(max(np.linalg.norm(b - a), np.linalg.norm(d3 - a),
+                                                      np.linalg.norm(d3 - b)) / SAMPLE_STEP))))
+            for i in range(m + 1):
+                for j in range(m + 1 - i):
+                    w1, w2 = (i + 0.3) / (m + 1), (j + 0.3) / (m + 1)
+                    pts.append(a + (b - a) * w1 + (d3 - a) * w2)
+        S = np.array(pts) + n * 2e-4
+        dd = D[D @ n > 0.12]
+        O = np.repeat(S, len(dd), axis=0)
+        d = np.tile(dd, (len(S), 1))
+        seen = False
+        for k in range(0, len(O), 64):
+            if escapes(O[k:k + 64], d[k:k + 64]).any():
+                seen = True
+                break
+        if seen:
+            kept.append(fc)
+    return kept
+
+
 def make(name):
     seed, build, tex = BLOCKS[name]
     th.DENS = DENSITY.get(name, 48.0)
@@ -2931,6 +3042,8 @@ def make(name):
     img = Image.new("RGB", (tex, tex), th.BLUE)
     pk = th.Packer(tex)
     parts = build(pk, img)
+    if name in CULL:
+        parts = {k: cull_hidden(v) for k, v in parts.items()}
     todo = []
     for part, faces in parts.items():
         for f in faces:

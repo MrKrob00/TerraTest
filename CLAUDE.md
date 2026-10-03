@@ -2343,6 +2343,18 @@ project: read it before claiming how anything works.
   `BENDER_REFRESH` with `BENDER_MARGIN` of slack). Every machine block and every loose item is a
   bender, and each cost a height query and two metas per frame wherever it lay: measured 133
   benders, 11 inside the window, a 1.76-2.08 ms tick; after, 0.23-0.26 ms.
+- **A BLOCK'S TRIANGLES ARE COUNTED, AND THE HIDDEN ONES ARE THROWN AWAY OFFLINE.** Counted over every
+  block scene: the collector and the receiver were 7,691 and 7,666 - their glow capsule and reach
+  ring were Godot's default `CapsuleMesh` / `TorusMesh` (64 radial segments, 64 x 32 on a hoop
+  0.1 m thick); at 12 and 48 x 3 they are 643 and 618. Generated models in `emitter_models.CULL`
+  go through `cull_hidden`: every face is sampled on a grid `SAMPLE_STEP` apart and shoots rays over
+  the half sphere it faces, and stays if one ray escapes its OWN PART (parts move against each
+  other). A GRID, NOT A FEW POINTS: sampled at its middle and corners the octo's core - seen only
+  in the channels between its caps - was thrown away and the block had holes. Beams that meet at
+  their ends are `long_cham_box` (chamfered along the length only, 28 triangles against 44). The
+  Marlit look itself (`marlit_poly`'s window) was left alone. After: repair unit 2,408 -> 1,800,
+  solar 1,552 -> 1,282, octo 1,404 -> 1,221, accumulator 1,008 -> 752, cabin 1,029, the Marlit
+  wheel's parts ~1,350. A new model over ~700 triangles goes into `CULL`.
 - **A SLEEPING LOOSE BLOCK IS DRAWN BY A MULTIMESH TOO (`loose_batch.gd`, owned by `world_persist`,
   membership decided in its cull pass).** Fifty blocks lying in view cost +130 draw calls, 2.6 a
   block; batched, +24, and the frame is identical to the pixel (0 differing, checked on the real

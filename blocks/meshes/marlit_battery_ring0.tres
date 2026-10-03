@@ -13,7 +13,7 @@ texture_filter = 2
 resource_name = "marlit_battery_ring0"
 _surfaces = [{
 "aabb": AABB(-0.962, -0.004, -0.962, 1.924, 0.048, 1.924),
-"attribute_data": PackedByteArray("/6Lcn4ak3J+GpP+e/6L/nv8S3J88HdyfPB3/nv8S/57/4NyXg/Dcl4Pw/5b/4P+W/yDcnzwr3J88K/+e/yD/nv+m3J+GqNyfhqj/nv+m/57/ANybhBDcm4QQ/5r/AP+a/y7cnzw53J88Of+e/y7/nv+q3J+GrNyfhqz/nv+q/57/EtybgyLcm4Mi/5r/Ev+a/yTcm4M03JuDNP+a/yT/mv+u3J+GsNyfhrD/nv+u/57/PNyfPEfcnzxH/57/PP+e"),
+"attribute_data": PackedByteArray("/9jcmYba3JmG2v+Y/9j/mP9I3Jk8U9yZPFP/mP9I/5j/JNyVgzTclYM0/5T/JP+U/1bcmTxh3Jk8Yf+Y/1b/mP/c3JmG3tyZht7/mP/c/5j/NtyVg0bclYNG/5T/Nv+U/2TcmTtv3Jk7b/+Y/2T/mP/g3JmG4tyZhuL/mP/g/5j/SNyVg1jclYNY/5T/SP+U/1rclYNq3JWDav+U/1r/lP/k3JmG5tyZhub/mP/k/5j/ctyZO33cmTt9/5j/cv+Y"),
 "format": 34896613399,
 "index_count": 72,
 "index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAJAAmACUAJAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4A"),
