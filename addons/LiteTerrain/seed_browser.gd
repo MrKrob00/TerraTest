@@ -226,6 +226,8 @@ func _colour_at(b: TerrainBiomes, wp: Vector2, cv: Callable) -> Color:
 	var mtn: float = b.mountain_mask(wp, cv)
 	var dome: float = b.mountain_dome(wp, cv)
 	var c: Color = b.color_sand.lerp(b.color_grass, meadow)
+	# the salt flats a shade paler than their own colour, or on a small map they vanish into the sand
+	c = c.lerp(b.color_salt.lightened(0.15), b.salt_mask(wp, cv))
 	c = c.lerp(b.color_canyon, canyon * (1.0 - mtn))
 	c = c.lerp(b.color_rock, mtn)
 	# Снег на вершинах купола: без него горы читаются плоским серым пятном, а на карте их узнают

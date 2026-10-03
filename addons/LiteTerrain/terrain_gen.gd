@@ -187,7 +187,17 @@ func raw_height_at(wx: float, wz: float) -> float:
 	var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(nx, nz) * 3.5
 	var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
 	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
-	return h * gen_amplitude + dune + mtn_rise
+	var land: float = h * gen_amplitude + dune + mtn_rise
+	# THE SALT FLAT: the land eases down to a lake bed built from the SAME base noise read at a
+	# twentieth of its frequency - so it sits where the desert around it sits, and stays near flat
+	# across the whole patch. The mask's wide edge is the shore: a slope, not a step. No dunes,
+	# no ridges on it.
+	var salt: float = b.salt_raw(wp, _cv_noise) * land_sand     # = salt_mask, from the masks in hand
+	if salt > 0.0:
+		var lo: float = (_gen_base.get_noise_2d(nx * 0.05, nz * 0.05) + 1.0) * 0.5
+		var bed: float = pow(lo, gen_power) * b.desert_flatten * gen_amplitude
+		land = lerpf(land, bed, smoothstep(0.0, 1.0, salt))
+	return land
 
 ## РОВНАЯ ЗЕМЛЯ ОДНИМ ФЛАГОМ. Нужна испытательному полигону: там измеряют машину, а не рельеф,
 ## и любой холм под колесом — это лишняя переменная в замере. Флаг стоит ЗДЕСЬ, на генераторе,
@@ -293,6 +303,8 @@ func carve_at(wx: float, wz: float, surface: float) -> float:
 	# rise leaves a step as tall as what it removed (0.75 of map height), while the cut is 0.3
 	# and fades out with hmask by itself.
 	hmask *= 1.0 - b.mountain_mask(wp, _cv_noise)
+	# ...and the salt flat over the canyon, the same way: a gorge through a lake bed is neither
+	hmask *= 1.0 - b.salt_mask(wp, _cv_noise)
 	if hmask <= 0.001:
 		return surface
 	# mask_offset here too, or the butte hierarchy repeats on every seed.

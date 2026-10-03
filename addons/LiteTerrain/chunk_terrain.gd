@@ -93,7 +93,12 @@ var world_seed: int = 0
 ## инспекторе была бы вторым источником, который спорит с первым.
 var flat_ground: bool = false
 ## Цвет земли на полигоне — чистый луг: трава есть, каньона и гор нет (см. _mesh_arrays).
-const FLAT_COLOR := Color(1.0, 0.0, 1.0, 0.0)
+## COLOR.r CARRIES TWO THINGS: the grass flag (no grass on a seam vertex) and the SALT FLAT mask -
+## the other three channels are canyon, meadow and mountain, and a fifth biome needs a home.
+## r = (seam ? 0 : SEAM_ON) + SALT_SPAN * salt; the shader splits them at SEAM_TEST (glsl.gdshader).
+const SEAM_ON := 0.6
+const SALT_SPAN := 0.4
+const FLAT_COLOR := Color(SEAM_ON, 0.0, 1.0, 0.0)
 @export var forced_seed: int = 0
 
 signal terrain_ready
@@ -1085,8 +1090,7 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 			# На полигоне масок не спрашиваем вовсе: там один биом по определению, а три маски на
 			# вершину — это ровно та работа, ради отсутствия которой земля и сделана ровной.
 			cols[vi] = (Color(0.0 if seam else FLAT_COLOR.r, FLAT_COLOR.g, FLAT_COLOR.b, FLAT_COLOR.a)
-					if flat_ground else Color(0.0 if seam else 1.0,
-					b.canyon_mask(wp, nz_cb), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb)))
+					if flat_ground else _biome_colour(b, wp, nz_cb, seam))
 
 	var idx := PackedInt32Array()
 	idx.resize(CHUNK * CHUNK * 6)
@@ -1281,7 +1285,23 @@ func biome_at(world_pos: Vector3) -> Vector3:
 	var nz_cb: Callable = b.noise
 	var p: Vector3 = global_transform.affine_inverse() * world_pos
 	var wp := Vector2(p.x, p.z)
-	return Vector3(b.canyon_mask(wp, nz_cb), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
+	var c := _biome_colour(b, wp, nz_cb, false)
+	return Vector3(c.g, c.b, c.a)
+
+## THE VERTEX'S BIOMES, one door for the bake and for `biome_at`: r the grass flag and the salt flat
+## (SEAM_ON / SALT_SPAN), g canyon, b meadow, a mountain. THE SALT FLAT WINS OVER THE CANYON in
+## colour as it does in the landform (terrain_gen.carve_at): the canyon's mask is taken by it, or a
+## lake bed under a canyon mask was painted terracotta from shore to shore.
+func _biome_colour(b: TerrainBiomes, wp: Vector2, nz_cb: Callable, seam: bool) -> Color:
+	var salt: float = b.salt_mask(wp, nz_cb)
+	return Color((0.0 if seam else SEAM_ON) + SALT_SPAN * salt,
+			b.canyon_mask(wp, nz_cb) * (1.0 - salt), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
+
+## 0..1: a salt flat at this world point - the mask baked into COLOR.r.
+func salt_at(world_pos: Vector3) -> float:
+	var b := _biomes()
+	var p: Vector3 = global_transform.affine_inverse() * world_pos
+	return b.salt_mask(Vector2(p.x, p.z), b.noise)
 
 func _get_material() -> Material:
 	return surface_material if surface_material != null else StandardMaterial3D.new()
