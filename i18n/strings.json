@@ -2459,5 +2459,41 @@
 	"A wider repair field that mends more blocks at once, and more of each.": {
 		"ru": "Ремонтное поле шире: чинит больше блоков за раз и сильнее каждый.",
 		"uk": "Ремонтне поле ширше: лагодить більше блоків за раз і сильніше кожен."
+	},
+	"Marlit Laser": {
+		"ru": "Лазер Marlit",
+		"uk": "Лазер Marlit"
+	},
+	"Marlit Shotgun": {
+		"ru": "Дробовик Marlit",
+		"uk": "Дробовик Marlit"
+	},
+	"Marlit Heavy Cannon": {
+		"ru": "Тяжёлая пушка Marlit",
+		"uk": "Важка гармата Marlit"
+	},
+	"Marlit Mortar": {
+		"ru": "Миномёт Marlit",
+		"uk": "Міномет Marlit"
+	},
+	"Twin barrels in a ball turret: a steady stream of heavy rounds, turning freely every way.": {
+		"ru": "Два ствола в шаровой башне: ровный поток тяжёлых пуль, свободно поворачивается во все стороны.",
+		"uk": "Два стволи в кульовій башті: рівний потік важких куль, вільно повертається на всі боки."
+	},
+	"A lens stack in a ball turret: a charged cyan bolt, one hard blow at long range.": {
+		"ru": "Линзовый излучатель в шаровой башне: заряженный голубой разряд, один сильный удар издалека.",
+		"uk": "Лінзовий випромінювач у кульовій башті: заряджений блакитний розряд, один сильний удар здалеку."
+	},
+	"Four short bores in a row: a wide cone of heavy shot at close range, two blasts then a reload.": {
+		"ru": "Четыре коротких ствола в ряд: широкий конус тяжёлой дроби в упор, два залпа и перезарядка.",
+		"uk": "Чотири короткі стволи в ряд: широкий конус важкого шроту впритул, два залпи й перезарядка."
+	},
+	"One thick barrel and a counterweight: a single heavy blow, for armour.": {
+		"ru": "Один толстый ствол и противовес: один тяжёлый удар, для брони.",
+		"uk": "Один товстий ствол і противага: один важкий удар, для броні."
+	},
+	"Seven tubes lobbed over an arc, aimed by the hull: a salvo of seven shells. Twenty metres minimum.": {
+		"ru": "Семь труб, стрельба навесом, наводится корпусом: залп из семи снарядов. Не ближе двадцати метров.",
+		"uk": "Сім труб, стрільба навісом, наводиться корпусом: залп із семи снарядів. Не ближче двадцяти метрів."
 	}
 }

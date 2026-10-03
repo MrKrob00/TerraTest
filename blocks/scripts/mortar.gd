@@ -16,11 +16,13 @@ extends WeaponBlock
 # damage per second against 96 on paper. Recheck this number before touching anything else here.
 const MIN_RANGE := 20.0        # a lob cannot reach closer (see header)
 const MAX_RANGE := 160.0
-const SHELLS := 8              # per salvo, all at once
-const SHELL_DAMAGE := 12
+# Exported: Marlit's mortar has seven tubes and fires seven (marlit_mortar.tscn); the defaults are
+# the Falsus eight-barrel numbers.
+@export var shells: int = 8              # per salvo, all at once - one per tube on the model
+@export var shell_damage: int = 12
 ## Set from what LANDS, not from the salvo: 3-4 shells x 12 over 1.6 s is 25-30/s, a heavy
 ## gun's worth, paid for with flight time and a 20 m dead zone.
-const SALVO_PERIOD := 1.6
+@export var salvo_period: float = 1.6
 const SPREAD := 2.5            # metres on the ground (see header)
 const SHELL_GRAVITY := 30.0
 ## Throw angle at the near and far limits; linear in distance between them.
@@ -40,7 +42,8 @@ var _idle_pitch: float = 0.0
 func _ready() -> void:
 	super._ready()
 	weapon_range = MAX_RANGE
-	damage = SHELL_DAMAGE
+	damage = shell_damage
+	recoil_dist = maxf(recoil_dist, 0.08)
 	# Свой сектор: узкий по горизонтали, зато вверх — на весь рабочий угол броска.
 	yaw_limit = MORTAR_YAW
 	pitch_limit = ARC_NEAR_DEG
@@ -48,7 +51,7 @@ func _ready() -> void:
 	# заново, от точки падения, и свой разброс у неё МЕТРАМИ ПО ЗЕМЛЕ (SPREAD) — так и должно
 	# быть у навесного оружия, которое целится в место, а не в тело.
 	spread_deg = 0.0
-	fire_rate = SALVO_PERIOD
+	fire_rate = salvo_period
 	shield_cost_mult = SHIELD_MULT_EXPLOSIVE   # взрыв идёт сквозь купол, платить за него незачем
 	raycast.target_position = Vector3(0, 0, -weapon_range)
 	_sync_detect_radius()
@@ -97,8 +100,8 @@ func fire_bullet() -> void:
 	var aim: Variant = _aim_ground()
 	if aim == null:
 		return
-	_salvo_t = SALVO_PERIOD
-	for _i in SHELLS:
+	_salvo_t = salvo_period
+	for _i in shells:
 		super.fire_bullet()
 		_arc_last(aim as Vector3)
 

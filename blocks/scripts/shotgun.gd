@@ -6,20 +6,24 @@ extends WeaponBlock
 # бьёт больно, а дальше десятка метров дробины расходятся, и он бесполезен. Поэтому у него
 # короткая дальность, а не просто малый урон: ограничение должно читаться по поведению.
 
-const PELLETS := 8            # дробин в выстреле
-const PELLET_DAMAGE := 4      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
-const SHOTGUN_RANGE := 18.0
-const BURST := 2              # выстрелов до перезарядки
-const RELOAD := 0.4           # секунд
-const SPREAD_DEG := 7.0       # половина угла конуса
+# Exported so a faction's shotgun (marlit_shotgun.tscn) sets its own in the scene; the defaults are
+# the Falsus numbers.
+@export var pellets: int = 8            # дробин в выстреле
+@export var pellet_damage: int = 4      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
+@export var shotgun_range: float = 18.0
+@export var burst: int = 2              # выстрелов до перезарядки
+@export var reload: float = 0.4         # секунд
+@export var cone_deg: float = 7.0       # половина угла конуса
 
-var _left: int = BURST
+var _left: int = 2
 var _reload_t: float = 0.0
 
 func _ready() -> void:
 	super._ready()
-	weapon_range = SHOTGUN_RANGE
-	damage = PELLET_DAMAGE
+	weapon_range = shotgun_range
+	damage = pellet_damage
+	_left = burst
+	recoil_dist = maxf(recoil_dist, 0.09)
 	# БАЗОВЫЙ РАЗБРОС ВЫКЛЮЧАЕМ: у дробовика он свой и, главное, ПОСТОЯННЫЙ. Базовый сжимается
 	# по мере приближения к цели (WeaponBlock._apply_spread) — для пушки это правильно, а тут
 	# сузило бы дробь ровно там, где широкая «метла» и есть весь смысл оружия.
@@ -32,7 +36,7 @@ func _physics_process(delta: float) -> void:
 	if _reload_t > 0.0:
 		_reload_t -= delta
 		if _reload_t <= 0.0:
-			_left = BURST
+			_left = burst
 	super._physics_process(delta)
 
 # Один «выстрел» = пачка дробин. Каждая летит своей пулей с отклонением, поэтому попадания
@@ -40,12 +44,12 @@ func _physics_process(delta: float) -> void:
 func fire_bullet() -> void:
 	if _reload_t > 0.0:
 		return
-	for _i in PELLETS:
+	for _i in pellets:
 		super.fire_bullet()
 		_spread_last()
 	_left -= 1
 	if _left <= 0:
-		_reload_t = RELOAD
+		_reload_t = reload
 
 # Базовый fire_bullet пускает пулю строго по стволу — доворачиваем ПОСЛЕДНЮЮ выпущенную.
 # Кто это был, помнит сам базовый класс (last_fired): искать её среди детей нельзя, пули идут
@@ -57,7 +61,7 @@ func _spread_last() -> void:
 	var d: Vector3 = b.dir
 	if d == Vector3.ZERO:
 		return
-	var a := deg_to_rad(SPREAD_DEG)
+	var a := deg_to_rad(cone_deg)
 	d = d.rotated(Vector3.UP, randf_range(-a, a))
 	# Вертикальный разброс вдвое меньше горизонтального: широкая по земле «метла» читается
 	# лучше, чем облако, часть которого уходит в небо впустую.

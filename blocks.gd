@@ -220,10 +220,12 @@ func _define_layout() -> void:
 ## Outside the ladder on purpose (enemy_spawner._tier_of answers -1, so no ceiling touches it): the
 ## fight is the licence, and it is sized at the fourth step whatever the player drives (about 37k
 ## against that step's 31.6k median; a Marlit repair field with its batteries put it at 54k, past the
-## fifth). Marlit hull round a cabin, four Marlit wheels, three Marlit guns on the nose, plates on
-## the nose. The cabin, the wheels and the guns are PLACEHOLDERS -
-## Marlit has no models for them yet: the Falsus cabin, and wheels and guns on the Falsus models
-## with Marlit's numbers (MARLIT_WHEEL, MARLIT_GUN).
+## fifth). Marlit hull round a cabin, four Marlit wheels, a Marlit gun and a Marlit shotgun on
+## the nose, plates on the nose. The cabin and the
+## wheels are PLACEHOLDERS - Marlit has no models for them yet: the Falsus cabin, and wheels on the
+## Falsus model with Marlit's numbers (MARLIT_WHEEL). Marlit's weapons are 2x2x2 ball turrets
+## (art/marlit_weapons.py), anchored in their corner like every Marlit block: a turret at (x, y, z)
+## stands on cells x-1..x, z-1..z of the floor under it.
 const MARLIT_CHAMPION := 120
 
 ## Marlit's lighter machines, for the events Marlit sends (quest_arcs._faction_preset turns the
@@ -239,7 +241,7 @@ func _layout_marlit_runner() -> void:
 	for z in [3, 7]:
 		set_block(4, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
 		set_block(6, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
-	set_block(5, 7, 3, G.Block.MARLIT_GUN, 0.0)
+	set_block(6, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 5..6, z 3..4, on the front slab
 
 func _layout_marlit_raider() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -251,9 +253,10 @@ func _layout_marlit_raider() -> void:
 	set_block(6, 5, 3, G.Block.MARLIT_WHEEL, -PI / 2)
 	set_block(2, 5, 7, G.Block.MARLIT_WHEEL, PI / 2)
 	set_block(8, 5, 7, G.Block.MARLIT_WHEEL, -PI / 2)
-	set_block(5, 7, 3, G.Block.MARLIT_GUN, 0.0)
-	set_block(3, 7, 6, G.Block.MARLIT_GUN, 0.0)
-	set_block(7, 7, 6, G.Block.MARLIT_GUN, 0.0)
+	set_block(6, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 5..6, z 3..4, on the front slab
+	# a shotgun on the left block, its line ahead clear of the gun; on the right one it would fire
+	# through the gun's turret
+	set_block(4, 7, 7, G.Block.MARLIT_SHOTGUN, 0.0)   # x 3..4, z 6..7
 
 func _layout_marlit_champion() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -269,9 +272,10 @@ func _layout_marlit_champion() -> void:
 	for z in [3, 8]:
 		set_block(2, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
 		set_block(8, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
-	# three guns along the nose, an empty line ahead of each
-	for x in [3, 5, 7]:
-		set_block(x, 7, 3, G.Block.MARLIT_GUN, 0.0)
+	# a gun and a shotgun on the front blocks, an empty line ahead of each (a heavy cannon there put
+	# the build at 44k, the fifth step: the licence fight is sized at the fourth)
+	set_block(4, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 3..4, z 3..4
+	set_block(7, 7, 4, G.Block.MARLIT_SHOTGUN, 0.0)   # x 6..7, z 3..4
 	# plates on the nose, under the guns' line
 	set_block(4, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
 	set_block(7, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
@@ -906,7 +910,8 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
-			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY]:
+			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
+			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

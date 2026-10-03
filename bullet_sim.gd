@@ -78,6 +78,8 @@ class Kind:
 	var count: int = 0
 	var streak: bool = false            # the round plus its fire streak (_streak_mesh)
 	var tail: float = 0.0               # the round's back end on +Z at trace 1
+	var head_col = null                 # the streak's colours when the template names its own
+	var mid_col = null
 
 var _live: Array = []
 var _spare: Array = []
@@ -154,6 +156,10 @@ func _kind_of(template: Node3D) -> Kind:
 		k.axis = 1
 	var smesh: ArrayMesh = null
 	var smat: ShaderMaterial = null
+	if mi.has_meta(&"streak_head"):
+		k.head_col = mi.get_meta(&"streak_head")
+	if mi.has_meta(&"streak_mid"):
+		k.mid_col = mi.get_meta(&"streak_mid")
 	if not mi.has_meta(OWN_VISUAL):
 		smesh = _streak_mesh(mi.mesh, k)
 		if smesh != null:
@@ -235,6 +241,11 @@ static func _streak_material(src: Mesh, override: Material, k: Kind) -> ShaderMa
 	if base is BaseMaterial3D:
 		sm.set_shader_parameter("albedo_tex", (base as BaseMaterial3D).albedo_texture)
 		sm.set_shader_parameter("albedo", (base as BaseMaterial3D).albedo_color)
+	# a faction's round brings its streak's colours on the template (WeaponBlock._apply_bullet_mesh)
+	if k.head_col != null:
+		sm.set_shader_parameter("head_col", k.head_col)
+	if k.mid_col != null:
+		sm.set_shader_parameter("mid_col", k.mid_col)
 	sm.set_shader_parameter("origin", k.origin)
 	sm.set_shader_parameter("tail", k.tail)
 	return sm

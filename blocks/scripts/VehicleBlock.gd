@@ -253,7 +253,13 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_SOLAR:     800,     # the housing is half a basic block, the lid armour
 	G.Block.MARLIT_REGEN:     700,
 	G.Block.MARLIT_WHEEL:     260,
-	G.Block.MARLIT_GUN:       200,
+	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
+	# than a hull block's share of its eight cells would make it.
+	G.Block.MARLIT_GUN:       560,
+	G.Block.MARLIT_LASER:     520,
+	G.Block.MARLIT_SHOTGUN:   600,
+	G.Block.MARLIT_CANNON:    680,
+	G.Block.MARLIT_MORTAR:    600,
 	G.Block.MARLIT_BATTERY:   900,     # a battery's toughness, by its eight cells, less the open bays
 	G.Block.MARLIT_WIRELESS:  400,
 	G.Block.MARLIT_OCTO:      4700,    # 27 cells at the basic block's rate
@@ -301,7 +307,11 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_SOLAR:     60.0,
 	G.Block.MARLIT_REGEN:     55.0,
 	G.Block.MARLIT_WHEEL:     50.0,
-	G.Block.MARLIT_GUN:       28.0,
+	G.Block.MARLIT_GUN:       80.0,
+	G.Block.MARLIT_LASER:     75.0,
+	G.Block.MARLIT_SHOTGUN:   90.0,
+	G.Block.MARLIT_CANNON:    115.0,
+	G.Block.MARLIT_MORTAR:    105.0,
 	G.Block.MARLIT_BATTERY:   140.0,
 	G.Block.MARLIT_WIRELESS:  45.0,
 	G.Block.MARLIT_OCTO:      300.0,

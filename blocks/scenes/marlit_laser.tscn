@@ -1,0 +1,75 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://blocks/scripts/laser.gd" id="1_s"]
+[ext_resource type="Script" path="res://blocks/scripts/bullet.gd" id="2_b"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_laser_base.tres" id="m_base"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_laser_yaw.tres" id="m_yaw"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_laser_head.tres" id="m_head"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="SphereShape3D" id="Sphere_1"]
+radius = 60.0
+
+[sub_resource type="BoxShape3D" id="Bullet_1"]
+size = Vector3(0.2, 0.2, 0.4)
+
+[node name="marlit_laser" type="RigidBody3D" node_paths=PackedStringArray("raycast", "pivot", "Area_Range")]
+collision_layer = 2
+collision_mask = 21
+freeze = true
+script = ExtResource("1_s")
+raycast = NodePath("Pivot/RayCast3D")
+pivot = NodePath("Pivot")
+Area_Range = NodePath("Area3D")
+block = 69
+connect_faces = 32
+cells_center = Vector3(-0.5, 0.5, -0.5)
+flash_color = Color(1, 0.5, 0.32, 1)
+beam_color = Color(0.35, 0.9, 1, 1)
+laser_damage = 52
+laser_fire_rate = 1.0
+laser_range = 80.0
+bolt_radius = 0.07
+bolt_length = 3.0
+bolt_speed = 170.0
+charge_big = 0.55
+charge_reach = 1.4
+lance_len = 2.8
+lance_width = 0.16
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="marlit_laser_base" type="MeshInstance3D" parent="."]
+mesh = ExtResource("m_base")
+
+[node name="marlit_laser_yaw" type="MeshInstance3D" parent="marlit_laser_base"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, -0.02, -0.5)
+mesh = ExtResource("m_yaw")
+
+[node name="marlit_laser_head" type="MeshInstance3D" parent="marlit_laser_base/marlit_laser_yaw"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.62, 0)
+mesh = ExtResource("m_head")
+
+[node name="Area3D" type="Area3D" parent="."]
+collision_layer = 0
+collision_mask = 2
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Area3D"]
+shape = SubResource("Sphere_1")
+
+[node name="Pivot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.6, -0.5)
+
+[node name="Marker3D" type="Marker3D" parent="Pivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1)
+
+[node name="RayCast3D" type="RayCast3D" parent="Pivot"]
+target_position = Vector3(0, 0, -10)
+collision_mask = 2
+
+[connection signal="body_entered" from="Area3D" to="." method="_on_area_3d_body_entered"]
+[connection signal="body_exited" from="Area3D" to="." method="_on_area_3d_body_exited"]
