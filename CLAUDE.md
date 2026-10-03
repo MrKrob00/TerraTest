@@ -322,7 +322,13 @@ project: read it before claiming how anything works.
   block is never reached: no gun is placed with nothing under it, and the nearest blocks get the
   pool first. Measured through the real garage path on a 38-block build: all available — 38
   placed; no hull blocks — the cabin alone, all 18 others back in the inventory; half the hull —
-  23 placed, every one of them connected to the cabin.
+  23 placed, every one of them connected to the cabin. ITS POOL IS THE MACHINE PLUS `G.block_available` - the inventory AND
+  the blocks lying in reach - and the blocks used come off the machine first, then through
+  `G.consume_block`. It was the machine plus the inventory, and after a death the starter kit is not
+  in the inventory but on the ground round the new cabin: a saved build placed two or three blocks
+  and stopped (the player's report). `loose_blocks_near` SKIPS A BLOCK QUEUED FOR DELETION: a second
+  `consume_block` in one frame took the block the first had just freed, so ten blocks were built
+  out of three. Measured: a bare cabin, an empty inventory, the kit loose - 11 of 11, none left.
 - **A HALF TURN ABOUT A HORIZONTAL AXIS IS A YAW** (`vehicle_body_3d._rotation_between`). Placing turns a
   block so its connect face meets the neighbour by the SHORTEST rotation, and for exactly opposite
   directions any perpendicular axis will do - the code took one about X, so a wheel bolted onto a
