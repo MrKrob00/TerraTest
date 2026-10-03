@@ -481,9 +481,20 @@ project: read it before claiming how anything works.
   the whole circle is occupied. It asks about MACHINES ONLY (`_machine_near`, a handful of nodes);
   the pass over all of `_data` (`_node_near`) stays on the replant path, because streaming runs
   the whole time the player is driving.
+- **A TREE IS CHOSEN BY ITS BIOME** (`resource_nodes._tree_kind`, the player's call after TerraTech;
+  `art/vein_models.gd`, one mesh and one MultiMesh each, `wood_multimesh_nodes` in `TREE_*` order):
+  a faceted snow FIR on the mountains (`vein_tree`; the first conifer of needle cones was turned
+  down - "not ours"), a BROADLEAF of chunky crown lumps on the meadow and in the canyon
+  (`vein_tree1`), a TEAL tree on a V of trunks under a crown of flat lumps on the meadow too, a
+  `TEAL_SHARE` of it (`vein_tree2`; crossed trunks under a gem-shaped slab read as "strange"), a PALM
+  in the desert (`vein_tree3`), and NOTHING on a salt flat. The roll is a hash of the point, not the
+  region's rng, so the veins after a tree stand where they stood. Every model's stump is its own trunk
+  cut at `CUT_Y` (`_stump`), and every model has its own fixed seed. The record carries `tree`, the
+  node `tree_kind`. Measured over the start's regions: mountain 11 firs, meadow 25 broadleaf + 8
+  teal, desert 11 palms, canyon 3 broadleaf, 0 on salt.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
-  `wood_only`; the player's call): the block hangs in the lowest tier of its needles, tipped down
-  the slope (`BATTERY_SHOW_*`), and comes down when the tree is felled.
+  `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
+  (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
 - THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
   energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
   whatever there is even when it is short, so the old "take and see" on one panel (6/s against the

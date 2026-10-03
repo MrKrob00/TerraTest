@@ -166,9 +166,34 @@ func _all_mm() -> Array:
 
 ## The MultiMesh that draws this vein: the tree, or its metal's outcrop (a metal past the list - a
 ## new one before its model is built - borrows the last).
+## WHICH TREE GROWS HERE, BY BIOME (the player's call, after TerraTech): an index into
+## `wood_multimesh_nodes` - TREE_FIR on the mountains, TREE_BROAD or TREE_TEAL on the meadow and in the
+## canyon, TREE_PALM in the desert; -1 on a salt flat, where nothing grows. The roll is a HASH OF THE
+## POINT, not the region's rng: drawing from that would shift every vein after the first tree.
+const TREE_FIR := 0
+const TREE_BROAD := 1
+const TREE_TEAL := 2
+const TREE_PALM := 3
+const TEAL_SHARE := 30          # of a hundred meadow trees
+
+func _tree_kind(map: Node, world: Vector3) -> int:
+	if map == null or not map.has_method("biome_at"):
+		return TREE_BROAD
+	if map.has_method("salt_at") and float(map.salt_at(world)) > 0.5:
+		return -1
+	var b: Vector3 = map.biome_at(world)          # canyon, meadow, mountain
+	if b.z > 0.5:
+		return TREE_FIR
+	if b.y > 0.5 or b.x > 0.5:
+		var roll: int = absi(hash(Vector2i(roundi(world.x * 10.0), roundi(world.z * 10.0)))) % 100
+		return TREE_TEAL if roll < TEAL_SHARE else TREE_BROAD
+	return TREE_PALM
+
 func _model_mm(v: Dictionary) -> MultiMeshInstance3D:
 	if v.get("wood") == true:
-		return wood_multimesh_nodes[0] if not wood_multimesh_nodes.is_empty() else null
+		if wood_multimesh_nodes.is_empty():
+			return null
+		return wood_multimesh_nodes[clampi(int(v.get("tree", 0)), 0, wood_multimesh_nodes.size() - 1)]
 	if multimesh_nodes.is_empty():
 		return null
 	return multimesh_nodes[clampi(int(v["ore_type"]), 0, multimesh_nodes.size() - 1)]
@@ -276,7 +301,7 @@ func spawn_vein(world_pos: Vector3, ore_type: int, wood: bool) -> Node:
 		"gpos": gpos,
 		"scene": resource_nodes[randi() % resource_nodes.size()],
 		"ore_type": ore_colors.size() if wood else clampi(ore_type, 0, ore_colors.size() - 1),
-		"wood": wood, "slot": -1, "node": null,
+		"wood": wood, "tree": maxi(_tree_kind(get_parent(), gpos), 0) if wood else 0, "slot": -1, "node": null,
 	}
 	_made.append(v)
 	_rebuild_data()
@@ -333,12 +358,15 @@ func _build_region(rk: Vector2i) -> Array:
 		var ore_type: int = ore_colors.size() if wood else _metal_for(lp, map, can_biome, rng)
 		if not _ore_enabled(ore_type, wood):
 			continue
+		var kind: int = _tree_kind(map, Vector3(gx, h, gz)) if wood else 0
+		if kind < 0:
+			continue                                  # no trees on a salt flat
 		out.append({
 			"pos": lp,
 			"gpos": Vector3(gx, h + 0.25, gz),
 			"scene": resource_nodes[rng.randi() % resource_nodes.size()] \
 					if not resource_nodes.is_empty() else null,
-			"ore_type": ore_type, "wood": wood, "slot": -1, "node": null,
+			"ore_type": ore_type, "wood": wood, "tree": kind, "slot": -1, "node": null,
 		})
 	return out
 
@@ -488,6 +516,7 @@ func _stream_in(v: Dictionary) -> void:
 		node.position = v["pos"]
 		node.instance_id = slot                      # узел пишет истощение в ЭТОТ слот
 		if "is_wood" in node: node.is_wood = v["wood"]
+		if "tree_kind" in node: node.tree_kind = int(v.get("tree", 0))
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]
