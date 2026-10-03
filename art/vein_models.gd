@@ -287,40 +287,54 @@ func _titanite() -> SurfaceTool:
 	_shard(st, Vector3(-0.06, GROUND + 0.10, -0.28), Vector3(-0.10, 0, -0.55), 0.13, 0.30, 4)
 	return st
 
+## THE TREE. Its stump IS THE BOTTOM OF ITS OWN TRUNK - the same faces, the same radius at the cut,
+## one ring shared by both - so what a felling leaves is the root of that tree; the first stump was
+## a squat cone twice the trunk's width, and the player read it as some other object. Both cut faces
+## are pale wood, so the falling trunk shows its cut too. About 5.5 m tall (the player: "bigger").
+const CUT_Y := 0.42            # the cut over the ground
+const TRUNK_R := 0.27          # the trunk's radius at the cut
+const WOOD := Color(0.78, 0.62, 0.40)
+
 func _tree() -> SurfaceTool:
 	var st := _begin()
-	# the stump stays when the rest is felled
-	_part = 0.0
-	var n := 6
-	var lo := _ring(Vector3.ZERO, n, 0.42, GROUND - SINK, 0.06, 0.0)
-	var mid := _ring(Vector3.ZERO, n, 0.36, GROUND + 0.06, 0.08, 0.0)
-	var hi := _ring(Vector3.ZERO, n, 0.24, GROUND + 0.30, 0.04, 0.0)
+	var n := 7
+	var cut_y: float = GROUND + CUT_Y
+	var cut := _ring(Vector3.ZERO, n, TRUNK_R, cut_y, 0.0, 0.0)
 	var inside := Vector3(0, GROUND, 0)
+	# the stump stays when the rest is felled: a root flare under the ground line, the trunk to the cut
+	_part = 0.0
+	var lo := _ring(Vector3.ZERO, n, TRUNK_R * 1.55, GROUND - SINK, 0.05, 0.0)
+	var flare := _ring(Vector3.ZERO, n, TRUNK_R * 1.25, GROUND + 0.08, 0.03, 0.0)
 	for k in n:
 		var j: int = (k + 1) % n
-		_quad(st, lo[k], lo[j], mid[j], mid[k], inside, BARK.darkened(0.15), false)
-		_quad(st, mid[k], mid[j], hi[j], hi[k], inside, BARK.darkened(0.05), false)
-	var top := Vector3(0, GROUND + 0.30, 0)
+		_quad(st, lo[k], lo[j], flare[j], flare[k], inside, BARK.darkened(0.18), false)
+		_quad(st, flare[k], flare[j], cut[j], cut[k], inside, BARK.darkened(0.06), false)
+	var mid := Vector3(0, cut_y, 0)
 	for k in n:
-		_tri(st, hi[k], hi[(k + 1) % n], top, Vector3(0, GROUND, 0), Color(0.62, 0.48, 0.30), false)
-	# the trunk from inside the stump up into the crown, and three tiers of needles
+		_tri(st, cut[k], cut[(k + 1) % n], mid, Vector3(0, cut_y - 1.0, 0), WOOD, false)
+	# what falls: the trunk from the same cut ring up into the crown, its own cut face under it
 	_part = 1.0
-	var m := 5
-	var tlo := _ring(Vector3.ZERO, m, 0.20, GROUND + 0.1, 0.0, 0.0)
-	var thi := _ring(Vector3.ZERO, m, 0.13, GROUND + 1.25, 0.0, 0.0)
-	for k in m:
-		_quad(st, tlo[k], tlo[(k + 1) % m], thi[(k + 1) % m], thi[k], Vector3(0, GROUND + 0.6, 0), BARK, false)
-	var tiers := [[GROUND + 0.85, 1.05, 1.15], [GROUND + 1.55, 0.82, 1.0], [GROUND + 2.2, 0.56, 0.95]]
+	for k in n:
+		_tri(st, cut[(k + 1) % n], cut[k], mid, Vector3(0, cut_y + 1.0, 0), WOOD.darkened(0.1), false)
+	var thi := _ring(Vector3.ZERO, n, 0.17, GROUND + 2.2, 0.0, 0.0)
+	var ttop := _ring(Vector3.ZERO, n, 0.08, GROUND + 4.6, 0.0, 0.0)
+	for k in n:
+		var j: int = (k + 1) % n
+		_quad(st, cut[k], cut[j], thi[j], thi[k], Vector3(0, GROUND + 1.2, 0), BARK, false)
+		_quad(st, thi[k], thi[j], ttop[j], ttop[k], Vector3(0, GROUND + 3.0, 0), BARK, false)
+	# four tiers of needles
+	var tiers := [[GROUND + 1.35, 1.75, 1.55], [GROUND + 2.40, 1.40, 1.50],
+			[GROUND + 3.35, 1.02, 1.40], [GROUND + 4.20, 0.64, 1.30]]
 	for i in tiers.size():
 		var y: float = tiers[i][0]
 		var r: float = tiers[i][1]
 		var h: float = tiers[i][2]
-		var s := 6
-		var skirt := _ring(Vector3.ZERO, s, r, y, 0.08, 0.5 * i)
-		var apex := Vector3(_rng.randf_range(-0.04, 0.04), y + h, _rng.randf_range(-0.04, 0.04))
-		var under := Vector3(0, y + 0.12, 0)
+		var s := 7
+		var skirt := _ring(Vector3.ZERO, s, r, y, 0.10, 0.45 * i)
+		var apex := Vector3(_rng.randf_range(-0.05, 0.05), y + h, _rng.randf_range(-0.05, 0.05))
+		var under := Vector3(0, y + 0.16, 0)
 		var inn := Vector3(0, y + h * 0.3, 0)
-		var col: Color = NEEDLE.lerp(NEEDLE_TIP, float(i) / 2.0)
+		var col: Color = NEEDLE.lerp(NEEDLE_TIP, float(i) / float(tiers.size() - 1))
 		for k in s:
 			var j: int = (k + 1) % s
 			_tri(st, skirt[k], skirt[j], apex, inn, col, false)

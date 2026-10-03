@@ -465,6 +465,9 @@ project: read it before claiming how anything works.
   the whole circle is occupied. It asks about MACHINES ONLY (`_machine_near`, a handful of nodes);
   the pass over all of `_data` (`_node_near`) stays on the replant path, because streaming runs
   the whole time the player is driving.
+- THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
+  `wood_only`; the player's call): the block hangs in the lowest tier of its needles, tipped down
+  the slope (`BATTERY_SHOW_*`), and comes down when the tree is felled.
 - THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
   energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
   whatever there is even when it is short, so the old "take and see" on one panel (6/s against the
@@ -492,7 +495,18 @@ project: read it before claiming how anything works.
   broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
   again. Measured on the real driver at HP 1 / 0.7 / 0.5 / 0.3 / 0 for all four metals. A tree
   leans a little while it is chopped and on the last blow falls and is gone in `fall_time`,
-  leaving the stump - lying there for the rest was wrong. One MultiMesh per model
+  leaving the stump - lying there for the rest was wrong. THE STUMP IS THE BOTTOM OF ITS OWN TRUNK (`_tree`, one
+  ring shared at `CUT_Y`, both cuts pale wood): it was a squat cone twice the trunk's width and the
+  player read it as some other object; the tree is ~5.9 m now (the player: "bigger").
+  **THE VEINS' SHADER RUNS ON ITS OWN `now`, NEVER `TIME`** (`resource_nodes._tick_clock`, set every
+  frame from `shader_now`, the function that writes the hit and regrow times). `TIME` is the
+  renderer's clock built from frame steps and ran seconds behind the wall clock after a slow load, so
+  a felled tree's "since the last blow" stayed negative: it leaned and never fell or went - measured
+  on the real driver, a tree 2.5 s after its last blow still lay on its side. A HIT THROWS RED DIGITS,
+  NOT A WHITE FLASH (`vein_digits.gd`, `vein_digit.gdshader` - the repair digit BLENDED, since red
+  ADDED over a meadow came out orange): three 0/1 cards out of the side the camera sees, on a tree
+  under its crown (thrown up, the needles hid them), bouncing once; one pool of 48 for every vein,
+  nothing drawn while idle, one burst per vein per `MIN_GAP` so a drill does not flood it. One MultiMesh per model
   (`resource_nodes.multimesh_nodes` in `G.Metal` order, `wood_multimesh_nodes`; `_model_mm`, a metal
   past the list borrows the last), so all veins are five draw calls; a vein is drawn in its own and
   stands collapsed in the rest. On the tree UV.x marks the part that falls; the stump never moves
@@ -2448,7 +2462,8 @@ project: read it before claiming how anything works.
   model per COMPONENT after its name (`G.COMP_NAME`: the Wound Coil a spool, the Torque Motor a
   ribbed drum with a shaft, the Control Chip a pinned chip, the Focus Cell a cell with the Contact
   Ring round it and glass on top...; body in the component's colour, dark metal, glass, a GSO-blue
-  screen), a chunk a crate with GSO-blue straps. What the bubble was for - an item seen in
+  screen), a chunk a crate with GSO-blue straps. WOOD IS A BUNDLE OF THREE LOGS showing their end grain (bark rim, pale
+  wood, a darker heart): one hexagonal rod read as a pencil or a pipe. What the bubble was for - an item seen in
   the grass - is ONE BILLBOARD QUAD (`resources/items/item_glow.gdshader`, additive, the item's
   colour, coal an ember), two triangles; its material is set before anything else, or a missing model
   would leave a plain white square. The ingot is cut out of the library into

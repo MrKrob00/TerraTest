@@ -610,12 +610,13 @@ var _bat_free: bool = false         # её выработали, блок вып
 ## обычная руда: игрок бурил наугад и верил на слово. Кладём настоящий блок сверху на жилу —
 ## видно, что именно там лежит и что за это бурят.
 var _bat_shown: Node3D = null
-## ОН ЛЕЖИТ В ОСНОВАНИИ ЖИЛЫ, А НЕ СТОИТ У НЕЁ НА МАКУШКЕ. Аккуратный блок по центру сверху
-## читается как положенный туда предмет; задание же говорит, что он ПРОЛЕЖАЛ в породе и его
-## оттуда выскребают. Поэтому низко, чуть в сторону, с завалом набок и сильно побитый.
-const BATTERY_SHOW_Y := 0.2
-const BATTERY_SHOW_SPREAD := 0.35      # разброс по горизонтали от центра жилы, м
-const BATTERY_SHOW_TILT := 0.28        # завал набок, рад (~16°)
+## IT HANGS IN A TREE'S BRANCHES (the player's call): the errand is a TREE now, never an ore vein
+## (`vein_point_near` / `node_near` with `wood_only`), and the block is caught on the lowest tier of
+## needles, out at its skirt and tipped over, where it is seen from the ground. Felling the tree is
+## what brings it down - the tree goes on its last blow, and the block drops where it stood.
+const BATTERY_SHOW_Y := 1.95           # over the vein's origin: on the first tier (art/vein_models.gd)
+const BATTERY_SHOW_OUT := 0.95         # out from the trunk, m
+const BATTERY_SHOW_TILT := 0.45        # tipped on the slope of the needles, rad
 ## Сколько от него осталось. Тридцать процентов — это и «видно, что он побитый» (красные цифры
 ## хп над блоком), и повод дать игроку реген или ремонт, а не бесплатную целую деталь.
 const BATTERY_WORN_FRAC := 0.3
@@ -652,7 +653,7 @@ func _battery_stage() -> bool:
 			rnd = _find_resource_nodes()
 		var exact: Variant = null
 		if rnd != null and rnd.has_method("vein_point_near"):
-			exact = rnd.vein_point_near(p.global_position, BATTERY_DIST * 0.6, BATTERY_DIST * 1.6)
+			exact = rnd.vein_point_near(p.global_position, BATTERY_DIST * 0.6, BATTERY_DIST * 1.6, true)
 		if exact != null:
 			_bat_spot = exact
 		else:
@@ -678,7 +679,7 @@ func _battery_stage() -> bool:
 		_bat_free = true                      # жил в мире нет вовсе — не держим игрока
 		_bat_drop(at)
 		return false
-	var vein: Node = rn.node_near(at, BATTERY_REACH)
+	var vein: Node = rn.node_near(at, BATTERY_REACH, true)
 	if vein == null:
 		return false                          # ещё не стримнулась — подождём следующий опрос
 	_bat_spot = (vein as Node3D).global_position
@@ -722,10 +723,12 @@ func _bat_display(vein: Node3D) -> void:
 	var n: Node3D = scene.instantiate()
 	vein.add_child(n)
 	if _bat_pose == null:
+		var ang: float = randf() * TAU
+		var outward := Vector3(cos(ang), 0.0, sin(ang))
+		# tipped outward, down the slope of the tier it is caught on
 		_bat_pose = Transform3D(
-			Basis(Vector3.UP, randf() * TAU) * Basis(Vector3.RIGHT, randf_range(-BATTERY_SHOW_TILT, BATTERY_SHOW_TILT)),
-			Vector3(randf_range(-BATTERY_SHOW_SPREAD, BATTERY_SHOW_SPREAD), BATTERY_SHOW_Y,
-				randf_range(-BATTERY_SHOW_SPREAD, BATTERY_SHOW_SPREAD)))
+			Basis(outward.cross(Vector3.UP).normalized(), -BATTERY_SHOW_TILT) * Basis(Vector3.UP, randf() * TAU),
+			outward * BATTERY_SHOW_OUT + Vector3.UP * BATTERY_SHOW_Y)
 	n.transform = _bat_pose as Transform3D
 	if n is RigidBody3D:
 		var rb := n as RigidBody3D

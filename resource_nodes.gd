@@ -105,6 +105,8 @@ func _wait_terrain(map: Node) -> void:
 func _ready() -> void:
 	# До любого await: дальше по коду список нужен и шейдеру, и раздаче типов жилам.
 	ore_colors.assign(G.METAL_COLOR)
+	_digits = VEIN_DIGITS.new()
+	add_child(_digits)
 	var map: Node = await _await_map()
 	if map == null:
 		push_error("resource_nodes: родитель так и не стал картой (нет terrain_height_at/get_dims)")
@@ -127,6 +129,37 @@ func _ready() -> void:
 	# регионы по мере того, как игрок к ним подъезжает (_regions_tick).
 	_init_slots()
 	_regions_tick()
+
+## Red digits off a struck vein (vein_digits.gd): one pool for every vein, asked by resource_node.hurt.
+const VEIN_DIGITS := preload("res://vein_digits.gd")
+var _digits: Node = null
+
+func vein_hit(vein: Node3D) -> void:
+	if _digits == null or not is_instance_valid(vein):
+		return
+	# out of the side the player sees, and on a tree under its crown: from the middle they were lost
+	# inside the needles
+	var wood: bool = vein.get("is_wood") == true
+	var base: Vector3 = vein.global_position
+	var at: Vector3 = base + Vector3.UP * (0.8 if wood else 0.7)
+	var out := Vector3.ZERO
+	var cam := get_viewport().get_camera_3d()
+	if cam != null:
+		out = cam.global_position - at
+		out.y = 0.0
+		if out.length_squared() > 0.01:
+			out = out.normalized()
+			at += out * (0.45 if wood else 0.7)
+	_digits.burst(vein, at, base.y - 0.25, out)
+
+## The veins' shader reads its own `now`, never TIME (see resources/resource.gdshader): one clock
+## for the times written into custom data and the time they are compared against.
+func _tick_clock() -> void:
+	var t: float = shader_now()
+	for mm in _all_mm():
+		var m = mm.material_override
+		if m is ShaderMaterial:
+			(m as ShaderMaterial).set_shader_parameter("now", t)
 
 func _all_mm() -> Array:
 	return multimesh_nodes + wood_multimesh_nodes
@@ -472,12 +505,12 @@ func _stream_in(v: Dictionary) -> void:
 ## — это 768 м в поперечнике), и считаются они от сида, независимо от того, что нарисовано.
 ##
 ## Возвращает мировую точку или null. lo/hi — в каком кольце от from искать.
-func vein_point_near(from: Vector3, lo: float, hi: float) -> Variant:
+func vein_point_near(from: Vector3, lo: float, hi: float, wood_only: bool = false) -> Variant:
 	var best: Variant = null
 	var best_d: float = INF
 	for rec in _data:
 		var gp = rec.get("gpos")
-		if gp == null:
+		if gp == null or (wood_only and rec.get("wood") != true):
 			continue
 		var d: float = (gp as Vector3).distance_to(from)
 		if d < lo or d > hi:
@@ -490,11 +523,13 @@ func vein_point_near(from: Vector3, lo: float, hi: float) -> Variant:
 			best = gp
 	return best
 
-func node_near(world_pos: Vector3, radius: float = 25.0) -> Node:
+func node_near(world_pos: Vector3, radius: float = 25.0, wood_only: bool = false) -> Node:
 	var best: Node = null
 	var best_d2: float = radius * radius
 	for c in get_children():
 		if not (c is Node3D) or not c.has_method("is_depleted"):
+			continue
+		if wood_only and c.get("is_wood") != true:
 			continue
 		var d2: float = (c as Node3D).global_position.distance_squared_to(world_pos)
 		if d2 <= best_d2:
@@ -646,6 +681,7 @@ const RESCAN_CELL := 12.0
 var _last_cell := Vector2i(1 << 30, 1 << 30)
 
 func _process(delta: float) -> void:
+	_tick_clock()
 	if _data.is_empty():
 		return
 	_cull_t -= delta

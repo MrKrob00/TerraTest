@@ -196,25 +196,46 @@ func _titanite() -> SurfaceTool:
 	return _foot(st)
 
 ## WOOD: a log - a six-sided prism of bark with pale cut ends.
+## WOOD: a BUNDLE of three logs, two below and one on top (the player: "the wood does not look like
+## wood" - one hexagonal rod read as a pencil or a pipe). Every log shows its END GRAIN, which is what
+## says "cut timber": a dark bark rim, pale wood, a darker heart ring; its bark faces alternate two
+## tones. No random numbers here, so the items built after it come out as before.
+const BARK_DARK := Color(0.36, 0.23, 0.14)
+const HEART := Color(0.62, 0.44, 0.26)
+
 func _log() -> SurfaceTool:
 	var st := _begin()
+	var r := 0.095
+	for c in [Vector3(0, r, -0.098), Vector3(0, r, 0.098), Vector3(0.02, r * 2.75, 0)]:
+		_one_log(st, c, r, 0.25 if c.y > r * 2.0 else 0.27)
+	return _foot(st)
+
+func _one_log(st: SurfaceTool, c: Vector3, r: float, half: float) -> void:
 	var n := 6
-	var r := 0.13
-	var half := 0.28
-	var a: Array = []
-	var bb: Array = []
-	for i in n:
-		var ang: float = TAU * float(i) / float(n)
-		var o := Vector3(0, sin(ang) * r, cos(ang) * r)
-		a.append(Vector3(-half, r, 0) + o)
-		bb.append(Vector3(half, r, 0) + o * 0.92)
-	var c := Vector3(0, r, 0)
+	var ends: Array = []
+	for sx in [-1.0, 1.0]:
+		var rings: Array = []
+		for k in [1.0, 0.8, 0.34]:
+			var ring: Array = []
+			for i in n:
+				var ang: float = TAU * (float(i) + 0.5) / float(n)
+				ring.append(c + Vector3(sx * half, sin(ang) * r * k, cos(ang) * r * k))
+			rings.append(ring)
+		ends.append(rings)
 	for i in n:
 		var j: int = (i + 1) % n
-		_quad(st, a[i], a[j], bb[j], bb[i], c, BARK)
-		_tri(st, a[j], a[i], Vector3(-half, r, 0), c, WOOD_END)
-		_tri(st, bb[i], bb[j], Vector3(half, r, 0), c, WOOD_END)
-	return _foot(st)
+		var col: Color = BARK if i % 2 == 0 else BARK_DARK
+		_quad(st, ends[0][0][i], ends[0][0][j], ends[1][0][j], ends[1][0][i], c, col)
+	for e in 2:
+		var rings: Array = ends[e]
+		var out: Vector3 = c + Vector3(-half * 3.0 if e == 0 else half * 3.0, 0, 0)
+		var behind: Vector3 = c + Vector3(-half if e == 0 else half, 0, 0) - (out - c).normalized() * 0.2
+		var mid: Vector3 = c + Vector3(-half if e == 0 else half, 0, 0)
+		for i in n:
+			var j: int = (i + 1) % n
+			_quad(st, rings[0][i], rings[0][j], rings[1][j], rings[1][i], behind, BARK_DARK)
+			_quad(st, rings[1][i], rings[1][j], rings[2][j], rings[2][i], behind, WOOD_END)
+			_tri(st, rings[2][i], rings[2][j], mid, behind, HEART)
 
 ## CHUNK: a crate of packed blocks - a dark box with two GSO-blue straps.
 func _chunk() -> SurfaceTool:

@@ -73,6 +73,9 @@ func hurt(damage: int = 10) -> void:
 		return
 
 	current_hp = clampi(current_hp - damage, 0, max_hp)
+	var owner_node: Node = get_parent()
+	if owner_node != null and owner_node.has_method("vein_hit"):
+		owner_node.vein_hit(self)
 	# R — время удара (тряска), G — доля HP, A — тип (цвет).
 	_write_shader_data(Color(_now(), float(current_hp) / float(max_hp), 0.0, float(ore_type)))
 
