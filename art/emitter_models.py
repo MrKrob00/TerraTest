@@ -1443,6 +1443,151 @@ def build_rot_support(pk, img):
     return parts
 
 
+# ── the Marlit supports ─────────────────────────────────────────────────────────────────────────
+# 2x2x2 like every Marlit block, but built round their TURN AXIS - the block's middle column, x and
+# z 0 here - because the rotating one's lower half turns about it; the scene stands every part's
+# node at (-0.5, 0, -0.5), the middle of a block anchored in its corner. Both are the Falsus jack's
+# idea in Marlit's dress: a DECK slab with the emblem's windows that the blocks stand on, an
+# OCTAGONAL housing under it whose flats lie on the cell faces (so the lower row joins on its sides),
+# and a telescoping ram with a wide octagonal foot. The rotating one puts a SLEWING RING between deck
+# and housing - a toothed ring gear turning with the deck - and two motor PINIONS on the housing's
+# corners in mesh with it: the deck turns, the housing holds its heading on the ground, the pinions
+# spin against the ring. That is what says "this one turns", where the Falsus one has a few ticks.
+MSUP_DECK = 0.70          # the deck slab's underside
+MSUP_HOUSE = (-0.32, 0.50)    # the rotating one's housing; the fixed one's runs up to the deck
+MSUP_OCT = 0.50           # the housing's corner cut: an octagon with flats one cell wide on the faces
+MSUP_RAM = (0.17, 0.25)   # leg and sleeve radii
+MSUP_FOOT = 0.78          # the foot's flat radius
+MSUP_FOOT_TOP = -0.36     # the foot's top at rest (the script's FOOT_TOP)
+RING = dict(n=28, root=0.82, tip=0.92, y0=0.51, y1=0.69)   # the ring gear (pitch ~0.87)
+PINION = dict(n=7, root=0.13, tip=0.22, y0=0.52, y1=0.68)   # pitch ~0.175
+PINION_AT = 1.045 / math.sqrt(2.0)     # centre distance ring + pinion pitch, along the diagonals
+MOTOR = (0.16, 0.06)      # the pinion motor's drum radius and its foot height
+
+
+def _swap_xy(faces):
+    """Faces built swept along X stood up along Y: (x, y, z) -> (y, x, z). A swap is a mirror, so
+    every outline is reversed to keep its outward winding."""
+    for f in faces:
+        f.pts = [(p[1], p[0], p[2]) for p in reversed(f.pts)]
+        if f.u_hint:
+            f.u_hint = (f.u_hint[1], f.u_hint[0], f.u_hint[2])
+    return faces
+
+
+def _octagon(r, cut):
+    """An octagon with flats at +-r on both axes, its corners cut `cut` along each edge."""
+    a = r - cut
+    return [(r, -a), (r, a), (a, r), (-a, r), (-r, a), (-r, -a), (-a, -r), (a, -r)]
+
+
+def _lit(n):
+    return "mbev%d" % int(round(max(0.0, min(1.0, 0.42 + 0.55 * th.dot(th.norm(n), LIGHT))) * 5))
+
+
+def gear(f, cx, cz, g, phase=0.0):
+    """A spur gear about the vertical through (cx, cz): a disc of radius `root` and n trapezoid
+    teeth out to `tip`, every face toned by how it turns to the painted light. The teeth are their
+    own convex prisms - a toothed outline is not convex, and a face here must be."""
+    n, r0, r1, y0, y1 = g["n"], g["root"], g["tip"], g["y0"], g["y1"]
+    m = n * 2
+    disc = [(cx + r0 * math.cos(phase + (i + 0.5) * math.pi / n), cz + r0 * math.sin(phase + (i + 0.5) * math.pi / n))
+            for i in range(m)]
+    c = (cx, (y0 + y1) / 2, cz)
+    for y, sg in ((y1, 1), (y0, -1)):
+        pts = th.outward([(x, y, z) for x, z in disc], (cx, y - sg, cz))
+        f.append(th.Face(pts, _lit((0, sg, 0)), u_hint=(1, 0, 0)))
+    for i in range(m):
+        a, b = disc[i], disc[(i + 1) % m]
+        q = th.outward([(a[0], y0, a[1]), (b[0], y0, b[1]), (b[0], y1, b[1]), (a[0], y1, a[1])], c)
+        f.append(th.Face(q, _lit(th.newell(q)), u_hint=th.sub(q[1], q[0])))
+    pitch = 2 * math.pi / n
+    for i in range(n):
+        t = phase + i * pitch
+        hw0, hw1 = pitch * 0.30, pitch * 0.17       # half widths at the root and the tip, in angle
+        ring = [(cx + r0 * 0.99 * math.cos(t - hw0), cz + r0 * 0.99 * math.sin(t - hw0)),
+                (cx + r1 * math.cos(t - hw1 * r0 / r1), cz + r1 * math.sin(t - hw1 * r0 / r1)),
+                (cx + r1 * math.cos(t + hw1 * r0 / r1), cz + r1 * math.sin(t + hw1 * r0 / r1)),
+                (cx + r0 * 0.99 * math.cos(t + hw0), cz + r0 * 0.99 * math.sin(t + hw0))]
+        tc = (cx + (r0 + r1) / 2 * math.cos(t), (y0 + y1) / 2, cz + (r0 + r1) / 2 * math.sin(t))
+        for y, sg in ((y1, 1), (y0, -1)):
+            f.append(th.Face(th.outward([(x, y, z) for x, z in ring], (tc[0], y - sg, tc[2])),
+                             _lit((0, sg, 0)), u_hint=(1, 0, 0)))
+        for k in range(3):
+            a, b = ring[k], ring[k + 1]
+            q = th.outward([(a[0], y0, a[1]), (b[0], y0, b[1]), (b[0], y1, b[1]), (a[0], y1, a[1])], tc)
+            # the tip in the sunset line: dark teeth on a dark disc did not read as a gear at all
+            f.append(th.Face(q, "mglow" if k == 1 else _lit(th.newell(q)), u_hint=th.sub(q[1], q[0])))
+
+
+def _msup_deck(f, rnd):
+    marlit_box(f, (-1.0, MSUP_DECK, -1.0), (1.0, 1.5, 1.0), 0.12, rnd,
+               {(1, 1): "window", (0, 0): "window", (0, 1): "window", (2, 0): "window", (2, 1): "window"})
+
+
+def _msup_house(f, y0, y1, rnd):
+    hs = []
+    marlit_prism(hs, _octagon(1.0, MSUP_OCT), y0, y1, rnd)
+    f += _swap_xy(hs)
+
+
+def _msup_ram(pk, img, parts, prefix):
+    """Leg and sleeve as unit rods hanging from their nodes (the script stretches them), octagonal;
+    the foot a wide octagonal pad with a sunset rim, its top at MSUP_FOOT_TOP."""
+    lr, sr = MSUP_RAM
+    lathe_y(pk, img, parts[prefix + "_leg"], [(lr, -1.0), (lr, 0.0)], MARLIT_RAMP, sides=8)
+    lathe_y(pk, img, parts[prefix + "_sleeve"], [(sr - 0.03, -1.0), (sr, -0.96), (sr, 0.0)],
+            MARLIT_RAMP, sides=8)
+    R = MSUP_FOOT / math.cos(math.pi / 8)
+    lathe_y(pk, img, parts[prefix + "_foot"],
+            [(0.0, -0.5), (R, -0.5), (R, -0.44), (R * 0.96, -0.42), (R * 0.70, MSUP_FOOT_TOP),
+             (0.0, MSUP_FOOT_TOP)], MARLIT_RAMP, sides=8, ring_ramps={1: SUNSET_RAMP, 2: SUNSET_RAMP})
+
+
+def build_marlit_support(pk, img):
+    import random as _r
+    rnd = _r.Random(41)
+    parts = {"marlit_support_body": [], "marlit_support_sleeve": [], "marlit_support_leg": [],
+             "marlit_support_foot": []}
+    body = parts["marlit_support_body"]
+    _msup_deck(body, rnd)
+    _msup_house(body, MSUP_HOUSE[0], MSUP_DECK, rnd)
+    _msup_ram(pk, img, parts, "marlit_support")
+    return parts
+
+
+def build_marlit_rot_support(pk, img):
+    import random as _r
+    rnd = _r.Random(43)
+    parts = {"marlit_rot_support_body": [], "marlit_rot_support_stator": [],
+             "marlit_rot_support_pinion": [], "marlit_rot_support_sleeve": [],
+             "marlit_rot_support_leg": [], "marlit_rot_support_foot": []}
+    body, stator = parts["marlit_rot_support_body"], parts["marlit_rot_support_stator"]
+    # TURNS: the deck and the ring gear under it, closed by a hub plate down to the housing
+    _msup_deck(body, rnd)
+    gear(body, 0.0, 0.0, RING)
+    lathe_y(pk, img, body, [(0.0, RING["y0"] - 0.02), (0.55, RING["y0"] - 0.02), (0.55, RING["y0"])],
+            MARLIT_RAMP, sides=8)
+    # HOLDS: the housing, and a motor drum on two opposite corners carrying the pinions
+    _msup_house(stator, MSUP_HOUSE[0], MSUP_HOUSE[1], rnd)
+    mr, my = MOTOR
+    for sx in (1.0, -1.0):
+        c = PINION_AT * sx
+        # a dark drum with one thin sunset band under its lid: all orange it read as a battery
+        lathe_y(pk, img, stator, [(0.0, my), (mr, my), (mr, PINION["y0"] - 0.10),
+                                  (mr, PINION["y0"] - 0.07), (mr, PINION["y0"] - 0.03),
+                                  (mr * 0.8, PINION["y0"]), (0.0, PINION["y0"])],
+                MARLIT_RAMP, sides=8, cx=c, cz=c, ring_ramps={2: SUNSET_RAMP})
+    # ONE pinion, built about its own axis: the scene stands two nodes on the corners and the
+    # script spins them against the ring
+    gear(parts["marlit_rot_support_pinion"], 0.0, 0.0, PINION)
+    lathe_y(pk, img, parts["marlit_rot_support_pinion"],
+            [(0.07, PINION["y1"]), (0.07, PINION["y1"] + 0.03), (0.0, PINION["y1"] + 0.03)],
+            SUNSET_RAMP, sides=8)
+    _msup_ram(pk, img, parts, "marlit_rot_support")
+    return parts
+
+
 # ── the generator ───────────────────────────────────────────────────────────────────────────────
 # Built to the style rules in docs/ART_STYLE.md, not after any one reference: a DARK CHAMFERED CUBE
 # (it joins on every face, so its walls stand on the cell's faces like the frame block's), a GSO
@@ -2928,6 +3073,8 @@ BLOCKS = {
     "marlit_shield": (229, build_marlit_shield, 512),
     "wireless": (107, build_wireless, 256),
     "marlit_wireless": (243, build_marlit_wireless, 512),
+    "marlit_support": (251, build_marlit_support, 512),
+    "marlit_rot_support": (257, build_marlit_rot_support, 512),
     "battery": (103, build_battery, 256),
     "comp_factory": (83, build_comp_factory, 512),
     "fabricator": (101, build_fabricator, 512),
@@ -2953,13 +3100,13 @@ BLOCKS = {
 
 # A model whose details are finer than the atlas's ~48 px/m paints at its own density (texels per
 # metre); everything else keeps the family's.
-DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0, "marlit_battery": 36.0, "marlit_wireless": 40.0}
+DENSITY = {"marlit_long": 34.0, "marlit_long_half": 36.0, "marlit_brew": 34.0, "marlit_octo": 28.0, "marlit_solar": 34.0, "marlit_regen": 30.0, "marlit_shield": 38.0, "marlit_battery": 36.0, "marlit_wireless": 40.0, "marlit_support": 34.0, "marlit_rot_support": 34.0}
 
 
 # The models whose hidden faces are thrown away on the way out (`cull_hidden`): everything over
 # about 700 triangles. A model's look does not change, so the list can only grow.
 CULL = {"marlit_regen", "marlit_solar", "marlit_octo", "marlit_battery", "marlit_wireless",
-        "marlit_mortar", "marlit_wheel2"}
+        "marlit_mortar", "marlit_wheel2", "marlit_support", "marlit_rot_support"}
 
 
 SAMPLE_STEP = 0.08            # metres between a face's samples
