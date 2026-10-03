@@ -208,8 +208,8 @@ def _cab_front(f, F):
     # the helmet's guards, upper and lower, either side of the face; a cyan strip, bolts
     _sym(S, [(-1.0, 1.0), (-0.60, 1.0), (-0.54, 0.40), (-0.55, 0.08), (-1.0, 0.08)])
     _sym(S, [(-1.0, 0.0), (-0.555, 0.0), (-0.60, -0.30), (-0.70, -1.0), (-1.0, -1.0)])
-    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.92, 0.20, -0.86, 0.88))
-    _sym(lambda p: _bolts(f, F, p), [(-0.88, -0.14), (-0.88, -0.86), (-0.78, -0.86)])
+    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.80, 0.16, -0.74, 0.64))
+    _sym(lambda p: _bolts(f, F, p), [(-0.77, -0.14), (-0.77, -0.80)])
     # the brows: sloping back as they come down to the visor, angled down to the crest
     bw = _plane((-0.5, 1.0), 0.0, (-0.5, 0.55), 0.07, (0.0, 1.0), 0.0)
     _sym(lambda p, t: S(p, t), [(-0.56, 1.0), (-0.16, 1.0), (-0.16, 0.50), (-0.53, 0.64)], bw)
@@ -278,16 +278,16 @@ def _cab_back(f, F):
     S = lambda pts, *a, **k: _slab(f, F, pts, *a, **k)      # noqa: E731
     S(_rect(-1.0, -1.0, 1.0, 1.0), U, CORE, "mflat0")
     # a frame round a radiator: two pillars, a band over, a hazard band under
-    _sym(S, [(-1.0, 1.0), (-0.78, 1.0), (-0.72, 0.70), (-0.72, -0.70), (-0.78, -1.0), (-1.0, -1.0)])
-    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.92, -0.20, -0.86, 0.40))
-    _sym(lambda p: _bolts(f, F, p), [(-0.89, 0.86), (-0.89, -0.62), (-0.89, -0.86)])
-    S(_rect(-0.76, 0.74, 0.76, 1.0))
-    S(_rect(-0.76, -0.74, 0.76, -1.0), style="mhazard", hard=(0, 1, 2, 3))
+    _sym(S, [(-1.0, 1.0), (-0.70, 1.0), (-0.64, 0.70), (-0.64, -0.70), (-0.70, -1.0), (-1.0, -1.0)])
+    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.78, -0.30, -0.72, 0.40))
+    _sym(lambda p: _bolts(f, F, p), [(-0.75, 0.56), (-0.75, -0.56)])
+    S(_rect(-0.68, 0.74, 0.68, 1.0))
+    S(_rect(-0.68, -0.74, 0.68, -1.0), style="mhazard", hard=(0, 1, 2, 3))
     # the radiator: fins hung to look down
     for k in range(5):
         y1 = 0.70 - k * 0.28
         lv = _plane((0.0, y1), 0.0, (0.0, y1 - 0.26), 0.10, (1.0, y1), 0.0)
-        S(_rect(-0.66, y1 - 0.26, 0.66, y1), lv, bev=0.3)
+        S(_rect(-0.60, y1 - 0.26, 0.60, y1), lv, bev=0.3)
 
 
 def _cab_bottom(f, F):
@@ -297,6 +297,101 @@ def _cab_bottom(f, F):
         for sy in (-1, 1):
             p = _rect(sx * 0.03, sy * 0.03, sx * E, sy * E)
             _slab(f, F, p if _area2(p) > 0 else list(reversed(p)), style="mpside", lim=E)
+
+
+# THE CUBE'S EDGES AND CORNERS ARE CUT, AS A HELMET'S ARE (the player: "the corners are too even").
+# Every edge is chamfered - deep along the roof, so the head narrows upward, shallow at the floor -
+# and every corner sliced off under a faceted cap. Done by CLIPPING the finished faces against the
+# cut planes and laying a face on each plane: a cut through a slab or a seam is closed by that face.
+# Depths in the cube's half-size (1.0 = a metre here), as `|u| + |v| <= 2 - c`.
+CUT_TOP = 0.24               # the roof's four edges
+CUT_SIDE = 0.16              # the four upright edges
+CUT_FLOOR = 0.10             # the floor's four edges
+CORNER_TOP = 0.75            # the corners, `|x| + |y| + |z| <= 3 - k`
+CORNER_FLOOR = 0.42
+
+
+def _cut_planes():
+    planes = []                                   # (n, o, kind): keep n.u <= o
+    ax = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
+    for i in range(3):
+        for j in range(i + 1, 3):
+            for si in (-1, 1):
+                for sj in (-1, 1):
+                    n = th.add(th.mul(ax[i], si), th.mul(ax[j], sj))
+                    if 1 in (i, j):
+                        c = CUT_TOP if n[1] > 0 else CUT_FLOOR
+                    else:
+                        c = CUT_SIDE
+                    planes.append((n, 2.0 - c, "edge"))
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            for sz in (-1, 1):
+                planes.append(((sx, sy, sz), 3.0 - (CORNER_TOP if sy > 0 else CORNER_FLOOR), "corner"))
+    for i in range(3):
+        for sg in (-1, 1):
+            planes.append((th.mul(ax[i], sg), 1.0, "cube"))
+    return planes
+
+
+def _clip(poly, n, o):
+    """Sutherland-Hodgman: the part of a 3D polygon (in the cube's unit axes) with n.u <= o."""
+    out = []
+    m = len(poly)
+    for i in range(m):
+        a, b = poly[i], poly[(i + 1) % m]
+        da, db = th.dot(n, a) - o, th.dot(n, b) - o
+        if da <= 1e-9:
+            out.append(a)
+        if (da < -1e-9 < db) or (db < -1e-9 < da):
+            t = da / (da - db)
+            out.append(th.add(a, th.mul(th.sub(b, a), t)))
+    return out
+
+
+def _carve(faces):
+    """Clip every face to the cut cube, then close every cut with a face of its own."""
+    C = (CX, CY, CZ)
+    planes = _cut_planes()
+    cuts = [p for p in planes if p[2] != "cube"]
+    kept = []
+    for fc in faces:
+        u = [th.sub(q, C) for q in fc.pts]
+        for n, o, _k in cuts:
+            u = _clip(u, n, o)
+            if len(u) < 3:
+                break
+        if len(u) < 3 or th.dot(th.newell(u), th.newell(u)) < 1e-10:
+            continue
+        fc.pts = [th.add(q, C) for q in u]
+        kept.append(fc)
+    caps = []
+    for idx, (n, o, kind) in enumerate(cuts):
+        nn = th.norm(n)
+        base = th.mul(nn, o / math.sqrt(th.dot(n, n)))
+        t1 = th.norm(th.cross(nn, (0.0, 1.0, 0.0) if abs(nn[1]) < 0.9 else (1.0, 0.0, 0.0)))
+        t2 = th.cross(nn, t1)
+        poly = [th.add(base, th.add(th.mul(t1, 4 * a), th.mul(t2, 4 * b)))
+                for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
+        for j, (m, oo, _k) in enumerate(planes):
+            if j != idx:
+                poly = _clip(poly, m, oo)
+            if len(poly) < 3:
+                break
+        if len(poly) < 3:
+            continue
+        P = [th.add(q, C) for q in poly]
+        inside = C
+        # dark like the plates, a tone lighter the more it looks up: in the blocks' bright "medge"
+        # a cut this wide read as a pale cage round the head
+        st = "mbev3" if nn[1] > 0.5 else ("mbev2" if nn[1] > -0.1 else "mbev1")
+        mw._face(caps, P, inside, st)
+        if kind == "corner":
+            # a plate on the cap, standing a few millimetres off it: the corner reads as armour
+            ctr = tuple(sum(q[i] for q in P) / len(P) for i in range(3))
+            inner = [th.add(ctr, th.add(th.mul(th.sub(q, ctr), 0.62), th.mul(nn, 0.004))) for q in P]
+            mw._face(caps, inner, inside, "mplate")
+    return kept + caps
 
 
 def build_marlit_cabin(pk, img):
@@ -322,6 +417,7 @@ def build_marlit_cabin(pk, img):
             else:
                 F = _Face(cen, th.cross((0.0, 1.0, 0.0), n), (0.0, 1.0, 0.0), n)
                 (_cab_back if side else _cab_front)(f, F)
+    parts["marlit_cabin_body"] = _carve(f)
     return parts
 
 
