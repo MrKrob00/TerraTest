@@ -8,11 +8,10 @@ placeholders.
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
 
-CABIN - a mech's head, not a car's cab (the player), in angular armour of two layers over a dark core:
-slabs with 45 deg bevels, the high layer's tops the cube's faces, so it joins on every face, and no
-round part anywhere. Front: helmet guards, a crest and brows over a cyan visor, a ribbed mouthplate,
-intake cheeks, a chin chevron; sides: an ear with a fin, louvres, a band; roof: crest, brows, hatches;
-back: a framed radiator.
+CABIN - a mech's head, not a car's cab (the player), CARVED: solids over a dark core whose faces tilt
+and are toned by where they look - a brim sloping over a cyan visor, cheeks falling in to a ridged
+mouthplate, a jutting chin, louvres hung at an angle - and no round part. Front and back own the
+cube's edges, so it joins on every face.
   body - all of it (a cabin moves nothing)
 
 WHEEL - after the Falsus wheel's layout (the player: "a transmission, and the wheel lower, like
@@ -49,22 +48,17 @@ def _oct_on(f, c, u, v, r, style, inside):
 
 
 # ── the cabin ───────────────────────────────────────────────────────────────────────────────────
-# A MECH'S HEAD, NOT A CAR'S CAB, IN ANGULAR ARMOUR OF TWO LAYERS. The player's calls, in order: "the
-# cabin of some transformer, not of a machine, and connection points everywhere"; "too many holes into
-# it"; "too simple, and I still do not like the circles". So: a dark core CORE inside the cube, and
-# over it armour slabs with 45 deg bevels - a low layer (top at L1) and a high one whose tops ARE the
-# cube's faces, so every face joins. Between slabs only seams; what light there is lies in them or on
-# a slab. NO ROUND PART AND NO OCTAGON on it: the shoulder joint, the chest core and the roof hatch
-# were octagons and read as circles. Front: helmet guards, a crest and brows over a cyan visor, a
-# ribbed mouthplate, intake cheeks, a chin chevron. Sides: an ear module with a fin, louvres, a band.
-# Roof: a crest ridge, brow wedges, hatches. Back: a framed radiator of fins. Each face owns its
-# edges in turn (front/back, then the sides, then roof and floor), so slabs never cross at a corner.
-CORE = 0.09                  # how far the core stands inside the cube
-L1 = 0.045                   # the low layer's top, under the cube's face
-E_FB = 1.0                   # front and back slabs reach the cube's edges and own its corners
-E_SD = 1.0 - CORE            # the sides' reach along the body, the roof's and floor's both ways: they
-                             # stop where the next face's slabs stand, so no edge is notched
-LIGHT2 = (-0.37, 0.93)       # the painted light in a face's own axes: from above, a little left
+# A MECH'S HEAD, CARVED, NOT PANELLED. The player's calls, in order: "the cabin of some transformer,
+# not of a machine, and connection points everywhere"; "too many holes into it"; "too simple, and I
+# still do not like the circles"; "too flat". So: a dark core CORE inside the cube and over it SOLIDS
+# whose faces TILT - a brim sloping down over the visor, cheeks falling in to a mouthplate ridged down
+# its middle, a chin jutting out, louvres hung at an angle - each face toned by where it looks (style
+# "m"), because unshaded, a tilt nobody paints reads as flat. Panels laid in one plane (the cut before)
+# read as a drawing on a box whatever their bevels. No round part and no octagon. The cube still joins
+# everywhere: front and back own its edges with faces at the cube's plane, the sides and the roof stop
+# where those solids stand (`E_SD`), so no edge is notched.
+CORE = 0.26                  # the core's depth inside the cube: how far a carved face may fall
+E_SD = 1.0 - CORE            # the sides' reach along the body, the roof's and floor's both ways
 
 
 class _Face:
@@ -105,42 +99,31 @@ def _inset(pts, ws):
     return out
 
 
-def _slab(f, F, pts, top=0.0, base=CORE, style="mplate", lim=E_FB, limy=None):
-    """An armour slab: footprint `pts` (convex) at depth `base`, its top at `top` inset by the drop
-    (45 deg bevels, each toned by where it faces the painted light) - except along the cube's own
-    edge, where the wall stands nearly upright so the face stays whole."""
-    limy = lim if limy is None else limy
-    n = len(pts)
-    drop = base - top
-    ws = []
-    outer = []
-    for i in range(n):
-        p, q = pts[i], pts[(i + 1) % n]
-        o = ((abs(p[0]) >= lim - 0.01 and abs(q[0]) >= lim - 0.01 and p[0] * q[0] > 0) or
-             (abs(p[1]) >= limy - 0.01 and abs(q[1]) >= limy - 0.01 and p[1] * q[1] > 0))
-        outer.append(o)
-        ws.append(0.012 if o else drop)
-    tp = _inset(pts, ws)
-    cx = sum(p[0] for p in pts) / n
-    cy = sum(p[1] for p in pts) / n
-    inside = F.P(cx, cy, base + 0.05)
-    mw._face(f, [F.P(x, y, top) for x, y in tp], inside, style, u_hint=F.a)
-    ccw = _area2(pts) > 0
-    for i in range(n):
-        j = (i + 1) % n
-        dx, dy = pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]
-        L = math.hypot(dx, dy)
-        on = (dy / L, -dx / L) if ccw else (-dy / L, dx / L)          # the edge's outward normal
-        k = max(0, min(5, int(round(2.5 + 2.6 * (on[0] * LIGHT2[0] + on[1] * LIGHT2[1])))))
-        q = [F.P(*tp[i], top), F.P(*tp[j], top), F.P(*pts[j], base), F.P(*pts[i], base)]
-        mw._face(f, q, inside, "mflat1" if outer[i] else "mbev%d" % k, u_hint=th.sub(q[1], q[0]))
+def _dep(top, x, y):
+    """A top's depth at (x, y): a number, or a plane (d0, gx, gy) - d0 + gx x + gy y."""
+    if isinstance(top, tuple):
+        return top[0] + top[1] * x + top[2] * y
+    return top
 
 
-def _paint(f, F, pts, d, style):
-    """A flat patch at depth d: light on the core in a seam, or an inlay a few millimetres proud."""
+def _plane(p0, d0, p1, d1, p2, d2):
+    """The plane (d0, gx, gy) through three (x, y) points at three depths."""
+    (x0, y0), (x1, y1), (x2, y2) = p0, p1, p2
+    det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
+    gx = ((d1 - d0) * (y2 - y0) - (d2 - d0) * (y1 - y0)) / det
+    gy = ((x1 - x0) * (d2 - d0) - (x2 - x0) * (d1 - d0)) / det
+    return (d0 - gx * x0 - gy * y0, gx, gy)
+
+
+def _flipx(top):
+    return (top[0], -top[1], top[2]) if isinstance(top, tuple) else top
+
+
+def _paint(f, F, pts, top, style, lift=0.004):
+    """A flat patch lying `lift` proud of a top (a depth or a plane): an inlay, a lamp, a bolt."""
     cx = sum(p[0] for p in pts) / len(pts)
     cy = sum(p[1] for p in pts) / len(pts)
-    mw._face(f, [F.P(x, y, d) for x, y in pts], F.P(cx, cy, 0.5), style, u_hint=F.a)
+    mw._face(f, [F.P(x, y, _dep(top, x, y) - lift) for x, y in pts], F.P(cx, cy, 0.8), style, u_hint=F.a)
 
 
 def _rect(x0, y0, x1, y1):
@@ -151,105 +134,169 @@ def _mirror(pts):
     return [(-x, y) for x, y in reversed(pts)]
 
 
-def _both(fn, pts, *a, **k):
-    fn(pts, *a, **k)
-    fn(_mirror(pts), *a, **k)
-
-
-def _bolts(f, F, at, d=-0.004, r=0.028):
+def _bolts(f, F, at, top=0.0, r=0.028):
     for x, y in at:
-        _paint(f, F, _rect(x - r, y - r, x + r, y + r), d, "mbolt")
+        _paint(f, F, _rect(x - r, y - r, x + r, y + r), top, "mbolt")
+
+
+U = 0.12                     # the under-layer: one slab over each face, the floor every seam shows
+LIGHT_F = (-0.35, 0.60, 0.72)  # the painted light in a face's OWN axes (across, up, out), as the
+                             # Marlit hull's facets: every side of the cube reads alike
+
+
+def _tone(F, q, inside):
+    """A facet's paint by where it looks in its face's axes: a face lying in the cube's plane is the
+    hull's plate, one tilted up or lit from the left brighter, down or right darker."""
+    n = th.norm(th.newell(th.outward(q, inside)))
+    ln = (th.dot(n, F.a), th.dot(n, F.b), th.dot(n, F.n))
+    L = th.norm(LIGHT_F)
+    v = ln[0] * L[0] + ln[1] * L[1] + ln[2] * L[2]
+    for lim, st in ((0.95, "mbev3"), (0.84, "mbev2"), (0.62, "mplate"), (0.30, "mbev1")):
+        if v >= lim:
+            return st
+    return "mbev0"
+
+
+def _slab(f, F, pts, top=0.0, base=U, style="t", lim=1.0, limy=None, bev=1.0, walls="t", hard=()):
+    """A solid: footprint `pts` (convex) at depth `base`, its top at `top` (a depth or a tilted plane)
+    inset by `bev` of the drop on every edge - except along the cube's own edge and the edges listed in
+    `hard`, where the wall stands upright so the face meets its neighbour. Style "t" is toned by
+    `_tone`."""
+    limy = lim if limy is None else limy
+    n = len(pts)
+    ws, upright = [], []
+    for i in range(n):
+        p, q = pts[i], pts[(i + 1) % n]
+        o = ((abs(p[0]) >= lim - 0.01 and abs(q[0]) >= lim - 0.01 and p[0] * q[0] > 0) or
+             (abs(p[1]) >= limy - 0.01 and abs(q[1]) >= limy - 0.01 and p[1] * q[1] > 0) or i in hard)
+        upright.append(o)
+        mx, my = (p[0] + q[0]) / 2, (p[1] + q[1]) / 2
+        ws.append(0.008 if o else bev * max(0.0, base - _dep(top, mx, my)))
+    tp = _inset(pts, ws)
+    cx = sum(p[0] for p in pts) / n
+    cy = sum(p[1] for p in pts) / n
+    inside = F.P(cx, cy, base + 0.3)
+    q = [F.P(x, y, _dep(top, x, y)) for x, y in tp]
+    mw._face(f, q, inside, _tone(F, q, inside) if style == "t" else style, u_hint=F.a)
+    for i in range(n):
+        j = (i + 1) % n
+        q = [F.P(*tp[i], _dep(top, *tp[i])), F.P(*tp[j], _dep(top, *tp[j])), F.P(*pts[j], base), F.P(*pts[i], base)]
+        if upright[i] and walls == "t":
+            st = "mflat1"
+        else:
+            st = _tone(F, q, inside) if walls == "t" else walls
+        mw._face(f, q, inside, st, u_hint=th.sub(q[1], q[0]))
+
+
+def _sym(fn, pts, top=None):
+    """fn on a left-hand piece and its mirror, a tilted top mirrored with it."""
+    if top is None:
+        fn(pts)
+        fn(_mirror(pts))
+    else:
+        fn(pts, top)
+        fn(_mirror(pts), _flipx(top))
 
 
 def _cab_front(f, F):
-    E = E_FB
-    S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, **k)      # noqa: E731
-    lamp = lambda pts, st: _paint(f, F, pts, CORE - 0.003, st)      # noqa: E731
-    # the seams' light: sunset down the helmet guards' joint, cyan behind the visor
-    _both(lambda p: lamp(p, "mglow"), _rect(-E, 0.01, -0.55, 0.07))
-    lamp(_rect(-0.56, 0.20, 0.56, 0.70), "cyan1")
-    # the helmet guards, upper and lower, either side of the face
-    _both(S, [(-E, E), (-0.60, E), (-0.54, 0.40), (-0.55, 0.08), (-E, 0.08)])
-    _both(S, [(-E, 0.0), (-0.555, 0.0), (-0.60, -0.30), (-0.70, -E), (-E, -E)])
-    _both(lambda p: _bolts(f, F, p), [(-0.86, -0.12), (-0.86, -0.84), (-0.76, -0.84)])
-    _both(lambda p: _paint(f, F, p, -0.003, "cyan2"), [(-0.90, 0.20), (-0.86, 0.20), (-0.86, 0.86), (-0.90, 0.86)])
-    # the crest, and a brow either side angled down to it
-    S([(-0.14, E), (0.14, E), (0.14, 0.62), (0.0, 0.42), (-0.14, 0.62)])
-    _paint(f, F, [(-0.03, 0.90), (0.03, 0.90), (0.03, 0.62), (0.0, 0.56), (-0.03, 0.62)], -0.003, "mglow")
-    _both(S, [(-0.56, E), (-0.18, E), (-0.18, 0.52), (-0.53, 0.66)])
-    # the visor on the low layer, eyes standing out of it
-    S(_rect(-0.54, 0.22, 0.54, 0.68), L1, CORE, "cyan1")
-    _both(lambda p: S(p, L1 - 0.012, CORE, "cyan3"), [(-0.50, 0.29), (-0.21, 0.29), (-0.21, 0.40), (-0.47, 0.50)])
-    # the mouthplate: a low plate with four ribs standing to the face
-    S([(-0.34, 0.18), (0.34, 0.18), (0.34, -0.38), (0.24, -0.46), (-0.24, -0.46), (-0.34, -0.38)], L1, CORE, "mflat0")
-    for x in (-0.23, -0.08, 0.08, 0.23):
-        y1 = -0.40 if abs(x) > 0.15 else -0.44
-        S(_rect(x - 0.055, y1, x + 0.055, 0.12), 0.0, L1)
-    # the cheeks: intakes beside it
-    _both(lambda p: S(p, L1, CORE, "mvent"), [(-0.52, 0.18), (-0.38, 0.18), (-0.38, -0.40), (-0.58, -0.52)])
-    # the chin: a chevron the other way, a sunset seam at its point
-    lamp(_rect(-0.03, -0.54, 0.03, -E), "mglow")
-    _both(S, [(-0.62, -0.58), (-0.38, -0.45), (-0.03, -0.53), (-0.03, -E), (-0.70, -E)])
-    _both(lambda p: _bolts(f, F, p), [(-0.50, -0.84), (-0.14, -0.84)])
+    S = lambda pts, *a, **k: _slab(f, F, pts, *a, **k)      # noqa: E731
+    lamp = lambda pts, st: _paint(f, F, pts, U, st)      # noqa: E731
+    S(_rect(-1.0, -1.0, 1.0, 1.0), U, CORE, "mflat0")
+    # the seams' light: sunset in the helmet's joints and the chin's, cyan behind the visor
+    _sym(lambda p: lamp(p, "mglow"), _rect(-1.0, 0.01, -0.55, 0.07))
+    lamp(_rect(-0.03, -0.53, 0.03, -1.0), "mglow")
+    # the helmet's guards, upper and lower, either side of the face; a cyan strip, bolts
+    _sym(S, [(-1.0, 1.0), (-0.60, 1.0), (-0.54, 0.40), (-0.55, 0.08), (-1.0, 0.08)])
+    _sym(S, [(-1.0, 0.0), (-0.555, 0.0), (-0.60, -0.30), (-0.70, -1.0), (-1.0, -1.0)])
+    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.92, 0.20, -0.86, 0.88))
+    _sym(lambda p: _bolts(f, F, p), [(-0.88, -0.14), (-0.88, -0.86), (-0.78, -0.86)])
+    # the brows: sloping back as they come down to the visor, angled down to the crest
+    bw = _plane((-0.5, 1.0), 0.0, (-0.5, 0.55), 0.07, (0.0, 1.0), 0.0)
+    _sym(lambda p, t: S(p, t), [(-0.56, 1.0), (-0.16, 1.0), (-0.16, 0.50), (-0.53, 0.64)], bw)
+    # the crest, standing to the cube's face, a sunset line down it
+    S([(-0.12, 1.0), (0.12, 1.0), (0.12, 0.62), (0.0, 0.42), (-0.12, 0.62)])
+    _paint(f, F, [(-0.03, 0.92), (0.03, 0.92), (0.03, 0.62), (0.0, 0.54), (-0.03, 0.62)], 0.0, "mglow")
+    # the visor, eyes standing out of it
+    S(_rect(-0.54, 0.22, 0.54, 0.66), 0.07, U, "cyan1", walls="cyan2", bev=0.5)
+    _sym(lambda p: S(p, 0.05, 0.07, "cyan3", walls="cyan3", bev=0.0),
+         [(-0.50, 0.29), (-0.21, 0.29), (-0.21, 0.40), (-0.47, 0.50)])
+    # the mouthplate: two halves meeting in a ridge, ribs standing on each
+    mp = _plane((0.0, 0.0), 0.045, (-0.34, 0.0), 0.10, (0.0, 1.0), 0.045)
+    _sym(lambda p, t: S(p, t, style="mbev0", bev=0.6, hard=(0,)),
+         [(0.0, 0.18), (0.0, -0.46), (-0.24, -0.46), (-0.34, -0.38), (-0.34, 0.18)], mp)
+    rib = (mp[0] - 0.035, mp[1], mp[2])
+    for x in (-0.25, -0.10):
+        _sym(lambda p, t: S(p, t, style="mbev2", bev=0.0), _rect(x - 0.05, -0.40 if x < -0.2 else -0.42, x + 0.05, 0.12), rib)
+    # the cheeks: intakes falling in to the mouthplate
+    ck = _plane((-0.55, 0.0), 0.0, (-0.38, 0.0), 0.08, (-0.55, 1.0), 0.0)
+    _sym(lambda p, t: S(p, t), [(-0.52, 0.18), (-0.38, 0.18), (-0.38, -0.40), (-0.58, -0.52)], ck)
+    _sym(lambda p, t: _paint(f, F, p, t, "mvent"), _rect(-0.50, -0.34, -0.42, 0.10), ck)
+    # the chin, jutting: its face tilts up to the mouthplate, a chevron
+    cn = _plane((0.0, -1.0), 0.0, (0.0, -0.50), 0.07, (1.0, -1.0), 0.0)
+    _sym(lambda p, t: S(p, t), [(-0.62, -0.58), (-0.38, -0.47), (-0.04, -0.52), (-0.04, -1.0), (-0.70, -1.0)], cn)
+    _sym(lambda p: _bolts(f, F, p, cn), [(-0.50, -0.86), (-0.16, -0.86)])
 
 
 def _cab_side(f, F):
-    E, Y = E_SD, E_FB
-    S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, limy=Y, **k)      # noqa: E731
-    lamp = lambda pts, st: _paint(f, F, pts, CORE - 0.003, st)      # noqa: E731
-    # the ear: a low plate at the front with a fin standing out of it and a cyan strip beside the fin
-    S([(0.36, Y), (E, Y), (E, -0.10), (0.50, -0.10), (0.36, 0.20)], L1, CORE, "mflat1")
-    S([(0.50, 0.92), (0.70, 0.92), (0.64, 0.02), (0.50, 0.02)])
-    S(_rect(0.76, 0.06, 0.82, 0.86), L1 - 0.012, L1 + 0.01, "cyan2")
-    # the louvres: a low plate, horizontal fins on it, their bevels dark below and lit above
-    S([(-E, Y), (0.32, Y), (0.32, 0.24), (0.18, -0.10), (-E, -0.10)], L1, CORE, "mflat0")
-    for y in (0.80, 0.60, 0.40, 0.20):
-        S(_rect(-0.78, y - 0.06, 0.14 if y > 0.25 else 0.10, y + 0.06), 0.0, L1)
-    # the band: two slabs and a sunset seam, hazard aft
-    lamp(_rect(-0.05, -0.14, 0.05, -Y), "mglow")
-    lamp(_rect(-E, -0.14, E, -0.10), "mglow")
-    S(_rect(-E, -0.18, -0.06, -Y), style="mhazard")
-    S(_rect(0.06, -0.18, E, -Y))
-    _bolts(f, F, [(0.18, -0.30), (0.76, -0.30), (0.18, -0.84), (0.76, -0.84), (0.44, -0.84)])
+    E = E_SD
+    S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, limy=1.0, **k)      # noqa: E731
+    S(_rect(-E, -1.0, E, 1.0), U, CORE, "mflat0")
+    _paint(f, F, _rect(-E, -0.70, E, -0.64), U, "mglow")
+    # the bands along the roof and the floor, hazard aft at the foot
+    S(_rect(-E, 0.72, E, 1.0))
+    S(_rect(0.02, -0.72, E, -1.0))
+    S(_rect(-E, -0.72, -0.02, -1.0), style="mhazard", hard=(0, 1, 2, 3))
+    _bolts(f, F, [(0.20, -0.86), (0.56, -0.86), (-0.56, 0.86), (0.0, 0.86), (0.56, 0.86)])
+    # the ear: a boss with a fin standing up its middle and a cyan strip
+    S(_rect(0.04, -0.60, E, 0.68), 0.04)
+    S([(0.30, 0.58), (0.46, 0.58), (0.40, -0.50), (0.30, -0.50)], 0.0, 0.04, bev=0.8)
+    _paint(f, F, _rect(0.56, -0.40, 0.62, 0.46), 0.04, "cyan2")
+    # louvres aft, each hung so it looks down
+    for k in range(4):
+        y1 = 0.68 - k * 0.32
+        lv = _plane((0.0, y1), 0.0, (0.0, y1 - 0.30), 0.10, (1.0, y1), 0.0)
+        S(_rect(-E, y1 - 0.30, -0.02, y1), lv, bev=0.3)
 
 
 def _cab_top(f, F):
     E = E_SD
     S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, **k)      # noqa: E731
-    # the crest ridge, its sunset inlay, continuing the front's
-    S([(-0.12, -E), (0.12, -E), (0.12, 0.70), (0.0, E), (-0.12, 0.70)])
-    _paint(f, F, _rect(-0.03, -0.70, 0.03, 0.66), -0.003, "mglow")
-    # either side: a low plate, a brow wedge at the front, a hatch aft
-    _both(lambda p: S(p, L1, CORE, "mflat1"), _rect(-E, -E, -0.16, E))
-    _both(S, [(-E, 0.62), (-0.16, 0.40), (-0.16, E), (-E, E)])
-    _both(S, _rect(-0.76, -0.76, -0.28, 0.04))
-    _both(lambda p: _bolts(f, F, p), [(-0.70, -0.70), (-0.34, -0.70), (-0.70, -0.02), (-0.34, -0.02)])
-    _both(lambda p: _paint(f, F, p, L1 - 0.003, "cyan2"), _rect(-0.76, 0.14, -0.28, 0.20))
+    S(_rect(-E, -E, E, E), U, CORE, "mflat0")
+    # the crest: a ridge front to back, its sunset line
+    S(_rect(-0.14, -E, 0.14, E))
+    _paint(f, F, _rect(-0.03, -0.60, 0.03, 0.60), 0.0, "mglow")
+    # the helmet's shoulders, sloping off to the sides; a hatch standing on each
+    sh = _plane((-0.18, 0.0), 0.03, (-E, 0.0), 0.09, (-0.18, 1.0), 0.03)
+    _sym(lambda p, t: S(p, t), _rect(-E, -E, -0.18, E), sh)
+    hh = (sh[0] - 0.03, sh[1], sh[2])
+    _sym(lambda p, t: S(p, t, bev=0.6), _rect(-0.64, -0.62, -0.30, 0.10), hh)
+    _sym(lambda p, t: _paint(f, F, p, t, "cyan2"), _rect(-0.62, 0.30, -0.32, 0.36), sh)
+    _sym(lambda p, t: _bolts(f, F, p, t), [(-0.58, -0.56), (-0.36, -0.56), (-0.58, 0.04), (-0.36, 0.04)], hh)
 
 
 def _cab_back(f, F):
-    E = E_FB
-    S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, **k)      # noqa: E731
-    # a frame round a radiator: the top band, two pillars, a hazard band under
-    S([(-E, E), (E, E), (E, 0.62), (0.78, 0.56), (-0.78, 0.56), (-E, 0.62)])
-    _both(S, [(-E, 0.56), (-0.70, 0.52), (-0.70, -0.48), (-E, -0.52)])
-    S(_rect(-E, -0.56, E, -E), style="mhazard")
-    _both(lambda p: _bolts(f, F, p), [(-0.84, 0.40), (-0.84, -0.36), (-0.84, 0.86), (-0.20, 0.86)])
-    _both(lambda p: _paint(f, F, p, -0.003, "cyan2"), _rect(-0.88, -0.10, -0.80, 0.14))
-    # the radiator: a low plate and five fins
-    S(_rect(-0.66, -0.52, 0.66, 0.52), L1, CORE, "mflat0")
+    S = lambda pts, *a, **k: _slab(f, F, pts, *a, **k)      # noqa: E731
+    S(_rect(-1.0, -1.0, 1.0, 1.0), U, CORE, "mflat0")
+    # a frame round a radiator: two pillars, a band over, a hazard band under
+    _sym(S, [(-1.0, 1.0), (-0.78, 1.0), (-0.72, 0.70), (-0.72, -0.70), (-0.78, -1.0), (-1.0, -1.0)])
+    _sym(lambda p: _paint(f, F, p, 0.0, "cyan2"), _rect(-0.92, -0.20, -0.86, 0.40))
+    _sym(lambda p: _bolts(f, F, p), [(-0.89, 0.86), (-0.89, -0.62), (-0.89, -0.86)])
+    S(_rect(-0.76, 0.74, 0.76, 1.0))
+    S(_rect(-0.76, -0.74, 0.76, -1.0), style="mhazard", hard=(0, 1, 2, 3))
+    # the radiator: fins hung to look down
     for k in range(5):
-        y = -0.38 + k * 0.19
-        S(_rect(-0.58, y - 0.045, 0.58, y + 0.045), 0.0, L1)
+        y1 = 0.70 - k * 0.28
+        lv = _plane((0.0, y1), 0.0, (0.0, y1 - 0.26), 0.10, (1.0, y1), 0.0)
+        S(_rect(-0.66, y1 - 0.26, 0.66, y1), lv, bev=0.3)
 
 
 def _cab_bottom(f, F):
     E = E_SD
-    S = lambda pts, *a, **k: _slab(f, F, pts, *a, lim=E, **k)      # noqa: E731
+    _slab(f, F, _rect(-E, -E, E, E), U, CORE, "mflat0", lim=E)
     for sx in (-1, 1):
         for sy in (-1, 1):
             p = _rect(sx * 0.03, sy * 0.03, sx * E, sy * E)
-            S(p if _area2(p) > 0 else list(reversed(p)), style="mpside")
+            _slab(f, F, p if _area2(p) > 0 else list(reversed(p)), style="mpside", lim=E)
 
 
 def build_marlit_cabin(pk, img):
