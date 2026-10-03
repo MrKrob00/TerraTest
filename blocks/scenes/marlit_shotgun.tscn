@@ -37,7 +37,7 @@ cone_deg = 8.0
 round_style = &"marlit"
 round_len = 0.26
 recoil_dist = 0.1
-flash_size = 0.6
+flash_size = 0.4
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
@@ -65,7 +65,10 @@ shape = SubResource("Sphere_1")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.6, -0.5)
 
 [node name="Marker3D" type="Marker3D" parent="Pivot"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.18, 0, -1)
+
+[node name="Marker3D2" type="Marker3D" parent="Pivot"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.18, 0, -1)
 
 [node name="RayCast3D" type="RayCast3D" parent="Pivot"]
 target_position = Vector3(0, 0, -10)
