@@ -52,10 +52,12 @@ func _initialize() -> void:
 	_save(_cuprite(), "vein_ore1")
 	_save(_silicate(), "vein_ore2")
 	_save(_titanite(), "vein_ore3")
-	_save(_tree(), "vein_tree")
-	_save(_broadleaf(), "vein_tree1")
-	_save(_flatcrown(), "vein_tree2")
-	_save(_palm(), "vein_tree3")
+	# a seed per tree: reworking one no longer shifts every later tree's jitter
+	var trees := [[_mountain_fir, "vein_tree"], [_broadleaf, "vein_tree1"], [_flatcrown, "vein_tree2"],
+			[_palm, "vein_tree3"]]
+	for i in trees.size():
+		_rng.seed = 9100 + i
+		_save((trees[i][0] as Callable).call(), trees[i][1])
 	quit()
 
 func _save(st: SurfaceTool, name: String) -> void:
@@ -298,51 +300,6 @@ const CUT_Y := 0.42            # the cut over the ground
 const TRUNK_R := 0.27          # the trunk's radius at the cut
 const WOOD := Color(0.78, 0.62, 0.40)
 
-func _tree() -> SurfaceTool:
-	var st := _begin()
-	var n := 7
-	var cut_y: float = GROUND + CUT_Y
-	var cut := _ring(Vector3.ZERO, n, TRUNK_R, cut_y, 0.0, 0.0)
-	var inside := Vector3(0, GROUND, 0)
-	# the stump stays when the rest is felled: a root flare under the ground line, the trunk to the cut
-	_part = 0.0
-	var lo := _ring(Vector3.ZERO, n, TRUNK_R * 1.55, GROUND - SINK, 0.05, 0.0)
-	var flare := _ring(Vector3.ZERO, n, TRUNK_R * 1.25, GROUND + 0.08, 0.03, 0.0)
-	for k in n:
-		var j: int = (k + 1) % n
-		_quad(st, lo[k], lo[j], flare[j], flare[k], inside, BARK.darkened(0.18), false)
-		_quad(st, flare[k], flare[j], cut[j], cut[k], inside, BARK.darkened(0.06), false)
-	var mid := Vector3(0, cut_y, 0)
-	for k in n:
-		_tri(st, cut[k], cut[(k + 1) % n], mid, Vector3(0, cut_y - 1.0, 0), WOOD, false)
-	# what falls: the trunk from the same cut ring up into the crown, its own cut face under it
-	_part = 1.0
-	for k in n:
-		_tri(st, cut[(k + 1) % n], cut[k], mid, Vector3(0, cut_y + 1.0, 0), WOOD.darkened(0.1), false)
-	var thi := _ring(Vector3.ZERO, n, 0.17, GROUND + 2.2, 0.0, 0.0)
-	var ttop := _ring(Vector3.ZERO, n, 0.08, GROUND + 4.6, 0.0, 0.0)
-	for k in n:
-		var j: int = (k + 1) % n
-		_quad(st, cut[k], cut[j], thi[j], thi[k], Vector3(0, GROUND + 1.2, 0), BARK, false)
-		_quad(st, thi[k], thi[j], ttop[j], ttop[k], Vector3(0, GROUND + 3.0, 0), BARK, false)
-	# four tiers of needles
-	var tiers := [[GROUND + 1.35, 1.75, 1.55], [GROUND + 2.40, 1.40, 1.50],
-			[GROUND + 3.35, 1.02, 1.40], [GROUND + 4.20, 0.64, 1.30]]
-	for i in tiers.size():
-		var y: float = tiers[i][0]
-		var r: float = tiers[i][1]
-		var h: float = tiers[i][2]
-		var s := 7
-		var skirt := _ring(Vector3.ZERO, s, r, y, 0.10, 0.45 * i)
-		var apex := Vector3(_rng.randf_range(-0.05, 0.05), y + h, _rng.randf_range(-0.05, 0.05))
-		var under := Vector3(0, y + 0.16, 0)
-		var inn := Vector3(0, y + h * 0.3, 0)
-		var col: Color = NEEDLE.lerp(NEEDLE_TIP, float(i) / float(tiers.size() - 1))
-		for k in s:
-			var j: int = (k + 1) % s
-			_tri(st, skirt[k], skirt[j], apex, inn, col, false)
-			_tri(st, skirt[j], skirt[k], under, inn + Vector3(0, 0.4, 0), col.darkened(0.25), false)
-	return st
 
 
 # ── TREES BY BIOME (after TerraTech's, the player's screenshots) ─────────────────────────────────
@@ -428,29 +385,74 @@ func _flatcrown() -> SurfaceTool:
 	var st := _begin()
 	var n := 6
 	var cut := _stump(st, n, 0.26, BARK)
-	var split := _limb(st, cut, Vector3(0.0, GROUND + 0.95, 0.0), 0.22, BARK)
-	# two trunks lean apart and twist across each other up to the crown's underside
-	var a1 := _limb(st, split, Vector3(-0.45, GROUND + 2.0, 0.2), 0.16, BARK.darkened(0.04))
-	_limb(st, a1, Vector3(0.2, GROUND + 2.6, -0.1), 0.12, BARK.darkened(0.04))
-	var b1 := _limb(st, split, Vector3(0.5, GROUND + 1.9, -0.15), 0.15, BARK)
-	_limb(st, b1, Vector3(-0.15, GROUND + 2.55, 0.25), 0.11, BARK)
-	# the crown: a wide irregular slab, flat on top, undercut below, a bevel round its rim
-	var m := 9
-	var under := _ring(Vector3.ZERO, m, 0.75, GROUND + 2.45, 0.12, 0.0)
-	var rim_lo := _ring(Vector3.ZERO, m, 2.05, GROUND + 3.15, 0.10, 0.0)
-	var rim_hi := _ring(Vector3.ZERO, m, 1.95, GROUND + 3.45, 0.08, 0.0)
-	var top_ring := _ring(Vector3.ZERO, m, 1.55, GROUND + 3.62, 0.08, 0.0)
-	var centre := Vector3(0.0, GROUND + 3.5, 0.0)
-	for k in m:
-		var j: int = (k + 1) % m
-		_quad(st, under[k], under[j], rim_lo[j], rim_lo[k], centre, TEAL_UNDER, false)
-		_quad(st, rim_lo[k], rim_lo[j], rim_hi[j], rim_hi[k], centre, TEAL.darkened(0.1), false)
-		# a streak of glow on a few bevel facets, as on the screenshot's blue trees
-		var bevel: Color = GLOW if k % 3 == 1 else TEAL
-		_quad(st, rim_hi[k], rim_hi[j], top_ring[j], top_ring[k], centre, bevel, false)
-		_tri(st, top_ring[k], top_ring[j], Vector3(0.0, GROUND + 3.66, 0.0), centre, TEAL.lightened(0.05), false)
-		_tri(st, under[j], under[k], Vector3(0.0, GROUND + 2.5, 0.0), centre + Vector3(0, 1, 0), TEAL_UNDER.darkened(0.2), false)
+	var split := _limb(st, cut, Vector3(0.0, GROUND + 0.9, 0.0), 0.22, BARK)
+	# a V of two trunks splaying apart, each into the crown's underside - the crossed pair read as
+	# a diamond hung under a gem (the player: "strange")
+	var a1 := _limb(st, split, Vector3(-0.55, GROUND + 1.9, 0.15), 0.15, BARK.darkened(0.04))
+	_limb(st, a1, Vector3(-0.85, GROUND + 2.55, 0.2), 0.11, BARK.darkened(0.04))
+	var b1 := _limb(st, split, Vector3(0.5, GROUND + 1.85, -0.2), 0.15, BARK)
+	_limb(st, b1, Vector3(0.8, GROUND + 2.5, -0.3), 0.11, BARK)
+	# the crown: wide FLAT lumps side by side, chunky as the broadleaf's, flattened on top - one
+	# thick faceted cap, wide above and drawn in below
+	var lumps := [[Vector3(-0.7, GROUND + 2.95, 0.2), 1.35], [Vector3(0.75, GROUND + 2.9, -0.25), 1.3],
+			[Vector3(0.05, GROUND + 3.1, 0.75), 1.2], [Vector3(0.0, GROUND + 3.05, -0.8), 1.15],
+			[Vector3(0.0, GROUND + 3.2, 0.0), 1.3]]
+	for i in lumps.size():
+		var col: Color = TEAL.lerp(TEAL_UNDER, _rng.randf_range(0.0, 0.25))
+		if i == 1 or i == 3:
+			col = col.lerp(GLOW, 0.35)          # a violet cast on two of them, as on the screenshot
+		_flat_lump(st, lumps[i][0], lumps[i][1], 0.95, col)
 	return st
+
+## A lump squashed flat on top and drawn in below: the teal tree's crown is made of these.
+func _flat_lump(st: SurfaceTool, c: Vector3, r: float, h: float, col: Color) -> void:
+	var sides := 7
+	var cx := Vector3(c.x, 0.0, c.z)
+	var rings := [_ring(cx, sides, r * 0.45, c.y - h * 0.45, 0.10, 0.0),
+			_ring(cx, sides, r, c.y + h * 0.05, 0.10, 0.5), _ring(cx, sides, r * 0.85, c.y + h * 0.40, 0.06, 1.0)]
+	var bot := c + Vector3(0, -h * 0.55, 0)
+	var top := c + Vector3(_rng.randf_range(-0.1, 0.1), h * 0.46, _rng.randf_range(-0.1, 0.1))
+	for i in 2:
+		for k in sides:
+			var j: int = (k + 1) % sides
+			_quad(st, rings[i][k], rings[i][j], rings[i + 1][j], rings[i + 1][k], c,
+					col.darkened(0.35) if i == 0 else col, false)
+	for k in sides:
+		var j: int = (k + 1) % sides
+		_tri(st, rings[2][k], rings[2][j], top, c, col.lightened(0.08), false)
+		_tri(st, rings[0][j], rings[0][k], bot, c, col.darkened(0.45), false)
+
+## THE MOUNTAIN FIR (vein_tree), in the broadleaf's chunky faceted language - the needle cones of
+## the first conifer were turned down ("not ours"): three faceted tiers tapering up a straight
+## trunk, dark green, snow on their tops.
+const FIR := Color(0.18, 0.44, 0.30)
+const SNOW := Color(0.92, 0.95, 1.0)
+
+func _mountain_fir() -> SurfaceTool:
+	var st := _begin()
+	var n := 6
+	var cut := _stump(st, n, 0.24, BARK)
+	_limb(st, cut, Vector3(0.0, GROUND + 3.4, 0.0), 0.08, BARK.darkened(0.08))
+	var tiers := [[GROUND + 1.6, 1.25, 1.3], [GROUND + 2.55, 0.98, 1.15], [GROUND + 3.4, 0.68, 1.0],
+			[GROUND + 4.1, 0.36, 0.8]]
+	for i in tiers.size():
+		_fir_tier(st, Vector3(0.0, tiers[i][0], 0.0), tiers[i][1], tiers[i][2])
+	return st
+
+## One tier: a chunky faceted cone, its upper facets white with snow.
+func _fir_tier(st: SurfaceTool, c: Vector3, r: float, h: float) -> void:
+	var sides := 7
+	var lo := _ring(Vector3.ZERO, sides, r * 0.72, c.y - h * 0.45, 0.06, 0.0)
+	var mid := _ring(Vector3.ZERO, sides, r, c.y - h * 0.15, 0.10, 0.5)
+	var hi := _ring(Vector3.ZERO, sides, r * 0.45, c.y + h * 0.30, 0.10, 1.0)
+	var apex := c + Vector3(_rng.randf_range(-0.05, 0.05), h * 0.55, _rng.randf_range(-0.05, 0.05))
+	var bot := c + Vector3(0, -h * 0.5, 0)
+	for k in sides:
+		var j: int = (k + 1) % sides
+		_quad(st, lo[k], lo[j], mid[j], mid[k], c, FIR.darkened(0.15), false)
+		_quad(st, mid[k], mid[j], hi[j], hi[k], c, FIR if k % 3 != 0 else SNOW.darkened(0.08), false)
+		_tri(st, hi[k], hi[j], apex, c, SNOW, false)
+		_tri(st, lo[j], lo[k], bot, c, FIR.darkened(0.4), false)
 
 ## A frond: a strip from the crown out and down, seen from both sides (the shader culls backs).
 func _frond(st: SurfaceTool, base: Vector3, dir: Vector3, length: float, width: float) -> void:
