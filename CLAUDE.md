@@ -2320,6 +2320,17 @@ project: read it before claiming how anything works.
   unbatched frames pixel-identical with turrets turned by hand (0 of 76 800 pixels differ); after
   destroying blocks and tearing one off, instances always equal hidden originals, none hidden
   outside the batch, and the torn block draws itself.
+- **THE FAR SIDE OF A MACHINE IS LEFT OUT OF THE MAIN PASS** (`MachineBatch._apply_view`). A block
+  is seen only through an OPEN face (`blocks._apply_occlusion` stores `open_mask`, `cell_lo`,
+  `cell_hi` on every block: the cell beyond is see-through and reached from outside), and a ray
+  enters a face only from the outer side of its plane - so a block none of whose open faces has
+  the camera in front of it is not drawn. Decided in the grid's planes, so only when the camera
+  crosses one (`_view_key`). Drawn always: `moving_parts` blocks (a turret swings out of its cell,
+  a tyre hangs under it) and a model reaching past its cells by more than `VIEW_SLACK`. SHADOWS
+  KEEP EVERYTHING: a group with a culled member draws its main pass without shadow and a
+  SHADOWS_ONLY twin with every instance (the sun casts, `shadow_enabled`), so each pass is still
+  one draw call per group. Measured on a 38-block enemy from each side: 27-31 drawn, 75-79
+  instances in the main pass against 86 in the shadow pass.
 - **THE PROFILER PANEL PRINTS PER FRAME (per physics TICK for `PERF_PHYS_KEYS`), AND IT DID NOT
   USED TO.** The panel snapshots four times a second, and `Perf.snapshot` handed over everything
   piled up since the last one — six frames at 23 fps — so a 5 ms pass read as 30 ms and the
