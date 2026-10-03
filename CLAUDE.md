@@ -1604,8 +1604,8 @@ project: read it before claiming how anything works.
   keeps it: a new textured model is a `RECIPE` bump in the same commit. A scene may name the side
   it is photographed from (`metadata/portrait_dir`, block axes; the Marlit cabin shows its visor).
 - A PORTRAIT IS SKIPPED WHEN ITS MESH IS ADDITIVE (`icon_baker._is_glow`). The receiver and the
-  collector each carry a four-metre capsule with `blend_mode = ADD`: in the world it is an intake
-  beam, in a portrait's bounding box it is a pole next to which the block shrinks to a dot, and
+  collector each carried a four-metre capsule with `blend_mode = ADD` (gone now, the player's call;
+  the rule stays for the reach rings and the next glow): in the world it was an intake beam, in a portrait's bounding box it is a pole next to which the block shrinks to a dot, and
   both icons came out as vertical slivers. The `block_fx` meta cannot help — the beam lives in the
   block's own scene, not in the effects — so the material answers instead: only a glow is drawn by
   adding to the background. Measured after: those two went from 0.24 saturation to 0.37 and 0.43.
@@ -2077,7 +2077,13 @@ project: read it before claiming how anything works.
   dark octagonal emitter under the deck for body. It does NOT bob: a moving part cannot sit flush
   with a static belt. Rejected on the way, in order: a plate on a post, a platform block, round
   saucers, a half-saucer - thin, lower than the belt, and rounder than the plate the player meant.
-  Beam and cargo stack stand over the pad; it joins by the sides and the bottom only (`connect_faces`
+  THE GLASS COLUMN OVER BOTH BLOCKS IS GONE (the player's call); the cargo stack stands over the pad
+  on its own. A RECEIVER EMPTIES A COLLECTOR (`Receiver.take_interval` 0.25, takes until full,
+  `capacity` 8): it took one item a second and stopped at four - measured, a full collector's eight
+  move in the first quarter second. THE COLLECTOR'S RING TURNS ROUND ITS OWN BASE (0.7 m, eight
+  dashes, `collector.tscn`): it was the 5 m reach ring pulled to the machine's centre height every
+  frame, and read as arcs somewhere beside the block. Under -0.3 the raised grass hides it.
+  The cargo stack stands over the pad; it joins by the sides and the bottom only (`connect_faces`
   47), since a block on top would hang over a deck this low. The collector is still a cube with a round bowl in
   its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the
   held item sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
