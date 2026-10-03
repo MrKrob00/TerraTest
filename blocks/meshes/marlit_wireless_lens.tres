@@ -1,4 +1,4 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://bug01g61m465f"]
 
 [ext_resource type="Texture2D" uid="uid://hrtw0o7h3tat" path="res://objects/marlit_wireless_texture.png" id="1_55kky"]
 

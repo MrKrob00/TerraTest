@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://uw0cq6gb4jeh"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_wheel2_texture.png" id="1_nnng5"]
+[ext_resource type="Texture2D" uid="uid://pmgbyacr5r10" path="res://objects/marlit_wheel2_texture.png" id="1_nnng5"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0ddri"]
 resource_name = "marlit_wheel2"
