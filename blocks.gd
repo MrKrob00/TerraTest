@@ -1695,8 +1695,19 @@ func _apply_occlusion() -> void:
 		(node as Node3D).visible = _cells_seen(cells_of[anchor], seen)
 		# Заодно отдаём блоку, какие его грани открыты: оболочка хп не рисует прижатые к
 		# соседям, а их на плотной машине большинство (см. open_faces в block_hp.gdshader).
+		var fmask: int = _face_mask(cells_of[anchor], seen)
 		if node.has_method("set_open_faces"):
-			node.call("set_open_faces", _face_mask(cells_of[anchor], seen))
+			node.call("set_open_faces", fmask)
+		# The same mask and the block's cell box go to MachineBatch, which leaves out of the main
+		# pass a block none of whose open faces looks at the camera (the far side of a machine).
+		var clo: Vector3i = cells_of[anchor][0]
+		var chi: Vector3i = clo
+		for c in cells_of[anchor]:
+			clo = Vector3i(mini(clo.x, c.x), mini(clo.y, c.y), mini(clo.z, c.z))
+			chi = Vector3i(maxi(chi.x, c.x), maxi(chi.y, c.y), maxi(chi.z, c.z))
+		node.set_meta(&"open_mask", fmask)
+		node.set_meta(&"cell_lo", clo)
+		node.set_meta(&"cell_hi", chi)
 	# What is walled in changed, and the machine's batch draws only what is not (MachineBatch).
 	var mb: Node = get_parent().get_node_or_null("MeshBatch") if get_parent() != null else null
 	if mb != null and mb.has_method("mark_dirty"):
