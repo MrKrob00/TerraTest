@@ -53,6 +53,9 @@ func _initialize() -> void:
 	_save(_silicate(), "vein_ore2")
 	_save(_titanite(), "vein_ore3")
 	_save(_tree(), "vein_tree")
+	_save(_broadleaf(), "vein_tree1")
+	_save(_flatcrown(), "vein_tree2")
+	_save(_palm(), "vein_tree3")
 	quit()
 
 func _save(st: SurfaceTool, name: String) -> void:
@@ -339,4 +342,155 @@ func _tree() -> SurfaceTool:
 			var j: int = (k + 1) % s
 			_tri(st, skirt[k], skirt[j], apex, inn, col, false)
 			_tri(st, skirt[j], skirt[k], under, inn + Vector3(0, 0.4, 0), col.darkened(0.25), false)
+	return st
+
+
+# ── TREES BY BIOME (after TerraTech's, the player's screenshots) ─────────────────────────────────
+# vein_tree (the conifer) stands on the mountains; vein_tree1 a BROADLEAF with chunky faceted crown
+# lumps and vein_tree2 a FLAT-CROWN teal tree on a forked trunk on the meadow; vein_tree3 a PALM in
+# the desert. Every one keeps the felling rules of `_tree`: its stump is the base of ITS OWN trunk
+# up to CUT_Y with a pale cut, UV.x 1 on everything above, which is what falls.
+const LEAF := Color(0.46, 0.76, 0.24)
+const LEAF_DEEP := Color(0.30, 0.60, 0.20)
+const TEAL := Color(0.20, 0.64, 0.72)
+const TEAL_UNDER := Color(0.12, 0.40, 0.50)
+const GLOW := Color(0.72, 0.46, 0.86)
+const PALM_BARK := Color(0.62, 0.47, 0.30)
+const FROND := Color(0.32, 0.62, 0.24)
+
+## The stump every tree stands on: its own trunk ring at the cut (radius r), a flare under the
+## ground, and both cut faces. Returns the cut ring; `_part` is left at 1 for what grows above.
+func _stump(st: SurfaceTool, n: int, r: float, bark: Color) -> Array:
+	var cut_y: float = GROUND + CUT_Y
+	var cut := _ring(Vector3.ZERO, n, r, cut_y, 0.0, 0.0)
+	var inside := Vector3(0, GROUND, 0)
+	_part = 0.0
+	var lo := _ring(Vector3.ZERO, n, r * 1.6, GROUND - SINK, 0.05, 0.0)
+	var flare := _ring(Vector3.ZERO, n, r * 1.25, GROUND + 0.08, 0.03, 0.0)
+	for k in n:
+		var j: int = (k + 1) % n
+		_quad(st, lo[k], lo[j], flare[j], flare[k], inside, bark.darkened(0.18), false)
+		_quad(st, flare[k], flare[j], cut[j], cut[k], inside, bark.darkened(0.06), false)
+	var mid := Vector3(0, cut_y, 0)
+	for k in n:
+		_tri(st, cut[k], cut[(k + 1) % n], mid, Vector3(0, cut_y - 1.0, 0), WOOD, false)
+	_part = 1.0
+	for k in n:
+		_tri(st, cut[(k + 1) % n], cut[k], mid, Vector3(0, cut_y + 1.0, 0), WOOD.darkened(0.1), false)
+	return cut
+
+## A limb from ring `a` (already built) to a ring of radius r1 around `top`.
+func _limb(st: SurfaceTool, a: Array, top: Vector3, r1: float, col: Color) -> Array:
+	var n: int = a.size()
+	var b := _ring(top - Vector3(0, top.y, 0), n, r1, top.y, 0.0, 0.0)
+	var c0: Vector3 = Vector3.ZERO
+	for p in a:
+		c0 += p
+	c0 /= float(n)
+	for k in n:
+		var j: int = (k + 1) % n
+		_quad(st, a[k], a[j], b[j], b[k], (c0 + top) * 0.5, col, false)
+	return b
+
+## A chunky faceted lump (a crown cluster): a pole, three jittered rings, a pole.
+func _lump(st: SurfaceTool, c: Vector3, r: float, h: float, col: Color, sides: int = 6) -> void:
+	var cx := Vector3(c.x, 0.0, c.z)            # `_ring` adds its own y to the centre's
+	var rings := [_ring(cx, sides, r * 0.62, c.y - h * 0.42, 0.12, 0.0),
+			_ring(cx, sides, r, c.y - h * 0.05, 0.12, 0.5), _ring(cx, sides, r * 0.72, c.y + h * 0.36, 0.14, 1.0)]
+	var bot := c + Vector3(0, -h * 0.5, 0)
+	var top := c + Vector3(_rng.randf_range(-0.08, 0.08), h * 0.55, _rng.randf_range(-0.08, 0.08))
+	for i in 2:
+		for k in sides:
+			var j: int = (k + 1) % sides
+			_quad(st, rings[i][k], rings[i][j], rings[i + 1][j], rings[i + 1][k], c, col if i == 1 else col.darkened(0.12), false)
+	for k in sides:
+		var j: int = (k + 1) % sides
+		_tri(st, rings[2][k], rings[2][j], top, c, col.lightened(0.06), false)
+		_tri(st, rings[0][j], rings[0][k], bot, c, col.darkened(0.28), false)
+
+func _broadleaf() -> SurfaceTool:
+	var st := _begin()
+	var n := 6
+	var cut := _stump(st, n, 0.22, BARK)
+	var fork := _limb(st, cut, Vector3(0.05, GROUND + 1.55, 0.0), 0.17, BARK)
+	var tips := [Vector3(-0.55, GROUND + 2.55, 0.25), Vector3(0.6, GROUND + 2.75, -0.2), Vector3(0.05, GROUND + 3.0, 0.5)]
+	for t in tips:
+		_limb(st, fork, t, 0.07, BARK.darkened(0.05))
+	var lumps := [[Vector3(-0.85, GROUND + 2.9, 0.35), 1.1, 1.2], [Vector3(0.9, GROUND + 3.1, -0.3), 1.15, 1.25],
+			[Vector3(0.05, GROUND + 3.4, 0.7), 1.0, 1.15], [Vector3(0.0, GROUND + 3.7, -0.45), 1.0, 1.1],
+			[Vector3(0.1, GROUND + 4.2, 0.1), 0.85, 1.0]]
+	for i in lumps.size():
+		var col: Color = LEAF.lerp(LEAF_DEEP, _rng.randf_range(0.0, 0.5))
+		_lump(st, lumps[i][0], lumps[i][1], lumps[i][2], col)
+	return st
+
+func _flatcrown() -> SurfaceTool:
+	var st := _begin()
+	var n := 6
+	var cut := _stump(st, n, 0.26, BARK)
+	var split := _limb(st, cut, Vector3(0.0, GROUND + 0.95, 0.0), 0.22, BARK)
+	# two trunks lean apart and twist across each other up to the crown's underside
+	var a1 := _limb(st, split, Vector3(-0.45, GROUND + 2.0, 0.2), 0.16, BARK.darkened(0.04))
+	_limb(st, a1, Vector3(0.2, GROUND + 2.6, -0.1), 0.12, BARK.darkened(0.04))
+	var b1 := _limb(st, split, Vector3(0.5, GROUND + 1.9, -0.15), 0.15, BARK)
+	_limb(st, b1, Vector3(-0.15, GROUND + 2.55, 0.25), 0.11, BARK)
+	# the crown: a wide irregular slab, flat on top, undercut below, a bevel round its rim
+	var m := 9
+	var under := _ring(Vector3.ZERO, m, 0.75, GROUND + 2.45, 0.12, 0.0)
+	var rim_lo := _ring(Vector3.ZERO, m, 2.05, GROUND + 3.15, 0.10, 0.0)
+	var rim_hi := _ring(Vector3.ZERO, m, 1.95, GROUND + 3.45, 0.08, 0.0)
+	var top_ring := _ring(Vector3.ZERO, m, 1.55, GROUND + 3.62, 0.08, 0.0)
+	var centre := Vector3(0.0, GROUND + 3.5, 0.0)
+	for k in m:
+		var j: int = (k + 1) % m
+		_quad(st, under[k], under[j], rim_lo[j], rim_lo[k], centre, TEAL_UNDER, false)
+		_quad(st, rim_lo[k], rim_lo[j], rim_hi[j], rim_hi[k], centre, TEAL.darkened(0.1), false)
+		# a streak of glow on a few bevel facets, as on the screenshot's blue trees
+		var bevel: Color = GLOW if k % 3 == 1 else TEAL
+		_quad(st, rim_hi[k], rim_hi[j], top_ring[j], top_ring[k], centre, bevel, false)
+		_tri(st, top_ring[k], top_ring[j], Vector3(0.0, GROUND + 3.66, 0.0), centre, TEAL.lightened(0.05), false)
+		_tri(st, under[j], under[k], Vector3(0.0, GROUND + 2.5, 0.0), centre + Vector3(0, 1, 0), TEAL_UNDER.darkened(0.2), false)
+	return st
+
+## A frond: a strip from the crown out and down, seen from both sides (the shader culls backs).
+func _frond(st: SurfaceTool, base: Vector3, dir: Vector3, length: float, width: float) -> void:
+	var side: Vector3 = dir.cross(Vector3.UP).normalized()
+	var pts: Array = []
+	var segs := 4
+	for i in segs + 1:
+		var t: float = float(i) / float(segs)
+		var p: Vector3 = base + dir * (length * t) + Vector3.DOWN * (length * 0.8 * t * t)
+		var w: float = width * (1.0 - t * 0.85) * (0.6 if i == 0 else 1.0)
+		pts.append([p - side * w, p + side * w])
+	for i in segs:
+		var a: Vector3 = pts[i][0]
+		var b: Vector3 = pts[i][1]
+		var c2: Vector3 = pts[i + 1][1]
+		var d: Vector3 = pts[i + 1][0]
+		var col: Color = FROND.lerp(FROND.lightened(0.2), float(i) / float(segs))
+		var mid: Vector3 = (a + b + c2 + d) * 0.25
+		_quad(st, a, b, c2, d, mid + Vector3.DOWN * 0.3, col, false)
+		_quad(st, a, b, c2, d, mid + Vector3.UP * 0.3, col.darkened(0.25), false)
+
+func _palm() -> SurfaceTool:
+	var st := _begin()
+	var n := 6
+	var ring := _stump(st, n, 0.22, PALM_BARK)
+	# a curved, ringed trunk: each segment flares a little at its foot
+	var segs := 8
+	var lean := Vector3(0.9, 0.0, 0.25)
+	var top := Vector3.ZERO
+	for i in segs:
+		var t: float = float(i + 1) / float(segs)
+		top = lean * (t * t) + Vector3(0.0, GROUND + CUT_Y + 3.8 * t, 0.0)
+		var col: Color = PALM_BARK if i % 2 == 0 else PALM_BARK.darkened(0.12)
+		ring = _limb(st, ring, top, 0.21 - 0.07 * t, col)
+	# the crown: seven fronds out and drooping, and three nuts under them
+	for k in 8:
+		var a: float = TAU * float(k) / 8.0 + _rng.randf_range(-0.2, 0.2)
+		var dir := Vector3(cos(a), _rng.randf_range(0.25, 0.5), sin(a)).normalized()
+		_frond(st, top + Vector3.UP * 0.05, dir, _rng.randf_range(2.0, 2.4), 0.42)
+	for k in 3:
+		var a: float = TAU * float(k) / 3.0
+		_lump(st, top + Vector3(cos(a) * 0.16, -0.12, sin(a) * 0.16), 0.11, 0.2, Color(0.42, 0.30, 0.16), 5)
 	return st
