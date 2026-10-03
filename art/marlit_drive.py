@@ -299,39 +299,14 @@ def _cab_bottom(f, F):
             _slab(f, F, p if _area2(p) > 0 else list(reversed(p)), style="mpside", lim=E)
 
 
-# THE CUBE'S EDGES AND CORNERS ARE CUT, AS A HELMET'S ARE (the player: "the corners are too even").
-# Every edge is chamfered - deep along the roof, so the head narrows upward, shallow at the floor -
-# and every corner sliced off under a faceted cap. Done by CLIPPING the finished faces against the
-# cut planes and laying a face on each plane: a cut through a slab or a seam is closed by that face.
-# Depths in the cube's half-size (1.0 = a metre here), as `|u| + |v| <= 2 - c`.
-CUT_TOP = 0.24               # the roof's four edges
-CUT_SIDE = 0.16              # the four upright edges
-CUT_FLOOR = 0.10             # the floor's four edges
-CORNER_TOP = 0.75            # the corners, `|x| + |y| + |z| <= 3 - k`
-CORNER_FLOOR = 0.42
-
-
-def _cut_planes():
-    planes = []                                   # (n, o, kind): keep n.u <= o
-    ax = ((1, 0, 0), (0, 1, 0), (0, 0, 1))
-    for i in range(3):
-        for j in range(i + 1, 3):
-            for si in (-1, 1):
-                for sj in (-1, 1):
-                    n = th.add(th.mul(ax[i], si), th.mul(ax[j], sj))
-                    if 1 in (i, j):
-                        c = CUT_TOP if n[1] > 0 else CUT_FLOOR
-                    else:
-                        c = CUT_SIDE
-                    planes.append((n, 2.0 - c, "edge"))
-    for sx in (-1, 1):
-        for sy in (-1, 1):
-            for sz in (-1, 1):
-                planes.append(((sx, sy, sz), 3.0 - (CORNER_TOP if sy > 0 else CORNER_FLOOR), "corner"))
-    for i in range(3):
-        for sg in (-1, 1):
-            planes.append((th.mul(ax[i], sg), 1.0, "cube"))
-    return planes
+# THE CUBE KEEPS ITS EDGES SHARP AND ITS CORNERS CARRY ARMOUR (the player: "the corners are too
+# even", then of the chamfered cut "too rounded - I just want some details"). So at every corner a
+# block CORNER_S on a side is cut out of the finished faces and a separate corner piece stands in it,
+# flush with the cube: a seam round it, a plate with bolts on each of its three faces. The cut is a
+# CLIP: a face minus the corner's box is split into convex pieces (in front of the box on x, then on
+# y, then on z), and the three walls of the notch are closed in the dark, seen only through the seam.
+CORNER_S = 0.30              # the corner piece's size, in the cube's half-size (a metre here)
+CORNER_GAP = 0.018           # the seam round it
 
 
 def _clip(poly, n, o):
@@ -349,57 +324,65 @@ def _clip(poly, n, o):
     return out
 
 
+def _live(u):
+    if len(u) < 3:
+        return False
+    nn = th.newell(u)
+    return th.dot(nn, nn) > 1e-10
+
+
+def _minus_box(poly, sg, t):
+    """A convex polygon minus the corner box {sg_i u_i >= t on every axis}, as convex pieces."""
+    out = []
+    rest = poly
+    for i in range(3):
+        n = [0.0, 0.0, 0.0]
+        n[i] = sg[i]
+        piece = _clip(rest, tuple(n), t)
+        if _live(piece):
+            out.append(piece)
+        rest = _clip(rest, tuple(-v for v in n), -t)
+        if not _live(rest):
+            return out
+    return out
+
+
 def _carve(faces):
-    """Clip every face to the cut cube, then close every cut with a face of its own."""
+    """Cut the corner boxes out of every face, close the notches, stand a corner piece in each."""
     C = (CX, CY, CZ)
-    planes = _cut_planes()
-    cuts = [p for p in planes if p[2] != "cube"]
-    kept = []
-    for fc in faces:
-        u = [th.sub(q, C) for q in fc.pts]
-        for n, o, _k in cuts:
-            u = _clip(u, n, o)
-            if len(u) < 3:
-                break
-        if len(u) < 3 or th.dot(th.newell(u), th.newell(u)) < 1e-10:
-            continue
-        fc.pts = [th.add(q, C) for q in u]
-        kept.append(fc)
-    caps = []
-    for idx, (n, o, kind) in enumerate(cuts):
-        nn = th.norm(n)
-        base = th.mul(nn, o / math.sqrt(th.dot(n, n)))
-        t1 = th.norm(th.cross(nn, (0.0, 1.0, 0.0) if abs(nn[1]) < 0.9 else (1.0, 0.0, 0.0)))
-        t2 = th.cross(nn, t1)
-        poly = [th.add(base, th.add(th.mul(t1, 4 * a), th.mul(t2, 4 * b)))
-                for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))]
-        for j, (m, oo, _k) in enumerate(planes):
-            if j != idx:
-                poly = _clip(poly, m, oo)
-            if len(poly) < 3:
-                break
-        if len(poly) < 3:
-            continue
-        P = [th.add(q, C) for q in poly]
-        inside = C
-        # dark like the plates, a tone lighter the more it looks up: in the blocks' bright "medge"
-        # a cut this wide read as a pale cage round the head
-        st = "mbev3" if nn[1] > 0.5 else ("mbev2" if nn[1] > -0.1 else "mbev1")
-        mw._face(caps, P, inside, st)
-        if kind == "corner":
-            # a plate on the cap, standing a few millimetres off it: the corner reads as armour
-            ctr = tuple(sum(q[i] for q in P) / len(P) for i in range(3))
-            inner = [th.add(ctr, th.add(th.mul(th.sub(q, ctr), 0.62), th.mul(nn, 0.004))) for q in P]
-            mw._face(caps, inner, inside, "mplate")
-    return kept + caps
+    t = 1.0 - CORNER_S
+    corners = [(sx, sy, sz) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+    polys = [([th.sub(q, C) for q in fc.pts], fc) for fc in faces]
+    for sg in corners:
+        nxt = []
+        for u, fc in polys:
+            for piece in _minus_box(u, sg, t):
+                nxt.append((piece, fc))
+        polys = nxt
+    out = [th.Face([th.add(q, C) for q in u], fc.style, u_hint=fc.u_hint) for u, fc in polys]
+    W = lambda u: th.add(C, u)      # noqa: E731
+    for sg in corners:
+        # the notch's three walls, dark
+        for i in range(3):
+            j, k = (i + 1) % 3, (i + 2) % 3
+            q = []
+            for a, b in ((t, t), (1.0, t), (1.0, 1.0), (t, 1.0)):
+                u = [0.0, 0.0, 0.0]
+                u[i], u[j], u[k] = sg[i] * t, sg[j] * a, sg[k] * b
+                q.append(W(tuple(u)))
+            mw._face(out, q, W(tuple(v * 2.0 for v in sg)), "mflat0")
+        # the corner piece, flush with the cube's three faces
+        lo = tuple(min(sg[i] * (t + CORNER_GAP), sg[i] * 1.0) for i in range(3))
+        hi = tuple(max(sg[i] * (t + CORNER_GAP), sg[i] * 1.0) for i in range(3))
+        em.cham_box(out, W(lo), W(hi), 0.02, "mpside", "mpside", "mpside", "mbev3")
+    return out
 
 
 def build_marlit_cabin(pk, img):
     parts = {"marlit_cabin_body": []}
     f = parts["marlit_cabin_body"]
     lo, hi = (-1.5, -0.5, -1.5), (0.5, 1.5, 0.5)
-    em.cham_box(f, tuple(v + CORE for v in lo), tuple(v - CORE for v in hi), 0.03,
-                "mflat0", "mflat0", "mflat0", "mflat0")
+    # no core box: every face's under-layer closes its own side down to CORE, so nothing sees in
     for axis in range(3):
         for side in (0, 1):
             n = [0.0, 0.0, 0.0]
