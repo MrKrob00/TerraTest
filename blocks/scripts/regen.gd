@@ -216,6 +216,14 @@ func _process(delta: float) -> void:
 		var g: Dictionary = _groups.get(f["group"], {})
 		var b = g.get("block")
 		if t >= total or not is_instance_valid(b):
+			# A long frame can carry a flight from the air straight past its end: it still lands, or
+			# the group stayed in `_groups` and that block was never mended by this unit again.
+			if not f.get("landed", false):
+				f["landed"] = true
+				if is_instance_valid(b):
+					_land(f["group"])
+				else:
+					_groups.erase(f["group"])
 			mm.set_instance_transform(f["slot"], Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
 			mm.set_instance_custom_data(f["slot"], Color(0, f["seed"], 0, 0))
 			_free.append(f["slot"])
@@ -267,6 +275,8 @@ func _land(group: int) -> void:
 
 func _mend(b: Node, hp: int) -> void:
 	b.current_hp = mini(b.current_hp + hp, b.max_hp)
+	if b.has_method("on_repaired"):
+		b.on_repaired()
 	# THE REPAIR IS SHOWN BY THE DAMAGE OVERLAY ITSELF: digits that stop being red green and fade.
 	if b.has_method("_refresh_hp_fx"):
 		b._refresh_hp_fx()
@@ -310,10 +320,15 @@ func _work(delta: float) -> bool:
 	# соседи по машине, и поле, накрывшее лежащий на земле блок или борт стоящей рядом машины,
 	# не делало с ними ничего. Слой 2 — это блоки, все и всюду: на машине, на базе, в мире.
 	# СЕБЯ ТОЖЕ ЧИНИМ: the unit is one of the blocks in its field, or a shot-up unit stays shot up.
-	# Blocks with digits still on the way wait for them to land.
+	# A block with digits still on the way is charged again, and what it is given rides with the
+	# digits already flying (`pending`): a flight lasts longer than the tick, so waiting for it to
+	# land skipped every other tick and a lone damaged block got half the budget.
+	var pending: Dictionary = {}
+	for id in _groups:
+		pending[id] = int(_groups[id]["hp"])
 	var need: Array = []
 	for b in _blocks_in_field():
-		if b.current_hp < b.max_hp and not _groups.has(b.get_instance_id()):
+		if b.current_hp + int(pending.get(b.get_instance_id(), 0)) < b.max_hp:
 			need.append(b)
 	if need.is_empty():
 		return true
@@ -325,7 +340,7 @@ func _work(delta: float) -> bool:
 	var budget: float = heal_rate * REGEN_INTERVAL
 	if vehicle.has_method("energy_available"):
 		budget = minf(budget, float(vehicle.energy_available()) * hp_per_energy)
-	var shares: Dictionary = _share(need, int(budget))
+	var shares: Dictionary = _share(need, int(budget), pending)
 	var total := 0
 	for id in shares:
 		total += int(shares[id])
@@ -333,8 +348,13 @@ func _work(delta: float) -> bool:
 		return true
 	vehicle.energy_consume(float(total) / hp_per_energy)
 	for b in need:
-		var hp: int = int(shares.get(b.get_instance_id(), 0))
-		if hp > 0 and not _launch(b, hp):
+		var id: int = b.get_instance_id()
+		var hp: int = int(shares.get(id, 0))
+		if hp <= 0:
+			continue
+		if _groups.has(id):
+			_groups[id]["hp"] = int(_groups[id]["hp"]) + hp
+		elif not _launch(b, hp):
 			_mend(b, hp)
 	_heal_flash = 1.0
 	return true
@@ -342,7 +362,7 @@ func _work(delta: float) -> bool:
 ## The budget split evenly between the blocks, none given more than it is missing, what one did not
 ## need handed on to the rest (water filling). Every pass gives at least one point to someone, so
 ## it ends. instance id -> hit points.
-static func _share(blocks: Array, budget: int) -> Dictionary:
+static func _share(blocks: Array, budget: int, pending: Dictionary = {}) -> Dictionary:
 	var out: Dictionary = {}
 	var open: Array = blocks.duplicate()
 	var left: int = budget
@@ -353,7 +373,7 @@ static func _share(blocks: Array, budget: int) -> Dictionary:
 			if left <= 0:
 				break
 			var id: int = b.get_instance_id()
-			var missing: int = b.max_hp - b.current_hp - int(out.get(id, 0))
+			var missing: int = b.max_hp - b.current_hp - int(pending.get(id, 0)) - int(out.get(id, 0))
 			var give: int = mini(mini(each, missing), left)
 			out[id] = int(out.get(id, 0)) + give
 			left -= give

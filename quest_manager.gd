@@ -440,6 +440,7 @@ func reset_all() -> void:
 	for q in quests:
 		q["progress"] = 0
 		q["done"] = false
+		_rewind_stage(q)
 	tracked_id = ""
 	changed.emit()
 
@@ -460,6 +461,7 @@ func reload_from_progress() -> void:
 	for q in quests:
 		q["progress"] = 0
 		q["done"] = false
+		_rewind_stage(q)
 		if g == null:
 			continue
 		if (q["type"] == Type.STORY or q["type"] == Type.TUTORIAL) and g.quests_done.has(q["id"]):
@@ -511,6 +513,16 @@ func set_progress(id: String, value: int) -> void:
 
 ## Открыть квест ЗАНОВО (события повторяются). Прогресс и стадию откатываем в начало — иначе
 ## перезаряженное событие сразу оказалось бы на своей второй части.
+## STAGES ARE MEMORY ONLY (nothing saves them), so whatever re-reads progress starts every quest at
+## its first stage. Without this a slot switch or a reset kept the stage the last session ended
+## on: a quest half done in one slot opened on its second stage in another - "take the scanner from
+## the other one" before the first was ever taken.
+func _rewind_stage(q: Dictionary) -> void:
+	q.erase("reward_mult")
+	if q.has("stages") and not (q["stages"] as Array).is_empty():
+		q["stage"] = 0
+		_apply_stage(q)
+
 func reset_quest(id: String) -> void:
 	var q := _find(id)
 	if q.is_empty():
@@ -926,6 +938,9 @@ func force_quest(id: String) -> bool:
 	# СБРАСЫВАЕМ В НАЧАЛО. Полигон одалживает последний игранный слот, и сюжет в нём может быть
 	# уже пройден; проверять надо ветку целиком, а не её последнюю секунду.
 	reset_quest(id)
+	# The branch's memory lives in quest_arcs and outlives the quest: forget it, or a branch forced
+	# a second time starts from where the first run left it.
+	get_tree().call_group("quest_arcs", "forget_quest", id)
 	_forced[id] = true
 	changed.emit()
 	_auto_track()

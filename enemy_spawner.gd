@@ -590,7 +590,7 @@ func party_for_request(presets: Array) -> Array:
 	var player: Node3D = _player()
 	if player == null or PRESET_TIERS.is_empty() or out.size() <= 1:
 		return out
-	var budget: float = PARTY_BUDGET * _step_value(_tier_cap(player))
+	var budget: float = party_budget()        # one formula: `_ev_spawn` trims a faction's party by it too
 	while out.size() > 1:
 		var total: float = 0.0
 		var dear: int = -1
@@ -749,6 +749,7 @@ func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
 	# could become silently impossible: the player drives off, the scout sleeps, cleanup takes it as the
 	# farthest one, and the quest keeps pointing at a target that no longer exists.
 	enemy.set_meta("story", true)
+	enemy.set_meta("story_scout", true)   # the compass's target for "destroy the scout"
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_mark_first_enemy(enemy)          # usual path: the end of the tutorial brings this scout
@@ -793,10 +794,10 @@ func _pg_blocked() -> bool:
 ## Спавн ПО ЗАПРОСУ: снимает запрет полигона ровно на один вызов. Флаг здесь, а не на вызывающем:
 ## поднимать его снаружи значит однажды забыть опустить.
 func spawn_requested(pos: Vector3, preset: int, faction_id: int = 1,
-		as_base: bool = false, free_place: bool = false) -> Node3D:
+		as_base: bool = false, free_place: bool = false, carry: Array = []) -> Node3D:
 	_pg_request = true
 	_pg_free = free_place
-	var e: Node3D = spawn_at(pos, preset, faction_id, as_base)
+	var e: Node3D = spawn_at(pos, preset, faction_id, as_base, carry)
 	_pg_request = false
 	_pg_free = false
 	return e
@@ -814,7 +815,9 @@ func _apply_role(enemy: Node, preset: int) -> void:
 	if "miner" in enemy:
 		enemy.set("miner", miner_presets.has(preset))
 
-func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false) -> Node3D:
+## `carry` is story cargo (blocks.carry): laid into the layout before the machine is born.
+func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false,
+		carry: Array = []) -> Node3D:
 	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
 	var vehicles: Node = _vehicles_root()
@@ -826,6 +829,8 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
 		blocks.layout_preset = preset
+		if "carry" in blocks:
+			blocks.carry = carry.duplicate()
 		if as_base and "is_station" in blocks:
 			blocks.is_station = true
 	if "faction" in enemy:

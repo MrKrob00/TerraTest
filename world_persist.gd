@@ -655,7 +655,11 @@ func _save_world() -> void:
 			}
 			# The quest tag is saved WITH the block: without it restored cargo becomes ordinary litter - the
 			# cleanup eats it while the quest looks for a target that no longer exists.
-			if c.has_meta("quest_id"):
+			# AN EVENT'S TAG IS NOT SAVED: events are memory only and start over after a load at a new
+			# point, and a tagged leftover was adopted by the next run (`QuestProps._rescan`) as its
+			# cargo - the compass led to the old spot and no crate came at the new one. Untagged it is
+			# an ordinary loose block, the player's if they want it.
+			if c.has_meta("quest_id") and not String(c.get_meta("quest_id")).begins_with("event_"):
 				entry["quest"] = String(c.get_meta("quest_id"))
 			blocks.append(entry)
 	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.WRITE)
@@ -740,7 +744,9 @@ func _load_world() -> void:
 		var b := _spawn_world_block(G.block_from_key(wb.get("block", 0)),
 				_over_ground(Vector3(p[0], p[1], p[2]), _ready_terrain()),
 				Vector3(r[0], r[1], r[2]), float(wb.get("age", 0.0)))
-		if b != null and String(wb.get("quest", "")) != "":
+		# an older save may still carry an event's tag: dropped here, see the save side
+		if b != null and String(wb.get("quest", "")) != "" \
+				and not String(wb.get("quest", "")).begins_with("event_"):
 			b.set_meta("quest_id", String(wb["quest"]))   # снова квестовый, а не мусор
 
 # The layout is validated BEFORE it is applied: one broken entry would silently break the build and

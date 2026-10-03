@@ -491,6 +491,13 @@ func _check_critical() -> void:
 		if not stays and _map_node() != null and randf() < _drop_chance():
 			_map_node().detach_node(self)
 
+## A repair over the line re-arms the roll. `_check_critical` runs only on a hit, so a block mended
+## back over DROP_FRAC and then knocked straight under it by one hit kept the old roll and could
+## never tear off again. Whoever adds hit points calls this (regen._mend).
+func on_repaired() -> void:
+	if float(current_hp) / float(maxi(max_hp, 1)) >= DROP_FRAC:
+		_drop_rolled = false
+
 ## This block's chance to tear off when it first goes under DROP_FRAC; WeaponBlock overrides it.
 func _drop_chance() -> float:
 	if block in G.BATTERY_BLOCKS:

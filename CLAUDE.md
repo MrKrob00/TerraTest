@@ -36,7 +36,9 @@ project: read it before claiming how anything works.
 8. A block placed on a machine at runtime needs **both** subscriptions: `attach_block_signals` and
    `connect_block_signals`. One of them missing leaves an occupied cell or a dangling collider.
 9. Every gate goes at the **single door**: invulnerability in `VehicleBlock.hurt`, infinite energy
-   in `MachineBody.energy_consume`, damage multiplier in `WeaponBlock._scale_damage`, aim-ray
+   in `MachineBody.energy_consume` AND `energy_available` (the till and the question asked before
+   it - a repair unit, miner or shield that asks first saw an empty store on a machine that pays
+   nothing), damage multiplier in `WeaponBlock._scale_damage`, aim-ray
    hiding in `WeaponBlock._ready`. Per-scene copies are how new sources slip past.
 10. Debug flags are read only through `G.debug(&"flag", default)`; "no `Main` node" must never mean
     "off". Master switch `debug_overrides` is off by default.
@@ -228,7 +230,10 @@ project: read it before claiming how anything works.
   the hull), pushes along its ROLLING LINE (`Wheel.rolling_dir`, from the tyre's rest axle) by
   throttle times how much that line points forward, holds against sliding along its AXLE
   (`wheel_cornering`, capped by `WHEEL_GRIP_LIMIT` like a tyre sliding), and with no throttle drags
-  along the rolling line. Steering turns the front wheels' line (only wheels rolling along the
+  along the rolling line - NO THROTTLE, not no push: steering pushes too, and while it does the drag
+  takes the machine's run only (`linear_velocity`), never the wheel's swing round the centre, which
+  would brake the turn (measured on the proving ground: the same coast and turn as before within a
+  tenth of a m/s - lateral grip had been doing most of that braking). Steering turns the front wheels' line (only wheels rolling along the
   machine), and that grip IS the turn - nothing writes yaw. Below `TANK_FADE` the steering also
   pushes one side against the other (`TANK_STEER`), so a machine turns on the spot, which the AI
   needs: without it two wide big-wheel builds barely moved (10-12 m in 12 s against 56-72). A wheel
@@ -563,6 +568,10 @@ project: read it before claiming how anything works.
   for a base whose core is a seller or a miner. Measured on the proving ground: foot bottom 0.000
   against ground 0.000 for both, no column, the ram back to its rest length after release. The deck is blue down to the ridge band
   (`DECK_Y`), the player's sketch: a dark neck under a short deck read as the block's bulk.
+- THE ANCHOR'S CLEARANCE IS TAKEN PER CELL, not per block (`_anchor_target_y` over `blocks.map`):
+  a block's centre and its anchor cell's floor missed a footprint reaching BELOW its anchor (the
+  octo block, the x9 plate) and the far end of a long block over a slope. Measured: the four slopes
+  and the flat cases below give the same heights as before.
 - **THE ANCHOR HEIGHT IS SET BY THE GROUND UNDER THE SUPPORT, NOT UNDER THE CABIN**
   (`vehicle_body_3d._anchor_target_y`). It was "where the machine stands plus `ANCHOR_LIFT`", right
   only while the support stands by the cabin: three cells back over the low side of a slope, its ram
@@ -1239,6 +1248,38 @@ project: read it before claiming how anything works.
   out goes through `ensure`, which never duplicates something the player already owns.
 - A story block is taken, not found: carried by an enemy or held by a vein, and a killed carrier
   must leave the block behind (`claim_or_drop`) or the branch dead-locks.
+- **STORY CARGO IS LAID INTO THE LAYOUT BEFORE THE MACHINE IS BORN** (`blocks.carry`, placed by
+  `_place_carry` between `_define_layout` and `_spawn_all`; handed down `_spawn_hostile` ->
+  `_ask_spawner` -> `spawn_at`/`spawn_requested`). The radar carriers and the salvage guard's collector
+  were `set_block` calls on a live machine, and `set_block` ONLY WRITES THE GRID: no node, no
+  collider, nothing to shoot off, and `_machine_count` (which counts nodes) saw no radar - the radar
+  branch's second stage skipped itself on its first poll with no reward. The cargo stands on the
+  highest cabin or plain block with open sky above it, nearest the cabin's column; measured, it
+  finds a place on all 72 ladder builds and the Marlit ones. BOTH RADAR STAGES ARE ONE MECHANISM,
+  `_carry_stage(key, block, preset, need)`: the second asks for TWO radars on the machine (the first
+  is already there) and counts what the player owns everywhere (`_owned_count`: every machine, the
+  inventory, the hand) before dropping one at the carrier's death spot. The salvage collector is
+  claimed where the GUARD DIED (`_salvage_drop`), not at the cargo point: the guard hunts the player
+  and `claim_or_drop` searches 30 m. Measured on the proving ground: carrier with a live radar, still
+  on it after 3 s, stage 2 neither skipped nor done until the kill, then exactly one radar loose.
+- **A STAGE THAT NEEDS A POINT RE-PICKS IT** (`_far_point`): points are memory, and a reload in the
+  salvage or tower branch's second stage left no point, so nothing was ever spawned again and the
+  stage hung for good.
+- QUEST STAGES ARE MEMORY ONLY AND START OVER WHEREVER PROGRESS IS RE-READ (`Q._rewind_stage` in
+  `reload_from_progress` and `reset_all`): a slot switch kept the stage the last slot ended on.
+- **AN EVENT THAT LEAVES THE POLL LEAVES THE WORLD** (`quest_arcs._drop_orphans`, every poll, by the
+  keys polled): an event can stop being active without ending - the board redrawn when a better
+  faction opens, a forced branch dropped - and its machines (tagged `story`, so never cleaned up),
+  orb and items stayed for good. Measured: a forced gang dropped mid-run, its machine gone and its
+  point cleared within one poll. A QUEST FORCED AGAIN STARTS CLEAN (`Q.force_quest` ->
+  `quest_arcs.forget_quest`): forced twice, the radar branch found its carrier "already dead".
+  A SKIPPED EVENT COOLS DOWN like an abandoned one (Defend's two skips set none, and only the
+  cooldown reopens an event: it happened once a save). A machine that outlives its quest - the
+  covered ally, a fallen tower's guards - loses `story` (`_release_machine`), or it held a place in
+  `max_total` for good. AN EVENT'S ITEM TAG IS NOT SAVED (`world_persist`, `event_` prefix, dropped
+  on load from older saves too): events start over at a new point after a load, and the next run
+  adopted the old crate as its own. THE SCOUT HAS ITS OWN META (`story_scout`): every quest machine
+  is `story`, so "Destroy the scout" pointed at the nearest event party.
 - **AN EMPTY PARTICIPANT LIST IS "WE KNOW NOTHING ABOUT THEM", NEVER "THEY ARE ALL DEAD".** Enemies
   do not go into the save, so after a reload every arc's list is empty and every reference is gone;
   reading that as a win handed the quest over for free on the first poll, without a shot. Most arcs
@@ -2185,6 +2226,12 @@ project: read it before claiming how anything works.
   let a dense hull fill it with sound blocks and batteries - measured, four of ten damaged blocks
   were never asked about. Measured on the proving ground: one block 135 for 90 energy, ten blocks
   13-14 each (135) for 90; Marlit ten blocks 18 each for 300, one block 159 (all it was missing).
+  A FLIGHT LASTS LONGER THAN A TICK (1.2 s against 1.0), so a block with digits still on the way is
+  charged again and its new hit points ride with the digits already flying (`pending`, also taken off
+  what it is "missing"): waiting for them to land skipped every other tick, and a lone damaged block
+  got half the budget - measured, ten blocks over two ticks 135 before, 270 after. A long frame can
+  carry a flight past its end; it still lands, or the block was never mended by that unit again. A
+  repair calls `VehicleBlock.on_repaired`, which re-arms the tear-off roll once over `DROP_FRAC`.
 - **THE REPAIR FIELD IS A PLAIN SPHERE, AND THE REPAIR IS DIGITS THAT TRAVEL** (`regen.gd`,
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band

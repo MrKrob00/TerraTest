@@ -299,15 +299,27 @@ func _anchor_target_y() -> float:
 	var sp: Vector3 = o + yaw * sup.position
 	var foot_lo: float = G.ground_y(sp, sp.y - 1.0) - (sup.position.y - 0.5)
 	var foot_hi: float = foot_lo + float(sup.leg_max())
+	# EVERY CELL, NOT EVERY BLOCK: one sample at a block's centre and its anchor cell's floor missed
+	# a footprint reaching BELOW the anchor (the octo block and the x9 plate stand round theirs) and
+	# the far end of a long block over a slope - both went into the ground on the anchor.
 	var clear: float = -INF
-	for b in block_map_node.get_children():
-		if b == sup or not (b is Node3D) or not ("block" in b) or b.has_method("probe_ground"):
-			continue
-		var n := b as Node3D
-		var c = n.get("cells_center")
-		var local: Vector3 = n.position + n.basis * ((c as Vector3) if c is Vector3 else Vector3.ZERO)
-		var p: Vector3 = o + yaw * local
-		clear = maxf(clear, G.ground_y(p, -INF) - (n.position.y - 0.5) + ANCHOR_CLEARANCE)
+	var cells = block_map_node.get("map")
+	if cells is Dictionary:
+		var skip: Dictionary = {}
+		for cell in cells:
+			var v: Vector3i = cell
+			var n: Node3D = block_map_node.find_block(v.x, v.y, v.z)
+			if n == null:
+				continue
+			var nid: int = n.get_instance_id()
+			if not skip.has(nid):
+				skip[nid] = n == sup or n.has_method("probe_ground")
+			if skip[nid]:
+				continue
+			var local: Vector3 = Vector3(v - Vector3i.ONE * int(block_map_node.CENTER)) \
+					* float(block_map_node.CELL_SIZE)
+			var p: Vector3 = o + yaw * local
+			clear = maxf(clear, G.ground_y(p, -INF) - (local.y - 0.5) + ANCHOR_CLEARANCE)
 	var lo: float = maxf(foot_lo, clear)
 	if lo > foot_hi:
 		return NAN
