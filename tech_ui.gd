@@ -32,8 +32,9 @@ var _filter_col: VBoxContainer = null     # колонка кнопок слев
 var _filter_buttons: Dictionary = {}
 const FILTERS := [
 	["all",     "All"],
-	["attack",  "Attack"],
 	["blocks",  "Blocks"],
+	["wheels",  "Wheels"],
+	["attack",  "Attack"],
 	["factory", "Factory"],
 	["power",   "Power"],
 ]
@@ -217,6 +218,7 @@ func _load_items() -> void:
 				"price": G.shop_price_now(int(block_type)),
 				"was": int(_prices[block_type]),
 			})
+		_items.sort_custom(_by_block_order)
 		return
 	var counts: Dictionary = {}
 	for b in G.block_inventory:
@@ -230,6 +232,11 @@ func _load_items() -> void:
 			"count": int(counts[block_type]),
 			"price": 0,
 		})
+	_items.sort_custom(_by_block_order)
+
+## The order of the lists, not of pick-up or of the enum (`G.block_order`, shared with the globe).
+func _by_block_order(a: Dictionary, b: Dictionary) -> bool:
+	return G.block_order(int(a["type"])) < G.block_order(int(b["type"]))
 
 # ── ЭНЦИКЛОПЕДИЯ ─────────────────────────────────────────────────────────────
 # Справочник по деталям и материалам. Существует потому, что игра НИГДЕ не говорит, чем

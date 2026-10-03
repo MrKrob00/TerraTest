@@ -77,7 +77,8 @@ func _ready() -> void:
 ## 52: the repair unit is the beacon again (the gyro is kept for Marlit).
 ## 53: the four Marlit hull blocks. 54: nine more Marlit blocks. 55: Marlit armour redrawn. 56: the 4x2 plate again.
 ## 57: the Marlit solar array. 58: the Marlit repair unit and shield. 59: the shield taken out.
-const RECIPE := 64
+## 65: the Marlit cabin photographed from the front (`portrait_dir`), so its visor shows.
+const RECIPE := 65
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
@@ -99,10 +100,14 @@ func _maybe_bake() -> void:
 				have = d
 	if String(have.get("v", "")) == String(want["v"]) and int(have.get("n", -1)) == int(want["n"]) \
 			and int(have.get("r", -1)) == int(want["r"]):
-		_ready_done = true
-		baked.emit()
+		var gone: Array = _missing()
+		if gone.is_empty():
+			_ready_done = true
+			baked.emit()
+			return
+		_bake_all(gone)                      # the batch stands, only its holes are filled
 		return
-	_bake_all()
+	_bake_all(_block_list())
 
 ## Блоки, у которых есть сцена. Снятые (RETIRED_BLOCKS) не печём: они существуют только ради
 ## старых сохранений и в интерфейсе не показываются.
@@ -117,14 +122,24 @@ func _block_list() -> Array:
 		out.append(b)
 	return out
 
-func _bake_all() -> void:
+## Blocks whose portrait file is not on disk. The stamp alone says "this batch was baked", not
+## "every file of it is there": a portrait skipped once (a scene that failed to load on that run)
+## would otherwise stay missing for good, since nothing in the stamp moves.
+func _missing() -> Array:
+	var out: Array = []
+	for bt in _block_list():
+		if not FileAccess.file_exists("%s/%s.png" % [DIR, G.block_key(int(bt))]):
+			out.append(int(bt))
+	return out
+
+func _bake_all(list: Array) -> void:
 	_baking = true
 	DirAccess.make_dir_recursive_absolute(DIR)
 	var st: Array = _make_studio(Vector2i(ICON_PX, ICON_PX))
 	var sv: SubViewport = st[0]
 	var cam: Camera3D = st[1]
 	var n := 0
-	for bt in _block_list():
+	for bt in list:
 		await _bake_one(sv, cam, int(bt))
 		n += 1
 		if n % PER_FRAME == 0:
@@ -197,6 +212,7 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	if scn == null:
 		return
 	var src: Node3D = scn.instantiate()
+	var scn_dir: Vector3 = src.get_meta("portrait_dir") if src.has_meta("portrait_dir") else Vector3.ZERO
 	_strip(src)                              # снимаем скрипты ДО дерева: никаких куполов и колец
 	sv.add_child(src)
 	await get_tree().process_frame
@@ -225,7 +241,12 @@ func _bake_one(sv: SubViewport, cam: Camera3D, bt: int) -> void:
 	# отличается. С угла видно три грани, то есть силуэт.
 	var c3: Vector3 = box.get_center()
 	var r: float = box.size.length() * 0.5
-	var dir := Vector3(1.0, 0.8, 1.0).normalized()
+	# A scene may name its own side (`portrait_dir`, block axes): the default back-right shows the
+	# Marlit cabin's dark back plate, not its visor.
+	var dir := Vector3(1.0, 0.8, 1.0)
+	if scn_dir != Vector3.ZERO:
+		dir = scn_dir
+	dir = dir.normalized()
 	cam.look_at_from_position(c3 + dir * (r * 4.0), c3, Vector3.UP)
 	cam.size = r * 2.05                      # чуть шире габарита: углы не режутся
 	cam.near = 0.01

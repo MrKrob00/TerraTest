@@ -3,8 +3,9 @@ extends Control
 # «Атом»-АРМИЛЛЯРА выбора блока в стройке (по описанию игрока, docs/atom_picker_reference.md).
 # ГОРИЗОНТАЛЬНОЕ красное кольцо (в плоскости XZ, экватор) = выбор ТИПА — крутится вокруг
 # вертикальной оси Y (драг влево/вправо). На нём «построены» ВЕРТИКАЛЬНЫЕ кольца-меридианы
-# по одному на тип, расставленные веером через AZ=45° (PI/4) — при 4 типах они дают 4 РАЗНЫЕ
-# плоскости и НИКОГДА не совпадают (при 90° передняя и задняя слипались — это и был баг).
+# по одному на тип, расставленные веером через AZ = PI / N: меридиан под β и под β+180° это ОДНА
+# плоскость, так что N типов делят пол-оборота, а не полный (при шаге TAU/N передний и задний
+# слипались бы — это и был баг при 90° и четырёх типах). Пять типов — 36°.
 # Вертикальное кольцо = горизонтальное, наклонённое на 90°. Отсюда раскладка жестов:
 #   • ТИП: драг ВЛЕВО/ВПРАВО крутит атом (_spin) — меридианы едут по кругу; тот, что вышел
 #     ЛИЦОМ к камере (β≈0, плоскость XY, вертикальный) = активная категория (1A).
@@ -17,17 +18,20 @@ extends Control
 signal block_chosen(block_type: int)
 
 const SIZE := 320.0
-const CAT_KEYS := ["attack", "blocks", "factory", "power"]
-const CAT_NAMES := {"attack": "Attack", "blocks": "Blocks", "factory": "Factory", "power": "Power"}
+# The keys and their order are G.BLOCK_CATEGORIES'; a key missing here would hide its blocks
+# under Power (`_category_of`), so a new category is added in both places.
+const CAT_KEYS := ["blocks", "wheels", "attack", "factory", "power"]
+const CAT_NAMES := {"blocks": "Blocks", "wheels": "Wheels", "attack": "Attack", "factory": "Factory",
+		"power": "Power"}
 const CAT_COLORS := {
-	"attack": Color(0.85, 0.36, 0.32), "blocks": Color(0.30, 0.62, 0.66),
-	"factory": Color(0.85, 0.66, 0.30), "power": Color(0.62, 0.46, 0.80),
+	"blocks": Color(0.30, 0.62, 0.66), "wheels": Color(0.48, 0.72, 0.36),
+	"attack": Color(0.85, 0.36, 0.32), "factory": Color(0.85, 0.66, 0.30),
+	"power": Color(0.62, 0.46, 0.80),
 }
 
 # Геометрия карусели. Категория ci стоит на ободе диска под азимутом β = base_ci + _spin;
 # при β≈0 её кольцо спереди (ближе к камере) и смотрит на игрока = активная.
-const AZ := TAU / 8.0                  # 45° (PI/4) между меридианами: 4 типа = 4 РАЗНЫЕ плоскости,
-#                                        не слипаются (при 90° перед/зад совпадали — тот баг)
+const AZ := PI / 5.0                   # PI / CAT_KEYS.size(): five types, five DIFFERENT planes 36° apart
 const R_DIAL := 1.05                   # радиус красного диска-руля (экватор; выбор типа)
 const R_RING := 1.0                    # радиус кольца-меридиана (≈ экватор → читается как глобус)
 const CORE_R := 0.26                   # радиус ядра-сферы
@@ -48,7 +52,7 @@ var view_yaw: float = 0.0        # сбоку
 
 const SPIN_SPEED := 8.0
 const SCROLL_SPEED := 8.0
-const SPIN_DRAG_PX := 90.0             # px горизонтального драга на одну категорию (шаг 45°)
+const SPIN_DRAG_PX := 90.0             # px горизонтального драга на одну категорию (шаг AZ)
 const SCROLL_DRAG_PX := 90.0           # px вертикального драга на один блок
 const TAP_SLOP := 6.0
 const LOCK_DIST := 10.0
@@ -277,7 +281,9 @@ func refresh() -> void:
 				continue
 			var bt: int = int(c.get("block"))
 			counts[bt] = counts.get(bt, 0) + 1
-	for block_type in counts:
+	var order: Array = counts.keys()
+	order.sort_custom(_before)
+	for block_type in order:
 		var key := _category_of(int(block_type))
 		(_by_cat[key] as Array).append({"type": int(block_type), "count": int(counts[block_type])})
 	_all_empty = true
@@ -294,6 +300,10 @@ func refresh() -> void:
 	_rebuild_rings()
 	_update_label()
 	_sync_state()
+
+## The lists' own order (`G.block_order`, the garage's too), not the order blocks were picked up in.
+func _before(a, b) -> bool:
+	return G.block_order(int(a)) < G.block_order(int(b))
 
 func _category_of(block_type: int) -> String:
 	for k in G.BLOCK_CATEGORIES:
@@ -327,8 +337,10 @@ func _rebuild_rings() -> void:
 			var holder := Node3D.new()
 			var visual := _make_visual(int(it["type"]))
 			holder.add_child(visual)
+			# The count is shown on the SELECTED block only (the player's call): one on every block of
+			# the front ring sat over the neighbours' models. ×1 too - there it says "the last one".
 			var badge: Label3D = null
-			if int(it["count"]) > 1:
+			if int(it["count"]) > 0:
 				badge = Label3D.new()
 				badge.text = "×%d" % int(it["count"])
 				badge.font_size = 34
@@ -549,12 +561,12 @@ func _tick_globe(delta: float) -> void:
 		for i in slots.size():
 			var holder: Node3D = slots[i]["node"]
 			# Активное (переднее) кольцо вертикально ЛИЦОМ к камере, листается вверх/вниз (точка
-			# выбора = θ_front); остальные меридианы стоят веером через 45°, призрачные.
+			# выбора = θ_front); остальные меридианы стоят веером через AZ, призрачные.
 			holder.position = _ring_point(_theta_front + float(i) * float(r["step"]) - float(r["ang"]), beta)
 			var target_s := SELECT_SCALE if (is_front and i == sel) else 1.0
 			holder.scale = holder.scale.lerp(Vector3.ONE * target_s, sk)
 			if slots[i]["badge"] != null:
-				(slots[i]["badge"] as Label3D).visible = is_front
+				(slots[i]["badge"] as Label3D).visible = is_front and i == sel
 			var vis: Node3D = slots[i]["visual"]
 			if is_front and i == sel:
 				if ring_settled:
