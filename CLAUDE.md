@@ -761,7 +761,7 @@ project: read it before claiming how anything works.
 - **A SHOT KICKS ITS BARREL BACK AND THROWS A BLAST ACROSS IT, FOR BOTH FACTIONS.** The pitch part
   jumps back `recoil_dist` along its own axis in `RECOIL_KICK` and springs home in `RECOIL_RETURN`
   (`WeaponBlock._drive_recoil`; gun 0.05, shotgun 0.09+, mortar 0.08+, laser 0.03, Marlit cannon
-  0.16 m). The flash (`BlockFX.muzzle_fire`) is the cone plus four petals of fire across the barrel,
+  0.16 m). The flash (`BlockFX.muzzle_fire`) is the pixel jet plus four petals of fire across the barrel,
   each shot turned at random, and a ring running out ahead - from the front or three-quarters, how
   turrets are mostly seen, the cone alone was a dot; the laser's lance throws a ring too. All on one
   material per muzzle, so one fade. NO ROUND, NO FLASH: `_handle_fire` clears `last_fired` and asks
@@ -1846,10 +1846,13 @@ project: read it before claiming how anything works.
   0.561 m from the real muzzle — inside their own body — and lit the flash there too, while the
   gun, the laser and the rocket launcher fired correctly. The difference between weapons read as
   random. Measured on the real driver against the models.
-- A MUZZLE FLASH GROWS AND SITS IN FRONT OF THE BARREL. The cone was pointed the wrong way (tip
-  away from the gun), CENTRED on the muzzle so half of it lived inside the barrel, and it
-  SHRANK over its life — wide and short to narrow and long, the opposite of what gas does. It now
-  has its tip in the muzzle, flares forward, and widens as it fades (`BlockFX.MUZZLE_R0/L0/R1/L1`).
+- A MUZZLE FLASH GROWS AND SITS IN FRONT OF THE BARREL, AND IT IS A JET OF PIXELS, NOT A CONE
+  (`BlockFX._jet_mesh`, the player: "I just do not like the cone part"). A short chain of glowing
+  cubes down the shot, shrinking toward its end and stepping off the axis, two sparks to the sides,
+  turned at random about the shot each time; built from the muzzle out, it grows and fades
+  (`MUZZLE_R0/L0/R1/L1`, across near along so the pixels stay cubes). THE CUBES STAND APART:
+  additive, any two that overlap sum to white, and the first cut was one white bar. The cone
+  before it was a smooth shape in an effect language of pixel cards.
 - THE DOOR FOR A MUZZLE FLASH IS `WeaponBlock._handle_fire`, NOT `fire_bullet`. The shotgun calls
   `fire_bullet` once per pellet, eight times a shot, and the mortar overrides it without calling
   `super` at all. `_handle_fire` sees every weapon exactly once per shot. Blast light goes in
