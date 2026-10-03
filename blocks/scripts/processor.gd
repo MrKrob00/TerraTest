@@ -143,20 +143,19 @@ func _tick() -> void:
 	if _cells.size() != CELLS:
 		return
 	var last: int = CELLS - 1
-	# 1. ВЫХОД. Не отдали — линия внутри стоит целиком: полный станок обязан упереться, иначе
-	#    руда копилась бы в последней клетке поверх уже лежащей там.
-	var out_item = _cells[last]
-	if out_item != null:
-		if not is_instance_valid(out_item):
-			_cells[last] = null
-		elif push_item(out_item):
-			_cells[last] = null
-		else:
-			return
-	# 2. СДВИГ на клетку вперёд, с конца — иначе затрём то, что ещё не уехало.
+	# 1. OUT. A product the belt will not take now waits for THAT belt's signal (`_wait_out`) and
+	#    leaves the moment a cell frees - it used to be retried on the next tick only, a whole second
+	#    later, and with the belt's 1.3 s hop against the 1.0 s tick every other tick failed: one
+	#    product per 2 s where a bare line moves one per 1.3 (measured in the diagnosis).
+	_try_out()
+	# 2. SHIFT CELL BY CELL, from the end: an item moves on only into an empty cell. A stuck output
+	#    used to freeze the whole machine, the intake included, even with a gap inside.
 	var had_input: bool = _cells[0] != null
 	for i in range(last, 0, -1):
+		if _cells[i] != null and is_instance_valid(_cells[i]):
+			continue
 		_cells[i] = _cells[i - 1]
+		_cells[i - 1] = null
 		if _cells[i] == null:
 			continue
 		if not is_instance_valid(_cells[i]):
@@ -168,11 +167,42 @@ func _tick() -> void:
 		if i == last and _cells[i].has_method("upgrade"):
 			_cells[i].upgrade()
 		_move(_cells[i], i)
-	_cells[0] = null
-	# 3. Входная клетка освободилась — сказать об этом ленте, которая ждёт (см. шапку).
-	if had_input:
+	# 3. The intake is free - tell the belt that waits for it (see the header).
+	if had_input and _cells[0] == null:
 		slot_freed.emit()
 	_set_processing_visual(_busy())
+
+var _out_wait: FactoryBlock = null
+
+## Hand the last cell on, or wait for the first outlet's slot_freed (one shot) and try again then.
+func _try_out() -> void:
+	var last: int = CELLS - 1
+	var out_item = _cells[last]
+	if out_item == null:
+		return
+	if not is_instance_valid(out_item):
+		_cells[last] = null
+		return
+	if push_item(out_item):
+		_cells[last] = null
+		return
+	var t: FactoryBlock = _first_valid_target()
+	if t != null and not t.slot_freed.is_connected(_on_out_freed):
+		_out_wait = t
+		t.slot_freed.connect(_on_out_freed, CONNECT_ONE_SHOT)
+
+func _on_out_freed() -> void:
+	_out_wait = null
+	if not _factory_active() or _cells.size() != CELLS:
+		return
+	_try_out()
+	_set_processing_visual(_busy())
+
+## A belt beside us keeps its freed cell for the product we hold (belt.side_waiting): the processor
+## keeps its cargo in `_cells`, never in `current_item`, so the default answer never saw it and
+## through traffic took that cell every time.
+func holds_for(belt: Node) -> bool:
+	return _cells.size() == CELLS and _cells[CELLS - 1] != null and next_blocks.has(belt)
 
 func _busy() -> bool:
 	for c in _cells:
