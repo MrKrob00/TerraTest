@@ -1771,6 +1771,21 @@ project: read it before claiming how anything works.
   the way without meaning to build anything, it is being thrown out of driving every time. The
   door is single — `vehicle_body_3d._grab_world_block`. Taking a block OUT OF THE INVENTORY is not
   under the setting: that already happens inside the assembly screen.
+- **THE BLOCK IN THE HAND IS COUNTED ON THE GLOBE, AND THE GLOBE TURNS TO IT** (`block_globe._hand_type`,
+  the player's call). Taking a block into the hand takes it OUT of the inventory (`G.consume_block`),
+  so a gun picked off the hull used to vanish from the globe while it was carried. Every way out
+  keeps the count: stash puts it back in the inventory, a drop lays it loose within reach, a swap
+  returns it first (`take_block_into_hand` -> `_return_hand_to_inventory`); only placing spends it.
+  Tapping the type already in the hand does nothing (`hud._on_globe_block_chosen`) - the swap would
+  reset the turn given to it. A CHANGE OF HAND IS RECOUNTED TWO FRAMES LATER (`RECOUNT_DELAY`,
+  `refresh_soon`): a dropped block is reparented still frozen and unfreezes a frame on, so the
+  same-frame recount missed it, the globe turned off its "empty" ring, and nothing recounted after.
+  Measured through the real doors: take, same type again (turn kept), swap, stash, drop, a block
+  off the machine - the globe's total for the type never moved.
+- **A DOUBLE TAP TAKES WHAT IS LOOSE IN FRONT OF THE MACHINE FIRST** (`_maybe_grab_on_tap`): the aim
+  that sets `block_body` walks the GRID and knows nothing of a block lying on the hull, so the tap
+  went through it and took the machine's block underneath. `_grab_world_block` asks physics and
+  answers false when the first thing hit is a machine's block, so the order costs nothing there.
 - WHAT IS IN THE HAND IS `hand_node()`. `block_body` is the block being AIMED AT on a machine, and
   it is already counted by whoever counts machines. Asking `block_body` for "does the player have
   this block" made a block in the hand belong to nobody — the energy branch dropped a second panel

@@ -1115,7 +1115,7 @@ func _hand_action(kind: String) -> void:
 	elif kind == "drop" and v.has_method("drop_hand_to_world"):
 		v.drop_hand_to_world()
 	if _block_globe:
-		_block_globe.refresh()             # инвентарь мог измениться (стос в инвентарь)
+		_block_globe.refresh_soon()        # a dropped block is still frozen this frame - see there
 
 func _update_hand_panel() -> void:
 	if _hand_panel == null:
@@ -1187,6 +1187,11 @@ func _build_block_globe() -> void:
 func _on_globe_block_chosen(block_type: int) -> void:
 	var v: Node = _menu_vehicle_or_current()
 	if v == null or not v.has_method("take_block_into_hand"):
+		return
+	# THE HAND IS COUNTED ON THE GLOBE, so its own type can be tapped: that is "keep it", not
+	# "swap it for another of the same" - the swap would reset the turn the player gave it.
+	var held: Node = v.hand_node() if v.has_method("hand_node") else null
+	if is_instance_valid(held) and "block" in held and int(held.get("block")) == block_type:
 		return
 	if not v.take_block_into_hand(block_type):
 		return
