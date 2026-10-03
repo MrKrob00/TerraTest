@@ -980,6 +980,16 @@ project: read it before claiming how anything works.
   of a save put one in front of a starter cabin. The cap only ever lowers; an ALLY (faction 0) is
   never capped, since a weak ally helps with nothing; and a preset outside the ladder — towers,
   bases, anything spawned `as_base` — is left alone, because there the build is the task.
+- **THE CEILING MEASURES THE MACHINE THE PLAYER FIGHTS IN** (`enemy_spawner._fighter`): the camera
+  also sits on a BASE, and a base full of factory blocks measured ~13k, the lancer step, while the
+  player's only gun was on a starter cabin. A base or anything without a cabin hands over to the
+  dearest machine the player can drive (`camera_controller._drivable`). A WORLD RAID IS CAPPED TOO:
+  the base's value still sets how often it comes and how many, but `preset_for_value` clamps the step
+  to `_tier_cap` and the squad goes through `party_for_request`; and no world raid comes while Hold
+  the Line is open (`raids._story_raid_open`) - two raids from one side with one warning read as one.
+  That was the player's "much stronger enemies with shields and repair during the raid quest".
+  Measured: a 30k base and a starter cabin at full ramp - 40 of 40 raid builds from step 0, a squad
+  of three cut to one machine.
 - Builds must agree with `connect_faces` — nothing attaches to a wheel or a gun. Layouts do not
   check this; the error shows up in game as a floating block.
 - FROM THE LANCER ON, ENEMIES CARRY POWER: battery + shield, battery + repair field, or both. So a

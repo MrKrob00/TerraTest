@@ -482,13 +482,36 @@ func _on_base_died(b: Node) -> void:
 func _tier_cap(player: Node3D) -> int:
 	if PRESET_TIERS.is_empty():
 		return 0
-	var value: int = _machine_value(player)
+	var value: int = _machine_value(_fighter(player))
 	var cap: int = 0
 	for i in mini(PRESET_TIERS.size(), tier_from_value.size()):
 		if value >= int(tier_from_value[i]):
 			cap = i
 	var ramp_cap: int = int(floor(G.threat_ramp() * float(PRESET_TIERS.size() - 1) + 0.001))
 	return maxi(mini(cap, ramp_cap), 0)
+
+## THE MACHINE THE CEILING MEASURES IS THE ONE THE PLAYER FIGHTS IN. The camera's machine usually
+## is it, but the camera sits on a BASE too (switched in to finish a line, or by a quest), and a base
+## full of factory blocks measured ~13k - the lancer step, shields and repair fields - while the
+## player's only gun stood on a starter cabin (the player's report from Hold the Line). A base, or
+## anything without a cabin, hands over to the dearest machine the player can DRIVE
+## (`camera_controller._drivable`, the respawn's own test); with none, nothing is measured.
+func _fighter(player: Node3D) -> Node3D:
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc == null or not cc.has_method("_drivable"):
+		return player
+	if cc._drivable(player):
+		return player
+	var best: Node3D = null
+	var best_v: int = -1
+	if "vehicles" in cc:
+		for v in cc.vehicles:
+			if cc._drivable(v):
+				var val: int = _machine_value(v)
+				if val > best_v:
+					best_v = val
+					best = v
+	return best
 
 func _enemy_tier(player: Node3D) -> int:
 	if PRESET_TIERS.is_empty():
@@ -553,7 +576,10 @@ func preset_for_value(value: float) -> int:
 	for i in mini(PRESET_TIERS.size(), tier_from_value.size()):
 		if value >= float(tier_from_value[i]):
 			tier = i
-	return _variant(tier)
+	# THE BASE'S VALUE PICKS THE STEP, THE PLAYER'S CEILING CAPS IT: a base of a support, a panel, a
+	# repair unit and a line is ~13k, and it sent lancers at a player on a starter cabin. How often a
+	# raid comes and how many follow its value; what comes is never more than the player can take.
+	return _variant(mini(tier, _tier_cap(_player())))
 
 # Machine value: the sum of shop prices of its blocks. Everything else in the game is measured the
 # same way, so "stronger" here means what it means in the garage.

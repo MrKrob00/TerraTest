@@ -62,7 +62,7 @@ func _tick() -> void:
 	_squad = _squad.filter(func(e): return is_instance_valid(e))
 	if not _squad.is_empty():
 		return                       # предыдущая волна ещё жива — второй сверху не шлём
-	if get_node_or_null("/root/Q") != null and Q.tutorial_active():
+	if get_node_or_null("/root/Q") != null and (Q.tutorial_active() or _story_raid_open()):
 		return
 	var base: Node3D = _richest_base()
 	if base == null:
@@ -79,6 +79,14 @@ func _tick() -> void:
 	Dialogue.say("System", tr("Your anchor is drawing attention. Contacts inbound — %d seconds.")
 			% int(WARN))
 
+## THE STORY IS SENDING A RAID ON THE BASE ALREADY (Hold the Line): a world raid on top of it came
+## from the same side with the same warning, two waves the player could not tell apart.
+func _story_raid_open() -> bool:
+	for q in Q.active_quests():
+		if String(q.get("id", "")) == "arc_hold":
+			return true
+	return false
+
 func _launch() -> void:
 	_warning = -1.0
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
@@ -87,9 +95,17 @@ func _launch() -> void:
 		return
 	var value: float = _value_of(_target)
 	var count: int = _squad_size(value)
-	var preset: int = _preset_for(sp, value)
+	# THE SQUAD IS A PARTY, held to the budget events are (`party_for_request`): `count` machines of
+	# the capped step were still that many times what the player was measured against.
+	var presets: Array = []
+	for i in count:
+		presets.append(_preset_for(sp, value))
+	if sp.has_method("party_for_request"):
+		presets = sp.party_for_request(presets)
+	count = presets.size()
 	_squad.clear()
 	for i in count:
+		var preset: int = int(presets[i])
 		var ang: float = TAU * float(i) / float(count) + randf()
 		var wp: Vector3 = _target.global_position + Vector3(cos(ang) * RING, 0.0, sin(ang) * RING)
 		wp.y = G.ground_y(wp, _target.global_position.y)
