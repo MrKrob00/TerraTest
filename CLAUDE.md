@@ -752,7 +752,13 @@ project: read it before claiming how anything works.
   wheels first see it and Jolt has already bounced it (measured, vy = +0.6 on that tick). And a
   machine that tumbled lands on its hull, the wheels never report ground, and it sheds the speed
   over several steps (−28, −12, −4 m/s) — so "a hard fall that has almost stopped" counts as a
-  landing too. Measured, four runs: enemy arrival 1 wave, 2 m drop 0, 20 m drop 1 every time.
+  landing too. Measured, four runs: enemy arrival 1 wave, 2 m drop 0, 20 m drop 1 every time. THE
+  WAVE IS LIFTED OUT OF THE GRASS IN DEPTH like the shot marks (`ground_wave.gdshader` `depth_lift`
+  = `G.grass_lift()` + `WAVE_LIFT`): it lies on the physics ground and the meadow is drawn 0.3 m over
+  it. AND A HARD LANDING COSTS THE WHEELS A LITTLE (`MachineBody._land_hurt_wheels`, through `hurt`):
+  `LAND_WHEEL_MIN` 2% at the threshold up to `LAND_WHEEL_MAX` 12%, never in a machine's first
+  `LAND_GRACE_MS` (every enemy arrives by dropping in). Measured: a 20 m drop, six wheels 120 -> 109,
+  the wave drawn over the meadow on the real driver.
 - EVERY BLOCK YOUR GUNS ARE LOCKED ON CARRIES A GREEN NEON FRAME (`LockFrame`), ONE PER TARGET: each
   gun picks its own block, guns that agree on one block share its frame. The count lives on the
   block (`BlockFX.lock_hold` / `lock_release`, metas `lock_n` / `lock_frame`); the frame snaps in

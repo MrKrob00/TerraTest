@@ -12,6 +12,22 @@ uniform float cell = 0.4;
 uniform float seed = 0.0;
 uniform vec3 color : source_color = vec3(1.0, 0.13, 0.1);
 uniform float ring = 0.22;                                // ring thickness, share of the radius
+// LIFTED OUT OF THE GRASS IN DEPTH, as the shot marks are (glitch_card.gdshader): the wave lies on
+// the PHYSICS ground and the drawn meadow stands G.grass_lift() over it, so it was buried in the
+// grass. The vertices slide toward the camera along their own view ray: on screen the wave stays
+// where it is, in depth it clears the lift (more at a grazing view).
+uniform float depth_lift = 0.0;
+
+void vertex() {
+	if (depth_lift > 0.0) {
+		vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
+		float d = length(vp.xyz);
+		vec3 n = normalize((MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+		float pull = depth_lift / max(abs(dot(vp.xyz / d, n)), 0.25);
+		vp.xyz *= max(d - pull, 0.05) / d;
+		POSITION = PROJECTION_MATRIX * vp;
+	}
+}
 
 float h2(vec2 p) {
 	p = fract(p * vec2(123.34, 456.21) + seed * 0.37);
