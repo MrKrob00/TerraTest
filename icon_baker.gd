@@ -78,7 +78,8 @@ func _ready() -> void:
 ## 53: the four Marlit hull blocks. 54: nine more Marlit blocks. 55: Marlit armour redrawn. 56: the 4x2 plate again.
 ## 57: the Marlit solar array. 58: the Marlit repair unit and shield. 59: the shield taken out.
 ## 65: the Marlit cabin photographed from the front (`portrait_dir`), so its visor shows.
-const RECIPE := 65
+## 66: the collector and the receiver without their glass column.
+const RECIPE := 66
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

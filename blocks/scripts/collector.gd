@@ -29,8 +29,9 @@ func _physics_process(_delta: float) -> void:
 # чтобы крутился плавно и на экранах с частотой выше физ-тика.
 func _process(delta: float) -> void:
 	if !is_on_vehicle: return
+	# THE RING TURNS UNDER THE COLLECTOR (the player's call). It was the 5 m reach ring, pulled to the
+	# machine's centre height every frame, and read as stray arcs somewhere beside the block.
 	$collector/MeshInstance3D.rotation.y += deg_to_rad(360)*delta/6
-	$collector/MeshInstance3D.global_position.y = get_parent().global_position.y
 
 func _on_collector_body_entered(body: RigidBody3D) -> void:
 	if inventory.has(body): return  # ← уже в инвентаре, игнорируем
