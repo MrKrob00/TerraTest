@@ -846,6 +846,17 @@ def style_px(style, x, y, w, h, d):
             return (20, 20, 26)
         return jitter([(30, 32, 40), (40, 43, 52), (52, 56, 66), (66, 70, 82), (84, 88, 102),
                        (106, 110, 124)][k], 1)
+    if style == "mglass":
+        # Marlit's cockpit glass: deep sea-teal darkening downward, a pale rim, and one broad
+        # diagonal sheen across the pane - the only way flat unshaded glass reads as glass
+        if d < 1.0:
+            return (126, 168, 186)
+        t = (y + 0.5) / max(h, 1)
+        c = _ramp_at([(52, 92, 112), (30, 56, 74), (18, 32, 46)], t * 2.0)
+        band = (x + 0.5 + (y + 0.5) * 0.8) / max(w + h * 0.8, 1)
+        if 0.30 < band < 0.40 or 0.44 < band < 0.47:
+            c = tuple(min(255, v + 46) for v in c)
+        return jitter(c, 1)
     if style == "msolar":
         # a Marlit solar cell: the sea of the emblem as glass - deep navy lifting to slate across the
         # cell, a pale sheen along two edges, a dark bus line down the middle
