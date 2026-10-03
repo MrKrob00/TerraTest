@@ -28,8 +28,12 @@ uniform float lean_max = 0.30;
 uniform float fall_angle = 1.45;
 uniform float fall_time = 0.9;
 uniform float grow_time = 0.6;
+// THE VEINS' CLOCK, written every frame by resource_nodes (`shader_now`), the same function that
+// writes the hit and regrow times. NOT `TIME`: that is the renderer's clock, built from frame steps,
+// and it ran seconds behind the wall clock after a slow load - a felled tree's "since" stayed
+// negative, so it leaned and never fell or went (the player: "after felling the tree does not go").
+uniform float now = 0.0;
 
-varying float v_hit;
 varying vec3 v_tint;
 
 void vertex() {
@@ -41,13 +45,12 @@ void vertex() {
 	if (v_tint == vec3(0.0)) {
 		v_tint = vec3(1.0, 0.75, 0.0);
 	}
-	v_hit = last_hit;
 	if (hp == 0.0 && last_hit == 0.0) {
 		hp = 1.0;                       // an empty slot reads as whole
 	}
 	float grow = 1.0;
 	if (respawn > 0.0) {
-		float age = TIME - respawn;
+		float age = now - respawn;
 		if (age >= 0.0 && age < grow_time) {
 			grow = smoothstep(0.0, 1.0, age / grow_time);
 		}
@@ -67,7 +70,7 @@ void vertex() {
 			float keep = 1.0;
 			if (hp <= 0.001) {
 				// felled: tips over from where it leaned, then sinks out of sight
-				float since = max(TIME - last_hit, 0.0);
+				float since = max(now - last_hit, 0.0);
 				a = mix(lean_max, fall_angle, smoothstep(0.0, fall_time * 0.6, since));
 				keep = 1.0 - smoothstep(fall_time * 0.5, fall_time, since);
 			}
@@ -79,7 +82,7 @@ void vertex() {
 			p *= mix(0.05, 1.0, grow);          // back from the rest: the whole vein grows in again
 		}
 		if (last_hit > 0.0) {
-			float since = TIME - last_hit;
+			float since = now - last_hit;
 			if (since >= 0.0 && since < hit_duration) {
 				float fade = 1.0 - since / hit_duration;
 				float k = h * shake_intensity * fade;
@@ -106,10 +109,7 @@ void fragment() {
 	} else {
 		c = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
 	}
-	vec3 col = mix(c, c * gain * tint, COLOR.a);
-	float since = TIME - v_hit;
-	if (v_hit > 0.0 && since >= 0.0 && since < 0.15) {
-		col += vec3((1.0 - since / 0.15) * 0.6);
-	}
-	ALBEDO = col;
+	// no white flash on a hit (the player called it a placeholder): a hit throws red digits instead,
+	// resource_node.hurt -> BlockFX.vein_digits
+	ALBEDO = mix(c, c * gain * tint, COLOR.a);
 }
