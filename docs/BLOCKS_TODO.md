@@ -15,7 +15,7 @@
 2. `*_scene` preload → ветка в `get_scene()`.
 3. `BLOCK_META` — фракция / грейд / цена в ДИ. Без записи блок не попадёт ни в древо, ни в магазин.
 4. `TECH_PARENT` — от кого ветвится в древе.
-5. `BLOCK_CATEGORIES` — «attack» / «blocks» / «factory»; не попал никуда — окажется в «остальное».
+5. `BLOCK_CATEGORIES` — «blocks» / «wheels» / «attack» / «factory» / «power»; МЕСТО В СПИСКЕ — это место в магазине и в глобусе (`G.block_order`); не попал никуда — окажется в «power».
 6. `BLOCK_RECIPE` — из чего собирается. От рецепта считается И цена в магазине
    (`shop_price` = материалы × `SHOP_MARKUP`), И выдача Scrapper'а (`scrap_yield` = половина).
    Блока без рецепта не бывает, кроме `EMPTY`.

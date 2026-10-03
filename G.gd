@@ -2010,30 +2010,53 @@ const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block
 func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
+## THE ORDER OF THESE LISTS IS THE ORDER THE PLAYER SEES (`block_order`: the garage's shop and
+## inventory, the build globe's rings), and so is the order of the keys - the shop's filter column
+## and the globe's meridians follow it. Within a list: Falsus first, then Marlit; the core first, then
+## from the plainest part to the most specialised. It used to be the order blocks were picked up in,
+## which on a long save is the order they were added to the game.
 const BLOCK_CATEGORIES := {
-	"attack":  [Block.GUN, Block.LASER, Block.ROCKET, Block.DRILL, Block.SMALL_DRILL,
-		Block.MORTAR, Block.POUND_CANNON, Block.SHOTGUN, Block.MARLIT_GUN, Block.MARLIT_LASER,
-		Block.MARLIT_SHOTGUN, Block.MARLIT_CANNON, Block.MARLIT_MORTAR],
-	"blocks":  [Block.ARMOR2, Block.ARMOR4, Block.ARMOR9, Block.HALF_BLOCK, Block.HALF_BLOCK2,
-		Block.BLOCK, Block.CABIN, Block.WHEEL, Block.BLOCK2, Block.BLOCK3,
-		Block.WEDGE2, Block.ARMOR,
-		Block.SMALL_WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
+	"blocks":  [Block.CABIN, Block.BLOCK, Block.BLOCK2, Block.BLOCK3,
+		Block.HALF_BLOCK, Block.HALF_BLOCK2, Block.WEDGE2,
+		Block.ARMOR, Block.ARMOR2, Block.ARMOR4, Block.ARMOR9,
 		Block.SUPPORT, Block.ROT_SUPPORT,
-		Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB,
-		Block.MARLIT_LONG, Block.MARLIT_LONG_HALF, Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER,
-		Block.MARLIT_BRACKET, Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8,
-		Block.MARLIT_OCTO, Block.MARLIT_WHEEL, Block.MARLIT_CABIN],
-	"factory": [Block.COLLECTOR, Block.RECEIVER, Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
-		Block.SCRAPPER,
-		Block.STORAGE, Block.PROCESSOR, Block.SELLER,
-		Block.AUTO_MINER, Block.FABRICATOR, Block.COMP_FACTORY, Block.PACKER],
+		Block.MARLIT_CABIN, Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_LONG,
+		Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB, Block.MARLIT_LONG_HALF, Block.MARLIT_OCTO,
+		Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER, Block.MARLIT_BRACKET,
+		Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8],
+	# WHEELS are their own list (the player's call): among the hull blocks they were six entries
+	# out of thirty-odd, and a wheel is the one part a build cannot do without. `is_wheel` is the
+	# same set and must stay so.
+	"wheels":  [Block.SMALL_WHEEL, Block.WHEEL, Block.BIG_WHEEL, Block.TOP_WHEEL, Block.STAB_WHEEL,
+		Block.MARLIT_WHEEL],
+	"attack":  [Block.GUN, Block.SHOTGUN, Block.LASER, Block.ROCKET, Block.POUND_CANNON, Block.MORTAR,
+		Block.SMALL_DRILL, Block.DRILL,
+		Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
+		Block.MARLIT_MORTAR],
+	# Along the chain: what digs and picks up, what carries, what works the material, what keeps
+	# and sells it, then the two that handle loose blocks.
+	"factory": [Block.AUTO_MINER, Block.COLLECTOR, Block.RECEIVER,
+		Block.BELT, Block.BELT_SPLIT, Block.BELT_CROSS,
+		Block.PROCESSOR, Block.COMP_FACTORY, Block.FABRICATOR, Block.STORAGE, Block.SELLER,
+		Block.SCRAPPER, Block.PACKER],
 	# POWER: what makes, stores, passes on or spends energy. It was "other" - the leftovers of the
-	# three lists above - and the generator sat among the factory blocks. Anything that falls in no
-	# list still shows under Power (the radar, today), so a new block never vanishes from the shop.
-	"power":   [Block.SOLAR, Block.BATTERY, Block.GENERATOR, Block.WIRELESS_CHARGER,
-		Block.SHIELD, Block.REGEN, Block.MARLIT_SOLAR, Block.MARLIT_REGEN,
-		Block.MARLIT_BATTERY, Block.MARLIT_WIRELESS],
+	# lists above - and the generator sat among the factory blocks. Anything that falls in no list
+	# still shows under Power (the radar, today), so a new block never vanishes from the shop.
+	"power":   [Block.SOLAR, Block.GENERATOR, Block.BATTERY, Block.WIRELESS_CHARGER,
+		Block.SHIELD, Block.REGEN,
+		Block.MARLIT_SOLAR, Block.MARLIT_BATTERY, Block.MARLIT_WIRELESS, Block.MARLIT_REGEN],
 }
+
+## A block's place in every list the player scrolls: its category, then its place in that list. A
+## block in no list goes after all of them, by enum value, so it still shows and never jumps about.
+func block_order(bt: int) -> int:
+	var ci := 0
+	for k in BLOCK_CATEGORIES:
+		var i: int = (BLOCK_CATEGORIES[k] as Array).find(int(bt))
+		if i >= 0:
+			return ci * 1000 + i
+		ci += 1
+	return 1000000 + int(bt)
 
 func get_scene(block: Block) -> PackedScene:
 	match block:

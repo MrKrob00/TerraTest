@@ -1564,6 +1564,11 @@ project: read it before claiming how anything works.
 - THE STAMP CARRIES A RECIPE NUMBER (`icon_baker.RECIPE`), not only the app version and the block
   count. A change to the LIGHTING moves neither of those, so a player who already has a batch on
   disk would keep it for ever — which is exactly what the white icons would have done.
+  A MATCHING STAMP STILL FILLS HOLES (`_missing`): a portrait whose file is gone is baked alone. And
+  a new block's model baked before the editor imported its NEW TEXTURE comes out as a bare grey
+  cube - the Marlit cabin's portrait read as the Falsus cabin on the player's install - and the stamp
+  keeps it: a new textured model is a `RECIPE` bump in the same commit. A scene may name the side
+  it is photographed from (`metadata/portrait_dir`, block axes; the Marlit cabin shows its visor).
 - A PORTRAIT IS SKIPPED WHEN ITS MESH IS ADDITIVE (`icon_baker._is_glow`). The receiver and the
   collector each carry a four-metre capsule with `blend_mode = ADD`: in the world it is an intake
   beam, in a portrait's bounding box it is a pole next to which the block shrinks to a dot, and
@@ -1594,6 +1599,17 @@ project: read it before claiming how anything works.
   panel width. The grid stays an `HFlowContainer`: rows happen by themselves because a slot's
   minimum width is the grid's width. That also deleted the per-word font fitting — there is room
   now, so nothing has to shrink.
+- **EVERY LIST OF BLOCKS IS IN ONE ORDER, `G.block_order`** (the garage's shop and inventory, the build
+  globe's rings): category in `G.BLOCK_CATEGORIES`' key order, then the block's place in its list -
+  Falsus before Marlit, the core first, plain parts before special ones, the factory along the chain.
+  It was the order blocks were picked up in, which on a long save is the order they were added to
+  the game. The CATEGORIES are blocks / wheels / attack / factory / power ("Energy" on screen):
+  wheels got their own list (the player's call), and the shop's filter column, the codex's recipe
+  sections and the globe's meridians follow the keys. THE GLOBE'S MERIDIANS STAND `PI / N` APART,
+  NOT `TAU / N`: a meridian at β and one at β + 180° are the same plane, so N of them share half a
+  turn (five at 36°); front is `posmod(round(-spin / AZ), N)`, which repeats every N steps, and the
+  snap and `_nearest_nonempty` cover ±2, enough for five. A count shows on the SELECTED block only
+  (`×1` too); one on every block of the front ring sat over its neighbours' models.
 - The garage CODEX tab is built from the same tables the game runs on (`G.Block`, `METAL_NAME`,
   `COMP_NAME`): a hand-written second catalogue would fall one block behind and say nothing about
   it. BOTH ITS KINDS ARE GRAPHS on the tech tree's canvas (`TechGraph`), and neither is a grid of
