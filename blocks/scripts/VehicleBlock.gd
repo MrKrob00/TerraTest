@@ -252,7 +252,8 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_ARMOR8:    4400,
 	G.Block.MARLIT_SOLAR:     800,     # the housing is half a basic block, the lid armour
 	G.Block.MARLIT_REGEN:     700,
-	G.Block.MARLIT_WHEEL:     260,
+	G.Block.MARLIT_WHEEL:     600,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
+	G.Block.MARLIT_CABIN:     2800,     # the cabin's 320 over eight cells, at Marlit's 1.1 a cell
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
 	G.Block.MARLIT_GUN:       560,
@@ -306,7 +307,8 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_ARMOR8:    280.0,
 	G.Block.MARLIT_SOLAR:     60.0,
 	G.Block.MARLIT_REGEN:     55.0,
-	G.Block.MARLIT_WHEEL:     50.0,
+	G.Block.MARLIT_WHEEL:     70.0,
+	G.Block.MARLIT_CABIN:     180.0,
 	G.Block.MARLIT_GUN:       80.0,
 	G.Block.MARLIT_LASER:     75.0,
 	G.Block.MARLIT_SHOTGUN:   90.0,
@@ -489,7 +491,7 @@ func _check_critical() -> void:
 	if frac >= DROP_FRAC:
 		_drop_rolled = false             # repaired over the line: the next drop under it rolls anew
 		return
-	var stays: bool = block == G.Block.CABIN or is_volatile()
+	var stays: bool = G.is_cabin(block) or is_volatile()
 	if frac < FUSE_FRAC:
 		# Doomed: off the machine FOR CERTAIN (the one roll under DROP_FRAC may have failed),
 		# and the fuse is lit either way.
@@ -686,7 +688,7 @@ func destroy() -> void:
 		blast_r = lerpf(BATTERY_BLAST_RADIUS_EMPTY, BATTERY_BLAST_RADIUS_FULL, k)
 		blast_d = int(round(ord_hp * lerpf(BATTERY_BLAST_FRAC_EMPTY, BATTERY_BLAST_FRAC_FULL, k)))
 		blast_f = BATTERY_BLAST_FORCE
-	elif block == G.Block.CABIN:
+	elif G.is_cabin(block):
 		blast_r = CABIN_BLAST_RADIUS
 		blast_d = CABIN_BLAST_DAMAGE
 		blast_f = CABIN_BLAST_FORCE
@@ -697,11 +699,17 @@ func destroy() -> void:
 	if blast_r > 0.0:
 		var veh := _root_body()
 		if veh != null and veh.has_method("register_blast"):
-			veh.register_blast(global_position, blast_f)
-		BlockFX.explosion(self, global_position, blast_r, blast_d, null, blast_f)
+			veh.register_blast(centre(), blast_f)
+		BlockFX.explosion(self, centre(), blast_r, blast_d, null, blast_f)
 	BlockFX.play(self, true)          # эффект «матрицы» уничтожения (красные + глюк)
 	emit_signal("destroyed", self)
 	queue_free()
+
+## THE BLOCK'S MIDDLE in the world. A multi-cell block is anchored in a CORNER of its cells (every
+## Marlit block), so its `global_position` is a metre off its middle: a blast, a shot aimed at the
+## Marlit cabin and the scatter of a dead machine are centred here, not on the anchor.
+func centre() -> Vector3:
+	return global_transform * cells_center
 
 # Корневое тело (RigidBody3D-машина) над блоком — минуя ноду blocks. self сам RigidBody, поэтому
 # идём от родителя.

@@ -71,7 +71,7 @@ var is_station: bool = false
 # Supports were forbidden as well - self-contradictory ever since a support became a STATIONARY
 # block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
 # power, weapons - makes sense on a base.
-const _STATION_BANNED := [G.Block.CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
+const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
 		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
@@ -135,7 +135,7 @@ func _ready() -> void:
 ## A carried block stands on the TOP of a cabin or plain block, with open sky over it, so it is seen
 ## on the approach (the player has to know which machine has it). Highest first, then nearest the
 ## cabin's column. Both cargoes join by their bottom face.
-const CARRY_BASES := [G.Block.CABIN, G.Block.BLOCK]
+const CARRY_BASES := [G.Block.CABIN, G.Block.BLOCK, G.Block.MARLIT_CABIN, G.Block.MARLIT_BLOCK]
 
 func _place_carry() -> void:
 	for bt in carry:
@@ -144,15 +144,19 @@ func _place_carry() -> void:
 		for c in map:
 			if not CARRY_BASES.has(int(map[c])) or not _is_anchor(c.x, c.y, c.z):
 				continue
+			# the base's TOP, not its anchor's: a 2x2x2 base stands a cell higher than its anchor
+			var top: Vector3i = c
+			for o in _footprint_offsets(int(map[c])):
+				top.y = maxi(top.y, c.y + (o as Vector3i).y)
 			var open := true
-			for y in range(c.y + 1, GRID_MAX + 1):
+			for y in range(top.y + 1, GRID_MAX + 1):
 				if map.has(Vector3i(c.x, y, c.z)):
 					open = false
 					break
-			if not open or c.y + 1 > GRID_MAX:
+			if not open or top.y + 1 > GRID_MAX:
 				continue
-			if not found or c.y > best.y or (c.y == best.y and _carry_d2(c) < _carry_d2(best)):
-				best = c
+			if not found or top.y > best.y or (top.y == best.y and _carry_d2(top) < _carry_d2(best)):
+				best = top
 				found = true
 		if found:
 			set_block(best.x, best.y + 1, best.z, int(bt), 0.0)
@@ -218,67 +222,62 @@ func _define_layout() -> void:
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
 ## Outside the ladder on purpose (enemy_spawner._tier_of answers -1, so no ceiling touches it): the
-## fight is the licence, and it is sized at the fourth step whatever the player drives (about 37k
-## against that step's 31.6k median; a Marlit repair field with its batteries put it at 54k, past the
-## fifth). Marlit hull round a cabin, four Marlit wheels, a Marlit gun and a Marlit shotgun on
-## the nose, plates on the nose. The cabin and the
-## wheels are PLACEHOLDERS - Marlit has no models for them yet: the Falsus cabin, and wheels on the
-## Falsus model with Marlit's numbers (MARLIT_WHEEL). Marlit's weapons are 2x2x2 ball turrets
-## (art/marlit_weapons.py), anchored in their corner like every Marlit block: a turret at (x, y, z)
-## stands on cells x-1..x, z-1..z of the floor under it.
+## fight is the licence, and it is sized at the fourth step whatever the player drives (31.6k median).
+## EVERY MARLIT MACHINE IS LAID IN 2x2x2 MODULES ROUND THE MARLIT CABIN, which is anchored at the
+## grid's centre (5,5,5) like any core and so fills x 4..5, y 5..6, z 4..5: every Marlit block is
+## anchored in the corner of its cells, a block at (x, y, z) standing on x-1..x, z-1..z. A WHEEL is
+## 2x2x2 too and joins by its back face: on the left (yaw +pi/2) one at (x, 5, z) fills x-1..x,
+## z..z+1 and bolts onto the hull cell x+1; on the right (yaw -pi/2) it fills x..x+1, z-1..z and bolts
+## onto x-1. Its tyre hangs half a metre under the hull, as the Falsus wheels do.
 const MARLIT_CHAMPION := 120
 
 ## Marlit's lighter machines, for the events Marlit sends (quest_arcs._faction_preset turns the
 ## Falsus build an event asked for into the Marlit one of its step): a runner about the second
-## step (~17k), a raider about the third (~26k); past that the champion comes. Same placeholders.
+## step, a raider about the third; past that the champion comes.
 const MARLIT_RUNNER := 121
 const MARLIT_RAIDER := 122
 
+## Four wheels on a hull two cells wide (x 4..5): the left ones bolt onto x 4, the right onto x 5,
+## alongside the module rows starting at `z_front` and `z_rear` (each two cells long).
+func _marlit_wheels(z_front: int, z_rear: int, xl: int = 3, xr: int = 6) -> void:
+	for z in [z_front, z_rear]:
+		set_block(xl, 5, z, G.Block.MARLIT_WHEEL, PI / 2)          # x xl-1..xl, z z..z+1
+		set_block(xr, 5, z + 1, G.Block.MARLIT_WHEEL, -PI / 2)     # x xr..xr+1, z z..z+1
+
 func _layout_marlit_runner() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)      # z 3..4
-	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)      # z 6..7
-	for z in [3, 7]:
-		set_block(4, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
-		set_block(6, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
-	set_block(6, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 5..6, z 3..4, on the front slab
+	set_block(5, 5, 5, G.Block.MARLIT_CABIN, 0.0)     # x 4..5, z 4..5
+	set_block(5, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # x 4..5, z 6..7
+	_marlit_wheels(4, 6)
+	set_block(5, 7, 5, G.Block.MARLIT_GUN, 0.0)       # on the cabin's roof, nothing ahead of it
 
 func _layout_marlit_raider() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)      # z 3..4
-	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)      # z 6..7
-	set_block(4, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # x 3..4, z 6..7
-	set_block(7, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # x 6..7, z 6..7
-	set_block(4, 5, 3, G.Block.MARLIT_WHEEL, PI / 2)
-	set_block(6, 5, 3, G.Block.MARLIT_WHEEL, -PI / 2)
-	set_block(2, 5, 7, G.Block.MARLIT_WHEEL, PI / 2)
-	set_block(8, 5, 7, G.Block.MARLIT_WHEEL, -PI / 2)
-	set_block(6, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 5..6, z 3..4, on the front slab
-	# a shotgun on the left block, its line ahead clear of the gun; on the right one it would fire
-	# through the gun's turret
-	set_block(4, 7, 7, G.Block.MARLIT_SHOTGUN, 0.0)   # x 3..4, z 6..7
+	set_block(5, 5, 5, G.Block.MARLIT_CABIN, 0.0)     # x 4..5, z 4..5
+	set_block(5, 5, 3, G.Block.MARLIT_BLOCK, 0.0)     # the nose, z 2..3
+	set_block(5, 5, 7, G.Block.MARLIT_BLOCK, 0.0)     # the tail, z 6..7
+	_marlit_wheels(2, 6)
+	set_block(5, 7, 3, G.Block.MARLIT_GUN, 0.0)       # on the nose
+	# the shotgun a floor higher on the tail, so its line ahead runs over the gun
+	set_block(5, 7, 7, G.Block.MARLIT_BLOCK, 0.0)
+	set_block(5, 9, 7, G.Block.MARLIT_SHOTGUN, 0.0)
 
 func _layout_marlit_champion() -> void:
-	set_block(5, 5, 5, G.Block.CABIN, 0.0)
-	# the spine: slabs fore and aft of the cabin (1x2x2, up and back from the anchor)
-	set_block(5, 5, 4, G.Block.MARLIT_SLAB, 0.0)
-	set_block(5, 5, 7, G.Block.MARLIT_SLAB, 0.0)
-	set_block(5, 5, 9, G.Block.MARLIT_SLAB, 0.0)
-	# the flanks: three 2x2x2 blocks a side, z 3..8
-	for z in [4, 6, 8]:
-		set_block(4, 5, z, G.Block.MARLIT_BLOCK, 0.0)
-		set_block(7, 5, z, G.Block.MARLIT_BLOCK, 0.0)
-	# four wheels on the flanks' outer corners
-	for z in [3, 8]:
-		set_block(2, 5, z, G.Block.MARLIT_WHEEL, PI / 2)
-		set_block(8, 5, z, G.Block.MARLIT_WHEEL, -PI / 2)
-	# a gun and a shotgun on the front blocks, an empty line ahead of each (a heavy cannon there put
+	set_block(5, 5, 5, G.Block.MARLIT_CABIN, 0.0)     # x 4..5, z 4..5
+	# the spine: the nose and a module aft of the cabin
+	for z in [3, 7]:
+		set_block(5, 5, z, G.Block.MARLIT_BLOCK, 0.0)
+	# the flanks: three modules a side, z 2..7
+	for z in [3, 5, 7]:
+		set_block(3, 5, z, G.Block.MARLIT_BLOCK, 0.0)  # x 2..3
+		set_block(7, 5, z, G.Block.MARLIT_BLOCK, 0.0)  # x 6..7
+	# four wheels on the flanks' outer faces, fore and aft
+	_marlit_wheels(2, 6, 1, 8)
+	# a gun and a shotgun on the front flanks, an empty line ahead of each (a heavy cannon there put
 	# the build at 44k, the fifth step: the licence fight is sized at the fourth)
-	set_block(4, 7, 4, G.Block.MARLIT_GUN, 0.0)       # x 3..4, z 3..4
-	set_block(7, 7, 4, G.Block.MARLIT_SHOTGUN, 0.0)   # x 6..7, z 3..4
+	set_block(3, 7, 3, G.Block.MARLIT_GUN, 0.0)       # x 2..3, z 2..3
+	set_block(7, 7, 3, G.Block.MARLIT_SHOTGUN, 0.0)   # x 6..7, z 2..3
 	# plates on the nose, under the guns' line
-	set_block(4, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
-	set_block(7, 5, 2, G.Block.MARLIT_ARMOR4, 0.0)
+	set_block(3, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
+	set_block(7, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
 
 # New game: ONE cabin (the starter kit drops into the world nearby, see world_persist.gd). The
 # core sits at the grid CENTRE, and add-on floors count from it (+5).
@@ -911,7 +910,8 @@ func _footprint_offsets(block: int) -> Array:
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
-			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR]:
+			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR,
+			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
@@ -1353,7 +1353,7 @@ func _reachable_cells() -> Dictionary:
 	var queue: Array = []
 	for cell in map:
 		var bt: int = int(map[cell])
-		if bt == G.Block.CABIN or G.is_stationary(bt):
+		if G.is_cabin(bt) or G.is_stationary(bt):
 			var k := "%d,%d,%d" % [cell.x, cell.y, cell.z]
 			if not seen.has(k):
 				seen[k] = true
@@ -1445,7 +1445,7 @@ static func buildable_subset(layout: Array, pool: Dictionary) -> Array:
 	var seen: Dictionary = {}
 	for key in entry_at:
 		var bt: int = G.block_from_key(entry_at[key]["block"])
-		if bt == G.Block.CABIN or G.is_stationary(bt):
+		if G.is_cabin(bt) or G.is_stationary(bt):
 			var p: PackedStringArray = String(key).split(",")
 			queue.append(Vector3i(int(p[0]), int(p[1]), int(p[2])))
 			seen[key] = true
@@ -1569,7 +1569,7 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 	# NEVER drop the CABIN. It is the root the whole build hangs on, and a torn block loses its death
 	# subscriptions (below) - together that meant a machine with no root and no death signal: the rest
 	# fell off as detached while a live empty hull kept driving with nothing able to kill it.
-	if _cell(ax, ay, az) == G.Block.CABIN:
+	if G.is_cabin(_cell(ax, ay, az)):
 		return
 	var anchor := "%d,%d,%d" % [ax, ay, az]
 	var node: Node = node_map.get(anchor, null)

@@ -837,8 +837,7 @@ project: read it before claiming how anything works.
   better one is open. Marlit's events (`event_msupply / mgang / mdefend / mwaves`, `Q._marlit_event`)
   are Falsus's arcs under another key ("quest_mgang_1" -> "mgang"), so per-event state lives in
   dictionaries by key; the faction turns the build an event asked for into Marlit's of the same step
-  (`quest_arcs._faction_preset`, `MARLIT_BY_STEP`: runner 121, raider 122, champion 120 - placeholders
-  for cabin, wheels and guns as on the champion), fills a drop with Marlit blocks and takes the XP.
+  (`quest_arcs._faction_preset`, `MARLIT_BY_STEP`: runner 121, raider 122, champion 120), fills a drop with Marlit blocks and takes the XP.
   Measured: Falsus at grade 5 with Marlit open - only Marlit events; at grade 4 - one Marlit event
   guaranteed and two drawn; a Marlit gang of three runners at 131 m.
 - On equal sector load the spawn picks the **rear**: the "not in front" ban only covers the moment
@@ -2201,13 +2200,42 @@ project: read it before claiming how anything works.
   design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
   from the player and the licence is granted when it dies. A Marlit hull round a cabin, four
   `MARLIT_WHEEL`, a Marlit gun and a Marlit shotgun on the nose, plates on the nose - about 40k,
-  the fourth step (31.6k median); outside the ladder, so no ceiling shrinks it. The cabin and the
-  wheel are PLACEHOLDERS: the Falsus cabin, and the big wheel's scene inherited with Marlit's numbers
-  (wheel power and load x1.5). It was a collection point where resources were handed
+  the fourth step (31.6k median); outside the ladder, so no ceiling shrinks it. Its cabin and wheels
+  are Marlit's own now (below). It was a collection point where resources were handed
   in - a TerraTech mission, not the one the player asked for - and every load planted another,
   because the poll runs before saved bases come back (~10 s); `_sweep_yellow_points` removes those
   from old saves. Measured on the proving ground: champion at 197-200 m, all blocks, drives; killed,
   the quest closes and the licence opens.
+- **THE MARLIT CABIN IS A CORE, AND A CORE IS ANY CABIN** (`MARLIT_CABIN` 73, `art/marlit_drive.py`
+  cabin, `G.CABIN_BLOCKS` / `G.is_cabin`). Thirty places compared a block with `Block.CABIN`
+  directly - core detection, the cabin watch, the cabin's blast, the machine's scatter, the BFS roots
+  of a build, "a machine with a cabin" on respawn, the targeting score, stashing and throwing - and
+  every one of them asks `G.is_cabin` now; a cabin that is not in the list is a block that does not
+  hold its machine together. It is 2x2x2 anchored in a corner like every Marlit block, so its anchor
+  is a metre off its middle: the cabin's blast, a gun's aim at an exposed cabin (and the "is it
+  exposed" reach, 0.9 m plus the cells' offset) and a dead machine's scatter centre on
+  `VehicleBlock.centre()`. THE MODEL, the player's path to it: a mech's head, not a car's cab ("of a
+  transformer, joinable everywhere"), no holes into it, no round parts, not flat, not rounded - an
+  under-layer 12 cm in and over it solids whose faces TILT (a brow sloping to a cyan visor, cheeks
+  falling in to a ribbed mouthplate, a jutting chin, louvres hung to look down), each toned in its
+  own face's axes, front and back owning the cube's edges so none is notched, and a bolted cap laid
+  over every corner. 2,800 HP (the cabin's 320 over eight cells at Marlit's 1.1 a cell), 180 kg, a
+  recipe of 3 + 3 components: at 5 + 5 the Marlit builds came out a ladder step dearer.
+- **THE MARLIT WHEEL IS A MECHANISM** (`MARLIT_WHEEL` 65, `marlit_wheel.gd` over `wheel.gd`): two
+  equal parallel A-arms nearly level - steep arms (the first cut) swung the tyre out 0.2 m for a
+  0.16 m bump - so the carrier rides up and down upright; two coilovers on the upper arm, a drive
+  shaft between the arms that swings, stretches and spins with the tyre, a carrier that steers about
+  its upright. Every part is its own mesh about its own pivot, posed from `suspension_sag()` and
+  `current_steer_angle`; the rig's numbers are the generator's (change both). 2x2x2, anchored in a
+  corner, joining by its back face; ITS TYRE STANDS A METRE FROM ITS ANCHOR, so wheels got
+  `contact_offset` (block axes, zero for every one-cell wheel): the probe, the spring's point, the
+  wheel's lines, the axle height, the wheelbase and front-or-rear all use `contact_point()` /
+  `contact_local()` - probed at the anchor it felt the ground beside itself. The tyre's node
+  `%wheel` is turned so its X is the tyre's axle, which `wheel.gd` rolls about. Marlit's builds are
+  laid in 2x2x2 modules round the Marlit cabin (`blocks._marlit_wheels`); measured on the proving
+  ground: all blocks placed, four wheels grounded at about 1 m, runner and raider 31-34 m in 3 s,
+  values 21.7k / 30.4k / 41.9k against 20.4k / 29.1k / 39.8k before, the cabin's death takes the
+  machine. AN OLD SAVE with a one-cell Marlit wheel where the 2x2x2 now overlaps loses it on load.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a

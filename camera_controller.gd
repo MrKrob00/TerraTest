@@ -411,7 +411,7 @@ func _drivable(v: Node) -> bool:
 		return false
 	for b in bl.get_children():
 		var bt = b.get("block")
-		if bt != null and int(bt) == G.Block.CABIN:
+		if bt != null and G.is_cabin(bt):
 			return true
 	return false
 

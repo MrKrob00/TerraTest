@@ -39,6 +39,20 @@ const STEER_SPEED: float = 6.0
 ## carries its arms and tyre as children, and only moving the mount moves them together: moving the
 ## arms alone slid them in and out of the mount (the player's fix put them under it).
 @export var travel_part: NodePath
+## WHERE THE TYRE STANDS, in the block's own axes: the point the ground is probed under, the spring
+## pushes at and the wheel's lines are drawn through. Zero for every one-cell wheel, whose tyre hangs
+## under its own cell. A 2x2x2 wheel is anchored in a corner of its cells (as every Marlit block),
+## and its tyre stands a metre from that corner: probed at the anchor, it felt the ground beside
+## itself and was pushed up at a point it did not stand on.
+@export var contact_offset: Vector3 = Vector3.ZERO
+
+## The tyre's point in the world (see contact_offset).
+func contact_point() -> Vector3:
+	return global_transform * contact_offset
+
+## The tyre's point in the machine's axes, for the axle height, the wheelbase and front-or-rear.
+func contact_local() -> Vector3:
+	return position + transform.basis * contact_offset
 
 ## Самый крутой склон, который подвеска ещё отрабатывает: 1/0.6 ≈ 53°. Дальше поправка на
 ## наклон росла бы к бесконечности (у отвесной стены нормаль вообще горизонтальна).
@@ -200,8 +214,9 @@ const PROBE_LIFT: float = 0.6
 var _ride_effective: float = 0.0
 
 func probe_ground(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParameters3D) -> bool:
-	query.from = global_position + Vector3.UP * PROBE_LIFT
-	query.to = global_position + Vector3.DOWN * _probe_len()
+	var at: Vector3 = contact_point()
+	query.from = at + Vector3.UP * PROBE_LIFT
+	query.to = at + Vector3.DOWN * _probe_len()
 	var hit: Dictionary = space.intersect_ray(query)
 	if hit.is_empty():
 		contact_distance = INF
@@ -210,7 +225,7 @@ func probe_ground(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParame
 	else:
 		# Меряем ПО ВЕРТИКАЛИ от центра блока, а не длину луча: луч теперь стартует выше,
 		# и его длина до земли — это уже не клиренс колеса.
-		contact_distance = global_position.y - (hit["position"] as Vector3).y
+		contact_distance = at.y - (hit["position"] as Vector3).y
 		# Круглое колесо на склоне касается земли НЕ под самой осью: по вертикали от оси до
 		# поверхности выходит радиус / cos(наклона), то есть больше радиуса. Сравнивая с
 		# плоским радиусом, подвеска считала, что до земли ещё есть запас, и не толкала —
@@ -273,7 +288,7 @@ func _roll_tyre(delta: float) -> void:
 		return
 	var w := Vector3.ZERO
 	if grounded:
-		var arm: Vector3 = global_position - body.global_position
+		var arm: Vector3 = contact_point() - body.global_position
 		var v: Vector3 = body.linear_velocity + body.angular_velocity.cross(arm)
 		w = Vector3.UP.cross(v) / _radius
 	elif throttle_input != 0.0:

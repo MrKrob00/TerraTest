@@ -2495,5 +2495,13 @@
 	"Seven tubes lobbed over an arc, aimed by the hull: a salvo of seven shells. Twenty metres minimum.": {
 		"ru": "Семь труб, стрельба навесом, наводится корпусом: залп из семи снарядов. Не ближе двадцати метров.",
 		"uk": "Сім труб, стрільба навісом, наводиться корпусом: залп із семи снарядів. Не ближче двадцяти метрів."
+	},
+	"Marlit Cabin": {
+		"ru": "Кабина Marlit",
+		"uk": "Кабіна Marlit"
+	},
+	"Marlit's cabin: the heart of a machine in an armoured head two cells every way. Blocks bolt on to any face.": {
+		"ru": "Кабина Marlit: сердце машины в бронированной голове по две клетки в каждую сторону. Блоки крепятся к любой грани.",
+		"uk": "Кабіна Marlit: серце машини в броньованій голові по дві клітинки в кожен бік. Блоки кріпляться до будь-якої грані."
 	}
 }
