@@ -20,6 +20,9 @@
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore2.tres" id="26_vore2"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore3.tres" id="26_vore3"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree.tres" id="26_vtree"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_tree1.tres" id="26_vtree1"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_tree2.tres" id="26_vtree2"]
+[ext_resource type="ArrayMesh" path="res://resources/vein_tree3.tres" id="26_vtree3"]
 [ext_resource type="Shader" uid="uid://k47ww3x7p37f" path="res://resources/resource.gdshader" id="26_vshader"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
@@ -209,6 +212,21 @@ mesh = ExtResource("26_vore3")
 transform_format = 1
 use_colors = true
 mesh = ExtResource("26_vtree")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vtree1"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vtree1")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vtree2"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vtree2")
+
+[sub_resource type="MultiMesh" id="MultiMesh_vtree3"]
+transform_format = 1
+use_colors = true
+mesh = ExtResource("26_vtree3")
 
 [sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
 render_priority = 0
@@ -615,7 +633,7 @@ script = ExtResource("27_biomescat")
 script = ExtResource("24_5t8nk")
 resource_nodes = Array[PackedScene]([ExtResource("11_tereu")])
 multimesh_nodes = [NodePath("OreFerrite"), NodePath("OreCuprite"), NodePath("OreSilicate"), NodePath("OreTitanite")]
-wood_multimesh_nodes = [NodePath("Wood")]
+wood_multimesh_nodes = [NodePath("Wood"), NodePath("Wood1"), NodePath("Wood2"), NodePath("Wood3")]
 
 [node name="OreFerrite" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1747984420]
 material_override = SubResource("Mat_vein_ore")
@@ -641,6 +659,21 @@ multimesh = SubResource("MultiMesh_vore3")
 material_override = SubResource("Mat_vein_tree")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vtree")
+
+[node name="Wood1" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+material_override = SubResource("Mat_vein_tree")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vtree1")
+
+[node name="Wood2" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+material_override = SubResource("Mat_vein_tree")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vtree2")
+
+[node name="Wood3" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+material_override = SubResource("Mat_vein_tree")
+cast_shadow = 0
+multimesh = SubResource("MultiMesh_vtree3")
 
 [node name="WorldPersist" type="Node" parent="." unique_id=3615113]
 script = ExtResource("28_worldpersist")

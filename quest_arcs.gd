@@ -614,9 +614,13 @@ var _bat_shown: Node3D = null
 ## (`vein_point_near` / `node_near` with `wood_only`), and the block is caught on the lowest tier of
 ## needles, out at its skirt and tipped over, where it is seen from the ground. Felling the tree is
 ## what brings it down - the tree goes on its last blow, and the block drops where it stood.
-const BATTERY_SHOW_Y := 1.95           # over the vein's origin: on the first tier (art/vein_models.gd)
-const BATTERY_SHOW_OUT := 0.95         # out from the trunk, m
-const BATTERY_SHOW_TILT := 0.45        # tipped on the slope of the needles, rad
+## Per tree model (resource_nodes TREE_*, vein_models.gd): the point it hangs at in the tree's own
+## frame - on the fir's lowest tier, between the broadleaf's branches, between the teal tree's two
+## trunks under its crown, under the palm's fronds (its top leans out along +X) - and how far out
+## from that point it is pushed, in a random direction.
+const BATTERY_SHOW := [[Vector3(0.0, 1.45, 0.0), 0.85], [Vector3(0.0, 2.05, 0.0), 0.45],
+		[Vector3(0.0, 1.85, 0.0), 0.2], [Vector3(0.9, 3.5, 0.25), 0.3]]
+const BATTERY_SHOW_TILT := 0.45        # tipped on what it is caught on, rad
 ## Сколько от него осталось. Тридцать процентов — это и «видно, что он побитый» (красные цифры
 ## хп над блоком), и повод дать игроку реген или ремонт, а не бесплатную целую деталь.
 const BATTERY_WORN_FRAC := 0.3
@@ -725,10 +729,13 @@ func _bat_display(vein: Node3D) -> void:
 	if _bat_pose == null:
 		var ang: float = randf() * TAU
 		var outward := Vector3(cos(ang), 0.0, sin(ang))
-		# tipped outward, down the slope of the tier it is caught on
+		var kind: int = clampi(int(vein.get("tree_kind")) if vein.get("tree_kind") != null else 0,
+				0, BATTERY_SHOW.size() - 1)
+		var at: Vector3 = BATTERY_SHOW[kind][0]
+		# tipped outward, down the slope of what it is caught on
 		_bat_pose = Transform3D(
 			Basis(outward.cross(Vector3.UP).normalized(), -BATTERY_SHOW_TILT) * Basis(Vector3.UP, randf() * TAU),
-			outward * BATTERY_SHOW_OUT + Vector3.UP * BATTERY_SHOW_Y)
+			at + outward * float(BATTERY_SHOW[kind][1]))
 	n.transform = _bat_pose as Transform3D
 	if n is RigidBody3D:
 		var rb := n as RigidBody3D

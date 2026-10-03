@@ -17,6 +17,8 @@ var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающ�
 ## A TREE. It used to be a coal vein; coal is made now (resource.upgrade) and wood grows instead.
 ## Drawn by the owner's wood MultiMeshes (a stump and a tree that falls as it is chopped).
 var is_wood: bool = false
+## Which tree model this is (resource_nodes TREE_*): the battery errand hangs its block per model.
+var tree_kind: int = 0
 var _available: int = MAX_RESOURCES                 # сколько руды осталось в жиле (логически)
 
 ## КТО ЗАНЯЛ ЖИЛУ (авто-шахтёр). Пока он стоит, жила НЕ ВОССТАНАВЛИВАЕТСЯ: выбирать надо —
