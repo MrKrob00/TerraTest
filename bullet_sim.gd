@@ -326,15 +326,25 @@ func _sweep(s: Shot, from: Vector3, to: Vector3) -> bool:
 		return true
 	return false
 
-## Room for one more instance: the buffer doubles and keeps what it had.
+## Room for one more instance: the buffer doubles and keeps what it had. THE NEW BUFFER IS BUILT
+## HERE, at the old one's stride: read back after `instance_count` changed, `mm.buffer` did not come
+## at the new size, `set_buffer` refused it ("a different size") and every round in the air lost its
+## place the moment the pool grew - in the first bursts of a fight.
 static func _room(mm: MultiMesh, n: int) -> void:
 	if n < mm.instance_count:
 		return
+	var old_n: int = mm.instance_count
 	var old := PackedFloat32Array(mm.buffer)
-	mm.instance_count = mm.instance_count * 2
-	var buf := mm.buffer
+	var new_n: int = maxi(old_n * 2, 1)
+	if old_n == 0 or old.size() == 0:
+		mm.instance_count = new_n
+		return
+	var stride: int = old.size() / old_n
+	var buf := PackedFloat32Array()
+	buf.resize(new_n * stride)
 	for j in old.size():
 		buf[j] = old[j]
+	mm.instance_count = new_n
 	mm.buffer = buf
 
 func _draw() -> void:

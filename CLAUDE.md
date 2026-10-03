@@ -1980,7 +1980,15 @@ project: read it before claiming how anything works.
   drew; every later one showed. A warm-up plugin (FSIB) exists for this, but for Forward+ and as the
   main scene - ours is Compatibility and the menu is the main scene. The block portraits baked at
   startup already draw every block's model once; if a first-use hitch is ever measured on the phone,
-  the fix is drawing the effect materials (flash, lance, glitch cards, rounds) there too.
+  the fix is drawing the effect materials (flash, lance, glitch cards, rounds) there too. THE PLAYER MEASURED IT ("a jerk on the first
+  shot"), SO THE FIGHT'S EFFECTS ARE PLAYED ONCE BEHIND THE LOADING SCREEN (`fx_warmup.gd`, awaited by
+  `loading_screen._finish` before the dissolve, at most `WARMUP_MAX`): the muzzle jet and lance, a
+  flash LAMP - in GLES3 the first omni light compiles the omni pass of every lit material in reach,
+  the terrain's included - a ground mark, the landing wave, a blast, a block's glitch, hit overlay and
+  lock frame, and the MultiMesh variants of the streak and the digits. AND `BulletSim._room` BUILDS
+  THE GROWN BUFFER ITSELF at the old stride: read back after `instance_count` changed, `mm.buffer`
+  was not the new size, `set_buffer` refused it and every round in the air lost its place the moment
+  the pool doubled - in the first bursts.
 - **Headless cannot judge any of this.** The dummy driver draws nothing, so these numbers are set
   by reading the shader and the docs; only the device settles them. A shader's SHAPE, though, can
   be seen — see §3 "Shaders need a REAL driver".
