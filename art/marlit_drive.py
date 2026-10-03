@@ -305,7 +305,7 @@ def _cab_bottom(f, F):
 # like the inlays. IT IS LAID OVER THE FACES, NOT CUT INTO THEM: a notch cut out of the finished
 # faces split every face it crossed into convex pieces and took the cabin from 754 triangles to
 # 1929, three quarters of that the split; under a cap the faces simply stay, hidden, and
-# `_cull_hidden` throws away whatever no ray from outside reaches.
+# `em.cull_hidden` throws away whatever no ray from outside reaches.
 CORNER_S = 0.30              # the cap's size, in the cube's half-size (a metre here)
 CORNER_PROUD = 0.006         # how far it stands off the cube's faces
 
@@ -322,62 +322,6 @@ def _carve(faces):
         hi = th.add(C, tuple(max(a[i], b[i]) for i in range(3)))
         em.cham_box(out, lo, hi, 0.015, "mpside", "mpside", "mpside", "mbev3")
     return out
-
-
-def _cull_hidden(faces, n_dirs=96):
-    """Drop every face no ray from outside can reach. The cabin is built in layers - an under-layer
-    under the plates, walls of slabs pressed against each other, pieces the corner cut split off -
-    and a good share of what that leaves is never seen from any side. Each face is sampled (its
-    middle and points near its corners), each sample shoots rays over the half sphere it faces, and
-    the face stays if one ray gets out without striking another face. Offline, numpy, a few seconds."""
-    import numpy as np
-    tri, own = [], []
-    for i, fc in enumerate(faces):
-        for k in range(1, len(fc.pts) - 1):
-            tri.append((fc.pts[0], fc.pts[k], fc.pts[k + 1]))
-            own.append(i)
-    T = np.array(tri, dtype=np.float64)
-    V0, E1, E2 = T[:, 0], T[:, 1] - T[:, 0], T[:, 2] - T[:, 0]
-    g = math.pi * (3.0 - math.sqrt(5.0))
-    D = np.array([(math.cos(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2),
-                   1 - 2 * (i + 0.5) / n_dirs,
-                   math.sin(g * i) * math.sqrt(1 - (1 - 2 * (i + 0.5) / n_dirs) ** 2)) for i in range(n_dirs)])
-
-    def escapes(O, d):
-        # Moller-Trumbore, every ray of the batch against every triangle
-        p = np.cross(d[:, None, :], E2[None, :, :])
-        det = np.einsum("tk,rtk->rt", E1, p)
-        ok = np.abs(det) > 1e-12
-        inv = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
-        s_ = O[:, None, :] - V0[None, :, :]
-        u = np.einsum("rtk,rtk->rt", s_, p) * inv
-        q = np.cross(s_, E1[None, :, :])
-        v = np.einsum("rk,rtk->rt", d, q) * inv
-        t = np.einsum("tk,rtk->rt", E2, q) * inv
-        hit = ok & (u >= -1e-7) & (v >= -1e-7) & (u + v <= 1 + 1e-7) & (t > 1e-5)
-        return ~hit.any(axis=1)
-
-    kept = []
-    for fc in faces:
-        nn = th.newell(fc.pts)
-        L = math.sqrt(th.dot(nn, nn))
-        if L < 1e-12:
-            continue
-        n = np.array(nn) / L
-        P = np.array(fc.pts)
-        c = P.mean(axis=0)
-        S = np.vstack([c[None, :], P * 0.8 + c * 0.2]) + n * 2e-4
-        dd = D[D @ n > 0.12]
-        O = np.repeat(S, len(dd), axis=0)
-        d = np.tile(dd, (len(S), 1))
-        seen = False
-        for k in range(0, len(O), 64):
-            if escapes(O[k:k + 64], d[k:k + 64]).any():
-                seen = True
-                break
-        if seen:
-            kept.append(fc)
-    return kept
 
 
 def build_marlit_cabin(pk, img):
@@ -402,7 +346,7 @@ def build_marlit_cabin(pk, img):
             else:
                 F = _Face(cen, th.cross((0.0, 1.0, 0.0), n), (0.0, 1.0, 0.0), n)
                 (_cab_back if side else _cab_front)(f, F)
-    parts["marlit_cabin_body"] = _cull_hidden(_carve(f))
+    parts["marlit_cabin_body"] = em.cull_hidden(_carve(f))
     return parts
 
 
@@ -489,7 +433,9 @@ def _tyre(t):
             hi = [P(a0, WH_R, za), P(a1, WH_R, za), P(a1, WH_R, zb), P(a0, WH_R, zb)]
             mid = P((a0 + a1) / 2, WH_TREAD - 0.2, (za + zb) / 2)
             mw._face(t, hi, mid, "mflat2" if (k + row) % 2 else "mflat1", u_hint=th.sub(hi[1], hi[0]))
-            for i in range(4):
+            # only the block's leading and trailing walls: its ends lie along the tread's edge and
+            # the row's seam, where they are a sliver seen edge-on
+            for i in (1, 3):
                 j = (i + 1) % 4
                 mw._face(t, [lo[i], lo[j], hi[j], hi[i]], mid, "mflat0", u_hint=th.sub(lo[j], lo[i]))
     _band_z(t, O, WH_SIDE_IN, zo, WH_SIDE_IN - 0.03, zo + 0.05, "m", n=8)
@@ -575,18 +521,20 @@ def build_marlit_wheel2(pk, img):
     _shaft(P_("shaft"))
     # a damper: its cylinder down from the top mount, its rod up from the bottom, eyes at both ends
     d = P_("dbody")
-    mw.oct_tube(d, (0, 0, 0.04), (0, 0, -0.42), 0.075, 0.075, "m", cap_a="mflat2", cap_b="mflat1")
-    mw.oct_tube(d, (-0.05, 0, 0.0), (0.05, 0, 0.0), 0.05, 0.05, "m", cap_a="mpin", cap_b="mpin")
+    mw.oct_tube(d, (0, 0, 0.04), (0, 0, -0.42), 0.075, 0.075, "m", cap_a="mflat2", cap_b="mflat1", sides=6)
+    mw.oct_tube(d, (-0.05, 0, 0.0), (0.05, 0, 0.0), 0.05, 0.05, "m", cap_a="mpin", cap_b="mpin", sides=6)
     r = P_("drod")
-    mw.oct_tube(r, (0, 0, 0.04), (0, 0, -0.52), 0.038, 0.038, "mtone4", cap_a="mflat2")
-    mw.oct_tube(r, (-0.05, 0, 0.0), (0.05, 0, 0.0), 0.045, 0.045, "m", cap_a="mpin", cap_b="mpin")
+    mw.oct_tube(r, (0, 0, 0.04), (0, 0, -0.52), 0.038, 0.038, "mtone4", cap_a="mflat2", sides=6)
+    mw.oct_tube(r, (-0.05, 0, 0.0), (0.05, 0, 0.0), 0.045, 0.045, "m", cap_a="mpin", cap_b="mpin", sides=6)
     # the spring: unit length, squeezed by scaling the part along its axis
     sp = P_("spring")
-    turns, n = 5, 40
+    # three turns of six steps, a three-sided wire: five turns of eight on a square wire were 320
+    # triangles a spring, two springs a wheel, four wheels a machine
+    turns, n = 3, 18
     pts = [(0.12 * math.cos(2 * math.pi * turns * i / n), 0.12 * math.sin(2 * math.pi * turns * i / n),
             -0.10 - 0.80 * i / n) for i in range(n + 1)]
     for i in range(n):
-        mw.oct_tube(sp, pts[i], pts[i + 1], 0.02, 0.02, "mglow", sides=4)
+        mw.oct_tube(sp, pts[i], pts[i + 1], 0.024, 0.024, "mglow", sides=3)
     _tyre(P_("tyre"))
     return parts
 

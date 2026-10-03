@@ -15,6 +15,8 @@ albedo_color = Color(0.22, 0.52, 0.68, 0.5)
 material = SubResource("StandardMaterial3D_p6pux")
 radius = 0.8
 height = 3.2
+radial_segments = 12
+rings = 2
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_8sx5t"]
 radius = 5.0
@@ -37,6 +39,8 @@ albedo_texture = SubResource("GradientTexture2D_ri0qi")
 material = SubResource("StandardMaterial3D_6hi42")
 inner_radius = 5.1
 outer_radius = 5.0
+rings = 48
+ring_segments = 3
 
 [node name="collector" type="RigidBody3D" unique_id=1963469781]
 collision_layer = 2
