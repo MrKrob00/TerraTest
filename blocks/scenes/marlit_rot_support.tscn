@@ -1,0 +1,53 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://blocks/scripts/support.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_stator.tres" id="3_stator"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_pinion.tres" id="4_pinion"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_sleeve.tres" id="5_sleeve"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_leg.tres" id="6_leg"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_rot_support_foot.tres" id="7_foot"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="marlit_rot_support" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+foot_top = -0.37
+block = 75
+connect_faces = 31
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+mesh = ExtResource("2_body")
+
+[node name="Stator" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+mesh = ExtResource("3_stator")
+
+[node name="Pinion0" type="MeshInstance3D" parent="Stator"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7248, 0, 0.7248)
+mesh = ExtResource("4_pinion")
+
+[node name="Pinion1" type="MeshInstance3D" parent="Stator"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.7248, 0, -0.7248)
+mesh = ExtResource("4_pinion")
+
+[node name="Sleeve" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.07, 0, 0, 0, 1, -0.5, -0.3, -0.5)
+mesh = ExtResource("5_sleeve")
+
+[node name="Leg" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.07, 0, 0, 0, 1, -0.5, -0.3, -0.5)
+mesh = ExtResource("6_leg")
+
+[node name="Foot" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+mesh = ExtResource("7_foot")

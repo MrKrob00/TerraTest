@@ -953,7 +953,7 @@ func _has_rot_support(delta: float) -> bool:
 	if bl == null:
 		return false
 	for b in bl.get_children():
-		if b.get("block") != null and int(b.get("block")) == G.Block.ROT_SUPPORT:
+		if G.is_rot_support(b.get("block")):
 			_rot_support = true
 			break
 	# KINEMATIC freeze, not static: physics treats a static body as motionless and does not carry its

@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://blocks/scripts/support.gd" id="1_scr"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_support_body.tres" id="2_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_support_sleeve.tres" id="3_sleeve"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_support_leg.tres" id="4_leg"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_support_foot.tres" id="5_foot"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[node name="marlit_support" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 21
+script = ExtResource("1_scr")
+foot_top = -0.37
+block = 74
+connect_faces = 31
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+mesh = ExtResource("2_body")
+
+[node name="Sleeve" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.07, 0, 0, 0, 1, -0.5, -0.3, -0.5)
+mesh = ExtResource("3_sleeve")
+
+[node name="Leg" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.07, 0, 0, 0, 1, -0.5, -0.3, -0.5)
+mesh = ExtResource("4_leg")
+
+[node name="Foot" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0, -0.5)
+mesh = ExtResource("5_foot")

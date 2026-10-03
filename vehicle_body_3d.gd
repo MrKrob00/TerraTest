@@ -152,7 +152,7 @@ func support_block() -> Node3D:
 	if block_map_node == null:
 		return null
 	for b in block_map_node.get_children():
-		if b is Node3D and "block" in b and int(b.block) in [G.Block.SUPPORT, G.Block.ROT_SUPPORT]:
+		if b is Node3D and "block" in b and G.is_support(b.block):
 			return b as Node3D
 	return null
 
@@ -165,7 +165,7 @@ func rot_support_block() -> Node3D:
 	if block_map_node == null:
 		return null
 	for b in block_map_node.get_children():
-		if b is Node3D and "block" in b and int(b.block) == G.Block.ROT_SUPPORT:
+		if b is Node3D and "block" in b and G.is_rot_support(b.block):
 			return b as Node3D
 	return null
 
@@ -190,7 +190,8 @@ func _rot_support_tick(delta: float) -> void:
 	if absf(joy.x) < 0.15:
 		return
 	var da: float = -joy.x * ROT_SUPPORT_SPEED * delta
-	var pivot: Vector3 = sup.global_position
+	# about the support's AXIS: a 2x2x2 Marlit support is anchored in its corner, a metre off it
+	var pivot: Vector3 = sup.centre() if sup.has_method("centre") else sup.global_position
 	var t: Transform3D = global_transform
 	t.origin = pivot + (t.origin - pivot).rotated(Vector3.UP, da)
 	t.basis = Basis(Vector3.UP, da) * t.basis
@@ -296,7 +297,10 @@ func _anchor_target_y() -> float:
 		return want
 	var yaw := Basis(Vector3.UP, global_rotation.y)        # the machine is levelled as it anchors
 	var o: Vector3 = global_position
-	var sp: Vector3 = o + yaw * sup.position
+	# the foot stands under the support's AXIS (the middle of a 2x2x2 one, not its corner anchor)
+	var cc = sup.get("cells_center")
+	var axis: Vector3 = sup.position + sup.basis * (Vector3(cc.x, 0.0, cc.z) if cc is Vector3 else Vector3.ZERO)
+	var sp: Vector3 = o + yaw * axis
 	var foot_lo: float = G.ground_y(sp, sp.y - 1.0) - (sup.position.y - 0.5)
 	var foot_hi: float = foot_lo + float(sup.leg_max())
 	# EVERY CELL, NOT EVERY BLOCK: one sample at a block's centre and its anchor cell's floor missed

@@ -518,6 +518,8 @@ const BLOCK_META := {
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 4, "rp": 50},
 	Block.MARLIT_CABIN:     {"f": "marlit", "g": 2, "rp": 40},
+	Block.MARLIT_SUPPORT:   {"f": "marlit", "g": 1, "rp": 15},
+	Block.MARLIT_ROT_SUPPORT: {"f": "marlit", "g": 3, "rp": 45},
 	Block.MARLIT_GUN:       {"f": "marlit", "g": 2, "rp": 30},
 	Block.MARLIT_SHOTGUN:   {"f": "marlit", "g": 3, "rp": 35},
 	Block.MARLIT_CANNON:    {"f": "marlit", "g": 3, "rp": 40},
@@ -569,6 +571,8 @@ const TECH_PARENT := {
 	Block.MARLIT_REGEN: Block.MARLIT_SOLAR,
 	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_BLOCK,
 	Block.MARLIT_CABIN: Block.MARLIT_BLOCK,
+	Block.MARLIT_SUPPORT: Block.MARLIT_BLOCK,
+	Block.MARLIT_ROT_SUPPORT: Block.MARLIT_SUPPORT,
 	Block.MARLIT_SHOTGUN: Block.MARLIT_GUN, Block.MARLIT_CANNON: Block.MARLIT_GUN,
 	Block.MARLIT_LASER: Block.MARLIT_GUN,   Block.MARLIT_MORTAR: Block.MARLIT_CANNON,
 	Block.MARLIT_BATTERY: Block.MARLIT_SOLAR, Block.MARLIT_WIRELESS: Block.MARLIT_BATTERY,
@@ -978,6 +982,8 @@ const BLOCK_RECIPE := {
 	# Three Falsus units' parts: half as far again is 2.25 times the ground covered.
 	Block.MARLIT_REGEN:     {"c14": 6, "c20": 6},
 	Block.MARLIT_WHEEL:     {"c16": 3, "m0": 12},
+	Block.MARLIT_SUPPORT:   {"c2": 4, "m1": 12},    # Braced Strut + Cuprite: the Falsus jack, twice the casting
+	Block.MARLIT_ROT_SUPPORT: {"c16": 4, "m1": 14},  # Drive Axle + Cuprite: the slewing ring and its pinions
 	Block.MARLIT_CABIN:     {"c12": 3, "c18": 3},  # Logic Housing + Control Chip, as the cabin; at 5+5 the
 	                                                # Marlit builds came out a ladder step dearer
 	# A Falsus weapon's parts, about three times over: two cells across and two deep.
@@ -1409,6 +1415,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_REGEN: "Marlit Repair Field",
 	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun",
 	Block.MARLIT_CABIN: "Marlit Cabin",
+	Block.MARLIT_SUPPORT: "Marlit Support", Block.MARLIT_ROT_SUPPORT: "Marlit Rotating Support",
 	Block.MARLIT_LASER: "Marlit Laser", Block.MARLIT_SHOTGUN: "Marlit Shotgun",
 	Block.MARLIT_CANNON: "Marlit Heavy Cannon", Block.MARLIT_MORTAR: "Marlit Mortar",
 	Block.MARLIT_BATTERY: "Marlit Accumulator", Block.MARLIT_WIRELESS: "Marlit Wireless Charger",
@@ -1473,6 +1480,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_REGEN: "A wider repair field that mends more blocks at once, and more of each.",
 	Block.MARLIT_WHEEL: "A heavy wheel: pulls harder and carries more than any Falsus wheel.",
 	Block.MARLIT_CABIN: "Marlit's cabin: the heart of a machine in an armoured head two cells every way. Blocks bolt on to any face.",
+	Block.MARLIT_SUPPORT: "Marlit's support: a cast jack with a ram as wide as a wheel. Anchors the machine, or stands on the ground as the core of a base.",
+	Block.MARLIT_ROT_SUPPORT: "Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.",
 	Block.MARLIT_GUN: "Twin barrels in a ball turret: a steady stream of heavy rounds, turning freely every way.",
 	Block.MARLIT_LASER: "A lens stack in a ball turret: a charged cyan bolt, one hard blow at long range.",
 	Block.MARLIT_SHOTGUN: "Four short bores in a row: a wide cone of heavy shot at close range, two blasts then a reload.",
@@ -1924,6 +1933,8 @@ enum Block {
 	MARLIT_CANNON = 71,     # 2×2×2 ball turret: one thick barrel, a counterweight
 	MARLIT_MORTAR = 72,     # 2×2×2 ball turret: seven tubes, a salvo of seven
 	MARLIT_CABIN = 73,      # 2×2×2 core: a mech's head in armour, joins on every face (art/marlit_drive.py)
+	MARLIT_SUPPORT = 74,    # 2×2×2 cast jack (art/emitter_models.py marlit_support)
+	MARLIT_ROT_SUPPORT = 75, # 2×2×2, a slewing ring and two pinions (marlit_rot_support)
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -1993,6 +2004,8 @@ enum Block {
 @onready var marlit_cannon_scene: PackedScene = preload("res://blocks/scenes/marlit_cannon.tscn")
 @onready var marlit_mortar_scene: PackedScene = preload("res://blocks/scenes/marlit_mortar.tscn")
 @onready var marlit_cabin_scene: PackedScene = preload("res://blocks/scenes/marlit_cabin.tscn")
+@onready var marlit_support_scene: PackedScene = preload("res://blocks/scenes/marlit_support.tscn")
+@onready var marlit_rot_support_scene: PackedScene = preload("res://blocks/scenes/marlit_rot_support.tscn")
 @onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
 @onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
 
@@ -2011,7 +2024,8 @@ enum Block {
 ## Опоры сюда входят наравне с продавцом: фикс-опора это буквально «то, чем стоят», и
 ## отдельный второй список «ядер базы» рядом с этим означал бы два правила про одно и то же.
 ## Кабина сюда НЕ входит: она рождает ездящую машину, это другой путь.
-const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block.ROT_SUPPORT]
+const STATIONARY_BLOCKS := [Block.SELLER, Block.AUTO_MINER, Block.SUPPORT, Block.ROT_SUPPORT,
+		Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
 func is_stationary(bt: int) -> bool:
 	return STATIONARY_BLOCKS.has(int(bt))
 
@@ -2026,6 +2040,7 @@ const BLOCK_CATEGORIES := {
 		Block.ARMOR, Block.ARMOR2, Block.ARMOR4, Block.ARMOR9,
 		Block.SUPPORT, Block.ROT_SUPPORT,
 		Block.MARLIT_CABIN, Block.MARLIT_BLOCK, Block.MARLIT_SLAB, Block.MARLIT_LONG,
+		Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT,
 		Block.MARLIT_HALF, Block.MARLIT_HALF_SLAB, Block.MARLIT_LONG_HALF, Block.MARLIT_OCTO,
 		Block.MARLIT_GIRDER, Block.MARLIT_BREW_GIRDER, Block.MARLIT_BRACKET,
 		Block.MARLIT_ARMOR2, Block.MARLIT_ARMOR4, Block.MARLIT_ARMOR8],
@@ -2137,6 +2152,8 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_CANNON: return marlit_cannon_scene
 		Block.MARLIT_MORTAR: return marlit_mortar_scene
 		Block.MARLIT_CABIN: return marlit_cabin_scene
+		Block.MARLIT_SUPPORT: return marlit_support_scene
+		Block.MARLIT_ROT_SUPPORT: return marlit_rot_support_scene
 		Block.MARLIT_BATTERY: return marlit_battery_scene
 		Block.MARLIT_WIRELESS: return marlit_wireless_scene
 	return null
@@ -2148,6 +2165,17 @@ const CABIN_BLOCKS := [Block.CABIN, Block.MARLIT_CABIN]
 
 func is_cabin(bt) -> bool:
 	return bt != null and int(bt) in CABIN_BLOCKS
+
+## WHAT ANCHORS A MACHINE, of either faction - asked here, never by comparing with Block.SUPPORT, for
+## the reason CABIN_BLOCKS gives above.
+const SUPPORT_BLOCKS := [Block.SUPPORT, Block.ROT_SUPPORT, Block.MARLIT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
+const ROT_SUPPORT_BLOCKS := [Block.ROT_SUPPORT, Block.MARLIT_ROT_SUPPORT]
+
+func is_support(bt) -> bool:
+	return bt != null and int(bt) in SUPPORT_BLOCKS
+
+func is_rot_support(bt) -> bool:
+	return bt != null and int(bt) in ROT_SUPPORT_BLOCKS
 
 # Любой вариант колеса (для авто-ориентации по грани и т.п.).
 func is_wheel(bt: int) -> bool:

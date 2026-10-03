@@ -14,9 +14,10 @@ extends VehicleBlock
 # between two turning ones read as a part turning backwards (the player's report); after that the
 # whole block turned, and "the part that should be fixed turns with the machine" was the next one.
 
-## The foot's top at rest (SUP_FOOT_Y in the model). The ram and the sleeve are unit rods hanging
-## from their nodes; the gap from the leg's node down to here is the rest length, read off the scene.
-const FOOT_TOP := -0.42
+## The foot's top at rest (SUP_FOOT_Y in the model; Marlit's MSUP_FOOT_TOP). The ram and the sleeve
+## are unit rods hanging from their nodes; the gap from the leg's node down to here is the rest
+## length, read off the scene.
+@export var foot_top: float = -0.42
 ## The sleeve covers this share of the ram, so the jack reads as two telescoping stages.
 const SLEEVE_SHARE := 0.55
 ## How far the ram runs out: the most the anchor may hold the machine's foot off the ground.
@@ -39,6 +40,10 @@ var _ext: float = 0.0
 var _yaw: float = 0.0
 var _holding: bool = false
 var _hold_yaw: float = 0.0
+## Marlit's rotating support: two pinions in mesh with the ring gear (art/emitter_models.py RING /
+## PINION pitch radii 0.85 / 0.175).
+const PINION_RATIO := 0.85 / 0.175
+var _pinions: Array = []
 
 func _ready() -> void:
 	super._ready()
@@ -46,9 +51,13 @@ func _ready() -> void:
 	_leg = get_node_or_null("Leg") as Node3D
 	_sleeve = get_node_or_null("Sleeve") as Node3D
 	if _leg != null:
-		_rest = maxf(_leg.position.y - FOOT_TOP, 0.01)
+		_rest = maxf(_leg.position.y - foot_top, 0.01)
 	_foot = get_node_or_null("Foot") as Node3D
 	_stator = get_node_or_null("Stator") as Node3D       # only the rotating support has one
+	for k in 2:
+		var pn := get_node_or_null("Stator/Pinion%d" % k) as Node3D
+		if pn != null:
+			_pinions.append(pn)
 
 ## Asked by vehicle_body_3d._build_anchor_column: this block puts its own foot on the ground.
 func draws_own_leg() -> bool:
@@ -64,8 +73,10 @@ func _process(delta: float) -> void:
 	var upright: bool = global_basis.y.dot(Vector3.UP) > 0.9
 	var want: float = 0.0
 	if planted and upright:
+		# under the ram, which is the block's middle on a 2x2x2 Marlit support, not its corner anchor
+		var at: Vector3 = _leg.global_position if _leg != null else global_position
 		var bottom: float = global_position.y - FOOT_DROP
-		want = clampf(bottom - G.ground_y(global_position, bottom), 0.0, LEG_MAX)
+		want = clampf(bottom - G.ground_y(Vector3(at.x, bottom, at.z), bottom), 0.0, LEG_MAX)
 	var moved: bool = false
 	if not is_equal_approx(_ext, want):
 		var step: float = maxf(absf(want - _ext) * LEG_EASE, LEG_MIN_SPEED) * delta
@@ -85,6 +96,9 @@ func _process(delta: float) -> void:
 			_foot.basis = turn
 		if _stator != null:
 			_stator.basis = turn
+		# the pinions on the held casting roll round the ring that turns with the deck
+		for pn in _pinions:
+			pn.basis = Basis(Vector3.UP, _yaw * PINION_RATIO)
 
 ## Planted, the lower half keeps the world heading it had when the anchor went down; released, it
 ## eases back square to the block. True when the angle changed.

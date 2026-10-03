@@ -79,7 +79,8 @@ func _ready() -> void:
 ## 57: the Marlit solar array. 58: the Marlit repair unit and shield. 59: the shield taken out.
 ## 65: the Marlit cabin photographed from the front (`portrait_dir`), so its visor shows.
 ## 66: the collector and the receiver without their glass column.
-const RECIPE := 66
+## 67: the Marlit support and rotating support.
+const RECIPE := 67
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

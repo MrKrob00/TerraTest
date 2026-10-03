@@ -253,6 +253,8 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_SOLAR:     800,     # the housing is half a basic block, the lid armour
 	G.Block.MARLIT_REGEN:     700,
 	G.Block.MARLIT_WHEEL:     600,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
+	G.Block.MARLIT_SUPPORT:     1100,   # a casting: tougher than its eight cells of frame, short of the block
+	G.Block.MARLIT_ROT_SUPPORT: 1000,
 	G.Block.MARLIT_CABIN:     2800,     # the cabin's 320 over eight cells, at Marlit's 1.1 a cell
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
@@ -308,6 +310,8 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_SOLAR:     60.0,
 	G.Block.MARLIT_REGEN:     55.0,
 	G.Block.MARLIT_WHEEL:     70.0,
+	G.Block.MARLIT_SUPPORT:     110.0,
+	G.Block.MARLIT_ROT_SUPPORT: 130.0,
 	G.Block.MARLIT_CABIN:     180.0,
 	G.Block.MARLIT_GUN:       80.0,
 	G.Block.MARLIT_LASER:     75.0,
