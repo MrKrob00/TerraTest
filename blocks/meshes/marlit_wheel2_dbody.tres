@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4]
+
+[ext_resource type="Texture2D" path="res://objects/marlit_wheel2_texture.png" id="1_po6o7"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0ddri"]
+resource_name = "marlit_wheel2"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_po6o7")
+texture_filter = 2
+
+[resource]
+resource_name = "marlit_wheel2_dbody"
+_surfaces = [{
+"aabb": AABB(-0.075, -0.08660254, -0.42, 0.15, 0.17320508, 0.47),
+"attribute_data": PackedByteArray("0dx4XtHc/1z/1P9c/9R4XtHmeF7R5v9c/97/XP/eeF7Q8Hhe0PD/XP/o/1z/6Hhe0Pp4XtD6/1z/8v9c//J4XtEIeGLRCP9g/wD/YP8AeGLREnhi0RL/YP8K/2D/CnhijEO8UUZC/1D/QLxR/0A1U0ZC8VOMQzVTjEm8UUZI/1D/RrxR/0Y1U0ZI8VOMSTVTsj76ibI+/4j/PP+I/zz6ibJC+omyQv+I/0D/iP9A+omyRvqJskb/iP9E/4j/RPqJslR9V9lT/1b/Un1X/1J4WNlT9liyVHhYslh9V9lX/1b/Vn1X/1Z4WNlX9liyWHhY"),
+"format": 34896613399,
+"index_count": 102,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAGAAcABsAGAAdABwAHgAgAB8AHgAhACAAHgAiACEAHgAjACIAJAAmACUAJAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4AMAAyADEAMAAzADIAMAA0ADMAMAA1ADQANgA4ADcANgA5ADgANgA6ADkANgA7ADoA"),
+"material": SubResource("StandardMaterial3D_0ddri"),
+"name": "marlit_wheel2",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 60,
+"vertex_data": PackedByteArray("////vwAABPn/f///AAAE+f9///+M+gT5////v4z6BPn/f///AAAi6QAA/78AACLpAAD/v4z6Iun/f///jPoi6QAA/78AAP+/AAD/PwAA/78AAP8/jPr/vwAA/7+M+v+/AAD/PwAAIun/fwAAAAAi6f9/AACM+iLpAAD/P4z6Iun/fwAAAAAE+f///z8AAAT5////P4z6BPn/fwAAjPoE+f///z8AAP//////vwAA//////+/jPr//////z+M+v//////v4z6/7//f///jPr/vwAA/7+M+v+/AAD/P4z6/7//fwAAjPr/v////z+M+v+/////PwAA////fwAAAAD//wAA/z8AAP//AAD/vwAA////f///AAD//////78AAP//VNWqqv//U+tU1VTVw+RT66oqVNXD5FPrqiqqqv//U+tU1aoqw+RT61TVVVX//1PrqipVVf//U+uqKqoqw+RT61TVVVX///+/VNWqqv///7+qKqqq////v6oqVVX///+/qiqqqv///7+qKlTVw+T/v6oqqqqHyf+/qipVVYfJ/7+qKqoqw+T/v6oqVVX///+/VNVVVf////9U1aoqw+T//1TVVVWHyf//VNWqqofJ//9U1VTVw+T//1TVqqr/////HDO/FRwzvxUcM78VHDO/FWJ4eL5ieHi+Ynh4vmJ4eL7/f////3////9/////f///hcFh+IXBYfiFwWH4hcFh+L+V40y/leNMv5XjTL+V40z/v/9//7//f/+//3//v/9//3//f/9//3//f/9//3//f/9//3//f/9//z//v/8//7//P/+//z//v/8//7//P/+/xIwsqsSMLKrEjCyqxIwsqjpz0lU6c9JVOnPSVTpz0lX/f/9//3//f/9//3//f/9//3////9/////f////3////9/////f////7//f/+//3//v/9//7//f/+//3//v/9/")
+}]
+blend_shape_mode = 0
