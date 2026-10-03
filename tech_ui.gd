@@ -1046,11 +1046,16 @@ func _load_build(build_name: String) -> void:
 		refresh()
 		return
 	var current: Array = blocks_node.get_layout() if blocks_node.has_method("get_layout") else []
-	var pool: Dictionary = G.layout_counts(current)
-	for b in G.block_inventory:
-		var t := int(b)
-		pool[t] = pool.get(t, 0) + 1
+	var on_machine: Dictionary = G.layout_counts(current)
 	var need: Dictionary = G.layout_counts(target)
+	# THE POOL IS THE MACHINE PLUS WHAT `G.block_available` SEES - the inventory AND the blocks lying
+	# within reach, the door every other build path asks. It was the machine plus the inventory only,
+	# and after a death the starter kit is not in the inventory: it circles the new cabin and lands
+	# beside it. So a saved build placed the cabin and two or three blocks and stopped, with the
+	# rest of its kit lying in the grass (the player's report).
+	var pool: Dictionary = on_machine.duplicate()
+	for t in need:
+		pool[t] = int(pool.get(t, 0)) + G.block_available(int(t))
 	# SHORT OF BLOCKS: BUILD WHAT HOLDS TOGETHER. It used to refuse outright on any missing type.
 	# Now the part the pool can build is built outward from the core, and only through what was
 	# actually placed (blocks.buildable_subset), so a gun whose hull is missing is left out rather
@@ -1066,14 +1071,22 @@ func _load_build(build_name: String) -> void:
 		if build.is_empty():
 			_say(tr("Missing: ") + _missing_text(missing))
 			return
+	# WHAT THE BUILD USES COMES OFF THE MACHINE FIRST, the rest through `G.consume_block` (inventory,
+	# then the nearest loose one); what the machine had and the build does not use goes to the
+	# inventory. Writing the inventory back from the pool, as before, would now copy every block
+	# lying in reach into it while it still lay there.
 	var used: Dictionary = G.layout_counts(build)
+	var types: Dictionary = {}
 	for t in used:
-		pool[t] = int(pool.get(t, 0)) - int(used[t])
-	var new_inv: Array = []
-	for t in pool:
-		for _i in int(pool[t]):
-			new_inv.append(int(t))
-	G.block_inventory = new_inv
+		types[t] = true
+	for t in on_machine:
+		types[t] = true
+	for t in types:
+		var from_machine: int = mini(int(used.get(t, 0)), int(on_machine.get(t, 0)))
+		for _i in int(used.get(t, 0)) - from_machine:
+			G.consume_block(int(t))
+		for _i in int(on_machine.get(t, 0)) - from_machine:
+			G.block_inventory.append(int(t))
 	G.mark_progress_dirty()
 	v.apply_build(build)
 	if missing.is_empty():

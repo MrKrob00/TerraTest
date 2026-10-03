@@ -829,6 +829,11 @@ func loose_blocks_near(bt: int) -> Array:
 	for c in objects.get_children():
 		if not is_loose_item(c) or c.get("block") == null or int(c.get("block")) != bt:
 			continue
+		# SPENT ALREADY: `consume_block` frees the block it takes with queue_free, and it stays in the
+		# tree to the end of the frame - a second take in the same frame took THE SAME block again,
+		# so a saved build fed from the ground built ten blocks out of three
+		if c.is_queued_for_deletion():
+			continue
 		var d2: float = (c as Node3D).global_position.distance_squared_to(origin)
 		if d2 <= r2:
 			out.append({"node": c, "d2": d2})
