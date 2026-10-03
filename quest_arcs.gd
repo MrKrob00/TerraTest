@@ -26,7 +26,6 @@ func _quest_dist() -> float:
 var _t: float = 0.0
 var _props: QuestProps = null
 var _dropped: Dictionary = {}      # какие стадии уже выложили своё добро в мир
-var _thief: Node3D = null
 
 func _ready() -> void:
 	# НА ПОЛИГОНЕ ВЕТКИ НЕ ЗАПУСКАЮТСЯ САМИ, но узел жив: ведём то, что выдали руками через
@@ -51,8 +50,10 @@ func _tick_arcs(delta: float) -> void:
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	_sweep_yellow_points()
+	var polled: Dictionary = {}
 	for q in _arc_quests():
 		_cur_q = String(q.get("id", ""))
+		polled[_ev_key(String(q.get("event", "")))] = true
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
 			"quest_arc_power_2":   _arc_power_2(q)
@@ -92,6 +93,81 @@ func _tick_arcs(delta: float) -> void:
 			"quest_waves_1":       _waves_1(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
+	_drop_orphans(polled)
+
+## AN EVENT THAT LEFT THE POLL LEAVES THE WORLD. Its state is cleaned where the event ends -
+## done, abandoned, skipped - but an event can also simply stop being active: the board redrawn
+## when a better faction opens, a forced branch dropped on the proving ground. Then nothing polled
+## it again, and its machines, orb and loose items stayed in the world for good, the machines
+## tagged `story` (never cleaned up, holding places in `max_total`).
+func _drop_orphans(polled: Dictionary) -> void:
+	var keys: Dictionary = {}
+	for d in [_ev_point, _ev_mobs, _ev_orb]:
+		for k in d:
+			keys[k] = true
+	for k in keys:
+		if not polled.has(k):
+			_forget_event(String(k))
+	if not polled.has("duel") and (_duel_sent or _duel_point != null):
+		_forget_duel()
+
+func _forget_event(key: String) -> void:
+	_ev_ally.erase(key)
+	_supply_trap.erase(key)
+	_supply_opened.erase(key)
+	_ev_clear(key)
+
+func _forget_duel() -> void:
+	for m in [_duel_a, _duel_b]:
+		if is_instance_valid(m):
+			(m as Node).queue_free()
+	_duel_a = null
+	_duel_b = null
+	_duel_sent = false
+	_duel_point = null
+	_q_kills.erase("event_duel")
+
+## A QUEST HANDED OUT AGAIN STARTS CLEAN (`Q.force_quest`, the proving ground). The branch's memory
+## outlives the quest: forced a second time, the radar branch found its carrier "already dead" and
+## dropped the block at the old spot instead of sending a carrier, a tower kept its old point.
+## Everything the quest's stages keep in memory is forgotten and its machines leave.
+func forget_quest(id: String) -> void:
+	var q: Dictionary = Q.find_quest(id)
+	_ev_cool.erase(id)
+	_q_kills.erase(id)
+	for st in q.get("stages", []):
+		var key := _ev_key(String((st as Dictionary).get("event", "")))
+		_forget_event(key)
+		if key == "duel":
+			_forget_duel()
+			_duel_cool = 0.0
+		var carriers: Array = [key, "radar_2"] if key == "arc_radar" else [key]
+		for ck in carriers:
+			var m = _carrier.get(ck)
+			if is_instance_valid(m):
+				(m as Node).queue_free()
+			_carrier.erase(ck)
+			_carrier_spot.erase(ck)
+			_carrier_dead.erase(ck)
+		if _tower_node.has(key):
+			var t = _tower_node[key]
+			if is_instance_valid(t):
+				(t as Node).queue_free()
+		_tower_node.erase(key)
+		_tower_point.erase(key)
+		_tower_dead.erase(key)
+		if key == "salvage":
+			if is_instance_valid(_salvage_guard):
+				_salvage_guard.queue_free()
+			_salvage_guard = null
+			_salvage_point = null
+			_salvage_killed = false
+			_salvage_drop = null
+		if key == "hold":
+			for e in _hold:
+				if is_instance_valid(e):
+					(e as Node).queue_free()
+			_hold.clear()
 
 ## КАКИЕ ЗАДАНИЯ ВЕДЁМ. В игре — все активные; на полигоне ТОЛЬКО ВЫДАННЫЕ РУКАМИ, и это то же
 ## правило, по которому там живёт спавнер: в мир полигона ничто не входит само. Спрашивать там
@@ -334,7 +410,16 @@ func _yellow_1(q: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 
 ## Collection points the old version of this quest planted (one more on every load) leave the world.
+## The old points only ever come back from a save, and the save is restored in the first seconds of a
+## session; the sweep runs that long (with room for a slow terrain wait) and then stops walking every
+## vehicle once a second for the rest of the game.
+const YELLOW_SWEEP_TIME := 120.0
+var _yellow_sweep_left: float = YELLOW_SWEEP_TIME
+
 func _sweep_yellow_points() -> void:
+	if _yellow_sweep_left <= 0.0:
+		return
+	_yellow_sweep_left -= POLL
 	var vr: Node = get_node_or_null("/root/Main/Vehicles")
 	if vr == null:
 		return
@@ -374,8 +459,10 @@ func carrier_point(key: String) -> Variant:
 	return _carrier_spot.get(key, null)
 
 ## Стадия «отбери блок у врага». true — блок уже стоит на машине игрока.
-func _carry_stage(key: String, block: int, preset: int) -> bool:
-	if _has_block(block):
+## `need` is how many the player must have on their machine: the radar's second stage is a second
+## radar, and "owns one" was true before it began.
+func _carry_stage(key: String, block: int, preset: int, need: int = 1) -> bool:
+	if _count_block(block) >= need:
 		return true
 	var p: Node3D = _player()
 	if p == null:
@@ -389,7 +476,7 @@ func _carry_stage(key: String, block: int, preset: int) -> bool:
 		return false
 	# Носителя добили — блок его пережил (или мы кладём такой же на его место).
 	if bool(_carrier_dead.get(key, false)):
-		if not _player_owns(block):
+		if _owned_count(block) < need:
 			_props.claim_or_drop(key, block, _carrier_spot[key])
 		return false
 	var at: Vector3 = _carrier_spot[key]
@@ -426,7 +513,7 @@ func _on_quest_kill(who, qid: String) -> void:
 	_q_kills[qid] = e
 	Q.set_reward_mult(qid, G.strength_of(float(e[0]) / float(maxi(int(e[1]), 1))))
 
-func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> Node3D:
+func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1, carry: Array = []) -> Node3D:
 	if sp == null or not sp.has_method("spawn_at"):
 		return null
 	var want: int = preset
@@ -439,7 +526,7 @@ func _spawn_hostile(sp: Node, at: Vector3, preset: int, faction_id: int = 1) -> 
 	# его попросили кнопкой, и смотреть на него без участников нечего. Без этого арка тихо
 	# возвращалась ни с чем, и квест висел на первой стадии без врага (Q.force_quest выдаёт
 	# только ветки, `_arc_quests` гоняет только их — так что лишнего этот путь не пустит).
-	var e: Node3D = _ask_spawner(sp, at, want, faction_id, false)
+	var e: Node3D = _ask_spawner(sp, at, want, faction_id, false, carry)
 	if e != null and faction_id != 0 and _cur_q != "" and e.has_signal("died"):
 		e.died.connect(_on_quest_kill.bind(_cur_q), CONNECT_ONE_SHOT)
 	return e
@@ -459,24 +546,22 @@ func _faction_preset(sp: Node, preset: int) -> int:
 
 ## Одна дверь к спавнеру для ВСЕХ квестовых машин, ездящих и стоящих: потолок ступени режется
 ## выше (в `_spawn_hostile`), а здесь только запрет полигона.
-func _ask_spawner(sp: Node, at: Vector3, preset: int, faction_id: int, as_base: bool) -> Node3D:
+func _ask_spawner(sp: Node, at: Vector3, preset: int, faction_id: int, as_base: bool,
+		carry: Array = []) -> Node3D:
 	var e = null
 	if G.proving_ground and sp.has_method("spawn_requested"):
-		e = sp.spawn_requested(at, preset, faction_id, as_base)
+		e = sp.spawn_requested(at, preset, faction_id, as_base, false, carry)
 	else:
-		e = sp.spawn_at(at, preset, faction_id, as_base)
+		e = sp.spawn_at(at, preset, faction_id, as_base, carry)
 	return e as Node3D if e is Node3D else null
 
 func _carrier_spawn(key: String, block: int, preset: int, at: Vector3) -> void:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	var e: Node3D = _spawn_hostile(sp, at, preset)
+	# The block rides ON TOP of the build (blocks.carry): seen from outside, or the player has no way
+	# to tell which machine carries it - the marker over an enemy does not say.
+	var e: Node3D = _spawn_hostile(sp, at, preset, 1, [block])
 	if e == null:
 		return
-	# Блок ставим НА КАБИНУ (5,6,5): он должен быть виден снаружи, иначе «вон та машина везёт
-	# радар» игроку неоткуда узнать, а метка над врагом об этом не говорит.
-	var bl: Node = (e as Node3D).get_node_or_null("blocks")
-	if bl != null and bl.has_method("set_block"):
-		bl.set_block(5, 6, 5, block, 0.0)
 	if e.has_method("assign_target"):
 		e.assign_target(_player(), true)
 	if e.has_signal("died"):
@@ -499,24 +584,13 @@ func _arc_radar_1(q: Dictionary) -> void:
 	if _carry_stage("arc_radar", G.Block.RADAR, 5):
 		Q.report(String(q["event"]), 1)
 
+## The second radar rides a carrier like the first (`_carry_stage`, need 2: their own + the taken
+## one). It used to be a scout with the radar written into its grid only: no block existed, the
+## "radar gone" check fired on the first poll and skipped the stage with no reward. A radar shot
+## off in the fight lies loose; a carrier killed outright leaves one at its death spot
+## (`claim_or_drop`), so neither dead-locks the branch any more.
 func _arc_radar_2(q: Dictionary) -> void:
-	var key := "radar_2"
-	if not _dropped.has(key):
-		_dropped[key] = true
-		_thief = _spawn_thief()
-		if _thief == null:
-			Q.skip_quest(String(q["id"]))     # некуда поставить — не держим игрока
-			return
-	# Вор жив, но радара на нём уже нет — отбирать нечего, квест пропускаем. Без этого
-	# случайно сбитый в бою радар вешал бы всю ветку намертво.
-	if is_instance_valid(_thief):
-		if not _machine_has(_thief, G.Block.RADAR):
-			Q.skip_quest(String(q["id"]))
-			return
-	elif _thief != null:
-		Q.skip_quest(String(q["id"]))         # вора уничтожили целиком
-		return
-	if _count_block(G.Block.RADAR) >= 2:      # свой + отобранный
+	if _carry_stage("radar_2", G.Block.RADAR, 5, 2):
 		Q.report(String(q["event"]), 1)
 
 # ── Ветка «аккумулятор»: жила его ДЕРЖИТ, пока её не выработают ──────────────
@@ -722,11 +796,7 @@ func _salvage_1(q: Dictionary) -> void:
 	if p == null:
 		return
 	if _salvage_point == null:
-		var ang: float = randf() * TAU
-		var dist: float = _quest_dist()
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_salvage_point = wp
+		_salvage_point = _far_point(p)
 		return
 	# A guard the player killed on the way stays dead: it hunts the player, so it is often met
 	# before the point is.
@@ -738,32 +808,53 @@ func _salvage_1(q: Dictionary) -> void:
 
 var _salvage_killed: bool = false
 
+## A quest point at the one spawn distance (`_quest_dist`) in a random direction from the player.
+func _far_point(p: Node3D) -> Vector3:
+	var ang: float = randf() * TAU
+	var dist: float = _quest_dist()
+	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	wp.y = G.ground_y(wp, p.global_position.y)
+	return wp
+
 ## Охрана груза. Отдельной функцией, потому что зовут её ДВА раза: при первом приезде и
 ## тогда, когда охраны не стало не от выстрелов (перезаход, вылет — врагов мы не сохраняем).
 func _salvage_spawn_guard() -> void:
 	if is_instance_valid(_salvage_guard) or not (_salvage_point is Vector3):
 		return
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	_salvage_guard = _spawn_hostile(sp, _salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7)
+	# THE GUARD CARRIES THE COLLECTOR, it does not lie beside it: cargo at the feet of the beaten
+	# reads as a reward for a tick-box, a block taken off a machine you had to strip as a trophy. On
+	# top of the build (blocks.carry), seen on the approach - the same rule as `_carrier_spawn`.
+	_salvage_guard = _spawn_hostile(sp, _salvage_point as Vector3 + Vector3(12.0, 0.0, 0.0), 7, 1,
+		[G.Block.COLLECTOR])
 	if _salvage_guard == null:
 		return
-	# КОЛЛЕКТОР ВЕЗЁТ САМ ОХРАННИК, а не лежит рядом с ним. Груз, валяющийся у ног побеждённого,
-	# читается как «награда за галочку»; блок, снятый с машины, которую пришлось разобрать, —
-	# как трофей. Ставим на кабину, чтобы его было видно ещё на подъезде (см. _carrier_spawn:
-	# правило одно и то же, разница только в том, что охранника ставит своя функция).
-	var gb: Node = _salvage_guard.get_node_or_null("blocks")
-	if gb != null and gb.has_method("set_block"):
-		gb.set_block(5, 6, 5, G.Block.COLLECTOR, 0.0)
 	if _salvage_guard.has_method("assign_target"):
 		_salvage_guard.assign_target(_player(), true)
 	# Смерть ЗАПОМИНАЕМ. Пустая ссылка сама по себе не означает победу: после загрузки она
 	# пуста всегда, и без этого флага квест проходился бы выходом в меню.
 	if _salvage_guard.has_signal("died"):
-		_salvage_guard.died.connect(func(_e = null): _salvage_killed = true, CONNECT_ONE_SHOT)
+		_salvage_guard.died.connect(_on_salvage_guard_died, CONNECT_ONE_SHOT)
+
+## Where the guard died is where its collector fell: it hunts the player and is often killed far
+## from the cargo point, where `claim_or_drop`'s 30 m search would never see it and dropped a second.
+var _salvage_drop = null
+
+func _on_salvage_guard_died(_e = null) -> void:
+	_salvage_killed = true
+	if is_instance_valid(_salvage_guard):
+		_salvage_drop = _salvage_guard.global_position
 
 func _salvage_2(q: Dictionary) -> void:
 	if is_instance_valid(_salvage_guard):
 		return
+	# A reload in this stage forgets the point (memory only), and with no point the guard was never
+	# sent again: the stage hung for good. A new point, and the guard comes from there.
+	if not (_salvage_point is Vector3):
+		var p: Node3D = _player()
+		if p == null:
+			return
+		_salvage_point = _far_point(p)
 	if not _salvage_killed:
 		_salvage_spawn_guard()      # охрана пропала не от выстрелов — присылаем снова
 		return
@@ -771,7 +862,8 @@ func _salvage_2(q: Dictionary) -> void:
 	# сорванный с корпуса: claim_or_drop усыновляет такой, а кладёт новый, только если блок
 	# сгорел в бою. Молча в инвентарь не отдаём — трофей игрок должен увидеть и подобрать.
 	if not _player_owns(G.Block.COLLECTOR):
-		_props.claim_or_drop("arc_salvage", G.Block.COLLECTOR, _salvage_point as Vector3)
+		var at: Vector3 = _salvage_drop if _salvage_drop is Vector3 else _salvage_point as Vector3
+		_props.claim_or_drop("arc_salvage", G.Block.COLLECTOR, at)
 		return                              # даём кадр, чтобы предмет появился
 	Q.report(String(q["event"]), 1)
 	_salvage_point = null
@@ -1330,11 +1422,7 @@ func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
 	if p == null:
 		return
 	if not _tower_point.has(key):
-		var ang: float = randf() * TAU
-		var dist: float = _quest_dist()
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_tower_point[key] = wp
+		_tower_point[key] = _far_point(p)
 	var at: Vector3 = _tower_point[key]
 	if not _tower_node.has(key):
 		if not _tower_build(key, cfg, at):
@@ -1348,12 +1436,15 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 	var key: String = String(cfg["key"])
 	# СОСТОЯНИЕ МОГЛО ПОТЕРЯТЬСЯ (перезаход: квестовые машины в сейв не идут). Пустая ссылка
 	# сама по себе не победа — то же правило, что у событий: ставим постройку заново.
+	# The point is memory too: a reload in this stage forgot it, and with no point nothing was ever
+	# built again - the stage hung for good. A new point, the tower stands there.
 	if not _tower_node.has(key):
-		if _tower_point.has(key):
-			var p: Node3D = _player()
-			var at: Vector3 = _tower_point[key]
-			if p != null:
-				_tower_build(key, cfg, at)
+		var p: Node3D = _player()
+		if p == null:
+			return
+		if not _tower_point.has(key):
+			_tower_point[key] = _far_point(p)
+		_tower_build(key, cfg, _tower_point[key])
 		return
 	if not bool(_tower_dead.get(key, false)):
 		return
@@ -1410,6 +1501,11 @@ func _blow_tower_guards(key: String) -> void:
 			continue
 		if String(v.get_meta("tower_guard")) != key:
 			continue
+		# Their job is over: they stop being quest machines, so the spawner's cleanup may take them
+		# like any base - left tagged `story`, every tower done kept three or four of them in
+		# `max_total` for the rest of the save.
+		v.remove_meta("tower_guard")
+		v.remove_meta("story")
 		var bl: Node = v.get_node_or_null("blocks")
 		if bl == null:
 			continue
@@ -1490,6 +1586,8 @@ func _duel_abandoned(q: Dictionary) -> bool:
 	_duel_sent = false
 	_duel_point = null
 	_duel_cool = _event_cooldown()
+	_q_kills.erase("event_duel")
+	Q.set_reward_mult("event_duel", 1.0)
 	Q.skip_quest(String(q["id"]))
 	return true
 
@@ -1536,6 +1634,7 @@ func _duel_2(q: Dictionary) -> void:
 		return
 	_duel_sent = false
 	Q.report(String(q["event"]), 1)
+	_q_kills.erase("event_duel")     # paid out above; the next duel starts at one
 	_duel_cool = _event_cooldown()   # дуэль — такое же событие, пауза общая
 	_duel_point = null
 
@@ -1623,19 +1722,18 @@ func _award(bt: int) -> void:
 	if p != null and p.has_method("award_blocks"):
 		p.award_blocks(bt, 1)
 
-# Вор — обычный враг, которому ДОБАВЛЕН радар: отбирается он тем же способом, что любой
-# другой блок, — сбил остальное, подобрал. Отдельной «сцены вора» заводить незачем.
-func _spawn_thief() -> Node3D:
-	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp == null or not sp.has_method("spawn_scout_near_player"):
-		return null
-	var e = sp.spawn_scout_near_player()
-	if e == null or not (e is Node3D):
-		return null
-	var blocks: Node = (e as Node3D).get_node_or_null("blocks")
-	if blocks != null and blocks.has_method("set_block"):
-		blocks.set_block(5, 6, 5, G.Block.RADAR, 0.0)
-	return e as Node3D
+## How many of a block the player has anywhere: every machine, the inventory, the hand.
+func _owned_count(bt: int) -> int:
+	var n: int = (G.block_inventory as Array).count(bt)
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc != null and "vehicles" in cc:
+		for v in cc.vehicles:
+			n += _machine_count(v, bt)
+	else:
+		n += _count_block(bt)
+	if _in_hand(bt):
+		n += 1
+	return n
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ПОВТОРЯЕМЫЕ СОБЫТИЯ (в оригинале — задания с борда станции)
@@ -1694,6 +1792,7 @@ func quest_point(ev: String) -> Variant:
 		# Ветки с носителем и с жилой: точка едет за живым носителем (carrier_point сама
 		# обновляет её), а после боя указывает туда, где упал блок.
 		"quest_arc_radar_1":   return carrier_point("arc_radar")
+		"quest_arc_radar_2":   return carrier_point("radar_2")
 		"quest_arc_battery_1": return battery_point()
 		"quest_arc_battery_2": return battery_point()
 	# Вышки под щитом держат свои точки в отдельном словаре, но ключ у них ТОТ ЖЕ, что у
@@ -1717,7 +1816,7 @@ func _live_target(ev: String) -> Variant:
 		"hold":      list.append_array(_hold)
 		"salvage":   list.append(_salvage_guard)
 		"duel":      list.append_array([_duel_a, _duel_b])
-		"arc_radar": list.append(_thief)          # «вор» с радаром — тоже цель квеста
+		"arc_radar": list.append(_carrier.get("radar_2"))   # the second radar's carrier
 	# Носитель сюжетного блока — такой же живой участник: пока он ездит, метка едет за ним.
 	if _carrier.has(key):
 		list.append(_carrier[key])
@@ -1839,6 +1938,13 @@ func _ev_clear(key: String) -> void:
 		(orb as Node).queue_free()
 	_ev_orb.erase(key)
 	_props.release("event_" + key)
+
+## A participant that outlived its quest (the covered ally, a tower's guards) stops being a quest
+## machine: tagged `story`, the spawner's cleanup never takes it and it holds a place in
+## `max_total` for the rest of the save.
+func _release_machine(m) -> void:
+	if is_instance_valid(m):
+		(m as Node).remove_meta("story")
 
 ## Все участники события уничтожены?
 func _ev_all_dead(key: String) -> bool:
@@ -2054,6 +2160,8 @@ func _defend_1(q: Dictionary) -> void:
 		# именно фракцию). Отдельной «дружественной» сущности заводить незачем.
 		var ally: Array = _ev_spawn(key, at, [6], 0)
 		if ally.is_empty():
+			_ev_clear(key)
+			_ev_cool[String(q["id"])] = _event_cooldown()
 			Q.skip_quest(String(q["id"]))
 			return
 		_ev_ally[key] = ally[0]
@@ -2081,15 +2189,20 @@ func _defend_2(q: Dictionary) -> void:
 		return
 	# Союзника добили — защищать больше некого. Это не поражение с наказанием, а снятое
 	# задание: цель исчезла не по вине игрока (см. Q.skip_quest).
+	# A skipped event cools down like an abandoned one: skip_quest marks it done, and only the
+	# cooldown ever opens it again - without it Defend happened once a save.
 	var ally = _ev_ally.get(key)
 	if not is_instance_valid(ally):
+		_ev_ally.erase(key)
 		_ev_clear(key)
+		_ev_cool[String(q["id"])] = _event_cooldown()
 		Q.skip_quest(String(q["id"]))
 		return
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m) and m != ally:
 			return
 	_ev_ally.erase(key)
+	_release_machine(ally)
 	_ev_done(q, key)
 
 # ── «Hold Position»: one attack, straight at your position ──────────────────

@@ -171,7 +171,14 @@ func energy_fill() -> float:
 	return energy_stored() / _energy_cap if _energy_cap > 0.0 else 0.0
 
 # Any energy at all right now (stored or freshly produced).
+## The infinite-energy switch answers HERE too, the same gate as `energy_consume`: everything that
+## ASKS before it pays (the repair unit's budget, the auto miner, a shield's power check) read the
+## real, empty store and stayed dark on a machine that pays nothing.
+const INFINITE_ENERGY := 1.0e9
+
 func energy_available() -> float:
+	if get("faction") == 0 and G.debug(&"infinite_energy", false):
+		return INFINITE_ENERGY
 	return energy_stored() + _tick_prod
 
 # Sources (solar, generator) add their production here.
@@ -830,13 +837,18 @@ func _wheel_forces() -> void:
 		var f_lat: float = clampf(-v_at.dot(lat) * wheel_cornering, -WHEEL_GRIP_LIMIT, WHEEL_GRIP_LIMIT)
 		var f: Vector3 = lat * f_lat * share
 		var amount: float = push.length()
-		if amount > 0.01:
-			if w.is_drive:
-				# Fades toward max_speed along the push's own line, so a strafe has the same ceiling.
-				var speed_factor: float = clampf(1.0 - absf(v_at.dot(push / amount)) / max_speed, 0.05, 1.0)
-				f += push * w.wheel_power * engine_force * speed_factor
-		else:
-			f -= d * v_at.dot(d) * (engine_brake + longitudinal_grip) * share
+		if amount > 0.01 and w.is_drive:
+			# Fades toward max_speed along the push's own line, so a strafe has the same ceiling.
+			var speed_factor: float = clampf(1.0 - absf(v_at.dot(push / amount)) / max_speed, 0.05, 1.0)
+			f += push * w.wheel_power * engine_force * speed_factor
+		# COASTING IS NO THROTTLE, NOT NO PUSH. Steering alone pushes too (the tank turn under
+		# TANK_FADE, a wheel across the machine always), and the drag used to wait for push to be zero:
+		# a machine let off the pedal and steered rolled on with nothing slowing it. While it steers
+		# the drag takes the machine's run only (`linear_velocity`), not the wheel's swing round the
+		# centre, or it would brake the turn it is making.
+		if absf(_throttle) < 0.01:
+			var v_roll: Vector3 = linear_velocity if amount > 0.01 else v_at
+			f -= d * v_roll.dot(d) * (engine_brake + longitudinal_grip) * share
 		apply_force(f, point - global_position)
 
 # ══════════════════════════════════════════

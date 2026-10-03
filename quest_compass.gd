@@ -101,19 +101,22 @@ func _nearest_enemy(from: Vector3, story_only: bool = false) -> Variant:
 	var vehicles: Node = get_node_or_null("/root/Main/Vehicles")
 	if vehicles == null:
 		return null
-	var story: Array = []
+	# THE STORY TARGET IS THE SCOUT (`story_scout`, set by `spawn_scout_near_player`), not anything
+	# tagged `story`: every quest and event machine carries that tag (it keeps them from cleanup),
+	# so "destroy the scout" pointed at the nearest event party instead.
+	var scouts: Array = []
 	var near: Array = []
 	for e in vehicles.get_children():
 		var f = e.get("faction")
 		if not (e is Node3D) or f == null or int(f) == 0:
 			continue
-		if (e as Node3D).has_meta("story"):
-			story.append(e)
-		elif (e as Node3D).global_position.distance_squared_to(from) <= KILL_MARK_DIST * KILL_MARK_DIST:
+		if (e as Node3D).has_meta("story_scout"):
+			scouts.append(e)
+		if (e as Node3D).global_position.distance_squared_to(from) <= KILL_MARK_DIST * KILL_MARK_DIST:
 			near.append(e)
 	if story_only:
-		return _nearest_node(story, from) if not story.is_empty() else null
-	return _nearest_node(story if not story.is_empty() else near, from)
+		return _nearest_node(scouts, from) if not scouts.is_empty() else null
+	return _nearest_node(near, from)
 
 func _nearest_node(nodes: Array, from: Vector3) -> Variant:
 	var pts: Array = []

@@ -120,10 +120,45 @@ var charge_map: Dictionary = {}
 # a base built around one is the whole session's cargo.
 var store_map: Dictionary = {}
 
+## STORY CARGO a quest asks this machine to carry (the radar thief, the salvage guard's collector).
+## It is laid into the grid BEFORE `_spawn_all`, so it is born a real block. Written after spawn,
+## `set_block` only filled the grid: no node, no collider, nothing to shoot off or take - the radar
+## branch's second stage saw no radar on the thief and skipped itself at once, with no reward.
+var carry: Array = []
+
 func _ready() -> void:
 	_init_map()
 	_define_layout()
+	_place_carry()
 	_spawn_all()
+
+## A carried block stands on the TOP of a cabin or plain block, with open sky over it, so it is seen
+## on the approach (the player has to know which machine has it). Highest first, then nearest the
+## cabin's column. Both cargoes join by their bottom face.
+const CARRY_BASES := [G.Block.CABIN, G.Block.BLOCK]
+
+func _place_carry() -> void:
+	for bt in carry:
+		var best := Vector3i.ZERO
+		var found := false
+		for c in map:
+			if not CARRY_BASES.has(int(map[c])) or not _is_anchor(c.x, c.y, c.z):
+				continue
+			var open := true
+			for y in range(c.y + 1, GRID_MAX + 1):
+				if map.has(Vector3i(c.x, y, c.z)):
+					open = false
+					break
+			if not open or c.y + 1 > GRID_MAX:
+				continue
+			if not found or c.y > best.y or (c.y == best.y and _carry_d2(c) < _carry_d2(best)):
+				best = c
+				found = true
+		if found:
+			set_block(best.x, best.y + 1, best.z, int(bt), 0.0)
+
+static func _carry_d2(c: Vector3i) -> int:
+	return (c.x - 5) * (c.x - 5) + (c.z - 5) * (c.z - 5)
 
 # ── Init ────────────────────────────────────────────────────────────────────
 func _init_map() -> void:
