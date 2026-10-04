@@ -40,6 +40,13 @@ var _on_close: Callable = Callable()
 var _is_open: Callable = Callable()
 var _armed: bool = false                 # жест начался в нужном месте и ещё жив
 var _from: Vector2 = Vector2.ZERO
+var _touch: int = -1                     # the touch index the gesture started on (-1: the mouse)
+## THE FINGER THAT CLOSED THE WINDOW IS OURS UNTIL IT LIFTS (the player: "the garage closes, and the
+## camera turns up too"). Only the drag that fired was swallowed; the window was gone a frame later,
+## and the same finger's next drags fell through to the camera as an orbit. Both streams are eaten -
+## the touch's drags and the mouse motion emulated from it - and its release still goes on, since a
+## release means only "the finger left the glass" (camera_controller records it first).
+var _swallow: bool = false
 
 ## Повесить жест на окно. `is_open` спрашиваем каждый кадр: узел живёт вместе с окном и
 ## получает ввод даже когда окно спрятано (видимость на _input не влияет), так что без
@@ -86,12 +93,19 @@ func _open() -> bool:
 	return _is_open.is_valid() and _is_open.call() == true
 
 func _input(event: InputEvent) -> void:
+	if _swallow and _swallowed(event):
+		return
 	if not _open():
 		return
 	if event is InputEventScreenTouch:
 		var t := event as InputEventScreenTouch
 		_arm(t.position, t.pressed)
-	elif event is InputEventScreenDrag and _armed:
+		_touch = t.index if _armed else -1
+	elif event is InputEventScreenDrag and _armed \
+			and (_touch < 0 or (event as InputEventScreenDrag).index == _touch):
+		# the gesture's own finger is not the camera's while it runs: the bottom-centre strip is
+		# the gesture's, and every drag that reached the camera turned the view under the swipe
+		get_viewport().set_input_as_handled()
 		_advance((event as InputEventScreenDrag).position)
 	elif event is InputEventMouseButton \
 			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
@@ -99,6 +113,7 @@ func _input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		_arm(mb.position, mb.pressed)
 	elif event is InputEventMouseMotion and _armed:
+		get_viewport().set_input_as_handled()
 		_advance((event as InputEventMouseMotion).position)
 
 ## Начало жеста. Отпускание всегда снимает взвод: жест либо дотянули, либо он не считается —
@@ -121,7 +136,24 @@ func _advance(pos: Vector2) -> void:
 	if d.y > -maxf(TRAVEL_MIN, vp.y * TRAVEL_FRAC):
 		return                            # ещё не дотянул
 	_armed = false
+	_swallow = true
 	get_viewport().set_input_as_handled()
 	if _on_close.is_valid():
 		_on_close.call()
 	closed.emit()
+
+## Eat the closing finger's moves until it lifts; true when the event was eaten.
+func _swallowed(event: InputEvent) -> bool:
+	if event is InputEventScreenDrag and (_touch < 0 or (event as InputEventScreenDrag).index == _touch):
+		get_viewport().set_input_as_handled()
+		return true
+	if event is InputEventMouseMotion:
+		get_viewport().set_input_as_handled()
+		return true
+	if event is InputEventScreenTouch and not (event as InputEventScreenTouch).pressed \
+			and (_touch < 0 or (event as InputEventScreenTouch).index == _touch):
+		_swallow = false
+	elif event is InputEventMouseButton and not (event as InputEventMouseButton).pressed \
+			and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		_swallow = false
+	return false
