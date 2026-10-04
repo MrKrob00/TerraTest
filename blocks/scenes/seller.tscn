@@ -3,7 +3,6 @@
 [ext_resource type="Script" uid="uid://besmmov10ejk3" path="res://blocks/scripts/seller.gd" id="1_4sra1"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/seller_body.tres" id="2_gks3k"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/seller_ring.tres" id="3_ring"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/seller_screen.tres" id="4_screen"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_gks3k"]
 size = Vector3(2, 2, 2)
@@ -56,20 +55,8 @@ mesh = ExtResource("2_gks3k")
 [node name="item_slot" type="Marker3D" parent="." unique_id=1411431184]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.57, 0)
 
-[node name="Label3D" type="Label3D" parent="." unique_id=1527277196]
-transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, -0.5, 0.52, -1.512)
-pixel_size = 0.0035
-modulate = Color(0.45, 1, 0.55, 1)
-text = "Cash: 0$"
-font_size = 44
-outline_size = 0
-
-
 [node name="Ring" type="MeshInstance3D" parent="." unique_id=324247627]
 mesh = ExtResource("3_ring")
-
-[node name="Screen" type="MeshInstance3D" parent="." unique_id=324247628]
-mesh = ExtResource("4_screen")
 
 [node name="uplink_top" type="Marker3D" parent="." unique_id=1411431185]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)

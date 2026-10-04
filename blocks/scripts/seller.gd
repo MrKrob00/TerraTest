@@ -9,8 +9,8 @@ extends FactoryBlock
 # THE SALE IS SHOWN, NOT IMPLIED (art/emitter_models.py build_seller): the goods arrive in the mouth
 # at belt height, ride up the open lift shaft into the roof (_on_item_received), and at the sale
 # are beamed off at the uplink on top - the gold-and-green glitch plays THERE, the ring round the
-# mast spins up, and the SCREEN across the front says what went for how much (`Label3D` stands on
-# its glass) with the text flashing gold. `Ring` moves (moving_parts).
+# mast spins up, and the money rises over it as a "+N$" (sale_popup.gd; the screen across the front
+# that said it in text is gone, the player's call). `Ring` moves (moving_parts).
 
 @export var sell_interval: float = 0.5  # seconds between sales
 
@@ -24,20 +24,17 @@ const LIFT_SCALE := 0.8          # the goods shrink to ride inside the shaft's r
 const SHAFT_TOP := 0.92          # where they vanish into the roof (just under SL_TOP)
 const RING_SPIN := 14.0          # rad/s right after a sale
 const RING_EASE := 7.0           # rad/s per second back down
-const TEXT_IDLE := Color(0.45, 1.0, 0.55)   # the screen's terminal green (seller.tscn Label3D)
-const TEXT_FADE := 1.6           # per second, back from the gold flash
+const SALE_POPUP := preload("res://sale_popup.gd")
+const POPUP_Y := 1.9             # over the uplink's tip
 
 var timer: Timer
 var _ring: Node3D = null
-var _text: Label3D = null
+var _popup = null                # the last "+N$" (sale_popup.gd), merged into while young
 var _spin: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true
 	_ring = get_node_or_null("Ring") as Node3D
-	_text = get_node_or_null("Label3D") as Label3D
-	if _text != null:
-		_text.text = tr("Cash: %s") % G.money
 	super._ready()
 
 	timer = Timer.new()
@@ -53,8 +50,6 @@ func _process(delta: float) -> void:
 		_spin = move_toward(_spin, 0.0, RING_EASE * delta)
 		if _ring != null:
 			_ring.rotate_y(_spin * delta)
-	if _text != null and _text.modulate != TEXT_IDLE:
-		_text.modulate = _text.modulate.lerp(TEXT_IDLE, clampf(TEXT_FADE * delta, 0.0, 1.0))
 
 ## Up the shaft while the sale is timed. The tween carries the PICTURE only: the sale happens on the
 ## timer whether or not it finished.
@@ -87,12 +82,12 @@ func _on_timer_timeout() -> void:
 	# it holds BLOCKS, and orders are for materials.
 	if kind != "" and not kind.begins_with("chunk:"):
 		Q.report("sold_" + kind, 1)
-	var label: String = G.kind_name(kind)
-	if kind.begins_with("chunk:") and "chunk_count" in current_item:
-		label += " ×" + str(int(current_item.get("chunk_count")))
-	if _text != null:
-		_text.text = label + " +" + str(price) + "$\n" + tr("Cash: %s") % G.money
-		_text.modulate = SELL_A
+	if price > 0:
+		if is_instance_valid(_popup) and _popup.can_merge():
+			_popup.add(price)
+		else:
+			var at: Vector3 = global_transform * Vector3(0.0, POPUP_Y, 0.0)
+			_popup = SALE_POPUP.spawn(self, at, price)
 	# THE SALE IS GLITCH CARDS AT THE UPLINK, not GPUParticles3D and not at the mouth. The scene
 	# used to carry a 512-particle emitter with turbulence and a 34.9 s trail - every sale, twice a
 	# second while a line ran - the most expensive trifle in the game on a phone, and a spark cloud

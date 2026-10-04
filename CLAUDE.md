@@ -2206,11 +2206,12 @@ project: read it before claiming how anything works.
   right - an open MOUTH at belt height - and the goods RIDE UP an open lift shaft (four rails, two
   rings) into the roof (`seller._on_item_received`), are beamed off at the UPLINK on top (the
   gold-and-green glitch plays there, marker `uplink_top`), a gold ring round its mast spins up
-  (`Ring`, `moving_parts`), and a WIDE SCREEN across the whole front says what went for how much -
-  the scene's `Label3D` stands on its glass, flashing gold on a sale and settling back to terminal
-  green; its "Cash" line is `tr("Cash: %s")`. A coin and a chart painted on a panel were there first
-  and the player asked for a real display instead. Around it: a round vault door on the left, status
-  lamps under the screen, hazard slats on the mouth's base, two aerials. Measured on the engine: three ore
+  (`Ring`, `moving_parts`), and the money RISES OVER THE MAST as a gold "+N$" (`sale_popup.gd`: it
+  pops, rises and fades; screen-sized, not made past `SHOW_DIST`; a sale inside `MERGE` of the last
+  one ADDS to it, so a running line counts one number up instead of stacking a column). THERE IS NO
+  SCREEN, the player's call: a coin and a chart painted on the front came first, then a wide display
+  with a `Label3D` on its glass, and the pop-up replaced both. Around it: a round vault door on the
+  left, status lamps across the vault's front, hazard slats on the mouth's base, two aerials. Measured on the engine: three ore
   through receiver, belt, processor and belt into the seller paid 75 (three Ferrite ingots) both
   straight through the channel and with the processor beside the line.
 - **THE STORAGE SAYS HOW FULL IT IS** (`art/emitter_models.py` storage): a container, corrugated
