@@ -24,6 +24,7 @@ var fps_buffer: Array[float] = []    # Буфер для усереднення 
 var buffer_size: int = 30            # Згладжування за останні 30 кадрів (~0.5 сек при 60 FPS)
 var cooldown_timer: float = 0.0      # Таймер блокування підвищення
 
+const LOAD_SETTLE: float = 2.0       # s after the loading screen goes before the scaler judges
 const SETTLE_TIME: float = 0.5       # Пауза после ЛЮБОЙ смены масштаба, пока буфер не наполнится заново
 var settle_timer: float = 0.0        # реальными кадрами — иначе следующий тик судит по 1 кадру и сразу
 
@@ -277,6 +278,14 @@ func _load_settings() -> void:
 func _process(delta: float) -> void:
 	if not auto_fps:
 		return                        # ручной режим: масштаб держит игрок
+	# NOT WHILE LOADING. Behind the loading screen the frame rate is the terrain's worker threads and
+	# the warm-up, not the game's: the scaler stepped down five times in four seconds (measured, 0.8 ->
+	# 0.6), every step reallocating the 3D buffers under the overlay - the screen blinking on the
+	# phone - and the game opened at the floor, blurred, to climb back a step every few seconds.
+	if get_tree().get_first_node_in_group(&"loading_screen") != null:
+		fps_buffer.clear()
+		settle_timer = LOAD_SETTLE
+		return
 	# 1. Оновлюємо таймер затримки
 	if cooldown_timer > 0:
 		cooldown_timer -= delta

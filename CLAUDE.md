@@ -2065,7 +2065,12 @@ project: read it before claiming how anything works.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
-  wider range (`MANUAL_SCALE_MIN/MAX`). Tried and REJECTED on the way, both measured: rendering the
+  wider range (`MANUAL_SCALE_MIN/MAX`). IT DOES NOT JUDGE WHILE A LOADING SCREEN IS UP (group
+  `loading_screen`, then `LOAD_SETTLE` 2 s): behind the overlay the frame rate is the terrain's
+  threads and the warm-up, and it stepped down five times in four seconds (measured on the real
+  driver, 0.8 -> 0.6), each step reallocating the 3D buffers under the overlay - the player's
+  "the screen blinks while loading" - and the game opened at the floor, blurred. After the gate: no
+  scale change until the overlay is gone. Tried and REJECTED on the way, both measured: rendering the
   root viewport straight to the screen (`viewport_set_render_direct_to_screen`) looked 15% faster
   and was not drawing at all — the X framebuffer stopped updating the moment it went on; and culling
   back faces on the blocks' double-sided materials was inside the noise and changed some pixels.

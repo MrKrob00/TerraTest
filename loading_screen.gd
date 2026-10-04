@@ -83,6 +83,7 @@ func _reseed_card(i: int) -> void:
 
 func _ready() -> void:
 	layer = 200
+	add_to_group(&"loading_screen")     # Main's resolution scaler waits while it is up
 	process_mode = Node.PROCESS_MODE_ALWAYS
 
 	_ui = Control.new()
