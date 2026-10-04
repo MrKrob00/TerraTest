@@ -2312,6 +2312,12 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
+- **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
+  the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
+  licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
+  on `G.licence_granted` (emitted by `grant_licence`), that grade's blocks on `G.grade_up`; a gold
+  frame on a block already researched. Several queue. It was a System line in the dialogue strip,
+  which scrolls away and shows nothing. Not on the proving ground.
 - **THE MARLIT SOLAR ARRAY IS A LID THAT TURNS OVER** (`MARLIT_SOLAR`, `blocks/scripts/marlit_solar.gd`,
   `art/emitter_models.py` marlit_solar): a 2x1x2 housing whose top is two leaves, the Marlit window on
   one side and 4x2 cells on the other. On the anchor each leaf rides up on two rams to the middle of

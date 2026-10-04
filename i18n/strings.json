@@ -2519,5 +2519,25 @@
 	"Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.": {
 		"ru": "Поворотная опора Марлит: верх крутится на зубчатом венце, а литьё под ним держит землю — вся постройка поворачивается джойстиком.",
 		"uk": "Поворотна опора Марліт: верх обертається на зубчастому вінці, а лиття під ним тримає землю — уся будова повертається джойстиком."
+	},
+	"Licence granted: %s": {
+		"ru": "Лицензия получена: %s",
+		"uk": "Ліцензію отримано: %s"
+	},
+	"Congratulations! %s has licensed you. Their blocks can now be researched in the tech tree; the first ones are already yours.": {
+		"ru": "Поздравляем! %s выдала вам лицензию. Её блоки теперь можно исследовать в древе технологий, а первые из них уже ваши.",
+		"uk": "Вітаємо! %s видала вам ліцензію. Її блоки тепер можна досліджувати в дереві технологій, а перші з них уже ваші."
+	},
+	"%s licence: level %d": {
+		"ru": "Лицензия %s: уровень %d",
+		"uk": "Ліцензія %s: рівень %d"
+	},
+	"Your %s licence has gone up. These blocks can now be researched in the tech tree.": {
+		"ru": "Ваша лицензия %s повышена. Эти блоки теперь можно исследовать в древе технологий.",
+		"uk": "Вашу ліцензію %s підвищено. Ці блоки тепер можна досліджувати в дереві технологій."
+	},
+	"Continue": {
+		"ru": "Продолжить",
+		"uk": "Продовжити"
 	}
 }
