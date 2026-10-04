@@ -19,7 +19,7 @@ const MAX_RANGE := 160.0
 # Exported: Marlit's mortar has seven tubes and fires seven (marlit_mortar.tscn); the defaults are
 # the Falsus eight-barrel numbers.
 @export var shells: int = 8              # per salvo, all at once - one per tube on the model
-@export var shell_damage: int = 123
+@export var shell_damage: int = 62
 ## Set from what LANDS, not from the salvo: 3-4 shells x 12 over 1.6 s is 25-30/s, a heavy
 ## gun's worth, paid for with flight time and a 20 m dead zone.
 @export var salvo_period: float = 1.6
@@ -38,6 +38,9 @@ var _salvo_t: float = 0.0
 ## shows exactly the angle the shells leave at. A second number here would disagree with the
 ## scene the first time either was touched.
 var _idle_pitch: float = 0.0
+
+func _init() -> void:
+	turn_speed = 45.0        # deg/s (WeaponBlock._turn_to): the hull aims it; the pack only trims and lifts
 
 func _ready() -> void:
 	super._ready()
@@ -58,6 +61,8 @@ func _ready() -> void:
 	if _pitch_part != null:
 		var f: Vector3 = _pitch_rest * Vector3.FORWARD
 		_idle_pitch = atan2(f.y, Vector2(f.x, f.z).length())
+	# the pivot starts where the pack stands, or the first salvo would swing the pack down from it
+	pivot.rotation = Vector3(_idle_pitch, 0.0, 0.0)
 
 func _physics_process(delta: float) -> void:
 	_salvo_t = maxf(_salvo_t - delta, 0.0)
@@ -70,8 +75,7 @@ func _track_target(delta: float, firing: bool) -> void:
 	var t: Node3D = _current_target
 	var live: bool = firing and t != null and is_instance_valid(t) and _is_in_cone(t)
 	if not live:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
-		_aim_model(0.0, 0.0, delta)
+		_turn_to(rad_to_deg(_idle_pitch), 0.0, delta, _idle_pitch)   # parked as the scene parks it
 		return
 	var flat: Vector3 = t.global_position - global_position
 	flat.y = 0.0
@@ -79,9 +83,7 @@ func _track_target(delta: float, firing: bool) -> void:
 	var dir_local: Vector3 = global_transform.basis.inverse() * flat.normalized()
 	var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -yaw_limit, yaw_limit)
 	var pitch: float = _arc_deg(dist)
-	pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0),
-			12.0 * delta)
-	_aim_model(deg_to_rad(yaw), deg_to_rad(pitch) - _idle_pitch, delta)
+	_turn_to(pitch, yaw, delta, _idle_pitch)
 
 ## Угол броска на эту дальность: круто вблизи, отложе вдали (см. шапку).
 func _arc_deg(dist: float) -> float:

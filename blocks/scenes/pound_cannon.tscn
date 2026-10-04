@@ -100,12 +100,13 @@ collision_layer = 2
 collision_mask = 21
 freeze = true
 script = ExtResource("1_vk1bi")
+turn_speed = 55.0
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
 connect_faces = 32
 Area_Range = NodePath("Area3D")
 block = 44
-damage = 307
+damage = 154
 fire_rate = 1.2
 weapon_range = 60.0
 

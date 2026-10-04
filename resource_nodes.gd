@@ -84,6 +84,14 @@ const VEIN_SCALE_MAX := 1.15
 ## whoever places something on a tree asks the node's `vein_basis` meta (the battery errand).
 const TREE_SCALE := 2.0
 var _tree_shape: CylinderShape3D = null
+## AN ORE VEIN IS DRAWN AT THREE TIMES ITS MODEL (the player: "make the veins three times bigger"),
+## the same way: one number on the instance, break points in model space. The models are about a
+## metre across, so a vein is about three now; its collider (`_ore_shape`), where its ore is thrown
+## (`resource_node._eject_one`, by `vein_basis`) and the auto miner's reach and mount distance
+## (`auto_miner.vein_reach`, `vehicle_body_3d.MINER_MOUNT_DIST`) grew with it. `min_spacing` did
+## NOT: it is a rejection radius in the seeded layout, and moving it would move veins under saved bases.
+const VEIN_SIZE := 3.0
+var _ore_shape: CylinderShape3D = null
 
 ## A TIME FOR THE SHADER IS THE SHADER'S CLOCK, which rolls over (`time_rollover_secs`, an hour by
 ## default): an hour into a session a raw Time.get_ticks_msec() stood an hour ahead of TIME, and a
@@ -147,7 +155,7 @@ func vein_hit(vein: Node3D) -> void:
 	# inside the needles
 	var wood: bool = vein.get("is_wood") == true
 	var base: Vector3 = vein.global_position
-	var at: Vector3 = base + Vector3.UP * (0.8 * TREE_SCALE if wood else 0.7)
+	var at: Vector3 = base + Vector3.UP * (0.8 * TREE_SCALE if wood else 0.35 * VEIN_SIZE)
 	var out := Vector3.ZERO
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
@@ -155,7 +163,7 @@ func vein_hit(vein: Node3D) -> void:
 		out.y = 0.0
 		if out.length_squared() > 0.01:
 			out = out.normalized()
-			at += out * (0.45 * TREE_SCALE if wood else 0.7)
+			at += out * (0.45 * TREE_SCALE if wood else 0.6 * VEIN_SIZE)
 	_digits.burst(vein, at, base.y - 0.25, out)
 
 ## The veins' shader reads its own `now`, never TIME (see resources/resource.gdshader): one clock
@@ -508,6 +516,8 @@ func _stream_in(v: Dictionary) -> void:
 	var size: float = VEIN_SCALE_MIN + float((hh >> 13) % 1000) * 0.001 * (VEIN_SCALE_MAX - VEIN_SCALE_MIN)
 	if v.get("wood") == true:
 		size *= TREE_SCALE
+	else:
+		size *= VEIN_SIZE
 	var vbasis := Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size)
 	var xform := Transform3D(vbasis, v["pos"])
 	# G=1 whole, A the type; B the time it came back - a replanted tree grows in its new spot
@@ -536,6 +546,15 @@ func _stream_in(v: Dictionary) -> void:
 					_tree_shape.height = 3.5 * TREE_SCALE      # the trunk up into the crown
 				col.shape = _tree_shape
 				col.position = Vector3(0.0, _tree_shape.height * 0.5, 0.0)
+		else:
+			var col := node.get_node_or_null("CollisionShape3D") as CollisionShape3D
+			if col != null:
+				if _ore_shape == null:
+					_ore_shape = CylinderShape3D.new()
+					_ore_shape.radius = 0.5 * VEIN_SIZE              # the models are ~1 m across
+					_ore_shape.height = 0.8 * VEIN_SIZE              # from under the ground to the top
+				col.shape = _ore_shape
+				col.position = Vector3(0.0, _ore_shape.height * 0.5 - 0.3, 0.0)
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]

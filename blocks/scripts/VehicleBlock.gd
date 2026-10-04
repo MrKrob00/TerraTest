@@ -178,26 +178,18 @@ static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) ->
 	body.queue_free()
 	return true
 
-## ПРОЧНОСТЬ МЕРЯЕТСЯ СЕКУНДАМИ ПОД ОГНЁМ, а не «на глаз».
-##
-## Считать надо против ВХОДЯЩЕГО DPS, и вот он, из самих стволов: пушка 25 в секунду (5 за
-## выстрел каждые 0.2), лазер 32, дробовик 20 в среднем (64 за пачку раз в 3.2), тяжёлая пушка 25,
-## ракета 28, бур 66 в упор. Вражеские сборки (blocks.gd): разведчик 25, бегун 20, рейдер 50,
-## копейщик 57, крушитель 75.
-##
-## Со старыми числами это давало «блок в секунду»: кабина 150 против рейдера умирала за три
-## секунды, оружие и колёса (50-60) — за одну, а ниже DROP_FRAC блок и вовсе срывает с креплений.
-## Отсюда «машина не живёт и пяти секунд» — счёт сходился точно.
-##
-## ПРАВИЛО, ПО КОТОРОМУ ЭТИ ЧИСЛА ПОДНЯТЫ: сердце машины (кабина) обязано держать не меньше шести
-## секунд сосредоточенного огня СВОЕГО тира, а рядовой блок — не меньше трёх. Отсюда примерно
-## двойной множитель ко всему боевому; лесенка между блоками сохранена ровно как была (броня
-## втрое от блока, плиты по объёму, половинка две трети).
-##
-## Оружие и лазер раньше не имели строки вовсе и падали на DEFAULT_HP = 50, то есть были САМЫМ
-## хрупким на машине — при том, что именно по ним и стреляют.
+## HIT POINTS ARE ON TERRATECH'S SCALE (the player's anchors: a Falsus block 250, a Marlit block
+## 1750), AND DAMAGE IS HALF OF TERRATECH'S. The first rescale took TerraTech's dps as it stands (gun
+## 255, laser 190) and fights ended in a second; but TerraTech's turrets TURN at a rate and armour
+## takes half from bullets, so its nominal dps never all lands. Ours aim instantly, so every number
+## that hurts was halved (the player's call) and turrets got a traverse rate
+## (`WeaponBlock.turn_speed`). The ladder between blocks is unchanged: armour three times a block,
+## plates by area, a half block two thirds.
+## THE CABIN IS 2.5 BLOCKS OF ITS FACTION (the player's rule): Falsus 625, Marlit 4375.
+## A weapon without a row falls to DEFAULT_HP and is the most fragile thing on the machine - which is
+## what the enemy aims at.
 const BLOCK_HP: Dictionary = {
-	G.Block.CABIN:     1500,      # сердце: пока она цела, машина жива
+	G.Block.CABIN:     625,       # 2.5 blocks (the player's rule): the heart, not a bunker
 	G.Block.WHEEL:     190,
 	G.Block.BLOCK:     250,
 	G.Block.DRILL:     265,      # носовой блок: принимает удар первым, им же и работают
@@ -255,7 +247,7 @@ const BLOCK_HP: Dictionary = {
 	G.Block.MARLIT_WHEEL:     750,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
 	G.Block.MARLIT_SUPPORT:     1375,   # a casting: tougher than its eight cells of frame, short of the block
 	G.Block.MARLIT_ROT_SUPPORT: 1250,
-	G.Block.MARLIT_CABIN:     10500,     # the cabin's 320 over eight cells, at Marlit's 1.1 a cell
+	G.Block.MARLIT_CABIN:     4375,      # 2.5 Marlit blocks, as the Falsus cabin
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
 	G.Block.MARLIT_GUN:       700,
@@ -478,7 +470,7 @@ const FUSE_FRAC := 0.05        # below this the block is doomed: it detaches and
 const FUSE_TIME_MIN := 4.0
 const FUSE_TIME_MAX := 6.0
 const SELF_BLAST_RADIUS := 3.0
-const SELF_BLAST_DAMAGE := 307
+const SELF_BLAST_DAMAGE := 154
 const SELF_BLAST_FORCE := 7.0
 var _fuse_lit: bool = false
 ## ФИТИЛЬ ДОГОРЕЛ — то есть взрыв состоялся сам, а не «блок умер, пока фитиль горел». Разница
@@ -668,7 +660,7 @@ func _charge01() -> float:
 		return 0.0
 	return clampf(float(ch) / float(cap), 0.0, 1.0)
 const CABIN_BLAST_RADIUS := 3.5
-const CABIN_BLAST_DAMAGE := 563
+const CABIN_BLAST_DAMAGE := 282
 const CABIN_BLAST_FORCE := 9.0
 var _destroyed: bool = false
 

@@ -48,8 +48,8 @@ var _rig_on: bool = false
 ## Energy a second: two Falsus panels (SOLAR_RATE each), so one panel digs at half the rate.
 @export var energy_per_sec: float = 160.0
 ## Как далеко под собой искать жилу и в каком радиусе подбирать выпавшее.
-@export var vein_reach: float = 3.0
-@export var pickup_radius: float = 4.0
+@export var vein_reach: float = 4.5          # past MINER_MOUNT_DIST: a vein is ~3 m across (resource_nodes.VEIN_SIZE)
+@export var pickup_radius: float = 6.0       # the vein throws its ore round its own outside
 ## Сколько невывезенной руды рядом — и хватит: без приёмника бить дальше некуда.
 const GROUND_LIMIT := 6
 

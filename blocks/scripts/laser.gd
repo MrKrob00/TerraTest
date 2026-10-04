@@ -25,7 +25,7 @@ extends WeaponBlock
 ## четыре раза в секунду. Так у оружия появляется собственный ритм: видно, как ствол копит и
 ## когда разрядится, и по этому ритму от него можно уйти за угол.
 @export var laser_fire_rate: float = 0.9
-@export var laser_damage: int = 171
+@export var laser_damage: int = 86
 const BULLET_SCRIPT := preload("res://blocks/scripts/bullet.gd")
 
 ## НАКОПИТЕЛЬ: кольца, сбегающиеся к дулу. Их три и они идут со сдвигом фазы, поэтому поток
@@ -43,6 +43,9 @@ const LANCE_DUR := 0.12
 
 var _charge: Node3D = null
 var _rings: Array[MeshInstance3D] = []
+
+func _init() -> void:
+	turn_speed = 80.0        # deg/s (WeaponBlock._turn_to): the lens stack is heavier than the gun
 
 func _ready() -> void:
 	super._ready()
@@ -186,7 +189,7 @@ func _glow_mat(col: Color, energy: float) -> StandardMaterial3D:
 func _track_target(delta: float, firing: bool) -> void:
 	if not firing:
 		_charge.visible = false                 # молчащий ствол ничего не копит
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
+		_turn_to(0.0, 0.0, delta)
 		return
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
@@ -195,11 +198,9 @@ func _track_target(delta: float, firing: bool) -> void:
 		var dl := global_transform.basis.inverse() * (tp - pivot.global_position).normalized()
 		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -yaw_limit, yaw_limit)
 		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -pitch_limit, pitch_limit)
-		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
-		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)   # доворачиваем саму модель
+		_turn_to(pitch, yaw, delta)
 	else:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
-		_aim_model(0.0, 0.0, delta)
+		_turn_to(0.0, 0.0, delta)
 
 	# НАКОПИТЕЛЬ ВИДЕН ВСЁ ВРЕМЯ ПРИЦЕЛИВАНИЯ, а не долю секунды после выстрела. Вспышка
 	# постфактум говорила только «уже выстрелил»; кольца говорят «сейчас выстрелю», и это

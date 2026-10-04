@@ -11,7 +11,10 @@ class_name RocketLauncher
 ## клеток поперёк, и целиться ракетой было незачем — она и так забирала всё вокруг.
 @export var aoe_radius: float = 1.5
 ## Урон в эпицентре (к краю радиуса спадает до ~15%).
-@export var aoe_damage: int = 461
+@export var aoe_damage: int = 231
+
+func _init() -> void:
+	turn_speed = 70.0        # deg/s (WeaponBlock._turn_to): a full pod
 
 func _ready() -> void:
 	super._ready()
@@ -25,7 +28,7 @@ func _ready() -> void:
 # из базы, но без визуала — иначе база при отсутствии track_visual вообще не доворачивала бы.
 func _track_target(delta: float, firing: bool) -> void:
 	if not firing:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
+		_turn_to(0.0, 0.0, delta)
 		return
 	var has_target: bool = _current_target != null and is_instance_valid(_current_target) \
 			and _is_in_cone(_current_target)
@@ -34,11 +37,9 @@ func _track_target(delta: float, firing: bool) -> void:
 		var dl := global_transform.basis.inverse() * (tp - pivot.global_position).normalized()
 		var yaw := clampf(rad_to_deg(atan2(-dl.x, -dl.z)), -yaw_limit, yaw_limit)
 		var pitch := clampf(rad_to_deg(atan2(dl.y, Vector2(dl.x, dl.z).length())), -pitch_limit, pitch_limit)
-		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 12.0 * delta)
-		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)   # та же наводка по модели, что у пушки
+		_turn_to(pitch, yaw, delta)
 	else:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
-		_aim_model(0.0, 0.0, delta)
+		_turn_to(0.0, 0.0, delta)
 
 # Ракета во что-то попала → ВЗРЫВ (AOE), а не одиночный урон базового WeaponBlock.
 func _on_bullet_body_entered(body: Node3D, source) -> void:

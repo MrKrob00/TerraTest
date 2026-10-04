@@ -631,6 +631,8 @@ func _codex_stats(bt: int) -> String:
 			var r2: float = float(n.get("fire_rate"))
 			lines.append(tr("Damage: %d a shot every %.2f s (%d a second)") % [int(d2), r2, int(d2 / maxf(r2, 0.01))])
 			lines.append(tr("Range: %d m") % int(n.get("weapon_range")))
+		if n.get("turn_speed") != null:
+			lines.append(tr("Turret turns %d degrees a second") % int(n.get("turn_speed")))
 		if n.get("capacity") != null and G.BATTERY_BLOCKS.has(bt):
 			lines.append(tr("Stores %d energy") % int(n.get("capacity")))
 		if n.get("heal_rate") != null:
