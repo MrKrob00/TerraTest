@@ -22,7 +22,7 @@ const SHIELD_RADIUS := 4.0
 ## SCALED WITH THE BATTERY (100 -> 2000, the player's energy scale): 0.6 then, 12 now, so one
 ## battery still pays for the same 167 points of damage - the seconds under fire the reasoning above
 ## was tuned to.
-const SHIELD_COST_X := 12.0    # энергии за 1 урона
+const SHIELD_COST_X := 1.17    # energy a point of damage: 12 at the old damage scale, / 10.24 (see BLOCK_HP)
 const SHIELD_BREAK_CD := 2.0   # a dome that broke or ran dry stays down this long (a reboot)
 
 ## What a faction's own shield changes (marlit_shield.gd sets them in _init). The dome is SCALED as a

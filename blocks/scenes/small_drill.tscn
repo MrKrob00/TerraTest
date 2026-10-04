@@ -97,7 +97,7 @@ collision_layer = 2
 collision_mask = 23
 freeze = true
 script = ExtResource("1_0n8n4")
-drill_damage = 10
+drill_damage = 102
 block = 30
 connect_faces = 2
 

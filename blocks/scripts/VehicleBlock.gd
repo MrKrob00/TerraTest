@@ -197,77 +197,77 @@ static func pack_block_into(inv: Array, holder: Node, body: Node3D, cap: int) ->
 ## Оружие и лазер раньше не имели строки вовсе и падали на DEFAULT_HP = 50, то есть были САМЫМ
 ## хрупким на машине — при том, что именно по ним и стреляют.
 const BLOCK_HP: Dictionary = {
-	G.Block.CABIN:     320,      # сердце: пока она цела, машина жива
-	G.Block.WHEEL:     120,
-	G.Block.BLOCK:     160,
-	G.Block.DRILL:     170,      # носовой блок: принимает удар первым, им же и работают
-	G.Block.COLLECTOR: 90,
-	G.Block.RECEIVER:    90,
-	G.Block.BELT:      70,
-	G.Block.PROCESSOR: 180,
-	G.Block.SELLER:    130,
-	G.Block.BATTERY:   110,
-	G.Block.SOLAR:     70,
-	G.Block.GENERATOR: 170,
-	G.Block.REGEN:     110,
-	G.Block.SHIELD:    130,
-	G.Block.GUN:       130,      # по стволам и бьют: своя строка, а не общий потолок
-	G.Block.LASER:     120,
-	G.Block.ROCKET:    130,
-	G.Block.BLOCK3:    240,      # 3 клетки — и hp втрое от обычного блока
-	G.Block.WEDGE2:    220,
-	G.Block.ARMOR:     480,      # защитная пластина: держит втрое больше блока
+	G.Block.CABIN:     1500,      # сердце: пока она цела, машина жива
+	G.Block.WHEEL:     190,
+	G.Block.BLOCK:     250,
+	G.Block.DRILL:     265,      # носовой блок: принимает удар первым, им же и работают
+	G.Block.COLLECTOR: 140,
+	G.Block.RECEIVER:    140,
+	G.Block.BELT:      110,
+	G.Block.PROCESSOR: 280,
+	G.Block.SELLER:    205,
+	G.Block.BATTERY:   170,
+	G.Block.SOLAR:     110,
+	G.Block.GENERATOR: 265,
+	G.Block.REGEN:     170,
+	G.Block.SHIELD:    205,
+	G.Block.GUN:       205,      # по стволам и бьют: своя строка, а не общий потолок
+	G.Block.LASER:     190,
+	G.Block.ROCKET:    205,
+	G.Block.BLOCK3:    375,      # 3 клетки — и hp втрое от обычного блока
+	G.Block.WEDGE2:    345,
+	G.Block.ARMOR:     750,      # защитная пластина: держит втрое больше блока
 	# Bigger plates: toughness by area - 2 cells twice ARMOR, 4 four times, 9 nine.
-	G.Block.ARMOR2:    960,
-	G.Block.ARMOR4:    1920,
-	G.Block.ARMOR9:    4320,
+	G.Block.ARMOR2:    1500,
+	G.Block.ARMOR4:    3000,
+	G.Block.ARMOR9:    6750,
 	# Половинка — тот же материал, но металла в ней меньше: две трети от блока.
-	G.Block.HALF_BLOCK:  110,
-	G.Block.HALF_BLOCK2: 220,
-	G.Block.WIRELESS_CHARGER: 110,
-	G.Block.MORTAR:      170,
-	G.Block.POUND_CANNON: 180,
-	G.Block.SHOTGUN:     140,
-	G.Block.SCRAPPER:    170,
-	G.Block.SMALL_DRILL: 100,
-	G.Block.BELT_SPLIT: 70,
-	G.Block.BELT_CROSS: 70,
-	G.Block.ROT_SUPPORT: 130,
-	G.Block.STORAGE:    170,
-	G.Block.AUTO_MINER: 210,
-	G.Block.FABRICATOR: 300,
+	G.Block.HALF_BLOCK:  170,
+	G.Block.HALF_BLOCK2: 345,
+	G.Block.WIRELESS_CHARGER: 170,
+	G.Block.MORTAR:      265,
+	G.Block.POUND_CANNON: 280,
+	G.Block.SHOTGUN:     220,
+	G.Block.SCRAPPER:    265,
+	G.Block.SMALL_DRILL: 155,
+	G.Block.BELT_SPLIT: 110,
+	G.Block.BELT_CROSS: 110,
+	G.Block.ROT_SUPPORT: 205,
+	G.Block.STORAGE:    265,
+	G.Block.AUTO_MINER: 330,
+	G.Block.FABRICATOR: 470,
 	# Marlit hull by volume, a little over the frame's 160 a cell: fewer seams in one big part.
-	G.Block.MARLIT_BLOCK:     1400,
-	G.Block.MARLIT_SLAB:      700,
-	G.Block.MARLIT_HALF:      700,
-	G.Block.MARLIT_HALF_SLAB: 350,
-	G.Block.MARLIT_LONG:      2800,
-	G.Block.MARLIT_LONG_HALF: 1400,
-	G.Block.MARLIT_GIRDER:    700,     # half the basic block's, as its entry says
-	G.Block.MARLIT_BREW_GIRDER: 1400,
-	G.Block.MARLIT_BRACKET:   600,     # small but strong
+	G.Block.MARLIT_BLOCK:     1750,
+	G.Block.MARLIT_SLAB:      875,
+	G.Block.MARLIT_HALF:      875,
+	G.Block.MARLIT_HALF_SLAB: 440,
+	G.Block.MARLIT_LONG:      3500,
+	G.Block.MARLIT_LONG_HALF: 1750,
+	G.Block.MARLIT_GIRDER:    875,     # half the basic block's, as its entry says
+	G.Block.MARLIT_BREW_GIRDER: 1750,
+	G.Block.MARLIT_BRACKET:   750,     # small but strong
 	# Plates by area, a little over Falsus's 480 a cell: thicker plate.
-	G.Block.MARLIT_ARMOR2:    1100,
-	G.Block.MARLIT_ARMOR4:    2200,
-	G.Block.MARLIT_ARMOR8:    4400,
-	G.Block.MARLIT_SOLAR:     800,     # the housing is half a basic block, the lid armour
-	G.Block.MARLIT_REGEN:     700,
-	G.Block.MARLIT_WHEEL:     600,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
-	G.Block.MARLIT_SUPPORT:     1100,   # a casting: tougher than its eight cells of frame, short of the block
-	G.Block.MARLIT_ROT_SUPPORT: 1000,
-	G.Block.MARLIT_CABIN:     2800,     # the cabin's 320 over eight cells, at Marlit's 1.1 a cell
+	G.Block.MARLIT_ARMOR2:    1375,
+	G.Block.MARLIT_ARMOR4:    2750,
+	G.Block.MARLIT_ARMOR8:    5500,
+	G.Block.MARLIT_SOLAR:     1000,     # the housing is half a basic block, the lid armour
+	G.Block.MARLIT_REGEN:     875,
+	G.Block.MARLIT_WHEEL:     750,      # 2×2×2 now, a big target; the Falsus big wheel's share by size
+	G.Block.MARLIT_SUPPORT:     1375,   # a casting: tougher than its eight cells of frame, short of the block
+	G.Block.MARLIT_ROT_SUPPORT: 1250,
+	G.Block.MARLIT_CABIN:     10500,     # the cabin's 320 over eight cells, at Marlit's 1.1 a cell
 	# Two cells across and two deep, at a weapon's rate - the part the enemy aims at, so tougher
 	# than a hull block's share of its eight cells would make it.
-	G.Block.MARLIT_GUN:       560,
-	G.Block.MARLIT_LASER:     520,
-	G.Block.MARLIT_SHOTGUN:   600,
-	G.Block.MARLIT_CANNON:    680,
-	G.Block.MARLIT_MORTAR:    600,
-	G.Block.MARLIT_BATTERY:   900,     # a battery's toughness, by its eight cells, less the open bays
-	G.Block.MARLIT_WIRELESS:  400,
-	G.Block.MARLIT_OCTO:      4700,    # 27 cells at the basic block's rate
+	G.Block.MARLIT_GUN:       700,
+	G.Block.MARLIT_LASER:     650,
+	G.Block.MARLIT_SHOTGUN:   750,
+	G.Block.MARLIT_CANNON:    850,
+	G.Block.MARLIT_MORTAR:    750,
+	G.Block.MARLIT_BATTERY:   1125,     # a battery's toughness, by its eight cells, less the open bays
+	G.Block.MARLIT_WIRELESS:  500,
+	G.Block.MARLIT_OCTO:      5875,    # 27 cells at the basic block's rate
 }
-const DEFAULT_HP := 90
+const DEFAULT_HP := 140
 
 # Вес блока в килограммах. Раньше массу машины составляли только колёса, из-за чего
 # постройка вообще не влияла на ходовые качества. Теперь каждый блок весит.
@@ -478,7 +478,7 @@ const FUSE_FRAC := 0.05        # below this the block is doomed: it detaches and
 const FUSE_TIME_MIN := 4.0
 const FUSE_TIME_MAX := 6.0
 const SELF_BLAST_RADIUS := 3.0
-const SELF_BLAST_DAMAGE := 30
+const SELF_BLAST_DAMAGE := 307
 const SELF_BLAST_FORCE := 7.0
 var _fuse_lit: bool = false
 ## ФИТИЛЬ ДОГОРЕЛ — то есть взрыв состоялся сам, а не «блок умер, пока фитиль горел». Разница
@@ -668,7 +668,7 @@ func _charge01() -> float:
 		return 0.0
 	return clampf(float(ch) / float(cap), 0.0, 1.0)
 const CABIN_BLAST_RADIUS := 3.5
-const CABIN_BLAST_DAMAGE := 55
+const CABIN_BLAST_DAMAGE := 563
 const CABIN_BLAST_FORCE := 9.0
 var _destroyed: bool = false
 

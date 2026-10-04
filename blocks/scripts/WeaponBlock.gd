@@ -1,7 +1,7 @@
 extends VehicleBlock
 class_name WeaponBlock
 
-@export var damage: int = 5
+@export var damage: int = 51
 ## Дальность. Было 10 — втрое меньше, чем машина видит противника, поэтому убегающего было
 ## не достать в принципе. Отсюда же ИИ берёт свою боевую дистанцию
 ## (enemy_vehicle._own_weapon_range), так что короткий ствол заставлял и врага лезть вплотную.

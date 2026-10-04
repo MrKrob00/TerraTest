@@ -11,7 +11,7 @@ class_name RocketLauncher
 ## клеток поперёк, и целиться ракетой было незачем — она и так забирала всё вокруг.
 @export var aoe_radius: float = 1.5
 ## Урон в эпицентре (к краю радиуса спадает до ~15%).
-@export var aoe_damage: int = 45
+@export var aoe_damage: int = 461
 
 func _ready() -> void:
 	super._ready()

@@ -9,7 +9,7 @@ extends WeaponBlock
 # Exported so a faction's shotgun (marlit_shotgun.tscn) sets its own in the scene; the defaults are
 # the Falsus numbers.
 @export var pellets: int = 8            # дробин в выстреле
-@export var pellet_damage: int = 4      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
+@export var pellet_damage: int = 41      # 8×4 = 32 в упор — вдвое больше обычной пушки за выстрел
 @export var shotgun_range: float = 18.0
 @export var burst: int = 2              # выстрелов до перезарядки
 @export var reload: float = 0.4         # секунд
