@@ -419,7 +419,48 @@ func _set_shadows(n: Node, on: bool) -> void:
 			continue
 		_set_shadows(c, on)
 
-func hurt(damage: int = 10) -> void:
+## TERRATECH'S DAMAGE TYPES (the wiki's "Attack Effectiveness Chart", the player's call): what a hit
+## does depends on WHAT hits WHAT. A weapon carries its type (`WeaponBlock.damage_kind`, the drill
+## CUTTING), a block its class (`damage_class`), and the table below is the multiplier - applied
+## here, at the one door every block's damage comes through. STANDARD is "no type": the blasts of a
+## battery, a cabin or a burnt fuse, a hard landing - the table leaves them as they are. Wood and
+## rock (veins) are not in it: a vein's hp is tuned to the drill and the gun as they stand.
+enum Dmg { STANDARD, BULLET, ENERGY, EXPLOSIVE, CUTTING }
+enum Cls { STANDARD, ARMOR, RUBBER, VOLATILE, SHIELD }
+## Rows by Dmg, columns by Cls (standard, armour, rubber, volatile, shield) - the wiki's numbers.
+const DMG_TABLE := [
+	[1.0, 1.0, 1.0, 1.0, 1.0],    # standard
+	[1.0, 0.5, 1.0, 1.0, 2.0],    # bullet: bounces off armour, rips shields
+	[1.0, 1.5, 1.0, 1.5, 0.5],    # energy: burns through armour and batteries
+	[1.0, 0.5, 1.5, 2.0, 0.5],    # explosive: tyres and volatile blocks, not armour
+	[1.0, 0.5, 1.0, 1.0, 2.0],    # cutting
+]
+## What explodes when hit (TerraTech's "volatile"): batteries and the launchers of explosive rounds.
+const VOLATILE_BLOCKS := [G.Block.BATTERY, G.Block.MARLIT_BATTERY, G.Block.ROCKET, G.Block.MORTAR,
+		G.Block.MARLIT_MORTAR]
+var _dmg_cls: int = -1
+
+## This block's column in DMG_TABLE, worked out once.
+func damage_class() -> int:
+	if _dmg_cls < 0:
+		if ARMOR_BLOCKS.has(block):
+			_dmg_cls = Cls.ARMOR
+		elif VOLATILE_BLOCKS.has(block):
+			_dmg_cls = Cls.VOLATILE
+		elif block == G.Block.SHIELD:
+			_dmg_cls = Cls.SHIELD
+		elif has_method("probe_ground"):                   # every wheel: a tyre is rubber
+			_dmg_cls = Cls.RUBBER
+		else:
+			_dmg_cls = Cls.STANDARD
+	return _dmg_cls
+
+static func type_mult(kind: int, cls: int) -> float:
+	return float(DMG_TABLE[clampi(kind, 0, DMG_TABLE.size() - 1)][cls])
+
+func hurt(damage: int = 10, kind: int = Dmg.STANDARD) -> void:
+	if kind != Dmg.STANDARD and damage > 0:
+		damage = maxi(int(round(float(damage) * type_mult(kind, damage_class()))), 1)
 	# Debug switch (Main → Отладка → Игрок): blocks of the player's machines take no damage.
 	# Guarded here, at the single door damage comes through — a weapon-side check would miss the
 	# drill, the AOE from block_fx and every future source. A loose block in the world has no

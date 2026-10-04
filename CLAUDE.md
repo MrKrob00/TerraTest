@@ -747,9 +747,8 @@ project: read it before claiming how anything works.
 - **HIT POINTS ARE ON TERRATECH'S SCALE, DAMAGE IS HALF OF IT** (the player's anchors: a Falsus block
   250, a Marlit block 1750). The first rescale took TerraTech's dps as it stands (gun 255, laser 190)
   and a block died in a second; the player: "too strong - TerraTech's turrets turn at a rate". Its
-  nominal dps never all lands: turrets traverse, and armour takes half from bullets (the wiki's damage
-  types: bullet x0.5 on armour, x2 on shields; energy x1.5 on armour; explosive x0.5 on armour, x2 on
-  volatile blocks - NOT modelled here, a proposal). So every number that hurts was HALVED: gun 26 a
+  nominal dps never all lands: turrets traverse, and armour takes half from bullets (the damage types,
+  below). So every number that hurts was HALVED: gun 26 a
   shot at 0.2 s (130 dps), laser 86 at 0.9 s, shotgun pellet 21, heavy cannon 154, rocket blast 231,
   mortar shell 62, drill 103 (small 51), the block and cabin blasts 154 / 282; Marlit gun 41, laser
   155, shotgun 26, cannon 307, mortar 92 - and turrets got a traverse rate (below). A vein's `max_hp`
@@ -759,6 +758,21 @@ project: read it before claiming how anything works.
   BLOCKS OF ITS FACTION (the player's rule): Falsus 625, Marlit 4375. A weapon without its own row
   falls to `DEFAULT_HP` and becomes the most fragile thing on the machine - which is what the enemy
   aims at.
+- **WHAT A HIT DOES DEPENDS ON WHAT HITS WHAT: TERRATECH'S DAMAGE TYPES** (the wiki's "Attack
+  Effectiveness Chart", the player's call; `VehicleBlock.DMG_TABLE`, `Dmg`, `Cls`). A weapon carries
+  `damage_kind` (gun and shotgun BULLET, laser ENERGY, rocket, mortar and both heavy cannons
+  EXPLOSIVE - set in `_init` or the scene; the drill CUTTING), a block its `damage_class()` (armour
+  plates ARMOR, every wheel RUBBER, batteries and the rocket and mortar launchers VOLATILE, the
+  shield block SHIELD, the rest STANDARD), and `VehicleBlock.hurt(damage, kind)` multiplies - the one
+  door. Bullets x0.5 on armour, x2 on shields; energy x1.5 on armour and volatile, x0.5 on shields;
+  explosive x0.5 on armour, x1.5 on tyres, x2 on volatile; cutting x0.5 on armour. STANDARD is no
+  type: a battery's, cabin's or fuse's blast and a landing stay as they are. Veins (wood and rock)
+  are left out - their hp is tuned to the drill and the gun. A VEIN'S `hurt` TAKES ONE ARGUMENT, so a
+  caller passes the kind only to a `VehicleBlock` (`body is VehicleBlock`). The DOME's cost follows
+  the table's shield column over the bullet's: `SHIELD_MULT_ENERGY` and `_EXPLOSIVE` 0.25 (were 0.35
+  / 0.5, set while our laser was the strongest gun). Measured on the proving ground, 10 damage of
+  each kind: armour 10/5/15/5/5, a wheel 15 from a blast, a mortar launcher 20 from a blast, the
+  shield block 20 from bullets. The codex shows each weapon's type and each block's class.
 - **A TURRET TURNS AT A RATE AND FIRES ONLY ONCE IT IS ON** (`WeaponBlock._turn_to`, `turn_speed`,
   `AIM_TOL` 4 deg). The pivot lerped at 15/s - on any target in a tenth of a second - so every gun
   put its whole dps on what it picked at once. Yaw and pitch now move at `turn_speed` deg/s, the
@@ -1097,7 +1111,7 @@ project: read it before claiming how anything works.
 - WHAT THE DOME COSTS DEPENDS ON WHAT HITS IT (`WeaponBlock.shield_cost_mult`, a variable set by
   a subclass in `_ready` like `flash_color`). BULLETS ARE THE ANSWER TO A SHIELD and stay at 1.0,
   which is what `SHIELD_COST_X` is tuned to — nothing in the seconds-under-fire table moves.
-  A laser pays 0.35, explosives half, a drill a quarter, so bringing them to a dome is bringing
+  A laser and explosives pay a quarter (the damage-type table), a drill a quarter, so bringing them to a dome is bringing
   the wrong tool. The original's spread is FOUR to one and ours is about two, on purpose: their
   laser is a mediocre gun with a shield penalty, and since the TerraTech rescale ours is one too (190
   dps against the gun's 255) - the two-to-one spread was set while ours was the strongest gun and

@@ -40,6 +40,7 @@ var _salvo_t: float = 0.0
 var _idle_pitch: float = 0.0
 
 func _init() -> void:
+	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	turn_speed = 45.0        # deg/s (WeaponBlock._turn_to): the hull aims it; the pack only trims and lifts
 
 func _ready() -> void:

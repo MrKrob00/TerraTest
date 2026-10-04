@@ -595,6 +595,9 @@ var _stats_cache: Dictionary = {}
 const GENERATOR_GD := preload("res://blocks/scripts/generator.gd")
 const MARLIT_SOLAR_GD := preload("res://blocks/scripts/marlit_solar.gd")
 
+const DMG_NAMES := ["Standard", "Bullet", "Energy", "Explosive", "Cutting"]      # VehicleBlock.Dmg
+const CLS_NAMES := ["Standard", "Armour", "Rubber", "Volatile", "Shield"]        # VehicleBlock.Cls
+
 func _codex_stats(bt: int) -> String:
 	if _stats_cache.has(bt):
 		return _stats_cache[bt]
@@ -631,6 +634,14 @@ func _codex_stats(bt: int) -> String:
 			var r2: float = float(n.get("fire_rate"))
 			lines.append(tr("Damage: %d a shot every %.2f s (%d a second)") % [int(d2), r2, int(d2 / maxf(r2, 0.01))])
 			lines.append(tr("Range: %d m") % int(n.get("weapon_range")))
+		# the wiki's damage types (VehicleBlock.DMG_TABLE): what this deals, and what it is made of
+		var kind = n.get("damage_kind")
+		if kind == null and n.get("drill_damage") != null:
+			kind = VehicleBlock.Dmg.CUTTING
+		if kind != null:
+			lines.append(tr("Damage type: %s") % tr(DMG_NAMES[int(kind)]))
+		if n.has_method("damage_class") and int(n.damage_class()) != VehicleBlock.Cls.STANDARD:
+			lines.append(tr("Block class: %s") % tr(CLS_NAMES[int(n.damage_class())]))
 		if n.get("turn_speed") != null:
 			lines.append(tr("Turret turns %d degrees a second") % int(n.get("turn_speed")))
 		if n.get("capacity") != null and G.BATTERY_BLOCKS.has(bt):

@@ -101,6 +101,7 @@ collision_mask = 21
 freeze = true
 script = ExtResource("1_vk1bi")
 turn_speed = 55.0
+damage_kind = 3
 raycast = NodePath("Pivot/RayCast3D")
 pivot = NodePath("Pivot")
 connect_faces = 32
