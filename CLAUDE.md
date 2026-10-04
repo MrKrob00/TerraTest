@@ -676,7 +676,11 @@ project: read it before claiming how anything works.
 - The target is a **block** (layer mask 2). A block on a machine has zero `linear_velocity`, so
   target speed is measured between physics ticks.
 - Target scoring weighs proximity above the cabin (`SC_CABIN`) and adds a per-gun constant taste
-  (`SC_TASTE`) so neighbouring guns do not converge on one block.
+  (`SC_TASTE`) so neighbouring guns do not converge on one block. THE CABIN'S WEIGHT IS SMALL - 10
+  against proximity's 100, under the weapons' 45 (the player: "the guns pick the cabin too often").
+  At 55 an ally's guns held the cabin 91% of the time on a raider and 61% on a breaker, measured on
+  the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you, and its
+  guns are taken first.
 - Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
   their own. Without spread, automatic aiming is an aimbot.
 - The turret sector is per weapon (`WeaponBlock.yaw_limit` / `pitch_limit`, **variables**, not
