@@ -2013,7 +2013,10 @@ project: read it before claiming how anything works.
   their own shaders - the renderer mixes it AFTER the lighting in the same pass (`scene.glsl`
   `frag_color = mix(frag_color, fog.rgb, fog.a)`, not gated on environment fog), where the old haze
   was mixed into ALBEDO and lit again, so a far slope in shade came out a dark smudge. The SKY'S
-  HORIZON IS that colour, so land and sky meet without a seam; `day_cycle` moves it (cream, the
+  HORIZON IS that colour, so land and sky meet without a seam, AND IT CLIMBS A THIRD OF THE SKY on an
+  eased curve to a PALE zenith (`zenith_day`, low clouds sink into it too): on `pow(y, 0.5)` to a
+  deep blue the cream was a strip along the hills with a saturated sky glued on above (the player:
+  "the haze is good, next to an ordinary sky it is so-so"); `day_cycle` moves it (cream, the
   dusk's orange, a night blue). WARMTH: a warm-white sun (`SUN_COLOR`) and a warm-grey ambient (the
   sand's bounce - a blue fill made every shadow cold and dark), a wide glare round the sun in the
   sky. SHADOWS WERE MISSING, NOT ONLY DARK: the trees' MultiMeshes cast none (`cast_shadow` 0 in

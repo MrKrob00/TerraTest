@@ -9,7 +9,9 @@ shader_type sky;
 // scene's directional light (LIGHT0) and it is day. The lower half stays DARK on purpose: a hole in
 // the ground opens onto it, and a pale one reads as a torn world (CLAUDE.md).
 
-uniform vec3 zenith_day : source_color = vec3(0.16, 0.36, 0.72);
+// A PALE, HAZY BLUE, NOT A DEEP ONE: against the cream horizon a saturated zenith read as two skies
+// glued at a line (the player: "the haze is good, next to an ordinary sky it is so-so").
+uniform vec3 zenith_day : source_color = vec3(0.32, 0.54, 0.84);
 uniform vec3 zenith_night : source_color = vec3(0.012, 0.02, 0.06);
 // THE HORIZON IS THE WORLD'S HAZE (project.godot [shader_globals], moved by day_cycle.gd), the
 // colour the far ground fades into - one colour, so land and sky meet without a seam.
@@ -47,8 +49,12 @@ void sky() {
 		vec3 g = mix(ground_horizon, ground_bottom, pow(-dir.y, 0.4));
 		COLOR = g * mix(1.0, 0.35, night);
 	} else {
-		float up = pow(dir.y, 0.5);
+		// the haze climbs a third of the way up, on an eased curve - with pow(y, 0.5) it was a strip
+		// along the horizon and the blue began straight over the hills
+		float up = smoothstep(0.0, 0.62, dir.y);
+		up = up * up * (3.0 - 2.0 * up);
 		vec3 col = mix(world_haze.rgb, mix(zenith_day, zenith_night, night), up);
+		col = mix(col, world_haze.rgb, 0.12 * (1.0 - night));   // the air is one air: a breath of it overhead too
 		// the horizon reddens toward the sun at dusk and dawn
 		vec2 hz = normalize(dir.xz + vec2(1e-4));
 		vec2 sz = normalize(sun.xz + vec2(1e-4));
@@ -81,6 +87,7 @@ void sky() {
 		vec3 cloud = mix(lit, lit * 0.62, thick);
 		cloud += sun_color * pow(ds, 6.0) * 0.35 * (1.0 - thick) * day;       // a silver edge toward the sun
 		cloud = mix(cloud, vec3(0.1, 0.12, 0.2), night * 0.85);
+		cloud = mix(cloud, world_haze.rgb, (1.0 - up) * 0.55);   // low clouds sink into the haze
 		col = mix(col + vec3(star), cloud, c * mix(0.95, 0.7, night));
 		COLOR = col;
 	}
