@@ -111,7 +111,8 @@ func _animate_beacon(delta: float, on: bool) -> void:
 # ── The field and the digits ─────────────────────────────────────────────────
 # The FIELD is a sphere of exactly `field_radius` (regen_field.gdshader): a rim, a thin grid and a
 # band running over it - it says how far the unit reaches and that it is powered. The REPAIR is said
-# by DIGITS: for every block a tick mends, DIGITS_PER_HEAL 0/1 cards appear anywhere in the field,
+# by DIGITS: ONE 0/1 card for every HP_PER_DIGIT hit points a tick mends (the player: "as many as
+# the heal, not as many as the blocks"), at least one per block mended, appearing anywhere in the field,
 # hang there a moment and fly to the block along an arc; the hit points land WITH them
 # (`_land`), so the block's damage overlay greens the moment the digits arrive. They used to be a
 # cloud of ninety cards orbiting the field for good and one glitch bolt per heal - the player wanted
@@ -119,9 +120,10 @@ func _animate_beacon(delta: float, on: bool) -> void:
 #
 # The digits are ONE MultiMesh per unit, a pool of cards moved on the CPU while any is in flight: no
 # node is made per heal (the old bolt made one, and it was 40% of the unit's work). The pool holds a
-# full tick - `max_bodies` blocks, DIGITS_PER_HEAL each - since a fixed 96 ran out under the Marlit
-# unit's 45 and the rest healed with nothing flying.
-const DIGITS_PER_HEAL := 3
+# full budget twice over (a flight outlives the tick) plus one per block, since a fixed 96 ran out
+# under the Marlit unit and the rest healed with nothing flying.
+const HP_PER_DIGIT := 5
+const DIGITS_MAX_PER_HEAL := 40    # one block's share of a tick, the whole budget at most
 const DIGIT_SIZE := 0.32
 const DIGIT_SPAWN := 0.35          # s the digits hang at the core, blinking in
 const DIGIT_FLY := 0.7             # s to the block
@@ -162,7 +164,7 @@ func _build_digits() -> void:
 	var q := QuadMesh.new()
 	q.size = Vector2(DIGIT_SIZE, DIGIT_SIZE)
 	mm.mesh = q
-	var pool: int = max_bodies * DIGITS_PER_HEAL
+	var pool: int = 2 * ceili(heal_rate * REGEN_INTERVAL / float(HP_PER_DIGIT)) + max_bodies
 	mm.instance_count = pool
 	for i in pool:
 		mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO))
@@ -179,19 +181,27 @@ func _build_digits() -> void:
 	_digits.set_meta("block_fx", true)
 	add_child(_digits)
 
-## Send digits to mend `b` by `hp`. False when the pool has no room: the caller heals at once.
+## Send digits to mend `b` by `hp`, one per HP_PER_DIGIT. A block with digits still flying gets its
+## new ones in the same group and its hit points land with the last of them. False when the pool has
+## no room at all: the caller heals at once.
 func _launch(b: Node3D, hp: int) -> bool:
-	if _digits == null or _free.size() < DIGITS_PER_HEAL:
-		return false
 	var id: int = b.get_instance_id()
-	_groups[id] = {"block": b, "hp": hp, "left": DIGITS_PER_HEAL}
-	for k in DIGITS_PER_HEAL:
+	var want: int = clampi(ceili(float(hp) / float(HP_PER_DIGIT)), 1, DIGITS_MAX_PER_HEAL)
+	var n: int = mini(want, _free.size()) if _digits != null else 0
+	if _groups.has(id):
+		_groups[id]["hp"] = int(_groups[id]["hp"]) + hp
+		_groups[id]["left"] = int(_groups[id]["left"]) + n
+	elif n <= 0:
+		return false
+	else:
+		_groups[id] = {"block": b, "hp": hp, "left": n}
+	for k in n:
 		# Anywhere inside the field (uniform in its volume: the cube root), not at the core: a whole
 		# swarm leaving one point read as a fountain, not as the field doing the work.
 		var start := Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)).normalized() \
 				* field_radius * DIGIT_SPREAD * pow(randf(), 1.0 / 3.0)
 		_flights.append({"slot": _free.pop_back(), "group": id, "start": start,
-			"t": -k * 0.08, "side": randf_range(-0.5, 0.5), "seed": randf()})
+			"t": -k * minf(0.08, 0.5 / float(n)), "side": randf_range(-0.5, 0.5), "seed": randf()})
 	return true
 
 func _process(delta: float) -> void:
@@ -352,9 +362,7 @@ func _work(delta: float) -> bool:
 		var hp: int = int(shares.get(id, 0))
 		if hp <= 0:
 			continue
-		if _groups.has(id):
-			_groups[id]["hp"] = int(_groups[id]["hp"]) + hp
-		elif not _launch(b, hp):
+		if not _launch(b, hp):
 			_mend(b, hp)
 	_heal_flash = 1.0
 	return true

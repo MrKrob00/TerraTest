@@ -2594,12 +2594,14 @@ project: read it before claiming how anything works.
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
-  (`pulse`) as each repair lands. For every block a tick mends, `DIGITS_PER_HEAL` 0/1 cards appear
+  (`pulse`) as each repair lands. THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
+  per `HP_PER_DIGIT` (5) hit points mended, at least one per block, at most `DIGITS_MAX_PER_HEAL`;
+  a block mended again while its digits fly gets its own new ones in the same group. They appear
   ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink
   in, and fly to the block along an arc; THE HIT POINTS LAND WITH THEM
   (`_land` -> `_mend`), so the block's damage overlay greens as they arrive - a block with digits
   still on the way is not charged or sent more. The digits are ONE MultiMesh per unit, a pool of
-  `max_bodies` x `DIGITS_PER_HEAL` cards written on the CPU only while any flies: no node per heal.
+  twice a tick's budget in digits plus `max_bodies` cards written on the CPU only while any flies: no node per heal.
   What this replaced: ninety cards orbiting the field for good and one glitch bolt per heal
   (`BlockFX.repair_stream`, gone), which built a node per heal and was 40% of the unit's work.
   EVERY UNIT RUNS ON ITS OWN BEAT (`_timer` starts at a random phase): with one start value all of
