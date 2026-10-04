@@ -1394,12 +1394,16 @@ project: read it before claiming how anything works.
   branch's second stage skipped itself on its first poll with no reward. The cargo stands on the
   highest cabin or plain block with open sky above it, nearest the cabin's column; measured, it
   finds a place on all 72 ladder builds and the Marlit ones. BOTH RADAR STAGES ARE ONE MECHANISM,
-  `_carry_stage(key, block, preset, need)`: the second asks for TWO radars on the machine (the first
-  is already there) and counts what the player owns everywhere (`_owned_count`: every machine, the
-  inventory, the hand) before dropping one at the carrier's death spot. The salvage collector is
+  `_carry_stage(key, block, preset)`, AND THE CARRIER IS THE TASK (the player's rule): a stage closes
+  once its carrier is dead AND one radar stands on the player's machine - the taken one or one that
+  was there already. It used to check the machine first: a radar shot off some carrier earlier
+  closed stage one at once, stage two then wanted TWO on the machine, and a radar takes nothing on
+  its top - the second sat in the hand while a third drove about on the carrier (the player's
+  report). Owned nowhere (`_owned_count`: every machine, the inventory, the hand), one is laid at the
+  death spot; owned but not mounted, the marker goes away (`carrier_point` null). The salvage collector is
   claimed where the GUARD DIED (`_salvage_drop`), not at the cargo point: the guard hunts the player
-  and `claim_or_drop` searches 30 m. Measured on the proving ground: carrier with a live radar, still
-  on it after 3 s, stage 2 neither skipped nor done until the kill, then exactly one radar loose.
+  and `claim_or_drop` searches 30 m. Measured on the proving ground: a radar already on the machine - stage one held
+  while its carrier lived and closed on the kill, stage two the same, the quest done.
 - **A STAGE THAT NEEDS A POINT RE-PICKS IT** (`_far_point`): points are memory, and a reload in the
   salvage or tower branch's second stage left no point, so nothing was ever spawned again and the
   stage hung for good.

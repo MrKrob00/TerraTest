@@ -448,6 +448,7 @@ func _sweep_yellow_points() -> void:
 var _carrier: Dictionary = {}        # ключ → машина-носитель
 var _carrier_spot: Dictionary = {}   # ключ → куда ехать; после боя — где упадёт блок
 var _carrier_dead: Dictionary = {}   # ключ → носителя добили
+var _carrier_block: Dictionary = {}  # key -> the block the stage is about
 
 ## Куда ведёт компас по этой стадии. Пока носитель жив, точка ЕДЕТ ЗА НИМ: он не стоит на
 ## месте, и метка, оставшаяся там, где его объявили, ведёт в пустое поле (то же правило, что
@@ -456,14 +457,23 @@ func carrier_point(key: String) -> Variant:
 	var m = _carrier.get(key)
 	if m != null and is_instance_valid(m) and m is Node3D:
 		_carrier_spot[key] = (m as Node3D).global_position
+	# Carrier dead and the block already owned (hand, inventory, another machine): nothing is left
+	# at the death spot to lead to - the stage waits for it to go on the machine.
+	if bool(_carrier_dead.get(key, false)) and _owned_count(int(_carrier_block.get(key, -1))) > 0:
+		return null
 	return _carrier_spot.get(key, null)
 
-## Стадия «отбери блок у врага». true — блок уже стоит на машине игрока.
-## `need` is how many the player must have on their machine: the radar's second stage is a second
-## radar, and "owns one" was true before it began.
-func _carry_stage(key: String, block: int, preset: int, need: int = 1) -> bool:
-	if _count_block(block) >= need:
-		return true
+## Стадия «отбери блок у врага». true — носитель уничтожен и блок стоит на машине игрока.
+## THE CHECK IS MADE AFTER THE CARRIER DIES, AND ONE ON THE MACHINE IS ENOUGH (the player's rule).
+## It used to be "this many on the machine" checked before anything else: the first stage closed
+## itself if a radar already stood there (one shot off some carrier earlier), and the second then
+## asked for TWO - a radar bolts on by its bottom only and nothing joins on top of one, so the
+## second had nowhere obvious to go, sat in the hand, and the stage never closed while its carrier
+## drove about with a third. Now the carrier is the task: kill it, and a radar on the machine -
+## the one taken from it or one already there - closes the stage. Owned nowhere at all, one is laid
+## where it died (`claim_or_drop`); owned but not mounted, the marker leads to the machine's build.
+func _carry_stage(key: String, block: int, preset: int) -> bool:
+	_carrier_block[key] = block
 	var p: Node3D = _player()
 	if p == null:
 		return false
@@ -476,7 +486,9 @@ func _carry_stage(key: String, block: int, preset: int, need: int = 1) -> bool:
 		return false
 	# Носителя добили — блок его пережил (или мы кладём такой же на его место).
 	if bool(_carrier_dead.get(key, false)):
-		if _owned_count(block) < need:
+		if _count_block(block) >= 1:
+			return true
+		if _owned_count(block) < 1:
 			_props.claim_or_drop(key, block, _carrier_spot[key])
 		return false
 	var at: Vector3 = _carrier_spot[key]
@@ -584,13 +596,13 @@ func _arc_radar_1(q: Dictionary) -> void:
 	if _carry_stage("arc_radar", G.Block.RADAR, 5):
 		Q.report(String(q["event"]), 1)
 
-## The second radar rides a carrier like the first (`_carry_stage`, need 2: their own + the taken
-## one). It used to be a scout with the radar written into its grid only: no block existed, the
+## The second radar rides a carrier like the first (`_carry_stage`: the kill, then a radar on the
+## machine). It used to be a scout with the radar written into its grid only: no block existed, the
 ## "radar gone" check fired on the first poll and skipped the stage with no reward. A radar shot
 ## off in the fight lies loose; a carrier killed outright leaves one at its death spot
 ## (`claim_or_drop`), so neither dead-locks the branch any more.
 func _arc_radar_2(q: Dictionary) -> void:
-	if _carry_stage("radar_2", G.Block.RADAR, 5, 2):
+	if _carry_stage("radar_2", G.Block.RADAR, 5):
 		Q.report(String(q["event"]), 1)
 
 # ── Ветка «аккумулятор»: жила его ДЕРЖИТ, пока её не выработают ──────────────
