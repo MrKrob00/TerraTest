@@ -10,9 +10,10 @@ shader_type sky;
 // the ground opens onto it, and a pale one reads as a torn world (CLAUDE.md).
 
 uniform vec3 zenith_day : source_color = vec3(0.16, 0.36, 0.72);
-uniform vec3 horizon_day : source_color = vec3(0.62, 0.78, 0.92);
 uniform vec3 zenith_night : source_color = vec3(0.012, 0.02, 0.06);
-uniform vec3 horizon_night : source_color = vec3(0.05, 0.08, 0.16);
+// THE HORIZON IS THE WORLD'S HAZE (project.godot [shader_globals], moved by day_cycle.gd), the
+// colour the far ground fades into - one colour, so land and sky meet without a seam.
+global uniform vec4 world_haze;
 uniform vec3 sunset_glow : source_color = vec3(1.0, 0.48, 0.2);
 uniform vec3 ground_bottom : source_color = vec3(0.2, 0.21, 0.23);
 uniform vec3 ground_horizon : source_color = vec3(0.3, 0.33, 0.37);
@@ -47,7 +48,7 @@ void sky() {
 		COLOR = g * mix(1.0, 0.35, night);
 	} else {
 		float up = pow(dir.y, 0.5);
-		vec3 col = mix(mix(horizon_day, zenith_day, up), mix(horizon_night, zenith_night, up), night);
+		vec3 col = mix(world_haze.rgb, mix(zenith_day, zenith_night, night), up);
 		// the horizon reddens toward the sun at dusk and dawn
 		vec2 hz = normalize(dir.xz + vec2(1e-4));
 		vec2 sz = normalize(sun.xz + vec2(1e-4));
@@ -58,7 +59,7 @@ void sky() {
 
 		// the sun and its glow; at night the moon
 		float ds = max(dot(dir, sun), 0.0);
-		col += sun_color * (smoothstep(0.9993, 0.9996, ds) * 6.0 + pow(ds, 300.0) * 0.8 + pow(ds, 12.0) * 0.12) * day;
+		col += sun_color * (smoothstep(0.9993, 0.9996, ds) * 6.0 + pow(ds, 300.0) * 0.8 + pow(ds, 12.0) * 0.12 + pow(ds, 4.0) * 0.18) * day;   // the last: a wide warm glare
 		vec3 moon = normalize(moon_dir);
 		float dm = max(dot(dir, moon), 0.0);
 		col += moon_color * (smoothstep(0.99955, 0.9998, dm) * 1.6 + pow(dm, 200.0) * 0.15) * night;

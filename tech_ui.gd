@@ -1632,6 +1632,11 @@ func _build_music_tab() -> void:
 # ── Вкладка НАСТРОЙКИ ──────────────────────────────────────────────────────────
 # Авто-FPS (система в Main.gd: держит целевой FPS, меняя масштаб рендера). Авто
 # выключено → полоска ручного выбора масштаба.
+func _on_soft_shadows(on: bool) -> void:
+	var mn: Node = get_node_or_null("/root/Main")
+	if mn and mn.has_method("set_shadows_soft"):
+		mn.set_shadows_soft(on)
+
 func _build_settings_tab() -> void:
 	if _extra_vb == null:
 		return
@@ -1690,6 +1695,13 @@ func _build_settings_tab() -> void:
 			var mn: Node = get_node_or_null("/root/Main")
 			if mn and mn.has_method("set_shadows_enabled"):
 				mn.set_shadows_enabled(on))
+
+		var soft_btn := CheckButton.new()
+		soft_btn.text = tr("Soft shadows")
+		soft_btn.button_pressed = bool(main.get("shadows_soft") == true)
+		soft_btn.add_theme_font_size_override("font_size", 14)
+		_extra_vb.add_child(soft_btn)
+		soft_btn.toggled.connect(_on_soft_shadows)
 
 		var shadow_hint := Label.new()
 		shadow_hint.text = tr("Turn off if FPS drops — the heaviest setting.")

@@ -32,6 +32,14 @@ const SETTINGS_PATH := "user://settings.json"
 var auto_fps: bool = true            # ВКЛ = авто-скейл по FPS; ВЫКЛ = ручной масштаб
 var manual_scale: float = 0.75       # масштаб рендера при выключенном авто
 var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (самая тяжёлая настройка на мобилке)
+## SOFT SHADOWS, TERRATECH'S (the player's screenshot): a 1024 map instead of 512, the soft filter
+## instead of hard texels, and the TREES cast too. Applied through the RenderingServer, so the
+## project keeps the cheap numbers and a player whose phone cannot carry it turns this off - the
+## shadowed sun is already drawn as a second pass over the ground in Compatibility (8 of 25 fps,
+## measured on the device, see VehicleBlock._set_shadows), and the soft filter samples it five times.
+var shadows_soft: bool = true
+const SOFT_SHADOW_SIZE := 1024
+const HARD_SHADOW_SIZE := 512
 
 # ── Умный размер интерфейса ────────────────────────────────────────────────────
 # project.godot [display] = canvas_items: HUD масштабируется ЛИНЕЙНО с разрешением, и на
@@ -201,10 +209,25 @@ func set_shadows_enabled(on: bool) -> void:
 	_apply_shadows()
 	_save_settings()
 
+func set_shadows_soft(on: bool) -> void:
+	shadows_soft = on
+	_apply_shadows()
+	_save_settings()
+
 func _apply_shadows() -> void:
 	var light := get_node_or_null("DirectionalLight3D2") as DirectionalLight3D
 	if light:
 		light.shadow_enabled = shadows_enabled
+	var soft: bool = shadows_enabled and shadows_soft
+	RenderingServer.directional_shadow_atlas_set_size(SOFT_SHADOW_SIZE if soft else HARD_SHADOW_SIZE, true)
+	RenderingServer.directional_soft_shadow_filter_set_quality(
+			RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW if soft else RenderingServer.SHADOW_QUALITY_HARD)
+	var rn: Node = get_node_or_null("map/Resource_Nodes")
+	if rn != null and "wood_multimesh_nodes" in rn:
+		for mm in rn.wood_multimesh_nodes:
+			if mm is GeometryInstance3D:
+				(mm as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
+						if soft else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 # Вкл/выкл авто-FPS. При выключении сразу применяется ручной масштаб.
 func set_auto_fps(on: bool) -> void:
@@ -234,6 +257,7 @@ func _save_settings() -> void:
 		"auto_fps": auto_fps,
 		"manual_scale": manual_scale,
 		"shadows_enabled": shadows_enabled,
+		"shadows_soft": shadows_soft,
 		"ui_scale": ui_scale,
 		"fullscreen": fullscreen,
 	})
@@ -246,6 +270,7 @@ func _load_settings() -> void:
 		auto_fps = bool(parsed.get("auto_fps", true))
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), MANUAL_SCALE_MIN, MANUAL_SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
+		shadows_soft = bool(parsed.get("shadows_soft", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 
