@@ -2073,40 +2073,32 @@ def build_processor(pk, img):
 
 SL_TOP = 0.95           # the vault's top and the roof's underside: the shaft ends here
 SL_SHAFT_R = 0.30       # the lift shaft's rails stand on this circle; the goods ride inside it
-SL_BEZEL = 0.06         # how far the screen's bezel stands off the vault's front
-SL_SCREEN = (-1.34, 0.34, 0.2, 0.84)   # the glass: x0, x1, y0, y1 (seller.tscn's Label3D sits on it)
 
 
 def build_seller(pk, img):
     """THE SALE IS SHOWN, NOT IMPLIED. Goods come in at belt height through the MOUTH (the one
     intake quarter, right-back-bottom, from the back and the right), RIDE UP an open LIFT SHAFT - four
     rails and two rings, so they are seen going - into the roof, and are beamed off at the UPLINK on
-    top: a gold ring there spins up with every sale (seller.gd) and the SCREEN across the front
-    flashes and says what went for how much (the scene's Label3D stands on its glass; a coin and a
-    chart painted there were replaced by a real display, the player's call). The rest is the vault,
-    an L round the mouth, with a round vault door on the left.
-    Parts: seller_body (still), seller_ring (turns), seller_screen (flashed, never batched)."""
-    parts = {"seller_body": [], "seller_ring": [], "seller_screen": []}
+    top: a gold ring there spins up with every sale (seller.gd), and the money rises over it as a
+    "+N$" (sale_popup.gd). THERE IS NO SCREEN: a display across the front carried the sale in text
+    (a coin and a chart painted there before it), and the player asked for it to go - the pop-up says
+    it in the world. The rest is the vault, an L round the mouth, with a round vault door on the left
+    and a row of status lamps across its front.
+    Parts: seller_body (still), seller_ring (turns)."""
+    parts = {"seller_body": [], "seller_ring": []}
     b = parts["seller_body"]
     top = SL_TOP
-    # The vault: the left column full depth, and the front-right cell, both stopping short of the
-    # front face by SL_BEZEL so the screen's bezel stands on it inside the cell.
-    for lo, hi in (((-1.5, -0.5, -1.5 + SL_BEZEL), (-0.5, top, 0.5)),
-                   ((-0.5, -0.5, -1.5 + SL_BEZEL), (0.5, top, -0.5))):
+    # The vault: the left column full depth, and the front-right cell.
+    for lo, hi in (((-1.5, -0.5, -1.5), (-0.5, top, 0.5)),
+                   ((-0.5, -0.5, -1.5), (0.5, top, -0.5))):
         v = []
         cham_box(v, lo, hi, 0.067, "vault", None, "dark", "dark_edge")
         restyle(v, "vault", [((0, -1), "plain_side"), ((-1, 0), "vault_door"), ((1, 0), "plain_side"),
                              ((0, 1), "plain_side")])
         b += v
     falsus_plate(b, (-1.0, 0.25, 0.504), (1, 0, 0), 0.8)   # the vault's plain back wall
-    # THE SCREEN: one wide display across the whole front in a blue bezel, blank - the game writes
-    # on it (the scene's Label3D stands on its glass) - with a row of status lamps under it.
-    sx0, sx1, sy0, sy1 = SL_SCREEN
-    th.box(b, (sx0 - 0.08, sy0 - 0.08, -1.5), (sx1 + 0.08, sy1 + 0.08, -1.5 + SL_BEZEL), "blue")
-    glow_quad(parts["seller_screen"], ((sx0 + sx1) / 2, (sy0 + sy1) / 2, -1.504), (-1, 0, 0),
-              (0, 1, 0), (sx1 - sx0) / 2, (sy1 - sy0) / 2, style="screen")
-    glow_quad(b, ((sx0 + sx1) / 2, sy0 - 0.2, -1.5 + SL_BEZEL - 0.004), (-1, 0, 0), (0, 1, 0),
-              0.55, 0.06, style="lamp_strip")
+    # A row of status lamps across the front, where the screen was.
+    glow_quad(b, (-0.5, 0.45, -1.504), (-1, 0, 0), (0, 1, 0), 0.7, 0.06, style="lamp_strip")
     # The mouth: the right-back cell, open to the back and the right at the belts' deck height.
     cham_box(b, (-0.5, -0.5, -0.5), (0.5, CH_Y - 0.14, 0.5), 0.04, "slab_side", None, "dark",
              "dark_edge")
