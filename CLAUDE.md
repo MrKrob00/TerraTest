@@ -1905,6 +1905,12 @@ project: read it before claiming how anything works.
   while driving "two fingers down", and every twitch of the stick a drag that marked the tap as a
   swipe. The joystick's own `_input` may run before or after ours, so a press is asked by the
   joystick's claiming RULE, not by whether it has claimed yet.
+- **A FINGER ON A HUD `TouchScreenButton` IS NOT A CAMERA FINGER** (`camera_controller._on_touch_button`).
+  Attack, Take and the mode toggle do not mark their touch handled, so it went into `_cam_touches`
+  and a second finger's swipe while firing was read as a PINCH - the view zoomed instead of turning
+  (the player: "while attacking I cannot turn the camera, as with the joystick"). These buttons
+  expose no finger index, so a press is tested against their rectangle. Measured with synthetic
+  touches: Attack held by finger 0, finger 1 swiping - radius 8.00 -> 8.00, the view turned 1.4 rad.
 - A TOUCH RELEASE IS RECORDED BEFORE EVERY GATE (`camera_controller._unhandled_input`). A press may
   be skipped — "not my finger" — but a release means one thing only, "the finger left the glass",
   and that is true whatever gate is up. The `G.ui_grab` early return used to sit first, and the UI

@@ -120,6 +120,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.index == jmove_idx:
 			return                           # это палец джойстика движения
+		if _on_touch_button(event.position):
+			return                           # a finger on Attack / Take: not the camera's
 		_cam_touches[event.index] = event.position
 		if _cam_touches.size() == 1:
 			_tap_down_pos = event.position
@@ -143,6 +145,34 @@ func _unhandled_input(event: InputEvent) -> void:
 			# палец крутит камеру ровно как при езде, а блок наводится ТАПОМ (vehicle_body_3d).
 			_touch_look_dx += event.relative.x
 			_touch_look_dy += event.relative.y
+
+## A FINGER ON A HUD TouchScreenButton (Attack, Take, the mode toggle) IS NOT A CAMERA FINGER.
+## Those buttons do not mark the touch handled, so it reached here and went into `_cam_touches`:
+## with fire held, the second finger's swipe was the second finger of a PINCH - the player could
+## not turn the view while shooting (the joystick had the same bug and is skipped by its index;
+## these buttons expose no index, so the press is tested against their rectangle).
+var _tsb: Array = []
+
+func _on_touch_button(pos: Vector2) -> bool:
+	if _tsb.is_empty():
+		var h: Node = get_node_or_null("HUD")
+		if h != null:
+			for n in h.find_children("*", "TouchScreenButton", true, false):
+				if n != joystick_move and n != joystick_cam:
+					_tsb.append(n)
+	for b in _tsb:
+		if not is_instance_valid(b) or not (b as CanvasItem).is_visible_in_tree():
+			continue
+		var tb := b as TouchScreenButton
+		var size := Vector2.ZERO
+		if tb.texture_normal != null:
+			size = tb.texture_normal.get_size()
+		elif tb.shape is RectangleShape2D:
+			size = (tb.shape as RectangleShape2D).size
+		var local: Vector2 = tb.get_global_transform_with_canvas().affine_inverse() * pos
+		if Rect2(Vector2.ZERO, size).has_point(local):
+			return true
+	return false
 
 func _ready():
 	add_to_group("camera_controller")   # чтобы UI (tech_ui) находил активную машину
