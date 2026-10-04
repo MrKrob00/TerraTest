@@ -120,7 +120,7 @@ func _rebuild() -> void:
 			mmi.multimesh = MultiMesh.new()
 			mmi.multimesh.transform_format = MultiMesh.TRANSFORM_3D
 			mmi.multimesh.mesh = first.mesh
-			mmi.material_override = first.material_override
+			mmi.material_override = MACHINE_BATCH.lit_material(first)
 			mmi.cast_shadow = first.cast_shadow
 			add_child(mmi)                   # under a plain Node: its transform IS the world
 			_groups[key] = mmi

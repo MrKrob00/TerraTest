@@ -176,7 +176,7 @@ func _new_mmi(first: MeshInstance3D) -> MultiMeshInstance3D:
 	mmi.multimesh = MultiMesh.new()
 	mmi.multimesh.transform_format = MultiMesh.TRANSFORM_3D
 	mmi.multimesh.mesh = first.mesh
-	mmi.material_override = first.material_override
+	mmi.material_override = lit_material(first)
 	return mmi
 
 func _fill(mm: MultiMesh, parts: Array, idx, inv: Transform3D) -> void:
@@ -246,6 +246,43 @@ func _apply_view() -> void:
 			continue
 		g["vis"] = vis
 		_fill((g["mmi"] as MultiMeshInstance3D).multimesh, g["parts"], vis, inv)
+
+## THE SUN ON A BATCHED BLOCK (block_lit.gdshader, the player's call after TerraTech): a part whose
+## every surface is one opaque UNSHADED StandardMaterial gets the same texture, colour and UV under
+## the lit shader, one ShaderMaterial per source material for the whole game. Anything else - an
+## override a script set (a tinted shield cap), a lit or transparent material, a mesh of several
+## materials - draws as it did. The originals keep their own materials: a portrait, the block in
+## the hand and a part leaving the machine are drawn by them, unchanged.
+const BLOCK_LIT := preload("res://block_lit.gdshader")
+static var _lit_cache: Dictionary = {}
+
+static func lit_material(mi: MeshInstance3D) -> Material:
+	if mi.material_override != null:
+		return mi.material_override
+	var mesh: Mesh = mi.mesh
+	if mesh == null or mesh.get_surface_count() == 0:
+		return null
+	var src: Material = mi.get_active_material(0)
+	for i in range(1, mesh.get_surface_count()):
+		if mi.get_active_material(i) != src:
+			return null
+	var sm := src as BaseMaterial3D
+	if sm == null or sm.shading_mode != BaseMaterial3D.SHADING_MODE_UNSHADED \
+			or sm.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED \
+			or sm.blend_mode != BaseMaterial3D.BLEND_MODE_MIX:
+		return null
+	var id: int = sm.get_instance_id()
+	if _lit_cache.has(id):
+		return _lit_cache[id]
+	var m := ShaderMaterial.new()
+	m.shader = BLOCK_LIT
+	m.set_shader_parameter("albedo_texture", sm.albedo_texture)
+	m.set_shader_parameter("albedo_color", sm.albedo_color)
+	m.set_shader_parameter("use_vertex_color", sm.vertex_color_use_as_albedo)
+	m.set_shader_parameter("uv_scale", sm.uv1_scale)
+	m.set_shader_parameter("uv_offset", sm.uv1_offset)
+	_lit_cache[id] = m
+	return m
 
 ## The block's own scene meshes, depth first, skipping whole branches that are not model.
 ## Static because LooseBatch asks the same question of a block lying on the ground.

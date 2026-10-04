@@ -2026,6 +2026,15 @@ project: read it before claiming how anything works.
   RenderingServer - the project keeps 512 / hard for whoever turns it off, because the shadowed sun is
   a SECOND pass over the ground in Compatibility (8 of 25 fps on the device) and soft samples it
   five times. `shadow_opacity` 0.68: a shadow is the ground in shade, not a hole.
+- **THE BLOCKS HAVE A SUN SIDE AND A SHADE SIDE, AND THEY STAY UNSHADED** (`block_lit.gdshader`,
+  `MachineBatch.lit_material`, also used by `LooseBatch`). A batched block's opaque unshaded
+  StandardMaterial is swapped, once per material (cached), for a shader that multiplies the texel by
+  one lambert term against the globals `sun_dir` / `sun_light` (`day_cycle.gd` writes them: the
+  sun's or moon's direction, a warm tint, `a` the shade floor `BLOCK_SHADE_DAY` 0.7). No light pass,
+  no shadow lookup. THE NORMAL IS THE FACE'S, FROM `dFdx`/`dFdy` OF THE POSITION, turned to the eye:
+  the artist's normals are inverted and blocks are double-sided, so a mesh normal lit half the hull
+  from the wrong side. A material with an override, transparency or shading is left as it is.
+  Checked on the real driver from the sun and the shade side: tops bright, walls darker, paint kept.
 - **NOTHING IS LIT BY THE SKY.** Ambient is a flat colour (`ambient_light_source` COLOR, 0.3) and
   sky reflections are off (`reflected_light_source` DISABLED), in both `node_3d.tscn` and
   `menu.tscn`; the sky's radiance map is 32 px and processed once (`radiance_size` 0, automatic).

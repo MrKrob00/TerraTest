@@ -37,7 +37,14 @@ const TICK := 0.25                        # s between updates: the sun moves a f
 const MOON_SHARE := 0.3                   # the moon's light against the sun's
 const DUSK_COLOR := Color(1.0, 0.6, 0.36)
 const SUN_COLOR := Color(1.0, 0.93, 0.8)      # a warm white, never pure: the TerraTech afternoon
-const SHADOW_BLUR := 1.6                      # the PCF filter's radius (project: soft quality 1)
+const SHADOW_BLUR := 1.6
+# the blocks' light (block_lit.gdshader): a lit face a touch over its painted colour, warm; a face
+# turned away keeps BLOCK_SHADE of it - the TerraTech contrast without losing the dark side's paint
+const BLOCK_DAY := Color(1.12, 1.05, 0.94)
+const BLOCK_DUSK := Color(1.15, 0.86, 0.66)
+const BLOCK_NIGHT := Color(0.8, 0.88, 1.05)
+const BLOCK_SHADE_DAY := 0.7
+const BLOCK_SHADE_NIGHT := 0.78
 const MOON_COLOR := Color(0.62, 0.72, 1.0)
 
 var phase := 0.0
@@ -113,6 +120,13 @@ func _apply() -> void:
 		_light.shadow_blur = SHADOW_BLUR
 	var haze := haze_day.lerp(haze_dusk, dusk * (1.0 - n)).lerp(haze_night, n)
 	RenderingServer.global_shader_parameter_set(&"world_haze", haze)
+	# the blocks' sun (block_lit.gdshader): the light's own direction and tint, by night the moon's;
+	# `a` is the shade floor - a face turned away keeps that much of its painted colour
+	var lit_dir: Vector3 = sun if sun.y > -0.03 else moon
+	var lit := BLOCK_DAY.lerp(BLOCK_DUSK, dusk * (1.0 - n)).lerp(BLOCK_NIGHT, n)
+	RenderingServer.global_shader_parameter_set(&"sun_dir", Vector4(lit_dir.x, lit_dir.y, lit_dir.z, 0.0))
+	RenderingServer.global_shader_parameter_set(&"sun_light", Vector4(lit.r, lit.g, lit.b,
+			lerpf(BLOCK_SHADE_DAY, BLOCK_SHADE_NIGHT, n)))
 	if _env != null:
 		_env.ambient_light_color = day_ambient.lerp(night_ambient, n)
 		_env.ambient_light_energy = lerpf(day_ambient_energy, night_ambient_energy, n)
