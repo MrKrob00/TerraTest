@@ -1909,7 +1909,11 @@ func attach_delta(block_type: int, face: String, rot = 0.0) -> Vector3i:
 ## mirrored one was free: every 2x2x2 block was refused on three faces of five. The first entry is
 ## attach_delta's, so a block that fitted before goes exactly where it went before; the rest follow,
 ## the most centred on the aimed cell first.
-func attach_candidates(block_type: int, cell: Vector3i, face: String, rot = 0.0) -> Array:
+## `aim` (cell units, the point the finger hit on the face) puts the block's MIDDLE nearest it: a
+## 2x2x2 used to grow from its corner anchor to -X/-Z whatever part of the cell was touched, so a
+## Marlit block went on "from its outermost cell, not its centre" (the player). Without `aim` the
+## old order stands: the corner candidate first, then by the middle's distance from the cell.
+func attach_candidates(block_type: int, cell: Vector3i, face: String, rot = 0.0, aim = null) -> Array:
 	if not FACE_DIR.has(face):
 		return []
 	var n: Vector3i = FACE_DIR[face]
@@ -1929,19 +1933,30 @@ func attach_candidates(block_type: int, cell: Vector3i, face: String, rot = 0.0)
 	for o in fp:
 		mid += Vector3(o as Vector3i)
 	mid /= float(fp.size())
-	var out: Array = [first]
+	var target: Vector3 = Vector3(front)
+	if aim is Vector3:
+		target = aim
+	var out: Array = []
 	var rest: Array = []
+	var seen := {}
+	if not (aim is Vector3):
+		out.append(first)
+		seen[first] = true
 	for o in fp:
 		var oi: Vector3i = o
 		if oi[axis] != edge:
 			continue
 		var a: Vector3i = front - oi
-		if a == first:
+		if seen.has(a):
 			continue
-		# how far the block's middle lands from the aimed cell, across the face
-		var c: Vector3 = Vector3(a) + mid - Vector3(front)
+		seen[a] = true
+		# how far the block's middle lands from the aimed point, across the face; the old corner
+		# candidate wins a tie
+		var c: Vector3 = Vector3(a) + mid - target
 		c[axis] = 0.0
-		rest.append([c.length_squared(), a])
+		rest.append([c.length_squared() - (0.001 if a == first else 0.0), a])
+	if aim is Vector3 and not seen.has(first):
+		rest.append([INF, first])
 	rest.sort_custom(func(p, q): return p[0] < q[0])
 	for r in rest:
 		out.append(r[1])

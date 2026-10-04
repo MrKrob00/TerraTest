@@ -351,6 +351,12 @@ project: read it before claiming how anything works.
   removal); a refusal names its reason (`blocks.placement_refusal`). Measured through the real
   preview and commit, 37 block types x 5 faces of a starter hull: 41 refused before, 2 after (the
   wedge's back and bottom, which really do not join).
+  THE BLOCK'S MIDDLE FOLLOWS THE FINGER: both aims (the grid DDA and the physics fallback) return
+  `aim`, the point hit on the face in cell units, and the candidates are tried nearest the middle
+  first (the corner one wins only a tie). A 2x2x2 used to grow from its corner anchor whichever part
+  of the cell was touched - "the aim goes from the outermost block, not the centre" (the player).
+  Measured on a cabin's top: touching each quarter of the cell puts the Marlit block's middle over
+  that quarter.
 - **A FOOTPRINT TURNS BY THE BLOCK'S WHOLE ROTATION** (`blocks._block_footprint(..., rot)`, `rot_basis`,
   `_rot_at`, `collider_offset(shape, rot)`), not its yaw: building tilts a plate onto a top face or a
   girder onto its side, and the yaw-only footprint reserved an upright wall under a plate lying flat
