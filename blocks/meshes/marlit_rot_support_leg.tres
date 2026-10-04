@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://bbdm0cqwupqva"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_rot_support_texture.png" id="1_e34c6"]
+[ext_resource type="Texture2D" uid="uid://dk274dwwkstun" path="res://objects/marlit_rot_support_texture.png" id="1_e34c6"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tpyhb"]
 resource_name = "marlit_rot_support"
