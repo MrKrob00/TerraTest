@@ -347,7 +347,12 @@ func _is_in_cone(body: Node3D) -> bool:
 # ближний борт может её перебить — и машину приходится разбирать, а не срезать.
 const SC_PRIORITY := 1000.0
 const SC_PRIORITY_MACHINE := 400.0
-const SC_CABIN := 55.0
+# AND AGAIN, FROM 55 TO 10 (the player: "the guns pick the cabin too often"). At 55 the cabin still
+# won against everything near it - measured on the proving ground, an ally's guns held the cabin
+# 91% of the time on a raider and 61% on a breaker; at 10 it is 21% and 14%, and the guns spend
+# the rest on the blocks in front and on the enemy's weapons. With the TerraTech rescale a block
+# dies in a second under one gun, so stripping a hull is no longer a long way round to the core.
+const SC_CABIN := 10.0
 const SC_WEAPON := 45.0
 const SC_STICKY := 40.0
 const SC_NEAR := 100.0        # множитель близости: чем дальше цель, тем меньше добавка
