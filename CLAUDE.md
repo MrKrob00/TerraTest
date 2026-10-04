@@ -1879,7 +1879,10 @@ project: read it before claiming how anything works.
   when that generation finishes, and never two generations at once. A death or a machine left
   without weapons does NOT touch the map — it is replaced by another random build beside the
   survivor (`_replace_fallen`, after `ARM_GRACE`, because a machine has no weapons in the frame it
-  is born). A REPLACEMENT HAS TO BE LANDED TOO (`_land_fighter`). `_spawn_fighter` freezes every
+  is born). AND NOT AT ONCE: `REPLACE_DELAY` (4 s) runs from the moment a side is first seen dead
+  or disarmed (`_down`) - an instant swap read as the fight resetting (the player); now the wreck
+  burns out and the survivor finishes a disarmed hull first. Measured on the engine: replaced 4.0 s
+  after the kill. A REPLACEMENT HAS TO BE LANDED TOO (`_land_fighter`). `_spawn_fighter` freezes every
   machine — collision tiles are cut around bodies and arrive after the spawn, so an unfrozen one
   sinks — and the only thing that ever unfroze them was `_reseat_fighters`, called exactly twice:
   at round open and at the hop. A machine born mid-fight went through neither and hung at its drop

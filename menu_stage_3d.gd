@@ -66,6 +66,10 @@ const PRESETS := [5, 6, 7, 8, 9, 10]
 ## machine's own _ready and the weapons appear over the frames after that: without the grace every
 ## spawn counts as weaponless in the frame it is born and is replaced at once, forever.
 const ARM_GRACE := 3.0
+## How long a fallen machine is mourned before its replacement drops in (the player: "it respawns
+## instantly"). The wreck burns out, the survivor finishes a disarmed hull off, and only then does a
+## new opponent arrive - an instant swap read as the fight resetting, not as one machine losing.
+const REPLACE_DELAY := 4.0
 ## How long the backdrop takes to cover the stage before a round is swapped. Long enough to read as
 ## a fade, short enough that nobody waits for it.
 const SWAP_FADE := 0.4
@@ -110,6 +114,8 @@ var _fighters: Array = []
 ## only there to tell "still being assembled" from "shot to pieces" (see ARM_GRACE).
 var _born: Array = []
 var _armed: Array = []
+## When each side was first seen dead or disarmed (-1 while it fights): REPLACE_DELAY runs from here.
+var _down: Array = []
 ## Angle of the line the pair stands on. Kept for the round, so a replacement machine appears where
 ## its predecessor stood instead of somewhere behind the camera.
 var _ring_ang: float = 0.0
@@ -176,6 +182,7 @@ func _shutdown() -> void:
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
+	_down.clear()
 	for m in [_map]:
 		_discard(m)
 	_map = null
@@ -375,6 +382,7 @@ func _spawn_pair() -> void:
 	_fighters = [null, null]
 	_born = [0.0, 0.0]
 	_armed = [false, false]
+	_down = [-1.0, -1.0]
 	for side in 2:
 		_spawn_fighter(side)
 	_retarget()
@@ -425,6 +433,8 @@ func _spawn_fighter(side: int) -> void:
 	_fighters[side] = e
 	_born[side] = _t
 	_armed[side] = false
+	if _down.size() > side:
+		_down[side] = -1.0
 
 ## Locked on each other and relentless: no searching, no losing interest, no walking away.
 func _retarget() -> void:
@@ -447,6 +457,12 @@ func _replace_fallen() -> void:
 			continue
 		if alive and not _armed[side] and _t - float(_born[side]) < ARM_GRACE:
 			continue                      # still putting itself together
+		if _down.size() <= side:
+			continue
+		if float(_down[side]) < 0.0:
+			_down[side] = _t              # just fell: the clock for its replacement starts now
+		if _t - float(_down[side]) < REPLACE_DELAY:
+			continue
 		if alive:
 			(f as Node).queue_free()
 		_spawn_fighter(side)
@@ -504,6 +520,7 @@ func _move_round() -> void:
 	_fighters.clear()
 	_born.clear()
 	_armed.clear()
+	_down.clear()
 	for c in _machines_root.get_children():
 		_machines_root.remove_child(c)
 		c.queue_free()
