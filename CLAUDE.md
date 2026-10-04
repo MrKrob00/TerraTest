@@ -1751,6 +1751,12 @@ project: read it before claiming how anything works.
   was three opens and three closes. The strip lies over the graph, swaps its contents on the next
   tap and takes no height from the layout. Block text lives in `G.BLOCK_DESC` — one sentence about
   what the part DOES, never numbers, which move; a component's text is derived from its recipe.
+  THE NUMBERS COME UNDER IT, READ FROM WHERE THE GAME KEEPS THEM (`tech_ui._codex_stats`, the
+  player's call): hit points and weight from `VehicleBlock`'s tables; damage, rate, dps and range,
+  storage, repair, charge, shield cost and drain from an INSTANCE of the block's scene (exports and
+  `_init` fields - a Marlit gun is the Falsus script with its own numbers; `_ready` does not run);
+  panel and generator output from their scripts' constants. Cached per block. Raw ore, ingots, wood,
+  coal and components show their SELL PRICE (`G.sell_price`); wood and coal got entries of their own.
 - MUSIC CONTROLS ARE ONE PANEL, `music_panel.gd`, used by the garage tab and by the main-menu
   settings; the only difference is WHICH context lists it is given. The menu shows its own,
   the garage the two the world plays. The MENU context itself is set by `menu.gd` while that
