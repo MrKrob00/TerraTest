@@ -748,7 +748,10 @@ func _bat_display(vein: Node3D) -> void:
 		_bat_pose = Transform3D(
 			Basis(outward.cross(Vector3.UP).normalized(), -BATTERY_SHOW_TILT) * Basis(Vector3.UP, randf() * TAU),
 			at + outward * float(BATTERY_SHOW[kind][1]))
-	n.transform = _bat_pose as Transform3D
+	# the pose is in the MODEL's axes; the tree stands turned and scaled (resource_nodes TREE_SCALE)
+	var vb: Basis = vein.get_meta("vein_basis") if vein.has_meta("vein_basis") else Basis()
+	var pose := _bat_pose as Transform3D
+	n.transform = Transform3D(vb.orthonormalized() * pose.basis, vb * pose.origin)
 	if n is RigidBody3D:
 		var rb := n as RigidBody3D
 		rb.freeze = true
