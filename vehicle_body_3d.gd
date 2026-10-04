@@ -1370,7 +1370,7 @@ func _handle_click(screen_pos: Vector2) -> void:
 			_preview_held(res)
 		else:
 			_clear_held_preview()    # a tap past the machine aims at nothing: a stale preview would
-			                         # be committed by the double tap's second half
+									 # be committed by the double tap's second half
 		return
 	else:
 		# look_at ломается, когда направление почти вертикально (клик СТРОГО «по земле» — взгляд
