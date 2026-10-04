@@ -1815,6 +1815,14 @@ project: read it before claiming how anything works.
   had been cut down to one. The single door out (`remove_from_inventory`) unseats the item and
   shows it again; an item that lands among the loose ones by any other way (a collector torn off with
   ore in its bowl) is unseated by its own `NOTIFICATION_PARENTED`, and `seat` skips a foot it already has.
+- **THE SWIPE THAT CLOSES A WINDOW OWNS ITS FINGER UNTIL IT LIFTS** (`SwipeClose`, garage and
+  journal; the player: "the garage closes, and the camera turns up too"). An upward drag is the
+  camera's "look up", and only the one drag that fired was ever swallowed: the rest of the swipe, and
+  whatever the finger did after the window was gone, reached `camera_controller`. Now every drag of
+  the gesture's finger (and the mouse motion emulated from it) is eaten in `_input` - before the GUI
+  and the camera - from the moment the gesture arms in the bottom-centre strip until the release; the
+  release itself goes on, since the camera records releases first. Synthetic touches on the engine
+  could not reproduce the turn (the garage's panel takes the press there), so the phone confirms it.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
