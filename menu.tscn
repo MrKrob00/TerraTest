@@ -1,5 +1,7 @@
 [gd_scene format=3 uid="uid://c3ig7keayyiuq"]
 
+[ext_resource type="Shader" path="res://sky.gdshader" id="sky_shader"]
+[ext_resource type="Texture2D" path="res://images/sky_clouds.png" id="sky_clouds"]
 [ext_resource type="Script" uid="uid://wks43d8edlk4" path="res://menu.gd" id="1_menu"]
 [ext_resource type="Script" uid="uid://dfsamrdgqsik0" path="res://menu_stage_3d.gd" id="2_stage"]
 [ext_resource type="Script" uid="uid://dndrx7ljm5rls" path="res://addons/LiteTerrain/terrain_biomes.gd" id="4_ytr4m"]
@@ -10,15 +12,9 @@
 script = ExtResource("4_ytr4m")
 mask_offset = Vector2(-1713.813, 503.81348)
 
-[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_obt1j"]
-sky_top_color = Color(0.15, 0.3, 0.58, 1)
-sky_horizon_color = Color(0.65, 0.78, 0.9, 1)
-ground_bottom_color = Color(0.2, 0.21, 0.23, 1)
-ground_horizon_color = Color(0.3, 0.33, 0.37, 1)
-ground_curve = 0.1
-sun_angle_max = 12.0
-sun_curve = 0.08
-use_debanding = false
+[sub_resource type="ShaderMaterial" id="ProceduralSkyMaterial_obt1j"]
+shader = ExtResource("sky_shader")
+shader_parameter/cloud_tex = ExtResource("sky_clouds")
 
 [sub_resource type="Sky" id="Sky_2yde8"]
 sky_material = SubResource("ProceduralSkyMaterial_obt1j")
@@ -30,8 +26,8 @@ background_color = Color(0.21960784, 0.11372549, 0.5294118, 1)
 sky = SubResource("Sky_2yde8")
 sky_custom_fov = 80.0
 ambient_light_source = 2
-ambient_light_color = Color(0.3, 0.44, 0.68, 1)
-ambient_light_energy = 0.15
+ambient_light_color = Color(0.46, 0.54, 0.7, 1)
+ambient_light_energy = 0.3
 reflected_light_source = 1
 tonemap_mode = 4
 tonemap_agx_contrast = 1.7
@@ -114,6 +110,7 @@ shadow_enabled = true
 directional_shadow_mode = 0
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 80.0
+shadow_opacity = 0.62
 
 [node name="MenuEnv" type="WorldEnvironment" parent="Stage" unique_id=1172585365]
 unique_name_in_owner = true

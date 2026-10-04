@@ -1985,7 +1985,25 @@ project: read it before claiming how anything works.
   contrast 1.7, looking 27 deg down: bottom 0.42 reads 0.22 on screen, 0.2 reads 0.04, and 0.1 or
   less crushes to pure black, which reads as a torn world. The terrain colour did not move
   (0.46/0.27/0.17 both ways): the sky's ambient on an up-facing surface comes from the upper half.
-- **NOTHING IS LIT BY THE SKY.** Ambient is a flat colour (`ambient_light_source` COLOR, 0.15) and
+- **THE SKY IS A SHADER AND THE DAY TURNS, AND NEITHER COSTS A PASS** (`sky.gdshader`, `day_cycle.gd`,
+  `art/sky_clouds.py`; the player: "shadows too dark, the sky a blue backdrop and a white sun"). The
+  sky draws only background pixels and is lit by nothing (below), so the renderer never builds a
+  radiance map from it - TIME and per-frame uniforms are free (`_update_sky_radiance` runs only for
+  sky ambient or sky reflections, `drivers/gles3/rasterizer_scene_gles3.cpp`). Two fetches of one
+  256 px tileable texture make the clouds (R bodies, G detail eroding and shading them), a hash
+  makes the stars; the horizon reddens toward the sun at dusk; the lower half stays dark (below).
+  THE DAY (`day_cycle.gd`, `day_length` 1200 s, the sun up `day_share` of it, every session from
+  the morning, noon and still on the proving ground): ONE DirectionalLight3D, the sun by day and the
+  MOON by night (dim, blue, from the other side) - never a second shadowed light. AND THE NIGHT IS
+  `tonemap_exposure`: the blocks are UNSHADED, no light touches them, and a night made of light
+  alone left bright machines on a dark ground; exposure runs in every material's own tonemap,
+  unshaded included (measured on the real driver: 0.45 took a cabin 0.20 -> 0.07), with no extra
+  pass, where a multiply overlay would cost a full-screen fill. SHADOWS KEEP `shadow_opacity` 0.62 OF
+  THE SUN OUT, NOT ALL OF IT, and the ambient is 0.3 of a pale blue: at 0.15 a shadow was the ground
+  at fifteen per cent, black. The menu has the sky without the cycle (its sun is LIGHT0). A
+  `WorldEnvironment`'s `camera_attributes` LINE MUST STAY UNDER ITS NODE: a node inserted between
+  them in the .tscn took the property, the environment lost its exposure, and every frame went white.
+- **NOTHING IS LIT BY THE SKY.** Ambient is a flat colour (`ambient_light_source` COLOR, 0.3) and
   sky reflections are off (`reflected_light_source` DISABLED), in both `node_3d.tscn` and
   `menu.tscn`; the sky's radiance map is 32 px and processed once (`radiance_size` 0, automatic).
   Every lit surface used to sample a 256 px radiance cubemap for ambient and a blurred reflection,
