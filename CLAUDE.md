@@ -731,14 +731,23 @@ project: read it before claiming how anything works.
   suspected first (`Pivot` stands at the throw angle) and cleared by alternating runs: old and new
   cones fire alike once the nose is on.
 - Damage always goes through `_scale_damage`, subclass numbers included.
-- BLOCK HP IS MEASURED IN SECONDS UNDER FIRE, against the DPS the code actually produces (gun 25/s,
-  laser 32, shotgun 20 sustained, heavy cannon 25, rocket 28, mortar 23-30 — 8 shells × 12 with
-  three or four landing, every 1.6 s — drill 66 at contact; enemy builds run 20-75, siege ~80). The
-  mortar is the one to recheck after touching its spread: the number that matters is how much of a
-  salvo lands, not what the salvo is worth. The rule the table is tuned to: a cabin survives
-  six seconds of focused fire from its own tier, an ordinary block three. A weapon without its own
-  row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine — which is what the
-  enemy aims at.
+- **HIT POINTS AND DAMAGE ARE ON TERRATECH'S SCALE, LIKE ENERGY AND REPAIR ALREADY WERE** (the player's
+  anchors: a Falsus block 250, a Marlit block 1750, the machine gun 256 dps, the laser 190). The old
+  table was a scale of its own (gun 25 dps, block 160) while the repair units ran on TerraTech's
+  135 / 180 HP a second - one repair unit out-healed five guns. Now: Falsus HP x1.5625 and Marlit
+  x1.25 over the old table (`VehicleBlock.BLOCK_HP`), every damage number x10.24 (gun 51 a shot at
+  0.2 s = 255 dps, shotgun pellet 41, heavy cannon 307, rocket blast 461, mortar shell 123, drill 205,
+  the block and cabin blasts 307 / 563, Marlit's gun 82, cannon 614, shotgun 51, mortar 184) except
+  the laser, which TerraTech has WEAKER than the gun: 171 a shot at 0.9 s = 190 dps (Marlit's 309 at
+  1.0 s, the same ratio to Falsus's). Whatever is priced IN damage moved with it: the dome's
+  `SHIELD_COST_X` 12 -> 1.17 energy a point (a battery holds off the same seconds of fire), a vein's
+  `max_hp` 100 -> 1000 (a gun or drill takes a vein in the same few seconds). Shares - the battery's
+  blast, a landing's wheel damage, the tear-off and fuse thresholds - follow by themselves.
+  WHAT THIS CHANGES IS SPEED: a block now dies in about a second under one gun, as in TerraTech. The
+  CABIN keeps the old rule - six seconds of focused fire from its own tier (one gun: 1500; Marlit's
+  10500, the block ratio of seven) - or a fight would end on the first burst at the core. A weapon
+  without its own row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine - which
+  is what the enemy aims at.
 - A BULLET IS SWEPT ALONG ITS SEGMENT (`BulletSim._sweep`), not left to Area3D overlap: at 120 u/s it
   moves two metres per physics frame (four at 30 fps) and a block is one metre, so shots stepped
   over blocks entirely — armour stopped nothing and hits landed on whatever was at the end of the
@@ -762,7 +771,7 @@ project: read it before claiming how anything works.
 - THE LASER IS A CHARGED SHOT, and what it charges is visible: three rings running in to the
   muzzle, brightening as the shot nears (`laser._drive_charge`), then a LANCE along the barrel
   instead of a muzzle cone (`BlockFX.muzzle_lance`) — a cone is burning gas, and a laser has none.
-  Rate 0.9 s at 29 damage keeps the 32 dps the HP table is tuned to; the difference is that it
+  Rate 0.9 s at 171 damage is 190 dps, under the gun as in TerraTech; the difference is that it
   arrives in one blow with a wind-up the player can read and step behind cover for. Which effect a
   shot draws is `WeaponBlock._muzzle_fx`, overridden like `flash_color` — the door stays single
   (`_handle_fire` calls it once per shot, shotgun and mortar included).
@@ -864,7 +873,7 @@ project: read it before claiming how anything works.
   2000 (`battery.gd capacity`, `MachineBody.BATTERY_CAP`), a Falsus panel makes 80 a second
   (`SOLAR_RATE`), the Marlit array 200 (`marlit_solar.UNITS` 2.5 panels). Against the old 100 / 6:
   what DRAINS was scaled with the battery (x20), so a battery lasts the same seconds - the dome's
-  `SHIELD_COST_X` 12 a point, the auto miner 160 a second; what PRODUCES with the panel (x40/3) -
+  `SHIELD_COST_X` 12 a point (1.17 since damage moved to TerraTech's scale, below), the auto miner 160 a second; what PRODUCES with the panel (x40/3) -
   the generator 270 / 540 / 330 / 1070 a wood / coal / ore / ingot. The repair units' numbers were
   set by the player separately (the repair-budget entry) and were not scaled. Wireless chargers are
   the player's too: Falsus 125 a second out to 20 m, Marlit (`wireless_marlit.gd`) 75 out to 40,
@@ -1068,9 +1077,9 @@ project: read it before claiming how anything works.
   which is what `SHIELD_COST_X` is tuned to — nothing in the seconds-under-fire table moves.
   A laser pays 0.35, explosives half, a drill a quarter, so bringing them to a dome is bringing
   the wrong tool. The original's spread is FOUR to one and ours is about two, on purpose: their
-  laser is a mediocre gun with a shield penalty, OURS IS THE STRONGEST GUN WE HAVE (32 dps against
-  the machine gun's 25), so a straight four would be half eaten by its own damage and still leave
-  a battery standing for twenty-odd seconds — longer than a fight lasts. Explosives keep their own way in regardless: `BlockFX.explosion` is a SPHERE
+  laser is a mediocre gun with a shield penalty, and since the TerraTech rescale ours is one too (190
+  dps against the gun's 255) - the two-to-one spread was set while ours was the strongest gun and
+  is worth re-measuring against a dome now. Explosives keep their own way in regardless: `BlockFX.explosion` is a SPHERE
   QUERY, not a ray, so the blast already passes through the dome and reaches the blocks under it
   — which is exactly how the original game behaves. The multiplier rides with the damage
   (`shield_dome.hurt(damage, cost_mult)`); the dome is told apart from an ordinary block by

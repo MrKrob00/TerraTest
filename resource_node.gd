@@ -8,7 +8,7 @@ extends StaticBody3D
 const MAX_RESOURCES: int = 5
 
 @export var resource_tscn: PackedScene
-@export var max_hp: int = 100
+@export var max_hp: int = 1000   # in the weapons' scale (BLOCK_HP): a gun takes a vein in ~4 s
 
 var current_hp: int = 0
 var instance_id: int = 0

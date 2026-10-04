@@ -19,7 +19,7 @@ const MAX_RANGE := 160.0
 # Exported: Marlit's mortar has seven tubes and fires seven (marlit_mortar.tscn); the defaults are
 # the Falsus eight-barrel numbers.
 @export var shells: int = 8              # per salvo, all at once - one per tube on the model
-@export var shell_damage: int = 12
+@export var shell_damage: int = 123
 ## Set from what LANDS, not from the salvo: 3-4 shells x 12 over 1.6 s is 25-30/s, a heavy
 ## gun's worth, paid for with flight time and a 20 m dead zone.
 @export var salvo_period: float = 1.6

@@ -105,7 +105,7 @@ pivot = NodePath("Pivot")
 connect_faces = 32
 Area_Range = NodePath("Area3D")
 block = 44
-damage = 30
+damage = 307
 fire_rate = 1.2
 weapon_range = 60.0
 
