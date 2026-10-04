@@ -586,6 +586,12 @@ project: read it before claiming how anything works.
   never reshuffles them; only the symbol flips 0↔1. A repair greens the cells that stopped being
   broken and they fade over `HEAL_FADE` — there is no separate heal effect, it would draw the same
   thing twice and say nothing about WHAT was repaired.
+- THE DAMAGE SHELL WRAPS THE BLOCK'S MIDDLE, NOT ITS ANCHOR (`BlockFX._local_aabb`): its safety cap
+  (`MAX_EXTENT`, against an effect mesh stretching the box) was a 2 m cube round the anchor, and a
+  Marlit block is anchored in a corner - the box came out -1..0.5, off-centre and smaller than the
+  model, and the digits drew INSIDE the Marlit cabin. The cap now stands on `cells_center` and is
+  at least the block's own collider box. Measured: Marlit cabin shell centred (-0.5, 0.5, -0.5),
+  2.12 m against a 2.01 m model.
 - The anchor spot is **not** validated — the only condition is a support block. Terrain checks were
   removed because they refused on ground the machine stood on fine.
 - The anchor is held by a block: lose the support (and any stationary block) and the machine drops

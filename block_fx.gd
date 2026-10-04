@@ -1177,8 +1177,20 @@ static func _local_aabb(block: Node3D) -> AABB:
 		return AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
 	# Потолок размера: видимый FX (лазер стреляет прямо в момент сноса) всё ещё может
 	# растянуть AABB — обрезаем коробку до MAX_EXTENT вокруг центра блока.
-	var half := MAX_EXTENT * 0.5
-	acc = acc.intersection(AABB(Vector3(-half, -half, -half), Vector3(MAX_EXTENT, MAX_EXTENT, MAX_EXTENT)))
+	# ROUND THE BLOCK'S MIDDLE, AT LEAST ITS OWN SIZE. A cap of 2 m round the ANCHOR cut every
+	# Marlit block: anchored in a corner, its model spans -1.5..0.5, so the box came out -1..0.5,
+	# off-centre and smaller than the block - the damage digits drew INSIDE the Marlit cabin (the
+	# player's report), and the octo's 3 m were cut to 2.
+	var mid := Vector3.ZERO
+	var half := Vector3.ONE * MAX_EXTENT * 0.5
+	if "cells_center" in block:
+		mid = block.get("cells_center")
+	for c in block.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape is BoxShape3D:
+			var bs: Vector3 = ((c as CollisionShape3D).shape as BoxShape3D).size
+			half = half.max(bs * 0.5 + Vector3.ONE * 0.25)
+			break
+	acc = acc.intersection(AABB(mid - half, half * 2.0))
 	if acc.size.x <= 0.0 or acc.size.y <= 0.0 or acc.size.z <= 0.0:
 		return AABB(Vector3(-0.5, -0.5, -0.5), Vector3.ONE)
 	return acc
