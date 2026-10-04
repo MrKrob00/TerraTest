@@ -1446,7 +1446,8 @@ func _cell_from_physics(screen_pos: Vector2) -> Dictionary:
 	else:
 		face = "back" if n.z > 0.0 else "front"
 	return {"hit": true, "x": cx, "y": cy, "z": cz,
-			"block_name": _get_block_name(block), "face": face}
+			"block_name": _get_block_name(block), "face": face,
+			"aim": p + n * 0.5 + Vector3(5.0, 5.0, 5.0)}
 
 func _place_ghost(res: Dictionary, face: bool) -> void:
 	if ghost_block == null: return
@@ -1615,7 +1616,7 @@ func _fit_held(res: Dictionary, instance: Node, bmn: Node) -> Dictionary:
 	vb.basis = orient                          # connects_at reads the node's own basis
 	var reason := ""
 	var found := {}
-	for a in bmn.attach_candidates(int(vb.block), cell, String(res.face), orient):
+	for a in bmn.attach_candidates(int(vb.block), cell, String(res.face), orient, res.get("aim")):
 		var anchor: Vector3i = a
 		var why: String = bmn.placement_refusal(int(vb.block), anchor, orient)
 		if why == "" and not vb.connects_at(front - anchor, dir):
@@ -1912,6 +1913,7 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 	var tm_y: float = ((cy + 0.5 - origin.y)/abs(dir.y)) if dir.y > 0 else ((origin.y - (cy - 0.5))/abs(dir.y)) if dir.y < 0 else INF
 	var tm_z: float = ((cz + 0.5 - origin.z)/abs(dir.z)) if dir.z > 0 else ((origin.z - (cz - 0.5))/abs(dir.z)) if dir.z < 0 else INF
 	var last_face := ""
+	var t_enter := 0.0                 # where the ray entered the current cell (for "aim")
 	# Клетки читаем у ЦЕЛИ ПОСТРОЙКИ, а не у себя: луч выше уже переведён в её пространство
 	# (_handle_click), и спрашивать при этом СВОЮ карту значило бы наводиться по чужой сетке —
 	# на соседней машине подсветка садилась бы в клетку, вычисленную по нашей сборке.
@@ -1926,13 +1928,17 @@ func _find_nearest_block_on_ray(origin: Vector3, direction: Vector3) -> Dictiona
 				result["hit"] = true
 				result["x"] = cx; result["y"] = cy; result["z"] = cz
 				result["block_name"] = _get_block_name(block); result["face"] = last_face
+				result["aim"] = origin + dir * t_enter   # the point on the face, in cell units
 				return result
 		# Шаг в соседнюю ячейку по наименьшему tMax.
 		if tm_x < tm_y and tm_x < tm_z:
+			t_enter = tm_x
 			cx += step_x; tm_x += td_x; last_face = "left" if step_x>0 else "right"
 		elif tm_y < tm_z:
+			t_enter = tm_y
 			cy += step_y; tm_y += td_y; last_face = "bottom" if step_y>0 else "top"
 		else:
+			t_enter = tm_z
 			cz += step_z; tm_z += td_z; last_face = "front" if step_z>0 else "back"
 	return result
 
