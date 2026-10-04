@@ -65,6 +65,11 @@ func _ready() -> void:
 	add_child(preload("res://tutorial_director.gd").new())
 	# Ведущий сюжетной ветки: кладёт в мир обещанное квестом и сам следит за условиями.
 	add_child(preload("res://quest_arcs.gd").new())
+	# A licence or a licence level is announced in the middle of the screen with its blocks.
+	_licence_popup = preload("res://licence_popup.gd").new()
+	add_child(_licence_popup)
+	G.licence_granted.connect(_on_licence_granted)
+	G.grade_up.connect(_on_licence_level)
 	# Экран мог поменять размер (поворот, ресайз окна на ПК). Масштаб держит stretch
 	# (project.godot → canvas_items), но угловые элементы HUD строятся в коде от размера
 	# экрана — их надо пере-разложить, иначе при expand они «отлипнут» от краёв.
@@ -342,6 +347,16 @@ func _lift(n: Node) -> Node:
 # EnergyGauge, RadarHUD, GearIcon) — это _draw(), процедурная отрисовка, у неё нет узлового
 # представления вовсе; строки рынка, список техники и содержимое профиля строятся ПО ДАННЫМ и
 # меняются каждый кадр или каждое событие. Их место в коде.
+var _licence_popup = null          # licence_popup.gd
+
+func _on_licence_granted(f: String) -> void:
+	if not G.proving_ground:
+		_licence_popup.announce(f, 1, true)
+
+func _on_licence_level(f: String, level: int) -> void:
+	if not G.proving_ground and G.faction_open(f):
+		_licence_popup.announce(f, level, false)
+
 func _bind_money() -> void:
 	_money_panel = _lift(%Money)
 	_money_lbl = %MoneyValue

@@ -401,6 +401,7 @@ func current_lang() -> String:
 # Грейд гейтит ТОЛЬКО магазин: трофеи с врагов и пылесос ставятся без лицензии.
 
 signal grade_up(faction: String, new_grade: int)
+signal licence_granted(faction: String)     # licence_popup.gd announces it
 signal progress_changed                # XP/ДИ/исследования изменились (для UI)
 
 ## The first faction is FALSUS (the id stays "start": saves and BLOCK_META key on it). Its
@@ -445,6 +446,7 @@ func grant_licence(f: String) -> void:
 			block_inventory.append(int(bt))
 	mark_progress_dirty()
 	progress_changed.emit()
+	licence_granted.emit(f)
 
 ## The faction's emblem, or null when it has none. Loaded once.
 func faction_emblem(f: String) -> Texture2D:
