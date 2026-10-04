@@ -462,11 +462,11 @@ func _codex_codex_graph() -> void:
 	# ДЕРЕВО СТОИТ В СЫРЬЕ, УГОЛЬ — В ПЕРЕДЕЛЕ. Раньше уголь висел в первой колонке особняком,
 	# без единой связи: его добывали, и он никуда не вёл. Теперь он ровно такой же передел,
 	# как слиток из руды, и линия между ними это показывает.
-	col_raw.append({"name": tr("Wood"), "key": ""})
+	col_raw.append({"name": tr("Wood"), "key": "wood"})
 	var col_ing: Array = []
 	for m in G.METAL_NAME.size():
 		col_ing.append({"name": tr(String(G.METAL_NAME[m])), "key": "m%d" % m})
-	col_ing.append({"name": tr("Coal"), "key": ""})
+	col_ing.append({"name": tr("Coal"), "key": "coal"})
 	# Ярусы — G.COMP_SIMPLE_COUNT, а не шестёрка руками: число пар считается из числа металлов,
 	# и одна новая руда сдвинула бы границу.
 	var col_s: Array = []
@@ -561,19 +561,98 @@ func _show_codex(key: String) -> void:
 		var rec: Dictionary = G.BLOCK_RECIPE.get(bt, {})
 		if not rec.is_empty():
 			body += "\n\n" + tr("Built from: %s.") % G.recipe_text(rec)
+		var stats: String = _codex_stats(bt)
+		if stats != "":
+			body += "\n\n" + stats
+	elif key == "wood" or key == "coal":
+		title = tr("Wood") if key == "wood" else tr("Coal")
+		body = tr("Grows on trees all over the map. Burns in a generator, or a smelter bakes it into coal, which is worth twice as much.") \
+				if key == "wood" else tr("Made by a smelter out of wood: the better fuel, and worth twice the wood.")
+		body += "\n\n" + tr("Sells for %d$.") % G.sell_price(key)
 	elif key.begins_with("m"):
 		var m: int = int(key.substr(1))
 		title = tr(String(G.METAL_NAME[m]))
 		body = G.metal_desc(m)
+		body += "\n\n" + tr("Sells for: ore %d$, ingot %d$.") % [G.sell_price("ore%d" % m), G.sell_price(key)]
 	elif key.begins_with("c"):
 		var c: int = int(key.substr(1))
 		title = tr(String(G.COMP_NAME[c]))
 		body = G.comp_desc(c)
+		body += "\n\n" + tr("Sells for %d$.") % G.sell_price(key)
 	if body.strip_edges() == "":
 		body = tr("No description yet.")
 	_codex_info_title.text = title
 	_codex_info_body.text = body
 	_codex_info.visible = true
+
+## WHAT A BLOCK CAN DO, IN THE NUMBERS THE GAME RUNS ON (the player's call: hit points, damage,
+## energy). Read off the tables (`VehicleBlock.BLOCK_HP` / `BLOCK_WEIGHT`, `MachineBody.SOLAR_RATE`)
+## and off an INSTANCE of the block's own scene, never typed here: a weapon's numbers are scene exports
+## (a Marlit gun is the Falsus script with its own), and a faction's repair unit or charger sets its
+## fields in `_init` - which instantiating runs, while `_ready` (it would build the dome) does not.
+## Cached: the strip is opened by tapping, and a scene instanced per tap would stutter on a phone.
+var _stats_cache: Dictionary = {}
+const GENERATOR_GD := preload("res://blocks/scripts/generator.gd")
+const MARLIT_SOLAR_GD := preload("res://blocks/scripts/marlit_solar.gd")
+
+func _codex_stats(bt: int) -> String:
+	if _stats_cache.has(bt):
+		return _stats_cache[bt]
+	var lines: Array = []
+	lines.append(tr("Hit points: %d") % int(VehicleBlock.BLOCK_HP.get(bt, VehicleBlock.DEFAULT_HP)))
+	if VehicleBlock.BLOCK_WEIGHT.has(bt):
+		lines.append(tr("Weight: %d kg") % int(VehicleBlock.BLOCK_WEIGHT[bt]))
+	var scene: PackedScene = G.get_scene(bt)
+	var n: Node = scene.instantiate() if scene != null else null
+	if n != null:
+		if n.get("laser_damage") != null:
+			var d: float = float(n.get("laser_damage"))
+			var r: float = float(n.get("laser_fire_rate"))
+			lines.append(tr("Damage: %d a shot every %.1f s (%d a second)") % [int(d), r, int(d / r)])
+			lines.append(tr("Range: %d m") % int(n.get("laser_range")))
+		elif n.get("pellets") != null:
+			var hit: float = float(n.get("pellets")) * float(n.get("pellet_damage"))
+			var burst: int = int(n.get("burst"))
+			var cycle: float = float(burst) * 0.35 + float(n.get("reload"))
+			lines.append(tr("Damage: %d pellets x %d, %d shots then a reload (%d a second up close)") % [
+					int(n.get("pellets")), int(n.get("pellet_damage")), burst, int(hit * burst / cycle)])
+			lines.append(tr("Range: %d m") % int(n.get("shotgun_range")))
+		elif n.get("shells") != null:
+			lines.append(tr("Salvo: %d shells x %d every %.1f s, 20-160 m") % [int(n.get("shells")),
+					int(n.get("shell_damage")), float(n.get("salvo_period"))])
+		elif n.get("aoe_damage") != null:
+			lines.append(tr("Damage: %d a hit plus a %d blast, every %.1f s") % [int(n.get("damage")),
+					int(n.get("aoe_damage")), 1.6])
+		elif n.get("drill_damage") != null:
+			var dd: int = int(n.get("drill_damage"))
+			lines.append(tr("Damage: %d every %.1f s at contact (%d a second)") % [dd, 0.3, int(dd / 0.3)])
+		elif n is WeaponBlock:
+			var d2: float = float(n.get("damage"))
+			var r2: float = float(n.get("fire_rate"))
+			lines.append(tr("Damage: %d a shot every %.2f s (%d a second)") % [int(d2), r2, int(d2 / maxf(r2, 0.01))])
+			lines.append(tr("Range: %d m") % int(n.get("weapon_range")))
+		if n.get("capacity") != null and G.BATTERY_BLOCKS.has(bt):
+			lines.append(tr("Stores %d energy") % int(n.get("capacity")))
+		if n.get("heal_rate") != null:
+			lines.append(tr("Repairs %d HP a second out to %.1f m, %.1f HP per unit of energy") % [
+					int(n.get("heal_rate")), float(n.get("field_radius")), float(n.get("hp_per_energy"))])
+		if n.get("charge_rate") != null:
+			lines.append(tr("Sends %d energy a second out to %d m") % [int(n.get("charge_rate")), int(n.get("charge_range"))])
+		if n.get("cost_x") != null:
+			lines.append(tr("Each point of damage it stops costs %.2f energy") % float(n.get("cost_x")))
+		if n.get("energy_per_sec") != null:
+			lines.append(tr("Uses %d energy a second while it digs") % int(n.get("energy_per_sec")))
+		n.free()
+	if bt == G.Block.SOLAR:
+		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE))
+	elif bt == G.Block.MARLIT_SOLAR:
+		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE * MARLIT_SOLAR_GD.UNITS))
+	elif bt == G.Block.GENERATOR:
+		lines.append(tr("Burns fuel: wood %d, coal %d, ore %d, an ingot %d energy") % [GENERATOR_GD.ENERGY_WOOD,
+				GENERATOR_GD.ENERGY_COAL, GENERATOR_GD.ENERGY_ORE, GENERATOR_GD.ENERGY_INGOT])
+	var out: String = "\n".join(lines)
+	_stats_cache[bt] = out
+	return out
 
 ## Имя блока — ОДНОЙ ДВЕРЬЮ (G.block_name): там же лежит и перевод, а вторая копия правила
 ## означала бы переведённый магазин и непереведённый справочник рядом.
