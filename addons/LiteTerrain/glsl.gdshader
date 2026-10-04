@@ -114,11 +114,14 @@ group_uniforms;
 // И ЭТО ЕЩЁ И ВОЗВРАЩАЕТ КАДРЫ: там, где дымка почти сплошная, попиксельный шум и тайловая
 // текстура всё равно не видны — их считать не нужно (см. fragment). На дальних чанках, которых
 // в кадре больше всего, это снимает две операции с каждого пикселя.
-uniform vec4  haze_color : source_color = vec4(0.60, 0.71, 0.85, 1.0);  // цвет горизонта неба
-uniform float haze_begin    : hint_range(0.0, 2000.0) = 180.0;
-uniform float haze_end      : hint_range(0.0, 4000.0) = 900.0;
-uniform float haze_strength : hint_range(0.0, 1.0)    = 0.75;   // 1.0 = дальняя земля сплошной цвет
-// Дальше этого дымка считается сплошной, и фрагмент пропускает попиксельную детализацию.
+// THE HAZE IS THE WORLD'S, NOT THIS MATERIAL'S (project.godot [shader_globals]): `world_haze` is
+// its colour - day_cycle.gd moves it with the hour, warm cream by day, orange at dusk, deep blue at
+// night - and the sky's horizon IS that colour, so far ground melts into the sky as TerraTech's does
+// (the player's screenshot). `haze_range` = begin, end (m), strength. The trees read the same two.
+// It is written to FOG, which the renderer mixes in AFTER the lighting, in this same pass: mixed
+// into ALBEDO it was lit again, and a far slope in shade came out a dark smudge in bright haze.
+global uniform vec4 world_haze;
+global uniform vec4 haze_range;
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
 
@@ -149,8 +152,8 @@ void vertex() {
     v_wnrm     = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
-    v_haze = smoothstep(haze_begin, haze_end,
-            length(world_pos.xz - CAMERA_POSITION_WORLD.xz)) * haze_strength;
+    v_haze = smoothstep(haze_range.x, haze_range.y,
+            length(world_pos.xz - CAMERA_POSITION_WORLD.xz));
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
     // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
@@ -277,6 +280,6 @@ void fragment() {
     // ДЫМКА ПОСЛЕДНЕЙ, поверх всего: она про воздух между камерой и поверхностью, а значит
     // гасит и глитч заражённой зоны тоже — иначе на горизонте светились бы клетки, у которых
     // сама земля уже растворилась.
-    ALBEDO   = mix(ALBEDO, haze_color.rgb, v_haze);
     EMISSION = EMISSION * (1.0 - v_haze);
+    FOG = vec4(world_haze.rgb, v_haze * haze_range.z);
 }

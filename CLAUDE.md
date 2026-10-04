@@ -2007,6 +2007,22 @@ project: read it before claiming how anything works.
   at fifteen per cent, black. The menu has the sky without the cycle (its sun is LIGHT0). A
   `WorldEnvironment`'s `camera_attributes` LINE MUST STAY UNDER ITS NODE: a node inserted between
   them in the .tscn took the property, the environment lost its exposure, and every frame went white.
+- **THE LOOK IS TERRATECH'S AFTERNOON, AND EVERY PART OF IT RIDES AN EXISTING PASS** (the player's
+  screenshot). HAZE: the far ground and the trees fade into ONE colour, the global `world_haze`
+  (project.godot `[shader_globals]`, with `haze_range` = begin, end, strength), written to `FOG` in
+  their own shaders - the renderer mixes it AFTER the lighting in the same pass (`scene.glsl`
+  `frag_color = mix(frag_color, fog.rgb, fog.a)`, not gated on environment fog), where the old haze
+  was mixed into ALBEDO and lit again, so a far slope in shade came out a dark smudge. The SKY'S
+  HORIZON IS that colour, so land and sky meet without a seam; `day_cycle` moves it (cream, the
+  dusk's orange, a night blue). WARMTH: a warm-white sun (`SUN_COLOR`) and a warm-grey ambient (the
+  sand's bounce - a blue fill made every shadow cold and dark), a wide glare round the sun in the
+  sky. SHADOWS WERE MISSING, NOT ONLY DARK: the trees' MultiMeshes cast none (`cast_shadow` 0 in
+  the scene) and the map was 512 px, hard - on the real driver the palms threw nothing at all. Now
+  `Main.shadows_soft` (a setting beside Shadows, on by default) takes the map to 1024, the soft
+  filter (`SHADOW_QUALITY_SOFT_VERY_LOW`, `shadow_blur` 1.6) and lets the trees cast, through the
+  RenderingServer - the project keeps 512 / hard for whoever turns it off, because the shadowed sun is
+  a SECOND pass over the ground in Compatibility (8 of 25 fps on the device) and soft samples it
+  five times. `shadow_opacity` 0.68: a shadow is the ground in shade, not a hole.
 - **NOTHING IS LIT BY THE SKY.** Ambient is a flat colour (`ambient_light_source` COLOR, 0.3) and
   sky reflections are off (`reflected_light_source` DISABLED), in both `node_3d.tscn` and
   `menu.tscn`; the sky's radiance map is 32 px and processed once (`radiance_size` 0, automatic).

@@ -94,6 +94,10 @@ void vertex() {
 	VERTEX = p + vec3(0.0, base_y, 0.0);
 }
 
+// the world's haze, as the ground has it (addons/LiteTerrain/glsl.gdshader): a far tree in it
+global uniform vec4 world_haze;
+global uniform vec4 haze_range;
+
 void fragment() {
 	// Vertex colours are authored in sRGB, ore_colors arrive linear. Which space ALBEDO is in is the
 	// renderer's: where it writes sRGB straight out (OUTPUT_IS_SRGB, as here in Compatibility) the
@@ -112,4 +116,5 @@ void fragment() {
 	// no white flash on a hit (the player called it a placeholder): a hit throws red digits instead,
 	// resource_node.hurt -> BlockFX.vein_digits
 	ALBEDO = mix(c, c * gain * tint, COLOR.a);
+	FOG = vec4(world_haze.rgb, smoothstep(haze_range.x, haze_range.y, length(VERTEX.xz)) * haze_range.z);
 }

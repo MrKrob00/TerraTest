@@ -26,8 +26,8 @@ background_color = Color(0.21960784, 0.11372549, 0.5294118, 1)
 sky = SubResource("Sky_2yde8")
 sky_custom_fov = 80.0
 ambient_light_source = 2
-ambient_light_color = Color(0.46, 0.54, 0.7, 1)
-ambient_light_energy = 0.3
+ambient_light_color = Color(0.66, 0.6, 0.52, 1)
+ambient_light_energy = 0.36
 reflected_light_source = 1
 tonemap_mode = 4
 tonemap_agx_contrast = 1.7
@@ -110,7 +110,9 @@ shadow_enabled = true
 directional_shadow_mode = 0
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 80.0
-shadow_opacity = 0.62
+shadow_opacity = 0.68
+shadow_blur = 1.6
+light_color = Color(1, 0.93, 0.8, 1)
 
 [node name="MenuEnv" type="WorldEnvironment" parent="Stage" unique_id=1172585365]
 unique_name_in_owner = true
