@@ -14,6 +14,7 @@ class_name RocketLauncher
 @export var aoe_damage: int = 231
 
 func _init() -> void:
+	damage_kind = VehicleBlock.Dmg.EXPLOSIVE   # x2 on batteries, x1.5 on tyres, x0.5 on armour
 	turn_speed = 70.0        # deg/s (WeaponBlock._turn_to): a full pod
 
 func _ready() -> void:
@@ -79,7 +80,10 @@ func _explode(pos: Vector3) -> void:
 		seen[b] = true
 		var d: float = (b as Node3D).global_position.distance_to(pos)
 		var f: float = clampf(1.0 - d / aoe_radius, 0.15, 1.0)  # спад урона к краю
-		b.hurt(_scale_damage(aoe_damage * f))   # множитель машины — см. WeaponBlock._scale_damage
+		if b is VehicleBlock:
+			b.hurt(_scale_damage(aoe_damage * f), damage_kind)   # the table: tyres and batteries x1.5 / x2
+		else:
+			b.hurt(_scale_damage(aoe_damage * f))
 		_alert_victim(b)                                   # взрыв тоже выдаёт, кто стрелял
 	_spawn_explosion_fx(pos)
 

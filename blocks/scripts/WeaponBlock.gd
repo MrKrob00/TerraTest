@@ -2,6 +2,9 @@ extends VehicleBlock
 class_name WeaponBlock
 
 @export var damage: int = 26
+## What kind of damage this weapon deals (VehicleBlock.Dmg, the wiki's table in VehicleBlock): a
+## subclass sets it in `_init` so a scene (the heavy cannons) can still override the export.
+@export var damage_kind: int = VehicleBlock.Dmg.BULLET
 ## Дальность. Было 10 — втрое меньше, чем машина видит противника, поэтому убегающего было
 ## не достать в принципе. Отсюда же ИИ берёт свою боевую дистанцию
 ## (enemy_vehicle._own_weapon_range), так что короткий ствол заставлял и врага лезть вплотную.
@@ -65,8 +68,11 @@ class_name WeaponBlock
 ## 0.35 даёт пулемёту преимущество примерно вдвое: правило «под купол иди с пулями» заметно, а
 ## сборка с одним лазером всё же проходит щит за пятнадцать секунд, а не стоит перед ним.
 var shield_cost_mult: float = 1.0
-const SHIELD_MULT_ENERGY := 0.35      # лазер: почему не половина — абзацем выше
-const SHIELD_MULT_EXPLOSIVE := 0.5    # ракеты и миномёт: их ответ — разлёт сквозь купол
+# THE WIKI'S SHIELD COLUMN OVER THE BULLET'S (VehicleBlock.DMG_TABLE: bullet 2, energy 0.5, explosive
+# 0.5): 0.35 / 0.5 were set while our laser was the strongest gun; since the rescale it is a weaker
+# one, as in TerraTech, so the table's four-to-one stands.
+const SHIELD_MULT_ENERGY := 0.25
+const SHIELD_MULT_EXPLOSIVE := 0.25
 const SHIELD_MULT_CONTACT := 0.25     # бур: медленно, но возможно
 
 ## ЦВЕТ И СИЛА ВСПЫШКИ — ПЕРЕМЕННЫЕ, А НЕ КОНСТАНТЫ: подкласс ставит своё в _ready, как он уже
@@ -1117,8 +1123,11 @@ func _on_bullet_body_entered(body: Node3D, source) -> void:
 	if body.has_method("struck"):
 		body.hurt(_shot_damage(), shield_cost_mult)
 		_alert_victim(body)
+	elif body is VehicleBlock:
+		body.hurt(_shot_damage(), damage_kind)
+		_alert_victim(body)
 	elif body.has_method("hurt"):
-		body.hurt(_shot_damage())
+		body.hurt(_shot_damage())          # a vein: wood and rock are not in the table
 		_alert_victim(body)
 	elif is_instance_valid(source):
 		# THE WORLD: ground, rock, a tree. A shot that landed there used to vanish with no mark.

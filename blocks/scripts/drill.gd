@@ -81,5 +81,7 @@ func _dig() -> void:
 			body.hurt(drill_damage, WeaponBlock.SHIELD_MULT_CONTACT)
 			# Место удара отмечаем как от пули: бур стоит вплотную, своё положение и есть контакт.
 			body.struck(global_position)
+		elif body is VehicleBlock:
+			body.hurt(drill_damage, VehicleBlock.Dmg.CUTTING)
 		elif body.has_method("hurt"):
-			body.hurt(drill_damage)
+			body.hurt(drill_damage)            # a vein
