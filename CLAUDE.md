@@ -523,7 +523,7 @@ project: read it before claiming how anything works.
   player's call - shrinking read as a model getting smaller, and the ore going while its rock
   stayed was wrong first): every model is cut into parts, UV.x carries each part's break point
   (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, lined up with the five ores `resource_node` throws out),
-  and the shader collapses a part once the HP share is at or under it - one mesh, one MultiMesh, no
+  and the shader collapses a part once the share (thrown ore, below) is at or under it - one mesh, one MultiMesh, no
   model swapped. What stays at zero is RUBBLE (UV.x below 0): the rock's low base, the crystals'
   broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
   again. Measured on the real driver at HP 1 / 0.7 / 0.5 / 0.3 / 0 for all four metals. A tree
@@ -534,6 +534,15 @@ project: read it before claiming how anything works.
   the player: "twice as big") on its MultiMesh instance - stump, fall and break points scale with it.
   The node gets a trunk collider of the same scale (`_tree_shape`, one shared cylinder) and the
   instance's turn and size as meta `vein_basis`, which the battery errand places its block by.
+  **AN ORE VEIN IS DRAWN AT THREE TIMES ITS MODEL** (`resource_nodes.VEIN_SIZE`, the player's call)
+  the same way: ~3 m across, a shared collider to match (`_ore_shape`), its ore thrown round its
+  outside by `vein_basis` (`resource_node._eject_one`), the auto miner's `vein_reach` 4.5 /
+  `pickup_radius` 6 and `MINER_MOUNT_DIST` 2.8 grown with it. `min_spacing` was NOT touched: it is a
+  rejection radius in the seeded layout. **A VEIN BREAKS BY THE ORE IT HAS THROWN, NOT BY ITS HP**
+  (`resource_node.hurt`): an ore leaves when int(hp x 5) drops, a part goes at its break point, so by
+  HP every part went one ore late and the last (0.0) never went - the fifth ore leaves under a fifth
+  of HP and an empty vein takes no hits. A tree keeps its HP for the lean and reads 0 on its last
+  wood. Measured on the real driver: 0.8 / 0.6 / 0.4 / 0.2 / 0.0 with ores 1..5, nothing left standing.
   **THE VEINS' SHADER RUNS ON ITS OWN `now`, NEVER `TIME`** (`resource_nodes._tick_clock`, set every
   frame from `shader_now`, the function that writes the hit and regrow times). `TIME` is the
   renderer's clock built from frame steps and ran seconds behind the wall clock after a slow load, so
@@ -735,23 +744,32 @@ project: read it before claiming how anything works.
   suspected first (`Pivot` stands at the throw angle) and cleared by alternating runs: old and new
   cones fire alike once the nose is on.
 - Damage always goes through `_scale_damage`, subclass numbers included.
-- **HIT POINTS AND DAMAGE ARE ON TERRATECH'S SCALE, LIKE ENERGY AND REPAIR ALREADY WERE** (the player's
-  anchors: a Falsus block 250, a Marlit block 1750, the machine gun 256 dps, the laser 190). The old
-  table was a scale of its own (gun 25 dps, block 160) while the repair units ran on TerraTech's
-  135 / 180 HP a second - one repair unit out-healed five guns. Now: Falsus HP x1.5625 and Marlit
-  x1.25 over the old table (`VehicleBlock.BLOCK_HP`), every damage number x10.24 (gun 51 a shot at
-  0.2 s = 255 dps, shotgun pellet 41, heavy cannon 307, rocket blast 461, mortar shell 123, drill 205,
-  the block and cabin blasts 307 / 563, Marlit's gun 82, cannon 614, shotgun 51, mortar 184) except
-  the laser, which TerraTech has WEAKER than the gun: 171 a shot at 0.9 s = 190 dps (Marlit's 309 at
-  1.0 s, the same ratio to Falsus's). Whatever is priced IN damage moved with it: the dome's
-  `SHIELD_COST_X` 12 -> 1.17 energy a point (a battery holds off the same seconds of fire), a vein's
-  `max_hp` 100 -> 1000 (a gun or drill takes a vein in the same few seconds). Shares - the battery's
-  blast, a landing's wheel damage, the tear-off and fuse thresholds - follow by themselves.
-  WHAT THIS CHANGES IS SPEED: a block now dies in about a second under one gun, as in TerraTech. The
-  CABIN keeps the old rule - six seconds of focused fire from its own tier (one gun: 1500; Marlit's
-  10500, the block ratio of seven) - or a fight would end on the first burst at the core. A weapon
-  without its own row falls to `DEFAULT_HP` and becomes the most fragile thing on the machine - which
-  is what the enemy aims at.
+- **HIT POINTS ARE ON TERRATECH'S SCALE, DAMAGE IS HALF OF IT** (the player's anchors: a Falsus block
+  250, a Marlit block 1750). The first rescale took TerraTech's dps as it stands (gun 255, laser 190)
+  and a block died in a second; the player: "too strong - TerraTech's turrets turn at a rate". Its
+  nominal dps never all lands: turrets traverse, and armour takes half from bullets (the wiki's damage
+  types: bullet x0.5 on armour, x2 on shields; energy x1.5 on armour; explosive x0.5 on armour, x2 on
+  volatile blocks - NOT modelled here, a proposal). So every number that hurts was HALVED: gun 26 a
+  shot at 0.2 s (130 dps), laser 86 at 0.9 s, shotgun pellet 21, heavy cannon 154, rocket blast 231,
+  mortar shell 62, drill 103 (small 51), the block and cabin blasts 154 / 282; Marlit gun 41, laser
+  155, shotgun 26, cannon 307, mortar 92 - and turrets got a traverse rate (below). A vein's `max_hp`
+  went to 500 with it (a drill takes a vein in the same seconds); `SHIELD_COST_X` did NOT move (1.17
+  a point), so a dome lasts twice the seconds, like a block. Shares - the battery's blast, a
+  landing's wheel damage, the tear-off and fuse thresholds - follow by themselves. THE CABIN IS 2.5
+  BLOCKS OF ITS FACTION (the player's rule): Falsus 625, Marlit 4375. A weapon without its own row
+  falls to `DEFAULT_HP` and becomes the most fragile thing on the machine - which is what the enemy
+  aims at.
+- **A TURRET TURNS AT A RATE AND FIRES ONLY ONCE IT IS ON** (`WeaponBlock._turn_to`, `turn_speed`,
+  `AIM_TOL` 4 deg). The pivot lerped at 15/s - on any target in a tenth of a second - so every gun
+  put its whole dps on what it picked at once. Yaw and pitch now move at `turn_speed` deg/s, the
+  model follows the PIVOT, and `_handle_fire` holds the shot (timer spent, as for a blocked barrel)
+  while the barrel is off. ONE DOOR for the base, laser, rocket launcher and mortar; a subclass sets
+  its rate in `_init` so a Marlit scene can override the export: gun 120, shotgun 100, laser 80,
+  rocket 70, heavy cannon 55, mortar 45; Marlit gun 90, shotgun 75, laser 60, cannon 40, mortar 35
+  (our numbers - the wiki gives none). The rest check is "the turn reached its rest" (`_aim_err`), not
+  "pivot at zero": THE MORTAR'S PIVOT RESTS AT ITS PARKED ANGLE (`_idle_pitch`, set in `_ready`), or
+  the pack would swing down from 45 deg at the first salvo. Measured on the proving ground in a fight:
+  the largest turn per tick is exactly `turn_speed` for every gun, and they fire. The codex shows it.
 - A BULLET IS SWEPT ALONG ITS SEGMENT (`BulletSim._sweep`), not left to Area3D overlap: at 120 u/s it
   moves two metres per physics frame (four at 30 fps) and a block is one metre, so shots stepped
   over blocks entirely — armour stopped nothing and hits landed on whatever was at the end of the

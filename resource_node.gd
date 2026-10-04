@@ -8,7 +8,7 @@ extends StaticBody3D
 const MAX_RESOURCES: int = 5
 
 @export var resource_tscn: PackedScene
-@export var max_hp: int = 1000   # in the weapons' scale (BLOCK_HP): a gun takes a vein in ~4 s
+@export var max_hp: int = 500   # in the weapons' scale (BLOCK_HP): a gun takes a vein in ~4 s, halved with damage
 
 var current_hp: int = 0
 var instance_id: int = 0
@@ -78,13 +78,22 @@ func hurt(damage: int = 10) -> void:
 	var owner_node: Node = get_parent()
 	if owner_node != null and owner_node.has_method("vein_hit"):
 		owner_node.vein_hit(self)
-	# R — время удара (тряска), G — доля HP, A — тип (цвет).
-	_write_shader_data(Color(_now(), float(current_hp) / float(max_hp), 0.0, float(ore_type)))
-
 	var want_left: int = int(float(current_hp) / float(max_hp) * MAX_RESOURCES)
 	while _available > want_left:
 		_eject_one()
 		_available -= 1
+
+	# R the hit's time (shake), G what the shader breaks by, A the metal. AN ORE VEIN BREAKS BY WHAT
+	# IT HAS THROWN, NOT BY ITS HP: a part goes at its break point (0.8 ... 0.0) and an ore leaves when
+	# int(hp * 5) drops, so by HP every part went one ore late - and the last one, at 0.0, never went,
+	# since the fifth ore leaves under a fifth of HP and an empty vein takes no more hits. A tree keeps
+	# its HP for the lean and reads 0 the moment its last wood is out, so it falls on that blow.
+	var share: float = float(current_hp) / float(max_hp)
+	if _available <= 0:
+		share = 0.0
+	elif not is_wood:
+		share = float(_available) / float(MAX_RESOURCES)
+	_write_shader_data(Color(_now(), share, 0.0, float(ore_type)))
 
 	if _available <= 0:
 		$RestTimer.start()
@@ -102,7 +111,11 @@ func _eject_one() -> void:
 	if objects == null:
 		objects = get_parent()                # мира ещё нет (тест сцены) — как раньше, под жилу
 	objects.add_child(res)
-	res.global_position = global_position + Vector3(randf_range(-1.5, 1.5), 1.0, randf_range(-1.5, 1.5))
+	# round the outside of the drawn vein, not inside it: veins are drawn at a size (`vein_basis`)
+	var s: float = (get_meta("vein_basis") as Basis).get_scale().x if has_meta("vein_basis") else 1.0
+	var a: float = randf() * TAU
+	var r: float = 0.55 * s + randf_range(0.3, 1.0)
+	res.global_position = global_position + Vector3(cos(a) * r, 0.4 * s + 0.6, sin(a) * r)
 	if is_wood and "type" in res:
 		res.type = res.Type.WOOD              # дерево: свой цвет, тинт жилы не нужен
 	elif res.has_method("set_metal"):

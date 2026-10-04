@@ -1833,10 +1833,10 @@ func _place_ground_structure(instance: Node3D) -> void:
 ## бьёт по маске 1 (рельеф), а жила стоит НА рельефе — палец почти всегда попадает в землю
 ## рядом с ней, а не в неё саму. Радиус берём у самого шахтёра (vein_reach), чтобы правило
 ## «дотягивается» было ОДНО: поставили — значит и добывать сможет.
-const VEIN_SNAP_FALLBACK := 3.0
+const VEIN_SNAP_FALLBACK := 4.5
 ## На сколько метров шахтёр отходит от жилы. Меньше vein_reach у самого блока — иначе он
 ## встанет так, что своей же жилы не увидит.
-const MINER_MOUNT_DIST := 1.4
+const MINER_MOUNT_DIST := 2.8           # clear of a vein drawn at resource_nodes.VEIN_SIZE
 
 func _vein_near(at, reach: float = VEIN_SNAP_FALLBACK) -> Node3D:
 	if not (at is Vector3):

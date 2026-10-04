@@ -1,7 +1,7 @@
 extends VehicleBlock
 class_name WeaponBlock
 
-@export var damage: int = 51
+@export var damage: int = 26
 ## Дальность. Было 10 — втрое меньше, чем машина видит противника, поэтому убегающего было
 ## не достать в принципе. Отсюда же ИИ берёт свою боевую дистанцию
 ## (enemy_vehicle._own_weapon_range), так что короткий ствол заставлял и врага лезть вплотную.
@@ -187,8 +187,8 @@ func _tick_weapon(delta: float) -> void:
 		if _rest:
 			return
 		_track_target(delta, false)     # прячет луч и плавно возвращает башню в нейтраль
-		if pivot.rotation.length_squared() < 1.0e-5:
-			pivot.rotation = Vector3.ZERO
+		# back at its rest (pivot 0, or the mortar's parked angle - `_turn_to` says how far off)
+		if _aim_err < 0.01:
 			if _yaw_part != null:
 				_yaw_part.transform.basis = _yaw_rest
 			if _pitch_part != null:
@@ -234,7 +234,12 @@ func attack() -> void:
 # Берём только MeshInstance3D: Pivot, Ammo и зона обнаружения тоже узлы с детьми, но к
 # модели не относятся. Нет цепочки (у дробовика и мортиры платформа без частей) — просто
 # ничего не доворачиваем.
-const TURRET_TRACK: float = 12.0       # скорость доворота модели, как у Pivot
+const TURRET_TRACK: float = 30.0       # how fast the model catches the pivot (smoothing only: the pivot sets the rate)
+const AIM_TOL: float = 4.0             # deg off the solution the barrel may fire at
+## deg/s the turret traverses and elevates (`_turn_to`). A subclass sets its own in `_init`, so a
+## scene (Marlit's, on the same scripts) can still override it as an export.
+@export var turn_speed: float = 120.0
+var _aim_err: float = 0.0              # deg between the barrel and its solution, last tick
 
 var _yaw_part: Node3D = null           # поворотная часть: влево-вправо
 var _pitch_part: Node3D = null         # ствол: вверх-вниз
@@ -296,6 +301,26 @@ func _first_mesh_child(n: Node) -> MeshInstance3D:
 ## Крутим ОТ ПОЛОЖЕНИЯ ПОКОЯ и умножением справа (локальная ось узла), а не присваиванием
 ## rotation.y/x: у частей модели свой запечённый разворот, и присваивание одной эйлеровой
 ## компоненты его бы разрушило.
+## A TURRET TURNS AT A RATE, AND FIRES ONLY ONCE IT IS ON (TerraTech's turrets traverse; the player:
+## "their guns do not turn instantly, which is why ours came out too strong"). The pivot used to lerp
+## at 15/s - on target in a tenth of a second from anywhere - so every gun put its whole dps on
+## whatever it picked, at once, and a target crossing the arc was never outrun. Now yaw and pitch
+## each move at `turn_speed` deg/s, the model follows the PIVOT (not the solution), and
+## `_handle_fire` holds the shot while the barrel is more than AIM_TOL off. THE ONE DOOR for every
+## weapon's aim (base, laser, rocket launcher, mortar). `model_pitch` is what the model's pitch part
+## is handed, for the mortar, whose pack is parked at its own rest angle.
+func _turn_to(pitch_deg: float, yaw_deg: float, delta: float, model_pitch_off: float = 0.0) -> void:
+	var step: float = deg_to_rad(turn_speed) * delta
+	var want_x: float = deg_to_rad(pitch_deg)
+	var want_y: float = deg_to_rad(yaw_deg)
+	var r: Vector3 = pivot.rotation
+	r.x = move_toward(r.x, want_x, step)
+	r.y = move_toward(r.y, want_y, step)
+	r.z = 0.0
+	pivot.rotation = r
+	_aim_err = rad_to_deg(maxf(absf(want_x - r.x), absf(want_y - r.y)))
+	_aim_model(r.y, r.x - model_pitch_off, delta)
+
 func _aim_model(yaw: float, pitch: float, delta: float) -> void:
 	var k: float = clampf(delta * TURRET_TRACK, 0.0, 1.0)
 	if _yaw_part != null:
@@ -519,8 +544,7 @@ func _track_target(delta: float, firing: bool) -> void:
 	# этого меша нет, НЕ ДОВОРАЧИВАЛАСЬ ВООБЩЕ и стреляла прямо перед собой. Трассер — это
 	# картинка, и решать, целится ли орудие, он не может.
 	if not firing:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 0.1)
-		_aim_model(0.0, 0.0, delta)
+		_turn_to(0.0, 0.0, delta)
 		_show_tracer(false, delta)
 		return
 	_anim_t += delta
@@ -536,11 +560,9 @@ func _track_target(delta: float, firing: bool) -> void:
 		var dir_local: Vector3 = global_transform.basis.inverse() * dir_world
 		var yaw: float = clampf(rad_to_deg(atan2(-dir_local.x, -dir_local.z)), -yaw_limit, yaw_limit)
 		var pitch: float = clampf(rad_to_deg(atan2(dir_local.y, Vector2(dir_local.x, dir_local.z).length())), -pitch_limit, pitch_limit)
-		pivot.rotation = lerp(pivot.rotation, Vector3(deg_to_rad(pitch), deg_to_rad(yaw), 0.0), 15.0 * delta)
-		_aim_model(deg_to_rad(yaw), deg_to_rad(pitch), delta)
+		_turn_to(pitch, yaw, delta)
 	else:
-		pivot.rotation = lerp(pivot.rotation, Vector3.ZERO, 8.0 * delta)
-		_aim_model(0.0, 0.0, delta)          # цели нет — модель возвращается в покой
+		_turn_to(0.0, 0.0, delta)            # no target: back to rest, at the same rate
 	_show_tracer(true, delta)
 
 ## ТРАССЕР — только картинка: цилиндр под лучом наводки, который тянется до точки попадания
@@ -606,6 +628,9 @@ func _handle_fire(delta: float) -> void:
 		raycast.force_raycast_update()
 	var body: Node3D = raycast.get_collider()
 	if body and (body == self or body.get_parent() == get_parent()):
+		return
+	# STILL TURNING: hold the shot, the timer stays spent so it fires the tick the barrel is on
+	if _aim_err > AIM_TOL:
 		return
 	_fire_timer = fire_rate
 	# NO ROUND, NO FLASH. A subclass's fire_bullet may decline (the shotgun reloading, the mortar

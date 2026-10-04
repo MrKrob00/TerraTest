@@ -1,6 +1,6 @@
 extends VehicleBlock
 
-@export var drill_damage: int = 205
+@export var drill_damage: int = 103
 const DIG_INTERVAL := 0.3   # пауза между ударами, пока зажата атака и бур в контакте
 var _dig_cd := 0.0
 
