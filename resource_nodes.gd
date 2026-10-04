@@ -78,6 +78,12 @@ const MAP_WAIT_FRAMES: int = 300      # ~5 секунд при 60 кадрах
 ## Each vein drawn turned by its own angle and at its own size, by its position.
 const VEIN_SCALE_MIN := 0.85
 const VEIN_SCALE_MAX := 1.15
+## A TREE IS DRAWN AT TWICE ITS MODEL (the player: "the trees are small, make them twice as big").
+## One number on the instance, not a regenerated mesh: the stump, the fall and the break points are
+## all in model space and scale with it. The node's collider grows to the trunk (`_tree_shape`), and
+## whoever places something on a tree asks the node's `vein_basis` meta (the battery errand).
+const TREE_SCALE := 2.0
+var _tree_shape: CylinderShape3D = null
 
 ## A TIME FOR THE SHADER IS THE SHADER'S CLOCK, which rolls over (`time_rollover_secs`, an hour by
 ## default): an hour into a session a raw Time.get_ticks_msec() stood an hour ahead of TIME, and a
@@ -141,7 +147,7 @@ func vein_hit(vein: Node3D) -> void:
 	# inside the needles
 	var wood: bool = vein.get("is_wood") == true
 	var base: Vector3 = vein.global_position
-	var at: Vector3 = base + Vector3.UP * (0.8 if wood else 0.7)
+	var at: Vector3 = base + Vector3.UP * (0.8 * TREE_SCALE if wood else 0.7)
 	var out := Vector3.ZERO
 	var cam := get_viewport().get_camera_3d()
 	if cam != null:
@@ -149,7 +155,7 @@ func vein_hit(vein: Node3D) -> void:
 		out.y = 0.0
 		if out.length_squared() > 0.01:
 			out = out.normalized()
-			at += out * (0.45 if wood else 0.7)
+			at += out * (0.45 * TREE_SCALE if wood else 0.7)
 	_digits.burst(vein, at, base.y - 0.25, out)
 
 ## The veins' shader reads its own `now`, never TIME (see resources/resource.gdshader): one clock
@@ -500,7 +506,10 @@ func _stream_in(v: Dictionary) -> void:
 	var hh: int = hash(Vector2i(int(gp.x * 8.0), int(gp.z * 8.0)))
 	var yaw: float = float(hh % 6283) * 0.001
 	var size: float = VEIN_SCALE_MIN + float((hh >> 13) % 1000) * 0.001 * (VEIN_SCALE_MAX - VEIN_SCALE_MIN)
-	var xform := Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size), v["pos"])
+	if v.get("wood") == true:
+		size *= TREE_SCALE
+	var vbasis := Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size)
+	var xform := Transform3D(vbasis, v["pos"])
 	# G=1 whole, A the type; B the time it came back - a replanted tree grows in its new spot
 	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))
 	if v.get("regrow") == true:
@@ -517,6 +526,16 @@ func _stream_in(v: Dictionary) -> void:
 		node.instance_id = slot                      # узел пишет истощение в ЭТОТ слот
 		if "is_wood" in node: node.is_wood = v["wood"]
 		if "tree_kind" in node: node.tree_kind = int(v.get("tree", 0))
+		node.set_meta("vein_basis", vbasis)
+		if v.get("wood") == true:
+			var col := node.get_node_or_null("CollisionShape3D") as CollisionShape3D
+			if col != null:
+				if _tree_shape == null:
+					_tree_shape = CylinderShape3D.new()
+					_tree_shape.radius = 0.3 * TREE_SCALE
+					_tree_shape.height = 3.5 * TREE_SCALE      # the trunk up into the crown
+				col.shape = _tree_shape
+				col.position = Vector3(0.0, _tree_shape.height * 0.5, 0.0)
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]

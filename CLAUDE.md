@@ -524,7 +524,10 @@ project: read it before claiming how anything works.
   leans a little while it is chopped and on the last blow falls and is gone in `fall_time`,
   leaving the stump - lying there for the rest was wrong. THE STUMP IS THE BOTTOM OF ITS OWN TRUNK (`_tree`, one
   ring shared at `CUT_Y`, both cuts pale wood): it was a squat cone twice the trunk's width and the
-  player read it as some other object; the tree is ~5.9 m now (the player: "bigger").
+  player read it as some other object; the model is ~5.9 m and IT IS DRAWN AT `TREE_SCALE` (2x,
+  the player: "twice as big") on its MultiMesh instance - stump, fall and break points scale with it.
+  The node gets a trunk collider of the same scale (`_tree_shape`, one shared cylinder) and the
+  instance's turn and size as meta `vein_basis`, which the battery errand places its block by.
   **THE VEINS' SHADER RUNS ON ITS OWN `now`, NEVER `TIME`** (`resource_nodes._tick_clock`, set every
   frame from `shader_now`, the function that writes the hit and regrow times). `TIME` is the
   renderer's clock built from frame steps and ran seconds behind the wall clock after a slow load, so
