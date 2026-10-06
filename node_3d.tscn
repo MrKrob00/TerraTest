@@ -1,8 +1,5 @@
 [gd_scene format=3 uid="uid://w3j5petulhhs"]
 
-[ext_resource type="Shader" path="res://sky.gdshader" id="sky_shader"]
-[ext_resource type="Texture2D" path="res://images/sky_clouds.png" id="sky_clouds"]
-[ext_resource type="Script" path="res://day_cycle.gd" id="day_cycle"]
 [ext_resource type="Script" uid="uid://bq2n7dxid8bhh" path="res://Main.gd" id="1_ealrb"]
 [ext_resource type="Script" uid="uid://cnnalj3vv35m" path="res://vehicle_body_3d.gd" id="2_a0tk4"]
 [ext_resource type="Script" uid="uid://cxnmsd3mg0odu" path="res://joystick.gd" id="2_noarx"]
@@ -22,20 +19,37 @@
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore1.tres" id="26_vore1"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore2.tres" id="26_vore2"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_ore3.tres" id="26_vore3"]
+[ext_resource type="Shader" uid="uid://k47ww3x7p37f" path="res://resources/resource.gdshader" id="26_vshader"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree1.tres" id="26_vtree1"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree2.tres" id="26_vtree2"]
 [ext_resource type="ArrayMesh" path="res://resources/vein_tree3.tres" id="26_vtree3"]
-[ext_resource type="Shader" uid="uid://k47ww3x7p37f" path="res://resources/resource.gdshader" id="26_vshader"]
 [ext_resource type="Script" uid="uid://c3l52saqvv5yq" path="res://biome_scatter.gd" id="27_biomescat"]
 [ext_resource type="Script" uid="uid://cf30pjoygnbq1" path="res://world_persist.gd" id="28_worldpersist"]
 [ext_resource type="Script" uid="uid://b3qqxwdgaomiq" path="res://outposts.gd" id="29_outposts"]
 [ext_resource type="Script" uid="uid://bq3bdpvqfhkje" path="res://contracts.gd" id="30_contracts"]
 [ext_resource type="Script" uid="uid://dibabavec7win" path="res://raids.gd" id="31_raids"]
-[ext_resource type="Script" path="res://proving_ground.gd" id="32_proving"]
+[ext_resource type="Script" uid="uid://s71io4dyxfyi" path="res://proving_ground.gd" id="32_proving"]
+[ext_resource type="Script" uid="uid://77xocc8uh77j" path="res://day_cycle.gd" id="day_cycle"]
+[ext_resource type="Texture2D" uid="uid://dvar86k5fn3dn" path="res://images/sky_clouds.png" id="sky_clouds"]
+[ext_resource type="Shader" uid="uid://c4xm84jn0hujb" path="res://sky.gdshader" id="sky_shader"]
 
 [sub_resource type="ShaderMaterial" id="ProceduralSkyMaterial_obt1j"]
 shader = ExtResource("sky_shader")
+shader_parameter/zenith_day = Color(0.32, 0.54, 0.84, 1)
+shader_parameter/zenith_night = Color(0.012, 0.02, 0.06, 1)
+shader_parameter/sunset_glow = Color(1, 0.48, 0.2, 1)
+shader_parameter/ground_bottom = Color(0.2, 0.21, 0.23, 1)
+shader_parameter/ground_horizon = Color(0.3, 0.33, 0.37, 1)
+shader_parameter/sun_color = Color(1, 0.95, 0.82, 1)
+shader_parameter/moon_color = Color(0.78, 0.84, 0.95, 1)
 shader_parameter/cloud_tex = ExtResource("sky_clouds")
+shader_parameter/cloud_scale = 0.22
+shader_parameter/cloud_cover = 0.48
+shader_parameter/cloud_wind = Vector2(0.006, 0.0025)
+shader_parameter/night = 0.0
+shader_parameter/manual_sun = false
+shader_parameter/sun_dir = Vector3(0.836, 0.402, 0.374)
+shader_parameter/moon_dir = Vector3(-0.836, -0.402, -0.374)
 
 [sub_resource type="Sky" id="Sky_2yde8"]
 sky_material = SubResource("ProceduralSkyMaterial_obt1j")
@@ -179,10 +193,24 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="Resource" id="Resource_s0gvp"]
 script = ExtResource("12_lggff")
-grass_density = 1.0
 grass_height = 0.3
 sand_grass = 0.1
 mask_offset = Vector2(-2381.8252, -2997.1248)
+
+[sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
+render_priority = 0
+shader = ExtResource("26_vshader")
+shader_parameter/ore_colors = PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+shader_parameter/hit_duration = 0.35
+shader_parameter/shake_intensity = 0.15
+shader_parameter/shake_speed = 40.0
+shader_parameter/base_y = -0.25
+shader_parameter/fells = false
+shader_parameter/lean_max = 0.3
+shader_parameter/fall_angle = 1.45
+shader_parameter/fall_time = 0.9
+shader_parameter/grow_time = 0.6
+shader_parameter/now = 0.0
 
 [sub_resource type="MultiMesh" id="MultiMesh_vore0"]
 transform_format = 1
@@ -204,6 +232,21 @@ transform_format = 1
 use_colors = true
 mesh = ExtResource("26_vore3")
 
+[sub_resource type="ShaderMaterial" id="Mat_vein_tree"]
+render_priority = 0
+shader = ExtResource("26_vshader")
+shader_parameter/ore_colors = PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+shader_parameter/hit_duration = 0.35
+shader_parameter/shake_intensity = 0.15
+shader_parameter/shake_speed = 40.0
+shader_parameter/base_y = -0.25
+shader_parameter/fells = true
+shader_parameter/lean_max = 0.3
+shader_parameter/fall_angle = 1.45
+shader_parameter/fall_time = 0.9
+shader_parameter/grow_time = 0.6
+shader_parameter/now = 0.0
+
 [sub_resource type="MultiMesh" id="MultiMesh_vtree1"]
 transform_format = 1
 use_colors = true
@@ -219,15 +262,6 @@ transform_format = 1
 use_colors = true
 mesh = ExtResource("26_vtree3")
 
-[sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
-render_priority = 0
-shader = ExtResource("26_vshader")
-
-[sub_resource type="ShaderMaterial" id="Mat_vein_tree"]
-render_priority = 0
-shader = ExtResource("26_vshader")
-shader_parameter/fells = true
-
 [node name="Main" type="Node3D" unique_id=1697367741]
 script = ExtResource("1_ealrb")
 
@@ -237,17 +271,19 @@ camera_attributes = SubResource("CameraAttributesPhysical_1q667")
 
 [node name="DayCycle" type="Node" parent="." unique_id=1964980077]
 script = ExtResource("day_cycle")
+day_ambient_energy = 0.509
+night_ambient_energy = 0.374
 
 [node name="DirectionalLight3D2" type="DirectionalLight3D" parent="." unique_id=1149215750]
 transform = Transform3D(0.45055014, -0.31362793, 0.835848, -0.11317725, 0.90864134, 0.4019477, -0.8855481, -0.27569667, 0.37389287, 25.946136, 20.018013, 3.1658702)
+light_color = Color(1, 0.93, 0.8, 1)
 light_energy = 1.645
 shadow_enabled = true
+shadow_opacity = 0.68
+shadow_blur = 1.6
 directional_shadow_mode = 0
 directional_shadow_fade_start = 0.85
 directional_shadow_max_distance = 80.0
-shadow_opacity = 0.68
-shadow_blur = 1.6
-light_color = Color(1, 0.93, 0.8, 1)
 
 [node name="objects" type="Node3D" parent="." unique_id=1846303496]
 unique_name_in_owner = true
@@ -652,17 +688,17 @@ material_override = SubResource("Mat_vein_ore")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vore3")
 
-[node name="Wood1" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+[node name="Wood1" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1793748463]
 material_override = SubResource("Mat_vein_tree")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vtree1")
 
-[node name="Wood2" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+[node name="Wood2" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1464182271]
 material_override = SubResource("Mat_vein_tree")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vtree2")
 
-[node name="Wood3" type="MultiMeshInstance3D" parent="map/Resource_Nodes"]
+[node name="Wood3" type="MultiMeshInstance3D" parent="map/Resource_Nodes" unique_id=1730793250]
 material_override = SubResource("Mat_vein_tree")
 cast_shadow = 0
 multimesh = SubResource("MultiMesh_vtree3")

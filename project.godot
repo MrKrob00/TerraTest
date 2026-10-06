@@ -76,7 +76,7 @@ compatibility/default_parent_skeleton_in_mesh_instance_3d=true
 config/name="WorldTech"
 config/version="0.1.0-beta1"
 run/main_scene="res://menu.tscn"
-config/features=PackedStringArray("4.6", "GL Compatibility")
+config/features=PackedStringArray("4.7", "GL Compatibility")
 config/icon="uid://bnmv2qdj2tbui"
 boot_splash/image="uid://bnmv2qdj2tbui"
 config/specular_occlusion/enabled=true
@@ -154,7 +154,6 @@ lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
-scaling_3d/scale=0.75
 environment/glow/upscale_mode=0
 
 [shader_globals]
