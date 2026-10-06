@@ -1,8 +1,8 @@
 [gd_scene format=3 uid="uid://d4he5yhxt34uw"]
 
 [ext_resource type="Script" uid="uid://besmmov10ejk3" path="res://blocks/scripts/seller.gd" id="1_4sra1"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/seller_body.tres" id="2_gks3k"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/seller_ring.tres" id="3_ring"]
+[ext_resource type="ArrayMesh" uid="uid://ch1ne04fh4ii0" path="res://blocks/meshes/seller_body.tres" id="2_gks3k"]
+[ext_resource type="ArrayMesh" uid="uid://7fpgkpybmv0" path="res://blocks/meshes/seller_ring.tres" id="3_ring"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_gks3k"]
 size = Vector3(2, 2, 2)
