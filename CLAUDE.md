@@ -546,6 +546,28 @@ project: read it before claiming how anything works.
   so the veins after a tree stand where they stood. Every model's stump is its own trunk cut at
   `CUT_Y` (`_stump`), and every model has its own fixed seed. The record carries `tree`, the node
   `tree_kind`.
+- **PAST THE VEINS' DRAW DISTANCE A TREE IS A PICTURE OF ITSELF** (`far_trees.gd`,
+  `resources/far_tree.gdshader`; the player's call): from `render_distance` (160 m) out to
+  `resource_nodes.FAR_TREES` (420 m) the tree's own record is one camera-facing card on one MultiMesh -
+  two triangles, one draw call for all of them, no node - dissolving pixel by pixel over the last
+  `FAR_FADE`. A forest used to END at 160 m, where the haze has hardly begun (`haze_range` 150..750),
+  and every tree popped in at full contrast. THE PICTURES ARE THE MODELS, PHOTOGRAPHED
+  (`art/tree_impostors.gd`, run on a copy with the real driver -> `resources/far_trees.png`, 768x288,
+  lossless with mipmaps): every kind from `VIEWS` (8) sides through the trees' own shader, so a card
+  carries their colours and goes through the same tonemap and haze. A card shows the side the camera
+  stands on IN THE TREE'S FRAME - its yaw from `_turn_of`, the door the model's turn comes from too -
+  so two trees of a kind differ and a tree does not turn its picture as the camera circles it. THE
+  CARD'S FRAME IS ONE FUNCTION, `far_trees.tile_for`, read by the bake and the card: the crown's reach
+  is its farthest VERTEX from the trunk's axis, not the bounding box's corner, which is up to 1.41
+  times that and left every tree small in its tile. A felled tree (custom G under a half) gets no
+  card; a tree model changed means the bake re-run. THE DATA REACHES TWO REGIONS OUT (`REGION_FAR`:
+  one ring guaranteed only 256 m), and the OUTER RING IS BUILT A SLICE A FRAME (`_region_step`,
+  `REGION_SLICE_USEC` 1.5 ms): a region that far costs 127-158 ms on the debug build against 8 ms for
+  one under built ground, its heights being new; one region's rng draws in one order however the work
+  is cut, so the layout is the same, and a region that comes inside `REGION_KEEP` half-built is
+  finished on the spot. Measured on the booted world: the ring filled in ~5 s, 23-27 cards in the band
+  ahead, the frame the same with and without them (alternated on the real driver), the streaming pass
+  1.3 -> 2.2 ms a call over 297 -> 759 records.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
