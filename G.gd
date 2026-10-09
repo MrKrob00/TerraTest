@@ -755,6 +755,25 @@ func grass_lift() -> float:
 	var h: Variant = (b as Resource).get("grass_height")
 	return float(h) if h != null else 0.0
 
+## THE TERRAIN ANSWERS HEIGHTS. Before this `ground_y` hands back its fallback, and a point measured then
+## (a quest's, a spawn's) takes whatever height it was given - the player's, under a mountain 250 m out.
+func terrain_ready() -> bool:
+	if _map_cache == null or not is_instance_valid(_map_cache):
+		_map_cache = get_node_or_null("/root/Main/map")
+	if _map_cache == null or not _map_cache.has_method("terrain_height_at"):
+		return false
+	return not (_map_cache.has_method("get_dims") and _map_cache.get_dims().x <= 0)
+
+## THE WORLD IS UP: the terrain answers AND the save has put the machines back (world_persist). The
+## quests wait for both: polled during the loading screen, Salvage Run picked its point from the
+## scene's default spot with the player's height for the ground - inside a mountain 250 m out, where
+## its guard was dropped too and "reach the point" could never close (the player's report).
+func world_ready() -> bool:
+	if not terrain_ready():
+		return false
+	var wp: Node = get_tree().get_first_node_in_group("world_persist") if get_tree() != null else null
+	return wp == null or wp.get("world_ready") != false
+
 func ground_y(pos: Vector3, fallback: float) -> float:
 	if _map_cache == null or not is_instance_valid(_map_cache):
 		_map_cache = get_node_or_null("/root/Main/map")

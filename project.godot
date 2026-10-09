@@ -154,6 +154,7 @@ lights_and_shadows/directional_shadow/soft_shadow_filter_quality=0
 lights_and_shadows/positional_shadow/soft_shadow_filter_quality=0
 shading/overrides/force_vertex_shading=true
 textures/default_filters/use_nearest_mipmap_filter=true
+scaling_3d/scale=0.75
 environment/glow/upscale_mode=0
 
 [shader_globals]

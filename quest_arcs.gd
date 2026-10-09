@@ -47,6 +47,11 @@ func _tick_arcs(delta: float) -> void:
 	_t = POLL
 	if get_node_or_null("/root/Q") == null:
 		return
+	# NOT BEFORE THE WORLD IS UP (G.world_ready): polled under the loading screen, a branch measured
+	# its point from the scene's default spot with the player's height for the ground - Salvage Run's
+	# cargo and guard went INSIDE a mountain and its "reach" stage could never close.
+	if not G.world_ready():
+		return
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	_sweep_yellow_points()
@@ -833,13 +838,32 @@ func _salvage_1(q: Dictionary) -> void:
 
 var _salvage_killed: bool = false
 
-## A quest point at the one spawn distance (`_quest_dist`) in a random direction from the player.
+## A QUEST POINT A MACHINE CAN DRIVE TO, at the one spawn distance (`_quest_dist`). Of `FAR_TRIES`
+## directions round the player the one with the gentlest ground and the least climb wins: one random
+## direction put Salvage Run's cargo on a mountain, where its guard landed on a peak and the marker
+## stood over a slope nobody could drive up. A height costs ~0.1 ms, so the probes are few.
+const FAR_TRIES := 8
+const FAR_PROBE := 6.0             # m off the point the slope is read at
+
 func _far_point(p: Node3D) -> Vector3:
-	var ang: float = randf() * TAU
+	var base_ang: float = randf() * TAU
 	var dist: float = _quest_dist()
-	var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
-	wp.y = G.ground_y(wp, p.global_position.y)
-	return wp
+	var py: float = p.global_position.y
+	var best := Vector3.ZERO
+	var best_score := INF
+	for i in FAR_TRIES:
+		var ang: float = base_ang + TAU * float(i) / float(FAR_TRIES)
+		var wp: Vector3 = p.global_position + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+		var h: float = G.ground_y(wp, py)
+		var slope: float = maxf(absf(G.ground_y(wp + Vector3(FAR_PROBE, 0.0, 0.0), h) - h),
+				absf(G.ground_y(wp + Vector3(0.0, 0.0, FAR_PROBE), h) - h))
+		# metres of rise over FAR_PROBE weigh most; a long climb from the player counts too; the jitter
+		# keeps two flat candidates from always resolving the same way
+		var score: float = slope * 4.0 + absf(h - py) * 0.25 + randf() * 2.0
+		if score < best_score:
+			best_score = score
+			best = Vector3(wp.x, h, wp.z)
+	return best
 
 ## Охрана груза. Отдельной функцией, потому что зовут её ДВА раза: при первом приезде и
 ## тогда, когда охраны не стало не от выстрелов (перезаход, вылет — врагов мы не сохраняем).
@@ -1432,10 +1456,15 @@ func _hold_2(q: Dictionary) -> void:
 ## 5.5); at 20 m it is no longer the limit, and the tight ring stays because it reads as one site.
 const TOWER_RING := 5.5
 ## Пресет вышки, сколько зарядных башен, и что говорит Система, когда игрок доехал.
-const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 3, "award": G.Block.SHIELD,
-		"say": "That dome is not the tower's own. Something else is paying for it."}
+## THE WATCHTOWER STANDS ALONE (the player: "too hard - remove the others, let it spawn solo"): no
+## charging stations, so its dome runs on the tower's own two batteries (it arrives charged, see
+## enemy_vehicle._charge_batteries) and goes down when they run dry - about half a minute of one
+## gun on the dome. Three stations with a gun each made it the hardest fight of its grade. SAM keeps
+## its four: the fed dome is that quest's whole lesson.
+const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 0, "award": G.Block.SHIELD,
+		"say": "The tower stands alone: its dome runs on its own batteries. Keep it busy and they will run dry."}
 const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.ROCKET,
-		"say": "Same trick, dug in harder. The batteries will not wait for you to think."}
+		"say": "That dome is not the tower's own. Something else is paying for it."}
 
 var _tower_point: Dictionary = {}      # ключ → Vector3, куда ехать
 var _tower_node: Dictionary = {}       # ключ → сама вышка
@@ -1680,10 +1709,14 @@ func _duel_cooldown(delta: float) -> void:
 ## 2/2 the moment an event appeared. The spawn stays early; only the report waits for this.
 const REACH_DIST := 60.0
 
+## BY THE GROUND'S PLAN, NOT IN 3D: a point on a hill top was out of reach from its own foot, and a
+## point whose height went wrong (see `_far_point`) could not be reached at all.
 func _reached(at: Variant) -> bool:
 	var p: Node3D = _player()
-	return p != null and at is Vector3 \
-			and p.global_position.distance_squared_to(at as Vector3) <= REACH_DIST * REACH_DIST
+	if p == null or not (at is Vector3):
+		return false
+	var d: Vector3 = p.global_position - (at as Vector3)
+	return d.x * d.x + d.z * d.z <= REACH_DIST * REACH_DIST
 
 func _player() -> Node3D:
 	var cc: Node = get_tree().get_first_node_in_group("camera_controller")

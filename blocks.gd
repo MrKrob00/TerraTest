@@ -1572,12 +1572,14 @@ func _detach_one(ax: int, ay: int, az: int) -> void:
 	if G.is_cabin(_cell(ax, ay, az)):
 		return
 	var anchor := "%d,%d,%d" % [ax, ay, az]
-	var node: Node = node_map.get(anchor, null)
-	if node != null and is_instance_valid(node) and node.has_signal("destroyed"):
+	# UNTYPED: a block freed between frames is still in the map, and a freed object handed to a typed
+	# variable is a runtime error (CLAUDE.md rule 4) - is_instance_valid is the only question to ask
+	var node = node_map.get(anchor, null)
+	if is_instance_valid(node) and node.has_signal("destroyed"):
 		for con in node.destroyed.get_connections():
 			node.destroyed.disconnect(con["callable"])
 	remove_block(ax, ay, az)                       # чистит карту, сам узел НЕ трогает
-	if node == null or not is_instance_valid(node):
+	if not is_instance_valid(node):
 		return
 	var veh := get_parent()
 	if veh != null and veh.has_method("detach_block_to_world"):
@@ -1814,14 +1816,16 @@ func get_layout() -> Array:
 			entry["ports"] = port_map[key]
 		# Charge is asked FROM THE LIVE NODE: it is spent and gained every second while the map only holds
 		# what the block was born with. An empty battery writes no field.
-		var bnode: Node = node_map.get(key)
-		if bnode != null and is_instance_valid(bnode) and ("charge" in bnode) \
+		# UNTYPED (CLAUDE.md rule 4): a block shot off this frame is still in the map until its
+		# signals run, and the save asked it here - "Trying to assign invalid previously freed instance"
+		var bnode = node_map.get(key)
+		if is_instance_valid(bnode) and ("charge" in bnode) \
 				and float(bnode.get("charge")) > 0.01:
 			entry["chg"] = float(bnode.get("charge"))
 		# Cargo is asked FROM THE LIVE NODE for the same reason as charge: the belt fills and
 		# empties a storage every few seconds, and the map only holds what it was born with.
 		# An empty storage writes no field.
-		if bnode != null and is_instance_valid(bnode) and bnode.has_method("store_state"):
+		if is_instance_valid(bnode) and bnode.has_method("store_state"):
 			var st: Dictionary = bnode.call("store_state")
 			if int(st.get("n", 0)) > 0:
 				entry["store"] = st

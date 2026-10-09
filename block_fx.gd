@@ -4,6 +4,7 @@ extends RefCounted
 const SHADER := preload("res://block_matrix.gdshader")   # урон (mode 2, красные цифры) — hit()
 const SHADER_HP := preload("res://block_hp.gdshader")    # постоянный оверлей хп (свой режим глубины)
 const CARD_SHADER := preload("res://glitch_card.gdshader")   # глитч-карточки (появление/исчезновение)
+const CARD_BURST := preload("res://card_burst.gd")       # every cloud of cards, one MultiMesh a palette
 ## АВТОЛОАД ИЗ СТАТИКИ БЕРЁТСЯ УЗЛОМ. По имени к нему отсюда не обратиться — в этом файле всё
 ## статическое. Раньше здесь лежала ссылка на СКРИПТ G и функция вызывалась от него, что требовало
 ## держать её static; из-за этого все девятнадцать обычных вызовов вида G.is_loose_item() были
@@ -502,58 +503,43 @@ static func shield_spark(dome: Node, pos: Vector3) -> void:
 static func blast_cards(root: Node, pos: Vector3, radius: float,
 		ca: Color = BLAST_A, cb: Color = BLAST_B, cards: int = BLAST_CARDS,
 		dur: float = BLAST_DUR) -> void:
-	if root == null or not is_instance_valid(root):
+	if root == null or not is_instance_valid(root) or not root.is_inside_tree():
 		return
 	var count: int = _take_card_budget(cards)
 	if count <= 0:
 		return
-	var cloud := Node3D.new()
-	cloud.set_meta("block_fx", true)        # см. _local_aabb
-	root.add_child(cloud)
-	cloud.global_position = pos
-	var mats: Array = []
+	var burst = CARD_BURST.of(root, true, ca, cb)
+	if burst == null:
+		return
+	var data := PackedFloat32Array()
+	data.resize(count * CARD_BURST.PER)
 	for i in count:
-		var card := MeshInstance3D.new()
-		var q := QuadMesh.new()
-		q.size = Vector2.ONE
-		card.mesh = q
-		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var cmat := ShaderMaterial.new()
-		cmat.shader = CARD_SHADER
-		cmat.set_shader_parameter("seed", randf() * 100.0)
-		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)
-		cmat.set_shader_parameter("fill_threshold", randf_range(0.34, 0.5))
-		cmat.set_shader_parameter("progress", 0.0)
-		cmat.set_shader_parameter("use_tint", true)
-		cmat.set_shader_parameter("glitch_a", Vector3(ca.r, ca.g, ca.b))
-		cmat.set_shader_parameter("glitch_b", Vector3(cb.r, cb.g, cb.b))
-		card.material_override = cmat
-		cloud.add_child(card)
-		# Точки по ШАРУ, а не по кубу: у взрыва есть радиус, и облако обязано быть круглым —
-		# иначе углы куба торчат за границу поражения и врут про неё.
+		# Points in a BALL, not a cube: the blast has a radius and the cloud must be round, or the
+		# cube's corners stick out past the damage and lie about it. The cube root of a uniform
+		# number gives an even density by volume; without it the cards bunch in the middle.
 		var dir := Vector3(randf() - 0.5, randf() - 0.5, randf() - 0.5)
 		dir = dir.normalized() if dir.length_squared() > 0.0001 else Vector3.UP
-		# Кубический корень от равномерного числа даёт РАВНОМЕРНУЮ плотность по объёму;
-		# без него карточки сбивались бы в центр, и края взрыва оставались пустыми.
-		card.position = dir * radius * pow(randf(), 1.0 / 3.0)
-		var s := randf_range(radius * 0.18, radius * 0.5)
-		card.scale = Vector3(s, s, 1.0)
-		mats.append(cmat)
-	var tw := cloud.create_tween()
-	tw.set_parallel(true)
-	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, dur)
-	# Само облако РАЗЛЕТАЕТСЯ: карточки стоят на своих местах внутри него, а масштабируется
-	# узел целиком — один твин вместо тридцати четырёх.
-	cloud.scale = Vector3.ONE * 0.35
-	tw.tween_property(cloud, "scale", Vector3.ONE, dur).set_ease(Tween.EASE_OUT)
-	tw.chain().tween_callback(cloud.queue_free)
-	# Свет взрыва — здесь, а не у того, кто взорвался: blast_cards это единственная дверь, через
-	# неё проходят и батарея, и кабина, и догоревший предохранитель. Радиус вдвое шире облака,
-	# чтобы взрыв подсвечивал то, что вокруг, а не только себя.
-	# Размер по той же причине, что у дула: это неосвещаемый меш, а не лампа (см. flash), и
-	# задаётся он в метрах. Шар в половину радиуса поражения — взрыв читается вспышкой в центре
-	# облака, а не вторым облаком поверх первого.
-	flash(root, pos, BLAST_A, radius * 0.55, BLAST_DUR)
+		var at: Vector3 = dir * radius * pow(randf(), 1.0 / 3.0)
+		var o: int = i * CARD_BURST.PER
+		data[o] = at.x
+		data[o + 1] = at.y
+		data[o + 2] = at.z
+		data[o + 3] = randf_range(radius * 0.18, radius * 0.5)
+		data[o + 4] = randf() * 100.0
+		data[o + 5] = 4.0 if randf() < 0.5 else 6.0
+		data[o + 6] = randf_range(0.34, 0.5)
+	# The cloud stays on what it burst on (the dome rides with its machine) and SPREADS: the cards
+	# keep their places in it while the cloud grows from 0.35 to full over its life.
+	var anchor: Node3D = root as Node3D if root is Node3D else null
+	var local := Transform3D(Basis(), pos)
+	if anchor != null:
+		local = anchor.global_transform.affine_inverse() * local
+	burst.add(anchor, local, data, dur, 0.35)
+	# The blast's flash is here, not with whoever blew up: this is the one door the battery, the
+	# cabin and a burnt-out fuse all come through. Only in the blast's own colours - NOT FOR A SHIELD
+	# SPARK: a dome under a machine gun takes several hits a second, and each stood a cone on it.
+	if ca == BLAST_A:
+		flash(root, pos, BLAST_A, radius * 0.55, BLAST_DUR)
 
 ## Сколько карточек можно создать в этом кадре (общий потолок на всю игру, см. CARDS_PER_FRAME).
 ## Вынесено из play(), потому что считать бюджет обязаны ВСЕ, кто их создаёт: цепной взрыв
@@ -583,58 +569,42 @@ static func play(block: Node3D, destroy: bool, duration: float = -1.0,
 	if host == null:
 		return
 	var aabb := _local_aabb(block)
-
-	# «Хмара» глитч-карточек: плоские 2D-билборды РАЗНОГО размера на РАЗНОЙ глубине внутри/
-	# вокруг блока, cyan/magenta, мерцают и гаснут (глитч появления/исчезновения — вариант 1).
-	var cloud := Node3D.new()
-	cloud.set_meta("block_fx", true)        # см. _local_aabb
-	host.add_child(cloud)
-	cloud.global_transform = block.global_transform * Transform3D(Basis(), aabb.get_center())
-	var half := aabb.size * 0.5
-	var mats: Array = []
-	# Бюджет карточек на кадр (см. CARDS_PER_FRAME) — общий с взрывом, поэтому в одной функции.
+	# A cloud of glitch cards: flat billboards of DIFFERENT sizes at DIFFERENT depths in and round the
+	# block, flickering and fading (the appear / vanish glitch). One CardBurst per palette draws them
+	# all; an empty tint is the card's own cyan-magenta. The card budget is shared with the blasts.
 	var count: int = _take_card_budget(CARD_COUNT)
 	if count <= 0:
-		cloud.queue_free()
 		return
+	var tinted: bool = tint_a.a > 0.0
+	var ca: Color = tint_a if tinted else Color(0.15, 0.85, 1.0)
+	var cb: Color = tint_b if tint_b.a > 0.0 else Color(0.85, 0.15, 0.95)
+	var burst = CARD_BURST.of(block, tinted, ca, cb)
+	if burst == null:
+		return
+	var half := aabb.size * 0.5
+	var span: float = aabb.size.length()
+	var data := PackedFloat32Array()
+	data.resize(count * CARD_BURST.PER)
 	for i in count:
-		var card := MeshInstance3D.new()
-		var q := QuadMesh.new()
-		q.size = Vector2.ONE
-		card.mesh = q
-		card.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var cmat := ShaderMaterial.new()
-		cmat.shader = CARD_SHADER
-		cmat.set_shader_parameter("seed", randf() * 100.0)                       # свой цвет/форма патча
-		cmat.set_shader_parameter("grid_cells", 4.0 if randf() < 0.5 else 6.0)   # 4×4 или 6×6
-		cmat.set_shader_parameter("fill_threshold", randf_range(0.38, 0.5))      # форма пятна
-		cmat.set_shader_parameter("progress", 0.0)
-		# Прозрачная «пустая» краска = цвета шейдера по умолчанию (cyan/magenta).
-		if tint_a.a > 0.0:
-			cmat.set_shader_parameter("use_tint", true)
-			cmat.set_shader_parameter("glitch_a", Vector3(tint_a.r, tint_a.g, tint_a.b))
-		if tint_b.a > 0.0:
-			cmat.set_shader_parameter("glitch_b", Vector3(tint_b.r, tint_b.g, tint_b.b))
-		card.material_override = cmat
-		cloud.add_child(card)
-		# позиция вразброс в пределах блока (чуть шире), масштаб случайный → разные размеры/глубины
-		card.position = Vector3(randf_range(-half.x, half.x), randf_range(-half.y, half.y),
-				randf_range(-half.z, half.z)) * CARD_SPREAD
-		var s := randf_range(aabb.size.length() * 0.10, aabb.size.length() * 0.35)
-		card.scale = Vector3(s, s, 1.0)
-		mats.append(cmat)
-
+		var o: int = i * CARD_BURST.PER
+		data[o] = randf_range(-half.x, half.x) * CARD_SPREAD
+		data[o + 1] = randf_range(-half.y, half.y) * CARD_SPREAD
+		data[o + 2] = randf_range(-half.z, half.z) * CARD_SPREAD
+		data[o + 3] = randf_range(span * 0.10, span * 0.35)
+		data[o + 4] = randf() * 100.0
+		data[o + 5] = 4.0 if randf() < 0.5 else 6.0
+		data[o + 6] = randf_range(0.38, 0.5)
+	# In the block's own axes round its middle. A block being destroyed is about to be freed, so its
+	# cloud stays with the block's PARENT (the machine drives on, the cloud with it) - or the world.
+	var at: Transform3D = block.global_transform * Transform3D(Basis(), aabb.get_center())
+	var anchor: Node3D = block
+	if destroy:
+		anchor = host as Node3D if host is Node3D else null
+	var local: Transform3D = at if anchor == null else anchor.global_transform.affine_inverse() * at
 	var dur := duration
 	if dur <= 0.0:
 		dur = 0.7 if destroy else 0.8
-	var tw := cloud.create_tween()
-	tw.tween_method(_set_cards_progress.bind(mats), 0.0, 1.0, dur)
-	tw.tween_callback(cloud.queue_free)
-
-static func _set_cards_progress(p: float, mats: Array) -> void:
-	for m in mats:
-		if is_instance_valid(m):
-			(m as ShaderMaterial).set_shader_parameter("progress", p)
+	burst.add(anchor, local, data, dur, 1.0)
 
 ## ФИТИЛЬ: КРАСНАЯ МАТРИЦА, КОТОРАЯ РАЗГОРАЕТСЯ. Догорающий блок раньше просто МИГАЛ
 ## видимостью, всё быстрее, — и это был компромисс, а не замысел: подкрасить сам блок нельзя,
@@ -688,22 +658,22 @@ static func hit(block: Node3D, faces: int = 2) -> void:
 	var aabb := _local_aabb(block)
 	var dirs: Array = [Vector3.RIGHT, Vector3.LEFT, Vector3.UP, Vector3.DOWN, Vector3.FORWARD, Vector3.BACK]
 	dirs.shuffle()
+	# THE BLOCK KEEPS ITS PLATES. Two plates a hit were two new nodes, two BoxMeshes and two
+	# ShaderMaterials (and a tween writing into each every frame), and a block under fire is hit up
+	# to eight times a second (VehicleBlock.HIT_FX_COOLDOWN): a volley of pellets made a hundred
+	# materials. Now the first hit makes them, hidden after, and every later hit lights them again.
+	var plates: Array = block.get_meta(&"hit_plates") if block.has_meta(&"hit_plates") else []
 	for i in mini(faces, dirs.size()):
-		_spawn_hit_flash(block, aabb, dirs[i])
+		if i >= plates.size() or not is_instance_valid(plates[i]):
+			var made := _make_hit_plate(block)
+			if i >= plates.size():
+				plates.append(made)
+			else:
+				plates[i] = made
+		_flash_plate(plates[i], aabb, dirs[i])
+	block.set_meta(&"hit_plates", plates)
 
-static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:
-	var center := aabb.get_center()
-	var half := aabb.size * 0.5
-
-	var plate_size := aabb.size
-	if absf(dir.x) > 0.5:      plate_size.x = HIT_THICKNESS
-	elif absf(dir.y) > 0.5:    plate_size.y = HIT_THICKNESS
-	else:                      plate_size.z = HIT_THICKNESS
-
-	# Центр пластины — на выбранной грани блока, чуть наружу (не тонет в поверхности).
-	var axis := 0 if absf(dir.x) > 0.5 else (1 if absf(dir.y) > 0.5 else 2)
-	var plate_center := center + dir * (half[axis] + HIT_THICKNESS * 0.5 + 0.01)
-
+static func _make_hit_plate(block: Node3D) -> MeshInstance3D:
 	var fx := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3.ONE
@@ -713,15 +683,35 @@ static func _spawn_hit_flash(block: Node3D, aabb: AABB, dir: Vector3) -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER
 	mat.set_shader_parameter("mode", 2)
-	mat.set_shader_parameter("progress", 0.0)
-	mat.set_shader_parameter("seed", randf() * 100.0)
+	mat.set_shader_parameter("progress", 1.0)
 	fx.material_override = mat
+	fx.visible = false
 	block.add_child(fx)
-	fx.transform = Transform3D(Basis().scaled(plate_size), plate_center)
+	return fx
 
+static func _flash_plate(fx: MeshInstance3D, aabb: AABB, dir: Vector3) -> void:
+	var center := aabb.get_center()
+	var half := aabb.size * 0.5
+	var plate_size := aabb.size
+	if absf(dir.x) > 0.5:      plate_size.x = HIT_THICKNESS
+	elif absf(dir.y) > 0.5:    plate_size.y = HIT_THICKNESS
+	else:                      plate_size.z = HIT_THICKNESS
+	# Центр пластины — на выбранной грани блока, чуть наружу (не тонет в поверхности).
+	var axis := 0 if absf(dir.x) > 0.5 else (1 if absf(dir.y) > 0.5 else 2)
+	var plate_center := center + dir * (half[axis] + HIT_THICKNESS * 0.5 + 0.01)
+	fx.transform = Transform3D(Basis().scaled(plate_size), plate_center)
+	var mat := fx.material_override as ShaderMaterial
+	mat.set_shader_parameter("seed", randf() * 100.0)
+	mat.set_shader_parameter("progress", 0.0)
+	fx.visible = true
+	if fx.has_meta(&"tw"):
+		var old = fx.get_meta(&"tw")
+		if old is Tween and (old as Tween).is_valid():
+			(old as Tween).kill()
 	var tw := fx.create_tween()
-	tw.tween_method(func(p: float) -> void: mat.set_shader_parameter("progress", p), 0.0, 1.0, HIT_DURATION)
-	tw.tween_callback(fx.queue_free)
+	tw.tween_method(_set_card_progress.bind(mat), 0.0, 1.0, HIT_DURATION)
+	tw.tween_callback(fx.hide)
+	fx.set_meta(&"tw", tw)
 
 # ── Постоянный оверлей ХП (mode 3) ───────────────────────────────────────────────
 # Куб-оболочка 1³ на весь блок (как play(), но НЕ анимируется и НЕ удаляется) — ребёнок
@@ -951,7 +941,7 @@ static func _glyph_step(t: float, holder: Node3D, cards: Array, mats: Array, sta
 	elif t > total - GLYPH_FADE:
 		pr = 0.5 + 0.5 * clampf((t - (total - GLYPH_FADE)) / GLYPH_FADE, 0.0, 1.0)
 	for i in cards.size():
-		var c: Node3D = cards[i]
+		var c = cards[i]                  # untyped: a freed card must be asked, not assigned (rule 4)
 		if not is_instance_valid(c):
 			continue
 		var a: float = clampf((t - float(delays[i])) / GLYPH_FLY, 0.0, 1.0)

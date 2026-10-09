@@ -25,7 +25,10 @@ project: read it before claiming how anything works.
    `is_instance_valid(null)` is false too, so the one call covers both cases. The same object
    HANDED TO A TYPED PARAMETER is a runtime error ("previously freed ... not a subclass"): a
    setter that passes the old value on (`WeaponBlock._current_target`, `enemy_vehicle._target`)
-   keeps it untyped and hands over `x if is_instance_valid(x) else null`.
+   keeps it untyped and hands over `x if is_instance_valid(x) else null`. AND SO IS ASSIGNING IT TO
+   A TYPED LOCAL: `var bnode: Node = node_map.get(key)` in `blocks.get_layout` threw "Trying to
+   assign invalid previously freed instance" on a save that ran in the frame a block was shot off
+   (the map still held it until its signals ran). Read such a value untyped, ask `is_instance_valid`.
 5. A field named like a native class member ("Member X redefined") stops the script from loading.
    Signals count as members.
 6. A single-line lambda ends at the newline; a wrapped continuation becomes an extra call argument
@@ -172,6 +175,11 @@ project: read it before claiming how anything works.
   axes was 123 deg and at 45 deg it was 126.9, while at 0 and 90 it stayed square - which is why it
   read as random. `X * Basis.from_scale(s)` scales in the block's OWN axes and then rotates: 90 /
   90 / 90 at every angle.
+- **A COLLIDER NODE TAKES ITSELF OFF THE BODY** (`MachineBody._on_block_destroyed`): a CollisionShape3D
+  removes its shape owner when it leaves its parent (NOTIFICATION_UNPARENTED), so the machine's copy
+  of a dead block's box is `remove_child`-ed and freed, never `remove_shape_owner`-ed by hand as
+  well - that removed it twice and printed the engine's "!shapes.has(owner)" for every block that
+  died (nine in a minute of the menu's fight, zero after; a log line is not free on a phone).
 - A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
@@ -552,14 +560,15 @@ project: read it before claiming how anything works.
   ADDED over a meadow came out orange): three 0/1 cards out of the side the camera sees, on a tree
   under its crown (thrown up, the needles hid them), bouncing once; one pool of 48 for every vein,
   nothing drawn while idle, one burst per vein per `MIN_GAP` so a drill does not flood it. One MultiMesh per model
-  (`resource_nodes.multimesh_nodes` in `G.Metal` order, `wood_multimesh_nodes`; `_model_mm`, a metal
-  past the list borrows the last), so all veins are five draw calls; a vein is drawn in its own and
-  stands collapsed in the rest. On the tree UV.x marks the part that falls; the stump never moves
-  (`resources/resource.gdshader`).
+  (`resources/resource.gdshader`), and each draws ONLY ITS LIVE VEINS - see "A MULTIMESH DRAWS
+  EVERY INSTANCE IT HAS" under Performance (`resource_nodes.multimesh_nodes` in `G.Metal` order,
+  `wood_multimesh_nodes`; `_model_mm`, a metal past the list borrows the last), so all veins are
+  seven draw calls. On the tree UV.x marks the part that falls; the stump never moves.
   Faces are flat with their own tone from one fixed light; an ore vertex has alpha 1 and is tinted by
   its metal (`G.METAL_COLOR`). Every vein is turned and sized by its position (`VEIN_SCALE_*`). Four
   traps, all measured on the real driver: A MULTIMESH WITHOUT `use_colors` MULTIPLIES VERTEX COLOUR
-  BY BLACK in Compatibility (every vein a silhouette), so `_init_slots` turns it on and writes white;
+  BY BLACK in Compatibility (every vein a silhouette), so `_init_slots` turns it on and
+  `_stream_in` writes white;
   a shader that converts vertex colour to linear UNCONDITIONALLY draws it far too dark - the renderer
   writes sRGB straight out (`OUTPUT_IS_SRGB`), and the shader takes the same branch a
   StandardMaterial with `vertex_color_is_srgb` does (the rock came out black, the metals a shade
@@ -821,6 +830,14 @@ project: read it before claiming how anything works.
   a hole — a dark core was tried and read as the world breaking open. A POOL of `HOLE_POOL` (24):
   the oldest is reused, so a long burst costs 24 nodes and no more — measured, 40 hits left exactly
   24 — and nothing is made past `HOLE_DIST`.
+- **A SHADER THAT WRITES `POSITION` WRITES IT ON EVERY PATH.** Writing it anywhere makes the GLES3
+  vertex stage use `position` for the clip position, and that variable is declared and NOT
+  initialised (`drivers/gles3/shaders/scene.glsl`, `OVERRIDE_POSITION`). `glitch_card.gdshader`
+  wrote it only under `depth_lift > 0`, and every other card came out at an undefined place - on the
+  real driver, nowhere: every cloud of cards (a block's appear and death glitch, a blast, a shield
+  spark, the enemy's "!") was invisible while the ground marks, which lift, showed. Measured on the
+  real driver, the same three clouds: nothing but the flash cones before, all of them after.
+  `ground_wave.gdshader` had the same shape (its lift is never zero, so it drew).
 - THE MARK IS LIFTED OUT OF THE GRASS IN DEPTH, NOT IN SPACE (`glitch_card.gdshader` `depth_lift`,
   set to `G.grass_lift()` + `HOLE_LIFT`). The grass IS the near LOD lifting meadow vertices by
   `TerrainBiomes.grass_height` (0.3 m) along the normal, while the bullet's ray hits the flat
@@ -1190,13 +1207,17 @@ project: read it before claiming how anything works.
   AIMING sphere, the rounds fly well past it, and straight-ahead fire from a machine turned onto its
   target lands. Arming only what reaches was tried — the same 13-machine fight dealt 214-344 damage
   in 6 s against 431-683 — and reverted.
+- **THE WATCHTOWER STANDS ALONE** (`quest_arcs.TOWER_WATCH`, `guards` 0; the player: "too hard,
+  let it spawn solo"): its dome runs on its own batteries, so keeping it busy drains it. SAM keeps
+  its four charging stations - that branch is the one about cutting the supply - and the stage hints
+  say which is which.
 - THE SHIELDED TOWERS' CHARGING STATIONS (preset 18) ARE BATTERY STATIONS THAT DEFEND THEMSELVES:
   two batteries, a panel and the wireless transmitter on a ROTATING core, plus a machine gun the
   rotation turns onto the target. The transmitter sits ON THE ROTATION AXIS (over the core, hung
   by its back on a column behind it) — anywhere else the turning station would swing it out of `wireless_charger.RANGE` - 6 m
   when this was built, 20 now - of the tower's battery; on the axis it keeps the 4.9 m `TOWER_RING`
   was measured for. One gun
-  per station: Watchtower goes from two barrels to five, SAM to six. Measured through the real
+  per station: SAM goes from two barrels to six (the Watchtower has none, above). Measured through the real
   quest: three stations, every block connected, every transmitter feeding the tower; the drained
   tower refilled 0 → 144 in 4 s (3 × `RATE`, 12 a second then), and 0 → 0 once the stations were gone; a station
   turned 89° onto the player and fired 36 times from 25 m.
@@ -1379,6 +1400,16 @@ project: read it before claiming how anything works.
   also spawn ONCE: the duel is guarded by `_duel_sent`, the salvage guard by `_salvage_killed` (it
   hunts the player and is usually met on the way). Measured on the engine for five events: stage 1
   held at 244-275 m with no machines added, stage 2 at the point.
+- **QUESTS ARE POLLED ONLY ONCE THE WORLD IS UP** (`G.world_ready`: the terrain answers heights -
+  `G.terrain_ready` - AND the save has put the machines back, `world_persist.world_ready`). Polled
+  under the loading screen, a branch measured its point from the scene's default spot with the
+  player's height standing in for the ground (`ground_y`'s fallback): Salvage Run's cargo and its
+  guard went inside a mountain, and its "reach" stage could never close (the player's report). A
+  POINT A BRANCH PICKS IS DRIVABLE (`_far_point`: of `FAR_TRIES` directions at the spawn distance,
+  the gentlest ground and least climb), and `_reached` is measured on the ground's plan, not in 3D.
+  Measured on the real world, the branch forced before the ground was up: no point while loading,
+  then one on the ground (0.00 m off it, 0.3-0.5 m of rise over 6 m) 253 m out, its guard 0.6 m over
+  its own ground 8 m away, and the stage closed on arrival.
 - A STORY QUEST THAT HAS JUST APPEARED TAKES THE TRACKER (`Q._story_appeared`), from a daily or an
   event, never from another story quest: the tree branches, and an opening sibling must not drag
   the player off the branch they chose. It is called from the THREE places a story quest can
@@ -2105,11 +2136,11 @@ project: read it before claiming how anything works.
   The panel now prints drawing as process minus the marked scripts. GLES (the phone) captures no
   GPU timestamps at all (`drivers/gles3/storage/utilities.cpp`, desktop GL only), so a per-pass GPU
   split does not exist on the device — costs are ranked here, on llvmpipe, by A/B.
-- REAL LIGHT IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`). Besides the directional
-  sun those are the only `OmniLight3D` in the game, and they are REUSED: a new flash takes the
-  oldest lamp, so a firefight costs six nodes rather than one per shot. Shadows are off on all of
-  them, and past `FLASH_DIST` (110 m) a flash is not lit at all — it lives a tenth of a second and
-  nobody sees it across the map. A flash with no scene falls back to the tree root: an empty
+- A FLASH IS A POOL OF SIX LAMPS AND NOTHING ELSE (`BlockFX.flash`), and a "lamp" is an UNSHADED
+  ADDITIVE CONE, not a light: there is no `OmniLight3D` in the game (one was tried and could not be
+  seen - the note in `block_fx.gd`). The cones are REUSED: a new flash takes the oldest, so a
+  firefight costs six nodes rather than one per shot, and past `FLASH_DIST` (110 m) none is drawn -
+  it lives a tenth of a second and nobody sees it across the map. A flash with no scene falls back to the tree root: an empty
   `current_scene` used to mean no light at all, and that fails SILENTLY — the effect does not
   crash, it simply never appears.
 - THE MUZZLE IS `Pivot/Marker3D` AND NOTHING ELSE. `_muzzle_point` used to prefer `DrillBody2`,
@@ -2127,8 +2158,10 @@ project: read it before claiming how anything works.
   before it was a smooth shape in an effect language of pixel cards.
 - THE DOOR FOR A MUZZLE FLASH IS `WeaponBlock._handle_fire`, NOT `fire_bullet`. The shotgun calls
   `fire_bullet` once per pellet, eight times a shot, and the mortar overrides it without calling
-  `super` at all. `_handle_fire` sees every weapon exactly once per shot. Blast light goes in
-  `BlockFX.blast_cards`, the single door every explosion already passes through. Flash colour is a
+  `super` at all. `_handle_fire` sees every weapon exactly once per shot. A blast's flash goes in
+  `BlockFX.blast_cards`, the single door every explosion already passes through - in the blast's
+  own colours only: a shield spark goes through the same door and stood a cone on the dome at
+  every hit of a machine gun. Flash colour is a
   VARIABLE (`flash_color`), set by a subclass in `_ready` like `yaw_limit` and `spread_deg`.
 - **NEVER PUT AN `instance uniform` ON A TERRAIN CHUNK — OR ON ANYTHING THERE ARE MANY OF.** One
   `MeshInstance3D` that uses instance uniforms allocates `MAX_INSTANCE_UNIFORM_INDICES` = **16**
@@ -2158,7 +2191,10 @@ project: read it before claiming how anything works.
   atlas was baked from; it is kept as the SOURCE for that tool, not as something the game loads.
 - Two settings in `project.godot` flatten the picture on purpose, and both are speed:
   `shading/overrides/force_vertex_shading` (lighting per vertex, so no per-pixel specular) and
-  `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled).
+  `scaling_3d/scale = 0.75` (the 3D image is rendered at three quarters and upscaled). IT IS THE
+  MENU'S WHOLE RESOLUTION and the world's starting one: the menu has no `Main` and no scaler, and
+  the auto scaler starts from it. A local settings session once dropped it (a "wip" commit), and
+  the menu drew 1.78x the pixels; it was put back.
 - A SHADER IS COMPILED THE FIRST TIME SOMETHING DRAWS WITH IT, and the frame waits. Seen on the real
   driver: the first muzzle flash of a run compiled its material and was over by the time that frame
   drew; every later one showed. A warm-up plugin (FSIB) exists for this, but for Forward+ and as the
@@ -2663,6 +2699,12 @@ project: read it before claiming how anything works.
   piled up since the last one — six frames at 23 fps — so a 5 ms pass read as 30 ms and the
   "accounted" figure could exceed the whole process line. `Perf.frame` / `Perf.tick` (called by
   the HUD) count what the snapshot divides by.
+  IN GODOT'S VISUAL PROFILER, "UPDATE OCCLUSION BUFFER" IS NOT OCCLUSION. Its time runs from that
+  mark to "Update Visibility Dependencies", and with occlusion culling off (it is: no occluders,
+  project default) nothing runs between them but a no-op buffer update
+  (`renderer_scene_cull.cpp`, `RaycastOcclusionCull::buffer_update` returns at once). The player saw
+  14-15 ms there in bad frames and 0.3 in good ones: that is time spent waiting for the GPU or the
+  screen, landing on the first mark of the 3D pass - it moves when the real work moves.
 - THE GRASS BENDER LIST IS THE TRAMPLE WINDOW, NOT THE WORLD (`grass.gd`, refreshed every
   `BENDER_REFRESH` with `BENDER_MARGIN` of slack). Every machine block and every loose item is a
   bender, and each cost a height query and two metas per frame wherever it lay: measured 133
@@ -2687,6 +2729,36 @@ project: read it before claiming how anything works.
   `tree_exiting`, so a knocked block never hangs in its old place. Split by `CELL` (64 m): one
   MultiMesh for the whole map is culled as one AABB and would never leave the frame. The mesh
   collection is `MachineBatch._collect`, static, not a copy.
+- **A MULTIMESH DRAWS EVERY INSTANCE IT HAS, AND A ZERO-SCALE ONE IS NOT FREE.** The vein and tree
+  MultiMeshes (`resource_nodes`) each held `max_visible` (180) slots, one shared pool for all seven
+  models, the unused slots collapsed to scale zero and the AABB set to a 4 km cube - so every slot of
+  every model went through the vertex shader every frame, and the trees did it twice (they cast into
+  the sun's map). Measured on the real driver, booted world: of 342k primitives in the frame the
+  veins were 285k, and of 167k in the shadow pass 166k. NOW EACH MODEL'S SLOTS ARE DENSE
+  (`_mm_live`): live veins sit in 0..n-1, `visible_instance_count` is n, and a vein leaving hands its
+  slot to its model's last one (`_stream_out`, which tells that vein's node its new `instance_id`);
+  a node writes its shader data through its own record (`write_custom(slot, data, node)`), which
+  also carries it when its slot moves. After: 70k in the frame, 3.4k in the shadow pass, the veins
+  4.8k / 2.1k; 29 veins streamed out from the middle and back in, 0 mismatches of slot, position
+  or node. Anything that pools instances by collapsing them pays the same - ask how many it DRAWS.
+- **A CLOUD OF GLITCH CARDS IS DATA IN ONE MULTIMESH PER PALETTE (`card_burst.gd`, through
+  `BlockFX.blast_cards` and `BlockFX.play`).** A cloud was a Node3D with a MeshInstance3D, a QuadMesh
+  and a ShaderMaterial PER CARD, and a tween writing `progress` into each material every frame: a
+  shield spark (10 cards) was ~2 ms of script on the player's profiler and ten draw calls, a blast 34,
+  every block shot off 28. Now a cloud is numbers in a list, `CardBurst._process` writes every live
+  card into one buffer a frame, and a palette is one draw call (the three test clouds: 66 draw calls
+  -> 5). The card is `glitch_card_mm.gdshader`, `glitch_card.gdshader` with seed, grid, fill and
+  progress in INSTANCE_CUSTOM - keep the two in step. A CLOUD RIDES ITS ANCHOR (the dome, the block,
+  a dying block's parent) by transform each frame, as it rode it as a child; `_anchored` is asked
+  instead of `anchor != null`, since a freed anchor compares equal to null (rule 4). What still
+  makes card nodes: `glyph`, `materialise` and the ground marks (`lie_flat`, `solid`, `depth_lift`).
+- **A BLOCK KEEPS ITS HIT PLATES** (`BlockFX.hit`, meta `hit_plates`): the first hit makes the two red
+  plates, hidden after, and every later hit lights them again. Two new nodes, meshes and materials a
+  hit, up to eight hits a second a block (`HIT_FX_COOLDOWN`), was a hundred materials in a volley of
+  pellets. AND A HIT NO LONGER KICKS THE BLOCK'S SCALE: `MachineBatch` draws a block from the
+  transform it had when the batch was BUILT (only `moving_parts` are copied each frame), so the kick
+  moved an invisible node; a rebuild landing mid-kick froze the block a tenth too big or small in the
+  picture, and every kick rescaled a physics body three times.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
@@ -2733,8 +2805,18 @@ project: read it before claiming how anything works.
   hit handler run on it unchanged. One loop steps every shot, sweeps it with one reused ray query and
   writes it into a MultiMesh per round model — one draw call for all gun rounds in the air instead
   of one each. The round is still AUTHORED in the weapon's scene (`Ammo/Bullet`, `bullet.gd`):
-  speed, drop, lifetime, collision mask and model are copied from that template at every shot, and
-  `_ballistics` reads it for the lead. Measured in a 13-machine fight: 224 bullet nodes → the 48
+  speed, drop, lifetime, collision mask and model are READ ONCE per template (`BulletSim.Tpl`,
+  `_read_tpl`; a model swapped later is caught by `_fresh`) and copied into every shot, and
+  `_ballistics` reads it for the lead. Read at EVERY shot - five fields by name and the model's
+  key built out of `str(transform)` - a round cost 33-57 us to fire, and a volley of two dozen
+  shotguns (8 pellets, two shots) and a dozen mortars (8 shells) is ~290 rounds in ONE frame: the
+  player's "FPS drops on every volley". After: 10-19 us, most of it the weapon's own aim and spread.
+  THE PICTURE IS WRITTEN ONCE A DRAWN FRAME (`_process` -> `_draw`, Perf `bullet_draw`), the flight
+  once a physics tick: at 25 fps a frame holds two or three 60 Hz ticks, and each rewrote every
+  round's transform for the one picture that used the last; the facing (`Shot.face`) is worked out
+  there too, from the latest step. The tick fetches the space once, not once a round. Measured, 288
+  rounds in the air (optimize=none build): step 4.0 -> 2.9 ms a tick, draw 2.2 ms a tick -> 1.8 a
+  frame, i.e. ~15 -> ~9 ms a frame at 2.4 ticks a frame. Measured in a 13-machine fight: 224 bullet nodes → the 48
   templates; the bullets line 4.4–4.8 → 3.7 ms a tick, of which the step is 3.1 and the drawing 0.56
   — what is left is the ray, which decides whether a shot lands. Hits checked against the old
   nodes: the same damage from gun, rocket and heavy cannon, and the laser's hit log identical shot
@@ -2798,7 +2880,7 @@ apt-get install -y --no-install-recommends scons pkg-config build-essential \
   libx11-dev libxcursor-dev libxinerama-dev libxi-dev libxrandr-dev libxext-dev libxrender-dev \
   libgl1-mesa-dev libglu1-mesa-dev libasound2-dev libpulse-dev libudev-dev libdbus-1-dev \
   libspeechd-dev libwayland-dev wayland-protocols libxkbcommon-dev
-git clone --depth 1 -b 4.6.3-stable https://github.com/godotengine/godot.git /tmp/godot
+git clone --depth 1 -b 4.7.2-stable https://github.com/godotengine/godot.git /tmp/godot
 cd /tmp/godot && scons platform=linuxbsd target=editor optimize=none debug_symbols=no lto=none \
   module_text_server_adv_enabled=no module_text_server_fb_enabled=yes \
   module_raycast_enabled=no module_lightmapper_rd_enabled=no \
@@ -2809,7 +2891,9 @@ cd /tmp/godot && scons platform=linuxbsd target=editor optimize=none debug_symbo
 
 `optimize=none` is for COMPILE time, not run time; the disabled modules are the expensive ones the
 project never touches. Jolt, GDScript, 3D and glTF stay — the game stands on them. The tag must
-match `config/features` in `project.godot`.
+match `config/features` in `project.godot`: the player moved to 4.7.2 (features "4.7"), and the
+same flags build it in about thirteen minutes. Timings measured on this build are slow in absolute
+terms - compare before against after on it, never against a phone.
 
 **RUN IT ON A COPY, NEVER ON THE REPO.** Importing rewrites tracked files: my headless build writes
 `.import` files without the `etc2_astc` variant (mobile textures), re-serialises every `.res` cut

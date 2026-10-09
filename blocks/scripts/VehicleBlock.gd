@@ -350,7 +350,6 @@ func unbatched() -> Array:
 var max_hp: int = 50
 var current_hp: int = 50
 var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)
-var _hit_tween: Tween = null            # «пинок» масштабом при уроне (гасим прошлый, см. ниже)
 
 signal destroyed(block_node: VehicleBlock)
 
@@ -663,16 +662,12 @@ func _play_hit_effect() -> void:
 	if now - _hit_fx_ms < HIT_FX_COOLDOWN:
 		return
 	_hit_fx_ms = now
-	# Лёгкий "пинок" масштабом — тактильная отдача от попадания. Гасим прошлый твин: под
-	# лазером (урон каждые 0.1с) несколько твинов иначе дерутся за scale и блок дёргает.
-	if is_instance_valid(_hit_tween):
-		_hit_tween.kill()
-	_hit_tween = create_tween()
-	_hit_tween.tween_property(self, "scale", Vector3.ONE * 1.1, 0.07)
-	_hit_tween.tween_property(self, "scale", Vector3.ONE * 0.9, 0.07)
-	_hit_tween.tween_property(self, "scale", Vector3.ONE, 0.07)
-	# Красные 0/1 на паре случайных граней блока — вместо прежней заливки материалов
-	# в красный цвет (см. block_matrix.gdshader mode 2 / BlockFX.hit).
+	# NO SCALE KICK. The block used to jump to 1.1 and 0.9 of its size on a hit, and nothing showed
+	# it: MachineBatch draws a block from the transform it had when the batch was BUILT (only
+	# `moving_parts` blocks are copied every frame), so the kick moved an invisible node - and a
+	# rebuild landing mid-kick froze the block in the picture a tenth too big or too small until the
+	# next one. It also rescaled a physics body (the block's own collider) three times a hit.
+	# Red 0/1 on a pair of the block's faces (block_matrix.gdshader mode 2, BlockFX.hit).
 	BlockFX.hit(self)
 
 # The battery and the cabin blow up HARDER than an ordinary block: one is a charged cell, the

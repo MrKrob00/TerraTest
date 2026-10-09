@@ -19,14 +19,16 @@ uniform float ring = 0.22;                                // ring thickness, sha
 uniform float depth_lift = 0.0;
 
 void vertex() {
+	// POSITION on every path: written in a branch, the other path leaves GLES3's clip position
+	// uninitialised (see glitch_card.gdshader).
+	vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 	if (depth_lift > 0.0) {
-		vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 		float d = length(vp.xyz);
 		vec3 n = normalize((MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 		float pull = depth_lift / max(abs(dot(vp.xyz / d, n)), 0.25);
 		vp.xyz *= max(d - pull, 0.05) / d;
-		POSITION = PROJECTION_MATRIX * vp;
 	}
+	POSITION = PROJECTION_MATRIX * vp;
 }
 
 float h2(vec2 p) {

@@ -279,7 +279,7 @@ func _update_cuts(v: Node) -> void:
 	for n in get_tree().get_nodes_in_group(GROUP):
 		if n == self or found.size() >= CUT_MAX:
 			continue
-		var other_dome: Node3D = n.get("_dome")
+		var other_dome = n.get("_dome")        # untyped: a freed dome is asked, never assigned (rule 4)
 		if not is_instance_valid(other_dome) or not other_dome.visible:
 			continue
 		var ov: Node = n.call("_vehicle_root")
