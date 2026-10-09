@@ -2772,6 +2772,20 @@ project: read it before claiming how anything works.
   transform it had when the batch was BUILT (only `moving_parts` are copied each frame), so the kick
   moved an invisible node; a rebuild landing mid-kick froze the block a tenth too big or small in the
   picture, and every kick rescaled a physics body three times.
+- **ONE MANAGER INSTEAD OF A TICK PER NODE PAYS ONLY WHEN IT SKIPS WORK OR WORKS ON PACKED DATA**
+  (the RTS "systems" idea, measured before it was applied). A GDScript call into a unit's method
+  costs as much as the engine's own `_physics_process` call or more - 600 units, per unit a tick,
+  4.6.3 / 4.7.2 on the optimize=none build: own tick 13.1 / 8.3 us, a manager calling an untyped
+  `u.step()` 22.4 / 16.9, a typed one 11.8 / 17.5, a manager writing the units' fields itself
+  17.2 / 16.9, a manager over a PackedVector3Array 5.4 / 5.9. So a loop that calls each unit buys
+  nothing. What pays: not visiting what needs nothing this tick (idle, off screen, far), doing a
+  unit's picture at the rate it is SEEN (a drawn frame, not a physics tick), doing shared work once
+  (one scan, one transform), and per-unit data in packed arrays - which is what BulletSim,
+  MachineBatch, LooseBatch, CardBurst and the dense vein slots already are. Measured in a 3-on-3
+  fight with a factory line and 60 loose items on the proving ground: about 80 nodes tick at all
+  (42 wheels, 11 weapons, 6 enemy AIs; loose items and veins none; a factory block an early-out a
+  frame), and the cost is in what the ticks DO - an enemy's tick is 47% ground sensing (a ray a
+  wheel, `_unsink`'s height), 26% wheel forces, 24% the brain, 3% energy and the core watchdog.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
