@@ -2683,6 +2683,19 @@ project: read it before claiming how anything works.
   unbatched frames pixel-identical with turrets turned by hand (0 of 76 800 pixels differ); after
   destroying blocks and tearing one off, instances always equal hidden originals, none hidden
   outside the batch, and the torn block draws itself.
+- **A STILL BLOCK CASTS ITS SHADOW AS ITS COLLIDER BOX** (`MachineBatch._proxy`, `_fill_proxy`): one
+  SHADOWS_ONLY MultiMesh of unit boxes a machine, each placed and sized as the machine's copy of the
+  block's collider (the CollisionShape3D tagged `block_owner`; a convex shape gives the box round its
+  points, no collider the box round the models). The shadow pass drew every model a second time -
+  Marlit's champion was 13.4k primitives in the main pass and 13.1k more in the sun's map, ~780 a
+  block a pass - while at the map's ~8 cm a texel a block's shadow is its outline, and the model is
+  authored inside the collider. 12 triangles a block. WHAT MOVES KEEPS ITS OWN SHADOW (a barrel, a
+  tyre), and a block whose models all cast nothing gets no box. Measured, the champion and a siege
+  build side by side under a low sun: 28.7k -> 19.4k in the shadow pass (the rest is wheels and
+  guns), the two pictures the same by eye. GODOT'S OWN MESH LOD DOES NOT HELP THE HEAVY ONES:
+  `ImporterMesh.generate_lods` over every block mesh gives no level at all for the Marlit hull
+  (block 536, long 792, girder 508, armour 236-270 triangles) - every facet is its own UV island,
+  and the simplifier keeps the seams - and 62% over all meshes at the first level where it does.
 - **THE FAR SIDE OF A MACHINE IS LEFT OUT OF THE MAIN PASS** (`MachineBatch._apply_view`). A block
   is seen only through an OPEN face (`blocks._apply_occlusion` stores `open_mask`, `cell_lo`,
   `cell_hi` on every block: the cell beyond is see-through and reached from outside), and a ray

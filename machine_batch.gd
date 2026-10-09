@@ -35,6 +35,14 @@ extends Node3D
 # cell, a tyre hangs under it) and one whose model reaches past its cells (`VIEW_SLACK`). SHADOWS
 # KEEP THE WHOLE MACHINE: a group with a culled member draws its main pass without shadow and a
 # second MultiMesh, SHADOWS_ONLY, with every instance - one draw call in each pass, as before.
+#
+# A STILL BLOCK CASTS ITS SHADOW AS ITS COLLIDER BOX (`_proxy`, one SHADOWS_ONLY MultiMesh of unit
+# boxes for the machine). The shadow pass drew every model again - measured on the real driver,
+# Marlit's champion: 13.4k primitives in the main pass and 13.1k more in the shadow pass, ~780 a
+# block a pass - while at the sun's map (1024 px over 80 m, ~8 cm a texel) a block's shadow is its
+# outline, and the collider IS the outline the model is authored inside. 12 triangles a block. What
+# MOVES keeps its own shadow (a turret's barrel, a tyre), and so does a group that has to keep a
+# twin anyway; a block whose models all cast nothing gets no box.
 
 var _machine: Node3D = null
 var _blocks: Node = null
@@ -49,6 +57,9 @@ var _by_block: Dictionary = {}
 var _binfo: Array = []
 var _view_key := Vector3i(1 << 20, 0, 0)
 const VIEW_SLACK := 0.06       # how far past its cells a model may reach and still be culled
+var _proxy: MultiMeshInstance3D = null
+static var _proxy_mesh: BoxMesh = null
+static var _proxy_mat: StandardMaterial3D = null
 
 func setup(machine: Node3D, blocks: Node) -> void:
 	_machine = machine
@@ -103,6 +114,7 @@ func _rebuild() -> void:
 	var inv: Transform3D = _machine.global_transform.affine_inverse()
 	var binv: Transform3D = (_blocks as Node3D).global_transform.affine_inverse()
 	var found: Dictionary = {}                 # key -> [[mi, moving, block index], ...]
+	var boxed: Array = []                      # still blocks that cast: their shadow is their box
 	_binfo.clear()
 	for b in _blocks.get_children():
 		if not (b is VehicleBlock) or (b as Node3D).top_level or not (b as Node3D).visible:
@@ -116,6 +128,11 @@ func _rebuild() -> void:
 		if mine.is_empty():
 			continue
 		_by_block[b.get_instance_id()] = mine
+		if not moving:
+			for mi in mine:
+				if (mi as MeshInstance3D).cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+					boxed.append(b)
+					break
 		var bi: int = _binfo.size()
 		_binfo.append(_view_info(b, mine, moving, binv))
 		for mi in mine:
@@ -158,7 +175,10 @@ func _rebuild() -> void:
 			mi.layers = 0
 		var smmi: MultiMeshInstance3D = null
 		mmi.cast_shadow = first.cast_shadow
-		if cullable and first.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
+		if not moving.has(1):
+			# still parts only: their shadow is their blocks' boxes (_proxy)
+			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		elif cullable and first.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
 			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			smmi = _new_mmi(first)
 			smmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
@@ -166,9 +186,72 @@ func _rebuild() -> void:
 			_fill(smmi.multimesh, parts, range(parts.size()), inv)
 		_groups[key] = {"mmi": mmi, "smmi": smmi, "parts": parts, "moving": moving, "owner": owner_i,
 				"cullable": cullable, "vis": PackedInt32Array()}
+	_fill_proxy(boxed)
 	_view_key = Vector3i(1 << 20, 0, 0)
 	_view_changed()
 	_apply_view()
+
+## One unit box per still block, placed and sized as the machine's copy of its collider (the
+## CollisionShape3D under the machine tagged `block_owner`, blocks.spawn_block) - machine space, as
+## the batch is. A shape that is not a box gives the box round its points; a block with no tagged
+## collider gives the box round its models.
+func _fill_proxy(boxed: Array) -> void:
+	var cols: Dictionary = {}
+	for c in _machine.get_children():
+		if c is CollisionShape3D and c.has_meta(&"block_owner"):
+			var o = c.get_meta(&"block_owner")
+			if is_instance_valid(o):
+				cols[o.get_instance_id()] = c
+	var xf: Array[Transform3D] = []
+	var inv: Transform3D = _machine.global_transform.affine_inverse()
+	for b in boxed:
+		var c = cols.get(b.get_instance_id())
+		var box := AABB()
+		var at := Transform3D()
+		if c != null and (c as CollisionShape3D).shape != null:
+			at = (c as CollisionShape3D).transform
+			var sh: Shape3D = (c as CollisionShape3D).shape
+			if sh is BoxShape3D:
+				box = AABB(-(sh as BoxShape3D).size * 0.5, (sh as BoxShape3D).size)
+			elif sh is ConvexPolygonShape3D and (sh as ConvexPolygonShape3D).points.size() > 0:
+				var pts: PackedVector3Array = (sh as ConvexPolygonShape3D).points
+				box = AABB(pts[0], Vector3.ZERO)
+				for q in pts:
+					box = box.expand(q)
+		if box.size == Vector3.ZERO:
+			# no usable collider: the box round the block's own models, in machine space
+			at = Transform3D()
+			var first := true
+			for mi in _by_block.get(b.get_instance_id(), []):
+				var mb: AABB = inv * (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
+				box = mb if first else box.merge(mb)
+				first = false
+		if box.size == Vector3.ZERO:
+			continue
+		xf.append(at * Transform3D(Basis.from_scale(box.size), box.get_center()))
+	if xf.is_empty():
+		if is_instance_valid(_proxy):
+			_proxy.visible = false
+		return
+	if not is_instance_valid(_proxy):
+		if _proxy_mesh == null:
+			_proxy_mesh = BoxMesh.new()
+			_proxy_mesh.size = Vector3.ONE
+			_proxy_mat = StandardMaterial3D.new()
+			_proxy_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_proxy = MultiMeshInstance3D.new()
+		_proxy.set_meta("block_fx", true)
+		_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		_proxy.material_override = _proxy_mat
+		_proxy.multimesh = MultiMesh.new()
+		_proxy.multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		_proxy.multimesh.mesh = _proxy_mesh
+		add_child(_proxy)
+	_proxy.visible = true
+	var mm: MultiMesh = _proxy.multimesh
+	mm.instance_count = xf.size()
+	for i in xf.size():
+		mm.set_instance_transform(i, xf[i])
 
 func _new_mmi(first: MeshInstance3D) -> MultiMeshInstance3D:
 	var mmi := MultiMeshInstance3D.new()
