@@ -25,7 +25,7 @@ const NEWS_H_FRAC := 0.42
 
 @onready var _left: VBoxContainer = %Left
 @onready var _news_list: VBoxContainer = %NewsList
-@onready var _settings: CenterContainer = %Settings
+@onready var _settings: Control = %Settings
 
 # ── World creation ───────────────────────────────────────────────────────────
 # Создание мира — это выбор сида. Шкала, оценка времени и STOP тут были, пока земля считалась
@@ -115,6 +115,8 @@ func _bind_settings() -> void:
 	var zoom: HSlider = %ZoomSlider
 	look.value = G.cam_look_sens
 	zoom.value = G.cam_zoom_sens
+	MusicPanel.slider_look(look)
+	MusicPanel.slider_look(zoom)
 	%LookValue.text = "%.2f" % G.cam_look_sens
 	%ZoomValue.text = "%.2f" % G.cam_zoom_sens
 	look.value_changed.connect(_on_look_sens)
@@ -163,19 +165,6 @@ func _music_panel() -> void:
 		panel.contexts = [m.Ctx.MENU]           # before it enters the tree: one build, not two
 		(%MusicHost as Node).add_child(panel)
 
-## Высота прокрутки: по содержимому, но не выше доли экрана. Без верхней границы панель
-## растёт за края телефона; без нижней — под коротким списком остаётся пустая полоса.
-const SET_H_FRAC := 0.62
-const SET_W_MAX := 420.0
-
-func _fit_settings() -> void:
-	var vp := get_viewport().get_visible_rect().size
-	(%SettingsPanel as Control).custom_minimum_size.x = minf(SET_W_MAX, vp.x * 0.92)
-	var scroll := %SettingsScroll as Control
-	var inner: Control = scroll.get_child(0) as Control
-	var want: float = inner.get_combined_minimum_size().y if inner != null else 0.0
-	scroll.custom_minimum_size.y = minf(want, vp.y * SET_H_FRAC)
-
 ## ЯЗЫК. Подписи пунктов — на своих языках, а не переведённые: человек, открывший чужой язык по
 ## ошибке, должен найти свой в списке, не понимая ни слова вокруг.
 const LANG_NAMES := {"en": "English", "ru": "Русский", "uk": "Українська"}
@@ -199,7 +188,6 @@ func _on_lang_picked(idx: int) -> void:
 	G.set_lang(String(G.LANGS[idx]))
 	_rebuild_left()
 	_bind_sections()
-	call_deferred("_fit_settings")
 
 func _on_look_sens(v: float) -> void:
 	G.cam_look_sens = v
@@ -224,15 +212,30 @@ func _on_menu_fight(on: bool) -> void:
 	if stage != null and stage.has_method("set_battles"):
 		stage.set_battles(on)
 
+## THE SETTINGS ARE A PAGE OF THEIR OWN (the player: "why see the news and PLAY in the settings,
+## squeezed somewhere in the middle"): the whole screen, a bar with the title and CLOSE, and the
+## three sections side by side in columns, each scrolling on its own. The menu's own column - title,
+## news, the buttons - is HIDDEN while it is open, not merely covered: a covered button still takes
+## a tap through a gap. The phone's back key and Esc close it instead of leaving the game.
 func _open_settings() -> void:
 	_music_panel()
+	%Root.visible = false
 	_settings.visible = true
-	# Размер считается на ОТКРЫТИИ: пока панель была скрыта, её дети не раскладывались, и
-	# высота содержимого на старте сцены читалась нулём.
-	call_deferred("_fit_settings")
+	get_tree().quit_on_go_back = false
 
 func _close_settings() -> void:
 	_settings.visible = false
+	%Root.visible = true
+	get_tree().quit_on_go_back = ProjectSettings.get_setting("application/config/quit_on_go_back", true)
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(_settings) and _settings.visible:
+		_close_settings()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _settings.visible and event.is_action_pressed("ui_cancel"):
+		_close_settings()
+		get_viewport().set_input_as_handled()
 
 # ── Left column: three states ────────────────────────────────────────────────
 ## Rebuilt whole: there are three states with three or four widgets each, so building anew is
