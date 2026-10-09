@@ -1455,7 +1455,7 @@ func _update_perf_panel(delta: float) -> void:
 	# settings: without this line the game just stays blurry later and nobody remembers why.
 	var main_node := get_node_or_null("/root/Main")
 	var auto_fps: bool = main_node != null and main_node.get("auto_fps") == true
-	lines.append("экран %dx%d · 3D scale %.2f → %dx%d · авто-FPS %s"
+	lines.append("экран %dx%d · 3D scale %.2f -> %dx%d · авто-FPS %s"
 			% [int(vs.x), int(vs.y), vp.scaling_3d_scale,
 			int(vs.x * vp.scaling_3d_scale), int(vs.y * vp.scaling_3d_scale),
 			"вкл" if auto_fps else "ВЫКЛ"])
@@ -1858,7 +1858,7 @@ func _rebuild_vehicle_list() -> void:
 			continue
 		i += 1
 		var is_cur: bool = (v == cur)
-		var label: String = ("● " if is_cur else "  ") + str(v.name)
+		var label: String = ("• " if is_cur else "  ") + str(v.name)   # "•" is in the font, "●" is not
 		var btn := _make_drawer_button(label, _select_vehicle.bind(v))
 		if is_cur:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.65, 0.2, 1))  # текущая — оранжевым
@@ -2058,18 +2058,29 @@ func _on_take_off_pressed() -> void:
 
 # ── Музыка: UI переехал в гараж (tech_ui, вкладка МУЗЫКА). В HUD остался только
 # тост-атрибуция «сейчас играет» ниже. ─────────────────────────────────────────
-var _music_toast: Label = null
+var _music_toast: HBoxContainer = null
+var _music_toast_text: Label = null
 
 # Тост «сейчас играет» внизу экрана при смене трека (атрибуция: название — автор).
+# THE NOTE IS DRAWN (`NoteIcon`): the game's font has no "♪", and the first toast of a session sent
+# the engine through the phone's own fonts for it, a stall in the middle of a drive.
 func _show_music_toast(title: String, author: String) -> void:
 	if _music_toast == null or not is_instance_valid(_music_toast):
-		_music_toast = Label.new()
-		_music_toast.add_theme_font_size_override("font_size", 14)
-		_music_toast.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
+		_music_toast = HBoxContainer.new()
+		_music_toast.add_theme_constant_override("separation", 6)
 		_music_toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var note := NoteIcon.new()
+		note.custom_minimum_size = Vector2(12, 18)
+		note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_music_toast.add_child(note)
+		_music_toast_text = Label.new()
+		_music_toast_text.add_theme_font_size_override("font_size", 14)
+		_music_toast_text.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0))
+		_music_toast_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_music_toast.add_child(_music_toast_text)
 		add_child(_music_toast)
 	var screen: Vector2 = get_viewport().get_visible_rect().size
-	_music_toast.text = "♪ %s — %s" % [title, author]
+	_music_toast_text.text = "%s — %s" % [title, author]
 	_music_toast.reset_size()
 	_music_toast.position = Vector2(screen.x * 0.5 - _music_toast.size.x * 0.5, screen.y - 40.0)
 	_music_toast.modulate = Color(1, 1, 1, 0.0)
@@ -2077,3 +2088,16 @@ func _show_music_toast(title: String, author: String) -> void:
 	tw.tween_property(_music_toast, "modulate:a", 1.0, 0.4)
 	tw.tween_interval(3.0)
 	tw.tween_property(_music_toast, "modulate:a", 0.0, 1.0)
+
+## The music toast's note (see `_show_music_toast`): a head and a stem with a flag.
+class NoteIcon extends Control:
+	func _draw() -> void:
+		var col := Color(0.85, 0.95, 1.0)
+		var c := size * 0.5
+		var head := c + Vector2(-1.5, 5.0)
+		draw_set_transform(head, -0.35, Vector2(1.3, 0.95))
+		draw_circle(Vector2.ZERO, 3.0, col)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_line(head + Vector2(3.4, -0.6), head + Vector2(3.4, -12.5), col, 1.6)
+		draw_colored_polygon(PackedVector2Array([head + Vector2(3.4, -12.5), head + Vector2(7.5, -8.5),
+				head + Vector2(7.0, -6.8), head + Vector2(3.4, -9.6)]), col)

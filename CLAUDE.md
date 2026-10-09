@@ -49,6 +49,16 @@ project: read it before claiming how anything works.
     The font renders emoji as empty boxes. A `BlockFX` node marks itself `block_fx` so
     `_local_aabb` skips it — without that every hit measured the previous hit's plates and the
     effect grew with each one.
+    **AND NO SIGN THE FONT LACKS IN ANY TEXT.** The game has no font of its own: it draws with the
+    engine's built-in Open Sans, which has NO ▶ ⏭ ★ ✓ ◆ ● ■ ▪ ♦ ♪ ▲ ► ▼ ← ↑ → ↓ ↔ ＋ (asked of the
+    engine, `ThemeDB.fallback_font.has_char`), and its `allow_system_fallback` is on - so the first
+    text holding one sends the engine through the PHONE'S OWN FONTS for it, in the frame it is
+    shaped (a Button shapes on `set_text`). Measured: the main menu's first frame spent 528 ms of
+    0.57 s of script on the "⏭" in the music panel (the player's profiler); here the first such
+    button costs 147 ms against 1-2 for plain text. It has — – … « » ‹ › • · ± ≤ ≥ ≈ ≠ ∞ √ ° ×
+    ◊. Everything else is a drawn mark: `MusicPanel.PlayIcon` / `SkipIcon`, `hud.NoteIcon`, the
+    enemy marker's diamond mesh (`EnemyMarker._diamond`). Quests carry no marks at all (the
+    player's call: "★ and the other two kinds - take them out").
 12. Never set position or size on a **container child** — the container overwrites it. Only nodes
     directly under a `CanvasLayer` are positioned from code.
 13. Compare distances with `distance_squared_to()`; the square root is only for formulas.
@@ -1869,6 +1879,9 @@ project: read it before claiming how anything works.
   scene is up and cleared when it leaves — the flag sat in the manager unused for months and
   `music/menu/` never played once, because the autoload outlives the scene and nobody owned the
   switch. Turning music off is `set_enabled`, not volume zero, which forgets the level.
+  THE MENU BUILDS IT WHEN ITS SETTINGS FIRST OPEN (`menu._music_panel`), not in the menu's first
+  frame behind a closed panel, and its `contexts` are set BEFORE it enters the tree: `_ready`
+  builds, and `setup()` after `add_child` built everything a second time.
 - **A LABEL ON A BLOCK LIVES BY THE BLOCK'S RULES.** The storage counter was a `Label3D` with
   `fixed_size`, i.e. the same size on screen at any distance, and on a base with three storages the
   numbers covered the base — «742» measured wider than the deck it stood on. It is now world-scaled

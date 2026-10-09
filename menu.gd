@@ -146,12 +146,22 @@ func _bind_sections() -> void:
 	(%SecCamera as Node).add_child(MusicPanel.section_head(tr("CAMERA")))
 	(%SecSound as Node).add_child(MusicPanel.section_head(tr("SOUND")))
 	(%SecGame as Node).add_child(MusicPanel.section_head(tr("GAME")))
-	# Только свой список: настройки меню говорят о меню, и треки мира здесь не при чём.
+	if _settings.visible:
+		_music_panel()             # a language switch rebuilt the open panel's sections
+
+## THE MUSIC PANEL IS BUILT WHEN THE SETTINGS FIRST OPEN, not with the menu: it was built in the
+## menu's first frame behind a closed panel, twice (once in its `_ready`, again in `setup`), and that
+## frame was 0.57 s of script on the player's profiler - 528 ms of it the first shaping of its "⏭",
+## a sign the game's font lacks (see `MusicPanel._now_playing`). Only its own list: the menu's
+## settings speak about the menu, and the world's tracks have nothing to do here.
+func _music_panel() -> void:
+	if (%MusicHost as Node).get_child_count() > 0:
+		return
 	var m := get_node_or_null("/root/Music")
 	if m != null:
 		var panel := MusicPanel.new()
+		panel.contexts = [m.Ctx.MENU]           # before it enters the tree: one build, not two
 		(%MusicHost as Node).add_child(panel)
-		panel.setup([m.Ctx.MENU])
 
 ## Высота прокрутки: по содержимому, но не выше доли экрана. Без верхней границы панель
 ## растёт за края телефона; без нижней — под коротким списком остаётся пустая полоса.
@@ -215,6 +225,7 @@ func _on_menu_fight(on: bool) -> void:
 		stage.set_battles(on)
 
 func _open_settings() -> void:
+	_music_panel()
 	_settings.visible = true
 	# Размер считается на ОТКРЫТИИ: пока панель была скрыта, её дети не раскладывались, и
 	# высота содержимого на старте сцены читалась нулём.

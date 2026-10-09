@@ -942,7 +942,7 @@ func _build_builds_tab() -> void:
 	var side := _slot_side()
 	var n := 0
 	var add: Slot = _slot_at(n)
-	_reset_slot(add, "＋ Save\ncurrent", side)
+	_reset_slot(add, tr("+ Save\ncurrent"), side)
 	add.action = &"save"
 	n += 1
 	for build_name in G.saved_builds:
@@ -1639,8 +1639,8 @@ func _build_music_tab() -> void:
 		_extra_header(tr("Music system not connected"))
 		return
 	var panel := MusicPanel.new()
+	panel.contexts = [m.Ctx.TRAVEL, m.Ctx.BATTLE]   # before it enters the tree: one build, not two
 	_extra_vb.add_child(panel)
-	panel.setup([m.Ctx.TRAVEL, m.Ctx.BATTLE])
 
 # ── Вкладка НАСТРОЙКИ ──────────────────────────────────────────────────────────
 # Авто-FPS (система в Main.gd: держит целевой FPS, меняя масштаб рендера). Авто

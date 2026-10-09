@@ -143,7 +143,7 @@ func _update_tracker() -> void:
 	# after it said less than the emblem does and were taken out.
 	_title.text = tr(str(q["title"])) + _stage_suffix(q)
 	if q["done"]:
-		_objective.text = tr("✓ done")
+		_objective.text = tr("Completed")   # no "✓": the font has none (see music_panel._now_playing)
 	elif _grade_locked(q):
 		# Затрекан ждущий грейда квест (напр. сейв со старым треком) — не врём прогрессом.
 		_objective.text = tr("Unlocks at license grade %d") % int(q.get("req_grade", 1))
@@ -321,9 +321,9 @@ func _rebuild_detail() -> void:
 	_detail.add_child(_head(tr("Objectives:")))
 	var o := Label.new()
 	if _grade_locked(q):
-		o.text = "  ▪ " + tr("Unlocks at license grade %d") % int(q.get("req_grade", 1))
+		o.text = "  " + tr("Unlocks at license grade %d") % int(q.get("req_grade", 1))
 	else:
-		o.text = "  ▪ %s — %d/%d" % [tr(str(q["desc"])), q["progress"], q["goal"]]
+		o.text = "  %s — %d/%d" % [tr(str(q["desc"])), q["progress"], q["goal"]]
 	o.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	o.add_theme_font_size_override("font_size", 14)
 	o.add_theme_color_override("font_color", Color(1, 0.72, 0.25))
