@@ -1882,6 +1882,15 @@ project: read it before claiming how anything works.
   THE MENU BUILDS IT WHEN ITS SETTINGS FIRST OPEN (`menu._music_panel`), not in the menu's first
   frame behind a closed panel, and its `contexts` are set BEFORE it enters the tree: `_ready`
   builds, and `setup()` after `add_child` built everything a second time.
+- **THE MENU'S SETTINGS ARE A PAGE, NOT A PANEL OVER THE MENU** (`menu.tscn` `Settings`; the
+  player: "why see the news and PLAY in the settings, squeezed somewhere in the middle"): a shade over
+  the whole screen, a bar with the title and CLOSE, and the three sections side by side as columns -
+  CAMERA, SOUND (the music panel, a little wider), GAME - each scrolling on its own. The menu's own
+  column (`%Root`: title, news, buttons) is HIDDEN while it is open, not merely covered - a covered
+  button still takes a tap through a gap. The phone's back key and Esc close it, and
+  `quit_on_go_back` is lifted while it is open, or back would leave the game. Every setting carries a
+  one-line hint under it, and every slider takes `MusicPanel.slider_look` (cyan travel in a dark
+  groove), the music panel's volume included: one drawing of one control.
 - **A LABEL ON A BLOCK LIVES BY THE BLOCK'S RULES.** The storage counter was a `Label3D` with
   `fixed_size`, i.e. the same size on screen at any distance, and on a base with three storages the
   numbers covered the base — «742» measured wider than the deck it stood on. It is now world-scaled

@@ -128,6 +128,7 @@ func _enable_row() -> CheckButton:
 	var cb := CheckButton.new()
 	cb.text = tr("Music")
 	cb.button_pressed = bool(_m.enabled)
+	cb.add_theme_font_size_override("font_size", 15)
 	cb.add_theme_color_override("font_color", Color(0.88, 0.97, 0.99))
 	cb.toggled.connect(_on_enabled)
 	return cb
@@ -145,12 +146,12 @@ func _volume_row() -> Control:
 	box.add_child(head)
 	var cap := Label.new()
 	cap.text = tr("Volume")
-	cap.add_theme_font_size_override("font_size", 13)
+	cap.add_theme_font_size_override("font_size", 15)
 	cap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(cap)
 	var val := Label.new()
 	val.text = "%d%%" % int(round(float(_m.volume) * 100.0))
-	val.add_theme_font_size_override("font_size", 13)
+	val.add_theme_font_size_override("font_size", 15)
 	val.add_theme_color_override("font_color", Color(0.35, 0.85, 0.92))
 	head.add_child(val)
 	var sl := HSlider.new()
@@ -158,7 +159,8 @@ func _volume_row() -> Control:
 	sl.max_value = 1.0
 	sl.step = 0.05
 	sl.value = float(_m.volume)
-	sl.custom_minimum_size = Vector2(0, 32)
+	sl.custom_minimum_size = Vector2(0, 36)
+	slider_look(sl)
 	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sl.value_changed.connect(_on_volume.bind(val))
 	box.add_child(sl)
@@ -173,6 +175,26 @@ func _on_volume(v: float, val: Label) -> void:
 		val.text = "%d%%" % int(round(v * 100.0))
 
 # ── Lists ─────────────────────────────────────────────────────────────────────
+
+## THE SETTINGS' SLIDERS LOOK ONE WAY: the travelled part in the UI's cyan, the rest a dark groove.
+## Static and public, like `section_head` - the menu's camera sliders take the same look, and two
+## drawings of one slider is how two screens stop looking like one game.
+static func slider_look(sl: HSlider) -> void:
+	var groove := StyleBoxFlat.new()
+	groove.bg_color = Color(0.02, 0.05, 0.06, 0.9)
+	groove.set_corner_radius_all(3)
+	groove.content_margin_top = 3.0
+	groove.content_margin_bottom = 3.0
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.35, 0.85, 0.92, 0.85)
+	fill.set_corner_radius_all(3)
+	fill.content_margin_top = 3.0
+	fill.content_margin_bottom = 3.0
+	var hot := fill.duplicate() as StyleBoxFlat
+	hot.bg_color = Color(0.55, 0.95, 1.0, 0.95)
+	sl.add_theme_stylebox_override("slider", groove)
+	sl.add_theme_stylebox_override("grabber_area", fill)
+	sl.add_theme_stylebox_override("grabber_area_highlight", hot)
 
 ## Caption plus a hairline that runs to the edge: a bare label between rows of controls read
 ## as one more setting. Static and public — the menu settings divide themselves with the same
