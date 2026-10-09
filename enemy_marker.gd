@@ -43,7 +43,14 @@ const NOUN := ["Seal", "Wolf", "Crow", "Boar", "Hawk", "Toad", "Lynx", "Moth",
 
 var vehicle: Node3D = null           # машина-владелец (ставит machine_body при создании)
 
-var _pin: Label3D = null
+## The diamond over the name: a drawn mesh, not the "◆" glyph it was - the game's font (the
+## engine's Open Sans) has no such sign, and the first marker in the world sent the engine through
+## the phone's own fonts for it (the music panel's "⏭" cost 528 ms that way). Its fill is pulsed
+## by colour, the outline under it stays dark like the label's.
+var _pin: MeshInstance3D = null
+var _pin_mat: StandardMaterial3D = null
+const PIN_DIAG := 0.46          # m across, the glyph's size at font 150
+const PIN_OUTLINE := 0.66
 var _name: Label3D = null
 var _t: float = 0.0
 
@@ -61,7 +68,9 @@ static func name_for(id: int) -> String:
 	return "%s %s" % [ADJ[absi(id) % ADJ.size()], NOUN[absi(id / ADJ.size()) % NOUN.size()]]
 
 func _ready() -> void:
-	_pin = _label("◆", 150, 0.0)
+	_diamond(PIN_OUTLINE, Color(0, 0, 0, 0.85), 0)
+	_pin = _diamond(PIN_DIAG, COL, 1)
+	_pin_mat = _pin.material_override as StandardMaterial3D
 	_name = _label(name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id()),
 			64, -0.55)
 	_build_plate()
@@ -134,6 +143,19 @@ func _quad(sz: Vector2, col: Color, priority: int) -> MeshInstance3D:
 	add_child(mi)
 	return mi
 
+## A billboard diamond (its corners on the axes), drawn under the text's priority rules like a plate.
+func _diamond(diag: float, col: Color, priority: int) -> MeshInstance3D:
+	var h := diag * 0.5
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = PackedVector3Array([Vector3(0, h, 0), Vector3(h, 0, 0), Vector3(0, -h, 0), Vector3(-h, 0, 0)])
+	arr[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := _quad(Vector2.ONE, col, priority)
+	mi.mesh = am
+	return mi
+
 ## Контроллер камеры кешируем. Он один на сцену и не меняется, а поиск по группе шёл
 ## КАЖДЫЙ кадр у КАЖДОЙ метки — это обход дерева ради ссылки, которая не менялась с
 ## запуска, и стоит он больше любого корня, который мы отсюда убрали.
@@ -183,7 +205,8 @@ func _tick_marker(delta: float) -> void:
 	# сейчас он смотрит именно на неё, и подменять его приказ пометкой задания нельзя.
 	var base: Color = COL_MARKED if marked else (COL_QUEST if quest else COL)
 	var amp: float = 0.35 if marked else (0.3 if quest else 0.15)
-	_pin.modulate = base * (0.85 + amp * sin(_t * (6.0 if marked else (5.0 if quest else 3.0))))
+	var pulse: Color = base * (0.85 + amp * sin(_t * (6.0 if marked else (5.0 if quest else 3.0))))
+	_pin_mat.albedo_color = Color(pulse.r, pulse.g, pulse.b, 1.0)
 	_name.modulate = base
 	# Полоска под именем живёт тем же цветом: назначенная цель желтеет целиком, а не наполовину.
 	if _plate_line != null:

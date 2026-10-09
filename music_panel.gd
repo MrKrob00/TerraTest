@@ -69,16 +69,22 @@ func rebuild() -> void:
 
 ## Title and author on two lines, like a track row rather than one long log line: the row is
 ## narrow on a phone, and «Author — Title [Travel]» clipped to the title alone.
+## THE PLAY AND SKIP MARKS ARE DRAWN (`PlayIcon`, `SkipIcon`), NOT TYPED: the game's font (the
+## engine's Open Sans) has no "▶" or "⏭", so the engine went looking through the phone's own fonts
+## for them the first time this panel was built - 528 ms of the menu's first frame on the player's
+## profiler, measured here as 147 ms for the first such button against 1-2 for plain text.
 func _now_playing(cur: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
+	var silent: bool = cur.is_empty()
+	if not silent:
+		row.add_child(_mark(PlayIcon.new(), Color(0.6, 1.0, 0.7)))
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_constant_override("separation", 0)
 	row.add_child(info)
-	var silent: bool = cur.is_empty()
 	var line := Label.new()
-	line.text = tr("Silence (no tracks or all disabled)") if silent else "▶ " + str(cur["title"])
+	line.text = tr("Silence (no tracks or all disabled)") if silent else str(cur["title"])
 	line.add_theme_font_size_override("font_size", 14)
 	var col := Color(0.6, 0.63, 0.66) if silent else Color(0.6, 1.0, 0.7)
 	line.add_theme_color_override("font_color", col)
@@ -92,13 +98,24 @@ func _now_playing(cur: Dictionary) -> Control:
 		sub.clip_text = true
 		info.add_child(sub)
 	var skip := Button.new()
-	skip.text = "⏭"
 	skip.tooltip_text = tr("Next track")
 	skip.custom_minimum_size = Vector2(46, 42)
 	skip.disabled = silent
 	skip.pressed.connect(_skip)
+	var icon := SkipIcon.new()
+	icon.col = Color(0.88, 0.97, 0.99, 0.35 if silent else 1.0)
+	icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	skip.add_child(icon)
 	row.add_child(skip)
 	return row
+
+## A drawn mark standing in a row (the row is a container: it sizes the mark, the mark only asks).
+func _mark(icon: Control, col: Color) -> Control:
+	icon.set("col", col)
+	icon.custom_minimum_size = Vector2(12, 16)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return icon
 
 func _skip() -> void:
 	if _m != null:
@@ -177,7 +194,8 @@ static func section_head(text: String) -> Control:
 	row.add_child(line)
 	return row
 
-## Title over author on the left, heart and ban on the right. ▶ marks the one playing.
+## Title over author on the left, heart and ban on the right. A play mark stands before the one
+## playing.
 func _track_row(t: Dictionary, cur: Dictionary) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
@@ -185,12 +203,14 @@ func _track_row(t: Dictionary, cur: Dictionary) -> Control:
 	var playing: bool = cur.get("file", "") == file
 	var banned: bool = _m.banned.has(file)
 
+	if playing:
+		row.add_child(_mark(PlayIcon.new(), Color(0.6, 1.0, 0.7)))
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_constant_override("separation", 0)
 	row.add_child(info)
 	var title := Label.new()
-	title.text = ("▶ " if playing else "") + str(t["title"])
+	title.text = str(t["title"])
 	title.add_theme_font_size_override("font_size", 15)
 	title.clip_text = true
 	if banned:
@@ -233,7 +253,7 @@ func _icon_btn(icon: Control, active: bool, tip: String, on_toggle: Callable) ->
 	b.toggled.connect(on_toggle)
 	return b
 
-# ── Icons: drawn in code, because the font renders ♥ / ✖ as empty boxes ────────
+# ── Icons: drawn in code - the game's font has none of these marks (see _now_playing) ─────
 
 class HeartIcon extends Control:
 	var active := false
@@ -255,3 +275,20 @@ class BanIcon extends Control:
 		var a := 7.0
 		draw_line(c + Vector2(-a, -a), c + Vector2(a, a), col, 3.5)
 		draw_line(c + Vector2(-a, a), c + Vector2(a, -a), col, 3.5)
+
+class PlayIcon extends Control:
+	var col := Color(0.6, 1.0, 0.7)
+	func _draw() -> void:
+		var c := size * 0.5
+		draw_colored_polygon(PackedVector2Array([
+			c + Vector2(-4.0, -5.5), c + Vector2(5.0, 0.0), c + Vector2(-4.0, 5.5)]), col)
+
+## Next track: two triangles and a bar, the shape the "⏭" sign has.
+class SkipIcon extends Control:
+	var col := Color(0.88, 0.97, 0.99)
+	func _draw() -> void:
+		var c := size * 0.5
+		for dx in [-8.0, -1.0]:
+			draw_colored_polygon(PackedVector2Array([
+				c + Vector2(dx, -6.0), c + Vector2(dx + 7.0, 0.0), c + Vector2(dx, 6.0)]), col)
+		draw_rect(Rect2(c + Vector2(6.0, -6.0), Vector2(2.5, 12.0)), col)
