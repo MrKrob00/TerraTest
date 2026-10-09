@@ -987,18 +987,14 @@ func _on_block_destroyed(destroyed_block: Node3D) -> void:
 					else (collision_shape.position == destroyed_block.position \
 						or collision_shape.position == destroyed_block.position + BIG_BLOCK_COL_OFFSET)
 			if mine:
-				
-				
-				# 1. disable it in the physics engine
-				shape_owner_set_disabled(owner_id, true)
-				
-				# 2. clear the shape geometry from the physics server
-				shape_owner_clear_shapes(owner_id)
-				
-				# 3. remove the shape owner from the Vehicle body
-				remove_shape_owner(owner_id)
-				
-				# 4. free the collider node itself
+				# TAKEN OFF THE BODY BY ITS OWN NODE, ONCE. A CollisionShape3D removes its shape owner
+				# itself when it leaves its parent (NOTIFICATION_UNPARENTED,
+				# scene/3d/physics/collision_shape_3d.cpp): the old manual remove_shape_owner here and
+				# then queue_free removed it twice, and every block that died printed the engine's
+				# "!shapes.has(owner)" - nine of them in a minute of the menu's fight.
+				var holder: Node = collision_shape.get_parent()
+				if holder != null:
+					holder.remove_child(collision_shape)
 				collision_shape.queue_free()
 				
 				# remember the id so the damage map can be cleaned

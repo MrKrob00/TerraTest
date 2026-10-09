@@ -9,8 +9,7 @@ extends Node3D
 ## nuggets, silicate crystals, titanite plates. Each model is its rock plus its ore; the vertex says
 ## which part is mined.
 @export var multimesh_nodes: Array[MultiMeshInstance3D]
-## THE TREE: stump and tree in one model. Every slot exists in every MultiMesh; a vein is drawn in
-## its own model's and stands collapsed (ZERO_XFORM) in the rest (`_model_mm`).
+## THE TREE: stump and tree in one model, one MultiMesh per kind (`_model_mm`).
 @export var wood_multimesh_nodes: Array[MultiMeshInstance3D]
 
 ## Цвета типов жил = ЦВЕТА МЕТАЛЛОВ, один в один: тип жилы это и есть металл, который из неё
@@ -60,15 +59,21 @@ var ore_colors: Array[Color] = []
 
 # Все жилы карты как данные: {pos, scene, ore_type, wood, slot(-1=не показана), node(null)}.
 var _data: Array = []
-var _free: Array[int] = []                   # свободные слоты MultiMesh (пул)
+## EACH MODEL'S SLOTS ARE DENSE: its MultiMesh draws exactly `visible_instance_count` instances, the
+## live veins of that model, in slots 0..n-1 (MultiMeshInstance3D -> Array of records, index = slot).
+## It used to be one pool of `max_visible` slots shared by all seven models, every slot in every
+## MultiMesh, the unused ones collapsed to a zero scale - and a zero-scale instance is still DRAWN:
+## its vertices go through the shader. Measured on the real driver, booted world: the veins were
+## 285k of the frame's 342k primitives and 166k of the sun's 167k in the shadow pass (the trees cast).
+## A vein leaving hands its slot to its model's LAST live vein (`_stream_out`), which is told its new
+## slot; a node writes its shader data through its record (`write_custom`).
+var _mm_live: Dictionary = {}
 var _cull_t: float = 0.0
 ## Окклюзия спрашивается порциями (см. _process): за тик — 1/OCCL_SLICES списка.
 const OCCL_SLICES := 4
 const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
 var _occl_cursor: int = 0
 var _last_fwd: Vector3 = Vector3.FORWARD
-# Схлопнутый трансформ (нулевой масштаб) — для «погашенных» слотов MultiMesh.
-var ZERO_XFORM := Transform3D(Basis().scaled(Vector3.ZERO), Vector3.ZERO)
 
 # _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
 # момент карта ещё не выполнила свой _ready, и требовать от неё готовности сразу нельзя.
@@ -225,11 +230,20 @@ func _apply_ore_colors() -> void:
 		if mm.material_override is ShaderMaterial:
 			(mm.material_override as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
-## Custom data of one slot in every MultiMesh (resource_node writes its HP and hit times here).
-func write_custom(slot: int, data: Color) -> void:
-	for mm in _all_mm():
-		if mm.multimesh != null and slot >= 0 and slot < mm.multimesh.instance_count:
-			mm.multimesh.set_instance_custom_data(slot, data)
+## A vein node's shader data (its HP and hit times, resource_node._write_shader_data): into its own
+## model's slot, and kept on the record so the data moves with the vein when its slot does. A node
+## that is already streamed out (freed at the end of this frame) no longer owns the slot it names.
+func write_custom(slot: int, data: Color, node: Node = null) -> void:
+	for mm in _mm_live:
+		var recs: Array = _mm_live[mm]
+		if slot < 0 or slot >= recs.size():
+			continue
+		var v: Dictionary = recs[slot]
+		if node != null and v.get("node") != node:
+			continue
+		v["cd"] = data
+		(mm as MultiMeshInstance3D).multimesh.set_instance_custom_data(slot, data)
+		return
 
 # ── РЕГИОНЫ: ЖИЛЫ РОЖДАЮТСЯ КУСКАМИ, А НЕ ВСЕЙ КАРТОЙ СРАЗУ ──────────────────
 # Раньше две тысячи жил раскладывались ОДИН РАЗ при загрузке, перебором по всей карте. В мире
@@ -433,12 +447,8 @@ func _init_slots() -> void:
 		# it is black: measured on the real driver, every vein drew as a black silhouette.
 		mm.multimesh.use_colors = true
 		mm.multimesh.instance_count = cap
-		for s in cap:
-			mm.multimesh.set_instance_transform(s, ZERO_XFORM)   # пусто, пока не заполнит стриминг
-			mm.multimesh.set_instance_color(s, Color.WHITE)
-	_free.clear()
-	for s in range(cap - 1, -1, -1):
-		_free.append(s)                             # слоты cap-1..0 свободны
+		mm.multimesh.visible_instance_count = 0     # only the live ones are drawn (see _mm_live)
+		_mm_live[mm] = []
 
 ## КАКОЙ МЕТАЛЛ ЛЕЖИТ В ЭТОЙ ТОЧКЕ.
 ##
@@ -504,9 +514,14 @@ func _stream_in(v: Dictionary) -> void:
 			return                                   # вокруг всё занято: лучше без дерева, чем в стене
 		v["pos"] = spot["pos"]
 		v["gpos"] = spot["gpos"]
-	if _free.is_empty():
-		return                                       # достигнут потолок max_visible — редко (кап с запасом)
-	var slot: int = _free.pop_back()
+	var own: MultiMeshInstance3D = _model_mm(v)
+	if own == null or not _mm_live.has(own):
+		return
+	var recs: Array = _mm_live[own]
+	if recs.size() >= own.multimesh.instance_count:
+		return                                       # this model's max_visible is full - rare
+	var slot: int = recs.size()
+	recs.append(v)
 	v["slot"] = slot
 	# Each vein turned and sized by its own point: one model, and no two outcrops alike. From the
 	# position, so a vein comes back the same every time it streams in.
@@ -525,11 +540,12 @@ func _stream_in(v: Dictionary) -> void:
 	if v.get("regrow") == true:
 		v.erase("regrow")
 		custom.b = shader_now()
-	# drawn in its own model's MultiMesh, collapsed in every other
-	var own: MultiMeshInstance3D = _model_mm(v)
-	for mm in _all_mm():
-		mm.multimesh.set_instance_transform(slot, xform if mm == own else ZERO_XFORM)
-		mm.multimesh.set_instance_custom_data(slot, custom)
+	v["xf"] = xform
+	v["cd"] = custom
+	own.multimesh.set_instance_transform(slot, xform)
+	own.multimesh.set_instance_color(slot, Color.WHITE)
+	own.multimesh.set_instance_custom_data(slot, custom)
+	own.multimesh.visible_instance_count = recs.size()
 	if v["scene"] != null:
 		var node: Node3D = v["scene"].instantiate()
 		node.position = v["pos"]
@@ -558,8 +574,8 @@ func _stream_in(v: Dictionary) -> void:
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]
+		v["node"] = node                             # before add_child: its _ready writes through it
 		add_child(node)
-		v["node"] = node
 
 ## ЖИВАЯ ЖИЛА ВОЗЛЕ ТОЧКИ — узел, а не запись в _data. Спрашивать можно только про то, что
 ## сейчас стримнуто: узел с коллизией существует лишь рядом с камерой. Это ровно то, что нужно
@@ -731,13 +747,26 @@ func _free_spot_near(from: Vector3, self_v: Dictionary, check_nodes: bool) -> Va
 
 func _stream_out(v: Dictionary) -> void:
 	var slot: int = int(v["slot"])
-	for mm in _all_mm():
-		mm.multimesh.set_instance_transform(slot, ZERO_XFORM)
-	if v["node"] != null and is_instance_valid(v["node"]):
+	var own: MultiMeshInstance3D = _model_mm(v)
+	if own != null and _mm_live.has(own):
+		var recs: Array = _mm_live[own]
+		var last: int = recs.size() - 1
+		if slot >= 0 and slot <= last:
+			# The model's last live vein moves into the freed slot, so its live ones stay 0..n-1.
+			if slot != last:
+				var mv: Dictionary = recs[last]
+				recs[slot] = mv
+				mv["slot"] = slot
+				own.multimesh.set_instance_transform(slot, mv["xf"])
+				own.multimesh.set_instance_custom_data(slot, mv["cd"])
+				if is_instance_valid(mv.get("node")):
+					mv["node"].instance_id = slot
+			recs.pop_back()
+			own.multimesh.visible_instance_count = recs.size()
+	if is_instance_valid(v.get("node")):
 		v["node"].queue_free()
 	v["node"] = null
 	v["slot"] = -1
-	_free.append(slot)
 
 # ── Стриминг: держим отрисованными/активными только жилы в render_distance ─────
 ## КЛЕТКА ПЕРЕСЧЁТА. Приём взят у HTerrain (hterrain_detail_layer): он пересобирает свои

@@ -155,4 +155,4 @@ func _now() -> float:
 func _write_shader_data(data: Color) -> void:
 	var owner_node: Node = get_parent()
 	if owner_node != null and owner_node.has_method("write_custom"):
-		owner_node.write_custom(instance_id, data)
+		owner_node.write_custom(instance_id, data, self)

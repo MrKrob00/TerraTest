@@ -59,6 +59,11 @@ const AUTOSAVE_EVERY := 60.0        # 1 min: autosave period (machines, world bl
 
 var _tick: float = 0.0
 
+## THE SAVE HAS PUT THE WORLD BACK (or a fresh one started). Before this the player's machine stands
+## at the scene's default spot and a quest point measured from it lands somewhere the player is not:
+## quest_arcs waits for it through G.world_ready().
+var world_ready: bool = false
+
 func _ready() -> void:
 	# The group is how "exit to menu" (tech_ui) finds us: this node lives in the scene, not as an
 	# autoload, and there must be no path to it in code - the scene has been rearranged more than once.
@@ -67,6 +72,7 @@ func _ready() -> void:
 	# руками на один сеанс; записать это в слот значит подменить игроку его собственный мир —
 	# ошибка, которую нельзя отменить. Группа остаётся: «выход в меню» ищет нас через неё.
 	if G.proving_ground:
+		world_ready = true
 		return
 	# WAIT until the machine is actually built. Two frames are not enough: blocks.spawn_block does
 	# `await get_parent().ready` inside, so starter blocks arrive LATE. Applying the saved build at that
@@ -87,6 +93,7 @@ func _ready() -> void:
 		await _load_world()        # it awaits inside (unfreeze after teleport), so wait for it
 	else:
 		_fresh_start()
+	world_ready = true
 	var t := Timer.new()
 	t.wait_time = AUTOSAVE_EVERY
 	t.autostart = true

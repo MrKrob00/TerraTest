@@ -83,15 +83,21 @@ void vertex() {
 				INV_VIEW_MATRIX[2] * length(m[2].xyz),
 				m[3]);
 	}
+	// POSITION IS WRITTEN ON EVERY PATH. A shader that writes it anywhere makes the GLES3 vertex
+	// stage take `position` for the clip position, declared and NOT initialised
+	// (drivers/gles3/shaders/scene.glsl, OVERRIDE_POSITION): written only under `depth_lift > 0`,
+	// every other card came out at an undefined place - on the real driver, nowhere. That hid every
+	// cloud of cards (a block's glitch, a blast, a shield spark, the enemy's "!") while the ground
+	// marks, which lift, still showed.
+	vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 	if (depth_lift > 0.0) {
-		vec4 vp = MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
 		float d = length(vp.xyz);
 		vec3 n = normalize((MODELVIEW_MATRIX * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
 		// At a grazing view the ray has to travel further to rise the same height off the ground.
 		float pull = depth_lift / max(abs(dot(vp.xyz / d, n)), 0.25);
 		vp.xyz *= max(d - pull, 0.05) / d;
-		POSITION = PROJECTION_MATRIX * vp;
 	}
+	POSITION = PROJECTION_MATRIX * vp;
 }
 
 void fragment() {

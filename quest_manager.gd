@@ -160,10 +160,10 @@ func _seed_demo() -> void:
 	# цепочки нечего оборонять. Порядок здесь ЖЁСТКИЙ и по делу, а не по привычке.
 	requires("arc_salvage", ["arc_radar", "arc_battery"])
 	# ── ВЫШКИ ПОД ЩИТОМ: Charlie Watchtower и SAM Site Ridge ────────────────────
-	# Оба из плана GSO-кампании (docs/STORY_ROADMAP.md, №11 и №13) и оба про ОДНО: цель стоит
-	# под куполом, купол держат зарядные башни вокруг, и пока жива хоть одна, вышку не тронуть.
-	# Разница между ними только в цене входа: у SAM вместо пулемётов ракетницы и на одну башню
-	# больше, то есть та же задача на шаг выше.
+	# Both from the GSO campaign plan (docs/STORY_ROADMAP.md, #11 and #13), and they climb: the
+	# WATCHTOWER stands alone under a dome on its own batteries (the player: the stations made it too
+	# hard), SAM is the same dome FED by four charging towers round it - the lesson "kill what pays
+	# for the shield" moved to the second quest, where the player has a grade more to do it with.
 	#
 	# Порядок ЖЁСТКИЙ и по делу: сюда игрок приходит после «Hold the Line», где впервые дрался
 	# за неподвижную постройку. Вышка — то же самое наоборот: теперь неподвижную постройку надо
@@ -173,9 +173,9 @@ func _seed_demo() -> void:
 		{"desc": "Reach the watchtower",
 		 "event": "quest_tower_1", "goal": 1,
 		 "hint": "Something is holding a ridge out there under a shield. The System wants the ridge."},
-		{"desc": "Cut its power, then bring it down",
+		{"desc": "Drain its shield, then bring it down",
 		 "event": "quest_tower_2", "goal": 1,
-		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
+		 "hint": "Nothing feeds this dome: it runs on the tower's own batteries. Keep firing at it until it runs dry, then the tower is open."},
 	])
 	# SAM ОТКРЫВАЕТСЯ НА 5 ГРЕЙДЕ, и раньше его в журнале нет. Watchtower и SAM — одна задача
 	# дважды, и подряд они читаются как повтор; лицензия разводит их по времени и заодно
@@ -184,10 +184,10 @@ func _seed_demo() -> void:
 	add_stages("arc_sam", [
 		{"desc": "Reach the missile site",
 		 "event": "quest_sam_1", "goal": 1,
-		 "hint": "The same trick, dug in harder: rocket batteries under the dome and one more charging tower."},
+		 "hint": "Rocket batteries under a dome, and this time charging towers round it keep the dome up."},
 		{"desc": "Take the site apart",
 		 "event": "quest_sam_2", "goal": 1,
-		 "hint": "Same order as before — the towers hold the shield, the shield holds the site."},
+		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
 	])
 
 	# ── MARLIT'S CHAMPION: THE SECOND FACTION'S LICENCE ─────────────────────────

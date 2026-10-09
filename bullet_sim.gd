@@ -56,6 +56,7 @@ class Shot:
 	var trace: float = TRACE_MIN
 	var flown: float = 0.0              # metres since the muzzle: caps the trail
 	var live: bool = false
+	var last_step: Vector3 = Vector3.ZERO   # the latest tick's step, turned into `facing` when drawn
 
 	## Kept for the mortar, which turns its shell once after setting the arc; the tick turns every
 	## shot to its step anyway.
@@ -81,9 +82,28 @@ class Kind:
 	var head_col = null                 # the streak's colours when the template names its own
 	var mid_col = null
 
+## A TEMPLATE IS READ ONCE. Every shot used to ask its template for five fields by name and build its
+## model's key out of `str(transform)` (`_kind_of`): 33-57 us a round, measured, and a volley of two
+## dozen shotguns (8 pellets, two shots) and a dozen mortars (8 shells) is ~290 rounds in one frame -
+## 10-16 ms on one frame, the player's "FPS drops on every volley". Now the first shot of a template
+## reads it into a Tpl and the rest copy numbers. The template is set up in its weapon's _ready
+## (`_rebind_bullet`, `_apply_flat_range`) and then never changes; a model swapped later (a laser's
+## own bolt) is caught by `_fresh`.
+class Tpl:
+	var mi: MeshInstance3D = null
+	var mesh: Mesh = null
+	var mat: Material = null
+	var kind = null
+	var speed: float = 120.0
+	var gravity: float = 50.0
+	var min_y: float = 0.0
+	var max_life: float = 3.0
+	var mask: int = 7
+
 var _live: Array = []
 var _spare: Array = []
 var _kinds: Dictionary = {}
+var _tpls: Dictionary = {}                 # template instance id -> Tpl
 var _ray: PhysicsRayQueryParameters3D = null
 
 ## The world's simulator, made on first use under the current scene (the menu's fight has its own).
@@ -103,20 +123,26 @@ func _ready() -> void:
 
 ## A new shot, filled from the weapon's template bullet (Ammo/Bullet).
 func fire(weapon: Node, template: Node3D) -> Shot:
+	var id: int = template.get_instance_id()
+	var t: Tpl = _tpls.get(id)
+	if t == null or not _fresh(t):
+		t = _read_tpl(template)
+		_tpls[id] = t
 	var s: Shot = _spare.pop_back() if not _spare.is_empty() else Shot.new()
 	s.dir = Vector3.ZERO
 	s.t = 0.0
-	s.speed = float(template.get("speed")) if template.get("speed") != null else 120.0
-	s.bullet_gravity = float(template.get("bullet_gravity")) if template.get("bullet_gravity") != null else 50.0
-	s.min_y = float(template.get("min_y")) if template.get("min_y") != null else 0.0
-	s.max_lifetime = float(template.get("max_lifetime")) if template.get("max_lifetime") != null else 3.0
-	s.mask = (template as CollisionObject3D).collision_mask if template is CollisionObject3D else 7
+	s.speed = t.speed
+	s.bullet_gravity = t.gravity
+	s.min_y = t.min_y
+	s.max_lifetime = t.max_life
+	s.mask = t.mask
 	s.hit_normal = Vector3.UP
 	s.weapon = weapon
-	s.kind = _kind_of(template)
+	s.kind = t.kind
 	s.trace = TRACE_MIN
 	s.flown = 0.0
 	s.facing = Basis()
+	s.last_step = Vector3.ZERO
 	s.live = true
 	_live.append(s)
 	return s
@@ -129,6 +155,33 @@ func retire(s: Shot) -> void:
 	s.dir = Vector3.ZERO
 	s.weapon = null
 	s.shooter_blocks = null
+
+func _read_tpl(template: Node3D) -> Tpl:
+	var t := Tpl.new()
+	var v = template.get("speed")
+	t.speed = float(v) if v != null else 120.0
+	v = template.get("bullet_gravity")
+	t.gravity = float(v) if v != null else 50.0
+	v = template.get("min_y")
+	t.min_y = float(v) if v != null else 0.0
+	v = template.get("max_lifetime")
+	t.max_life = float(v) if v != null else 3.0
+	t.mask = (template as CollisionObject3D).collision_mask if template is CollisionObject3D else 7
+	for c in template.get_children():
+		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
+			t.mi = c
+			break
+	if t.mi != null:
+		t.mesh = t.mi.mesh
+		t.mat = t.mi.material_override
+	t.kind = _kind_of(template)
+	return t
+
+## Still the model the kind was built from: the same node, mesh and material.
+static func _fresh(t: Tpl) -> bool:
+	if t.mi == null:
+		return true
+	return is_instance_valid(t.mi) and t.mi.mesh == t.mesh and t.mi.material_override == t.mat
 
 func _kind_of(template: Node3D) -> Kind:
 	var mi: MeshInstance3D = null
@@ -253,10 +306,24 @@ static func _streak_material(src: Mesh, override: Material, k: Kind) -> ShaderMa
 func _physics_process(delta: float) -> void:
 	var _pf := Perf.now()
 	_step(delta)
-	_draw()
 	Perf.mark("bullets", _pf)
 
+## THE PICTURE IS WRITTEN ONCE A DRAWN FRAME, NOT ONCE A PHYSICS TICK. Physics runs at 60 Hz, and at
+## 25 fps a frame holds two or three ticks: every round's transform went to the MultiMesh two or
+## three times for the one picture that used the last. The rounds stand where the last tick put them,
+## exactly as before.
+func _process(_delta: float) -> void:
+	if _live.is_empty() and _drawn == 0:
+		return
+	var _pf := Perf.now()
+	_draw()
+	Perf.mark("bullet_draw", _pf)
+
+var _drawn: int = 0
+
 func _step(delta: float) -> void:
+	# one space for the whole tick, not one fetch per round
+	var space := get_world_3d().direct_space_state
 	var keep: int = 0
 	for i in _live.size():
 		var s: Shot = _live[i]
@@ -269,14 +336,15 @@ func _step(delta: float) -> void:
 		var from: Vector3 = s.global_position
 		var to: Vector3 = from + s.dir * s.speed * delta
 		to.y -= s.t * s.bullet_gravity * delta
-		if _sweep(s, from, to):
+		if _sweep(s, from, to, space):
 			if not s.live:
 				_spare.append(s)
 				continue
 		else:
 			s.global_position = to
-			s.face(to - from)
-			var step: float = from.distance_to(to)
+			# the facing is worked out where it is used, once a drawn frame (_draw), from this step
+			s.last_step = to - from
+			var step: float = s.last_step.length()
 			s.trace = clampf(step, TRACE_MIN, TRACE_MAX)
 			s.flown += step
 			if s.global_position.y < s.min_y or s.t > s.max_lifetime:
@@ -291,32 +359,31 @@ func _step(delta: float) -> void:
 	_live.resize(keep)
 
 ## The whole step, one ray, skipping our own blocks and friendly domes. true: something was hit.
-func _sweep(s: Shot, from: Vector3, to: Vector3) -> bool:
-	var space := get_world_3d().direct_space_state
+func _sweep(s: Shot, from: Vector3, to: Vector3, space: PhysicsDirectSpaceState3D) -> bool:
 	if space == null:
 		return false
 	var step: Vector3 = to - from
 	if step.length_squared() < 0.000001:
 		return false
-	var fwd: Vector3 = step.normalized()
 	if _ray == null:
 		_ray = PhysicsRayQueryParameters3D.new()
 		_ray.collide_with_areas = false
 	var start: Vector3 = from
-	var own_root: Node = s.shooter_blocks.get_parent() if is_instance_valid(s.shooter_blocks) else null
+	_ray.collision_mask = s.mask
 	for _i in SWEEP_OWN_TRIES + 1:
 		_ray.from = start
 		_ray.to = to
-		_ray.collision_mask = s.mask
 		var h := space.intersect_ray(_ray)
 		if h.is_empty():
 			return false
+		# what was hit is looked at only when something was: most ticks of most rounds hit nothing
 		var body = h.get("collider")
-		if body != null and is_instance_valid(s.shooter_blocks) and body.get_parent() == s.shooter_blocks:
-			start = (h["position"] as Vector3) + fwd * SWEEP_SKIP
+		var own_blocks = s.shooter_blocks if is_instance_valid(s.shooter_blocks) else null
+		if body != null and own_blocks != null and body.get_parent() == own_blocks:
+			start = (h["position"] as Vector3) + step.normalized() * SWEEP_SKIP
 			continue
-		if body != null and G.is_friendly_dome(body, own_root):
-			start = (h["position"] as Vector3) + fwd * SWEEP_SKIP
+		if body != null and G.is_friendly_dome(body, own_blocks.get_parent() if own_blocks != null else null):
+			start = (h["position"] as Vector3) + step.normalized() * SWEEP_SKIP
 			continue
 		s.global_position = h["position"]
 		s.hit_normal = h.get("normal", Vector3.UP)
@@ -350,23 +417,29 @@ static func _room(mm: MultiMesh, n: int) -> void:
 func _draw() -> void:
 	for key in _kinds:
 		(_kinds[key] as Kind).count = 0
-	for s in _live:
-		var k: Kind = (s as Shot).kind
+	for sh in _live:
+		var s: Shot = sh
+		var k: Kind = s.kind
 		if k == null:
 			continue
+		if s.last_step != Vector3.ZERO:
+			s.face(s.last_step)
+			s.last_step = Vector3.ZERO
 		var mm: MultiMesh = k.mmi.multimesh
-		_room(mm, k.count)
-		var at := Transform3D((s as Shot).facing, (s as Shot).global_position)
-		var sc: Vector3 = k.scale0
+		if k.count >= mm.instance_count:
+			_room(mm, k.count)
+		var at := Transform3D(s.facing, s.global_position)
 		if k.streak:
-			var length: float = minf((s as Shot).speed * TRAIL_TIME, TRAIL_MAX)
-			length = clampf((s as Shot).flown - k.tail * (s as Shot).trace, 0.0, length)
+			var length: float = minf(s.speed * TRAIL_TIME, TRAIL_MAX)
+			length = clampf(s.flown - k.tail * s.trace, 0.0, length)
 			mm.set_instance_transform(k.count, at)
-			mm.set_instance_custom_data(k.count, Color(length, (s as Shot).trace, 0.0, 0.0))
+			mm.set_instance_custom_data(k.count, Color(length, s.trace, 0.0, 0.0))
 		else:
-			sc[k.axis] = k.scale0[k.axis] * (s as Shot).trace
+			var sc: Vector3 = k.scale0
+			sc[k.axis] = k.scale0[k.axis] * s.trace
 			mm.set_instance_transform(k.count, at * Transform3D(k.rot * Basis.from_scale(sc), k.origin))
 		k.count += 1
 	for key in _kinds:
 		var k: Kind = _kinds[key]
 		k.mmi.multimesh.visible_instance_count = k.count
+	_drawn = _live.size()
