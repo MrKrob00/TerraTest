@@ -147,10 +147,23 @@ func _ready() -> void:
 	# ЖИЛЫ БОЛЬШЕ НЕ РАСКЛАДЫВАЮТСЯ ОДНИМ КУСКОМ. Пул слотов заводим здесь, а сами жилы рождают
 	# регионы по мере того, как игрок к ним подъезжает (_regions_tick).
 	_init_slots()
+	_far = FAR_TREES_SCRIPT.new()
+	add_child(_far)
+	_far.setup()
+	_far.set_reach(FAR_TREES * FAR_FADE, FAR_TREES)
 	_regions_tick()
 
 ## Red digits off a struck vein (vein_digits.gd): one pool for every vein, asked by resource_node.hurt.
 const VEIN_DIGITS := preload("res://vein_digits.gd")
+
+## THE FAR TREES (far_trees.gd): past `render_distance` a tree is a picture of itself out to FAR_TREES,
+## from the same record, in the same pass that streams the models; the last FAR_FADE of the way it
+## dissolves. A forest used to end at 160 m, where the haze has barely begun (150..750). Untyped: the
+## script has no class_name (CLAUDE.md rule 19).
+const FAR_TREES_SCRIPT := preload("res://far_trees.gd")
+const FAR_TREES := 420.0
+const FAR_FADE := 0.85
+var _far = null
 var _digits: Node = null
 
 func vein_hit(vein: Node3D) -> void:
@@ -263,8 +276,17 @@ const REGION := 256
 const VEINS_PER_REGION := 33
 ## На сколько регионов вокруг игрока держим жилы. Один в каждую сторону — это 768 клеток по
 ## диагонали, вдвое больше дальности отрисовки: жила успевает родиться задолго до того, как её
-## станет видно.
+## станет видно. These are built AT ONCE: they hold every vein a drill or a miner can reach.
 const REGION_KEEP := 1
+## THE FAR TREES NEED A RING MORE (`FAR_TREES` 420 m: one ring guarantees only 256 m, from a region's
+## edge), and a region that far out costs 127-158 ms to build on the debug build against 8 ms for one
+## the ground is already up under - its heights are new to the terrain. So the outer ring is built a
+## SLICE A FRAME (`_region_step`, `REGION_SLICE_USEC`), nearest first; the slicing changes nothing
+## about what is laid, since one region's rng draws in one order however the work is cut. A region
+## that comes inside REGION_KEEP while its job is half done is finished on the spot.
+const REGION_FAR := 2
+const REGION_SLICE_USEC := 1500
+var _region_jobs: Array = []
 
 var _regions: Dictionary = {}          # Vector2i региона → Array записей жил
 var _region_center := Vector2i(999999, 999999)
@@ -280,8 +302,8 @@ func _regions_tick() -> void:
 		return
 	_region_center = here
 	var want := {}
-	for dz in range(-REGION_KEEP, REGION_KEEP + 1):
-		for dx in range(-REGION_KEEP, REGION_KEEP + 1):
+	for dz in range(-REGION_FAR, REGION_FAR + 1):
+		for dx in range(-REGION_FAR, REGION_FAR + 1):
 			want[here + Vector2i(dx, dz)] = true
 	for k in _regions.keys():
 		if not want.has(k):
@@ -289,10 +311,42 @@ func _regions_tick() -> void:
 				if int(v["slot"]) >= 0:
 					_stream_out(v)          # слот и узел отдаём до того, как забудем запись
 			_regions.erase(k)
+	var jobs: Dictionary = {}
+	for j in _region_jobs:
+		if want.has(j["rk"]):
+			jobs[j["rk"]] = j
+	var queue: Array = []
 	for k in want:
-		if not _regions.has(k):
-			_regions[k] = _build_region(k)
+		if _regions.has(k):
+			continue
+		var job: Dictionary = jobs.get(k, {})
+		if job.is_empty():
+			job = _region_job(k)
+		if maxi(absi(k.x - here.x), absi(k.y - here.y)) <= REGION_KEEP:
+			_region_step(job, 0)               # a vein in reach is never late: built now
+			_regions[k] = job["out"]
+		else:
+			queue.append(job)
+	var p := _player_point()
+	queue.sort_custom(func(a, b): return _region_d2(a["rk"], p) < _region_d2(b["rk"], p))
+	_region_jobs = queue
 	_rebuild_data()
+
+func _region_d2(rk: Vector2i, p: Vector3) -> float:
+	return Vector2((rk.x + 0.5) * REGION - p.x, (rk.y + 0.5) * REGION - p.z).length_squared()
+
+## The outer ring's next slice (called every frame): a finished region joins the data, and the next
+## streaming pass takes its trees in (`_last_cell` forgotten).
+func _region_jobs_tick() -> void:
+	if _region_jobs.is_empty():
+		return
+	var job: Dictionary = _region_jobs[0]
+	if not _region_step(job, REGION_SLICE_USEC):
+		return
+	_region_jobs.pop_front()
+	_regions[job["rk"]] = job["out"]
+	_rebuild_data()
+	_last_cell = Vector2i(1 << 30, 1 << 30)
 
 func _player_point() -> Vector3:
 	var pts: Array = G.active_points()
@@ -355,18 +409,32 @@ func clear_made() -> int:
 ## Жилы ОДНОГО региона. Своё зерно от сида мира и координат: соседний регион считается
 ## независимо, а этот всегда даёт одно и то же.
 func _build_region(rk: Vector2i) -> Array:
-	var map: Node = get_parent()
-	if map == null or not map.has_method("terrain_height_at"):
-		return []
-	var can_biome: bool = map.has_method("biome_at")
+	var job := _region_job(rk)
+	_region_step(job, 0)
+	return job["out"]
+
+## A region's placement as a job that can stop between candidates and go on later (see REGION_FAR).
+func _region_job(rk: Vector2i) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector3i(rk.x, rk.y, int(G.world_seed)))
-	var out: Array = []
-	var grid: Dictionary = {}
+	return {"rk": rk, "rng": rng, "out": [], "grid": {}, "tries": VEINS_PER_REGION * 12}
+
+## Runs the job until its region is laid or `budget_usec` is spent (0: no limit); true when laid.
+func _region_step(job: Dictionary, budget_usec: int) -> bool:
+	var map: Node = get_parent()
+	if map == null or not map.has_method("terrain_height_at"):
+		return true
+	var can_biome: bool = map.has_method("biome_at")
+	var rk: Vector2i = job["rk"]
+	var rng: RandomNumberGenerator = job["rng"]
+	var out: Array = job["out"]
+	var grid: Dictionary = job["grid"]
 	var cell: float = maxf(min_spacing, 0.001)
-	var tries: int = VEINS_PER_REGION * 12
-	while out.size() < VEINS_PER_REGION and tries > 0:
-		tries -= 1
+	var t0 := Time.get_ticks_usec()
+	while out.size() < VEINS_PER_REGION and int(job["tries"]) > 0:
+		if budget_usec > 0 and Time.get_ticks_usec() - t0 > budget_usec:
+			return false
+		job["tries"] = int(job["tries"]) - 1
 		var gx: float = float(rk.x * REGION) + rng.randf() * REGION
 		var gz: float = float(rk.y * REGION) + rng.randf() * REGION
 		var world := Vector3(gx, 0.0, gz)
@@ -396,7 +464,7 @@ func _build_region(rk: Vector2i) -> Array:
 					if not resource_nodes.is_empty() else null,
 			"ore_type": ore_type, "wood": wood, "tree": kind, "slot": -1, "node": null,
 		})
-	return out
+	return true
 
 # Есть ли принятая точка ближе min_spacing? Смотрим только свою и 8 соседних ячеек решётки.
 func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
@@ -525,15 +593,8 @@ func _stream_in(v: Dictionary) -> void:
 	v["slot"] = slot
 	# Each vein turned and sized by its own point: one model, and no two outcrops alike. From the
 	# position, so a vein comes back the same every time it streams in.
-	var gp: Vector3 = v["gpos"]
-	var hh: int = hash(Vector2i(int(gp.x * 8.0), int(gp.z * 8.0)))
-	var yaw: float = float(hh % 6283) * 0.001
-	var size: float = VEIN_SCALE_MIN + float((hh >> 13) % 1000) * 0.001 * (VEIN_SCALE_MAX - VEIN_SCALE_MIN)
-	if v.get("wood") == true:
-		size *= TREE_SCALE
-	else:
-		size *= VEIN_SIZE
-	var vbasis := Basis(Vector3.UP, yaw).scaled(Vector3.ONE * size)
+	var ts: Vector2 = _turn_of(v["gpos"], v.get("wood") == true)
+	var vbasis := Basis(Vector3.UP, ts.x).scaled(Vector3.ONE * ts.y)
 	var xform := Transform3D(vbasis, v["pos"])
 	# G=1 whole, A the type; B the time it came back - a replanted tree grows in its new spot
 	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))
@@ -576,6 +637,14 @@ func _stream_in(v: Dictionary) -> void:
 			node.ore_color = ore_colors[v["ore_type"]]
 		v["node"] = node                             # before add_child: its _ready writes through it
 		add_child(node)
+
+## A vein's turn (x, radians) and size (y) from its point: the model (`_stream_in`) and the far tree's
+## picture (`_process`) both read it here, or a far tree would turn and grow as it came near.
+func _turn_of(gp: Vector3, wood: bool) -> Vector2:
+	var hh: int = hash(Vector2i(int(gp.x * 8.0), int(gp.z * 8.0)))
+	var yaw: float = float(hh % 6283) * 0.001
+	var size: float = VEIN_SCALE_MIN + float((hh >> 13) % 1000) * 0.001 * (VEIN_SCALE_MAX - VEIN_SCALE_MIN)
+	return Vector2(yaw, size * (TREE_SCALE if wood else VEIN_SIZE))
 
 ## ЖИВАЯ ЖИЛА ВОЗЛЕ ТОЧКИ — узел, а не запись в _data. Спрашивать можно только про то, что
 ## сейчас стримнуто: узел с коллизией существует лишь рядом с камерой. Это ровно то, что нужно
@@ -778,6 +847,7 @@ var _last_cell := Vector2i(1 << 30, 1 << 30)
 
 func _process(delta: float) -> void:
 	_tick_clock()
+	_region_jobs_tick()
 	if _data.is_empty():
 		return
 	_cull_t -= delta
@@ -817,6 +887,9 @@ func _process(delta: float) -> void:
 	var step: int = maxi(n / OCCL_SLICES, 1)
 	_occl_cursor = (_occl_cursor + step) % maxi(n, 1)
 	var slice_to: int = slice_from + step
+	var far2: float = FAR_TREES * FAR_TREES
+	var cards: Array = []
+	var pts: Array = G.active_points()          # once a pass, not once a vein (G.near_active)
 	var i: int = -1
 	for v in _data:
 		i += 1
@@ -829,7 +902,12 @@ func _process(delta: float) -> void:
 		# это не картинка, а узел с коллизией, по которому работают бур и авто-шахтёр. У базы
 		# на другом конце карты бур грызёт свою жилу, пока игрок ездит другой машиной, — и если
 		# мерить только от камеры, жила под ним исчезнет вместе с добычей.
-		var kept: bool = dist2 <= keep2 or G.near_active(gp, keep_radius)
+		var kept: bool = dist2 <= keep2
+		if not kept:
+			for q in pts:
+				if (q as Vector3).distance_squared_to(gp) <= keep2:
+					kept = true
+					break
 		# kept идёт ПЕРВЫМ и без оглядки на радиус камеры: жила у базы за пятьсот метров всё
 		# равно обязана быть узлом, иначе стоящий на ней авто-шахтёр добывает воздух.
 		var near: bool = kept or (dist2 <= d2 and to.normalized().dot(fwd) >= view_cos)
@@ -842,6 +920,15 @@ func _process(delta: float) -> void:
 			_stream_in(v)
 		elif not near and shown:
 			_stream_out(v)
+		# A FAR TREE: past the models' reach, ahead, standing (a felled one keeps G under a half
+		# until it comes back), drawn as its picture.
+		if not near and dist2 > d2 and dist2 <= far2 and v.get("wood") == true \
+				and to.dot(fwd) >= view_cos * sqrt(dist2) \
+				and not (v.has("cd") and (v["cd"] as Color).g < 0.5):
+			var ts: Vector2 = _turn_of(gp, true)
+			cards.append([v["pos"], ts.x, ts.y, int(v.get("tree", 0))])
+	if _far != null:
+		_far.set_trees(cards)
 	Perf.mark("veins", _pf)
 
 
