@@ -241,6 +241,25 @@ func probe_ground(space: PhysicsDirectSpaceState3D, query: PhysicsRayQueryParame
 			contact_distance = INF
 	return grounded
 
+## THE SAME PROBE ASKED OF THE TERRAIN'S OWN HEIGHTS (`ChunkTerrain.ground_sample`: height and the
+## patch's slope), which is all a ray on layer 1 can hit - the ground's collision tiles are cut from
+## those heights. The ray's span is kept: ground above `PROBE_LIFT` or below `_probe_len` is a miss,
+## as it was for the ray. Asked through `MachineBody._check_ground`, which picks the one it can.
+func probe_height(terr: Node, at: Vector3) -> bool:
+	var g: Vector3 = terr.ground_sample(at)
+	if g.x > at.y + PROBE_LIFT or g.x < at.y - _probe_len():
+		contact_distance = INF
+		grounded = false
+		_ride_effective = ride_height
+		return false
+	contact_distance = at.y - g.x
+	var ny: float = 1.0 / sqrt(1.0 + g.y * g.y + g.z * g.z)   # the up part of the patch's normal
+	_ride_effective = ride_height / clampf(ny, 1.0 / SLOPE_MAX, 1.0)
+	grounded = contact_distance <= _ride_effective + suspension_travel + 0.15
+	if not grounded:
+		contact_distance = INF
+	return grounded
+
 # Сжатие подвески В МЕТРАХ: насколько ось ближе к земле, чем радиус колеса. Отрицательное —
 # колесо вывешено (машина подпрыгнула). Ограничено ходом в обе стороны.
 func suspension_sag() -> float:
@@ -248,18 +267,26 @@ func suspension_sag() -> float:
 		return -suspension_travel
 	return clampf(_ride_effective - contact_distance, -suspension_travel, suspension_travel)
 
-func _physics_process(delta: float) -> void:
-	var _pf := Perf.now()          # profiler mark (perf.gd)
-	_tick_wheel(delta)
-	Perf.mark("wheels", _pf)
+## THE WHEEL'S PICTURE, AND NOTHING ELSE IS LEFT IN A WHEEL'S TICK - SO IT HAS NO TICK. The physics
+## reads the machine's own steering (`MachineBody._steer_angle`) and the probe the machine runs
+## (`_check_ground`); the knuckle's turn, the arm's travel and the tyre's roll are only seen. They used
+## to run every physics tick for every wheel in the world, off screen and a kilometre off included,
+## and three times for one picture at 20 fps. Now the machine's batch calls this once a DRAWN frame,
+## and only while the machine is in view and near (`MachineBatch._tick_parts`), with the machine's
+## throttle and steering and the time since it last did.
+func tick_visual(delta: float, throttle: float, steer_norm: float, body: RigidBody3D) -> void:
+	throttle_input = throttle
+	set_steer(steer_norm)
+	_tick_wheel(delta, body)
 
-func _tick_wheel(delta: float) -> void:
+func _tick_wheel(delta: float, body: RigidBody3D = null) -> void:
 	var target_angle: float = deg_to_rad(steer_input * MAX_STEER_ANGLE)
-	current_steer_angle = lerp(current_steer_angle, target_angle, STEER_SPEED * delta)
+	# clamped: a far machine's picture is updated every few frames, with the time between
+	current_steer_angle = lerp(current_steer_angle, target_angle, minf(STEER_SPEED * delta, 1.0))
 
 	_steer_wheel()
 	_apply_suspension_visual()
-	_roll_tyre(delta)
+	_roll_tyre(delta, body)
 
 # ── КАЧЕНИЕ ПОКРЫШКИ ─────────────────────────────────────────────────────────
 # КОЛЕСО КРУТИТСЯ ОТ ПРОЙДЕННОГО ПУТИ, А НЕ ОТ ГАЗА. Раньше угол копился как
@@ -275,7 +302,7 @@ func _tick_wheel(delta: float) -> void:
 #
 # В ВОЗДУХЕ катиться не по чему, и там остаётся газ (SPIN_SPEED): вывешенное колесо под тягой
 # крутится, и это ровно то, чего ждёшь от вывешенного колеса.
-func _roll_tyre(delta: float) -> void:
+func _roll_tyre(delta: float, body: RigidBody3D = null) -> void:
 	if _tyre == null or _radius <= 0.0:
 		return
 	# THE SPIN IS THE ROLLING ITSELF, PROJECTED ON THE TYRE'S OWN AXLE: omega = n x v / r, read along
@@ -283,7 +310,8 @@ func _roll_tyre(delta: float) -> void:
 	# of the machine the wheel stood on, which only held for tyres whose axle points into the hull
 	# from the left or the right; a stabiliser on the nose and one on the tail face each other, and
 	# one of the two rolled backwards. The projection needs no guess for any mount.
-	var body := _root_body() as RigidBody3D
+	if body == null:
+		body = _root_body() as RigidBody3D
 	if body == null:
 		return
 	var w := Vector3.ZERO

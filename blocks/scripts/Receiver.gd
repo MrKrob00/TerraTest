@@ -38,6 +38,7 @@ func _accept_item(item: Node3D) -> void:
 		item.freeze = true
 	item.reparent($resources, true)
 	inventory.append(item)
+	_wake_retry()
 	var target_pos: Vector3 = _stack_pos(inventory.find(item))
 	var tween: Tween = create_tween()
 	tween.tween_property(item, "position", target_pos, 0.3)
@@ -168,6 +169,9 @@ func _on_next_block_freed() -> void:
 ## was laid (an anchored base in the garage takes everything in five metres at once) or while the
 ## awaited belt was picked up and relaid then sat on the receiver for good - and at `capacity` it
 ## stops taking, so nothing ever came in to kick it again.
+func _retry_needed() -> bool:
+	return not inventory.is_empty()
+
 func push_retry_tick(delta: float) -> void:
 	if inventory.is_empty() or not _factory_active():
 		return

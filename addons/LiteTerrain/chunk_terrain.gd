@@ -373,6 +373,11 @@ func _ground_at(wx: float, wz: float, edits: Array) -> float:
 var _memo: Dictionary = {}
 const MEMO_CAP := 1 << 16
 
+## A CELL A BUILT LEVEL-0 CHUNK ALREADY HOLDS IS READ FROM IT (`_hc`, the heights its mesh or its
+## collision tile was cut from, edits included), and the generator is asked only for a cell no such
+## chunk covers. A new cell from the generator costs ~364 us on the optimize=none build against
+## ~16 us for a remembered one, and every machine that moves meets new cells every tick - and level-0
+## chunks and collision tiles stand exactly where machines drive.
 func _memo_h(cx: int, cz: int) -> float:
 	var k: int = ((cx & 0x3FFFFFF) << 26) | (cz & 0x3FFFFFF)
 	var v = _memo.get(k)
@@ -380,7 +385,14 @@ func _memo_h(cx: int, cz: int) -> float:
 		return v
 	if _memo.size() > MEMO_CAP:
 		_memo.clear()
-	var h: float = _ground_at(float(cx), float(cz), _flat_edits)
+	var h: float
+	var gx: int = floori(float(cx) / CHUNK)
+	var gz: int = floori(float(cz) / CHUNK)
+	var built = _hc.get(_key(0, gx, gz))
+	if built != null and (built as PackedFloat32Array).size() == APRON * APRON:
+		h = (built as PackedFloat32Array)[(cz - gz * CHUNK + 1) * APRON + (cx - gx * CHUNK + 1)]
+	else:
+		h = _ground_at(float(cx), float(cz), _flat_edits)
 	_memo[k] = h
 	return h
 
@@ -389,7 +401,8 @@ func _memo_h(cx: int, cz: int) -> float:
 func terrain_height_at(world_pos: Vector3) -> float:
 	if _gen == null:
 		return 0.0
-	var p: Vector3 = global_transform.affine_inverse() * world_pos
+	var xf: Transform3D = global_transform
+	var p: Vector3 = world_pos if xf == Transform3D.IDENTITY else xf.affine_inverse() * world_pos
 	var x0 := int(floor(p.x))
 	var z0 := int(floor(p.z))
 	var tx: float = p.x - float(x0)
@@ -399,7 +412,30 @@ func terrain_height_at(world_pos: Vector3) -> float:
 	var h01 := _memo_h(x0, z0 + 1)
 	var h11 := _memo_h(x0 + 1, z0 + 1)
 	var h: float = lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
-	return (global_transform * Vector3(p.x, h, p.z)).y
+	return h if xf == Transform3D.IDENTITY else (xf * Vector3(p.x, h, p.z)).y
+
+## THE GROUND UNDER A WHEEL: (height, dh/dx, dh/dz) at a world point, from the same four cell
+## corners `terrain_height_at` reads - the slope is that bilinear patch's own, so a wheel's normal
+## and its height agree. It answers what a ray on layer 1 used to (the collision tile is cut from
+## these very heights): a ray into Jolt's heightfield cost 46.8 us on the booted world against
+## ~16 us here, and the two agreed within 8 mm over 300 points (`MachineBody._check_ground`).
+func ground_sample(world_pos: Vector3) -> Vector3:
+	if _gen == null:
+		return Vector3.ZERO
+	var xf: Transform3D = global_transform
+	var p: Vector3 = world_pos if xf == Transform3D.IDENTITY else xf.affine_inverse() * world_pos
+	var x0 := int(floor(p.x))
+	var z0 := int(floor(p.z))
+	var tx: float = p.x - float(x0)
+	var tz: float = p.z - float(z0)
+	var h00 := _memo_h(x0, z0)
+	var h10 := _memo_h(x0 + 1, z0)
+	var h01 := _memo_h(x0, z0 + 1)
+	var h11 := _memo_h(x0 + 1, z0 + 1)
+	var h: float = lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
+	if xf != Transform3D.IDENTITY:
+		h = (xf * Vector3(p.x, h, p.z)).y
+	return Vector3(h, lerpf(h10 - h00, h11 - h01, tz), lerpf(h01 - h00, h11 - h10, tx))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Правки рельефа

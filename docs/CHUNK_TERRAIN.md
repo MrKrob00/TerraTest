@@ -227,6 +227,13 @@ LOD — это слияние чанков: четыре соседних ста
 `terrain_height_at` билинейна по четырём узлам сетки — ровно так же, как землю описывает меш и
 режет коллизия, поэтому колесо и картинка не расходятся. Ответы запоминаются по узлу сетки.
 
+A grid node a built level-0 chunk already holds is read from that chunk's heights (`_hc`, edits
+included), and only a node no such chunk covers is computed by the generator (~364 us against ~16
+on the optimize=none build). `ground_sample(point)` returns the height and the bilinear patch's
+slope (dh/dx, dh/dz) from the same four nodes: it is what the wheels probe instead of a ray
+(`Wheel.probe_height`) - layer 1 is the terrain alone, and its collision tiles are cut from these
+heights, so the ray could not answer anything else.
+
 `get_dims()` отдаёт **номинальный** квадрат (`world_cells`): у земли края нет, но магазинам, жилам
 и укреплённым точкам нужен прямоугольник, в котором они раскладываются.
 

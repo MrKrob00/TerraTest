@@ -85,7 +85,22 @@ func _on_exit(n: Node) -> void:
 		_by_block.erase(id)
 	_dirty = true
 
-func _process(_delta: float) -> void:
+## THE MOVING PARTS ARE DRAWN AT THE RATE THEY ARE SEEN, AND THE WHEELS' PICTURE IS POSED HERE.
+## A wheel's knuckle, arm and tyre are picture only (`Wheel.tick_visual`; the physics reads the
+## machine), and they used to be posed every physics tick in every wheel's own `_physics_process` -
+## off screen, a hundred metres off, and two or three times for one picture at 20-25 fps. Now this
+## pass poses them and copies the parts into the batch once a DRAWN frame, only while the machine is
+## in view (frustum culling hides it, `is_visible_in_tree`), every frame within `PARTS_NEAR`, every
+## `PARTS_MID_EVERY`-th frame out to `PARTS_FAR` (staggered by machine) and not at all past it: a tyre
+## or a turret's turn is a few pixels there, and the machine itself still moves - the batch rides it.
+const PARTS_NEAR := 45.0
+const PARTS_FAR := 110.0
+const PARTS_MID_EVERY := 3
+const PARTS_DT_MAX := 0.25      # s: the most one late pose catches up (a steer lerp, a tyre's turn)
+var _parts_dt: float = 0.0
+var _parts_n: int = 0
+
+func _process(delta: float) -> void:
 	var _pf := Perf.now()
 	if _dirty:
 		_dirty = false
@@ -93,8 +108,37 @@ func _process(_delta: float) -> void:
 	elif is_visible_in_tree():
 		if _view_changed():
 			_apply_view()
-		_update_moving()
+		_parts_dt += delta
+		if _parts_due():
+			_tick_parts(minf(_parts_dt, PARTS_DT_MAX))
+			_parts_dt = 0.0
+			_update_moving()
 	Perf.mark("batch", _pf)
+
+func _parts_due() -> bool:
+	var cam: Camera3D = get_viewport().get_camera_3d()
+	if cam == null or not is_instance_valid(_machine):
+		return true
+	var d2: float = cam.global_position.distance_squared_to(_machine.global_position)
+	if d2 <= PARTS_NEAR * PARTS_NEAR:
+		return true
+	if d2 >= PARTS_FAR * PARTS_FAR:
+		return false
+	_parts_n += 1
+	return (_parts_n + get_instance_id()) % PARTS_MID_EVERY == 0
+
+## The wheels' picture from the machine's throttle and steering (`MachineBody.push_drive_input`).
+func _tick_parts(dt: float) -> void:
+	var ws = _machine.get(&"Wheels")
+	if not (ws is Array) or (ws as Array).is_empty():
+		return
+	var thr: float = float(_machine.call(&"drive_throttle")) if _machine.has_method(&"drive_throttle") else 0.0
+	var st = _machine.get(&"drive_steer")
+	var steer: float = float(st) if st != null else 0.0
+	var body: RigidBody3D = _machine as RigidBody3D
+	for w in ws:
+		if is_instance_valid(w):
+			w.tick_visual(dt, thr, steer, body)
 
 func _restore(mi) -> void:
 	if not is_instance_valid(mi):

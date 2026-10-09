@@ -1316,7 +1316,8 @@ func _process(delta: float) -> void:
 var _perf_panel: PanelContainer = null
 var _perf_label: Label = null
 ## Marks taken inside _physics_process — they belong to the physics budget, not the idle one.
-const PERF_PHYS_KEYS := ["machines", "enemies", "weapons", "wheels", "factory", "bullets", "camera"]
+## (The wheels have no tick of their own any more: their picture is in "batch", a frame mark.)
+const PERF_PHYS_KEYS := ["machines", "enemies", "weapons", "factory", "bullets", "camera"]
 ## The panel is refreshed a few times per second, not every frame: numbers that change 60
 ## times a second cannot be read, and the panel itself would distort what it measures.
 const PERF_REFRESH := 0.25

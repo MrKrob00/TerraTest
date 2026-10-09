@@ -225,12 +225,16 @@ func _process(delta: float) -> void:
 		var t: float = f["t"]
 		var g: Dictionary = _groups.get(f["group"], {})
 		var b = g.get("block")
-		if t >= total or not is_instance_valid(b):
+		# A block still alive but out of the tree (its machine taken off in a round reset, a block on
+		# its way to being freed) is gone as far as a flight goes: it has no global position, and
+		# asking for one is an engine error a frame.
+		var gone: bool = not is_instance_valid(b) or not (b as Node).is_inside_tree()
+		if t >= total or gone:
 			# A long frame can carry a flight from the air straight past its end: it still lands, or
 			# the group stayed in `_groups` and that block was never mended by this unit again.
 			if not f.get("landed", false):
 				f["landed"] = true
-				if is_instance_valid(b):
+				if not gone:
 					_land(f["group"])
 				else:
 					_groups.erase(f["group"])

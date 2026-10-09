@@ -19,7 +19,10 @@ extends VehicleBlock
 
 ## Сколько в нём СЕЙЧАС. Новый блок приходит пустым: заряд — это то, что машина в него
 ## положила, а не подарок за постановку.
-var charge: float = 0.0
+var charge: float = 0.0:
+	set(v):
+		charge = v
+		_show_charge()
 
 ## Долить. Возвращает, сколько НЕ влезло, — вызывающий раздаёт остаток дальше.
 func charge_add(amount: float) -> float:
@@ -67,15 +70,25 @@ func _ready() -> void:
 		if r != null:
 			_rings.append(r)
 	super._ready()
+	_show_charge()
 
-# Polled rather than set from charge_add/charge_take: the save and the enemy's full start write
-# `charge` straight in.
+# SHOWN WHEN `charge` IS WRITTEN (its setter), not polled: the setter also catches the save and an
+# enemy's full start, which write the field straight in. Only a battery blinking its last segment
+# ticks a frame - it was every battery in the world, every frame, to find the same picture.
 func _process(_delta: float) -> void:
+	_show_charge()
+
+func _show_charge() -> void:
 	if _segs.is_empty():
+		if is_processing():
+			set_process(false)            # nothing to show (or not ready yet: _ready asks again)
 		return
 	var f: float = clampf(charge / capacity, 0.0, 1.0) if capacity > 0.0 else 0.0
 	var lit: int = clampi(ceili(f * _segs.size() - 0.001), 0, _segs.size())
-	if lit == 1 and f < LOW_FRAC and (Time.get_ticks_msec() / BLINK_MS) % 2 == 1:
+	var low: bool = lit == 1 and f < LOW_FRAC
+	if low != is_processing():
+		set_process(low)
+	if low and (Time.get_ticks_msec() / BLINK_MS) % 2 == 1:
 		lit = 0
 	# the rings have thresholds of their own (anything in it / over half), so they are part of what
 	# is compared: behind the segment count alone a first trickle of charge never lit Ring0

@@ -399,6 +399,9 @@ func _spawn_fighter(side: int) -> void:
 	# so neither of them counts as the player's.
 	e.set("faction", 1 + side)
 	e.set("demo", true)
+	# Its wheels read THIS map's heights (MachineBody.ground_node): the next round's map is built at
+	# the same origin while this one is on screen, and the world's `/root/Main/map` is not here.
+	e.set("ground_node", _map)
 	_machines_root.add_child(e)
 	var dir := Vector3(cos(_ring_ang), 0.0, sin(_ring_ang))
 	var p: Vector3 = _fight_centre + (dir * (START_GAP * 0.5) if side == 0 else dir * (-START_GAP * 0.5))
