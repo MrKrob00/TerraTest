@@ -115,7 +115,11 @@ func _process(_delta: float) -> void:
 	var now: float = Time.get_ticks_msec() * 0.001
 	var i: int = 0
 	while i < _anchors.size():
-		if (now - _t0[i]) >= _dur[i] or (_anchored[i] == 1 and not is_instance_valid(_anchors[i])):
+		# an anchor that left the tree takes its cloud with it, as it did when the cloud was its
+		# child: still valid but detached (a round reset, a block being freed), it has no global
+		# transform to ride - asking for one is an engine error
+		if (now - _t0[i]) >= _dur[i] or (_anchored[i] == 1 and (not is_instance_valid(_anchors[i])
+				or not (_anchors[i] as Node).is_inside_tree())):
 			_drop(i)
 			continue
 		i += 1

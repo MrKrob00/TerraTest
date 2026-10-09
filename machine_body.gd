@@ -70,8 +70,6 @@ var _wheel_count: int = 0
 
 var _mass_wheels_n: int = -1
 var _mass_timer: float = 0.0
-var _drive_cache: Array = []
-var _drive_n: int = -1
 
 # Bottom of the machine in local space (negative) - used by the ground check when no wheels are left.
 var _body_drop: float = -0.5
@@ -550,27 +548,17 @@ func _apply_suspension() -> void:
 			continue                        # suspension must never pull the body DOWN
 		apply_force(up * force, arm)
 
-# Throttle and steering go to the wheel blocks: that is what makes them spin and turn visually.
+# Throttle and steering for the wheels' PICTURE. Kept here and handed to the wheels by the batch
+# when it draws them (`MachineBatch._tick_parts` -> `Wheel.tick_visual`): this used to call two
+# methods on every wheel every physics tick, for a picture drawn once a frame or not at all.
+var drive_steer: float = 0.0
+
 func push_drive_input(steer_norm: float) -> void:
-	for block in _drive_blocks():
-		if not is_instance_valid(block):
-			_drive_n = -1               # block destroyed: force a cache rebuild
-			continue
-		block.set_throttle(_throttle)
-		block.set_steer(steer_norm)
+	drive_steer = steer_norm
 
-# Blocks that accept throttle and steering (wheels). The cache is invalidated by child count.
-func _drive_blocks() -> Array:
-	var bl: Node = _blocks_root()
-	if bl == null:
-		return []
-	if bl.get_child_count() != _drive_n:
-		_drive_n = bl.get_child_count()
-		_drive_cache.clear()
-		for b in bl.get_children():
-			if b.has_method("set_throttle") and b.has_method("set_steer"):
-				_drive_cache.append(b)
-	return _drive_cache
+## The throttle the wheels show (the physics reads `_throttle` itself).
+func drive_throttle() -> float:
+	return _throttle
 
 # ══════════════════════════════════════════
 # GROUND CONTACT
@@ -579,6 +567,27 @@ func _drive_blocks() -> Array:
 # ══════════════════════════════════════════
 # GROUND CONTACT
 # ══════════════════════════════════════════
+## WHAT THE WHEELS STAND ON, AS HEIGHTS (`Wheel.probe_height` through `ChunkTerrain.ground_sample`).
+## A wheel's ray on layer 1 can only meet the terrain's collision tiles, and those are cut from the
+## terrain's own heights - so the heights answer the same question without Jolt: 46.8 us a ray into
+## the heightfield on the booted world against ~16 us, 8 mm apart at worst. It is the world's map
+## unless someone placing the machine says otherwise - the menu stage hands its fighters the map on
+## screen (`ground_node`), since two maps stand at one origin while the next round is prepared. With
+## none (or a terrain not up yet) the wheels keep the old ray. Untyped: a freed map is asked with
+## `is_instance_valid`, never handed on (CLAUDE.md rule 4).
+var ground_node = null
+var _world_ground = null
+
+func ground_source() -> Node:
+	var t = ground_node
+	if not is_instance_valid(t):
+		if not is_instance_valid(_world_ground):
+			_world_ground = get_node_or_null("/root/Main/map")
+		t = _world_ground
+	if not is_instance_valid(t) or not t.has_method("ground_sample") or t.get("terrain_is_ready") != true:
+		return null
+	return t
+
 # EVERY wheel probes the ground under itself. The old single ray from the body centre broke the
 # moment a machine grew taller than the cabin: the centre rose with the build, the ray stopped
 # reaching, and _on_ground took traction, grip and steering down with it. Wheels are always where
@@ -592,11 +601,17 @@ func _check_ground() -> void:
 
 	_grounded_wheels = 0
 	_wheel_count = 0
+	var terr: Node = ground_source()
 	for w in Wheels:
 		if not is_instance_valid(w):
 			continue
 		_wheel_count += 1
-		if w.probe_ground(space, _ground_q):
+		var hit: bool
+		if terr != null:
+			hit = w.probe_height(terr, w.contact_point())
+		else:
+			hit = w.probe_ground(space, _ground_q)
+		if hit:
 			_grounded_wheels += 1
 
 	if _wheel_count > 0:

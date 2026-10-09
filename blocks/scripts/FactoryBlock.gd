@@ -99,7 +99,11 @@ func _default_state(off: Vector3i, dir_idx: int) -> int:
 func set_port(off: Vector3i, dir_idx: int, state: int) -> void:
 	ports[port_key(off, dir_idx)] = state
 
-var current_item: Node3D = null
+var current_item: Node3D = null:
+	set(v):
+		current_item = v
+		if v != null and _push_pending:
+			_wake_retry()
 var next_block: FactoryBlock = null       # текущая цель выдачи (одна из next_blocks)
 var next_blocks: Array = []               # ВСЕ подключённые приёмники (многовыходный блок)
 var _out_turn: int = 0                    # по кругу между выходами, чтобы делитель делил поровну
@@ -231,11 +235,31 @@ func _try_push() -> void:
 ## Ретраим ТОЛЬКО то, что уже пыталось уйти (_push_pending). Это важно: процессор ведёт
 ## предмет по слотам две секунды, и ретрай «просто по таймеру» отдал бы руду дальше НЕДОДЕЛАННОЙ.
 const PUSH_RETRY := 1.0
-var _push_pending: bool = false
+var _push_pending: bool = false:
+	set(v):
+		_push_pending = v
+		if v:
+			_wake_retry()
 var _retry_t: float = 0.0
 
+# ONLY A BLOCK WITH A HAND-OFF TO RETRY RUNS THIS FRAME TICK; the rest leave it until there is one
+# (`_wake_retry`, from the `_push_pending` and `current_item` setters). It used to run every frame for
+# every belt in the world to find nothing to do. A subclass with a `_process` of its own (storage,
+# generator, seller, scrapper, processor) is not touched by this: it calls push_retry_tick itself.
 func _process(delta: float) -> void:
+	if not _retry_needed():
+		set_process(false)
+		return
 	push_retry_tick(delta)
+
+## Whether push_retry_tick has anything to do - exactly its own early-out, so leaving the tick
+## changes nothing. The receiver keeps its goods elsewhere and answers for itself.
+func _retry_needed() -> bool:
+	return _push_pending and current_item != null
+
+func _wake_retry() -> void:
+	if not is_processing():
+		set_process(true)
 
 ## Вынесено отдельным методом, потому что наследник может определить свой _process и заслонить
 ## базовый (так делает storage.gd) — тогда он зовёт этот тик сам.

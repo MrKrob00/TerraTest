@@ -324,6 +324,10 @@ func _speed_cap() -> float:
 ## stands, and a sensitive threshold would jerk it around on flat ground.
 const SUNK_LIMIT := 6.0
 const SUNK_LIFT := 2.0
+## A fall through the world is not a thing of one tick: asked four times a second, each machine on
+## its own beat (`_unsink_t` starts at a random phase), not every tick for every enemy.
+const UNSINK_PERIOD := 0.25
+var _unsink_t: float = randf() * UNSINK_PERIOD
 
 func _physics_process(delta: float) -> void:
 	var _pf := Perf.now()          # profiler mark (perf.gd): cost of enemy AI
@@ -371,7 +375,10 @@ func _physics_ai(delta: float) -> void:
 	# дальше): без тика щит не поднимался ни разу, а реген не чинил ничего — блоки стояли мёртвым
 	# грузом, то есть продвинутый враг отличался от простого только числом стволов.
 	_energy_tick(delta)
-	_unsink()
+	_unsink_t -= delta
+	if _unsink_t <= 0.0:
+		_unsink_t = UNSINK_PERIOD
+		_unsink()
 	sense_ground(delta)
 	# Flipped over: the same trick the player uses in BUILD mode - lift above the terrain and rotate
 	# smoothly to level. _apply_upright alone often fails to right a machine on its back (the torque

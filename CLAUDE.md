@@ -227,9 +227,32 @@ project: read it before claiming how anything works.
 ### Driving and wheels
 
 - The machine is a plain `RigidBody3D`, NOT `VehicleBody3D`. Wheels are not physics constraints and
-  nothing rolls: a wheel probes the ground with a ray (`Wheel.probe_ground`), the suspension is
+  nothing rolls: a wheel probes the ground (`Wheel.probe_height`, below), the suspension is
   `apply_force` at the wheel offset, and traction, grip and rolling drag are `apply_force` AT EACH
   WHEEL (`MachineBody._wheel_forces`). Jolt only carries the body; the car is written by hand.
+- **A WHEEL PROBES THE TERRAIN'S HEIGHTS, NOT A RAY** (`Wheel.probe_height` through
+  `ChunkTerrain.ground_sample`; `MachineBody._check_ground` picks it by `ground_source()`). The probe
+  was a ray on layer 1, and LAYER 1 IS THE TERRAIN AND NOTHING ELSE (machines are on 16, veins 4,
+  loose items 8, blocks and domes 2), so it could only ever meet a collision tile - and tiles are cut
+  from these very heights. A ray into Jolt's heightfield cost 46.8 us against ~16 for the height on
+  the optimize=none build, and the probe was most of an enemy's tick. The ray's span and its "on the
+  ground" test are kept as they were, the slope comes from the bilinear patch the height comes from.
+  Measured on real terrain, the player's machine rebuilt as build 25 and as the Marlit 122, put back
+  on one start pose with the same throttle: straight up a 14 m climb, 56 m, end points 0.19 m apart
+  (a repeat of one probe, 0.01); a full-lock turn 0.01-0.04 m apart. With no terrain answering yet,
+  the old ray. THE MENU HANDS ITS FIGHTERS THE MAP ON SCREEN (`ground_node`): two maps stand at one
+  origin while the next round is prepared, and `/root/Main/map` does not exist there. A new body on
+  layer 1 that is not terrain would be driven THROUGH by every wheel - give it another layer.
+- **A WHEEL HAS NO TICK; ITS PICTURE IS POSED BY ITS MACHINE'S BATCH** (`MachineBatch._tick_parts` ->
+  `Wheel.tick_visual`, with `MachineBody.drive_throttle()` and `drive_steer`). The knuckle's turn,
+  the arm's travel and the tyre's roll are only seen - the physics reads the machine's `_steer_angle`
+  and the probe - and they ran every physics tick for every wheel in the world, off screen and two or
+  three times for one picture at 20-25 fps, after `push_drive_input` called two methods on every wheel
+  every tick to feed them. Now: once a drawn frame within `PARTS_NEAR` (45 m of the camera), every
+  `PARTS_MID_EVERY`-th frame out to `PARTS_FAR` (110 m), not at all past it or off screen - and the
+  batch copies EVERY moving part at that rate, so past 110 m a turret's turn is not drawn either (a few
+  pixels; the machine itself still moves, the batch rides it). Measured: 38 m from the camera a tyre
+  posed in 287 of 288 frames and steered to 24 deg; at 96 m in 95 of 287.
 - **EVERY WHEEL PUSHES WHERE IT STANDS AND ALONG WHERE IT ROLLS.** Traction used to be one force
   through the centre of mass along the CABIN's forward, grip another, the turn an angular velocity
   written straight in: a wheel's place and heading decided nothing, so a wheel bolted on turned
@@ -374,6 +397,13 @@ project: read it before claiming how anything works.
   two-cell or turned block taken off left an invisible box on the hull.
 - A TAP THAT MISSES THE MACHINE CLEARS THE PREVIEW (`_clear_held_preview`): the double tap's second
   half re-aims, and on a miss it used to commit the cell previewed earlier.
+- **A FACTORY BLOCK TICKS A FRAME ONLY WITH A HAND-OFF TO RETRY** (`FactoryBlock._process`, `_retry_needed`
+  - exactly `push_retry_tick`'s own early-out - and `_wake_retry`, called by the `_push_pending` and
+  `current_item` setters; the receiver answers by its inventory and wakes on `_accept_item`). Every
+  belt in the world ran a frame tick to find nothing to do. A subclass with its own `_process`
+  (storage, generator, seller, scrapper, processor) is not touched. Measured: a receiver holding six
+  ores woke and handed all six on to a belt laid afterwards; the line to the seller sold at the same
+  seconds as before (8.5 ... 15.3 straight, 10.8 ... 18.8 beside it).
 - **A FACTORY BLOCK IS FROZEN BEFORE ITS FIRST PHYSICS TICK** (`FactoryBlock._ready` sets `freeze` before
   its one-frame await; `blocks.spawn_block` freezes, turns and places the body BEFORE adding it). The
   freeze lived after the await, so a seller, belt, generator, auto miner, storage or fabricator
@@ -937,6 +967,9 @@ project: read it before claiming how anything works.
 - Charge lives in the batteries themselves (`battery.gd`); the machine only sums and draws. It
   travels with the block and survives saving (`blocks.charge_map`). Only the solar buffer belongs to
   the machine and exists while anchored.
+- A BATTERY'S RINGS ARE SET WHEN `charge` IS WRITTEN (its setter, `_show_charge`), not polled every
+  frame: the setter also catches the save and an enemy's full start, which write the field straight
+  in. Only a battery blinking its last ring (under `LOW_FRAC`) ticks a frame.
 - **WHAT A BLOCK HOLDS IS SAVED IN THREE PLACES, AND ALL THREE HAVE TO BE WIRED.** The state lives
   on the NODE, the save stores CELLS, so a map in `blocks.gd` carries it across: `get_layout` asks
   the live node and writes a field, `apply_layout` reads that field back INTO THE MAP, and
@@ -1261,6 +1294,12 @@ project: read it before claiming how anything works.
 - THE COST OF THE WORLD IS `height_at`, AND IT IS MEASURABLE. 124 us a point × 441 points a chunk
   × 25 chunks is the 1.1 s starting ring; before the noise went native it was 391 us and 3.7 s.
   Anything that claims to speed up loading has to move that number — or it is moving nothing.
+- A HEIGHT ASKED AT RUN TIME IS READ FROM THE BUILT CHUNK FIRST (`ChunkTerrain._memo_h`): a cell a
+  level-0 chunk already holds (`_hc`, the heights its mesh and collision tile were cut from, edits
+  included) is read from it, and only a cell no such chunk covers goes to the generator - ~364 us a
+  new cell against ~16 a remembered one on the optimize=none build, and every moving machine meets new
+  cells every tick, exactly where level-0 chunks stand. `terrain_height_at` and `ground_sample` (the
+  height plus the patch's slope, for the wheels) read the same four corners.
 - The generator answers BY POINT: `height_at(wx, wz)` is noise, blur and the canyon cut in one world
   point, and `sample_grid` builds a grid from it. The blur is always taken at FULL resolution, even
   when the node samples every 32nd cell — blurring an already sparse grid is a different field, and
@@ -2652,6 +2691,8 @@ project: read it before claiming how anything works.
   them fired in one physics tick, and five units over a battered hull put 35-47 ms into it once a
   second - a hitch, not a load. Measured on the proving ground: digits leave, the hit points land
   1.2 s later, 87 digits in flight for the Falsus unit over 28 damaged blocks, 102 for the Marlit.
+  A BLOCK STILL ALIVE BUT OUT OF THE TREE is gone for a flight (`regen._process`): it has no global
+  position, and the menu's fight printed the engine's "!is_inside_tree()" 28 times a round for it.
 
 ### Performance
 
@@ -2763,8 +2804,11 @@ project: read it before claiming how anything works.
   -> 5). The card is `glitch_card_mm.gdshader`, `glitch_card.gdshader` with seed, grid, fill and
   progress in INSTANCE_CUSTOM - keep the two in step. A CLOUD RIDES ITS ANCHOR (the dome, the block,
   a dying block's parent) by transform each frame, as it rode it as a child; `_anchored` is asked
-  instead of `anchor != null`, since a freed anchor compares equal to null (rule 4). What still
-  makes card nodes: `glyph`, `materialise` and the ground marks (`lie_flat`, `solid`, `depth_lift`).
+  instead of `anchor != null`, since a freed anchor compares equal to null (rule 4). AN ANCHOR THAT
+  LEFT THE TREE TAKES ITS CLOUD WITH IT, as it did as the cloud's parent: still valid but detached (a
+  menu round reset, a block on its way to being freed) it has no global transform, and asking for one
+  is an engine error a frame - seen in the menu's fight. What still makes card nodes: `glyph`,
+  `materialise` and the ground marks (`lie_flat`, `solid`, `depth_lift`).
 - **A BLOCK KEEPS ITS HIT PLATES** (`BlockFX.hit`, meta `hit_plates`): the first hit makes the two red
   plates, hidden after, and every later hit lights them again. Two new nodes, meshes and materials a
   hit, up to eight hits a second a block (`HIT_FX_COOLDOWN`), was a hundred materials in a volley of
@@ -2786,6 +2830,18 @@ project: read it before claiming how anything works.
   (42 wheels, 11 weapons, 6 enemy AIs; loose items and veins none; a factory block an early-out a
   frame), and the cost is in what the ticks DO - an enemy's tick is 47% ground sensing (a ray a
   wheel, `_unsink`'s height), 26% wheel forces, 24% the brain, 3% energy and the core watchdog.
+  APPLIED ON THAT MEASUREMENT: the wheels probe heights and lost their tick (Driving and wheels), a
+  gun at rest leaves the tick and retargets four times a second (Weapons), a factory block and a
+  battery tick only with something to do (Production chain, Energy), and an enemy asks whether it fell
+  through the world four times a second on its own beat (`enemy_vehicle.UNSINK_PERIOD`), not every
+  tick. Measured alternately against the commit before, optimize=none build: a QUIET world (an
+  anchored base with four guns, two batteries and an idle line, six allied machines driving about)
+  13.0 / 12.8 -> 46.5 / 47.5 fps, ticking nodes wheels 46 -> 0, guns 25 -> 0, batteries 7 -> 0, belts
+  and receiver 5 -> 0, an enemy's tick 3.1 -> 2.0 ms; the 3-on-3 fight (noisy) 7.7 / 7.5 -> 7.7 /
+  12.2 fps. That build sits near physics saturation, where a saved millisecond buys frames out of
+  proportion - a phone gains less. NOT DONE, and why: an AI "LOD" (the brain or the danger sampling
+  at a lower rate far from the camera) - the brain is ~7 ms a second per machine on this build, a
+  fraction of that on the phone, and it would change reaction times to buy noise.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
@@ -2881,9 +2937,19 @@ project: read it before claiming how anything works.
   regression or a 55% improvement depending on which two samples you took. Three runs a side, and
   read the band, not the number.
 - A TURRET'S TARGET LIST IS REBUILT BY THE SCAN AT EVERY RETARGET and still pruned where it is
-  read (`WeaponBlock._update_current_target`): a block can be freed between two scans. Scoring itself runs at `RETARGET_PERIOD`, not per frame (`SC_STICKY`
-  holds the choice anyway), and a turret that has reached neutral stops ticking until it fires
-  again.
+  read (`WeaponBlock._update_current_target`): a block can be freed between two scans. Scoring itself
+  runs at `RETARGET_PERIOD` (0.25 s; a dead target is replaced at once), not per frame: measured in a
+  3-on-3 fight, 99% of the re-scorings kept the target (5 and 14 switches in ~1400 a run), and each
+  walks every hostile block in range - three quarters of a retarget. At 0.12 s it cost twice as much
+  (`w.target` 39 -> 19 ms a second on the optimize=none build, the weapons' tick -30%). A per-machine
+  cache of the block list and its domes was tried in front of that walk and moved nothing (the cost is
+  the loop over the blocks, not the `_dome` lookup), so it was taken out.
+- **A TURRET AT REST LEAVES THE PHYSICS TICK** (`WeaponBlock._tick_weapon`: back at neutral, no recoil
+  running, `_idle_ok()`) and `attack()` brings it back - the one door every shot passes. An early
+  return still cost the engine's call into the script every tick, for every gun in the world: bases,
+  parked machines, allies with nothing to shoot. `_idle_ok` keeps a gun ticking while something of its
+  own still counts down (the shotgun's reload, the mortar's salvo cool-down). Measured: a quiet world
+  with 25 guns, 25 ticking -> 0.
 - **RETARGETING WAS TWO THIRDS OF THE WEAPONS LINE.** Measured inside the weapon tick in a
   13-machine fight (48 guns): scoring targets 8.9 ms of 13.6 a tick, aiming 2.0, firing 1.4, the
   tracer ray 0.6. `_targets` holds every hostile block in the sixty-metre sphere — hundreds in such a

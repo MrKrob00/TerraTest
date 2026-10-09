@@ -42,6 +42,9 @@ func _physics_process(delta: float) -> void:
 			_left = burst
 	super._physics_process(delta)
 
+func _idle_ok() -> bool:
+	return _reload_t <= 0.0
+
 # Один «выстрел» = пачка дробин. Каждая летит своей пулей с отклонением, поэтому попадания
 # считаются по-настоящему: часть дробин может уйти мимо, часть — в разные блоки цели.
 func fire_bullet() -> void:
