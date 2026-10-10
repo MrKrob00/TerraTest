@@ -1431,8 +1431,8 @@ func _update_perf_panel(delta: float) -> void:
 	# самую большую, а не ту, на которую первой подумал.
 	if terr != null and terr.has_method("render_stats"):
 		var rs: Vector3i = terr.render_stats()
-		lines.append("рельеф: %d чанков + %d макро + %d грубых = %d мешей"
-				% [rs.x, rs.y, rs.z, rs.x + rs.y + rs.z])
+		lines.append("рельеф: %d узлов в кадре, из них %d уровня 0; в очереди %d"
+				% [rs.x, rs.y, rs.z])
 	var props := get_node_or_null("/root/Main/map/BiomeProps")
 	if props != null:
 		lines.append("пропов: %d" % props.get_child_count())

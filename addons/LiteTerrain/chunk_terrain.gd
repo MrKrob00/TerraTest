@@ -13,8 +13,8 @@
 ## знает уровень крупного и кладёт лишние вершины своего края на отрезок между общими — а общие
 ## совпадают точно, потому что обе стороны берут высоту в одной и той же мировой точке.
 ##
-## Отсечение по камере считается НА КАЖДЫЙ УЗЕЛ и во время спуска по дереву: узел, не попавший в
-## кадр, не рисуется и не раскрывается — вместе с ним отсекается вся его четверть.
+## WHICH NODES and WHICH OF THEM ARE SEEN are two passes at two rates: the leaf set comes from
+## distance alone and is cached (`_build_leaves`), the frustum is a flat pass over it (`_select`).
 @tool
 class_name ChunkTerrain
 extends StaticBody3D
@@ -37,7 +37,12 @@ const LOD_QUALITY := 2.0
 ## путь — это ещё и риск: однажды в сцену сохранился путь до камеры ВЬЮПОРТА РЕДАКТОРА, которой
 ## в игре нет вовсе, и земля осталась без камеры совсем.
 @export var camera: Camera3D
-@export var surface_material: Material = preload("res://addons/LiteTerrain/terrain_shader.res")
+## Empty draws the ground with its own shader (`GROUND_SHADER`); set only to try another material.
+## Every number the shader needs comes from `biomes` (TerrainBiomes.apply_to_material) or is the
+## shader's own default - the binary material that used to sit here carried nothing else, and
+## through a texture slot the shader no longer reads it shipped a picture in every build.
+@export var surface_material: Material = null
+const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 @export var biomes: TerrainBiomes = null : set = _set_biomes
 
 @export_group("Visibility")
@@ -77,10 +82,6 @@ const LOD_QUALITY := 2.0
 @export_range(0.0, 3.0, 0.1) var collision_lookahead: float = 1.2
 
 @export_group("Procedural")
-## Сид, на котором стоит эта земля. Пишется при подъёме мира, читается кем угодно снаружи —
-## но НЕ экспорт: сид приходит из слота (G.world_seed) или из forced_seed, а поле в инспекторе
-## выглядело бы как третий источник, который ни на что не влияет.
-var world_seed: int = 0
 ## Номинальный размер мира для тех, кто спрашивает get_dims (раскладка магазинов, жил и точек).
 ## У самой земли края нет; это лишь квадрат, в котором игра расставляет своё.
 @export var world_cells: int = 2048
@@ -178,9 +179,6 @@ func _ready() -> void:
 		if _cam != null:
 			start = inv * _cam.global_position
 	await setup_procedural(seed_value, start)
-	set_collision_streaming(true)
-	# ГОВОРИМ, ТОЛЬКО ЕСЛИ ЗАГРУЗКА БЫЛА ДОЛГОЙ. Строка о каждом удачном входе — это строка,
-	# которую перестают читать; число нужно ровно тогда, когда кольцо не уложилось в мгновение.
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
@@ -195,15 +193,14 @@ func _biomes() -> TerrainBiomes:
 # Генератор
 # ─────────────────────────────────────────────────────────────────────────────
 
-## ЗЕМЛЯ СТРОИТСЯ ПО НАТУРАЛЬНОМУ ПРЕСЕТУ — по тем же числам, что и карта из дока и фон меню.
-## Своих ползунков тут нет намеренно: вторая копия этих чисел это другой ландшафт в том же мире.
+## THE GROUND IS BUILT ON THE NATURAL PRESET, the same numbers for the world and the menu backdrop.
+## No sliders of its own on purpose: a second copy of these numbers is another landscape in one world.
 func _proc_params() -> Dictionary:
 	return LiteTerrainGen.natural_params(_biomes())
 
 ## Мир поднимается ЗДЕСЬ И СРАЗУ: считать заранее нечего, первый чанк родится к первому кадру.
 ## around — где стоит игрок; вокруг неё и строим первое кольцо.
 func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
-	world_seed = seed_value
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
@@ -224,12 +221,6 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	terrain_is_ready = true
 	terrain_ready.emit()
 
-## Ждём ЗЕМЛЮ ПОД ИГРОКОМ — квадрат чанков уровня 0 вокруг точки и их тайлы коллизии, — и
-## больше ничего. Остальное кольцо к этому моменту уже в очереди (его просит _process), но ждать
-## его под экраном загрузки незачем: оно доедет за спиной у затемнения. Пока условием выхода была
-## пустая очередь, загрузка держалась до последнего узла на всю дальность видимости.
-## Дольше этого — повод сказать об этом в лог.
-const READY_SLOW_MS := 400
 ## СКОЛЬКО ЗЕМЛИ ИМЕТЬ ДО ТОГО, КАК ПОКАЗАТЬ ХОТЬ ЧТО-ТО, в чанках в каждую сторону: 2 — это 5×5
 ## по 16 м, то есть 80 м вокруг точки старта. Экспорт, а не константа, потому что это решение
 ## СЦЕНЫ, а не движка: игре нужна земля под колёсами во все стороны от машины, которая сейчас
@@ -237,18 +228,15 @@ const READY_SLOW_MS := 400
 ## здесь это те же миллисекунды ожидания под экраном.
 @export_range(1, 6) var ready_ring: int = 2
 
-## Сколько заняли обе стадии входа, мс. Печатается при входе в мир: «быстро или медленно» — это
-## не отчёт, а число — отчёт.
-var _ready_ms: int = 0
-var _view_ms: int = 0
-var _ready_ms_t0: int = 0
 ## ДОКУДА ЖДЁМ ЗЕМЛЮ ПЕРЕД ТЕМ, КАК СНЯТЬ ЭКРАН ЗАГРУЗКИ, в метрах от камеры. Больше — дольше
 ## вход, но меньше пустоты вокруг в первый кадр.
 @export_range(32.0, 512.0, 16.0) var ready_view: float = 192.0
 
+## Ждём ЗЕМЛЮ ПОД ИГРОКОМ — квадрат чанков уровня 0 вокруг точки и их тайлы коллизии, — и
+## больше ничего. Остальное кольцо к этому моменту уже в очереди (его просит _process), но ждать
+## его под экраном загрузки незачем: оно доедет за спиной у затемнения. Пока условием выхода была
+## пустая очередь, загрузка держалась до последнего узла на всю дальность видимости.
 func _build_around(around: Vector3, with_collision: bool = true) -> void:
-	var t0 := Time.get_ticks_msec()
-	_ready_ms_t0 = t0
 	gen_step = "world"
 	gen_frac = 0.0
 	var bx := int(floor(around.x / CHUNK))
@@ -276,7 +264,6 @@ func _build_around(around: Vector3, with_collision: bool = true) -> void:
 			break
 		await get_tree().process_frame
 		guard += 1
-	_ready_ms = Time.get_ticks_msec() - t0
 	await _build_view(around)
 	gen_step = ""
 	gen_frac = 0.0
@@ -330,10 +317,10 @@ func _build_view(centre: Vector3) -> void:
 		_job_tick()
 		await get_tree().process_frame
 		guard += 1
-	_view_ms = Time.get_ticks_msec() - _ready_ms_t0
 
 ## СНЯТЬ КАРТУ СО СЧЁТА. Зовёт тот, кто собирается её освободить: задания пула пишут в массивы,
-## живущие в этой ноде, и без остановки допишут в уничтоженные.
+## живущие в этой ноде, и без остановки допишут в уничтоженные. Waiting for the running group is
+## the whole stop: nothing else reads the generator once it is done.
 func stop_generation() -> void:
 	if _group != -1:
 		WorkerThreadPool.wait_for_group_task_completion(_group)
@@ -346,7 +333,6 @@ func stop_generation() -> void:
 	_out.clear()
 	_queued.clear()
 	if _gen != null and is_instance_valid(_gen):
-		_gen.stop()
 		_gen.queue_free()        # иначе каждое превью оставляет в ноде ещё один генератор
 	_gen = null
 
@@ -525,7 +511,7 @@ func _same_edit_recorded(e: Dictionary, list: Array) -> bool:
 			return true
 	return false
 
-## Правки наружу и обратно (мировое сохранение). Формат тот же, что был у map.gd.
+## Edits out and back in (the world save); the format older saves already carry.
 func ground_edits() -> Array:
 	var out: Array = []
 	for e in _flat_edits:
@@ -611,13 +597,6 @@ func reset_heights() -> void:
 	_flat_edits = []
 	_edit_seq = 0
 	_invalidate(area)
-
-## Запекать в чанковом мире нечего: земля и так считается из сида, а правки лежат в сохранении.
-func bake_heights() -> bool:
-	return false
-
-func update() -> void:
-	_lod_timer = lod_interval
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Ключи узлов и выбор уровня
@@ -1340,7 +1319,11 @@ func salt_at(world_pos: Vector3) -> float:
 	return b.salt_mask(Vector2(p.x, p.z), b.noise)
 
 func _get_material() -> Material:
-	return surface_material if surface_material != null else StandardMaterial3D.new()
+	if surface_material != null:
+		return surface_material
+	var m := ShaderMaterial.new()
+	m.shader = GROUND_SHADER
+	return m
 
 ## Два экземпляра базового материала: трава включена только у ближнего. Переключение уровня
 ## после этого — смена ссылки, а не параметра на экземпляр.
@@ -1355,18 +1338,9 @@ func _setup_materials(base: Material) -> void:
 		_mat_lod0 = base
 		_mat_far = base
 
-## ОДНА ДВЕРЬ К ШЕЙДЕРУ ЗЕМЛИ СНАРУЖИ. Материалов ДВА (ближний с травой и дальний без неё), и
-## тот, кто хочет что-то в них поменять, обязан попасть в оба: правка одного означает, что
-## настройка действует только до 64 метров, а дальше земля живёт по-старому.
-func set_surface_param(name: StringName, value: Variant) -> void:
-	for m in [_mat_lod0, _mat_far]:
-		if m is ShaderMaterial:
-			(m as ShaderMaterial).set_shader_parameter(name, value)
-
-func get_surface_param(name: StringName) -> Variant:
-	return (_mat_lod0 as ShaderMaterial).get_shader_parameter(name) \
-			if _mat_lod0 is ShaderMaterial else null
-
+## THERE ARE TWO MATERIALS (the near one with grass, the far one without), and whoever sets a
+## parameter sets it on both - `_push_biomes` and `set_corruption_map` do; one of them alone would
+## change the ground out to 64 m and leave the rest as it was.
 func _push_biomes() -> void:
 	if biomes == null:
 		return
@@ -1433,13 +1407,10 @@ func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool =
 	return false
 
 # ─────────────────────────────────────────────────────────────────────────────
-
-# ─────────────────────────────────────────────────────────────────────────────
 # Превью в редакторе
 # ─────────────────────────────────────────────────────────────────────────────
-## ТОТ ЖЕ МИР, ЧТО УВИДИТ ИГРА, по указанному сиду — прямо во вьюпорте редактора. Смотреть на
-## сид иначе можно было только запуском игры: карты высот у чанковой земли нет, а значит нет и
-## того файла, который док показывал раньше.
+## THE SAME WORLD THE GAME WILL SHOW, for a given seed, in the editor's viewport: the chunked ground
+## has no height file to look at, so without it a seed could only be seen by running the game.
 ##
 ## В СЦЕНУ НЕ ПОПАДАЕТ НИЧЕГО: узлы рождаются без owner, поэтому .tscn их не видит, а коллизию
 ## превью не строит вовсе — она нужна машинам, а не глазам.

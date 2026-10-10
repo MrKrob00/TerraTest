@@ -1,18 +1,10 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 
-group_uniforms Quality;
-// Low quality for weak, fill-bound hardware: drops the per-pixel noise and the tile texture.
-uniform bool low_quality = false;
-
 group_uniforms Texture;
-// filter_nearest_MIPMAP: the mipmaps are essential — without them distant and grazing tiles
-// read scattered texels and miss the cache. nearest keeps the pixel look up close.
-uniform sampler2D tile_texture : source_color, filter_nearest_mipmap;
-// Tile size in world units. Tiling is derived from world XZ (see vertex()), so it adapts to
-// any map size and matches between the game and the editor.
+// The cell of the per-pixel colour noise and of the grass, in world units (PIXELS_PER_TILE cells to
+// one). Derived from world coordinates, so it matches between the game and the editor.
 uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
-uniform float texture_blend    : hint_range(0.0, 1.0)    = 0.06;
 
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
 // tile used - R cracked earth, G sand ripples, B grass clumps, A broad patches. Masks, not colour:
@@ -25,8 +17,8 @@ uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
 uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
 uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
 
-// Quantising v_pixel_uv to a grid keeps the noise and the grass steady per cell instead of
-// flickering per fragment.
+// Quantising to a grid keeps the noise and the grass steady per cell instead of flickering per
+// fragment.
 const float PIXELS_PER_TILE = 16.0;
 
 group_uniforms Colors;
@@ -40,7 +32,7 @@ uniform vec4 color_snow  : source_color = vec4(0.94, 0.96, 1.00, 1.0);
 // softness of that edge.
 //
 // BOTH ARE METRES AND BOTH ARE COMPUTED, not authored: the biome resource holds them as a share of
-// the world's Height and map.gd multiplies (TerrainBiomes.snow_line_at). Metres set by hand only
+// the world's Height and multiplies it out (TerrainBiomes.snow_line_at). Metres set by hand only
 // ever match the one map they were set for.
 uniform float snow_line  : hint_range(-100.0, 400.0) = 60.0;
 uniform float snow_blend : hint_range(1.0, 120.0)    = 25.0;
@@ -98,22 +90,12 @@ group_uniforms;
 // The zone colour and the slope-driven fade into rock are computed in the VERTEX stage
 // (v_base_col) and interpolated: the terrain is fill-bound and there are orders of magnitude
 // fewer vertices than pixels. The fragment stage keeps only what has to be per-pixel — the
-// noise and the tile texture.
-// ── ВОЗДУШНАЯ ДЫМКА: глубина за ту цену, которую эта железка может заплатить ──────
+// colour noise and the detail masks.
 //
-// Движковый туман мы пробовали и сняли: на устройстве он стоил 5-7 fps из 23 (см. CLAUDE.md,
-// раздел Look and light). Он считает на КАЖДЫЙ фрагмент всей сцены рассеяние солнца, высотную
-// составляющую и влияние на небо — а нужна была ровно одна вещь: чтобы далёкая земля уходила в
-// цвет горизонта и появлялся масштаб.
-//
-// Здесь это стоит одного smoothstep НА ВЕРШИНУ и одного mix на фрагмент. Вершин у рельефа на
-// порядки меньше, чем пикселей, и мы fill-bound (см. комментарий про Adreno 610 ниже), так что
-// считать глубину в вершине — единственный способ получить её бесплатно. Небо не трогаем вовсе:
-// туман нужен земле, у неба свой градиент.
-//
-// И ЭТО ЕЩЁ И ВОЗВРАЩАЕТ КАДРЫ: там, где дымка почти сплошная, попиксельный шум и тайловая
-// текстура всё равно не видны — их считать не нужно (см. fragment). На дальних чанках, которых
-// в кадре больше всего, это снимает две операции с каждого пикселя.
+// THE HAZE costs one smoothstep a VERTEX: the engine's fog was tried and cost 5-7 fps of 23 on
+// the device (CLAUDE.md, Look and light), for the one thing wanted - far ground going into the
+// horizon's colour. Where it is nearly solid (HAZE_FLAT) the per-pixel detail is not drawn at all,
+// and the far chunks are most of the frame.
 // THE HAZE IS THE WORLD'S, NOT THIS MATERIAL'S (project.godot [shader_globals]): `world_haze` is
 // its colour - day_cycle.gd moves it with the hour, warm cream by day, orange at dusk, deep blue at
 // night - and the sky's horizon IS that colour, so far ground melts into the sky as TerraTech's does
@@ -125,7 +107,6 @@ global uniform vec4 haze_range;
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
 
-varying vec2  v_pixel_uv;    // quantised (floored to the grid) — for steady noise and grass
 varying vec3  v_base_col;
 varying float v_is_grass;
 varying float v_desert;       // bare sand: what the ripples are drawn on
@@ -143,13 +124,12 @@ float hash2D(vec2 p) {
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
-    // По XZ и КВАНТОВАННО — это сетка ТРАВЫ: она растёт в вершинном этапе и только на пологом,
-    // поэтому проекции по стенке ей не нужно. Текстура и попиксельный шум считают свои UV во
-    // фрагменте (см. wall_uv там же).
-    vec2 tile_uv = world_pos.xz / tile_world_size;
-    v_pixel_uv = floor(tile_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+    // THE GRASS GRID: on XZ and quantised. Grass grows in this stage and only on gentle ground, so
+    // it needs no projection onto walls; the fragment's noise picks its own plane (wall_uv there).
+    vec2 pixel_uv = floor(world_pos.xz / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+    vec3 wn       = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
     v_wpos     = world_pos.xyz;
-    v_wnrm     = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
+    v_wnrm     = wn;
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
     v_haze = smoothstep(haze_range.x, haze_range.y,
@@ -167,7 +147,7 @@ void vertex() {
     }
     v_corrupt   = cstate * corrupt_amount;
 
-    // The biome masks are baked into the vertex COLOR by map.gd — the shader only reads them.
+    // The biome masks are baked into the vertex COLOR by the terrain (chunk_terrain._biome_colour).
     float biome_grass = COLOR.b;
     float canyon  = COLOR.g;
     float mountain = COLOR.a;                                          // MOUNTAIN biome (snowy, high)
@@ -183,8 +163,7 @@ void vertex() {
     zone          = mix(zone,           canyon_col,       canyon);      // canyon on top
     float snow    = mountain * smoothstep(snow_line - snow_blend, snow_line + snow_blend, wy);
     zone          = mix(zone,           color_snow.rgb,   snow);        // snow only up high
-    float ny      = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
-    float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, ny);
+    float rock_t  = 1.0 - smoothstep(rock_threshold - rock_blend, rock_threshold + rock_blend, wn.y);
     vec3  rock_col = mix(color_rock.rgb, color_canyon.rgb * 0.55, canyon);   // canyon cliffs are darker
     v_base_col    = mix(zone, rock_col, rock_t);
 
@@ -210,7 +189,7 @@ void vertex() {
         // Grass grows in the MEADOW only. In the desert sand_grass = 0 means bare sand. None on
         // rock, in the canyon or on mountains. amount scales both height and density.
         float amount = grass_amount;
-        if (amount > 0.03 && hash2D(v_pixel_uv) < grass_density * amount) {
+        if (amount > 0.03 && hash2D(pixel_uv) < grass_density * amount) {
             vec3 offset = NORMAL * grass_height * amount;
             vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
             if (t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
@@ -225,31 +204,22 @@ void vertex() {
 void fragment() {
     vec3 base_col = v_base_col;
 
-    // Per-pixel only: colour noise plus the tile texture. low_quality skips both to save fill.
+    // Per-pixel only: the colour noise and the detail masks.
     //
-    // UV БЕРЁМ ПО ПЛОСКОСТИ, В КОТОРУЮ ГРАНЬ СМОТРИТ, а не всегда по XZ. Земля почти везде
-    // горизонтальна, и XZ ей подходит; но на стенке каньона или на скале нормаль ложится
-    // набок, XZ там вырождается — и текстура с попиксельным шумом растягиваются в вертикальные
-    // полосы. На отвесах это видно как гладкая смазь вместо камня.
-    //
-    // Плоскость выбираем ЖЁСТКО, а не смешиваем три проекции: полный трипланар — это три
-    // выборки текстуры на пиксель, а мы fill-bound на Adreno 610. Переключение приходится на
-    // грани круче 45°, где обе проекции дают почти одно и то же, поэтому шва не видно.
-    //
-    // И считаем это ВО ФРАГМЕНТЕ, а не в вершине: выбор на вершину означал бы, что у одного
-    // треугольника углы посчитаны в разных плоскостях, а интерполяция между ними — каша.
-    // Вершинный v_pixel_uv при этом остаётся прежним (по XZ) — на нём растёт трава, а трава
-    // и так бывает только на пологом.
+    // THE UV IS TAKEN ON THE PLANE THE FACE LOOKS ALONG, not always XZ: on a canyon wall or a cliff
+    // XZ degenerates and the detail smears into vertical stripes. The plane is picked HARD, not
+    // blended - a full triplanar is three fetches a pixel on a fill-bound GPU - and the switch falls
+    // on faces steeper than 45 deg, where both projections read alike. Per FRAGMENT: picked per
+    // vertex, one triangle's corners would sit in different planes.
     // Под сплошной дымкой попиксельной детали не видно — не считаем её вовсе (см. шапку).
-    if (!low_quality && v_haze < HAZE_FLAT) {
-        vec2 wall_uv = abs(v_wnrm.y) > 0.5
+    if (v_haze < HAZE_FLAT) {
+        vec2 wall = abs(v_wnrm.y) > 0.5
                 ? v_wpos.xz                                                  // пол и склоны
                 : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
-        wall_uv /= tile_world_size;
-        vec2 noise_uv = floor(wall_uv * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+        vec2 noise_uv = floor(wall / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
         base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
-        // one fetch, as the old tile's was: the detail masks (see the uniforms)
-        vec4 dt = texture(ground_detail, wall_uv * tile_world_size / detail_world_size);
+        // one fetch: the detail masks (see the uniforms)
+        vec4 dt = texture(ground_detail, wall / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
         k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert * ripple_strength);
         k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);

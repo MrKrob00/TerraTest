@@ -721,14 +721,7 @@ func _load_world() -> void:
 	# Wait for the map's heights - zeros cannot level anything.
 	var terr0: Node = await _await_terrain(TERRAIN_WAIT_SEC)
 	if terr0 != null and terr0.has_method("apply_ground_edits"):
-		var edits: Array = data.get("ground", [])
-		terr0.apply_ground_edits(edits)
-		# And BAKE right away. A heightmap dump is the map's full size (15 MB here); mid-game such a write
-		# shows as a hitch, while here we are still under the loading screen. After baking the terrain IS
-		# that shape and the edits need no replay - the list inside the map is cleared, and any left in the
-		# save are cut off by the baked edit number (map.bake_heights).
-		if not edits.is_empty() and terr0.has_method("bake_heights"):
-			terr0.bake_heights()
+		terr0.apply_ground_edits(data.get("ground", []))
 	# Cleared points are restored BEFORE machines: a point the player already destroyed must not
 	# materialise again while the rest is loading.
 	var op: Node = get_tree().get_first_node_in_group("outposts")
