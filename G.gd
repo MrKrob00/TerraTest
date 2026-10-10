@@ -125,12 +125,12 @@ func use_slot(n: int, keep_empty: bool = false) -> void:
 	if q != null and q.has_method("reload_from_progress"):
 		q.reload_from_progress()
 
-## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид. Первый слот особенный —
-## у него сид постоянный, это «наша» карта.
-## Файлы ПРОГРЕССА: сброс оставляет мир (сид и посчитанное окно) на месте.
+## Создать НОВЫЙ мир в слоте: стереть его файлы и выдать свежий сид.
+## PROGRESS files: a reset keeps the world (its seed). Nothing writes `terrain_height.bin` any more
+## (the baked map's dump); it stays on the list so a slot an older version left one in is cleaned.
 const PROGRESS_FILES := ["progress.json", "world_save.json",
 		"world_save.bad.json", "vehicle_layout.json", "terrain_height.bin"]
-## Файлы МИРА: сид и кеш посчитанного окна.
+## WORLD files: the seed - and `world_window.bin`, the old window cache, for the same reason.
 const WORLD_FILES := ["world.json", "world_window.bin"]
 
 func _wipe(n: int, names: Array) -> void:
@@ -1720,12 +1720,8 @@ func wipe_save() -> void:
 		var p: String = slot_path(file_name)
 		if FileAccess.file_exists(p):
 			DirAccess.remove_absolute(p)
-	# ЗАПЕЧЁННЫЙ РЕЛЬЕФ СБРАСЫВАЕМ ЗДЕСЬ ЖЕ. Он лежит отдельным файлом в user:// и перекрывает
-	# заводскую карту (map._load_heightmap читает его ПЕРВЫМ), поэтому без этой строки сброс
-	# сейва оставлял игрока на старом рельефе: свой файл никуда не делся. Убирал его только
-	# world_persist._fresh_start на следующем запуске, то есть новую карту игрок видел лишь
-	# с ТРЕТЬЕГО захода — сбросил, перезашёл (файл удалён, но высоты уже прочитаны), и только
-	# потом. Путь не дублируем: чистит себя сама нода (map.reset_heights).
+	# THE GROUND'S EDITS GO WITH THE SAVE: the terrain holds them in memory, and a wiped save must
+	# not keep levelled pads on the ground the player is standing on (ChunkTerrain.reset_heights).
 	var terr := get_node_or_null("/root/Main/map")
 	if terr != null and terr.has_method("reset_heights"):
 		terr.reset_heights()

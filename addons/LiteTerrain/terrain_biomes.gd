@@ -2,9 +2,9 @@
 class_name TerrainBiomes
 extends Resource
 
-## The single source of truth for biomes: the landform generator (plugin.gd), the CPU-side
-## masks (map.gd) and the material colours all read from here, so a biome's colour cannot
-## drift away from its terrain.
+## The single source of truth for biomes: the landform generator (terrain_gen.gd), the masks the
+## terrain bakes into vertex colour (chunk_terrain.gd) and the material colours all read from
+## here, so a biome's colour cannot drift away from its terrain.
 ##
 ## A biome is a 0..1 MASK of world-XZ noise. Layers stack in this order:
 ##   base DESERT ↔ MEADOW split  →  SALT FLATS on the desert  →  CANYON on top  →  MOUNTAINS on top.
@@ -26,9 +26,7 @@ extends Resource
 @export_range(0.5, 4.0, 0.1) var biome_contrast: float = 1.8
 @export var color_sand: Color = Color(0.87, 0.74, 0.49)
 @export var color_grass: Color = Color(0.33, 0.56, 0.23)
-## Dune ridge height, m (landform only, used by the generator).
-@export_range(0.0, 40.0, 0.5) var dune_amp: float = 9.0
-## Dune ridge wavelength, m.
+## Dune ridge wavelength, m. (Their height follows the world's Height, terrain_gen._gen_dune_amp.)
 @export_range(5.0, 200.0, 1.0) var dune_wavelength: float = 34.0
 ## How far to flatten hills in the desert: 0 is a table, 1 is as hilly as the meadow.
 @export_range(0.0, 1.0, 0.05) var desert_flatten: float = 0.4
@@ -73,8 +71,7 @@ extends Resource
 ## Тем же замером: 0.72 давало 18.5% гор вместо прежних 20.0%, 0.71 попадает в цель.
 @export_range(0.0, 1.0, 0.01) var mountain_threshold: float = 0.71
 @export_range(0.02, 0.5, 0.01) var mountain_edge: float = 0.05
-## Mountain height, m (landform only, used by the generator).
-@export_range(0.0, 300.0, 1.0) var mountain_rise: float = 48.0
+## (How high a mountain rises follows the world's Height: terrain_gen._gen_mtn_rise.)
 
 # ── Snow and rock ─────────────────────────────────────────────────────────────
 # Snow follows the MOUNTAIN biome rather than altitude: the colour comes from its mask.
@@ -90,7 +87,7 @@ extends Resource
 ## resource. So the generator "helpfully" overwrote the metres on every run: a slider you could drag
 ## that moved back, an output stored in an input, a scene diff after every Generate, and a value
 ## that reached the shader once and was wrong ever after for any world that did not run the
-## generator at load (see map._push_biomes_to_materials, which now does the arithmetic).
+## generator at load (apply_to_material now does the arithmetic).
 @export_range(0.0, 1.5, 0.01) var snow_frac: float = 0.55
 @export_range(0.01, 0.6, 0.01) var snow_blend_frac: float = 0.12
 ## The softest the snow line may be, in metres. On a low world the fraction alone gives a line so
@@ -262,13 +259,13 @@ func mountain_dome(wp: Vector2, noise: Callable) -> float:
 
 # ── Handing values to the shader ──────────────────────────────────────────────
 ## Writes the COLOURS and grass settings into the material's uniforms. Noise thresholds and
-## scales do not go here: the CPU (map.gd) computes the biome masks and bakes them into the
-## vertex COLOR, and the shader only reads those — which is why a disabled biome disappears
-## on its own, with no flag in the shader.
+## scales do not go here: the terrain (chunk_terrain._biome_colour) computes the biome masks and
+## bakes them into the vertex COLOR, and the shader only reads those — which is why a disabled
+## biome disappears on its own, with no flag in the shader.
 ##
 ## `world_height` is the Height the ground was generated with; the snow line is worked out from it
 ## here, because the shader compares against a world Y and needs metres. The caller knows the
-## Height (map.world_height), this resource does not and must not guess.
+## Height (ChunkTerrain.world_height), this resource does not and must not guess.
 ## The ground's detail masks (art/ground_detail.py): cracks, ripples, grass, patches in one texture.
 const GROUND_DETAIL := preload("res://addons/LiteTerrain/ground_detail.png")
 

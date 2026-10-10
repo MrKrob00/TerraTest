@@ -9,16 +9,12 @@ extends Node
 ## отмена на полпути), а запечённых карт в проекте не осталось — и мир, и фон меню считает
 ## чанковая земля, а она спрашивает свои вершины чанк за чанком.
 ##
-## Здесь только СЧЁТ. Ни одного обращения к доку, к выбранной ноде или к файлам: параметры
-## кладутся полями, «стоп» спрашивается через `stop()`.
-##
-## Node, а не RefCounted, чтобы приходило NOTIFICATION_PREDELETE: по нему прогон отменяется сам
-## (см. _notification) — задача, уже сидящая в пуле, иначе считала бы в освобождаемый объект.
+## Здесь только СЧЁТ. Ни одного обращения к сцене или к файлам: параметры кладутся полями.
+## NOTHING TO CANCEL: the terrain waits for its running group before it frees the generator
+## (`ChunkTerrain.stop_generation`), so no task outlives it - the flag that used to stop a pass
+## halfway belonged to the baked map's row passes.
 
-# ── Параметры прогона ────────────────────────────────────────────────────────
-# Имена те же, что у ручек дока, и это НАМЕРЕННО: тела проходов переехали сюда байт в байт,
-# и переименование полей означало бы правку в каждой строке — то есть ровно тот способ
-# внести опечатку, которого при переносе кода надо избегать больше всего.
+# ── Run parameters (apply_params fills them) ────────────────────────────────
 var gen_seed: int = 0
 var gen_scale: float = 260.0
 var gen_power: float = 3.0
@@ -27,22 +23,13 @@ var gen_canyon_enable: bool = true
 var gen_canyon_riser: float = DEF_CANYON_RISER
 var gen_canyon_gorge: float = DEF_CANYON_GORGE
 var gen_canyon_width: float = DEF_CANYON_WIDTH
-## Готовые производные, которые док считает из своих ручек (см. plugin._mtn_amount/_ridge_sharp).
+## Derived from "mountains" by apply_params.
 var mtn_amount: float = 0.8
 var ridge_sharp: float = 2.5
 
-# ── МИРОВЫЕ КООРДИНАТЫ ───────────────────────────────────────────────────────
-# Высота обязана зависеть ТОЛЬКО от мировой точки, и ни от чего больше. Раньше базовый шум брался
-# по ИНДЕКСУ клетки в массиве (fx, fz), то есть один и тот же мировой метр на карте 1982² и 4096²
-# давал разный рельеф, а кусок, посчитанный со смещением, не сходился с соседним по шву. Для
-# скользящего окна это смертельно: окно как раз и считает куски по разным смещениям.
-#
-# origin_* — мировая клетка, которой соответствует локальный (0,0) считаемого куска.
-var origin_x: int = 0
-var origin_z: int = 0
-## СДВИГ ШУМА, в мировых клетках. Остался от запечённых карт, где шум брался по индексу в
-## массиве; точечному запросу он не нужен и стоит нулём — begin_sampling его и обнуляет.
-var noise_offset := Vector2.ZERO
+# THE HEIGHT DEPENDS ON THE WORLD POINT AND NOTHING ELSE: every noise is read at (wx, wz) as given.
+# The baked maps read it by the cell's INDEX in their array (plus an offset), so the same metre came
+# out differently on maps of different sizes and two pieces computed at different offsets did not meet.
 
 # Умолчания прогона: то, чем apply_params заполняет пропуски в переданном словаре, и основа
 # натурального пресета. Одна копия на всех — вторая означала бы, что мир игры и фон меню стоят
@@ -90,7 +77,7 @@ static func natural_params(biomes: TerrainBiomes = null) -> Dictionary:
 	p["scale"] = b.mountain_scale
 	return p
 
-## Одна дверь для карты и меню. mountains → две производные, как в доке (plugin._mtn_amount).
+## One door for the world and the menu. "mountains" becomes two derived numbers.
 func apply_params(p: Dictionary) -> void:
 	gen_scale = float(p.get("scale", DEF_SCALE))
 	gen_power = float(p.get("power", DEF_POWER))
@@ -103,38 +90,12 @@ func apply_params(p: Dictionary) -> void:
 	mtn_amount = lerpf(0.25, 1.1, m)
 	ridge_sharp = lerpf(1.6, 3.6, m)
 
-## ОТМЕНА — ЭТО ФЛАГ, КОТОРЫЙ ЧИТАЮТ ЗАДАЧИ. Так говорит и тот, кто собирается генератор
-## ОСВОБОДИТЬ (chunk_terrain.stop_generation при смене сцены или сбросе раунда меню): задача,
-## уже сидящая в пуле, выйдет на первой же проверке вместо того, чтобы считать в никуда.
-func stop() -> void:
-	_gen_cancel = true
-
-func cancelled() -> bool:
-	return _gen_cancel
-
-## УШЛИ ИЗ ДЕРЕВА ИЛИ НАС УДАЛЯЮТ — ПРОГОН БОЛЬШЕ НИКОМУ НЕ НУЖЕН, и это единственный момент,
-## когда об этом можно узнать наверняка. Отменить групповую задачу нельзя, но можно заставить
-## каждую оставшуюся строку выйти немедленно (stop обнуляет и длину буфера).
-##
-## Без этого строки продолжают писать в буферы ноды, которую вот-вот освободят: смена сцены из
-## меню в игру, сброшенный раунд, удалённая карта — и в лог падает «Out of bounds set index» на
-## PackedFloat32Array, ни к чему в кадре не относящийся. Звали это из нескольких мест руками,
-## то есть однажды обязательно забыли бы.
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_EXIT_TREE or what == NOTIFICATION_PREDELETE:
-		stop()
-
-
 # ── Биомы прогона (снимок; потоки его только читают) ─────────────────────────
 var _gen_biomes: TerrainBiomes = null
 
-## Numbers with one sensible answer. They do not deserve a knob; they do deserve an explanation.
-const GEN_OCTAVES := 6        # more = high-frequency noise, fewer = blurred blobs
-const GEN_SMOOTH_PASSES := 1  # one pass kills noise spikes; a second one starts eating terrain
-
-## Нажали «стоп» или генератор вот-вот освободят. Читает каждая задача — и та, что уже сидит в
-## пуле: иначе она считала бы в объект, которого сейчас не станет.
-var _gen_cancel: bool = false
+## A number with one sensible answer: more is high-frequency noise, fewer blurred blobs. (The blur
+## itself is the five taps in height_at - one pass kills noise spikes, a second starts eating land.)
+const GEN_OCTAVES := 6
 
 ## ВСЁ, ЧТО ВЫВОДИТСЯ ИЗ ПАРАМЕТРОВ, считается ОДИН РАЗ в prepare_sampling — до того, как за
 ## высоты возьмутся потоки: метры (они берутся от Height) и то, что когда-то стояло на
@@ -159,11 +120,9 @@ var _gen_gorge: FastNoiseLite
 var _gen_ramp: FastNoiseLite
 
 func raw_height_at(wx: float, wz: float) -> float:
-	var nx := wx + noise_offset.x
-	var nz := wz + noise_offset.y
-	var base = (_gen_base.get_noise_2d(nx, nz) + 1.0) * 0.5
+	var base = (_gen_base.get_noise_2d(wx, wz) + 1.0) * 0.5
 	var continental:float = pow(base, gen_power)
-	var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(nx, nz)), _gen_ridge_sharp)
+	var ridge = pow(1.0 - abs(_gen_ridge.get_noise_2d(wx, wz)), _gen_ridge_sharp)
 	var mountain_mask = smoothstep(0.52, 0.78, continental)
 	var ridge_term = ridge * _gen_mtn_amount * mountain_mask
 	var wp := Vector2(wx, wz)
@@ -175,7 +134,7 @@ func raw_height_at(wx: float, wz: float) -> float:
 	# краем каньонной маски в горах открывалась яма почти в сто метров. «В горах иногда
 	# резкие углубления, в которых можно застрять» — это она.
 	#
-	# Теперь каньон РЕЖЕТ уже готовую землю (см. _gen_carve_row): что бы здесь ни подняли,
+	# Теперь каньон РЕЖЕТ уже готовую землю (см. carve_at): что бы здесь ни подняли,
 	# врез считается от этого же уровня. Гасить нечего, и ступеней от гашения нет.
 	var sand_m := 1.0 - b.meadow_mask(wp, _cv_noise)
 	var mtn_mask := b.mountain_mask(wp, _cv_noise)
@@ -184,9 +143,9 @@ func raw_height_at(wx: float, wz: float) -> float:
 	var land_sand := sand_m * not_mtn
 	var cont_biome := continental * lerpf(1.0, b.desert_flatten, land_sand)
 	var h = cont_biome + ridge_term * not_mtn
-	var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(nx, nz) * 3.5
+	var duneph := wx / b.dune_wavelength + _gen_dune.get_noise_2d(wx, wz) * 3.5
 	var dune := pow(0.5 + 0.5 * sin(duneph), 1.4) * _gen_dune_amp * land_sand
-	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(nx * 1.7, nz * 1.7) * 4.0 * mtn_mask
+	var mtn_rise := mtn_dome * _gen_mtn_rise + _gen_dune.get_noise_2d(wx * 1.7, wz * 1.7) * 4.0 * mtn_mask
 	var land: float = h * gen_amplitude + dune + mtn_rise
 	# THE SALT FLAT: the land eases down to a lake bed built from the SAME base noise read at a
 	# twentieth of its frequency - so it sits where the desert around it sits, and stays near flat
@@ -194,7 +153,7 @@ func raw_height_at(wx: float, wz: float) -> float:
 	# no ridges on it.
 	var salt: float = b.salt_raw(wp, _cv_noise) * land_sand     # = salt_mask, from the masks in hand
 	if salt > 0.0:
-		var lo: float = (_gen_base.get_noise_2d(nx * 0.05, nz * 0.05) + 1.0) * 0.5
+		var lo: float = (_gen_base.get_noise_2d(wx * 0.05, wz * 0.05) + 1.0) * 0.5
 		var bed: float = pow(lo, gen_power) * b.desert_flatten * gen_amplitude
 		land = lerpf(land, bed, smoothstep(0.0, 1.0, salt))
 	return land
@@ -209,11 +168,11 @@ func raw_height_at(wx: float, wz: float) -> float:
 var flat: bool = false
 var flat_y: float = 0.0
 
+## begin_sampling must be behind (it is, for the terrain's `_gen`): a lazy prepare in here could not
+## work anyway - it needs the biomes - and two threads would run it at once.
 func height_at(wx: float, wz: float) -> float:
 	if flat:
 		return flat_y
-	if _gen_base == null:
-		prepare_sampling()
 	var h: float = (raw_height_at(wx, wz)
 			+ raw_height_at(wx - 1.0, wz) + raw_height_at(wx + 1.0, wz)
 			+ raw_height_at(wx, wz - 1.0) + raw_height_at(wx, wz + 1.0)) * 0.2
@@ -223,11 +182,8 @@ func height_at(wx: float, wz: float) -> float:
 
 ## ГЕНЕРАТОР ГОТОВ ОТВЕЧАТЬ ПО ТОЧКАМ, без прохода по массиву. Зовёт тот, кто считает землю
 ## чанками: шумы собираются один раз на главном потоке, дальше их только читают.
-##
-## Ленивой подготовки внутри height_at для этого мало — её вызвали бы два потока сразу.
 func begin_sampling(b: TerrainBiomes) -> void:
 	_gen_biomes = b
-	noise_offset = Vector2.ZERO      # мировые клетки, как в generate_region
 	prepare_sampling()
 
 ## СЕТКА n×n ОТ МИРОВОЙ ТОЧКИ С ШАГОМ step. step = 1 — чанк, step = 2ⁿ — слияние 2ⁿ×2ⁿ чанков
@@ -282,11 +238,8 @@ func _sample_unit(ox: float, oz: float, n: int) -> PackedFloat32Array:
 			out[j * n + i] = h
 	return out
 
-## ВРЕЗ КАНЬОНА В ОДНОЙ ТОЧКЕ. surface — уже размытая земля в ней же.
-##
-## Вынесен из построчного прохода по той же причине, что и raw_height_at: грубому уровню LOD и
-## запросу высоты вне загруженных чанков нужен ответ ПО ТОЧКЕ, а не по прямоугольнику. Строка
-## зовёт эту же функцию, копии формулы нет.
+## ВРЕЗ КАНЬОНА В ОДНОЙ ТОЧКЕ. surface — уже размытая земля в ней же. height_at and the step-1 grid
+## (`_sample_unit`) both call it: one copy of the formula.
 func carve_at(wx: float, wz: float, surface: float) -> float:
 	var b := _gen_biomes
 	if b == null:
@@ -390,10 +343,8 @@ func prepare_sampling() -> void:
 	dune_noise.noise_type  = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	dune_noise.frequency   = 1.0 / 140.0
 
-	# Шумы — ПОЛЯ, и потоки прохода их только читают. Поэтому же их можно готовить заранее, вне
-	# всякого прохода: точечным запросам нужны ровно они.
-	# Биомы кладёт вызывающий (док берёт их у выбранной ноды, игра — у своей карты):
-	# генератор про сцену ничего не знает.
+	# The noises are FIELDS, and the chunk threads only read them. The biomes come from the caller
+	# (begin_sampling): the generator knows nothing of the scene.
 	# THE SEED MOVES THE BIOMES TOO. Their masks are built on hash noise with fixed offsets, so a
 	# new seed used to give new hills IN THE SAME desert with the canyon in the same corner: the
 	# world changed shape but not geography. The offset is stored in the RESOURCE — the shader
@@ -417,8 +368,8 @@ func prepare_sampling() -> void:
 	# THE SNOW LINE IS NOT WRITTEN HERE ANY MORE, and nothing else of the caller's is either. It
 	# used to be set as metres on the biome resource, which is an INPUT: the run overwrote a field
 	# the author could edit, dirtied the scene the resource is saved in, and left a number that only
-	# matched the Height of whichever run touched it last. The resource now holds the SHARE and
-	# map.gd multiplies it by the Height of the world it is showing.
+	# matched the Height of whichever run touched it last. The resource now holds the SHARE and the
+	# terrain multiplies it by the Height of the world it is showing (TerrainBiomes.apply_to_material).
 	_gen_base = base_noise
 	_gen_ridge = ridge_noise
 	_gen_dune = dune_noise

@@ -1443,13 +1443,28 @@ project: read it before claiming how anything works.
   metres that depend on Height (the snow line) are held there as a SHARE and multiplied by
   `map.world_height()` when the materials are built. A generation pass that edits an authored field
   is a slider that moves back, a scene diff per run, and a value that is right for one map only.
-- The generator cancels itself on `NOTIFICATION_EXIT_TREE`/`PREDELETE`, and a terrain does the same
-  for its own (`stop_generation`). A scene change or a freed map otherwise leaves worker tasks
-  computing into an object that is being destroyed.
+- A terrain that is about to be freed WAITS OUT ITS RUNNING GROUP (`stop_generation`, also from
+  `_exit_tree`) before it frees its generator: a scene change or a freed map otherwise leaves worker
+  tasks computing into an object that is being destroyed. That wait is the whole stop - nothing
+  else reads the generator - so the generator's own cancel flag (`stop`, `cancelled`, set on
+  `EXIT_TREE`/`PREDELETE`) was never read by anything and went with the rest of the baked map.
 - `LiteTerrainGen` ANSWERS BY POINT AND NOTHING ELSE. The threaded row passes over a whole-world
   array, the buffers, the staged progress plan and the cancel-halfway machinery all belonged to the
   baked map and went with it. What is left is `height_at` / `sample_grid` plus `natural_params`,
-  the one copy of the landform numbers that the world and the menu both build on.
+  the one copy of the landform numbers that the world and the menu both build on. Every noise is
+  read at the world point as given (the `noise_offset` the baked maps added is gone).
+- **THE ADDON SHIPS ONLY WHAT THE GROUND DRAWS WITH** (the player's call: "clean the map of what is
+  never used, at least in the export"). The export is `all_resources`, so every imported file goes
+  into the APK whether anything loads it or not: the sixteen `Dark/` tile textures (five of them
+  1024 px VRAM-compressed with mipmaps, 0.7 MB each), the addon's two icons and the old
+  `terrain_heightmap.png` did - 4.2 MB imported, measured on the desktop import here - and the
+  binary `terrain_shader.res` pulled one of them in through a texture slot the shader no longer
+  samples. All gone, with the 17 MB `terrain_height.bin` (in the repo, never in the APK: not a
+  resource) and the never-built `native/` module. The material is made in code
+  (`ChunkTerrain._get_material`, `GROUND_SHADER`): every number it needs comes from the biomes
+  resource or the shader's defaults. Measured on the real driver, three views over desert, meadow
+  and canyon walls: the ground the same but for 48-91 of 110k pixels, none by more than 8 of 255
+  (only the sky moved: its clouds run on time).
 
 ### Quests
 
@@ -1770,8 +1785,9 @@ project: read it before claiming how anything works.
 - `world_persist.gd` saves machines, loose blocks and a 10-minute TTL. A base is a machine with the
   `station` flag; `machines[0]` is the one the player controls; restoring runs across frames, so
   `is_instance_valid` after every `await`.
-- Terrain edits survive two ways: an edit list in the save for the session, and a baked dump applied
-  at load. Every edit has a running number so it cannot be applied twice.
+- Terrain edits survive as a LIST in the world save (`ChunkTerrain.ground_edits` /
+  `apply_ground_edits`), replayed before the machines come back. There is no baked dump: the ground
+  is the seed plus that list. Every edit has a running number so it cannot be applied twice.
 - WAITING FOR THE TERRAIN IS MEASURED IN SECONDS, NEVER IN FRAMES (`world_persist.TERRAIN_WAIT_SEC`,
   and `resource_nodes` was the first to learn it). Readiness is worker threads computing heights —
   real seconds, about 3.7 of them for the world. A frame count guesses at what those seconds cost
@@ -2740,8 +2756,10 @@ project: read it before claiming how anything works.
 
 ### Performance
 
-- Engine occlusion culling is off (no baked occluders); the terrain does horizon culling itself and
-  compares slopes rather than angles.
+- Engine occlusion culling is off (no baked occluders). The terrain's own horizon test
+  (`ChunkTerrain.is_point_hidden`, a ray stepped over the heights, asked by veins, props and loose
+  blocks) is OFF TOO, `enable_occlusion_culling` false: a ray over the ground cost more than drawing
+  the bush behind the hill. Every caller asks it anyway, so it answers `false` at once.
 - Seam rebuilds run on a budget per pass; a hairline crack beats a frame drop.
 - Whole-machine frustum culling toggles `visible` only — `process_mode` belongs to the sleep system.
 - A WALLED-IN BLOCK IS NOT DRAWN (`blocks._apply_occlusion`), and "walled in" is decided by a FLOOD
