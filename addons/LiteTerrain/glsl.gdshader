@@ -2,8 +2,9 @@ shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 
 group_uniforms Texture;
-// The cell of the per-pixel colour noise and of the grass, in world units (PIXELS_PER_TILE cells to
-// one). Derived from world coordinates, so it matches between the game and the editor.
+// The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived
+// from world coordinates, so it matches between the game and the editor. The grass needs no cell
+// of its own: a blade is a vertex, and vertices stand on whole metres.
 uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
 
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
@@ -17,8 +18,7 @@ uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
 uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
 uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
 
-// Quantising to a grid keeps the noise and the grass steady per cell instead of flickering per
-// fragment.
+// Quantising to a grid keeps the noise steady per cell instead of flickering per fragment.
 const float PIXELS_PER_TILE = 16.0;
 
 group_uniforms Colors;
@@ -49,19 +49,19 @@ uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.0;    // no grass
 uniform vec4  color_canyon      : source_color = vec4(0.70, 0.30, 0.15, 1.0);
 uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // stratum height (matches the geometry terrace)
 // SALT FLATS: a dried lake bed, cracked into tiles (the ground detail's R channel). Its mask rides
-// in COLOR.r with the grass flag (chunk_terrain SEAM_ON / SALT_SPAN): r >= SEAM_TEST is a grass
-// vertex with r - SEAM_ON of salt, below it a seam vertex with r of salt.
+// in COLOR.r with the vertex's BORDER CODE (chunk_terrain EDGE_STEP / SALT_SPAN): r = code / 3 +
+// SALT_SPAN x salt, code 0 inside the node, 1 on a border running along x, 2 along z.
 uniform vec4  color_salt        : source_color = vec4(0.86, 0.75, 0.58, 1.0);
 uniform float crack_strength    : hint_range(0.0, 1.0)     = 0.65;
-const float SEAM_TEST = 0.55;
-const float SEAM_ON = 0.6;
-const float SALT_SPAN = 0.4;
+const float SALT_SPAN = 0.3;
 
 group_uniforms Grass;
 uniform float grass_density     : hint_range(0.0, 1.0)    = 1.0;   // см. TerrainBiomes: всегда, а не по настройке
 uniform float grass_height      : hint_range(0.0, 1.0)    = 0.15;
-uniform float lod_grass_enabled : hint_range(0.0, 1.0)    = 1.0;
 uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
+// Where the lift fades out, metres from the camera over the ground: before the first seam the
+// border rule below cannot hold (level 1 against level 2). Set by chunk_terrain (_grass_fade).
+uniform vec2  grass_fade = vec2(72.0, 96.0);
 
 group_uniforms Trample;
 // Grass flatten map (fed by grass.gd through a SubViewport). Black by default = no effect,
@@ -121,19 +121,30 @@ float hash2D(vec2 p) {
     return fract(p.x * p.y);
 }
 
+// THE BLADE AT ONE WORLD POINT: whether it grows (the hash against the meadow share) and how far
+// the trample map presses it down. A function of the point and nothing else.
+float blade_at(vec2 p, float amount) {
+    if (hash2D(p) >= grass_density * amount) {
+        return 0.0;
+    }
+    float h = grass_height * amount;
+    vec2 t_uv = (p - trample_center) / trample_size + vec2(0.5);
+    if (t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
+        h -= clamp(texture(trample_map, t_uv).r, 0.0, 1.0) * grass_height * amount * 2.0;
+    }
+    return h;
+}
+
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
-    // THE GRASS GRID: on XZ and quantised. Grass grows in this stage and only on gentle ground, so
-    // it needs no projection onto walls; the fragment's noise picks its own plane (wall_uv there).
-    vec2 pixel_uv = floor(world_pos.xz / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
     vec3 wn       = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
     v_wpos     = world_pos.xyz;
     v_wnrm     = wn;
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
-    v_haze = smoothstep(haze_range.x, haze_range.y,
-            length(world_pos.xz - CAMERA_POSITION_WORLD.xz));
+    float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
+    v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
     // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
@@ -156,8 +167,9 @@ void vertex() {
     float bh         = hash2D(vec2(band_id, 7.3));                    // 0..1 per band, stable
     vec3  canyon_col = mix(color_canyon.rgb * 0.72,
                            clamp(color_canyon.rgb * vec3(1.18, 1.06, 0.90), 0.0, 1.0), bh);
-    bool  grass_vtx = COLOR.r >= SEAM_TEST;
-    float salt    = clamp(grass_vtx ? (COLOR.r - SEAM_ON) / SALT_SPAN : COLOR.r / SALT_SPAN, 0.0, 1.0);
+    // Colour channels are 8-bit: the code is read with a margin, the salt is what is left over.
+    float edge    = floor(COLOR.r * 3.0 + 0.05);
+    float salt    = clamp((COLOR.r - edge / 3.0) / SALT_SPAN, 0.0, 1.0);
     vec3  zone    = mix(color_sand.rgb, color_grass.rgb, biome_grass);  // desert ↔ meadow
     zone          = mix(zone,           color_salt.rgb,   salt);        // the salt flat on the desert
     zone          = mix(zone,           canyon_col,       canyon);      // canyon on top
@@ -182,22 +194,29 @@ void vertex() {
     v_is_grass = clamp(grass_amount, 0.0, 1.0);
     v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0);
     v_salt = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0);
-    // COLOR.r < SEAM_TEST marks a vertex on a chunk border: the grass offset is skipped there, or
-    // the seam between differing LODs pulls apart. lod_grass_enabled is 1 only on the near
-    // LOD-0 material.
-    if (lod_grass_enabled > 0.5 && grass_vtx) {
-        // Grass grows in the MEADOW only. In the desert sand_grass = 0 means bare sand. None on
-        // rock, in the canyon or on mountains. amount scales both height and density.
-        float amount = grass_amount;
-        if (amount > 0.03 && hash2D(pixel_uv) < grass_density * amount) {
-            vec3 offset = NORMAL * grass_height * amount;
-            vec2 t_uv = (world_pos.xz - trample_center) / trample_size + vec2(0.5);
-            if (t_uv.x >= 0.0 && t_uv.x <= 1.0 && t_uv.y >= 0.0 && t_uv.y <= 1.0) {
-                float press = texture(trample_map, t_uv).r;
-                offset.y -= clamp(press, 0.0, 1.0) * grass_height * amount * 2.0;
-            }
-            VERTEX += offset;
+    // THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL, so two nodes meeting on a seam
+    // lift their shared vertices alike whatever their levels and whenever each was built. It used to
+    // be the near level only, with the border rows flagged flat where the neighbour was coarser -
+    // a flag baked from the neighbours at build time, and stale whenever a neighbour changed level
+    // before this node was rebuilt: one side up 0.3 m, the other flat, the sky through the slit
+    // (measured: half the frames of a drive had one). Hence straight up, not along NORMAL (a coarse
+    // node's normals differ), and THE BORDER RULE: a vertex on a node's border at an odd metre
+    // takes the mean of its two neighbours along the border - exactly what a level-1 neighbour,
+    // whose edge runs straight between those two, draws there. Inside a node every vertex is its
+    // own blade, as before. Grass grows in the MEADOW only (sand_grass 0 is bare sand), none on
+    // rock, in the canyon or on mountains; amount scales both height and density.
+    float amount = grass_amount;
+    float fade = 1.0 - smoothstep(grass_fade.x, grass_fade.y, ground_d);
+    if (fade > 0.0 && amount > 0.03) {
+        vec2 p = floor(world_pos.xz + 0.5);           // vertices stand on whole metres
+        float lift;
+        if (edge > 0.5 && mod(edge > 1.5 ? p.y : p.x, 2.0) > 0.5) {
+            vec2 along = edge > 1.5 ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
+            lift = 0.5 * (blade_at(p - along, amount) + blade_at(p + along, amount));
+        } else {
+            lift = blade_at(p, amount);
         }
+        VERTEX.y += lift * fade;
     }
 }
 

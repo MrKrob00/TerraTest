@@ -94,12 +94,15 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 ## инспекторе была бы вторым источником, который спорит с первым.
 var flat_ground: bool = false
 ## Цвет земли на полигоне — чистый луг: трава есть, каньона и гор нет (см. _mesh_arrays).
-## COLOR.r CARRIES TWO THINGS: the grass flag (no grass on a seam vertex) and the SALT FLAT mask -
-## the other three channels are canyon, meadow and mountain, and a fifth biome needs a home.
-## r = (seam ? 0 : SEAM_ON) + SALT_SPAN * salt; the shader splits them at SEAM_TEST (glsl.gdshader).
-const SEAM_ON := 0.6
-const SALT_SPAN := 0.4
-const FLAT_COLOR := Color(SEAM_ON, 0.0, 1.0, 0.0)
+## COLOR.r CARRIES TWO THINGS: the vertex's BORDER CODE and the SALT FLAT mask - the other three
+## channels are canyon, meadow and mountain, and a fifth biome needs a home. r = EDGE_STEP x code +
+## SALT_SPAN x salt; code 0 inside the node, 1 on a border running along x (the north and south
+## rows), 2 along z. The shader's grass takes its border rule from it (glsl.gdshader). The code is
+## a fact of the vertex's place in its OWN node, never of the neighbours: a flag read off the
+## neighbours at build time goes stale the moment one of them changes level.
+const EDGE_STEP := 1.0 / 3.0
+const SALT_SPAN := 0.3
+const FLAT_COLOR := Color(0.0, 0.0, 1.0, 0.0)
 @export var forced_seed: int = 0
 
 signal terrain_ready
@@ -118,8 +121,9 @@ func _pf_mark(key: String, t0: int) -> void:
 		perf_sink.call(key, t0)
 
 var _gen: LiteTerrainGen = null
-var _mat_lod0: Material = null
-var _mat_far: Material = null
+## ONE MATERIAL FOR EVERY LEVEL: the grass is the same function of the world point on all of them
+## (glsl.gdshader), so there is nothing left to tell a near node from a far one.
+var _mat: Material = null
 var _cam: Camera3D = null
 var _y_lo: float = -60.0
 var _y_hi: float = 240.0
@@ -627,21 +631,19 @@ func _node_aabb(lod: int, gx: int, gz: int) -> AABB:
 ## УРОВЕНЬ, НА КОТОРОМ СЕЙЧАС РИСУЕТСЯ БАЗОВЫЙ ЧАНК. Спрашиваем лист, накрывающий его: своих
 ## координат у листа на каждом уровне ровно одни, так что это шесть проверок словаря, а не обход
 ## дерева. Отсюда мелкий узел узнаёт, к какому краю притягиваться.
+## THE LEAF SET, NOT THE FRAME: a neighbour off the screen is still drawn at its level the moment
+## the camera turns to it. Asked of `_want`, it read as "nothing there", the node was built
+## unsnapped, and every turn of the camera re-stitched the frame's edge twice over.
 func _level_of(bcx: int, bcz: int) -> int:
 	for l in MAX_LOD + 1:
-		if _want.has(_key(l, bcx >> l, bcz >> l)):
+		if _leaf_set.has(_key(l, bcx >> l, bcz >> l)):
 			return l
 	return -1
 
-## ЧТО У НАС ПО ЭТУ СТОРОНУ. Младшие четыре бита — насколько сосед КРУПНЕЕ (к его решётке надо
-## притянуть край), бит 4 — уровни просто РАЗНЫЕ, в любую сторону.
-##
-## Второе нужно ровно из-за травы. Шейдер поднимает травинку, двигая вершину, и на шве это
-## законно только если обе стороны двигают её одинаково. Крупный сосед о мелком не знает, его
-## край никто не притягивает — значит он поднимал свои вершины, мелкий свои нет, и вдоль шва
-## открывалась щель. Поэтому траву гасят ОБЕ стороны, а не только притянутая.
+## ЧТО У НАС ПО ЭТУ СТОРОНУ: насколько сосед КРУПНЕЕ — к его решётке надо притянуть край.
+## A coarser node never hears of a finer neighbour, so a level change re-stitches only the side
+## that snaps. The grass needs no bit here any more (glsl.gdshader: the same lift on every level).
 const SIDE_BITS := 8
-const SIDE_DIFF := 0x10
 
 func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
 	var n: int = 1 << lod
@@ -658,16 +660,11 @@ func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
 		a = Vector2i(bx, pz)
 		b = Vector2i(bx + n - 1, pz)
 	var k := 0
-	var diff := false
 	for p in [a, b]:
-		var l := _level_of(p.x, p.y)
-		if l < 0:
-			continue                       # там ничего не рисуется — шва нет
-		if l != lod:
-			diff = true
+		var l := _level_of(p.x, p.y)        # -1: там ничего не рисуется — шва нет
 		if l > lod:
 			k = maxi(k, l - lod)
-	return mini(k, 4) | (SIDE_DIFF if diff else 0)
+	return mini(k, 4)
 
 ## Четыре соседа в одном числе, по байту на сторону: север, юг, запад, восток.
 func _signature(lod: int, gx: int, gz: int) -> int:
@@ -702,6 +699,7 @@ func _signature(lod: int, gx: int, gz: int) -> int:
 ## Высота в кэш не кладётся: у всех узлов она одна (_y_lo.._y_hi) и живёт вместе с миром — её
 ## подставляет _pack_planes, один раз на тик вместо одного раза на узел.
 var _leaf_keys := PackedInt64Array()
+var _leaf_set: Dictionary = {}                # the same keys, for _level_of
 var _leaf_box := PackedFloat32Array()         # по 4 на лист: minx, minz, maxx, maxz
 var _leaf_at: Vector3 = Vector3(1e9, 1e9, 1e9)
 var _leaf_vd: float = -1.0
@@ -738,6 +736,7 @@ func _select(at: Vector3, cull: bool = true) -> void:
 
 func _build_leaves(at: Vector3) -> void:
 	_leaf_keys.clear()
+	_leaf_set.clear()
 	_leaf_box.clear()
 	_leaf_at = at
 	_leaf_vd = view_distance
@@ -771,7 +770,9 @@ func _descend(lod: int, gx: int, gz: int, cam: Vector3) -> void:
 		_descend(lod - 1, cx, cz + 1, cam)
 		_descend(lod - 1, cx + 1, cz + 1, cam)
 		return
-	_leaf_keys.append((lod << 40) | ((gx & 0xFFFFF) << 20) | (gz & 0xFFFFF))
+	var key: int = (lod << 40) | ((gx & 0xFFFFF) << 20) | (gz & 0xFFFFF)
+	_leaf_keys.append(key)
+	_leaf_set[key] = true
 	_leaf_box.append(x0)
 	_leaf_box.append(z0)
 	_leaf_box.append(x1)
@@ -993,7 +994,7 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	mi.mesh = mesh
 	mi.position = Vector3(job["gx"] * (CHUNK << job["lod"]), 0.0, job["gz"] * (CHUNK << job["lod"]))
 	mi.custom_aabb = arrays[1]
-	mi.material_override = _mat_lod0 if job["lod"] == 0 else _mat_far
+	mi.material_override = _mat
 	# ЗЕМЛЯ ТЕНЬ НЕ ОТБРАСЫВАЕТ, ТОЛЬКО ПРИНИМАЕТ. Замер на устройстве: с тенями 17 fps, без них
 	# 25 — треть кадров за одну настройку. Тени и так настроены скупо (один сплит, жёсткие, карта
 	# 1024), значит цена не в качестве, а в том, ЧТО в карту рисуется: ближние два уровня это
@@ -1095,17 +1096,13 @@ func _mesh_arrays(h: PackedFloat32Array, step: float, sig: int, x0: float, z0: f
 			var hd: float = h[a + APRON]
 			norms[vi] = Vector3(hl - hr, 2.0 * step, hu - hd).normalized()
 			var wp := Vector2(x0 + float(i) * step, wz)
-			# .r — трава (0 там, где вершину притянули: поднятая травинка снова раскрыла бы шов),
-			# .g каньон, .b луг, .a горы. Цвет земли живёт в вершинах, шейдер их только читает.
-			# Шов — это РАЗНЫЕ уровни, а не только «сосед крупнее»: траву гасят обе стороны.
-			var seam := (j == 0 and (sn & SIDE_DIFF) != 0) \
-					or (j == VERTS - 1 and (ss & SIDE_DIFF) != 0) \
-					or (i == 0 and (sw & SIDE_DIFF) != 0) \
-					or (i == VERTS - 1 and (se & SIDE_DIFF) != 0)
+			# .r — код края и солончак (см. EDGE_STEP), .g каньон, .b луг, .a горы. Цвет земли
+			# живёт в вершинах, шейдер их только читает.
+			var edge: int = 1 if (j == 0 or j == VERTS - 1) else (2 if (i == 0 or i == VERTS - 1) else 0)
 			# На полигоне масок не спрашиваем вовсе: там один биом по определению, а три маски на
 			# вершину — это ровно та работа, ради отсутствия которой земля и сделана ровной.
-			cols[vi] = (Color(0.0 if seam else FLAT_COLOR.r, FLAT_COLOR.g, FLAT_COLOR.b, FLAT_COLOR.a)
-					if flat_ground else _biome_colour(b, wp, nz_cb, seam))
+			cols[vi] = (Color(EDGE_STEP * edge, FLAT_COLOR.g, FLAT_COLOR.b, FLAT_COLOR.a)
+					if flat_ground else _biome_colour(b, wp, nz_cb, edge))
 
 	var idx := PackedInt32Array()
 	idx.resize(CHUNK * CHUNK * 6)
@@ -1300,16 +1297,16 @@ func biome_at(world_pos: Vector3) -> Vector3:
 	var nz_cb: Callable = b.noise
 	var p: Vector3 = global_transform.affine_inverse() * world_pos
 	var wp := Vector2(p.x, p.z)
-	var c := _biome_colour(b, wp, nz_cb, false)
+	var c := _biome_colour(b, wp, nz_cb, 0)
 	return Vector3(c.g, c.b, c.a)
 
-## THE VERTEX'S BIOMES, one door for the bake and for `biome_at`: r the grass flag and the salt flat
-## (SEAM_ON / SALT_SPAN), g canyon, b meadow, a mountain. THE SALT FLAT WINS OVER THE CANYON in
-## colour as it does in the landform (terrain_gen.carve_at): the canyon's mask is taken by it, or a
-## lake bed under a canyon mask was painted terracotta from shore to shore.
-func _biome_colour(b: TerrainBiomes, wp: Vector2, nz_cb: Callable, seam: bool) -> Color:
+## THE VERTEX'S BIOMES, one door for the bake and for `biome_at`: r the border code and the salt
+## flat (EDGE_STEP / SALT_SPAN), g canyon, b meadow, a mountain. THE SALT FLAT WINS OVER THE CANYON
+## in colour as it does in the landform (terrain_gen.carve_at): the canyon's mask is taken by it, or
+## a lake bed under a canyon mask was painted terracotta from shore to shore.
+func _biome_colour(b: TerrainBiomes, wp: Vector2, nz_cb: Callable, edge: int) -> Color:
 	var salt: float = b.salt_mask(wp, nz_cb)
-	return Color((0.0 if seam else SEAM_ON) + SALT_SPAN * salt,
+	return Color(EDGE_STEP * edge + SALT_SPAN * salt,
 			b.canyon_mask(wp, nz_cb) * (1.0 - salt), b.meadow_mask(wp, nz_cb), b.mountain_mask(wp, nz_cb))
 
 ## 0..1: a salt flat at this world point - the mask baked into COLOR.r.
@@ -1325,45 +1322,45 @@ func _get_material() -> Material:
 	m.shader = GROUND_SHADER
 	return m
 
-## Два экземпляра базового материала: трава включена только у ближнего. Переключение уровня
-## после этого — смена ссылки, а не параметра на экземпляр.
+## Свой экземпляр базового материала: параметры пишутся в него, а не в общий ресурс.
 func _setup_materials(base: Material) -> void:
 	if base is ShaderMaterial:
-		_mat_lod0 = base.duplicate()
-		(_mat_lod0 as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 1.0)
-		_mat_far = base.duplicate()
-		(_mat_far as ShaderMaterial).set_shader_parameter("lod_grass_enabled", 0.0)
+		_mat = base.duplicate()
+		(_mat as ShaderMaterial).set_shader_parameter("grass_fade", grass_fade())
 		_push_biomes()
 	else:
-		_mat_lod0 = base
-		_mat_far = base
+		_mat = base
 
-## THERE ARE TWO MATERIALS (the near one with grass, the far one without), and whoever sets a
-## parameter sets it on both - `_push_biomes` and `set_corruption_map` do; one of them alone would
-## change the ground out to 64 m and leave the rest as it was.
+## WHERE THE GRASS FADES OUT, metres from the camera over the ground. A level-0 node meets a level-1
+## one anywhere past 44 m and the shader's border rule makes those seams agree; it cannot make a
+## level-1 border agree with a level-2 edge, so the lift is gone before level 2 can begin - its split
+## distance less twice the leaf hysteresis (the camera is up to a leaf step from the point the leaves
+## were cut around, and a node waiting to be split is drawn a while longer).
+const GRASS_FADE_BAND := 24.0
+
+func grass_fade() -> Vector2:
+	var end: float = float(CHUNK << 2) * LOD_QUALITY - 2.0 * sqrt(LEAF_MOVE2)
+	return Vector2(end - GRASS_FADE_BAND, end)
+
 func _push_biomes() -> void:
 	if biomes == null:
 		return
-	var h := world_height()
-	if _mat_lod0 is ShaderMaterial:
-		biomes.apply_to_material(_mat_lod0 as ShaderMaterial, h)
-	if _mat_far is ShaderMaterial:
-		biomes.apply_to_material(_mat_far as ShaderMaterial, h)
+	if _mat is ShaderMaterial:
+		biomes.apply_to_material(_mat as ShaderMaterial, world_height())
 
 func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
-	if _mat_lod0 is ShaderMaterial:
-		var m := _mat_lod0 as ShaderMaterial
+	if _mat is ShaderMaterial:
+		var m := _mat as ShaderMaterial
 		m.set_shader_parameter("trample_map", tex)
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
 
 func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
-	for m in [_mat_lod0, _mat_far]:
-		if m is ShaderMaterial:
-			var sm := m as ShaderMaterial
-			sm.set_shader_parameter("corrupt_map", tex)
-			sm.set_shader_parameter("corrupt_world_center", center)
-			sm.set_shader_parameter("corrupt_world_size", size)
+	if _mat is ShaderMaterial:
+		var sm := _mat as ShaderMaterial
+		sm.set_shader_parameter("corrupt_map", tex)
+		sm.set_shader_parameter("corrupt_world_center", center)
+		sm.set_shader_parameter("corrupt_world_size", size)
 
 ## (узлов на экране, из них уровня 0, заданий в очереди) — видно, что именно рисуется.
 func render_stats() -> Vector3i:

@@ -901,8 +901,8 @@ project: read it before claiming how anything works.
   real driver, the same three clouds: nothing but the flash cones before, all of them after.
   `ground_wave.gdshader` had the same shape (its lift is never zero, so it drew).
 - THE MARK IS LIFTED OUT OF THE GRASS IN DEPTH, NOT IN SPACE (`glitch_card.gdshader` `depth_lift`,
-  set to `G.grass_lift()` + `HOLE_LIFT`). The grass IS the near LOD lifting meadow vertices by
-  `TerrainBiomes.grass_height` (0.3 m) along the normal, while the bullet's ray hits the flat
+  set to `G.grass_lift()` + `HOLE_LIFT`). The grass IS the ground lifting meadow vertices straight
+  up by `TerrainBiomes.grass_height` (0.3 m) out to `ChunkTerrain.grass_fade`, while the bullet's ray hits the flat
   heightfield under it — so a mark 3 cm over the physics ground lay 27 cm under the drawn meadow.
   The card's vertices slide toward the camera along their own view ray: on screen the mark stays
   exactly where the shot landed, in depth it clears the lift (divided by the ray's angle to the
@@ -1396,7 +1396,25 @@ project: read it before claiming how anything works.
   own, so precomputing chunks is the same work moved earlier.
 - Neighbour level is asked by `_level_of` (six dictionary lookups, not a tree walk), and the finer
   node lays its extra edge vertices on the segment between the ones it shares with the coarser. A
-  corner vertex is a multiple of any neighbour step, so two snapped edges never argue.
+  corner vertex is a multiple of any neighbour step, so two snapped edges never argue. IT READS THE
+  LEAF SET (`_leaf_set`), NOT THE FRAME: a neighbour off the screen is drawn at its level the moment
+  the camera turns to it, and read off `_want` it was "nothing there" - the node was built
+  unsnapped, and every turn of the camera re-stitched the frame's edge.
+- **THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL** (`glsl.gdshader` `blade_at`, one
+  material for all levels). It was the near level only, with border rows flagged flat in `COLOR.r`
+  wherever the neighbour was coarser - a flag read off the neighbours when the node was BUILT, and
+  stale whenever a neighbour changed level before this node was rebuilt (the restitch is queued and
+  budgeted): one side 0.3 m up, the other flat, the sky through the slit - the player's "holes at
+  the borders while I drive, they close after a while". Now every node lifts its vertices the same
+  way, STRAIGHT UP (a coarse node's normals differ), and a vertex on a node's border at an odd metre
+  takes the mean of its two neighbours along the border - what a level-1 neighbour, whose edge runs
+  straight between them, draws there. Which border a vertex is on is a fact of its own node
+  (`EDGE_STEP` code in `COLOR.r`), never of the neighbours. The lift fades out before level 2 can
+  begin (`ChunkTerrain.grass_fade`, 72..96 m), since a level-1 border cannot be made to agree with a
+  level-2 edge. Measured on real terrain, the camera driving a meadow at 22 m/s, every drawn border
+  of every level-0 chunk checked every other frame: slits from the lift over 2 cm 3852 -> 105, the
+  largest 0.30 -> 0.19 m (what is left is a blade's hash flipping where the two levels' slopes give
+  a slightly different meadow share). Near grass unchanged on the real driver.
 - A collision tile IS a base chunk, cut from the same heights as the level-0 mesh — under a near
   chunk it costs nothing. ITS QUEUE IS SEPARATE AND FIRST: a tile is what the machine drives on, a
   mesh is what it looks at, and behind one shared queue the ground ran out every few metres. Tiles
@@ -1425,9 +1443,9 @@ project: read it before claiming how anything works.
   a slope - measured, the steepest shore point is no steeper than the relief there without it (80
   deg against 84, canyon walls). THE SALT FLAT WINS OVER THE CANYON in both landform (`carve_at`
   damps the cut) and colour (`chunk_terrain._biome_colour` bakes canyon x (1 - salt)), or a lake bed
-  under a canyon mask was painted terracotta. ITS MASK RIDES IN `COLOR.r` WITH THE GRASS FLAG -
-  the other three channels are taken: r = (seam ? 0 : `SEAM_ON` 0.6) + `SALT_SPAN` 0.4 x salt, split
-  at `SEAM_TEST` 0.55 in the shader; `FLAT_COLOR` (the proving ground) is r = 0.6, no salt. In
+  under a canyon mask was painted terracotta. ITS MASK RIDES IN `COLOR.r` WITH THE VERTEX'S BORDER
+  CODE - the other three channels are taken: r = `EDGE_STEP` (1/3) x code + `SALT_SPAN` 0.3 x salt,
+  read back with a margin in the shader (colour channels are 8-bit); `FLAT_COLOR` has no salt. In
   `raw_height_at` the mask is `salt_raw` x the desert share already in hand: the full `salt_mask`
   read the meadow and mountain masks again and cost `height_at` 17%. About 10% of the map at
   `salt_threshold` 0.70. No grass and no ripples on it; `salt_at` asks it at a world point.

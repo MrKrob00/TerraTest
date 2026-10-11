@@ -80,8 +80,13 @@ base DESERT ↔ MEADOW  →  SALT FLATS on the desert  →  CANYON  →  MOUNTAI
 - A new biome is a shader edit too: each layer's colour is a `mix()` in `glsl.gdshader`'s `vertex()`.
 
 The masks are baked into the vertex COLOR per vertex (`ChunkTerrain._biome_colour`): `.g` canyon,
-`.b` meadow, `.a` mountain, and `.r` carries two things — the grass flag (0 on a seam vertex) and
-the salt flat (`SEAM_ON` + `SALT_SPAN` × salt, split at `SEAM_TEST` in the shader).
+`.b` meadow, `.a` mountain, and `.r` carries two things — the vertex's border code (0 inside its
+node, 1 on a border along x, 2 along z) and the salt flat: `EDGE_STEP` × code + `SALT_SPAN` × salt.
+
+The grass is the same function of the world point on every level (`blade_at` in the shader): each
+vertex lifted straight up, a border vertex at an odd metre taking the mean of its two neighbours
+along the border, so a seam between any two levels lifts alike whenever each side was built. It
+fades out before level 2 begins (`ChunkTerrain.grass_fade`).
 
 ## Runtime API
 
@@ -145,11 +150,11 @@ one and one carrying the meta `asleep` get no tiles.
 `glsl.gdshader`. The colours, rock and grass numbers are written from the biomes resource at
 build time (`TerrainBiomes.apply_to_material`) — edit them there, not here.
 
-- **Texture**: `tile_world_size` (the colour noise's and the grass's cell), `ground_detail`,
+- **Texture**: `tile_world_size` (the colour noise's cell), `ground_detail`,
   `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`.
 - **Colours / terrain / biomes**: `color_*`, `snow_line`, `snow_blend`, `rock_threshold`,
   `rock_blend`, `color_variation`, `sand_grass`, `canyon_band_h`, `crack_strength`.
-- **Grass**: `grass_density`, `grass_height`, `grass_shade`, `lod_grass_enabled` (per material).
+- **Grass**: `grass_density`, `grass_height`, `grass_shade`, `grass_fade` (set by the node).
 - **Trample**: `trample_map`, `trample_center`, `trample_size` (driven by the game's `grass.gd`).
 - **Corruption**: `corrupt_amount`, `corrupt_map`, `corrupt_world_center`, `corrupt_world_size`,
   `glitch_cell`, `glitch_speed`, `corrupt_cyan`, `corrupt_magenta`, `corrupt_glow`.
