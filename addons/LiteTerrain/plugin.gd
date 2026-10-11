@@ -9,11 +9,13 @@ extends EditorPlugin
 # запечённую карту высот из файла (map.gd), и её в проекте больше нет: и мир, и фон меню стоят
 # на чанковой земле, которая считается из сида и никаких файлов не читает.
 #
-# Что осталось:
-#   • КАРТА СИДА в инспекторе ноды (terrain_inspector.gd → seed_browser.gd) — то, ради чего
-#     существовала генерация: посмотреть, что даёт сид, не запуская игру;
-#   • КАМЕРА РЕДАКТОРА, которую надо отдать ноде: своей в редакторе у неё нет, а превью
-#     строится вокруг того, куда смотрят.
+# What is left:
+#   • the PREVIEW BUTTONS at the top of the node's inspector (terrain_inspector.gd ->
+#     preview_panel.gd): build the real ground in the editor, which is how the map's "Ground
+#     shader" settings are seen while they are tuned. The seed map that stood over them is gone
+#     (the player's call);
+#   • the EDITOR CAMERA, handed to the node: it has none of its own in the editor, and the preview
+#     is built round where the view is.
 #
 # Саму ноду добавляют обычным «Add Node → ChunkTerrain»: у скрипта есть class_name, и
 # регистрировать для этого custom type незачем.
@@ -23,7 +25,6 @@ var _node: ChunkTerrain = null
 
 func _enter_tree() -> void:
 	_inspector = preload("res://addons/LiteTerrain/terrain_inspector.gd").new()
-	_inspector.undo_redo = get_undo_redo()
 	add_inspector_plugin(_inspector)
 
 func _exit_tree() -> void:

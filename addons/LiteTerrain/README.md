@@ -17,10 +17,11 @@ The game's own notes on the terrain (measurements, the rules each number came fr
 > generation into an array, baking to `.res`/`.bin`/PNG). **2.1 removed what it left behind**: the
 > tile textures (`Dark/`), the binary material that pointed at one of them, the generator's
 > cancel flag and noise offset, the dead biome knobs `dune_amp` / `mountain_rise`, and the
-> shader's `low_quality`, `tile_texture` and `texture_blend`. **2.2 emptied the inspector**: the
-> node shows `biomes` and the behind-a-hill switch and nothing else; the numbers nobody changed are
-> constants, the menu's own are fields its script sets, and the shader's uniforms are only the ones
-> the game writes.
+> shader's `low_quality`, `tile_texture` and `texture_blend`. **2.2 emptied the inspector of engine
+> numbers and the seed map**: the node shows `biomes`, the behind-a-hill switch and the ground
+> shader's own settings ("Ground shader"; they were constants for one commit, the player wanted them
+> back), under two buttons that build the ground in the editor. The numbers nobody changed are
+> constants, the menu's own are fields its script sets.
 
 ## Files
 
@@ -31,14 +32,14 @@ The game's own notes on the terrain (measurements, the rules each number came fr
 | `terrain_biomes.gd` | `TerrainBiomes`: the biome masks, their noise and the colours handed to the shader. |
 | `glsl.gdshader` | The ground shader: biome colour, slope rock, grass lift, detail masks, haze. |
 | `ground_detail.png` | Four tileable detail masks in one texture (built by `art/ground_detail.py`). |
-| `plugin.gd`, `terrain_inspector.gd`, `seed_browser.gd` | Editor only: the seed map at the top of the node's inspector. |
+| `plugin.gd`, `terrain_inspector.gd`, `preview_panel.gd` | Editor only: the buttons at the top of the node's inspector that build the ground round the editor camera. |
 
 ## Quick start
 
 1. Add a **ChunkTerrain** node to a 3D scene (by name — the script has a `class_name`).
 2. Give it a `TerrainBiomes` resource in `biomes`, or leave it empty and it makes one.
-3. The top of its inspector shows the world's regions for the current seed. Step through seeds,
-   then press **Показать в сцене** to build the real ground round the editor camera.
+3. Press **Build in scene** at the top of its inspector to build the real ground round the editor
+   camera; the "Ground shader" settings below it change that ground as they are moved.
 
 There is nothing to generate into a file and nothing to bake: the ground IS the seed, and the
 same seed gives the same world in the editor and in the game.
@@ -54,13 +55,15 @@ In the inspector:
 |---|---|
 | `biomes` | The `TerrainBiomes` resource. |
 | `enable_occlusion_culling` | What stands behind a hill is not drawn (`is_point_hidden`, asked by the game's veins, loose items and machines). |
+| Ground shader: `tile_world_size`, `color_variation` | The colour noise: its cell (16 to this many metres) and how far a cell's tone strays. |
+| Ground shader: `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`, `crack_strength` | The detail texture's span and its four masks' strengths: desert ripples, meadow clumps, patches everywhere, salt-flat cracks. Written into the material on every change, so the editor's preview follows. |
 
 Fields a script sets (the menu backdrop does, `menu_stage_3d._make_map`):
 
 | Field | What it does |
 |---|---|
 | `follow_world_settings` | On: the seed comes from the autoload `G` (`G.world_seed`), one world per save slot. Off: `forced_seed`. |
-| `forced_seed` | The seed when not following the slot. The seed map in the inspector writes it too. |
+| `forced_seed` | The seed when not following the slot; the editor's preview builds with it. |
 | `view_distance`, `keep_radius` | How far ground is drawn; inside what radius nothing built is ever dropped. |
 | `ready_ring`, `ready_view` | What must be up before the loading screen lifts: chunks with collision round the start, then the view out to this many metres. |
 | `enable_streaming_collision` | Collision tiles round moving bodies; a map being prepared keeps it off. |
@@ -86,7 +89,7 @@ base DESERT ↔ MEADOW  →  SALT FLATS on the desert  →  CANYON  →  MOUNTAI
 | Canyon | `canyon_scale`, `canyon_threshold`, `canyon_edge`, `color_canyon`, `canyon_band_height`, `canyon_butte_scale` |
 | Mountains | `mountain_scale`, `mountain_threshold`, `mountain_edge` |
 | Snow / rock | `color_snow`, `snow_frac`, `snow_blend_frac`, `color_rock`, `rock_threshold`, `rock_blend` |
-| Grass | `grass_height`, `sand_grass`, `grass_shade` |
+| Grass | `grass_density`, `grass_height`, `sand_grass`, `grass_shade` |
 
 - Every layer is always on. `mask_offset` is not a setting: it is worked out from the seed
   (`offset_for_seed`) wherever a world is built.
@@ -169,16 +172,16 @@ one and one carrying the meta `asleep` get no tiles.
 
 ## Shader reference
 
-`glsl.gdshader`. Its uniforms are only what the game writes: the colours, rock and grass numbers
-from the biomes resource at build time (`TerrainBiomes.apply_to_material`) — edit them there, not
-here. What nothing writes is a `const` at the top of the shader: the colour noise (`NOISE_CELLS`,
-`COLOR_VARIATION`) and the detail masks' span and strengths (`DETAIL_SIZE`, `RIPPLES`, `TUFTS`,
-`PATCHES`, `CRACKS`).
+`glsl.gdshader`. Every uniform is set from the map's inspector or by the game - the material is
+made in code, so edit the numbers there, not here: the texture, noise and detail strengths from the
+node's own "Ground shader" group (`ChunkTerrain._push_shader`), the colours, rock and grass from the
+biomes resource (`TerrainBiomes.apply_to_material`).
 
-- **Detail**: `ground_detail` (the four masks).
+- **Texture**: `tile_world_size` (the colour noise's cell), `ground_detail`,
+  `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`.
 - **Colours / terrain / biomes**: `color_*`, `snow_line`, `snow_blend`, `rock_threshold`,
-  `rock_blend`, `sand_grass`, `canyon_band_h`.
-- **Grass**: `grass_height`, `grass_shade`, `grass_fade` (set by the node).
+  `rock_blend`, `color_variation`, `sand_grass`, `canyon_band_h`, `crack_strength`.
+- **Grass**: `grass_density`, `grass_height`, `grass_shade`, `grass_fade` (set by the node).
 - **Trample**: `trample_map`, `trample_center`, `trample_size` (driven by the game's `grass.gd`).
 - **Corruption**: `corrupt_amount`, `corrupt_map`, `corrupt_world_center`, `corrupt_world_size`,
   `glitch_cell`, `glitch_speed`, `corrupt_cyan`, `corrupt_magenta`, `corrupt_glow`.

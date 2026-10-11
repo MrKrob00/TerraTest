@@ -1307,15 +1307,17 @@ project: read it before claiming how anything works.
   at, and every metre of it is noise computed on the phone that also has to run the menu. There is
   no authored first map any more — every round, the first included, is generated the same way.
 - THERE IS NO SCULPT BRUSH, AND THAT IS THE DESIGN. It made sense while a map was a file of
-  heights edited by hand; a procedural world has a SEED, and the only question is what the seed
-  gives. The answer is the MAP AT THE TOP OF THE NODE'S INSPECTOR (`seed_browser.gd`): step
-  through seeds and watch where the regions land. It draws the BIOME MASKS, not the heights —
-  measured, three masks cost about 5 us a point against 124 for a height, so at 128×128 that is
-  eighty milliseconds against two seconds: flipping through seeds against waiting on each. The
-  mask offset comes from `TerrainBiomes.offset_for_seed`, the generator's own function: a second
-  copy would draw a layout the game does not build.
-- **THE MAP'S INSPECTOR HOLDS TWO SETTINGS: `biomes` AND `enable_occlusion_culling`** (the player:
-  "a heap of useless settings"). A scene sets the biomes and nothing else; the menu backdrop's own
+  heights edited by hand; a procedural world has a SEED, and a world's seed is its save slot's.
+  **THE SEED MAP IS GONE TOO** (the player's call: "remove WHAT THIS SEED GIVES, with the seed and
+  the span"): the panel at the top of the node's inspector drew the biome masks of a seed typed
+  into it, and that chose nothing the game shows - a slot picks its seed when the world is made, the
+  menu picks its own. What stands there now is TWO BUTTONS (`preview_panel.gd`): "Build in scene"
+  builds the real ground round the editor camera from `forced_seed` (`ChunkTerrain.preview_build`,
+  nothing saved into the scene) and "Clear" takes it down - the one way to see the ground, and what
+  the "Ground shader" settings do to it, without running the game.
+- **THE MAP'S INSPECTOR HOLDS WHAT SHAPES THE LOOK: `biomes`, `enable_occlusion_culling` AND THE
+  GROUND SHADER'S SETTINGS** (the player: "a heap of useless settings", then "return the shader
+  settings to the map's export"). A scene sets the biomes and nothing else; the menu backdrop's own
   numbers (`view_distance`, `keep_radius`, `ready_view`, `ready_ring`, `forced_seed`,
   `follow_world_settings`, `enable_streaming_collision`) are fields its script sets; every tuning
   number nobody changed is a constant (`FRUSTUM_MARGIN`, `BUILD_BATCH`, `STITCH_BUDGET`,
@@ -1324,17 +1326,22 @@ project: read it before claiming how anything works.
   is DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
   machine changes by themselves - a path stored in a scene once pointed at the EDITOR VIEWPORT's
   camera, which a running game does not have. No material slot (always `GROUND_SHADER`), no frustum
-  switch (always on). THE BIOMES RESOURCE lost what never moved: the three biome on/off switches,
-  `grass_density` (always every vertex) and `mask_offset` as an export - it is an OUTPUT of the seed
-  (`offset_for_seed`) and was being saved into both scenes with whatever seed the editor previewed
-  last. The game scene's grass numbers (0.3 m, 0.1 on sand) became the defaults, so the menu - the
-  same ground - stopped drawing the meadow at half height and the desert bare. THE GROUND SHADER'S
-  UNIFORMS ARE ONLY WHAT THE GAME WRITES: its material is made in code, so a uniform no script sets
-  is a constant with a slider nobody can reach - the colour noise and the detail masks' strengths are
-  consts (`NOISE_CELLS`, `COLOR_VARIATION`, `DETAIL_SIZE`, `RIPPLES`, `TUFTS`, `PATCHES`, `CRACKS`).
-  The corruption overlay keeps its uniforms as they are (the player's call). Checked on the real
-  driver: three views of the game's ground before and after, the ground identical to the pixel (only
-  the sky's clouds, which run on time, differ).
+  switch (always on). THE BIOMES RESOURCE lost what never moved: the three biome on/off switches and
+  `mask_offset` as an export - it is an OUTPUT of the seed (`offset_for_seed`) and was being saved
+  into both scenes with whatever seed the editor previewed last. The game scene's grass numbers
+  (0.3 m, 0.1 on sand) became the defaults, so the menu - the same ground - stopped drawing the
+  meadow at half height and the desert bare. **A SHADER SETTING NOTHING SETS YET IS STILL A SETTING:
+  IT GOES INTO THE INSPECTOR, NOT INTO A CONSTANT.** The ground's material is made in code, so the
+  shader's texture, noise and detail uniforms were reachable from no inspector at all, and that was
+  read as "useless": they were turned into shader constants and the player asked for them back. They
+  are the map's own "Ground shader" group now (`tile_world_size`, `color_variation`,
+  `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`, `crack_strength`, the
+  uniforms' own names), written by `ChunkTerrain._push_shader` at the material's build and on every
+  change, so the editor's preview follows the slider; `grass_density` is back in the biomes' Grass
+  group. A scene's own: the menu's maps are made in code and draw with the defaults. The
+  corruption overlay keeps its uniforms as they are (the player's call). Checked on the real
+  driver: three views of the game's ground, identical to the pixel through the constants and back
+  (only the sky's clouds, which run on time, differ).
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
@@ -1467,7 +1474,7 @@ project: read it before claiming how anything works.
   (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B grass
   clumps, A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
   ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
-  `DETAIL_SIZE` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
+  `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
   MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
   drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
   geometry baked into chunks; a note here used to say there was.

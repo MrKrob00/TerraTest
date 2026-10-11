@@ -46,24 +46,24 @@ LOD — это слияние чанков: четыре соседних ста
 
 ## Превью в редакторе
 
-Скрипт — `@tool`, и у выделенной ноды В ИНСПЕКТОРЕ, самым верхом, стоит КАРТА СИДА
-(`seed_browser.gd`): меняешь сид — видишь, где лягут регионы. Нарисованы маски биомов, а не
-высоты: маска стоит трёх отсчётов шума, высота — пяти с размытием и врезом каньона, и на 128×128
-это разница между «листаю сиды» и «жду». Сдвиг масок берётся `TerrainBiomes.offset_for_seed` —
-той же функцией, что и у генератора, иначе превью показывало бы не тот мир.
+The script is `@tool`, and at the top of the selected node's INSPECTOR stand two buttons
+(`preview_panel.gd`): "Build in scene" builds the real ground with the same generator round the
+editor camera, from the node's `forced_seed`, and "Clear" takes it down. It is the one way to see the
+ground - and what the map's "Ground shader" settings do to it, since every change is written into the
+material at once - without running the game. **Nothing reaches the scene**: the nodes are born
+without an `owner`, and the preview builds no collision at all - that is for machines, not eyes.
 
-Кнопка «Показать в сцене» строит настоящую землю тем же генератором вокруг камеры редактора.
-**В сцену не попадает ничего**: узлы рождаются без `owner`, а коллизию превью не строит вовсе —
-она нужна машинам, а не глазам.
+THE SEED MAP THAT STOOD OVER THEM IS GONE, with its seed and span fields (the player's call): it
+drew the biome masks of a seed typed into it, which chose nothing the game shows - a world's seed is
+its save slot's, picked when the world is made, and the menu backdrop picks its own. Its distance
+rings (`view_distance`, `keep_radius`, `ready_view` and the collision radius to scale) had gone
+before it, with those settings: they are not inspector numbers any more. The inspector shows
+`biomes`, the behind-a-hill switch and the ground shader's own settings ("Ground shader": noise,
+detail span and strengths); everything else is a constant or a field a script sets
+(`addons/LiteTerrain/README.md`).
 
-The distance rings under the map (`view_distance`, `keep_radius`, `ready_view` and the collision
-radius to scale) went with those settings: they are no longer inspector numbers - the game's are
-fixed and the menu's are set by its script (`menu_stage_3d._make_map`) - so there was nothing left
-for a ruler to compare while editing. The inspector shows `biomes`, the behind-a-hill switch and
-this map; everything else is a constant or a field a script sets (`addons/LiteTerrain/README.md`).
-
-Дока у плагина больше нет вовсе: всё, что он делал, обслуживало запечённую карту. Осталась
-панель в инспекторе и передача ноде камеры вьюпорта.
+Дока у плагина больше нет вовсе: всё, что он делал, обслуживало запечённую карту. Остались
+две кнопки в инспекторе и передача ноде камеры вьюпорта.
 
 В редакторе нода **не трогает ничего сама** — ни своих свойств, ни детей. Правка свойства из
 `_ready` пометила бы сцену изменённой и однажды сохранилась бы.
