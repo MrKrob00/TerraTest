@@ -69,10 +69,15 @@ var _data: Array = []
 ## slot; a node writes its shader data through its record (`write_custom`).
 var _mm_live: Dictionary = {}
 var _cull_t: float = 0.0
-## Окклюзия спрашивается порциями (см. _process): за тик — 1/OCCL_SLICES списка.
+## A SHOWN vein is asked whether it went behind a ridge a slice of the list a pass (1/OCCL_SLICES);
+## a HIDDEN one every pass, or it would come back up to four passes - tens of metres of driving -
+## after the ridge was crossed. Hiding late costs a drawn vein, showing late is a pop.
 const OCCL_SLICES := 4
-const OCCL_VEIN_HEIGHT := 1.5     # высота жилы: её верх и должен выглянуть из-за хребта
+## The test asks for the vein's TOP (`_vein_top`): its model's height times its size. A fixed 1.5 m
+## hid a tree - twelve metres of it - while its crown stood over the ridge.
+const OCCL_VEIN_HEIGHT := 1.5
 var _occl_cursor: int = 0
+var _top_of: Dictionary = {}      # MultiMeshInstance3D -> its model's top, in model metres
 var _last_fwd: Vector3 = Vector3.FORWARD
 
 # _ready идёт СНИЗУ ВВЕРХ: у детей он вызывается РАНЬШЕ, чем у родителя. Значит на этот
@@ -638,6 +643,18 @@ func _stream_in(v: Dictionary) -> void:
 		v["node"] = node                             # before add_child: its _ready writes through it
 		add_child(node)
 
+## How high over its point a vein reaches: its model's top times its size (`_turn_of`).
+func _vein_top(v: Dictionary) -> float:
+	var mm: MultiMeshInstance3D = _model_mm(v)
+	if mm == null:
+		return OCCL_VEIN_HEIGHT
+	var top = _top_of.get(mm)
+	if top == null:
+		var mesh: Mesh = mm.multimesh.mesh if mm.multimesh != null else null
+		top = maxf(mesh.get_aabb().end.y, OCCL_VEIN_HEIGHT) if mesh != null else OCCL_VEIN_HEIGHT
+		_top_of[mm] = top
+	return float(top) * _turn_of(v["gpos"], v.get("wood") == true).y
+
 ## A vein's turn (x, radians) and size (y) from its point: the model (`_stream_in`) and the far tree's
 ## picture (`_process`) both read it here, or a far tree would turn and grow as it came near.
 func _turn_of(gp: Vector3, wood: bool) -> Vector2:
@@ -911,8 +928,9 @@ func _process(delta: float) -> void:
 		# kept идёт ПЕРВЫМ и без оглядки на радиус камеры: жила у базы за пятьсот метров всё
 		# равно обязана быть узлом, иначе стоящий на ней авто-шахтёр добывает воздух.
 		var near: bool = kept or (dist2 <= d2 and to.normalized().dot(fwd) >= view_cos)
-		if near and can_occlude and not kept and i >= slice_from and i < slice_to:
-			v["hidden"] = terr.is_point_hidden(gp, OCCL_VEIN_HEIGHT, v.get("hidden", false))
+		if near and can_occlude and not kept \
+				and (v.get("hidden", false) or (i >= slice_from and i < slice_to)):
+			v["hidden"] = terr.is_point_hidden(gp, _vein_top(v), v.get("hidden", false))
 		if near and not kept and v.get("hidden", false):
 			near = false
 		var shown: bool = int(v["slot"]) >= 0
