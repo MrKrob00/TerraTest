@@ -29,25 +29,21 @@ const MAX_LOD := 5                ## верхний уровень: 16 × 32 = 5
 ## притягивать край нужно только к вдвое более крупному соседу.
 const LOD_QUALITY := 2.0
 
-## КАМЕРА, ПО КОТОРОЙ СЧИТАЮТСЯ LOD И ОТСЕЧЕНИЕ. ОСТАВЛЯЙТЕ ПУСТЫМ. По умолчанию берётся та,
-## которой сцена РИСУЕТСЯ прямо сейчас (`get_viewport().get_camera_3d()`), то есть земля сама
-## следует за переключением камер, за спринг-армом и за сменой машины — искать по пути нечего.
-##
-## Поле осталось на один случай: вести LOD от камеры, которой сцена НЕ рисуется. Прописанный
-## путь — это ещё и риск: однажды в сцену сохранился путь до камеры ВЬЮПОРТА РЕДАКТОРА, которой
-## в игре нет вовсе, и земля осталась без камеры совсем.
-@export var camera: Camera3D
-## Empty draws the ground with its own shader (`GROUND_SHADER`); set only to try another material.
-## Every number the shader needs comes from `biomes` (TerrainBiomes.apply_to_material) or is the
-## shader's own default - the binary material that used to sit here carried nothing else, and
-## through a texture slot the shader no longer reads it shipped a picture in every build.
-@export var surface_material: Material = null
+## THE INSPECTOR HOLDS TWO SETTINGS, AND THAT IS ON PURPOSE (the player: "a heap of useless
+## settings"). A scene sets the biomes and nothing else; the menu backdrop's own numbers are set
+## from its script (menu_stage_3d `_make_map`), and every tuning number nobody changed is a constant
+## below. Gone: `camera` (the ground always takes the camera the scene is DRAWN with, and a path
+## stored once pointed at the editor viewport's camera, which a running game does not have),
+## `surface_material` (the ground is drawn with its own shader, `GROUND_SHADER`) and the frustum
+## culling switch (always on).
 const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 @export var biomes: TerrainBiomes = null : set = _set_biomes
+## WHAT STANDS BEHIND A HILL IS NOT DRAWN (`is_point_hidden`, asked by veins, loose items and
+## machines). On by default (the player's call); the ray reads the DRAWN ground's heights, see there.
+@export var enable_occlusion_culling: bool = true
 
-@export_group("Visibility")
-@export var view_distance: float = 1400.0
-@export var enable_frustum_culling: bool = true
+## How far ground is drawn. The menu backdrop draws much less (menu_stage_3d MENU_VIEW).
+var view_distance: float = 1400.0
 ## ЗАПАС ЗА КРАЕМ ЭКРАНА, В МЕТРАХ, И ТОЛЬКО У БОКОВЫХ ПЛОСКОСТЕЙ.
 ##
 ## У ближней плоскости запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит
@@ -57,42 +53,37 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 ##
 ## Теперь ближняя и дальняя считаются точно, а боковым даётся честный запас: узел, который
 ## вот-вот выедет в кадр сбоку, успевает посчитаться заранее.
-@export_range(0.0, 64.0, 1.0) var frustum_margin: float = 12.0
-## WHAT STANDS BEHIND A HILL IS NOT DRAWN (`is_point_hidden`, asked by veins, props, loose items and
-## machines). On by default (the player's call); the ray reads the DRAWN ground's heights, see there.
-@export var enable_occlusion_culling: bool = true
+const FRUSTUM_MARGIN := 12.0
 ## Nothing nearer than this is ever hidden: up close the test means nothing and a blink costs most.
-@export_range(0.0, 200.0, 1.0) var occlusion_min_dist: float = 40.0
+const OCCL_MIN_DIST := 40.0
 ## How far the ground has to stand ABOVE the line of sight to hide a thing - the margin that also
 ## covers a test asked a few frames late.
-@export_range(0.0, 10.0, 0.5) var occlusion_bias: float = 1.5
+const OCCL_BIAS := 1.5
 
-@export_group("Build")
 ## Сколько узлов собираем за один заход пула потоков. Заход один — второй писал бы в те же слоты.
-@export_range(1, 64, 1) var build_batch: int = 24
+const BUILD_BATCH := 24
 ## Пересборок из-за смены соседа за тик. Шов на кадр-другой дешевле просадки.
-@export_range(1, 64, 1) var stitch_budget: int = 16
-@export var lod_interval: float = 0.15
+const STITCH_BUDGET := 16
+## Seconds between LOD passes; the selection is also recomputed whenever the camera moves.
+const LOD_INTERVAL := 0.15
 
-@export_group("Collision")
-@export var enable_streaming_collision: bool = true
+## Streamed collision tiles. The menu keeps them off on a map being prepared (set_collision_streaming).
+var enable_streaming_collision: bool = true
 ## Клеток вокруг тела, которым даём землю. Радиус должен покрывать не только то, где тело стоит,
 ## но и то, куда оно едет: тайл теперь СЧИТАЕТСЯ, а не режется из готового массива, и просить его
 ## в момент въезда — значит въехать в пустоту.
-@export_range(4, 256, 4) var collision_radius: int = 12
+const COLLISION_RADIUS := 12
 ## На сколько секунд вперёд смотрим по скорости тела. Машина на 15 м/с за это время проезжает
 ## больше чанка, и тайл успевает родиться до того, как под колесом кончится земля.
-@export_range(0.0, 3.0, 0.1) var collision_lookahead: float = 1.2
+const COLLISION_LOOKAHEAD := 1.2
 
-@export_group("Procedural")
 ## Номинальный размер мира для тех, кто спрашивает get_dims (раскладка магазинов, жил и точек).
 ## У самой земли края нет; это лишь квадрат, в котором игра расставляет своё.
-@export var world_cells: int = 2048
-@export_group("")
+const WORLD_CELLS := 2048
 
-## Спрашивать ли сид у слота (G.world_seed). Выключено — берётся forced_seed: так фон меню и
-## тестовые сцены получают свою землю, не трогая сохранение игрока.
-@export var follow_world_settings: bool = true
+## Спрашивать ли сид у слота (G.world_seed). Выключено — берётся forced_seed: так фон меню
+## получает свою землю, не трогая сохранение игрока.
+var follow_world_settings: bool = true
 ## РОВНАЯ ЗЕМЛЯ. Не экспорт: ставится из G при подъёме (испытательный полигон), а галочка в
 ## инспекторе была бы вторым источником, который спорит с первым.
 var flat_ground: bool = false
@@ -106,7 +97,8 @@ var flat_ground: bool = false
 const EDGE_STEP := 1.0 / 3.0
 const SALT_SPAN := 0.3
 const FLAT_COLOR := Color(0.0, 0.0, 1.0, 0.0)
-@export var forced_seed: int = 0
+## The seed when `follow_world_settings` is off: the menu's round, the seed browser's preview.
+var forced_seed: int = 0
 
 signal terrain_ready
 var terrain_is_ready: bool = false
@@ -243,15 +235,15 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	terrain_ready.emit()
 
 ## СКОЛЬКО ЗЕМЛИ ИМЕТЬ ДО ТОГО, КАК ПОКАЗАТЬ ХОТЬ ЧТО-ТО, в чанках в каждую сторону: 2 — это 5×5
-## по 16 м, то есть 80 м вокруг точки старта. Экспорт, а не константа, потому что это решение
+## по 16 м, то есть 80 м вокруг точки старта. Поле, а не константа, потому что это решение
 ## СЦЕНЫ, а не движка: игре нужна земля под колёсами во все стороны от машины, которая сейчас
-## поедет, а фону меню — пятачок под двумя машинами у начала координат, и каждый лишний чанк
-## здесь это те же миллисекунды ожидания под экраном.
-@export_range(1, 6) var ready_ring: int = 2
+## поедет, а фону меню — пятачок под двумя машинами у начала координат (menu_stage_3d ставит 1),
+## и каждый лишний чанк здесь это те же миллисекунды ожидания под экраном.
+var ready_ring: int = 2
 
 ## ДОКУДА ЖДЁМ ЗЕМЛЮ ПЕРЕД ТЕМ, КАК СНЯТЬ ЭКРАН ЗАГРУЗКИ, в метрах от камеры. Больше — дольше
 ## вход, но меньше пустоты вокруг в первый кадр.
-@export_range(32.0, 512.0, 16.0) var ready_view: float = 192.0
+var ready_view: float = 192.0
 
 ## Ждём ЗЕМЛЮ ПОД ИГРОКОМ — квадрат чанков уровня 0 вокруг точки и их тайлы коллизии, — и
 ## больше ничего. Остальное кольцо к этому моменту уже в очереди (его просит _process), но ждать
@@ -368,7 +360,7 @@ func world_height() -> float:
 	return _gen.gen_amplitude if _gen != null else LiteTerrainGen.NAT_AMPLITUDE
 
 func get_dims() -> Vector2i:
-	return Vector2i(world_cells, world_cells) if terrain_is_ready else Vector2i.ZERO
+	return Vector2i(WORLD_CELLS, WORLD_CELLS) if terrain_is_ready else Vector2i.ZERO
 
 ## ЗЕМЛЯ В МИРОВОЙ ТОЧКЕ: генератор плюс правки. Единственная дверь — и меш, и коллизия, и
 ## запрос высоты снаружи идут через неё, иначе площадка была бы ровной только на вид.
@@ -804,7 +796,7 @@ func _select(at: Vector3, cull: bool = true) -> void:
 		_build_leaves(at)
 	_want.clear()
 	var n: int = _leaf_keys.size()
-	if not (cull and enable_frustum_culling and is_instance_valid(_cam)):
+	if not (cull and is_instance_valid(_cam)):
 		for i in n:
 			_want[_leaf_keys[i]] = true
 		return
@@ -891,7 +883,7 @@ var _pi := PackedInt32Array()
 func _pack_planes() -> void:
 	var inv := global_transform.affine_inverse()
 	# Куда смотрит камера, в наших осях: по нему отличаем ближнюю и дальнюю плоскости от боковых
-	# (см. frustum_margin). По номеру в массиве — нельзя: порядок плоскостей это деталь движка, а
+	# (см. FRUSTUM_MARGIN). По номеру в массиве — нельзя: порядок плоскостей это деталь движка, а
 	# нормаль говорит сама за себя.
 	_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
 	_frame_memo.clear()
@@ -904,7 +896,7 @@ func _pack_planes() -> void:
 		var p: Plane = inv * (raw as Plane)
 		var nn: Vector3 = p.normal
 		# Ближней и дальней — точно, без запаса: плюс у ближней это земля за спиной.
-		var m: float = 0.0 if absf(nn.dot(_cam_fwd_local)) > AXIAL_DOT else frustum_margin
+		var m: float = 0.0 if absf(nn.dot(_cam_fwd_local)) > AXIAL_DOT else FRUSTUM_MARGIN
 		_pl[i * 3] = nn.x
 		_pl[i * 3 + 1] = nn.z
 		_pl[i * 3 + 2] = nn.y * (_y_lo if nn.y >= 0.0 else _y_hi) - p.d - m
@@ -995,10 +987,10 @@ func _job_tick() -> void:
 	if _gen == null or (_jobs.is_empty() and _col_jobs.is_empty()):
 		return
 	# Сначала коллизия, целиком: её очередь короткая (тайлы вокруг тел), а ждать её нельзя.
-	_batch = _col_jobs.slice(0, build_batch)
+	_batch = _col_jobs.slice(0, BUILD_BATCH)
 	_col_jobs = _col_jobs.slice(_batch.size())
-	if _batch.size() < build_batch:
-		var rest: int = build_batch - _batch.size()
+	if _batch.size() < BUILD_BATCH:
+		var rest: int = BUILD_BATCH - _batch.size()
 		_batch.append_array(_jobs.slice(0, rest))
 		_jobs = _jobs.slice(mini(rest, _jobs.size()))
 	for j in _batch:
@@ -1034,18 +1026,18 @@ func _build_job(i: int) -> void:
 func pending_jobs() -> int:
 	return _jobs.size() + _col_jobs.size() + (_batch.size() if _busy else 0)
 
-## СЧИТАТЬ МОЖНО ПАЧКОЙ, А ПРИЗЕМЛЯТЬ — НЕТ. Потоки считают build_batch чанков параллельно, и
+## СЧИТАТЬ МОЖНО ПАЧКОЙ, А ПРИЗЕМЛЯТЬ — НЕТ. Потоки считают BUILD_BATCH чанков параллельно, и
 ## это правильно: считают они в своих слайсах и никому не мешают. А вот приземление идёт на
 ## ГЛАВНОМ потоке и стоит дорого на каждый чанк: ArrayMesh, заливка вершин в GPU, новый узел в
 ## дереве сцены. Двадцать четыре таких в одном кадре — это замеренные игроком 30 fps на месте
 ## против 22 при движении по новой земле.
 ##
-## Поэтому результаты кладутся В ОЧЕРЕДЬ, а из неё в кадр уходит не больше apply_budget штук.
+## Поэтому результаты кладутся В ОЧЕРЕДЬ, а из неё в кадр уходит не больше APPLY_BUDGET штук.
 ## Общее время то же, спайк размазан.
 ##
 ## КОЛЛИЗИЯ ИДЁТ ВНЕ БЮДЖЕТА. Тайл — это то, по чему едет машина; задержать его на кадр значит
 ## дать ей провалиться. Меш — это то, на что смотрят, и он подождёт.
-@export_range(1, 32, 1) var apply_budget: int = 4
+const APPLY_BUDGET := 4
 var _apply_q: Array = []
 
 func _apply_batch() -> void:
@@ -1065,14 +1057,14 @@ func _apply_batch() -> void:
 	_out.clear()
 	_prune_heights()
 
-## Приземляем по apply_budget мешей за кадр. Пока очередь не пуста, новую пачку в пул не
+## Приземляем по APPLY_BUDGET мешей за кадр. Пока очередь не пуста, новую пачку в пул не
 ## запускаем (см. _job_tick): иначе на быстрой езде очередь росла бы быстрее, чем разбирается,
 ## и земля отставала бы всё сильнее, а память — всё выше.
 func _drain_apply() -> void:
 	# ПОКА ИДЁТ ЗАГРУЗКА — БЕЗ БЮДЖЕТА. Там экран всё равно закрыт фейдом, сглаживать нечего, а
 	# нужна максимальная пропускная способность: игрок смотрит на полосу загрузки, а не на кадры.
 	# Бюджет включается, когда земля готова и на неё начали смотреть.
-	var n: int = _apply_q.size() if not terrain_is_ready else mini(apply_budget, _apply_q.size())
+	var n: int = _apply_q.size() if not terrain_is_ready else mini(APPLY_BUDGET, _apply_q.size())
 	for i in n:
 		var e: Dictionary = _apply_q.pop_front()
 		var job: Dictionary = e["job"]
@@ -1337,7 +1329,7 @@ func _drawn_round(key: int) -> Array:
 var _frame_memo: Dictionary = {}
 
 func _in_frame_key(key: int) -> bool:
-	if not enable_frustum_culling or _pl.size() < 18:
+	if _pl.size() < 18:
 		return true
 	var hit = _frame_memo.get(key)
 	if hit != null:
@@ -1362,7 +1354,8 @@ func _in_frame_key(key: int) -> bool:
 ##
 ## Круг в 320 м это около полутора сотен узлов всех уровней: пятая часть потолка мешей и
 ## двадцатая — потолка высот. Дёшево ровно потому, что дальние уровни накрывают много одним узлом.
-@export_range(0.0, 1024.0, 16.0) var keep_radius: float = 320.0
+## The menu backdrop keeps less (menu_stage_3d MENU_KEEP).
+var keep_radius: float = 320.0
 
 func _near_player(key: int) -> bool:
 	if keep_radius <= 0.0:
@@ -1559,7 +1552,7 @@ func _col_tick() -> void:
 	if not _col_active or _gen == null:
 		return
 	var want := {}
-	var r: int = collision_radius
+	var r: int = COLLISION_RADIUS
 	var dead := false
 	var inv := global_transform.affine_inverse()
 	for raw in _col_bodies:
@@ -1575,13 +1568,13 @@ func _col_tick() -> void:
 		if body is RigidBody3D and (body as RigidBody3D).sleeping and not (body as RigidBody3D).freeze:
 			continue
 		# КОРИДОР, А НЕ ТОЧКА: землю просим и там, где тело стоит, и там, где оно окажется через
-		# collision_lookahead секунд. Тайл теперь считается, и просить его в момент въезда значит
+		# COLLISION_LOOKAHEAD секунд. Тайл теперь считается, и просить его в момент въезда значит
 		# въехать в пустоту. Сдвигать окно целиком вперёд нельзя — на большой скорости тело
 		# выпало бы из собственного окна.
 		var p0: Vector3 = inv * body.global_position
 		var p1: Vector3 = p0
-		if collision_lookahead > 0.0 and body is RigidBody3D:
-			p1 += inv.basis * ((body as RigidBody3D).linear_velocity * collision_lookahead)
+		if COLLISION_LOOKAHEAD > 0.0 and body is RigidBody3D:
+			p1 += inv.basis * ((body as RigidBody3D).linear_velocity * COLLISION_LOOKAHEAD)
 		var bx0: int = int(floor((minf(p0.x, p1.x) - r) / CHUNK))
 		var bx1: int = int(floor((maxf(p0.x, p1.x) + r) / CHUNK))
 		var bz0: int = int(floor((minf(p0.z, p1.z) - r) / CHUNK))
@@ -1662,8 +1655,6 @@ func salt_at(world_pos: Vector3) -> float:
 	return b.salt_mask(Vector2(p.x, p.z), b.noise)
 
 func _get_material() -> Material:
-	if surface_material != null:
-		return surface_material
 	var m := ShaderMaterial.new()
 	m.shader = GROUND_SHADER
 	return m
@@ -1720,7 +1711,7 @@ func render_stats() -> Vector3i:
 # Заслонённость
 # ─────────────────────────────────────────────────────────────────────────────
 ## Is the point `height` over `world_pos` behind the ground, seen from the camera? A ray from the eye
-## to it, stepped over the ground: hidden once a step's ground stands `occlusion_bias` over the line.
+## to it, stepped over the ground: hidden once a step's ground stands `OCCL_BIAS` over the line.
 ## THE GROUND IS THE ONE THE FRAME DRAWS (`_drawn_h`), not the generator's: a far node samples every
 ## 2^L m and cuts its peaks, so the true ground hid a vein over a ridge the screen drew lower - and a
 ## point no near chunk holds was a generator call, ~364 us on the optimize=none build, at every step
@@ -1749,7 +1740,7 @@ func _point_hidden(world_pos: Vector3, height: float, was_hidden: bool) -> bool:
 	var eye: Vector3 = inv * _cam.global_position
 	var top: Vector3 = inv * Vector3(world_pos.x, world_pos.y + maxf(height, 0.1), world_pos.z)
 	var dist := eye.distance_to(top)
-	if dist < occlusion_min_dist:
+	if dist < OCCL_MIN_DIST:
 		return false
 	var steps: int = mini(int(dist / OCCL_STEP), OCCL_MAX_STEPS)
 	if steps < 2:
@@ -1758,7 +1749,7 @@ func _point_hidden(world_pos: Vector3, height: float, was_hidden: bool) -> bool:
 	# its first step and empty the world: nothing is hidden from there.
 	if _drawn_h(eye.x, eye.z) > eye.y:
 		return false
-	var bias: float = occlusion_bias + (OCCL_HYST if was_hidden else 0.0)
+	var bias: float = OCCL_BIAS + (OCCL_HYST if was_hidden else 0.0)
 	# The node under the ray is looked up only when the ray leaves it: a far node spans many steps.
 	var hs: PackedFloat32Array = _no_h
 	var x0 := 0.0
@@ -1852,10 +1843,10 @@ func _preview_eye() -> Vector3:
 
 ## Камеру редактора кладёт плагин (_forward_3d_gui_input): своей у ноды в редакторе нет.
 ##
-## ДЕРЖИМ ЕЁ ОТДЕЛЬНО ОТ `camera`. Запись в экспортируемое свойство помечает сцену изменённой, и
-## однажды она сохраняется: в node_3d.tscn уезжал путь до камеры ВЬЮПОРТА РЕДАКТОРА
-## (`../../../@Node3DEditorViewport@…/@Camera3D@…`), которой в игре нет вовсе — то есть у земли в
-## запущенной игре камеры не оставалось. Поле не экспортируется и в сцену попасть не может.
+## NOT AN EXPORT, and never was one on purpose: a camera written into an exported field marks the
+## scene changed and is saved one day - node_3d.tscn once carried a path to the EDITOR VIEWPORT's
+## camera (`../../../@Node3DEditorViewport@…/@Camera3D@…`), which a running game does not have, and
+## the ground was left with no camera at all.
 var _ed_cam: Camera3D = null
 
 func set_editor_camera(c: Camera3D) -> void:
@@ -1865,8 +1856,6 @@ func set_editor_camera(c: Camera3D) -> void:
 func _active_camera() -> Camera3D:
 	if Engine.is_editor_hint() and is_instance_valid(_ed_cam):
 		return _ed_cam
-	if is_instance_valid(camera):
-		return camera
 	var vp := get_viewport()
 	return vp.get_camera_3d() if vp != null else null
 
@@ -1896,7 +1885,7 @@ func _process(delta: float) -> void:
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var stirred: bool = cam.global_position.distance_squared_to(_sel_pos) > SEL_MOVE2 \
 			or fwd.dot(_sel_fwd) < SEL_TURN_COS
-	if _lod_timer < (lod_interval * 0.25 if stirred else lod_interval):
+	if _lod_timer < (LOD_INTERVAL * 0.25 if stirred else LOD_INTERVAL):
 		return
 	_lod_timer = 0.0
 	_sel_pos = cam.global_position
@@ -1931,7 +1920,7 @@ func _process(delta: float) -> void:
 	# every node in the frame every tick is eight probes of six lookups a node. Scanning every built
 	# leaf, off the screen too, was tried - three times the signatures, and the cracks while turning
 	# came out the same (measured).
-	var left: int = stitch_budget
+	var left: int = STITCH_BUDGET
 	for key in _want:
 		if left <= 0:
 			break

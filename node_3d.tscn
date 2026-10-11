@@ -193,9 +193,6 @@ corner_radius_bottom_left = 6
 
 [sub_resource type="Resource" id="Resource_s0gvp"]
 script = ExtResource("12_lggff")
-grass_height = 0.3
-sand_grass = 0.1
-mask_offset = Vector2(-2381.8252, -2997.1248)
 
 [sub_resource type="ShaderMaterial" id="Mat_vein_ore"]
 render_priority = 0

@@ -1313,12 +1313,28 @@ project: read it before claiming how anything works.
   measured, three masks cost about 5 us a point against 124 for a height, so at 128×128 that is
   eighty milliseconds against two seconds: flipping through seeds against waiting on each. The
   mask offset comes from `TerrainBiomes.offset_for_seed`, the generator's own function: a second
-  copy would draw a layout the game does not build. Under it, the distance rings to scale — four
-  numbers in a list never showed that `keep_radius` must sit inside `view_distance`.
-- THE `camera` EXPORT IS AN OVERRIDE AND STAYS EMPTY. Both terrains take the camera the scene is
-  DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
-  machine changes by themselves. A path stored in a scene is a liability: one once saved as the
-  EDITOR VIEWPORT's camera, which does not exist in a running game.
+  copy would draw a layout the game does not build.
+- **THE MAP'S INSPECTOR HOLDS TWO SETTINGS: `biomes` AND `enable_occlusion_culling`** (the player:
+  "a heap of useless settings"). A scene sets the biomes and nothing else; the menu backdrop's own
+  numbers (`view_distance`, `keep_radius`, `ready_view`, `ready_ring`, `forced_seed`,
+  `follow_world_settings`, `enable_streaming_collision`) are fields its script sets; every tuning
+  number nobody changed is a constant (`FRUSTUM_MARGIN`, `BUILD_BATCH`, `STITCH_BUDGET`,
+  `LOD_INTERVAL`, `APPLY_BUDGET`, `COLLISION_RADIUS`, `COLLISION_LOOKAHEAD`, `WORLD_CELLS`,
+  `OCCL_MIN_DIST`, `OCCL_BIAS`). THERE IS NO CAMERA OVERRIDE: both terrains take the camera the scene
+  is DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
+  machine changes by themselves - a path stored in a scene once pointed at the EDITOR VIEWPORT's
+  camera, which a running game does not have. No material slot (always `GROUND_SHADER`), no frustum
+  switch (always on). THE BIOMES RESOURCE lost what never moved: the three biome on/off switches,
+  `grass_density` (always every vertex) and `mask_offset` as an export - it is an OUTPUT of the seed
+  (`offset_for_seed`) and was being saved into both scenes with whatever seed the editor previewed
+  last. The game scene's grass numbers (0.3 m, 0.1 on sand) became the defaults, so the menu - the
+  same ground - stopped drawing the meadow at half height and the desert bare. THE GROUND SHADER'S
+  UNIFORMS ARE ONLY WHAT THE GAME WRITES: its material is made in code, so a uniform no script sets
+  is a constant with a slider nobody can reach - the colour noise and the detail masks' strengths are
+  consts (`NOISE_CELLS`, `COLOR_VARIATION`, `DETAIL_SIZE`, `RIPPLES`, `TUFTS`, `PATCHES`, `CRACKS`).
+  The corruption overlay keeps its uniforms as they are (the player's call). Checked on the real
+  driver: three views of the game's ground before and after, the ground identical to the pixel (only
+  the sky's clouds, which run on time, differ).
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
@@ -1343,11 +1359,11 @@ project: read it before claiming how anything works.
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
   stood — that is what "chunks disappear while I drive" was. Cover counts only a tree neighbour the
-  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. `frustum_margin` is METRES and widens, but ONLY ON THE SIDE
+  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. `FRUSTUM_MARGIN` is METRES and widens, but ONLY ON THE SIDE
   PLANES — on the near plane a positive margin means literally "draw what is behind the camera",
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
-  recomputed on camera movement, not only on `lod_interval`.
+  recomputed on camera movement, not only on `LOD_INTERVAL`.
 - WHICH NODES AND WHICH OF THEM ARE VISIBLE ARE TWO QUESTIONS, ASKED AT DIFFERENT RATES. Splitting
   a node depends ONLY on distance; the frustum decides only what is drawn. Asking both in one
   recursive descent per tick cost 6.6 ms — a third of a 60 fps frame, four times a second while
@@ -1365,11 +1381,11 @@ project: read it before claiming how anything works.
   building around the camera would build where the scene happened to open. With a saved point the
   view stage waits for a DISC around it at half the radius instead of the camera's cone: where the
   player will look is unknown, and a disc is four times the nodes of a cone.
-- COMPUTING IN A BATCH IS FINE, LANDING IN A BATCH IS NOT. The pool computes `build_batch` chunks
+- COMPUTING IN A BATCH IS FINE, LANDING IN A BATCH IS NOT. The pool computes `BUILD_BATCH` chunks
   in parallel and that is cheap — each thread writes its own slice. Landing them is main-thread
   and expensive PER CHUNK: an `ArrayMesh`, a vertex upload, a new node in the tree. Twenty-four of
   those in one frame is what a player measured as 30 fps standing still against 22 while driving
-  onto new ground. So results go into a QUEUE and at most `apply_budget` (4) leave it per frame,
+  onto new ground. So results go into a QUEUE and at most `APPLY_BUDGET` (4) leave it per frame,
   with the pool held back while the queue is not empty — without that backpressure the queue grows
   faster than it drains and the ground falls further behind anyway. COLLISION TILES ARE OUTSIDE
   THE BUDGET: a tile is what the machine drives on and cannot wait a frame; a mesh is what it
@@ -1419,7 +1435,7 @@ project: read it before claiming how anything works.
   chunk it costs nothing. ITS QUEUE IS SEPARATE AND FIRST: a tile is what the machine drives on, a
   mesh is what it looks at, and behind one shared queue the ground ran out every few metres. Tiles
   are asked for along the body's CORRIDOR (where it is plus where it will be in
-  `collision_lookahead` seconds), never by moving the window ahead — at speed the body would leave
+  `COLLISION_LOOKAHEAD` seconds), never by moving the window ahead — at speed the body would leave
   its own window. Terrain edits are a LIST applied on top of the generator in one function
   (mesh, collision and height query all go through it); there is nothing to bake.
 - No skirts on seams, ever. Edges meet because every step is a power of two on one grid, and a
@@ -1451,7 +1467,7 @@ project: read it before claiming how anything works.
   (a JITTERED grid of Voronoi cells - random points bunched into black clots), G sand ripples, B grass
   clumps, A broad patches. The desert takes the ripples (`v_desert`), the meadow the clumps, every
   ground the patches, the salt flats the cracks. Periodic by construction, so it repeats every
-  `detail_world_size` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
+  `DETAIL_SIZE` without a seam; masks, not colour (no `source_color`); IMPORTED LOSSLESS WITH
   MIPMAPS AND `detect_3d` OFF - the editor's default would VRAM-compress it the first time it is
   drawn in 3D, and a crack line in a 4x4 block comes out a grey square. There is NO ripple or rock
   geometry baked into chunks; a note here used to say there was.
@@ -2818,8 +2834,8 @@ project: read it before claiming how anything works.
 
 - Engine occlusion culling is off (no baked occluders). **WHAT STANDS BEHIND A HILL IS NOT DRAWN**
   (`ChunkTerrain.is_point_hidden`, `enable_occlusion_culling` ON, the player's call): a ray from the
-  eye to the thing's TOP stepped over the ground, hidden once a step's ground stands `occlusion_bias`
-  over the line, never nearer than `occlusion_min_dist`. IT READS THE DRAWN GROUND (`_drawn_h`: the
+  eye to the thing's TOP stepped over the ground, hidden once a step's ground stands `OCCL_BIAS`
+  over the line, never nearer than `OCCL_MIN_DIST`. IT READS THE DRAWN GROUND (`_drawn_h`: the
   heights the drawn node's mesh was built from, `_hc` under `_drawn_key_at`), never the generator.
   That is why it was off: a point no near chunk holds was a generator call (~364 us), at every step
   of every ray - measured on 4.7.2, 862 us a call cold against 97 now, and a far node's coarse ridge

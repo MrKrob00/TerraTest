@@ -281,7 +281,7 @@ const VEH_CULL_RADIUS := 9.0     # the least sphere round a machine; a bigger bu
 const VEH_OCCL_HEIGHT := 4.0
 ## BEHIND A RIDGE IS ASKED EVERY FRAME ONLY WHILE A RIDGE HIDES THE MACHINE; a shown one is asked every
 ## VEH_OCCL_EVERY frames, on its own beat. Hiding late costs a drawn machine, showing late is a pop -
-## and the test's own margin (`occlusion_bias`) covers the frames it is asked late.
+## and the test's own margin (`ChunkTerrain.OCCL_BIAS`) covers the frames it is asked late.
 const VEH_OCCL_EVERY := 4
 const VEH_OCCL_META := &"ridge_hidden"
 

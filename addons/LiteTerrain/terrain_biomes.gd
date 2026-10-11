@@ -8,7 +8,8 @@ extends Resource
 ##
 ## A biome is a 0..1 MASK of world-XZ noise. Layers stack in this order:
 ##   base DESERT ↔ MEADOW split  →  SALT FLATS on the desert  →  CANYON on top  →  MOUNTAINS on top.
-## A disabled layer yields a zero mask and disappears from both the colour and the landform.
+## Every layer is always on: the switches that could turn one off were never used, and a world
+## without its canyons is not a setting the game has.
 ##
 ## Settings alone cannot add a biome of your own: each layer's colour is written out in
 ## glsl.gdshader (vertex(), where v_base_col is assembled), so a new layer means editing the
@@ -37,7 +38,6 @@ extends Resource
 # generator flattens the land under it (terrain_gen.raw_height_at) and the canyon does not cut it
 # (carve_at). Stacking: desert/meadow -> salt on the desert -> canyon -> mountains.
 @export_group("Salt flats")
-@export var salt_enabled: bool = true
 @export_range(30.0, 1500.0, 1.0) var salt_scale: float = 520.0
 ## Higher is rarer. Value noise is centred, so this sits above the others' 0.66-0.71.
 @export_range(0.0, 1.0, 0.01) var salt_threshold: float = 0.70
@@ -47,8 +47,6 @@ extends Resource
 
 # ── CANYON ────────────────────────────────────────────────────────────────────
 @export_group("Canyon")
-## A disabled biome shows up neither in the colour nor in the landform.
-@export var canyon_enabled: bool = true
 @export_range(30.0, 1000.0, 1.0) var canyon_scale: float = 450.0
 ## Higher threshold means rarer canyons.
 ## ПОРОГ ПОДОБРАН ПОД РАСПРЕДЕЛЕНИЕ ШУМА, а не выбран на глаз. Старый хеш давал равномерные
@@ -66,7 +64,6 @@ extends Resource
 
 # ── MOUNTAINS ─────────────────────────────────────────────────────────────────
 @export_group("Mountains")
-@export var mountain_enabled: bool = true
 @export_range(30.0, 1500.0, 1.0) var mountain_scale: float = 420.0
 ## Тем же замером: 0.72 давало 18.5% гор вместо прежних 20.0%, 0.71 попадает в цель.
 @export_range(0.0, 1.0, 0.01) var mountain_threshold: float = 0.71
@@ -108,19 +105,16 @@ func snow_blend_at(world_height: float) -> float:
 
 # ── Grass ─────────────────────────────────────────────────────────────────────
 @export_group("Grass")
-## ПОДЪЁМ ВЕРШИН ВКЛЮЧЁН ВСЕГДА, И ЭТО НЕ НАСТРОЙКА СЦЕНЫ. По умолчанию здесь стояло 0.4, то
-## есть трава поднималась лишь на четырёх вершинах из десяти, а на карте без выставленного
-## вручную значения луг выходил лысым. Настройка, которую надо не забыть выставить в каждой
-## сцене, — это способ однажды забыть: так и вышло, разные карты выглядели по-разному.
-##
-## Это к тому же не «украшение травой». По этим же вершинам идёт просадка под машиной
-## (trample_map), и там, где вершина не поднята, приминать нечего — след от колёс просто
-## отсутствует.
-@export_range(0.0, 1.0, 0.01) var grass_density: float = 1.0
-@export_range(0.0, 1.0, 0.01) var grass_height: float = 0.15
+## EVERY MEADOW VERTEX IS A BLADE: there is no density setting any more. It stood at 0.4 once, and
+## a map that did not set it by hand came out bald; the trample map (tyre tracks) presses down the
+## same vertices, so where none is lifted there is no track either.
+## THE GAME'S NUMBERS ARE THE DEFAULTS (0.3 m, 0.1 on sand): the world scene set them over 0.15 and
+## 0, and the menu - the same ground, said to show the land the player is about to drive into -
+## drew the meadow at half the height and the desert bare.
+@export_range(0.0, 1.0, 0.01) var grass_height: float = 0.3
 ## How much grass the DESERT gets relative to the meadow. 0 is dry sand. Rock, canyon and
 ## mountains never carry grass.
-@export_range(0.0, 0.5, 0.01) var sand_grass: float = 0.0
+@export_range(0.0, 0.5, 0.01) var sand_grass: float = 0.1
 ## Below 0.65 the grass is slightly darker than the ground — a soft shadow at the root
 ## rather than a bright patch.
 @export_range(0.4, 1.2, 0.01) var grass_shade: float = 0.62
@@ -153,7 +147,10 @@ const SALT_OFFSET := Vector2(331.0, 19.0)
 ## It lives in the RESOURCE and not in the generator because two different places read these
 ## masks: the generator carves the landform by them, and the terrain colours and ore veins by
 ## the same call at runtime. One offset, one answer, no way for them to disagree.
-@export var mask_offset: Vector2 = Vector2.ZERO
+## NOT AN EXPORT: it is an OUTPUT - always worked out from the seed (offset_for_seed, by the
+## generator, the menu and the seed browser) - and as an export it was saved into the scenes with
+## whatever seed the editor last previewed.
+var mask_offset: Vector2 = Vector2.ZERO
 
 ## THE NOISE THE MASKS ARE BUILT ON, in one place. Every mask above takes it as a Callable because
 ## its callers used to each carry their own copy of those lines - the generator, the terrain, the
@@ -221,14 +218,10 @@ func meadow_mask(wp: Vector2, noise: Callable) -> float:
 	return smoothstep(biome_bias - biome_blend, biome_bias + biome_blend, n)
 
 func canyon_mask(wp: Vector2, noise: Callable) -> float:
-	if not canyon_enabled:
-		return 0.0
 	var n: float = noise.call(wp / canyon_scale + CANYON_OFFSET + mask_offset)
 	return smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge, n)
 
 func mountain_mask(wp: Vector2, noise: Callable) -> float:
-	if not mountain_enabled:
-		return 0.0
 	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, mountain_threshold + mountain_edge, n)
 
@@ -243,8 +236,6 @@ func salt_mask(wp: Vector2, noise: Callable) -> float:
 ## two masks in hand already (terrain_gen.raw_height_at - two noise reads a point less on the
 ## world's hottest path; salt_mask in full cost it 17%, measured).
 func salt_raw(wp: Vector2, noise: Callable) -> float:
-	if not salt_enabled:
-		return 0.0
 	var n: float = noise.call(wp / salt_scale + SALT_OFFSET + mask_offset)
 	return smoothstep(salt_threshold - salt_edge, salt_threshold + salt_edge, n)
 
@@ -252,16 +243,13 @@ func salt_raw(wp: Vector2, noise: Callable) -> float:
 ## threshold to the peak, and the generator raises the landform by it so the slopes stay
 ## gentle enough to drive on.
 func mountain_dome(wp: Vector2, noise: Callable) -> float:
-	if not mountain_enabled:
-		return 0.0
 	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, 0.95, n)
 
 # ── Handing values to the shader ──────────────────────────────────────────────
 ## Writes the COLOURS and grass settings into the material's uniforms. Noise thresholds and
 ## scales do not go here: the terrain (chunk_terrain._biome_colour) computes the biome masks and
-## bakes them into the vertex COLOR, and the shader only reads those — which is why a disabled
-## biome disappears on its own, with no flag in the shader.
+## bakes them into the vertex COLOR, and the shader only reads those.
 ##
 ## `world_height` is the Height the ground was generated with; the snow line is worked out from it
 ## here, because the shader compares against a world Y and needs metres. The caller knows the
@@ -282,7 +270,6 @@ func apply_to_material(mat: ShaderMaterial, world_height: float) -> void:
 	mat.set_shader_parameter("color_rock", color_rock)
 	mat.set_shader_parameter("rock_threshold", rock_threshold)
 	mat.set_shader_parameter("rock_blend", rock_blend)
-	mat.set_shader_parameter("grass_density", grass_density)
 	mat.set_shader_parameter("grass_height", grass_height)
 	mat.set_shader_parameter("sand_grass", sand_grass)
 	mat.set_shader_parameter("grass_shade", grass_shade)

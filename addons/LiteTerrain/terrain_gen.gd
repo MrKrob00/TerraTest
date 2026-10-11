@@ -176,7 +176,7 @@ func height_at(wx: float, wz: float) -> float:
 	var h: float = (raw_height_at(wx, wz)
 			+ raw_height_at(wx - 1.0, wz) + raw_height_at(wx + 1.0, wz)
 			+ raw_height_at(wx, wz - 1.0) + raw_height_at(wx, wz + 1.0)) * 0.2
-	if gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled:
+	if gen_canyon_enable and _gen_biomes != null:
 		h = carve_at(wx, wz, h)
 	return h
 
@@ -222,7 +222,7 @@ func _sample_unit(ox: float, oz: float, n: int) -> PackedFloat32Array:
 		var row := j * m
 		for i in m:
 			raw[row + i] = raw_height_at(ox + float(i - 1), wz)
-	var carve: bool = gen_canyon_enable and _gen_biomes != null and _gen_biomes.canyon_enabled
+	var carve: bool = gen_canyon_enable and _gen_biomes != null
 	var out := PackedFloat32Array()
 	out.resize(n * n)
 	for j in n:

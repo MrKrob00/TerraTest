@@ -10,7 +10,6 @@
 
 [sub_resource type="Resource" id="Resource_l48gv"]
 script = ExtResource("4_ytr4m")
-mask_offset = Vector2(-1713.813, 503.81348)
 
 [sub_resource type="ShaderMaterial" id="ProceduralSkyMaterial_obt1j"]
 shader = ExtResource("sky_shader")
