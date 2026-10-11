@@ -29,63 +29,27 @@ const MAX_LOD := 5                ## верхний уровень: 16 × 32 = 5
 ## притягивать край нужно только к вдвое более крупному соседу.
 const LOD_QUALITY := 2.0
 
-## THE INSPECTOR HOLDS WHAT SHAPES THE LOOK: the biomes, the behind-a-hill switch and the ground
-## shader's settings (the player: "a heap of useless settings" - the ENGINE's tuning numbers went;
-## "return the shader settings to the map's export" - the look's stayed). The menu backdrop's own
-## numbers are set from its script (menu_stage_3d `_make_map`), and every tuning number nobody
-## changes is a constant below. Gone: `camera` (the ground always takes the camera the scene is
-## DRAWN with, and a path stored once pointed at the editor viewport's camera, which a running game
-## does not have), `surface_material` (the ground is drawn with its own shader, `GROUND_SHADER`) and
-## the frustum culling switch (always on).
+## THE INSPECTOR HOLDS WHAT SHAPES THE LOOK: the ground's material, the biomes and the behind-a-hill
+## switch (the player: "a heap of useless settings" - the ENGINE's tuning numbers went). The menu
+## backdrop's own numbers are set from its script (menu_stage_3d `_make_map`), and every tuning
+## number nobody changes is a constant below. Gone: `camera` (the ground always takes the camera the
+## scene is DRAWN with, and a path stored once pointed at the editor viewport's camera, which a
+## running game does not have) and the frustum culling switch (always on).
 const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
+## THE GROUND'S MATERIAL, its shader's settings in the inspector (the player: "return the shader
+## that was in the export" - for a commit it was made in code and its settings turned into a group
+## of the node's own, and both were wrong). A plain text resource with no texture slot of its own:
+## the binary `terrain_shader.res` it replaces carried a tile texture the shader no longer read and
+## shipped it in every build. The node draws with a COPY (`_setup_materials`), and the copy takes
+## from `biomes` the colours, rock, snow, grass and canyon bands, and from the game the grass fade,
+## the trample and the corruption map - those are tuned there; everything else is tuned here. The
+## editor's preview takes a change at the next "Build in scene": the engine says nothing when a
+## shader parameter changes.
+@export var surface_material: Material = preload("res://addons/LiteTerrain/terrain_shader.tres")
 @export var biomes: TerrainBiomes = null : set = _set_biomes
 ## WHAT STANDS BEHIND A HILL IS NOT DRAWN (`is_point_hidden`, asked by veins, loose items and
 ## machines). On by default (the player's call); the ray reads the DRAWN ground's heights, see there.
 @export var enable_occlusion_culling: bool = true
-
-## THE GROUND SHADER'S OWN SETTINGS (`glsl.gdshader`, the same names), written into the material by
-## `_push_shader` at its build and again on every change, so the editor's preview follows the
-## slider. The colours, rock, snow and grass sit in `biomes` (TerrainBiomes.apply_to_material).
-## A scene's own: the menu backdrop's maps are made in code and draw with these defaults.
-@export_group("Ground shader")
-## The colour noise's cell: PIXELS_PER_TILE (16) cells to this many metres.
-@export_range(0.1, 100.0, 0.1) var tile_world_size: float = 1.0:
-	set(v):
-		tile_world_size = v
-		_push_shader()
-## How far a noise cell's tone strays from the ground's colour.
-@export_range(0.0, 0.3, 0.005) var color_variation: float = 0.06:
-	set(v):
-		color_variation = v
-		_push_shader()
-## Metres the detail texture spans before it repeats (art/ground_detail.py).
-@export_range(1.0, 40.0, 0.5) var detail_world_size: float = 9.0:
-	set(v):
-		detail_world_size = v
-		_push_shader()
-## The desert's sand ripples (the detail's G).
-@export_range(0.0, 1.0, 0.01) var ripple_strength: float = 0.55:
-	set(v):
-		ripple_strength = v
-		_push_shader()
-## The meadow's grass clumps (B).
-@export_range(0.0, 1.0, 0.01) var grass_detail: float = 0.45:
-	set(v):
-		grass_detail = v
-		_push_shader()
-## Broad patches on every ground (A).
-@export_range(0.0, 0.5, 0.01) var patch_strength: float = 0.10:
-	set(v):
-		patch_strength = v
-		_push_shader()
-## The salt flat's cracked tiles (R).
-@export_range(0.0, 1.0, 0.01) var crack_strength: float = 0.65:
-	set(v):
-		crack_strength = v
-		_push_shader()
-@export_group("")
-const SHADER_SETTINGS := ["tile_world_size", "color_variation", "detail_world_size",
-		"ripple_strength", "grass_detail", "patch_strength", "crack_strength"]
 
 ## How far ground is drawn. The menu backdrop draws much less (menu_stage_3d MENU_VIEW).
 var view_distance: float = 1400.0
@@ -1700,6 +1664,8 @@ func salt_at(world_pos: Vector3) -> float:
 	return b.salt_mask(Vector2(p.x, p.z), b.noise)
 
 func _get_material() -> Material:
+	if surface_material != null:
+		return surface_material
 	var m := ShaderMaterial.new()
 	m.shader = GROUND_SHADER
 	return m
@@ -1710,18 +1676,8 @@ func _setup_materials(base: Material) -> void:
 		_mat = base.duplicate()
 		(_mat as ShaderMaterial).set_shader_parameter("grass_fade", grass_fade())
 		_push_biomes()
-		_push_shader()
 	else:
 		_mat = base
-
-## The map's "Ground shader" settings into the material (none yet before the first build: the
-## build writes them all).
-func _push_shader() -> void:
-	if not (_mat is ShaderMaterial):
-		return
-	var sm := _mat as ShaderMaterial
-	for k in SHADER_SETTINGS:
-		sm.set_shader_parameter(k, get(k))
 
 ## WHERE THE GRASS FADES OUT, metres from the camera over the ground. A level-0 node meets a level-1
 ## one anywhere past 44 m and the shader's border rule makes those seams agree; it cannot make a
@@ -1862,7 +1818,7 @@ func _grid_h(hs: PackedFloat32Array, fx: float, fz: float) -> float:
 # ─────────────────────────────────────────────────────────────────────────────
 ## THE SAME GROUND THE GAME WILL SHOW, in the editor's viewport (the inspector's "Build in scene",
 ## preview_panel.gd): the chunked ground has no height file to look at, so without it the ground and
-## what the "Ground shader" settings do to it could only be seen by running the game.
+## what its material's settings do to it could only be seen by running the game.
 ##
 ## В СЦЕНУ НЕ ПОПАДАЕТ НИЧЕГО: узлы рождаются без owner, поэтому .tscn их не видит, а коллизию
 ## превью не строит вовсе — она нужна машинам, а не глазам.
