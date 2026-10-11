@@ -1800,6 +1800,13 @@ project: read it before claiming how anything works.
 - Death hands the camera to the nearest own machine WITH A CABIN, and spawns a starter one (kit
   included) when there is none: `vehicles` also holds stations, and handing over to one of those
   read as "I respawned on my base" — no cabin, nothing to drive.
+- **SURRENDER IS THE CABIN'S OWN DEATH** (`vehicle_body_3d.surrender`, the garage's settings under
+  MACHINE, behind a question - nothing irreversible is one tap among sliders): the cabin goes through
+  `VehicleBlock.destroy`, the door a cabin dies by, so its blast, the scatter, the death screen and the
+  new cabin are the ordinary ones. Not through `hurt`: the debug invulnerability sits there. The
+  death screen names nobody (`_last_attacker` cleared). A machine with no cabin (a base) refuses.
+  Measured on the proving ground through the real button: question, garage closed, machine freed,
+  death screen with no killer, a new cabin after the pause.
 - `world_persist.gd` saves machines, loose blocks and a 10-minute TTL. A base is a machine with the
   `station` flag; `machines[0]` is the one the player controls; restoring runs across frames, so
   `is_instance_valid` after every `await`.
