@@ -120,6 +120,19 @@ LOD — это слияние чанков: четыре соседних ста
 Смена уровня у соседа = пересборка меша. Их бюджет `stitch_budget` на тик: шов на кадр-другой
 дешевле пересборки десятков узлов разом.
 
+The neighbour's level is read off the LEAF SET (`_leaf_set`), not the frame: a neighbour off the
+screen is drawn at its level the moment the camera turns to it. Only the side that snaps carries
+anything in the signature; a coarser node never hears of its finer neighbours.
+
+**The grass needs no seam state.** It used to lift the near level only and flag a level-0 node's
+border rows flat where the neighbour was coarser, and a flag read off the neighbours at build time
+goes stale the moment one of them changes level: one side 0.3 m up, the other flat, the sky through
+the slit until the restitch landed. Now every level lifts its vertices by the same function of the
+world point, straight up, and a border vertex at an odd metre takes the mean of its two neighbours
+along the border - what a level-1 neighbour draws there. Which border a vertex lies on is a fact of
+its own node (`EDGE_STEP` code in `COLOR.r`). The lift fades out before level 2 can begin
+(`grass_fade`). Measured driving a meadow at 22 m/s: slits from the lift over 2 cm 3852 -> 105.
+
 Нормали считаются по **кайме** — сетке с запасом в одну клетку вокруг узла. Соседний узел берёт
 ту же разность в той же точке, поэтому по краю чанка нет смены освещения.
 
