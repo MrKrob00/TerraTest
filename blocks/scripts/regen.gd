@@ -54,19 +54,19 @@ func _ready() -> void:
 # ── THE BEACON ──────────────────────────────────────────────────────────────────
 # The model says whether the field works: powered, the RING spins up and the CRYSTAL glows green
 # and floats; every repair tick that heals something flashes it; unpowered, the ring runs down and
-# the crystal goes dark. `Ring` and `Crystal` move (moving_parts), the crystal is re-coloured and
-# so draws itself (unbatched).
+# the crystal goes dark. `Ring` and `Crystal` move (moving_parts) by clips (art/block_anims.gd):
+# "spin" on `SpinAnim`, keyed at RING_SPIN, and "float" on `FloatAnim` (bob and slow turn), both
+# eased in and out here; the crystal is re-coloured and so draws itself (unbatched).
 const RING_SPIN := 1.8             # rad/s at full power
 const RING_SPIN_UP := 1.2          # rad/s² - it winds up and runs down, it does not snap
 const CRYSTAL_ON := Color(0.35, 1.0, 0.5)
 const CRYSTAL_HEAL := Color(0.85, 1.0, 0.85)
 const CRYSTAL_OFF := Color(0.07, 0.16, 0.1)
-const BOB := 0.025                 # m the crystal floats while powered
 const HEAL_FLASH := 0.3            # s
-var _ring: Node3D = null
+var _spin_anim: AnimationPlayer = null
+var _float_anim: AnimationPlayer = null
 var _crystal: MeshInstance3D = null
 var _crystal_mat: StandardMaterial3D = null
-var _crystal_y: float = 0.0
 var _crystal_col: Color = CRYSTAL_OFF
 var _spin: float = 0.0
 var _bob: float = 0.0
@@ -78,10 +78,10 @@ func unbatched() -> Array:
 
 func _setup_beacon() -> void:
 	moving_parts = true
-	_ring = get_node_or_null("Ring") as Node3D
+	_spin_anim = get_node_or_null("SpinAnim") as AnimationPlayer
+	_float_anim = get_node_or_null("FloatAnim") as AnimationPlayer
 	_crystal = get_node_or_null("Crystal") as MeshInstance3D
 	if _crystal != null:
-		_crystal_y = _crystal.position.y
 		var m: Material = _crystal.material_override
 		if m == null and _crystal.mesh != null:
 			m = _crystal.mesh.surface_get_material(0)
@@ -91,19 +91,13 @@ func _setup_beacon() -> void:
 			_crystal.material_override = _crystal_mat
 
 func _animate_beacon(delta: float, on: bool) -> void:
-	if _ring == null:
-		return
 	_spin = move_toward(_spin, RING_SPIN if on else 0.0, delta * RING_SPIN_UP)
-	if _spin > 0.001:
-		_ring.rotate_y(_spin * delta)
+	drive_clip(_spin_anim, &"spin", _spin / RING_SPIN)
 	_heal_flash = maxf(_heal_flash - delta / HEAL_FLASH, 0.0)
 	if _crystal == null:
 		return
 	_bob = move_toward(_bob, 1.0 if on else 0.0, delta * 1.5)
-	var t: float = Time.get_ticks_msec() / 1000.0
-	_crystal.position.y = _crystal_y + BOB * _bob * sin(t * 2.2)
-	if _bob > 0.001:
-		_crystal.rotate_y(delta * 0.9 * _bob)
+	drive_clip(_float_anim, &"float", _bob)
 	if _crystal_mat != null:
 		var target: Color = CRYSTAL_ON if on else CRYSTAL_OFF
 		target = target.lerp(CRYSTAL_HEAL, _heal_flash)

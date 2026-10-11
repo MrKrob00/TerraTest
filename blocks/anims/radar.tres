@@ -1,0 +1,42 @@
+[gd_resource type="AnimationLibrary" format=3]
+
+[sub_resource type="Animation" id="Animation_uyx7h"]
+length = 0.001
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Head")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Head")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0.92387956, 0, -0.38268346)
+tracks/2/type = "scale_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Head")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 0.99999994, 1, 0.99999994)
+
+[sub_resource type="Animation" id="Animation_r1iv0"]
+length = 4.0
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Head")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0.92387956, 0, -0.38268346, 1, 1, 0, 0.92387956, 0, 0.38268346, 2, 1, 0, 0.38268343, 0, 0.92387956, 3, 1, 0, -0.38268346, 0, 0.92387956, 4, 1, 0, -0.9238796, 0, 0.38268337)
+
+[resource]
+_data = {
+&"RESET": SubResource("Animation_uyx7h"),
+&"sweep": SubResource("Animation_r1iv0")
+}

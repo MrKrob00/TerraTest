@@ -162,7 +162,10 @@ static func _build_keep_table() -> void:
 # core shows cyan through the gap; after running dry it REBOOTS for SHIELD_BREAK_CD - cap shut,
 # core blinking amber - and flashes white the moment the dome comes back; unpowered it is dark
 # and still. Parts: `Cap` moves (moving_parts, so the batch copies it every frame), `Core` is
-# re-coloured and drawn by itself (unbatched). The lift matches art/emitter_models.py SHIELD_LIFT.
+# re-coloured and drawn by itself (unbatched). The cap's motions are clips (art/block_anims.gd):
+# "lift" on `LiftAnim` (CAP_LIFT, matching art/emitter_models.py SHIELD_LIFT, at 0.45 m/s), played
+# only as far as REBOOT_LIFT while rebooting, and "spin" on `SpinAnim`, keyed at CAP_SPIN and wound
+# up here towards CAP_SPIN_BOOT.
 const CAP_LIFT := 0.09
 const CAP_SPIN := 0.7              # rad/s while the dome stands
 const CAP_SPIN_BOOT := 5.0         # rad/s the cap winds up to by the end of a reboot
@@ -173,6 +176,9 @@ const BOOT_BLINK := 3.0            # blinks a second while rebooting
 const BOOT_FLASH := 0.35           # s of white when the dome comes back
 const REBOOT_LIFT := 0.6           # share of CAP_LIFT the cap opens to while rebooting
 var _cap: Node3D = null
+var _lift_anim: AnimationPlayer = null
+var _spin_anim: AnimationPlayer = null
+var _lift_to: float = 0.0          # share of CAP_LIFT the cap is headed for
 var _core: MeshInstance3D = null
 var _core_mat: StandardMaterial3D = null
 var _core_col: Color = CORE_OFF
@@ -187,6 +193,8 @@ func unbatched() -> Array:
 func _setup_emitter() -> void:
 	moving_parts = true
 	_cap = get_node_or_null("Cap") as Node3D
+	_lift_anim = get_node_or_null("LiftAnim") as AnimationPlayer
+	_spin_anim = get_node_or_null("SpinAnim") as AnimationPlayer
 	_core = get_node_or_null("Core") as MeshInstance3D
 	if _core != null:
 		var m: Material = _core.material_override
@@ -205,7 +213,7 @@ func _animate_emitter(delta: float, up: bool, rebooting: bool) -> void:
 	_was_up = up
 	_flash = maxf(_flash - delta / BOOT_FLASH, 0.0)
 	# Rebooting, the cap stands half open: shut, it hid the very core that says "rebooting".
-	var lift: float = CAP_LIFT if up else (CAP_LIFT * REBOOT_LIFT if rebooting else 0.0)
+	var lift: float = 1.0 if up else (REBOOT_LIFT if rebooting else 0.0)
 	var spin: float = CAP_SPIN if up else 0.0
 	var col: Color = CORE_ON if up else CORE_OFF
 	if rebooting:
@@ -216,16 +224,30 @@ func _animate_emitter(delta: float, up: bool, rebooting: bool) -> void:
 		col = CORE_BOOT if blink else CORE_BOOT * 0.35
 	if _flash > 0.0:
 		col = col.lerp(Color.WHITE, _flash)
-	_cap.position.y = move_toward(_cap.position.y, lift, delta * 0.45)
+	_lift_cap(lift)
 	_spin = move_toward(_spin, spin, delta * 3.0)
-	if _spin > 0.001:
-		_cap.rotate_y(_spin * delta)
+	drive_clip(_spin_anim, &"spin", _spin / CAP_SPIN)
 	if _core_mat != null:
 		var target: Color = col
 		# Blinks switch at once; everything else eases, so power flicker never reaches the core.
 		_core_col = target if rebooting or _flash > 0.0 else _core_col.lerp(target, clampf(delta * 6.0, 0.0, 1.0))
 		if not _core_mat.albedo_color.is_equal_approx(_core_col):
 			_core_mat.albedo_color = _core_col
+
+## Runs "lift" from where the cap stands to `share` of the way up, either way, when the target moves.
+func _lift_cap(share: float) -> void:
+	if _lift_anim == null or is_equal_approx(share, _lift_to):
+		return
+	_lift_to = share
+	var clip: Animation = _lift_anim.get_animation(&"lift")
+	var at: float = clampf(_cap.position.y / CAP_LIFT, 0.0, 1.0) * clip.length
+	var to: float = share * clip.length
+	if absf(to - at) < 0.001:
+		return
+	if to > at:
+		_lift_anim.play_section(&"lift", at, to)
+	else:
+		_lift_anim.play_section_backwards(&"lift", to, at)
 
 func _physics_process(delta: float) -> void:
 	if _dome == null:

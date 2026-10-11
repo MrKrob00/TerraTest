@@ -4,6 +4,7 @@
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/generator_body.tres" id="2_body"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/generator_rotor.tres" id="3_rotor"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/generator_fire.tres" id="4_fire"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/generator.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
 size = Vector3(1, 1, 1)
@@ -31,3 +32,9 @@ mesh = ExtResource("4_fire")
 
 [node name="item_slot" type="Marker3D" parent="." unique_id=1335144384]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+
+[node name="SpinAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="SinkAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

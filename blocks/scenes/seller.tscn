@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://besmmov10ejk3" path="res://blocks/scripts/seller.gd" id="1_4sra1"]
 [ext_resource type="ArrayMesh" uid="uid://ch1ne04fh4ii0" path="res://blocks/meshes/seller_body.tres" id="2_gks3k"]
 [ext_resource type="ArrayMesh" uid="uid://7fpgkpybmv0" path="res://blocks/meshes/seller_ring.tres" id="3_ring"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/seller.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_gks3k"]
 size = Vector3(2, 2, 2)
@@ -60,3 +61,6 @@ mesh = ExtResource("3_ring")
 
 [node name="uplink_top" type="Marker3D" parent="." unique_id=1411431185]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.6, 0)
+
+[node name="Anim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

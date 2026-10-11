@@ -12,6 +12,7 @@
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow2.tres" id="g2"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_ring3.tres" id="r3"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_regen_glow3.tres" id="g3"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/marlit_regen.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="Shape_1"]
 size = Vector3(2, 2, 2)
@@ -71,7 +72,18 @@ mesh = ExtResource("r3")
 material_override = SubResource("Mat_glow")
 mesh = ExtResource("g3")
 
-[node name="Crystal" type="MeshInstance3D" parent="."]
+[node name="CrystalMount" type="Node3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+
+[node name="Crystal" type="MeshInstance3D" parent="CrystalMount"]
 material_override = SubResource("Mat_glow")
 mesh = ExtResource("c")
+
+[node name="SpinAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="StandAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="FloatAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

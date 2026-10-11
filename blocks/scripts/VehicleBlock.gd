@@ -347,6 +347,22 @@ var moving_parts: bool = false
 func unbatched() -> Array:
 	return []
 
+## A block's FIXED MOTIONS ARE CLIPS (blocks/anims/<block>.tres, art/block_anims.gd), played by
+## AnimationPlayer nodes in its scene; the script says only when and how fast. This runs a looping
+## clip at `k` times its nominal pace - the rate the part turned at in code - and PAUSES it at zero,
+## where it stands: a stopped player costs nothing, one at speed 0 still processes every frame.
+## play() after pause() resumes from the same place, so an eased rate never jumps the part.
+func drive_clip(ap: AnimationPlayer, clip: StringName, k: float) -> void:
+	if ap == null:
+		return
+	if k <= 0.001:
+		if ap.is_playing():
+			ap.pause()
+		return
+	ap.speed_scale = k
+	if not ap.is_playing():
+		ap.play(clip)
+
 var max_hp: int = 50
 var current_hp: int = 50
 var _hp_fx: MeshInstance3D = null       # постоянный оверлей-«матрица» хп (лениво, см. ниже)

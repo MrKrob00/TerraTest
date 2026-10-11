@@ -2467,6 +2467,34 @@ project: read it before claiming how anything works.
   every shield in the world). The scene gives the tinted part its ON colour (`Mat_glow`), which is
   what the portrait shows: `icon_baker._bake_one` now copies `material_override` the way the build
   thumbnails already did - without it the crystal was baked white.
+- **A BLOCK'S FIXED MOTIONS ARE CLIPS IN ITS SCENE, NOT CODE** (`art/block_anims.gd` -> `blocks/anims/
+  <block>.tres`, AnimationPlayer nodes in the block's scene; the player's call). What runs on a
+  timeline is keyed: the Marlit solar's flip, the smelter's hatches and melt gauge, the generator's
+  turbine and its sink, the shield's cap lift and turn, the regen ring and crystal, the Marlit gyro
+  and its crystal standing up, the radar's sweep, the seller's ring, the scrapper's rollers, the
+  chargers' coils, the drill's bit (its player held an EMPTY "drilling" until now), and the auto
+  miner's pump, which was first. The script says only WHEN and HOW FAST: `play` / `play_backwards`
+  (a reversal halfway runs back from where it stands, measured), `play_section` (the shield's cap
+  only to `REBOOT_LIFT` while rebooting), and for spins `VehicleBlock.drive_clip`, which sets
+  `speed_scale` against the clip's NOMINAL rate - the rate the code turned at - and PAUSES at zero:
+  a player at speed 0 still processes every frame, a paused one costs nothing, and `play` after
+  `pause` resumes in place. THE CLIPS ARE GENERATED, AND THE REST POSE COMES FROM THE SCENE: keys
+  are absolute, so the script reads each part's own transform (the radar's head parked at -135 deg,
+  the drill's axis, which the two drill meshes point differently) - move a part in a scene and re-run
+  it on a copy. A spin is whole turns, quaternion keys a quarter turn apart; the Marlit gyro's four
+  rates fit one 35 s loop within 3%. TWO MOTIONS NEVER WRITE ONE TRANSFORM: independent channels are
+  separate players (a hatch each, lift and spin), and where one part both stands up and floats the
+  scene gives it a MOUNT (`marlit_regen` `CrystalMount/Crystal`). `moving_parts` stays the bridge to
+  the batch, and the order is right: the player applies its pose before `MachineBatch` (priority
+  100) copies it, measured 0 stale frames of 59. Measured on the engine against the old code: the
+  sweep -1.57 rad a second, the flip's path, hatch 0.42 and back, gauge 1 / 0.02, sink -0.16, cap
+  0.090 / 0.054, crystal lying 1.57 rad to upright, the drill's bit turning about the block's front
+  (1.000) on both models. WHAT STAYS IN CODE, AND WHY: what follows game state (a turret's aim and
+  its recoil, which rides the current pitch; wheels, the Marlit wheel's rig; a support's ram and held
+  heading; charge rings, the storage bar, the laser's charge rings, colours and flicker) and what
+  lives on nodes code makes (every `BlockFX` effect, items sliding on belts and into mouths, pop-ups,
+  the orb, markers, the loading screen, UI). The draft Marlit shield is not converted: the game never
+  loads it.
 - **THE BLOCK STYLE IS MEASURED, AND NEW MODELS ARE BUILT BY IT** (`docs/ART_STYLE.md`): 18 of the
   artist's models, area-weighted, are 78% dark violet-grey metal, 12% GSO blue, 3% one pop colour; no
   light is painted (up / side / down faces all read ~0.22), shape reads by edge lines and chamfers
@@ -2477,7 +2505,7 @@ project: read it before claiming how anything works.
   block and unbatched, `Rotor` moving). FUEL GOES IN THROUGH THE TOP, from whichever side it came:
   one door serves all four sides, where side doors would have been four moving parts; the fuel
   rises from the belt onto the lid and drops in. The turbine sinks through the lid
-  (`RETRACT`), the fuel settles over the well, shrinks and drops in, and only then the fire flares.
+  (the clip "sink"), the fuel settles over the well, shrinks and drops in, and only then the fire flares.
   THE WELL IS PAINTED ON A SOLID LID, so what sinks is simply gone into the dark: a real well was
   tried and showed the blades lying in a pit and the fuel on its floor. Measured on the engine: turbine down as
   the coal reaches the lid (0.3 s), coal in and fire 0.20 -> 0.98 at 0.8 s, turbine up by 1.0 s,
@@ -2526,7 +2554,7 @@ project: read it before claiming how anything works.
   hot glitch (`BlockFX.play`). Both mouths have guillotine hatches that lift as something passes.
   The right column is the intake (arrows into the furnace) and the exit, split by a low divider; the
   exit carries NO arrows, because the product leaves forward or right and an arrow for one said
-  half of it (two arrows were tried and dropped too). `processor._move` drives the path, the hatches and the gauge (nodes `HatchIn`,
+  half of it (two arrows were tried and dropped too). `processor._move` drives the path and plays the hatches and the gauge (clips on nodes `HatchIn`,
   `HatchOut`, `Gauge`; `moving_parts`), shrinking the metre-wide cargo bubble to `IN_FURNACE` in the
   mouth; `upgrade()` stays in the tick, so the product never waits on a tween. The fire grates on the
   outer walls ARE the old red/green lamp (`_set_processing_visual`, part `processor_glow`). Rejected
@@ -2571,7 +2599,7 @@ project: read it before claiming how anything works.
   base read as "joins by its bottom only", a spool of two full-width plates was turned down, the
   original's grey dome with a red band was liked for its coils and not for its ball, and coils on a
   post with a mount plate behind were "a platform" again. The coils TURN THROUGH THE SHELL WHILE
-  ENERGY FLOWS (`wireless_charger.gd` `Ring`, `RING_SPIN` eased by `RING_EASE`; the dark seams show
+  ENERGY FLOWS (`wireless_charger.gd`, the clip "spin" on `Ring` at `RING_SPIN` eased by `RING_EASE`; the dark seams show
   the turn), and the beam leaves from between them (`EMIT`). The charge station (`blocks._layout_charge_tower`) keeps its transmitter
   ON THE ROTATION AXIS by hanging it on a second column behind it, (5,6,6)-(5,7,6), with the panel
   moved to that column's top. Measured: the station keeps all 11 blocks with the charger on the axis;
@@ -2650,7 +2678,7 @@ project: read it before claiming how anything works.
 - **THE MARLIT SOLAR ARRAY IS A LID THAT TURNS OVER** (`MARLIT_SOLAR`, `blocks/scripts/marlit_solar.gd`,
   `art/emitter_models.py` marlit_solar): a 2x1x2 housing whose top is two leaves, the Marlit window on
   one side and 4x2 cells on the other. On the anchor each leaf rides up on two rams to the middle of
-  the upper cell, turns over and settles back cells up (`FLIP_TIME`); released, the same path back.
+  the upper cell, turns over and settles back cells up (the clip "open", 2.4 s); released, the same clip backwards.
   TWO LEAVES, NOT ONE PLATE: a 2x2 plate turning about its middle sweeps a metre above and below it,
   out of the block both ways; a 2x1 leaf sweeps 0.43 and stays in the upper cell. So the block owns
   2x2x2 while its collider is the housing alone (2x1x2, `collider_offset`). It JOINS BY ITS BOTTOM AND
@@ -2762,7 +2790,7 @@ project: read it before claiming how anything works.
   detail with the faction's name.
 - **THE RADAR IS A DISH THAT SWEEPS WHILE IT IS DOING ITS JOB** (`radar.gd`, model from
   `art/emitter_models.py`). Its whole effect is the big HUD map on a machine that carries one, and it
-  draws no energy, so it has two states only: on a machine the head turns once every `SWEEP_TIME`,
+  draws no energy, so it has two states only: on a machine the head turns once every 4 s (the clip "sweep"),
   lying loose it stands still. The dish looks up `RADAR_TILT` (45 deg): tipped less, the turntable
   and its mount stood in front of the bowl and pierced it, and a bowl raised clear of them no longer
   fit the cell. The scene parks the head at -135 deg so the portrait, taken from the back-right,

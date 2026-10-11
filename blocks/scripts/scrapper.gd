@@ -38,23 +38,22 @@ const SUCK_SPEED: float = 6.0        # m/s towards the mouth
 const SUCK_TAKE: float = 1.0         # metres from the mouth: swallowed
 const NOZZLE_OUT := Vector3(0.0, -0.55, 0.83)   # the way the nozzle opens, in block axes
 const NOZZLE_MOUTH: float = 0.3      # the mouth, this far out along it from the marker
-## The rollers turn while there is scrap to hand out (nodes `RollerA` / `RollerB`).
+## The rollers turn while there is scrap to hand out: the clip "roll" on the scene's `Anim` player,
+## keyed at SPIN, eased in and out here.
 const SPIN: float = 12.0             # rad/s at work
 const SPIN_EASE: float = 10.0        # rad/s per second up and down
 var _nozzle: Node3D = null
 var _suction: Area3D = null
 var _pulled: Array = []
 var _suck_t: float = 0.0
-var _roll_a: Node3D = null
-var _roll_b: Node3D = null
+var _anim: AnimationPlayer = null
 var _spin: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true
 	_nozzle = get_node_or_null("nozzle") as Node3D
 	_suction = get_node_or_null("nozzle/suction") as Area3D
-	_roll_a = get_node_or_null("RollerA") as Node3D
-	_roll_b = get_node_or_null("RollerB") as Node3D
+	_anim = get_node_or_null("Anim") as AnimationPlayer
 	super._ready()
 	_res_scene = load(RESOURCE_SCENE) as PackedScene
 
@@ -106,9 +105,7 @@ func _enqueue(yield_per_block: Dictionary, n: int) -> void:
 func _process(delta: float) -> void:
 	push_retry_tick(delta)
 	_spin = move_toward(_spin, SPIN if not _queue.is_empty() else 0.0, SPIN_EASE * delta)
-	if _spin > 0.0 and _roll_a != null and _roll_b != null:
-		_roll_a.rotate_x(_spin * delta)
-		_roll_b.rotate_x(-_spin * delta)
+	drive_clip(_anim, &"roll", _spin / SPIN)
 
 func _mouth() -> Vector3:
 	return _nozzle.global_position + _nozzle.global_basis * (NOZZLE_OUT * NOZZLE_MOUTH)

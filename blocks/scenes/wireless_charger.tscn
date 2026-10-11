@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cn4vb8q60xy6n" path="res://blocks/scripts/wireless_charger.gd" id="1_s"]
 [ext_resource type="ArrayMesh" uid="uid://dv232xnkleisf" path="res://blocks/meshes/wireless_body.tres" id="2_body"]
 [ext_resource type="ArrayMesh" uid="uid://dc5i4l0oefs44" path="res://blocks/meshes/wireless_ring.tres" id="3_ring"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/wireless_charger.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
 
@@ -22,3 +23,6 @@ mesh = ExtResource("2_body")
 [node name="Ring" type="MeshInstance3D" parent="." unique_id=330434340]
 transform = Transform3D(0.965926, 0, 0.258819, 0, 1, 0, -0.258819, 0, 0.965926, 0, 0, 0)
 mesh = ExtResource("3_ring")
+
+[node name="Anim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

@@ -31,29 +31,29 @@ var _beam_mat: StandardMaterial3D = null
 var _t: float = 0.0
 
 ## The two coils (art/emitter_models.py build_wireless) turn while energy flows
-## and runs down when it stops - the block's own "working" sign, next to the beam.
+## and runs down when it stops - the block's own "working" sign, next to the beam. The turn is the
+## clip "spin" on the scene's `Anim` player, keyed at RING_SPIN; here only its pace.
 const RING_SPIN: float = 5.0         # rad/s while transmitting
 ## Where the beam leaves: between the two coils (art/emitter_models.py WL_COILS_Y). A faction's
 ## charger moves it in `_init` (the Marlit disc's middle).
 const EMIT := Vector3.ZERO
 var emit_at: Vector3 = EMIT
 const RING_EASE: float = 3.0
-var _ring: Node3D = null
+var _anim: AnimationPlayer = null
 var _ring_w: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true                  # the ring turns (MachineBatch copies it)
-	_ring = get_node_or_null("Ring") as Node3D
+	_anim = get_node_or_null("Anim") as AnimationPlayer
 	super._ready()
 	_build_beam()
 
 func _process(delta: float) -> void:
-	if _ring == null:
+	if _anim == null:
 		return
 	var want: float = RING_SPIN if _beam != null and _beam.visible else 0.0
 	_ring_w = lerpf(_ring_w, want, 1.0 - exp(-RING_EASE * delta))
-	if _ring_w > 0.01:
-		_ring.rotate_y(_ring_w * delta)
+	drive_clip(_anim, &"spin", _ring_w / RING_SPIN if _ring_w > 0.01 else 0.0)
 
 func _physics_process(delta: float) -> void:
 	var mine: Node = _machine()

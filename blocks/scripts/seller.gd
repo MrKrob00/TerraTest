@@ -22,19 +22,21 @@ const SELL_B := Color(0.45, 1.0, 0.55)
 const SELL_FX_TIME := 0.45
 const LIFT_SCALE := 0.8          # the goods shrink to ride inside the shaft's rails
 const SHAFT_TOP := 0.92          # where they vanish into the roof (just under SL_TOP)
+## The ring's turn is the clip "spin" on the scene's `Anim` player, keyed at RING_SPIN; a sale runs
+## it at full pace and it eases out at RING_EASE.
 const RING_SPIN := 14.0          # rad/s right after a sale
 const RING_EASE := 7.0           # rad/s per second back down
 const SALE_POPUP := preload("res://sale_popup.gd")
 const POPUP_Y := 1.9             # over the uplink's tip
 
 var timer: Timer
-var _ring: Node3D = null
+var _anim: AnimationPlayer = null
 var _popup = null                # the last "+N$" (sale_popup.gd), merged into while young
 var _spin: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true
-	_ring = get_node_or_null("Ring") as Node3D
+	_anim = get_node_or_null("Anim") as AnimationPlayer
 	super._ready()
 
 	timer = Timer.new()
@@ -48,8 +50,7 @@ func _process(delta: float) -> void:
 	push_retry_tick(delta)
 	if _spin > 0.0:
 		_spin = move_toward(_spin, 0.0, RING_EASE * delta)
-		if _ring != null:
-			_ring.rotate_y(_spin * delta)
+		drive_clip(_anim, &"spin", _spin / RING_SPIN)
 
 ## Up the shaft while the sale is timed. The tween carries the PICTURE only: the sale happens on the
 ## timer whether or not it finished.
