@@ -273,7 +273,8 @@ func _track_dormancy(delta: float) -> void:
 		var want_shadow: bool = d2 < SHADOW_DIST * SHADOW_DIST
 		if bool(e.get_meta("shadows_on", true)) != want_shadow:
 			e.set_meta("shadows_on", want_shadow)
-			_set_shadows(e, want_shadow)
+			if e.has_method("set_shadow_casting"):
+				e.set_shadow_casting(want_shadow)   # through the batch: see MachineBatch.set_shadows
 		# Засыпает за sleep_dist, просыпается за wake_frac от него — два разных порога, см. их
 		# объявление. Между ними машина остаётся в том состоянии, в каком была.
 		var wake_d: float = sleep_dist * wake_frac
@@ -309,15 +310,6 @@ func _release_lost_invader(player: Node3D) -> void:
 # or child turrets would keep turning and firing past the horizon.
 ## Beyond this distance a machine stops casting shadows (receiving them continues).
 const SHADOW_DIST: float = 90.0
-
-## Set shadow casting across a whole node branch. Called on state change, not per frame.
-func _set_shadows(n: Node, on: bool) -> void:
-	var gi := n as GeometryInstance3D
-	if gi != null:
-		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
-				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for c in n.get_children():
-		_set_shadows(c, on)
 
 func _sleep(e: Node3D) -> void:
 	if bool(e.get_meta("asleep", false)):

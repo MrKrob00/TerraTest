@@ -329,15 +329,8 @@ func _shadow_tick(cam_pos: Vector3) -> void:
 		if bool(v.get_meta("shadows_on", true)) == want:
 			continue
 		v.set_meta("shadows_on", want)
-		_set_shadows(v, want)
-
-func _set_shadows(n: Node, on: bool) -> void:
-	var gi := n as GeometryInstance3D
-	if gi != null:
-		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if on \
-				else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	for c in n.get_children():
-		_set_shadows(c, on)
+		if v.has_method("set_shadow_casting"):
+			v.set_shadow_casting(want)          # through the batch: see MachineBatch.set_shadows
 
 # Cached terrain node (the one with terrain_height_at).
 var _terrain_node: Node = null

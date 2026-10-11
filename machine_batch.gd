@@ -58,8 +58,38 @@ var _binfo: Array = []
 var _view_key := Vector3i(1 << 20, 0, 0)
 const VIEW_SLACK := 0.06       # how far past its cells a model may reach and still be culled
 var _proxy: MultiMeshInstance3D = null
+var _proxy_full: bool = false  # the proxy holds boxes this rebuild
 static var _proxy_mesh: BoxMesh = null
 static var _proxy_mat: StandardMaterial3D = null
+
+## A FAR MACHINE CASTS NO SHADOW, AND THIS IS ITS ONE DOOR (`set_shadows`, through
+## `MachineBody.set_shadow_casting`; world_persist and enemy_spawner decide "far"). Their old way was
+## to walk the machine's branch and write ON or OFF into EVERY GeometryInstance3D - written before
+## this batch, and it flattened what the batch decides per node: the proxy (`_proxy`) and the twins
+## (`smmi`) are SHADOWS_ONLY, and set to ON they drew in the main pass - an unshaded white box over
+## every still block (the player's "white square on blocks already on the machine, not every
+## launch": only after the machine had been 90 m from the camera and come back). Off here hides the
+## proxy and the twins and takes the main groups' casting; on gives back exactly what the rebuild set.
+var _shadows_on: bool = true
+
+func set_shadows(on: bool) -> void:
+	if on == _shadows_on:
+		return
+	_shadows_on = on
+	_apply_shadows()
+
+func _apply_shadows() -> void:
+	if is_instance_valid(_proxy):
+		_proxy.visible = _shadows_on and _proxy_full
+	for key in _groups:
+		var g: Dictionary = _groups[key]
+		var mmi = g["mmi"]
+		if is_instance_valid(mmi):
+			(mmi as MultiMeshInstance3D).cast_shadow = int(g["cast"]) if _shadows_on \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var sh = g["smmi"]
+		if is_instance_valid(sh):
+			(sh as MultiMeshInstance3D).visible = _shadows_on
 
 func setup(machine: Node3D, blocks: Node) -> void:
 	_machine = machine
@@ -218,19 +248,21 @@ func _rebuild() -> void:
 			_hidden[mi.get_instance_id()] = [mi, mi.layers]
 			mi.layers = 0
 		var smmi: MultiMeshInstance3D = null
-		mmi.cast_shadow = first.cast_shadow
+		var cast: int = first.cast_shadow
 		if not moving.has(1):
 			# still parts only: their shadow is their blocks' boxes (_proxy)
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			cast = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		elif cullable and first.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF:
-			mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			cast = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			smmi = _new_mmi(first)
 			smmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 			add_child(smmi)
 			_fill(smmi.multimesh, parts, range(parts.size()), inv)
+		mmi.cast_shadow = cast
 		_groups[key] = {"mmi": mmi, "smmi": smmi, "parts": parts, "moving": moving, "owner": owner_i,
-				"cullable": cullable, "vis": PackedInt32Array()}
+				"cullable": cullable, "vis": PackedInt32Array(), "cast": cast}
 	_fill_proxy(boxed)
+	_apply_shadows()
 	_view_key = Vector3i(1 << 20, 0, 0)
 	_view_changed()
 	_apply_view()
@@ -273,6 +305,7 @@ func _fill_proxy(boxed: Array) -> void:
 		if box.size == Vector3.ZERO:
 			continue
 		xf.append(at * Transform3D(Basis.from_scale(box.size), box.get_center()))
+	_proxy_full = not xf.is_empty()
 	if xf.is_empty():
 		if is_instance_valid(_proxy):
 			_proxy.visible = false
@@ -291,7 +324,7 @@ func _fill_proxy(boxed: Array) -> void:
 		_proxy.multimesh.transform_format = MultiMesh.TRANSFORM_3D
 		_proxy.multimesh.mesh = _proxy_mesh
 		add_child(_proxy)
-	_proxy.visible = true
+	_proxy.visible = _shadows_on
 	var mm: MultiMesh = _proxy.multimesh
 	mm.instance_count = xf.size()
 	for i in xf.size():

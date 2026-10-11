@@ -2423,15 +2423,25 @@ project: read it before claiming how anything works.
   THE GLASS COLUMN OVER BOTH BLOCKS IS GONE (the player's call); the cargo stack stands over the pad
   on its own. A RECEIVER EMPTIES A COLLECTOR (`Receiver.take_interval` 0.25, takes until full,
   `capacity` 8): it took one item a second and stopped at four - measured, a full collector's eight
-  move in the first quarter second. THE COLLECTOR'S RING TURNS ROUND ITS OWN BASE (0.7 m, eight
-  dashes, `collector.tscn`): it was the 5 m reach ring pulled to the machine's centre height every
-  frame, and read as arcs somewhere beside the block. Under -0.3 the raised grass hides it.
+  move in the first quarter second. **THE COLLECTOR'S RING IS ITS REACH, ON THE GROUND** (`collector.gd`
+  `_build_ring`, `blocks/collector_ring.gdshader`; the player's call: "it should turn at the pickup
+  radius, on the ground"). The pickup zone is a 5 m SPHERE round the block, so where it meets the
+  ground is no fixed circle: each of `RING_SEGMENTS` directions is walked out to the ground point
+  one radius from the block (two fixed-point steps on the terrain's heights) - nearer on a rise,
+  farther in a dip, and no ring at all once the block stands higher than the radius. A ribbon of
+  dashes running round, BLENDED (cyan added to sand came out white), lifted out of the grass in depth
+  like the ground marks, built in the world only on a machine and within `RING_SHOW_DIST`: a parked
+  block reads it once (and every `RING_IDLE`), a driving one slides it along and re-reads every
+  `RING_REFRESH` - 1.96 ms a read on the optimize=none build. Two rings came before and were wrong:
+  the 5 m one hung at the machine's centre height and read as arcs beside the block, then a 0.7 m one
+  turned round the block's own base and said nothing about the reach. Checked on the real driver on
+  a dune slope: an ellipse lying on the sand round the machine, following it when moved.
   The cargo stack stands over the pad; it joins by the sides and the bottom only (`connect_faces`
   47), since a block on top would hang over a deck this low. The collector is still a cube with a round bowl in
   its top - grilled dark walls with a down-pointing sign, a blue lid, a dark bowl with a boss the
   held item sits over (`collector.gd` HOLD_Y). Both used to stand out of their cell (the plate 9 cm over the
   top, the cube 1 cm past every face and its rim 7 cm up) on 450 and 882 untextured triangles; now
-  114 and 139 inside it. Range rings and the collector's script are untouched.
+  114 and 139 inside it.
 - **THE PROCESSOR (SMELTER) AND THE SELLER ARE DRAWN FROM THEIR PORTS** (`art/emitter_models.py`
   processor / seller, 2x2x2, anchor in a corner so the block spans x -1.5..0.5, z -1.5..0.5 in its own
   axes). Every port is a QUARTER OF A FACE, and the model shows exactly those. The processor's are all
@@ -2795,7 +2805,16 @@ project: read it before claiming how anything works.
   authored inside the collider. 12 triangles a block. WHAT MOVES KEEPS ITS OWN SHADOW (a barrel, a
   tyre), and a block whose models all cast nothing gets no box. Measured, the champion and a siege
   build side by side under a low sun: 28.7k -> 19.4k in the shadow pass (the rest is wheels and
-  guns), the two pictures the same by eye. GODOT'S OWN MESH LOD DOES NOT HELP THE HEAVY ONES:
+  guns), the two pictures the same by eye. **A FAR MACHINE'S SHADOW GOES OFF THROUGH THE BATCH**
+  (`MachineBody.set_shadow_casting` -> `MachineBatch.set_shadows`, called by `world_persist._shadow_tick`
+  for the player's machines and `enemy_spawner` for the rest past `SHADOW_DIST`), NEVER BY A WALK
+  WRITING ON / OFF INTO EVERY NODE OF THE MACHINE. Both walks predated the batch, and coming back
+  inside 90 m they set the proxy and the SHADOWS_ONLY twins to ON: the proxy's unshaded white boxes
+  drew in the main pass over every still block - the player's "white square on blocks already on
+  the machine, not every launch" (only after the machine had been 90 m from the camera). Off hides
+  the proxy and the twins and takes the groups' casting; on gives back what the rebuild decided.
+  Reproduced on the real driver: white boxes on HEAD after far-and-back, the blocks as drawn after.
+  `VehicleBlock._set_shadows` skips `block_fx` nodes for the same reason. GODOT'S OWN MESH LOD DOES NOT HELP THE HEAVY ONES:
   `ImporterMesh.generate_lods` over every block mesh gives no level at all for the Marlit hull
   (block 536, long 792, girder 508, armour 236-270 triangles) - every facet is its own UV island,
   and the simplifier keeps the seams - and 62% over all meshes at the first level where it does.
