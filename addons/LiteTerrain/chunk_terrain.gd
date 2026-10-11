@@ -58,10 +58,13 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 ## Теперь ближняя и дальняя считаются точно, а боковым даётся честный запас: узел, который
 ## вот-вот выедет в кадр сбоку, успевает посчитаться заранее.
 @export_range(0.0, 64.0, 1.0) var frustum_margin: float = 12.0
-## Заслонённость рельефом для того, что на нём стоит. По умолчанию выключена, как и была: луч
-## по земле стоит дороже, чем рисование куста, который всё равно за бугром.
-@export var enable_occlusion_culling: bool = false
+## WHAT STANDS BEHIND A HILL IS NOT DRAWN (`is_point_hidden`, asked by veins, props, loose items and
+## machines). On by default (the player's call); the ray reads the DRAWN ground's heights, see there.
+@export var enable_occlusion_culling: bool = true
+## Nothing nearer than this is ever hidden: up close the test means nothing and a blink costs most.
 @export_range(0.0, 200.0, 1.0) var occlusion_min_dist: float = 40.0
+## How far the ground has to stand ABOVE the line of sight to hide a thing - the margin that also
+## covers a test asked a few frames late.
 @export_range(0.0, 10.0, 0.5) var occlusion_bias: float = 1.5
 
 @export_group("Build")
@@ -1716,35 +1719,97 @@ func render_stats() -> Vector3i:
 # ─────────────────────────────────────────────────────────────────────────────
 # Заслонённость
 # ─────────────────────────────────────────────────────────────────────────────
-## Луч от камеры к точке шагами по земле: если хоть один шаг выше линии взгляда, точка за
-## бугром. Высоты идут через запомненные узлы сетки, поэтому шаги почти всегда бесплатны.
+## Is the point `height` over `world_pos` behind the ground, seen from the camera? A ray from the eye
+## to it, stepped over the ground: hidden once a step's ground stands `occlusion_bias` over the line.
+## THE GROUND IS THE ONE THE FRAME DRAWS (`_drawn_h`), not the generator's: a far node samples every
+## 2^L m and cuts its peaks, so the true ground hid a vein over a ridge the screen drew lower - and a
+## point no near chunk holds was a generator call, ~364 us on the optimize=none build, at every step
+## of every ray. That is why this test was off: "a ray over the ground cost more than drawing the
+## bush behind the hill". A step over ground with no drawn heights hides nothing.
 const OCCL_STEP := 8.0
 const OCCL_MAX_STEPS := 28
+## Hysteresis: a thing already hidden needs this much more to come back, or it blinks on the edge.
 const OCCL_HYST := 0.5
+var _no_h := PackedFloat32Array()      # what a point with no drawn heights reads
 
 func is_point_hidden(world_pos: Vector3, height: float = 1.0, was_hidden: bool = false) -> bool:
 	if not enable_occlusion_culling or _gen == null:
 		return false
+	var t0 := _pf_now()
+	var hid := _point_hidden(world_pos, height, was_hidden)
+	_pf_mark("terrain_occl", t0)
+	return hid
+
+func _point_hidden(world_pos: Vector3, height: float, was_hidden: bool) -> bool:
 	if not is_instance_valid(_cam):
 		_cam = _active_camera()
 		if _cam == null:
 			return false
-	var eye: Vector3 = _cam.global_position
-	var top := Vector3(world_pos.x, world_pos.y + maxf(height, 0.1), world_pos.z)
+	var inv: Transform3D = global_transform.affine_inverse()
+	var eye: Vector3 = inv * _cam.global_position
+	var top: Vector3 = inv * Vector3(world_pos.x, world_pos.y + maxf(height, 0.1), world_pos.z)
 	var dist := eye.distance_to(top)
 	if dist < occlusion_min_dist:
 		return false
 	var steps: int = mini(int(dist / OCCL_STEP), OCCL_MAX_STEPS)
 	if steps < 2:
 		return false
-	# Порог с гистерезисом: без него объект на грани мигает каждый кадр.
+	# An eye under the drawn ground (a camera pushed into a slope) would see every ray blocked at
+	# its first step and empty the world: nothing is hidden from there.
+	if _drawn_h(eye.x, eye.z) > eye.y:
+		return false
 	var bias: float = occlusion_bias + (OCCL_HYST if was_hidden else 0.0)
+	# The node under the ray is looked up only when the ray leaves it: a far node spans many steps.
+	var hs: PackedFloat32Array = _no_h
+	var x0 := 0.0
+	var z0 := 0.0
+	var x1 := -1.0
+	var z1 := -1.0
+	var cell := 1.0
 	for s in range(1, steps):
-		var t: float = float(s) / float(steps)
-		var p: Vector3 = eye.lerp(top, t)
-		if terrain_height_at(p) > p.y + bias:
+		var p: Vector3 = eye.lerp(top, float(s) / float(steps))
+		if p.x < x0 or p.z < z0 or p.x >= x1 or p.z >= z1:
+			var bcx: int = floori(p.x / CHUNK)
+			var bcz: int = floori(p.z / CHUNK)
+			var k: int = _drawn_key_at(bcx, bcz)
+			var l: int = _key_lod(k) if k != -1 else 0
+			hs = _hc.get(k, _no_h) if k != -1 else _no_h
+			var span := float(CHUNK << l)
+			x0 = float(bcx >> l) * span
+			z0 = float(bcz >> l) * span
+			x1 = x0 + span
+			z1 = z0 + span
+			cell = float(1 << l)
+		if hs.size() != APRON * APRON:
+			continue
+		if _grid_h(hs, (p.x - x0) / cell, (p.z - z0) / cell) > p.y + bias:
 			return true
 	return false
+
+## The drawn ground's height at a local point, NAN where nothing drawn has its heights.
+func _drawn_h(x: float, z: float) -> float:
+	var bcx: int = floori(x / CHUNK)
+	var bcz: int = floori(z / CHUNK)
+	var k: int = _drawn_key_at(bcx, bcz)
+	if k == -1:
+		return NAN
+	var hs: PackedFloat32Array = _hc.get(k, _no_h)
+	if hs.size() != APRON * APRON:
+		return NAN
+	var l: int = _key_lod(k)
+	var span := float(CHUNK << l)
+	var cell := float(1 << l)
+	return _grid_h(hs, (x - float(bcx >> l) * span) / cell, (z - float(bcz >> l) * span) / cell)
+
+## Bilinear over a node's height grid (APRON², one cell of apron), at grid coordinates inside it.
+func _grid_h(hs: PackedFloat32Array, fx: float, fz: float) -> float:
+	var i: int = clampi(int(fx), 0, CHUNK - 1)
+	var j: int = clampi(int(fz), 0, CHUNK - 1)
+	var tx: float = fx - float(i)
+	var tz: float = fz - float(j)
+	var r0: int = (j + 1) * APRON + i + 1
+	var r1: int = r0 + APRON
+	return lerpf(lerpf(hs[r0], hs[r0 + 1], tx), lerpf(hs[r1], hs[r1 + 1], tx), tz)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Превью в редакторе

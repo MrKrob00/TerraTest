@@ -402,6 +402,18 @@ func set_shadow_casting(on: bool) -> void:
 	if mb != null and mb.has_method("set_shadows"):
 		mb.set_shadows(on)
 
+## BEHIND A RIDGE THE MACHINE IS NOT DRAWN, BUT ITS MARKER IS (world_persist's horizon test): the
+## name and the "!" over an enemy say what is coming over the hill. So the batch and the blocks go
+## dark, not the machine - the frustum, which takes the marker off the screen anyway, still hides
+## the whole machine. The batch hidden also stops posing its moving parts (`is_visible_in_tree`).
+func set_ridge_hidden(on: bool) -> void:
+	var mb := get_node_or_null("MeshBatch") as Node3D
+	if mb != null:
+		mb.visible = not on
+	var bl := blocks_node() as Node3D
+	if bl != null:
+		bl.visible = not on
+
 # Effective gravity with gravity_scale applied.
 func _gravity_accel() -> float:
 	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * gravity_scale

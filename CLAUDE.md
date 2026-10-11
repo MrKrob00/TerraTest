@@ -2816,10 +2816,26 @@ project: read it before claiming how anything works.
 
 ### Performance
 
-- Engine occlusion culling is off (no baked occluders). The terrain's own horizon test
-  (`ChunkTerrain.is_point_hidden`, a ray stepped over the heights, asked by veins, props and loose
-  blocks) is OFF TOO, `enable_occlusion_culling` false: a ray over the ground cost more than drawing
-  the bush behind the hill. Every caller asks it anyway, so it answers `false` at once.
+- Engine occlusion culling is off (no baked occluders). **WHAT STANDS BEHIND A HILL IS NOT DRAWN**
+  (`ChunkTerrain.is_point_hidden`, `enable_occlusion_culling` ON, the player's call): a ray from the
+  eye to the thing's TOP stepped over the ground, hidden once a step's ground stands `occlusion_bias`
+  over the line, never nearer than `occlusion_min_dist`. IT READS THE DRAWN GROUND (`_drawn_h`: the
+  heights the drawn node's mesh was built from, `_hc` under `_drawn_key_at`), never the generator.
+  That is why it was off: a point no near chunk holds was a generator call (~364 us), at every step
+  of every ray - measured on 4.7.2, 862 us a call cold against 97 now, and a far node's coarse ridge
+  is what the screen shows, so the true one hid things standing over it on screen (the verdicts
+  agree 599 of 600). A camera inside the ground hides nothing. A HIDDEN THING IS ASKED AGAIN EVERY
+  PASS, A SHOWN ONE ON ITS SLICE OR BEAT (veins, loose items, machines alike): hiding late costs a
+  draw, showing late is a pop, and the bias covers the frames it is asked late. THE POINT IS THE
+  TOP: a vein's is its model's top times its size (`resource_nodes._vein_top`; a fixed 1.5 m hid
+  twelve-metre trees with their crowns over the ridge), a machine's its build's `reach_top` plus
+  the biggest dome (`WeaponBlock.SHIELD_REACH`), and a wide machine is hidden only when its flanks
+  are too (`world_persist._ridge_hides`). A MACHINE BEHIND A RIDGE KEEPS ITS MARKER: the ridge
+  hides its batch and blocks (`MachineBody.set_ridge_hidden`), never the machine node, so the name
+  and the "!" still say what is coming over the hill. Its size is read through `blocks_node()`:
+  `block_map_node` exists on the player's machine only, and every enemy was culled as a bare 9 m
+  sphere. Measured on 4.7.2, a camera driving 600 m of hills: 0.015 ms a frame for every test, a
+  third of what stands 40-160 m ahead hidden, 21% fewer veins drawn.
 - Seam rebuilds run on a budget per pass; a hairline crack beats a frame drop. A node's seams are
   checked once per set of leaves, not every tick (`gen`, see Terrain).
 - Whole-machine frustum culling toggles `visible` only — `process_mode` belongs to the sleep system.

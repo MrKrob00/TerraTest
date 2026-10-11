@@ -184,6 +184,25 @@ in the same frame (`cov` on the node: a covered node is not drawn ground for the
 камера проезжает несколько метров и разворачивается, и узел, выехавший в кадр, ждал бы следующего
 тика.
 
+### Behind a hill (`is_point_hidden`)
+
+The ground does not cull itself; it answers for what stands on it - veins, loose items, machines -
+whether a point lies behind a ridge. A ray from the eye to the thing's TOP, stepped every
+`OCCL_STEP` (at most `OCCL_MAX_STEPS`): hidden once a step's ground stands `occlusion_bias` over the
+line (plus `OCCL_HYST` for a thing already hidden), and nothing nearer than `occlusion_min_dist`.
+
+The ground is the DRAWN one (`_drawn_h`): the drawn node at the point (`_drawn_key_at`) and the
+heights its mesh was built from (`_hc`), bilinear on its own grid; the node is looked up again only
+when the ray leaves it. Two reasons, both measured on 4.7.2:
+
+- cost: the generator for a point no near chunk holds was ~364 us at every step, 862 us a call
+  cold; reading built heights is 97 us a call, and the whole test ~0.015 ms a frame on a drive;
+- truth: a far node samples every 2^L m and cuts its peaks, so the true ridge hid things the screen
+  showed over its lower drawn copy. The two agree on 599 of 600 points anyway.
+
+A step over ground with no drawn heights hides nothing, and an eye under the drawn ground (a camera
+pushed into a slope) hides nothing at all - otherwise every ray stops at its first step.
+
 ## Набор листьев кэшируется
 
 «Дробить узел или нет» зависит **только от расстояния**; направление взгляда решает лишь, что из

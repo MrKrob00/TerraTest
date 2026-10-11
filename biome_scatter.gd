@@ -226,9 +226,10 @@ func _process(delta: float) -> void:
 		i += 1
 		var near: bool = cam_pos.distance_squared_to(to_global(v["pos"])) <= d2
 		var has: bool = v["node"] != null
-		if near and can_occlude and i >= slice_from and i < slice_to:
-			# Only far ones: close up the horizon walk is meaningless (and _is_aabb_occluded
-			# refuses anyway below occlusion_min_dist), and a prop underfoot must never blink.
+		# A hidden prop is asked EVERY pass, a shown one in its slice: hiding late costs a drawn prop,
+		# showing late is a pop once the ridge is crossed. Close up the test refuses by itself
+		# (occlusion_min_dist), so a prop underfoot never blinks.
+		if near and can_occlude and (v.get("hidden", false) or (i >= slice_from and i < slice_to)):
 			v["hidden"] = terr.is_point_hidden(to_global(v["pos"]), OCCL_PROP_HEIGHT * float(v["scale"]),
 					v.get("hidden", false))
 		if near and v.get("hidden", false):

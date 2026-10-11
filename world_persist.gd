@@ -145,7 +145,9 @@ const CULL_PERIOD := 0.25
 const CULL_KEEP_RADIUS := 25.0       # m: closer than this a block stays active whatever the camera looks at
 const CULL_VIEW_COS := -0.15         # slightly wider than the hemisphere in front, so the edge does not flicker
 const CULL_META := "culled"
+const CULL_OCCL_EVERY := 4
 var _cull_t: float = 0.0
+var _cull_pass: int = 0
 
 func _cull_tick(delta: float) -> void:
 	_cull_t -= delta
@@ -167,7 +169,10 @@ func _cull_tick(delta: float) -> void:
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
 	var frustum: Array[Plane] = cam.get_frustum()
 	_shadow_tick(cam_pos)
+	_cull_pass += 1
+	var i: int = -1
 	for c in o.get_children():
+		i += 1
 		var n := c as Node3D
 		if n == null:
 			continue
@@ -192,8 +197,13 @@ func _cull_tick(delta: float) -> void:
 		# disabling them because the camera looks elsewhere would stop the factory at a base.
 		var kept: bool = d2 <= keep2 or G.near_active(n.global_position, CULL_KEEP_RADIUS)
 		var behind: bool = not kept and to.normalized().dot(fwd) < CULL_VIEW_COS
+		# The ridge is asked of an item switched off every pass (it must come back), of a live one
+		# every CULL_OCCL_EVERY passes on its own beat; in between a live one keeps its state.
 		if not behind and not kept and can_occlude:
-			behind = terr.is_point_hidden(n.global_position, 1.0, was)
+			if was or (i + _cull_pass) % CULL_OCCL_EVERY == 0:
+				behind = terr.is_point_hidden(n.global_position, 1.0, was)
+			else:
+				behind = was
 		if behind == was:
 			continue
 		if behind:
@@ -264,10 +274,16 @@ const SHADOW_DIST := 90.0
 # The check runs EVERY FRAME rather than on the cleanup timer: a machine must appear the same frame
 # the camera turns to it. There are only a few machines and the test is six dot products.
 const VEH_CULL_RADIUS := 9.0     # the least sphere round a machine; a bigger build asks its own (blocks.reach_radius)
-## Box height for the occlusion query. The sphere radius does not fit here: is_point_hidden builds a
-## 1 x height x 1 column, and a nine-metre column would stick out above any hill, so "behind a ridge"
-## would never happen. Four metres is a machine with a turret plus margin.
+## Height over the origin the horizon test asks about (`ChunkTerrain.is_point_hidden`): the build's
+## own top (`blocks.reach_top`) plus the biggest dome that can stand over it
+## (`WeaponBlock.SHIELD_REACH`) - a dome peeking over a ridge must not vanish with the machine -
+## and never less than this, a machine with a turret plus margin.
 const VEH_OCCL_HEIGHT := 4.0
+## BEHIND A RIDGE IS ASKED EVERY FRAME ONLY WHILE A RIDGE HIDES THE MACHINE; a shown one is asked every
+## VEH_OCCL_EVERY frames, on its own beat. Hiding late costs a drawn machine, showing late is a pop -
+## and the test's own margin (`occlusion_bias`) covers the frames it is asked late.
+const VEH_OCCL_EVERY := 4
+const VEH_OCCL_META := &"ridge_hidden"
 
 func _vehicle_render_tick() -> void:
 	var vehicles := get_node_or_null("/root/Main/Vehicles")
@@ -280,7 +296,10 @@ func _vehicle_render_tick() -> void:
 	var active: Node = _primary_machine()
 	var terr := _terrain()
 	var can_occlude: bool = terr != null and terr.has_method("is_point_hidden")
+	var beat: int = Engine.get_process_frames()
+	var i: int = -1
 	for v in vehicles.get_children():
+		i += 1
 		if not (v is Node3D):
 			continue
 		var n := v as Node3D
@@ -289,24 +308,49 @@ func _vehicle_render_tick() -> void:
 		# vanishing under the player looks like a broken game.
 		if n == active:
 			_set_vehicle_visible(n, true)
+			_set_ridge_hidden(n, false)
 			continue
 		var pos: Vector3 = n.global_position
-		var rad: float = VEH_CULL_RADIUS
+		var reach: float = 0.0
 		var top: float = VEH_OCCL_HEIGHT
-		var bm = n.get("block_map_node")
+		# blocks_node(), not `block_map_node`: only the player's machine has that field, and every
+		# enemy was measured as the bare 9 m sphere and a 4 m top, whatever its size.
+		var bm = n.call("blocks_node") if n.has_method("blocks_node") else null
 		if bm != null and is_instance_valid(bm) and ("reach_radius" in bm):
-			rad = maxf(rad, float(bm.get("reach_radius")))
-			top = maxf(top, float(bm.get("reach_top")))
-		var shown: bool = _in_frustum(frustum, pos, rad)
-		if shown and can_occlude:
-			# Behind a ridge is the same as behind you. The hysteresis inside is_point_hidden uses the previous
-			# state so a machine on the very edge of a hill does not flicker.
-			shown = not terr.is_point_hidden(pos, top, not n.visible)
+			reach = float(bm.get("reach_radius"))
+			top = maxf(top, float(bm.get("reach_top")) + WeaponBlock.SHIELD_REACH)
+		var shown: bool = _in_frustum(frustum, pos, maxf(VEH_CULL_RADIUS, reach))
 		_set_vehicle_visible(n, shown)
+		if shown and can_occlude:
+			var hid: bool = n.get_meta(VEH_OCCL_META, false)
+			if hid or (beat + i) % VEH_OCCL_EVERY == 0:
+				_set_ridge_hidden(n, _ridge_hides(terr, pos, top, reach, cam.global_position, hid))
+		elif shown:
+			_set_ridge_hidden(n, false)
+
+## Is the machine behind the ground? Its top over the origin first; a WIDE build is hidden only when
+## the top's two flanks across the line of sight are hidden too - the middle of a long machine can
+## stand behind a ridge's shoulder while its tail sticks out past it. `was` is the hysteresis.
+func _ridge_hides(terr: Node, pos: Vector3, top: float, reach: float, eye: Vector3, was: bool) -> bool:
+	if not terr.is_point_hidden(pos, top, was):
+		return false
+	var side := Vector3(eye.z - pos.z, 0.0, pos.x - eye.x)
+	if reach < 2.0 or side.length_squared() < 0.01:
+		return true
+	side = side.normalized() * reach
+	return terr.is_point_hidden(pos + side, top, was) and terr.is_point_hidden(pos - side, top, was)
 
 func _set_vehicle_visible(n: Node3D, on: bool) -> void:
 	if n.visible != on:
 		n.visible = on
+
+## The ridge's verdict, kept on the machine (also the test's hysteresis) and handed to it on a change.
+func _set_ridge_hidden(n: Node3D, on: bool) -> void:
+	if bool(n.get_meta(VEH_OCCL_META, false)) == on:
+		return
+	n.set_meta(VEH_OCCL_META, on)
+	if n.has_method("set_ridge_hidden"):
+		n.set_ridge_hidden(on)
 
 ## Does the sphere (centre, radius) intersect the view frustum? Planes come from
 ## Camera3D.get_frustum in WORLD space and face inward, so "outside" means distance_to greater than
