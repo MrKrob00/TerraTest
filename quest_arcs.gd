@@ -63,7 +63,6 @@ func _tick_arcs(delta: float) -> void:
 			"quest_arc_power_1":   _arc_power_1(q)
 			"quest_arc_power_2":   _arc_power_2(q)
 			"quest_arc_radar_1":   _arc_radar_1(q)
-			"quest_arc_radar_2":   _arc_radar_2(q)
 			"quest_arc_battery_1": _arc_battery_1(q)
 			"quest_arc_battery_2": _arc_battery_2(q)
 			"quest_salvage_1":     _salvage_1(q)
@@ -146,14 +145,12 @@ func forget_quest(id: String) -> void:
 		if key == "duel":
 			_forget_duel()
 			_duel_cool = 0.0
-		var carriers: Array = [key, "radar_2"] if key == "arc_radar" else [key]
-		for ck in carriers:
-			var m = _carrier.get(ck)
-			if is_instance_valid(m):
-				(m as Node).queue_free()
-			_carrier.erase(ck)
-			_carrier_spot.erase(ck)
-			_carrier_dead.erase(ck)
+		var m = _carrier.get(key)
+		if is_instance_valid(m):
+			(m as Node).queue_free()
+		_carrier.erase(key)
+		_carrier_spot.erase(key)
+		_carrier_dead.erase(key)
 		if _tower_node.has(key):
 			var t = _tower_node[key]
 			if is_instance_valid(t):
@@ -594,20 +591,12 @@ func _on_carrier_died(key: String) -> void:
 	_carrier_dead[key] = true
 	_carrier.erase(key)
 
-# ── Ветка «радар»: отобрать у того, кто его возит, затем у вора ──────────────
+# ── The radar branch: take it off the machine that carries it ────────────────
+## ONE STAGE (the player's call): a second carrier with a second radar was the same fight again
+## for a block the machine already had. Preset 5 is the scout, the weakest build: the first machine
+## the player strips for a trophy, and losing to it would stall the story at its second step.
 func _arc_radar_1(q: Dictionary) -> void:
-	# Пресет 5 — разведчик, самая слабая сборка: это первая машина, которую игрок разбирает
-	# ради трофея, и проиграть ей означало бы застрять на второй ступени сюжета.
 	if _carry_stage("arc_radar", G.Block.RADAR, 5):
-		Q.report(String(q["event"]), 1)
-
-## The second radar rides a carrier like the first (`_carry_stage`: the kill, then a radar on the
-## machine). It used to be a scout with the radar written into its grid only: no block existed, the
-## "radar gone" check fired on the first poll and skipped the stage with no reward. A radar shot
-## off in the fight lies loose; a carrier killed outright leaves one at its death spot
-## (`claim_or_drop`), so neither dead-locks the branch any more.
-func _arc_radar_2(q: Dictionary) -> void:
-	if _carry_stage("radar_2", G.Block.RADAR, 5):
 		Q.report(String(q["event"]), 1)
 
 # ── Ветка «аккумулятор»: жила его ДЕРЖИТ, пока её не выработают ──────────────
@@ -1850,7 +1839,6 @@ func quest_point(ev: String) -> Variant:
 		# Ветки с носителем и с жилой: точка едет за живым носителем (carrier_point сама
 		# обновляет её), а после боя указывает туда, где упал блок.
 		"quest_arc_radar_1":   return carrier_point("arc_radar")
-		"quest_arc_radar_2":   return carrier_point("radar_2")
 		"quest_arc_battery_1": return battery_point()
 		"quest_arc_battery_2": return battery_point()
 	# Вышки под щитом держат свои точки в отдельном словаре, но ключ у них ТОТ ЖЕ, что у
@@ -1874,7 +1862,6 @@ func _live_target(ev: String) -> Variant:
 		"hold":      list.append_array(_hold)
 		"salvage":   list.append(_salvage_guard)
 		"duel":      list.append_array([_duel_a, _duel_b])
-		"arc_radar": list.append(_carrier.get("radar_2"))   # the second radar's carrier
 	# Носитель сюжетного блока — такой же живой участник: пока он ездит, метка едет за ним.
 	if _carrier.has(key):
 		list.append(_carrier[key])

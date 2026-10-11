@@ -1602,22 +1602,22 @@ project: read it before claiming how anything works.
   must leave the block behind (`claim_or_drop`) or the branch dead-locks.
 - **STORY CARGO IS LAID INTO THE LAYOUT BEFORE THE MACHINE IS BORN** (`blocks.carry`, placed by
   `_place_carry` between `_define_layout` and `_spawn_all`; handed down `_spawn_hostile` ->
-  `_ask_spawner` -> `spawn_at`/`spawn_requested`). The radar carriers and the salvage guard's collector
+  `_ask_spawner` -> `spawn_at`/`spawn_requested`). The radar carrier and the salvage guard's collector
   were `set_block` calls on a live machine, and `set_block` ONLY WRITES THE GRID: no node, no
   collider, nothing to shoot off, and `_machine_count` (which counts nodes) saw no radar - the radar
-  branch's second stage skipped itself on its first poll with no reward. The cargo stands on the
+  branch skipped a stage on its first poll with no reward. The cargo stands on the
   highest cabin or plain block with open sky above it, nearest the cabin's column; measured, it
-  finds a place on all 72 ladder builds and the Marlit ones. BOTH RADAR STAGES ARE ONE MECHANISM,
-  `_carry_stage(key, block, preset)`, AND THE CARRIER IS THE TASK (the player's rule): a stage closes
-  once its carrier is dead AND one radar stands on the player's machine - the taken one or one that
-  was there already. It used to check the machine first: a radar shot off some carrier earlier
-  closed stage one at once, stage two then wanted TWO on the machine, and a radar takes nothing on
-  its top - the second sat in the hand while a third drove about on the carrier (the player's
-  report). Owned nowhere (`_owned_count`: every machine, the inventory, the hand), one is laid at the
+  finds a place on all 72 ladder builds and the Marlit ones. **THE RADAR BRANCH IS ONE STAGE** (the
+  player's call: a second carrier with a second radar was the same fight again for a block the
+  machine already had), run by `_carry_stage(key, block, preset)`, AND THE CARRIER IS THE TASK (the
+  player's rule): the stage closes once its carrier is dead AND one radar stands on the player's
+  machine - the taken one or one that was there already. It used to check the machine first: a
+  radar shot off some carrier earlier closed the stage at once (the player's report). Owned nowhere
+  (`_owned_count`: every machine, the inventory, the hand), one is laid at the
   death spot; owned but not mounted, the marker goes away (`carrier_point` null). The salvage collector is
   claimed where the GUARD DIED (`_salvage_drop`), not at the cargo point: the guard hunts the player
-  and `claim_or_drop` searches 30 m. Measured on the proving ground: a radar already on the machine - stage one held
-  while its carrier lived and closed on the kill, stage two the same, the quest done.
+  and `claim_or_drop` searches 30 m. Measured on the proving ground: a radar already on the machine - the stage held
+  while its carrier lived and closed on the kill, the quest done.
 - **A STAGE THAT NEEDS A POINT RE-PICKS IT** (`_far_point`): points are memory, and a reload in the
   salvage or tower branch's second stage left no point, so nothing was ever spawned again and the
   stage hung for good.
