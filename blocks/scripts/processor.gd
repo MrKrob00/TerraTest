@@ -35,7 +35,9 @@ const FACE_RIGHT_IDX := 3
 ## LEG while the item passes, down - on `HatchInAnim` / `HatchOutAnim`, one player each since both
 ## run at once, and "melt" on `GaugeAnim`, a second from empty to full, paced to the tick here. The
 ## item's own slide is a tween: the item is not part of the scene.
-const IN_FURNACE := 0.85         # the item's scale in the mouth: the item models are ~0.45 m, the mouth 0.42 high
+## The item's picture in the mouth: the models are ~0.45 m at their own size, the mouth 0.42 high,
+## and a loose item is drawn at ITEM_SIZE.
+const IN_FURNACE := 0.85 / preload("res://resource.gd").ITEM_SIZE
 const LEG := 0.3                 # seconds per leg of the path
 const HATCH_UP := 0.12          # into "pass_*": the hatch is up, the hold starts
 const GAUGE_DRAIN := 0.4         # s the gauge takes to empty from full
