@@ -106,9 +106,6 @@ func _seed_demo() -> void:
 		{"desc": "Take the scanner off the machine carrying it",
 		 "event": "quest_arc_radar_1", "goal": 1,
 		 "hint": "Something out there is driving around with a scanner bolted to its roof. Take it apart and the scanner is yours — it widens what you can see, which right now is almost nothing."},
-		{"desc": "Take the scanner from the other one",
-		 "event": "quest_arc_radar_2", "goal": 1,
-		 "hint": "Something else out there is carrying one too. It will not hand it over."},
 	])
 	add_quest("arc_battery", "Buried Charge", "", Type.STORY, 1, 7, "", 210, 45, 14)
 	add_stages("arc_battery", [
@@ -515,8 +512,8 @@ func set_progress(id: String, value: int) -> void:
 ## перезаряженное событие сразу оказалось бы на своей второй части.
 ## STAGES ARE MEMORY ONLY (nothing saves them), so whatever re-reads progress starts every quest at
 ## its first stage. Without this a slot switch or a reset kept the stage the last session ended
-## on: a quest half done in one slot opened on its second stage in another - "take the scanner from
-## the other one" before the first was ever taken.
+## on: a quest half done in one slot opened on its second stage in another, before the first
+## stage's task was ever done.
 func _rewind_stage(q: Dictionary) -> void:
 	q.erase("reward_mult")
 	if q.has("stages") and not (q["stages"] as Array).is_empty():
