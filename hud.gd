@@ -1691,10 +1691,11 @@ class ModeFace extends Control:
 		draw_line(c, c + Vector2(0, s), col, 2.0, true)
 		draw_line(c, c + Vector2(s * 0.87, -s * 0.5), col, 2.0, true)
 		draw_line(c, c + Vector2(-s * 0.87, -s * 0.5), col, 2.0, true)
-		# the plus as two rects on whole pixels: lines at a fractional point came out lopsided
+		# the plus in the cube's own strokes (antialiased, the outline's width), centred on a whole
+		# pixel so both bars spread alike: at a fractional point they came out lopsided
 		var p := (c + Vector2(s * 1.05, -s * 0.95)).round()
-		draw_rect(Rect2(p.x - 6.0, p.y - 2.0, 12.0, 4.0), col)
-		draw_rect(Rect2(p.x - 2.0, p.y - 6.0, 4.0, 12.0), col)
+		draw_line(p + Vector2(-6, 0), p + Vector2(6, 0), col, 2.5, true)
+		draw_line(p + Vector2(0, -6), p + Vector2(0, 6), col, 2.5, true)
 
 var _attack_face: AttackFace = null
 var _mode_face: ModeFace = null
