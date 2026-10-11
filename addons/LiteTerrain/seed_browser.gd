@@ -31,7 +31,6 @@ var _seed_spin: SpinBox = null
 var _span_idx: int = 1
 var _span_btn: OptionButton = null
 var _legend: Label = null
-var _ruler: Control = null
 
 func setup(n: Node, undo_redo) -> void:
 	_node = n
@@ -121,19 +120,6 @@ func _build_ui() -> void:
 		if _node != null and is_instance_valid(_node) and _node.has_method("preview_clear"):
 			_node.preview_clear())
 	arow.add_child(clear_btn)
-
-	# Кольца дальности — тот же рисунок, что и карта выше, только про память и загрузку.
-	## ЗАГОЛОВОК НАД ПОЛОСКАМИ. Без него это четыре разноцветные черты неизвестно о чём — игрок
-	## так и сказал. Одна строка объясняет и что нарисовано, и какое правило они проверяют.
-	var rlbl := Label.new()
-	rlbl.text = "Nested circles around the player - each must fit inside the one below"
-	rlbl.add_theme_font_size_override("font_size", 10)
-	rlbl.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
-	rlbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	add_child(rlbl)
-	_ruler = RingRuler.new()
-	_ruler.node = _node
-	add_child(_ruler)
 
 func _mini(text: String, tip: String, cb: Callable) -> Button:
 	var b := Button.new()
@@ -246,50 +232,3 @@ func _mark_origin(img: Image) -> void:
 			continue
 		img.set_pixel(clampi(c + d, 0, PREVIEW_PX - 1), c, col)
 		img.set_pixel(c, clampi(c + d, 0, PREVIEW_PX - 1), col)
-
-# ── КОЛЬЦА ДАЛЬНОСТИ ─────────────────────────────────────────────────────────
-# Четыре числа в инспекторе — view_distance, keep_radius, ready_view и радиус коллизии — это на
-# самом деле ОДИН рисунок: вложенные круги вокруг игрока. По списку чисел их соотношение не
-# читается вовсе, а именно оно и решает: держать в памяти больше, чем рисуем, бессмысленно;
-# ждать на загрузке дальше, чем держим, — тоже. Полоска показывает все четыре в масштабе, и
-# перевёрнутый порядок виден сразу, без запуска.
-class RingRuler extends Control:
-	var node: Node = null
-	## ПОДПИСЬ — ИМЯ СВОЙСТВА, а не пересказ. Раньше тут стояло «коллизия / загрузка / в памяти /
-	## видно», и это читалось как четыре непонятных полоски: связать их с ползунками, которые
-	## крутишь строкой выше, было нечем. Имя связывает сразу.
-	const ROWS := [
-		["collision_radius", Color(0.95, 0.45, 0.35), 16.0],   # в КЛЕТКАХ чанка → метры
-		["ready_view",       Color(1.00, 0.78, 0.25), 1.0],
-		["keep_radius",      Color(0.35, 0.80, 0.55), 1.0],
-		["view_distance",    Color(0.40, 0.70, 0.95), 1.0],
-	]
-
-	func _init() -> void:
-		custom_minimum_size = Vector2(0, 74)
-
-	func _draw() -> void:
-		if node == null or not is_instance_valid(node):
-			return
-		var vals: Array = []
-		var top: float = 1.0
-		for r in ROWS:
-			var v = node.get(String(r[0]))
-			# Клетка коллизии — не метр: радиус задан в клетках чанка, и без множителя красная
-			# полоска врала бы в шестнадцать раз.
-			var m: float = (float(v) * float(r[2])) if v != null else 0.0
-			vals.append(m)
-			top = maxf(top, m)
-		var font := get_theme_default_font()
-		var fs := 10
-		var bar_x := 96.0     # под длинные имена свойств
-		var w: float = maxf(size.x - bar_x - 46.0, 20.0)
-		for i in ROWS.size():
-			var y: float = 4.0 + float(i) * 17.0
-			draw_string(font, Vector2(0, y + 9), String(ROWS[i][0]),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.65))
-			draw_rect(Rect2(bar_x, y, w, 10.0), Color(1, 1, 1, 0.07), true)
-			var frac: float = clampf(float(vals[i]) / top, 0.0, 1.0)
-			draw_rect(Rect2(bar_x, y, w * frac, 10.0), ROWS[i][1], true)
-			draw_string(font, Vector2(bar_x + w + 4.0, y + 9), "%d m" % int(vals[i]),
-					HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1, 1, 1, 0.8))

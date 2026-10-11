@@ -1,6 +1,6 @@
 # LiteTerrain
 
-**Version 2.1** · Godot 4.6 / 4.7 · Compatibility (GLES3) · tuned for mobile
+**Version 2.2** · Godot 4.6 / 4.7 · Compatibility (GLES3) · tuned for mobile
 
 Procedural terrain stored and drawn in CHUNKS. One node builds the whole world from a seed: no
 heightmap file, no world-sized array, no edge. A chunk asks the generator for its own vertices,
@@ -17,7 +17,10 @@ The game's own notes on the terrain (measurements, the rules each number came fr
 > generation into an array, baking to `.res`/`.bin`/PNG). **2.1 removed what it left behind**: the
 > tile textures (`Dark/`), the binary material that pointed at one of them, the generator's
 > cancel flag and noise offset, the dead biome knobs `dune_amp` / `mountain_rise`, and the
-> shader's `low_quality`, `tile_texture` and `texture_blend`.
+> shader's `low_quality`, `tile_texture` and `texture_blend`. **2.2 emptied the inspector**: the
+> node shows `biomes` and the behind-a-hill switch and nothing else; the numbers nobody changed are
+> constants, the menu's own are fields its script sets, and the shader's uniforms are only the ones
+> the game writes.
 
 ## Files
 
@@ -45,14 +48,27 @@ same seed gives the same world in the editor and in the game.
 `ChunkTerrain` extends StaticBody3D and makes everything it needs itself (chunk meshes, collision
 shapes as internal children), so the scene stays a single node.
 
+In the inspector:
+
 | Property | What it does |
 |---|---|
-| `forced_seed` | The seed. The entire world follows from it. |
-| `follow_world_settings` | On: the seed comes from the autoload `G` (`G.world_seed`), one world per save slot. Off: `forced_seed`, for a menu backdrop or a preview. |
 | `biomes` | The `TerrainBiomes` resource. |
-| `camera` | Leave EMPTY: the node follows whichever camera the scene is drawn with. Set it only to drive LOD from a camera that does not draw. |
-| `surface_material` | Leave EMPTY: the ground draws with `glsl.gdshader`. Set it only to try another material. |
-| `world_cells` | A NOMINAL square (`get_dims`), not an edge: things laid out over the world need a rectangle. |
+| `enable_occlusion_culling` | What stands behind a hill is not drawn (`is_point_hidden`, asked by the game's veins, loose items and machines). |
+
+Fields a script sets (the menu backdrop does, `menu_stage_3d._make_map`):
+
+| Field | What it does |
+|---|---|
+| `follow_world_settings` | On: the seed comes from the autoload `G` (`G.world_seed`), one world per save slot. Off: `forced_seed`. |
+| `forced_seed` | The seed when not following the slot. The seed map in the inspector writes it too. |
+| `view_distance`, `keep_radius` | How far ground is drawn; inside what radius nothing built is ever dropped. |
+| `ready_ring`, `ready_view` | What must be up before the loading screen lifts: chunks with collision round the start, then the view out to this many metres. |
+| `enable_streaming_collision` | Collision tiles round moving bodies; a map being prepared keeps it off. |
+
+Constants, not settings: `FRUSTUM_MARGIN`, `BUILD_BATCH`, `STITCH_BUDGET`, `LOD_INTERVAL`,
+`APPLY_BUDGET`, `COLLISION_RADIUS`, `COLLISION_LOOKAHEAD`, `WORLD_CELLS` (a NOMINAL square for
+`get_dims`, not an edge), `OCCL_MIN_DIST`, `OCCL_BIAS`. The camera is always the one the scene is
+drawn with, the material always `glsl.gdshader`, frustum culling always on.
 
 ## Biomes
 
@@ -66,16 +82,18 @@ base DESERT ↔ MEADOW  →  SALT FLATS on the desert  →  CANYON  →  MOUNTAI
 | Group | Settings |
 |---|---|
 | Desert / Meadow | `biome_scale`, `biome_bias`, `biome_blend`, `biome_contrast`, `color_sand`, `color_grass`, `dune_wavelength`, `desert_flatten` |
-| Salt flats | `salt_enabled`, `salt_scale`, `salt_threshold`, `salt_edge`, `color_salt` |
-| Canyon | `canyon_enabled`, `canyon_scale`, `canyon_threshold`, `canyon_edge`, `color_canyon`, `canyon_band_height`, `canyon_butte_scale` |
-| Mountains | `mountain_enabled`, `mountain_scale`, `mountain_threshold`, `mountain_edge` |
+| Salt flats | `salt_scale`, `salt_threshold`, `salt_edge`, `color_salt` |
+| Canyon | `canyon_scale`, `canyon_threshold`, `canyon_edge`, `color_canyon`, `canyon_band_height`, `canyon_butte_scale` |
+| Mountains | `mountain_scale`, `mountain_threshold`, `mountain_edge` |
 | Snow / rock | `color_snow`, `snow_frac`, `snow_blend_frac`, `color_rock`, `rock_threshold`, `rock_blend` |
-| Grass | `grass_density`, `grass_height`, `sand_grass`, `grass_shade` |
+| Grass | `grass_height`, `sand_grass`, `grass_shade` |
 
-- A disabled layer has a zero mask, so it leaves both the colour and the landform.
+- Every layer is always on. `mask_offset` is not a setting: it is worked out from the seed
+  (`offset_for_seed`) wherever a world is built.
 - Heights in metres follow the world's Height, not knobs: dunes, a mountain's rise, the gorge depth
   (`terrain_gen.prepare_sampling`) and the snow line (`snow_frac` × Height).
-- Rock follows SLOPE, snow follows the mountain mask AND height, grass grows on the meadow only.
+- Rock follows SLOPE, snow follows the mountain mask AND height, grass grows on the meadow and,
+  sparser, on sand (`sand_grass`).
 - `canyon_band_height` sizes both the colour strata and the geometry terraces.
 - A new biome is a shader edit too: each layer's colour is a `mix()` in `glsl.gdshader`'s `vertex()`.
 
@@ -98,6 +116,7 @@ terrain.salt_at(world_pos: Vector3) -> float
 terrain.world_height() -> float                         # the Height the world was built with
 terrain.terrain_is_ready                                # the near ground is up (a bool and a signal, terrain_ready)
 terrain.set_collision_streaming(on: bool)
+terrain.is_point_hidden(world_pos: Vector3, height := 1.0, was_hidden := false) -> bool  # behind a hill?
 terrain.stop_generation()                               # wait out the running tasks; call before freeing
 ```
 
@@ -124,7 +143,7 @@ twice cannot deepen a pad.
 A collision tile IS a base chunk, cut from the same heights as the level-0 mesh. Tiles have their
 OWN queue and it goes first (a tile is what a machine drives on, a mesh what it looks at), and they
 are asked for along each body's CORRIDOR: where it is plus where it will be in
-`collision_lookahead` seconds. Moving bodies (RigidBody3D, CharacterBody3D) are found through the
+`COLLISION_LOOKAHEAD` seconds. Moving bodies (RigidBody3D, CharacterBody3D) are found through the
 tree's `node_added` / `node_removed`; a body riding another is covered by its parent, a sleeping
 one and one carrying the meta `asleep` get no tiles.
 
@@ -138,23 +157,28 @@ one and one carrying the meta `asleep` get no tiles.
   snaps its edge onto the coarser's line — no skirts anywhere.
 - **Two questions, two rates.** The leaf set comes from distance alone and is cached
   (`_build_leaves`, rebuilt after 16 m of camera travel); the frustum is a flat pass over it.
-- **Compute in a batch, land on a budget.** The pool computes `build_batch` chunks at once; the
-  main thread lands at most `apply_budget` meshes a frame (none of that while loading).
+- **Compute in a batch, land on a budget.** The pool computes `BUILD_BATCH` chunks at once; the
+  main thread lands at most `APPLY_BUDGET` meshes a frame (none of that while loading).
 - **A node is hidden only when other ground covers it** (`_covered`): a LOD change is a
   replacement still in the queue, and hiding the old node at once opened a hole.
-- **Two materials, not instance uniforms**: grass on the near one only. An instance uniform on a
-  chunk takes 16 slots of the global shader buffer each, and there are hundreds of chunks.
+- **One material, no instance uniforms**: the grass is the same function of the world point on
+  every level. An instance uniform on a chunk takes 16 slots of the global shader buffer each, and
+  there are hundreds of chunks.
+- **Behind a hill reads the drawn ground** (`is_point_hidden`): the heights the drawn node's mesh
+  was built from, never the generator - cheaper, and what the screen shows.
 
 ## Shader reference
 
-`glsl.gdshader`. The colours, rock and grass numbers are written from the biomes resource at
-build time (`TerrainBiomes.apply_to_material`) — edit them there, not here.
+`glsl.gdshader`. Its uniforms are only what the game writes: the colours, rock and grass numbers
+from the biomes resource at build time (`TerrainBiomes.apply_to_material`) — edit them there, not
+here. What nothing writes is a `const` at the top of the shader: the colour noise (`NOISE_CELLS`,
+`COLOR_VARIATION`) and the detail masks' span and strengths (`DETAIL_SIZE`, `RIPPLES`, `TUFTS`,
+`PATCHES`, `CRACKS`).
 
-- **Texture**: `tile_world_size` (the colour noise's cell), `ground_detail`,
-  `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`.
+- **Detail**: `ground_detail` (the four masks).
 - **Colours / terrain / biomes**: `color_*`, `snow_line`, `snow_blend`, `rock_threshold`,
-  `rock_blend`, `color_variation`, `sand_grass`, `canyon_band_h`, `crack_strength`.
-- **Grass**: `grass_density`, `grass_height`, `grass_shade`, `grass_fade` (set by the node).
+  `rock_blend`, `sand_grass`, `canyon_band_h`.
+- **Grass**: `grass_height`, `grass_shade`, `grass_fade` (set by the node).
 - **Trample**: `trample_map`, `trample_center`, `trample_size` (driven by the game's `grass.gd`).
 - **Corruption**: `corrupt_amount`, `corrupt_map`, `corrupt_world_center`, `corrupt_world_size`,
   `glitch_cell`, `glitch_speed`, `corrupt_cyan`, `corrupt_magenta`, `corrupt_glow`.
@@ -163,7 +187,7 @@ build time (`TerrainBiomes.apply_to_material`) — edit them there, not here.
 ## Troubleshooting
 
 **Nothing appears.** The node builds round the camera the scene is DRAWN with — check one is
-`current`, and leave `camera` empty.
+`current`.
 
 **A machine falls through at load.** Something asked for a height before `terrain_is_ready`;
 wait for it by the clock.

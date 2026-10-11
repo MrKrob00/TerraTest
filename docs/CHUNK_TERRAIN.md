@@ -56,10 +56,11 @@ LOD — это слияние чанков: четыре соседних ста
 **В сцену не попадает ничего**: узлы рождаются без `owner`, а коллизию превью не строит вовсе —
 она нужна машинам, а не глазам.
 
-Под картой — КОЛЬЦА ДАЛЬНОСТИ: `view_distance`, `keep_radius`, `ready_view` и радиус коллизии
-одной полоской в масштабе. По четырём числам в списке их соотношение не читается, а решает
-именно оно: держать в памяти больше, чем рисуем, незачем, ждать на загрузке дальше, чем
-держим, — тоже.
+The distance rings under the map (`view_distance`, `keep_radius`, `ready_view` and the collision
+radius to scale) went with those settings: they are no longer inspector numbers - the game's are
+fixed and the menu's are set by its script (`menu_stage_3d._make_map`) - so there was nothing left
+for a ruler to compare while editing. The inspector shows `biomes`, the behind-a-hill switch and
+this map; everything else is a constant or a field a script sets (`addons/LiteTerrain/README.md`).
 
 Дока у плагина больше нет вовсе: всё, что он делал, обслуживало запечённую карту. Осталась
 панель в инспекторе и передача ноде камеры вьюпорта.
@@ -117,7 +118,7 @@ LOD — это слияние чанков: четыре соседних ста
 
 Угловая вершина кратна любому шагу соседа, поэтому два притянутых края в углу не спорят.
 
-Смена уровня у соседа = пересборка меша. Их бюджет `stitch_budget` на тик: шов на кадр-другой
+Смена уровня у соседа = пересборка меша. Их бюджет `STITCH_BUDGET` на тик: шов на кадр-другой
 дешевле пересборки десятков узлов разом. A node's seams are checked ONCE PER SET OF LEAVES (`gen`
 on the node, `_leaf_gen`), when the frame wants it: a signature changes only when the leaves do, and
 computing one for every node in the frame every tick was eight probes of six lookups a node.
@@ -173,14 +174,14 @@ its own node (`EDGE_STEP` code in `COLOR.r`). The lift fades out before level 2 
 остаётся видимым, а за кадром его и так отсекает движок. A unit going up hides what it replaces
 in the same frame (`cov` on the node: a covered node is not drawn ground for the seams).
 
-**Запас за краем экрана** (`frustum_margin`) — в метрах, и даётся он ТОЛЬКО боковым плоскостям.
+**Запас за краем экрана** (`FRUSTUM_MARGIN`) — в метрах, и даётся он ТОЛЬКО боковым плоскостям.
 У ближней запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит назад. Пока
 он применялся ко всем шести сразу, положительным его ставить было нельзя — отсюда прежние −0.05,
 то есть переотсечение, которым гасили землю за спиной ценой узлов на краю экрана. Ближнюю и
 дальнюю отличаем по нормали относительно взгляда, а не по номеру в массиве: порядок плоскостей —
 деталь движка.
 
-**Выбор пересчитывается по движению камеры**, а не только по таймеру: на скорости за `lod_interval`
+**Выбор пересчитывается по движению камеры**, а не только по таймеру: на скорости за `LOD_INTERVAL`
 камера проезжает несколько метров и разворачивается, и узел, выехавший в кадр, ждал бы следующего
 тика.
 
@@ -188,8 +189,8 @@ in the same frame (`cov` on the node: a covered node is not drawn ground for the
 
 The ground does not cull itself; it answers for what stands on it - veins, loose items, machines -
 whether a point lies behind a ridge. A ray from the eye to the thing's TOP, stepped every
-`OCCL_STEP` (at most `OCCL_MAX_STEPS`): hidden once a step's ground stands `occlusion_bias` over the
-line (plus `OCCL_HYST` for a thing already hidden), and nothing nearer than `occlusion_min_dist`.
+`OCCL_STEP` (at most `OCCL_MAX_STEPS`): hidden once a step's ground stands `OCCL_BIAS` over the
+line (plus `OCCL_HYST` for a thing already hidden), and nothing nearer than `OCCL_MIN_DIST`.
 
 The ground is the DRAWN one (`_drawn_h`): the drawn node at the point (`_drawn_key_at`) and the
 heights its mesh was built from (`_hc`), bilinear on its own grid; the node is looked up again only
@@ -213,7 +214,7 @@ pushed into a slope) hides nothing at all - otherwise every ray stops at its fir
 прямоугольник по x/z. Высоты там нет — у всех узлов она одна. На тике остаётся проход по этому
 набору с проверкой пирамиды, а сама пирамида перед проходом складывается в шесть строк чисел
 (`_pack_planes`): нормаль по x и по z, готовый сдвиг, в который уже внесены высота узла, `d`
-плоскости и `frustum_margin`, и два индекса — какой угол прямоугольника брать. Во внутреннем цикле
+плоскости и `FRUSTUM_MARGIN`, и два индекса — какой угол прямоугольника брать. Во внутреннем цикле
 поэтому нет ни `Plane`, ни `Vector3`, ни вызовов.
 
 Обход дерева повторяется, только когда камера уехала дальше `LEAF_MOVE2` — **16 метров, целый
@@ -238,7 +239,7 @@ pushed into a slope) hides nothing at all - otherwise every ray stops at its fir
 чанком тайл достаётся бесплатно, дальше стоит одну выборку. Кайма даёт соседним тайлам общую
 строку, так что дырок на стыке нет.
 
-Тайлы держатся вокруг подвижных тел (`collision_radius` клеток), живут ещё `COL_TILE_GRACE` секунд
+Тайлы держатся вокруг подвижных тел (`COLLISION_RADIUS` клеток), живут ещё `COL_TILE_GRACE` секунд
 после того, как перестали быть нужны, и не выдаются спящим телам.
 
 **Очередь тайлов отдельная и первая.** Пока она была общей с мешами, тайл под колесом ждал, когда
@@ -246,7 +247,7 @@ pushed into a slope) hides nothing at all - otherwise every ray stops at its fir
 Меш это то, на что смотрят, тайл — то, по чему едут.
 
 **Просим коридор, а не точку**: землю и там, где тело стоит, и там, где оно окажется через
-`collision_lookahead` секунд. Тайл считается, а не режется из готового массива, поэтому просить его
+`COLLISION_LOOKAHEAD` секунд. Тайл считается, а не режется из готового массива, поэтому просить его
 в момент въезда — значит въехать в пустоту. Сдвигать окно целиком вперёд нельзя: на большой
 скорости тело выпало бы из собственного окна.
 
@@ -289,7 +290,7 @@ slope (dh/dx, dh/dz) from the same four nodes: it is what the wheels probe inste
 (`Wheel.probe_height`) - layer 1 is the terrain alone, and its collision tiles are cut from these
 heights, so the ray could not answer anything else.
 
-`get_dims()` отдаёт **номинальный** квадрат (`world_cells`): у земли края нет, но магазинам, жилам
+`get_dims()` отдаёт **номинальный** квадрат (`WORLD_CELLS`): у земли края нет, но магазинам, жилам
 и укреплённым точкам нужен прямоугольник, в котором они раскладываются.
 
 ## Фон меню
