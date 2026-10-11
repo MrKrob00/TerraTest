@@ -17,11 +17,13 @@ const REGEN_RATE := 135.0      # HP a second, split between the damaged blocks i
 const REGEN_HP_PER_ENERGY := 1.5
 const REGEN_INTERVAL := 1.0    # с между тиками
 
-## Яркость поля: рабочая и «энергии нет». Поле показывает РАДИУС и то, что блок работает;
-## моргать ради привлечения внимания оно не должно, поэтому переход плавный.
+## THE FIELD IS UP ONLY WHILE THERE IS WORK IN IT (the player's call: "if there is nothing for the
+## repair unit to do in its radius, the sphere goes"): something in reach missing hit points at the
+## last tick (`_busy`), or digits still in flight. It eases in and out over FIELD_FADE, never blinks -
+## the tick decides once a second - and once it has faded out the node is hidden: a sphere this size
+## is a transparent pass over a good part of the screen, paid for nothing on an idle unit.
 const FIELD_ALPHA := 0.09
-const FIELD_ALPHA_DEAD := 0.03
-## За сколько секунд поле переходит между этими двумя состояниями.
+## How fast the field eases between off and its working brightness.
 const FIELD_FADE := 0.4
 
 ## What a faction's own repair unit changes (regen_marlit.gd sets them in _init): how far the field
@@ -36,7 +38,8 @@ var field_centre: Vector3 = Vector3.ZERO
 var _timer: float = 0.0
 var _field: MeshInstance3D = null
 var _field_mat: ShaderMaterial = null
-var _alpha: float = FIELD_ALPHA_DEAD
+var _alpha: float = 0.0
+var _busy: bool = false            # the last tick found something in reach to mend
 
 func _ready() -> void:
 	super._ready()
@@ -301,15 +304,15 @@ func _physics_process(delta: float) -> void:
 ## The field's tick; true while it is powered and mounted.
 func _work(delta: float) -> bool:
 	if freeze == false:
-		_show_field(false)
+		_field_off()
 		return false                         # валяется в мире — не работает
 	var blocks_node := get_parent()
 	if blocks_node == null or blocks_node.name != "blocks":
-		_show_field(false)
+		_field_off()
 		return false
 	var vehicle := blocks_node.get_parent()
 	if vehicle == null or not vehicle.has_method("energy_consume"):
-		_show_field(false)
+		_field_off()
 		return false
 	# Нехватку энергии показываем ПРИГЛУШЕНИЕМ, а не включением-выключением.
 	#
@@ -322,10 +325,10 @@ func _work(delta: float) -> bool:
 	# работающим: игрок видел купол и ждал починки, которой не будет. Показываем ровно то,
 	# что происходит, — как это делает щит (shield.gd прячет свой купол по тому же признаку).
 	var powered: bool = vehicle.has_method("energy_available") and vehicle.energy_available() > 0.0
-	_show_field(powered)
 	if not powered:
+		_field_off()
 		return false
-	_fade_field(delta, FIELD_ALPHA)
+	_fade_field(delta, FIELD_ALPHA if (_busy or not _flights.is_empty()) else 0.0)
 	_timer -= delta
 	if _timer > 0.0:
 		return true
@@ -344,6 +347,7 @@ func _work(delta: float) -> bool:
 	for b in _blocks_in_field():
 		if b.current_hp + int(pending.get(b.get_instance_id(), 0)) < b.max_hp:
 			need.append(b)
+	_busy = not need.is_empty()
 	if need.is_empty():
 		return true
 	if need.size() > max_bodies:
@@ -423,10 +427,18 @@ func _show_field(on: bool) -> void:
 	if _field != null and _field.visible != on:
 		_field.visible = on
 
-# Плавный переход яркости к цели. Что блок РАБОТАЕТ, и так видно по зелёным цифрам на самих
-# чинимых блоках (зелёные цифры) — полю мигать ради этого незачем, оно показывает радиус.
+## Not mounted or not powered: no field at once, and the next start eases in from nothing.
+func _field_off() -> void:
+	_busy = false
+	_alpha = 0.0
+	_show_field(false)
+
+## The field's brightness eased toward `target`; hidden once it is out (see FIELD_ALPHA).
 func _fade_field(delta: float, target: float) -> void:
 	if _field_mat == null:
 		return
-	_alpha = move_toward(_alpha, target, delta * (FIELD_ALPHA - FIELD_ALPHA_DEAD) / FIELD_FADE)
-	_field_mat.set_shader_parameter("active", _alpha / maxf(FIELD_ALPHA, 0.001))
+	var was: float = _alpha
+	_alpha = move_toward(_alpha, target, delta * FIELD_ALPHA / FIELD_FADE)
+	if _alpha != was:
+		_field_mat.set_shader_parameter("active", _alpha / maxf(FIELD_ALPHA, 0.001))
+	_show_field(_alpha > 0.0001)
