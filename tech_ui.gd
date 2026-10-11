@@ -1762,6 +1762,20 @@ func _build_settings_tab() -> void:
 		ui_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(ui_hint)
 
+	# THE PLAYER'S OWN LAYOUT: the garage closes and a frame lies over every control a thumb
+	# reaches (hud.start_layout_edit); DONE keeps the places, RESET puts them back.
+	var move_btn := Button.new()
+	move_btn.text = tr("Move controls")
+	move_btn.add_theme_font_size_override("font_size", 14)
+	move_btn.pressed.connect(_on_move_controls)
+	_extra_vb.add_child(move_btn)
+	var move_hint := Label.new()
+	move_hint.text = tr("Put Attack, Build, the map and the rest where your thumbs reach them.")
+	move_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	move_hint.add_theme_font_size_override("font_size", 12)
+	move_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(move_hint)
+
 	# — СТРОЙКА — вкус, а не правило: одному подобранный блок нужен сразу в руке и на машине,
 	# другой подбирает мусор по дороге и не хочет каждый раз выпадать из езды.
 	_extra_header("— BUILDING —")
@@ -1816,6 +1830,13 @@ func _build_settings_tab() -> void:
 	menu_btn.add_theme_font_size_override("font_size", 14)
 	menu_btn.pressed.connect(_to_main_menu)
 	_extra_vb.add_child(menu_btn)
+
+func _on_move_controls() -> void:
+	var hud: Node = get_parent()
+	if hud == null or not hud.has_method("start_layout_edit"):
+		return
+	hide()                          # the garage goes first: the controls come back with it closed
+	hud.start_layout_edit()
 
 var _surrender_dialog: ConfirmationDialog = null
 
