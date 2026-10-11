@@ -113,6 +113,30 @@ func _die() -> void:
 		camera_controller.on_vehicle_died(self)
 	queue_free()
 
+## SURRENDER IS THE CABIN'S OWN DEATH (the garage's settings, behind a question): the cabin goes the
+## way a shot one goes - its blast, the blocks scattering, the death screen, a new cabin after it -
+## through `VehicleBlock.destroy`, the door a cabin dies by. Not `hurt`: the debug invulnerability
+## sits there and would refuse it. Nobody is named on the death screen - the last enemy to shoot did
+## not do this. A machine with no cabin (a base) has nothing to surrender.
+func surrender() -> bool:
+	var cab: VehicleBlock = _own_cabin()
+	if cab == null:
+		return false
+	_last_attacker = null
+	cab.destroy()
+	return true
+
+func can_surrender() -> bool:
+	return _own_cabin() != null
+
+func _own_cabin() -> VehicleBlock:
+	if _dying or block_map_node == null:
+		return null
+	for b in block_map_node.get_children():
+		if b is VehicleBlock and G.is_cabin((b as VehicleBlock).block):
+			return b as VehicleBlock
+	return null
+
 # ══════════════════════════════════════════
 # ЗАЩИТА / ЯКОРЬ / ДЕЙСТВИЯ КРУГОВОГО МЕНЮ
 # ══════════════════════════════════════════

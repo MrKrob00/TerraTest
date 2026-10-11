@@ -1790,6 +1790,21 @@ func _build_settings_tab() -> void:
 	inv.toggled.connect(func(on: bool) -> void: G.cam_invert_y = on; G.save_settings())
 	_extra_vb.add_child(inv)
 
+	# — MACHINE — giving up the machine you are in: behind a question, like everything here that
+	# cannot be undone (see the reset note below).
+	_extra_header("— MACHINE —")
+	var give_up := Button.new()
+	give_up.text = tr("Surrender")
+	give_up.add_theme_font_size_override("font_size", 14)
+	give_up.pressed.connect(_ask_surrender)
+	_extra_vb.add_child(give_up)
+	var give_hint := Label.new()
+	give_hint.text = tr("Blows up this machine's cabin: its blocks fall where it stands, and you start again in a new cabin.")
+	give_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	give_hint.add_theme_font_size_override("font_size", 12)
+	give_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(give_hint)
+
 	# СБРОСА ЗДЕСЬ НЕТ. Он переехал в меню, к слотам, и это его место: там видно, ЧТО именно
 	# сбрасывается (мир отдельно, прохождение отдельно), а удаление требует удержания. Кнопка «в
 	# один тап, необратимо» посреди игровых настроек — это только способ потерять мир случайно.
@@ -1801,6 +1816,30 @@ func _build_settings_tab() -> void:
 	menu_btn.add_theme_font_size_override("font_size", 14)
 	menu_btn.pressed.connect(_to_main_menu)
 	_extra_vb.add_child(menu_btn)
+
+var _surrender_dialog: ConfirmationDialog = null
+
+func _ask_surrender() -> void:
+	var v: Node = _get_vehicle()
+	if v == null or not v.has_method("can_surrender") or not v.can_surrender():
+		_say(tr("Only a machine with a cabin can surrender."))
+		return
+	if _surrender_dialog == null or not is_instance_valid(_surrender_dialog):
+		_surrender_dialog = ConfirmationDialog.new()
+		_surrender_dialog.title = tr("Surrender")
+		_surrender_dialog.ok_button_text = tr("Surrender")
+		_surrender_dialog.dialog_text = tr("Destroy this machine? Its blocks fall to the ground.")
+		_surrender_dialog.confirmed.connect(_apply_surrender)
+		add_child(_surrender_dialog)
+	_surrender_dialog.popup_centered(Vector2i(380, 140))
+
+## The garage goes first: the death screen and the wreck are what is left to see.
+func _apply_surrender() -> void:
+	var v: Node = _get_vehicle()
+	if v == null or not v.has_method("surrender"):
+		return
+	hide()
+	v.surrender()
 
 ## В МЕНЮ. Сначала СОХРАНЯЕМ мир: смена сцены освобождает world_persist, и без явного вызова
 ## всё, что игрок настроил после последнего автосейва, осталось бы в прошлом слоте.
