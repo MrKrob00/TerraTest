@@ -1614,15 +1614,15 @@ func _has_radar(v) -> bool:
 			return true
 	return false
 
-# ── ATTACK and BUILD / MOVE: drawn in the HUD's palette ───────────────────────────────────────
+# ── ATTACK and BUILD: drawn in the HUD's palette ─────────────────────────────────────────────
 # Both stay TouchScreenButtons (any finger, the joystick's included); the scene holds the press
-# area and the caption, the look is drawn here like every other icon (CLAUDE.md rule 11: no
-# texture, no emoji). ATTACK is ROUND, the player's call: a dark disc in the panels' teal ring with
-# a crosshair in the fight's warm red, the ring and the disc lit while it is held. BUILD / MOVE is the
-# HUD button's rounded box with a drawn sign on the left - a block being assembled for BUILD, a
-# steering wheel for MOVE - in the colour of where it takes you.
+# area, the look is drawn here like every other icon (CLAUDE.md rule 11: no texture, no emoji).
+# ATTACK is ROUND and says nothing in words (the player's call): a dark disc in the panels' teal ring
+# with a crosshair in its middle in the fight's warm red, the ring and the disc lit while it is held.
+# BUILD is the HUD button's rounded box with a block-and-plus sign before the word.
 const HUD_FILL := Color(0.043, 0.122, 0.149, 0.92)
 const HUD_RING := Color(0.247, 0.6, 0.65)
+const BUILD_COL := Color(1.0, 0.7, 0.25)
 
 class AttackFace extends Control:
 	const HOT := Color(1.0, 0.42, 0.22)
@@ -1651,18 +1651,15 @@ class AttackFace extends Control:
 		if _held:
 			var k: float = 0.5 + 0.5 * sin(_t * 9.0)
 			draw_arc(c, r - 1.5, 0.0, TAU, 72, Color(HOT, 0.35 + 0.4 * k), 6.0, true)
-		# the crosshair, a little over the middle so the caption fits under it
-		var x := c + Vector2(0.0, -10.0)
 		var col: Color = Color(1.0, 0.9, 0.8) if _held else HOT
-		draw_arc(x, 24.0, 0.0, TAU, 48, col, 3.0, true)
+		var s: float = r * 0.42
+		draw_arc(c, s, 0.0, TAU, 48, col, 3.5, true)
 		for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
-			draw_line(x + d * 14.0, x + d * 34.0, col, 3.0, true)
-		draw_circle(x, 3.5, col)
+			draw_line(c + d * s * 0.55, c + d * s * 1.5, col, 3.5, true)
+		draw_circle(c, 4.0, col)
 
 class ModeFace extends Control:
 	const SIZE := Vector2(176, 72)
-	var to_build: bool = true
-	var accent: Color = Color(1.0, 0.7, 0.25)
 	var tsb: TouchScreenButton = null
 	var _held: bool = false
 	var _box: StyleBoxFlat = null
@@ -1680,14 +1677,9 @@ class ModeFace extends Control:
 
 	func _draw() -> void:
 		_box.bg_color = HUD_RING if _held else Color(0.082, 0.235, 0.275, 0.95)
-		_box.border_color = Color(accent, 0.75)
+		_box.border_color = Color(BUILD_COL, 0.75)
 		draw_style_box(_box, Rect2(Vector2.ZERO, size))
-		draw_rect(Rect2(8.0, 12.0, 4.0, size.y - 24.0), accent)      # the mode's stripe
-		var c := Vector2(42.0, size.y * 0.5)
-		if to_build:
-			_cube(c, 17.0, accent)
-		else:
-			_wheel(c, 18.0, accent)
+		_cube(Vector2(38.0, size.y * 0.5), 17.0, BUILD_COL)
 
 	## An isometric block with a plus beside it: "assemble".
 	func _cube(c: Vector2, s: float, col: Color) -> void:
@@ -1702,14 +1694,6 @@ class ModeFace extends Control:
 		var p := c + Vector2(s * 1.05, -s * 0.95)
 		draw_line(p + Vector2(-5, 0), p + Vector2(5, 0), col, 3.0)
 		draw_line(p + Vector2(0, -5), p + Vector2(0, 5), col, 3.0)
-
-	## A steering wheel: rim, hub and three spokes.
-	func _wheel(c: Vector2, r: float, col: Color) -> void:
-		draw_arc(c, r, 0.0, TAU, 40, col, 3.0, true)
-		draw_circle(c, 4.5, col)
-		for a in [PI * 0.5, PI * 0.5 + TAU / 3.0, PI * 0.5 - TAU / 3.0]:
-			var d := Vector2(cos(a), -sin(a))
-			draw_line(c + d * 4.0, c + d * r, col, 3.0, true)
 
 var _attack_face: AttackFace = null
 var _mode_face: ModeFace = null
@@ -2138,32 +2122,20 @@ func _sync_mode_visuals() -> void:
 	if not _controls_hidden:
 		_apply_mode_visibility()
 
-# Подпись на кнопке = КУДА она переключит, а не где ты сейчас. С названием текущего режима
-# приходилось жать «MOVE», чтобы попасть в стройку, — читается наоборот.
-func _set_mode_label(text: String, col: Color, to_build: bool) -> void:
-	var lbl := get_node_or_null("ModeToggle/Label") as Label
-	if lbl == null:
-		return
-	lbl.text = text
-	lbl.add_theme_color_override("font_color", col)
-	if _mode_face != null:
-		_mode_face.to_build = to_build           # the sign, like the label, names where it goes
-		_mode_face.accent = col
-		_mode_face.queue_redraw()
-
+# THE BUTTON ONLY EVER READS BUILD. It used to name where it took you - BUILD while driving, MOVE
+# while building - but building lives in the garage, which covers the button, and CLOSING the garage
+# is what takes the machine back to driving (`_set_garage_open`): MOVE was never on screen.
 func _on_movement_pressed() -> void:
 	$Attack.visible = true
 	$Take.visible = false
 	$TakeOff.visible = false
 	%Joystick_movement.visible=true
-	_set_mode_label(tr("BUILD"), Color(1.0, 0.7, 0.25), true)   # едем → кнопка ведёт в стройку
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
 	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
-	_set_mode_label(tr("MOVE"), Color(0.4, 1.0, 0.6), false)     # строим → кнопка возвращает за руль
 	_open_build_tab.call_deferred()    # стройка живёт в гараже: открываем его на своей вкладке
 
 func _on_take_pressed() -> void:

@@ -388,7 +388,7 @@ func _aim_current_step() -> void:
 			if _garage_open():
 				_aim_node(_garage_node("close"), "Assembled. Close the garage")
 			else:
-				_aim_node(_hud_node("ModeToggle"), "Tap MOVE and drive")
+				_aim_node(_hud_node("Joystick_movement"), "Drive")
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your directive tracker. Tap it")
 		"tut_garage":

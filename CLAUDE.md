@@ -2178,12 +2178,15 @@ project: read it before claiming how anything works.
   enters the tree and presses it for index > 0; index 0 stays with the mouse, or every button
   would fire twice. Measured with the stick held by finger 0: garage icon, X and a double-tap
   placement by finger 1 all failed before and all work after.
-- **ATTACK IS ROUND AND BUILD / MOVE IS THE HUD'S BOX, BOTH DRAWN** (`hud.AttackFace` / `ModeFace`, the
-  player's call: "in the style, nicer, with an icon; attack round"). They stay `TouchScreenButton`s
-  (any finger), WITHOUT textures: a dark disc in the panels' teal ring with a warm-red crosshair,
-  lit and breathing while held; the mode button the HUD button's rounded box with a stripe and a
-  drawn sign in the colour of where it goes - a block with a plus for BUILD, a steering wheel for
-  MOVE. A TEXTURELESS BUTTON'S SHAPE STANDS CENTRED ON ITS NODE (`touch_screen_button.cpp`
+- **ATTACK IS ROUND AND BUILD IS THE HUD'S BOX, BOTH DRAWN** (`hud.AttackFace` / `ModeFace`, the
+  player's calls: "in the style, nicer, with an icon; attack round", then "no caption on attack, the
+  icon in the middle", "no stripe on build"). They stay `TouchScreenButton`s
+  (any finger), WITHOUT textures: a dark disc in the panels' teal ring with a warm-red crosshair in
+  its middle, lit and breathing while held, no words; the mode button the HUD button's rounded box
+  with a drawn block-and-plus before BUILD. THE BUTTON ONLY EVER READS BUILD: it used to read MOVE
+  while building, but building lives in the garage, which covers it, and closing the garage is what
+  takes the machine back to driving - MOVE was never on screen, and the tutorial's "Tap MOVE" step
+  points at the joystick now. A TEXTURELESS BUTTON'S SHAPE STANDS CENTRED ON ITS NODE (`touch_screen_button.cpp`
   `_is_point_inside`), so both are placed by their middle, and WHERE A TouchScreenButton TAKES A
   FINGER IS ONE ANSWER, `TouchButtons.hits` / `local_area`, asked by the camera's "not my finger",
   the world tap's "over the HUD" and the tutorial's finger - three copies, two of which took a

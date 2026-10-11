@@ -75,7 +75,7 @@ func _seed_demo() -> void:
 	add_quest("tut_place_all", "Boot: Assembly", "Attach every part", Type.TUTORIAL, 8, 3, "", 0, 0, 0, 1,
 			"Same for the rest. Wheels to the sides, drill facing out — you decide what you are.")
 	add_quest("tut_mode_move", "Boot: Motion", "Leave assembly", Type.TUTORIAL, 1, 4, "mode_movement", 0, 0, 0, 1,
-			"Assembled? The same button reads MOVE. Let us see if you hold together.")
+			"Assembled? Close the garage and you are driving. Let us see if you hold together.")
 	# THE TUTORIAL IS ASSEMBLY ONLY. Journal, storage, shop, tree and sound steps were six taps on
 	# buttons already in plain sight; what cannot be guessed is that blocks join by FACES, each with
 	# its own, and go on with a double tap. Genuinely non-obvious mechanics are taught WHERE THEY
