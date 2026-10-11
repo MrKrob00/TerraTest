@@ -1,27 +1,31 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 
-// NO UNIFORM HERE THAT NOTHING SETS (the player: "a heap of useless settings"). The ground's material
-// is made in code, so a uniform no script writes is a constant with a slider nobody can reach:
-// what is tuned by hand lives below as a const, what the game sets is a uniform.
+// WHERE EACH SETTING IS TUNED: the ground's material is made in code, so these uniforms are set
+// from the MAP'S INSPECTOR - the texture, noise and detail strengths from the map's own "Ground
+// shader" group (ChunkTerrain._push_shader), the colours, rock, snow and grass from its biomes
+// resource (TerrainBiomes.apply_to_material) - and the rest by the game (grass_fade, trample,
+// corruption). The defaults here are the same numbers, for a material made without the node.
 
-// The per-pixel colour noise: NOISE_CELLS cells to a metre, in world units, so it matches between
-// the game and the editor. Quantised to the grid, it holds still per cell instead of flickering per
-// fragment. The grass needs no cell of its own: a blade is a vertex, on a whole metre.
-const float NOISE_CELLS = 16.0;
-const float COLOR_VARIATION = 0.06;
+group_uniforms Texture;
+// The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived
+// from world coordinates, so it matches between the game and the editor. The grass needs no cell
+// of its own: a blade is a vertex, and vertices stand on whole metres.
+uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
 
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
 // tile used - R cracked earth, G sand ripples, B grass clumps, A broad patches. Masks, not colour:
 // no source_color. Set by TerrainBiomes.apply_to_material. Each biome takes its own channel, after
 // TerraTech's ground (the player's screenshots): the desert rippled, the meadow tufted, everything
-// a little patchy, so no ground is one flat colour. DETAIL_SIZE is the texture's span in metres.
+// a little patchy, so no ground is one flat colour.
 uniform sampler2D ground_detail : hint_default_white, filter_nearest_mipmap, repeat_enable;
-const float DETAIL_SIZE = 9.0;
-const float RIPPLES = 0.55;      // the desert's sand ripples (G)
-const float TUFTS = 0.45;        // the meadow's grass clumps (B)
-const float PATCHES = 0.10;      // broad patches on every ground (A)
-const float CRACKS = 0.65;       // the salt flat's cracked tiles (R)
+uniform float detail_world_size : hint_range(1.0, 40.0)  = 9.0;
+uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
+uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
+uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
+
+// Quantising to a grid keeps the noise steady per cell instead of flickering per fragment.
+const float PIXELS_PER_TILE = 16.0;
 
 group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // warm golden sand (desert)
@@ -43,6 +47,7 @@ uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // cold 
 group_uniforms Terrain;
 uniform float rock_threshold     : hint_range(0.0, 1.0)      = 0.7;
 uniform float rock_blend         : hint_range(0.0, 0.5)      = 0.15;
+uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 
 group_uniforms Biomes;
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.1;    // the desert's share of the meadow's grass
@@ -53,9 +58,11 @@ uniform float canyon_band_h     : hint_range(2.0, 12.0)    = 6.0;    // stratum 
 // in COLOR.r with the vertex's BORDER CODE (chunk_terrain EDGE_STEP / SALT_SPAN): r = code / 3 +
 // SALT_SPAN x salt, code 0 inside the node, 1 on a border running along x, 2 along z.
 uniform vec4  color_salt        : source_color = vec4(0.86, 0.75, 0.58, 1.0);
+uniform float crack_strength    : hint_range(0.0, 1.0)     = 0.65;
 const float SALT_SPAN = 0.3;
 
 group_uniforms Grass;
+uniform float grass_density     : hint_range(0.0, 1.0)    = 1.0;   // share of meadow vertices lifted
 uniform float grass_height      : hint_range(0.0, 1.0)    = 0.3;
 uniform float grass_shade       : hint_range(0.4, 1.2)    = 0.62;
 // Where the lift fades out, metres from the camera over the ground: before the first seam the
@@ -123,7 +130,7 @@ float hash2D(vec2 p) {
 // THE BLADE AT ONE WORLD POINT: whether it grows (the hash against the meadow share) and how far
 // the trample map presses it down. A function of the point and nothing else.
 float blade_at(vec2 p, float amount) {
-    if (hash2D(p) >= amount) {
+    if (hash2D(p) >= grass_density * amount) {
         return 0.0;
     }
     float h = grass_height * amount;
@@ -234,15 +241,15 @@ void fragment() {
         vec2 wall = abs(v_wnrm.y) > 0.5
                 ? v_wpos.xz                                                  // пол и склоны
                 : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
-        vec2 noise_uv = floor(wall * NOISE_CELLS) / NOISE_CELLS;
-        base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * COLOR_VARIATION, 0.0, 1.0);
-        // one fetch: the detail masks (see the top)
-        vec4 dt = texture(ground_detail, wall / DETAIL_SIZE);
-        float k = 1.0 + (dt.a - 0.5) * 2.0 * PATCHES;
-        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert * RIPPLES);
-        k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * TUFTS);
+        vec2 noise_uv = floor(wall / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
+        base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
+        // one fetch: the detail masks (see the uniforms)
+        vec4 dt = texture(ground_detail, wall / detail_world_size);
+        float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
+        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert * ripple_strength);
+        k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
-        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt * CRACKS);
+        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt * crack_strength);
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 

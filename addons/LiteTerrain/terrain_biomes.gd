@@ -105,9 +105,10 @@ func snow_blend_at(world_height: float) -> float:
 
 # ── Grass ─────────────────────────────────────────────────────────────────────
 @export_group("Grass")
-## EVERY MEADOW VERTEX IS A BLADE: there is no density setting any more. It stood at 0.4 once, and
-## a map that did not set it by hand came out bald; the trample map (tyre tracks) presses down the
-## same vertices, so where none is lifted there is no track either.
+## The share of meadow vertices lifted as blades: 1 is every one. It stood at 0.4 once, and the
+## meadow came out bald in patches; the trample map (tyre tracks) presses down the same vertices,
+## so where none is lifted there is no track either.
+@export_range(0.0, 1.0, 0.01) var grass_density: float = 1.0
 ## THE GAME'S NUMBERS ARE THE DEFAULTS (0.3 m, 0.1 on sand): the world scene set them over 0.15 and
 ## 0, and the menu - the same ground, said to show the land the player is about to drive into -
 ## drew the meadow at half the height and the desert bare.
@@ -148,8 +149,8 @@ const SALT_OFFSET := Vector2(331.0, 19.0)
 ## masks: the generator carves the landform by them, and the terrain colours and ore veins by
 ## the same call at runtime. One offset, one answer, no way for them to disagree.
 ## NOT AN EXPORT: it is an OUTPUT - always worked out from the seed (offset_for_seed, by the
-## generator, the menu and the seed browser) - and as an export it was saved into the scenes with
-## whatever seed the editor last previewed.
+## generator and the menu) - and as an export it was saved into the scenes with whatever seed the
+## editor last previewed.
 var mask_offset: Vector2 = Vector2.ZERO
 
 ## THE NOISE THE MASKS ARE BUILT ON, in one place. Every mask above takes it as a Callable because
@@ -173,8 +174,7 @@ var mask_offset: Vector2 = Vector2.ZERO
 ## `TYPE_VALUE` is the same KIND of noise — value noise on a lattice with smooth interpolation —
 ## so the world keeps its character: patches of the same scale, the same thresholds, the same
 ## smoothstep edges. It is not the same PATTERN: the hash differs, so every seed now draws a
-## different layout than it did before. Nothing was tuned around a particular seed, and picking
-## another one is two clicks in the inspector.
+## different layout than it did before. Nothing was tuned around a particular seed.
 ##
 ## THE SEED OF THE NOISE ITSELF STAYS FIXED. What moves a world is `mask_offset`, which shifts
 ## where the masks are sampled (offset_for_seed); leaving the noise seed alone keeps that the only
@@ -270,6 +270,7 @@ func apply_to_material(mat: ShaderMaterial, world_height: float) -> void:
 	mat.set_shader_parameter("color_rock", color_rock)
 	mat.set_shader_parameter("rock_threshold", rock_threshold)
 	mat.set_shader_parameter("rock_blend", rock_blend)
+	mat.set_shader_parameter("grass_density", grass_density)
 	mat.set_shader_parameter("grass_height", grass_height)
 	mat.set_shader_parameter("sand_grass", sand_grass)
 	mat.set_shader_parameter("grass_shade", grass_shade)
