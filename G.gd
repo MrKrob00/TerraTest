@@ -1006,7 +1006,7 @@ const BLOCK_RECIPE := {
 	Block.MARLIT_SUPPORT:   {"c2": 4, "m1": 12},    # Braced Strut + Cuprite: the Falsus jack, twice the casting
 	Block.MARLIT_ROT_SUPPORT: {"c16": 4, "m1": 14},  # Drive Axle + Cuprite: the slewing ring and its pinions
 	Block.MARLIT_CABIN:     {"c12": 3, "c18": 3},  # Logic Housing + Control Chip, as the cabin; at 5+5 the
-	                                                # Marlit builds came out a ladder step dearer
+													# Marlit builds came out a ladder step dearer
 	# A Falsus weapon's parts, about three times over: two cells across and two deep.
 	Block.MARLIT_GUN:       {"c17": 6, "m3": 18},
 	Block.MARLIT_SHOTGUN:   {"c17": 6, "m3": 15},

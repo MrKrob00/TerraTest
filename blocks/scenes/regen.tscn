@@ -1,22 +1,13 @@
 [gd_scene format=4 uid="uid://bcgba3aca7cee"]
 
 [ext_resource type="Script" uid="uid://ci0a8rxxhwu36" path="res://blocks/scripts/regen.gd" id="1_s"]
-[ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="9_tex"]
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="3_atlas"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_body.tres" id="4_regen_body"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_ring.tres" id="5_regen_ring"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/regen_crystal.tres" id="6_regen_crystal"]
+[ext_resource type="ArrayMesh" uid="uid://bckc7x10ojwgk" path="res://blocks/meshes/regen_body.tres" id="4_regen_body"]
+[ext_resource type="ArrayMesh" uid="uid://dwkd2ewknx4kq" path="res://blocks/meshes/regen_ring.tres" id="5_regen_ring"]
+[ext_resource type="ArrayMesh" uid="uid://dbf2ylrudnkr3" path="res://blocks/meshes/regen_crystal.tres" id="6_regen_crystal"]
+[ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="9_tex"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
-size = Vector3(1, 1, 1)
-
-[sub_resource type="StandardMaterial3D" id="Mat_glow"]
-resource_name = "regen_glow"
-cull_mode = 2
-shading_mode = 0
-albedo_color = Color(0.35, 1, 0.5, 1)
-albedo_texture = ExtResource("9_tex")
-texture_filter = 2
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
 resource_name = "main"
@@ -57,11 +48,20 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_6541o")
 
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+resource_name = "regen_glow"
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.35, 1, 0.5, 1)
+albedo_texture = ExtResource("9_tex")
+texture_filter = 2
+
 [node name="Regen" type="RigidBody3D" unique_id=265452729]
 collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_s")
 block = 15
+connect_faces = 32
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1221529185]
 shape = SubResource("BoxShape3D_a")

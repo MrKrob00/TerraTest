@@ -1,22 +1,13 @@
 [gd_scene format=4 uid="uid://bb773444ab73h"]
 
-[ext_resource type="Script" path="res://blocks/scripts/shield.gd" id="1_s"]
-[ext_resource type="Texture2D" uid="uid://6n2bsy8ypb4n" path="res://objects/shield_texture.png" id="9_tex"]
+[ext_resource type="Script" uid="uid://clbqgfmgvv171" path="res://blocks/scripts/shield.gd" id="1_s"]
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="3_atlas"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/shield_body.tres" id="4_shield_body"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/shield_cap.tres" id="5_shield_cap"]
-[ext_resource type="ArrayMesh" path="res://blocks/meshes/shield_core.tres" id="6_shield_core"]
+[ext_resource type="ArrayMesh" uid="uid://drals0vmuahey" path="res://blocks/meshes/shield_body.tres" id="4_shield_body"]
+[ext_resource type="ArrayMesh" uid="uid://dtyib817t6ve" path="res://blocks/meshes/shield_cap.tres" id="5_shield_cap"]
+[ext_resource type="ArrayMesh" uid="uid://b4ygpmh8ptpko" path="res://blocks/meshes/shield_core.tres" id="6_shield_core"]
+[ext_resource type="Texture2D" uid="uid://6n2bsy8ypb4n" path="res://objects/shield_texture.png" id="9_tex"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
-size = Vector3(1, 1, 1)
-
-[sub_resource type="StandardMaterial3D" id="Mat_glow"]
-resource_name = "shield_glow"
-cull_mode = 2
-shading_mode = 0
-albedo_color = Color(0.35, 0.85, 1, 1)
-albedo_texture = ExtResource("9_tex")
-texture_filter = 2
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
 resource_name = "main"
@@ -57,11 +48,20 @@ _surfaces = [{
 blend_shape_mode = 0
 shadow_mesh = SubResource("ArrayMesh_6541o")
 
+[sub_resource type="StandardMaterial3D" id="Mat_glow"]
+resource_name = "shield_glow"
+cull_mode = 2
+shading_mode = 0
+albedo_color = Color(0.35, 0.85, 1, 1)
+albedo_texture = ExtResource("9_tex")
+texture_filter = 2
+
 [node name="Shield" type="RigidBody3D" unique_id=1789825099]
 collision_layer = 2
 collision_mask = 21
 script = ExtResource("1_s")
 block = 16
+connect_faces = 32
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=1489732123]
 shape = SubResource("BoxShape3D_a")
