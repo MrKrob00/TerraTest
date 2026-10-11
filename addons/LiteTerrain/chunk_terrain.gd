@@ -151,7 +151,21 @@ var _out: Array = []           # результаты пула, по одном�
 var _group: int = -1
 var _busy: bool = false
 var _lod_timer: float = 0.0
-var _queued: Dictionary = {}   # key → true, чтобы не заводить второе задание на тот же узел
+var _queued: Dictionary = {}   # key → задание (или true у коллизии), чтобы не заводить второе
+## BUILT MESHES WAITING FOR THEIR LEVEL CHANGE TO BE WHOLE (_place_mesh, _release_held): key -> the
+## entry `_live` will hold. A level change is several meshes - the replacement and every neighbour's
+## restitch - and each shown the moment it landed met a neighbour still built for the old levels:
+## a crack as tall as the ground climbs over a cell (measured up to 1.3 m while driving).
+var _staged: Dictionary = {}
+var _held_dirty: bool = false
+var _held_check_t: float = 0.0
+## How long a held mesh may wait before it goes up as it is. A level change waits long: the old
+## ground stands meanwhile, so the cost is coarser ground for a moment, not a hole. Fresh ground
+## waits briefly: until it is up there is no ground there at all.
+const HOLD_MAX_MS := 4000
+const FRESH_HOLD_MS := 300
+## While a release is being tried: key -> drawn or not, over what `_live` says (`_drawn_key_at`).
+var _ovl: Dictionary = {}
 
 func _ready() -> void:
 	# В РЕДАКТОРЕ НОДА НЕ ТРОГАЕТ НИЧЕГО САМА. Скрипт @tool ради превью (см. preview_build), а
@@ -645,7 +659,9 @@ func _level_of(bcx: int, bcz: int) -> int:
 ## that snaps. The grass needs no bit here any more (glsl.gdshader: the same lift on every level).
 const SIDE_BITS := 8
 
-func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
+## `drawn`: ask what is DRAWN there (`_drawn_key_at`) instead of the leaf set, and answer -1 when
+## nothing in the frame is drawn on that side - a side with nothing across it cannot crack.
+func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int, drawn: bool = false) -> int:
 	var n: int = 1 << lod
 	var bx: int = gx * n
 	var bz: int = gz * n
@@ -660,11 +676,60 @@ func _side_info(lod: int, gx: int, gz: int, dx: int, dz: int) -> int:
 		a = Vector2i(bx, pz)
 		b = Vector2i(bx + n - 1, pz)
 	var k := 0
+	var seen := false
 	for p in [a, b]:
-		var l := _level_of(p.x, p.y)        # -1: там ничего не рисуется — шва нет
+		var l: int
+		if drawn:
+			# Drawn and in the frame: a crack against ground nobody can see is no reason to wait.
+			var dk := _drawn_key_at(p.x, p.y)
+			l = _key_lod(dk) if dk != -1 and _in_frame_key(dk) else -1
+		else:
+			l = _level_of(p.x, p.y)                  # -1: там ничего не рисуется — шва нет
+		if l >= 0:
+			seen = true
 		if l > lod:
 			k = maxi(k, l - lod)
+	if drawn and not seen:
+		return -1
 	return mini(k, 4)
+
+## THE NODE DRAWN OVER A BASE CHUNK RIGHT NOW: a live one no replacement has covered, as the overlay
+## of a release being tried has it. The leaf set says what the ground is going to be; this is what
+## stands there while it gets there.
+func _drawn_key_at(bcx: int, bcz: int) -> int:
+	for l in MAX_LOD + 1:
+		var k: int = (l << 40) | (((bcx >> l) & 0xFFFFF) << 20) | ((bcz >> l) & 0xFFFFF)
+		if _ovl.has(k):
+			if _ovl[k]:
+				return k
+			continue
+		var n = _live.get(k)
+		if n != null and not n.get("cov", false):
+			return k
+	return -1
+
+## Does a mesh built with `sig` meet whatever is drawn round it? Sides with nothing across are free.
+const SIDES := [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]
+
+func _fits_drawn(lod: int, gx: int, gz: int, sig: int) -> bool:
+	for s in 4:
+		var d: int = _side_info(lod, gx, gz, SIDES[s].x, SIDES[s].y, true)
+		if d >= 0 and d != ((sig >> (SIDE_BITS * s)) & 0xF):
+			return false
+	return true
+
+## Is other ground drawn over this node's area - the coarse node it splits out of, or the finer
+## ones it merges? Then it is a REPLACEMENT, and goes up together with its seams.
+func _area_drawn(lod: int, gx: int, gz: int) -> bool:
+	return _drawn_ancestor(lod, gx, gz) != -1 or not _drawn_under(lod, gx, gz).is_empty()
+
+func _drawn_ancestor(lod: int, gx: int, gz: int) -> int:
+	for l in range(lod + 1, MAX_LOD + 1):
+		var k: int = (l << 40) | (((gx >> (l - lod)) & 0xFFFFF) << 20) | ((gz >> (l - lod)) & 0xFFFFF)
+		var n = _live.get(k)
+		if n != null and not n.get("cov", false):
+			return k
+	return -1
 
 ## Четыре соседа в одном числе, по байту на сторону: север, юг, запад, восток.
 func _signature(lod: int, gx: int, gz: int) -> int:
@@ -672,6 +737,24 @@ func _signature(lod: int, gx: int, gz: int) -> int:
 		| (_side_info(lod, gx, gz, 0, 1) << SIDE_BITS) \
 		| (_side_info(lod, gx, gz, -1, 0) << (SIDE_BITS * 2)) \
 		| (_side_info(lod, gx, gz, 1, 0) << (SIDE_BITS * 3))
+
+## A SPLIT GOES UP WHOLE: every leaf under the node it replaces is built, not only the ones in the
+## frame. The coarse node is hidden only once all of its area is covered, and until then it and the
+## children already up were drawn over each other, the children's edges against its coarse one.
+func _enqueue_under(lod: int, gx: int, gz: int) -> void:
+	var cl := lod - 1
+	for dz in 2:
+		for dx in 2:
+			var cx := gx * 2 + dx
+			var cz := gz * 2 + dz
+			if _aabb_dist2(_node_aabb(cl, cx, cz), _leaf_at) > view_distance * view_distance:
+				continue
+			var ck := _key(cl, cx, cz)
+			if _leaf_set.has(ck):
+				if not _live.has(ck) and not _staged.has(ck):
+					_enqueue_mesh(cl, cx, cz, _signature(cl, cx, cz))
+			elif cl > 0:
+				_enqueue_under(cl, cx, cz)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Спуск по дереву: что рисовать в этот тик
@@ -700,6 +783,8 @@ func _signature(lod: int, gx: int, gz: int) -> int:
 ## подставляет _pack_planes, один раз на тик вместо одного раза на узел.
 var _leaf_keys := PackedInt64Array()
 var _leaf_set: Dictionary = {}                # the same keys, for _level_of
+## Bumped with every new set of leaves: a live node's seams are checked once per set (`gen`).
+var _leaf_gen: int = 0
 var _leaf_box := PackedFloat32Array()         # по 4 на лист: minx, minz, maxx, maxz
 var _leaf_at: Vector3 = Vector3(1e9, 1e9, 1e9)
 var _leaf_vd: float = -1.0
@@ -735,6 +820,7 @@ func _select(at: Vector3, cull: bool = true) -> void:
 			_want[_leaf_keys[i]] = true
 
 func _build_leaves(at: Vector3) -> void:
+	_leaf_gen += 1
 	_leaf_keys.clear()
 	_leaf_set.clear()
 	_leaf_box.clear()
@@ -805,6 +891,7 @@ func _pack_planes() -> void:
 	# (см. frustum_margin). По номеру в массиве — нельзя: порядок плоскостей это деталь движка, а
 	# нормаль говорит сама за себя.
 	_cam_fwd_local = (inv.basis * (-_cam.global_transform.basis.z)).normalized()
+	_frame_memo.clear()
 	_pl.resize(18)
 	_pi.resize(12)
 	var i := 0
@@ -840,16 +927,22 @@ const JOB_COLL := 1
 
 func _enqueue_mesh(lod: int, gx: int, gz: int, sig: int) -> void:
 	var key := _key(lod, gx, gz)
-	if _queued.has(key):
+	var q = _queued.get(key)
+	if q != null:
+		# Still waiting in the queue: build it for the newest neighbours. One the pool has taken is
+		# read by a worker thread and is left alone; it is re-asked when it lands.
+		if q is Dictionary and not q.get("started", false):
+			q["sig"] = sig
 		return
-	_queued[key] = true
 	var span := float(CHUNK << lod)
-	_jobs.append({
+	var job := {
 		"kind": JOB_MESH, "key": key, "lod": lod, "gx": gx, "gz": gz, "sig": sig,
 		"edits": _edits_in(gx * span, gz * span, span),
 		# Середина узла — по ней очередь потом сортируется от камеры (см. _sort_queues).
 		"cx": gx * span + span * 0.5, "cz": gz * span + span * 0.5, "d2": 0.0,
-	})
+	}
+	_queued[key] = job
+	_jobs.append(job)
 
 func _enqueue_coll(bcx: int, bcz: int) -> void:
 	var key := _key(0, bcx, bcz)
@@ -905,6 +998,8 @@ func _job_tick() -> void:
 		var rest: int = build_batch - _batch.size()
 		_batch.append_array(_jobs.slice(0, rest))
 		_jobs = _jobs.slice(mini(rest, _jobs.size()))
+	for j in _batch:
+		j["started"] = true                      # a worker reads it from here on (_enqueue_mesh)
 	_out.clear()
 	_out.resize(_batch.size())
 	_busy = true
@@ -982,11 +1077,12 @@ func _drain_apply() -> void:
 		_place_mesh(int(job["key"]), job, e["mesh"])
 
 func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
-	var old = _live.get(key)
-	if old != null and is_instance_valid(old["inst"]):
-		old["inst"].queue_free()
 	if arrays.is_empty():
+		var gone = _live.get(key)
+		if gone != null and is_instance_valid(gone["inst"]):
+			gone["inst"].queue_free()
 		_live.erase(key)
+		_drop_staged(key)
 		return
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays[0])
@@ -1003,12 +1099,259 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	# Тень, которую игрок реально видит, — это тень МАШИНЫ на земле, и она остаётся. Уходит
 	# собственная тень рельефа: гора перестаёт затенять долину. Потеря настоящая и признана.
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	# Успел уехать из кадра, пока считался, — всё равно кладём, только скрытым: он уже посчитан,
-	# а камера ходит туда-сюда.
-	mi.visible = _want.has(key)
+	mi.visible = false
 	add_child(mi)
-	_live[key] = {"inst": mi, "sig": job["sig"], "lod": job["lod"], "gx": job["gx"], "gz": job["gz"],
+	var entry := {"inst": mi, "sig": job["sig"], "lod": job["lod"], "gx": job["gx"], "gz": job["gz"],
 			"seen": float(Time.get_ticks_msec()) * 0.001}
+	# Loading: the screen is behind the fade and nothing is drawn yet - straight in.
+	if not terrain_is_ready:
+		_go_live(key, entry)
+		return
+	# A RESTITCH, or FRESH GROUND (nothing else drawn over its area), THAT MEETS WHAT IS DRAWN goes up
+	# now - fresh ground most of all: until it is up there is no ground there. A finer neighbour of
+	# fresh ground already snaps to it: its seams come from the leaves, not from what was drawn.
+	# Everything else waits for `_release_held`, which runs once the frame's meshes have landed.
+	var lod: int = job["lod"]
+	var gx: int = job["gx"]
+	var gz: int = job["gz"]
+	if (_live.has(key) or not _area_drawn(lod, gx, gz)) and _fits_drawn(lod, gx, gz, int(job["sig"])):
+		_go_live(key, entry)
+		return
+	_drop_staged(key)
+	entry["t"] = Time.get_ticks_msec()
+	_staged[key] = entry
+	_held_dirty = true
+
+## Put a built mesh on screen in place of the node's old one. Успел уехать из кадра, пока считался,
+## — всё равно кладём, только скрытым: он уже посчитан, а камера ходит туда-сюда.
+func _go_live(key: int, entry: Dictionary) -> void:
+	var shown: bool = _want.has(key)
+	var old = _live.get(key)
+	if old != null:
+		if old.get("cov", false):
+			entry["cov"] = true            # still under the ground that covered it
+			shown = false
+		elif is_instance_valid(old["inst"]):
+			shown = shown or (old["inst"] as Node3D).visible
+		if is_instance_valid(old["inst"]):
+			old["inst"].queue_free()
+	(entry["inst"] as Node3D).visible = shown
+	_live[key] = entry                     # no "gen": its seams are checked when the frame wants it
+
+func _drop_staged(key: int) -> void:
+	var s = _staged.get(key)
+	if s != null and is_instance_valid(s["inst"]):
+		s["inst"].queue_free()
+	_staged.erase(key)
+
+## RELEASE WHAT FITS, once the frame's meshes have landed:
+##  - A LEVEL CHANGE GOES UP AS ONE UNIT: the old node and every leaf replacing it (a split), or the
+##    new node and the finer ones it replaces (a merge), once all of it is built - and only when
+##    every drawn neighbour of its area has a mesh that meets it, its own or a held restitch that
+##    goes up in the same frame. Changes that need each other go up together; one waiting on a
+##    change still building waits with it (`_unit_fits` over the overlay of all of them).
+##  - A RESTITCH, or GROUND WITH NOTHING ELSE DRAWN OVER ITS AREA, goes up alone once its seams meet
+##    what is drawn round it.
+## A side facing nothing in the frame does not count (`_fits_drawn`): a crack nobody sees is not
+## worth holding ground for, and what is off the frame is not built until the camera turns to it.
+## `HOLD_MAX_MS` / `FRESH_HOLD_MS` are the last resort - a mesh held that long goes up as it is, as
+## all of them used to.
+func _release_held() -> void:
+	_held_dirty = false
+	if _staged.is_empty():
+		return
+	var units := {}
+	for key in _staged:
+		if _live.has(key):
+			continue                             # a restitch: a support for units, or alone below
+		var e: Dictionary = _staged[key]
+		var l: int = e["lod"]
+		var anc := _drawn_ancestor(l, int(e["gx"]), int(e["gz"]))
+		if anc != -1:
+			if not units.has(anc):
+				var add: Array = []
+				var whole: bool = _gather_under(_key_lod(anc), _key_gx(anc), _key_gz(anc), add)
+				units[anc] = {"add": add, "hide": [anc]} if whole else {}
+			continue
+		var under: Array = _drawn_under(l, int(e["gx"]), int(e["gz"]))
+		if not under.is_empty():
+			units[key] = {"add": [key], "hide": under}  # a merge; with nothing under it, fresh ground
+	for uid in units.keys():
+		if (units[uid] as Dictionary).is_empty():
+			units.erase(uid)
+	var used := {}
+	var settled := false
+	for _pass in 6:
+		if units.is_empty():
+			break
+		_ovl.clear()
+		for uid in units:
+			for h in units[uid]["hide"]:
+				_ovl[h] = false
+			for a in units[uid]["add"]:
+				_ovl[a] = true
+		used.clear()
+		var bad: Array = []
+		for uid in units:
+			if not _unit_fits(uid, units[uid], used):
+				bad.append(uid)
+		_ovl.clear()
+		if bad.is_empty():
+			settled = true
+			break
+		for uid in bad:
+			units.erase(uid)
+	if not settled:
+		units.clear()                            # nothing proven to fit: nothing goes up this pass
+	for uid in units:
+		var u: Dictionary = units[uid]
+		for h in u["hide"]:
+			var n = _live.get(h)
+			if n != null:
+				if is_instance_valid(n["inst"]):
+					(n["inst"] as Node3D).visible = false
+				n["cov"] = true
+		for a in u["add"]:
+			_up(a)
+	for k in used:
+		_up(k)
+	var now := Time.get_ticks_msec()
+	for key in _staged.keys():
+		if not _staged.has(key):
+			continue                             # went up with the ground next to it
+		var e: Dictionary = _staged[key]
+		var l: int = e["lod"]
+		var gx: int = e["gx"]
+		var gz: int = e["gz"]
+		var fresh: bool = not _live.has(key) and not _area_drawn(l, gx, gz)
+		if now - int(e["t"]) > (FRESH_HOLD_MS if fresh else HOLD_MAX_MS):
+			_up(key)
+		elif _live.has(key):
+			if _fits_drawn(l, gx, gz, int(e["sig"])):
+				_up(key)                         # a restitch: its neighbours are not touched
+		elif fresh and _fits_drawn(l, gx, gz, int(e["sig"])):
+			_up(key)
+
+## Bring one held mesh (or a leaf already built and covered) up.
+func _up(key: int) -> void:
+	var e = _staged.get(key)
+	if e != null:
+		_staged.erase(key)
+		if _leaf_set.has(key) or _live.has(key):
+			_go_live(key, e)
+		elif is_instance_valid(e["inst"]):
+			e["inst"].queue_free()               # the leaves moved on while it was building
+		return
+	var n = _live.get(key)
+	if n != null and n.get("cov", false):
+		n["cov"] = false
+		if is_instance_valid(n["inst"]):
+			(n["inst"] as Node3D).visible = _want.has(key)
+
+## Every leaf under an old node, built (held or live) - false while any is still building.
+func _gather_under(lod: int, gx: int, gz: int, add: Array) -> bool:
+	var cl := lod - 1
+	if cl < 0:
+		return false
+	for dz in 2:
+		for dx in 2:
+			var cx := gx * 2 + dx
+			var cz := gz * 2 + dz
+			var ck := _key(cl, cx, cz)
+			if _leaf_set.has(ck):
+				if _staged.has(ck) or _live.has(ck):
+					add.append(ck)
+				else:
+					return false
+			elif _aabb_dist2(_node_aabb(cl, cx, cz), _leaf_at) > view_distance * view_distance:
+				continue                         # past the view: no ground there at all
+			elif not _gather_under(cl, cx, cz, add):
+				return false
+	return true
+
+## The drawn finer nodes over this node's area, two levels down: a merge is one level at a time
+## while driving, and a deeper one (a teleport) is left to the hold timeout. Twenty lookups, not a
+## pass over every live node for every held mesh.
+func _drawn_under(lod: int, gx: int, gz: int) -> Array:
+	var out: Array = []
+	for d in [1, 2]:
+		var l: int = lod - d
+		if l < 0:
+			break
+		var n: int = 1 << d
+		for dz in n:
+			for dx in n:
+				var k: int = (l << 40) | (((gx * n + dx) & 0xFFFFF) << 20) | ((gz * n + dz) & 0xFFFFF)
+				var e = _live.get(k)
+				if e != null and not e.get("cov", false):
+					out.append(k)
+	return out
+
+## With the overlay of every unit going up: does this unit's new ground meet what is round it, and
+## does every drawn neighbour of its area meet it back - with its own mesh, or a held restitch
+## (`used`: it goes up in the same frame)?
+func _unit_fits(uid: int, u: Dictionary, used: Dictionary) -> bool:
+	for a in u["add"]:
+		var e = _staged.get(a)
+		if e == null:
+			e = _live.get(a)
+		if e == null or not _fits_drawn(int(e["lod"]), int(e["gx"]), int(e["gz"]), int(e["sig"])):
+			return false
+	for n in _drawn_round(uid):
+		if _ovl.has(n) or not _in_frame_key(n):
+			continue
+		var live: Dictionary = _live[n]
+		if _fits_drawn(int(live["lod"]), int(live["gx"]), int(live["gz"]), int(live["sig"])):
+			continue
+		var st = _staged.get(n)
+		if st != null and _fits_drawn(int(st["lod"]), int(st["gx"]), int(st["gz"]), int(st["sig"])):
+			used[n] = true
+			continue
+		return false
+	return true
+
+## The drawn nodes bordering a node's area, read through the overlay. Probed every quarter of a
+## side: leaves next to each other differ by a level at most, so nothing drawn beside a node of
+## level L is narrower than a quarter of it even mid-change.
+func _drawn_round(key: int) -> Array:
+	var n: int = 1 << _key_lod(key)
+	var bx: int = _key_gx(key) * n
+	var bz: int = _key_gz(key) * n
+	var seen := {}
+	for i in range(0, n, maxi(1, n >> 2)):
+		var k := _drawn_key_at(bx + i, bz - 1)
+		if k != -1: seen[k] = true
+		k = _drawn_key_at(bx + i, bz + n)
+		if k != -1: seen[k] = true
+		k = _drawn_key_at(bx - 1, bz + i)
+		if k != -1: seen[k] = true
+		k = _drawn_key_at(bx + n, bz + i)
+		if k != -1: seen[k] = true
+	return seen.keys()
+
+## Is this node anywhere in the frame (the planes of the last selection)? Remembered until the
+## planes change (`_pack_planes`): a release asks it of the same few nodes many times over.
+var _frame_memo: Dictionary = {}
+
+func _in_frame_key(key: int) -> bool:
+	if not enable_frustum_culling or _pl.size() < 18:
+		return true
+	var hit = _frame_memo.get(key)
+	if hit != null:
+		return hit
+	var span := float(CHUNK << _key_lod(key))
+	var x0: float = _key_gx(key) * span
+	var z0: float = _key_gz(key) * span
+	var inside := true
+	for q in 6:
+		var q3: int = q * 3
+		var bx: float = x0 if _pi[q * 2] == 0 else x0 + span
+		var bz: float = z0 if _pi[q * 2 + 1] == 1 else z0 + span
+		if _pl[q3] * bx + _pl[q3 + 1] * bz + _pl[q3 + 2] > 0.0:
+			inside = false
+			break
+	_frame_memo[key] = inside
+	return inside
 
 ## БЛИЖНИЙ КРУГ ДЕРЖИМ ВСЕГДА. Всё, что ближе KEEP_RADIUS к игроку, не выбрасывается ни по
 ## времени, ни по потолку: это земля, на которую он развернётся через секунду. Остальная память
@@ -1426,6 +1769,8 @@ func preview_clear() -> void:
 		if is_instance_valid(n["inst"]):
 			n["inst"].queue_free()
 	_live.clear()
+	for key in _staged.keys():
+		_drop_staged(key)
 	_want.clear()
 	_hc.clear()
 	_memo.clear()
@@ -1467,6 +1812,15 @@ func _process(delta: float) -> void:
 		return
 	_col_tick()
 	_job_tick()
+	# Held meshes are looked at when something landed or the LOD tick moved the ground, four times a
+	# second at most - what they wait for is other meshes landing, and a pass is ~2 ms on the
+	# optimize=none build - and twice a second for the ones waiting out their hold.
+	_held_check_t -= delta
+	if not _staged.is_empty() and _held_check_t <= 0.0 and (_held_dirty or _held_check_t <= -0.25):
+		_held_check_t = 0.25
+		var th := _pf_now()
+		_release_held()
+		_pf_mark("terrain_hold", th)
 	_lod_timer += delta
 	var cam := _active_camera()
 	if cam == null:
@@ -1488,25 +1842,53 @@ func _process(delta: float) -> void:
 	_sel_local = cam_local
 	_select(cam_local)
 	var now: float = float(Time.get_ticks_msec()) * 0.001
-	var left: int = stitch_budget
+	var split_seen := {}
 	for key in _want:
 		var n = _live.get(key)
 		if n == null:
+			if _staged.has(key):
+				continue                   # built, waiting for the rest of its level change
 			var l := _key_lod(key)
 			var gx := _key_gx(key)
 			var gz := _key_gz(key)
 			_enqueue_mesh(l, gx, gz, _signature(l, gx, gz))
+			var anc := _drawn_ancestor(l, gx, gz)
+			if anc != -1 and not _leaf_set.has(anc) and not split_seen.has(anc):
+				split_seen[anc] = true
+				_enqueue_under(_key_lod(anc), _key_gx(anc), _key_gz(anc))
 			continue
 		n["seen"] = now
 		n["inst"].visible = true
-		# Сосед сменил уровень — край надо притянуть заново. Бюджет на тик: шов на кадр-другой
-		# дешевле пересборки десятков узлов разом.
-		if left > 0:
-			var sig := _signature(n["lod"], n["gx"], n["gz"])
-			if sig != n["sig"]:
-				_enqueue_mesh(n["lod"], n["gx"], n["gz"], sig)
-				left -= 1
+		n["cov"] = false
+	# Сосед сменил уровень — край надо притянуть заново. Бюджет на тик: шов на кадр-другой
+	# дешевле пересборки десятков узлов разом. A NODE IS LOOKED AT ONCE PER SET OF LEAVES ("gen"),
+	# when the frame wants it: a signature changes only when the leaves do, and computing one for
+	# every node in the frame every tick is eight probes of six lookups a node. Scanning every built
+	# leaf, off the screen too, was tried - three times the signatures, and the cracks while turning
+	# came out the same (measured).
+	var left: int = stitch_budget
+	for key in _want:
+		if left <= 0:
+			break
+		var n = _live.get(key)
+		if n == null or int(n.get("gen", -1)) == _leaf_gen:
+			continue
+		var sig := _signature(n["lod"], n["gx"], n["gz"])
+		n["gen"] = _leaf_gen
+		if sig == int(n["sig"]):
+			continue
+		var st = _staged.get(key)
+		if st != null and int(st["sig"]) == sig:
+			continue                       # already built, waiting to go up
+		var q = _queued.get(key)
+		if q is Dictionary:                # already queued: no budget spent on asking again
+			if not q.get("started", false):
+				q["sig"] = sig
+			continue
+		_enqueue_mesh(n["lod"], n["gx"], n["gz"], sig)
+		left -= 1
 	_retire(now)
+	_held_dirty = true
 	_sort_queues(cam_local)
 	_pf_mark("terrain_lod", t0)
 
@@ -1537,17 +1919,19 @@ func _covered(key: int) -> bool:
 	var l := _key_lod(key)
 	var gx := _key_gx(key)
 	var gz := _key_gz(key)
-	# Накрывает только то, что кадр ПРОСИТ и что уже ПОСТРОЕНО. «Просит» обязательно: живой, но
-	# тоже погашенный сосед не накрывает ничего, и по нему пряталась бы целая цепочка.
+	# Covered only by ground the LEAF SET asks for and that is already BUILT. Asked for, because a
+	# live node that is itself hidden covers nothing - by it a whole chain would hide. The leaf set,
+	# not the frame: a split builds all its children (_enqueue_under), the ones off the screen too,
+	# and a built leaf is drawn whether or not it is in the frame.
 	var pk := _key(l + 1, gx >> 1, gz >> 1)
-	if l < MAX_LOD and _want.has(pk) and _live.has(pk):
+	if l < MAX_LOD and _leaf_set.has(pk) and _live.has(pk):
 		return true                    # стали грубее: накрывает родитель
 	if l > 0:
 		var all := true
 		for dz in 2:
 			for dx in 2:
 				var ck := _key(l - 1, gx * 2 + dx, gz * 2 + dz)
-				if not (_want.has(ck) and _live.has(ck)):
+				if not (_leaf_set.has(ck) and _live.has(ck)):
 					all = false
 		if all:
 			return true                # стали мельче: накрывают все четверо детей
@@ -1566,6 +1950,7 @@ func _retire(now: float) -> void:
 		# месте узла, чья замена ещё считается, не будет.
 		if _covered(key):
 			n["inst"].visible = false
+			n["cov"] = true
 		if _near_player(key):
 			continue                   # ближний круг не выбрасываем ни по времени, ни по потолку
 		if over <= 0 and now - float(n["seen"]) < NODE_GRACE:

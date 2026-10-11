@@ -118,7 +118,28 @@ LOD — это слияние чанков: четыре соседних ста
 Угловая вершина кратна любому шагу соседа, поэтому два притянутых края в углу не спорят.
 
 Смена уровня у соседа = пересборка меша. Их бюджет `stitch_budget` на тик: шов на кадр-другой
-дешевле пересборки десятков узлов разом.
+дешевле пересборки десятков узлов разом. A node's seams are checked ONCE PER SET OF LEAVES (`gen`
+on the node, `_leaf_gen`), when the frame wants it: a signature changes only when the leaves do, and
+computing one for every node in the frame every tick was eight probes of six lookups a node.
+
+**A level change goes up as one unit** (`_place_mesh` holds, `_release_held` lets go). A change is
+several meshes - the replacement (four children of a split, or the parent of a merge) and every
+neighbour's restitch - and shown one by one as they landed, each met a neighbour still built for
+the old levels: a T-junction crack as tall as the ground climbs over a cell, up to 1.3 m on a
+dune, until the other side landed too. Now a built mesh that does not meet what is DRAWN round it
+is held (`_staged`), and a unit goes up in one frame once all of it is built AND every drawn
+neighbour of its area has a mesh that meets it - its own, or a held restitch that goes up with
+it (`_unit_fits`, over an overlay of every unit tried together, so two splits side by side go up
+together). A restitch, or ground with nothing else drawn over its area, goes up alone as soon as
+its own seams meet the drawn ones. A split builds all its children, the ones off the screen too
+(`_enqueue_under`), or the coarse node could never be hidden. Sides facing nothing in the frame do
+not count. Last resorts: `HOLD_MAX_MS` (4 s) for a change - the old ground stands meanwhile, so the
+cost is coarser ground for a while, not a hole - and `FRESH_HOLD_MS` (0.3 s) for fresh ground.
+Measured on real terrain, a camera driving a meadow, every drawn border of every level-0 chunk in
+the frame checked: at 22 m/s (the optimize=none build far behind its queue) cracks over 2 cm
+3617 -> 58 and frames with a visible one 82 of 125 -> 2 of 185, at the price of level 0 arriving
+later; at 10 m/s 175 -> 103; turning, no better and no worse. The pass costs ~1.5 ms a frame there,
+where the terrain's LOD tick is ~13.
 
 The neighbour's level is read off the LEAF SET (`_leaf_set`), not the frame: a neighbour off the
 screen is drawn at its level the moment the camera turns to it. Only the side that snaps carries
@@ -147,8 +168,10 @@ its own node (`EDGE_STEP` code in `COLOR.r`). The lift fades out before level 2 
 **Гасим только то, что уже накрыто другой землёй.** Смена уровня — это не «узел ушёл», а «узел
 заменили»: вместо одного грубого встают четверо мелких или наоборот. Замена в этот момент ещё
 только в очереди, и если погасить старый сразу, на его месте открывается дыра — это и есть
-«чанки пропадают, пока едешь». Накрывающим считается сосед по дереву, который кадр ПРОСИТ и
-который уже ПОСТРОЕН; всё остальное остаётся видимым, а за кадром его и так отсекает движок.
+«чанки пропадают, пока едешь». Накрывающим считается сосед по дереву, которого просит НАБОР
+ЛИСТЬЕВ (не кадр: дети деления строятся и за кадром) и который уже ПОСТРОЕН; всё остальное
+остаётся видимым, а за кадром его и так отсекает движок. A unit going up hides what it replaces
+in the same frame (`cov` on the node: a covered node is not drawn ground for the seams).
 
 **Запас за краем экрана** (`frustum_margin`) — в метрах, и даётся он ТОЛЬКО боковым плоскостям.
 У ближней запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит назад. Пока
