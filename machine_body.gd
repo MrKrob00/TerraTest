@@ -393,6 +393,15 @@ func init_machine_physics() -> void:
 	mat.friction = GROUND_FRICTION
 	physics_material_override = mat
 
+## A FAR MACHINE CASTS NO SHADOW (world_persist for the player's, enemy_spawner for the rest decide
+## "far"), and the door is the batch, which owns every shadow the machine draws - never a walk over
+## the branch writing ON or OFF into each node: that turned the batch's SHADOWS_ONLY boxes into
+## white boxes in the picture (MachineBatch.set_shadows).
+func set_shadow_casting(on: bool) -> void:
+	var mb := get_node_or_null("MeshBatch")
+	if mb != null and mb.has_method("set_shadows"):
+		mb.set_shadows(on)
+
 # Effective gravity with gravity_scale applied.
 func _gravity_accel() -> float:
 	return float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * gravity_scale

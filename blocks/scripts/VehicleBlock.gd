@@ -416,6 +416,10 @@ func _set_shadows(n: Node, on: bool) -> void:
 		# (WeaponBlock._apply_bullet_mesh), и перебивать это отсюда нельзя.
 		if c.name == &"Ammo":
 			continue
+		# NOR INTO AN EFFECT (`block_fx`: hit plates, the fuse shell, the collector's ground ring):
+		# each was made with the casting it needs, OFF, and this walk turned them all ON.
+		if c.has_meta(&"block_fx"):
+			continue
 		_set_shadows(c, on)
 
 ## TERRATECH'S DAMAGE TYPES (the wiki's "Attack Effectiveness Chart", the player's call): what a hit
