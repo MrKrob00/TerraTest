@@ -2,10 +2,10 @@
 extends HBoxContainer
 
 # THE GROUND IN THE EDITOR: two buttons at the top of the map's inspector. The chunked ground has no
-# height file to look at, so without them the ground - and what the map's "Ground shader" settings
-# do to it, live - could only be seen by running the game. "Build in scene" builds the same ground
-# the game builds, round the editor camera, from the node's `forced_seed`; nothing is saved into the
-# scene (ChunkTerrain.preview_build).
+# height file to look at, so without them the ground - and what its material's settings do to it -
+# could only be seen by running the game. "Build in scene" builds the same ground the game builds,
+# round the editor camera, from the node's `forced_seed`, with the material as it stands now (press
+# it again after a change); nothing is saved into the scene (ChunkTerrain.preview_build).
 #
 # THE SEED MAP ABOVE THEM IS GONE (the player's call: "remove WHAT THIS SEED GIVES, with the seed and
 # the span"): it chose nothing the game shows - a world's seed is its save slot's, picked when the

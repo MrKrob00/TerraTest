@@ -1,11 +1,11 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 
-// WHERE EACH SETTING IS TUNED: the ground's material is made in code, so these uniforms are set
-// from the MAP'S INSPECTOR - the texture, noise and detail strengths from the map's own "Ground
-// shader" group (ChunkTerrain._push_shader), the colours, rock, snow and grass from its biomes
-// resource (TerrainBiomes.apply_to_material) - and the rest by the game (grass_fade, trample,
-// corruption). The defaults here are the same numbers, for a material made without the node.
+// WHERE EACH SETTING IS TUNED: in the map's inspector. Its `surface_material`
+// (addons/LiteTerrain/terrain_shader.tres) carries this shader and shows every uniform; the node
+// draws with a copy of it, into which its `biomes` write the colours, rock, snow, grass and canyon
+// bands (TerrainBiomes.apply_to_material) and the game the grass fade, the trample and the
+// corruption map - so those few are tuned in the biomes, everything else on the material.
 
 group_uniforms Texture;
 // The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived

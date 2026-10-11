@@ -1314,10 +1314,11 @@ project: read it before claiming how anything works.
   menu picks its own. What stands there now is TWO BUTTONS (`preview_panel.gd`): "Build in scene"
   builds the real ground round the editor camera from `forced_seed` (`ChunkTerrain.preview_build`,
   nothing saved into the scene) and "Clear" takes it down - the one way to see the ground, and what
-  the "Ground shader" settings do to it, without running the game.
-- **THE MAP'S INSPECTOR HOLDS WHAT SHAPES THE LOOK: `biomes`, `enable_occlusion_culling` AND THE
-  GROUND SHADER'S SETTINGS** (the player: "a heap of useless settings", then "return the shader
-  settings to the map's export"). A scene sets the biomes and nothing else; the menu backdrop's own
+  its material's settings do to it, without running the game (press it again after a change: the
+  engine says nothing when a shader parameter is edited).
+- **THE MAP'S INSPECTOR HOLDS WHAT SHAPES THE LOOK: `surface_material`, `biomes` AND
+  `enable_occlusion_culling`** (the player: "a heap of useless settings" - the ENGINE's numbers went,
+  the look stayed). A scene sets the biomes and nothing else; the menu backdrop's own
   numbers (`view_distance`, `keep_radius`, `ready_view`, `ready_ring`, `forced_seed`,
   `follow_world_settings`, `enable_streaming_collision`) are fields its script sets; every tuning
   number nobody changed is a constant (`FRUSTUM_MARGIN`, `BUILD_BATCH`, `STITCH_BUDGET`,
@@ -1325,23 +1326,26 @@ project: read it before claiming how anything works.
   `OCCL_MIN_DIST`, `OCCL_BIAS`). THERE IS NO CAMERA OVERRIDE: both terrains take the camera the scene
   is DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
   machine changes by themselves - a path stored in a scene once pointed at the EDITOR VIEWPORT's
-  camera, which a running game does not have. No material slot (always `GROUND_SHADER`), no frustum
-  switch (always on). THE BIOMES RESOURCE lost what never moved: the three biome on/off switches and
+  camera, which a running game does not have. No frustum switch (always on). THE BIOMES RESOURCE
+  lost what never moved: the three biome on/off switches and
   `mask_offset` as an export - it is an OUTPUT of the seed (`offset_for_seed`) and was being saved
   into both scenes with whatever seed the editor previewed last. The game scene's grass numbers
   (0.3 m, 0.1 on sand) became the defaults, so the menu - the same ground - stopped drawing the
-  meadow at half height and the desert bare. **A SHADER SETTING NOTHING SETS YET IS STILL A SETTING:
-  IT GOES INTO THE INSPECTOR, NOT INTO A CONSTANT.** The ground's material is made in code, so the
-  shader's texture, noise and detail uniforms were reachable from no inspector at all, and that was
-  read as "useless": they were turned into shader constants and the player asked for them back. They
-  are the map's own "Ground shader" group now (`tile_world_size`, `color_variation`,
-  `detail_world_size`, `ripple_strength`, `grass_detail`, `patch_strength`, `crack_strength`, the
-  uniforms' own names), written by `ChunkTerrain._push_shader` at the material's build and on every
-  change, so the editor's preview follows the slider; `grass_density` is back in the biomes' Grass
-  group. A scene's own: the menu's maps are made in code and draw with the defaults. The
-  corruption overlay keeps its uniforms as they are (the player's call). Checked on the real
-  driver: three views of the game's ground, identical to the pixel through the constants and back
-  (only the sky's clouds, which run on time, differ).
+  meadow at half height and the desert bare. **THE GROUND'S SHADER IS A MATERIAL IN THE INSPECTOR,
+  `surface_material`** (`addons/LiteTerrain/terrain_shader.tres`, the export's default, so the menu's
+  code-made maps draw with it too; the player: "return the shader that was in the export"). It was
+  taken out once for carrying a stale tile texture (the binary `terrain_shader.res`, below) and the
+  material made in code, which left the shader's settings reachable from no inspector; they were then
+  turned into shader constants as "nothing sets them", then into a group of the node's own - both
+  wrong, and both undone: a setting nothing sets yet is still a setting, and its place is the
+  material, where every uniform shows. The new file is TEXT and has no texture slot of its own. The
+  node draws with a COPY (`_setup_materials`), and the copy takes from `biomes` the colours, rock,
+  snow, grass and canyon bands (`TerrainBiomes.apply_to_material`) and from the game the grass fade,
+  the trample and the corruption map - so those few are tuned in the biomes, and the same uniforms
+  on the material are overwritten (as they always were); `grass_density` is back in the biomes'
+  Grass group. The corruption overlay keeps its uniforms as they are (the player's call). Checked on
+  the real driver: three views of the game's ground, identical to the pixel through every one of
+  these changes (only the sky's clouds, which run on time, differ).
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
@@ -1520,9 +1524,9 @@ project: read it before claiming how anything works.
   `terrain_heightmap.png` did - 4.2 MB imported, measured on the desktop import here - and the
   binary `terrain_shader.res` pulled one of them in through a texture slot the shader no longer
   samples. All gone, with the 17 MB `terrain_height.bin` (in the repo, never in the APK: not a
-  resource) and the never-built `native/` module. The material is made in code
-  (`ChunkTerrain._get_material`, `GROUND_SHADER`): every number it needs comes from the biomes
-  resource or the shader's defaults. Measured on the real driver, three views over desert, meadow
+  resource) and the never-built `native/` module. The material's place is taken by the TEXT
+  `terrain_shader.tres` (`surface_material`, above), which carries no texture of its own; without it
+  the node makes one from `GROUND_SHADER`. Measured on the real driver, three views over desert, meadow
   and canyon walls: the ground the same but for 48-91 of 110k pixels, none by more than 8 of 255
   (only the sky moved: its clouds run on time).
 

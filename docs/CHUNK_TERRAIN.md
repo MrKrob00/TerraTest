@@ -49,8 +49,9 @@ LOD — это слияние чанков: четыре соседних ста
 The script is `@tool`, and at the top of the selected node's INSPECTOR stand two buttons
 (`preview_panel.gd`): "Build in scene" builds the real ground with the same generator round the
 editor camera, from the node's `forced_seed`, and "Clear" takes it down. It is the one way to see the
-ground - and what the map's "Ground shader" settings do to it, since every change is written into the
-material at once - without running the game. **Nothing reaches the scene**: the nodes are born
+ground - and what the settings of its material (`surface_material`, `terrain_shader.tres`) do to it -
+without running the game; press it again after a change, since the engine says nothing when a shader
+parameter is edited. **Nothing reaches the scene**: the nodes are born
 without an `owner`, and the preview builds no collision at all - that is for machines, not eyes.
 
 THE SEED MAP THAT STOOD OVER THEM IS GONE, with its seed and span fields (the player's call): it
@@ -58,8 +59,8 @@ drew the biome masks of a seed typed into it, which chose nothing the game shows
 its save slot's, picked when the world is made, and the menu backdrop picks its own. Its distance
 rings (`view_distance`, `keep_radius`, `ready_view` and the collision radius to scale) had gone
 before it, with those settings: they are not inspector numbers any more. The inspector shows
-`biomes`, the behind-a-hill switch and the ground shader's own settings ("Ground shader": noise,
-detail span and strengths); everything else is a constant or a field a script sets
+the ground's material (`surface_material`, every shader uniform), `biomes` and the behind-a-hill
+switch; everything else is a constant or a field a script sets
 (`addons/LiteTerrain/README.md`).
 
 Дока у плагина больше нет вовсе: всё, что он делал, обслуживало запечённую карту. Остались

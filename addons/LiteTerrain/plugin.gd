@@ -11,9 +11,9 @@ extends EditorPlugin
 #
 # What is left:
 #   • the PREVIEW BUTTONS at the top of the node's inspector (terrain_inspector.gd ->
-#     preview_panel.gd): build the real ground in the editor, which is how the map's "Ground
-#     shader" settings are seen while they are tuned. The seed map that stood over them is gone
-#     (the player's call);
+#     preview_panel.gd): build the real ground in the editor, which is how the ground material's
+#     settings are seen while they are tuned. The seed map that stood over them is gone (the
+#     player's call);
 #   • the EDITOR CAMERA, handed to the node: it has none of its own in the editor, and the preview
 #     is built round where the view is.
 #
