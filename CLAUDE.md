@@ -1027,6 +1027,13 @@ project: read it before claiming how anything works.
   decides who opens a fight, not who is loaded, so lifting the awake cap does not by itself put
   more guns on you. Everyone drops in from `drop_height`; the inner ring radius is computed from
   enemy vision plus `spawn_safe_margin`, never hardcoded.
+- **A KILL BUYS SIX MINUTES OF QUIET** (`enemy_spawner.KILL_COOLDOWN`, the player's call: "after a
+  kill the next one spawns at once"): any enemy's death stops the STREAM for 360 s, its own timer
+  standing still meanwhile; quests, raids and events do not come through the stream. Measured: 300 s
+  after a kill no new machine, the next one at 361 s. AND THE STREAM WAITS FOR THE GROUND IN TIME,
+  NOT FRAMES: `_ready` gave the terrain 300 frames and then never tried again, so wherever the
+  ground took longer (a slow phone, a big save, the debug build) the world sent nobody for the whole
+  session; `_tick_spawner` now asks each tick until it is up.
 - THE WORLD RAMPS UP WITH THE PLAYER, from one number: `G.threat_ramp()` (0 at grade 1, 1 at
   `THREAT_FULL_GRADE` = 4). It scales how many enemies stay awake, how often the next one comes
   (`_awake_cap` / `_spawn_wait`), the tier ceiling on top of the value one (`_enemy_tier`), the
