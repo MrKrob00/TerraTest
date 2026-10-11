@@ -6,6 +6,7 @@
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_hatch_in.tres" id="4_hin"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_hatch_out.tres" id="5_hout"]
 [ext_resource type="ArrayMesh" path="res://blocks/meshes/processor_gauge.tres" id="6_gauge"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/processor.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_nxtql"]
 size = Vector3(2, 2, 2)
@@ -75,3 +76,12 @@ mesh = ExtResource("5_hout")
 [node name="Gauge" type="MeshInstance3D" parent="." unique_id=1951237392]
 transform = Transform3D(1, 0, 0, 0, 0.02, 0, 0, 0, 1, -0.47, 0.58, -0.5)
 mesh = ExtResource("6_gauge")
+
+[node name="HatchInAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="HatchOutAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="GaugeAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

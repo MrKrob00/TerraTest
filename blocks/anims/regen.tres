@@ -1,0 +1,82 @@
+[gd_resource type="AnimationLibrary" format=3]
+
+[sub_resource type="Animation" id="Animation_7lpc6"]
+length = 0.001
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Ring")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0.2, 0)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Ring")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+tracks/2/type = "scale_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Ring")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 1, 1, 1)
+tracks/3/type = "position_3d"
+tracks/3/imported = false
+tracks/3/enabled = true
+tracks/3/path = NodePath("Crystal")
+tracks/3/interp = 1
+tracks/3/loop_wrap = true
+tracks/3/keys = PackedFloat32Array(0, 1, 0, 0.2, 0)
+tracks/4/type = "rotation_3d"
+tracks/4/imported = false
+tracks/4/enabled = true
+tracks/4/path = NodePath("Crystal")
+tracks/4/interp = 1
+tracks/4/loop_wrap = true
+tracks/4/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+tracks/5/type = "scale_3d"
+tracks/5/imported = false
+tracks/5/enabled = true
+tracks/5/path = NodePath("Crystal")
+tracks/5/interp = 1
+tracks/5/loop_wrap = true
+tracks/5/keys = PackedFloat32Array(0, 1, 1, 1, 1)
+
+[sub_resource type="Animation" id="Animation_ilfjr"]
+length = 14.0
+loop_mode = 1
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Crystal")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0.2, 0, 0.175, 1, 0, 0.20956708, 0, 0.35, 1, 0, 0.21767767, 0, 0.525, 1, 0, 0.223097, 0, 0.7, 1, 0, 0.22500001, 0, 0.875, 1, 0, 0.223097, 0, 1.05, 1, 0, 0.21767767, 0, 1.225, 1, 0, 0.20956708, 0, 1.4, 1, 0, 0.2, 0, 1.575, 1, 0, 0.19043292, 0, 1.75, 1, 0, 0.18232234, 0, 1.925, 1, 0, 0.17690301, 0, 2.1, 1, 0, 0.175, 0, 2.275, 1, 0, 0.17690301, 0, 2.45, 1, 0, 0.18232234, 0, 2.625, 1, 0, 0.19043292, 0, 2.8, 1, 0, 0.2, 0, 2.975, 1, 0, 0.20956708, 0, 3.15, 1, 0, 0.21767767, 0, 3.325, 1, 0, 0.223097, 0, 3.5, 1, 0, 0.22500001, 0, 3.675, 1, 0, 0.223097, 0, 3.85, 1, 0, 0.21767767, 0, 4.025, 1, 0, 0.20956708, 0, 4.2, 1, 0, 0.2, 0, 4.375, 1, 0, 0.19043292, 0, 4.55, 1, 0, 0.18232234, 0, 4.725, 1, 0, 0.17690301, 0, 4.9, 1, 0, 0.175, 0, 5.075, 1, 0, 0.17690301, 0, 5.25, 1, 0, 0.18232234, 0, 5.425, 1, 0, 0.19043292, 0, 5.6, 1, 0, 0.2, 0, 5.775, 1, 0, 0.20956708, 0, 5.95, 1, 0, 0.21767767, 0, 6.125, 1, 0, 0.223097, 0, 6.3, 1, 0, 0.22500001, 0, 6.475, 1, 0, 0.223097, 0, 6.65, 1, 0, 0.21767767, 0, 6.825, 1, 0, 0.20956708, 0, 7, 1, 0, 0.2, 0, 7.175, 1, 0, 0.19043292, 0, 7.35, 1, 0, 0.18232234, 0, 7.525, 1, 0, 0.17690301, 0, 7.7, 1, 0, 0.175, 0, 7.875, 1, 0, 0.17690301, 0, 8.05, 1, 0, 0.18232234, 0, 8.225, 1, 0, 0.19043292, 0, 8.4, 1, 0, 0.2, 0, 8.575, 1, 0, 0.20956708, 0, 8.75, 1, 0, 0.21767767, 0, 8.925, 1, 0, 0.223097, 0, 9.1, 1, 0, 0.22500001, 0, 9.275, 1, 0, 0.223097, 0, 9.45, 1, 0, 0.21767767, 0, 9.625, 1, 0, 0.20956708, 0, 9.8, 1, 0, 0.2, 0, 9.975, 1, 0, 0.19043292, 0, 10.15, 1, 0, 0.18232234, 0, 10.325, 1, 0, 0.17690301, 0, 10.5, 1, 0, 0.175, 0, 10.675, 1, 0, 0.17690301, 0, 10.85, 1, 0, 0.18232234, 0, 11.025, 1, 0, 0.19043292, 0, 11.2, 1, 0, 0.2, 0, 11.375, 1, 0, 0.20956708, 0, 11.55, 1, 0, 0.21767767, 0, 11.725, 1, 0, 0.223097, 0, 11.9, 1, 0, 0.22500001, 0, 12.075, 1, 0, 0.223097, 0, 12.25, 1, 0, 0.21767767, 0, 12.425, 1, 0, 0.20956708, 0, 12.6, 1, 0, 0.2, 0, 12.775, 1, 0, 0.19043292, 0, 12.95, 1, 0, 0.18232234, 0, 13.125, 1, 0, 0.17690301, 0, 13.3, 1, 0, 0.175, 0, 13.475, 1, 0, 0.17690301, 0, 13.65, 1, 0, 0.18232234, 0, 13.825, 1, 0, 0.19043292, 0, 14, 1, 0, 0.2, 0)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Crystal")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 1.75, 1, 0, 0.70710677, 0, 0.70710677, 3.5, 1, 0, 1, 0, -4.371139e-08, 5.25, 1, 0, 0.70710677, 0, -0.70710677, 7, 1, 0, -8.742278e-08, 0, -1, 8.75, 1, 0, -0.7071067, 0, -0.7071068, 10.5, 1, 0, -1, 0, 1.1924881e-08, 12.25, 1, 0, -0.7071069, 0, 0.70710665, 14, 1, 0, 1.7484555e-07, 0, 1)
+
+[sub_resource type="Animation" id="Animation_xl6bj"]
+length = 3.490658503988659
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Ring")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.87266463, 1, 0, 0.70710677, 0, 0.70710677, 1.7453293, 1, 0, 1, 0, -4.371139e-08, 2.6179938, 1, 0, 0.70710677, 0, -0.70710677, 3.4906585, 1, 0, -8.742278e-08, 0, -1)
+
+[resource]
+_data = {
+&"RESET": SubResource("Animation_7lpc6"),
+&"float": SubResource("Animation_ilfjr"),
+&"spin": SubResource("Animation_xl6bj")
+}

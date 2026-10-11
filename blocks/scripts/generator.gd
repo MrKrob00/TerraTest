@@ -19,39 +19,39 @@ var _burn_energy: float = 0.0
 
 # The model says whether it burns (art/emitter_models.py build_generator): fire behind the grate on
 # every wall, painted LIT and darkened here when cold, and a turbine
-# that spins up with the fire and runs down after it. `Rotor` moves (moving_parts), `Fire` is
+# that spins up with the fire and runs down after it. `Rotor` moves (moving_parts) by two clips
+# (art/block_anims.gd): "spin" on `SpinAnim`, keyed at ROTOR_SPIN and eased here, and "sink" on
+# `SinkAnim` - down while fuel comes in, back up once it is swallowed. `Fire` is
 # re-coloured per block (unbatched, its own material copy - a shared one would light every
 # generator in the world at once).
 #
 # FUEL GOES IN THROUGH THE TOP, FROM WHICHEVER SIDE IT CAME: one door serves all four sides, where
 # side doors would have been four moving parts. It rises from the belt (mid-cell) onto the lid,
 # then drops in. The turbine sinks through the lid
-# (RETRACT), the fuel settles over the well, shrinks and drops in (`_swallow`), and only THEN the
+# ("sink"), the fuel settles over the well, shrinks and drops in (`_swallow`), and only THEN the
 # fire flares and the burn starts - the turbine comes back up and spins. THE WELL IS PAINTED ON A
 # SOLID LID: whatever sinks below it is simply gone into the dark. A real well was tried and showed
 # the blades lying in a pit and the fuel on its floor.
 const FIRE_COLD := Color(0.20, 0.18, 0.22)
 const ROTOR_SPIN := 9.0          # rad/s at full fire
 const ROTOR_EASE := 6.0          # rad/s per second: full speed in half a burn (BURN_TIME)
-const RETRACT := 0.16            # how far the rotor sinks: its top (0.47) ends under the lid (0.40)
-const GATE_TIME := 0.25          # s to sink or rise; the fuel's slide onto the lid takes 0.3
 const SETTLE_TIME := 0.15        # s the fuel shrinks to the well's width over the lid
 const SINK_TIME := 0.3           # s it drops in
 const SINK_Y := 0.25             # where it vanishes, well under the lid
-var _rotor: Node3D = null
+var _spin_anim: AnimationPlayer = null
+var _sink_anim: AnimationPlayer = null
 var _fire: MeshInstance3D = null
 var _fire_mat: StandardMaterial3D = null
 var _spin: float = 0.0
 var _flick: float = 0.0
-var _gate: float = 0.0           # 0 rotor up, 1 sunk
-var _intake: bool = false        # fuel on its way in: keep the well open
 
 func unbatched() -> Array:
 	return [_fire] if _fire != null else []
 
 func _ready() -> void:
 	moving_parts = true
-	_rotor = get_node_or_null("Rotor") as Node3D
+	_spin_anim = get_node_or_null("SpinAnim") as AnimationPlayer
+	_sink_anim = get_node_or_null("SinkAnim") as AnimationPlayer
 	_fire = get_node_or_null("Fire") as MeshInstance3D
 	if _fire != null and _fire.mesh != null:
 		var m := _fire.mesh.surface_get_material(0) as StandardMaterial3D
@@ -67,15 +67,12 @@ func _burning() -> bool:
 func _process(delta: float) -> void:
 	push_retry_tick(delta)
 	var on := _burning()
-	if not on and _spin <= 0.0 and _gate <= 0.0 and not _intake:
+	if not on and _spin <= 0.0:
 		if _fire_mat != null and _fire_mat.albedo_color != FIRE_COLD:
 			_fire_mat.albedo_color = FIRE_COLD
 		return
 	_spin = move_toward(_spin, ROTOR_SPIN if on else 0.0, ROTOR_EASE * delta)
-	_gate = move_toward(_gate, 1.0 if _intake else 0.0, delta / GATE_TIME)
-	if _rotor != null:
-		_rotor.rotate_y(_spin * delta)
-		_rotor.position.y = -RETRACT * smoothstep(0.0, 1.0, _gate)
+	drive_clip(_spin_anim, &"spin", _spin / ROTOR_SPIN)
 	if _fire_mat != null:
 		var target := FIRE_COLD
 		if on:
@@ -91,7 +88,8 @@ func try_receive(item: Node3D) -> bool:
 		return false
 	if not super.try_receive(item):
 		return false
-	_intake = true                        # open the well while the fuel slides onto the lid
+	if _sink_anim != null:                # open the well while the fuel slides onto the lid
+		_sink_anim.play(&"sink")
 	return true
 
 func _on_item_received() -> void:
@@ -118,7 +116,8 @@ func _on_item_received() -> void:
 	tw.finished.connect(_swallow, CONNECT_ONE_SHOT)
 
 func _swallow() -> void:
-	_intake = false
+	if _sink_anim != null:
+		_sink_anim.play_backwards(&"sink")
 	if not is_instance_valid(current_item):
 		return
 	current_item.visible = false          # in the furnace

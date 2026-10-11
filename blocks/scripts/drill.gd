@@ -4,56 +4,31 @@ extends VehicleBlock
 const DIG_INTERVAL := 0.3   # пауза между ударами, пока зажата атака и бур в контакте
 var _dig_cd := 0.0
 
-# ── КРУТЯЩАЯСЯ ЧАСТЬ ─────────────────────────────────────────────────────────
-# В обеих моделях коронка вынесена ОТДЕЛЬНЫМ УЗЛОМ (в Assets.glb это Drill_rotor_*, у малого
-# бура — drillsharp), то есть крутить её можно, ничего не переделывая. До сих пор бур не
-# двигался вовсе: в сцене лежит AnimationPlayer с анимацией "drilling", в которой НЕТ НИ ОДНОГО
-# ТРЕКА (только length), а attack() её исправно проигрывал — то есть вызов был, а движения не
-# было никогда. Пустую анимацию не чиним: непрерывное вращение это одна строка кода, а
-# анимация под него — файл, который надо держать в согласии с моделью.
-#
-# ОСЬ НЕ ЗАШИТА, А СЧИТАЕТСЯ: у большого бура коронка смотрит своей локальной осью Y, у малого —
-# минус X, потому что меши в моделях повёрнуты по-разному. Вместо двух чисел в коде спрашиваем
-# у сцены: берём ПЕРЁД БЛОКА (−Z, рабочая сторона у всех буров) и переводим его в локальные оси
-# самой коронки. Художник повернёт меш иначе — код это переживёт.
-const SPIN_NAMES := ["Drill_rotor_small", "Drill_rotor_big", "drillsharp"]
-const SPIN_SPEED := TAU * 2.5      # оборотов в секунду
-## Сколько коронка крутится ПОСЛЕ последнего удара. Чуть больше паузы между ударами
-## (DIG_INTERVAL): пока игрок держит атаку, вращение непрерывно, а отпустил — бур не встаёт
-## колом, а замедляется по инерции.
+# ── THE SPINNING BIT ─────────────────────────────────────────────────────────
+# The bit is its own node in both models (Drill_rotor_big, Drill_rotor_small in Assets.glb),
+# and its turn is the clip "drilling" on the scene's AnimationPlayer (art/block_anims.gd): 2.5 turns
+# a second about the block's FRONT taken in the bit's own axes - the two meshes point differently,
+# the big bit along its Y and the small one along -X, so the axis is read off the scene when the clip
+# is made, never typed. That player used to hold an EMPTY "drilling" - a length and no track - which
+# attack() faithfully played, so the call was there and the motion never was.
+## How long the bit turns AFTER the last blow: a little over DIG_INTERVAL, so it turns without a break
+## while the attack is held.
 const SPIN_COAST := 0.45
-var _rotor: Node3D = null
-var _rotor_axis := Vector3.UP
+var _anim: AnimationPlayer = null
 var _spin_t := 0.0
 
 func _ready() -> void:
 	super()                  # VehicleBlock._ready (слои, hp, заморозка)
 	moving_parts = true      # the rotor spins (MachineBatch)
 	$drill.monitoring = true # сенсор бура держим включённым: overlaps готовы к первому же удару
-	_rotor = _find_rotor(self)
-	if _rotor != null:
-		# Ось в осях КОРОНКИ: относительный базис «блок ← коронка», обращённый на перёд блока.
-		var rel: Basis = global_transform.basis.inverse() * _rotor.global_transform.basis
-		_rotor_axis = (rel.inverse() * Vector3.FORWARD).normalized()
-
-func _find_rotor(n: Node) -> Node3D:
-	for c in n.get_children():
-		if c is Node3D and SPIN_NAMES.has(c.name):
-			return c as Node3D
-		var deep: Node3D = _find_rotor(c)
-		if deep != null:
-			return deep
-	return null
+	_anim = get_node_or_null("AnimationPlayer") as AnimationPlayer
 
 func _physics_process(delta: float) -> void:
 	if _dig_cd > 0.0:
 		_dig_cd -= delta
 	if _spin_t > 0.0:
 		_spin_t -= delta
-		if _rotor != null and is_instance_valid(_rotor):
-			# rotate_object_local, а не rotate: ось посчитана в СВОИХ осях коронки, и вращать
-			# надо вокруг неё же — rotate() крутил бы вокруг оси родителя.
-			_rotor.rotate_object_local(_rotor_axis, SPIN_SPEED * delta)
+		drive_clip(_anim, &"drilling", 1.0 if _spin_t > 0.0 else 0.0)
 
 func attack() -> void:
 	_spin_t = SPIN_COAST     # ДО проверки паузы: коронка крутится всё время, пока держат атаку,

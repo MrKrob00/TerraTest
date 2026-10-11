@@ -1,0 +1,42 @@
+[gd_resource type="AnimationLibrary" format=3]
+
+[sub_resource type="Animation" id="Animation_y0q45"]
+length = 0.001
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Drill_base_big/Drill_rotor_big")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0.20937645, 0)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Drill_base_big/Drill_rotor_big")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+tracks/2/type = "scale_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Drill_base_big/Drill_rotor_big")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 1, 1, 1)
+
+[sub_resource type="Animation" id="Animation_b8th5"]
+length = 0.4
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Drill_base_big/Drill_rotor_big")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.1, 1, 0, 0.70710677, 3.090862e-08, 0.70710677, 0.2, 1, 0, 1, 4.371139e-08, -4.371139e-08, 0.3, 1, 0, 0.70710677, 3.090862e-08, -0.70710677, 0.4, 1, 0, -8.742278e-08, -3.821371e-15, -1)
+
+[resource]
+_data = {
+&"RESET": SubResource("Animation_y0q45"),
+&"drilling": SubResource("Animation_b8th5")
+}

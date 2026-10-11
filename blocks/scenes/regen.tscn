@@ -6,6 +6,7 @@
 [ext_resource type="ArrayMesh" uid="uid://dwkd2ewknx4kq" path="res://blocks/meshes/regen_ring.tres" id="5_regen_ring"]
 [ext_resource type="ArrayMesh" uid="uid://dbf2ylrudnkr3" path="res://blocks/meshes/regen_crystal.tres" id="6_regen_crystal"]
 [ext_resource type="Texture2D" uid="uid://brdfanfv247ry" path="res://objects/regen_texture.png" id="9_tex"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/regen.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
 
@@ -85,3 +86,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 material_override = SubResource("Mat_glow")
 mesh = ExtResource("6_regen_crystal")
 skeleton = NodePath("")
+
+[node name="SpinAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="FloatAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")

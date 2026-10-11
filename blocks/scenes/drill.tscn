@@ -2,24 +2,12 @@
 
 [ext_resource type="Script" uid="uid://c4uu572a8htnl" path="res://blocks/scripts/drill.gd" id="1_0n8n4"]
 [ext_resource type="Texture2D" uid="uid://n6u3clut2s1g" path="res://objects/Assets_main_texture_new.png" id="2_y7mj8"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/drill.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_h01jy"]
 
 [sub_resource type="SphereShape3D" id="SphereShape3D_6i236"]
 radius = 0.63
-
-[sub_resource type="Animation" id="Animation_xj5j7"]
-length = 0.001
-
-[sub_resource type="Animation" id="Animation_0n8n4"]
-resource_name = "drilling"
-length = 0.4
-
-[sub_resource type="AnimationLibrary" id="AnimationLibrary_6i236"]
-_data = {
-&"RESET": SubResource("Animation_xj5j7"),
-&"drilling": SubResource("Animation_0n8n4")
-}
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_sr0ja"]
 resource_name = "main"
@@ -147,7 +135,7 @@ transform = Transform3D(-1, 0, -8.742278e-08, 0, 1, 0, 8.742278e-08, 0, -1, 0, 0
 shape = SubResource("SphereShape3D_6i236")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="." unique_id=1719587375]
-libraries/ = SubResource("AnimationLibrary_6i236")
+libraries/ = ExtResource("anim_lib")
 
 [node name="Drill_base_big" type="MeshInstance3D" parent="." unique_id=1052178944]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 0, 0)

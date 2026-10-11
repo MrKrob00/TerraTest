@@ -1,0 +1,53 @@
+[gd_resource type="AnimationLibrary" format=3]
+
+[sub_resource type="Animation" id="Animation_mbhdt"]
+length = 0.001
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rotor")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0)
+tracks/1/type = "rotation_3d"
+tracks/1/imported = false
+tracks/1/enabled = true
+tracks/1/path = NodePath("Rotor")
+tracks/1/interp = 1
+tracks/1/loop_wrap = true
+tracks/1/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1)
+tracks/2/type = "scale_3d"
+tracks/2/imported = false
+tracks/2/enabled = true
+tracks/2/path = NodePath("Rotor")
+tracks/2/interp = 1
+tracks/2/loop_wrap = true
+tracks/2/keys = PackedFloat32Array(0, 1, 1, 1, 1)
+
+[sub_resource type="Animation" id="Animation_l3g78"]
+length = 0.25
+tracks/0/type = "position_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rotor")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 0.025, 1, 0, -0.00448, 0, 0.05, 1, 0, -0.01664, 0, 0.075, 1, 0, -0.03456, 0, 0.1, 1, 0, -0.05632, 0, 0.125, 1, 0, -0.08, 0, 0.15, 1, 0, -0.10368, 0, 0.175, 1, 0, -0.12544, 0, 0.2, 1, 0, -0.14336, 0, 0.225, 1, 0, -0.15552, 0, 0.25, 1, 0, -0.16, 0)
+
+[sub_resource type="Animation" id="Animation_v6vyj"]
+length = 0.6981317007977318
+loop_mode = 1
+tracks/0/type = "rotation_3d"
+tracks/0/imported = false
+tracks/0/enabled = true
+tracks/0/path = NodePath("Rotor")
+tracks/0/interp = 1
+tracks/0/loop_wrap = true
+tracks/0/keys = PackedFloat32Array(0, 1, 0, 0, 0, 1, 0.17453292, 1, 0, 0.70710677, 0, 0.70710677, 0.34906584, 1, 0, 1, 0, -4.371139e-08, 0.5235988, 1, 0, 0.70710677, 0, -0.70710677, 0.6981317, 1, 0, -8.742278e-08, 0, -1)
+
+[resource]
+_data = {
+&"RESET": SubResource("Animation_mbhdt"),
+&"sink": SubResource("Animation_l3g78"),
+&"spin": SubResource("Animation_v6vyj")
+}

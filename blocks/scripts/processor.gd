@@ -31,17 +31,21 @@ const FACE_RIGHT_IDX := 3
 ## the tick; the move into cell 2 lifts the front hatch, and out of it comes the product under a hot
 ## glitch, sliding RIGHT to the exit and growing back while the gauge drains. upgrade() is still
 ## called by the tick, so the product never depends on a tween finishing - only the picture does.
+## The hatches and the gauge are clips (art/block_anims.gd): "pass_in" / "pass_out" - up, held a
+## LEG while the item passes, down - on `HatchInAnim` / `HatchOutAnim`, one player each since both
+## run at once, and "melt" on `GaugeAnim`, a second from empty to full, paced to the tick here. The
+## item's own slide is a tween: the item is not part of the scene.
 const IN_FURNACE := 0.85         # the item's scale in the mouth: the item models are ~0.45 m, the mouth 0.42 high
 const LEG := 0.3                 # seconds per leg of the path
-const HATCH_LIFT := 0.42         # the mouth's height: a lifted hatch clears it
-const HATCH_TIME := 0.12
-const GAUGE_MIN := 0.02          # never 0: a zero scale is a degenerate basis in the batch
+const HATCH_UP := 0.12          # into "pass_*": the hatch is up, the hold starts
+const GAUGE_DRAIN := 0.4         # s the gauge takes to empty from full
 const MELT_FX_TIME := 0.5
 const MELT_A := Color(1.0, 0.55, 0.15)
 const MELT_B := Color(1.0, 0.85, 0.40)
-var _hatch_in: Node3D = null
-var _hatch_out: Node3D = null
-var _gauge: Node3D = null
+var _hatch_in: AnimationPlayer = null
+var _hatch_out: AnimationPlayer = null
+var _gauge: AnimationPlayer = null
+var _melting: bool = false
 
 var _cells: Array = []          # предметы по клеткам: 0 — вход, CELLS-1 — выход
 var _slots: Array = []          # маркеры, по одному на клетку
@@ -54,9 +58,9 @@ func unbatched() -> Array:
 
 func _ready() -> void:
 	moving_parts = true              # the hatches and the gauge (MachineBatch copies them)
-	_hatch_in = get_node_or_null("HatchIn") as Node3D
-	_hatch_out = get_node_or_null("HatchOut") as Node3D
-	_gauge = get_node_or_null("Gauge") as Node3D
+	_hatch_in = get_node_or_null("HatchInAnim") as AnimationPlayer
+	_hatch_out = get_node_or_null("HatchOutAnim") as AnimationPlayer
+	_gauge = get_node_or_null("GaugeAnim") as AnimationPlayer
 	super._ready()
 	_cells.resize(CELLS)
 	_slots = _pick_slots()
@@ -231,14 +235,14 @@ func _move(item: Node3D, cell: int) -> void:
 	var tw: Tween = create_tween()
 	match cell:
 		1:   # left through the back mouth, and gone; the gauge fills while it melts
-			_open_hatch(_hatch_in)
+			_open_hatch(_hatch_in, &"pass_in")
 			tw.tween_property(item, "position", to, LEG)
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE * IN_FURNACE, LEG)
 			tw.tween_callback(item.set.bind("visible", false))
-			_fill_gauge(1.0, tick_time * 0.9)
+			_fill_gauge(true)
 		2:   # out of the front mouth already changed, right to the exit, growing back
-			_open_hatch(_hatch_out)
+			_open_hatch(_hatch_out, &"pass_out")
 			var mouth := get_node_or_null("furnace_out") as Node3D
 			if mouth != null:
 				item.position = mouth.position
@@ -249,27 +253,35 @@ func _move(item: Node3D, cell: int) -> void:
 			tw.tween_property(item, "position", to, LEG)
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE, LEG)
-			_fill_gauge(GAUGE_MIN, 0.4)
+			_fill_gauge(false)
 		_:
 			item.visible = true
 			tw.tween_property(item, "position", to, minf(LEG, tick_time * 0.8))
 			if vis != null:
 				tw.parallel().tween_property(vis, "scale", Vector3.ONE, minf(LEG, tick_time * 0.8))
 
-## A guillotine hatch: up, held while the item passes, down.
-func _open_hatch(h: Node3D) -> void:
-	if h == null:
+## A guillotine hatch: up, held while the item passes, down. A second item while it is already up
+## holds it up from there, rather than dropping it to start the clip again.
+func _open_hatch(ap: AnimationPlayer, clip: StringName) -> void:
+	if ap == null:
 		return
-	var tw := create_tween()
-	tw.tween_property(h, "position:y", HATCH_LIFT, HATCH_TIME)
-	tw.tween_interval(LEG)
-	tw.tween_property(h, "position:y", 0.0, HATCH_TIME * 1.5)
+	if ap.is_playing() and ap.current_animation_position > HATCH_UP:
+		ap.seek(HATCH_UP, true)
+	elif not ap.is_playing():
+		ap.play(clip)
 
-func _fill_gauge(level: float, time: float) -> void:
-	if _gauge == null:
+## Fills over 90% of the tick, drains in GAUGE_DRAIN - from wherever it stands. Asked for the way it
+## is already going it does nothing: a stopped clip played again starts from its far end.
+func _fill_gauge(fill: bool) -> void:
+	if _gauge == null or fill == _melting:
 		return
-	var tw := create_tween()
-	tw.tween_property(_gauge, "scale:y", maxf(level, GAUGE_MIN), time)
+	_melting = fill
+	if fill:
+		_gauge.speed_scale = 1.0 / maxf(tick_time * 0.9, 0.05)
+		_gauge.play(&"melt")
+	else:
+		_gauge.speed_scale = 1.0 / GAUGE_DRAIN
+		_gauge.play_backwards(&"melt")
 
 func _melt_fx(item: Node3D) -> void:
 	if is_instance_valid(item) and item.get_parent() == self:

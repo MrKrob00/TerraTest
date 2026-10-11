@@ -6,6 +6,7 @@
 [ext_resource type="ArrayMesh" uid="uid://dtyib817t6ve" path="res://blocks/meshes/shield_cap.tres" id="5_shield_cap"]
 [ext_resource type="ArrayMesh" uid="uid://b4ygpmh8ptpko" path="res://blocks/meshes/shield_core.tres" id="6_shield_core"]
 [ext_resource type="Texture2D" uid="uid://6n2bsy8ypb4n" path="res://objects/shield_texture.png" id="9_tex"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/shield.tres" id="anim_lib"]
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_a"]
 
@@ -83,3 +84,9 @@ skeleton = NodePath("")
 material_override = SubResource("Mat_glow")
 mesh = ExtResource("6_shield_core")
 skeleton = NodePath("")
+
+[node name="LiftAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="SpinAnim" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
