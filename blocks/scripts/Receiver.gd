@@ -37,6 +37,7 @@ func _accept_item(item: Node3D) -> void:
 	if item is RigidBody3D:
 		item.freeze = true
 	item.reparent($resources, true)
+	_seat(item)
 	inventory.append(item)
 	_wake_retry()
 	var target_pos: Vector3 = _stack_pos(inventory.find(item))
@@ -48,7 +49,13 @@ func _accept_item(item: Node3D) -> void:
 ## The cargo it lifts stands in its beam from STACK_BASE up, each item on the one under it
 ## (`model_height` + `STACK_GAP`); it used to be a metre a step, the bubble's.
 const STACK_BASE := 0.9
+const RES := preload("res://resource.gd")
 const STACK_GAP := 0.06
+
+## The stack stands at the models' own size, not the loose ITEM_SIZE (resource.seat).
+func _seat(item: Node3D) -> void:
+	if item.has_method("seat"):
+		item.seat(RES.FOOT_Y)
 
 func _stack_pos(idx: int) -> Vector3:
 	var y := STACK_BASE
@@ -152,6 +159,7 @@ func _push_from_inventory() -> void:
 	else:
 		# Не приняли — возвращаем обратно в $resources
 		item.reparent($resources, false)
+		_seat(item)
 		item.global_position = world_pos
 		var wait_on := _first_valid_target()
 		if wait_on != null and not waiting_for_next:

@@ -184,31 +184,40 @@ func upgrade() -> void:
 ## and hold height made for the bubble still holds it, and the rotation is locked in the scene so a
 ## rolling sphere cannot swing the model round its centre.
 const FOOT_Y := -0.48
+## THE ITEM IS DRAWN AT TWICE ITS MODEL (the player's call: "the resources themselves twice as
+## big"), loose and on belts alike; the body's sphere stays, the model's foot stays at FOOT_Y and its
+## top now reaches the sphere's. A machine's MOUTH that shrinks the picture to pass it (smelter,
+## generator, seller) divides its own scale by this.
+const ITEM_SIZE := 2.0
 ## Where the model's foot stands below the item's origin. A HOLDER that shows an item sitting IN
-## something (the collector's bowl, the storage's tray) puts the origin on that surface and calls
-## `seat(...)`: those heights were set for the bubble's middle, and at FOOT_Y the model sank into
-## the box. `unseat()` at the holder's single door out.
+## something (the collector's bowl, the storage's tray, the receiver's stack) puts the origin on
+## that surface and calls `seat(foot)`: those heights and those holders were made for the model at
+## its own size, and that is the size a seated item is drawn at - at ITEM_SIZE a receiver's eight
+## would be a tower seven metres tall. Any other parent sets it back (`unseat`), so a holder seats
+## after it takes the item.
 var _foot: float = FOOT_Y
+var _size: float = ITEM_SIZE
 
-func seat(foot: float) -> void:
-	if is_equal_approx(_foot, foot):
+func seat(foot: float, size: float = 1.0) -> void:
+	if is_equal_approx(_foot, foot) and is_equal_approx(_size, size):
 		return
 	_foot = foot
+	_size = size
 	_update_visual()
 
-## AN ITEM THAT LANDS AMONG THE LOOSE ONES STANDS AS THEY DO, however it left its holder - a
-## collector torn off or scattered with ore in its bowl does not go through `unseat`.
+## AN ITEM STANDS AT ITS LOOSE SIZE WHEREVER IT GOES, however it left its holder - a collector torn
+## off or scattered with ore in its bowl does not go through `unseat`; a holder seats it again.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_PARENTED and get_parent() != null and get_parent().name == "objects":
+	if what == NOTIFICATION_PARENTED:
 		unseat()
 
 func unseat() -> void:
-	seat(FOOT_Y)
+	seat(FOOT_Y, ITEM_SIZE)
 
 ## How tall the model stands - what a holder stacking items lays the next one on.
 func model_height() -> float:
 	var mesh := get_node_or_null("MeshInstance3D/ResourceMesh") as MeshInstance3D
-	return mesh.mesh.get_aabb().size.y if mesh != null and mesh.mesh != null else 0.3
+	return mesh.mesh.get_aabb().size.y * _size if mesh != null and mesh.mesh != null else 0.3
 const ITEM_DIR := "res://resources/items/"
 static var _meshes: Dictionary = {}
 
@@ -253,15 +262,37 @@ func _update_visual() -> void:
 	var glow := get_node_or_null("MeshInstance3D") as MeshInstance3D
 	if glow != null and glow.mesh != null:
 		glow.material_override = _glow_material(_glow_colour())
+		if _glow_base == null:
+			_glow_base = glow.mesh as QuadMesh
+		glow.mesh = _glow_quad(_glow_base, _size)
 	var mm: Mesh = _item_mesh(key)
 	if mm == null:
 		return
 	mesh.mesh = mm
 	mesh.material_override = mat
-	mesh.scale = Vector3.ONE
+	mesh.scale = Vector3.ONE * _size
 	var box: AABB = mm.get_aabb()
-	var mid: Vector3 = box.position + box.size * 0.5
-	mesh.position = Vector3(-mid.x, _foot - box.position.y, -mid.z)
+	var mid: Vector3 = (box.position + box.size * 0.5) * _size
+	mesh.position = Vector3(-mid.x, _foot - box.position.y * _size, -mid.z)
+
+## The glow grows with the model, from the foot: the scene's quad is the model-size one, and one
+## grown copy is shared by every item.
+static var _glow_quads: Dictionary = {}
+var _glow_base: QuadMesh = null
+
+static func _glow_quad(base: QuadMesh, size: float) -> QuadMesh:
+	if base == null:
+		return null
+	var key := "%d:%.3f" % [base.get_instance_id(), size]
+	if _glow_quads.has(key):
+		return _glow_quads[key]
+	var q := base
+	if not is_equal_approx(size, 1.0):
+		q = base.duplicate() as QuadMesh
+		q.size = base.size * size
+		q.center_offset.y = FOOT_Y + (base.center_offset.y - FOOT_Y) * size
+	_glow_quads[key] = q
+	return q
 
 ## THE GLOW IS ONE BILLBOARD QUAD (resources/items/item_glow.gdshader), two triangles where the
 ## bubble was 256: it keeps what the bubble was for - an item in the grass is seen from across the

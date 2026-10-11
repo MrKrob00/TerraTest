@@ -3065,7 +3065,15 @@ project: read it before claiming how anything works.
   colour, coal an ember), two triangles; its material is set before anything else, or a missing model
   would leave a plain white square. The ingot is cut out of the library into
   `resources/items/ingot.tres` by the same tool, so the first ingot of a session does not instance
-  all of `Assets.glb` in its frame. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
+  all of `Assets.glb` in its frame. A LOOSE ITEM IS DRAWN AT TWICE ITS MODEL (`resource.ITEM_SIZE`,
+  the player's call), on the ground and on belts, its glow quad grown with it from the foot; models
+  measure 0.23-0.72 m tall and up to 1.08 across, foot at `FOOT_Y`, top inside the sphere. A SEATED
+  item (collector bowl, storage tray, the receiver's stack, `seat(foot)`) is drawn at the model's
+  own size, which those holders were made for - eight in a receiver at ITEM_SIZE would stand seven
+  metres - and ANY OTHER PARENT UNSEATS IT (`NOTIFICATION_PARENTED`), so a holder seats after it takes
+  the item. The mouths that shrink the picture divide by ITEM_SIZE (`IN_FURNACE`, `LIFT_SCALE`,
+  generator `WELL_FIT`). Checked on the real driver: big items on the meadow, a small one in the
+  collector's bowl. THE BODY KEEPS ITS HALF-METRE SPHERE and the model stands
   with its FOOT where the bubble's bottom was (`FOOT_Y`), so every belt slot, tray, mouth and hold
   height made for the bubble still holds it; the rotation is locked in the scene, or a rolling
   sphere would swing the model round its middle. A HOLDER that shows an item sitting IN something

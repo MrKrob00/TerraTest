@@ -38,6 +38,8 @@ const ROTOR_EASE := 6.0          # rad/s per second: full speed in half a burn (
 const SETTLE_TIME := 0.15        # s the fuel shrinks to the well's width over the lid
 const SINK_TIME := 0.3           # s it drops in
 const SINK_Y := 0.25             # where it vanishes, well under the lid
+## The fuel's picture over the well, against the model's own size (a loose item is drawn at ITEM_SIZE).
+const WELL_FIT := 0.85 / preload("res://resource.gd").ITEM_SIZE
 var _spin_anim: AnimationPlayer = null
 var _sink_anim: AnimationPlayer = null
 var _fire: MeshInstance3D = null
@@ -108,11 +110,11 @@ func _on_item_received() -> void:
 	var vis := current_item.get_node_or_null("MeshInstance3D") as Node3D
 	var tw := create_tween()
 	if vis != null:
-		tw.tween_property(vis, "scale", Vector3.ONE * 0.85, SETTLE_TIME)
+		tw.tween_property(vis, "scale", Vector3.ONE * WELL_FIT, SETTLE_TIME)
 	tw.tween_property(current_item, "position", Vector3(0.0, SINK_Y, 0.0), SINK_TIME) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 	if vis != null:
-		tw.parallel().tween_property(vis, "scale", Vector3.ONE * 0.15, SINK_TIME)
+		tw.parallel().tween_property(vis, "scale", Vector3.ONE * WELL_FIT * 0.18, SINK_TIME)
 	tw.finished.connect(_swallow, CONNECT_ONE_SHOT)
 
 func _swallow() -> void:

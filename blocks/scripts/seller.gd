@@ -20,7 +20,9 @@ extends FactoryBlock
 const SELL_A := Color(1.0, 0.82, 0.22)
 const SELL_B := Color(0.45, 1.0, 0.55)
 const SELL_FX_TIME := 0.45
-const LIFT_SCALE := 0.8          # the goods shrink to ride inside the shaft's rails
+## The goods shrink to ride inside the shaft's rails: 0.8 of the model's own size, and a loose item is
+## drawn at ITEM_SIZE.
+const LIFT_SCALE := 0.8 / preload("res://resource.gd").ITEM_SIZE
 const SHAFT_TOP := 0.92          # where they vanish into the roof (just under SL_TOP)
 ## The ring's turn is the clip "spin" on the scene's `Anim` player, keyed at RING_SPIN; a sale runs
 ## it at full pace and it eases out at RING_EASE.
