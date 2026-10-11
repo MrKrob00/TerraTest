@@ -1343,7 +1343,7 @@ project: read it before claiming how anything works.
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
   stood — that is what "chunks disappear while I drive" was. Cover counts only a tree neighbour the
-  frame WANTS and that is already BUILT. `frustum_margin` is METRES and widens, but ONLY ON THE SIDE
+  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. `frustum_margin` is METRES and widens, but ONLY ON THE SIDE
   PLANES — on the near plane a positive margin means literally "draw what is behind the camera",
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
@@ -1422,8 +1422,27 @@ project: read it before claiming how anything works.
   `collision_lookahead` seconds), never by moving the window ahead — at speed the body would leave
   its own window. Terrain edits are a LIST applied on top of the generator in one function
   (mesh, collision and height query all go through it); there is nothing to bake.
-- No skirts on seams, ever. Edges meet because every step is a power of two on one grid, and the
-  chunk is restitched in the same pass the coarse mesh appeared.
+- No skirts on seams, ever. Edges meet because every step is a power of two on one grid, and a
+  level change goes up in one frame (below).
+- **A LEVEL CHANGE GOES UP AS ONE UNIT** (`ChunkTerrain._place_mesh` holds, `_release_held` lets go;
+  the player's "holes at the borders while I drive, they close after a while" - the grass was half of
+  it, this the other half). A change is several meshes - a split's four children or a merge's parent,
+  and every neighbour's restitch - and shown one by one as they landed, each met a neighbour still
+  built for the old levels: a T-junction crack as tall as the ground climbs over a cell, measured up
+  to 1.3 m on a dune. A built mesh that does not meet what is DRAWN round it is now HELD (`_staged`),
+  and a unit goes up once all of it is built and every drawn neighbour of its area meets it, with its
+  own mesh or a held restitch going up in the same frame (`_unit_fits`, over an overlay of all the
+  units tried, so neighbouring splits go up together). A restitch, or ground with nothing else drawn
+  over its area, goes up alone once its own seams meet the drawn ones. A split builds every child,
+  off the screen too (`_enqueue_under`), or the coarse node could never be hidden. Sides facing
+  nothing in the frame do not count. LAST RESORTS: `HOLD_MAX_MS` (4 s) for a change - the old ground
+  stands meanwhile, so the cost is coarser ground, not a hole - and `FRESH_HOLD_MS` (0.3 s) for fresh
+  ground, which is no ground until it is up. A node's seams are checked ONCE PER SET OF LEAVES (`gen`,
+  `_leaf_gen`), not every tick: that was eight probes of six lookups for every node in the frame.
+  Measured on real terrain, a camera driving a meadow, every drawn border of every level-0 chunk in
+  the frame: at 22 m/s (the optimize=none build far behind its queue) cracks over 2 cm 3617 -> 58,
+  frames showing one 82 of 125 -> 2 of 185, level 0 arriving later; at 10 m/s 175 -> 103; turning, the
+  same as before. The pass is ~1.5 ms a frame there against a LOD tick of ~13 (`terrain_hold`).
 - Generation and rebuilds are threaded (`WorkerThreadPool`, one task per row or chunk): a thread
   writes only its own slice, reads only immutable data, never touches the tree.
 - **THE GROUND'S DETAIL IS ONE TEXTURE OF FOUR MASKS, IN THE ONE FETCH THE OLD TILE SPENT**
@@ -2801,7 +2820,8 @@ project: read it before claiming how anything works.
   (`ChunkTerrain.is_point_hidden`, a ray stepped over the heights, asked by veins, props and loose
   blocks) is OFF TOO, `enable_occlusion_culling` false: a ray over the ground cost more than drawing
   the bush behind the hill. Every caller asks it anyway, so it answers `false` at once.
-- Seam rebuilds run on a budget per pass; a hairline crack beats a frame drop.
+- Seam rebuilds run on a budget per pass; a hairline crack beats a frame drop. A node's seams are
+  checked once per set of leaves, not every tick (`gen`, see Terrain).
 - Whole-machine frustum culling toggles `visible` only — `process_mode` belongs to the sleep system.
 - A WALLED-IN BLOCK IS NOT DRAWN (`blocks._apply_occlusion`), and "walled in" is decided by a FLOOD
   FILL FROM OUTSIDE, not by counting six neighbours: a neighbour may be a part that does not fill
