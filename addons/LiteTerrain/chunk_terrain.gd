@@ -1576,6 +1576,11 @@ func _col_tick() -> void:
 			continue
 		if body is RigidBody3D and (body as RigidBody3D).sleeping and not (body as RigidBody3D).freeze:
 			continue
+		# A machine CRUISING far from the camera is driven on these heights, not by Jolt (enemy_vehicle
+		# FAR CRUISE): no ground under it, or every metre it covers adds and frees tiles on this one
+		# static body. It asks again for the tile under it before it lands (has_collision_at).
+		if body.has_method("is_cruising") and body.is_cruising():
+			continue
 		# КОРИДОР, А НЕ ТОЧКА: землю просим и там, где тело стоит, и там, где оно окажется через
 		# COLLISION_LOOKAHEAD секунд. Тайл теперь считается, и просить его в момент въезда значит
 		# въехать в пустоту. Сдвигать окно целиком вперёд нельзя — на большой скорости тело
@@ -1631,6 +1636,11 @@ func _make_tile(key: int, bcx: int, bcz: int, h: PackedFloat32Array) -> void:
 	# его на первом же тике — а тайлы стартового кольца рождаются раньше, чем машина встанет на
 	# своё место, то есть до того, как их кто-то попросит.
 	_col_seen[key] = float(Time.get_ticks_msec()) * 0.001
+
+## Is a collision tile up under this world point - what a machine coming back from its cruise waits for.
+func has_collision_at(world: Vector3) -> bool:
+	var p: Vector3 = global_transform.affine_inverse() * world
+	return _col.has(_key(0, int(floor(p.x / CHUNK)), int(floor(p.z / CHUNK))))
 
 func collision_stats() -> Vector2i:
 	return Vector2i(_col.size(), _col_bodies.size())

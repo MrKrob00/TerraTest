@@ -375,6 +375,8 @@ func _physics_ai(delta: float) -> void:
 	# дальше): без тика щит не поднимался ни разу, а реген не чинил ничего — блоки стояли мёртвым
 	# грузом, то есть продвинутый враг отличался от простого только числом стволов.
 	_energy_tick(delta)
+	if _cruise_tick(delta):
+		return                    # far and out of the fight: driven on the ground's heights, not by Jolt
 	_unsink_t -= delta
 	if _unsink_t <= 0.0:
 		_unsink_t = UNSINK_PERIOD
@@ -388,6 +390,134 @@ func _physics_ai(delta: float) -> void:
 	_update_ai(delta)
 	drive_physics(delta)
 	push_drive_input(-_steer_angle / deg_to_rad(steer_max_angle))
+
+# ══════════════════════════════════════════
+# FAR CRUISE
+# ══════════════════════════════════════════
+# A MACHINE FAR FROM THE CAMERA AND OUT OF THE FIGHT IS NOT SIMULATED, IT IS DRIVEN (the player's
+# call: "update far enemies' brain and physics less often"). Measured on 4.7.2, eight machines
+# patrolling 75 m out: 26.7 ms of physics a tick against 8.2 with their AI off - and their scripts are
+# only ~3 of the difference: the rest is Jolt working a driving hull of ~30 boxes against the ground,
+# the suspension and the wheels. So the brain is thinned too (every CRUISE_BRAIN, its own dt), but the
+# win is the body: frozen KINEMATIC, moved by the brain's own throttle and steering along the
+# ground's heights - the same turn the drive model makes (yaw = |v| tan(steer) / wheelbase), the
+# same hover it had over the ground when it left the physics. Shots still land (its colliders stay),
+# weapons and energy still tick. It goes back to full physics, at its cruising speed, the moment the
+# camera comes inside CRUISE_LEAVE, it has a target, or it was shot (`_answer_t`) - a fight is never
+# cruised. CRUISE_ENTER is wider than CRUISE_LEAVE so a machine on the line does not flicker.
+const CRUISE_ENTER := 75.0
+const CRUISE_LEAVE := 60.0
+const CRUISE_CHECK := 0.5          # s between "should it cruise", each machine on its own beat
+const CRUISE_BRAIN := 0.1          # s between thoughts; steer_speed x this must stay <= 1 (no overshoot)
+const CRUISE_ACCEL := 6.0          # m/s2 towards the speed the throttle asks
+## Top speed while cruising, as a share of max_speed: a build's real top speed is set by its wheels'
+## power against its mass and sits under max_speed (measured against the physics, see CLAUDE.md).
+const CRUISE_SPEED := 1.0
+## rad/s a cruising machine turns on the spot at full lock.
+const CRUISE_SPIN := 1.2
+var _cruising: bool = false
+var _cruise_check_t: float = randf() * CRUISE_CHECK
+var _cruise_brain_t: float = 0.0
+var _cruise_dt: float = 0.0
+var _cruise_v: float = 0.0
+var _cruise_hover: float = 0.0
+
+## Read by the terrain's collision streaming: a cruising machine needs no tiles. False while it is
+## LANDING - still driven, but asking for the tile it is about to stand on.
+func is_cruising() -> bool:
+	return _cruising and not _landing
+
+## On its way back to the physics: kept kinematic until the ground under it has its collision tile,
+## or it would drop through for the ticks the tile takes to come up.
+var _landing: bool = false
+
+func _cruise_tick(delta: float) -> bool:
+	if _cruising and not freeze:
+		_cruising = false                # woken by someone else (the spawner's wake): physics again
+		_landing = false
+	_cruise_check_t -= delta
+	if _cruise_check_t <= 0.0:
+		_cruise_check_t = CRUISE_CHECK
+		var want: bool = _cruise_wanted()
+		if want and not _cruising:
+			_cruise_enter()
+		elif not want and _cruising:
+			_landing = true
+		elif want:
+			_landing = false
+	if not _cruising:
+		return false
+	_cruise_dt += delta
+	_cruise_brain_t -= delta
+	if _cruise_brain_t <= 0.0:
+		_cruise_brain_t = CRUISE_BRAIN
+		_update_ai(minf(_cruise_dt, CRUISE_BRAIN))
+		_cruise_dt = 0.0
+		if is_instance_valid(_target) or _answer_t > 0.0:
+			_landing = true              # it saw someone or was shot: the fight is simulated
+	if _landing:
+		var m: Node = ground_source()
+		if m == null or not m.has_method("has_collision_at") or m.has_collision_at(global_position):
+			_cruise_leave()
+			return false
+	_cruise_move(delta)
+	return true
+
+func _cruise_wanted() -> bool:
+	if is_base or demo or is_instance_valid(_target) or _answer_t > 0.0:
+		return false
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return false
+	var lim: float = CRUISE_LEAVE if _cruising else CRUISE_ENTER
+	if cam.global_position.distance_squared_to(global_position) < lim * lim:
+		return false
+	return _cruising or _on_ground          # never enter mid-drop or tumbling
+
+func _cruise_enter() -> void:
+	var fwd: Vector3 = _get_forward()
+	_cruise_v = fwd.dot(linear_velocity)
+	_cruise_hover = clampf(global_position.y - G.ground_y(global_position, global_position.y), 0.0, 4.0)
+	_cruise_brain_t = 0.0
+	_cruise_dt = 0.0
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	_cruising = true
+	_landing = false
+
+func _cruise_leave() -> void:
+	_cruising = false
+	_landing = false
+	if get_meta("asleep", false):
+		return                           # the spawner put it to sleep: it stays frozen, as asleep
+	freeze = false
+	freeze_mode = RigidBody3D.FREEZE_MODE_STATIC
+	sleeping = false
+	linear_velocity = _get_forward() * _cruise_v
+
+func _cruise_move(delta: float) -> void:
+	_cruise_v = move_toward(_cruise_v, _throttle * max_speed * CRUISE_SPEED, CRUISE_ACCEL * delta)
+	var wb: float = _get_wheelbase()
+	var yaw: float = 0.0
+	if absf(_steer_angle) > 0.001 and wb > 0.1:
+		yaw = absf(_cruise_v) * tan(_steer_angle) / wb
+	# SLOW, IT TURNS ON THE SPOT, as the drive model does under TANK_FADE (one side pushing against the
+	# other): without it a hard turn crawled at the 14 % throttle the brain gives it and the cruise
+	# covered half the ground the physics did.
+	var steer_n: float = _steer_angle / maxf(deg_to_rad(steer_max_angle), 0.001)
+	if absf(yaw) < absf(steer_n) * CRUISE_SPIN:
+		yaw = steer_n * CRUISE_SPIN
+	yaw *= delta
+	var fwd: Vector3 = _get_forward()
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		fwd = Vector3.FORWARD
+	fwd = fwd.normalized().rotated(Vector3.UP, yaw)
+	var p: Vector3 = global_position + fwd * _cruise_v * delta
+	p.y = G.ground_y(p, p.y) + _cruise_hover
+	global_transform = Transform3D(Basis.looking_at(fwd, Vector3.UP), p)
 
 ## Base tick: see and shoot, nothing else. No driving, no patrol, no righting itself - a standing
 ## building needs none of that, and running them idle costs for every base on the map.

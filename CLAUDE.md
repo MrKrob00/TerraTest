@@ -2032,6 +2032,21 @@ project: read it before claiming how anything works.
   release itself goes on, since the camera records releases first. Synthetic touches on the engine
   could not reproduce the turn (the garage's panel takes the press there), so the phone confirms it.
 - `CanvasLayer` child order is draw order — bound panels are lifted to the end (`hud._lift`).
+- **THE PLAYER MOVES THE CONTROLS** (`hud` "THE PLAYER'S OWN LAYOUT", `LayoutEditor`; garage -> SETTINGS
+  -> INTERFACE -> "Move controls"; the player's call): ATTACK, BUILD, the inventory, the anchor, the
+  map and the money. The garage closes and a dashed frame lies over each; a drag moves it, DONE keeps
+  it, RESET puts all back. What is kept is the control's MIDDLE as a SHARE OF THE SCREEN (`G.ui_windows`
+  `hud_<id>`, beside the floating windows' places), so a layout survives another screen; it is clamped
+  inside the screen as it is placed. ONE DOOR, `hud._placed(id, size, default, screen)`: every spot
+  that puts one of these on screen (the relayout, the radar's size change, the money under it) asks
+  it with its own default, so no second place can put a moved control back. While editing the
+  touch buttons' actions are cleared, the joystick hears nothing and `G.ui_grab` holds the camera,
+  so a drag moves a button and nothing else; what shows only with its block (anchor, map) is shown.
+  The joystick is not in the list (it jumps to the thumb) and the quest tracker drags itself. A
+  Control under a CanvasLayer needs `set_anchors_AND_OFFSETS_preset` to fill the screen: with the
+  anchors alone the overlay was 0 x 0 and every drag went to the button under the finger. Measured
+  on the real driver: ATTACK dragged 600 x 300 px, kept as (0.42, 0.23), muted while edited, taking a
+  finger at its new place after DONE, kept by a relayout, back on its anchors after RESET.
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
   `DragWindow.attach(window, handle, id)` — and it owns the drag, the remembered place
@@ -3041,6 +3056,25 @@ project: read it before claiming how anything works.
   transform it had when the batch was BUILT (only `moving_parts` are copied each frame), so the kick
   moved an invisible node; a rebuild landing mid-kick froze the block a tenth too big or small in the
   picture, and every kick rescaled a physics body three times.
+- **A FAR ENEMY OUT OF THE FIGHT IS DRIVEN, NOT SIMULATED** (`enemy_vehicle` FAR CRUISE, the player's
+  call: "update far enemies' brain and physics less often"). MEASURED FIRST, AND THE BRAIN WAS NOT THE
+  COST: eight machines patrolling 75 m from the camera, 4.7.2 debug build, 20 s windows alternated -
+  physics 23.7-26.0 ms a tick, 5.0-5.7 with their AI off, of which the enemies' own scripts were ~3.
+  So past `CRUISE_ENTER` (75 m from the camera, back inside `CRUISE_LEAVE` 60), with no target and
+  not shot at (`_answer_t`), never a base, a menu fighter or a machine still dropping in: the body is
+  frozen KINEMATIC and moved by the brain's own throttle and steering on the ground's heights at the
+  hover it had (the drive model's turn, |v| tan(steer) / wheelbase, plus a turn on the spot at full
+  lock, `CRUISE_SPIN`, as `TANK_STEER` does), the brain thinks every `CRUISE_BRAIN` (0.1 s - with
+  `steer_speed` 10 a longer step overshoots), and the terrain builds no collision tiles for it
+  (`ChunkTerrain._col_tick` asks `is_cruising`). It LANDS before it fights: kept kinematic, asking for
+  its tile again, until `has_collision_at` says the ground under it is up, then unfrozen at its
+  cruising speed. Measured: 18.5-21.1 ms against 23.7-26.0, the scripts 3.1 -> 1.4 ms; path 45 m in
+  20 s against 66 in the physics before `CRUISE_SPEED` went to 1.0. WHAT IS LEFT IS THE MOVE ITSELF:
+  the same machines cruising in place cost 11-13 ms - moving the root drags ~30 frozen block bodies,
+  their areas and the machine's shape copies through the physics server every tick. Freezing the
+  blocks KINEMATIC instead of STATIC made it WORSE (33.8 ms in the physics); the real cure is blocks
+  without bodies of their own, hit through the machine's shape index - a rework of hits and damage,
+  not done. A cruising machine passes through trees and rocks (far, and pushed out when it lands).
 - **ONE MANAGER INSTEAD OF A TICK PER NODE PAYS ONLY WHEN IT SKIPS WORK OR WORKS ON PACKED DATA**
   (the RTS "systems" idea, measured before it was applied). A GDScript call into a unit's method
   costs as much as the engine's own `_physics_process` call or more - 600 units, per unit a tick,

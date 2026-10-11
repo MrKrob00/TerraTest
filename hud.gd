@@ -105,7 +105,7 @@ func _ready() -> void:
 func _relayout() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	if _menu_btn:
-		_menu_btn.position = Vector2(MENU_PAD, MENU_PAD)
+		_menu_btn.position = _placed("menu", _menu_btn.size, Vector2(MENU_PAD, MENU_PAD), screen)
 	if _drawer:
 		if _drawer_tween and _drawer_tween.is_valid():
 			_drawer_tween.kill()       # ресайз во время слайда — снапаем, не даём доиграть
@@ -124,11 +124,15 @@ func _relayout() -> void:
 	# Кнопка режима — правее иконки меню, в один ряд с ней.
 	var mode := get_node_or_null("ModeToggle") as Node2D
 	if mode:   # placed by its MIDDLE: a textureless button's shape stands centred on the node
-		mode.position = Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD) + ModeFace.SIZE * 0.5
+		mode.position = _placed("mode", ModeFace.SIZE, Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD), screen) \
+				+ ModeFace.SIZE * 0.5
 	# Панель «блок в руке» больше не раскладывается здесь: её место считает
 	# _update_hand_panel каждый кадр (она привязана к кнопкам поворота слева).
 	if _anchor_btn:
-		_anchor_btn.position = Vector2(16, screen.y - 170)
+		_anchor_btn.position = _placed("anchor", _anchor_btn.size, Vector2(16, screen.y - 170), screen)
+	var atk := get_node_or_null("Attack") as Control
+	if atk != null and _layout_saved("attack") != null:
+		atk.position = _placed("attack", atk.size, atk.position, screen)
 	if _radar:
 		_radar.position = _radar_pos(screen)
 	_layout_money()
@@ -253,7 +257,7 @@ func _build_radar() -> void:
 	add_child(_radar)
 
 func _radar_pos(screen: Vector2) -> Vector2:
-	return Vector2(screen.x - _radar_size - 12.0, 12.0)   # справа сверху
+	return _placed("radar", Vector2(_radar_size, _radar_size), Vector2(screen.x - _radar_size - 12.0, 12.0), screen)
 
 # ── Деньги ────────────────────────────────────────────────────────────────────
 # Постоянная строка под картой, в том же правом верхнем углу. Раньше деньги на HUD не
@@ -397,7 +401,7 @@ func _layout_money() -> void:
 	var screen: Vector2 = get_viewport().get_visible_rect().size
 	var w: float = maxf(_radar_size, 96.0)
 	_money_panel.size = Vector2(w, MONEY_H)
-	_money_panel.position = Vector2(screen.x - w - 12.0, 12.0 + _radar_size + 6.0)
+	_money_panel.position = _placed("money", _money_panel.size, Vector2(screen.x - w - 12.0, 12.0 + _radar_size + 6.0), screen)
 
 # Трекер квестов прибит к тому же углу, что и радар, и лежал прямо на нём. Сообщаем ему
 # нижнюю кромку радара; когда радара нет (нет блока RADAR) — 0, и трекер уезжает обратно
@@ -1613,6 +1617,226 @@ func _has_radar(v) -> bool:
 		if "block" in b and int(b.block) == G.Block.RADAR:
 			return true
 	return false
+
+# ── THE PLAYER'S OWN LAYOUT ──────────────────────────────────────────────────────────────────
+# Every control a thumb reaches can be moved (the player's call: "in the settings, move the attack
+# button, the anchor, the map and so on"): ATTACK, BUILD, the inventory, the anchor, the map and the
+# money. Garage -> SETTINGS -> "Move controls" closes the garage and lays a frame over each; a drag
+# moves it, DONE keeps it, RESET puts all back. What is kept is the control's MIDDLE as a share of
+# the screen (G.window_pos, `hud_<id>`, beside the floating windows' places in settings.json), so a
+# layout survives another screen and a rotation; it is clamped inside the screen as it is placed.
+# ONE DOOR, `_placed`: every spot that puts one of these on screen asks it, with its own default -
+# a moved control has no second place that would put it back. The joystick is not in the list: it
+# jumps to wherever the thumb lands. The quest tracker drags itself (DragWindow).
+const LAYOUT_IDS := ["attack", "mode", "menu", "anchor", "radar", "money"]
+const LAYOUT_NAMES := {"attack": "Attack", "mode": "BUILD", "menu": "Inventory", "anchor": "Anchor",
+		"radar": "Map", "money": "Money"}
+const LAYOUT_PAD := 6.0
+
+func _layout_saved(id: String) -> Variant:
+	return G.window_pos("hud_" + id)
+
+## Top-left for a control of `sz`: its saved middle if the player moved it, else `def`.
+func _placed(id: String, sz: Vector2, def: Vector2, screen: Vector2) -> Vector2:
+	var f: Variant = _layout_saved(id)
+	if f == null:
+		return def
+	var tl: Vector2 = (f as Vector2) * screen - sz * 0.5
+	return Vector2(clampf(tl.x, LAYOUT_PAD, maxf(screen.x - sz.x - LAYOUT_PAD, LAYOUT_PAD)),
+			clampf(tl.y, LAYOUT_PAD, maxf(screen.y - sz.y - LAYOUT_PAD, LAYOUT_PAD)))
+
+## Where a movable control stands now, in the HUD's own coordinates.
+func layout_rect(id: String) -> Rect2:
+	match id:
+		"attack":
+			var a := get_node_or_null("Attack") as Control
+			return Rect2(a.position, a.size) if a != null else Rect2()
+		"mode":
+			var m := get_node_or_null("ModeToggle") as Node2D
+			return Rect2(m.position - ModeFace.SIZE * 0.5, ModeFace.SIZE) if m != null else Rect2()
+		"menu":
+			return Rect2(_menu_btn.position, _menu_btn.size) if _menu_btn != null else Rect2()
+		"anchor":
+			return Rect2(_anchor_btn.position, _anchor_btn.size) if _anchor_btn != null else Rect2()
+		"radar":
+			return Rect2(_radar.position, _radar.size) if _radar != null else Rect2()
+		"money":
+			return Rect2(_money_panel.position, _money_panel.size) if _money_panel != null else Rect2()
+	return Rect2()
+
+## Move a control's middle to `centre` (live, while it is dragged) and lay the HUD out again.
+func layout_move(id: String, centre: Vector2, save: bool) -> void:
+	var screen: Vector2 = get_viewport().get_visible_rect().size
+	G.ui_windows["hud_" + id] = [centre.x / screen.x, centre.y / screen.y]
+	if save:
+		G.save_settings()
+	_relayout()
+	if _radar != null:
+		_radar.position = _radar_pos(screen)
+	_layout_money()
+
+func layout_reset() -> void:
+	for id in LAYOUT_IDS:
+		G.ui_windows.erase("hud_" + id)
+	G.save_settings()
+	var atk := get_node_or_null("Attack") as Control
+	if atk != null:            # back onto its scene anchors: the offsets the scene gave it
+		atk.offset_left = -222.0
+		atk.offset_top = 28.0
+		atk.offset_right = -62.0
+		atk.offset_bottom = 188.0
+	_relayout()
+	if _radar != null:
+		_radar.position = _radar_pos(get_viewport().get_visible_rect().size)
+	_layout_money()
+
+var _layout_editor: Control = null
+
+## Garage -> SETTINGS -> "Move controls". Everything that may be moved is shown while it is edited
+## (the anchor and the map appear only with their blocks), the game's own touch controls are muted,
+## and the camera is held (G.ui_grab), so a drag moves a button and nothing else.
+func start_layout_edit() -> void:
+	if is_instance_valid(_layout_editor):
+		return
+	_layout_editor = LayoutEditor.new()
+	_layout_editor.hud = self
+	add_child(_layout_editor)
+
+class LayoutEditor extends Control:
+	var hud = null
+	var _grab: String = ""
+	var _grab_off: Vector2 = Vector2.ZERO
+	var _shown: Dictionary = {}          # node -> its visibility before the edit
+	var _muted: Array = []               # [TouchScreenButton, its action]
+	var _joy: Node = null
+
+	func _ready() -> void:
+		# AND OFFSETS: under a CanvasLayer the anchors alone left the overlay 0 x 0, and every drag
+		# went to the button under the finger instead.
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		G.ui_grab = true
+		for id in hud.LAYOUT_IDS:
+			var n: CanvasItem = _node(id)
+			if n != null:
+				_shown[n] = n.visible
+				n.visible = true
+		for p in ["Attack/Attack", "ModeToggle"]:
+			var t := hud.get_node_or_null(p) as TouchScreenButton
+			if t != null:
+				_muted.append([t, t.action])
+				t.action = ""
+		_joy = hud.get_node_or_null("Joystick_movement")
+		if _joy != null:
+			_joy.set_process_input(false)
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", hud._make_float_panel_style())
+		add_child(panel)
+		var bar := HBoxContainer.new()
+		bar.add_theme_constant_override("separation", 12)
+		bar.custom_minimum_size = Vector2(460, 44)
+		panel.add_child(bar)
+		panel.reset_size()
+		panel.position = Vector2((get_viewport_rect().size.x - panel.size.x) * 0.5,
+				get_viewport_rect().size.y * 0.5 - panel.size.y * 0.5)
+		var lbl := Label.new()
+		lbl.text = tr("Drag the controls where your thumbs want them")
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.add_theme_font_size_override("font_size", 15)
+		bar.add_child(lbl)
+		var reset := Button.new()
+		reset.text = tr("Reset")
+		reset.pressed.connect(_on_reset)
+		bar.add_child(reset)
+		var done := Button.new()
+		done.text = tr("Done")
+		done.pressed.connect(_on_done)
+		bar.add_child(done)
+		hud.move_child(self, hud.get_child_count() - 1)
+
+	func _node(id: String) -> CanvasItem:
+		match id:
+			"attack": return hud.get_node_or_null("Attack")
+			"mode": return hud.get_node_or_null("ModeToggle")
+			"menu": return hud._menu_btn
+			"anchor": return hud._anchor_btn
+			"radar": return hud._radar
+			"money": return hud._money_panel
+		return null
+
+	func _gui_input(e: InputEvent) -> void:
+		var pos := Vector2.ZERO
+		var pressed := false
+		var released := false
+		var moved := false
+		if e is InputEventMouseButton and (e as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+			pos = (e as InputEventMouseButton).position
+			pressed = e.pressed
+			released = not e.pressed
+		elif e is InputEventMouseMotion:
+			pos = (e as InputEventMouseMotion).position
+			moved = true
+		else:
+			return
+		if pressed:
+			_grab = ""
+			for id in hud.LAYOUT_IDS:
+				var r: Rect2 = hud.layout_rect(id)
+				if r.size != Vector2.ZERO and r.grow(8.0).has_point(pos):
+					_grab = id
+					_grab_off = r.get_center() - pos
+			accept_event()
+		elif moved and _grab != "":
+			hud.layout_move(_grab, pos + _grab_off, false)
+			queue_redraw()
+			accept_event()
+		elif released and _grab != "":
+			hud.layout_move(_grab, pos + _grab_off, true)
+			_grab = ""
+			queue_redraw()
+			accept_event()
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.0, 0.03, 0.05, 0.35))
+		var font := get_theme_default_font()
+		for id in hud.LAYOUT_IDS:
+			var r: Rect2 = hud.layout_rect(id)
+			if r.size == Vector2.ZERO:
+				continue
+			var col: Color = Color(1.0, 0.7, 0.25) if id == _grab else hud.HUD_RING
+			r = r.grow(4.0)
+			draw_rect(r, Color(col, 0.12))
+			_dashed(r, col)
+			# the name over the frame, or under it where the screen's edge leaves no room
+			var at: Vector2 = r.position + Vector2(2, -6) if r.position.y > 22.0 else Vector2(r.position.x + 2, r.end.y + 17)
+			draw_string(font, at, tr(hud.LAYOUT_NAMES[id]), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, col)
+
+	func _dashed(r: Rect2, col: Color) -> void:
+		var pts := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
+		for i in 4:
+			var a: Vector2 = pts[i]
+			var b: Vector2 = pts[i + 1]
+			var n: int = maxi(int(a.distance_to(b) / 10.0), 1)
+			for k in n:
+				if k % 2 == 0:
+					draw_line(a.lerp(b, float(k) / n), a.lerp(b, float(k + 1) / n), col, 2.0)
+
+	func _on_reset() -> void:
+		hud.layout_reset()
+		queue_redraw()
+
+	func _on_done() -> void:
+		for n in _shown:
+			if is_instance_valid(n):
+				n.visible = _shown[n]
+		for m in _muted:
+			if is_instance_valid(m[0]):
+				m[0].action = m[1]
+		if is_instance_valid(_joy):
+			_joy.set_process_input(true)
+		G.ui_grab = false
+		queue_free()
 
 # ── ATTACK and BUILD: drawn in the HUD's palette ─────────────────────────────────────────────
 # Both stay TouchScreenButtons (any finger, the joystick's included); the scene holds the press
