@@ -368,8 +368,10 @@ func _node_rect(n: CanvasItem) -> Rect2:
 		return Rect2(c.global_position, c.size)
 	if n is TouchScreenButton:
 		var b := n as TouchScreenButton
-		var sz := b.texture_normal.get_size() if b.texture_normal != null else Vector2(64, 64)
-		return Rect2(b.global_position, sz)
+		var r: Rect2 = TouchButtons.local_area(b)
+		if r.size == Vector2.ZERO:
+			r = Rect2(-32, -32, 64, 64)
+		return Rect2(b.global_position + r.position, r.size)
 	if n is Node2D:
 		return Rect2((n as Node2D).global_position - Vector2(32, 32), Vector2(64, 64))
 	return Rect2()

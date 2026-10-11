@@ -1176,28 +1176,10 @@ func _tap_over_ui(pos: Vector2) -> bool:
 			return true
 	return false
 
-# Точка pos внутри области нажатия TouchScreenButton (учитываем shape_centered, как движок).
-# ВАЖНО: при shape_centered движок центрует форму по ПРЯМОУГОЛЬНИКУ ТЕКСТУРЫ (её левый
-# верх = позиция ноды), а не по началу координат. У джойстиков текстуры нет — прямоугольник
-# нулевой, центр совпадает с нодой; у кнопки режима текстура есть, и центр смещён на её
-# половину. Считали от ноды — область нажатия уезжала на пол-кнопки вверх-влево, и тап по
-# её нижней половине уходил в мир (наводил блок).
+# The press area is the engine's own test (TouchButtons.hits): a textureless button's shape stands
+# centred on the node, a textured one's on the texture's middle when shape_centered.
 func _tsb_hit(b: TouchScreenButton, pos: Vector2) -> bool:
-	var s: Shape2D = b.shape
-	if s == null:
-		return false
-	var o: Vector2 = b.global_position
-	var center: Vector2 = o
-	if b.shape_centered and b.texture_normal != null:
-		center += b.texture_normal.get_size() * 0.5
-	if s is RectangleShape2D:
-		var sz: Vector2 = (s as RectangleShape2D).size
-		var tl: Vector2 = (center - sz * 0.5) if b.shape_centered else o
-		return Rect2(tl, sz).has_point(pos)
-	if s is CircleShape2D:
-		var r: float = (s as CircleShape2D).radius
-		return (center if b.shape_centered else o + Vector2(r, r)).distance_to(pos) <= r
-	return false
+	return TouchButtons.hits(b, pos)
 
 # ══════════════════════════════════════════
 # СТРОЙКА НА ДРУГОЙ СВОЕЙ МАШИНЕ — ЧЕРЕЗ НЕЁ САМУ

@@ -95,21 +95,11 @@ radius = 100.0
 [sub_resource type="Gradient" id="Gradient_jsk3o"]
 colors = PackedColorArray(0.082, 0.235, 0.275, 0.95, 0.043, 0.122, 0.149, 0.95)
 
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_mode"]
-gradient = SubResource("Gradient_jsk3o")
-width = 176
-height = 72
-fill_to = Vector2(0, 1)
-
 [sub_resource type="Gradient" id="Gradient_4arys"]
 colors = PackedColorArray(0.247, 0.6, 0.65, 1, 0.082, 0.235, 0.275, 1)
 
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_modep"]
-gradient = SubResource("Gradient_4arys")
-width = 176
-height = 72
-fill_from = Vector2(0, 0.801217)
-fill_to = Vector2(0, 1)
+[sub_resource type="CircleShape2D" id="CircleShape2D_attack"]
+radius = 80.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_mode"]
 size = Vector2(176, 72)
@@ -360,17 +350,17 @@ shape = SubResource("CircleShape2D_a202f")
 script = ExtResource("4_r3fl7")
 
 [node name="ModeToggle" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD" unique_id=1876794863]
-position = Vector2(96, 12)
-texture_normal = SubResource("GradientTexture2D_mode")
-texture_pressed = SubResource("GradientTexture2D_modep")
+position = Vector2(184, 48)
 shape = SubResource("RectangleShape2D_mode")
 action = "ModeToggle"
 
 [node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/ModeToggle" unique_id=1851734277]
-offset_right = 176.0
-offset_bottom = 72.0
+offset_left = -22.0
+offset_top = -36.0
+offset_right = 82.0
+offset_bottom = 36.0
 theme_override_colors/font_color = Color(1, 0.7, 0.25, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 24
 text = "BUILD"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -444,23 +434,22 @@ shape = SubResource("RectangleShape2D_tereu")
 action = "TakeOff"
 
 [node name="Attack" type="TextureButton" parent="Vehicles/Camera Controller/HUD" unique_id=962160762]
-custom_minimum_size = Vector2(128, 64)
+custom_minimum_size = Vector2(160, 160)
 anchors_preset = 6
 anchor_left = 1.0
 anchor_top = 0.5
 anchor_right = 1.0
 anchor_bottom = 0.5
-offset_left = -242.0
-offset_top = 58.0
-offset_right = -42.0
-offset_bottom = 158.0
+offset_left = -222.0
+offset_top = 28.0
+offset_right = -62.0
+offset_bottom = 188.0
 grow_horizontal = 0
 grow_vertical = 2
 
 [node name="Attack" type="TouchScreenButton" parent="Vehicles/Camera Controller/HUD/Attack" unique_id=1963298283]
-texture_normal = SubResource("GradientTexture2D_4arys")
-texture_pressed = SubResource("GradientTexture2D_6iypd")
-shape = SubResource("RectangleShape2D_tereu")
+position = Vector2(80, 80)
+shape = SubResource("CircleShape2D_attack")
 action = "Attack"
 
 [node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD/Attack" unique_id=1912474267]
@@ -468,13 +457,14 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_bottom = -26.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.88, 0.96, 0.98, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 17
 text = "Attack"
 horizontal_alignment = 1
-vertical_alignment = 1
+vertical_alignment = 2
 
 [node name="Label" type="Label" parent="Vehicles/Camera Controller/HUD" unique_id=703597056]
 offset_left = 534.0

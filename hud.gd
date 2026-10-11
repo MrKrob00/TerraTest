@@ -50,6 +50,7 @@ func _ready() -> void:
 	_build_hand_panel()
 	_build_block_globe()
 	_build_anchor_button()
+	_build_action_faces()
 	_build_vehicle_button()
 	_build_radar()
 	_bind_money()
@@ -122,8 +123,8 @@ func _relayout() -> void:
 		_block_globe.position = _globe_pos(screen)
 	# Кнопка режима — правее иконки меню, в один ряд с ней.
 	var mode := get_node_or_null("ModeToggle") as Node2D
-	if mode:
-		mode.position = Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD)
+	if mode:   # placed by its MIDDLE: a textureless button's shape stands centred on the node
+		mode.position = Vector2(MENU_PAD + MENU_BTN + 12.0, MENU_PAD) + ModeFace.SIZE * 0.5
 	# Панель «блок в руке» больше не раскладывается здесь: её место считает
 	# _update_hand_panel каждый кадр (она привязана к кнопкам поворота слева).
 	if _anchor_btn:
@@ -1613,6 +1614,125 @@ func _has_radar(v) -> bool:
 			return true
 	return false
 
+# ── ATTACK and BUILD / MOVE: drawn in the HUD's palette ───────────────────────────────────────
+# Both stay TouchScreenButtons (any finger, the joystick's included); the scene holds the press
+# area and the caption, the look is drawn here like every other icon (CLAUDE.md rule 11: no
+# texture, no emoji). ATTACK is ROUND, the player's call: a dark disc in the panels' teal ring with
+# a crosshair in the fight's warm red, the ring and the disc lit while it is held. BUILD / MOVE is the
+# HUD button's rounded box with a drawn sign on the left - a block being assembled for BUILD, a
+# steering wheel for MOVE - in the colour of where it takes you.
+const HUD_FILL := Color(0.043, 0.122, 0.149, 0.92)
+const HUD_RING := Color(0.247, 0.6, 0.65)
+
+class AttackFace extends Control:
+	const HOT := Color(1.0, 0.42, 0.22)
+	var tsb: TouchScreenButton = null
+	var _held: bool = false
+	var _t: float = 0.0
+
+	func _process(delta: float) -> void:
+		var held: bool = tsb != null and tsb.is_pressed()
+		if held != _held:
+			_held = held
+			_t = 0.0
+			queue_redraw()
+		elif _held:
+			_t += delta
+			queue_redraw()       # the ring breathes while the guns are held
+
+	func _draw() -> void:
+		var c := size * 0.5
+		var r: float = minf(size.x, size.y) * 0.5 - 3.0
+		var fill: Color = HUD_FILL.lerp(Color(0.35, 0.08, 0.04, 0.95), 0.85) if _held else HUD_FILL
+		draw_circle(c, r, fill)
+		var ring: Color = HOT if _held else HUD_RING
+		draw_arc(c, r, 0.0, TAU, 72, ring, 3.0, true)
+		draw_arc(c, r - 7.0, 0.0, TAU, 72, Color(ring, 0.3), 1.5, true)
+		if _held:
+			var k: float = 0.5 + 0.5 * sin(_t * 9.0)
+			draw_arc(c, r - 1.5, 0.0, TAU, 72, Color(HOT, 0.35 + 0.4 * k), 6.0, true)
+		# the crosshair, a little over the middle so the caption fits under it
+		var x := c + Vector2(0.0, -10.0)
+		var col: Color = Color(1.0, 0.9, 0.8) if _held else HOT
+		draw_arc(x, 24.0, 0.0, TAU, 48, col, 3.0, true)
+		for d in [Vector2.UP, Vector2.DOWN, Vector2.LEFT, Vector2.RIGHT]:
+			draw_line(x + d * 14.0, x + d * 34.0, col, 3.0, true)
+		draw_circle(x, 3.5, col)
+
+class ModeFace extends Control:
+	const SIZE := Vector2(176, 72)
+	var to_build: bool = true
+	var accent: Color = Color(1.0, 0.7, 0.25)
+	var tsb: TouchScreenButton = null
+	var _held: bool = false
+	var _box: StyleBoxFlat = null
+
+	func _ready() -> void:
+		_box = StyleBoxFlat.new()
+		_box.set_border_width_all(2)
+		_box.set_corner_radius_all(10)
+
+	func _process(_delta: float) -> void:
+		var held: bool = tsb != null and tsb.is_pressed()
+		if held != _held:
+			_held = held
+			queue_redraw()
+
+	func _draw() -> void:
+		_box.bg_color = HUD_RING if _held else Color(0.082, 0.235, 0.275, 0.95)
+		_box.border_color = Color(accent, 0.75)
+		draw_style_box(_box, Rect2(Vector2.ZERO, size))
+		draw_rect(Rect2(8.0, 12.0, 4.0, size.y - 24.0), accent)      # the mode's stripe
+		var c := Vector2(42.0, size.y * 0.5)
+		if to_build:
+			_cube(c, 17.0, accent)
+		else:
+			_wheel(c, 18.0, accent)
+
+	## An isometric block with a plus beside it: "assemble".
+	func _cube(c: Vector2, s: float, col: Color) -> void:
+		var top := c + Vector2(0, -s)
+		var pts := PackedVector2Array([top, c + Vector2(s * 0.87, -s * 0.5), c + Vector2(s * 0.87, s * 0.5),
+				c + Vector2(0, s), c + Vector2(-s * 0.87, s * 0.5), c + Vector2(-s * 0.87, -s * 0.5), top])
+		draw_colored_polygon(pts.slice(0, 6), Color(col, 0.18))
+		draw_polyline(pts, col, 2.5, true)
+		draw_line(c, c + Vector2(0, s), col, 2.0, true)
+		draw_line(c, c + Vector2(s * 0.87, -s * 0.5), col, 2.0, true)
+		draw_line(c, c + Vector2(-s * 0.87, -s * 0.5), col, 2.0, true)
+		var p := c + Vector2(s * 1.05, -s * 0.95)
+		draw_line(p + Vector2(-5, 0), p + Vector2(5, 0), col, 3.0)
+		draw_line(p + Vector2(0, -5), p + Vector2(0, 5), col, 3.0)
+
+	## A steering wheel: rim, hub and three spokes.
+	func _wheel(c: Vector2, r: float, col: Color) -> void:
+		draw_arc(c, r, 0.0, TAU, 40, col, 3.0, true)
+		draw_circle(c, 4.5, col)
+		for a in [PI * 0.5, PI * 0.5 + TAU / 3.0, PI * 0.5 - TAU / 3.0]:
+			var d := Vector2(cos(a), -sin(a))
+			draw_line(c + d * 4.0, c + d * r, col, 3.0, true)
+
+var _attack_face: AttackFace = null
+var _mode_face: ModeFace = null
+
+func _build_action_faces() -> void:
+	var atk := get_node_or_null("Attack") as Control
+	if atk != null:
+		_attack_face = AttackFace.new()
+		_attack_face.tsb = atk.get_node_or_null("Attack") as TouchScreenButton
+		_attack_face.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_attack_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		atk.add_child(_attack_face)
+		atk.move_child(_attack_face, 0)          # under the caption
+	var mode := get_node_or_null("ModeToggle") as TouchScreenButton
+	if mode != null:
+		_mode_face = ModeFace.new()
+		_mode_face.tsb = mode
+		_mode_face.position = -ModeFace.SIZE * 0.5
+		_mode_face.size = ModeFace.SIZE
+		_mode_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mode.add_child(_mode_face)
+		mode.move_child(_mode_face, 0)
+
 # ── Иконка меню: рюкзак (вход в инвентарь) ────────────────────────────────────
 class MenuIcon extends Control:
 	# Рюкзак — КАРТИНКА (images/icon_backpack.png), раньше рисовался примитивами.
@@ -2020,26 +2140,30 @@ func _sync_mode_visuals() -> void:
 
 # Подпись на кнопке = КУДА она переключит, а не где ты сейчас. С названием текущего режима
 # приходилось жать «MOVE», чтобы попасть в стройку, — читается наоборот.
-func _set_mode_label(text: String, col: Color) -> void:
+func _set_mode_label(text: String, col: Color, to_build: bool) -> void:
 	var lbl := get_node_or_null("ModeToggle/Label") as Label
 	if lbl == null:
 		return
 	lbl.text = text
 	lbl.add_theme_color_override("font_color", col)
+	if _mode_face != null:
+		_mode_face.to_build = to_build           # the sign, like the label, names where it goes
+		_mode_face.accent = col
+		_mode_face.queue_redraw()
 
 func _on_movement_pressed() -> void:
 	$Attack.visible = true
 	$Take.visible = false
 	$TakeOff.visible = false
 	%Joystick_movement.visible=true
-	_set_mode_label(tr("BUILD"), Color(1.0, 0.7, 0.25))   # едем → кнопка ведёт в стройку
+	_set_mode_label(tr("BUILD"), Color(1.0, 0.7, 0.25), true)   # едем → кнопка ведёт в стройку
 
 func _on_building_pressed() -> void:
 	$Attack.visible =false
 	$Take.visible = false               # кнопка Take не нужна: двойной тап по клетке ставит блок,
 	$TakeOff.visible = false            # двойной тап по блоку машины/мира берёт его; убрать — панель рук (📦/🗑)
 	%Joystick_movement.visible=true    # в стройке джойстик МЕДЛЕННО двигает платформу (репозиция)
-	_set_mode_label(tr("MOVE"), Color(0.4, 1.0, 0.6))     # строим → кнопка возвращает за руль
+	_set_mode_label(tr("MOVE"), Color(0.4, 1.0, 0.6), false)     # строим → кнопка возвращает за руль
 	_open_build_tab.call_deferred()    # стройка живёт в гараже: открываем его на своей вкладке
 
 func _on_take_pressed() -> void:
