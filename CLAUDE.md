@@ -2747,7 +2747,13 @@ project: read it before claiming how anything works.
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
-  (`pulse`) as each repair lands. THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
+  (`pulse`) as each repair lands. **IT IS UP ONLY WHILE THERE IS WORK IN IT** (the player: "nothing to
+  repair in its radius - the sphere goes"): something in reach missing hit points at the last tick
+  (`_busy`) or digits still flying; it eases in and out over `FIELD_FADE` and is HIDDEN once out - a
+  sphere that size is a transparent pass over much of the screen, paid for nothing on an idle unit.
+  Unmounted or unpowered it is off at once (`_field_off`). Measured on the engine: hidden while idle,
+  up 0.24 s after a block in reach was shot (the next tick), the hit points landed, then faded out
+  and hidden. THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
   per `HP_PER_DIGIT` (5) hit points mended, at least one per block, at most `DIGITS_MAX_PER_HEAL`;
   a block mended again while its digits fly gets its own new ones in the same group. They appear
   ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink
