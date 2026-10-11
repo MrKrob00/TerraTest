@@ -132,14 +132,6 @@ var _scan_marker: Node3D = null
 
 func _ready() -> void:
 	_warm_values()                 # runs on by itself, a preset a frame
-	# Wait for the terrain (map loads md after its own await).
-	var guard: int = 0
-	var map: Node = _find_map()
-	while (map == null or not map.has_method("get_dims") or map.get_dims().x <= 0) and guard < 300:
-		await get_tree().process_frame
-		map = _find_map()
-		guard += 1
-	_ready_done = map != null and map.has_method("get_dims") and map.get_dims().x > 0
 	_scan_t = randf_range(scan_min_interval, scan_max_interval)
 
 func _process(delta: float) -> void:
@@ -148,8 +140,14 @@ func _process(delta: float) -> void:
 	Perf.mark("spawner", _pf)
 
 func _tick_spawner(delta: float) -> void:
+	# THE STREAM WAITS FOR THE GROUND, HOWEVER LONG IT TAKES. It waited 300 FRAMES and then gave up
+	# for good: wherever the ground took longer (a slow phone, a loaded save, the debug build) the
+	# world never sent a single machine (CLAUDE.md: waiting for the terrain is seconds, not frames).
 	if not _ready_done:
-		return
+		var map: Node = _find_map()
+		_ready_done = map != null and map.has_method("get_dims") and map.get_dims().x > 0
+		if not _ready_done:
+			return
 	# Debug gate for the regular stream only. Quest machines go through spawn_at and are never
 	# gated: a quest that silently refuses to start is worse to debug than one extra enemy.
 	if not G.debug(&"enemy_spawn"):
@@ -169,6 +167,13 @@ func _tick_spawner(delta: float) -> void:
 	# сколько бы места вокруг ни было. Теперь бодрствует всё, что ближе sleep_dist, а дальше
 	# засыпает; ограничителем осталась общая численность (max_total) — она и есть настоящая
 	# крыша, потому что физику и стволы тикают только не спящие.
+	# A KILL BUYS QUIET: no machine of the stream for KILL_COOLDOWN after one dies (the player's
+	# call: "after a kill the next one spawns at once - I want six minutes"). The stream timer stands
+	# still meanwhile, so the next one comes its usual interval after the quiet ends. Quests, raids
+	# and events do not come through here and keep their own rules.
+	if _kill_cd > 0.0:
+		_kill_cd -= delta
+		return
 	if _enemies.size() >= max_total:
 		return
 	# First run: fill the world at once rather than one at a time.
@@ -889,7 +894,12 @@ func _tutorial_active() -> bool:
 	var q: Node = get_node_or_null("/root/Q")
 	return q != null and q.has_method("tutorial_active") and q.tutorial_active()
 
+## Seconds the stream sends nobody after any enemy dies.
+const KILL_COOLDOWN := 360.0
+var _kill_cd: float = 0.0
+
 func _on_enemy_died(enemy: Node) -> void:
+	_kill_cd = KILL_COOLDOWN
 	# _process prunes the list by is_instance_valid; the only thing that matters here is freeing the
 	# invader slot - while it is taken, a new sector scan sends nobody.
 	if enemy == _invader:
