@@ -163,14 +163,7 @@ func _on_touch_button(pos: Vector2) -> bool:
 	for b in _tsb:
 		if not is_instance_valid(b) or not (b as CanvasItem).is_visible_in_tree():
 			continue
-		var tb := b as TouchScreenButton
-		var size := Vector2.ZERO
-		if tb.texture_normal != null:
-			size = tb.texture_normal.get_size()
-		elif tb.shape is RectangleShape2D:
-			size = (tb.shape as RectangleShape2D).size
-		var local: Vector2 = tb.get_global_transform_with_canvas().affine_inverse() * pos
-		if Rect2(Vector2.ZERO, size).has_point(local):
+		if TouchButtons.hits(b as TouchScreenButton, pos):
 			return true
 	return false
 

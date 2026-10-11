@@ -2178,6 +2178,18 @@ project: read it before claiming how anything works.
   enters the tree and presses it for index > 0; index 0 stays with the mouse, or every button
   would fire twice. Measured with the stick held by finger 0: garage icon, X and a double-tap
   placement by finger 1 all failed before and all work after.
+- **ATTACK IS ROUND AND BUILD / MOVE IS THE HUD'S BOX, BOTH DRAWN** (`hud.AttackFace` / `ModeFace`, the
+  player's call: "in the style, nicer, with an icon; attack round"). They stay `TouchScreenButton`s
+  (any finger), WITHOUT textures: a dark disc in the panels' teal ring with a warm-red crosshair,
+  lit and breathing while held; the mode button the HUD button's rounded box with a stripe and a
+  drawn sign in the colour of where it goes - a block with a plus for BUILD, a steering wheel for
+  MOVE. A TEXTURELESS BUTTON'S SHAPE STANDS CENTRED ON ITS NODE (`touch_screen_button.cpp`
+  `_is_point_inside`), so both are placed by their middle, and WHERE A TouchScreenButton TAKES A
+  FINGER IS ONE ANSWER, `TouchButtons.hits` / `local_area`, asked by the camera's "not my finger",
+  the world tap's "over the HUD" and the tutorial's finger - three copies, two of which took a
+  textureless button's area from its corner. Measured with real touches: the disc takes its middle
+  and rim and not the square's corner, the camera and the world tap both skip it, a touch holds the
+  Attack action; on the real driver both states of both buttons drawn as meant.
 - THE WORLD TAP IS ONE FINGER, TRACKED BY INDEX (`vehicle_body_3d._build_tap_idx`), and the
   joystick's finger is not counted (`_joystick_finger`, `_joystick_held`). Counting it made every tap
   while driving "two fingers down", and every twitch of the stick a drag that marked the tap as a

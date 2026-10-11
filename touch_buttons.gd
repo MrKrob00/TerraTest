@@ -51,3 +51,33 @@ func _fire(b: BaseButton) -> void:
 			return
 		b.button_pressed = not b.button_pressed
 	b.pressed.emit()
+
+# ── WHERE A TouchScreenButton TAKES A FINGER ─────────────────────────────────────────────────────
+# The engine tests the SHAPE about the node's origin, moved to the texture's middle only when the
+# button has a texture and `shape_centered` (touch_screen_button.cpp, _is_point_inside). A button
+# drawn by code has no texture, so its shape stands centred ON the node - the HUD's ATTACK and
+# BUILD buttons are placed by their middle for that reason. Three places asked this question with
+# three copies of the answer (the camera's "not my finger", the world tap's "over the HUD", the
+# tutorial's finger), and two of them took a textureless button's area from its corner.
+
+## The press area in the button's own axes (the shape's bounding box for a circle).
+static func local_area(b: TouchScreenButton) -> Rect2:
+	var mid := _shape_mid(b)
+	if b.shape != null:
+		var r: Rect2 = b.shape.get_rect()
+		return Rect2(r.position + mid, r.size)
+	if b.texture_normal != null:
+		return Rect2(Vector2.ZERO, b.texture_normal.get_size())
+	return Rect2()
+
+## Does a finger at a canvas point land on the button - the engine's own test, a circle as a circle.
+static func hits(b: TouchScreenButton, canvas_pos: Vector2) -> bool:
+	var local: Vector2 = b.get_global_transform_with_canvas().affine_inverse() * canvas_pos
+	if b.shape is CircleShape2D:
+		return local.distance_to(_shape_mid(b)) <= (b.shape as CircleShape2D).radius
+	return local_area(b).has_point(local)
+
+static func _shape_mid(b: TouchScreenButton) -> Vector2:
+	if b.shape_centered and b.texture_normal != null:
+		return b.texture_normal.get_size() * 0.5
+	return Vector2.ZERO
