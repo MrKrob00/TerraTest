@@ -218,6 +218,9 @@ func _define_layout() -> void:
 		MARLIT_CHAMPION: _layout_marlit_champion()
 		MARLIT_RUNNER: _layout_marlit_runner()
 		MARLIT_RAIDER: _layout_marlit_raider()
+		MARLIT_CUBE_1: _layout_marlit_cube(1)
+		MARLIT_CUBE_2: _layout_marlit_cube(2)
+		MARLIT_CUBE_3: _layout_marlit_cube(3)
 		_: _layout_default()
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
@@ -278,6 +281,68 @@ func _layout_marlit_champion() -> void:
 	# plates on the nose, under the guns' line
 	set_block(3, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
 	set_block(7, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
+
+## THE ALMIGHTY CUBE (Marlit's combat line, quest_arcs CUBE_*): a base that IS a cube of Marlit
+## modules on a fixed Marlit support, turrets on its roof. Outside the ladder, spawned `as_base`:
+## the build is the task. Columns are anchored at x and z 3 / 5 / 7 (cells 2..7), the support at the
+## grid's centre (5,5,5). THE BASE DOES NOT TURN, so every roof turret faces OUT of its own side
+## (`_cube_turret`) and four sides cover the whole circle at a turret's 75 deg either way: a barrel
+## looking across the roof would sit behind its neighbours and never see anything.
+##   1: 3x3x2 body, gun and shotgun on the four corners.
+##   2: 3x3x3 - a real cube - a battery and a repair unit inside, shotguns on the edges' middles and
+##      cannons on two corners.
+##   3: the same cube with a solar array on the roof, lasers and cannons on the corners, guns and
+##      shotguns on the edges.
+const MARLIT_CUBE_1 := 123
+const MARLIT_CUBE_2 := 124
+const MARLIT_CUBE_3 := 125
+
+func _layout_marlit_cube(tier: int) -> void:
+	var layers: Array = [5, 7] if tier == 1 else [5, 7, 9]
+	# the middle column: the core in the bottom layer, then (from the second cube) a battery walled in
+	# on six sides and the repair unit over it, whose field covers the whole cube
+	var middle := {5: G.Block.MARLIT_SUPPORT}
+	if tier >= 2:
+		middle[7] = G.Block.MARLIT_BATTERY
+		middle[9] = G.Block.MARLIT_REGEN
+	for y in layers:
+		for x in [3, 5, 7]:
+			for z in [3, 5, 7]:
+				var bt: int = int(middle.get(y, G.Block.MARLIT_BLOCK)) if x == 5 and z == 5 \
+						else G.Block.MARLIT_BLOCK
+				set_block(x, y, z, bt, 0.0)
+	var roof: int = int(layers[-1]) + 2
+	# corners in a pinwheel (front-left, front-right, back-right, back-left), then the edges' middles
+	var corners: Array
+	var edges: Array = []
+	match tier:
+		1:
+			corners = [G.Block.MARLIT_GUN, G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_GUN, G.Block.MARLIT_SHOTGUN]
+		2:
+			corners = [G.Block.MARLIT_GUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_GUN, G.Block.MARLIT_CANNON]
+			edges = [G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_SHOTGUN]
+		_:
+			corners = [G.Block.MARLIT_CANNON, G.Block.MARLIT_LASER, G.Block.MARLIT_CANNON, G.Block.MARLIT_LASER]
+			edges = [G.Block.MARLIT_GUN, G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_GUN, G.Block.MARLIT_SHOTGUN]
+			set_block(5, roof, 5, G.Block.MARLIT_SOLAR, 0.0)   # the roof's middle, joins by its bottom
+	# column (x, z) and the side it looks out of: 0 front (-Z), 1 right (+X), 2 back (+Z), 3 left (-X)
+	var corner_at := [[3, 3, 0], [7, 3, 1], [7, 7, 2], [3, 7, 3]]
+	var edge_at := [[5, 3, 0], [7, 5, 1], [5, 7, 2], [3, 5, 3]]
+	for i in corners.size():
+		_cube_turret(corner_at[i][0], roof, corner_at[i][1], corner_at[i][2], corners[i])
+	for i in edges.size():
+		_cube_turret(edge_at[i][0], roof, edge_at[i][1], edge_at[i][2], edges[i])
+
+## A 2x2x2 turret over the column anchored at (x, z) (cells x-1..x, z-1..z), looking out of `side`.
+## A Marlit block turns about its anchor CORNER, so the anchor moves with the yaw to keep the cells:
+## yaw 0 covers ax-1..ax / az-1..az, pi ax..ax+1 / az..az+1, +pi/2 ax-1..ax / az..az+1, -pi/2
+## ax..ax+1 / az-1..az (the same rule `_marlit_wheels` lays its wheels by).
+func _cube_turret(x: int, y: int, z: int, side: int, bt: int) -> void:
+	match side:
+		0: set_block(x, y, z, bt, 0.0)
+		1: set_block(x - 1, y, z, bt, -PI / 2)
+		2: set_block(x - 1, y, z - 1, bt, PI)
+		3: set_block(x, y, z - 1, bt, PI / 2)
 
 # New game: ONE cabin (the starter kit drops into the world nearby, see world_persist.gd). The
 # core sits at the grid CENTRE, and add-on floors count from it (+5).

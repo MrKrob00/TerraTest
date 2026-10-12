@@ -66,8 +66,11 @@ func mine_for_claimer(by: Node) -> bool:
 	return true
 
 
+var _rest_time: float = 5.0
+
 func _ready() -> void:
 	current_hp = max_hp
+	_rest_time = $RestTimer.wait_time
 
 # Урон по жиле: списываем HP и выбрасываем руду, пока её не останется пропорционально HP.
 func hurt(damage: int = 10) -> void:
@@ -98,7 +101,35 @@ func hurt(damage: int = 10) -> void:
 	_write_shader_data(Color(_now(), share, 0.0, float(ore_type)))
 
 	if _available <= 0:
+		_set_solid(false)
 		$RestTimer.start()
+
+## AN EMPTY VEIN IS NOT IN THE WAY. What stays of a worked-out vein is rubble and of a felled tree
+## a stump, and a 3 m cylinder (a 7 m trunk) left standing over them stopped machines and shots on
+## air. The collider goes with the last ore and comes back with the refill; a vein the auto miner
+## holds stays open the whole time. Deferred: `hurt` runs inside a physics traversal.
+func _set_solid(on: bool) -> void:
+	var col := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if col != null:
+		col.set_deferred("disabled", not on)
+
+## A REFILL WAITS FOR ITS SPOT TO BE CLEAR (TerraTech's rule for what regrows): a collider switched
+## on inside a machine or a loose block throws it out with the full force of the solver. Asked with
+## the vein's own shape, against machines (16), loose blocks (2) and loose items (8).
+const BLOCKING_MASK := 2 | 8 | 16
+## How long a blocked refill waits before it asks again.
+const BLOCKED_RETRY := 3.0
+
+func _spot_blocked() -> bool:
+	var col := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if col == null or col.shape == null or not is_inside_tree():
+		return false
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = col.shape
+	q.transform = col.global_transform
+	q.collision_mask = BLOCKING_MASK
+	q.exclude = [get_rid()]
+	return not get_world_3d().direct_space_state.intersect_shape(q, 1).is_empty()
 
 # Штампуем один ресурс в мир рядом с жилой и красим его под цвет жилы.
 func _eject_one() -> void:
@@ -142,6 +173,11 @@ func _on_rest_timer_timeout() -> void:
 	# тикать в момент постановки — и тогда жила налилась бы рудой прямо под шахтёром.
 	if claimed_by != null and is_instance_valid(claimed_by):
 		return
+	if _spot_blocked():
+		$RestTimer.start(BLOCKED_RETRY)
+		return
+	$RestTimer.wait_time = _rest_time       # start(BLOCKED_RETRY) above rewrote it
+	_set_solid(true)
 	_available = MAX_RESOURCES
 	current_hp = max_hp
 	# B — время респавна (рост), G=1 → жила целая, A — тип.

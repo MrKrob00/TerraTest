@@ -19,27 +19,19 @@ extends Node3D
 ## Новый металл — строка в G.Metal/G.METAL_COLOR (до 8 штук, см. MAX_ORE_TYPES в resource.gdshader).
 var ore_colors: Array[Color] = []
 
-## ДОЛЯ ДЕРЕВЬЕВ (0..1). Дерево — единственное, что растёт ВРАЗБРОС: руду раздаёт регион
-## (_metal_for), то есть металл под ногами зависит от того, где ты стоишь, а дерево выпадает
-## броском на каждую точку. Поэтому лес нигде не «месторождение», его встречаешь по дороге.
+## WHAT GROWS AND WHAT IS DUG ARE LAID IN GROUPS, after TerraTech (`_region_job`, below): trees
+## stand in groves, ore in deposits of one metal. Coal is not in the ground: it is made from wood
+## (resource.upgrade), and that is its only source.
 ##
-## Уголь из земли УБРАН: он стал переделом (resource.upgrade — дерево в процессоре пережигается
-## в уголь), и это единственный его источник. Дерево горит само, вдвое хуже угля и стоит вдвое
-## дешевле — выбор между «кинуть в топку сейчас» и «пережечь и получить вдвое».
-##
-## АВТО-ШАХТЁР ДЕРЕВО НЕ БЕРЁТ (resource_node.claim). Лесу нужен не блок НА одной точке, а блок
-## С РАДИУСОМ, который валит всё вокруг себя и живёт за счёт того, что жила сама
-## восстанавливается по таймеру. Это отдельная работа и она ещё не сделана.
-@export var wood_chance: float = 0.25
+## THE AUTO MINER DOES NOT TAKE A TREE (resource_node.claim), and that is the design: wood is the
+## driving economy, see "WOOD HAS NO AUTOMATION" in CLAUDE.md.
 @export var wood_color: Color = Color(0.42, 0.28, 0.16)
 
 @export_group("Расстановка")
-## СЧЁТЧИКА ЖИЛ НА ВСЮ КАРТУ БОЛЬШЕ НЕТ: у мира без края нет «всей карты». Плотность задаётся
-## на РЕГИОН (VEINS_PER_REGION), и прежние 2000 жил на 1982² — это ровно то число, из которого
-## она и выведена. Отступа от края тоже нет: края нет.
+## Density is set PER REGION by the cluster constants (GROVE_TRIES, DEPOSIT_TRIES ...): a world with
+## no edge has no "whole map" to count veins over.
 @export var min_height: float = 2.0          # ниже — самые днища впадин, не спавним (воды в мире нет)
 @export var max_slope: float = 7.0           # разброс высот вокруг точки; выше — обрыв
-@export var min_spacing: float = 2.0         # только чтобы жилы не налезали друг на друга
 
 @export_group("Стриминг")
 ## Радиус вокруг камеры, в котором жилы РЕНДЕРЯТСЯ и активны (есть узел/коллизия для добычи).
@@ -98,7 +90,7 @@ var _tree_shape: CylinderShape3D = null
 ## the same way: one number on the instance, break points in model space. The models are about a
 ## metre across, so a vein is about three now; its collider (`_ore_shape`), where its ore is thrown
 ## (`resource_node._eject_one`, by `vein_basis`) and the auto miner's reach and mount distance
-## (`auto_miner.vein_reach`, `vehicle_body_3d.MINER_MOUNT_DIST`) grew with it. `min_spacing` did
+## (`auto_miner.vein_reach`, `vehicle_body_3d.MINER_MOUNT_DIST`) grew with it. the spacing (`ORE_GAP`) did
 ## NOT: it is a rejection radius in the seeded layout, and moving it would move veins under saved bases.
 const VEIN_SIZE := 3.0
 var _ore_shape: CylinderShape3D = null
@@ -218,7 +210,10 @@ func _tree_kind(map: Node, world: Vector3) -> int:
 		return TREE_BROAD
 	if map.has_method("salt_at") and float(map.salt_at(world)) > 0.5:
 		return -1
-	var b: Vector3 = map.biome_at(world)          # canyon, meadow, mountain
+	return _tree_kind_of(map.biome_at(world), world)
+
+## The kind from a biome blend already in hand (canyon, meadow, mountain) - the salt flat asked before.
+func _tree_kind_of(b: Vector3, world: Vector3) -> int:
 	if b.y > 0.5 and b.z <= 0.5:
 		var roll: int = absi(hash(Vector2i(roundi(world.x * 10.0), roundi(world.z * 10.0)))) % 100
 		return TREE_TEAL if roll < TEAL_SHARE else TREE_BROAD
@@ -276,9 +271,6 @@ func write_custom(slot: int, data: Color, node: Node = null) -> void:
 # ВЫСОТУ СПРАШИВАЕМ У КАРТЫ, а она знает только то, что внутри окна. Поэтому регион рождается,
 # лишь когда игрок к нему подъехал: снаружи окна ответа всё равно нет.
 const REGION := 256
-## Сколько жил в регионе. Не на глаз: прежняя плотность — 2000 жил на карту 1982², то есть одна
-## на ~1964 клетки². На регион 256² (65 536 клеток²) это ровно тридцать три.
-const VEINS_PER_REGION := 33
 ## На сколько регионов вокруг игрока держим жилы. Один в каждую сторону — это 768 клеток по
 ## диагонали, вдвое больше дальности отрисовки: жила успевает родиться задолго до того, как её
 ## станет видно. These are built AT ONCE: they hold every vein a drill or a miner can reach.
@@ -418,11 +410,105 @@ func _build_region(rk: Vector2i) -> Array:
 	_region_step(job, 0)
 	return job["out"]
 
+## ── HOW A REGION IS STOCKED (after TerraTech) ────────────────────────────────
+## Nothing is strewn one point at a time any more. Every vein used to be its own roll - a point
+## anywhere in the region, a quarter of them trees - so a "forest" was eight trees spread over 256 m
+## and ore of every metal stood alone wherever it fell. TerraTech's ground is laid in GROUPS: trees
+## stand in forests with open ground between them, rock comes as a field of several outcrops of ONE
+## kind, and what grows and what is dug both follow the biome. So a region lays:
+##   GROVES - a centre where the forest field (`_forest_noise`, one low-frequency noise of the seed)
+##     stands over FOREST_CUT, and round it a clump of trees, more the denser the field; the biome
+##     thins it (`_tree_keep`: the meadow thick, canyon and mountain thinner, palms in the desert in
+##     small oases) and the salt flat takes all of it;
+##   DEPOSITS - a centre in open ground (the forest field under DEPOSIT_FOREST_MAX, so ore stands in
+##     clearings), its metal decided ONCE for the whole deposit (`_metal_for`), and DEPOSIT_VEINS of
+##     that metal round it, DEPOSIT_RICH more in the canyon and on the mountains;
+##   LONE TREES - LONE_TREES points anywhere the biome lets a tree stand, so open ground is not bare.
+## Every member stays INSIDE its own region: a region is laid knowing nothing of its neighbours, and
+## spacing is checked only within it. All the rng is drawn when the job is made, so the layout is
+## the same however the work is sliced.
+const GROVE_TRIES := 7
+const FOREST_FREQ := 1.0 / 260.0
+const FOREST_CUT := 0.05
+## Simplex FBM rarely leaves +-0.6, so the grove is full at FOREST_CUT + FOREST_SPAN.
+const FOREST_SPAN := 0.4
+const GROVE_TREES := Vector2i(5, 14)
+const GROVE_R := Vector2(9.0, 20.0)
+const LONE_TREES := 3
+const LONE_KEEP := 0.6
+const DEPOSIT_TRIES := 7
+const DEPOSIT_FOREST_MAX := 0.3
+const DEPOSIT_VEINS := Vector2i(3, 5)
+const DEPOSIT_RICH := 2
+const DEPOSIT_R := 8.0
+## Gaps between accepted points: a tree drawn at TREE_SCALE, a vein ~3 m across (VEIN_SIZE). The
+## hash grid's cell is SPACE_CELL, which has to be at least the largest gap.
+const TREE_GAP := 4.5
+const ORE_GAP := 4.5
+const SPACE_CELL := 5.0
+## How thick a grove stands per biome (canyon, meadow, mountain, desert).
+const TREE_KEEP_BIOME := Vector4(0.55, 1.0, 0.45, 0.4)
+
+var _forest: FastNoiseLite = null
+var _forest_seed: int = -1
+
+func _forest_noise() -> FastNoiseLite:
+	var sd: int = int(G.world_seed)
+	if _forest == null or _forest_seed != sd:
+		_forest = FastNoiseLite.new()
+		_forest.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_forest.seed = sd ^ 0x5f3e1
+		_forest.frequency = FOREST_FREQ
+		_forest.fractal_octaves = 2
+		_forest_seed = sd
+	return _forest
+
+## A point round a cluster's centre, denser in the middle (radius linear in the roll, not its root).
+static func _scatter(rng: RandomNumberGenerator, r: float) -> Vector2:
+	var a: float = rng.randf() * TAU
+	var d: float = rng.randf() * r
+	return Vector2(cos(a) * d, sin(a) * d)
+
 ## A region's placement as a job that can stop between candidates and go on later (see REGION_FAR).
+## Candidates are [point, cluster index, keep roll]; clusters carry what is decided per group.
 func _region_job(rk: Vector2i) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash(Vector3i(rk.x, rk.y, int(G.world_seed)))
-	return {"rk": rk, "rng": rng, "out": [], "grid": {}, "tries": VEINS_PER_REGION * 12}
+	var forest := _forest_noise()
+	var x0 := float(rk.x * REGION)
+	var z0 := float(rk.y * REGION)
+	var types: int = maxi(ore_colors.size(), 1)
+	var clusters: Array = []
+	var cand: Array = []
+	for _i in GROVE_TRIES:
+		var c := Vector2(x0 + rng.randf() * REGION, z0 + rng.randf() * REGION)
+		var r: float = lerpf(GROVE_R.x, GROVE_R.y, rng.randf())
+		var f: float = forest.get_noise_2d(c.x, c.y)
+		if f <= FOREST_CUT:
+			continue
+		var t: float = clampf((f - FOREST_CUT) / FOREST_SPAN, 0.0, 1.0)
+		var n: int = roundi(lerpf(float(GROVE_TREES.x), float(GROVE_TREES.y), t))
+		clusters.append({"wood": true, "keep": 1.0})
+		for _j in n:
+			cand.append([c + _scatter(rng, r), clusters.size() - 1, rng.randf()])
+	clusters.append({"wood": true, "keep": LONE_KEEP})
+	for _i in LONE_TREES:
+		cand.append([Vector2(x0 + rng.randf() * REGION, z0 + rng.randf() * REGION),
+				clusters.size() - 1, rng.randf()])
+	for _i in DEPOSIT_TRIES:
+		var c := Vector2(x0 + rng.randf() * REGION, z0 + rng.randf() * REGION)
+		var cl := {"wood": false, "c": c, "wild": rng.randf() < WILD_CHANCE,
+				"wild_metal": rng.randi() % types, "roll": rng.randf(), "size": rng.randf(),
+				"metal": -2, "n": 0, "placed": 0}
+		var pts: Array = []
+		for _j in DEPOSIT_VEINS.y + DEPOSIT_RICH:
+			pts.append(c + _scatter(rng, DEPOSIT_R))
+		if forest.get_noise_2d(c.x, c.y) > DEPOSIT_FOREST_MAX:
+			continue                                   # ore stands in clearings, not under a forest
+		clusters.append(cl)
+		for q in pts:
+			cand.append([q, clusters.size() - 1, 0.0])
+	return {"rk": rk, "rng": rng, "out": [], "grid": {}, "cl": clusters, "cand": cand, "i": 0}
 
 ## Runs the job until its region is laid or `budget_usec` is spent (0: no limit); true when laid.
 func _region_step(job: Dictionary, budget_usec: int) -> bool:
@@ -434,59 +520,98 @@ func _region_step(job: Dictionary, budget_usec: int) -> bool:
 	var rng: RandomNumberGenerator = job["rng"]
 	var out: Array = job["out"]
 	var grid: Dictionary = job["grid"]
-	var cell: float = maxf(min_spacing, 0.001)
+	var clusters: Array = job["cl"]
+	var cand: Array = job["cand"]
+	var x0 := float(rk.x * REGION)
+	var z0 := float(rk.y * REGION)
 	var t0 := Time.get_ticks_usec()
-	while out.size() < VEINS_PER_REGION and int(job["tries"]) > 0:
+	while int(job["i"]) < cand.size():
 		if budget_usec > 0 and Time.get_ticks_usec() - t0 > budget_usec:
 			return false
-		job["tries"] = int(job["tries"]) - 1
-		var gx: float = float(rk.x * REGION) + rng.randf() * REGION
-		var gz: float = float(rk.y * REGION) + rng.randf() * REGION
-		var world := Vector3(gx, 0.0, gz)
+		var e: Array = cand[int(job["i"])]
+		job["i"] = int(job["i"]) + 1
+		var pt: Vector2 = e[0]
+		if pt.x < x0 or pt.y < z0 or pt.x >= x0 + REGION or pt.y >= z0 + REGION:
+			continue                                   # a member past the region's edge
+		var cl: Dictionary = clusters[int(e[1])]
+		var wood: bool = cl["wood"]
+		if not wood:
+			if int(cl["metal"]) == -2:
+				_decide_deposit(cl, map, can_biome)
+			if int(cl["placed"]) >= int(cl["n"]) or not _ore_enabled(int(cl["metal"]), false):
+				continue
+		var world := Vector3(pt.x, 0.0, pt.y)
 		var h: float = map.terrain_height_at(world)
 		if h < min_height:
 			continue
-		var lp: Vector3 = to_local(Vector3(gx, h + 0.25, gz))
+		var lp: Vector3 = to_local(Vector3(pt.x, h + 0.25, pt.y))
 		if _slope_at(map, lp.x, lp.z) > max_slope:
 			continue
-		if _too_close_hashed(grid, cell, lp):
+		if not _space_free(grid, lp, TREE_GAP if wood else ORE_GAP):
 			continue
-		var key := Vector2i(floori(lp.x / cell), floori(lp.z / cell))
+		var kind: int = 0
+		if wood:
+			if not _ore_enabled(0, true):
+				continue
+			var gw := Vector3(pt.x, h, pt.y)
+			if can_biome and map.has_method("salt_at") and float(map.salt_at(gw)) > 0.5:
+				continue                               # no trees on a salt flat
+			var b: Vector3 = map.biome_at(gw) if can_biome else Vector3(0.0, 1.0, 0.0)
+			if float(e[2]) > _tree_keep(b) * float(cl["keep"]):
+				continue
+			kind = _tree_kind_of(b, gw)
+		var key := Vector2i(floori(lp.x / SPACE_CELL), floori(lp.z / SPACE_CELL))
 		if not grid.has(key):
-			grid[key] = [] as Array[Vector3]
+			grid[key] = []
 		(grid[key] as Array).append(lp)
-		var wood: bool = rng.randf() < wood_chance
-		var ore_type: int = ore_colors.size() if wood else _metal_for(lp, map, can_biome, rng)
-		if not _ore_enabled(ore_type, wood):
-			continue
-		var kind: int = _tree_kind(map, Vector3(gx, h, gz)) if wood else 0
-		if kind < 0:
-			continue                                  # no trees on a salt flat
+		if not wood:
+			cl["placed"] = int(cl["placed"]) + 1
 		out.append({
 			"pos": lp,
-			"gpos": Vector3(gx, h + 0.25, gz),
+			"gpos": Vector3(pt.x, h + 0.25, pt.y),
 			"scene": resource_nodes[rng.randi() % resource_nodes.size()] \
 					if not resource_nodes.is_empty() else null,
-			"ore_type": ore_type, "wood": wood, "tree": kind, "slot": -1, "node": null,
+			"ore_type": ore_colors.size() if wood else int(cl["metal"]),
+			"wood": wood, "tree": kind, "slot": -1, "node": null,
 		})
 	return true
 
-# Есть ли принятая точка ближе min_spacing? Смотрим только свою и 8 соседних ячеек решётки.
-func _too_close_hashed(grid: Dictionary, cell: float, p: Vector3) -> bool:
-	var cx := floori(p.x / cell)
-	var cz := floori(p.z / cell)
+## A deposit's metal and size, decided once from its centre: the metal by the biome there
+## (`_metal_for`), DEPOSIT_RICH more veins where canyon or mountain holds the centre.
+func _decide_deposit(cl: Dictionary, map: Node, can_biome: bool) -> void:
+	var c: Vector2 = cl["c"]
+	var b := Vector3(0.0, 0.0, 0.0)
+	if can_biome:
+		b = map.biome_at(Vector3(c.x, 0.0, c.y))
+	cl["metal"] = _metal_for(b, can_biome and not bool(cl["wild"]), int(cl["wild_metal"]), float(cl["roll"]))
+	var n: int = DEPOSIT_VEINS.x + int(float(cl["size"]) * float(DEPOSIT_VEINS.y - DEPOSIT_VEINS.x + 1))
+	if maxf(b.x, b.z) > 0.5:
+		n += DEPOSIT_RICH
+	cl["n"] = mini(n, DEPOSIT_VEINS.y + DEPOSIT_RICH)
+
+## How thick trees stand at a point, by its biome blend (TREE_KEEP_BIOME; the desert is what is left).
+func _tree_keep(b: Vector3) -> float:
+	var d: float = clampf(1.0 - maxf(b.x, maxf(b.y, b.z)), 0.0, 1.0)
+	var total: float = b.x + b.y + b.z + d
+	if total <= 0.001:
+		return TREE_KEEP_BIOME.w
+	return (b.x * TREE_KEEP_BIOME.x + b.y * TREE_KEEP_BIOME.y + b.z * TREE_KEEP_BIOME.z \
+			+ d * TREE_KEEP_BIOME.w) / total
+
+## Nothing accepted closer than `gap`: only this cell of the hash grid and its eight neighbours.
+func _space_free(grid: Dictionary, p: Vector3, gap: float) -> bool:
+	var cx := floori(p.x / SPACE_CELL)
+	var cz := floori(p.z / SPACE_CELL)
+	var g2: float = gap * gap
 	for dx in [-1, 0, 1]:
 		for dz in [-1, 0, 1]:
 			var bucket = grid.get(Vector2i(cx + dx, cz + dz), null)
 			if bucket == null:
 				continue
 			for q in (bucket as Array):
-				# Квадраты: на генерации карты сюда приходит до двадцати четырёх тысяч
-				# кандидатов, у каждого по девять клеток соседей — корень стоит заметного
-				# времени на загрузке, а решает здесь только сравнение с порогом.
-				if (q as Vector3).distance_squared_to(p) < min_spacing * min_spacing:
-					return true
-	return false
+				if (q as Vector3).distance_squared_to(p) < g2:
+					return false
+	return true
 
 # Крутизна = разброс высот в 4 точках вокруг (± sample юнитов).
 func _slope_at(map: Node, lx: float, lz: float) -> float:
@@ -496,12 +621,6 @@ func _slope_at(map: Node, lx: float, lz: float) -> float:
 	var hz1: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz + s))
 	var hz2: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz - s))
 	return maxf(maxf(hx1, hx2), maxf(hz1, hz2)) - minf(minf(hx1, hx2), minf(hz1, hz2))
-
-func _too_close(positions: Array[Vector3], p: Vector3) -> bool:
-	for q in positions:
-		if q.distance_to(p) < min_spacing:
-			return true
-	return false
 
 # Буфер MultiMesh на max_visible слотов, все схлопнуты. ДАННЫЕ жил сюда больше не входят: их
 # рождают регионы по мере приближения игрока (_build_region), а здесь только пул слотов, который
@@ -551,12 +670,12 @@ func _ore_enabled(ore_type: int, wood: bool) -> bool:
 		return G.debug(&"ore_wood")
 	return G.debug(ORE_FLAGS[ore_type]) if ore_type < ORE_FLAGS.size() else true
 
-func _metal_for(local_pos: Vector3, map: Node, can_biome: bool, rng: RandomNumberGenerator) -> int:
+## `wild_metal` when the deposit is a wild one (or no biome answers), else a roll over the biome's weights.
+func _metal_for(m: Vector3, by_biome: bool, wild_metal: int, roll01: float) -> int:
 	var types: int = maxi(ore_colors.size(), 1)
-	if not can_biome or rng.randf() < WILD_CHANCE:
-		return rng.randi() % types
+	if not by_biome:
+		return wild_metal % types
 	# biome_at отдаёт (каньон, луг, горы); пустыня — это то, что осталось.
-	var m: Vector3 = map.biome_at(to_global(local_pos))
 	var desert: float = clampf(1.0 - maxf(m.x, maxf(m.y, m.z)), 0.0, 1.0)
 	var weights := [desert, m.y, m.x, m.z]        # феррит, куприт, силикат, титанит
 	var total: float = 0.0
@@ -564,7 +683,7 @@ func _metal_for(local_pos: Vector3, map: Node, can_biome: bool, rng: RandomNumbe
 		total += maxf(float(weights[i]), 0.0)
 	if total <= 0.001:
 		return 0                                   # ни один биом не выражен — базовый металл
-	var roll: float = rng.randf() * total
+	var roll: float = roll01 * total
 	for i in mini(weights.size(), types):
 		roll -= maxf(float(weights[i]), 0.0)
 		if roll <= 0.0:

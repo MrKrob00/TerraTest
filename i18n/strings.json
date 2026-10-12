@@ -2903,5 +2903,57 @@
 	"Only Titanite counts here. Every region holds its own metal - find where it grows.": {
 		"ru": "Здесь засчитывается только Titanite. В каждом регионе свой металл — найди, где он растёт.",
 		"uk": "Тут зараховується лише Titanite. У кожному регіоні свій метал — знайди, де він росте."
+	},
+	"The Almighty Cube I": {
+		"ru": "Всемогущий Куб I",
+		"uk": "Всемогутній Куб I"
+	},
+	"The Almighty Cube II": {
+		"ru": "Всемогущий Куб II",
+		"uk": "Всемогутній Куб II"
+	},
+	"The Almighty Cube III": {
+		"ru": "Всемогущий Куб III",
+		"uk": "Всемогутній Куб III"
+	},
+	"Reach the cube": {
+		"ru": "Доберись до куба",
+		"uk": "Дістанься до куба"
+	},
+	"Break the cube": {
+		"ru": "Разбей куб",
+		"uk": "Розбий куб"
+	},
+	"Marlit has parked a cube of its own blocks out in the field and wants to see it come apart.": {
+		"ru": "Marlit поставил в поле куб из своих блоков и хочет посмотреть, как он развалится.",
+		"uk": "Marlit поставив у полі куб зі своїх блоків і хоче подивитися, як він розвалиться."
+	},
+	"A bigger cube, and this one mends itself: there is a repair unit and a battery inside.": {
+		"ru": "Куб побольше, и этот чинит себя сам: внутри ремонтный блок и аккумулятор.",
+		"uk": "Більший куб, і цей лагодить себе сам: всередині ремонтний блок і акумулятор."
+	},
+	"The last cube: a solar array on its roof keeps the repairs going. Bring heavy guns.": {
+		"ru": "Последний куб: солнечная панель на крыше не даёт ремонту остановиться. Бери тяжёлые пушки.",
+		"uk": "Останній куб: сонячна панель на даху не дає ремонту зупинитися. Бери важкі гармати."
+	},
+	"It does not turn: every side's guns watch their own side. Come in on a corner, where two sides meet.": {
+		"ru": "Он не поворачивается: пушки каждой стороны стерегут только свою сторону. Заходи с угла, где сходятся две стороны.",
+		"uk": "Він не повертається: гармати кожного боку стережуть лише свій бік. Заходь з кута, де сходяться два боки."
+	},
+	"Marlit's cube is out there. Its guns watch every side - none of them turns.": {
+		"ru": "Куб Marlit где-то там. Его пушки смотрят на все стороны — и ни одна не поворачивается.",
+		"uk": "Куб Marlit десь там. Його гармати дивляться на всі боки — і жодна не повертається."
+	},
+	"The second cube repairs itself. Hit it harder than it can mend.": {
+		"ru": "Второй куб чинит себя сам. Бей сильнее, чем он успевает чинить.",
+		"uk": "Другий куб лагодить себе сам. Бий сильніше, ніж він встигає лагодити."
+	},
+	"The last cube runs on the sun. Its repairs will not stop on their own.": {
+		"ru": "Последний куб работает от солнца. Сам по себе его ремонт не кончится.",
+		"uk": "Останній куб працює від сонця. Сам собою його ремонт не скінчиться."
+	},
+	"The cube is down. Marlit sends what it promised.": {
+		"ru": "Куб повержен. Marlit присылает обещанное.",
+		"uk": "Куб повалено. Marlit надсилає обіцяне."
 	}
 }
