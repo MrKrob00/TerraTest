@@ -3455,6 +3455,11 @@ real screen. Those stay with the person holding the phone.
   `G` helpers, not through node paths.
 - When behaviour changes, update this file and the matching `docs/` page in the same commit.
 
+- **THE PLAYER TESTS FROM `main`, SO EVERY CHANGE LANDS ON `main`** (the player's rule). A session
+  may be handed a `claude/...` branch to work on; whatever is pushed there is ALSO fast-forwarded into
+  `main` and pushed, in the same step. Work that stayed on a side branch was work the player never
+  saw: fourteen commits sat there while every test ran on `main`.
+
 ## 5. Style and conventions
 
 - Comments and docs are in **English**: the same content costs far fewer tokens than Russian, and
