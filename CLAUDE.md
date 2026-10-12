@@ -2883,6 +2883,13 @@ project: read it before claiming how anything works.
   own face's axes, front and back owning the cube's edges so none is notched, and a bolted cap laid
   over every corner. 2,800 HP (the cabin's 320 over eight cells at Marlit's 1.1 a cell), 180 kg, a
   recipe of 3 + 3 components: at 5 + 5 the Marlit builds came out a ladder step dearer.
+- **A NEW MODEL GOES INTO THE GAME ONLY AFTER THE PLAYER HAS SEEN IT AND SAID YES** (the player's
+  rule): model first - the generator, its meshes, pictures from the real driver sent to the player -
+  then, approved, the block (enum, scene, tables, tree, recipe, names). And EVERY BUILD OF A MODEL IS
+  SELF-CHECKED (`python3 art/model_check.py <name>`, the model's `em.CHECKS` entry beside its
+  builder): every vertex inside the block's cells, a turning part checked at 16 angles, the still body
+  it must not enter, and the triangle budget (700); then the pictures, looked at, before they are sent.
+  It caught the laser drill's prong tips 2 cm past the front face on its first run.
 - **THE MARLIT DRILL** (`MARLIT_DRILL` 76, `art/marlit_drill.py`, the Falsus `drill.gd` with
   `drill_damage` 180, 1850 HP, 120 kg): 2x2x2 anchored in a corner, bolted on by its BACK face like
   the Falsus drill - a mount plate filling that face with the faction's window, an octagonal housing
