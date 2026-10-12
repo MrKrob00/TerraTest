@@ -31,6 +31,14 @@ import turret_heads as th  # noqa: E402
 import emitter_models as em  # noqa: E402
 import marlit_weapons as mw  # noqa: E402
 
+def mprism(f, lo, hi, rnd, seg=None):
+    """A box in the Marlit hull's own dress (`em.marlit_prism`): every face a dark panel with the
+    faction's octagon, a sunset line and facets, every edge bevelled - what the Marlit block, cabin
+    and the rest wear. `em.marlit_box`'s plain grey plates did not belong among them (the player)."""
+    q = [(lo[1], lo[2]), (hi[1], lo[2]), (hi[1], hi[2]), (lo[1], hi[2])]
+    em.marlit_prism(f, q, lo[0], hi[0], rnd, seg=seg)
+
+
 # ── the laser drill ────────────────────────────────────────────────────────────────────────────
 CX, CY = -0.5, 0.5
 ## THE HEAD IS THE ONE THE PLAYER KEPT (the second cut's: a stepped lens stack, cyan between the steps,
@@ -46,9 +54,7 @@ HEAD_Z = -0.40
 def _ld_body(f, rnd):
     if VARIANT == "step":
         cz = 0.05
-        em.marlit_box(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), 0.12, rnd,
-                      {(2, 1): "window", (0, 1): "window", (0, -1): "window", (1, 1): "window",
-                       (1, -1): "window"})
+        mprism(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), rnd)
         tiers = [(cz, -0.16, 0.92, 0.90), (-0.16, HEAD_Z, 0.78, 0.74)]
         for z0, z1, r0, r1 in tiers:
             mw.oct_tube(f, (CX, CY, z0), (CX, CY, z1), r0, r1, "m")
@@ -56,9 +62,7 @@ def _ld_body(f, rnd):
             mw.band(f, (CX, CY, z1 - 0.001), (CX, CY, z1 - 1.0), 0.0, r1 - 0.06, "mflat1")
     else:
         cz = -0.10
-        em.marlit_box(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), 0.20, rnd,
-                      {(2, 1): "window", (0, 1): "window", (0, -1): "window", (1, 1): "window",
-                       (1, -1): "window"})
+        mprism(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), rnd)
         mw.oct_tube(f, (CX, CY, cz), (CX, CY, cz - 0.08), 0.86, 0.86, "m")
         mw.oct_tube(f, (CX, CY, cz - 0.08), (CX, CY, cz - 0.14), 0.87, 0.87, "c")
         mw.oct_tube(f, (CX, CY, cz - 0.14), (CX, CY, HEAD_Z), 0.86, 0.80, "m")
@@ -105,74 +109,56 @@ def _ld_build(pk, img):
 
 
 # ── the saw ────────────────────────────────────────────────────────────────────────────────────
-## A CIRCULAR SAW, READ AT A GLANCE (the player: "everything but the blade is rubbish", then "no
-## taste": two slabs round a slot read as a drawer, then a beam over a recess read as a pipe on a box,
-## and a vented drum as a tower block). It is drawn as a real saw is: a D-shaped GUARD over the
-## blade's back half - the arc behind, a straight front edge across the blade's middle carrying hazard
-## slats - flowing into a casting across the back of the block, and the MOTOR standing on the guard
-## over the spindle. The front half of the blade is bare; the back half runs under the guard.
+## THE BLADE IS THE ONE THE PLAYER KEPT; EVERYTHING ROUND IT IS THE MARLIT HULL'S OWN DRESS (`mprism`).
+## Three cuts were turned down: a low box with a tower and a thin arm, two slabs round a slot ("a
+## drawer"), and a D-shaped guard with hazard slats ("rubbish") - all in plain grey plate that no other
+## Marlit block wears. Now: a Marlit body across the back of the block, and from it a YOKE - an upper
+## and a lower arm reaching out to the blade's middle, an octagonal hub through both holding the axle -
+## the blade turning between them. The front of the blade is bare. The yoke was first cut in the hull's
+## dress too and read as grey frames; it is the turrets' dark metal now, slit in sunset like their yokes.
 SX = -0.5
-BLADE_Y = -0.18
-BLADE_Z = -0.72
-BLADE_R = 0.75
+BLADE_Y = -0.06
+BLADE_Z = -0.70
+BLADE_R = 0.76
 BLADE_T = 0.035        # half its thickness
-CAST_Z = 0.08          # the back casting's front face
-GUARD_R = 0.84
-GUARD_Y0 = BLADE_Y + BLADE_T + 0.03
-GUARD_Y1 = 0.24
-MOTOR_R = 0.27
+CAST_Z = 0.12          # the body's front face
+ARM_W = 0.20           # half an arm's width
+UP_ARM = (BLADE_Y + BLADE_T + 0.05, 0.22)      # the upper arm's bottom and top
+LO_ARM = (-0.42, BLADE_Y - BLADE_T - 0.05)     # the lower arm's
+WEB_Z = CAST_Z - 0.26  # the clamp's web: the arms widen here where they leave the body
 
 
-def _d_prism(f, pts, y0, y1, side, top, bottom=None):
-    """A prism over a convex outline in x-z: its sides toned (or one style), its top, maybe a bottom."""
-    c = (sum(p[0] for p in pts) / len(pts), (y0 + y1) * 0.5, sum(p[1] for p in pts) / len(pts))
-    n = len(pts)
-    for i in range(n):
-        j = (i + 1) % n
-        q = [(pts[i][0], y0, pts[i][1]), (pts[j][0], y0, pts[j][1]), (pts[j][0], y1, pts[j][1]),
-             (pts[i][0], y1, pts[i][1])]
-        mw._face(f, q, c, side(i) if callable(side) else side, u_hint=th.sub(q[1], q[0]))
-    mw._face(f, [(p[0], y1, p[1]) for p in pts], (c[0], y0 - 1.0, c[2]), top, u_hint=(1, 0, 0))
-    if bottom:
-        mw._face(f, [(p[0], y0, p[1]) for p in pts], (c[0], y1 + 1.0, c[2]), bottom, u_hint=(1, 0, 0))
+def _slit(f, x, y0, y1, z0, z1, side):
+    """A sunset slit on an arm's outer face (x = const), as on the Marlit gun's yokes."""
+    q = [(x, y0, z0), (x, y0, z1), (x, y1, z1), (x, y1, z0)]
+    _face_out(f, q, (x - side, (y0 + y1) / 2, (z0 + z1) / 2))
 
 
-def _guard_outline(r, n=10):
-    # the arc behind the blade's middle (z grows to the back), closed by the straight front edge
-    return [(SX + r * math.cos(math.pi * i / n), BLADE_Z + r * math.sin(math.pi * i / n)) for i in range(n + 1)]
+def _face_out(f, q, inside):
+    mw._face(f, q, inside, "mglow", u_hint=(0, 0, 1))
 
 
 def _saw_body(f, rnd):
-    # the casting across the back, full height, the faction's window on its top and sides
-    # its top FLUSH WITH THE GUARD'S, so casting and guard read as one housing (standing the full
-    # cell high it read as a board behind the saw)
-    em.marlit_box(f, (-1.5, -0.5, CAST_Z), (0.5, GUARD_Y1, 0.5), 0.06, rnd,
-                  {(0, 1): "window", (0, -1): "window", (2, 1): "window"}, seg=2.0)
-    # the guard: a D over the blade's back half, its arc a sunset-edged wall, its front edge slats
-    out = _guard_outline(GUARD_R)
-    nseg = len(out)
-
-    def side(i):
-        return "mhazard" if i == nseg - 1 else "m"
-    _d_prism(f, out, GUARD_Y0, GUARD_Y1, side, "mflat2", bottom="mflat0")
-    # a sunset line round the guard's foot, and a raised rim round its top
-    inner = _guard_outline(GUARD_R - 0.06)
-    for i in range(len(out) - 1):
-        a0, a1 = out[i], out[i + 1]
-        q = [(a0[0], GUARD_Y0 + 0.02, a0[1]), (a1[0], GUARD_Y0 + 0.02, a1[1]),
-             (a1[0], GUARD_Y0 + 0.055, a1[1]), (a0[0], GUARD_Y0 + 0.055, a0[1])]
-        mw._face(f, [(p[0] + (p[0] - SX) * 0.004, p[1], p[2] + (p[2] - BLADE_Z) * 0.004) for p in q],
-                 (SX, GUARD_Y0, BLADE_Z), "mglow", u_hint=th.sub(q[1], q[0]))
-        b0, b1 = inner[i], inner[i + 1]
-        q = [(a0[0], GUARD_Y1, a0[1]), (a1[0], GUARD_Y1, a1[1]), (b1[0], GUARD_Y1 + 0.04, b1[1]),
-             (b0[0], GUARD_Y1 + 0.04, b0[1])]
-        mw._face(f, q, (SX, GUARD_Y1 - 1.0, BLADE_Z), "mflat3", u_hint=th.sub(q[1], q[0]))
-    # the motor on the guard over the spindle: a drum, a sunset band, a vented cap
-    mw.oct_tube(f, (SX, GUARD_Y1, BLADE_Z), (SX, 0.40, BLADE_Z), MOTOR_R, MOTOR_R, "m")
-    mw.oct_tube(f, (SX, 0.40, BLADE_Z), (SX, 0.43, BLADE_Z), MOTOR_R + 0.01, MOTOR_R + 0.01, "mglow")
-    mw.oct_tube(f, (SX, 0.43, BLADE_Z), (SX, 0.49, BLADE_Z), MOTOR_R, MOTOR_R - 0.05, "m", cap_b="mvent")
-    # the spindle under the guard down to the blade's hub
-    mw.oct_tube(f, (SX, GUARD_Y0, BLADE_Z), (SX, BLADE_Y + BLADE_T + 0.004, BLADE_Z), 0.12, 0.12, "m")
+    # the body on the back face: the Marlit hull's own dress, the face it joins by
+    mprism(f, (-1.5, -0.5, CAST_Z), (0.5, 0.5, 0.5), rnd, seg=2.0)
+    # the CLAMP in the turrets' dark metal (the gun's yokes): a web out of the body and two arms
+    # reaching over and under the blade to its middle, a sunset slit down every outer face
+    for y0, y1 in (UP_ARM, LO_ARM):      # the web split by the blade's slot: the blade sweeps past it
+        mw.mbox(f, (SX - ARM_W - 0.04, y0, WEB_Z), (SX + ARM_W + 0.04, y1, CAST_Z + 0.01))
+    for y0, y1 in (UP_ARM, LO_ARM):
+        mw.mbox(f, (SX - ARM_W, y0, BLADE_Z - 0.22), (SX + ARM_W, y1, WEB_Z + 0.01))
+        for sd in (-1.0, 1.0):
+            x = SX + sd * (ARM_W + 0.001)
+            ym = (y0 + y1) / 2
+            _slit(f, x, ym - 0.025, ym + 0.025, BLADE_Z - 0.10, WEB_Z - 0.04, sd)
+    # the hub through both arms: an octagonal boss on top with a sunset ring, the axle to the blade
+    em._oct_band(f, (SX, 0.0, BLADE_Z), 0.21, UP_ARM[1], 0.19, UP_ARM[1] + 0.07, "mtone")
+    em._oct_band(f, (SX, 0.0, BLADE_Z), 0.19, UP_ARM[1] + 0.07, 0.17, UP_ARM[1] + 0.07, "mglow")
+    em._oct_band(f, (SX, 0.0, BLADE_Z), 0.17, UP_ARM[1] + 0.07, 0.0, UP_ARM[1] + 0.07, "mflat2")
+    em._oct_band(f, (SX, 0.0, BLADE_Z), 0.21, LO_ARM[0] - 0.05, 0.21, LO_ARM[0], "mtone")
+    em._oct_band(f, (SX, 0.0, BLADE_Z), 0.0, LO_ARM[0] - 0.05, 0.21, LO_ARM[0] - 0.05, "mflat2", down=True)
+    mw.oct_tube(f, (SX, UP_ARM[0], BLADE_Z), (SX, BLADE_Y + BLADE_T + 0.004, BLADE_Z), 0.11, 0.11, "m")
+    mw.oct_tube(f, (SX, LO_ARM[1], BLADE_Z), (SX, BLADE_Y - BLADE_T - 0.004, BLADE_Z), 0.11, 0.11, "m")
 
 
 def _saw_blade(f):
@@ -233,9 +219,19 @@ em.CHECKS["marlit_saw"] = {
     "cells": ((-1.5, -0.5, -1.5), (0.5, 0.5, 0.5)),
     "origins": {"marlit_saw_blade": (SX, BLADE_Y, BLADE_Z)},
     "spin": {"marlit_saw_blade": (0.0, 1.0, 0.0)},
-    "solid": [((-1.5, -0.5, CAST_Z), (0.5, GUARD_Y1, 0.5)),
-              ((SX - 0.6, GUARD_Y0, BLADE_Z), (SX + 0.6, GUARD_Y1, BLADE_Z + 0.6))],
+    "solid": [((-1.5, -0.5, CAST_Z), (0.5, 0.5, 0.5)),
+              ((SX - ARM_W, UP_ARM[0], BLADE_Z - 0.2), (SX + ARM_W, UP_ARM[1], CAST_Z)),
+              ((SX - ARM_W, LO_ARM[0], BLADE_Z - 0.2), (SX + ARM_W, LO_ARM[1], CAST_Z)),
+              ((SX - ARM_W - 0.04, UP_ARM[0], WEB_Z), (SX + ARM_W + 0.04, UP_ARM[1], CAST_Z)),
+              ((SX - ARM_W - 0.04, LO_ARM[0], WEB_Z), (SX + ARM_W + 0.04, LO_ARM[1], CAST_Z))],
 }
+
+# The Marlit dress is dear in triangles (the basic block alone is 536): the hidden faces go offline
+# (`em.CULL`), and the budget is the Marlit blocks' own (the cabin 1029, the repair unit 1800).
+em.CULL.add("marlit_laser_drill") if isinstance(em.CULL, set) else em.CULL.append("marlit_laser_drill")
+em.CULL.add("marlit_saw") if isinstance(em.CULL, set) else em.CULL.append("marlit_saw")
+em.CHECKS["marlit_laser_drill"]["budget"] = 1300
+em.CHECKS["marlit_saw"]["budget"] = 1300
 
 em.BLOCKS["marlit_laser_drill"] = (391, _ld_build, 512)
 em.DENSITY["marlit_laser_drill"] = 40.0
