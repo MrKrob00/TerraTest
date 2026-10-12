@@ -113,10 +113,12 @@ func _set_solid(on: bool) -> void:
 	if col != null:
 		col.set_deferred("disabled", not on)
 
-## A REFILL WAITS FOR ITS SPOT TO BE CLEAR (TerraTech's rule for what regrows): a collider switched
-## on inside a machine or a loose block throws it out with the full force of the solver. Asked with
-## the vein's own shape, against machines (16), loose blocks (2) and loose items (8).
-const BLOCKING_MASK := 2 | 8 | 16
+## A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows): a collider switched on
+## inside a machine throws it out with the full force of the solver. Asked with the vein's own shape,
+## against machines (16) ONLY: loose items and blocks are not asked, because the ore the vein itself
+## threw lies round its edge, inside that shape - asking them, measured, kept every vein empty until
+## its own ore was picked up. A loose thing in the way is simply pushed out.
+const BLOCKING_MASK := 16
 ## How long a blocked refill waits before it asks again.
 const BLOCKED_RETRY := 3.0
 

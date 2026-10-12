@@ -542,6 +542,9 @@ project: read it before claiming how anything works.
   `WILD_CHANCE` a random one) with 3-5 veins round it, `DEPOSIT_RICH` more in the canyon and on the
   mountains. A member past its region's edge is dropped (spacing is checked only inside a region),
   and all the rng is drawn when the job is made, so slicing (`REGION_SLICE_USEC`) changes nothing.
+  Measured on the booted world (seed 424242, 25 regions): 13 trees and 19 ore a region on average
+  (4-28 trees: forest and clearing), nearest tree 6.8 m and nearest vein 5.9 m (median), an ore
+  vein's nearest vein of its own metal 463 of 471.
   The metal under your wheels still depends on where you stand; a felled tree still MOVES, up to
   `REPLANT_RADIUS` (8 m), which keeps the grove's count while emptying the spot you just cleared - the
   radius is small on purpose, or the forest would migrate to wherever the player chops most. The
@@ -550,10 +553,12 @@ project: read it before claiming how anything works.
 - **AN EMPTY VEIN IS NOT IN THE WAY** (`resource_node._set_solid`): the collider goes with the last
   ore (a felled tree's with its last wood) and comes back with the refill; a 3 m cylinder over rubble
   and a 7 m trunk over a stump stopped machines and shots on air. A vein the auto miner holds stays
-  open the whole time. A REFILL WAITS FOR ITS SPOT TO BE CLEAR (TerraTech's rule for what regrows,
-  `_spot_blocked`: the vein's own shape against machines 16, loose blocks 2 and loose items 8),
-  asking again every `BLOCKED_RETRY` - a collider switched on inside a machine throws it out with the
-  solver's full force. Deferred: `hurt` runs inside a physics traversal.
+  open the whole time. A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows,
+  `_spot_blocked`: the vein's own shape against MACHINES ONLY, layer 16), asking again every
+  `BLOCKED_RETRY` - a collider switched on inside a machine throws it out with the solver's full
+  force. Loose items and blocks are not asked: the vein's own thrown ore lies inside that shape, and
+  asking them (measured) kept every vein empty until its ore was picked up; they are pushed out.
+  Deferred: `hurt` runs inside a physics traversal.
 - A REPLANT IS A MOVE, NOT A PLACEMENT, so `_free_spot_near` does not ask `min_height`. That
   threshold keeps the SEEDED layout out of the deepest basins; a tree that already stands passed it
   once, and inside an eight-metre circle the height cannot run further than `max_slope` allows.
@@ -1598,7 +1603,10 @@ project: read it before claiming how anything works.
   third with a battery and repair unit inside, the third with a solar array on top. ALL THREE OPEN
   TOGETHER AT MARLIT'S GRADE 3 (`mc_cube1..3`), each its own key and point on the shielded towers'
   branch (`quest_arcs.CUBES`, `_tower_1/_tower_2`), kept `TOWER_APART` from each other
-  (`_tower_pick`). Measured: three ores picked count three, the same ore dropped and picked again
+  (`_tower_pick`). Measured on the proving ground: 22 / 35 / 36 blocks with 4 / 8 / 8 guns, all of
+  them placed, each turret looking out of its own side; an allied machine 25 m off the front, the
+  right side or a back corner was fired on; the second and third cubes mended their hits; a cube's
+  death closed its quest. Three ores picked count three, the same ore dropped and picked again
   does not count again.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
   Far away they cost nothing because the spawner sleeps them. Hold Position is the exception: its
