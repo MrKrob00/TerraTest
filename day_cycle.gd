@@ -18,23 +18,25 @@ extends Node
 @export var day_share := 0.72             # of it the sun is up
 @export var start_phase := 0.14           # mid-morning
 @export var max_elevation := 1.05         # rad, the sun's noon height
-@export var night_exposure := 0.62
+# THE NIGHT STAYS READABLE (the player: "the night is too dark, the ground cannot be seen"): a
+# blue moonlit dusk, not black - exposure, the moon and the ambient were all raised together.
+@export var night_exposure := 0.85
 @export var day_shadow := 0.68            # shadow_opacity in daylight
 @export var night_shadow := 0.4
 # WARM, AFTER TERRATECH (the player's screenshot): the light off sand and grass fills the shadows,
 # so the ambient is a warm grey, not the sky's blue - a blue fill turned every shadow cold and dark.
 @export var day_ambient := Color(0.66, 0.6, 0.52)
-@export var night_ambient := Color(0.22, 0.3, 0.52)
+@export var night_ambient := Color(0.36, 0.44, 0.66)
 @export var day_ambient_energy := 0.36
-@export var night_ambient_energy := 0.22
+@export var night_ambient_energy := 0.5
 # the world's haze (project.godot [shader_globals] `world_haze`): what the far ground fades into and
 # the sky's horizon - warm cream by day, the dusk's orange, a deep blue at night
 @export var haze_day := Color(0.88, 0.82, 0.72)
 @export var haze_dusk := Color(0.96, 0.62, 0.42)
-@export var haze_night := Color(0.07, 0.09, 0.17)
+@export var haze_night := Color(0.14, 0.18, 0.3)
 
 const TICK := 0.25                        # s between updates: the sun moves a fifth of a degree
-const MOON_SHARE := 0.3                   # the moon's light against the sun's
+const MOON_SHARE := 0.6                   # the moon's light against the sun's
 const DUSK_COLOR := Color(1.0, 0.6, 0.36)
 const SUN_COLOR := Color(1.0, 0.93, 0.8)      # a warm white, never pure: the TerraTech afternoon
 const SHADOW_BLUR := 1.6

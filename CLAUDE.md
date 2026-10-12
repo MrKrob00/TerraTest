@@ -1564,6 +1564,17 @@ project: read it before claiming how anything works.
   the world, what counts as done, polled once a second); `quest_props.gd` owns items placed into the
   world; `quest_compass.gd` draws the marker and exposes any quest's target.
 - STORY is story only. Counters live in DAILY, events repeat and are capped at two journal slots.
+  THE ONE EXCEPTION IS MARLIT'S STORY, THE HARVESTER LINE (the player's design, after GeoCorp's):
+  Novice I-IV (trees, ore), Mineral per metal (four in parallel - the metal under you is the
+  region's), Master I-IV (100 trees, 200 ore, 300 refined, 500 sold), `quest_manager._marlit_story`.
+  Marlit trades in what the ground gives, so there the count IS the story. Each counter has ONE door:
+  `tree_felled` the blow that brings a tree down (`resource_node.hurt`); `ore_collected` /
+  `ore_collected_<metal>` an ore's FIRST pick-up (`resource.harvest`, meta `harvested`) by a
+  collector, a receiver off the ground or the hand - a drilled ore lying on the ground is not harvest
+  yet, and the auto miner's ore counts when a receiver takes it; `processed` a product out of the
+  processor; `item_sold` anything the seller takes. Gated by the licence and Marlit's grades
+  (`Q._grade_ok`); THE ALMIGHTY CUBE (the combat half of the design) is not built yet. Measured:
+  three ores picked count three, the same ore dropped and picked again does not count again.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
   Far away they cost nothing because the spawner sleeps them. Hold Position is the exception: its
   attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
@@ -2035,13 +2046,15 @@ project: read it before claiming how anything works.
   `VBTN_SHOW_DIST`. The distance check must come BEFORE the early return in `_process`, or a label
   hidden once never comes back: ask the COUNT, not the current visibility. The enemy marker is NOT
   this bug — it is an ordinary billboard in world space and shrinks with distance as it should.
-- A COLLECTOR SHOWS WHAT IT CARRIES AS A STACK IN ITS BOWL, as the receiver lifts its cargo
-  (`collector._layout`, the player's call: showing one and hiding the rest made a collector carrying
-  five look like it carried one). Each item stands on the one under it by its model's height
-  (`resource.model_height` + `STACK_GAP`), the bottom one seated on the bowl's boss (`HOLD_FOOT`);
-  the receiver's beam stacks the same way from `STACK_BASE`. Both used to step a whole metre, the
-  bubble's size - ten picked items were a tower taller than the machine, which is why the collector
-  had been cut down to one. The single door out (`remove_from_inventory`) unseats the item and
+- A COLLECTOR SHOWS WHAT IT CARRIES AS A PILE IN ITS BOWL, AND THE RECEIVER ON ITS PAD
+  (`collector._layout`, `Receiver._stack_pos`, both through `resource.held_slots`; the player's calls:
+  showing one and hiding the rest made a collector carrying five look like it carried one, then "show
+  them normally in the receiver and the collector"). FOUR TO A LAYER, two by two, at `HELD_SIZE`
+  (0.55 of the model), each layer on the tallest of the one under it, the first on the bowl's boss
+  (`HOLD_FOOT`) or over the pad (`STACK_BASE`); A HELD ITEM HAS NO GLOW (its quad is for finding an
+  item in the grass) - the glow's MESH goes, never its node, which carries the model
+  (`MeshInstance3D/ResourceMesh`): hiding the node hid the item, seen on the real driver. One item a
+  step was a tower - eight in a receiver rose two metres; a metre a step (the bubble's) before that. The single door out (`remove_from_inventory`) unseats the item and
   shows it again; an item that lands among the loose ones by any other way (a collector torn off with
   ore in its bowl) is unseated by its own `NOTIFICATION_PARENTED`, and `seat` skips a foot it already has.
 - **THE SWIPE THAT CLOSES A WINDOW OWNS ITS FINGER UNTIL IT LIFTS** (`SwipeClose`, garage and
@@ -2300,7 +2313,10 @@ project: read it before claiming how anything works.
   makes the stars; the horizon reddens toward the sun at dusk; the lower half stays dark (below).
   THE DAY (`day_cycle.gd`, `day_length` 1200 s, the sun up `day_share` of it, every session from
   the morning, noon and still on the proving ground): ONE DirectionalLight3D, the sun by day and the
-  MOON by night (dim, blue, from the other side) - never a second shadowed light. AND THE NIGHT IS
+  MOON by night (blue, from the other side, `MOON_SHARE` 0.6 of the sun) - never a second shadowed
+  light. THE NIGHT STAYS READABLE (the player: "too dark, the ground cannot be seen"):
+  `night_exposure` 0.85, a moonlit blue ambient at 0.5 and a lighter night haze - measured on the real
+  driver, the same view at midnight 10.6 -> 35.8 mean brightness against 125 at noon. AND THE NIGHT IS
   `tonemap_exposure`: the blocks are UNSHADED, no light touches them, and a night made of light
   alone left bright machines on a dark ground; exposure runs in every material's own tonemap,
   unshaded included (measured on the real driver: 0.45 took a cabin 0.20 -> 0.07), with no extra
@@ -2580,16 +2596,18 @@ project: read it before claiming how anything works.
   THE GLASS COLUMN OVER BOTH BLOCKS IS GONE (the player's call); the cargo stack stands over the pad
   on its own. A RECEIVER EMPTIES A COLLECTOR (`Receiver.take_interval` 0.25, takes until full,
   `capacity` 8): it took one item a second and stopped at four - measured, a full collector's eight
-  move in the first quarter second. **THE COLLECTOR'S RING IS ITS REACH, ON THE GROUND** (`collector.gd`
-  `_build_ring`, `blocks/collector_ring.gdshader`; the player's call: "it should turn at the pickup
-  radius, on the ground"). The pickup zone is a 5 m SPHERE round the block, so where it meets the
-  ground is no fixed circle: each of `RING_SEGMENTS` directions is walked out to the ground point
+  move in the first quarter second. **THE COLLECTOR'S AND THE RECEIVER'S RING IS THEIR REACH, ON THE GROUND**
+  (`blocks/scripts/reach_ring.gd`, one child node per block, `blocks/collector_ring.gdshader`; the
+  player's calls: "it should turn at the pickup radius, on the ground", then the receiver's old torus
+  hanging at block height swapped for the same ring). A NODE OF ITS OWN, ticking on its own: a factory
+  block turns its `_process` off (`FactoryBlock._process`). Both zones are 5 m. The pickup zone is a 5 m SPHERE round the block, so where it meets the
+  ground is no fixed circle: each of `SEGMENTS` directions is walked out to the ground point
   one radius from the block (two fixed-point steps on the terrain's heights) - nearer on a rise,
   farther in a dip, and no ring at all once the block stands higher than the radius. A ribbon of
   dashes running round, BLENDED (cyan added to sand came out white), lifted out of the grass in depth
-  like the ground marks, built in the world only on a machine and within `RING_SHOW_DIST`: a parked
-  block reads it once (and every `RING_IDLE`), a driving one slides it along and re-reads every
-  `RING_REFRESH` - 1.96 ms a read on the optimize=none build. Two rings came before and were wrong:
+  like the ground marks, built in the world only on a machine and within `SHOW_DIST`: a parked
+  block reads it once (and every `IDLE`), a driving one slides it along and re-reads every
+  `REFRESH` - 1.96 ms a read on the optimize=none build. Two rings came before and were wrong:
   the 5 m one hung at the machine's centre height and read as arcs beside the block, then a 0.7 m one
   turned round the block's own base and said nothing about the reach. Checked on the real driver on
   a dune slope: an ellipse lying on the sand round the machine, following it when moved.
@@ -2817,7 +2835,8 @@ project: read it before claiming how anything works.
   own face's axes, front and back owning the cube's edges so none is notched, and a bolted cap laid
   over every corner. 2,800 HP (the cabin's 320 over eight cells at Marlit's 1.1 a cell), 180 kg, a
   recipe of 3 + 3 components: at 5 + 5 the Marlit builds came out a ladder step dearer.
-- **THE MARLIT WHEEL IS A MECHANISM** (`MARLIT_WHEEL` 65, `marlit_wheel.gd` over `wheel.gd`): two
+- **THE MARLIT WHEEL IS A MECHANISM** (`MARLIT_WHEEL` 65, `marlit_wheel.gd` over `wheel.gd`; researched
+  at Marlit grade 2, `wheel_power` 7410 - 30% over its first 5700, the player's call): two
   equal parallel A-arms nearly level - steep arms (the first cut) swung the tyre out 0.2 m for a
   0.16 m bump - so the carrier rides up and down upright; two coilovers on the upper arm, a drive
   shaft between the arms that swings, stretches and spins with the tyre, a carrier that steers about
@@ -3144,11 +3163,11 @@ project: read it before claiming how anything works.
   colour, coal an ember), two triangles; its material is set before anything else, or a missing model
   would leave a plain white square. The ingot is cut out of the library into
   `resources/items/ingot.tres` by the same tool, so the first ingot of a session does not instance
-  all of `Assets.glb` in its frame. A LOOSE ITEM IS DRAWN AT TWICE ITS MODEL (`resource.ITEM_SIZE`,
-  the player's call), on the ground and on belts, its glow quad grown with it from the foot; models
+  all of `Assets.glb` in its frame. A LOOSE ITEM IS DRAWN AT 1.5 TIMES ITS MODEL (`resource.ITEM_SIZE`,
+  the player's calls: twice, then "down to 1.5"), on the ground and on belts, its glow quad grown with it from the foot; models
   measure 0.23-0.72 m tall and up to 1.08 across, foot at `FOOT_Y`, top inside the sphere. A SEATED
-  item (collector bowl, storage tray, the receiver's stack, `seat(foot)`) is drawn at the model's
-  own size, which those holders were made for - eight in a receiver at ITEM_SIZE would stand seven
+  item (collector bowl, storage tray, the receiver's pile, `seat(foot, size)`) is drawn at the size
+  the holder asks (the model's own, or `HELD_SIZE` in a pile) - eight in a receiver at ITEM_SIZE would stand seven
   metres - and ANY OTHER PARENT UNSEATS IT (`NOTIFICATION_PARENTED`), so a holder seats after it takes
   the item. The mouths that shrink the picture divide by ITEM_SIZE (`IN_FURNACE`, `LIFT_SCALE`,
   generator `WELL_FIT`). Checked on the real driver: big items on the meadow, a small one in the

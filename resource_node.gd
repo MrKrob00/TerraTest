@@ -82,6 +82,8 @@ func hurt(damage: int = 10) -> void:
 	while _available > want_left:
 		_eject_one()
 		_available -= 1
+		if is_wood and _available <= 0:
+			Q.report("tree_felled", 1)          # the blow that brings the tree down (Marlit's line)
 
 	# R the hit's time (shake), G what the shader breaks by, A the metal. AN ORE VEIN BREAKS BY WHAT
 	# IT HAS THROWN, NOT BY ITS HP: a part goes at its break point (0.8 ... 0.0) and an ore leaves when

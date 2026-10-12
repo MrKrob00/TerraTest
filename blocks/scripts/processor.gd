@@ -172,6 +172,7 @@ func _tick() -> void:
 		# the front mouth already changed.
 		if i == last and _cells[i].has_method("upgrade"):
 			_cells[i].upgrade()
+			Q.report("processed", 1)               # Marlit's refining count
 		_move(_cells[i], i)
 	# 3. The intake is free - tell the belt that waits for it (see the header).
 	if had_input and _cells[0] == null:

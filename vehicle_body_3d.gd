@@ -2124,6 +2124,8 @@ func _grab_resource(body: Node3D) -> bool:
 		rb.freeze = true
 		rb.linear_velocity = Vector3.ZERO
 		rb.angular_velocity = Vector3.ZERO
+	if body.has_method("harvest"):
+		body.harvest()                             # an ore picked up by hand is harvest too
 	block_body = body
 	block_take = true
 	hand_kind = Hand.RESOURCE

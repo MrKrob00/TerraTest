@@ -2759,5 +2759,149 @@
 	"Money": {
 		"ru": "Деньги",
 		"uk": "Гроші"
+	},
+	"Novice Harvester I": {
+		"ru": "Начинающий сборщик I",
+		"uk": "Початківець-збирач I"
+	},
+	"Novice Harvester II": {
+		"ru": "Начинающий сборщик II",
+		"uk": "Початківець-збирач II"
+	},
+	"Novice Harvester III": {
+		"ru": "Начинающий сборщик III",
+		"uk": "Початківець-збирач III"
+	},
+	"Novice Harvester IV": {
+		"ru": "Начинающий сборщик IV",
+		"uk": "Початківець-збирач IV"
+	},
+	"Master Harvester I": {
+		"ru": "Мастер-сборщик I",
+		"uk": "Майстер-збирач I"
+	},
+	"Master Harvester II": {
+		"ru": "Мастер-сборщик II",
+		"uk": "Майстер-збирач II"
+	},
+	"Master Harvester III": {
+		"ru": "Мастер-сборщик III",
+		"uk": "Майстер-збирач III"
+	},
+	"Master Harvester IV": {
+		"ru": "Мастер-сборщик IV",
+		"uk": "Майстер-збирач IV"
+	},
+	"Fell 10 trees": {
+		"ru": "Срубить 10 деревьев",
+		"uk": "Зрубати 10 дерев"
+	},
+	"Fell 25 trees": {
+		"ru": "Срубить 25 деревьев",
+		"uk": "Зрубати 25 дерев"
+	},
+	"Fell 100 trees": {
+		"ru": "Срубить 100 деревьев",
+		"uk": "Зрубати 100 дерев"
+	},
+	"Collect 20 ore": {
+		"ru": "Собрать 20 руды",
+		"uk": "Зібрати 20 руди"
+	},
+	"Collect 50 ore": {
+		"ru": "Собрать 50 руды",
+		"uk": "Зібрати 50 руди"
+	},
+	"Collect 200 ore": {
+		"ru": "Собрать 200 руды",
+		"uk": "Зібрати 200 руди"
+	},
+	"Refine 300 items": {
+		"ru": "Переплавить 300 единиц",
+		"uk": "Переплавити 300 одиниць"
+	},
+	"Sell 500 items": {
+		"ru": "Продать 500 единиц",
+		"uk": "Продати 500 одиниць"
+	},
+	"Marlit pays for work, not talk. Start with timber: drill a tree until it comes down.": {
+		"ru": "Marlit платит за работу, а не за слова. Начни с древесины: бури дерево, пока оно не упадёт.",
+		"uk": "Marlit платить за роботу, а не за слова. Почни з деревини: свердли дерево, доки воно не впаде."
+	},
+	"Ore counts once it is picked up - by a collector, a receiver or your own hand. Drilled and left lying, it is just rock.": {
+		"ru": "Руда засчитывается, когда её подобрали — коллектором, ресивером или рукой. Выбуренная и брошенная — это просто камень.",
+		"uk": "Руда зараховується, коли її підібрали — колектором, ресивером або рукою. Вибурена й покинута — це просто камінь."
+	},
+	"More timber. A felled tree does not grow back where it stood - look a little further out.": {
+		"ru": "Ещё древесины. Срубленное дерево не вырастает на старом месте — ищи чуть дальше.",
+		"uk": "Ще деревини. Зрубане дерево не виростає на старому місці — шукай трохи далі."
+	},
+	"An auto miner on an anchored base digs while you are away; what it digs counts when a receiver takes it.": {
+		"ru": "Автомайнер на заякоренной базе копает, пока тебя нет; добытое засчитывается, когда его заберёт ресивер.",
+		"uk": "Автомайнер на заякореній базі копає, поки тебе немає; видобуте зараховується, коли його забере ресивер."
+	},
+	"A hundred trees. Bring a drill that bites and a collector that does not fill up.": {
+		"ru": "Сто деревьев. Возьми бур посильнее и коллектор, который не забьётся.",
+		"uk": "Сто дерев. Візьми бур потужніший і колектор, що не заб'ється."
+	},
+	"Two hundred ore. This is what bases are for: park on a vein and let the line do it.": {
+		"ru": "Двести руды. Для этого и нужны базы: встань на жилу, и пусть работает линия.",
+		"uk": "Двісті руди. Для цього й потрібні бази: стань на жилу, і хай працює лінія."
+	},
+	"Raw ore is worth little. Run it through a processor - every product out of it counts.": {
+		"ru": "Сырая руда стоит мало. Прогони её через переплавку — засчитывается каждый продукт на выходе.",
+		"uk": "Сира руда коштує мало. Прожени її через переплавку — зараховується кожен продукт на виході."
+	},
+	"Marlit's last test is the market: five hundred items through a seller.": {
+		"ru": "Последнее испытание Marlit — рынок: пятьсот единиц через продавца.",
+		"uk": "Останнє випробування Marlit — ринок: п'ятсот одиниць через продавця."
+	},
+	"Mineral Harvester: Ferrite": {
+		"ru": "Сборщик минералов: Ferrite",
+		"uk": "Збирач мінералів: Ferrite"
+	},
+	"Collect 20 Ferrite ore": {
+		"ru": "Собрать 20 руды Ferrite",
+		"uk": "Зібрати 20 руди Ferrite"
+	},
+	"Only Ferrite counts here. Every region holds its own metal - find where it grows.": {
+		"ru": "Здесь засчитывается только Ferrite. В каждом регионе свой металл — найди, где он растёт.",
+		"uk": "Тут зараховується лише Ferrite. У кожному регіоні свій метал — знайди, де він росте."
+	},
+	"Mineral Harvester: Cuprite": {
+		"ru": "Сборщик минералов: Cuprite",
+		"uk": "Збирач мінералів: Cuprite"
+	},
+	"Collect 30 Cuprite ore": {
+		"ru": "Собрать 30 руды Cuprite",
+		"uk": "Зібрати 30 руди Cuprite"
+	},
+	"Only Cuprite counts here. Every region holds its own metal - find where it grows.": {
+		"ru": "Здесь засчитывается только Cuprite. В каждом регионе свой металл — найди, где он растёт.",
+		"uk": "Тут зараховується лише Cuprite. У кожному регіоні свій метал — знайди, де він росте."
+	},
+	"Mineral Harvester: Silicate": {
+		"ru": "Сборщик минералов: Silicate",
+		"uk": "Збирач мінералів: Silicate"
+	},
+	"Collect 40 Silicate ore": {
+		"ru": "Собрать 40 руды Silicate",
+		"uk": "Зібрати 40 руди Silicate"
+	},
+	"Only Silicate counts here. Every region holds its own metal - find where it grows.": {
+		"ru": "Здесь засчитывается только Silicate. В каждом регионе свой металл — найди, где он растёт.",
+		"uk": "Тут зараховується лише Silicate. У кожному регіоні свій метал — знайди, де він росте."
+	},
+	"Mineral Harvester: Titanite": {
+		"ru": "Сборщик минералов: Titanite",
+		"uk": "Збирач мінералів: Titanite"
+	},
+	"Collect 50 Titanite ore": {
+		"ru": "Собрать 50 руды Titanite",
+		"uk": "Зібрати 50 руди Titanite"
+	},
+	"Only Titanite counts here. Every region holds its own metal - find where it grows.": {
+		"ru": "Здесь засчитывается только Titanite. В каждом регионе свой металл — найди, где он растёт.",
+		"uk": "Тут зараховується лише Titanite. У кожному регіоні свій метал — знайди, де він росте."
 	}
 }
