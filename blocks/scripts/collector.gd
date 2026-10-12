@@ -71,12 +71,13 @@ func remove_from_inventory(item: Node) -> void:
 
 ## WHAT IT PICKED UP STANDS IN A STACK IN THE BOWL, AS THE RECEIVER LIFTS ITS CARGO (the player's
 ## call: it showed one and hid the rest, so a collector carrying five looked like it carried one).
-## Four to a layer at the held size (resource.held_slots): one item a step grew a tower over the
-## block, ten of them taller than the machine.
+## Each item stands on the one under it (`model_height` + `STACK_GAP`), at the size it has lying
+## loose (the player's call: "do not shrink them in the collector, stack them").
 const HOLD_Y := 0.45
 ## The bottom item's model stands this far under HOLD_Y, on the bowl's boss (resource.seat).
 const HOLD_FOOT := -0.12
 const RES := preload("res://resource.gd")
+const STACK_GAP := 0.02
 
 func _layout() -> void:
 	var holder := get_node_or_null("resources")
@@ -84,16 +85,16 @@ func _layout() -> void:
 		return                     # the block is being torn down; its children go first
 	inventory = inventory.filter(func(i):
 		return is_instance_valid(i) and i.get_parent() == holder)
-	for n in inventory:
-		if n.has_method("seat"):
-			n.seat(HOLD_FOOT, RES.HELD_SIZE)
-	var slots: PackedVector3Array = RES.held_slots(inventory)
+	var y := HOLD_Y
 	for idx in inventory.size():
 		var n := inventory[idx] as Node3D
 		if n == null:
 			continue
-		n.position = slots[idx] + Vector3(0, HOLD_Y, 0)
+		n.position = Vector3(0, y, 0)
 		n.visible = true
+		if n.has_method("seat"):
+			n.seat(HOLD_FOOT, RES.ITEM_SIZE)
+		y += (n.model_height() if n.has_method("model_height") else 0.3) + STACK_GAP
 
 func fix_position_resources(body: Node3D) -> void:
 	if not is_instance_valid(body):

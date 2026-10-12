@@ -58,20 +58,22 @@ func _accept_item(item: Node3D) -> void:
 	_push_from_inventory()   # проталкиваем СРАЗУ (по событию), а не ждём тика таймера
 	_update_take_timer()     # набрали capacity → таймер забора сам остановится
 
-## The cargo stands over the pad from STACK_BASE up, four to a layer (resource.held_slots); it used to
-## be a metre a step, the bubble's, then one item a step - a tower.
+## The cargo stands over the pad from STACK_BASE up, each item on the one under it (`model_height` +
+## `STACK_GAP`), at the size it has lying loose (the player's call: "do not shrink them in the receiver").
 const STACK_BASE := 0.9
 const RES := preload("res://resource.gd")
+const STACK_GAP := 0.06
 
-## The cargo is laid four to a layer at the held size (resource.held_slots), not the loose ITEM_SIZE.
 func _seat(item: Node3D) -> void:
 	if item.has_method("seat"):
-		item.seat(RES.FOOT_Y, RES.HELD_SIZE)
+		item.seat(RES.FOOT_Y, RES.ITEM_SIZE)
 
 func _stack_pos(idx: int) -> Vector3:
-	var slots: PackedVector3Array = RES.held_slots(inventory)
-	var off: Vector3 = slots[idx] if idx >= 0 and idx < slots.size() else Vector3.ZERO
-	return off + Vector3(0, STACK_BASE, 0)
+	var y := STACK_BASE
+	for i in mini(maxi(idx, 0), inventory.size()):
+		var it = inventory[i]
+		y += (it.model_height() if is_instance_valid(it) and it.has_method("model_height") else 0.3) + STACK_GAP
+	return Vector3(0, y, 0)
 
 func _fix_positions() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
