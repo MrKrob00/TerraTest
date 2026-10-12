@@ -734,7 +734,8 @@ func clear_point(pos: Vector3, spread: float = 0.0) -> Vector3:
 ##
 ## The heading comes from the FORWARD VECTOR flattened to the horizon, not from global_rotation.y: on
 ## a slope the Euler angle is not a heading (same rule as the camera, see CLAUDE.md).
-const SCOUT_FRONT_SPREAD := 0.42            # +-24 deg: slightly aside so it does not land exactly on the nose
+const SCOUT_FRONT_SPREAD := 0.42
+const STORY_SCOUT_PRESET := 126             # blocks.STORY_SCOUT            # +-24 deg: slightly aside so it does not land exactly on the nose
 ## Returns the enemy or null if scenes, map or player are missing. The spot is not validated: it
 ## drops in and rolls off a slope by itself, the same rule the ring spawn uses.
 func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
@@ -761,15 +762,17 @@ func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
 	var enemy: Node3D = enemy_scenes.pick_random().instantiate()
 	var blocks := enemy.get_node_or_null("blocks")
 	if blocks and "layout_preset" in blocks:
-		# The WEAKEST tier, not "build number 0": the first fight must be winnable, and preset 0 was simply
-		# first in the list rather than the easiest. The order lives in PRESET_TIERS now. The variant is
-		# still rolled - every build on the bottom step is winnable by a starter cabin, that is what
-		# makes it the bottom step.
-		blocks.layout_preset = _variant(0)
+		# ITS OWN BUILD (blocks.STORY_SCOUT: a cabin, a block, four small wheels, one gun), not a roll
+		# of the bottom step: that could bring a shotgun and a gun to a machine five minutes old.
+		blocks.layout_preset = STORY_SCOUT_PRESET
 	vehicles.add_child(enemy)
 	enemy.global_position = pos
 	if enemy is RigidBody3D:
 		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO   # falls by its own weight
+	# IT COMES FOR THE PLAYER: born PLAYER_CLEAR out it would see nothing at its 40 m and fall asleep
+	# past sleep_dist; hunting, it covers the distance before its sleep_delay runs out.
+	if enemy.has_method("assign_target"):
+		enemy.assign_target(player, true)
 	# Tagged as story so sleep cleanup cannot remove it. Without the tag the quest "destroy the scout"
 	# could become silently impossible: the player drives off, the scout sleeps, cleanup takes it as the
 	# farthest one, and the quest keeps pointing at a target that no longer exists.

@@ -1767,7 +1767,13 @@ project: read it before claiming how anything works.
   energy branch is one: an anchored support 50 m out with the panel beside it, then the repair unit.
   Such a base carries meta `quest_id` and that tag is saved with the machine (`world_persist`), or
   every load would stand a second base next to the first — the arc's own state is memory only.
-- The tutorial is five steps, assembly only. Non-obvious gestures are a Mechanic line at the end.
+- THE TUTORIAL IS BUILDING THE MACHINE AND NOTHING ELSE (four steps: BUILD, take a part, attach it,
+  attach them all; the player's call - the "Leave assembly / Drive" step after them is gone), and THE
+  SCOUT IS THE FIRST STORY QUEST (`story_first_blood`). Non-obvious gestures are a Mechanic line at
+  the end. THE SCOUT HAS ITS OWN BUILD (`blocks.STORY_SCOUT`, 126: a cabin, one block, four small
+  wheels, one machine gun - the player's call; a roll of the bottom step brought a shotgun and a gun
+  to a machine five minutes old) and COMES FOR THE PLAYER (`assign_target`): born `PLAYER_CLEAR` out
+  it would see nothing and fall asleep. Measured: 232 m at birth, 45 m fifteen seconds later, awake.
 
 ### The proving ground
 
@@ -2281,8 +2287,7 @@ project: read it before claiming how anything works.
   its middle, lit and breathing while held, no words; the mode button the HUD button's rounded box
   with a drawn block-and-plus before BUILD. THE BUTTON ONLY EVER READS BUILD: it used to read MOVE
   while building, but building lives in the garage, which covers it, and closing the garage is what
-  takes the machine back to driving - MOVE was never on screen, and the tutorial's "Tap MOVE" step
-  points at the joystick now. A TEXTURELESS BUTTON'S SHAPE STANDS CENTRED ON ITS NODE (`touch_screen_button.cpp`
+  takes the machine back to driving - MOVE was never on screen. A TEXTURELESS BUTTON'S SHAPE STANDS CENTRED ON ITS NODE (`touch_screen_button.cpp`
   `_is_point_inside`), so both are placed by their middle, and WHERE A TouchScreenButton TAKES A
   FINGER IS ONE ANSWER, `TouchButtons.hits` / `local_area`, asked by the camera's "not my finger",
   the world tap's "over the HUD" and the tutorial's finger - three copies, two of which took a

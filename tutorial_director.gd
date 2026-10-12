@@ -342,8 +342,8 @@ func _say_final_hints() -> void:
 func _aim_current_step() -> void:
 	match _step:
 		"tut_mode_build":
-			# Тот же капкан, что у tut_mode_move: открытый гараж прячет ВСЁ игровое управление,
-			# включая кнопку режима, и шаг оставался без цели.
+			# An open garage hides ALL the driving controls, the mode button included, and the step
+			# was left with nothing to point at: lead out of the garage first.
 			if _garage_open():
 				_aim_node(_garage_node("close"), "Close the garage first")
 			else:
@@ -375,20 +375,6 @@ func _aim_current_step() -> void:
 			else:
 				_aim_world(_nearest_loose_block, "Take the next part",
 						TutorialGuide.Gate.WORLD)
-		"tut_mode_move":
-			# Пока открыт гараж, кнопки режима на экране НЕТ — она спрятана вместе со всем
-			# игровым управлением. Сначала выводим из гаража, и только потом показываем на
-			# переключатель режима.
-			#
-			# И показываем на КРЕСТИК САМОГО ОКНА, а не на кнопку меню HUD: та спрятана ровно
-			# тогда, когда открыт гараж, то есть цель отсутствовала как раз в том случае, ради
-			# которого ветку и писали. Палец не ставился, а на экране оставался пузырь ПРОШЛОГО
-			# шага — «Now attach it», хотя вешать уже нечего. Крестик виден всегда, пока окно
-			# открыто, и рядом с ним живёт подсказка про свайп снизу вверх.
-			if _garage_open():
-				_aim_node(_garage_node("close"), "Assembled. Close the garage")
-			else:
-				_aim_node(_hud_node("Joystick_movement"), "Drive")
 		"tut_quests":
 			_aim_node(_quest_tracker(), "Your directive tracker. Tap it")
 		"tut_garage":
