@@ -1,5 +1,5 @@
 extends SceneTree
-# THE FAR TREES' PICTURES (far_trees.gd): every tree model photographed from far_trees.VIEWS sides,
+# THE FAR TREES' AND ORE VEINS' PICTURES (far_trees.gd): every tree and ore model photographed from far_trees.VIEWS sides,
 # side on, through the trees' OWN shader (resources/resource.gdshader, as the tree MultiMeshes draw
 # them), into one atlas - a row per kind in TREE_* order, a column per view, view k with the camera at
 # angle TAU * k / VIEWS round the tree in its own frame (atan2(x, z), the card's convention).
@@ -43,9 +43,17 @@ func _initialize() -> void:
 	var models: Array = far.MODELS
 	var views: int = far.VIEWS
 	var atlas := Image.create(tile.x * views, tile.y * models.size(), false, Image.FORMAT_RGBA8)
+	var metal_cols: Array = get_root().get_node("G").METAL_COLOR
 	for k in models.size():
 		var mesh: Mesh = load(models[k])
 		mi.mesh = mesh
+		# an ore row: no fall, and the shader's tint index 0 (the instance custom reads zero here)
+		# carries this row's metal, linear, as resource_nodes._apply_ore_colors hands it over
+		var ore: int = k - far.ORE_KIND0
+		mat.set_shader_parameter("fells", ore < 0)
+		if ore >= 0:
+			var lc: Color = (metal_cols[ore] as Color).srgb_to_linear()
+			mat.set_shader_parameter("ore_colors", PackedVector3Array([Vector3(lc.r, lc.g, lc.b)]))
 		var t: Vector3 = far.tile_for(mesh)
 		cam.size = t.y
 		var centre := Vector3(0.0, t.z + t.y * 0.5, 0.0)

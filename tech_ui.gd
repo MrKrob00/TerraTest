@@ -1650,6 +1650,12 @@ func _on_soft_shadows(on: bool) -> void:
 	if mn and mn.has_method("set_shadows_soft"):
 		mn.set_shadows_soft(on)
 
+func _on_view_distance(v: float, lbl: Label) -> void:
+	lbl.text = tr("Draw distance: %d m") % int(v)
+	var mn: Node = get_node_or_null("/root/Main")
+	if mn and mn.has_method("set_view_distance"):
+		mn.set_view_distance(v)
+
 func _build_settings_tab() -> void:
 	if _extra_vb == null:
 		return
@@ -1721,6 +1727,28 @@ func _build_settings_tab() -> void:
 		shadow_hint.add_theme_font_size_override("font_size", 12)
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)
+
+	if "view_distance" in main:
+		var vd_row := HBoxContainer.new()
+		_extra_vb.add_child(vd_row)
+		var vd_lbl := Label.new()
+		vd_lbl.text = tr("Draw distance: %d m") % int(main.view_distance)
+		vd_lbl.custom_minimum_size = Vector2(170, 0)
+		vd_lbl.add_theme_font_size_override("font_size", 13)
+		vd_row.add_child(vd_lbl)
+		var vd_sl := HSlider.new()
+		vd_sl.min_value = float(main.VIEW_MIN)
+		vd_sl.max_value = float(main.VIEW_MAX)
+		vd_sl.step = 100.0
+		vd_sl.value = float(main.view_distance)
+		vd_sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		vd_sl.value_changed.connect(_on_view_distance.bind(vd_lbl))
+		vd_row.add_child(vd_sl)
+		var vd_hint := Label.new()
+		vd_hint.text = tr("How far the ground is drawn. Far costs frames and memory.")
+		vd_hint.add_theme_font_size_override("font_size", 12)
+		vd_hint.modulate = Color(1, 1, 1, 0.55)
+		_extra_vb.add_child(vd_hint)
 
 	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
 	if OS.has_feature("pc") and "fullscreen" in main:
