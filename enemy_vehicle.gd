@@ -1439,6 +1439,6 @@ func _refresh_drills() -> Array:
 		_drills.clear()
 		for b in bl.get_children():
 			var t = b.get("block")
-			if t != null and (int(t) == G.Block.DRILL or int(t) == G.Block.SMALL_DRILL):
+			if t != null and (int(t) in [G.Block.DRILL, G.Block.SMALL_DRILL, G.Block.MARLIT_DRILL]):
 				_drills.append(b)
 	return _drills

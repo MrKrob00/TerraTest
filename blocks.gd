@@ -219,6 +219,7 @@ func _define_layout() -> void:
 		MARLIT_RUNNER: _layout_marlit_runner()
 		MARLIT_RAIDER: _layout_marlit_raider()
 		STORY_SCOUT: _layout_story_scout()
+		MARLIT_CABIN_ONLY: set_block(5, 5, 5, G.Block.MARLIT_CABIN, 0.0)
 		MARLIT_CUBE_1: _layout_marlit_cube(1)
 		MARLIT_CUBE_2: _layout_marlit_cube(2)
 		MARLIT_CUBE_3: _layout_marlit_cube(3)
@@ -288,6 +289,8 @@ func _layout_marlit_champion() -> void:
 ## wheels and one gun on the cabin's roof. It used to be a random build of the bottom step, which
 ## could bring a shotgun and a gun to a machine assembled five minutes earlier. Outside the ladder.
 const STORY_SCOUT := 126
+## A respawn once Marlit is licensed: Marlit's cabin alone, its kit falling round it (G.starter_kit).
+const MARLIT_CABIN_ONLY := 127
 
 func _layout_story_scout() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -1005,7 +1008,8 @@ func _footprint_offsets(block: int) -> Array:
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
 			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR,
-			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT]:
+			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT,
+			G.Block.MARLIT_DRILL]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:

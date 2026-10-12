@@ -472,14 +472,14 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	# осыплется рядом. layout_preset ставим ДО add_child — раскладку blocks строит в _ready.
 	var blocks: Node = v.get_node_or_null("blocks")
 	if blocks != null and "layout_preset" in blocks:
-		blocks.layout_preset = 4           # _layout_cabin_only
+		blocks.layout_preset = G.starter_cabin_preset()   # Falsus's cabin, or Marlit's once licensed
 	get_parent().add_child(v)              # под Vehicles — карта даст стриминговую коллизию
 	v.global_position = _respawn_point(pos)
 	if not vehicles.has(v):
 		vehicles.append(v)
 	# Отложенно: машина только что вошла в дерево, а орбитеры цепляются за неё.
 	if v.has_method("award_block_list"):
-		v.award_block_list.call_deferred(G.STARTER_KIT)
+		v.award_block_list.call_deferred(G.starter_kit())
 	return v
 
 ## Точка возрождения. Кольца от места гибели наружу; на каждом — несколько проб по кругу.
