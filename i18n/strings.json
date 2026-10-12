@@ -2955,5 +2955,13 @@
 	"The cube is down. Marlit sends what it promised.": {
 		"ru": "Куб повержен. Marlit присылает обещанное.",
 		"uk": "Куб повалено. Marlit надсилає обіцяне."
+	},
+	"Marlit Drill": {
+		"ru": "Бур Marlit",
+		"uk": "Бур Marlit"
+	},
+	"A stepped bit ringed with teeth: chews through a vein or an enemy block on contact, at Marlit's scale.": {
+		"ru": "Ступенчатая коронка в кольцах зубьев: при касании прогрызает жилу или вражеский блок, в масштабе Marlit.",
+		"uk": "Ступінчаста коронка в кільцях зубів: при дотику прогризає жилу або ворожий блок, у масштабі Marlit."
 	}
 }

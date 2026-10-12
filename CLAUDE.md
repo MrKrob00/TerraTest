@@ -2883,6 +2883,27 @@ project: read it before claiming how anything works.
   own face's axes, front and back owning the cube's edges so none is notched, and a bolted cap laid
   over every corner. 2,800 HP (the cabin's 320 over eight cells at Marlit's 1.1 a cell), 180 kg, a
   recipe of 3 + 3 components: at 5 + 5 the Marlit builds came out a ladder step dearer.
+- **THE MARLIT DRILL** (`MARLIT_DRILL` 76, `art/marlit_drill.py`, the Falsus `drill.gd` with
+  `drill_damage` 180, 1850 HP, 120 kg): 2x2x2 anchored in a corner, bolted on by its BACK face like
+  the Falsus drill - a mount plate filling that face with the faction's window, an octagonal housing
+  narrowing to a collar, a sunset band, four ribs; the BIT is its own part (node `Bit` at the collar,
+  -0.5, 0.5, -0.42), a hub and three stepped faceted tiers to a point on the front face, each ringed
+  with square teeth twisted against the tier before, so the turn reads from the side. It turns by the
+  clip "drilling" (`art/block_anims.gd` `_drill`, axis read off the part); the zone is a 0.95 m sphere
+  at z -1.35, 0.8 m past the front. A new textured model needs its `.import` written by hand for the
+  repo (the headless import drops the mobile variant): the dest hash is md5 of the res path. Measured
+  on the engine: on a Marlit cabin it took a vein 500 -> 0 in 3 s, the bit turned about its axis
+  with 0.00 deg of drift; pictured on the real driver. Rendered by `_shot_drill.gd`-style harnesses:
+  set the scene's script to null, the frame comes out on a white clear.
+- **MARLIT'S TREE IS FALSUS'S SHAPE** (`G.TECH_PARENT`): the CABIN is the root; under it the block
+  (hull, wheel), the DRILL (then the gun and every weapon), the solar array (then the battery, which
+  carries the repair unit and the charger) and the support. The licence hands over what costs no RP
+  (`G._licence_free`: cabin, block, drill - Falsus's start set over again), and a save licensed before
+  gets the same on load (`_settle_licences`). It was rooted at the block, the cabin a grade-2 child
+  behind 40 RP, with no mining for the faction whose story is mining. **AFTER A DEATH WITH MARLIT
+  LICENSED THE CABIN AND ITS KIT ARE MARLIT'S** (`G.starter_kit` / `starter_cabin_preset`, preset 127,
+  through `camera_controller._spawn_starter_vehicle`): two blocks, four wheels, the drill and the gun.
+  A new game has no licence and starts as Falsus.
 - **THE MARLIT WHEEL IS A MECHANISM** (`MARLIT_WHEEL` 65, `marlit_wheel.gd` over `wheel.gd`; researched
   at Marlit grade 2, `wheel_power` 7410 - 30% over its first 5700, the player's call): two
   equal parallel A-arms nearly level - steep arms (the first cut) swung the tyre out 0.2 m for a

@@ -80,7 +80,8 @@ func _ready() -> void:
 ## 65: the Marlit cabin photographed from the front (`portrait_dir`), so its visor shows.
 ## 66: the collector and the receiver without their glass column.
 ## 67: the Marlit support and rotating support.
-const RECIPE := 67
+## 68: the Marlit drill.
+const RECIPE := 68
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

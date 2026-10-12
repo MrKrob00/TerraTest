@@ -441,12 +441,28 @@ func open_factions() -> Array:
 func grant_licence(f: String) -> void:
 	for bt in BLOCK_META:
 		var m: Dictionary = BLOCK_META[bt]
-		if String(m["f"]) == f and not TECH_PARENT.has(bt) and not researched.has(int(bt)):
+		if String(m["f"]) == f and _licence_free(bt) and not researched.has(int(bt)):
 			researched.append(int(bt))
 			block_inventory.append(int(bt))
 	mark_progress_dirty()
 	progress_changed.emit()
 	licence_granted.emit(f)
+
+## What a licence hands over researched: the faction's root and every block of it that costs no RP
+## (Falsus's START_RESEARCHED over again).
+func _licence_free(bt) -> bool:
+	return not TECH_PARENT.has(bt) or int((BLOCK_META[bt] as Dictionary).get("rp", 1)) == 0
+
+## A save licensed before the tree changed: what the licence hands over now is researched too
+## (no inventory: those were handed out back then). Called when progress is read.
+func _settle_licences() -> void:
+	for f in FACTION_LICENCE:
+		if not faction_open(String(f)):
+			continue
+		for bt in BLOCK_META:
+			if String((BLOCK_META[bt] as Dictionary)["f"]) == String(f) and _licence_free(bt) \
+					and not researched.has(int(bt)):
+				researched.append(int(bt))
 
 ## The faction's emblem, or null when it has none. Loaded once.
 func faction_emblem(f: String) -> Texture2D:
@@ -502,8 +518,14 @@ const BLOCK_META := {
 	Block.SHOTGUN:     {"f": "start", "g": 2, "rp": 18},
 	Block.COMP_FACTORY: {"f": "start", "g": 4, "rp": 35},   # компоненты — ступень перед фабрикатором
 	Block.PACKER:      {"f": "start", "g": 3, "rp": 22},    # сбор трофеев — ступень после коллектора
-	# Marlit's root costs nothing: the licence hands it over researched (licence_faction).
+	# MARLIT'S TREE IS LAID AS FALSUS'S IS: the CABIN is the root, and what costs nothing - the cabin,
+	# the block and the drill, Falsus's start set over again - the licence hands over researched
+	# (grant_licence). It used to be rooted at the block, the cabin a grade-2 child behind 40 RP, with
+	# no mining at all for the faction whose story is mining, its guns growing off the hull and its
+	# repair unit off the panel past the battery.
+	Block.MARLIT_CABIN:     {"f": "marlit", "g": 1, "rp": 0},
 	Block.MARLIT_BLOCK:     {"f": "marlit", "g": 1, "rp": 0},
+	Block.MARLIT_DRILL:     {"f": "marlit", "g": 1, "rp": 0},
 	Block.MARLIT_SLAB:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF_SLAB: {"f": "marlit", "g": 2, "rp": 12},
@@ -519,7 +541,6 @@ const BLOCK_META := {
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
 	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 2, "rp": 50},
-	Block.MARLIT_CABIN:     {"f": "marlit", "g": 2, "rp": 40},
 	Block.MARLIT_SUPPORT:   {"f": "marlit", "g": 1, "rp": 15},
 	Block.MARLIT_ROT_SUPPORT: {"f": "marlit", "g": 3, "rp": 45},
 	Block.MARLIT_GUN:       {"f": "marlit", "g": 2, "rp": 30},
@@ -569,11 +590,10 @@ const TECH_PARENT := {
 	Block.MARLIT_BRACKET: Block.MARLIT_GIRDER,
 	Block.MARLIT_ARMOR2: Block.MARLIT_SLAB,    Block.MARLIT_ARMOR4: Block.MARLIT_ARMOR2,
 	Block.MARLIT_ARMOR8: Block.MARLIT_ARMOR4,  Block.MARLIT_OCTO: Block.MARLIT_LONG,
-	Block.MARLIT_SOLAR: Block.MARLIT_SLAB,
-	Block.MARLIT_REGEN: Block.MARLIT_SOLAR,
-	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_BLOCK,
-	Block.MARLIT_CABIN: Block.MARLIT_BLOCK,
-	Block.MARLIT_SUPPORT: Block.MARLIT_BLOCK,
+	Block.MARLIT_BLOCK: Block.MARLIT_CABIN, Block.MARLIT_DRILL: Block.MARLIT_CABIN,
+	Block.MARLIT_SOLAR: Block.MARLIT_CABIN, Block.MARLIT_SUPPORT: Block.MARLIT_CABIN,
+	Block.MARLIT_REGEN: Block.MARLIT_BATTERY,
+	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_DRILL,
 	Block.MARLIT_ROT_SUPPORT: Block.MARLIT_SUPPORT,
 	Block.MARLIT_SHOTGUN: Block.MARLIT_GUN, Block.MARLIT_CANNON: Block.MARLIT_GUN,
 	Block.MARLIT_LASER: Block.MARLIT_GUN,   Block.MARLIT_MORTAR: Block.MARLIT_CANNON,
@@ -1009,6 +1029,7 @@ const BLOCK_RECIPE := {
 													# Marlit builds came out a ladder step dearer
 	# A Falsus weapon's parts, about three times over: two cells across and two deep.
 	Block.MARLIT_GUN:       {"c17": 6, "m3": 18},
+	Block.MARLIT_DRILL:     {"c7": 4, "m3": 12},   # Torque Motor + Titanite, the Falsus drill twice over
 	Block.MARLIT_SHOTGUN:   {"c17": 6, "m3": 15},
 	Block.MARLIT_CANNON:    {"c11": 9, "c17": 6},
 	Block.MARLIT_LASER:     {"c10": 9, "c19": 6},
@@ -1270,6 +1291,18 @@ const START_RESEARCHED := [Block.CABIN, Block.BLOCK, Block.SMALL_WHEEL, Block.SM
 ## Один список на оба места, чтобы «начало игры» и «после смерти» не разъезжались.
 const STARTER_KIT := [Block.BLOCK, Block.BLOCK, Block.SMALL_WHEEL, Block.SMALL_WHEEL,
 		Block.SMALL_WHEEL, Block.SMALL_WHEEL, Block.SMALL_DRILL, Block.GUN]
+## THE SAME KIT IN MARLIT'S BLOCKS, handed out once Marlit is licensed (the player's call): after a
+## death the cabin comes back as Marlit's and the kit round it is Marlit's (`starter_kit`).
+const STARTER_KIT_MARLIT := [Block.MARLIT_BLOCK, Block.MARLIT_BLOCK, Block.MARLIT_WHEEL,
+		Block.MARLIT_WHEEL, Block.MARLIT_WHEEL, Block.MARLIT_WHEEL, Block.MARLIT_DRILL, Block.MARLIT_GUN]
+
+## The highest licensed faction's starter kit and the cabin-only layout it goes with (blocks.gd:
+## 4 the Falsus cabin, 127 Marlit's). A new game has no licence, so it always starts as Falsus.
+func starter_kit() -> Array:
+	return STARTER_KIT_MARLIT if faction_open("marlit") else STARTER_KIT
+
+func starter_cabin_preset() -> int:
+	return 127 if faction_open("marlit") else 4
 
 var faction_xp := {"start": 0}
 var research_points := 0               # ДИ — валюта дерева
@@ -1434,7 +1467,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_ARMOR8: "Marlit Armour Plate 4×2", Block.MARLIT_OCTO: "Marlit Octo Block",
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
-	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun",
+	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun", Block.MARLIT_DRILL: "Marlit Drill",
 	Block.MARLIT_CABIN: "Marlit Cabin",
 	Block.MARLIT_SUPPORT: "Marlit Support", Block.MARLIT_ROT_SUPPORT: "Marlit Rotating Support",
 	Block.MARLIT_LASER: "Marlit Laser", Block.MARLIT_SHOTGUN: "Marlit Shotgun",
@@ -1504,6 +1537,7 @@ const BLOCK_DESC := {
 	Block.MARLIT_SUPPORT: "Marlit's support: a cast jack with a ram as wide as a wheel. Anchors the machine, or stands on the ground as the core of a base.",
 	Block.MARLIT_ROT_SUPPORT: "Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.",
 	Block.MARLIT_GUN: "Twin barrels in a ball turret: a steady stream of heavy rounds, turning freely every way.",
+	Block.MARLIT_DRILL: "A stepped bit ringed with teeth: chews through a vein or an enemy block on contact, at Marlit's scale.",
 	Block.MARLIT_LASER: "A lens stack in a ball turret: a charged cyan bolt, one hard blow at long range.",
 	Block.MARLIT_SHOTGUN: "Four short bores in a row: a wide cone of heavy shot at close range, two blasts then a reload.",
 	Block.MARLIT_CANNON: "One thick barrel and a counterweight: a single heavy blow, for armour.",
@@ -1776,6 +1810,7 @@ func _load_progress() -> void:
 	for k2 in data.get("killed_kinds", []):
 		killed_kinds.append(str(k2))
 	first_enemy_met = data.get("first_enemy_met", false) == true
+	_settle_licences()
 
 func _notification(what: int) -> void:
 	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем
@@ -1952,6 +1987,7 @@ enum Block {
 	MARLIT_CABIN = 73,      # 2×2×2 core: a mech's head in armour, joins on every face (art/marlit_drive.py)
 	MARLIT_SUPPORT = 74,    # 2×2×2 cast jack (art/emitter_models.py marlit_support)
 	MARLIT_ROT_SUPPORT = 75, # 2×2×2, a slewing ring and two pinions (marlit_rot_support)
+	MARLIT_DRILL = 76,      # 2×2×2: a housing on a back plate, a stepped toothed bit (art/marlit_drill.py)
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -2023,6 +2059,7 @@ enum Block {
 @onready var marlit_cabin_scene: PackedScene = preload("res://blocks/scenes/marlit_cabin.tscn")
 @onready var marlit_support_scene: PackedScene = preload("res://blocks/scenes/marlit_support.tscn")
 @onready var marlit_rot_support_scene: PackedScene = preload("res://blocks/scenes/marlit_rot_support.tscn")
+@onready var marlit_drill_scene: PackedScene = preload("res://blocks/scenes/marlit_drill.tscn")
 @onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
 @onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
 
@@ -2068,7 +2105,7 @@ const BLOCK_CATEGORIES := {
 		Block.MARLIT_WHEEL],
 	"attack":  [Block.GUN, Block.SHOTGUN, Block.LASER, Block.ROCKET, Block.POUND_CANNON, Block.MORTAR,
 		Block.SMALL_DRILL, Block.DRILL,
-		Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
+		Block.MARLIT_DRILL, Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
 		Block.MARLIT_MORTAR],
 	# Along the chain: what digs and picks up, what carries, what works the material, what keeps
 	# and sells it, then the two that handle loose blocks.
@@ -2171,6 +2208,7 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_CABIN: return marlit_cabin_scene
 		Block.MARLIT_SUPPORT: return marlit_support_scene
 		Block.MARLIT_ROT_SUPPORT: return marlit_rot_support_scene
+		Block.MARLIT_DRILL: return marlit_drill_scene
 		Block.MARLIT_BATTERY: return marlit_battery_scene
 		Block.MARLIT_WIRELESS: return marlit_wireless_scene
 	return null

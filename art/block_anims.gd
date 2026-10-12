@@ -37,6 +37,7 @@ func _initialize() -> void:
 	_marlit_regen()
 	_drill("drill", "Drill_base_big/Drill_rotor_big")
 	_drill("small_drill", "Drill_base_small/Drill_rotor_small")
+	_drill("marlit_drill", "Bit")
 	quit()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
