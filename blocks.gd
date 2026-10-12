@@ -218,6 +218,7 @@ func _define_layout() -> void:
 		MARLIT_CHAMPION: _layout_marlit_champion()
 		MARLIT_RUNNER: _layout_marlit_runner()
 		MARLIT_RAIDER: _layout_marlit_raider()
+		STORY_SCOUT: _layout_story_scout()
 		MARLIT_CUBE_1: _layout_marlit_cube(1)
 		MARLIT_CUBE_2: _layout_marlit_cube(2)
 		MARLIT_CUBE_3: _layout_marlit_cube(3)
@@ -281,6 +282,20 @@ func _layout_marlit_champion() -> void:
 	# plates on the nose, under the guns' line
 	set_block(3, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
 	set_block(7, 5, 1, G.Block.MARLIT_ARMOR4, 0.0)
+
+## THE STORY SCOUT, the player's first enemy (enemy_spawner.spawn_scout_near_player; the player's
+## call: "one block, four small wheels and a machine gun"): a cabin, one block behind it, four small
+## wheels and one gun on the cabin's roof. It used to be a random build of the bottom step, which
+## could bring a shotgun and a gun to a machine assembled five minutes earlier. Outside the ladder.
+const STORY_SCOUT := 126
+
+func _layout_story_scout() -> void:
+	set_block(5, 5, 5, G.Block.CABIN, 0.0)
+	set_block(5, 5, 6, G.Block.BLOCK, 0.0)
+	for z in [5, 6]:
+		set_block(4, 5, z, G.Block.SMALL_WHEEL, PI / 2)
+		set_block(6, 5, z, G.Block.SMALL_WHEEL, -PI / 2)
+	set_block(5, 6, 5, G.Block.GUN, 0.0)
 
 ## THE ALMIGHTY CUBE (Marlit's combat line, quest_arcs CUBE_*): a base that IS a cube of Marlit
 ## modules on a fixed Marlit support, turrets on its roof. Outside the ladder, spawned `as_base`:
