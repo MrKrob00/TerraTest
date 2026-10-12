@@ -127,13 +127,23 @@ def _ld_head(f):
         mw.oct_tube(f, b, c, 0.075, 0.05, "c", cap_b="cyan3", sides=4)
 
 
+def _no_edges(parts):
+    """Every dark-metal face loses the light edge line (`mdark`): grey trim round every face of the
+    mount, the housing and the clamp was what the player saw, not the metal."""
+    for faces in parts.values():
+        for fc in faces:
+            if fc.style.startswith("mtone"):
+                fc.style = "mdark" + fc.style[5:]
+    return parts
+
+
 def _ld_build(pk, img):
     import random as _r
     rnd = _r.Random(91)
     parts = {"marlit_laser_drill_body": [], "marlit_laser_drill_head": []}
     _ld_body(parts["marlit_laser_drill_body"], rnd)
     _ld_head(parts["marlit_laser_drill_head"])
-    return parts
+    return _no_edges(parts)
 
 
 # ── the saw ────────────────────────────────────────────────────────────────────────────────────
@@ -232,7 +242,7 @@ def _saw_build(pk, img):
     parts = {"marlit_saw_body": [], "marlit_saw_blade": []}
     _saw_body(parts["marlit_saw_body"], rnd)
     _saw_blade(parts["marlit_saw_blade"])
-    return parts
+    return _no_edges(parts)
 
 
 # The self-check (art/model_check.py): cells, part origins (the scenes' nodes), what turns and the
