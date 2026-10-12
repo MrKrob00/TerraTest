@@ -3093,9 +3093,11 @@ project: read it before claiming how anything works.
   20 s against 66 in the physics before `CRUISE_SPEED` went to 1.0. WHAT IS LEFT IS THE MOVE ITSELF:
   the same machines cruising in place cost 11-13 ms - moving the root drags ~30 frozen block bodies,
   their areas and the machine's shape copies through the physics server every tick. Freezing the
-  blocks KINEMATIC instead of STATIC made it WORSE (33.8 ms in the physics); the real cure is blocks
-  without bodies of their own, hit through the machine's shape index - a rework of hits and damage,
-  not done. A cruising machine passes through trees and rocks (far, and pushed out when it lands).
+  blocks KINEMATIC instead of STATIC made it WORSE (33.8 ms in the physics). THE CURE WAS DONE:
+  mounted blocks have no bodies (Machines and the block grid) and an enemy's detection sensor is a
+  distance scan (Enemies) - measured against the commit before, alternated three times, the same
+  eight machines: cruising 14.4 / 12.0 / 13.2 -> 9.4 / 11.4 / 12.5 ms a tick, driving with full
+  physics 17.0 / 16.8 / 17.0 -> 15.0 / 15.3 / 13.7, every pair faster. A cruising machine passes through trees and rocks (far, and pushed out when it lands).
 - **ONE MANAGER INSTEAD OF A TICK PER NODE PAYS ONLY WHEN IT SKIPS WORK OR WORKS ON PACKED DATA**
   (the RTS "systems" idea, measured before it was applied). A GDScript call into a unit's method
   costs as much as the engine's own `_physics_process` call or more - 600 units, per unit a tick,
