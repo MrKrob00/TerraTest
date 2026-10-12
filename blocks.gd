@@ -963,6 +963,20 @@ func _is_anchor(x: int, y: int, z: int) -> bool:
 	var key := "%d,%d,%d" % [x, y, z]
 	return cell_owner.get(key, key) == key
 
+## THE MACHINE SCENE'S OWN BOX GOES OFF ONCE A BLOCK'S BOX IS ON THE BODY. `enemy.tscn` and
+## `player_vehicle.tscn` carry a 1x1x1 `CollisionShape3D` at the origin, untagged - exactly the Falsus
+## cabin's cell. Since mounted blocks left the physics space a bullet's ray reads the machine's
+## shapes (`VehicleBlock.hit_node`), met that box first and answered "the machine", not the cabin:
+## shots never hurt a Falsus cabin, the player's or an enemy's, while a drill (a shape query, every
+## overlap) did. The box stays in the scene for the body's first frames, before any block exists.
+func _retire_root_collider() -> void:
+	var body: Node = get_parent()
+	if body == null:
+		return
+	var root_col := body.get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if root_col != null and not root_col.has_meta("block_owner") and not root_col.disabled:
+		root_col.set_deferred("disabled", true)
+
 # ── Cells a block occupies ──────────────────────────────────────────────────
 ## СМЕЩЕНИЯ КЛЕТОК ОТ ЯКОРЯ, в СВОИХ осях блока. Якорь у крупного блока в углу, а не в середине,
 ## поэтому смещения уходят в минус по X и Z.
@@ -1273,6 +1287,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 		await get_parent().ready
 	get_parent().add_child(collision)
 	collision.add_to_group("block_collision")   # чтобы смена сборки могла их убрать
+	_retire_root_collider()
 	node_map[key] = instance
 	_apply_output(instance, key)
 

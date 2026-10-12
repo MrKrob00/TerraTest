@@ -190,6 +190,13 @@ project: read it before claiming how anything works.
   of a dead block's box is `remove_child`-ed and freed, never `remove_shape_owner`-ed by hand as
   well - that removed it twice and printed the engine's "!shapes.has(owner)" for every block that
   died (nine in a minute of the menu's fight, zero after; a log line is not free on a phone).
+- **THE MACHINE SCENE'S OWN BOX GOES OFF WITH THE FIRST BLOCK'S BOX** (`blocks._retire_root_collider`):
+  `enemy.tscn` and `player_vehicle.tscn` carry an untagged 1x1x1 `CollisionShape3D` at the origin -
+  exactly the Falsus cabin's cell. Once mounted blocks left the physics space a bullet's ray read the
+  machine's shapes, met that box first and answered "the machine": no shot ever hurt a Falsus cabin,
+  the player's or an enemy's, while a drill (a shape query, every overlap) did - and the scout
+  stripped the player's machine down to an unkillable cabin. Measured: an ally firing at a build-25
+  enemy for 24 s took its cabin 625 -> 625 before, 625 -> 287 after.
 - A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
@@ -1107,8 +1114,11 @@ project: read it before claiming how anything works.
 - The first enemy of a save deals halved damage (`FIRST_ENEMY_DAMAGE`); the story scout gets that
   discount unconditionally and drops along the player's heading — the one deliberate inversion of
   "never spawn in front" — but 115-135 m out, not 20-40: the clearance below holds for it too.
-- **NO HOSTILE MACHINE IS BORN WITHIN 100 M OF THE PLAYER'S OWN** (`EnemySpawner.PLAYER_CLEAR`, the
-  player's rule): the machine driven, a base, a truck parked at a vein - everything in the camera
+- **NO HOSTILE MACHINE IS BORN WITHIN 200 M OF THE PLAYER'S OWN** (`EnemySpawner.PLAYER_CLEAR`, the
+  player's rule; it was 100, and a fresh world showed the duel, the stream and a miner at 127-213 m -
+  "wherever I look at the start, enemies"; after, every hostile 247 m or more out, the stream's ring
+  `spawn_max_dist` 280, an event's point `EV_POINT_DIST` 220-300 and `EV_BASE_CLEAR` 200, and a
+  STRONGHOLD does not materialise inside it either, `outposts._clear_of_player`): the machine driven, a base, a truck parked at a vein - everything in the camera
   controller's `vehicles`. A point too close is MOVED OUT, not refused (`clear_point`: out along the
   line it lay on, then fanning to the sides), so an event that asked for an attack still gets one,
   from far enough to be seen coming. The door is `spawn_at` (every quest, raid and event), plus the

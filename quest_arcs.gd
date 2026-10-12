@@ -1938,8 +1938,8 @@ func _ev_get_point(key: String, dist: float = 0.0) -> Variant:
 ## the player's machines and bases (the player's rule): with the player a hundred metres from their
 ## base, a point "a hundred metres off" could land on the base itself. `dist` > 0 asks for that
 ## distance instead.
-const EV_POINT_DIST := Vector2(100.0, 250.0)
-const EV_BASE_CLEAR := 100.0
+const EV_POINT_DIST := Vector2(220.0, 300.0)
+const EV_BASE_CLEAR := 200.0     # enemy_spawner.PLAYER_CLEAR
 
 func _event_point(dist: float = 0.0) -> Variant:
 	var p: Node3D = _player()
