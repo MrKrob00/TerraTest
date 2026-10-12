@@ -427,14 +427,16 @@ func _build_region(rk: Vector2i) -> Array:
 ## Every member stays INSIDE its own region: a region is laid knowing nothing of its neighbours, and
 ## spacing is checked only within it. All the rng is drawn when the job is made, so the layout is
 ## the same however the work is sliced.
-const GROVE_TRIES := 7
+const GROVE_TRIES := 14
 const FOREST_FREQ := 1.0 / 260.0
-const FOREST_CUT := 0.05
-## Simplex FBM rarely leaves +-0.6, so the grove is full at FOREST_CUT + FOREST_SPAN.
+const FOREST_CUT := -0.05
+## Simplex FBM rarely leaves +-0.6, so the grove is full at FOREST_CUT + FOREST_SPAN. THE FIRST
+## NUMBERS GAVE 13 TREES A REGION, and the player saw "few groves, nothing changed": twice the tries,
+## twice the trees a grove and a lower cut now (measured below in CLAUDE.md).
 const FOREST_SPAN := 0.4
-const GROVE_TREES := Vector2i(5, 14)
-const GROVE_R := Vector2(9.0, 20.0)
-const LONE_TREES := 3
+const GROVE_TREES := Vector2i(10, 28)
+const GROVE_R := Vector2(12.0, 26.0)
+const LONE_TREES := 6
 const LONE_KEEP := 0.6
 const DEPOSIT_TRIES := 7
 const DEPOSIT_FOREST_MAX := 0.3
