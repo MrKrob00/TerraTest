@@ -530,13 +530,30 @@ project: read it before claiming how anything works.
   Wood is half of coal in both numbers that matter — 6 against 12 to sell, 20 against 40 in the
   generator — so the choice is "throw it in the furnace now" against "burn it down and get twice
   as much", which is what makes the conversion a decision rather than a step.
-- WOOD IS THE ONE THING THAT GROWS AT RANDOM. Ore is handed out BY REGION (`_metal_for`), so the
-  metal under your wheels depends on where you stand; wood is a per-point roll, so a forest is
-  never a deposit — you meet it on the way. And a felled tree does NOT grow back on its stump: it
-  MOVES, up to `REPLANT_RADIUS` (8 m), which keeps the region's tree count while emptying the spot
-  you just cleared. The radius is small on purpose — with a free-for-all relocation the forest
-  would migrate to wherever the player chops most. The target circle is checked against other
-  nodes and against machines, or a tree eventually grows inside a base.
+- **THE GROUND IS STOCKED IN GROUPS, AFTER TERRATECH** (`resource_nodes._region_job`): trees in GROVES,
+  ore in DEPOSITS of one metal, and both follow the biome. Every vein used to be its own roll - a
+  point anywhere in the region, a quarter of them trees - so a "forest" was eight trees spread over
+  256 m and ore of every metal stood alone wherever it fell. Now a region lays GROVE_TRIES centres
+  read against one low-frequency FOREST FIELD of the seed (`_forest_noise`; over `FOREST_CUT` a
+  grove of 5-14 trees round it, more the denser the field), thinned per biome (`TREE_KEEP_BIOME`:
+  meadow thick, canyon and mountain thinner, palms in the desert in small oases, nothing on a salt
+  flat), plus `LONE_TREES` anywhere; and DEPOSIT_TRIES centres IN CLEARINGS (field under
+  `DEPOSIT_FOREST_MAX`) whose metal is decided ONCE for the deposit (`_metal_for` by the biome there,
+  `WILD_CHANCE` a random one) with 3-5 veins round it, `DEPOSIT_RICH` more in the canyon and on the
+  mountains. A member past its region's edge is dropped (spacing is checked only inside a region),
+  and all the rng is drawn when the job is made, so slicing (`REGION_SLICE_USEC`) changes nothing.
+  The metal under your wheels still depends on where you stand; a felled tree still MOVES, up to
+  `REPLANT_RADIUS` (8 m), which keeps the grove's count while emptying the spot you just cleared - the
+  radius is small on purpose, or the forest would migrate to wherever the player chops most. The
+  target circle is checked against other nodes and against machines, or a tree eventually grows
+  inside a base.
+- **AN EMPTY VEIN IS NOT IN THE WAY** (`resource_node._set_solid`): the collider goes with the last
+  ore (a felled tree's with its last wood) and comes back with the refill; a 3 m cylinder over rubble
+  and a 7 m trunk over a stump stopped machines and shots on air. A vein the auto miner holds stays
+  open the whole time. A REFILL WAITS FOR ITS SPOT TO BE CLEAR (TerraTech's rule for what regrows,
+  `_spot_blocked`: the vein's own shape against machines 16, loose blocks 2 and loose items 8),
+  asking again every `BLOCKED_RETRY` - a collider switched on inside a machine throws it out with the
+  solver's full force. Deferred: `hurt` runs inside a physics traversal.
 - A REPLANT IS A MOVE, NOT A PLACEMENT, so `_free_spot_near` does not ask `min_height`. That
   threshold keeps the SEEDED layout out of the deepest basins; a tree that already stands passed it
   once, and inside an eight-metre circle the height cannot run further than `max_slope` allows.
@@ -624,8 +641,7 @@ project: read it before claiming how anything works.
   **AN ORE VEIN IS DRAWN AT THREE TIMES ITS MODEL** (`resource_nodes.VEIN_SIZE`, the player's call)
   the same way: ~3 m across, a shared collider to match (`_ore_shape`), its ore thrown round its
   outside by `vein_basis` (`resource_node._eject_one`), the auto miner's `vein_reach` 4.5 /
-  `pickup_radius` 6 and `MINER_MOUNT_DIST` 2.8 grown with it. `min_spacing` was NOT touched: it is a
-  rejection radius in the seeded layout. **A VEIN BREAKS BY THE ORE IT HAS THROWN, NOT BY ITS HP**
+  `pickup_radius` 6 and `MINER_MOUNT_DIST` 2.8 grown with it, and the layout's `ORE_GAP` (4.5 m). **A VEIN BREAKS BY THE ORE IT HAS THROWN, NOT BY ITS HP**
   (`resource_node.hurt`): an ore leaves when int(hp x 5) drops, a part goes at its break point, so by
   HP every part went one ore late and the last (0.0) never went - the fifth ore leaves under a fifth
   of HP and an empty vein takes no hits. A tree keeps its HP for the lean and reads 0 on its last
@@ -1573,8 +1589,17 @@ project: read it before claiming how anything works.
   collector, a receiver off the ground or the hand - a drilled ore lying on the ground is not harvest
   yet, and the auto miner's ore counts when a receiver takes it; `processed` a product out of the
   processor; `item_sold` anything the seller takes. Gated by the licence and Marlit's grades
-  (`Q._grade_ok`); THE ALMIGHTY CUBE (the combat half of the design) is not built yet. Measured:
-  three ores picked count three, the same ore dropped and picked again does not count again.
+  (`Q._grade_ok` asks the licence); ALL TWELVE OPEN AT ONCE WITH THE LICENCE, no chain and no grade
+  (the player's call: GeoCorp's missions stand on the board together), so Novice I and Master I count
+  the same trees side by side. THE ALMIGHTY CUBE is the combat half: three Marlit cubes
+  (`blocks.MARLIT_CUBE_1..3`, presets 123-125, `_layout_marlit_cube`) - a body of 2x2x2 modules on a
+  fixed Marlit support, turrets on the roof each looking OUT of its own side (`_cube_turret`; the
+  base does not turn, so a barrel looking across the roof would never see anything), the second and
+  third with a battery and repair unit inside, the third with a solar array on top. ALL THREE OPEN
+  TOGETHER AT MARLIT'S GRADE 3 (`mc_cube1..3`), each its own key and point on the shielded towers'
+  branch (`quest_arcs.CUBES`, `_tower_1/_tower_2`), kept `TOWER_APART` from each other
+  (`_tower_pick`). Measured: three ores picked count three, the same ore dropped and picked again
+  does not count again.
 - Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
   Far away they cost nothing because the spawner sleeps them. Hold Position is the exception: its
   attack arrives at the player. It is ONE attack of three: it used to be two waves, the second

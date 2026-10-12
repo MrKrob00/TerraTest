@@ -76,6 +76,13 @@ func _tick_arcs(delta: float) -> void:
 			"quest_tower_2":       _tower_2(q, TOWER_WATCH)
 			"quest_sam_1":         _tower_1(q, TOWER_SAM)
 			"quest_sam_2":         _tower_2(q, TOWER_SAM)
+			# The three cubes run at once, each its own key and point (the tower branch, CUBES)
+			"quest_cube1_1":       _tower_1(q, CUBES[0])
+			"quest_cube1_2":       _tower_2(q, CUBES[0])
+			"quest_cube2_1":       _tower_1(q, CUBES[1])
+			"quest_cube2_2":       _tower_2(q, CUBES[1])
+			"quest_cube3_1":       _tower_1(q, CUBES[2])
+			"quest_cube3_2":       _tower_2(q, CUBES[2])
 			"quest_duel_1":        _duel_1(q)
 			# MARLIT'S EVENTS ARE THE SAME EVENTS WITH ANOTHER FACTION: the functions take their key
 			# from the stage ("quest_mgang_1" -> "mgang"), and the faction decides the enemies'
@@ -1455,6 +1462,23 @@ const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 0, "award": G.Bloc
 const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.ROCKET,
 		"say": "That dome is not the tower's own. Something else is paying for it."}
 
+## THE ALMIGHTY CUBE runs on this branch: a base to reach and bring down, no guards. Each cube is
+## its own key, so all three can stand at once; `_tower_pick` keeps their points TOWER_APART.
+const CUBES := [
+	{"key": "cube1", "preset": 123, "guards": 0, "award": G.Block.MARLIT_ARMOR4,
+		"say": "Marlit's cube is out there. Its guns watch every side - none of them turns.",
+		"done": "The cube is down. Marlit sends what it promised."},
+	{"key": "cube2", "preset": 124, "guards": 0, "award": G.Block.MARLIT_REGEN,
+		"say": "The second cube repairs itself. Hit it harder than it can mend.",
+		"done": "The cube is down. Marlit sends what it promised."},
+	{"key": "cube3", "preset": 125, "guards": 0, "award": G.Block.MARLIT_CANNON,
+		"say": "The last cube runs on the sun. Its repairs will not stop on their own.",
+		"done": "The cube is down. Marlit sends what it promised."},
+]
+## Two branch points no closer than this, or two cubes open at once land in one fight.
+const TOWER_APART := 120.0
+const TOWER_APART_TRIES := 6
+
 var _tower_point: Dictionary = {}      # ключ → Vector3, куда ехать
 var _tower_node: Dictionary = {}       # ключ → сама вышка
 var _tower_dead: Dictionary = {}       # ключ → true, если вышку уже добили
@@ -1465,7 +1489,7 @@ func _tower_1(q: Dictionary, cfg: Dictionary) -> void:
 	if p == null:
 		return
 	if not _tower_point.has(key):
-		_tower_point[key] = _far_point(p)
+		_tower_point[key] = _tower_pick(key, p)
 	var at: Vector3 = _tower_point[key]
 	if not _tower_node.has(key):
 		if not _tower_build(key, cfg, at):
@@ -1486,7 +1510,7 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 		if p == null:
 			return
 		if not _tower_point.has(key):
-			_tower_point[key] = _far_point(p)
+			_tower_point[key] = _tower_pick(key, p)
 		_tower_build(key, cfg, _tower_point[key])
 		return
 	if not bool(_tower_dead.get(key, false)):
@@ -1495,10 +1519,24 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 	# (_blow_tower_guards) и остаются в мире обычными базами: добивать их ради галочки незачем,
 	# а бросать посреди боя — тем более.
 	_award(int(cfg["award"]))
-	Dialogue.say("System", tr("Ridge is clear. The hardware it was guarding is yours."))
+	Dialogue.say("System", tr(String(cfg.get("done", "Ridge is clear. The hardware it was guarding is yours."))))
 	Q.report(String(q["event"]), 1)
 	_tower_node.erase(key)
 	_tower_dead.erase(key)
+
+## A point for the branch, TOWER_APART from every other branch point standing (the last try wins).
+func _tower_pick(key: String, p: Node3D) -> Vector3:
+	var wp: Vector3 = _far_point(p)
+	for _i in TOWER_APART_TRIES:
+		var clear := true
+		for k in _tower_point:
+			if k != key and (_tower_point[k] as Vector3).distance_squared_to(wp) < TOWER_APART * TOWER_APART:
+				clear = false
+				break
+		if clear:
+			break
+		wp = _far_point(p)
+	return wp
 
 ## Собрать точку: вышка в центре, зарядные башни кольцом вокруг неё.
 ##

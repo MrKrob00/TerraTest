@@ -286,41 +286,55 @@ func _seed_demo() -> void:
 	#                          (resource.harvest)
 	#   processed              a product out of the processor
 	#   item_sold              anything the seller takes
-	# They open with Marlit's licence (Q._grade_ok asks faction_open) and climb its grades.
+	# ALL OF THEM OPEN AT ONCE WITH MARLIT'S LICENCE (the player's call, as GeoCorp's Harvester missions
+	# stand on the board together): no chain, no grade. Novice I and Master I count the same felled
+	# trees side by side; what tells them apart is the goal, and the small ones pay first.
 	_marlit_story("mh_novice1", "Novice Harvester I", "Fell 10 trees", 10, 20, "tree_felled", 150, 30, 6, 1,
 			"Marlit pays for work, not talk. Start with timber: drill a tree until it comes down.")
 	_marlit_story("mh_novice2", "Novice Harvester II", "Collect 20 ore", 20, 21, "ore_collected", 180, 35, 7, 1,
 			"Ore counts once it is picked up - by a collector, a receiver or your own hand. Drilled and left lying, it is just rock.")
 	_marlit_story("mh_novice3", "Novice Harvester III", "Fell 25 trees", 25, 22, "tree_felled", 220, 45, 8, 1,
 			"More timber. A felled tree does not grow back where it stood - look a little further out.")
-	_marlit_story("mh_novice4", "Novice Harvester IV", "Collect 50 ore", 50, 23, "ore_collected", 280, 55, 10, 2,
+	_marlit_story("mh_novice4", "Novice Harvester IV", "Collect 50 ore", 50, 23, "ore_collected", 280, 55, 10, 1,
 			"An auto miner on an anchored base digs while you are away; what it digs counts when a receiver takes it.")
-	requires("mh_novice2", ["mh_novice1"])
-	requires("mh_novice3", ["mh_novice2"])
-	requires("mh_novice4", ["mh_novice3"])
-	# One per metal, all four open together: which metal lies under your wheels depends on the region
-	# (resource_nodes._metal_for), so the player picks the one nearest.
-	var minerals := [["Ferrite", 20, 2, 300, 60, 10], ["Cuprite", 30, 2, 360, 70, 12],
-			["Silicate", 40, 3, 440, 85, 14], ["Titanite", 50, 3, 520, 100, 16]]
+	# One per metal: which metal a deposit holds depends on its biome (resource_nodes._metal_for), so
+	# the player takes the one nearest.
+	var minerals := [["Ferrite", 20, 1, 300, 60, 10], ["Cuprite", 30, 1, 360, 70, 12],
+			["Silicate", 40, 1, 440, 85, 14], ["Titanite", 50, 1, 520, 100, 16]]
 	for i in minerals.size():
 		var m: Array = minerals[i]
 		var mid := "mh_mineral%d" % i
 		_marlit_story(mid, "Mineral Harvester: %s" % m[0], "Collect %d %s ore" % [m[1], m[0]], m[1],
 				24 + i, "ore_collected_%d" % i, m[3], m[4], m[5], m[2],
 				"Only %s counts here. Every region holds its own metal - find where it grows." % m[0])
-		requires(mid, ["mh_novice4"])
-	_marlit_story("mh_master1", "Master Harvester I", "Fell 100 trees", 100, 28, "tree_felled", 600, 110, 18, 3,
+	_marlit_story("mh_master1", "Master Harvester I", "Fell 100 trees", 100, 28, "tree_felled", 600, 110, 18, 1,
 			"A hundred trees. Bring a drill that bites and a collector that does not fill up.")
-	_marlit_story("mh_master2", "Master Harvester II", "Collect 200 ore", 200, 29, "ore_collected", 750, 130, 20, 3,
+	_marlit_story("mh_master2", "Master Harvester II", "Collect 200 ore", 200, 29, "ore_collected", 750, 130, 20, 1,
 			"Two hundred ore. This is what bases are for: park on a vein and let the line do it.")
-	_marlit_story("mh_master3", "Master Harvester III", "Refine 300 items", 300, 30, "processed", 900, 150, 24, 4,
+	_marlit_story("mh_master3", "Master Harvester III", "Refine 300 items", 300, 30, "processed", 900, 150, 24, 1,
 			"Raw ore is worth little. Run it through a processor - every product out of it counts.")
-	_marlit_story("mh_master4", "Master Harvester IV", "Sell 500 items", 500, 31, "item_sold", 1200, 200, 30, 4,
+	_marlit_story("mh_master4", "Master Harvester IV", "Sell 500 items", 500, 31, "item_sold", 1200, 200, 30, 1,
 			"Marlit's last test is the market: five hundred items through a seller.")
-	requires("mh_master1", ["mh_novice4"])
-	requires("mh_master2", ["mh_master1"])
-	requires("mh_master3", ["mh_master2"])
-	requires("mh_master4", ["mh_master3"])
+
+	# ── THE ALMIGHTY CUBE: MARLIT'S COMBAT LINE ────────────────────────────────────
+	# Three cubes of Marlit modules with turrets on the roof (blocks.MARLIT_CUBE_*), each its own
+	# point; ALL THREE OPEN TOGETHER AT MARLIT'S GRADE 3 (the player's call), not one after another.
+	# The branch is the shielded towers' (quest_arcs CUBE_*): reach it, then bring it down.
+	for i in 3:
+		var cid := "mc_cube%d" % (i + 1)
+		add_quest(cid, "The Almighty Cube %s" % ["I", "II", "III"][i], "", Type.STORY, 1, 32 + i, "",
+				[600, 800, 1000][i], [120, 150, 190][i], [22, 26, 30][i], 3)
+		add_stages(cid, [
+			{"desc": "Reach the cube",
+			 "event": "quest_cube%d_1" % (i + 1), "goal": 1,
+			 "hint": ["Marlit has parked a cube of its own blocks out in the field and wants to see it come apart.",
+				"A bigger cube, and this one mends itself: there is a repair unit and a battery inside.",
+				"The last cube: a solar array on its roof keeps the repairs going. Bring heavy guns."][i]},
+			{"desc": "Break the cube",
+			 "event": "quest_cube%d_2" % (i + 1), "goal": 1,
+			 "hint": "It does not turn: every side's guns watch their own side. Come in on a corner, where two sides meet."},
+		])
+		_find(cid)["faction"] = "marlit"
 
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
