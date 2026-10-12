@@ -65,19 +65,18 @@ func _explode(pos: Vector3) -> void:
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = sphere
 	q.transform = Transform3D(Basis(), pos)
-	q.collision_mask = 2                                        # VehicleBlock.collision_layer = 2
+	q.collision_mask = VehicleBlock.block_mask(2)              # blocks, loose and mounted
 	q.collide_with_bodies = true
 	var own := _vehicle_root()
-	var seen := {}                                             # один блок — один урон (много шейпов)
-	for hit in world.direct_space_state.intersect_shape(q, 48):
-		var b = hit.get("collider")
-		if b == null or seen.has(b) or not b.has_method("hurt"):
+	if own is CollisionObject3D:
+		q.exclude = [(own as CollisionObject3D).get_rid()]     # our own machine, every box of it
+	for b in VehicleBlock.query_hits(world.direct_space_state, q, 48):   # one block, one hit
+		if b == null or not b.has_method("hurt"):
 			continue
 		if b == self or b.get_parent() == get_parent():
 			continue
 		if _root_of(b) == own:
 			continue                                           # своя машина — не по себе
-		seen[b] = true
 		var d: float = (b as Node3D).global_position.distance_to(pos)
 		var f: float = clampf(1.0 - d / aoe_radius, 0.15, 1.0)  # спад урона к краю
 		if b is VehicleBlock:

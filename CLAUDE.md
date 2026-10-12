@@ -194,6 +194,23 @@ project: read it before claiming how anything works.
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback
   was the live path for every starter and enemy block.
+- **A BLOCK ON A MACHINE HAS NO BODY IN THE PHYSICS SPACE** (`VehicleBlock._notification`,
+  `is_mounted`): its box IS the machine's copy (layer 16, tagged `block_owner`), and its own frozen
+  body was a second box in the same place that the physics server moved every tick the machine
+  moved. The engine puts a body back on ENTER_WORLD and ENABLED (the sleep system toggles
+  `process_mode`), so the block takes itself out right after; torn off, taken or scattered, it
+  enters its new parent's world with its body, as before - LOOSE BLOCKS KEEP THEIRS. So ANYTHING
+  THAT LOOKS FOR A MOUNTED BLOCK ASKS THE MACHINE'S SHAPES: a mask with layer 2 gets layer 16 too
+  (`VehicleBlock.block_mask`), and a hit is read through its shape index (`hit_node`, `of_hit`;
+  a shape query through `query_hits`, each block once). The doors that do: the bullet sweep (the
+  shooter's machine is `exclude`d whole), the own-barrel check (`WeaponBlock._barrel_blocked`, NO
+  BACK FACES - the ray starts inside its own block's box), every blast (`BlockFX.explosion`, the
+  rocket's), the repair field, the drill (a shape query with its zone's shape - the zone no longer
+  monitors), and the taps in `vehicle_body_3d` (which no longer `exclude` their own machine: on
+  mask 2 that exclusion was a no-op, and our own blocks are now our shapes). The root is NOT put on
+  layer 2: the packer's magnet pulls bodies on 2 by point gravity, and would pull whole machines.
+  Measured against the old code: a fight, a blast (790 against 790), a 6 m query (29 of 29 blocks),
+  a drill blow, a tap marking an enemy block and a tap on our own block all answer the same.
 - THREE ANSWERS ABOUT ONE SHAPE IS TWO TOO MANY. The wedge's `BoxShape3D` was 1×1×2 (long on Z),
   its `cells_center` described a 2×1×2, and `_block_footprint` filed it with the 2×1×1 blocks
   along X. Its mesh settles it: x spans exactly one cell, z spans two. It is now 1×1×2 on Z
@@ -1214,7 +1231,7 @@ project: read it before claiming how anything works.
   gun into a machine that never fired back. `notice_attacker` now lifts it for `ANSWER_TIME`, and
   the spawner leaves such an enemy out of the queue while that runs.
 - "IT NOTICED YOU" IS A SETTER ON `enemy_vehicle._target`, not a call at each place a target is
-  chosen: the zone signal, the periodic search, `notice_attacker` and quest `assign_target` all
+  chosen: the periodic search, `notice_attacker` and quest `assign_target` all
   write that field, and a fifth way would be written one day too. When the new target is the
   player's side (faction 0 and not an AI running this script, so the defend quest's ally does not
   count) the marker raises a "!" (`EnemyMarker.alert`) ASSEMBLED FROM THE SAME GLITCH CARDS A BLOCK
@@ -1225,8 +1242,12 @@ project: read it before claiming how anything works.
   and flicker), each pixel a little off its cell (`GLYPH_SKEW`), and in stepped glitch frames a few
   pixels jump sideways. Three seconds and it is gone (`EnemyMarker.ALERT_TIME`). `ALARM_COOLDOWN` keeps a target flickering across the zone edge from
   blinking it, since a sign that is always up says nothing. Demo fights never raise it.
-- Acquisition has two paths (area signal, periodic search) and both must go through
-  `_consider_target`, which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
+- **AN ENEMY FINDS ITS TARGET BY DISTANCE, NOT BY A SENSOR** (`enemy_vehicle._scan_for_targets` over
+  the group `MachineBody.MACHINES`, every 0.3 s while it has none), the trade the guns made. It
+  carried a monitoring Area3D `detection_radius` across that rode with the machine: measured on 4.7.2,
+  eight far machines spent 20.2 ms a physics tick with their sensors and 16.4 without - more than
+  all their block bodies cost. Everything offered as a target goes through `_consider_target`,
+  which holds the line-of-sight rule. Escape is possible: no chase bonus, and a
   damaged enemy that breaks contact gives up and moves its patrol home.
 - A ROLE FOLLOWS THE BUILD, AND THE DOOR IS `enemy_spawner._apply_role`. The `miner` flag used to
   be raised only in the stream (`_spawn_one`), while `spawn_at` — the door quests, raids and the
@@ -1271,7 +1292,7 @@ project: read it before claiming how anything works.
   shotgun, rocket (18 m). Far: gun (60), laser (70), mortar (20-160). The outpost does not turn, so
   its near barrel faces BACK — at 0 it looked into its own mast and fired nothing at a machine
   behind it (measured: 0 shots, now 19). A BASE SEES `BASE_SIGHT` (70 m), set in
-  `enemy_vehicle._setup_detection_area` off `is_base` so both doors that make a base (the spawner and
+  `enemy_vehicle._setup_detection` off `is_base` so both doors that make a base (the spawner and
   `outposts.gd`) get it; a driving enemy keeps 40 m so the player can still drive round a patrol.
   At 40 a far barrel on a base was pointless — it fired at nothing past 40 unless shot first.
   `_enemy_detect_radius` skips bases, or one base read first would push every drop ring out to 70.

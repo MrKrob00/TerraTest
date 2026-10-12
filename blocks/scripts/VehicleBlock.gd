@@ -379,6 +379,62 @@ func _ready() -> void:
 	tree_entered.connect(_on_parent_changed)
 	_on_parent_changed()
 
+## A BLOCK ON A MACHINE HAS NO BODY IN THE PHYSICS SPACE. Its box is the machine's copy (the
+## CollisionShape3D under the machine tagged `block_owner`, on the machine's layer 16), so its own
+## frozen body was a second box in the same place, moved by the physics server every tick the machine
+## moved: measured, eight far machines 20.2 -> 18 ms a physics tick without them. The engine puts a
+## body back into its space on ENTER_WORLD and ENABLED (the sleep system toggles `process_mode`), so
+## it is taken out again right after, here; a block leaving the machine (torn off, taken, scattered)
+## enters its new parent's world with its body, as before. What looks for a mounted block asks the
+## machine's shapes and reads the tag: `hit_node`, `of_hit`, `query_hits`, `MACHINE_LAYER`.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_ENTER_WORLD or what == NOTIFICATION_ENABLED:
+		if is_mounted():
+			PhysicsServer3D.body_set_space(get_rid(), RID())
+
+## On a machine's grid: under its `blocks` node, which hangs on the machine's body.
+func is_mounted() -> bool:
+	var p := get_parent()
+	return p != null and p.name == &"blocks" and p.get_parent() is RigidBody3D
+
+## The machines' layer: their bodies carry a copy of every mounted block's box (layer 16).
+const MACHINE_LAYER := 16
+
+## A mask that looks for blocks (layer 2) looks at the machines too, where the mounted ones are.
+static func block_mask(mask: int) -> int:
+	return mask | MACHINE_LAYER if mask & 2 else mask
+
+## WHAT A PHYSICS HIT LANDED ON. A hit on a machine's body is read through the shape index: the shape's
+## owner is the box copy tagged `block_owner`. A loose block, a vein, a dome, the ground - the collider
+## itself. A machine shape with no live tag answers the machine. Rule 4: the tag is read untyped.
+static func hit_node(collider: Object, shape: int) -> Object:
+	if collider is CollisionObject3D and not (collider is VehicleBlock):
+		var co := collider as CollisionObject3D
+		var owner_id: int = co.shape_find_owner(shape)
+		if owner_id >= 0:
+			var cs = co.shape_owner_get_owner(owner_id)
+			if is_instance_valid(cs) and (cs as Object).has_meta(&"block_owner"):
+				var b = (cs as Object).get_meta(&"block_owner")
+				if is_instance_valid(b):
+					return b
+	return collider
+
+## `hit_node` of an intersect_ray / intersect_shape result.
+static func of_hit(h: Dictionary) -> Object:
+	return hit_node(h.get("collider"), int(h.get("shape", 0)))
+
+## What a shape query touched, each block or body once (a machine answers once per box).
+static func query_hits(space: PhysicsDirectSpaceState3D, q: PhysicsShapeQueryParameters3D, max_results: int) -> Array:
+	var out: Array = []
+	var seen := {}
+	for h in space.intersect_shape(q, max_results):
+		var n = of_hit(h)
+		if n == null or seen.has(n):
+			continue
+		seen[n] = true
+		out.append(n)
+	return out
+
 func _on_parent_changed() -> void:
 	await get_tree().process_frame
 	if get_parent() == null:
