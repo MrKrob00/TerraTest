@@ -549,9 +549,12 @@ project: read it before claiming how anything works.
   `WILD_CHANCE` a random one) with 3-5 veins round it, `DEPOSIT_RICH` more in the canyon and on the
   mountains. A member past its region's edge is dropped (spacing is checked only inside a region),
   and all the rng is drawn when the job is made, so slicing (`REGION_SLICE_USEC`) changes nothing.
-  Measured on the booted world (seed 424242, 25 regions): 13 trees and 19 ore a region on average
-  (4-28 trees: forest and clearing), nearest tree 6.8 m and nearest vein 5.9 m (median), an ore
-  vein's nearest vein of its own metal 463 of 471.
+  THE FIRST NUMBERS GAVE 13 TREES A REGION and read as "few groves, nothing changed" (the player);
+  now 14 grove tries of 10-28 trees over a cut of -0.05, and 6 lone trees. Measured on the booted
+  world (seed 424242, 25 regions): 58 trees a region on average (14-107: forest and clearing) and 19
+  ore, nearest tree 6.7 m and nearest vein 5.9 m (median), an ore vein's nearest vein of its own
+  metal 469 of 470. The densest region puts ~65 trees in the streamed band against `max_visible` 180
+  a model; the streaming pass walks ~1900 records now (it was measured 2.2 ms over 759).
   The metal under your wheels still depends on where you stand; a felled tree still MOVES, up to
   `REPLANT_RADIUS` (8 m), which keeps the grove's count while emptying the spot you just cleared - the
   radius is small on purpose, or the forest would migrate to wherever the player chops most. The
