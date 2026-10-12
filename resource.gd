@@ -32,7 +32,14 @@ const CHUNK_MAX := 24
 @export var chunk_block: int = 0     # G.Block внутри (0 = не чанк)
 @export var chunk_count: int = 0     # сколько штук
 
-@export var type: Type = Type.ORE
+## THE PICTURE FOLLOWS THE KIND (the setter): a tree's wood was laid as ORE and turned into WOOD
+## after `add_child`, when `_ready` had already drawn it - a ferrite chunk lay under every felled tree
+## and turned into logs only once a collector seated it.
+@export var type: Type = Type.ORE:
+	set(v):
+		type = v
+		if is_node_ready():
+			_update_visual()
 
 
 ## Вдали от игрока коллизия чанков не прогружена → ресурс проваливался «за окно коллизий»

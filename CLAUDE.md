@@ -3176,6 +3176,10 @@ project: read it before claiming how anything works.
 - For a loose item, drawing and script are decided separately: off-frame drawing is pointless, but
   a script gated by the frustum would stall the factory whenever the camera turns.
 - Settled loose bodies are put to sleep so they stop asking terrain for a collision window.
+- **AN ITEM'S PICTURE FOLLOWS ITS KIND** (`resource.type`'s setter redraws once the node is ready):
+  a tree's wood was made as ORE and turned into WOOD after `add_child`, when `_ready` had drawn it,
+  so a ferrite chunk lay under every felled tree and turned into logs only in a collector's bowl.
+  Measured: a felled tree's five items draw `wood.tres`.
 - **A LOOSE ITEM IS ITS OWN MODEL, AND THE BUBBLE IS GONE** (`resource.tscn`, `resource._update_visual`,
   models from `art/item_models.gd` in `resources/items/`). It was an octahedron squashed by stage
   inside a metre-wide additive green sphere - 4,240 triangles once, 256 of bubble at 16×8 after,
