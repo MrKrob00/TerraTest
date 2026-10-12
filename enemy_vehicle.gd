@@ -1439,6 +1439,7 @@ func _refresh_drills() -> Array:
 		_drills.clear()
 		for b in bl.get_children():
 			var t = b.get("block")
-			if t != null and (int(t) in [G.Block.DRILL, G.Block.SMALL_DRILL, G.Block.MARLIT_DRILL]):
+			if t != null and (int(t) in [G.Block.DRILL, G.Block.SMALL_DRILL, G.Block.MARLIT_DRILL,
+					G.Block.MARLIT_LASER_DRILL, G.Block.MARLIT_SAW]):
 				_drills.append(b)
 	return _drills

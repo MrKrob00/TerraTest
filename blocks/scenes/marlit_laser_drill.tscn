@@ -1,0 +1,46 @@
+[gd_scene format=3 uid="uid://bmrlldrlscn7"]
+
+[ext_resource type="Script" path="res://blocks/scripts/laser_drill.gd" id="1_s"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_laser_drill_body.tres" id="m_body"]
+[ext_resource type="ArrayMesh" path="res://blocks/meshes/marlit_laser_drill_head.tres" id="m_head"]
+[ext_resource type="AnimationLibrary" path="res://blocks/anims/marlit_laser_drill.tres" id="anim_lib"]
+
+[sub_resource type="BoxShape3D" id="Shape_1"]
+size = Vector3(2, 2, 2)
+
+[sub_resource type="CapsuleShape3D" id="Shape_zone"]
+radius = 0.45
+height = 3.0
+
+[node name="marlit_laser_drill" type="RigidBody3D"]
+collision_layer = 2
+collision_mask = 23
+freeze = true
+script = ExtResource("1_s")
+drill_damage = 140
+block = 77
+connect_faces = 2
+cells_center = Vector3(-0.5, 0.5, -0.5)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.5)
+shape = SubResource("Shape_1")
+
+[node name="drill" type="Area3D" parent="."]
+disable_mode = 2
+collision_mask = 6
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="drill"]
+transform = Transform3D(1, 0, 0, 0, 0, -1, 0, 1, 0, -0.5, 0.5, -2.92)
+shape = SubResource("Shape_zone")
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="."]
+libraries/ = ExtResource("anim_lib")
+
+[node name="Body" type="MeshInstance3D" parent="."]
+mesh = ExtResource("m_body")
+
+[node name="Head" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 0.5, -0.4)
+mesh = ExtResource("m_head")

@@ -526,6 +526,8 @@ const BLOCK_META := {
 	Block.MARLIT_CABIN:     {"f": "marlit", "g": 1, "rp": 0},
 	Block.MARLIT_BLOCK:     {"f": "marlit", "g": 1, "rp": 0},
 	Block.MARLIT_DRILL:     {"f": "marlit", "g": 1, "rp": 0},
+	Block.MARLIT_SAW:       {"f": "marlit", "g": 2, "rp": 20},
+	Block.MARLIT_LASER_DRILL: {"f": "marlit", "g": 3, "rp": 35},
 	Block.MARLIT_SLAB:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF:      {"f": "marlit", "g": 1, "rp": 8},
 	Block.MARLIT_HALF_SLAB: {"f": "marlit", "g": 2, "rp": 12},
@@ -593,6 +595,7 @@ const TECH_PARENT := {
 	Block.MARLIT_BLOCK: Block.MARLIT_CABIN, Block.MARLIT_DRILL: Block.MARLIT_CABIN,
 	Block.MARLIT_SOLAR: Block.MARLIT_CABIN, Block.MARLIT_SUPPORT: Block.MARLIT_CABIN,
 	Block.MARLIT_REGEN: Block.MARLIT_BATTERY,
+	Block.MARLIT_SAW: Block.MARLIT_DRILL,   Block.MARLIT_LASER_DRILL: Block.MARLIT_DRILL,
 	Block.MARLIT_WHEEL: Block.MARLIT_BLOCK, Block.MARLIT_GUN: Block.MARLIT_DRILL,
 	Block.MARLIT_ROT_SUPPORT: Block.MARLIT_SUPPORT,
 	Block.MARLIT_SHOTGUN: Block.MARLIT_GUN, Block.MARLIT_CANNON: Block.MARLIT_GUN,
@@ -1030,6 +1033,8 @@ const BLOCK_RECIPE := {
 	# A Falsus weapon's parts, about three times over: two cells across and two deep.
 	Block.MARLIT_GUN:       {"c17": 6, "m3": 18},
 	Block.MARLIT_DRILL:     {"c7": 4, "m3": 12},   # Torque Motor + Titanite, the Falsus drill twice over
+	Block.MARLIT_SAW:       {"c7": 3, "m0": 10},   # Torque Motor + Ferrite
+	Block.MARLIT_LASER_DRILL: {"c5": 4, "c7": 4},  # Prism Lens + Torque Motor
 	Block.MARLIT_SHOTGUN:   {"c17": 6, "m3": 15},
 	Block.MARLIT_CANNON:    {"c11": 9, "c17": 6},
 	Block.MARLIT_LASER:     {"c10": 9, "c19": 6},
@@ -1468,6 +1473,7 @@ const BLOCK_LABEL := {
 	Block.MARLIT_SOLAR: "Marlit Solar Array",
 	Block.MARLIT_REGEN: "Marlit Repair Field",
 	Block.MARLIT_WHEEL: "Marlit Wheel", Block.MARLIT_GUN: "Marlit Gun", Block.MARLIT_DRILL: "Marlit Drill",
+	Block.MARLIT_SAW: "Marlit Saw", Block.MARLIT_LASER_DRILL: "Marlit Laser Drill",
 	Block.MARLIT_CABIN: "Marlit Cabin",
 	Block.MARLIT_SUPPORT: "Marlit Support", Block.MARLIT_ROT_SUPPORT: "Marlit Rotating Support",
 	Block.MARLIT_LASER: "Marlit Laser", Block.MARLIT_SHOTGUN: "Marlit Shotgun",
@@ -1538,6 +1544,8 @@ const BLOCK_DESC := {
 	Block.MARLIT_ROT_SUPPORT: "Marlit's rotating support: the top turns on a slewing ring while the casting below holds the ground - the whole build swings with the joystick.",
 	Block.MARLIT_GUN: "Twin barrels in a ball turret: a steady stream of heavy rounds, turning freely every way.",
 	Block.MARLIT_DRILL: "A stepped bit ringed with teeth: chews through a vein or an enemy block on contact, at Marlit's scale.",
+	Block.MARLIT_SAW: "A flat circular blade: fells a tree in two passes, but barely scratches rock.",
+	Block.MARLIT_LASER_DRILL: "A focused beam from a lens stack: digs from a distance where a bit must touch, and burns rather than cuts.",
 	Block.MARLIT_LASER: "A lens stack in a ball turret: a charged cyan bolt, one hard blow at long range.",
 	Block.MARLIT_SHOTGUN: "Four short bores in a row: a wide cone of heavy shot at close range, two blasts then a reload.",
 	Block.MARLIT_CANNON: "One thick barrel and a counterweight: a single heavy blow, for armour.",
@@ -1988,6 +1996,8 @@ enum Block {
 	MARLIT_SUPPORT = 74,    # 2×2×2 cast jack (art/emitter_models.py marlit_support)
 	MARLIT_ROT_SUPPORT = 75, # 2×2×2, a slewing ring and two pinions (marlit_rot_support)
 	MARLIT_DRILL = 76,      # 2×2×2: a housing on a back plate, a stepped toothed bit (art/marlit_drill.py)
+	MARLIT_LASER_DRILL = 77, # 2×2×2: a lens stack with three focusing prongs, a 3 m beam (art/marlit_cutters.py)
+	MARLIT_SAW = 78,        # 2×1×2: a flat circular blade in a clamp on a mount plate (art/marlit_cutters.py)
 }
 @onready var cabin_scene: PackedScene = preload("res://blocks/scenes/cabin.tscn")
 @onready var wheel_scene: PackedScene = preload("res://blocks/scenes/wheel.tscn")
@@ -2060,6 +2070,8 @@ enum Block {
 @onready var marlit_support_scene: PackedScene = preload("res://blocks/scenes/marlit_support.tscn")
 @onready var marlit_rot_support_scene: PackedScene = preload("res://blocks/scenes/marlit_rot_support.tscn")
 @onready var marlit_drill_scene: PackedScene = preload("res://blocks/scenes/marlit_drill.tscn")
+@onready var marlit_laser_drill_scene: PackedScene = preload("res://blocks/scenes/marlit_laser_drill.tscn")
+@onready var marlit_saw_scene: PackedScene = preload("res://blocks/scenes/marlit_saw.tscn")
 @onready var marlit_battery_scene: PackedScene = preload("res://blocks/scenes/marlit_battery.tscn")
 @onready var marlit_wireless_scene: PackedScene = preload("res://blocks/scenes/marlit_wireless.tscn")
 
@@ -2105,7 +2117,7 @@ const BLOCK_CATEGORIES := {
 		Block.MARLIT_WHEEL],
 	"attack":  [Block.GUN, Block.SHOTGUN, Block.LASER, Block.ROCKET, Block.POUND_CANNON, Block.MORTAR,
 		Block.SMALL_DRILL, Block.DRILL,
-		Block.MARLIT_DRILL, Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
+		Block.MARLIT_DRILL, Block.MARLIT_SAW, Block.MARLIT_LASER_DRILL, Block.MARLIT_GUN, Block.MARLIT_SHOTGUN, Block.MARLIT_LASER, Block.MARLIT_CANNON,
 		Block.MARLIT_MORTAR],
 	# Along the chain: what digs and picks up, what carries, what works the material, what keeps
 	# and sells it, then the two that handle loose blocks.
@@ -2209,6 +2221,8 @@ func get_scene(block: Block) -> PackedScene:
 		Block.MARLIT_SUPPORT: return marlit_support_scene
 		Block.MARLIT_ROT_SUPPORT: return marlit_rot_support_scene
 		Block.MARLIT_DRILL: return marlit_drill_scene
+		Block.MARLIT_LASER_DRILL: return marlit_laser_drill_scene
+		Block.MARLIT_SAW: return marlit_saw_scene
 		Block.MARLIT_BATTERY: return marlit_battery_scene
 		Block.MARLIT_WIRELESS: return marlit_wireless_scene
 	return null
