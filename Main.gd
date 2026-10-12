@@ -39,6 +39,15 @@ var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (сам
 ## shadowed sun is already drawn as a second pass over the ground in Compatibility (8 of 25 fps,
 ## measured on the device, see VehicleBlock._set_shadows), and the soft filter samples it five times.
 var shadows_soft: bool = true
+## HOW FAR THE GROUND IS DRAWN (the player's setting, VIEW_MIN..VIEW_MAX m): the terrain's
+## `view_distance`, the camera's far plane and the haze, which is stretched or squeezed with it so
+## the edge of the drawn world always sits inside the haze instead of ending on a hard line.
+const VIEW_MIN := 200.0
+const VIEW_MAX := 10000.0
+const VIEW_DEFAULT := 1400.0
+## The haze the project ships (project.godot `haze_range`), matched to VIEW_DEFAULT.
+const HAZE_DEFAULT := Vector4(150.0, 750.0, 0.85, 0.0)
+var view_distance: float = VIEW_DEFAULT
 const SOFT_SHADOW_SIZE := 1024
 const HARD_SHADOW_SIZE := 512
 
@@ -111,6 +120,8 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 ## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
 @export var profiler_on_start: bool = false
 
+const SCREEN_WEATHER := preload("res://screen_weather.gd")
+
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
 	_load_settings()
@@ -119,9 +130,12 @@ func _ready() -> void:
 		current_scale = manual_scale
 		get_viewport().scaling_3d_scale = manual_scale
 	_apply_shadows()
+	_apply_view()
 	get_window().size_changed.connect(_apply_ui_scale)
 	_apply_ui_scale()
 	_setup_pc_input_map()
+	# A few things in the air by biome (snow, sand, fluff, dust), drawn on the screen.
+	add_child(SCREEN_WEATHER.new())
 	# ПРИВЕТСТВИЕ МЕХАНИКА — отсюда, потому что мир это мы. Q — автолоад: он поднимается ещё до
 	# первой сцены, и сказанное им в _ready доставалось главному меню. Отложенно: реплика уходит
 	# в Dialogue, а тот проверяет, что мир уже в дереве.
@@ -230,6 +244,37 @@ func _apply_shadows() -> void:
 				(mm as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
 						if soft else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
+func set_view_distance(v: float) -> void:
+	view_distance = clampf(v, VIEW_MIN, VIEW_MAX)
+	_apply_view()
+	_save_settings()
+
+func _apply_view() -> void:
+	var map: Node = get_node_or_null("map")
+	if map != null and "view_distance" in map:
+		map.view_distance = view_distance
+	# the haze scales with the view: past the default it reaches out with it, under the default it
+	# closes in so the ground still ends inside it
+	var k: float = view_distance / VIEW_DEFAULT
+	RenderingServer.global_shader_parameter_set(&"haze_range",
+			Vector4(HAZE_DEFAULT.x * k, HAZE_DEFAULT.y * k, HAZE_DEFAULT.z, 0.0))
+	_far_t = 0.0
+
+## The camera in use changes (machines, the garage), so its far plane is asked again now and then.
+var _far_t := 0.0
+func _keep_far(delta: float) -> void:
+	_far_t -= delta
+	if _far_t > 0.0:
+		return
+	_far_t = 1.0
+	var cam := get_viewport().get_camera_3d()
+	if cam != null:
+		cam.far = maxf(view_distance + 200.0, 1000.0)
+
+## The haze is a GLOBAL and outlives this scene: the menu's backdrop draws with the shipped one.
+func _exit_tree() -> void:
+	RenderingServer.global_shader_parameter_set(&"haze_range", HAZE_DEFAULT)
+
 # Вкл/выкл авто-FPS. При выключении сразу применяется ручной масштаб.
 func set_auto_fps(on: bool) -> void:
 	auto_fps = on
@@ -259,6 +304,7 @@ func _save_settings() -> void:
 		"manual_scale": manual_scale,
 		"shadows_enabled": shadows_enabled,
 		"shadows_soft": shadows_soft,
+		"view_distance": view_distance,
 		"ui_scale": ui_scale,
 		"fullscreen": fullscreen,
 	})
@@ -272,10 +318,12 @@ func _load_settings() -> void:
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), MANUAL_SCALE_MIN, MANUAL_SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		shadows_soft = bool(parsed.get("shadows_soft", true))
+		view_distance = clampf(float(parsed.get("view_distance", VIEW_DEFAULT)), VIEW_MIN, VIEW_MAX)
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 
 func _process(delta: float) -> void:
+	_keep_far(delta)
 	if not auto_fps:
 		return                        # ручной режим: масштаб держит игрок
 	# NOT WHILE LOADING. Behind the loading screen the frame rate is the terrain's worker threads and

@@ -285,9 +285,10 @@ func _seed_demo() -> void:
 	#                          (resource.harvest)
 	#   processed              a product out of the processor
 	#   item_sold              anything the seller takes
-	# ALL OF THEM OPEN AT ONCE WITH MARLIT'S LICENCE (the player's call, as GeoCorp's Harvester missions
-	# stand on the board together): no chain, no grade. Novice I and Master I count the same felled
-	# trees side by side; what tells them apart is the goal, and the small ones pay first.
+	# EVERY LINE OPENS WITH MARLIT'S LICENCE, EACH LINE A CHAIN (the player's call, after GeoCorp's
+	# Harvester board): Novice, Mineral and Master all stand on the board at once, but each shows only
+	# its next step - Novice I > II > III > IV, the metals Ferrite > Cuprite > Silicate > Titanite,
+	# Master I > II > III > IV (`requires`). All twelve at once read as a wall of counters.
 	_marlit_story("mh_novice1", "Novice Harvester I", "Fell 10 trees", 10, 20, "tree_felled", 150, 30, 6, 1,
 			"Marlit pays for work, not talk. Start with timber: drill a tree until it comes down.")
 	_marlit_story("mh_novice2", "Novice Harvester II", "Collect 20 ore", 20, 21, "ore_collected", 180, 35, 7, 1,
@@ -314,9 +315,14 @@ func _seed_demo() -> void:
 			"Raw ore is worth little. Run it through a processor - every product out of it counts.")
 	_marlit_story("mh_master4", "Master Harvester IV", "Sell 500 items", 500, 31, "item_sold", 1200, 200, 30, 1,
 			"Marlit's last test is the market: five hundred items through a seller.")
+	for line in [["mh_novice1", "mh_novice2", "mh_novice3", "mh_novice4"],
+			["mh_mineral0", "mh_mineral1", "mh_mineral2", "mh_mineral3"],
+			["mh_master1", "mh_master2", "mh_master3", "mh_master4"]]:
+		for k in range(1, line.size()):
+			requires(String(line[k]), [line[k - 1]])
 
 	# ── THE ALMIGHTY CUBE: MARLIT'S COMBAT LINE ────────────────────────────────────
-	# Three cubes of Marlit modules with turrets on the roof (blocks.MARLIT_CUBE_*), each its own
+	# Three cubes of Marlit modules WITH NO GUNS (blocks.MARLIT_CUBE_*) - a target, not a fight - each its own
 	# point; ALL THREE OPEN TOGETHER AT MARLIT'S GRADE 3 (the player's call), not one after another.
 	# The branch is the shielded towers' (quest_arcs CUBE_*): reach it, then bring it down.
 	for i in 3:
@@ -331,7 +337,7 @@ func _seed_demo() -> void:
 				"The last cube: a solar array on its roof keeps the repairs going. Bring heavy guns."][i]},
 			{"desc": "Break the cube",
 			 "event": "quest_cube%d_2" % (i + 1), "goal": 1,
-			 "hint": "It does not turn: every side's guns watch their own side. Come in on a corner, where two sides meet."},
+			 "hint": "It does not shoot back. From the first hit you have 20 seconds to bring it down, or it stands up whole."},
 		])
 		_find(cid)["faction"] = "marlit"
 

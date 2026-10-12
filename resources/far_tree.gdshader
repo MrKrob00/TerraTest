@@ -6,9 +6,9 @@ render_mode unshaded, cull_disabled, skip_vertex_transform, shadows_disabled;
 // tree's point and size (MODEL_MATRIX) and in INSTANCE_CUSTOM its yaw (r) and kind (g); the card's
 // frame per kind is `tiles` (width, height, bottom in model units, far_trees.tile_for).
 uniform sampler2D atlas : filter_linear_mipmap, repeat_disable;
-uniform vec4 tiles[3];
+uniform vec4 tiles[7];             // far_trees.MODELS: three trees, then the four ores
 uniform float views = 8.0;
-uniform float kinds = 3.0;
+uniform float kinds = 7.0;
 // the layer's far edge: cards dissolve from fade_from to fade_to, pixel by pixel, instead of ending
 uniform float fade_from = 340.0;
 uniform float fade_to = 400.0;
@@ -23,7 +23,7 @@ varying float v_fade;
 void vertex() {
 	vec3 origin = MODEL_MATRIX[3].xyz;
 	float s = length(MODEL_MATRIX[0].xyz);
-	int kind = clamp(int(INSTANCE_CUSTOM.g + 0.5), 0, 2);
+	int kind = clamp(int(INSTANCE_CUSTOM.g + 0.5), 0, 6);
 	vec4 t = tiles[kind];
 	vec3 to_cam = INV_VIEW_MATRIX[3].xyz - origin;
 	to_cam.y = 0.0;

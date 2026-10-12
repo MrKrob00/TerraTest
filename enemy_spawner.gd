@@ -176,6 +176,8 @@ func _tick_spawner(delta: float) -> void:
 		return
 	if _enemies.size() >= max_total:
 		return
+	if spawn_groups() >= MAX_GROUPS:
+		return
 	# First run: fill the world at once rather than one at a time.
 	if not _seeded:
 		if _tutorial_active():
@@ -844,6 +846,25 @@ func _apply_role(enemy: Node, preset: int) -> void:
 		enemy.set("miner", miner_presets.has(preset))
 
 ## `carry` is story cargo (blocks.carry): laid into the layout before the machine is born.
+## AT MOST TWO SPAWNS LIVE AT ONCE, AND A PARTY IS ONE (the player's call): the stream sends nobody
+## while two groups of driving hostiles stand in the world. A group is a quest party (meta
+## `spawn_group`, its event's key, set by quest_arcs) or a lone machine; bases are places, not spawns.
+const MAX_GROUPS := 2
+
+func spawn_groups() -> int:
+	var seen := {}
+	for e in _enemies:
+		if not is_instance_valid(e) or e.get("is_base") == true:
+			continue
+		if int(e.get("faction") if e.get("faction") != null else 1) == 0:
+			continue
+		seen[e.get_meta("spawn_group") if e.has_meta("spawn_group") else e.get_instance_id()] = true
+	return seen.size()
+
+## A QUEST PARTY ARRIVING WITH THE PLAYER lands on its own point (quest_arcs._party_tick): the player
+## is already within ARRIVE of it, and clear_point would carry it 200 m off the place it was asked for.
+var arrival := false
+
 func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = false,
 		carry: Array = []) -> Node3D:
 	if enemy_scenes.is_empty() or _pg_blocked():
@@ -865,7 +886,7 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 		enemy.set("faction", faction_id)
 	if not as_base:
 		_apply_role(enemy, preset)
-		if faction_id != 0 and not _pg_free:
+		if faction_id != 0 and not _pg_free and not arrival:
 			pos = clear_point(pos)
 	vehicles.add_child(enemy)
 	if as_base:

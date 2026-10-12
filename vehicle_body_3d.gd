@@ -272,6 +272,12 @@ func toggle_anchor() -> bool:
 	if anchored:
 		_release_anchor()
 		return false
+	# AN ANCHOR IS SET FROM THE GROUND, NEVER FROM THE AIR (the player's report): the refusal's hop
+	# could be repeated in mid-air, every press another impulse up, and the machine climbed into
+	# the sky. `_on_ground` is the wheels' own answer (MachineBody._check_ground; a ray for a bare
+	# cabin); off the ground the button does nothing at all - no anchor, no hop.
+	if not _on_ground:
+		return false
 	if not has_support():
 		_anchor_refuse_hop()               # без фикс-опоры якорь не ставится (нужен блок SUPPORT)
 		return false
@@ -393,6 +399,8 @@ func _build_anchor_column(depth: float) -> void:
 # Отказ якоря (высоко/неровно): без сообщений — машину просто подкидывает вверх,
 # якорь не ставится. Живая обратная связь вместо текста.
 func _anchor_refuse_hop() -> void:
+	if not _on_ground:
+		return
 	sleeping = false
 	apply_central_impulse(Vector3.UP * mass * 5.0)
 

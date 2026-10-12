@@ -120,6 +120,7 @@ varying float v_salt;         // the salt flat: what the cracks are drawn on
 varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
 varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
 varying float v_corrupt;      // strength of the corrupted zone (0..1)
+varying float v_snow;         // the crust's lump at this vertex, -0.5..0.5 x drift (its tone, see fragment)
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -139,6 +140,17 @@ float blade_at(vec2 p, float amount) {
         h -= clamp(texture(trample_map, t_uv).r, 0.0, 1.0) * grass_height * amount * 2.0;
     }
     return h;
+}
+
+// THE SNOW CRUST ON THE PEAKS (the player's call: "lift the vertices on the mountains like the grass,
+// as snow"): where the snow line has put snow and the face is not rock, EVERY vertex rises, by
+// snow_height times its own hash (no gaps, unlike grass blades) - a lumpy crust. The same point
+// function and border rule as the grass, so seams between levels meet; not over the grass height,
+// which is what the shot marks' and the landing wave's depth lift clear (G.grass_lift).
+uniform float snow_height : hint_range(0.0, 1.0) = 0.3;
+
+float drift_at(vec2 p, float amount) {
+    return snow_height * amount * (0.45 + 0.55 * hash2D(p + vec2(17.1, 3.7)));
 }
 
 void vertex() {
@@ -212,22 +224,29 @@ void vertex() {
     // own blade, as before. Grass grows in the meadow and, sparser, on sand (sand_grass), none on
     // rock, in the canyon or on mountains; amount scales both height and density.
     float amount = grass_amount;
+    float drift = clamp(snow * (1.0 - rock_t), 0.0, 1.0);   // snow is painted over a canyon too
+    v_snow = 0.0;
     float fade = 1.0 - smoothstep(grass_fade.x, grass_fade.y, ground_d);
-    if (fade > 0.0 && amount > 0.03) {
+    if (fade > 0.0 && (amount > 0.03 || drift > 0.03)) {
         vec2 p = floor(world_pos.xz + 0.5);           // vertices stand on whole metres
         float lift;
         if (edge > 0.5 && mod(edge > 1.5 ? p.y : p.x, 2.0) > 0.5) {
             vec2 along = edge > 1.5 ? vec2(0.0, 1.0) : vec2(1.0, 0.0);
-            lift = 0.5 * (blade_at(p - along, amount) + blade_at(p + along, amount));
+            lift = 0.5 * (blade_at(p - along, amount) + blade_at(p + along, amount)
+                    + drift_at(p - along, drift) + drift_at(p + along, drift));
         } else {
-            lift = blade_at(p, amount);
+            lift = blade_at(p, amount) + drift_at(p, drift);
         }
+        // the crust has no normals of its own (the lift is straight up), so its lumps are TONED: a
+        // high vertex brighter, a low one a shade blue - without it a white crust on white snow
+        // showed only on the skyline
+        v_snow = drift * fade * (hash2D(p + vec2(17.1, 3.7)) - 0.5);
         VERTEX.y += lift * fade;
     }
 }
 
 void fragment() {
-    vec3 base_col = v_base_col;
+    vec3 base_col = v_base_col * (vec3(1.0) + v_snow * vec3(0.30, 0.24, 0.10));
 
     // Per-pixel only: the colour noise and the detail masks.
     //

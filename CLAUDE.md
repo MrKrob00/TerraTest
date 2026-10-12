@@ -595,6 +595,13 @@ project: read it before claiming how anything works.
   so the veins after a tree stand where they stood. Every model's stump is its own trunk cut at
   `CUT_Y` (`_stump`), and every model has its own fixed seed. The record carries `tree`, the node
   `tree_kind`.
+- **NO TREE GROWS IN A CANYON** (the player's call): `TREE_KEEP_BIOME`'s canyon share is 0 and a
+  grove point over half canyon is skipped before the roll. **ORE VEINS GET FAR CARDS TOO**: the four
+  ore models are rows 3..6 of the same atlas (`far_trees.ORE_KIND0`, `MODELS`; the bake tints each by
+  its metal through `ore_colors`), fed from the same records - an emptied vein (custom G under 0.01)
+  gets none. **THE VEIN MULTIMESHES' BOUNDS FOLLOW THE CAMERA** (`resource_nodes._recentre_bounds`,
+  `BOUNDS_HALF` 4.5 km): their `custom_aabb` was a fixed 4 km box round the origin, so far from the
+  spawn, looking away from it, the box left the frustum and every vein vanished from the picture.
 - **PAST THE VEINS' DRAW DISTANCE A TREE IS A PICTURE OF ITSELF** (`far_trees.gd`,
   `resources/far_tree.gdshader`; the player's call): from `render_distance` (160 m) out to
   `resource_nodes.FAR_TREES` (420 m) the tree's own record is one camera-facing card on one MultiMesh -
@@ -727,7 +734,9 @@ project: read it before claiming how anything works.
   at least the block's own collider box. Measured: Marlit cabin shell centred (-0.5, 0.5, -0.5),
   2.12 m against a 2.01 m model.
 - The anchor spot is **not** validated — the only condition is a support block. Terrain checks were
-  removed because they refused on ground the machine stood on fine.
+  removed because they refused on ground the machine stood on fine. BUT THE MACHINE MUST TOUCH THE
+  GROUND (`toggle_anchor`, `_anchor_refuse_hop` ask `_on_ground`, the wheels' probe): a refused anchor
+  hops the machine, and the hop could be repeated in the air to climb.
 - The anchor is held by a block: lose the support (and any stationary block) and the machine drops
   off the anchor itself.
 - Support column and `ROT_SUPPORT` rotation pivot are taken from the support block
@@ -1489,6 +1498,12 @@ project: read it before claiming how anything works.
   LEAF SET (`_leaf_set`), NOT THE FRAME: a neighbour off the screen is drawn at its level the moment
   the camera turns to it, and read off `_want` it was "nothing there" - the node was built
   unsnapped, and every turn of the camera re-stitched the frame's edge.
+- **THE SNOW HAS A CRUST** (`glsl.gdshader` `drift_at`, `snow_height` 0.3 m, the player's call: "lift
+  the mountain vertices like the grass, as snow"): where the snow line put snow and the face is not
+  rock, EVERY vertex rises by its own hash (lumps, not blades), through the grass's lift, fade and
+  border rule, so level seams still meet; the lift has no normals of its own, so each lump is also
+  TONED (`v_snow`: high brighter, low a shade blue) - a bare lift on white snow showed only on the
+  skyline. Snow covers a canyon mask too, so the crust does not skip it.
 - **THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL** (`glsl.gdshader` `blade_at`, one
   material for all levels). It was the near level only, with border rows flagged flat in `COLOR.r`
   wherever the neighbour was coarser - a flag read off the neighbours when the node was BUILT, and
@@ -1607,23 +1622,32 @@ project: read it before claiming how anything works.
   collector, a receiver off the ground or the hand - a drilled ore lying on the ground is not harvest
   yet, and the auto miner's ore counts when a receiver takes it; `processed` a product out of the
   processor; `item_sold` anything the seller takes. Gated by the licence and Marlit's grades
-  (`Q._grade_ok` asks the licence); ALL TWELVE OPEN AT ONCE WITH THE LICENCE, no chain and no grade
-  (the player's call: GeoCorp's missions stand on the board together), so Novice I and Master I count
-  the same trees side by side. THE ALMIGHTY CUBE is the combat half: three Marlit cubes
+  (`Q._grade_ok` asks the licence); EACH TYPE IS A CHAIN, AND ALL THREE CHAINS OPEN
+  WITH THE LICENCE (the player's call: "every type, but not every level"): Novice I > II > III > IV,
+  Mineral 0 > 1 > 2 > 3, Master I > II > III > IV (`requires` after `_marlit_story`); no grade gate on
+  top. THE ALMIGHTY CUBE is the combat half, AND THE CUBE HAS NO GUNS - it is a target, the quest is
+  the damage (the player's rule; a first build carried roof turrets and was wrong): three Marlit cubes
   (`blocks.MARLIT_CUBE_1..3`, presets 123-125, `_layout_marlit_cube`) - a body of 2x2x2 modules on a
-  fixed Marlit support, turrets on the roof each looking OUT of its own side (`_cube_turret`; the
-  base does not turn, so a barrel looking across the roof would never see anything), the second and
-  third with a battery and repair unit inside, the third with a solar array on top. ALL THREE OPEN
+  fixed Marlit support, the second and third with a battery and repair unit inside, the third with a
+  solar array on top. THE FIRST HIT STARTS `quest_arcs.CUBE_TIME` (20 s, `_cube_clock`, read off the
+  cube's hit points against `cube_full`); still standing when it runs out, the cube is taken away and
+  built whole on its point, and the next hit starts the clock again (`_on_tower_died` ignores a cube
+  taken away). Measured: 0 guns, rebuilt 20.9 s after one hit at full hit points, killed - quest done. ALL THREE OPEN
   TOGETHER AT MARLIT'S GRADE 3 (`mc_cube1..3`), each its own key and point on the shielded towers'
   branch (`quest_arcs.CUBES`, `_tower_1/_tower_2`), kept `TOWER_APART` from each other
-  (`_tower_pick`). Measured on the proving ground: 22 / 35 / 36 blocks with 4 / 8 / 8 guns, all of
-  them placed, each turret looking out of its own side; an allied machine 25 m off the front, the
-  right side or a back corner was fired on; the second and third cubes mended their hits; a cube's
-  death closed its quest. Three ores picked count three, the same ore dropped and picked again
+  (`_tower_pick`). Three ores picked count three, the same ore dropped and picked again
   does not count again.
-- Quest participants spawn immediately at `EV_SPAWN_DIST` (250-300 m) — one rule for every branch.
-  Far away they cost nothing because the spawner sleeps them. Hold Position is the exception: its
-  attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
+- **AN EVENT'S HOSTILE PARTY COMES WHEN THE PLAYER DOES AND LEAVES WHEN THE PLAYER DOES** (the
+  player's rule; `quest_arcs._ev_party`, `_party_tick`). `_ev_spawn` only writes the party down; its
+  members are born on their point once one of the player's machines is within `PARTY_ARRIVE` (70 m),
+  as ONE spawn group (meta `spawn_group`), and are taken away once every live one is past
+  `PARTY_LEAVE` (140 m) from all the player's machines - measured from THE MACHINES, not the point;
+  coming back brings back who was not killed. A member is "out" by a FLAG, never `node != null`: a
+  killed one compares equal to null (rule 4) and was born again. Born on arrival they skip
+  `clear_point` (`EnemySpawner.arrival`). Measured: nothing at 285 m, one at 65, none at 300, back at
+  65, killed - the quest done. THE STREAM HOLDS AT `MAX_GROUPS` (2) groups awake - a party counts once
+  (`spawn_groups`). Allies, towers, cubes, the duel and carriers spawn as before; Hold Position is the
+  exception: its attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
   launched the moment the first died, and a new attack out of a finished fight read as a spawn bug.
   Every other event spawns its party once; a second spawn happens only after a reload, when the
   participant list (memory only) is gone.
@@ -2330,6 +2354,25 @@ project: read it before claiming how anything works.
 - THE RENDERER IS COMPATIBILITY (`gl_compatibility`, both desktop and mobile), picked for FPS, and
   that decides what is even available: no SSAO, no SSR, no SDFGI, no volumetric fog. GLOW, DEPTH
   FOG and TONEMAPPING all work there in 4.6, and those three are the whole post-processing budget.
+- **"SOFT SHADOWS" ARE NOT SOFT IN COMPATIBILITY, AND THAT IS WHY THEY COST NOTHING.** `Main` sets
+  `SHADOW_QUALITY_SOFT_VERY_LOW`; the GLES3 driver turns on PCF only from SOFT_LOW (5 taps) and SOFT_HIGH
+  (13) (`rasterizer_scene_gles3.cpp`, `scene.glsl` `sample_shadow`), so VERY_LOW is the same single
+  hardware-filtered tap as HARD, and `shadow_blur` (it only scales the PCF offsets) does nothing. What
+  "soft" changes is the map (512 -> 1024) and the trees casting. The lesson for the rest: on this
+  renderer the cost of shadows is GEOMETRY - the sun's depth pass over every caster and the lit pass
+  that draws the ground a second time - not taps per pixel; what moves frames is fewer triangles in
+  the shadow pass (the collider proxy, `cast_shadow` off where nobody looks) and a smaller
+  `directional_shadow_max_distance`, not a cheaper filter.
+- **DRAW DISTANCE IS THE PLAYER'S** (`Main.view_distance`, `VIEW_MIN` 200 .. `VIEW_MAX` 10000 m, garage
+  SETTINGS): the terrain's `view_distance`, the camera's far plane (`_keep_far`, re-asked every second
+  as cameras change) and the haze, scaled by distance / `VIEW_DEFAULT` (1400) so the ground's edge
+  always sits in it; `_exit_tree` puts the shipped haze back, the global outlives the scene.
+- **A FEW THINGS IN THE AIR, ON THE SCREEN** (`screen_weather.gd`, a CanvasLayer under the HUD; the
+  player's call): snow over the snowy mountains, seed fluff over the meadow, sand over desert and
+  salt, dust in the canyon - at most `COUNT` (7) motes drawn with `_draw()`, depths spread so one or
+  two are big and near; depth sets size, speed and parallax on a camera turn, and every flake turns
+  about a tilted axis (squashed by cos) so it reads as 3D. The biome is asked under the camera once a
+  second (`ChunkTerrain.biome_at`).
 - **GLOW AND FOG ARE OFF, AND THE REASON IS A MEASUREMENT ON THE DEVICE: 23 fps clean, 18-20 with
   glow, 13 with fog on top.** That is 43% of the frame rate for two settings, on a phone that only
   had 23 fps to give. Both were tried and both came back out. The effect language WAS written for

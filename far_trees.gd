@@ -17,7 +17,15 @@ const MODELS := [
 	"res://resources/vein_tree1.tres",      # TREE_BROAD
 	"res://resources/vein_tree2.tres",      # TREE_TEAL
 	"res://resources/vein_tree3.tres",      # TREE_PALM
+	# THE ORE VEINS HAVE CARDS TOO (the player's call): kind ORE_KIND0 + the metal, in G.Metal order,
+	# each baked in its metal's tint (art/tree_impostors.gd).
+	"res://resources/vein_ore0.tres",
+	"res://resources/vein_ore1.tres",
+	"res://resources/vein_ore2.tres",
+	"res://resources/vein_ore3.tres",
 ]
+## The first ore row in MODELS: a vein's card kind is ORE_KIND0 + its metal.
+const ORE_KIND0 := 3
 const VIEWS := 8
 ## A picture's pixels, square: the trees stand 0.8 to 1.3 times as wide as they are tall (the palm's
 ## crown the widest), and a 10 m tree at the far layer's nearest (160 m) is ~45 px tall on a phone at
@@ -60,7 +68,8 @@ func setup() -> void:
 	mm.mesh = _card_mesh()
 	mm.instance_count = 0
 	multimesh = mm
-	# the cards' own bounds are the camera's business: the MultiMesh is drawn whole, like the veins
+	# the cards' own bounds stand round the camera: resource_nodes._recentre_bounds moves them each
+	# streaming pass (a fixed box round the origin culled every card past 4 km from the spawn)
 	custom_aabb = AABB(Vector3(-4000, -2000, -4000), Vector3(8000, 4000, 8000))
 	var mat := ShaderMaterial.new()
 	mat.shader = SHADER

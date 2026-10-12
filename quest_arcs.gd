@@ -55,6 +55,7 @@ func _tick_arcs(delta: float) -> void:
 	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	_sweep_yellow_points()
+	_party_tick()
 	var polled: Dictionary = {}
 	for q in _arc_quests():
 		_cur_q = String(q.get("id", ""))
@@ -113,7 +114,7 @@ func _tick_arcs(delta: float) -> void:
 ## tagged `story` (never cleaned up, holding places in `max_total`).
 func _drop_orphans(polled: Dictionary) -> void:
 	var keys: Dictionary = {}
-	for d in [_ev_point, _ev_mobs, _ev_orb]:
+	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party]:
 		for k in d:
 			keys[k] = true
 	for k in keys:
@@ -1466,7 +1467,7 @@ const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.RO
 ## its own key, so all three can stand at once; `_tower_pick` keeps their points TOWER_APART.
 const CUBES := [
 	{"key": "cube1", "preset": 123, "guards": 0, "award": G.Block.MARLIT_ARMOR4,
-		"say": "Marlit's cube is out there. Its guns watch every side - none of them turns.",
+		"say": "Marlit's cube is out there. It does not shoot - it only has to stand. Break it in 20 seconds from the first hit.",
 		"done": "The cube is down. Marlit sends what it promised."},
 	{"key": "cube2", "preset": 124, "guards": 0, "award": G.Block.MARLIT_REGEN,
 		"say": "The second cube repairs itself. Hit it harder than it can mend.",
@@ -1514,7 +1515,10 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 		_tower_build(key, cfg, _tower_point[key])
 		return
 	if not bool(_tower_dead.get(key, false)):
+		if key.begins_with("cube"):
+			_cube_clock(key, cfg)
 		return
+	_cube_t.erase(key)
 	# Вышка мертва. Зарядные башни, если ещё стоят, теряют в этот момент аккумуляторы
 	# (_blow_tower_guards) и остаются в мире обычными базами: добивать их ради галочки незачем,
 	# а бросать посреди боя — тем более.
@@ -1523,6 +1527,53 @@ func _tower_2(q: Dictionary, cfg: Dictionary) -> void:
 	Q.report(String(q["event"]), 1)
 	_tower_node.erase(key)
 	_tower_dead.erase(key)
+
+## THE CUBE HAS TO GO DOWN IN ONE GO (the player's rule): it has no guns, the quest is the damage.
+## The first hit starts CUBE_TIME; if the cube still stands when it runs out, it is taken away and
+## built again whole on its point, and the next hit starts the clock again. "Hit" is read off the
+## cube itself (hit points under full, or a block gone), polled with the branch.
+const CUBE_TIME := 20.0
+var _cube_t: Dictionary = {}       # key -> seconds left, absent while nobody has touched it
+
+func _cube_hp(c: Node) -> Vector2i:
+	var hp := 0
+	var full := 0
+	var bl: Node = c.get_node_or_null("blocks")
+	if bl == null:
+		return Vector2i.ZERO
+	for b in bl.get_children():
+		if b is VehicleBlock:
+			hp += (b as VehicleBlock).current_hp
+			full += (b as VehicleBlock).max_hp
+	return Vector2i(hp, full)
+
+func _cube_clock(key: String, cfg: Dictionary) -> void:
+	var c = _tower_node.get(key)
+	if not is_instance_valid(c):
+		return
+	if not (c as Node).has_meta("cube_full"):
+		(c as Node).set_meta("cube_full", _cube_hp(c).y)   # measured once it stands, never after
+		return
+	if not _cube_t.has(key):
+		var hp: Vector2i = _cube_hp(c)
+		if hp.x < int((c as Node).get_meta("cube_full")):
+			_cube_t[key] = CUBE_TIME
+			Dialogue.say("System", tr("Cube hit: %d seconds to break it.") % int(CUBE_TIME))
+		return
+	var was: float = float(_cube_t[key])
+	_cube_t[key] = was - POLL
+	if was > 10.0 and float(_cube_t[key]) <= 10.0:
+		Dialogue.say("System", tr("%d seconds left.") % 10)
+	if float(_cube_t[key]) > 0.0:
+		return
+	_cube_t.erase(key)
+	var at: Vector3 = (c as Node3D).global_position
+	if _tower_point.has(key):
+		at = _tower_point[key]
+	(c as Node).queue_free()
+	_tower_node.erase(key)
+	_tower_build(key, cfg, at)
+	Dialogue.say("System", tr("Time is up. The cube stands whole again."))
 
 ## A point for the branch, TOWER_APART from every other branch point standing (the last try wins).
 func _tower_pick(key: String, p: Node3D) -> Vector3:
@@ -1598,7 +1649,9 @@ func _blow_tower_guards(key: String) -> void:
 			if is_instance_valid(b):
 				b.destroy()
 
-func _on_tower_died(_who, key: String) -> void:
+func _on_tower_died(who, key: String) -> void:
+	if who != null and _tower_node.get(key) != who:
+		return                                  # a cube taken away to stand up whole again
 	_tower_dead[key] = true
 	_blow_tower_guards(key)
 
@@ -2015,6 +2068,7 @@ func _ev_clear(key: String) -> void:
 		if is_instance_valid(m):
 			(m as Node).queue_free()
 	_ev_mobs.erase(key)
+	_ev_party.erase(key)
 	_ev_point.erase(key)
 	var orb = _ev_orb.get(key)
 	if is_instance_valid(orb):
@@ -2035,6 +2089,8 @@ func _ev_all_dead(key: String) -> bool:
 	# не идут). Считать это победой значило бы закрывать задание выходом в меню.
 	if not _ev_mobs.has(key):
 		return false
+	if _party_open(key):
+		return false
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m):
 			return false
@@ -2046,6 +2102,7 @@ func _ev_done(q: Dictionary, key: String) -> void:
 	_q_kills.erase(String(q["id"]))     # paid out above; the next run of the event starts at one
 	_ev_cool[String(q["id"])] = _event_cooldown()
 	_ev_mobs.erase(key)
+	_ev_party.erase(key)
 	_ev_point.erase(key)
 	_ev_orb.erase(key)                  # an opened orb burns out and frees itself
 	_props.release(String(q["id"]))
@@ -2064,7 +2121,7 @@ const EV_PARTY_RING := 10.0
 
 ## Спавн отряда вокруг точки. Пресеты — те же ступени опасности, что у обычных врагов.
 func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
-		lock_on: Node3D = null) -> Array:
+		lock_on: Node3D = null, defer: bool = true) -> Array:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 	if sp == null or not sp.has_method("spawn_at"):
 		return []
@@ -2090,6 +2147,9 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 			while mapped.size() > 1 and total > budget:
 				total -= sp.preset_value(int(mapped.pop_back()))
 		presets = mapped
+		if defer:
+			_party_add(key, at, presets, faction_id, lock_on)
+			return []
 		if sp.has_method("clear_point"):
 			at = sp.clear_point(at, EV_PARTY_RING)
 	for i in presets.size():
@@ -2105,6 +2165,98 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 	have.append_array(out)
 	_ev_mobs[key] = have
 	return out
+
+## A HOSTILE PARTY COMES WHEN THE PLAYER DOES, AND LEAVES WHEN THE PLAYER DOES (the player's rule).
+## An event's party used to be born the moment the quest opened, 250-300 m out, and stood there for
+## good. Now `_ev_spawn` only WRITES IT DOWN (`_ev_party`): the members are born on their point once
+## one of the player's machines is within PARTY_ARRIVE of it, as one spawn group (`spawn_group`, which
+## the spawner's MAX_GROUPS counts once), and are taken away again once every live member is farther
+## than PARTY_LEAVE from all of the player's machines - measured from THE MACHINES, which drive, not
+## from the point. Coming back brings back whoever was not killed. Hold Position (its attack comes to
+## the player) and allies spawn at once (`defer` false / faction 0).
+const PARTY_ARRIVE := 70.0
+const PARTY_LEAVE := 140.0
+
+var _ev_party: Dictionary = {}   # event key -> {"at": Vector3, "q": id, "members": [{...}]}
+
+func _party_add(key: String, at: Vector3, presets: Array, faction_id: int, lock_on: Node3D) -> void:
+	var party: Dictionary = _ev_party.get(key, {"at": at, "q": _cur_q, "members": []})
+	for i in presets.size():
+		var ang: float = TAU * float(i) / float(maxi(presets.size(), 1))
+		party["members"].append({"preset": int(presets[i]), "faction": faction_id,
+				"off": Vector3(cos(ang) * EV_PARTY_RING, 0.0, sin(ang) * EV_PARTY_RING),
+				"at": at, "lock": lock_on, "node": null, "out": false, "dead": false})
+	_ev_party[key] = party
+	if not _ev_mobs.has(key):
+		_ev_mobs[key] = []
+
+## Members written down and not killed yet: the party is not over, whether they stand or not.
+func _party_open(key: String) -> bool:
+	if not _ev_party.has(key):
+		return false
+	for m in _ev_party[key]["members"]:
+		if not bool(m["dead"]):
+			return true
+	return false
+
+func _party_tick() -> void:
+	if _ev_party.is_empty():
+		return
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	for key in _ev_party.keys():
+		var party: Dictionary = _ev_party[key]
+		var live: Array = []
+		var waiting: Array = []
+		for m in party["members"]:
+			if bool(m["dead"]):
+				continue
+			# "out" and not `node != null`: a freed node compares equal to null (rule 4), and a killed
+			# member read that way was waiting - and born again.
+			if bool(m["out"]):
+				if is_instance_valid(m["node"]):
+					live.append(m)
+					continue
+				m["dead"] = true             # gone and not taken away by us: killed
+				continue
+			waiting.append(m)
+		if not live.is_empty():
+			var far := true
+			for m in live:
+				if _nearest_own_d2((m["node"] as Node3D).global_position) <= PARTY_LEAVE * PARTY_LEAVE:
+					far = false
+					break
+			if far:
+				var mobs: Array = _ev_mobs.get(key, [])
+				for m in live:
+					mobs.erase(m["node"])
+					(m["node"] as Node).queue_free()
+					m["node"] = null
+					m["out"] = false
+			continue
+		if waiting.is_empty() or _nearest_own_d2(party["at"]) > PARTY_ARRIVE * PARTY_ARRIVE:
+			continue
+		var was_q: String = _cur_q
+		_cur_q = String(party["q"])
+		var mobs: Array = _ev_mobs.get(key, [])
+		sp.set("arrival", true)
+		for m in waiting:
+			var pos: Vector3 = (m["at"] as Vector3) + (m["off"] as Vector3)
+			pos.y = G.ground_y(pos, (m["at"] as Vector3).y)
+			var e: Node3D = _spawn_hostile(sp, pos, int(m["preset"]), int(m["faction"]))
+			if e == null:
+				continue
+			e.set_meta("spawn_group", String(key))
+			var lock = m["lock"]
+			if is_instance_valid(lock) and e.has_method("assign_target"):
+				e.assign_target(lock, true)
+			m["node"] = e
+			m["out"] = true
+			mobs.append(e)
+		sp.set("arrival", false)
+		_ev_mobs[key] = mobs
+		_cur_q = was_q
 
 # ── «Tech Gang»: банда стоит лагерем, её надо разогнать ──────────────────────
 
@@ -2281,6 +2433,8 @@ func _defend_2(q: Dictionary) -> void:
 		_ev_cool[String(q["id"])] = _event_cooldown()
 		Q.skip_quest(String(q["id"]))
 		return
+	if _party_open(key):
+		return
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m) and m != ally:
 			return
@@ -2301,7 +2455,7 @@ func _waves_1(q: Dictionary) -> void:
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		_ev_spawn(key, p.global_position, [6, 7, 8], 1, p)
+		_ev_spawn(key, p.global_position, [6, 7, 8], 1, p, false)
 		Dialogue.say("System", tr("Contacts inbound on your position."))
 	if not _ev_all_dead(key):
 		return

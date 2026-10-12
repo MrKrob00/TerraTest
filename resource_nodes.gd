@@ -193,6 +193,22 @@ func _tick_clock() -> void:
 func _all_mm() -> Array:
 	return multimesh_nodes + wood_multimesh_nodes
 
+## THE MULTIMESHES' BOX STANDS ROUND THE CAMERA, NOT ROUND THE WORLD'S ORIGIN. It was a fixed 4 km cube
+## round (0, 0, 0): past 2 km from the spawn every live vein lay outside it, and the moment the camera
+## looked away from the spawn the box was behind it and the whole MultiMesh was culled - the veins
+## vanished while their nodes, colliders and far cards stayed (the player's report). A box holding the
+## camera is never culled, which is what "drawn whole" always meant; it is moved each streaming pass.
+const BOUNDS_HALF := 4500.0
+
+func _recentre_bounds(cam_pos: Vector3) -> void:
+	var half := Vector3(BOUNDS_HALF, BOUNDS_HALF, BOUNDS_HALF)
+	for mm in _all_mm():
+		var node := mm as GeometryInstance3D
+		if node != null and node.is_inside_tree():
+			node.custom_aabb = AABB(node.to_local(cam_pos) - half, half * 2.0)
+	if _far != null and is_instance_valid(_far) and _far.is_inside_tree():
+		_far.custom_aabb = AABB(_far.to_local(cam_pos) - half, half * 2.0)
+
 ## The MultiMesh that draws this vein: the tree, or its metal's outcrop (a metal past the list - a
 ## new one before its model is built - borrows the last).
 ## WHICH TREE GROWS HERE, BY BIOME (the player's call, after TerraTech): an index into
@@ -448,8 +464,9 @@ const DEPOSIT_R := 8.0
 const TREE_GAP := 4.5
 const ORE_GAP := 4.5
 const SPACE_CELL := 5.0
-## How thick a grove stands per biome (canyon, meadow, mountain, desert).
-const TREE_KEEP_BIOME := Vector4(0.55, 1.0, 0.45, 0.4)
+## How thick a grove stands per biome (canyon, meadow, mountain, desert). THE CANYON GROWS NOTHING (the
+## player's call): 0 here thins the blend at its rim, and a point over half canyon is refused outright.
+const TREE_KEEP_BIOME := Vector4(0.0, 1.0, 0.45, 0.4)
 
 var _forest: FastNoiseLite = null
 var _forest_seed: int = -1
@@ -559,6 +576,8 @@ func _region_step(job: Dictionary, budget_usec: int) -> bool:
 			if can_biome and map.has_method("salt_at") and float(map.salt_at(gw)) > 0.5:
 				continue                               # no trees on a salt flat
 			var b: Vector3 = map.biome_at(gw) if can_biome else Vector3(0.0, 1.0, 0.0)
+			if b.x > 0.5:
+				continue                               # no trees in a canyon (the player's call)
 			if float(e[2]) > _tree_keep(b) * float(cl["keep"]):
 				continue
 			kind = _tree_kind_of(b, gw)
@@ -1011,6 +1030,7 @@ func _process(delta: float) -> void:
 	if cam == null:
 		return
 	var cam_pos: Vector3 = cam.global_position
+	_recentre_bounds(cam_pos)
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var d2: float = render_distance * render_distance
 	var keep2: float = keep_radius * keep_radius
@@ -1059,13 +1079,17 @@ func _process(delta: float) -> void:
 			_stream_in(v)
 		elif not near and shown:
 			_stream_out(v)
-		# A FAR TREE: past the models' reach, ahead, standing (a felled one keeps G under a half
-		# until it comes back), drawn as its picture.
-		if not near and dist2 > d2 and dist2 <= far2 and v.get("wood") == true \
-				and to.dot(fwd) >= view_cos * sqrt(dist2) \
-				and not (v.has("cd") and (v["cd"] as Color).g < 0.5):
-			var ts: Vector2 = _turn_of(gp, true)
-			cards.append([v["pos"], ts.x, ts.y, int(v.get("tree", 0))])
+		# A FAR VEIN: past the models' reach, ahead, standing, drawn as its picture - a tree (a felled
+		# one keeps G under a half until it comes back) or an ore vein (an emptied one, G at 0, is
+		# rubble and gets none). Kind: the tree's model, or ORE_KIND0 + the metal.
+		if not near and dist2 > d2 and dist2 <= far2 and to.dot(fwd) >= view_cos * sqrt(dist2):
+			var wood: bool = v.get("wood") == true
+			var cut: float = 0.5 if wood else 0.01
+			if not (v.has("cd") and (v["cd"] as Color).g < cut):
+				var ts: Vector2 = _turn_of(gp, wood)
+				var kind: int = int(v.get("tree", 0)) if wood \
+						else FAR_TREES_SCRIPT.ORE_KIND0 + clampi(int(v.get("ore_type", 0)), 0, 3)
+				cards.append([v["pos"], ts.x, ts.y, kind])
 	if _far != null:
 		_far.set_trees(cards)
 	Perf.mark("veins", _pf)
