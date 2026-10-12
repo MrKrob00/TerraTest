@@ -1048,6 +1048,10 @@ def style_px(style, x, y, w, h, d):
         t = abs(y + 0.5 - h / 2.0) / max(h / 2.0, 1.0)
         v = int(255 - 70 * t * t)
         return (v, v, min(255, v + 4))
+    if style[:5] == "mdark" and style[5:].isdigit():
+        # the turrets' dark metal in its painted-light tone WITHOUT the light edge line: on the
+        # cutters' broad faces that line read as grey trim round every face (the player)
+        return jitter(METAL[2 + int(style[5:])], 1)
     if style[:5] in ("mtone", "btone", "ctone") and style[5:].isdigit():
         # A facet of a round part built as flat quads (emitter_models.tube): its own tone from the
         # painted light, and the atlas's edge line - a pipe reads round only this way, unshaded.
