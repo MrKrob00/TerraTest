@@ -252,6 +252,8 @@ const BLOCK_HP: Dictionary = {
 	# than a hull block's share of its eight cells would make it.
 	G.Block.MARLIT_GUN:       700,
 	G.Block.MARLIT_DRILL:     1850,     # the nose block, like the Falsus drill a little over its block
+	G.Block.MARLIT_LASER_DRILL: 1400,   # an emitter, not a ram: lighter built than the bit
+	G.Block.MARLIT_SAW:       900,      # half the cells
 	G.Block.MARLIT_LASER:     650,
 	G.Block.MARLIT_SHOTGUN:   750,
 	G.Block.MARLIT_CANNON:    850,
@@ -308,6 +310,8 @@ const BLOCK_WEIGHT: Dictionary = {
 	G.Block.MARLIT_CABIN:     180.0,
 	G.Block.MARLIT_GUN:       80.0,
 	G.Block.MARLIT_DRILL:     120.0,
+	G.Block.MARLIT_LASER_DRILL: 100.0,
+	G.Block.MARLIT_SAW:       55.0,
 	G.Block.MARLIT_LASER:     75.0,
 	G.Block.MARLIT_SHOTGUN:   90.0,
 	G.Block.MARLIT_CANNON:    115.0,

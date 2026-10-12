@@ -2963,5 +2963,21 @@
 	"A stepped bit ringed with teeth: chews through a vein or an enemy block on contact, at Marlit's scale.": {
 		"ru": "Ступенчатая коронка в кольцах зубьев: при касании прогрызает жилу или вражеский блок, в масштабе Marlit.",
 		"uk": "Ступінчаста коронка в кільцях зубів: при дотику прогризає жилу або ворожий блок, у масштабі Marlit."
+	},
+	"Marlit Saw": {
+		"ru": "Пила Marlit",
+		"uk": "Пилка Marlit"
+	},
+	"Marlit Laser Drill": {
+		"ru": "Лазерный бур Marlit",
+		"uk": "Лазерний бур Marlit"
+	},
+	"A flat circular blade: fells a tree in two passes, but barely scratches rock.": {
+		"ru": "Плоская дисковая пила: валит дерево в два захода, но камень едва царапает.",
+		"uk": "Пласка дискова пила: валить дерево за два заходи, але камінь ледве дряпає."
+	},
+	"A focused beam from a lens stack: digs from a distance where a bit must touch, and burns rather than cuts.": {
+		"ru": "Сфокусированный луч из стопки линз: копает издалека там, где коронке нужно касание, и прожигает, а не режет.",
+		"uk": "Сфокусований промінь зі стосу лінз: копає здалеку там, де коронці потрібен дотик, і пропалює, а не ріже."
 	}
 }

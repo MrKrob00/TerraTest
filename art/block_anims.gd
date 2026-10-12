@@ -38,6 +38,8 @@ func _initialize() -> void:
 	_drill("drill", "Drill_base_big/Drill_rotor_big")
 	_drill("small_drill", "Drill_base_small/Drill_rotor_small")
 	_drill("marlit_drill", "Bit")
+	_drill("marlit_laser_drill", "Head")
+	_saw("marlit_saw", "Blade")
 	quit()
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -269,6 +271,17 @@ func _marlit_regen() -> void:
 	_float_crystal(c, "CrystalMount/Crystal", 0.02)
 	_save("marlit_regen", {"gyro": gyro, "stand": stand, "float": c},
 		["Ring0", "Ring1", "Ring2", "Ring3", "CrystalMount", "CrystalMount/Crystal"])
+
+## The Marlit saw's blade, lying flat: a turn about the block's UP taken in the blade's own axes, at
+## the drill's rate (the clip is named "drilling" so drill.gd drives it like a bit).
+func _saw(name: String, blade: String) -> void:
+	var root := _open(name)
+	var r := _part(blade)
+	var rel: Basis = root.global_transform.basis.inverse() * r.global_transform.basis
+	var axis: Vector3 = (rel.inverse() * Vector3.UP).normalized()
+	var a := _loop(0.4)
+	_spin_track(a, blade, axis, 1.0, 0.4, true)
+	_save(name, {"drilling": a}, [blade])
 
 ## The bit at SPIN_SPEED (2.5 turns a second) about the block's front, taken in the bit's own axes:
 ## the two models point their meshes differently (the big bit along its Y, the small along -X).

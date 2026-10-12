@@ -81,7 +81,8 @@ func _ready() -> void:
 ## 66: the collector and the receiver without their glass column.
 ## 67: the Marlit support and rotating support.
 ## 68: the Marlit drill.
-const RECIPE := 68
+## 69: the Marlit laser drill and saw.
+const RECIPE := 69
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

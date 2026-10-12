@@ -2902,6 +2902,21 @@ project: read it before claiming how anything works.
   on the engine: on a Marlit cabin it took a vein 500 -> 0 in 3 s, the bit turned about its axis
   with 0.00 deg of drift; pictured on the real driver. Rendered by `_shot_drill.gd`-style harnesses:
   set the scene's script to null, the frame comes out on a white clear.
+- **MARLIT'S CUTTERS: THE LASER DRILL AND THE SAW** (`MARLIT_LASER_DRILL` 77, `MARLIT_SAW` 78,
+  `art/marlit_cutters.py`, both children of the Marlit drill in the tree, grade 3 / 2). Both run
+  `drill.gd`, which grew three exports: `wood_mult` / `rock_mult` (a blow on a tree or an ore vein,
+  machines take the plain number) and `dig_kind` (the damage type on a machine). THE LASER DRILL
+  (2x2x2, `laser_drill.gd`, 140 a blow, ENERGY) DIGS 3 M OUT OF ITS LENS (the player's call): its zone
+  is a capsule along exactly that stretch, and the cyan beam it draws while working stops at the
+  first thing in its way (a ray while it is on) - measured, 1.30 m to a vein's face mid-dig, the vein
+  500 -> 80 in 2 s, one 5 m out untouched. THE SAW (2x1x2, 120 a blow, wood x2.5, rock x0.4): a flat
+  blade in a clamp, turning about the vertical - measured, a tree felled in 0.7 s, rock 500 -> 356 in
+  the same time. THE MODELS TOOK ELEVEN CUTS, and what the player turned down is a rule for the next
+  tool: no grey plate (`em.marlit_box`'s plain plates), no hull window on a tool's mount (the
+  octagon "hole"), no light edge line round the faces (`mdark`: the `mtone` metal without it), and
+  no plain rim between the sunset line and the edge - the line runs at the edge, bolts in the
+  corners, a slit down every side. The laser's lens stack and the saw's blade were kept from the
+  first cuts.
 - **MARLIT'S TREE IS FALSUS'S SHAPE** (`G.TECH_PARENT`): the CABIN is the root; under it the block
   (hull, wheel), the DRILL (then the gun and every weapon), the solar array (then the battery, which
   carries the repair unit and the charger) and the support. The licence hands over what costs no RP

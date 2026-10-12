@@ -1,6 +1,13 @@
 extends VehicleBlock
 
 @export var drill_damage: int = 103
+## WHAT THE TOOL IS FOR, per vein (the Marlit saw: trees fast, rock slowly). A blow on a tree is
+## `drill_damage * wood_mult`, on an ore vein `* rock_mult`; machines take the plain number.
+@export var wood_mult: float = 1.0
+@export var rock_mult: float = 1.0
+## The damage type a blow carries on a machine (VehicleBlock.Dmg): cutting for a bit or a blade, energy
+## for the laser drill.
+@export var dig_kind: int = VehicleBlock.Dmg.CUTTING
 const DIG_INTERVAL := 0.3   # пауза между ударами, пока зажата атака и бур в контакте
 var _dig_cd := 0.0
 
@@ -32,10 +39,15 @@ func _physics_process(delta: float) -> void:
 
 func attack() -> void:
 	_spin_t = SPIN_COAST     # ДО проверки паузы: коронка крутится всё время, пока держат атаку,
+	_on_attack()
 	if _dig_cd > 0.0:        # а удары идут своим темпом (DIG_INTERVAL)
 		return
 	_dig_cd = DIG_INTERVAL
 	_dig()
+
+## A subclass's hook on every attack frame (the laser drill shows its beam).
+func _on_attack() -> void:
+	pass
 
 # Каждый удар бьёт по ВСЕМ рудам, что сейчас перекрывают зону бура.
 ## A BLOW IS A SHAPE QUERY WITH THE ZONE'S OWN SHAPE, NOT THE AREA'S OVERLAP LIST. A mounted block has
@@ -83,6 +95,7 @@ func _dig() -> void:
 			# Место удара отмечаем как от пули: бур стоит вплотную, своё положение и есть контакт.
 			body.struck(global_position)
 		elif body is VehicleBlock:
-			body.hurt(drill_damage, VehicleBlock.Dmg.CUTTING)
+			body.hurt(drill_damage, dig_kind)
 		elif body.has_method("hurt"):
-			body.hurt(drill_damage)            # a vein
+			var m: float = wood_mult if body.get("is_wood") == true else rock_mult
+			body.hurt(maxi(int(round(drill_damage * m)), 1))   # a vein

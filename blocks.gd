@@ -1009,7 +1009,7 @@ func _footprint_offsets(block: int) -> Array:
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
 			G.Block.MARLIT_SHOTGUN, G.Block.MARLIT_CANNON, G.Block.MARLIT_MORTAR,
 			G.Block.MARLIT_WHEEL, G.Block.MARLIT_CABIN, G.Block.MARLIT_SUPPORT, G.Block.MARLIT_ROT_SUPPORT,
-			G.Block.MARLIT_DRILL]:
+			G.Block.MARLIT_DRILL, G.Block.MARLIT_LASER_DRILL]:
 		var cells: Array = []
 		for dx in [-1, 0]:
 			for dy in [0, 1]:
@@ -1036,7 +1036,7 @@ func _footprint_offsets(block: int) -> Array:
 			for dy in [0, 1]:
 				ca.append(Vector3i(dx, dy, 0))
 		return ca
-	if block in [G.Block.COMP_FACTORY, G.Block.MARLIT_BRACKET, G.Block.MARLIT_WIRELESS]:
+	if block in [G.Block.COMP_FACTORY, G.Block.MARLIT_BRACKET, G.Block.MARLIT_WIRELESS, G.Block.MARLIT_SAW]:
 		return [Vector3i(-1, 0, -1), Vector3i(-1, 0, 0), Vector3i(0, 0, -1), Vector3i(0, 0, 0)]  # 2×1×2
 	# ARMOUR PLATES ARE WALLS: they stand on the back face of their cells, so a big one spreads across
 	# (X) and up (Y), never in depth. The x4 used to be 2x1x2 - a slab lying flat under a plate
