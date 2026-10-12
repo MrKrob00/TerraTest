@@ -20,7 +20,7 @@ var _spin_t := 0.0
 func _ready() -> void:
 	super()                  # VehicleBlock._ready (слои, hp, заморозка)
 	moving_parts = true      # the rotor spins (MachineBatch)
-	$drill.monitoring = true # сенсор бура держим включённым: overlaps готовы к первому же удару
+	$drill.monitoring = false   # a blow asks its own query (_dig); the zone is only its shape
 	_anim = get_node_or_null("AnimationPlayer") as AnimationPlayer
 
 func _physics_process(delta: float) -> void:
@@ -37,11 +37,37 @@ func attack() -> void:
 	_dig_cd = DIG_INTERVAL
 	_dig()
 
-# Каждый удар бьёт по ВСЕМ рудам, что сейчас перекрывают зону бура. Опрос get_overlapping_bodies()
-# (а не сигнал body_entered, который срабатывает лишь при ВХОДЕ тела) добывает и застрявшую вплотную
-# руду, оставшуюся в контакте после первого удара.
+# Каждый удар бьёт по ВСЕМ рудам, что сейчас перекрывают зону бура.
+## A BLOW IS A SHAPE QUERY WITH THE ZONE'S OWN SHAPE, NOT THE AREA'S OVERLAP LIST. A mounted block has
+## no body of its own - its box is a shape of its machine (`VehicleBlock.is_mounted`) - so the list would
+## hold the whole machine and say nothing about which block is under the bit; the query reads the shape
+## index (`VehicleBlock.query_hits`). And the zone no longer monitors: a sensor riding with the machine
+## was re-checked against everything around it every physics tick for a blow every `DIG_INTERVAL`.
+var _dig_q: PhysicsShapeQueryParameters3D = null
+
 func _dig() -> void:
-	for body in $drill.get_overlapping_bodies():
+	var world := get_world_3d()
+	var zone := get_node_or_null("drill") as Area3D
+	if world == null or zone == null:
+		return
+	var cs: CollisionShape3D = null
+	for c in zone.get_children():
+		if c is CollisionShape3D and (c as CollisionShape3D).shape != null:
+			cs = c
+			break
+	if cs == null:
+		return
+	if _dig_q == null:
+		_dig_q = PhysicsShapeQueryParameters3D.new()
+		_dig_q.collide_with_bodies = true
+	_dig_q.shape = cs.shape
+	_dig_q.transform = cs.global_transform.orthonormalized()
+	_dig_q.collision_mask = VehicleBlock.block_mask(zone.collision_mask)
+	var own := _root_body()
+	_dig_q.exclude = [(own as CollisionObject3D).get_rid()] if own is CollisionObject3D else []
+	for body in VehicleBlock.query_hits(world.direct_space_state, _dig_q, 32):
+		if not (body is Node3D):
+			continue
 		if body == self: continue
 		if body.get_parent() == get_parent(): continue   # свои блоки не бурим
 		# Купол своего щита бур тоже не грызёт: он лежит на слое блоков, а родитель у него —

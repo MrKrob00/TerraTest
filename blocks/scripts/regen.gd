@@ -408,11 +408,10 @@ func _blocks_in_field() -> Array:
 	var q := PhysicsShapeQueryParameters3D.new()
 	q.shape = sphere
 	q.transform = Transform3D(Basis(), to_global(field_centre))
-	q.collision_mask = 2                      # слой блоков (VehicleBlock.collision_layer = 2)
+	q.collision_mask = VehicleBlock.block_mask(2)   # blocks, loose and mounted (machines' shapes)
 	q.collide_with_bodies = true
 	var out: Array = []
-	for hit in world.direct_space_state.intersect_shape(q, FIELD_QUERY_MAX):
-		var b = hit.get("collider")
+	for b in VehicleBlock.query_hits(world.direct_space_state, q, FIELD_QUERY_MAX):
 		if b is Node3D and ("current_hp" in b) and ("max_hp" in b):
 			out.append(b)
 	return out

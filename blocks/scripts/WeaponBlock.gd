@@ -638,6 +638,30 @@ func _show_tracer(firing: bool, _delta: float) -> void:
 		m.emission = base
 		m.emission_energy_multiplier = 1.5 + 1.5 * pulse
 
+var _barrel_q: PhysicsRayQueryParameters3D = null
+
+## Does the barrel look straight into a block of our own machine? The first thing along the aim ray,
+## read through `VehicleBlock.hit_node`: our blocks have no bodies of their own (they are the
+## machine's shapes), so the ray asks the machines' layer too. NO BACK FACES and not from inside: the
+## ray starts in our own block's box, and with the engine's defaults it hit that box from inside and
+## every gun would call itself blocked.
+func _barrel_blocked() -> bool:
+	var world := get_world_3d()
+	if world == null or not is_instance_valid(raycast):
+		return false
+	if _barrel_q == null:
+		_barrel_q = PhysicsRayQueryParameters3D.new()
+		_barrel_q.hit_back_faces = false
+		_barrel_q.hit_from_inside = false
+	_barrel_q.collision_mask = VehicleBlock.block_mask(raycast.collision_mask)
+	_barrel_q.from = raycast.global_position
+	_barrel_q.to = raycast.to_global(raycast.target_position)
+	var h := world.direct_space_state.intersect_ray(_barrel_q)
+	if h.is_empty():
+		return false
+	var n = VehicleBlock.of_hit(h)
+	return n is Node and n != self and (n as Node).get_parent() == get_parent()
+
 func _handle_fire(delta: float) -> void:
 	_fire_timer -= delta
 	if _fire_timer > 0.0:
@@ -646,10 +670,7 @@ func _handle_fire(delta: float) -> void:
 	# каждый тик; ответ же нужен ровно в тот тик, когда выстрел назрел. Таймер при отказе НЕ
 	# перезаряжаем — он остаётся отрицательным, и ствол выстрелит в первый же тик, когда
 	# помеха уйдёт, ровно как и раньше.
-	if not _has_tracer():
-		raycast.force_raycast_update()
-	var body: Node3D = raycast.get_collider()
-	if body and (body == self or body.get_parent() == get_parent()):
+	if _barrel_blocked():
 		return
 	# STILL TURNING: hold the shot, the timer stays spent so it fires the tick the barrel is on
 	if _aim_err > AIM_TOL:

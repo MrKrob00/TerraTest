@@ -1218,8 +1218,10 @@ func _btm() -> Node:
 ## мимо превью — сработает, попадёшь в него — нет. Отсюда и «прокликал весь квадрат, и встало».
 ##
 ## exclude принимает RID'Ы, НЕ УЗЛЫ (правило проекта).
-func _ray_skip() -> Array[RID]:
-	var skip: Array[RID] = [get_rid()]
+func _ray_skip(with_self: bool = true) -> Array[RID]:
+	var skip: Array[RID] = []
+	if with_self:
+		skip.append(get_rid())
 	var held := hand_node()
 	if held is CollisionObject3D:
 		skip.append((held as CollisionObject3D).get_rid())
@@ -1233,8 +1235,10 @@ func _player_machine_under(screen_pos: Vector2) -> Node:
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
-	q.collision_mask = 2                          # слой блоков
-	q.exclude = _ray_skip()                       # себя и блок в руке — см. _ray_skip
+	# blocks, and the machines whose shapes the mounted ones are (VehicleBlock.is_mounted). Ourselves
+	# are NOT left out: a tap on us stops on us, as it stopped on our blocks' bodies
+	q.collision_mask = VehicleBlock.block_mask(2)
+	q.exclude = _ray_skip(false)                  # the block in the hand - see _ray_skip
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return null
@@ -2141,12 +2145,11 @@ func _feed_foreign_scrapper(screen_pos: Vector2) -> bool:
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
-	q.collision_mask = 2                            # слой блоков
-	q.exclude = [get_rid()]
+	q.collision_mask = VehicleBlock.block_mask(2)   # blocks; a mounted one is its machine's shape
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
-	var target = hit.get("collider")
+	var target = VehicleBlock.of_hit(hit)
 	if not (target is Node) or not target.has_method("scrap_block"):
 		return false
 	# Только ЧУЖАЯ машина: на своей этот жест принадлежит постройке.
@@ -2185,12 +2188,11 @@ func _try_open_factory_ui(screen_pos: Vector2) -> bool:
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
-	q.collision_mask = 2                            # слой блоков
-	q.exclude = [get_rid()]
+	q.collision_mask = VehicleBlock.block_mask(2)   # blocks; a mounted one is its machine's shape
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
-	var target = hit.get("collider")
+	var target = VehicleBlock.of_hit(hit)
 	if not (target is Node):
 		return false
 	var root: Node = target
@@ -2227,12 +2229,11 @@ func _mark_enemy_target(screen_pos: Vector2) -> bool:
 	var cam: Camera3D = camera_controller.camera
 	var from: Vector3 = cam.project_ray_origin(screen_pos)
 	var q := PhysicsRayQueryParameters3D.create(from, from + cam.project_ray_normal(screen_pos) * 500.0)
-	q.collision_mask = 2                            # слой блоков
-	q.exclude = [get_rid()]
+	q.collision_mask = VehicleBlock.block_mask(2)   # blocks; a mounted one is its machine's shape
 	var hit: Dictionary = get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
-	var body = hit.get("collider")
+	var body = VehicleBlock.of_hit(hit)
 	if not (body is Node3D) or not ("block" in body):
 		return false
 	# Блок ЧУЖОЙ машины: он лежит под её узлом blocks, а машина — с другой фракцией.
@@ -2258,12 +2259,13 @@ func _grab_world_block(screen_pos: Vector2) -> bool:
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	# Слой 2 — свободные блоки, слой 8 — ресурсы (руда/слитки). Раньше маска была только 2,
 	# и ресурс лучом подбора не находился вовсе, сколько по нему ни тапай.
-	q.collision_mask = 2 | 8
-	q.exclude = [get_rid()]                         # не цепляем саму машину
+	# A machine's block is its machine's shape: hit, it answers the block, which is not loose - so a tap
+	# on any machine, ours included, stops there as it stopped on the blocks' own bodies
+	q.collision_mask = VehicleBlock.block_mask(2 | 8)
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
 	if hit.is_empty():
 		return false
-	var body: Node3D = hit.get("collider")
+	var body := VehicleBlock.of_hit(hit) as Node3D
 	# Только то, что реально ЛЕЖИТ В МИРЕ (см. G.is_loose_item). Проверка по родителю-objects
 	# здесь мимо: руда из жилы падает в узел стриминга залежей, и по ней тап в руду не делал
 	# ничего вообще.

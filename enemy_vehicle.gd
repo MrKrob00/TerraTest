@@ -28,11 +28,6 @@ signal died(enemy: Node)
 @export var hear_radius:         float = 15.0
 @export var attack_range:        float = 15.0
 @export var min_combat_distance: float = 5.0
-## Layers the AI searches for targets on. A machine hull (where faction lives) sits on the "machine"
-## layer (5 -> value 16). The old 1|2 caught terrain and blocks but NOT the hull, so the AI could not
-## see the player.
-@export_flags_3d_physics var detection_mask: int = 16
-
 @export_group("ИИ — Патруль")
 ## Custom patrol points; random ones are generated when empty.
 @export var patrol_points:       Array[Vector3] = []
@@ -176,7 +171,7 @@ func _ready() -> void:
 	linear_damp   = 0.0
 	angular_damp  = 4.0
 
-	_setup_detection_area()
+	_setup_detection()
 	# A BASE IS FROZEN FROM THE START. Not "stop moving" but freeze: it has no wheels, and an unfrozen
 	# hull with off-centre collision tips over on the first physics step - the same rake our own station
 	# hit when anchoring.
@@ -240,24 +235,14 @@ func _die() -> void:
 ## `is_base`, so both doors that make a base (the spawner and outposts.gd) get it.
 const BASE_SIGHT := 70.0
 
-func _setup_detection_area() -> void:
+## AN ENEMY FINDS ITS TARGET BY DISTANCE, NOT BY A PHYSICS SENSOR (`_scan_for_targets`, over the
+## group `MachineBody.MACHINES`, every `_reacquire_t`). It used to carry a monitoring Area3D
+## `detection_radius` across, which rode with the machine: measured, eight far machines spent 20.2 ms a
+## physics tick with their sensors and 16.4 without - the sphere moving through the broadphase every
+## tick cost more than all their block bodies did. The same trade the guns made (`_scan_targets`).
+func _setup_detection() -> void:
 	if is_base:
 		detection_radius = maxf(detection_radius, BASE_SIGHT)
-	var area: Area3D = Area3D.new()
-	area.name             = "DetectionArea"
-	area.collision_layer  = 0
-	area.collision_mask   = detection_mask  # machine layer by default (machine hulls)
-
-	var col: CollisionShape3D = CollisionShape3D.new()
-	var sph: SphereShape3D = SphereShape3D.new()
-	sph.radius = detection_radius
-	col.shape  = sph
-	area.add_child(col)
-	add_child(area)
-	_detect_area = area                     # kept: the periodic re-search runs through it
-
-	area.body_entered.connect(_on_body_entered)
-	area.body_exited.connect(_on_body_exited)
 
 ## The SPAWN POINT is remembered on the first physics tick, not in _ready. _ready fires on add_child,
 ## i.e. BEFORE the spawner places the machine: at that moment it stands at the origin. Patrols were
@@ -566,7 +551,6 @@ func _unsink() -> void:
 # AI - DISPATCH
 # ══════════════════════════════════════════
 
-var _detect_area: Area3D = null
 var _reacquire_t: float = 0.0
 var _last_known_pos: Vector3 = Vector3.ZERO
 var _has_last_known: bool = false
@@ -592,19 +576,16 @@ func assign_target(t: Node3D, never_forget: bool = false) -> void:
 # choice (enemy_brain: a 0.35 multiplier). Terrain in combat was pure decoration - there was nowhere
 # to hide.
 func _scan_for_targets() -> void:
-	if _detect_area == null or not is_instance_valid(_detect_area):
-		return
-	# SQUARED distances: distance_to takes a root and "who is closer" does not care - the ordering is
-	# the same. This walks every body in the sphere several times a second for every enemy.
+	# SQUARED distances: "who is closer" does not care about the root.
 	var best: Node3D = null
-	var best_d2: float = INF
-	for b in _detect_area.get_overlapping_bodies():
-		if not _is_enemy(b) or not (b is Node3D):
+	var best_d2: float = detection_radius * detection_radius
+	for m in get_tree().get_nodes_in_group(MACHINES):
+		if not _is_enemy(m) or not (m is Node3D):
 			continue
-		var d2: float = global_position.distance_squared_to((b as Node3D).global_position)
+		var d2: float = global_position.distance_squared_to((m as Node3D).global_position)
 		if d2 < best_d2:
 			best_d2 = d2
-			best = b as Node3D
+			best = m as Node3D
 	# The nearest candidate goes through the shared visibility rule - a ray costs more than comparing
 	# numbers, so it is cast once rather than per candidate.
 	if best != null:
@@ -1176,20 +1157,11 @@ func _is_enemy(body: Node) -> bool:
 	return f != faction
 
 # ══════════════════════════════════════════
-# AREA3D SIGNALS
+# TARGET ACQUISITION
 # ══════════════════════════════════════════
 
-# ENTERING THE ZONE is the second acquisition path and must obey the same visibility rule as the
-# periodic search. It used not to: the signal set the target directly, so crossing the sphere border
-# was enough to see through a hill. The search only runs while there is NO target, so in practice
-# almost everything was acquired here - i.e. the visibility check was skipped most of the time.
-func _on_body_entered(body: Node) -> void:
-	if not _is_enemy(body) or not (body is Node3D):
-		return
-	_consider_target(body as Node3D)
-
-## Should this become the target? The ONE place with the rule "who an enemy may notice": both the
-## zone signal and the periodic search come here, so they cannot diverge.
+## Should this become the target? The ONE place with the rule "who an enemy may notice": the search
+## and every other way a target is offered come here, so they cannot diverge.
 func _consider_target(body3d: Node3D) -> bool:
 	if body3d == null or not is_instance_valid(body3d):
 		return false
@@ -1213,10 +1185,6 @@ func _consider_target(body3d: Node3D) -> bool:
 		_forget_timer = forget_enemy_time
 		return true
 	return false
-
-func _on_body_exited(body: Node) -> void:
-	if body == _target:
-		_forget_timer = forget_enemy_time
 
 # ══════════════════════════════════════════
 # SELF-RIGHTING AFTER A FLIP

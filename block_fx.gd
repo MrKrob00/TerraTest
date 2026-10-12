@@ -439,12 +439,10 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 		var q := PhysicsShapeQueryParameters3D.new()
 		q.shape = sphere
 		q.transform = Transform3D(Basis(), world_pos)
-		q.collision_mask = 2                                # слой блоков (VehicleBlock.collision_layer=2)
+		q.collision_mask = VehicleBlock.block_mask(2)      # blocks, loose and mounted (machines' shapes)
 		q.collide_with_bodies = true
-		var seen := {}
-		for found in world.direct_space_state.intersect_shape(q, 48):
-			var b = found.get("collider")
-			if b == null or seen.has(b) or b == anchor or not b.has_method("hurt"):
+		for b in VehicleBlock.query_hits(world.direct_space_state, q, 48):
+			if b == null or b == anchor or not b.has_method("hurt"):
 				continue
 			if exclude_root != null and _root_of(b) == exclude_root:
 				continue
@@ -455,7 +453,6 @@ static func explosion(anchor: Node3D, world_pos: Vector3, radius: float, dmg: in
 			var g: Node = _progress()
 			if g != null and g.is_friendly_dome(b, exclude_root):
 				continue
-			seen[b] = true
 			var dist: float = (b as Node3D).global_position.distance_to(world_pos)
 			var f: float = clampf(1.0 - dist / radius, 0.15, 1.0)   # спад урона к краю
 			# Толкаем ДО урона: hurt может убить блок, а мёртвому импульс уже не нужен.

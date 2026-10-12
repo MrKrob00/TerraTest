@@ -105,6 +105,7 @@ var _spare: Array = []
 var _kinds: Dictionary = {}
 var _tpls: Dictionary = {}                 # template instance id -> Tpl
 var _ray: PhysicsRayQueryParameters3D = null
+var _ray_own: RID = RID()              # whose machine `_ray.exclude` leaves out now
 
 ## The world's simulator, made on first use under the current scene (the menu's fight has its own).
 static func of(n: Node):
@@ -166,7 +167,8 @@ func _read_tpl(template: Node3D) -> Tpl:
 	t.min_y = float(v) if v != null else 0.0
 	v = template.get("max_lifetime")
 	t.max_life = float(v) if v != null else 3.0
-	t.mask = (template as CollisionObject3D).collision_mask if template is CollisionObject3D else 7
+	# a round that hits blocks hits the machines carrying them: a mounted block's box is its machine's
+	t.mask = VehicleBlock.block_mask((template as CollisionObject3D).collision_mask if template is CollisionObject3D else 7)
 	for c in template.get_children():
 		if c is MeshInstance3D and (c as MeshInstance3D).mesh != null:
 			t.mi = c
@@ -370,6 +372,13 @@ func _sweep(s: Shot, from: Vector3, to: Vector3, space: PhysicsDirectSpaceState3
 		_ray.collide_with_areas = false
 	var start: Vector3 = from
 	_ray.collision_mask = s.mask
+	# OUR OWN MACHINE IS LEFT OUT WHOLE: every mounted block's box is one of its shapes, and skipping
+	# them one face at a time (in at one face, out at the next) ran out of tries along a long hull
+	var own_root = s.shooter_blocks.get_parent() if is_instance_valid(s.shooter_blocks) else null
+	var own_rid: RID = (own_root as CollisionObject3D).get_rid() if own_root is CollisionObject3D else RID()
+	if own_rid != _ray_own:
+		_ray_own = own_rid
+		_ray.exclude = [own_rid] if own_rid.is_valid() else []
 	for _i in SWEEP_OWN_TRIES + 1:
 		_ray.from = start
 		_ray.to = to
@@ -377,11 +386,13 @@ func _sweep(s: Shot, from: Vector3, to: Vector3, space: PhysicsDirectSpaceState3
 		if h.is_empty():
 			return false
 		# what was hit is looked at only when something was: most ticks of most rounds hit nothing
-		var body = h.get("collider")
+		var col = h.get("collider")
 		var own_blocks = s.shooter_blocks if is_instance_valid(s.shooter_blocks) else null
-		if body != null and own_blocks != null and body.get_parent() == own_blocks:
+		# a block of ours that still has a body of its own
+		if col != null and own_blocks != null and col.get_parent() == own_blocks:
 			start = (h["position"] as Vector3) + step.normalized() * SWEEP_SKIP
 			continue
+		var body = VehicleBlock.hit_node(col, int(h.get("shape", 0)))
 		if body != null and G.is_friendly_dome(body, own_blocks.get_parent() if own_blocks != null else null):
 			start = (h["position"] as Vector3) + step.normalized() * SWEEP_SKIP
 			continue
