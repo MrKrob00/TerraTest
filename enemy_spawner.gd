@@ -32,7 +32,7 @@ var _seed_grace: float = -1.0
 @export var spawn_safe_margin: float = 40.0
 ## Vision radius is asked from a LIVE enemy (builds may differ); this is the fallback.
 @export var enemy_detect_fallback: float = 40.0
-@export var spawn_max_dist: float = 160.0
+@export var spawn_max_dist: float = 280.0      # the ring starts at PLAYER_CLEAR + CLEAR_PAD
 ## QUIET ZONE around your own anchored machine: no spawns there. The whole production chain
 ## only runs while anchored, so without it enemies arrive exactly while the player is laying out
 ## a conveyor and not steering.
@@ -669,8 +669,10 @@ func _step_value(tier: int) -> float:
 ## and event goes through, plus the stream ring, the invader and the story scout, which place their
 ## own. A point that is too close is not refused, it is MOVED OUT (`clear_point`): an event that
 ## asked for an attack gets one, from far enough to be seen coming. Bases (`as_base`) stand at
-## their quest point and are left alone; allies (faction 0) too.
-const PLAYER_CLEAR := 100.0
+## their quest point and are left alone; allies (faction 0) too. 200 m (the player's rule, was 100:
+## "wherever I look at the start there are enemies" - measured on a fresh world, the duel, the stream
+## and a miner stood at 127-213 m).
+const PLAYER_CLEAR := 200.0
 const CLEAR_PAD := 15.0          # past PLAYER_CLEAR; a party (quest_arcs.EV_PARTY_RING) stands inside it
 
 func _own_points() -> Array:

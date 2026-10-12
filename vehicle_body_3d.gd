@@ -2379,6 +2379,7 @@ func _on_take_pressed() -> void:
 		collision.set_meta("block_owner", instance)
 		tgt.add_child(collision)
 		collision.add_to_group("block_collision")   # чтобы смена сборки могла её убрать
+		bmn._retire_root_collider()
 		instance.reparent(tgt_blocks, false)
 		instance.scale = Vector3.ONE
 		bmn.set_block(BuildingBlock["x"], BuildingBlock["y"], BuildingBlock["z"], instance.block, instance.rotation)

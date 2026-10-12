@@ -176,7 +176,7 @@ func _stream() -> void:
 			node = null
 		if bool(e["cleared"]):
 			continue
-		if node == null and d2 <= SPAWN_DIST * SPAWN_DIST:
+		if node == null and d2 <= SPAWN_DIST * SPAWN_DIST and _clear_of_player(e["pos"]):
 			e["node"] = _spawn(e)
 		elif node != null and d2 > DESPAWN_DIST * DESPAWN_DIST:
 			# Убираем УЗЕЛ, а не точку: постройка вернётся на то же место такой же. Урон,
@@ -184,6 +184,15 @@ func _stream() -> void:
 			# каждого блока каждой точки значит писать в сейв целую вторую карту машин.
 			(node as Node).queue_free()
 			e["node"] = null
+
+## A STRONGHOLD DOES NOT MATERIALISE WITHIN enemy_spawner.PLAYER_CLEAR OF THE PLAYER'S OWN (a machine
+## or a base; the player's rule, the same door as every other hostile). Approached, it appears at
+## SPAWN_DIST and stays; this holds it back after a load, a respawn or a base built beside it.
+func _clear_of_player(p: Vector3) -> bool:
+	var spawner: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if spawner == null or not spawner.has_method("is_clear_of_player"):
+		return true
+	return spawner.is_clear_of_player(p)
 
 func _spawn(e: Dictionary) -> Node3D:
 	var spawner: Node = get_node_or_null("/root/Main/EnemySpawner")
