@@ -2046,15 +2046,12 @@ project: read it before claiming how anything works.
   `VBTN_SHOW_DIST`. The distance check must come BEFORE the early return in `_process`, or a label
   hidden once never comes back: ask the COUNT, not the current visibility. The enemy marker is NOT
   this bug — it is an ordinary billboard in world space and shrinks with distance as it should.
-- A COLLECTOR SHOWS WHAT IT CARRIES AS A PILE IN ITS BOWL, AND THE RECEIVER ON ITS PAD
-  (`collector._layout`, `Receiver._stack_pos`, both through `resource.held_slots`; the player's calls:
-  showing one and hiding the rest made a collector carrying five look like it carried one, then "show
-  them normally in the receiver and the collector"). FOUR TO A LAYER, two by two, at `HELD_SIZE`
-  (0.55 of the model), each layer on the tallest of the one under it, the first on the bowl's boss
-  (`HOLD_FOOT`) or over the pad (`STACK_BASE`); A HELD ITEM HAS NO GLOW (its quad is for finding an
-  item in the grass) - the glow's MESH goes, never its node, which carries the model
-  (`MeshInstance3D/ResourceMesh`): hiding the node hid the item, seen on the real driver. One item a
-  step was a tower - eight in a receiver rose two metres; a metre a step (the bubble's) before that. The single door out (`remove_from_inventory`) unseats the item and
+- A COLLECTOR SHOWS WHAT IT CARRIES AS A STACK IN ITS BOWL, AND THE RECEIVER OVER ITS PAD
+  (`collector._layout`, `Receiver._stack_pos`; the player's calls: showing one and hiding the rest
+  made a collector carrying five look like it carried one). Each item stands on the one under it by
+  its model's height (`resource.model_height` + `STACK_GAP`), the bottom one on the bowl's boss
+  (`HOLD_FOOT`) or over the pad (`STACK_BASE`), AT THE SIZE IT HAS LYING LOOSE (`ITEM_SIZE`): a pile
+  of four to a layer at half size was tried and turned down ("do not shrink them, stack them"). The single door out (`remove_from_inventory`) unseats the item and
   shows it again; an item that lands among the loose ones by any other way (a collector torn off with
   ore in its bowl) is unseated by its own `NOTIFICATION_PARENTED`, and `seat` skips a foot it already has.
 - **THE SWIPE THAT CLOSES A WINDOW OWNS ITS FINGER UNTIL IT LIFTS** (`SwipeClose`, garage and
@@ -3166,8 +3163,8 @@ project: read it before claiming how anything works.
   all of `Assets.glb` in its frame. A LOOSE ITEM IS DRAWN AT 1.5 TIMES ITS MODEL (`resource.ITEM_SIZE`,
   the player's calls: twice, then "down to 1.5"), on the ground and on belts, its glow quad grown with it from the foot; models
   measure 0.23-0.72 m tall and up to 1.08 across, foot at `FOOT_Y`, top inside the sphere. A SEATED
-  item (collector bowl, storage tray, the receiver's pile, `seat(foot, size)`) is drawn at the size
-  the holder asks (the model's own, or `HELD_SIZE` in a pile) - eight in a receiver at ITEM_SIZE would stand seven
+  item (collector bowl, storage tray, the receiver's stack, `seat(foot, size)`) is drawn at the size
+  the holder asks (the collector and the receiver ask `ITEM_SIZE`, the player's call) - eight in a receiver at ITEM_SIZE would stand seven
   metres - and ANY OTHER PARENT UNSEATS IT (`NOTIFICATION_PARENTED`), so a holder seats after it takes
   the item. The mouths that shrink the picture divide by ITEM_SIZE (`IN_FURNACE`, `LIFT_SCALE`,
   generator `WELL_FIT`). Checked on the real driver: big items on the meadow, a small one in the
