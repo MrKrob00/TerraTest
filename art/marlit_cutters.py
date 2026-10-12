@@ -60,6 +60,20 @@ def glow_frame(f, lo, hi, z, w=0.035, side=-1.0):
         mw._face(f, q, ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, z - side), "mglow", u_hint=(1, 0, 0))
 
 
+def side_slits(f, lo, hi, m=0.16, w=0.022):
+    """A sunset slit along the middle of each of the slab's four sides (x and y faces): a plain side
+    was the 'one-tone' band the player did not want."""
+    zm = (lo[2] + hi[2]) / 2
+    for x, sd in ((lo[0], -1.0), (hi[0], 1.0)):
+        xx = x + 0.004 * sd
+        q = [(xx, lo[1] + m, zm - w), (xx, hi[1] - m, zm - w), (xx, hi[1] - m, zm + w), (xx, lo[1] + m, zm + w)]
+        mw._face(f, q, (x - sd, (lo[1] + hi[1]) / 2, zm), "mglow", u_hint=(0, 1, 0))
+    for y, sd in ((lo[1], -1.0), (hi[1], 1.0)):
+        yy = y + 0.004 * sd
+        q = [(lo[0] + m, yy, zm - w), (hi[0] - m, yy, zm - w), (hi[0] - m, yy, zm + w), (lo[0] + m, yy, zm + w)]
+        mw._face(f, q, ((lo[0] + hi[0]) / 2, y - sd, zm), "mglow", u_hint=(1, 0, 0))
+
+
 def bolts(f, pts, z, r=0.055, side=-1.0):
     for x, y in pts:
         mw.oct_tube(f, (x, y, z), (x, y, z + 0.035 * side), r, r * 0.85, "m", cap_b="mglow")
@@ -88,9 +102,12 @@ def _ld_body(f, rnd):
             mw.band(f, (CX, CY, z1 - 0.001), (CX, CY, z1 - 1.0), 0.0, r1 - 0.06, "mflat1")
     else:
         cz = -0.10
-        dark_slab(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), 0.10)
-        glow_frame(f, (-1.36, -0.36), (0.36, 1.36), cz)
-        bolts(f, [(-1.24, -0.24), (0.24, -0.24), (-1.24, 1.24), (0.24, 1.24)], cz)
+        # NO PLAIN RIM (the player): a hair of chamfer, the sunset line right at it, the bolts in
+        # the corners and a slit down every side
+        dark_slab(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5), 0.03)
+        glow_frame(f, (-1.46, -0.46), (0.46, 1.46), cz)
+        bolts(f, [(-1.36, -0.36), (0.36, -0.36), (-1.36, 1.36), (0.36, 1.36)], cz)
+        side_slits(f, (-1.5, -0.5, cz), (0.5, 1.5, 0.5))
         mw.oct_tube(f, (CX, CY, cz), (CX, CY, cz - 0.08), 0.86, 0.86, "m")
         mw.oct_tube(f, (CX, CY, cz - 0.08), (CX, CY, cz - 0.14), 0.87, 0.87, "c")
         mw.oct_tube(f, (CX, CY, cz - 0.14), (CX, CY, HEAD_Z), 0.86, 0.80, "m")
@@ -178,9 +195,10 @@ def _face_out(f, q, inside):
 
 def _saw_body(f, rnd):
     # the body on the back face: the Marlit hull's own dress, the face it joins by
-    dark_slab(f, (-1.5, -0.5, CAST_Z), (0.5, 0.5, 0.5), 0.08)
-    glow_frame(f, (-1.38, -0.38), (0.38, 0.38), CAST_Z)
-    bolts(f, [(-1.26, -0.26), (0.26, -0.26), (-1.26, 0.26), (0.26, 0.26)], CAST_Z)
+    dark_slab(f, (-1.5, -0.5, CAST_Z), (0.5, 0.5, 0.5), 0.03)
+    glow_frame(f, (-1.46, -0.46), (0.46, 0.46), CAST_Z)
+    bolts(f, [(-1.36, -0.36), (0.36, -0.36), (-1.36, 0.36), (0.36, 0.36)], CAST_Z)
+    side_slits(f, (-1.5, -0.5, CAST_Z), (0.5, 0.5, 0.5))
     # the CLAMP in the turrets' dark metal (the gun's yokes): a web out of the body and two arms
     # reaching over and under the blade to its middle, a sunset slit down every outer face
     for y0, y1 in (UP_ARM, LO_ARM):      # the web split by the blade's slot: the blade sweeps past it
