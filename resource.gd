@@ -188,7 +188,7 @@ const FOOT_Y := -0.48
 ## big"), loose and on belts alike; the body's sphere stays, the model's foot stays at FOOT_Y and its
 ## top now reaches the sphere's. A machine's MOUTH that shrinks the picture to pass it (smelter,
 ## generator, seller) divides its own scale by this.
-const ITEM_SIZE := 2.0
+const ITEM_SIZE := 1.5
 ## Where the model's foot stands below the item's origin. A HOLDER that shows an item sitting IN
 ## something (the collector's bowl, the storage's tray, the receiver's stack) puts the origin on
 ## that surface and calls `seat(foot)`: those heights and those holders were made for the model at
@@ -213,6 +213,42 @@ func _notification(what: int) -> void:
 
 func unseat() -> void:
 	seat(FOOT_Y, ITEM_SIZE)
+
+## AN ORE COUNTS ONCE, WHEN IT IS FIRST PICKED UP (Marlit's harvester line: "picked up or auto-mined
+## only"): the collector, the receiver off the ground and the hand call this. Drilled and left lying
+## it is not yet harvest, and the auto miner's ore lies by the vein until one of those takes it. The
+## mark is a meta, so carrying it about, belting it or dropping it again does not count twice.
+func harvest() -> void:
+	if type != Type.ORE or has_meta(&"harvested"):
+		return
+	set_meta(&"harvested", true)
+	Q.report("ore_collected", 1)
+	Q.report("ore_collected_%d" % metal, 1)
+
+## HOW A HOLDER SHOWS WHAT IT HOLDS (the collector's bowl, the receiver's pad): four to a layer, two
+## by two, at `HELD_SIZE`, each layer on the tallest model of the one under it. One item a step was a
+## tower - eight in a receiver rose two metres over the block (the player: "show them normally in
+## the receiver and the collector"). Offsets from the holder's base, in seat order; seat first, since
+## the heights are the seated ones.
+const HELD_SIZE := 0.55
+const HELD_STEP := 0.26              # m between the grid's columns
+const HELD_GAP := 0.02
+
+static func held_slots(items: Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	var y := 0.0
+	var layer_h := 0.0
+	for i in items.size():
+		var col: int = i % 4
+		if col == 0 and i > 0:
+			y += layer_h + HELD_GAP
+			layer_h = 0.0
+		var it = items[i]
+		var h: float = it.model_height() if is_instance_valid(it) and it.has_method("model_height") else 0.2
+		layer_h = maxf(layer_h, h)
+		var half := HELD_STEP * 0.5
+		out.append(Vector3(-half if col % 2 == 0 else half, y, -half if col < 2 else half))
+	return out
 
 ## How tall the model stands - what a holder stacking items lays the next one on.
 func model_height() -> float:
@@ -260,11 +296,13 @@ func _update_visual() -> void:
 	# the glow first: its quad has no material in the scene, and left without one it would draw
 	# as a plain white square
 	var glow := get_node_or_null("MeshInstance3D") as MeshInstance3D
-	if glow != null and glow.mesh != null:
+	if glow != null and _glow_base == null:
+		_glow_base = glow.mesh as QuadMesh
+	if glow != null and _glow_base != null:
 		glow.material_override = _glow_material(_glow_colour())
-		if _glow_base == null:
-			_glow_base = glow.mesh as QuadMesh
-		glow.mesh = _glow_quad(_glow_base, _size)
+		# the glow is for finding an item in the grass; in a holder it only blurs the pile. Its MESH
+		# goes, not the node: the model hangs under it (MeshInstance3D/ResourceMesh)
+		glow.mesh = _glow_quad(_glow_base, _size) if is_equal_approx(_size, ITEM_SIZE) else null
 	var mm: Mesh = _item_mesh(key)
 	if mm == null:
 		return

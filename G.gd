@@ -470,8 +470,8 @@ const BLOCK_META := {
 	Block.BATTERY:   {"f": "start", "g": 3, "rp": 20},
 	Block.LASER:     {"f": "start", "g": 4, "rp": 30},
 	Block.GENERATOR: {"f": "start", "g": 4, "rp": 30},
-	Block.REGEN:     {"f": "start", "g": 5, "rp": 40},
-	Block.SHIELD:    {"f": "start", "g": 5, "rp": 40},
+	Block.REGEN:     {"f": "start", "g": 4, "rp": 40},
+	Block.SHIELD:    {"f": "start", "g": 4, "rp": 40},
 	Block.RADAR:     {"f": "start", "g": 2, "rp": 15},   # утилита: включает карту-радар на машине
 	Block.SUPPORT:   {"f": "start", "g": 1, "rp": 5},    # фикс-опора: без неё нельзя встать на якорь
 	Block.SMALL_WHEEL: {"f": "start", "g": 1, "rp": 5},  # корень ветки хода
@@ -518,7 +518,7 @@ const BLOCK_META := {
 	Block.MARLIT_ARMOR8:    {"f": "marlit", "g": 4, "rp": 35},
 	Block.MARLIT_SOLAR:     {"f": "marlit", "g": 2, "rp": 20},
 	Block.MARLIT_REGEN:     {"f": "marlit", "g": 3, "rp": 40},
-	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 4, "rp": 50},
+	Block.MARLIT_WHEEL:     {"f": "marlit", "g": 2, "rp": 50},
 	Block.MARLIT_CABIN:     {"f": "marlit", "g": 2, "rp": 40},
 	Block.MARLIT_SUPPORT:   {"f": "marlit", "g": 1, "rp": 15},
 	Block.MARLIT_ROT_SUPPORT: {"f": "marlit", "g": 3, "rp": 45},

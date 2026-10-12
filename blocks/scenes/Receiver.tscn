@@ -8,27 +8,6 @@
 [sub_resource type="SphereShape3D" id="SphereShape3D_8sx5t"]
 radius = 5.0
 
-[sub_resource type="Gradient" id="Gradient_wdhqu"]
-offsets = PackedFloat32Array(0.49488413, 0.5, 1.1)
-colors = PackedColorArray(0, 0.4509804, 0.6313726, 1, 0, 0, 0, 1, 0, 0, 0, 1)
-
-[sub_resource type="GradientTexture2D" id="GradientTexture2D_ri0qi"]
-gradient = SubResource("Gradient_wdhqu")
-fill_from = Vector2(0.83080184, 0)
-repeat = 1
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6hi42"]
-blend_mode = 1
-shading_mode = 0
-albedo_texture = SubResource("GradientTexture2D_ri0qi")
-
-[sub_resource type="TorusMesh" id="TorusMesh_p6pux"]
-material = SubResource("StandardMaterial3D_6hi42")
-inner_radius = 5.1
-outer_radius = 5.0
-rings = 48
-ring_segments = 3
-
 [node name="Receiver" type="RigidBody3D" unique_id=1282227287]
 collision_layer = 2
 collision_mask = 21
@@ -52,9 +31,6 @@ collision_mask = 24
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Area3D" unique_id=1726914234]
 shape = SubResource("SphereShape3D_8sx5t")
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Area3D" unique_id=477324561]
-mesh = SubResource("TorusMesh_p6pux")
 
 [node name="resources" type="Node3D" parent="." unique_id=1227729540]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.41, 0.04)

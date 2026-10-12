@@ -85,6 +85,7 @@ func _on_timer_timeout() -> void:
 	# it holds BLOCKS, and orders are for materials.
 	if kind != "" and not kind.begins_with("chunk:"):
 		Q.report("sold_" + kind, 1)
+	Q.report("item_sold", 1)                       # Marlit's market count: anything sold
 	if price > 0:
 		if is_instance_valid(_popup) and _popup.can_merge():
 			_popup.add(price)

@@ -31,6 +31,18 @@ func _ready() -> void:
 	add_child(timer)
 	$Area3D.body_entered.connect(_on_body_entered)
 	$Area3D.body_exited.connect(_on_body_exited)
+	var ring := REACH_RING.new()
+	ring.name = "ReachRing"
+	ring.area = $Area3D
+	ring.active = _ring_wanted
+	add_child(ring)
+
+## THE REACH ON THE GROUND, the collector's ring (reach_ring.gd) in place of the torus that hung at the
+## block's height: shown on a machine, where the receiver works.
+const REACH_RING := preload("res://blocks/scripts/reach_ring.gd")
+
+func _ring_wanted() -> bool:
+	return get_parent() != null and get_parent().name == "blocks"
 
 # Переопределяем — ресурс идёт в $resources а не в self
 func _accept_item(item: Node3D) -> void:
@@ -46,23 +58,20 @@ func _accept_item(item: Node3D) -> void:
 	_push_from_inventory()   # проталкиваем СРАЗУ (по событию), а не ждём тика таймера
 	_update_take_timer()     # набрали capacity → таймер забора сам остановится
 
-## The cargo it lifts stands in its beam from STACK_BASE up, each item on the one under it
-## (`model_height` + `STACK_GAP`); it used to be a metre a step, the bubble's.
+## The cargo stands over the pad from STACK_BASE up, four to a layer (resource.held_slots); it used to
+## be a metre a step, the bubble's, then one item a step - a tower.
 const STACK_BASE := 0.9
 const RES := preload("res://resource.gd")
-const STACK_GAP := 0.06
 
-## The stack stands at the models' own size, not the loose ITEM_SIZE (resource.seat).
+## The cargo is laid four to a layer at the held size (resource.held_slots), not the loose ITEM_SIZE.
 func _seat(item: Node3D) -> void:
 	if item.has_method("seat"):
-		item.seat(RES.FOOT_Y)
+		item.seat(RES.FOOT_Y, RES.HELD_SIZE)
 
 func _stack_pos(idx: int) -> Vector3:
-	var y := STACK_BASE
-	for i in mini(maxi(idx, 0), inventory.size()):
-		var it = inventory[i]
-		y += (it.model_height() if is_instance_valid(it) and it.has_method("model_height") else 0.3) + STACK_GAP
-	return Vector3(0, y, 0)
+	var slots: PackedVector3Array = RES.held_slots(inventory)
+	var off: Vector3 = slots[idx] if idx >= 0 and idx < slots.size() else Vector3.ZERO
+	return off + Vector3(0, STACK_BASE, 0)
 
 func _fix_positions() -> void:
 	inventory = inventory.filter(func(i): return is_instance_valid(i))
@@ -95,6 +104,8 @@ func _try_take_world(body: Node3D) -> bool:
 	# завести вторую точку с той же ролью, которую потом пришлось бы отсюда выпиливать.
 	if not body.has_method("kind_key"):
 		return false                          # не материал — не наше дело
+	if body.has_method("harvest"):
+		body.harvest()
 	_accept_item(body)
 	return true
 
