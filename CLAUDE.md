@@ -2581,12 +2581,23 @@ project: read it before claiming how anything works.
 - **"SHADOWS" ARE OUR OWN NOW, AND THE ENGINE'S ARE "FULL SHADOWS (SLOW)", OFF BY DEFAULT**
   (`sun_shadows.gd`, `Main.shadows_engine`; the phone's probe with the engine's: ground 34 ms of 53,
   ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads two
-  maps over one window (`WINDOW` 128 m round the camera - the engine's own reached 80 m, so nothing is
-  lost in distance). CASTERS (`VP_SIZE` 512 px, the grass trample's road): every machine block from the
+  maps over one window (`WINDOW` 192 m round the camera, 25 cm a texel; it was 128 and the player found
+  it short). CASTERS (`VP_SIZE` 768 px, the grass trample's road): every machine block from the
   machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
-  collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`),
+  collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`), every
+  ore vein as its model's box lowered as it breaks (`ore_shadow_casters`), every loose block as its box,
   each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
-  no depth map. THE GROUND'S OWN SHADE (`TERR_N` 32 cells, drawn INTO THE SAME MAP under the casters,
+  no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF EDGES (`_box_shadow`: the projection is
+  affine, so no corners and no hull) and A MACHINE'S IS ONE MESH (`_machine_mesh`: every block's box
+  corners in machine axes, projected by ONE `Transform3D * PackedVector3Array` - `_proj` - into a
+  dynamic vertex buffer): eight `_px` and a `convex_hull` a block were 4-6 ms a frame for four
+  fighting machines on the optimize=none build, now ~0.7. NOTHING SWIMS (the player: "the shadows
+  twitch while driving"): the window's centre moves in whole texels, the ground's shade in whole cells
+  over a height grid fixed to `TERR_STEP` - a centre following the camera to the millimetre slid every
+  edge under the linear filter; measured over 14400 points round still casters, the camera sliding a
+  sub-texel step a frame for 40 frames: 492 swinging over 0.1 before, 0 after. What stands still
+  (trees, veins) is projected once (`_build_static`, every `STATIC_EVERY` or when the window moved
+  `STATIC_MOVE`) and laid off by whole pixels. THE GROUND'S OWN SHADE (`TERR_N` 48 cells, drawn INTO THE SAME MAP under the casters,
   laid off by where the camera stood when it was marched - one fetch a ground pixel): each cell marches
   `TERR_MARCH` toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`, the occlusion test's
   read), fetched `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread; a refresh starts when the
@@ -2594,8 +2605,7 @@ project: read it before claiming how anything works.
   `shadow_opacity` times its energy (the moon casts weaker); the sun is held over `MIN_SUN_Y` for it, or
   dusk shadows would run to the horizon. Nothing shades a MACHINE (its blocks are unshaded and never
   took the engine's shadow either). WITH THE ENGINE'S SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is
-  no additive sun pass to sum wrongly. Measured: casters ~0.2-0.26 ms a frame for three enemies and
-  twelve trees; on a desert seed at dusk 215 of 1024 cells dark, dunes and palms throwing long shadows
+  no additive sun pass to sum wrongly. Measured: on a desert seed at dusk (32 cells then) 215 of 1024 cells dark, dunes and palms throwing long shadows
   on the real driver. THE PHONE (200 m view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of
   which the shadows ~3 (the probe's "sun shadows" row measures them since). On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
   before this change as after - not a regression.
