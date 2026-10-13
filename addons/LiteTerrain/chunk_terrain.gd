@@ -330,12 +330,31 @@ const PLAIN_MASK := 0.05
 const PLAIN_SPAN := 14.0
 const PLAIN_RISE := 2.0
 func _plain_near(from: Vector3) -> Vector3:
+	return _plain_search(from, PLAIN_MAX)[1]
+
+## THE NEAREST PLAIN WITHIN `reach` of a world point, or null: the respawn's question
+## (`camera_controller._respawn_point`), the same rule a new world opens by. Flat ground is all plain.
+func plain_near(from: Vector3, reach: float) -> Variant:
+	if _gen == null:
+		return null
+	if flat_ground:
+		return from
+	var local: Vector3 = global_transform.affine_inverse() * from
+	var got: Array = _plain_search(local, reach)
+	if not got[0]:
+		return null
+	var p: Vector3 = got[1]
+	return global_transform * Vector3(p.x, _gen.height_at(p.x, p.z), p.z)
+
+## [found a plain, the point]: the first plain on rings `PLAIN_STEP` apart out to `reach`, else the
+## least bad point seen.
+func _plain_search(from: Vector3, reach: float) -> Array:
 	var b := _biomes()
 	var nz: Callable = b.noise
 	var best := from
 	var best_score := INF
 	var r := 0.0
-	while r <= PLAIN_MAX:
+	while r <= reach:
 		var n: int = 1 if r == 0.0 else PLAIN_DIRS
 		for i in n:
 			var a := TAU * float(i) / float(n)
@@ -351,13 +370,13 @@ func _plain_near(from: Vector3) -> Vector3:
 					lo = minf(lo, h)
 					hi = maxf(hi, h)
 			if bad <= PLAIN_MASK and hi - lo <= PLAIN_RISE:
-				return Vector3(p.x, from.y, p.y)
+				return [true, Vector3(p.x, from.y, p.y)]
 			var score: float = bad + (hi - lo) / PLAIN_RISE
 			if score < best_score:
 				best_score = score
 				best = Vector3(p.x, from.y, p.y)
 		r += PLAIN_STEP
-	return best
+	return [false, best]
 
 ## Мир поднимается ЗДЕСЬ И СРАЗУ: считать заранее нечего, первый чанк родится к первому кадру.
 ## around — где стоит игрок; вокруг неё и строим первое кольцо.

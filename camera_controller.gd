@@ -461,6 +461,9 @@ const RESPAWN_TRIES: int = 16           # проб на кольцо
 const RESPAWN_ENEMY_MARGIN: float = 60.0
 const RESPAWN_FALLBACK_DETECT: float = 40.0   # если у врага нет поля — значение по умолчанию
 const RESPAWN_CLEARANCE: float = 3.0    # над рельефом
+## How far from a safe candidate the respawn looks for a plain (`ChunkTerrain.plain_near`): ten rings,
+## 160 points at most, a few hundred ms on the debug build - spent behind the death screen.
+const RESPAWN_PLAIN_REACH: float = 400.0
 
 func _spawn_starter_vehicle(pos: Vector3) -> Node:
 	var scene: PackedScene = load("res://player_vehicle.tscn")
@@ -487,7 +490,24 @@ func _spawn_starter_vehicle(pos: Vector3) -> Node:
 ## первая такая и возвращается. Если не нашлось ни одной за все кольца — берём САМУЮ
 ## БЕЗОПАСНУЮ из просмотренных: лучше возродиться на краю чужого радиуса, чем в его центре.
 ## Высоту не фильтруем: в мире НЕТ ВОДЫ — низина это просто низина, и отбраковывать её не за что.
+## A RESPAWN OPENS ON A PLAIN, as a new world does (the player's call): the first safe candidate is
+## moved to the nearest plain (`ChunkTerrain.plain_near`) and kept there if that is safe too; a
+## plain no candidate can reach safely leaves the plain safe point as before.
 func _respawn_point(death_pos: Vector3) -> Vector3:
+	var p0: Vector3 = _respawn_safe(death_pos)
+	var map: Node = get_node_or_null("/root/Main/map")
+	if map == null or not map.has_method("plain_near"):
+		return p0
+	var threats: Array = _enemy_threats()
+	var q = map.plain_near(p0, RESPAWN_PLAIN_REACH)
+	if q is Vector3:
+		var pq: Vector3 = q
+		pq.y += RESPAWN_CLEARANCE
+		if _enemy_margin(pq, threats) >= 0.0 or _enemy_margin(p0, threats) < 0.0:
+			return pq
+	return p0
+
+func _respawn_safe(death_pos: Vector3) -> Vector3:
 	var threats: Array = _enemy_threats()
 	var best: Vector3 = death_pos + Vector3(0.0, RESPAWN_CLEARANCE, 0.0)
 	var best_margin: float = -INF
