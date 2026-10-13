@@ -122,8 +122,6 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 ## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
 @export var profiler_on_start: bool = false
 
-const WORLD_WIND := preload("res://world_wind.gd")
-
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
 	_load_settings()
@@ -136,8 +134,6 @@ func _ready() -> void:
 	get_window().size_changed.connect(_apply_ui_scale)
 	_apply_ui_scale()
 	_setup_pc_input_map()
-	# A rare gust of wind carrying what the ground has (leaves, snow, sand, dust), in the world.
-	add_child(WORLD_WIND.new())
 	# ПРИВЕТСТВИЕ МЕХАНИКА — отсюда, потому что мир это мы. Q — автолоад: он поднимается ещё до
 	# первой сцены, и сказанное им в _ready доставалось главному меню. Отложенно: реплика уходит
 	# в Dialogue, а тот проверяет, что мир уже в дереве.
