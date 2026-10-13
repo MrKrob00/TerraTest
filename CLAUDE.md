@@ -2056,7 +2056,11 @@ project: read it before claiming how anything works.
   is built there and the fresh machine is seated on it before the kit drops. The seed decides it, so
   a world always opens on one spot; a saved world comes back where it was. Measured on three seeds:
   4242 opened in a canyon (mask 1.00) and now starts 248 m away on a plain, all three within 2 m of
-  rise under the machine.
+  rise under the machine. A RESPAWN OPENS ON A PLAIN TOO (`camera_controller._respawn_point`, the player's call):
+  the first point clear of every enemy's sight is moved to the nearest plain within
+  `RESPAWN_PLAIN_REACH` (400 m, `ChunkTerrain.plain_near`, the same search) and kept there if that is
+  clear too. Measured on seed 4242, five deaths in a canyon (mask 0.92-1.00): every respawn on a
+  plain (mask 0.00-0.03, 0.9-1.8 m of rise), 125-409 m off, 3-101 ms of search behind the death screen.
 - WAITING FOR THE TERRAIN IS MEASURED IN SECONDS, NEVER IN FRAMES (`world_persist.TERRAIN_WAIT_SEC`,
   and `resource_nodes` was the first to learn it). Readiness is worker threads computing heights —
   real seconds, about 3.7 of them for the world. A frame count guesses at what those seconds cost
