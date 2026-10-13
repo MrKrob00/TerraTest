@@ -2480,12 +2480,12 @@ project: read it before claiming how anything works.
   and not visible side by side. What was NOT the cost: drawing the sky itself (a clear-colour
   background with lighting still from the sky: 0%), the grass trample viewport (0%), the terrain's
   per-pixel detail (4%). The render scale remains the biggest lever and belongs to the player.
-- **RENDER SCALE SAVES PIXELS AND NOTHING ELSE** (the player: "lowering the render scale gives the
-  same fps"). It works - the viewport's `scaling_3d_scale` follows the slider - but a quarter of the
-  pixels bought 15% of the frame even on llvmpipe, a CPU rasteriser as pixel-bound as anything
-  (70-76 ms at 1.0, 60-62 at 0.5, alternated three times): the frame goes to scripts, physics, draw
-  submission, vertices and the fixed-size shadow map. On the phone the same, so the levers are draw
-  calls, triangles and ticks, not the scale. The settings hint says so.
+- **ON THE PHONE RENDER SCALE IS A REAL LEVER, ON LLVMPIPE IT IS NOT** (the player: "lowering the
+  render scale gives the same fps"). The slider works - `scaling_3d_scale` follows it. Llvmpipe gave
+  a quarter of the pixels 15% of the frame (70-76 ms at 1.0, 60-62 at 0.5), and the first verdict
+  "the frame is not pixels" was written from that - WRONG for the device: the phone's probe took
+  22.4 ms of 47 off at x0.5. The phone is FILL-BOUND, and the ground's fragment shader is the fill
+  (below). If the slider seems to do nothing, the auto scaler is on and owns the scale.
 - **THE DEVICE MEASURES ITS OWN FRAME, LAYER BY LAYER** (`frame_probe.gd`, PROBE on the profiler
   panel; the player: "200 m view 18 fps with shadows, 28 without; 10 km 13 / 25 - something near us
   is expensive"). Each layer - shadows, ground and veins, the grass and snow lift, veins and trees,
@@ -2502,7 +2502,25 @@ project: read it before claiming how anything works.
   (`rasterizer_scene_gles3.cpp`, `_render_list_template`): ONE shadowed directional is drawn INSIDE
   the base pass - passes = positional light passes + directional shadow count, at least one - so
   it is NOT a second pass over the ground; what shadows add is the depth pass over the casters
-  within `directional_shadow_max_distance` and the shadow lookup in every lit fragment.
+  within `directional_shadow_max_distance` and the shadow lookup in every lit fragment. THE PHONE'S
+  SECOND TABLE (200 m view, shadows on, 47 ms; the measured layers then went into `SKIP`): shadows
+  13.1, shadow distance halved 0.1 (so the cost is RECEIVING, not the caster pass), ground 28.0 of
+  which the near levels 0-1 are 25.0 and the far 1.4; the ground's own shader with
+  `shadows_disabled` 7.4, `unshaded` 19.7, a plain unshaded material 27.2; 3D scale x0.5 22.4. So
+  ~12 ms of the ground is the engine's LIGHTING and ~7 the shadow lookup, all per pixel near the
+  camera - which is the FAST GROUND below.
+- **WITH SHADOWS OFF THE GROUND IS UNSHADED AND LIGHTS ITSELF** (`ChunkTerrain.fast_ground`, set by
+  `Main._apply_shadows`; `glsl.gdshader` `FAST_GROUND`). The same shader with `render_mode unshaded`
+  and `#define FAST_GROUND` (the variant is built from the material's own code, every uniform
+  carried, so nothing is kept twice): a per-vertex lambert against the globals `sun_dir`,
+  `ground_amb`, `ground_sun` that `day_cycle._ground_light` writes, times `ALBEDO`. The engine's
+  vertex lighting is that formula too, but an unshaded material skips the whole light loop and the
+  ambient pass per fragment - the phone's 19.7 ms against 7.4 for `shadows_disabled` alone. THE
+  FACTORS ARE FITTED, NOT DERIVED (`GROUND_SUN_DAY` 0.5, `_LOW` 0.69, `GROUND_AMB_NIGHT` 0.86,
+  `GROUND_WRAP` 0.55): drawn on the real driver beside the lit ground at six hours, the factors
+  searched for the least difference - ~1-2/255 at most hours, 16-18 at the two moments the sun
+  crosses the horizon, by eye the same ground; the tints are taken as sRGB, converting them to
+  linear made the fit worse. Shadows on, the lit shader is back.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own

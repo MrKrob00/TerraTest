@@ -231,6 +231,10 @@ func _apply_shadows() -> void:
 	var light := get_node_or_null("DirectionalLight3D2") as DirectionalLight3D
 	if light:
 		light.shadow_enabled = shadows_enabled
+	# no shadow to receive - the ground lights itself, unshaded (ChunkTerrain.fast_ground)
+	var map := get_node_or_null("map")
+	if map != null and "fast_ground" in map:
+		map.set("fast_ground", not shadows_enabled)
 	var soft: bool = shadows_enabled and shadows_soft
 	RenderingServer.directional_shadow_atlas_set_size(SOFT_SHADOW_SIZE if soft else HARD_SHADOW_SIZE, true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(

@@ -2004,11 +2004,52 @@ func _get_material() -> Material:
 	return m
 
 ## Свой экземпляр базового материала: параметры пишутся в него, а не в общий ресурс.
+## THE FAST GROUND: the ground's own shader as an unshaded variant that lights itself
+## (glsl.gdshader, FAST_GROUND). Set while shadows are off (Main._apply_shadows): unshaded receives no
+## shadow, and with none to receive the engine's lighting was 12 ms of the phone's 47 ms frame
+## (frame_probe, "ground unshaded" against "ground no shadow"). It swaps the SHADER of the one
+## material every chunk and HLOD cluster shares, carrying every uniform across.
+var fast_ground: bool = false:
+	set(v):
+		if v == fast_ground:
+			return
+		fast_ground = v
+		_apply_fast_ground()
+var _lit_shader: Shader = null
+var _fast_shader: Shader = null
+
+func _apply_fast_ground() -> void:
+	var sm := _mat as ShaderMaterial
+	if sm == null or sm.shader == null:
+		return
+	if _lit_shader == null:
+		_lit_shader = sm.shader
+	var to: Shader = _lit_shader
+	if fast_ground:
+		if _fast_shader == null:
+			_fast_shader = Shader.new()
+			_fast_shader.code = _lit_shader.code.replace(
+					"render_mode diffuse_lambert, specular_disabled;",
+					"render_mode unshaded;\n#define FAST_GROUND")
+		to = _fast_shader
+	if sm.shader == to:
+		return
+	var keep := {}
+	for u in sm.shader.get_shader_uniform_list():
+		keep[u["name"]] = sm.get_shader_parameter(u["name"])
+	sm.shader = to
+	for k in keep:
+		sm.set_shader_parameter(k, keep[k])
+
 func _setup_materials(base: Material) -> void:
 	if base is ShaderMaterial:
 		_mat = base.duplicate()
 		(_mat as ShaderMaterial).set_shader_parameter("grass_fade", grass_fade())
 		_push_biomes()
+		_lit_shader = null
+		_fast_shader = null
+		if fast_ground:
+			_apply_fast_ground()
 	else:
 		_mat = base
 
