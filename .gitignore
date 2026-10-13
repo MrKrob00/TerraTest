@@ -26,3 +26,7 @@ music/**/*.wav.import
 # Кэш байткода Python от генераторов в art/ — пересоздаётся сам при каждом запуске.
 __pycache__/
 *.pyc
+
+# Python packages downloaded by tools, never part of the game
+*.whl
+__pycache__/
