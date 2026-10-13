@@ -1650,6 +1650,11 @@ func _on_soft_shadows(on: bool) -> void:
 	if mn and mn.has_method("set_shadows_soft"):
 		mn.set_shadows_soft(on)
 
+func _on_full_shadows(on: bool) -> void:
+	var mn: Node = get_node_or_null("/root/Main")
+	if mn and mn.has_method("set_shadows_engine"):
+		mn.set_shadows_engine(on)
+
 func _on_hlod(on: bool) -> void:
 	var mn: Node = get_node_or_null("/root/Main")
 	if mn and mn.has_method("set_hlod"):
@@ -1721,15 +1726,16 @@ func _build_settings_tab() -> void:
 			if mn and mn.has_method("set_shadows_enabled"):
 				mn.set_shadows_enabled(on))
 
-		var soft_btn := CheckButton.new()
-		soft_btn.text = tr("Soft shadows")
-		soft_btn.button_pressed = bool(main.get("shadows_soft") == true)
-		soft_btn.add_theme_font_size_override("font_size", 14)
-		_extra_vb.add_child(soft_btn)
-		soft_btn.toggled.connect(_on_soft_shadows)
+		var full_btn := CheckButton.new()
+		full_btn.text = tr("Full shadows (slow)")
+		full_btn.button_pressed = bool(main.get("shadows_engine") == true)
+		full_btn.add_theme_font_size_override("font_size", 14)
+		_extra_vb.add_child(full_btn)
+		full_btn.toggled.connect(_on_full_shadows)
 
 		var shadow_hint := Label.new()
-		shadow_hint.text = tr("Turn off if FPS drops — the heaviest setting.")
+		shadow_hint.text = tr("Shadows are fast: machines and trees on the ground. Full shadows also shade hills and cost about half the frame on a phone.")
+		shadow_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		shadow_hint.add_theme_font_size_override("font_size", 12)
 		shadow_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(shadow_hint)

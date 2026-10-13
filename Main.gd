@@ -39,6 +39,12 @@ var shadows_enabled: bool = true     # тени от DirectionalLight3D2 (сам
 ## shadowed sun is already drawn as a second pass over the ground in Compatibility (8 of 25 fps,
 ## measured on the device, see VehicleBlock._set_shadows), and the soft filter samples it five times.
 var shadows_soft: bool = true
+## THE ENGINE'S SHADOWS ARE A SETTING OF THEIR OWN, OFF BY DEFAULT ("Full shadows (slow)"): the phone's
+## probe put them at ~23 ms of a 53 ms frame on the ground alone. "Shadows" means the fast ones
+## (`sun_shadows.gd`: casters projected along the sun onto the unshaded ground).
+var shadows_engine: bool = false
+const SUN_SHADOWS := preload("res://sun_shadows.gd")
+var _sun_shadows: Node = null
 ## HOW FAR THE GROUND IS DRAWN (the player's setting, VIEW_MIN..VIEW_MAX m): the terrain's
 ## `view_distance`, the camera's far plane and the haze, which is stretched or squeezed with it so
 ## the edge of the drawn world always sits inside the haze instead of ending on a hard line.
@@ -227,15 +233,26 @@ func set_shadows_soft(on: bool) -> void:
 	_apply_shadows()
 	_save_settings()
 
+func set_shadows_engine(on: bool) -> void:
+	shadows_engine = on
+	_apply_shadows()
+	_save_settings()
+
 func _apply_shadows() -> void:
+	var engine: bool = shadows_enabled and shadows_engine
 	var light := get_node_or_null("DirectionalLight3D2") as DirectionalLight3D
 	if light:
-		light.shadow_enabled = shadows_enabled
-	# no shadow to receive - the ground lights itself, unshaded (ChunkTerrain.fast_ground)
+		light.shadow_enabled = engine
+	# no engine shadow to receive - the ground lights itself, unshaded (ChunkTerrain.fast_ground)
 	var map := get_node_or_null("map")
 	if map != null and "fast_ground" in map:
-		map.set("fast_ground", not shadows_enabled)
-	var soft: bool = shadows_enabled and shadows_soft
+		map.set("fast_ground", not engine)
+	if _sun_shadows == null:
+		_sun_shadows = SUN_SHADOWS.new()
+		_sun_shadows.name = "SunShadows"
+		add_child(_sun_shadows)
+	_sun_shadows.set("active", shadows_enabled and not engine)
+	var soft: bool = engine and shadows_soft
 	RenderingServer.directional_shadow_atlas_set_size(SOFT_SHADOW_SIZE if soft else HARD_SHADOW_SIZE, true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(
 			RenderingServer.SHADOW_QUALITY_SOFT_VERY_LOW if soft else RenderingServer.SHADOW_QUALITY_HARD)
@@ -313,6 +330,7 @@ func _save_settings() -> void:
 		"manual_scale": manual_scale,
 		"shadows_enabled": shadows_enabled,
 		"shadows_soft": shadows_soft,
+		"shadows_engine": shadows_engine,
 		"view_distance": view_distance,
 		"hlod_on": hlod_on,
 		"ui_scale": ui_scale,
@@ -328,6 +346,7 @@ func _load_settings() -> void:
 		manual_scale = clampf(float(parsed.get("manual_scale", 0.75)), MANUAL_SCALE_MIN, MANUAL_SCALE_MAX)
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		shadows_soft = bool(parsed.get("shadows_soft", true))
+		shadows_engine = bool(parsed.get("shadows_engine", false))
 		view_distance = clampf(float(parsed.get("view_distance", VIEW_DEFAULT)), VIEW_MIN, VIEW_MAX)
 		hlod_on = bool(parsed.get("hlod_on", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)

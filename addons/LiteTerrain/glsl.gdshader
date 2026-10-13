@@ -120,7 +120,13 @@ global uniform vec4 haze_range;
 global uniform vec4 sun_dir;
 global uniform vec4 ground_amb;
 global uniform vec4 ground_sun;
-varying vec3 v_light;
+varying vec3 v_sun;
+// THE SUN'S SHADOW (sun_shadows.gd): a top-down window of casters projected along the light, one
+// texel a pixel. sun_shadow_strength 0 = no map (shadows off): the fetch is skipped.
+uniform sampler2D sun_shadow_map : hint_default_black, filter_linear;
+uniform vec2 sun_shadow_center = vec2(0.0);
+uniform float sun_shadow_size = 128.0;
+uniform float sun_shadow_strength = 0.0;
 #endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
@@ -179,7 +185,7 @@ void vertex() {
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
     float ndl = dot(wn, normalize(sun_dir.xyz));
-    v_light = ground_amb.rgb + ground_sun.rgb * clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
+    v_sun = ground_sun.rgb * clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
 #endif
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
@@ -294,7 +300,14 @@ void fragment() {
     // the root rather than a bright patch.
     ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
 #ifdef FAST_GROUND
-    ALBEDO   *= v_light;
+    float shade = 0.0;
+    if (sun_shadow_strength > 0.0) {
+        vec2 suv = (v_wpos.xz - sun_shadow_center) / sun_shadow_size + vec2(0.5);
+        vec2 edge = min(suv, vec2(1.0) - suv);
+        float inside = clamp(min(edge.x, edge.y) * 12.0, 0.0, 1.0);   // fades out over the window's last 8%
+        shade = texture(sun_shadow_map, suv).r * inside * sun_shadow_strength;
+    }
+    ALBEDO   *= ground_amb.rgb + v_sun * (1.0 - shade);
 #endif
     ROUGHNESS = 0.9;
 

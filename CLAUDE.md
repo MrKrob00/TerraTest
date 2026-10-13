@@ -2578,6 +2578,20 @@ project: read it before claiming how anything works.
   searched for the least difference - ~1-2/255 at most hours, 16-18 at the two moments the sun
   crosses the horizon, by eye the same ground; the tints are taken as sRGB, converting them to
   linear made the fit worse. Shadows on, the lit shader is back.
+- **"SHADOWS" ARE OUR OWN NOW, AND THE ENGINE'S ARE "FULL SHADOWS (SLOW)", OFF BY DEFAULT**
+  (`sun_shadows.gd`, `Main.shadows_engine`; the phone's probe with the engine's: ground 34 ms of 53,
+  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads one
+  texel of a top-down window (`WINDOW` 128 m, `VP_SIZE` 512 px, round the camera, the grass trample's
+  road): every caster drawn as its silhouette PROJECTED ALONG THE LIGHT onto the ground under it - a
+  machine block by block from the machine's copy of each collider (so a fitted drill casts its hull),
+  a tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`). 2D
+  polygons on a SubViewport: no 3D pass, no light pass, no depth map; strength is the light's own
+  `shadow_opacity` times its energy, so the moon casts weaker. The sun is held over `MIN_SUN_Y` for
+  it, or dusk shadows would run to the horizon. WHAT IT CANNOT DO: a hill shades nothing, and nothing
+  shades a machine (its blocks were never lit by the engine's shadow - they are unshaded). Measured
+  on llvmpipe: the casters' pass ~0.2-0.26 ms a frame for three enemies and twelve trees, the frame
+  +4-10 ms there (llvmpipe is pixel-bound); the phone decides. On llvmpipe the ENGINE's shadows do not
+  show at all on the proving ground, before this change as after - not a regression.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
