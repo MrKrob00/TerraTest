@@ -22,7 +22,7 @@ const CYCLE_MIN := 0.55          # seconds one card lives
 const CYCLE_MAX := 1.2
 const SIZE_MIN := 0.22
 const SIZE_MAX := 0.5
-const HOLD_DIST := 10.0
+const HOLD_DIST := 30.0         # on the ground's plan (the player's call: 10 m read as "drive into it")
 const HOLD_TIME := 3.0
 
 var locked: bool = false
@@ -100,8 +100,9 @@ func _tick_hold(delta: float) -> void:
 	var near: bool = false
 	if not locked:
 		var p: Node3D = _player()
-		near = p != null and p.global_position.distance_squared_to(global_position) \
-				<= HOLD_DIST * HOLD_DIST
+		if p != null:
+			var d := p.global_position - global_position
+			near = d.x * d.x + d.z * d.z <= HOLD_DIST * HOLD_DIST
 	# Leaving (or a lock coming back) undoes it at the same pace, so the orb visibly fills back in.
 	_hold = clampf(_hold + (delta if near else -delta), 0.0, HOLD_TIME)
 	if _hold >= HOLD_TIME:

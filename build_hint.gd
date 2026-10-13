@@ -126,6 +126,40 @@ static func satisfied_by(bm: Node, c: Vector3i, bt: int, yaw: float) -> bool:
 		return true
 	return absf(angle_difference(float(bm.yaw_at(c.x, c.y, c.z)), yaw)) < 0.05
 
+## CAN THE BLOCK GO HERE NOW: one of the cell's six neighbours is already taken on the machine.
+## A finger on a cell with nothing beside it asks for a block that cannot be placed yet - a wheel
+## before the hull block it hangs on, a receiver at the far end of a line with no belt there yet
+## (the player's report). Neighbours by the grid, not by attach faces: the plan is drawn to join.
+const _NEIGH := [Vector3i(1, 0, 0), Vector3i(-1, 0, 0), Vector3i(0, 1, 0), Vector3i(0, -1, 0),
+		Vector3i(0, 0, 1), Vector3i(0, 0, -1)]
+func reachable() -> bool:
+	if _map == null or not is_instance_valid(_map) or not ("map" in _map):
+		return true
+	var m: Dictionary = _map.get("map")
+	for d in _NEIGH:
+		if m.has(cell + d):
+			return true
+	return false
+
+## The open ghost to point at among `hints`: a REACHABLE one, earliest in the plan's own order
+## (`hints` is in plan order - the hull before the wheels on it, the belt nearest the seller first),
+## of type `want` when given. None reachable - the nearest to `from`, as before. One answer for the
+## tutorial and the quest arcs.
+static func pick(hints: Array, want: int, from: Vector3) -> Variant:
+	for h in hints:
+		if is_instance_valid(h) and (want < 0 or (h as BuildHint).block_type == want) and (h as BuildHint).reachable():
+			return h
+	var best = null
+	var best_d: float = INF
+	for h in hints:
+		if not is_instance_valid(h) or (want >= 0 and (h as BuildHint).block_type != want):
+			continue
+		var d: float = from.distance_squared_to((h as Node3D).global_position)
+		if d < best_d:
+			best_d = d
+			best = h
+	return best
+
 ## Мировая точка призрака — для пальца наставника.
 func target_position() -> Vector3:
 	return global_position

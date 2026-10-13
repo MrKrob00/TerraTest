@@ -92,7 +92,7 @@ func _ready() -> void:
 	if FileAccess.file_exists(G.slot_path(SAVE_FILE)):
 		await _load_world()        # it awaits inside (unfreeze after teleport), so wait for it
 	else:
-		_fresh_start()
+		await _fresh_start()
 	world_ready = true
 	var t := Timer.new()
 	t.wait_time = AUTOSAVE_EVERY
@@ -638,8 +638,31 @@ func _fresh_start() -> void:
 	var primary = _primary_machine()
 	if primary == null or not primary.has_method("award_block_list"):
 		return
+	await _to_start_point(primary)
+	if not is_instance_valid(primary):
+		return
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	primary.award_block_list(G.STARTER_KIT)
+
+## A NEW WORLD OPENS ON THE NEAREST PLAIN (`ChunkTerrain.start_point`, picked from the seed before
+## the first ring was built there): the scene's own spot could be a canyon floor or a mountainside.
+## Frozen, seated on the highest ground under its footprint, released two frames on - as a restore.
+func _to_start_point(veh: Node3D) -> void:
+	var terr: Node = await _await_terrain(TERRAIN_WAIT_SEC)
+	if terr == null or not is_instance_valid(veh) or not (terr.get("start_point") is Vector3):
+		return
+	var rb := veh as RigidBody3D
+	if rb != null:
+		rb.freeze = true
+		rb.linear_velocity = Vector3.ZERO
+		rb.angular_velocity = Vector3.ZERO
+	var pos: Vector3 = terr.get("start_point")
+	pos.y = veh.global_position.y
+	veh.global_position = _seat_machine(veh, pos, terr)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(rb):
+		rb.freeze = false
 
 # ── Save / load ─────────────────────────────────────────────────────────────
 func _save_world() -> void:
@@ -731,14 +754,14 @@ func _outposts_state() -> Array:
 func _load_world() -> void:
 	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.READ)
 	if f == null:
-		_fresh_start()
+		await _fresh_start()
 		return
 	var json := JSON.new()
 	var err := json.parse(f.get_as_text())
 	f.close()
 	if err != OK or typeof(json.get_data()) != TYPE_DICTIONARY:
 		_quarantine_save("файл не разобрался как JSON")
-		_fresh_start()
+		await _fresh_start()
 		return
 	var data: Dictionary = json.get_data()
 	var machines: Array = data.get("machines", [])
@@ -747,11 +770,11 @@ func _load_world() -> void:
 		# The save exists but holds no machine (written before the machine appeared, say). Silently leaving
 		# the player with a bare cabin and no blocks is a dead end, so: new game.
 		_quarantine_save("в сейве нет машин")
-		_fresh_start()
+		await _fresh_start()
 		return
 	if not _layout_ok(machines[0].get("layout", [])):
 		_quarantine_save("раскладка машины повреждена")
-		_fresh_start()
+		await _fresh_start()
 		return
 	# TERRAIN FIRST. Levelled pads must be replayed BEFORE machines return: a quest base stands on flat
 	# ground, and restored before its edit it would hang in the air (or sink, if the pad was cut down).

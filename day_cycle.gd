@@ -74,7 +74,31 @@ func set_phase(p: float) -> void:
 	phase = fposmod(p, 1.0)
 	_apply()
 
+## THE SUN UNDER RENDER SCALING, WITH SHADOWS (a Godot GLES3 fault, `drivers/gles3/shaders/scene.glsl`):
+## a shadowed directional light is drawn as an ADDITIVE pass, and both the base and the additive pass
+## convert to sRGB before the framebuffer adds them. Straight to the screen (3D scale 1.0) each pass is
+## tonemapped first; through the intermediate buffer (any other scale) the sum is decoded and
+## tonemapped in post, so the sun's share comes out far too bright and the contrast goes - the
+## player's "at any scale but 100% the lighting disappears". Measured on the real driver: no
+## shadows, every scale draws alike; with shadows and the light off, alike; with shadows on, the
+## meadow 74 -> 109 of 255 at 0.8. So under scaling with shadows the sun is dimmed, by factors
+## FITTED against the 1.0 picture at noon (POST_SUN_DAY: meadow 76 against 74, a block 106 against
+## 108) and at dusk and night (POST_SUN_LOW), blended like the fast ground's `_ground_low`.
+const POST_SUN_DAY := 0.5
+const POST_SUN_LOW := 0.37
+var _scaled := false
+
+func _scaled_shadows() -> bool:
+	if _light == null or not _light.shadow_enabled:
+		return false
+	var vp := get_viewport()
+	return vp != null and not is_equal_approx(vp.scaling_3d_scale, 1.0)
+
 func _process(delta: float) -> void:
+	var sc := _scaled_shadows()
+	if sc != _scaled:
+		_scaled = sc
+		_apply()
 	if G.proving_ground:
 		return
 	phase = fposmod(phase + delta / day_length, 1.0)
@@ -103,6 +127,8 @@ func _apply() -> void:
 	var moon := -sun
 	var n := smoothstep(0.06, -0.14, sun.y)              # 0 day, 1 night
 	var dusk := 1.0 - smoothstep(0.02, 0.38, absf(sun.y))
+	var gain: float = lerpf(POST_SUN_DAY, POST_SUN_LOW, maxf(n, 1.0 - smoothstep(0.15, 0.6, sun.y))) \
+			if _scaled else 1.0
 	if _sky != null:
 		_sky.set_shader_parameter("sun_dir", sun)
 		_sky.set_shader_parameter("moon_dir", moon)
@@ -110,12 +136,12 @@ func _apply() -> void:
 	if _light != null:
 		if sun.y > -0.03:
 			_light.look_at_from_position(Vector3.ZERO, -sun, Vector3.UP if absf(sun.y) < 0.99 else Vector3.FORWARD)
-			_light.light_energy = _base_energy * smoothstep(-0.03, 0.22, sun.y)
+			_light.light_energy = _base_energy * smoothstep(-0.03, 0.22, sun.y) * gain
 			_light.light_color = DUSK_COLOR.lerp(SUN_COLOR, smoothstep(0.08, 0.45, sun.y))
 			_light.shadow_opacity = day_shadow
 		else:
 			_light.look_at_from_position(Vector3.ZERO, -moon, Vector3.UP if absf(moon.y) < 0.99 else Vector3.FORWARD)
-			_light.light_energy = _base_energy * MOON_SHARE * smoothstep(-0.03, 0.22, moon.y)
+			_light.light_energy = _base_energy * MOON_SHARE * smoothstep(-0.03, 0.22, moon.y) * gain
 			_light.light_color = MOON_COLOR
 			_light.shadow_opacity = night_shadow
 	if _light != null:
