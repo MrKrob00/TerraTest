@@ -82,7 +82,8 @@ func _ready() -> void:
 ## 67: the Marlit support and rotating support.
 ## 68: the Marlit drill.
 ## 69: the Marlit laser drill and saw.
-const RECIPE := 69
+## 70: the Marlit wheel without its bearing plate.
+const RECIPE := 70
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),

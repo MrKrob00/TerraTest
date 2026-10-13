@@ -383,7 +383,7 @@ WH_SIDE_IN = 0.50
 WH_Z = (-1.45, -0.30)
 WH_N = 16
 WH_HUB = 0.18
-PLATE_Z = 0.30
+FACE_Z = 0.5                 # the hull face: the wheel has no plate, its parts bolt straight to it
 
 
 def _ring(C, r, z, n=WH_N, off=0.5):
@@ -481,16 +481,14 @@ def _shaft(f):
 
 
 def build_marlit_wheel2(pk, img):
-    import random as _r
-    rnd = _r.Random(73)
     names = ["body", "armup", "armlo", "knuckle", "shaft", "dbody", "drod", "spring", "tyre"]
     parts = {"marlit_wheel2_" + n: [] for n in names}
     P_ = lambda n: parts["marlit_wheel2_" + n]          # noqa: E731
     b = P_("body")
-    # the bearing plate on the back face, the faction's window on its front
-    em.marlit_box(b, (-1.38, -0.48, PLATE_Z), (0.38, 1.38, 0.5), 0.06, rnd, {(2, 0): "window"})
+    # NO BEARING PLATE (the player: "the ordinary Marlit wheel without the platform too"): everything
+    # that was bolted to it now reaches the hull face itself, FACE_Z; nothing else moved
     # the gearbox, vented, with its output flange
-    mw.mbox(b, (-0.84, -0.32, 0.14), (-0.16, 0.06, PLATE_Z))
+    mw.mbox(b, (-0.84, -0.32, 0.14), (-0.16, 0.06, FACE_Z))
     for x0, x1 in ((-0.80, -0.66), (-0.34, -0.20)):
         _quad(b, [(x0, -0.28, 0.14 - 0.004), (x1, -0.28, 0.14 - 0.004), (x1, 0.02, 0.14 - 0.004),
                   (x0, 0.02, 0.14 - 0.004)], (-0.5, -0.1, 0.2), "mvent")
@@ -499,13 +497,13 @@ def build_marlit_wheel2(pk, img):
     for piv in (PIV_UP, PIV_LO):
         for x in ARM_X:
             for dx in (-0.09, 0.09):
-                em.obox(b, (x + dx, piv[1], (piv[2] + PLATE_Z) / 2 + 0.01), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                        (0.025, 0.08, (PLATE_Z - piv[2]) / 2 + 0.07),
+                em.obox(b, (x + dx, piv[1], (piv[2] - 0.06 + FACE_Z) / 2), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+                        (0.025, 0.08, (FACE_Z - piv[2] + 0.06) / 2),
                         ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
     # the dampers' top mounts
     for top in DAMP_TOP:
-        em.obox(b, (top[0], top[1], (top[2] + PLATE_Z) / 2), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-                (0.08, 0.06, (PLATE_Z - top[2]) / 2 + 0.02), ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
+        em.obox(b, (top[0], top[1], (top[2] - 0.02 + FACE_Z) / 2), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+                (0.08, 0.06, (FACE_Z - top[2] + 0.02) / 2), ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"])
     _arm(P_("armup"), PIV_UP, 0.10)
     _arm(P_("armlo"), PIV_LO, 0.12)
     # the hub carrier: an upright between the two ball joints, the hub stub out to the tyre
