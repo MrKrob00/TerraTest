@@ -68,7 +68,7 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 @export var enable_occlusion_culling: bool = true
 
 ## How far ground is drawn. The menu backdrop draws much less (menu_stage_3d MENU_VIEW).
-var view_distance: float = 1400.0
+@export var view_distance: float = 1400.0
 ## ЗАПАС ЗА КРАЕМ ЭКРАНА, В МЕТРАХ, И ТОЛЬКО У БОКОВЫХ ПЛОСКОСТЕЙ.
 ##
 ## У ближней плоскости запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит

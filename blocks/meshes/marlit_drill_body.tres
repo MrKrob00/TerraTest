@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://dl70iai356pcg"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_drill_texture.png" id="1_muhbc"]
+[ext_resource type="Texture2D" uid="uid://bmrldrill76t" path="res://objects/marlit_drill_texture.png" id="1_muhbc"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_osuve"]
 resource_name = "marlit_drill"

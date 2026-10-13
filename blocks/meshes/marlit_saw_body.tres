@@ -1,6 +1,6 @@
-[gd_resource type="ArrayMesh" format=4]
+[gd_resource type="ArrayMesh" format=4 uid="uid://cv5xpp1k2ehsn"]
 
-[ext_resource type="Texture2D" path="res://objects/marlit_saw_texture.png" id="1_6igq7"]
+[ext_resource type="Texture2D" uid="uid://bmrlsaw77tya" path="res://objects/marlit_saw_texture.png" id="1_6igq7"]
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hdo51"]
 resource_name = "marlit_saw"
