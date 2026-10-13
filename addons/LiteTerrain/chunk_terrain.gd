@@ -67,8 +67,49 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 ## machines). On by default (the player's call); the ray reads the DRAWN ground's heights, see there.
 @export var enable_occlusion_culling: bool = true
 
-## How far ground is drawn. The menu backdrop draws much less (menu_stage_3d MENU_VIEW).
-@export var view_distance: float = 1400.0
+@export_group("Render")
+## How far ground is drawn. In the game the player's own setting (garage SETTINGS) wins once saved;
+## this is its starting value (`Main._ready`). The menu backdrop draws much less (MENU_VIEW).
+@export_range(200.0, 10000.0, 10.0) var view_distance: float = 1400.0
+## THE HAZE (the global `haze_range`'s strength): off, the far ground and the trees show their own
+## colour to the edge. The haze still stretches with the draw distance (`Main._apply_view`).
+@export var haze_enabled: bool = true:
+	set(v):
+		haze_enabled = v
+		_apply_haze()
+
+@export_group("Biomes")
+## Which biomes the world has; off, its mask is zero everywhere (the desert's off means all meadow).
+## Read before the ground is built - in the editor press "Build in scene" again after a change.
+@export var desert_enabled: bool = true:
+	set(v):
+		desert_enabled = v
+		_push_switches()
+@export var canyons_enabled: bool = true:
+	set(v):
+		canyons_enabled = v
+		_push_switches()
+@export var mountains_enabled: bool = true:
+	set(v):
+		mountains_enabled = v
+		_push_switches()
+@export var salt_flats_enabled: bool = true:
+	set(v):
+		salt_flats_enabled = v
+		_push_switches()
+
+@export_group("Vertex lift")
+## The meadow's grass lift (`TerrainBiomes.grass_height`) and the snow's crust (the material's
+## `snow_height`); off, the ground is drawn at its own heights - fewer moved vertices, same triangles.
+@export var grass_lift_enabled: bool = true:
+	set(v):
+		grass_lift_enabled = v
+		_push_biomes()
+@export var snow_lift_enabled: bool = true:
+	set(v):
+		snow_lift_enabled = v
+		_push_biomes()
+@export_group("")
 ## ЗАПАС ЗА КРАЕМ ЭКРАНА, В МЕТРАХ, И ТОЛЬКО У БОКОВЫХ ПЛОСКОСТЕЙ.
 ##
 ## У ближней плоскости запас означает буквально «рисовать то, что за камерой»: её нормаль смотрит
@@ -195,6 +236,7 @@ func _ready() -> void:
 	collision_layer = 1
 	collision_mask = 0
 	await get_tree().process_frame
+	_apply_haze()
 	var game: Node = get_node_or_null("/root/G") if follow_world_settings else null
 	var seed_value: int = forced_seed
 	if game != null and game.get("world_seed") != null:
@@ -222,11 +264,45 @@ func _ready() -> void:
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
+	_push_switches()
 	_push_biomes()
+
+func _push_switches() -> void:
+	if biomes == null:
+		return
+	biomes.desert_on = desert_enabled
+	biomes.canyon_on = canyons_enabled
+	biomes.mountains_on = mountains_enabled
+	biomes.salt_on = salt_flats_enabled
+
+## The haze's strength is a GLOBAL every hazed shader reads. In the world `Main._apply_view` owns it
+## (the range follows the draw distance) and asks `haze_strength`; with no Main (the menu) the map
+## writes the project's own range with its strength. Never READ the global back at run time:
+## `global_shader_parameter_get` is editor-only and prints an error on every call.
+func _apply_haze() -> void:
+	if Engine.is_editor_hint() or not is_inside_tree():
+		return
+	var main: Node = get_node_or_null("/root/Main")
+	if main != null and main.has_method("_apply_view"):
+		main._apply_view()
+		return
+	var h: Vector4 = _haze_default()
+	h.z = haze_strength()
+	RenderingServer.global_shader_parameter_set(&"haze_range", h)
+
+func _haze_default() -> Vector4:
+	var d = ProjectSettings.get_setting("shader_globals/haze_range", null)
+	if d is Dictionary and d.get("value") is Vector4:
+		return d["value"]
+	return Vector4(150.0, 750.0, 1.0, 0.0)
+
+func haze_strength() -> float:
+	return _haze_default().z if haze_enabled else 0.0
 
 func _biomes() -> TerrainBiomes:
 	if biomes == null:
 		biomes = TerrainBiomes.new()
+		_push_switches()
 	return biomes
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2119,6 +2195,15 @@ func _push_biomes() -> void:
 		return
 	if _mat is ShaderMaterial:
 		biomes.apply_to_material(_mat as ShaderMaterial, world_height())
+		var sm := _mat as ShaderMaterial
+		if not grass_lift_enabled:
+			sm.set_shader_parameter("grass_height", 0.0)
+		if _snow_h < 0.0:
+			var s = sm.get_shader_parameter("snow_height")
+			_snow_h = float(s) if s != null else 0.3
+		sm.set_shader_parameter("snow_height", _snow_h if snow_lift_enabled else 0.0)
+
+var _snow_h := -1.0                  # the material's own snow crust, kept to turn it back on
 
 ## The sun's shadow window (sun_shadows.gd), read by the fast ground only; strength 0 skips the fetch.
 func set_sun_shadow(tex: Texture2D, center: Vector2, size: float, strength: float) -> void:

@@ -772,6 +772,8 @@ func near_active(p: Vector3, radius: float) -> bool:
 func grass_lift() -> float:
 	if _map_cache == null or not is_instance_valid(_map_cache):
 		_map_cache = get_node_or_null("/root/Main/map")
+	if _map_cache != null and _map_cache.get("grass_lift_enabled") == false:
+		return 0.0
 	var b: Variant = _map_cache.get("biomes") if _map_cache != null else null
 	if b == null or not (b is Resource):
 		return 0.0
