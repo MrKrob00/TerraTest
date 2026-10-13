@@ -113,28 +113,44 @@ PLATE = "@res://blocks/scenes/small_wheel.tscn|Wheel_module_small"
 TYRE = "@res://blocks/scenes/small_wheel.tscn|Wheel_module_small/Wheel_susp_high/Wheel_susp_low/Wheel_susp_mid/Wheel_Axle/wheel"
 
 
+def _swing(pin, tc, sag, axis):
+    """The arm's swing about its pivot (axis "x" or "z") that lifts the hub by `sag`, as a matrix."""
+    d = sub(tc, pin)
+    if axis == "z":                       # the arm in the XY plane
+        L = math.hypot(d[0], d[1])
+        a0 = math.atan2(d[1], d[0])
+        a1 = math.asin(max(-0.95, min(0.95, (L * math.sin(a0) + sag) / L)))
+        a1 = math.pi - a1 if d[0] < 0 else a1
+        return rz(a1 - a0)
+    L = math.hypot(d[1], d[2])            # the arm in the YZ plane
+    a0 = math.atan2(d[1], -d[2])
+    a1 = math.asin(max(-0.95, min(0.95, (L * math.sin(a0) + sag) / L)))
+    return rx(-(a1 - a0))
+
+
 def riser(sag, steer, spin=0.0):
+    tax = [fw.TURN_AX[0], 0.0, fw.TURN_AX[1]]
     R = ry(steer)
-    pv = add(list(fw.PIVOT_R), [0, sag, 0])
-    tc = add(pv, app(R, sub(fw.TC_R, fw.PIVOT_R)))
+    S = _swing(fw.PIVOT_R, fw.TC_R, sag, "z")
+    pv = add(tax, app(R, sub(fw.PIVOT_R, tax)))
+    A = mul(R, S)
+    tc = add(pv, app(A, sub(fw.TC_R, fw.PIVOT_R)))
     plate = tf([[1, 0, 0], [0, -1, 0], [0, 0, -1]], [0, 0.5, 0])
     T = mul(R, mul([[0, 0, -1], [0, 1, 0], [1, 0, 0]], rx(spin)))
-    return {"riser_body": tf(rx(0), [0, 0, 0]), "riser_arm": tf(R, pv), PLATE: plate,
+    return {"riser_body": tf(rx(0), [0, 0, 0]), "riser_head": tf(R, tax), "riser_arm": tf(A, pv), PLATE: plate,
             TYRE + "#": tf(T, add(tc, app(R, [0, 0, fw.TYRE_W / 2]))), "_ground": tc[1] - fw.TYRE_R}
 
 
 def stab2(sag, steer, spin=0.0):
-    # the arm swings about its pin (axis X) so the hub rises by `sag`; steering turns all of it
-    pin = list(fw.PIN_S)
-    d = sub(fw.TC_S, pin)
-    L = math.hypot(d[1], d[2])
-    a0 = math.atan2(d[1], -d[2])
-    phi = math.asin(max(-0.9, min(0.9, (L * math.sin(a0) + sag) / L))) - a0
-    A = mul(ry(steer), rx(-phi))
-    tc = add(pin, app(A, d))
+    tax = [fw.TURN_S[0], 0.0, fw.TURN_S[1]]
+    R = ry(steer)
+    S = _swing(fw.PIN_S, fw.TC_S, sag, "x")
+    pv = add(tax, app(R, sub(fw.PIN_S, tax)))
+    A = mul(R, S)
+    tc = add(pv, app(A, sub(fw.TC_S, fw.PIN_S)))
     plate = tf([[0, -1, 0], [0, 0, -1], [1, 0, 0]], [0, 0, 0.5])
     T = mul(A, rx(spin))
-    return {"stab2_body": tf(ry(steer), [0, 0, 0]), "stab2_arm": tf(A, pin), PLATE: plate,
+    return {"stab2_body": tf(rx(0), [0, 0, 0]), "stab2_head": tf(R, tax), "stab2_arm": tf(A, pv), PLATE: plate,
             TYRE + "#": tf(T, add(tc, app(A, [fw.TYRE_W / 2, 0, 0]))), "_ground": tc[1] - fw.TYRE_R}
 
 if __name__ == "__main__":
