@@ -216,7 +216,14 @@ func _build_static() -> void:
 	if rn.has_method("ore_shadow_casters"):
 		for o in rn.ore_shadow_casters(_st_ref, reach):
 			var xf: Transform3D = o[0]
-			var hull := _box_shadow(xf, o[1], xf.origin.y)
+			var pts: PackedVector3Array = o[1]
+			if pts.size() < 3:
+				continue
+			var flat := PackedVector2Array()
+			flat.resize(pts.size())
+			for k in pts.size():
+				flat[k] = _px(xf * pts[k], xf.origin.y)
+			var hull := _open(Geometry2D.convex_hull(flat))
 			if hull.size() >= 3:
 				_st_polys.append(hull)
 

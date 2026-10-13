@@ -289,19 +289,19 @@ func tree_shadow_casters(center: Vector2, half: float) -> Array:
 			out.append([gp, (crown as Vector2).x * s, (crown as Vector2).y * s])
 	return out
 
-## Ore veins for the fast sun shadows (`sun_shadows.gd`): [instance transform in the world, the
-## model's box] for every live vein within `half` of `center` on the plan. An emptied vein (custom G
-## at 0) is rubble and casts nothing; a broken one casts lower, as its parts have collapsed.
-var _box_mm: Dictionary = {}
+## Ore veins for the fast sun shadows (`sun_shadows.gd`): [instance transform in the world, points of
+## the model's outline in its own axes] for every live vein within `half` of `center` on the plan. The
+## model's BOX was a dark rectangle round every vein - the rock's low base reaches far wider than the
+## ore. The outline is the model's extreme vertices in the 26 directions of a cube's faces, edges and corners, taken among the parts
+## still standing (the shader's rule: a part stands while the share is over its UV.x, rubble always),
+## once per model and break level; an emptied vein casts nothing.
+var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5
 func ore_shadow_casters(center: Vector2, half: float) -> Array:
 	var out: Array = []
 	for mm in multimesh_nodes:
 		if not is_instance_valid(mm) or not _mm_live.has(mm) or mm.multimesh == null or mm.multimesh.mesh == null:
 			continue
-		var bb = _box_mm.get(mm)
-		if bb == null:
-			bb = mm.multimesh.mesh.get_aabb()
-			_box_mm[mm] = bb
+		var levels: Array = _outline_levels(mm.multimesh.mesh)
 		var mxf: Transform3D = mm.global_transform
 		for v in _mm_live[mm]:
 			var cd = v.get("cd")
@@ -314,10 +314,48 @@ func ore_shadow_casters(center: Vector2, half: float) -> Array:
 			var gxf: Transform3D = mxf * (xf as Transform3D)
 			if absf(gxf.origin.x - center.x) > half or absf(gxf.origin.z - center.y) > half:
 				continue
-			var b: AABB = bb
-			b.size.y = maxf(b.end.y * lerpf(0.35, 1.0, clampf(share, 0.0, 1.0)), 0.05) - b.position.y
-			out.append([gxf, b])
+			# level k holds the parts with a break point under k/5: the ones a share over it keeps
+			out.append([gxf, levels[clampi(int(ceil(share * 5.0 - 0.001)), 0, 5)]])
 	return out
+
+func _outline_levels(mesh: Mesh) -> Array:
+	var got = _outline_of.get(mesh)
+	if got != null:
+		return got
+	var verts := PackedVector3Array()
+	var brk := PackedFloat32Array()
+	for si in mesh.get_surface_count():
+		var arr: Array = mesh.surface_get_arrays(si)
+		var vs: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var uv = arr[Mesh.ARRAY_TEX_UV]
+		for i in vs.size():
+			verts.append(vs[i])
+			brk.append((uv as PackedVector2Array)[i].x if uv is PackedVector2Array and i < uv.size() else -1.0)
+	var dirs: Array[Vector3] = []
+	for x in [-1, 0, 1]:
+		for y in [-1, 0, 1]:
+			for z in [-1, 0, 1]:
+				if x != 0 or y != 0 or z != 0:
+					dirs.append(Vector3(x, y, z).normalized())
+	var levels: Array = []
+	for k in 6:
+		var share: float = float(k) / 5.0
+		var pts := PackedVector3Array()
+		for d in dirs:
+			var best := -INF
+			var bp := Vector3.ZERO
+			for i in verts.size():
+				if brk[i] >= 0.0 and share <= brk[i]:
+					continue                 # this part has broken off at this level
+				var t: float = verts[i].dot(d)
+				if t > best:
+					best = t
+					bp = verts[i]
+			if best > -INF and not pts.has(bp):
+				pts.append(bp)
+		levels.append(pts)
+	_outline_of[mesh] = levels
+	return levels
 
 ## A vein node's shader data (its HP and hit times, resource_node._write_shader_data): into its own
 ## model's slot, and kept on the record so the data moves with the vein when its slot does. A node
