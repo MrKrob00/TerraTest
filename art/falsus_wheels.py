@@ -56,85 +56,122 @@ def cbox(faces, lo, hi, c=0.03, side="dark", top="dark", bottom="dark", edge="da
     em.cham_box(faces, lo, hi, c, side, top, bottom, edge)
 
 
-# ── the riser ───────────────────────────────────────────────────────────────────────────────────
-# A BODY WITH A WHEEL AT ITS SIDE, not a leg: the back two-thirds of the cell is the drive box hanging
-# from the plate, grilled on its sides like the family's panels; on its front (-Z) face two blue
-# rails frame a slot, and the SLIDER rides in it (the artist's wheel arm runs in the same kind of slot
-# in its plate). From the slider a short stub carries the steering clevis, and the KNUCKLE turns in
-# it, right beside the tyre - so steering turns the tyre about a pin near its own face instead of
-# swinging it round the box.
+def sweep(faces, path, side, w, h, kind="b", sides=12, taper=1.0, caps=True):
+    """A thick CAST ARM along a 3D polyline: a rounded-rectangle section (superellipse) w across along
+    `side` and h thick, shrinking to `taper` at the far end; every facet toned by the painted light
+    ("b" GSO blue, "m" dark metal) - the blocks are unshaded, so a round bar needs its light painted."""
+    n = len(path)
+    rings = []
+    for i, p in enumerate(path):
+        t = th.norm(th.sub(path[min(i + 1, n - 1)], path[max(i - 1, 0)]))
+        sd = th.norm(th.sub(side, th.mul(t, th.dot(side, t))))
+        nm = th.cross(sd, t)
+        k = 1.0 + (taper - 1.0) * i / max(n - 1, 1)
+        ring = []
+        for j in range(sides):
+            ang = (j + 0.5) * 2 * math.pi / sides
+            c, sn = math.cos(ang), math.sin(ang)
+            cu = math.copysign(abs(c) ** 0.5, c) * w / 2 * k
+            su = math.copysign(abs(sn) ** 0.5, sn) * h / 2 * k
+            ring.append(th.add(p, th.add(th.mul(sd, cu), th.mul(nm, su))))
+        rings.append(ring)
+    for i in range(n - 1):
+        mid = th.mul(th.add(path[i], path[i + 1]), 0.5)
+        for j in range(sides):
+            jj = (j + 1) % sides
+            q = th.outward([rings[i][j], rings[i][jj], rings[i + 1][jj], rings[i + 1][j]], mid)
+            tone = int(round(max(0.0, min(1.0, 0.5 + 0.5 * th.dot(th.norm(th.newell(q)), em.LIGHT))) * 4))
+            st = ("bflat%d" % tone) if kind == "b" else ("%stone%d" % (kind, tone))
+            faces.append(th.Face(q, st, u_hint=th.sub(path[i + 1], path[i])))
+    if caps:
+        for ring, i, j in ((rings[0], 0, 1), (rings[-1], n - 1, n - 2)):
+            inside = th.add(path[i], th.mul(th.norm(th.sub(path[j], path[i])), 0.05))
+            faces.append(th.Face(th.outward(list(ring), inside), "dark_edge", u_hint=side))
 
-BOX = (-0.42, 0.42, -0.46, PLATE_IN, -0.04, 0.42)    # x0, x1, y0, y1, z0, z1
+
+def bezier3(p0, p1, p2, steps):
+    return [tuple((1 - t) ** 2 * p0[k] + 2 * (1 - t) * t * p1[k] + t * t * p2[k] for k in range(3))
+            for t in [i / steps for i in range(steps + 1)]]
+
+
+def bezier4(p0, p1, p2, p3, steps):
+    return [tuple((1 - t) ** 3 * p0[k] + 3 * (1 - t) ** 2 * t * p1[k] + 3 * (1 - t) * t * t * p2[k] + t ** 3 * p3[k]
+                  for k in range(3)) for t in [i / steps for i in range(steps + 1)]]
+
+
+def arc(c, r, a0, a1, steps, x):
+    """Points on a circle in the YZ plane round c (angle 0 = toward -Z, 90 = up), at x."""
+    out = []
+    for i in range(steps + 1):
+        a = math.radians(a0 + (a1 - a0) * i / steps)
+        out.append((x, c[1] + r * math.sin(a), c[2] - r * math.cos(a)))
+    return out
+
+
+def boss(faces, c, axis, r, length, kind="b"):
+    """A round boss on an axis: the hub cap where an arm meets the tyre."""
+    e = th.add(c, th.mul(axis, length))
+    em.tube(faces, [c, e], [r / math.cos(math.pi / 10)] * 2, [kind], sides=10, cap_start="dark_edge",
+            cap_end="dark_edge")
+
+
+# ── the riser ───────────────────────────────────────────────────────────────────────────────────
+# AFTER THE PLAYER'S PICTURE OF TERRATECH'S: a rounded mount under the top face and ONE THICK CAST ARM
+# leaving its underside, sweeping down and out to the hub on the tyre's inner face; the tyre stands at
+# the side, its outer face a few centimetres past the cell, its bottom under it. The arm turns about the
+# mount's bearing (steering) and slides into it (suspension). No box, no slot, no thin parts.
+
+PIVOT_R = (0.0, 0.10, 0.18)   # the bearing under the mount: the steering axis' foot
 TC_R = (0.0, -0.36, -0.40)    # the tyre's middle: outer face at z -0.55, bottom at y -0.66
-KP_R = (0.0, -0.36, -0.17)    # the steering pin, between the box's face and the tyre's inner face
-RAIL_X = 0.13
+TYRE_IN_R = TC_R[2] + TYRE_W / 2
 
 
 def build_riser(pk, img):
-    parts = {"riser_body": [], "riser_slider": [], "riser_knuckle": []}
-    b, sl, k = parts["riser_body"], parts["riser_slider"], parts["riser_knuckle"]
-    x0, x1, y0, y1, z0, z1 = BOX
-    # the box: grilled dark sides, a plain dark front behind the slot, a hazard band at its foot
-    cbox(b, (x0, y0 + 0.06, z0), (x1, y1, z1), 0.05, side="plain_side", top="dark", bottom="dark")
-    cbox(b, (x0 + 0.01, y0, z0 + 0.01), (x1 - 0.01, y0 + 0.07, z1 - 0.01), 0.03, side="stripe")
-    # the slot's rails, standing proud of the front face
-    for sx in (-1, 1):
-        th.box(b, (sx * RAIL_X - 0.04, y0 + 0.04, z0 - 0.05), (sx * RAIL_X + 0.04, 0.24, z0 + 0.005), "blue",
-               skip=("+z",))
-    th.box(b, (-RAIL_X - 0.04, 0.20, z0 - 0.05), (RAIL_X + 0.04, 0.27, z0 + 0.005), "blue", skip=("+z",))
-    # the SLIDER: a shoe between the rails, the stub out to the clevis round the steering pin
-    ky = KP_R[1]
-    th.box(sl, (-RAIL_X + 0.045, ky - 0.10, z0 - 0.05), (RAIL_X - 0.045, ky + 0.10, z0 + 0.02), "dark", skip=("+z",))
-    bar(sl, (0, ky, z0 - 0.05), (0, ky, KP_R[2] + 0.06), 0.06)
-    for sy in (-1, 1):
-        th.box(sl, (-0.07, ky + sy * 0.085 - 0.025, KP_R[2] - 0.06), (0.07, ky + sy * 0.085 + 0.025, KP_R[2] + 0.07),
-               "dark")
-    _shift(sl, (0.0, 0.0, 0.0))
-    # the KNUCKLE: the pin, an upright between the clevis plates, the hub drum against the tyre
-    bar(k, (0, ky - 0.12, KP_R[2]), (0, ky + 0.12, KP_R[2]), 0.035, kind="m")
-    th.box(k, (-0.06, ky - 0.055, KP_R[2] - 0.05), (0.06, ky + 0.055, KP_R[2] + 0.05), "dark")
-    zin = TC_R[2] + TYRE_W / 2
-    bar(k, (0, ky, KP_R[2] - 0.05), (0, ky, zin + 0.004), 0.12, kind="b")
-    _shift(k, KP_R)
+    parts = {"riser_body": [], "riser_arm": []}
+    b, a = parts["riser_body"], parts["riser_arm"]
+    px, py, pz = PIVOT_R
+    # the mount: a heavy, deeply chamfered blue block nearly the cell's width under the plate
+    th.prism(b, -0.40, 0.40, py + 0.04, PLATE_IN, 0.46, -0.10, 0.10, cap_front="blue", cap_back="blue",
+             top_style="blue")
+    # the bearing ring the arm leaves through
+    em.tube(b, [(px, py + 0.05, pz), (px, py - 0.02, pz)], [0.17, 0.17], ["m"], sides=10, cap_end="dark_edge")
+    # the ARM: root inside the bearing, one curve down and out to the hub
+    hub = (TC_R[0], TC_R[1], TYRE_IN_R + 0.07)
+    path = bezier3((px, py + 0.04, pz), (px, TC_R[1] + 0.02, pz + 0.02), hub, 8)
+    sweep(a, path, (1, 0, 0), 0.24, 0.17, taper=0.85)
+    boss(a, hub, (0, 0, -1), 0.12, 0.07)
+    _shift(a, PIVOT_R)
     return parts
 
 
 # ── the stabiliser ──────────────────────────────────────────────────────────────────────────────
+# AFTER THE PLAYER'S SECOND PICTURE: the tyre rolls along the machine in the middle (a tricycle's one
+# wheel), and ONE THICK ARM leaves the mount on the plate on the tyre's +X side, runs back over the
+# tyre, bends down behind it and hooks forward into the hub - a C round the tyre's back half. It swings
+# about a pin across the mount (suspension); the mount turns about the vertical (steering).
 
-HEAD = (0.0, 0.0, 0.23)       # the steering axis' foot: on the plate, in the middle
-TC_S = (0.0, -0.60, -0.12)    # the tyre's middle: ride height 0.90, like the standard wheel
-CROWN_Y = -0.10
-LEG_X = 0.215                 # the fork legs, either side of the 0.30 tyre
+PIN_S = (0.0, -0.06, 0.20)    # the arm's pin across the mount (axis X): the suspension swings about it
+TC_S = (0.0, -0.60, -0.04)    # the tyre's middle: ride height 0.90, like the standard wheel
+ARM_X = TYRE_W / 2 + 0.075    # the arm runs down the tyre's +X side
 
 
 def build_stab2(pk, img):
-    parts = {"stab2_body": [], "stab2_crown": [], "stab2_fork": []}
-    b, c, f = parts["stab2_body"], parts["stab2_crown"], parts["stab2_fork"]
-    hx, hy, hz = HEAD
-    # the steering head: a blue housing on the plate, the bearing under it
-    cbox(b, (hx - 0.20, hy - 0.06, hz - 0.06), (hx + 0.20, hy + 0.36, PLATE_IN), 0.04,
-         side="blue", top="blue", bottom="blue", edge="bevel")
-    bar(b, (hx, hy - 0.06, hz), (hx, CROWN_Y + 0.05, hz), 0.11, kind="b")
-    # the CROWN: a yoke across under the head, the legs' upper sleeves down from its ends
-    cbox(c, (hx - LEG_X - 0.07, CROWN_Y - 0.05, hz - 0.08), (hx + LEG_X + 0.07, CROWN_Y + 0.05, hz + 0.08), 0.025)
-    top = (CROWN_Y - 0.05)
-    fd = th.norm(th.sub((0, TC_S[1], TC_S[2]), (0, top, hz)))
-    for sx in (-1, 1):
-        x = hx + sx * LEG_X
-        a = (x, top, hz)
-        bar(c, a, th.add(a, th.mul(fd, 0.26)), 0.065, kind="b")
-    # the FORK: lower sliders from inside the sleeves to the axle, the through-axle, the hub drum
-    for sx in (-1, 1):
-        x = hx + sx * LEG_X
-        a = th.add((x, top, hz), th.mul(fd, 0.16))
-        bar(f, a, (x, TC_S[1], TC_S[2]), 0.048)
-        th.box(f, (x - 0.045, TC_S[1] - 0.07, TC_S[2] - 0.07), (x + 0.045, TC_S[1] + 0.07, TC_S[2] + 0.07), "dark")
-    bar(f, (hx - LEG_X - 0.05, TC_S[1], TC_S[2]), (hx + LEG_X + 0.05, TC_S[1], TC_S[2]), 0.025, kind="m")
-    for sx in (-1, 1):
-        bar(f, (hx + sx * (TYRE_W / 2 + 0.005), TC_S[1], TC_S[2]), (hx + sx * (TYRE_W / 2 + 0.05), TC_S[1], TC_S[2]),
-            0.09, kind="b")
-    _shift(c, HEAD)
-    _shift(f, HEAD)
+    parts = {"stab2_body": [], "stab2_arm": []}
+    b, a = parts["stab2_body"], parts["stab2_arm"]
+    # the mount on the plate: a deep chamfered blue block
+    th.prism(b, -0.30, 0.30, -0.16, 0.24, PLATE_IN, 0.06, 0.09, cap_front="blue", cap_back="blue",
+             top_style="blue")
+    c = TC_S
+    # the ARM: from the pin back over the tyre, down behind it, forward into the hub
+    path = bezier4((ARM_X, PIN_S[1], PIN_S[2]), (ARM_X, -0.16, -0.30), (ARM_X, c[1] - 0.02, -0.62),
+                   (ARM_X, c[1], c[2] - 0.08), 10)
+    sweep(a, path, (1, 0, 0), 0.12, 0.17, taper=0.9)
+    boss(a, (ARM_X + 0.06, c[1], c[2]), (-1, 0, 0), 0.13, 0.12)
+    boss(a, (TYRE_W / 2 + 0.005, c[1], c[2]), (1, 0, 0), 0.06, 0.02, kind="m")
+    # the pin through the arm's root, its boss on the mount's side
+    em.tube(a, [(-0.32, PIN_S[1], PIN_S[2]), (ARM_X + 0.08, PIN_S[1], PIN_S[2])], [0.08, 0.08], ["m"], sides=8,
+            cap_start="dark_edge", cap_end="dark_edge")
+    _shift(a, PIN_S)
     return parts
 
 
@@ -144,9 +181,9 @@ em.CULL |= {"riser", "stab2"}
 if not hasattr(em, "CHECKS"):
     em.CHECKS = {}
 em.CHECKS["riser"] = {"cells": ((-0.5, -0.75, -0.6), (0.5, 0.5, 0.5)), "budget": 400,
-                      "origins": {"riser_knuckle": KP_R}}
+                      "origins": {"riser_arm": PIVOT_R}}
 em.CHECKS["stab2"] = {"cells": ((-0.5, -0.75, -0.5), (0.5, 0.5, 0.5)), "budget": 400,
-                      "origins": {"stab2_crown": HEAD, "stab2_fork": HEAD}}
+                      "origins": {"stab2_arm": PIN_S}}
 
 if __name__ == "__main__":
     for nm in (sys.argv[1:] or ["riser", "stab2"]):
