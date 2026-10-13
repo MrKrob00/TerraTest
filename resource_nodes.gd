@@ -289,6 +289,36 @@ func tree_shadow_casters(center: Vector2, half: float) -> Array:
 			out.append([gp, (crown as Vector2).x * s, (crown as Vector2).y * s])
 	return out
 
+## Ore veins for the fast sun shadows (`sun_shadows.gd`): [instance transform in the world, the
+## model's box] for every live vein within `half` of `center` on the plan. An emptied vein (custom G
+## at 0) is rubble and casts nothing; a broken one casts lower, as its parts have collapsed.
+var _box_mm: Dictionary = {}
+func ore_shadow_casters(center: Vector2, half: float) -> Array:
+	var out: Array = []
+	for mm in multimesh_nodes:
+		if not is_instance_valid(mm) or not _mm_live.has(mm) or mm.multimesh == null or mm.multimesh.mesh == null:
+			continue
+		var bb = _box_mm.get(mm)
+		if bb == null:
+			bb = mm.multimesh.mesh.get_aabb()
+			_box_mm[mm] = bb
+		var mxf: Transform3D = mm.global_transform
+		for v in _mm_live[mm]:
+			var cd = v.get("cd")
+			var share: float = (cd as Color).g if cd is Color else 1.0
+			if share < 0.01:
+				continue
+			var xf = v.get("xf")
+			if not (xf is Transform3D):
+				continue
+			var gxf: Transform3D = mxf * (xf as Transform3D)
+			if absf(gxf.origin.x - center.x) > half or absf(gxf.origin.z - center.y) > half:
+				continue
+			var b: AABB = bb
+			b.size.y = maxf(b.end.y * lerpf(0.35, 1.0, clampf(share, 0.0, 1.0)), 0.05) - b.position.y
+			out.append([gxf, b])
+	return out
+
 ## A vein node's shader data (its HP and hit times, resource_node._write_shader_data): into its own
 ## model's slot, and kept on the record so the data moves with the vein when its slot does. A node
 ## that is already streamed out (freed at the end of this frame) no longer owns the slot it names.
