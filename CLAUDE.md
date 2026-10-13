@@ -2492,7 +2492,13 @@ project: read it before claiming how anything works.
   far tree cards, the grass trample viewport, machines, loose items, the sky, the HUD - is switched
   off for `WINDOW` between windows with it on, `ROUNDS` times, and the table goes to the panel and
   the clipboard. Llvmpipe cannot rank these (one window there read +-8 ms of noise; it put the HUD
-  at ~7-14 ms, which only the phone can confirm). READ FROM THE GLES3 SOURCE
+  at ~7-14 ms, which only the phone can confirm). THE PHONE'S FIRST TABLE (tutorial, 200 m view,
+  shadows on, 53 ms a frame): ground 31 ms, shadows 16, sky 5.5, HUD 3.5, veins, trees, machines,
+  loose items, the grass lift and the trample viewport ~0. So the probe splits the ground and the
+  shadows further: the ground's own shader with `shadows_disabled` and `unshaded` (a variant of the
+  same code, every uniform carried), a plain unshaded material, the far levels (2+, HLOD clusters
+  included) and the near ones hidden by `visibility_range_end` (the terrain owns `visible` and
+  `layers`), the shadow distance halved, and the 3D scale halved. READ FROM THE GLES3 SOURCE
   (`rasterizer_scene_gles3.cpp`, `_render_list_template`): ONE shadowed directional is drawn INSIDE
   the base pass - passes = positional light passes + directional shadow count, at least one - so
   it is NOT a second pass over the ground; what shadows add is the depth pass over the casters
