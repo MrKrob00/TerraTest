@@ -1739,6 +1739,15 @@ project: read it before claiming how anything works.
   left it there — measured, old code kept `daily_ore`, new code moves to `arc_sam`. The release
   call is the older half of the same rule: `hold_quest` keeps the first story quest back until the
   scout arrives, and at the end of the tutorial the head of `active_quests` was a daily.
+- **THE FINGER ASKS FOR WHAT CAN BE PLACED NOW** (`BuildHint.reachable` / `BuildHint.pick`, read by
+  `tutorial_director` and `quest_arcs`): an open ghost counts only once one of its cell's neighbours is
+  taken on the machine, and among those the plan's own order wins - the hull before the wheels and the
+  drill on it, the belt nearest the seller before the next, the receiver last. The "take a part"
+  finger goes to a loose part of THAT type (`_wanted_type`, `QuestProps.position_for(id, type)`). It
+  went to the nearest part and the nearest cell, so a wheel was asked for before the block it hangs on
+  (the player's report, the tutorial and the factory line alike). Measured on the engine from a bare
+  cabin: front block, back block, then the wheels; a wheel in the hand pointed at no cell until its
+  block stood.
 - A HANDED-OUT BLOCK GETS THE FINGER BEFORE THE CELL DOES. `_arc_power_1` points at the panel
   lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
   that, so it asked for a repair unit to be placed while the block was still on the ground and the
@@ -2034,6 +2043,14 @@ project: read it before claiming how anything works.
 - Terrain edits survive as a LIST in the world save (`ChunkTerrain.ground_edits` /
   `apply_ground_edits`), replayed before the machines come back. There is no baked dump: the ground
   is the seed plus that list. Every edit has a running number so it cannot be applied twice.
+- **A NEW WORLD OPENS ON THE NEAREST PLAIN** (`ChunkTerrain._plain_near` -> `start_point`,
+  `world_persist._to_start_point`; the player: "spawning in a canyon is random and awkward"). Before the
+  first ring is built the terrain walks rings `PLAIN_STEP` apart from the scene's spot for the first
+  point with no canyon or mountain (masks under `PLAIN_MASK`) and level across `PLAIN_SPAN`; the ring
+  is built there and the fresh machine is seated on it before the kit drops. The seed decides it, so
+  a world always opens on one spot; a saved world comes back where it was. Measured on three seeds:
+  4242 opened in a canyon (mask 1.00) and now starts 248 m away on a plain, all three within 2 m of
+  rise under the machine.
 - WAITING FOR THE TERRAIN IS MEASURED IN SECONDS, NEVER IN FRAMES (`world_persist.TERRAIN_WAIT_SEC`,
   and `resource_nodes` was the first to learn it). Readiness is worker threads computing heights —
   real seconds, about 3.7 of them for the world. A frame count guesses at what those seconds cost
@@ -2516,6 +2533,16 @@ project: read it before claiming how anything works.
   "the frame is not pixels" was written from that - WRONG for the device: the phone's probe took
   22.4 ms of 47 off at x0.5. The phone is FILL-BOUND, and the ground's fragment shader is the fill
   (below). If the slider seems to do nothing, the auto scaler is on and owns the scale.
+- **WITH SHADOWS ON, ANY 3D SCALE BUT 1.0 WASHED THE PICTURE OUT** (a Godot GLES3 fault; the
+  player: "at any scale but 100% the lighting disappears"). The shadowed sun is drawn as an ADDITIVE
+  pass, and both passes convert to sRGB before the framebuffer adds them (`scene.glsl`): straight to
+  the screen each is tonemapped first, through the intermediate buffer (any other scale) the sum is
+  decoded and tonemapped in post, and the sun's share comes out far too bright - measured on the real
+  driver, the meadow 74 -> 109 of 255 at 0.8; with no shadows, or the light off, every scale draws
+  alike. So `day_cycle` dims the sun under scaling with shadows by factors fitted against the 1.0
+  picture (`POST_SUN_DAY` 0.5, `POST_SUN_LOW` 0.37 at dusk and night): noon meadow 76 against 74, a
+  block 106 against 108, dusk within ~5, night within ~2. The same measurement contradicts the probe
+  entry's reading that the shadowed directional rides inside the base pass.
 - **THE DEVICE MEASURES ITS OWN FRAME, LAYER BY LAYER** (`frame_probe.gd`, PROBE on the profiler
   panel; the player: "200 m view 18 fps with shadows, 28 without; 10 km 13 / 25 - something near us
   is expensive"). Each layer - shadows, ground and veins, the grass and snow lift, veins and trees,
