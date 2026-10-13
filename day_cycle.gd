@@ -133,3 +133,30 @@ func _apply() -> void:
 		_env.ambient_light_color = day_ambient.lerp(night_ambient, n)
 		_env.ambient_light_energy = lerpf(day_ambient_energy, night_ambient_energy, n)
 		_env.tonemap_exposure = lerpf(1.0, night_exposure, n) * lerpf(1.0, 0.93, dusk * (1.0 - n))
+	_ground_night = n
+	_ground_low = maxf(n, 1.0 - smoothstep(0.1, 0.33, sun.y))
+	_ground_light()
+
+## The fast ground's light (glsl.gdshader FAST_GROUND): the ambient and the light as they stand, times
+## factors FITTED ON THE REAL DRIVER against the lit ground at six times of day (the harness drew both
+## and searched for the least difference): by day ambient x1.0 and sun x0.5, at dusk and by night sun
+## x0.7 and ambient a shade less, the lambert term wrapped by GROUND_WRAP throughout. One set for all
+## hours left 7-14/255 at the ends of the day; this leaves ~2. The tints are taken as the light and
+## the environment hold them (sRGB): converted to linear the fit got worse, not better.
+const GROUND_SUN_DAY := 0.5
+const GROUND_SUN_LOW := 0.69
+const GROUND_AMB_DAY := 1.0
+const GROUND_AMB_NIGHT := 0.86
+const GROUND_WRAP := 0.55
+var _ground_low := 0.0     # 0 high sun .. 1 dusk or night, written by _apply
+var _ground_night := 0.0
+func _ground_light() -> void:
+	var amb := Color(0, 0, 0)
+	if _env != null:
+		amb = _env.ambient_light_color * _env.ambient_light_energy \
+				* lerpf(GROUND_AMB_DAY, GROUND_AMB_NIGHT, _ground_night)
+	var sun := Color(0, 0, 0)
+	if _light != null:
+		sun = _light.light_color * _light.light_energy * lerpf(GROUND_SUN_DAY, GROUND_SUN_LOW, _ground_low)
+	RenderingServer.global_shader_parameter_set(&"ground_amb", Vector4(amb.r, amb.g, amb.b, 0.0))
+	RenderingServer.global_shader_parameter_set(&"ground_sun", Vector4(sun.r, sun.g, sun.b, GROUND_WRAP))

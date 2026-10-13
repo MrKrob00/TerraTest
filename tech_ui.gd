@@ -1704,7 +1704,7 @@ func _build_settings_tab() -> void:
 		scale_row.visible = not on)
 
 	var hint := Label.new()
-	hint.text = tr("Auto mode holds ~30 FPS. Render scale only saves pixels: if the frame is not spent on pixels, it changes nothing.")
+	hint.text = tr("Auto mode holds ~30 FPS and sets the scale itself. Turn it off to set the scale by hand: on a phone a lower scale gives the most frames.")
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.modulate = Color(1, 1, 1, 0.55)

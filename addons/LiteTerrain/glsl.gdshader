@@ -1,5 +1,11 @@
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
+// THE FAST GROUND (ChunkTerrain.fast_ground, on while shadows are off): the same code with this line
+// swapped for `render_mode unshaded;` and FAST_GROUND defined. The phone's probe put the engine's own
+// lighting at 12 ms of a 47 ms frame even per vertex, and with no shadow to receive it buys nothing:
+// the ground lights itself here with the one lambert term the engine computed, per vertex, from
+// `ground_amb` / `ground_sun` (day_cycle.gd writes them from the environment and the light, scaled
+// to match the lit path on the real driver).
 
 // WHERE EACH SETTING IS TUNED: in the map's inspector. Its `surface_material`
 // (addons/LiteTerrain/terrain_shader.tres) carries this shader and shows every uniform; the node
@@ -110,6 +116,12 @@ group_uniforms;
 // into ALBEDO it was lit again, and a far slope in shade came out a dark smudge in bright haze.
 global uniform vec4 world_haze;
 global uniform vec4 haze_range;
+#ifdef FAST_GROUND
+global uniform vec4 sun_dir;
+global uniform vec4 ground_amb;
+global uniform vec4 ground_sun;
+varying vec3 v_light;
+#endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
 
@@ -163,6 +175,12 @@ void vertex() {
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
     v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
+#ifdef FAST_GROUND
+    // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
+    // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
+    float ndl = dot(wn, normalize(sun_dir.xyz));
+    v_light = ground_amb.rgb + ground_sun.rgb * clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
+#endif
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
     // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
@@ -275,6 +293,9 @@ void fragment() {
     // Below grass_shade 0.65 the grass sits slightly darker than the ground — a soft shadow at
     // the root rather than a bright patch.
     ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
+#ifdef FAST_GROUND
+    ALBEDO   *= v_light;
+#endif
     ROUGHNESS = 0.9;
 
     // ── Corrupted zones: a blue-violet per-cell glitch ────────────────────────────
