@@ -130,6 +130,10 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
+	# the map's inspector holds the starting draw distance; the player's saved one wins over it
+	var map0: Node = get_node_or_null("map")
+	if map0 != null and "view_distance" in map0:
+		view_distance = clampf(float(map0.view_distance), VIEW_MIN, VIEW_MAX)
 	_load_settings()
 	_apply_window_mode()
 	if not auto_fps:
@@ -282,8 +286,9 @@ func _apply_view() -> void:
 	# the haze scales with the view: past the default it reaches out with it, under the default it
 	# closes in so the ground still ends inside it
 	var k: float = view_distance / VIEW_DEFAULT
+	var strength: float = map.haze_strength() if map != null and map.has_method("haze_strength") else HAZE_DEFAULT.z
 	RenderingServer.global_shader_parameter_set(&"haze_range",
-			Vector4(HAZE_DEFAULT.x * k, HAZE_DEFAULT.y * k, HAZE_DEFAULT.z, 0.0))
+			Vector4(HAZE_DEFAULT.x * k, HAZE_DEFAULT.y * k, strength, 0.0))
 	_far_t = 0.0
 
 ## The camera in use changes (machines, the garage), so its far plane is asked again now and then.
@@ -347,7 +352,7 @@ func _load_settings() -> void:
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		shadows_soft = bool(parsed.get("shadows_soft", true))
 		shadows_engine = bool(parsed.get("shadows_engine", false))
-		view_distance = clampf(float(parsed.get("view_distance", VIEW_DEFAULT)), VIEW_MIN, VIEW_MAX)
+		view_distance = clampf(float(parsed.get("view_distance", view_distance)), VIEW_MIN, VIEW_MAX)
 		hlod_on = bool(parsed.get("hlod_on", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))

@@ -1419,7 +1419,13 @@ project: read it before claiming how anything works.
   engine says nothing when a shader parameter is edited).
 - **THE MAP'S INSPECTOR HOLDS WHAT SHAPES THE LOOK: `surface_material`, `biomes` AND
   `enable_occlusion_culling`** (the player: "a heap of useless settings" - the ENGINE's numbers went,
-  the look stayed). A scene sets the biomes and nothing else; the menu backdrop's own
+  the look stayed), AND THREE GROUPS THE PLAYER ASKED BACK FOR: RENDER (`view_distance` - the
+  game's starting draw distance, the garage setting wins once saved, `Main._ready` - and
+  `haze_enabled`, the global haze's strength, `haze_strength` asked by `Main._apply_view`), BIOMES
+  (desert, canyons, mountains, salt flats; RUNTIME switches on `TerrainBiomes`, `desert_on` etc.,
+  handed over by the map's `_push_switches` and read at the masks themselves, so landform, colour,
+  veins, props and the plain start all agree; not saved in the resource), and VERTEX LIFT (grass and
+  snow, zeroed on the map's material copy; `G.grass_lift` answers 0 with the grass off). A scene sets the biomes and nothing else; the menu backdrop's own
   numbers (`view_distance`, `keep_radius`, `ready_view`, `ready_ring`, `forced_seed`,
   `follow_world_settings`, `enable_streaming_collision`) are fields its script sets; every tuning
   number nobody changed is a constant (`FRUSTUM_MARGIN`, `BUILD_BATCH`, `STITCH_BUDGET`,
@@ -1428,7 +1434,7 @@ project: read it before claiming how anything works.
   is DRAWN with (`get_viewport().get_camera_3d()`), so they follow camera switches, spring arms and
   machine changes by themselves - a path stored in a scene once pointed at the EDITOR VIEWPORT's
   camera, which a running game does not have. No frustum switch (always on). THE BIOMES RESOURCE
-  lost what never moved: the three biome on/off switches and
+  lost what never moved: the three biome on/off switches (back now, ON THE MAP, above) and
   `mask_offset` as an export - it is an OUTPUT of the seed (`offset_for_seed`) and was being saved
   into both scenes with whatever seed the editor previewed last. The game scene's grass numbers
   (0.3 m, 0.1 on sand) became the defaults, so the menu - the same ground - stopped drawing the

@@ -211,17 +211,32 @@ static func offset_for_seed(seed_value: int) -> Vector2:
 	rng.seed = seed_value
 	return Vector2(rng.randf_range(-4000.0, 4000.0), rng.randf_range(-4000.0, 4000.0))
 
+## WHICH BIOMES THE WORLD HAS: the map's inspector switches (`ChunkTerrain` "Biomes"), handed over
+## by the map before it builds (`_push_switches`). Not exports here and never saved with the resource:
+## the map is where they are set. Asked at the masks themselves, the one door every consumer goes
+## through - landform, colour, veins and props, the plain start and the menu's audition alike.
+var desert_on := true
+var canyon_on := true
+var mountains_on := true
+var salt_on := true
+
 ## 0 is desert, 1 is meadow. wp is world XZ.
 func meadow_mask(wp: Vector2, noise: Callable) -> float:
+	if not desert_on:
+		return 1.0
 	var n: float = noise.call(wp / biome_scale + mask_offset)
 	n = clampf((n - 0.5) * biome_contrast + 0.5, 0.0, 1.0)
 	return smoothstep(biome_bias - biome_blend, biome_bias + biome_blend, n)
 
 func canyon_mask(wp: Vector2, noise: Callable) -> float:
+	if not canyon_on:
+		return 0.0
 	var n: float = noise.call(wp / canyon_scale + CANYON_OFFSET + mask_offset)
 	return smoothstep(canyon_threshold - canyon_edge, canyon_threshold + canyon_edge, n)
 
 func mountain_mask(wp: Vector2, noise: Callable) -> float:
+	if not mountains_on:
+		return 0.0
 	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, mountain_threshold + mountain_edge, n)
 
@@ -236,6 +251,8 @@ func salt_mask(wp: Vector2, noise: Callable) -> float:
 ## two masks in hand already (terrain_gen.raw_height_at - two noise reads a point less on the
 ## world's hottest path; salt_mask in full cost it 17%, measured).
 func salt_raw(wp: Vector2, noise: Callable) -> float:
+	if not salt_on:
+		return 0.0
 	var n: float = noise.call(wp / salt_scale + SALT_OFFSET + mask_offset)
 	return smoothstep(salt_threshold - salt_edge, salt_threshold + salt_edge, n)
 
@@ -243,6 +260,8 @@ func salt_raw(wp: Vector2, noise: Callable) -> float:
 ## threshold to the peak, and the generator raises the landform by it so the slopes stay
 ## gentle enough to drive on.
 func mountain_dome(wp: Vector2, noise: Callable) -> float:
+	if not mountains_on:
+		return 0.0
 	var n: float = noise.call(wp / mountain_scale + MOUNTAIN_OFFSET + mask_offset)
 	return smoothstep(mountain_threshold - mountain_edge, 0.95, n)
 
