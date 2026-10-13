@@ -14,6 +14,11 @@ const WINDOW := 2.5
 ## Each layer is switched off this many times and the costs averaged: one window read +-8 ms of
 ## noise on llvmpipe.
 const ROUNDS := 2
+## Layers the phone has already measured (its first table, 53 ms at a 200 m view): about nothing for
+## the grass lift, veins, far cards, the trample viewport, machines and loose items; sky 5.5, HUD 3.5.
+## Left out of the run to keep it short - empty this list to measure them again.
+const SKIP := ["grass+snow lift", "veins+trees", "far tree cards", "grass viewport", "machines",
+		"loose items", "sky", "HUD"]
 
 var _lines: Array[String] = []
 var status: String = ""
@@ -28,6 +33,8 @@ func run() -> void:
 	_lines.append("base %.1f ms (%d fps)" % [base0, int(1000.0 / maxf(base0, 0.1))])
 	for c in _cases(main):
 		var nm: String = c[0]
+		if SKIP.has(nm):
+			continue
 		var flip: Callable = c[1]
 		var cost := 0.0
 		var offs := 0.0
