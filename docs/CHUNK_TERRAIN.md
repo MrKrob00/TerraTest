@@ -238,6 +238,15 @@ pushed into a slope) hides nothing at all - otherwise every ray stops at its fir
 | тик целиком (`_select` + `_retire` + `_sort_queues`) | 7500 мкс | **2400 мкс** |
 | доля кадра 60 fps, пока камера крутится | 22 % | **6 %** |
 
+## HLOD: far leaves merged
+
+Drawn leaves of level 2..6 are grouped by their level-6 cell (1024 m) and merged into one mesh per
+cell off the main thread (`_hlod_start` -> `_hlod_merge` -> `_hlod_land`); the members go to render
+layer 0 while the cluster draws. The key of a cluster is the set of its drawn members (`_hlod_recount`):
+when it changes the cluster splits at once and is merged again after `HLOD_SETTLE_MS` of quiet, so
+nothing stale is ever shown. Off by the setting "Merge far ground" (`hlod_enabled`). Measured: draw
+calls 149 -> 104 at 1400 m and 185 -> 138 at 10 km, primitives +12%.
+
 ## Коллизия
 
 Тайл = базовый чанк, `HeightMapShape3D` 19×19 из **тех же высот, что и меш уровня 0**. Под ближним

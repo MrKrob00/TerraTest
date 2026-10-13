@@ -1650,6 +1650,11 @@ func _on_soft_shadows(on: bool) -> void:
 	if mn and mn.has_method("set_shadows_soft"):
 		mn.set_shadows_soft(on)
 
+func _on_hlod(on: bool) -> void:
+	var mn: Node = get_node_or_null("/root/Main")
+	if mn and mn.has_method("set_hlod"):
+		mn.set_hlod(on)
+
 func _on_view_distance(v: float, lbl: Label) -> void:
 	lbl.text = tr("Draw distance: %d m") % int(v)
 	var mn: Node = get_node_or_null("/root/Main")
@@ -1699,7 +1704,8 @@ func _build_settings_tab() -> void:
 		scale_row.visible = not on)
 
 	var hint := Label.new()
-	hint.text = tr("Auto mode holds ~55 FPS.")
+	hint.text = tr("Auto mode holds ~30 FPS. Render scale only saves pixels: if the frame is not spent on pixels, it changes nothing.")
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	hint.add_theme_font_size_override("font_size", 12)
 	hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(hint)
@@ -1749,6 +1755,18 @@ func _build_settings_tab() -> void:
 		vd_hint.add_theme_font_size_override("font_size", 12)
 		vd_hint.modulate = Color(1, 1, 1, 0.55)
 		_extra_vb.add_child(vd_hint)
+		if "hlod_on" in main:
+			var hl_btn := CheckButton.new()
+			hl_btn.text = tr("Merge far ground")
+			hl_btn.button_pressed = bool(main.hlod_on)
+			hl_btn.add_theme_font_size_override("font_size", 14)
+			_extra_vb.add_child(hl_btn)
+			hl_btn.toggled.connect(_on_hlod)
+			var hl_hint := Label.new()
+			hl_hint.text = tr("Fewer draw calls for distant ground. Turn off to compare FPS.")
+			hl_hint.add_theme_font_size_override("font_size", 12)
+			hl_hint.modulate = Color(1, 1, 1, 0.55)
+			_extra_vb.add_child(hl_hint)
 
 	# Полноэкранный ↔ плавающее окно (только ПК; окно тянется мышью, UI подстраивается сам).
 	if OS.has_feature("pc") and "fullscreen" in main:

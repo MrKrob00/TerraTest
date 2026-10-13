@@ -360,6 +360,7 @@ func _build_view(centre: Vector3) -> void:
 ## живущие в этой ноде, и без остановки допишут в уничтоженные. Waiting for the running group is
 ## the whole stop: nothing else reads the generator once it is done.
 func stop_generation() -> void:
+	_hlod_stop()
 	if _group != -1:
 		WorkerThreadPool.wait_for_group_task_completion(_group)
 		_group = -1
@@ -419,6 +420,11 @@ func _memo_h(cx: int, cz: int) -> float:
 		h = _ground_at(float(cx), float(cz), _flat_edits)
 	_memo[k] = h
 	return h
+
+## The height at a whole-metre node of the grid, in the node's own axes: one remembered read where
+## `terrain_height_at` reads four corners. For callers that only need the ground's shape (a slope).
+func cell_height(cx: int, cz: int) -> float:
+	return _memo_h(cx, cz) if _gen != null else 0.0
 
 ## Высота под мировой точкой. Билинейно по четырём узлам клетки — ровно так же, как её описывает
 ## меш и режет коллизия, поэтому колесо и картинка не расходятся.
@@ -1195,6 +1201,7 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 			gone["inst"].queue_free()
 		_live.erase(key)
 		_drop_staged(key)
+		_hlod_dirty = true
 		return
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays[0])
@@ -1215,6 +1222,9 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 	add_child(mi)
 	var entry := {"inst": mi, "sig": job["sig"], "lod": job["lod"], "gx": job["gx"], "gz": job["gz"],
 			"seen": float(Time.get_ticks_msec()) * 0.001}
+	if int(job["lod"]) >= HLOD_MIN_LOD and int(job["lod"]) <= HLOD_SPAN_LOD:
+		entry["arr"] = arrays[0]           # the cluster merges these (HLOD), never re-reads the GPU
+		entry["aabb"] = arrays[1]
 	# Loading: the screen is behind the fade and nothing is drawn yet - straight in.
 	if not terrain_is_ready:
 		_go_live(key, entry)
@@ -1249,6 +1259,7 @@ func _go_live(key: int, entry: Dictionary) -> void:
 			old["inst"].queue_free()
 	(entry["inst"] as Node3D).visible = shown
 	_live[key] = entry                     # no "gen": its seams are checked when the frame wants it
+	_hlod_dirty = true
 
 func _drop_staged(key: int) -> void:
 	var s = _staged.get(key)
@@ -1323,6 +1334,7 @@ func _release_held() -> void:
 				if is_instance_valid(n["inst"]):
 					(n["inst"] as Node3D).visible = false
 				n["cov"] = true
+				_hlod_dirty = true
 		for a in u["add"]:
 			_up(a)
 	for k in used:
@@ -1357,6 +1369,7 @@ func _up(key: int) -> void:
 	var n = _live.get(key)
 	if n != null and n.get("cov", false):
 		n["cov"] = false
+		_hlod_dirty = true
 		if is_instance_valid(n["inst"]):
 			(n["inst"] as Node3D).visible = _want.has(key)
 
@@ -1595,6 +1608,208 @@ func _snap_row(vh: PackedFloat32Array, line: int, r: int, along_x: bool) -> void
 			vh[line * VERTS + i] = lerpf(vh[line * VERTS + i0], vh[line * VERTS + i1], t)
 		else:
 			vh[i * VERTS + line] = lerpf(vh[i0 * VERTS + line], vh[i1 * VERTS + line], t)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HLOD: far leaves drawn as one mesh per cluster
+# ─────────────────────────────────────────────────────────────────────────────
+## THE FAR GROUND IS DRAWN BY CLUSTER, NOT BY LEAF (the player's call). Every leaf of level
+## HLOD_MIN_LOD..HLOD_SPAN_LOD that is drawn (live, not covered) belongs to the cluster of the
+## HLOD_SPAN_LOD cell it stands in, and a settled cluster is ONE mesh - the members' own arrays
+## concatenated, moved by their offsets - drawn in one call while the members stay in place with their
+## render layers at 0 (`MachineBatch`'s trick): everything that reads the leaves (seams, the held level
+## changes, `_drawn_key_at`, the occlusion test) sees them as before. The levels are the sub-pixel
+## LOD's business; this only decides how many calls draw them.
+## A CLUSTER IS NEVER STALE ON SCREEN: at the end of any frame the ground changed (`_hlod_dirty`) the
+## members are counted again, and one whose set differs from what its mesh holds is SPLIT at once -
+## the mesh hidden, the members drawn by themselves, which is exactly the path that ran before. It is
+## merged again once its set has held still HLOD_SETTLE_MS, on a worker thread; a merge that comes back
+## for a set that has moved on since is thrown away.
+const HLOD_MIN_LOD := 2
+const HLOD_SPAN_LOD := 6
+const HLOD_SETTLE_MS := 400
+var _hlod_dirty: bool = false
+## Off: every cluster split, the leaves drawn by themselves (measurements, and a way back).
+var hlod_enabled: bool = true
+## cluster Vector2i -> {"inst", "built", "want", "since", "task", "job", "members"}
+var _clusters: Dictionary = {}
+
+func _hlod_tick() -> void:
+	if Engine.is_editor_hint():
+		return
+	if not hlod_enabled:
+		if not _clusters.is_empty():
+			_hlod_stop()
+		return
+	var now: int = Time.get_ticks_msec()
+	if _hlod_dirty:
+		_hlod_dirty = false
+		_hlod_recount(now)
+	for ck in _clusters.keys():
+		var c: Dictionary = _clusters[ck]
+		if c["task"] != -1:
+			if not WorkerThreadPool.is_task_completed(c["task"]):
+				continue
+			WorkerThreadPool.wait_for_task_completion(c["task"])
+			c["task"] = -1
+			_hlod_land(ck, c)
+		elif int(c["want"]) != int(c["built"]) and now - int(c["since"]) >= HLOD_SETTLE_MS:
+			_hlod_start(ck, c)
+		if c["members"].is_empty() and c["task"] == -1:
+			if is_instance_valid(c["inst"]):
+				c["inst"].queue_free()
+			_clusters.erase(ck)
+
+## Who is in each cluster now; a cluster whose set moved is split this frame.
+func _hlod_recount(now: int) -> void:
+	var sets: Dictionary = {}
+	for key in _live:
+		var l: int = _key_lod(key)
+		if l < HLOD_MIN_LOD or l > HLOD_SPAN_LOD:
+			continue
+		var n: Dictionary = _live[key]
+		var inst = n["inst"]
+		if not is_instance_valid(inst) or not (inst as Node3D).visible or not n.has("arr"):
+			continue
+		var sh: int = HLOD_SPAN_LOD - l
+		var ck := Vector2i(_key_gx(key) >> sh, _key_gz(key) >> sh)
+		var e = sets.get(ck)
+		if e == null:
+			e = {"sig": 0, "m": {}}
+			sets[ck] = e
+		e["sig"] = int(e["sig"]) + hash([key, (inst as Object).get_instance_id()])
+		e["m"][key] = inst
+	for ck in sets.keys():
+		if not _clusters.has(ck):
+			_clusters[ck] = {"inst": null, "built": 0, "want": 0, "since": now, "task": -1, "job": null,
+					"members": {}}
+	for ck in _clusters.keys():
+		var c: Dictionary = _clusters[ck]
+		var e = sets.get(ck)
+		var sig: int = int(e["sig"]) if e != null else 0
+		var mem: Dictionary = e["m"] if e != null else {}
+		if sig == int(c["want"]) and sig == int(c["built"]):
+			continue
+		if sig != int(c["want"]):
+			c["want"] = sig
+			c["since"] = now
+		# split: the mesh goes, everyone draws itself (members that left included)
+		if is_instance_valid(c["inst"]):
+			(c["inst"] as Node3D).visible = false
+		for k in c["members"]:
+			var old = c["members"][k]
+			if is_instance_valid(old):
+				(old as VisualInstance3D).layers = 1
+		for k in mem:
+			(mem[k] as VisualInstance3D).layers = 1
+		c["built"] = -1 if sig != 0 else 0
+		c["members"] = mem
+
+## Snapshot the members' arrays and merge them on a worker thread.
+func _hlod_start(ck: Vector2i, c: Dictionary) -> void:
+	var parts: Array = []
+	var origin := Vector3(ck.x * float(CHUNK << HLOD_SPAN_LOD), 0.0, ck.y * float(CHUNK << HLOD_SPAN_LOD))
+	for k in c["members"]:
+		var n = _live.get(k)
+		if n == null or not n.has("arr"):
+			c["since"] = Time.get_ticks_msec()       # a member left meanwhile: wait for the recount
+			return
+		var l: int = _key_lod(k)
+		var off := Vector3(_key_gx(k) * float(CHUNK << l), 0.0, _key_gz(k) * float(CHUNK << l)) - origin
+		parts.append([n["arr"], off, n["aabb"]])
+	if parts.is_empty():
+		return
+	var job := {"parts": parts, "sig": int(c["want"]), "out": null}
+	c["job"] = job
+	c["task"] = WorkerThreadPool.add_task(_hlod_merge.bind(job), false, "ChunkTerrain HLOD")
+
+## Worker: one surface out of the members' surfaces. Reads only the arrays handed to it.
+func _hlod_merge(job: Dictionary) -> void:
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	var box := AABB()
+	var first := true
+	for p in job["parts"]:
+		var arr: Array = p[0]
+		var off: Vector3 = p[1]
+		var base: int = verts.size()
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var i0: int = verts.size()
+		verts.append_array(v)
+		for i in v.size():
+			verts[i0 + i] += off
+		norms.append_array(arr[Mesh.ARRAY_NORMAL])
+		cols.append_array(arr[Mesh.ARRAY_COLOR])
+		var ix: PackedInt32Array = arr[Mesh.ARRAY_INDEX]
+		var j0: int = idx.size()
+		idx.append_array(ix)
+		for j in ix.size():
+			idx[j0 + j] += base
+		var b: AABB = (p[2] as AABB)
+		b.position += off
+		box = b if first else box.merge(b)
+		first = false
+	var out: Array = []
+	out.resize(Mesh.ARRAY_MAX)
+	out[Mesh.ARRAY_VERTEX] = verts
+	out[Mesh.ARRAY_NORMAL] = norms
+	out[Mesh.ARRAY_COLOR] = cols
+	out[Mesh.ARRAY_INDEX] = idx
+	job["out"] = [out, box]
+
+## Main thread: the merge is put up only if the set it was made of is still the set.
+func _hlod_land(ck: Vector2i, c: Dictionary) -> void:
+	var job = c["job"]
+	c["job"] = null
+	if job == null or job["out"] == null or int(job["sig"]) != int(c["want"]):
+		c["since"] = Time.get_ticks_msec() - HLOD_SETTLE_MS   # moved on: merge the new set next frame
+		return
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, job["out"][0])
+	var mi: MeshInstance3D = c["inst"] if is_instance_valid(c["inst"]) else null
+	if mi == null:
+		mi = MeshInstance3D.new()
+		mi.material_override = _mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = Vector3(ck.x * float(CHUNK << HLOD_SPAN_LOD), 0.0, ck.y * float(CHUNK << HLOD_SPAN_LOD))
+		add_child(mi)
+		c["inst"] = mi
+	mi.mesh = mesh
+	mi.custom_aabb = job["out"][1]
+	mi.visible = true
+	for k in c["members"]:
+		var m = c["members"][k]
+		if is_instance_valid(m):
+			(m as VisualInstance3D).layers = 0
+	c["built"] = int(job["sig"])
+
+func _hlod_stop() -> void:
+	for ck in _clusters:
+		var c: Dictionary = _clusters[ck]
+		if c["task"] != -1:
+			WorkerThreadPool.wait_for_task_completion(c["task"])
+		if is_instance_valid(c["inst"]):
+			c["inst"].queue_free()
+		for k in c["members"]:
+			var m = c["members"][k]
+			if is_instance_valid(m):
+				(m as VisualInstance3D).layers = 1
+	_clusters.clear()
+
+## How many calls the ground costs now: clusters drawn, leaves drawn by themselves (in the frame or not).
+func hlod_stats() -> Vector2i:
+	var merged := 0
+	for ck in _clusters:
+		var c: Dictionary = _clusters[ck]
+		if is_instance_valid(c["inst"]) and (c["inst"] as Node3D).visible:
+			merged += 1
+	var alone := 0
+	for key in _live:
+		var inst = _live[key]["inst"]
+		if is_instance_valid(inst) and (inst as Node3D).visible and (inst as VisualInstance3D).layers != 0:
+			alone += 1
+	return Vector2i(merged, alone)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Коллизия: тайл = базовый чанк
@@ -1989,7 +2204,14 @@ func _active_camera() -> Camera3D:
 	var vp := get_viewport()
 	return vp.get_camera_3d() if vp != null else null
 
+## The clusters are counted AFTER everything that frame moved the ground (landing, holds, the LOD
+## tick's covers and retirements), so no cluster is ever drawn over a change for a frame.
 func _process(delta: float) -> void:
+	_ground_tick(delta)
+	if _gen != null:
+		_hlod_tick()
+
+func _ground_tick(delta: float) -> void:
 	if _gen == null:
 		return
 	if Engine.is_editor_hint() and not _preview_on:
@@ -2073,6 +2295,7 @@ func _process(delta: float) -> void:
 		left -= 1
 	_retire(now)
 	_held_dirty = true
+	_hlod_dirty = true
 	_sort_queues(cam_local)
 	_pf_mark("terrain_lod", t0)
 
