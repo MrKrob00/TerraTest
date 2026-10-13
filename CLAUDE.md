@@ -2580,18 +2580,23 @@ project: read it before claiming how anything works.
   linear made the fit worse. Shadows on, the lit shader is back.
 - **"SHADOWS" ARE OUR OWN NOW, AND THE ENGINE'S ARE "FULL SHADOWS (SLOW)", OFF BY DEFAULT**
   (`sun_shadows.gd`, `Main.shadows_engine`; the phone's probe with the engine's: ground 34 ms of 53,
-  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads one
-  texel of a top-down window (`WINDOW` 128 m, `VP_SIZE` 512 px, round the camera, the grass trample's
-  road): every caster drawn as its silhouette PROJECTED ALONG THE LIGHT onto the ground under it - a
-  machine block by block from the machine's copy of each collider (so a fitted drill casts its hull),
-  a tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`). 2D
-  polygons on a SubViewport: no 3D pass, no light pass, no depth map; strength is the light's own
-  `shadow_opacity` times its energy, so the moon casts weaker. The sun is held over `MIN_SUN_Y` for
-  it, or dusk shadows would run to the horizon. WHAT IT CANNOT DO: a hill shades nothing, and nothing
-  shades a machine (its blocks were never lit by the engine's shadow - they are unshaded). Measured
-  on llvmpipe: the casters' pass ~0.2-0.26 ms a frame for three enemies and twelve trees, the frame
-  +4-10 ms there (llvmpipe is pixel-bound); the phone decides. On llvmpipe the ENGINE's shadows do not
-  show at all on the proving ground, before this change as after - not a regression.
+  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads two
+  maps over one window (`WINDOW` 128 m round the camera - the engine's own reached 80 m, so nothing is
+  lost in distance). CASTERS (`VP_SIZE` 512 px, the grass trample's road): every machine block from the
+  machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
+  collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`),
+  each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
+  no depth map. THE GROUND'S OWN SHADE (`TERR_N` 32 cells, `sun_terrain_map`): each cell marches
+  `TERR_MARCH` toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`, the occlusion test's
+  read), fetched `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread; a refresh starts when the
+  camera has moved `TERR_MOVE` or the light has turned `TERR_TURN`. Strength is the light's own
+  `shadow_opacity` times its energy (the moon casts weaker); the sun is held over `MIN_SUN_Y` for it, or
+  dusk shadows would run to the horizon. Nothing shades a MACHINE (its blocks are unshaded and never
+  took the engine's shadow either). WITH THE ENGINE'S SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is
+  no additive sun pass to sum wrongly. Measured: casters ~0.2-0.26 ms a frame for three enemies and
+  twelve trees; on a desert seed at dusk 215 of 1024 cells dark, dunes and palms throwing long shadows
+  on the real driver. On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
+  before this change as after - not a regression.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own

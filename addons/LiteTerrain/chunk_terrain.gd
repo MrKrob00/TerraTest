@@ -2129,6 +2129,23 @@ func set_sun_shadow(tex: Texture2D, center: Vector2, size: float, strength: floa
 		m.set_shader_parameter("sun_shadow_size", size)
 		m.set_shader_parameter("sun_shadow_strength", strength if fast_ground else 0.0)
 
+## The ground's own shade (sun_shadows.gd's coarse map); same window rules as the casters'.
+func set_sun_terrain(tex: Texture2D, center: Vector2, size: float) -> void:
+	if _mat is ShaderMaterial:
+		var m := _mat as ShaderMaterial
+		m.set_shader_parameter("sun_terrain_map", tex)
+		m.set_shader_parameter("sun_terrain_center", center)
+		m.set_shader_parameter("sun_terrain_size", size)
+
+## The DRAWN ground's height at a world XZ, NAN where nothing is drawn: what the screen shows, read
+## off the heights the drawn node was built from (`_drawn_h`, the occlusion test's own read).
+func drawn_height(wx: float, wz: float) -> float:
+	if _gen == null:
+		return NAN
+	var p: Vector3 = global_transform.affine_inverse() * Vector3(wx, 0.0, wz)
+	var h: float = _drawn_h(p.x, p.z)
+	return h if is_nan(h) else (global_transform * Vector3(p.x, h, p.z)).y
+
 func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 	if _mat is ShaderMaterial:
 		var m := _mat as ShaderMaterial
