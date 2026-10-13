@@ -115,62 +115,136 @@ def boss(faces, c, axis, r, length, kind="b"):
             cap_end="dark_edge")
 
 
-# ── the riser ───────────────────────────────────────────────────────────────────────────────────
-# AFTER THE PLAYER'S PICTURE OF TERRATECH'S: a rounded mount under the top face and ONE THICK CAST ARM
-# leaving its underside, sweeping down and out to the hub on the tyre's inner face; the tyre stands at
-# the side, its outer face a few centimetres past the cell, its bottom under it. The arm turns about the
-# mount's bearing (steering) and slides into it (suspension). No box, no slot, no thin parts.
+# ── the drive, shared by both ───────────────────────────────────────────────────────────────────
+# THE TRANSMISSION IS DRAWN, AND IT IS ONE STORY ON BOTH BLOCKS (the player: the bare cast arm was
+# "ugly without a transmission"): the ARM is a CHAIN CASE, a stadium of GSO blue between two round
+# SPROCKET COVERS (dark, bolted, a hub cap in the middle) - the round ends say "a chain turns in here"
+# - its near end turning on a blue bearing housing on the mount, its far cover the tyre's hub. A swing
+# arm with the drive in it changes no length when it swings: the chain runs between two fixed centres.
+# NO MOTOR CAN: a finned can on the pivot was tried and the player did not like it - the drive sits in
+# the mount.
 
-PIVOT_R = (0.0, 0.10, 0.18)   # the bearing under the mount: the steering axis' foot
-TC_R = (0.0, -0.36, -0.40)    # the tyre's middle: outer face at z -0.55, bottom at y -0.66
+
+def chain_case(faces, P, H, rp, rh, n, t, steps=6):
+    """The swing arm as a CHAIN CASE: a stadium outline from the pivot P (radius rp) to the hub H
+    (radius rh) in the plane normal to n, t thick along n; flat faces painted as GSO panels, the rim
+    toned facet by facet."""
+    u = th.norm(th.sub(H, P))
+    v = th.norm(th.cross(n, u))
+    out = []
+    for i in range(steps + 1):                      # round the pivot end, from +v to -v the back way
+        a = math.pi / 2 + math.pi * i / steps
+        out.append(th.add(P, th.add(th.mul(u, rp * math.cos(a)), th.mul(v, rp * math.sin(a)))))
+    for i in range(steps + 1):                      # round the hub end, from -v to +v the front way
+        a = -math.pi / 2 + math.pi * i / steps
+        out.append(th.add(H, th.add(th.mul(u, rh * math.cos(a)), th.mul(v, rh * math.sin(a)))))
+    lo = [th.add(p, th.mul(n, -t / 2)) for p in out]
+    hi = [th.add(p, th.mul(n, t / 2)) for p in out]
+    c = th.mul(th.add(P, H), 0.5)
+    m = len(out)
+    for i in range(m):
+        j = (i + 1) % m
+        q = th.outward([lo[i], lo[j], hi[j], hi[i]], c)
+        tone = int(round(max(0.0, min(1.0, 0.5 + 0.5 * th.dot(th.norm(th.newell(q)), em.LIGHT))) * 4))
+        faces.append(th.Face(q, "bflat%d" % tone, u_hint=th.sub(hi[i], lo[i])))
+    faces.append(th.Face(th.outward(list(lo), th.add(c, n)), "blue", u_hint=u))
+    faces.append(th.Face(th.outward(list(hi), th.sub(c, n)), "blue", u_hint=u))
+
+
+def sprocket_cover(faces, c, n, r, depth=0.035, bolts=6):
+    """A round bolted cover on a chain case's face at c, looking along n: a dark disc, a bolt ring and
+    a raised hub cap in the middle."""
+    k = 1.0 / math.cos(math.pi / 10)
+    e = th.add(c, th.mul(n, depth))
+    em.tube(faces, [c, e], [r * k] * 2, ["m"], sides=10, cap_end="dark")
+    ref = (0, 1, 0) if abs(n[1]) < 0.9 else (1, 0, 0)
+    u = th.norm(th.cross(n, ref))
+    v = th.cross(n, u)
+    for i in range(bolts):
+        a = 2 * math.pi * i / bolts
+        d = th.add(th.mul(u, math.cos(a) * r * 0.72), th.mul(v, math.sin(a) * r * 0.72))
+        em.obox(faces, th.add(e, d), (n, u, v), (0.008, 0.018, 0.018), ["dark_edge"] * 6)
+    em.tube(faces, [e, th.add(e, th.mul(n, 0.03))], [r * 0.38 * k] * 2, ["b"], sides=8, cap_end="cap_bolt")
+
+
+# ── the riser ───────────────────────────────────────────────────────────────────────────────────
+# AFTER THE PLAYER'S FIRST PICTURE: a mount under the top face and one thick arm from its upper corner
+# down and sideways to the hub, the tyre beside it. Here: a blue turntable housing under the artist's
+# plate; under it the HEAD that steers - a bracket and the bearing housing of the arm's pivot; the CHAIN CASE
+# from the pivot down-left to the hub; the tyre at the side, its outer face a few cm past the cell.
+
+TURN_AX = (0.10, 0.02)        # (x, z) of the steering axis: the turntable's middle
+PIVOT_R = (0.16, 0.06, -0.15) # the arm's pivot (axis Z), the motor's shaft
+TC_R = (-0.14, -0.36, -0.40)  # the tyre's middle: outer face at z -0.55, bottom at y -0.66
 TYRE_IN_R = TC_R[2] + TYRE_W / 2
+ARM_Z = TYRE_IN_R + 0.065     # the chain case's mid-plane, just inside the tyre's inner face
 
 
 def build_riser(pk, img):
-    parts = {"riser_body": [], "riser_arm": []}
-    b, a = parts["riser_body"], parts["riser_arm"]
+    parts = {"riser_body": [], "riser_head": [], "riser_arm": []}
+    b, h, a = parts["riser_body"], parts["riser_head"], parts["riser_arm"]
+    tx, tz = TURN_AX
+    # the turntable housing under the plate, and its dark bearing ring
+    th.prism(b, -0.42, 0.42, 0.22, PLATE_IN, 0.44, -0.30, 0.09, cap_front="blue", cap_back="blue", top_style="blue")
+    em.tube(b, [(tx, 0.22, tz), (tx, 0.18, tz)], [0.22, 0.22], ["m"], sides=12, cap_end="dark")
+    # the HEAD: a bracket hanging from the bearing, the motor on the pivot (axis Z, from the back)
     px, py, pz = PIVOT_R
-    # the mount: a heavy, deeply chamfered blue block nearly the cell's width under the plate
-    th.prism(b, -0.40, 0.40, py + 0.04, PLATE_IN, 0.46, -0.10, 0.10, cap_front="blue", cap_back="blue",
-             top_style="blue")
-    # the bearing ring the arm leaves through
-    em.tube(b, [(px, py + 0.05, pz), (px, py - 0.02, pz)], [0.17, 0.17], ["m"], sides=10, cap_end="dark_edge")
-    # the ARM: root inside the bearing, one curve down and out to the hub
-    hub = (TC_R[0], TC_R[1], TYRE_IN_R + 0.07)
-    path = bezier3((px, py + 0.04, pz), (px, TC_R[1] + 0.02, pz + 0.02), hub, 8)
-    sweep(a, path, (1, 0, 0), 0.24, 0.17, taper=0.85)
-    boss(a, hub, (0, 0, -1), 0.12, 0.07)
+    em.cham_box(h, (tx - 0.13, py + 0.08, tz - 0.13), (tx + 0.13, 0.18, tz + 0.13), 0.03, "dark", "dark", "dark",
+                "dark_edge")
+    # the pivot's bearing housing: a short blue drum the chain case turns on, the drive inside it
+    em.tube(h, [(px, py, tz + 0.12), (px, py, ARM_Z + 0.05)], [0.15, 0.15], ["b"], sides=10, cap_start="blue")
+    _shift(h, (tx, 0.0, tz))
+    # the ARM: the chain case from the pivot to the hub, a sprocket cover at each end on its outer face
+    P = (px, py, ARM_Z)
+    H = (TC_R[0], TC_R[1], ARM_Z)
+    chain_case(a, P, H, 0.12, 0.13, (0, 0, 1), 0.10)
+    sprocket_cover(a, (P[0], P[1], ARM_Z - 0.05), (0, 0, -1), 0.10)
+    sprocket_cover(a, (H[0], H[1], ARM_Z - 0.05), (0, 0, -1), 0.11, bolts=5)
     _shift(a, PIVOT_R)
     return parts
 
 
 # ── the stabiliser ──────────────────────────────────────────────────────────────────────────────
 # AFTER THE PLAYER'S SECOND PICTURE: the tyre rolls along the machine in the middle (a tricycle's one
-# wheel), and ONE THICK ARM leaves the mount on the plate on the tyre's +X side, runs back over the
-# tyre, bends down behind it and hooks forward into the hub - a C round the tyre's back half. It swings
-# about a pin across the mount (suspension); the mount turns about the vertical (steering).
+# wheel) and a curved GUARD arches over it. Here: a blue mount on the artist's plate, a bearing housing
+# across it on the arm's pivot (axis X), the CHAIN CASE trailing back and down the tyre's +X side to the hub,
+# and the guard riding on the arm over the tyre's crown. The mount's lower half (the head) steers.
 
-PIN_S = (0.0, -0.06, 0.20)    # the arm's pin across the mount (axis X): the suspension swings about it
-TC_S = (0.0, -0.60, -0.04)    # the tyre's middle: ride height 0.90, like the standard wheel
-ARM_X = TYRE_W / 2 + 0.075    # the arm runs down the tyre's +X side
+TURN_S = (0.0, 0.16)          # (x, z) of the steering axis
+PIN_S = (0.0, -0.10, 0.16)    # the arm's pivot (axis X), the motor's shaft
+TC_S = (0.0, -0.60, -0.12)    # the tyre's middle: ride height 0.90, like the standard wheel
+ARM_X = TYRE_W / 2 + 0.07     # the chain case's mid-plane, on the tyre's +X side
+GUARD_R = 0.40
 
 
 def build_stab2(pk, img):
-    parts = {"stab2_body": [], "stab2_arm": []}
-    b, a = parts["stab2_body"], parts["stab2_arm"]
-    # the mount on the plate: a deep chamfered blue block
-    th.prism(b, -0.30, 0.30, -0.16, 0.24, PLATE_IN, 0.06, 0.09, cap_front="blue", cap_back="blue",
-             top_style="blue")
-    c = TC_S
-    # the ARM: from the pin back over the tyre, down behind it, forward into the hub
-    path = bezier4((ARM_X, PIN_S[1], PIN_S[2]), (ARM_X, -0.16, -0.30), (ARM_X, c[1] - 0.02, -0.62),
-                   (ARM_X, c[1], c[2] - 0.08), 10)
-    sweep(a, path, (1, 0, 0), 0.12, 0.17, taper=0.9)
-    boss(a, (ARM_X + 0.06, c[1], c[2]), (-1, 0, 0), 0.13, 0.12)
-    boss(a, (TYRE_W / 2 + 0.005, c[1], c[2]), (1, 0, 0), 0.06, 0.02, kind="m")
-    # the pin through the arm's root, its boss on the mount's side
-    em.tube(a, [(-0.32, PIN_S[1], PIN_S[2]), (ARM_X + 0.08, PIN_S[1], PIN_S[2])], [0.08, 0.08], ["m"], sides=8,
-            cap_start="dark_edge", cap_end="dark_edge")
+    parts = {"stab2_body": [], "stab2_head": [], "stab2_arm": []}
+    b, h, a = parts["stab2_body"], parts["stab2_head"], parts["stab2_arm"]
+    tx, tz = TURN_S
+    # the mount on the plate and the turntable under it
+    th.prism(b, -0.30, 0.30, 0.06, 0.34, PLATE_IN, 0.02, 0.08, cap_front="blue", cap_back="blue", top_style="blue")
+    em.tube(b, [(tx, 0.06, tz), (tx, 0.02, tz)], [0.20, 0.20], ["m"], sides=12, cap_end="dark")
+    # the HEAD: a bracket under the turntable, the motor across it on the pivot
+    px, py, pz = PIN_S
+    em.cham_box(h, (tx - 0.20, py - 0.06, tz - 0.12), (tx + 0.20, 0.02, tz + 0.12), 0.03, "dark", "dark", "dark",
+                "dark_edge")
+    # the pivot's bearing housing across the head, the drive inside it
+    em.tube(h, [(-0.24, py, pz), (ARM_X - 0.045, py, pz)], [0.12, 0.12], ["b"], sides=10, cap_start="blue")
+    _shift(h, (tx, 0.0, tz))
+    # the ARM: the chain case back and down to the hub, covers outward (+X), and the guard on it
+    P = (ARM_X, py, pz)
+    H = (ARM_X, TC_S[1], TC_S[2])
+    chain_case(a, P, H, 0.11, 0.12, (1, 0, 0), 0.09)
+    sprocket_cover(a, (ARM_X + 0.045, P[1], P[2]), (1, 0, 0), 0.09)
+    sprocket_cover(a, (ARM_X + 0.045, H[1], H[2]), (1, 0, 0), 0.10, bolts=5)
+    # the axle stub through the hub to the tyre
+    em.tube(a, [(ARM_X - 0.05, H[1], H[2]), (TYRE_W / 2 - 0.02, H[1], H[2])], [0.07, 0.07], ["m"], sides=8)
+    # the GUARD: an arc over the tyre's crown, its strut down to the case
+    path = arc(TC_S, GUARD_R, 35, 150, 8, 0.0)
+    sweep(a, path, (1, 0, 0), TYRE_W + 0.10, 0.05, kind="b", sides=8)
+    mid = path[3]
+    sweep(a, [(ARM_X, mid[1], mid[2]), (ARM_X, (mid[1] + H[1]) / 2 + 0.05, (mid[2] + H[2]) / 2)], (0, 0, 1),
+          0.08, 0.06, kind="b", sides=8)
     _shift(a, PIN_S)
     return parts
 
@@ -180,10 +254,10 @@ em.BLOCKS["stab2"] = (433, build_stab2, 256)
 em.CULL |= {"riser", "stab2"}
 if not hasattr(em, "CHECKS"):
     em.CHECKS = {}
-em.CHECKS["riser"] = {"cells": ((-0.5, -0.75, -0.6), (0.5, 0.5, 0.5)), "budget": 400,
-                      "origins": {"riser_arm": PIVOT_R}}
-em.CHECKS["stab2"] = {"cells": ((-0.5, -0.75, -0.5), (0.5, 0.5, 0.5)), "budget": 400,
-                      "origins": {"stab2_arm": PIN_S}}
+em.CHECKS["riser"] = {"cells": ((-0.5, -0.75, -0.6), (0.5, 0.5, 0.5)), "budget": 600,
+                      "origins": {"riser_head": (TURN_AX[0], 0.0, TURN_AX[1]), "riser_arm": PIVOT_R}}
+em.CHECKS["stab2"] = {"cells": ((-0.5, -0.75, -0.5), (0.5, 0.5, 0.5)), "budget": 600,
+                      "origins": {"stab2_head": (TURN_S[0], 0.0, TURN_S[1]), "stab2_arm": PIN_S}}
 
 if __name__ == "__main__":
     for nm in (sys.argv[1:] or ["riser", "stab2"]):

@@ -46,20 +46,19 @@ import emitter_models as em  # noqa: E402
 import marlit_weapons as mw  # noqa: E402
 import marlit_cutters as mc  # noqa: E402
 
-PLATE_Z = 0.30               # the bearing plate's front; the back face is z 0.5
+FACE_Z = 0.5                  # the hull face the block bolts to: there is NO PLATE (the player's call)
 TONES = ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"]
 
 
-def mount_plate(f, lo=(-1.38, -0.48), hi=(0.38, 1.38)):
-    """The bearing plate on the back face, in the TOOLS' dress, not the hull's (the player: the
-    faction's octagon window on a mount reads as a hole, and was turned down on the cutters first):
-    a dark casting with a hair of chamfer, the sunset line right at its edge, a bolt in every corner
-    and a sunset slit down every side - `marlit_cutters`' own pieces."""
-    mc.dark_slab(f, (lo[0], lo[1], PLATE_Z), (hi[0], hi[1], 0.5), 0.03)
-    mc.glow_frame(f, (lo[0] + 0.04, lo[1] + 0.04), (hi[0] - 0.04, hi[1] - 0.04), PLATE_Z)
-    mc.bolts(f, [(lo[0] + 0.14, lo[1] + 0.14), (hi[0] - 0.14, lo[1] + 0.14),
-                 (lo[0] + 0.14, hi[1] - 0.14), (hi[0] - 0.14, hi[1] - 0.14)], PLATE_Z)
-    mc.side_slits(f, (lo[0], lo[1], PLATE_Z), (hi[0], hi[1], 0.5))
+def flange(f, lo, hi, z0=FACE_Z - 0.05):
+    """A small mounting flange bolted straight to the hull face, in the tools' dress: a dark casting,
+    the sunset line at its edge, a bolt in every corner. Only as big as what stands on it - the
+    whole-face bearing plate is gone (the player: "remove the platform altogether")."""
+    mc.dark_slab(f, (lo[0], lo[1], z0), (hi[0], hi[1], FACE_Z), 0.02)
+    mc.glow_frame(f, (lo[0] + 0.02, lo[1] + 0.02), (hi[0] - 0.02, hi[1] - 0.02), z0, w=0.025)
+    m = 0.07
+    mc.bolts(f, [(lo[0] + m, lo[1] + m), (hi[0] - m, lo[1] + m), (lo[0] + m, hi[1] - m), (hi[0] - m, hi[1] - m)],
+             z0, r=0.035)
 
 
 def _shift(faces, origin):
@@ -157,12 +156,17 @@ def build_wlight(pk, img):
     parts = {"marlit_wlight_" + n: [] for n in names}
     P_ = lambda n: parts["marlit_wlight_" + n]          # noqa: E731
     b = P_("body")
-    # the bearing plate on the back face, the faction's window on the face it joins by
-    mount_plate(b)
-    # the final-drive drum, its axis on the tyre's axle line; a sunset ring round its mouth
+    # the final-drive drum bolted STRAIGHT to the hull face through a wide round flange, its axis on
+    # the tyre's axle line; a sunset ring round its mouth
     cy, cx = PIV_L[1], PIV_L[0]
     DF = PIV_L[2] + 0.04           # the drum's face
-    mw.oct_tube(b, (cx, cy, PLATE_Z), (cx, cy, DF + 0.06), DRUM_R, DRUM_R, "m")
+    mw.oct_tube(b, (cx, cy, FACE_Z), (cx, cy, FACE_Z - 0.06), DRUM_R + 0.10, DRUM_R + 0.10, "m", cap_b="mflat1")
+    mw.band(b, (cx, cy, FACE_Z - 0.062), (cx, cy, -1.0), DRUM_R + 0.06, DRUM_R + 0.09, "mglow")
+    for k in range(6):
+        a = math.pi / 6 + k * math.pi / 3
+        mc.bolts(b, [(cx + math.cos(a) * (DRUM_R + 0.045), cy + math.sin(a) * (DRUM_R + 0.045))], FACE_Z - 0.06,
+                 r=0.03)
+    mw.oct_tube(b, (cx, cy, FACE_Z - 0.06), (cx, cy, DF + 0.06), DRUM_R, DRUM_R, "m")
     mw.oct_tube(b, (cx, cy, DF + 0.13), (cx, cy, DF + 0.09), DRUM_R + 0.025, DRUM_R + 0.025, "mglow")
     mw.oct_tube(b, (cx, cy, DF + 0.06), (cx, cy, DF), DRUM_R - 0.01, DRUM_R - 0.05, "m")
     mw.band(b, (cx, cy, DF), (cx, cy, -1.0), TUBE_R[0] + 0.08, DRUM_R - 0.05, "mflat1")
@@ -177,10 +181,11 @@ def build_wlight(pk, img):
         x = cx + sx * 0.22
         em.obox(b, (x, cy, PIV_L[2]), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.035, 0.11, 0.09), TONES)
     mw.oct_tube(b, (cx - 0.27, cy, PIV_L[2]), (cx + 0.27, cy, PIV_L[2]), 0.05, 0.05, "m", cap_a="mpin", cap_b="mpin")
-    # the strut's top mount: a clevis on a boss high on the plate
+    # the strut's top mount: a clevis on a boss on its own flange, bolted to the hull face
     tx, ty, tz = STRUT_TOP_L
-    em.obox(b, (tx, ty, (tz + PLATE_Z) / 2 + 0.02), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
-            (0.16, 0.10, (PLATE_Z - tz) / 2 + 0.04), TONES)
+    flange(b, (tx - 0.20, ty - 0.16), (tx + 0.20, ty + 0.16))
+    em.obox(b, (tx, ty, (tz + FACE_Z - 0.05) / 2 + 0.02), ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+            (0.12, 0.08, (FACE_Z - 0.05 - tz) / 2 + 0.02), TONES)
     for sx in (-1, 1):
         em.obox(b, (tx + sx * 0.09, ty, tz - 0.03), ((1, 0, 0), (0, 1, 0), (0, 0, 1)), (0.025, 0.08, 0.07), TONES)
 
@@ -280,25 +285,27 @@ def build_wheavy(pk, img):
     P_ = lambda n: parts["marlit_wheavy_" + n]          # noqa: E731
     ax, az = AX_H
     b = P_("body")
-    mount_plate(b)
-    # the gearbox: a case high on the plate over the pillar, vents on its sides, the drive turning
-    # down into the sleeve under its sunset ring
-    gb_lo, gb_hi = (ax - 0.36, SLEEVE[0] - 0.02, az - 0.30), (ax + 0.36, 1.40, PLATE_Z)
+    # the gearbox: a case bolted straight to the hull face over the pillar (its flange round it), vents on
+    # its sides, the drive turning down into the sleeve under its sunset ring
+    flange(b, (ax - 0.46, SLEEVE[0] - 0.12), (ax + 0.46, 1.46))
+    gb_lo, gb_hi = (ax - 0.36, SLEEVE[0] - 0.02, az - 0.30), (ax + 0.36, 1.40, FACE_Z - 0.05)
     mc.dark_slab(b, gb_lo, gb_hi, 0.05)
     for sx in (-1, 1):
         x = ax + sx * 0.362
-        mw._face(b, [(x, gb_lo[1] + 0.06, gb_lo[2] + 0.08), (x, gb_lo[1] + 0.06, PLATE_Z - 0.06),
-                     (x, gb_hi[1] - 0.06, PLATE_Z - 0.06), (x, gb_hi[1] - 0.06, gb_lo[2] + 0.08)],
+        mw._face(b, [(x, gb_lo[1] + 0.06, gb_lo[2] + 0.08), (x, gb_lo[1] + 0.06, FACE_Z - 0.12),
+                     (x, gb_hi[1] - 0.06, FACE_Z - 0.12), (x, gb_hi[1] - 0.06, gb_lo[2] + 0.08)],
                  (ax, 1.2, 0.0), "mvent", u_hint=(0, 0, 1))
     mw.oct_tube(b, (ax, SLEEVE[0] + 0.02, az), (ax, SLEEVE[0] - 0.05, az), SLEEVE_R + 0.06, SLEEVE_R + 0.06, "mglow",
                 cap_b="mflat1")
     # the sleeve, two bands where the clamps hold it
     mw.oct_tube(b, (ax, SLEEVE[0], az), (ax, SLEEVE[1], az), SLEEVE_R, SLEEVE_R, "m", cap_b="mflat0")
-    for y in (0.98, 0.76):
-        mw.oct_tube(b, (ax, y + 0.05, az), (ax, y - 0.05, az), SLEEVE_R + 0.035, SLEEVE_R + 0.035, "m",
-                    cap_a="mflat2", cap_b="mflat1")
-        for sx in (-1, 1):
-            mw.mbox(b, (ax + sx * 0.10 - 0.04, y - 0.05, az + SLEEVE_R), (ax + sx * 0.10 + 0.04, y + 0.05, PLATE_Z))
+    # one clamp low on the sleeve, its two arms back to a flange of their own on the hull face
+    y = 0.78
+    mw.oct_tube(b, (ax, y + 0.05, az), (ax, y - 0.05, az), SLEEVE_R + 0.035, SLEEVE_R + 0.035, "m",
+                cap_a="mflat2", cap_b="mflat1")
+    flange(b, (ax - 0.22, y - 0.12), (ax + 0.22, y + 0.12))
+    for sx in (-1, 1):
+        mw.mbox(b, (ax + sx * 0.10 - 0.04, y - 0.05, az + SLEEVE_R), (ax + sx * 0.10 + 0.04, y + 0.05, FACE_Z - 0.05))
     # the COLLAR under the sleeve: it turns with the steering; the upper link hangs from its +X ear
     c = P_("collar")
     mw.oct_tube(c, (ax, SLEEVE[1], az), (ax, LINK_HI - 0.04, az), SLEEVE_R + 0.02, SLEEVE_R - 0.01, "m",
@@ -379,7 +386,7 @@ em.CULL |= {"marlit_wlight", "marlit_wheavy"}
 if not hasattr(em, "CHECKS"):
     em.CHECKS = {}
 CELLS_M = ((-1.5, -0.5, -1.5), (0.5, 1.5, 0.5))
-em.CHECKS["marlit_wlight"] = {"cells": ((-1.5, -1.5, -1.5), (0.5, 1.5, 0.5)), "budget": 1250,
+em.CHECKS["marlit_wlight"] = {"cells": ((-1.5, -1.5, -1.5), (0.5, 1.5, 0.5)), "budget": 1400,
                               "origins": {"marlit_wlight_arm": PIV_L, "marlit_wlight_knuckle": KN_L,
                                           "marlit_wlight_tyre": TC_L, "marlit_wlight_dbody": STRUT_TOP_L,
                                           "marlit_wlight_drod": STRUT_TOP_L},
