@@ -7,7 +7,8 @@ extends Node
 ## machine's copy of each block's collider, so a drill or a turret casts its hull, not its cell), a
 ## tree as its crown and its trunk, a wheel as its tyre's disc. It is 2D polygons on a SubViewport,
 ## the same road the grass trample takes (`grass.gd`): no 3D pass, no light pass, no depth map.
-## THE GROUND SHADES ITSELF TOO, from a second, coarse map (`TERR_N` cells over the same window): each
+## THE GROUND SHADES ITSELF TOO, from a coarse map (`TERR_N` cells over the same window) drawn into
+## the casters' map under them, so the ground still reads one texel: each
 ## cell marches toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`) and is dark when a
 ## ridge stands over the ray. The heights are fetched a slice a frame (`TERR_FETCH_PER_FRAME`) and the
 ## march runs on a worker thread over the packed grid; a refresh starts when the camera has moved
@@ -68,6 +69,7 @@ func _ready() -> void:
 	_vp.render_target_clear_mode = SubViewport.CLEAR_MODE_ALWAYS
 	add_child(_vp)
 	_canvas = Node2D.new()
+	_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	_vp.add_child(_canvas)
 	_canvas.draw.connect(_draw_casters)
 	_apply_active()
@@ -116,6 +118,12 @@ func _px(p: Vector3, g: float) -> Vector2:
 func _draw_casters() -> void:
 	var half: float = WINDOW * 0.5
 	var col := Color(1, 1, 1, 1)
+	# THE GROUND'S SHADE GOES INTO THE SAME MAP, under the casters: one fetch a ground pixel, not two.
+	# Its window was centred where the camera stood when it was marched, so it is laid that far off.
+	if _terr_tex != null and _terr_center.x != INF:
+		var ppm: float = float(VP_SIZE) / WINDOW
+		var off: Vector2 = (_terr_center - _center) * ppm
+		_canvas.draw_texture_rect(_terr_tex, Rect2(off, Vector2(VP_SIZE, VP_SIZE)), false)
 	# machines, block by block
 	for m in get_tree().get_nodes_in_group(MachineBody.MACHINES):
 		var mn := m as Node3D
@@ -241,7 +249,6 @@ func _terrain_tick(map: Node) -> void:
 					_terr_tex.update(img)
 				_terr_center = _t_center
 				_terr_dir = _t_dir
-				map.set_sun_terrain(_terr_tex, _terr_center, WINDOW)
 
 func _terr_begin() -> void:
 	_t_center = _center
