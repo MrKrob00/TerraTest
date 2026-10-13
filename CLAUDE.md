@@ -190,6 +190,14 @@ project: read it before claiming how anything works.
   of a dead block's box is `remove_child`-ed and freed, never `remove_shape_owner`-ed by hand as
   well - that removed it twice and printed the engine's "!shapes.has(owner)" for every block that
   died (nine in a minute of the menu's fight, zero after; a log line is not free on a phone).
+- **A DEAD BLOCK'S BOX GOES OFF THE HULL ON EVERY MACHINE, AT THE GRID'S DOOR** (`blocks._on_block_destroyed`
+  calls the machine's `_on_block_destroyed`). Only the player's machine had subscribed that handler, and
+  only for the blocks it held at `_ready`: every block an ENEMY lost left its box on the hull, and since
+  a mounted block has no body of its own that box was what bullets met - a dead tag answers "the
+  machine", the shot left a ground mark on air and nothing behind it could be reached (the player's
+  report). Measured on the proving ground, ten blocks of build 25 destroyed: 6 of 6 boxes left behind
+  before, 0 after, and a ray down through each dead cell missed. `VehicleBlock.hit_node` frees a box
+  whose tag is dead whatever path freed the block.
 - **THE MACHINE SCENE'S OWN BOX GOES OFF WITH THE FIRST BLOCK'S BOX** (`blocks._retire_root_collider`):
   `enemy.tscn` and `player_vehicle.tscn` carry an untagged 1x1x1 `CollisionShape3D` at the origin -
   exactly the Falsus cabin's cell. Once mounted blocks left the physics space a bullet's ray read the

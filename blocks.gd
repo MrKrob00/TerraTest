@@ -1388,6 +1388,15 @@ func attach_block_signals(instance: Node, x: int, y: int, z: int) -> void:
 
 # ── Handler: block destroyed ────────────────────────────────────────────────
 func _on_block_destroyed(_block_node: VehicleBlock, x: int, y: int, z: int) -> void:
+	# THE MACHINE'S COPY OF THE BOX GOES WITH THE BLOCK, HERE, FOR EVERY MACHINE. Only the player's
+	# machine subscribed `MachineBody._on_block_destroyed`, and only for the blocks it had at `_ready`:
+	# a block an enemy lost left its box on the hull, and since mounted blocks have no body of their
+	# own (`VehicleBlock.is_mounted`) that box WAS what bullets met - a dead tag answers "the machine",
+	# the shot left a ground mark on air and the blocks behind it could not be reached. The machine's
+	# handler is guarded against a second call, so the player's own subscription does no harm.
+	var m := get_parent()
+	if m != null and m.has_method("_on_block_destroyed"):
+		m._on_block_destroyed(_block_node)
 	remove_block(x, y, z)
 	if not _rebuild_queued:
 		_rebuild_queued = true
