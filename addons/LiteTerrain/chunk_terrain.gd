@@ -23,11 +23,27 @@ extends StaticBody3D
 const CHUNK := 16                 ## клеток в стороне базового чанка
 const VERTS := CHUNK + 1          ## вершин в стороне любого узла, на любом уровне
 const APRON := VERTS + 2          ## та же сетка с каймой в одну клетку — она нужна нормалям
-const MAX_LOD := 5                ## верхний уровень: 16 × 32 = 512 м на узел
+## The top level: 16 x 128 = 2048 m a node. It was 5 (512 m) while the view ended at 1400 m; with the
+## draw distance the player's (up to 10 km, Main.VIEW_MAX) every node past 1 km stayed 512 m with 32 m
+## cells, so the far ground was thousands of nodes of sub-pixel triangles. The key keeps 3 bits for it.
+const MAX_LOD := 7
 ## Раскрываем узел, пока расстояние до него меньше его размера, умноженного на это. Двойка —
 ## не вкусовое число: при ней соседние листья не могут разойтись больше чем на уровень, и
 ## притягивать край нужно только к вдвое более крупному соседу.
 const LOD_QUALITY := 2.0
+
+## SUB-PIXEL GROUND IS NOT SPLIT (`_subpixel`): a node the distance rule would split stays whole when
+## its children's cells would cover fewer than SUBPX_MIN pixels on screen - seen at a grazing angle a
+## far plain's cell is a fraction of a pixel tall however wide it is, and the GPU shades every such
+## triangle as whole 2x2 quads. The size is the cell's projection by the camera's own pixels per
+## radian, times how squarely the ground faces the eye: the height gap to the node over the distance,
+## plus the node's own relief over its width (a mountain face looks at the camera; a plain does not).
+## Never nearer than SUBPX_NEAR (the grass lift and its level-1 borders live in front of it), and never
+## more than SUBPX_EXTRA levels coarser than distance alone - neighbours then differ by three levels
+## at most, under the four `_snap_row` can stitch.
+const SUBPX_MIN := 2.0
+const SUBPX_NEAR := 256.0
+const SUBPX_EXTRA := 2
 
 ## THE INSPECTOR HOLDS WHAT SHAPES THE LOOK: the ground's material, the biomes and the behind-a-hill
 ## switch (the player: "a heap of useless settings" - the ENGINE's tuning numbers went). The menu
@@ -793,6 +809,10 @@ var _leaf_box := PackedFloat32Array()         # по 4 на лист: minx, minz
 var _leaf_at: Vector3 = Vector3(1e9, 1e9, 1e9)
 var _leaf_vd: float = -1.0
 const LEAF_MOVE2 := 256.0                     # 16 м, один базовый чанк
+## New relief rebuilds the leaves at most this often: a region seen for the first time is split by
+## distance, and only once its leaves are built does the sub-pixel rule know enough to merge them.
+const RELIEF_REBUILD_MS := 1000
+var _leaf_ms: int = 0
 
 ## cull = false — берём всё вокруг точки, без отсечения по кадру. Нужно входу в сохранённый мир:
 ## земля строится вокруг машины, а камера в этот момент ещё смотрит из начала сцены.
@@ -801,7 +821,12 @@ func _select(at: Vector3, cull: bool = true) -> void:
 	var mz: float = at.z - _leaf_at.z
 	# По высоте не сверяемся: расстояние до узла меряется по земле (см. _aabb_dist2), и подъём
 	# камеры на орбите набор листьев не меняет.
-	if _leaf_vd != view_distance or mx * mx + mz * mz > LEAF_MOVE2:
+	var now_ms: int = Time.get_ticks_msec()
+	if _leaf_vd != view_distance or mx * mx + mz * mz > LEAF_MOVE2 \
+			or (_relief_new and now_ms - _leaf_ms > RELIEF_REBUILD_MS):
+		_relief_new = false
+		_leaf_ms = now_ms
+		_measure_px()
 		_build_leaves(at)
 	_want.clear()
 	var n: int = _leaf_keys.size()
@@ -852,7 +877,7 @@ func _descend(lod: int, gx: int, gz: int, cam: Vector3) -> void:
 	if d2 > view_distance * view_distance:
 		return
 	var split := span * LOD_QUALITY
-	if lod > 0 and d2 < split * split:
+	if lod > 0 and d2 < split * split and not _subpixel(lod, gx, gz, cam, d2, span):
 		var cx := gx * 2
 		var cz := gz * 2
 		_descend(lod - 1, cx, cz, cam)
@@ -867,6 +892,87 @@ func _descend(lod: int, gx: int, gz: int, cam: Vector3) -> void:
 	_leaf_box.append(z0)
 	_leaf_box.append(x1)
 	_leaf_box.append(z1)
+
+## Would this node's CHILDREN draw sub-pixel cells? (see SUBPX_MIN) Unknown relief answers no: the
+## node then splits as distance says, its children are built, and their relief decides next time.
+func _subpixel(lod: int, gx: int, gz: int, cam: Vector3, d2: float, span: float) -> bool:
+	if _px_per_rad <= 0.0 or d2 < SUBPX_NEAR * SUBPX_NEAR:
+		return false
+	var d: float = sqrt(d2)
+	var dist_lod: int = int(floor(log(d / (float(CHUNK) * LOD_QUALITY)) / log(2.0))) if d > CHUNK * LOD_QUALITY else 0
+	if lod - dist_lod > SUBPX_EXTRA:
+		return false
+	var r = _relief_of(lod, gx, gz)
+	if r == null:
+		return false
+	var lo: float = (r as Vector2).x
+	var hi: float = (r as Vector2).y
+	var gap: float = maxf(maxf(lo - cam.y, cam.y - hi), 0.0)
+	var d3: float = sqrt(d2 + gap * gap)
+	var face: float = clampf(gap / d3 + (hi - lo) / span, 0.0, 1.0)
+	var cell: float = float(1 << (lod - 1))
+	return cell * _px_per_rad * face / d3 < SUBPX_MIN
+
+## A node's height range: its own built heights, else its four children's, else the nearest built
+## ancestor's (wider, so it splits sooner - the safe side). Cached; `_hc` is pruned, this is not read
+## for anything that has to be exact.
+var _relief: Dictionary = {}
+const RELIEF_CAP := 16384
+## Set when ground landed that told the relief something new: the leaves are rebuilt for it.
+var _relief_new: bool = false
+var _px_per_rad: float = 0.0
+
+func _relief_own(key: int) -> Variant:
+	var r = _relief.get(key)
+	if r != null:
+		return r
+	var h = _hc.get(key)
+	if h == null or (h as PackedFloat32Array).is_empty():
+		return null
+	var lo := INF
+	var hi := -INF
+	for v in (h as PackedFloat32Array):
+		lo = minf(lo, v)
+		hi = maxf(hi, v)
+	if _relief.size() > RELIEF_CAP:
+		_relief.clear()
+	_relief[key] = Vector2(lo, hi)
+	return _relief[key]
+
+func _relief_of(lod: int, gx: int, gz: int) -> Variant:
+	var own = _relief_own(_key(lod, gx, gz))
+	if own != null:
+		return own
+	var lo := INF
+	var hi := -INF
+	var all := true
+	for dz in 2:
+		for dx in 2:
+			var c = _relief_own(_key(lod - 1, gx * 2 + dx, gz * 2 + dz))
+			if c == null:
+				all = false
+				break
+			lo = minf(lo, (c as Vector2).x)
+			hi = maxf(hi, (c as Vector2).y)
+		if not all:
+			break
+	if all:
+		_relief[_key(lod, gx, gz)] = Vector2(lo, hi)
+		return Vector2(lo, hi)
+	for l in range(lod + 1, MAX_LOD + 1):
+		var a = _relief_own(_key(l, gx >> (l - lod), gz >> (l - lod)))
+		if a != null:
+			return a
+	return null
+
+## Pixels per radian of the camera the ground is drawn for, at the 3D buffer's real resolution
+## (`scaling_3d_scale`): a lower render scale makes the same cell fewer pixels.
+func _measure_px() -> void:
+	if not is_instance_valid(_cam):
+		return
+	var vp := _cam.get_viewport()
+	var h: float = vp.get_visible_rect().size.y * vp.scaling_3d_scale
+	_px_per_rad = h / (2.0 * tan(deg_to_rad(_cam.fov) * 0.5))
 
 func _aabb_dist2(aabb: AABB, p: Vector3) -> float:
 	var mx: Vector3 = aabb.position + aabb.size
@@ -1057,6 +1163,8 @@ func _apply_batch() -> void:
 			continue
 		var key: int = job["key"]
 		_hc[key] = res["heights"]
+		if int(job["lod"]) >= 2 and not _relief.has(key):
+			_relief_new = true             # near ground is never merged for size (SUBPX_NEAR)
 		if job["kind"] == JOB_COLL:
 			_queued.erase(key | (1 << 50))
 			_make_tile(key, job["gx"], job["gz"], res["heights"])
