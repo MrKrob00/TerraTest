@@ -115,33 +115,27 @@ TYRE = "@res://blocks/scenes/small_wheel.tscn|Wheel_module_small/Wheel_susp_high
 
 def riser(sag, steer, spin=0.0):
     R = ry(steer)
-    kp = add(list(fw.KP_R), [0, sag, 0])
-    tc = add(kp, app(R, sub(fw.TC_R, fw.KP_R)))
-    # the plate under the top face, its outer side up: its own Y (thickness) points down
+    pv = add(list(fw.PIVOT_R), [0, sag, 0])
+    tc = add(pv, app(R, sub(fw.TC_R, fw.PIVOT_R)))
     plate = tf([[1, 0, 0], [0, -1, 0], [0, 0, -1]], [0, 0.5, 0])
-    # the tyre mesh lies along its own X (x -0.30..0): its X turned to +Z
     T = mul(R, mul([[0, 0, -1], [0, 1, 0], [1, 0, 0]], rx(spin)))
-    return {"riser_body": tf(rx(0), [0, 0, 0]), "riser_slider": tf(rx(0), [0, sag, 0]),
-            "riser_knuckle": tf(R, kp), PLATE: plate,
+    return {"riser_body": tf(rx(0), [0, 0, 0]), "riser_arm": tf(R, pv), PLATE: plate,
             TYRE + "#": tf(T, add(tc, app(R, [0, 0, fw.TYRE_W / 2]))), "_ground": tc[1] - fw.TYRE_R}
 
 
 def stab2(sag, steer, spin=0.0):
-    R = ry(steer)
-    hd = list(fw.HEAD)
-    top = fw.CROWN_Y - 0.05
-    fd = sub([0, fw.TC_S[1], fw.TC_S[2]], [0, top, fw.HEAD[2]])
-    L = math.sqrt(sum(v * v for v in fd))
-    fd = [v / L for v in fd]
-    slide = [-v * sag / max(-fd[1], 1e-6) for v in fd]          # a rise of `sag` along the fork
-    tc = add(add(hd, app(R, sub(fw.TC_S, hd))), app(R, slide))
-    plate = tf([[0, -1, 0], [0, 0, -1], [1, 0, 0]], [0, 0, 0.5])  # as the artist's wheels stand it
-    # the tyre mesh's axle is its own X already: the stabiliser rolls along Z
-    T = mul(R, rx(spin))
-    return {"stab2_body": tf(rx(0), [0, 0, 0]), "stab2_crown": tf(R, hd),
-            "stab2_fork": tf(R, add(hd, app(R, slide))), PLATE: plate,
-            TYRE + "#": tf(T, add(tc, app(R, [fw.TYRE_W / 2, 0, 0]))), "_ground": tc[1] - fw.TYRE_R}
-
+    # the arm swings about its pin (axis X) so the hub rises by `sag`; steering turns all of it
+    pin = list(fw.PIN_S)
+    d = sub(fw.TC_S, pin)
+    L = math.hypot(d[1], d[2])
+    a0 = math.atan2(d[1], -d[2])
+    phi = math.asin(max(-0.9, min(0.9, (L * math.sin(a0) + sag) / L))) - a0
+    A = mul(ry(steer), rx(-phi))
+    tc = add(pin, app(A, d))
+    plate = tf([[0, -1, 0], [0, 0, -1], [1, 0, 0]], [0, 0, 0.5])
+    T = mul(A, rx(spin))
+    return {"stab2_body": tf(ry(steer), [0, 0, 0]), "stab2_arm": tf(A, pin), PLATE: plate,
+            TYRE + "#": tf(T, add(tc, app(A, [fw.TYRE_W / 2, 0, 0]))), "_ground": tc[1] - fw.TYRE_R}
 
 if __name__ == "__main__":
     for name, fn in (("riser", riser), ("stab2", stab2)):

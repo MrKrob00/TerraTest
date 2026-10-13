@@ -44,9 +44,22 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import turret_heads as th  # noqa: E402
 import emitter_models as em  # noqa: E402
 import marlit_weapons as mw  # noqa: E402
+import marlit_cutters as mc  # noqa: E402
 
 PLATE_Z = 0.30               # the bearing plate's front; the back face is z 0.5
 TONES = ["mtone3", "mtone3", "mtone4", "mtone1", "mtone2", "mtone2"]
+
+
+def mount_plate(f, lo=(-1.38, -0.48), hi=(0.38, 1.38)):
+    """The bearing plate on the back face, in the TOOLS' dress, not the hull's (the player: the
+    faction's octagon window on a mount reads as a hole, and was turned down on the cutters first):
+    a dark casting with a hair of chamfer, the sunset line right at its edge, a bolt in every corner
+    and a sunset slit down every side - `marlit_cutters`' own pieces."""
+    mc.dark_slab(f, (lo[0], lo[1], PLATE_Z), (hi[0], hi[1], 0.5), 0.03)
+    mc.glow_frame(f, (lo[0] + 0.04, lo[1] + 0.04), (hi[0] - 0.04, hi[1] - 0.04), PLATE_Z)
+    mc.bolts(f, [(lo[0] + 0.14, lo[1] + 0.14), (hi[0] - 0.14, lo[1] + 0.14),
+                 (lo[0] + 0.14, hi[1] - 0.14), (hi[0] - 0.14, hi[1] - 0.14)], PLATE_Z)
+    mc.side_slits(f, (lo[0], lo[1], PLATE_Z), (hi[0], hi[1], 0.5))
 
 
 def _shift(faces, origin):
@@ -145,7 +158,7 @@ def build_wlight(pk, img):
     P_ = lambda n: parts["marlit_wlight_" + n]          # noqa: E731
     b = P_("body")
     # the bearing plate on the back face, the faction's window on the face it joins by
-    em.marlit_box(b, (-1.38, -0.48, PLATE_Z), (0.38, 1.38, 0.5), 0.06, rnd, {(2, 0): "window"})
+    mount_plate(b)
     # the final-drive drum, its axis on the tyre's axle line; a sunset ring round its mouth
     cy, cx = PIV_L[1], PIV_L[0]
     DF = PIV_L[2] + 0.04           # the drum's face
@@ -217,7 +230,7 @@ def build_wlight(pk, img):
     r = P_("drod")
     mw.oct_tube(r, (0, 0, 0.0), (0, 0, -0.60), 0.042, 0.042, "msteel", sides=6)
     mw.oct_tube(r, (-0.05, 0, 0.0), (0.05, 0, 0.0), 0.045, 0.045, "m", cap_a="mpin", cap_b="mpin", sides=6)
-    return parts
+    return mc._no_edges(parts)
 
 
 def strut_foot_l(phi):
@@ -267,11 +280,11 @@ def build_wheavy(pk, img):
     P_ = lambda n: parts["marlit_wheavy_" + n]          # noqa: E731
     ax, az = AX_H
     b = P_("body")
-    em.marlit_box(b, (-1.38, -0.48, PLATE_Z), (0.38, 1.38, 0.5), 0.06, rnd, {(2, 0): "window"})
+    mount_plate(b)
     # the gearbox: a case high on the plate over the pillar, vents on its sides, the drive turning
     # down into the sleeve under its sunset ring
     gb_lo, gb_hi = (ax - 0.36, SLEEVE[0] - 0.02, az - 0.30), (ax + 0.36, 1.40, PLATE_Z)
-    em.cham_box(b, gb_lo, gb_hi, 0.05, "mbev2", "mbev4", "mbev1", "medge")
+    mc.dark_slab(b, gb_lo, gb_hi, 0.05)
     for sx in (-1, 1):
         x = ax + sx * 0.362
         mw._face(b, [(x, gb_lo[1] + 0.06, gb_lo[2] + 0.08), (x, gb_lo[1] + 0.06, PLATE_Z - 0.06),
@@ -297,7 +310,7 @@ def build_wheavy(pk, img):
     g = P_("leg")
     mw.oct_tube(g, (ax, SLEEVE[0] - 0.10, az), (ax, CASE[0], az), LEG_R, LEG_R, "msteel")
     cl, ch = (ax - 0.28, CASE[1], az - 0.30), (ax + 0.28, CASE[0], az + 0.22)
-    em.cham_box(g, cl, ch, 0.07, "mbev2", "mbev4", "mbev1", "medge")
+    mc.dark_slab(g, cl, ch, 0.07)
     hy = TC_H[1]
     # the ring-gear cover on the case's outer face, round the hub
     mw.oct_tube(g, (ax, hy, cl[2]), (ax, hy, cl[2] - 0.04), 0.27, 0.25, "m", cap_b="mflat1")
@@ -323,7 +336,7 @@ def build_wheavy(pk, img):
     tyre(t, R_H, i0 - TC_H[2], i1 - TC_H[2], 14, lug_rows=2, glow=False, hub_r=0.19, rim=False)
     # the spacer between them
     mw.oct_tube(t, (0, 0, o1 - TC_H[2]), (0, 0, i0 - TC_H[2]), 0.30, 0.30, "m")
-    return parts
+    return mc._no_edges(parts)
 
 
 def heavy_pose(sag, steer):
