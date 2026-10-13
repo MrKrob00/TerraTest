@@ -15,9 +15,10 @@ const WINDOW := 2.5
 ## noise on llvmpipe.
 const ROUNDS := 2
 ## Layers the phone has already measured (its first table, 53 ms at a 200 m view): about nothing for
-## the grass lift, veins, far cards, the trample viewport, machines and loose items; sky 5.5, HUD 3.5.
+## veins, far cards, the trample viewport, machines and loose items; sky 5.5, HUD 3.5. The grass lift
+## measured nothing next to the shadows and is asked again now the ground is unshaded.
 ## Left out of the run to keep it short - empty this list to measure them again.
-const SKIP := ["grass+snow lift", "veins+trees", "far tree cards", "grass viewport", "machines",
+const SKIP := ["veins+trees", "far tree cards", "grass viewport", "machines",
 		"loose items", "sky", "HUD"]
 
 var _lines: Array[String] = []
@@ -188,6 +189,9 @@ func _ground_cases(map: Node3D, out: Array) -> void:
 			var line := code.substr(rm, rm_end - rm)
 			out.append(["ground no shadow", _swap(map, _variant(mat, code.replace(line, line + ", shadows_disabled")))])
 			out.append(["ground unshaded", _swap(map, _variant(mat, code.replace(line, "render_mode unshaded")))])
+		# the fragment's own work (noise, the detail fetch) against the vertex work it rides on
+		if code.find("if (v_haze < HAZE_FLAT) {") >= 0:
+			out.append(["ground no detail", _swap(map, _variant(mat, code.replace("if (v_haze < HAZE_FLAT) {", "if (false) {")))])
 		var plain := StandardMaterial3D.new()
 		plain.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		plain.albedo_color = Color(0.45, 0.5, 0.35)

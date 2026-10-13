@@ -205,6 +205,28 @@ project: read it before claiming how anything works.
   the player's or an enemy's, while a drill (a shape query, every overlap) did - and the scout
   stripped the player's machine down to an unkillable cabin. Measured: an ally firing at a build-25
   enemy for 24 s took its cabin 625 -> 625 before, 625 -> 287 after.
+- **ON A MACHINE A BLOCK THAT FILLS ITS BOX BADLY COLLIDES AS ITS MODEL'S HULL** (`blocks.machine_collider`,
+  `fitted_shape`; `blocks/colliders/<KEY>.tres` from `art/collider_dump.gd` + `art/fit_colliders.py`;
+  the player: "the drill is a 2x2x2 cube though it is smaller, so it catches; the wheels too"). The
+  machine's copy of a block's collider was the scene's box, and the box is the WHOLE FOOTPRINT: a
+  Marlit drill's bit and a turret's dome fill under half of it, a wheel's mount a third, and the empty
+  corners met the ground on a slope, trees and shots. 39 blocks (drills, turrets, wheels, wedges and
+  half blocks, belts, the receiver, shield, repair unit, radar, chargers, battery, generator, solar,
+  the Marlit bracket) now carry the convex hull of their STILL model at rest: WITHOUT THE TYRE (the
+  probe carries the machine; a hull round the tyre would drag it on the ground for good), without the
+  ammo template, CLAMPED INTO THE BLOCK'S CELLS - so a fitted collider is the old box or less and can
+  only remove a contact, never add one - in the anchor's own axes, so `collider_offset` gives it zero
+  like every convex shape, and cut to 48 points. A block is fitted when its hull is under 85% of the
+  box, or when the box stood off the model (the SOLAR panel's box floated mid-cell over a panel on
+  the floor). NOT FITTED: armour plates (thin slabs already), the base machines and the supports
+  (they stand still; the anchor reads cells). ONE DOOR for both ways a block is placed; the SCENE'S
+  BOX STAYS - a loose block lies on it, the effects (`_local_aabb`) and the faces editor read it -
+  so "the collider position in a scene" below is still the box's rule. Everything that looks for a
+  mounted block reads the copy through its tag (`hit_node`), so the shape's kind changes nothing
+  there; the shadow proxy takes the hull's bounds. A block model changed means the dump and the
+  fitter re-run. Measured on the proving ground, five builds (Falsus, Marlit wheels, a miner) driving
+  for 24 s, two runs a side: 44 of 113 hull shapes fitted, ride height the same (0.80-1.06 m), paths
+  within the runs' own spread, the physics tick 7.7 / 7.7 ms before against 8.8 / 7.3 after.
 - A COLLIDER IS FOUND BY ITS `block_owner` TAG, not by comparing positions. The positional
   fallback only ever knew the 2×2×2 offset, and with several offsets that also turn it cannot be
   right; manual placement tagged its collider, the machine's own assembly did not, so the fallback

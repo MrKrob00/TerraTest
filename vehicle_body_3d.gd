@@ -2376,7 +2376,7 @@ func _on_take_pressed() -> void:
 		if src_col == null:
 			push_error("vehicle: у блока %s нет CollisionShape3D — ставить нечего" % G.block_name(int(instance.block)))
 			return
-		var collision: CollisionShape3D = src_col.duplicate()
+		var collision: CollisionShape3D = bmn.machine_collider(src_col, int(instance.block))
 		collision.transform = Transform3D(orient, instance.position)   # коллизия наклоняется вместе
 		# Сдвиг от якоря — у ХОЗЯИНА СЕТКИ (blocks.collider_offset), а не второй таблицей здесь:
 		# тут знали ровно один размер, 2×2×2, и всё остальное вставало на полклетки мимо.
