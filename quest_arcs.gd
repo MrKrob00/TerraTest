@@ -1131,22 +1131,24 @@ func _finger_point() -> Vector3:
 	return (h as Node3D).global_position if h != null else Vector3.ZERO
 
 func _finger_point_prop() -> Variant:
-	return _props.position_for(_finger_prop) if _finger_prop != "" else null
+	if _finger_prop == "":
+		return null
+	var want: int = _wanted_type()
+	if want >= 0 and _props.has_loose(_finger_prop, want):
+		return _props.position_for(_finger_prop, want)
+	return _props.position_for(_finger_prop)
 
 ## Ближайшая к игроку живая подсказка (или null, если разметка закрыта целиком).
 func _next_hint():
 	_hints = _hints.filter(func(h): return is_instance_valid(h))
 	var p: Node3D = _player()
-	var best = null
-	var best_d: float = INF
-	for h in _hints:
-		if p == null:
-			return h
-		var d: float = p.global_position.distance_squared_to((h as Node3D).global_position)
-		if d < best_d:
-			best_d = d
-			best = h
-	return best
+	return BuildHint.pick(_hints, -1, p.global_position if p != null else Vector3.ZERO)
+
+## The type the plan can take now (`BuildHint.pick`'s first reachable ghost), or -1: the part the
+## "pick up" finger goes to, so a receiver lying nearest is not offered before the belts it ends.
+func _wanted_type() -> int:
+	var h = _next_hint()
+	return (h as BuildHint).block_type if h != null and (h as BuildHint).reachable() else -1
 
 func _line_1(q: Dictionary) -> void:
 	var p: Node3D = _player()

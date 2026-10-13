@@ -1771,7 +1771,7 @@ project: read it before claiming how anything works.
 - **SUPPLY DROP'S REWARD IS AN ORB, NOT A CRATE** (`reward_orb.gd`): a 1 m sphere of the glitch cards a
   block appears with, `HOVER` 3 m over the point, every card living its own short cycle and reborn
   elsewhere in the sphere, so it never stands still. It opens by being stood next to —
-  `HOLD_TIME` 3 s within `HOLD_DIST` 10 m — and the hold IS its progress bar: fewer cards are reborn
+  `HOLD_TIME` 3 s within `HOLD_DIST` 30 m on the plan (it was 10 m in 3D, the player: raise it) — and the hold IS its progress bar: fewer cards are reborn
   as it runs, walking off fills it back in. Then it burns out and the reward drops out of it as
   ordinary loose blocks. Half the drops are BAIT: the ambush arrives WHEN THE PLAYER DOES (it is a
   trap, not a camp) — one machine at the ceiling the player can take or two a step below

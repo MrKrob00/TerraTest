@@ -278,28 +278,23 @@ func _next_hint():
 	if _hints.is_empty():
 		return null
 	var want: int = _held_block()
-	var from: Vector3 = _aim_origin()
-	var best = null
-	var best_d: float = INF
-	for h in _hints:
-		if want >= 0 and int((h as BuildHint).block_type) != want:
-			continue
-		var d: float = from.distance_squared_to((h as Node3D).global_position)
-		if d < best_d:
-			best_d = d
-			best = h
-	if best != null:
-		return best
+	var h = BuildHint.pick(_hints, want, _aim_origin())
 	# В руке блок, которого в чертеже уже нет (игрок поднял лишнее или подобрал обломок) —
-	# показываем на ближайшую свободную клетку: врать про «сюда не встанет» тут нечем, а
-	# оставить палец висеть в воздухе хуже.
-	if want >= 0:
-		for h in _hints:
-			var d2: float = from.distance_squared_to((h as Node3D).global_position)
-			if d2 < best_d:
-				best_d = d2
-				best = h
-	return best
+	# показываем на ближайшую свободную клетку: оставить палец висеть в воздухе хуже.
+	if h == null and want >= 0:
+		h = BuildHint.pick(_hints, -1, _aim_origin())
+	return h
+
+## THE PART TO TAKE IS THE ONE THE PLAN CAN TAKE NOW: the type of the first reachable open cell
+## (`BuildHint.pick`), the hull blocks before the wheels and the drill hanging on them. The finger
+## went to whatever lay nearest, and a wheel taken before the front block had no cell to go to
+## (the player's report). -1 when the plan is done or nothing is reachable.
+func _wanted_type() -> int:
+	_hints = _hints.filter(func(h): return is_instance_valid(h))
+	for h in _hints:
+		if (h as BuildHint).reachable():
+			return (h as BuildHint).block_type
+	return -1
 
 ## Тип блока В РУКЕ или -1, если рука пуста. Спрашиваем у самого тела, а не у флага: флаг
 ## говорит лишь «что-то держим».
@@ -476,8 +471,11 @@ func _nearest_loose_block() -> Vector3:
 	if objects == null or not (v is Node3D):
 		return Vector3.ZERO
 	var origin: Vector3 = (v as Node3D).global_position
+	var want: int = _wanted_type()
 	var best: Vector3 = Vector3.ZERO
 	var best_d: float = INF
+	var best_w: Vector3 = Vector3.ZERO
+	var best_wd: float = INF
 	for c in objects.get_children():
 		if not ("block" in c) or not (c is Node3D):
 			continue
@@ -488,6 +486,11 @@ func _nearest_loose_block() -> Vector3:
 		if d < best_d:
 			best_d = d
 			best = (c as Node3D).global_position
+		if bt == want and d < best_wd:
+			best_wd = d
+			best_w = (c as Node3D).global_position
+	if best_wd < INF:
+		return best_w                     # the part the plan can take now
 	return best if best_d < INF else origin
 
 # ── Конец обучения → первый сюжетный бой ─────────────────────────────────────

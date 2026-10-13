@@ -216,7 +216,9 @@ func _ready() -> void:
 		_cam = _active_camera()
 		if _cam != null:
 			start = inv * _cam.global_position
-	await setup_procedural(seed_value, start)
+	# A NEW WORLD STARTS ON THE NEAREST PLAIN (start_point, world_persist._fresh_start moves the
+	# machine there): wherever the scene opened could be a canyon floor or a mountainside.
+	await setup_procedural(seed_value, start, game != null and saved == null and not flat_ground)
 
 func _set_biomes(v: TerrainBiomes) -> void:
 	biomes = v
@@ -236,9 +238,54 @@ func _biomes() -> TerrainBiomes:
 func _proc_params() -> Dictionary:
 	return LiteTerrainGen.natural_params(_biomes())
 
+## WHERE A NEW WORLD'S MACHINE STANDS (world space), or null: a saved world comes back where it was.
+var start_point: Variant = null
+
+## THE NEAREST PLAIN TO `from` (local XZ, the generator's own points; the player's call: "spawning in
+## a canyon is random and awkward - only on the nearest plains"). Rings PLAIN_STEP apart out to
+## PLAIN_MAX, PLAIN_DIRS points a ring, the first that is no canyon and no mountain (masks under
+## PLAIN_MASK) and level across PLAIN_SPAN (heights within PLAIN_RISE). Masks first: they are three
+## noise reads, a height is five generator calls. The seed decides it, so a world always opens on the
+## same spot. None found - the best-scored point seen, never the canyon itself.
+const PLAIN_STEP := 40.0
+const PLAIN_MAX := 2400.0
+const PLAIN_DIRS := 16
+const PLAIN_MASK := 0.05
+const PLAIN_SPAN := 14.0
+const PLAIN_RISE := 2.0
+func _plain_near(from: Vector3) -> Vector3:
+	var b := _biomes()
+	var nz: Callable = b.noise
+	var best := from
+	var best_score := INF
+	var r := 0.0
+	while r <= PLAIN_MAX:
+		var n: int = 1 if r == 0.0 else PLAIN_DIRS
+		for i in n:
+			var a := TAU * float(i) / float(n)
+			var p := Vector2(from.x + cos(a) * r, from.z + sin(a) * r)
+			var bad: float = b.canyon_mask(p, nz) + b.mountain_mask(p, nz)
+			if bad > PLAIN_MASK and bad >= best_score:
+				continue
+			var lo := INF
+			var hi := -INF
+			for dz in [-1, 0, 1]:
+				for dx in [-1, 0, 1]:
+					var h: float = _gen.height_at(p.x + dx * PLAIN_SPAN * 0.5, p.y + dz * PLAIN_SPAN * 0.5)
+					lo = minf(lo, h)
+					hi = maxf(hi, h)
+			if bad <= PLAIN_MASK and hi - lo <= PLAIN_RISE:
+				return Vector3(p.x, from.y, p.y)
+			var score: float = bad + (hi - lo) / PLAIN_RISE
+			if score < best_score:
+				best_score = score
+				best = Vector3(p.x, from.y, p.y)
+		r += PLAIN_STEP
+	return best
+
 ## Мир поднимается ЗДЕСЬ И СРАЗУ: считать заранее нечего, первый чанк родится к первому кадру.
 ## around — где стоит игрок; вокруг неё и строим первое кольцо.
-func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
+func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO, find_plain: bool = false) -> void:
 	var gen := LiteTerrainGen.new()
 	add_child(gen)
 	gen.gen_seed = seed_value
@@ -246,6 +293,9 @@ func setup_procedural(seed_value: int, around: Vector3 = Vector3.ZERO) -> void:
 	gen.flat = flat_ground
 	gen.begin_sampling(_biomes())
 	_gen = gen
+	if find_plain:
+		around = _plain_near(around)
+		start_point = global_transform * Vector3(around.x, _gen.height_at(around.x, around.z), around.z)
 	_y_lo = -world_height() * 0.5
 	_y_hi = world_height() * 1.8
 	_setup_materials(_get_material())

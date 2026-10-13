@@ -203,8 +203,8 @@ func drop_for(quest_id: String, block_type: int) -> Node3D:
 
 # Куда ведёт компас по этому квесту: к БЛИЖАЙШЕМУ ещё не подобранному предмету стадии.
 # null — подбирать больше нечего.
-func position_for(quest_id: String) -> Variant:
-	var n: Node3D = _first_loose(quest_id)
+func position_for(quest_id: String, block_type: int = -1) -> Variant:
+	var n: Node3D = _first_loose(quest_id, block_type)
 	if n == null:
 		return null
 	return n.global_position
