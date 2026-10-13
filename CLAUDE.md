@@ -2397,19 +2397,9 @@ project: read it before claiming how anything works.
   SETTINGS): the terrain's `view_distance`, the camera's far plane (`_keep_far`, re-asked every second
   as cameras change) and the haze, scaled by distance / `VIEW_DEFAULT` (1400) so the ground's edge
   always sits in it; `_exit_tree` puts the shipped haze back, the global outlives the scene.
-- **A GUST OF WIND NOW AND THEN, IN THE WORLD, NOT ON THE SCREEN** (`world_wind.gd`,
-  `resources/wind_motes.gdshader`; the player's calls): every `GAP_MIN`..`GAP_MAX` (150-360 s) a gust
-  rises for 14-24 s and dies away, carrying what the ground under the camera has - dark LEAVES over
-  the meadow (tumbling about their own axes), white LUMPS of snow on the snowy mountains (round, lit
-  from above and shaded under - a flat white disc vanished on snow; not snowflakes), sand grains
-  streaked along the wind over desert and salt, dust in the canyon. It was a 2D overlay of seven
-  sprites (`screen_weather.gd`, gone) and "moved somewhere else whenever the camera turned or
-  moved": the motes now stand in the world. ONE MultiMesh of `COUNT` quads, the whole flight in the
-  vertex shader - a seed per mote in INSTANCE_CUSTOM, carried by the wind's travel (`wind_t`, the
-  gust's envelope integrated on the CPU) and fluttered by TIME, wrapped into a `BOX` (24 m) round
-  the camera and faded to its sphere; the gust's strength gates how many fly (custom `w`). Opaque
-  with alpha scissor, no shadow, hidden between gusts; the CPU writes three uniforms a frame. Checked
-  on the real driver from two camera spots: snow and leaves stay put in the world as the view turns.
+- **NOTHING FLIES IN THE AIR** (the player's call): a 2D overlay of motes (`screen_weather.gd`) moved
+  with the camera, and the world-space gust of leaves and snow lumps that replaced it was turned
+  down too. Both are gone; do not bring weather back without asking.
 - **GLOW AND FOG ARE OFF, AND THE REASON IS A MEASUREMENT ON THE DEVICE: 23 fps clean, 18-20 with
   glow, 13 with fog on top.** That is 43% of the frame rate for two settings, on a phone that only
   had 23 fps to give. Both were tried and both came back out. The effect language WAS written for
