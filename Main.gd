@@ -48,6 +48,8 @@ const VIEW_DEFAULT := 1400.0
 ## The haze the project ships (project.godot `haze_range`), matched to VIEW_DEFAULT.
 const HAZE_DEFAULT := Vector4(150.0, 750.0, 0.85, 0.0)
 var view_distance: float = VIEW_DEFAULT
+## Far ground merged into one mesh per cluster (ChunkTerrain HLOD). A setting so the phone can A/B it.
+var hlod_on: bool = true
 const SOFT_SHADOW_SIZE := 1024
 const HARD_SHADOW_SIZE := 512
 
@@ -120,7 +122,7 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 ## Панель профиля открыта с самого старта, без тапа по счётчику FPS.
 @export var profiler_on_start: bool = false
 
-const SCREEN_WEATHER := preload("res://screen_weather.gd")
+const WORLD_WIND := preload("res://world_wind.gd")
 
 func _ready() -> void:
 	current_scale = get_viewport().scaling_3d_scale
@@ -134,8 +136,8 @@ func _ready() -> void:
 	get_window().size_changed.connect(_apply_ui_scale)
 	_apply_ui_scale()
 	_setup_pc_input_map()
-	# A few things in the air by biome (snow, sand, fluff, dust), drawn on the screen.
-	add_child(SCREEN_WEATHER.new())
+	# A rare gust of wind carrying what the ground has (leaves, snow, sand, dust), in the world.
+	add_child(WORLD_WIND.new())
 	# ПРИВЕТСТВИЕ МЕХАНИКА — отсюда, потому что мир это мы. Q — автолоад: он поднимается ещё до
 	# первой сцены, и сказанное им в _ready доставалось главному меню. Отложенно: реплика уходит
 	# в Dialogue, а тот проверяет, что мир уже в дереве.
@@ -244,6 +246,11 @@ func _apply_shadows() -> void:
 				(mm as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
 						if soft else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
+func set_hlod(on: bool) -> void:
+	hlod_on = on
+	_apply_view()
+	_save_settings()
+
 func set_view_distance(v: float) -> void:
 	view_distance = clampf(v, VIEW_MIN, VIEW_MAX)
 	_apply_view()
@@ -253,6 +260,8 @@ func _apply_view() -> void:
 	var map: Node = get_node_or_null("map")
 	if map != null and "view_distance" in map:
 		map.view_distance = view_distance
+	if map != null and "hlod_enabled" in map:
+		map.hlod_enabled = hlod_on
 	# the haze scales with the view: past the default it reaches out with it, under the default it
 	# closes in so the ground still ends inside it
 	var k: float = view_distance / VIEW_DEFAULT
@@ -305,6 +314,7 @@ func _save_settings() -> void:
 		"shadows_enabled": shadows_enabled,
 		"shadows_soft": shadows_soft,
 		"view_distance": view_distance,
+		"hlod_on": hlod_on,
 		"ui_scale": ui_scale,
 		"fullscreen": fullscreen,
 	})
@@ -319,6 +329,7 @@ func _load_settings() -> void:
 		shadows_enabled = bool(parsed.get("shadows_enabled", true))
 		shadows_soft = bool(parsed.get("shadows_soft", true))
 		view_distance = clampf(float(parsed.get("view_distance", VIEW_DEFAULT)), VIEW_MIN, VIEW_MAX)
+		hlod_on = bool(parsed.get("hlod_on", true))
 		ui_scale = clampf(float(parsed.get("ui_scale", 1.0)), UI_SCALE_MIN, UI_SCALE_MAX)
 		fullscreen = bool(parsed.get("fullscreen", false))
 

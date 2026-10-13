@@ -1436,6 +1436,21 @@ project: read it before claiming how anything works.
   the same view on a snowy start, census of every drawn triangle's projected area: at 1400 m 66k
   triangles -> 54k, at 10 km 267k -> 73k with under-a-pixel 59% -> 10%, draw calls 565 -> 185, the
   frame 98 -> 56 ms on llvmpipe; the pictures the same but for the clouds.
+- **FAR GROUND IS MERGED INTO CLUSTERS (HLOD)** (`ChunkTerrain._hlod_tick`, setting "Merge far
+  ground", `Main.hlod_on`): drawn leaves of level `HLOD_MIN_LOD` (2) to `HLOD_SPAN_LOD` (6) are
+  grouped by their level-6 cell (1024 m) and concatenated into one mesh per cell on a
+  WorkerThreadPool task (`_hlod_merge`, from the vertex arrays `_place_mesh` keeps for those
+  levels); members drop to render layer 0 while the cluster draws. A cell whose set of drawn
+  members changes SPLITS AT ONCE (members back, cluster hidden) and merges again after
+  `HLOD_SETTLE_MS` (400) of quiet, so a level change, a hold or a frustum edge never shows a stale
+  cluster. Measured on the real driver, the same view: draw calls 149 -> 104 at 1400 m, 185 -> 138 at
+  10 km, primitives +12% (a cluster draws its members off the frame too); on llvmpipe the frame is
+  the same within noise, so the phone decides - which is why it is a setting.
+- A VEIN CANDIDATE'S SLOPE IS READ ON THE GRID'S NODES (`resource_nodes._slope_at` through
+  `ChunkTerrain.cell_height`): four bilinear heights were sixteen corner reads, each a fresh
+  generator call far from the player - the vein ring's whole main-thread cost. Measured: main-thread
+  `raw_height_at` 217k -> 101k, the far ring filled in ~20 s against ~25, all 1343 seeded veins in the
+  same places.
 - THE COST OF THE WORLD IS `height_at`, AND IT IS MEASURABLE. 124 us a point × 441 points a chunk
   × 25 chunks is the 1.1 s starting ring; before the noise went native it was 391 us and 3.7 s.
   Anything that claims to speed up loading has to move that number — or it is moving nothing.
@@ -2382,12 +2397,19 @@ project: read it before claiming how anything works.
   SETTINGS): the terrain's `view_distance`, the camera's far plane (`_keep_far`, re-asked every second
   as cameras change) and the haze, scaled by distance / `VIEW_DEFAULT` (1400) so the ground's edge
   always sits in it; `_exit_tree` puts the shipped haze back, the global outlives the scene.
-- **A FEW THINGS IN THE AIR, ON THE SCREEN** (`screen_weather.gd`, a CanvasLayer under the HUD; the
-  player's call): snow over the snowy mountains, seed fluff over the meadow, sand over desert and
-  salt, dust in the canyon - at most `COUNT` (7) motes drawn with `_draw()`, depths spread so one or
-  two are big and near; depth sets size, speed and parallax on a camera turn, and every flake turns
-  about a tilted axis (squashed by cos) so it reads as 3D. The biome is asked under the camera once a
-  second (`ChunkTerrain.biome_at`).
+- **A GUST OF WIND NOW AND THEN, IN THE WORLD, NOT ON THE SCREEN** (`world_wind.gd`,
+  `resources/wind_motes.gdshader`; the player's calls): every `GAP_MIN`..`GAP_MAX` (150-360 s) a gust
+  rises for 14-24 s and dies away, carrying what the ground under the camera has - dark LEAVES over
+  the meadow (tumbling about their own axes), white LUMPS of snow on the snowy mountains (round, lit
+  from above and shaded under - a flat white disc vanished on snow; not snowflakes), sand grains
+  streaked along the wind over desert and salt, dust in the canyon. It was a 2D overlay of seven
+  sprites (`screen_weather.gd`, gone) and "moved somewhere else whenever the camera turned or
+  moved": the motes now stand in the world. ONE MultiMesh of `COUNT` quads, the whole flight in the
+  vertex shader - a seed per mote in INSTANCE_CUSTOM, carried by the wind's travel (`wind_t`, the
+  gust's envelope integrated on the CPU) and fluttered by TIME, wrapped into a `BOX` (24 m) round
+  the camera and faded to its sphere; the gust's strength gates how many fly (custom `w`). Opaque
+  with alpha scissor, no shadow, hidden between gusts; the CPU writes three uniforms a frame. Checked
+  on the real driver from two camera spots: snow and leaves stay put in the world as the view turns.
 - **GLOW AND FOG ARE OFF, AND THE REASON IS A MEASUREMENT ON THE DEVICE: 23 fps clean, 18-20 with
   glow, 13 with fog on top.** That is 43% of the frame rate for two settings, on a phone that only
   had 23 fps to give. Both were tried and both came back out. The effect language WAS written for
@@ -2468,6 +2490,12 @@ project: read it before claiming how anything works.
   and not visible side by side. What was NOT the cost: drawing the sky itself (a clear-colour
   background with lighting still from the sky: 0%), the grass trample viewport (0%), the terrain's
   per-pixel detail (4%). The render scale remains the biggest lever and belongs to the player.
+- **RENDER SCALE SAVES PIXELS AND NOTHING ELSE** (the player: "lowering the render scale gives the
+  same fps"). It works - the viewport's `scaling_3d_scale` follows the slider - but a quarter of the
+  pixels bought 15% of the frame even on llvmpipe, a CPU rasteriser as pixel-bound as anything
+  (70-76 ms at 1.0, 60-62 at 0.5, alternated three times): the frame goes to scripts, physics, draw
+  submission, vertices and the fixed-size shadow map. On the phone the same, so the levers are draw
+  calls, triangles and ticks, not the scale. The settings hint says so.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own

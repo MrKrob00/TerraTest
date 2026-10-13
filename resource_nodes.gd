@@ -634,9 +634,21 @@ func _space_free(grid: Dictionary, p: Vector3, gap: float) -> bool:
 					return false
 	return true
 
-# Крутизна = разброс высот в 4 точках вокруг (± sample юнитов).
+# Steepness = the spread of the heights at 4 points round it, `s` metres out.
+## ON THE GRID'S OWN NODES (`ChunkTerrain.cell_height`): four bilinear heights were sixteen corner
+## reads, and far from the player every corner was a fresh generator call (five raw heights each) -
+## the vein ring's whole cost, ~100 `raw_height_at` a candidate on the main thread. The point snaps
+## to the nearest metre, so a candidate on the very edge of `max_slope` may decide the other way.
 func _slope_at(map: Node, lx: float, lz: float) -> float:
 	var s: float = 3.0
+	if map.has_method("cell_height") and map.global_transform == Transform3D.IDENTITY:
+		var cx: int = roundi(lx)
+		var cz: int = roundi(lz)
+		var a: float = map.cell_height(cx + 3, cz)
+		var b: float = map.cell_height(cx - 3, cz)
+		var c: float = map.cell_height(cx, cz + 3)
+		var d: float = map.cell_height(cx, cz - 3)
+		return maxf(maxf(a, b), maxf(c, d)) - minf(minf(a, b), minf(c, d))
 	var hx1: float = map.terrain_height_at(map.global_transform * Vector3(lx + s, 0.0, lz))
 	var hx2: float = map.terrain_height_at(map.global_transform * Vector3(lx - s, 0.0, lz))
 	var hz1: float = map.terrain_height_at(map.global_transform * Vector3(lx, 0.0, lz + s))
