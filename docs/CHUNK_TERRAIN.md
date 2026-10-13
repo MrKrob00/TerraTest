@@ -21,10 +21,14 @@ LOD — это слияние чанков: четыре соседних ста
 | 2 | 64 | 4 | 128 – 256 |
 | 3 | 128 | 8 | 256 – 512 |
 | 4 | 256 | 16 | 512 – 1024 |
-| 5 | 512 | 32 | 1024 – `view_distance` |
+| 5 | 512 | 32 | 1024 – 2048 |
+| 6 | 1024 | 64 | 2048 – 4096 |
+| 7 | 2048 | 128 | 4096 – `view_distance` |
 
 Границы — из `LOD_QUALITY`: узел раскрывается, пока расстояние до его прямоугольника меньше
-`сторона × 2`.
+`сторона × 2`. Past 256 m a node also stays whole when its children's cells would draw under 2 px
+on screen (`_subpixel`: a grazing view squashes a far plain's cells to a fraction of a pixel tall),
+at most two levels coarser than this table.
 
 ## Откуда берутся высоты
 

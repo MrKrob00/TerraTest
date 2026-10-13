@@ -1421,6 +1421,21 @@ project: read it before claiming how anything works.
   is drawn with the same 16×16 quads at step 2^L. Four chunks become one mesh, polygons drop to a
   quarter, nothing is decimated. Level 0 reaches 64 m, and each next one doubles
   (`LOD_QUALITY` = 2). Details: `docs/CHUNK_TERRAIN.md`.
+- **SUB-PIXEL GROUND IS NOT SPLIT** (`ChunkTerrain._subpixel`, `SUBPX_MIN` 2 px, the player's call):
+  the distance rule alone kept a cell 8-16 px FACE-ON, but a far plain is seen at a grazing angle and
+  its cells were a fraction of a pixel TALL - and every such triangle costs whole 2x2 shading quads.
+  A node the distance rule would split stays whole when its children's cells would project under
+  `SUBPX_MIN`: cell x pixels per radian (`_measure_px`, the camera's fov at the 3D buffer's real size)
+  x how squarely the ground faces the eye (height gap over distance plus the node's relief over its
+  width, `_relief_of`: own built heights, else the four children's, else a built ancestor's), over the
+  distance. Never nearer than `SUBPX_NEAR` (256 m: the grass lift lives in front of it), never more than
+  `SUBPX_EXTRA` (2) levels past distance, so neighbours differ by three at most, under the four
+  `_snap_row` stitches. Unknown relief splits as before; a region seen first is split by distance and
+  merged once its leaves have landed (`_relief_new`, leaves rebuilt at most every `RELIEF_REBUILD_MS`).
+  `MAX_LOD` went 5 -> 7 (2048 m nodes) for the player's draw distance. Measured on the real driver,
+  the same view on a snowy start, census of every drawn triangle's projected area: at 1400 m 66k
+  triangles -> 54k, at 10 km 267k -> 73k with under-a-pixel 59% -> 10%, draw calls 565 -> 185, the
+  frame 98 -> 56 ms on llvmpipe; the pictures the same but for the clouds.
 - THE COST OF THE WORLD IS `height_at`, AND IT IS MEASURABLE. 124 us a point × 441 points a chunk
   × 25 chunks is the 1.1 s starting ring; before the noise went native it was 391 us and 3.7 s.
   Anything that claims to speed up loading has to move that number — or it is moving nothing.
