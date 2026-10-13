@@ -2586,7 +2586,8 @@ project: read it before claiming how anything works.
   machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
   collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`),
   each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
-  no depth map. THE GROUND'S OWN SHADE (`TERR_N` 32 cells, `sun_terrain_map`): each cell marches
+  no depth map. THE GROUND'S OWN SHADE (`TERR_N` 32 cells, drawn INTO THE SAME MAP under the casters,
+  laid off by where the camera stood when it was marched - one fetch a ground pixel): each cell marches
   `TERR_MARCH` toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`, the occlusion test's
   read), fetched `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread; a refresh starts when the
   camera has moved `TERR_MOVE` or the light has turned `TERR_TURN`. Strength is the light's own
@@ -2595,7 +2596,8 @@ project: read it before claiming how anything works.
   took the engine's shadow either). WITH THE ENGINE'S SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is
   no additive sun pass to sum wrongly. Measured: casters ~0.2-0.26 ms a frame for three enemies and
   twelve trees; on a desert seed at dusk 215 of 1024 cells dark, dunes and palms throwing long shadows
-  on the real driver. On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
+  on the real driver. THE PHONE (200 m view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of
+  which the shadows ~3 (the probe's "sun shadows" row measures them since). On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
   before this change as after - not a regression.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it

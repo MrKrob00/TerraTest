@@ -91,6 +91,12 @@ func _cases(main: Node) -> Array:
 				return keep
 			light.directional_shadow_max_distance = s
 			return null])
+	var ss := main.get_node_or_null("SunShadows")
+	if ss != null and ss.get("active") == true:
+		out.append(["sun shadows", func(off: bool, _s):
+			if is_instance_valid(ss):
+				ss.set("active", not off)
+			return true])
 	var map := main.get_node_or_null("map") as Node3D
 	if map != null:
 		out.append(["ground+veins", _vis(map)])
@@ -185,7 +191,8 @@ func _ground_cases(map: Node3D, out: Array) -> void:
 		var code: String = (mat as ShaderMaterial).shader.code
 		var rm := code.find("render_mode")
 		var rm_end := code.find(";", rm)
-		if rm >= 0 and rm_end > rm:
+		# on the fast ground these two are the same unshaded shader already - nothing to measure
+		if rm >= 0 and rm_end > rm and map.get("fast_ground") != true:
 			var line := code.substr(rm, rm_end - rm)
 			out.append(["ground no shadow", _swap(map, _variant(mat, code.replace(line, line + ", shadows_disabled")))])
 			out.append(["ground unshaded", _swap(map, _variant(mat, code.replace(line, "render_mode unshaded")))])
