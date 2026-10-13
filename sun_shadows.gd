@@ -5,10 +5,16 @@ extends Node
 ## window `WINDOW` across round the camera, `VP_SIZE` px, where every caster is drawn as its own
 ## silhouette PROJECTED ALONG THE SUN onto the ground under it - a machine block by block (the
 ## machine's copy of each block's collider, so a drill or a turret casts its hull, not its cell), a
-## tree as its crown and its trunk. It is 2D polygons on a SubViewport, the same road the grass
-## trample takes (`grass.gd`): no 3D pass, no light pass, no depth map. What it cannot do: a hill
-## does not shade the ground behind it, and nothing shades a machine (the blocks were never lit by
-## the engine's shadow anyway - they are unshaded, `block_lit.gdshader`).
+## tree as its crown and its trunk, a wheel as its tyre's disc. It is 2D polygons on a SubViewport,
+## the same road the grass trample takes (`grass.gd`): no 3D pass, no light pass, no depth map.
+## THE GROUND SHADES ITSELF TOO, from a second, coarse map (`TERR_N` cells over the same window): each
+## cell marches toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`) and is dark when a
+## ridge stands over the ray. The heights are fetched a slice a frame (`TERR_FETCH_PER_FRAME`) and the
+## march runs on a worker thread over the packed grid; a refresh starts when the camera has moved
+## `TERR_MOVE` or the light has turned `TERR_TURN` - the sun crosses the sky in `day_length`, so a
+## few seconds late is nothing. The engine's shadows reached `directional_shadow_max_distance` (80 m),
+## so a 128 m window loses no distance against them. What it cannot do: nothing shades a machine (its
+## blocks were never lit by the engine's shadow - they are unshaded, `block_lit.gdshader`).
 
 const VP_SIZE := 512
 const WINDOW := 128.0                # m across; ~25 cm a texel, softened by the linear filter
@@ -16,6 +22,14 @@ const MIN_SUN_Y := 0.28              # a low sun casts at most ~3.4x a caster's 
 const MACHINE_REACH := 24.0          # a machine's blocks can stand this far from its origin
 const TRUNK_R := 0.35                # m, of a tree's trunk at scale 1
 const CROWN_SIDES := 10
+const TYRE_SIDES := 10
+const TERR_N := 32                   # terrain shade cells across the window (4 m each)
+const TERR_STEP := 4.0               # m between fetched heights and march steps
+const TERR_MARCH := 160.0            # m a ray walks toward the sun
+const TERR_LIFT := 0.6               # m the ray starts over its cell, past the cell's own slope
+const TERR_MOVE := 16.0
+const TERR_TURN := 0.02              # of the light direction (~1.1 deg)
+const TERR_FETCH_PER_FRAME := 200
 
 var active := false:
 	set(v):
@@ -29,6 +43,22 @@ var _canvas: Node2D = null
 var _center := Vector2.ZERO
 var _dir := Vector3(0, -1, 0)        # where the light TRAVELS
 var _box_of: Dictionary = {}         # Shape3D -> AABB in its own axes
+var _tyre_mesh: Dictionary = {}      # wheel instance id -> its tyre's MeshInstance3D
+
+# terrain shade: state of the refresh in flight
+var _terr_tex: ImageTexture = null
+var _terr_center := Vector2(INF, INF) # the window the shown texture covers
+var _terr_dir := Vector3.ZERO
+var _t_phase := 0                    # 0 idle, 1 fetching, 2 marching on the thread
+var _t_org := Vector2.ZERO           # world XZ of height cell (0, 0)
+var _t_w := 0
+var _t_h := 0
+var _t_heights := PackedFloat32Array()
+var _t_i := 0
+var _t_center := Vector2.ZERO
+var _t_dir := Vector3.ZERO
+var _t_task := -1
+var _t_out := PackedByteArray()
 
 func _ready() -> void:
 	_vp = SubViewport.new()
@@ -45,6 +75,7 @@ func _ready() -> void:
 func _apply_active() -> void:
 	if _vp == null:
 		return
+	_terr_center = Vector2(INF, INF)     # a fresh start computes the ground's shade again
 	_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS if active else SubViewport.UPDATE_DISABLED
 	set_process(active)
 	var map := _map()
@@ -73,6 +104,7 @@ func _process(_delta: float) -> void:
 	var strength: float = light.shadow_opacity * clampf(light.light_energy, 0.0, 1.0)
 	_canvas.queue_redraw()
 	map.set_sun_shadow(_vp.get_texture(), _center, WINDOW, strength)
+	_terrain_tick(map)
 	Perf.mark("sun_shadows", _pf)
 
 ## A world point dropped along the light onto the plane y = g, in the map's pixels.
@@ -109,6 +141,10 @@ func _draw_casters() -> void:
 			var hull := Geometry2D.convex_hull(pts)
 			if hull.size() >= 3:
 				_canvas.draw_colored_polygon(hull, col)
+		var wl = mn.get("Wheels")
+		if wl is Array:
+			for w in wl:
+				_draw_tyre(w, g, col)
 	# trees: a trunk and a crown
 	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
 	if rn != null and rn.has_method("tree_shadow_casters"):
@@ -134,6 +170,137 @@ func _draw_casters() -> void:
 			var hull2 := Geometry2D.convex_hull(ring)
 			if hull2.size() >= 3:
 				_canvas.draw_colored_polygon(hull2, col)
+
+## A wheel's tyre has no collider (the probe carries the machine), so it is drawn as its disc: the
+## ring round the tyre mesh's middle across its own axle (`_tyre`'s X, the axle `wheel.gd` rolls about).
+func _draw_tyre(w, g: float, col: Color) -> void:
+	if not is_instance_valid(w) or not (w is Node3D):
+		return
+	var tyre = w.get("_tyre")
+	if not is_instance_valid(tyre):
+		return
+	var mi = _tyre_mesh.get(w.get_instance_id())
+	if mi == null:
+		mi = tyre if tyre is MeshInstance3D else null
+		if mi == null:
+			for c in (tyre as Node).find_children("*", "MeshInstance3D", true, false):
+				mi = c
+				break
+		_tyre_mesh[w.get_instance_id()] = mi if mi != null else false
+	if not (mi is MeshInstance3D) or (mi as MeshInstance3D).mesh == null:
+		return
+	var m := mi as MeshInstance3D
+	var bb: AABB = m.get_aabb()
+	var c: Vector3 = m.global_transform * bb.get_center()
+	var axle: Vector3 = (tyre as Node3D).global_basis.x.normalized()
+	var r = w.get("_radius")
+	var rad: float = float(r) if r is float and float(r) > 0.05 else bb.size.y * 0.5
+	var u: Vector3 = axle.cross(Vector3.UP)
+	if u.length_squared() < 0.01:
+		u = axle.cross(Vector3.FORWARD)
+	u = u.normalized()
+	var v: Vector3 = axle.cross(u).normalized()
+	var ring := PackedVector2Array()
+	ring.resize(TYRE_SIDES)
+	for k in TYRE_SIDES:
+		var a: float = TAU * float(k) / float(TYRE_SIDES)
+		ring[k] = _px(c + (u * cos(a) + v * sin(a)) * rad, g)
+	var hull := Geometry2D.convex_hull(ring)
+	if hull.size() >= 3:
+		_canvas.draw_colored_polygon(hull, col)
+
+# ── The ground's own shade ──────────────────────────────────────────────────
+func _terrain_tick(map: Node) -> void:
+	if not map.has_method("drawn_height"):
+		return
+	match _t_phase:
+		0:
+			var moved: bool = _terr_center.x == INF or _terr_center.distance_squared_to(_center) > TERR_MOVE * TERR_MOVE
+			if moved or _terr_dir.distance_squared_to(_dir) > TERR_TURN * TERR_TURN:
+				_terr_begin()
+		1:
+			var end: int = mini(_t_i + TERR_FETCH_PER_FRAME, _t_w * _t_h)
+			for i in range(_t_i, end):
+				var h = map.drawn_height(_t_org.x + float(i % _t_w) * TERR_STEP, _t_org.y + float(i / _t_w) * TERR_STEP)
+				_t_heights[i] = h if not is_nan(h) else -1e6
+			_t_i = end
+			if _t_i >= _t_w * _t_h:
+				_t_phase = 2
+				_t_out = PackedByteArray()
+				_t_out.resize(TERR_N * TERR_N)
+				_t_task = WorkerThreadPool.add_task(_terr_march)
+		2:
+			if WorkerThreadPool.is_task_completed(_t_task):
+				WorkerThreadPool.wait_for_task_completion(_t_task)
+				_t_task = -1
+				_t_phase = 0
+				var img := Image.create_from_data(TERR_N, TERR_N, false, Image.FORMAT_L8, _t_out)
+				if _terr_tex == null:
+					_terr_tex = ImageTexture.create_from_image(img)
+				else:
+					_terr_tex.update(img)
+				_terr_center = _t_center
+				_terr_dir = _t_dir
+				map.set_sun_terrain(_terr_tex, _terr_center, WINDOW)
+
+func _terr_begin() -> void:
+	_t_center = _center
+	_t_dir = _dir
+	var flat := Vector2(-_dir.x, -_dir.z)            # toward the sun, on the plan
+	var reach: Vector2 = flat.normalized() * TERR_MARCH if flat.length_squared() > 1e-6 else Vector2.ZERO
+	var half: float = WINDOW * 0.5
+	var lo := Vector2(_center.x - half + minf(reach.x, 0.0), _center.y - half + minf(reach.y, 0.0))
+	var hi := Vector2(_center.x + half + maxf(reach.x, 0.0), _center.y + half + maxf(reach.y, 0.0))
+	_t_org = lo
+	_t_w = int(ceil((hi.x - lo.x) / TERR_STEP)) + 1
+	_t_h = int(ceil((hi.y - lo.y) / TERR_STEP)) + 1
+	_t_heights.resize(_t_w * _t_h)
+	_t_i = 0
+	_t_phase = 1
+
+## On a worker: packed arrays in, packed bytes out, nothing else touched.
+func _terr_march() -> void:
+	var cell: float = WINDOW / float(TERR_N)
+	var flat := Vector2(-_t_dir.x, -_t_dir.z)
+	var fl: float = flat.length()
+	if fl < 1e-6:
+		_t_out.fill(0)
+		return
+	var step := flat / fl * TERR_STEP
+	var rise: float = -_t_dir.y / fl * TERR_STEP       # how much the ray climbs a step
+	var steps: int = int(TERR_MARCH / TERR_STEP)
+	var x0: float = _t_center.x - WINDOW * 0.5 + cell * 0.5
+	var z0: float = _t_center.y - WINDOW * 0.5 + cell * 0.5
+	for j in TERR_N:
+		for i in TERR_N:
+			var px: float = x0 + float(i) * cell
+			var pz: float = z0 + float(j) * cell
+			var y: float = _grid(px, pz) + TERR_LIFT
+			var dark := 0
+			for s in steps:
+				px += step.x
+				pz += step.y
+				y += rise
+				if _grid(px, pz) > y:
+					dark = 255
+					break
+			_t_out[j * TERR_N + i] = dark
+
+func _grid(x: float, z: float) -> float:
+	var fx: float = (x - _t_org.x) / TERR_STEP
+	var fz: float = (z - _t_org.y) / TERR_STEP
+	var i: int = clampi(int(fx), 0, _t_w - 2)
+	var k: int = clampi(int(fz), 0, _t_h - 2)
+	var tx: float = clampf(fx - float(i), 0.0, 1.0)
+	var tz: float = clampf(fz - float(k), 0.0, 1.0)
+	var r0: int = k * _t_w + i
+	var r1: int = r0 + _t_w
+	return lerpf(lerpf(_t_heights[r0], _t_heights[r0 + 1], tx), lerpf(_t_heights[r1], _t_heights[r1 + 1], tx), tz)
+
+func _exit_tree() -> void:
+	if _t_task != -1:
+		WorkerThreadPool.wait_for_task_completion(_t_task)
+		_t_task = -1
 
 func _box(sh: Shape3D) -> AABB:
 	var bb = _box_of.get(sh)

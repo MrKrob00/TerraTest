@@ -127,6 +127,10 @@ uniform sampler2D sun_shadow_map : hint_default_black, filter_linear;
 uniform vec2 sun_shadow_center = vec2(0.0);
 uniform float sun_shadow_size = 128.0;
 uniform float sun_shadow_strength = 0.0;
+// the ground's own shade: cells marched toward the sun over the drawn heights (same window size)
+uniform sampler2D sun_terrain_map : hint_default_black, filter_linear;
+uniform vec2 sun_terrain_center = vec2(0.0);
+uniform float sun_terrain_size = 128.0;
 #endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
@@ -305,7 +309,12 @@ void fragment() {
         vec2 suv = (v_wpos.xz - sun_shadow_center) / sun_shadow_size + vec2(0.5);
         vec2 edge = min(suv, vec2(1.0) - suv);
         float inside = clamp(min(edge.x, edge.y) * 12.0, 0.0, 1.0);   // fades out over the window's last 8%
-        shade = texture(sun_shadow_map, suv).r * inside * sun_shadow_strength;
+        float cast = texture(sun_shadow_map, suv).r;
+        vec2 tuv = (v_wpos.xz - sun_terrain_center) / sun_terrain_size + vec2(0.5);
+        vec2 tedge = min(tuv, vec2(1.0) - tuv);
+        float tin = clamp(min(tedge.x, tedge.y) * 12.0, 0.0, 1.0);
+        cast = max(cast * inside, texture(sun_terrain_map, tuv).r * tin);
+        shade = cast * sun_shadow_strength;
     }
     ALBEDO   *= ground_amb.rgb + v_sun * (1.0 - shade);
 #endif
