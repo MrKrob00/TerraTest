@@ -423,6 +423,10 @@ static func hit_node(collider: Object, shape: int) -> Object:
 				var b = (cs as Object).get_meta(&"block_owner")
 				if is_instance_valid(b):
 					return b
+				# A box whose block is gone is a ghost whatever path freed the block: it goes at the
+				# end of the frame (queue_free; leaving the tree takes its shape off the body).
+				if cs is Node and not (cs as Node).is_queued_for_deletion():
+					(cs as Node).queue_free()
 	return collider
 
 ## `hit_node` of an intersect_ray / intersect_shape result.
