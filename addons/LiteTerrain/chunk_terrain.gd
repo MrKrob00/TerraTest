@@ -2120,6 +2120,15 @@ func _push_biomes() -> void:
 	if _mat is ShaderMaterial:
 		biomes.apply_to_material(_mat as ShaderMaterial, world_height())
 
+## The sun's shadow window (sun_shadows.gd), read by the fast ground only; strength 0 skips the fetch.
+func set_sun_shadow(tex: Texture2D, center: Vector2, size: float, strength: float) -> void:
+	if _mat is ShaderMaterial:
+		var m := _mat as ShaderMaterial
+		m.set_shader_parameter("sun_shadow_map", tex)
+		m.set_shader_parameter("sun_shadow_center", center)
+		m.set_shader_parameter("sun_shadow_size", size)
+		m.set_shader_parameter("sun_shadow_strength", strength if fast_ground else 0.0)
+
 func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 	if _mat is ShaderMaterial:
 		var m := _mat as ShaderMaterial

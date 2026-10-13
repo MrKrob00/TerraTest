@@ -259,6 +259,36 @@ func _apply_ore_colors() -> void:
 		if mm.material_override is ShaderMaterial:
 			(mm.material_override as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
+## THE STANDING TREES FOR THE SUN'S SHADOW MAP (`sun_shadows.gd`): [world foot, crown height, crown
+## radius] of every tree streamed in within `half` of `center` (XZ), felled ones (custom G under a
+## half) left out. The crown is read off the model's own box, scaled per instance.
+var _crown_of: Dictionary = {}
+func tree_shadow_casters(center: Vector2, half: float) -> Array:
+	var out: Array = []
+	for mm in wood_multimesh_nodes:
+		if not is_instance_valid(mm) or not _mm_live.has(mm) or mm.multimesh == null or mm.multimesh.mesh == null:
+			continue
+		var crown = _crown_of.get(mm)
+		if crown == null:
+			var bb: AABB = mm.multimesh.mesh.get_aabb()
+			var r0: float = maxf(bb.size.x, bb.size.z) * 0.5
+			crown = Vector2(bb.end.y - r0 * 0.8, r0 * 0.85)
+			_crown_of[mm] = crown
+		var mxf: Transform3D = mm.global_transform
+		for v in _mm_live[mm]:
+			var cd = v.get("cd")
+			if cd is Color and (cd as Color).g < 0.5:
+				continue
+			var xf = v.get("xf")
+			if not (xf is Transform3D):
+				continue
+			var gp: Vector3 = mxf * (xf as Transform3D).origin
+			if absf(gp.x - center.x) > half or absf(gp.z - center.y) > half:
+				continue
+			var s: float = (xf as Transform3D).basis.get_scale().y
+			out.append([gp, (crown as Vector2).x * s, (crown as Vector2).y * s])
+	return out
+
 ## A vein node's shader data (its HP and hit times, resource_node._write_shader_data): into its own
 ## model's slot, and kept on the record so the data moves with the vein when its slot does. A node
 ## that is already streamed out (freed at the end of this frame) no longer owns the slot it names.
