@@ -3153,6 +3153,10 @@ project: read it before claiming how anything works.
   ground: all blocks placed, four wheels grounded at about 1 m, runner and raider 31-34 m in 3 s,
   values 21.7k / 30.4k / 41.9k against 20.4k / 29.1k / 39.8k before, the cabin's death takes the
   machine. AN OLD SAVE with a one-cell Marlit wheel where the 2x2x2 now overlaps loses it on load.
+  IT HAS NO BEARING PLATE (the player's call: "the platform, away with it"): the gearbox, the arms' pin
+  brackets and the dampers' top mounts bolt straight to the hull face (`marlit_drive.FACE_Z`); nothing
+  else moved. The plate wore the hull's octagon window, the same "hole" refused on a tool's mount. The
+  collider was refitted with it (20% of the box, it was the plate's whole face) and `RECIPE` bumped.
 - **THE FIRST FACTION IS FALSUS, AND ITS EMBLEM IS ONE FUNCTION** (`art/faction_emblem.py inside`,
   the id stays `"start"` in `G.FACTIONS`: saves and `BLOCK_META` key on it). Redrawn from the
   faction's art with an eye for its fish: a pointy-top hexagon cut into four parallelograms round a
