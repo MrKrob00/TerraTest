@@ -1077,6 +1077,30 @@ func _block_footprint(block: int, x: int, y: int, z: int, rot = 0.0) -> Array:
 ##
 ## Размер коробки здесь — это и есть проверка «покрывает ли коллизия весь футпринт»: у брони она
 ## тонкая (1×1×0.2) и стоит на своей грани, ей центр футпринта не нужен.
+## THE MACHINE'S COPY OF A BLOCK'S COLLIDER, ONE DOOR FOR BOTH WAYS A BLOCK IS PLACED (spawn_block and
+## the hand, vehicle_body_3d). A block whose model fills its box badly - a drill, a turret, a wheel's
+## mount, a wedge - gets its FITTED shape (`blocks/colliders/<KEY>.tres`, `art/fit_colliders.py`): the
+## convex hull of its still model at rest, without the tyre, clamped into its cells, in the anchor's own
+## axes - so the caller's `collider_offset` gives it zero, as for every convex shape. The scene's box
+## stays the block's own (a loose block lies on it, the effects measure it); only the hull's copy
+## changes. The box was the whole footprint, and its empty corners caught the ground, trees and shots
+## (the player: "the drill is a 2x2x2 cube though it is smaller, so it catches; the wheels too").
+func machine_collider(src: CollisionShape3D, block: int) -> CollisionShape3D:
+	var c: CollisionShape3D = src.duplicate()
+	var fit: Shape3D = fitted_shape(block)
+	if fit != null:
+		c.shape = fit
+	return c
+
+static var _fitted: Dictionary = {}
+static func fitted_shape(block: int) -> Shape3D:
+	if _fitted.has(block):
+		return _fitted[block]
+	var path := "res://blocks/colliders/%s.tres" % G.Block.keys()[block]
+	var s: Shape3D = load(path) as Shape3D if ResourceLoader.exists(path) else null
+	_fitted[block] = s
+	return s
+
 func collider_offset(shape: Shape3D, rot) -> Vector3:
 	var box: BoxShape3D = shape as BoxShape3D
 	if box == null:
@@ -1251,7 +1275,7 @@ func spawn_block(block: G.Block, x: int, y: int, z: int) -> void:
 	if src_col == null:
 		push_error("blocks: у блока %s нет CollisionShape3D" % G.block_name(int(instance.get("block"))))
 		return
-	var collision: CollisionShape3D = src_col.duplicate()
+	var collision: CollisionShape3D = machine_collider(src_col, block)
 	collision.position = Vector3(x - CENTER, y - CENTER, z - CENTER)
 	collision.rotation = rot                     # коллизия наклоняется вместе с блоком
 	# Offset applies to BOXES only: any other shape has no .size, and touching it would abort the
