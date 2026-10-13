@@ -74,9 +74,19 @@ func _cases(main: Node) -> Array:
 			if is_instance_valid(light):
 				light.shadow_enabled = not off
 			return true])
+		out.append(["shadow 80->40 m", func(off: bool, s):
+			if not is_instance_valid(light):
+				return 0.0
+			if off:
+				var keep: float = light.directional_shadow_max_distance
+				light.directional_shadow_max_distance = keep * 0.5
+				return keep
+			light.directional_shadow_max_distance = s
+			return null])
 	var map := main.get_node_or_null("map") as Node3D
 	if map != null:
 		out.append(["ground+veins", _vis(map)])
+		_ground_cases(map, out)
 		var mat = map.get("_mat")
 		if mat is ShaderMaterial:
 			out.append(["grass+snow lift", func(off: bool, s):
@@ -107,6 +117,18 @@ func _cases(main: Node) -> Array:
 							return keep
 						vp.render_target_update_mode = s
 						return null])
+	var vp := get_viewport()
+	out.append(["3D scale x0.5", func(off: bool, s):
+		if off:
+			var keep := [vp.scaling_3d_scale, main.get("auto_fps")]
+			if keep[1] != null:
+				main.set("auto_fps", false)
+			vp.scaling_3d_scale = keep[0] * 0.5
+			return keep
+		vp.scaling_3d_scale = s[0]
+		if s[1] != null:
+			main.set("auto_fps", s[1])
+		return null])
 	var veh := main.get_node_or_null("Vehicles") as Node3D
 	if veh != null:
 		out.append(["machines", _vis(veh)])
@@ -144,3 +166,81 @@ func _vis(n: Node3D) -> Callable:
 		if is_instance_valid(n):
 			n.visible = not off
 		return true
+
+## The ground split further: what of its 30 ms (the phone's first table) is lighting and shadow
+## receiving, the shader at all, and the near or the far levels. A material variant is the same
+## shader with another render_mode, so every uniform carries over; it goes onto every drawn chunk
+## and HLOD cluster and into `_mat`, which chunks landing meanwhile take.
+func _ground_cases(map: Node3D, out: Array) -> void:
+	var mat = map.get("_mat")
+	if mat is ShaderMaterial and (mat as ShaderMaterial).shader != null:
+		var code: String = (mat as ShaderMaterial).shader.code
+		var rm := code.find("render_mode")
+		var rm_end := code.find(";", rm)
+		if rm >= 0 and rm_end > rm:
+			var line := code.substr(rm, rm_end - rm)
+			out.append(["ground no shadow", _swap(map, _variant(mat, code.replace(line, line + ", shadows_disabled")))])
+			out.append(["ground unshaded", _swap(map, _variant(mat, code.replace(line, "render_mode unshaded")))])
+		var plain := StandardMaterial3D.new()
+		plain.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		plain.albedo_color = Color(0.45, 0.5, 0.35)
+		out.append(["ground plain mat", _swap(map, plain)])
+	out.append(["ground far (lod2+)", _hide_lods(map, true)])
+	out.append(["ground near (lod0-1)", _hide_lods(map, false)])
+
+func _variant(mat: ShaderMaterial, code: String) -> ShaderMaterial:
+	var sh := Shader.new()
+	sh.code = code
+	var v := mat.duplicate() as ShaderMaterial
+	v.shader = sh
+	return v
+
+func _ground_mis(map: Node3D, mat) -> Array:
+	var r: Array = []
+	for c in map.get_children():
+		var mi := c as MeshInstance3D
+		if mi != null and mi.material_override == mat:
+			r.append(mi)
+	return r
+
+func _swap(map: Node3D, to: Material) -> Callable:
+	return func(off: bool, s):
+		if not is_instance_valid(map):
+			return null
+		if off:
+			var was = map.get("_mat")
+			for mi in _ground_mis(map, was):
+				mi.material_override = to
+			map.set("_mat", to)
+			return was
+		for mi in _ground_mis(map, to):
+			mi.material_override = s
+		map.set("_mat", s)
+		return null
+
+## Hidden by visibility range, which the terrain never writes (it owns `visible` and `layers`).
+func _hide_lods(map: Node3D, far: bool) -> Callable:
+	return func(off: bool, s):
+		if not is_instance_valid(map):
+			return null
+		if off:
+			var hidden: Array = []
+			var live = map.get("_live")
+			if live is Dictionary:
+				for e in live.values():
+					var inst = e.get("inst")
+					if is_instance_valid(inst) and (int(e.get("lod", 0)) >= 2) == far:
+						hidden.append(inst)
+			var cl = map.get("_clusters")
+			if far and cl is Dictionary:
+				for e in cl.values():
+					var inst = e.get("inst")
+					if is_instance_valid(inst):
+						hidden.append(inst)
+			for inst in hidden:
+				(inst as GeometryInstance3D).visibility_range_end = 0.001
+			return hidden
+		for inst in s:
+			if is_instance_valid(inst):
+				(inst as GeometryInstance3D).visibility_range_end = 0.0
+		return null
