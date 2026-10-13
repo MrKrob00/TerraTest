@@ -1352,6 +1352,28 @@ func _build_perf_panel() -> void:
 	(%PerfScale as Button).pressed.connect(_cycle_render_scale)
 	(%PerfShadow as Button).pressed.connect(_toggle_shadows)
 	(%PerfClose as Button).pressed.connect(_toggle_perf_panel)
+	(%PerfProbe as Button).pressed.connect(_run_probe)
+
+## The device measures its own frame layer by layer (frame_probe.gd); the table stays on the panel
+## and goes to the clipboard, so the player can paste it.
+const FRAME_PROBE := preload("res://frame_probe.gd")
+var _probe: Node = null
+var _probe_text: String = ""
+
+func _run_probe() -> void:
+	if is_instance_valid(_probe):
+		return
+	_probe_text = ""
+	_probe = FRAME_PROBE.new()
+	add_child(_probe)
+	_probe.finished.connect(_on_probe_done)
+	_probe.run()
+
+func _on_probe_done(text: String) -> void:
+	_probe_text = text + "\n(copied)"
+	if is_instance_valid(_probe):
+		_probe.queue_free()
+	_probe = null
 
 
 func _update_perf_panel(delta: float) -> void:
@@ -1472,6 +1494,10 @@ func _update_perf_panel(delta: float) -> void:
 	# у беты это единственный способ понять, о какой сборке речь. Панель профиля для этого и
 	# годится: она открывается тапом по счётчику FPS, то есть тестеру достаточно одного жеста.
 	lines.append("сборка %s" % str(ProjectSettings.get_setting("application/config/version", "?")))
+	if is_instance_valid(_probe):
+		lines.append(String(_probe.get("status")))
+	if _probe_text != "":
+		lines.append(_probe_text)
 	_perf_label.text = "\n".join(lines)
 
 func _render_method() -> String:

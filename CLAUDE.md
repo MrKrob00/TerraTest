@@ -2486,6 +2486,17 @@ project: read it before claiming how anything works.
   (70-76 ms at 1.0, 60-62 at 0.5, alternated three times): the frame goes to scripts, physics, draw
   submission, vertices and the fixed-size shadow map. On the phone the same, so the levers are draw
   calls, triangles and ticks, not the scale. The settings hint says so.
+- **THE DEVICE MEASURES ITS OWN FRAME, LAYER BY LAYER** (`frame_probe.gd`, PROBE on the profiler
+  panel; the player: "200 m view 18 fps with shadows, 28 without; 10 km 13 / 25 - something near us
+  is expensive"). Each layer - shadows, ground and veins, the grass and snow lift, veins and trees,
+  far tree cards, the grass trample viewport, machines, loose items, the sky, the HUD - is switched
+  off for `WINDOW` between windows with it on, `ROUNDS` times, and the table goes to the panel and
+  the clipboard. Llvmpipe cannot rank these (one window there read +-8 ms of noise; it put the HUD
+  at ~7-14 ms, which only the phone can confirm). READ FROM THE GLES3 SOURCE
+  (`rasterizer_scene_gles3.cpp`, `_render_list_template`): ONE shadowed directional is drawn INSIDE
+  the base pass - passes = positional light passes + directional shadow count, at least one - so
+  it is NOT a second pass over the ground; what shadows add is the depth pass over the casters
+  within `directional_shadow_max_distance` and the shadow lookup in every lit fragment.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
