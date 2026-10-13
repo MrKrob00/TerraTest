@@ -2585,7 +2585,9 @@ project: read it before claiming how anything works.
   it short). CASTERS (`VP_SIZE` 768 px, the grass trample's road): every machine block from the
   machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
   collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`), every
-  ore vein as its model's box lowered as it breaks (`ore_shadow_casters`), every loose block as its box,
+  ore vein as its model's OUTLINE (`ore_shadow_casters`: the extreme vertices in 26 directions among
+  the parts still standing, per model and break level - the model's box was a dark rectangle round
+  every vein, the rock's base far wider than the ore), every loose block as its box,
   each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
   no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF EDGES (`_box_shadow`: the projection is
   affine, so no corners and no hull) and A MACHINE'S IS ONE MESH (`_machine_mesh`: every block's box
