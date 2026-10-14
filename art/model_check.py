@@ -94,7 +94,7 @@ if __name__ == "__main__":
     ok = True
     for nm in sys.argv[1:]:
         if nm not in em.BLOCKS:
-            for mod in ("marlit_cutters", "marlit_drill", "marlit_weapons", "marlit_drive", "marlit_wheels", "falsus_wheels", "aero_models"):
+            for mod in ("marlit_cutters", "marlit_drill", "marlit_weapons", "marlit_drive", "marlit_wheels", "falsus_wheels"):
                 importlib.import_module(mod)
                 if nm in em.BLOCKS:
                     break

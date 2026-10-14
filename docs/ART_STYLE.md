@@ -206,25 +206,9 @@ points against Falsus's).
 - **The function mark** stays in the middle of the white band: a bold black chevron or wing, at
   least 10 texels across, so it reads on a phone.
 
-**The basic block and the standard wheel, drafts, not in the game** (`art/aero_models.py`, glbs in
-`art/out/aero_*.glb`, two palettes: `aero` - the emblem's blue / white / orange - and `ref` - the
-player's reference pictures' red / white / blue). Three cuts were turned down, and what each got
-wrong is a rule now: a chamfered cube painted in bands with a racing pylon and wishbones ("too
-cubic", "the transmission is horrible" - a Blender version changed nothing and was dropped); a
-bullnose with ears ("that is a half block"); a three-layer cube with a letter Z on it and a
-mudguard over the tyre ("what is that Z", "a half circle over a tyre is lazy"). MARKS ARE THE
-FACTION'S EMBLEM (`images/faction_aero.png`, sampled into the texture at 80 px a metre so it reads),
-never a letter. THE BASIC BLOCK: a blue octagonal base with its top edge rounded, a white octagonal
-middle with broad cut corners, set 3.5 cm in, and a thick cap overhanging it whose top edges slope
-in broad bevels, a notch in the middle of every top edge so the corners stand up, the emblem in a
-white diamond on top and on every white face. THE WHEEL IS TWO CELLS ALONG THE ROLL: a knobbly tyre
-(r 0.46, 18 lugs across the tread, shoulder lugs on the outer wall, a dashed ring, a white dish in a
-blue ring) in the first; inboard of it a FAIRING whose side is a swoosh - a point over the tyre's
-front, the top (cap colour, a white stripe slanting across) running back, the back falling to a
-point at the axle's height, the lower edge the base colour and round the tyre in front, a slot and
-the emblem on its side, its outboard edge bevelled; and over the tyre a LIP, the fairing's top
-running out past the tyre's outer face, pointed at the front. A wheel on the other side is the
-mirror. 248 / 614 triangles, `model_check.py` PASS.
+**No Aero models yet.** Four cuts of the basic block and the standard wheel were turned down and
+deleted (a banded cube with a wishbone wheel, a bullnose, a three-layer cube with a letter on it,
+a copy of the reference pictures). Marks are the faction's emblem, never a letter.
 
 ### Stryx: stealth
 
