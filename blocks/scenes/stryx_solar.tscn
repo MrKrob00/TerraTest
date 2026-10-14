@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://ba2g3f3726ggc" path="res://blocks/scenes/solar.tscn" id="1_base"]
+
+[node name="Solar" instance=ExtResource("1_base")]
+block = 128
+metadata/stub_faction = "stryx"

@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://c1leq686mvs51" path="res://blocks/scenes/drill.tscn" id="1_base"]
+
+[node name="Drill" instance=ExtResource("1_base")]
+block = 127
+metadata/stub_faction = "stryx"

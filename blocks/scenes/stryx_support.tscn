@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://btqk1jmistenn" path="res://blocks/scenes/support.tscn" id="1_base"]
+
+[node name="Support" instance=ExtResource("1_base")]
+block = 133
+metadata/stub_faction = "stryx"

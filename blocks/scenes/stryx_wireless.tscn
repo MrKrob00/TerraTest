@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://bnlamxkah5mw3" path="res://blocks/scenes/wireless_charger.tscn" id="1_base"]
+
+[node name="wireless_charger" instance=ExtResource("1_base")]
+block = 132
+metadata/stub_faction = "stryx"

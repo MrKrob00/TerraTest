@@ -90,6 +90,13 @@ var fullscreen: bool = false         # полноэкранный; иначе �
 # МАСТЕР-ВЫКЛЮЧАТЕЛЬ СНЯТ ПО УМОЛЧАНИЮ, и это не перестраховка: собранная игра обязана вести
 # себя как игра, даже если кто-то забыл вернуть галочку на место. Пока он снят, весь список
 # ниже не значит ничего.
+## AIMING (the player's switch, not a debug one: read through `G.aim_flag`, live, whatever
+## `debug_overrides` says). `aim_lead` on: a gun aims where its target WILL be (`WeaponBlock._lead_point`,
+## the shot's flight time and the target's speed); off: where it IS - the drop is still allowed for,
+## so a slow round reaches a target that does not move.
+@export_group("Aim")
+@export var aim_lead: bool = true
+
 @export_group("Отладка")
 @export var debug_overrides: bool = false
 

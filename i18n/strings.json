@@ -96,6 +96,14 @@
 		"ru": "Чувствительность зума",
 		"uk": "Чутливість масштабу"
 	},
+	"Show FPS": {
+		"ru": "Показывать FPS",
+		"uk": "Показувати FPS"
+	},
+	"A small counter in the bottom-right corner, in the game and in the garage.": {
+		"ru": "Маленький счётчик в правом нижнем углу — в игре и в гараже.",
+		"uk": "Маленький лічильник у правому нижньому куті — у грі та в гаражі."
+	},
 	"Picking up a block opens assembly": {
 		"ru": "Поднятый блок открывает стройку",
 		"uk": "Піднятий блок відкриває будівництво"
@@ -1728,26 +1736,6 @@
 		"ru": "Тот же фокус, только окопались крепче. Стволы ждать, пока ты думаешь, не станут.",
 		"uk": "Той самий фокус, лише окопалися міцніше. Стволи чекати, поки ти думаєш, не будуть."
 	},
-	"Crossfire": {
-		"ru": "Перекрёстный огонь",
-		"uk": "Перехресний вогонь"
-	},
-	"Reach the contact coordinates": {
-		"ru": "Доехать до координат контакта",
-		"uk": "Доїхати до координат контакту"
-	},
-	"Two units are shooting at each other out there. The System would rather neither of them finished.": {
-		"ru": "Там двое палят друг в друга. Системе удобнее, чтобы не доделал ни один.",
-		"uk": "Там двоє стріляють одне в одного. Системі зручніше, щоб не доробив жоден."
-	},
-	"Be the one that drives away": {
-		"ru": "Уехать оттуда единственным",
-		"uk": "Поїхати звідти єдиним"
-	},
-	"Neither of them cares which of you it is. Take both, or wait and take what is left.": {
-		"ru": "Обоим всё равно, кто из вас кто. Бери обоих — или подожди и забери, что останется.",
-		"uk": "Обом байдуже, хто з вас хто. Бери обох — або зачекай і забери, що залишиться."
-	},
 	"Tech Gang": {
 		"ru": "Банда",
 		"uk": "Банда"
@@ -1788,26 +1776,6 @@
 		"ru": "Нашего прижали, долго он не продержится.",
 		"uk": "Нашого притиснули, довго він не протримається."
 	},
-	"Drive the raiders off": {
-		"ru": "Отогнать налётчиков",
-		"uk": "Відігнати нальотчиків"
-	},
-	"It survives or it does not. There is no partial credit for this one.": {
-		"ru": "Он или выживет, или нет. Половины зачёта здесь не бывает.",
-		"uk": "Він або виживе, або ні. Половини заліку тут не буває."
-	},
-	"Hold Position": {
-		"ru": "Держать позицию",
-		"uk": "Тримати позицію"
-	},
-	"Survive the attack": {
-		"ru": "Пережить атаку",
-		"uk": "Пережити атаку"
-	},
-	"They are coming to you. Pick your ground before they arrive.": {
-		"ru": "Идут к тебе. Выбери место, пока они не приехали.",
-		"uk": "Ідуть до тебе. Обери місце, поки вони не приїхали."
-	},
 	"Take the Staging Point": {
 		"ru": "Взять перевалочный пункт",
 		"uk": "Взяти перевалочний пункт"
@@ -1815,18 +1783,6 @@
 	"Reach the staging point": {
 		"ru": "Доехать до перевалочного пункта",
 		"uk": "Доїхати до перевалочного пункту"
-	},
-	"Not a patrol — a place they come back to. Three units hold it.": {
-		"ru": "Это не патруль, а место, куда они возвращаются. Держат его трое.",
-		"uk": "Це не патруль, а місце, куди вони повертаються. Тримають його троє."
-	},
-	"Clear it and take what is left": {
-		"ru": "Зачистить и забрать остатки",
-		"uk": "Зачистити й забрати залишки"
-	},
-	"The point is not taken until the crate on it is yours.": {
-		"ru": "Пункт не взят, пока ящик на нём не твой.",
-		"uk": "Пункт не взято, доки ящик на ньому не твій."
 	},
 	"Cycle: Ore": {
 		"ru": "Цикл: руда",
@@ -1908,21 +1864,9 @@
 		"ru": "Укреплённая точка подавлена. Сектор чист.",
 		"uk": "Укріплену точку придушено. Сектор чистий."
 	},
-	"Three units, no transponders. They are not ours.": {
-		"ru": "Три машины, ответчиков нет. Они не наши.",
-		"uk": "Три машини, відповідачів немає. Вони не наші."
-	},
 	"Friendly unit under fire. It will not last alone.": {
 		"ru": "Своя машина под огнём. Одна она не выстоит.",
 		"uk": "Своя машина під вогнем. Сама вона не встоїть."
-	},
-	"Contacts inbound on your position.": {
-		"ru": "К твоей позиции идут контакты.",
-		"uk": "До твоєї позиції йдуть контакти."
-	},
-	"That is a staging point, not a patrol. Take it apart.": {
-		"ru": "Это перевалочный пункт, а не патруль. Разбери его.",
-		"uk": "Це перевалочний пункт, а не патруль. Розбери його."
 	},
 	"Scheduled sector scan. Please do NOT leave the scan zone. This will take %d sec. Thank you for your cooperation.": {
 		"ru": "Плановое сканирование сектора. Просьба НЕ покидать зону сканирования. Это займёт %d с. Благодарим за содействие.",
@@ -1959,10 +1903,6 @@
 	"The Auto Miner works an ore vein. Place it next to one.": {
 		"ru": "Авто-шахтёр работает по рудной жиле. Поставь его рядом с жилой.",
 		"uk": "Авто-шахтар працює по рудній жилі. Постав його поруч із жилою."
-	},
-	"Mine this vein out first — the Auto Miner only works a spent one.": {
-		"ru": "Сначала выбей эту жилу — авто-шахтёр работает только по выработанной.",
-		"uk": "Спершу вибий цю жилу — авто-шахтар працює лише по виробленій."
 	},
 	"Another Auto Miner already works this vein.": {
 		"ru": "На этой жиле уже стоит другой авто-шахтёр.",
@@ -3047,5 +2987,729 @@
 	"Fewer draw calls for distant ground. Turn off to compare FPS.": {
 		"ru": "Меньше вызовов отрисовки для дальней земли. Выключи, чтобы сравнить FPS.",
 		"uk": "Менше викликів малювання для далекої землі. Вимкни, щоб порівняти FPS."
+	},
+	"Aero Cabin": {
+		"ru": "Кабина Aero",
+		"uk": "Кабіна Aero"
+	},
+	"An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.": {
+		"ru": "Деталь Aero на модели Falsus, пока у фракции нет своей: создана для скорости — легче и ломается проще.",
+		"uk": "Деталь Aero на моделі Falsus, доки у фракції немає своєї: створена для швидкості — легша і ламається простіше."
+	},
+	"Aero Frame Block": {
+		"ru": "Блок рамы Aero",
+		"uk": "Блок рами Aero"
+	},
+	"Aero Frame Block ×2": {
+		"ru": "Блок рамы Aero ×2",
+		"uk": "Блок рами Aero ×2"
+	},
+	"Aero Frame Block ×3": {
+		"ru": "Блок рамы Aero ×3",
+		"uk": "Блок рами Aero ×3"
+	},
+	"Aero Half Block": {
+		"ru": "Половинка Aero",
+		"uk": "Половинка Aero"
+	},
+	"Aero Half Block ×2": {
+		"ru": "Половинка Aero ×2",
+		"uk": "Половинка Aero ×2"
+	},
+	"Aero Wedge": {
+		"ru": "Клин Aero",
+		"uk": "Клин Aero"
+	},
+	"Aero Armour Plate": {
+		"ru": "Бронеплита Aero",
+		"uk": "Бронеплита Aero"
+	},
+	"Aero Armour Plate ×2": {
+		"ru": "Бронеплита Aero ×2",
+		"uk": "Бронеплита Aero ×2"
+	},
+	"Aero Armour Plate ×4": {
+		"ru": "Бронеплита Aero ×4",
+		"uk": "Бронеплита Aero ×4"
+	},
+	"Aero Armour Plate ×9": {
+		"ru": "Бронеплита Aero ×9",
+		"uk": "Бронеплита Aero ×9"
+	},
+	"Aero Small Wheel": {
+		"ru": "Малое колесо Aero",
+		"uk": "Мале колесо Aero"
+	},
+	"An Aero wheel on the Falsus model until the faction's own is built: lighter, and it pulls harder.": {
+		"ru": "Колесо Aero на модели Falsus, пока у фракции нет своего: легче и тянет сильнее.",
+		"uk": "Колесо Aero на моделі Falsus, доки у фракції немає свого: легше і тягне сильніше."
+	},
+	"Aero Wheel": {
+		"ru": "Колесо Aero",
+		"uk": "Колесо Aero"
+	},
+	"Aero Big Wheel": {
+		"ru": "Большое колесо Aero",
+		"uk": "Велике колесо Aero"
+	},
+	"Aero Machine Gun": {
+		"ru": "Пулемёт Aero",
+		"uk": "Кулемет Aero"
+	},
+	"An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.": {
+		"ru": "Оружие Aero на модели Falsus, пока у фракции нет своего: легче, чем у Falsus, и бьёт чуть слабее.",
+		"uk": "Зброя Aero на моделі Falsus, доки у фракції немає своєї: легша, ніж у Falsus, і б'є трохи слабше."
+	},
+	"Aero Shotgun": {
+		"ru": "Дробовик Aero",
+		"uk": "Дробовик Aero"
+	},
+	"Aero Laser": {
+		"ru": "Лазер Aero",
+		"uk": "Лазер Aero"
+	},
+	"Aero Rocket Launcher": {
+		"ru": "Ракетница Aero",
+		"uk": "Ракетниця Aero"
+	},
+	"Aero Heavy Cannon": {
+		"ru": "Тяжёлая пушка Aero",
+		"uk": "Важка гармата Aero"
+	},
+	"Aero Mortar": {
+		"ru": "Мортира Aero",
+		"uk": "Мортира Aero"
+	},
+	"Aero Drill": {
+		"ru": "Бур Aero",
+		"uk": "Бур Aero"
+	},
+	"Aero Solar Panel": {
+		"ru": "Солнечная панель Aero",
+		"uk": "Сонячна панель Aero"
+	},
+	"Aero Battery": {
+		"ru": "Аккумулятор Aero",
+		"uk": "Акумулятор Aero"
+	},
+	"Aero Repair Field": {
+		"ru": "Ремонтное поле Aero",
+		"uk": "Ремонтне поле Aero"
+	},
+	"Aero Shield Dome": {
+		"ru": "Силовой купол Aero",
+		"uk": "Силовий купол Aero"
+	},
+	"Aero Wireless Charger": {
+		"ru": "Беспроводная зарядка Aero",
+		"uk": "Бездротова зарядка Aero"
+	},
+	"Aero Support": {
+		"ru": "Опора Aero",
+		"uk": "Опора Aero"
+	},
+	"Aero Rotating Support": {
+		"ru": "Поворотная опора Aero",
+		"uk": "Поворотна опора Aero"
+	},
+	"Stryx Cabin": {
+		"ru": "Кабина Stryx",
+		"uk": "Кабіна Stryx"
+	},
+	"A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.": {
+		"ru": "Деталь Stryx на модели Falsus, пока у фракции нет своей: весит как у Falsus и намного прочнее.",
+		"uk": "Деталь Stryx на моделі Falsus, доки у фракції немає своєї: важить як у Falsus і набагато міцніша."
+	},
+	"Stryx Frame Block": {
+		"ru": "Блок рамы Stryx",
+		"uk": "Блок рами Stryx"
+	},
+	"Stryx Frame Block ×2": {
+		"ru": "Блок рамы Stryx ×2",
+		"uk": "Блок рами Stryx ×2"
+	},
+	"Stryx Frame Block ×3": {
+		"ru": "Блок рамы Stryx ×3",
+		"uk": "Блок рами Stryx ×3"
+	},
+	"Stryx Half Block": {
+		"ru": "Половинка Stryx",
+		"uk": "Половинка Stryx"
+	},
+	"Stryx Half Block ×2": {
+		"ru": "Половинка Stryx ×2",
+		"uk": "Половинка Stryx ×2"
+	},
+	"Stryx Wedge": {
+		"ru": "Клин Stryx",
+		"uk": "Клин Stryx"
+	},
+	"Stryx Armour Plate": {
+		"ru": "Бронеплита Stryx",
+		"uk": "Бронеплита Stryx"
+	},
+	"Stryx Armour Plate ×2": {
+		"ru": "Бронеплита Stryx ×2",
+		"uk": "Бронеплита Stryx ×2"
+	},
+	"Stryx Armour Plate ×4": {
+		"ru": "Бронеплита Stryx ×4",
+		"uk": "Бронеплита Stryx ×4"
+	},
+	"Stryx Armour Plate ×9": {
+		"ru": "Бронеплита Stryx ×9",
+		"uk": "Бронеплита Stryx ×9"
+	},
+	"Stryx Small Wheel": {
+		"ru": "Малое колесо Stryx",
+		"uk": "Мале колесо Stryx"
+	},
+	"A Stryx wheel on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.": {
+		"ru": "Колесо Stryx на модели Falsus, пока у фракции нет своего: весит как у Falsus и намного прочнее.",
+		"uk": "Колесо Stryx на моделі Falsus, доки у фракції немає свого: важить як у Falsus і набагато міцніше."
+	},
+	"Stryx Wheel": {
+		"ru": "Колесо Stryx",
+		"uk": "Колесо Stryx"
+	},
+	"Stryx Big Wheel": {
+		"ru": "Большое колесо Stryx",
+		"uk": "Велике колесо Stryx"
+	},
+	"Stryx Machine Gun": {
+		"ru": "Пулемёт Stryx",
+		"uk": "Кулемет Stryx"
+	},
+	"A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.": {
+		"ru": "Оружие Stryx на модели Falsus, пока у фракции нет своего: прочнее, чем у Falsus, и бьёт сильнее.",
+		"uk": "Зброя Stryx на моделі Falsus, доки у фракції немає своєї: міцніша, ніж у Falsus, і б'є сильніше."
+	},
+	"Stryx Shotgun": {
+		"ru": "Дробовик Stryx",
+		"uk": "Дробовик Stryx"
+	},
+	"Stryx Laser": {
+		"ru": "Лазер Stryx",
+		"uk": "Лазер Stryx"
+	},
+	"Stryx Rocket Launcher": {
+		"ru": "Ракетница Stryx",
+		"uk": "Ракетниця Stryx"
+	},
+	"Stryx Heavy Cannon": {
+		"ru": "Тяжёлая пушка Stryx",
+		"uk": "Важка гармата Stryx"
+	},
+	"Stryx Mortar": {
+		"ru": "Мортира Stryx",
+		"uk": "Мортира Stryx"
+	},
+	"Stryx Drill": {
+		"ru": "Бур Stryx",
+		"uk": "Бур Stryx"
+	},
+	"Stryx Solar Panel": {
+		"ru": "Солнечная панель Stryx",
+		"uk": "Сонячна панель Stryx"
+	},
+	"Stryx Battery": {
+		"ru": "Аккумулятор Stryx",
+		"uk": "Акумулятор Stryx"
+	},
+	"Stryx Repair Field": {
+		"ru": "Ремонтное поле Stryx",
+		"uk": "Ремонтне поле Stryx"
+	},
+	"Stryx Shield Dome": {
+		"ru": "Силовой купол Stryx",
+		"uk": "Силовий купол Stryx"
+	},
+	"Stryx Wireless Charger": {
+		"ru": "Беспроводная зарядка Stryx",
+		"uk": "Бездротова зарядка Stryx"
+	},
+	"Stryx Support": {
+		"ru": "Опора Stryx",
+		"uk": "Опора Stryx"
+	},
+	"Stryx Rotating Support": {
+		"ru": "Поворотная опора Stryx",
+		"uk": "Поворотна опора Stryx"
+	},
+	"Not a patrol — a place they come back to. A turret post and its guard hold it.": {
+		"ru": "Не патруль — место, куда они возвращаются. Его держат турельный пост и охрана.",
+		"uk": "Не патруль — місце, куди вони повертаються. Його тримають турельний пост і охорона."
+	},
+	"Break the guard and disarm the post": {
+		"ru": "Разбейте охрану и обезоружьте пост",
+		"uk": "Розбийте охорону й роззбройте пост"
+	},
+	"Shoot every gun off the post, but keep its core standing: a wreck cannot be taken.": {
+		"ru": "Сбейте с поста все орудия, но ядро не трогайте: обломки не захватить.",
+		"uk": "Збийте з поста всі гармати, але ядро не чіпайте: уламки не захопити."
+	},
+	"Hold the point": {
+		"ru": "Удержите точку",
+		"uk": "Утримайте точку"
+	},
+	"Stay by the post a few seconds and it becomes one of your bases.": {
+		"ru": "Постойте у поста несколько секунд — и он станет вашей базой.",
+		"uk": "Постійте біля поста кілька секунд — і він стане вашою базою."
+	},
+	"That is a staging point, not a patrol. Take it intact: strip its guns, keep its core.": {
+		"ru": "Это перевалочный пункт, а не патруль. Возьмите его целым: снимите орудия, сохраните ядро.",
+		"uk": "Це перевалочний пункт, а не патруль. Візьміть його цілим: зніміть гармати, збережіть ядро."
+	},
+	"The post is wrecked. Nothing left to take.": {
+		"ru": "Пост разрушен. Захватывать нечего.",
+		"uk": "Пост зруйновано. Захоплювати нічого."
+	},
+	"The post is disarmed. Stay by it and it is yours.": {
+		"ru": "Пост обезоружен. Побудьте рядом — и он ваш.",
+		"uk": "Пост роззброєно. Побудьте поруч — і він ваш."
+	},
+	"Post captured. It is one of your bases now.": {
+		"ru": "Пост захвачен. Теперь это ваша база.",
+		"uk": "Пост захоплено. Тепер це ваша база."
+	},
+	"Race Against Time": {
+		"ru": "Гонка со временем",
+		"uk": "Перегони з часом"
+	},
+	"Reach Aero's course": {
+		"ru": "Доберитесь до трассы Aero",
+		"uk": "Дістаньтеся траси Aero"
+	},
+	"Aero does not care what your machine can carry. It cares how fast it gets there.": {
+		"ru": "Aero не важно, сколько везёт ваша машина. Важно, как быстро она доедет.",
+		"uk": "Aero байдуже, скільки везе ваша машина. Важливо, як швидко вона доїде."
+	},
+	"Run the course in under a minute": {
+		"ru": "Пройдите трассу быстрее минуты",
+		"uk": "Пройдіть трасу швидше за хвилину"
+	},
+	"Through the start gate and the clock runs; every gate in order. Too slow - the start gate again.": {
+		"ru": "Проехали стартовые ворота — время пошло; все ворота по порядку. Не успели — снова через старт.",
+		"uk": "Проїхали стартові ворота — час пішов; усі ворота по черзі. Не встигли — знову через старт."
+	},
+	"That will do. The course is yours to keep - come back and beat your time.": {
+		"ru": "Годится. Трасса остаётся вам — возвращайтесь и бейте свой рекорд.",
+		"uk": "Годиться. Траса залишається вам — повертайтеся й бийте свій рекорд."
+	},
+	"Too slow. Drive through the start gate to try again.": {
+		"ru": "Слишком медленно. Проезжайте через старт, чтобы попробовать снова.",
+		"uk": "Надто повільно. Проїдьте через старт, щоб спробувати знову."
+	},
+	"Finish: %s": {
+		"ru": "Финиш: %s",
+		"uk": "Фініш: %s"
+	},
+	"Aero deals with the fast, not the strong. Our course is marked out there: start to finish inside %s.": {
+		"ru": "Aero имеет дело с быстрыми, а не с сильными. Наша трасса размечена вон там: от старта до финиша за %s.",
+		"uk": "Aero має справу зі швидкими, а не з сильними. Наша траса розмічена он там: від старту до фінішу за %s."
+	},
+	"Over the limit. The start gate is right where you left it.": {
+		"ru": "Не уложились. Стартовые ворота там же, где вы их оставили.",
+		"uk": "Не вклалися. Стартові ворота там само, де ви їх залишили."
+	},
+	"Up to the plateau, gate by gate, inside %s. Climbing is where a heavy machine shows itself.": {
+		"ru": "На плато, ворота за воротами, за %s. На подъёме видно, чего стоит тяжёлая машина.",
+		"uk": "На плато, ворота за воротами, за %s. На підйомі видно, чого варта важка машина."
+	},
+	"On top, and in time. Aero noticed.": {
+		"ru": "Наверху, и вовремя. Aero это заметил.",
+		"uk": "Нагорі, і вчасно. Aero це помітив."
+	},
+	"Too slow on the climb. The start gate is waiting.": {
+		"ru": "Слишком медленно на подъёме. Стартовые ворота ждут.",
+		"uk": "Надто повільно на підйомі. Стартові ворота чекають."
+	},
+	"Loose ground all the way down. Gate by gate to the bottom inside %s - and stay on your wheels.": {
+		"ru": "Сыпучий грунт до самого низа. Ворота за воротами вниз за %s — и оставайтесь на колёсах.",
+		"uk": "Сипкий ґрунт до самого низу. Ворота за воротами вниз за %s — і лишайтеся на колесах."
+	},
+	"Down in one piece. That is the trick of it.": {
+		"ru": "Внизу и целы. В этом весь фокус.",
+		"uk": "Унизу й цілі. У цьому весь фокус."
+	},
+	"Too slow, or too careful. Back to the start gate.": {
+		"ru": "Слишком медленно — или слишком осторожно. Обратно к старту.",
+		"uk": "Надто повільно — або надто обережно. Назад до старту."
+	},
+	"A fresh course is marked out. Inside %s.": {
+		"ru": "Размечена новая трасса. Уложитесь в %s.",
+		"uk": "Розмічено нову трасу. Вкладіться в %s."
+	},
+	"Clean run.": {
+		"ru": "Чистый заезд.",
+		"uk": "Чистий заїзд."
+	},
+	"Too slow. Through the start gate again.": {
+		"ru": "Слишком медленно. Снова через старт.",
+		"uk": "Надто повільно. Знову через старт."
+	},
+	"A straight strip, two gates. Inside %s - nothing to do but go.": {
+		"ru": "Прямая полоса, двое ворот. За %s — остаётся только жать.",
+		"uk": "Пряма смуга, двоє воріт. За %s — лишається тільки тиснути."
+	},
+	"Fast enough.": {
+		"ru": "Достаточно быстро.",
+		"uk": "Досить швидко."
+	},
+	"Too slow off the line. Again.": {
+		"ru": "Медленный старт. Ещё раз.",
+		"uk": "Повільний старт. Ще раз."
+	},
+	"A slalom: every gate swings the other way. Inside %s.": {
+		"ru": "Слалом: каждые ворота уходят в другую сторону. За %s.",
+		"uk": "Слалом: кожні ворота йдуть в інший бік. За %s."
+	},
+	"Every gate. Good.": {
+		"ru": "Все ворота. Хорошо.",
+		"uk": "Усі ворота. Добре."
+	},
+	"Too slow through the gates. Again.": {
+		"ru": "Слишком медленно в воротах. Ещё раз.",
+		"uk": "Надто повільно у воротах. Ще раз."
+	},
+	"Something fast is parked out there and it does not want company. Catch it before it is gone.": {
+		"ru": "Там стоит что-то быстрое, и компания ему не нужна. Поймайте его, пока не ушло.",
+		"uk": "Там стоїть щось швидке, і компанія йому не потрібна. Спіймайте його, поки не втекло."
+	},
+	"Gone. Faster next time.": {
+		"ru": "Ушёл. В следующий раз быстрее.",
+		"uk": "Втік. Наступного разу швидше."
+	},
+	"One of ours lost its wheels out there and the locals have noticed. Get them off it.": {
+		"ru": "Наша машина потеряла там колёса, и местные это заметили. Отгоните их.",
+		"uk": "Наша машина втратила там колеса, і місцеві це помітили. Відженіть їх."
+	},
+	"We lost it. Another one is stuck out there - try again.": {
+		"ru": "Мы её потеряли. Там застряла ещё одна — попробуйте снова.",
+		"uk": "Ми її втратили. Там застрягла ще одна — спробуйте знову."
+	},
+	"Clear. A recovery crew is on its way for it. Aero will remember this.": {
+		"ru": "Чисто. За ней уже едет эвакуатор. Aero этого не забудет.",
+		"uk": "Чисто. По неї вже їде евакуатор. Aero цього не забуде."
+	},
+	"Plateau Run": {
+		"ru": "Забег на плато",
+		"uk": "Забіг на плато"
+	},
+	"Reach the foot of the plateau": {
+		"ru": "Доберитесь до подножия плато",
+		"uk": "Дістаньтеся підніжжя плато"
+	},
+	"Aero wants to see your machine climb. The course starts at the bottom.": {
+		"ru": "Aero хочет увидеть, как ваша машина лезет в гору. Трасса начинается внизу.",
+		"uk": "Aero хоче побачити, як ваша машина лізе вгору. Траса починається внизу."
+	},
+	"Run the climb inside the time": {
+		"ru": "Пройдите подъём за отведённое время",
+		"uk": "Пройдіть підйом за відведений час"
+	},
+	"Every gate in order, up to the top. Too slow - back through the start gate.": {
+		"ru": "Все ворота по порядку, до самого верха. Не успели — снова через старт.",
+		"uk": "Усі ворота по черзі, до самого верху. Не встигли — знову через старт."
+	},
+	"Stranded Racer": {
+		"ru": "Гонщик на мели",
+		"uk": "Гонщик на мілині"
+	},
+	"Reach the stranded racer": {
+		"ru": "Доберитесь до застрявшего гонщика",
+		"uk": "Дістаньтеся гонщика, що застряг"
+	},
+	"One of Aero's machines lost its wheels out there, and it is not alone.": {
+		"ru": "Одна из машин Aero потеряла там колёса, и она там не одна.",
+		"uk": "Одна з машин Aero втратила там колеса, і вона там не сама."
+	},
+	"Clear the hostiles off it": {
+		"ru": "Отгоните от неё врагов",
+		"uk": "Відженіть від неї ворогів"
+	},
+	"It cannot move and it cannot hold long. Everything hostile round it goes.": {
+		"ru": "Она не может ехать и долго не продержится. Всё враждебное вокруг — уничтожить.",
+		"uk": "Вона не може їхати й довго не протримається. Усе вороже довкола — знищити."
+	},
+	"Loose Ground": {
+		"ru": "Сыпучий склон",
+		"uk": "Сипкий схил"
+	},
+	"Reach the top of the run": {
+		"ru": "Доберитесь до начала спуска",
+		"uk": "Дістаньтеся початку спуску"
+	},
+	"Downhill is fast and loose. Aero wants it fast.": {
+		"ru": "Спуск быстрый и сыпучий. Aero нужен быстрый.",
+		"uk": "Спуск швидкий і сипкий. Aero потрібен швидкий."
+	},
+	"Run it down inside the time": {
+		"ru": "Спуститесь за отведённое время",
+		"uk": "Спустіться за відведений час"
+	},
+	"Every gate in order, down to the bottom - on your wheels, not your roof.": {
+		"ru": "Все ворота по порядку, до самого низа — на колёсах, а не на крыше.",
+		"uk": "Усі ворота по черзі, до самого низу — на колесах, а не на даху."
+	},
+	"Checkpoint Race": {
+		"ru": "Гонка по воротам",
+		"uk": "Перегони воротами"
+	},
+	"Reach the start gate": {
+		"ru": "Доберитесь до стартовых ворот",
+		"uk": "Дістаньтеся стартових воріт"
+	},
+	"Run the course inside the time": {
+		"ru": "Пройдите трассу за отведённое время",
+		"uk": "Пройдіть трасу за відведений час"
+	},
+	"A course of gates. Through each in order, against the clock.": {
+		"ru": "Трасса из ворот. Через каждые по порядку, на время.",
+		"uk": "Траса з воріт. Через кожні по черзі, на час."
+	},
+	"Through the start gate and the clock runs. Too slow - the start gate again.": {
+		"ru": "Проехали старт — время пошло. Не успели — снова через старт.",
+		"uk": "Проїхали старт — час пішов. Не встигли — знову через старт."
+	},
+	"Drag Strip": {
+		"ru": "Драг-полоса",
+		"uk": "Драг-смуга"
+	},
+	"Reach the strip": {
+		"ru": "Доберитесь до полосы",
+		"uk": "Дістаньтеся смуги"
+	},
+	"Cover the strip inside the time": {
+		"ru": "Пройдите полосу за отведённое время",
+		"uk": "Пройдіть смугу за відведений час"
+	},
+	"Two gates and a straight line between them. Nothing to it but speed.": {
+		"ru": "Двое ворот и прямая между ними. Тут нужна только скорость.",
+		"uk": "Двоє воріт і пряма між ними. Тут потрібна лише швидкість."
+	},
+	"Slalom": {
+		"ru": "Слалом",
+		"uk": "Слалом"
+	},
+	"Weave through every gate inside the time": {
+		"ru": "Пройдите змейкой все ворота за отведённое время",
+		"uk": "Пройдіть змійкою всі ворота за відведений час"
+	},
+	"Every gate swings to the other side. Lose speed in the turns and you lose the run.": {
+		"ru": "Каждые ворота в другую сторону. Потеряете скорость в поворотах — потеряете заезд.",
+		"uk": "Кожні ворота в інший бік. Втратите швидкість у поворотах — втратите заїзд."
+	},
+	"Pursuit": {
+		"ru": "Погоня",
+		"uk": "Погоня"
+	},
+	"Find the runner": {
+		"ru": "Найдите беглеца",
+		"uk": "Знайдіть утікача"
+	},
+	"Something fast is parked out there. It will not wait for you once it sees you.": {
+		"ru": "Там стоит что-то быстрое. Увидев вас, оно ждать не станет.",
+		"uk": "Там стоїть щось швидке. Побачивши вас, воно чекати не стане."
+	},
+	"Catch it within a minute": {
+		"ru": "Поймайте его за минуту",
+		"uk": "Спіймайте його за хвилину"
+	},
+	"It runs from the moment it sees you. Bring it down before it is gone.": {
+		"ru": "Оно бежит с той секунды, как вас увидело. Уничтожьте его, пока не ушло.",
+		"uk": "Воно тікає з тієї миті, як вас побачило. Знищте його, поки не втекло."
+	},
+	"Bird of Prey": {
+		"ru": "Хищная птица",
+		"uk": "Хижий птах"
+	},
+	"Check the heat signature": {
+		"ru": "Проверьте тепловую сигнатуру",
+		"uk": "Перевірте теплову сигнатуру"
+	},
+	"GSO picked up a heat signature where nothing should be burning. Go and look.": {
+		"ru": "GSO засекла тепловую сигнатуру там, где гореть нечему. Съездите посмотрите.",
+		"uk": "GSO засікла теплову сигнатуру там, де горіти нічому. З'їздіть подивіться."
+	},
+	"Destroy the Cleanup Crew": {
+		"ru": "Уничтожьте зачистку",
+		"uk": "Знищте зачистку"
+	},
+	"Whoever lost that capsule does not want it found. Three of them - all three go.": {
+		"ru": "Тот, кто потерял эту капсулу, не хочет, чтобы её нашли. Их трое — все трое должны уйти.",
+		"uk": "Той, хто загубив цю капсулу, не хоче, щоб її знайшли. Їх троє — усі троє мають зникнути."
+	},
+	"What's that noise?": {
+		"ru": "Что это за шум?",
+		"uk": "Що це за шум?"
+	},
+	"Cleanup Crew": {
+		"ru": "Зачистка",
+		"uk": "Зачистка"
+	},
+	"The cleaners are gone. Whatever they were hiding, Stryx will deal with you now - as a contractor.": {
+		"ru": "Чистильщиков больше нет. Что бы они ни прятали — теперь Stryx будет иметь дело с вами. Как с подрядчиком.",
+		"uk": "Чистильників більше немає. Що б вони не ховали — тепер Stryx матиме справу з вами. Як із підрядником."
+	},
+	"Rock Creek Bridge": {
+		"ru": "Мост у Рок-Крик",
+		"uk": "Міст біля Рок-Крік"
+	},
+	"Reach the crossing": {
+		"ru": "Доберитесь до переправы",
+		"uk": "Дістаньтеся переправи"
+	},
+	"Someone has taken the crossing at Rock Creek and charges for it.": {
+		"ru": "Кто-то занял переправу у Рок-Крик и берёт за проезд.",
+		"uk": "Хтось зайняв переправу біля Рок-Крік і бере за проїзд."
+	},
+	"Pay the toll or break through": {
+		"ru": "Заплатите или прорвитесь",
+		"uk": "Заплатіть або прорвіться"
+	},
+	"Pay and drive on, or cross the line and fight. Its hardware is better than ours.": {
+		"ru": "Заплатите и езжайте дальше — или пересеките черту и деритесь. Железо у него лучше нашего.",
+		"uk": "Заплатіть і їдьте далі — або перетніть межу й бийтеся. Залізо в нього краще за наше."
+	},
+	"Someone has taken the crossing at Rock Creek and charges for it. Marlit's convoys will not pay. Will you?": {
+		"ru": "Кто-то занял переправу у Рок-Крик и берёт за проезд. Конвои Marlit платить не станут. А вы?",
+		"uk": "Хтось зайняв переправу біля Рок-Крік і бере за проїзд. Конвої Marlit платити не стануть. А ви?"
+	},
+	"Over the line without paying. Your mistake.": {
+		"ru": "За черту без оплаты. Твоя ошибка.",
+		"uk": "За межу без оплати. Твоя помилка."
+	},
+	"This crossing is mine. %d$ and you drive on. Cross the line without paying and you do not.": {
+		"ru": "Эта переправа моя. %d$ — и проезжай. Пересечёшь черту не заплатив — не проедешь.",
+		"uk": "Ця переправа моя. %d$ — і проїжджай. Перетнеш межу не заплативши — не проїдеш."
+	},
+	"Fight": {
+		"ru": "Драться",
+		"uk": "Битися"
+	},
+	"Pay %d$": {
+		"ru": "Заплатить %d$",
+		"uk": "Заплатити %d$"
+	},
+	"The toll keeper wants %d$ for the crossing.": {
+		"ru": "Хозяин переправы требует %d$ за проезд.",
+		"uk": "Хазяїн переправи вимагає %d$ за проїзд."
+	},
+	"Pleasure doing business.": {
+		"ru": "Приятно иметь дело.",
+		"uk": "Приємно мати справу."
+	},
+	"The crossing is open. Its keeper drove Stryx hardware - it is yours now.": {
+		"ru": "Переправа свободна. Её хозяин ездил на железе Stryx — теперь оно ваше.",
+		"uk": "Переправа вільна. Її хазяїн їздив на залізі Stryx — тепер воно ваше."
+	},
+	"Paid, and the crossing is open. Marlit would have fought.": {
+		"ru": "Заплачено, переправа свободна. Marlit бы дрался.",
+		"uk": "Заплачено, переправа вільна. Marlit бився б."
+	},
+	"Toll Keeper": {
+		"ru": "Хозяин переправы",
+		"uk": "Хазяїн переправи"
+	},
+	"Courier": {
+		"ru": "Курьер",
+		"uk": "Кур'єр"
+	},
+	"Quiet Job": {
+		"ru": "Тихая работа",
+		"uk": "Тиха робота"
+	},
+	"Find the courier": {
+		"ru": "Найдите курьера",
+		"uk": "Знайдіть кур'єра"
+	},
+	"A courier waits out there with an escort. It will run the moment it sees you.": {
+		"ru": "Там ждёт курьер с охраной. Увидев вас, он сразу сорвётся с места.",
+		"uk": "Там чекає кур'єр з охороною. Побачивши вас, він одразу зірветься з місця."
+	},
+	"Stop the courier before it reaches its drop": {
+		"ru": "Остановите курьера, пока он не доехал",
+		"uk": "Зупиніть кур'єра, поки він не доїхав"
+	},
+	"The escort does not matter. The courier must not arrive.": {
+		"ru": "Охрана неважна. Курьер не должен доехать.",
+		"uk": "Охорона неважлива. Кур'єр не має доїхати."
+	},
+	"A courier is carrying something we want buried. It waits out there with an escort. When it moves, it must not arrive.": {
+		"ru": "Курьер везёт то, что мы хотим похоронить. Он ждёт там с охраной. Когда тронется — не должен доехать.",
+		"uk": "Кур'єр везе те, що ми хочемо поховати. Він чекає там з охороною. Коли рушить — не має доїхати."
+	},
+	"It saw you. It is running for its drop.": {
+		"ru": "Он вас заметил. Мчит к точке сброса.",
+		"uk": "Він вас помітив. Мчить до точки скидання."
+	},
+	"Done, and quietly. Stryx remembers who is useful.": {
+		"ru": "Сделано, и тихо. Stryx помнит, кто полезен.",
+		"uk": "Зроблено, і тихо. Stryx пам'ятає, хто корисний."
+	},
+	"It made its drop. There will be another courier - be faster.": {
+		"ru": "Он доехал. Будет другой курьер — будьте быстрее.",
+		"uk": "Він доїхав. Буде інший кур'єр — будьте швидші."
+	},
+	"Crowntop Hill Fort": {
+		"ru": "Форт на Коронном холме",
+		"uk": "Форт на Коронному пагорбі"
+	},
+	"Reach Crowntop Hill": {
+		"ru": "Доберитесь до Коронного холма",
+		"uk": "Дістаньтеся Коронного пагорба"
+	},
+	"The Spider King holds the hill: an anchored fort with rockets, lasers and a dome.": {
+		"ru": "Холм держит Король-паук: форт на опоре с ракетами, лазерами и куполом.",
+		"uk": "Пагорб тримає Король-павук: форт на опорі з ракетами, лазерами й куполом."
+	},
+	"Bring down the Spider King": {
+		"ru": "Уничтожьте Короля-паука",
+		"uk": "Знищте Короля-павука"
+	},
+	"Its dome lives on panels and batteries. At night the panels give nothing.": {
+		"ru": "Его купол живёт на панелях и аккумуляторах. Ночью панели не дают ничего.",
+		"uk": "Його купол живе на панелях і акумуляторах. Уночі панелі не дають нічого."
+	},
+	"The Spider King holds Crowntop Hill: rockets, lasers and a dome. Its panels feed the dome - at night they give nothing.": {
+		"ru": "Король-паук держит Коронный холм: ракеты, лазеры и купол. Купол питают панели — ночью они не дают ничего.",
+		"uk": "Король-павук тримає Коронний пагорб: ракети, лазери й купол. Купол живлять панелі — уночі вони не дають нічого."
+	},
+	"The Spider King is down. Stryx pays in hardware.": {
+		"ru": "Король-паук повержен. Stryx платит железом.",
+		"uk": "Короля-павука повалено. Stryx платить залізом."
+	},
+	"%d units, no transponders. They are not ours.": {
+		"ru": "Машин без транспондеров: %d. Они не наши.",
+		"uk": "Машин без транспондерів: %d. Вони не наші."
+	},
+	"Keep it alive for two minutes": {
+		"ru": "Продержите его две минуты",
+		"uk": "Протримайте його дві хвилини"
+	},
+	"Stay close and keep it standing. Hold for two minutes and it joins you.": {
+		"ru": "Держитесь рядом и не дайте его уничтожить. Две минуты — и он ваш.",
+		"uk": "Тримайтеся поруч і не дайте його знищити. Дві хвилини — і він ваш."
+	},
+	"More of them. Hold on - a minute to go.": {
+		"ru": "Ещё налётчики. Держитесь — осталась минута.",
+		"uk": "Ще нападники. Тримайтеся — лишилася хвилина."
+	},
+	"It held. The crew is grateful - the machine is yours to drive.": {
+		"ru": "Выстоял. Экипаж благодарен — машина теперь ваша.",
+		"uk": "Вистояв. Екіпаж вдячний — машина тепер ваша."
+	},
+	"A cache is hidden somewhere round the mark. It has a guard, and once you are there it wipes itself in %d seconds.": {
+		"ru": "Где-то у метки спрятан тайник. Его охраняют, и когда вы доберётесь, он самоуничтожится через %d секунд.",
+		"uk": "Десь біля мітки схований тайник. Його охороняють, і коли ви дістанетеся, він самознищиться за %d секунд."
+	},
+	"Thirty seconds and the cache wipes itself.": {
+		"ru": "Тридцать секунд — и тайник самоуничтожится.",
+		"uk": "Тридцять секунд — і тайник самознищиться."
+	},
+	"The cache wiped itself. Nothing left to take.": {
+		"ru": "Тайник самоуничтожился. Брать нечего.",
+		"uk": "Тайник самознищився. Брати нічого."
 	}
 }

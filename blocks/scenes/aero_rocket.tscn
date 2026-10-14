@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://c0rkt1lnchr01" path="res://blocks/scenes/rocket_launcher.tscn" id="1_base"]
+
+[node name="Rocket" instance=ExtResource("1_base")]
+block = 96
+metadata/stub_faction = "aero"

@@ -102,7 +102,7 @@ func notice_attacker(attacker: Node3D) -> void:
 func last_attacker_name() -> String:
 	if not is_instance_valid(_last_attacker):
 		return ""
-	return EnemyMarker.name_for(int(_last_attacker.get_instance_id()))
+	return EnemyMarker.name_of(_last_attacker)
 
 func _die() -> void:
 	if _dying:
@@ -1738,14 +1738,9 @@ func _place_ground_structure(instance: Node3D) -> void:
 	if scene == null:
 		push_error("vehicle: нет player_vehicle.tscn для новой структуры")
 		return
-	# АВТО-ШАХТЁР СТАВИТСЯ ТОЛЬКО К ВЫРАБОТАННОЙ ЖИЛЕ. Он умеет ровно одно — выскребать пустую
-	# жилу рядом с собой, и посреди поля это дорогой памятник: стоит, ест энергию, не добывает
-	# ничего. Поэтому не «можно и так», а нельзя: не нашли подходящую жилу — блок ОСТАЁТСЯ В
-	# РУКЕ, игрок доносит его до залежи.
-	#
-	# ПУСТАЯ, А НЕ ЛЮБАЯ: пока в жиле есть руда, она принадлежит буру. Шахтёр забирает её себе
-	# навсегда (жила под ним больше не восстанавливается), и отдавать ему полную значило бы
-	# отменить выбор — поставил и забыл, копать руками больше незачем.
+	# THE AUTO MINER GOES ONLY BESIDE AN ORE VEIN: in an open field it would stand eating energy and
+	# dig nothing, so with no vein in reach the block stays in the hand. Any vein, full or not: it
+	# digs from the same store a drill does (resource_node.vein_stats).
 	if core == G.Block.AUTO_MINER:
 		# Радиус спрашиваем у САМОГО блока: правило «дотягивается до жилы» должно быть одно
 		# и то же и при постановке, и при добыче (auto_miner.vein_reach).
@@ -1754,9 +1749,6 @@ func _place_ground_structure(instance: Node3D) -> void:
 		var vein: Node3D = _vein_near(_cabin_ground, reach)
 		if vein == null:
 			Dialogue.say("System", tr("The Auto Miner works an ore vein. Place it next to one."))
-			return
-		if vein.has_method("is_depleted") and not vein.is_depleted():
-			Dialogue.say("System", tr("Mine this vein out first — the Auto Miner only works a spent one."))
 			return
 		if vein.get("claimed_by") != null:
 			Dialogue.say("System", tr("Another Auto Miner already works this vein."))
