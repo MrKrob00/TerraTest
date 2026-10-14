@@ -1199,7 +1199,7 @@ project: read it before claiming how anything works.
   and `drop_at` (the ground point; `quest_compass` leads there while it is held). Then it is let go,
   falls `drop_height` and materialises (`enemy_vehicle._materialise_on_spawn` skips while held; the
   spawner calls it on release). The ring: ONE wide red ribbon of dashes draped on the ground at the
-  build's reach (`_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside
+  build's reach times `DROP_RING_SCALE` (2, the player's call; `_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside
   `add_child`), FIVE dashes like the collector's reach ring (the player's call; a countdown arc filling
   it and an inner ring read as a solid line), turning faster as the drop nears, the last second
   blinking, cyan for an ally; it fades as the machine drops. THE VEHICLE CULL PASS SHOWED HIDDEN MACHINES AGAIN
