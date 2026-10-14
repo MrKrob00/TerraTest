@@ -2,10 +2,9 @@ extends FactoryBlock
 
 # AUTO-MINER: a stationary block beside an ore vein, digging it unattended.
 #
-# It digs from the vein's own store - the same ORE_TOTAL (600) a drill takes from, and a spent vein
-# rests ORE_REST (30 minutes) for the miner too (the player's balance). It used to work only a vein
-# the drill had spent, scraping it for ever: with five-ore veins that was the choice between drill
-# and miner, with 600-ore veins it would have been the one thing the balance did not reach.
+# It digs from the vein's own store - the same 3-5 ore a drill takes from, and a spent vein rests its
+# own ~15 s for the miner too (resource_node.vein_stats). It used to work only a vein the drill had
+# spent, scraping it for ever, outside the balance.
 #
 # A receiver is WANTED, not required. Without one the ore simply lies by the vein (same rule as a
 # packer with no belt) for a collector or the player to pick up; refusing to mine at all made the

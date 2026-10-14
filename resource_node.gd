@@ -6,13 +6,22 @@ extends StaticBody3D
 # MultiMesh для шейдера истощения; ore_type/ore_color — тип/цвет жилы (задаёт спавнер).
 
 const MAX_RESOURCES: int = 5        # a tree's wood
-## AN ORE VEIN HOLDS ORE_TOTAL ORE AND RESTS ORE_REST SECONDS ONCE SPENT (the player's balance: 600
-## ore, 30 minutes). It used to hold five and rest five seconds, so a vein was a tap that never ran
-## dry. An ore still leaves per HP_PER_ORE of damage (a fifth of max_hp, as before), so a drill digs
-## at the same rate - a vein simply lasts. What is left and when it comes back outlive the node: the
-## owner keeps them by the vein's point (`resource_nodes.ore_state`) and the world save carries them.
-const ORE_TOTAL: int = 600
-const ORE_REST: float = 1800.0
+## EVERY ORE VEIN HAS ITS OWN NUMBERS (the player's balance): ORE_COUNT ore (3..5), ORE_REST seconds
+## of rest once spent (~15), and its max_hp times HP_SPREAD - drawn from the vein's ground point
+## (`vein_stats`), so a vein keeps them through a restream and a reload. An ore leaves per
+## max_hp / its count of damage. 600 ore and 30 minutes' rest was tried and taken back (the player).
+## What is left and when it comes back outlive the node: the owner keeps them by the vein's point
+## (`resource_nodes.ore_state`) and the world save carries them.
+const ORE_COUNT := Vector2i(3, 5)
+const ORE_REST := Vector2(10.0, 20.0)
+const HP_SPREAD := Vector2(0.75, 1.25)
+
+## x the vein's ore, y its rest in seconds, z its HP factor - the same for a key every time asked.
+static func vein_stats(key: Variant) -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(String(key)) if key != null else randi()
+	var n: int = rng.randi_range(ORE_COUNT.x, ORE_COUNT.y)
+	return Vector3(n, rng.randf_range(ORE_REST.x, ORE_REST.y), rng.randf_range(HP_SPREAD.x, HP_SPREAD.y))
 
 @export var resource_tscn: PackedScene
 @export var max_hp: int = 500   # in the weapons' scale (BLOCK_HP): a gun takes a vein in ~4 s, halved with damage
@@ -26,7 +35,8 @@ var ore_color: Color = Color(1.0, 0.75, 0.0)        # цвет вылетающ�
 var is_wood: bool = false
 ## Which tree model this is (resource_nodes TREE_*): the battery errand hangs its block per model.
 var tree_kind: int = 0
-var _available: int = MAX_RESOURCES                 # how much is left (an ore vein: up to ORE_TOTAL)
+var _available: int = MAX_RESOURCES                 # how much is left (an ore vein: up to ore_total)
+var ore_total: int = MAX_RESOURCES                  # an ore vein's own count (`vein_stats`)
 var _dmg: int = 0                                   # an ore vein's damage toward its next ore
 ## Set by the owner before add_child: the vein's key in its state table, what was left, and how many
 ## seconds were still to rest (-1: not resting).
@@ -34,9 +44,8 @@ var vein_key: Variant = null
 var restore_left: int = -1
 var restore_wait: float = -1.0
 
-## WHO WORKS THE VEIN (an auto miner): one miner a vein. The miner digs from the same ORE_TOTAL as a
-## drill does - with a vein that runs dry after 600 the old rule (a miner only on a SPENT vein,
-## scraping it for ever) would have made the miner the one thing the balance did not reach.
+## WHO WORKS THE VEIN (an auto miner): one miner a vein. The miner digs from the same store a drill
+## does and waits out the same rest.
 var claimed_by: Node = null
 
 ## Жила выработана: руды в ней сейчас нет (идёт отдых или её занял шахтёр).
@@ -79,8 +88,13 @@ func _ready() -> void:
 	_rest_time = $RestTimer.wait_time
 	if is_wood:
 		return
-	_rest_time = ORE_REST
-	_available = ORE_TOTAL if restore_left < 0 else clampi(restore_left, 0, ORE_TOTAL)
+	var st: Vector3 = vein_stats(vein_key if vein_key != null
+			else "%d,%d" % [roundi(global_position.x * 2.0), roundi(global_position.z * 2.0)])
+	ore_total = int(st.x)
+	_rest_time = st.y
+	max_hp = maxi(roundi(float(max_hp) * st.z), 1)
+	current_hp = max_hp
+	_available = ore_total if restore_left < 0 else clampi(restore_left, 0, ore_total)
 	if _available <= 0:
 		_set_solid(false)
 		$RestTimer.start(maxf(restore_wait, 0.05))
@@ -94,7 +108,7 @@ func hurt(damage: int = 10) -> void:
 	if owner_node != null and owner_node.has_method("vein_hit"):
 		owner_node.vein_hit(self)
 	if not is_wood:
-		var per: int = maxi(max_hp / MAX_RESOURCES, 1)
+		var per: int = maxi(max_hp / ore_total, 1)
 		_dmg += damage
 		while _dmg >= per and _available > 0:
 			_dmg -= per
@@ -128,17 +142,17 @@ func hurt(damage: int = 10) -> void:
 ## An ore vein after ore left it: the picture breaks by what is left, a spent vein rests, and the
 ## owner is told, so the state outlives this node.
 func _after_take() -> void:
-	_write_shader_data(Color(_now(), float(_available) / float(ORE_TOTAL), 0.0, float(ore_type)))
+	_write_shader_data(Color(_now(), float(_available) / float(ore_total), 0.0, float(ore_type)))
 	if _available <= 0:
 		_dmg = 0
 		_set_solid(false)
-		$RestTimer.start(ORE_REST)
+		$RestTimer.start(_rest_time)
 	_tell_state()
 
 func _tell_state() -> void:
 	var owner_node: Node = get_parent()
 	if vein_key != null and owner_node != null and owner_node.has_method("ore_state_set"):
-		owner_node.ore_state_set(vein_key, _available, ORE_REST if _available <= 0 else -1.0)
+		owner_node.ore_state_set(vein_key, _available, _rest_time if _available <= 0 else -1.0)
 
 ## AN EMPTY VEIN IS NOT IN THE WAY. What stays of a worked-out vein is rubble and of a felled tree
 ## a stump, and a 3 m cylinder (a 7 m trunk) left standing over them stopped machines and shots on
@@ -212,7 +226,7 @@ func _on_rest_timer_timeout() -> void:
 		return
 	$RestTimer.wait_time = _rest_time       # start(BLOCKED_RETRY) above rewrote it
 	_set_solid(true)
-	_available = MAX_RESOURCES if is_wood else ORE_TOTAL
+	_available = MAX_RESOURCES if is_wood else ore_total
 	current_hp = max_hp
 	_dmg = 0
 	_tell_state()
