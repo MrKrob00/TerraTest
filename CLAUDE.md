@@ -2491,6 +2491,15 @@ project: read it before claiming how anything works.
 - `SHOP_MARKUP` > 1 is the rule that keeps crafting worth doing.
 - Shop sales are discounts only, on unlocked blocks only, applied by `shop_price_now`;
   `shop_price` stays the base because machine value is measured with it.
+- **THE SHOP IS A WINDOW RESTOCKED ONCE A GAME DAY** (`G.roll_shop_stock`, `SHOP_DAY` 1200 s - the day
+  cycle's length; the player's balance): only researched blocks, and of those a grade-1 block of its
+  faction is BASIC - always there, endless; grades 2-3 come up on a day with `SHOP_MID_CHANCE`, 2-4 of
+  them; grade `SHOP_TOP_GRADE` (4) and over with `SHOP_TOP_CHANCE`, one or two. A bought block comes
+  off the count (`shop_take`) and leaves the window at zero; `shop_count` is the one question the
+  garage asks (0 not offered, -1 endless). The window and the seconds to the next restock ride in the
+  progress save ("shop"), so a reload does not reroll it; the day runs only while the world is up
+  (in the menu a restock would write progress into a slot about to be deleted). The day's three
+  discounts fall on blocks in the window. The proving ground's shop is everything, endless.
 
 ### Look and light
 
