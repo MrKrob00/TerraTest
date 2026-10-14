@@ -208,19 +208,23 @@ points against Falsus's).
 
 **The basic block and the standard wheel, drafts, not in the game** (`art/aero_models.py`, glbs in
 `art/out/aero_*.glb`, two palettes: `aero` - the emblem's blue / white / orange - and `ref` - the
-player's reference pictures' red / white / blue). Two cuts were turned down and each is a rule now:
-a chamfered cube painted in bands with a racing pylon and wishbones ("too cubic", "the transmission
-is horrible" - a Blender version of it changed nothing and was dropped), then a bullnose with ears
-and a mudguard ("that is a half block, not a block"). THE BASIC BLOCK IS A CUBE OF THREE LAYERS, the
-player's own picture: a full-width base in the skirt colour, its top edge rounded down into a white
-middle set 5 cm in, and a thick cap in the top colour overhanging that white, rounded along its
-edges, with a raised top 4 cm in from the slab's edge and a notch cut into the middle of every top
-edge; a diamond emblem on top, a lightning-bolt Z on every white face. THE WHEEL IS A FAIRING round a
-knobbly tyre (r 0.36, 14 lugs staggered across the tread, a white recessed hub): an arch from the
-hull face past the tyre's outer face, broad enough to read as a white band from outside, the three
-colours down it - the cap colour over the crest with a ridge, white, the skirt colour where its legs
-run on past the axle to points - and a hull inboard of the tyre whose lower corners point past it
-fore and aft. 218 / 548 triangles, `model_check.py` PASS.
+player's reference pictures' red / white / blue). Three cuts were turned down, and what each got
+wrong is a rule now: a chamfered cube painted in bands with a racing pylon and wishbones ("too
+cubic", "the transmission is horrible" - a Blender version changed nothing and was dropped); a
+bullnose with ears ("that is a half block"); a three-layer cube with a letter Z on it and a
+mudguard over the tyre ("what is that Z", "a half circle over a tyre is lazy"). MARKS ARE THE
+FACTION'S EMBLEM (`images/faction_aero.png`, sampled into the texture at 80 px a metre so it reads),
+never a letter. THE BASIC BLOCK: a blue octagonal base with its top edge rounded, a white octagonal
+middle with broad cut corners, set 3.5 cm in, and a thick cap overhanging it whose top edges slope
+in broad bevels, a notch in the middle of every top edge so the corners stand up, the emblem in a
+white diamond on top and on every white face. THE WHEEL IS TWO CELLS ALONG THE ROLL: a knobbly tyre
+(r 0.46, 18 lugs across the tread, shoulder lugs on the outer wall, a dashed ring, a white dish in a
+blue ring) in the first; inboard of it a FAIRING whose side is a swoosh - a point over the tyre's
+front, the top (cap colour, a white stripe slanting across) running back, the back falling to a
+point at the axle's height, the lower edge the base colour and round the tyre in front, a slot and
+the emblem on its side, its outboard edge bevelled; and over the tyre a LIP, the fairing's top
+running out past the tyre's outer face, pointed at the front. A wheel on the other side is the
+mirror. 248 / 614 triangles, `model_check.py` PASS.
 
 ### Stryx: stealth
 
