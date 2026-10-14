@@ -941,8 +941,10 @@ const DROP_WARN := 3.0
 const DROP_RING := preload("res://drop_ring.gd")
 const DROP_RING_MIN := 3.0
 const DROP_RING_MAX := 12.0
-## The ring stands at twice the build's reach (the player: "the radius is too small, twice that").
-const DROP_RING_SCALE := 2.0
+## The ring stands a FIXED margin past the build's reach, not a multiple of it (the player: "twice as
+## big" for the scout, then "not exponential - a 2 m machine gets +2, a 6 m one +2 as well"): the
+## scout's ring comes out ~7.7 m, the biggest build's ~16 m.
+const DROP_RING_PAD := 4.0
 
 func _hold_for_drop(enemy: Node3D) -> void:
 	if not is_instance_valid(enemy) or not enemy.is_inside_tree():
@@ -1005,7 +1007,7 @@ func _drop_radius(enemy: Node) -> float:
 		for c in (bl.get("map") as Dictionary).keys():
 			var v: Vector3i = c
 			r = maxf(r, Vector2(v.x - 5, v.z - 5).length())
-	return clampf(r + 1.5, DROP_RING_MIN, DROP_RING_MAX) * DROP_RING_SCALE
+	return clampf(r + 1.5, DROP_RING_MIN, DROP_RING_MAX) + DROP_RING_PAD
 
 # While the tutorial runs, the regular stream and sector scans stay silent: the player is being led
 # by the hand and a raider mid-lesson only gets in the way. The first enemy is brought by the story
