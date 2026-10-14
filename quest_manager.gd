@@ -189,22 +189,25 @@ func _seed_demo() -> void:
 		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
 	])
 
+	# ── THE LICENCES ARE A CHAIN (the player's rule): Falsus -> Marlit -> Aero -> Stryx, each
+	# licence quest offered by the faction before it at that faction's grade 4 (its `faction` and
+	# req_grade - _grade_ok asks that faction's licence and grade), no `requires` on top.
 	# ── MARLIT'S CHAMPION: THE SECOND FACTION'S LICENCE ─────────────────────────
 	# The player's design: Marlit sends a machine of the fourth step built of its own blocks; beat it
 	# and Marlit's licence is yours (G.FACTION_LICENCE, granted in _on_completed). The id stays
 	# "arc_yellow" - saves and the licence table key on it.
-	add_quest("arc_yellow", "Marlit's Champion", "", Type.STORY, 1, 14, "", 500, 80, 22)
+	add_quest("arc_yellow", "Marlit's Champion", "", Type.STORY, 1, 14, "", 500, 80, 22, 4)
 	add_stages("arc_yellow", [
 		{"desc": "Destroy the Marlit champion",
 		 "event": "quest_yellow_1", "goal": 1,
 		 "hint": "Marlit only deals with those who can beat them. Their champion is out in the field - heavy hull, heavy wheels, guns that hit harder than ours."},
 	])
-	requires("arc_yellow", ["arc_hold"])
 
-	# ── AERO'S LICENCE: RACE AGAINST TIME (TerraTech's Venture licence, GSO grade 3) ───────────
+	# ── AERO'S LICENCE: RACE AGAINST TIME (TerraTech's Venture licence; Marlit grade 4) ───────────
 	# Aero deals with the fast: a course of gates out in the field, start to finish in under a minute
 	# (quest_arcs._race_*, race_track.gd). The course stays in the world after it, a track to beat.
-	add_quest("arc_aero", "Race Against Time", "", Type.STORY, 1, 15, "", 450, 70, 20, 3)
+	add_quest("arc_aero", "Race Against Time", "", Type.STORY, 1, 15, "", 450, 70, 20, 4)
+	_find("arc_aero")["faction"] = "marlit"
 	add_stages("arc_aero", [
 		{"desc": "Reach Aero's course",
 		 "event": "quest_race_1", "goal": 1,
@@ -213,12 +216,12 @@ func _seed_demo() -> void:
 		 "event": "quest_race_2", "goal": 1,
 		 "hint": "Through the start gate and the clock runs; every gate in order. Too slow - the start gate again."},
 	])
-	requires("arc_aero", ["arc_salvage"])
 
-	# ── STRYX'S LICENCE: BIRD OF PREY (TerraTech's Hawkeye licence, GSO grade 4) ───────────────
+	# ── STRYX'S LICENCE: BIRD OF PREY (TerraTech's Hawkeye licence; Aero grade 4) ───────────────
 	# A crashed Stryx capsule, and three "Cleanup Crew" machines that drop in once the player is
 	# near it (quest_arcs._bop_*). Story, so it is guaranteed - the original drew it from a board.
 	add_quest("arc_stryx", "Bird of Prey", "", Type.STORY, 1, 16, "", 650, 100, 26, 4)
+	_find("arc_stryx")["faction"] = "aero"
 	add_stages("arc_stryx", [
 		{"desc": "Check the heat signature",
 		 "event": "quest_bop_1", "goal": 1,
@@ -227,7 +230,6 @@ func _seed_demo() -> void:
 		 "event": "quest_bop_2", "goal": 1,
 		 "hint": "Whoever lost that capsule does not want it found. Three of them - all three go."},
 	])
-	requires("arc_stryx", ["arc_hold"])
 
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])

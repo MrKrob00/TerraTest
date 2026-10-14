@@ -859,10 +859,11 @@ project: read it before claiming how anything works.
   target speed is measured between physics ticks.
 - Target scoring weighs proximity above the cabin (`SC_CABIN`) and adds a per-gun constant taste
   (`SC_TASTE`) so neighbouring guns do not converge on one block. THE CABIN'S WEIGHT IS SMALL - 10
-  against proximity's 100, under the weapons' 45 (the player: "the guns pick the cabin too often").
+  against proximity's 100, under the weapons' `SC_WEAPON` (the player: "the guns pick the cabin too often").
   At 55 an ally's guns held the cabin 91% of the time on a raider and 61% on a breaker, measured on
-  the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you, and its
-  guns are taken first.
+  the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you. AN ENEMY
+  WEAPON WEIGHS 30 (was 45; the player: "pick the guns a third less often"), so the near hull wins
+  more of the ties and the guns are not always the first thing gone.
 - Spread is angular, PER BARREL (`spread_deg`) AND THE SAME AT ANY RANGE (TerraTech's spray, the
   player's call): it used to shrink to a fifth of itself up close, and a gun beside its target never
   missed. Shotgun and mortar disable the base spread and use their own. Without spread, automatic
@@ -1866,7 +1867,7 @@ project: read it before claiming how anything works.
   machine CROSSES its plane between the posts (last tick's position to this one, so no speed steps
   over it); too slow and it is a failed run, and driving through the start gate again is the retry.
   The next gate is lit, the clock and the count show at the top of the screen. RACE AGAINST TIME is
-  Aero's licence (`arc_aero`, GSO grade 3, after Salvage Run): start to finish inside a minute, the
+  Aero's licence (`arc_aero`, offered by Marlit at its grade 4 - the licence chain, below): start to finish inside a minute, the
   course KEPT in the world after it (`keep`, saved by `world_persist` "tracks", still timed). Aero's
   story: PLATEAU RUN (a climbing course), STRANDED RACER (TerraTech's Mine Island Rescue, renamed: an
   Aero wreck, `blocks.AERO_WRECK`, under attack - clear them off it), LOOSE GROUND (A Slippery Slope:
@@ -1877,7 +1878,7 @@ project: read it before claiming how anything works.
   would have to be a terrain edit, not a prop. Measured on the proving ground: every course laid and
   run to done, a slow run failing and the next one through the start gate counting, the runner 63 m
   off in five seconds and done when killed, the wreck's attackers killed - done.
-- **BIRD OF PREY IS STRYX'S LICENCE** (`arc_stryx`, GSO grade 4 after Hold the Line, `quest_arcs._bop_*`;
+- **BIRD OF PREY IS STRYX'S LICENCE** (`arc_stryx`, offered by Aero at its grade 4, `quest_arcs._bop_*`;
   TerraTech's Hawkeye licence, a STORY quest so it is guaranteed - the original drew it from a board):
   a crashed capsule and burnt blocks at a point (a picture, nothing to pick up); within `BOP_NOTICE`
   the Mechanic hears something and three capsules are SEEN falling from `BOP_HIGH` onto a ring round
@@ -3180,7 +3181,10 @@ project: read it before claiming how anything works.
   box would stop shots on air there; that cell joins on nothing (`connect_defaults`). Measured: cells,
   mesh and collider span one box at 0/90/180/270 (the halves' mesh 0.11 m short at the acute tips,
   where the chamfer cuts them - inside the collider, as it must be); a block beside the empty cell
-  does not join, beside the bottom-front one it does. A FACTION IS LICENSED BY A STORY QUEST
+  does not join, beside the bottom-front one it does. **THE LICENCES ARE A CHAIN** (the player's
+  rule): Marlit's quest opens at Falsus grade 4, Aero's at Marlit grade 4, Stryx's at Aero grade 4 -
+  each licence quest carries the PREVIOUS faction as its `faction` and `req_grade` 4, so `_grade_ok`
+  asks that faction's licence and grade, and no `requires` sits on top. A FACTION IS LICENSED BY A STORY QUEST
   (`G.FACTION_LICENCE`, read off `quests_done` - no second list): until then its blocks cannot be
   researched (`research_lock_code` "licence"); trophies bolt on as always. `grant_licence` hands
   the faction's root blocks over researched. THE TECH TREE HAS ONE PAGE PER LICENSED FACTION
@@ -3293,7 +3297,7 @@ project: read it before claiming how anything works.
   a core on a pedestal, then in the repair unit's porthole shell ("you copied the repair unit").
   Measured on the proving ground: dome 6 m, 100 damage cost 48 energy, three covered faces shut and
   three open with the emitter swollen, a loose block 6.5 m away healed 17 a tick.
-- **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", after Hold the Line;
+- **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", at Falsus grade 4;
   `quest_arcs._yellow_1`; the id is kept, saves and `G.FACTION_LICENCE` key on it). The player's
   design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
   from the player and the licence is granted when it dies. A Marlit hull round a cabin, four

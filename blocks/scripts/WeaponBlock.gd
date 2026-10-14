@@ -400,7 +400,9 @@ const SC_PRIORITY_MACHINE := 400.0
 # the rest on the blocks in front and on the enemy's weapons. With the TerraTech rescale a block
 # dies in a second under one gun, so stripping a hull is no longer a long way round to the core.
 const SC_CABIN := 10.0
-const SC_WEAPON := 45.0
+# 45 -> 30 (the player: "pick the guns on machines a third less often"): still over the cabin and
+# a share of proximity, so a gun in reach is still worth taking, but the near hull wins more often.
+const SC_WEAPON := 30.0
 const SC_STICKY := 40.0
 const SC_NEAR := 100.0        # множитель близости: чем дальше цель, тем меньше добавка
 ## «ВКУС» СТВОЛА — постоянная надбавка, своя у каждой пары «эта турель / этот блок». Ради неё
