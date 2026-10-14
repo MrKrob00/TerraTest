@@ -2050,6 +2050,10 @@ project: read it before claiming how anything works.
   five minutes to under half. A patch drawn over the ground was tried first: to clear the grass it had
   to be pulled toward the camera and it darkened every block standing on it; per vertex the mask
   stepped at the LOD seams. Not saved - a reload comes back without it.
+  FOR THE PLAYER'S TEST THE EMBERS AND THE CORRUPTION OVERLAY ARE OUT OF THE GROUND SHADER: the
+  ember code in it cost ~7% of the frame on llvmpipe for a 6.5 m spot (measured, three rounds), on a
+  phone more. `set_ember_spot` and `set_corruption_map` still set uniforms that no longer exist
+  (dropped without a word); the burnt cubes stay. The embers come back as a patch of their own.
 
 ### The proving ground
 
