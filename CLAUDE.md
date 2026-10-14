@@ -1777,6 +1777,16 @@ project: read it before claiming how anything works.
   and a hostile miner digs no vein in it (`vein_point_near(..., skip_safe)`). The quests done, it is gone.
   Measured: an enemy dropped 60 m from the player inside the zone with the player assigned - no target,
   out of the zone in 10 s, 251 m from the centre at 20 s; the zone list empty once the quest closed.
+  AND WHAT STANDS IN IT IS TAKEN AWAY (`quest_arcs._sweep_safe_zones`, every poll; the player: the
+  power site came up beside an enemy turret that shot it to pieces): an EVENT's machine drops that
+  event as an abandoned one (`_drop_event`: machines gone, cooldown, skipped), and so does an event
+  whose point is inside; a MAIN QUEST's machine stays and drives out; anything else - the stream's, a
+  raid's, a miner, a stronghold - is freed (`outposts` builds the stronghold again once the zone is
+  gone). Whose a machine is is the meta `QUEST_OWNER`, set at the one door `_ask_spawner` from
+  `_cur_q`: the `story` meta cannot tell, `spawn_at` puts it on every machine it makes, raids
+  included. Measured on the proving ground, the power site up: a turret base and a raider inside -
+  gone, an event member inside - gone with its event, a story quest's machine inside - kept, a raider
+  300 m out - kept.
 - **THE FACTORY LINE STANDS BY AN ORE VEIN** (`quest_arcs._line_site_by_vein`, `resource_nodes.veins_near`;
   the player: "within 20 m of a vein"): the seller goes `LINE_VEIN_AHEAD` (13.5 m) short of an ore vein
   along -Z, so the line runs toward it and the receiver ends ~8 m from it - the pad and its feather stop

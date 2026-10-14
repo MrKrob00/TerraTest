@@ -110,6 +110,7 @@ func _tick_arcs(delta: float) -> void:
 			"quest_camp_2":        _camp_2(q)
 	_drop_orphans(polled)
 	_update_safe_zones()
+	_sweep_safe_zones()
 
 ## A QUIET ZONE ROUND THE LEARNING BASES (the player's rule): while the power branch (the panel and
 ## the repair unit) or the factory branch (the line, then Solvent's sales) is open, no hostile
@@ -136,6 +137,60 @@ func _update_safe_zones() -> void:
 			at = _line_point
 		if at is Vector3 and not _safe.has(at):
 			_safe.append(at)
+
+## WHAT STANDS IN A QUIET ZONE IS TAKEN AWAY (the player: the power site came up beside an enemy
+## turret, which shot it to pieces). Every poll while a zone stands, for every hostile machine
+## inside: an EVENT's (meta `QUEST_OWNER`, set at the one door `_ask_spawner`) drops that event as an
+## abandoned one is - its machines leave, it cools down and comes back elsewhere, the duel included;
+## a MAIN QUEST's (a story quest's: a carrier, a tower, the champion; the scout, `story_scout`) stays,
+## its quest needs it - it takes no target inside and drives out (`enemy_vehicle._leave_safe_zone`);
+## anything else goes - the stream's, a raid's, a miner, a stronghold (`outposts` keeps its point and
+## builds it again once the zone is gone: its `_clear_of_player` asks the zone). The `story` meta
+## cannot tell them apart: `spawn_at` puts it on every machine it makes, raids included. An event
+## whose POINT is inside is dropped before anything is born there.
+const QUEST_OWNER := "quest_owner"
+
+func _sweep_safe_zones() -> void:
+	if _safe.is_empty():
+		return
+	for q in _arc_quests():
+		if int(q.get("type", -1)) != Q.Type.EVENT or q.get("done", false):
+			continue
+		var key := _ev_key(String(q.get("event", "")))
+		var pt = _duel_point if key == "duel" else _ev_point.get(key)
+		if pt is Vector3 and safe_zone_at(pt as Vector3, EV_PARTY_RING) != null:
+			_drop_event(q)
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	if vr == null:
+		return
+	for v in vr.get_children():
+		if not (v is Node3D) or v.is_queued_for_deletion():
+			continue
+		var f = v.get("faction")
+		if f == null or int(f) == 0 or safe_zone_at((v as Node3D).global_position) == null:
+			continue
+		if v.has_meta("story_scout"):
+			continue
+		if v.has_meta(QUEST_OWNER):
+			var q: Dictionary = Q.find_quest(String(v.get_meta(QUEST_OWNER)))
+			if not q.is_empty() and not q.get("done", false):
+				if int(q.get("type", -1)) == Q.Type.EVENT:
+					_drop_event(q)
+					if v.is_queued_for_deletion():
+						continue
+				else:
+					continue                           # a main quest's: it stays and drives out
+		v.queue_free()
+
+## An event dropped like an abandoned one: machines, point and orb gone, cooled down, skipped.
+func _drop_event(q: Dictionary) -> void:
+	var key := _ev_key(String(q.get("event", "")))
+	if key == "duel":
+		_drop_duel(q)
+		return
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
 
 ## The centre of the quiet zone holding `p` (with `pad` metres more radius), or null.
 func safe_zone_at(p: Vector3, pad: float = 0.0) -> Variant:
@@ -616,6 +671,8 @@ func _ask_spawner(sp: Node, at: Vector3, preset: int, faction_id: int, as_base: 
 		e = sp.spawn_requested(at, preset, faction_id, as_base, false, carry)
 	else:
 		e = sp.spawn_at(at, preset, faction_id, as_base, carry)
+	if e is Node3D and _cur_q != "":
+		(e as Node).set_meta(QUEST_OWNER, _cur_q)   # whose machine it is (_sweep_safe_zones)
 	return e as Node3D if e is Node3D else null
 
 func _carrier_spawn(key: String, block: int, preset: int, at: Vector3) -> void:
@@ -1838,6 +1895,10 @@ func _duel_abandoned(q: Dictionary) -> bool:
 		at = live
 	if _nearest_own_d2(at) <= EV_ABANDON * EV_ABANDON:
 		return false
+	_drop_duel(q)
+	return true
+
+func _drop_duel(q: Dictionary) -> void:
 	for m in [_duel_a, _duel_b]:
 		if is_instance_valid(m):
 			(m as Node).queue_free()
@@ -1849,7 +1910,6 @@ func _duel_abandoned(q: Dictionary) -> bool:
 	_q_kills.erase("event_duel")
 	Q.set_reward_mult("event_duel", 1.0)
 	Q.skip_quest(String(q["id"]))
-	return true
 
 func _spawn_duel(center: Vector3) -> bool:
 	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
