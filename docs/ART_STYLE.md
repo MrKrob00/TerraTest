@@ -179,8 +179,8 @@ supports, charge) stays in code. The list, the numbers and the measurements are 
 
 ## Aero and Stryx: the next two factions (style only)
 
-Both have a name and an emblem in the game (`G.FACTIONS`, `images/faction_aero.png`; Stryx's emblem
-is still to come) and nothing else: no blocks, no quests, no licence quest yet. What follows is the
+Both have a name and an emblem in the game (`G.FACTIONS`, `images/faction_aero.png`,
+`faction_stryx.png`) and nothing else: no blocks, no quests, no licence quest yet. What follows is the
 brief their models are built to, cut down from the player's notes to what a model can be checked
 against. The rules above still hold for both: walls on the cell faces wherever a block joins, every
 vertex inside its cells, the triangle budget, 38-48 px/m, no light from the engine.
