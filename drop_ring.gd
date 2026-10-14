@@ -13,7 +13,7 @@ extends Node3D
 const SHADER := preload("res://resources/drop_ring.gdshader")
 const SEGMENTS := 56
 const WIDTH := 0.9
-const DASH_LEN := 1.6                 # metres a dash and its gap, round the ring
+const DASH_LEN := 2.0                 # metres a dash and its gap, round the ring (1.6 was "too many")
 const LIFT := 0.05                    # over the grass lift, as the reach ring's
 const FADE_IN := 0.3
 const FADE_OUT := 0.8
