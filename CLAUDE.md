@@ -3097,6 +3097,13 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
+- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, NAMES AND EMBLEMS ONLY** (`G.FACTIONS` "aero" /
+  "stryx", `images/faction_aero.png` - the player's emblem, already on a transparent background, cut
+  to its bounds at 256 px; Stryx's emblem file is still to come, `faction_emblem` answers null until
+  it lands). No blocks, no quests: their licence quests (`FACTION_LICENCE` "arc_aero" / "arc_stryx")
+  are not written, so both stay closed outside the proving ground, and A FACTION WITH NO BLOCKS HAS NO
+  TREE PAGE (`G.faction_has_blocks`, asked by the tech tree's switch and header). The style their
+  models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
 - **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
   the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks

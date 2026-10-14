@@ -413,6 +413,15 @@ const FACTIONS := {
 	# THE SECOND FACTION: sea and cliffs, drawn in low poly; blocks from 2x2x2 up, licensed by Big Yellow.
 	"marlit": {"name": "Marlit", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
 		"emblem": "res://images/faction_marlit.png"},
+	# THE THIRD AND FOURTH FACTIONS have a name and an emblem and nothing else yet: no blocks, no
+	# quests (docs/ART_STYLE.md, "Aero" and "Stryx", holds the style their models will be built to).
+	# Aero: the simulation's speed-test subsystem - light, fast, fragile. Stryx: its stealth special
+	# forces - heavy, armoured, faceted. Their licence quests (FACTION_LICENCE) are not written, so
+	# both stay closed outside the proving ground, and a page with no blocks shows in no tree.
+	"aero": {"name": "Aero", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
+		"emblem": "res://images/faction_aero.png"},
+	"stryx": {"name": "Stryx", "grades": 5, "xp_thresholds": [0, 100, 300, 700, 1500],
+		"emblem": "res://images/faction_stryx.png"},
 }
 var _emblems: Dictionary = {}
 
@@ -421,12 +430,19 @@ var _emblems: Dictionary = {}
 ## off `quests_done`, which the save already carries - a second "licensed" list would be a second
 ## record of one fact. Until then its blocks cannot be researched; trophies still bolt on, as
 ## every trophy does.
-const FACTION_LICENCE := {"marlit": "arc_yellow"}
+const FACTION_LICENCE := {"marlit": "arc_yellow", "aero": "arc_aero", "stryx": "arc_stryx"}
 
 func faction_open(f: String) -> bool:
 	if proving_ground or not FACTION_LICENCE.has(f):
 		return FACTIONS.has(f)
 	return quests_done.has(String(FACTION_LICENCE[f]))
+
+## Does any block belong to the faction? A faction with none (Aero, Stryx today) has no tree page.
+func faction_has_blocks(f: String) -> bool:
+	for bt in BLOCK_META:
+		if String((BLOCK_META[bt] as Dictionary)["f"]) == f:
+			return true
+	return false
 
 ## Factions the player holds a licence for, in the table's order.
 func open_factions() -> Array:
