@@ -303,6 +303,12 @@ func _vehicle_render_tick() -> void:
 		if not (v is Node3D):
 			continue
 		var n := v as Node3D
+		# A SLEEPER AND A MACHINE HELD FOR ITS DROP RING STAY HIDDEN: the spawner hid them
+		# (enemy_spawner._sleep, _hold_for_drop) and this pass used to show them again the next frame
+		# they stood in the frustum - a held one hung in the air over its ring.
+		if bool(n.get_meta("asleep", false)) or n.has_meta("drop_pending"):
+			_set_vehicle_visible(n, false)
+			continue
 		# NEVER hide your own active machine. The camera hangs on it and looks at it, so it passes the test
 		# anyway - but the cost of an error is asymmetric: one extra drawn frame is invisible, a machine
 		# vanishing under the player looks like a broken game.
@@ -641,6 +647,11 @@ func _fresh_start() -> void:
 	await _to_start_point(primary)
 	if not is_instance_valid(primary):
 		return
+	# Where the player wakes: burnt cubes on smouldering ground (crash_site.gd). A new world only.
+	if not G.proving_ground:
+		var site_root: Node = get_node_or_null("/root/Main")
+		if site_root != null:
+			load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	primary.award_block_list(G.STARTER_KIT)
 
@@ -742,6 +753,10 @@ func _save_world() -> void:
 			# and are always the same; writing derivable data into a save eventually gives a save that argues
 			# with the code.
 			"outposts": _outposts_state(),
+			# ORE VEINS NOT FULL (600 ore, 30 minutes): what is left and the seconds still to rest.
+			"veins": _veins_state(),
+			# RACE COURSES KEPT IN THE WORLD (race_track.gd `keep`: Aero's licence course stays).
+			"tracks": _tracks_state(),
 		}))
 		f.close()
 
@@ -750,6 +765,17 @@ func _save_world() -> void:
 func _outposts_state() -> Array:
 	var o: Node = get_tree().get_first_node_in_group("outposts")
 	return o.save_state() if (o != null and o.has_method("save_state")) else []
+
+func _tracks_state() -> Array:
+	var out: Array = []
+	for t in get_tree().get_nodes_in_group("race_tracks"):
+		if t.get("keep") == true and not (t as Node).is_queued_for_deletion():
+			out.append(t.save_state())
+	return out
+
+func _veins_state() -> Dictionary:
+	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
+	return rn.ore_state_save() if (rn != null and rn.has_method("ore_state_save")) else {}
 
 func _load_world() -> void:
 	var f := FileAccess.open(G.slot_path(SAVE_FILE), FileAccess.READ)
@@ -787,6 +813,15 @@ func _load_world() -> void:
 	var op: Node = get_tree().get_first_node_in_group("outposts")
 	if op != null and op.has_method("load_state"):
 		op.load_state(data.get("outposts", []))
+	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
+	if rn != null and rn.has_method("ore_state_load") and data.get("veins") is Dictionary:
+		rn.ore_state_load(data["veins"])
+	var mn: Node = get_node_or_null("/root/Main")
+	for td in data.get("tracks", []):
+		if td is Dictionary and mn != null:
+			var t: Node = preload("res://race_track.gd").new()
+			t.load_state(td)
+			mn.add_child(t)
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])

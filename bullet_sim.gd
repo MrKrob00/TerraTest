@@ -57,6 +57,9 @@ class Shot:
 	var flown: float = 0.0              # metres since the muzzle: caps the trail
 	var live: bool = false
 	var last_step: Vector3 = Vector3.ZERO   # the latest tick's step, turned into `facing` when drawn
+	var home = null                     # the block it homes on (untyped, rule 4), WeaponBlock.homing_deg
+	var home_rate: float = 0.0          # radians a second
+	var home_flat: bool = false
 
 	## Kept for the mortar, which turns its shell once after setting the arc; the tick turns every
 	## shot to its step anyway.
@@ -144,6 +147,15 @@ func fire(weapon: Node, template: Node3D) -> Shot:
 	s.flown = 0.0
 	s.facing = Basis()
 	s.last_step = Vector3.ZERO
+	s.home = null
+	s.home_rate = 0.0
+	var hd = weapon.get("homing_deg") if weapon != null else null
+	if hd != null and float(hd) > 0.0:
+		var tg = weapon.get("_current_target")
+		if is_instance_valid(tg):
+			s.home = tg
+			s.home_rate = deg_to_rad(float(hd))
+			s.home_flat = weapon.get("homing_flat") == true
 	s.live = true
 	_live.append(s)
 	return s
@@ -335,6 +347,8 @@ func _step(delta: float) -> void:
 			_spare.append(s)
 			continue
 		s.t += delta
+		if s.home_rate > 0.0:
+			_steer(s, delta)
 		var from: Vector3 = s.global_position
 		var to: Vector3 = from + s.dir * s.speed * delta
 		to.y -= s.t * s.bullet_gravity * delta
@@ -359,6 +373,33 @@ func _step(delta: float) -> void:
 		_live[keep] = s
 		keep += 1
 	_live.resize(keep)
+
+## Turn a homing shot toward its block by at most `home_rate` this tick: the whole direction for a
+## flat shot, the heading only (about the vertical) for a lobbed one. A target gone, it flies on.
+static func _steer(s: Shot, delta: float) -> void:
+	if not is_instance_valid(s.home):
+		s.home_rate = 0.0
+		return
+	var to: Vector3 = (s.home as Node3D).global_position - s.global_position
+	var step: float = s.home_rate * delta
+	if s.home_flat:
+		var cur := Vector2(s.dir.x, s.dir.z)
+		var want := Vector2(to.x, to.z)
+		if cur.length_squared() < 1e-6 or want.length_squared() < 1e-6:
+			return
+		var ang: float = clampf(cur.angle_to(want), -step, step)
+		s.dir = s.dir.rotated(Vector3.UP, -ang)
+		return
+	if to.length_squared() < 1e-6:
+		return
+	var want3: Vector3 = to.normalized()
+	var a: float = s.dir.angle_to(want3)
+	if a < 1e-4:
+		return
+	var axis: Vector3 = s.dir.cross(want3)
+	if axis.length_squared() < 1e-8:
+		return
+	s.dir = s.dir.rotated(axis.normalized(), minf(a, step)).normalized()
 
 ## The whole step, one ray, skipping our own blocks and friendly domes. true: something was hit.
 func _sweep(s: Shot, from: Vector3, to: Vector3, space: PhysicsDirectSpaceState3D) -> bool:

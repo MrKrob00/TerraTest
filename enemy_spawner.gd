@@ -335,6 +335,8 @@ func _wake(e: Node3D) -> void:
 	if not bool(e.get_meta("asleep", false)):
 		return
 	e.set_meta("asleep", false)
+	if e.has_meta("drop_pending"):
+		return                                     # still held for its drop: _release_drop lets it go
 	e.process_mode = Node.PROCESS_MODE_INHERIT
 	e.visible = true
 	# Never unfreeze a BASE: it is anchored by nature, not by sleep. Unfrozen, a wheel-less
@@ -444,6 +446,7 @@ func _spawn_one() -> void:
 		enemy.died.connect(_on_enemy_died)
 	_mark_first_enemy(enemy)          # the tutorial can be skipped, and then the first enemy comes from here
 	_enemies.append(enemy)
+	_hold_for_drop(enemy)
 
 # ── ВРАЖЕСКИЕ БАЗЫ: только сон и тени ─────────────────────────────────────────
 # We keep the list, outposts.gd PLACES the bases. Simple split: where a base stands is a map
@@ -744,8 +747,11 @@ const SCOUT_FRONT_SPREAD := 0.42
 const STORY_SCOUT_PRESET := 126             # blocks.STORY_SCOUT            # +-24 deg: slightly aside so it does not land exactly on the nose
 ## Returns the enemy or null if scenes, map or player are missing. The spot is not validated: it
 ## drops in and rolls off a slope by itself, the same rule the ring spawn uses.
+## `near`: the story scout's own arrival (tutorial_director): it lands where it was asked, inside the
+## PLAYER_CLEAR ring - the drop ring announces it 3 s ahead (the player's call: "once the player has
+## moved, the scout spawns right by them, the ring first").
 func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
-		max_d: float = PLAYER_CLEAR + CLEAR_PAD + 20.0) -> Node3D:
+		max_d: float = PLAYER_CLEAR + CLEAR_PAD + 20.0, near: bool = false) -> Node3D:
 	if enemy_scenes.is_empty() or _pg_blocked():
 		return null
 	var map: Node = _find_map()
@@ -761,7 +767,9 @@ func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
 	var base: float = atan2(fwd.z, fwd.x) if fwd.length_squared() > 0.0001 else randf() * TAU
 	var ang: float = base + randf_range(-SCOUT_FRONT_SPREAD, SCOUT_FRONT_SPREAD)
 	var dist: float = randf_range(min_d, max_d)
-	var world := clear_point(center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist))
+	var world := center + Vector3(cos(ang) * dist, 0.0, sin(ang) * dist)
+	if not near:
+		world = clear_point(world)
 	# Height through the ONE function (project rule): until the map's heights are read, raw
 	# terrain_height_at returns zero and the scout would drop underground.
 	var pos := Vector3(world.x, G.ground_y(world, center.y) + drop_height, world.z)
@@ -793,6 +801,7 @@ func spawn_scout_near_player(min_d: float = PLAYER_CLEAR + CLEAR_PAD,
 	# machine assembled five minutes ago.
 	enemy.set("damage_scale", FIRST_ENEMY_DAMAGE)
 	_enemies.append(enemy)
+	_hold_for_drop(enemy)
 	return enemy
 
 ## Place an enemy AT A GIVEN POINT with a given build and FACTION. Events need it: there machines
@@ -915,14 +924,103 @@ func spawn_at(pos: Vector3, preset: int, faction_id: int = 1, as_base: bool = fa
 	if enemy.has_signal("died") and not enemy.died.is_connected(_on_enemy_died):
 		enemy.died.connect(_on_enemy_died)
 	_enemies.append(enemy)
+	_hold_for_drop(enemy)
 	return enemy
+
+# ── THE DROP RING: EVERY DROPPING MACHINE IS ANNOUNCED ON THE GROUND FIRST ─────────────────────
+# The player's call: "a ring turning on the ground where it will fall, ~3 s before it appears".
+# ONE DOOR for every way a machine drops in (the stream, the story scout, spawn_at for quests, raids,
+# events and the panel, the sector-scan invader): the machine is MADE AT ONCE - callers keep their
+# node, a quest counts it - but HELD: frozen over its point, hidden, its process off, out of the
+# `machines` group (no gun, AI or shadow sees it) and off every collision layer. DROP_WARN later it
+# is let go, falls the drop_height and materialises (BlockFX.materialise, which
+# enemy_vehicle._materialise_on_spawn skips while held). Bases are not held: they stand, not drop.
+# Sleep and the hold share their switches, so a held machine the dormancy pass put to sleep stays
+# asleep on release and wakes by the usual rule (_wake waits for the hold).
+const DROP_WARN := 3.0
+const DROP_RING := preload("res://drop_ring.gd")
+const DROP_RING_MIN := 3.0
+const DROP_RING_MAX := 12.0
+## The ring stands a FIXED margin past the build's reach, not a multiple of it (the player: "twice as
+## big" for the scout, then "not exponential - a 2 m machine gets +2, a 6 m one +2 as well"): the
+## scout's ring comes out ~7.7 m, the biggest build's ~16 m.
+const DROP_RING_PAD := 4.0
+
+func _hold_for_drop(enemy: Node3D) -> void:
+	if not is_instance_valid(enemy) or not enemy.is_inside_tree():
+		return
+	var p: Vector3 = enemy.global_position
+	var ground := Vector3(p.x, G.ground_y(p, p.y - drop_height), p.z)
+	enemy.set_meta("drop_pending", true)
+	enemy.set_meta("drop_at", ground)             # quest_compass leads here while it is held
+	enemy.remove_from_group(MachineBody.MACHINES)
+	if enemy is CollisionObject3D:
+		enemy.set_meta("drop_layer", (enemy as CollisionObject3D).collision_layer)
+		(enemy as CollisionObject3D).collision_layer = 0
+	if enemy is RigidBody3D:
+		(enemy as RigidBody3D).linear_velocity = Vector3.ZERO
+		(enemy as RigidBody3D).angular_velocity = Vector3.ZERO
+		(enemy as RigidBody3D).freeze = true
+	enemy.process_mode = Node.PROCESS_MODE_DISABLED
+	enemy.visible = false
+	var ring: Node3D = DROP_RING.new()
+	ring.at = ground
+	ring.radius = _drop_radius(enemy)
+	ring.warn = DROP_WARN
+	ring.friendly = int(enemy.get("faction") if enemy.get("faction") != null else 1) == 0
+	var root: Node = get_node_or_null("/root/Main")
+	(root if root != null else get_tree().current_scene).add_child(ring)
+	get_tree().create_timer(DROP_WARN, false).timeout.connect(_release_drop.bind(enemy, ring))
+
+func _release_drop(enemy: Variant, ring: Variant) -> void:
+	if is_instance_valid(ring):
+		ring.release()
+	if not is_instance_valid(enemy) or not (enemy as Node).has_meta("drop_pending"):
+		return
+	var e: Node3D = enemy
+	e.remove_meta("drop_pending")
+	e.remove_meta("drop_at")
+	e.add_to_group(MachineBody.MACHINES)
+	if e.has_meta("drop_layer") and e is CollisionObject3D:
+		(e as CollisionObject3D).collision_layer = int(e.get_meta("drop_layer"))
+		e.remove_meta("drop_layer")
+	if _is_asleep(e):
+		return                                     # _wake shows it, unfreezes it, lets it tick
+	e.process_mode = Node.PROCESS_MODE_INHERIT
+	e.visible = true
+	if e is RigidBody3D and e.get("is_base") != true:
+		(e as RigidBody3D).freeze = false
+		(e as RigidBody3D).sleeping = false
+	if e.has_method("_materialise_on_spawn"):
+		e.call("_materialise_on_spawn")
+
+## Held over its point and not yet dropped.
+static func is_dropping(e: Variant) -> bool:
+	return is_instance_valid(e) and (e as Node).has_meta("drop_pending")
+
+## The ring's radius is the build's reach on the ground: the farthest occupied cell from the core's
+## column (blocks.map is written by the layout inside add_child, before any block node exists).
+func _drop_radius(enemy: Node) -> float:
+	var bl: Node = enemy.get_node_or_null("blocks")
+	var r: float = 0.0
+	if bl != null and bl.get("map") is Dictionary:
+		for c in (bl.get("map") as Dictionary).keys():
+			var v: Vector3i = c
+			r = maxf(r, Vector2(v.x - 5, v.z - 5).length())
+	return clampf(r + 1.5, DROP_RING_MIN, DROP_RING_MAX) + DROP_RING_PAD
 
 # While the tutorial runs, the regular stream and sector scans stay silent: the player is being led
 # by the hand and a raider mid-lesson only gets in the way. The first enemy is brought by the story
 # (tutorial_director after the last step closes) and spawns around this gate.
 func _tutorial_active() -> bool:
 	var q: Node = get_node_or_null("/root/Q")
-	return q != null and q.has_method("tutorial_active") and q.tutorial_active()
+	if q == null:
+		return false
+	# AND UNTIL THE SCOUT HAS COME: it waits for the player to drive (tutorial_director), and a
+	# stream machine arriving first would take its place as "the first enemy".
+	if q.has_method("is_held") and q.is_held("story_first_blood"):
+		return true
+	return q.has_method("tutorial_active") and q.tutorial_active()
 
 ## Seconds the stream sends nobody after any enemy dies.
 const KILL_COOLDOWN := 360.0
@@ -1201,6 +1299,7 @@ func _spawn_invader(locked: Node3D = null) -> void:
 	_lock_on_target(enemy, locked)
 	_enemies.append(enemy)
 	_invader = enemy
+	_hold_for_drop(enemy)
 
 # Force a target on an enemy (no waiting for the detection signal) and make it relentless.
 func _lock_on_target(enemy: Node, target: Node3D) -> void:

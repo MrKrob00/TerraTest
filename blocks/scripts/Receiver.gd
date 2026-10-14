@@ -12,9 +12,9 @@ extends FactoryBlock
 # работает под якорем (_factory_active), и вход в неё не может быть исключением — иначе
 # цепочка начиналась бы на ходу и обрывалась на первом же следующем блоке.
 
-## A receiver EMPTIES a collector, not one item a second (the player: "much faster"): every tick it
-## takes until it is full, and the tick is short.
-@export var take_interval: float = 0.25
+## A receiver takes ONE item a tick from a collector, three a second (the player's rate): one a
+## second was too slow, emptying the whole collector in one tick too fast.
+@export var take_interval: float = 0.33
 @export var capacity: int = 8
 
 var vehicles_in_zone: Array = []
@@ -140,10 +140,7 @@ func _on_timer_timeout() -> void:
 			# коллектор свою добычу никуда не денет и подождёт.
 			if _try_take_world(body):
 				break
-			var took := false
-			while inventory.size() < capacity and _take_from_vehicle(body) != null:
-				took = true
-			if took:
+			if _take_from_vehicle(body) != null:
 				break
 	_update_take_timer()
 

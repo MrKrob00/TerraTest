@@ -52,7 +52,6 @@ func _tick_arcs(delta: float) -> void:
 	# cargo and guard went INSIDE a mountain and its "reach" stage could never close.
 	if not G.world_ready():
 		return
-	_duel_cooldown(POLL)
 	_ev_cooldowns(POLL)
 	_sweep_yellow_points()
 	_party_tick()
@@ -87,7 +86,6 @@ func _tick_arcs(delta: float) -> void:
 			"quest_cube2_2":       _tower_2(q, CUBES[1])
 			"quest_cube3_1":       _tower_1(q, CUBES[2])
 			"quest_cube3_2":       _tower_2(q, CUBES[2])
-			"quest_duel_1":        _duel_1(q)
 			# MARLIT'S EVENTS ARE THE SAME EVENTS WITH ANOTHER FACTION: the functions take their key
 			# from the stage ("quest_mgang_1" -> "mgang"), and the faction decides the enemies'
 			# builds (_faction_preset), the loot and whose XP it pays (Q.faction_of)
@@ -97,17 +95,34 @@ func _tick_arcs(delta: float) -> void:
 			"quest_msupply_2":     _supply_2(q)
 			"quest_mdefend_1":     _defend_1(q)
 			"quest_mdefend_2":     _defend_2(q)
-			"quest_mwaves_1":      _waves_1(q)
-			"quest_duel_2":        _duel_2(q)
 			"quest_gang_1":        _gang_1(q)
 			"quest_gang_2":        _gang_2(q)
 			"quest_supply_1":      _supply_1(q)
 			"quest_supply_2":      _supply_2(q)
 			"quest_defend_1":      _defend_1(q)
 			"quest_defend_2":      _defend_2(q)
-			"quest_waves_1":       _waves_1(q)
+			# every timed course is one pair of handlers (COURSES)
+			"quest_race_1", "quest_plateau_1", "quest_descent_1", "quest_acourse_1", "quest_adrag_1", \
+					"quest_aslalom_1":
+				_course_1(q)
+			"quest_race_2", "quest_plateau_2", "quest_descent_2", "quest_acourse_2", "quest_adrag_2", \
+					"quest_aslalom_2":
+				_course_2(q)
+			"quest_achase_1":      _chase_1(q)
+			"quest_rock_1":        _rock_1(q)
+			"quest_rock_2":        _rock_2(q)
+			"quest_quiet_1":       _quiet_1(q)
+			"quest_quiet_2":       _quiet_2(q)
+			"quest_crown_1":       _tower_1(q, CROWN)
+			"quest_crown_2":       _tower_2(q, CROWN)
+			"quest_bop_1":         _bop_1(q)
+			"quest_bop_2":         _bop_2(q)
+			"quest_astrand_1":     _strand_1(q)
+			"quest_astrand_2":     _strand_2(q)
+			"quest_achase_2":      _chase_2(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
+			"quest_camp_3":        _camp_3(q)
 	_drop_orphans(polled)
 	_update_safe_zones()
 	_sweep_safe_zones()
@@ -141,7 +156,7 @@ func _update_safe_zones() -> void:
 ## WHAT STANDS IN A QUIET ZONE IS TAKEN AWAY (the player: the power site came up beside an enemy
 ## turret, which shot it to pieces). Every poll while a zone stands, for every hostile machine
 ## inside: an EVENT's (meta `QUEST_OWNER`, set at the one door `_ask_spawner`) drops that event as an
-## abandoned one is - its machines leave, it cools down and comes back elsewhere, the duel included;
+## abandoned one is - its machines leave, it cools down and comes back elsewhere;
 ## a MAIN QUEST's (a story quest's: a carrier, a tower, the champion; the scout, `story_scout`) stays,
 ## its quest needs it - it takes no target inside and drives out (`enemy_vehicle._leave_safe_zone`);
 ## anything else goes - the stream's, a raid's, a miner, a stronghold (`outposts` keeps its point and
@@ -157,7 +172,7 @@ func _sweep_safe_zones() -> void:
 		if int(q.get("type", -1)) != Q.Type.EVENT or q.get("done", false):
 			continue
 		var key := _ev_key(String(q.get("event", "")))
-		var pt = _duel_point if key == "duel" else _ev_point.get(key)
+		var pt = _ev_point.get(key)
 		if pt is Vector3 and safe_zone_at(pt as Vector3, EV_PARTY_RING) != null:
 			_drop_event(q)
 	var vr: Node = get_node_or_null("/root/Main/Vehicles")
@@ -185,9 +200,6 @@ func _sweep_safe_zones() -> void:
 ## An event dropped like an abandoned one: machines, point and orb gone, cooled down, skipped.
 func _drop_event(q: Dictionary) -> void:
 	var key := _ev_key(String(q.get("event", "")))
-	if key == "duel":
-		_drop_duel(q)
-		return
 	_ev_clear(key)
 	_ev_cool[String(q["id"])] = _event_cooldown()
 	Q.skip_quest(String(q["id"]))
@@ -208,30 +220,25 @@ func safe_zone_at(p: Vector3, pad: float = 0.0) -> Variant:
 ## tagged `story` (never cleaned up, holding places in `max_total`).
 func _drop_orphans(polled: Dictionary) -> void:
 	var keys: Dictionary = {}
-	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party]:
+	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party, _ev_base]:
 		for k in d:
+			keys[k] = true
+	for k in _tracks:
+		if is_instance_valid(_tracks[k]) and _tracks[k].get("keep") != true:
 			keys[k] = true
 	for k in keys:
 		if not polled.has(k):
 			_forget_event(String(k))
-	if not polled.has("duel") and (_duel_sent or _duel_point != null):
-		_forget_duel()
 
 func _forget_event(key: String) -> void:
 	_ev_ally.erase(key)
+	_supply_hidden.erase(key)
+	_supply_t.erase(key)
+	_defend_t.erase(key)
+	_defend_wave2.erase(key)
 	_supply_trap.erase(key)
 	_supply_opened.erase(key)
 	_ev_clear(key)
-
-func _forget_duel() -> void:
-	for m in [_duel_a, _duel_b]:
-		if is_instance_valid(m):
-			(m as Node).queue_free()
-	_duel_a = null
-	_duel_b = null
-	_duel_sent = false
-	_duel_point = null
-	_q_kills.erase("event_duel")
 
 ## A QUEST HANDED OUT AGAIN STARTS CLEAN (`Q.force_quest`, the proving ground). The branch's memory
 ## outlives the quest: forced a second time, the radar branch found its carrier "already dead" and
@@ -246,9 +253,6 @@ func forget_quest(id: String) -> void:
 	for st in q.get("stages", []):
 		var key := _ev_key(String((st as Dictionary).get("event", "")))
 		_forget_event(key)
-		if key == "duel":
-			_forget_duel()
-			_duel_cool = 0.0
 		var m = _carrier.get(key)
 		if is_instance_valid(m):
 			(m as Node).queue_free()
@@ -484,7 +488,7 @@ const CHAMPION_PRESET := 120              # blocks.MARLIT_CHAMPION
 var _yellow_point: Variant = null
 var _yellow_e: Node3D = null
 ## SENT, NOT "DEAD": a lost reference after a reload and a dead champion both read false through
-## is_instance_valid; only this flag, which lives in memory, tells them apart (as `_duel_sent`).
+## is_instance_valid; only this flag, which lives in memory, tells them apart.
 var _yellow_sent: bool = false
 
 func yellow_point() -> Variant:
@@ -1646,6 +1650,14 @@ const TOWER_WATCH := {"key": "tower", "preset": 16, "guards": 0, "award": G.Bloc
 const TOWER_SAM := {"key": "sam", "preset": 17, "guards": 4, "award": G.Block.ROCKET,
 		"say": "That dome is not the tower's own. Something else is paying for it."}
 
+## CROWNTOP HILL FORT (TerraTech's Hawkeye story, the player's call: "on a support"): the Spider
+## King, an anchored Stryx fort - rockets, lasers, a dome and a repair field on batteries and panels
+## (blocks.SPIDER_KING) - so at night its panels give nothing and the dome drains for good. No hover
+## rings: nothing here hovers.
+const CROWN := {"key": "crown", "preset": 132, "guards": 0, "award": G.Block.STRYX_SHIELD,
+		"say": "The Spider King holds Crowntop Hill: rockets, lasers and a dome. Its panels feed the dome - at night they give nothing.",
+		"done": "The Spider King is down. Stryx pays in hardware."}
+
 ## THE ALMIGHTY CUBE runs on this branch: a base to reach and bring down, no guards. Each cube is
 ## its own key, so all three can stand at once; `_tower_pick` keeps their points TOWER_APART.
 const CUBES := [
@@ -1838,135 +1850,6 @@ func _on_tower_died(who, key: String) -> void:
 	_tower_dead[key] = true
 	_blow_tower_guards(key)
 
-# ── СОБЫТИЕ «Crossfire»: чужая стычка, в которую можно вмешаться ─────────────
-# Часть 1 — доехать до точки. Часть 2 — победить.
-#
-# Точка ставится не рядом и не за горизонтом: ровно настолько далеко, чтобы это была
-# ПОЕЗДКА, а не поворот головы, и чтобы по дороге игрок успел решить, ввязываться ли.
-## Насколько дуэлянты стоят друг от друга. Stage 1 ends at REACH_DIST (see _reached).
-const DUEL_GAP := 18.0
-## Сколько ждать перед тем, как событие может случиться снова, — общее для всех событий
-## (см. _event_cooldown в разделе «ПОВТОРЯЕМЫЕ СОБЫТИЯ»).
-
-var _duel_point: Variant = null      # куда ехать (Vector3) или null — точки ещё нет
-var _duel_a: Node3D = null
-var _duel_b: Node3D = null
-## ВЫСТАВЛЕНА ЛИ ДУЭЛЬ. Только этим и отличается «их добили» от «перезаход»: у мёртвого узла и у
-## потерянной ссылки `is_instance_valid` одинаково false. Флаг ЖИВЁТ В ПАМЯТИ — это и есть весь
-## его смысл, память теряется вместе с участниками.
-var _duel_sent: bool = false
-var _duel_cool: float = 0.0
-
-## Куда ведёт компас по этому событию. Публично — компас спрашивает отсюда, потому что цель
-## тут не предмет в мире (QuestProps), а просто координаты.
-func duel_point() -> Variant:
-	return _duel_point
-
-func _duel_1(q: Dictionary) -> void:
-	var p: Node3D = _player()
-	if p == null or _duel_abandoned(q):
-		return
-	if _duel_point == null:
-		_duel_point = _duel_pick_point()
-		return
-	# Фракции РАЗНЫЕ (1 и 2), иначе они друг друга не увидят:
-	# enemy_vehicle._is_enemy сравнивает именно фракцию. Игрок (0) для обоих тоже чужой.
-	# Once: this stage now polls until the player arrives, and every poll would send a new pair.
-	if not _duel_sent and not _spawn_duel(_duel_point as Vector3):
-		return
-	if not _reached(_duel_point):
-		return
-	Q.report(String(q["event"]), 1)
-
-## Точка дуэли: направление случайное, дистанция фиксированная — событие должно уводить игрока с
-## его маршрута, а не подворачиваться там, куда он и так ехал.
-func _duel_pick_point() -> Variant:
-	return _event_point()
-
-## The duel keeps its own state, so it never went through _ev_abandoned and stayed in the journal
-## however far the player went. Same rule as every event: farther than EV_ABANDON from the nearest of
-## the player's machines - the duel is dropped, its machines leave, and it cools down.
-func _duel_abandoned(q: Dictionary) -> bool:
-	if _duel_point == null:
-		return false
-	var at: Vector3 = _duel_point as Vector3
-	var live = _live_target("quest_duel_1")
-	if live is Vector3:
-		at = live
-	if _nearest_own_d2(at) <= EV_ABANDON * EV_ABANDON:
-		return false
-	_drop_duel(q)
-	return true
-
-func _drop_duel(q: Dictionary) -> void:
-	for m in [_duel_a, _duel_b]:
-		if is_instance_valid(m):
-			(m as Node).queue_free()
-	_duel_a = null
-	_duel_b = null
-	_duel_sent = false
-	_duel_point = null
-	_duel_cool = _event_cooldown()
-	_q_kills.erase("event_duel")
-	Q.set_reward_mult("event_duel", 1.0)
-	Q.skip_quest(String(q["id"]))
-
-func _spawn_duel(center: Vector3) -> bool:
-	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
-	if sp == null or not sp.has_method("spawn_at"):
-		return false
-	var side: Vector3 = Vector3(DUEL_GAP * 0.5, 0.0, 0.0)
-	if sp.has_method("clear_point"):
-		center = sp.clear_point(center, DUEL_GAP * 0.5)   # both outside PLAYER_CLEAR, still facing off
-	# ОБА ПО ПОТОЛКУ ИГРОКА. Дуэль — зрелище, на которое игрок приезжает и в которое лезет, и
-	# зашитые сюда 7 и 8 означали копейщика с куполом в первый час игры, против стартовой кабины.
-	# Фракции остаются РАЗНЫМИ (1 и 2) — иначе они друг друга не увидят вовсе.
-	_duel_a = _spawn_hostile(sp, center - side, 7, 1)
-	_duel_b = _spawn_hostile(sp, center + side, 8, 2)
-	if _duel_a == null or _duel_b == null:
-		return false
-	_duel_sent = true
-	# Цели назначаем сразу и накрепко: пока игрок доедет, они уже должны драться, а не
-	# искать друг друга по своим зонам обнаружения.
-	if _duel_a.has_method("assign_target"):
-		_duel_a.assign_target(_duel_b, true)
-	if _duel_b.has_method("assign_target"):
-		_duel_b.assign_target(_duel_a, true)
-	return true
-
-func _duel_2(q: Dictionary) -> void:
-	if _duel_abandoned(q):
-		return
-	# ПУСТЫЕ ССЫЛКИ САМИ ПО СЕБЕ НЕ ПОБЕДА: у мёртвого узла ссылка ведёт на освобождённый адрес,
-	# а после перезахода её попросту нет — и то и другое `is_instance_valid` отдаёт как false, так
-	# что отличить «добили» от «состояние потеряно» может только флаг. Он в памяти, а память как
-	# раз и теряется: не поднят — дуэль выставляется заново. Иначе квест закрывался выходом в
-	# меню, а это единственное событие, которое игрок вообще может просто посмотреть.
-	if not _duel_sent:
-		if _duel_point == null:
-			_duel_point = _duel_pick_point()
-		if _duel_point != null:
-			_spawn_duel(_duel_point as Vector3)
-		return
-	# Победа = поля боя больше нет. Если они добьют друг друга сами — тоже победа: игрок
-	# приехал и дождался, это его решение, а не поблажка.
-	if is_instance_valid(_duel_a) or is_instance_valid(_duel_b):
-		return
-	_duel_sent = false
-	Q.report(String(q["event"]), 1)
-	_q_kills.erase("event_duel")     # paid out above; the next duel starts at one
-	_duel_cool = _event_cooldown()   # дуэль — такое же событие, пауза общая
-	_duel_point = null
-
-## Перезарядка события: отлежалось — открываем заново. Без этого «событие» случилось бы
-## ровно один раз за всю игру и навсегда осталось выполненным.
-func _duel_cooldown(delta: float) -> void:
-	if _duel_cool <= 0.0:
-		return
-	_duel_cool -= delta
-	if _duel_cool <= 0.0:
-		Q.reset_quest("event_duel")
-
 # ── Помощники ────────────────────────────────────────────────────────────────
 ## "REACH X" IS DONE WHEN THE PLAYER IS THERE, NOT WHEN X EXISTS. Participants appear the moment a
 ## quest opens, 250-300 m out (the one spawn rule), and commit 99e43f9 moved the spawn up by
@@ -2105,7 +1988,6 @@ func quest_point(ev: String) -> Variant:
 		return live
 	match ev:
 		"quest_salvage_1": return _salvage_point
-		"quest_duel_1":    return _duel_point
 		"quest_line_1":    return _line_point
 		# Пока панель (или реген) лежит у базы, компас ведёт к предмету — его отдаёт QuestProps,
 		# и спрашивают его раньше нас. Предмет подобран — цель это САМА БАЗА: ставить его всё
@@ -2124,6 +2006,9 @@ func quest_point(ev: String) -> Variant:
 	var key := _ev_key(ev)
 	if _tower_point.has(key):
 		return _tower_point[key]
+	var tr_node = _track_of(key)
+	if tr_node != null:
+		return (tr_node as Node).call("aim_point")
 	return _ev_point.get(key)
 
 ## Позиция ближайшего ЖИВОГО участника квеста или null. Участники лежат по своим полям (у
@@ -2133,12 +2018,17 @@ func _live_target(ev: String) -> Variant:
 	var key := _ev_key(ev)
 	var list: Array = []
 	list.append_array(_ev_mobs.get(key, []))
+	if _ev_base.has(key):
+		list.append(_ev_base[key])
+	if key == "rock":
+		list.append(_rock)
+	elif key == "quiet":
+		list.append(_quiet)
 	if _tower_node.has(key):
 		list.append(_tower_node[key])
 	match key:
 		"hold":      list.append_array(_hold)
 		"salvage":   list.append(_salvage_guard)
-		"duel":      list.append_array([_duel_a, _duel_b])
 	# Носитель сюжетного блока — такой же живой участник: пока он ездит, метка едет за ним.
 	if _carrier.has(key):
 		list.append(_carrier[key])
@@ -2264,6 +2154,12 @@ func _ev_clear(key: String) -> void:
 	if is_instance_valid(orb):
 		(orb as Node).queue_free()
 	_ev_orb.erase(key)
+	var base = _ev_base.get(key)
+	if is_instance_valid(base):
+		(base as Node).queue_free()
+	_ev_base.erase(key)
+	_drop_track(key)
+	_camp_hold.erase(key)
 	_props.release("event_" + key)
 
 ## A participant that outlived its quest (the covered ally, a tower's guards) stops being a quest
@@ -2362,8 +2258,8 @@ func _ev_spawn(key: String, at: Vector3, presets: Array, faction_id: int = 1,
 ## one of the player's machines is within PARTY_ARRIVE of it, as one spawn group (`spawn_group`, which
 ## the spawner's MAX_GROUPS counts once), and are taken away again once every live member is farther
 ## than PARTY_LEAVE from all of the player's machines - measured from THE MACHINES, which drive, not
-## from the point. Coming back brings back whoever was not killed. Hold Position (its attack comes to
-## the player) and allies spawn at once (`defer` false / faction 0).
+## from the point. Coming back brings back whoever was not killed. Allies (faction 0) and a party
+## spawned with `defer` false come at once.
 const PARTY_ARRIVE := 70.0
 const PARTY_LEAVE := 140.0
 
@@ -2457,10 +2353,10 @@ func _gang_1(q: Dictionary) -> void:
 	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
-		# Цель НЕ назначаем: банда стоит на месте, и первым ходом должен быть выстрел игрока.
-		# Так у него остаётся выбор — подъехать, посмотреть и уехать.
-		_ev_spawn(key, _ev_point[key] as Vector3, [5, 6, 7])
-		Dialogue.say("System", tr("Three units, no transponders. They are not ours."))
+		# No target given: the gang stands, and the first move is the player's shot - they can drive
+		# up, look and leave. THREE TO FIVE (TerraTech's Tech Gang); the party budget still trims it.
+		var n: int = _gang_spawn(key, _ev_point[key] as Vector3)
+		Dialogue.say("System", tr("%d units, no transponders. They are not ours.") % n)
 	if not _reached(_ev_point[key]):
 		return
 	Q.report(String(q["event"]), 1)
@@ -2470,13 +2366,23 @@ func _gang_2(q: Dictionary) -> void:
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key)      # состояние потеряно — банда снова на месте
+		var at = _ev_get_point(key)      # state lost (a reload): the gang stands there again
 		if at != null:
-			_ev_spawn(key, at as Vector3, [5, 6, 7])
+			_gang_spawn(key, at as Vector3)
 		return
 	if not _ev_all_dead(key):
 		return
 	_ev_done(q, key)
+
+const GANG_SIZE := Vector2i(3, 5)
+const GANG_PRESETS := [5, 6, 7, 8]
+
+func _gang_spawn(key: String, at: Vector3) -> int:
+	var presets: Array = []
+	for i in randi_range(GANG_SIZE.x, GANG_SIZE.y):
+		presets.append(int(GANG_PRESETS[i % GANG_PRESETS.size()]))
+	_ev_spawn(key, at, presets)
+	return presets.size()
 
 # ── «Supply Drop»: a reward orb, half the time bait ─────────────────────────
 ## The reward is not a crate lying in the grass but an ORB of glitch cards over the point
@@ -2495,6 +2401,11 @@ const REWARD_ORB := preload("res://reward_orb.gd")
 
 var _supply_trap: Dictionary = {}        # event key -> this drop is bait
 var _supply_opened: Dictionary = {}      # event key -> its orb has opened
+var _supply_hidden: Dictionary = {}      # event key -> the hidden cache kind
+var _supply_t: Dictionary = {}           # event key -> seconds before the hidden cache wipes itself
+var _supply_warned: Dictionary = {}
+const CACHE_SPREAD := 40.0
+const CACHE_TIME := 150.0
 
 func _supply_1(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
@@ -2504,13 +2415,34 @@ func _supply_1(q: Dictionary) -> void:
 		return
 	var at: Vector3 = _ev_point[key] as Vector3
 	if not is_instance_valid(_ev_orb.get(key)):
-		_supply_trap[key] = randf() < 0.5
+		# THREE KINDS, AS TERRATECH'S CRATES (the player's list): open, bait, and HIDDEN - the orb lies
+		# somewhere within CACHE_SPREAD of the mark (the compass leads to the mark, not to it), a guard
+		# stands by it, and from the moment the player reaches the mark it wipes itself in CACHE_TIME.
+		var roll: int = randi() % 3
+		_supply_trap[key] = roll == 1
+		_supply_hidden[key] = roll == 2
 		_supply_opened[key] = false
-		_supply_orb(key, at)
-		Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
+		var orb_at: Vector3 = at
+		if roll == 2:
+			var a: float = randf() * TAU
+			var r: float = randf_range(CACHE_SPREAD * 0.5, CACHE_SPREAD)
+			orb_at = at + Vector3(cos(a) * r, 0.0, sin(a) * r)
+			orb_at.y = G.ground_y(orb_at, at.y)
+			Dialogue.say("System", tr("A cache is hidden somewhere round the mark. It has a guard, and once you are there it wipes itself in %d seconds.") % int(CACHE_TIME))
+		else:
+			Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
+		_supply_orb(key, orb_at)
 	if not _reached(at):
 		return
-	if _supply_trap.get(key, false) and not _ev_mobs.has(key):
+	if _supply_hidden.get(key, false) and not _ev_mobs.has(key):
+		var orb_n = _ev_orb.get(key)
+		var sp0: Node = get_node_or_null("/root/Main/EnemySpawner")
+		var guard: int = int(sp0.preset_below_cap(0)) if sp0 != null and sp0.has_method("preset_below_cap") else 6
+		if is_instance_valid(orb_n):
+			_ev_spawn(key, (orb_n as Node3D).global_position, [guard], 1, _player(), false)
+		_supply_t[key] = CACHE_TIME
+		_supply_warned[key] = false
+	elif _supply_trap.get(key, false) and not _ev_mobs.has(key):
 		var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 		var two: bool = randf() < 0.5
 		var presets: Array = []
@@ -2535,7 +2467,8 @@ func _supply_orb(key: String, at: Vector3) -> void:
 
 func _on_supply_opened(at: Vector3, key: String) -> void:
 	var loot: Array = SUPPLY_LOOT_MARLIT if Q.faction_of(Q._find("event_" + key)) == "marlit" else SUPPLY_LOOT
-	for i in (SUPPLY_TRAP_BLOCKS if _supply_trap.get(key, false) else SUPPLY_BLOCKS):
+	var fought: bool = _supply_trap.get(key, false) or _supply_hidden.get(key, false)
+	for i in (SUPPLY_TRAP_BLOCKS if fought else SUPPLY_BLOCKS):
 		_drop_reward(int(loot.pick_random()), at)
 	_supply_opened[key] = true
 
@@ -2568,7 +2501,22 @@ func _supply_2(q: Dictionary) -> void:
 		_ev_clear(key)
 		Q.reset_quest(String(q["id"]))
 		return
-	(orb as Node).set("locked", _supply_trap.get(key, false) and not _ev_all_dead(key))
+	var guarded: bool = _supply_trap.get(key, false) or _supply_hidden.get(key, false)
+	(orb as Node).set("locked", guarded and not _ev_all_dead(key))
+	if not _supply_hidden.get(key, false) or not _supply_t.has(key):
+		return
+	_supply_t[key] = float(_supply_t[key]) - POLL
+	if float(_supply_t[key]) <= 30.0 and not _supply_warned.get(key, false):
+		_supply_warned[key] = true
+		Dialogue.say("System", tr("Thirty seconds and the cache wipes itself."))
+	if float(_supply_t[key]) > 0.0:
+		return
+	BlockFX.ground_wave(self, (orb as Node3D).global_position, Vector3.UP, 30.0)
+	Dialogue.say("System", tr("The cache wiped itself. Nothing left to take."))
+	_supply_t.erase(key)
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
 
 # ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
 
@@ -2623,38 +2571,105 @@ func _defend_2(q: Dictionary) -> void:
 		_ev_cool[String(q["id"])] = _event_cooldown()
 		Q.skip_quest(String(q["id"]))
 		return
-	if _party_open(key):
+	# TWO MINUTES IN THE ZONE, THEN IT IS YOURS (TerraTech's Defend Friendly Tech, the player's
+	# call): the clock runs while the player is within DEFEND_ZONE of the ally, a second group of
+	# raiders comes at half time, and an ally still standing at DEFEND_TIME joins the player as one
+	# of their own machines (`_adopt_machine`). Raiders left over stay - they are no longer the job.
+	var p: Node3D = _player()
+	if p != null and p.global_position.distance_squared_to((ally as Node3D).global_position) \
+			< DEFEND_ZONE * DEFEND_ZONE:
+		_defend_t[key] = float(_defend_t.get(key, 0.0)) + POLL
+	var t: float = float(_defend_t.get(key, 0.0))
+	if t >= DEFEND_TIME * 0.5 and not _defend_wave2.get(key, false):
+		_defend_wave2[key] = true
+		_ev_spawn(key, (ally as Node3D).global_position + Vector3(-25.0, 0.0, 15.0), [6, 7], 1, ally, false)
+		Dialogue.say("System", tr("More of them. Hold on - a minute to go."))
+	if t < DEFEND_TIME:
 		return
+	_defend_t.erase(key)
+	_defend_wave2.erase(key)
+	_ev_ally.erase(key)
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m) and m != ally:
-			return
-	_ev_ally.erase(key)
-	_release_machine(ally)
+			_release_machine(m)
+	Dialogue.say("System", tr("It held. The crew is grateful - the machine is yours to drive."))
+	_adopt_machine(ally as Node3D)
 	_ev_done(q, key)
 
-# ── «Hold Position»: one attack, straight at your position ──────────────────
-func _waves_1(q: Dictionary) -> void:
-	var key := _ev_key(String(q["event"]))
-	var p: Node3D = _player()
-	if p == null:
-		return
-	# Точка — ГДЕ СТОИТ ИГРОК: волна приходит к нему, ехать никуда не надо. Она нужна не для
-	# компаса, а для правила «уехал на 500 м — задание снято».
-	if not _ev_point.has(key):
-		_ev_point[key] = p.global_position
-	if _ev_abandoned(q, key):
-		return
-	if not _ev_mobs.has(key):
-		_ev_spawn(key, p.global_position, [6, 7, 8], 1, p, false)
-		Dialogue.say("System", tr("Contacts inbound on your position."))
-	if not _ev_all_dead(key):
-		return
-	_ev_done(q, key)
+const DEFEND_TIME := 120.0
+const DEFEND_ZONE := 90.0
+var _defend_t: Dictionary = {}
+var _defend_wave2: Dictionary = {}
 
-# ── «Take the Camp»: лагерь с охраной и трофеем ─────────────────────────────
-# Это наш ответ на Capture Enemy Base. Захватывать БАЗУ пока нечего — статичной постройки
-# как сущности в игре нет (она же нужна отложенным Watchtower/SAM, см. docs/STORY_ROADMAP.md).
-# Смысл при этом сохранён: укреплённая точка, охрана, и трофей достаётся тому, кто её взял.
+## An AI machine of the player's side becomes one of the player's own: the same build, born whole
+## where it stood, in the camera controller's `vehicles` so it can be switched to and is saved.
+func _adopt_machine(m: Node3D) -> void:
+	if not is_instance_valid(m):
+		return
+	var bl: Node = m.get_node_or_null("blocks")
+	var preset = bl.get("layout_preset") if bl != null else null
+	var at: Vector3 = m.global_position
+	var basis_y: float = m.global_rotation.y
+	m.queue_free()
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	var scene: PackedScene = load("res://player_vehicle.tscn")
+	if vr == null or scene == null or preset == null:
+		return
+	var v: Node3D = scene.instantiate()
+	var vb: Node = v.get_node_or_null("blocks")
+	if vb != null and "layout_preset" in vb:
+		vb.layout_preset = int(preset)
+	vr.add_child(v)
+	v.global_position = at + Vector3.UP * 1.0
+	v.global_rotation.y = basis_y
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
+		cc.vehicles.append(v)
+
+# ── "Take the Staging Point": capture a base WITHOUT destroying it ───────────
+## TerraTech's Capture Enemy Base (the player's call: make it a real capture). A hostile turret
+## post stands on the point with a guard party: stage 1 is reaching it, stage 2 is breaking the guard
+## and DISARMING the post - every weapon on it shot off while its core lives - and stage 3 is holding
+## the point CAPTURE_HOLD seconds within CAPTURE_DIST of it. Then the post is the player's: its
+## enemy machine goes and what is left of it - support, battery, panels, dome - stands again on the
+## same spot as one of the player's stations (`_spawn_station`), saved like any base. The post's
+## core destroyed, there is nothing to take: the event is dropped and cools down.
+const CAMP_POSTS := [13, 14]          # turret posts: a rotating support, a battery, panels, a dome, two guns
+const CAPTURE_DIST := 15.0
+const CAPTURE_HOLD := 10.0
+var _ev_base: Dictionary = {}         # event key -> the hostile base to take
+var _camp_hold: Dictionary = {}       # event key -> seconds held so far
+
+func _camp_post(key: String, at: Vector3) -> void:
+	var b = _ev_base.get(key)
+	if is_instance_valid(b):
+		return
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var post: Node3D = _ask_spawner(sp, at, int(CAMP_POSTS.pick_random()), 1, true)
+	if post != null:
+		_ev_base[key] = post
+
+## Weapons still on the post (WeaponBlock children of its grid).
+func _post_armed(post: Node) -> int:
+	var bl: Node = post.get_node_or_null("blocks")
+	var n := 0
+	if bl != null:
+		for c in bl.get_children():
+			if c is WeaponBlock and not c.is_queued_for_deletion():
+				n += 1
+	return n
+
+## The post was there and is gone: the event cannot be won any more.
+func _camp_lost(q: Dictionary, key: String) -> bool:
+	if not _ev_base.has(key) or is_instance_valid(_ev_base[key]):
+		return false
+	Dialogue.say("System", tr("The post is wrecked. Nothing left to take."))
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
+	return true
 
 func _camp_1(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
@@ -2662,11 +2677,13 @@ func _camp_1(q: Dictionary) -> void:
 		return
 	if _ev_get_point(key) == null:
 		return
+	var at: Vector3 = _ev_point[key] as Vector3
+	_camp_post(key, at)
 	if not _ev_mobs.has(key):
-		var at: Vector3 = _ev_point[key] as Vector3
 		_ev_spawn(key, at, [7, 8, 9], 1, _player())
-		_props.ensure("event_camp", G.Block.PACKER, at)
-		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it apart."))
+		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it intact: strip its guns, keep its core."))
+	if _camp_lost(q, key):
+		return
 	if not _reached(_ev_point[key]):
 		return
 	Q.report(String(q["event"]), 1)
@@ -2675,13 +2692,680 @@ func _camp_2(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
+	var at = _ev_get_point(key)
+	if at == null:
+		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key)      # состояние потеряно — охрана снова на точке
-		if at != null:
-			_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())
+		_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())   # state lost (a reload): the guard again
+	_camp_post(key, at as Vector3)
+	if _camp_lost(q, key):
 		return
 	if not _ev_all_dead(key):
 		return
-	if _props.position_for("event_camp") != null:
-		return                                  # охрана кончилась, трофей ещё лежит
+	var post = _ev_base.get(key)
+	if not is_instance_valid(post) or _post_armed(post) > 0:
+		return
+	Dialogue.say("System", tr("The post is disarmed. Stay by it and it is yours."))
+	Q.report(String(q["event"]), 1)
+
+func _camp_3(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if _ev_abandoned(q, key):
+		return
+	var post = _ev_base.get(key)
+	if not is_instance_valid(post):
+		if not _camp_lost(q, key):
+			Q.reset_quest(String(q["id"]))      # state lost (a reload): the post again from stage one
+		return
+	var p: Node3D = _player()
+	var pp: Vector3 = (post as Node3D).global_position
+	if p == null or Vector2(p.global_position.x - pp.x, p.global_position.z - pp.z).length_squared() \
+			> CAPTURE_DIST * CAPTURE_DIST:
+		return
+	_camp_hold[key] = float(_camp_hold.get(key, 0.0)) + POLL
+	if float(_camp_hold[key]) < CAPTURE_HOLD:
+		return
+	_capture_post(post as Node3D)
+	_ev_base.erase(key)
+	_camp_hold.erase(key)
+	Dialogue.say("System", tr("Post captured. It is one of your bases now."))
 	_ev_done(q, key)
+
+## The hostile post becomes the player's station: what is left of it, on the same ground.
+func _capture_post(post: Node3D) -> void:
+	var bl: Node = post.get_node_or_null("blocks")
+	var layout: Array = bl.get_layout() if bl != null and bl.has_method("get_layout") else []
+	var at: Vector3 = post.global_position
+	at.y = G.ground_y(at, at.y - 0.5)
+	post.queue_free()
+	if not layout.is_empty():
+		_spawn_station(at, layout)
+
+# ── RACES: Aero's licence, Aero's story and Aero's events (race_track.gd) ────
+## Every timed course is one handler (`_course_1` reach the start, `_course_2` run it) over COURSES:
+## RACE AGAINST TIME (TerraTech's Venture licence, the player's call) - start to finish in under a
+## minute, the course KEPT in the world after it (as TerraTech's was, `keep`, saved, still timed);
+## PLATEAU RUN - a course that climbs; LOOSE GROUND (TerraTech's "A Slippery Slope", renamed) - one that
+## runs downhill; and the repeatable races - a checkpoint course, a drag strip, a slalom. A failed run
+## is no loss: drive through the start gate again. A course's limit is RACE_LIMIT or its length over
+## `speed` plus COURSE_SPARE. NO RAMP JUMP: wheels read the terrain's heights and nothing else
+## (Driving and wheels), so a ramp would have to be a terrain edit - not a prop.
+const RACE_TRACK := preload("res://race_track.gd")
+const RACE_LIMIT := 60.0
+const COURSE_SPARE := 8.0
+const COURSES := {
+	"race":    {"gates": 9, "leg": 45.0, "climb": 0, "limit": RACE_LIMIT, "keep": true},
+	"plateau": {"gates": 7, "leg": 50.0, "climb": 1, "speed": 7.0},
+	"descent": {"gates": 7, "leg": 45.0, "climb": -1, "speed": 9.0},
+	"acourse": {"gates": 8, "leg": 45.0, "climb": 0, "speed": 10.0},
+	"adrag":   {"gates": 2, "leg": 260.0, "climb": 0, "speed": 15.0},
+	"aslalom": {"gates": 9, "leg": 32.0, "climb": 0, "speed": 8.0, "slalom": 9.0},
+}
+var _tracks: Dictionary = {}        # course key -> its race_track node
+
+## The course of a key: in memory, or one the save brought back (meta `track_key`).
+func _track_of(key: String) -> Variant:
+	var t = _tracks.get(key)
+	if is_instance_valid(t):
+		return t
+	for n in get_tree().get_nodes_in_group("race_tracks"):
+		if (n as Node).get_meta("track_key", "") == key and not (n as Node).is_queued_for_deletion():
+			_tracks[key] = n
+			return n
+	return null
+
+func _drop_track(key: String) -> void:
+	var t = _tracks.get(key)
+	if is_instance_valid(t) and t.get("keep") != true:
+		(t as Node).queue_free()
+	_tracks.erase(key)
+
+## Lay a course from `start` along `heading`: each next gate `leg` on, turned by whichever of a few
+## angles keeps the ground gentlest (`climb` 1 prefers rising ground, -1 falling). Points on the
+## ground; a leg that would come back near an earlier gate is not taken. `slalom` swings every other
+## gate that far to alternate sides of the line.
+func _lay_course(start: Vector3, heading: float, gates: int, leg: float, climb: int = 0,
+		slalom: float = 0.0) -> Array:
+	var pts: Array = [Vector3(start.x, G.ground_y(start, start.y), start.z)]
+	var h: float = heading
+	var line: Vector3 = pts[0]
+	for i in range(1, gates):
+		var prev: Vector3 = line
+		var best := Vector3.ZERO
+		var best_h := h
+		var best_s := INF
+		for k in 9:
+			var turn: float = deg_to_rad(-40.0 + 10.0 * float(k)) * (0.3 if slalom > 0.0 else 1.0) \
+					+ randf_range(-0.05, 0.05)
+			var nh: float = h + turn
+			var c: Vector3 = prev + Vector3(cos(nh), 0.0, sin(nh)) * leg
+			c.y = G.ground_y(c, prev.y)
+			var mid: Vector3 = (prev + c) * 0.5
+			var mid_y: float = G.ground_y(mid, prev.y)
+			var rise: float = c.y - prev.y
+			var bump: float = absf(mid_y - (prev.y + c.y) * 0.5)
+			var side: float = absf(G.ground_y(c + Vector3(3.0, 0, 0), c.y) - c.y) + absf(G.ground_y(c + Vector3(0, 0, 3.0), c.y) - c.y)
+			var sc: float = bump * 2.0 + side * 2.0 + absf(turn) * 2.0
+			sc += absf(rise) * 1.5 if climb == 0 else -float(climb) * rise * 2.0 + maxf(-float(climb) * rise, 0.0) * 4.0
+			for q in pts.slice(0, pts.size() - 1):
+				if (q as Vector3).distance_squared_to(c) < leg * leg * 0.8:
+					sc += 1000.0
+			if sc < best_s:
+				best_s = sc
+				best = c
+				best_h = nh
+		line = best
+		h = best_h
+		var put: Vector3 = best
+		if slalom > 0.0 and i < gates - 1:
+			var side_v := Vector3(-sin(h), 0.0, cos(h)) * (slalom if i % 2 == 1 else -slalom)
+			put = best + side_v
+			put.y = G.ground_y(put, best.y)
+		pts.append(put)
+	return pts
+
+func _course_limit(cfg: Dictionary, pts: Array) -> float:
+	if cfg.has("limit"):
+		return float(cfg["limit"])
+	var len_m := 0.0
+	for i in range(pts.size() - 1):
+		len_m += (pts[i] as Vector3).distance_to(pts[i + 1])
+	return ceilf((len_m / float(cfg["speed"]) + COURSE_SPARE) / 5.0) * 5.0
+
+func _make_track(key: String, pts: Array, limit: float, keep: bool) -> Node:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return null
+	var t: Node3D = RACE_TRACK.new()
+	t.set_meta("track_key", key)
+	t.keep = keep
+	root.add_child(t)
+	t.setup(pts, limit)
+	_tracks[key] = t
+	return t
+
+## Stage 1 of any course: lay it (once) and reach its start gate.
+func _course_1(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	var event: bool = int(q.get("type", -1)) == Q.Type.EVENT
+	if event and _ev_abandoned(q, key):
+		return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	var t = _track_of(key)
+	if t == null:
+		var cfg: Dictionary = COURSES[key]
+		var start: Vector3 = _far_point(p)
+		var away: Vector3 = start - p.global_position
+		var pts: Array = _lay_course(start, atan2(away.z, away.x), int(cfg["gates"]), float(cfg["leg"]),
+				int(cfg.get("climb", 0)), float(cfg.get("slalom", 0.0)))
+		t = _make_track(key, pts, _course_limit(cfg, pts), cfg.get("keep", false) == true)
+		if t == null:
+			return
+		var line: String = _course_line(key, "open")
+		if line != "":
+			Dialogue.say("Aero", tr(line) % _limit_text((t as Node).get("time_limit")))
+	if event:
+		_ev_point[key] = (t as Node).get("points")[0]
+	if _reached((t as Node).get("points")[0]):
+		Q.report(String(q["event"]), 1)
+
+## Stage 2: run it. The track reports by signal; a lost course (a reload) is laid again from stage 1.
+func _course_2(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if int(q.get("type", -1)) == Q.Type.EVENT and _ev_abandoned(q, key):
+		return
+	var t = _track_of(key)
+	if t == null:
+		Q.reset_quest(String(q["id"]))
+		return
+	if not (t as Node).is_connected("finished", _on_course_finished):
+		(t as Node).connect("finished", _on_course_finished.bind(key, String(q["id"])))
+		(t as Node).connect("failed", _on_course_failed.bind(key, String(q["id"])))
+
+func _on_course_finished(_secs: float, key: String, qid: String) -> void:
+	var q: Dictionary = Q.find_quest(qid)
+	if q.is_empty() or q.get("done", false) or _ev_key(String(q.get("event", ""))) != key:
+		return
+	var line: String = _course_line(key, "done")
+	if line != "":
+		Dialogue.say("Aero", tr(line))
+	if int(q.get("type", -1)) == Q.Type.EVENT:
+		_ev_done(q, key)
+	else:
+		Q.report(String(q["event"]), 1)
+	_drop_track(key)
+
+func _on_course_failed(key: String, qid: String) -> void:
+	var q: Dictionary = Q.find_quest(qid)
+	if not q.is_empty() and not q.get("done", false):
+		var line: String = _course_line(key, "fail")
+		if line != "":
+			Dialogue.say("Aero", tr(line))
+
+static func _limit_text(secs) -> String:
+	var t: int = int(secs)
+	return "%d:%02d" % [t / 60, t % 60]
+
+## What Aero says about a course: when it is laid (the time limit goes in), run, and failed.
+func _course_line(key: String, what: String) -> String:
+	var lines := {
+		"race": ["Aero deals with the fast, not the strong. Our course is marked out there: start to finish inside %s.",
+			"That will do. The course is yours to keep - come back and beat your time.",
+			"Over the limit. The start gate is right where you left it."],
+		"plateau": ["Up to the plateau, gate by gate, inside %s. Climbing is where a heavy machine shows itself.",
+			"On top, and in time. Aero noticed.", "Too slow on the climb. The start gate is waiting."],
+		"descent": ["Loose ground all the way down. Gate by gate to the bottom inside %s - and stay on your wheels.",
+			"Down in one piece. That is the trick of it.", "Too slow, or too careful. Back to the start gate."],
+		"acourse": ["A fresh course is marked out. Inside %s.", "Clean run.", "Too slow. Through the start gate again."],
+		"adrag": ["A straight strip, two gates. Inside %s - nothing to do but go.", "Fast enough.", "Too slow off the line. Again."],
+		"aslalom": ["A slalom: every gate swings the other way. Inside %s.", "Every gate. Good.", "Too slow through the gates. Again."],
+	}
+	var i: int = {"open": 0, "done": 1, "fail": 2}.get(what, 0)
+	return String((lines.get(key, ["", "", ""]) as Array)[i])
+
+# ── PURSUIT: catch it within a minute (TerraTech's chase) ───────────────────
+## A light hostile machine waits at a point and RUNS from the player once they come within
+## `enemy_vehicle.RUN_NOTICE` (`runaway_from`); from the moment it bolts the player has CHASE_TIME to
+## destroy it, or it gets away - gone, and the event cools down.
+const CHASE_TIME := 60.0
+const CHASE_PRESETS := [5]
+var _chase_t: Dictionary = {}         # key -> seconds left once it has bolted
+
+func _chase_1(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if _ev_abandoned(q, key):
+		return
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	if not _ev_mobs.has(key):
+		var got: Array = _ev_spawn(key, at as Vector3, CHASE_PRESETS, 1, null, false)
+		for m in got:
+			if is_instance_valid(m):
+				m.set("runaway_from", _player())
+		Dialogue.say("Aero", tr("Something fast is parked out there and it does not want company. Catch it before it is gone."))
+	var p: Node3D = _player()
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m):
+			m.set("runaway_from", p)
+			if p != null and (m as Node3D).global_position.distance_to(p.global_position) < 90.0:
+				_chase_t[key] = CHASE_TIME
+				Q.report(String(q["event"]), 1)
+				return
+	if _ev_all_dead(key):
+		_ev_done(q, key)                       # killed before it ever bolted
+
+func _chase_2(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if not _ev_mobs.has(key) or not _chase_t.has(key):
+		Q.reset_quest(String(q["id"]))           # state lost (a reload)
+		return
+	if _ev_all_dead(key):
+		_chase_t.erase(key)
+		_ev_done(q, key)
+		return
+	_chase_t[key] = float(_chase_t[key]) - POLL
+	if float(_chase_t[key]) > 0.0:
+		return
+	Dialogue.say("Aero", tr("Gone. Faster next time."))
+	_chase_t.erase(key)
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
+
+# ── STRANDED RACER (TerraTech's Mine Island Rescue, renamed): clear the hostiles off it ──────
+## An Aero machine with its wheels gone (blocks.AERO_WRECK, the player's faction) sits at a point with
+## a hostile party round it, aimed at it. Reach it; kill everything hostile there while it still
+## stands. It destroyed, the quest starts over. A story quest: no cooldown, no 500 m drop.
+const AERO_WRECK_PRESET := 129          # blocks.AERO_WRECK
+
+func _strand_1(q: Dictionary) -> void:
+	var key := "astrand"
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	_strand_spawn(key, at as Vector3)
+	if _reached(at):
+		Q.report(String(q["event"]), 1)
+
+func _strand_spawn(key: String, at: Vector3) -> void:
+	if _ev_mobs.has(key):
+		return
+	var ally: Array = _ev_spawn(key, at, [AERO_WRECK_PRESET], 0)
+	if ally.is_empty():
+		return
+	_ev_ally[key] = ally[0]
+	_ev_spawn(key, at + Vector3(18.0, 0.0, 0.0), [6, 7], 1, ally[0])
+	Dialogue.say("Aero", tr("One of ours lost its wheels out there and the locals have noticed. Get them off it."))
+
+func _strand_2(q: Dictionary) -> void:
+	var key := "astrand"
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	if not _ev_mobs.has(key):
+		_strand_spawn(key, at as Vector3)        # state lost (a reload): the wreck and its attackers again
+		return
+	var ally = _ev_ally.get(key)
+	if not is_instance_valid(ally):
+		Dialogue.say("Aero", tr("We lost it. Another one is stuck out there - try again."))
+		_forget_event(key)
+		Q.reset_quest(String(q["id"]))
+		return
+	if _party_open(key):
+		return
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m) and m != ally:
+			return
+	Dialogue.say("Aero", tr("Clear. A recovery crew is on its way for it. Aero will remember this."))
+	_release_machine(ally)
+	_ev_ally.erase(key)
+	_ev_mobs.erase(key)
+	_ev_party.erase(key)
+	_ev_point.erase(key)
+	Q.report(String(q["event"]), 1)
+
+# ── BIRD OF PREY: Stryx's licence (TerraTech's Hawkeye licence mission) ──────────────────────
+## GSO asks the player to look at a mysterious heat signature: a crashed Stryx capsule and burnt-out
+## machines lie at a point - a picture, nothing to pick up. Within BOP_NOTICE of it the Mechanic hears
+## something, and three capsules are SEEN falling (BOP_FALL seconds from BOP_HIGH) to land round the
+## site; out of each comes a machine of Stryx's stubs named "Cleanup Crew" (meta `display_name`) -
+## two troopers and a heavy - and the task is all three. The licence is the reward
+## (G.FACTION_LICENCE). The only licence with no faction voice: the crew is there to hide what GSO
+## is not meant to see. A story quest, guaranteed (the player: TerraTech's drew it at random from a
+## board, and players hunted it for hours). State is memory: a reload goes back to the site.
+const BOP_NOTICE := 60.0
+const BOP_HIGH := 150.0
+const BOP_FALL := 3.0                # = EnemySpawner.DROP_WARN: the crew drops as its capsule lands
+const BOP_RING := 30.0
+const BOP_CREW := [130, 130, 131]       # blocks.STRYX_TROOPER x2, blocks.STRYX_HEAVY
+var _bop_site: Node3D = null
+var _bop_crew: Array = []
+var _bop_dropping: int = 0
+
+func _bop_mat(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = c
+	return m
+
+func _bop_capsule() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CapsuleMesh.new()
+	cm.radius = 1.3
+	cm.height = 4.2
+	cm.radial_segments = 10
+	cm.rings = 3
+	mi.mesh = cm
+	mi.material_override = _bop_mat(Color(0.22, 0.27, 0.2))
+	var band := MeshInstance3D.new()
+	var cy := CylinderMesh.new()
+	cy.top_radius = 1.34
+	cy.bottom_radius = 1.34
+	cy.height = 0.35
+	cy.radial_segments = 10
+	band.mesh = cy
+	band.material_override = _bop_mat(Color(0.75, 0.15, 0.1))
+	mi.add_child(band)
+	return mi
+
+## The crash site: the capsule on its side, half in the ground, and burnt blocks round it.
+func _bop_make_site(at: Vector3) -> void:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return
+	_bop_site = Node3D.new()
+	root.add_child(_bop_site)
+	_bop_site.global_position = at
+	var cap := _bop_capsule()
+	_bop_site.add_child(cap)
+	cap.position = Vector3(0.0, 0.4, 0.0)
+	cap.rotation = Vector3(deg_to_rad(80.0), randf() * TAU, deg_to_rad(12.0))
+	var burnt := _bop_mat(Color(0.09, 0.08, 0.08))
+	for i in 9:
+		var b := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE
+		b.mesh = bm
+		b.material_override = burnt
+		_bop_site.add_child(b)
+		var a: float = randf() * TAU
+		var r: float = randf_range(3.0, 8.0)
+		var p := at + Vector3(cos(a) * r, 0.0, sin(a) * r)
+		b.global_position = Vector3(p.x, G.ground_y(p, at.y) + randf_range(-0.2, 0.3), p.z)
+		b.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+
+func _bop_1(q: Dictionary) -> void:
+	var at = _ev_get_point("bop")
+	if at == null:
+		return
+	if not is_instance_valid(_bop_site):
+		_bop_make_site(at as Vector3)
+	var p: Node3D = _player()
+	if p == null:
+		return
+	var d := Vector2(p.global_position.x - (at as Vector3).x, p.global_position.z - (at as Vector3).z)
+	if d.length_squared() > BOP_NOTICE * BOP_NOTICE:
+		return
+	Dialogue.say("Mechanic", tr("What's that noise?"))
+	_bop_drop(at as Vector3)
+	Q.report(String(q["event"]), 1)
+
+## Three capsules seen falling onto the ring round the site; each one that lands sets down its machine.
+func _bop_drop(at: Vector3) -> void:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return
+	_bop_crew.clear()
+	var a0: float = randf() * TAU
+	for i in BOP_CREW.size():
+		var a: float = a0 + TAU * float(i) / float(BOP_CREW.size())
+		var land := at + Vector3(cos(a) * BOP_RING, 0.0, sin(a) * BOP_RING)
+		land.y = G.ground_y(land, at.y)
+		var cap := _bop_capsule()
+		root.add_child(cap)
+		cap.global_position = land + Vector3.UP * BOP_HIGH
+		# the crew member is asked for NOW: the spawner holds it over its drop ring for exactly the
+		# capsule's fall (EnemySpawner.DROP_WARN) and lets it go as the capsule touches down
+		var tw := create_tween()
+		tw.tween_property(cap, "global_position", land + Vector3.UP * 2.0, BOP_FALL) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_callback(_bop_land.bind(cap, land))
+		_bop_dropping += 1
+		_bop_spawn(land, int(BOP_CREW[i]))
+
+func _bop_land(cap: Variant, land: Vector3) -> void:
+	_bop_dropping = maxi(_bop_dropping - 1, 0)
+	if is_instance_valid(cap):
+		(cap as Node).queue_free()
+	BlockFX.ground_wave(self, land, Vector3.UP, 30.0)
+
+func _bop_spawn(land: Vector3, preset: int) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "arc_stryx"
+	sp.set("arrival", true)
+	var e: Node3D = _spawn_hostile(sp, land, preset, 1)
+	sp.set("arrival", false)
+	_cur_q = was_q
+	if e == null:
+		return
+	e.set_meta("display_name", "Cleanup Crew")
+	if e.has_method("assign_target"):
+		e.assign_target(_player(), true)
+	_bop_crew.append(e)
+
+func _bop_2(q: Dictionary) -> void:
+	if _bop_dropping > 0:
+		return
+	var live := 0
+	for m in _bop_crew:
+		if is_instance_valid(m):
+			live += 1
+	if _bop_crew.is_empty():
+		Q.reset_quest(String(q["id"]))           # state lost (a reload): back to the site
+		return
+	if live > 0:
+		return
+	_bop_crew.clear()
+	Dialogue.say("System", tr("The cleaners are gone. Whatever they were hiding, Stryx will deal with you now - as a contractor."))
+	Q.report(String(q["event"]), 1)
+
+# ── ROCK CREEK BRIDGE (Marlit's story; TerraTech's GeoCorp mission) ─────────────────────────
+## A toll keeper sits on the crossing in a heavy Stryx build (`enemy_vehicle.standoff`: it waits and
+## looks for nobody). Within ROCK_TALK the player is asked: pay ROCK_TOLL (the player's call: the
+## original's 100 000 does not fit this economy, where quests pay 200-1200) and it drives off, or
+## fight. Crossing ROCK_LINE, shooting it, or refusing starts the fight, and beating it pays in Stryx
+## blocks early - before the Stryx licence, as the original handed Hawkeye blocks to whoever won.
+const ROCK_TOLL := 2500
+const ROCK_TALK := 150.0
+const ROCK_LINE := 60.0
+const ROCK_PRESET := 131                 # blocks.STRYX_HEAVY
+const ROCK_LOOT := [G.Block.STRYX_GUN, G.Block.STRYX_CANNON, G.Block.STRYX_ARMOR2]
+var _rock: Node3D = null
+var _rock_asked: bool = false
+var _rock_paid: bool = false
+var _rock_dialog: ConfirmationDialog = null
+
+func _rock_spawn(at: Vector3) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "mrock"
+	_rock = _spawn_hostile(sp, at, ROCK_PRESET, 1)
+	_cur_q = was_q
+	if _rock == null:
+		return
+	_rock.set("standoff", true)
+	_rock.set_meta("display_name", "Toll Keeper")
+	_rock_asked = false
+	_rock_paid = false
+
+func _rock_1(q: Dictionary) -> void:
+	var at = _ev_get_point("rock")
+	if at == null:
+		return
+	if not is_instance_valid(_rock):
+		_rock_spawn(at as Vector3)
+		Dialogue.say("Marlit", tr("Someone has taken the crossing at Rock Creek and charges for it. Marlit's convoys will not pay. Will you?"))
+	var p: Node3D = _player()
+	if p == null or not is_instance_valid(_rock):
+		return
+	if p.global_position.distance_squared_to(_rock.global_position) > ROCK_TALK * ROCK_TALK:
+		return
+	Q.report(String(q["event"]), 1)
+
+func _rock_2(q: Dictionary) -> void:
+	if not is_instance_valid(_rock):
+		if _rock_paid or _rock_dead:
+			_rock_finish(q)
+		else:
+			Q.reset_quest(String(q["id"]))      # state lost (a reload): the keeper sits there again
+		return
+	if _rock_paid:
+		return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	if not _rock_asked:
+		_rock_asked = true
+		_rock_ask()
+	var standing: bool = _rock.get("standoff") == true
+	if standing and p.global_position.distance_squared_to(_rock.global_position) < ROCK_LINE * ROCK_LINE:
+		Dialogue.say("Toll Keeper", tr("Over the line without paying. Your mistake."))
+		_rock_fight()
+
+func _rock_ask() -> void:
+	Dialogue.say("Toll Keeper", tr("This crossing is mine. %d$ and you drive on. Cross the line without paying and you do not.") % ROCK_TOLL)
+	if _rock_dialog == null or not is_instance_valid(_rock_dialog):
+		_rock_dialog = ConfirmationDialog.new()
+		_rock_dialog.title = tr("Rock Creek Bridge")
+		_rock_dialog.cancel_button_text = tr("Fight")
+		_rock_dialog.confirmed.connect(_rock_pay)
+		_rock_dialog.canceled.connect(_rock_fight)
+		add_child(_rock_dialog)
+	_rock_dialog.ok_button_text = tr("Pay %d$") % ROCK_TOLL
+	_rock_dialog.dialog_text = tr("The toll keeper wants %d$ for the crossing.") % ROCK_TOLL
+	_rock_dialog.get_ok_button().disabled = G.money < ROCK_TOLL
+	_rock_dialog.popup_centered(Vector2i(420, 150))
+
+func _rock_pay() -> void:
+	if not is_instance_valid(_rock) or G.money < ROCK_TOLL:
+		return
+	G.money -= ROCK_TOLL
+	G.mark_progress_dirty()
+	_rock_paid = true
+	Dialogue.say("Toll Keeper", tr("Pleasure doing business."))
+	_rock.set("standoff", false)
+	_rock.set("runaway_from", _player())
+	get_tree().create_timer(8.0).timeout.connect(_rock_leave)
+
+func _rock_leave() -> void:
+	if is_instance_valid(_rock):
+		_rock.queue_free()
+
+var _rock_dead: bool = false
+
+func _rock_fight() -> void:
+	if not is_instance_valid(_rock) or _rock_paid or _rock.get("standoff") != true:
+		return
+	_rock.set("standoff", false)
+	if _rock.has_method("assign_target"):
+		_rock.assign_target(_player(), true)
+	if _rock.has_signal("died") and not _rock.died.is_connected(_on_rock_died):
+		_rock.died.connect(_on_rock_died, CONNECT_ONE_SHOT)
+
+func _on_rock_died(_x = null) -> void:
+	_rock_dead = true
+
+func _rock_finish(q: Dictionary) -> void:
+	if _rock_dead:
+		for bt in ROCK_LOOT:
+			_award(int(bt))
+		Dialogue.say("Marlit", tr("The crossing is open. Its keeper drove Stryx hardware - it is yours now."))
+	else:
+		Dialogue.say("Marlit", tr("Paid, and the crossing is open. Marlit would have fought."))
+	_rock = null
+	_rock_dead = false
+	_rock_paid = false
+	_ev_point.erase("rock")
+	Q.report(String(q["event"]), 1)
+
+# ── QUIET JOB (TerraTech's Hawkeye "Wet Work", renamed): stop the courier ────────────────────
+## A courier with two escorts waits at a point; once the player is within QUIET_NOTICE it drives for
+## its drop QUIET_RUN on (`enemy_vehicle.travel_to`), the escorts turn on the player. Destroy the
+## courier before it gets there; it arrives, the job is lost and starts over.
+const QUIET_NOTICE := 150.0
+const QUIET_RUN := 350.0
+const QUIET_COURIER := 7
+const QUIET_ESCORTS := [6, 6]
+var _quiet: Node3D = null
+var _quiet_drop: Variant = null
+var _quiet_dead: bool = false
+
+func _quiet_spawn(at: Vector3) -> void:
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "stryx_quiet"
+	_quiet = _spawn_hostile(sp, at, QUIET_COURIER, 1)
+	if _quiet != null:
+		_quiet.set("standoff", true)
+		_quiet.set_meta("display_name", "Courier")
+		if _quiet.has_signal("died"):
+			_quiet.died.connect(func(_x = null): _quiet_dead = true, CONNECT_ONE_SHOT)
+		var p: Node3D = _player()
+		for i in QUIET_ESCORTS.size():
+			var e: Node3D = _spawn_hostile(sp, at + Vector3(10.0 * (i * 2 - 1), 0.0, 8.0), int(QUIET_ESCORTS[i]), 1)
+			if e != null and p != null and e.has_method("assign_target"):
+				e.assign_target(p, true)
+	_cur_q = was_q
+	_quiet_dead = false
+
+func _quiet_1(q: Dictionary) -> void:
+	var at = _ev_get_point("quiet")
+	if at == null:
+		return
+	if not is_instance_valid(_quiet):
+		_quiet_spawn(at as Vector3)
+		Dialogue.say("Stryx", tr("A courier is carrying something we want buried. It waits out there with an escort. When it moves, it must not arrive."))
+	var p: Node3D = _player()
+	if p == null or not is_instance_valid(_quiet):
+		return
+	if p.global_position.distance_squared_to(_quiet.global_position) > QUIET_NOTICE * QUIET_NOTICE:
+		return
+	var away: Vector3 = _quiet.global_position - p.global_position
+	away.y = 0.0
+	var drop: Vector3 = _quiet.global_position + away.normalized() * QUIET_RUN
+	drop.y = G.ground_y(drop, _quiet.global_position.y)
+	_quiet_drop = drop
+	_quiet.set("standoff", false)
+	_quiet.set("travel_to", drop)
+	Dialogue.say("Stryx", tr("It saw you. It is running for its drop."))
+	Q.report(String(q["event"]), 1)
+
+func _quiet_2(q: Dictionary) -> void:
+	if _quiet_dead:
+		_quiet_dead = false
+		_quiet = null
+		_quiet_drop = null
+		_ev_point.erase("quiet")
+		Dialogue.say("Stryx", tr("Done, and quietly. Stryx remembers who is useful."))
+		Q.report(String(q["event"]), 1)
+		return
+	if not is_instance_valid(_quiet):
+		Q.reset_quest(String(q["id"]))          # state lost (a reload): the courier waits again
+		return
+	if _quiet.has_method("arrived") and _quiet.arrived():
+		Dialogue.say("Stryx", tr("It made its drop. There will be another courier - be faster."))
+		_quiet.queue_free()
+		_quiet = null
+		_quiet_drop = null
+		_ev_point.erase("quiet")
+		Q.reset_quest(String(q["id"]))

@@ -57,8 +57,8 @@ const GROUND_SHADER := preload("res://addons/LiteTerrain/glsl.gdshader")
 ## of the node's own, and both were wrong). A plain text resource with no texture slot of its own:
 ## the binary `terrain_shader.res` it replaces carried a tile texture the shader no longer read and
 ## shipped it in every build. The node draws with a COPY (`_setup_materials`), and the copy takes
-## from `biomes` the colours, rock, snow, grass and canyon bands, and from the game the grass fade,
-## the trample and the corruption map - those are tuned there; everything else is tuned here. The
+## from `biomes` the colours, rock, snow, grass and canyon bands, and from the game the grass fade
+## and the trample - those are tuned there; everything else is tuned here. The
 ## editor's preview takes a change at the next "Build in scene": the engine says nothing when a
 ## shader parameter changes.
 @export var surface_material: Material = preload("res://addons/LiteTerrain/terrain_shader.tres")
@@ -2281,13 +2281,6 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 		m.set_shader_parameter("trample_map", tex)
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
-
-func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
-	if _mat is ShaderMaterial:
-		var sm := _mat as ShaderMaterial
-		sm.set_shader_parameter("corrupt_map", tex)
-		sm.set_shader_parameter("corrupt_world_center", center)
-		sm.set_shader_parameter("corrupt_world_size", size)
 
 ## (узлов на экране, из них уровня 0, заданий в очереди) — видно, что именно рисуется.
 func render_stats() -> Vector3i:

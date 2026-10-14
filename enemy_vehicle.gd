@@ -614,6 +614,20 @@ func _can_see_target() -> bool:
 		return false
 	return d2 <= hear_radius * hear_radius or _los_ok
 
+## THE MACHINE THIS ONE RUNS FROM (the Pursuit event). Untyped, rule 4: it may be freed.
+var runaway_from = null
+const RUN_NOTICE := 90.0
+## A QUEST'S ORDERS, before any fight: `travel_to` (a Vector3) drives there and nowhere else -
+## the courier of Quiet Job; `standoff` waits where it stands and looks for nobody until it is shot
+## at or the quest lets it go - the toll keeper at Rock Creek Bridge.
+var travel_to = null
+var standoff: bool = false
+const TRAVEL_ARRIVE := 12.0
+
+func arrived() -> bool:
+	return travel_to is Vector3 and global_position.distance_squared_to(travel_to as Vector3) \
+			< TRAVEL_ARRIVE * TRAVEL_ARRIVE
+
 func _update_ai(delta: float) -> void:
 	# A QUIET ZONE COMES FIRST, the miner's work included: inside one, it drives out.
 	if _leave_safe_zone(delta):
@@ -623,6 +637,27 @@ func _update_ai(delta: float) -> void:
 	# забывание, счёт обстановки — ему не нужен ни на кадр.
 	if miner:
 		_mine_tick(delta)
+		return
+	# A RUNNER (the Pursuit event, quest_arcs `_chase_*`) does not fight: once the machine it runs from
+	# is within RUN_NOTICE it drives straight away from it at full speed, and waits where it is until then.
+	if is_instance_valid(runaway_from):
+		_answer_t = 0.0
+		var from: Vector3 = (runaway_from as Node3D).global_position
+		if global_position.distance_squared_to(from) < RUN_NOTICE * RUN_NOTICE:
+			var away: Vector3 = global_position + (global_position - from).normalized() * 60.0
+			_drive_to(away, 1.0, delta)
+		else:
+			_drive(_get_forward(), 0.0, delta)
+		return
+	if travel_to is Vector3:
+		_answer_t = 0.0
+		if arrived():
+			_drive(_get_forward(), 0.0, delta)
+		else:
+			_drive_to(travel_to as Vector3, 0.9, delta)
+		return
+	if standoff:
+		_drive(_get_forward(), 0.0, delta)
 		return
 	# The target is re-searched periodically while there is none.
 	_reacquire_t -= delta
@@ -1142,6 +1177,7 @@ func notice_attacker(attacker: Node3D) -> void:
 		return                          # same faction: friendly fire does not change the target
 	if _sheltered(attacker):
 		return                          # shot from a quiet zone: it does not answer into it
+	standoff = false                    # shot at, the toll keeper fights
 	if relentless and is_instance_valid(_target):
 		return                          # a relentless enemy was given its target once and for all
 	# Being shot at cancels the give-up. You can walk away from someone who let you go; being finished
@@ -1270,7 +1306,8 @@ const FLIP_HARD := -0.2
 ## из сейва. Сорок оболочек на каждую вышку при входе в мир — это хич на загрузке ради эффекта,
 ## которого никто не увидит, потому что смотреть в этот момент ещё некому.
 func _materialise_on_spawn() -> void:
-	if is_base or not is_inside_tree():
+	# held for its drop ring (enemy_spawner._hold_for_drop): the spawner calls this again on release
+	if is_base or not is_inside_tree() or has_meta("drop_pending"):
 		return
 	BlockFX.materialise(self)
 ## And a pause after righting: the two hulls are still overlapping when it ends, so without this
@@ -1501,7 +1538,7 @@ func _refresh_drills() -> Array:
 		_drills.clear()
 		for b in bl.get_children():
 			var t = b.get("block")
-			if t != null and (int(t) in [G.Block.DRILL, G.Block.SMALL_DRILL, G.Block.MARLIT_DRILL,
+			if t != null and (G.base_block(int(t)) in [G.Block.DRILL, G.Block.SMALL_DRILL, G.Block.MARLIT_DRILL,
 					G.Block.MARLIT_LASER_DRILL, G.Block.MARLIT_SAW]):
 				_drills.append(b)
 	return _drills

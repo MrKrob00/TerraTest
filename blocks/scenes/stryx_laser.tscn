@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://c264bkenkyn5c" path="res://blocks/scenes/laser.tscn" id="1_base"]
+
+[node name="Laser" instance=ExtResource("1_base")]
+block = 123
+metadata/stub_faction = "stryx"

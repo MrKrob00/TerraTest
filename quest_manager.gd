@@ -189,17 +189,47 @@ func _seed_demo() -> void:
 		 "hint": "The dome is not its own. Charging towers stand around it feeding the tower power — kill those first and the shield dies on its own."},
 	])
 
+	# ── THE LICENCES ARE A CHAIN (the player's rule): Falsus -> Marlit -> Aero -> Stryx, each
+	# licence quest offered by the faction before it at that faction's grade 4 (its `faction` and
+	# req_grade - _grade_ok asks that faction's licence and grade), no `requires` on top.
 	# ── MARLIT'S CHAMPION: THE SECOND FACTION'S LICENCE ─────────────────────────
 	# The player's design: Marlit sends a machine of the fourth step built of its own blocks; beat it
 	# and Marlit's licence is yours (G.FACTION_LICENCE, granted in _on_completed). The id stays
 	# "arc_yellow" - saves and the licence table key on it.
-	add_quest("arc_yellow", "Marlit's Champion", "", Type.STORY, 1, 14, "", 500, 80, 22)
+	add_quest("arc_yellow", "Marlit's Champion", "", Type.STORY, 1, 14, "", 500, 80, 22, 4)
 	add_stages("arc_yellow", [
 		{"desc": "Destroy the Marlit champion",
 		 "event": "quest_yellow_1", "goal": 1,
 		 "hint": "Marlit only deals with those who can beat them. Their champion is out in the field - heavy hull, heavy wheels, guns that hit harder than ours."},
 	])
-	requires("arc_yellow", ["arc_hold"])
+
+	# ── AERO'S LICENCE: RACE AGAINST TIME (TerraTech's Venture licence; Marlit grade 4) ───────────
+	# Aero deals with the fast: a course of gates out in the field, start to finish in under a minute
+	# (quest_arcs._race_*, race_track.gd). The course stays in the world after it, a track to beat.
+	add_quest("arc_aero", "Race Against Time", "", Type.STORY, 1, 15, "", 450, 70, 20, 4)
+	_find("arc_aero")["faction"] = "marlit"
+	add_stages("arc_aero", [
+		{"desc": "Reach Aero's course",
+		 "event": "quest_race_1", "goal": 1,
+		 "hint": "Aero does not care what your machine can carry. It cares how fast it gets there."},
+		{"desc": "Run the course in under a minute",
+		 "event": "quest_race_2", "goal": 1,
+		 "hint": "Through the start gate and the clock runs; every gate in order. Too slow - the start gate again."},
+	])
+
+	# ── STRYX'S LICENCE: BIRD OF PREY (TerraTech's Hawkeye licence; Aero grade 4) ───────────────
+	# A crashed Stryx capsule, and three "Cleanup Crew" machines that drop in once the player is
+	# near it (quest_arcs._bop_*). Story, so it is guaranteed - the original drew it from a board.
+	add_quest("arc_stryx", "Bird of Prey", "", Type.STORY, 1, 16, "", 650, 100, 26, 4)
+	_find("arc_stryx")["faction"] = "aero"
+	add_stages("arc_stryx", [
+		{"desc": "Check the heat signature",
+		 "event": "quest_bop_1", "goal": 1,
+		 "hint": "GSO picked up a heat signature where nothing should be burning. Go and look."},
+		{"desc": "Destroy the Cleanup Crew",
+		 "event": "quest_bop_2", "goal": 1,
+		 "hint": "Whoever lost that capsule does not want it found. Three of them - all three go."},
+	])
 
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])
@@ -207,22 +237,10 @@ func _seed_demo() -> void:
 	requires("arc_tower", ["arc_hold"])
 	requires("arc_sam", ["arc_tower"])
 
-	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
-	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
-	# доехать и победить. Повторяется: quest_arcs перезаряжает его после остывания.
-	add_quest("event_duel", "Crossfire", "", Type.EVENT, 1, 0, "", 260, 30, 6, 1)
-	add_stages("event_duel", [
-		{"desc": "Reach the contact coordinates",
-		 "event": "quest_duel_1", "goal": 1,
-		 "hint": "Two units are shooting at each other out there. The System would rather neither of them finished."},
-		{"desc": "Be the one that drives away",
-		 "event": "quest_duel_2", "goal": 1,
-		 "hint": "Neither of them cares which of you it is. Take both, or wait and take what is left."},
-	])
-
-	# Пять типов с борда оригинала. Борда у нас нет — их объявляет Система, а повторяются они
-	# по остыванию, как «Crossfire» (см. quest_arcs, раздел «ПОВТОРЯЕМЫЕ СОБЫТИЯ»). Общее
-	# правило у всех одно: уехал от цели за 500 м — задание снято.
+	# EVENTS: the original's board types. There is no board - the System announces them, and they
+	# repeat after a cooldown (quest_arcs, "REPEATABLE EVENTS"). One rule for all: drive 500 m away
+	# from the target and the event is dropped. Crossfire and Hold Position were taken out (the
+	# player's call).
 	add_quest("event_gang", "Tech Gang", "", Type.EVENT, 1, 0, "", 320, 40, 8, 2)
 	add_stages("event_gang", [
 		{"desc": "Reach the reported camp",
@@ -246,37 +264,31 @@ func _seed_demo() -> void:
 		{"desc": "Reach the friendly unit",
 		 "event": "quest_defend_1", "goal": 1,
 		 "hint": "One of ours is pinned down and will not hold long."},
-		{"desc": "Drive the raiders off",
+		{"desc": "Keep it alive for two minutes",
 		 "event": "quest_defend_2", "goal": 1,
-		 "hint": "It survives or it does not. There is no partial credit for this one."},
-	])
-	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9, 3)
-	# ONE WAVE. It used to be two - a pair, then a heavier pair the moment the first died - and a
-	# second attack arriving out of a finished fight read as a spawn bug, not as a design.
-	add_stages("event_waves", [
-		{"desc": "Survive the attack",
-		 "event": "quest_waves_1", "goal": 1,
-		 "hint": "They are coming to you. Pick your ground before they arrive."},
+		 "hint": "Stay close and keep it standing. Hold for two minutes and it joins you."},
 	])
 	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12, 4)
 	add_stages("event_camp", [
 		{"desc": "Reach the staging point",
 		 "event": "quest_camp_1", "goal": 1,
-		 "hint": "Not a patrol — a place they come back to. Three units hold it."},
-		{"desc": "Clear it and take what is left",
+		 "hint": "Not a patrol — a place they come back to. A turret post and its guard hold it."},
+		{"desc": "Break the guard and disarm the post",
 		 "event": "quest_camp_2", "goal": 1,
-		 "hint": "The point is not taken until the crate on it is yours."},
+		 "hint": "Shoot every gun off the post, but keep its core standing: a wreck cannot be taken."},
+		{"desc": "Hold the point",
+		 "event": "quest_camp_3", "goal": 1,
+		 "hint": "Stay by the post a few seconds and it becomes one of your bases."},
 	])
 
 	# MARLIT'S EVENTS: the same four the original's GeoCorp board repeats (the player's list) -
-	# Supply Drop, Tech Gang, Defend Friendly Tech, Defeat Enemy Waves - under Marlit's flag. The arcs
+	# Supply Drop, Tech Gang, Defend Friendly Tech - under Marlit's flag (waves were taken out). The arcs
 	# are Falsus's own (quest_arcs takes the key from the stage); the faction sends Marlit machines
 	# (quest_arcs._faction_preset), fills the drop with Marlit blocks and takes the XP. They open with
 	# the licence and climb Marlit's grades in the same order as Falsus's.
 	_marlit_event("event_msupply", "Supply Drop", 200, 25, 5, 1, "event_supply", "msupply")
 	_marlit_event("event_mgang", "Tech Gang", 320, 40, 8, 1, "event_gang", "mgang")
 	_marlit_event("event_mdefend", "Cover the Convoy", 300, 35, 7, 2, "event_defend", "mdefend")
-	_marlit_event("event_mwaves", "Hold Position", 340, 45, 9, 3, "event_waves", "mwaves")
 
 	# ── MARLIT'S STORY: THE HARVESTER LINE (the player's design, after GeoCorp's own) ───────────
 	# Marlit trades in what the ground gives, so its story is the work itself: felling, collecting
@@ -344,8 +356,87 @@ func _seed_demo() -> void:
 		])
 		_find(cid)["faction"] = "marlit"
 
+	# ── AERO'S STORY (TerraTech's Venture campaign, the player's call: our names, their meaning) ──
+	# Plateau Run - a timed course that climbs; Stranded Racer (Mine Island Rescue) - an Aero machine
+	# stuck among hostiles, clear them off it; Loose Ground (A Slippery Slope) - a timed course down.
+	# One after another, on Aero's grades (quest_arcs COURSES, `_strand_*`).
+	_faction_story("aero", "aero_plateau", "Plateau Run", 40, 350, 70, 14, 1, [
+		{"desc": "Reach the foot of the plateau", "event": "quest_plateau_1", "goal": 1,
+		 "hint": "Aero wants to see your machine climb. The course starts at the bottom."},
+		{"desc": "Run the climb inside the time", "event": "quest_plateau_2", "goal": 1,
+		 "hint": "Every gate in order, up to the top. Too slow - back through the start gate."}])
+	_faction_story("aero", "aero_strand", "Stranded Racer", 41, 450, 85, 16, 2, [
+		{"desc": "Reach the stranded racer", "event": "quest_astrand_1", "goal": 1,
+		 "hint": "One of Aero's machines lost its wheels out there, and it is not alone."},
+		{"desc": "Clear the hostiles off it", "event": "quest_astrand_2", "goal": 1,
+		 "hint": "It cannot move and it cannot hold long. Everything hostile round it goes."}])
+	_faction_story("aero", "aero_descent", "Loose Ground", 42, 550, 100, 18, 3, [
+		{"desc": "Reach the top of the run", "event": "quest_descent_1", "goal": 1,
+		 "hint": "Downhill is fast and loose. Aero wants it fast."},
+		{"desc": "Run it down inside the time", "event": "quest_descent_2", "goal": 1,
+		 "hint": "Every gate in order, down to the bottom - on your wheels, not your roof."}])
+	requires("aero_strand", ["aero_plateau"])
+	requires("aero_descent", ["aero_strand"])
+
+	# ── ROCK CREEK BRIDGE: Marlit's story (TerraTech's GeoCorp mission) ─────────────────────────
+	# A toll keeper on the crossing: pay or fight; winning pays in Stryx blocks early (quest_arcs).
+	_faction_story("marlit", "mrock", "Rock Creek Bridge", 36, 700, 120, 24, 2, [
+		{"desc": "Reach the crossing", "event": "quest_rock_1", "goal": 1,
+		 "hint": "Someone has taken the crossing at Rock Creek and charges for it."},
+		{"desc": "Pay the toll or break through", "event": "quest_rock_2", "goal": 1,
+		 "hint": "Pay and drive on, or cross the line and fight. Its hardware is better than ours."}])
+
+	# ── STRYX'S STORY (TerraTech's Hawkeye campaign): Quiet Job (Wet Work, renamed), then
+	# Crowntop Hill Fort and its Spider King (quest_arcs `_quiet_*`, CROWN).
+	_faction_story("stryx", "stryx_quiet", "Quiet Job", 50, 600, 110, 22, 1, [
+		{"desc": "Find the courier", "event": "quest_quiet_1", "goal": 1,
+		 "hint": "A courier waits out there with an escort. It will run the moment it sees you."},
+		{"desc": "Stop the courier before it reaches its drop", "event": "quest_quiet_2", "goal": 1,
+		 "hint": "The escort does not matter. The courier must not arrive."}])
+	_faction_story("stryx", "stryx_crown", "Crowntop Hill Fort", 51, 900, 160, 30, 2, [
+		{"desc": "Reach Crowntop Hill", "event": "quest_crown_1", "goal": 1,
+		 "hint": "The Spider King holds the hill: an anchored fort with rockets, lasers and a dome."},
+		{"desc": "Bring down the Spider King", "event": "quest_crown_2", "goal": 1,
+		 "hint": "Its dome lives on panels and batteries. At night the panels give nothing."}])
+	requires("stryx_crown", ["stryx_quiet"])
+
+	# ── AERO'S EVENTS: races and a chase (TerraTech's Venture board) ───────────────────────────
+	_faction_event("aero", "event_acourse", "Checkpoint Race", 260, 40, 8, 1, "acourse",
+			"Reach the start gate", "Run the course inside the time",
+			"A course of gates. Through each in order, against the clock.")
+	_faction_event("aero", "event_adrag", "Drag Strip", 220, 35, 7, 1, "adrag",
+			"Reach the strip", "Cover the strip inside the time",
+			"Two gates and a straight line between them. Nothing to it but speed.")
+	_faction_event("aero", "event_aslalom", "Slalom", 280, 45, 9, 2, "aslalom",
+			"Reach the start gate", "Weave through every gate inside the time",
+			"Every gate swings to the other side. Lose speed in the turns and you lose the run.")
+	add_quest("event_achase", "Pursuit", "", Type.EVENT, 1, 0, "", 320, 50, 10, 2)
+	add_stages("event_achase", [
+		{"desc": "Find the runner", "event": "quest_achase_1", "goal": 1,
+		 "hint": "Something fast is parked out there. It will not wait for you once it sees you."},
+		{"desc": "Catch it within a minute", "event": "quest_achase_2", "goal": 1,
+		 "hint": "It runs from the moment it sees you. Bring it down before it is gone."}])
+	_find("event_achase")["faction"] = "aero"
+
 	add_quest("daily_ore",   "Cycle: Ore",       "Mine 20 ore",        Type.DAILY, 20,  0, "ore_mined",    75, 15, 3)
 	add_quest("daily_kill",  "Cycle: Sweep",     "Destroy 3 vehicles", Type.DAILY, 3,   0, "enemy_killed", 120, 20, 5)
+
+## A story quest of another faction, with its stages: its grade, its XP, its emblem.
+func _faction_story(f: String, id: String, title: String, order: int, money: int, xp: int, rp: int,
+		grade: int, stages: Array) -> void:
+	add_quest(id, title, "", Type.STORY, 1, order, "", money, xp, rp, grade)
+	add_stages(id, stages)
+	_find(id)["faction"] = f
+
+## A two-stage event of another faction: reach, then do (the course events).
+func _faction_event(f: String, id: String, title: String, money: int, xp: int, rp: int, grade: int,
+		key: String, reach: String, run: String, hint: String) -> void:
+	add_quest(id, title, "", Type.EVENT, 1, 0, "", money, xp, rp, grade)
+	add_stages(id, [
+		{"desc": reach, "event": "quest_%s_1" % key, "goal": 1, "hint": hint},
+		{"desc": run, "event": "quest_%s_2" % key, "goal": 1,
+		 "hint": "Through the start gate and the clock runs. Too slow - the start gate again."}])
+	_find(id)["faction"] = f
 
 ## A Marlit story quest: an ordinary STORY quest under Marlit's flag (its grade, its XP, its emblem).
 func _marlit_story(id: String, title: String, desc: String, goal: int, order: int, event: String,
@@ -979,6 +1070,9 @@ var _held: Dictionary = {}
 func hold_quest(id: String) -> void:
 	_held[id] = true
 	changed.emit()
+
+func is_held(id: String) -> bool:
+	return _held.has(id)
 
 func release_quest(id: String) -> void:
 	if _held.erase(id):

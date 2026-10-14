@@ -207,7 +207,11 @@ func _load_items() -> void:
 		for block_type in _prices:
 			if not _passes_filter(int(block_type)):
 				continue
-			# Цена СЧИТАЕТСЯ ЗДЕСЬ, а не берётся из кеша _prices: раз в SALE_WINDOW часть
+			# TODAY'S WINDOW ONLY (G.shop_count): researched blocks, and of those what the day drew.
+			var left: int = G.shop_count(int(block_type))
+			if left == 0:
+				continue
+			# Цена СЧИТАЕТСЯ ЗДЕСЬ, а не берётся из кеша _prices: раз в игровые сутки часть
 			# блоков уходит на распродажу, и витрина обязана показывать то, что с игрока
 			# спишут. _prices остаётся базовой — рядом со скидкой мы показываем и её,
 			# иначе «−30 %» не от чего отсчитать.
@@ -217,6 +221,7 @@ func _load_items() -> void:
 				"count": 0,
 				"price": G.shop_price_now(int(block_type)),
 				"was": int(_prices[block_type]),
+				"left": left,
 			})
 		_items.sort_custom(_by_block_order)
 		return
@@ -656,7 +661,7 @@ func _codex_stats(bt: int) -> String:
 		if n.get("energy_per_sec") != null:
 			lines.append(tr("Uses %d energy a second while it digs") % int(n.get("energy_per_sec")))
 		n.free()
-	if bt == G.Block.SOLAR:
+	if G.base_block(bt) == G.Block.SOLAR:
 		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE))
 	elif bt == G.Block.MARLIT_SOLAR:
 		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE * MARLIT_SOLAR_GD.UNITS))
@@ -910,18 +915,20 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		s.modulate = Color(1, 1, 1, 0.45)
 		return
 	s.action = &"buy"
+	# A stock-limited block shows how many are left today; a basic one is endless.
+	var stock: String = "  ×%d" % int(it.get("left", -1)) if int(it.get("left", -1)) > 0 else ""
 	var off: int = G.shop_sale_pct(s.arg)
 	if off > 0:
 		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой внизу, процент мелким сверху
 		# справа, старая цена — в подсказке. Процент обязателен: без него игрок не отличит
 		# скидку от блока, который просто дешевле соседнего.
-		s.corner.text = "%d$" % s.price
+		s.corner.text = "%d$" % s.price + stock
 		s.corner.add_theme_color_override("font_color", SALE_COL)
 		s.sale.text = "−%d%%" % off
 		s.sale.visible = true
 		s.tooltip_text = tr("On sale: %d$ instead of %d$") % [s.price, int(it.get("was", s.price))]
 	else:
-		s.corner.text = "%d$" % s.price
+		s.corner.text = "%d$" % s.price + stock
 	s.disabled = G.money < s.price
 
 # Надпись «пусто» тоже переиспользуем: пустая строка — просто прячем.
@@ -1216,9 +1223,10 @@ func _take_into_hand(block_type: int) -> void:
 	_select_tab(TAB_BUILD)
 
 func _buy(block_type: int, price: int) -> void:
-	if G.money < price:
+	if G.money < price or G.shop_count(block_type) == 0:
 		return
 	G.money -= price
+	G.shop_take(block_type)
 	G.block_inventory.append(block_type)
 	G.mark_progress_dirty()
 	# Магазин остаётся открытым: обновляем цены/доступность кнопок и счётчик денег.
@@ -1827,6 +1835,18 @@ func _build_settings_tab() -> void:
 	move_hint.add_theme_font_size_override("font_size", 12)
 	move_hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(move_hint)
+	var fps_btn := CheckButton.new()
+	fps_btn.text = tr("Show FPS")
+	fps_btn.button_pressed = G.show_fps
+	fps_btn.add_theme_font_size_override("font_size", 14)
+	fps_btn.toggled.connect(_on_show_fps)
+	_extra_vb.add_child(fps_btn)
+	var fps_hint := Label.new()
+	fps_hint.text = tr("A small counter in the bottom-right corner, in the game and in the garage.")
+	fps_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	fps_hint.add_theme_font_size_override("font_size", 12)
+	fps_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(fps_hint)
 
 	# — СТРОЙКА — вкус, а не правило: одному подобранный блок нужен сразу в руке и на машине,
 	# другой подбирает мусор по дороге и не хочет каждый раз выпадать из езды.
@@ -1882,6 +1902,12 @@ func _build_settings_tab() -> void:
 	menu_btn.add_theme_font_size_override("font_size", 14)
 	menu_btn.pressed.connect(_to_main_menu)
 	_extra_vb.add_child(menu_btn)
+
+func _on_show_fps(on: bool) -> void:
+	G.show_fps = on
+	G.save_settings()
+	for n in get_tree().get_nodes_in_group("fps_counter"):
+		(n as CanvasItem).visible = on
 
 func _on_move_controls() -> void:
 	var hud: Node = get_parent()
