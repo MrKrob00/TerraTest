@@ -1859,6 +1859,14 @@ project: read it before claiming how anything works.
   would have to be a terrain edit, not a prop. Measured on the proving ground: every course laid and
   run to done, a slow run failing and the next one through the start gate counting, the runner 63 m
   off in five seconds and done when killed, the wreck's attackers killed - done.
+- **BIRD OF PREY IS STRYX'S LICENCE** (`arc_stryx`, GSO grade 4 after Hold the Line, `quest_arcs._bop_*`;
+  TerraTech's Hawkeye licence, a STORY quest so it is guaranteed - the original drew it from a board):
+  a crashed capsule and burnt blocks at a point (a picture, nothing to pick up); within `BOP_NOTICE`
+  the Mechanic hears something and three capsules are SEEN falling from `BOP_HIGH` onto a ring round
+  the site, each setting down a "Cleanup Crew" machine (meta `display_name`, read by
+  `EnemyMarker.name_of` for the label and the death screen; spawned with `arrival`, so no 200 m
+  clearance) - two `STRYX_TROOPER` and a `STRYX_HEAVY`. All three dead, the licence. Measured on the
+  proving ground: three landed (11, 11, 24 blocks), killed - done.
 - **TAKE THE STAGING POINT IS A REAL CAPTURE** (`quest_arcs._camp_1..3`, TerraTech's Capture Enemy
   Base, the player's call): a hostile turret post (`CAMP_POSTS`, presets 13/14 - a rotating support,
   battery, panels, dome, two guns) stands on the point with a guard party. Reach it; break the guard

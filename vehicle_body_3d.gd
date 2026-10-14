@@ -102,7 +102,7 @@ func notice_attacker(attacker: Node3D) -> void:
 func last_attacker_name() -> String:
 	if not is_instance_valid(_last_attacker):
 		return ""
-	return EnemyMarker.name_for(int(_last_attacker.get_instance_id()))
+	return EnemyMarker.name_of(_last_attacker)
 
 func _die() -> void:
 	if _dying:
