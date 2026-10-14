@@ -3007,5 +3007,253 @@
 	"Fewer draw calls for distant ground. Turn off to compare FPS.": {
 		"ru": "Меньше вызовов отрисовки для дальней земли. Выключи, чтобы сравнить FPS.",
 		"uk": "Менше викликів малювання для далекої землі. Вимкни, щоб порівняти FPS."
+	},
+	"Aero Cabin": {
+		"ru": "Кабина Aero",
+		"uk": "Кабіна Aero"
+	},
+	"An Aero part on the Falsus model until the faction's own is built: built for speed, lighter and easier to break.": {
+		"ru": "Деталь Aero на модели Falsus, пока у фракции нет своей: создана для скорости — легче и ломается проще.",
+		"uk": "Деталь Aero на моделі Falsus, доки у фракції немає своєї: створена для швидкості — легша і ламається простіше."
+	},
+	"Aero Frame Block": {
+		"ru": "Блок рамы Aero",
+		"uk": "Блок рами Aero"
+	},
+	"Aero Frame Block ×2": {
+		"ru": "Блок рамы Aero ×2",
+		"uk": "Блок рами Aero ×2"
+	},
+	"Aero Frame Block ×3": {
+		"ru": "Блок рамы Aero ×3",
+		"uk": "Блок рами Aero ×3"
+	},
+	"Aero Half Block": {
+		"ru": "Половинка Aero",
+		"uk": "Половинка Aero"
+	},
+	"Aero Half Block ×2": {
+		"ru": "Половинка Aero ×2",
+		"uk": "Половинка Aero ×2"
+	},
+	"Aero Wedge": {
+		"ru": "Клин Aero",
+		"uk": "Клин Aero"
+	},
+	"Aero Armour Plate": {
+		"ru": "Бронеплита Aero",
+		"uk": "Бронеплита Aero"
+	},
+	"Aero Armour Plate ×2": {
+		"ru": "Бронеплита Aero ×2",
+		"uk": "Бронеплита Aero ×2"
+	},
+	"Aero Armour Plate ×4": {
+		"ru": "Бронеплита Aero ×4",
+		"uk": "Бронеплита Aero ×4"
+	},
+	"Aero Armour Plate ×9": {
+		"ru": "Бронеплита Aero ×9",
+		"uk": "Бронеплита Aero ×9"
+	},
+	"Aero Small Wheel": {
+		"ru": "Малое колесо Aero",
+		"uk": "Мале колесо Aero"
+	},
+	"An Aero wheel on the Falsus model until the faction's own is built: lighter, and it pulls harder.": {
+		"ru": "Колесо Aero на модели Falsus, пока у фракции нет своего: легче и тянет сильнее.",
+		"uk": "Колесо Aero на моделі Falsus, доки у фракції немає свого: легше і тягне сильніше."
+	},
+	"Aero Wheel": {
+		"ru": "Колесо Aero",
+		"uk": "Колесо Aero"
+	},
+	"Aero Big Wheel": {
+		"ru": "Большое колесо Aero",
+		"uk": "Велике колесо Aero"
+	},
+	"Aero Machine Gun": {
+		"ru": "Пулемёт Aero",
+		"uk": "Кулемет Aero"
+	},
+	"An Aero weapon on the Falsus model until the faction's own is built: lighter than Falsus's, and it hits a little softer.": {
+		"ru": "Оружие Aero на модели Falsus, пока у фракции нет своего: легче, чем у Falsus, и бьёт чуть слабее.",
+		"uk": "Зброя Aero на моделі Falsus, доки у фракції немає своєї: легша, ніж у Falsus, і б'є трохи слабше."
+	},
+	"Aero Shotgun": {
+		"ru": "Дробовик Aero",
+		"uk": "Дробовик Aero"
+	},
+	"Aero Laser": {
+		"ru": "Лазер Aero",
+		"uk": "Лазер Aero"
+	},
+	"Aero Rocket Launcher": {
+		"ru": "Ракетница Aero",
+		"uk": "Ракетниця Aero"
+	},
+	"Aero Heavy Cannon": {
+		"ru": "Тяжёлая пушка Aero",
+		"uk": "Важка гармата Aero"
+	},
+	"Aero Mortar": {
+		"ru": "Мортира Aero",
+		"uk": "Мортира Aero"
+	},
+	"Aero Drill": {
+		"ru": "Бур Aero",
+		"uk": "Бур Aero"
+	},
+	"Aero Solar Panel": {
+		"ru": "Солнечная панель Aero",
+		"uk": "Сонячна панель Aero"
+	},
+	"Aero Battery": {
+		"ru": "Аккумулятор Aero",
+		"uk": "Акумулятор Aero"
+	},
+	"Aero Repair Field": {
+		"ru": "Ремонтное поле Aero",
+		"uk": "Ремонтне поле Aero"
+	},
+	"Aero Shield Dome": {
+		"ru": "Силовой купол Aero",
+		"uk": "Силовий купол Aero"
+	},
+	"Aero Wireless Charger": {
+		"ru": "Беспроводная зарядка Aero",
+		"uk": "Бездротова зарядка Aero"
+	},
+	"Aero Support": {
+		"ru": "Опора Aero",
+		"uk": "Опора Aero"
+	},
+	"Aero Rotating Support": {
+		"ru": "Поворотная опора Aero",
+		"uk": "Поворотна опора Aero"
+	},
+	"Stryx Cabin": {
+		"ru": "Кабина Stryx",
+		"uk": "Кабіна Stryx"
+	},
+	"A Stryx part on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.": {
+		"ru": "Деталь Stryx на модели Falsus, пока у фракции нет своей: весит как у Falsus и намного прочнее.",
+		"uk": "Деталь Stryx на моделі Falsus, доки у фракції немає своєї: важить як у Falsus і набагато міцніша."
+	},
+	"Stryx Frame Block": {
+		"ru": "Блок рамы Stryx",
+		"uk": "Блок рами Stryx"
+	},
+	"Stryx Frame Block ×2": {
+		"ru": "Блок рамы Stryx ×2",
+		"uk": "Блок рами Stryx ×2"
+	},
+	"Stryx Frame Block ×3": {
+		"ru": "Блок рамы Stryx ×3",
+		"uk": "Блок рами Stryx ×3"
+	},
+	"Stryx Half Block": {
+		"ru": "Половинка Stryx",
+		"uk": "Половинка Stryx"
+	},
+	"Stryx Half Block ×2": {
+		"ru": "Половинка Stryx ×2",
+		"uk": "Половинка Stryx ×2"
+	},
+	"Stryx Wedge": {
+		"ru": "Клин Stryx",
+		"uk": "Клин Stryx"
+	},
+	"Stryx Armour Plate": {
+		"ru": "Бронеплита Stryx",
+		"uk": "Бронеплита Stryx"
+	},
+	"Stryx Armour Plate ×2": {
+		"ru": "Бронеплита Stryx ×2",
+		"uk": "Бронеплита Stryx ×2"
+	},
+	"Stryx Armour Plate ×4": {
+		"ru": "Бронеплита Stryx ×4",
+		"uk": "Бронеплита Stryx ×4"
+	},
+	"Stryx Armour Plate ×9": {
+		"ru": "Бронеплита Stryx ×9",
+		"uk": "Бронеплита Stryx ×9"
+	},
+	"Stryx Small Wheel": {
+		"ru": "Малое колесо Stryx",
+		"uk": "Мале колесо Stryx"
+	},
+	"A Stryx wheel on the Falsus model until the faction's own is built: as heavy as Falsus's, and much tougher.": {
+		"ru": "Колесо Stryx на модели Falsus, пока у фракции нет своего: весит как у Falsus и намного прочнее.",
+		"uk": "Колесо Stryx на моделі Falsus, доки у фракції немає свого: важить як у Falsus і набагато міцніше."
+	},
+	"Stryx Wheel": {
+		"ru": "Колесо Stryx",
+		"uk": "Колесо Stryx"
+	},
+	"Stryx Big Wheel": {
+		"ru": "Большое колесо Stryx",
+		"uk": "Велике колесо Stryx"
+	},
+	"Stryx Machine Gun": {
+		"ru": "Пулемёт Stryx",
+		"uk": "Кулемет Stryx"
+	},
+	"A Stryx weapon on the Falsus model until the faction's own is built: tougher than Falsus's, and it hits harder.": {
+		"ru": "Оружие Stryx на модели Falsus, пока у фракции нет своего: прочнее, чем у Falsus, и бьёт сильнее.",
+		"uk": "Зброя Stryx на моделі Falsus, доки у фракції немає своєї: міцніша, ніж у Falsus, і б'є сильніше."
+	},
+	"Stryx Shotgun": {
+		"ru": "Дробовик Stryx",
+		"uk": "Дробовик Stryx"
+	},
+	"Stryx Laser": {
+		"ru": "Лазер Stryx",
+		"uk": "Лазер Stryx"
+	},
+	"Stryx Rocket Launcher": {
+		"ru": "Ракетница Stryx",
+		"uk": "Ракетниця Stryx"
+	},
+	"Stryx Heavy Cannon": {
+		"ru": "Тяжёлая пушка Stryx",
+		"uk": "Важка гармата Stryx"
+	},
+	"Stryx Mortar": {
+		"ru": "Мортира Stryx",
+		"uk": "Мортира Stryx"
+	},
+	"Stryx Drill": {
+		"ru": "Бур Stryx",
+		"uk": "Бур Stryx"
+	},
+	"Stryx Solar Panel": {
+		"ru": "Солнечная панель Stryx",
+		"uk": "Сонячна панель Stryx"
+	},
+	"Stryx Battery": {
+		"ru": "Аккумулятор Stryx",
+		"uk": "Акумулятор Stryx"
+	},
+	"Stryx Repair Field": {
+		"ru": "Ремонтное поле Stryx",
+		"uk": "Ремонтне поле Stryx"
+	},
+	"Stryx Shield Dome": {
+		"ru": "Силовой купол Stryx",
+		"uk": "Силовий купол Stryx"
+	},
+	"Stryx Wireless Charger": {
+		"ru": "Беспроводная зарядка Stryx",
+		"uk": "Бездротова зарядка Stryx"
+	},
+	"Stryx Support": {
+		"ru": "Опора Stryx",
+		"uk": "Опора Stryx"
+	},
+	"Stryx Rotating Support": {
+		"ru": "Поворотная опора Stryx",
+		"uk": "Поворотна опора Stryx"
 	}
 }

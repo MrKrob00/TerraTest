@@ -75,7 +75,7 @@ const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.
 		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
-	return not _STATION_BANNED.has(bt)
+	return not _STATION_BANNED.has(G.base_block(bt))
 
 ## Can new_node attach to face attach_face of whatever stands in cell (nx,ny,nz)? We take the CELL,
 ## not a type: through it we reach the neighbour NODE and therefore its rotation - without rotation
@@ -142,7 +142,7 @@ func _place_carry() -> void:
 		var best := Vector3i.ZERO
 		var found := false
 		for c in map:
-			if not CARRY_BASES.has(int(map[c])) or not _is_anchor(c.x, c.y, c.z):
+			if not CARRY_BASES.has(G.base_block(int(map[c]))) or not _is_anchor(c.x, c.y, c.z):
 				continue
 			# the base's TOP, not its anchor's: a 2x2x2 base stands a cell higher than its anchor
 			var top: Vector3i = c
@@ -971,6 +971,7 @@ func _retire_root_collider() -> void:
 ## отдавала ему пару клеток поперёк того места, где он стоял. Замерено: при любом повороте сетка
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
+	block = G.base_block(block)              # a stub stands on its Falsus base's cells
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
@@ -1096,7 +1097,7 @@ static var _fitted: Dictionary = {}
 static func fitted_shape(block: int) -> Shape3D:
 	if _fitted.has(block):
 		return _fitted[block]
-	var path := "res://blocks/colliders/%s.tres" % G.Block.keys()[block]
+	var path := "res://blocks/colliders/%s.tres" % G.Block.keys()[G.base_block(block)]
 	var s: Shape3D = load(path) as Shape3D if ResourceLoader.exists(path) else null
 	_fitted[block] = s
 	return s
