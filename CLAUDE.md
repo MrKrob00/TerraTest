@@ -1500,10 +1500,10 @@ project: read it before claiming how anything works.
   wrong, and both undone: a setting nothing sets yet is still a setting, and its place is the
   material, where every uniform shows. The new file is TEXT and has no texture slot of its own. The
   node draws with a COPY (`_setup_materials`), and the copy takes from `biomes` the colours, rock,
-  snow, grass and canyon bands (`TerrainBiomes.apply_to_material`) and from the game the grass fade,
-  the trample and the corruption map - so those few are tuned in the biomes, and the same uniforms
+  snow, grass and canyon bands (`TerrainBiomes.apply_to_material`) and from the game the grass fade
+  and the trample - so those few are tuned in the biomes, and the same uniforms
   on the material are overwritten (as they always were); `grass_density` is back in the biomes'
-  Grass group. The corruption overlay keeps its uniforms as they are (the player's call). Checked on
+  Grass group. THE CORRUPTION OVERLAY IS GONE, shader and spreading map alike (`grass.gd` ran it). Checked on
   the real driver: three views of the game's ground, identical to the pixel through every one of
   these changes (only the sky's clouds, which run on time, differ).
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
@@ -2044,20 +2044,22 @@ project: read it before claiming how anything works.
   51 m ahead a second after it drove 15 m, the compass on the ring's middle, the scout on the ground
   3 s later. WHERE THE PLAYER FIRST WAKES IS A SMOULDERING SPOT (`crash_site.gd`, raised once by
   `world_persist._fresh_start`; the player's call and picture): the Falsus block's model blackened and
-  tumbled round the start, and the ground's OWN shader drawing charred plates with glowing cracks in a
-  6.5 m circle (`glsl.gdshader` `ember_spot` through `ChunkTerrain.set_ember_spot`: a Voronoi field's
-  borders in world metres, computed per pixel inside a uniform branch, no grass on it), cooling over
-  five minutes to under half. A patch drawn over the ground was tried first: to clear the grass it had
-  to be pulled toward the camera and it darkened every block standing on it; per vertex the mask
-  stepped at the LOD seams. Not saved - a reload comes back without it.
-  **THE EMBERS AND THE CORRUPTION OVERLAY ARE OUT OF THE GROUND SHADER, AND THAT WAS THE PHONE'S
-  FRAME**: with them in, the player measured 18 fps with our shadows (12 with background apps), the
-  ~30 of the cascades gone; with both taken out, 34. Code in the ground's fragment costs on the phone
-  even where its branch is not taken - the ground is most of the screen and the shader the fill (see
-  Look and light) - and llvmpipe cannot rank it (its A/B rounds swung both ways). So NOTHING GOES INTO
-  `glsl.gdshader` FOR A SPOT: a local effect is a mesh of its own over the ground. `set_ember_spot` and
-  `set_corruption_map` still set uniforms that no longer exist (dropped without a word); the burnt
-  cubes stay.
+  tumbled round the start, and the ground under it charred plates with weakly glowing cracks in a
+  6.5 m circle, cooling over five minutes to under half. Not saved - a reload comes back without it.
+  **THE EMBERS ARE A PATCH OF THEIR OWN, NEVER THE GROUND'S SHADER** (`crash_site._patch`,
+  `resources/ember_patch.gdshader`, the crack texture baked by `art/ember_cracks.py`): they lived in
+  `glsl.gdshader` once (`ember_spot`, a Voronoi field per pixel) with the corruption overlay beside
+  them, and the player measured 18 fps with our shadows, 34 once both were out. Code in the ground's
+  fragment costs on the phone even where its branch is not taken - the ground is most of the screen
+  and the shader the fill (see Look and light) - and llvmpipe cannot rank it (its A/B rounds swung
+  both ways). So NOTHING GOES INTO `glsl.gdshader` FOR A SPOT: a local effect is a mesh of its own.
+  The patch is a grid on whole metres on the terrain's heights + 4 cm (and a few cm toward the camera
+  in depth), ONE fetch of a 256 px texture (R crack distance, G the plate's number, B grain - all
+  else is multiplies), stretches of crack gone cold, ash toward the rim, unlit glow so it shows at
+  night. THE GRASS UNDER IT IS PRESSED FLAT (`grass.press_zone`, a still disc on the trample map at
+  `ZONE_PRESS` 0.55 - 0.5 takes a blade's lift to exactly zero): a patch over the lifted meadow had
+  to be pulled 0.3 m toward the camera and darkened every block on it, and a blade through it is a
+  tuft growing out of the coals. Checked on the real driver: no grass through it, the cracks lit.
 
 ### The proving ground
 
