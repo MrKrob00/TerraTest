@@ -519,7 +519,7 @@ func _base_tick(delta: float) -> void:
 		if not is_instance_valid(_target):
 			_scan_for_targets()
 	_refresh_vision(delta)
-	if not is_instance_valid(_target):
+	if not is_instance_valid(_target) or _sheltered(_target):
 		_target = null
 		return
 	if _can_see_target():
@@ -615,6 +615,9 @@ func _can_see_target() -> bool:
 	return d2 <= hear_radius * hear_radius or _los_ok
 
 func _update_ai(delta: float) -> void:
+	# A QUIET ZONE COMES FIRST, the miner's work included: inside one, it drives out.
+	if _leave_safe_zone(delta):
+		return
 	# ШАХТЁР ЖИВЁТ ПО СВОИМ ПРАВИЛАМ И ДО ВСЕГО ОСТАЛЬНОГО. Он приехал работать: не ищет цель,
 	# не занимает слот боя, не патрулирует вокруг точки рождения. Весь разбор ниже — поиск цели,
 	# забывание, счёт обстановки — ему не нужен ни на кадр.
@@ -645,6 +648,9 @@ func _update_ai(delta: float) -> void:
 				_lose_target()
 	elif _target != null:
 		_target = null
+	if is_instance_valid(_target) and _sheltered(_target):
+		_target = null                  # the target went into a quiet zone: let it go, relentless or not
+		_has_last_known = false
 
 	# Combat is banned by the spawner (engagement slots are taken). The target is still REMEMBERED -
 	# dropping it here put the spawner in a loop: it lists "wants to fight" by `_target != null`, the ban
@@ -1134,6 +1140,8 @@ func notice_attacker(attacker: Node3D) -> void:
 		return
 	if not _is_enemy(attacker):
 		return                          # same faction: friendly fire does not change the target
+	if _sheltered(attacker):
+		return                          # shot from a quiet zone: it does not answer into it
 	if relentless and is_instance_valid(_target):
 		return                          # a relentless enemy was given its target once and for all
 	# Being shot at cancels the give-up. You can walk away from someone who let you go; being finished
@@ -1149,6 +1157,56 @@ func notice_attacker(attacker: Node3D) -> void:
 	_forget_timer = forget_enemy_time
 	_last_known_pos = attacker.global_position
 	_has_last_known = true
+
+# ══════════════════════════════════════════
+# THE LEARNING BASES' QUIET ZONE (G.SAFE_ZONE_R)
+# ══════════════════════════════════════════
+# While the power or the factory branch is open, a hostile machine takes no target standing within
+# G.SAFE_ZONE_R of its site, and one that finds itself inside drives straight out, away from the
+# centre, its patrol moved out past the edge so it does not wander back (the player's rule). Hostile
+# only: an ally (faction 0) and the menu's demo fight are not touched. Asked every SAFE_CHECK, on
+# each machine's own beat: the answer is a few distances.
+const SAFE_CHECK := 0.5
+const SAFE_OUT := 40.0             # how far past the edge its new patrol home stands
+var _safe_t: float = randf() * SAFE_CHECK
+var _safe_c: Variant = null        # the centre of the zone it is in, null when out
+
+func _sheltered(t: Node3D) -> bool:
+	return faction != 0 and not demo and _is_player_side_or_ally(t) \
+			and G.safe_zone_at(t.global_position) != null
+
+func _is_player_side_or_ally(n: Node) -> bool:
+	return is_instance_valid(n) and n.get("faction") == 0
+
+func _leave_safe_zone(delta: float) -> bool:
+	if faction == 0 or demo or is_base:
+		return false
+	_safe_t -= delta
+	if _safe_t <= 0.0:
+		_safe_t = SAFE_CHECK
+		var was = _safe_c
+		_safe_c = G.safe_zone_at(global_position)
+		if _safe_c != null and was == null:
+			_target = null
+			_has_last_known = false
+			relentless = false
+			var out: Vector3 = global_position - (_safe_c as Vector3)
+			out.y = 0.0
+			if out.length_squared() < 0.01:
+				out = -_get_forward()
+			_start_pos = (_safe_c as Vector3) + out.normalized() \
+					* (G.SAFE_ZONE_R + SAFE_OUT + patrol_radius)
+			_setup_patrol_points()
+	if _safe_c == null:
+		return false
+	if is_instance_valid(_target) and _sheltered(_target):
+		_target = null                  # whatever it came for stands in the zone with it
+	var away: Vector3 = global_position - (_safe_c as Vector3)
+	away.y = 0.0
+	if away.length_squared() < 0.01:
+		away = _get_forward()
+	_drive(away.normalized(), chase_speed_factor, delta)
+	return true
 
 func _is_enemy(body: Node) -> bool:
 	if body == self: return false
@@ -1167,6 +1225,8 @@ func _consider_target(body3d: Node3D) -> bool:
 		return false
 	if _give_up_t > 0.0:
 		return false                # gave up and is leaving: it starts no fights
+	if _sheltered(body3d):
+		return false                # in a learning base's quiet zone (G.SAFE_ZONE_R)
 	var d2: float = global_position.distance_squared_to(body3d.global_position)
 	if d2 > detection_radius * detection_radius:
 		return false
@@ -1409,8 +1469,10 @@ func _pick_vein() -> Variant:
 			break
 	if rn == null:
 		return null
-	var near = rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_NEAR)
-	return near if near != null else rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_HI)
+	var safe: bool = faction != 0           # a hostile miner never digs inside a quiet zone
+	var near = rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_NEAR, false, false, safe)
+	return near if near != null else rn.vein_point_near(global_position, MINE_SEEK_LO, MINE_SEEK_HI,
+			false, false, safe)
 
 ## Бур — НЕ WeaponBlock, поэтому _weapon_blocks его не видит и _do_attack не трогает. Держим
 ## свой список: у шахтёра других «жмущихся» блоков нет, но перебирать всё подряд значило бы

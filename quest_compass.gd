@@ -85,7 +85,14 @@ func target_of(q: Dictionary) -> Variant:
 			return _nearest_enemy(from, story_only)
 		"ore_mined", "daily_ore":
 			return _nearest_of(_ore_positions(), from)
-		"money_earned":
+		"money_earned", "item_sold":
+			# A sale is made at a SELLER block; a mounted one leads (a loose one sells nothing).
+			var sellers: Array = []
+			for n in get_tree().get_nodes_in_group("sellers"):
+				if is_instance_valid(n) and n.has_method("is_mounted") and n.is_mounted():
+					sellers.append(n)
+			if not sellers.is_empty():
+				return _nearest_node(sellers, from)
 			return _nearest_node(get_tree().get_nodes_in_group("shop"), from)
 	return null
 

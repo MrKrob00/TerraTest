@@ -766,6 +766,27 @@ func near_active(p: Vector3, radius: float) -> bool:
 			return true
 	return false
 
+## The learning bases' quiet zone (quest_arcs.safe_zone_at): metres round the power and factory
+## sites, held while those branches are open (the player's rule).
+const SAFE_ZONE_R := 160.0
+
+## The centre of the learning bases' quiet zone holding `p` (quest_arcs.safe_zone_at), or null -
+## and null where there are no quests (the menu). One question for the spawner and every enemy.
+func safe_zone_at(p: Vector3, pad: float = 0.0) -> Variant:
+	var tree := get_tree()
+	var a: Node = tree.get_first_node_in_group("quest_arcs") if tree != null else null
+	if a == null or not a.has_method("safe_zone_at"):
+		return null
+	return a.safe_zone_at(p, pad)
+
+## Every quiet zone's centre (empty where there are none): for a caller testing many points.
+func safe_zones() -> Array:
+	var tree := get_tree()
+	var a: Node = tree.get_first_node_in_group("quest_arcs") if tree != null else null
+	if a == null or not ("_safe" in a):
+		return []
+	return a.get("_safe")
+
 ## How far the DRAWN ground stands above the ground physics sees, at most. The near LOD lifts
 ## meadow vertices by `TerrainBiomes.grass_height` (that lift IS the grass), and a ray, a
 ## bullet and `ground_y` all answer the flat heightfield underneath it.
