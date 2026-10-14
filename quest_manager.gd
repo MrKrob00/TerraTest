@@ -242,10 +242,13 @@ func _seed_demo() -> void:
 	add_stages("event_camp", [
 		{"desc": "Reach the staging point",
 		 "event": "quest_camp_1", "goal": 1,
-		 "hint": "Not a patrol — a place they come back to. Three units hold it."},
-		{"desc": "Clear it and take what is left",
+		 "hint": "Not a patrol — a place they come back to. A turret post and its guard hold it."},
+		{"desc": "Break the guard and disarm the post",
 		 "event": "quest_camp_2", "goal": 1,
-		 "hint": "The point is not taken until the crate on it is yours."},
+		 "hint": "Shoot every gun off the post, but keep its core standing: a wreck cannot be taken."},
+		{"desc": "Hold the point",
+		 "event": "quest_camp_3", "goal": 1,
+		 "hint": "Stay by the post a few seconds and it becomes one of your bases."},
 	])
 
 	# MARLIT'S EVENTS: the same four the original's GeoCorp board repeats (the player's list) -

@@ -1839,6 +1839,16 @@ project: read it before claiming how anything works.
   three seconds before the first one landed. Nothing is handed out while the player is farther than
   `ORBIT_SEEN`: the orbit is the point, and nobody watches it from across the map. Measured: one
   copy the whole time, circling at 4.2 m, landing 2.7 m (panel) and 3.5 m (regen) from the base.
+- **TAKE THE STAGING POINT IS A REAL CAPTURE** (`quest_arcs._camp_1..3`, TerraTech's Capture Enemy
+  Base, the player's call): a hostile turret post (`CAMP_POSTS`, presets 13/14 - a rotating support,
+  battery, panels, dome, two guns) stands on the point with a guard party. Reach it; break the guard
+  and DISARM the post - every weapon shot off, its core alive (`_post_armed`); hold the point
+  `CAPTURE_HOLD` (10 s) within `CAPTURE_DIST` (15 m). Then the enemy machine goes and what is left of
+  it stands on the same ground as one of the player's stations (`_capture_post` -> `_spawn_station`,
+  saved like any base). A wrecked post (`_camp_lost`) drops the event and cools it down; the post
+  lives in `_ev_base`, cleared with the event like its party. It used to be a crate on a point.
+  Measured on the proving ground: guard killed, guns shot off, ten seconds by it - done, the post gone
+  and one player station standing.
 - **SUPPLY DROP'S REWARD IS AN ORB, NOT A CRATE** (`reward_orb.gd`): a 1 m sphere of the glitch cards a
   block appears with, `HOVER` 3 m over the point, every card living its own short cycle and reborn
   elsewhere in the sphere, so it never stands still. It opens by being stood next to —
