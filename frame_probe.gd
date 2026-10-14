@@ -97,6 +97,16 @@ func _cases(main: Node) -> Array:
 			if is_instance_valid(ss):
 				ss.set("active", not off)
 			return true])
+		# the far cascades alone: a haze that hides everything past the near window builds none
+		out.append(["far shadow cascades", func(off: bool, s):
+			if not is_instance_valid(ss):
+				return null
+			if off:
+				var keep = ss.get("haze")
+				ss.set("haze", Vector2.ZERO)
+				return keep
+			ss.set("haze", s)
+			return null])
 	var map := main.get_node_or_null("map") as Node3D
 	if map != null:
 		out.append(["ground+veins", _vis(map)])

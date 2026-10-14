@@ -2619,37 +2619,91 @@ project: read it before claiming how anything works.
   linear made the fit worse. Shadows on, the lit shader is back.
 - **"SHADOWS" ARE OUR OWN NOW, AND THE ENGINE'S ARE "FULL SHADOWS (SLOW)", OFF BY DEFAULT**
   (`sun_shadows.gd`, `Main.shadows_engine`; the phone's probe with the engine's: ground 34 ms of 53,
-  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads two
-  maps over one window (`WINDOW` 192 m round the camera, 25 cm a texel; it was 128 and the player found
-  it short). CASTERS (`VP_SIZE` 768 px, the grass trample's road): every machine block from the
-  machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
-  collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`), every
-  ore vein as its model's OUTLINE (`ore_shadow_casters`: the extreme vertices in 26 directions among
-  the parts still standing, per model and break level - the model's box was a dark rectangle round
-  every vein, the rock's base far wider than the ore), every loose block as its box,
-  each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
-  no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF EDGES (`_box_shadow`: the projection is
-  affine, so no corners and no hull) and A MACHINE'S IS ONE MESH (`_machine_mesh`: every block's box
-  corners in machine axes, projected by ONE `Transform3D * PackedVector3Array` - `_proj` - into a
-  dynamic vertex buffer): eight `_px` and a `convex_hull` a block were 4-6 ms a frame for four
-  fighting machines on the optimize=none build, now ~0.7. NOTHING SWIMS (the player: "the shadows
-  twitch while driving"): the window's centre moves in whole texels, the ground's shade in whole cells
-  over a height grid fixed to `TERR_STEP` - a centre following the camera to the millimetre slid every
-  edge under the linear filter; measured over 14400 points round still casters, the camera sliding a
-  sub-texel step a frame for 40 frames: 492 swinging over 0.1 before, 0 after. What stands still
-  (trees, veins) is projected once (`_build_static`, every `STATIC_EVERY` or when the window moved
-  `STATIC_MOVE`) and laid off by whole pixels. THE GROUND'S OWN SHADE (`TERR_N` 48 cells, drawn INTO THE SAME MAP under the casters,
-  laid off by where the camera stood when it was marched - one fetch a ground pixel): each cell marches
-  `TERR_MARCH` toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`, the occlusion test's
-  read), fetched `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread; a refresh starts when the
-  camera has moved `TERR_MOVE` or the light has turned `TERR_TURN`. Strength is the light's own
+  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads ONE
+  texel of one of three maps, the cascades below. CASTERS (the grass trample's road): every machine
+  block from the machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc
+  (tyres have no collider), every tree as a trunk and a crown read off its model, every ore vein as its
+  model's OUTLINE (the extreme vertices in 26 directions among the parts still standing, per model and
+  break level - the model's box was a dark rectangle round every vein, the rock's base far wider than
+  the ore), every loose block as its box, each PROJECTED ALONG THE LIGHT onto the ground under it as 2D
+  polygons - no 3D pass, no light pass, no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF
+  EDGES (`_box_shadow`: the projection is affine, so no corners and no hull), A MACHINE'S IS ONE MESH
+  (`_machine_mesh`: every block's box corners in machine axes, projected by ONE `Transform3D *
+  PackedVector3Array` - `_proj` - into a dynamic vertex buffer: eight `_px` and a `convex_hull` a block
+  were 4-6 ms a frame for four fighting machines on the optimize=none build, now ~0.7), and A CROWN'S
+  IS A STADIUM (a short drum: a horizontal circle drops as a circle of its own radius, so two half
+  circles joined, built straight - it was twenty projected points and a hull a tree).
+  **THREE CASCADES AT 100 / 75 / 50 % OF THE PIXELS** (the player's call: "longer shadows at no cost";
+  `CASCADES`): 224 m at 25 cm a texel, 448 m at 67 cm, 896 m at 2 m - shadows to ~96, ~190 and ~320 m
+  from the camera where they used to end at 96. THE GROUND STILL FETCHES ONCE: which map a pixel reads
+  is decided per VERTEX (`glsl.gdshader` `v_shsel`, the distance into each window, piecewise linear so
+  interpolating it is exact but at the corners), the hand-over `SH_BAND` inside a window's edge
+  wandering `SH_DITHER` by a hash a vertex (no straight seam), the fragment only branches -
+  `textureLod`, an implicit derivative in a branch part of a quad skips being undefined - and the last
+  map fades out over its edge as the one window did. ONLY THE NEAR MAP IS DRAWN PER FRAME, AND ONLY WHEN
+  SOMETHING IN IT CHANGED (`_vp`, 768 px over 192 m round the camera, `_scene_sig` when the window
+  stands still): it carries the machines and lays in its STILL LAYER as one textured quad. Each
+  cascade's still layer - ground shade, trees, veins - is a viewport of its own centred where the
+  camera stood when it was built (the near one INSIDE the composite's viewport, which the engine draws
+  first - `RendererViewport::_sort_active_viewports`, children before parents - so this frame's layer is
+  laid at this frame's offset), built again only when the camera has gone its `step`, the light has
+  turned `TERR_TURN`, a caster in its reach changed or new ground shade landed. A caster's polygons are
+  KEPT (`Cas.memo`, by the caster's key, in pixels round a fixed origin, cast by the light that held
+  until it turned `TERR_TURN` - the day moves the sun every `DayCycle.TICK`, and an exact compare made
+  every polygon anew), so a move costs only the casters that came in; a build walks a slice a frame
+  (`BUILD_USEC`). THE LOOSE BLOCKS ARE ONE MESH made again only when one moved (`_draw_loose`). A far
+  cascade is built only while the haze at its inner edge lets the ground show (`haze` from
+  `Main._apply_view`, `HAZE_SHOWN`): at the 200 m view both are off. THE CASTERS COME FROM THE RECORDS,
+  NOT THE DRAWN VEINS (`ResourceNodes.shadow_records` by region, `cast_entry` kept on the record until
+  `_bump_cast` drops it, `shadow_rev_in` per region): the drawn ones end at `render_distance` and are
+  only those AHEAD of the camera, so a tree 50 m behind it threw nothing onto the ground in front.
+  NOTHING SWIMS (the player: "the shadows twitch while driving"): every window's centre moves in whole
+  texels, the ground's shade in whole cells over a fixed height grid - a centre following the camera to
+  the millimetre slid every edge under the linear filter; measured over 14400 points round still
+  casters, the camera sliding a sub-texel step a frame for 40 frames: 492 swinging over 0.1 before, 0
+  after. THE GROUND'S OWN SHADE (`TERR_N` 56 cells over each window, drawn INTO THE SAME MAP under the
+  casters - one fetch a ground pixel): each cell marches `march` toward the sun over the heights the
+  terrain HOLDS (`ChunkTerrain.known_height`: any node in `_hc`, finest first), fetched
+  `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread, one cascade at a time in turn. It read
+  the DRAWN heights (`drawn_height`, the occlusion test's read), which exist only under the frame; held
+  ones reach what was built and looked away from, but GROUND NEVER BUILT HAS NO HEIGHT EXCEPT FROM THE
+  GENERATOR (~0.1-0.4 ms a point), so a ridge behind the camera since the start still casts nothing -
+  measured on the real driver at boot, 17122 of the near grid's 19044 cells empty with the drawn
+  heights, 16590 with the held ones. The cells the ground is SEEN on always have theirs. THE HEIGHTS
+  ARE KEPT: they reach `march` past the window
+  every way, so a turned light re-marches them and fetches nothing, and a move fetches only the
+  uncovered strips (LISTED as runs: walking every cell to find them was 2 ms a frame), the HOLES IN
+  VIEW - cells with no height, found by the worker as runs a row, asked again only where they lie
+  within `HOLE_FIELD` of where the camera looks and within the view distance (`_ask_cols`; asked
+  everywhere, behind the camera too where nothing is built, they were most of what a drive fetched) -
+  and a rolling `TERR_REFRESH` band; a camera that TURNED asks for refreshes (`HOLE_BURSTS`, `HOLE_GAP`
+  apart: the ground there is still being built). A map the camera has LEFT (a respawn far off) is not
+  handed to the ground until it is built round it again (`_push`): as the last window it faded out
+  everything, the near machines included. A tree `_stream_in` found no room for by a machine
+  (`refused`) casts nothing, and the far cascade draws crowns only, no veins. A CELL WITH
+  NO GROUND KNOWN IS NOT DARK: it stood at -1e6 and every real height round it rose over its ray, so
+  every node not drawn came out a black rectangle - in the old single window too (seen on the real
+  driver, gone after). Strength is the light's own
   `shadow_opacity` times its energy (the moon casts weaker); the sun is held over `MIN_SUN_Y` for it, or
   dusk shadows would run to the horizon. Nothing shades a MACHINE (its blocks are unshaded and never
-  took the engine's shadow either). WITH THE ENGINE'S SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is
-  no additive sun pass to sum wrongly. Measured: on a desert seed at dusk (32 cells then) 215 of 1024 cells dark, dunes and palms throwing long shadows
-  on the real driver. THE PHONE (200 m view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of
-  which the shadows ~3 (the probe's "sun shadows" row measures them since). On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
+  took the engine's shadow either), and past the near window machines cast nothing. WITH THE ENGINE'S
+  SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is no additive sun pass to sum wrongly. THE PHONE (200 m
+  view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of which the shadows ~3 (the probe's "sun
+  shadows" row; "far shadow cascades" takes the far two alone). Measured on the optimize=none build,
+  everything the node costs a frame (process, the composite's and still layers' recording), the old
+  single window against the cascades, camera standing / 5 m/s / 20 m/s: 1.48 / 1.32 / 1.69 ms against
+  0.47 / 0.96 / 1.64; on the real driver the near window's shadows the same but at the crowns' edge,
+  the far trees shadowed. On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
   before this change as after - not a regression.
+- **WHAT THE GROUND'S FRAGMENT DOES PER PIXEL IS WHAT HAS TO BE**: the zone colour, the rock fade, the
+  snow crust's tone (`v_base_col`, folded in per vertex now) and the ripple and crack strengths (folded
+  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the colour noise, the detail fetch
+  and the plane it is taken on, the shadow fetch and the lighting. On llvmpipe the ground's shader
+  costs ~34 ms of a 107 ms ground-only frame against a plain material (1920x1080, alternated), the
+  detail block ~7-13 of it and the shadow ~5, and moving the shadow's window test to the vertices
+  showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
+  one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
+  phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
