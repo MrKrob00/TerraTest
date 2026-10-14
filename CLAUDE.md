@@ -1893,6 +1893,17 @@ project: read it before claiming how anything works.
   lives in `_ev_base`, cleared with the event like its party. It used to be a crate on a point.
   Measured on the proving ground: guard killed, guns shot off, ten seconds by it - done, the post gone
   and one player station standing.
+- **THE REPEATABLES FOLLOW TERRATECH'S BOARD** (the player's list). TECH GANG is three to five machines
+  (`quest_arcs.GANG_SIZE`, `_gang_spawn`; the party budget still trims it on a weak machine - on a
+  starter cabin it is one). COVER THE CONVOY is TWO MINUTES IN THE ZONE (`DEFEND_TIME`, the clock
+  running while the player is within `DEFEND_ZONE` of the ally, a second group of raiders at half
+  time), and the ally that held JOINS THE PLAYER (`_adopt_machine`: the same build born whole where it
+  stood as one of the player's machines, in `vehicles`, saved). SUPPLY DROP HAS THREE KINDS, rolled
+  per drop: open, bait (below), and a HIDDEN CACHE - the orb lies within `CACHE_SPREAD` of the mark
+  the compass leads to, a guard stands by it, and from the moment the player reaches the mark it wipes
+  itself in `CACHE_TIME` (150 s; the event is dropped and cools down). Measured on the proving ground:
+  the defended ally became a player machine after the clock; the hidden cache opened once its guard
+  died, and with its clock run out it went and the event was dropped.
 - **SUPPLY DROP'S REWARD IS AN ORB, NOT A CRATE** (`reward_orb.gd`): a 1 m sphere of the glitch cards a
   block appears with, `HOVER` 3 m over the point, every card living its own short cycle and reborn
   elsewhere in the sphere, so it never stands still. It opens by being stood next to —
