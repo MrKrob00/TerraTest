@@ -13,10 +13,10 @@ extends Node3D
 
 const BLOCK_SCENE := "res://blocks/scenes/block.tscn"
 const ATLAS := preload("res://objects/Assets_main_texture_new.png")
-const RADIUS := 13.0
-const CUBES := 10
-const CUBE_R := Vector2(3.5, 11.0)    # ring the cubes lie in round the start
-const CUBE_GAP := 1.8
+const RADIUS := 6.5
+const CUBES := 7
+const CUBE_R := Vector2(2.5, 5.5)     # ring the cubes lie in round the start, inside the burnt ground
+const CUBE_GAP := 1.5
 const COOL_TIME := 300.0
 const COOL_FLOOR := 0.45
 const HEAT_EVERY := 0.5               # s between pushes of the cooling heat

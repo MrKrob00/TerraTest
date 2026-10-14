@@ -2044,7 +2044,7 @@ project: read it before claiming how anything works.
   3 s later. WHERE THE PLAYER FIRST WAKES IS A SMOULDERING SPOT (`crash_site.gd`, raised once by
   `world_persist._fresh_start`; the player's call and picture): the Falsus block's model blackened and
   tumbled round the start, and the ground's OWN shader drawing charred plates with glowing cracks in a
-  13 m circle (`glsl.gdshader` `ember_spot` through `ChunkTerrain.set_ember_spot`: a Voronoi field's
+  6.5 m circle (`glsl.gdshader` `ember_spot` through `ChunkTerrain.set_ember_spot`: a Voronoi field's
   borders in world metres, computed per pixel inside a uniform branch, no grass on it), cooling over
   five minutes to under half. A patch drawn over the ground was tried first: to clear the grass it had
   to be pulled toward the camera and it darkened every block standing on it; per vertex the mask
