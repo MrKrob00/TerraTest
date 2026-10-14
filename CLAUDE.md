@@ -2884,6 +2884,14 @@ project: read it before claiming how anything works.
   showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
   one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
   phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
+- **THE GROUND'S PIXEL COST HAS THREE TEST SWITCHES** (garage SETTINGS, `Main.ground_opts` ->
+  `ChunkTerrain.ground_opts`, ALL OFF BY DEFAULT - off is the ground as drawn; the player's call after the
+  probe put the detail block at ~7 ms): no per-pixel colour hash (`NO_COLOR_NOISE`), the detail only out
+  to 80 m and faded before it instead of to the solid haze (`DETAIL_NEAR`), the detail on the ground's
+  plane everywhere so canyon walls streak (`ONE_PLANE`). DEFINES, NOT UNIFORMS: each combination is a
+  variant of the same code built once (`_variants`, with or without `FAST_GROUND`), every uniform
+  carried across - a uniform branch would still cost the fill. Checked on the real driver: every
+  variant compiles, lit and fast, and draws the same ground but for the detail (mean 1-2.6/255).
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
