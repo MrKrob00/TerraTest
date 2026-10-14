@@ -129,7 +129,8 @@ func _nearest_node(nodes: Array, from: Vector3) -> Variant:
 	var pts: Array = []
 	for n in nodes:
 		if n is Node3D and is_instance_valid(n):
-			pts.append((n as Node3D).global_position)
+			# a machine held for its drop hangs over its ring: lead to the ring's middle on the ground
+			pts.append(n.get_meta("drop_at") if n.has_meta("drop_at") else (n as Node3D).global_position)
 	return _nearest_of(pts, from)
 
 func _ore_positions() -> Array:

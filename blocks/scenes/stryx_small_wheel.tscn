@@ -1,0 +1,9 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://crx16mp6xjpvu" path="res://blocks/scenes/small_wheel.tscn" id="1_base"]
+
+[node name="wheel" instance=ExtResource("1_base")]
+block = 118
+weight = 10.0
+wheel_power = 1120.0
+metadata/stub_faction = "stryx"

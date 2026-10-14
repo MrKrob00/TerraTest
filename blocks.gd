@@ -72,10 +72,10 @@ var is_station: bool = false
 # block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
 # power, weapons - makes sense on a base.
 const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
-		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
+		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL, G.Block.AERO_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
-	return not _STATION_BANNED.has(bt)
+	return not _STATION_BANNED.has(G.base_block(bt))
 
 ## Can new_node attach to face attach_face of whatever stands in cell (nx,ny,nz)? We take the CELL,
 ## not a type: through it we reach the neighbour NODE and therefore its rotation - without rotation
@@ -142,7 +142,7 @@ func _place_carry() -> void:
 		var best := Vector3i.ZERO
 		var found := false
 		for c in map:
-			if not CARRY_BASES.has(int(map[c])) or not _is_anchor(c.x, c.y, c.z):
+			if not CARRY_BASES.has(G.base_block(int(map[c]))) or not _is_anchor(c.x, c.y, c.z):
 				continue
 			# the base's TOP, not its anchor's: a 2x2x2 base stands a cell higher than its anchor
 			var top: Vector3i = c
@@ -223,6 +223,11 @@ func _define_layout() -> void:
 		MARLIT_CUBE_1: _layout_marlit_cube(1)
 		MARLIT_CUBE_2: _layout_marlit_cube(2)
 		MARLIT_CUBE_3: _layout_marlit_cube(3)
+		AERO_RUNNER: _layout_aero_runner(true)
+		AERO_WRECK: _layout_aero_runner(false)
+		STRYX_TROOPER: _layout_stryx_trooper()
+		STRYX_HEAVY: _layout_stryx_heavy()
+		SPIDER_KING: _layout_spider_king()
 		_: _layout_default()
 
 ## THE MARLIT CHAMPION: the machine the player beats for Marlit's licence (quest_arcs, arc_yellow).
@@ -291,6 +296,79 @@ func _layout_marlit_champion() -> void:
 const STORY_SCOUT := 126
 ## A respawn once Marlit is licensed: Marlit's cabin alone, its kit falling round it (G.starter_kit).
 const MARLIT_CABIN_ONLY := 127
+
+## AERO AND STRYX MACHINES, of their stub blocks (G.STUB_BASE), outside the ladder: the quests that
+## send them size them. AERO_RUNNER is Aero's light car (the Pursuit's runner, Aero's own machines);
+## AERO_WRECK the same with its wheels gone (Stranded Racer). STRYX_TROOPER and STRYX_HEAVY are
+## Hawkeye's Cleanup Crew (Bird of Prey) and the bandit at Rock Creek; SPIDER_KING the anchored fort
+## at Crowntop Hill - rockets, lasers, a dome and a repair field on batteries and panels, so it is
+## weaker at night when the panels give nothing.
+const AERO_RUNNER := 128
+const AERO_WRECK := 129
+const STRYX_TROOPER := 130
+const STRYX_HEAVY := 131
+const SPIDER_KING := 132
+
+func _layout_aero_runner(wheels: bool) -> void:
+	set_block(5, 5, 5, G.Block.AERO_CABIN, 0.0)
+	set_block(5, 5, 4, G.Block.AERO_BLOCK, 0.0)
+	set_block(5, 5, 6, G.Block.AERO_BLOCK, 0.0)
+	if wheels:
+		for z in [4, 6]:
+			set_block(4, 5, z, G.Block.AERO_WHEEL, PI / 2)
+			set_block(6, 5, z, G.Block.AERO_WHEEL, -PI / 2)
+	set_block(5, 6, 4, G.Block.AERO_GUN, 0.0)
+
+func _layout_stryx_trooper() -> void:
+	set_block(5, 5, 5, G.Block.STRYX_CABIN, 0.0)
+	for z in [3, 4, 6]:
+		set_block(5, 5, z, G.Block.STRYX_BLOCK, 0.0)
+	for z in [4, 6]:
+		set_block(4, 5, z, G.Block.STRYX_BIG_WHEEL, PI / 2)
+		set_block(6, 5, z, G.Block.STRYX_BIG_WHEEL, -PI / 2)
+	set_block(5, 6, 3, G.Block.STRYX_GUN, 0.0)        # on the nose, nothing ahead of it
+	set_block(5, 6, 6, G.Block.STRYX_BLOCK, 0.0)      # the cannon a floor up, its line over the gun
+	set_block(5, 7, 6, G.Block.STRYX_CANNON, 0.0)
+
+func _layout_stryx_heavy() -> void:
+	set_block(5, 5, 5, G.Block.STRYX_CABIN, 0.0)
+	for x in [4, 5, 6]:
+		for z in [3, 4, 6]:
+			set_block(x, 5, z, G.Block.STRYX_BLOCK, 0.0)
+	set_block(4, 5, 5, G.Block.STRYX_BLOCK, 0.0)
+	set_block(6, 5, 5, G.Block.STRYX_BLOCK, 0.0)
+	for z in [3, 6]:
+		set_block(3, 5, z, G.Block.STRYX_BIG_WHEEL, PI / 2)
+		set_block(7, 5, z, G.Block.STRYX_BIG_WHEEL, -PI / 2)
+	# the battery in the middle, roofed by the dome, flanked; guns on the front corners
+	set_block(5, 6, 5, G.Block.STRYX_BATTERY, 0.0)
+	set_block(4, 6, 5, G.Block.STRYX_BLOCK, 0.0)
+	set_block(6, 6, 5, G.Block.STRYX_BLOCK, 0.0)
+	set_block(5, 6, 4, G.Block.STRYX_BLOCK, 0.0)
+	set_block(5, 6, 6, G.Block.STRYX_BLOCK, 0.0)
+	set_block(5, 7, 5, G.Block.STRYX_SHIELD, 0.0)
+	set_block(4, 6, 3, G.Block.STRYX_GUN, 0.0)
+	set_block(6, 6, 3, G.Block.STRYX_CANNON, 0.0)
+
+func _layout_spider_king() -> void:
+	set_block(5, 5, 5, G.Block.STRYX_ROT_SUPPORT, 0.0)
+	for x in [4, 5, 6]:
+		for z in [4, 5, 6]:
+			if x != 5 or z != 5:
+				set_block(x, 5, z, G.Block.STRYX_BLOCK, 0.0)
+	set_block(5, 6, 5, G.Block.STRYX_BLOCK, 0.0)       # the mast
+	set_block(4, 6, 5, G.Block.STRYX_BATTERY, 0.0)
+	set_block(6, 6, 5, G.Block.STRYX_BATTERY, 0.0)
+	set_block(4, 7, 5, G.Block.STRYX_SOLAR, 0.0)
+	set_block(6, 7, 5, G.Block.STRYX_SOLAR, 0.0)
+	set_block(5, 6, 4, G.Block.STRYX_REGEN, 0.0)
+	set_block(5, 6, 6, G.Block.STRYX_BLOCK, 0.0)
+	set_block(5, 7, 5, G.Block.STRYX_SHIELD, 0.0)
+	# four barrels on the corners, the front pair looking ahead, the rear pair behind
+	set_block(4, 6, 4, G.Block.STRYX_ROCKET, 0.0)
+	set_block(6, 6, 4, G.Block.STRYX_LASER, 0.0)
+	set_block(4, 6, 6, G.Block.STRYX_LASER, PI)
+	set_block(6, 6, 6, G.Block.STRYX_ROCKET, PI)
 
 func _layout_story_scout() -> void:
 	set_block(5, 5, 5, G.Block.CABIN, 0.0)
@@ -971,6 +1049,7 @@ func _retire_root_collider() -> void:
 ## отдавала ему пару клеток поперёк того места, где он стоял. Замерено: при любом повороте сетка
 ## выдавала (6,5,7) и (7,5,7), а коллизия лежала по z от 1.0 до 3.0.
 func _footprint_offsets(block: int) -> Array:
+	block = G.base_block(block)              # a stub stands on its Falsus base's cells
 	if block in [G.Block.PROCESSOR, G.Block.SELLER, G.Block.FABRICATOR, G.Block.SCRAPPER,
 			G.Block.MARLIT_BLOCK, G.Block.MARLIT_HALF, G.Block.MARLIT_GIRDER, G.Block.MARLIT_SOLAR,
 			G.Block.MARLIT_REGEN, G.Block.MARLIT_BATTERY, G.Block.MARLIT_GUN, G.Block.MARLIT_LASER,
@@ -1096,7 +1175,7 @@ static var _fitted: Dictionary = {}
 static func fitted_shape(block: int) -> Shape3D:
 	if _fitted.has(block):
 		return _fitted[block]
-	var path := "res://blocks/colliders/%s.tres" % G.Block.keys()[block]
+	var path := "res://blocks/colliders/%s.tres" % G.Block.keys()[G.base_block(block)]
 	var s: Shape3D = load(path) as Shape3D if ResourceLoader.exists(path) else null
 	_fitted[block] = s
 	return s

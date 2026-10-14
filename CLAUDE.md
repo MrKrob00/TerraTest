@@ -597,8 +597,7 @@ project: read it before claiming how anything works.
   inside a base.
 - **AN EMPTY VEIN IS NOT IN THE WAY** (`resource_node._set_solid`): the collider goes with the last
   ore (a felled tree's with its last wood) and comes back with the refill; a 3 m cylinder over rubble
-  and a 7 m trunk over a stump stopped machines and shots on air. A vein the auto miner holds stays
-  open the whole time. A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows,
+  and a 7 m trunk over a stump stopped machines and shots on air. A REFILL WAITS FOR A MACHINE TO LEAVE (TerraTech's rule for what regrows,
   `_spot_blocked`: the vein's own shape against MACHINES ONLY, layer 16), asking again every
   `BLOCKED_RETRY` - a collider switched on inside a machine throws it out with the solver's full
   force. Loose items and blocks are not asked: the vein's own thrown ore lies inside that shape, and
@@ -662,6 +661,17 @@ project: read it before claiming how anything works.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
+- **EVERY ORE VEIN HAS ITS OWN 3-5 ORE, ITS OWN ~15 S OF REST AND ITS OWN HP** (`resource_node.vein_stats`:
+  `ORE_COUNT`, `ORE_REST` 10-20 s, `HP_SPREAD` x0.75-1.25 of `max_hp`, drawn from the vein's ground
+  point, so a vein keeps its numbers through a restream and a reload; the player's balance - 600 ore
+  and 30 minutes' rest was tried and taken back; a tree still gives five wood and moves). An ore
+  leaves per max_hp / its count of damage, and the picture breaks by the share LEFT. WHAT IS LEFT
+  OUTLIVES THE NODE (`resource_nodes._ore_state`, keyed by the vein's ground point, only veins not
+  full): the node goes when the camera leaves and a region's records are rebuilt full from the seed,
+  so the state lives on the owner, the vein streams in with it (`restore_left` / `restore_wait`) and
+  the world save writes it with the seconds still to rest (`world_persist` "veins"). THE AUTO MINER
+  DIGS THE SAME STORE (`mine_for_claimer`, one miner a vein) and waits out the same rest; it goes
+  beside any ore vein.
 - THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
   energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
   whatever there is even when it is short, so the old "take and see" on one panel (6/s against the
@@ -683,7 +693,7 @@ project: read it before claiming how anything works.
   rock with a brush of thin crystals on top). AN ORE VEIN BREAKS, IT DOES NOT SHRINK (the
   player's call - shrinking read as a model getting smaller, and the ore going while its rock
   stayed was wrong first): every model is cut into parts, UV.x carries each part's break point
-  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, lined up with the five ores `resource_node` throws out),
+  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, by the share of the vein's ore still in it),
   and the shader collapses a part once the share (thrown ore, below) is at or under it - one mesh, one MultiMesh, no
   model swapped. What stays at zero is RUBBLE (UV.x below 0): the rock's low base, the crystals'
   broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
@@ -849,12 +859,31 @@ project: read it before claiming how anything works.
   target speed is measured between physics ticks.
 - Target scoring weighs proximity above the cabin (`SC_CABIN`) and adds a per-gun constant taste
   (`SC_TASTE`) so neighbouring guns do not converge on one block. THE CABIN'S WEIGHT IS SMALL - 10
-  against proximity's 100, under the weapons' 45 (the player: "the guns pick the cabin too often").
+  against proximity's 100, under the weapons' `SC_WEAPON` (the player: "the guns pick the cabin too often").
   At 55 an ally's guns held the cabin 91% of the time on a raider and 61% on a breaker, measured on
-  the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you, and its
-  guns are taken first.
-- Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
-  their own. Without spread, automatic aiming is an aimbot.
+  the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you. AN ENEMY
+  WEAPON WEIGHS 30 (was 45; the player: "pick the guns a third less often"), so the near hull wins
+  more of the ties and the guns are not always the first thing gone.
+- Spread is angular, PER BARREL (`spread_deg`) AND THE SAME AT ANY RANGE (TerraTech's spray, the
+  player's call): it used to shrink to a fifth of itself up close, and a gun beside its target never
+  missed. Shotgun and mortar disable the base spread and use their own. Without spread, automatic
+  aiming is an aimbot.
+- **PREDICTION IS A SWITCH ON MAIN** (`Main.aim_lead`, group "Aim", read live through `G.aim_flag` -
+  not a debug flag, `debug_overrides` does not gate it; no Main, the menu's fight: on). On, a gun aims
+  where its target WILL be (`WeaponBlock._lead_point`: the round's flight time times the target's
+  speed); off, where it IS - the drop is still allowed for. Measured on the engine, a target 51 m off
+  at 10 m/s sideways: the aim 4.86 m ahead of it on, 0.00 off, the same lift for the drop both ways.
+- **ROCKETS AND MORTAR SHELLS HOME IN PART** (TerraTech's; `WeaponBlock.homing_deg` / `homing_flat`,
+  `BulletSim._steer`): a shot turns toward the block its gun was aimed at by at most that many degrees
+  a second - the rocket 25 the whole direction, the mortar 6 its heading only (the arc stays the
+  gun's). The rest of TerraTech's accuracy was already here: a turn rate per barrel (`turn_speed`), a
+  muzzle velocity per round (the template's `speed`) and drop on ballistic rounds. Measured: a rocket
+  aimed 16.7 deg off its target came round onto it inside a second; a shell's heading turned, its
+  climb did not.
+  THE MACHINE GUN'S DROP WAS CUT (`gun.tscn` `flat_range` 20 -> 55 m, the player: "as you see fit"): at
+  20 its round fell 252 m/s², reached the ground 20 m out when fired flat, and the barrel stood
+  almost 30 m over a target 51 m away; now 33 m/s², 3.2 m over it - with the other rounds (Marlit gun
+  45, the template's 50). The Aero and Stryx guns inherit it.
 - The turret sector is per weapon (`WeaponBlock.yaw_limit` / `pitch_limit`, **variables**, not
   constants): a subclass narrows it in `_ready`, and `_is_in_cone` then gates acquisition and firing
   with no second check anywhere. Default 75°×40°.
@@ -1142,13 +1171,12 @@ project: read it before claiming how anything works.
   or the point, cools down and comes back at a NEW point `EV_POINT_DIST` (100-250 m) from the player
   and no nearer than `EV_BASE_CLEAR` (100 m) to any of their machines (`_event_point`) - a point a
   hundred metres from a player standing by their base could fall on the base. Story quests are not
-  events and keep their own rules. The duel kept its own state and was never dropped
-  (`_duel_abandoned` now). Measured: an event 600 m away went with its machines, the duel at 700 m.
+  events and keep their own rules. Measured: an event 600 m away went with its machines.
 - **EVENTS CARRY A FACTION, AND THE BOARD IS DRAWN BY FACTION** (`Q.current_events`, `_roster`,
   `_event_factions`; the player's rules). `EVENT_SLOTS` 3; one place is guaranteed to an event of the
   highest licensed faction, the rest are drawn at random and keep their place until done or dropped
   (drawing on every call would shuffle the journal); a faction at its last grade sends nothing once a
-  better one is open. Marlit's events (`event_msupply / mgang / mdefend / mwaves`, `Q._marlit_event`)
+  better one is open. Marlit's events (`event_msupply / mgang / mdefend`, `Q._marlit_event`)
   are Falsus's arcs under another key ("quest_mgang_1" -> "mgang"), so per-event state lives in
   dictionaries by key; the faction turns the build an event asked for into Marlit's of the same step
   (`quest_arcs._faction_preset`, `MARLIT_BY_STEP`: runner 121, raider 122, champion 120), fills a drop with Marlit blocks and takes the XP.
@@ -1160,7 +1188,26 @@ project: read it before claiming how anything works.
   by LiteTerrain too, to skip its collision window).
 - The first enemy of a save deals halved damage (`FIRST_ENEMY_DAMAGE`); the story scout gets that
   discount unconditionally and drops along the player's heading — the one deliberate inversion of
-  "never spawn in front" — but 115-135 m out, not 20-40: the clearance below holds for it too.
+  "never spawn in front" — 40-55 m out, INSIDE the clearance below (the player's call: "once the
+  player has moved, the scout spawns right by them, the ring first"; below, the Tutorial entry).
+- **EVERY DROPPING MACHINE IS ANNOUNCED BY A RING ON THE GROUND, `DROP_WARN` (3 s) AHEAD**
+  (`enemy_spawner._hold_for_drop` / `_release_drop`, `drop_ring.gd`, `resources/drop_ring.gdshader`;
+  the player's call). ONE DOOR for the stream, the scout, `spawn_at` (quests, raids, events, the panel)
+  and the sector-scan invader; bases stand and are not held. The machine is MADE AT ONCE - callers keep
+  their node, a quest counts it - but HELD over its point: frozen, hidden, process off, out of
+  `MachineBody.MACHINES` (no gun, AI or sun shadow sees it), collision layer 0, metas `drop_pending`
+  and `drop_at` (the ground point; `quest_compass` leads there while it is held). Then it is let go,
+  falls `drop_height` and materialises (`enemy_vehicle._materialise_on_spawn` skips while held; the
+  spawner calls it on release). The ring: ONE wide red ribbon of dashes draped on the ground at the
+  build's reach plus `DROP_RING_PAD` (4 m, a margin and not a multiple - the player's call; `_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside
+  `add_child`), FIVE dashes like the collector's reach ring (the player's call; a countdown arc filling
+  it and an inner ring read as a solid line), turning faster as the drop nears, the last second
+  blinking, cyan for an ally; it fades as the machine drops. THE VEHICLE CULL PASS SHOWED HIDDEN MACHINES AGAIN
+  (`world_persist._vehicle_render_tick` writes `visible` from the frustum): a held one hung in the air
+  over its ring, and every SLEEPER in the frustum had been drawn all along - it now leaves both hidden.
+  A held machine the dormancy pass puts to sleep stays asleep on release (`_wake` waits for the hold).
+  Measured on the proving ground: held 3 s (hidden, out of the group, layer 0), released, landed,
+  materialised, ring freed; Bird of Prey's crew drops as its capsules land (`BOP_FALL` = `DROP_WARN`).
 - **NO HOSTILE MACHINE IS BORN WITHIN 200 M OF THE PLAYER'S OWN** (`EnemySpawner.PLAYER_CLEAR`, the
   player's rule; it was 100, and a fresh world showed the duel, the stream and a miner at 127-213 m -
   "wherever I look at the start, enemies"; after, every hostile 247 m or more out, the stream's ring
@@ -1169,9 +1216,10 @@ project: read it before claiming how anything works.
   controller's `vehicles`. A point too close is MOVED OUT, not refused (`clear_point`: out along the
   line it lay on, then fanning to the sides), so an event that asked for an attack still gets one,
   from far enough to be seen coming. The door is `spawn_at` (every quest, raid and event), plus the
-  three that place their own: the stream ring (inner edge `PLAYER_CLEAR + CLEAR_PAD`, checked
+  two that place their own: the stream ring (inner edge `PLAYER_CLEAR + CLEAR_PAD`, checked
   against every own machine, not only the driven one), the sector-scan invader (it dropped 25 m
-  away) and the story scout. A party is moved AS A WHOLE before its members are placed
+  away); the story scout is the one exception (it lands by the player, its drop ring announcing it).
+  A party is moved AS A WHOLE before its members are placed
   (`_ev_spawn`, the duel), or each would be pushed its own way. Left alone: bases (`as_base`, they
   are the quest point), allies (faction 0), and the proving-ground panel's own spawn
   (`spawn_requested(..., free_place)`), whose point is the test. Measured: asked at 0 / 20 m - born
@@ -1452,10 +1500,10 @@ project: read it before claiming how anything works.
   wrong, and both undone: a setting nothing sets yet is still a setting, and its place is the
   material, where every uniform shows. The new file is TEXT and has no texture slot of its own. The
   node draws with a COPY (`_setup_materials`), and the copy takes from `biomes` the colours, rock,
-  snow, grass and canyon bands (`TerrainBiomes.apply_to_material`) and from the game the grass fade,
-  the trample and the corruption map - so those few are tuned in the biomes, and the same uniforms
+  snow, grass and canyon bands (`TerrainBiomes.apply_to_material`) and from the game the grass fade
+  and the trample - so those few are tuned in the biomes, and the same uniforms
   on the material are overwritten (as they always were); `grass_density` is back in the biomes'
-  Grass group. The corruption overlay keeps its uniforms as they are (the player's call). Checked on
+  Grass group. THE CORRUPTION OVERLAY IS GONE, shader and spreading map alike (`grass.gd` ran it). Checked on
   the real driver: three views of the game's ground, identical to the pixel through every one of
   these changes (only the sky's clouds, which run on time, differ).
 - LOD IN THE GAME WORLD IS CHUNK MERGING: a node of level L covers 2^L × 2^L chunks of 16 cells and
@@ -1520,6 +1568,16 @@ project: read it before claiming how anything works.
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
   recomputed on camera movement, not only on `LOD_INTERVAL`.
+- **A LOD TICK DOES ONLY WHAT CHANGED** (the player: "terrain lod up to 30 ms in fights"). Measured on
+  the optimize=none build, a fight next to the player with the camera turning: ~7 ms a tick, ~4 of it
+  `_retire` asking every built node out of the frame whether it is covered, every tick, and 25-30 ms
+  ticks when a new set of leaves made every node in the frame compute its seams at once. Now: a
+  node's cover is kept on it by `_cover_ep` (bumped by every door that changes the leaf set or the
+  built set); the whole built set is walked only when that epoch moved, the cap is passed or
+  `RETIRE_EVERY` went by, otherwise only the nodes that just left the frame (`_prev_want`); seams are
+  checked `STITCH_CHECKS` nodes a tick; and with the camera still and nothing landed the tick waits
+  `LOD_IDLE` instead of `LOD_INTERVAL`. The same fight: 1.26 -> 0.36 ms a frame, the worst tick
+  30 -> 17 ms.
 - WHICH NODES AND WHICH OF THEM ARE VISIBLE ARE TWO QUESTIONS, ASKED AT DIFFERENT RATES. Splitting
   a node depends ONLY on distance; the frustum decides only what is drawn. Asking both in one
   recursive descent per tick cost 6.6 ms — a third of a 60 fps frame, four times a second while
@@ -1721,17 +1779,17 @@ project: read it before claiming how anything works.
   killed one compares equal to null (rule 4) and was born again. Born on arrival they skip
   `clear_point` (`EnemySpawner.arrival`). Measured: nothing at 285 m, one at 65, none at 300, back at
   65, killed - the quest done. THE STREAM HOLDS AT `MAX_GROUPS` (2) groups awake - a party counts once
-  (`spawn_groups`). Allies, towers, cubes, the duel and carriers spawn as before; Hold Position is the
-  exception: its attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
-  launched the moment the first died, and a new attack out of a finished fight read as a spawn bug.
-  Every other event spawns its party once; a second spawn happens only after a reload, when the
+  (`spawn_groups`). Allies, towers, cubes and carriers spawn as before. **CROSSFIRE AND HOLD
+  POSITION ARE GONE** (the player's call: the duel and the wave on the player's position, Falsus's and
+  Marlit's `event_mwaves`); a save that holds their ids just never shows them.
+  Every event spawns its party once; a second spawn happens only after a reload, when the
   participant list (memory only) is gone.
 - **A "REACH X" STAGE ENDS WHEN THE PLAYER IS THERE (`quest_arcs._reached`, `REACH_DIST` 60 m), NOT
   WHEN X EXISTS.** Spawning early and reporting stage 1 used to be one line, so moving the spawn up
-  took the distance gate with it: every "Reach ..." stage (Crossfire, Tech Gang, Supply Drop, Cover
+  took the distance gate with it: every "Reach ..." stage (Tech Gang, Supply Drop, Cover
   the Convoy, Staging Point, Salvage, both towers) reported itself in the poll that spawned its
   enemies, and the tracker showed 2/2 the moment an event appeared. A stage that now WAITS must
-  also spawn ONCE: the duel is guarded by `_duel_sent`, the salvage guard by `_salvage_killed` (it
+  also spawn ONCE: the salvage guard by `_salvage_killed` (it
   hunts the player and is usually met on the way). Measured on the engine for five events: stage 1
   held at 244-275 m with no machines added, stage 2 at the point.
 - **QUESTS ARE POLLED ONLY ONCE THE WORLD IS UP** (`G.world_ready`: the terrain answers heights -
@@ -1830,6 +1888,71 @@ project: read it before claiming how anything works.
   three seconds before the first one landed. Nothing is handed out while the player is farther than
   `ORBIT_SEEN`: the orbit is the point, and nobody watches it from across the map. Measured: one
   copy the whole time, circling at 4.2 m, landing 2.7 m (panel) and 3.5 m (regen) from the base.
+- **AERO'S QUESTS ARE RACES, AND A RACE IS A COURSE OF STUB GATES** (`race_track.gd`, `quest_arcs`
+  COURSES / `_course_1` / `_course_2`; the player's call: no roads or checkpoints in the game, so a
+  frame 10 m wide and 7 m tall, two posts and a bar, no collider). A course is laid from a drivable
+  start (`_far_point`) leg by leg along the gentlest of nine turns (`_lay_course`; `climb` 1 prefers
+  rising ground, -1 falling, `slalom` swings every other gate aside, a leg back near an earlier gate is
+  refused). Gate 0 starts the clock, the rest are taken in order - a gate is passed when the player's
+  machine CROSSES its plane between the posts (last tick's position to this one, so no speed steps
+  over it); too slow and it is a failed run, and driving through the start gate again is the retry.
+  The next gate is lit, the clock and the count show at the top of the screen. RACE AGAINST TIME is
+  Aero's licence (`arc_aero`, offered by Marlit at its grade 4 - the licence chain, below): start to finish inside a minute, the
+  course KEPT in the world after it (`keep`, saved by `world_persist` "tracks", still timed). Aero's
+  story: PLATEAU RUN (a climbing course), STRANDED RACER (TerraTech's Mine Island Rescue, renamed: an
+  Aero wreck, `blocks.AERO_WRECK`, under attack - clear them off it), LOOSE GROUND (A Slippery Slope:
+  a course downhill). Aero's events: Checkpoint Race, Drag Strip, Slalom, and PURSUIT - a light
+  machine that RUNS from the player (`enemy_vehicle.runaway_from`, once they are within `RUN_NOTICE`)
+  and must die inside `CHASE_TIME` (60 s) of bolting. A course's limit is its length over its speed
+  plus `COURSE_SPARE`. NO RAMP JUMP: wheels read the terrain's heights and nothing else, so a ramp
+  would have to be a terrain edit, not a prop. Measured on the proving ground: every course laid and
+  run to done, a slow run failing and the next one through the start gate counting, the runner 63 m
+  off in five seconds and done when killed, the wreck's attackers killed - done.
+- **BIRD OF PREY IS STRYX'S LICENCE** (`arc_stryx`, offered by Aero at its grade 4, `quest_arcs._bop_*`;
+  TerraTech's Hawkeye licence, a STORY quest so it is guaranteed - the original drew it from a board):
+  a crashed capsule and burnt blocks at a point (a picture, nothing to pick up); within `BOP_NOTICE`
+  the Mechanic hears something and three capsules are SEEN falling from `BOP_HIGH` onto a ring round
+  the site (their crew asked for at once and held over its drop ring for exactly the fall), each setting down a "Cleanup Crew" machine (meta `display_name`, read by
+  `EnemyMarker.name_of` for the label and the death screen; spawned with `arrival`, so no 200 m
+  clearance) - two `STRYX_TROOPER` and a `STRYX_HEAVY`. All three dead, the licence. Measured on the
+  proving ground: three landed (11, 11, 24 blocks), killed - done.
+- **ROCK CREEK BRIDGE, QUIET JOB AND CROWNTOP HILL FORT** (the player's TerraTech list, renamed where
+  asked). ROCK CREEK BRIDGE (`mrock`, Marlit's story, grade 2; `quest_arcs._rock_*`): a toll keeper in
+  a heavy Stryx build waits on the crossing (`enemy_vehicle.standoff`: no search, no fire until shot
+  at). Within `ROCK_TALK` a question - pay `ROCK_TOLL` (2500$, the player's economy: the original's
+  100 000 against quests of 200-1200) and it drives off, or fight; crossing `ROCK_LINE` unpaid starts
+  the fight too, and beating it pays in Stryx blocks early (`ROCK_LOOT`). QUIET JOB (`stryx_quiet`,
+  TerraTech's "Wet Work"): a courier with two escorts waits; within `QUIET_NOTICE` it runs for a drop
+  `QUIET_RUN` on (`enemy_vehicle.travel_to`); dead before it arrives - done, arrived - the job starts
+  over. CROWNTOP HILL FORT (`stryx_crown`): the Spider King, an anchored Stryx fort ON A SUPPORT (the
+  player's call; `blocks.SPIDER_KING`) - rockets, lasers, a dome and a repair field fed by panels and
+  batteries, so at night the dome only drains - run on the shielded towers' branch (`CROWN`). No hover
+  rings. A STUB SUPPORT ANCHORS AS ITS BASE (`G.is_stationary` asks `base_block`): without it the fort
+  had no core and the watchdog took it the moment it stood. Measured on the proving ground: the keeper
+  waited, the question came at 120 m, crossing the line set it on the player, killed - done; paid -
+  money 5000 -> 2500, it drove off, done; the courier ran 75 m in six seconds, killed - done; the fort
+  21 blocks, brought down - done.
+- **TAKE THE STAGING POINT IS A REAL CAPTURE** (`quest_arcs._camp_1..3`, TerraTech's Capture Enemy
+  Base, the player's call): a hostile turret post (`CAMP_POSTS`, presets 13/14 - a rotating support,
+  battery, panels, dome, two guns) stands on the point with a guard party. Reach it; break the guard
+  and DISARM the post - every weapon shot off, its core alive (`_post_armed`); hold the point
+  `CAPTURE_HOLD` (10 s) within `CAPTURE_DIST` (15 m). Then the enemy machine goes and what is left of
+  it stands on the same ground as one of the player's stations (`_capture_post` -> `_spawn_station`,
+  saved like any base). A wrecked post (`_camp_lost`) drops the event and cools it down; the post
+  lives in `_ev_base`, cleared with the event like its party. It used to be a crate on a point.
+  Measured on the proving ground: guard killed, guns shot off, ten seconds by it - done, the post gone
+  and one player station standing.
+- **THE REPEATABLES FOLLOW TERRATECH'S BOARD** (the player's list). TECH GANG is three to five machines
+  (`quest_arcs.GANG_SIZE`, `_gang_spawn`; the party budget still trims it on a weak machine - on a
+  starter cabin it is one). COVER THE CONVOY is TWO MINUTES IN THE ZONE (`DEFEND_TIME`, the clock
+  running while the player is within `DEFEND_ZONE` of the ally, a second group of raiders at half
+  time), and the ally that held JOINS THE PLAYER (`_adopt_machine`: the same build born whole where it
+  stood as one of the player's machines, in `vehicles`, saved). SUPPLY DROP HAS THREE KINDS, rolled
+  per drop: open, bait (below), and a HIDDEN CACHE - the orb lies within `CACHE_SPREAD` of the mark
+  the compass leads to, a guard stands by it, and from the moment the player reaches the mark it wipes
+  itself in `CACHE_TIME` (150 s; the event is dropped and cools down). Measured on the proving ground:
+  the defended ally became a player machine after the clock; the hidden cache opened once its guard
+  died, and with its clock run out it went and the event was dropped.
 - **SUPPLY DROP'S REWARD IS AN ORB, NOT A CRATE** (`reward_orb.gd`): a 1 m sphere of the glitch cards a
   block appears with, `HOVER` 3 m over the point, every card living its own short cycle and reborn
   elsewhere in the sphere, so it never stands still. It opens by being stood next to —
@@ -1898,8 +2021,8 @@ project: read it before claiming how anything works.
   do not go into the save, so after a reload every arc's list is empty and every reference is gone;
   reading that as a win handed the quest over for free on the first poll, without a shot. Most arcs
   already had the branch (`_ev_all_dead`, `_camp_2`, `_gang_2`, `_defend_2`, `_tower_2`,
-  `_salvage_2`) — `_hold_2` and `_duel_2` did not, and both closed on reload; measured on the
-  engine. The duel needs a FLAG (`_duel_sent`) rather than a null test, because rule 4 applies:
+  `_salvage_2`) — `_hold_2` and the old duel did not, and both closed on reload; measured on the
+  engine. Such a check needs a FLAG rather than a null test, because rule 4 applies:
   a freed node and a lost reference both read false through `is_instance_valid`, so only something
   that lives in memory can tell "they killed each other" from "the scene restarted".
 - EVERY QUEST MACHINE ASKS THE SPAWNER THROUGH ONE DOOR, `quest_arcs._ask_spawner` (with
@@ -1921,8 +2044,32 @@ project: read it before claiming how anything works.
   SCOUT IS THE FIRST STORY QUEST (`story_first_blood`). Non-obvious gestures are a Mechanic line at
   the end. THE SCOUT HAS ITS OWN BUILD (`blocks.STORY_SCOUT`, 126: a cabin, one block, four small
   wheels, one machine gun - the player's call; a roll of the bottom step brought a shotgun and a gun
-  to a machine five minutes old) and COMES FOR THE PLAYER (`assign_target`): born `PLAYER_CLEAR` out
-  it would see nothing and fall asleep. Measured: 232 m at birth, 45 m fifteen seconds later, awake.
+  to a machine five minutes old) and COMES FOR THE PLAYER (`assign_target`). IT COMES WHEN THE PLAYER
+  DRIVES, RIGHT BY THEM (`tutorial_director._first_enemy_after_delay`, the player's call): after
+  `SCOUT_PAUSE`, once the machine has gone `SCOUT_MOVE` (12 m), it is asked `SCOUT_NEAR` (40-55 m)
+  ahead (`spawn_scout_near_player(..., near)`, no 200 m clearance) and its drop ring stands there 3 s
+  first; the quest is released with the ring, so the marker leads to the ring's middle. The STREAM
+  waits for it (`enemy_spawner._tutorial_active` asks `Q.is_held("story_first_blood")`), or a stream
+  machine would arrive first. Measured on a fresh world: nothing while the machine stood, the ring
+  51 m ahead a second after it drove 15 m, the compass on the ring's middle, the scout on the ground
+  3 s later. WHERE THE PLAYER FIRST WAKES IS A SMOULDERING SPOT (`crash_site.gd`, raised once by
+  `world_persist._fresh_start`; the player's call and picture): the Falsus block's model blackened and
+  tumbled round the start, and the ground under it charred plates with weakly glowing cracks in a
+  6.5 m circle, cooling over five minutes to under half. Not saved - a reload comes back without it.
+  **THE EMBERS ARE A PATCH OF THEIR OWN, NEVER THE GROUND'S SHADER** (`crash_site._patch`,
+  `resources/ember_patch.gdshader`, the crack texture baked by `art/ember_cracks.py`): they lived in
+  `glsl.gdshader` once (`ember_spot`, a Voronoi field per pixel) with the corruption overlay beside
+  them, and the player measured 18 fps with our shadows, 34 once both were out. Code in the ground's
+  fragment costs on the phone even where its branch is not taken - the ground is most of the screen
+  and the shader the fill (see Look and light) - and llvmpipe cannot rank it (its A/B rounds swung
+  both ways). So NOTHING GOES INTO `glsl.gdshader` FOR A SPOT: a local effect is a mesh of its own.
+  The patch is a grid on whole metres on the terrain's heights + 4 cm (and a few cm toward the camera
+  in depth), ONE fetch of a 256 px texture (R crack distance, G the plate's number, B grain - all
+  else is multiplies), stretches of crack gone cold, ash toward the rim, unlit glow so it shows at
+  night. THE GRASS UNDER IT IS PRESSED FLAT (`grass.press_zone`, a still disc on the trample map at
+  `ZONE_PRESS` 0.55 - 0.5 takes a blade's lift to exactly zero): a patch over the lifted meadow had
+  to be pulled 0.3 m toward the camera and darkened every block on it, and a blade through it is a
+  tuft growing out of the coals. Checked on the real driver: no grass through it, the cracks lit.
 
 ### The proving ground
 
@@ -2288,6 +2435,12 @@ project: read it before claiming how anything works.
   anchors alone the overlay was 0 x 0 and every drag went to the button under the finger. Measured
   on the real driver: ATTACK dragged 600 x 300 px, kept as (0.42, 0.23), muted while edited, taking a
   finger at its new place after DONE, kept by a relayout, back on its anchors after RESET.
+- **THE FPS COUNTER IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A CANVAS LAYER OF ITS OWN**
+  (`hud._fps_lbl`, `FPS_LAYER` 90; the player's call): it was a 48 px number in the top middle inside
+  the HUD, which the garage - a child of the HUD added last - covered. Over everything it shows in the
+  garage too; `G.show_fps` (garage SETTINGS -> INTERFACE, kept in `settings.json`) hides it. A tap
+  still opens the profiler, except over the garage, where it lets taps through (`MOUSE_FILTER_IGNORE`
+  while the garage is open). The text is set every `FPS_EVERY` and only when the number changed.
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
   `DragWindow.attach(window, handle, id)` — and it owns the drag, the remembered place
@@ -2482,6 +2635,15 @@ project: read it before claiming how anything works.
 - `SHOP_MARKUP` > 1 is the rule that keeps crafting worth doing.
 - Shop sales are discounts only, on unlocked blocks only, applied by `shop_price_now`;
   `shop_price` stays the base because machine value is measured with it.
+- **THE SHOP IS A WINDOW RESTOCKED ONCE A GAME DAY** (`G.roll_shop_stock`, `SHOP_DAY` 1200 s - the day
+  cycle's length; the player's balance): only researched blocks, and of those a grade-1 block of its
+  faction is BASIC - always there, endless; grades 2-3 come up on a day with `SHOP_MID_CHANCE`, 2-4 of
+  them; grade `SHOP_TOP_GRADE` (4) and over with `SHOP_TOP_CHANCE`, one or two. A bought block comes
+  off the count (`shop_take`) and leaves the window at zero; `shop_count` is the one question the
+  garage asks (0 not offered, -1 endless). The window and the seconds to the next restock ride in the
+  progress save ("shop"), so a reload does not reroll it; the day runs only while the world is up
+  (in the menu a restock would write progress into a slot about to be deleted). The day's three
+  discounts fall on blocks in the window. The proving ground's shop is everything, endless.
 
 ### Look and light
 
@@ -2740,6 +2902,14 @@ project: read it before claiming how anything works.
   showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
   one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
   phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
+- **THE GROUND'S PIXEL COST HAS THREE TEST SWITCHES** (garage SETTINGS, `Main.ground_opts` ->
+  `ChunkTerrain.ground_opts`, ALL OFF BY DEFAULT - off is the ground as drawn; the player's call after the
+  probe put the detail block at ~7 ms): no per-pixel colour hash (`NO_COLOR_NOISE`), the detail only out
+  to 80 m and faded before it instead of to the solid haze (`DETAIL_NEAR`), the detail on the ground's
+  plane everywhere so canyon walls streak (`ONE_PLANE`). DEFINES, NOT UNIFORMS: each combination is a
+  variant of the same code built once (`_variants`, with or without `FAST_GROUND`), every uniform
+  carried across - a uniform branch would still cost the fill. Checked on the real driver: every
+  variant compiles, lit and fast, and draws the same ground but for the detail (mean 1-2.6/255).
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
@@ -2972,9 +3142,9 @@ project: read it before claiming how anything works.
   with a static belt. Rejected on the way, in order: a plate on a post, a platform block, round
   saucers, a half-saucer - thin, lower than the belt, and rounder than the plate the player meant.
   THE GLASS COLUMN OVER BOTH BLOCKS IS GONE (the player's call); the cargo stack stands over the pad
-  on its own. A RECEIVER EMPTIES A COLLECTOR (`Receiver.take_interval` 0.25, takes until full,
-  `capacity` 8): it took one item a second and stopped at four - measured, a full collector's eight
-  move in the first quarter second. **THE COLLECTOR'S AND THE RECEIVER'S RING IS THEIR REACH, ON THE GROUND**
+  on its own. A RECEIVER TAKES THREE ITEMS A SECOND FROM A COLLECTOR (`Receiver.take_interval` 0.33, one a
+  tick, `capacity` 8; the player's rate): it took one a second and stopped at four, then emptied a
+  whole collector in one tick. **THE COLLECTOR'S AND THE RECEIVER'S RING IS THEIR REACH, ON THE GROUND**
   (`blocks/scripts/reach_ring.gd`, one child node per block, `blocks/collector_ring.gdshader`; the
   player's calls: "it should turn at the pickup radius, on the ground", then the receiver's old torus
   hanging at block height swapped for the same ring). A NODE OF ITS OWN, ticking on its own: a factory
@@ -3097,7 +3267,10 @@ project: read it before claiming how anything works.
   box would stop shots on air there; that cell joins on nothing (`connect_defaults`). Measured: cells,
   mesh and collider span one box at 0/90/180/270 (the halves' mesh 0.11 m short at the acute tips,
   where the chamfer cuts them - inside the collider, as it must be); a block beside the empty cell
-  does not join, beside the bottom-front one it does. A FACTION IS LICENSED BY A STORY QUEST
+  does not join, beside the bottom-front one it does. **THE LICENCES ARE A CHAIN** (the player's
+  rule): Marlit's quest opens at Falsus grade 4, Aero's at Marlit grade 4, Stryx's at Aero grade 4 -
+  each licence quest carries the PREVIOUS faction as its `faction` and `req_grade` 4, so `_grade_ok`
+  asks that faction's licence and grade, and no `requires` sits on top. A FACTION IS LICENSED BY A STORY QUEST
   (`G.FACTION_LICENCE`, read off `quests_done` - no second list): until then its blocks cannot be
   researched (`research_lock_code` "licence"); trophies bolt on as always. `grant_licence` hands
   the faction's root blocks over researched. THE TECH TREE HAS ONE PAGE PER LICENSED FACTION
@@ -3123,13 +3296,45 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
-- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, NAMES AND EMBLEMS ONLY** (`G.FACTIONS` "aero" /
-  "stryx", `images/faction_aero.png` / `faction_stryx.png` - the player's emblems, already on a
-  transparent background, cut to their bounds at 256 px: Aero's shield of three bands, Stryx's
-  armoured owl with red eyes). No blocks, no quests: their licence quests (`FACTION_LICENCE` "arc_aero" / "arc_stryx")
-  are not written, so both stay closed outside the proving ground, and A FACTION WITH NO BLOCKS HAS NO
-  TREE PAGE (`G.faction_has_blocks`, asked by the tech tree's switch and header). The style their
-  models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
+- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, AND THEIR BLOCKS ARE STUBS** (`G.FACTIONS` "aero" /
+  "stryx", `images/faction_aero.png` / `faction_stryx.png` - the player's emblems: Aero's shield of
+  three bands, Stryx's armoured owl with red eyes). THE PLAYER'S CALL: "a heap of stubs, every block
+  as Marlit has", Aero light with fewer hit points and lighter, slightly softer guns, Stryx Falsus's
+  weight with the weight on damage and protection. So each faction has 28 blocks (`AERO_*` 79-106,
+  `STRYX_*` 107-134: cabin, hull, half blocks and wedge, four plates, three wheels, six weapons, the
+  drill, solar, battery, repair field, shield, charger, both supports), each its FALSUS BASE'S SCENE
+  INHERITED (`blocks/scenes/aero_*.tscn`, `stryx_*.tscn`: only `block`, a wheel's `weight` and
+  `wheel_power`, and meta `stub_faction`), and TINTED (`blocks/scripts/stub_tint.gd`, on
+  SCENE_INSTANTIATED so the portrait studio gets it too): every model mesh is swapped for a cached
+  copy whose materials' colour is times the faction's `tint` - the MESH, not an override, since the
+  artist's plates carry two materials and an override has one; the copies batch and light like
+  Falsus's. Their numbers: hit points their base's x0.7 (Aero) / x1.3 (Stryx), weight x0.75 (Aero's
+  weapons x0.7) / x1.0, damage `G.FACTION_DAMAGE` 0.85 / 1.2 at `WeaponBlock._scale_damage`, Aero's
+  wheels pull x1.2; recipes, grades and RP are the base's, the tree shaped like Marlit's off the cabin,
+  the licence handing over cabin, block and small wheel (Aero) / gun (Stryx). WHAT A STUB IS, IT IS
+  BY ITS BASE (`G.STUB_BASE`, `G.base_block`): footprint, fitted collider, damage class, drop chance,
+  "is it a drill / solar / carry base / banned on a station"; the lists the game reads directly
+  (cabins, supports, batteries, wheels, the categories) name the stubs. A faction's own model
+  replaces a stub's scene, and its `STUB_BASE` row goes. The enum is contiguous (keys are indexed
+  by value). Measured on the proving ground: Aero block 175 hp / 9 kg, Stryx block 325 / 12, Aero gun
+  22 a shot, Stryx gun 31 (Falsus 26), Aero wheel 3120 power, a stub plate's cells the Falsus plate's.
+  The style their OWN models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
+  **THE FIRST OWN MODEL IS THE AERO LIGHT WHEEL** (`AERO_WHEEL`, "Aero Light Wheel"; `art/aero_wheels.py`,
+  `blocks/scripts/aero_wheel.gd`; the player's pick of round one's drafts, "basic and light"): an open
+  formula corner in ONE cell - a white trapezoid mount on the back face, two PARALLEL aerofoil A-arms
+  and a drive shaft with CV boots between them (they only turn about X), a blue upright that only moves
+  and steers about the kingpin through the tyre's middle, a coilover with an orange spring from the
+  upper arm to a turret on the mount, an 18-sided slick with an orange band on a white ten-spoke rim.
+  The script reads the generator's numbers, measured on the engine equal to its poses (7e-8) at rest,
+  steered and at both ends of the travel. The stub's numbers stay (15 kg, 3120 pull, travel 0.22, load
+  190), ride height 0.88 off the tyre; its `STUB_BASE` row went, so it is named in `_STATION_BANNED`
+  itself and collides as its own fitted hull (`blocks/colliders/AERO_WHEEL.tres`, 13% of the box). THE
+  TYRE NODE (%wheel) IS TURNED SO ITS X IS THE AXLE (wheel.gd rolls about it) and the mesh under it,
+  `Tyre`, is turned back into the generator's frame - the name also keeps the collider fitter off it.
+  Measured on the proving ground, the Aero runner (128) on four: lands from the 10 m drop 3 of 3 and
+  rides at 0.865 m, driving 8-18 m/s. A DROP OF 40 M PUNCHES ANY MACHINE THROUGH THE GROUND, and whether
+  it climbs back out is luck of the colliders: the stub runner stayed buried 1 of 3, this one 3 of 3 -
+  only a harness spawning off a hovering machine drops that far.
 - **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
   the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
@@ -3194,7 +3399,7 @@ project: read it before claiming how anything works.
   a core on a pedestal, then in the repair unit's porthole shell ("you copied the repair unit").
   Measured on the proving ground: dome 6 m, 100 damage cost 48 energy, three covered faces shut and
   three open with the emitter swollen, a loose block 6.5 m away healed 17 a tick.
-- **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", after Hold the Line;
+- **MARLIT'S LICENCE IS WON IN A FIGHT** (`arc_yellow`, "Marlit's Champion", at Falsus grade 4;
   `quest_arcs._yellow_1`; the id is kept, saves and `G.FACTION_LICENCE` key on it). The player's
   design: Marlit's champion (`blocks.MARLIT_CHAMPION`, preset 120) appears `YELLOW_DIST` (200 m)
   from the player and the licence is granted when it dies. A Marlit hull round a cabin, four
@@ -3355,13 +3560,9 @@ project: read it before claiming how anything works.
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
-  (`pulse`) as each repair lands. **IT IS UP ONLY WHILE THERE IS WORK IN IT** (the player: "nothing to
-  repair in its radius - the sphere goes"): something in reach missing hit points at the last tick
-  (`_busy`) or digits still flying; it eases in and out over `FIELD_FADE` and is HIDDEN once out - a
-  sphere that size is a transparent pass over much of the screen, paid for nothing on an idle unit.
-  Unmounted or unpowered it is off at once (`_field_off`). Measured on the engine: hidden while idle,
-  up 0.24 s after a block in reach was shot (the next tick), the hit points landed, then faded out
-  and hidden. THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
+  (`pulse`) as each repair lands. **IT IS UP WHENEVER THE UNIT IS MOUNTED AND POWERED** (the player's call: "only while there is
+  something to mend" was tried and taken back - the field says the unit works); it eases in over
+  `FIELD_FADE`, and unmounted or unpowered it is off at once (`_field_off`). THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
   per `HP_PER_DIGIT` (5) hit points mended, at least one per block, at most `DIGITS_MAX_PER_HEAL`;
   a block mended again while its digits fly gets its own new ones in the same group. They appear
   ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink

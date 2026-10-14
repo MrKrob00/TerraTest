@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://rotsupport1a" path="res://blocks/scenes/rot_support.tscn" id="1_base"]
+
+[node name="RotSupport" instance=ExtResource("1_base")]
+block = 106
+metadata/stub_faction = "aero"

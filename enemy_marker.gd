@@ -67,11 +67,17 @@ const ALERT_TIME := 3.0                    # gathers, holds, and is gone three s
 static func name_for(id: int) -> String:
 	return "%s %s" % [ADJ[absi(id) % ADJ.size()], NOUN[absi(id / ADJ.size()) % NOUN.size()]]
 
+## A machine's name: one a quest gave it (meta `display_name`, "Cleanup Crew"), else the generator's.
+static func name_of(v: Object) -> String:
+	if v != null and v.has_meta("display_name"):
+		return TranslationServer.translate(String(v.get_meta("display_name")))
+	return name_for(int(v.get_instance_id()) if v != null else 0)
+
 func _ready() -> void:
 	_diamond(PIN_OUTLINE, Color(0, 0, 0, 0.85), 0)
 	_pin = _diamond(PIN_DIAG, COL, 1)
 	_pin_mat = _pin.material_override as StandardMaterial3D
-	_name = _label(name_for(int(vehicle.get_instance_id()) if vehicle else get_instance_id()),
+	_name = _label(name_of(vehicle) if vehicle else name_for(get_instance_id()),
 			64, -0.55)
 	_build_plate()
 
