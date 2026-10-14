@@ -1,3 +1,4 @@
+
 shader_type spatial;
 render_mode diffuse_lambert, specular_disabled;
 // THE FAST GROUND (ChunkTerrain.fast_ground, on while shadows are off): the same code with this line
