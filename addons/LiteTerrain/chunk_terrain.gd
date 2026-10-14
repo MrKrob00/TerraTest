@@ -2576,19 +2576,39 @@ func _covered(key: int) -> bool:
 	# live node that is itself hidden covers nothing - by it a whole chain would hide. The leaf set,
 	# not the frame: a split builds all its children (_enqueue_under), the ones off the screen too,
 	# and a built leaf is drawn whether or not it is in the frame.
-	var pk := _key(l + 1, gx >> 1, gz >> 1)
-	if l < MAX_LOD and _leaf_set.has(pk) and _live.has(pk):
-		return true                    # стали грубее: накрывает родитель
-	if l > 0:
-		var all := true
-		for dz in 2:
-			for dx in 2:
-				var ck := _key(l - 1, gx * 2 + dx, gz * 2 + dz)
-				if not (_leaf_set.has(ck) and _live.has(ck)):
-					all = false
-		if all:
-			return true                # стали мельче: накрывают все четверо детей
-	return false
+	# ANY ANCESTOR AND ANY DEPTH BELOW, not only the parent and the four children: a node replaced
+	# by leaves two levels finer (a fast drive, a respawn, the sub-pixel rule) was "not covered",
+	# stayed drawn over the fine ground - another shape and colour, no collision under it - and near
+	# the player nothing is ever dropped, so it stood there until the player drove away (the
+	# player's "two maps with different seeds, only one with physics").
+	var al := l + 1
+	var ax := gx >> 1
+	var az := gz >> 1
+	while al <= MAX_LOD:
+		var ak := _key(al, ax, az)
+		if _leaf_set.has(ak):
+			return _live.has(ak)                 # стали грубее: накрывает предок
+		al += 1
+		ax >>= 1
+		az >>= 1
+	return l > 0 and _covered_below(l, gx, gz)
+
+## Every leaf under (lod, gx, gz) is in the leaf set and built (the node itself not counted).
+func _covered_below(lod: int, gx: int, gz: int) -> bool:
+	if lod <= 0:
+		return false
+	for dz in 2:
+		for dx in 2:
+			var cl := lod - 1
+			var cx := gx * 2 + dx
+			var cz := gz * 2 + dz
+			var ck := _key(cl, cx, cz)
+			if _leaf_set.has(ck):
+				if not _live.has(ck):
+					return false
+			elif not _covered_below(cl, cx, cz):
+				return false
+	return true
 
 func _retire(now: float) -> void:
 	var over: int = _live.size() - LIVE_CAP

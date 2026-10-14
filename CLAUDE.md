@@ -1507,7 +1507,10 @@ project: read it before claiming how anything works.
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
   stood — that is what "chunks disappear while I drive" was. Cover counts only a tree neighbour the
-  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. `FRUSTUM_MARGIN` is METRES and widens, but ONLY ON THE SIDE
+  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. COVER IS
+  ASKED OF ANY ANCESTOR AND THE WHOLE SUBTREE (`_covered`, `_covered_below`), not only the parent and the four
+  children: a node replaced by leaves two levels finer stayed drawn over them, and near the player
+  nothing is dropped. `FRUSTUM_MARGIN` is METRES and widens, but ONLY ON THE SIDE
   PLANES — on the near plane a positive margin means literally "draw what is behind the camera",
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
