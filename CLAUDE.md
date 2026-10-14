@@ -1568,6 +1568,16 @@ project: read it before claiming how anything works.
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
   recomputed on camera movement, not only on `LOD_INTERVAL`.
+- **A LOD TICK DOES ONLY WHAT CHANGED** (the player: "terrain lod up to 30 ms in fights"). Measured on
+  the optimize=none build, a fight next to the player with the camera turning: ~7 ms a tick, ~4 of it
+  `_retire` asking every built node out of the frame whether it is covered, every tick, and 25-30 ms
+  ticks when a new set of leaves made every node in the frame compute its seams at once. Now: a
+  node's cover is kept on it by `_cover_ep` (bumped by every door that changes the leaf set or the
+  built set); the whole built set is walked only when that epoch moved, the cap is passed or
+  `RETIRE_EVERY` went by, otherwise only the nodes that just left the frame (`_prev_want`); seams are
+  checked `STITCH_CHECKS` nodes a tick; and with the camera still and nothing landed the tick waits
+  `LOD_IDLE` instead of `LOD_INTERVAL`. The same fight: 1.26 -> 0.36 ms a frame, the worst tick
+  30 -> 17 ms.
 - WHICH NODES AND WHICH OF THEM ARE VISIBLE ARE TWO QUESTIONS, ASKED AT DIFFERENT RATES. Splitting
   a node depends ONLY on distance; the frustum decides only what is drawn. Asking both in one
   recursive descent per tick cost 6.6 ms — a third of a 60 fps frame, four times a second while
@@ -2874,6 +2884,14 @@ project: read it before claiming how anything works.
   showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
   one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
   phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
+- **THE GROUND'S PIXEL COST HAS THREE TEST SWITCHES** (garage SETTINGS, `Main.ground_opts` ->
+  `ChunkTerrain.ground_opts`, ALL OFF BY DEFAULT - off is the ground as drawn; the player's call after the
+  probe put the detail block at ~7 ms): no per-pixel colour hash (`NO_COLOR_NOISE`), the detail only out
+  to 80 m and faded before it instead of to the solid haze (`DETAIL_NEAR`), the detail on the ground's
+  plane everywhere so canyon walls streak (`ONE_PLANE`). DEFINES, NOT UNIFORMS: each combination is a
+  variant of the same code built once (`_variants`, with or without `FAST_GROUND`), every uniform
+  carried across - a uniform branch would still cost the fill. Checked on the real driver: every
+  variant compiles, lit and fast, and draws the same ground but for the detail (mean 1-2.6/255).
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
@@ -3524,13 +3542,9 @@ project: read it before claiming how anything works.
   `regen_field.gdshader`, `regen_digit.gdshader`; the player's design). The field is exactly
   `field_radius`: a bright rim, parallels and meridians fading toward the middle of the disc, a band
   sliding between the poles that lights the grid as it passes, and a brighter rim for a moment
-  (`pulse`) as each repair lands. **IT IS UP ONLY WHILE THERE IS WORK IN IT** (the player: "nothing to
-  repair in its radius - the sphere goes"): something in reach missing hit points at the last tick
-  (`_busy`) or digits still flying; it eases in and out over `FIELD_FADE` and is HIDDEN once out - a
-  sphere that size is a transparent pass over much of the screen, paid for nothing on an idle unit.
-  Unmounted or unpowered it is off at once (`_field_off`). Measured on the engine: hidden while idle,
-  up 0.24 s after a block in reach was shot (the next tick), the hit points landed, then faded out
-  and hidden. THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
+  (`pulse`) as each repair lands. **IT IS UP WHENEVER THE UNIT IS MOUNTED AND POWERED** (the player's call: "only while there is
+  something to mend" was tried and taken back - the field says the unit works); it eases in over
+  `FIELD_FADE`, and unmounted or unpowered it is off at once (`_field_off`). THE DIGITS COUNT THE HEAL, NOT THE BLOCKS (the player): one 0/1 card
   per `HP_PER_DIGIT` (5) hit points mended, at least one per block, at most `DIGITS_MAX_PER_HEAL`;
   a block mended again while its digits fly gets its own new ones in the same group. They appear
   ANYWHERE IN THE FIELD (uniform in its volume - leaving the core they read as a fountain), blink
