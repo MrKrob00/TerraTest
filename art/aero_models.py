@@ -1,31 +1,30 @@
 #!/usr/bin/env python3
-"""AERO'S BASIC BLOCK AND STANDARD WHEEL, built by the brief in docs/ART_STYLE.md ("Aero"). DRAFTS for
-the player's approval: generator only, not wired into the game.
+"""AERO'S BASIC BLOCK AND STANDARD WHEEL, after the player's reference pictures (TerraTech's racing
+corporation: a red cap, white sides, a blue skirt). DRAFTS for the player's approval: generator only,
+not wired into the game.
 
-    python3 art/aero_models.py [aero_block|aero_wheel]
+    python3 art/aero_models.py [aero_block|aero_wheel|aero_block_ref|aero_wheel_ref]
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part, at its pivot)
 
-The same block's second version is built in Blender (art/aero_blender.py), so the two ways of making
-a model can be compared on one design.
+Two palettes over one shape: AERO (the emblem: blue cap, white, orange skirt) and REF (the pictures'
+red cap, white, blue skirt) - the player picks.
 
-THE TEXTURE IS PAINTED IN THE BLOCK'S OWN SPACE: every texel is mapped back to the 3D point it lands
-on, so the three bands (blue top, white middle, orange bottom) run straight across faces, chamfers
-and neighbouring blocks - the emblem's bands, dipping into a V in the middle of every side face, so a
-row of blocks reads as a row of chevrons. The fold of the emblem - its left half a shade lighter than
-the right - is kept on every face. Chamfers are 0.035 m (half of Falsus's), painted as the glint:
-pure white on the white band, a light tint of the band elsewhere.
+THE FIRST CUT (a chamfered cube painted in bands, a racing pylon with wishbones) was turned down: "the
+block is too cubic, the transmission is horrible". What the pictures say instead, and what this builds:
 
-BLOCK - a full chamfered cube (it joins on every face, so every wall is on its cell's face): on every
-side face the bands, a bold black chevron in the white band and three vent slots in each half of the
-orange band; the top blue, the bottom orange.
+BLOCK - a BULLNOSE: a thick cap swept over the top and rolled down over the front edge (a quarter
+ellipse), its side edges chamfered, the cap's back end split into two EARS round a V notch; under it
+a white body set 3 cm in from the side faces, and a full-width skirt along the bottom whose front
+slopes back under the nose. Back, bottom and sides stay flat on the cell's faces; the front and top
+are the shape.
 
-WHEEL - the standard wheel's size and place (tyre r 0.5 round (0, -0.385, -0.25), bolted on by its
-BACK face like every wheel) on a racing car's corner: a tapered PYLON on the hull face, two flat
-aerofoil WISHBONES and a push rod out to an UPRIGHT inside the tyre's line, and a 12-sided slick
-with a recessed titanium rim of six spokes.
-  aero_wheel_body    the pylon (still)
-  aero_wheel_arm     wishbones, push rod, upright and axle, about ARM_PIVOT (swings with the suspension)
-  aero_wheel_tyre    tyre and rim about TC (spins about Z)
+WHEEL - a FENDER, not a suspension: a cap swept over the top of the tyre (a ridge along it) from the
+hull face out past the tyre's outer face, and under it, inboard of the tyre, a hull-shaped body whose
+lower corners run out to points at the cell's ends (the pictures' blue winglets). The tyre is the
+standard wheel's size and place (r 0.5 round (0, -0.385, -0.25), bolted on by the BACK face), a
+knobbly tyre: sixteen lugs staggered across the tread, a white recessed hub.
+  aero_wheel_body    fender and body (still)
+  aero_wheel_tyre    tyre and hub about TC (spins about Z)
 """
 import json
 import math
@@ -41,238 +40,371 @@ import emitter_models as em  # noqa: E402
 Image = th.Image
 DENS = 48.0
 PAD = th.PAD
-C = 0.035                      # the Aero chamfer (Falsus 0.067)
+C = 0.035                      # the Aero chamfer
 
-# the emblem's colours, the darker one for the right half of the fold
-BLUE = ((14, 188, 232), (6, 156, 206))
-WHITE = ((244, 245, 248), (224, 227, 233))
-ORANGE = ((252, 94, 10), (228, 70, 12))
-GLINT = {"b": (120, 222, 248), "w": (255, 255, 255), "o": (255, 160, 96)}
-INK = (14, 14, 18)
-VENT = (58, 60, 68)
-RUBBER = (30, 30, 35)
-TITAN = ((184, 190, 200), (158, 164, 176))
-CARBON = (36, 38, 45)
-
-BAND = 1.0 / 6.0               # the white band's half height at a face's edge
-DIP = 0.10                     # how far the bands dip in a face's middle (the emblem's V)
+PALETTES = {
+    "aero": {"top": (16, 176, 226), "mid": (240, 242, 246), "low": (246, 96, 18)},
+    "ref": {"top": (226, 52, 58), "mid": (240, 242, 246), "low": (64, 104, 182)},
+}
+INK = (18, 18, 24)
+RUBBER = (34, 33, 38)
+LIGHT = None                   # set below: the painted light, front-top-left
 
 
-# ── painting ────────────────────────────────────────────────────────────────────────────────────
-
-def band_at(y, h):
-    """Which band a point of a side face is in: y its height in the block, h its place across the
-    face (-0.5..0.5). The boundaries dip by DIP in the middle."""
-    dip = DIP * (1.0 - 2.0 * min(abs(h), 0.5))
-    if y > BAND - dip:
-        return "b"
-    if y < -BAND - dip:
-        return "o"
-    return "w"
+def _lit(n):
+    """The painted light: a fixed sun from the front, up and left, so a curved cap reads as curved."""
+    return 0.80 + 0.30 * max(th.dot(n, LIGHT), 0.0) - 0.10 * max(-n[1], 0.0)
 
 
-def band_col(b, h):
-    pair = {"b": BLUE, "w": WHITE, "o": ORANGE}[b]
-    return pair[0] if h < 0 else pair[1]
+def _tone(c, k):
+    return th.shade(c, k)
 
 
-def across(P, n):
-    """A side face's horizontal coordinate, -0.5 at its left edge seen from outside."""
-    right = th.norm(th.cross((0, 1, 0), n)) if abs(n[1]) < 0.9 else (1, 0, 0)
-    return -th.dot(P, right)
+def paint(pal, style, P, n, d, part_origin):
+    top, mid, low = pal["top"], pal["mid"], pal["low"]
+    k = _lit(n)
+    if style == "cap":
+        return _tone(top, k)
+    if style == "cap_edge":
+        return _tone(top, k * 1.14)
+    if style == "cap_end":
+        return _tone(top, k * 0.82)
+    if style == "ridge":
+        return _tone(top, k * 1.18)
+    if style == "under":
+        return _tone(top, 0.45)
+    if style in ("side", "body"):
+        if style == "side" and _arrow(P):
+            return INK
+        return _tone(mid, max(k, 0.95))
+    if style == "skirt":
+        return _tone(low, k)
+    if style == "skirt_top":
+        return _tone(th.mul(th.add(low, (255, 255, 255)), 0.5), 1.0)
+    if style == "fwall":
+        return _tone(mid, max(k, 0.95))
+    if style == "fin":
+        return (44, 44, 52)
+    if style == "hull":
+        # white over a blue chine: the hull's lower corners and its bottom
+        if P[1] < -0.30 + 0.10 * (abs(P[0]) / 0.5):
+            return _tone(low, k)
+        return _tone(mid, k)
+    if style == "mount":
+        if P[1] < -0.30 + 0.10 * (abs(P[0]) / 0.5):
+            return _tone(low, 0.9)
+        return _tone(mid, 0.92)
+    # the tyre
+    q = th.sub(P, part_origin)
+    r = math.hypot(q[0], q[1])
+    if style == "tread":
+        return th.jitter(RUBBER, 2)
+    if style == "lug":
+        return th.jitter(th.shade(RUBBER, 1.45 if d < 1.0 else 1.25), 2)
+    if style == "lug_side":
+        return th.jitter(th.shade(RUBBER, 0.95), 2)
+    if style == "wall":
+        return th.jitter(th.shade(RUBBER, 1.1 if r > 0.43 else 1.0), 2)
+    if style == "rimwall":
+        return (20, 20, 24)
+    if style == "rim":
+        if r < 0.055:
+            return low
+        if r < 0.095:
+            return (26, 26, 30)
+        if r > 0.235:
+            return (200, 204, 212)
+        return mid if q[0] < q[1] else th.shade(mid, 0.9)
+    if style == "stub":
+        return (60, 62, 70)
+    return (255, 0, 255)
 
 
-def _seg_d(px, py, ax, ay, bx, by):
+def _arrow(P):
+    """A small forward-pointing chevron on the white side, near the nose."""
+    z, y = P[2], P[1]
+    zc, yc, w = -0.06, 0.06, 0.05
+    a = _seg(z, y, zc + 0.10, yc + 0.08, zc, yc)
+    b = _seg(z, y, zc + 0.10, yc - 0.08, zc, yc)
+    return min(a, b) < w / 2
+
+
+def _seg(px, py, ax, ay, bx, by):
     ex, ey = bx - ax, by - ay
     t = max(0.0, min(1.0, ((px - ax) * ex + (py - ay) * ey) / (ex * ex + ey * ey)))
     return math.hypot(px - ax - ex * t, py - ay - ey * t)
 
 
-def chevron(h, y, yc, half_w=0.19, height=0.12, stroke=0.075):
-    """A bold V centred at (0, yc): two thick strokes from the top corners down to the point, the same
-    width all along (distance to the stroke's line, not a vertical band)."""
-    top = yc + height / 2
-    bot = yc - height / 2
-    d = min(_seg_d(h, y, -half_w, top, 0.0, bot), _seg_d(h, y, half_w, top, 0.0, bot))
-    return d < stroke / 2
-
-
-def paint_block(style, P, n, d):
-    x, y, z = P
-    if style == "a_top":
-        c = BLUE[0] if x < 0 else BLUE[1]
-        return GLINT["b"] if d < 1.0 else c
-    if style == "a_bottom":
-        return ORANGE[1] if x < 0 else th.shade(ORANGE[1], 0.85)
-    if style == "a_edge":
-        h = across(P, n) if abs(n[1]) < 0.5 else 0.0
-        return GLINT[band_at(y, h)] if abs(n[1]) < 0.5 else (GLINT["b"] if n[1] > 0 else GLINT["o"])
-    # a side face
-    h = across(P, n)
-    b = band_at(y, h)
-    col = band_col(b, h)
-    # one texel of seam where two bands meet
-    dip = DIP * (1.0 - 2.0 * min(abs(h), 0.5))
-    for edge in (BAND - dip, -BAND - dip):
-        if abs(y - edge) < 0.6 / DENS:
-            return th.shade(col, 0.72)
-    if b == "w" and chevron(h, y, -dip * 0.5 - 0.0):
-        return INK
-    if b == "o":
-        for k in range(3):
-            yy = -0.27 - 0.065 * k
-            if abs(y - yy) < 0.7 / DENS and 0.20 < abs(h) < 0.40 - 0.03 * k:
-                return VENT
-    return col
-
-
-def paint_wheel(style, P, n, d, part_origin):
-    if style in ("w_tread", "w_shoulder", "w_inner"):
-        base = {"w_tread": RUBBER, "w_shoulder": (62, 62, 70), "w_inner": (24, 24, 28)}[style]
-        return th.jitter(base, 2)
-    if style in ("w_side", "w_rim", "w_rimwall"):
-        q = th.sub(P, part_origin)
-        r = math.hypot(q[0], q[1])
-        a = math.atan2(q[1], q[0])
-        if style == "w_rimwall":
-            return (18, 18, 22)
-        if style == "w_side":
-            if 0.425 < r < 0.452:
-                return ORANGE[0]
-            return th.jitter(RUBBER, 2)
-        # the rim: six spokes, the holes between them dark, a blue hub ringed white
-        if r < 0.085:
-            return BLUE[0] if q[0] < 0 else BLUE[1]
-        if r < 0.105:
-            return WHITE[0]
-        if r > 0.315:
-            return TITAN[0] if r < 0.33 else (220, 225, 232)
-        sp = (a / (2 * math.pi) * 6) % 1.0
-        width = 0.20 + 0.10 * (0.30 - r) / 0.30
-        if abs(sp - 0.5) > width / 2 + 0.25 and r > 0.13:
-            return (20, 20, 24)
-        lit = TITAN[0] if math.sin(a * 6) > 0 else TITAN[1]
-        return lit
-    if style == "w_carbon":
-        k = 0.85 + 0.6 * max(n[1], 0.0) - 0.2 * max(-n[1], 0.0)
-        return th.shade(CARBON, k) if d >= 1.0 else th.shade(CARBON, k * 1.6)
-    if style == "w_upright":
-        return WHITE[0] if P[1] > -0.385 else ORANGE[0]
-    if style == "w_pylon":
-        # the pylon's own three bands, over its height (-0.32 .. 0.22)
-        t = (P[1] + 0.32) / 0.54
-        b = "b" if t > 0.66 else ("w" if t > 0.33 else "o")
-        if d < 1.0:
-            return GLINT[b]
-        return band_col(b, P[0])
-    if style == "w_pylon_face":
-        t = (P[1] + 0.22) / 0.32
-        b = "b" if t > 0.66 else ("w" if t > 0.33 else "o")
-        if d < 1.0:
-            return GLINT[b]
-        if b == "w" and chevron(P[0], P[1], -0.06, half_w=0.07, height=0.05, stroke=0.03):
-            return INK
-        return band_col(b, -P[0])
-    return (255, 0, 255)
-
-
 # ── geometry ────────────────────────────────────────────────────────────────────────────────────
 
-def ngon(r, n, phase=0.5):
-    return [(r * math.cos((i + phase) * 2 * math.pi / n), r * math.sin((i + phase) * 2 * math.pi / n))
-            for i in range(n)]
+def _face(faces, pts, inside, style, u_hint=None):
+    faces.append(th.Face(th.outward(pts, inside), style, u_hint=u_hint))
 
 
-def ring_band(faces, ra, za, rb, zb, n, style, centre):
-    """Quads between two coaxial n-gons (radius, z) round the Z axis."""
-    A, B = ngon(ra, n), ngon(rb, n)
+def sweep(faces, stations, section, styles, caps=None):
+    """A section swept along a path. stations: (q, X, N) - a point of the path, the section's across
+    axis and its outward normal there; section: closed (s, n) polygon; styles: one per section edge
+    (None leaves that strip out). caps: (style_start, style_end, [index lists of convex pieces])."""
+    rings = [[th.add(q, th.add(th.mul(X, s), th.mul(N, nn))) for s, nn in section] for q, X, N in stations]
+    sc = sum(p[0] for p in section) / len(section)
+    nc = sum(p[1] for p in section) / len(section)
+    mids = [th.add(q, th.add(th.mul(X, sc), th.mul(N, nc))) for q, X, N in stations]
+    m = len(section)
+    for i in range(len(stations) - 1):
+        inside = th.mul(th.add(mids[i], mids[i + 1]), 0.5)
+        along = th.sub(stations[i + 1][0], stations[i][0])
+        for j in range(m):
+            if styles[j] is None:
+                continue
+            k = (j + 1) % m
+            _face(faces, [rings[i][j], rings[i][k], rings[i + 1][k], rings[i + 1][j]], inside, styles[j], along)
+    if caps:
+        st0, st1, pieces = caps
+        for ring, st, other in ((rings[0], st0, mids[1]), (rings[-1], st1, mids[-2])):
+            if st is None:
+                continue
+            for piece in pieces:
+                pts = [ring[i] for i in piece]
+                c = th.mul(tuple(map(sum, zip(*pts))), 1.0 / len(pts))
+                # outward = away from the rest of the sweep
+                _face(faces, pts, th.add(c, th.mul(th.norm(th.sub(other, c)), 0.05)), st)
+
+
+def prism(faces, poly, y0, y1, steps, modes, top_style, side_style, cham_style, bottom_style=None):
+    """A convex polygon in XZ ((x, z) points, any winding) standing from y0 to y1. Its rounded top
+    edge is `steps`, (inset, y) pairs from the wall's top to the top face. modes per edge (edge i runs
+    poly[i] -> poly[i+1]): 'c' a wall with that rounded top edge, 'f' a plain wall, 'x' no wall (it
+    meets another part)."""
+    n = len(poly)
+    cx = sum(p[0] for p in poly) / n
+    cz = sum(p[1] for p in poly) / n
+
+    def line(i, o):
+        a, b = poly[i], poly[(i + 1) % n]
+        ex, ez = b[0] - a[0], b[1] - a[1]
+        L = math.hypot(ex, ez)
+        nx, nz = -ez / L, ex / L
+        if nx * (cx - a[0]) + nz * (cz - a[1]) < 0:
+            nx, nz = -nx, -nz
+        return (a[0] + nx * o, a[1] + nz * o), (ex, ez)
+
+    def meet(l1, l2):
+        (p, d), (q, e) = l1, l2
+        den = d[0] * e[1] - d[1] * e[0]
+        t = ((q[0] - p[0]) * e[1] - (q[1] - p[1]) * e[0]) / den
+        return (p[0] + d[0] * t, p[1] + d[1] * t)
+
+    rings = []                                     # one inset polygon per step, at its height
+    for o, y in steps:
+        ls = [line(i, o if modes[i] == "c" else 0.0) for i in range(n)]
+        rings.append(([meet(ls[i - 1], ls[i]) for i in range(n)], y))
+    inside = (cx, (y0 + y1) / 2, cz)
+    P = lambda a, y: (a[0], y, a[1])
+    _face(faces, [P(p, rings[-1][1]) for p in rings[-1][0]], inside, top_style, (1, 0, 0))
+    if bottom_style:
+        _face(faces, [P(p, y0) for p in poly], inside, bottom_style, (1, 0, 0))
     for i in range(n):
         j = (i + 1) % n
-        q = [(A[i][0], A[i][1], za), (A[j][0], A[j][1], za), (B[j][0], B[j][1], zb), (B[i][0], B[i][1], zb)]
-        faces.append(th.Face(th.outward(q, centre), style, u_hint=(0, 0, 1)))
+        if modes[i] == "x":
+            continue
+        if modes[i] == "c":
+            _face(faces, [P(poly[i], y0), P(poly[j], y0), P(rings[0][0][j], rings[0][1]), P(rings[0][0][i], rings[0][1])],
+                  inside, side_style, (0, 1, 0))
+            for k in range(len(rings) - 1):
+                (ra, ya), (rb, yb) = rings[k], rings[k + 1]
+                _face(faces, [P(ra[i], ya), P(ra[j], ya), P(rb[j], yb), P(rb[i], yb)], inside, cham_style)
+        else:
+            pts = [P(poly[i], y0), P(poly[j], y0)]
+            right = [P(r[j], y) for r, y in rings] if modes[j] == "c" else [P(rings[-1][0][j], rings[-1][1])]
+            left = [P(r[i], y) for r, y in rings] if modes[i - 1] == "c" else [P(rings[-1][0][i], rings[-1][1])]
+            _face(faces, pts + right + list(reversed(left)), inside, side_style, (0, 1, 0))
 
 
-def ngon_cap(faces, r, z, n, style, centre):
-    faces.append(th.Face(th.outward([(p[0], p[1], z) for p in ngon(r, n)], centre), style, u_hint=(1, 0, 0)))
+def extrude_x(faces, prof, x0, x1, side_style, edge_styles):
+    """A convex (z, y) profile extruded across x0..x1; edge_styles per profile edge (None: no face)."""
+    n = len(prof)
+    cz = sum(p[0] for p in prof) / n
+    cy = sum(p[1] for p in prof) / n
+    inside = ((x0 + x1) / 2, cy, cz)
+    for x in (x0, x1):
+        if side_style:
+            _face(faces, [(x, p[1], p[0]) for p in prof], inside, side_style, (0, 0, 1))
+    for i in range(n):
+        st = edge_styles[i] if isinstance(edge_styles, list) else edge_styles
+        if st is None:
+            continue
+        a, b = prof[i], prof[(i + 1) % n]
+        _face(faces, [(x0, a[1], a[0]), (x1, a[1], a[0]), (x1, b[1], b[0]), (x0, b[1], b[0])], inside, st, (1, 0, 0))
 
 
-def bar(faces, a, b, w, t, up, style):
-    """A flat aerofoil bar from a to b: a hexagonal section w wide and t thick, its flat face along `up`."""
-    ax = th.norm(th.sub(b, a))
-    side = th.norm(th.cross(ax, up))
-    upn = th.cross(side, ax)
-    sec = [(w / 2, 0.0), (w / 4, t / 2), (-w / 4, t / 2), (-w / 2, 0.0), (-w / 4, -t / 2), (w / 4, -t / 2)]
-    ra = [th.add(a, th.add(th.mul(side, s), th.mul(upn, u))) for s, u in sec]
-    rb = [th.add(b, th.add(th.mul(side, s), th.mul(upn, u))) for s, u in sec]
-    centre = th.mul(th.add(a, b), 0.5)
-    for i in range(6):
-        j = (i + 1) % 6
-        faces.append(th.Face(th.outward([ra[i], ra[j], rb[j], rb[i]], centre), style, u_hint=ax))
-    faces.append(th.Face(th.outward(list(ra), centre), style))
-    faces.append(th.Face(th.outward(list(rb), centre), style))
+def extrude_z(faces, prof, z0, z1, cap_style, edge_style, cap_styles=None):
+    """A convex (x, y) profile extruded from z0 to z1."""
+    n = len(prof)
+    cx = sum(p[0] for p in prof) / n
+    cy = sum(p[1] for p in prof) / n
+    inside = (cx, cy, (z0 + z1) / 2)
+    for z, st in zip((z0, z1), cap_styles or (cap_style, cap_style)):
+        if st:
+            _face(faces, [(p[0], p[1], z) for p in prof], inside, st, (1, 0, 0))
+    for i in range(n):
+        st = edge_style[i] if isinstance(edge_style, list) else edge_style
+        if st is None:
+            continue
+        a, b = prof[i], prof[(i + 1) % n]
+        _face(faces, [(a[0], a[1], z0), (b[0], b[1], z0), (b[0], b[1], z1), (a[0], a[1], z1)], inside, st, (0, 0, 1))
 
 
-def frustum(faces, back, front, z_back, z_front, side, cap):
-    """A tapered box along Z: rectangle `back` (x0, x1, y0, y1) at z_back to `front` at z_front."""
-    def corners(r, z):
-        return [(r[0], r[2], z), (r[1], r[2], z), (r[1], r[3], z), (r[0], r[3], z)]
-    A, B = corners(back, z_back), corners(front, z_front)
-    centre = ((back[0] + back[1]) / 2, (back[2] + back[3]) / 2, (z_back + z_front) / 2)
-    for i in range(4):
-        j = (i + 1) % 4
-        faces.append(th.Face(th.outward([A[i], A[j], B[j], B[i]], centre), side, u_hint=(1, 0, 0) if i % 2 == 0 else (0, 1, 0)))
-    faces.append(th.Face(th.outward(B, centre), cap, u_hint=(1, 0, 0)))
-    faces.append(th.Face(th.outward(A, centre), side, u_hint=(1, 0, 0)))
+# ── the block ──────────────────────────────────────────────────────────────────────────────────
+
+T = 0.10                       # the cap's thickness
+CAP_Y = 0.5 - T                # the cap's underside on the flat top
+NOSE_Z = 0.22                  # where the top starts rolling over: most of it is the curve
+NOSE_Y = -0.18                 # how far down the front the cap comes
+SKIRT_Y = -0.32                # the skirt's top
+INSET = 0.05                   # the white body under the cap and over the skirt
+EARS_Z = 0.30                  # the cap's back end between the ears
+NOTCH = (0.10, 0.20)           # the V between the ears: half width at its foot, at the back
+ARC = 10                       # stations round the nose
+ROUND = 0.05                   # the cap's side edges, rounded in two steps
+
+
+def _round(y1):
+    return [(0.0, y1 - ROUND), (ROUND * 0.3, y1 - ROUND * 0.32), (ROUND, y1)]
+
+
+def _nose_stations():
+    """The cap's underside: a short flat from the ears, then a quarter ellipse over the nose, with
+    outward normals (the cap's outside is that curve offset by T)."""
+    az = NOSE_Z - (-0.5 + T)
+    ay = CAP_Y - NOSE_Y
+    out = [((0.0, CAP_Y, EARS_Z), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0))]
+    for i in range(ARC + 1):
+        a = math.pi / 2 + (math.pi / 2) * i / ARC
+        z = NOSE_Z + az * math.cos(a)
+        y = NOSE_Y + ay * math.sin(a)
+        nz, ny = math.cos(a) / az, math.sin(a) / ay
+        L = math.hypot(nz, ny)
+        out.append(((0.0, y, z), (1.0, 0.0, 0.0), (0.0, ny / L, nz / L)))
+    return out
 
 
 def build_block():
     f = []
-    em.cham_box(f, (-0.5, -0.5, -0.5), (0.5, 0.5, 0.5), C, "a_side", "a_top", "a_bottom", "a_edge")
+    # the CAP: a swept section, its side edges rounded the same way as the ears'
+    r = [(st[0], st[1] - (0.5 - T)) for st in _round(0.5)]
+    sec = [(-0.5, 0.0)] + [(-0.5 + o, y) for o, y in r] + [(0.5 - o, y) for o, y in reversed(r)] + [(0.5, 0.0)]
+    styles = ["cap", "cap_edge", "cap_edge", "cap", "cap_edge", "cap_edge", "cap", "under"]
+    sweep(f, _nose_stations(), sec, styles, caps=("cap_end", "cap_end", [list(range(len(sec)))]))
+    # the EARS at the back corners, the V notch between them
+    nw, bw = NOTCH
+    left = [(-0.5, EARS_Z), (-nw, EARS_Z), (-bw, 0.5), (-0.5, 0.5)]
+    right = [(-x, z) for x, z in left]
+    for poly in (left, right):
+        prism(f, poly, CAP_Y, 0.5, _round(0.5), ["x", "c", "c", "c"], "cap", "cap", "cap_edge")
+    # the white BODY under it, set in from the side faces
+    az = NOSE_Z - (-0.5 + T)
+    ay = CAP_Y - NOSE_Y
+    prof = [(0.5, SKIRT_Y), (0.5, CAP_Y), (NOSE_Z, CAP_Y)]
+    for i in range(1, ARC + 1):
+        a = math.pi / 2 + (math.pi / 2) * i / ARC
+        prof.append((NOSE_Z + az * math.cos(a), NOSE_Y + ay * math.sin(a)))
+    prof.append((-0.5 + T, SKIRT_Y))
+    edges = ["body", "body"] + [None] * ARC + ["body", None]
+    extrude_x(f, prof, -0.5 + INSET, 0.5 - INSET, "side", edges)
+    # the SKIRT: full width, its front sloping back under the nose
+    sk = [(0.5, -0.5), (0.5, SKIRT_Y), (-0.5 + T, SKIRT_Y), (-0.5 + T + 0.10, -0.5)]
+    extrude_x(f, sk, -0.5, 0.5, "skirt", ["skirt", "skirt_top", "skirt", "skirt"])
     return {"aero_block": f}, {"aero_block": (0.0, 0.0, 0.0)}
 
 
+# ── the wheel ──────────────────────────────────────────────────────────────────────────────────
+
 TC = (0.0, -0.385, -0.25)      # the standard wheel's tyre centre
-R, W = 0.50, 0.36              # tyre radius and width
-RIM_R = 0.34
-N = 12
-ARM_PIVOT = (0.0, -0.05, 0.28)
+R, W = 0.50, 0.36              # tyre radius (over the lugs) and width
+R0 = 0.455                     # the tread under the lugs
+RIM_R = 0.25
+LUGS = 16
+FR = 0.56                      # the fender's underside, round TC
+FT = 0.08                      # its thickness
+F_ANG = (44.0, 136.0)          # its arc: the outside (ridge included) stays inside the cell's x
+F_SEG = 10
+Z_OUT = -0.47                  # the fender's outboard edge, past the tyre's outer face
+Z_BODY = -0.04                 # the hull's outboard face, inboard of the tyre
+TIP_Y = -0.32                  # the hull's points at the cell's ends
+HULL_BOT = -0.52
+
+
+def _ring(r, n, z, phase=0.5):
+    return [(TC[0] + r * math.cos((i + phase) * 2 * math.pi / n), TC[1] + r * math.sin((i + phase) * 2 * math.pi / n), z)
+            for i in range(n)]
+
+
+def _band(faces, ra, za, rb, zb, n, style, phase=0.5):
+    A, B = _ring(ra, n, za, phase), _ring(rb, n, zb, phase)
+    cen = (TC[0], TC[1], (za + zb) / 2)
+    for i in range(n):
+        j = (i + 1) % n
+        q = [A[i], A[j], B[j], B[i]]
+        # outward from the axis for a tread band, along the axis for a flat ring
+        mid = th.mul(tuple(map(sum, zip(*q))), 0.25)
+        inside = cen if abs(ra - rb) < 1e-6 else (mid[0] - 0.0, mid[1], mid[2] + (0.05 if za < TC[2] else -0.05))
+        faces.append(th.Face(th.outward(q, inside), style, u_hint=(0, 0, 1)))
 
 
 def build_wheel():
-    body, arm, tyre = [], [], []
-    # the PYLON: tapered from the hull face, bands over its height, a small chevron on its face
-    frustum(body, (-0.20, 0.20, -0.32, 0.22), (-0.13, 0.13, -0.22, 0.10), 0.5, 0.28, "w_pylon", "w_pylon_face")
-    # the ARM: two flat wishbones, a push rod, the upright and the axle stub
-    up_top = (0.0, TC[1] + 0.17, -0.02)
-    up_bot = (0.0, TC[1] - 0.13, -0.02)
-    for sx in (-0.10, 0.10):
-        bar(arm, (sx, 0.04, 0.28), up_top, 0.06, 0.02, (0, 1, 0), "w_carbon")
-        bar(arm, (sx, -0.18, 0.28), up_bot, 0.06, 0.02, (0, 1, 0), "w_carbon")
-    bar(arm, (0.0, 0.09, 0.30), th.add(up_bot, (0.0, 0.03, 0.03)), 0.035, 0.035, (1, 0, 0), "w_carbon")
-    em.cham_box(arm, (-0.07, up_bot[1] - 0.03, -0.065), (0.07, up_top[1] + 0.03, 0.025), 0.02,
-                "w_upright", "w_upright", "w_upright", "w_upright")
-    ring_band(arm, 0.06, -0.065, 0.06, -0.07 + 0.005, 6, "w_carbon", (0, TC[1], -0.07))
-    # the TYRE: a 12-sided slick with shouldered edges, the rim recessed into its outer face
-    zi, zo = TC[2] + W / 2, TC[2] - W / 2          # inner (hull side) and outer faces
-    sh = 0.035
-    cen = TC
-    def rb(ra, za, rb_, zb, st):
-        ring_band(tyre, ra, za, rb_, zb, N, st, (0, 0, TC[2]))
-    rb(R - sh, zo, R, zo + sh, "w_shoulder")
-    rb(R, zo + sh, R, zi - sh, "w_tread")
-    rb(R, zi - sh, R - sh, zi, "w_shoulder")
-    rb(R - sh, zo, RIM_R, zo, "w_side")
-    rb(RIM_R, zo, RIM_R, zo + 0.03, "w_rimwall")
-    ngon_cap(tyre, RIM_R, zo + 0.03, N, "w_rim", (0, 0, TC[2]))
-    ngon_cap(tyre, R - sh, zi, N, "w_inner", (0, 0, TC[2]))
-    # tyre faces were built round (0, 0, z): move them onto the tyre's centre
-    for fc in tyre:
-        fc.pts = [(p[0] + TC[0], p[1] + TC[1], p[2]) for p in fc.pts]
-    return ({"aero_wheel_body": body, "aero_wheel_arm": arm, "aero_wheel_tyre": tyre},
-            {"aero_wheel_body": (0.0, 0.0, 0.0), "aero_wheel_arm": ARM_PIVOT, "aero_wheel_tyre": TC})
+    body, tyre = [], []
+    zi, zo = TC[2] + W / 2, TC[2] - W / 2          # tyre's inner (hull side) and outer faces
+    # the FENDER: a section across z swept round the tyre's top, a ridge along it
+    stations = []
+    for i in range(F_SEG + 1):
+        a = math.radians(F_ANG[1] + (F_ANG[0] - F_ANG[1]) * i / F_SEG)
+        N = (math.cos(a), math.sin(a), 0.0)
+        stations.append(((TC[0] + FR * N[0], TC[1] + FR * N[1], 0.0), (0.0, 0.0, 1.0), N))
+    rz0, rz1 = -0.11, 0.09                         # the ridge
+    sec = [(0.5, 0.0), (0.5, FT), (rz1 + 0.035, FT), (rz1, FT + 0.035), (rz0, FT + 0.035), (rz0 - 0.035, FT),
+           (Z_OUT + C, FT), (Z_OUT, FT - C), (Z_OUT, 0.0)]
+    sweep(body, stations, sec, [None, "cap", "cap_edge", "ridge", "cap_edge", "cap", "cap_edge", "fwall", "fin"],
+          caps=("cap_end", "cap_end", [[0, 1, 2, 5, 6, 7, 8], [2, 3, 4, 5]]))
+    # the HULL inboard of the tyre: its top under the fender, its lower corners out to points
+    prof = [(-0.5, TIP_Y), (-0.22, HULL_BOT), (0.22, HULL_BOT), (0.5, TIP_Y)]
+    for i in range(F_SEG + 1):
+        a = math.radians(F_ANG[0] + (F_ANG[1] - F_ANG[0]) * i / F_SEG)
+        prof.append((TC[0] + FR * math.cos(a), TC[1] + FR * math.sin(a)))
+    edges = ["hull", "hull", "hull", "hull"] + [None] * F_SEG + ["hull"]
+    extrude_z(body, prof, Z_BODY, 0.5, None, edges, cap_styles=("hull", "mount"))
+    # the TYRE: tread under the lugs, sixteen lugs staggered across it, sidewalls, a recessed hub
+    _band(tyre, R0, zo, R0, zi, LUGS, "tread")
+    _band(tyre, R0, zo, RIM_R, zo, LUGS, "wall")
+    _band(tyre, R0, zi, 0.08, zi, LUGS, "wall")
+    _band(tyre, RIM_R, zo, RIM_R, zo + 0.04, 12, "rimwall")
+    hub = _ring(RIM_R, 12, zo + 0.04)
+    tyre.append(th.Face(th.outward(hub, (TC[0], TC[1], zo + 0.2)), "rim", u_hint=(1, 0, 0)))
+    _band(tyre, 0.08, zi, 0.08, zi + 0.025, 8, "stub")
+    hw = math.pi / LUGS * 0.62
+    for k in range(LUGS):
+        a = (k + 0.5) * 2 * math.pi / LUGS
+        z0, z1 = (zo, TC[2] + 0.04) if k % 2 == 0 else (TC[2] - 0.04, zi)
+        def pt(r, ang, z):
+            return (TC[0] + r * math.cos(ang), TC[1] + r * math.sin(ang), z)
+        inside = pt((R0 + R) / 2, a, (z0 + z1) / 2)
+        r0 = R0 - 0.005
+        top = [pt(R, a - hw * 0.85, z0), pt(R, a + hw * 0.85, z0), pt(R, a + hw * 0.85, z1), pt(R, a - hw * 0.85, z1)]
+        _face(tyre, top, inside, "lug", (0, 0, 1))
+        for s in (-1, 1):
+            _face(tyre, [pt(r0, a + s * hw, z0), pt(R, a + s * hw * 0.85, z0), pt(R, a + s * hw * 0.85, z1),
+                         pt(r0, a + s * hw, z1)], inside, "lug_side", (0, 0, 1))
+        for z in (z0, z1):
+            _face(tyre, [pt(r0, a - hw, z), pt(r0, a + hw, z), pt(R, a + hw * 0.85, z), pt(R, a - hw * 0.85, z)],
+                  inside, "lug_side", (1, 0, 0))
+    return ({"aero_wheel_body": body, "aero_wheel_tyre": tyre},
+            {"aero_wheel_body": (0.0, 0.0, 0.0), "aero_wheel_tyre": TC})
 
 
-MODELS = {"aero_block": (701, build_block, 256), "aero_wheel": (702, build_wheel, 256)}
+LIGHT = th.norm((-0.35, 0.85, -0.45))
+
+# name: (seed, builder, texture size, palette)
+MODELS = {"aero_block": (701, build_block, 256, "aero"), "aero_wheel": (702, build_wheel, 256, "aero"),
+          "aero_block_ref": (701, build_block, 256, "ref"), "aero_wheel_ref": (702, build_wheel, 256, "ref")}
 
 
 # ── texture, glb ───────────────────────────────────────────────────────────────────────────────
@@ -289,7 +421,8 @@ def _basis(f):
 
 
 def make(name):
-    seed, build, tex = MODELS[name]
+    seed, build, tex, pal = MODELS[name]
+    pal = PALETTES[pal]
     random.seed(seed)
     th.random.seed(seed)
     parts, origins = build()
@@ -315,10 +448,7 @@ def make(name):
                 px, py = xx + 0.5, yy + 0.5
                 P = th.add(p0, th.add(th.mul(u, (px + mx) / DENS), th.mul(v, (py + my) / DENS)))
                 d = th.dist_to_edges(min(max(px, 0), w), min(max(py, 0), h), pts2)
-                if name == "aero_block":
-                    c = paint_block(f.style, P, n, d)
-                else:
-                    c = paint_wheel(f.style, P, n, d, TC if part == "aero_wheel_tyre" else (0, 0, 0))
+                c = paint(pal, f.style, P, n, d, TC if part == "aero_wheel_tyre" else (0, 0, 0))
                 img.putpixel((x0 + xx, y0 + yy), tuple(int(v_) for v_ in c))
         f.uv = [(x0 + p[0], y0 + p[1]) for p in pts2]
     img.save(th.OUT_PNG % name)
@@ -422,15 +552,15 @@ def _em_build(name):
     return fn
 
 
-for _nm, (_seed, _fn, _tex) in MODELS.items():
+for _nm, (_seed, _fn, _tex, _pal) in MODELS.items():
     em.BLOCKS[_nm] = (_seed, _em_build(_nm), _tex)
 if not hasattr(em, "CHECKS"):
     em.CHECKS = {}
 em.CHECKS["aero_block"] = {"cells": ((-0.5, -0.5, -0.5), (0.5, 0.5, 0.5)), "budget": 700}
 em.CHECKS["aero_wheel"] = {"cells": ((-0.5, -0.9, -0.5), (0.5, 0.5, 0.5)), "budget": 700,
                            "spin": {"aero_wheel_tyre": (0, 0, 1)},
-                           "origins": {"aero_wheel_tyre": TC, "aero_wheel_arm": ARM_PIVOT},
-                           "solid": [((-0.20, -0.32, 0.28), (0.20, 0.22, 0.5))]}
+                           "origins": {"aero_wheel_tyre": TC},
+                           "solid": [((-0.5, HULL_BOT, Z_BODY), (0.5, 0.3, 0.5))]}
 
 if __name__ == "__main__":
     for nm in (sys.argv[1:] or list(MODELS)):
