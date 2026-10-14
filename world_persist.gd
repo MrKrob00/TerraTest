@@ -744,6 +744,8 @@ func _save_world() -> void:
 			"outposts": _outposts_state(),
 			# ORE VEINS NOT FULL (600 ore, 30 minutes): what is left and the seconds still to rest.
 			"veins": _veins_state(),
+			# RACE COURSES KEPT IN THE WORLD (race_track.gd `keep`: Aero's licence course stays).
+			"tracks": _tracks_state(),
 		}))
 		f.close()
 
@@ -752,6 +754,13 @@ func _save_world() -> void:
 func _outposts_state() -> Array:
 	var o: Node = get_tree().get_first_node_in_group("outposts")
 	return o.save_state() if (o != null and o.has_method("save_state")) else []
+
+func _tracks_state() -> Array:
+	var out: Array = []
+	for t in get_tree().get_nodes_in_group("race_tracks"):
+		if t.get("keep") == true and not (t as Node).is_queued_for_deletion():
+			out.append(t.save_state())
+	return out
 
 func _veins_state() -> Dictionary:
 	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
@@ -796,6 +805,12 @@ func _load_world() -> void:
 	var rn: Node = get_tree().get_first_node_in_group("resource_nodes")
 	if rn != null and rn.has_method("ore_state_load") and data.get("veins") is Dictionary:
 		rn.ore_state_load(data["veins"])
+	var mn: Node = get_node_or_null("/root/Main")
+	for td in data.get("tracks", []):
+		if td is Dictionary and mn != null:
+			var t: Node = preload("res://race_track.gd").new()
+			t.load_state(td)
+			mn.add_child(t)
 	await _restore_machine(primary, machines[0])
 	for i in range(1, machines.size()):
 		_spawn_machine(machines[i])

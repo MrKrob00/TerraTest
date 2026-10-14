@@ -614,6 +614,10 @@ func _can_see_target() -> bool:
 		return false
 	return d2 <= hear_radius * hear_radius or _los_ok
 
+## THE MACHINE THIS ONE RUNS FROM (the Pursuit event). Untyped, rule 4: it may be freed.
+var runaway_from = null
+const RUN_NOTICE := 90.0
+
 func _update_ai(delta: float) -> void:
 	# A QUIET ZONE COMES FIRST, the miner's work included: inside one, it drives out.
 	if _leave_safe_zone(delta):
@@ -623,6 +627,17 @@ func _update_ai(delta: float) -> void:
 	# забывание, счёт обстановки — ему не нужен ни на кадр.
 	if miner:
 		_mine_tick(delta)
+		return
+	# A RUNNER (the Pursuit event, quest_arcs `_chase_*`) does not fight: once the machine it runs from
+	# is within RUN_NOTICE it drives straight away from it at full speed, and waits where it is until then.
+	if is_instance_valid(runaway_from):
+		_answer_t = 0.0
+		var from: Vector3 = (runaway_from as Node3D).global_position
+		if global_position.distance_squared_to(from) < RUN_NOTICE * RUN_NOTICE:
+			var away: Vector3 = global_position + (global_position - from).normalized() * 60.0
+			_drive_to(away, 1.0, delta)
+		else:
+			_drive(_get_forward(), 0.0, delta)
 		return
 	# The target is re-searched periodically while there is none.
 	_reacquire_t -= delta

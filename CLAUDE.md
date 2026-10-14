@@ -1839,6 +1839,26 @@ project: read it before claiming how anything works.
   three seconds before the first one landed. Nothing is handed out while the player is farther than
   `ORBIT_SEEN`: the orbit is the point, and nobody watches it from across the map. Measured: one
   copy the whole time, circling at 4.2 m, landing 2.7 m (panel) and 3.5 m (regen) from the base.
+- **AERO'S QUESTS ARE RACES, AND A RACE IS A COURSE OF STUB GATES** (`race_track.gd`, `quest_arcs`
+  COURSES / `_course_1` / `_course_2`; the player's call: no roads or checkpoints in the game, so a
+  frame 10 m wide and 7 m tall, two posts and a bar, no collider). A course is laid from a drivable
+  start (`_far_point`) leg by leg along the gentlest of nine turns (`_lay_course`; `climb` 1 prefers
+  rising ground, -1 falling, `slalom` swings every other gate aside, a leg back near an earlier gate is
+  refused). Gate 0 starts the clock, the rest are taken in order - a gate is passed when the player's
+  machine CROSSES its plane between the posts (last tick's position to this one, so no speed steps
+  over it); too slow and it is a failed run, and driving through the start gate again is the retry.
+  The next gate is lit, the clock and the count show at the top of the screen. RACE AGAINST TIME is
+  Aero's licence (`arc_aero`, GSO grade 3, after Salvage Run): start to finish inside a minute, the
+  course KEPT in the world after it (`keep`, saved by `world_persist` "tracks", still timed). Aero's
+  story: PLATEAU RUN (a climbing course), STRANDED RACER (TerraTech's Mine Island Rescue, renamed: an
+  Aero wreck, `blocks.AERO_WRECK`, under attack - clear them off it), LOOSE GROUND (A Slippery Slope:
+  a course downhill). Aero's events: Checkpoint Race, Drag Strip, Slalom, and PURSUIT - a light
+  machine that RUNS from the player (`enemy_vehicle.runaway_from`, once they are within `RUN_NOTICE`)
+  and must die inside `CHASE_TIME` (60 s) of bolting. A course's limit is its length over its speed
+  plus `COURSE_SPARE`. NO RAMP JUMP: wheels read the terrain's heights and nothing else, so a ramp
+  would have to be a terrain edit, not a prop. Measured on the proving ground: every course laid and
+  run to done, a slow run failing and the next one through the start gate counting, the runner 63 m
+  off in five seconds and done when killed, the wreck's attackers killed - done.
 - **TAKE THE STAGING POINT IS A REAL CAPTURE** (`quest_arcs._camp_1..3`, TerraTech's Capture Enemy
   Base, the player's call): a hostile turret post (`CAMP_POSTS`, presets 13/14 - a rotating support,
   battery, panels, dome, two guns) stands on the point with a guard party. Reach it; break the guard

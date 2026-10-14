@@ -101,6 +101,17 @@ func _tick_arcs(delta: float) -> void:
 			"quest_supply_2":      _supply_2(q)
 			"quest_defend_1":      _defend_1(q)
 			"quest_defend_2":      _defend_2(q)
+			# every timed course is one pair of handlers (COURSES)
+			"quest_race_1", "quest_plateau_1", "quest_descent_1", "quest_acourse_1", "quest_adrag_1", \
+					"quest_aslalom_1":
+				_course_1(q)
+			"quest_race_2", "quest_plateau_2", "quest_descent_2", "quest_acourse_2", "quest_adrag_2", \
+					"quest_aslalom_2":
+				_course_2(q)
+			"quest_achase_1":      _chase_1(q)
+			"quest_astrand_1":     _strand_1(q)
+			"quest_astrand_2":     _strand_2(q)
+			"quest_achase_2":      _chase_2(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
 			"quest_camp_3":        _camp_3(q)
@@ -203,6 +214,9 @@ func _drop_orphans(polled: Dictionary) -> void:
 	var keys: Dictionary = {}
 	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party, _ev_base]:
 		for k in d:
+			keys[k] = true
+	for k in _tracks:
+		if is_instance_valid(_tracks[k]) and _tracks[k].get("keep") != true:
 			keys[k] = true
 	for k in keys:
 		if not polled.has(k):
@@ -1972,6 +1986,9 @@ func quest_point(ev: String) -> Variant:
 	var key := _ev_key(ev)
 	if _tower_point.has(key):
 		return _tower_point[key]
+	var tr_node = _track_of(key)
+	if tr_node != null:
+		return (tr_node as Node).call("aim_point")
 	return _ev_point.get(key)
 
 ## Позиция ближайшего ЖИВОГО участника квеста или null. Участники лежат по своим полям (у
@@ -2117,6 +2134,7 @@ func _ev_clear(key: String) -> void:
 	if is_instance_valid(base):
 		(base as Node).queue_free()
 	_ev_base.erase(key)
+	_drop_track(key)
 	_camp_hold.erase(key)
 	_props.release("event_" + key)
 
@@ -2600,3 +2618,289 @@ func _capture_post(post: Node3D) -> void:
 	post.queue_free()
 	if not layout.is_empty():
 		_spawn_station(at, layout)
+
+# ── RACES: Aero's licence, Aero's story and Aero's events (race_track.gd) ────
+## Every timed course is one handler (`_course_1` reach the start, `_course_2` run it) over COURSES:
+## RACE AGAINST TIME (TerraTech's Venture licence, the player's call) - start to finish in under a
+## minute, the course KEPT in the world after it (as TerraTech's was, `keep`, saved, still timed);
+## PLATEAU RUN - a course that climbs; LOOSE GROUND (TerraTech's "A Slippery Slope", renamed) - one that
+## runs downhill; and the repeatable races - a checkpoint course, a drag strip, a slalom. A failed run
+## is no loss: drive through the start gate again. A course's limit is RACE_LIMIT or its length over
+## `speed` plus COURSE_SPARE. NO RAMP JUMP: wheels read the terrain's heights and nothing else
+## (Driving and wheels), so a ramp would have to be a terrain edit - not a prop.
+const RACE_TRACK := preload("res://race_track.gd")
+const RACE_LIMIT := 60.0
+const COURSE_SPARE := 8.0
+const COURSES := {
+	"race":    {"gates": 9, "leg": 45.0, "climb": 0, "limit": RACE_LIMIT, "keep": true},
+	"plateau": {"gates": 7, "leg": 50.0, "climb": 1, "speed": 7.0},
+	"descent": {"gates": 7, "leg": 45.0, "climb": -1, "speed": 9.0},
+	"acourse": {"gates": 8, "leg": 45.0, "climb": 0, "speed": 10.0},
+	"adrag":   {"gates": 2, "leg": 260.0, "climb": 0, "speed": 15.0},
+	"aslalom": {"gates": 9, "leg": 32.0, "climb": 0, "speed": 8.0, "slalom": 9.0},
+}
+var _tracks: Dictionary = {}        # course key -> its race_track node
+
+## The course of a key: in memory, or one the save brought back (meta `track_key`).
+func _track_of(key: String) -> Variant:
+	var t = _tracks.get(key)
+	if is_instance_valid(t):
+		return t
+	for n in get_tree().get_nodes_in_group("race_tracks"):
+		if (n as Node).get_meta("track_key", "") == key and not (n as Node).is_queued_for_deletion():
+			_tracks[key] = n
+			return n
+	return null
+
+func _drop_track(key: String) -> void:
+	var t = _tracks.get(key)
+	if is_instance_valid(t) and t.get("keep") != true:
+		(t as Node).queue_free()
+	_tracks.erase(key)
+
+## Lay a course from `start` along `heading`: each next gate `leg` on, turned by whichever of a few
+## angles keeps the ground gentlest (`climb` 1 prefers rising ground, -1 falling). Points on the
+## ground; a leg that would come back near an earlier gate is not taken. `slalom` swings every other
+## gate that far to alternate sides of the line.
+func _lay_course(start: Vector3, heading: float, gates: int, leg: float, climb: int = 0,
+		slalom: float = 0.0) -> Array:
+	var pts: Array = [Vector3(start.x, G.ground_y(start, start.y), start.z)]
+	var h: float = heading
+	var line: Vector3 = pts[0]
+	for i in range(1, gates):
+		var prev: Vector3 = line
+		var best := Vector3.ZERO
+		var best_h := h
+		var best_s := INF
+		for k in 9:
+			var turn: float = deg_to_rad(-40.0 + 10.0 * float(k)) * (0.3 if slalom > 0.0 else 1.0) \
+					+ randf_range(-0.05, 0.05)
+			var nh: float = h + turn
+			var c: Vector3 = prev + Vector3(cos(nh), 0.0, sin(nh)) * leg
+			c.y = G.ground_y(c, prev.y)
+			var mid: Vector3 = (prev + c) * 0.5
+			var mid_y: float = G.ground_y(mid, prev.y)
+			var rise: float = c.y - prev.y
+			var bump: float = absf(mid_y - (prev.y + c.y) * 0.5)
+			var side: float = absf(G.ground_y(c + Vector3(3.0, 0, 0), c.y) - c.y) + absf(G.ground_y(c + Vector3(0, 0, 3.0), c.y) - c.y)
+			var sc: float = bump * 2.0 + side * 2.0 + absf(turn) * 2.0
+			sc += absf(rise) * 1.5 if climb == 0 else -float(climb) * rise * 2.0 + maxf(-float(climb) * rise, 0.0) * 4.0
+			for q in pts.slice(0, pts.size() - 1):
+				if (q as Vector3).distance_squared_to(c) < leg * leg * 0.8:
+					sc += 1000.0
+			if sc < best_s:
+				best_s = sc
+				best = c
+				best_h = nh
+		line = best
+		h = best_h
+		var put: Vector3 = best
+		if slalom > 0.0 and i < gates - 1:
+			var side_v := Vector3(-sin(h), 0.0, cos(h)) * (slalom if i % 2 == 1 else -slalom)
+			put = best + side_v
+			put.y = G.ground_y(put, best.y)
+		pts.append(put)
+	return pts
+
+func _course_limit(cfg: Dictionary, pts: Array) -> float:
+	if cfg.has("limit"):
+		return float(cfg["limit"])
+	var len_m := 0.0
+	for i in range(pts.size() - 1):
+		len_m += (pts[i] as Vector3).distance_to(pts[i + 1])
+	return ceilf((len_m / float(cfg["speed"]) + COURSE_SPARE) / 5.0) * 5.0
+
+func _make_track(key: String, pts: Array, limit: float, keep: bool) -> Node:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return null
+	var t: Node3D = RACE_TRACK.new()
+	t.set_meta("track_key", key)
+	t.keep = keep
+	root.add_child(t)
+	t.setup(pts, limit)
+	_tracks[key] = t
+	return t
+
+## Stage 1 of any course: lay it (once) and reach its start gate.
+func _course_1(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	var event: bool = int(q.get("type", -1)) == Q.Type.EVENT
+	if event and _ev_abandoned(q, key):
+		return
+	var p: Node3D = _player()
+	if p == null:
+		return
+	var t = _track_of(key)
+	if t == null:
+		var cfg: Dictionary = COURSES[key]
+		var start: Vector3 = _far_point(p)
+		var away: Vector3 = start - p.global_position
+		var pts: Array = _lay_course(start, atan2(away.z, away.x), int(cfg["gates"]), float(cfg["leg"]),
+				int(cfg.get("climb", 0)), float(cfg.get("slalom", 0.0)))
+		t = _make_track(key, pts, _course_limit(cfg, pts), cfg.get("keep", false) == true)
+		if t == null:
+			return
+		var line: String = _course_line(key, "open")
+		if line != "":
+			Dialogue.say("Aero", tr(line) % _limit_text((t as Node).get("time_limit")))
+	if event:
+		_ev_point[key] = (t as Node).get("points")[0]
+	if _reached((t as Node).get("points")[0]):
+		Q.report(String(q["event"]), 1)
+
+## Stage 2: run it. The track reports by signal; a lost course (a reload) is laid again from stage 1.
+func _course_2(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if int(q.get("type", -1)) == Q.Type.EVENT and _ev_abandoned(q, key):
+		return
+	var t = _track_of(key)
+	if t == null:
+		Q.reset_quest(String(q["id"]))
+		return
+	if not (t as Node).is_connected("finished", _on_course_finished):
+		(t as Node).connect("finished", _on_course_finished.bind(key, String(q["id"])))
+		(t as Node).connect("failed", _on_course_failed.bind(key, String(q["id"])))
+
+func _on_course_finished(_secs: float, key: String, qid: String) -> void:
+	var q: Dictionary = Q.find_quest(qid)
+	if q.is_empty() or q.get("done", false) or _ev_key(String(q.get("event", ""))) != key:
+		return
+	var line: String = _course_line(key, "done")
+	if line != "":
+		Dialogue.say("Aero", tr(line))
+	if int(q.get("type", -1)) == Q.Type.EVENT:
+		_ev_done(q, key)
+	else:
+		Q.report(String(q["event"]), 1)
+	_drop_track(key)
+
+func _on_course_failed(key: String, qid: String) -> void:
+	var q: Dictionary = Q.find_quest(qid)
+	if not q.is_empty() and not q.get("done", false):
+		var line: String = _course_line(key, "fail")
+		if line != "":
+			Dialogue.say("Aero", tr(line))
+
+static func _limit_text(secs) -> String:
+	var t: int = int(secs)
+	return "%d:%02d" % [t / 60, t % 60]
+
+## What Aero says about a course: when it is laid (the time limit goes in), run, and failed.
+func _course_line(key: String, what: String) -> String:
+	var lines := {
+		"race": ["Aero deals with the fast, not the strong. Our course is marked out there: start to finish inside %s.",
+			"That will do. The course is yours to keep - come back and beat your time.",
+			"Over the limit. The start gate is right where you left it."],
+		"plateau": ["Up to the plateau, gate by gate, inside %s. Climbing is where a heavy machine shows itself.",
+			"On top, and in time. Aero noticed.", "Too slow on the climb. The start gate is waiting."],
+		"descent": ["Loose ground all the way down. Gate by gate to the bottom inside %s - and stay on your wheels.",
+			"Down in one piece. That is the trick of it.", "Too slow, or too careful. Back to the start gate."],
+		"acourse": ["A fresh course is marked out. Inside %s.", "Clean run.", "Too slow. Through the start gate again."],
+		"adrag": ["A straight strip, two gates. Inside %s - nothing to do but go.", "Fast enough.", "Too slow off the line. Again."],
+		"aslalom": ["A slalom: every gate swings the other way. Inside %s.", "Every gate. Good.", "Too slow through the gates. Again."],
+	}
+	var i: int = {"open": 0, "done": 1, "fail": 2}.get(what, 0)
+	return String((lines.get(key, ["", "", ""]) as Array)[i])
+
+# ── PURSUIT: catch it within a minute (TerraTech's chase) ───────────────────
+## A light hostile machine waits at a point and RUNS from the player once they come within
+## `enemy_vehicle.RUN_NOTICE` (`runaway_from`); from the moment it bolts the player has CHASE_TIME to
+## destroy it, or it gets away - gone, and the event cools down.
+const CHASE_TIME := 60.0
+const CHASE_PRESETS := [5]
+var _chase_t: Dictionary = {}         # key -> seconds left once it has bolted
+
+func _chase_1(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if _ev_abandoned(q, key):
+		return
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	if not _ev_mobs.has(key):
+		var got: Array = _ev_spawn(key, at as Vector3, CHASE_PRESETS, 1, null, false)
+		for m in got:
+			if is_instance_valid(m):
+				m.set("runaway_from", _player())
+		Dialogue.say("Aero", tr("Something fast is parked out there and it does not want company. Catch it before it is gone."))
+	var p: Node3D = _player()
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m):
+			m.set("runaway_from", p)
+			if p != null and (m as Node3D).global_position.distance_to(p.global_position) < 90.0:
+				_chase_t[key] = CHASE_TIME
+				Q.report(String(q["event"]), 1)
+				return
+	if _ev_all_dead(key):
+		_ev_done(q, key)                       # killed before it ever bolted
+
+func _chase_2(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if not _ev_mobs.has(key) or not _chase_t.has(key):
+		Q.reset_quest(String(q["id"]))           # state lost (a reload)
+		return
+	if _ev_all_dead(key):
+		_chase_t.erase(key)
+		_ev_done(q, key)
+		return
+	_chase_t[key] = float(_chase_t[key]) - POLL
+	if float(_chase_t[key]) > 0.0:
+		return
+	Dialogue.say("Aero", tr("Gone. Faster next time."))
+	_chase_t.erase(key)
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
+
+# ── STRANDED RACER (TerraTech's Mine Island Rescue, renamed): clear the hostiles off it ──────
+## An Aero machine with its wheels gone (blocks.AERO_WRECK, the player's faction) sits at a point with
+## a hostile party round it, aimed at it. Reach it; kill everything hostile there while it still
+## stands. It destroyed, the quest starts over. A story quest: no cooldown, no 500 m drop.
+const AERO_WRECK_PRESET := 129          # blocks.AERO_WRECK
+
+func _strand_1(q: Dictionary) -> void:
+	var key := "astrand"
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	_strand_spawn(key, at as Vector3)
+	if _reached(at):
+		Q.report(String(q["event"]), 1)
+
+func _strand_spawn(key: String, at: Vector3) -> void:
+	if _ev_mobs.has(key):
+		return
+	var ally: Array = _ev_spawn(key, at, [AERO_WRECK_PRESET], 0)
+	if ally.is_empty():
+		return
+	_ev_ally[key] = ally[0]
+	_ev_spawn(key, at + Vector3(18.0, 0.0, 0.0), [6, 7], 1, ally[0])
+	Dialogue.say("Aero", tr("One of ours lost its wheels out there and the locals have noticed. Get them off it."))
+
+func _strand_2(q: Dictionary) -> void:
+	var key := "astrand"
+	var at = _ev_get_point(key)
+	if at == null:
+		return
+	if not _ev_mobs.has(key):
+		_strand_spawn(key, at as Vector3)        # state lost (a reload): the wreck and its attackers again
+		return
+	var ally = _ev_ally.get(key)
+	if not is_instance_valid(ally):
+		Dialogue.say("Aero", tr("We lost it. Another one is stuck out there - try again."))
+		_forget_event(key)
+		Q.reset_quest(String(q["id"]))
+		return
+	if _party_open(key):
+		return
+	for m in _ev_mobs.get(key, []):
+		if is_instance_valid(m) and m != ally:
+			return
+	Dialogue.say("Aero", tr("Clear. A recovery crew is on its way for it. Aero will remember this."))
+	_release_machine(ally)
+	_ev_ally.erase(key)
+	_ev_mobs.erase(key)
+	_ev_party.erase(key)
+	_ev_point.erase(key)
+	Q.report(String(q["event"]), 1)
