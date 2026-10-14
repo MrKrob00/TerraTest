@@ -30,9 +30,11 @@ extends Node
 ## at its inner edge still lets the ground show (`haze`, from `Main._apply_view`): at the 200 m view
 ## they are off. Measured on the optimize=none build, everything this node costs a frame, old against
 ## new, the camera standing / at 5 m/s / at 20 m/s: 1.48 / 1.32 / 1.69 ms against 0.47 / 0.96 / 1.64.
-## A caster's polygons are KEPT between builds (`Cas.memo`, by the caster's key, in pixels round a
+## A caster's triangles are KEPT between builds (`Cas.memo`, by the caster's key, in pixels round a
 ## fixed origin): moving the window only lays them off again, and only the casters that came in,
 ## changed or left cost anything; a turned light makes all of them anew, a slice a frame (`BUILD_USEC`).
+## A still layer draws them as ONE mesh (`Cas.mesh`), and the ground shade's heights come a row at a
+## call (`ChunkTerrain.known_heights_into`).
 ## NOTHING SWIMS: every window's centre moves in whole texels and the ground's shade in whole cells
 ## over a fixed height grid, so a still shadow lands on the same texels frame after frame - a centre
 ## following the camera to the millimetre slid every edge under the linear filter and the shadows
@@ -62,9 +64,10 @@ const HAZE_SHOWN := 0.6              # a far cascade is built while its inner ed
                                      # of the haze's run (begin to end)
 const TERR_N := 56                   # terrain shade cells across a cascade's window
 const TERR_LIFT := 0.6               # m the ray starts over its cell, past the cell's own slope
-const TERR_TURN := 0.02              # of the light direction (~1.1 deg)
+const TERR_TURN := 0.02              # of the light direction (~1.1 deg), at the near cascade's texel
+const TURN_SPAN_MAX := 4.0           # a far cascade's turn: TERR_TURN x its texel over the near one's, at most this
 const TERR_FETCH_PER_FRAME := 250
-const TERR_REFRESH := 0.03           # of the rows fetched again on every refresh
+const TERR_REFRESH := 2              # rows of the window fetched again on every refresh
 const NO_GROUND := -1.0e6            # a fetched cell with nothing drawn: lower than any ridge
 const UNFETCHED := -1.0e7
 const REV_EVERY := 0.5               # s: a changed caster is redrawn at most this often
@@ -74,6 +77,7 @@ const HOLE_TURN_COS := 0.9           # a camera turned ~25 deg asks for a refres
 const HOLE_BURSTS := 2               # twice, `HOLE_GAP` s apart: the ground there is still being built
 const HOLE_GAP := 2.0
 const HOLE_FIELD := 1.05             # rad, half the field a hole is asked again in (the screen's ~50 + a margin)
+const HOLE_EVERY := 4.0              # s: the holes in view are asked again at most this often, a turn aside
 
 var active := false:
 	set(v):
@@ -95,16 +99,18 @@ class Cas extends RefCounted:
 	var detail := 0
 	var cell := 0.0
 	var ppm := 0.0
+	var turn := 0.0                  # how far the light turns before this map is cast again
 	var inner := 0.0                 # m from the camera where it takes over from the one before
 	var on := false
 	var vp: SubViewport = null
 	var canvas: Node2D = null
 	# what the map shows
 	var ref := Vector2(INF, INF)     # centre of the map
-	var polys: Array = []            # in pixels round `org`
+	var mesh: ArrayMesh = null       # every caster's triangles in one mesh, in pixels round `org`
 	var org := Vector2.ZERO
 	var redraw := false
-	# the polygons kept between builds: key -> Array of polygons, cast by `memo_dir` round `memo_org`
+	# the triangles kept between builds, cast by `memo_dir` round `memo_org`: region key -> [its rev,
+	# the region's triangles, {caster key -> the caster's triangles}]
 	var memo: Dictionary = {}
 	var memo_dir := Vector3(INF, INF, INF)
 	var memo_org := Vector2.ZERO
@@ -113,13 +119,17 @@ class Cas extends RefCounted:
 	var goal_dir := Vector3(INF, INF, INF)
 	var dirty := true
 	var rev := 0                     # `ResourceNodes.shadow_rev_in` round the last build
-	var b_i := -1                    # -1: none in flight
-	var b_list: Array = []
+	var b_i := -1                    # -1: none in flight; else the record in the region in flight
+	var b_g := 0                     # the region in flight
+	var b_list: Array = []           # `ResourceNodes.shadow_groups`
+	var b_rt := PackedVector2Array() # the region in flight's triangles
+	var b_rc: Dictionary = {}        # and its casters'
+	var b_old: Dictionary = {}       # what the region cast last time, by caster
 	var b_ref := Vector2.ZERO
 	var b_dir := Vector3.ZERO
 	var b_org := Vector2.ZERO
 	var b_reuse := false
-	var b_polys: Array = []
+	var b_tris := PackedVector2Array()
 	var b_memo: Dictionary = {}
 	# the ground's shade
 	var t_tex: ImageTexture = null
@@ -134,6 +144,9 @@ class Cas extends RefCounted:
 	var h_fwd := Vector2.ZERO        # where the camera looked at the last refresh it asked for
 	var bursts := 0                  # refreshes still to ask for after the camera turned
 	var burst_t := 0.0
+	var hole_t := 0.0                # until the holes in view may be asked again
+	var hole_due := true             # the next refresh asks them
+	var refetch: Array = []          # world rects the ground changed under: fetched again next refresh
 
 class TJob extends RefCounted:
 	var cas: Cas = null
@@ -197,6 +210,10 @@ func _ready() -> void:
 		c.detail = row[4]
 		c.cell = c.win / float(TERR_N)
 		c.ppm = float(c.px) / c.win
+		# A TURN SHIFTS A SHADOW BY ITS LENGTH x THE TURN, so a coarse map takes a bigger one for the
+		# same shift in texels: the day turns the sun TERR_TURN every ~5 s, and every cascade cast anew
+		# each time was most of what the far maps cost a minute
+		c.turn = TERR_TURN * minf((float(CASCADES[0][1]) / float(CASCADES[0][0])) / c.ppm, TURN_SPAN_MAX)
 		c.inner = maxf(prev_reach - SH_BAND, 0.0)
 		prev_reach = c.win * 0.5 - c.step
 		c.vp = SubViewport.new()
@@ -251,6 +268,8 @@ func _process(delta: float) -> void:
 	var map := _map()
 	if cam == null or light == null or map == null:
 		return
+	if map.has_signal(&"ground_changed") and not map.is_connected(&"ground_changed", _on_ground_changed):
+		map.connect(&"ground_changed", _on_ground_changed)
 	var texel: float = WINDOW / float(VP_SIZE)
 	_cam2 = Vector2(cam.global_position.x, cam.global_position.z)
 	var fw := Vector2(-cam.global_basis.z.x, -cam.global_basis.z.z)
@@ -265,7 +284,7 @@ func _process(delta: float) -> void:
 	var strength: float = light.shadow_opacity * clampf(light.light_energy, 0.0, 1.0)
 	_rev_t -= delta
 	var rn := get_node_or_null("/root/Main/map/Resource_Nodes")
-	if rn != null and not rn.has_method("shadow_records"):
+	if rn != null and not rn.has_method("shadow_groups"):
 		rn = null
 	var rev_ask: bool = rn != null and _rev_t <= 0.0
 	if rev_ask:
@@ -292,12 +311,22 @@ func _process(delta: float) -> void:
 				c.bursts -= 1
 				c.burst_t = HOLE_GAP
 				c.t_dirty = true
+				c.hole_due = true
+		# and now and then whatever the camera does: ground ahead is built after a refresh asked for it
+		# (the first ones run under the loading screen), and a drive straight on turns nothing
+		c.hole_t -= delta
+		if c.hole_t <= 0.0 and not c.hole_due:
+			c.hole_due = true
+			if not c.h_hruns.is_empty():
+				c.t_dirty = true
 		var moved: bool = c.goal_ref.x == INF or _cheb(_cam2 - c.goal_ref) > c.step - c.cell
-		var turned: bool = c.goal_dir.distance_squared_to(_dir) > TERR_TURN * TERR_TURN
+		var turned: bool = c.goal_dir.distance_squared_to(_dir) > c.turn * c.turn
 		if moved or turned:
+			# A BUILD IN FLIGHT IS FINISHED, NOT DROPPED: thrown away at every move it never finished
+			# where a fresh cast took longer than driving a step (a phone in a fight), and the map stood
+			# where it was last built until `_push` let it go. It lands, and the next starts from it.
 			c.dirty = true
 			c.t_dirty = true
-			c.b_i = -1                   # what is in flight is for a window or a light already gone
 		elif rev_ask and c.b_i < 0 and not c.dirty \
 				and rn.shadow_rev_in(c.goal_ref, c.win * 0.5 + CASTER_PAD) != c.rev:
 			c.dirty = true
@@ -317,12 +346,15 @@ func _process(delta: float) -> void:
 	# THE COMPOSITE IS DRAWN WHEN SOMETHING IN IT CHANGED: the window, the light, its still layer, a
 	# machine or a loose block. What it was drawn from is asked only while the window stands, so a
 	# drive pays nothing for the question; a stop costs one more drawing, then nothing.
+	# The signature is taken whenever the window stands, a redraw due or not: kept empty after a redraw
+	# for another reason, the next standing frame read as a change and drew everything again.
 	var sig := PackedFloat32Array()
-	var redraw: bool = _comp_dirty or _center != _sig_center \
+	var standing: bool = _center == _sig_center
+	var redraw: bool = _comp_dirty or not standing \
 			or _sig_dir.distance_squared_to(_dir) > IDLE_TURN * IDLE_TURN
-	if not redraw:
+	if standing:
 		sig = _scene_sig()
-		redraw = sig != _sig
+		redraw = redraw or sig != _sig
 	if redraw:
 		_comp_dirty = false
 		_sig_center = _center
@@ -332,6 +364,15 @@ func _process(delta: float) -> void:
 		_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	_push(map, strength)
 	Perf.mark("sun_shadows", _pf)
+
+## THE KEPT HEIGHTS UNDER A GROUND EDIT ARE ASKED AGAIN (a quest's levelled pad, the edits replayed
+## on load): a refresh copies what it kept and fetches only what it has not got, so the slope under a
+## new pad was marched over until the rolling band came round to it - minutes standing still. Whatever
+## is not built again yet comes back a hole and is asked again as one.
+func _on_ground_changed(area: Rect2) -> void:
+	for c: Cas in _cas:
+		c.refetch.append(area.grow(c.cell))
+		c.t_dirty = true
 
 static func _cheb(v: Vector2) -> float:
 	return maxf(absf(v.x), absf(v.y))
@@ -393,10 +434,14 @@ func _scene_sig() -> PackedFloat32Array:
 	return s
 
 # ── The still layers ────────────────────────────────────────────────────────
-## A slice of the still layers' polygons a frame, near cascade first. A build walks the records round
-## its centre (`ResourceNodes.shadow_records`), takes the casters in its window (`cast_entry`), reuses
-## the polygons it kept for every caster still there and unchanged when the light has not turned
-## (`memo`), and shows the result in one go when it is complete.
+## A slice of the still layers' triangles a frame, near cascade first. A build walks the regions round
+## its centre (`ResourceNodes.shadow_groups`): a region whose casters have not changed (its rev) while
+## the light has not turned casts the triangles it cast last time, whole; one that changed is walked
+## caster by caster (`cast_entry`), each unchanged caster's triangles reused from that region's last
+## cast. So a move costs the regions that came in, not every record in reach - at 20 m/s on the real
+## driver the walk was 0.67 ms a frame. EVERY RECORD OF A REGION IN REACH IS CAST, in the window or
+## not: the triangles past its edge are clipped, and a region's cast stays one piece whatever the
+## window. The result is shown in one go when it is complete.
 func _build_tick(rn: Node) -> void:
 	if rn == null:
 		return
@@ -408,49 +453,74 @@ func _build_tick(rn: Node) -> void:
 			if not c.dirty:
 				continue
 			_build_start(c, rn)
-		var half: float = c.win * 0.5 + CASTER_PAD
-		while c.b_i < c.b_list.size():
-			if Time.get_ticks_usec() >= t_end:
-				return
-			var v: Dictionary = c.b_list[c.b_i]
-			c.b_i += 1
-			var gp: Vector3 = v["gpos"]
-			if absf(gp.x - c.b_ref.x) > half or absf(gp.z - c.b_ref.y) > half:
-				continue
-			if c.detail == 0 and v.get("wood") != true:
-				continue                     # at 2 m a texel a vein is a blob under a texel: crowns only
-			var ce = v.get("sc")
-			if ce == null:
-				ce = rn.cast_entry(v)
-			if not (ce is Array):
-				continue
-			var e: Array = ce
-			var key = e[e.size() - 1]
-			var got = c.memo.get(key) if c.b_reuse else null
-			if got == null:
-				got = _caster_polys(e, c.b_dir, c.b_org, c.ppm, c.detail)
-			c.b_memo[key] = got
-			c.b_polys.append_array(got)
-		# complete: shown in one go
+		while c.b_g < c.b_list.size():
+			var grp: Array = c.b_list[c.b_g]
+			var rk = grp[0]
+			var rev: int = grp[1]
+			var recs: Array = grp[2]
+			if c.b_i == 0:
+				var last = c.memo.get(rk) if c.b_reuse else null
+				if last != null and int(last[0]) == rev:
+					c.b_memo[rk] = last
+					c.b_tris.append_array(last[1])
+					c.b_g += 1
+					continue
+				c.b_old = last[2] if last != null else {}
+				c.b_rt = PackedVector2Array()
+				c.b_rc = {}
+			while c.b_i < recs.size():
+				if Time.get_ticks_usec() >= t_end:
+					return
+				var v: Dictionary = recs[c.b_i]
+				c.b_i += 1
+				if c.detail == 0 and v.get("wood") != true:
+					continue                 # at 2 m a texel a vein is a blob under a texel: crowns only
+				var ce = v.get("sc")
+				if ce == null:
+					ce = rn.cast_entry(v)
+				if not (ce is Array):
+					continue
+				var e: Array = ce
+				var key = e[e.size() - 1]
+				var got = c.b_old.get(key)
+				if got == null:
+					got = _fan(_caster_polys(e, c.b_dir, c.b_org, c.ppm, c.detail))
+				c.b_rc[key] = got
+				c.b_rt.append_array(got)
+			c.b_memo[rk] = [rev, c.b_rt, c.b_rc]
+			c.b_tris.append_array(c.b_rt)
+			c.b_g += 1
+			c.b_i = 0
+		# complete: shown in one go, as ONE mesh - a polygon a draw command was 0.8 ms a frame of
+		# recording at 20 m/s on the real driver (optimize=none), most of what the still layers cost
 		c.memo = c.b_memo
 		c.memo_dir = c.b_dir
 		c.memo_org = c.b_org
-		c.polys = c.b_polys
+		c.mesh = null
+		if not c.b_tris.is_empty():
+			var arr := []
+			arr.resize(Mesh.ARRAY_MAX)
+			arr[Mesh.ARRAY_VERTEX] = c.b_tris
+			c.mesh = ArrayMesh.new()
+			c.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
 		c.org = c.b_org
 		c.ref = c.b_ref
 		c.b_i = -1
 		c.b_list = []
-		c.b_polys = []
+		c.b_tris = PackedVector2Array()
 		c.b_memo = {}
+		c.b_old = {}
+		c.b_rc = {}
+		c.b_rt = PackedVector2Array()
 		c.redraw = true
 
 func _build_start(c: Cas, rn: Node) -> void:
 	c.dirty = false
 	c.b_ref = (_cam2 / c.cell).round() * c.cell
-	# A STILL LAYER IS CAST BY THE LIGHT ITS POLYGONS WERE KEPT FOR until it has turned `TERR_TURN`: the
+	# A STILL LAYER IS CAST BY THE LIGHT ITS TRIANGLES WERE KEPT FOR until it has turned `TERR_TURN`: the
 	# day moves the sun every `DayCycle.TICK`, and a build for a move cast by that frame's light would
-	# make every polygon anew. The kept ones are laid off from their own origin; the rest made there.
-	c.b_reuse = c.memo_dir.distance_squared_to(_dir) <= TERR_TURN * TERR_TURN \
+	# make every triangle anew. The kept ones are laid off from their own origin; the rest made there.
+	c.b_reuse = c.memo_dir.distance_squared_to(_dir) <= c.turn * c.turn \
 			and c.memo_org.distance_squared_to(c.b_ref) < 4.0 * c.win * c.win
 	c.b_dir = c.memo_dir if c.b_reuse else _dir
 	c.b_org = c.memo_org if c.b_reuse else c.b_ref
@@ -459,9 +529,10 @@ func _build_start(c: Cas, rn: Node) -> void:
 	if not c.b_reuse:
 		c.memo = {}
 	c.rev = rn.shadow_rev_in(c.b_ref, c.win * 0.5 + CASTER_PAD)
-	c.b_list = rn.shadow_records(c.b_ref, c.win * 0.5 + CASTER_PAD)
+	c.b_list = rn.shadow_groups(c.b_ref, c.win * 0.5 + CASTER_PAD)
+	c.b_g = 0
 	c.b_i = 0
-	c.b_polys = []
+	c.b_tris = PackedVector2Array()
 	c.b_memo = {}
 
 ## A world point dropped along `d` onto the plane y = g, in pixels round `org` at `ppm`.
@@ -517,6 +588,16 @@ func _caster_polys(e: Array, d: Vector3, org: Vector2, ppm: float, detail: int) 
 				out.append(hull)
 	return out
 
+## Convex polygons as one list of triangles, fanned from each one's first point.
+static func _fan(polys: Array) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for poly: PackedVector2Array in polys:
+		for k in range(1, poly.size() - 1):
+			out.append(poly[0])
+			out.append(poly[k])
+			out.append(poly[k + 1])
+	return out
+
 ## `convex_hull` closes the ring by repeating its first point; a thin hull with that seam fails the
 ## canvas's triangulation (the engine prints it every frame), so the ring goes in open.
 static func _open(h: PackedVector2Array) -> PackedVector2Array:
@@ -532,11 +613,9 @@ func _draw_still(c: Cas) -> void:
 	if c.t_tex != null and c.t_center.x != INF:
 		var tlo: Vector2 = c.t_center - Vector2(c.win, c.win) * 0.5
 		c.canvas.draw_texture_rect(c.t_tex, Rect2(((tlo - lo) * c.ppm).round(), Vector2(c.px, c.px)), false)
-	if not c.polys.is_empty():
-		var col := Color(1, 1, 1, 1)
+	if c.mesh != null:
 		c.canvas.draw_set_transform(((c.org - lo) * c.ppm).round())
-		for poly in c.polys:
-			c.canvas.draw_colored_polygon(poly, col)
+		c.canvas.draw_mesh(c.mesh, null)
 		c.canvas.draw_set_transform(Vector2.ZERO)
 	still_us += Time.get_ticks_usec() - t0
 
@@ -817,8 +896,9 @@ func _draw_tyre(w, g: float, col: Color) -> void:
 ## drive cannot starve the far ones. Fetching is the main thread's (the terrain answers there), a
 ## slice a frame; the march is a worker's.
 func _terrain_tick(map: Node) -> void:
+	var rowwise: bool = map.has_method("known_heights_into")
 	var ask: StringName = &"known_height" if map.has_method("known_height") else &"drawn_height"
-	if not map.has_method(ask):
+	if not rowwise and not map.has_method(ask):
 		return
 	match _t_phase:
 		0:
@@ -835,13 +915,24 @@ func _terrain_tick(map: Node) -> void:
 				var start: int = j.runs[j.r]
 				var count: int = j.runs[j.r + 1]
 				var end: int = mini(j.i + budget, count)
-				for t in range(j.i, end):
-					var idx: int = start + t
-					@warning_ignore("integer_division")
-					var hv = map.call(ask, j.org.x + float(idx % j.n) * j.cell, j.org.y + float(idx / j.n) * j.cell)
-					j.heights[idx] = hv if not is_nan(hv) else NO_GROUND
-				budget -= end - j.i
-				j.i = end
+				if rowwise:
+					# a row at a time: a run can carry on into the next row
+					while j.i < end:
+						var idx: int = start + j.i
+						var col: int = idx % j.n
+						var seg: int = mini(end - j.i, j.n - col)
+						@warning_ignore("integer_division")
+						map.call(&"known_heights_into", j.heights, idx, j.org.x + float(col) * j.cell, j.org.y + float(idx / j.n) * j.cell, j.cell, seg, NO_GROUND)
+						j.i += seg
+						budget -= seg
+				else:
+					for t in range(j.i, end):
+						var idx: int = start + t
+						@warning_ignore("integer_division")
+						var hv = map.call(ask, j.org.x + float(idx % j.n) * j.cell, j.org.y + float(idx / j.n) * j.cell)
+						j.heights[idx] = hv if not is_nan(hv) else NO_GROUND
+					budget -= end - j.i
+					j.i = end
 				if j.i >= count:
 					j.r += 2
 					j.i = 0
@@ -904,16 +995,31 @@ func _terr_begin(c: Cas) -> void:
 	if kept:
 		oi = roundi((j.org.x - c.h_org.x) / c.cell)
 		oj = roundi((j.org.y - c.h_org.y) / c.cell)
-	var rows: int = maxi(int(ceil(float(j.n) * TERR_REFRESH)), 1)
-	var ref_lo: int = c.h_refresh % j.n
+	# THE ROLLING REFRESH IS THE WINDOW'S, NOT THE GRID'S: what the ground shows is the window, and a
+	# strip uncovered at the grid's edge was fetched from coarse ground `march` past it - the band
+	# gives it the finer heights built since. Whole grid rows were 4-5 x the cells for heights the
+	# march only reaches.
+	var w0x: int = clampi(roundi((j.center.x - c.win * 0.5 - j.org.x) / c.cell), 0, j.n)
+	var w0z: int = clampi(roundi((j.center.y - c.win * 0.5 - j.org.y) / c.cell), 0, j.n)
+	var w1x: int = mini(w0x + TERR_N + 1, j.n)
+	var wn: int = mini(TERR_N + 1, j.n - w0z)
+	var rows: int = mini(TERR_REFRESH, wn)
+	var ref_lo: int = c.h_refresh % maxi(wn, 1)
 	c.h_refresh = ref_lo + rows
-	var holes: bool = kept and c.h_hrow.size() == c.h_n + 1
+	# THE HOLES ARE ASKED AFTER A TURN AND EVERY `HOLE_EVERY`, NOT ON EVERY REFRESH: one that stayed a
+	# hole when asked is ground not built, and asked on every refresh of a drive - the near window's
+	# every 12 m - they were most of what it fetched (headless, where nothing is built: 2.0 against
+	# 1.6 ms a frame at 20 m/s)
+	var holes: bool = c.hole_due and kept and c.h_hrow.size() == c.h_n + 1
+	if c.hole_due:
+		c.hole_due = false
+		c.hole_t = HOLE_EVERY
 	var runs := PackedInt32Array()
 	for row in j.n:
 		var src: int = row + oj
 		var s0: int = maxi(oi, 0)
 		var s1: int = mini(c.h_n, oi + j.n)
-		var refresh: bool = (row - ref_lo + j.n) % j.n < rows
+		var refresh: bool = (row - w0z - ref_lo + wn) % maxi(wn, 1) < rows and row >= w0z and row < w0z + wn
 		if not kept or src < 0 or src >= c.h_n or s1 <= s0:
 			hs.append_array(miss)
 			_run(runs, row * j.n, j.n)
@@ -925,21 +1031,41 @@ func _terr_begin(c: Cas) -> void:
 		var right: int = j.n - left - (s1 - s0)
 		if right > 0:
 			hs.append_array(miss.slice(0, right))
-		if refresh:
-			_run(runs, row * j.n, j.n)
-			continue
+		var in1: int = left + (s1 - s0)
 		_run(runs, row * j.n, left)
+		var r0: int = in1
+		var r1: int = left
+		if refresh:
+			# the window's columns; a hole inside them is fetched with them
+			r0 = maxi(w0x, left)
+			r1 = mini(w1x, in1)
+			_run(runs, row * j.n + r0, r1 - r0)
 		if holes and c.h_hrow[src + 1] > c.h_hrow[src]:
 			var ask := _ask_cols(j, row)
 			var lo: int = maxi(ask.x, left)
-			var hi: int = mini(ask.y, left + (s1 - s0))
+			var hi: int = mini(ask.y, in1)
 			if hi > lo:
 				for t in range(c.h_hrow[src], c.h_hrow[src + 1], 2):
 					var a0: int = maxi(c.h_hruns[t] - oi, lo)
 					var a1: int = mini(c.h_hruns[t] + c.h_hruns[t + 1] - oi, hi)
+					if r1 > r0:
+						if a0 >= r0 and a1 <= r1:
+							continue
+						if a0 < r0 and a1 > r0:
+							_run(runs, row * j.n + a0, r0 - a0)
+							a0 = maxi(a0, r1)
+						elif a0 >= r0 and a0 < r1:
+							a0 = r1
 					if a1 > a0:
 						_run(runs, row * j.n + a0, a1 - a0)
-		_run(runs, row * j.n + left + (s1 - s0), right)
+		_run(runs, row * j.n + in1, right)
+	for a in c.refetch:
+		var r: Rect2 = a
+		var x0: int = clampi(floori((r.position.x - j.org.x) / c.cell), 0, j.n)
+		var x1: int = clampi(ceili((r.end.x - j.org.x) / c.cell) + 1, 0, j.n)
+		for row in range(clampi(floori((r.position.y - j.org.y) / c.cell), 0, j.n), clampi(ceili((r.end.y - j.org.y) / c.cell) + 1, 0, j.n)):
+			_run(runs, row * j.n + x0, x1 - x0)
+	c.refetch.clear()
 	j.heights = hs
 	j.runs = runs
 	j.r = 0
