@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR, the STABILISER wheel and the CONVEYORS.
+"""Builds the SHIELD, the REPAIR UNIT (regen), the RADAR and the CONVEYORS.
 
-    python3 art/emitter_models.py [shield|regen|radar|stab|belt|belt_cross|belt_split ...]
+    python3 art/emitter_models.py [shield|regen|radar|belt|belt_cross|belt_split ...]
         -> objects/<name>_texture.png + art/out/<name>.glb (one node per part)
     godot --headless --path . --script res://art/turret_import.gd -- <name> ...
         -> blocks/meshes/<name>_<part>.tres
@@ -1236,46 +1236,6 @@ def build_radar(pk, img):
     a = math.radians(-(90.0 - RADAR_TILT))
     ca, sa = math.cos(a), math.sin(a)
     head += xform(dish, lambda p: (p[0], p[1] * ca - p[2] * sa + 0.18, p[1] * sa + p[2] * ca - 0.06))
-    return parts
-
-
-# ── the stabiliser wheel ────────────────────────────────────────────────────────────────────────
-# It carries the artist's SMALL tyre and hub (Assets.glb Wheel_small / Wheel_Axle) and the artist's
-# mounting plate; what is generated here is only what those lack - a mount and trailing arms - so
-# the tyre on it is the very tyre on the small wheel.
-
-STAB_RIDE = 0.90         # same as the standard wheel: the stabiliser carries at the same height
-STAB_AXLE = (-0.60, -0.12)   # (y, z) of its axle, reaching away from the hull on its +Z side
-
-
-def rod_x(pk, img, faces, y, z, r, x0, x1, ramp=None):
-    """An octagonal rod along X (an axle through a hub)."""
-    part = []
-    lathe_y(pk, img, part, [(r, x0), (r, x1)], ramp or METAL_RAMP, sides=8)
-    # lathe_y builds about Y; lay it down: (x, y, z) -> (y, x, z), then move to (y, z).
-    for f in part:
-        f.pts = [(p[1], p[0] + y, p[2] + z) for p in f.pts]
-    faces += part
-
-
-def build_stab(pk, img):
-    parts = {"stab_mount": [], "stab_arm": []}
-    mount, arm = parts["stab_mount"], parts["stab_arm"]
-    # Mount on the back plate: a dark sleeve tall enough to hide the arm roots at full travel.
-    th.box(mount, (-0.19, -0.17, 0.18), (0.19, 0.17, 0.37), "dark", face_styles={"-z": "blue"})
-    # Trailing arms from inside the sleeve down to the axle, beside the tyre.
-    ay, az = STAB_AXLE
-    y0, z0 = 0.0, 0.27
-    ln = math.hypot(ay - y0, az - z0)
-    ang = math.atan2(az - z0, -(ay - y0))       # tilt from straight down, towards -Z
-    for sx in (-1, 1):
-        lo, hi = sorted((sx * 0.19, sx * 0.25))
-        a = []
-        th.box(a, (lo, -ln, -0.035), (hi, 0.04, 0.035), "blue")
-        ca, sa = math.cos(-ang), math.sin(-ang)
-        xform(a, lambda p: (p[0], p[1] * ca - p[2] * sa + y0, p[1] * sa + p[2] * ca + z0))
-        arm += a
-    rod_x(pk, img, arm, ay, az, 0.035, -0.26, 0.26)
     return parts
 
 
@@ -3128,7 +3088,6 @@ BLOCKS = {
     "shield": (17, build_shield, 256),
     "regen": (19, build_regen, 256),
     "radar": (23, build_radar, 256),
-    "stab": (31, build_stab, 256),
     "belt": (37, build_belt, 256),
     "belt_cross": (41, build_belt_cross, 256),
     "belt_split": (43, build_belt_split, 256),

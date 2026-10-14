@@ -389,19 +389,24 @@ project: read it before claiming how anything works.
   `load_capacity` plus a `ride_height` LARGER than the standard wheel's, and `connect_faces` of
   `FACE_TOP` (16) rather than `FACE_BACK` — neither is set yet. The stabiliser mounts on the REAR
   (or front) face and looks FORWARD rather than sideways: the third support under a nose- or
-  tail-heavy build, where a block used to be propped in and then dragged along the ground. THE STABILISER
-  IS BUILT (`art/emitter_models.py` stab): it bolts on by its BACK face like any wheel (the small
-  wheel's tyre and plate), trailing arms down to an axle rod THROUGH the tyre's centre. The artist's
-  `Wheel_Axle` is NOT part of the tyre - it is the separate hub of their own suspension, sitting
-  beside the tyre - and bolted onto this one it stuck out past one arm; the tyre carries its own
-  rim, so it hangs between the arms alone, rolling along the
-  machine (axis block X), `ride_height` 0.9 like the standard wheel. Measured on the proving ground:
-  two standard wheels in front and a stabiliser on the tail stand level (0.0 deg) at 0.88 with the
-  stabiliser grounded. THE RISER IS STILL THE PLACEHOLDER, and on purpose: two generated attempts
-  (a thin plate and rod, then a heavy mount and a swept cast arm) were rejected by the player and
-  removed. What the model has to be is settled - TerraTech's: 2x1x1 WIDE, a mount whose top face
-  bolts under the hull, an arm out to the side, an ordinary tyre in the second cell - so whoever
-  builds it next starts from that, not from the old "strut straight down" note.
+  tail-heavy build, where a block used to be propped in and then dragged along the ground. **THE STABILISER IS THE ARTIST'S OWN KIT**
+  (`art/falsus_wheels.py` stab, `blocks/scripts/stab_wheel.gd`; the player's pick of four designs). It
+  bolts on by its BACK face like any wheel, with the artist's plate and small tyre, and between them is
+  the artist's C-arm, re-mounted: two PARALLEL chamfered bars out of the plate's slot (the upper one
+  carries the "+" stencil), a DRIVE SHAFT between them with a U-joint collar at each end into a bevel box
+  on the upright, and under the upright a knuckle - a crown across the tyre's top and ONE leg down its
+  +X side to a 10-sided hub drum - so the blue hub on -X shows whole. The tyre rolls along the machine
+  (axle block X) under the post, `ride_height` 0.9 like the standard wheel. Parallel links: the bars and
+  the shaft only TURN about their pivots, the upright and knuckle only MOVE, the knuckle steers about
+  the post (a stabiliser on the nose is a front wheel, `is_front` from its place), and the shaft turns
+  with the tyre; the script reads the generator's numbers, measured on the engine equal to its poses
+  (6e-8) at rest, steered and at both ends of the travel. Collider refitted (41% of the box). Turned
+  down on the way, each a rule now: thin generated arms, a bare thick arm ("ugly without a
+  transmission"), motor cans on the hub ("I don't like the motors") and a chain-case arm ("too strange
+  next to the ordinary Falsus wheels") - the stabiliser had to look like the wheels beside it. THE
+  RISER IS STILL THE PLACEHOLDER: the same kit is drawn for it (`falsus_wheels.py` riser, a DRAFT the
+  game does not load) after the player's spec - ONE CELL, joining by its TOP face, hanging under the
+  hull with the small tyre standing a little out to the side (-Z).
 
 ### Building
 
