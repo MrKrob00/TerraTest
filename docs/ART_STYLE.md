@@ -176,3 +176,50 @@ The script decides only when and how fast (`play`, `play_backwards`, `play_secti
 different properties, or to a mount node and the part under it. A part a clip moves still needs the
 block's `moving_parts`, or the batch draws it where it stood. What follows game state (aim, wheels,
 supports, charge) stays in code. The list, the numbers and the measurements are in CLAUDE.md.
+
+## Aero and Stryx: the next two factions (style only)
+
+Both have a name and an emblem in the game (`G.FACTIONS`, `images/faction_aero.png`,
+`faction_stryx.png`) and nothing else: no blocks, no quests, no licence quest yet. What follows is the
+brief their models are built to, cut down from the player's notes to what a model can be checked
+against. The rules above still hold for both: walls on the cell faces wherever a block joins, every
+vertex inside its cells, the triangle budget, 38-48 px/m, no light from the engine.
+
+### Aero: speed
+
+The simulation's speed-test subsystem: light, quick and fragile blocks (low mass and low hit
+points against Falsus's).
+
+- **Shape.** Wedges, slanted prisms, triangular plates and fairings - a machine of them should
+  read as cutting the air. The slant lives INSIDE the block: a face it joins by stays a full flat
+  face on the cell, as the hull blocks' do, or a row of them is a row of ridges.
+- **Chamfer 0.035 m**, about half of Falsus's 0.067: razor edges. At 38-48 px/m that is 1-2 texels,
+  which is exactly the painted highlight below.
+- **Round parts** (turbines, intakes, wheels) are prisms of 8-12 sides, no smoothing, the wheels'
+  faces like a racing car's light rims.
+- **Three bands, flat across the block:** blue top, white middle, orange bottom, in the block's own
+  axes. On a flat deck the orange reads as one skirt (a splitter) and the white as one wing; on
+  blocks of different heights the bands repeat per block, and that is accepted.
+- **Painted light.** The chamfers on the white band are a 1-texel line of bright white (a glint);
+  side faces carry thin dark-grey horizontal slots (vents). The blocks are unshaded, so this is the
+  only shading they get.
+- **The function mark** stays in the middle of the white band: a bold black chevron or wing, at
+  least 10 texels across, so it reads on a phone.
+
+**No Aero models yet.** Four cuts of the basic block and the standard wheel were turned down and
+deleted (a banded cube with a wishbone wheel, a bullnose, a three-layer cube with a letter on it,
+a copy of the reference pictures). Marks are the faction's emblem, never a letter.
+
+### Stryx: stealth
+
+The simulation's special forces: monolithic, expensive-looking, threatening; heavy armour.
+
+- **Colour by area:** 80% matte tactical black (#1A1A1A), 15% gunmetal / graphite on joints, mounts
+  and mechanisms, 5% tactical red - optics, laser markers, the narrow triangular slits of a cabin,
+  weapon lights. THE BLACK NEEDS ITS EDGES: unshaded #1A1A1A with nothing on it is a silhouette,
+  on a dark night ground nothing at all, so every edge and panel seam is drawn in the gunmetal, and
+  the red is the brightest thing on the block.
+- **Shape.** Stealth facets after the F-117: sharp, chopped, angled cuts, asymmetric where the block
+  allows it - again inside the cell, with full flat faces where it joins.
+- **Texture.** Seams of heavy armour plates and bolts painted on the side faces: the military detail
+  costs no triangles.

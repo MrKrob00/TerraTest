@@ -1592,8 +1592,10 @@ func _update_radar(delta: float) -> void:
 	var live: bool = v != null and v is Node3D and not _controls_hidden
 	if _money_panel:
 		_money_panel.visible = live
+	# THE QUEST MARKER STAYS UP IN THE GARAGE (the player's call): building is where the way to the
+	# target is still wanted, and the compass takes no input. Drawn over the garage's panels.
 	if _quest_compass:
-		_quest_compass.visible = live
+		_quest_compass.visible = v != null and v is Node3D
 	if _radar.visible != live:
 		_radar.visible = live
 		_push_quest_top(live)
@@ -2181,6 +2183,8 @@ func _on_tech_ui_visibility() -> void:
 			v._on_movement_pressed()
 	_set_game_controls_hidden(open)
 	_update_build_widgets()
+	if open:
+		_lift(_quest_compass)     # the garage was added later and would cover the marker
 	# Гараж музыку НЕ переключает: в нём продолжает играть музыка путешествий.
 	# Тип «меню» зарезервирован под будущее главное меню игры (кнопка «Начать» и т.д.).
 	# Уводим трекер квестов вниз, чтобы не перекрывал статистику и кнопку закрытия.

@@ -1512,7 +1512,10 @@ project: read it before claiming how anything works.
   it is "the node was replaced": one coarse becomes four fine or the other way round, and the
   replacement is still in the queue. Hiding the old one in the same tick opens a hole where it
   stood — that is what "chunks disappear while I drive" was. Cover counts only a tree neighbour the
-  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. `FRUSTUM_MARGIN` is METRES and widens, but ONLY ON THE SIDE
+  LEAF SET wants (a split builds its children off the screen too) and that is already BUILT. COVER IS
+  ASKED OF ANY ANCESTOR AND THE WHOLE SUBTREE (`_covered`, `_covered_below`), not only the parent and the four
+  children: a node replaced by leaves two levels finer stayed drawn over them, and near the player
+  nothing is dropped. `FRUSTUM_MARGIN` is METRES and widens, but ONLY ON THE SIDE
   PLANES — on the near plane a positive margin means literally "draw what is behind the camera",
   which is why it once had to be pushed negative (it applied to all six at once). Near and far are
   told apart by their normal against the camera's forward, never by index. The selection is
@@ -1682,7 +1685,8 @@ project: read it before claiming how anything works.
 
 - `quest_manager.gd` (`Q`) holds data; `quest_arcs.gd` is the physics of a branch (what appears in
   the world, what counts as done, polled once a second); `quest_props.gd` owns items placed into the
-  world; `quest_compass.gd` draws the marker and exposes any quest's target.
+  world; `quest_compass.gd` draws the marker and exposes any quest's target. THE MARKER STAYS UP IN
+  THE GARAGE (the player's call), lifted over its panels as it opens (`hud._on_tech_ui_visibility`).
 - STORY is story only. Counters live in DAILY, events repeat and are capped at two journal slots.
   THE ONE EXCEPTION IS MARLIT'S STORY, THE HARVESTER LINE (the player's design, after GeoCorp's):
   Novice I-IV (trees, ore), Mineral per metal (four in parallel - the metal under you is the
@@ -1759,6 +1763,44 @@ project: read it before claiming how anything works.
   (the player's report, the tutorial and the factory line alike). Measured on the engine from a bare
   cabin: front block, back block, then the wheels; a wheel in the hand pointed at no cell until its
   block stood.
+  THE FINGER POINTS AT THE FACE THE BLOCK BOLTS ONTO, NOT THE MIDDLE OF ITS CELL (`BuildHint.tap_point`,
+  the player: "following it, the tap misses"): placing is a tap on a block already on the machine, and
+  the middle of an empty cell is air. The face between the ghost and a taken neighbour that joins there
+  (its `connects_at`) and that the new block's own mask (turned by the ghost's rotation) joins back;
+  the side facing the camera first, then the widest contact, at the patch's middle - where
+  `attach_candidates` lines a big block's middle up. Measured on the factory line: ghost (5,5,7), finger
+  on the placed belt's face at (5,5,6.5).
+- **SOLVENT IS TEN THINGS SOLD** (`arc_solvent`, event `item_sold`, the seller's door; the player's call):
+  raw ore counts as well as an ingot, wood, coal or a component. The Mechanic says what to do
+  (`quest_arcs._solvent`): two lines at the start, one at half way, a reminder after `SOLVENT_NUDGE` of
+  no sale. The compass leads an `item_sold` or `money_earned` quest to the nearest MOUNTED seller (group
+  `sellers`).
+- **A QUIET ZONE STANDS ROUND THE LEARNING BASES** (`G.SAFE_ZONE_R` 160 m, `quest_arcs._update_safe_zones`
+  / `safe_zone_at`, asked through `G.safe_zone_at`; the player's rule): while the power branch (panel and
+  repair unit) or the factory branch (the line, then Solvent) is open, round the site's POINT: no
+  hostile is born in it (`enemy_spawner.is_clear_of_player`, the door every spawn and `clear_point` go
+  through; `_event_point` skips it), no hostile takes a target standing in it (`_consider_target`,
+  `notice_attacker`, the base tick, and a target that walks in is let go, relentless or not), a hostile
+  inside drives straight out with its patrol home moved past the edge (`enemy_vehicle._leave_safe_zone`),
+  and a hostile miner digs no vein in it (`vein_point_near(..., skip_safe)`). The quests done, it is gone.
+  Measured: an enemy dropped 60 m from the player inside the zone with the player assigned - no target,
+  out of the zone in 10 s, 251 m from the centre at 20 s; the zone list empty once the quest closed.
+  AND WHAT STANDS IN IT IS TAKEN AWAY (`quest_arcs._sweep_safe_zones`, every poll; the player: the
+  power site came up beside an enemy turret that shot it to pieces): an EVENT's machine drops that
+  event as an abandoned one (`_drop_event`: machines gone, cooldown, skipped), and so does an event
+  whose point is inside; a MAIN QUEST's machine stays and drives out; anything else - the stream's, a
+  raid's, a miner, a stronghold - is freed (`outposts` builds the stronghold again once the zone is
+  gone). Whose a machine is is the meta `QUEST_OWNER`, set at the one door `_ask_spawner` from
+  `_cur_q`: the `story` meta cannot tell, `spawn_at` puts it on every machine it makes, raids
+  included. Measured on the proving ground, the power site up: a turret base and a raider inside -
+  gone, an event member inside - gone with its event, a story quest's machine inside - kept, a raider
+  300 m out - kept.
+- **THE FACTORY LINE STANDS BY AN ORE VEIN** (`quest_arcs._line_site_by_vein`, `resource_nodes.veins_near`;
+  the player: "within 20 m of a vein"): the seller goes `LINE_VEIN_AHEAD` (13.5 m) short of an ore vein
+  along -Z, so the line runs toward it and the receiver ends ~8 m from it - the pad and its feather stop
+  short of the vein's ground. A vein is taken only when nothing else (a deposit's neighbour, a tree)
+  stands on the pad (`LINE_PAD_*`): the first cut put one 6 m from the seller. No such vein streamed -
+  the old random point. Measured, six sites: the nearest ore 13.5 m from the seller every time.
 - A HANDED-OUT BLOCK GETS THE FINGER BEFORE THE CELL DOES. `_arc_power_1` points at the panel
   lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
   that, so it asked for a repair unit to be placed while the block was still on the ground and the
@@ -2595,37 +2637,91 @@ project: read it before claiming how anything works.
   linear made the fit worse. Shadows on, the lit shader is back.
 - **"SHADOWS" ARE OUR OWN NOW, AND THE ENGINE'S ARE "FULL SHADOWS (SLOW)", OFF BY DEFAULT**
   (`sun_shadows.gd`, `Main.shadows_engine`; the phone's probe with the engine's: ground 34 ms of 53,
-  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads two
-  maps over one window (`WINDOW` 192 m round the camera, 25 cm a texel; it was 128 and the player found
-  it short). CASTERS (`VP_SIZE` 768 px, the grass trample's road): every machine block from the
-  machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc (tyres have no
-  collider), every tree as a trunk and a crown read off its model (`resource_nodes.tree_shadow_casters`), every
-  ore vein as its model's OUTLINE (`ore_shadow_casters`: the extreme vertices in 26 directions among
-  the parts still standing, per model and break level - the model's box was a dark rectangle round
-  every vein, the rock's base far wider than the ore), every loose block as its box,
-  each PROJECTED ALONG THE LIGHT onto the ground under it as 2D polygons - no 3D pass, no light pass,
-  no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF EDGES (`_box_shadow`: the projection is
-  affine, so no corners and no hull) and A MACHINE'S IS ONE MESH (`_machine_mesh`: every block's box
-  corners in machine axes, projected by ONE `Transform3D * PackedVector3Array` - `_proj` - into a
-  dynamic vertex buffer): eight `_px` and a `convex_hull` a block were 4-6 ms a frame for four
-  fighting machines on the optimize=none build, now ~0.7. NOTHING SWIMS (the player: "the shadows
-  twitch while driving"): the window's centre moves in whole texels, the ground's shade in whole cells
-  over a height grid fixed to `TERR_STEP` - a centre following the camera to the millimetre slid every
-  edge under the linear filter; measured over 14400 points round still casters, the camera sliding a
-  sub-texel step a frame for 40 frames: 492 swinging over 0.1 before, 0 after. What stands still
-  (trees, veins) is projected once (`_build_static`, every `STATIC_EVERY` or when the window moved
-  `STATIC_MOVE`) and laid off by whole pixels. THE GROUND'S OWN SHADE (`TERR_N` 48 cells, drawn INTO THE SAME MAP under the casters,
-  laid off by where the camera stood when it was marched - one fetch a ground pixel): each cell marches
-  `TERR_MARCH` toward the sun over the DRAWN heights (`ChunkTerrain.drawn_height`, the occlusion test's
-  read), fetched `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread; a refresh starts when the
-  camera has moved `TERR_MOVE` or the light has turned `TERR_TURN`. Strength is the light's own
+  ~23 of them its lit pass and shadow lookup). The ground stays unshaded (`fast_ground`) and reads ONE
+  texel of one of three maps, the cascades below. CASTERS (the grass trample's road): every machine
+  block from the machine's copy of its collider (a fitted drill casts its hull), every tyre as its disc
+  (tyres have no collider), every tree as a trunk and a crown read off its model, every ore vein as its
+  model's OUTLINE (the extreme vertices in 26 directions among the parts still standing, per model and
+  break level - the model's box was a dark rectangle round every vein, the rock's base far wider than
+  the ore), every loose block as its box, each PROJECTED ALONG THE LIGHT onto the ground under it as 2D
+  polygons - no 3D pass, no light pass, no depth map. A BOX'S SHADOW IS A HEXAGON OF ITS THREE HALF
+  EDGES (`_box_shadow`: the projection is affine, so no corners and no hull), A MACHINE'S IS ONE MESH
+  (`_machine_mesh`: every block's box corners in machine axes, projected by ONE `Transform3D *
+  PackedVector3Array` - `_proj` - into a dynamic vertex buffer: eight `_px` and a `convex_hull` a block
+  were 4-6 ms a frame for four fighting machines on the optimize=none build, now ~0.7), and A CROWN'S
+  IS A STADIUM (a short drum: a horizontal circle drops as a circle of its own radius, so two half
+  circles joined, built straight - it was twenty projected points and a hull a tree).
+  **THREE CASCADES AT 100 / 75 / 50 % OF THE PIXELS** (the player's call: "longer shadows at no cost";
+  `CASCADES`): 224 m at 25 cm a texel, 448 m at 67 cm, 896 m at 2 m - shadows to ~96, ~190 and ~320 m
+  from the camera where they used to end at 96. THE GROUND STILL FETCHES ONCE: which map a pixel reads
+  is decided per VERTEX (`glsl.gdshader` `v_shsel`, the distance into each window, piecewise linear so
+  interpolating it is exact but at the corners), the hand-over `SH_BAND` inside a window's edge
+  wandering `SH_DITHER` by a hash a vertex (no straight seam), the fragment only branches -
+  `textureLod`, an implicit derivative in a branch part of a quad skips being undefined - and the last
+  map fades out over its edge as the one window did. ONLY THE NEAR MAP IS DRAWN PER FRAME, AND ONLY WHEN
+  SOMETHING IN IT CHANGED (`_vp`, 768 px over 192 m round the camera, `_scene_sig` when the window
+  stands still): it carries the machines and lays in its STILL LAYER as one textured quad. Each
+  cascade's still layer - ground shade, trees, veins - is a viewport of its own centred where the
+  camera stood when it was built (the near one INSIDE the composite's viewport, which the engine draws
+  first - `RendererViewport::_sort_active_viewports`, children before parents - so this frame's layer is
+  laid at this frame's offset), built again only when the camera has gone its `step`, the light has
+  turned `TERR_TURN`, a caster in its reach changed or new ground shade landed. A caster's polygons are
+  KEPT (`Cas.memo`, by the caster's key, in pixels round a fixed origin, cast by the light that held
+  until it turned `TERR_TURN` - the day moves the sun every `DayCycle.TICK`, and an exact compare made
+  every polygon anew), so a move costs only the casters that came in; a build walks a slice a frame
+  (`BUILD_USEC`). THE LOOSE BLOCKS ARE ONE MESH made again only when one moved (`_draw_loose`). A far
+  cascade is built only while the haze at its inner edge lets the ground show (`haze` from
+  `Main._apply_view`, `HAZE_SHOWN`): at the 200 m view both are off. THE CASTERS COME FROM THE RECORDS,
+  NOT THE DRAWN VEINS (`ResourceNodes.shadow_records` by region, `cast_entry` kept on the record until
+  `_bump_cast` drops it, `shadow_rev_in` per region): the drawn ones end at `render_distance` and are
+  only those AHEAD of the camera, so a tree 50 m behind it threw nothing onto the ground in front.
+  NOTHING SWIMS (the player: "the shadows twitch while driving"): every window's centre moves in whole
+  texels, the ground's shade in whole cells over a fixed height grid - a centre following the camera to
+  the millimetre slid every edge under the linear filter; measured over 14400 points round still
+  casters, the camera sliding a sub-texel step a frame for 40 frames: 492 swinging over 0.1 before, 0
+  after. THE GROUND'S OWN SHADE (`TERR_N` 56 cells over each window, drawn INTO THE SAME MAP under the
+  casters - one fetch a ground pixel): each cell marches `march` toward the sun over the heights the
+  terrain HOLDS (`ChunkTerrain.known_height`: any node in `_hc`, finest first), fetched
+  `TERR_FETCH_PER_FRAME` a frame and marched on a worker thread, one cascade at a time in turn. It read
+  the DRAWN heights (`drawn_height`, the occlusion test's read), which exist only under the frame; held
+  ones reach what was built and looked away from, but GROUND NEVER BUILT HAS NO HEIGHT EXCEPT FROM THE
+  GENERATOR (~0.1-0.4 ms a point), so a ridge behind the camera since the start still casts nothing -
+  measured on the real driver at boot, 17122 of the near grid's 19044 cells empty with the drawn
+  heights, 16590 with the held ones. The cells the ground is SEEN on always have theirs. THE HEIGHTS
+  ARE KEPT: they reach `march` past the window
+  every way, so a turned light re-marches them and fetches nothing, and a move fetches only the
+  uncovered strips (LISTED as runs: walking every cell to find them was 2 ms a frame), the HOLES IN
+  VIEW - cells with no height, found by the worker as runs a row, asked again only where they lie
+  within `HOLE_FIELD` of where the camera looks and within the view distance (`_ask_cols`; asked
+  everywhere, behind the camera too where nothing is built, they were most of what a drive fetched) -
+  and a rolling `TERR_REFRESH` band; a camera that TURNED asks for refreshes (`HOLE_BURSTS`, `HOLE_GAP`
+  apart: the ground there is still being built). A map the camera has LEFT (a respawn far off) is not
+  handed to the ground until it is built round it again (`_push`): as the last window it faded out
+  everything, the near machines included. A tree `_stream_in` found no room for by a machine
+  (`refused`) casts nothing, and the far cascade draws crowns only, no veins. A CELL WITH
+  NO GROUND KNOWN IS NOT DARK: it stood at -1e6 and every real height round it rose over its ray, so
+  every node not drawn came out a black rectangle - in the old single window too (seen on the real
+  driver, gone after). Strength is the light's own
   `shadow_opacity` times its energy (the moon casts weaker); the sun is held over `MIN_SUN_Y` for it, or
   dusk shadows would run to the horizon. Nothing shades a MACHINE (its blocks are unshaded and never
-  took the engine's shadow either). WITH THE ENGINE'S SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is
-  no additive sun pass to sum wrongly. Measured: on a desert seed at dusk (32 cells then) 215 of 1024 cells dark, dunes and palms throwing long shadows
-  on the real driver. THE PHONE (200 m view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of
-  which the shadows ~3 (the probe's "sun shadows" row measures them since). On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
+  took the engine's shadow either), and past the near window machines cast nothing. WITH THE ENGINE'S
+  SHADOWS OFF THE SCALE BUG ABOVE IS GONE: there is no additive sun pass to sum wrongly. THE PHONE (200 m
+  view, shadows on): 19 -> 30 fps, the ground 34 -> 11 ms, of which the shadows ~3 (the probe's "sun
+  shadows" row; "far shadow cascades" takes the far two alone). Measured on the optimize=none build,
+  everything the node costs a frame (process, the composite's and still layers' recording), the old
+  single window against the cascades, camera standing / 5 m/s / 20 m/s: 1.48 / 1.32 / 1.69 ms against
+  0.47 / 0.96 / 1.64; on the real driver the near window's shadows the same but at the crowns' edge,
+  the far trees shadowed. On llvmpipe the ENGINE's shadows do not show at all on the proving ground,
   before this change as after - not a regression.
+- **WHAT THE GROUND'S FRAGMENT DOES PER PIXEL IS WHAT HAS TO BE**: the zone colour, the rock fade, the
+  snow crust's tone (`v_base_col`, folded in per vertex now) and the ripple and crack strengths (folded
+  into `v_desert` / `v_salt`) are vertex work; the per-pixel left is the colour noise, the detail fetch
+  and the plane it is taken on, the shadow fetch and the lighting. On llvmpipe the ground's shader
+  costs ~34 ms of a 107 ms ground-only frame against a plain material (1920x1080, alternated), the
+  detail block ~7-13 of it and the shadow ~5, and moving the shadow's window test to the vertices
+  showed no difference there (107 against 110, inside the +-4 ms noise): llvmpipe shades vertices on
+  one thread, so it weighs a move from pixels to vertices against itself. The count favours it on the
+  phone (no division, no edge test a pixel; ~50k vertices against ~1M pixels) - the probe there decides.
 - THE AUTO RESOLUTION SCALER HOLDS 30 FPS BETWEEN 0.6 AND 1.0 (`Main.TARGET_FPS`, `SCALE_MIN`,
   `SCALE_MAX`). It aimed at 55 and could sink to 0.25, so on a phone giving 26 fps at native size it
   went to mush within seconds and the player turned it off to play at 26. Manual scale keeps its own
@@ -3009,6 +3105,13 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
+- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, NAMES AND EMBLEMS ONLY** (`G.FACTIONS` "aero" /
+  "stryx", `images/faction_aero.png` / `faction_stryx.png` - the player's emblems, already on a
+  transparent background, cut to their bounds at 256 px: Aero's shield of three bands, Stryx's
+  armoured owl with red eyes). No blocks, no quests: their licence quests (`FACTION_LICENCE` "arc_aero" / "arc_stryx")
+  are not written, so both stay closed outside the proving ground, and A FACTION WITH NO BLOCKS HAS NO
+  TREE PAGE (`G.faction_has_blocks`, asked by the tech tree's switch and header). The style their
+  models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
 - **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
   the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
