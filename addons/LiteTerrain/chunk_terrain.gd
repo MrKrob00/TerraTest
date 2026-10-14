@@ -130,8 +130,17 @@ const OCCL_BIAS := 1.5
 const BUILD_BATCH := 24
 ## Пересборок из-за смены соседа за тик. Шов на кадр-другой дешевле просадки.
 const STITCH_BUDGET := 16
+## Nodes whose seams are checked a tick. A new set of leaves asked every node in the frame at once -
+## eight probes of six lookups each, ~12 ms in one tick on the optimize=none build, the spike of the
+## player's "terrain lod up to 30 ms in fights"; the rest waits for the next tick, which comes at once
+## (`_stitch_more` keeps the tick from idling).
+const STITCH_CHECKS := 40
+var _stitch_more: bool = false
 ## Seconds between LOD passes; the selection is also recomputed whenever the camera moves.
 const LOD_INTERVAL := 0.15
+## A tick with the camera still and nothing landed since the last one waits this long instead.
+const LOD_IDLE := 1.0
+var _tick_ep: int = -1
 
 ## Streamed collision tiles. The menu keeps them off on a map being prepared (set_collision_streaming).
 var enable_streaming_collision: bool = true
@@ -979,7 +988,8 @@ func _select(at: Vector3, cull: bool = true) -> void:
 		_leaf_ms = now_ms
 		_measure_px()
 		_build_leaves(at)
-	_want.clear()
+	_prev_want = _want
+	_want = {}
 	var n: int = _leaf_keys.size()
 	if not (cull and is_instance_valid(_cam)):
 		for i in n:
@@ -1001,6 +1011,7 @@ func _select(at: Vector3, cull: bool = true) -> void:
 
 func _build_leaves(at: Vector3) -> void:
 	_leaf_gen += 1
+	_cover_ep += 1
 	_leaf_keys.clear()
 	_leaf_set.clear()
 	_leaf_box.clear()
@@ -1345,6 +1356,7 @@ func _place_mesh(key: int, job: Dictionary, arrays: Array) -> void:
 		if gone != null and is_instance_valid(gone["inst"]):
 			gone["inst"].queue_free()
 		_live.erase(key)
+		_cover_ep += 1
 		_drop_staged(key)
 		_hlod_dirty = true
 		return
@@ -1404,6 +1416,7 @@ func _go_live(key: int, entry: Dictionary) -> void:
 			old["inst"].queue_free()
 	(entry["inst"] as Node3D).visible = shown
 	_live[key] = entry                     # no "gen": its seams are checked when the frame wants it
+	_cover_ep += 1
 	_hlod_dirty = true
 
 func _drop_staged(key: int) -> void:
@@ -2409,6 +2422,7 @@ func preview_clear() -> void:
 		if is_instance_valid(n["inst"]):
 			n["inst"].queue_free()
 	_live.clear()
+	_cover_ep += 1
 	for key in _staged.keys():
 		_drop_staged(key)
 	_want.clear()
@@ -2476,7 +2490,10 @@ func _ground_tick(delta: float) -> void:
 	var fwd: Vector3 = -cam.global_transform.basis.z
 	var stirred: bool = cam.global_position.distance_squared_to(_sel_pos) > SEL_MOVE2 \
 			or fwd.dot(_sel_fwd) < SEL_TURN_COS
-	if _lod_timer < (LOD_INTERVAL * 0.25 if stirred else LOD_INTERVAL):
+	# NOTHING MOVED AND NOTHING LANDED SINCE THE LAST TICK: the same frame, the same leaves, the same
+	# built set - what is left to do is the grace count, which a second can wait for.
+	var idle: bool = not stirred and _cover_ep == _tick_ep and _jobs.is_empty() and not _stitch_more
+	if _lod_timer < (LOD_INTERVAL * 0.25 if stirred else (LOD_IDLE if idle else LOD_INTERVAL)):
 		return
 	_lod_timer = 0.0
 	_sel_pos = cam.global_position
@@ -2512,12 +2529,16 @@ func _ground_tick(delta: float) -> void:
 	# leaf, off the screen too, was tried - three times the signatures, and the cracks while turning
 	# came out the same (measured).
 	var left: int = STITCH_BUDGET
+	var checks: int = STITCH_CHECKS
+	_stitch_more = false
 	for key in _want:
-		if left <= 0:
+		if left <= 0 or checks <= 0:
+			_stitch_more = true
 			break
 		var n = _live.get(key)
 		if n == null or int(n.get("gen", -1)) == _leaf_gen:
 			continue
+		checks -= 1
 		var sig := _signature(n["lod"], n["gx"], n["gz"])
 		n["gen"] = _leaf_gen
 		if sig == int(n["sig"]):
@@ -2536,6 +2557,7 @@ func _ground_tick(delta: float) -> void:
 	_held_dirty = true
 	_hlod_dirty = true
 	_sort_queues(cam_local)
+	_tick_ep = _cover_ep
 	_pf_mark("terrain_lod", t0)
 
 ## УШЕДШЕЕ ИЗ КАДРА ПРЯЧЕМ, А НЕ ВЫБРАСЫВАЕМ. Поворот камеры меняет половину видимого набора, и
@@ -2603,24 +2625,54 @@ func _covered_below(lod: int, gx: int, gz: int) -> bool:
 				return false
 	return true
 
+## WHETHER A NODE IS COVERED CHANGES ONLY WITH THE LEAF SET OR THE BUILT SET, so it is kept on the
+## node by `_cover_ep`, bumped at every door that changes either (`_build_leaves`, a node placed or
+## dropped). Asked afresh every tick it was ~4 of the tick's ~7 ms on the optimize=none build, for
+## ~150 nodes out of the frame, and in a fight the tick runs every few frames (the player: "terrain
+## lod up to 30 ms in fights").
+var _cover_ep: int = 0
+## The frame's set at the tick before (`_select` hands it over): a node in it and not in `_want` has
+## just left the frame. THE WHOLE BUILT SET IS WALKED ONLY WHEN SOMETHING CAN HAVE CHANGED - the
+## cover epoch moved, the cap is passed, or RETIRE_EVERY went by for the grace count; otherwise only
+## the nodes that just left the frame are looked at. The walk itself was ~2 ms a tick for ~250
+## nodes on the optimize=none build, every tick, with nothing to do.
+var _prev_want: Dictionary = {}
+var _retire_ep: int = -1
+var _retire_at: float = -1e9
+const RETIRE_EVERY := 1.0
+
 func _retire(now: float) -> void:
 	var over: int = _live.size() - LIVE_CAP
-	for key in _live.keys():
+	var keys: Array
+	if over > 0 or _retire_ep != _cover_ep or now - _retire_at >= RETIRE_EVERY:
+		_retire_ep = _cover_ep
+		_retire_at = now
+		keys = _live.keys()
+	else:
+		for key in _prev_want:
+			if not _want.has(key) and _live.has(key):
+				keys.append(key)
+	for key in keys:
 		if _want.has(key):
 			continue
 		var n: Dictionary = _live[key]
 		if not is_instance_valid(n["inst"]):
 			_live.erase(key)
+			_cover_ep += 1
 			continue
 		# Не накрыт — оставляем видимым. За кадром его всё равно отсечёт движок, а вот дыры на
 		# месте узла, чья замена ещё считается, не будет.
-		if _covered(key):
+		if int(n.get("cov_ep", -1)) != _cover_ep:
+			n["cov_ep"] = _cover_ep
+			n["cov_v"] = _covered(key)
+		if n["cov_v"]:
 			n["inst"].visible = false
 			n["cov"] = true
-		if _near_player(key):
-			continue                   # ближний круг не выбрасываем ни по времени, ни по потолку
 		if over <= 0 and now - float(n["seen"]) < NODE_GRACE:
 			continue
+		if _near_player(key):
+			continue                   # ближний круг не выбрасываем ни по времени, ни по потолку
 		n["inst"].queue_free()
 		_live.erase(key)
+		_cover_ep += 1
 		over -= 1
