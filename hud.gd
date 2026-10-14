@@ -13,7 +13,13 @@ const TECH_UI := preload("res://tech_ui.tscn")
 ## Площадь счётчика FPS: он же кнопка панели профиля, и мерить её надо пальцем, а не текстом.
 ## Шире, но НЕ выше прежнего: метка ловит тапы (mouse_filter STOP), то есть это ещё и мёртвая
 ## зона для постройки — растить её вниз, в рабочую часть экрана, нельзя.
-const FPS_HIT := Vector2(240.0, 72.0)
+## THE FPS READOUT IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A LAYER OF ITS OWN (the player's
+## call): it was a 48 px number in the top middle, inside the HUD, so the garage covered it. Its own
+## CanvasLayer over everything keeps it in the garage too; G.show_fps (garage settings) hides it. The
+## area is still a finger's (FPS_HIT): a tap opens the profiler, as before, outside the garage.
+const FPS_HIT := Vector2(96.0, 22.0)
+const FPS_LAYER := 90
+const FPS_EVERY := 0.25               # s between text updates: setting text reshapes the label
 const MENU_BTN: float = 72.0                # сторона иконки-кнопки
 const MENU_PAD: float = 12.0                # отступ от углов экрана
 var _menu_btn: Button
@@ -85,14 +91,23 @@ func _ready() -> void:
 		music.track_changed.connect(_show_music_toast)
 	# Счётчик FPS открывает ПАНЕЛЬ ПРОФИЛЯ по тапу. Label по умолчанию не берёт ввод вовсе,
 	# поэтому фильтр ставим руками; отдельной кнопки отладки на экране быть не должно.
-	var fps_lbl := get_node_or_null("Label") as Control
-	if fps_lbl:
-		fps_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
-		fps_lbl.gui_input.connect(func(e: InputEvent) -> void:
-			if (e is InputEventScreenTouch and e.pressed) \
-					or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
-				_toggle_perf_panel()
-				get_viewport().set_input_as_handled())
+	_fps_lbl = get_node_or_null("Label") as Label
+	if _fps_lbl:
+		var layer := CanvasLayer.new()
+		layer.name = "FpsLayer"
+		layer.layer = FPS_LAYER
+		add_child(layer)
+		_fps_lbl.reparent(layer, false)
+		_fps_lbl.add_to_group("fps_counter")
+		_fps_lbl.add_theme_font_size_override("font_size", 13)
+		_fps_lbl.add_theme_color_override("font_color", Color(0.78, 0.92, 0.95, 0.75))
+		_fps_lbl.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.6))
+		_fps_lbl.add_theme_constant_override("outline_size", 3)
+		_fps_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_fps_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		_fps_lbl.visible = G.show_fps
+		_fps_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+		_fps_lbl.gui_input.connect(_on_fps_input)
 	# Debug switch (Main → Отладка → Мир): open the profiler right away. Through the same toggle
 	# and DEFERRED — the panel lives in the scene and is bound by _build_perf_panel, which pulls
 	# it out with %-names; calling it mid-_ready would race the rest of the HUD binding.
@@ -146,15 +161,10 @@ func _relayout() -> void:
 	var jc := get_node_or_null("Joystick_camera") as Node2D
 	if jc:
 		jc.position = Vector2(screen.x - 117, 141)         # право-сверху (реген у базы 1280 = x 1163)
-	var fps := get_node_or_null("Label") as Control
-	if fps:
-		# ПЛОЩАДЬ ПОД ПАЛЕЦ, А НЕ ПОД ТЕКСТ. Метка приехала из сцены размером 149×67, а шрифт у
-		# неё 48: цифры вылезали за свой прямоугольник, и тапалось только то, что попало внутрь —
-		# отсюда «кликается через раз». Плюс y = 4 это самая кромка экрана, где на телефоне тап
-		# перехватывает система. Задаём размер сами (метка лежит прямо в CanvasLayer, контейнер
-		# её не перезапишет) и опускаем на десяток пикселей.
-		fps.size = Vector2(FPS_HIT.x, FPS_HIT.y)
-		fps.position = Vector2(screen.x * 0.5 - FPS_HIT.x * 0.5, 10.0)   # по центру сверху
+	if _fps_lbl:
+		# directly under its CanvasLayer, so placed from code; text pinned to the corner of the area
+		_fps_lbl.size = FPS_HIT
+		_fps_lbl.position = screen - FPS_HIT - Vector2(6.0, 1.0)
 
 # ── Круглый индикатор энергии (аккумулятор + %) ────────────────────────────────
 # Рисуется нодами: тёмный круг, дуга-прогресс по окружности (заполненность аккумуляторов),
@@ -902,8 +912,8 @@ const VMENU_GRACE_MS: int = 300
 var _vmenu_open_ms: int = 0
 
 func _input(event: InputEvent) -> void:
-	# F3 — панель профиля (на ПК). На телефоне её открывает ТАП ПО СЧЁТЧИКУ FPS: отдельной
-	# кнопки для отладки на экране быть не должно, а счётчик и так стоит наверху.
+	# F3: the profiler (PC). On the phone a TAP ON THE FPS COUNTER opens it - no debug button of
+	# its own on screen; the counter is already there, in the bottom-right corner.
 	if event is InputEventKey and event.pressed and not event.echo \
 			and (event as InputEventKey).keycode == KEY_F3:
 		_toggle_perf_panel()
@@ -1291,7 +1301,7 @@ func _physics_process(_delta: float) -> void:
 func _process(delta: float) -> void:
 	Perf.frame()
 	var _pf := Perf.now()     # метка для панели профиля (perf.gd): цена самого HUD
-	$Label.text = str(int(Engine.get_frames_per_second())) + " FPS"
+	_tick_fps(delta)
 	_update_radar(delta)
 	_update_vehicle_button(delta)
 	_update_hand_panel()
@@ -1327,6 +1337,30 @@ const PERF_PHYS_KEYS := ["machines", "enemies", "weapons", "factory", "bullets",
 ## times a second cannot be read, and the panel itself would distort what it measures.
 const PERF_REFRESH := 0.25
 var _perf_t: float = 0.0
+
+var _fps_lbl: Label = null
+var _fps_t: float = 0.0
+var _fps_shown: int = -1
+
+func _tick_fps(delta: float) -> void:
+	if _fps_lbl == null or not _fps_lbl.visible:
+		return
+	_fps_t -= delta
+	if _fps_t > 0.0:
+		return
+	_fps_t = FPS_EVERY
+	var f: int = int(Engine.get_frames_per_second())
+	if f != _fps_shown:
+		_fps_shown = f
+		_fps_lbl.text = "%d FPS" % f
+
+func _on_fps_input(e: InputEvent) -> void:
+	if _tech_ui != null and _tech_ui.visible:
+		return                      # the profiler lives under the garage
+	if (e is InputEventScreenTouch and e.pressed) \
+			or (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT):
+		_toggle_perf_panel()
+		get_viewport().set_input_as_handled()
 
 func _toggle_perf_panel() -> void:
 	if _perf_panel == null:
@@ -2166,6 +2200,9 @@ func notify_build_changed() -> void:
 
 func _on_tech_ui_visibility() -> void:
 	var open: bool = _tech_ui != null and _tech_ui.visible
+	if _fps_lbl:
+		# over the garage it only shows: a tap there belongs to the garage's own controls
+		_fps_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE if open else Control.MOUSE_FILTER_STOP
 	if not open:
 		# Панель только скрывается (visible=false), фокус (напр. поле поиска) сам не
 		# снимается — на ПК залипший фокус в LineEdit гасил бы клавиатурные действия
@@ -2244,7 +2281,7 @@ func _collect_game_controls() -> void:
 	# camera_controller._ready. Стоило внести его в общий список — и «показать игровой HUD»
 	# после закрытия гаража возвращало его на экран.
 	for n in ["ModeToggle", "Take", "TakeOff", "Attack",
-			"Joystick_movement", "Label"]:
+			"Joystick_movement"]:
 		var node: Node = get_node_or_null(n)
 		if node:
 			_game_controls.append(node)

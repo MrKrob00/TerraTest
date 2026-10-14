@@ -1835,6 +1835,18 @@ func _build_settings_tab() -> void:
 	move_hint.add_theme_font_size_override("font_size", 12)
 	move_hint.modulate = Color(1, 1, 1, 0.55)
 	_extra_vb.add_child(move_hint)
+	var fps_btn := CheckButton.new()
+	fps_btn.text = tr("Show FPS")
+	fps_btn.button_pressed = G.show_fps
+	fps_btn.add_theme_font_size_override("font_size", 14)
+	fps_btn.toggled.connect(_on_show_fps)
+	_extra_vb.add_child(fps_btn)
+	var fps_hint := Label.new()
+	fps_hint.text = tr("A small counter in the bottom-right corner, in the game and in the garage.")
+	fps_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	fps_hint.add_theme_font_size_override("font_size", 12)
+	fps_hint.modulate = Color(1, 1, 1, 0.55)
+	_extra_vb.add_child(fps_hint)
 
 	# — СТРОЙКА — вкус, а не правило: одному подобранный блок нужен сразу в руке и на машине,
 	# другой подбирает мусор по дороге и не хочет каждый раз выпадать из езды.
@@ -1890,6 +1902,12 @@ func _build_settings_tab() -> void:
 	menu_btn.add_theme_font_size_override("font_size", 14)
 	menu_btn.pressed.connect(_to_main_menu)
 	_extra_vb.add_child(menu_btn)
+
+func _on_show_fps(on: bool) -> void:
+	G.show_fps = on
+	G.save_settings()
+	for n in get_tree().get_nodes_in_group("fps_counter"):
+		(n as CanvasItem).visible = on
 
 func _on_move_controls() -> void:
 	var hud: Node = get_parent()
