@@ -879,6 +879,10 @@ project: read it before claiming how anything works.
   muzzle velocity per round (the template's `speed`) and drop on ballistic rounds. Measured: a rocket
   aimed 16.7 deg off its target came round onto it inside a second; a shell's heading turned, its
   climb did not.
+  THE MACHINE GUN'S DROP WAS CUT (`gun.tscn` `flat_range` 20 -> 55 m, the player: "as you see fit"): at
+  20 its round fell 252 m/s², reached the ground 20 m out when fired flat, and the barrel stood
+  almost 30 m over a target 51 m away; now 33 m/s², 3.2 m over it - with the other rounds (Marlit gun
+  45, the template's 50). The Aero and Stryx guns inherit it.
 - The turret sector is per weapon (`WeaponBlock.yaw_limit` / `pitch_limit`, **variables**, not
   constants): a subclass narrows it in `_ready`, and `_is_in_cone` then gates acquisition and firing
   with no second check anywhere. Default 75°×40°.
