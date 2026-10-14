@@ -72,7 +72,7 @@ var is_station: bool = false
 # block (G.STATIONARY_BLOCKS), i.e. a possible base core. Everything else - factory, armour, frame,
 # power, weapons - makes sense on a base.
 const _STATION_BANNED := [G.Block.CABIN, G.Block.MARLIT_CABIN, G.Block.WHEEL, G.Block.SMALL_WHEEL, G.Block.BIG_WHEEL, G.Block.MARLIT_WHEEL,
-		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL]
+		G.Block.TOP_WHEEL, G.Block.STAB_WHEEL, G.Block.AERO_WHEEL]
 
 func _allowed_on_station(bt: int) -> bool:
 	return not _STATION_BANNED.has(G.base_block(bt))

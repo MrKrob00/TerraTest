@@ -84,7 +84,8 @@ func _ready() -> void:
 ## 69: the Marlit laser drill and saw.
 ## 70: the Marlit wheel without its bearing plate.
 ## 71: the Falsus stabiliser rebuilt as the artist's own kit (art/falsus_wheels.py).
-const RECIPE := 71
+## 72: the Aero light wheel on its own model (art/aero_wheels.py).
+const RECIPE := 72
 func _stamp_now() -> Dictionary:
 	return {
 		"v": String(ProjectSettings.get_setting("application/config/version", "dev")),
