@@ -863,8 +863,22 @@ project: read it before claiming how anything works.
   At 55 an ally's guns held the cabin 91% of the time on a raider and 61% on a breaker, measured on
   the proving ground; at 10, 21% and 14%: a machine is stripped from the side facing you, and its
   guns are taken first.
-- Spread is angular and grows with distance; shotgun and mortar disable the base spread and use
-  their own. Without spread, automatic aiming is an aimbot.
+- Spread is angular, PER BARREL (`spread_deg`) AND THE SAME AT ANY RANGE (TerraTech's spray, the
+  player's call): it used to shrink to a fifth of itself up close, and a gun beside its target never
+  missed. Shotgun and mortar disable the base spread and use their own. Without spread, automatic
+  aiming is an aimbot.
+- **PREDICTION IS A SWITCH ON MAIN** (`Main.aim_lead`, group "Aim", read live through `G.aim_flag` -
+  not a debug flag, `debug_overrides` does not gate it; no Main, the menu's fight: on). On, a gun aims
+  where its target WILL be (`WeaponBlock._lead_point`: the round's flight time times the target's
+  speed); off, where it IS - the drop is still allowed for. Measured on the engine, a target 51 m off
+  at 10 m/s sideways: the aim 4.86 m ahead of it on, 0.00 off, the same lift for the drop both ways.
+- **ROCKETS AND MORTAR SHELLS HOME IN PART** (TerraTech's; `WeaponBlock.homing_deg` / `homing_flat`,
+  `BulletSim._steer`): a shot turns toward the block its gun was aimed at by at most that many degrees
+  a second - the rocket 25 the whole direction, the mortar 6 its heading only (the arc stays the
+  gun's). The rest of TerraTech's accuracy was already here: a turn rate per barrel (`turn_speed`), a
+  muzzle velocity per round (the template's `speed`) and drop on ballistic rounds. Measured: a rocket
+  aimed 16.7 deg off its target came round onto it inside a second; a shell's heading turned, its
+  climb did not.
 - The turret sector is per weapon (`WeaponBlock.yaw_limit` / `pitch_limit`, **variables**, not
   constants): a subclass narrows it in `_ready`, and `_is_in_cone` then gates acquisition and firing
   with no second check anywhere. Default 75°×40°.

@@ -27,10 +27,14 @@ class_name WeaponBlock
 ## метрах это сантиметры, на предельной дальности — метры, то есть очередь ложится ПО МАШИНЕ, а
 ## не в одну заклёпку.
 ##
-## Сверх того он РАСТЁТ С ДИСТАНЦИЕЙ до цели (см. _apply_spread): у машины под боком ствол
-## по-прежнему точен. Иначе «небольшой разброс» пришлось бы делать заметным и вблизи, где он
-## только раздражает.
+## THE CONE IS THE SAME AT ANY RANGE (TerraTech's per-barrel spray, the player's call): it used to
+## shrink up close, and a gun beside its target never missed.
 @export var spread_deg: float = 1.4
+## PARTIAL HOMING (TerraTech's rockets and mortars): a shot turns toward the block its gun was aimed
+## at by at most this many degrees a second (`BulletSim._steer`); `homing_flat` turns only its
+## heading, for a lobbed shell whose arc is the gun's to set. 0 flies straight.
+@export var homing_deg: float = 0.0
+@export var homing_flat: bool = false
 @export var raycast: RayCast3D
 @export var pivot: Node3D
 @export var Area_Range: Area3D
@@ -901,13 +905,9 @@ func _apply_spread(b) -> void:
 	var d: Vector3 = b.dir
 	if d == Vector3.ZERO:
 		return
-	# Доля дальности до цели: вблизи конус сжимается, у предела — полный. Цели нет (стрельба
-	# «в никуда» по кнопке) — берём полный, там всё равно не по кому мазать.
-	var k: float = 1.0
-	if _current_target != null and is_instance_valid(_current_target):
-		k = clampf(pivot.global_position.distance_to(_current_target.global_position)
-				/ maxf(weapon_range, 1.0), 0.2, 1.0)
-	var a: float = deg_to_rad(spread_deg) * k
+	# THE CONE IS THE BARREL'S AT ANY RANGE (TerraTech's spray, the player's call): it used to shrink
+	# to a fifth of itself up close, which made a gun at point blank an aimbot.
+	var a: float = deg_to_rad(spread_deg)
 	d = d.rotated(Vector3.UP, randf_range(-a, a))
 	# По вертикали вдвое уже, как у дробовика: промах вбок читается как «мажет», а вверх — как
 	# «стреляет в небо», хотя пуля ушла на те же полметра.
@@ -1040,7 +1040,8 @@ func _machine_velocity(node: Node3D) -> Vector3:
 # времени. Три прохода сходятся с запасом.
 func _lead_point(target: Node3D, from: Vector3) -> Vector3:
 	var p: Vector3 = _aim_point_for(target)
-	var v: Vector3 = _target_vel
+	# Main "Aim" `aim_lead` off: no prediction - the target's speed is left out, its drop is not.
+	var v: Vector3 = _target_vel if G.aim_flag(&"aim_lead", true) else Vector3.ZERO
 	var bal: Vector2 = _ballistics()
 	var t: float = from.distance_to(p) / bal.x
 	var aim: Vector3 = p

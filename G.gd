@@ -2082,6 +2082,14 @@ var _dbg_main: Node = null
 
 ## Значение отладочного флага. `def` — что вернуть, если отладка выключена или спросить не у
 ## кого; для «кусков мира» это true (всё на месте), для поблажек игроку — false.
+## A gameplay switch on Main (its "Aim" group): read live, `def` when there is no Main (the menu's
+## fight). Not a debug flag - `debug_overrides` does not gate it.
+func aim_flag(flag: StringName, def: bool) -> bool:
+	if _dbg_main == null or not is_instance_valid(_dbg_main):
+		_dbg_main = get_node_or_null("/root/Main")
+	var v = _dbg_main.get(flag) if _dbg_main != null else null
+	return v if v is bool else def
+
 func debug(flag: StringName, def: bool = true) -> bool:
 	if _dbg_main == null or not is_instance_valid(_dbg_main):
 		_dbg_main = get_node_or_null("/root/Main")
