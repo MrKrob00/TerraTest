@@ -303,6 +303,12 @@ func _vehicle_render_tick() -> void:
 		if not (v is Node3D):
 			continue
 		var n := v as Node3D
+		# A SLEEPER AND A MACHINE HELD FOR ITS DROP RING STAY HIDDEN: the spawner hid them
+		# (enemy_spawner._sleep, _hold_for_drop) and this pass used to show them again the next frame
+		# they stood in the frustum - a held one hung in the air over its ring.
+		if bool(n.get_meta("asleep", false)) or n.has_meta("drop_pending"):
+			_set_vehicle_visible(n, false)
+			continue
 		# NEVER hide your own active machine. The camera hangs on it and looks at it, so it passes the test
 		# anyway - but the cost of an error is asymmetric: one extra drawn frame is invisible, a machine
 		# vanishing under the player looks like a broken game.
@@ -641,6 +647,11 @@ func _fresh_start() -> void:
 	await _to_start_point(primary)
 	if not is_instance_valid(primary):
 		return
+	# Where the player wakes: burnt cubes on smouldering ground (crash_site.gd). A new world only.
+	if not G.proving_ground:
+		var site_root: Node = get_node_or_null("/root/Main")
+		if site_root != null:
+			load("res://crash_site.gd").make(site_root, (primary as Node3D).global_position)
 	# The starter kit orbits the player and drops into the world (reward_orbiter.gd).
 	primary.award_block_list(G.STARTER_KIT)
 

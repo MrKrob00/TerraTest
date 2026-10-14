@@ -2282,6 +2282,12 @@ func set_grass_trample(tex: Texture2D, center: Vector2, size: float) -> void:
 		m.set_shader_parameter("trample_center", center)
 		m.set_shader_parameter("trample_size", size)
 
+## The smouldering spot where a new world's player wakes (crash_site.gd): x, z, radius, heat;
+## radius 0 takes it away. One spot - the shader holds one uniform, not a list.
+func set_ember_spot(spot: Vector4) -> void:
+	if _mat is ShaderMaterial:
+		(_mat as ShaderMaterial).set_shader_parameter("ember_spot", spot)
+
 func set_corruption_map(tex: Texture2D, center: Vector2, size: float) -> void:
 	if _mat is ShaderMaterial:
 		var sm := _mat as ShaderMaterial

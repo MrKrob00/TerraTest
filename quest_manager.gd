@@ -1071,6 +1071,9 @@ func hold_quest(id: String) -> void:
 	_held[id] = true
 	changed.emit()
 
+func is_held(id: String) -> bool:
+	return _held.has(id)
+
 func release_quest(id: String) -> void:
 	if _held.erase(id):
 		changed.emit()
