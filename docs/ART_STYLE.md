@@ -208,18 +208,19 @@ points against Falsus's).
 
 **The basic block and the standard wheel, drafts, not in the game** (`art/aero_models.py`, glbs in
 `art/out/aero_*.glb`, two palettes: `aero` - the emblem's blue / white / orange - and `ref` - the
-player's reference pictures' red / white / blue). The first cut, a chamfered cube painted in bands
-and a racing pylon with wishbones, was turned down ("too cubic", "the transmission is horrible"); a
-Blender version of it was built beside it and dropped too - the player saw no difference and chose
-the generator. The rules the second cut follows: the BLOCK is a bullnose - a thick cap swept over
-the top and rolled down over the front (a quarter ellipse), its side edges rounded, its back split
-into two ears round a V notch; a white body set 5 cm in under it; a full-width skirt below whose
-front slopes back under the nose. Back, bottom and sides stay flat on the cell. The WHEEL has no
-visible suspension: a fender with a ridge swept over the tyre's top from the hull face past its
-outer face, a hull-shaped body inboard of the tyre with its lower corners run out to points, a
-knobbly tyre (16 lugs staggered across the tread) with a white recessed hub. Inside one cell the
-tyre's metre takes the whole length, so the pictures' winglets past the tyre cannot be had without
-leaving the cell. 270 / 516 triangles, `model_check.py` PASS.
+player's reference pictures' red / white / blue). Two cuts were turned down and each is a rule now:
+a chamfered cube painted in bands with a racing pylon and wishbones ("too cubic", "the transmission
+is horrible" - a Blender version of it changed nothing and was dropped), then a bullnose with ears
+and a mudguard ("that is a half block, not a block"). THE BASIC BLOCK IS A CUBE OF THREE LAYERS, the
+player's own picture: a full-width base in the skirt colour, its top edge rounded down into a white
+middle set 5 cm in, and a thick cap in the top colour overhanging that white, rounded along its
+edges, with a raised top 4 cm in from the slab's edge and a notch cut into the middle of every top
+edge; a diamond emblem on top, a lightning-bolt Z on every white face. THE WHEEL IS A FAIRING round a
+knobbly tyre (r 0.36, 14 lugs staggered across the tread, a white recessed hub): an arch from the
+hull face past the tyre's outer face, broad enough to read as a white band from outside, the three
+colours down it - the cap colour over the crest with a ridge, white, the skirt colour where its legs
+run on past the axle to points - and a hull inboard of the tyre whose lower corners point past it
+fore and aft. 218 / 548 triangles, `model_check.py` PASS.
 
 ### Stryx: stealth
 
