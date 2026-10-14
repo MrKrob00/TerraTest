@@ -207,7 +207,11 @@ func _load_items() -> void:
 		for block_type in _prices:
 			if not _passes_filter(int(block_type)):
 				continue
-			# Цена СЧИТАЕТСЯ ЗДЕСЬ, а не берётся из кеша _prices: раз в SALE_WINDOW часть
+			# TODAY'S WINDOW ONLY (G.shop_count): researched blocks, and of those what the day drew.
+			var left: int = G.shop_count(int(block_type))
+			if left == 0:
+				continue
+			# Цена СЧИТАЕТСЯ ЗДЕСЬ, а не берётся из кеша _prices: раз в игровые сутки часть
 			# блоков уходит на распродажу, и витрина обязана показывать то, что с игрока
 			# спишут. _prices остаётся базовой — рядом со скидкой мы показываем и её,
 			# иначе «−30 %» не от чего отсчитать.
@@ -217,6 +221,7 @@ func _load_items() -> void:
 				"count": 0,
 				"price": G.shop_price_now(int(block_type)),
 				"was": int(_prices[block_type]),
+				"left": left,
 			})
 		_items.sort_custom(_by_block_order)
 		return
@@ -910,18 +915,20 @@ func _fill_item_slot(s: Slot, it: Dictionary, side: float) -> void:
 		s.modulate = Color(1, 1, 1, 0.45)
 		return
 	s.action = &"buy"
+	# A stock-limited block shows how many are left today; a basic one is endless.
+	var stock: String = "  ×%d" % int(it.get("left", -1)) if int(it.get("left", -1)) > 0 else ""
 	var off: int = G.shop_sale_pct(s.arg)
 	if off > 0:
 		# РАСПРОДАЖА ЧИТАЕТСЯ С ОДНОГО ВЗГЛЯДА: цена со скидкой внизу, процент мелким сверху
 		# справа, старая цена — в подсказке. Процент обязателен: без него игрок не отличит
 		# скидку от блока, который просто дешевле соседнего.
-		s.corner.text = "%d$" % s.price
+		s.corner.text = "%d$" % s.price + stock
 		s.corner.add_theme_color_override("font_color", SALE_COL)
 		s.sale.text = "−%d%%" % off
 		s.sale.visible = true
 		s.tooltip_text = tr("On sale: %d$ instead of %d$") % [s.price, int(it.get("was", s.price))]
 	else:
-		s.corner.text = "%d$" % s.price
+		s.corner.text = "%d$" % s.price + stock
 	s.disabled = G.money < s.price
 
 # Надпись «пусто» тоже переиспользуем: пустая строка — просто прячем.
@@ -1216,9 +1223,10 @@ func _take_into_hand(block_type: int) -> void:
 	_select_tab(TAB_BUILD)
 
 func _buy(block_type: int, price: int) -> void:
-	if G.money < price:
+	if G.money < price or G.shop_count(block_type) == 0:
 		return
 	G.money -= price
+	G.shop_take(block_type)
 	G.block_inventory.append(block_type)
 	G.mark_progress_dirty()
 	# Магазин остаётся открытым: обновляем цены/доступность кнопок и счётчик денег.

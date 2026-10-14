@@ -231,6 +231,8 @@ func _reset_state() -> void:
 	killed_kinds = []
 	first_enemy_met = false
 	shop_sales = {}
+	shop_stock = {}
+	_sale_left = 0.0
 
 ## Путь к запечённым правкам рельефа этого слота. СПРАШИВАЕТ ЕГО САМА КАРТА (map._ready): слот
 ## выбирается в меню, когда игровой сцены ещё нет, и положить ей путь было бы некому. Одна
@@ -1161,51 +1163,123 @@ const CRAFT_MARKUP := 1.25
 ## а именно так и было: блок стоил в магазине 5$ при материалах на 300$.
 const SHOP_MARKUP := 1.3
 
-# ── РАСПРОДАЖА В МАГАЗИНЕ ─────────────────────────────────────────────────────
-# ЗДЕСЬ БЫЛ РЫНОК, И ОН НЕ РАБОТАЛ. Скидки и наценки висели на ПРОДАЖЕ материалов, а
-# показывала их панель в правом верхнем углу, рядом с картой. Чтобы механикой воспользоваться,
-# надо было держать в голове четыре строки таблицы, ехать за нужным металлом и успеть вернуться
-# за пятнадцать минут — а решение «что везти» игрок принимает уже у продавца, где никакой
-# панели нет. Постоянно занятый угол экрана ради числа, нужного раз в четверть часа.
+# ── THE SHOP'S STOCK: A RANDOM WINDOW, RESTOCKED ONCE A GAME DAY (the player's balance) ───────
+# Only researched blocks are ever offered (`is_block_shop_unlocked`), and not all of them: a grade-1
+# block of its faction is BASIC and always there with no end to it; a block of grades 2-3 comes up on
+# a day with SHOP_MID_CHANCE, a few of it; a block of SHOP_TOP_GRADE and over is TOP - rarer and one
+# or two. A day is the day cycle's (`DayCycle.day_length`, 1200 s of play); the stock and the seconds
+# to the next restock go into the progress save, so a reload does not reroll the window. A bought
+# block comes off the count (`shop_take`); a stock-limited block at zero leaves the window till the
+# next day. The proving ground's shop is everything, endless. The day's discounts fall on blocks in
+# the window (a sale on a block not offered would be a wasted place).
 #
-# Скидка обязана жить ТАМ, ГДЕ ЕЮ ПОЛЬЗУЮТСЯ. Игрок открывает склад, видит «−30%» на конкретном
-# блоке и решает, брать ли его сейчас: ни таблицы, ни памяти, ни отдельного окна.
-#
-# ТОЛЬКО СКИДКИ, БЕЗ НАЦЕНОК. Наценка в магазине — это штраф за то, что игрок зашёл не в ту
-# минуту: она ничего не открывает и ничего не предлагает, только просит подождать.
-const SALE_WINDOW := 900.0          # 15 минут: витрина должна пережить поездку за деньгами
+# ONLY DISCOUNTS, NO MARK-UPS: a mark-up punishes coming in at the wrong minute and offers nothing.
+const SHOP_DAY := 1200.0
+const SHOP_TOP_GRADE := 4
+const SHOP_MID_CHANCE := 0.6
+const SHOP_TOP_CHANCE := 0.3
+const SHOP_MID_COUNT := Vector2i(2, 4)
+const SHOP_TOP_COUNT := Vector2i(1, 2)
 const SALE_COUNT := 3
-## Ступени скидки, по одной на позицию распродажи: −20 / −30 / −40 %. Разные, а не одна на всех:
-## одинаковая скидка на три блока читается как «магазин просто подешевел», а разная — как выбор.
+## A step per sale place, -20 / -30 / -40 %: one discount for all three reads as "the shop got
+## cheaper", three different ones as a choice.
 const SALE_STEPS := [0.8, 0.7, 0.6]
 
 signal shop_sales_changed
 
-var shop_sales: Dictionary = {}     # G.Block (int) → множитель цены (только там, где он есть)
+var shop_sales: Dictionary = {}     # G.Block (int) -> price multiplier (only where there is one)
+## Block (int) -> how many are left today; -1 is endless. Only what is in today's window.
+var shop_stock: Dictionary = {}
 var _sale_left: float = 0.0
 
 func _process(delta: float) -> void:
+	# The shop's day runs only in the world: in the menu the slot may be about to be deleted, and a
+	# restock writes progress.
+	if get_node_or_null("/root/Main") == null:
+		return
 	_sale_left -= delta
 	if _sale_left <= 0.0:
-		_roll_shop_sales()
+		roll_shop_stock()
 
-## Сколько секунд до смены витрины — для UI.
+## Seconds to the next restock, for the UI.
 func shop_sale_seconds_left() -> float:
 	return maxf(_sale_left, 0.0)
 
-func _roll_shop_sales() -> void:
-	_sale_left = SALE_WINDOW
+func _shop_grade(bt: int) -> int:
+	return int((BLOCK_META.get(bt, {}) as Dictionary).get("g", 1))
+
+## Today's window: the basic blocks endless, the rest drawn by grade.
+func roll_shop_stock() -> void:
+	_sale_left = SHOP_DAY
+	shop_stock.clear()
 	shop_sales.clear()
-	# Скидка ТОЛЬКО на то, что игрок может купить ПРЯМО СЕЙЧАС. Скидка на запертый блок — это
-	# потраченная впустую позиция: увидеть её игрок увидит, а воспользоваться не сможет, и
-	# распродажа из трёх штук превратилась бы в распродажу из одной.
 	var pool: Array = []
 	for bt in BLOCK_META:
-		if is_block_shop_unlocked(int(bt)):
-			pool.append(int(bt))
+		var b: int = int(bt)
+		if not is_block_shop_unlocked(b):
+			continue
+		var g: int = _shop_grade(b)
+		if g <= 1:
+			shop_stock[b] = -1
+		elif g >= SHOP_TOP_GRADE:
+			if randf() < SHOP_TOP_CHANCE:
+				shop_stock[b] = randi_range(SHOP_TOP_COUNT.x, SHOP_TOP_COUNT.y)
+		elif randf() < SHOP_MID_CHANCE:
+			shop_stock[b] = randi_range(SHOP_MID_COUNT.x, SHOP_MID_COUNT.y)
+		if shop_stock.has(b):
+			pool.append(b)
 	pool.shuffle()
 	for i in mini(SALE_COUNT, pool.size()):
 		shop_sales[pool[i]] = SALE_STEPS[i % SALE_STEPS.size()]
+	mark_progress_dirty()
+	shop_sales_changed.emit()
+
+## How many of a block the shop has today: -1 endless, 0 not offered. A block researched today
+## (after the roll) waits for tomorrow's window - unless it is basic, which is always there.
+func shop_count(bt: int) -> int:
+	if proving_ground:
+		return -1
+	if shop_stock.has(bt):
+		return int(shop_stock[bt])
+	if _shop_grade(bt) <= 1 and is_block_shop_unlocked(bt):
+		return -1
+	return 0
+
+## One bought: off today's count.
+func shop_take(bt: int) -> void:
+	if proving_ground or not shop_stock.has(bt) or int(shop_stock[bt]) < 0:
+		return
+	shop_stock[bt] = int(shop_stock[bt]) - 1
+	if int(shop_stock[bt]) <= 0:
+		shop_stock.erase(bt)
+		shop_sales.erase(bt)
+	mark_progress_dirty()
+	shop_sales_changed.emit()
+
+func _shop_save() -> Dictionary:
+	var st: Dictionary = {}
+	for b in shop_stock:
+		st[block_key(int(b))] = int(shop_stock[b])
+	var sa: Dictionary = {}
+	for b in shop_sales:
+		sa[block_key(int(b))] = float(shop_sales[b])
+	return {"stock": st, "sales": sa, "left": _sale_left}
+
+func _shop_load(d: Variant) -> void:
+	shop_stock.clear()
+	shop_sales.clear()
+	if not (d is Dictionary) or not (d as Dictionary).has("stock"):
+		_sale_left = 0.0                      # no saved window: roll one on the next frame
+		return
+	for k in d["stock"]:
+		var b: int = block_from_key(k)
+		if b != Block.EMPTY:
+			shop_stock[b] = int(d["stock"][k])
+	for k in d.get("sales", {}):
+		var b: int = block_from_key(k)
+		if b != Block.EMPTY and shop_stock.has(b):
+			shop_sales[b] = float(d["sales"][k])
+	_sale_left = float(d.get("left", SHOP_DAY))
 	shop_sales_changed.emit()
 
 ## Цена блока С УЧЁТОМ РАСПРОДАЖИ. Только для магазина — и на витрине, и при покупке.
@@ -1777,6 +1851,7 @@ func _flush_progress() -> void:
 			"quests_done": quests_done,
 			"killed_kinds": killed_kinds,
 			"first_enemy_met": first_enemy_met,
+			"shop": _shop_save(),
 		}))
 		f.close()
 
@@ -1858,6 +1933,7 @@ func _load_progress() -> void:
 		killed_kinds.append(str(k2))
 	first_enemy_met = data.get("first_enemy_met", false) == true
 	_settle_licences()
+	_shop_load(data.get("shop"))
 
 func _notification(what: int) -> void:
 	# Мобайл: сворачивание/кнопка «назад» (Android выходит по ней по умолчанию) — пишем
