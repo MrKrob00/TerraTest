@@ -206,6 +206,21 @@ points against Falsus's).
 - **The function mark** stays in the middle of the white band: a bold black chevron or wing, at
   least 10 texels across, so it reads on a phone.
 
+**Two drafts, built two ways, not in the game** (the player asked to compare the tools): the
+standard wheel and the basic block, once by the Python generator (`art/aero_models.py`, glb in
+`art/out/aero_block|aero_wheel.glb`, `model_check.py` PASS at 44 / 308 triangles) and once in
+Blender (`art/aero_blender.py`, `blender -b --factory-startup --python art/aero_blender.py --
+aero_block_bl aero_wheel_bl`, 722 / 1120 triangles). The bands, V dip, fold and the painted
+chevron and vents are the same rules in both; in Blender the chevron and vents are ENGRAVED by
+booleans and the colour is baked (Cycles, EMIT) with ambient occlusion, which is what the triangle
+count pays for. The wheel's bevelled tyre and real spoke holes are what Blender does better. Blender
+traps, all hit on the way: Debian's Blender needs `python3-numpy` for the glTF export; with
+denoising on (the default) and no OIDN in the build, the bake comes out BLACK without a word; an
+EXACT boolean with a cutter of two overlapping bars wipes the whole mesh unless `use_self` is set;
+`Pointiness` on a mesh this coarse is per vertex and smears a glint over whole faces (the glint is
+"normal off every axis" instead); the exported material is PBR and has to be turned unshaded for
+`MachineBatch.lit_material`.
+
 ### Stryx: stealth
 
 The simulation's special forces: monolithic, expensive-looking, threatening; heavy armour.
