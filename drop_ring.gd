@@ -13,7 +13,7 @@ extends Node3D
 const SHADER := preload("res://resources/drop_ring.gdshader")
 const SEGMENTS := 56
 const WIDTH := 0.9
-const DASH_LEN := 2.0                 # metres a dash and its gap, round the ring (1.6 was "too many")
+const DASHES := 5.0                   # dashes round the ring, whatever its size (the player's count)
 const LIFT := 0.05                    # over the grass lift, as the reach ring's
 const FADE_IN := 0.3
 const FADE_OUT := 0.8
@@ -32,7 +32,7 @@ var _mats: Array = []
 func _ready() -> void:
 	top_level = true
 	global_transform = Transform3D(Basis(), Vector3(at.x, 0.0, at.z))
-	_ribbon(radius, WIDTH, maxf(8.0, round(TAU * radius / DASH_LEN)), 0.12)
+	_ribbon(radius, WIDTH, DASHES, 0.12)
 	_shade()
 
 ## The countdown is over: the machine is on its way down; the ring fades out and frees itself.
