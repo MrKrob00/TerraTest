@@ -975,7 +975,7 @@ func _stream_in(v: Dictionary) -> void:
 		v["node"] = node                             # before add_child: its _ready writes through it
 		add_child(node)
 
-## WHAT IS LEFT IN AN ORE VEIN OUTLIVES ITS NODE (600 ore, 30 minutes' rest - resource_node.gd):
+## WHAT IS LEFT IN AN ORE VEIN OUTLIVES ITS NODE (its own 3-5 ore and rest - resource_node.gd):
 ## the node goes when the camera leaves and the region's records are rebuilt from the seed, both full.
 ## So the state lives here, by the vein's ground point, holding only veins not full: what is left and
 ## when it comes back on the session clock (`_ore_clock`), -1 while it still has ore. The world save
@@ -992,7 +992,7 @@ func _ore_key(v: Dictionary) -> String:
 
 ## Called by the vein: `rest` seconds until it refills, or -1 while it has ore.
 func ore_state_set(key: String, left: int, rest: float) -> void:
-	if left >= VEIN_NODE.ORE_TOTAL:
+	if left >= int(VEIN_NODE.vein_stats(key).x):
 		_ore_state.erase(key)
 	else:
 		_ore_state[key] = {"left": left, "back": _ore_clock() + rest if rest >= 0.0 else -1.0}
@@ -1006,7 +1006,7 @@ func _ore_share(v: Dictionary) -> float:
 	if float(st["back"]) >= 0.0 and float(st["back"]) <= _ore_clock():
 		_ore_state.erase(key)
 		return 1.0
-	return float(st["left"]) / float(VEIN_NODE.ORE_TOTAL)
+	return float(st["left"]) / VEIN_NODE.vein_stats(key).x
 
 func ore_state_save() -> Dictionary:
 	var out: Dictionary = {}

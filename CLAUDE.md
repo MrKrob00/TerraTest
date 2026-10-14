@@ -661,17 +661,17 @@ project: read it before claiming how anything works.
 - THE BATTERY ERRAND IS A TREE (`quest_arcs._battery_stage`, `vein_point_near` / `node_near` with
   `wood_only`; the player's call): the block hangs in its branches at a point PER MODEL
   (`BATTERY_SHOW`, by `tree_kind`), tipped, and comes down when the tree is felled.
-- **AN ORE VEIN HOLDS 600 ORE AND RESTS 30 MINUTES ONCE SPENT** (`resource_node.ORE_TOTAL` /
-  `ORE_REST`, the player's balance; a tree still gives five wood and moves). It held five and rested
-  five seconds - a tap that never ran dry. An ore still leaves per a fifth of `max_hp` of damage, so
-  a drill digs at the same rate; the picture breaks by what is LEFT of the 600. WHAT IS LEFT OUTLIVES
-  THE NODE (`resource_nodes._ore_state`, keyed by the vein's ground point, only veins not full): the
-  node goes when the camera leaves and a region's records are rebuilt full from the seed, so the
-  state lives on the owner, the vein streams in with it (`restore_left` / `restore_wait`) and the
-  world save writes it with the seconds still to rest (`world_persist` "veins"). THE AUTO MINER DIGS
-  THE SAME 600 (`mine_for_claimer` takes from the store, one miner a vein): it used to work only a
-  vein the drill had spent and scrape it for ever, which would have left the miner the one thing the
-  balance did not reach. It goes beside any ore vein.
+- **EVERY ORE VEIN HAS ITS OWN 3-5 ORE, ITS OWN ~15 S OF REST AND ITS OWN HP** (`resource_node.vein_stats`:
+  `ORE_COUNT`, `ORE_REST` 10-20 s, `HP_SPREAD` x0.75-1.25 of `max_hp`, drawn from the vein's ground
+  point, so a vein keeps its numbers through a restream and a reload; the player's balance - 600 ore
+  and 30 minutes' rest was tried and taken back; a tree still gives five wood and moves). An ore
+  leaves per max_hp / its count of damage, and the picture breaks by the share LEFT. WHAT IS LEFT
+  OUTLIVES THE NODE (`resource_nodes._ore_state`, keyed by the vein's ground point, only veins not
+  full): the node goes when the camera leaves and a region's records are rebuilt full from the seed,
+  so the state lives on the owner, the vein streams in with it (`restore_left` / `restore_wait`) and
+  the world save writes it with the seconds still to rest (`world_persist` "veins"). THE AUTO MINER
+  DIGS THE SAME STORE (`mine_for_claimer`, one miner a vein) and waits out the same rest; it goes
+  beside any ore vein.
 - THE AUTO MINER PAYS FOR ORE IT DIGS, AND ONLY FOR THAT (`auto_miner.gd`): vein first, then
   energy ASKED (`energy_available`), then the dig, then the bill. `energy_consume` hands over
   whatever there is even when it is short, so the old "take and see" on one panel (6/s against the
@@ -693,7 +693,7 @@ project: read it before claiming how anything works.
   rock with a brush of thin crystals on top). AN ORE VEIN BREAKS, IT DOES NOT SHRINK (the
   player's call - shrinking read as a model getting smaller, and the ore going while its rock
   stayed was wrong first): every model is cut into parts, UV.x carries each part's break point
-  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, by the share of the vein's 600 ore still in it),
+  (`BREAKS` 0.8 / 0.6 / 0.4 / 0.2 / 0.0, by the share of the vein's ore still in it),
   and the shader collapses a part once the share (thrown ore, below) is at or under it - one mesh, one MultiMesh, no
   model swapped. What stays at zero is RUBBLE (UV.x below 0): the rock's low base, the crystals'
   broken-off stumps. Rock pieces break like ore pieces. Back from the rest, the whole vein grows in
@@ -3106,9 +3106,9 @@ project: read it before claiming how anything works.
   with a static belt. Rejected on the way, in order: a plate on a post, a platform block, round
   saucers, a half-saucer - thin, lower than the belt, and rounder than the plate the player meant.
   THE GLASS COLUMN OVER BOTH BLOCKS IS GONE (the player's call); the cargo stack stands over the pad
-  on its own. A RECEIVER EMPTIES A COLLECTOR (`Receiver.take_interval` 0.25, takes until full,
-  `capacity` 8): it took one item a second and stopped at four - measured, a full collector's eight
-  move in the first quarter second. **THE COLLECTOR'S AND THE RECEIVER'S RING IS THEIR REACH, ON THE GROUND**
+  on its own. A RECEIVER TAKES THREE ITEMS A SECOND FROM A COLLECTOR (`Receiver.take_interval` 0.33, one a
+  tick, `capacity` 8; the player's rate): it took one a second and stopped at four, then emptied a
+  whole collector in one tick. **THE COLLECTOR'S AND THE RECEIVER'S RING IS THEIR REACH, ON THE GROUND**
   (`blocks/scripts/reach_ring.gd`, one child node per block, `blocks/collector_ring.gdshader`; the
   player's calls: "it should turn at the pickup radius, on the ground", then the receiver's old torus
   hanging at block height swapped for the same ring). A NODE OF ITS OWN, ticking on its own: a factory

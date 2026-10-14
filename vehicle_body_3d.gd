@@ -1740,7 +1740,7 @@ func _place_ground_structure(instance: Node3D) -> void:
 		return
 	# THE AUTO MINER GOES ONLY BESIDE AN ORE VEIN: in an open field it would stand eating energy and
 	# dig nothing, so with no vein in reach the block stays in the hand. Any vein, full or not: it
-	# digs from the same 600 ore a drill does (resource_node.ORE_TOTAL).
+	# digs from the same store a drill does (resource_node.vein_stats).
 	if core == G.Block.AUTO_MINER:
 		# Радиус спрашиваем у САМОГО блока: правило «дотягивается до жилы» должно быть одно
 		# и то же и при постановке, и при добыче (auto_miner.vein_reach).
