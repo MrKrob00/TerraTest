@@ -4,18 +4,20 @@ extends Node3D
 ## machine (`enemy_spawner._hold_for_drop`): the machine is made at once but held hidden over the
 ## point, the ring counts `warn` seconds down, then the machine is let go and the ring fades.
 ##
-## Two ribbons draped over the terrain's heights (resources/drop_ring.gdshader): the outer one at the
-## build's reach, dashes running round and a countdown arc filling it; an inner one turning the other
-## way. Built once - the point does not move - and freed after the fade. Top level in the world.
+## ONE wide red ribbon of dashes draped over the terrain's heights at the build's reach
+## (resources/drop_ring.gdshader), running round like the collector's and receiver's reach ring - the
+## player's call: "red, fairly wide, not a solid line but - - - - like the collector's". A countdown arc
+## filling it and an inner ring turning the other way came first and read as a solid line. Built once
+## - the point does not move - and freed after the fade. Top level in the world.
 
 const SHADER := preload("res://resources/drop_ring.gdshader")
 const SEGMENTS := 56
-const WIDTH := 0.6
-const INNER := 0.55                   # the inner ribbon's radius, a share of the outer
+const WIDTH := 0.9
+const DASH_LEN := 1.6                 # metres a dash and its gap, round the ring
 const LIFT := 0.05                    # over the grass lift, as the reach ring's
 const FADE_IN := 0.3
 const FADE_OUT := 0.8
-const HOSTILE := Color(1.0, 0.28, 0.12, 0.95)
+const HOSTILE := Color(1.0, 0.1, 0.06, 0.95)
 const FRIENDLY := Color(0.15, 0.8, 1.0, 0.9)
 
 var at := Vector3.ZERO                # the ground point the machine lands on
@@ -30,8 +32,7 @@ var _mats: Array = []
 func _ready() -> void:
 	top_level = true
 	global_transform = Transform3D(Basis(), Vector3(at.x, 0.0, at.z))
-	_ribbon(radius, WIDTH, 24.0, 0.25)
-	_ribbon(radius * INNER, WIDTH * 0.6, 14.0, -0.4)
+	_ribbon(radius, WIDTH, maxf(8.0, round(TAU * radius / DASH_LEN)), 0.12)
 	_shade()
 
 ## The countdown is over: the machine is on its way down; the ring fades out and frees itself.

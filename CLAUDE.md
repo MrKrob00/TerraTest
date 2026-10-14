@@ -1198,10 +1198,11 @@ project: read it before claiming how anything works.
   `MachineBody.MACHINES` (no gun, AI or sun shadow sees it), collision layer 0, metas `drop_pending`
   and `drop_at` (the ground point; `quest_compass` leads there while it is held). Then it is let go,
   falls `drop_height` and materialises (`enemy_vehicle._materialise_on_spawn` skips while held; the
-  spawner calls it on release). The ring: two ribbons draped on the ground at the build's reach
-  (`_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside `add_child`),
-  dashes running round and a countdown arc filling the outer one, the last second blinking, cyan for
-  an ally; it fades as the machine drops. THE VEHICLE CULL PASS SHOWED HIDDEN MACHINES AGAIN
+  spawner calls it on release). The ring: ONE wide red ribbon of dashes draped on the ground at the
+  build's reach (`_drop_radius`, the farthest cell of `blocks.map`, which the layout writes inside
+  `add_child`), "- - - -" like the collector's reach ring (the player's call; a countdown arc filling
+  it and an inner ring read as a solid line), turning faster as the drop nears, the last second
+  blinking, cyan for an ally; it fades as the machine drops. THE VEHICLE CULL PASS SHOWED HIDDEN MACHINES AGAIN
   (`world_persist._vehicle_render_tick` writes `visible` from the frustum): a held one hung in the air
   over its ring, and every SLEEPER in the frustum had been drawn all along - it now leaves both hidden.
   A held machine the dormancy pass puts to sleep stays asleep on release (`_wake` waits for the hold).
