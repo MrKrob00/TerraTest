@@ -1,0 +1,27 @@
+[gd_resource type="ArrayMesh" format=4 uid="uid://bfu9c5yieb4aq"]
+
+[ext_resource type="Texture2D" uid="uid://ddlgr7fqir5ds" path="res://objects/stab_texture.png" id="1_tey68"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_f8n50"]
+resource_name = "stab"
+cull_mode = 2
+shading_mode = 0
+albedo_texture = ExtResource("1_tey68")
+texture_filter = 2
+
+[resource]
+resource_name = "stab_shaft"
+_surfaces = [{
+"aabb": AABB(-0.04157458, -0.10908224, -0.39882767, 0.08314916, 0.13868621, 0.36626002),
+"attribute_data": PackedByteArray("/0H/Lf9BBy8yUwcvMlP/Lf9Z/y3/WQcvMmsHLzJr/y3/cf8t/3EHLzKDBy8yg/8t/4n/Lf+JBy8ymwcvMpv/Lf+h/y3/oQcvMrMHLzKz/y3/uf8t/7kHLzHLBy8xy/8t/9H/Lf/RBy8x4wcvMeP/Lf/p/y3/6QcvMfsHLzH7/y3/Wf81/1mmN+tbpjfrW/81/2H/Nf9hpjfrY6Y362P/Nf9p/zX/aaY362umN+tr/zX/cf81/3GmN+tzpjfrc/81/3n/Nf95pjfre6Y363v/Nf+B/zX/gaY364OmN+uD/zX/if81/4mmN+qLpjfqi/81/5H/Nf+Rpjfqk6Y36pP/Nf21KyfRtP8lKrP/Jf+xKyf/sdIoKrP9KdG0/Sn9tdIo/L0rJ9G8/yUqu/8l/7krJ/+50igqu/0p0bz9Kfy90ij/mf81/5mmN+qbpjfqm/81/6H/Nf+hpjfqo6Y36qP/Nf+p/zX/qaY36qumN+qr/zX/sf81/7GmN+qzpjfqs/81/7n/Nf+5pjfqu6Y36rv/Nf/B/zX/waY36sOmN+rD/zX/yf81/8mmN+rLpjfqy/81/9H/Nf/Rpjfq06Y36tP/NfzFKyfRxP8lKsP/Jf/BKyf/wdIoKsP9KdHE/Sn8xdIo/M0rJ9HM/yUqy/8l/8krJ//J0igqy/0p0cz9KfzN0ig="),
+"format": 34896613399,
+"index_count": 216,
+"index_data": PackedByteArray("AAACAAEAAAADAAIABAAGAAUABAAHAAYACAAKAAkACAALAAoADAAOAA0ADAAPAA4AEAASABEAEAATABIAFAAWABUAFAAXABYAGAAaABkAGAAbABoAHAAeAB0AHAAfAB4AIAAiACEAIAAjACIAJAAmACUAJAAnACYAKAAqACkAKAArACoALAAuAC0ALAAvAC4AMAAyADEAMAAzADIANAA2ADUANAA3ADYAOAA6ADkAOAA7ADoAPAA+AD0APAA/AD4AQABCAEEAQABDAEIAQABEAEMAQABFAEQAQABGAEUAQABHAEYASABKAEkASABLAEoASABMAEsASABNAEwASABOAE0ASABPAE4AUABSAFEAUABTAFIAVABWAFUAVABXAFYAWABaAFkAWABbAFoAXABeAF0AXABfAF4AYABiAGEAYABjAGIAZABmAGUAZABnAGYAaABqAGkAaABrAGoAbABuAG0AbABvAG4AcAByAHEAcABzAHIAcAB0AHMAcAB1AHQAcAB2AHUAcAB3AHYAeAB6AHkAeAB7AHoAeAB8AHsAeAB9AHwAeAB+AH0AeAB/AH4A"),
+"material": SubResource("StandardMaterial3D_f8n50"),
+"name": "stab",
+"primitive": 3,
+"uv_scale": Vector4(0, 0, 0, 0),
+"vertex_count": 128,
+"vertex_data": PackedByteArray("WjD10J37eN4CX4TszPl43gJfMnsSA3jeWjCjX+MEeN4CX4TszPlq+/yghOzM+Wr7/KAyexIDavsCXzJ7EgNq+/yghOzM+Zz6pM/10J37nPqkz6Nf4wSc+vygMnsSA5z6pM/10J37//+kz/ypLv7//6TPqjh0B///pM+jX+ME//+kz/ypLv4m9/ygbY7//yb3/KAcHUQJJvekz6o4dAcm9/ygbY7//436Al9tjv//jfoCXxwdRAmN+vygHB1ECY36Al9tjv//WtdaMPypLv5a11owqjh0B1rXAl8cHUQJWtdaMPypLv7/v1ow9dCd+/+/WjCjX+ME/79aMKo4dAf/vwAAtNMO53je+kr//yTkeN76SljzmMh43gAADseDy3je+kr//yTkavsEtf//JORq+wS1WPOYyGr7+kpY85jIavsEtf//JOSc+v//tNMO55z6//8Ox4PLnPoEtVjzmMic+v//tNMO5/////8SlS7r/////2yIo8//////DseDy/////8SlS7rJvcEtchoGe4m9wS1IVyO0ib3//9siKPPJvcEtchoGe6N+vpKyGgZ7o36+kohXI7SjfoEtSFcjtKN+vpKyGgZ7lrXAAASlS7rWtcAAGyIo89a1/pKIVyO0lrXAAASlS7r/78AALTTDuf/vwAADseDy/+/AABsiKPP/78AABKVLuuAwfpKyGgZ7oDBBLXIaBnugMH//xKVLuuAwf//tNMO54DBBLX//yTkgMH6Sv//JOSAwQAAtNMO54DBAAAOx4PLHPv6SljzmMgc+wS1WPOYyBz7//8Ox4PLHPv//2yIo88c+wS1IVyO0hz7+kohXI7SHPsAAGyIo88c+wAAk3d2Hnje+krdo4sbeN76SjaXAAB43gAA7GrqAnje+krdo4sbavsEtd2jixtq+wS1NpcAAGr7+ko2lwAAavsEtd2jixuc+v//k3d2Hpz6///sauoCnPoEtTaXAACc+v//k3d2Hv/////wOJUi/////0osCgf/////7GrqAv/////wOJUiJvcEtaYMgCUm9wS1AAD1CSb3//9KLAoHJvcEtaYMgCWN+vpKpgyAJY36+koAAPUJjfoEtQAA9QmN+vpKpgyAJVrXAADwOJUiWtcAAEosCgda1/pKAAD1CVrXAADwOJUi/78AAJN3dh7/vwAA7GrqAv+/AABKLAoH/78AAPA4lSKAwfpKpgyAJYDBBLWmDIAlgMH///A4lSKAwf//k3d2HoDBBLXdo4sbgMH6St2jixuAwQAAk3d2HoDBAADsauoCHPv6SjaXAAAc+wS1NpcAABz7///sauoCHPv//0osCgcc+wS1AAD1CRz7+koAAPUJHPsAAEosCgcc++510cTuddHE7nXRxO510cShvdAFob3QBaG90AWhvdAFBCu5IwQruSMEK7kjBCu5I/+//3//v/9//7//f/+//3+onnZXqJ52V6iedleonnZXEnvFRxJ7xUcSe8VHEnvFRyK/gPkiv4D5Ir+A+SK/gPn/f////3////9/////f///7nXRxO510cTuddHE7nXRxKG90AWhvdAFob3QBaG90AUEK7kjBCu5IwQruSMEK7kj/7//f/+//3//v/9//7//f6iedleonnZXqJ52V6iedlcSe8VHEnvFRxJ7xUcSe8VHIr+A+SK/gPkiv4D5Ir+A+f9/////f////3////9///8piXCJKYlwiSmJcIkpiXCJKYlwiSmJcIkpiXCJKYlwiTo+mMM6PpjDOj6Ywzo+mMM6PpjDOj6Ywzo+mMM6PpjD7nXRxO510cTuddHE7nXRxKG90AWhvdAFob3QBaG90AUEK7kjBCu5IwQruSMEK7kj/7//f/+//3//v/9//7//f6iedleonnZXqJ52V6iedlcSe8VHEnvFRxJ7xUcSe8VHIr+A+SK/gPkiv4D5Ir+A+f9/////f////3////9///8piXCJKYlwiSmJcIkpiXCJKYlwiSmJcIkpiXCJKYlwiTo+mMM6PpjDOj6Ywzo+mMM6PpjDOj6Ywzo+mMM6PpjD")
+}]
+blend_shape_mode = 0
