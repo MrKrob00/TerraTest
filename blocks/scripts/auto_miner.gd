@@ -1,24 +1,22 @@
 extends FactoryBlock
 
-# AUTO-MINER: a stationary block placed on a WORKED-OUT vein, and that is the whole mechanic.
+# AUTO-MINER: a stationary block beside an ore vein, digging it unattended.
 #
-# ORDER MATTERS. The drill takes the vein first (five ore in a burst); only an empty one can be
-# claimed. While the miner stands there the vein NEVER REFILLS - it slowly scrapes out what a drill
-# can no longer reach. That is the choice: the drill is fast, manual and needs you back every few
-# seconds; the miner is slow, unattended and permanent, but it TAKES the vein away from the drill.
-# Hitting the same vein with the same hurt made it a drill that never tires, i.e. no decision.
+# It digs from the vein's own store - the same ORE_TOTAL (600) a drill takes from, and a spent vein
+# rests ORE_REST (30 minutes) for the miner too (the player's balance). It used to work only a vein
+# the drill had spent, scraping it for ever: with five-ore veins that was the choice between drill
+# and miner, with 600-ore veins it would have been the one thing the balance did not reach.
 #
 # A receiver is WANTED, not required. Without one the ore simply lies by the vein (same rule as a
 # packer with no belt) for a collector or the player to pick up; refusing to mine at all made the
 # commonest placement - one miner on a vein as its own base core - look like a broken block. To
 # keep it from burying the map while nobody is around, an unreceived miner stops at GROUND_LIMIT.
 #
-# The vein does the rest itself (resource_node.gd): claim/release hold it worked out, and
+# The vein does the rest itself (resource_node.gd): claim/release keep one miner a vein, and
 # mine_for_claimer hands out ore of ITS type and colour - "metal belongs to the biome" must not be
 # a rule two scripts know.
 
-## Секунд на одну руду. Бур с руки достаёт из живой жилы пять штук за полторы секунды и ждёт
-## пять; шахтёр медленнее, зато сам и без перерыва.
+## Seconds an ore. Slower than a drill, but on its own and without a break.
 @export var mine_interval: float = 2.0
 
 # ── КАЧАЛКА ──────────────────────────────────────────────────────────────────
@@ -171,7 +169,7 @@ func _find_vein(delta: float) -> Node3D:
 		# ИЩЕМ СРЕДИ ПОДХОДЯЩИХ, а не «ближайшую вообще». Рядом может стоять живая жила или
 		# занятая соседним шахтёром: выбери мы её как ближайшую, claim бы отказал, и блок
 		# стоял бы вхолостую при свободной жиле в двух метрах.
-		if not c.is_depleted():
+		if c.get("is_wood") == true:
 			continue
 		var owner_now = c.get("claimed_by")
 		if owner_now != null and is_instance_valid(owner_now) and owner_now != self:

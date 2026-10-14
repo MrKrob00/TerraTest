@@ -119,6 +119,7 @@ func _wait_terrain(map: Node) -> void:
 		await get_tree().process_frame
 
 func _ready() -> void:
+	add_to_group("resource_nodes")       # the world save asks for `ore_state_save`
 	# До любого await: дальше по коду список нужен и шейдеру, и раздаче типов жилам.
 	ore_colors.assign(G.METAL_COLOR)
 	_digits = VEIN_DIGITS.new()
@@ -923,6 +924,8 @@ func _stream_in(v: Dictionary) -> void:
 	var xform := Transform3D(vbasis, v["pos"])
 	# G=1 whole, A the type; B the time it came back - a replanted tree grows in its new spot
 	var custom := Color(0.0, 1.0, 0.0, float(v["ore_type"]))
+	if v.get("wood") != true:
+		custom.g = _ore_share(v)
 	if v.get("regrow") == true:
 		v.erase("regrow")
 		custom.b = shader_now()
@@ -959,11 +962,70 @@ func _stream_in(v: Dictionary) -> void:
 					_ore_shape.height = 0.8 * VEIN_SIZE              # from under the ground to the top
 				col.shape = _ore_shape
 				col.position = Vector3(0.0, _ore_shape.height * 0.5 - 0.3, 0.0)
+		if v.get("wood") != true:
+			var key: String = _ore_key(v)
+			node.vein_key = key
+			var st = _ore_state.get(key)
+			if st != null:
+				node.restore_left = int(st["left"])
+				node.restore_wait = float(st["back"]) - _ore_clock() if float(st["back"]) >= 0.0 else -1.0
 		if "ore_type" in node: node.ore_type = v["ore_type"]
 		if "ore_color" in node and int(v["ore_type"]) < ore_colors.size():
 			node.ore_color = ore_colors[v["ore_type"]]
 		v["node"] = node                             # before add_child: its _ready writes through it
 		add_child(node)
+
+## WHAT IS LEFT IN AN ORE VEIN OUTLIVES ITS NODE (600 ore, 30 minutes' rest - resource_node.gd):
+## the node goes when the camera leaves and the region's records are rebuilt from the seed, both full.
+## So the state lives here, by the vein's ground point, holding only veins not full: what is left and
+## when it comes back on the session clock (`_ore_clock`), -1 while it still has ore. The world save
+## writes it with the time still to rest (`ore_state_save` / `ore_state_load`).
+const VEIN_NODE := preload("res://resource_node.gd")
+var _ore_state: Dictionary = {}
+
+func _ore_clock() -> float:
+	return Time.get_ticks_msec() / 1000.0
+
+func _ore_key(v: Dictionary) -> String:
+	var gp: Vector3 = v["gpos"]
+	return "%d,%d" % [roundi(gp.x * 2.0), roundi(gp.z * 2.0)]
+
+## Called by the vein: `rest` seconds until it refills, or -1 while it has ore.
+func ore_state_set(key: String, left: int, rest: float) -> void:
+	if left >= VEIN_NODE.ORE_TOTAL:
+		_ore_state.erase(key)
+	else:
+		_ore_state[key] = {"left": left, "back": _ore_clock() + rest if rest >= 0.0 else -1.0}
+
+## The share left for the shader as a vein streams in; a rest that ran out while it was away is full.
+func _ore_share(v: Dictionary) -> float:
+	var key: String = _ore_key(v)
+	var st = _ore_state.get(key)
+	if st == null:
+		return 1.0
+	if float(st["back"]) >= 0.0 and float(st["back"]) <= _ore_clock():
+		_ore_state.erase(key)
+		return 1.0
+	return float(st["left"]) / float(VEIN_NODE.ORE_TOTAL)
+
+func ore_state_save() -> Dictionary:
+	var out: Dictionary = {}
+	var now: float = _ore_clock()
+	for k in _ore_state:
+		var st: Dictionary = _ore_state[k]
+		var back: float = float(st["back"])
+		if back >= 0.0 and back <= now:
+			continue
+		out[k] = [int(st["left"]), back - now if back >= 0.0 else -1.0]
+	return out
+
+func ore_state_load(d: Dictionary) -> void:
+	var now: float = _ore_clock()
+	for k in d:
+		var e = d[k]
+		if not (e is Array) or (e as Array).size() < 2:
+			continue
+		_ore_state[String(k)] = {"left": int(e[0]), "back": now + float(e[1]) if float(e[1]) >= 0.0 else -1.0}
 
 ## How high over its point a vein reaches: its model's top times its size (`_turn_of`).
 func _vein_top(v: Dictionary) -> float:
