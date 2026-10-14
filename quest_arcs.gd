@@ -103,6 +103,7 @@ func _tick_arcs(delta: float) -> void:
 			"quest_defend_2":      _defend_2(q)
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
+			"quest_camp_3":        _camp_3(q)
 	_drop_orphans(polled)
 	_update_safe_zones()
 	_sweep_safe_zones()
@@ -200,7 +201,7 @@ func safe_zone_at(p: Vector3, pad: float = 0.0) -> Variant:
 ## tagged `story` (never cleaned up, holding places in `max_total`).
 func _drop_orphans(polled: Dictionary) -> void:
 	var keys: Dictionary = {}
-	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party]:
+	for d in [_ev_point, _ev_mobs, _ev_orb, _ev_party, _ev_base]:
 		for k in d:
 			keys[k] = true
 	for k in keys:
@@ -1980,6 +1981,8 @@ func _live_target(ev: String) -> Variant:
 	var key := _ev_key(ev)
 	var list: Array = []
 	list.append_array(_ev_mobs.get(key, []))
+	if _ev_base.has(key):
+		list.append(_ev_base[key])
 	if _tower_node.has(key):
 		list.append(_tower_node[key])
 	match key:
@@ -2110,6 +2113,11 @@ func _ev_clear(key: String) -> void:
 	if is_instance_valid(orb):
 		(orb as Node).queue_free()
 	_ev_orb.erase(key)
+	var base = _ev_base.get(key)
+	if is_instance_valid(base):
+		(base as Node).queue_free()
+	_ev_base.erase(key)
+	_camp_hold.erase(key)
 	_props.release("event_" + key)
 
 ## A participant that outlived its quest (the covered ally, a tower's guards) stops being a quest
@@ -2478,10 +2486,50 @@ func _defend_2(q: Dictionary) -> void:
 	_release_machine(ally)
 	_ev_done(q, key)
 
-# ── «Take the Camp»: лагерь с охраной и трофеем ─────────────────────────────
-# Это наш ответ на Capture Enemy Base. Захватывать БАЗУ пока нечего — статичной постройки
-# как сущности в игре нет (она же нужна отложенным Watchtower/SAM, см. docs/STORY_ROADMAP.md).
-# Смысл при этом сохранён: укреплённая точка, охрана, и трофей достаётся тому, кто её взял.
+# ── "Take the Staging Point": capture a base WITHOUT destroying it ───────────
+## TerraTech's Capture Enemy Base (the player's call: make it a real capture). A hostile turret
+## post stands on the point with a guard party: stage 1 is reaching it, stage 2 is breaking the guard
+## and DISARMING the post - every weapon on it shot off while its core lives - and stage 3 is holding
+## the point CAPTURE_HOLD seconds within CAPTURE_DIST of it. Then the post is the player's: its
+## enemy machine goes and what is left of it - support, battery, panels, dome - stands again on the
+## same spot as one of the player's stations (`_spawn_station`), saved like any base. The post's
+## core destroyed, there is nothing to take: the event is dropped and cools down.
+const CAMP_POSTS := [13, 14]          # turret posts: a rotating support, a battery, panels, a dome, two guns
+const CAPTURE_DIST := 15.0
+const CAPTURE_HOLD := 10.0
+var _ev_base: Dictionary = {}         # event key -> the hostile base to take
+var _camp_hold: Dictionary = {}       # event key -> seconds held so far
+
+func _camp_post(key: String, at: Vector3) -> void:
+	var b = _ev_base.get(key)
+	if is_instance_valid(b):
+		return
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var post: Node3D = _ask_spawner(sp, at, int(CAMP_POSTS.pick_random()), 1, true)
+	if post != null:
+		_ev_base[key] = post
+
+## Weapons still on the post (WeaponBlock children of its grid).
+func _post_armed(post: Node) -> int:
+	var bl: Node = post.get_node_or_null("blocks")
+	var n := 0
+	if bl != null:
+		for c in bl.get_children():
+			if c is WeaponBlock and not c.is_queued_for_deletion():
+				n += 1
+	return n
+
+## The post was there and is gone: the event cannot be won any more.
+func _camp_lost(q: Dictionary, key: String) -> bool:
+	if not _ev_base.has(key) or is_instance_valid(_ev_base[key]):
+		return false
+	Dialogue.say("System", tr("The post is wrecked. Nothing left to take."))
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
+	return true
 
 func _camp_1(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
@@ -2489,11 +2537,13 @@ func _camp_1(q: Dictionary) -> void:
 		return
 	if _ev_get_point(key) == null:
 		return
+	var at: Vector3 = _ev_point[key] as Vector3
+	_camp_post(key, at)
 	if not _ev_mobs.has(key):
-		var at: Vector3 = _ev_point[key] as Vector3
 		_ev_spawn(key, at, [7, 8, 9], 1, _player())
-		_props.ensure("event_camp", G.Block.PACKER, at)
-		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it apart."))
+		Dialogue.say("System", tr("That is a staging point, not a patrol. Take it intact: strip its guns, keep its core."))
+	if _camp_lost(q, key):
+		return
 	if not _reached(_ev_point[key]):
 		return
 	Q.report(String(q["event"]), 1)
@@ -2502,13 +2552,51 @@ func _camp_2(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
 	if _ev_abandoned(q, key):
 		return
+	var at = _ev_get_point(key)
+	if at == null:
+		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key)      # состояние потеряно — охрана снова на точке
-		if at != null:
-			_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())
+		_ev_spawn(key, at as Vector3, [7, 8, 9], 1, _player())   # state lost (a reload): the guard again
+	_camp_post(key, at as Vector3)
+	if _camp_lost(q, key):
 		return
 	if not _ev_all_dead(key):
 		return
-	if _props.position_for("event_camp") != null:
-		return                                  # охрана кончилась, трофей ещё лежит
+	var post = _ev_base.get(key)
+	if not is_instance_valid(post) or _post_armed(post) > 0:
+		return
+	Dialogue.say("System", tr("The post is disarmed. Stay by it and it is yours."))
+	Q.report(String(q["event"]), 1)
+
+func _camp_3(q: Dictionary) -> void:
+	var key := _ev_key(String(q["event"]))
+	if _ev_abandoned(q, key):
+		return
+	var post = _ev_base.get(key)
+	if not is_instance_valid(post):
+		if not _camp_lost(q, key):
+			Q.reset_quest(String(q["id"]))      # state lost (a reload): the post again from stage one
+		return
+	var p: Node3D = _player()
+	var pp: Vector3 = (post as Node3D).global_position
+	if p == null or Vector2(p.global_position.x - pp.x, p.global_position.z - pp.z).length_squared() \
+			> CAPTURE_DIST * CAPTURE_DIST:
+		return
+	_camp_hold[key] = float(_camp_hold.get(key, 0.0)) + POLL
+	if float(_camp_hold[key]) < CAPTURE_HOLD:
+		return
+	_capture_post(post as Node3D)
+	_ev_base.erase(key)
+	_camp_hold.erase(key)
+	Dialogue.say("System", tr("Post captured. It is one of your bases now."))
 	_ev_done(q, key)
+
+## The hostile post becomes the player's station: what is left of it, on the same ground.
+func _capture_post(post: Node3D) -> void:
+	var bl: Node = post.get_node_or_null("blocks")
+	var layout: Array = bl.get_layout() if bl != null and bl.has_method("get_layout") else []
+	var at: Vector3 = post.global_position
+	at.y = G.ground_y(at, at.y - 0.5)
+	post.queue_free()
+	if not layout.is_empty():
+		_spawn_station(at, layout)
