@@ -1142,13 +1142,12 @@ project: read it before claiming how anything works.
   or the point, cools down and comes back at a NEW point `EV_POINT_DIST` (100-250 m) from the player
   and no nearer than `EV_BASE_CLEAR` (100 m) to any of their machines (`_event_point`) - a point a
   hundred metres from a player standing by their base could fall on the base. Story quests are not
-  events and keep their own rules. The duel kept its own state and was never dropped
-  (`_duel_abandoned` now). Measured: an event 600 m away went with its machines, the duel at 700 m.
+  events and keep their own rules. Measured: an event 600 m away went with its machines.
 - **EVENTS CARRY A FACTION, AND THE BOARD IS DRAWN BY FACTION** (`Q.current_events`, `_roster`,
   `_event_factions`; the player's rules). `EVENT_SLOTS` 3; one place is guaranteed to an event of the
   highest licensed faction, the rest are drawn at random and keep their place until done or dropped
   (drawing on every call would shuffle the journal); a faction at its last grade sends nothing once a
-  better one is open. Marlit's events (`event_msupply / mgang / mdefend / mwaves`, `Q._marlit_event`)
+  better one is open. Marlit's events (`event_msupply / mgang / mdefend`, `Q._marlit_event`)
   are Falsus's arcs under another key ("quest_mgang_1" -> "mgang"), so per-event state lives in
   dictionaries by key; the faction turns the build an event asked for into Marlit's of the same step
   (`quest_arcs._faction_preset`, `MARLIT_BY_STEP`: runner 121, raider 122, champion 120), fills a drop with Marlit blocks and takes the XP.
@@ -1721,17 +1720,17 @@ project: read it before claiming how anything works.
   killed one compares equal to null (rule 4) and was born again. Born on arrival they skip
   `clear_point` (`EnemySpawner.arrival`). Measured: nothing at 285 m, one at 65, none at 300, back at
   65, killed - the quest done. THE STREAM HOLDS AT `MAX_GROUPS` (2) groups awake - a party counts once
-  (`spawn_groups`). Allies, towers, cubes, the duel and carriers spawn as before; Hold Position is the
-  exception: its attack arrives at the player. It is ONE attack of three: it used to be two waves, the second
-  launched the moment the first died, and a new attack out of a finished fight read as a spawn bug.
-  Every other event spawns its party once; a second spawn happens only after a reload, when the
+  (`spawn_groups`). Allies, towers, cubes and carriers spawn as before. **CROSSFIRE AND HOLD
+  POSITION ARE GONE** (the player's call: the duel and the wave on the player's position, Falsus's and
+  Marlit's `event_mwaves`); a save that holds their ids just never shows them.
+  Every event spawns its party once; a second spawn happens only after a reload, when the
   participant list (memory only) is gone.
 - **A "REACH X" STAGE ENDS WHEN THE PLAYER IS THERE (`quest_arcs._reached`, `REACH_DIST` 60 m), NOT
   WHEN X EXISTS.** Spawning early and reporting stage 1 used to be one line, so moving the spawn up
-  took the distance gate with it: every "Reach ..." stage (Crossfire, Tech Gang, Supply Drop, Cover
+  took the distance gate with it: every "Reach ..." stage (Tech Gang, Supply Drop, Cover
   the Convoy, Staging Point, Salvage, both towers) reported itself in the poll that spawned its
   enemies, and the tracker showed 2/2 the moment an event appeared. A stage that now WAITS must
-  also spawn ONCE: the duel is guarded by `_duel_sent`, the salvage guard by `_salvage_killed` (it
+  also spawn ONCE: the salvage guard by `_salvage_killed` (it
   hunts the player and is usually met on the way). Measured on the engine for five events: stage 1
   held at 244-275 m with no machines added, stage 2 at the point.
 - **QUESTS ARE POLLED ONLY ONCE THE WORLD IS UP** (`G.world_ready`: the terrain answers heights -
@@ -1898,8 +1897,8 @@ project: read it before claiming how anything works.
   do not go into the save, so after a reload every arc's list is empty and every reference is gone;
   reading that as a win handed the quest over for free on the first poll, without a shot. Most arcs
   already had the branch (`_ev_all_dead`, `_camp_2`, `_gang_2`, `_defend_2`, `_tower_2`,
-  `_salvage_2`) — `_hold_2` and `_duel_2` did not, and both closed on reload; measured on the
-  engine. The duel needs a FLAG (`_duel_sent`) rather than a null test, because rule 4 applies:
+  `_salvage_2`) — `_hold_2` and the old duel did not, and both closed on reload; measured on the
+  engine. Such a check needs a FLAG rather than a null test, because rule 4 applies:
   a freed node and a lost reference both read false through `is_instance_valid`, so only something
   that lives in memory can tell "they killed each other" from "the scene restarted".
 - EVERY QUEST MACHINE ASKS THE SPAWNER THROUGH ONE DOOR, `quest_arcs._ask_spawner` (with

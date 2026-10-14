@@ -207,22 +207,10 @@ func _seed_demo() -> void:
 	requires("arc_tower", ["arc_hold"])
 	requires("arc_sam", ["arc_tower"])
 
-	# ── СОБЫТИЕ ─────────────────────────────────────────────────────────────────
-	# Не сюжет и не счётчик: Система засекла чужую стычку и предлагает вмешаться. Две части —
-	# доехать и победить. Повторяется: quest_arcs перезаряжает его после остывания.
-	add_quest("event_duel", "Crossfire", "", Type.EVENT, 1, 0, "", 260, 30, 6, 1)
-	add_stages("event_duel", [
-		{"desc": "Reach the contact coordinates",
-		 "event": "quest_duel_1", "goal": 1,
-		 "hint": "Two units are shooting at each other out there. The System would rather neither of them finished."},
-		{"desc": "Be the one that drives away",
-		 "event": "quest_duel_2", "goal": 1,
-		 "hint": "Neither of them cares which of you it is. Take both, or wait and take what is left."},
-	])
-
-	# Пять типов с борда оригинала. Борда у нас нет — их объявляет Система, а повторяются они
-	# по остыванию, как «Crossfire» (см. quest_arcs, раздел «ПОВТОРЯЕМЫЕ СОБЫТИЯ»). Общее
-	# правило у всех одно: уехал от цели за 500 м — задание снято.
+	# EVENTS: the original's board types. There is no board - the System announces them, and they
+	# repeat after a cooldown (quest_arcs, "REPEATABLE EVENTS"). One rule for all: drive 500 m away
+	# from the target and the event is dropped. Crossfire and Hold Position were taken out (the
+	# player's call).
 	add_quest("event_gang", "Tech Gang", "", Type.EVENT, 1, 0, "", 320, 40, 8, 2)
 	add_stages("event_gang", [
 		{"desc": "Reach the reported camp",
@@ -250,14 +238,6 @@ func _seed_demo() -> void:
 		 "event": "quest_defend_2", "goal": 1,
 		 "hint": "It survives or it does not. There is no partial credit for this one."},
 	])
-	add_quest("event_waves", "Hold Position", "", Type.EVENT, 1, 0, "", 340, 45, 9, 3)
-	# ONE WAVE. It used to be two - a pair, then a heavier pair the moment the first died - and a
-	# second attack arriving out of a finished fight read as a spawn bug, not as a design.
-	add_stages("event_waves", [
-		{"desc": "Survive the attack",
-		 "event": "quest_waves_1", "goal": 1,
-		 "hint": "They are coming to you. Pick your ground before they arrive."},
-	])
 	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12, 4)
 	add_stages("event_camp", [
 		{"desc": "Reach the staging point",
@@ -269,14 +249,13 @@ func _seed_demo() -> void:
 	])
 
 	# MARLIT'S EVENTS: the same four the original's GeoCorp board repeats (the player's list) -
-	# Supply Drop, Tech Gang, Defend Friendly Tech, Defeat Enemy Waves - under Marlit's flag. The arcs
+	# Supply Drop, Tech Gang, Defend Friendly Tech - under Marlit's flag (waves were taken out). The arcs
 	# are Falsus's own (quest_arcs takes the key from the stage); the faction sends Marlit machines
 	# (quest_arcs._faction_preset), fills the drop with Marlit blocks and takes the XP. They open with
 	# the licence and climb Marlit's grades in the same order as Falsus's.
 	_marlit_event("event_msupply", "Supply Drop", 200, 25, 5, 1, "event_supply", "msupply")
 	_marlit_event("event_mgang", "Tech Gang", 320, 40, 8, 1, "event_gang", "mgang")
 	_marlit_event("event_mdefend", "Cover the Convoy", 300, 35, 7, 2, "event_defend", "mdefend")
-	_marlit_event("event_mwaves", "Hold Position", 340, 45, 9, 3, "event_waves", "mwaves")
 
 	# ── MARLIT'S STORY: THE HARVESTER LINE (the player's design, after GeoCorp's own) ───────────
 	# Marlit trades in what the ground gives, so its story is the work itself: felling, collecting
