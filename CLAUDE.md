@@ -3283,6 +3283,22 @@ project: read it before claiming how anything works.
   by value). Measured on the proving ground: Aero block 175 hp / 9 kg, Stryx block 325 / 12, Aero gun
   22 a shot, Stryx gun 31 (Falsus 26), Aero wheel 3120 power, a stub plate's cells the Falsus plate's.
   The style their OWN models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
+  **THE FIRST OWN MODEL IS THE AERO LIGHT WHEEL** (`AERO_WHEEL`, "Aero Light Wheel"; `art/aero_wheels.py`,
+  `blocks/scripts/aero_wheel.gd`; the player's pick of round one's drafts, "basic and light"): an open
+  formula corner in ONE cell - a white trapezoid mount on the back face, two PARALLEL aerofoil A-arms
+  and a drive shaft with CV boots between them (they only turn about X), a blue upright that only moves
+  and steers about the kingpin through the tyre's middle, a coilover with an orange spring from the
+  upper arm to a turret on the mount, an 18-sided slick with an orange band on a white ten-spoke rim.
+  The script reads the generator's numbers, measured on the engine equal to its poses (7e-8) at rest,
+  steered and at both ends of the travel. The stub's numbers stay (15 kg, 3120 pull, travel 0.22, load
+  190), ride height 0.88 off the tyre; its `STUB_BASE` row went, so it is named in `_STATION_BANNED`
+  itself and collides as its own fitted hull (`blocks/colliders/AERO_WHEEL.tres`, 13% of the box). THE
+  TYRE NODE (%wheel) IS TURNED SO ITS X IS THE AXLE (wheel.gd rolls about it) and the mesh under it,
+  `Tyre`, is turned back into the generator's frame - the name also keeps the collider fitter off it.
+  Measured on the proving ground, the Aero runner (128) on four: lands from the 10 m drop 3 of 3 and
+  rides at 0.865 m, driving 8-18 m/s. A DROP OF 40 M PUNCHES ANY MACHINE THROUGH THE GROUND, and whether
+  it climbs back out is luck of the colliders: the stub runner stayed buried 1 of 3, this one 3 of 3 -
+  only a harness spawning off a hovering machine drops that far.
 - **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
   the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks
