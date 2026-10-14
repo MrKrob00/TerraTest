@@ -924,12 +924,26 @@ func _turn_of(gp: Vector3, wood: bool) -> Vector2:
 ## — это 768 м в поперечнике), и считаются они от сида, независимо от того, что нарисовано.
 ##
 ## Возвращает мировую точку или null. lo/hi — в каком кольце от from искать.
-func vein_point_near(from: Vector3, lo: float, hi: float, wood_only: bool = false) -> Variant:
+## `ore_only` skips trees; `skip_safe` skips veins inside a learning base's quiet zone
+## (G.SAFE_ZONE_R), so a hostile miner is not sent to dig inside one.
+func vein_point_near(from: Vector3, lo: float, hi: float, wood_only: bool = false,
+		ore_only: bool = false, skip_safe: bool = false) -> Variant:
 	var best: Variant = null
 	var best_d: float = INF
+	var zones: Array = G.safe_zones() if skip_safe else []
+	var zr2: float = G.SAFE_ZONE_R * G.SAFE_ZONE_R
 	for rec in _data:
 		var gp = rec.get("gpos")
-		if gp == null or (wood_only and rec.get("wood") != true):
+		if gp == null or (wood_only and rec.get("wood") != true) \
+				or (ore_only and rec.get("wood") == true):
+			continue
+		var in_zone: bool = false
+		for z in zones:
+			var zv: Vector3 = z
+			if Vector2((gp as Vector3).x - zv.x, (gp as Vector3).z - zv.z).length_squared() < zr2:
+				in_zone = true
+				break
+		if in_zone:
 			continue
 		var d: float = (gp as Vector3).distance_to(from)
 		if d < lo or d > hi:
@@ -941,6 +955,20 @@ func vein_point_near(from: Vector3, lo: float, hi: float, wood_only: bool = fals
 			best_d = score
 			best = gp
 	return best
+
+## Every seeded vein within `r` of `from` on the plan, trees too: [[point, is_wood], ...]. For a
+## caller laying something out round them (quest_arcs._line_site_by_vein).
+func veins_near(from: Vector3, r: float) -> Array:
+	var out: Array = []
+	var r2: float = r * r
+	for rec in _data:
+		var gp = rec.get("gpos")
+		if gp == null:
+			continue
+		var g: Vector3 = gp
+		if Vector2(g.x - from.x, g.z - from.z).length_squared() <= r2:
+			out.append([g, rec.get("wood") == true])
+	return out
 
 func node_near(world_pos: Vector3, radius: float = 25.0, wood_only: bool = false) -> Node:
 	var best: Node = null

@@ -29,6 +29,7 @@ var cell := Vector3i.ZERO
 var block_type: int = 0
 
 var _map: Node = null                  # узел blocks машины (он же родитель)
+var _conn_mask: int = 63               # the new block's own attach faces (its scene's connect_faces)
 var _strict_yaw: bool = false
 var _mat: StandardMaterial3D = null
 var _t: float = 0.0
@@ -66,6 +67,8 @@ func _build_ghost() -> void:
 	if scene == null:
 		return
 	var src: Node = scene.instantiate()
+	if "connect_faces" in src:
+		_conn_mask = int(src.get("connect_faces"))
 	_copy_meshes(src, self, Transform3D.IDENTITY)
 	src.free()                         # орфан: в дерево не попадал, _ready не отработал
 	if get_child_count() == 0:
@@ -163,3 +166,58 @@ static func pick(hints: Array, want: int, from: Vector3) -> Variant:
 ## Мировая точка призрака — для пальца наставника.
 func target_position() -> Vector3:
 	return global_position
+
+## WHERE THE FINGER POINTS: THE FACE THE BLOCK IS BOLTED ONTO, not the middle of its cell (the
+## player: "it points at the middle of the cell, and a tap there misses"). Placing is a tap on a
+## face of a block ALREADY ON THE MACHINE; the middle of an empty cell is air, and a tap there goes
+## through to whatever lies behind. So: the faces between the ghost's cells and the taken cells
+## beside them, kept only where the neighbour joins on that face and the new block's own mask
+## (turned by the ghost's rotation) joins back; of those, the side facing the camera, then the one
+## with the most cells touching; the point is the middle of that contact patch, which is also where
+## `attach_candidates` lines a big block's middle up with the tap. Nothing beside it yet - the
+## ghost's middle, as before.
+func tap_point(eye: Vector3) -> Vector3:
+	if _map == null or not is_instance_valid(_map) or not ("map" in _map) \
+			or not _map.has_method("_block_footprint"):
+		return global_position
+	var m: Dictionary = _map.get("map")
+	var cells: Array = _map._block_footprint(block_type, cell.x, cell.y, cell.z, rotation)
+	var own := {}
+	for c in cells:
+		own[c] = true
+	var b := Basis.from_euler(rotation)
+	var mine: Dictionary = {}
+	for i in 6:
+		if _conn_mask & (1 << i):
+			mine[Vector3i((b * VehicleBlock.FACE_VECS[i]).round())] = true
+	var best_pt: Vector3 = global_position
+	var best_score: float = -INF
+	for d in _NEIGH:
+		var dir: Vector3i = d
+		if not mine.is_empty() and not mine.has(dir):
+			continue
+		var sum := Vector3.ZERO
+		var n: int = 0
+		for c in cells:
+			var nb: Vector3i = (c as Vector3i) + dir
+			if own.has(nb) or not m.has(nb):
+				continue
+			if _map.has_method("find_block") and _map.has_method("anchor_of"):
+				var blk = _map.find_block(nb.x, nb.y, nb.z)
+				if is_instance_valid(blk) and blk is VehicleBlock \
+						and not (blk as VehicleBlock).connects_at(nb - _map.anchor_of(nb), -dir):
+					continue
+			sum += Vector3(c as Vector3i) + Vector3(dir) * 0.5
+			n += 1
+		if n == 0:
+			continue
+		var local: Vector3 = sum / float(n) - Vector3(5.0, 5.0, 5.0)
+		var pt: Vector3 = (_map as Node3D).global_transform * local
+		# the neighbour's face looks back at the ghost (-dir); seen from the eye or not
+		var normal: Vector3 = ((_map as Node3D).global_basis * -Vector3(dir)).normalized()
+		var seen: bool = normal.dot(eye - pt) > 0.0
+		var score: float = (100.0 if seen else 0.0) + float(n)
+		if score > best_score:
+			best_score = score
+			best_pt = pt
+	return best_pt

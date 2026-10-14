@@ -1677,7 +1677,8 @@ project: read it before claiming how anything works.
 
 - `quest_manager.gd` (`Q`) holds data; `quest_arcs.gd` is the physics of a branch (what appears in
   the world, what counts as done, polled once a second); `quest_props.gd` owns items placed into the
-  world; `quest_compass.gd` draws the marker and exposes any quest's target.
+  world; `quest_compass.gd` draws the marker and exposes any quest's target. THE MARKER STAYS UP IN
+  THE GARAGE (the player's call), lifted over its panels as it opens (`hud._on_tech_ui_visibility`).
 - STORY is story only. Counters live in DAILY, events repeat and are capped at two journal slots.
   THE ONE EXCEPTION IS MARLIT'S STORY, THE HARVESTER LINE (the player's design, after GeoCorp's):
   Novice I-IV (trees, ore), Mineral per metal (four in parallel - the metal under you is the
@@ -1754,6 +1755,34 @@ project: read it before claiming how anything works.
   (the player's report, the tutorial and the factory line alike). Measured on the engine from a bare
   cabin: front block, back block, then the wheels; a wheel in the hand pointed at no cell until its
   block stood.
+  THE FINGER POINTS AT THE FACE THE BLOCK BOLTS ONTO, NOT THE MIDDLE OF ITS CELL (`BuildHint.tap_point`,
+  the player: "following it, the tap misses"): placing is a tap on a block already on the machine, and
+  the middle of an empty cell is air. The face between the ghost and a taken neighbour that joins there
+  (its `connects_at`) and that the new block's own mask (turned by the ghost's rotation) joins back;
+  the side facing the camera first, then the widest contact, at the patch's middle - where
+  `attach_candidates` lines a big block's middle up. Measured on the factory line: ghost (5,5,7), finger
+  on the placed belt's face at (5,5,6.5).
+- **SOLVENT IS TEN THINGS SOLD** (`arc_solvent`, event `item_sold`, the seller's door; the player's call):
+  raw ore counts as well as an ingot, wood, coal or a component. The Mechanic says what to do
+  (`quest_arcs._solvent`): two lines at the start, one at half way, a reminder after `SOLVENT_NUDGE` of
+  no sale. The compass leads an `item_sold` or `money_earned` quest to the nearest MOUNTED seller (group
+  `sellers`).
+- **A QUIET ZONE STANDS ROUND THE LEARNING BASES** (`G.SAFE_ZONE_R` 160 m, `quest_arcs._update_safe_zones`
+  / `safe_zone_at`, asked through `G.safe_zone_at`; the player's rule): while the power branch (panel and
+  repair unit) or the factory branch (the line, then Solvent) is open, round the site's POINT: no
+  hostile is born in it (`enemy_spawner.is_clear_of_player`, the door every spawn and `clear_point` go
+  through; `_event_point` skips it), no hostile takes a target standing in it (`_consider_target`,
+  `notice_attacker`, the base tick, and a target that walks in is let go, relentless or not), a hostile
+  inside drives straight out with its patrol home moved past the edge (`enemy_vehicle._leave_safe_zone`),
+  and a hostile miner digs no vein in it (`vein_point_near(..., skip_safe)`). The quests done, it is gone.
+  Measured: an enemy dropped 60 m from the player inside the zone with the player assigned - no target,
+  out of the zone in 10 s, 251 m from the centre at 20 s; the zone list empty once the quest closed.
+- **THE FACTORY LINE STANDS BY AN ORE VEIN** (`quest_arcs._line_site_by_vein`, `resource_nodes.veins_near`;
+  the player: "within 20 m of a vein"): the seller goes `LINE_VEIN_AHEAD` (13.5 m) short of an ore vein
+  along -Z, so the line runs toward it and the receiver ends ~8 m from it - the pad and its feather stop
+  short of the vein's ground. A vein is taken only when nothing else (a deposit's neighbour, a tree)
+  stands on the pad (`LINE_PAD_*`): the first cut put one 6 m from the seller. No such vein streamed -
+  the old random point. Measured, six sites: the nearest ore 13.5 m from the seller every time.
 - A HANDED-OUT BLOCK GETS THE FINGER BEFORE THE CELL DOES. `_arc_power_1` points at the panel
   lying in the grass and only shows the blueprint once it is in hand; `_arc_power_2` never copied
   that, so it asked for a repair unit to be placed while the block was still on the ground and the

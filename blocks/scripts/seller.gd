@@ -38,6 +38,7 @@ var _spin: float = 0.0
 
 func _ready() -> void:
 	moving_parts = true
+	add_to_group("sellers")        # the quest compass leads a "sell" quest to the nearest one
 	_anim = get_node_or_null("Anim") as AnimationPlayer
 	super._ready()
 

@@ -694,7 +694,9 @@ func is_clear_of_player(pos: Vector3, own: Array = [], spread: float = 0.0) -> b
 	for o in own:
 		if Vector2(pos.x - o.x, pos.z - o.z).length_squared() < r * r:
 			return false
-	return true
+	# AND NOTHING IS BORN IN A LEARNING BASE'S QUIET ZONE (G.SAFE_ZONE_R): it stands round the site's
+	# point, which is not a machine of the player's until the base is up.
+	return G.safe_zone_at(pos, spread + CLEAR_PAD) == null
 
 ## The point itself when it is clear; otherwise the nearest clear one found walking OUT from the
 ## machine that is too close, along the line it already lay on, then fanning to either side
@@ -702,8 +704,10 @@ func is_clear_of_player(pos: Vector3, own: Array = [], spread: float = 0.0) -> b
 ## will scatter a party over round the point.
 func clear_point(pos: Vector3, spread: float = 0.0) -> Vector3:
 	var own: Array = _own_points()
-	if own.is_empty() or is_clear_of_player(pos, own, spread):
+	if is_clear_of_player(pos, own, spread):
 		return pos
+	if own.is_empty():
+		own = [pos]                    # only a quiet zone is in the way: walk out from the point itself
 	var near: Vector3 = own[0]
 	for o in own:
 		if Vector2(pos.x - o.x, pos.z - o.z).length_squared() \

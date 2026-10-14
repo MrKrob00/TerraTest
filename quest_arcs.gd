@@ -60,6 +60,9 @@ func _tick_arcs(delta: float) -> void:
 	for q in _arc_quests():
 		_cur_q = String(q.get("id", ""))
 		polled[_ev_key(String(q.get("event", "")))] = true
+		if _cur_q == "arc_solvent":
+			_solvent(q)
+			continue
 		match String(q.get("event", "")):
 			"quest_arc_power_1":   _arc_power_1(q)
 			"quest_arc_power_2":   _arc_power_2(q)
@@ -106,6 +109,42 @@ func _tick_arcs(delta: float) -> void:
 			"quest_camp_1":        _camp_1(q)
 			"quest_camp_2":        _camp_2(q)
 	_drop_orphans(polled)
+	_update_safe_zones()
+
+## A QUIET ZONE ROUND THE LEARNING BASES (the player's rule): while the power branch (the panel and
+## the repair unit) or the factory branch (the line, then Solvent's sales) is open, no hostile
+## machine is born within G.SAFE_ZONE_R of its site (`enemy_spawner.is_clear_of_player`, the door every
+## spawn goes through, and `_event_point`), none takes a target standing in it
+## (`enemy_vehicle._consider_target`, and a target that walks in is dropped), and one that is inside
+## drives back out (`enemy_vehicle._leave_safe_zone`). The quests done, the zone is gone. Centred on
+## the site's POINT, so it stands before the base does. Rebuilt every poll; `safe_zone_at` is the
+## one question everyone asks (through `G.safe_zone_at`).
+const SAFE_ZONE_QUESTS := ["arc_power", "arc_line", "arc_solvent"]
+var _safe: Array = []
+
+func _update_safe_zones() -> void:
+	_safe.clear()
+	for q in _arc_quests():
+		var id := String(q.get("id", ""))
+		if not SAFE_ZONE_QUESTS.has(id) or q.get("done", false):
+			continue
+		var at: Variant = null
+		if id == "arc_power":
+			at = _power_point
+		else:
+			_line_adopt()
+			at = _line_point
+		if at is Vector3 and not _safe.has(at):
+			_safe.append(at)
+
+## The centre of the quiet zone holding `p` (with `pad` metres more radius), or null.
+func safe_zone_at(p: Vector3, pad: float = 0.0) -> Variant:
+	var r: float = G.SAFE_ZONE_R + pad
+	for c in _safe:
+		var cv: Vector3 = c
+		if Vector2(p.x - cv.x, p.z - cv.z).length_squared() < r * r:
+			return cv
+	return null
 
 ## AN EVENT THAT LEFT THE POLL LEAVES THE WORLD. Its state is cleaned where the event ends -
 ## done, abandoned, skipped - but an event can also simply stop being active: the board redrawn
@@ -146,6 +185,8 @@ func _forget_duel() -> void:
 func forget_quest(id: String) -> void:
 	var q: Dictionary = Q.find_quest(id)
 	_ev_cool.erase(id)
+	if id == "arc_solvent":
+		_solvent_said = -1
 	_q_kills.erase(id)
 	for st in q.get("stages", []):
 		var key := _ev_key(String((st as Dictionary).get("event", "")))
@@ -1128,7 +1169,10 @@ func _finger_point() -> Vector3:
 	if at != null:
 		return at as Vector3
 	var h = _next_hint()
-	return (h as Node3D).global_position if h != null else Vector3.ZERO
+	if h == null:
+		return Vector3.ZERO
+	var cam := get_viewport().get_camera_3d()
+	return (h as BuildHint).tap_point(cam.global_position if cam != null else (h as Node3D).global_position)
 
 func _finger_point_prop() -> Variant:
 	if _finger_prop == "":
@@ -1150,16 +1194,48 @@ func _wanted_type() -> int:
 	var h = _next_hint()
 	return (h as BuildHint).block_type if h != null and (h as BuildHint).reachable() else -1
 
+# ── Solvent: ten things sold through the line ─────────────────────────────────
+# THE MECHANIC SAYS WHAT TO DO (the player's call: the quest used to be a bare "earn 600$" with no
+# word on how). One line at the start, one at half way, and a reminder once nothing has sold for
+# SOLVENT_NUDGE seconds. Memory only, like every stage: a reload says the opening again.
+const SOLVENT_NUDGE := 120.0
+var _solvent_said: int = -1        # the progress the last line was said at; -1 = not opened yet
+var _solvent_idle: float = 0.0
+
+func _solvent(q: Dictionary) -> void:
+	var p: int = int(q.get("progress", 0))
+	if _solvent_said < 0:
+		_solvent_said = p
+		_solvent_idle = 0.0
+		Dialogue.say_lines([
+			["Mechanic", tr("The System wants proof the line pays. Sell ten loads through the seller: raw ore, ingots, wood, coal - anything it takes counts.")],
+			["Mechanic", tr("Ore goes into the receiver, rides the belts and leaves through the seller. Drill a vein near the line, or bring ore in the collector and park beside the receiver.")],
+		])
+		return
+	if p != _solvent_said:
+		if _solvent_said < 5 and p >= 5 and p < int(q.get("goal", 10)):
+			Dialogue.say("Mechanic", tr("Half way. Keep the line fed."))
+		_solvent_said = p
+		_solvent_idle = 0.0
+		return
+	_solvent_idle += POLL
+	if _solvent_idle >= SOLVENT_NUDGE:
+		_solvent_idle = 0.0
+		Dialogue.say("Mechanic", tr("Nothing has sold for a while. Is the receiver getting ore? It takes what lies on the ground beside it and what a parked collector carries."))
+
+
 func _line_1(q: Dictionary) -> void:
 	var p: Node3D = _player()
 	if p == null:
 		return
 	_line_adopt()
 	if _line_point == null:
-		var ang: float = randf() * TAU
-		var wp: Vector3 = p.global_position + Vector3(cos(ang) * LINE_DIST, 0.0, sin(ang) * LINE_DIST)
-		wp.y = G.ground_y(wp, p.global_position.y)
-		_line_point = wp
+		_line_point = _line_site_by_vein(p.global_position)
+		if _line_point == null:
+			var ang: float = randf() * TAU
+			var wp: Vector3 = p.global_position + Vector3(cos(ang) * LINE_DIST, 0.0, sin(ang) * LINE_DIST)
+			wp.y = G.ground_y(wp, p.global_position.y)
+			_line_point = wp
 		return
 	# Материализуем ТОЛЬКО когда игрок рядом. База — это машина со своей физикой и фабрикой;
 	# ставить её за горизонт значит держать всё это работающим там, куда игрок ещё не доехал.
@@ -1222,6 +1298,54 @@ func _line_2(q: Dictionary) -> void:
 ## ПЛОЩАДКА, УЖЕ СТОЯЩАЯ В МИРЕ. После перезахода сейв возвращает базу раньше, чем квест
 ## успевает опомниться: его собственные пометки живут только в памяти, и без этой строки каждый
 ## вход в мир ставил бы рядом со старой площадкой вторую, в новом случайном месте.
+## THE LINE STANDS BY AN ORE VEIN (the player's rule: "at least within 20 m of a vein"): the ore
+## for it is right there. The seller goes LINE_VEIN_AHEAD short of the vein along -Z, so the line
+## runs +Z from the seller toward it and the receiver at its end stands ~8 m from it. That gap is the
+## site's pad plus its feather (LINE_SITE_*) and the vein's reach: levelling the pad must not move the
+## ground a vein stands on. Ore comes in deposits, so a candidate is taken only when NO other vein or
+## tree stands on the pad (LINE_PAD_*, measured: the first cut put a deposit's neighbour 6 m from the
+## seller, under the line, and a tree 3 m from it); of those, the one nearest LINE_DIST out. Null - no
+## such vein in reach (none streamed yet): the old random point.
+const LINE_VEIN_AHEAD := 13.5
+const LINE_VEIN_RING := Vector2(20.0, 120.0)
+const LINE_PAD_X := 6.0                       # half width kept clear, the processor's side included
+const LINE_PAD_Z := Vector2(-6.0, 12.0)       # behind the seller .. short of the vein
+
+func _line_site_by_vein(from: Vector3) -> Variant:
+	var rn: Node = get_node_or_null("/root/Main/map/Resource_Nodes")
+	if rn == null or not rn.has_method("veins_near"):
+		return null
+	var all: Array = rn.veins_near(from, LINE_VEIN_RING.y + LINE_VEIN_AHEAD + LINE_PAD_X * 2.0)
+	var best: Variant = null
+	var best_s: float = INF
+	for v in all:
+		if v[1]:
+			continue                                # a tree is not ore
+		var g: Vector3 = v[0]
+		var d: float = Vector2(g.x - from.x, g.z - from.z).length()
+		if d < LINE_VEIN_RING.x or d > LINE_VEIN_RING.y:
+			continue
+		var score: float = absf(d - LINE_DIST)
+		if score >= best_s:
+			continue
+		var wp: Vector3 = g - Vector3(0.0, 0.0, LINE_VEIN_AHEAD)
+		var clear: bool = true
+		for o in all:
+			var og: Vector3 = o[0]
+			var lx: float = og.x - wp.x
+			var lz: float = og.z - wp.z
+			if absf(lx) < LINE_PAD_X and lz > LINE_PAD_Z.x and lz < LINE_PAD_Z.y:
+				clear = false
+				break
+		if clear:
+			best_s = score
+			best = wp
+	if best == null:
+		return null
+	var out: Vector3 = best
+	out.y = G.ground_y(out, from.y)
+	return out
+
 func _line_adopt() -> void:
 	if is_instance_valid(_line_base):
 		return
@@ -2006,6 +2130,8 @@ func _event_point(dist: float = 0.0) -> Variant:
 		var d: float = dist if dist > 0.0 else randf_range(EV_POINT_DIST.x, EV_POINT_DIST.y)
 		var ang: float = randf() * TAU
 		var wp: Vector3 = p.global_position + Vector3(cos(ang) * d, 0.0, sin(ang) * d)
+		if safe_zone_at(wp, EV_PARTY_RING) != null:
+			continue                       # never an event inside a learning base's quiet zone
 		var clear: float = _nearest_own_d2(wp)
 		if clear >= EV_BASE_CLEAR * EV_BASE_CLEAR:
 			best = wp
@@ -2013,6 +2139,8 @@ func _event_point(dist: float = 0.0) -> Variant:
 		if clear > best_clear:
 			best_clear = clear
 			best = wp
+	if best == null:
+		return null                        # every try fell in a quiet zone: ask again next poll
 	var out: Vector3 = best
 	out.y = G.ground_y(out, p.global_position.y)
 	return out
