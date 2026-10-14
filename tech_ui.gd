@@ -661,7 +661,7 @@ func _codex_stats(bt: int) -> String:
 		if n.get("energy_per_sec") != null:
 			lines.append(tr("Uses %d energy a second while it digs") % int(n.get("energy_per_sec")))
 		n.free()
-	if bt == G.Block.SOLAR:
+	if G.base_block(bt) == G.Block.SOLAR:
 		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE))
 	elif bt == G.Block.MARLIT_SOLAR:
 		lines.append(tr("Makes %d energy a second on an anchored machine") % int(MachineBody.SOLAR_RATE * MARLIT_SOLAR_GD.UNITS))

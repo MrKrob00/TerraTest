@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="PackedScene" uid="uid://k6hk3jhojw5bm" path="res://blocks/scenes/half_block2.tscn" id="1_base"]
+
+[node name="half_block2" instance=ExtResource("1_base")]
+block = 112
+metadata/stub_faction = "stryx"

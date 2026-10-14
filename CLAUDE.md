@@ -3123,13 +3123,29 @@ project: read it before claiming how anything works.
   Unshaded blocks cast no shadow, so a scale is told from the next by PAINT: a lit lip along its
   foot and rows alternating a tone - without them the 4x2 rendered as one blank panel. The
   chevron's two halves are ONE tone: a step apart, one read as unfinished.
-- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, NAMES AND EMBLEMS ONLY** (`G.FACTIONS` "aero" /
-  "stryx", `images/faction_aero.png` / `faction_stryx.png` - the player's emblems, already on a
-  transparent background, cut to their bounds at 256 px: Aero's shield of three bands, Stryx's
-  armoured owl with red eyes). No blocks, no quests: their licence quests (`FACTION_LICENCE` "arc_aero" / "arc_stryx")
-  are not written, so both stay closed outside the proving ground, and A FACTION WITH NO BLOCKS HAS NO
-  TREE PAGE (`G.faction_has_blocks`, asked by the tech tree's switch and header). The style their
-  models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
+- **THE THIRD AND FOURTH FACTIONS ARE AERO AND STRYX, AND THEIR BLOCKS ARE STUBS** (`G.FACTIONS` "aero" /
+  "stryx", `images/faction_aero.png` / `faction_stryx.png` - the player's emblems: Aero's shield of
+  three bands, Stryx's armoured owl with red eyes). THE PLAYER'S CALL: "a heap of stubs, every block
+  as Marlit has", Aero light with fewer hit points and lighter, slightly softer guns, Stryx Falsus's
+  weight with the weight on damage and protection. So each faction has 28 blocks (`AERO_*` 79-106,
+  `STRYX_*` 107-134: cabin, hull, half blocks and wedge, four plates, three wheels, six weapons, the
+  drill, solar, battery, repair field, shield, charger, both supports), each its FALSUS BASE'S SCENE
+  INHERITED (`blocks/scenes/aero_*.tscn`, `stryx_*.tscn`: only `block`, a wheel's `weight` and
+  `wheel_power`, and meta `stub_faction`), and TINTED (`blocks/scripts/stub_tint.gd`, on
+  SCENE_INSTANTIATED so the portrait studio gets it too): every model mesh is swapped for a cached
+  copy whose materials' colour is times the faction's `tint` - the MESH, not an override, since the
+  artist's plates carry two materials and an override has one; the copies batch and light like
+  Falsus's. Their numbers: hit points their base's x0.7 (Aero) / x1.3 (Stryx), weight x0.75 (Aero's
+  weapons x0.7) / x1.0, damage `G.FACTION_DAMAGE` 0.85 / 1.2 at `WeaponBlock._scale_damage`, Aero's
+  wheels pull x1.2; recipes, grades and RP are the base's, the tree shaped like Marlit's off the cabin,
+  the licence handing over cabin, block and small wheel (Aero) / gun (Stryx). WHAT A STUB IS, IT IS
+  BY ITS BASE (`G.STUB_BASE`, `G.base_block`): footprint, fitted collider, damage class, drop chance,
+  "is it a drill / solar / carry base / banned on a station"; the lists the game reads directly
+  (cabins, supports, batteries, wheels, the categories) name the stubs. A faction's own model
+  replaces a stub's scene, and its `STUB_BASE` row goes. The enum is contiguous (keys are indexed
+  by value). Measured on the proving ground: Aero block 175 hp / 9 kg, Stryx block 325 / 12, Aero gun
+  22 a shot, Stryx gun 31 (Falsus 26), Aero wheel 3120 power, a stub plate's cells the Falsus plate's.
+  The style their OWN models are to be built to is `docs/ART_STYLE.md` "Aero and Stryx".
 - **A LICENCE IS ANNOUNCED IN THE MIDDLE OF THE SCREEN WITH ITS BLOCKS** (`licence_popup.gd`, owned by
   the HUD; the player's call, after TerraTech's licence card): emblem, "Licence granted: X" or "X
   licence: level N", a line, and the PORTRAITS of the blocks it opens - a faction's grade-1 blocks

@@ -969,6 +969,7 @@ func _machine_faction(n: Node):
 ## Через эту функцию обязан идти ВЕСЬ урон оружия, включая свои числа подклассов (у ракетницы
 ## это aoe_damage): иначе «ослабленный» враг ослаблен только пулями.
 func _scale_damage(v: float) -> int:
+	v *= G.faction_damage(block)            # Aero's guns hit softer, Stryx's harder (G.FACTION_DAMAGE)
 	var machine := _vehicle_root()
 	var k = machine.get("damage_scale") if machine != null else null
 	if not (k is float or k is int):
