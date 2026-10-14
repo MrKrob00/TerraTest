@@ -138,7 +138,10 @@ func _seed_demo() -> void:
 		 "event": "quest_line_2", "goal": 1,
 		 "hint": "Ore sells for scraps; metal does not. The processor takes on the lower left of its right face and gives out on the lower right — so it drops into a belt run along the side."},
 	])
-	add_quest("arc_solvent", "Solvent", "Earn 600$ through the line", Type.STORY, 600, 10, "money_earned", 400, 60, 18)
+	# SOLVENT IS TEN THINGS SOLD, NOT A SUM (the player's call): any material the seller takes counts -
+	# raw ore as well as an ingot - so the quest asks for a running line, not for a price. The Mechanic
+	# says what to do (quest_arcs._solvent).
+	add_quest("arc_solvent", "Solvent", "Sell 10 resources through the line", Type.STORY, 10, 10, "item_sold", 400, 60, 18)
 	add_quest("arc_hold", "Hold the Line", "", Type.STORY, 1, 11, "", 450, 70, 20)
 	add_stages("arc_hold", [
 		{"desc": "They are coming for the line",

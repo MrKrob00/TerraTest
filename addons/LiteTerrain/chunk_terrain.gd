@@ -2224,14 +2224,47 @@ func _push_biomes() -> void:
 
 var _snow_h := -1.0                  # the material's own snow crust, kept to turn it back on
 
-## The sun's shadow window (sun_shadows.gd), read by the fast ground only; strength 0 skips the fetch.
-func set_sun_shadow(tex: Texture2D, center: Vector2, size: float, strength: float) -> void:
-	if _mat is ShaderMaterial:
-		var m := _mat as ShaderMaterial
-		m.set_shader_parameter("sun_shadow_map", tex)
-		m.set_shader_parameter("sun_shadow_center", center)
-		m.set_shader_parameter("sun_shadow_size", size)
-		m.set_shader_parameter("sun_shadow_strength", strength if fast_ground else 0.0)
+## THE SUN'S SHADOW CASCADES (sun_shadows.gd), read by the fast ground only: near to far, a map and
+## its window each - uv = world XZ * x + yz, w the window's half in metres, 0 for a map not built yet.
+## Strength 0 skips the fetch. The maps are handed over only when they change: the near window moves
+## every frame of a drive, its map stays the same texture.
+const SUN_SHADOW_MAPS := [&"sun_shadow_map", &"sun_shadow_map1", &"sun_shadow_map2"]
+const SUN_SHADOW_UVS := [&"sun_shadow_uv0", &"sun_shadow_uv1", &"sun_shadow_uv2"]
+var _sun_maps: Array = []
+func set_sun_shadows(maps: Array, uvs: Array, strength: float) -> void:
+	if not (_mat is ShaderMaterial):
+		return
+	var m := _mat as ShaderMaterial
+	if m != _sun_mat or maps != _sun_maps:
+		_sun_mat = m
+		_sun_maps = maps.duplicate()
+		for k in SUN_SHADOW_MAPS.size():
+			m.set_shader_parameter(SUN_SHADOW_MAPS[k], maps[k] if k < maps.size() else null)
+	for k in SUN_SHADOW_UVS.size():
+		m.set_shader_parameter(SUN_SHADOW_UVS[k], uvs[k] if k < uvs.size() else Vector4.ZERO)
+	m.set_shader_parameter(&"sun_shadow_strength", strength if fast_ground and not maps.is_empty() else 0.0)
+var _sun_mat: ShaderMaterial = null
+
+## THE GROUND'S HEIGHT OFF ANY NODE WHOSE HEIGHTS ARE STILL HELD (`_hc`), the finest first, NAN where
+## none is. `drawn_height` answers only under the frame; this answers wherever ground was built - behind
+## the camera, off the frustum, and inside `keep_radius` for good (`_prune_heights` keeps those). The
+## sun shadow's ground shade marches over it (`sun_shadows.gd`): on the drawn heights alone nine cells in
+## ten of its near grid were empty - everything the camera was not looking at - measured on the real
+## driver, 17122 of 19044.
+func known_height(wx: float, wz: float) -> float:
+	if _gen == null:
+		return NAN
+	var p: Vector3 = global_transform.affine_inverse() * Vector3(wx, 0.0, wz)
+	var bcx: int = floori(p.x / CHUNK)
+	var bcz: int = floori(p.z / CHUNK)
+	for l in MAX_LOD + 1:
+		var hs = _hc.get(_key(l, bcx >> l, bcz >> l))
+		if hs != null and (hs as PackedFloat32Array).size() == APRON * APRON:
+			var span := float(CHUNK << l)
+			var cell := float(1 << l)
+			var h: float = _grid_h(hs, (p.x - float(bcx >> l) * span) / cell, (p.z - float(bcz >> l) * span) / cell)
+			return (global_transform * Vector3(p.x, h, p.z)).y
+	return NAN
 
 ## The DRAWN ground's height at a world XZ, NAN where nothing is drawn: what the screen shows, read
 ## off the heights the drawn node was built from (`_drawn_h`, the occlusion test's own read).
@@ -2543,19 +2576,39 @@ func _covered(key: int) -> bool:
 	# live node that is itself hidden covers nothing - by it a whole chain would hide. The leaf set,
 	# not the frame: a split builds all its children (_enqueue_under), the ones off the screen too,
 	# and a built leaf is drawn whether or not it is in the frame.
-	var pk := _key(l + 1, gx >> 1, gz >> 1)
-	if l < MAX_LOD and _leaf_set.has(pk) and _live.has(pk):
-		return true                    # стали грубее: накрывает родитель
-	if l > 0:
-		var all := true
-		for dz in 2:
-			for dx in 2:
-				var ck := _key(l - 1, gx * 2 + dx, gz * 2 + dz)
-				if not (_leaf_set.has(ck) and _live.has(ck)):
-					all = false
-		if all:
-			return true                # стали мельче: накрывают все четверо детей
-	return false
+	# ANY ANCESTOR AND ANY DEPTH BELOW, not only the parent and the four children: a node replaced
+	# by leaves two levels finer (a fast drive, a respawn, the sub-pixel rule) was "not covered",
+	# stayed drawn over the fine ground - another shape and colour, no collision under it - and near
+	# the player nothing is ever dropped, so it stood there until the player drove away (the
+	# player's "two maps with different seeds, only one with physics").
+	var al := l + 1
+	var ax := gx >> 1
+	var az := gz >> 1
+	while al <= MAX_LOD:
+		var ak := _key(al, ax, az)
+		if _leaf_set.has(ak):
+			return _live.has(ak)                 # стали грубее: накрывает предок
+		al += 1
+		ax >>= 1
+		az >>= 1
+	return l > 0 and _covered_below(l, gx, gz)
+
+## Every leaf under (lod, gx, gz) is in the leaf set and built (the node itself not counted).
+func _covered_below(lod: int, gx: int, gz: int) -> bool:
+	if lod <= 0:
+		return false
+	for dz in 2:
+		for dx in 2:
+			var cl := lod - 1
+			var cx := gx * 2 + dx
+			var cz := gz * 2 + dz
+			var ck := _key(cl, cx, cz)
+			if _leaf_set.has(ck):
+				if not _live.has(ck):
+					return false
+			elif not _covered_below(cl, cx, cz):
+				return false
+	return true
 
 func _retire(now: float) -> void:
 	var over: int = _live.size() - LIVE_CAP

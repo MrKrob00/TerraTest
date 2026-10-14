@@ -1414,7 +1414,7 @@ func _update_currency() -> void:
 		var xp: int = int(G.faction_xp.get(fac, 0))
 		var th: Array = (G.FACTIONS[fac] as Dictionary)["xp_thresholds"]
 		var txt := tr("Gr.%d") % gr
-		if G.open_factions().size() > 1:
+		if G.open_factions().filter(G.faction_has_blocks).size() > 1:
 			txt = tr(String((G.FACTIONS[fac] as Dictionary)["name"])) + " " + txt
 		if gr < th.size():
 			txt += " · %d/%d XP" % [xp, int(th[gr])]   # порог СЛЕДУЮЩЕГО грейда
@@ -1997,7 +1997,7 @@ var _tech_fac_row: HBoxContainer = null
 func _tech_fill_factions() -> void:
 	for c in _tech_fac_row.get_children():
 		c.queue_free()
-	var open: Array = G.open_factions()
+	var open: Array = G.open_factions().filter(G.faction_has_blocks)
 	_tech_fac_row.visible = open.size() > 1
 	for f in open:
 		var b := Button.new()

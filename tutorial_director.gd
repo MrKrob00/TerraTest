@@ -319,7 +319,7 @@ func _aim_origin() -> Vector3:
 func _blueprint_point() -> Vector3:
 	var h = _next_hint()
 	if h != null:
-		return (h as Node3D).global_position
+		return (h as BuildHint).tap_point(_aim_origin())   # the face it bolts onto, not the cell
 	return _vehicle_point()
 
 ## Две неочевидные механики В КОНЦЕ обучения, репликой, а не шагом: заставлять игрока

@@ -256,6 +256,8 @@ func _apply_shadows() -> void:
 		_sun_shadows.name = "SunShadows"
 		add_child(_sun_shadows)
 	_sun_shadows.set("active", shadows_enabled and not engine)
+	_sun_shadows.set("haze", _haze_run())
+	_sun_shadows.set("view", view_distance)
 	var soft: bool = engine and shadows_soft
 	RenderingServer.directional_shadow_atlas_set_size(SOFT_SHADOW_SIZE if soft else HARD_SHADOW_SIZE, true)
 	RenderingServer.directional_soft_shadow_filter_set_quality(
@@ -289,7 +291,16 @@ func _apply_view() -> void:
 	var strength: float = map.haze_strength() if map != null and map.has_method("haze_strength") else HAZE_DEFAULT.z
 	RenderingServer.global_shader_parameter_set(&"haze_range",
 			Vector4(HAZE_DEFAULT.x * k, HAZE_DEFAULT.y * k, strength, 0.0))
+	# the far shadow cascades are built only where the haze still lets the ground show
+	if _sun_shadows != null:
+		_sun_shadows.set("haze", _haze_run())
+		_sun_shadows.set("view", view_distance)
 	_far_t = 0.0
+
+## Where the haze begins and ends at this view distance, m (what `_apply_view` writes into `haze_range`).
+func _haze_run() -> Vector2:
+	var k: float = view_distance / VIEW_DEFAULT
+	return Vector2(HAZE_DEFAULT.x * k, HAZE_DEFAULT.y * k)
 
 ## The camera in use changes (machines, the garage), so its far plane is asked again now and then.
 var _far_t := 0.0
