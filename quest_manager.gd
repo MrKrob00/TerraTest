@@ -215,6 +215,20 @@ func _seed_demo() -> void:
 	])
 	requires("arc_aero", ["arc_salvage"])
 
+	# ── STRYX'S LICENCE: BIRD OF PREY (TerraTech's Hawkeye licence, GSO grade 4) ───────────────
+	# A crashed Stryx capsule, and three "Cleanup Crew" machines that drop in once the player is
+	# near it (quest_arcs._bop_*). Story, so it is guaranteed - the original drew it from a board.
+	add_quest("arc_stryx", "Bird of Prey", "", Type.STORY, 1, 16, "", 650, 100, 26, 4)
+	add_stages("arc_stryx", [
+		{"desc": "Check the heat signature",
+		 "event": "quest_bop_1", "goal": 1,
+		 "hint": "GSO picked up a heat signature where nothing should be burning. Go and look."},
+		{"desc": "Destroy the Cleanup Crew",
+		 "event": "quest_bop_2", "goal": 1,
+		 "hint": "Whoever lost that capsule does not want it found. Three of them - all three go."},
+	])
+	requires("arc_stryx", ["arc_hold"])
+
 	requires("arc_line", ["arc_salvage"])
 	requires("arc_solvent", ["arc_line"])
 	requires("arc_hold", ["arc_solvent"])

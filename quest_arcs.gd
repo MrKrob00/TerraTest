@@ -109,6 +109,8 @@ func _tick_arcs(delta: float) -> void:
 					"quest_aslalom_2":
 				_course_2(q)
 			"quest_achase_1":      _chase_1(q)
+			"quest_bop_1":         _bop_1(q)
+			"quest_bop_2":         _bop_2(q)
 			"quest_astrand_1":     _strand_1(q)
 			"quest_astrand_2":     _strand_2(q)
 			"quest_achase_2":      _chase_2(q)
@@ -2903,4 +2905,147 @@ func _strand_2(q: Dictionary) -> void:
 	_ev_mobs.erase(key)
 	_ev_party.erase(key)
 	_ev_point.erase(key)
+	Q.report(String(q["event"]), 1)
+
+# ── BIRD OF PREY: Stryx's licence (TerraTech's Hawkeye licence mission) ──────────────────────
+## GSO asks the player to look at a mysterious heat signature: a crashed Stryx capsule and burnt-out
+## machines lie at a point - a picture, nothing to pick up. Within BOP_NOTICE of it the Mechanic hears
+## something, and three capsules are SEEN falling (BOP_FALL seconds from BOP_HIGH) to land round the
+## site; out of each comes a machine of Stryx's stubs named "Cleanup Crew" (meta `display_name`) -
+## two troopers and a heavy - and the task is all three. The licence is the reward
+## (G.FACTION_LICENCE). The only licence with no faction voice: the crew is there to hide what GSO
+## is not meant to see. A story quest, guaranteed (the player: TerraTech's drew it at random from a
+## board, and players hunted it for hours). State is memory: a reload goes back to the site.
+const BOP_NOTICE := 60.0
+const BOP_HIGH := 150.0
+const BOP_FALL := 4.0
+const BOP_RING := 30.0
+const BOP_CREW := [130, 130, 131]       # blocks.STRYX_TROOPER x2, blocks.STRYX_HEAVY
+var _bop_site: Node3D = null
+var _bop_crew: Array = []
+var _bop_dropping: int = 0
+
+func _bop_mat(c: Color) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = c
+	return m
+
+func _bop_capsule() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var cm := CapsuleMesh.new()
+	cm.radius = 1.3
+	cm.height = 4.2
+	cm.radial_segments = 10
+	cm.rings = 3
+	mi.mesh = cm
+	mi.material_override = _bop_mat(Color(0.22, 0.27, 0.2))
+	var band := MeshInstance3D.new()
+	var cy := CylinderMesh.new()
+	cy.top_radius = 1.34
+	cy.bottom_radius = 1.34
+	cy.height = 0.35
+	cy.radial_segments = 10
+	band.mesh = cy
+	band.material_override = _bop_mat(Color(0.75, 0.15, 0.1))
+	mi.add_child(band)
+	return mi
+
+## The crash site: the capsule on its side, half in the ground, and burnt blocks round it.
+func _bop_make_site(at: Vector3) -> void:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return
+	_bop_site = Node3D.new()
+	root.add_child(_bop_site)
+	_bop_site.global_position = at
+	var cap := _bop_capsule()
+	_bop_site.add_child(cap)
+	cap.position = Vector3(0.0, 0.4, 0.0)
+	cap.rotation = Vector3(deg_to_rad(80.0), randf() * TAU, deg_to_rad(12.0))
+	var burnt := _bop_mat(Color(0.09, 0.08, 0.08))
+	for i in 9:
+		var b := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3.ONE
+		b.mesh = bm
+		b.material_override = burnt
+		_bop_site.add_child(b)
+		var a: float = randf() * TAU
+		var r: float = randf_range(3.0, 8.0)
+		var p := at + Vector3(cos(a) * r, 0.0, sin(a) * r)
+		b.global_position = Vector3(p.x, G.ground_y(p, at.y) + randf_range(-0.2, 0.3), p.z)
+		b.rotation = Vector3(randf() * TAU, randf() * TAU, randf() * TAU)
+
+func _bop_1(q: Dictionary) -> void:
+	var at = _ev_get_point("bop")
+	if at == null:
+		return
+	if not is_instance_valid(_bop_site):
+		_bop_make_site(at as Vector3)
+	var p: Node3D = _player()
+	if p == null:
+		return
+	var d := Vector2(p.global_position.x - (at as Vector3).x, p.global_position.z - (at as Vector3).z)
+	if d.length_squared() > BOP_NOTICE * BOP_NOTICE:
+		return
+	Dialogue.say("Mechanic", tr("What's that noise?"))
+	_bop_drop(at as Vector3)
+	Q.report(String(q["event"]), 1)
+
+## Three capsules seen falling onto the ring round the site; each one that lands sets down its machine.
+func _bop_drop(at: Vector3) -> void:
+	var root: Node = get_node_or_null("/root/Main")
+	if root == null:
+		return
+	_bop_crew.clear()
+	var a0: float = randf() * TAU
+	for i in BOP_CREW.size():
+		var a: float = a0 + TAU * float(i) / float(BOP_CREW.size())
+		var land := at + Vector3(cos(a) * BOP_RING, 0.0, sin(a) * BOP_RING)
+		land.y = G.ground_y(land, at.y)
+		var cap := _bop_capsule()
+		root.add_child(cap)
+		cap.global_position = land + Vector3.UP * BOP_HIGH
+		var tw := create_tween()
+		tw.tween_property(cap, "global_position", land + Vector3.UP * 2.0, BOP_FALL + 0.4 * float(i)) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_callback(_bop_land.bind(cap, land, int(BOP_CREW[i])))
+		_bop_dropping += 1
+
+func _bop_land(cap: Node3D, land: Vector3, preset: int) -> void:
+	_bop_dropping = maxi(_bop_dropping - 1, 0)
+	if is_instance_valid(cap):
+		cap.queue_free()
+	BlockFX.ground_wave(self, land, Vector3.UP, 30.0)
+	var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
+	if sp == null:
+		return
+	var was_q: String = _cur_q
+	_cur_q = "arc_stryx"
+	sp.set("arrival", true)
+	var e: Node3D = _spawn_hostile(sp, land, preset, 1)
+	sp.set("arrival", false)
+	_cur_q = was_q
+	if e == null:
+		return
+	e.set_meta("display_name", "Cleanup Crew")
+	if e.has_method("assign_target"):
+		e.assign_target(_player(), true)
+	_bop_crew.append(e)
+
+func _bop_2(q: Dictionary) -> void:
+	if _bop_dropping > 0:
+		return
+	var live := 0
+	for m in _bop_crew:
+		if is_instance_valid(m):
+			live += 1
+	if _bop_crew.is_empty():
+		Q.reset_quest(String(q["id"]))           # state lost (a reload): back to the site
+		return
+	if live > 0:
+		return
+	_bop_crew.clear()
+	Dialogue.say("System", tr("The cleaners are gone. Whatever they were hiding, Stryx will deal with you now - as a contractor."))
 	Q.report(String(q["event"]), 1)
