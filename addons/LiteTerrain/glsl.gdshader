@@ -15,11 +15,6 @@ render_mode diffuse_lambert, specular_disabled;
 // few are tuned in the biomes, everything else on the material.
 
 group_uniforms Texture;
-// The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived
-// from world coordinates, so it matches between the game and the editor. The grass needs no cell
-// of its own: a blade is a vertex, and vertices stand on whole metres.
-uniform float tile_world_size  : hint_range(0.1, 100.0) = 1.0;
-
 // THE GROUND'S DETAIL (art/ground_detail.py): four tileable masks read in the ONE fetch the old
 // tile used - R cracked earth, G sand ripples, B grass clumps, A broad patches. Masks, not colour:
 // no source_color. Set by TerrainBiomes.apply_to_material. Each biome takes its own channel, after
@@ -30,9 +25,6 @@ uniform float detail_world_size : hint_range(1.0, 40.0)  = 9.0;
 uniform float ripple_strength   : hint_range(0.0, 1.0)   = 0.55;
 uniform float grass_detail      : hint_range(0.0, 1.0)   = 0.45;
 uniform float patch_strength    : hint_range(0.0, 0.5)   = 0.10;
-
-// Quantising to a grid keeps the noise steady per cell instead of flickering per fragment.
-const float PIXELS_PER_TILE = 16.0;
 
 group_uniforms Colors;
 uniform vec4 color_sand  : source_color = vec4(0.87, 0.74, 0.49, 1.0);  // warm golden sand (desert)
@@ -54,7 +46,6 @@ uniform vec4 color_rock  : source_color = vec4(0.40, 0.41, 0.43, 1.0);  // cold 
 group_uniforms Terrain;
 uniform float rock_threshold     : hint_range(0.0, 1.0)      = 0.7;
 uniform float rock_blend         : hint_range(0.0, 0.5)      = 0.15;
-uniform float color_variation    : hint_range(0.0, 0.3)      = 0.06;
 
 group_uniforms Biomes;
 uniform float sand_grass        : hint_range(0.0, 0.5)     = 0.1;    // the desert's share of the meadow's grass
@@ -88,12 +79,12 @@ group_uniforms;
 // The zone colour and the slope-driven fade into rock are computed in the VERTEX stage
 // (v_base_col) and interpolated: the terrain is fill-bound and there are orders of magnitude
 // fewer vertices than pixels. The fragment stage keeps only what has to be per-pixel — the
-// colour noise and the detail masks.
+// detail masks, the shadow fetch and the lighting.
 //
 // THE HAZE costs one smoothstep a VERTEX: the engine's fog was tried and cost 5-7 fps of 23 on
 // the device (CLAUDE.md, Look and light), for the one thing wanted - far ground going into the
-// horizon's colour. Where it is nearly solid (HAZE_FLAT) the per-pixel detail is not drawn at all,
-// and the far chunks are most of the frame.
+// horizon's colour. The per-pixel detail stops long before it
+// (DETAIL_FAR), and the far chunks are most of the frame.
 // THE HAZE IS THE WORLD'S, NOT THIS MATERIAL'S (project.godot [shader_globals]): `world_haze` is
 // its colour - day_cycle.gd moves it with the hour, warm cream by day, orange at dusk, deep blue at
 // night - and the sky's horizon IS that colour, so far ground melts into the sky as TerraTech's does
@@ -131,25 +122,20 @@ const float SH_BAND = 8.0;
 const float SH_DITHER = 6.0;
 const float SH_FADE = 1.0 / 6.0;
 #endif
-const float HAZE_FLAT = 0.9;
 varying float v_haze;
-// THE PLAYER'S TEST SWITCHES (garage settings, ChunkTerrain.ground_opts; all off = the ground as it
-// was): defines, not uniforms - a branch on a uniform still costs the fill on the phone, a define
-// takes the code out of the variant. NO_COLOR_NOISE drops the per-pixel colour hash, DETAIL_NEAR
-// draws the detail only out to DETAIL_FAR (faded in DETAIL_FADE before it) instead of to the solid
-// haze, ONE_PLANE takes the detail on the ground's plane everywhere (canyon walls streak).
-#ifdef DETAIL_NEAR
+// THE DETAIL IS DRAWN ONLY OUT TO DETAIL_FAR, faded over DETAIL_FADE before it (it ran to the solid
+// haze), on the ground's own plane everywhere (canyon walls streak; three planes were a pick a
+// pixel), and there is no per-pixel colour hash - the player's cuts after the phone's probe put the
+// detail block at ~7 ms, tried as switches and kept on.
 const float DETAIL_FAR = 80.0;
 const float DETAIL_FADE = 20.0;
 varying float v_det;
-#endif
 
 varying vec3  v_base_col;
 varying float v_is_grass;
 varying float v_desert;       // bare sand: what the ripples are drawn on
 varying float v_salt;         // the salt flat: what the cracks are drawn on
-varying vec3  v_wpos;         // world position — the wall UV below and the shadow lookup
-varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
+varying vec2  v_wpos;         // world x, z - the detail fetch and the shadow lookup
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -194,15 +180,12 @@ void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
     vec3 wn       = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
-    v_wpos     = world_pos.xyz;
-    v_wnrm     = wn;
+    v_wpos     = world_pos.xz;
     // Расстояние меряем ПО ЗЕМЛЕ, без высоты: иначе гора под камерой, до которой сто метров
     // вниз, тонула бы в дымке наравне с горизонтом.
     float ground_d = length(world_pos.xz - CAMERA_POSITION_WORLD.xz);
     v_haze = smoothstep(haze_range.x, haze_range.y, ground_d);
-#ifdef DETAIL_NEAR
     v_det = 1.0 - smoothstep(DETAIL_FAR - DETAIL_FADE, DETAIL_FAR, ground_d);
-#endif
 #ifdef FAST_GROUND
     // `ground_sun.a` wraps the lambert term: the lit path's slopes turned from the sun came out lighter
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
@@ -298,40 +281,15 @@ void vertex() {
 void fragment() {
     vec3 base_col = v_base_col;
 
-    // Per-pixel only: the colour noise and the detail masks.
-    //
-    // THE UV IS TAKEN ON THE PLANE THE FACE LOOKS ALONG, not always XZ: on a canyon wall or a cliff
-    // XZ degenerates and the detail smears into vertical stripes. The plane is picked HARD, not
-    // blended - a full triplanar is three fetches a pixel on a fill-bound GPU - and the switch falls
-    // on faces steeper than 45 deg, where both projections read alike. Per FRAGMENT: picked per
-    // vertex, one triangle's corners would sit in different planes.
-    // Под сплошной дымкой попиксельной детали не видно — не считаем её вовсе (см. шапку).
-#ifdef DETAIL_NEAR
+    // The detail masks, one fetch on the ground's plane (DETAIL_FAR above).
     if (v_det > 0.0) {
-#else
-    if (v_haze < HAZE_FLAT) {
-#endif
-#ifdef ONE_PLANE
-        vec2 wall = v_wpos.xz;
-#else
-        vec2 wall = abs(v_wnrm.y) > 0.5
-                ? v_wpos.xz                                                  // пол и склоны
-                : (abs(v_wnrm.x) > abs(v_wnrm.z) ? v_wpos.zy : v_wpos.xy);   // стенки
-#endif
-#ifndef NO_COLOR_NOISE
-        vec2 noise_uv = floor(wall / tile_world_size * PIXELS_PER_TILE) / PIXELS_PER_TILE;
-        base_col = clamp(base_col + (hash2D(noise_uv) - 0.5) * color_variation, 0.0, 1.0);
-#endif
-        // one fetch: the detail masks (see the uniforms)
-        vec4 dt = texture(ground_detail, wall / detail_world_size);
+        vec4 dt = texture(ground_detail, v_wpos / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
         k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert);
         k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
         k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
-#ifdef DETAIL_NEAR
         k = mix(1.0, k, v_det);
-#endif
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
@@ -341,7 +299,7 @@ void fragment() {
 #ifdef FAST_GROUND
     float shade = 0.0;
     if (sun_shadow_strength > 0.0 && v_shsel.w > 0.0) {
-        vec2 sp = v_wpos.xz;
+        vec2 sp = v_wpos;
         float s = 0.0;
         if (v_shsel.x < 0.0) {
             s = textureLod(sun_shadow_map, sp * sun_shadow_uv0.x + sun_shadow_uv0.yz, 0.0).r;
