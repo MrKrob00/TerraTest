@@ -259,64 +259,117 @@ func _apply_ore_colors() -> void:
 		if mm.material_override is ShaderMaterial:
 			(mm.material_override as ShaderMaterial).set_shader_parameter("ore_colors", cols)
 
-## THE STANDING TREES FOR THE SUN'S SHADOW MAP (`sun_shadows.gd`): [world foot, crown height, crown
-## radius] of every tree streamed in within `half` of `center` (XZ), felled ones (custom G under a
-## half) left out. The crown is read off the model's own box, scaled per instance.
+## WHAT CASTS THE SUN'S SHADOW (`sun_shadows.gd`): the trees and ore veins of the live regions, read
+## off the RECORDS, not the drawn instances. The drawn ones are only those within `render_distance` and
+## ahead of the camera (`_process`), so a tree 50 m behind the camera threw nothing onto the ground in
+## front of it, and the far shadow cascades reach past `render_distance` altogether.
+## `shadow_records` hands over the records round a point (by region, `_records_round`); the map walks
+## them a slice a frame and asks `cast_entry` of each in its window. An entry is [0, foot, crown
+## height, crown radius, key] for a tree - the crown read off its model's box and scaled as the
+## instance is - and [1, transform in the world, the model's outline at its break level, key] for an
+## ore vein; false for a felled tree or an emptied vein (`_cast_state`). IT IS KEPT ON THE RECORD
+## (`sc`) until the caster changes (`_bump_cast` drops it): made fresh it was most of the cost of a
+## build, a walk over two thousand records in one frame for the far window. The KEY names the caster
+## and its state, so the map keeps the polygons of everything that did not change.
+## THE OUTLINE, NOT THE BOX: the model's box was a dark rectangle round every vein - the rock's low
+## base reaches far wider than the ore. It is the model's extreme vertices in the 26 directions of a
+## cube's faces, edges and corners, among the parts still standing (the shader's rule: a part stands
+## while the share is over its UV.x, rubble always), once per model and break level.
 var _crown_of: Dictionary = {}
-func tree_shadow_casters(center: Vector2, half: float) -> Array:
-	var out: Array = []
-	for mm in wood_multimesh_nodes:
-		if not is_instance_valid(mm) or not _mm_live.has(mm) or mm.multimesh == null or mm.multimesh.mesh == null:
-			continue
-		var crown = _crown_of.get(mm)
-		if crown == null:
-			var bb: AABB = mm.multimesh.mesh.get_aabb()
-			var r0: float = maxf(bb.size.x, bb.size.z) * 0.5
-			crown = Vector2(bb.end.y - r0 * 0.8, r0 * 0.85)
-			_crown_of[mm] = crown
-		var mxf: Transform3D = mm.global_transform
-		for v in _mm_live[mm]:
-			var cd = v.get("cd")
-			if cd is Color and (cd as Color).g < 0.5:
-				continue
+var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5
+func shadow_records(center: Vector2, half: float) -> Array:
+	return _records_round(center, half)
+
+func cast_entry(v: Dictionary):
+	var got = v.get("sc")
+	if got != null:
+		return got
+	var e = false
+	var state: int = _cast_state(v)
+	var mm: MultiMeshInstance3D = _model_mm(v) if state >= 0 else null
+	if mm != null and mm.multimesh != null and mm.multimesh.mesh != null and mm.is_inside_tree():
+		var gp: Vector3 = v["gpos"]
+		var wood: bool = v.get("wood") == true
+		var key := Vector3i(roundi(gp.x * 8.0), roundi(gp.z * 8.0), state)
+		var ts: Vector2 = _turn_of(gp, wood)
+		if wood:
+			var crown = _crown_of.get(mm)
+			if crown == null:
+				var bb: AABB = mm.multimesh.mesh.get_aabb()
+				var r0: float = maxf(bb.size.x, bb.size.z) * 0.5
+				crown = Vector2(bb.end.y - r0 * 0.8, r0 * 0.85)
+				_crown_of[mm] = crown
+			e = [0, mm.global_transform * (v["pos"] as Vector3), (crown as Vector2).x * ts.y,
+					(crown as Vector2).y * ts.y, key]
+		else:
+			# the instance's own transform while it is drawn, else the one `_stream_in` would give it
 			var xf = v.get("xf")
 			if not (xf is Transform3D):
-				continue
-			var gp: Vector3 = mxf * (xf as Transform3D).origin
-			if absf(gp.x - center.x) > half or absf(gp.z - center.y) > half:
-				continue
-			var s: float = (xf as Transform3D).basis.get_scale().y
-			out.append([gp, (crown as Vector2).x * s, (crown as Vector2).y * s])
+				xf = Transform3D(Basis(Vector3.UP, ts.x).scaled(Vector3.ONE * ts.y), v["pos"])
+			var levels: Array = _outline_levels(mm.multimesh.mesh)
+			e = [1, mm.global_transform * (xf as Transform3D), levels[state], key]
+	v["sc"] = e
+	return e
+
+## WHAT OF A VEIN CASTS A SHADOW, from the custom data its record keeps: -1 nothing (a felled tree, an
+## emptied vein), 1 a standing tree, an ore vein its break level 1..5 (an index into `_outline_levels`:
+## level k holds the parts with a break point under k/5, the ones a share over it keeps).
+func _cast_state(v: Dictionary) -> int:
+	if v.get("refused") == true:
+		return -1                        # `_stream_in` found no room for it by a machine: not shown
+	var cd = v.get("cd")
+	var g: float = (cd as Color).g if cd is Color else 1.0
+	if v.get("wood") == true:
+		return 1 if g >= 0.5 else -1
+	if g < 0.01:
+		return -1
+	return clampi(int(ceil(g * 5.0 - 0.001)), 0, 5)
+
+## The records round a point, by REGION: a region is a list of its own records (`_regions`), so a
+## window asks the few regions it overlaps instead of walking every record of the 5 x 5 kept round the
+## player. A replanted or nudged record can stand up to `REPLANT_RADIUS` outside its region's square.
+func _records_round(center: Vector2, half: float) -> Array:
+	var out: Array = []
+	var r: float = half + REPLANT_RADIUS
+	for rz in range(floori((center.y - r) / REGION), floori((center.y + r) / REGION) + 1):
+		for rx in range(floori((center.x - r) / REGION), floori((center.x + r) / REGION) + 1):
+			var recs = _regions.get(Vector2i(rx, rz))
+			if recs != null:
+				out.append_array(recs)
+	out.append_array(_made)
 	return out
 
-## Ore veins for the fast sun shadows (`sun_shadows.gd`): [instance transform in the world, points of
-## the model's outline in its own axes] for every live vein within `half` of `center` on the plan. The
-## model's BOX was a dark rectangle round every vein - the rock's low base reaches far wider than the
-## ore. The outline is the model's extreme vertices in the 26 directions of a cube's faces, edges and corners, taken among the parts
-## still standing (the shader's rule: a part stands while the share is over its UV.x, rubble always),
-## once per model and break level; an emptied vein casts nothing.
-var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one per break level 0..5
-func ore_shadow_casters(center: Vector2, half: float) -> Array:
-	var out: Array = []
-	for mm in multimesh_nodes:
-		if not is_instance_valid(mm) or not _mm_live.has(mm) or mm.multimesh == null or mm.multimesh.mesh == null:
-			continue
-		var levels: Array = _outline_levels(mm.multimesh.mesh)
-		var mxf: Transform3D = mm.global_transform
-		for v in _mm_live[mm]:
-			var cd = v.get("cd")
-			var share: float = (cd as Color).g if cd is Color else 1.0
-			if share < 0.01:
-				continue
-			var xf = v.get("xf")
-			if not (xf is Transform3D):
-				continue
-			var gxf: Transform3D = mxf * (xf as Transform3D)
-			if absf(gxf.origin.x - center.x) > half or absf(gxf.origin.z - center.y) > half:
-				continue
-			# level k holds the parts with a break point under k/5: the ones a share over it keeps
-			out.append([gxf, levels[clampi(int(ceil(share * 5.0 - 0.001)), 0, 5)]])
-	return out
+## WHAT TELLS THE SHADOW MAP THAT A CASTER CHANGED, PER REGION (`sun_shadows.gd` builds a still layer
+## again on it): a vein's cast state (`write_custom`, `_stream_in`), a tree moved (`replant`, the nudge
+## off a machine), a region come or gone, a vein made or cleared on the proving ground. Per region so a
+## far region landing does not rebuild the near window, and a hit that leaves the state as it was does
+## not count, or a drill on a vein would rebuild the map four times a second.
+const MADE_RK := Vector2i(1 << 30, 1 << 30)
+var _region_rev: Dictionary = {}     # Vector2i region -> how often its casters changed
+var _made_rev: int = 0
+
+func _bump_cast(v: Dictionary) -> void:
+	v.erase("sc")
+	var rk = v.get("rk")
+	if rk == MADE_RK or rk == null:
+		_made_rev += 1
+	else:
+		_region_rev[rk] = int(_region_rev.get(rk, 0)) + 1
+
+func _tag_region(rk: Vector2i, recs: Array) -> void:
+	for v in recs:
+		v["rk"] = rk
+	_region_rev[rk] = int(_region_rev.get(rk, 0)) + 1
+
+## A number that changes whenever a caster round `center` does (the regions `_records_round` asks).
+func shadow_rev_in(center: Vector2, half: float) -> int:
+	var sum: int = _made_rev
+	var r: float = half + REPLANT_RADIUS
+	for rz in range(floori((center.y - r) / REGION), floori((center.y + r) / REGION) + 1):
+		for rx in range(floori((center.x - r) / REGION), floori((center.x + r) / REGION) + 1):
+			var k := Vector2i(rx, rz)
+			sum = sum * 31 + (1 + int(_region_rev.get(k, 0)) if _regions.has(k) else 0)
+	return sum
 
 func _outline_levels(mesh: Mesh) -> Array:
 	var got = _outline_of.get(mesh)
@@ -368,7 +421,10 @@ func write_custom(slot: int, data: Color, node: Node = null) -> void:
 		var v: Dictionary = recs[slot]
 		if node != null and v.get("node") != node:
 			continue
+		var was: int = _cast_state(v)
 		v["cd"] = data
+		if _cast_state(v) != was:
+			_bump_cast(v)
 		(mm as MultiMeshInstance3D).multimesh.set_instance_custom_data(slot, data)
 		return
 
@@ -436,6 +492,7 @@ func _regions_tick() -> void:
 		if maxi(absi(k.x - here.x), absi(k.y - here.y)) <= REGION_KEEP:
 			_region_step(job, 0)               # a vein in reach is never late: built now
 			_regions[k] = job["out"]
+			_tag_region(k, job["out"])
 		else:
 			queue.append(job)
 	var p := _player_point()
@@ -456,6 +513,7 @@ func _region_jobs_tick() -> void:
 		return
 	_region_jobs.pop_front()
 	_regions[job["rk"]] = job["out"]
+	_tag_region(job["rk"], job["out"])
 	_rebuild_data()
 	_last_cell = Vector2i(1 << 30, 1 << 30)
 
@@ -495,8 +553,10 @@ func spawn_vein(world_pos: Vector3, ore_type: int, wood: bool) -> Node:
 		"scene": resource_nodes[randi() % resource_nodes.size()],
 		"ore_type": ore_colors.size() if wood else clampi(ore_type, 0, ore_colors.size() - 1),
 		"wood": wood, "tree": maxi(_tree_kind(get_parent(), gpos), 0) if wood else 0, "slot": -1, "node": null,
+		"rk": MADE_RK,
 	}
 	_made.append(v)
+	_made_rev += 1
 	_rebuild_data()
 	_stream_in(v)
 	return v.get("node")
@@ -514,6 +574,7 @@ func clear_made() -> int:
 		if int(v["slot"]) >= 0:
 			_stream_out(v)              # слот и узел отдаём ДО того, как забудем запись
 	_made.clear()
+	_made_rev += 1
 	_rebuild_data()
 	return n
 
@@ -831,12 +892,21 @@ func _stream_in(v: Dictionary) -> void:
 	#
 	# Смотрим ТОЛЬКО машины: жилы разведены ещё при раскладке, а проход по всем данным на каждом
 	# стриминге стоил бы дорого — стриминг идёт, пока игрок едет.
+	var cast_was: int = _cast_state(v)
 	if v.get("wood") == true and _machine_near(v["pos"]):
 		var spot = _free_spot_near(v["pos"], v, false)
 		if spot == null:
-			return                                   # вокруг всё занято: лучше без дерева, чем в стене
+			# вокруг всё занято: лучше без дерева, чем в стене - and a tree not shown casts nothing
+			if v.get("refused") != true:
+				v["refused"] = true
+				_bump_cast(v)
+			return
 		v["pos"] = spot["pos"]
 		v["gpos"] = spot["gpos"]
+		_bump_cast(v)
+	if v.get("refused") == true:
+		v.erase("refused")
+		_bump_cast(v)
 	var own: MultiMeshInstance3D = _model_mm(v)
 	if own == null or not _mm_live.has(own):
 		return
@@ -858,6 +928,8 @@ func _stream_in(v: Dictionary) -> void:
 		custom.b = shader_now()
 	v["xf"] = xform
 	v["cd"] = custom
+	if _cast_state(v) != cast_was:
+		_bump_cast(v)
 	own.multimesh.set_instance_transform(slot, xform)
 	own.multimesh.set_instance_color(slot, Color.WHITE)
 	own.multimesh.set_instance_custom_data(slot, custom)
@@ -1050,6 +1122,7 @@ func replant(node: Node) -> bool:
 		v["pos"] = spot["pos"]
 		v["gpos"] = spot["gpos"]
 		v["regrow"] = true                       # grows in its new spot (resource.gdshader)
+		_bump_cast(v)
 		# STRAIGHT BACK IN: it stood in view, and the streaming pass reruns only when the camera
 		# crosses a cell (RESCAN_CELL), so a player standing at the stump never saw it grow back.
 		_stream_in(v)

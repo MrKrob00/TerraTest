@@ -121,12 +121,29 @@ global uniform vec4 sun_dir;
 global uniform vec4 ground_amb;
 global uniform vec4 ground_sun;
 varying vec3 v_sun;
-// THE SUN'S SHADOW (sun_shadows.gd): a top-down window of casters projected along the light, one
-// texel a pixel. sun_shadow_strength 0 = no map (shadows off): the fetch is skipped.
+// THE SUN'S SHADOW CASCADES (sun_shadows.gd): top-down windows of casters projected along the light,
+// near to far at 25 cm, 67 cm and 2 m a texel. Each window: uv = world.xz * x + yz, w = its half in
+// metres, 0 while that map is not built. ONE FETCH A PIXEL: which window a pixel reads is decided per
+// VERTEX (`v_shsel`, the distance into each window is piecewise linear, so interpolating it is exact
+// but at the corners) and the fragment only branches on it - `textureLod`, since an implicit
+// derivative inside a branch some pixels of a quad skip is undefined. sun_shadow_strength 0 = no
+// map (shadows off): nothing is fetched.
 uniform sampler2D sun_shadow_map : hint_default_black, filter_linear;
-uniform vec2 sun_shadow_center = vec2(0.0);
-uniform float sun_shadow_size = 128.0;
+uniform sampler2D sun_shadow_map1 : hint_default_black, filter_linear;
+uniform sampler2D sun_shadow_map2 : hint_default_black, filter_linear;
+uniform vec4 sun_shadow_uv0 = vec4(0.0);
+uniform vec4 sun_shadow_uv1 = vec4(0.0);
+uniform vec4 sun_shadow_uv2 = vec4(0.0);
 uniform float sun_shadow_strength = 0.0;
+// x, y, z: how far past its hand-over line a vertex stands in window 0, 1, 2 (< 0: that window);
+// w: the outermost window's fade, 1 inside and 0 past its edge
+varying vec4 v_shsel;
+// A window with another after it hands over SH_BAND m inside its edge (sun_shadows.SH_BAND), the line
+// wandering SH_DITHER m by a hash a vertex, so the change of sharpness is no straight seam. The last
+// window fades out over the last SH_FADE of its half, as the one window always did.
+const float SH_BAND = 8.0;
+const float SH_DITHER = 6.0;
+const float SH_FADE = 1.0 / 6.0;
 #endif
 const float HAZE_FLAT = 0.9;
 varying float v_haze;
@@ -138,7 +155,6 @@ varying float v_salt;         // the salt flat: what the cracks are drawn on
 varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
 varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
 varying float v_corrupt;      // strength of the corrupted zone (0..1)
-varying float v_snow;         // the crust's lump at this vertex, -0.5..0.5 x drift (its tone, see fragment)
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -171,6 +187,14 @@ float drift_at(vec2 p, float amount) {
     return snow_height * amount * (0.45 + 0.55 * hash2D(p + vec2(17.1, 3.7)));
 }
 
+#ifdef FAST_GROUND
+// How far past its hand-over line `p` stands in the window `u` (< 0: inside it), in metres.
+float sh_out(vec2 p, vec4 u, float band) {
+    vec2 d = abs(p - (vec2(0.5) - u.yz) * (2.0 * u.w));
+    return max(d.x, d.y) - (u.w - band);
+}
+#endif
+
 void vertex() {
     vec4 world_pos = MODEL_MATRIX * vec4(VERTEX, 1.0);
     float wy = world_pos.y;
@@ -186,6 +210,18 @@ void vertex() {
     // than a plain max(n.l, 0) gives (fitted on the real driver, day_cycle.GROUND_WRAP)
     float ndl = dot(wn, normalize(sun_dir.xyz));
     v_sun = ground_sun.rgb * clamp((ndl + ground_sun.a) / (1.0 + ground_sun.a), 0.0, 1.0);
+    v_shsel = vec4(1.0, 1.0, 1.0, 0.0);
+    if (sun_shadow_strength > 0.0 && sun_shadow_uv0.w > 0.0) {
+        vec2 sp = world_pos.xz;
+        float dith = (hash2D(floor(sp) + vec2(31.7, 9.3)) - 0.5) * SH_DITHER;
+        bool has1 = sun_shadow_uv1.w > 0.0;
+        bool has2 = sun_shadow_uv2.w > 0.0;
+        v_shsel.x = sh_out(sp, sun_shadow_uv0, (has1 || has2) ? SH_BAND - dith : 0.0);
+        v_shsel.y = has1 ? sh_out(sp, sun_shadow_uv1, has2 ? SH_BAND - dith : 0.0) : 1.0;
+        v_shsel.z = has2 ? sh_out(sp, sun_shadow_uv2, 0.0) : 1.0;
+        vec4 last = has2 ? sun_shadow_uv2 : (has1 ? sun_shadow_uv1 : sun_shadow_uv0);
+        v_shsel.w = clamp(-sh_out(sp, last, 0.0) / (last.w * SH_FADE), 0.0, 1.0);
+    }
 #endif
 
     // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
@@ -234,8 +270,10 @@ void vertex() {
     float grass_amount = mix(sand_grass, 1.0, biome_grass)
             * (1.0 - rock_t) * (1.0 - canyon) * (1.0 - mountain) * (1.0 - salt);
     v_is_grass = clamp(grass_amount, 0.0, 1.0);
-    v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0);
-    v_salt = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0);
+    // both carry their uniform's strength already: a multiply a vertex, not a pixel
+    v_desert = clamp((1.0 - biome_grass) * (1.0 - canyon) * (1.0 - snow) * (1.0 - rock_t) * (1.0 - salt), 0.0, 1.0)
+            * ripple_strength;
+    v_salt = clamp(salt * (1.0 - canyon) * (1.0 - rock_t), 0.0, 1.0) * crack_strength;
     // THE GRASS IS A FUNCTION OF THE WORLD POINT, ON EVERY LEVEL, so two nodes meeting on a seam
     // lift their shared vertices alike whatever their levels and whenever each was built. It used to
     // be the near level only, with the border rows flagged flat where the neighbour was coarser -
@@ -249,7 +287,6 @@ void vertex() {
     // rock, in the canyon or on mountains; amount scales both height and density.
     float amount = grass_amount;
     float drift = clamp(snow * (1.0 - rock_t), 0.0, 1.0);   // snow is painted over a canyon too
-    v_snow = 0.0;
     float fade = 1.0 - smoothstep(grass_fade.x, grass_fade.y, ground_d);
     if (fade > 0.0 && (amount > 0.03 || drift > 0.03)) {
         vec2 p = floor(world_pos.xz + 0.5);           // vertices stand on whole metres
@@ -263,14 +300,16 @@ void vertex() {
         }
         // the crust has no normals of its own (the lift is straight up), so its lumps are TONED: a
         // high vertex brighter, a low one a shade blue - without it a white crust on white snow
-        // showed only on the skyline
-        v_snow = drift * fade * (hash2D(p + vec2(17.1, 3.7)) - 0.5);
+        // showed only on the skyline. Per vertex, into the colour it rides on: the tone is the
+        // vertex's own, and a varying of it was a multiply a pixel.
+        float lump = drift * fade * (hash2D(p + vec2(17.1, 3.7)) - 0.5);
+        v_base_col *= vec3(1.0) + lump * vec3(0.30, 0.24, 0.10);
         VERTEX.y += lift * fade;
     }
 }
 
 void fragment() {
-    vec3 base_col = v_base_col * (vec3(1.0) + v_snow * vec3(0.30, 0.24, 0.10));
+    vec3 base_col = v_base_col;
 
     // Per-pixel only: the colour noise and the detail masks.
     //
@@ -289,10 +328,10 @@ void fragment() {
         // one fetch: the detail masks (see the uniforms)
         vec4 dt = texture(ground_detail, wall / detail_world_size);
         float k = 1.0 + (dt.a - 0.5) * 2.0 * patch_strength;
-        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert * ripple_strength);
+        k *= mix(1.0, 0.84 + 0.30 * dt.g, v_desert);
         k *= mix(1.0, 0.78 + 0.40 * dt.b, v_is_grass * grass_detail);
         // the lake bed: a tone per tile, dark in the cracks
-        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt * crack_strength);
+        k *= mix(1.0, mix(0.35, 1.08, dt.r), v_salt);
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
@@ -301,11 +340,17 @@ void fragment() {
     ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
 #ifdef FAST_GROUND
     float shade = 0.0;
-    if (sun_shadow_strength > 0.0) {
-        vec2 suv = (v_wpos.xz - sun_shadow_center) / sun_shadow_size + vec2(0.5);
-        vec2 edge = min(suv, vec2(1.0) - suv);
-        float inside = clamp(min(edge.x, edge.y) * 12.0, 0.0, 1.0);   // fades out over the window's last 8%
-        shade = texture(sun_shadow_map, suv).r * inside * sun_shadow_strength;
+    if (sun_shadow_strength > 0.0 && v_shsel.w > 0.0) {
+        vec2 sp = v_wpos.xz;
+        float s = 0.0;
+        if (v_shsel.x < 0.0) {
+            s = textureLod(sun_shadow_map, sp * sun_shadow_uv0.x + sun_shadow_uv0.yz, 0.0).r;
+        } else if (v_shsel.y < 0.0) {
+            s = textureLod(sun_shadow_map1, sp * sun_shadow_uv1.x + sun_shadow_uv1.yz, 0.0).r;
+        } else if (v_shsel.z < 0.0) {
+            s = textureLod(sun_shadow_map2, sp * sun_shadow_uv2.x + sun_shadow_uv2.yz, 0.0).r;
+        }
+        shade = s * v_shsel.w * sun_shadow_strength;
     }
     ALBEDO   *= ground_amb.rgb + v_sun * (1.0 - shade);
 #endif

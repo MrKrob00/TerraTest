@@ -2224,14 +2224,47 @@ func _push_biomes() -> void:
 
 var _snow_h := -1.0                  # the material's own snow crust, kept to turn it back on
 
-## The sun's shadow window (sun_shadows.gd), read by the fast ground only; strength 0 skips the fetch.
-func set_sun_shadow(tex: Texture2D, center: Vector2, size: float, strength: float) -> void:
-	if _mat is ShaderMaterial:
-		var m := _mat as ShaderMaterial
-		m.set_shader_parameter("sun_shadow_map", tex)
-		m.set_shader_parameter("sun_shadow_center", center)
-		m.set_shader_parameter("sun_shadow_size", size)
-		m.set_shader_parameter("sun_shadow_strength", strength if fast_ground else 0.0)
+## THE SUN'S SHADOW CASCADES (sun_shadows.gd), read by the fast ground only: near to far, a map and
+## its window each - uv = world XZ * x + yz, w the window's half in metres, 0 for a map not built yet.
+## Strength 0 skips the fetch. The maps are handed over only when they change: the near window moves
+## every frame of a drive, its map stays the same texture.
+const SUN_SHADOW_MAPS := [&"sun_shadow_map", &"sun_shadow_map1", &"sun_shadow_map2"]
+const SUN_SHADOW_UVS := [&"sun_shadow_uv0", &"sun_shadow_uv1", &"sun_shadow_uv2"]
+var _sun_maps: Array = []
+func set_sun_shadows(maps: Array, uvs: Array, strength: float) -> void:
+	if not (_mat is ShaderMaterial):
+		return
+	var m := _mat as ShaderMaterial
+	if m != _sun_mat or maps != _sun_maps:
+		_sun_mat = m
+		_sun_maps = maps.duplicate()
+		for k in SUN_SHADOW_MAPS.size():
+			m.set_shader_parameter(SUN_SHADOW_MAPS[k], maps[k] if k < maps.size() else null)
+	for k in SUN_SHADOW_UVS.size():
+		m.set_shader_parameter(SUN_SHADOW_UVS[k], uvs[k] if k < uvs.size() else Vector4.ZERO)
+	m.set_shader_parameter(&"sun_shadow_strength", strength if fast_ground and not maps.is_empty() else 0.0)
+var _sun_mat: ShaderMaterial = null
+
+## THE GROUND'S HEIGHT OFF ANY NODE WHOSE HEIGHTS ARE STILL HELD (`_hc`), the finest first, NAN where
+## none is. `drawn_height` answers only under the frame; this answers wherever ground was built - behind
+## the camera, off the frustum, and inside `keep_radius` for good (`_prune_heights` keeps those). The
+## sun shadow's ground shade marches over it (`sun_shadows.gd`): on the drawn heights alone nine cells in
+## ten of its near grid were empty - everything the camera was not looking at - measured on the real
+## driver, 17122 of 19044.
+func known_height(wx: float, wz: float) -> float:
+	if _gen == null:
+		return NAN
+	var p: Vector3 = global_transform.affine_inverse() * Vector3(wx, 0.0, wz)
+	var bcx: int = floori(p.x / CHUNK)
+	var bcz: int = floori(p.z / CHUNK)
+	for l in MAX_LOD + 1:
+		var hs = _hc.get(_key(l, bcx >> l, bcz >> l))
+		if hs != null and (hs as PackedFloat32Array).size() == APRON * APRON:
+			var span := float(CHUNK << l)
+			var cell := float(1 << l)
+			var h: float = _grid_h(hs, (p.x - float(bcx >> l) * span) / cell, (p.z - float(bcz >> l) * span) / cell)
+			return (global_transform * Vector3(p.x, h, p.z)).y
+	return NAN
 
 ## The DRAWN ground's height at a world XZ, NAN where nothing is drawn: what the screen shows, read
 ## off the heights the drawn node was built from (`_drawn_h`, the occlusion test's own read).
