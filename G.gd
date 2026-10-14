@@ -253,6 +253,8 @@ var menu_battles: bool = true
 ## так что одному игроку это экономит нажатие, а другому мешает: он подбирал мусор по дороге,
 ## а его каждый раз вышвыривало из езды. Дверь одна — `vehicle_body_3d._grab_world_block`.
 var build_on_pickup: bool = true
+## The small FPS readout in the bottom-right corner (hud.gd `_fps_lbl`), over the garage too.
+var show_fps: bool = true
 ## ЯЗЫК ИНТЕРФЕЙСА: "en" / "ru" / "uk". Конфиг устройства, а не прогресс — сброс мира его не
 ## трогает. Пусто при первом запуске: язык берётся у системы (см. _apply_lang).
 var lang: String = ""
@@ -308,6 +310,7 @@ func save_settings() -> void:
 		"cam_invert_y": cam_invert_y,
 		"menu_battles": menu_battles,
 		"build_on_pickup": build_on_pickup,
+		"show_fps": show_fps,
 		"lang": lang,
 		"ui_windows": ui_windows,
 	})
@@ -327,6 +330,7 @@ func _load_settings() -> void:
 	cam_invert_y = bool(data.get("cam_invert_y", false))
 	menu_battles = data.get("menu_battles", true) == true
 	build_on_pickup = data.get("build_on_pickup", true) == true
+	show_fps = data.get("show_fps", true) == true
 	lang = String(data.get("lang", ""))
 	var w = data.get("ui_windows", {})
 	if w is Dictionary:

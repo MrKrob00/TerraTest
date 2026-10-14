@@ -2425,6 +2425,12 @@ project: read it before claiming how anything works.
   anchors alone the overlay was 0 x 0 and every drag went to the button under the finger. Measured
   on the real driver: ATTACK dragged 600 x 300 px, kept as (0.42, 0.23), muted while edited, taking a
   finger at its new place after DONE, kept by a relayout, back on its anchors after RESET.
+- **THE FPS COUNTER IS SMALL TEXT IN THE BOTTOM-RIGHT CORNER, ON A CANVAS LAYER OF ITS OWN**
+  (`hud._fps_lbl`, `FPS_LAYER` 90; the player's call): it was a 48 px number in the top middle inside
+  the HUD, which the garage - a child of the HUD added last - covered. Over everything it shows in the
+  garage too; `G.show_fps` (garage SETTINGS -> INTERFACE, kept in `settings.json`) hides it. A tap
+  still opens the profiler, except over the garage, where it lets taps through (`MOUSE_FILTER_IGNORE`
+  while the garage is open). The text is set every `FPS_EVERY` and only when the number changed.
 - A FLOATING HUD PANEL IS `DragWindow`, ONE IMPLEMENTATION FOR ALL OF THEM (quest tracker, quest
   journal, the proving-ground panel). It is attached the way `SwipeClose` is —
   `DragWindow.attach(window, handle, id)` — and it owns the drag, the remembered place
