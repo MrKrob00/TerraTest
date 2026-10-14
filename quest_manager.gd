@@ -262,9 +262,9 @@ func _seed_demo() -> void:
 		{"desc": "Reach the friendly unit",
 		 "event": "quest_defend_1", "goal": 1,
 		 "hint": "One of ours is pinned down and will not hold long."},
-		{"desc": "Drive the raiders off",
+		{"desc": "Keep it alive for two minutes",
 		 "event": "quest_defend_2", "goal": 1,
-		 "hint": "It survives or it does not. There is no partial credit for this one."},
+		 "hint": "Stay close and keep it standing. Hold for two minutes and it joins you."},
 	])
 	add_quest("event_camp", "Take the Staging Point", "", Type.EVENT, 1, 0, "", 420, 55, 12, 4)
 	add_stages("event_camp", [

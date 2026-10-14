@@ -232,6 +232,10 @@ func _drop_orphans(polled: Dictionary) -> void:
 
 func _forget_event(key: String) -> void:
 	_ev_ally.erase(key)
+	_supply_hidden.erase(key)
+	_supply_t.erase(key)
+	_defend_t.erase(key)
+	_defend_wave2.erase(key)
 	_supply_trap.erase(key)
 	_supply_opened.erase(key)
 	_ev_clear(key)
@@ -2349,10 +2353,10 @@ func _gang_1(q: Dictionary) -> void:
 	if _ev_get_point(key) == null:
 		return
 	if not _ev_mobs.has(key):
-		# Цель НЕ назначаем: банда стоит на месте, и первым ходом должен быть выстрел игрока.
-		# Так у него остаётся выбор — подъехать, посмотреть и уехать.
-		_ev_spawn(key, _ev_point[key] as Vector3, [5, 6, 7])
-		Dialogue.say("System", tr("Three units, no transponders. They are not ours."))
+		# No target given: the gang stands, and the first move is the player's shot - they can drive
+		# up, look and leave. THREE TO FIVE (TerraTech's Tech Gang); the party budget still trims it.
+		var n: int = _gang_spawn(key, _ev_point[key] as Vector3)
+		Dialogue.say("System", tr("%d units, no transponders. They are not ours.") % n)
 	if not _reached(_ev_point[key]):
 		return
 	Q.report(String(q["event"]), 1)
@@ -2362,13 +2366,23 @@ func _gang_2(q: Dictionary) -> void:
 	if _ev_abandoned(q, key):
 		return
 	if not _ev_mobs.has(key):
-		var at = _ev_get_point(key)      # состояние потеряно — банда снова на месте
+		var at = _ev_get_point(key)      # state lost (a reload): the gang stands there again
 		if at != null:
-			_ev_spawn(key, at as Vector3, [5, 6, 7])
+			_gang_spawn(key, at as Vector3)
 		return
 	if not _ev_all_dead(key):
 		return
 	_ev_done(q, key)
+
+const GANG_SIZE := Vector2i(3, 5)
+const GANG_PRESETS := [5, 6, 7, 8]
+
+func _gang_spawn(key: String, at: Vector3) -> int:
+	var presets: Array = []
+	for i in randi_range(GANG_SIZE.x, GANG_SIZE.y):
+		presets.append(int(GANG_PRESETS[i % GANG_PRESETS.size()]))
+	_ev_spawn(key, at, presets)
+	return presets.size()
 
 # ── «Supply Drop»: a reward orb, half the time bait ─────────────────────────
 ## The reward is not a crate lying in the grass but an ORB of glitch cards over the point
@@ -2387,6 +2401,11 @@ const REWARD_ORB := preload("res://reward_orb.gd")
 
 var _supply_trap: Dictionary = {}        # event key -> this drop is bait
 var _supply_opened: Dictionary = {}      # event key -> its orb has opened
+var _supply_hidden: Dictionary = {}      # event key -> the hidden cache kind
+var _supply_t: Dictionary = {}           # event key -> seconds before the hidden cache wipes itself
+var _supply_warned: Dictionary = {}
+const CACHE_SPREAD := 40.0
+const CACHE_TIME := 150.0
 
 func _supply_1(q: Dictionary) -> void:
 	var key := _ev_key(String(q["event"]))
@@ -2396,13 +2415,34 @@ func _supply_1(q: Dictionary) -> void:
 		return
 	var at: Vector3 = _ev_point[key] as Vector3
 	if not is_instance_valid(_ev_orb.get(key)):
-		_supply_trap[key] = randf() < 0.5
+		# THREE KINDS, AS TERRATECH'S CRATES (the player's list): open, bait, and HIDDEN - the orb lies
+		# somewhere within CACHE_SPREAD of the mark (the compass leads to the mark, not to it), a guard
+		# stands by it, and from the moment the player reaches the mark it wipes itself in CACHE_TIME.
+		var roll: int = randi() % 3
+		_supply_trap[key] = roll == 1
+		_supply_hidden[key] = roll == 2
 		_supply_opened[key] = false
-		_supply_orb(key, at)
-		Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
+		var orb_at: Vector3 = at
+		if roll == 2:
+			var a: float = randf() * TAU
+			var r: float = randf_range(CACHE_SPREAD * 0.5, CACHE_SPREAD)
+			orb_at = at + Vector3(cos(a) * r, 0.0, sin(a) * r)
+			orb_at.y = G.ground_y(orb_at, at.y)
+			Dialogue.say("System", tr("A cache is hidden somewhere round the mark. It has a guard, and once you are there it wipes itself in %d seconds.") % int(CACHE_TIME))
+		else:
+			Dialogue.say("System", tr("Something came down intact out there. Get close and it opens."))
+		_supply_orb(key, orb_at)
 	if not _reached(at):
 		return
-	if _supply_trap.get(key, false) and not _ev_mobs.has(key):
+	if _supply_hidden.get(key, false) and not _ev_mobs.has(key):
+		var orb_n = _ev_orb.get(key)
+		var sp0: Node = get_node_or_null("/root/Main/EnemySpawner")
+		var guard: int = int(sp0.preset_below_cap(0)) if sp0 != null and sp0.has_method("preset_below_cap") else 6
+		if is_instance_valid(orb_n):
+			_ev_spawn(key, (orb_n as Node3D).global_position, [guard], 1, _player(), false)
+		_supply_t[key] = CACHE_TIME
+		_supply_warned[key] = false
+	elif _supply_trap.get(key, false) and not _ev_mobs.has(key):
 		var sp: Node = get_node_or_null("/root/Main/EnemySpawner")
 		var two: bool = randf() < 0.5
 		var presets: Array = []
@@ -2427,7 +2467,8 @@ func _supply_orb(key: String, at: Vector3) -> void:
 
 func _on_supply_opened(at: Vector3, key: String) -> void:
 	var loot: Array = SUPPLY_LOOT_MARLIT if Q.faction_of(Q._find("event_" + key)) == "marlit" else SUPPLY_LOOT
-	for i in (SUPPLY_TRAP_BLOCKS if _supply_trap.get(key, false) else SUPPLY_BLOCKS):
+	var fought: bool = _supply_trap.get(key, false) or _supply_hidden.get(key, false)
+	for i in (SUPPLY_TRAP_BLOCKS if fought else SUPPLY_BLOCKS):
 		_drop_reward(int(loot.pick_random()), at)
 	_supply_opened[key] = true
 
@@ -2460,7 +2501,22 @@ func _supply_2(q: Dictionary) -> void:
 		_ev_clear(key)
 		Q.reset_quest(String(q["id"]))
 		return
-	(orb as Node).set("locked", _supply_trap.get(key, false) and not _ev_all_dead(key))
+	var guarded: bool = _supply_trap.get(key, false) or _supply_hidden.get(key, false)
+	(orb as Node).set("locked", guarded and not _ev_all_dead(key))
+	if not _supply_hidden.get(key, false) or not _supply_t.has(key):
+		return
+	_supply_t[key] = float(_supply_t[key]) - POLL
+	if float(_supply_t[key]) <= 30.0 and not _supply_warned.get(key, false):
+		_supply_warned[key] = true
+		Dialogue.say("System", tr("Thirty seconds and the cache wipes itself."))
+	if float(_supply_t[key]) > 0.0:
+		return
+	BlockFX.ground_wave(self, (orb as Node3D).global_position, Vector3.UP, 30.0)
+	Dialogue.say("System", tr("The cache wiped itself. Nothing left to take."))
+	_supply_t.erase(key)
+	_ev_clear(key)
+	_ev_cool[String(q["id"])] = _event_cooldown()
+	Q.skip_quest(String(q["id"]))
 
 # ── «Defend Friendly Tech»: союзника бьют, его надо отбить ──────────────────
 
@@ -2515,14 +2571,60 @@ func _defend_2(q: Dictionary) -> void:
 		_ev_cool[String(q["id"])] = _event_cooldown()
 		Q.skip_quest(String(q["id"]))
 		return
-	if _party_open(key):
+	# TWO MINUTES IN THE ZONE, THEN IT IS YOURS (TerraTech's Defend Friendly Tech, the player's
+	# call): the clock runs while the player is within DEFEND_ZONE of the ally, a second group of
+	# raiders comes at half time, and an ally still standing at DEFEND_TIME joins the player as one
+	# of their own machines (`_adopt_machine`). Raiders left over stay - they are no longer the job.
+	var p: Node3D = _player()
+	if p != null and p.global_position.distance_squared_to((ally as Node3D).global_position) \
+			< DEFEND_ZONE * DEFEND_ZONE:
+		_defend_t[key] = float(_defend_t.get(key, 0.0)) + POLL
+	var t: float = float(_defend_t.get(key, 0.0))
+	if t >= DEFEND_TIME * 0.5 and not _defend_wave2.get(key, false):
+		_defend_wave2[key] = true
+		_ev_spawn(key, (ally as Node3D).global_position + Vector3(-25.0, 0.0, 15.0), [6, 7], 1, ally, false)
+		Dialogue.say("System", tr("More of them. Hold on - a minute to go."))
+	if t < DEFEND_TIME:
 		return
+	_defend_t.erase(key)
+	_defend_wave2.erase(key)
+	_ev_ally.erase(key)
 	for m in _ev_mobs.get(key, []):
 		if is_instance_valid(m) and m != ally:
-			return
-	_ev_ally.erase(key)
-	_release_machine(ally)
+			_release_machine(m)
+	Dialogue.say("System", tr("It held. The crew is grateful - the machine is yours to drive."))
+	_adopt_machine(ally as Node3D)
 	_ev_done(q, key)
+
+const DEFEND_TIME := 120.0
+const DEFEND_ZONE := 90.0
+var _defend_t: Dictionary = {}
+var _defend_wave2: Dictionary = {}
+
+## An AI machine of the player's side becomes one of the player's own: the same build, born whole
+## where it stood, in the camera controller's `vehicles` so it can be switched to and is saved.
+func _adopt_machine(m: Node3D) -> void:
+	if not is_instance_valid(m):
+		return
+	var bl: Node = m.get_node_or_null("blocks")
+	var preset = bl.get("layout_preset") if bl != null else null
+	var at: Vector3 = m.global_position
+	var basis_y: float = m.global_rotation.y
+	m.queue_free()
+	var vr: Node = get_node_or_null("/root/Main/Vehicles")
+	var scene: PackedScene = load("res://player_vehicle.tscn")
+	if vr == null or scene == null or preset == null:
+		return
+	var v: Node3D = scene.instantiate()
+	var vb: Node = v.get_node_or_null("blocks")
+	if vb != null and "layout_preset" in vb:
+		vb.layout_preset = int(preset)
+	vr.add_child(v)
+	v.global_position = at + Vector3.UP * 1.0
+	v.global_rotation.y = basis_y
+	var cc: Node = get_tree().get_first_node_in_group("camera_controller")
+	if cc != null and "vehicles" in cc and not cc.vehicles.has(v):
+		cc.vehicles.append(v)
 
 # ── "Take the Staging Point": capture a base WITHOUT destroying it ───────────
 ## TerraTech's Capture Enemy Base (the player's call: make it a real capture). A hostile turret
