@@ -280,6 +280,22 @@ var _outline_of: Dictionary = {}     # mesh -> Array of PackedVector3Array, one 
 func shadow_records(center: Vector2, half: float) -> Array:
 	return _records_round(center, half)
 
+## The same records BY REGION, each with its revision: [[region key, rev, records], ...], the proving
+## ground's own veins last under `MADE_RK`. A region whose rev has not moved casts what it cast, so the
+## shadow map keeps its triangles whole and a move costs only the regions that came in.
+func shadow_groups(center: Vector2, half: float) -> Array:
+	var out: Array = []
+	var r: float = half + REPLANT_RADIUS
+	for rz in range(floori((center.y - r) / REGION), floori((center.y + r) / REGION) + 1):
+		for rx in range(floori((center.x - r) / REGION), floori((center.x + r) / REGION) + 1):
+			var k := Vector2i(rx, rz)
+			var recs = _regions.get(k)
+			if recs != null:
+				out.append([k, int(_region_rev.get(k, 0)), recs])
+	if not _made.is_empty():
+		out.append([MADE_RK, _made_rev, _made])
+	return out
+
 func cast_entry(v: Dictionary):
 	var got = v.get("sc")
 	if got != null:
