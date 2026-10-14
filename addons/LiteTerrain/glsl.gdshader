@@ -10,8 +10,8 @@ render_mode diffuse_lambert, specular_disabled;
 // WHERE EACH SETTING IS TUNED: in the map's inspector. Its `surface_material`
 // (addons/LiteTerrain/terrain_shader.tres) carries this shader and shows every uniform; the node
 // draws with a copy of it, into which its `biomes` write the colours, rock, snow, grass and canyon
-// bands (TerrainBiomes.apply_to_material) and the game the grass fade, the trample and the
-// corruption map - so those few are tuned in the biomes, everything else on the material.
+// bands (TerrainBiomes.apply_to_material) and the game the grass fade and the trample - so those
+// few are tuned in the biomes, everything else on the material.
 
 group_uniforms Texture;
 // The cell of the per-pixel colour noise, in world units (PIXELS_PER_TILE cells to one). Derived
@@ -83,21 +83,6 @@ uniform vec2  trample_center = vec2(0.0);
 uniform float trample_size   = 130.0;
 group_uniforms;
 
-group_uniforms Corruption;
-// "Corrupted data" zones: a blue-violet per-cell glitch over the ground, in patches across
-// the world, flickering over time and GLOWING (EMISSION).
-uniform float corrupt_amount    : hint_range(0.0, 1.0)    = 1.0;    // master (0 = off)
-// The zones come from a state map (maintained by grass.gd). Its red channel is how corrupted
-// the chunk is; filter_linear softens the zone edges.
-uniform sampler2D corrupt_map : hint_default_black, filter_linear;
-uniform vec2  corrupt_world_center = vec2(0.0);   // world XZ centre of the map
-uniform float corrupt_world_size   = 1984.0;      // world size of the map, in units
-uniform float glitch_cell       : hint_range(0.3, 4.0)    = 1.0;    // glitch "pixel" size, in world units
-uniform float glitch_speed      : hint_range(0.0, 20.0)   = 7.0;    // flicker rate
-uniform vec3  corrupt_cyan    : source_color = vec3(0.15, 0.85, 1.0);
-uniform vec3  corrupt_magenta : source_color = vec3(0.72, 0.16, 1.0);
-uniform float corrupt_glow      : hint_range(0.0, 4.0)    = 1.6;    // glow strength
-group_uniforms;
 
 // The zone colour and the slope-driven fade into rock are computed in the VERTEX stage
 // (v_base_col) and interpolated: the terrain is fill-bound and there are orders of magnitude
@@ -152,9 +137,8 @@ varying vec3  v_base_col;
 varying float v_is_grass;
 varying float v_desert;       // bare sand: what the ripples are drawn on
 varying float v_salt;         // the salt flat: what the cracks are drawn on
-varying vec3  v_wpos;         // world position — the corruption glitch and the wall UV below
+varying vec3  v_wpos;         // world position — the wall UV below and the shadow lookup
 varying vec3  v_wnrm;         // world normal — which plane the surface faces (see fragment)
-varying float v_corrupt;      // strength of the corrupted zone (0..1)
 
 float hash2D(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -185,52 +169,6 @@ uniform float snow_height : hint_range(0.0, 1.0) = 0.3;
 
 float drift_at(vec2 p, float amount) {
     return snow_height * amount * (0.45 + 0.55 * hash2D(p + vec2(17.1, 3.7)));
-}
-
-// THE GROUND WHERE THE PLAYER FIRST WAKES, STILL SMOULDERING (crash_site.gd through
-// ChunkTerrain.set_ember_spot; the player's call and picture: dark charred plates with glowing cracks
-// between them, weak). x, z, radius (0 = none), heat (1 fresh, falls as it cools). IN THE GROUND'S
-// OWN SHADER, not a patch over it: a patch has to be pulled toward the camera to clear the grass,
-// and pulled it drew over every block standing on it. Here the grass simply does not grow on it.
-// The cracks are a Voronoi field's borders in world metres (F2 - F1 near zero), computed only
-// inside the spot's branch - every other ground pixel pays one varying compare.
-uniform vec4 ember_spot = vec4(0.0);
-varying float v_ember;
-
-vec2 ember_h2(vec2 p) {
-    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-    return fract(sin(p) * 43758.5453);
-}
-
-float ember_noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    return mix(mix(ember_h2(i).x, ember_h2(i + vec2(1.0, 0.0)).x, f.x),
-               mix(ember_h2(i + vec2(0.0, 1.0)).x, ember_h2(i + vec2(1.0, 1.0)).x, f.x), f.y);
-}
-
-// x: distance to the nearest border (F2 - F1), yz: the nearest point's cell
-vec3 ember_cells(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    float d1 = 8.0;
-    float d2 = 8.0;
-    vec2 id = vec2(0.0);
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            vec2 g = vec2(float(x), float(y));
-            float d = length(g + 0.15 + 0.7 * ember_h2(i + g) - f);
-            if (d < d1) {
-                d2 = d1;
-                d1 = d;
-                id = i + g;
-            } else if (d < d2) {
-                d2 = d;
-            }
-        }
-    }
-    return vec3(d2 - d1, id);
 }
 
 #ifdef FAST_GROUND
@@ -270,21 +208,6 @@ void vertex() {
     }
 #endif
 
-    // Corrupted zone, read from the state map (grass.gd): the chunk's red channel is how
-    // corrupted it is. Empty to begin with; grows a chunk at a time; heals near the player.
-    float cstate = 0.0;
-    // Uniform branch: with corrupt_amount == 0 there is no vertex texture fetch at all.
-    if (corrupt_amount > 0.001) {
-        vec2 cuv = (world_pos.xz - corrupt_world_center) / corrupt_world_size + vec2(0.5);
-        if (cuv.x >= 0.0 && cuv.x <= 1.0 && cuv.y >= 0.0 && cuv.y <= 1.0) {
-            cstate = textureLod(corrupt_map, cuv, 0.0).r;
-        }
-    }
-    v_corrupt   = cstate * corrupt_amount;
-    v_ember = 0.0;
-    if (ember_spot.z > 0.0) {
-        v_ember = 1.0 - smoothstep(0.5, 1.0, length(world_pos.xz - ember_spot.xy) / ember_spot.z);
-    }
 
     // The biome masks are baked into the vertex COLOR by the terrain (chunk_terrain._biome_colour).
     float biome_grass = COLOR.b;
@@ -335,7 +258,7 @@ void vertex() {
     // whose edge runs straight between those two, draws there. Inside a node every vertex is its
     // own blade, as before. Grass grows in the meadow and, sparser, on sand (sand_grass), none on
     // rock, in the canyon or on mountains; amount scales both height and density.
-    float amount = grass_amount * (1.0 - smoothstep(0.25, 0.6, v_ember));  // burnt: no grass
+    float amount = grass_amount;
     float drift = clamp(snow * (1.0 - rock_t), 0.0, 1.0);   // snow is painted over a canyon too
     float fade = 1.0 - smoothstep(grass_fade.x, grass_fade.y, ground_d);
     if (fade > 0.0 && (amount > 0.03 || drift > 0.03)) {
@@ -385,40 +308,6 @@ void fragment() {
         base_col = clamp(base_col * k, 0.0, 1.0);
     }
 
-    // The smouldering spot (ember_spot): charred plates over the ground, the glow added after the
-    // light below - a crack glows by itself, the sun does not light it.
-    float ember_lit = 0.0;
-    vec3 ember_glow = vec3(0.0);
-    // The mask is taken PER PIXEL: per vertex it was interpolated over a coarse node's 2-4 m
-    // triangles and the spot's edge stepped at every LOD seam. A uniform branch, then one length.
-    float em = 0.0;
-    if (ember_spot.z > 0.0) {
-        em = 1.0 - smoothstep(0.5, 1.0, length(v_wpos.xz - ember_spot.xy) / ember_spot.z);
-    }
-    if (em > 0.002) {
-        vec2 w = v_wpos.xz;
-        vec2 warp = vec2(ember_noise(w * 0.9), ember_noise(w * 0.9 + 17.3)) - 0.5;
-        vec3 big = ember_cells((w + warp * 0.8) / 1.7);
-        vec3 fine = ember_cells((w + warp * 0.5) / 0.75 + 31.7);
-        float patchy = ember_noise(w * 0.22 + 5.1);
-        float cover = smoothstep(0.0, 0.45, em + (patchy - 0.5) * 0.6);
-        float alive = smoothstep(0.25, 0.6, ember_noise(w * 0.35 - 9.4));
-        float wid = 0.06 + 0.08 * patchy;
-        float crack = 1.0 - smoothstep(0.0, wid, big.x);
-        float core = 1.0 - smoothstep(0.0, wid * 0.3, big.x);
-        float hair = (1.0 - smoothstep(0.0, 0.05, fine.x)) * 0.4 * smoothstep(0.35, 0.75, patchy);
-        vec2 hc = ember_h2(big.yz);
-        float breath = 0.7 + 0.3 * sin(TIME * (0.6 + hc.y * 0.9) + hc.x * 6.283);
-        float heat = ember_spot.w;
-        // charcoal, not black: a tone a plate and ash mottling inside it
-        vec3 plate = vec3(0.23, 0.22, 0.25) * (0.7 + 0.45 * ember_h2(big.yz + 3.0).x)
-                * (0.8 + 0.35 * ember_noise(w * 3.1 + 2.7));
-        base_col = mix(base_col, plate, cover);
-        ember_lit = clamp(max(crack, hair) * alive * breath * heat, 0.0, 1.0) * cover;
-        ember_glow = mix(vec3(0.5, 0.05, 0.02), vec3(1.0, 0.36, 0.06), crack);
-        ember_glow = mix(ember_glow, vec3(1.0, 0.75, 0.35), core * alive * heat * 0.6);
-    }
-
     // Below grass_shade 0.65 the grass sits slightly darker than the ground — a soft shadow at
     // the root rather than a bright patch.
     ALBEDO    = base_col * mix(0.78, grass_shade, v_is_grass);
@@ -437,31 +326,9 @@ void fragment() {
         shade = s * v_shsel.w * sun_shadow_strength;
     }
     ALBEDO   *= ground_amb.rgb + v_sun * (1.0 - shade);
-    ALBEDO    = mix(ALBEDO, ember_glow, ember_lit);      // unshaded: EMISSION would be lost
 #endif
     ROUGHNESS = 0.9;
 
-    // ── Corrupted zones: a blue-violet per-cell glitch ────────────────────────────
-    // Quantise the world into glitch_cell squares, then hash each cell (plus time, which makes
-    // it flicker) into cyan / magenta / a dark "bit". Patchy via a second hash, and it glows.
-    EMISSION = vec3(0.0);
-    if (v_corrupt > 0.01) {
-        vec2 cell = floor(v_wpos.xz / glitch_cell);
-        float t = floor(TIME * glitch_speed);
-        float n = hash2D(cell + vec2(t * 1.7, t * 0.9));
-        vec3 g = (n < 0.42) ? corrupt_cyan : (n < 0.84 ? corrupt_magenta : vec3(0.02, 0.02, 0.05));
-        float k = v_corrupt * step(0.25, hash2D(cell * 1.3 + vec2(5.0)));   // not a solid fill
-        ALBEDO   = mix(ALBEDO, g, k);
-        EMISSION = g * corrupt_glow * k;
-    }
-
-    // ДЫМКА ПОСЛЕДНЕЙ, поверх всего: она про воздух между камерой и поверхностью, а значит
-    // гасит и глитч заражённой зоны тоже — иначе на горизонте светились бы клетки, у которых
-    // сама земля уже растворилась.
-#ifndef FAST_GROUND
-    ALBEDO   = mix(ALBEDO, vec3(0.0), ember_lit);
-    EMISSION += ember_glow * ember_lit;
-#endif
-    EMISSION = EMISSION * (1.0 - v_haze);
+    // the haze last, over everything: the air between the camera and the surface
     FOG = vec4(world_haze.rgb, v_haze * haze_range.z);
 }
